@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,29 +11,38 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/errorutil/unimplemented"
 )
 
-// dropOwnedByNode represents a DROP OWNED BY <role(s)> statement.
 type dropOwnedByNode struct {
-	// TODO(angelaw): Uncomment when implementing - commenting out due to linting error.
-	//n *tree.DropOwnedBy
 }
 
 func (p *planner) DropOwnedBy(ctx context.Context) (planNode, error) {
+	__antithesis_instrumentation__.Notify(469118)
 	if err := checkSchemaChangeEnabled(
 		ctx,
 		p.ExecCfg(),
 		"DROP OWNED BY",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(469120)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(469121)
 	}
+	__antithesis_instrumentation__.Notify(469119)
 	telemetry.Inc(sqltelemetry.CreateDropOwnedByCounter())
-	// TODO(angelaw): Implementation.
+
 	return nil, unimplemented.NewWithIssue(55381, "drop owned by is not yet implemented")
 }
 
 func (n *dropOwnedByNode) startExec(params runParams) error {
-	// TODO(angelaw): Implementation.
+	__antithesis_instrumentation__.Notify(469122)
+
 	return nil
 }
-func (n *dropOwnedByNode) Next(runParams) (bool, error) { return false, nil }
-func (n *dropOwnedByNode) Values() tree.Datums          { return tree.Datums{} }
-func (n *dropOwnedByNode) Close(context.Context)        {}
+func (n *dropOwnedByNode) Next(runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(469123)
+	return false, nil
+}
+func (n *dropOwnedByNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(469124)
+	return tree.Datums{}
+}
+func (n *dropOwnedByNode) Close(context.Context) { __antithesis_instrumentation__.Notify(469125) }

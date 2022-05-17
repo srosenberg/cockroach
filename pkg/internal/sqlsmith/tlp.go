@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqlsmith
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -18,87 +10,62 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// GenerateTLP returns two SQL queries as strings that can be used for Ternary
-// Logic Partitioning (TLP). It also returns any placeholder arguments necessary
-// for the second partitioned query. TLP is a method for logically testing DBMSs
-// which is based on the logical guarantee that for a given predicate p, all
-// rows must satisfy exactly one of the following three predicates: p, NOT p, p
-// IS NULL. TLP can find bugs when an unpartitioned query and a query
-// partitioned into three sub-queries do not yield the same results.
-//
-// More information on TLP: https://www.manuelrigger.at/preprints/TLP.pdf.
-//
-// This TLP implementation is limited in the types of queries that are tested.
-// We currently only test basic WHERE, JOIN, and MAX/MIN query filters. It is
-// possible to use TLP to test other aggregations, GROUP BY, and HAVING, which
-// have all been implemented in SQLancer. See:
-// https://github.com/sqlancer/sqlancer/tree/1.1.0/src/sqlancer/cockroachdb/oracle/tlp.
 func (s *Smither) GenerateTLP() (unpartitioned, partitioned string, args []interface{}) {
-	// Set disableImpureFns to true so that generated predicates are immutable.
+	__antithesis_instrumentation__.Notify(69935)
+
 	originalDisableImpureFns := s.disableImpureFns
 	s.disableImpureFns = true
 	defer func() {
+		__antithesis_instrumentation__.Notify(69938)
 		s.disableImpureFns = originalDisableImpureFns
 	}()
+	__antithesis_instrumentation__.Notify(69936)
 
 	switch tlpType := s.rnd.Intn(5); tlpType {
 	case 0:
+		__antithesis_instrumentation__.Notify(69939)
 		partitioned, unpartitioned, args = s.generateWhereTLP()
 	case 1:
+		__antithesis_instrumentation__.Notify(69940)
 		partitioned, unpartitioned = s.generateOuterJoinTLP()
 	case 2:
+		__antithesis_instrumentation__.Notify(69941)
 		partitioned, unpartitioned = s.generateInnerJoinTLP()
 	case 3:
+		__antithesis_instrumentation__.Notify(69942)
 		partitioned, unpartitioned = s.generateDistinctTLP()
 	default:
+		__antithesis_instrumentation__.Notify(69943)
 		partitioned, unpartitioned = s.generateAggregationTLP()
 	}
+	__antithesis_instrumentation__.Notify(69937)
 	return partitioned, unpartitioned, args
 }
 
-// generateWhereTLP returns two SQL queries as strings that can be used by the
-// GenerateTLP function. These queries make use of the WHERE clause to partition
-// the original query into three. This function also returns a list of arguments
-// if the predicate contains placeholders. These arguments can be read
-// sequentially to match the placeholders.
-//
-// The first query returned is an unpartitioned query of the form:
-//
-//   SELECT *, p, NOT (p), (p) IS NULL, true, false, false FROM table
-//
-// The second query returned is a partitioned query of the form:
-//
-//   SELECT *, p, NOT (p), (p) IS NULL, p, NOT (p), (p) IS NULL FROM table WHERE (p)
-//   UNION ALL
-//   SELECT *, p, NOT (p), (p) IS NULL, NOT(p), p, (p) IS NULL FROM table WHERE NOT (p)
-//   UNION ALL
-//   SELECT *, p, NOT (p), (p) IS NULL, (p) IS NULL, (p) IS NOT NULL, (NOT(p)) IS NOT NULL FROM table WHERE (p) IS NULL
-//
-// The last 3 boolean columns serve as a correctness check. The unpartitioned
-// query projects true, false, false at the end so that the partitioned queries
-// can project the expression that serves as the filter first, then the other
-// two expressions. This additional check ensures that, in the case an entire
-// projection column is returning a result that doesn't match the filter,
-// the test case won't falsely pass.
-//
-// If the resulting values of the two queries are not equal, there is a logical
-// bug.
 func (s *Smither) generateWhereTLP() (unpartitioned, partitioned string, args []interface{}) {
+	__antithesis_instrumentation__.Notify(69944)
 	f := tree.NewFmtCtx(tree.FmtParsable)
 
 	table, _, _, cols, ok := s.getSchemaTable()
 	if !ok {
+		__antithesis_instrumentation__.Notify(69947)
 		panic(errors.AssertionFailedf("failed to find random table"))
+	} else {
+		__antithesis_instrumentation__.Notify(69948)
 	}
+	__antithesis_instrumentation__.Notify(69945)
 	table.Format(f)
 	tableName := f.CloseAndGetString()
 
 	var pred tree.Expr
 	if s.coin() {
+		__antithesis_instrumentation__.Notify(69949)
 		pred = makeBoolExpr(s, cols)
 	} else {
+		__antithesis_instrumentation__.Notify(69950)
 		pred, args = makeBoolExprWithPlaceholders(s, cols)
 	}
+	__antithesis_instrumentation__.Notify(69946)
 	pred.Format(f)
 	predicate := f.CloseAndGetString()
 
@@ -136,51 +103,22 @@ UNION ALL (%s)`,
 	return unpartitioned, partitioned, args
 }
 
-// generateOuterJoinTLP returns two SQL queries as strings that can be used by the
-// GenerateTLP function. These queries make use of LEFT JOIN to partition the
-// original query in two ways. The latter query is partitioned by a predicate p,
-// while the former is not.
-//
-// The first query returned is an unpartitioned query of the form:
-//
-//   SELECT * FROM table1 LEFT JOIN table2 ON TRUE
-//   UNION ALL
-//   SELECT * FROM table1 LEFT JOIN table2 ON FALSE
-//   UNION ALL
-//   SELECT * FROM table1 LEFT JOIN table2 ON FALSE
-//
-// The second query returned is a partitioned query of the form:
-//
-//   SELECT * FROM table1 LEFT JOIN table2 ON (p)
-//   UNION ALL
-//   SELECT * FROM table1 LEFT JOIN table2 ON NOT (p)
-//   UNION ALL
-//   SELECT * FROM table1 LEFT JOIN table2 ON (p) IS NULL
-//
-// From the first query, we have a CROSS JOIN of the two tables (JOIN ON TRUE)
-// and then all rows concatenated with NULL values for the second and third
-// parts (JOIN ON FALSE). Recall our TLP logical guarantee that a given
-// predicate p always evaluates to either TRUE, FALSE, or NULL. It follows that
-// for any row in table1, exactly one of the expressions (p), NOT (p), or (p) is
-// NULL will resolve to TRUE. For a given row, when the expression resolves to
-// TRUE in table1, it matches with every row in table2. Otherwise, it is
-// concatenated with null values. So each row in table1 is matched with every
-// row in table2 exactly once (CROSS JOIN) and also matched with NULL values
-// exactly twice, as expected by the unpartitioned query.
-//
-// Note that this implementation is restricted in that it only uses columns from
-// the left table in the predicate p.
-
-// If the resulting values of the two queries are not equal, there is a logical
-// bug.
 func (s *Smither) generateOuterJoinTLP() (unpartitioned, partitioned string) {
+	__antithesis_instrumentation__.Notify(69951)
 	f := tree.NewFmtCtx(tree.FmtParsable)
 
 	table1, _, _, cols1, ok1 := s.getSchemaTable()
 	table2, _, _, _, ok2 := s.getSchemaTable()
-	if !ok1 || !ok2 {
+	if !ok1 || func() bool {
+		__antithesis_instrumentation__.Notify(69953)
+		return !ok2 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(69954)
 		panic(errors.AssertionFailedf("failed to find random tables"))
+	} else {
+		__antithesis_instrumentation__.Notify(69955)
 	}
+	__antithesis_instrumentation__.Notify(69952)
 	table1.Format(f)
 	tableName1 := f.CloseAndGetString()
 	table2.Format(f)
@@ -225,40 +163,22 @@ func (s *Smither) generateOuterJoinTLP() (unpartitioned, partitioned string) {
 	return unpartitioned, partitioned
 }
 
-// generateInnerJoinTLP returns two SQL queries as strings that can be used by
-// the GenerateTLP function. These queries make use of INNER JOIN to partition
-// the original query in two ways. The latter query is partitioned by a
-// predicate p, while the former is not.
-//
-// The first query returned is an unpartitioned query of the form:
-//
-//   SELECT * FROM table1 JOIN table2 ON TRUE
-//
-// The second query returned is a partitioned query of the form:
-//
-//   SELECT * FROM table1 JOIN table2 ON (p)
-//   UNION ALL
-//   SELECT * FROM table1 JOIN table2 ON NOT (p)
-//   UNION ALL
-//   SELECT * FROM table1 JOIN table2 ON (p) IS NULL
-//
-// From the first query, we have a CROSS JOIN of the two tables (JOIN ON TRUE).
-// Recall our TLP logical guarantee that a given predicate p always evaluates to
-// either TRUE, FALSE, or NULL. It follows that for any row returned by the
-// first query, exactly one of the expressions (p), NOT (p), or (p) is NULL will
-// resolve to TRUE. So the partitioned query accounts for each row in the
-// CROSS JOIN exactly once.
-//
-// If the resulting values of the two queries are not equal, there is a logical
-// bug.
 func (s *Smither) generateInnerJoinTLP() (unpartitioned, partitioned string) {
+	__antithesis_instrumentation__.Notify(69956)
 	f := tree.NewFmtCtx(tree.FmtParsable)
 
 	table1, _, _, cols1, ok1 := s.getSchemaTable()
 	table2, _, _, cols2, ok2 := s.getSchemaTable()
-	if !ok1 || !ok2 {
+	if !ok1 || func() bool {
+		__antithesis_instrumentation__.Notify(69958)
+		return !ok2 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(69959)
 		panic(errors.AssertionFailedf("failed to find random tables"))
+	} else {
+		__antithesis_instrumentation__.Notify(69960)
 	}
+	__antithesis_instrumentation__.Notify(69957)
 	table1.Format(f)
 	tableName1 := f.CloseAndGetString()
 	table2.Format(f)
@@ -295,47 +215,18 @@ func (s *Smither) generateInnerJoinTLP() (unpartitioned, partitioned string) {
 	return unpartitioned, partitioned
 }
 
-// generateAggregationTLP returns two SQL queries as strings that can be used by
-// the GenerateTLP function. These queries make use of the WHERE clause and a
-// predicate p to partition the original query into three. The aggregations that
-// are supported are MAX(), MIN(), and COUNT(). AVG() and SUM() are also valid
-// TLP aggregations.
-//
-// The first query returned is an unpartitioned query of the form:
-//
-//   SELECT MAX(first) FROM (SELECT * FROM table) table(first)
-//
-// The second query returned is a partitioned query of the form:
-//
-//   SELECT MAX(agg) FROM (
-//     SELECT MAX(first) AS agg FROM (
-//       SELECT * FROM table WHERE p
-//     ) table(first)
-//     UNION ALL
-//     SELECT MAX(first) AS agg FROM (
-//       SELECT * FROM table WHERE NOT (p)
-//     ) table(first)
-//     UNION ALL
-//     SELECT MAX(first) AS agg FROM (
-//       SELECT * FROM table WHERE (p) IS NULL
-//     ) table(first)
-//   )
-//
-// Note that all instances of MAX can be replaced with MIN to get the
-// corresponding MIN version of the queries. For the COUNT version, we
-// replace the outer MAX in the partitioned query with SUM, and then replace all
-// other instances of MAX with COUNT. Both of these queries return the total
-// count.
-//
-// If the resulting values of the two queries are not equal, there is a logical
-// bug.
 func (s *Smither) generateAggregationTLP() (unpartitioned, partitioned string) {
+	__antithesis_instrumentation__.Notify(69961)
 	f := tree.NewFmtCtx(tree.FmtParsable)
 
 	table, _, _, cols, ok := s.getSchemaTable()
 	if !ok {
+		__antithesis_instrumentation__.Notify(69964)
 		panic(errors.AssertionFailedf("failed to find random table"))
+	} else {
+		__antithesis_instrumentation__.Notify(69965)
 	}
+	__antithesis_instrumentation__.Notify(69962)
 	table.Format(f)
 	tableName := f.CloseAndGetString()
 	tableNameAlias := strings.TrimSpace(strings.Split(tableName, "AS")[1])
@@ -343,12 +234,16 @@ func (s *Smither) generateAggregationTLP() (unpartitioned, partitioned string) {
 	var innerAgg, outerAgg string
 	switch aggType := s.rnd.Intn(3); aggType {
 	case 0:
+		__antithesis_instrumentation__.Notify(69966)
 		innerAgg, outerAgg = "MAX", "MAX"
 	case 1:
+		__antithesis_instrumentation__.Notify(69967)
 		innerAgg, outerAgg = "MIN", "MIN"
 	default:
+		__antithesis_instrumentation__.Notify(69968)
 		innerAgg, outerAgg = "COUNT", "SUM"
 	}
+	__antithesis_instrumentation__.Notify(69963)
 
 	unpartitioned = fmt.Sprintf(
 		"SELECT %s(first) FROM (SELECT * FROM %s) %s(first)",
@@ -380,41 +275,37 @@ func (s *Smither) generateAggregationTLP() (unpartitioned, partitioned string) {
 	return unpartitioned, partitioned
 }
 
-// generateDistinctTLP returns two SQL queries as strings that can be used by the
-// GenerateTLP function. These queries DISTINCT on random columns and make use
-// of the WHERE clause to partition the original query into three.
-//
-// The first query returned is an unpartitioned query of the form:
-//
-//   SELECT DISTINCT {cols...} FROM table
-//
-// The second query returned is a partitioned query of the form:
-//
-//   SELECT DISTINCT {cols...} FROM table WHERE (p) UNION
-//   SELECT DISTINCT {cols...} FROM table WHERE NOT (p) UNION
-//   SELECT DISTINCT {cols...} FROM table WHERE (p) IS NULL
-//
-// If the resulting values of the two queries are not equal, there is a logical
-// bug.
 func (s *Smither) generateDistinctTLP() (unpartitioned, partitioned string) {
+	__antithesis_instrumentation__.Notify(69969)
 	f := tree.NewFmtCtx(tree.FmtParsable)
 
 	table, _, _, cols, ok := s.getSchemaTable()
 	if !ok {
+		__antithesis_instrumentation__.Notify(69974)
 		panic(errors.AssertionFailedf("failed to find random table"))
+	} else {
+		__antithesis_instrumentation__.Notify(69975)
 	}
+	__antithesis_instrumentation__.Notify(69970)
 	table.Format(f)
 	tableName := f.CloseAndGetString()
-	// Take a random subset of the columns to distinct on.
-	s.rnd.Shuffle(len(cols), func(i, j int) { cols[i], cols[j] = cols[j], cols[i] })
+
+	s.rnd.Shuffle(len(cols), func(i, j int) { __antithesis_instrumentation__.Notify(69976); cols[i], cols[j] = cols[j], cols[i] })
+	__antithesis_instrumentation__.Notify(69971)
 	n := s.rnd.Intn(len(cols))
 	if n == 0 {
+		__antithesis_instrumentation__.Notify(69977)
 		n = 1
+	} else {
+		__antithesis_instrumentation__.Notify(69978)
 	}
+	__antithesis_instrumentation__.Notify(69972)
 	colStrs := make([]string, n)
 	for i, ref := range cols[:n] {
+		__antithesis_instrumentation__.Notify(69979)
 		colStrs[i] = tree.AsStringWithFlags(ref.typedExpr(), tree.FmtParsable)
 	}
+	__antithesis_instrumentation__.Notify(69973)
 	distinctCols := strings.Join(colStrs, ",")
 	unpartitioned = fmt.Sprintf("SELECT DISTINCT %s FROM %s", distinctCols, tableName)
 

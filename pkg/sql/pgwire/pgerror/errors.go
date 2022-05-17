@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgerror
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -25,77 +17,86 @@ var _ errors.ErrorHinter = (*Error)(nil)
 var _ errors.ErrorDetailer = (*Error)(nil)
 var _ fmt.Formatter = (*Error)(nil)
 
-// Error implements the error interface.
-func (pg *Error) Error() string { return pg.Message }
+func (pg *Error) Error() string { __antithesis_instrumentation__.Notify(560283); return pg.Message }
 
-// ErrorHint implements the hintdetail.ErrorHinter interface.
-func (pg *Error) ErrorHint() string { return pg.Hint }
+func (pg *Error) ErrorHint() string { __antithesis_instrumentation__.Notify(560284); return pg.Hint }
 
-// ErrorDetail implements the hintdetail.ErrorDetailer interface.
-func (pg *Error) ErrorDetail() string { return pg.Detail }
+func (pg *Error) ErrorDetail() string {
+	__antithesis_instrumentation__.Notify(560285)
+	return pg.Detail
+}
 
-// FullError can be used when the hint and/or detail are to be tested.
 func FullError(err error) string {
+	__antithesis_instrumentation__.Notify(560286)
 	var errString string
 	if pqErr := (*pq.Error)(nil); errors.As(err, &pqErr) {
+		__antithesis_instrumentation__.Notify(560288)
 		errString = formatMsgHintDetail("pq", pqErr.Message, pqErr.Hint, pqErr.Detail)
 	} else {
+		__antithesis_instrumentation__.Notify(560289)
 		pg := Flatten(err)
 		errString = formatMsgHintDetail(pg.Severity, err.Error(), pg.Hint, pg.Detail)
 	}
+	__antithesis_instrumentation__.Notify(560287)
 	return errString
 }
 
 func formatMsgHintDetail(prefix, msg, hint, detail string) string {
+	__antithesis_instrumentation__.Notify(560290)
 	var b strings.Builder
 	b.WriteString(prefix)
 	b.WriteString(": ")
 	b.WriteString(msg)
 	if hint != "" {
+		__antithesis_instrumentation__.Notify(560293)
 		b.WriteString("\nHINT: ")
 		b.WriteString(hint)
+	} else {
+		__antithesis_instrumentation__.Notify(560294)
 	}
+	__antithesis_instrumentation__.Notify(560291)
 	if detail != "" {
+		__antithesis_instrumentation__.Notify(560295)
 		b.WriteString("\nDETAIL: ")
 		b.WriteString(detail)
+	} else {
+		__antithesis_instrumentation__.Notify(560296)
 	}
+	__antithesis_instrumentation__.Notify(560292)
 	return b.String()
 }
 
-// NewWithDepthf creates an error with a pg code and extracts the context
-// information at the specified depth level.
 func NewWithDepthf(depth int, code pgcode.Code, format string, args ...interface{}) error {
+	__antithesis_instrumentation__.Notify(560297)
 	err := errors.NewWithDepthf(1+depth, format, args...)
 	err = WithCandidateCode(err, code)
 	return err
 }
 
-// New creates an error with a code.
 func New(code pgcode.Code, msg string) error {
+	__antithesis_instrumentation__.Notify(560298)
 	err := errors.NewWithDepth(1, msg)
 	err = WithCandidateCode(err, code)
 	return err
 }
 
-// Newf creates an Error with a format string.
 func Newf(code pgcode.Code, format string, args ...interface{}) error {
+	__antithesis_instrumentation__.Notify(560299)
 	err := errors.NewWithDepthf(1, format, args...)
 	err = WithCandidateCode(err, code)
 	return err
 }
 
-// DangerousStatementf creates a new error for "rejected dangerous
-// statements".
 func DangerousStatementf(format string, args ...interface{}) error {
+	__antithesis_instrumentation__.Notify(560300)
 	err := errors.Newf(format, args...)
 	err = errors.WithMessage(err, "rejected (sql_safe_updates = true)")
 	err = WithCandidateCode(err, pgcode.Warning)
 	return err
 }
 
-// WrongNumberOfPreparedStatements creates new an Error for trying to prepare
-// a query string containing more than one statement.
 func WrongNumberOfPreparedStatements(n int) error {
+	__antithesis_instrumentation__.Notify(560301)
 	err := errors.NewWithDepthf(1, "prepared statement had %d statements, expected 1", errors.Safe(n))
 	err = WithCandidateCode(err, pgcode.InvalidPreparedStatementDefinition)
 	return err
@@ -103,69 +104,81 @@ func WrongNumberOfPreparedStatements(n int) error {
 
 var _ fmt.Formatter = &Error{}
 
-// Format implements the fmt.Formatter interface.
-//
-// %v/%s prints the error as usual.
-// %#v adds the pg error code at the beginning.
-// %+v prints all the details, including the embedded stack traces.
 func (pg *Error) Format(s fmt.State, verb rune) {
+	__antithesis_instrumentation__.Notify(560302)
 	switch {
-	case verb == 'v' && s.Flag('+'):
-		// %+v prints all details.
+	case verb == 'v' && func() bool {
+		__antithesis_instrumentation__.Notify(560310)
+		return s.Flag('+') == true
+	}() == true:
+		__antithesis_instrumentation__.Notify(560303)
+
 		if pg.Source != nil {
+			__antithesis_instrumentation__.Notify(560311)
 			fmt.Fprintf(s, "%s:%d in %s(): ", pg.Source.File, pg.Source.Line, pg.Source.Function)
+		} else {
+			__antithesis_instrumentation__.Notify(560312)
 		}
+		__antithesis_instrumentation__.Notify(560304)
 		fmt.Fprintf(s, "(%s) %s", pg.Code, pg.Message)
 		return
-	case verb == 'v' && s.Flag('#'):
-		// %#v spells out the code as prefix.
+	case verb == 'v' && func() bool {
+		__antithesis_instrumentation__.Notify(560313)
+		return s.Flag('#') == true
+	}() == true:
+		__antithesis_instrumentation__.Notify(560305)
+
 		fmt.Fprintf(s, "(%s) %s", pg.Code, pg.Message)
 	case verb == 'v':
+		__antithesis_instrumentation__.Notify(560306)
 		fallthrough
 	case verb == 's':
+		__antithesis_instrumentation__.Notify(560307)
 		fmt.Fprintf(s, "%s", pg.Message)
 	case verb == 'q':
+		__antithesis_instrumentation__.Notify(560308)
 		fmt.Fprintf(s, "%q", pg.Message)
+	default:
+		__antithesis_instrumentation__.Notify(560309)
 	}
 }
 
 var _ errors.SafeFormatter = (*Error)(nil)
 
-// SafeFormatError implements the errors.SafeFormatter interface.
 func (pg *Error) SafeFormatError(s errors.Printer) (next error) {
+	__antithesis_instrumentation__.Notify(560314)
 	s.Print(pg.Message)
 	if s.Detail() {
+		__antithesis_instrumentation__.Notify(560316)
 		if pg.Source != nil {
+			__antithesis_instrumentation__.Notify(560318)
 			s.Printf("Source: %s:%d in %s()",
 				errors.Safe(pg.Source.File), errors.Safe(pg.Source.Line), errors.Safe(pg.Source.Function))
+		} else {
+			__antithesis_instrumentation__.Notify(560319)
 		}
+		__antithesis_instrumentation__.Notify(560317)
 		s.Printf("SQLSTATE ", errors.Safe(pg.Code))
+	} else {
+		__antithesis_instrumentation__.Notify(560320)
 	}
+	__antithesis_instrumentation__.Notify(560315)
 	return nil
 }
 
-// IsSQLRetryableError returns true if err is retryable. This is true
-// for errors that show a connection issue or an issue with the node
-// itself. This can occur when a node is restarting or is unstable in
-// some other way. Note that retryable errors may occur event in cases
-// where the SQL execution ran to completion.
-//
-// TODO(bdarnell): Why are RPC errors in this list? These should
-// generally be retried on the server side or transformed into
-// ambiguous result errors ("connection reset/refused" are needed for
-// the pgwire connection, but anything RPC-related should be handled
-// within the cluster).
-// TODO(knz): This should really use the errors library. Investigate
-// how to get rid of the error message comparison.
 func IsSQLRetryableError(err error) bool {
-	// Don't forget to update the corresponding test when making adjustments
-	// here.
+	__antithesis_instrumentation__.Notify(560321)
+
 	errString := FullError(err)
 	matched, merr := regexp.MatchString(
 		"(no inbound stream connection|connection reset by peer|connection refused|failed to send RPC|rpc error: code = Unavailable|EOF|result is ambiguous)",
 		errString)
 	if merr != nil {
+		__antithesis_instrumentation__.Notify(560323)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(560324)
 	}
+	__antithesis_instrumentation__.Notify(560322)
 	return matched
 }

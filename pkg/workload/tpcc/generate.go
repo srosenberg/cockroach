@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpcc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strconv"
@@ -21,8 +13,6 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-// These constants are all set by the spec - they're not knobs. Don't change
-// them.
 const (
 	numItems                 = 100000
 	numDistrictsPerWarehouse = 10
@@ -54,7 +44,6 @@ var (
 	badCredit  = []byte("BC")
 )
 
-// These constants configure how we split the tables when splitting is enabled.
 const (
 	numWarehousesPerRange = 10
 	numItemsPerRange      = 100
@@ -74,6 +63,7 @@ var itemTypes = []*types.T{
 }
 
 func (w *tpcc) tpccItemInitialRowBatch(rowIdx int, cb coldata.Batch, a *bufalloc.ByteAllocator) {
+	__antithesis_instrumentation__.Notify(697806)
 	l := w.localsPool.Get().(*generateLocals)
 	defer w.localsPool.Put(l)
 	l.rng.Seed(w.seed + uint64(rowIdx))
@@ -83,16 +73,16 @@ func (w *tpcc) tpccItemInitialRowBatch(rowIdx int, cb coldata.Batch, a *bufalloc
 
 	cb.Reset(itemTypes, 1, coldata.StandardColumnFactory)
 	cb.ColVec(0).Int64()[0] = int64(iID)
-	cb.ColVec(1).Int64()[0] = randInt(l.rng.Rand, 1, 10000)                             // im_id: "Image ID associated to Item"
-	cb.ColVec(2).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 14, 24))     // name
-	cb.ColVec(3).Float64()[0] = float64(randInt(l.rng.Rand, 100, 10000)) / float64(100) // price
+	cb.ColVec(1).Int64()[0] = randInt(l.rng.Rand, 1, 10000)
+	cb.ColVec(2).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 14, 24))
+	cb.ColVec(3).Float64()[0] = float64(randInt(l.rng.Rand, 100, 10000)) / float64(100)
 	cb.ColVec(4).Bytes().Set(0, randOriginalStringInitialDataOnly(&l.rng, &ao, a))
 }
 
 func (w *tpcc) tpccItemStats() []workload.JSONStatistic {
+	__antithesis_instrumentation__.Notify(697807)
 	rowCount := uint64(numItems)
-	// The random alphanumeric strings below have a huge number of possible
-	// values, so we assume the number of distinct values equals the row count.
+
 	return []workload.JSONStatistic{
 		workload.MakeStat([]string{"i_id"}, rowCount, rowCount, 0),
 		workload.MakeStat([]string{"i_im_id"}, rowCount, workload.DistinctCount(rowCount, 10000), 0),
@@ -117,20 +107,21 @@ var warehouseTypes = []*types.T{
 func (w *tpcc) tpccWarehouseInitialRowBatch(
 	rowIdx int, cb coldata.Batch, a *bufalloc.ByteAllocator,
 ) {
+	__antithesis_instrumentation__.Notify(697808)
 	l := w.localsPool.Get().(*generateLocals)
 	defer w.localsPool.Put(l)
 	l.rng.Seed(w.seed + uint64(rowIdx))
 	no := numbersOffset(l.rng.Intn(len(numbersAlphabet)))
 	lo := lettersOffset(l.rng.Intn(len(lettersAlphabet)))
 
-	wID := rowIdx // warehouse ids are 0-indexed. every other table is 1-indexed
+	wID := rowIdx
 
 	cb.Reset(warehouseTypes, 1, coldata.StandardColumnFactory)
 	cb.ColVec(0).Int64()[0] = int64(wID)
-	cb.ColVec(1).Bytes().Set(0, []byte(strconv.FormatInt(randInt(l.rng.Rand, 6, 10), 10)))  // name
-	cb.ColVec(2).Bytes().Set(0, []byte(strconv.FormatInt(randInt(l.rng.Rand, 10, 20), 10))) // street_1
-	cb.ColVec(3).Bytes().Set(0, []byte(strconv.FormatInt(randInt(l.rng.Rand, 10, 20), 10))) // street_2
-	cb.ColVec(4).Bytes().Set(0, []byte(strconv.FormatInt(randInt(l.rng.Rand, 10, 20), 10))) // city
+	cb.ColVec(1).Bytes().Set(0, []byte(strconv.FormatInt(randInt(l.rng.Rand, 6, 10), 10)))
+	cb.ColVec(2).Bytes().Set(0, []byte(strconv.FormatInt(randInt(l.rng.Rand, 10, 20), 10)))
+	cb.ColVec(3).Bytes().Set(0, []byte(strconv.FormatInt(randInt(l.rng.Rand, 10, 20), 10)))
+	cb.ColVec(4).Bytes().Set(0, []byte(strconv.FormatInt(randInt(l.rng.Rand, 10, 20), 10)))
 	cb.ColVec(5).Bytes().Set(0, randStateInitialDataOnly(&l.rng, &lo, a))
 	cb.ColVec(6).Bytes().Set(0, randZipInitialDataOnly(&l.rng, &no, a))
 	cb.ColVec(7).Float64()[0] = randTax(l.rng.Rand)
@@ -138,6 +129,7 @@ func (w *tpcc) tpccWarehouseInitialRowBatch(
 }
 
 func (w *tpcc) tpccWarehouseStats() []workload.JSONStatistic {
+	__antithesis_instrumentation__.Notify(697809)
 	rowCount := uint64(w.warehouses)
 	return []workload.JSONStatistic{
 		workload.MakeStat([]string{"w_id"}, rowCount, rowCount, 0),
@@ -145,9 +137,9 @@ func (w *tpcc) tpccWarehouseStats() []workload.JSONStatistic {
 		workload.MakeStat([]string{"w_street_1"}, rowCount, workload.DistinctCount(rowCount, 11), 0),
 		workload.MakeStat([]string{"w_street_2"}, rowCount, workload.DistinctCount(rowCount, 11), 0),
 		workload.MakeStat([]string{"w_city"}, rowCount, workload.DistinctCount(rowCount, 11), 0),
-		// States consist of two random letters.
+
 		workload.MakeStat([]string{"w_state"}, rowCount, workload.DistinctCount(rowCount, 26*26), 0),
-		// Zip codes consist of a random 4-digit number plus 11111.
+
 		workload.MakeStat([]string{"w_zip"}, rowCount, workload.DistinctCount(rowCount, 9999), 0),
 		workload.MakeStat([]string{"w_tax"}, rowCount, workload.DistinctCount(rowCount, 2001), 0),
 		workload.MakeStat([]string{"w_ytd"}, rowCount, 1, 0),
@@ -175,6 +167,7 @@ var stockTypes = []*types.T{
 }
 
 func (w *tpcc) tpccStockInitialRowBatch(rowIdx int, cb coldata.Batch, a *bufalloc.ByteAllocator) {
+	__antithesis_instrumentation__.Notify(697810)
 	l := w.localsPool.Get().(*generateLocals)
 	defer w.localsPool.Put(l)
 	l.rng.Seed(w.seed + uint64(rowIdx))
@@ -186,29 +179,27 @@ func (w *tpcc) tpccStockInitialRowBatch(rowIdx int, cb coldata.Batch, a *bufallo
 	cb.Reset(stockTypes, 1, coldata.StandardColumnFactory)
 	cb.ColVec(0).Int64()[0] = int64(sID)
 	cb.ColVec(1).Int64()[0] = int64(wID)
-	cb.ColVec(2).Int64()[0] = randInt(l.rng.Rand, 10, 100)                           // quantity
-	cb.ColVec(3).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))  // dist_01
-	cb.ColVec(4).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))  // dist_02
-	cb.ColVec(5).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))  // dist_03
-	cb.ColVec(6).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))  // dist_04
-	cb.ColVec(7).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))  // dist_05
-	cb.ColVec(8).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))  // dist_06
-	cb.ColVec(9).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))  // dist_07
-	cb.ColVec(10).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24)) // dist_08
-	cb.ColVec(11).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24)) // dist_09
-	cb.ColVec(12).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24)) // dist_10
-	cb.ColVec(13).Int64()[0] = 0                                                     // ytd
-	cb.ColVec(14).Int64()[0] = 0                                                     // order_cnt
-	cb.ColVec(15).Int64()[0] = 0                                                     // remote_cnt
-	cb.ColVec(16).Bytes().Set(0, randOriginalStringInitialDataOnly(&l.rng, &ao, a))  // data
+	cb.ColVec(2).Int64()[0] = randInt(l.rng.Rand, 10, 100)
+	cb.ColVec(3).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
+	cb.ColVec(4).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
+	cb.ColVec(5).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
+	cb.ColVec(6).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
+	cb.ColVec(7).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
+	cb.ColVec(8).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
+	cb.ColVec(9).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
+	cb.ColVec(10).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
+	cb.ColVec(11).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
+	cb.ColVec(12).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
+	cb.ColVec(13).Int64()[0] = 0
+	cb.ColVec(14).Int64()[0] = 0
+	cb.ColVec(15).Int64()[0] = 0
+	cb.ColVec(16).Bytes().Set(0, randOriginalStringInitialDataOnly(&l.rng, &ao, a))
 }
 
 func (w *tpcc) tpccStockStats() []workload.JSONStatistic {
+	__antithesis_instrumentation__.Notify(697811)
 	rowCount := uint64(w.warehouses * numStockPerWarehouse)
-	// For all the s_dist_XX fields below, the number of possible values is
-	// math.Pow(26+26+10, 24), which is larger than MaxUint64. Therefore, we
-	// assume the number of distinct values is equal to the row count.
-	// s_data has a similarly huge number of possible values.
+
 	return []workload.JSONStatistic{
 		workload.MakeStat([]string{"s_i_id"}, rowCount, numStockPerWarehouse, 0),
 		workload.MakeStat([]string{"s_w_id"}, rowCount, uint64(w.warehouses), 0),
@@ -247,6 +238,7 @@ var districtTypes = []*types.T{
 func (w *tpcc) tpccDistrictInitialRowBatch(
 	rowIdx int, cb coldata.Batch, a *bufalloc.ByteAllocator,
 ) {
+	__antithesis_instrumentation__.Notify(697812)
 	l := w.localsPool.Get().(*generateLocals)
 	defer w.localsPool.Put(l)
 	l.rng.Seed(w.seed + uint64(rowIdx))
@@ -260,10 +252,10 @@ func (w *tpcc) tpccDistrictInitialRowBatch(
 	cb.Reset(districtTypes, 1, coldata.StandardColumnFactory)
 	cb.ColVec(0).Int64()[0] = int64(dID)
 	cb.ColVec(1).Int64()[0] = int64(wID)
-	cb.ColVec(2).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 6, 10))  // name
-	cb.ColVec(3).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20)) // street 1
-	cb.ColVec(4).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20)) // street 2
-	cb.ColVec(5).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20)) // city
+	cb.ColVec(2).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 6, 10))
+	cb.ColVec(3).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20))
+	cb.ColVec(4).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20))
+	cb.ColVec(5).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20))
 	cb.ColVec(6).Bytes().Set(0, randStateInitialDataOnly(&l.rng, &lo, a))
 	cb.ColVec(7).Bytes().Set(0, randZipInitialDataOnly(&l.rng, &no, a))
 	cb.ColVec(8).Float64()[0] = randTax(l.rng.Rand)
@@ -272,10 +264,9 @@ func (w *tpcc) tpccDistrictInitialRowBatch(
 }
 
 func (w *tpcc) tpccDistrictStats() []workload.JSONStatistic {
+	__antithesis_instrumentation__.Notify(697813)
 	rowCount := uint64(w.warehouses * numDistrictsPerWarehouse)
-	// Several of the random alphanumeric strings below have a huge number of
-	// possible values, so we assume the number of distinct values equals
-	// the row count.
+
 	return []workload.JSONStatistic{
 		workload.MakeStat([]string{"d_id"}, rowCount, numDistrictsPerWarehouse, 0),
 		workload.MakeStat([]string{"d_w_id"}, rowCount, uint64(w.warehouses), 0),
@@ -283,9 +274,9 @@ func (w *tpcc) tpccDistrictStats() []workload.JSONStatistic {
 		workload.MakeStat([]string{"d_street_1"}, rowCount, rowCount, 0),
 		workload.MakeStat([]string{"d_street_2"}, rowCount, rowCount, 0),
 		workload.MakeStat([]string{"d_city"}, rowCount, rowCount, 0),
-		// States consist of two random letters.
+
 		workload.MakeStat([]string{"d_state"}, rowCount, workload.DistinctCount(rowCount, 26*26), 0),
-		// Zip codes consist of a random 4-digit number plus 11111.
+
 		workload.MakeStat([]string{"d_zip"}, rowCount, workload.DistinctCount(rowCount, 9999), 0),
 		workload.MakeStat([]string{"d_tax"}, rowCount, workload.DistinctCount(rowCount, 2001), 0),
 		workload.MakeStat([]string{"d_ytd"}, rowCount, 1, 0),
@@ -320,6 +311,7 @@ var customerTypes = []*types.T{
 func (w *tpcc) tpccCustomerInitialRowBatch(
 	rowIdx int, cb coldata.Batch, a *bufalloc.ByteAllocator,
 ) {
+	__antithesis_instrumentation__.Notify(697814)
 	l := w.localsPool.Get().(*generateLocals)
 	defer w.localsPool.Put(l)
 	l.rng.Seed(w.seed + uint64(rowIdx))
@@ -331,69 +323,72 @@ func (w *tpcc) tpccCustomerInitialRowBatch(
 	dID := ((rowIdx / numCustomersPerDistrict) % numDistrictsPerWarehouse) + 1
 	wID := (rowIdx / numCustomersPerWarehouse)
 
-	// 10% of the customer rows have bad credit.
-	// See section 4.3, under the CUSTOMER table population section.
 	credit := goodCredit
 	if l.rng.Intn(9) == 0 {
-		// Poor 10% :(
+		__antithesis_instrumentation__.Notify(697817)
+
 		credit = badCredit
+	} else {
+		__antithesis_instrumentation__.Notify(697818)
 	}
+	__antithesis_instrumentation__.Notify(697815)
 	var lastName []byte
-	// The first 1000 customers get a last name generated according to their id;
-	// the rest get an NURand generated last name.
+
 	if cID <= 1000 {
+		__antithesis_instrumentation__.Notify(697819)
 		lastName = randCLastSyllables(cID-1, a)
 	} else {
+		__antithesis_instrumentation__.Notify(697820)
 		lastName = w.randCLast(l.rng.Rand, a)
 	}
+	__antithesis_instrumentation__.Notify(697816)
 
 	cb.Reset(customerTypes, 1, coldata.StandardColumnFactory)
 	cb.ColVec(0).Int64()[0] = int64(cID)
 	cb.ColVec(1).Int64()[0] = int64(dID)
 	cb.ColVec(2).Int64()[0] = int64(wID)
-	cb.ColVec(3).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 8, 16)) // first name
+	cb.ColVec(3).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 8, 16))
 	cb.ColVec(4).Bytes().Set(0, middleName)
 	cb.ColVec(5).Bytes().Set(0, lastName)
-	cb.ColVec(6).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20)) // street 1
-	cb.ColVec(7).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20)) // street 2
-	cb.ColVec(8).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20)) // city name
+	cb.ColVec(6).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20))
+	cb.ColVec(7).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20))
+	cb.ColVec(8).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 10, 20))
 	cb.ColVec(9).Bytes().Set(0, randStateInitialDataOnly(&l.rng, &lo, a))
 	cb.ColVec(10).Bytes().Set(0, randZipInitialDataOnly(&l.rng, &no, a))
-	cb.ColVec(11).Bytes().Set(0, randNStringInitialDataOnly(&l.rng, &no, a, 16, 16)) // phone number
+	cb.ColVec(11).Bytes().Set(0, randNStringInitialDataOnly(&l.rng, &no, a, 16, 16))
 	cb.ColVec(12).Bytes().Set(0, w.nowString)
 	cb.ColVec(13).Bytes().Set(0, credit)
 	cb.ColVec(14).Float64()[0] = creditLimit
-	cb.ColVec(15).Float64()[0] = float64(randInt(l.rng.Rand, 0, 5000)) / float64(10000.0) // discount
+	cb.ColVec(15).Float64()[0] = float64(randInt(l.rng.Rand, 0, 5000)) / float64(10000.0)
 	cb.ColVec(16).Float64()[0] = balance
 	cb.ColVec(17).Float64()[0] = ytdPayment
 	cb.ColVec(18).Int64()[0] = paymentCount
 	cb.ColVec(19).Int64()[0] = deliveryCount
-	cb.ColVec(20).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 300, 500)) // data
+	cb.ColVec(20).Bytes().Set(0, randAStringInitialDataOnly(&l.rng, &ao, a, 300, 500))
 }
 
 func (w *tpcc) tpccCustomerStats() []workload.JSONStatistic {
+	__antithesis_instrumentation__.Notify(697821)
 	rowCount := uint64(w.warehouses * numCustomersPerWarehouse)
-	// Several of the random alphanumeric strings below have a huge number of
-	// possible values, so we assume the number of distinct values equals
-	// the row count.
+
 	return []workload.JSONStatistic{
 		workload.MakeStat([]string{"c_id"}, rowCount, numCustomersPerDistrict, 0),
 		workload.MakeStat([]string{"c_d_id"}, rowCount, numDistrictsPerWarehouse, 0),
 		workload.MakeStat([]string{"c_w_id"}, rowCount, uint64(w.warehouses), 0),
 		workload.MakeStat([]string{"c_first"}, rowCount, rowCount, 0),
 		workload.MakeStat([]string{"c_middle"}, rowCount, 1, 0),
-		// Last names consist of 3 syllables, each with 10 options.
+
 		workload.MakeStat([]string{"c_last"}, rowCount, workload.DistinctCount(rowCount, 10*10*10), 0),
 		workload.MakeStat([]string{"c_street_1"}, rowCount, rowCount, 0),
 		workload.MakeStat([]string{"c_street_2"}, rowCount, rowCount, 0),
 		workload.MakeStat([]string{"c_city"}, rowCount, rowCount, 0),
-		// States consist of two random letters.
+
 		workload.MakeStat([]string{"c_state"}, rowCount, workload.DistinctCount(rowCount, 26*26), 0),
-		// Zip codes consist of a random 4-digit number plus 11111.
+
 		workload.MakeStat([]string{"c_zip"}, rowCount, workload.DistinctCount(rowCount, 9999), 0),
 		workload.MakeStat([]string{"c_phone"}, rowCount, rowCount, 0),
 		workload.MakeStat([]string{"c_since"}, rowCount, 1, 0),
-		// Credit is either good or bad.
+
 		workload.MakeStat([]string{"c_credit"}, rowCount, 2, 0),
 		workload.MakeStat([]string{"c_credit_lim"}, rowCount, 1, 0),
 		workload.MakeStat([]string{"c_discount"}, rowCount, workload.DistinctCount(rowCount, 5001), 0),
@@ -418,21 +413,16 @@ var historyTypes = []*types.T{
 }
 
 func (w *tpcc) tpccHistoryInitialRowBatch(rowIdx int, cb coldata.Batch, a *bufalloc.ByteAllocator) {
+	__antithesis_instrumentation__.Notify(697822)
 	l := w.localsPool.Get().(*generateLocals)
 	defer w.localsPool.Put(l)
 	l.rng.Seed(w.seed + uint64(rowIdx))
 	ao := aCharsOffset(l.rng.Intn(len(aCharsAlphabet)))
 
-	// This used to be a V4 uuid made through the normal `uuid.MakeV4`
-	// constructor, but we 1) want them to be deterministic and 2) want these rows
-	// to be generated in primary key order. (1) could be done by handing a seeded
-	// rng to `uuid.NewGenWithReader(rng).NewV4()`, but it would still be in a
-	// random order. (2) is nice because the direct ingest version of IMPORT
-	// that's coming out in 19.2 will take advantage of it to make things faster.
 	historyRowCount := numHistoryPerWarehouse * w.warehouses
 	l.uuidAlloc.DeterministicV4(uint64(rowIdx), uint64(historyRowCount))
 	var rowID []byte
-	*a, rowID = a.Alloc(36, 0 /* extraCap */)
+	*a, rowID = a.Alloc(36, 0)
 	l.uuidAlloc.StringBytes(rowID)
 
 	cID := (rowIdx % numCustomersPerDistrict) + 1
@@ -452,6 +442,7 @@ func (w *tpcc) tpccHistoryInitialRowBatch(rowIdx int, cb coldata.Batch, a *bufal
 }
 
 func (w *tpcc) tpccHistoryStats() []workload.JSONStatistic {
+	__antithesis_instrumentation__.Notify(697823)
 	rowCount := uint64(w.warehouses * numCustomersPerWarehouse)
 	return []workload.JSONStatistic{
 		workload.MakeStat([]string{"rowid"}, rowCount, rowCount, 0),
@@ -462,8 +453,7 @@ func (w *tpcc) tpccHistoryStats() []workload.JSONStatistic {
 		workload.MakeStat([]string{"h_w_id"}, rowCount, uint64(w.warehouses), 0),
 		workload.MakeStat([]string{"h_date"}, rowCount, 1, 0),
 		workload.MakeStat([]string{"h_amount"}, rowCount, 1, 0),
-		// h_data has a huge number of possible values, so we assume the number of
-		// distinct values equals the row count.
+
 		workload.MakeStat([]string{"h_data"}, rowCount, rowCount, 0),
 	}
 }
@@ -480,11 +470,10 @@ var orderTypes = []*types.T{
 }
 
 func (w *tpcc) tpccOrderInitialRowBatch(rowIdx int, cb coldata.Batch, a *bufalloc.ByteAllocator) {
+	__antithesis_instrumentation__.Notify(697824)
 	l := w.localsPool.Get().(*generateLocals)
 	defer w.localsPool.Put(l)
 
-	// NB: numOrderLines is not allowed to use precomputed random data, make sure
-	// it stays that way. See 4.3.2.1.
 	l.rng.Seed(w.seed + uint64(rowIdx))
 	numOrderLines := randInt(l.rng.Rand, minOrderLinesPerOrder, maxOrderLinesPerOrder)
 
@@ -494,31 +483,43 @@ func (w *tpcc) tpccOrderInitialRowBatch(rowIdx int, cb coldata.Batch, a *bufallo
 
 	var cID int
 	{
-		// TODO(dan): We can get rid of this cache if we change workload.Table
-		// initial data to be batches of rows instead of rows. This would also
-		// let us fix the hackOrderLinesPerOrder TODO below.
+		__antithesis_instrumentation__.Notify(697828)
+
 		w.randomCIDsCache.Lock()
 		if w.randomCIDsCache.values == nil {
+			__antithesis_instrumentation__.Notify(697831)
 			w.randomCIDsCache.values = make([][]int, numDistrictsPerWarehouse*w.warehouses+1)
+		} else {
+			__antithesis_instrumentation__.Notify(697832)
 		}
+		__antithesis_instrumentation__.Notify(697829)
 		if w.randomCIDsCache.values[dID] == nil {
-			// We need a random permutation of customers that stable for all orders in a
-			// district, so use the district ID to seed the random permutation.
+			__antithesis_instrumentation__.Notify(697833)
+
 			w.randomCIDsCache.values[dID] = make([]int, numCustomersPerDistrict)
 			for i, cID := range rand.New(rand.NewSource(uint64(dID))).Perm(numCustomersPerDistrict) {
+				__antithesis_instrumentation__.Notify(697834)
 				w.randomCIDsCache.values[dID][i] = cID + 1
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(697835)
 		}
+		__antithesis_instrumentation__.Notify(697830)
 		cID = w.randomCIDsCache.values[dID][oID-1]
 		w.randomCIDsCache.Unlock()
 	}
+	__antithesis_instrumentation__.Notify(697825)
 
 	var carrierSet bool
 	var carrierID int64
 	if oID < 2101 {
+		__antithesis_instrumentation__.Notify(697836)
 		carrierSet = true
 		carrierID = randInt(l.rng.Rand, 1, 10)
+	} else {
+		__antithesis_instrumentation__.Notify(697837)
 	}
+	__antithesis_instrumentation__.Notify(697826)
 
 	cb.Reset(orderTypes, 1, coldata.StandardColumnFactory)
 	cb.ColVec(0).Int64()[0] = int64(oID)
@@ -528,16 +529,20 @@ func (w *tpcc) tpccOrderInitialRowBatch(rowIdx int, cb coldata.Batch, a *bufallo
 	cb.ColVec(4).Bytes().Set(0, w.nowString)
 	cb.ColVec(5).Nulls().UnsetNulls()
 	if carrierSet {
+		__antithesis_instrumentation__.Notify(697838)
 		cb.ColVec(5).Int64()[0] = carrierID
 	} else {
+		__antithesis_instrumentation__.Notify(697839)
 		cb.ColVec(5).Nulls().SetNull(0)
 		cb.ColVec(5).Int64()[0] = 0
 	}
+	__antithesis_instrumentation__.Notify(697827)
 	cb.ColVec(6).Int64()[0] = numOrderLines
 	cb.ColVec(7).Int64()[0] = 1
 }
 
 func (w *tpcc) tpccOrderStats() []workload.JSONStatistic {
+	__antithesis_instrumentation__.Notify(697840)
 	rowCount := uint64(w.warehouses * numOrdersPerWarehouse)
 	return []workload.JSONStatistic{
 		workload.MakeStat([]string{"o_id"}, rowCount, numOrdersPerDistrict, 0),
@@ -545,8 +550,7 @@ func (w *tpcc) tpccOrderStats() []workload.JSONStatistic {
 		workload.MakeStat([]string{"o_w_id"}, rowCount, uint64(w.warehouses), 0),
 		workload.MakeStat([]string{"o_c_id"}, rowCount, numCustomersPerDistrict, 0),
 		workload.MakeStat([]string{"o_entry_d"}, rowCount, 1, 0),
-		// The null count corresponds to the number of orders with incomplete
-		// delivery.
+
 		workload.MakeStat([]string{"o_carrier_id"}, rowCount, workload.DistinctCount(rowCount, 10),
 			uint64(w.warehouses)*numDistrictsPerWarehouse*(numOrdersPerDistrict-2100),
 		),
@@ -564,7 +568,8 @@ var newOrderTypes = []*types.T{
 func (w *tpcc) tpccNewOrderInitialRowBatch(
 	rowIdx int, cb coldata.Batch, a *bufalloc.ByteAllocator,
 ) {
-	// The last numNewOrdersPerDistrict orders have entries in new orders.
+	__antithesis_instrumentation__.Notify(697841)
+
 	const firstNewOrderOffset = numOrdersPerDistrict - numNewOrdersPerDistrict
 	oID := (rowIdx % numNewOrdersPerDistrict) + firstNewOrderOffset + 1
 	dID := ((rowIdx / numNewOrdersPerDistrict) % numDistrictsPerWarehouse) + 1
@@ -577,6 +582,7 @@ func (w *tpcc) tpccNewOrderInitialRowBatch(
 }
 
 func (w *tpcc) tpccNewOrderStats() []workload.JSONStatistic {
+	__antithesis_instrumentation__.Notify(697842)
 	rowCount := uint64(w.warehouses * numNewOrdersPerWarehouse)
 	return []workload.JSONStatistic{
 		workload.MakeStat([]string{"no_o_id"}, rowCount, numNewOrdersPerDistrict, 0),
@@ -601,15 +607,13 @@ var orderLineTypes = []*types.T{
 func (w *tpcc) tpccOrderLineInitialRowBatch(
 	orderRowIdx int, cb coldata.Batch, a *bufalloc.ByteAllocator,
 ) {
+	__antithesis_instrumentation__.Notify(697843)
 	l := w.localsPool.Get().(*generateLocals)
 	defer w.localsPool.Put(l)
 
-	// NB: numOrderLines is not allowed to use precomputed random data, make sure
-	// it stays that way. See 4.3.2.1.
 	l.rng.Seed(w.seed + uint64(orderRowIdx))
 	numOrderLines := int(randInt(l.rng.Rand, minOrderLinesPerOrder, maxOrderLinesPerOrder))
 
-	// NB: There is one batch of order_line rows per order
 	oID := (orderRowIdx % numOrdersPerDistrict) + 1
 	dID := ((orderRowIdx / numOrdersPerDistrict) % numDistrictsPerWarehouse) + 1
 	wID := (orderRowIdx / numOrdersPerWarehouse)
@@ -632,18 +636,22 @@ func (w *tpcc) tpccOrderLineInitialRowBatch(
 	olDeliveryDCol.Reset()
 	olDistInfoCol.Reset()
 	for rowIdx := 0; rowIdx < numOrderLines; rowIdx++ {
+		__antithesis_instrumentation__.Notify(697844)
 		olNumber := rowIdx + 1
 
 		var amount float64
 		var deliveryDSet bool
 		var deliveryD []byte
 		if oID < 2101 {
+			__antithesis_instrumentation__.Notify(697847)
 			amount = 0
 			deliveryDSet = true
 			deliveryD = w.nowString
 		} else {
+			__antithesis_instrumentation__.Notify(697848)
 			amount = float64(randInt(l.rng.Rand, 1, 999999)) / 100.0
 		}
+		__antithesis_instrumentation__.Notify(697845)
 
 		olOIDCol[rowIdx] = int64(oID)
 		olDIDCol[rowIdx] = int64(dID)
@@ -652,11 +660,14 @@ func (w *tpcc) tpccOrderLineInitialRowBatch(
 		olIIDCol[rowIdx] = randInt(l.rng.Rand, 1, 100000)
 		olSupplyWIDCol[rowIdx] = int64(wID)
 		if deliveryDSet {
+			__antithesis_instrumentation__.Notify(697849)
 			olDeliveryDCol.Set(rowIdx, deliveryD)
 		} else {
+			__antithesis_instrumentation__.Notify(697850)
 			olDeliveryD.Nulls().SetNull(rowIdx)
 			olDeliveryDCol.Set(rowIdx, nil)
 		}
+		__antithesis_instrumentation__.Notify(697846)
 		olQuantityCol[rowIdx] = 5
 		olAmountCol[rowIdx] = amount
 		olDistInfoCol.Set(rowIdx, randAStringInitialDataOnly(&l.rng, &ao, a, 24, 24))
@@ -664,6 +675,7 @@ func (w *tpcc) tpccOrderLineInitialRowBatch(
 }
 
 func (w *tpcc) tpccOrderLineStats() []workload.JSONStatistic {
+	__antithesis_instrumentation__.Notify(697851)
 	averageOrderLines := float64(maxOrderLinesPerOrder+minOrderLinesPerOrder) / 2
 	rowCount := uint64(int64(float64(w.warehouses) * numOrdersPerWarehouse * averageOrderLines))
 	deliveryIncomplete := uint64(int64(
@@ -678,14 +690,11 @@ func (w *tpcc) tpccOrderLineStats() []workload.JSONStatistic {
 		workload.MakeStat([]string{"ol_supply_w_id"}, rowCount, uint64(w.warehouses), 0),
 		workload.MakeStat([]string{"ol_delivery_d"}, rowCount, 1, deliveryIncomplete),
 		workload.MakeStat([]string{"ol_quantity"}, rowCount, 1, 0),
-		// When delivery is incomplete, there are at most 999999 different values
-		// for amount. When delivery is complete, there is exactly one value
-		// (amount=0).
+
 		workload.MakeStat(
 			[]string{"ol_amount"}, rowCount, workload.DistinctCount(deliveryIncomplete, 999999)+1, 0,
 		),
-		// ol_dist_info has a huge number of possible values, so we assume the
-		// number of distinct values equals the row count.
+
 		workload.MakeStat([]string{"ol_dist_info"}, rowCount, rowCount, 0),
 	}
 }

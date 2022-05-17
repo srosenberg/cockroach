@@ -1,55 +1,33 @@
-// Copyright 2012, Google Inc. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in licenses/BSD-vitess.txt.
-
-// Portions of this file are additionally subject to the following
-// license and copyright.
-//
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// This code was derived from https://github.com/youtube/vitess.
-
 package tree
 
-// RenameDatabase represents a RENAME DATABASE statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type RenameDatabase struct {
 	Name    Name
 	NewName Name
 }
 
-// Format implements the NodeFormatter interface.
 func (node *RenameDatabase) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(612880)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" RENAME TO ")
 	ctx.FormatNode(&node.NewName)
 }
 
-// ReparentDatabase represents a database reparenting as a schema operation.
 type ReparentDatabase struct {
 	Name   Name
 	Parent Name
 }
 
-// Format implements the NodeFormatter interface.
 func (node *ReparentDatabase) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(612881)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" CONVERT TO SCHEMA WITH PARENT ")
 	ctx.FormatNode(&node.Parent)
 }
 
-// RenameTable represents a RENAME TABLE or RENAME VIEW or RENAME SEQUENCE
-// statement. Whether the user has asked to rename a view or a sequence
-// is indicated by the IsView and IsSequence fields.
 type RenameTable struct {
 	Name           *UnresolvedObjectName
 	NewName        *UnresolvedObjectName
@@ -59,60 +37,81 @@ type RenameTable struct {
 	IsSequence     bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *RenameTable) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(612882)
 	ctx.WriteString("ALTER ")
 	if node.IsView {
+		__antithesis_instrumentation__.Notify(612885)
 		if node.IsMaterialized {
+			__antithesis_instrumentation__.Notify(612887)
 			ctx.WriteString("MATERIALIZED ")
+		} else {
+			__antithesis_instrumentation__.Notify(612888)
 		}
+		__antithesis_instrumentation__.Notify(612886)
 		ctx.WriteString("VIEW ")
-	} else if node.IsSequence {
-		ctx.WriteString("SEQUENCE ")
 	} else {
-		ctx.WriteString("TABLE ")
+		__antithesis_instrumentation__.Notify(612889)
+		if node.IsSequence {
+			__antithesis_instrumentation__.Notify(612890)
+			ctx.WriteString("SEQUENCE ")
+		} else {
+			__antithesis_instrumentation__.Notify(612891)
+			ctx.WriteString("TABLE ")
+		}
 	}
+	__antithesis_instrumentation__.Notify(612883)
 	if node.IfExists {
+		__antithesis_instrumentation__.Notify(612892)
 		ctx.WriteString("IF EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(612893)
 	}
+	__antithesis_instrumentation__.Notify(612884)
 	ctx.FormatNode(node.Name)
 	ctx.WriteString(" RENAME TO ")
 	ctx.FormatNode(node.NewName)
 }
 
-// RenameIndex represents a RENAME INDEX statement.
 type RenameIndex struct {
 	Index    *TableIndexName
 	NewName  UnrestrictedName
 	IfExists bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *RenameIndex) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(612894)
 	ctx.WriteString("ALTER INDEX ")
 	if node.IfExists {
+		__antithesis_instrumentation__.Notify(612896)
 		ctx.WriteString("IF EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(612897)
 	}
+	__antithesis_instrumentation__.Notify(612895)
 	ctx.FormatNode(node.Index)
 	ctx.WriteString(" RENAME TO ")
 	ctx.FormatNode(&node.NewName)
 }
 
-// RenameColumn represents a RENAME COLUMN statement.
 type RenameColumn struct {
 	Table   TableName
 	Name    Name
 	NewName Name
-	// IfExists refers to the table, not the column.
+
 	IfExists bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *RenameColumn) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(612898)
 	ctx.WriteString("ALTER TABLE ")
 	if node.IfExists {
+		__antithesis_instrumentation__.Notify(612900)
 		ctx.WriteString("IF EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(612901)
 	}
+	__antithesis_instrumentation__.Notify(612899)
 	ctx.FormatNode(&node.Table)
 	ctx.WriteString(" RENAME COLUMN ")
 	ctx.FormatNode(&node.Name)

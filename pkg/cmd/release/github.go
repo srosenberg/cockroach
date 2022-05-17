@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,11 +12,8 @@ import (
 )
 
 const (
-	githubPageSize = 100 // max is 100
+	githubPageSize = 100
 
-	// openIssueMaxPages is the max number of pages we try to fetch for openIssues.
-	// Setting to 3: if for some reason we had 300+ open blockers, what the team
-	// really gets from that email is "there's a LOT of blockers to resolve".
 	openIssueMaxPages = 3
 
 	timelineEventMaxPages = 3
@@ -35,7 +24,6 @@ type githubClient interface {
 	issueEvents(issueNum int) ([]githubEvent, error)
 }
 
-// githubClientImpl implements the githubClient interface.
 type githubClientImpl struct {
 	client *github.Client
 	ctx    context.Context
@@ -51,17 +39,14 @@ type githubIssue struct {
 }
 
 type githubEvent struct {
-	// The timestamp indicating when the event occurred.
 	CreatedAt time.Time
 
 	Event       string
 	ProjectName string
 }
 
-// newGithubClient returns a githubClient, which is wrapper for a *github.Client
-// for a specific repository.
-// To generate personal access token, go to https://github.com/settings/tokens.
 func newGithubClient(ctx context.Context, accessToken string) *githubClientImpl {
+	__antithesis_instrumentation__.Notify(42697)
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: accessToken},
 	)
@@ -75,14 +60,14 @@ func newGithubClient(ctx context.Context, accessToken string) *githubClientImpl 
 }
 
 func (c *githubClientImpl) openIssues(labels []string) ([]githubIssue, error) {
+	__antithesis_instrumentation__.Notify(42698)
 	var details []githubIssue
 	for pageNum := 1; pageNum <= openIssueMaxPages; pageNum++ {
-		// TODO: This pagination pattern is a potential race condition: we may want to move to graphql api,
-		// which has cursor-based pagination. But for now, this is probably good enough, as issues don't
-		// change _that_ frequently.
+		__antithesis_instrumentation__.Notify(42700)
+
 		issues, _, err := c.client.Issues.List(
 			c.ctx,
-			true, /* all: true searches `/issues/`, false searches `/user/issues/` */
+			true,
 			&github.IssueListOptions{
 				Filter: "all",
 				State:  "open",
@@ -94,81 +79,127 @@ func (c *githubClientImpl) openIssues(labels []string) ([]githubIssue, error) {
 			},
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(42703)
 			return nil, fmt.Errorf("error calling Issues.List: %w", err)
+		} else {
+			__antithesis_instrumentation__.Notify(42704)
 		}
+		__antithesis_instrumentation__.Notify(42701)
 		for _, i := range issues {
+			__antithesis_instrumentation__.Notify(42705)
 			issueNum := *i.Number
 			projectName, err := mostRecentProjectName(c, issueNum)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(42707)
 				return nil, fmt.Errorf("error calling mostRecentProjectName: %w", err)
+			} else {
+				__antithesis_instrumentation__.Notify(42708)
 			}
+			__antithesis_instrumentation__.Notify(42706)
 
 			details = append(details, githubIssue{
 				Number:      issueNum,
 				ProjectName: projectName,
 			})
 		}
+		__antithesis_instrumentation__.Notify(42702)
 
 		if len(issues) < githubPageSize {
+			__antithesis_instrumentation__.Notify(42709)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(42710)
 		}
 	}
+	__antithesis_instrumentation__.Notify(42699)
 
 	return details, nil
 }
 
 func (c *githubClientImpl) branchExists(branchName string) (bool, error) {
+	__antithesis_instrumentation__.Notify(42711)
 	protected := true
 	branches, _, err := c.client.Repositories.ListBranches(
 		c.ctx, c.owner, c.repo,
 		&github.BranchListOptions{Protected: &protected},
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42714)
 		return false, fmt.Errorf("error calling Repositories.ListBranches: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42715)
 	}
+	__antithesis_instrumentation__.Notify(42712)
 	for _, b := range branches {
+		__antithesis_instrumentation__.Notify(42716)
 		if *b.Name == branchName {
+			__antithesis_instrumentation__.Notify(42717)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(42718)
 		}
 	}
+	__antithesis_instrumentation__.Notify(42713)
 	return false, nil
 }
 
-// issueEvents returns events in chronological order, e.g.
-//   https://api.github.com/repos/cockroachdb/cockroach/issues/77157/timeline
 func (c *githubClientImpl) issueEvents(issueNum int) ([]githubEvent, error) {
+	__antithesis_instrumentation__.Notify(42719)
 	var details []githubEvent
-	// TODO: This pagination pattern is a potential race condition: we may want to move to graphql api,
-	// which has cursor-based pagination. But for now, this is probably fine, as timeline events are
-	// returned sequentially, so we don't expect past events (previous page values) to change.
+
 	for pageNum := 1; pageNum <= timelineEventMaxPages; pageNum++ {
+		__antithesis_instrumentation__.Notify(42721)
 		events, _, err := c.client.Issues.ListIssueTimeline(
 			c.ctx, c.owner, c.repo, issueNum, &github.ListOptions{
 				PerPage: githubPageSize,
 				Page:    pageNum,
 			})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(42724)
 			return nil, fmt.Errorf("error calling Issues.ListIssueTimeline: %w", err)
+		} else {
+			__antithesis_instrumentation__.Notify(42725)
 		}
+		__antithesis_instrumentation__.Notify(42722)
 		for _, event := range events {
+			__antithesis_instrumentation__.Notify(42726)
 			detail := githubEvent{
 				CreatedAt: *event.CreatedAt,
 				Event:     *event.Event,
 			}
-			if event.ProjectCard != nil && event.ProjectCard.ProjectID != nil {
+			if event.ProjectCard != nil && func() bool {
+				__antithesis_instrumentation__.Notify(42728)
+				return event.ProjectCard.ProjectID != nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(42729)
 				project, _, err := c.client.Projects.GetProject(c.ctx, *event.ProjectCard.ProjectID)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(42731)
 					return nil, fmt.Errorf("error calling Projects.GetProject: %w", err)
+				} else {
+					__antithesis_instrumentation__.Notify(42732)
 				}
+				__antithesis_instrumentation__.Notify(42730)
 				if project.Name != nil {
+					__antithesis_instrumentation__.Notify(42733)
 					detail.ProjectName = *project.Name
+				} else {
+					__antithesis_instrumentation__.Notify(42734)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(42735)
 			}
+			__antithesis_instrumentation__.Notify(42727)
 			details = append(details, detail)
 		}
+		__antithesis_instrumentation__.Notify(42723)
 		if len(events) < githubPageSize {
+			__antithesis_instrumentation__.Notify(42736)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(42737)
 		}
 	}
+	__antithesis_instrumentation__.Notify(42720)
 	return details, nil
 }

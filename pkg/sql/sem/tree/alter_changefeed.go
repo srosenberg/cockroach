@@ -1,16 +1,7 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// AlterChangefeed represents an ALTER CHANGEFEED statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type AlterChangefeed struct {
 	Jobs Expr
 	Cmds AlterChangefeedCmds
@@ -18,89 +9,92 @@ type AlterChangefeed struct {
 
 var _ Statement = &AlterChangefeed{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterChangefeed) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602932)
 	ctx.WriteString(`ALTER CHANGEFEED `)
 	ctx.FormatNode(node.Jobs)
 	ctx.FormatNode(&node.Cmds)
 }
 
-// AlterChangefeedCmds represents a list of changefeed alterations
 type AlterChangefeedCmds []AlterChangefeedCmd
 
-// Format implements the NodeFormatter interface.
 func (node *AlterChangefeedCmds) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602933)
 	for i, n := range *node {
+		__antithesis_instrumentation__.Notify(602934)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(602936)
 			ctx.WriteString(" ")
+		} else {
+			__antithesis_instrumentation__.Notify(602937)
 		}
+		__antithesis_instrumentation__.Notify(602935)
 		ctx.FormatNode(n)
 	}
 }
 
-// AlterChangefeedCmd represents a changefeed modification operation.
 type AlterChangefeedCmd interface {
 	NodeFormatter
-	// Placeholder function to ensure that only desired types
-	// (AlterChangefeed*) conform to the AlterChangefeedCmd interface.
+
 	alterChangefeedCmd()
 }
 
-func (*AlterChangefeedAddTarget) alterChangefeedCmd()    {}
-func (*AlterChangefeedDropTarget) alterChangefeedCmd()   {}
-func (*AlterChangefeedSetOptions) alterChangefeedCmd()   {}
-func (*AlterChangefeedUnsetOptions) alterChangefeedCmd() {}
+func (*AlterChangefeedAddTarget) alterChangefeedCmd()  { __antithesis_instrumentation__.Notify(602938) }
+func (*AlterChangefeedDropTarget) alterChangefeedCmd() { __antithesis_instrumentation__.Notify(602939) }
+func (*AlterChangefeedSetOptions) alterChangefeedCmd() { __antithesis_instrumentation__.Notify(602940) }
+func (*AlterChangefeedUnsetOptions) alterChangefeedCmd() {
+	__antithesis_instrumentation__.Notify(602941)
+}
 
 var _ AlterChangefeedCmd = &AlterChangefeedAddTarget{}
 var _ AlterChangefeedCmd = &AlterChangefeedDropTarget{}
 var _ AlterChangefeedCmd = &AlterChangefeedSetOptions{}
 var _ AlterChangefeedCmd = &AlterChangefeedUnsetOptions{}
 
-// AlterChangefeedAddTarget represents an ADD <targets> command
 type AlterChangefeedAddTarget struct {
 	Targets ChangefeedTargets
 	Options KVOptions
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterChangefeedAddTarget) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602942)
 	ctx.WriteString(" ADD ")
 	ctx.FormatNode(&node.Targets)
 	if node.Options != nil {
+		__antithesis_instrumentation__.Notify(602943)
 		ctx.WriteString(" WITH ")
 		ctx.FormatNode(&node.Options)
+	} else {
+		__antithesis_instrumentation__.Notify(602944)
 	}
 }
 
-// AlterChangefeedDropTarget represents an DROP <targets> command
 type AlterChangefeedDropTarget struct {
 	Targets ChangefeedTargets
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterChangefeedDropTarget) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602945)
 	ctx.WriteString(" DROP ")
 	ctx.FormatNode(&node.Targets)
 }
 
-// AlterChangefeedSetOptions represents an SET <options> command
 type AlterChangefeedSetOptions struct {
 	Options KVOptions
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterChangefeedSetOptions) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602946)
 	ctx.WriteString(" SET ")
 	ctx.FormatNode(&node.Options)
 }
 
-// AlterChangefeedUnsetOptions represents an UNSET <options> command
 type AlterChangefeedUnsetOptions struct {
 	Options NameList
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterChangefeedUnsetOptions) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602947)
 	ctx.WriteString(" UNSET ")
 	ctx.FormatNode(&node.Options)
 }

@@ -1,16 +1,8 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package ptprovider encapsulates the concrete implementation of the
 // protectedts.Provider.
 package ptprovider
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,7 +20,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Config configures the Provider.
 type Config struct {
 	Settings             *cluster.Settings
 	DB                   *kv.DB
@@ -38,7 +29,6 @@ type Config struct {
 	Knobs                *protectedts.TestingKnobs
 }
 
-// Provider is the concrete implementation of protectedts.Provider interface.
 type Provider struct {
 	protectedts.Storage
 	protectedts.Cache
@@ -46,11 +36,15 @@ type Provider struct {
 	metric.Struct
 }
 
-// New creates a new protectedts.Provider.
 func New(cfg Config) (protectedts.Provider, error) {
+	__antithesis_instrumentation__.Notify(111734)
 	if err := validateConfig(cfg); err != nil {
+		__antithesis_instrumentation__.Notify(111736)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(111737)
 	}
+	__antithesis_instrumentation__.Notify(111735)
 	storage := ptstorage.New(cfg.Settings, cfg.InternalExecutor, cfg.Knobs)
 	reconciler := ptreconcile.New(cfg.Settings, cfg.DB, storage, cfg.ReconcileStatusFuncs)
 	cache := ptcache.New(ptcache.Config{
@@ -68,27 +62,36 @@ func New(cfg Config) (protectedts.Provider, error) {
 }
 
 func validateConfig(cfg Config) error {
+	__antithesis_instrumentation__.Notify(111738)
 	switch {
 	case cfg.Settings == nil:
+		__antithesis_instrumentation__.Notify(111739)
 		return errors.Errorf("invalid nil Settings")
 	case cfg.DB == nil:
+		__antithesis_instrumentation__.Notify(111740)
 		return errors.Errorf("invalid nil DB")
 	case cfg.InternalExecutor == nil:
+		__antithesis_instrumentation__.Notify(111741)
 		return errors.Errorf("invalid nil InternalExecutor")
 	default:
+		__antithesis_instrumentation__.Notify(111742)
 		return nil
 	}
 }
 
-// Start implements the protectedts.Provider interface.
 func (p *Provider) Start(ctx context.Context, stopper *stop.Stopper) error {
+	__antithesis_instrumentation__.Notify(111743)
 	if cache, ok := p.Cache.(*ptcache.Cache); ok {
+		__antithesis_instrumentation__.Notify(111745)
 		return cache.Start(ctx, stopper)
+	} else {
+		__antithesis_instrumentation__.Notify(111746)
 	}
+	__antithesis_instrumentation__.Notify(111744)
 	return nil
 }
 
-// Metrics implements the protectedts.Provider interface.
 func (p *Provider) Metrics() metric.Struct {
+	__antithesis_instrumentation__.Notify(111747)
 	return p.Struct
 }

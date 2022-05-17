@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -21,19 +13,24 @@ import (
 )
 
 func (d *delegator) delegateShowCreate(n *tree.ShowCreate) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465806)
 	sqltelemetry.IncrementShowCounter(sqltelemetry.Create)
 
 	switch n.Mode {
 	case tree.ShowCreateModeTable, tree.ShowCreateModeView, tree.ShowCreateModeSequence:
+		__antithesis_instrumentation__.Notify(465807)
 		return d.delegateShowCreateTable(n)
 	case tree.ShowCreateModeDatabase:
+		__antithesis_instrumentation__.Notify(465808)
 		return d.delegateShowCreateDatabase(n)
 	default:
+		__antithesis_instrumentation__.Notify(465809)
 		return nil, errors.Newf("unknown show create mode: %d", n.Mode)
 	}
 }
 
 func (d *delegator) delegateShowCreateDatabase(n *tree.ShowCreate) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465810)
 	const showCreateQuery = `
 SELECT
 	name AS database_name,
@@ -43,16 +40,20 @@ WHERE name = %s
 ;
 `
 
-	// Checking if the database exists before running the sql.
 	_, err := d.getSpecifiedOrCurrentDatabase(tree.Name(n.Name.Object()))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465812)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465813)
 	}
+	__antithesis_instrumentation__.Notify(465811)
 
 	return parse(fmt.Sprintf(showCreateQuery, lexbase.EscapeSQLString(n.Name.Object())))
 }
 
 func (d *delegator) delegateShowCreateTable(n *tree.ShowCreate) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465814)
 	const showCreateQuery = `
 WITH zone_configs AS (
 		SELECT
@@ -101,6 +102,7 @@ ORDER BY
 }
 
 func (d *delegator) delegateShowIndexes(n *tree.ShowIndexes) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465815)
 	sqltelemetry.IncrementShowCounter(sqltelemetry.Indexes)
 	getIndexesQuery := `
 SELECT
@@ -114,20 +116,28 @@ SELECT
     implicit::BOOL`
 
 	if n.WithComment {
+		__antithesis_instrumentation__.Notify(465818)
 		getIndexesQuery += `,
     obj_description(pg_indexes.crdb_oid) AS comment`
+	} else {
+		__antithesis_instrumentation__.Notify(465819)
 	}
+	__antithesis_instrumentation__.Notify(465816)
 
 	getIndexesQuery += `
 FROM
     %[4]s.information_schema.statistics AS s`
 
 	if n.WithComment {
+		__antithesis_instrumentation__.Notify(465820)
 		getIndexesQuery += `
     LEFT JOIN pg_indexes ON
         pg_indexes.tablename = s.table_name AND
         pg_indexes.indexname = s.index_name`
+	} else {
+		__antithesis_instrumentation__.Notify(465821)
 	}
+	__antithesis_instrumentation__.Notify(465817)
 
 	getIndexesQuery += `
 WHERE
@@ -141,6 +151,7 @@ ORDER BY
 }
 
 func (d *delegator) delegateShowColumns(n *tree.ShowColumns) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465822)
 	getColumnsQuery := `
 SELECT
     column_name AS column_name,
@@ -152,9 +163,13 @@ SELECT
     is_hidden::BOOL`
 
 	if n.WithComment {
+		__antithesis_instrumentation__.Notify(465825)
 		getColumnsQuery += `,
     col_description(%[6]d, attnum) AS comment`
+	} else {
+		__antithesis_instrumentation__.Notify(465826)
 	}
+	__antithesis_instrumentation__.Notify(465823)
 
 	getColumnsQuery += `
 FROM
@@ -180,11 +195,15 @@ FROM
    )`
 
 	if n.WithComment {
+		__antithesis_instrumentation__.Notify(465827)
 		getColumnsQuery += `
     LEFT OUTER JOIN pg_attribute
         ON column_name = pg_attribute.attname
         AND attrelid = %[6]d`
+	} else {
+		__antithesis_instrumentation__.Notify(465828)
 	}
+	__antithesis_instrumentation__.Notify(465824)
 
 	getColumnsQuery += `
 ORDER BY
@@ -194,6 +213,7 @@ ORDER BY
 }
 
 func (d *delegator) delegateShowConstraints(n *tree.ShowConstraints) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465829)
 	sqltelemetry.IncrementShowCounter(sqltelemetry.Constraints)
 	getConstraintsQuery := `
     SELECT
@@ -210,9 +230,13 @@ func (d *delegator) delegateShowConstraints(n *tree.ShowConstraints) (tree.State
         c.convalidated AS validated`
 
 	if n.WithComment {
+		__antithesis_instrumentation__.Notify(465831)
 		getConstraintsQuery += `,
 	obj_description(c.oid) AS comment`
+	} else {
+		__antithesis_instrumentation__.Notify(465832)
 	}
+	__antithesis_instrumentation__.Notify(465830)
 	getConstraintsQuery += `
 FROM
        %[4]s.pg_catalog.pg_class t,
@@ -227,6 +251,7 @@ FROM
 }
 
 func (d *delegator) delegateShowCreateAllTables() (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465833)
 	sqltelemetry.IncrementShowCounter(sqltelemetry.Create)
 
 	const showCreateAllTablesQuery = `
@@ -241,35 +266,34 @@ func (d *delegator) delegateShowCreateAllTables() (tree.Statement, error) {
 	return parse(query)
 }
 
-// showTableDetails returns the AST of a query which extracts information about
-// the given table using the given query patterns in SQL. The query pattern must
-// accept the following formatting parameters:
-//   %[1]s the database name as SQL string literal.
-//   %[2]s the unqualified table name as SQL string literal.
-//   %[3]s the given table name as SQL string literal.
-//   %[4]s the database name as SQL identifier.
-//   %[5]s the schema name as SQL string literal.
-//   %[6]s the table ID.
 func (d *delegator) showTableDetails(
 	name *tree.UnresolvedObjectName, query string,
 ) (tree.Statement, error) {
-	// We avoid the cache so that we can observe the details without
-	// taking a lease, like other SHOW commands.
+	__antithesis_instrumentation__.Notify(465834)
+
 	flags := cat.Flags{AvoidDescriptorCaches: true, NoTableStats: true}
 	tn := name.ToTableName()
 	dataSource, resName, err := d.catalog.ResolveDataSource(d.ctx, flags, &tn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465837)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465838)
 	}
+	__antithesis_instrumentation__.Notify(465835)
 	if err := d.catalog.CheckAnyPrivilege(d.ctx, dataSource); err != nil {
+		__antithesis_instrumentation__.Notify(465839)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465840)
 	}
+	__antithesis_instrumentation__.Notify(465836)
 
 	fullQuery := fmt.Sprintf(query,
 		lexbase.EscapeSQLString(resName.Catalog()),
 		lexbase.EscapeSQLString(resName.Table()),
 		lexbase.EscapeSQLString(resName.String()),
-		resName.CatalogName.String(), // note: CatalogName.String() != Catalog()
+		resName.CatalogName.String(),
 		lexbase.EscapeSQLString(resName.Schema()),
 		dataSource.PostgresDescriptorID(),
 	)

@@ -24,6 +24,7 @@ go_library(
         "//pkg/sql/pgwire/pgerror",
         "//pkg/util",
         "//pkg/util/protoutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_golang_geo//r1",
         "@com_github_golang_geo//s1",
@@ -55,6 +56,7 @@ go_test(
     embed = [":geo"],
     deps = [
         "//pkg/geo/geopb",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_golang_geo//s2",
         "@com_github_pierrre_geohash//:geohash",

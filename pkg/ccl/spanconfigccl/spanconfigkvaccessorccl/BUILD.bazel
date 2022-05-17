@@ -23,6 +23,7 @@ go_test(
         "//pkg/util/leaktest",
         "//pkg/util/randutil",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

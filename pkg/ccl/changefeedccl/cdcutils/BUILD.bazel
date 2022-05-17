@@ -13,6 +13,7 @@ go_library(
         "//pkg/util/quotapool",
         "//pkg/util/timeutil",
         "//pkg/util/tracing",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -25,6 +26,7 @@ go_test(
         "//pkg/settings/cluster",
         "//pkg/util/leaktest",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

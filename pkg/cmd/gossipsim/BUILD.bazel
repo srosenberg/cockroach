@@ -14,6 +14,7 @@ go_library(
         "//pkg/util/log",
         "//pkg/util/randutil",
         "//pkg/util/stop",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -21,4 +22,5 @@ go_binary(
     name = "gossipsim",
     embed = [":gossipsim_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

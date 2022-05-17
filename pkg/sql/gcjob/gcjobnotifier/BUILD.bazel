@@ -14,6 +14,7 @@ go_library(
         "//pkg/util/log/logcrash",
         "//pkg/util/stop",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -33,6 +34,7 @@ go_test(
         "//pkg/util/leaktest",
         "//pkg/util/stop",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -35,68 +27,105 @@ type s3putter interface {
 	PutObject(*s3.PutObjectInput) (*s3.PutObjectOutput, error)
 }
 
-// Overridden in testing.
 var testableS3 = func() (s3putter, error) {
+	__antithesis_instrumentation__.Notify(41625)
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String("us-east-1"),
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41627)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(41628)
 	}
+	__antithesis_instrumentation__.Notify(41626)
 	return s3.New(sess), nil
 }
 
 var destBucket = flag.String("bucket", "", "override default bucket")
 
 func main() {
+	__antithesis_instrumentation__.Notify(41629)
 	flag.Parse()
 
 	if _, ok := os.LookupEnv(awsAccessKeyIDKey); !ok {
+		__antithesis_instrumentation__.Notify(41638)
 		log.Fatalf("AWS access key ID environment variable %s is not set", awsAccessKeyIDKey)
+	} else {
+		__antithesis_instrumentation__.Notify(41639)
 	}
+	__antithesis_instrumentation__.Notify(41630)
 	if _, ok := os.LookupEnv(awsSecretAccessKeyKey); !ok {
+		__antithesis_instrumentation__.Notify(41640)
 		log.Fatalf("AWS secret access key environment variable %s is not set", awsSecretAccessKeyKey)
+	} else {
+		__antithesis_instrumentation__.Notify(41641)
 	}
+	__antithesis_instrumentation__.Notify(41631)
 
 	branch, ok := os.LookupEnv(teamcityBuildBranchKey)
 	if !ok {
+		__antithesis_instrumentation__.Notify(41642)
 		log.Fatalf("VCS branch environment variable %s is not set", teamcityBuildBranchKey)
+	} else {
+		__antithesis_instrumentation__.Notify(41643)
 	}
+	__antithesis_instrumentation__.Notify(41632)
 	pkg, err := os.Getwd()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41644)
 		log.Fatalf("unable to locate CRDB directory: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(41645)
 	}
-	// Make sure the WORKSPACE file is in the current working directory.
+	__antithesis_instrumentation__.Notify(41633)
+
 	_, err = os.Stat(filepath.Join(pkg, "WORKSPACE"))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41646)
 		log.Fatalf("unable to locate CRDB directory: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(41647)
 	}
+	__antithesis_instrumentation__.Notify(41634)
 
 	cmd := exec.Command("git", "rev-parse", "HEAD")
 	cmd.Dir = pkg
 	log.Printf("%s %s", cmd.Env, cmd.Args)
 	out, err := cmd.Output()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41648)
 		log.Fatalf("%s: out=%q err=%s", cmd.Args, out, err)
+	} else {
+		__antithesis_instrumentation__.Notify(41649)
 	}
+	__antithesis_instrumentation__.Notify(41635)
 	versionStr := string(bytes.TrimSpace(out))
 
 	svc, err := testableS3()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41650)
 		log.Fatalf("Creating AWS S3 session: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(41651)
 	}
+	__antithesis_instrumentation__.Notify(41636)
 
 	var bucketName string
 	if len(*destBucket) > 0 {
+		__antithesis_instrumentation__.Notify(41652)
 		bucketName = *destBucket
 	} else {
+		__antithesis_instrumentation__.Notify(41653)
 		bucketName = "cockroach"
 	}
+	__antithesis_instrumentation__.Notify(41637)
 	log.Printf("Using S3 bucket: %s", bucketName)
 
 	releaseVersionStrs := []string{versionStr}
 
 	for _, platform := range []release.Platform{release.PlatformLinux, release.PlatformMacOS, release.PlatformWindows} {
+		__antithesis_instrumentation__.Notify(41654)
 		var o opts
 		o.Platform = platform
 		o.ReleaseVersionStrs = releaseVersionStrs
@@ -114,14 +143,21 @@ func main() {
 }
 
 func buildOneCockroach(svc s3putter, o opts) {
+	__antithesis_instrumentation__.Notify(41655)
 	log.Printf("building cockroach %s", pretty.Sprint(o))
 	defer func() {
+		__antithesis_instrumentation__.Notify(41658)
 		log.Printf("done building cockroach: %s", pretty.Sprint(o))
 	}()
+	__antithesis_instrumentation__.Notify(41656)
 
 	if err := release.MakeRelease(o.Platform, release.BuildOptions{}, o.PkgDir); err != nil {
+		__antithesis_instrumentation__.Notify(41659)
 		log.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(41660)
 	}
+	__antithesis_instrumentation__.Notify(41657)
 
 	putNonRelease(svc, o, release.MakeCRDBLibraryNonReleaseFiles(o.PkgDir, o.Platform, o.VersionStr)...)
 }
@@ -139,6 +175,7 @@ type opts struct {
 }
 
 func putNonRelease(svc s3putter, o opts, additionalNonReleaseFiles ...release.NonReleaseFile) {
+	__antithesis_instrumentation__.Notify(41661)
 	release.PutNonRelease(
 		svc,
 		release.PutNonReleaseOptions{

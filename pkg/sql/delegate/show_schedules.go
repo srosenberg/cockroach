@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -19,10 +11,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
 )
 
-// commandColumn converts executor execution arguments into jsonb representation.
 const commandColumn = `crdb_internal.pb_to_json('cockroach.jobs.jobspb.ExecutionArguments', execution_args, false, true)->'args'`
 
 func (d *delegator) delegateShowSchedules(n *tree.ShowSchedules) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465761)
 	sqltelemetry.IncrementShowCounter(sqltelemetry.Schedules)
 
 	columnExprs := []string{
@@ -44,34 +36,51 @@ WHERE status='%s' AND created_by_type='%s' AND created_by_id=schedule_id
 
 	switch n.WhichSchedules {
 	case tree.PausedSchedules:
+		__antithesis_instrumentation__.Notify(465766)
 		whereExprs = append(whereExprs, "next_run IS NULL")
 	case tree.ActiveSchedules:
+		__antithesis_instrumentation__.Notify(465767)
 		whereExprs = append(whereExprs, "next_run IS NOT NULL")
+	default:
+		__antithesis_instrumentation__.Notify(465768)
 	}
+	__antithesis_instrumentation__.Notify(465762)
 
 	switch n.ExecutorType {
 	case tree.ScheduledBackupExecutor:
+		__antithesis_instrumentation__.Notify(465769)
 		whereExprs = append(whereExprs, fmt.Sprintf(
 			"executor_type = '%s'", tree.ScheduledBackupExecutor.InternalName()))
 		columnExprs = append(columnExprs, fmt.Sprintf(
 			"%s->>'backup_statement' AS command", commandColumn))
 	case tree.ScheduledSQLStatsCompactionExecutor:
+		__antithesis_instrumentation__.Notify(465770)
 		whereExprs = append(whereExprs, fmt.Sprintf(
 			"executor_type = '%s'", tree.ScheduledSQLStatsCompactionExecutor.InternalName()))
 	default:
-		// Strip out '@type' tag from the ExecutionArgs.args, and display what's left.
+		__antithesis_instrumentation__.Notify(465771)
+
 		columnExprs = append(columnExprs, fmt.Sprintf("%s #-'{@type}' AS command", commandColumn))
 	}
+	__antithesis_instrumentation__.Notify(465763)
 
 	if n.ScheduleID != nil {
+		__antithesis_instrumentation__.Notify(465772)
 		whereExprs = append(whereExprs,
 			fmt.Sprintf("schedule_id=(%s)", tree.AsString(n.ScheduleID)))
+	} else {
+		__antithesis_instrumentation__.Notify(465773)
 	}
+	__antithesis_instrumentation__.Notify(465764)
 
 	var whereClause string
 	if len(whereExprs) > 0 {
+		__antithesis_instrumentation__.Notify(465774)
 		whereClause = fmt.Sprintf("WHERE (%s)", strings.Join(whereExprs, " AND "))
+	} else {
+		__antithesis_instrumentation__.Notify(465775)
 	}
+	__antithesis_instrumentation__.Notify(465765)
 	return parse(fmt.Sprintf(
 		"SELECT %s FROM system.scheduled_jobs %s",
 		strings.Join(columnExprs, ","),

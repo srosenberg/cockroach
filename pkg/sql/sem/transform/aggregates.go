@@ -1,52 +1,58 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package transform
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 )
 
-// IsAggregateVisitor checks if walked expressions contain aggregate functions.
 type IsAggregateVisitor struct {
 	Aggregated bool
-	// searchPath is used to search for unqualified function names.
+
 	searchPath sessiondata.SearchPath
 }
 
 var _ tree.Visitor = &IsAggregateVisitor{}
 
-// VisitPre satisfies the Visitor interface.
 func (v *IsAggregateVisitor) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
+	__antithesis_instrumentation__.Notify(602897)
 	switch t := expr.(type) {
 	case *tree.FuncExpr:
+		__antithesis_instrumentation__.Notify(602899)
 		if t.IsWindowFunctionApplication() {
-			// A window function application of an aggregate builtin is not an
-			// aggregate function, but it can contain aggregate functions.
+			__antithesis_instrumentation__.Notify(602903)
+
 			return true, expr
+		} else {
+			__antithesis_instrumentation__.Notify(602904)
 		}
+		__antithesis_instrumentation__.Notify(602900)
 		fd, err := t.Func.Resolve(v.searchPath)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(602905)
 			return false, expr
+		} else {
+			__antithesis_instrumentation__.Notify(602906)
 		}
+		__antithesis_instrumentation__.Notify(602901)
 		if fd.Class == tree.AggregateClass {
+			__antithesis_instrumentation__.Notify(602907)
 			v.Aggregated = true
 			return false, expr
+		} else {
+			__antithesis_instrumentation__.Notify(602908)
 		}
 	case *tree.Subquery:
+		__antithesis_instrumentation__.Notify(602902)
 		return false, expr
 	}
+	__antithesis_instrumentation__.Notify(602898)
 
 	return true, expr
 }
 
-// VisitPost satisfies the Visitor interface.
-func (*IsAggregateVisitor) VisitPost(expr tree.Expr) tree.Expr { return expr }
+func (*IsAggregateVisitor) VisitPost(expr tree.Expr) tree.Expr {
+	__antithesis_instrumentation__.Notify(602909)
+	return expr
+}

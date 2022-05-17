@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpcc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,16 +17,7 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-// From the TPCC spec, section 2.6:
-//
-// The Order-Status business transaction queries the status of a customer's last
-// order. It represents a mid-weight read-only database transaction with a low
-// frequency of execution and response time requirement to satisfy on-line
-// users. In addition, this table includes non-primary key access to the
-// CUSTOMER table.
-
 type orderStatusData struct {
-	// Return data specified by 2.6.3.3
 	dID        int
 	cID        int
 	cFirst     string
@@ -73,19 +56,18 @@ var _ tpccTx = &orderStatus{}
 func createOrderStatus(
 	ctx context.Context, config *tpcc, mcp *workload.MultiConnPool,
 ) (tpccTx, error) {
+	__antithesis_instrumentation__.Notify(697961)
 	o := &orderStatus{
 		config: config,
 		mcp:    mcp,
 	}
 
-	// Select by customer id.
 	o.selectByCustID = o.sr.Define(`
 		SELECT c_balance, c_first, c_middle, c_last
 		FROM customer
 		WHERE c_w_id = $1 AND c_d_id = $2 AND c_id = $3`,
 	)
 
-	// Pick the middle row, rounded up, from the selection by last name.
 	o.selectByLastName = o.sr.Define(`
 		SELECT c_id, c_balance, c_first, c_middle
 		FROM customer
@@ -93,7 +75,6 @@ func createOrderStatus(
 		ORDER BY c_first ASC`,
 	)
 
-	// Select the customer's order.
 	o.selectOrder = o.sr.Define(`
 		SELECT o_id, o_entry_d, o_carrier_id
 		FROM "order"
@@ -102,7 +83,6 @@ func createOrderStatus(
 		LIMIT 1`,
 	)
 
-	// Select the items from the customer's order.
 	o.selectItems = o.sr.Define(`
 		SELECT ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_delivery_d
 		FROM order_line
@@ -110,13 +90,18 @@ func createOrderStatus(
 	)
 
 	if err := o.sr.Init(ctx, "order-status", mcp, config.connFlags); err != nil {
+		__antithesis_instrumentation__.Notify(697963)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(697964)
 	}
+	__antithesis_instrumentation__.Notify(697962)
 
 	return o, nil
 }
 
 func (o *orderStatus) run(ctx context.Context, wID int) (interface{}, error) {
+	__antithesis_instrumentation__.Notify(697965)
 	atomic.AddUint64(&o.config.auditor.orderStatusTransactions, 1)
 
 	rng := rand.New(rand.NewSource(uint64(timeutil.Now().UnixNano())))
@@ -125,51 +110,74 @@ func (o *orderStatus) run(ctx context.Context, wID int) (interface{}, error) {
 		dID: rng.Intn(10) + 1,
 	}
 
-	// 2.6.1.2: The customer is randomly selected 60% of the time by last name
-	// and 40% by number.
 	if rng.Intn(100) < 60 {
+		__antithesis_instrumentation__.Notify(697968)
 		d.cLast = string(o.config.randCLast(rng, &o.a))
 		atomic.AddUint64(&o.config.auditor.orderStatusByLastName, 1)
 	} else {
+		__antithesis_instrumentation__.Notify(697969)
 		d.cID = o.config.randCustomerID(rng)
 	}
+	__antithesis_instrumentation__.Notify(697966)
 
 	if err := crdbpgx.ExecuteTx(
 		ctx, o.mcp.Get(), o.config.txOpts,
 		func(tx pgx.Tx) error {
-			// 2.6.2.2 explains this entire transaction.
+			__antithesis_instrumentation__.Notify(697970)
 
-			// Select the customer
 			if d.cID != 0 {
-				// Case 1: select by customer id
+				__antithesis_instrumentation__.Notify(697975)
+
 				if err := o.selectByCustID.QueryRowTx(
 					ctx, tx, wID, d.dID, d.cID,
 				).Scan(&d.cBalance, &d.cFirst, &d.cMiddle, &d.cLast); err != nil {
+					__antithesis_instrumentation__.Notify(697976)
 					return errors.Wrap(err, "select by customer idfail")
+				} else {
+					__antithesis_instrumentation__.Notify(697977)
 				}
 			} else {
-				// Case 2: Pick the middle row, rounded up, from the selection by last name.
+				__antithesis_instrumentation__.Notify(697978)
+
 				rows, err := o.selectByLastName.QueryTx(ctx, tx, wID, d.dID, d.cLast)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(697983)
 					return errors.Wrap(err, "select by last name fail")
+				} else {
+					__antithesis_instrumentation__.Notify(697984)
 				}
+				__antithesis_instrumentation__.Notify(697979)
 				customers := make([]customerData, 0, 1)
 				for rows.Next() {
+					__antithesis_instrumentation__.Notify(697985)
 					c := customerData{}
 					err = rows.Scan(&c.cID, &c.cBalance, &c.cFirst, &c.cMiddle)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(697987)
 						rows.Close()
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(697988)
 					}
+					__antithesis_instrumentation__.Notify(697986)
 					customers = append(customers, c)
 				}
+				__antithesis_instrumentation__.Notify(697980)
 				if err := rows.Err(); err != nil {
+					__antithesis_instrumentation__.Notify(697989)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(697990)
 				}
+				__antithesis_instrumentation__.Notify(697981)
 				rows.Close()
 				if len(customers) == 0 {
+					__antithesis_instrumentation__.Notify(697991)
 					return errors.New("found no customers matching query orderStatus.selectByLastName")
+				} else {
+					__antithesis_instrumentation__.Notify(697992)
 				}
+				__antithesis_instrumentation__.Notify(697982)
 				cIdx := (len(customers) - 1) / 2
 				c := customers[cIdx]
 				d.cID = c.cID
@@ -177,33 +185,49 @@ func (o *orderStatus) run(ctx context.Context, wID int) (interface{}, error) {
 				d.cFirst = c.cFirst
 				d.cMiddle = c.cMiddle
 			}
+			__antithesis_instrumentation__.Notify(697971)
 
-			// Select the customer's order.
 			if err := o.selectOrder.QueryRowTx(
 				ctx, tx, wID, d.dID, d.cID,
 			).Scan(&d.oID, &d.oEntryD, &d.oCarrierID); err != nil {
+				__antithesis_instrumentation__.Notify(697993)
 				return errors.Wrap(err, "select order fail")
+			} else {
+				__antithesis_instrumentation__.Notify(697994)
 			}
+			__antithesis_instrumentation__.Notify(697972)
 
-			// Select the items from the customer's order.
 			rows, err := o.selectItems.QueryTx(ctx, tx, wID, d.dID, d.oID)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(697995)
 				return errors.Wrap(err, "select items fail")
+			} else {
+				__antithesis_instrumentation__.Notify(697996)
 			}
+			__antithesis_instrumentation__.Notify(697973)
 			defer rows.Close()
 
-			// On average there's 10 items per order - 2.4.1.3
 			d.items = make([]orderItem, 0, 10)
 			for rows.Next() {
+				__antithesis_instrumentation__.Notify(697997)
 				item := orderItem{}
 				if err := rows.Scan(&item.olIID, &item.olSupplyWID, &item.olQuantity, &item.olAmount, &item.olDeliveryD); err != nil {
+					__antithesis_instrumentation__.Notify(697999)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(698000)
 				}
+				__antithesis_instrumentation__.Notify(697998)
 				d.items = append(d.items, item)
 			}
+			__antithesis_instrumentation__.Notify(697974)
 			return rows.Err()
 		}); err != nil {
+		__antithesis_instrumentation__.Notify(698001)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(698002)
 	}
+	__antithesis_instrumentation__.Notify(697967)
 	return d, nil
 }

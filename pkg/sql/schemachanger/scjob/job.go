@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scjob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,29 +31,39 @@ type newSchemaChangeResumer struct {
 }
 
 func (n *newSchemaChangeResumer) Resume(ctx context.Context, execCtxI interface{}) (err error) {
+	__antithesis_instrumentation__.Notify(582367)
 	return n.run(ctx, execCtxI)
 }
 
 func (n *newSchemaChangeResumer) OnFailOrCancel(ctx context.Context, execCtx interface{}) error {
+	__antithesis_instrumentation__.Notify(582368)
 	n.rollback = true
 	return n.run(ctx, execCtx)
 }
 
 func (n *newSchemaChangeResumer) run(ctx context.Context, execCtxI interface{}) error {
+	__antithesis_instrumentation__.Notify(582369)
 	execCtx := execCtxI.(sql.JobExecContext)
 	execCfg := execCtx.ExecCfg()
-	if err := n.job.Update(ctx, nil /* txn */, func(txn *kv.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+	if err := n.job.Update(ctx, nil, func(txn *kv.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+		__antithesis_instrumentation__.Notify(582373)
 		return nil
 	}); err != nil {
-		// TODO(ajwerner): Detect transient errors and classify as retriable here or
-		// in the jobs package.
+		__antithesis_instrumentation__.Notify(582374)
+
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(582375)
 	}
-	// TODO(ajwerner): Wait for leases on all descriptors before starting to
-	// avoid restarts.
+	__antithesis_instrumentation__.Notify(582370)
+
 	if err := execCfg.JobRegistry.CheckPausepoint("newschemachanger.before.exec"); err != nil {
+		__antithesis_instrumentation__.Notify(582376)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(582377)
 	}
+	__antithesis_instrumentation__.Notify(582371)
 	payload := n.job.Payload()
 	deps := scdeps.NewJobRunDependencies(
 		execCfg.CollectionFactory,
@@ -70,6 +72,7 @@ func (n *newSchemaChangeResumer) run(ctx context.Context, execCtxI interface{}) 
 		execCfg.IndexBackfiller,
 		NewRangeCounter(execCfg.DB, execCfg.DistSQLPlanner),
 		func(txn *kv.Txn) scexec.EventLogger {
+			__antithesis_instrumentation__.Notify(582378)
 			return sql.NewSchemaChangerEventLogger(txn, execCfg, 0)
 		},
 		execCfg.JobRegistry,
@@ -83,6 +86,7 @@ func (n *newSchemaChangeResumer) run(ctx context.Context, execCtxI interface{}) 
 		execCtx.SessionData(),
 		execCtx.ExtendedEvalContext().Tracing.KVTracingEnabled(),
 	)
+	__antithesis_instrumentation__.Notify(582372)
 
 	return scrun.RunSchemaChangesInJob(
 		ctx,

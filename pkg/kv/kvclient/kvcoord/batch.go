@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvcoord
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -18,219 +10,277 @@ import (
 
 var emptySpan = roachpb.Span{}
 
-// Truncate restricts all requests to the given key range and returns new,
-// truncated, requests. All returned requests are "truncated" to the given span,
-// and requests which are found to not overlap the given span at all are
-// removed. A mapping of response index to request index is returned. For
-// example, if
-//
-// reqs = Put[a], Put[c], Put[b],
-// rs = [a,bb],
-//
-// then Truncate(reqs,rs) returns (Put[a], Put[b]) and positions [0,2].
 func Truncate(
 	reqs []roachpb.RequestUnion, rs roachpb.RSpan,
 ) ([]roachpb.RequestUnion, []int, error) {
+	__antithesis_instrumentation__.Notify(86886)
 	truncateOne := func(args roachpb.Request) (bool, roachpb.Span, error) {
+		__antithesis_instrumentation__.Notify(86889)
 		header := args.Header().Span()
 		if !roachpb.IsRange(args) {
-			// This is a point request.
+			__antithesis_instrumentation__.Notify(86897)
+
 			if len(header.EndKey) > 0 {
+				__antithesis_instrumentation__.Notify(86901)
 				return false, emptySpan, errors.Errorf("%T is not a range command, but EndKey is set", args)
+			} else {
+				__antithesis_instrumentation__.Notify(86902)
 			}
+			__antithesis_instrumentation__.Notify(86898)
 			keyAddr, err := keys.Addr(header.Key)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(86903)
 				return false, emptySpan, err
+			} else {
+				__antithesis_instrumentation__.Notify(86904)
 			}
+			__antithesis_instrumentation__.Notify(86899)
 			if !rs.ContainsKey(keyAddr) {
+				__antithesis_instrumentation__.Notify(86905)
 				return false, emptySpan, nil
+			} else {
+				__antithesis_instrumentation__.Notify(86906)
 			}
+			__antithesis_instrumentation__.Notify(86900)
 			return true, header, nil
+		} else {
+			__antithesis_instrumentation__.Notify(86907)
 		}
-		// We're dealing with a range-spanning request.
+		__antithesis_instrumentation__.Notify(86890)
+
 		local := false
 		keyAddr, err := keys.Addr(header.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(86908)
 			return false, emptySpan, err
+		} else {
+			__antithesis_instrumentation__.Notify(86909)
 		}
+		__antithesis_instrumentation__.Notify(86891)
 		endKeyAddr, err := keys.Addr(header.EndKey)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(86910)
 			return false, emptySpan, err
+		} else {
+			__antithesis_instrumentation__.Notify(86911)
 		}
-		if l, r := keys.IsLocal(header.Key), keys.IsLocal(header.EndKey); l || r {
-			if !l || !r {
+		__antithesis_instrumentation__.Notify(86892)
+		if l, r := keys.IsLocal(header.Key), keys.IsLocal(header.EndKey); l || func() bool {
+			__antithesis_instrumentation__.Notify(86912)
+			return r == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(86913)
+			if !l || func() bool {
+				__antithesis_instrumentation__.Notify(86915)
+				return !r == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(86916)
 				return false, emptySpan, errors.Errorf("local key mixed with global key in range")
+			} else {
+				__antithesis_instrumentation__.Notify(86917)
 			}
+			__antithesis_instrumentation__.Notify(86914)
 			local = true
+		} else {
+			__antithesis_instrumentation__.Notify(86918)
 		}
+		__antithesis_instrumentation__.Notify(86893)
 		if keyAddr.Less(rs.Key) {
-			// rs.Key can't be local because it contains range split points, which
-			// are never local.
+			__antithesis_instrumentation__.Notify(86919)
+
 			if !local {
+				__antithesis_instrumentation__.Notify(86920)
 				header.Key = rs.Key.AsRawKey()
 			} else {
-				// The local start key should be truncated to the boundary of local keys which
-				// address to rs.Key.
+				__antithesis_instrumentation__.Notify(86921)
+
 				header.Key = keys.MakeRangeKeyPrefix(rs.Key)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(86922)
 		}
+		__antithesis_instrumentation__.Notify(86894)
 		if !endKeyAddr.Less(rs.EndKey) {
-			// rs.EndKey can't be local because it contains range split points, which
-			// are never local.
+			__antithesis_instrumentation__.Notify(86923)
+
 			if !local {
+				__antithesis_instrumentation__.Notify(86924)
 				header.EndKey = rs.EndKey.AsRawKey()
 			} else {
-				// The local end key should be truncated to the boundary of local keys which
-				// address to rs.EndKey.
+				__antithesis_instrumentation__.Notify(86925)
+
 				header.EndKey = keys.MakeRangeKeyPrefix(rs.EndKey)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(86926)
 		}
-		// Check whether the truncation has left any keys in the range. If not,
-		// we need to cut it out of the request.
+		__antithesis_instrumentation__.Notify(86895)
+
 		if header.Key.Compare(header.EndKey) >= 0 {
+			__antithesis_instrumentation__.Notify(86927)
 			return false, emptySpan, nil
+		} else {
+			__antithesis_instrumentation__.Notify(86928)
 		}
+		__antithesis_instrumentation__.Notify(86896)
 		return true, header, nil
 	}
-
-	// TODO(tschottdorf): optimize so that we don't always make a new request
-	// slice, only when something changed (copy-on-write).
+	__antithesis_instrumentation__.Notify(86887)
 
 	var positions []int
 	var truncReqs []roachpb.RequestUnion
 	for pos, arg := range reqs {
+		__antithesis_instrumentation__.Notify(86929)
 		hasRequest, newSpan, err := truncateOne(arg.GetInner())
 		if hasRequest {
-			// Keep the old one. If we must adjust the header, must copy.
+			__antithesis_instrumentation__.Notify(86931)
+
 			inner := reqs[pos].GetInner()
 			oldHeader := inner.Header()
 			if newSpan.EqualValue(oldHeader.Span()) {
+				__antithesis_instrumentation__.Notify(86933)
 				truncReqs = append(truncReqs, reqs[pos])
 			} else {
+				__antithesis_instrumentation__.Notify(86934)
 				oldHeader.SetSpan(newSpan)
 				shallowCopy := inner.ShallowCopy()
 				shallowCopy.SetHeader(oldHeader)
 				truncReqs = append(truncReqs, roachpb.RequestUnion{})
 				truncReqs[len(truncReqs)-1].MustSetInner(shallowCopy)
 			}
+			__antithesis_instrumentation__.Notify(86932)
 			positions = append(positions, pos)
+		} else {
+			__antithesis_instrumentation__.Notify(86935)
 		}
+		__antithesis_instrumentation__.Notify(86930)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(86936)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(86937)
 		}
 	}
+	__antithesis_instrumentation__.Notify(86888)
 	return truncReqs, positions, nil
 }
 
-// prev gives the right boundary of the union of all requests which don't
-// affect keys larger than the given key. Note that a right boundary is
-// exclusive, that is, the returned RKey is to be used as the exclusive
-// right endpoint in finding the next range to query.
-//
-// Informally, a call `prev(reqs, k)` means: we've already executed the parts
-// of `reqs` that intersect `[k, KeyMax)`; please tell me how far to the
-// left the next relevant request begins.
-//
-// TODO(tschottdorf): again, better on BatchRequest itself, but can't pull
-// 'keys' into 'roachpb'.
 func prev(reqs []roachpb.RequestUnion, k roachpb.RKey) (roachpb.RKey, error) {
+	__antithesis_instrumentation__.Notify(86938)
 	candidate := roachpb.RKeyMin
 	for _, union := range reqs {
+		__antithesis_instrumentation__.Notify(86940)
 		inner := union.GetInner()
 		h := inner.Header()
 		addr, err := keys.Addr(h.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(86945)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(86946)
 		}
+		__antithesis_instrumentation__.Notify(86941)
 		endKey := h.EndKey
 		if len(endKey) == 0 {
-			// If we have a point request for `x < k` then that request has not been
-			// satisfied (since the batch has only been executed for keys `>=k`). We
-			// treat `x` as `[x, x.Next())` which does the right thing below. This
-			// also works when `x > k` or `x=k` as the logic below will skip `x`.
-			//
-			// Note that if the key is /Local/x/something, then instead of using
-			// /Local/x/something.Next() as the end key, we rely on AddrUpperBound to
-			// handle local keys. In particular, AddrUpperBound will turn it into
-			// `x\x00`, so we're looking at the key-range `[x, x.Next())`. This is
-			// exactly what we want as the local key is contained in that range.
-			//
-			// See TestBatchPrevNext for test cases with commentary.
+			__antithesis_instrumentation__.Notify(86947)
+
 			endKey = h.Key.Next()
+		} else {
+			__antithesis_instrumentation__.Notify(86948)
 		}
+		__antithesis_instrumentation__.Notify(86942)
 		eAddr, err := keys.AddrUpperBound(endKey)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(86949)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(86950)
 		}
+		__antithesis_instrumentation__.Notify(86943)
 		if !eAddr.Less(k) {
-			// EndKey is k or higher.
-			//           [x-------y)    !x.Less(k) -> skip
-			//         [x-------y)      !x.Less(k) -> skip
-			//      [x-------y)          x.Less(k) -> return k
-			//  [x------y)               x.Less(k) -> return k
-			// [x------y)                not in this branch
-			//          k
+			__antithesis_instrumentation__.Notify(86951)
+
 			if addr.Less(k) {
-				// Range contains k, so won't be able to go lower.
-				// Note that in the special case in which the interval
-				// touches k, we don't take this branch. This reflects
-				// the fact that `prev(k)` means that all keys >= k have
-				// been handled, so a request `[k, x)` should simply be
-				// skipped.
+				__antithesis_instrumentation__.Notify(86953)
+
 				return k, nil
+			} else {
+				__antithesis_instrumentation__.Notify(86954)
 			}
-			// Range is disjoint from [KeyMin,k).
+			__antithesis_instrumentation__.Notify(86952)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(86955)
 		}
-		// Current candidate interval is strictly to the left of `k`.
-		// We want the largest surviving candidate.
+		__antithesis_instrumentation__.Notify(86944)
+
 		if candidate.Less(eAddr) {
+			__antithesis_instrumentation__.Notify(86956)
 			candidate = eAddr
+		} else {
+			__antithesis_instrumentation__.Notify(86957)
 		}
 	}
+	__antithesis_instrumentation__.Notify(86939)
 	return candidate, nil
 }
 
-// Next gives the left boundary of the union of all requests which don't affect
-// keys less than the given key. Note that the left boundary is inclusive, that
-// is, the returned RKey is the inclusive left endpoint of the keys the request
-// should operate on next.
-//
-// Informally, a call `Next(reqs, k)` means: we've already executed the parts of
-// `reqs` that intersect `[KeyMin, k)`; please tell me how far to the right the
-// next relevant request begins.
-//
-// TODO(tschottdorf): again, better on BatchRequest itself, but can't pull
-// 'keys' into 'proto'.
 func Next(reqs []roachpb.RequestUnion, k roachpb.RKey) (roachpb.RKey, error) {
+	__antithesis_instrumentation__.Notify(86958)
 	candidate := roachpb.RKeyMax
 	for _, union := range reqs {
+		__antithesis_instrumentation__.Notify(86960)
 		inner := union.GetInner()
 		h := inner.Header()
 		addr, err := keys.Addr(h.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(86963)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(86964)
 		}
+		__antithesis_instrumentation__.Notify(86961)
 		if addr.Less(k) {
+			__antithesis_instrumentation__.Notify(86965)
 			if len(h.EndKey) == 0 {
-				// `h` affects only `[KeyMin,k)`, all of which is less than `k`.
+				__antithesis_instrumentation__.Notify(86969)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(86970)
 			}
+			__antithesis_instrumentation__.Notify(86966)
 			eAddr, err := keys.AddrUpperBound(h.EndKey)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(86971)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(86972)
 			}
+			__antithesis_instrumentation__.Notify(86967)
 			if k.Less(eAddr) {
-				// Starts below k, but continues beyond. Need to stay at k.
+				__antithesis_instrumentation__.Notify(86973)
+
 				return k, nil
+			} else {
+				__antithesis_instrumentation__.Notify(86974)
 			}
-			// `h` affects only `[KeyMin,k)`, all of which is less than `k`.
+			__antithesis_instrumentation__.Notify(86968)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(86975)
 		}
-		// We want the smallest of the surviving candidates.
+		__antithesis_instrumentation__.Notify(86962)
+
 		if addr.Less(candidate) {
+			__antithesis_instrumentation__.Notify(86976)
 			candidate = addr
+		} else {
+			__antithesis_instrumentation__.Notify(86977)
 		}
 	}
+	__antithesis_instrumentation__.Notify(86959)
 	return candidate, nil
 }

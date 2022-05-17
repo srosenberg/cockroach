@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -41,29 +33,40 @@ Instead, these replicas will be removed irrevocably.
 }
 
 func runDebugResetQuorum(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(31639)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	rangeID, err := strconv.ParseInt(args[0], 10, 32)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31643)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31644)
 	}
+	__antithesis_instrumentation__.Notify(31640)
 
-	// Set up GRPC Connection for running ResetQuorum.
 	cc, _, finish, err := getClientGRPCConn(ctx, serverCfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31645)
 		log.Errorf(ctx, "connection to server failed: %v", err)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31646)
 	}
+	__antithesis_instrumentation__.Notify(31641)
 	defer finish()
 
-	// Call ResetQuorum to reset quorum for given range on target node.
 	_, err = roachpb.NewInternalClient(cc).ResetQuorum(ctx, &roachpb.ResetQuorumRequest{
 		RangeID: int32(rangeID),
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31647)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31648)
 	}
+	__antithesis_instrumentation__.Notify(31642)
 
 	fmt.Printf("ok; please verify https://<console>/#/reports/range/%d", rangeID)
 

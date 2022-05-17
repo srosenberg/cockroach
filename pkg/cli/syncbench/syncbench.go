@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package syncbench
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,12 +32,21 @@ const (
 )
 
 func clampLatency(d, min, max time.Duration) time.Duration {
+	__antithesis_instrumentation__.Notify(34603)
 	if d < min {
+		__antithesis_instrumentation__.Notify(34606)
 		return min
+	} else {
+		__antithesis_instrumentation__.Notify(34607)
 	}
+	__antithesis_instrumentation__.Notify(34604)
 	if d > max {
+		__antithesis_instrumentation__.Notify(34608)
 		return max
+	} else {
+		__antithesis_instrumentation__.Notify(34609)
 	}
+	__antithesis_instrumentation__.Notify(34605)
 	return d
 }
 
@@ -59,6 +60,7 @@ type worker struct {
 }
 
 func newWorker(db storage.Engine) *worker {
+	__antithesis_instrumentation__.Notify(34610)
 	w := &worker{db: db}
 	w.latency.WindowedHistogram = hdrhistogram.NewWindowed(1,
 		minLatency.Nanoseconds(), maxLatency.Nanoseconds(), 1)
@@ -66,6 +68,7 @@ func newWorker(db storage.Engine) *worker {
 }
 
 func (w *worker) run(wg *sync.WaitGroup) {
+	__antithesis_instrumentation__.Notify(34611)
 	defer wg.Done()
 
 	ctx := context.Background()
@@ -73,47 +76,70 @@ func (w *worker) run(wg *sync.WaitGroup) {
 	var buf []byte
 
 	randBlock := func(min, max int) []byte {
+		__antithesis_instrumentation__.Notify(34613)
 		data := make([]byte, rand.Intn(max-min)+min)
 		for i := range data {
+			__antithesis_instrumentation__.Notify(34615)
 			data[i] = byte(rand.Int() & 0xff)
 		}
+		__antithesis_instrumentation__.Notify(34614)
 		return data
 	}
+	__antithesis_instrumentation__.Notify(34612)
 
 	for {
+		__antithesis_instrumentation__.Notify(34616)
 		start := timeutil.Now()
 		b := w.db.NewBatch()
 		if w.logOnly {
+			__antithesis_instrumentation__.Notify(34620)
 			block := randBlock(300, 400)
 			if err := b.LogData(block); err != nil {
+				__antithesis_instrumentation__.Notify(34621)
 				log.Fatalf(ctx, "%v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(34622)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(34623)
 			for j := 0; j < 5; j++ {
+				__antithesis_instrumentation__.Notify(34624)
 				block := randBlock(60, 80)
 				key := encoding.EncodeUint32Ascending(buf, rand.Uint32())
 				if err := b.PutUnversioned(key, block); err != nil {
+					__antithesis_instrumentation__.Notify(34626)
 					log.Fatalf(ctx, "%v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(34627)
 				}
+				__antithesis_instrumentation__.Notify(34625)
 				buf = key[:0]
 			}
 		}
+		__antithesis_instrumentation__.Notify(34617)
 		bytes := uint64(b.Len())
 		if err := b.Commit(true); err != nil {
+			__antithesis_instrumentation__.Notify(34628)
 			log.Fatalf(ctx, "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(34629)
 		}
+		__antithesis_instrumentation__.Notify(34618)
 		atomic.AddUint64(&numOps, 1)
 		atomic.AddUint64(&numBytes, bytes)
 		elapsed := clampLatency(timeutil.Since(start), minLatency, maxLatency)
 		w.latency.Lock()
 		if err := w.latency.Current.RecordValue(elapsed.Nanoseconds()); err != nil {
+			__antithesis_instrumentation__.Notify(34630)
 			log.Fatalf(ctx, "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(34631)
 		}
+		__antithesis_instrumentation__.Notify(34619)
 		w.latency.Unlock()
 	}
 }
 
-// Options holds parameters for the test.
 type Options struct {
 	Dir         string
 	Concurrency int
@@ -121,20 +147,23 @@ type Options struct {
 	LogOnly     bool
 }
 
-// Run a test of writing synchronously to the Pebble WAL.
-//
-// TODO(tschottdorf): this should receive an engine so that the caller in cli
-// can use OpenEngine (which in turn allows to use encryption, etc).
 func Run(opts Options) error {
-	// Check if the directory exists.
+	__antithesis_instrumentation__.Notify(34632)
+
 	_, err := os.Stat(opts.Dir)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(34639)
 		return errors.Errorf("error: supplied path '%s' must not exist", opts.Dir)
+	} else {
+		__antithesis_instrumentation__.Notify(34640)
 	}
+	__antithesis_instrumentation__.Notify(34633)
 
 	defer func() {
+		__antithesis_instrumentation__.Notify(34641)
 		_ = os.RemoveAll(opts.Dir)
 	}()
+	__antithesis_instrumentation__.Notify(34634)
 
 	fmt.Printf("writing to %s\n", opts.Dir)
 
@@ -144,18 +173,24 @@ func Run(opts Options) error {
 		storage.CacheSize(0),
 		storage.Settings(cluster.MakeTestingClusterSettings()))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34642)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(34643)
 	}
+	__antithesis_instrumentation__.Notify(34635)
 
 	workers := make([]*worker, opts.Concurrency)
 
 	var wg sync.WaitGroup
 	for i := range workers {
+		__antithesis_instrumentation__.Notify(34644)
 		wg.Add(1)
 		workers[i] = newWorker(db)
 		workers[i].logOnly = opts.LogOnly
 		go workers[i].run(&wg)
 	}
+	__antithesis_instrumentation__.Notify(34636)
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -164,16 +199,23 @@ func Run(opts Options) error {
 	signal.Notify(done, os.Interrupt)
 
 	go func() {
+		__antithesis_instrumentation__.Notify(34645)
 		wg.Wait()
 		done <- sysutil.Signal(0)
 	}()
+	__antithesis_instrumentation__.Notify(34637)
 
 	if opts.Duration > 0 {
+		__antithesis_instrumentation__.Notify(34646)
 		go func() {
+			__antithesis_instrumentation__.Notify(34647)
 			time.Sleep(opts.Duration)
 			done <- sysutil.Signal(0)
 		}()
+	} else {
+		__antithesis_instrumentation__.Notify(34648)
 	}
+	__antithesis_instrumentation__.Notify(34638)
 
 	start := timeutil.Now()
 	lastNow := start
@@ -181,20 +223,26 @@ func Run(opts Options) error {
 	var lastBytes uint64
 
 	for i := 0; ; i++ {
+		__antithesis_instrumentation__.Notify(34649)
 		select {
 		case <-ticker.C:
+			__antithesis_instrumentation__.Notify(34650)
 			var h *hdrhistogram.Histogram
 			for _, w := range workers {
+				__antithesis_instrumentation__.Notify(34654)
 				w.latency.Lock()
 				m := w.latency.Merge()
 				w.latency.Rotate()
 				w.latency.Unlock()
 				if h == nil {
+					__antithesis_instrumentation__.Notify(34655)
 					h = m
 				} else {
+					__antithesis_instrumentation__.Notify(34656)
 					h.Merge(m)
 				}
 			}
+			__antithesis_instrumentation__.Notify(34651)
 
 			p50 := h.ValueAtQuantile(50)
 			p95 := h.ValueAtQuantile(95)
@@ -207,8 +255,12 @@ func Run(opts Options) error {
 			bytes := atomic.LoadUint64(&numBytes)
 
 			if i%20 == 0 {
+				__antithesis_instrumentation__.Notify(34657)
 				fmt.Println("_elapsed____ops/sec___mb/sec__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
+			} else {
+				__antithesis_instrumentation__.Notify(34658)
 			}
+			__antithesis_instrumentation__.Notify(34652)
 			fmt.Printf("%8s %10.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
 				time.Duration(timeutil.Since(start).Seconds()+0.5)*time.Second,
 				float64(ops-lastOps)/elapsed.Seconds(),
@@ -223,6 +275,7 @@ func Run(opts Options) error {
 			lastBytes = bytes
 
 		case <-done:
+			__antithesis_instrumentation__.Notify(34653)
 			return nil
 		}
 	}

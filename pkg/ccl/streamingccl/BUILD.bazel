@@ -16,5 +16,6 @@ go_library(
         "//pkg/settings",
         "//pkg/streaming",
         "//pkg/util/hlc",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

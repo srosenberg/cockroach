@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"io"
@@ -18,24 +10,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// absoluteFS is a wrapper vfs.FS for an encryptedFS that is used only
-// by the Pebble tool. It converts filepath names to absolute paths
-// before calling the underlying interface implementation for functions
-// that make use of the PebbleFileRegistry.
-//
-// This is needed when using encryptedFS, since the PebbleFileRegistry used in
-// that context attempts to convert function input paths to relative paths using
-// the DBDir. Both the DBDir and function input paths in a CockroachDB node are
-// absolute paths, but when using the Pebble tool, the function input paths are
-// based on what the cli user passed to the pebble command. We do not wish for a
-// user using the cli to remember to pass an absolute path to the various pebble
-// tool commands that accept paths. Note that the pebble tool commands taking a
-// path parameter are quite varied: ranging from "pebble db" to "pebble lsm",
-// so it is simplest to intercept the function input paths here.
-//
-// Note that absoluteFS assumes the wrapped vfs.FS corresponds to the underlying
-// OS filesystem and will not work for the general case of a vfs.FS.
-// This limitation is acceptable for this tool's use cases.
 type absoluteFS struct {
 	fs vfs.FS
 }
@@ -43,97 +17,142 @@ type absoluteFS struct {
 var _ vfs.FS = &absoluteFS{}
 
 func (fs *absoluteFS) Create(name string) (vfs.File, error) {
+	__antithesis_instrumentation__.Notify(27910)
 	name, err := filepath.Abs(name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27912)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(27913)
 	}
+	__antithesis_instrumentation__.Notify(27911)
 	return fs.fs.Create(name)
 }
 
 func (fs *absoluteFS) Link(oldname, newname string) error {
+	__antithesis_instrumentation__.Notify(27914)
 	return wrapWithAbsolute(fs.fs.Link, oldname, newname)
 }
 
 func (fs *absoluteFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
+	__antithesis_instrumentation__.Notify(27915)
 	name, err := filepath.Abs(name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27917)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(27918)
 	}
+	__antithesis_instrumentation__.Notify(27916)
 	return fs.fs.Open(name, opts...)
 }
 
 func (fs *absoluteFS) OpenDir(name string) (vfs.File, error) {
+	__antithesis_instrumentation__.Notify(27919)
 	return fs.fs.OpenDir(name)
 }
 
 func (fs *absoluteFS) Remove(name string) error {
+	__antithesis_instrumentation__.Notify(27920)
 	name, err := filepath.Abs(name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27922)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(27923)
 	}
+	__antithesis_instrumentation__.Notify(27921)
 	return fs.fs.Remove(name)
 }
 
 func (fs *absoluteFS) RemoveAll(name string) error {
+	__antithesis_instrumentation__.Notify(27924)
 	return fs.fs.RemoveAll(name)
 }
 
 func (fs *absoluteFS) Rename(oldname, newname string) error {
+	__antithesis_instrumentation__.Notify(27925)
 	return wrapWithAbsolute(fs.fs.Rename, oldname, newname)
 }
 
 func (fs *absoluteFS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
+	__antithesis_instrumentation__.Notify(27926)
 	oldname, err := filepath.Abs(oldname)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27929)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(27930)
 	}
+	__antithesis_instrumentation__.Notify(27927)
 	newname, err = filepath.Abs(newname)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27931)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(27932)
 	}
+	__antithesis_instrumentation__.Notify(27928)
 	return fs.fs.ReuseForWrite(oldname, newname)
 }
 
 func (fs *absoluteFS) MkdirAll(dir string, perm os.FileMode) error {
+	__antithesis_instrumentation__.Notify(27933)
 	return fs.fs.MkdirAll(dir, perm)
 }
 
 func (fs *absoluteFS) Lock(name string) (io.Closer, error) {
+	__antithesis_instrumentation__.Notify(27934)
 	return fs.fs.Lock(name)
 }
 
 func (fs *absoluteFS) List(dir string) ([]string, error) {
+	__antithesis_instrumentation__.Notify(27935)
 	return fs.fs.List(dir)
 }
 
 func (fs *absoluteFS) Stat(name string) (os.FileInfo, error) {
+	__antithesis_instrumentation__.Notify(27936)
 	return fs.fs.Stat(name)
 }
 
 func (fs *absoluteFS) PathBase(path string) string {
+	__antithesis_instrumentation__.Notify(27937)
 	return fs.fs.PathBase(path)
 }
 
 func (fs *absoluteFS) PathJoin(elem ...string) string {
+	__antithesis_instrumentation__.Notify(27938)
 	return fs.fs.PathJoin(elem...)
 }
 
 func (fs *absoluteFS) PathDir(path string) string {
+	__antithesis_instrumentation__.Notify(27939)
 	return fs.fs.PathDir(path)
 }
 
 func (fs *absoluteFS) GetDiskUsage(path string) (vfs.DiskUsage, error) {
+	__antithesis_instrumentation__.Notify(27940)
 	return fs.fs.GetDiskUsage(path)
 }
 
 func wrapWithAbsolute(fn func(string, string) error, oldname, newname string) error {
+	__antithesis_instrumentation__.Notify(27941)
 	oldname, err := filepath.Abs(oldname)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27944)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(27945)
 	}
+	__antithesis_instrumentation__.Notify(27942)
 	newname, err = filepath.Abs(newname)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27946)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(27947)
 	}
+	__antithesis_instrumentation__.Notify(27943)
 	return fn(oldname, newname)
 }

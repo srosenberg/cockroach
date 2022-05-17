@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package parser
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/lexbase"
@@ -16,62 +8,79 @@ import (
 )
 
 func makeScanner(str string) scanner.Scanner {
+	__antithesis_instrumentation__.Notify(552598)
 	var s scanner.Scanner
 	s.Init(str)
 	return s
 }
 
-// SplitFirstStatement returns the length of the prefix of the string up to and
-// including the first semicolon that separates statements. If there is no
-// including the first semicolon that separates statements. If there is no
-// semicolon, returns ok=false.
 func SplitFirstStatement(sql string) (pos int, ok bool) {
+	__antithesis_instrumentation__.Notify(552599)
 	s := makeScanner(sql)
 	var lval = &sqlSymType{}
 	for {
+		__antithesis_instrumentation__.Notify(552600)
 		s.Scan(lval)
 		switch lval.ID() {
 		case 0, lexbase.ERROR:
+			__antithesis_instrumentation__.Notify(552601)
 			return 0, false
 		case ';':
+			__antithesis_instrumentation__.Notify(552602)
 			return s.Pos(), true
+		default:
+			__antithesis_instrumentation__.Notify(552603)
 		}
 	}
 }
 
-// Tokens decomposes the input into lexical tokens.
 func Tokens(sql string) (tokens []TokenString, ok bool) {
+	__antithesis_instrumentation__.Notify(552604)
 	s := makeScanner(sql)
 	for {
+		__antithesis_instrumentation__.Notify(552606)
 		var lval = &sqlSymType{}
 		s.Scan(lval)
 		if lval.ID() == lexbase.ERROR {
+			__antithesis_instrumentation__.Notify(552609)
 			return nil, false
+		} else {
+			__antithesis_instrumentation__.Notify(552610)
 		}
+		__antithesis_instrumentation__.Notify(552607)
 		if lval.ID() == 0 {
+			__antithesis_instrumentation__.Notify(552611)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(552612)
 		}
+		__antithesis_instrumentation__.Notify(552608)
 		tokens = append(tokens, TokenString{TokenID: lval.ID(), Str: lval.Str()})
 	}
+	__antithesis_instrumentation__.Notify(552605)
 	return tokens, true
 }
 
-// TokensIgnoreErrors decomposes the input into lexical tokens and
-// ignores errors.
 func TokensIgnoreErrors(sql string) (tokens []TokenString) {
+	__antithesis_instrumentation__.Notify(552613)
 	s := makeScanner(sql)
 	for {
+		__antithesis_instrumentation__.Notify(552615)
 		var lval = &sqlSymType{}
 		s.Scan(lval)
 		if lval.ID() == 0 {
+			__antithesis_instrumentation__.Notify(552617)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(552618)
 		}
+		__antithesis_instrumentation__.Notify(552616)
 		tokens = append(tokens, TokenString{TokenID: lval.ID(), Str: lval.Str()})
 	}
+	__antithesis_instrumentation__.Notify(552614)
 	return tokens
 }
 
-// TokenString is the unit value returned by Tokens.
 type TokenString struct {
 	TokenID int32
 	Str     string

@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package backupccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -16,57 +10,74 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// checkCoverage verifies that spans are covered by a given chain of backups.
 func checkCoverage(ctx context.Context, spans []roachpb.Span, backups []BackupManifest) error {
+	__antithesis_instrumentation__.Notify(8961)
 	if len(spans) == 0 {
+		__antithesis_instrumentation__.Notify(8966)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(8967)
 	}
+	__antithesis_instrumentation__.Notify(8962)
 
 	frontier, err := span.MakeFrontier(spans...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(8968)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(8969)
 	}
+	__antithesis_instrumentation__.Notify(8963)
 
-	// The main loop below requires the entire frontier be caught up to the start
-	// time of each step it proceeds, however a span introduced in a later backup
-	// would hold back the whole frontier at 0 until it is reached, so run through
-	// all layers first to unconditionally advance the introduced spans.
 	for i := range backups {
+		__antithesis_instrumentation__.Notify(8970)
 		for _, sp := range backups[i].IntroducedSpans {
+			__antithesis_instrumentation__.Notify(8971)
 			if _, err := frontier.Forward(sp, backups[i].StartTime); err != nil {
+				__antithesis_instrumentation__.Notify(8972)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(8973)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(8964)
 
-	// Walk through the chain of backups in order advancing the spans each covers
-	// and verify that the entire required span frontier is covered as expected.
 	for i := range backups {
-		// This backup advances its covered spans _from its start time_ to its end
-		// time, so before actually advance those spans in the frontier to that end
-		// time, assert that it is starting at the start time, i.e. that this
-		// backup does indeed pick up where the prior backup left off.
+		__antithesis_instrumentation__.Notify(8974)
+
 		if start, required := frontier.Frontier(), backups[i].StartTime; start.Less(required) {
+			__antithesis_instrumentation__.Notify(8977)
 			s := frontier.PeekFrontierSpan()
 			return errors.Errorf(
 				"no backup covers time [%s,%s) for range [%s,%s) (or backups listed out of order)",
 				start, required, s.Key, s.EndKey,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(8978)
 		}
+		__antithesis_instrumentation__.Notify(8975)
 
-		// Advance every span the backup covers to its end time.
 		for _, s := range backups[i].Spans {
+			__antithesis_instrumentation__.Notify(8979)
 			if _, err := frontier.Forward(s, backups[i].EndTime); err != nil {
+				__antithesis_instrumentation__.Notify(8980)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(8981)
 			}
 		}
+		__antithesis_instrumentation__.Notify(8976)
 
-		// Check that the backup actually covered all the required spans.
 		if end, required := frontier.Frontier(), backups[i].EndTime; end.Less(required) {
+			__antithesis_instrumentation__.Notify(8982)
 			return errors.Errorf("expected previous backups to cover until time %v, got %v (e.g. span %v)",
 				required, end, frontier.PeekFrontierSpan())
+		} else {
+			__antithesis_instrumentation__.Notify(8983)
 		}
 	}
+	__antithesis_instrumentation__.Notify(8965)
 
 	return nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package enginepb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -16,34 +8,42 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// Type implements the pflag.Value interface.
-func (e *EngineType) Type() string { return "string" }
+func (e *EngineType) Type() string { __antithesis_instrumentation__.Notify(633872); return "string" }
 
-// String implements the pflag.Value interface.
-func (e *EngineType) String() string { return redact.StringWithoutMarkers(e) }
+func (e *EngineType) String() string {
+	__antithesis_instrumentation__.Notify(633873)
+	return redact.StringWithoutMarkers(e)
+}
 
-// SafeFormat implements the refact.SafeFormatter interface.
 func (e *EngineType) SafeFormat(p redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(633874)
 	switch *e {
 	case EngineTypeDefault:
+		__antithesis_instrumentation__.Notify(633875)
 		p.SafeString("default")
 	case EngineTypePebble:
+		__antithesis_instrumentation__.Notify(633876)
 		p.SafeString("pebble")
 	default:
+		__antithesis_instrumentation__.Notify(633877)
 		p.Printf("<unknown engine %d>", int32(*e))
 	}
 }
 
-// Set implements the pflag.Value interface.
 func (e *EngineType) Set(s string) error {
+	__antithesis_instrumentation__.Notify(633878)
 	switch s {
 	case "default":
+		__antithesis_instrumentation__.Notify(633880)
 		*e = EngineTypeDefault
 	case "pebble":
+		__antithesis_instrumentation__.Notify(633881)
 		*e = EngineTypePebble
 	default:
+		__antithesis_instrumentation__.Notify(633882)
 		return fmt.Errorf("invalid storage engine: %s "+
 			"(possible values: pebble)", s)
 	}
+	__antithesis_instrumentation__.Notify(633879)
 	return nil
 }

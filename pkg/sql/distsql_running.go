@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -56,14 +48,10 @@ import (
 	pbtypes "github.com/gogo/protobuf/types"
 )
 
-// To allow queries to send out flow RPCs in parallel, we use a pool of workers
-// that can issue the RPCs on behalf of the running code. The pool is shared by
-// multiple queries.
 const numRunners = 16
 
 const clientRejectedMsg string = "client rejected when attempting to run DistSQL plan"
 
-// runnerRequest is the request that is sent (via a channel) to a worker.
 type runnerRequest struct {
 	ctx           context.Context
 	nodeDialer    *nodedialer.Dialer
@@ -72,49 +60,65 @@ type runnerRequest struct {
 	resultChan    chan<- runnerResult
 }
 
-// runnerResult is returned by a worker (via a channel) for each received
-// request.
 type runnerResult struct {
 	nodeID base.SQLInstanceID
 	err    error
 }
 
 func (req runnerRequest) run() {
+	__antithesis_instrumentation__.Notify(467865)
 	res := runnerResult{nodeID: req.sqlInstanceID}
 
 	conn, err := req.nodeDialer.Dial(req.ctx, roachpb.NodeID(req.sqlInstanceID), rpc.DefaultClass)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(467867)
 		res.err = err
 	} else {
+		__antithesis_instrumentation__.Notify(467868)
 		client := execinfrapb.NewDistSQLClient(conn)
-		// TODO(radu): do we want a timeout here?
-		if sp := tracing.SpanFromContext(req.ctx); sp != nil && !sp.IsNoop() {
+
+		if sp := tracing.SpanFromContext(req.ctx); sp != nil && func() bool {
+			__antithesis_instrumentation__.Notify(467870)
+			return !sp.IsNoop() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(467871)
 			req.flowReq.TraceInfo = sp.Meta().ToProto()
+		} else {
+			__antithesis_instrumentation__.Notify(467872)
 		}
+		__antithesis_instrumentation__.Notify(467869)
 		resp, err := client.SetupFlow(req.ctx, req.flowReq)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(467873)
 			res.err = err
 		} else {
+			__antithesis_instrumentation__.Notify(467874)
 			res.err = resp.Error.ErrorDetail(req.ctx)
 		}
 	}
+	__antithesis_instrumentation__.Notify(467866)
 	req.resultChan <- res
 }
 
 func (dsp *DistSQLPlanner) initRunners(ctx context.Context) {
-	// This channel has to be unbuffered because we want to only be able to send
-	// requests if a worker is actually there to receive them.
+	__antithesis_instrumentation__.Notify(467875)
+
 	dsp.runnerChan = make(chan runnerRequest)
 	for i := 0; i < numRunners; i++ {
+		__antithesis_instrumentation__.Notify(467876)
 		_ = dsp.stopper.RunAsyncTask(ctx, "distsql-runner", func(context.Context) {
+			__antithesis_instrumentation__.Notify(467877)
 			runnerChan := dsp.runnerChan
 			stopChan := dsp.stopper.ShouldQuiesce()
 			for {
+				__antithesis_instrumentation__.Notify(467878)
 				select {
 				case req := <-runnerChan:
+					__antithesis_instrumentation__.Notify(467879)
 					req.run()
 
 				case <-stopChan:
+					__antithesis_instrumentation__.Notify(467880)
 					return
 				}
 			}
@@ -122,47 +126,55 @@ func (dsp *DistSQLPlanner) initRunners(ctx context.Context) {
 	}
 }
 
-// To allow for canceling flows via CancelDeadFlows RPC on different nodes
-// simultaneously, we use a pool of workers. It is likely that these workers
-// will be less busy than SetupFlow runners, so we instantiate smaller number of
-// the canceling workers.
 const numCancelingWorkers = numRunners / 4
 
 func (dsp *DistSQLPlanner) initCancelingWorkers(initCtx context.Context) {
+	__antithesis_instrumentation__.Notify(467881)
 	dsp.cancelFlowsCoordinator.workerWait = make(chan struct{}, numCancelingWorkers)
 	const cancelRequestTimeout = 10 * time.Second
 	for i := 0; i < numCancelingWorkers; i++ {
+		__antithesis_instrumentation__.Notify(467882)
 		workerID := i + 1
 		_ = dsp.stopper.RunAsyncTask(initCtx, "distsql-canceling-worker", func(parentCtx context.Context) {
+			__antithesis_instrumentation__.Notify(467883)
 			stopChan := dsp.stopper.ShouldQuiesce()
 			for {
+				__antithesis_instrumentation__.Notify(467884)
 				select {
 				case <-stopChan:
+					__antithesis_instrumentation__.Notify(467885)
 					return
 
 				case <-dsp.cancelFlowsCoordinator.workerWait:
+					__antithesis_instrumentation__.Notify(467886)
 					req, sqlInstanceID := dsp.cancelFlowsCoordinator.getFlowsToCancel()
 					if req == nil {
-						// There are no flows to cancel at the moment. This
-						// shouldn't really happen.
+						__antithesis_instrumentation__.Notify(467889)
+
 						log.VEventf(parentCtx, 2, "worker %d woke up but didn't find any flows to cancel", workerID)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(467890)
 					}
+					__antithesis_instrumentation__.Notify(467887)
 					log.VEventf(parentCtx, 2, "worker %d is canceling at most %d flows on node %d", workerID, len(req.FlowIDs), sqlInstanceID)
-					// TODO: Double check that we only ever cancel flows on SQL nodes/pods here.
+
 					conn, err := dsp.podNodeDialer.Dial(parentCtx, roachpb.NodeID(sqlInstanceID), rpc.DefaultClass)
 					if err != nil {
-						// We failed to dial the node, so we give up given that
-						// our cancellation is best effort. It is possible that
-						// the node is dead anyway.
+						__antithesis_instrumentation__.Notify(467891)
+
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(467892)
 					}
+					__antithesis_instrumentation__.Notify(467888)
 					client := execinfrapb.NewDistSQLClient(conn)
 					_ = contextutil.RunWithTimeout(
 						parentCtx,
 						"cancel dead flows",
 						cancelRequestTimeout,
 						func(ctx context.Context) error {
+							__antithesis_instrumentation__.Notify(467893)
 							_, _ = client.CancelDeadFlows(ctx, req)
 							return nil
 						})
@@ -177,32 +189,30 @@ type deadFlowsOnNode struct {
 	sqlInstanceID base.SQLInstanceID
 }
 
-// cancelFlowsCoordinator is responsible for batching up the requests to cancel
-// remote flows initiated on the behalf of the current node when the local flows
-// errored out.
 type cancelFlowsCoordinator struct {
 	mu struct {
 		syncutil.Mutex
-		// deadFlowsByNode is a ring of pointers to deadFlowsOnNode objects.
+
 		deadFlowsByNode ring.Buffer
 	}
-	// workerWait should be used by canceling workers to block until there are
-	// some dead flows to cancel.
+
 	workerWait chan struct{}
 }
 
-// getFlowsToCancel returns a request to cancel some dead flows on a particular
-// node. If there are no dead flows to cancel, it returns nil, 0. Safe for
-// concurrent usage.
 func (c *cancelFlowsCoordinator) getFlowsToCancel() (
 	*execinfrapb.CancelDeadFlowsRequest,
 	base.SQLInstanceID,
 ) {
+	__antithesis_instrumentation__.Notify(467894)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.mu.deadFlowsByNode.Len() == 0 {
+		__antithesis_instrumentation__.Notify(467896)
 		return nil, base.SQLInstanceID(0)
+	} else {
+		__antithesis_instrumentation__.Notify(467897)
 	}
+	__antithesis_instrumentation__.Notify(467895)
 	deadFlows := c.mu.deadFlowsByNode.GetFirst().(*deadFlowsOnNode)
 	c.mu.deadFlowsByNode.RemoveFirst()
 	req := &execinfrapb.CancelDeadFlowsRequest{
@@ -211,63 +221,68 @@ func (c *cancelFlowsCoordinator) getFlowsToCancel() (
 	return req, deadFlows.sqlInstanceID
 }
 
-// addFlowsToCancel adds all remote flows from flows map to be canceled via
-// CancelDeadFlows RPC. Safe for concurrent usage.
 func (c *cancelFlowsCoordinator) addFlowsToCancel(
 	flows map[base.SQLInstanceID]*execinfrapb.FlowSpec,
 ) {
+	__antithesis_instrumentation__.Notify(467898)
 	c.mu.Lock()
 	for sqlInstanceID, f := range flows {
+		__antithesis_instrumentation__.Notify(467901)
 		if sqlInstanceID != f.Gateway {
-			// c.mu.deadFlowsByNode.Len() is at most the number of nodes in the
-			// cluster, so a linear search for the node ID should be
-			// sufficiently fast.
+			__antithesis_instrumentation__.Notify(467902)
+
 			found := false
 			for j := 0; j < c.mu.deadFlowsByNode.Len(); j++ {
+				__antithesis_instrumentation__.Notify(467904)
 				deadFlows := c.mu.deadFlowsByNode.Get(j).(*deadFlowsOnNode)
 				if sqlInstanceID == deadFlows.sqlInstanceID {
+					__antithesis_instrumentation__.Notify(467905)
 					deadFlows.ids = append(deadFlows.ids, f.FlowID)
 					found = true
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(467906)
 				}
 			}
+			__antithesis_instrumentation__.Notify(467903)
 			if !found {
+				__antithesis_instrumentation__.Notify(467907)
 				c.mu.deadFlowsByNode.AddLast(&deadFlowsOnNode{
 					ids:           []execinfrapb.FlowID{f.FlowID},
 					sqlInstanceID: sqlInstanceID,
 				})
+			} else {
+				__antithesis_instrumentation__.Notify(467908)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(467909)
 		}
 	}
+	__antithesis_instrumentation__.Notify(467899)
 	queueLength := c.mu.deadFlowsByNode.Len()
 	c.mu.Unlock()
 
-	// Notify the canceling workers that there are some flows to cancel (we send
-	// on the channel at most the length of the queue number of times in order
-	// to not wake up the workers uselessly). Note that we do it in a
-	// non-blocking fashion (because the workers might be busy canceling other
-	// flows at the moment). Also because the channel is buffered, they won't go
-	// to sleep once they are done.
 	numWorkersToWakeUp := numCancelingWorkers
 	if numWorkersToWakeUp > queueLength {
+		__antithesis_instrumentation__.Notify(467910)
 		numWorkersToWakeUp = queueLength
+	} else {
+		__antithesis_instrumentation__.Notify(467911)
 	}
+	__antithesis_instrumentation__.Notify(467900)
 	for i := 0; i < numWorkersToWakeUp; i++ {
+		__antithesis_instrumentation__.Notify(467912)
 		select {
 		case c.workerWait <- struct{}{}:
+			__antithesis_instrumentation__.Notify(467913)
 		default:
-			// We have filled the buffer of the channel, so there is no need to
-			// try to send any more notifications.
+			__antithesis_instrumentation__.Notify(467914)
+
 			return
 		}
 	}
 }
 
-// setupFlows sets up all the flows specified in flows using the provided state.
-// It will first attempt to set up all remote flows using the dsp workers if
-// available or sequentially if not, and then finally set up the gateway flow,
-// whose output is the DistSQLReceiver provided. This flow is then returned to
-// be run.
 func (dsp *DistSQLPlanner) setupFlows(
 	ctx context.Context,
 	evalCtx *extendedEvalContext,
@@ -278,19 +293,35 @@ func (dsp *DistSQLPlanner) setupFlows(
 	collectStats bool,
 	statementSQL string,
 ) (context.Context, flowinfra.Flow, execinfra.OpChains, error) {
+	__antithesis_instrumentation__.Notify(467915)
 	thisNodeID := dsp.gatewaySQLInstanceID
 	_, ok := flows[thisNodeID]
 	if !ok {
+		__antithesis_instrumentation__.Notify(467925)
 		return nil, nil, nil, errors.AssertionFailedf("missing gateway flow")
+	} else {
+		__antithesis_instrumentation__.Notify(467926)
 	}
-	if localState.IsLocal && len(flows) != 1 {
+	__antithesis_instrumentation__.Notify(467916)
+	if localState.IsLocal && func() bool {
+		__antithesis_instrumentation__.Notify(467927)
+		return len(flows) != 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(467928)
 		return nil, nil, nil, errors.AssertionFailedf("IsLocal set but there's multiple flows")
+	} else {
+		__antithesis_instrumentation__.Notify(467929)
 	}
+	__antithesis_instrumentation__.Notify(467917)
 
 	const setupFlowRequestStmtMaxLength = 500
 	if len(statementSQL) > setupFlowRequestStmtMaxLength {
+		__antithesis_instrumentation__.Notify(467930)
 		statementSQL = statementSQL[:setupFlowRequestStmtMaxLength]
+	} else {
+		__antithesis_instrumentation__.Notify(467931)
 	}
+	__antithesis_instrumentation__.Notify(467918)
 	setupReq := execinfrapb.SetupFlowRequest{
 		LeafTxnInputState: leafInputState,
 		Version:           execinfra.Version,
@@ -300,34 +331,51 @@ func (dsp *DistSQLPlanner) setupFlows(
 		StatementSQL:      statementSQL,
 	}
 
-	// Start all the flows except the flow on this node (there is always a flow on
-	// this node).
 	var resultChan chan runnerResult
 	if len(flows) > 1 {
+		__antithesis_instrumentation__.Notify(467932)
 		resultChan = make(chan runnerResult, len(flows)-1)
+	} else {
+		__antithesis_instrumentation__.Notify(467933)
 	}
+	__antithesis_instrumentation__.Notify(467919)
 
 	if vectorizeMode := evalCtx.SessionData().VectorizeMode; vectorizeMode != sessiondatapb.VectorizeOff {
-		// Now we determine whether the vectorized engine supports the flow
-		// specs.
+		__antithesis_instrumentation__.Notify(467934)
+
 		for _, spec := range flows {
+			__antithesis_instrumentation__.Notify(467935)
 			if err := colflow.IsSupported(vectorizeMode, spec); err != nil {
+				__antithesis_instrumentation__.Notify(467936)
 				log.VEventf(ctx, 2, "failed to vectorize: %s", err)
 				if vectorizeMode == sessiondatapb.VectorizeExperimentalAlways {
+					__antithesis_instrumentation__.Notify(467938)
 					return nil, nil, nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(467939)
 				}
-				// Vectorization is not supported for this flow, so we override the
-				// setting.
+				__antithesis_instrumentation__.Notify(467937)
+
 				setupReq.EvalContext.SessionData.VectorizeMode = sessiondatapb.VectorizeOff
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(467940)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(467941)
 	}
+	__antithesis_instrumentation__.Notify(467920)
 	for nodeID, flowSpec := range flows {
+		__antithesis_instrumentation__.Notify(467942)
 		if nodeID == thisNodeID {
-			// Skip this node.
+			__antithesis_instrumentation__.Notify(467944)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(467945)
 		}
+		__antithesis_instrumentation__.Notify(467943)
 		req := setupReq
 		req.Flow = *flowSpec
 		runReq := runnerRequest{
@@ -338,61 +386,51 @@ func (dsp *DistSQLPlanner) setupFlows(
 			resultChan:    resultChan,
 		}
 
-		// Send out a request to the workers; if no worker is available, run
-		// directly.
 		select {
 		case dsp.runnerChan <- runReq:
+			__antithesis_instrumentation__.Notify(467946)
 		default:
+			__antithesis_instrumentation__.Notify(467947)
 			runReq.run()
 		}
 	}
+	__antithesis_instrumentation__.Notify(467921)
 
 	var firstErr error
-	// Now wait for all the flows to be scheduled on remote nodes. Note that we
-	// are not waiting for the flows themselves to complete.
+
 	for i := 0; i < len(flows)-1; i++ {
+		__antithesis_instrumentation__.Notify(467948)
 		res := <-resultChan
 		if firstErr == nil {
+			__antithesis_instrumentation__.Notify(467949)
 			firstErr = res.err
+		} else {
+			__antithesis_instrumentation__.Notify(467950)
 		}
-		// TODO(radu): accumulate the flows that we failed to set up and move them
-		// into the local flow.
-	}
-	if firstErr != nil {
-		return nil, nil, nil, firstErr
-	}
 
-	// Set up the flow on this node.
+	}
+	__antithesis_instrumentation__.Notify(467922)
+	if firstErr != nil {
+		__antithesis_instrumentation__.Notify(467951)
+		return nil, nil, nil, firstErr
+	} else {
+		__antithesis_instrumentation__.Notify(467952)
+	}
+	__antithesis_instrumentation__.Notify(467923)
+
 	setupReq.Flow = *flows[thisNodeID]
 	var batchReceiver execinfra.BatchReceiver
 	if recv.batchWriter != nil {
-		// Use the DistSQLReceiver as an execinfra.BatchReceiver only if the
-		// former has the corresponding writer set.
+		__antithesis_instrumentation__.Notify(467953)
+
 		batchReceiver = recv
+	} else {
+		__antithesis_instrumentation__.Notify(467954)
 	}
+	__antithesis_instrumentation__.Notify(467924)
 	return dsp.distSQLSrv.SetupLocalSyncFlow(ctx, evalCtx.Mon, &setupReq, recv, batchReceiver, localState)
 }
 
-// Run executes a physical plan. The plan should have been finalized using
-// FinalizePlan.
-//
-// All errors encountered are reported to the DistSQLReceiver's resultWriter.
-// Additionally, if the error is a "communication error" (an error encountered
-// while using that resultWriter), the error is also stored in
-// DistSQLReceiver.commErr. That can be tested to see if a client session needs
-// to be closed.
-//
-// Args:
-// - txn is the transaction in which the plan will run. If nil, the different
-// processors are expected to manage their own internal transactions.
-// - evalCtx is the evaluation context in which the plan will run. It might be
-// mutated.
-// - finishedSetupFn, if non-nil, is called synchronously after all the
-// processors have successfully started up.
-//
-// It returns a non-nil (although it can be a noop when an error is
-// encountered) cleanup function that must be called in order to release the
-// resources.
 func (dsp *DistSQLPlanner) Run(
 	ctx context.Context,
 	planCtx *PlanningCtx,
@@ -402,98 +440,141 @@ func (dsp *DistSQLPlanner) Run(
 	evalCtx *extendedEvalContext,
 	finishedSetupFn func(),
 ) (cleanup func()) {
-	cleanup = func() {}
+	__antithesis_instrumentation__.Notify(467955)
+	cleanup = func() { __antithesis_instrumentation__.Notify(467974) }
+	__antithesis_instrumentation__.Notify(467956)
 
 	flows := plan.GenerateFlowSpecs()
 	defer func() {
+		__antithesis_instrumentation__.Notify(467975)
 		for _, flowSpec := range flows {
+			__antithesis_instrumentation__.Notify(467976)
 			physicalplan.ReleaseFlowSpec(flowSpec)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(467957)
 	if _, ok := flows[dsp.gatewaySQLInstanceID]; !ok {
+		__antithesis_instrumentation__.Notify(467977)
 		recv.SetError(errors.Errorf("expected to find gateway flow"))
 		return cleanup
+	} else {
+		__antithesis_instrumentation__.Notify(467978)
 	}
+	__antithesis_instrumentation__.Notify(467958)
 
 	var (
 		localState     distsql.LocalState
 		leafInputState *roachpb.LeafTxnInputState
 	)
-	// NB: putting part of evalCtx in localState means it might be mutated down
-	// the line.
+
 	localState.EvalContext = &evalCtx.EvalContext
 	localState.Txn = txn
 	localState.LocalProcs = plan.LocalProcessors
-	// If we need to perform some operation on the flow specs, we want to
-	// preserve the specs during the flow setup.
+
 	localState.PreserveFlowSpecs = planCtx.saveFlows != nil
-	// If we have access to a planner and are currently being used to plan
-	// statements in a user transaction, then take the descs.Collection to resolve
-	// types with during flow execution. This is necessary to do in the case of
-	// a transaction that has already created or updated some types. If we do not
-	// use the local descs.Collection, we would attempt to acquire a lease on
-	// modified types when accessing them, which would error out.
-	if planCtx.planner != nil && !planCtx.planner.isInternalPlanner {
+
+	if planCtx.planner != nil && func() bool {
+		__antithesis_instrumentation__.Notify(467979)
+		return !planCtx.planner.isInternalPlanner == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(467980)
 		localState.Collection = planCtx.planner.Descriptors()
+	} else {
+		__antithesis_instrumentation__.Notify(467981)
 	}
+	__antithesis_instrumentation__.Notify(467959)
 
 	if planCtx.isLocal {
+		__antithesis_instrumentation__.Notify(467982)
 		localState.IsLocal = true
 		if planCtx.parallelizeScansIfLocal {
-			// Even though we have a single flow on the gateway node, we might
-			// have decided to parallelize the scans. If that's the case, we
-			// will need to use the Leaf txn.
+			__antithesis_instrumentation__.Notify(467983)
+
 			for _, flow := range flows {
-				localState.HasConcurrency = localState.HasConcurrency || execinfra.HasParallelProcessors(flow)
+				__antithesis_instrumentation__.Notify(467984)
+				localState.HasConcurrency = localState.HasConcurrency || func() bool {
+					__antithesis_instrumentation__.Notify(467985)
+					return execinfra.HasParallelProcessors(flow) == true
+				}() == true
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(467986)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(467987)
 	}
-	// Even if planCtx.isLocal is false (which is the case when we think it's
-	// worth distributing the query), we need to go through the processors to
-	// figure out whether any of them have concurrency.
-	//
-	// At the moment of writing, this is only relevant whenever the Streamer API
-	// might be used by some of the processors. The Streamer internally can have
-	// concurrency, so it expects to be given a LeafTxn. In order for that
-	// LeafTxn to be created later, during the flow setup, we need to populate
-	// leafInputState below, so we tell the localState that there is
-	// concurrency.
+	__antithesis_instrumentation__.Notify(467960)
+
 	if row.CanUseStreamer(ctx, dsp.st) {
+		__antithesis_instrumentation__.Notify(467988)
 		for _, proc := range plan.Processors {
+			__antithesis_instrumentation__.Notify(467989)
 			if jr := proc.Spec.Core.JoinReader; jr != nil {
+				__antithesis_instrumentation__.Notify(467990)
 				if jr.IsIndexJoin() {
-					// Index joins are executed via the Streamer API that has
-					// concurrency.
+					__antithesis_instrumentation__.Notify(467991)
+
 					localState.HasConcurrency = true
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(467992)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(467993)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(467994)
 	}
-	if localState.MustUseLeafTxn() && txn != nil {
-		// Set up leaf txns using the txnCoordMeta if we need to.
+	__antithesis_instrumentation__.Notify(467961)
+	if localState.MustUseLeafTxn() && func() bool {
+		__antithesis_instrumentation__.Notify(467995)
+		return txn != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(467996)
+
 		tis, err := txn.GetLeafTxnInputStateOrRejectClient(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(467998)
 			log.Infof(ctx, "%s: %s", clientRejectedMsg, err)
 			recv.SetError(err)
 			return cleanup
+		} else {
+			__antithesis_instrumentation__.Notify(467999)
 		}
+		__antithesis_instrumentation__.Notify(467997)
 		leafInputState = tis
+	} else {
+		__antithesis_instrumentation__.Notify(468000)
 	}
+	__antithesis_instrumentation__.Notify(467962)
 
 	if logPlanDiagram {
+		__antithesis_instrumentation__.Notify(468001)
 		log.VEvent(ctx, 3, "creating plan diagram for logging")
 		var stmtStr string
-		if planCtx.planner != nil && planCtx.planner.stmt.AST != nil {
+		if planCtx.planner != nil && func() bool {
+			__antithesis_instrumentation__.Notify(468003)
+			return planCtx.planner.stmt.AST != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(468004)
 			stmtStr = planCtx.planner.stmt.String()
+		} else {
+			__antithesis_instrumentation__.Notify(468005)
 		}
+		__antithesis_instrumentation__.Notify(468002)
 		_, url, err := execinfrapb.GeneratePlanDiagramURL(stmtStr, flows, execinfrapb.DiagramFlags{})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(468006)
 			log.Infof(ctx, "error generating diagram: %s", err)
 		} else {
+			__antithesis_instrumentation__.Notify(468007)
 			log.Infof(ctx, "plan diagram URL:\n%s", url.String())
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(468008)
 	}
+	__antithesis_instrumentation__.Notify(467963)
 
 	log.VEvent(ctx, 2, "running DistSQL plan")
 
@@ -504,139 +585,142 @@ func (dsp *DistSQLPlanner) Run(
 	recv.contendedQueryMetric = dsp.distSQLSrv.Metrics.ContendedQueriesCount
 
 	if len(flows) == 1 {
-		// We ended up planning everything locally, regardless of whether we
-		// intended to distribute or not.
+		__antithesis_instrumentation__.Notify(468009)
+
 		localState.IsLocal = true
 	} else {
+		__antithesis_instrumentation__.Notify(468010)
 		defer func() {
+			__antithesis_instrumentation__.Notify(468011)
 			if recv.resultWriter.Err() != nil {
-				// The execution of this query encountered some error, so we
-				// will eagerly cancel all scheduled flows on the remote nodes
-				// (if they haven't been started yet) because they are now dead.
-				// TODO(yuzefovich): consider whether augmenting
-				// ConnectInboundStream to keep track of the streams that
-				// initiated FlowStream RPC is worth it - the flows containing
-				// such streams must have been started, so there is no point in
-				// trying to cancel them this way. This will allow us to reduce
-				// the size of the CancelDeadFlows request and speed up the
-				// lookup on the remote node whether a particular dead flow
-				// should be canceled. However, this improves the unhappy case,
-				// but it'll slowdown the happy case - by introducing additional
-				// tracking.
+				__antithesis_instrumentation__.Notify(468012)
+
 				dsp.cancelFlowsCoordinator.addFlowsToCancel(flows)
+			} else {
+				__antithesis_instrumentation__.Notify(468013)
 			}
 		}()
 	}
+	__antithesis_instrumentation__.Notify(467964)
 
-	// Currently, we get the statement only if there is a planner available in
-	// the planCtx which is the case only on the "main" query path (for
-	// user-issued queries).
-	// TODO(yuzefovich): propagate the statement in all cases.
 	var statementSQL string
 	if planCtx.planner != nil {
+		__antithesis_instrumentation__.Notify(468014)
 		statementSQL = planCtx.planner.stmt.StmtNoConstants
+	} else {
+		__antithesis_instrumentation__.Notify(468015)
 	}
+	__antithesis_instrumentation__.Notify(467965)
 	ctx, flow, opChains, err := dsp.setupFlows(
 		ctx, evalCtx, leafInputState, flows, recv, localState, planCtx.collectExecStats, statementSQL,
 	)
-	// Make sure that the local flow is always cleaned up if it was created.
+
 	if flow != nil {
+		__antithesis_instrumentation__.Notify(468016)
 		cleanup = func() {
+			__antithesis_instrumentation__.Notify(468017)
 			flow.Cleanup(ctx)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(468018)
 	}
+	__antithesis_instrumentation__.Notify(467966)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(468019)
 		recv.SetError(err)
 		return cleanup
+	} else {
+		__antithesis_instrumentation__.Notify(468020)
 	}
+	__antithesis_instrumentation__.Notify(467967)
 
 	if finishedSetupFn != nil {
+		__antithesis_instrumentation__.Notify(468021)
 		finishedSetupFn()
+	} else {
+		__antithesis_instrumentation__.Notify(468022)
 	}
+	__antithesis_instrumentation__.Notify(467968)
 
-	if planCtx.planner != nil && flow.IsVectorized() {
+	if planCtx.planner != nil && func() bool {
+		__antithesis_instrumentation__.Notify(468023)
+		return flow.IsVectorized() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(468024)
 		planCtx.planner.curPlan.flags.Set(planFlagVectorized)
+	} else {
+		__antithesis_instrumentation__.Notify(468025)
 	}
+	__antithesis_instrumentation__.Notify(467969)
 
 	if planCtx.saveFlows != nil {
+		__antithesis_instrumentation__.Notify(468026)
 		if err := planCtx.saveFlows(flows, opChains); err != nil {
+			__antithesis_instrumentation__.Notify(468027)
 			recv.SetError(err)
 			return cleanup
+		} else {
+			__antithesis_instrumentation__.Notify(468028)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(468029)
 	}
+	__antithesis_instrumentation__.Notify(467970)
 
-	// Check that flows that were forced to be planned locally and didn't need
-	// to have concurrency don't actually have it.
-	//
-	// This is important, since these flows are forced to use the RootTxn (since
-	// they might have mutations), and the RootTxn does not permit concurrency.
-	// For such flows, we were supposed to have fused everything.
-	if txn != nil && !localState.MustUseLeafTxn() && flow.ConcurrentTxnUse() {
+	if txn != nil && func() bool {
+		__antithesis_instrumentation__.Notify(468030)
+		return !localState.MustUseLeafTxn() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(468031)
+		return flow.ConcurrentTxnUse() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(468032)
 		recv.SetError(errors.AssertionFailedf(
 			"unexpected concurrency for a flow that was forced to be planned locally"))
 		return cleanup
+	} else {
+		__antithesis_instrumentation__.Notify(468033)
 	}
+	__antithesis_instrumentation__.Notify(467971)
 
-	// TODO(radu): this should go through the flow scheduler.
-	flow.Run(ctx, func() {})
+	flow.Run(ctx, func() { __antithesis_instrumentation__.Notify(468034) })
+	__antithesis_instrumentation__.Notify(467972)
 
-	// TODO(yuzefovich): it feels like this closing should happen after
-	// PlanAndRun. We should refactor this and get rid off ignoreClose field.
-	if planCtx.planner != nil && !planCtx.ignoreClose {
-		// planCtx can change before the cleanup function is executed, so we make
-		// a copy of the planner and bind it to the function.
+	if planCtx.planner != nil && func() bool {
+		__antithesis_instrumentation__.Notify(468035)
+		return !planCtx.ignoreClose == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(468036)
+
 		curPlan := &planCtx.planner.curPlan
 		return func() {
-			// We need to close the planNode tree we translated into a DistSQL plan
-			// before flow.Cleanup, which closes memory accounts that expect to be
-			// emptied.
+			__antithesis_instrumentation__.Notify(468037)
+
 			curPlan.close(ctx)
 			flow.Cleanup(ctx)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(468038)
 	}
+	__antithesis_instrumentation__.Notify(467973)
 
-	// ignoreClose is set to true meaning that someone else will handle the
-	// closing of the current plan, so we simply clean up the flow.
 	return cleanup
 }
 
-// DistSQLReceiver is an execinfra.RowReceiver and execinfra.BatchReceiver that
-// writes results to a rowResultWriter and batchResultWriter, respectively. This
-// is where the DistSQL execution meets the SQL Session - the result writer
-// comes from a client Session.
-//
-// DistSQLReceiver also update the RangeDescriptorCache in response to DistSQL
-// metadata about misplanned ranges.
 type DistSQLReceiver struct {
 	ctx context.Context
 
-	// These two interfaces refer to the same object, but batchWriter might be
-	// unset (resultWriter is always set). These are used to send the results
-	// to.
 	resultWriter rowResultWriter
 	batchWriter  batchResultWriter
 
 	stmtType tree.StatementReturnType
 
-	// outputTypes are the types of the result columns produced by the plan.
 	outputTypes []*types.T
 
-	// existsMode indicates that the caller is only interested in the existence
-	// of a single row. Used by subqueries in EXISTS mode.
 	existsMode bool
 
-	// discardRows is set when we want to discard rows (for testing/benchmarks).
-	// See EXECUTE .. DISCARD ROWS.
 	discardRows bool
 
-	// commErr keeps track of the error received from interacting with the
-	// resultWriter. This represents a "communication error" and as such is unlike
-	// query execution errors: when the DistSQLReceiver is used within a SQL
-	// session, such errors mean that we have to bail on the session.
-	// Query execution errors are reported to the resultWriter. For some client's
-	// convenience, communication errors are also reported to the resultWriter.
-	//
-	// Once set, no more rows are accepted.
 	commErr error
 
 	row    tree.Datums
@@ -646,20 +730,11 @@ type DistSQLReceiver struct {
 
 	rangeCache *rangecache.RangeCache
 	tracing    *SessionTracing
-	// cleanup will be called when the DistSQLReceiver is Release()'d back to
-	// its sync.Pool.
+
 	cleanup func()
 
-	// The transaction in which the flow producing data for this
-	// receiver runs. The DistSQLReceiver updates the transaction in
-	// response to RetryableTxnError's and when distributed processors
-	// pass back LeafTxnFinalState objects via ProducerMetas. Nil if no
-	// transaction should be updated on errors (i.e. if the flow overall
-	// doesn't run in a transaction).
 	txn *kv.Txn
 
-	// A handler for clock signals arriving from remote nodes. This should update
-	// this node's clock.
 	clockUpdater clockUpdater
 
 	stats *topLevelQueryStats
@@ -667,67 +742,53 @@ type DistSQLReceiver struct {
 	expectedRowsRead int64
 	progressAtomic   *uint64
 
-	// contendedQueryMetric is a Counter that is incremented at most once if the
-	// query produces at least one contention event.
 	contendedQueryMetric *metric.Counter
-	// contentionRegistry is a Registry that contention events are added to.
+
 	contentionRegistry *contention.Registry
 
 	testingKnobs struct {
-		// pushCallback, if set, will be called every time DistSQLReceiver.Push
-		// is called, with the same arguments.
 		pushCallback func(rowenc.EncDatumRow, *execinfrapb.ProducerMetadata)
 	}
 }
 
-// rowResultWriter is a subset of CommandResult to be used with the
-// DistSQLReceiver. It's implemented by RowResultWriter.
 type rowResultWriter interface {
-	// AddRow writes a result row.
-	// Note that the caller owns the row slice and might reuse it.
 	AddRow(ctx context.Context, row tree.Datums) error
 	IncrementRowsAffected(ctx context.Context, n int)
 	SetError(error)
 	Err() error
 }
 
-// batchResultWriter is a subset of CommandResult to be used with the
-// DistSQLReceiver when the consumer can operate on columnar batches directly.
 type batchResultWriter interface {
 	AddBatch(context.Context, coldata.Batch) error
 }
 
-// MetadataResultWriter is used to stream metadata rather than row results in a
-// DistSQL flow.
 type MetadataResultWriter interface {
 	AddMeta(ctx context.Context, meta *execinfrapb.ProducerMetadata)
 }
 
-// MetadataCallbackWriter wraps a rowResultWriter to stream metadata in a
-// DistSQL flow. It executes a given callback when metadata is added.
 type MetadataCallbackWriter struct {
 	rowResultWriter
 	fn func(ctx context.Context, meta *execinfrapb.ProducerMetadata) error
 }
 
-// AddMeta implements the MetadataResultWriter interface.
 func (w *MetadataCallbackWriter) AddMeta(ctx context.Context, meta *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(468039)
 	if err := w.fn(ctx, meta); err != nil {
+		__antithesis_instrumentation__.Notify(468040)
 		w.SetError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(468041)
 	}
 }
 
-// NewMetadataCallbackWriter creates a new MetadataCallbackWriter.
 func NewMetadataCallbackWriter(
 	rowResultWriter rowResultWriter,
 	metaFn func(ctx context.Context, meta *execinfrapb.ProducerMetadata) error,
 ) *MetadataCallbackWriter {
+	__antithesis_instrumentation__.Notify(468042)
 	return &MetadataCallbackWriter{rowResultWriter: rowResultWriter, fn: metaFn}
 }
 
-// errOnlyResultWriter is a rowResultWriter and batchResultWriter that only
-// supports receiving an error. All other functions that deal with producing
-// results panic.
 type errOnlyResultWriter struct {
 	err error
 }
@@ -736,25 +797,29 @@ var _ rowResultWriter = &errOnlyResultWriter{}
 var _ batchResultWriter = &errOnlyResultWriter{}
 
 func (w *errOnlyResultWriter) SetError(err error) {
+	__antithesis_instrumentation__.Notify(468043)
 	w.err = err
 }
 func (w *errOnlyResultWriter) Err() error {
+	__antithesis_instrumentation__.Notify(468044)
 	return w.err
 }
 
 func (w *errOnlyResultWriter) AddRow(ctx context.Context, row tree.Datums) error {
+	__antithesis_instrumentation__.Notify(468045)
 	panic("AddRow not supported by errOnlyResultWriter")
 }
 
 func (w *errOnlyResultWriter) AddBatch(ctx context.Context, batch coldata.Batch) error {
+	__antithesis_instrumentation__.Notify(468046)
 	panic("AddBatch not supported by errOnlyResultWriter")
 }
 
 func (w *errOnlyResultWriter) IncrementRowsAffected(ctx context.Context, n int) {
+	__antithesis_instrumentation__.Notify(468047)
 	panic("IncrementRowsAffected not supported by errOnlyResultWriter")
 }
 
-// RowResultWriter is a thin wrapper around a RowContainer.
 type RowResultWriter struct {
 	rowContainer *rowContainerHelper
 	rowsAffected int
@@ -763,36 +828,38 @@ type RowResultWriter struct {
 
 var _ rowResultWriter = &RowResultWriter{}
 
-// NewRowResultWriter creates a new RowResultWriter.
 func NewRowResultWriter(rowContainer *rowContainerHelper) *RowResultWriter {
+	__antithesis_instrumentation__.Notify(468048)
 	return &RowResultWriter{rowContainer: rowContainer}
 }
 
-// IncrementRowsAffected implements the rowResultWriter interface.
 func (b *RowResultWriter) IncrementRowsAffected(ctx context.Context, n int) {
+	__antithesis_instrumentation__.Notify(468049)
 	b.rowsAffected += n
 }
 
-// AddRow implements the rowResultWriter interface.
 func (b *RowResultWriter) AddRow(ctx context.Context, row tree.Datums) error {
+	__antithesis_instrumentation__.Notify(468050)
 	if b.rowContainer != nil {
+		__antithesis_instrumentation__.Notify(468052)
 		return b.rowContainer.AddRow(ctx, row)
+	} else {
+		__antithesis_instrumentation__.Notify(468053)
 	}
+	__antithesis_instrumentation__.Notify(468051)
 	return nil
 }
 
-// SetError is part of the rowResultWriter interface.
 func (b *RowResultWriter) SetError(err error) {
+	__antithesis_instrumentation__.Notify(468054)
 	b.err = err
 }
 
-// Err is part of the rowResultWriter interface.
 func (b *RowResultWriter) Err() error {
+	__antithesis_instrumentation__.Notify(468055)
 	return b.err
 }
 
-// CallbackResultWriter is a rowResultWriter that runs a callback function
-// on AddRow.
 type CallbackResultWriter struct {
 	fn           func(ctx context.Context, row tree.Datums) error
 	rowsAffected int
@@ -801,30 +868,30 @@ type CallbackResultWriter struct {
 
 var _ rowResultWriter = &CallbackResultWriter{}
 
-// NewCallbackResultWriter creates a new CallbackResultWriter.
 func NewCallbackResultWriter(
 	fn func(ctx context.Context, row tree.Datums) error,
 ) *CallbackResultWriter {
+	__antithesis_instrumentation__.Notify(468056)
 	return &CallbackResultWriter{fn: fn}
 }
 
-// IncrementRowsAffected is part of the rowResultWriter interface.
 func (c *CallbackResultWriter) IncrementRowsAffected(ctx context.Context, n int) {
+	__antithesis_instrumentation__.Notify(468057)
 	c.rowsAffected += n
 }
 
-// AddRow is part of the rowResultWriter interface.
 func (c *CallbackResultWriter) AddRow(ctx context.Context, row tree.Datums) error {
+	__antithesis_instrumentation__.Notify(468058)
 	return c.fn(ctx, row)
 }
 
-// SetError is part of the rowResultWriter interface.
 func (c *CallbackResultWriter) SetError(err error) {
+	__antithesis_instrumentation__.Notify(468059)
 	c.err = err
 }
 
-// Err is part of the rowResultWriter interface.
 func (c *CallbackResultWriter) Err() error {
+	__antithesis_instrumentation__.Notify(468060)
 	return c.err
 }
 
@@ -833,25 +900,15 @@ var _ execinfra.BatchReceiver = &DistSQLReceiver{}
 
 var receiverSyncPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(468061)
 		return &DistSQLReceiver{}
 	},
 }
 
-// ClockUpdater describes an object that can be updated with an observed
-// timestamp. Usually wraps an hlc.Clock.
 type clockUpdater interface {
-	// Update updates this ClockUpdater with the observed hlc.Timestamp.
 	Update(observedTS hlc.ClockTimestamp)
 }
 
-// MakeDistSQLReceiver creates a DistSQLReceiver.
-//
-// ctx is the Context that the receiver will use throughout its
-// lifetime. resultWriter is the container where the results will be
-// stored. If only the row count is needed, this can be nil.
-//
-// txn is the transaction in which the producer flow runs; it will be updated
-// on errors. Nil if the flow overall doesn't run in a transaction.
 func MakeDistSQLReceiver(
 	ctx context.Context,
 	resultWriter rowResultWriter,
@@ -863,16 +920,23 @@ func MakeDistSQLReceiver(
 	contentionRegistry *contention.Registry,
 	testingPushCallback func(rowenc.EncDatumRow, *execinfrapb.ProducerMetadata),
 ) *DistSQLReceiver {
+	__antithesis_instrumentation__.Notify(468062)
 	consumeCtx, cleanup := tracing.TraceExecConsume(ctx)
 	r := receiverSyncPool.Get().(*DistSQLReceiver)
-	// Check whether the result writer supports pushing batches into it directly
-	// without having to materialize them.
+
 	var batchWriter batchResultWriter
 	if commandResult, ok := resultWriter.(RestrictedCommandResult); ok {
+		__antithesis_instrumentation__.Notify(468064)
 		if commandResult.SupportsAddBatch() {
+			__antithesis_instrumentation__.Notify(468065)
 			batchWriter = commandResult
+		} else {
+			__antithesis_instrumentation__.Notify(468066)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(468067)
 	}
+	__antithesis_instrumentation__.Notify(468063)
 	*r = DistSQLReceiver{
 		ctx:                consumeCtx,
 		cleanup:            cleanup,
@@ -890,20 +954,19 @@ func MakeDistSQLReceiver(
 	return r
 }
 
-// Release releases this DistSQLReceiver back to the pool.
 func (r *DistSQLReceiver) Release() {
+	__antithesis_instrumentation__.Notify(468068)
 	r.cleanup()
 	*r = DistSQLReceiver{}
 	receiverSyncPool.Put(r)
 }
 
-// clone clones the receiver for running sub- and post-queries. Not all fields
-// are cloned. The receiver should be released when no longer needed.
 func (r *DistSQLReceiver) clone() *DistSQLReceiver {
+	__antithesis_instrumentation__.Notify(468069)
 	ret := receiverSyncPool.Get().(*DistSQLReceiver)
 	*ret = DistSQLReceiver{
 		ctx:                r.ctx,
-		cleanup:            func() {},
+		cleanup:            func() { __antithesis_instrumentation__.Notify(468071) },
 		rangeCache:         r.rangeCache,
 		txn:                r.txn,
 		clockUpdater:       r.clockUpdater,
@@ -912,279 +975,397 @@ func (r *DistSQLReceiver) clone() *DistSQLReceiver {
 		tracing:            r.tracing,
 		contentionRegistry: r.contentionRegistry,
 	}
+	__antithesis_instrumentation__.Notify(468070)
 	return ret
 }
 
-// SetError provides a convenient way for a client to pass in an error, thus
-// pretending that a query execution error happened. The error is passed along
-// to the resultWriter.
-//
-// The status of DistSQLReceiver is updated accordingly.
 func (r *DistSQLReceiver) SetError(err error) {
+	__antithesis_instrumentation__.Notify(468072)
 	r.resultWriter.SetError(err)
-	// If we encountered an error, we will transition to draining unless we were
-	// canceled.
+
 	if r.ctx.Err() != nil {
+		__antithesis_instrumentation__.Notify(468073)
 		log.VEventf(r.ctx, 1, "encountered error (transitioning to shutting down): %v", r.ctx.Err())
 		r.status = execinfra.ConsumerClosed
 	} else {
+		__antithesis_instrumentation__.Notify(468074)
 		log.VEventf(r.ctx, 1, "encountered error (transitioning to draining): %v", err)
 		r.status = execinfra.DrainRequested
 	}
 }
 
-// pushMeta takes in non-empty metadata object and pushes it to the result
-// writer. Possibly updated status is returned.
 func (r *DistSQLReceiver) pushMeta(meta *execinfrapb.ProducerMetadata) execinfra.ConsumerStatus {
+	__antithesis_instrumentation__.Notify(468075)
 	if metaWriter, ok := r.resultWriter.(MetadataResultWriter); ok {
+		__antithesis_instrumentation__.Notify(468082)
 		metaWriter.AddMeta(r.ctx, meta)
+	} else {
+		__antithesis_instrumentation__.Notify(468083)
 	}
+	__antithesis_instrumentation__.Notify(468076)
 	if meta.LeafTxnFinalState != nil {
+		__antithesis_instrumentation__.Notify(468084)
 		if r.txn != nil {
+			__antithesis_instrumentation__.Notify(468085)
 			if r.txn.ID() == meta.LeafTxnFinalState.Txn.ID {
+				__antithesis_instrumentation__.Notify(468086)
 				if err := r.txn.UpdateRootWithLeafFinalState(r.ctx, meta.LeafTxnFinalState); err != nil {
+					__antithesis_instrumentation__.Notify(468087)
 					r.SetError(err)
+				} else {
+					__antithesis_instrumentation__.Notify(468088)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(468089)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(468090)
 			r.SetError(
 				errors.Errorf("received a leaf final state (%s); but have no root", meta.LeafTxnFinalState))
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(468091)
 	}
+	__antithesis_instrumentation__.Notify(468077)
 	if meta.Err != nil {
-		// Check if the error we just received should take precedence over a
-		// previous error (if any).
+		__antithesis_instrumentation__.Notify(468092)
+
 		if roachpb.ErrPriority(meta.Err) > roachpb.ErrPriority(r.resultWriter.Err()) {
+			__antithesis_instrumentation__.Notify(468093)
 			if r.txn != nil {
+				__antithesis_instrumentation__.Notify(468095)
 				if retryErr := (*roachpb.UnhandledRetryableError)(nil); errors.As(meta.Err, &retryErr) {
-					// Update the txn in response to remote errors. In the non-DistSQL
-					// world, the TxnCoordSender handles "unhandled" retryable errors,
-					// but this one is coming from a distributed SQL node, which has
-					// left the handling up to the root transaction.
+					__antithesis_instrumentation__.Notify(468096)
+
 					meta.Err = r.txn.UpdateStateOnRemoteRetryableErr(r.ctx, &retryErr.PErr)
-					// Update the clock with information from the error. On non-DistSQL
-					// code paths, the DistSender does this.
-					// TODO(andrei): We don't propagate clock signals on success cases
-					// through DistSQL; we should. We also don't propagate them through
-					// non-retryable errors; we also should.
+
 					if r.clockUpdater != nil {
+						__antithesis_instrumentation__.Notify(468097)
 						r.clockUpdater.Update(retryErr.PErr.Now)
+					} else {
+						__antithesis_instrumentation__.Notify(468098)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(468099)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(468100)
 			}
+			__antithesis_instrumentation__.Notify(468094)
 			r.SetError(meta.Err)
+		} else {
+			__antithesis_instrumentation__.Notify(468101)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(468102)
 	}
+	__antithesis_instrumentation__.Notify(468078)
 	if len(meta.Ranges) > 0 {
+		__antithesis_instrumentation__.Notify(468103)
 		r.rangeCache.Insert(r.ctx, meta.Ranges...)
+	} else {
+		__antithesis_instrumentation__.Notify(468104)
 	}
+	__antithesis_instrumentation__.Notify(468079)
 	if len(meta.TraceData) > 0 {
+		__antithesis_instrumentation__.Notify(468105)
 		if span := tracing.SpanFromContext(r.ctx); span != nil {
+			__antithesis_instrumentation__.Notify(468107)
 			span.ImportRemoteSpans(meta.TraceData)
+		} else {
+			__antithesis_instrumentation__.Notify(468108)
 		}
+		__antithesis_instrumentation__.Notify(468106)
 		var ev roachpb.ContentionEvent
 		for i := range meta.TraceData {
+			__antithesis_instrumentation__.Notify(468109)
 			meta.TraceData[i].Structured(func(any *pbtypes.Any, _ time.Time) {
+				__antithesis_instrumentation__.Notify(468110)
 				if !pbtypes.Is(any, &ev) {
+					__antithesis_instrumentation__.Notify(468115)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(468116)
 				}
+				__antithesis_instrumentation__.Notify(468111)
 				if err := pbtypes.UnmarshalAny(any, &ev); err != nil {
+					__antithesis_instrumentation__.Notify(468117)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(468118)
 				}
+				__antithesis_instrumentation__.Notify(468112)
 				if r.contendedQueryMetric != nil {
-					// Increment the contended query metric at most once
-					// if the query sees at least one contention event.
+					__antithesis_instrumentation__.Notify(468119)
+
 					r.contendedQueryMetric.Inc(1)
 					r.contendedQueryMetric = nil
+				} else {
+					__antithesis_instrumentation__.Notify(468120)
 				}
+				__antithesis_instrumentation__.Notify(468113)
 				contentionEvent := contentionpb.ExtendedContentionEvent{
 					BlockingEvent: ev,
 				}
 				if r.txn != nil {
+					__antithesis_instrumentation__.Notify(468121)
 					contentionEvent.WaitingTxnID = r.txn.ID()
+				} else {
+					__antithesis_instrumentation__.Notify(468122)
 				}
+				__antithesis_instrumentation__.Notify(468114)
 				r.contentionRegistry.AddContentionEvent(contentionEvent)
 			})
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(468123)
 	}
+	__antithesis_instrumentation__.Notify(468080)
 	if meta.Metrics != nil {
+		__antithesis_instrumentation__.Notify(468124)
 		r.stats.bytesRead += meta.Metrics.BytesRead
 		r.stats.rowsRead += meta.Metrics.RowsRead
 		r.stats.rowsWritten += meta.Metrics.RowsWritten
-		if r.progressAtomic != nil && r.expectedRowsRead != 0 {
+		if r.progressAtomic != nil && func() bool {
+			__antithesis_instrumentation__.Notify(468126)
+			return r.expectedRowsRead != 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(468127)
 			progress := float64(r.stats.rowsRead) / float64(r.expectedRowsRead)
 			atomic.StoreUint64(r.progressAtomic, math.Float64bits(progress))
+		} else {
+			__antithesis_instrumentation__.Notify(468128)
 		}
+		__antithesis_instrumentation__.Notify(468125)
 		meta.Metrics.Release()
+	} else {
+		__antithesis_instrumentation__.Notify(468129)
 	}
-	// Release the meta object. It is unsafe for use after this call.
+	__antithesis_instrumentation__.Notify(468081)
+
 	meta.Release()
 	return r.status
 }
 
-// handleCommErr handles the communication error (the one returned when
-// attempting to add data to the result writer).
 func (r *DistSQLReceiver) handleCommErr(commErr error) {
-	// ErrLimitedResultClosed and errIEResultChannelClosed are not real
-	// errors, it is a signal to stop distsql and return success to the
-	// client (that's why we don't set the error on the resultWriter).
+	__antithesis_instrumentation__.Notify(468130)
+
 	if errors.Is(commErr, ErrLimitedResultClosed) {
+		__antithesis_instrumentation__.Notify(468131)
 		log.VEvent(r.ctx, 1, "encountered ErrLimitedResultClosed (transitioning to draining)")
 		r.status = execinfra.DrainRequested
-	} else if errors.Is(commErr, errIEResultChannelClosed) {
-		log.VEvent(r.ctx, 1, "encountered errIEResultChannelClosed (transitioning to draining)")
-		r.status = execinfra.DrainRequested
 	} else {
-		// Set the error on the resultWriter to notify the consumer about
-		// it. Most clients don't care to differentiate between
-		// communication errors and query execution errors, so they can
-		// simply inspect resultWriter.Err().
-		r.SetError(commErr)
+		__antithesis_instrumentation__.Notify(468132)
+		if errors.Is(commErr, errIEResultChannelClosed) {
+			__antithesis_instrumentation__.Notify(468133)
+			log.VEvent(r.ctx, 1, "encountered errIEResultChannelClosed (transitioning to draining)")
+			r.status = execinfra.DrainRequested
+		} else {
+			__antithesis_instrumentation__.Notify(468134)
 
-		// The only client that needs to know that a communication error and
-		// not a query execution error has occurred is
-		// connExecutor.execWithDistSQLEngine which will inspect r.commErr
-		// on its own and will shut down the connection.
-		//
-		// We don't need to shut down the connection if there's a
-		// portal-related error. This is definitely a layering violation,
-		// but is part of some accepted technical debt (see comments on
-		// sql/pgwire.limitedCommandResult.moreResultsNeeded). Instead of
-		// changing the signature of AddRow, we have a sentinel error that
-		// is handled specially here.
-		if !errors.Is(commErr, ErrLimitedResultNotSupported) {
-			r.commErr = commErr
+			r.SetError(commErr)
+
+			if !errors.Is(commErr, ErrLimitedResultNotSupported) {
+				__antithesis_instrumentation__.Notify(468135)
+				r.commErr = commErr
+			} else {
+				__antithesis_instrumentation__.Notify(468136)
+			}
 		}
 	}
 }
 
-// Push is part of the execinfra.RowReceiver interface.
 func (r *DistSQLReceiver) Push(
 	row rowenc.EncDatumRow, meta *execinfrapb.ProducerMetadata,
 ) execinfra.ConsumerStatus {
+	__antithesis_instrumentation__.Notify(468137)
 	if r.testingKnobs.pushCallback != nil {
+		__antithesis_instrumentation__.Notify(468146)
 		r.testingKnobs.pushCallback(row, meta)
+	} else {
+		__antithesis_instrumentation__.Notify(468147)
 	}
+	__antithesis_instrumentation__.Notify(468138)
 	if meta != nil {
+		__antithesis_instrumentation__.Notify(468148)
 		return r.pushMeta(meta)
+	} else {
+		__antithesis_instrumentation__.Notify(468149)
 	}
-	if r.resultWriter.Err() == nil && r.ctx.Err() != nil {
+	__antithesis_instrumentation__.Notify(468139)
+	if r.resultWriter.Err() == nil && func() bool {
+		__antithesis_instrumentation__.Notify(468150)
+		return r.ctx.Err() != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(468151)
 		r.SetError(r.ctx.Err())
+	} else {
+		__antithesis_instrumentation__.Notify(468152)
 	}
+	__antithesis_instrumentation__.Notify(468140)
 	if r.status != execinfra.NeedMoreRows {
+		__antithesis_instrumentation__.Notify(468153)
 		return r.status
+	} else {
+		__antithesis_instrumentation__.Notify(468154)
 	}
+	__antithesis_instrumentation__.Notify(468141)
 
 	if r.stmtType != tree.Rows {
+		__antithesis_instrumentation__.Notify(468155)
 		n := int(tree.MustBeDInt(row[0].Datum))
-		// We only need the row count. planNodeToRowSource is set up to handle
-		// ensuring that the last stage in the pipeline will return a single-column
-		// row with the row count in it, so just grab that and exit.
+
 		r.resultWriter.IncrementRowsAffected(r.ctx, n)
 		return r.status
+	} else {
+		__antithesis_instrumentation__.Notify(468156)
 	}
+	__antithesis_instrumentation__.Notify(468142)
 
 	if r.discardRows {
-		// Discard rows.
+		__antithesis_instrumentation__.Notify(468157)
+
 		return r.status
+	} else {
+		__antithesis_instrumentation__.Notify(468158)
 	}
+	__antithesis_instrumentation__.Notify(468143)
 
 	if r.existsMode {
-		// In "exists" mode, the consumer is only looking for whether a single
-		// row is pushed or not, so the contents do not matter.
+		__antithesis_instrumentation__.Notify(468159)
+
 		r.row = []tree.Datum{}
 		log.VEvent(r.ctx, 2, `a row is pushed in "exists" mode, so transition to draining`)
 		r.status = execinfra.DrainRequested
 	} else {
+		__antithesis_instrumentation__.Notify(468160)
 		if r.row == nil {
+			__antithesis_instrumentation__.Notify(468162)
 			r.row = make(tree.Datums, len(row))
+		} else {
+			__antithesis_instrumentation__.Notify(468163)
 		}
+		__antithesis_instrumentation__.Notify(468161)
 		for i, encDatum := range row {
+			__antithesis_instrumentation__.Notify(468164)
 			err := encDatum.EnsureDecoded(r.outputTypes[i], &r.alloc)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(468166)
 				r.SetError(err)
 				return r.status
+			} else {
+				__antithesis_instrumentation__.Notify(468167)
 			}
+			__antithesis_instrumentation__.Notify(468165)
 			r.row[i] = encDatum.Datum
 		}
 	}
+	__antithesis_instrumentation__.Notify(468144)
 	r.tracing.TraceExecRowsResult(r.ctx, r.row)
 	if commErr := r.resultWriter.AddRow(r.ctx, r.row); commErr != nil {
+		__antithesis_instrumentation__.Notify(468168)
 		r.handleCommErr(commErr)
+	} else {
+		__antithesis_instrumentation__.Notify(468169)
 	}
+	__antithesis_instrumentation__.Notify(468145)
 	return r.status
 }
 
-// PushBatch is part of the execinfra.BatchReceiver interface.
 func (r *DistSQLReceiver) PushBatch(
 	batch coldata.Batch, meta *execinfrapb.ProducerMetadata,
 ) execinfra.ConsumerStatus {
+	__antithesis_instrumentation__.Notify(468170)
 	if meta != nil {
+		__antithesis_instrumentation__.Notify(468179)
 		return r.pushMeta(meta)
+	} else {
+		__antithesis_instrumentation__.Notify(468180)
 	}
-	if r.resultWriter.Err() == nil && r.ctx.Err() != nil {
+	__antithesis_instrumentation__.Notify(468171)
+	if r.resultWriter.Err() == nil && func() bool {
+		__antithesis_instrumentation__.Notify(468181)
+		return r.ctx.Err() != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(468182)
 		r.SetError(r.ctx.Err())
+	} else {
+		__antithesis_instrumentation__.Notify(468183)
 	}
+	__antithesis_instrumentation__.Notify(468172)
 	if r.status != execinfra.NeedMoreRows {
+		__antithesis_instrumentation__.Notify(468184)
 		return r.status
+	} else {
+		__antithesis_instrumentation__.Notify(468185)
 	}
+	__antithesis_instrumentation__.Notify(468173)
 
 	if batch.Length() == 0 {
-		// Nothing to do on the zero-length batch.
+		__antithesis_instrumentation__.Notify(468186)
+
 		return r.status
+	} else {
+		__antithesis_instrumentation__.Notify(468187)
 	}
+	__antithesis_instrumentation__.Notify(468174)
 
 	if r.stmtType != tree.Rows {
-		// We only need the row count. planNodeToRowSource is set up to handle
-		// ensuring that the last stage in the pipeline will return a single-column
-		// row with the row count in it, so just grab that and exit.
+		__antithesis_instrumentation__.Notify(468188)
+
 		r.resultWriter.IncrementRowsAffected(r.ctx, int(batch.ColVec(0).Int64()[0]))
 		return r.status
+	} else {
+		__antithesis_instrumentation__.Notify(468189)
 	}
+	__antithesis_instrumentation__.Notify(468175)
 
 	if r.discardRows {
-		// Discard rows.
+		__antithesis_instrumentation__.Notify(468190)
+
 		return r.status
+	} else {
+		__antithesis_instrumentation__.Notify(468191)
 	}
+	__antithesis_instrumentation__.Notify(468176)
 
 	if r.existsMode {
-		// Exists mode is only used by the subqueries which currently don't
-		// support pushing batches.
+		__antithesis_instrumentation__.Notify(468192)
+
 		panic("unsupported exists mode for PushBatch")
+	} else {
+		__antithesis_instrumentation__.Notify(468193)
 	}
+	__antithesis_instrumentation__.Notify(468177)
 	r.tracing.TraceExecBatchResult(r.ctx, batch)
 	if commErr := r.batchWriter.AddBatch(r.ctx, batch); commErr != nil {
+		__antithesis_instrumentation__.Notify(468194)
 		r.handleCommErr(commErr)
+	} else {
+		__antithesis_instrumentation__.Notify(468195)
 	}
+	__antithesis_instrumentation__.Notify(468178)
 	return r.status
 }
 
 var (
-	// ErrLimitedResultNotSupported is an error produced by pgwire
-	// indicating an unsupported feature of row count limits was attempted.
 	ErrLimitedResultNotSupported = unimplemented.NewWithIssue(40195, "multiple active portals not supported")
-	// ErrLimitedResultClosed is a sentinel error produced by pgwire
-	// indicating the portal should be closed without error.
+
 	ErrLimitedResultClosed = errors.New("row count limit closed")
 )
 
-// ProducerDone is part of the execinfra.RowReceiver interface.
 func (r *DistSQLReceiver) ProducerDone() {
+	__antithesis_instrumentation__.Notify(468196)
 	if r.closed {
+		__antithesis_instrumentation__.Notify(468198)
 		panic("double close")
+	} else {
+		__antithesis_instrumentation__.Notify(468199)
 	}
+	__antithesis_instrumentation__.Notify(468197)
 	r.closed = true
 }
 
-// PlanAndRunSubqueries returns false if an error was encountered and sets that
-// error in the provided receiver. Note that if false is returned, then this
-// function will have closed all the subquery plans because it assumes that the
-// caller will not try to run the main plan given that the subqueries'
-// evaluation failed.
-// - subqueryResultMemAcc must be a non-nil memory account that the result of
-//   subqueries' evaluation will be registered with. It is the caller's
-//   responsibility to shrink (or close) the account accordingly, once the
-//   references to those results are lost.
 func (dsp *DistSQLPlanner) PlanAndRunSubqueries(
 	ctx context.Context,
 	planner *planner,
@@ -1193,7 +1374,9 @@ func (dsp *DistSQLPlanner) PlanAndRunSubqueries(
 	recv *DistSQLReceiver,
 	subqueryResultMemAcc *mon.BoundAccount,
 ) bool {
+	__antithesis_instrumentation__.Notify(468200)
 	for planIdx, subqueryPlan := range subqueryPlans {
+		__antithesis_instrumentation__.Notify(468202)
 		if err := dsp.planAndRunSubquery(
 			ctx,
 			planIdx,
@@ -1204,26 +1387,24 @@ func (dsp *DistSQLPlanner) PlanAndRunSubqueries(
 			recv,
 			subqueryResultMemAcc,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(468203)
 			recv.SetError(err)
-			// Usually we leave the closure of subqueries to occur when the
-			// whole plan is being closed (i.e. planTop.close); however, since
-			// we've encountered an error, we might never get to the point of
-			// closing the whole plan, so we choose to defensively close the
-			// subqueries here.
+
 			for i := range subqueryPlans {
+				__antithesis_instrumentation__.Notify(468205)
 				subqueryPlans[i].plan.Close(ctx)
 			}
+			__antithesis_instrumentation__.Notify(468204)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(468206)
 		}
 	}
+	__antithesis_instrumentation__.Notify(468201)
 
 	return true
 }
 
-// subqueryResultMemAcc must be a non-nil memory account that the result of the
-// subquery's evaluation will be registered with. It is the caller's
-// responsibility to shrink it (or close it) accordingly, once the references to
-// those results are lost.
 func (dsp *DistSQLPlanner) planAndRunSubquery(
 	ctx context.Context,
 	planIdx int,
@@ -1234,12 +1415,13 @@ func (dsp *DistSQLPlanner) planAndRunSubquery(
 	recv *DistSQLReceiver,
 	subqueryResultMemAcc *mon.BoundAccount,
 ) error {
+	__antithesis_instrumentation__.Notify(468207)
 	subqueryMonitor := mon.NewMonitor(
 		"subquery",
 		mon.MemoryResource,
 		dsp.distSQLSrv.Metrics.CurBytesCount,
 		dsp.distSQLSrv.Metrics.MaxBytesHist,
-		-1, /* use default block size */
+		-1,
 		noteworthyMemoryUsageBytes,
 		dsp.distSQLSrv.Settings,
 	)
@@ -1254,161 +1436,189 @@ func (dsp *DistSQLPlanner) planAndRunSubquery(
 	).WillDistribute()
 	distribute := DistributionType(DistributionTypeNone)
 	if distributeSubquery {
+		__antithesis_instrumentation__.Notify(468215)
 		distribute = DistributionTypeSystemTenantOnly
+	} else {
+		__antithesis_instrumentation__.Notify(468216)
 	}
+	__antithesis_instrumentation__.Notify(468208)
 	subqueryPlanCtx := dsp.NewPlanningCtx(ctx, evalCtx, planner, planner.txn,
 		distribute)
 	subqueryPlanCtx.stmtType = tree.Rows
 	if planner.instrumentation.ShouldSaveFlows() {
+		__antithesis_instrumentation__.Notify(468217)
 		subqueryPlanCtx.saveFlows = subqueryPlanCtx.getDefaultSaveFlowsFunc(ctx, planner, planComponentTypeSubquery)
+	} else {
+		__antithesis_instrumentation__.Notify(468218)
 	}
+	__antithesis_instrumentation__.Notify(468209)
 	subqueryPlanCtx.traceMetadata = planner.instrumentation.traceMetadata
 	subqueryPlanCtx.collectExecStats = planner.instrumentation.ShouldCollectExecStats()
-	// Don't close the top-level plan from subqueries - someone else will handle
-	// that.
+
 	subqueryPlanCtx.ignoreClose = true
 	subqueryPhysPlan, physPlanCleanup, err := dsp.createPhysPlan(ctx, subqueryPlanCtx, subqueryPlan.plan)
 	defer physPlanCleanup()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(468219)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(468220)
 	}
+	__antithesis_instrumentation__.Notify(468210)
 	dsp.finalizePlanWithRowCount(subqueryPlanCtx, subqueryPhysPlan, subqueryPlan.rowCount)
 
-	// TODO(arjun): #28264: We set up a row container, wrap it in a row
-	// receiver, and use it and serialize the results of the subquery. The type
-	// of the results stored in the container depends on the type of the subquery.
 	subqueryRecv := recv.clone()
 	defer subqueryRecv.Release()
 	var typs []*types.T
 	if subqueryPlan.execMode == rowexec.SubqueryExecModeExists {
+		__antithesis_instrumentation__.Notify(468221)
 		subqueryRecv.existsMode = true
 		typs = []*types.T{}
 	} else {
+		__antithesis_instrumentation__.Notify(468222)
 		typs = subqueryPhysPlan.GetResultTypes()
 	}
+	__antithesis_instrumentation__.Notify(468211)
 	var rows rowContainerHelper
-	rows.Init(typs, evalCtx, "subquery" /* opName */)
+	rows.Init(typs, evalCtx, "subquery")
 	defer rows.Close(ctx)
 
-	// TODO(yuzefovich): consider implementing batch receiving result writer.
 	subqueryRowReceiver := NewRowResultWriter(&rows)
 	subqueryRecv.resultWriter = subqueryRowReceiver
 	subqueryPlans[planIdx].started = true
-	dsp.Run(ctx, subqueryPlanCtx, planner.txn, subqueryPhysPlan, subqueryRecv, evalCtx, nil /* finishedSetupFn */)()
+	dsp.Run(ctx, subqueryPlanCtx, planner.txn, subqueryPhysPlan, subqueryRecv, evalCtx, nil)()
 	if err := subqueryRowReceiver.Err(); err != nil {
+		__antithesis_instrumentation__.Notify(468223)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(468224)
 	}
+	__antithesis_instrumentation__.Notify(468212)
 	var alreadyAccountedFor int64
 	switch subqueryPlan.execMode {
 	case rowexec.SubqueryExecModeExists:
-		// For EXISTS expressions, all we want to know if there is at least one row.
+		__antithesis_instrumentation__.Notify(468225)
+
 		hasRows := rows.Len() != 0
 		subqueryPlans[planIdx].result = tree.MakeDBool(tree.DBool(hasRows))
 	case rowexec.SubqueryExecModeAllRows, rowexec.SubqueryExecModeAllRowsNormalized:
-		// TODO(yuzefovich): this is unfortunate - we're materializing all
-		// buffered rows into a single tuple kept in memory. Refactor it.
+		__antithesis_instrumentation__.Notify(468226)
+
 		var result tree.DTuple
 		iterator := newRowContainerIterator(ctx, rows, typs)
 		defer iterator.Close()
 		for {
+			__antithesis_instrumentation__.Notify(468231)
 			row, err := iterator.Next()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(468236)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(468237)
 			}
+			__antithesis_instrumentation__.Notify(468232)
 			if row == nil {
+				__antithesis_instrumentation__.Notify(468238)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(468239)
 			}
+			__antithesis_instrumentation__.Notify(468233)
 			var toAppend tree.Datum
 			if row.Len() == 1 {
-				// This seems hokey, but if we don't do this then the subquery expands
-				// to a tuple of tuples instead of a tuple of values and an expression
-				// like "k IN (SELECT foo FROM bar)" will fail because we're comparing
-				// a single value against a tuple.
+				__antithesis_instrumentation__.Notify(468240)
+
 				toAppend = row[0]
 			} else {
+				__antithesis_instrumentation__.Notify(468241)
 				toAppend = &tree.DTuple{D: row}
 			}
-			// Perform memory accounting for this datum. We do this in an
-			// incremental fashion since we might be materializing a lot of data
-			// into a single result tuple, and the memory accounting below might
-			// come too late.
+			__antithesis_instrumentation__.Notify(468234)
+
 			size := int64(toAppend.Size())
 			alreadyAccountedFor += size
 			if err = subqueryResultMemAcc.Grow(ctx, size); err != nil {
+				__antithesis_instrumentation__.Notify(468242)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(468243)
 			}
+			__antithesis_instrumentation__.Notify(468235)
 			result.D = append(result.D, toAppend)
 		}
+		__antithesis_instrumentation__.Notify(468227)
 
 		if subqueryPlan.execMode == rowexec.SubqueryExecModeAllRowsNormalized {
-			// During the normalization, we will remove duplicate elements which
-			// we've already accounted for. That's ok because below we will
-			// reconcile the incremental accounting with the final result's
-			// memory footprint.
+			__antithesis_instrumentation__.Notify(468244)
+
 			result.Normalize(&evalCtx.EvalContext)
+		} else {
+			__antithesis_instrumentation__.Notify(468245)
 		}
+		__antithesis_instrumentation__.Notify(468228)
 		subqueryPlans[planIdx].result = &result
 	case rowexec.SubqueryExecModeOneRow:
+		__antithesis_instrumentation__.Notify(468229)
 		switch rows.Len() {
 		case 0:
+			__antithesis_instrumentation__.Notify(468246)
 			subqueryPlans[planIdx].result = tree.DNull
 		case 1:
+			__antithesis_instrumentation__.Notify(468247)
 			iterator := newRowContainerIterator(ctx, rows, typs)
 			defer iterator.Close()
 			row, err := iterator.Next()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(468251)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(468252)
 			}
+			__antithesis_instrumentation__.Notify(468248)
 			if row == nil {
+				__antithesis_instrumentation__.Notify(468253)
 				return errors.AssertionFailedf("iterator didn't return a row although container len is 1")
+			} else {
+				__antithesis_instrumentation__.Notify(468254)
 			}
+			__antithesis_instrumentation__.Notify(468249)
 			switch row.Len() {
 			case 1:
+				__antithesis_instrumentation__.Notify(468255)
 				subqueryPlans[planIdx].result = row[0]
 			default:
+				__antithesis_instrumentation__.Notify(468256)
 				subqueryPlans[planIdx].result = &tree.DTuple{D: row}
 			}
 		default:
+			__antithesis_instrumentation__.Notify(468250)
 			return pgerror.Newf(pgcode.CardinalityViolation,
 				"more than one row returned by a subquery used as an expression")
 		}
 	default:
+		__antithesis_instrumentation__.Notify(468230)
 		return fmt.Errorf("unexpected subqueryExecMode: %d", subqueryPlan.execMode)
 	}
-	// Account for the result of the subquery using the separate memory account
-	// since it outlives the execution of the subquery itself.
+	__antithesis_instrumentation__.Notify(468213)
+
 	actualSize := int64(subqueryPlans[planIdx].result.Size())
 	if actualSize >= alreadyAccountedFor {
+		__antithesis_instrumentation__.Notify(468257)
 		if err := subqueryResultMemAcc.Grow(ctx, actualSize-alreadyAccountedFor); err != nil {
+			__antithesis_instrumentation__.Notify(468258)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(468259)
 		}
 	} else {
-		// We've accounted for more than the actual result needs. For example,
-		// this could occur in rowexec.SubqueryExecModeAllRowsNormalized mode
-		// with many duplicate elements.
+		__antithesis_instrumentation__.Notify(468260)
+
 		subqueryResultMemAcc.Shrink(ctx, alreadyAccountedFor-actualSize)
 	}
+	__antithesis_instrumentation__.Notify(468214)
 	return nil
 }
 
-// PlanAndRun generates a physical plan from a planNode tree and executes it. It
-// assumes that the tree is supported (see CheckSupport).
-//
-// All errors encountered are reported to the DistSQLReceiver's resultWriter.
-// Additionally, if the error is a "communication error" (an error encountered
-// while using that resultWriter), the error is also stored in
-// DistSQLReceiver.commErr. That can be tested to see if a client session needs
-// to be closed.
-//
-// It returns a non-nil (although it can be a noop when an error is
-// encountered) cleanup function that must be called once the planTop AST is no
-// longer needed and can be closed. Note that this function also cleans up the
-// flow which is unfortunate but is caused by the sharing of memory monitors
-// between planning and execution - cleaning up the flow wants to close the
-// monitor, but it cannot do so because the AST needs to live longer and still
-// uses the same monitor. That's why we end up in a situation that in order to
-// clean up the flow, we need to close the AST first, but we can only do that
-// after PlanAndRun returns.
 func (dsp *DistSQLPlanner) PlanAndRun(
 	ctx context.Context,
 	evalCtx *extendedEvalContext,
@@ -1417,30 +1627,28 @@ func (dsp *DistSQLPlanner) PlanAndRun(
 	plan planMaybePhysical,
 	recv *DistSQLReceiver,
 ) (cleanup func()) {
+	__antithesis_instrumentation__.Notify(468261)
 	log.VEventf(ctx, 2, "creating DistSQL plan with isLocal=%v", planCtx.isLocal)
 
 	physPlan, physPlanCleanup, err := dsp.createPhysPlan(ctx, planCtx, plan)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(468263)
 		recv.SetError(err)
 		return physPlanCleanup
+	} else {
+		__antithesis_instrumentation__.Notify(468264)
 	}
+	__antithesis_instrumentation__.Notify(468262)
 	dsp.finalizePlanWithRowCount(planCtx, physPlan, planCtx.planner.curPlan.mainRowCount)
 	recv.expectedRowsRead = int64(physPlan.TotalEstimatedScannedRows)
-	runCleanup := dsp.Run(ctx, planCtx, txn, physPlan, recv, evalCtx, nil /* finishedSetupFn */)
+	runCleanup := dsp.Run(ctx, planCtx, txn, physPlan, recv, evalCtx, nil)
 	return func() {
+		__antithesis_instrumentation__.Notify(468265)
 		runCleanup()
 		physPlanCleanup()
 	}
 }
 
-// PlanAndRunCascadesAndChecks runs any cascade and check queries.
-//
-// Because cascades can themselves generate more cascades or check queries, this
-// method can append to plan.cascades and plan.checkPlans (and all these plans
-// must be closed later).
-//
-// Returns false if an error was encountered and sets that error in the provided
-// receiver.
 func (dsp *DistSQLPlanner) PlanAndRunCascadesAndChecks(
 	ctx context.Context,
 	planner *planner,
@@ -1448,86 +1656,120 @@ func (dsp *DistSQLPlanner) PlanAndRunCascadesAndChecks(
 	plan *planComponents,
 	recv *DistSQLReceiver,
 ) bool {
-	if len(plan.cascades) == 0 && len(plan.checkPlans) == 0 {
+	__antithesis_instrumentation__.Notify(468266)
+	if len(plan.cascades) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(468273)
+		return len(plan.checkPlans) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(468274)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(468275)
 	}
+	__antithesis_instrumentation__.Notify(468267)
 
 	prevSteppingMode := planner.Txn().ConfigureStepping(ctx, kv.SteppingEnabled)
-	defer func() { _ = planner.Txn().ConfigureStepping(ctx, prevSteppingMode) }()
+	defer func() {
+		__antithesis_instrumentation__.Notify(468276)
+		_ = planner.Txn().ConfigureStepping(ctx, prevSteppingMode)
+	}()
+	__antithesis_instrumentation__.Notify(468268)
 
-	// We treat plan.cascades as a queue.
 	for i := 0; i < len(plan.cascades); i++ {
-		// The original bufferNode is stored in c.Buffer; we can refer to it
-		// directly.
-		// TODO(radu): this requires keeping all previous plans "alive" until the
-		// very end. We may want to make copies of the buffer nodes and clean up
-		// everything else.
+		__antithesis_instrumentation__.Notify(468277)
+
 		buf := plan.cascades[i].Buffer
 		var numBufferedRows int
 		if buf != nil {
+			__antithesis_instrumentation__.Notify(468286)
 			numBufferedRows = buf.(*bufferNode).rows.rows.Len()
 			if numBufferedRows == 0 {
-				// No rows were actually modified.
+				__antithesis_instrumentation__.Notify(468287)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(468288)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(468289)
 		}
+		__antithesis_instrumentation__.Notify(468278)
 
 		log.VEventf(ctx, 2, "executing cascade for constraint %s", plan.cascades[i].FKName)
 
-		// We place a sequence point before every cascade, so
-		// that each subsequent cascade can observe the writes
-		// by the previous step.
-		// TODO(radu): the cascades themselves can have more cascades; if any of
-		// those fall back to legacy cascades code, it will disable stepping. So we
-		// have to reenable stepping each time.
 		_ = planner.Txn().ConfigureStepping(ctx, kv.SteppingEnabled)
 		if err := planner.Txn().Step(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(468290)
 			recv.SetError(err)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(468291)
 		}
+		__antithesis_instrumentation__.Notify(468279)
 
 		evalCtx := evalCtxFactory()
 		execFactory := newExecFactory(planner)
-		// The cascading query is allowed to autocommit only if it is the last
-		// cascade and there are no check queries to run.
+
 		allowAutoCommit := planner.autoCommit
-		if len(plan.checkPlans) > 0 || i < len(plan.cascades)-1 {
+		if len(plan.checkPlans) > 0 || func() bool {
+			__antithesis_instrumentation__.Notify(468292)
+			return i < len(plan.cascades)-1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(468293)
 			allowAutoCommit = false
+		} else {
+			__antithesis_instrumentation__.Notify(468294)
 		}
+		__antithesis_instrumentation__.Notify(468280)
 		cascadePlan, err := plan.cascades[i].PlanFn(
 			ctx, &planner.semaCtx, &evalCtx.EvalContext, execFactory,
 			buf, numBufferedRows, allowAutoCommit,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(468295)
 			recv.SetError(err)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(468296)
 		}
+		__antithesis_instrumentation__.Notify(468281)
 		cp := cascadePlan.(*planComponents)
 		plan.cascades[i].plan = cp.main
 		if len(cp.subqueryPlans) > 0 {
+			__antithesis_instrumentation__.Notify(468297)
 			recv.SetError(errors.AssertionFailedf("cascades should not have subqueries"))
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(468298)
 		}
+		__antithesis_instrumentation__.Notify(468282)
 
-		// Queue any new cascades.
 		if len(cp.cascades) > 0 {
+			__antithesis_instrumentation__.Notify(468299)
 			plan.cascades = append(plan.cascades, cp.cascades...)
+		} else {
+			__antithesis_instrumentation__.Notify(468300)
 		}
+		__antithesis_instrumentation__.Notify(468283)
 
-		// Collect any new checks.
 		if len(cp.checkPlans) > 0 {
+			__antithesis_instrumentation__.Notify(468301)
 			plan.checkPlans = append(plan.checkPlans, cp.checkPlans...)
+		} else {
+			__antithesis_instrumentation__.Notify(468302)
 		}
+		__antithesis_instrumentation__.Notify(468284)
 
-		// In cyclical reference situations, the number of cascading operations can
-		// be arbitrarily large. To avoid OOM, we enforce a limit. This is also a
-		// safeguard in case we have a bug that results in an infinite cascade loop.
 		if limit := int(evalCtx.SessionData().OptimizerFKCascadesLimit); len(plan.cascades) > limit {
+			__antithesis_instrumentation__.Notify(468303)
 			telemetry.Inc(sqltelemetry.CascadesLimitReached)
 			err := pgerror.Newf(pgcode.TriggeredActionException, "cascades limit (%d) reached", limit)
 			recv.SetError(err)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(468304)
 		}
+		__antithesis_instrumentation__.Notify(468285)
 
 		if err := dsp.planAndRunPostquery(
 			ctx,
@@ -1536,27 +1778,35 @@ func (dsp *DistSQLPlanner) PlanAndRunCascadesAndChecks(
 			evalCtx,
 			recv,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(468305)
 			recv.SetError(err)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(468306)
 		}
 	}
+	__antithesis_instrumentation__.Notify(468269)
 
 	if len(plan.checkPlans) == 0 {
+		__antithesis_instrumentation__.Notify(468307)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(468308)
 	}
+	__antithesis_instrumentation__.Notify(468270)
 
-	// We place a sequence point before the checks, so that they observe the
-	// writes of the main query and/or any cascades.
-	// TODO(radu): the cascades themselves can have more cascades; if any of
-	// those fall back to legacy cascades code, it will disable stepping. So we
-	// have to reenable stepping each time.
 	_ = planner.Txn().ConfigureStepping(ctx, kv.SteppingEnabled)
 	if err := planner.Txn().Step(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(468309)
 		recv.SetError(err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(468310)
 	}
+	__antithesis_instrumentation__.Notify(468271)
 
 	for i := range plan.checkPlans {
+		__antithesis_instrumentation__.Notify(468311)
 		log.VEventf(ctx, 2, "executing check query %d out of %d", i+1, len(plan.checkPlans))
 		if err := dsp.planAndRunPostquery(
 			ctx,
@@ -1565,15 +1815,18 @@ func (dsp *DistSQLPlanner) PlanAndRunCascadesAndChecks(
 			evalCtxFactory(),
 			recv,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(468312)
 			recv.SetError(err)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(468313)
 		}
 	}
+	__antithesis_instrumentation__.Notify(468272)
 
 	return true
 }
 
-// planAndRunPostquery runs a cascade or check query.
 func (dsp *DistSQLPlanner) planAndRunPostquery(
 	ctx context.Context,
 	postqueryPlan planMaybePhysical,
@@ -1581,12 +1834,13 @@ func (dsp *DistSQLPlanner) planAndRunPostquery(
 	evalCtx *extendedEvalContext,
 	recv *DistSQLReceiver,
 ) error {
+	__antithesis_instrumentation__.Notify(468314)
 	postqueryMonitor := mon.NewMonitor(
 		"postquery",
 		mon.MemoryResource,
 		dsp.distSQLSrv.Metrics.CurBytesCount,
 		dsp.distSQLSrv.Metrics.MaxBytesHist,
-		-1, /* use default block size */
+		-1,
 		noteworthyMemoryUsageBytes,
 		dsp.distSQLSrv.Settings,
 	)
@@ -1601,32 +1855,43 @@ func (dsp *DistSQLPlanner) planAndRunPostquery(
 	).WillDistribute()
 	distribute := DistributionType(DistributionTypeNone)
 	if distributePostquery {
+		__antithesis_instrumentation__.Notify(468318)
 		distribute = DistributionTypeSystemTenantOnly
+	} else {
+		__antithesis_instrumentation__.Notify(468319)
 	}
+	__antithesis_instrumentation__.Notify(468315)
 	postqueryPlanCtx := dsp.NewPlanningCtx(ctx, evalCtx, planner, planner.txn,
 		distribute)
 	postqueryPlanCtx.stmtType = tree.Rows
 	postqueryPlanCtx.ignoreClose = true
 	if planner.instrumentation.ShouldSaveFlows() {
+		__antithesis_instrumentation__.Notify(468320)
 		postqueryPlanCtx.saveFlows = postqueryPlanCtx.getDefaultSaveFlowsFunc(ctx, planner, planComponentTypePostquery)
+	} else {
+		__antithesis_instrumentation__.Notify(468321)
 	}
+	__antithesis_instrumentation__.Notify(468316)
 	postqueryPlanCtx.traceMetadata = planner.instrumentation.traceMetadata
 	postqueryPlanCtx.collectExecStats = planner.instrumentation.ShouldCollectExecStats()
 
 	postqueryPhysPlan, physPlanCleanup, err := dsp.createPhysPlan(ctx, postqueryPlanCtx, postqueryPlan)
 	defer physPlanCleanup()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(468322)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(468323)
 	}
+	__antithesis_instrumentation__.Notify(468317)
 	dsp.FinalizePlan(postqueryPlanCtx, postqueryPhysPlan)
 
 	postqueryRecv := recv.clone()
 	defer postqueryRecv.Release()
-	// TODO(yuzefovich): at the moment, errOnlyResultWriter is sufficient here,
-	// but it may not be the case when we support cascades through the optimizer.
+
 	postqueryResultWriter := &errOnlyResultWriter{}
 	postqueryRecv.resultWriter = postqueryResultWriter
 	postqueryRecv.batchWriter = postqueryResultWriter
-	dsp.Run(ctx, postqueryPlanCtx, planner.txn, postqueryPhysPlan, postqueryRecv, evalCtx, nil /* finishedSetupFn */)()
+	dsp.Run(ctx, postqueryPlanCtx, planner.txn, postqueryPhysPlan, postqueryRecv, evalCtx, nil)()
 	return postqueryRecv.resultWriter.Err()
 }

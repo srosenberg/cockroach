@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,89 +18,28 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// joinReaderStrategy abstracts the processing of looked-up rows. The joinReader
-// cooperates with a joinReaderStrategy to produce joined rows. More
-// specifically, the joinReader processes rows from the input-side, passes those
-// rows to the joinReaderStrategy.processLookupRows() which (usually) holds on
-// to them and returns key spans to be looked up, then the joinReader
-// iteratively looks up those spans and passes the resulting looked-up rows to
-// joinReaderStrategy.processLookedUpRow(). The joinReaderStrategy now has rows
-// from both sides of the join, and performs the actual joining, emitting output
-// rows from pairs of joined rows.
-//
-// There are three implementations of joinReaderStrategy:
-// - joinReaderNoOrderingStrategy: used when the joined rows do not need to be
-//   produced in input-row order.
-// - joinReaderOrderingStrategy: used when the joined rows need to be produced
-//   in input-row order. As opposed to the prior strategy, this one needs to do
-//   more buffering to deal with out-of-order looked-up rows.
-// - joinReaderIndexJoinStrategy: used when we're performing a join between an
-//   index and the table's PK. This one is the simplest and the most efficient
-//   because it doesn't actually join anything - it directly emits the PK rows.
-//   The joinReaderIndexJoinStrategy is used by both ordered and unordered index
-//   joins; see comments on joinReaderIndexJoinStrategy for details.
 type joinReaderStrategy interface {
-	// getLookupRowsBatchSizeHint returns the size in bytes of the batch of lookup
-	// rows.
 	getLookupRowsBatchSizeHint(*sessiondata.SessionData) int64
-	// getMaxLookupKeyCols returns the maximum number of key columns used to
-	// lookup into the index.
+
 	getMaxLookupKeyCols() int
-	// generateRemoteSpans generates spans targeting remote nodes for the current
-	// batch of input rows. Returns an error if this is not a locality optimized
-	// lookup join.
+
 	generateRemoteSpans() (roachpb.Spans, error)
-	// generatedRemoteSpans returns true if generateRemoteSpans has been called on
-	// the current batch of input rows.
+
 	generatedRemoteSpans() bool
-	// processLookupRows consumes the rows the joinReader has buffered and returns
-	// the lookup spans.
-	//
-	// The returned spans are not accounted for, so it is the caller's
-	// responsibility to register the spans memory usage with our memory
-	// accounting system.
+
 	processLookupRows(rows []rowenc.EncDatumRow) (roachpb.Spans, error)
-	// processLookedUpRow processes a looked up row. A joinReaderState is returned
-	// to indicate the next state to transition to. If this next state is
-	// jrPerformingLookup, processLookedUpRow will be called again if the looked
-	// up rows have not been exhausted. A transition to jrStateUnknown is
-	// unsupported, but if an error is returned, the joinReader will transition
-	// to draining.
+
 	processLookedUpRow(ctx context.Context, row rowenc.EncDatumRow, key roachpb.Key) (joinReaderState, error)
-	// prepareToEmit informs the strategy implementation that all looked up rows
-	// have been read, and that it should prepare for calls to nextRowToEmit.
+
 	prepareToEmit(ctx context.Context)
-	// nextRowToEmit gets the next row to emit from the strategy. An accompanying
-	// joinReaderState is also returned, indicating a state to transition to after
-	// emitting this row. A transition to jrStateUnknown is unsupported, but if an
-	// error is returned, the joinReader will transition to draining.
+
 	nextRowToEmit(ctx context.Context) (rowenc.EncDatumRow, joinReaderState, error)
-	// spilled returns whether the strategy spilled to disk.
+
 	spilled() bool
-	// close releases any resources associated with the joinReaderStrategy.
+
 	close(ctx context.Context)
 }
 
-// joinReaderNoOrderingStrategy is a joinReaderStrategy that doesn't maintain
-// the input ordering: the order in which joined rows are emitted does not
-// correspond to the order of the rows passed to processLookupRows(). This is
-// more performant than joinReaderOrderingStrategy.
-//
-// Consider the following example:
-// - the input side has rows (1, red), (2, blue), (3, blue), (4, red).
-// - the lookup side has rows (red, x), (blue, y).
-// - the join needs to produce the pairs (1, x), (2, y), (3, y), (4, x), in any
-//   order.
-//
-// Say the joinReader looks up rows in order: (red, x), then (blue, y). Once
-// (red, x) is fetched, it is handed to
-// joinReaderNoOrderingStrategy.processLookedUpRow(), which will match it
-// against all the corresponding input rows, and immediately emit (1, x), (4,
-// x). Then the joinReader will be handed in (blue, y), for which the
-// joinReaderNoOrderingStrategy will emit (2, blue) and (3, blue). Notice that
-// the rows were produced in an order different from the input order but, on the
-// flip side, there was no buffering of the looked-up rows. See
-// joinReaderOrderingStrategy for a contrast.
 type joinReaderNoOrderingStrategy struct {
 	*joinerBase
 	joinReaderSpanGenerator
@@ -119,23 +50,13 @@ type joinReaderNoOrderingStrategy struct {
 	scratchMatchingInputRowIndices []int
 
 	emitState struct {
-		// processingLookupRow is an explicit boolean that specifies whether the
-		// strategy is currently processing a match. This is set to true in
-		// processLookedUpRow and causes nextRowToEmit to process the data in
-		// emitState. If set to false, the strategy determines in nextRowToEmit
-		// that no more looked up rows need processing, so unmatched input rows need
-		// to be emitted.
 		processingLookupRow bool
 
-		// Used when processingLookupRow is false.
 		unmatchedInputRowIndicesCursor int
-		// unmatchedInputRowIndices is used only when emitting unmatched rows after
-		// processing lookup results. It is populated once when first emitting
-		// unmatched rows.
+
 		unmatchedInputRowIndices            []int
 		unmatchedInputRowIndicesInitialized bool
 
-		// Used when processingLookupRow is true.
 		matchingInputRowIndicesCursor int
 		matchingInputRowIndices       []int
 		lookedUpRow                   rowenc.EncDatumRow
@@ -143,41 +64,42 @@ type joinReaderNoOrderingStrategy struct {
 
 	groupingState *inputBatchGroupingState
 
-	// memAcc is owned by this strategy and is closed when the strategy is
-	// closed. inputRows are owned by the joinReader, so they aren't accounted
-	// for with this memory account.
 	memAcc *mon.BoundAccount
 }
 
-// getLookupRowsBatchSizeHint returns the batch size for the join reader no
-// ordering strategy. This number was chosen by running TPCH queries 7, 9, 10,
-// and 11 with varying batch sizes and choosing the smallest batch size that
-// offered a significant performance improvement. Larger batch sizes offered
-// small to no marginal improvements.
 func (s *joinReaderNoOrderingStrategy) getLookupRowsBatchSizeHint(*sessiondata.SessionData) int64 {
-	return 2 << 20 /* 2 MiB */
+	__antithesis_instrumentation__.Notify(573719)
+	return 2 << 20
 }
 
 func (s *joinReaderNoOrderingStrategy) getMaxLookupKeyCols() int {
+	__antithesis_instrumentation__.Notify(573720)
 	return s.maxLookupCols()
 }
 
 func (s *joinReaderNoOrderingStrategy) generateRemoteSpans() (roachpb.Spans, error) {
+	__antithesis_instrumentation__.Notify(573721)
 	gen, ok := s.joinReaderSpanGenerator.(*localityOptimizedSpanGenerator)
 	if !ok {
+		__antithesis_instrumentation__.Notify(573723)
 		return nil, errors.AssertionFailedf("generateRemoteSpans can only be called for locality optimized lookup joins")
+	} else {
+		__antithesis_instrumentation__.Notify(573724)
 	}
+	__antithesis_instrumentation__.Notify(573722)
 	s.remoteSpansGenerated = true
 	return gen.generateRemoteSpans(s.Ctx, s.inputRows)
 }
 
 func (s *joinReaderNoOrderingStrategy) generatedRemoteSpans() bool {
+	__antithesis_instrumentation__.Notify(573725)
 	return s.remoteSpansGenerated
 }
 
 func (s *joinReaderNoOrderingStrategy) processLookupRows(
 	rows []rowenc.EncDatumRow,
 ) (roachpb.Spans, error) {
+	__antithesis_instrumentation__.Notify(573726)
 	s.inputRows = rows
 	s.remoteSpansGenerated = false
 	s.emitState.unmatchedInputRowIndicesInitialized = false
@@ -187,24 +109,34 @@ func (s *joinReaderNoOrderingStrategy) processLookupRows(
 func (s *joinReaderNoOrderingStrategy) processLookedUpRow(
 	_ context.Context, row rowenc.EncDatumRow, key roachpb.Key,
 ) (joinReaderState, error) {
+	__antithesis_instrumentation__.Notify(573727)
 	matchingInputRowIndices := s.getMatchingRowIndices(key)
 	if s.isPartialJoin {
-		// In the case of partial joins, only process input rows that have not been
-		// matched yet. Make a copy of the matching input row indices to avoid
-		// overwriting the caller's slice.
+		__antithesis_instrumentation__.Notify(573729)
+
 		s.scratchMatchingInputRowIndices = s.scratchMatchingInputRowIndices[:0]
 		for _, inputRowIdx := range matchingInputRowIndices {
+			__antithesis_instrumentation__.Notify(573731)
 			if !s.groupingState.getMatched(inputRowIdx) {
+				__antithesis_instrumentation__.Notify(573732)
 				s.scratchMatchingInputRowIndices = append(s.scratchMatchingInputRowIndices, inputRowIdx)
+			} else {
+				__antithesis_instrumentation__.Notify(573733)
 			}
 		}
+		__antithesis_instrumentation__.Notify(573730)
 		matchingInputRowIndices = s.scratchMatchingInputRowIndices
 
-		// Perform memory accounting.
 		if err := s.memAcc.ResizeTo(s.Ctx, s.memUsage()); err != nil {
+			__antithesis_instrumentation__.Notify(573734)
 			return jrStateUnknown, addWorkmemHint(err)
+		} else {
+			__antithesis_instrumentation__.Notify(573735)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573736)
 	}
+	__antithesis_instrumentation__.Notify(573728)
 	s.emitState.processingLookupRow = true
 	s.emitState.lookedUpRow = row
 	s.emitState.matchingInputRowIndices = matchingInputRowIndices
@@ -212,174 +144,192 @@ func (s *joinReaderNoOrderingStrategy) processLookedUpRow(
 	return jrEmittingRows, nil
 }
 
-func (s *joinReaderNoOrderingStrategy) prepareToEmit(ctx context.Context) {}
+func (s *joinReaderNoOrderingStrategy) prepareToEmit(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573737)
+}
 
 func (s *joinReaderNoOrderingStrategy) nextRowToEmit(
 	_ context.Context,
 ) (rowenc.EncDatumRow, joinReaderState, error) {
+	__antithesis_instrumentation__.Notify(573738)
 	if !s.emitState.processingLookupRow {
-		// processLookedUpRow was not called before nextRowToEmit, which means that
-		// the next unmatched row needs to be processed.
+		__antithesis_instrumentation__.Notify(573741)
+
 		if !shouldEmitUnmatchedRow(leftSide, s.joinType) {
-			// The joinType does not require the joiner to emit unmatched rows. Move
-			// on to the next batch of lookup rows.
+			__antithesis_instrumentation__.Notify(573746)
+
 			return nil, jrReadingInput, nil
+		} else {
+			__antithesis_instrumentation__.Notify(573747)
 		}
+		__antithesis_instrumentation__.Notify(573742)
 
 		if !s.emitState.unmatchedInputRowIndicesInitialized {
+			__antithesis_instrumentation__.Notify(573748)
 			s.emitState.unmatchedInputRowIndices = s.emitState.unmatchedInputRowIndices[:0]
 			for inputRowIdx := range s.inputRows {
+				__antithesis_instrumentation__.Notify(573750)
 				if s.groupingState.isUnmatched(inputRowIdx) {
+					__antithesis_instrumentation__.Notify(573751)
 					s.emitState.unmatchedInputRowIndices = append(s.emitState.unmatchedInputRowIndices, inputRowIdx)
+				} else {
+					__antithesis_instrumentation__.Notify(573752)
 				}
 			}
+			__antithesis_instrumentation__.Notify(573749)
 			s.emitState.unmatchedInputRowIndicesInitialized = true
 			s.emitState.unmatchedInputRowIndicesCursor = 0
 
-			// Perform memory accounting.
 			if err := s.memAcc.ResizeTo(s.Ctx, s.memUsage()); err != nil {
+				__antithesis_instrumentation__.Notify(573753)
 				return nil, jrStateUnknown, addWorkmemHint(err)
+			} else {
+				__antithesis_instrumentation__.Notify(573754)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(573755)
 		}
+		__antithesis_instrumentation__.Notify(573743)
 
 		if s.emitState.unmatchedInputRowIndicesCursor >= len(s.emitState.unmatchedInputRowIndices) {
-			// All unmatched rows have been emitted.
+			__antithesis_instrumentation__.Notify(573756)
+
 			return nil, jrReadingInput, nil
+		} else {
+			__antithesis_instrumentation__.Notify(573757)
 		}
+		__antithesis_instrumentation__.Notify(573744)
 		inputRow := s.inputRows[s.emitState.unmatchedInputRowIndices[s.emitState.unmatchedInputRowIndicesCursor]]
 		s.emitState.unmatchedInputRowIndicesCursor++
 		if !s.joinType.ShouldIncludeRightColsInOutput() {
+			__antithesis_instrumentation__.Notify(573758)
 			return inputRow, jrEmittingRows, nil
+		} else {
+			__antithesis_instrumentation__.Notify(573759)
 		}
+		__antithesis_instrumentation__.Notify(573745)
 		return s.renderUnmatchedRow(inputRow, leftSide), jrEmittingRows, nil
+	} else {
+		__antithesis_instrumentation__.Notify(573760)
 	}
+	__antithesis_instrumentation__.Notify(573739)
 
 	for s.emitState.matchingInputRowIndicesCursor < len(s.emitState.matchingInputRowIndices) {
+		__antithesis_instrumentation__.Notify(573761)
 		inputRowIdx := s.emitState.matchingInputRowIndices[s.emitState.matchingInputRowIndicesCursor]
 		s.emitState.matchingInputRowIndicesCursor++
 		inputRow := s.inputRows[inputRowIdx]
-		if s.joinType == descpb.LeftSemiJoin && s.groupingState.getMatched(inputRowIdx) {
-			// Already output a row for this group. Note that we've already excluded
-			// this case when all groups are of length 1 by reading the getMatched
-			// value in processLookedUpRow. But when groups can have multiple rows
-			// it is possible that a group that was not matched then is by now
-			// matched.
-			continue
-		}
+		if s.joinType == descpb.LeftSemiJoin && func() bool {
+			__antithesis_instrumentation__.Notify(573766)
+			return s.groupingState.getMatched(inputRowIdx) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573767)
 
-		// Render the output row, this also evaluates the ON condition.
+			continue
+		} else {
+			__antithesis_instrumentation__.Notify(573768)
+		}
+		__antithesis_instrumentation__.Notify(573762)
+
 		outputRow, err := s.render(inputRow, s.emitState.lookedUpRow)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573769)
 			return nil, jrStateUnknown, err
+		} else {
+			__antithesis_instrumentation__.Notify(573770)
 		}
+		__antithesis_instrumentation__.Notify(573763)
 		if outputRow == nil {
-			// This row failed the ON condition, so it remains unmatched.
+			__antithesis_instrumentation__.Notify(573771)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(573772)
 		}
+		__antithesis_instrumentation__.Notify(573764)
 
 		s.groupingState.setMatched(inputRowIdx)
 		if !s.joinType.ShouldIncludeRightColsInOutput() {
+			__antithesis_instrumentation__.Notify(573773)
 			if s.joinType == descpb.LeftAntiJoin {
-				// Skip emitting row.
+				__antithesis_instrumentation__.Notify(573775)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(573776)
 			}
+			__antithesis_instrumentation__.Notify(573774)
 			return inputRow, jrEmittingRows, nil
+		} else {
+			__antithesis_instrumentation__.Notify(573777)
 		}
+		__antithesis_instrumentation__.Notify(573765)
 		return outputRow, jrEmittingRows, nil
 	}
+	__antithesis_instrumentation__.Notify(573740)
 
-	// Processed all matches for a given lookup row, move to the next lookup row.
-	// Set processingLookupRow to false explicitly so if the joinReader re-enters
-	// nextRowToEmit, the strategy knows that no more lookup rows were processed
-	// and should proceed to emit unmatched rows.
 	s.emitState.processingLookupRow = false
 	return nil, jrPerformingLookup, nil
 }
 
-func (s *joinReaderNoOrderingStrategy) spilled() bool { return false }
+func (s *joinReaderNoOrderingStrategy) spilled() bool {
+	__antithesis_instrumentation__.Notify(573778)
+	return false
+}
 
 func (s *joinReaderNoOrderingStrategy) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573779)
 	s.memAcc.Close(ctx)
 	s.joinReaderSpanGenerator.close(ctx)
 	*s = joinReaderNoOrderingStrategy{}
 }
 
-// memUsage returns the size of the data structures in the
-// joinReaderNoOrderingStrategy for memory accounting purposes.
 func (s *joinReaderNoOrderingStrategy) memUsage() int64 {
-	// Account for scratchMatchingInputRowIndices.
+	__antithesis_instrumentation__.Notify(573780)
+
 	size := memsize.IntSliceOverhead + memsize.Int*int64(cap(s.scratchMatchingInputRowIndices))
 
-	// Account for emitState.unmatchedInputRowIndices.
 	size += memsize.IntSliceOverhead + memsize.Int*int64(cap(s.emitState.unmatchedInputRowIndices))
 	return size
 }
 
-// joinReaderIndexJoinStrategy is a joinReaderStrategy that executes an index
-// join. This joinReaderStrategy is very simple - it immediately emits any row
-// passed to processLookedUpRow(). Since it is an index-join, it doesn't
-// actually do any joining: the looked-up rows correspond to a table's PK and
-// the input rows correspond to another one of the table's indexes; there's
-// nothing to join.
-//
-// joinReaderIndexJoinStrategy does not, by itself, do anything to output rows
-// in the order of the input rows (as they're ordered when passed to
-// processLookupRows). But, that will be the order in which the output rows are
-// produced if the looked-up rows are passed to processLookedUpRow() in the same
-// order as the spans returned by processLookupRows(). In other words, if the
-// spans resulting from processLookupRows() are not re-sorted, then
-// joinReaderIndexJoinStrategy will produce its output rows in order. Note that
-// the spans produced by processLookupRows correspond 1-1 with the input;
-// there's no deduping because they're all unique (representing PKs).
 type joinReaderIndexJoinStrategy struct {
 	*joinerBase
 	joinReaderSpanGenerator
 	inputRows []rowenc.EncDatumRow
 
 	emitState struct {
-		// processingLookupRow is an explicit boolean that specifies whether the
-		// strategy is currently processing a match. This is set to true in
-		// processLookedUpRow and causes nextRowToEmit to process the data in
-		// emitState. If set to false, the strategy determines in nextRowToEmit
-		// that no more looked up rows need processing, so unmatched input rows need
-		// to be emitted.
 		processingLookupRow bool
 		lookedUpRow         rowenc.EncDatumRow
 	}
 
-	// memAcc is owned by this strategy and is closed when the strategy is
-	// closed. inputRows are owned by the joinReader, so they aren't accounted
-	// for with this memory account.
-	//
-	// Note that joinReaderIndexJoinStrategy doesn't actually need a
-	// memory account, and it's only responsible for closing it.
 	memAcc *mon.BoundAccount
 }
 
-// getLookupRowsBatchSizeHint returns the batch size for the join reader index
-// join strategy. This number was chosen by running TPCH queries 3, 4, 5, 9,
-// and 19 with varying batch sizes and choosing the smallest batch size that
-// offered a significant performance improvement. Larger batch sizes offered
-// small to no marginal improvements.
 func (s *joinReaderIndexJoinStrategy) getLookupRowsBatchSizeHint(*sessiondata.SessionData) int64 {
-	return 4 << 20 /* 4 MB */
+	__antithesis_instrumentation__.Notify(573781)
+	return 4 << 20
 }
 
 func (s *joinReaderIndexJoinStrategy) getMaxLookupKeyCols() int {
+	__antithesis_instrumentation__.Notify(573782)
 	return s.maxLookupCols()
 }
 
 func (s *joinReaderIndexJoinStrategy) generateRemoteSpans() (roachpb.Spans, error) {
+	__antithesis_instrumentation__.Notify(573783)
 	return nil, errors.AssertionFailedf("generateRemoteSpans called on an index join")
 }
 
 func (s *joinReaderIndexJoinStrategy) generatedRemoteSpans() bool {
+	__antithesis_instrumentation__.Notify(573784)
 	return false
 }
 
 func (s *joinReaderIndexJoinStrategy) processLookupRows(
 	rows []rowenc.EncDatumRow,
 ) (roachpb.Spans, error) {
+	__antithesis_instrumentation__.Notify(573785)
 	s.inputRows = rows
 	return s.generateSpans(s.Ctx, s.inputRows)
 }
@@ -387,62 +337,45 @@ func (s *joinReaderIndexJoinStrategy) processLookupRows(
 func (s *joinReaderIndexJoinStrategy) processLookedUpRow(
 	_ context.Context, row rowenc.EncDatumRow, _ roachpb.Key,
 ) (joinReaderState, error) {
+	__antithesis_instrumentation__.Notify(573786)
 	s.emitState.processingLookupRow = true
 	s.emitState.lookedUpRow = row
 	return jrEmittingRows, nil
 }
 
-func (s *joinReaderIndexJoinStrategy) prepareToEmit(ctx context.Context) {}
+func (s *joinReaderIndexJoinStrategy) prepareToEmit(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573787)
+}
 
 func (s *joinReaderIndexJoinStrategy) nextRowToEmit(
 	ctx context.Context,
 ) (rowenc.EncDatumRow, joinReaderState, error) {
+	__antithesis_instrumentation__.Notify(573788)
 	if !s.emitState.processingLookupRow {
+		__antithesis_instrumentation__.Notify(573790)
 		return nil, jrReadingInput, nil
+	} else {
+		__antithesis_instrumentation__.Notify(573791)
 	}
+	__antithesis_instrumentation__.Notify(573789)
 	s.emitState.processingLookupRow = false
 	return s.emitState.lookedUpRow, jrPerformingLookup, nil
 }
 
 func (s *joinReaderIndexJoinStrategy) spilled() bool {
+	__antithesis_instrumentation__.Notify(573792)
 	return false
 }
 
 func (s *joinReaderIndexJoinStrategy) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573793)
 	s.memAcc.Close(ctx)
 	s.joinReaderSpanGenerator.close(ctx)
 	*s = joinReaderIndexJoinStrategy{}
 }
 
-// partialJoinSentinel is used as the inputRowIdxToLookedUpRowIndices value for
-// semi- and anti-joins, where we only need to know about the existence of a
-// match.
 var partialJoinSentinel = []int{-1}
 
-// joinReaderOrderingStrategy is a joinReaderStrategy that maintains the input
-// ordering: the order in which joined rows are emitted corresponds to the order
-// of the rows passed to processLookupRows().
-//
-// Consider the following example:
-// - the input side has rows (1, red), (2, blue), (3, blue), (4, red).
-// - the lookup side has rows (red, x), (blue, y).
-// - the join needs to produce the pairs (1, x), (2, y), (3, y), (4, x), in this
-//   order.
-//
-// Say the joinReader looks up rows in order: (red, x), then (blue, y). Once
-// (red, x) is fetched, it is handed to
-// joinReaderOderingStrategy.processLookedUpRow(), which will match it against
-// all the corresponding input rows, producing (1, x), (4, x). These two rows
-// are not emitted because that would violate the input ordering (well, (1, x)
-// could be emitted, but we're not smart enough). So, they are buffered until
-// all joined rows are produced. Then the joinReader will hand in (blue, y), for
-// which the joinReaderOrderingStrategy produces (2, y) and (3, y). Now that all
-// output rows are buffered, they are re-ordered according to the input order
-// and emitted.
-//
-// Because of the buffering required to eventually reorder the output, the
-// joinReaderOrderingStrategy is more expensive than
-// joinReaderNoOrderingStrategy.
 type joinReaderOrderingStrategy struct {
 	*joinerBase
 	joinReaderSpanGenerator
@@ -451,74 +384,32 @@ type joinReaderOrderingStrategy struct {
 	inputRows            []rowenc.EncDatumRow
 	remoteSpansGenerated bool
 
-	// inputRowIdxToLookedUpRowIndices is a multimap from input row indices to
-	// corresponding looked up row indices (indexes into the lookedUpRows
-	// container). This serves to emit rows in input
-	// order even though lookups are performed out of order.
-	//
-	// The map is populated in the jrPerformingLookup state. For non partial joins
-	// (everything but semi/anti join), the looked up rows are the rows that came
-	// back from the lookup span for each input row, without checking for matches
-	// with respect to the on-condition. For semi/anti join, we store at most one
-	// sentinel value, indicating a matching lookup if it's present, since the
-	// right side of a semi/anti join is not used.
 	inputRowIdxToLookedUpRowIndices [][]int
 
-	// lookedUpRows buffers looked-up rows for one batch of input rows (i.e.
-	// during one jrPerformingLookup phase). When we move to state jrReadingInput,
-	// lookedUpRows is reset, to be populated by the next lookup phase. The
-	// looked-up rows are used in state jrEmittingRows to actually perform the
-	// joining between input and looked-up rows.
-	//
-	// Each looked-up row can be used multiple times, for multiple input rows with
-	// the same lookup key. Note that the lookup keys are de-duped at the level of
-	// a batch of input rows.
 	lookedUpRows *rowcontainer.DiskBackedNumberedRowContainer
 
-	// emitCursor contains information about where the next row to emit is within
-	// inputRowIdxToLookedUpRowIndices.
 	emitCursor struct {
-		// inputRowIdx contains the index into inputRowIdxToLookedUpRowIndices that
-		// we're about to emit.
 		inputRowIdx int
-		// outputRowIdx contains the index into the inputRowIdx'th row of
-		// inputRowIdxToLookedUpRowIndices that we're about to emit.
+
 		outputRowIdx int
 	}
 
 	groupingState *inputBatchGroupingState
 
-	// outputGroupContinuationForLeftRow is true when this join is the first
-	// join in paired-joins. Note that in this case the input batches will
-	// always be of size 1 (real input batching only happens when this join is
-	// the second join in paired-joins).
 	outputGroupContinuationForLeftRow bool
 
-	// memAcc is owned by this strategy and is closed when the strategy is
-	// closed. inputRows are owned by the joinReader, so they aren't accounted
-	// for with this memory account.
 	memAcc       *mon.BoundAccount
 	accountedFor struct {
-		// sliceOverhead contains the memory usage of
-		// inputRowIdxToLookedUpRowIndices and
-		// accountedFor.inputRowIdxToLookedUpRowIndices that is currently
-		// registered with memAcc.
 		sliceOverhead int64
-		// inputRowIdxToLookedUpRowIndices is a 1:1 mapping with the multimap
-		// with the same name, where each int64 indicates the memory usage of
-		// the corresponding []int that is currently registered with memAcc.
+
 		inputRowIdxToLookedUpRowIndices []int64
 	}
 
-	// testingInfoSpilled is set when the strategy is closed to indicate whether
-	// it has spilled to disk during its lifetime. Used only in tests.
 	testingInfoSpilled bool
 }
 
-const joinReaderOrderingStrategyBatchSizeDefault = 10 << 10 /* 10 KiB */
+const joinReaderOrderingStrategyBatchSizeDefault = 10 << 10
 
-// JoinReaderOrderingStrategyBatchSize determines the size of input batches used
-// to construct a single lookup KV batch by joinReaderOrderingStrategy.
 var JoinReaderOrderingStrategyBatchSize = settings.RegisterByteSizeSetting(
 	settings.TenantWritable,
 	"sql.distsql.join_reader_ordering_strategy.batch_size",
@@ -528,72 +419,91 @@ var JoinReaderOrderingStrategyBatchSize = settings.RegisterByteSizeSetting(
 )
 
 func (s *joinReaderOrderingStrategy) getLookupRowsBatchSizeHint(sd *sessiondata.SessionData) int64 {
-	// TODO(asubiotto): Eventually we might want to adjust this batch size
-	//  dynamically based on whether the result row container spilled or not.
+	__antithesis_instrumentation__.Notify(573794)
+
 	if sd.JoinReaderOrderingStrategyBatchSize == 0 {
-		// In some tests the session data might not be set - use the default
-		// value then.
+		__antithesis_instrumentation__.Notify(573796)
+
 		return joinReaderOrderingStrategyBatchSizeDefault
+	} else {
+		__antithesis_instrumentation__.Notify(573797)
 	}
+	__antithesis_instrumentation__.Notify(573795)
 	return sd.JoinReaderOrderingStrategyBatchSize
 }
 
 func (s *joinReaderOrderingStrategy) getMaxLookupKeyCols() int {
+	__antithesis_instrumentation__.Notify(573798)
 	return s.maxLookupCols()
 }
 
 func (s *joinReaderOrderingStrategy) generateRemoteSpans() (roachpb.Spans, error) {
+	__antithesis_instrumentation__.Notify(573799)
 	gen, ok := s.joinReaderSpanGenerator.(*localityOptimizedSpanGenerator)
 	if !ok {
+		__antithesis_instrumentation__.Notify(573801)
 		return nil, errors.AssertionFailedf("generateRemoteSpans can only be called for locality optimized lookup joins")
+	} else {
+		__antithesis_instrumentation__.Notify(573802)
 	}
+	__antithesis_instrumentation__.Notify(573800)
 	s.remoteSpansGenerated = true
 	return gen.generateRemoteSpans(s.Ctx, s.inputRows)
 }
 
 func (s *joinReaderOrderingStrategy) generatedRemoteSpans() bool {
+	__antithesis_instrumentation__.Notify(573803)
 	return s.remoteSpansGenerated
 }
 
 func (s *joinReaderOrderingStrategy) processLookupRows(
 	rows []rowenc.EncDatumRow,
 ) (roachpb.Spans, error) {
-	// Reset s.inputRowIdxToLookedUpRowIndices. This map will be populated in
-	// processedLookedUpRow(), as lookup results are received (possibly out of
-	// order).
+	__antithesis_instrumentation__.Notify(573804)
+
 	if cap(s.inputRowIdxToLookedUpRowIndices) >= len(rows) {
-		// We can reuse the multimap from the previous lookup rows batch.
+		__antithesis_instrumentation__.Notify(573808)
+
 		s.inputRowIdxToLookedUpRowIndices = s.inputRowIdxToLookedUpRowIndices[:len(rows)]
 		for i := range s.inputRowIdxToLookedUpRowIndices {
+			__antithesis_instrumentation__.Notify(573809)
 			s.inputRowIdxToLookedUpRowIndices[i] = s.inputRowIdxToLookedUpRowIndices[i][:0]
 		}
 	} else {
-		// We have to allocate a new multimap but can reuse the old slices.
+		__antithesis_instrumentation__.Notify(573810)
+
 		oldSlices := s.inputRowIdxToLookedUpRowIndices
-		// Make sure to go up to the capacity to reuse all old slices.
+
 		oldSlices = oldSlices[:cap(oldSlices)]
 		s.inputRowIdxToLookedUpRowIndices = make([][]int, len(rows))
 		for i := range oldSlices {
+			__antithesis_instrumentation__.Notify(573811)
 			s.inputRowIdxToLookedUpRowIndices[i] = oldSlices[i][:0]
 		}
 	}
-	// Now make sure that memory accounting is up to date.
+	__antithesis_instrumentation__.Notify(573805)
+
 	if cap(s.accountedFor.inputRowIdxToLookedUpRowIndices) >= len(rows) {
+		__antithesis_instrumentation__.Notify(573812)
 		s.accountedFor.inputRowIdxToLookedUpRowIndices = s.accountedFor.inputRowIdxToLookedUpRowIndices[:len(rows)]
 	} else {
+		__antithesis_instrumentation__.Notify(573813)
 		oldAccountedFor := s.accountedFor.inputRowIdxToLookedUpRowIndices
 		s.accountedFor.inputRowIdxToLookedUpRowIndices = make([]int64, len(rows))
-		// Since the capacity of old slices hasn't changed, we simply carry over
-		// what we've already accounted for. Make sure to go up to the capacity
-		// to ensure that all old slices are properly accounted for.
+
 		copy(s.accountedFor.inputRowIdxToLookedUpRowIndices, oldAccountedFor[:cap(oldAccountedFor)])
 	}
-	// Account for the new allocations, if any.
+	__antithesis_instrumentation__.Notify(573806)
+
 	sliceOverhead := memsize.IntSliceOverhead*int64(cap(s.inputRowIdxToLookedUpRowIndices)) +
 		memsize.Int64*int64(cap(s.accountedFor.inputRowIdxToLookedUpRowIndices))
 	if err := s.growMemoryAccount(sliceOverhead - s.accountedFor.sliceOverhead); err != nil {
+		__antithesis_instrumentation__.Notify(573814)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(573815)
 	}
+	__antithesis_instrumentation__.Notify(573807)
 	s.accountedFor.sliceOverhead = sliceOverhead
 
 	s.inputRows = rows
@@ -604,183 +514,276 @@ func (s *joinReaderOrderingStrategy) processLookupRows(
 func (s *joinReaderOrderingStrategy) processLookedUpRow(
 	ctx context.Context, row rowenc.EncDatumRow, key roachpb.Key,
 ) (joinReaderState, error) {
+	__antithesis_instrumentation__.Notify(573816)
 	matchingInputRowIndices := s.getMatchingRowIndices(key)
 	var containerIdx int
 	if !s.isPartialJoin {
-		// Replace missing values with nulls to appease the row container.
+		__antithesis_instrumentation__.Notify(573821)
+
 		for i := range row {
+			__antithesis_instrumentation__.Notify(573823)
 			if row[i].IsUnset() {
+				__antithesis_instrumentation__.Notify(573824)
 				row[i].Datum = tree.DNull
+			} else {
+				__antithesis_instrumentation__.Notify(573825)
 			}
 		}
+		__antithesis_instrumentation__.Notify(573822)
 		var err error
 		containerIdx, err = s.lookedUpRows.AddRow(ctx, row)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573826)
 			return jrStateUnknown, err
+		} else {
+			__antithesis_instrumentation__.Notify(573827)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573828)
 	}
+	__antithesis_instrumentation__.Notify(573817)
 
-	// Update our map from input rows to looked up rows.
 	for _, inputRowIdx := range matchingInputRowIndices {
+		__antithesis_instrumentation__.Notify(573829)
 		if !s.isPartialJoin {
+			__antithesis_instrumentation__.Notify(573831)
 			s.inputRowIdxToLookedUpRowIndices[inputRowIdx] = append(
 				s.inputRowIdxToLookedUpRowIndices[inputRowIdx], containerIdx)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(573832)
 		}
+		__antithesis_instrumentation__.Notify(573830)
 
-		// During a SemiJoin or AntiJoin, we only output if we've seen no match
-		// for this input row yet. Additionally, since we don't have to render
-		// anything to output a Semi or Anti join match, we can evaluate our
-		// on condition now. NB: the first join in paired-joins is never a
-		// SemiJoin or AntiJoin.
 		if !s.groupingState.getMatched(inputRowIdx) {
+			__antithesis_instrumentation__.Notify(573833)
 			renderedRow, err := s.render(s.inputRows[inputRowIdx], row)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(573836)
 				return jrStateUnknown, err
+			} else {
+				__antithesis_instrumentation__.Notify(573837)
 			}
+			__antithesis_instrumentation__.Notify(573834)
 			if renderedRow == nil {
-				// We failed our on-condition.
+				__antithesis_instrumentation__.Notify(573838)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(573839)
 			}
+			__antithesis_instrumentation__.Notify(573835)
 			s.groupingState.setMatched(inputRowIdx)
 			s.inputRowIdxToLookedUpRowIndices[inputRowIdx] = partialJoinSentinel
+		} else {
+			__antithesis_instrumentation__.Notify(573840)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573818)
 
-	// Perform memory accounting. Iterate only over the slices that might have
-	// changed in size.
 	var delta int64
 	for _, idx := range matchingInputRowIndices {
+		__antithesis_instrumentation__.Notify(573841)
 		newSize := memsize.Int * int64(cap(s.inputRowIdxToLookedUpRowIndices[idx]))
 		delta += newSize - s.accountedFor.inputRowIdxToLookedUpRowIndices[idx]
 		s.accountedFor.inputRowIdxToLookedUpRowIndices[idx] = newSize
 	}
+	__antithesis_instrumentation__.Notify(573819)
 	if err := s.growMemoryAccount(delta); err != nil {
+		__antithesis_instrumentation__.Notify(573842)
 		return jrStateUnknown, err
+	} else {
+		__antithesis_instrumentation__.Notify(573843)
 	}
+	__antithesis_instrumentation__.Notify(573820)
 
 	return jrPerformingLookup, nil
 }
 
 func (s *joinReaderOrderingStrategy) prepareToEmit(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573844)
 	if !s.isPartialJoin {
+		__antithesis_instrumentation__.Notify(573845)
 		s.lookedUpRows.SetupForRead(ctx, s.inputRowIdxToLookedUpRowIndices)
+	} else {
+		__antithesis_instrumentation__.Notify(573846)
 	}
 }
 
 func (s *joinReaderOrderingStrategy) nextRowToEmit(
 	ctx context.Context,
 ) (rowenc.EncDatumRow, joinReaderState, error) {
+	__antithesis_instrumentation__.Notify(573847)
 	if s.emitCursor.inputRowIdx >= len(s.inputRowIdxToLookedUpRowIndices) {
+		__antithesis_instrumentation__.Notify(573854)
 		log.VEventf(ctx, 1, "done emitting rows")
-		// Ready for another input batch. Reset state. The groupingState,
-		// which also relates to this batch, will be reset by joinReader.
+
 		s.emitCursor.outputRowIdx = 0
 		s.emitCursor.inputRowIdx = 0
 		if err := s.lookedUpRows.UnsafeReset(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(573856)
 			return nil, jrStateUnknown, err
+		} else {
+			__antithesis_instrumentation__.Notify(573857)
 		}
+		__antithesis_instrumentation__.Notify(573855)
 		return nil, jrReadingInput, nil
+	} else {
+		__antithesis_instrumentation__.Notify(573858)
 	}
+	__antithesis_instrumentation__.Notify(573848)
 
 	inputRow := s.inputRows[s.emitCursor.inputRowIdx]
 	lookedUpRows := s.inputRowIdxToLookedUpRowIndices[s.emitCursor.inputRowIdx]
 	if s.emitCursor.outputRowIdx >= len(lookedUpRows) {
-		// We have no more rows for the current input row. Emit an outer or anti
-		// row if we didn't see a match, and bump to the next input row.
+		__antithesis_instrumentation__.Notify(573859)
+
 		inputRowIdx := s.emitCursor.inputRowIdx
 		s.emitCursor.inputRowIdx++
 		s.emitCursor.outputRowIdx = 0
 		if s.groupingState.isUnmatched(inputRowIdx) {
+			__antithesis_instrumentation__.Notify(573861)
 			switch s.joinType {
 			case descpb.LeftOuterJoin:
-				// An outer-join non-match means we emit the input row with NULLs for
-				// the right side.
+				__antithesis_instrumentation__.Notify(573862)
+
 				if renderedRow := s.renderUnmatchedRow(inputRow, leftSide); renderedRow != nil {
+					__antithesis_instrumentation__.Notify(573865)
 					if s.outputGroupContinuationForLeftRow {
-						// This must be the first row being output for this input row.
+						__antithesis_instrumentation__.Notify(573867)
+
 						renderedRow = append(renderedRow, falseEncDatum)
+					} else {
+						__antithesis_instrumentation__.Notify(573868)
 					}
+					__antithesis_instrumentation__.Notify(573866)
 					return renderedRow, jrEmittingRows, nil
+				} else {
+					__antithesis_instrumentation__.Notify(573869)
 				}
 			case descpb.LeftAntiJoin:
-				// An anti-join non-match means we emit the input row.
+				__antithesis_instrumentation__.Notify(573863)
+
 				return inputRow, jrEmittingRows, nil
+			default:
+				__antithesis_instrumentation__.Notify(573864)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(573870)
 		}
+		__antithesis_instrumentation__.Notify(573860)
 		return nil, jrEmittingRows, nil
+	} else {
+		__antithesis_instrumentation__.Notify(573871)
 	}
+	__antithesis_instrumentation__.Notify(573849)
 
 	lookedUpRowIdx := lookedUpRows[s.emitCursor.outputRowIdx]
 	s.emitCursor.outputRowIdx++
 	switch s.joinType {
 	case descpb.LeftSemiJoin:
-		// A semi-join match means we emit our input row. This is the case where
-		// we used the partialJoinSentinel.
+		__antithesis_instrumentation__.Notify(573872)
+
 		return inputRow, jrEmittingRows, nil
 	case descpb.LeftAntiJoin:
-		// An anti-join match means we emit nothing. This is the case where
-		// we used the partialJoinSentinel.
-		return nil, jrEmittingRows, nil
-	}
+		__antithesis_instrumentation__.Notify(573873)
 
-	lookedUpRow, err := s.lookedUpRows.GetRow(s.Ctx, lookedUpRowIdx, false /* skip */)
-	if err != nil {
-		return nil, jrStateUnknown, err
+		return nil, jrEmittingRows, nil
+	default:
+		__antithesis_instrumentation__.Notify(573874)
 	}
+	__antithesis_instrumentation__.Notify(573850)
+
+	lookedUpRow, err := s.lookedUpRows.GetRow(s.Ctx, lookedUpRowIdx, false)
+	if err != nil {
+		__antithesis_instrumentation__.Notify(573875)
+		return nil, jrStateUnknown, err
+	} else {
+		__antithesis_instrumentation__.Notify(573876)
+	}
+	__antithesis_instrumentation__.Notify(573851)
 	outputRow, err := s.render(inputRow, lookedUpRow)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(573877)
 		return nil, jrStateUnknown, err
+	} else {
+		__antithesis_instrumentation__.Notify(573878)
 	}
+	__antithesis_instrumentation__.Notify(573852)
 	if outputRow != nil {
+		__antithesis_instrumentation__.Notify(573879)
 		wasAlreadyMatched := s.groupingState.setMatched(s.emitCursor.inputRowIdx)
 		if s.outputGroupContinuationForLeftRow {
+			__antithesis_instrumentation__.Notify(573880)
 			if wasAlreadyMatched {
-				// Not the first row output for this input row.
+				__antithesis_instrumentation__.Notify(573881)
+
 				outputRow = append(outputRow, trueEncDatum)
 			} else {
-				// First row output for this input row.
+				__antithesis_instrumentation__.Notify(573882)
+
 				outputRow = append(outputRow, falseEncDatum)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(573883)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573884)
 	}
+	__antithesis_instrumentation__.Notify(573853)
 	return outputRow, jrEmittingRows, nil
 }
 
 func (s *joinReaderOrderingStrategy) spilled() bool {
+	__antithesis_instrumentation__.Notify(573885)
 	if s.lookedUpRows != nil {
+		__antithesis_instrumentation__.Notify(573887)
 		return s.lookedUpRows.Spilled()
+	} else {
+		__antithesis_instrumentation__.Notify(573888)
 	}
-	// The strategy must have been closed.
+	__antithesis_instrumentation__.Notify(573886)
+
 	return s.testingInfoSpilled
 }
 
 func (s *joinReaderOrderingStrategy) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573889)
 	s.memAcc.Close(ctx)
 	s.joinReaderSpanGenerator.close(ctx)
 	if s.lookedUpRows != nil {
+		__antithesis_instrumentation__.Notify(573891)
 		s.lookedUpRows.Close(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(573892)
 	}
+	__antithesis_instrumentation__.Notify(573890)
 	*s = joinReaderOrderingStrategy{
 		testingInfoSpilled: s.lookedUpRows.Spilled(),
 	}
 }
 
-// growMemoryAccount registers delta bytes with the memory account. If the
-// reservation is denied initially, then it'll attempt to spill lookedUpRows row
-// container to disk, so the error is only returned when that wasn't
-// successful.
 func (s *joinReaderOrderingStrategy) growMemoryAccount(delta int64) error {
+	__antithesis_instrumentation__.Notify(573893)
 	if err := s.memAcc.Grow(s.Ctx, delta); err != nil {
-		// We don't have enough budget to account for the new size. Check
-		// whether we can spill the looked up rows to disk to free up the
-		// budget.
+		__antithesis_instrumentation__.Notify(573895)
+
 		spilled, spillErr := s.lookedUpRows.SpillToDisk(s.Ctx)
-		if !spilled || spillErr != nil {
+		if !spilled || func() bool {
+			__antithesis_instrumentation__.Notify(573897)
+			return spillErr != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573898)
 			return addWorkmemHint(errors.CombineErrors(err, spillErr))
+		} else {
+			__antithesis_instrumentation__.Notify(573899)
 		}
-		// We freed up some budget, so try to perform the accounting again.
+		__antithesis_instrumentation__.Notify(573896)
+
 		return addWorkmemHint(s.memAcc.Grow(s.Ctx, delta))
+	} else {
+		__antithesis_instrumentation__.Notify(573900)
 	}
+	__antithesis_instrumentation__.Notify(573894)
 	return nil
 }

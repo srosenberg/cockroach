@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -21,13 +13,18 @@ import (
 )
 
 func (d *delegator) delegateShowJobs(n *tree.ShowJobs) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465639)
 	if n.Schedules != nil {
-		// Limit the jobs displayed to the ones started by specified schedules.
+		__antithesis_instrumentation__.Notify(465643)
+
 		return parse(fmt.Sprintf(`
 SHOW JOBS SELECT id FROM system.jobs WHERE created_by_type='%s' and created_by_id IN (%s)
 `, jobs.CreatedByScheduledJobs, n.Schedules.String()),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(465644)
 	}
+	__antithesis_instrumentation__.Notify(465640)
 
 	sqltelemetry.IncrementShowCounter(sqltelemetry.Jobs)
 
@@ -41,42 +38,53 @@ SELECT job_id, job_type, description, statement, user_name, status,
 	)
 	var typePredicate, whereClause, orderbyClause string
 	if n.Jobs == nil {
-		// Display all [only automatic] jobs without selecting specific jobs.
+		__antithesis_instrumentation__.Notify(465645)
+
 		{
-			// Build the typePredicate.
+			__antithesis_instrumentation__.Notify(465647)
+
 			var predicate strings.Builder
 			if n.Automatic {
+				__antithesis_instrumentation__.Notify(465650)
 				predicate.WriteString("job_type IN (")
 			} else {
+				__antithesis_instrumentation__.Notify(465651)
 				predicate.WriteString("job_type IS NULL OR job_type NOT IN (")
 			}
+			__antithesis_instrumentation__.Notify(465648)
 			for i, jobType := range jobspb.AutomaticJobTypes {
+				__antithesis_instrumentation__.Notify(465652)
 				if i != 0 {
+					__antithesis_instrumentation__.Notify(465654)
 					predicate.WriteString(", ")
+				} else {
+					__antithesis_instrumentation__.Notify(465655)
 				}
+				__antithesis_instrumentation__.Notify(465653)
 				predicate.WriteByte('\'')
 				predicate.WriteString(jobType.String())
 				predicate.WriteByte('\'')
 			}
+			__antithesis_instrumentation__.Notify(465649)
 			predicate.WriteByte(')')
 			typePredicate = predicate.String()
 		}
+		__antithesis_instrumentation__.Notify(465646)
 
-		// The query intends to present:
-		// - first all the running jobs sorted in order of start time,
-		// - then all completed jobs sorted in order of completion time.
 		whereClause = fmt.Sprintf(
 			`WHERE %s AND (finished IS NULL OR finished > now() - '12h':::interval)`, typePredicate)
-		// The "ORDER BY" clause below exploits the fact that all
-		// running jobs have finished = NULL.
+
 		orderbyClause = `ORDER BY COALESCE(finished, now()) DESC, started DESC`
 	} else {
-		// Limit the jobs displayed to the select statement in n.Jobs.
+		__antithesis_instrumentation__.Notify(465656)
+
 		whereClause = fmt.Sprintf(`WHERE job_id in (%s)`, n.Jobs.String())
 	}
+	__antithesis_instrumentation__.Notify(465641)
 
 	sqlStmt := fmt.Sprintf("%s %s %s", selectClause, whereClause, orderbyClause)
 	if n.Block {
+		__antithesis_instrumentation__.Notify(465657)
 		sqlStmt = fmt.Sprintf(
 			`
     WITH jobs AS (SELECT * FROM [%s]),
@@ -93,6 +101,9 @@ SELECT job_id, job_type, description, statement, user_name, status,
 SELECT *
   FROM jobs
  WHERE NOT EXISTS(SELECT * FROM fail_if_slept_too_long)`, sqlStmt)
+	} else {
+		__antithesis_instrumentation__.Notify(465658)
 	}
+	__antithesis_instrumentation__.Notify(465642)
 	return parse(sqlStmt)
 }

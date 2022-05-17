@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rttanalysis
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,10 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// RoundTripBenchTestCase is a struct that holds the Name of a benchmark test
-// case for ddl analysis and the statements to run for the test.
-// Reset must drop any remaining objects after the current database is dropped
-// so Setup and Stmt can be run again.
 type RoundTripBenchTestCase struct {
 	Name  string
 	Setup string
@@ -40,17 +28,16 @@ type RoundTripBenchTestCase struct {
 }
 
 func runRoundTripBenchmark(b testingB, tests []RoundTripBenchTestCase, cc ClusterConstructor) {
+	__antithesis_instrumentation__.Notify(1842)
 	for _, tc := range tests {
+		__antithesis_instrumentation__.Notify(1843)
 		b.Run(tc.Name, func(b testingB) {
+			__antithesis_instrumentation__.Notify(1844)
 			executeRoundTripTest(b, tc, cc)
 		})
 	}
 }
 
-// RunRoundTripBenchmark sets up a db run the RoundTripBenchTestCase test cases
-// and counts how many round trips the Stmt specified by the test case performs.
-// It runs each leaf subtest numRuns times. It uses the limiter to limit
-// concurrency.
 func runRoundTripBenchmarkTest(
 	t *testing.T,
 	scope *log.TestLogScope,
@@ -60,17 +47,22 @@ func runRoundTripBenchmarkTest(
 	numRuns int,
 	limit *quotapool.IntPool,
 ) {
+	__antithesis_instrumentation__.Notify(1845)
 	skip.UnderMetamorphic(t, "changes the RTTs")
 	var wg sync.WaitGroup
 	for _, tc := range tests {
+		__antithesis_instrumentation__.Notify(1847)
 		wg.Add(1)
 		go func(tc RoundTripBenchTestCase) {
+			__antithesis_instrumentation__.Notify(1848)
 			defer wg.Done()
 			t.Run(tc.Name, func(t *testing.T) {
+				__antithesis_instrumentation__.Notify(1849)
 				runRoundTripBenchmarkTestCase(t, scope, results, tc, cc, numRuns, limit)
 			})
 		}(tc)
 	}
+	__antithesis_instrumentation__.Notify(1846)
 	wg.Wait()
 }
 
@@ -83,12 +75,15 @@ func runRoundTripBenchmarkTestCase(
 	numRuns int,
 	limit *quotapool.IntPool,
 ) {
+	__antithesis_instrumentation__.Notify(1850)
 	var wg sync.WaitGroup
 	for i := 0; i < numRuns; i++ {
+		__antithesis_instrumentation__.Notify(1852)
 		alloc, err := limit.Acquire(context.Background(), 1)
 		require.NoError(t, err)
 		wg.Add(1)
 		go func() {
+			__antithesis_instrumentation__.Notify(1853)
 			defer wg.Done()
 			defer alloc.Release()
 			executeRoundTripTest(tShim{
@@ -96,11 +91,12 @@ func runRoundTripBenchmarkTestCase(
 			}, tc, cc)
 		}()
 	}
+	__antithesis_instrumentation__.Notify(1851)
 	wg.Wait()
 }
 
-// executeRoundTripTest executes a RoundTripBenchCase on with the provided SQL runner
 func executeRoundTripTest(b testingB, tc RoundTripBenchTestCase, cc ClusterConstructor) {
+	__antithesis_instrumentation__.Notify(1854)
 	getDir, cleanup := b.logScope()
 	defer cleanup()
 
@@ -118,9 +114,8 @@ func executeRoundTripTest(b testingB, tc RoundTripBenchTestCase, cc ClusterConst
 	b.StopTimer()
 	var r tracing.Recording
 
-	// Do an extra iteration and don't record it in order to deal with effects of
-	// running it the first time.
 	for i := 0; i < b.N()+1; i++ {
+		__antithesis_instrumentation__.Notify(1857)
 		sql.Exec(b, "CREATE DATABASE bench;")
 		sql.Exec(b, tc.Setup)
 		cluster.clearStatementTrace(tc.Stmt)
@@ -131,28 +126,46 @@ func executeRoundTripTest(b testingB, tc RoundTripBenchTestCase, cc ClusterConst
 		var ok bool
 		r, ok = cluster.getStatementTrace(tc.Stmt)
 		if !ok {
+			__antithesis_instrumentation__.Notify(1860)
 			b.Fatalf(
 				"could not find number of round trips for statement: %s",
 				tc.Stmt,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(1861)
 		}
+		__antithesis_instrumentation__.Notify(1858)
 
-		// If there's a retry error then we're just going to throw away this
-		// run.
 		rt, hasRetry := countKvBatchRequestsInRecording(r)
 		if hasRetry {
+			__antithesis_instrumentation__.Notify(1862)
 			i--
-		} else if i > 0 { // skip the initial iteration
-			roundTrips += rt
+		} else {
+			__antithesis_instrumentation__.Notify(1863)
+			if i > 0 {
+				__antithesis_instrumentation__.Notify(1864)
+				roundTrips += rt
+			} else {
+				__antithesis_instrumentation__.Notify(1865)
+			}
 		}
+		__antithesis_instrumentation__.Notify(1859)
 
 		sql.Exec(b, "DROP DATABASE bench;")
 		sql.Exec(b, tc.Reset)
 	}
+	__antithesis_instrumentation__.Notify(1855)
 
 	res := float64(roundTrips) / float64(b.N())
 
-	if haveExp && !exp.matches(int(res)) && !*rewriteFlag {
+	if haveExp && func() bool {
+		__antithesis_instrumentation__.Notify(1866)
+		return !exp.matches(int(res)) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(1867)
+		return !*rewriteFlag == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(1868)
 		b.Errorf(`%s: got %v, expected %v`, b.Name(), res, exp)
 		dir := getDir()
 		jaegerJSON, err := r.ToJaegerJSON(tc.Stmt, "", "n0")
@@ -160,50 +173,76 @@ func executeRoundTripTest(b testingB, tc RoundTripBenchTestCase, cc ClusterConst
 		path := filepath.Join(dir, strings.Replace(b.Name(), "/", "_", -1)) + ".jaeger.json"
 		require.NoError(b, ioutil.WriteFile(path, []byte(jaegerJSON), 0666))
 		b.Errorf("wrote jaeger trace to %s", path)
+	} else {
+		__antithesis_instrumentation__.Notify(1869)
 	}
+	__antithesis_instrumentation__.Notify(1856)
 	b.ReportMetric(res, roundTripsMetric)
 }
 
 const roundTripsMetric = "roundtrips"
 
-// count the number of KvBatchRequests inside a recording, this is done by
-// counting each "txn coordinator send" operation.
 func countKvBatchRequestsInRecording(r tracing.Recording) (sends int, hasRetry bool) {
+	__antithesis_instrumentation__.Notify(1870)
 	root := r[0]
 	return countKvBatchRequestsInSpan(r, root)
 }
 
 func countKvBatchRequestsInSpan(r tracing.Recording, sp tracingpb.RecordedSpan) (int, bool) {
+	__antithesis_instrumentation__.Notify(1871)
 	count := 0
-	// Count the number of OpTxnCoordSender operations while traversing the
-	// tree of spans.
+
 	if sp.Operation == kvcoord.OpTxnCoordSender {
+		__antithesis_instrumentation__.Notify(1875)
 		count++
+	} else {
+		__antithesis_instrumentation__.Notify(1876)
 	}
+	__antithesis_instrumentation__.Notify(1872)
 	if logsContainRetry(sp.Logs) {
+		__antithesis_instrumentation__.Notify(1877)
 		return 0, true
+	} else {
+		__antithesis_instrumentation__.Notify(1878)
 	}
+	__antithesis_instrumentation__.Notify(1873)
 
 	for _, osp := range r {
+		__antithesis_instrumentation__.Notify(1879)
 		if osp.ParentSpanID != sp.SpanID {
+			__antithesis_instrumentation__.Notify(1882)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(1883)
 		}
+		__antithesis_instrumentation__.Notify(1880)
 
 		subCount, hasRetry := countKvBatchRequestsInSpan(r, osp)
 		if hasRetry {
+			__antithesis_instrumentation__.Notify(1884)
 			return 0, true
+		} else {
+			__antithesis_instrumentation__.Notify(1885)
 		}
+		__antithesis_instrumentation__.Notify(1881)
 		count += subCount
 	}
+	__antithesis_instrumentation__.Notify(1874)
 
 	return count, false
 }
 
 func logsContainRetry(logs []tracingpb.LogRecord) bool {
+	__antithesis_instrumentation__.Notify(1886)
 	for _, l := range logs {
+		__antithesis_instrumentation__.Notify(1888)
 		if strings.Contains(l.String(), "TransactionRetryWithProtoRefreshError") {
+			__antithesis_instrumentation__.Notify(1889)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(1890)
 		}
 	}
+	__antithesis_instrumentation__.Notify(1887)
 	return false
 }

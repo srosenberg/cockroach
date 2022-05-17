@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catalogkeys
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strings"
@@ -23,187 +15,223 @@ import (
 )
 
 const (
-	// DefaultDatabaseName is the name ofthe default CockroachDB database used
-	// for connections without a current db set.
 	DefaultDatabaseName = "defaultdb"
 
-	// PgDatabaseName is the name of the default postgres system database.
 	PgDatabaseName = "postgres"
 )
 
-// DefaultUserDBs is a set of the databases which are present in a new cluster.
 var DefaultUserDBs = []string{
 	DefaultDatabaseName, PgDatabaseName,
 }
 
-// IndexKeyValDirs returns the corresponding encoding.Directions for all the
-// encoded values in index's "fullest" possible index key, including directions
-// for table/index IDs and the index column values.
 func IndexKeyValDirs(index catalog.Index) []encoding.Direction {
+	__antithesis_instrumentation__.Notify(247306)
 	if index == nil {
+		__antithesis_instrumentation__.Notify(247309)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(247310)
 	}
+	__antithesis_instrumentation__.Notify(247307)
 
 	dirs := make([]encoding.Direction, 0, 2+index.NumKeyColumns())
 
-	// The index's table/index ID.
 	dirs = append(dirs, encoding.Ascending, encoding.Ascending)
 
 	for colIdx := 0; colIdx < index.NumKeyColumns(); colIdx++ {
+		__antithesis_instrumentation__.Notify(247311)
 		d, err := index.GetKeyColumnDirection(colIdx).ToEncodingDirection()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(247313)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(247314)
 		}
+		__antithesis_instrumentation__.Notify(247312)
 		dirs = append(dirs, d)
 	}
+	__antithesis_instrumentation__.Notify(247308)
 
 	return dirs
 }
 
-// PrettyKey pretty-prints the specified key, skipping over the first `skip`
-// fields. The pretty printed key looks like:
-//
-//   /Table/<tableID>/<indexID>/...
-//
-// We always strip off the /Table prefix and then `skip` more fields. Note that
-// this assumes that the fields themselves do not contain '/', but that is
-// currently true for the fields we care about stripping (the table and index
-// ID).
 func PrettyKey(valDirs []encoding.Direction, key roachpb.Key, skip int) string {
-	p := key.StringWithDirs(valDirs, 0 /* maxLen */)
+	__antithesis_instrumentation__.Notify(247315)
+	p := key.StringWithDirs(valDirs, 0)
 	for i := 0; i <= skip; i++ {
+		__antithesis_instrumentation__.Notify(247317)
 		n := strings.IndexByte(p[1:], '/')
 		if n == -1 {
+			__antithesis_instrumentation__.Notify(247319)
 			return ""
+		} else {
+			__antithesis_instrumentation__.Notify(247320)
 		}
+		__antithesis_instrumentation__.Notify(247318)
 		p = p[n+1:]
 	}
+	__antithesis_instrumentation__.Notify(247316)
 	return p
 }
 
-// PrettySpan returns a human-readable representation of a span.
 func PrettySpan(valDirs []encoding.Direction, span roachpb.Span, skip int) string {
+	__antithesis_instrumentation__.Notify(247321)
 	var b strings.Builder
 	b.WriteString(PrettyKey(valDirs, span.Key, skip))
 	if span.EndKey != nil {
+		__antithesis_instrumentation__.Notify(247323)
 		b.WriteByte('-')
 		b.WriteString(PrettyKey(valDirs, span.EndKey, skip))
+	} else {
+		__antithesis_instrumentation__.Notify(247324)
 	}
+	__antithesis_instrumentation__.Notify(247322)
 	return b.String()
 }
 
-// PrettySpans returns a human-readable description of the spans.
-// If index is nil, then pretty print subroutines will use their default
-// settings.
 func PrettySpans(index catalog.Index, spans []roachpb.Span, skip int) string {
+	__antithesis_instrumentation__.Notify(247325)
 	if len(spans) == 0 {
+		__antithesis_instrumentation__.Notify(247328)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(247329)
 	}
+	__antithesis_instrumentation__.Notify(247326)
 
 	valDirs := IndexKeyValDirs(index)
 
 	var b strings.Builder
 	for i, span := range spans {
+		__antithesis_instrumentation__.Notify(247330)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(247332)
 			b.WriteString(" ")
+		} else {
+			__antithesis_instrumentation__.Notify(247333)
 		}
+		__antithesis_instrumentation__.Notify(247331)
 		b.WriteString(PrettySpan(valDirs, span, skip))
 	}
+	__antithesis_instrumentation__.Notify(247327)
 	return b.String()
 }
 
-// NewNameKeyComponents returns a new catalog.NameKey instance for the given object
-// name scoped under the given parent schema and parent database.
 func NewNameKeyComponents(
 	parentID descpb.ID, parentSchemaID descpb.ID, name string,
 ) catalog.NameKey {
+	__antithesis_instrumentation__.Notify(247334)
 	return descpb.NameInfo{ParentID: parentID, ParentSchemaID: parentSchemaID, Name: name}
 }
 
-// MakeObjectNameKey returns the roachpb.Key for the given object name
-// scoped under the given schema in the given database.
 func MakeObjectNameKey(
 	codec keys.SQLCodec, parentID, parentSchemaID descpb.ID, name string,
 ) roachpb.Key {
+	__antithesis_instrumentation__.Notify(247335)
 	return EncodeNameKey(codec, NewNameKeyComponents(parentID, parentSchemaID, name))
 }
 
-// MakePublicObjectNameKey returns the roachpb.Key for the given object name
-// scoped under the public schema in the given database.
 func MakePublicObjectNameKey(codec keys.SQLCodec, parentID descpb.ID, name string) roachpb.Key {
+	__antithesis_instrumentation__.Notify(247336)
 	return EncodeNameKey(codec, NewNameKeyComponents(parentID, keys.PublicSchemaID, name))
 }
 
-// MakeSchemaNameKey returns the roachpb.Key for the given schema name scoped
-// under the given database.
 func MakeSchemaNameKey(codec keys.SQLCodec, parentID descpb.ID, name string) roachpb.Key {
+	__antithesis_instrumentation__.Notify(247337)
 	return EncodeNameKey(codec, NewNameKeyComponents(parentID, keys.RootNamespaceID, name))
 }
 
-// MakeDatabaseNameKey returns the roachpb.Key corresponding to the database
-// with the given name.
 func MakeDatabaseNameKey(codec keys.SQLCodec, name string) roachpb.Key {
+	__antithesis_instrumentation__.Notify(247338)
 	return EncodeNameKey(codec, NewNameKeyComponents(keys.RootNamespaceID, keys.RootNamespaceID, name))
 }
 
-// EncodeNameKey encodes nameKey using codec.
 func EncodeNameKey(codec keys.SQLCodec, nameKey catalog.NameKey) roachpb.Key {
+	__antithesis_instrumentation__.Notify(247339)
 	r := codec.IndexPrefix(keys.NamespaceTableID, catconstants.NamespaceTablePrimaryIndexID)
 	r = encoding.EncodeUvarintAscending(r, uint64(nameKey.GetParentID()))
 	r = encoding.EncodeUvarintAscending(r, uint64(nameKey.GetParentSchemaID()))
 	if nameKey.GetName() != "" {
+		__antithesis_instrumentation__.Notify(247341)
 		r = encoding.EncodeBytesAscending(r, []byte(nameKey.GetName()))
 		r = keys.MakeFamilyKey(r, catconstants.NamespaceTableFamilyID)
+	} else {
+		__antithesis_instrumentation__.Notify(247342)
 	}
+	__antithesis_instrumentation__.Notify(247340)
 	return r
 }
 
-// DecodeNameMetadataKey is the reciprocal of EncodeNameKey.
 func DecodeNameMetadataKey(
 	codec keys.SQLCodec, k roachpb.Key,
 ) (nameKey descpb.NameInfo, err error) {
+	__antithesis_instrumentation__.Notify(247343)
 	k, _, err = codec.DecodeTablePrefix(k)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(247350)
 		return nameKey, err
+	} else {
+		__antithesis_instrumentation__.Notify(247351)
 	}
+	__antithesis_instrumentation__.Notify(247344)
 
 	var buf uint64
 	k, buf, err = encoding.DecodeUvarintAscending(k)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(247352)
 		return nameKey, err
+	} else {
+		__antithesis_instrumentation__.Notify(247353)
 	}
+	__antithesis_instrumentation__.Notify(247345)
 	if buf != uint64(catconstants.NamespaceTablePrimaryIndexID) {
+		__antithesis_instrumentation__.Notify(247354)
 		return nameKey, errors.Newf("tried get table %d, but got %d", catconstants.NamespaceTablePrimaryIndexID, buf)
+	} else {
+		__antithesis_instrumentation__.Notify(247355)
 	}
+	__antithesis_instrumentation__.Notify(247346)
 
 	k, buf, err = encoding.DecodeUvarintAscending(k)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(247356)
 		return nameKey, err
+	} else {
+		__antithesis_instrumentation__.Notify(247357)
 	}
+	__antithesis_instrumentation__.Notify(247347)
 	nameKey.ParentID = descpb.ID(buf)
 
 	k, buf, err = encoding.DecodeUvarintAscending(k)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(247358)
 		return nameKey, err
+	} else {
+		__antithesis_instrumentation__.Notify(247359)
 	}
+	__antithesis_instrumentation__.Notify(247348)
 	nameKey.ParentSchemaID = descpb.ID(buf)
 
 	var bytesBuf []byte
 	_, bytesBuf, err = encoding.DecodeBytesAscending(k, nil)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(247360)
 		return nameKey, err
+	} else {
+		__antithesis_instrumentation__.Notify(247361)
 	}
+	__antithesis_instrumentation__.Notify(247349)
 	nameKey.Name = string(bytesBuf)
 
 	return nameKey, nil
 }
 
-// MakeAllDescsMetadataKey returns the key for all descriptors.
 func MakeAllDescsMetadataKey(codec keys.SQLCodec) roachpb.Key {
+	__antithesis_instrumentation__.Notify(247362)
 	return codec.DescMetadataPrefix()
 }
 
-// MakeDescMetadataKey returns the key for the descriptor.
 func MakeDescMetadataKey(codec keys.SQLCodec, descID descpb.ID) roachpb.Key {
+	__antithesis_instrumentation__.Notify(247363)
 	return codec.DescMetadataKey(uint32(descID))
 }

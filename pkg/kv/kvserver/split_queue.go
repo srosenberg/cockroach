@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,42 +21,33 @@ import (
 )
 
 const (
-	// splitQueueTimerDuration is the duration between splits of queued ranges.
-	splitQueueTimerDuration = 0 // zero duration to process splits greedily.
+	splitQueueTimerDuration = 0
 
-	// splitQueuePurgatoryCheckInterval is the interval at which replicas in
-	// purgatory make split attempts. Purgatory is used by the splitQueue to
-	// store ranges that are large enough to require a split but are
-	// unsplittable because they do not contain a suitable split key. Purgatory
-	// prevents them from repeatedly attempting to split at an unbounded rate.
 	splitQueuePurgatoryCheckInterval = 1 * time.Minute
 
-	// splits should be relatively isolated, other than requiring expensive
-	// RocksDB scans over part of the splitting range to recompute stats. We
-	// allow a limitted number of splits to be processed at once.
 	splitQueueConcurrency = 4
 )
 
-// splitQueue manages a queue of ranges slated to be split due to size
-// or along intersecting zone config boundaries.
 type splitQueue struct {
 	*baseQueue
 	db       *kv.DB
 	purgChan <-chan time.Time
 
-	// loadBasedCount counts the load-based splits performed by the queue.
 	loadBasedCount telemetry.Counter
 }
 
-// newSplitQueue returns a new instance of splitQueue.
 func newSplitQueue(store *Store, db *kv.DB) *splitQueue {
+	__antithesis_instrumentation__.Notify(123501)
 	var purgChan <-chan time.Time
 	if c := store.TestingKnobs().SplitQueuePurgatoryChan; c != nil {
+		__antithesis_instrumentation__.Notify(123503)
 		purgChan = c
 	} else {
+		__antithesis_instrumentation__.Notify(123504)
 		purgTicker := time.NewTicker(splitQueuePurgatoryCheckInterval)
 		purgChan = purgTicker.C
 	}
+	__antithesis_instrumentation__.Notify(123502)
 
 	sq := &splitQueue{
 		db:             db,
@@ -97,80 +80,92 @@ func shouldSplitRange(
 	shouldBackpressureWrites bool,
 	confReader spanconfig.StoreReader,
 ) (shouldQ bool, priority float64) {
+	__antithesis_instrumentation__.Notify(123505)
 	if confReader.NeedsSplit(ctx, desc.StartKey, desc.EndKey) {
-		// Set priority to 1 in the event the range is split by zone configs.
+		__antithesis_instrumentation__.Notify(123509)
+
 		priority = 1
 		shouldQ = true
+	} else {
+		__antithesis_instrumentation__.Notify(123510)
 	}
+	__antithesis_instrumentation__.Notify(123506)
 
-	// Add priority based on the size of range compared to the max
-	// size for the zone it's in.
 	if ratio := float64(ms.Total()) / float64(maxBytes); ratio > 1 {
+		__antithesis_instrumentation__.Notify(123511)
 		priority += ratio
 		shouldQ = true
+	} else {
+		__antithesis_instrumentation__.Notify(123512)
 	}
+	__antithesis_instrumentation__.Notify(123507)
 
-	// additionalPriorityDueToBackpressure is a mechanism to prioritize splitting
-	// ranges which will actively backpressure writes.
-	//
-	// NB: This additional weight is totally arbitrary. The priority in the split
-	// queue is usually 1 plus the ratio of the current size over the max size.
-	// When a range is much larger than it is allowed to be given the
-	// backpressureRangeSizeMultiplier and the zone config, backpressure is
-	// not going to be applied because of the backpressureByteTolerance (see the
-	// comment there for more details). However, when the range size is close to
-	// the limit, we will backpressure. We strongly prefer to split over
-	// backpressure.
 	const additionalPriorityDueToBackpressure = 50
-	if shouldQ && shouldBackpressureWrites {
+	if shouldQ && func() bool {
+		__antithesis_instrumentation__.Notify(123513)
+		return shouldBackpressureWrites == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(123514)
 		priority += additionalPriorityDueToBackpressure
+	} else {
+		__antithesis_instrumentation__.Notify(123515)
 	}
+	__antithesis_instrumentation__.Notify(123508)
 
 	return shouldQ, priority
 }
 
-// shouldQueue determines whether a range should be queued for
-// splitting. This is true if the range is intersected by a zone config
-// prefix or if the range's size in bytes exceeds the limit for the zone,
-// or if the range has too much load on it.
 func (sq *splitQueue) shouldQueue(
 	ctx context.Context, now hlc.ClockTimestamp, repl *Replica, confReader spanconfig.StoreReader,
 ) (shouldQ bool, priority float64) {
+	__antithesis_instrumentation__.Notify(123516)
 	shouldQ, priority = shouldSplitRange(ctx, repl.Desc(), repl.GetMVCCStats(),
 		repl.GetMaxBytes(), repl.shouldBackpressureWrites(), confReader)
 
-	if !shouldQ && repl.SplitByLoadEnabled() {
+	if !shouldQ && func() bool {
+		__antithesis_instrumentation__.Notify(123518)
+		return repl.SplitByLoadEnabled() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(123519)
 		if splitKey := repl.loadBasedSplitter.MaybeSplitKey(timeutil.Now()); splitKey != nil {
-			shouldQ, priority = true, 1.0 // default priority
+			__antithesis_instrumentation__.Notify(123520)
+			shouldQ, priority = true, 1.0
+		} else {
+			__antithesis_instrumentation__.Notify(123521)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(123522)
 	}
+	__antithesis_instrumentation__.Notify(123517)
 
 	return shouldQ, priority
 }
 
-// unsplittableRangeError indicates that a split attempt failed because a no
-// suitable split key could be found.
 type unsplittableRangeError struct{}
 
-func (unsplittableRangeError) Error() string         { return "could not find valid split key" }
-func (unsplittableRangeError) purgatoryErrorMarker() {}
+func (unsplittableRangeError) Error() string {
+	__antithesis_instrumentation__.Notify(123523)
+	return "could not find valid split key"
+}
+func (unsplittableRangeError) purgatoryErrorMarker() { __antithesis_instrumentation__.Notify(123524) }
 
 var _ purgatoryError = unsplittableRangeError{}
 
-// process synchronously invokes admin split for each proposed split key.
 func (sq *splitQueue) process(
 	ctx context.Context, r *Replica, confReader spanconfig.StoreReader,
 ) (processed bool, err error) {
+	__antithesis_instrumentation__.Notify(123525)
 	processed, err = sq.processAttempt(ctx, r, confReader)
 	if errors.HasType(err, (*roachpb.ConditionFailedError)(nil)) {
-		// ConditionFailedErrors are an expected outcome for range split
-		// attempts because splits can race with other descriptor modifications.
-		// On seeing a ConditionFailedError, don't return an error and enqueue
-		// this replica again in case it still needs to be split.
+		__antithesis_instrumentation__.Notify(123527)
+
 		log.Infof(ctx, "split saw concurrent descriptor modification; maybe retrying")
 		sq.MaybeAddAsync(ctx, r, sq.store.Clock().NowAsClockTimestamp())
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(123528)
 	}
+	__antithesis_instrumentation__.Notify(123526)
 
 	return processed, err
 }
@@ -178,9 +173,11 @@ func (sq *splitQueue) process(
 func (sq *splitQueue) processAttempt(
 	ctx context.Context, r *Replica, confReader spanconfig.StoreReader,
 ) (processed bool, err error) {
+	__antithesis_instrumentation__.Notify(123529)
 	desc := r.Desc()
-	// First handle the case of splitting due to span config maps.
+
 	if splitKey := confReader.ComputeSplitKey(ctx, desc.StartKey, desc.EndKey); splitKey != nil {
+		__antithesis_instrumentation__.Notify(123533)
 		if _, err := r.adminSplitWithDescriptor(
 			ctx,
 			roachpb.AdminSplitRequest{
@@ -191,33 +188,45 @@ func (sq *splitQueue) processAttempt(
 				ExpirationTime: hlc.Timestamp{},
 			},
 			desc,
-			false, /* delayable */
+			false,
 			"span config",
 		); err != nil {
+			__antithesis_instrumentation__.Notify(123535)
 			return false, errors.Wrapf(err, "unable to split %s at key %q", r, splitKey)
+		} else {
+			__antithesis_instrumentation__.Notify(123536)
 		}
+		__antithesis_instrumentation__.Notify(123534)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(123537)
 	}
+	__antithesis_instrumentation__.Notify(123530)
 
-	// Next handle case of splitting due to size. Note that we don't perform
-	// size-based splitting if maxBytes is 0 (happens in certain test
-	// situations).
 	size := r.GetMVCCStats().Total()
 	maxBytes := r.GetMaxBytes()
-	if maxBytes > 0 && float64(size)/float64(maxBytes) > 1 {
+	if maxBytes > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(123538)
+		return float64(size)/float64(maxBytes) > 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(123539)
 		_, err := r.adminSplitWithDescriptor(
 			ctx,
 			roachpb.AdminSplitRequest{},
 			desc,
-			false, /* delayable */
+			false,
 			fmt.Sprintf("%s above threshold size %s", humanizeutil.IBytes(size), humanizeutil.IBytes(maxBytes)),
 		)
 
 		return err == nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(123540)
 	}
+	__antithesis_instrumentation__.Notify(123531)
 
 	now := timeutil.Now()
 	if splitByLoadKey := r.loadBasedSplitter.MaybeSplitKey(now); splitByLoadKey != nil {
+		__antithesis_instrumentation__.Notify(123541)
 		batchHandledQPS, _ := r.QueriesPerSecond()
 		raftAppliedQPS := r.WritesPerSecond()
 		splitQPS := r.loadBasedSplitter.LastQPS(now)
@@ -228,18 +237,15 @@ func (sq *splitQueue) processAttempt(
 			batchHandledQPS,
 			raftAppliedQPS,
 		)
-		// Add a small delay (default of 5m) to any subsequent attempt to merge
-		// this range split away. While the merge queue does takes into account
-		// load to avoids merging ranges that would be immediately re-split due
-		// to load-based splitting, it did not used to take into account historical
-		// load. This has since been fixed by #64201, but we keep this small manual
-		// delay for compatibility reasons.
-		// TODO(nvanbenschoten): remove this entirely in v22.1 when it is no longer
-		// needed.
+
 		var expTime hlc.Timestamp
 		if expDelay := kvserverbase.SplitByLoadMergeDelay.Get(&sq.store.cfg.Settings.SV); expDelay > 0 {
+			__antithesis_instrumentation__.Notify(123544)
 			expTime = sq.store.Clock().Now().Add(expDelay.Nanoseconds(), 0)
+		} else {
+			__antithesis_instrumentation__.Notify(123545)
 		}
+		__antithesis_instrumentation__.Notify(123542)
 		if _, pErr := r.adminSplitWithDescriptor(
 			ctx,
 			roachpb.AdminSplitRequest{
@@ -250,27 +256,33 @@ func (sq *splitQueue) processAttempt(
 				ExpirationTime: expTime,
 			},
 			desc,
-			false, /* delayable */
+			false,
 			reason,
 		); pErr != nil {
+			__antithesis_instrumentation__.Notify(123546)
 			return false, errors.Wrapf(pErr, "unable to split %s at key %q", r, splitByLoadKey)
+		} else {
+			__antithesis_instrumentation__.Notify(123547)
 		}
+		__antithesis_instrumentation__.Notify(123543)
 
 		telemetry.Inc(sq.loadBasedCount)
 
-		// Reset the splitter now that the bounds of the range changed.
 		r.loadBasedSplitter.Reset(sq.store.Clock().PhysicalTime())
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(123548)
 	}
+	__antithesis_instrumentation__.Notify(123532)
 	return false, nil
 }
 
-// timer returns interval between processing successive queued splits.
 func (*splitQueue) timer(_ time.Duration) time.Duration {
+	__antithesis_instrumentation__.Notify(123549)
 	return splitQueueTimerDuration
 }
 
-// purgatoryChan returns the split queue's purgatory channel.
 func (sq *splitQueue) purgatoryChan() <-chan time.Time {
+	__antithesis_instrumentation__.Notify(123550)
 	return sq.purgChan
 }

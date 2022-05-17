@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package aws
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -35,20 +27,13 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// ProviderName is aws.
 const ProviderName = "aws"
 
-// providerInstance is the instance to be registered into vm.Providers by Init.
 var providerInstance = &Provider{}
 
-// Init initializes the AWS provider and registers it into vm.Providers.
-//
-// If the aws tool is not available on the local path, the provider is a stub.
 func Init() error {
-	// aws-cli version 1 automatically base64 encodes the string passed as --public-key-material.
-	// Version 2 supports file:// and fileb:// prefixes for text and binary files.
-	// The latter prefix will base64-encode the file contents. See
-	// https://docs.aws.amazon.//com/cli/latest/userguide/cliv2-migration.html#cliv2-migration-binaryparam
+	__antithesis_instrumentation__.Notify(182552)
+
 	const unsupportedAwsCliVersionPrefix = "aws-cli/1."
 	const unimplemented = "please install the AWS CLI utilities version 2+ " +
 		"(https://docs.aws.amazon.com/cli/latest/userguide/installing.html)"
@@ -59,44 +44,67 @@ func Init() error {
 	providerInstance.IAMProfile = "roachprod-testing"
 
 	haveRequiredVersion := func() bool {
+		__antithesis_instrumentation__.Notify(182557)
 		cmd := exec.Command("aws", "--version")
 		output, err := cmd.Output()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(182560)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(182561)
 		}
+		__antithesis_instrumentation__.Notify(182558)
 		if strings.HasPrefix(string(output), unsupportedAwsCliVersionPrefix) {
+			__antithesis_instrumentation__.Notify(182562)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(182563)
 		}
+		__antithesis_instrumentation__.Notify(182559)
 		return true
 	}
+	__antithesis_instrumentation__.Notify(182553)
 	if !haveRequiredVersion() {
+		__antithesis_instrumentation__.Notify(182564)
 		vm.Providers[ProviderName] = flagstub.New(&Provider{}, unimplemented)
 		return errors.New("doesn't have the required version")
+	} else {
+		__antithesis_instrumentation__.Notify(182565)
 	}
+	__antithesis_instrumentation__.Notify(182554)
 
-	// NB: This is a bit hacky, but using something like `aws iam get-user` is
-	// slow and not something we want to do at startup.
 	haveCredentials := func() bool {
+		__antithesis_instrumentation__.Notify(182566)
 		const credFile = "${HOME}/.aws/credentials"
 		if _, err := os.Stat(os.ExpandEnv(credFile)); err == nil {
+			__antithesis_instrumentation__.Notify(182569)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(182570)
 		}
+		__antithesis_instrumentation__.Notify(182567)
 		if os.Getenv("AWS_ACCESS_KEY_ID") != "" {
+			__antithesis_instrumentation__.Notify(182571)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(182572)
 		}
+		__antithesis_instrumentation__.Notify(182568)
 		return false
 	}
+	__antithesis_instrumentation__.Notify(182555)
 	if !haveCredentials() {
+		__antithesis_instrumentation__.Notify(182573)
 		vm.Providers[ProviderName] = flagstub.New(&Provider{}, noCredentials)
 		return errors.New("missing/invalid credentials")
+	} else {
+		__antithesis_instrumentation__.Notify(182574)
 	}
+	__antithesis_instrumentation__.Notify(182556)
 	vm.Providers[ProviderName] = providerInstance
 	return nil
 }
 
-// ebsDisk represent EBS disk device.
-// When marshaled to JSON format, produces JSON specification used
-// by AWS sdk to configure attached volumes.
 type ebsDisk struct {
 	VolumeType          string `json:"VolumeType"`
 	VolumeSize          int    `json:"VolumeSize"`
@@ -105,7 +113,6 @@ type ebsDisk struct {
 	DeleteOnTermination bool   `json:"DeleteOnTermination"`
 }
 
-// ebsVolume represents a mounted volume: name + ebsDisk
 type ebsVolume struct {
 	DeviceName string  `json:"DeviceName"`
 	Disk       ebsDisk `json:"Ebs"`
@@ -114,86 +121,115 @@ type ebsVolume struct {
 const ebsDefaultVolumeSizeGB = 500
 const defaultEBSVolumeType = "gp3"
 
-// Set implements flag Value interface.
 func (d *ebsDisk) Set(s string) error {
+	__antithesis_instrumentation__.Notify(182575)
 	if err := json.Unmarshal([]byte(s), &d); err != nil {
+		__antithesis_instrumentation__.Notify(182579)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182580)
 	}
+	__antithesis_instrumentation__.Notify(182576)
 
 	d.DeleteOnTermination = true
 
-	// Sanity check disk configuration.
-	// This is not strictly needed since AWS sdk would return error anyway,
-	// but we can return a nicer error message sooner.
 	if d.VolumeSize == 0 {
+		__antithesis_instrumentation__.Notify(182581)
 		d.VolumeSize = ebsDefaultVolumeSizeGB
+	} else {
+		__antithesis_instrumentation__.Notify(182582)
 	}
+	__antithesis_instrumentation__.Notify(182577)
 
 	switch strings.ToLower(d.VolumeType) {
 	case "gp2":
-		// Nothing -- size checked above.
+		__antithesis_instrumentation__.Notify(182583)
+
 	case "gp3":
+		__antithesis_instrumentation__.Notify(182584)
 		if d.IOPs > 16000 {
+			__antithesis_instrumentation__.Notify(182589)
 			return errors.AssertionFailedf("Iops required for gp3 disk: [3000, 16000]")
+		} else {
+			__antithesis_instrumentation__.Notify(182590)
 		}
+		__antithesis_instrumentation__.Notify(182585)
 		if d.IOPs == 0 {
-			// 3000 is a base IOPs for gp3.
+			__antithesis_instrumentation__.Notify(182591)
+
 			d.IOPs = 3000
+		} else {
+			__antithesis_instrumentation__.Notify(182592)
 		}
+		__antithesis_instrumentation__.Notify(182586)
 		if d.Throughput == 0 {
-			// 125MB/s is base throughput for gp3.
+			__antithesis_instrumentation__.Notify(182593)
+
 			d.Throughput = 125
+		} else {
+			__antithesis_instrumentation__.Notify(182594)
 		}
 	case "io1", "io2":
+		__antithesis_instrumentation__.Notify(182587)
 		if d.IOPs == 0 {
+			__antithesis_instrumentation__.Notify(182595)
 			return errors.AssertionFailedf("Iops required for %s disk", d.VolumeType)
+		} else {
+			__antithesis_instrumentation__.Notify(182596)
 		}
 	default:
+		__antithesis_instrumentation__.Notify(182588)
 		return errors.Errorf("Unknown EBS volume type %s", d.VolumeType)
 	}
+	__antithesis_instrumentation__.Notify(182578)
 	return nil
 }
 
-// Type implements flag Value interface.
 func (d *ebsDisk) Type() string {
+	__antithesis_instrumentation__.Notify(182597)
 	return "JSON"
 }
 
-// String Implements flag Value interface.
 func (d *ebsDisk) String() string {
+	__antithesis_instrumentation__.Notify(182598)
 	return "EBSDisk"
 }
 
 type ebsVolumeList []*ebsVolume
 
 func (vl *ebsVolumeList) newVolume() *ebsVolume {
+	__antithesis_instrumentation__.Notify(182599)
 	return &ebsVolume{
 		DeviceName: fmt.Sprintf("/dev/sd%c", 'd'+len(*vl)),
 	}
 }
 
-// Set implements flag Value interface.
 func (vl *ebsVolumeList) Set(s string) error {
+	__antithesis_instrumentation__.Notify(182600)
 	v := vl.newVolume()
 	if err := v.Disk.Set(s); err != nil {
+		__antithesis_instrumentation__.Notify(182602)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182603)
 	}
+	__antithesis_instrumentation__.Notify(182601)
 	*vl = append(*vl, v)
 	return nil
 }
 
-// Type implements flag Value interface.
 func (vl *ebsVolumeList) Type() string {
+	__antithesis_instrumentation__.Notify(182604)
 	return "JSON"
 }
 
-// String Implements flag Value interface.
 func (vl *ebsVolumeList) String() string {
+	__antithesis_instrumentation__.Notify(182605)
 	return "EBSVolumeList"
 }
 
-// DefaultProviderOpts returns a new aws.ProviderOpts with default values set.
 func DefaultProviderOpts() *ProviderOpts {
+	__antithesis_instrumentation__.Notify(182606)
 	defaultEBSVolumeValue := ebsVolume{}
 	defaultEBSVolumeValue.Disk.VolumeSize = ebsDefaultVolumeSizeGB
 	defaultEBSVolumeValue.Disk.VolumeType = defaultEBSVolumeType
@@ -206,12 +242,11 @@ func DefaultProviderOpts() *ProviderOpts {
 	}
 }
 
-// CreateProviderOpts returns a new aws.ProviderOpts with default values set.
 func (p *Provider) CreateProviderOpts() vm.ProviderOpts {
+	__antithesis_instrumentation__.Notify(182607)
 	return DefaultProviderOpts()
 }
 
-// ProviderOpts provides user-configurable, aws-specific create options.
 type ProviderOpts struct {
 	MachineType      string
 	SSDMachineType   string
@@ -221,31 +256,18 @@ type ProviderOpts struct {
 	EBSVolumes       ebsVolumeList
 	UseMultipleDisks bool
 
-	// Use specified ImageAMI when provisioning.
-	// Overrides config.json AMI.
 	ImageAMI string
 
-	// CreateZones stores the list of zones for used cluster creation.
-	// When > 1 zone specified, geo is automatically used, otherwise, geo depends
-	// on the geo flag being set. If no zones specified, defaultCreateZones are
-	// used. See defaultCreateZones.
 	CreateZones []string
-	// CreateRateLimit specifies the rate limit used for aws instance creation.
-	// The request limit from aws' side can vary across regions, as well as the
-	// size of cluster being created.
+
 	CreateRateLimit float64
 }
 
-// Provider implements the vm.Provider interface for AWS.
 type Provider struct {
-	// Profile to manage cluster in
 	Profile string
 
-	// Path to json for aws configuration, defaults to predefined configuration
 	Config *awsConfig
 
-	// IAMProfile designates the name of the instance profile to use for created
-	// EC2 instances if non-empty.
 	IAMProfile string
 }
 
@@ -255,41 +277,36 @@ const (
 )
 
 var defaultConfig = func() (cfg *awsConfig) {
+	__antithesis_instrumentation__.Notify(182608)
 	cfg = new(awsConfig)
 	if err := json.Unmarshal(MustAsset("config.json"), cfg); err != nil {
+		__antithesis_instrumentation__.Notify(182610)
 		panic(errors.Wrap(err, "failed to embedded configuration"))
+	} else {
+		__antithesis_instrumentation__.Notify(182611)
 	}
+	__antithesis_instrumentation__.Notify(182609)
 	return cfg
 }()
 
-// defaultCreateZones is the list of availability zones used by default for
-// cluster creation. If the geo flag is specified, nodes are distributed between
-// zones.
 var defaultCreateZones = []string{
 	"us-east-2b",
 	"us-west-2b",
 	"eu-west-2b",
 }
 
-// ConfigureCreateFlags is part of the vm.ProviderOpts interface.
-// This method sets up a lot of maps between the various EC2
-// regions and the ids of the things we want to use there.  This is
-// somewhat complicated because different EC2 regions may as well
-// be parallel universes.
 func (o *ProviderOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
-	// m5.xlarge is a 4core, 16Gb instance, approximately equal to a GCE n1-standard-4
+	__antithesis_instrumentation__.Notify(182612)
+
 	flags.StringVar(&o.MachineType, ProviderName+"-machine-type", o.MachineType,
 		"Machine type (see https://aws.amazon.com/ec2/instance-types/)")
 
-	// The m5 devices only support EBS volumes, so we need a different instance type
-	// for directly-attached SSD support. This is 4 core, 16GB ram, 150GB ssd.
 	flags.StringVar(&o.SSDMachineType, ProviderName+"-machine-type-ssd", o.SSDMachineType,
 		"Machine type for --local-ssd (see https://aws.amazon.com/ec2/instance-types/)")
 
 	flags.StringVar(&o.CPUOptions, ProviderName+"-cpu-options", o.CPUOptions,
 		"Options to specify number of cores and threads per core (see https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-optimize-cpu.html#instance-specify-cpu-options)")
 
-	// AWS images generally use "ubuntu" or "ec2-user"
 	flags.StringVar(&o.RemoteUserName, ProviderName+"-user",
 		o.RemoteUserName, "Name of the remote user to SSH as")
 
@@ -325,8 +342,8 @@ func (o *ProviderOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
 
 }
 
-// ConfigureClusterFlags implements vm.ProviderOpts.
 func (o *ProviderOpts) ConfigureClusterFlags(flags *pflag.FlagSet, _ vm.MultipleProjectsOption) {
+	__antithesis_instrumentation__.Notify(182613)
 	flags.StringVar(&providerInstance.Profile, ProviderName+"-profile", providerInstance.Profile,
 		"Profile to manage cluster in")
 	configFlagVal := awsConfigValue{awsConfig: *defaultConfig}
@@ -335,167 +352,245 @@ func (o *ProviderOpts) ConfigureClusterFlags(flags *pflag.FlagSet, _ vm.Multiple
 		"Path to json for aws configuration, defaults to predefined configuration")
 }
 
-// CleanSSH is part of vm.Provider.  This implementation is a no-op,
-// since we depend on the user's local identity file.
 func (p *Provider) CleanSSH() error {
+	__antithesis_instrumentation__.Notify(182614)
 	return nil
 }
 
-// ConfigSSH is part of the vm.Provider interface.
 func (p *Provider) ConfigSSH(zones []string) error {
+	__antithesis_instrumentation__.Notify(182615)
 	keyName, err := p.sshKeyName()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182619)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182620)
 	}
+	__antithesis_instrumentation__.Notify(182616)
 
 	regions, err := p.allRegions(zones)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182621)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182622)
 	}
+	__antithesis_instrumentation__.Notify(182617)
 
-	// Ensure that for each region we're operating in, we have
-	// a <user>-<hash> keypair where <hash> is a hash of the public key.
-	// We use a hash since a user probably has multiple machines they're
-	// running roachprod on and these machines (ought to) have separate
-	// ssh keypairs.  If the remote keypair doesn't exist, we'll upload
-	// the user's ~/.ssh/id_rsa.pub file or ask them to generate one.
 	var g errgroup.Group
 	for _, r := range regions {
-		// capture loop variable
+		__antithesis_instrumentation__.Notify(182623)
+
 		region := r
 		g.Go(func() error {
+			__antithesis_instrumentation__.Notify(182624)
 			exists, err := p.sshKeyExists(keyName, region)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(182627)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(182628)
 			}
+			__antithesis_instrumentation__.Notify(182625)
 			if !exists {
+				__antithesis_instrumentation__.Notify(182629)
 				err = p.sshKeyImport(keyName, region)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(182631)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(182632)
 				}
+				__antithesis_instrumentation__.Notify(182630)
 				log.Infof(context.Background(), "imported %s as %s in region %s",
 					sshPublicKeyFile, keyName, region)
+			} else {
+				__antithesis_instrumentation__.Notify(182633)
 			}
+			__antithesis_instrumentation__.Notify(182626)
 			return nil
 		})
 	}
+	__antithesis_instrumentation__.Notify(182618)
 
 	return g.Wait()
 }
 
-// Create is part of the vm.Provider interface.
 func (p *Provider) Create(
 	l *logger.Logger, names []string, opts vm.CreateOpts, vmProviderOpts vm.ProviderOpts,
 ) error {
+	__antithesis_instrumentation__.Notify(182634)
 	providerOpts := vmProviderOpts.(*ProviderOpts)
 	expandedZones, err := vm.ExpandZonesFlag(providerOpts.CreateZones)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182643)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182644)
 	}
+	__antithesis_instrumentation__.Notify(182635)
 
 	useDefaultZones := len(expandedZones) == 0
 	if useDefaultZones {
+		__antithesis_instrumentation__.Notify(182645)
 		expandedZones = defaultCreateZones
+	} else {
+		__antithesis_instrumentation__.Notify(182646)
 	}
+	__antithesis_instrumentation__.Notify(182636)
 
-	// We need to make sure that the SSH keys have been distributed to all regions.
 	if err := p.ConfigSSH(expandedZones); err != nil {
+		__antithesis_instrumentation__.Notify(182647)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182648)
 	}
+	__antithesis_instrumentation__.Notify(182637)
 
 	regions, err := p.allRegions(expandedZones)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182649)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182650)
 	}
+	__antithesis_instrumentation__.Notify(182638)
 	if len(regions) < 1 {
+		__antithesis_instrumentation__.Notify(182651)
 		return errors.Errorf("Please specify a valid region.")
+	} else {
+		__antithesis_instrumentation__.Notify(182652)
 	}
+	__antithesis_instrumentation__.Notify(182639)
 
-	var zones []string // contains an az corresponding to each entry in names
-	if !opts.GeoDistributed && (useDefaultZones || len(expandedZones) == 1) {
-		// Only use one zone in the region if we're not creating a geo cluster.
+	var zones []string
+	if !opts.GeoDistributed && func() bool {
+		__antithesis_instrumentation__.Notify(182653)
+		return (useDefaultZones || func() bool {
+			__antithesis_instrumentation__.Notify(182654)
+			return len(expandedZones) == 1 == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(182655)
+
 		regionZones, err := p.regionZones(regions[0], expandedZones)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(182657)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(182658)
 		}
-		// Select a random AZ from the first region.
+		__antithesis_instrumentation__.Notify(182656)
+
 		zone := regionZones[rand.Intn(len(regionZones))]
 		for range names {
+			__antithesis_instrumentation__.Notify(182659)
 			zones = append(zones, zone)
 		}
 	} else {
-		// Distribute the nodes amongst availability zones if geo distributed.
+		__antithesis_instrumentation__.Notify(182660)
+
 		nodeZones := vm.ZonePlacement(len(expandedZones), len(names))
 		zones = make([]string, len(nodeZones))
 		for i, z := range nodeZones {
+			__antithesis_instrumentation__.Notify(182661)
 			zones[i] = expandedZones[z]
 		}
 	}
+	__antithesis_instrumentation__.Notify(182640)
 
 	var g errgroup.Group
-	limiter := rate.NewLimiter(rate.Limit(providerOpts.CreateRateLimit), 2 /* buckets */)
+	limiter := rate.NewLimiter(rate.Limit(providerOpts.CreateRateLimit), 2)
 	for i := range names {
+		__antithesis_instrumentation__.Notify(182662)
 		capName := names[i]
 		placement := zones[i]
 		res := limiter.Reserve()
 		g.Go(func() error {
+			__antithesis_instrumentation__.Notify(182663)
 			time.Sleep(res.Delay())
 			return p.runInstance(capName, placement, opts, providerOpts)
 		})
 	}
+	__antithesis_instrumentation__.Notify(182641)
 	if err := g.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(182664)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182665)
 	}
+	__antithesis_instrumentation__.Notify(182642)
 	return p.waitForIPs(l, names, regions, providerOpts)
 }
 
-// waitForIPs waits until AWS reports both internal and external IP addresses
-// for all newly created VMs. If we did not wait for these IPs then attempts to
-// list the new VMs after the creation might find VMs without an external IP.
-// We do a bad job at higher layers detecting this lack of IP which can lead to
-// commands hanging indefinitely.
 func (p *Provider) waitForIPs(
 	l *logger.Logger, names []string, regions []string, opts *ProviderOpts,
 ) error {
+	__antithesis_instrumentation__.Notify(182666)
 	waitForIPRetry := retry.Start(retry.Options{
 		InitialBackoff: 100 * time.Millisecond,
 		MaxBackoff:     500 * time.Millisecond,
-		MaxRetries:     120, // wait a bit less than 90s for IPs
+		MaxRetries:     120,
 	})
 	makeNameSet := func() map[string]struct{} {
+		__antithesis_instrumentation__.Notify(182669)
 		m := make(map[string]struct{}, len(names))
 		for _, n := range names {
+			__antithesis_instrumentation__.Notify(182671)
 			m[n] = struct{}{}
 		}
+		__antithesis_instrumentation__.Notify(182670)
 		return m
 	}
+	__antithesis_instrumentation__.Notify(182667)
 	for waitForIPRetry.Next() {
+		__antithesis_instrumentation__.Notify(182672)
 		vms, err := p.listRegions(l, regions, *opts)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(182675)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(182676)
 		}
+		__antithesis_instrumentation__.Notify(182673)
 		nameSet := makeNameSet()
 		for _, vm := range vms {
-			if vm.PublicIP != "" && vm.PrivateIP != "" {
+			__antithesis_instrumentation__.Notify(182677)
+			if vm.PublicIP != "" && func() bool {
+				__antithesis_instrumentation__.Notify(182678)
+				return vm.PrivateIP != "" == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(182679)
 				delete(nameSet, vm.Name)
+			} else {
+				__antithesis_instrumentation__.Notify(182680)
 			}
 		}
+		__antithesis_instrumentation__.Notify(182674)
 		if len(nameSet) == 0 {
+			__antithesis_instrumentation__.Notify(182681)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(182682)
 		}
 	}
+	__antithesis_instrumentation__.Notify(182668)
 	return fmt.Errorf("failed to retrieve IPs for all vms")
 }
 
-// Delete is part of vm.Provider.
-// This will delete all instances in a single AWS command.
 func (p *Provider) Delete(vms vm.List) error {
+	__antithesis_instrumentation__.Notify(182683)
 	byRegion, err := regionMap(vms)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182686)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182687)
 	}
+	__antithesis_instrumentation__.Notify(182684)
 	g := errgroup.Group{}
 	for region, list := range byRegion {
+		__antithesis_instrumentation__.Notify(182688)
 		args := []string{
 			"ec2", "terminate-instances",
 			"--region", region,
@@ -503,36 +598,46 @@ func (p *Provider) Delete(vms vm.List) error {
 		}
 		args = append(args, list.ProviderIDs()...)
 		g.Go(func() error {
+			__antithesis_instrumentation__.Notify(182689)
 			var data struct {
 				TerminatingInstances []struct {
 					InstanceID string `json:"InstanceId"`
 				}
 			}
-			_ = data.TerminatingInstances // silence unused warning
+			_ = data.TerminatingInstances
 			if len(data.TerminatingInstances) > 0 {
-				_ = data.TerminatingInstances[0].InstanceID // silence unused warning
+				__antithesis_instrumentation__.Notify(182691)
+				_ = data.TerminatingInstances[0].InstanceID
+			} else {
+				__antithesis_instrumentation__.Notify(182692)
 			}
+			__antithesis_instrumentation__.Notify(182690)
 			return p.runJSONCommand(args, &data)
 		})
 	}
+	__antithesis_instrumentation__.Notify(182685)
 	return g.Wait()
 }
 
-// Reset is part of vm.Provider. It is a no-op.
 func (p *Provider) Reset(vms vm.List) error {
-	return nil // unimplemented
+	__antithesis_instrumentation__.Notify(182693)
+	return nil
 }
 
-// Extend is part of the vm.Provider interface.
-// This will update the Lifetime tag on the instances.
 func (p *Provider) Extend(vms vm.List, lifetime time.Duration) error {
+	__antithesis_instrumentation__.Notify(182694)
 	byRegion, err := regionMap(vms)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182697)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182698)
 	}
+	__antithesis_instrumentation__.Notify(182695)
 	g := errgroup.Group{}
 	for region, list := range byRegion {
-		// Capture loop vars here
+		__antithesis_instrumentation__.Notify(182699)
+
 		args := []string{
 			"ec2", "create-tags",
 			"--region", region,
@@ -542,41 +647,54 @@ func (p *Provider) Extend(vms vm.List, lifetime time.Duration) error {
 		args = append(args, list.ProviderIDs()...)
 
 		g.Go(func() error {
+			__antithesis_instrumentation__.Notify(182700)
 			_, err := p.runCommand(args)
 			return err
 		})
 	}
+	__antithesis_instrumentation__.Notify(182696)
 	return g.Wait()
 }
 
-// cachedActiveAccount memoizes the return value from FindActiveAccount
 var cachedActiveAccount string
 
-// FindActiveAccount is part of the vm.Provider interface.
-// This queries the AWS command for the current IAM user or role.
 func (p *Provider) FindActiveAccount() (string, error) {
+	__antithesis_instrumentation__.Notify(182701)
 	if len(cachedActiveAccount) > 0 {
+		__antithesis_instrumentation__.Notify(182704)
 		return cachedActiveAccount, nil
+	} else {
+		__antithesis_instrumentation__.Notify(182705)
 	}
+	__antithesis_instrumentation__.Notify(182702)
 	var account string
 	var err error
 	if p.Profile == "" {
+		__antithesis_instrumentation__.Notify(182706)
 		account, err = p.iamGetUser()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(182707)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(182708)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(182709)
 		account, err = p.stsGetCallerIdentity()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(182710)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(182711)
 		}
 	}
+	__antithesis_instrumentation__.Notify(182703)
 	cachedActiveAccount = account
 	return cachedActiveAccount, nil
 }
 
-// iamGetUser returns the identity of an IAM user.
 func (p *Provider) iamGetUser() (string, error) {
+	__antithesis_instrumentation__.Notify(182712)
 	var userInfo struct {
 		User struct {
 			UserName string
@@ -585,118 +703,163 @@ func (p *Provider) iamGetUser() (string, error) {
 	args := []string{"iam", "get-user"}
 	err := p.runJSONCommand(args, &userInfo)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182715)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(182716)
 	}
+	__antithesis_instrumentation__.Notify(182713)
 	if userInfo.User.UserName == "" {
+		__antithesis_instrumentation__.Notify(182717)
 		return "", errors.Errorf("username not configured. run 'aws iam get-user'")
+	} else {
+		__antithesis_instrumentation__.Notify(182718)
 	}
+	__antithesis_instrumentation__.Notify(182714)
 	return userInfo.User.UserName, nil
 }
 
-// stsGetCallerIdentity returns the identity of a user assuming a role
-// into the account.
 func (p *Provider) stsGetCallerIdentity() (string, error) {
+	__antithesis_instrumentation__.Notify(182719)
 	var userInfo struct {
 		Arn string
 	}
 	args := []string{"sts", "get-caller-identity"}
 	err := p.runJSONCommand(args, &userInfo)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182722)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(182723)
 	}
+	__antithesis_instrumentation__.Notify(182720)
 	s := strings.Split(userInfo.Arn, "/")
 	if len(s) < 2 {
+		__antithesis_instrumentation__.Notify(182724)
 		return "", errors.Errorf("Could not parse caller identity ARN '%s'", userInfo.Arn)
+	} else {
+		__antithesis_instrumentation__.Notify(182725)
 	}
+	__antithesis_instrumentation__.Notify(182721)
 	return s[1], nil
 }
 
-// List is part of the vm.Provider interface.
 func (p *Provider) List(l *logger.Logger) (vm.List, error) {
+	__antithesis_instrumentation__.Notify(182726)
 	regions, err := p.allRegions(p.Config.availabilityZoneNames())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182728)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(182729)
 	}
+	__antithesis_instrumentation__.Notify(182727)
 	defaultOpts := p.CreateProviderOpts().(*ProviderOpts)
 	return p.listRegions(l, regions, *defaultOpts)
 }
 
-// listRegions lists VMs in the regions passed.
-// It ignores region-specific errors.
 func (p *Provider) listRegions(
 	l *logger.Logger, regions []string, opts ProviderOpts,
 ) (vm.List, error) {
+	__antithesis_instrumentation__.Notify(182730)
 	var ret vm.List
 	var mux syncutil.Mutex
 	var g errgroup.Group
 
 	for _, r := range regions {
-		// capture loop variable
+		__antithesis_instrumentation__.Notify(182733)
+
 		region := r
 		g.Go(func() error {
+			__antithesis_instrumentation__.Notify(182734)
 			vms, err := p.listRegion(region, opts)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(182736)
 				l.Printf("Failed to list AWS VMs in region: %s\n%v\n", region, err)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(182737)
 			}
+			__antithesis_instrumentation__.Notify(182735)
 			mux.Lock()
 			ret = append(ret, vms...)
 			mux.Unlock()
 			return nil
 		})
 	}
+	__antithesis_instrumentation__.Notify(182731)
 
 	if err := g.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(182738)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(182739)
 	}
+	__antithesis_instrumentation__.Notify(182732)
 
 	return ret, nil
 }
 
-// Name is part of the vm.Provider interface. This returns "aws".
 func (p *Provider) Name() string {
+	__antithesis_instrumentation__.Notify(182740)
 	return ProviderName
 }
 
-// allRegions returns the regions that have been configured with
-// AMI and SecurityGroup instances.
 func (p *Provider) allRegions(zones []string) (regions []string, err error) {
+	__antithesis_instrumentation__.Notify(182741)
 	byName := make(map[string]struct{})
 	for _, z := range zones {
+		__antithesis_instrumentation__.Notify(182743)
 		az := p.Config.getAvailabilityZone(z)
 		if az == nil {
+			__antithesis_instrumentation__.Notify(182745)
 			return nil, fmt.Errorf("unknown availability zone %v, please provide a "+
 				"correct value or update your config accordingly", z)
+		} else {
+			__antithesis_instrumentation__.Notify(182746)
 		}
+		__antithesis_instrumentation__.Notify(182744)
 		if _, have := byName[az.region.Name]; !have {
+			__antithesis_instrumentation__.Notify(182747)
 			byName[az.region.Name] = struct{}{}
 			regions = append(regions, az.region.Name)
+		} else {
+			__antithesis_instrumentation__.Notify(182748)
 		}
 	}
+	__antithesis_instrumentation__.Notify(182742)
 	return regions, nil
 }
 
-// regionZones returns all AWS availability zones which have been correctly
-// configured within the given region.
 func (p *Provider) regionZones(region string, allZones []string) (zones []string, _ error) {
+	__antithesis_instrumentation__.Notify(182749)
 	r := p.Config.getRegion(region)
 	if r == nil {
+		__antithesis_instrumentation__.Notify(182752)
 		return nil, fmt.Errorf("region %s not found", region)
+	} else {
+		__antithesis_instrumentation__.Notify(182753)
 	}
+	__antithesis_instrumentation__.Notify(182750)
 	for _, z := range allZones {
+		__antithesis_instrumentation__.Notify(182754)
 		for _, az := range r.AvailabilityZones {
+			__antithesis_instrumentation__.Notify(182755)
 			if az.name == z {
+				__antithesis_instrumentation__.Notify(182756)
 				zones = append(zones, z)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(182757)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(182751)
 	return zones, nil
 }
 
-// listRegion extracts the roachprod-managed instances in the
-// given region.
 func (p *Provider) listRegion(region string, opts ProviderOpts) (vm.List, error) {
+	__antithesis_instrumentation__.Notify(182758)
 	var data struct {
 		Reservations []struct {
 			Instances []struct {
@@ -728,45 +891,73 @@ func (p *Provider) listRegion(region string, opts ProviderOpts) (vm.List, error)
 	}
 	err := p.runJSONCommand(args, &data)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182761)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(182762)
 	}
+	__antithesis_instrumentation__.Notify(182759)
 
 	var ret vm.List
 	for _, res := range data.Reservations {
+		__antithesis_instrumentation__.Notify(182763)
 	in:
 		for _, in := range res.Instances {
-			// Ignore any instances that are not pending or running
-			if in.State.Name != "pending" && in.State.Name != "running" {
-				continue in
-			}
-			_ = in.PublicDNSName // silence unused warning
-			_ = in.State.Code    // silence unused warning
+			__antithesis_instrumentation__.Notify(182764)
 
-			// Convert the tag map into a more useful representation
+			if in.State.Name != "pending" && func() bool {
+				__antithesis_instrumentation__.Notify(182770)
+				return in.State.Name != "running" == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(182771)
+				continue in
+			} else {
+				__antithesis_instrumentation__.Notify(182772)
+			}
+			__antithesis_instrumentation__.Notify(182765)
+			_ = in.PublicDNSName
+			_ = in.State.Code
+
 			tagMap := make(map[string]string, len(in.Tags))
 			for _, entry := range in.Tags {
+				__antithesis_instrumentation__.Notify(182773)
 				tagMap[entry.Key] = entry.Value
 			}
-			// Ignore any instances that we didn't create
+			__antithesis_instrumentation__.Notify(182766)
+
 			if tagMap["Roachprod"] != "true" {
+				__antithesis_instrumentation__.Notify(182774)
 				continue in
+			} else {
+				__antithesis_instrumentation__.Notify(182775)
 			}
+			__antithesis_instrumentation__.Notify(182767)
 
 			var errs []error
 			createdAt, err := time.Parse(time.RFC3339, in.LaunchTime)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(182776)
 				errs = append(errs, vm.ErrNoExpiration)
+			} else {
+				__antithesis_instrumentation__.Notify(182777)
 			}
+			__antithesis_instrumentation__.Notify(182768)
 
 			var lifetime time.Duration
 			if lifeText, ok := tagMap["Lifetime"]; ok {
+				__antithesis_instrumentation__.Notify(182778)
 				lifetime, err = time.ParseDuration(lifeText)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(182779)
 					errs = append(errs, err)
+				} else {
+					__antithesis_instrumentation__.Notify(182780)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(182781)
 				errs = append(errs, vm.ErrNoExpiration)
 			}
+			__antithesis_instrumentation__.Notify(182769)
 
 			m := vm.VM{
 				CreatedAt:   createdAt,
@@ -789,56 +980,75 @@ func (p *Provider) listRegion(region string, opts ProviderOpts) (vm.List, error)
 			ret = append(ret, m)
 		}
 	}
+	__antithesis_instrumentation__.Notify(182760)
 
 	return ret, nil
 }
 
-// runInstance is responsible for allocating a single ec2 vm.
-// Given that every AWS region may as well be a parallel dimension,
-// we need to do a bit of work to look up all of the various ids that
-// we need in order to actually allocate an instance.
 func (p *Provider) runInstance(
 	name string, zone string, opts vm.CreateOpts, providerOpts *ProviderOpts,
 ) error {
-	// There exist different flags to control the machine type when ssd is true.
-	// This enables sane defaults for either setting but the behavior can be
-	// confusing when a user attempts to use `--aws-machine-type` and the command
-	// succeeds but the flag is ignored. Rather than permit this behavior we
-	// return an error instructing the user to use the other flag.
-	if opts.SSDOpts.UseLocalSSD &&
-		providerOpts.MachineType != defaultMachineType &&
-		providerOpts.SSDMachineType == defaultSSDMachineType {
+	__antithesis_instrumentation__.Notify(182782)
+
+	if opts.SSDOpts.UseLocalSSD && func() bool {
+		__antithesis_instrumentation__.Notify(182800)
+		return providerOpts.MachineType != defaultMachineType == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(182801)
+		return providerOpts.SSDMachineType == defaultSSDMachineType == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(182802)
 		return errors.Errorf("use the --aws-machine-type-ssd flag to set the " +
 			"machine type when --local-ssd=true")
-	} else if !opts.SSDOpts.UseLocalSSD &&
-		providerOpts.MachineType == defaultMachineType &&
-		providerOpts.SSDMachineType != defaultSSDMachineType {
-		return errors.Errorf("use the --aws-machine-type flag to set the " +
-			"machine type when --local-ssd=false")
+	} else {
+		__antithesis_instrumentation__.Notify(182803)
+		if !opts.SSDOpts.UseLocalSSD && func() bool {
+			__antithesis_instrumentation__.Notify(182804)
+			return providerOpts.MachineType == defaultMachineType == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(182805)
+			return providerOpts.SSDMachineType != defaultSSDMachineType == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(182806)
+			return errors.Errorf("use the --aws-machine-type flag to set the " +
+				"machine type when --local-ssd=false")
+		} else {
+			__antithesis_instrumentation__.Notify(182807)
+		}
 	}
+	__antithesis_instrumentation__.Notify(182783)
 
 	az, ok := p.Config.azByName[zone]
 	if !ok {
+		__antithesis_instrumentation__.Notify(182808)
 		return fmt.Errorf("no region in %v corresponds to availability zone %v",
 			p.Config.regionNames(), zone)
+	} else {
+		__antithesis_instrumentation__.Notify(182809)
 	}
+	__antithesis_instrumentation__.Notify(182784)
 
 	keyName, err := p.sshKeyName()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182810)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182811)
 	}
+	__antithesis_instrumentation__.Notify(182785)
 
 	var machineType string
 	if opts.SSDOpts.UseLocalSSD {
+		__antithesis_instrumentation__.Notify(182812)
 		machineType = providerOpts.SSDMachineType
 	} else {
+		__antithesis_instrumentation__.Notify(182813)
 		machineType = providerOpts.MachineType
 	}
+	__antithesis_instrumentation__.Notify(182786)
 
 	cpuOptions := providerOpts.CPUOptions
 
-	// We avoid the need to make a second call to set the tags by jamming
-	// all of our metadata into the tagSpec.
 	m := vm.GetDefaultLabelMap(opts)
 	m[vm.TagCreated] = timeutil.Now().Format(time.RFC3339)
 	m["Name"] = name
@@ -852,18 +1062,30 @@ func (p *Provider) runInstance(
 	var sb strings.Builder
 	sb.WriteString("ResourceType=instance,Tags=[")
 	for key, value := range opts.CustomLabels {
+		__antithesis_instrumentation__.Notify(182814)
 		_, ok := m[strings.ToLower(key)]
 		if ok {
+			__antithesis_instrumentation__.Notify(182816)
 			return fmt.Errorf("duplicate label name defined: %s", key)
+		} else {
+			__antithesis_instrumentation__.Notify(182817)
 		}
+		__antithesis_instrumentation__.Notify(182815)
 		fmt.Fprintf(&sb, "{Key=%s,Value=%s},", key, value)
 	}
+	__antithesis_instrumentation__.Notify(182787)
 	for key, value := range m {
+		__antithesis_instrumentation__.Notify(182818)
 		if n, ok := awsLabelsNameMap[key]; ok {
+			__antithesis_instrumentation__.Notify(182820)
 			key = n
+		} else {
+			__antithesis_instrumentation__.Notify(182821)
 		}
+		__antithesis_instrumentation__.Notify(182819)
 		fmt.Fprintf(&sb, "{Key=%s,Value=%s},", key, value)
 	}
+	__antithesis_instrumentation__.Notify(182788)
 	s := sb.String()
 	tagSpecs := fmt.Sprintf("%s]", s[:len(s)-1])
 
@@ -872,33 +1094,55 @@ func (p *Provider) runInstance(
 			InstanceID string `json:"InstanceId"`
 		}
 	}
-	_ = data.Instances // silence unused warning
+	_ = data.Instances
 	if len(data.Instances) > 0 {
-		_ = data.Instances[0].InstanceID // silence unused warning
+		__antithesis_instrumentation__.Notify(182822)
+		_ = data.Instances[0].InstanceID
+	} else {
+		__antithesis_instrumentation__.Notify(182823)
 	}
+	__antithesis_instrumentation__.Notify(182789)
 
-	// Create AWS startup script file.
 	extraMountOpts := ""
-	// Dynamic args.
+
 	if opts.SSDOpts.UseLocalSSD {
+		__antithesis_instrumentation__.Notify(182824)
 		if opts.SSDOpts.NoExt4Barrier {
+			__antithesis_instrumentation__.Notify(182825)
 			extraMountOpts = "nobarrier"
+		} else {
+			__antithesis_instrumentation__.Notify(182826)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(182827)
 	}
+	__antithesis_instrumentation__.Notify(182790)
 	filename, err := writeStartupScript(extraMountOpts, providerOpts.UseMultipleDisks)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182828)
 		return errors.Wrapf(err, "could not write AWS startup script to temp file")
+	} else {
+		__antithesis_instrumentation__.Notify(182829)
 	}
+	__antithesis_instrumentation__.Notify(182791)
 	defer func() {
+		__antithesis_instrumentation__.Notify(182830)
 		_ = os.Remove(filename)
 	}()
+	__antithesis_instrumentation__.Notify(182792)
 
 	withFlagOverride := func(cfg string, fl *string) string {
+		__antithesis_instrumentation__.Notify(182831)
 		if *fl == "" {
+			__antithesis_instrumentation__.Notify(182833)
 			return cfg
+		} else {
+			__antithesis_instrumentation__.Notify(182834)
 		}
+		__antithesis_instrumentation__.Notify(182832)
 		return *fl
 	}
+	__antithesis_instrumentation__.Notify(182793)
 
 	args := []string{
 		"ec2", "run-instances",
@@ -915,29 +1159,51 @@ func (p *Provider) runInstance(
 	}
 
 	if cpuOptions != "" {
+		__antithesis_instrumentation__.Notify(182835)
 		args = append(args, "--cpu-options", cpuOptions)
+	} else {
+		__antithesis_instrumentation__.Notify(182836)
 	}
+	__antithesis_instrumentation__.Notify(182794)
 
 	if p.IAMProfile != "" {
+		__antithesis_instrumentation__.Notify(182837)
 		args = append(args, "--iam-instance-profile", "Name="+p.IAMProfile)
+	} else {
+		__antithesis_instrumentation__.Notify(182838)
 	}
-	// Make a local copy of providerOpts.EBSVolumes to prevent data races
+	__antithesis_instrumentation__.Notify(182795)
+
 	ebsVolumes := providerOpts.EBSVolumes
-	// The local NVMe devices are automatically mapped.  Otherwise, we need to map an EBS data volume.
+
 	if !opts.SSDOpts.UseLocalSSD {
-		if len(ebsVolumes) == 0 && providerOpts.DefaultEBSVolume.Disk.VolumeType == "" {
+		__antithesis_instrumentation__.Notify(182839)
+		if len(ebsVolumes) == 0 && func() bool {
+			__antithesis_instrumentation__.Notify(182841)
+			return providerOpts.DefaultEBSVolume.Disk.VolumeType == "" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(182842)
 			providerOpts.DefaultEBSVolume.Disk.VolumeType = defaultEBSVolumeType
 			providerOpts.DefaultEBSVolume.Disk.DeleteOnTermination = true
+		} else {
+			__antithesis_instrumentation__.Notify(182843)
 		}
+		__antithesis_instrumentation__.Notify(182840)
 
 		if providerOpts.DefaultEBSVolume.Disk.VolumeType != "" {
-			// Add default volume to the list of volumes we'll setup.
+			__antithesis_instrumentation__.Notify(182844)
+
 			v := ebsVolumes.newVolume()
 			v.Disk = providerOpts.DefaultEBSVolume.Disk
 			v.Disk.DeleteOnTermination = true
 			ebsVolumes = append(ebsVolumes, v)
+		} else {
+			__antithesis_instrumentation__.Notify(182845)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(182846)
 	}
+	__antithesis_instrumentation__.Notify(182796)
 
 	osDiskVolume := &ebsVolume{
 		DeviceName: "/dev/sda1",
@@ -951,17 +1217,29 @@ func (p *Provider) runInstance(
 
 	mapping, err := json.Marshal(ebsVolumes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182847)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182848)
 	}
+	__antithesis_instrumentation__.Notify(182797)
 
 	deviceMapping, err := ioutil.TempFile("", "aws-block-device-mapping")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(182849)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182850)
 	}
+	__antithesis_instrumentation__.Notify(182798)
 	defer deviceMapping.Close()
 	if _, err := deviceMapping.Write(mapping); err != nil {
+		__antithesis_instrumentation__.Notify(182851)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(182852)
 	}
+	__antithesis_instrumentation__.Notify(182799)
 	args = append(args,
 		"--block-device-mapping",
 		"file://"+deviceMapping.Name(),
@@ -969,12 +1247,12 @@ func (p *Provider) runInstance(
 	return p.runJSONCommand(args, &data)
 }
 
-// Active is part of the vm.Provider interface.
 func (p *Provider) Active() bool {
+	__antithesis_instrumentation__.Notify(182853)
 	return true
 }
 
-// ProjectActive is part of the vm.Provider interface.
 func (p *Provider) ProjectActive(project string) bool {
+	__antithesis_instrumentation__.Notify(182854)
 	return project == ""
 }

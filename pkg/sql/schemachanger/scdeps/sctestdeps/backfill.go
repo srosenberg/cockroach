@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sctestdeps
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,8 +19,8 @@ type testBackfillTracker struct {
 	deps backfillTrackerDeps
 }
 
-// BackfillProgressTracker implements the scexec.Dependencies interface.
 func (s *TestState) BackfillProgressTracker() scexec.BackfillTracker {
+	__antithesis_instrumentation__.Notify(580767)
 	return s.backfillTracker
 }
 
@@ -37,28 +29,32 @@ var _ scexec.BackfillTracker = (*testBackfillTracker)(nil)
 func (s *testBackfillTracker) GetBackfillProgress(
 	ctx context.Context, b scexec.Backfill,
 ) (scexec.BackfillProgress, error) {
+	__antithesis_instrumentation__.Notify(580768)
 	return scexec.BackfillProgress{Backfill: b}, nil
 }
 
 func (s *testBackfillTracker) SetBackfillProgress(
 	ctx context.Context, progress scexec.BackfillProgress,
 ) error {
+	__antithesis_instrumentation__.Notify(580769)
 	return nil
 }
 
 func (s *testBackfillTracker) FlushCheckpoint(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(580770)
 	return nil
 }
 
 func (s *testBackfillTracker) FlushFractionCompleted(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(580771)
 	return nil
 }
 
-// StartPeriodicFlush implements the scexec.PeriodicProgressFlusher interface.
 func (s *TestState) StartPeriodicFlush(
 	ctx context.Context,
 ) (close func(context.Context) error, _ error) {
-	return func(ctx context.Context) error { return nil }, nil
+	__antithesis_instrumentation__.Notify(580772)
+	return func(ctx context.Context) error { __antithesis_instrumentation__.Notify(580773); return nil }, nil
 }
 
 type testBackfiller struct {
@@ -67,13 +63,13 @@ type testBackfiller struct {
 
 var _ scexec.Backfiller = (*testBackfiller)(nil)
 
-// BackfillIndex implements the scexec.Backfiller interface.
 func (s *testBackfiller) BackfillIndex(
 	_ context.Context,
 	progress scexec.BackfillProgress,
 	_ scexec.BackfillProgressWriter,
 	tbl catalog.TableDescriptor,
 ) error {
+	__antithesis_instrumentation__.Notify(580774)
 	s.s.LogSideEffectf(
 		"backfill indexes %v from index #%d in table #%d",
 		progress.DestIndexIDs, progress.SourceIndexID, tbl.GetID(),
@@ -81,10 +77,10 @@ func (s *testBackfiller) BackfillIndex(
 	return nil
 }
 
-// MaybePrepareDestIndexesForBackfill implements the scexec.Backfiller interface.
 func (s *testBackfiller) MaybePrepareDestIndexesForBackfill(
 	ctx context.Context, progress scexec.BackfillProgress, descriptor catalog.TableDescriptor,
 ) (scexec.BackfillProgress, error) {
+	__antithesis_instrumentation__.Notify(580775)
 	return progress, nil
 }
 
@@ -92,9 +88,9 @@ var _ scexec.IndexSpanSplitter = (*indexSpanSplitter)(nil)
 
 type indexSpanSplitter struct{}
 
-// MaybeSplitIndexSpans implements the scexec.IndexSpanSplitter interface.
 func (s *indexSpanSplitter) MaybeSplitIndexSpans(
 	_ context.Context, _ catalog.TableDescriptor, _ catalog.Index,
 ) error {
+	__antithesis_instrumentation__.Notify(580776)
 	return nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package base
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -34,35 +26,30 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// This file implements method receivers for members of server.Config struct
-// -- 'Stores' and 'JoinList', which satisfies pflag's value interface
-
-// MinimumStoreSize is the smallest size in bytes that a store can have. This
-// number is based on config's defaultZoneConfig's RangeMaxBytes, which is
-// extremely stable. To avoid adding the dependency on config here, it is just
-// hard coded to 640MiB.
 const MinimumStoreSize = 10 * 64 << 20
 
-// GetAbsoluteStorePath takes a (possibly relative) and returns the absolute path.
-// Returns an error if the path begins with '~' or Abs fails.
-// 'fieldName' is used in error strings.
 func GetAbsoluteStorePath(fieldName string, p string) (string, error) {
+	__antithesis_instrumentation__.Notify(1547)
 	if p[0] == '~' {
+		__antithesis_instrumentation__.Notify(1550)
 		return "", fmt.Errorf("%s cannot start with '~': %s", fieldName, p)
+	} else {
+		__antithesis_instrumentation__.Notify(1551)
 	}
+	__antithesis_instrumentation__.Notify(1548)
 
 	ret, err := filepath.Abs(p)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(1552)
 		return "", errors.Wrapf(err, "could not find absolute path for %s %s", fieldName, p)
+	} else {
+		__antithesis_instrumentation__.Notify(1553)
 	}
+	__antithesis_instrumentation__.Notify(1549)
 	return ret, nil
 }
 
-// SizeSpec contains size in different kinds of formats supported by CLI(%age, bytes).
 type SizeSpec struct {
-	// InBytes is used for calculating free space and making rebalancing
-	// decisions. Zero indicates that there is no maximum size. This value is not
-	// actually used by the engine and thus not enforced.
 	InBytes int64
 	Percent float64
 }
@@ -77,28 +64,46 @@ type floatInterval struct {
 	max *float64
 }
 
-// NewSizeSpec parses the string passed into a --size flag and returns a
-// SizeSpec if it is correctly parsed.
 func NewSizeSpec(
 	field redact.SafeString, value string, bytesRange *intInterval, percentRange *floatInterval,
 ) (SizeSpec, error) {
+	__antithesis_instrumentation__.Notify(1554)
 	var size SizeSpec
 	if fractionRegex.MatchString(value) {
+		__antithesis_instrumentation__.Notify(1556)
 		percentFactor := 100.0
 		factorValue := value
 		if value[len(value)-1] == '%' {
+			__antithesis_instrumentation__.Notify(1559)
 			percentFactor = 1.0
 			factorValue = value[:len(value)-1]
+		} else {
+			__antithesis_instrumentation__.Notify(1560)
 		}
+		__antithesis_instrumentation__.Notify(1557)
 		var err error
 		size.Percent, err = strconv.ParseFloat(factorValue, 64)
 		size.Percent *= percentFactor
 		if err != nil {
+			__antithesis_instrumentation__.Notify(1561)
 			return SizeSpec{}, errors.Wrapf(err, "could not parse %s size (%s)", field, value)
+		} else {
+			__antithesis_instrumentation__.Notify(1562)
 		}
+		__antithesis_instrumentation__.Notify(1558)
 		if percentRange != nil {
-			if (percentRange.min != nil && size.Percent < *percentRange.min) ||
-				(percentRange.max != nil && size.Percent > *percentRange.max) {
+			__antithesis_instrumentation__.Notify(1563)
+			if (percentRange.min != nil && func() bool {
+				__antithesis_instrumentation__.Notify(1564)
+				return size.Percent < *percentRange.min == true
+			}() == true) || func() bool {
+				__antithesis_instrumentation__.Notify(1565)
+				return (percentRange.max != nil && func() bool {
+					__antithesis_instrumentation__.Notify(1566)
+					return size.Percent > *percentRange.max == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(1567)
 				return SizeSpec{}, errors.Newf(
 					"%s size (%s) must be between %f%% and %f%%",
 					field,
@@ -106,215 +111,284 @@ func NewSizeSpec(
 					*percentRange.min,
 					*percentRange.max,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(1568)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(1569)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(1570)
 		var err error
 		size.InBytes, err = humanizeutil.ParseBytes(value)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(1572)
 			return SizeSpec{}, errors.Wrapf(err, "could not parse %s size (%s)", field, value)
+		} else {
+			__antithesis_instrumentation__.Notify(1573)
 		}
+		__antithesis_instrumentation__.Notify(1571)
 		if bytesRange != nil {
-			if bytesRange.min != nil && size.InBytes < *bytesRange.min {
+			__antithesis_instrumentation__.Notify(1574)
+			if bytesRange.min != nil && func() bool {
+				__antithesis_instrumentation__.Notify(1576)
+				return size.InBytes < *bytesRange.min == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(1577)
 				return SizeSpec{}, errors.Newf("%s size (%s) must be larger than %s",
 					field, value, humanizeutil.IBytes(*bytesRange.min))
+			} else {
+				__antithesis_instrumentation__.Notify(1578)
 			}
-			if bytesRange.max != nil && size.InBytes > *bytesRange.max {
+			__antithesis_instrumentation__.Notify(1575)
+			if bytesRange.max != nil && func() bool {
+				__antithesis_instrumentation__.Notify(1579)
+				return size.InBytes > *bytesRange.max == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(1580)
 				return SizeSpec{}, errors.Newf("%s size (%s) must be smaller than %s",
 					field, value, humanizeutil.IBytes(*bytesRange.max))
+			} else {
+				__antithesis_instrumentation__.Notify(1581)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(1582)
 		}
 	}
+	__antithesis_instrumentation__.Notify(1555)
 	return size, nil
 }
 
-// String returns a string representation of the SizeSpec. This is part
-// of pflag's value interface.
 func (ss *SizeSpec) String() string {
+	__antithesis_instrumentation__.Notify(1583)
 	var buffer bytes.Buffer
 	if ss.InBytes != 0 {
+		__antithesis_instrumentation__.Notify(1586)
 		fmt.Fprintf(&buffer, "--size=%s,", humanizeutil.IBytes(ss.InBytes))
+	} else {
+		__antithesis_instrumentation__.Notify(1587)
 	}
+	__antithesis_instrumentation__.Notify(1584)
 	if ss.Percent != 0 {
+		__antithesis_instrumentation__.Notify(1588)
 		fmt.Fprintf(&buffer, "--size=%s%%,", humanize.Ftoa(ss.Percent))
+	} else {
+		__antithesis_instrumentation__.Notify(1589)
 	}
+	__antithesis_instrumentation__.Notify(1585)
 	return buffer.String()
 }
 
-// Type returns the underlying type in string form. This is part of pflag's
-// value interface.
 func (ss *SizeSpec) Type() string {
+	__antithesis_instrumentation__.Notify(1590)
 	return "SizeSpec"
 }
 
 var _ pflag.Value = &SizeSpec{}
 
-// Set adds a new value to the StoreSpecValue. It is the important part of
-// pflag's value interface.
 func (ss *SizeSpec) Set(value string) error {
+	__antithesis_instrumentation__.Notify(1591)
 	spec, err := NewSizeSpec("specified", value, nil, nil)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(1593)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(1594)
 	}
+	__antithesis_instrumentation__.Notify(1592)
 	ss.InBytes = spec.InBytes
 	ss.Percent = spec.Percent
 	return nil
 }
 
-// StoreSpec contains the details that can be specified in the cli pertaining
-// to the --store flag.
 type StoreSpec struct {
 	Path        string
 	Size        SizeSpec
 	BallastSize *SizeSpec
 	InMemory    bool
 	Attributes  roachpb.Attributes
-	// StickyInMemoryEngineID is a unique identifier associated with a given
-	// store which will remain in memory even after the default Engine close
-	// until it has been explicitly cleaned up by CleanupStickyInMemEngine[s]
-	// or the process has been terminated.
-	// This only applies to in-memory storage engine.
+
 	StickyInMemoryEngineID string
-	// UseFileRegistry is true if the "file registry" store version is desired.
-	// This is set by CCL code when encryption-at-rest is in use.
+
 	UseFileRegistry bool
-	// RocksDBOptions contains RocksDB specific options using a semicolon
-	// separated key-value syntax ("key1=value1; key2=value2").
+
 	RocksDBOptions string
-	// PebbleOptions contains Pebble-specific options in the same format as a
-	// Pebble OPTIONS file but treating any whitespace as a newline:
-	// (Eg, "[Options] delete_range_flush_delay=2s flush_split_bytes=4096")
+
 	PebbleOptions string
-	// EncryptionOptions is a serialized protobuf set by Go CCL code and passed
-	// through to C CCL code to set up encryption-at-rest.  Must be set if and
-	// only if encryption is enabled, otherwise left empty.
+
 	EncryptionOptions []byte
 }
 
-// String returns a fully parsable version of the store spec.
 func (ss StoreSpec) String() string {
-	// TODO(jackson): Implement redact.SafeFormatter
+	__antithesis_instrumentation__.Notify(1595)
+
 	var buffer bytes.Buffer
 	if len(ss.Path) != 0 {
+		__antithesis_instrumentation__.Notify(1604)
 		fmt.Fprintf(&buffer, "path=%s,", ss.Path)
+	} else {
+		__antithesis_instrumentation__.Notify(1605)
 	}
+	__antithesis_instrumentation__.Notify(1596)
 	if ss.InMemory {
+		__antithesis_instrumentation__.Notify(1606)
 		fmt.Fprint(&buffer, "type=mem,")
+	} else {
+		__antithesis_instrumentation__.Notify(1607)
 	}
+	__antithesis_instrumentation__.Notify(1597)
 	if ss.Size.InBytes > 0 {
+		__antithesis_instrumentation__.Notify(1608)
 		fmt.Fprintf(&buffer, "size=%s,", humanizeutil.IBytes(ss.Size.InBytes))
+	} else {
+		__antithesis_instrumentation__.Notify(1609)
 	}
+	__antithesis_instrumentation__.Notify(1598)
 	if ss.Size.Percent > 0 {
+		__antithesis_instrumentation__.Notify(1610)
 		fmt.Fprintf(&buffer, "size=%s%%,", humanize.Ftoa(ss.Size.Percent))
+	} else {
+		__antithesis_instrumentation__.Notify(1611)
 	}
+	__antithesis_instrumentation__.Notify(1599)
 	if ss.BallastSize != nil {
+		__antithesis_instrumentation__.Notify(1612)
 		if ss.BallastSize.InBytes > 0 {
+			__antithesis_instrumentation__.Notify(1614)
 			fmt.Fprintf(&buffer, "ballast-size=%s,", humanizeutil.IBytes(ss.BallastSize.InBytes))
+		} else {
+			__antithesis_instrumentation__.Notify(1615)
 		}
+		__antithesis_instrumentation__.Notify(1613)
 		if ss.BallastSize.Percent > 0 {
+			__antithesis_instrumentation__.Notify(1616)
 			fmt.Fprintf(&buffer, "ballast-size=%s%%,", humanize.Ftoa(ss.BallastSize.Percent))
+		} else {
+			__antithesis_instrumentation__.Notify(1617)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(1618)
 	}
+	__antithesis_instrumentation__.Notify(1600)
 	if len(ss.Attributes.Attrs) > 0 {
+		__antithesis_instrumentation__.Notify(1619)
 		fmt.Fprint(&buffer, "attrs=")
 		for i, attr := range ss.Attributes.Attrs {
+			__antithesis_instrumentation__.Notify(1621)
 			if i != 0 {
+				__antithesis_instrumentation__.Notify(1623)
 				fmt.Fprint(&buffer, ":")
+			} else {
+				__antithesis_instrumentation__.Notify(1624)
 			}
+			__antithesis_instrumentation__.Notify(1622)
 			buffer.WriteString(attr)
 		}
+		__antithesis_instrumentation__.Notify(1620)
 		fmt.Fprintf(&buffer, ",")
+	} else {
+		__antithesis_instrumentation__.Notify(1625)
 	}
+	__antithesis_instrumentation__.Notify(1601)
 	if len(ss.PebbleOptions) > 0 {
+		__antithesis_instrumentation__.Notify(1626)
 		optsStr := strings.Replace(ss.PebbleOptions, "\n", " ", -1)
 		fmt.Fprint(&buffer, "pebble=")
 		fmt.Fprint(&buffer, optsStr)
 		fmt.Fprint(&buffer, ",")
+	} else {
+		__antithesis_instrumentation__.Notify(1627)
 	}
-	// Trim the extra comma from the end if it exists.
+	__antithesis_instrumentation__.Notify(1602)
+
 	if l := buffer.Len(); l > 0 {
+		__antithesis_instrumentation__.Notify(1628)
 		buffer.Truncate(l - 1)
+	} else {
+		__antithesis_instrumentation__.Notify(1629)
 	}
+	__antithesis_instrumentation__.Notify(1603)
 	return buffer.String()
 }
 
-// IsEncrypted returns whether the StoreSpec has encryption enabled.
 func (ss StoreSpec) IsEncrypted() bool {
+	__antithesis_instrumentation__.Notify(1630)
 	return len(ss.EncryptionOptions) > 0
 }
 
-// fractionRegex is the regular expression that recognizes whether
-// the specified size is a fraction of the total available space.
-// Proportional sizes can be expressed as fractional numbers, either
-// in absolute value or with a trailing "%" sign. A fractional number
-// without a trailing "%" must be recognized by the presence of a
-// decimal separator; numbers without decimal separators are plain
-// sizes in bytes (separate case in the parsing).
-// The first part of the regexp matches NNN.[MMM]; the second part
-// [NNN].MMM, and the last part matches explicit percentages with or
-// without a decimal separator.
-// Values smaller than 1% and 100% are rejected after parsing using
-// a separate check.
 var fractionRegex = regexp.MustCompile(`^([-]?([0-9]+\.[0-9]*|[0-9]*\.[0-9]+|[0-9]+(\.[0-9]*)?%))$`)
 
-// NewStoreSpec parses the string passed into a --store flag and returns a
-// StoreSpec if it is correctly parsed.
-// There are four possible fields that can be passed in, comma separated:
-// - path=xxx The directory in which to the rocks db instance should be
-//   located, required unless using a in memory storage.
-// - type=mem This specifies that the store is an in memory storage instead of
-//   an on disk one. mem is currently the only other type available.
-// - size=xxx The optional maximum size of the storage. This can be in one of a
-//   few different formats.
-//   - 10000000000     -> 10000000000 bytes
-//   - 20GB            -> 20000000000 bytes
-//   - 20GiB           -> 21474836480 bytes
-//   - 0.02TiB         -> 21474836480 bytes
-//   - 20%             -> 20% of the available space
-//   - 0.2             -> 20% of the available space
-// - attrs=xxx:yyy:zzz A colon separated list of optional attributes.
-// Note that commas are forbidden within any field name or value.
 func NewStoreSpec(value string) (StoreSpec, error) {
+	__antithesis_instrumentation__.Notify(1631)
 	const pathField = "path"
 	if len(value) == 0 {
+		__antithesis_instrumentation__.Notify(1635)
 		return StoreSpec{}, fmt.Errorf("no value specified")
+	} else {
+		__antithesis_instrumentation__.Notify(1636)
 	}
+	__antithesis_instrumentation__.Notify(1632)
 	var ss StoreSpec
 	used := make(map[string]struct{})
 	for _, split := range strings.Split(value, ",") {
+		__antithesis_instrumentation__.Notify(1637)
 		if len(split) == 0 {
+			__antithesis_instrumentation__.Notify(1643)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(1644)
 		}
+		__antithesis_instrumentation__.Notify(1638)
 		subSplits := strings.SplitN(split, "=", 2)
 		var field string
 		var value string
 		if len(subSplits) == 1 {
+			__antithesis_instrumentation__.Notify(1645)
 			field = pathField
 			value = subSplits[0]
 		} else {
+			__antithesis_instrumentation__.Notify(1646)
 			field = strings.ToLower(subSplits[0])
 			value = subSplits[1]
 		}
+		__antithesis_instrumentation__.Notify(1639)
 		if _, ok := used[field]; ok {
+			__antithesis_instrumentation__.Notify(1647)
 			return StoreSpec{}, fmt.Errorf("%s field was used twice in store definition", field)
+		} else {
+			__antithesis_instrumentation__.Notify(1648)
 		}
+		__antithesis_instrumentation__.Notify(1640)
 		used[field] = struct{}{}
 
 		if len(field) == 0 {
+			__antithesis_instrumentation__.Notify(1649)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(1650)
 		}
+		__antithesis_instrumentation__.Notify(1641)
 		if len(value) == 0 {
+			__antithesis_instrumentation__.Notify(1651)
 			return StoreSpec{}, fmt.Errorf("no value specified for %s", field)
+		} else {
+			__antithesis_instrumentation__.Notify(1652)
 		}
+		__antithesis_instrumentation__.Notify(1642)
 
 		switch field {
 		case pathField:
+			__antithesis_instrumentation__.Notify(1653)
 			var err error
 			ss.Path, err = GetAbsoluteStorePath(pathField, value)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(1666)
 				return StoreSpec{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(1667)
 			}
 		case "size":
+			__antithesis_instrumentation__.Notify(1654)
 			var err error
 			var minBytesAllowed int64 = MinimumStoreSize
 			var minPercent float64 = 1
@@ -326,9 +400,13 @@ func NewStoreSpec(value string) (StoreSpec, error) {
 				&floatInterval{min: &minPercent, max: &maxPercent},
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(1668)
 				return StoreSpec{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(1669)
 			}
 		case "ballast-size":
+			__antithesis_instrumentation__.Notify(1655)
 			var minBytesAllowed int64
 			var minPercent float64 = 0
 			var maxPercent float64 = 50
@@ -339,245 +417,329 @@ func NewStoreSpec(value string) (StoreSpec, error) {
 				&floatInterval{min: &minPercent, max: &maxPercent},
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(1670)
 				return StoreSpec{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(1671)
 			}
+			__antithesis_instrumentation__.Notify(1656)
 			ss.BallastSize = &ballastSize
 		case "attrs":
-			// Check to make sure there are no duplicate attributes.
+			__antithesis_instrumentation__.Notify(1657)
+
 			attrMap := make(map[string]struct{})
 			for _, attribute := range strings.Split(value, ":") {
+				__antithesis_instrumentation__.Notify(1672)
 				if _, ok := attrMap[attribute]; ok {
+					__antithesis_instrumentation__.Notify(1674)
 					return StoreSpec{}, fmt.Errorf("duplicate attribute given for store: %s", attribute)
+				} else {
+					__antithesis_instrumentation__.Notify(1675)
 				}
+				__antithesis_instrumentation__.Notify(1673)
 				attrMap[attribute] = struct{}{}
 			}
+			__antithesis_instrumentation__.Notify(1658)
 			for attribute := range attrMap {
+				__antithesis_instrumentation__.Notify(1676)
 				ss.Attributes.Attrs = append(ss.Attributes.Attrs, attribute)
 			}
+			__antithesis_instrumentation__.Notify(1659)
 			sort.Strings(ss.Attributes.Attrs)
 		case "type":
+			__antithesis_instrumentation__.Notify(1660)
 			if value == "mem" {
+				__antithesis_instrumentation__.Notify(1677)
 				ss.InMemory = true
 			} else {
+				__antithesis_instrumentation__.Notify(1678)
 				return StoreSpec{}, fmt.Errorf("%s is not a valid store type", value)
 			}
 		case "rocksdb":
+			__antithesis_instrumentation__.Notify(1661)
 			ss.RocksDBOptions = value
 		case "pebble":
-			// Pebble options are supplied in the Pebble OPTIONS ini-like
-			// format, but allowing any whitespace to delimit lines. Convert
-			// the options to a newline-delimited format. This isn't a trivial
-			// character replacement because whitespace may appear within a
-			// stanza, eg ["Level 0"].
+			__antithesis_instrumentation__.Notify(1662)
+
 			value = strings.TrimSpace(value)
 			var buf bytes.Buffer
 			for len(value) > 0 {
+				__antithesis_instrumentation__.Notify(1679)
 				i := strings.IndexFunc(value, func(r rune) bool {
-					return r == '[' || unicode.IsSpace(r)
+					__antithesis_instrumentation__.Notify(1681)
+					return r == '[' || func() bool {
+						__antithesis_instrumentation__.Notify(1682)
+						return unicode.IsSpace(r) == true
+					}() == true
 				})
+				__antithesis_instrumentation__.Notify(1680)
 				switch {
 				case i == -1:
+					__antithesis_instrumentation__.Notify(1683)
 					buf.WriteString(value)
 					value = value[len(value):]
 				case value[i] == '[':
-					// If there's whitespace within [ ], we write it verbatim.
+					__antithesis_instrumentation__.Notify(1684)
+
 					j := i + strings.IndexRune(value[i:], ']')
 					buf.WriteString(value[:j+1])
 					value = value[j+1:]
 				case unicode.IsSpace(rune(value[i])):
-					// NB: This doesn't handle multibyte whitespace.
+					__antithesis_instrumentation__.Notify(1685)
+
 					buf.WriteString(value[:i])
 					buf.WriteRune('\n')
 					value = strings.TrimSpace(value[i+1:])
+				default:
+					__antithesis_instrumentation__.Notify(1686)
 				}
 			}
+			__antithesis_instrumentation__.Notify(1663)
 
-			// Parse the options just to fail early if invalid. We'll parse
-			// them again later when constructing the store engine.
 			var opts pebble.Options
 			if err := opts.Parse(buf.String(), nil); err != nil {
+				__antithesis_instrumentation__.Notify(1687)
 				return StoreSpec{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(1688)
 			}
+			__antithesis_instrumentation__.Notify(1664)
 			ss.PebbleOptions = buf.String()
 		default:
+			__antithesis_instrumentation__.Notify(1665)
 			return StoreSpec{}, fmt.Errorf("%s is not a valid store field", field)
 		}
 	}
+	__antithesis_instrumentation__.Notify(1633)
 	if ss.InMemory {
-		// Only in memory stores don't need a path and require a size.
+		__antithesis_instrumentation__.Notify(1689)
+
 		if ss.Path != "" {
+			__antithesis_instrumentation__.Notify(1692)
 			return StoreSpec{}, fmt.Errorf("path specified for in memory store")
+		} else {
+			__antithesis_instrumentation__.Notify(1693)
 		}
-		if ss.Size.Percent == 0 && ss.Size.InBytes == 0 {
+		__antithesis_instrumentation__.Notify(1690)
+		if ss.Size.Percent == 0 && func() bool {
+			__antithesis_instrumentation__.Notify(1694)
+			return ss.Size.InBytes == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(1695)
 			return StoreSpec{}, fmt.Errorf("size must be specified for an in memory store")
+		} else {
+			__antithesis_instrumentation__.Notify(1696)
 		}
+		__antithesis_instrumentation__.Notify(1691)
 		if ss.BallastSize != nil {
+			__antithesis_instrumentation__.Notify(1697)
 			return StoreSpec{}, fmt.Errorf("ballast-size specified for in memory store")
+		} else {
+			__antithesis_instrumentation__.Notify(1698)
 		}
-	} else if ss.Path == "" {
-		return StoreSpec{}, fmt.Errorf("no path specified")
+	} else {
+		__antithesis_instrumentation__.Notify(1699)
+		if ss.Path == "" {
+			__antithesis_instrumentation__.Notify(1700)
+			return StoreSpec{}, fmt.Errorf("no path specified")
+		} else {
+			__antithesis_instrumentation__.Notify(1701)
+		}
 	}
+	__antithesis_instrumentation__.Notify(1634)
 	return ss, nil
 }
 
-// StoreSpecList contains a slice of StoreSpecs that implements pflag's value
-// interface.
 type StoreSpecList struct {
 	Specs   []StoreSpec
-	updated bool // updated is used to determine if specs only contain the default value.
+	updated bool
 }
 
 var _ pflag.Value = &StoreSpecList{}
 
-// String returns a string representation of all the StoreSpecs. This is part
-// of pflag's value interface.
 func (ssl StoreSpecList) String() string {
+	__antithesis_instrumentation__.Notify(1702)
 	var buffer bytes.Buffer
 	for _, ss := range ssl.Specs {
+		__antithesis_instrumentation__.Notify(1705)
 		fmt.Fprintf(&buffer, "--%s=%s ", cliflags.Store.Name, ss)
 	}
-	// Trim the extra space from the end if it exists.
+	__antithesis_instrumentation__.Notify(1703)
+
 	if l := buffer.Len(); l > 0 {
+		__antithesis_instrumentation__.Notify(1706)
 		buffer.Truncate(l - 1)
+	} else {
+		__antithesis_instrumentation__.Notify(1707)
 	}
+	__antithesis_instrumentation__.Notify(1704)
 	return buffer.String()
 }
 
-// AuxiliaryDir is the path of the auxiliary dir relative to an engine.Engine's
-// root directory. It must not be changed without a proper migration.
 const AuxiliaryDir = "auxiliary"
 
-// EmergencyBallastFile returns the path (relative to a data directory) used
-// for an emergency ballast file. The returned path must be stable across
-// releases (eg, we cannot change these constants), otherwise we may duplicate
-// ballasts.
 func EmergencyBallastFile(pathJoin func(...string) string, dataDir string) string {
+	__antithesis_instrumentation__.Notify(1708)
 	return pathJoin(dataDir, AuxiliaryDir, "EMERGENCY_BALLAST")
 }
 
-// PreventedStartupFile is the filename (relative to 'dir') used for files that
-// can block server startup.
 func PreventedStartupFile(dir string) string {
+	__antithesis_instrumentation__.Notify(1709)
 	return filepath.Join(dir, "_CRITICAL_ALERT.txt")
 }
 
-// PriorCriticalAlertError attempts to read the
-// PreventedStartupFile for each store directory and returns their
-// contents as a structured error.
-//
-// These files typically request operator intervention after a
-// corruption event by preventing the affected node(s) from starting
-// back up.
 func (ssl StoreSpecList) PriorCriticalAlertError() (err error) {
+	__antithesis_instrumentation__.Notify(1710)
 	addError := func(newErr error) {
+		__antithesis_instrumentation__.Notify(1713)
 		if err == nil {
+			__antithesis_instrumentation__.Notify(1715)
 			err = errors.New("startup forbidden by prior critical alert")
+		} else {
+			__antithesis_instrumentation__.Notify(1716)
 		}
-		// We use WithDetailf here instead of errors.CombineErrors
-		// because we want the details to be printed to the screen
-		// (combined errors only show up via %+v).
+		__antithesis_instrumentation__.Notify(1714)
+
 		err = errors.WithDetailf(err, "%v", newErr)
 	}
+	__antithesis_instrumentation__.Notify(1711)
 	for _, ss := range ssl.Specs {
+		__antithesis_instrumentation__.Notify(1717)
 		path := ss.PreventedStartupFile()
 		if path == "" {
+			__antithesis_instrumentation__.Notify(1720)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(1721)
 		}
+		__antithesis_instrumentation__.Notify(1718)
 		b, err := ioutil.ReadFile(path)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(1722)
 			if !oserror.IsNotExist(err) {
+				__antithesis_instrumentation__.Notify(1724)
 				addError(errors.Wrapf(err, "%s", path))
+			} else {
+				__antithesis_instrumentation__.Notify(1725)
 			}
+			__antithesis_instrumentation__.Notify(1723)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(1726)
 		}
+		__antithesis_instrumentation__.Notify(1719)
 		addError(errors.Newf("From %s:\n\n%s\n", path, b))
 	}
+	__antithesis_instrumentation__.Notify(1712)
 	return err
 }
 
-// PreventedStartupFile returns the path to a file which, if it exists, should
-// prevent the server from starting up. Returns an empty string for in-memory
-// engines.
 func (ss StoreSpec) PreventedStartupFile() string {
+	__antithesis_instrumentation__.Notify(1727)
 	if ss.InMemory {
+		__antithesis_instrumentation__.Notify(1729)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(1730)
 	}
+	__antithesis_instrumentation__.Notify(1728)
 	return PreventedStartupFile(filepath.Join(ss.Path, AuxiliaryDir))
 }
 
-// Type returns the underlying type in string form. This is part of pflag's
-// value interface.
 func (ssl *StoreSpecList) Type() string {
+	__antithesis_instrumentation__.Notify(1731)
 	return "StoreSpec"
 }
 
-// Set adds a new value to the StoreSpecValue. It is the important part of
-// pflag's value interface.
 func (ssl *StoreSpecList) Set(value string) error {
+	__antithesis_instrumentation__.Notify(1732)
 	spec, err := NewStoreSpec(value)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(1735)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(1736)
 	}
+	__antithesis_instrumentation__.Notify(1733)
 	if !ssl.updated {
+		__antithesis_instrumentation__.Notify(1737)
 		ssl.Specs = []StoreSpec{spec}
 		ssl.updated = true
 	} else {
+		__antithesis_instrumentation__.Notify(1738)
 		ssl.Specs = append(ssl.Specs, spec)
 	}
+	__antithesis_instrumentation__.Notify(1734)
 	return nil
 }
 
-// JoinListType is a slice of strings that implements pflag's value
-// interface.
 type JoinListType []string
 
-// String returns a string representation of all the JoinListType. This is part
-// of pflag's value interface.
 func (jls JoinListType) String() string {
+	__antithesis_instrumentation__.Notify(1739)
 	var buffer bytes.Buffer
 	for _, jl := range jls {
+		__antithesis_instrumentation__.Notify(1742)
 		fmt.Fprintf(&buffer, "--join=%s ", jl)
 	}
-	// Trim the extra space from the end if it exists.
+	__antithesis_instrumentation__.Notify(1740)
+
 	if l := buffer.Len(); l > 0 {
+		__antithesis_instrumentation__.Notify(1743)
 		buffer.Truncate(l - 1)
+	} else {
+		__antithesis_instrumentation__.Notify(1744)
 	}
+	__antithesis_instrumentation__.Notify(1741)
 	return buffer.String()
 }
 
-// Type returns the underlying type in string form. This is part of pflag's
-// value interface.
 func (jls *JoinListType) Type() string {
+	__antithesis_instrumentation__.Notify(1745)
 	return "string"
 }
 
-// Set adds a new value to the JoinListType. It is the important part of
-// pflag's value interface.
 func (jls *JoinListType) Set(value string) error {
+	__antithesis_instrumentation__.Notify(1746)
 	if strings.TrimSpace(value) == "" {
-		// No value, likely user error.
+		__antithesis_instrumentation__.Notify(1749)
+
 		return errors.New("no address specified in --join")
+	} else {
+		__antithesis_instrumentation__.Notify(1750)
 	}
+	__antithesis_instrumentation__.Notify(1747)
 	for _, v := range strings.Split(value, ",") {
+		__antithesis_instrumentation__.Notify(1751)
 		v = strings.TrimSpace(v)
 		if v == "" {
-			// --join=a,,b  equivalent to --join=a,b
+			__antithesis_instrumentation__.Notify(1755)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(1756)
 		}
-		// Try splitting the address. This validates the format
-		// of the address and tolerates a missing delimiter colon
-		// between the address and port number.
+		__antithesis_instrumentation__.Notify(1752)
+
 		addr, port, err := addr.SplitHostPort(v, "")
 		if err != nil {
+			__antithesis_instrumentation__.Notify(1757)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(1758)
 		}
-		// Default the port if unspecified.
+		__antithesis_instrumentation__.Notify(1753)
+
 		if len(port) == 0 {
+			__antithesis_instrumentation__.Notify(1759)
 			port = DefaultPort
+		} else {
+			__antithesis_instrumentation__.Notify(1760)
 		}
-		// Re-join the parts. This guarantees an address that
-		// will be valid for net.SplitHostPort().
+		__antithesis_instrumentation__.Notify(1754)
+
 		*jls = append(*jls, net.JoinHostPort(addr, port))
 	}
+	__antithesis_instrumentation__.Notify(1748)
 	return nil
 }

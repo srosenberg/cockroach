@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,75 +20,100 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// alterTenantSetClusterSettingNode represents an
-// ALTER TENANT ... SET CLUSTER SETTING statement.
 type alterTenantSetClusterSettingNode struct {
 	name     string
-	tenantID tree.TypedExpr // tenantID or nil for "all tenants"
+	tenantID tree.TypedExpr
 	st       *cluster.Settings
 	setting  settings.NonMaskedSetting
-	// If value is nil, the setting should be reset.
+
 	value tree.TypedExpr
 }
 
-// AlterTenantSetClusterSetting sets tenant level session variables.
-// Privileges: super user.
 func (p *planner) AlterTenantSetClusterSetting(
 	ctx context.Context, n *tree.AlterTenantSetClusterSetting,
 ) (planNode, error) {
-	// Changing cluster settings for other tenants is a more
-	// privileged operation than changing local cluster settings. So we
-	// shouldn't be allowing with just the role option
-	// MODIFYCLUSTERSETTINGS.
-	//
-	// TODO(knz): Using admin authz for now; we may want to introduce a
-	// more specific role option later.
+	__antithesis_instrumentation__.Notify(628210)
+
 	if err := p.RequireAdminRole(ctx, "change a tenant cluster setting"); err != nil {
+		__antithesis_instrumentation__.Notify(628219)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(628220)
 	}
-	// Error out if we're trying to call this from a non-system tenant.
+	__antithesis_instrumentation__.Notify(628211)
+
 	if !p.execCfg.Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(628221)
 		return nil, pgerror.Newf(pgcode.InsufficientPrivilege,
 			"ALTER TENANT can only be called by system operators")
+	} else {
+		__antithesis_instrumentation__.Notify(628222)
 	}
+	__antithesis_instrumentation__.Notify(628212)
 
 	name := strings.ToLower(n.Name)
 	st := p.EvalContext().Settings
-	v, ok := settings.Lookup(name, settings.LookupForLocalAccess, true /* forSystemTenant - checked above already */)
+	v, ok := settings.Lookup(name, settings.LookupForLocalAccess, true)
 	if !ok {
+		__antithesis_instrumentation__.Notify(628223)
 		return nil, errors.Errorf("unknown cluster setting '%s'", name)
+	} else {
+		__antithesis_instrumentation__.Notify(628224)
 	}
-	// Error out if we're trying to set a system-only variable.
+	__antithesis_instrumentation__.Notify(628213)
+
 	if v.Class() == settings.SystemOnly {
+		__antithesis_instrumentation__.Notify(628225)
 		return nil, pgerror.Newf(pgcode.InsufficientPrivilege,
 			"%s is a system-only setting and must be set in the admin tenant using SET CLUSTER SETTING", name)
+	} else {
+		__antithesis_instrumentation__.Notify(628226)
 	}
+	__antithesis_instrumentation__.Notify(628214)
 
 	var typedTenantID tree.TypedExpr
 	if !n.TenantAll {
+		__antithesis_instrumentation__.Notify(628227)
 		var dummyHelper tree.IndexedVarHelper
 		var err error
 		typedTenantID, err = p.analyzeExpr(
 			ctx, n.TenantID, nil, dummyHelper, types.Int, true, "ALTER TENANT SET CLUSTER SETTING "+name)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(628228)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(628229)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(628230)
 	}
+	__antithesis_instrumentation__.Notify(628215)
 
 	setting, ok := v.(settings.NonMaskedSetting)
 	if !ok {
+		__antithesis_instrumentation__.Notify(628231)
 		return nil, errors.AssertionFailedf("expected writable setting, got %T", v)
+	} else {
+		__antithesis_instrumentation__.Notify(628232)
 	}
+	__antithesis_instrumentation__.Notify(628216)
 
-	// We don't support changing the version for another tenant just yet.
 	if _, isVersion := setting.(*settings.VersionSetting); isVersion {
+		__antithesis_instrumentation__.Notify(628233)
 		return nil, unimplemented.NewWithIssue(77733, "cannot change the version of another tenant")
+	} else {
+		__antithesis_instrumentation__.Notify(628234)
 	}
+	__antithesis_instrumentation__.Notify(628217)
 
 	value, err := p.getAndValidateTypedClusterSetting(ctx, name, n.Value, setting)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628235)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(628236)
 	}
+	__antithesis_instrumentation__.Notify(628218)
 
 	node := alterTenantSetClusterSettingNode{
 		name: name, tenantID: typedTenantID, st: st,
@@ -106,63 +123,85 @@ func (p *planner) AlterTenantSetClusterSetting(
 }
 
 func (n *alterTenantSetClusterSettingNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(628237)
 	var tenantIDi uint64
 	var tenantID tree.Datum
 	if n.tenantID == nil {
-		// Processing for TENANT ALL.
-		// We will be writing rows with tenant_id = 0 in
-		// system.tenant_settings.
+		__antithesis_instrumentation__.Notify(628240)
+
 		tenantID = tree.NewDInt(0)
 	} else {
-		// Case for TENANT <tenant_id>. We'll check that the provided
-		// tenant ID is non zero and refers to a tenant that exists in
-		// system.tenants.
+		__antithesis_instrumentation__.Notify(628241)
+
 		var err error
 		tenantIDi, tenantID, err = resolveTenantID(params.p, n.tenantID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(628243)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628244)
 		}
+		__antithesis_instrumentation__.Notify(628242)
 		if err := assertTenantExists(params.ctx, params.p, tenantID); err != nil {
+			__antithesis_instrumentation__.Notify(628245)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628246)
 		}
 	}
+	__antithesis_instrumentation__.Notify(628238)
 
-	// Write the setting.
 	var reportedValue string
 	if n.value == nil {
-		// TODO(radu,knz): DEFAULT might be confusing, we really want to say "NO OVERRIDE"
+		__antithesis_instrumentation__.Notify(628247)
+
 		reportedValue = "DEFAULT"
 		if _, err := params.p.execCfg.InternalExecutor.ExecEx(
 			params.ctx, "reset-tenant-setting", params.p.Txn(),
 			sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 			"DELETE FROM system.tenant_settings WHERE tenant_id = $1 AND name = $2", tenantID, n.name,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(628248)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628249)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(628250)
 		reportedValue = tree.AsStringWithFlags(n.value, tree.FmtBareStrings)
 		value, err := n.value.Eval(params.p.EvalContext())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(628253)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628254)
 		}
+		__antithesis_instrumentation__.Notify(628251)
 		encoded, err := toSettingString(params.ctx, n.st, n.name, n.setting, value)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(628255)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628256)
 		}
+		__antithesis_instrumentation__.Notify(628252)
 		if _, err := params.p.execCfg.InternalExecutor.ExecEx(
 			params.ctx, "update-tenant-setting", params.p.Txn(),
 			sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 			`UPSERT INTO system.tenant_settings (tenant_id, name, value, last_updated, value_type) VALUES ($1, $2, $3, now(), $4)`,
 			tenantID, n.name, encoded, n.setting.Typ(),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(628257)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628258)
 		}
 	}
+	__antithesis_instrumentation__.Notify(628239)
 
-	// Finally, log the event.
 	return params.p.logEvent(
 		params.ctx,
-		0, /* no target */
+		0,
 		&eventpb.SetTenantClusterSetting{
 			SettingName: n.name,
 			Value:       reportedValue,
@@ -171,91 +210,135 @@ func (n *alterTenantSetClusterSettingNode) startExec(params runParams) error {
 		})
 }
 
-func (n *alterTenantSetClusterSettingNode) Next(_ runParams) (bool, error) { return false, nil }
-func (n *alterTenantSetClusterSettingNode) Values() tree.Datums            { return nil }
-func (n *alterTenantSetClusterSettingNode) Close(_ context.Context)        {}
+func (n *alterTenantSetClusterSettingNode) Next(_ runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(628259)
+	return false, nil
+}
+func (n *alterTenantSetClusterSettingNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(628260)
+	return nil
+}
+func (n *alterTenantSetClusterSettingNode) Close(_ context.Context) {
+	__antithesis_instrumentation__.Notify(628261)
+}
 
 func resolveTenantID(p *planner, expr tree.TypedExpr) (uint64, tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(628262)
 	tenantIDd, err := expr.Eval(p.EvalContext())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628267)
 		return 0, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(628268)
 	}
+	__antithesis_instrumentation__.Notify(628263)
 	tenantID, ok := tenantIDd.(*tree.DInt)
 	if !ok {
+		__antithesis_instrumentation__.Notify(628269)
 		return 0, nil, errors.AssertionFailedf("expected int, got %T", tenantIDd)
+	} else {
+		__antithesis_instrumentation__.Notify(628270)
 	}
+	__antithesis_instrumentation__.Notify(628264)
 	if *tenantID == 0 {
+		__antithesis_instrumentation__.Notify(628271)
 		return 0, nil, pgerror.Newf(pgcode.InvalidParameterValue, "tenant ID must be non-zero")
+	} else {
+		__antithesis_instrumentation__.Notify(628272)
 	}
+	__antithesis_instrumentation__.Notify(628265)
 	if roachpb.MakeTenantID(uint64(*tenantID)) == roachpb.SystemTenantID {
+		__antithesis_instrumentation__.Notify(628273)
 		return 0, nil, errors.WithHint(pgerror.Newf(pgcode.InvalidParameterValue,
 			"cannot use this statement to access cluster settings in system tenant"),
 			"Use a regular SHOW/SET CLUSTER SETTING statement.")
+	} else {
+		__antithesis_instrumentation__.Notify(628274)
 	}
+	__antithesis_instrumentation__.Notify(628266)
 	return uint64(*tenantID), tenantIDd, nil
 }
 
 func assertTenantExists(ctx context.Context, p *planner, tenantID tree.Datum) error {
+	__antithesis_instrumentation__.Notify(628275)
 	exists, err := p.ExecCfg().InternalExecutor.QueryRowEx(
 		ctx, "get-tenant", p.txn,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		`SELECT EXISTS(SELECT id FROM system.tenants WHERE id = $1)`, tenantID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628278)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(628279)
 	}
+	__antithesis_instrumentation__.Notify(628276)
 	if exists[0] != tree.DBoolTrue {
+		__antithesis_instrumentation__.Notify(628280)
 		return pgerror.Newf(pgcode.InvalidParameterValue, "no tenant found with ID %v", tenantID)
+	} else {
+		__antithesis_instrumentation__.Notify(628281)
 	}
+	__antithesis_instrumentation__.Notify(628277)
 	return nil
 }
 
-// ShowTenantClusterSetting shows the value of a cluster setting for a tenant.
-// Privileges: super user.
 func (p *planner) ShowTenantClusterSetting(
 	ctx context.Context, n *tree.ShowTenantClusterSetting,
 ) (planNode, error) {
-	// Viewing cluster settings for other tenants is a more
-	// privileged operation than viewing local cluster settings. So we
-	// shouldn't be allowing with just the role option
-	// VIEWCLUSTERSETTINGS.
-	//
-	// TODO(knz): Using admin authz for now; we may want to introduce a
-	// more specific role option later.
+	__antithesis_instrumentation__.Notify(628282)
+
 	if err := p.RequireAdminRole(ctx, "view a tenant cluster setting"); err != nil {
+		__antithesis_instrumentation__.Notify(628288)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(628289)
 	}
+	__antithesis_instrumentation__.Notify(628283)
 
 	name := strings.ToLower(n.Name)
 	val, ok := settings.Lookup(
 		name, settings.LookupForLocalAccess, p.ExecCfg().Codec.ForSystemTenant(),
 	)
 	if !ok {
+		__antithesis_instrumentation__.Notify(628290)
 		return nil, errors.Errorf("unknown setting: %q", name)
+	} else {
+		__antithesis_instrumentation__.Notify(628291)
 	}
+	__antithesis_instrumentation__.Notify(628284)
 	setting, ok := val.(settings.NonMaskedSetting)
 	if !ok {
-		// If we arrive here, this means Lookup() did not properly
-		// ignore the masked setting, which is a bug in Lookup().
-		return nil, errors.AssertionFailedf("setting is masked: %v", name)
-	}
+		__antithesis_instrumentation__.Notify(628292)
 
-	// Error out if we're trying to call this from a non-system tenant or if
-	// we're trying to set a system-only variable.
+		return nil, errors.AssertionFailedf("setting is masked: %v", name)
+	} else {
+		__antithesis_instrumentation__.Notify(628293)
+	}
+	__antithesis_instrumentation__.Notify(628285)
+
 	if !p.execCfg.Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(628294)
 		return nil, pgerror.Newf(pgcode.InsufficientPrivilege,
 			"SHOW CLUSTER SETTING FOR TENANT can only be called by system operators")
+	} else {
+		__antithesis_instrumentation__.Notify(628295)
 	}
+	__antithesis_instrumentation__.Notify(628286)
 
 	columns, err := getShowClusterSettingPlanColumns(setting, name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628296)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(628297)
 	}
+	__antithesis_instrumentation__.Notify(628287)
 
 	return planShowClusterSetting(
 		setting, name, columns,
 		func(ctx context.Context, p *planner) (bool, string, error) {
-			// NB: we evaluate + check the tenant ID inside SQL using
-			// the same pattern as used for SHOW CLUSTER SETTINGS FOR TENANT.
+			__antithesis_instrumentation__.Notify(628298)
+
 			lookupEncodedTenantSetting := `
 WITH
   tenant_id AS (SELECT (` + n.TenantID.String() + `):::INT AS tenant_id),
@@ -300,18 +383,34 @@ FROM
 				lookupEncodedTenantSetting,
 				name)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(628303)
 				return false, "", err
+			} else {
+				__antithesis_instrumentation__.Notify(628304)
 			}
+			__antithesis_instrumentation__.Notify(628299)
 			if len(datums) != 1 {
+				__antithesis_instrumentation__.Notify(628305)
 				return false, "", errors.AssertionFailedf("expected 1 column, got %+v", datums)
+			} else {
+				__antithesis_instrumentation__.Notify(628306)
 			}
+			__antithesis_instrumentation__.Notify(628300)
 			if datums[0] == tree.DNull {
+				__antithesis_instrumentation__.Notify(628307)
 				return false, "", nil
+			} else {
+				__antithesis_instrumentation__.Notify(628308)
 			}
+			__antithesis_instrumentation__.Notify(628301)
 			encoded, ok := tree.AsDString(datums[0])
 			if !ok {
+				__antithesis_instrumentation__.Notify(628309)
 				return false, "", errors.AssertionFailedf("expected string value, got %T", datums[0])
+			} else {
+				__antithesis_instrumentation__.Notify(628310)
 			}
+			__antithesis_instrumentation__.Notify(628302)
 			return true, string(encoded), nil
 		})
 }

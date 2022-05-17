@@ -13,6 +13,7 @@ go_library(
         "//pkg/kv/kvserver/kvserverpb",
         "//pkg/roachpb",
         "//pkg/util/hlc",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -28,6 +29,7 @@ go_test(
         "//pkg/roachpb",
         "//pkg/util/hlc",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqlutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,15 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// SQLRunner wraps a testutils.TB and *gosql.DB connection and provides
-// convenience functions to run SQL statements and fail the test on any errors.
 type SQLRunner struct {
 	DB                   DBHandle
-	SucceedsSoonDuration time.Duration // defaults to testutils.DefaultSucceedsSoonDuration
+	SucceedsSoonDuration time.Duration
 }
 
-// DBHandle is an interface that applies to *gosql.DB, *gosql.Conn, and
-// *gosql.Tx, as well as *RoundRobinDBHandle.
 type DBHandle interface {
 	ExecContext(ctx context.Context, query string, args ...interface{}) (gosql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...interface{}) (*gosql.Rows, error)
@@ -43,208 +31,261 @@ var _ DBHandle = &gosql.DB{}
 var _ DBHandle = &gosql.Conn{}
 var _ DBHandle = &gosql.Tx{}
 
-// MakeSQLRunner returns a SQLRunner for the given database connection.
-// The argument can be a *gosql.DB, *gosql.Conn, or *gosql.Tx object.
 func MakeSQLRunner(db DBHandle) *SQLRunner {
+	__antithesis_instrumentation__.Notify(646252)
 	return &SQLRunner{DB: db}
 }
 
-// MakeRoundRobinSQLRunner returns a SQLRunner that uses a set of database
-// connections, in a round-robin fashion.
 func MakeRoundRobinSQLRunner(dbs ...DBHandle) *SQLRunner {
+	__antithesis_instrumentation__.Notify(646253)
 	return MakeSQLRunner(MakeRoundRobinDBHandle(dbs...))
 }
 
-// Exec is a wrapper around gosql.Exec that kills the test on error.
 func (sr *SQLRunner) Exec(t testutils.TB, query string, args ...interface{}) gosql.Result {
+	__antithesis_instrumentation__.Notify(646254)
 	t.Helper()
 	r, err := sr.DB.ExecContext(context.Background(), query, args...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(646256)
 		t.Fatalf("error executing '%s': %s", query, err)
+	} else {
+		__antithesis_instrumentation__.Notify(646257)
 	}
+	__antithesis_instrumentation__.Notify(646255)
 	return r
 }
 
 func (sr *SQLRunner) succeedsWithin(t testutils.TB, f func() error) {
+	__antithesis_instrumentation__.Notify(646258)
 	t.Helper()
 	d := sr.SucceedsSoonDuration
 	if d == 0 {
+		__antithesis_instrumentation__.Notify(646260)
 		d = testutils.DefaultSucceedsSoonDuration
+	} else {
+		__antithesis_instrumentation__.Notify(646261)
 	}
+	__antithesis_instrumentation__.Notify(646259)
 	require.NoError(t, testutils.SucceedsWithinError(f, d))
 }
 
-// ExecSucceedsSoon is a wrapper around gosql.Exec that wraps
-// the exec in a succeeds soon.
 func (sr *SQLRunner) ExecSucceedsSoon(t testutils.TB, query string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(646262)
 	t.Helper()
 	sr.succeedsWithin(t, func() error {
+		__antithesis_instrumentation__.Notify(646263)
 		_, err := sr.DB.ExecContext(context.Background(), query, args...)
 		return err
 	})
 }
 
-// ExecRowsAffected executes the statement and verifies that RowsAffected()
-// matches the expected value. It kills the test on errors.
 func (sr *SQLRunner) ExecRowsAffected(
 	t testutils.TB, expRowsAffected int, query string, args ...interface{},
 ) {
+	__antithesis_instrumentation__.Notify(646264)
 	t.Helper()
 	r := sr.Exec(t, query, args...)
 	numRows, err := r.RowsAffected()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(646266)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(646267)
 	}
+	__antithesis_instrumentation__.Notify(646265)
 	if numRows != int64(expRowsAffected) {
+		__antithesis_instrumentation__.Notify(646268)
 		t.Fatalf("expected %d affected rows, got %d on '%s'", expRowsAffected, numRows, query)
+	} else {
+		__antithesis_instrumentation__.Notify(646269)
 	}
 }
 
-// ExpectErr runs the given statement and verifies that it returns an error
-// matching the given regex.
 func (sr *SQLRunner) ExpectErr(t testutils.TB, errRE string, query string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(646270)
 	t.Helper()
 	_, err := sr.DB.ExecContext(context.Background(), query, args...)
 	if !testutils.IsError(err, errRE) {
+		__antithesis_instrumentation__.Notify(646271)
 		t.Fatalf("expected error '%s', got: %s", errRE, pgerror.FullError(err))
+	} else {
+		__antithesis_instrumentation__.Notify(646272)
 	}
 }
 
-// ExpectErrSucceedsSoon wraps ExpectErr with a SucceedsSoon.
 func (sr *SQLRunner) ExpectErrSucceedsSoon(
 	t testutils.TB, errRE string, query string, args ...interface{},
 ) {
+	__antithesis_instrumentation__.Notify(646273)
 	t.Helper()
 	sr.succeedsWithin(t, func() error {
+		__antithesis_instrumentation__.Notify(646274)
 		_, err := sr.DB.ExecContext(context.Background(), query, args...)
 		if !testutils.IsError(err, errRE) {
+			__antithesis_instrumentation__.Notify(646276)
 			return errors.Newf("expected error '%s', got: %s", errRE, pgerror.FullError(err))
+		} else {
+			__antithesis_instrumentation__.Notify(646277)
 		}
+		__antithesis_instrumentation__.Notify(646275)
 		return nil
 	})
 }
 
-// Query is a wrapper around gosql.Query that kills the test on error.
 func (sr *SQLRunner) Query(t testutils.TB, query string, args ...interface{}) *gosql.Rows {
+	__antithesis_instrumentation__.Notify(646278)
 	t.Helper()
 	r, err := sr.DB.QueryContext(context.Background(), query, args...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(646280)
 		t.Fatalf("error executing '%s': %s", query, err)
+	} else {
+		__antithesis_instrumentation__.Notify(646281)
 	}
+	__antithesis_instrumentation__.Notify(646279)
 	return r
 }
 
-// Row is a wrapper around gosql.Row that kills the test on error.
 type Row struct {
 	testutils.TB
 	row *gosql.Row
 }
 
-// Scan is a wrapper around (*gosql.Row).Scan that kills the test on error.
 func (r *Row) Scan(dest ...interface{}) {
+	__antithesis_instrumentation__.Notify(646282)
 	r.Helper()
 	if err := r.row.Scan(dest...); err != nil {
+		__antithesis_instrumentation__.Notify(646283)
 		r.Fatalf("error scanning '%v': %+v", r.row, err)
+	} else {
+		__antithesis_instrumentation__.Notify(646284)
 	}
 }
 
-// QueryRow is a wrapper around gosql.QueryRow that kills the test on error.
 func (sr *SQLRunner) QueryRow(t testutils.TB, query string, args ...interface{}) *Row {
+	__antithesis_instrumentation__.Notify(646285)
 	t.Helper()
 	return &Row{t, sr.DB.QueryRowContext(context.Background(), query, args...)}
 }
 
-// QueryStr runs a Query and converts the result using RowsToStrMatrix. Kills
-// the test on errors.
 func (sr *SQLRunner) QueryStr(t testutils.TB, query string, args ...interface{}) [][]string {
+	__antithesis_instrumentation__.Notify(646286)
 	t.Helper()
 	rows := sr.Query(t, query, args...)
 	r, err := RowsToStrMatrix(rows)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(646288)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(646289)
 	}
+	__antithesis_instrumentation__.Notify(646287)
 	return r
 }
 
-// RowsToStrMatrix converts the given result rows to a string matrix; nulls are
-// represented as "NULL". Empty results are represented by an empty (but
-// non-nil) slice.
 func RowsToStrMatrix(rows *gosql.Rows) ([][]string, error) {
+	__antithesis_instrumentation__.Notify(646290)
 	cols, err := rows.Columns()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(646295)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(646296)
 	}
+	__antithesis_instrumentation__.Notify(646291)
 	vals := make([]interface{}, len(cols))
 	for i := range vals {
+		__antithesis_instrumentation__.Notify(646297)
 		vals[i] = new(interface{})
 	}
+	__antithesis_instrumentation__.Notify(646292)
 	res := [][]string{}
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(646298)
 		if err := rows.Scan(vals...); err != nil {
+			__antithesis_instrumentation__.Notify(646301)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(646302)
 		}
+		__antithesis_instrumentation__.Notify(646299)
 		row := make([]string, len(vals))
 		for j, v := range vals {
+			__antithesis_instrumentation__.Notify(646303)
 			if val := *v.(*interface{}); val != nil {
+				__antithesis_instrumentation__.Notify(646304)
 				switch t := val.(type) {
 				case []byte:
+					__antithesis_instrumentation__.Notify(646305)
 					row[j] = string(t)
 				default:
+					__antithesis_instrumentation__.Notify(646306)
 					row[j] = fmt.Sprint(val)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(646307)
 				row[j] = "NULL"
 			}
 		}
+		__antithesis_instrumentation__.Notify(646300)
 		res = append(res, row)
 	}
+	__antithesis_instrumentation__.Notify(646293)
 	if err := rows.Err(); err != nil {
+		__antithesis_instrumentation__.Notify(646308)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(646309)
 	}
+	__antithesis_instrumentation__.Notify(646294)
 	return res, nil
 }
 
-// MatrixToStr converts a set of rows into a single string where each row is on
-// a separate line and the columns with a row are comma separated.
 func MatrixToStr(rows [][]string) string {
+	__antithesis_instrumentation__.Notify(646310)
 	res := strings.Builder{}
 	for _, row := range rows {
+		__antithesis_instrumentation__.Notify(646312)
 		res.WriteString(strings.Join(row, ", "))
 		res.WriteRune('\n')
 	}
+	__antithesis_instrumentation__.Notify(646311)
 	return res.String()
 }
 
-// CheckQueryResults checks that the rows returned by a query match the expected
-// response.
 func (sr *SQLRunner) CheckQueryResults(t testutils.TB, query string, expected [][]string) {
+	__antithesis_instrumentation__.Notify(646313)
 	t.Helper()
 	res := sr.QueryStr(t, query)
 	if !reflect.DeepEqual(res, expected) {
+		__antithesis_instrumentation__.Notify(646314)
 		t.Errorf("query '%s': expected:\n%v\ngot:\n%v\n",
 			query, MatrixToStr(expected), MatrixToStr(res),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(646315)
 	}
 }
 
-// CheckQueryResultsRetry checks that the rows returned by a query match the
-// expected response. If the results don't match right away, it will retry
-// using testutils.SucceedsSoon.
 func (sr *SQLRunner) CheckQueryResultsRetry(t testutils.TB, query string, expected [][]string) {
+	__antithesis_instrumentation__.Notify(646316)
 	t.Helper()
 	sr.succeedsWithin(t, func() error {
+		__antithesis_instrumentation__.Notify(646317)
 		res := sr.QueryStr(t, query)
 		if !reflect.DeepEqual(res, expected) {
+			__antithesis_instrumentation__.Notify(646319)
 			return errors.Errorf("query '%s': expected:\n%v\ngot:\n%v\n",
 				query, MatrixToStr(expected), MatrixToStr(res),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(646320)
 		}
+		__antithesis_instrumentation__.Notify(646318)
 		return nil
 	})
 }
 
-// RoundRobinDBHandle aggregates multiple DBHandles into a single one; each time
-// a query is issued, a handle is selected in round-robin fashion.
 type RoundRobinDBHandle struct {
 	handles []DBHandle
 	current int
@@ -252,34 +293,35 @@ type RoundRobinDBHandle struct {
 
 var _ DBHandle = &RoundRobinDBHandle{}
 
-// MakeRoundRobinDBHandle creates a RoundRobinDBHandle.
 func MakeRoundRobinDBHandle(handles ...DBHandle) *RoundRobinDBHandle {
+	__antithesis_instrumentation__.Notify(646321)
 	return &RoundRobinDBHandle{handles: handles}
 }
 
 func (rr *RoundRobinDBHandle) next() DBHandle {
+	__antithesis_instrumentation__.Notify(646322)
 	h := rr.handles[rr.current]
 	rr.current = (rr.current + 1) % len(rr.handles)
 	return h
 }
 
-// ExecContext is part of the DBHandle interface.
 func (rr *RoundRobinDBHandle) ExecContext(
 	ctx context.Context, query string, args ...interface{},
 ) (gosql.Result, error) {
+	__antithesis_instrumentation__.Notify(646323)
 	return rr.next().ExecContext(ctx, query, args...)
 }
 
-// QueryContext is part of the DBHandle interface.
 func (rr *RoundRobinDBHandle) QueryContext(
 	ctx context.Context, query string, args ...interface{},
 ) (*gosql.Rows, error) {
+	__antithesis_instrumentation__.Notify(646324)
 	return rr.next().QueryContext(ctx, query, args...)
 }
 
-// QueryRowContext is part of the DBHandle interface.
 func (rr *RoundRobinDBHandle) QueryRowContext(
 	ctx context.Context, query string, args ...interface{},
 ) *gosql.Row {
+	__antithesis_instrumentation__.Notify(646325)
 	return rr.next().QueryRowContext(ctx, query, args...)
 }

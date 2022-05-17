@@ -32,6 +32,7 @@ go_library(
         "//pkg/util/randutil",
         "//pkg/util/timeofday",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_apd_v3//:apd",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_pmezard_go_difflib//difflib",
@@ -61,5 +62,6 @@ go_test(
         "//pkg/util/log",
         "//pkg/util/mon",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

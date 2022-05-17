@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rangefeed
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,7 +11,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
 )
 
-// Option configures a RangeFeed.
 type Option interface {
 	set(*config)
 }
@@ -30,10 +21,7 @@ type config struct {
 	onInitialScanDone  OnInitialScanDone
 	withInitialScan    bool
 	onInitialScanError OnInitialScanError
-	// useRowTimestampInInitialScan indicates that when rows are scanned in an
-	// initial scan, they should report their timestamp as it exists in KV as
-	// opposed to the timestamp at which the scan occurred. Both behaviors can
-	// be sane depending on your use case.
+
 	useRowTimestampInInitialScan bool
 
 	withDiff             bool
@@ -45,220 +33,177 @@ type config struct {
 }
 
 type scanConfig struct {
-	// scanParallelism controls the number of concurrent scan requests
-	// that can be issued.  If unspecified, only 1 scan request at a time is issued.
 	scanParallelism func() int
 
-	// targetScanBytes requests that many bytes to be returned per scan request.
-	// adjusting this setting should almost always be used together with the setting
-	// to configure memory monitor.
 	targetScanBytes int64
 
-	// mon is the memory monitor to while scanning.
 	mon *mon.BytesMonitor
 
-	// callback to invoke when initial scan of a span completed.
 	onSpanDone OnScanCompleted
 
-	// configures retry behavior
 	retryBehavior ScanRetryBehavior
 }
 
 type optionFunc func(*config)
 
-func (o optionFunc) set(c *config) { o(c) }
+func (o optionFunc) set(c *config) { __antithesis_instrumentation__.Notify(89635); o(c) }
 
-// OnInitialScanDone is called when an initial scan is finished before any rows
-// from the rangefeed are supplied.
 type OnInitialScanDone func(ctx context.Context)
 
-// OnInitialScanError is called when an initial scan encounters an error. It
-// allows the caller to tell the RangeFeed to stop as opposed to retrying
-// endlessly.
 type OnInitialScanError func(ctx context.Context, err error) (shouldFail bool)
 
-// OnUnrecoverableError is called when the rangefeed exits with an unrecoverable
-// error (preventing internal retries). One example is when the rangefeed falls
-// behind to a point where the frontier timestamp precedes the GC threshold, and
-// thus will never work. The callback lets callers find out about such errors
-// (possibly, in our example, to start a new rangefeed with an initial scan).
 type OnUnrecoverableError func(ctx context.Context, err error)
 
-// WithInitialScan enables an initial scan of the data in the span. The rows of
-// an initial scan will be passed to the value function used to construct the
-// RangeFeed. Upon completion of the initial scan, the passed function (if
-// non-nil) will be called. The initial scan may be restarted and thus rows
-// may be observed multiple times. The caller cannot rely on rows being returned
-// in order.
 func WithInitialScan(f OnInitialScanDone) Option {
+	__antithesis_instrumentation__.Notify(89636)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89637)
 		c.withInitialScan = true
 		c.onInitialScanDone = f
 	})
 }
 
-// WithOnInitialScanError sets up a callback to report errors during the initial
-// scan to the caller. The caller may instruct the RangeFeed to halt rather than
-// retrying endlessly. This option will not enable an initial scan; it must be
-// used in conjunction with WithInitialScan to have any effect.
 func WithOnInitialScanError(f OnInitialScanError) Option {
+	__antithesis_instrumentation__.Notify(89638)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89639)
 		c.onInitialScanError = f
 	})
 }
 
-// WithRowTimestampInInitialScan indicates whether the timestamp of rows
-// reported during an initial scan should correspond to the timestamp of that
-// row as it exists in KV or should correspond to the timestamp of the initial
-// scan. The default is false, indicating that the timestamp should correspond
-// to the timestamp of the initial scan.
 func WithRowTimestampInInitialScan(shouldUse bool) Option {
+	__antithesis_instrumentation__.Notify(89640)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89641)
 		c.useRowTimestampInInitialScan = shouldUse
 	})
 }
 
-// WithOnInternalError sets up a callback to report unrecoverable errors during
-// operation.
 func WithOnInternalError(f OnUnrecoverableError) Option {
+	__antithesis_instrumentation__.Notify(89642)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89643)
 		c.onUnrecoverableError = f
 	})
 }
 
-// WithDiff makes an option to set whether rangefeed events carry the previous
-// value in addition to the new value. The option defaults to false. If set,
-// initial scan events will carry the same value for both Value and PrevValue.
 func WithDiff(withDiff bool) Option {
+	__antithesis_instrumentation__.Notify(89644)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89645)
 		c.withDiff = withDiff
 	})
 }
 
-// WithRetry configures the retry options for the rangefeed.
 func WithRetry(options retry.Options) Option {
+	__antithesis_instrumentation__.Notify(89646)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89647)
 		c.retryOptions = options
 	})
 }
 
-// OnCheckpoint is called when a rangefeed checkpoint occurs.
 type OnCheckpoint func(ctx context.Context, checkpoint *roachpb.RangeFeedCheckpoint)
 
-// WithOnCheckpoint sets up a callback that's invoked whenever a check point
-// event is emitted.
 func WithOnCheckpoint(f OnCheckpoint) Option {
+	__antithesis_instrumentation__.Notify(89648)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89649)
 		c.onCheckpoint = f
 	})
 }
 
-// OnSSTable is called when an SSTable is ingested. If this callback is not
-// provided, a catchup scan will be run instead that will include the contents
-// of these SSTs.
-//
-// Note that the SST is emitted as it was ingested, so it may contain keys
-// outside of the rangefeed span, and the caller should prune the SST contents
-// as appropriate. Futhermore, these events do not contain previous values as
-// requested by WithDiff, and callers must obtain these themselves if needed.
-//
-// Also note that AddSSTable requests that do not set the
-// SSTTimestampToRequestTimestamp param, possibly writing below the closed
-// timestamp, will cause affected rangefeeds to be disconnected with a terminal
-// MVCCHistoryMutationError and thus will not be emitted here -- there should be
-// no such requests into spans with rangefeeds across them, but it is up to
-// callers to ensure this.
 type OnSSTable func(ctx context.Context, sst *roachpb.RangeFeedSSTable)
 
-// WithOnSSTable sets up a callback that's invoked whenever an SSTable is
-// ingested.
 func WithOnSSTable(f OnSSTable) Option {
+	__antithesis_instrumentation__.Notify(89650)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89651)
 		c.onSSTable = f
 	})
 }
 
-// OnFrontierAdvance is called when the rangefeed frontier is advanced with the
-// new frontier timestamp.
 type OnFrontierAdvance func(ctx context.Context, timestamp hlc.Timestamp)
 
-// WithOnFrontierAdvance sets up a callback that's invoked whenever the
-// rangefeed frontier is advanced.
 func WithOnFrontierAdvance(f OnFrontierAdvance) Option {
+	__antithesis_instrumentation__.Notify(89652)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89653)
 		c.onFrontierAdvance = f
 	})
 }
 
 func initConfig(c *config, options []Option) {
-	*c = config{} // the default config is its zero value
+	__antithesis_instrumentation__.Notify(89654)
+	*c = config{}
 	for _, o := range options {
+		__antithesis_instrumentation__.Notify(89656)
 		o.set(c)
 	}
+	__antithesis_instrumentation__.Notify(89655)
 
 	if c.targetScanBytes == 0 {
-		c.targetScanBytes = 1 << 19 // 512 KiB
+		__antithesis_instrumentation__.Notify(89657)
+		c.targetScanBytes = 1 << 19
+	} else {
+		__antithesis_instrumentation__.Notify(89658)
 	}
 }
 
-// WithInitialScanParallelismFn configures rangefeed to issue up to specified number
-// of concurrent initial scan requests.
 func WithInitialScanParallelismFn(parallelismFn func() int) Option {
+	__antithesis_instrumentation__.Notify(89659)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89660)
 		c.scanParallelism = parallelismFn
 	})
 }
 
-// WithTargetScanBytes configures rangefeed to request specified number of bytes per scan request.
-// This option should be used together with the option to configure memory monitor.
 func WithTargetScanBytes(target int64) Option {
+	__antithesis_instrumentation__.Notify(89661)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89662)
 		c.targetScanBytes = target
 	})
 }
 
-// WithMemoryMonitor configures rangefeed to use memory monitor when issuing scan requests.
 func WithMemoryMonitor(mon *mon.BytesMonitor) Option {
+	__antithesis_instrumentation__.Notify(89663)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89664)
 		c.mon = mon
 	})
 }
 
-// OnScanCompleted is called when the rangefeed initial scan completes scanning
-// the span.  An error returned from this function is handled based on the WithOnInitialScanError
-// option.  If the error handler is not set, the scan is retried based on the
-// WithSAcanRetryBehavior option.
 type OnScanCompleted func(ctx context.Context, sp roachpb.Span) error
 
-// WithOnScanCompleted sets up a callback which is invoked when a span (or part of the span)
-// have been completed when performing an initial scan.
 func WithOnScanCompleted(fn OnScanCompleted) Option {
+	__antithesis_instrumentation__.Notify(89665)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89666)
 		c.onSpanDone = fn
 	})
 }
 
-// ScanRetryBehavior specifies how rangefeed should handle errors during initial scan.
 type ScanRetryBehavior int
 
 const (
-	// ScanRetryAll will retry all spans if any error occurred during initial scan.
 	ScanRetryAll ScanRetryBehavior = iota
-	// ScanRetryRemaining will retry remaining spans, including the one that failed.
+
 	ScanRetryRemaining
 )
 
-// WithScanRetryBehavior configures range feed to retry initial scan as per specified behavior.
 func WithScanRetryBehavior(b ScanRetryBehavior) Option {
+	__antithesis_instrumentation__.Notify(89667)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89668)
 		c.retryBehavior = b
 	})
 }
 
-// WithPProfLabel configures rangefeed to annotate go routines started by range feed
-// with the specified key=value label.
 func WithPProfLabel(key, value string) Option {
+	__antithesis_instrumentation__.Notify(89669)
 	return optionFunc(func(c *config) {
+		__antithesis_instrumentation__.Notify(89670)
 		c.extraPProfLabels = append(c.extraPProfLabels, key, value)
 	})
 }

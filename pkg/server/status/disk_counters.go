@@ -1,17 +1,9 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 //go:build !darwin
 // +build !darwin
 
 package status
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,14 +13,20 @@ import (
 )
 
 func getDiskCounters(ctx context.Context) ([]diskStats, error) {
+	__antithesis_instrumentation__.Notify(235424)
 	driveStats, err := disk.IOCountersWithContext(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235427)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(235428)
 	}
+	__antithesis_instrumentation__.Notify(235425)
 
 	output := make([]diskStats, len(driveStats))
 	i := 0
 	for _, counters := range driveStats {
+		__antithesis_instrumentation__.Notify(235429)
 		output[i] = diskStats{
 			readBytes:      int64(counters.ReadBytes),
 			readCount:      int64(counters.ReadCount),
@@ -42,6 +40,7 @@ func getDiskCounters(ctx context.Context) ([]diskStats, error) {
 		}
 		i++
 	}
+	__antithesis_instrumentation__.Notify(235426)
 
 	return output, nil
 }

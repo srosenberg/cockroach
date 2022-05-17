@@ -1,16 +1,8 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package team involves processing team information based on a yaml
 // file containing team metadata.
 package team
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"io"
@@ -23,128 +15,151 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Alias is the name of a team.
 type Alias string
 
-// Team is a team in the CockroachDB repo.
 type Team struct {
-	// TeamName is the distinguished Alias of the team.
 	TeamName Alias
-	// Aliases is a map from additional team name to purpose for which to use
-	// them. The purpose "other" indicates a team that exists but which has no
-	// particular purpose as far as `teams` is concerned (for example, teams like
-	// the @cockroachdb/bulk-prs team which exists primarily to route, via
-	// CODEOWNERS, code reviews for the @cockroachdb/bulk-io team). This map
-	// does not contain TeamName.
+
 	Aliases map[Alias]Purpose `yaml:"aliases"`
-	// TriageColumnID is the GitHub Column ID to assign issues to.
+
 	TriageColumnID int `yaml:"triage_column_id"`
-	// Email is the email address for this team.
-	//
-	// Currently unused.
+
 	Email string `yaml:"email"`
-	// Slack is the slack channel for this team.
-	//
-	// Currently unused.
+
 	Slack string `yaml:"slack"`
 }
 
-// Name returns the main Alias of the team.
 func (t Team) Name() Alias {
+	__antithesis_instrumentation__.Notify(70021)
 	return t.TeamName
 }
 
-// Map contains the in-memory representation of TEAMS.yaml.
 type Map map[Alias]Team
 
-// GetAliasesForPurpose collects and returns, for the team indicated by any of
-// its aliases, the aliases for the supplied purpose. If the team exists but no
-// alias for the purpose is defined, falls back to the team's main alias. In
-// particular, when `true` is returned, the slice is nonempty.
-//
-// Returns `nil, false` if the supplied alias does not belong to any team.
 func (m Map) GetAliasesForPurpose(alias Alias, purpose Purpose) ([]Alias, bool) {
+	__antithesis_instrumentation__.Notify(70022)
 	tm, ok := m[alias]
 	if !ok {
+		__antithesis_instrumentation__.Notify(70026)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(70027)
 	}
+	__antithesis_instrumentation__.Notify(70023)
 	var sl []Alias
 	for hdl, purp := range tm.Aliases {
+		__antithesis_instrumentation__.Notify(70028)
 		if purpose != purp {
+			__antithesis_instrumentation__.Notify(70030)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(70031)
 		}
+		__antithesis_instrumentation__.Notify(70029)
 		sl = append(sl, hdl)
 	}
+	__antithesis_instrumentation__.Notify(70024)
 	if len(sl) == 0 {
+		__antithesis_instrumentation__.Notify(70032)
 		sl = append(sl, tm.Name())
+	} else {
+		__antithesis_instrumentation__.Notify(70033)
 	}
+	__antithesis_instrumentation__.Notify(70025)
 	return sl, true
 }
 
-// DefaultLoadTeams loads teams from the repo root's TEAMS.yaml.
 func DefaultLoadTeams() (Map, error) {
+	__antithesis_instrumentation__.Notify(70034)
 	path := reporoot.GetFor(".", "TEAMS.yaml")
 	if path == "" {
+		__antithesis_instrumentation__.Notify(70038)
 		return nil, errors.New("TEAMS.yaml not found")
+	} else {
+		__antithesis_instrumentation__.Notify(70039)
 	}
+	__antithesis_instrumentation__.Notify(70035)
 	path = filepath.Join(path, "TEAMS.yaml")
 	f, err := os.Open(path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70040)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(70041)
 	}
-	defer func() { _ = f.Close() }()
+	__antithesis_instrumentation__.Notify(70036)
+	defer func() { __antithesis_instrumentation__.Notify(70042); _ = f.Close() }()
+	__antithesis_instrumentation__.Notify(70037)
 	return LoadTeams(f)
 }
 
-// Purpose determines which alias to return for a given team via
 type Purpose string
 
 const (
-	// PurposeOther is the generic catch-all.
 	PurposeOther = Purpose("other")
-	// PurposeRoachtest indicates that the team handles that should be mentioned
-	// in roachtest issues should be returned.
+
 	PurposeRoachtest = Purpose("roachtest")
 )
 
 var validPurposes = map[Purpose]struct{}{
 	PurposeOther:     {},
-	PurposeRoachtest: {}, // mention in roachtest issues
+	PurposeRoachtest: {},
 }
 
-// LoadTeams loads the teams from an io input.
-// It is expected the input is in YAML format.
 func LoadTeams(f io.Reader) (Map, error) {
+	__antithesis_instrumentation__.Notify(70043)
 	b, err := ioutil.ReadAll(f)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70047)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(70048)
 	}
+	__antithesis_instrumentation__.Notify(70044)
 	var src map[Alias]Team
 	if err := yaml.UnmarshalStrict(b, &src); err != nil {
+		__antithesis_instrumentation__.Notify(70049)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(70050)
 	}
-	// Populate the Alias value of each team.
+	__antithesis_instrumentation__.Notify(70045)
+
 	dst := map[Alias]Team{}
 
 	for k, v := range src {
+		__antithesis_instrumentation__.Notify(70051)
 		v.TeamName = k
 		aliases := []Alias{v.TeamName}
 		for alias, purpose := range v.Aliases {
+			__antithesis_instrumentation__.Notify(70054)
 			if _, ok := validPurposes[purpose]; !ok {
+				__antithesis_instrumentation__.Notify(70056)
 				return nil, errors.Errorf("team %s has alias %s with invalid purpose %s", k, alias, purpose)
+			} else {
+				__antithesis_instrumentation__.Notify(70057)
 			}
+			__antithesis_instrumentation__.Notify(70055)
 			aliases = append(aliases, alias)
 		}
+		__antithesis_instrumentation__.Notify(70052)
 		for _, alias := range aliases {
+			__antithesis_instrumentation__.Notify(70058)
 			if conflicting, ok := dst[alias]; ok {
+				__antithesis_instrumentation__.Notify(70060)
 				return nil, errors.Errorf(
 					"team %s has alias %s which conflicts with team %s",
 					k, alias, conflicting.Name(),
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(70061)
 			}
+			__antithesis_instrumentation__.Notify(70059)
 			dst[alias] = v
 		}
+		__antithesis_instrumentation__.Notify(70053)
 		dst[k] = v
 	}
+	__antithesis_instrumentation__.Notify(70046)
 	return dst, nil
 }

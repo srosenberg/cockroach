@@ -23,6 +23,7 @@ go_library(
         "//pkg/util/stop",
         "//pkg/util/syncutil",
         "//pkg/util/syncutil/singleflight",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_logtags//:logtags",
     ],
 )
@@ -49,6 +50,7 @@ go_test(
         "//pkg/util/leaktest",
         "//pkg/util/log",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

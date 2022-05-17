@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scbuild
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,22 +14,26 @@ import (
 
 var _ scbuildstmt.TreeContextBuilder = buildCtx{}
 
-// SemaCtx implements the scbuildstmt.TreeContextBuilder interface.
 func (b buildCtx) SemaCtx() *tree.SemaContext {
+	__antithesis_instrumentation__.Notify(580254)
 	return newSemaCtx(b.Dependencies)
 }
 
 func newSemaCtx(d Dependencies) *tree.SemaContext {
+	__antithesis_instrumentation__.Notify(580255)
 	semaCtx := tree.MakeSemaContext()
 	semaCtx.Annotations = nil
 	semaCtx.SearchPath = d.SessionData().SearchPath
 	if d.ClusterSettings().Version.IsActive(context.Background(), clusterversion.IncrementalBackupSubdir) {
+		__antithesis_instrumentation__.Notify(580257)
 		semaCtx.IntervalStyleEnabled = true
 		semaCtx.DateStyleEnabled = true
 	} else {
+		__antithesis_instrumentation__.Notify(580258)
 		semaCtx.IntervalStyleEnabled = d.SessionData().IntervalStyleEnabled
 		semaCtx.DateStyleEnabled = d.SessionData().DateStyleEnabled
 	}
+	__antithesis_instrumentation__.Notify(580256)
 	semaCtx.TypeResolver = d.CatalogReader()
 	semaCtx.TableNameResolver = d.CatalogReader()
 	semaCtx.DateStyle = d.SessionData().GetDateStyle()
@@ -45,12 +41,13 @@ func newSemaCtx(d Dependencies) *tree.SemaContext {
 	return &semaCtx
 }
 
-// EvalCtx implements the scbuildstmt.TreeContextBuilder interface.
 func (b buildCtx) EvalCtx() *tree.EvalContext {
+	__antithesis_instrumentation__.Notify(580259)
 	return newEvalCtx(b.Context, b.Dependencies)
 }
 
 func newEvalCtx(ctx context.Context, d Dependencies) *tree.EvalContext {
+	__antithesis_instrumentation__.Notify(580260)
 	return &tree.EvalContext{
 		ClusterID:          d.ClusterID(),
 		SessionDataStack:   sessiondata.NewStack(d.SessionData()),

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,28 +19,38 @@ type commentOnDatabaseNode struct {
 	metadataUpdater scexec.DescriptorMetadataUpdater
 }
 
-// CommentOnDatabase add comment on a database.
-// Privileges: CREATE on database.
-//   notes: postgres requires CREATE on the database.
 func (p *planner) CommentOnDatabase(
 	ctx context.Context, n *tree.CommentOnDatabase,
 ) (planNode, error) {
+	__antithesis_instrumentation__.Notify(456985)
 	if err := checkSchemaChangeEnabled(
 		ctx,
 		p.ExecCfg(),
 		"COMMENT ON DATABASE",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(456989)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(456990)
 	}
+	__antithesis_instrumentation__.Notify(456986)
 
 	dbDesc, err := p.Descriptors().GetImmutableDatabaseByName(ctx, p.txn,
 		string(n.Name), tree.DatabaseLookupFlags{Required: true})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(456991)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(456992)
 	}
+	__antithesis_instrumentation__.Notify(456987)
 	if err := p.CheckPrivilege(ctx, dbDesc, privilege.CREATE); err != nil {
+		__antithesis_instrumentation__.Notify(456993)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(456994)
 	}
+	__antithesis_instrumentation__.Notify(456988)
 
 	return &commentOnDatabaseNode{n: n,
 		dbDesc: dbDesc,
@@ -61,24 +63,38 @@ func (p *planner) CommentOnDatabase(
 }
 
 func (n *commentOnDatabaseNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(456995)
 	if n.n.Comment != nil {
+		__antithesis_instrumentation__.Notify(456998)
 		err := n.metadataUpdater.UpsertDescriptorComment(
 			int64(n.dbDesc.GetID()), 0, keys.DatabaseCommentType, *n.n.Comment)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(456999)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457000)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(457001)
 		err := n.metadataUpdater.DeleteDescriptorComment(
 			int64(n.dbDesc.GetID()), 0, keys.DatabaseCommentType)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(457002)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457003)
 		}
 	}
+	__antithesis_instrumentation__.Notify(456996)
 
 	dbComment := ""
 	if n.n.Comment != nil {
+		__antithesis_instrumentation__.Notify(457004)
 		dbComment = *n.n.Comment
+	} else {
+		__antithesis_instrumentation__.Notify(457005)
 	}
+	__antithesis_instrumentation__.Notify(456997)
 	return params.p.logEvent(params.ctx,
 		n.dbDesc.GetID(),
 		&eventpb.CommentOnDatabase{
@@ -88,6 +104,12 @@ func (n *commentOnDatabaseNode) startExec(params runParams) error {
 		})
 }
 
-func (n *commentOnDatabaseNode) Next(runParams) (bool, error) { return false, nil }
-func (n *commentOnDatabaseNode) Values() tree.Datums          { return tree.Datums{} }
-func (n *commentOnDatabaseNode) Close(context.Context)        {}
+func (n *commentOnDatabaseNode) Next(runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(457006)
+	return false, nil
+}
+func (n *commentOnDatabaseNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(457007)
+	return tree.Datums{}
+}
+func (n *commentOnDatabaseNode) Close(context.Context) { __antithesis_instrumentation__.Notify(457008) }

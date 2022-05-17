@@ -1,17 +1,9 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 //go:build !windows
 // +build !windows
 
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,74 +18,78 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// drainSignals are the signals that will cause the server to drain and exit.
-//
-// If two drain signals are seen, the second drain signal will be reraised
-// without a signal handler. The default action of any signal listed here thus
-// must terminate the process.
 var drainSignals = []os.Signal{unix.SIGINT, unix.SIGTERM}
 
-// termSignal is the signal that causes an idempotent graceful
-// shutdown (i.e. second occurrence does not incur hard shutdown).
 var termSignal os.Signal = unix.SIGTERM
 
-// quitSignal is the signal to recognize to dump Go stacks.
 var quitSignal os.Signal = unix.SIGQUIT
 
-// debugSignal is the signal to open a pprof debugging server.
 var debugSignal os.Signal = unix.SIGUSR2
 
 func handleSignalDuringShutdown(sig os.Signal) {
-	// On Unix, a signal that was not handled gracefully by the application
-	// should be reraised so it is visible in the exit code.
+	__antithesis_instrumentation__.Notify(34344)
 
-	// Reset signal to its original disposition.
 	signal.Reset(sig)
 
-	// Reraise the signal. os.Signal is always sysutil.Signal.
 	if err := unix.Kill(unix.Getpid(), sig.(sysutil.Signal)); err != nil {
-		// Sending a valid signal to ourselves should never fail.
-		//
-		// Unfortunately it appears (#34354) that some users
-		// run CockroachDB in containers that only support
-		// a subset of all syscalls. If this ever happens, we
-		// still need to quit immediately.
-		log.Fatalf(context.Background(), "unable to forward signal %v: %v", sig, err)
-	}
+		__antithesis_instrumentation__.Notify(34346)
 
-	// Block while we wait for the signal to be delivered.
+		log.Fatalf(context.Background(), "unable to forward signal %v: %v", sig, err)
+	} else {
+		__antithesis_instrumentation__.Notify(34347)
+	}
+	__antithesis_instrumentation__.Notify(34345)
+
 	select {}
 }
 
 const backgroundFlagDefined = true
 
 func maybeRerunBackground() (bool, error) {
+	__antithesis_instrumentation__.Notify(34348)
 	if startBackground {
+		__antithesis_instrumentation__.Notify(34350)
 		args := make([]string, 0, len(os.Args))
 		foundBackground := false
 		for _, arg := range os.Args {
-			if arg == "--background" || strings.HasPrefix(arg, "--background=") {
+			__antithesis_instrumentation__.Notify(34353)
+			if arg == "--background" || func() bool {
+				__antithesis_instrumentation__.Notify(34355)
+				return strings.HasPrefix(arg, "--background=") == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(34356)
 				foundBackground = true
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(34357)
 			}
+			__antithesis_instrumentation__.Notify(34354)
 			args = append(args, arg)
 		}
+		__antithesis_instrumentation__.Notify(34351)
 		if !foundBackground {
+			__antithesis_instrumentation__.Notify(34358)
 			args = append(args, "--background=false")
+		} else {
+			__antithesis_instrumentation__.Notify(34359)
 		}
+		__antithesis_instrumentation__.Notify(34352)
 		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = stderr
 
-		// Notify to ourselves that we're restarting.
 		_ = os.Setenv(backgroundEnvVar, "1")
 
 		return true, sdnotify.Exec(cmd)
+	} else {
+		__antithesis_instrumentation__.Notify(34360)
 	}
+	__antithesis_instrumentation__.Notify(34349)
 	return false, nil
 }
 
 func disableOtherPermissionBits() {
+	__antithesis_instrumentation__.Notify(34361)
 	mask := unix.Umask(0000)
 	mask |= 00007
 	_ = unix.Umask(mask)

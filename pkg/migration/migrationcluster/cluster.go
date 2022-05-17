@@ -1,15 +1,7 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package migrationcluster provides implementations of migration.Cluster.
 package migrationcluster
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,164 +20,183 @@ import (
 	"google.golang.org/grpc"
 )
 
-// Cluster mediates interacting with a cockroach cluster.
 type Cluster struct {
 	c ClusterConfig
 }
 
-// ClusterConfig configures a Cluster.
 type ClusterConfig struct {
-
-	// NodeLiveness is used to determine the set of nodes in the cluster.
 	NodeLiveness NodeLiveness
 
-	// Dialer constructs connections to other nodes.
 	Dialer NodeDialer
 
-	// DB provides access the kv.DB instance backing the cluster.
-	//
-	// TODO(irfansharif): We could hide the kv.DB instance behind an interface
-	// to expose only relevant, vetted bits of kv.DB. It'll make our tests less
-	// "integration-ey".
 	DB *kv.DB
 }
 
-// NodeDialer abstracts connecting to other nodes in the cluster.
 type NodeDialer interface {
-	// Dial returns a grpc connection to the given node.
 	Dial(context.Context, roachpb.NodeID, rpc.ConnectionClass) (*grpc.ClientConn, error)
 }
 
-// NodeLiveness is the subset of the interface satisfied by CRDB's node liveness
-// component that the migration manager relies upon.
 type NodeLiveness interface {
 	GetLivenessesFromKV(context.Context) ([]livenesspb.Liveness, error)
 	IsLive(roachpb.NodeID) (bool, error)
 }
 
-// New constructs a new Cluster with the provided dependencies.
 func New(cfg ClusterConfig) *Cluster {
+	__antithesis_instrumentation__.Notify(128149)
 	return &Cluster{c: cfg}
 }
 
-// UntilClusterStable is part of the migration.Cluster interface.
 func (c *Cluster) UntilClusterStable(ctx context.Context, fn func() error) error {
+	__antithesis_instrumentation__.Notify(128150)
 	ns, err := NodesFromNodeLiveness(ctx, c.c.NodeLiveness)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128153)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128154)
 	}
+	__antithesis_instrumentation__.Notify(128151)
 
 	for {
+		__antithesis_instrumentation__.Notify(128155)
 		if err := fn(); err != nil {
+			__antithesis_instrumentation__.Notify(128159)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128160)
 		}
+		__antithesis_instrumentation__.Notify(128156)
 		curNodes, err := NodesFromNodeLiveness(ctx, c.c.NodeLiveness)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(128161)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128162)
 		}
+		__antithesis_instrumentation__.Notify(128157)
 
 		if ok, diffs := ns.Identical(curNodes); !ok {
+			__antithesis_instrumentation__.Notify(128163)
 			log.Infof(ctx, "%s, retrying", diffs)
 			ns = curNodes
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(128164)
 		}
+		__antithesis_instrumentation__.Notify(128158)
 		break
 	}
+	__antithesis_instrumentation__.Notify(128152)
 	return nil
 }
 
-// NumNodes is part of the migration.Cluster interface.
 func (c *Cluster) NumNodes(ctx context.Context) (int, error) {
+	__antithesis_instrumentation__.Notify(128165)
 	ns, err := NodesFromNodeLiveness(ctx, c.c.NodeLiveness)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128167)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(128168)
 	}
+	__antithesis_instrumentation__.Notify(128166)
 	return len(ns), nil
 }
 
-// ForEveryNode is part of the migration.Cluster interface.
 func (c *Cluster) ForEveryNode(
 	ctx context.Context, op string, fn func(context.Context, serverpb.MigrationClient) error,
 ) error {
+	__antithesis_instrumentation__.Notify(128169)
 
 	ns, err := NodesFromNodeLiveness(ctx, c.c.NodeLiveness)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128172)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128173)
 	}
+	__antithesis_instrumentation__.Notify(128170)
 
-	// We'll want to rate limit outgoing RPCs (limit pulled out of thin air).
 	qp := quotapool.NewIntPool("every-node", 25)
 	log.Infof(ctx, "executing %s on nodes %s", redact.Safe(op), ns)
 	grp := ctxgroup.WithContext(ctx)
 
 	for _, node := range ns {
-		id := node.ID // copy out of the loop variable
+		__antithesis_instrumentation__.Notify(128174)
+		id := node.ID
 		alloc, err := qp.Acquire(ctx, 1)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(128176)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128177)
 		}
+		__antithesis_instrumentation__.Notify(128175)
 
 		grp.GoCtx(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(128178)
 			defer alloc.Release()
 
 			conn, err := c.c.Dialer.Dial(ctx, id, rpc.DefaultClass)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(128180)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(128181)
 			}
+			__antithesis_instrumentation__.Notify(128179)
 			client := serverpb.NewMigrationClient(conn)
 			return fn(ctx, client)
 		})
 	}
+	__antithesis_instrumentation__.Notify(128171)
 	return grp.Wait()
 }
 
-// IterateRangeDescriptors is part of the migration.Cluster interface.
 func (c *Cluster) IterateRangeDescriptors(
 	ctx context.Context, blockSize int, init func(), fn func(...roachpb.RangeDescriptor) error,
 ) error {
+	__antithesis_instrumentation__.Notify(128182)
 	return c.c.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-		// Inform the caller that we're starting a fresh attempt to page in
-		// range descriptors.
+		__antithesis_instrumentation__.Notify(128183)
+
 		init()
 
-		// Iterate through meta{1,2} to pull out all the range descriptors.
 		var lastRangeIDInMeta1 roachpb.RangeID
 		return txn.Iterate(ctx, keys.MetaMin, keys.MetaMax, blockSize,
 			func(rows []kv.KeyValue) error {
+				__antithesis_instrumentation__.Notify(128184)
 				descriptors := make([]roachpb.RangeDescriptor, 0, len(rows))
 				var desc roachpb.RangeDescriptor
 				for _, row := range rows {
+					__antithesis_instrumentation__.Notify(128186)
 					err := row.ValueProto(&desc)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(128189)
 						return errors.Wrapf(err, "unable to unmarshal range descriptor from %s", row.Key)
+					} else {
+						__antithesis_instrumentation__.Notify(128190)
 					}
+					__antithesis_instrumentation__.Notify(128187)
 
-					// In small enough clusters it's possible for the same range
-					// descriptor to be stored in both meta1 and meta2. This
-					// happens when some range spans both the meta and the user
-					// keyspace. Consider when r1 is [/Min,
-					// /System/NodeLiveness); we'll store the range descriptor
-					// in both /Meta2/<r1.EndKey> and in /Meta1/KeyMax[1].
-					//
-					// As part of iterator we'll de-duplicate this descriptor
-					// away by checking whether we've seen it before in meta1.
-					// Since we're scanning over the meta range in sorted
-					// order, it's enough to check against the last range
-					// descriptor we've seen in meta1.
-					//
-					// [1]: See kvserver.rangeAddressing.
 					if desc.RangeID == lastRangeIDInMeta1 {
+						__antithesis_instrumentation__.Notify(128191)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(128192)
 					}
+					__antithesis_instrumentation__.Notify(128188)
 
 					descriptors = append(descriptors, desc)
 					if keys.InMeta1(keys.RangeMetaKey(desc.StartKey)) {
+						__antithesis_instrumentation__.Notify(128193)
 						lastRangeIDInMeta1 = desc.RangeID
+					} else {
+						__antithesis_instrumentation__.Notify(128194)
 					}
 				}
+				__antithesis_instrumentation__.Notify(128185)
 
-				// Invoke fn with the current chunk (of size ~blockSize) of
-				// range descriptors.
 				return fn(descriptors...)
 			})
 	})

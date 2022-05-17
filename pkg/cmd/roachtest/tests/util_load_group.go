@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/cmd/roachtest/option"
 
@@ -20,24 +12,27 @@ type loadGroup struct {
 type loadGroupList []loadGroup
 
 func (lg loadGroupList) roachNodes() option.NodeListOption {
+	__antithesis_instrumentation__.Notify(52253)
 	var roachNodes option.NodeListOption
 	for _, g := range lg {
+		__antithesis_instrumentation__.Notify(52255)
 		roachNodes = roachNodes.Merge(g.roachNodes)
 	}
+	__antithesis_instrumentation__.Notify(52254)
 	return roachNodes
 }
 
 func (lg loadGroupList) loadNodes() option.NodeListOption {
+	__antithesis_instrumentation__.Notify(52256)
 	var loadNodes option.NodeListOption
 	for _, g := range lg {
+		__antithesis_instrumentation__.Notify(52258)
 		loadNodes = loadNodes.Merge(g.loadNodes)
 	}
+	__antithesis_instrumentation__.Notify(52257)
 	return loadNodes
 }
 
-// makeLoadGroups create a loadGroupList that has an equal number of cockroach
-// nodes per zone. It assumes that numLoadNodes <= numZones and that numZones is
-// divisible by numLoadNodes.
 func makeLoadGroups(
 	c interface {
 		Node(int) option.NodeListOption
@@ -45,28 +40,38 @@ func makeLoadGroups(
 	},
 	numZones, numRoachNodes, numLoadNodes int,
 ) loadGroupList {
+	__antithesis_instrumentation__.Notify(52259)
 	if numLoadNodes > numZones {
+		__antithesis_instrumentation__.Notify(52262)
 		panic("cannot have more than one load node per zone")
-	} else if numZones%numLoadNodes != 0 {
-		panic("numZones must be divisible by numLoadNodes")
+	} else {
+		__antithesis_instrumentation__.Notify(52263)
+		if numZones%numLoadNodes != 0 {
+			__antithesis_instrumentation__.Notify(52264)
+			panic("numZones must be divisible by numLoadNodes")
+		} else {
+			__antithesis_instrumentation__.Notify(52265)
+		}
 	}
-	// roachprod allocates nodes over regions in a round-robin fashion.
-	// If the number of nodes is not divisible by the number of regions, the
-	// extra nodes are allocated in a round-robin fashion over the regions at
-	// the end of cluster.
+	__antithesis_instrumentation__.Notify(52260)
+
 	loadNodesAtTheEnd := numLoadNodes%numZones != 0
 	loadGroups := make(loadGroupList, numLoadNodes)
 	roachNodesPerGroup := numRoachNodes / numLoadNodes
 	for i := range loadGroups {
+		__antithesis_instrumentation__.Notify(52266)
 		if loadNodesAtTheEnd {
+			__antithesis_instrumentation__.Notify(52267)
 			first := i*roachNodesPerGroup + 1
 			loadGroups[i].roachNodes = c.Range(first, first+roachNodesPerGroup-1)
 			loadGroups[i].loadNodes = c.Node(numRoachNodes + i + 1)
 		} else {
+			__antithesis_instrumentation__.Notify(52268)
 			first := i*(roachNodesPerGroup+1) + 1
 			loadGroups[i].roachNodes = c.Range(first, first+roachNodesPerGroup-1)
 			loadGroups[i].loadNodes = c.Node((i + 1) * (roachNodesPerGroup + 1))
 		}
 	}
+	__antithesis_instrumentation__.Notify(52261)
 	return loadGroups
 }

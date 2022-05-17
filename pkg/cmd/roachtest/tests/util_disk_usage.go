@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,19 +12,15 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 )
 
-// getDiskUsageInBytes does what's on the tin. nodeIdx starts at one.
 func getDiskUsageInBytes(
 	ctx context.Context, c cluster.Cluster, logger *logger.Logger, nodeIdx int,
 ) (int, error) {
+	__antithesis_instrumentation__.Notify(52234)
 	var result install.RunResultDetails
 	for {
+		__antithesis_instrumentation__.Notify(52238)
 		var err error
-		// `du` can warn if files get removed out from under it (which
-		// happens during RocksDB compactions, for example). Discard its
-		// stderr to avoid breaking Atoi later.
-		// TODO(bdarnell): Refactor this stack to not combine stdout and
-		// stderr so we don't need to do this (and the Warning check
-		// below).
+
 		result, err = c.RunWithDetailsSingleNode(
 			ctx,
 			logger,
@@ -40,31 +28,42 @@ func getDiskUsageInBytes(
 			"du -sk {store-dir} 2>/dev/null | grep -oE '^[0-9]+'",
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(52240)
 			if ctx.Err() != nil {
+				__antithesis_instrumentation__.Notify(52242)
 				return 0, ctx.Err()
+			} else {
+				__antithesis_instrumentation__.Notify(52243)
 			}
-			// If `du` fails, retry.
-			// TODO(bdarnell): is this worth doing? It was originally added
-			// because of the "files removed out from under it" problem, but
-			// that doesn't result in a command failure, just a stderr
-			// message.
+			__antithesis_instrumentation__.Notify(52241)
+
 			logger.Printf("retrying disk usage computation after spurious error: %s", err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(52244)
 		}
+		__antithesis_instrumentation__.Notify(52239)
 
 		break
 	}
+	__antithesis_instrumentation__.Notify(52235)
 
-	// We need this check because sometimes the first line of the roachprod output is a warning
-	// about adding an ip to a list of known hosts.
 	if strings.Contains(result.Stdout, "Warning") {
+		__antithesis_instrumentation__.Notify(52245)
 		result.Stdout = strings.Split(result.Stdout, "\n")[1]
+	} else {
+		__antithesis_instrumentation__.Notify(52246)
 	}
+	__antithesis_instrumentation__.Notify(52236)
 
 	size, err := strconv.Atoi(strings.TrimSpace(result.Stdout))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(52247)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(52248)
 	}
+	__antithesis_instrumentation__.Notify(52237)
 
 	return size * 1024, nil
 }

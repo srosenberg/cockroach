@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package security
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,39 +18,33 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// TODO(aaron-crl): This shared a name and purpose with the value in
-// pkg/cli/cert.go and should be consolidated.
 const defaultKeySize = 2048
 
-// notBeforeMargin provides a window to compensate for potential clock skew.
 const notBeforeMargin = time.Hour * 24
 
-// createCertificateSerialNumber is a helper function that generates a
-// random value between [1, 2^130). The use of crypto random for a serial with
-// greater than 128 bits of entropy provides for a potential future where we
-// decided to rely on the serial for security purposes.
 func createCertificateSerialNumber() (serialNumber *big.Int, err error) {
+	__antithesis_instrumentation__.Notify(185768)
 	max := new(big.Int)
 	max.Exp(big.NewInt(2), big.NewInt(130), nil).Sub(max, big.NewInt(1))
 
-	// serialNumber is set using rand.Int which yields a value between [0, max)
-	// where max is (2^130)-1.
 	serialNumber, err = rand.Int(rand.Reader, max)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185770)
 		err = errors.Wrap(err, "failed to create new serial number")
+	} else {
+		__antithesis_instrumentation__.Notify(185771)
 	}
+	__antithesis_instrumentation__.Notify(185769)
 
-	// We then add 1 to the result ensuring a range of [1,2^130).
 	serialNumber.Add(serialNumber, big.NewInt(1))
 
 	return
 }
 
-// LoggerFn is the type we use to inject logging functions into the
-// security package to avoid circular dependencies.
 type LoggerFn = func(ctx context.Context, format string, args ...interface{})
 
 func describeCert(cert *x509.Certificate) redact.RedactableString {
+	__antithesis_instrumentation__.Notify(185772)
 	var buf redact.StringBuilder
 	buf.SafeString("{\n")
 	buf.Printf("  SN: %s,\n", cert.SerialNumber)
@@ -69,9 +55,13 @@ func describeCert(cert *x509.Certificate) redact.RedactableString {
 	buf.Printf("  NotAfter: %s", cert.NotAfter)
 	buf.Printf(" (Validity: %s),\n", cert.NotAfter.Sub(timeutil.Now()))
 	if !cert.IsCA {
+		__antithesis_instrumentation__.Notify(185774)
 		buf.Printf("  DNS: %v,\n", cert.DNSNames)
 		buf.Printf("  IP: %v\n", cert.IPAddresses)
+	} else {
+		__antithesis_instrumentation__.Notify(185775)
 	}
+	__antithesis_instrumentation__.Notify(185773)
 	buf.SafeString("}")
 	return buf.RedactableString()
 }
@@ -81,22 +71,22 @@ const (
 	crlIssuerOU = "automatic cert generator"
 )
 
-// CreateCACertAndKey will create a CA with a validity beginning
-// now() and expiring after `lifespan`. This is a utility function to help
-// with cluster auto certificate generation.
 func CreateCACertAndKey(
 	ctx context.Context, loggerFn LoggerFn, lifespan time.Duration, service string,
 ) (certPEM, keyPEM *pem.Block, err error) {
+	__antithesis_instrumentation__.Notify(185776)
 	notBefore := timeutil.Now().Add(-notBeforeMargin)
 	notAfter := timeutil.Now().Add(lifespan)
 
-	// Create random serial number for CA.
 	serialNumber, err := createCertificateSerialNumber()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185783)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185784)
 	}
+	__antithesis_instrumentation__.Notify(185777)
 
-	// Create short lived initial CA template.
 	ca := &x509.Certificate{
 		SerialNumber: serialNumber,
 		Issuer: pkix.Name{
@@ -115,28 +105,47 @@ func CreateCACertAndKey(
 		MaxPathLen:            1,
 	}
 	if loggerFn != nil {
+		__antithesis_instrumentation__.Notify(185785)
 		loggerFn(ctx, "creating CA cert from template: %s", describeCert(ca))
+	} else {
+		__antithesis_instrumentation__.Notify(185786)
 	}
+	__antithesis_instrumentation__.Notify(185778)
 
-	// Create private and public key for CA.
 	caPrivKey, err := rsa.GenerateKey(rand.Reader, defaultKeySize)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185787)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185788)
 	}
+	__antithesis_instrumentation__.Notify(185779)
 
 	caPrivKeyPEM, err := PrivateKeyToPEM(caPrivKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185789)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185790)
 	}
+	__antithesis_instrumentation__.Notify(185780)
 
 	if loggerFn != nil {
+		__antithesis_instrumentation__.Notify(185791)
 		loggerFn(ctx, "signing CA cert")
+	} else {
+		__antithesis_instrumentation__.Notify(185792)
 	}
-	// Create CA certificate then PEM encode it.
+	__antithesis_instrumentation__.Notify(185781)
+
 	caBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, &caPrivKey.PublicKey, caPrivKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185793)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185794)
 	}
+	__antithesis_instrumentation__.Notify(185782)
 
 	caPEM := &pem.Block{
 		Type:  "CERTIFICATE",
@@ -146,8 +155,6 @@ func CreateCACertAndKey(
 	return caPEM, caPrivKeyPEM, nil
 }
 
-// CreateServiceCertAndKey creates a cert/key pair signed by the provided CA.
-// This is a utility function to help with cluster auto certificate generation.
 func CreateServiceCertAndKey(
 	ctx context.Context,
 	loggerFn LoggerFn,
@@ -157,31 +164,39 @@ func CreateServiceCertAndKey(
 	caCertBlock, caKeyBlock *pem.Block,
 	serviceCertIsAlsoValidAsClient bool,
 ) (certPEM *pem.Block, keyPEM *pem.Block, err error) {
+	__antithesis_instrumentation__.Notify(185795)
 	notBefore := timeutil.Now().Add(-notBeforeMargin)
 	notAfter := timeutil.Now().Add(lifespan)
 
-	// Create random serial number for CA.
 	serialNumber, err := createCertificateSerialNumber()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185806)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185807)
 	}
+	__antithesis_instrumentation__.Notify(185796)
 
 	caCert, err := x509.ParseCertificate(caCertBlock.Bytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185808)
 		err = errors.Wrap(err, "failed to parse valid Certificate from PEM blob")
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185809)
 	}
+	__antithesis_instrumentation__.Notify(185797)
 
 	caKey, err := x509.ParsePKCS1PrivateKey(caKeyBlock.Bytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185810)
 		err = errors.Wrap(err, "failed to parse valid Private Key from PEM blob")
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185811)
 	}
+	__antithesis_instrumentation__.Notify(185798)
 
-	// Build service certificate template; template will be used for all
-	// autogenerated service certificates.
-	// TODO(aaron-crl): This should match the implementation in
-	// pkg/security/x509.go until we can consolidate them.
 	serviceCert := &x509.Certificate{
 		SerialNumber: serialNumber,
 		Issuer: pkix.Name{
@@ -200,37 +215,58 @@ func CreateServiceCertAndKey(
 	}
 
 	if serviceCertIsAlsoValidAsClient {
+		__antithesis_instrumentation__.Notify(185812)
 		serviceCert.ExtKeyUsage = append(serviceCert.ExtKeyUsage, x509.ExtKeyUsageClientAuth)
+	} else {
+		__antithesis_instrumentation__.Notify(185813)
 	}
+	__antithesis_instrumentation__.Notify(185799)
 
-	// Attempt to parse hostname as IP, if successful add it as an IP
-	// otherwise presume it is a DNS name.
-	// TODO(aaron-crl): Pass these values via config object.
 	for _, hostname := range hostnames {
+		__antithesis_instrumentation__.Notify(185814)
 		ip := net.ParseIP(hostname)
 		if ip != nil {
+			__antithesis_instrumentation__.Notify(185815)
 			serviceCert.IPAddresses = []net.IP{ip}
 		} else {
+			__antithesis_instrumentation__.Notify(185816)
 			serviceCert.DNSNames = []string{hostname}
 		}
 	}
+	__antithesis_instrumentation__.Notify(185800)
 
 	if loggerFn != nil {
+		__antithesis_instrumentation__.Notify(185817)
 		loggerFn(ctx, "creating service cert from template: %s", describeCert(serviceCert))
+	} else {
+		__antithesis_instrumentation__.Notify(185818)
 	}
+	__antithesis_instrumentation__.Notify(185801)
 
 	servicePrivKey, err := rsa.GenerateKey(rand.Reader, defaultKeySize)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185819)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185820)
 	}
+	__antithesis_instrumentation__.Notify(185802)
 
 	if loggerFn != nil {
+		__antithesis_instrumentation__.Notify(185821)
 		loggerFn(ctx, "signing service cert")
+	} else {
+		__antithesis_instrumentation__.Notify(185822)
 	}
+	__antithesis_instrumentation__.Notify(185803)
 	serviceCertBytes, err := x509.CreateCertificate(rand.Reader, serviceCert, caCert, &servicePrivKey.PublicKey, caKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185823)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185824)
 	}
+	__antithesis_instrumentation__.Notify(185804)
 
 	serviceCertBlock := &pem.Block{
 		Type:  "CERTIFICATE",
@@ -239,8 +275,12 @@ func CreateServiceCertAndKey(
 
 	servicePrivKeyPEM, err := PrivateKeyToPEM(servicePrivKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185825)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185826)
 	}
+	__antithesis_instrumentation__.Notify(185805)
 
 	return serviceCertBlock, servicePrivKeyPEM, nil
 }

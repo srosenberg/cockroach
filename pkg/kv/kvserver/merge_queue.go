@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,20 +21,11 @@ import (
 )
 
 const (
-	// mergeQueuePurgatoryCheckInterval is the interval at which replicas in
-	// purgatory make merge attempts. Since merges are relatively untested, the
-	// reasons that a range may fail to merge are unknown, so the merge queue has
-	// a large purgatory interval.
 	mergeQueuePurgatoryCheckInterval = 1 * time.Minute
 
-	// The current implementation of merges requires rebalancing replicas on the
-	// right-hand range so that they are collocated with those on the left-hand
-	// range. This is expensive, so limit to one merge at a time.
 	mergeQueueConcurrency = 1
 )
 
-// MergeQueueInterval is a setting that controls how often the merge queue waits
-// between processing replicas.
 var MergeQueueInterval = settings.RegisterDurationSetting(
 	settings.SystemOnly,
 	"kv.range_merge.queue_interval",
@@ -51,38 +34,6 @@ var MergeQueueInterval = settings.RegisterDurationSetting(
 	settings.NonNegativeDuration,
 )
 
-// mergeQueue manages a queue of ranges slated to be merged with their right-
-// hand neighbor.
-//
-// A range will only be queued if it is beneath the minimum size threshold. Once
-// queued, the size of the right-hand neighbor will additionally be checked;
-// merges can only proceed if a) the right-hand neighbor is beneath the minimum
-// size threshold, and b) the merged range would not need to be immediately
-// split, e.g. because the new range would exceed the maximum size threshold.
-//
-// Note that the merge queue is not capable of initiating all possible merges.
-// Consider the example below:
-//
-//      /Table/51/1    /Table/51/2    /Table/52
-//         32MB            0MB           32MB
-//
-// The range beginning at /Table/51/2 is empty and would, ideally, be merged
-// away. The range to its left, /Table/51/1, will not propose a merge because it
-// is over the minimum size threshold. And /Table/51/2 will not propose a merge
-// because the next range, /Table/52, is a new table and thus the split is
-// mandatory.
-//
-// There are several ways to solve this. /Table/51/2 could look both left and
-// right to find a merge partner, but discovering ones left neighbor is rather
-// difficult and involves scanning the meta ranges. /Table/51/1 could propose a
-// merge even though it's over the minimum size threshold, but this would result
-// in a lot more RangeStats requests--essentially every range would send a
-// RangeStats request on every scanner cycle.
-//
-// The current approach seems to be a nice balance of finding nearly all
-// mergeable ranges without sending many RPCs. It has the additional nice
-// property of not sending any RPCs to meta ranges until a merge is actually
-// initiated.
 type mergeQueue struct {
 	*baseQueue
 	db       *kv.DB
@@ -90,6 +41,7 @@ type mergeQueue struct {
 }
 
 func newMergeQueue(store *Store, db *kv.DB) *mergeQueue {
+	__antithesis_instrumentation__.Notify(110122)
 	mq := &mergeQueue{
 		db:       db,
 		purgChan: time.NewTicker(mergeQueuePurgatoryCheckInterval).C,
@@ -99,17 +51,7 @@ func newMergeQueue(store *Store, db *kv.DB) *mergeQueue {
 		queueConfig{
 			maxSize:        defaultQueueMaxSize,
 			maxConcurrency: mergeQueueConcurrency,
-			// TODO(ajwerner): Sometimes the merge queue needs to send multiple
-			// snapshots, but the timeout function here is configured based on the
-			// duration required to send a single snapshot. That being said, this
-			// timeout provides leeway for snapshots to be 10x slower than the
-			// specified rate and still respects the queue processing minimum timeout.
-			// While using the below function is certainly better than just using the
-			// default timeout, it would be better to have a function which takes into
-			// account how many snapshots processing will need to send. That might be
-			// hard to determine ahead of time. An alternative would be to calculate
-			// the timeout with a function that additionally considers the replication
-			// factor.
+
 			processTimeoutFunc:   makeRateLimitedTimeoutFunc(rebalanceSnapshotRate),
 			needsLease:           true,
 			needsSystemConfig:    true,
@@ -125,14 +67,20 @@ func newMergeQueue(store *Store, db *kv.DB) *mergeQueue {
 }
 
 func (mq *mergeQueue) enabled() bool {
+	__antithesis_instrumentation__.Notify(110123)
 	if !mq.store.cfg.SpanConfigsDisabled {
+		__antithesis_instrumentation__.Notify(110125)
 		if mq.store.cfg.SpanConfigSubscriber.LastUpdated().IsEmpty() {
-			// If we don't have any span configs available, enabling range merges would
-			// be extremely dangerous -- we could collapse everything into a single
-			// range.
+			__antithesis_instrumentation__.Notify(110126)
+
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(110127)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(110128)
 	}
+	__antithesis_instrumentation__.Notify(110124)
 
 	st := mq.store.ClusterSettings()
 	return kvserverbase.MergeQueueEnabled.Get(&st.SV)
@@ -141,48 +89,62 @@ func (mq *mergeQueue) enabled() bool {
 func (mq *mergeQueue) shouldQueue(
 	ctx context.Context, now hlc.ClockTimestamp, repl *Replica, confReader spanconfig.StoreReader,
 ) (shouldQueue bool, priority float64) {
+	__antithesis_instrumentation__.Notify(110129)
 	if !mq.enabled() {
+		__antithesis_instrumentation__.Notify(110134)
 		return false, 0
+	} else {
+		__antithesis_instrumentation__.Notify(110135)
 	}
+	__antithesis_instrumentation__.Notify(110130)
 
 	desc := repl.Desc()
 
 	if desc.EndKey.Equal(roachpb.RKeyMax) {
-		// The last range has no right-hand neighbor to merge with.
+		__antithesis_instrumentation__.Notify(110136)
+
 		return false, 0
+	} else {
+		__antithesis_instrumentation__.Notify(110137)
 	}
+	__antithesis_instrumentation__.Notify(110131)
 
 	if confReader.NeedsSplit(ctx, desc.StartKey, desc.EndKey.Next()) {
-		// This range would need to be split if it extended just one key further.
-		// There is thus no possible right-hand neighbor that it could be merged
-		// with.
+		__antithesis_instrumentation__.Notify(110138)
+
 		return false, 0
+	} else {
+		__antithesis_instrumentation__.Notify(110139)
 	}
+	__antithesis_instrumentation__.Notify(110132)
 
 	sizeRatio := float64(repl.GetMVCCStats().Total()) / float64(repl.GetMinBytes())
-	if math.IsNaN(sizeRatio) || sizeRatio >= 1 {
-		// This range is above the minimum size threshold. It does not need to be
-		// merged.
-		return false, 0
-	}
+	if math.IsNaN(sizeRatio) || func() bool {
+		__antithesis_instrumentation__.Notify(110140)
+		return sizeRatio >= 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(110141)
 
-	// Invert sizeRatio to compute the priority so that smaller ranges are merged
-	// before larger ranges.
+		return false, 0
+	} else {
+		__antithesis_instrumentation__.Notify(110142)
+	}
+	__antithesis_instrumentation__.Notify(110133)
+
 	priority = 1 - sizeRatio
 	return true, priority
 }
 
-// rangeMergePurgatoryError wraps an error that occurs during merging to
-// indicate that the error should send the range to purgatory.
 type rangeMergePurgatoryError struct{ error }
 
-func (rangeMergePurgatoryError) purgatoryErrorMarker() {}
+func (rangeMergePurgatoryError) purgatoryErrorMarker() { __antithesis_instrumentation__.Notify(110143) }
 
 var _ purgatoryError = rangeMergePurgatoryError{}
 
 func (mq *mergeQueue) requestRangeStats(
 	ctx context.Context, key roachpb.Key,
 ) (desc *roachpb.RangeDescriptor, stats enginepb.MVCCStats, qps float64, qpsOK bool, err error) {
+	__antithesis_instrumentation__.Notify(110144)
 
 	var ba roachpb.BatchRequest
 	ba.Add(&roachpb.RangeStatsRequest{
@@ -191,58 +153,84 @@ func (mq *mergeQueue) requestRangeStats(
 
 	br, pErr := mq.db.NonTransactionalSender().Send(ctx, ba)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(110147)
 		return nil, enginepb.MVCCStats{}, 0, false, pErr.GoError()
+	} else {
+		__antithesis_instrumentation__.Notify(110148)
 	}
+	__antithesis_instrumentation__.Notify(110145)
 	res := br.Responses[0].GetInner().(*roachpb.RangeStatsResponse)
 
 	desc = &res.RangeInfo.Desc
 	stats = res.MVCCStats
 	if res.MaxQueriesPerSecondSet {
+		__antithesis_instrumentation__.Notify(110149)
 		qps = res.MaxQueriesPerSecond
 		qpsOK = qps >= 0
 	} else {
+		__antithesis_instrumentation__.Notify(110150)
 		qps = res.DeprecatedLastQueriesPerSecond
 		qpsOK = true
 	}
+	__antithesis_instrumentation__.Notify(110146)
 	return desc, stats, qps, qpsOK, nil
 }
 
 func (mq *mergeQueue) process(
 	ctx context.Context, lhsRepl *Replica, confReader spanconfig.StoreReader,
 ) (processed bool, err error) {
+	__antithesis_instrumentation__.Notify(110151)
 	if !mq.enabled() {
+		__antithesis_instrumentation__.Notify(110165)
 		log.VEventf(ctx, 2, "skipping merge: queue has been disabled")
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(110166)
 	}
+	__antithesis_instrumentation__.Notify(110152)
 
 	lhsDesc := lhsRepl.Desc()
 	lhsStats := lhsRepl.GetMVCCStats()
 	lhsQPS, lhsQPSOK := lhsRepl.GetMaxSplitQPS()
 	minBytes := lhsRepl.GetMinBytes()
 	if lhsStats.Total() >= minBytes {
+		__antithesis_instrumentation__.Notify(110167)
 		log.VEventf(ctx, 2, "skipping merge: LHS meets minimum size threshold %d with %d bytes",
 			minBytes, lhsStats.Total())
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(110168)
 	}
+	__antithesis_instrumentation__.Notify(110153)
 
 	rhsDesc, rhsStats, rhsQPS, rhsQPSOK, err := mq.requestRangeStats(ctx, lhsDesc.EndKey.AsRawKey())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(110169)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(110170)
 	}
+	__antithesis_instrumentation__.Notify(110154)
 	if rhsStats.Total() >= minBytes {
+		__antithesis_instrumentation__.Notify(110171)
 		log.VEventf(ctx, 2, "skipping merge: RHS meets minimum size threshold %d with %d bytes",
 			minBytes, lhsStats.Total())
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(110172)
 	}
+	__antithesis_instrumentation__.Notify(110155)
 
-	// Range was manually split and not expired, so skip merging.
 	now := mq.store.Clock().NowAsClockTimestamp()
 	if now.ToTimestamp().Less(rhsDesc.GetStickyBit()) {
+		__antithesis_instrumentation__.Notify(110173)
 		log.VEventf(ctx, 2, "skipping merge: ranges were manually split and sticky bit was not expired")
-		// TODO(jeffreyxiao): Consider returning a purgatory error to avoid
-		// repeatedly processing ranges that cannot be merged.
+
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(110174)
 	}
+	__antithesis_instrumentation__.Notify(110156)
 
 	mergedDesc := &roachpb.RangeDescriptor{
 		StartKey: lhsDesc.StartKey,
@@ -253,131 +241,158 @@ func (mq *mergeQueue) process(
 
 	var mergedQPS float64
 	if lhsRepl.SplitByLoadEnabled() {
-		// When load is a consideration for splits and, by extension, merges, the
-		// mergeQueue is fairly conservative. In an effort to avoid thrashing and to
-		// avoid overreacting to temporary fluctuations in load, the mergeQueue will
-		// only consider a merge when the combined load across the RHS and LHS
-		// ranges is below half the threshold required to split a range due to load.
-		// Furthermore, to ensure that transient drops in load do not trigger range
-		// merges, the mergeQueue will only consider a merge when it deems the
-		// maximum qps measurement from both sides to be sufficiently stable and
-		// reliable, meaning that it was a maximum measurement over some extended
-		// period of time.
+		__antithesis_instrumentation__.Notify(110175)
+
 		if !lhsQPSOK {
+			__antithesis_instrumentation__.Notify(110178)
 			log.VEventf(ctx, 2, "skipping merge: LHS QPS measurement not yet reliable")
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(110179)
 		}
+		__antithesis_instrumentation__.Notify(110176)
 		if !rhsQPSOK {
+			__antithesis_instrumentation__.Notify(110180)
 			log.VEventf(ctx, 2, "skipping merge: RHS QPS measurement not yet reliable")
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(110181)
 		}
+		__antithesis_instrumentation__.Notify(110177)
 		mergedQPS = lhsQPS + rhsQPS
+	} else {
+		__antithesis_instrumentation__.Notify(110182)
 	}
+	__antithesis_instrumentation__.Notify(110157)
 
-	// Check if the merged range would need to be split, if so, skip merge.
-	// Use a lower threshold for load based splitting so we don't find ourselves
-	// in a situation where we keep merging ranges that would be split soon after
-	// by a small increase in load.
 	conservativeLoadBasedSplitThreshold := 0.5 * lhsRepl.SplitByLoadQPSThreshold()
 	shouldSplit, _ := shouldSplitRange(ctx, mergedDesc, mergedStats,
 		lhsRepl.GetMaxBytes(), lhsRepl.shouldBackpressureWrites(), confReader)
-	if shouldSplit || mergedQPS >= conservativeLoadBasedSplitThreshold {
+	if shouldSplit || func() bool {
+		__antithesis_instrumentation__.Notify(110183)
+		return mergedQPS >= conservativeLoadBasedSplitThreshold == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(110184)
 		log.VEventf(ctx, 2,
 			"skipping merge to avoid thrashing: merged range %s may split "+
 				"(estimated size, estimated QPS: %d, %v)",
 			mergedDesc, mergedStats.Total(), mergedQPS)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(110185)
 	}
 
 	{
-		// AdminMerge errors if there is a learner or joint config on either
-		// side and AdminRelocateRange removes any on the range it operates on.
-		// For the sake of obviousness, just fix this all upfront. The merge is
-		// performed by the LHS leaseholder, so it can easily do this for LHS.
-		// We deal with the RHS, whose leaseholder may be remote, further down.
+		__antithesis_instrumentation__.Notify(110186)
+
 		var err error
 		lhsDesc, err =
 			lhsRepl.maybeLeaveAtomicChangeReplicasAndRemoveLearners(ctx, lhsDesc)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(110187)
 			log.VEventf(ctx, 2, `%v`, err)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(110188)
 		}
 	}
+	__antithesis_instrumentation__.Notify(110158)
 	leftRepls, rightRepls := lhsDesc.Replicas().Descriptors(), rhsDesc.Replicas().Descriptors()
 
-	// Defensive sanity check that the ranges involved only have either VOTER_FULL
-	// and NON_VOTER replicas.
 	for i := range leftRepls {
-		if typ := leftRepls[i].GetType(); !(typ == roachpb.VOTER_FULL || typ == roachpb.NON_VOTER) {
+		__antithesis_instrumentation__.Notify(110189)
+		if typ := leftRepls[i].GetType(); !(typ == roachpb.VOTER_FULL || func() bool {
+			__antithesis_instrumentation__.Notify(110190)
+			return typ == roachpb.NON_VOTER == true
+		}() == true) {
+			__antithesis_instrumentation__.Notify(110191)
 			return false,
 				errors.AssertionFailedf(
 					`cannot merge because lhs is either in a joint state or has learner replicas: %v`,
 					leftRepls,
 				)
+		} else {
+			__antithesis_instrumentation__.Notify(110192)
 		}
 	}
+	__antithesis_instrumentation__.Notify(110159)
 
-	// Range merges require that the set of stores that contain a replica for the
-	// RHS range be equal to the set of stores that contain a replica for the LHS
-	// range. The LHS and RHS ranges' leaseholders do not need to be co-located
-	// and types of the replicas (voting or non-voting) do not matter. Even if
-	// replicas are collocated, the RHS might still be in a joint config, and
-	// calling AdminRelocateRange will fix this.
-	if !replicasCollocated(leftRepls, rightRepls) ||
-		rhsDesc.Replicas().InAtomicReplicationChange() {
-		// TODO(aayush): We enable merges to proceed even when LHS and/or RHS are in
-		// violation of their constraints (by adding or removing replicas on the RHS
-		// as needed). We could instead choose to check constraints conformance of
-		// these ranges and only try to collocate them if they're not in violation,
-		// which would help us make better guarantees about not transiently
-		// violating constraints during a merge.
+	if !replicasCollocated(leftRepls, rightRepls) || func() bool {
+		__antithesis_instrumentation__.Notify(110193)
+		return rhsDesc.Replicas().InAtomicReplicationChange() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(110194)
+
 		voterTargets := lhsDesc.Replicas().Voters().ReplicationTargets()
 		nonVoterTargets := lhsDesc.Replicas().NonVoters().ReplicationTargets()
 
-		// AdminRelocateRange moves the lease to the first target in the list, so
-		// sort the existing leaseholder there to leave it unchanged.
-		//
-		// TODO(aayush): Remove this logic to move lease to the front for 22.2,
-		// since 22.1 nodes support the new `transferLeaseToFirstVoter` parameter
-		// for `AdminRelocateRange`.
 		lease, _ := lhsRepl.GetLease()
 		for i := range voterTargets {
-			if t := voterTargets[i]; t.NodeID == lease.Replica.NodeID && t.StoreID == lease.Replica.StoreID {
+			__antithesis_instrumentation__.Notify(110198)
+			if t := voterTargets[i]; t.NodeID == lease.Replica.NodeID && func() bool {
+				__antithesis_instrumentation__.Notify(110199)
+				return t.StoreID == lease.Replica.StoreID == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(110200)
 				if i > 0 {
+					__antithesis_instrumentation__.Notify(110202)
 					voterTargets[0], voterTargets[i] = voterTargets[i], voterTargets[0]
+				} else {
+					__antithesis_instrumentation__.Notify(110203)
 				}
+				__antithesis_instrumentation__.Notify(110201)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(110204)
 			}
 		}
-		// The merge queue will only merge ranges that have the same zone config
-		// (see check inside mergeQueue.shouldQueue).
+		__antithesis_instrumentation__.Notify(110195)
+
 		if err := mq.store.DB().AdminRelocateRange(
 			ctx,
 			rhsDesc.StartKey,
 			voterTargets,
 			nonVoterTargets,
-			false, /* transferLeaseToFirstVoter */
+			false,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(110205)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(110206)
 		}
+		__antithesis_instrumentation__.Notify(110196)
 
-		// Refresh RHS descriptor.
 		rhsDesc, _, _, _, err = mq.requestRangeStats(ctx, lhsDesc.EndKey.AsRawKey())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(110207)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(110208)
 		}
+		__antithesis_instrumentation__.Notify(110197)
 		rightRepls = rhsDesc.Replicas().Descriptors()
+	} else {
+		__antithesis_instrumentation__.Notify(110209)
 	}
+	__antithesis_instrumentation__.Notify(110160)
 	for i := range rightRepls {
-		if typ := rightRepls[i].GetType(); !(typ == roachpb.VOTER_FULL || typ == roachpb.NON_VOTER) {
+		__antithesis_instrumentation__.Notify(110210)
+		if typ := rightRepls[i].GetType(); !(typ == roachpb.VOTER_FULL || func() bool {
+			__antithesis_instrumentation__.Notify(110211)
+			return typ == roachpb.NON_VOTER == true
+		}() == true) {
+			__antithesis_instrumentation__.Notify(110212)
 			log.Infof(ctx, "RHS Type: %s", typ)
 			return false,
 				errors.AssertionFailedf(
 					`cannot merge because rhs is either in a joint state or has learner replicas: %v`,
 					rightRepls,
 				)
+		} else {
+			__antithesis_instrumentation__.Notify(110213)
 		}
 	}
+	__antithesis_instrumentation__.Notify(110161)
 
 	log.VEventf(ctx, 2, "merging to produce range: %s-%s", mergedDesc.StartKey, mergedDesc.EndKey)
 	reason := fmt.Sprintf("lhs+rhs has (size=%s+%s=%s qps=%.2f+%.2f=%.2fqps) below threshold (size=%s, qps=%.2f)",
@@ -394,41 +409,52 @@ func (mq *mergeQueue) process(
 		RequestHeader: roachpb.RequestHeader{Key: lhsRepl.Desc().StartKey.AsRawKey()},
 	}, reason)
 	if err := pErr.GoError(); errors.HasType(err, (*roachpb.ConditionFailedError)(nil)) {
-		// ConditionFailedErrors are an expected outcome for range merge
-		// attempts because merges can race with other descriptor modifications.
-		// On seeing a ConditionFailedError, don't return an error and enqueue
-		// this replica again in case it still needs to be merged.
+		__antithesis_instrumentation__.Notify(110214)
+
 		log.Infof(ctx, "merge saw concurrent descriptor modification; maybe retrying")
 		mq.MaybeAddAsync(ctx, lhsRepl, now)
 		return false, nil
-	} else if err != nil {
-		// While range merges are unstable, be extra cautious and mark every error
-		// as purgatory-worthy.
-		//
-		// TODO(aayush): Merges are indeed stable now, we can be smarter here about
-		// which errors should be marked as purgatory-worthy.
-		log.Warningf(ctx, "%v", err)
-		return false, rangeMergePurgatoryError{err}
-	}
-	if testingAggressiveConsistencyChecks {
-		if _, err := mq.store.consistencyQueue.process(ctx, lhsRepl, confReader); err != nil {
+	} else {
+		__antithesis_instrumentation__.Notify(110215)
+		if err != nil {
+			__antithesis_instrumentation__.Notify(110216)
+
 			log.Warningf(ctx, "%v", err)
+			return false, rangeMergePurgatoryError{err}
+		} else {
+			__antithesis_instrumentation__.Notify(110217)
 		}
 	}
-
-	// Adjust the splitter to account for the additional load from the RHS. We
-	// could just Reset the splitter, but then we'd need to wait out a full
-	// measurement period (default of 5m) before merging this range again.
-	if mergedQPS != 0 {
-		lhsRepl.loadBasedSplitter.RecordMax(mq.store.Clock().PhysicalTime(), mergedQPS)
+	__antithesis_instrumentation__.Notify(110162)
+	if testingAggressiveConsistencyChecks {
+		__antithesis_instrumentation__.Notify(110218)
+		if _, err := mq.store.consistencyQueue.process(ctx, lhsRepl, confReader); err != nil {
+			__antithesis_instrumentation__.Notify(110219)
+			log.Warningf(ctx, "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(110220)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(110221)
 	}
+	__antithesis_instrumentation__.Notify(110163)
+
+	if mergedQPS != 0 {
+		__antithesis_instrumentation__.Notify(110222)
+		lhsRepl.loadBasedSplitter.RecordMax(mq.store.Clock().PhysicalTime(), mergedQPS)
+	} else {
+		__antithesis_instrumentation__.Notify(110223)
+	}
+	__antithesis_instrumentation__.Notify(110164)
 	return true, nil
 }
 
 func (mq *mergeQueue) timer(time.Duration) time.Duration {
+	__antithesis_instrumentation__.Notify(110224)
 	return MergeQueueInterval.Get(&mq.store.ClusterSettings().SV)
 }
 
 func (mq *mergeQueue) purgatoryChan() <-chan time.Time {
+	__antithesis_instrumentation__.Notify(110225)
 	return mq.purgChan
 }

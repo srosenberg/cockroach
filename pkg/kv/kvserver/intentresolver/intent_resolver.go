@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package intentresolver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -36,76 +28,31 @@ import (
 )
 
 const (
-	// defaultTaskLimit is the maximum number of asynchronous tasks
-	// that may be started by intentResolver. When this limit is reached
-	// asynchronous tasks will start to block to apply backpressure.  This is a
-	// last line of defense against issues like #4925.
-	// TODO(bdarnell): how to determine best value?
 	defaultTaskLimit = 1000
 
-	// asyncIntentResolutionTimeout is the timeout when processing a group of
-	// intents asynchronously. The timeout prevents async intent resolution from
-	// getting stuck. Since processing intents is best effort, we'd rather give
-	// up than wait too long (this helps avoid deadlocks during test shutdown).
 	asyncIntentResolutionTimeout = 30 * time.Second
 
-	// gcBatchSize is the maximum number of transaction records that will be
-	// GCed in a single batch. Batches that span many ranges (which is possible
-	// for the transaction records that spans many ranges) will be split into
-	// many batches by the DistSender.
 	gcBatchSize = 1024
 
-	// intentResolverBatchSize is the maximum number of single-intent resolution
-	// requests that will be sent in a single batch. Batches that span many
-	// ranges (which is possible for the commit of a transaction that spans many
-	// ranges) will be split into many batches by the DistSender.
-	// TODO(ajwerner): justify this value
 	intentResolverBatchSize = 100
 
-	// intentResolverRangeBatchSize is the maximum number of ranged intent
-	// resolutions requests that will be sent in a single batch.  It is set
-	// lower that intentResolverBatchSize since each request can fan out to a
-	// large number of intents.
 	intentResolverRangeBatchSize = 10
 
-	// intentResolverRangeRequestSize is the maximum number of intents a single
-	// range request can resolve. When exceeded, the response will include a
-	// ResumeSpan and the batcher will send a new range request.
 	intentResolverRangeRequestSize = 200
 
-	// MaxTxnsPerIntentCleanupBatch is the number of transactions whose
-	// corresponding intents will be resolved at a time. Intents are batched
-	// by transaction to avoid timeouts while resolving intents and ensure that
-	// progress is made.
 	MaxTxnsPerIntentCleanupBatch = 100
 
-	// defaultGCBatchIdle is the default duration which the gc request batcher
-	// will wait between requests for a range before sending it.
-	defaultGCBatchIdle = -1 // disabled
+	defaultGCBatchIdle = -1
 
-	// defaultGCBatchWait is the default duration which the gc request batcher
-	// will wait between requests for a range before sending it.
 	defaultGCBatchWait = time.Second
 
-	// intentResolutionBatchWait is used to configure the RequestBatcher which
-	// batches intent resolution requests across transactions. Intent resolution
-	// needs to occur in a relatively short period of time after the completion
-	// of a transaction in order to minimize the contention footprint of the write
-	// for other contending reads or writes. The chosen value was selected based
-	// on some light experimentation to ensure that performance does not degrade
-	// in the face of highly contended workloads.
 	defaultIntentResolutionBatchWait = 10 * time.Millisecond
 
-	// intentResolutionBatchIdle is similar to the above setting but is used when
-	// when no additional traffic hits the batch.
 	defaultIntentResolutionBatchIdle = 5 * time.Millisecond
 
-	// gcTxnRecordTimeout is the timeout for asynchronous txn record removal
-	// during cleanupFinishedTxnIntents.
 	gcTxnRecordTimeout = 20 * time.Second
 )
 
-// Config contains the dependencies to construct an IntentResolver.
 type Config struct {
 	Clock                *hlc.Clock
 	DB                   *kv.DB
@@ -121,14 +68,10 @@ type Config struct {
 	MaxIntentResolutionBatchIdle time.Duration
 }
 
-// RangeCache is a simplified interface to the rngcache.RangeCache.
 type RangeCache interface {
-	// Lookup looks up range information for the range containing key.
 	Lookup(ctx context.Context, key roachpb.RKey) (rangecache.CacheEntry, error)
 }
 
-// IntentResolver manages the process of pushing transactions and
-// resolving intents.
 type IntentResolver struct {
 	Metrics Metrics
 
@@ -137,7 +80,7 @@ type IntentResolver struct {
 	stopper      *stop.Stopper
 	testingKnobs kvserverbase.IntentResolverTestingKnobs
 	ambientCtx   log.AmbientContext
-	sem          *quotapool.IntPool // semaphore to limit async goroutines
+	sem          *quotapool.IntPool
 
 	rdc RangeCache
 
@@ -147,38 +90,66 @@ type IntentResolver struct {
 
 	mu struct {
 		syncutil.Mutex
-		// Map from txn ID being pushed to a refcount of requests waiting on the
-		// push.
+
 		inFlightPushes map[uuid.UUID]int
-		// Set of txn IDs whose list of lock spans are being resolved. Note
-		// that this pertains only to EndTxn-style lock cleanups, whether
-		// called directly after EndTxn evaluation or during GC of txn spans.
+
 		inFlightTxnCleanups map[uuid.UUID]struct{}
 	}
 	every log.EveryN
 }
 
 func setConfigDefaults(c *Config) {
+	__antithesis_instrumentation__.Notify(101551)
 	if c.TaskLimit == 0 {
+		__antithesis_instrumentation__.Notify(101558)
 		c.TaskLimit = defaultTaskLimit
+	} else {
+		__antithesis_instrumentation__.Notify(101559)
 	}
-	if c.TaskLimit == -1 || c.TestingKnobs.ForceSyncIntentResolution {
+	__antithesis_instrumentation__.Notify(101552)
+	if c.TaskLimit == -1 || func() bool {
+		__antithesis_instrumentation__.Notify(101560)
+		return c.TestingKnobs.ForceSyncIntentResolution == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(101561)
 		c.TaskLimit = 0
+	} else {
+		__antithesis_instrumentation__.Notify(101562)
 	}
+	__antithesis_instrumentation__.Notify(101553)
 	if c.MaxGCBatchIdle == 0 {
+		__antithesis_instrumentation__.Notify(101563)
 		c.MaxGCBatchIdle = defaultGCBatchIdle
+	} else {
+		__antithesis_instrumentation__.Notify(101564)
 	}
+	__antithesis_instrumentation__.Notify(101554)
 	if c.MaxGCBatchWait == 0 {
+		__antithesis_instrumentation__.Notify(101565)
 		c.MaxGCBatchWait = defaultGCBatchWait
+	} else {
+		__antithesis_instrumentation__.Notify(101566)
 	}
+	__antithesis_instrumentation__.Notify(101555)
 	if c.MaxIntentResolutionBatchIdle == 0 {
+		__antithesis_instrumentation__.Notify(101567)
 		c.MaxIntentResolutionBatchIdle = defaultIntentResolutionBatchIdle
+	} else {
+		__antithesis_instrumentation__.Notify(101568)
 	}
+	__antithesis_instrumentation__.Notify(101556)
 	if c.MaxIntentResolutionBatchWait == 0 {
+		__antithesis_instrumentation__.Notify(101569)
 		c.MaxIntentResolutionBatchWait = defaultIntentResolutionBatchWait
+	} else {
+		__antithesis_instrumentation__.Notify(101570)
 	}
+	__antithesis_instrumentation__.Notify(101557)
 	if c.RangeDescriptorCache == nil {
+		__antithesis_instrumentation__.Notify(101571)
 		c.RangeDescriptorCache = nopRangeDescriptorCache{}
+	} else {
+		__antithesis_instrumentation__.Notify(101572)
 	}
 }
 
@@ -187,11 +158,12 @@ type nopRangeDescriptorCache struct{}
 func (nrdc nopRangeDescriptorCache) Lookup(
 	ctx context.Context, key roachpb.RKey,
 ) (rangecache.CacheEntry, error) {
+	__antithesis_instrumentation__.Notify(101573)
 	return rangecache.CacheEntry{}, nil
 }
 
-// New creates an new IntentResolver.
 func New(c Config) *IntentResolver {
+	__antithesis_instrumentation__.Notify(101574)
 	setConfigDefaults(&c)
 	ir := &IntentResolver{
 		clock:        c.Clock,
@@ -208,8 +180,12 @@ func New(c Config) *IntentResolver {
 	ir.mu.inFlightTxnCleanups = map[uuid.UUID]struct{}{}
 	gcBatchSize := gcBatchSize
 	if c.TestingKnobs.MaxIntentResolutionBatchSize > 0 {
+		__antithesis_instrumentation__.Notify(101577)
 		gcBatchSize = c.TestingKnobs.MaxGCBatchSize
+	} else {
+		__antithesis_instrumentation__.Notify(101578)
 	}
+	__antithesis_instrumentation__.Notify(101575)
 	ir.gcBatcher = requestbatcher.New(requestbatcher.Config{
 		AmbientCtx:      c.AmbientCtx,
 		Name:            "intent_resolver_gc_batcher",
@@ -222,9 +198,13 @@ func New(c Config) *IntentResolver {
 	intentResolutionBatchSize := intentResolverBatchSize
 	intentResolutionRangeBatchSize := intentResolverRangeBatchSize
 	if c.TestingKnobs.MaxIntentResolutionBatchSize > 0 {
+		__antithesis_instrumentation__.Notify(101579)
 		intentResolutionBatchSize = c.TestingKnobs.MaxIntentResolutionBatchSize
 		intentResolutionRangeBatchSize = c.TestingKnobs.MaxIntentResolutionBatchSize
+	} else {
+		__antithesis_instrumentation__.Notify(101580)
 	}
+	__antithesis_instrumentation__.Notify(101576)
 	ir.irBatcher = requestbatcher.New(requestbatcher.Config{
 		AmbientCtx:      c.AmbientCtx,
 		Name:            "intent_resolver_ir_batcher",
@@ -248,24 +228,23 @@ func New(c Config) *IntentResolver {
 }
 
 func getPusherTxn(h roachpb.Header) roachpb.Transaction {
-	// If the txn is nil, we communicate a priority by sending an empty
-	// txn with only the priority set. This is official usage of PushTxn.
+	__antithesis_instrumentation__.Notify(101581)
+
 	txn := h.Txn
 	if txn == nil {
+		__antithesis_instrumentation__.Notify(101583)
 		txn = &roachpb.Transaction{
 			TxnMeta: enginepb.TxnMeta{
 				Priority: roachpb.MakePriority(h.UserPriority),
 			},
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(101584)
 	}
+	__antithesis_instrumentation__.Notify(101582)
 	return *txn
 }
 
-// updateIntentTxnStatus takes a slice of intents and a set of pushed
-// transactions (like returned from MaybePushTransactions) and updates
-// each intent with its corresponding TxnMeta and Status.
-// resultSlice is an optional value to allow the caller to preallocate
-// the returned intent slice.
 func updateIntentTxnStatus(
 	ctx context.Context,
 	pushedTxns map[uuid.UUID]*roachpb.Transaction,
@@ -273,63 +252,58 @@ func updateIntentTxnStatus(
 	skipIfInFlight bool,
 	results []roachpb.LockUpdate,
 ) []roachpb.LockUpdate {
+	__antithesis_instrumentation__.Notify(101585)
 	for _, intent := range intents {
+		__antithesis_instrumentation__.Notify(101587)
 		pushee, ok := pushedTxns[intent.Txn.ID]
 		if !ok {
-			// The intent was not pushed.
+			__antithesis_instrumentation__.Notify(101589)
+
 			if !skipIfInFlight {
+				__antithesis_instrumentation__.Notify(101591)
 				log.Fatalf(ctx, "no PushTxn response for intent %+v", intent)
+			} else {
+				__antithesis_instrumentation__.Notify(101592)
 			}
-			// It must have been skipped.
+			__antithesis_instrumentation__.Notify(101590)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(101593)
 		}
+		__antithesis_instrumentation__.Notify(101588)
 		up := roachpb.MakeLockUpdate(pushee, roachpb.Span{Key: intent.Key})
 		results = append(results, up)
 	}
+	__antithesis_instrumentation__.Notify(101586)
 	return results
 }
 
-// PushTransaction takes a transaction and pushes its record using the specified
-// push type and request header. It returns the transaction proto corresponding
-// to the pushed transaction.
 func (ir *IntentResolver) PushTransaction(
 	ctx context.Context, pushTxn *enginepb.TxnMeta, h roachpb.Header, pushType roachpb.PushTxnType,
 ) (*roachpb.Transaction, *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(101594)
 	pushTxns := make(map[uuid.UUID]*enginepb.TxnMeta, 1)
 	pushTxns[pushTxn.ID] = pushTxn
-	pushedTxns, pErr := ir.MaybePushTransactions(ctx, pushTxns, h, pushType, false /* skipIfInFlight */)
+	pushedTxns, pErr := ir.MaybePushTransactions(ctx, pushTxns, h, pushType, false)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(101597)
 		return nil, pErr
+	} else {
+		__antithesis_instrumentation__.Notify(101598)
 	}
+	__antithesis_instrumentation__.Notify(101595)
 	pushedTxn, ok := pushedTxns[pushTxn.ID]
 	if !ok {
+		__antithesis_instrumentation__.Notify(101599)
 		log.Fatalf(ctx, "missing PushTxn responses for %s", pushTxn)
+	} else {
+		__antithesis_instrumentation__.Notify(101600)
 	}
+	__antithesis_instrumentation__.Notify(101596)
 	return pushedTxn, nil
 }
 
-// MaybePushTransactions tries to push the conflicting transaction(s):
-// either moving their timestamp forward on a read/write conflict, aborting
-// it on a write/write conflict, or doing nothing if the transaction is no
-// longer pending.
-//
-// Returns a set of transaction protos who correspond to the pushed
-// transactions and whose intents can now be resolved, and an error.
-//
-// If skipIfInFlight is true, then no PushTxns will be sent and no intents
-// will be returned for any transaction for which there is another push in
-// progress. This should only be used by callers who are not relying on the
-// side effect of a push (i.e. only pushType==PUSH_TOUCH), and who also
-// don't need to synchronize with the resolution of those intents (e.g.
-// asynchronous resolutions of intents skipped on inconsistent reads).
-//
-// Callers are involved with
-// a) conflict resolution for commands being executed at the Store with the
-//    client waiting,
-// b) resolving intents encountered during inconsistent operations, and
-// c) resolving intents upon EndTxn which are not local to the given range.
-//    This is the only path in which the transaction is going to be in
-//    non-pending state and doesn't require a push.
 func (ir *IntentResolver) MaybePushTransactions(
 	ctx context.Context,
 	pushTxns map[uuid.UUID]*enginepb.TxnMeta,
@@ -337,48 +311,67 @@ func (ir *IntentResolver) MaybePushTransactions(
 	pushType roachpb.PushTxnType,
 	skipIfInFlight bool,
 ) (map[uuid.UUID]*roachpb.Transaction, *roachpb.Error) {
-	// Decide which transactions to push and which to ignore because
-	// of other in-flight requests. For those transactions that we
-	// will be pushing, increment their ref count in the in-flight
-	// pushes map.
+	__antithesis_instrumentation__.Notify(101601)
+
 	ir.mu.Lock()
 	for txnID := range pushTxns {
+		__antithesis_instrumentation__.Notify(101608)
 		_, pushTxnInFlight := ir.mu.inFlightPushes[txnID]
-		if pushTxnInFlight && skipIfInFlight {
-			// Another goroutine is working on this transaction so we can
-			// skip it.
+		if pushTxnInFlight && func() bool {
+			__antithesis_instrumentation__.Notify(101609)
+			return skipIfInFlight == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(101610)
+
 			if log.V(1) {
+				__antithesis_instrumentation__.Notify(101612)
 				log.Infof(ctx, "skipping PushTxn for %s; attempt already in flight", txnID)
+			} else {
+				__antithesis_instrumentation__.Notify(101613)
 			}
+			__antithesis_instrumentation__.Notify(101611)
 			delete(pushTxns, txnID)
 		} else {
+			__antithesis_instrumentation__.Notify(101614)
 			ir.mu.inFlightPushes[txnID]++
 		}
 	}
+	__antithesis_instrumentation__.Notify(101602)
 	cleanupInFlightPushes := func() {
+		__antithesis_instrumentation__.Notify(101615)
 		ir.mu.Lock()
 		for txnID := range pushTxns {
+			__antithesis_instrumentation__.Notify(101617)
 			ir.mu.inFlightPushes[txnID]--
 			if ir.mu.inFlightPushes[txnID] == 0 {
+				__antithesis_instrumentation__.Notify(101618)
 				delete(ir.mu.inFlightPushes, txnID)
+			} else {
+				__antithesis_instrumentation__.Notify(101619)
 			}
 		}
+		__antithesis_instrumentation__.Notify(101616)
 		ir.mu.Unlock()
 	}
+	__antithesis_instrumentation__.Notify(101603)
 	ir.mu.Unlock()
 	if len(pushTxns) == 0 {
+		__antithesis_instrumentation__.Notify(101620)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(101621)
 	}
+	__antithesis_instrumentation__.Notify(101604)
 
 	pusherTxn := getPusherTxn(h)
 	log.Eventf(ctx, "pushing %d transaction(s)", len(pushTxns))
 
-	// Attempt to push the transaction(s).
 	pushTo := h.Timestamp.Next()
 	b := &kv.Batch{}
 	b.Header.Timestamp = ir.clock.Now()
 	b.Header.Timestamp.Forward(pushTo)
 	for _, pushTxn := range pushTxns {
+		__antithesis_instrumentation__.Notify(101622)
 		b.AddRawRequest(&roachpb.PushTxnRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key: pushTxn.Key,
@@ -389,42 +382,49 @@ func (ir *IntentResolver) MaybePushTransactions(
 			PushType:  pushType,
 		})
 	}
+	__antithesis_instrumentation__.Notify(101605)
 	err := ir.db.Run(ctx, b)
 	cleanupInFlightPushes()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(101623)
 		return nil, b.MustPErr()
+	} else {
+		__antithesis_instrumentation__.Notify(101624)
 	}
-
-	// TODO(nvanbenschoten): if we succeed because the transaction has already
-	// been pushed _past_ where we were pushing, we need to set the synthetic
-	// bit. This is part of #36431.
+	__antithesis_instrumentation__.Notify(101606)
 
 	br := b.RawResponse()
 	pushedTxns := make(map[uuid.UUID]*roachpb.Transaction, len(br.Responses))
 	for _, resp := range br.Responses {
+		__antithesis_instrumentation__.Notify(101625)
 		txn := &resp.GetInner().(*roachpb.PushTxnResponse).PusheeTxn
 		if _, ok := pushedTxns[txn.ID]; ok {
+			__antithesis_instrumentation__.Notify(101627)
 			log.Fatalf(ctx, "have two PushTxn responses for %s", txn.ID)
+		} else {
+			__antithesis_instrumentation__.Notify(101628)
 		}
+		__antithesis_instrumentation__.Notify(101626)
 		pushedTxns[txn.ID] = txn
 		log.Eventf(ctx, "%s is now %s", txn.ID, txn.Status)
 	}
+	__antithesis_instrumentation__.Notify(101607)
 	return pushedTxns, nil
 }
 
-// runAsyncTask semi-synchronously runs a generic task function. If
-// there is spare capacity in the limited async task semaphore, it's
-// run asynchronously; otherwise, it's run synchronously if
-// allowSyncProcessing is true; if false, an error is returned.
 func (ir *IntentResolver) runAsyncTask(
 	ctx context.Context, allowSyncProcessing bool, taskFn func(context.Context),
 ) error {
+	__antithesis_instrumentation__.Notify(101629)
 	if ir.testingKnobs.DisableAsyncIntentResolution {
+		__antithesis_instrumentation__.Notify(101632)
 		return errors.New("intents not processed as async resolution is disabled")
+	} else {
+		__antithesis_instrumentation__.Notify(101633)
 	}
+	__antithesis_instrumentation__.Notify(101630)
 	err := ir.stopper.RunAsyncTaskEx(
-		// If we've successfully launched a background task, dissociate
-		// this work from our caller's context and timeout.
+
 		ir.ambientCtx.AnnotateCtx(context.Background()),
 		stop.TaskOpts{
 			TaskName:   "storage.IntentResolver: processing intents",
@@ -434,189 +434,208 @@ func (ir *IntentResolver) runAsyncTask(
 		taskFn,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(101634)
 		if errors.Is(err, stop.ErrThrottled) {
+			__antithesis_instrumentation__.Notify(101636)
 			ir.Metrics.IntentResolverAsyncThrottled.Inc(1)
 			if allowSyncProcessing {
-				// A limited task was not available. Rather than waiting for
-				// one, we reuse the current goroutine.
+				__antithesis_instrumentation__.Notify(101637)
+
 				taskFn(ctx)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(101638)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(101639)
 		}
+		__antithesis_instrumentation__.Notify(101635)
 		return errors.Wrapf(err, "during async intent resolution")
+	} else {
+		__antithesis_instrumentation__.Notify(101640)
 	}
+	__antithesis_instrumentation__.Notify(101631)
 	return nil
 }
 
-// CleanupIntentsAsync asynchronously processes intents which were
-// encountered during another command but did not interfere with the
-// execution of that command. This occurs during inconsistent
-// reads.
 func (ir *IntentResolver) CleanupIntentsAsync(
 	ctx context.Context, intents []roachpb.Intent, allowSyncProcessing bool,
 ) error {
+	__antithesis_instrumentation__.Notify(101641)
 	if len(intents) == 0 {
+		__antithesis_instrumentation__.Notify(101643)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(101644)
 	}
+	__antithesis_instrumentation__.Notify(101642)
 	now := ir.clock.Now()
 	return ir.runAsyncTask(ctx, allowSyncProcessing, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(101645)
 		err := contextutil.RunWithTimeout(ctx, "async intent resolution",
 			asyncIntentResolutionTimeout, func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(101647)
 				_, err := ir.CleanupIntents(ctx, intents, now, roachpb.PUSH_TOUCH)
 				return err
 			})
-		if err != nil && ir.every.ShouldLog() {
+		__antithesis_instrumentation__.Notify(101646)
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(101648)
+			return ir.every.ShouldLog() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(101649)
 			log.Warningf(ctx, "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(101650)
 		}
 	})
 }
 
-// CleanupIntents processes a collection of intents by pushing each
-// implicated transaction using the specified pushType. Intents
-// belonging to non-pending transactions after the push are resolved.
-// On success, returns the number of resolved intents. On error, a
-// subset of the intents may have been resolved, but zero will be
-// returned.
 func (ir *IntentResolver) CleanupIntents(
 	ctx context.Context, intents []roachpb.Intent, now hlc.Timestamp, pushType roachpb.PushTxnType,
 ) (int, error) {
+	__antithesis_instrumentation__.Notify(101651)
 	h := roachpb.Header{Timestamp: now}
 
-	// All transactions in MaybePushTransactions will be sent in a single batch.
-	// In order to ensure that progress is made, we want to ensure that this
-	// batch does not become too big as to time out due to a deadline set above
-	// this call. If the attempt to push intents times out before any intents
-	// have been resolved, no progress is made. Since batches are atomic, a
-	// batch that times out has no effect. Hence, we chunk the work to ensure
-	// progress even when a timeout is eventually hit.
 	sort.Sort(intentsByTxn(intents))
 	resolved := 0
 	const skipIfInFlight = true
 	pushTxns := make(map[uuid.UUID]*enginepb.TxnMeta)
 	var resolveIntents []roachpb.LockUpdate
 	for unpushed := intents; len(unpushed) > 0; {
-		for k := range pushTxns { // clear the pushTxns map
+		__antithesis_instrumentation__.Notify(101653)
+		for k := range pushTxns {
+			__antithesis_instrumentation__.Notify(101658)
 			delete(pushTxns, k)
 		}
+		__antithesis_instrumentation__.Notify(101654)
 		var prevTxnID uuid.UUID
 		var i int
 		for i = 0; i < len(unpushed); i++ {
+			__antithesis_instrumentation__.Notify(101659)
 			if curTxn := &unpushed[i].Txn; curTxn.ID != prevTxnID {
+				__antithesis_instrumentation__.Notify(101660)
 				if len(pushTxns) >= MaxTxnsPerIntentCleanupBatch {
+					__antithesis_instrumentation__.Notify(101662)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(101663)
 				}
+				__antithesis_instrumentation__.Notify(101661)
 				prevTxnID = curTxn.ID
 				pushTxns[curTxn.ID] = curTxn
+			} else {
+				__antithesis_instrumentation__.Notify(101664)
 			}
 		}
+		__antithesis_instrumentation__.Notify(101655)
 
 		pushedTxns, pErr := ir.MaybePushTransactions(ctx, pushTxns, h, pushType, skipIfInFlight)
 		if pErr != nil {
+			__antithesis_instrumentation__.Notify(101665)
 			return 0, errors.Wrapf(pErr.GoError(), "failed to push during intent resolution")
+		} else {
+			__antithesis_instrumentation__.Notify(101666)
 		}
+		__antithesis_instrumentation__.Notify(101656)
 		resolveIntents = updateIntentTxnStatus(ctx, pushedTxns, unpushed[:i],
 			skipIfInFlight, resolveIntents[:0])
-		// resolveIntents with poison=true because we're resolving
-		// intents outside of the context of an EndTxn.
-		//
-		// Naively, it doesn't seem like we need to poison the abort
-		// cache since we're pushing with PUSH_TOUCH - meaning that
-		// the primary way our Push leads to aborting intents is that
-		// of the transaction having timed out (and thus presumably no
-		// client being around any more, though at the time of writing
-		// we don't guarantee that). But there are other paths in which
-		// the Push comes back successful while the coordinating client
-		// may still be active. Examples of this are when:
-		//
-		// - the transaction was aborted by someone else, but the
-		//   coordinating client may still be running.
-		// - the transaction entry wasn't written yet, which at the
-		//   time of writing has our push abort it, leading to the
-		//   same situation as above.
-		//
-		// Thus, we must poison.
+
 		opts := ResolveOptions{Poison: true}
 		if pErr := ir.ResolveIntents(ctx, resolveIntents, opts); pErr != nil {
+			__antithesis_instrumentation__.Notify(101667)
 			return 0, errors.Wrapf(pErr.GoError(), "failed to resolve intents")
+		} else {
+			__antithesis_instrumentation__.Notify(101668)
 		}
+		__antithesis_instrumentation__.Notify(101657)
 		resolved += len(resolveIntents)
 		unpushed = unpushed[i:]
 	}
+	__antithesis_instrumentation__.Notify(101652)
 	return resolved, nil
 }
 
-// CleanupTxnIntentsAsync asynchronously cleans up intents owned by a
-// transaction on completion. When all intents have been successfully resolved,
-// the txn record is GC'ed.
-//
-// WARNING: Since this GCs the txn record, it should only be called in response
-// to requests coming from the coordinator or the MVCC GC Queue. We don't want
-// other actors to GC a txn record, since that can cause ambiguities for the
-// coordinator: if it had STAGED the txn, it won't be able to tell the
-// difference between a txn that had been implicitly committed, recovered, and
-// GC'ed, and one that someone else aborted and GC'ed.
 func (ir *IntentResolver) CleanupTxnIntentsAsync(
 	ctx context.Context,
 	rangeID roachpb.RangeID,
 	endTxns []result.EndTxnIntents,
 	allowSyncProcessing bool,
 ) error {
+	__antithesis_instrumentation__.Notify(101669)
 	for i := range endTxns {
+		__antithesis_instrumentation__.Notify(101671)
 		onComplete := func(err error) {
+			__antithesis_instrumentation__.Notify(101673)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(101674)
 				ir.Metrics.FinalizedTxnCleanupFailed.Inc(1)
+			} else {
+				__antithesis_instrumentation__.Notify(101675)
 			}
 		}
-		et := &endTxns[i] // copy for goroutine
+		__antithesis_instrumentation__.Notify(101672)
+		et := &endTxns[i]
 		if err := ir.runAsyncTask(ctx, allowSyncProcessing, func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(101676)
 			locked, release := ir.lockInFlightTxnCleanup(ctx, et.Txn.ID)
 			if !locked {
+				__antithesis_instrumentation__.Notify(101678)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(101679)
 			}
+			__antithesis_instrumentation__.Notify(101677)
 			defer release()
 			if err := ir.cleanupFinishedTxnIntents(
 				ctx, rangeID, et.Txn, et.Poison, onComplete,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(101680)
 				if ir.every.ShouldLog() {
+					__antithesis_instrumentation__.Notify(101681)
 					log.Warningf(ctx, "failed to cleanup transaction intents: %v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(101682)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(101683)
 			}
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(101684)
 			ir.Metrics.FinalizedTxnCleanupFailed.Inc(int64(len(endTxns) - i))
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(101685)
 		}
 	}
+	__antithesis_instrumentation__.Notify(101670)
 	return nil
 }
 
-// lockInFlightTxnCleanup ensures that only a single attempt is being made
-// to cleanup the intents belonging to the specified transaction. Returns
-// whether this attempt to lock succeeded and if so, a function to release
-// the lock, to be invoked subsequently by the caller.
 func (ir *IntentResolver) lockInFlightTxnCleanup(
 	ctx context.Context, txnID uuid.UUID,
 ) (locked bool, release func()) {
+	__antithesis_instrumentation__.Notify(101686)
 	ir.mu.Lock()
 	defer ir.mu.Unlock()
 	_, inFlight := ir.mu.inFlightTxnCleanups[txnID]
 	if inFlight {
+		__antithesis_instrumentation__.Notify(101688)
 		log.Eventf(ctx, "skipping txn resolved; already in flight")
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(101689)
 	}
+	__antithesis_instrumentation__.Notify(101687)
 	ir.mu.inFlightTxnCleanups[txnID] = struct{}{}
 	return true, func() {
+		__antithesis_instrumentation__.Notify(101690)
 		ir.mu.Lock()
 		delete(ir.mu.inFlightTxnCleanups, txnID)
 		ir.mu.Unlock()
 	}
 }
 
-// CleanupTxnIntentsOnGCAsync cleans up extant intents owned by a single
-// transaction, asynchronously (but returning an error if the IntentResolver's
-// semaphore is maxed out). If the transaction is not finalized, but expired, it
-// is pushed first to abort it. onComplete is called if non-nil upon completion
-// of async task with the intention that it be used as a hook to update metrics.
-// It will not be called if an error is returned.
 func (ir *IntentResolver) CleanupTxnIntentsOnGCAsync(
 	ctx context.Context,
 	rangeID roachpb.RangeID,
@@ -624,41 +643,49 @@ func (ir *IntentResolver) CleanupTxnIntentsOnGCAsync(
 	now hlc.Timestamp,
 	onComplete func(pushed, succeeded bool),
 ) error {
+	__antithesis_instrumentation__.Notify(101691)
 	return ir.stopper.RunAsyncTaskEx(
-		// If we've successfully launched a background task,
-		// dissociate this work from our caller's context and
-		// timeout.
+
 		ir.ambientCtx.AnnotateCtx(context.Background()),
 		stop.TaskOpts{
 			TaskName: "processing txn intents",
 			Sem:      ir.sem,
-			// We really do not want to hang up the MVCC GC queue on this kind
-			// of processing, so it's better to just skip txns which we can't
-			// pass to the async processor (wait=false). Their intents will
-			// get cleaned up on demand, and we'll eventually get back to
-			// them. Not much harm in having old txn records lying around in
-			// the meantime.
+
 			WaitForSem: false,
 		},
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(101692)
 			var pushed, succeeded bool
 			defer func() {
+				__antithesis_instrumentation__.Notify(101697)
 				if onComplete != nil {
+					__antithesis_instrumentation__.Notify(101698)
 					onComplete(pushed, succeeded)
+				} else {
+					__antithesis_instrumentation__.Notify(101699)
 				}
 			}()
+			__antithesis_instrumentation__.Notify(101693)
 			locked, release := ir.lockInFlightTxnCleanup(ctx, txn.ID)
 			if !locked {
+				__antithesis_instrumentation__.Notify(101700)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(101701)
 			}
+			__antithesis_instrumentation__.Notify(101694)
 			defer release()
-			// If the transaction is not yet finalized, but expired, push it
-			// before resolving the intents.
+
 			if !txn.Status.IsFinalized() {
+				__antithesis_instrumentation__.Notify(101702)
 				if !txnwait.IsExpired(now, txn) {
+					__antithesis_instrumentation__.Notify(101705)
 					log.VErrEventf(ctx, 3, "cannot push a %s transaction which is not expired: %s", txn.Status, txn)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(101706)
 				}
+				__antithesis_instrumentation__.Notify(101703)
 				b := &kv.Batch{}
 				b.Header.Timestamp = now
 				b.AddRawRequest(&roachpb.PushTxnRequest{
@@ -671,30 +698,46 @@ func (ir *IntentResolver) CleanupTxnIntentsOnGCAsync(
 				})
 				pushed = true
 				if err := ir.db.Run(ctx, b); err != nil {
+					__antithesis_instrumentation__.Notify(101707)
 					log.VErrEventf(ctx, 2, "failed to push %s, expired txn (%s): %s", txn.Status, txn, err)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(101708)
 				}
-				// Update the txn with the result of the push, such that the intents we're about
-				// to resolve get a final status.
+				__antithesis_instrumentation__.Notify(101704)
+
 				finalizedTxn := &b.RawResponse().Responses[0].GetInner().(*roachpb.PushTxnResponse).PusheeTxn
 				txn = txn.Clone()
 				txn.Update(finalizedTxn)
+			} else {
+				__antithesis_instrumentation__.Notify(101709)
 			}
+			__antithesis_instrumentation__.Notify(101695)
 			var onCleanupComplete func(error)
 			if onComplete != nil {
-				onCompleteCopy := onComplete // copy onComplete for use in onCleanupComplete
+				__antithesis_instrumentation__.Notify(101710)
+				onCompleteCopy := onComplete
 				onCleanupComplete = func(err error) {
+					__antithesis_instrumentation__.Notify(101711)
 					onCompleteCopy(pushed, err == nil)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(101712)
 			}
-			// Set onComplete to nil to disable the deferred call as the call has now
-			// been delegated to the callback passed to cleanupFinishedTxnIntents.
+			__antithesis_instrumentation__.Notify(101696)
+
 			onComplete = nil
-			err := ir.cleanupFinishedTxnIntents(ctx, rangeID, txn, false /* poison */, onCleanupComplete)
+			err := ir.cleanupFinishedTxnIntents(ctx, rangeID, txn, false, onCleanupComplete)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(101713)
 				if ir.every.ShouldLog() {
+					__antithesis_instrumentation__.Notify(101714)
 					log.Warningf(ctx, "failed to cleanup transaction intents: %+v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(101715)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(101716)
 			}
 		},
 	)
@@ -703,28 +746,21 @@ func (ir *IntentResolver) CleanupTxnIntentsOnGCAsync(
 func (ir *IntentResolver) gcTxnRecord(
 	ctx context.Context, rangeID roachpb.RangeID, txn *roachpb.Transaction,
 ) error {
-	// We successfully resolved the intents, so we're able to GC from
-	// the txn span directly.
+	__antithesis_instrumentation__.Notify(101717)
+
 	txnKey := keys.TransactionKey(txn.Key, txn.ID)
-	// This is pretty tricky. Transaction keys are range-local and
-	// so they are encoded specially. The key range addressed by
-	// (txnKey, txnKey.Next()) might be empty (since Next() does
-	// not imply monotonicity on the address side). Instead, we
-	// send this request to a range determined using the resolved
-	// transaction anchor, i.e. if the txn is anchored on
-	// /Local/RangeDescriptor/"a"/uuid, the key range below would
-	// be ["a", "a\x00"). However, the first range is special again
-	// because the above procedure results in KeyMin, but we need
-	// at least KeyLocalMax.
-	//
-	// #7880 will address this by making GCRequest less special and
-	// thus obviating the need to cook up an artificial range here.
+
 	var gcArgs roachpb.GCRequest
 	{
+		__antithesis_instrumentation__.Notify(101720)
 		key := keys.MustAddr(txn.Key)
 		if localMax := keys.MustAddr(keys.LocalMax); key.Less(localMax) {
+			__antithesis_instrumentation__.Notify(101722)
 			key = localMax
+		} else {
+			__antithesis_instrumentation__.Notify(101723)
 		}
+		__antithesis_instrumentation__.Notify(101721)
 		endKey := key.Next()
 
 		gcArgs.RequestHeader = roachpb.RequestHeader{
@@ -732,26 +768,23 @@ func (ir *IntentResolver) gcTxnRecord(
 			EndKey: endKey.AsRawKey(),
 		}
 	}
+	__antithesis_instrumentation__.Notify(101718)
 	gcArgs.Keys = append(gcArgs.Keys, roachpb.GCRequest_GCKey{
 		Key: txnKey,
 	})
-	// Although the IntentResolver has a RangeDescriptorCache it could consult to
-	// to determine the range to which this request corresponds, GCRequests are
-	// always issued on behalf of the range on which this record resides which is
-	// a strong signal that it is the range which will contain the transaction
-	// record now.
+
 	_, err := ir.gcBatcher.Send(ctx, rangeID, &gcArgs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(101724)
 		return errors.Wrapf(err, "could not GC completed transaction anchored at %s",
 			roachpb.Key(txn.Key))
+	} else {
+		__antithesis_instrumentation__.Notify(101725)
 	}
+	__antithesis_instrumentation__.Notify(101719)
 	return nil
 }
 
-// cleanupFinishedTxnIntents cleans up a txn's extant intents and, when all
-// intents have been successfully resolved, the transaction record is GC'ed
-// asynchronously. onComplete will be called when all processing has completed
-// which is likely to be after this call returns in the case of success.
 func (ir *IntentResolver) cleanupFinishedTxnIntents(
 	ctx context.Context,
 	rangeID roachpb.RangeID,
@@ -759,115 +792,152 @@ func (ir *IntentResolver) cleanupFinishedTxnIntents(
 	poison bool,
 	onComplete func(error),
 ) (err error) {
+	__antithesis_instrumentation__.Notify(101726)
 	defer func() {
-		// When err is non-nil we are guaranteed that the async task is not started
-		// so there is no race on calling onComplete.
-		if err != nil && onComplete != nil {
+		__antithesis_instrumentation__.Notify(101729)
+
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(101730)
+			return onComplete != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(101731)
 			onComplete(err)
+		} else {
+			__antithesis_instrumentation__.Notify(101732)
 		}
 	}()
-	// Resolve intents.
+	__antithesis_instrumentation__.Notify(101727)
+
 	opts := ResolveOptions{Poison: poison, MinTimestamp: txn.MinTimestamp}
 	if pErr := ir.ResolveIntents(ctx, txn.LocksAsLockUpdates(), opts); pErr != nil {
+		__antithesis_instrumentation__.Notify(101733)
 		return errors.Wrapf(pErr.GoError(), "failed to resolve intents")
+	} else {
+		__antithesis_instrumentation__.Notify(101734)
 	}
-	// Run transaction record GC outside of ir.sem. We need a new context, in case
-	// we're still connected to the client's context (which can happen when
-	// allowSyncProcessing is true). Otherwise, we may return to the caller before
-	// gcTxnRecord completes, which may cancel the context and abort the cleanup
-	// either due to a defer cancel() or client disconnection. We give it a timeout
-	// as well, to avoid goroutine leakage.
+	__antithesis_instrumentation__.Notify(101728)
+
 	return ir.stopper.RunAsyncTask(
 		ir.ambientCtx.AnnotateCtx(context.Background()),
 		"storage.IntentResolver: cleanup txn records",
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(101735)
 			err := contextutil.RunWithTimeout(ctx, "cleanup txn record",
 				gcTxnRecordTimeout, func(ctx context.Context) error {
+					__antithesis_instrumentation__.Notify(101738)
 					return ir.gcTxnRecord(ctx, rangeID, txn)
 				})
+			__antithesis_instrumentation__.Notify(101736)
 			if onComplete != nil {
+				__antithesis_instrumentation__.Notify(101739)
 				onComplete(err)
+			} else {
+				__antithesis_instrumentation__.Notify(101740)
 			}
+			__antithesis_instrumentation__.Notify(101737)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(101741)
 				if ir.every.ShouldLog() {
+					__antithesis_instrumentation__.Notify(101742)
 					log.Warningf(ctx, "failed to gc transaction record: %v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(101743)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(101744)
 			}
 		})
 }
 
-// ResolveOptions is used during intent resolution.
 type ResolveOptions struct {
-	// If set, the abort spans on the ranges containing the intents are to be
-	// poisoned. If the transaction that had laid down this intent is still
-	// running (so this resolving is performed by a pusher) and goes back to these
-	// ranges trying to read one of its old intents, the access will be trapped
-	// and the read will return an error, thus avoiding the read missing to see
-	// its own write.
-	//
-	// This field is ignored for intents that aren't resolved for an ABORTED txn;
-	// in other words, only intents from ABORTED transactions ever poison the
-	// abort spans.
 	Poison bool
-	// The original transaction timestamp from the earliest txn epoch; if
-	// supplied, resolution of intent ranges can be optimized in some cases.
+
 	MinTimestamp hlc.Timestamp
 }
 
-// lookupRangeID maps a key to a RangeID for best effort batching of intent
-// resolution requests.
 func (ir *IntentResolver) lookupRangeID(ctx context.Context, key roachpb.Key) roachpb.RangeID {
+	__antithesis_instrumentation__.Notify(101745)
 	rKey, err := keys.Addr(key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(101748)
 		if ir.every.ShouldLog() {
+			__antithesis_instrumentation__.Notify(101750)
 			log.Warningf(ctx, "failed to resolve addr for key %q: %+v", key, err)
+		} else {
+			__antithesis_instrumentation__.Notify(101751)
 		}
+		__antithesis_instrumentation__.Notify(101749)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(101752)
 	}
+	__antithesis_instrumentation__.Notify(101746)
 	rInfo, err := ir.rdc.Lookup(ctx, rKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(101753)
 		if ir.every.ShouldLog() {
+			__antithesis_instrumentation__.Notify(101755)
 			log.Warningf(ctx, "failed to look up range descriptor for key %q: %+v", key, err)
+		} else {
+			__antithesis_instrumentation__.Notify(101756)
 		}
+		__antithesis_instrumentation__.Notify(101754)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(101757)
 	}
+	__antithesis_instrumentation__.Notify(101747)
 	return rInfo.Desc().RangeID
 }
 
-// ResolveIntent synchronously resolves an intent according to opts.
 func (ir *IntentResolver) ResolveIntent(
 	ctx context.Context, intent roachpb.LockUpdate, opts ResolveOptions,
 ) *roachpb.Error {
+	__antithesis_instrumentation__.Notify(101758)
 	return ir.ResolveIntents(ctx, []roachpb.LockUpdate{intent}, opts)
 }
 
-// ResolveIntents synchronously resolves intents according to opts.
 func (ir *IntentResolver) ResolveIntents(
 	ctx context.Context, intents []roachpb.LockUpdate, opts ResolveOptions,
 ) (pErr *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(101759)
 	if len(intents) == 0 {
+		__antithesis_instrumentation__.Notify(101765)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(101766)
 	}
+	__antithesis_instrumentation__.Notify(101760)
 	defer func() {
+		__antithesis_instrumentation__.Notify(101767)
 		if pErr != nil {
+			__antithesis_instrumentation__.Notify(101768)
 			ir.Metrics.IntentResolutionFailed.Inc(int64(len(intents)))
+		} else {
+			__antithesis_instrumentation__.Notify(101769)
 		}
 	}()
-	// Avoid doing any work on behalf of expired contexts. See
-	// https://github.com/cockroachdb/cockroach/issues/15997.
+	__antithesis_instrumentation__.Notify(101761)
+
 	if err := ctx.Err(); err != nil {
+		__antithesis_instrumentation__.Notify(101770)
 		return roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(101771)
 	}
+	__antithesis_instrumentation__.Notify(101762)
 	log.Eventf(ctx, "resolving intents")
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	respChan := make(chan requestbatcher.Response, len(intents))
 	for _, intent := range intents {
+		__antithesis_instrumentation__.Notify(101772)
 		rangeID := ir.lookupRangeID(ctx, intent.Key)
 		var req roachpb.Request
 		var batcher *requestbatcher.RequestBatcher
 		if len(intent.EndKey) == 0 {
+			__antithesis_instrumentation__.Notify(101774)
 			req = &roachpb.ResolveIntentRequest{
 				RequestHeader:  roachpb.RequestHeaderFromSpan(intent.Span),
 				IntentTxn:      intent.Txn,
@@ -877,6 +947,7 @@ func (ir *IntentResolver) ResolveIntents(
 			}
 			batcher = ir.irBatcher
 		} else {
+			__antithesis_instrumentation__.Notify(101775)
 			req = &roachpb.ResolveIntentRangeRequest{
 				RequestHeader:  roachpb.RequestHeaderFromSpan(intent.Span),
 				IntentTxn:      intent.Txn,
@@ -887,33 +958,50 @@ func (ir *IntentResolver) ResolveIntents(
 			}
 			batcher = ir.irRangeBatcher
 		}
+		__antithesis_instrumentation__.Notify(101773)
 		if err := batcher.SendWithChan(ctx, respChan, rangeID, req); err != nil {
+			__antithesis_instrumentation__.Notify(101776)
 			return roachpb.NewError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(101777)
 		}
 	}
+	__antithesis_instrumentation__.Notify(101763)
 	for seen := 0; seen < len(intents); seen++ {
+		__antithesis_instrumentation__.Notify(101778)
 		select {
 		case resp := <-respChan:
+			__antithesis_instrumentation__.Notify(101779)
 			if resp.Err != nil {
+				__antithesis_instrumentation__.Notify(101783)
 				return roachpb.NewError(resp.Err)
+			} else {
+				__antithesis_instrumentation__.Notify(101784)
 			}
-			_ = resp.Resp // ignore the response
+			__antithesis_instrumentation__.Notify(101780)
+			_ = resp.Resp
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(101781)
 			return roachpb.NewError(ctx.Err())
 		case <-ir.stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(101782)
 			return roachpb.NewErrorf("stopping")
 		}
 	}
+	__antithesis_instrumentation__.Notify(101764)
 	return nil
 }
 
-// intentsByTxn implements sort.Interface to sort intents based on txnID.
 type intentsByTxn []roachpb.Intent
 
 var _ sort.Interface = intentsByTxn(nil)
 
-func (s intentsByTxn) Len() int      { return len(s) }
-func (s intentsByTxn) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s intentsByTxn) Len() int { __antithesis_instrumentation__.Notify(101785); return len(s) }
+func (s intentsByTxn) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(101786)
+	s[i], s[j] = s[j], s[i]
+}
 func (s intentsByTxn) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(101787)
 	return bytes.Compare(s[i].Txn.ID[:], s[j].Txn.ID[:]) < 0
 }

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -54,18 +46,22 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// StartTenant starts a stand-alone SQL server against a KV backend.
 func StartTenant(
 	ctx context.Context,
 	stopper *stop.Stopper,
-	kvClusterName string, // NB: gone after https://github.com/cockroachdb/cockroach/issues/42519
+	kvClusterName string,
 	baseCfg BaseConfig,
 	sqlCfg SQLConfig,
 ) (*SQLServerWrapper, error) {
+	__antithesis_instrumentation__.Notify(238271)
 	sqlServer, authServer, drainServer, pgAddr, httpAddr, err := startTenantInternal(ctx, stopper, kvClusterName, baseCfg, sqlCfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238273)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(238274)
 	}
+	__antithesis_instrumentation__.Notify(238272)
 	return &SQLServerWrapper{
 		SQLServer:   sqlServer,
 		authServer:  authServer,
@@ -75,8 +71,6 @@ func StartTenant(
 	}, err
 }
 
-// SQLServerWrapper is a utility struct that encapsulates
-// a SQLServer and its helpers that make it a networked service.
 type SQLServerWrapper struct {
 	*SQLServer
 	authServer  *authenticationServer
@@ -85,32 +79,17 @@ type SQLServerWrapper struct {
 	httpAddr    string
 }
 
-// Drain idempotently activates the draining mode.
-// Note: new code should not be taught to use this method
-// directly. Use the Drain() RPC instead with a suitably crafted
-// DrainRequest.
-//
-// On failure, the system may be in a partially drained
-// state; the client should either continue calling Drain() or shut
-// down the server.
-//
-// The reporter function, if non-nil, is called for each
-// packet of load shed away from the server during the drain.
-//
-// TODO(knz): This method is currently exported for use by the
-// shutdown code in cli/start.go; however, this is a mis-design. The
-// start code should use the Drain() RPC like quit does.
 func (s *SQLServerWrapper) Drain(
 	ctx context.Context, verbose bool,
 ) (remaining uint64, info redact.RedactableString, err error) {
+	__antithesis_instrumentation__.Notify(238275)
 	return s.drainServer.runDrain(ctx, verbose)
 }
 
-// startTenantInternal is used to build TestServers.
 func startTenantInternal(
 	ctx context.Context,
 	stopper *stop.Stopper,
-	kvClusterName string, // NB: gone after https://github.com/cockroachdb/cockroach/issues/42519
+	kvClusterName string,
 	baseCfg BaseConfig,
 	sqlCfg SQLConfig,
 ) (
@@ -121,91 +100,91 @@ func startTenantInternal(
 	httpAddr string,
 	_ error,
 ) {
+	__antithesis_instrumentation__.Notify(238276)
 	err := ApplyTenantLicense()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238295)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238296)
 	}
+	__antithesis_instrumentation__.Notify(238277)
 
-	// Inform the server identity provider that we're operating
-	// for a tenant server.
 	baseCfg.idProvider.SetTenant(sqlCfg.TenantID)
 
 	args, err := makeTenantSQLServerArgs(ctx, stopper, kvClusterName, baseCfg, sqlCfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238297)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238298)
 	}
+	__antithesis_instrumentation__.Notify(238278)
 	err = args.ValidateAddrs(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238299)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238300)
 	}
+	__antithesis_instrumentation__.Notify(238279)
 	args.monitorAndMetrics = newRootSQLMemoryMonitor(monitorAndMetricsOptions{
 		memoryPoolSize:          args.MemoryPoolSize,
 		histogramWindowInterval: args.HistogramWindowInterval(),
 		settings:                args.Settings,
 	})
 
-	// Initialize gRPC server for use on shared port with pg
 	grpcMain := newGRPCServer(args.rpcContext)
 	grpcMain.setMode(modeOperational)
-	// TODO(harding): Some services (e.g., blob service) don't need to register
-	// a GRPC server. It might be better to use a dummy GRPC service for these.
+
 	args.grpcServer = grpcMain.Server
 
-	// TODO(davidh): Do we need to force this to be false?
 	baseCfg.SplitListenSQL = false
 
-	// Add the server tags to the startup context.
-	//
-	// We use args.BaseConfig here instead of baseCfg directly because
-	// makeTenantSQLArgs defines its own AmbientCtx instance and it's
-	// defined by-value.
 	ctx = args.BaseConfig.AmbientCtx.AnnotateCtx(ctx)
 
-	// Add the server tags to a generic background context for use
-	// by async goroutines.
-	// We can only annotate the context after makeTenantSQLServerArgs
-	// has defined the instance ID container in the AmbientCtx.
 	background := args.BaseConfig.AmbientCtx.AnnotateCtx(context.Background())
 
-	// StartListenRPCAndSQL will replace the SQLAddr fields if we choose
-	// to share the SQL and gRPC port so here, since the tenant config
-	// expects to have port set on the SQL param we transfer those to
-	// the base Addr params in order for the RPC to be configured
-	// correctly.
 	baseCfg.Addr = baseCfg.SQLAddr
 	baseCfg.AdvertiseAddr = baseCfg.SQLAdvertiseAddr
 	pgL, startRPCServer, err := startListenRPCAndSQL(ctx, background, baseCfg, stopper, grpcMain)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238301)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238302)
 	}
 
 	{
+		__antithesis_instrumentation__.Notify(238303)
 		waitQuiesce := func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(238305)
 			<-args.stopper.ShouldQuiesce()
-			// NB: we can't do this as a Closer because (*Server).ServeWith is
-			// running in a worker and usually sits on accept(pgL) which unblocks
-			// only when pgL closes. In other words, pgL needs to close when
-			// quiescing starts to allow that worker to shut down.
+
 			_ = pgL.Close()
 		}
+		__antithesis_instrumentation__.Notify(238304)
 		if err := args.stopper.RunAsyncTask(background, "wait-quiesce-pgl", waitQuiesce); err != nil {
+			__antithesis_instrumentation__.Notify(238306)
 			waitQuiesce(background)
 			return nil, nil, nil, "", "", err
+		} else {
+			__antithesis_instrumentation__.Notify(238307)
 		}
 	}
+	__antithesis_instrumentation__.Notify(238280)
 
 	serverTLSConfig, err := args.rpcContext.GetUIServerTLSConfig()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238308)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238309)
 	}
+	__antithesis_instrumentation__.Notify(238281)
 
 	args.advertiseAddr = baseCfg.AdvertiseAddr
-	// The tenantStatusServer needs access to the sqlServer,
-	// but we also need the same object to set up the sqlServer.
-	// So construct the tenant status server with a nil sqlServer,
-	// and then assign it once an SQL server gets created. We are
-	// going to assume that the tenant status server won't require
-	// the SQL server object.
+
 	tenantStatusServer := newTenantStatusServer(
 		baseCfg.AmbientCtx, &adminPrivilegeChecker{ie: args.circularInternalExecutor},
 		args.sessionRegistry, args.flowScheduler, baseCfg.Settings, nil,
@@ -217,27 +196,28 @@ func startTenantInternal(
 	tenantStatusServer.sqlServer = s
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238310)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238311)
 	}
+	__antithesis_instrumentation__.Notify(238282)
 
 	drainServer = newDrainServer(baseCfg, args.stopper, args.grpc, s)
 
 	tenantAdminServer := newTenantAdminServer(baseCfg.AmbientCtx, s, tenantStatusServer, drainServer)
 
-	// TODO(asubiotto): remove this. Right now it is needed to initialize the
-	// SpanResolver.
 	s.execCfg.DistSQLPlanner.SetSQLInstanceInfo(roachpb.NodeDescriptor{NodeID: 0})
 
 	authServer = newAuthenticationServer(baseCfg.Config, s)
 
-	// Register and start gRPC service on pod. This is separate from the
-	// gRPC + Gateway services configured below.
 	for _, gw := range []grpcGatewayServer{tenantAdminServer, tenantStatusServer, authServer} {
+		__antithesis_instrumentation__.Notify(238312)
 		gw.RegisterService(grpcMain.Server)
 	}
+	__antithesis_instrumentation__.Notify(238283)
 	startRPCServer(background)
 
-	// Begin configuration of GRPC Gateway
 	gwMux, gwCtx, conn, err := configureGRPCGateway(
 		ctx,
 		background,
@@ -248,66 +228,84 @@ func startTenantInternal(
 		baseCfg.AdvertiseAddr,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238313)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238314)
 	}
+	__antithesis_instrumentation__.Notify(238284)
 
 	for _, gw := range []grpcGatewayServer{tenantAdminServer, tenantStatusServer, authServer} {
+		__antithesis_instrumentation__.Notify(238315)
 		if err := gw.RegisterGateway(gwCtx, gwMux, conn); err != nil {
+			__antithesis_instrumentation__.Notify(238316)
 			return nil, nil, nil, "", "", err
+		} else {
+			__antithesis_instrumentation__.Notify(238317)
 		}
 	}
+	__antithesis_instrumentation__.Notify(238285)
 
 	debugServer := debug.NewServer(baseCfg.AmbientCtx, args.Settings, s.pgServer.HBADebugFn(), s.execCfg.SQLStatusServer)
 	adminAuthzCheck := &adminPrivilegeChecker{ie: s.execCfg.InternalExecutor}
 
 	parseNodeIDFn := func(s string) (roachpb.NodeID, bool, error) {
+		__antithesis_instrumentation__.Notify(238318)
 		return roachpb.NodeID(0), false, errors.New("tenants cannot proxy to KV Nodes")
 	}
+	__antithesis_instrumentation__.Notify(238286)
 	getNodeIDHTTPAddressFn := func(id roachpb.NodeID) (*util.UnresolvedAddr, error) {
+		__antithesis_instrumentation__.Notify(238319)
 		return nil, errors.New("tenants cannot proxy to KV Nodes")
 	}
+	__antithesis_instrumentation__.Notify(238287)
 	httpServer := newHTTPServer(baseCfg, args.rpcContext, parseNodeIDFn, getNodeIDHTTPAddressFn)
 
 	httpServer.handleHealth(gwMux)
 
-	// TODO(knz): Add support for the APIv2 tree here.
 	if err := httpServer.setupRoutes(ctx,
-		authServer,      /* authnServer */
-		adminAuthzCheck, /* adminAuthzCheck */
-		args.recorder,   /* metricSource */
-		args.runtime,    /* runtimeStatSampler */
-		gwMux,           /* handleRequestsUnauthenticated */
-		debugServer,     /* handleDebugUnauthenticated */
-		nil,             /* apiServer */
+		authServer,
+		adminAuthzCheck,
+		args.recorder,
+		args.runtime,
+		gwMux,
+		debugServer,
+		nil,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(238320)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238321)
 	}
+	__antithesis_instrumentation__.Notify(238288)
 
 	connManager := netutil.MakeServer(
 		args.stopper,
-		serverTLSConfig,                          // tlsConfig
-		http.HandlerFunc(httpServer.baseHandler), // handler
+		serverTLSConfig,
+		http.HandlerFunc(httpServer.baseHandler),
 	)
 	if err := httpServer.start(ctx, background, connManager, serverTLSConfig, args.stopper); err != nil {
+		__antithesis_instrumentation__.Notify(238322)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238323)
 	}
+	__antithesis_instrumentation__.Notify(238289)
 
 	args.recorder.AddNode(
 		args.registry,
 		roachpb.NodeDescriptor{},
 		timeutil.Now().UnixNano(),
-		baseCfg.AdvertiseAddr,     // advertised addr
-		baseCfg.HTTPAdvertiseAddr, // http addr
-		baseCfg.SQLAdvertiseAddr,  // sql addr
+		baseCfg.AdvertiseAddr,
+		baseCfg.HTTPAdvertiseAddr,
+		baseCfg.SQLAdvertiseAddr,
 	)
 
 	const (
-		socketFile = "" // no unix socket
+		socketFile = ""
 	)
 	orphanedLeasesTimeThresholdNanos := args.clock.Now().WallTime
 
-	// TODO(tbg): the log dir is not configurable at this point
-	// since it is integrated too tightly with the `./cockroach start` command.
 	if err := startSampleEnvironment(ctx,
 		args.Settings,
 		args.stopper,
@@ -316,8 +314,12 @@ func startTenantInternal(
 		args.runtime,
 		args.sessionRegistry,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(238324)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238325)
 	}
+	__antithesis_instrumentation__.Notify(238290)
 
 	if err := s.preStart(ctx,
 		args.stopper,
@@ -327,19 +329,29 @@ func startTenantInternal(
 		socketFile,
 		orphanedLeasesTimeThresholdNanos,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(238326)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238327)
 	}
+	__antithesis_instrumentation__.Notify(238291)
 
 	externalUsageFn := func(ctx context.Context) multitenant.ExternalUsage {
+		__antithesis_instrumentation__.Notify(238328)
 		userTimeMillis, _, err := status.GetCPUTime(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(238330)
 			log.Ops.Errorf(ctx, "unable to get cpu usage: %v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(238331)
 		}
+		__antithesis_instrumentation__.Notify(238329)
 		return multitenant.ExternalUsage{
 			CPUSecs:           float64(userTimeMillis) * 1e-3,
 			PGWireEgressBytes: s.pgServer.BytesOut(),
 		}
 	}
+	__antithesis_instrumentation__.Notify(238292)
 
 	nextLiveInstanceIDFn := makeNextLiveInstanceIDFn(s.sqlInstanceProvider, s.SQLInstanceID())
 
@@ -347,16 +359,24 @@ func startTenantInternal(
 		ctx, args.stopper, s.SQLInstanceID(), s.sqlLivenessSessionID,
 		externalUsageFn, nextLiveInstanceIDFn,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(238332)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238333)
 	}
+	__antithesis_instrumentation__.Notify(238293)
 
 	if err := s.startServeSQL(ctx,
 		args.stopper,
 		s.connManager,
 		s.pgL,
 		socketFile); err != nil {
+		__antithesis_instrumentation__.Notify(238334)
 		return nil, nil, nil, "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(238335)
 	}
+	__antithesis_instrumentation__.Notify(238294)
 
 	return s, authServer, drainServer, baseCfg.SQLAddr, baseCfg.HTTPAddr, nil
 }
@@ -368,18 +388,12 @@ func makeTenantSQLServerArgs(
 	baseCfg BaseConfig,
 	sqlCfg SQLConfig,
 ) (sqlServerArgs, error) {
+	__antithesis_instrumentation__.Notify(238336)
 	st := baseCfg.Settings
 
-	// We want all log messages issued on behalf of this SQL instance to report
-	// the instance ID (once known) as a tag.
 	instanceIDContainer := baseCfg.IDContainer.SwitchToSQLIDContainer()
 	startupCtx = baseCfg.AmbientCtx.AnnotateCtx(startupCtx)
 
-	// TODO(tbg): this is needed so that the RPC heartbeats between the testcluster
-	// and this tenant work.
-	//
-	// TODO(tbg): address this when we introduce the real tenant RPCs in:
-	// https://github.com/cockroachdb/cockroach/issues/47898
 	baseCfg.ClusterName = kvClusterName
 
 	clock := hlc.NewClock(hlc.UnixNano, time.Duration(baseCfg.MaxOffset))
@@ -388,8 +402,12 @@ func makeTenantSQLServerArgs(
 
 	var rpcTestingKnobs rpc.ContextTestingKnobs
 	if p, ok := baseCfg.TestingKnobs.Server.(*TestingKnobs); ok {
+		__antithesis_instrumentation__.Notify(238345)
 		rpcTestingKnobs = p.ContextTestingKnobs
+	} else {
+		__antithesis_instrumentation__.Notify(238346)
 	}
+	__antithesis_instrumentation__.Notify(238337)
 	rpcContext := rpc.NewContext(startupCtx, rpc.ContextOptions{
 		TenantID:         sqlCfg.TenantID,
 		NodeID:           baseCfg.IDContainer,
@@ -403,8 +421,12 @@ func makeTenantSQLServerArgs(
 
 	var dsKnobs kvcoord.ClientTestingKnobs
 	if dsKnobsP, ok := baseCfg.TestingKnobs.DistSQL.(*kvcoord.ClientTestingKnobs); ok {
+		__antithesis_instrumentation__.Notify(238347)
 		dsKnobs = *dsKnobsP
+	} else {
+		__antithesis_instrumentation__.Notify(238348)
 	}
+	__antithesis_instrumentation__.Notify(238338)
 	rpcRetryOptions := base.DefaultRetryOptions()
 
 	tcCfg := kvtenant.ConnectorConfig{
@@ -416,20 +438,34 @@ func makeTenantSQLServerArgs(
 	}
 	tenantConnect, err := kvtenant.Factory.NewConnector(tcCfg, sqlCfg.TenantKVAddrs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238349)
 		return sqlServerArgs{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(238350)
 	}
+	__antithesis_instrumentation__.Notify(238339)
 	resolver := kvtenant.AddressResolver(tenantConnect)
 	nodeDialer := nodedialer.New(rpcContext, resolver)
 
 	provider := kvtenant.TokenBucketProvider(tenantConnect)
-	if tenantKnobs, ok := baseCfg.TestingKnobs.TenantTestingKnobs.(*sql.TenantTestingKnobs); ok &&
-		tenantKnobs.OverrideTokenBucketProvider != nil {
+	if tenantKnobs, ok := baseCfg.TestingKnobs.TenantTestingKnobs.(*sql.TenantTestingKnobs); ok && func() bool {
+		__antithesis_instrumentation__.Notify(238351)
+		return tenantKnobs.OverrideTokenBucketProvider != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(238352)
 		provider = tenantKnobs.OverrideTokenBucketProvider(provider)
+	} else {
+		__antithesis_instrumentation__.Notify(238353)
 	}
+	__antithesis_instrumentation__.Notify(238340)
 	costController, err := NewTenantSideCostController(st, sqlCfg.TenantID, provider)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238354)
 		return sqlServerArgs{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(238355)
 	}
+	__antithesis_instrumentation__.Notify(238341)
 
 	dsCfg := kvcoord.DistSenderConfig{
 		AmbientCtx:        baseCfg.AmbientCtx,
@@ -447,8 +483,12 @@ func makeTenantSQLServerArgs(
 
 	var clientKnobs kvcoord.ClientTestingKnobs
 	if p, ok := baseCfg.TestingKnobs.KVClient.(*kvcoord.ClientTestingKnobs); ok {
+		__antithesis_instrumentation__.Notify(238356)
 		clientKnobs = *p
+	} else {
+		__antithesis_instrumentation__.Notify(238357)
 	}
+	__antithesis_instrumentation__.Notify(238342)
 
 	txnMetrics := kvcoord.MakeTxnMetrics(baseCfg.HistogramWindowInterval())
 	registry.AddMetricStruct(txnMetrics)
@@ -469,8 +509,12 @@ func makeTenantSQLServerArgs(
 	rangeFeedKnobs, _ := baseCfg.TestingKnobs.RangeFeed.(*rangefeed.TestingKnobs)
 	rangeFeedFactory, err := rangefeed.NewFactory(stopper, db, st, rangeFeedKnobs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238358)
 		return sqlServerArgs{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(238359)
 	}
+	__antithesis_instrumentation__.Notify(238343)
 
 	systemConfigWatcher := systemconfigwatcher.NewWithAdditionalProvider(
 		keys.MakeSQLCodec(sqlCfg.TenantID), clock, rangeFeedFactory, &baseCfg.DefaultZoneConfig,
@@ -480,7 +524,6 @@ func makeTenantSQLServerArgs(
 	circularInternalExecutor := &sql.InternalExecutor{}
 	circularJobRegistry := &jobs.Registry{}
 
-	// Initialize the protectedts subsystem in multi-tenant clusters.
 	var protectedTSProvider protectedts.Provider
 	protectedtsKnobs, _ := baseCfg.TestingKnobs.ProtectedTS.(*protectedts.TestingKnobs)
 	pp, err := ptprovider.New(ptprovider.Config{
@@ -496,8 +539,12 @@ func makeTenantSQLServerArgs(
 		},
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238360)
 		return sqlServerArgs{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(238361)
 	}
+	__antithesis_instrumentation__.Notify(238344)
 	registry.AddMetricStruct(pp.Metrics())
 	protectedTSProvider = tenantProtectedTSProvider{Provider: pp, st: st}
 
@@ -522,8 +569,7 @@ func makeTenantSQLServerArgs(
 	)
 
 	grpcServer := newGRPCServer(rpcContext)
-	// In a SQL-only server, there is no separate node initialization
-	// phase. Start RPC immediately in the operational state.
+
 	grpcServer.setMode(modeOperational)
 
 	sessionRegistry := sql.NewSessionRegistry()
@@ -535,12 +581,12 @@ func makeTenantSQLServerArgs(
 			gossip:            gossip.MakeOptionalGossip(nil),
 			grpcServer:        grpcServer.Server,
 			isMeta1Leaseholder: func(_ context.Context, _ hlc.ClockTimestamp) (bool, error) {
+				__antithesis_instrumentation__.Notify(238362)
 				return false, errors.New("isMeta1Leaseholder is not available to secondary tenants")
 			},
 			externalStorage:        externalStorage,
 			externalStorageFromURI: externalStorageFromURI,
-			// Set instance ID to 0 and node ID to nil to indicate
-			// that the instance ID will be bound later during preStart.
+
 			nodeIDContainer:      instanceIDContainer,
 			spanConfigKVAccessor: tenantConnect,
 			kvStoresIterator:     kvserverbase.UnsupportedStoresIterator{},
@@ -578,49 +624,75 @@ func makeTenantSQLServerArgs(
 func makeNextLiveInstanceIDFn(
 	sqlInstanceProvider sqlinstance.Provider, instanceID base.SQLInstanceID,
 ) multitenant.NextLiveInstanceIDFn {
+	__antithesis_instrumentation__.Notify(238363)
 	return func(ctx context.Context) base.SQLInstanceID {
+		__antithesis_instrumentation__.Notify(238364)
 		instances, err := sqlInstanceProvider.GetAllInstances(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(238369)
 			log.Infof(ctx, "GetAllInstances failed: %v", err)
 			return 0
+		} else {
+			__antithesis_instrumentation__.Notify(238370)
 		}
+		__antithesis_instrumentation__.Notify(238365)
 		if len(instances) == 0 {
+			__antithesis_instrumentation__.Notify(238371)
 			return 0
+		} else {
+			__antithesis_instrumentation__.Notify(238372)
 		}
-		// Find the next ID in circular order.
+		__antithesis_instrumentation__.Notify(238366)
+
 		var minID, nextID base.SQLInstanceID
 		for i := range instances {
+			__antithesis_instrumentation__.Notify(238373)
 			id := instances[i].InstanceID
-			if minID == 0 || minID > id {
+			if minID == 0 || func() bool {
+				__antithesis_instrumentation__.Notify(238375)
+				return minID > id == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(238376)
 				minID = id
+			} else {
+				__antithesis_instrumentation__.Notify(238377)
 			}
-			if id > instanceID && (nextID == 0 || nextID > id) {
+			__antithesis_instrumentation__.Notify(238374)
+			if id > instanceID && func() bool {
+				__antithesis_instrumentation__.Notify(238378)
+				return (nextID == 0 || func() bool {
+					__antithesis_instrumentation__.Notify(238379)
+					return nextID > id == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(238380)
 				nextID = id
+			} else {
+				__antithesis_instrumentation__.Notify(238381)
 			}
 		}
+		__antithesis_instrumentation__.Notify(238367)
 		if nextID == 0 {
+			__antithesis_instrumentation__.Notify(238382)
 			return minID
+		} else {
+			__antithesis_instrumentation__.Notify(238383)
 		}
+		__antithesis_instrumentation__.Notify(238368)
 		return nextID
 	}
 }
 
-// NewTenantSideCostController is a hook for CCL code which implements the
-// controller.
 var NewTenantSideCostController = func(
 	st *cluster.Settings, tenantID roachpb.TenantID, provider kvtenant.TokenBucketProvider,
 ) (multitenant.TenantSideCostController, error) {
-	// Return a no-op implementation.
+	__antithesis_instrumentation__.Notify(238384)
+
 	return noopTenantSideCostController{}, nil
 }
 
-// ApplyTenantLicense is a hook for CCL code which enables enterprise features
-// for the tenant process if the COCKROACH_TENANT_LICENSE environment variable
-// is set.
-var ApplyTenantLicense = func() error { return nil /* no-op */ }
+var ApplyTenantLicense = func() error { __antithesis_instrumentation__.Notify(238385); return nil }
 
-// noopTenantSideCostController is a no-op implementation of
-// TenantSideCostController.
 type noopTenantSideCostController struct{}
 
 var _ multitenant.TenantSideCostController = noopTenantSideCostController{}
@@ -633,16 +705,19 @@ func (noopTenantSideCostController) Start(
 	externalUsageFn multitenant.ExternalUsageFn,
 	nextLiveInstanceIDFn multitenant.NextLiveInstanceIDFn,
 ) error {
+	__antithesis_instrumentation__.Notify(238386)
 	return nil
 }
 
 func (noopTenantSideCostController) OnRequestWait(
 	ctx context.Context, info tenantcostmodel.RequestInfo,
 ) error {
+	__antithesis_instrumentation__.Notify(238387)
 	return nil
 }
 
 func (noopTenantSideCostController) OnResponse(
 	ctx context.Context, req tenantcostmodel.RequestInfo, resp tenantcostmodel.ResponseInfo,
 ) {
+	__antithesis_instrumentation__.Notify(238388)
 }

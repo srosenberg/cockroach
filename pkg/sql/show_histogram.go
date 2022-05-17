@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,9 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Ideally, we would want upper_bound to have the type of the column the
-// histogram is on. However, we don't want to have a SHOW statement for which
-// the schema depends on its parameters.
 var showHistogramColumns = colinfo.ResultColumns{
 	{Name: "upper_bound", Typ: types.String},
 	{Name: "range_rows", Typ: types.Int},
@@ -36,14 +25,14 @@ var showHistogramColumns = colinfo.ResultColumns{
 	{Name: "equal_rows", Typ: types.Int},
 }
 
-// ShowHistogram returns a SHOW HISTOGRAM statement.
-// Privileges: Any privilege on the respective table.
 func (p *planner) ShowHistogram(ctx context.Context, n *tree.ShowHistogram) (planNode, error) {
+	__antithesis_instrumentation__.Notify(623193)
 	return &delayedNode{
 		name:    fmt.Sprintf("SHOW HISTOGRAM %d", n.HistogramID),
 		columns: showHistogramColumns,
 
 		constructor: func(ctx context.Context, p *planner) (planNode, error) {
+			__antithesis_instrumentation__.Notify(623194)
 			row, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.QueryRowEx(
 				ctx,
 				"read-histogram",
@@ -55,34 +44,59 @@ func (p *planner) ShowHistogram(ctx context.Context, n *tree.ShowHistogram) (pla
 				n.HistogramID,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(623201)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(623202)
 			}
+			__antithesis_instrumentation__.Notify(623195)
 			if row == nil {
+				__antithesis_instrumentation__.Notify(623203)
 				return nil, fmt.Errorf("histogram %d not found", n.HistogramID)
+			} else {
+				__antithesis_instrumentation__.Notify(623204)
 			}
+			__antithesis_instrumentation__.Notify(623196)
 			if len(row) != 1 {
+				__antithesis_instrumentation__.Notify(623205)
 				return nil, errors.AssertionFailedf("expected 1 column from internal query")
+			} else {
+				__antithesis_instrumentation__.Notify(623206)
 			}
+			__antithesis_instrumentation__.Notify(623197)
 			if row[0] == tree.DNull {
-				// We found a statistic, but it has no histogram.
+				__antithesis_instrumentation__.Notify(623207)
+
 				return nil, fmt.Errorf("histogram %d not found", n.HistogramID)
+			} else {
+				__antithesis_instrumentation__.Notify(623208)
 			}
+			__antithesis_instrumentation__.Notify(623198)
 
 			histogram := &stats.HistogramData{}
 			histData := *row[0].(*tree.DBytes)
 			if err := protoutil.Unmarshal([]byte(histData), histogram); err != nil {
+				__antithesis_instrumentation__.Notify(623209)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(623210)
 			}
+			__antithesis_instrumentation__.Notify(623199)
 
 			v := p.newContainerValuesNode(showHistogramColumns, 0)
 			for _, b := range histogram.Buckets {
+				__antithesis_instrumentation__.Notify(623211)
 				ed, _, err := rowenc.EncDatumFromBuffer(
 					histogram.ColumnType, descpb.DatumEncoding_ASCENDING_KEY, b.UpperBound,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(623213)
 					v.Close(ctx)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(623214)
 				}
+				__antithesis_instrumentation__.Notify(623212)
 				row := tree.Datums{
 					tree.NewDString(ed.String(histogram.ColumnType)),
 					tree.NewDInt(tree.DInt(b.NumRange)),
@@ -90,10 +104,14 @@ func (p *planner) ShowHistogram(ctx context.Context, n *tree.ShowHistogram) (pla
 					tree.NewDInt(tree.DInt(b.NumEq)),
 				}
 				if _, err := v.rows.AddRow(ctx, row); err != nil {
+					__antithesis_instrumentation__.Notify(623215)
 					v.Close(ctx)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(623216)
 				}
 			}
+			__antithesis_instrumentation__.Notify(623200)
 			return v, nil
 		},
 	}, nil

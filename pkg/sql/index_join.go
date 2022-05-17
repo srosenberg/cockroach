@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,21 +10,15 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// indexJoinNode implements joining of results from an index with the rows
-// of a table. The input to an indexJoinNode is the result of scanning a
-// non-covering index (potentially processed through other operations like
-// filtering, sorting, limiting).
 type indexJoinNode struct {
 	input planNode
 
-	// Indices of the PK columns in the input plan.
 	keyCols []int
 
 	table *scanNode
 
-	// The columns returned by this node.
 	cols []catalog.Column
-	// There is a 1-1 correspondence between cols and resultColumns.
+
 	resultColumns colinfo.ResultColumns
 
 	reqOrdering ReqOrdering
@@ -41,18 +27,22 @@ type indexJoinNode struct {
 }
 
 func (n *indexJoinNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(496703)
 	panic("indexJoinNode cannot be run in local mode")
 }
 
 func (n *indexJoinNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(496704)
 	panic("indexJoinNode cannot be run in local mode")
 }
 
 func (n *indexJoinNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(496705)
 	panic("indexJoinNode cannot be run in local mode")
 }
 
 func (n *indexJoinNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(496706)
 	n.input.Close(ctx)
 	n.table.Close(ctx)
 }

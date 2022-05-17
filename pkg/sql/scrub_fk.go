@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,7 +14,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
-// sqlForeignKeyCheckOperation is a check on an indexes physical data.
 type sqlForeignKeyCheckOperation struct {
 	tableName           *tree.TableName
 	tableDesc           catalog.TableDescriptor
@@ -35,8 +26,6 @@ type sqlForeignKeyCheckOperation struct {
 	run sqlForeignKeyConstraintCheckRun
 }
 
-// sqlForeignKeyConstraintCheckRun contains the run-time state for
-// sqlForeignKeyConstraintCheckOperation during local execution.
 type sqlForeignKeyConstraintCheckRun struct {
 	started  bool
 	rows     []tree.Datums
@@ -49,6 +38,7 @@ func newSQLForeignKeyCheckOperation(
 	constraint descpb.ConstraintDetail,
 	asOf hlc.Timestamp,
 ) *sqlForeignKeyCheckOperation {
+	__antithesis_instrumentation__.Notify(595642)
 	return &sqlForeignKeyCheckOperation{
 		tableName:           tableName,
 		tableDesc:           tableDesc,
@@ -58,77 +48,108 @@ func newSQLForeignKeyCheckOperation(
 	}
 }
 
-// Start implements the checkOperation interface.
-// It creates a query string and generates a plan from it, which then
-// runs in the distSQL execution engine.
 func (o *sqlForeignKeyCheckOperation) Start(params runParams) error {
+	__antithesis_instrumentation__.Notify(595643)
 	ctx := params.ctx
 
 	checkQuery, _, err := nonMatchingRowQuery(
 		o.tableDesc,
 		o.constraint.FK,
 		o.referencedTableDesc,
-		false, /* limitResults */
+		false,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595649)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(595650)
 	}
+	__antithesis_instrumentation__.Notify(595644)
 
 	rows, err := params.extendedEvalCtx.ExecCfg.InternalExecutor.QueryBuffered(
 		ctx, "scrub-fk", params.p.txn, checkQuery,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595651)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(595652)
 	}
+	__antithesis_instrumentation__.Notify(595645)
 	o.run.rows = rows
 
-	if len(o.constraint.FK.OriginColumnIDs) > 1 && o.constraint.FK.Match == descpb.ForeignKeyReference_FULL {
-		// Check if there are any disallowed references where some columns are NULL
-		// and some aren't.
+	if len(o.constraint.FK.OriginColumnIDs) > 1 && func() bool {
+		__antithesis_instrumentation__.Notify(595653)
+		return o.constraint.FK.Match == descpb.ForeignKeyReference_FULL == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(595654)
+
 		checkNullsQuery, _, err := matchFullUnacceptableKeyQuery(
 			o.tableDesc,
 			o.constraint.FK,
-			false, /* limitResults */
+			false,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(595657)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(595658)
 		}
+		__antithesis_instrumentation__.Notify(595655)
 		rows, err := params.extendedEvalCtx.ExecCfg.InternalExecutor.QueryBuffered(
 			ctx, "scrub-fk", params.p.txn, checkNullsQuery,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(595659)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(595660)
 		}
+		__antithesis_instrumentation__.Notify(595656)
 		o.run.rows = append(o.run.rows, rows...)
+	} else {
+		__antithesis_instrumentation__.Notify(595661)
 	}
+	__antithesis_instrumentation__.Notify(595646)
 
-	// Get primary key columns not included in the FK.
 	var colIDs []descpb.ColumnID
 	colIDs = append(colIDs, o.constraint.FK.OriginColumnIDs...)
 	for i := 0; i < o.tableDesc.GetPrimaryIndex().NumKeyColumns(); i++ {
+		__antithesis_instrumentation__.Notify(595662)
 		pkColID := o.tableDesc.GetPrimaryIndex().GetKeyColumnID(i)
 		found := false
 		for _, id := range o.constraint.FK.OriginColumnIDs {
+			__antithesis_instrumentation__.Notify(595664)
 			if pkColID == id {
+				__antithesis_instrumentation__.Notify(595665)
 				found = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(595666)
 			}
 		}
+		__antithesis_instrumentation__.Notify(595663)
 		if !found {
+			__antithesis_instrumentation__.Notify(595667)
 			colIDs = append(colIDs, pkColID)
+		} else {
+			__antithesis_instrumentation__.Notify(595668)
 		}
 	}
+	__antithesis_instrumentation__.Notify(595647)
 
 	for i, id := range colIDs {
+		__antithesis_instrumentation__.Notify(595669)
 		o.colIDToRowIdx.Set(id, i)
 	}
+	__antithesis_instrumentation__.Notify(595648)
 
 	o.run.started = true
 	return nil
 }
 
-// Next implements the checkOperation interface.
 func (o *sqlForeignKeyCheckOperation) Next(params runParams) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(595670)
 	row := o.run.rows[o.run.rowIndex]
 	o.run.rowIndex++
 
@@ -137,60 +158,86 @@ func (o *sqlForeignKeyCheckOperation) Next(params runParams) (tree.Datums, error
 	details["row_data"] = rowDetails
 	details["constraint_name"] = o.constraint.FK.Name
 
-	// Collect the primary index values for generating the primary key
-	// pretty string.
 	primaryKeyDatums := make(tree.Datums, 0, o.tableDesc.GetPrimaryIndex().NumKeyColumns())
 	for i := 0; i < o.tableDesc.GetPrimaryIndex().NumKeyColumns(); i++ {
+		__antithesis_instrumentation__.Notify(595676)
 		id := o.tableDesc.GetPrimaryIndex().GetKeyColumnID(i)
 		idx := o.colIDToRowIdx.GetDefault(id)
 		primaryKeyDatums = append(primaryKeyDatums, row[idx])
 	}
+	__antithesis_instrumentation__.Notify(595671)
 
-	// Collect all of the values fetched from the index to generate a
-	// pretty JSON dictionary for row_data.
 	for _, id := range o.constraint.FK.OriginColumnIDs {
+		__antithesis_instrumentation__.Notify(595677)
 		idx := o.colIDToRowIdx.GetDefault(id)
 		col, err := tabledesc.FindPublicColumnWithID(o.tableDesc, id)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(595679)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(595680)
 		}
+		__antithesis_instrumentation__.Notify(595678)
 		rowDetails[col.GetName()] = row[idx].String()
 	}
+	__antithesis_instrumentation__.Notify(595672)
 	for i := 0; i < o.tableDesc.GetPrimaryIndex().NumKeyColumns(); i++ {
+		__antithesis_instrumentation__.Notify(595681)
 		id := o.tableDesc.GetPrimaryIndex().GetKeyColumnID(i)
 		found := false
 		for _, fkID := range o.constraint.FK.OriginColumnIDs {
+			__antithesis_instrumentation__.Notify(595683)
 			if id == fkID {
+				__antithesis_instrumentation__.Notify(595684)
 				found = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(595685)
 			}
 		}
+		__antithesis_instrumentation__.Notify(595682)
 		if !found {
+			__antithesis_instrumentation__.Notify(595686)
 			idx := o.colIDToRowIdx.GetDefault(id)
 			col, err := tabledesc.FindPublicColumnWithID(o.tableDesc, id)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(595688)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(595689)
 			}
+			__antithesis_instrumentation__.Notify(595687)
 			rowDetails[col.GetName()] = row[idx].String()
+		} else {
+			__antithesis_instrumentation__.Notify(595690)
 		}
 	}
+	__antithesis_instrumentation__.Notify(595673)
 
 	detailsJSON, err := tree.MakeDJSON(details)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595691)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(595692)
 	}
+	__antithesis_instrumentation__.Notify(595674)
 
 	ts, err := tree.MakeDTimestamp(
 		params.extendedEvalCtx.GetStmtTimestamp(),
 		time.Nanosecond,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595693)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(595694)
 	}
+	__antithesis_instrumentation__.Notify(595675)
 
 	return tree.Datums{
-		// TODO(joey): Add the job UUID once the SCRUB command uses jobs.
-		tree.DNull, /* job_uuid */
+
+		tree.DNull,
 		tree.NewDString(scrub.ForeignKeyConstraintViolation),
 		tree.NewDString(o.tableName.Catalog()),
 		tree.NewDString(o.tableName.Table()),
@@ -201,17 +248,20 @@ func (o *sqlForeignKeyCheckOperation) Next(params runParams) (tree.Datums, error
 	}, nil
 }
 
-// Started implements the checkOperation interface.
 func (o *sqlForeignKeyCheckOperation) Started() bool {
+	__antithesis_instrumentation__.Notify(595695)
 	return o.run.started
 }
 
-// Done implements the checkOperation interface.
 func (o *sqlForeignKeyCheckOperation) Done(ctx context.Context) bool {
-	return o.run.rows == nil || o.run.rowIndex >= len(o.run.rows)
+	__antithesis_instrumentation__.Notify(595696)
+	return o.run.rows == nil || func() bool {
+		__antithesis_instrumentation__.Notify(595697)
+		return o.run.rowIndex >= len(o.run.rows) == true
+	}() == true
 }
 
-// Close implements the checkOperation interface.
 func (o *sqlForeignKeyCheckOperation) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(595698)
 	o.run.rows = nil
 }

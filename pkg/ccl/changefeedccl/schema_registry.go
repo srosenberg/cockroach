@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -29,15 +23,8 @@ import (
 const confluentSchemaContentType = `application/vnd.schemaregistry.v1+json`
 
 type schemaRegistry interface {
-	// Ping tests the connectivity to the schema registry. A nil
-	// error is returned if the schema registry appears to be
-	// available.
 	Ping(ctx context.Context) error
 
-	// RegisterSchemaForSubject registers the given schema for the
-	// given subject. The returned int32 is a schema ID that can
-	// be used in Avro wire messages or in other calls to the
-	// schema registry.
 	RegisterSchemaForSubject(ctx context.Context, subject string, schema string) (int32, error)
 }
 
@@ -51,9 +38,7 @@ type confluentSchemaVersionResponse struct {
 
 type confluentSchemaRegistry struct {
 	baseURL *url.URL
-	// The current defaults for httputil.Client sets
-	// DisableKeepAlive's true so we don't have persistent
-	// connections to clean up on teardown.
+
 	client    *httputil.Client
 	retryOpts retry.Options
 }
@@ -61,32 +46,54 @@ type confluentSchemaRegistry struct {
 var _ schemaRegistry = (*confluentSchemaRegistry)(nil)
 
 func newConfluentSchemaRegistry(baseURL string) (*confluentSchemaRegistry, error) {
+	__antithesis_instrumentation__.Notify(17644)
 	u, err := url.Parse(baseURL)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(17649)
 		return nil, errors.Wrap(err, "malformed schema registry url")
+	} else {
+		__antithesis_instrumentation__.Notify(17650)
 	}
+	__antithesis_instrumentation__.Notify(17645)
 
-	if u.Scheme != "http" && u.Scheme != "https" {
+	if u.Scheme != "http" && func() bool {
+		__antithesis_instrumentation__.Notify(17651)
+		return u.Scheme != "https" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(17652)
 		return nil, errors.Errorf("unsupported scheme: %q", u.Scheme)
+	} else {
+		__antithesis_instrumentation__.Notify(17653)
 	}
+	__antithesis_instrumentation__.Notify(17646)
 
 	query := u.Query()
 	var caCert []byte
 	if caCertString := query.Get(changefeedbase.RegistryParamCACert); caCertString != "" {
+		__antithesis_instrumentation__.Notify(17654)
 		err := decodeBase64FromString(caCertString, &caCert)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(17655)
 			return nil, errors.Wrapf(err, "param %s must be base 64 encoded", changefeedbase.RegistryParamCACert)
+		} else {
+			__antithesis_instrumentation__.Notify(17656)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(17657)
 	}
-	// remove query param to ensure compatibility with schema
-	// registry implementation
+	__antithesis_instrumentation__.Notify(17647)
+
 	query.Del(changefeedbase.RegistryParamCACert)
 	u.RawQuery = query.Encode()
 
 	httpClient, err := setupHTTPClient(u, caCert)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(17658)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(17659)
 	}
+	__antithesis_instrumentation__.Notify(17648)
 
 	retryOpts := base.DefaultRetryOptions()
 	retryOpts.MaxRetries = 2
@@ -97,130 +104,162 @@ func newConfluentSchemaRegistry(baseURL string) (*confluentSchemaRegistry, error
 	}, nil
 }
 
-// Setup the httputil.Client to use when dialing Confluent schema registry. If `ca_cert`
-// is set as a query param in the registry URL, client should trust the corresponding
-// cert while dialing. Otherwise, use the DefaultClient.
 func setupHTTPClient(baseURL *url.URL, caCert []byte) (*httputil.Client, error) {
+	__antithesis_instrumentation__.Notify(17660)
 	if caCert != nil {
+		__antithesis_instrumentation__.Notify(17662)
 		httpClient, err := newClientFromTLSKeyPair(caCert)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(17665)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(17666)
 		}
+		__antithesis_instrumentation__.Notify(17663)
 		if baseURL.Scheme == "http" {
+			__antithesis_instrumentation__.Notify(17667)
 			log.Warningf(context.Background(), "CA certificate provided but schema registry %s uses HTTP", baseURL)
+		} else {
+			__antithesis_instrumentation__.Notify(17668)
 		}
+		__antithesis_instrumentation__.Notify(17664)
 		return httpClient, nil
+	} else {
+		__antithesis_instrumentation__.Notify(17669)
 	}
+	__antithesis_instrumentation__.Notify(17661)
 	return httputil.DefaultClient, nil
 }
 
-// Ping checks connectivity to the schema registry using the /mode
-// endpoint. Note that we only return an error if there was an error
-// making a request or if the server returns a response in the 500-599
-// range. We consider 404s and other errors as success to avoid
-// failing for schema registries that don't implement the /mode
-// endoint.
 func (r *confluentSchemaRegistry) Ping(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(17670)
 	u := r.urlForPath("mode")
 	return r.doWithRetry(ctx, func() error {
+		__antithesis_instrumentation__.Notify(17671)
 		resp, err := r.client.Get(ctx, u)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(17674)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(17675)
 		}
+		__antithesis_instrumentation__.Notify(17672)
 		defer gracefulClose(ctx, resp.Body)
-		// We allow other non-Success statuses because we
-		// don't care about the response here, only that the
-		// service is up.
+
 		if resp.StatusCode >= 500 {
+			__antithesis_instrumentation__.Notify(17676)
 			return errors.Errorf("unexpected schema registry response: %s", resp.Status)
+		} else {
+			__antithesis_instrumentation__.Notify(17677)
 		}
+		__antithesis_instrumentation__.Notify(17673)
 		return nil
 	})
 }
 
-// RegisterSchemaForSubject registers the given schema for the given
-// subject. The schema type is assumed to be AVRO.
-//
-//   https://docs.confluent.io/platform/current/schema-registry/develop/api.html#post--subjects-(string-%20subject)-versions
-//
 func (r *confluentSchemaRegistry) RegisterSchemaForSubject(
 	ctx context.Context, subject string, schema string,
 ) (int32, error) {
+	__antithesis_instrumentation__.Notify(17678)
 	u := r.urlForPath(fmt.Sprintf("subjects/%s/versions", subject))
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(17683)
 		log.Infof(ctx, "registering avro schema %s %s", u, schema)
+	} else {
+		__antithesis_instrumentation__.Notify(17684)
 	}
+	__antithesis_instrumentation__.Notify(17679)
 
 	req := confluentSchemaVersionRequest{Schema: schema}
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(req); err != nil {
+		__antithesis_instrumentation__.Notify(17685)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(17686)
 	}
+	__antithesis_instrumentation__.Notify(17680)
 
 	var id int32
 	err := r.doWithRetry(ctx, func() error {
+		__antithesis_instrumentation__.Notify(17687)
 		resp, err := r.client.Post(ctx, u, confluentSchemaContentType, &buf)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(17691)
 			return errors.Wrap(err, "contacting confluent schema registry")
+		} else {
+			__antithesis_instrumentation__.Notify(17692)
 		}
+		__antithesis_instrumentation__.Notify(17688)
 		defer gracefulClose(ctx, resp.Body)
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode < 200 || func() bool {
+			__antithesis_instrumentation__.Notify(17693)
+			return resp.StatusCode >= 300 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(17694)
 			body, _ := ioutil.ReadAll(resp.Body)
 			return errors.Errorf("registering schema to %s %s: %s", u, resp.Status, body)
+		} else {
+			__antithesis_instrumentation__.Notify(17695)
 		}
+		__antithesis_instrumentation__.Notify(17689)
 		var res confluentSchemaVersionResponse
 		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			__antithesis_instrumentation__.Notify(17696)
 			return errors.Wrap(err, "decoding confluent schema registry reply")
+		} else {
+			__antithesis_instrumentation__.Notify(17697)
 		}
+		__antithesis_instrumentation__.Notify(17690)
 		id = res.ID
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(17681)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(17698)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(17699)
 	}
+	__antithesis_instrumentation__.Notify(17682)
 	return id, nil
 }
 
 func (r *confluentSchemaRegistry) doWithRetry(ctx context.Context, fn func() error) error {
-	// Since network services are often a source of flakes, add a few retries here
-	// before we give up and return an error that will bubble up and tear down the
-	// entire changefeed, though that error is marked as retryable so that the job
-	// itself can attempt to start the changefeed again. TODO(dt): If the registry
-	// is down or constantly returning errors, we can't make progress. Continuing
-	// to indicate that we're "running" in this case can be misleading, as we
-	// really aren't anymore. Right now the MO in CDC is try and try again
-	// forever, so doing so here is consistent with the behavior elsewhere, but we
-	// should revisit this more broadly as this pattern can easily mask real,
-	// actionable issues in the operator's environment that which they might be
-	// able to resolve if we made them visible in a failure instead.
+	__antithesis_instrumentation__.Notify(17700)
+
 	var err error
 	for retrier := retry.StartWithCtx(ctx, r.retryOpts); retrier.Next(); {
+		__antithesis_instrumentation__.Notify(17702)
 		err = fn()
 		if err == nil {
+			__antithesis_instrumentation__.Notify(17704)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(17705)
 		}
+		__antithesis_instrumentation__.Notify(17703)
 		log.VInfof(ctx, 2, "retrying schema registry operation: %s", err.Error())
 	}
+	__antithesis_instrumentation__.Notify(17701)
 	return changefeedbase.MarkRetryableError(err)
 }
 
 func gracefulClose(ctx context.Context, toClose io.ReadCloser) {
-	// NOTE(ssd): To reuse the connection we have to be sure to
-	// read to EOF and close the response body.
-	//
-	// Right now this is wasted worked, since currently, httputil
-	// sets options that will mean we never actually re-use
-	// connections.
-	//
-	// We read upto 4k to try to reach io.EOF.
+	__antithesis_instrumentation__.Notify(17706)
+
 	const respExtraReadLimit = 4096
 	_, _ = io.CopyN(ioutil.Discard, toClose, respExtraReadLimit)
 	if err := toClose.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(17707)
 		log.VInfof(ctx, 2, "failure to close schema registry connection", err)
+	} else {
+		__antithesis_instrumentation__.Notify(17708)
 	}
 }
 
 func (r *confluentSchemaRegistry) urlForPath(relPath string) string {
+	__antithesis_instrumentation__.Notify(17709)
 	u := *r.baseURL
 	u.Path = path.Join(u.EscapedPath(), relPath)
 	return u.String()

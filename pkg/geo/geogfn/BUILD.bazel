@@ -26,6 +26,7 @@ go_library(
         "//pkg/geo/geosegmentize",
         "//pkg/sql/pgwire/pgcode",
         "//pkg/sql/pgwire/pgerror",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_golang_geo//r3",
         "@com_github_golang_geo//s1",
         "@com_github_golang_geo//s2",
@@ -53,6 +54,7 @@ go_test(
     deps = [
         "//pkg/geo",
         "//pkg/geo/geoprojbase",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_golang_geo//s1",
         "@com_github_golang_geo//s2",
         "@com_github_stretchr_testify//require",

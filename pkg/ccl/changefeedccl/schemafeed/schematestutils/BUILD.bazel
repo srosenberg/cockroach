@@ -12,6 +12,7 @@ go_library(
         "//pkg/sql/catalog/tabledesc",
         "//pkg/sql/types",
         "//pkg/util/hlc",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_gogo_protobuf//proto",
     ],
 )

@@ -1,20 +1,9 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
-// See comment on build tag in gssapi.go.
-
 //go:build gss
 // +build gss
 
 package gssapiccl
 
-// This file contains the code that calls out to the GSSAPI library
-// to retrieve the current user.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire"
@@ -28,6 +17,7 @@ import (
 import "C"
 
 func getGssUser(c pgwire.AuthConn) (connClose func(), gssUser string, _ error) {
+	__antithesis_instrumentation__.Notify(19518)
 	var (
 		majStat, minStat, lminS, gflags C.OM_uint32
 		gbuf                            C.gss_buffer_desc
@@ -38,30 +28,29 @@ func getGssUser(c pgwire.AuthConn) (connClose func(), gssUser string, _ error) {
 	)
 
 	if err := c.SendAuthRequest(authTypeGSS, nil); err != nil {
+		__antithesis_instrumentation__.Notify(19523)
 		return nil, "", err
+	} else {
+		__antithesis_instrumentation__.Notify(19524)
 	}
+	__antithesis_instrumentation__.Notify(19519)
 
-	// This cleanup function must be called at the
-	// "completion of a communications session", not
-	// merely at the end of an authentication init. See
-	// https://tools.ietf.org/html/rfc2744.html, section
-	// `1. Introduction`, stage `d`:
-	//
-	//   At the completion of a communications session (which
-	//   may extend across several transport connections),
-	//   each application calls a GSS-API routine to delete
-	//   the security context.
-	//
-	// See https://github.com/postgres/postgres/blob/f4d59369d2ddf0ad7850112752ec42fd115825d4/src/backend/libpq/pqcomm.c#L269
 	connClose = func() {
+		__antithesis_instrumentation__.Notify(19525)
 		C.gss_delete_sec_context(&lminS, &contextHandle, C.GSS_C_NO_BUFFER)
 	}
+	__antithesis_instrumentation__.Notify(19520)
 
 	for {
+		__antithesis_instrumentation__.Notify(19526)
 		token, err := c.GetPwdData()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19530)
 			return connClose, "", err
+		} else {
+			__antithesis_instrumentation__.Notify(19531)
 		}
+		__antithesis_instrumentation__.Notify(19527)
 
 		gbuf.length = C.ulong(len(token))
 		gbuf.value = C.CBytes(token)
@@ -82,24 +71,46 @@ func getGssUser(c pgwire.AuthConn) (connClose func(), gssUser string, _ error) {
 		C.free(gbuf.value)
 
 		if outputToken.length != 0 {
+			__antithesis_instrumentation__.Notify(19532)
 			outputBytes := C.GoBytes(outputToken.value, C.int(outputToken.length))
 			C.gss_release_buffer(&lminS, &outputToken)
 			if err := c.SendAuthRequest(authTypeGSSContinue, outputBytes); err != nil {
+				__antithesis_instrumentation__.Notify(19533)
 				return connClose, "", err
+			} else {
+				__antithesis_instrumentation__.Notify(19534)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(19535)
 		}
-		if majStat != C.GSS_S_COMPLETE && majStat != C.GSS_S_CONTINUE_NEEDED {
+		__antithesis_instrumentation__.Notify(19528)
+		if majStat != C.GSS_S_COMPLETE && func() bool {
+			__antithesis_instrumentation__.Notify(19536)
+			return majStat != C.GSS_S_CONTINUE_NEEDED == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(19537)
 			return connClose, "", gssError("accepting GSS security context failed", majStat, minStat)
+		} else {
+			__antithesis_instrumentation__.Notify(19538)
 		}
+		__antithesis_instrumentation__.Notify(19529)
 		if majStat != C.GSS_S_CONTINUE_NEEDED {
+			__antithesis_instrumentation__.Notify(19539)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(19540)
 		}
 	}
+	__antithesis_instrumentation__.Notify(19521)
 
 	majStat = C.gss_display_name(&minStat, srcName, &gbuf, nil)
 	if majStat != C.GSS_S_COMPLETE {
+		__antithesis_instrumentation__.Notify(19541)
 		return connClose, "", gssError("retrieving GSS user name failed", majStat, minStat)
+	} else {
+		__antithesis_instrumentation__.Notify(19542)
 	}
+	__antithesis_instrumentation__.Notify(19522)
 	gssUser = C.GoStringN((*C.char)(gbuf.value), C.int(gbuf.length))
 	C.gss_release_buffer(&lminS, &gbuf)
 
@@ -107,6 +118,7 @@ func getGssUser(c pgwire.AuthConn) (connClose func(), gssUser string, _ error) {
 }
 
 func gssError(msg string, majStat, minStat C.OM_uint32) error {
+	__antithesis_instrumentation__.Notify(19543)
 	var (
 		gmsg          C.gss_buffer_desc
 		lminS, msgCtx C.OM_uint32

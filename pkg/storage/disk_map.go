@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,46 +14,33 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-// defaultBatchCapacityBytes is the default capacity for a
-// SortedDiskMapBatchWriter.
 const defaultBatchCapacityBytes = 4096
 
-// tempStorageID is the temp ID generator for a node. It generates unique
-// prefixes for NewPebbleMap. It is a global because NewPebbleMap needs to
-// prefix its writes uniquely, and using a global prevents users from having to
-// specify the prefix themselves and correctly guarantee that it is unique.
 var tempStorageID uint64
 
 func generateTempStorageID() uint64 {
+	__antithesis_instrumentation__.Notify(633602)
 	return atomic.AddUint64(&tempStorageID, 1)
 }
 
-// pebbleMapBatchWriter batches writes to a pebbleMap.
 type pebbleMapBatchWriter struct {
-	// capacity is the number of bytes to write before a Flush() is triggered.
 	capacity int
 
-	// makeKey is a function that transforms a key into a byte slice with a prefix
-	// to be written to the underlying store.
 	makeKey           func(k []byte) []byte
 	batch             *pebble.Batch
 	numPutsSinceFlush int
 	store             *pebble.DB
 }
 
-// pebbleMapIterator iterates over the keys of a pebbleMap in sorted order.
 type pebbleMapIterator struct {
 	allowDuplicates bool
 	iter            *pebble.Iterator
-	// makeKey is a function that transforms a key into a byte slice with a prefix
-	// used to SeekGE() the underlying iterator.
+
 	makeKey func(k []byte) []byte
-	// prefix is the prefix of keys that this iterator iterates over.
+
 	prefix []byte
 }
 
-// pebbleMap is a SortedDiskMap, similar to rocksDBMap, that uses pebble as its
-// underlying storage engine.
 type pebbleMap struct {
 	prefix          []byte
 	store           *pebble.DB
@@ -73,11 +52,8 @@ var _ diskmap.SortedDiskMapBatchWriter = &pebbleMapBatchWriter{}
 var _ diskmap.SortedDiskMapIterator = &pebbleMapIterator{}
 var _ diskmap.SortedDiskMap = &pebbleMap{}
 
-// newPebbleMap creates a new pebbleMap with the passed in Engine as the
-// underlying store. The pebbleMap instance will have a keyspace prefixed by a
-// unique prefix. The allowDuplicates parameter controls whether Puts with
-// identical keys will write multiple entries or overwrite previous entries.
 func newPebbleMap(e *pebble.DB, allowDuplicates bool) *pebbleMap {
+	__antithesis_instrumentation__.Notify(633603)
 	prefix := generateTempStorageID()
 	return &pebbleMap{
 		prefix:          encoding.EncodeUvarintAscending([]byte(nil), prefix),
@@ -86,11 +62,8 @@ func newPebbleMap(e *pebble.DB, allowDuplicates bool) *pebbleMap {
 	}
 }
 
-// makeKey appends k to the pebbleMap's prefix to keep the key local to this
-// instance and returns a byte slice containing the user-provided key and the
-// prefix. Pebble's operations can take this byte slice as a key. This key is
-// only valid until the next call to makeKey.
 func (r *pebbleMap) makeKey(k []byte) []byte {
+	__antithesis_instrumentation__.Notify(633604)
 	prefixLen := len(r.prefix)
 	r.prefix = append(r.prefix, k...)
 	key := r.prefix
@@ -98,20 +71,22 @@ func (r *pebbleMap) makeKey(k []byte) []byte {
 	return key
 }
 
-// makeKeyWithSequence makes a key appropriate for a Put operation. It is like
-// makeKey except it respects allowDuplicates, by appending a sequence number to
-// the user-provided key.
 func (r *pebbleMap) makeKeyWithSequence(k []byte) []byte {
+	__antithesis_instrumentation__.Notify(633605)
 	byteKey := r.makeKey(k)
 	if r.allowDuplicates {
+		__antithesis_instrumentation__.Notify(633607)
 		r.keyID++
 		byteKey = encoding.EncodeUint64Ascending(byteKey, uint64(r.keyID))
+	} else {
+		__antithesis_instrumentation__.Notify(633608)
 	}
+	__antithesis_instrumentation__.Notify(633606)
 	return byteKey
 }
 
-// NewIterator implements the SortedDiskMap interface.
 func (r *pebbleMap) NewIterator() diskmap.SortedDiskMapIterator {
+	__antithesis_instrumentation__.Notify(633609)
 	return &pebbleMapIterator{
 		allowDuplicates: r.allowDuplicates,
 		iter: r.store.NewIter(&pebble.IterOptions{
@@ -122,17 +97,21 @@ func (r *pebbleMap) NewIterator() diskmap.SortedDiskMapIterator {
 	}
 }
 
-// NewBatchWriter implements the SortedDiskMap interface.
 func (r *pebbleMap) NewBatchWriter() diskmap.SortedDiskMapBatchWriter {
+	__antithesis_instrumentation__.Notify(633610)
 	return r.NewBatchWriterCapacity(defaultBatchCapacityBytes)
 }
 
-// NewBatchWriterCapacity implements the SortedDiskMap interface.
 func (r *pebbleMap) NewBatchWriterCapacity(capacityBytes int) diskmap.SortedDiskMapBatchWriter {
+	__antithesis_instrumentation__.Notify(633611)
 	makeKey := r.makeKey
 	if r.allowDuplicates {
+		__antithesis_instrumentation__.Notify(633613)
 		makeKey = r.makeKeyWithSequence
+	} else {
+		__antithesis_instrumentation__.Notify(633614)
 	}
+	__antithesis_instrumentation__.Notify(633612)
 	return &pebbleMapBatchWriter{
 		capacity: capacityBytes,
 		makeKey:  makeKey,
@@ -141,103 +120,128 @@ func (r *pebbleMap) NewBatchWriterCapacity(capacityBytes int) diskmap.SortedDisk
 	}
 }
 
-// Clear implements the SortedDiskMap interface.
 func (r *pebbleMap) Clear() error {
+	__antithesis_instrumentation__.Notify(633615)
 	if err := r.store.DeleteRange(
 		r.prefix,
 		roachpb.Key(r.prefix).PrefixEnd(),
 		pebble.NoSync,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(633617)
 		return errors.Wrapf(err, "unable to clear range with prefix %v", r.prefix)
+	} else {
+		__antithesis_instrumentation__.Notify(633618)
 	}
-	// NB: we manually flush after performing the clear range to ensure that the
-	// range tombstone is pushed to disk which will kick off compactions that
-	// will eventually free up the deleted space.
+	__antithesis_instrumentation__.Notify(633616)
+
 	_, err := r.store.AsyncFlush()
 	return err
 }
 
-// Close implements the SortedDiskMap interface.
 func (r *pebbleMap) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(633619)
 	if err := r.Clear(); err != nil {
+		__antithesis_instrumentation__.Notify(633620)
 		log.Errorf(ctx, "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(633621)
 	}
 }
 
-// SeekGE implements the SortedDiskMapIterator interface.
 func (i *pebbleMapIterator) SeekGE(k []byte) {
+	__antithesis_instrumentation__.Notify(633622)
 	i.iter.SeekGE(i.makeKey(k))
 }
 
-// Rewind implements the SortedDiskMapIterator interface.
 func (i *pebbleMapIterator) Rewind() {
+	__antithesis_instrumentation__.Notify(633623)
 	i.iter.SeekGE(i.makeKey(nil))
 }
 
-// Valid implements the SortedDiskMapIterator interface.
 func (i *pebbleMapIterator) Valid() (bool, error) {
+	__antithesis_instrumentation__.Notify(633624)
 	return i.iter.Valid(), nil
 }
 
-// Next implements the SortedDiskMapIterator interface.
 func (i *pebbleMapIterator) Next() {
+	__antithesis_instrumentation__.Notify(633625)
 	i.iter.Next()
 }
 
-// UnsafeKey implements the SortedDiskMapIterator interface.
 func (i *pebbleMapIterator) UnsafeKey() []byte {
+	__antithesis_instrumentation__.Notify(633626)
 	unsafeKey := i.iter.Key()
 	end := len(unsafeKey)
 	if i.allowDuplicates {
-		// There are 8 bytes of sequence number at the end of the key, remove them.
+		__antithesis_instrumentation__.Notify(633628)
+
 		end -= 8
+	} else {
+		__antithesis_instrumentation__.Notify(633629)
 	}
+	__antithesis_instrumentation__.Notify(633627)
 	return unsafeKey[len(i.prefix):end]
 }
 
-// UnsafeValue implements the SortedDiskMapIterator interface.
 func (i *pebbleMapIterator) UnsafeValue() []byte {
+	__antithesis_instrumentation__.Notify(633630)
 	return i.iter.Value()
 }
 
-// Close implements the SortedDiskMapIterator interface.
 func (i *pebbleMapIterator) Close() {
+	__antithesis_instrumentation__.Notify(633631)
 	_ = i.iter.Close()
 }
 
-// Put implements the SortedDiskMapBatchWriter interface.
 func (b *pebbleMapBatchWriter) Put(k []byte, v []byte) error {
+	__antithesis_instrumentation__.Notify(633632)
 	key := b.makeKey(k)
 	if err := b.batch.Set(key, v, nil); err != nil {
+		__antithesis_instrumentation__.Notify(633635)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(633636)
 	}
+	__antithesis_instrumentation__.Notify(633633)
 	b.numPutsSinceFlush++
 	if len(b.batch.Repr()) >= b.capacity {
+		__antithesis_instrumentation__.Notify(633637)
 		return b.Flush()
+	} else {
+		__antithesis_instrumentation__.Notify(633638)
 	}
+	__antithesis_instrumentation__.Notify(633634)
 	return nil
 }
 
-// Flush implements the SortedDiskMapBatchWriter interface.
 func (b *pebbleMapBatchWriter) Flush() error {
+	__antithesis_instrumentation__.Notify(633639)
 	if err := b.batch.Commit(pebble.NoSync); err != nil {
+		__antithesis_instrumentation__.Notify(633641)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(633642)
 	}
+	__antithesis_instrumentation__.Notify(633640)
 	b.numPutsSinceFlush = 0
 	b.batch = b.store.NewBatch()
 	return nil
 }
 
-// NumPutsSinceFlush implements the SortedDiskMapBatchWriter interface.
 func (b *pebbleMapBatchWriter) NumPutsSinceFlush() int {
+	__antithesis_instrumentation__.Notify(633643)
 	return b.numPutsSinceFlush
 }
 
-// Close implements the SortedDiskMapBatchWriter interface.
 func (b *pebbleMapBatchWriter) Close(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(633644)
 	err := b.Flush()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(633646)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(633647)
 	}
+	__antithesis_instrumentation__.Notify(633645)
 	return b.batch.Close()
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,9 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// runManySplits attempts to create 2000 tiny ranges on a 4-node cluster using
-// left-to-right splits and check the cluster is still live afterwards.
 func runManySplits(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(49248)
 	c.Put(ctx, t.Cockroach(), "./cockroach")
 	settings := install.MakeClusterSettings()
 	settings.Env = append(settings.Env, "COCKROACH_SCAN_MAX_IDLE_TIME=5ms")
@@ -32,21 +23,26 @@ func runManySplits(ctx context.Context, t test.Test, c cluster.Cluster) {
 	db := c.Conn(ctx, t.L(), 1)
 	defer db.Close()
 
-	// Wait for up-replication then create many ranges.
 	err := WaitFor3XReplication(ctx, t, db)
 	require.NoError(t, err)
 
 	m := c.NewMonitor(ctx, c.All())
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(49250)
 		const numRanges = 2000
 		t.L().Printf("creating %d ranges...", numRanges)
 		if _, err := db.ExecContext(ctx, fmt.Sprintf(`
 			CREATE TABLE t(x, PRIMARY KEY(x)) AS TABLE generate_series(1,%[1]d);
             ALTER TABLE t SPLIT AT TABLE generate_series(1,%[1]d);
 		`, numRanges)); err != nil {
+			__antithesis_instrumentation__.Notify(49252)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(49253)
 		}
+		__antithesis_instrumentation__.Notify(49251)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(49249)
 	m.Wait()
 }

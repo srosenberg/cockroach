@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,254 +31,368 @@ type dropIndexNode struct {
 	idxNames []fullIndexName
 }
 
-// DropIndex drops an index.
-// Privileges: CREATE on table.
-//   Notes: postgres allows only the index owner to DROP an index.
-//          mysql requires the INDEX privilege on the table.
 func (p *planner) DropIndex(ctx context.Context, n *tree.DropIndex) (planNode, error) {
+	__antithesis_instrumentation__.Notify(468898)
 	if err := checkSchemaChangeEnabled(
 		ctx,
 		p.ExecCfg(),
 		"DROP INDEX",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(468901)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(468902)
 	}
+	__antithesis_instrumentation__.Notify(468899)
 
-	// Keep a track of the indexes that exist to check. When the IF EXISTS
-	// options are provided, we will simply not include any indexes that
-	// don't exist and continue execution.
 	idxNames := make([]fullIndexName, 0, len(n.IndexList))
 	for _, index := range n.IndexList {
-		tn, tableDesc, err := expandMutableIndexName(ctx, p, index, !n.IfExists /* requireTable */)
+		__antithesis_instrumentation__.Notify(468903)
+		tn, tableDesc, err := expandMutableIndexName(ctx, p, index, !n.IfExists)
 		if err != nil {
-			// Error or table did not exist.
+			__antithesis_instrumentation__.Notify(468907)
+
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(468908)
 		}
+		__antithesis_instrumentation__.Notify(468904)
 		if tableDesc == nil {
-			// IfExists specified and table did not exist.
+			__antithesis_instrumentation__.Notify(468909)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(468910)
 		}
+		__antithesis_instrumentation__.Notify(468905)
 
 		if err := p.CheckPrivilege(ctx, tableDesc, privilege.CREATE); err != nil {
+			__antithesis_instrumentation__.Notify(468911)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(468912)
 		}
+		__antithesis_instrumentation__.Notify(468906)
 
 		idxNames = append(idxNames, fullIndexName{tn: tn, idxName: index.Index})
 	}
+	__antithesis_instrumentation__.Notify(468900)
 	return &dropIndexNode{n: n, idxNames: idxNames}, nil
 }
 
-// ReadingOwnWrites implements the planNodeReadingOwnWrites interface.
-// This is because DROP INDEX performs multiple KV operations on descriptors
-// and expects to see its own writes.
-func (n *dropIndexNode) ReadingOwnWrites() {}
+func (n *dropIndexNode) ReadingOwnWrites() { __antithesis_instrumentation__.Notify(468913) }
 
 func (n *dropIndexNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(468914)
 	telemetry.Inc(sqltelemetry.SchemaChangeDropCounter("index"))
 
 	if n.n.Concurrently {
+		__antithesis_instrumentation__.Notify(468917)
 		params.p.BufferClientNotice(
 			params.ctx,
 			pgnotice.Newf("CONCURRENTLY is not required as all indexes are dropped concurrently"),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(468918)
 	}
+	__antithesis_instrumentation__.Notify(468915)
 
 	ctx := params.ctx
 	for _, index := range n.idxNames {
-		// Need to retrieve the descriptor again for each index name in
-		// the list: when two or more index names refer to the same table,
-		// the mutation list and new version number created by the first
-		// drop need to be visible to the second drop.
+		__antithesis_instrumentation__.Notify(468919)
+
 		_, tableDesc, err := params.p.ResolveMutableTableDescriptor(
-			ctx, index.tn, true /*required*/, tree.ResolveRequireTableOrViewDesc)
+			ctx, index.tn, true, tree.ResolveRequireTableOrViewDesc)
 		if sqlerrors.IsUndefinedRelationError(err) {
-			// Somehow the descriptor we had during planning is not there
-			// any more.
+			__antithesis_instrumentation__.Notify(468928)
+
 			return errors.NewAssertionErrorWithWrappedErrf(err,
 				"table descriptor for %q became unavailable within same txn",
 				tree.ErrString(index.tn))
+		} else {
+			__antithesis_instrumentation__.Notify(468929)
 		}
+		__antithesis_instrumentation__.Notify(468920)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(468930)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(468931)
 		}
+		__antithesis_instrumentation__.Notify(468921)
 
-		if tableDesc.IsView() && !tableDesc.MaterializedView() {
+		if tableDesc.IsView() && func() bool {
+			__antithesis_instrumentation__.Notify(468932)
+			return !tableDesc.MaterializedView() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(468933)
 			return pgerror.Newf(pgcode.WrongObjectType, "%q is not a table or materialized view", tableDesc.Name)
+		} else {
+			__antithesis_instrumentation__.Notify(468934)
 		}
+		__antithesis_instrumentation__.Notify(468922)
 
-		// If we couldn't find the index by name, this is either a legitimate error or
-		// this statement contains an 'IF EXISTS' qualifier. Both of these cases are
-		// handled by `dropIndexByName()` below so we just ignore the error here.
 		idx, _ := tableDesc.FindIndexWithName(string(index.idxName))
 		var shardColName string
-		// If we're dropping a sharded index, record the name of its shard column to
-		// potentially drop it if no other index refers to it.
-		if idx != nil && idx.IsSharded() && !idx.Dropped() {
-			shardColName = idx.GetShardColumnName()
-		}
 
-		// keyColumnOfOtherIndex returns true if the given column is a key
-		// column of an index in the table other than idx.
+		if idx != nil && func() bool {
+			__antithesis_instrumentation__.Notify(468935)
+			return idx.IsSharded() == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(468936)
+			return !idx.Dropped() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(468937)
+			shardColName = idx.GetShardColumnName()
+		} else {
+			__antithesis_instrumentation__.Notify(468938)
+		}
+		__antithesis_instrumentation__.Notify(468923)
+
 		keyColumnOfOtherIndex := func(colID descpb.ColumnID) bool {
+			__antithesis_instrumentation__.Notify(468939)
 			for _, otherIdx := range tableDesc.AllIndexes() {
+				__antithesis_instrumentation__.Notify(468941)
 				if otherIdx.GetID() == idx.GetID() {
+					__antithesis_instrumentation__.Notify(468943)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(468944)
 				}
+				__antithesis_instrumentation__.Notify(468942)
 				if otherIdx.CollectKeyColumnIDs().Contains(colID) {
+					__antithesis_instrumentation__.Notify(468945)
 					return true
+				} else {
+					__antithesis_instrumentation__.Notify(468946)
 				}
 			}
+			__antithesis_instrumentation__.Notify(468940)
 			return false
 		}
+		__antithesis_instrumentation__.Notify(468924)
 
-		// Drop expression index columns if they are not key columns in any
-		// other index. They cannot be referenced in constraints, computed
-		// columns, or other indexes, so they are safe to drop.
 		columnsDropped := false
 		if idx != nil {
+			__antithesis_instrumentation__.Notify(468947)
 			for i, count := 0, idx.NumKeyColumns(); i < count; i++ {
+				__antithesis_instrumentation__.Notify(468948)
 				id := idx.GetKeyColumnID(i)
 				col, err := tableDesc.FindColumnWithID(id)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(468950)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(468951)
 				}
-				if col.IsExpressionIndexColumn() && !keyColumnOfOtherIndex(col.GetID()) {
+				__antithesis_instrumentation__.Notify(468949)
+				if col.IsExpressionIndexColumn() && func() bool {
+					__antithesis_instrumentation__.Notify(468952)
+					return !keyColumnOfOtherIndex(col.GetID()) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(468953)
 					n.queueDropColumn(tableDesc, col)
 					columnsDropped = true
+				} else {
+					__antithesis_instrumentation__.Notify(468954)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(468955)
 		}
+		__antithesis_instrumentation__.Notify(468925)
 
-		// CAUTION: After dropIndexByName returns, idx will be a pointer to a
-		// different index than the one being dropped.
 		if err := params.p.dropIndexByName(
 			ctx, index.tn, index.idxName, tableDesc, n.n.IfExists, n.n.DropBehavior, checkIdxConstraint,
 			tree.AsStringWithFQNames(n.n, params.Ann()),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(468956)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(468957)
 		}
+		__antithesis_instrumentation__.Notify(468926)
 
 		if shardColName != "" {
+			__antithesis_instrumentation__.Notify(468958)
 			ok, err := n.maybeQueueDropShardColumn(tableDesc, shardColName)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(468960)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(468961)
 			}
-			columnsDropped = columnsDropped || ok
+			__antithesis_instrumentation__.Notify(468959)
+			columnsDropped = columnsDropped || func() bool {
+				__antithesis_instrumentation__.Notify(468962)
+				return ok == true
+			}() == true
+		} else {
+			__antithesis_instrumentation__.Notify(468963)
 		}
+		__antithesis_instrumentation__.Notify(468927)
 
 		if columnsDropped {
+			__antithesis_instrumentation__.Notify(468964)
 			if err := n.finalizeDropColumn(params, tableDesc); err != nil {
+				__antithesis_instrumentation__.Notify(468965)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(468966)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(468967)
 		}
 
 	}
+	__antithesis_instrumentation__.Notify(468916)
 	return nil
 }
 
-// queueDropColumn queues a column to be dropped. Once all columns to drop are
-// queued, call finalizeDropColumn.
 func (n *dropIndexNode) queueDropColumn(tableDesc *tabledesc.Mutable, col catalog.Column) {
+	__antithesis_instrumentation__.Notify(468968)
 	tableDesc.AddColumnMutation(col.ColumnDesc(), descpb.DescriptorMutation_DROP)
 	for i := range tableDesc.Columns {
+		__antithesis_instrumentation__.Notify(468969)
 		if tableDesc.Columns[i].ID == col.GetID() {
-			// Note the third slice parameter which will force a copy of the backing
-			// array if the column being removed is not the last column.
+			__antithesis_instrumentation__.Notify(468970)
+
 			tableDesc.Columns = append(tableDesc.Columns[:i:i],
 				tableDesc.Columns[i+1:]...)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(468971)
 		}
 	}
 }
 
-// maybeDropShardColumn drops the given shard column, if there aren't any other
-// indexes referring to it. It returns true if the column was queued to be
-// dropped.
-//
-// Assumes that the given index is sharded.
 func (n *dropIndexNode) maybeQueueDropShardColumn(
 	tableDesc *tabledesc.Mutable, shardColName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(468972)
 	shardColDesc, err := tableDesc.FindColumnWithName(tree.Name(shardColName))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(468977)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(468978)
 	}
+	__antithesis_instrumentation__.Notify(468973)
 	if shardColDesc.Dropped() {
+		__antithesis_instrumentation__.Notify(468979)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(468980)
 	}
+	__antithesis_instrumentation__.Notify(468974)
 	if catalog.FindNonDropIndex(tableDesc, func(otherIdx catalog.Index) bool {
+		__antithesis_instrumentation__.Notify(468981)
 		colIDs := otherIdx.CollectKeyColumnIDs()
 		if !otherIdx.Primary() {
+			__antithesis_instrumentation__.Notify(468983)
 			colIDs.UnionWith(otherIdx.CollectSecondaryStoredColumnIDs())
 			colIDs.UnionWith(otherIdx.CollectKeySuffixColumnIDs())
+		} else {
+			__antithesis_instrumentation__.Notify(468984)
 		}
+		__antithesis_instrumentation__.Notify(468982)
 		return colIDs.Contains(shardColDesc.GetID())
 	}) != nil {
+		__antithesis_instrumentation__.Notify(468985)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(468986)
 	}
+	__antithesis_instrumentation__.Notify(468975)
 	if err := n.dropShardColumnAndConstraint(tableDesc, shardColDesc); err != nil {
+		__antithesis_instrumentation__.Notify(468987)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(468988)
 	}
+	__antithesis_instrumentation__.Notify(468976)
 	return true, nil
 }
 
-// dropShardColumnAndConstraint drops the given shard column and its associated check
-// constraint.
 func (n *dropIndexNode) dropShardColumnAndConstraint(
 	tableDesc *tabledesc.Mutable, shardCol catalog.Column,
 ) error {
+	__antithesis_instrumentation__.Notify(468989)
 	validChecks := tableDesc.Checks[:0]
 	for _, check := range tableDesc.AllActiveAndInactiveChecks() {
+		__antithesis_instrumentation__.Notify(468992)
 		if used, err := tableDesc.CheckConstraintUsesColumn(check, shardCol.GetID()); err != nil {
+			__antithesis_instrumentation__.Notify(468993)
 			return err
-		} else if used {
-			if check.Validity == descpb.ConstraintValidity_Validating {
-				return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
-					"referencing constraint %q in the middle of being added, try again later", check.Name)
-			}
 		} else {
-			validChecks = append(validChecks, check)
+			__antithesis_instrumentation__.Notify(468994)
+			if used {
+				__antithesis_instrumentation__.Notify(468995)
+				if check.Validity == descpb.ConstraintValidity_Validating {
+					__antithesis_instrumentation__.Notify(468996)
+					return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
+						"referencing constraint %q in the middle of being added, try again later", check.Name)
+				} else {
+					__antithesis_instrumentation__.Notify(468997)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(468998)
+				validChecks = append(validChecks, check)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(468990)
 
 	if len(validChecks) != len(tableDesc.Checks) {
+		__antithesis_instrumentation__.Notify(468999)
 		tableDesc.Checks = validChecks
+	} else {
+		__antithesis_instrumentation__.Notify(469000)
 	}
+	__antithesis_instrumentation__.Notify(468991)
 
 	n.queueDropColumn(tableDesc, shardCol)
 	return nil
 }
 
-// finalizeDropColumn finalizes the dropping of one or more columns. It should
-// only be called if queueDropColumn has been called at least once.
 func (n *dropIndexNode) finalizeDropColumn(params runParams, tableDesc *tabledesc.Mutable) error {
+	__antithesis_instrumentation__.Notify(469001)
 	version := params.ExecCfg().Settings.Version.ActiveVersion(params.ctx)
 	if err := tableDesc.AllocateIDs(params.ctx, version); err != nil {
+		__antithesis_instrumentation__.Notify(469004)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(469005)
 	}
+	__antithesis_instrumentation__.Notify(469002)
 	mutationID := tableDesc.ClusterVersion().NextMutationID
 	if err := params.p.writeSchemaChange(
 		params.ctx, tableDesc, mutationID, tree.AsStringWithFQNames(n.n, params.Ann()),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(469006)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(469007)
 	}
+	__antithesis_instrumentation__.Notify(469003)
 	return nil
 }
 
-func (*dropIndexNode) Next(runParams) (bool, error) { return false, nil }
-func (*dropIndexNode) Values() tree.Datums          { return tree.Datums{} }
-func (*dropIndexNode) Close(context.Context)        {}
+func (*dropIndexNode) Next(runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(469008)
+	return false, nil
+}
+func (*dropIndexNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(469009)
+	return tree.Datums{}
+}
+func (*dropIndexNode) Close(context.Context) { __antithesis_instrumentation__.Notify(469010) }
 
 type fullIndexName struct {
 	tn      *tree.TableName
 	idxName tree.UnrestrictedName
 }
 
-// dropIndexConstraintBehavior is used when dropping an index to signal whether
-// it is okay to do so even if it is in use as a constraint (outbound FK or
-// unique). This is a subset of what is implied by DropBehavior CASCADE, which
-// implies dropping *all* dependencies. This is used e.g. when the element
-// constrained is being dropped anyway.
 type dropIndexConstraintBehavior bool
 
 const (
@@ -304,236 +410,330 @@ func (p *planner) dropIndexByName(
 	constraintBehavior dropIndexConstraintBehavior,
 	jobDesc string,
 ) error {
+	__antithesis_instrumentation__.Notify(469011)
 	idx, err := tableDesc.FindIndexWithName(string(idxName))
 	if err != nil {
-		// Only index names of the form "table@idx" throw an error here if they
-		// don't exist.
+		__antithesis_instrumentation__.Notify(469032)
+
 		if ifExists {
-			// Noop.
+			__antithesis_instrumentation__.Notify(469034)
+
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(469035)
 		}
-		// Index does not exist, but we want it to: error out.
+		__antithesis_instrumentation__.Notify(469033)
+
 		return pgerror.WithCandidateCode(err, pgcode.UndefinedObject)
+	} else {
+		__antithesis_instrumentation__.Notify(469036)
 	}
+	__antithesis_instrumentation__.Notify(469012)
 	if idx.Dropped() {
+		__antithesis_instrumentation__.Notify(469037)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(469038)
 	}
+	__antithesis_instrumentation__.Notify(469013)
 
 	if tableDesc.IsLocalityRegionalByRow() {
+		__antithesis_instrumentation__.Notify(469039)
 		if err := p.checkNoRegionChangeUnderway(
 			ctx,
 			tableDesc.GetParentID(),
 			"DROP INDEX on a REGIONAL BY ROW table",
 		); err != nil {
+			__antithesis_instrumentation__.Notify(469040)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(469041)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(469042)
 	}
+	__antithesis_instrumentation__.Notify(469014)
 
-	if idx.IsUnique() && behavior != tree.DropCascade && constraintBehavior != ignoreIdxConstraint && !idx.IsCreatedExplicitly() {
+	if idx.IsUnique() && func() bool {
+		__antithesis_instrumentation__.Notify(469043)
+		return behavior != tree.DropCascade == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(469044)
+		return constraintBehavior != ignoreIdxConstraint == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(469045)
+		return !idx.IsCreatedExplicitly() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(469046)
 		return errors.WithHint(
 			pgerror.Newf(pgcode.DependentObjectsStillExist,
 				"index %q is in use as unique constraint", idx.GetName()),
 			"use CASCADE if you really want to drop it.",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(469047)
 	}
+	__antithesis_instrumentation__.Notify(469015)
 
-	// Check if requires CCL binary for eventual zone config removal.
 	_, zone, _, err := GetZoneConfigInTxn(
-		ctx, p.txn, p.ExecCfg().Codec, tableDesc.ID, nil /* index */, "", false,
+		ctx, p.txn, p.ExecCfg().Codec, tableDesc.ID, nil, "", false,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(469048)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(469049)
 	}
+	__antithesis_instrumentation__.Notify(469016)
 
 	for _, s := range zone.Subzones {
+		__antithesis_instrumentation__.Notify(469050)
 		if s.IndexID != uint32(idx.GetID()) {
+			__antithesis_instrumentation__.Notify(469051)
 			_, err = GenerateSubzoneSpans(
 				p.ExecCfg().Settings,
 				p.ExecCfg().LogicalClusterID(),
 				p.ExecCfg().Codec,
 				tableDesc,
 				zone.Subzones,
-				false, /* newSubzones */
+				false,
 			)
 			if sqlerrors.IsCCLRequiredError(err) {
+				__antithesis_instrumentation__.Notify(469053)
 				return sqlerrors.NewCCLRequiredError(fmt.Errorf("schema change requires a CCL binary "+
 					"because table %q has at least one remaining index or partition with a zone config",
 					tableDesc.Name))
+			} else {
+				__antithesis_instrumentation__.Notify(469054)
 			}
+			__antithesis_instrumentation__.Notify(469052)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(469055)
 		}
 	}
+	__antithesis_instrumentation__.Notify(469017)
 
-	// Remove all foreign key references and backreferences from the index.
-	// TODO (lucy): This is incorrect for two reasons: The first is that FKs won't
-	// be restored if the DROP INDEX is rolled back, and the second is that
-	// validated constraints should be dropped in the schema changer in multiple
-	// steps to avoid inconsistencies. We should be queuing a mutation to drop the
-	// FK instead. The reason why the FK is removed here is to keep the index
-	// state consistent with the removal of the reference on the other table
-	// involved in the FK, in case of rollbacks (#38733).
-
-	// TODO (rohany): switching all the checks from checking the legacy ID's to
-	//  checking if the index has a prefix of the columns needed for the foreign
-	//  key might result in some false positives for this index while it is in
-	//  a mixed version cluster, but we have to remove all reads of the legacy
-	//  explicit index fields.
-
-	// Construct a list of all the remaining indexes, so that we can see if there
-	// is another index that could replace the one we are deleting for a given
-	// foreign key constraint.
 	remainingIndexes := make([]catalog.Index, 1, len(tableDesc.ActiveIndexes()))
 	remainingIndexes[0] = tableDesc.GetPrimaryIndex()
 	for _, index := range tableDesc.PublicNonPrimaryIndexes() {
+		__antithesis_instrumentation__.Notify(469056)
 		if index.GetID() != idx.GetID() {
+			__antithesis_instrumentation__.Notify(469057)
 			remainingIndexes = append(remainingIndexes, index)
+		} else {
+			__antithesis_instrumentation__.Notify(469058)
 		}
 	}
+	__antithesis_instrumentation__.Notify(469018)
 
-	// indexHasReplacementCandidate runs isValidIndex on each index in remainingIndexes and returns
-	// true if at least one index satisfies isValidIndex.
 	indexHasReplacementCandidate := func(isValidIndex func(index catalog.Index) bool) bool {
+		__antithesis_instrumentation__.Notify(469059)
 		foundReplacement := false
 		for _, index := range remainingIndexes {
+			__antithesis_instrumentation__.Notify(469061)
 			if isValidIndex(index) {
+				__antithesis_instrumentation__.Notify(469062)
 				foundReplacement = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(469063)
 			}
 		}
+		__antithesis_instrumentation__.Notify(469060)
 		return foundReplacement
 	}
+	__antithesis_instrumentation__.Notify(469019)
 
-	// Check for foreign key mutations referencing this index.
 	for _, m := range tableDesc.Mutations {
-		if c := m.GetConstraint(); c != nil &&
-			c.ConstraintType == descpb.ConstraintToUpdate_FOREIGN_KEY &&
-			// If the index being deleted could be used as a index for this outbound
-			// foreign key mutation, then make sure that we have another index that
-			// could be used for this mutation.
-			idx.IsValidOriginIndex(c.ForeignKey.OriginColumnIDs) &&
-			!indexHasReplacementCandidate(func(idx catalog.Index) bool {
+		__antithesis_instrumentation__.Notify(469064)
+		if c := m.GetConstraint(); c != nil && func() bool {
+			__antithesis_instrumentation__.Notify(469065)
+			return c.ConstraintType == descpb.ConstraintToUpdate_FOREIGN_KEY == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(469066)
+			return idx.IsValidOriginIndex(c.ForeignKey.OriginColumnIDs) == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(469067)
+			return !indexHasReplacementCandidate(func(idx catalog.Index) bool {
+				__antithesis_instrumentation__.Notify(469068)
 				return idx.IsValidOriginIndex(c.ForeignKey.OriginColumnIDs)
-			}) {
+			}) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(469069)
 			return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 				"referencing constraint %q in the middle of being added, try again later", c.ForeignKey.Name)
+		} else {
+			__antithesis_instrumentation__.Notify(469070)
 		}
 	}
+	__antithesis_instrumentation__.Notify(469020)
 
-	// If this index is used on the referencing side of any FK constraints, try
-	// to remove the references or find an alternate index that will suffice.
 	candidateConstraints := make([]descpb.UniqueConstraint, len(remainingIndexes))
 	for i := range remainingIndexes {
-		// We can't copy directly because of the interface conversion.
+		__antithesis_instrumentation__.Notify(469071)
+
 		candidateConstraints[i] = remainingIndexes[i]
 	}
+	__antithesis_instrumentation__.Notify(469021)
 	if err := p.tryRemoveFKBackReferences(
 		ctx, tableDesc, idx, behavior, candidateConstraints,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(469072)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(469073)
 	}
+	__antithesis_instrumentation__.Notify(469022)
 
 	var droppedViews []string
 	for _, tableRef := range tableDesc.DependedOnBy {
+		__antithesis_instrumentation__.Notify(469074)
 		if tableRef.IndexID == idx.GetID() {
-			// Ensure that we have DROP privilege on all dependent views
+			__antithesis_instrumentation__.Notify(469075)
+
 			err := p.canRemoveDependentViewGeneric(
 				ctx, "index", idx.GetName(), tableDesc.ParentID, tableRef, behavior)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(469080)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(469081)
 			}
+			__antithesis_instrumentation__.Notify(469076)
 			viewDesc, err := p.getViewDescForCascade(
 				ctx, "index", idx.GetName(), tableDesc.ParentID, tableRef.ID, behavior,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(469082)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(469083)
 			}
+			__antithesis_instrumentation__.Notify(469077)
 			viewJobDesc := fmt.Sprintf("removing view %q dependent on index %q which is being dropped",
 				viewDesc.Name, idx.GetName())
 			cascadedViews, err := p.removeDependentView(ctx, tableDesc, viewDesc, viewJobDesc)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(469084)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(469085)
 			}
+			__antithesis_instrumentation__.Notify(469078)
 
 			qualifiedView, err := p.getQualifiedTableName(ctx, viewDesc)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(469086)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(469087)
 			}
+			__antithesis_instrumentation__.Notify(469079)
 
 			droppedViews = append(droppedViews, qualifiedView.FQString())
 			droppedViews = append(droppedViews, cascadedViews...)
+		} else {
+			__antithesis_instrumentation__.Notify(469088)
 		}
 	}
+	__antithesis_instrumentation__.Notify(469023)
 
-	// Overwriting tableDesc.Index may mess up with the idx object we collected above. Make a copy.
 	idxCopy := *idx.IndexDesc()
 	idxDesc := &idxCopy
 
-	// Currently, a replacement primary index must be specified when dropping the primary index,
-	// and this cannot be done with DROP INDEX.
 	if idxDesc.ID == tableDesc.GetPrimaryIndexID() {
+		__antithesis_instrumentation__.Notify(469089)
 		return errors.WithHint(
 			pgerror.Newf(pgcode.FeatureNotSupported, "cannot drop the primary index of a table using DROP INDEX"),
 			"instead, use ALTER TABLE ... ALTER PRIMARY KEY or"+
 				"use DROP CONSTRAINT ... PRIMARY KEY followed by ADD CONSTRAINT ... PRIMARY KEY in a transaction",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(469090)
 	}
+	__antithesis_instrumentation__.Notify(469024)
 
 	foundIndex := catalog.FindPublicNonPrimaryIndex(tableDesc, func(idxEntry catalog.Index) bool {
+		__antithesis_instrumentation__.Notify(469091)
 		return idxEntry.GetID() == idxDesc.ID
 	})
+	__antithesis_instrumentation__.Notify(469025)
 
 	if foundIndex == nil {
+		__antithesis_instrumentation__.Notify(469092)
 		return pgerror.Newf(
 			pgcode.ObjectNotInPrerequisiteState,
 			"index %q in the middle of being added, try again later",
 			idxName,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(469093)
 	}
+	__antithesis_instrumentation__.Notify(469026)
 
 	idxEntry := *foundIndex.IndexDesc()
 	idxOrdinal := foundIndex.Ordinal()
 
-	// Unsplit all manually split ranges in the index so they can be
-	// automatically merged by the merge queue. Gate this on being the
-	// system tenant because secondary tenants aren't allowed to scan
-	// the meta ranges directly.
-	// TODO(Chengxiong): Remove this range unsplitting in 22.2
 	st := p.EvalContext().Settings
-	if p.ExecCfg().Codec.ForSystemTenant() &&
-		!st.Version.IsActive(ctx, clusterversion.UnsplitRangesInAsyncGCJobs) {
+	if p.ExecCfg().Codec.ForSystemTenant() && func() bool {
+		__antithesis_instrumentation__.Notify(469094)
+		return !st.Version.IsActive(ctx, clusterversion.UnsplitRangesInAsyncGCJobs) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(469095)
 
 		span := tableDesc.IndexSpan(p.ExecCfg().Codec, idxEntry.ID)
 		txn := p.ExecCfg().DB.NewTxn(ctx, "scan-ranges-for-index-drop")
 		ranges, err := kvclient.ScanMetaKVs(ctx, txn, span)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(469097)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(469098)
 		}
+		__antithesis_instrumentation__.Notify(469096)
 		for _, r := range ranges {
+			__antithesis_instrumentation__.Notify(469099)
 			var desc roachpb.RangeDescriptor
 			if err := r.ValueProto(&desc); err != nil {
+				__antithesis_instrumentation__.Notify(469101)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(469102)
 			}
-			// We have to explicitly check that the range descriptor's start key
-			// lies within the span of the index since ScanMetaKVs returns all
-			// intersecting spans.
-			if !desc.GetStickyBit().IsEmpty() && span.Key.Compare(desc.StartKey.AsRawKey()) <= 0 {
-				// Swallow "key is not the start of a range" errors because it would
-				// mean that the sticky bit was removed and merged concurrently. DROP
-				// INDEX should not fail because of this.
-				if err := p.ExecCfg().DB.AdminUnsplit(ctx, desc.StartKey); err != nil && !strings.Contains(err.Error(), "is not the start of a range") {
+			__antithesis_instrumentation__.Notify(469100)
+
+			if !desc.GetStickyBit().IsEmpty() && func() bool {
+				__antithesis_instrumentation__.Notify(469103)
+				return span.Key.Compare(desc.StartKey.AsRawKey()) <= 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(469104)
+
+				if err := p.ExecCfg().DB.AdminUnsplit(ctx, desc.StartKey); err != nil && func() bool {
+					__antithesis_instrumentation__.Notify(469105)
+					return !strings.Contains(err.Error(), "is not the start of a range") == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(469106)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(469107)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(469108)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(469109)
 	}
+	__antithesis_instrumentation__.Notify(469027)
 
-	// the idx we picked up with FindIndexByID at the top may not
-	// contain the same field any more due to other schema changes
-	// intervening since the initial lookup. So we send the recent
-	// copy idxEntry for drop instead.
 	if err := tableDesc.AddDropIndexMutation(&idxEntry); err != nil {
+		__antithesis_instrumentation__.Notify(469110)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(469111)
 	}
+	__antithesis_instrumentation__.Notify(469028)
 	tableDesc.RemovePublicNonPrimaryIndex(idxOrdinal)
 
 	commentUpdater := p.execCfg.DescMetadaUpdaterFactory.NewMetadataUpdater(
@@ -543,17 +743,29 @@ func (p *planner) dropIndexByName(
 	)
 	if err := commentUpdater.DeleteDescriptorComment(
 		int64(tableDesc.ID), int64(idxDesc.ID), keys.IndexCommentType); err != nil {
+		__antithesis_instrumentation__.Notify(469112)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(469113)
 	}
+	__antithesis_instrumentation__.Notify(469029)
 
 	if err := validateDescriptor(ctx, p, tableDesc); err != nil {
+		__antithesis_instrumentation__.Notify(469114)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(469115)
 	}
+	__antithesis_instrumentation__.Notify(469030)
 
 	mutationID := tableDesc.ClusterVersion().NextMutationID
 	if err := p.writeSchemaChange(ctx, tableDesc, mutationID, jobDesc); err != nil {
+		__antithesis_instrumentation__.Notify(469116)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(469117)
 	}
+	__antithesis_instrumentation__.Notify(469031)
 	p.BufferClientNotice(
 		ctx,
 		errors.WithHint(
@@ -561,9 +773,7 @@ func (p *planner) dropIndexByName(
 			"The reclamation delay can be customized in the zone configuration for the table.",
 		),
 	)
-	// Record index drop in the event log. This is an auditable log event
-	// and is recorded in the same transaction as the table descriptor
-	// update.
+
 	return p.logEvent(ctx,
 		tableDesc.ID,
 		&eventpb.DropIndex{

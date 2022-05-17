@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package streamingest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -36,7 +30,6 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// PartitionProgressFrequency controls the frequency of partition progress checkopints.
 var PartitionProgressFrequency = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"streaming.partition_progress_frequency",
@@ -54,18 +47,12 @@ type streamIngestionFrontier struct {
 	spec    execinfrapb.StreamIngestionFrontierSpec
 	alloc   tree.DatumAlloc
 
-	// input returns rows from one or more streamIngestion processors.
 	input execinfra.RowSource
-	// highWaterAtStart is the job high-water. It's used in an assertion that we
-	// never regress the job high-water.
+
 	highWaterAtStart hlc.Timestamp
 
-	// frontier contains the current resolved timestamp high-water for the tracked
-	// span set.
 	frontier *span.Frontier
 
-	// heartbeatSender sends heartbeats to the source cluster to keep the replication
-	// stream alive.
 	heartbeatSender *heartbeatSender
 
 	lastPartitionUpdate time.Time
@@ -87,14 +74,23 @@ func newStreamIngestionFrontierProcessor(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (execinfra.Processor, error) {
+	__antithesis_instrumentation__.Notify(25184)
 	frontier, err := span.MakeFrontier(spec.TrackedSpans...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25188)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(25189)
 	}
+	__antithesis_instrumentation__.Notify(25185)
 	heartbeatSender, err := newHeartbeatSender(flowCtx, spec)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25190)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(25191)
 	}
+	__antithesis_instrumentation__.Notify(25186)
 	sf := &streamIngestionFrontier{
 		flowCtx:           flowCtx,
 		spec:              spec,
@@ -111,18 +107,22 @@ func newStreamIngestionFrontierProcessor(
 		flowCtx,
 		processorID,
 		output,
-		nil, /* memMonitor */
+		nil,
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{sf.input},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(25192)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(25193)
 	}
+	__antithesis_instrumentation__.Notify(25187)
 	return sf, nil
 }
 
-// MustBeStreaming implements the execinfra.Processor interface.
 func (sf *streamIngestionFrontier) MustBeStreaming() bool {
+	__antithesis_instrumentation__.Notify(25194)
 	return true
 }
 
@@ -133,21 +133,26 @@ type heartbeatSender struct {
 	frontierUpdates chan hlc.Timestamp
 	frontier        hlc.Timestamp
 	flowCtx         *execinfra.FlowCtx
-	// cg runs the heartbeatSender thread.
+
 	cg ctxgroup.Group
-	// Send signal to stopChan to stop heartbeat sender.
+
 	stopChan chan struct{}
-	// heartbeatSender closes this channel when it stops.
+
 	stoppedChan chan struct{}
 }
 
 func newHeartbeatSender(
 	flowCtx *execinfra.FlowCtx, spec execinfrapb.StreamIngestionFrontierSpec,
 ) (*heartbeatSender, error) {
+	__antithesis_instrumentation__.Notify(25195)
 	streamClient, err := streamclient.NewStreamClient(streamingccl.StreamAddress(spec.StreamAddress))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25197)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(25198)
 	}
+	__antithesis_instrumentation__.Notify(25196)
 	return &heartbeatSender{
 		client:          streamClient,
 		streamID:        streaming.StreamID(spec.StreamID),
@@ -159,201 +164,298 @@ func newHeartbeatSender(
 }
 
 func (h *heartbeatSender) maybeHeartbeat(ctx context.Context, frontier hlc.Timestamp) error {
+	__antithesis_instrumentation__.Notify(25199)
 	heartbeatFrequency := streamingccl.StreamReplicationConsumerHeartbeatFrequency.Get(&h.flowCtx.EvalCtx.Settings.SV)
 	if h.lastSent.Add(heartbeatFrequency).After(timeutil.Now()) {
+		__antithesis_instrumentation__.Notify(25201)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(25202)
 	}
+	__antithesis_instrumentation__.Notify(25200)
 	h.lastSent = timeutil.Now()
 	return h.client.Heartbeat(ctx, h.streamID, frontier)
 }
 
 func (h *heartbeatSender) startHeartbeatLoop(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(25203)
 	h.cg = ctxgroup.WithContext(ctx)
 	h.cg.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(25204)
 		sendHeartbeats := func() error {
-			// The heartbeat thread send heartbeats when there is a frontier update,
-			// and it has been a while since last time we sent it, or when we need
-			// to heartbeat to keep the stream alive even if the frontier has no update.
+			__antithesis_instrumentation__.Notify(25206)
+
 			timer := time.NewTimer(streamingccl.StreamReplicationConsumerHeartbeatFrequency.
 				Get(&h.flowCtx.EvalCtx.Settings.SV))
 			defer timer.Stop()
 			unknownStatusErr := log.Every(1 * time.Minute)
 			for {
+				__antithesis_instrumentation__.Notify(25207)
 				select {
 				case <-ctx.Done():
+					__antithesis_instrumentation__.Notify(25212)
 					return ctx.Err()
 				case <-h.stopChan:
+					__antithesis_instrumentation__.Notify(25213)
 					return nil
 				case <-timer.C:
+					__antithesis_instrumentation__.Notify(25214)
 					timer.Reset(streamingccl.StreamReplicationConsumerHeartbeatFrequency.
 						Get(&h.flowCtx.EvalCtx.Settings.SV))
 				case frontier := <-h.frontierUpdates:
+					__antithesis_instrumentation__.Notify(25215)
 					h.frontier.Forward(frontier)
 				}
+				__antithesis_instrumentation__.Notify(25208)
 				err := h.maybeHeartbeat(ctx, h.frontier)
 				if err == nil {
+					__antithesis_instrumentation__.Notify(25216)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(25217)
 				}
+				__antithesis_instrumentation__.Notify(25209)
 
 				var se streamingccl.StreamStatusErr
 				if !errors.As(err, &se) {
+					__antithesis_instrumentation__.Notify(25218)
 					return errors.Wrap(err, "unknown stream status error")
+				} else {
+					__antithesis_instrumentation__.Notify(25219)
 				}
+				__antithesis_instrumentation__.Notify(25210)
 
 				if se.StreamStatus == streampb.StreamReplicationStatus_UNKNOWN_STREAM_STATUS_RETRY {
+					__antithesis_instrumentation__.Notify(25220)
 					if unknownStatusErr.ShouldLog() {
+						__antithesis_instrumentation__.Notify(25222)
 						log.Warningf(ctx, "replication stream %d has unknown status error", se.StreamID)
+					} else {
+						__antithesis_instrumentation__.Notify(25223)
 					}
+					__antithesis_instrumentation__.Notify(25221)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(25224)
 				}
-				// The replication stream is either paused or inactive.
+				__antithesis_instrumentation__.Notify(25211)
+
 				return err
 			}
 		}
+		__antithesis_instrumentation__.Notify(25205)
 		err := errors.CombineErrors(sendHeartbeats(), h.client.Close())
 		close(h.stoppedChan)
 		return err
 	})
 }
 
-// Stop the heartbeat loop and returns any error at time of heartbeatSender's exit.
-// Should be called at most once.
 func (h *heartbeatSender) stop() error {
-	close(h.stopChan) // Panic if closed multiple times
+	__antithesis_instrumentation__.Notify(25225)
+	close(h.stopChan)
 	return h.cg.Wait()
 }
 
-// Wait for heartbeatSender to be stopped and returns any error.
 func (h *heartbeatSender) err() error {
+	__antithesis_instrumentation__.Notify(25226)
 	return h.cg.Wait()
 }
 
-// Start is part of the RowSource interface.
 func (sf *streamIngestionFrontier) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(25227)
 	ctx = sf.StartInternal(ctx, streamIngestionFrontierProcName)
 	sf.input.Start(ctx)
 	sf.heartbeatSender.startHeartbeatLoop(ctx)
 }
 
-// Next is part of the RowSource interface.
 func (sf *streamIngestionFrontier) Next() (
 	row rowenc.EncDatumRow,
 	meta *execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(25228)
 	for sf.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(25230)
 		row, meta := sf.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(25235)
 			if meta.Err != nil {
-				sf.MoveToDraining(nil /* err */)
+				__antithesis_instrumentation__.Notify(25237)
+				sf.MoveToDraining(nil)
+			} else {
+				__antithesis_instrumentation__.Notify(25238)
 			}
+			__antithesis_instrumentation__.Notify(25236)
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(25239)
 		}
+		__antithesis_instrumentation__.Notify(25231)
 		if row == nil {
-			sf.MoveToDraining(nil /* err */)
+			__antithesis_instrumentation__.Notify(25240)
+			sf.MoveToDraining(nil)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(25241)
 		}
+		__antithesis_instrumentation__.Notify(25232)
 
 		if err := sf.maybeUpdatePartitionProgress(); err != nil {
-			// Updating the partition progress isn't a fatal error.
+			__antithesis_instrumentation__.Notify(25242)
+
 			log.Errorf(sf.Ctx, "failed to update partition progress: %+v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(25243)
 		}
+		__antithesis_instrumentation__.Notify(25233)
 
 		var frontierChanged bool
 		var err error
 		if frontierChanged, err = sf.noteResolvedTimestamps(row[0]); err != nil {
+			__antithesis_instrumentation__.Notify(25244)
 			sf.MoveToDraining(err)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(25245)
 		}
+		__antithesis_instrumentation__.Notify(25234)
 
-		// Send back a row to the job so that it can update the progress.
 		newResolvedTS := sf.frontier.Frontier()
 		select {
 		case <-sf.Ctx.Done():
+			__antithesis_instrumentation__.Notify(25246)
 			sf.MoveToDraining(sf.Ctx.Err())
 			return nil, sf.DrainHelper()
-		// Send the frontier update in the heartbeat to the source cluster.
+
 		case sf.heartbeatSender.frontierUpdates <- newResolvedTS:
+			__antithesis_instrumentation__.Notify(25247)
 			if !frontierChanged {
+				__antithesis_instrumentation__.Notify(25251)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(25252)
 			}
+			__antithesis_instrumentation__.Notify(25248)
 			progressBytes, err := protoutil.Marshal(&newResolvedTS)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(25253)
 				sf.MoveToDraining(err)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(25254)
 			}
+			__antithesis_instrumentation__.Notify(25249)
 			pushRow := rowenc.EncDatumRow{
 				rowenc.DatumToEncDatum(types.Bytes, tree.NewDBytes(tree.DBytes(progressBytes))),
 			}
 			if outRow := sf.ProcessRowHelper(pushRow); outRow != nil {
+				__antithesis_instrumentation__.Notify(25255)
 				return outRow, nil
+			} else {
+				__antithesis_instrumentation__.Notify(25256)
 			}
-			// If heartbeatSender has error, it means remote has error, we want to
-			// stop the processor.
+
 		case <-sf.heartbeatSender.stoppedChan:
+			__antithesis_instrumentation__.Notify(25250)
 			sf.MoveToDraining(sf.heartbeatSender.err())
 			return nil, sf.DrainHelper()
 		}
 	}
+	__antithesis_instrumentation__.Notify(25229)
 	return nil, sf.DrainHelper()
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (sf *streamIngestionFrontier) ConsumerClosed() {
+	__antithesis_instrumentation__.Notify(25257)
 	if sf.InternalClose() {
+		__antithesis_instrumentation__.Notify(25258)
 		if err := sf.heartbeatSender.stop(); err != nil {
+			__antithesis_instrumentation__.Notify(25259)
 			log.Errorf(sf.Ctx, "heartbeatSender exited with error: %s", err.Error())
+		} else {
+			__antithesis_instrumentation__.Notify(25260)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(25261)
 	}
 }
 
-// noteResolvedTimestamps processes a batch of resolved timestamp events, and
-// returns whether the frontier has moved forward after processing the batch.
 func (sf *streamIngestionFrontier) noteResolvedTimestamps(
 	resolvedSpanDatums rowenc.EncDatum,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(25262)
 	var frontierChanged bool
 	if err := resolvedSpanDatums.EnsureDecoded(streamIngestionResultTypes[0], &sf.alloc); err != nil {
+		__antithesis_instrumentation__.Notify(25267)
 		return frontierChanged, err
+	} else {
+		__antithesis_instrumentation__.Notify(25268)
 	}
+	__antithesis_instrumentation__.Notify(25263)
 	raw, ok := resolvedSpanDatums.Datum.(*tree.DBytes)
 	if !ok {
+		__antithesis_instrumentation__.Notify(25269)
 		return frontierChanged, errors.AssertionFailedf(`unexpected datum type %T: %s`,
 			resolvedSpanDatums.Datum, resolvedSpanDatums.Datum)
+	} else {
+		__antithesis_instrumentation__.Notify(25270)
 	}
+	__antithesis_instrumentation__.Notify(25264)
 	var resolvedSpans jobspb.ResolvedSpans
 	if err := protoutil.Unmarshal([]byte(*raw), &resolvedSpans); err != nil {
+		__antithesis_instrumentation__.Notify(25271)
 		return frontierChanged, errors.NewAssertionErrorWithWrappedErrf(err,
 			`unmarshalling resolved timestamp: %x`, raw)
+	} else {
+		__antithesis_instrumentation__.Notify(25272)
 	}
+	__antithesis_instrumentation__.Notify(25265)
 
 	for _, resolved := range resolvedSpans.ResolvedSpans {
-		// Inserting a timestamp less than the one the ingestion flow started at could
-		// potentially regress the job progress. This is not expected and thus we
-		// assert to catch such unexpected behavior.
-		if !resolved.Timestamp.IsEmpty() && resolved.Timestamp.Less(sf.highWaterAtStart) {
+		__antithesis_instrumentation__.Notify(25273)
+
+		if !resolved.Timestamp.IsEmpty() && func() bool {
+			__antithesis_instrumentation__.Notify(25275)
+			return resolved.Timestamp.Less(sf.highWaterAtStart) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(25276)
 			return frontierChanged, errors.AssertionFailedf(
 				`got a resolved timestamp %s that is less than the frontier processor start time %s`,
 				redact.Safe(resolved.Timestamp), redact.Safe(sf.highWaterAtStart))
+		} else {
+			__antithesis_instrumentation__.Notify(25277)
 		}
+		__antithesis_instrumentation__.Notify(25274)
 
 		if changed, err := sf.frontier.Forward(resolved.Span, resolved.Timestamp); err == nil {
-			frontierChanged = frontierChanged || changed
+			__antithesis_instrumentation__.Notify(25278)
+			frontierChanged = frontierChanged || func() bool {
+				__antithesis_instrumentation__.Notify(25279)
+				return changed == true
+			}() == true
 		} else {
+			__antithesis_instrumentation__.Notify(25280)
 			return false, err
 		}
 	}
+	__antithesis_instrumentation__.Notify(25266)
 
 	return frontierChanged, nil
 }
 
-// maybeUpdatePartitionProgress polls the frontier and updates the job progress with
-// partition-specific information to track the status of each partition.
 func (sf *streamIngestionFrontier) maybeUpdatePartitionProgress() error {
+	__antithesis_instrumentation__.Notify(25281)
 	ctx := sf.Ctx
 	updateFreq := PartitionProgressFrequency.Get(&sf.flowCtx.Cfg.Settings.SV)
-	if updateFreq == 0 || timeutil.Since(sf.lastPartitionUpdate) < updateFreq {
+	if updateFreq == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(25285)
+		return timeutil.Since(sf.lastPartitionUpdate) < updateFreq == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(25286)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(25287)
 	}
+	__antithesis_instrumentation__.Notify(25282)
 	registry := sf.flowCtx.Cfg.JobRegistry
 	jobID := jobspb.JobID(sf.spec.JobID)
 	f := sf.frontier
@@ -364,30 +466,44 @@ func (sf *streamIngestionFrontier) maybeUpdatePartitionProgress() error {
 	partitionFrontiers := sf.partitionProgress
 	job, err := registry.LoadJob(ctx, jobID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25288)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(25289)
 	}
+	__antithesis_instrumentation__.Notify(25283)
 
 	f.SpanEntries(allSpans, func(span roachpb.Span, timestamp hlc.Timestamp) (done span.OpResult) {
+		__antithesis_instrumentation__.Notify(25290)
 		partitionKey := span.Key
 		partition := string(partitionKey)
 		if curFrontier, ok := partitionFrontiers[partition]; !ok {
+			__antithesis_instrumentation__.Notify(25292)
 			partitionFrontiers[partition] = jobspb.StreamIngestionProgress_PartitionProgress{
 				IngestedTimestamp: timestamp,
 			}
-		} else if curFrontier.IngestedTimestamp.Less(timestamp) {
-			curFrontier.IngestedTimestamp = timestamp
+		} else {
+			__antithesis_instrumentation__.Notify(25293)
+			if curFrontier.IngestedTimestamp.Less(timestamp) {
+				__antithesis_instrumentation__.Notify(25294)
+				curFrontier.IngestedTimestamp = timestamp
+			} else {
+				__antithesis_instrumentation__.Notify(25295)
+			}
 		}
+		__antithesis_instrumentation__.Notify(25291)
 		return true
 	})
+	__antithesis_instrumentation__.Notify(25284)
 
 	sf.lastPartitionUpdate = timeutil.Now()
-	// TODO(pbardea): Only update partitions that have changed.
-	return job.FractionProgressed(ctx, nil, /* txn */
+
+	return job.FractionProgressed(ctx, nil,
 		func(ctx context.Context, details jobspb.ProgressDetails) float32 {
+			__antithesis_instrumentation__.Notify(25296)
 			prog := details.(*jobspb.Progress_StreamIngest).StreamIngest
 			prog.PartitionProgress = partitionFrontiers
-			// "FractionProgressed" isn't relevant on jobs that are streaming in
-			// changes.
+
 			return 0.0
 		},
 	)

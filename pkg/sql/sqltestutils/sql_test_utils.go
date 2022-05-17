@@ -1,15 +1,7 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package sqltestutils provides helper methods for testing sql packages.
 package sqltestutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -33,66 +25,77 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// AddImmediateGCZoneConfig set the GC TTL to 0 for the given table ID. One must
-// make sure to disable strict GC TTL enforcement when using this.
 func AddImmediateGCZoneConfig(sqlDB *gosql.DB, id descpb.ID) (zonepb.ZoneConfig, error) {
+	__antithesis_instrumentation__.Notify(625894)
 	cfg := zonepb.DefaultZoneConfig()
 	cfg.GC.TTLSeconds = 0
 	buf, err := protoutil.Marshal(&cfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(625896)
 		return cfg, err
+	} else {
+		__antithesis_instrumentation__.Notify(625897)
 	}
+	__antithesis_instrumentation__.Notify(625895)
 	_, err = sqlDB.Exec(`UPSERT INTO system.zones VALUES ($1, $2)`, id, buf)
 	return cfg, err
 }
 
-// DisableGCTTLStrictEnforcement sets the cluster setting to disable strict
-// GC TTL enforcement.
 func DisableGCTTLStrictEnforcement(t *testing.T, db *gosql.DB) (cleanup func()) {
+	__antithesis_instrumentation__.Notify(625898)
 	_, err := db.Exec(`SET CLUSTER SETTING kv.gc_ttl.strict_enforcement.enabled = false`)
 	require.NoError(t, err)
 	return func() {
+		__antithesis_instrumentation__.Notify(625899)
 		_, err := db.Exec(`SET CLUSTER SETTING kv.gc_ttl.strict_enforcement.enabled = DEFAULT`)
 		require.NoError(t, err)
 	}
 }
 
-// SetShortRangeFeedIntervals is a helper to set the cluster settings
-// pertaining to rangefeeds to short durations. This is helps tests which
-// rely on zone/span configuration changes to propagate.
 func SetShortRangeFeedIntervals(t *testing.T, db sqlutils.DBHandle) {
+	__antithesis_instrumentation__.Notify(625900)
 	tdb := sqlutils.MakeSQLRunner(db)
 	short := "'20ms'"
 	if util.RaceEnabled {
+		__antithesis_instrumentation__.Notify(625902)
 		short = "'200ms'"
+	} else {
+		__antithesis_instrumentation__.Notify(625903)
 	}
+	__antithesis_instrumentation__.Notify(625901)
 	tdb.Exec(t, `SET CLUSTER SETTING kv.closed_timestamp.target_duration = `+short)
 	tdb.Exec(t, `SET CLUSTER SETTING kv.closed_timestamp.side_transport_interval = `+short)
 }
 
-// AddDefaultZoneConfig adds an entry for the given id into system.zones.
 func AddDefaultZoneConfig(sqlDB *gosql.DB, id descpb.ID) (zonepb.ZoneConfig, error) {
+	__antithesis_instrumentation__.Notify(625904)
 	cfg := zonepb.DefaultZoneConfig()
 	buf, err := protoutil.Marshal(&cfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(625906)
 		return cfg, err
+	} else {
+		__antithesis_instrumentation__.Notify(625907)
 	}
+	__antithesis_instrumentation__.Notify(625905)
 	_, err = sqlDB.Exec(`UPSERT INTO system.zones VALUES ($1, $2)`, id, buf)
 	return cfg, err
 }
 
-// BulkInsertIntoTable fills up table t.test with (maxValue + 1) rows.
 func BulkInsertIntoTable(sqlDB *gosql.DB, maxValue int) error {
+	__antithesis_instrumentation__.Notify(625908)
 	inserts := make([]string, maxValue+1)
 	for i := 0; i < maxValue+1; i++ {
+		__antithesis_instrumentation__.Notify(625910)
 		inserts[i] = fmt.Sprintf(`(%d, %d)`, i, maxValue-i)
 	}
+	__antithesis_instrumentation__.Notify(625909)
 	_, err := sqlDB.Exec(`INSERT INTO t.test (k, v) VALUES ` + strings.Join(inserts, ","))
 	return err
 }
 
-// GetTableKeyCount returns the number of keys in t.test.
 func GetTableKeyCount(ctx context.Context, kvDB *kv.DB) (int, error) {
+	__antithesis_instrumentation__.Notify(625911)
 	tableDesc := desctestutils.TestingGetPublicTableDescriptor(kvDB, keys.SystemSQLCodec, "t", "test")
 	tablePrefix := keys.SystemSQLCodec.TablePrefix(uint32(tableDesc.GetID()))
 	tableEnd := tablePrefix.PrefixEnd()
@@ -100,28 +103,37 @@ func GetTableKeyCount(ctx context.Context, kvDB *kv.DB) (int, error) {
 	return len(kvs), err
 }
 
-// CheckTableKeyCountExact returns whether the number of keys in t.test
-// equals exactly e.
 func CheckTableKeyCountExact(ctx context.Context, kvDB *kv.DB, e int) error {
+	__antithesis_instrumentation__.Notify(625912)
 	if count, err := GetTableKeyCount(ctx, kvDB); err != nil {
+		__antithesis_instrumentation__.Notify(625914)
 		return err
-	} else if count != e {
-		return errors.Newf("expected %d key value pairs, but got %d", e, count)
+	} else {
+		__antithesis_instrumentation__.Notify(625915)
+		if count != e {
+			__antithesis_instrumentation__.Notify(625916)
+			return errors.Newf("expected %d key value pairs, but got %d", e, count)
+		} else {
+			__antithesis_instrumentation__.Notify(625917)
+		}
 	}
+	__antithesis_instrumentation__.Notify(625913)
 	return nil
 }
 
-// CheckTableKeyCount returns the number of KVs in the DB, the multiple
-// should be the number of columns.
 func CheckTableKeyCount(ctx context.Context, kvDB *kv.DB, multiple int, maxValue int) error {
+	__antithesis_instrumentation__.Notify(625918)
 	return CheckTableKeyCountExact(ctx, kvDB, multiple*(maxValue+1))
 }
 
-// IsClientSideQueryCanceledErr returns whether err is a client-side
-// QueryCanceled error.
 func IsClientSideQueryCanceledErr(err error) bool {
+	__antithesis_instrumentation__.Notify(625919)
 	if pqErr := (*pq.Error)(nil); errors.As(err, &pqErr) {
+		__antithesis_instrumentation__.Notify(625921)
 		return pgcode.MakeCode(string(pqErr.Code)) == pgcode.QueryCanceled
+	} else {
+		__antithesis_instrumentation__.Notify(625922)
 	}
+	__antithesis_instrumentation__.Notify(625920)
 	return pgerror.GetPGCode(err) == pgcode.QueryCanceled
 }

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,10 +15,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// mergeJoiner performs merge join, it has two input row sources with the same
-// ordering on the columns that have equality constraints.
-//
-// It is guaranteed that the results preserve this ordering.
 type mergeJoiner struct {
 	joinerBase
 
@@ -58,32 +46,45 @@ func newMergeJoiner(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*mergeJoiner, error) {
+	__antithesis_instrumentation__.Notify(573901)
 	m := &mergeJoiner{
-		leftSource:        leftSource,
-		rightSource:       rightSource,
-		trackMatchedRight: shouldEmitUnmatchedRow(rightSide, spec.Type) || spec.Type == descpb.RightSemiJoin,
+		leftSource:  leftSource,
+		rightSource: rightSource,
+		trackMatchedRight: shouldEmitUnmatchedRow(rightSide, spec.Type) || func() bool {
+			__antithesis_instrumentation__.Notify(573905)
+			return spec.Type == descpb.RightSemiJoin == true
+		}() == true,
 	}
 
 	if execinfra.ShouldCollectStats(flowCtx.EvalCtx.Ctx(), flowCtx) {
+		__antithesis_instrumentation__.Notify(573906)
 		m.leftSource = newInputStatCollector(m.leftSource)
 		m.rightSource = newInputStatCollector(m.rightSource)
 		m.ExecStatsForTrace = m.execStatsForTrace
+	} else {
+		__antithesis_instrumentation__.Notify(573907)
 	}
+	__antithesis_instrumentation__.Notify(573902)
 
 	if err := m.joinerBase.init(
-		m /* self */, flowCtx, processorID, leftSource.OutputTypes(), rightSource.OutputTypes(),
-		spec.Type, spec.OnExpr, false, /* outputContinuationColumn */
+		m, flowCtx, processorID, leftSource.OutputTypes(), rightSource.OutputTypes(),
+		spec.Type, spec.OnExpr, false,
 		post, output,
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{leftSource, rightSource},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				__antithesis_instrumentation__.Notify(573908)
 				m.close()
 				return nil
 			},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(573909)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(573910)
 	}
+	__antithesis_instrumentation__.Notify(573903)
 
 	m.MemMonitor = execinfra.NewMonitor(flowCtx.EvalCtx.Ctx(), flowCtx.EvalCtx.Mon, "mergejoiner-mem")
 
@@ -97,179 +98,268 @@ func newMergeJoiner(
 		m.MemMonitor,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(573911)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(573912)
 	}
+	__antithesis_instrumentation__.Notify(573904)
 
 	return m, nil
 }
 
-// Start is part of the RowSource interface.
 func (m *mergeJoiner) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573913)
 	ctx = m.StartInternal(ctx, mergeJoinerProcName)
 	m.streamMerger.start(ctx)
 	m.cancelChecker.Reset(ctx)
 }
 
-// Next is part of the Processor interface.
 func (m *mergeJoiner) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(573914)
 	for m.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(573916)
 		row, meta := m.nextRow()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(573919)
 			if meta.Err != nil {
-				m.MoveToDraining(nil /* err */)
+				__antithesis_instrumentation__.Notify(573921)
+				m.MoveToDraining(nil)
+			} else {
+				__antithesis_instrumentation__.Notify(573922)
 			}
+			__antithesis_instrumentation__.Notify(573920)
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(573923)
 		}
+		__antithesis_instrumentation__.Notify(573917)
 		if row == nil {
-			m.MoveToDraining(nil /* err */)
+			__antithesis_instrumentation__.Notify(573924)
+			m.MoveToDraining(nil)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(573925)
 		}
+		__antithesis_instrumentation__.Notify(573918)
 
 		if outRow := m.ProcessRowHelper(row); outRow != nil {
+			__antithesis_instrumentation__.Notify(573926)
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(573927)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573915)
 	return nil, m.DrainHelper()
 }
 
 func (m *mergeJoiner) nextRow() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
-	// The loops below form a restartable state machine that iterates over a
-	// batch of rows from the left and right side of the join. The state machine
-	// returns a result for every row that should be output.
+	__antithesis_instrumentation__.Notify(573928)
 
 	for {
+		__antithesis_instrumentation__.Notify(573929)
 		for m.leftIdx < len(m.leftRows) {
-			// We have unprocessed rows from the left-side batch.
+			__antithesis_instrumentation__.Notify(573934)
+
 			lrow := m.leftRows[m.leftIdx]
 			for m.rightIdx < len(m.rightRows) {
-				// We have unprocessed rows from the right-side batch.
+				__antithesis_instrumentation__.Notify(573939)
+
 				ridx := m.rightIdx
 				m.rightIdx++
-				if (m.joinType == descpb.RightSemiJoin || m.joinType == descpb.RightAntiJoin) && m.matchedRight.Contains(ridx) {
-					// Right semi/anti joins only need to know whether the
-					// right row has a match, and we already know that for
-					// ridx. Furthermore, we have already emitted this row in
-					// case of right semi, so we need to skip it for
-					// correctness as well.
+				if (m.joinType == descpb.RightSemiJoin || func() bool {
+					__antithesis_instrumentation__.Notify(573942)
+					return m.joinType == descpb.RightAntiJoin == true
+				}() == true) && func() bool {
+					__antithesis_instrumentation__.Notify(573943)
+					return m.matchedRight.Contains(ridx) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(573944)
+
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(573945)
 				}
+				__antithesis_instrumentation__.Notify(573940)
 				renderedRow, err := m.render(lrow, m.rightRows[ridx])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(573946)
 					return nil, &execinfrapb.ProducerMetadata{Err: err}
+				} else {
+					__antithesis_instrumentation__.Notify(573947)
 				}
+				__antithesis_instrumentation__.Notify(573941)
 				if renderedRow != nil {
+					__antithesis_instrumentation__.Notify(573948)
 					m.matchedRightCount++
 					if m.trackMatchedRight {
+						__antithesis_instrumentation__.Notify(573953)
 						m.matchedRight.Add(ridx)
+					} else {
+						__antithesis_instrumentation__.Notify(573954)
 					}
-					if m.joinType == descpb.LeftAntiJoin || m.joinType == descpb.ExceptAllJoin {
-						// We know that the current left row has a match and is
-						// not included in the output, so we can stop
-						// processing the right-side batch.
+					__antithesis_instrumentation__.Notify(573949)
+					if m.joinType == descpb.LeftAntiJoin || func() bool {
+						__antithesis_instrumentation__.Notify(573955)
+						return m.joinType == descpb.ExceptAllJoin == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(573956)
+
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(573957)
 					}
+					__antithesis_instrumentation__.Notify(573950)
 					if m.joinType == descpb.RightAntiJoin {
-						// We don't emit the current right row because it has a
-						// match on the left, so we move onto the next right
-						// row.
+						__antithesis_instrumentation__.Notify(573958)
+
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(573959)
 					}
-					if m.joinType == descpb.LeftSemiJoin || m.joinType == descpb.IntersectAllJoin {
-						// Semi-joins and INTERSECT ALL only need to know if there is at
-						// least one match, so can skip the rest of the right rows.
+					__antithesis_instrumentation__.Notify(573951)
+					if m.joinType == descpb.LeftSemiJoin || func() bool {
+						__antithesis_instrumentation__.Notify(573960)
+						return m.joinType == descpb.IntersectAllJoin == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(573961)
+
 						m.rightIdx = len(m.rightRows)
+					} else {
+						__antithesis_instrumentation__.Notify(573962)
 					}
+					__antithesis_instrumentation__.Notify(573952)
 					return renderedRow, nil
+				} else {
+					__antithesis_instrumentation__.Notify(573963)
 				}
 			}
+			__antithesis_instrumentation__.Notify(573935)
 
-			// Perform the cancellation check. We don't perform this on every row,
-			// but once for every iteration through the right-side batch.
 			if err := m.cancelChecker.Check(); err != nil {
+				__antithesis_instrumentation__.Notify(573964)
 				return nil, &execinfrapb.ProducerMetadata{Err: err}
+			} else {
+				__antithesis_instrumentation__.Notify(573965)
 			}
+			__antithesis_instrumentation__.Notify(573936)
 
-			// We've exhausted the right-side batch. Adjust the indexes for the next
-			// row from the left-side of the batch.
 			m.leftIdx++
 			m.rightIdx = 0
 
-			// For INTERSECT ALL and EXCEPT ALL, adjust rightIdx to skip all
-			// previously matched rows on the next right-side iteration, since we
-			// don't want to match them again.
 			if m.joinType.IsSetOpJoin() {
+				__antithesis_instrumentation__.Notify(573966)
 				m.rightIdx = m.leftIdx
+			} else {
+				__antithesis_instrumentation__.Notify(573967)
 			}
+			__antithesis_instrumentation__.Notify(573937)
 
-			// If we didn't match any rows on the right-side of the batch and this is
-			// a left outer join, full outer join, left anti join, or EXCEPT ALL, emit an
-			// unmatched left-side row.
-			if m.matchedRightCount == 0 && shouldEmitUnmatchedRow(leftSide, m.joinType) {
+			if m.matchedRightCount == 0 && func() bool {
+				__antithesis_instrumentation__.Notify(573968)
+				return shouldEmitUnmatchedRow(leftSide, m.joinType) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(573969)
 				return m.renderUnmatchedRow(lrow, leftSide), nil
+			} else {
+				__antithesis_instrumentation__.Notify(573970)
 			}
+			__antithesis_instrumentation__.Notify(573938)
 
 			m.matchedRightCount = 0
 		}
+		__antithesis_instrumentation__.Notify(573930)
 
-		// We've exhausted the left-side batch. If this is a right/full outer
-		// or right anti join, emit unmatched right-side rows.
 		if m.emitUnmatchedRight {
+			__antithesis_instrumentation__.Notify(573971)
 			for m.rightIdx < len(m.rightRows) {
+				__antithesis_instrumentation__.Notify(573973)
 				ridx := m.rightIdx
 				m.rightIdx++
 				if m.matchedRight.Contains(ridx) {
+					__antithesis_instrumentation__.Notify(573975)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(573976)
 				}
+				__antithesis_instrumentation__.Notify(573974)
 				return m.renderUnmatchedRow(m.rightRows[ridx], rightSide), nil
 			}
+			__antithesis_instrumentation__.Notify(573972)
 			m.emitUnmatchedRight = false
+		} else {
+			__antithesis_instrumentation__.Notify(573977)
 		}
+		__antithesis_instrumentation__.Notify(573931)
 
-		// Retrieve the next batch of rows to process.
 		var meta *execinfrapb.ProducerMetadata
-		// TODO(paul): Investigate (with benchmarks) whether or not it's
-		// worthwhile to only buffer one row from the right stream per batch
-		// for semi-joins.
+
 		m.leftRows, m.rightRows, meta = m.streamMerger.NextBatch(m.Ctx, m.EvalCtx)
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(573978)
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(573979)
 		}
-		if m.leftRows == nil && m.rightRows == nil {
+		__antithesis_instrumentation__.Notify(573932)
+		if m.leftRows == nil && func() bool {
+			__antithesis_instrumentation__.Notify(573980)
+			return m.rightRows == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573981)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(573982)
 		}
+		__antithesis_instrumentation__.Notify(573933)
 
-		// Prepare for processing the next batch.
 		m.emitUnmatchedRight = shouldEmitUnmatchedRow(rightSide, m.joinType)
 		m.leftIdx, m.rightIdx = 0, 0
 		if m.trackMatchedRight {
+			__antithesis_instrumentation__.Notify(573983)
 			m.matchedRight = util.FastIntSet{}
+		} else {
+			__antithesis_instrumentation__.Notify(573984)
 		}
 	}
 }
 
 func (m *mergeJoiner) close() {
+	__antithesis_instrumentation__.Notify(573985)
 	if m.InternalClose() {
+		__antithesis_instrumentation__.Notify(573986)
 		m.streamMerger.close(m.Ctx)
 		m.MemMonitor.Stop(m.Ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(573987)
 	}
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (m *mergeJoiner) ConsumerClosed() {
-	// The consumer is done, Next() will not be called again.
+	__antithesis_instrumentation__.Notify(573988)
+
 	m.close()
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (m *mergeJoiner) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(573989)
 	lis, ok := getInputStats(m.leftSource)
 	if !ok {
+		__antithesis_instrumentation__.Notify(573992)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(573993)
 	}
+	__antithesis_instrumentation__.Notify(573990)
 	ris, ok := getInputStats(m.rightSource)
 	if !ok {
+		__antithesis_instrumentation__.Notify(573994)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(573995)
 	}
+	__antithesis_instrumentation__.Notify(573991)
 	return &execinfrapb.ComponentStats{
 		Inputs: []execinfrapb.InputStats{lis, ris},
 		Exec: execinfrapb.ExecStats{
@@ -279,30 +369,48 @@ func (m *mergeJoiner) execStatsForTrace() *execinfrapb.ComponentStats {
 	}
 }
 
-// ChildCount is part of the execinfra.OpNode interface.
 func (m *mergeJoiner) ChildCount(verbose bool) int {
+	__antithesis_instrumentation__.Notify(573996)
 	if _, ok := m.leftSource.(execinfra.OpNode); ok {
+		__antithesis_instrumentation__.Notify(573998)
 		if _, ok := m.rightSource.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(573999)
 			return 2
+		} else {
+			__antithesis_instrumentation__.Notify(574000)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(574001)
 	}
+	__antithesis_instrumentation__.Notify(573997)
 	return 0
 }
 
-// Child is part of the execinfra.OpNode interface.
 func (m *mergeJoiner) Child(nth int, verbose bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(574002)
 	switch nth {
 	case 0:
+		__antithesis_instrumentation__.Notify(574003)
 		if n, ok := m.leftSource.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(574008)
 			return n
+		} else {
+			__antithesis_instrumentation__.Notify(574009)
 		}
+		__antithesis_instrumentation__.Notify(574004)
 		panic("left input to mergeJoiner is not an execinfra.OpNode")
 	case 1:
+		__antithesis_instrumentation__.Notify(574005)
 		if n, ok := m.rightSource.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(574010)
 			return n
+		} else {
+			__antithesis_instrumentation__.Notify(574011)
 		}
+		__antithesis_instrumentation__.Notify(574006)
 		panic("right input to mergeJoiner is not an execinfra.OpNode")
 	default:
+		__antithesis_instrumentation__.Notify(574007)
 		panic(errors.AssertionFailedf("invalid index %d", nth))
 	}
 }

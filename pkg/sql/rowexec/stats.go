@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,7 +20,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// inputStatCollector wraps an execinfra.RowSource and collects stats from it.
 type inputStatCollector struct {
 	execinfra.RowSource
 	stats execinfrapb.InputStats
@@ -37,60 +28,68 @@ type inputStatCollector struct {
 var _ execinfra.RowSource = &inputStatCollector{}
 var _ execinfra.OpNode = &inputStatCollector{}
 
-// newInputStatCollector creates a new inputStatCollector that wraps the given
-// input.
 func newInputStatCollector(input execinfra.RowSource) *inputStatCollector {
+	__antithesis_instrumentation__.Notify(574984)
 	res := &inputStatCollector{RowSource: input}
 	res.stats.NumTuples.Set(0)
 	return res
 }
 
-// ChildCount is part of the OpNode interface.
 func (isc *inputStatCollector) ChildCount(verbose bool) int {
+	__antithesis_instrumentation__.Notify(574985)
 	if _, ok := isc.RowSource.(execinfra.OpNode); ok {
+		__antithesis_instrumentation__.Notify(574987)
 		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(574988)
 	}
+	__antithesis_instrumentation__.Notify(574986)
 	return 0
 }
 
-// Child is part of the OpNode interface.
 func (isc *inputStatCollector) Child(nth int, verbose bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(574989)
 	if nth == 0 {
+		__antithesis_instrumentation__.Notify(574991)
 		return isc.RowSource.(execinfra.OpNode)
+	} else {
+		__antithesis_instrumentation__.Notify(574992)
 	}
+	__antithesis_instrumentation__.Notify(574990)
 	panic(errors.AssertionFailedf("invalid index %d", nth))
 }
 
-// Next implements the RowSource interface. It calls Next on the embedded
-// RowSource and collects stats.
 func (isc *inputStatCollector) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(574993)
 	start := timeutil.Now()
 	row, meta := isc.RowSource.Next()
 	if row != nil {
+		__antithesis_instrumentation__.Notify(574995)
 		isc.stats.NumTuples.Add(1)
+	} else {
+		__antithesis_instrumentation__.Notify(574996)
 	}
+	__antithesis_instrumentation__.Notify(574994)
 	isc.stats.WaitTime.Add(timeutil.Since(start))
 	return row, meta
 }
 
-// rowFetcherStatCollector is a wrapper on top of a row.Fetcher that collects stats.
 type rowFetcherStatCollector struct {
 	fetcher *row.Fetcher
-	// stats contains the collected stats.
+
 	stats              execinfrapb.InputStats
 	startScanStallTime time.Duration
 }
 
 var _ rowFetcher = &rowFetcherStatCollector{}
 
-// newRowFetcherStatCollector returns a new rowFetcherStatCollector.
 func newRowFetcherStatCollector(f *row.Fetcher) *rowFetcherStatCollector {
+	__antithesis_instrumentation__.Notify(574997)
 	res := &rowFetcherStatCollector{fetcher: f}
 	res.stats.NumTuples.Set(0)
 	return res
 }
 
-// StartScan is part of the rowFetcher interface.
 func (c *rowFetcherStatCollector) StartScan(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -100,23 +99,23 @@ func (c *rowFetcherStatCollector) StartScan(
 	traceKV bool,
 	forceProductionKVBatchSize bool,
 ) error {
+	__antithesis_instrumentation__.Notify(574998)
 	start := timeutil.Now()
 	err := c.fetcher.StartScan(ctx, txn, spans, batchBytesLimit, limitHint, traceKV, forceProductionKVBatchSize)
 	c.startScanStallTime += timeutil.Since(start)
 	return err
 }
 
-// StartScanFrom is part of the rowFetcher interface.
 func (c *rowFetcherStatCollector) StartScanFrom(
 	ctx context.Context, f row.KVBatchFetcher, traceKV bool,
 ) error {
+	__antithesis_instrumentation__.Notify(574999)
 	start := timeutil.Now()
 	err := c.fetcher.StartScanFrom(ctx, f, traceKV)
 	c.startScanStallTime += timeutil.Since(start)
 	return err
 }
 
-// StartInconsistentScan is part of the rowFetcher interface.
 func (c *rowFetcherStatCollector) StartInconsistentScan(
 	ctx context.Context,
 	db *kv.DB,
@@ -129,6 +128,7 @@ func (c *rowFetcherStatCollector) StartInconsistentScan(
 	forceProductionKVBatchSize bool,
 	qualityOfService sessiondatapb.QoSLevel,
 ) error {
+	__antithesis_instrumentation__.Notify(575000)
 	start := timeutil.Now()
 	err := c.fetcher.StartInconsistentScan(
 		ctx, db, initialTimestamp, maxTimestampAge, spans, batchBytesLimit, limitHint, traceKV,
@@ -138,69 +138,82 @@ func (c *rowFetcherStatCollector) StartInconsistentScan(
 	return err
 }
 
-// NextRow is part of the rowFetcher interface.
 func (c *rowFetcherStatCollector) NextRow(ctx context.Context) (rowenc.EncDatumRow, error) {
+	__antithesis_instrumentation__.Notify(575001)
 	start := timeutil.Now()
 	row, err := c.fetcher.NextRow(ctx)
 	if row != nil {
+		__antithesis_instrumentation__.Notify(575003)
 		c.stats.NumTuples.Add(1)
+	} else {
+		__antithesis_instrumentation__.Notify(575004)
 	}
+	__antithesis_instrumentation__.Notify(575002)
 	c.stats.WaitTime.Add(timeutil.Since(start))
 	return row, err
 }
 
-// NextRowInto is part of the rowFetcher interface.
 func (c *rowFetcherStatCollector) NextRowInto(
 	ctx context.Context, destination rowenc.EncDatumRow, colIdxMap catalog.TableColMap,
 ) (ok bool, err error) {
+	__antithesis_instrumentation__.Notify(575005)
 	start := timeutil.Now()
 	ok, err = c.fetcher.NextRowInto(ctx, destination, colIdxMap)
 	if ok {
+		__antithesis_instrumentation__.Notify(575007)
 		c.stats.NumTuples.Add(1)
+	} else {
+		__antithesis_instrumentation__.Notify(575008)
 	}
+	__antithesis_instrumentation__.Notify(575006)
 	c.stats.WaitTime.Add(timeutil.Since(start))
 	return ok, err
 }
 
-// PartialKey is part of the rowFetcher interface.
 func (c *rowFetcherStatCollector) PartialKey(nCols int) (roachpb.Key, error) {
+	__antithesis_instrumentation__.Notify(575009)
 	return c.fetcher.PartialKey(nCols)
 }
 
 func (c *rowFetcherStatCollector) Reset() {
+	__antithesis_instrumentation__.Notify(575010)
 	c.fetcher.Reset()
 }
 
-// GetBytesRead is part of the rowFetcher interface.
 func (c *rowFetcherStatCollector) GetBytesRead() int64 {
+	__antithesis_instrumentation__.Notify(575011)
 	return c.fetcher.GetBytesRead()
 }
 
-// Close is part of the rowFetcher interface.
 func (c *rowFetcherStatCollector) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(575012)
 	c.fetcher.Close(ctx)
 }
 
-// getInputStats is a utility function to check whether the given input is
-// collecting stats, returning true and the stats if so. If false is returned,
-// the input is not collecting stats.
 func getInputStats(input execinfra.RowSource) (execinfrapb.InputStats, bool) {
+	__antithesis_instrumentation__.Notify(575013)
 	isc, ok := input.(*inputStatCollector)
 	if !ok {
+		__antithesis_instrumentation__.Notify(575015)
 		return execinfrapb.InputStats{}, false
+	} else {
+		__antithesis_instrumentation__.Notify(575016)
 	}
+	__antithesis_instrumentation__.Notify(575014)
 	return isc.stats, true
 }
 
-// getFetcherInputStats is a utility function to check whether the given input
-// is collecting row fetcher stats, returning true and the stats if so. If
-// false is returned, the input is not collecting row fetcher stats.
 func getFetcherInputStats(f rowFetcher) (execinfrapb.InputStats, bool) {
+	__antithesis_instrumentation__.Notify(575017)
 	rfsc, ok := f.(*rowFetcherStatCollector)
 	if !ok {
+		__antithesis_instrumentation__.Notify(575019)
 		return execinfrapb.InputStats{}, false
+	} else {
+		__antithesis_instrumentation__.Notify(575020)
 	}
-	// Add row fetcher start scan stall time to Next() stall time.
+	__antithesis_instrumentation__.Notify(575018)
+
 	rfsc.stats.WaitTime.Add(rfsc.startScanStallTime)
 	return rfsc.stats, true
 }

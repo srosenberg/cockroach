@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,11 +19,7 @@ import (
 	"github.com/kr/pretty"
 )
 
-// ClearRangeBytesThreshold is the threshold over which the ClearRange
-// command will use engine.ClearRange to efficiently perform a range
-// deletion. Otherwise, will revert to iterating through the values
-// and clearing them individually with engine.Clear.
-const ClearRangeBytesThreshold = 512 << 10 // 512KiB
+const ClearRangeBytesThreshold = 512 << 10
 
 func init() {
 	RegisterReadWriteCommand(roachpb.ClearRange, declareKeysClearRange, ClearRange)
@@ -44,37 +32,41 @@ func declareKeysClearRange(
 	latchSpans, lockSpans *spanset.SpanSet,
 	maxOffset time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(96434)
 	DefaultDeclareIsolatedKeys(rs, header, req, latchSpans, lockSpans, maxOffset)
-	// We look up the range descriptor key to check whether the span
-	// is equal to the entire range for fast stats updating.
+
 	latchSpans.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{Key: keys.RangeDescriptorKey(rs.GetStartKey())})
 }
 
-// ClearRange wipes all MVCC versions of keys covered by the specified
-// span, adjusting the MVCC stats accordingly.
-//
-// Note that "correct" use of this command is only possible for key
-// spans consisting of user data that we know is not being written to
-// or queried any more, such as after a DROP or TRUNCATE table, or
-// DROP index.
 func ClearRange(
 	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(96435)
 	if cArgs.Header.Txn != nil {
+		__antithesis_instrumentation__.Notify(96442)
 		return result.Result{}, errors.New("cannot execute ClearRange within a transaction")
+	} else {
+		__antithesis_instrumentation__.Notify(96443)
 	}
+	__antithesis_instrumentation__.Notify(96436)
 	log.VEventf(ctx, 2, "ClearRange %+v", cArgs.Args)
 
-	// Encode MVCCKey values for start and end of clear span.
 	args := cArgs.Args.(*roachpb.ClearRangeRequest)
 	from := args.Key
 	to := args.EndKey
 
 	if !args.Deadline.IsEmpty() {
+		__antithesis_instrumentation__.Notify(96444)
 		if now := cArgs.EvalCtx.Clock().Now(); args.Deadline.LessEq(now) {
+			__antithesis_instrumentation__.Notify(96445)
 			return result.Result{}, errors.Errorf("ClearRange has deadline %s <= %s", args.Deadline, now)
+		} else {
+			__antithesis_instrumentation__.Notify(96446)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(96447)
 	}
+	__antithesis_instrumentation__.Notify(96437)
 
 	pd := result.Result{
 		Replicated: kvserverpb.ReplicatedEvalResult{
@@ -84,36 +76,37 @@ func ClearRange(
 		},
 	}
 
-	// Check for any intents, and return them for the caller to resolve. This
-	// prevents removal of intents belonging to implicitly committed STAGING
-	// txns. Otherwise, txn recovery would fail to find these intents and
-	// consider the txn incomplete, uncommitting it and its writes (even those
-	// outside of the cleared range).
 	maxIntents := storage.MaxIntentsPerWriteIntentError.Get(&cArgs.EvalCtx.ClusterSettings().SV)
 	intents, err := storage.ScanIntents(ctx, readWriter, from, to, maxIntents, 0)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(96448)
 		return result.Result{}, err
-	} else if len(intents) > 0 {
-		return result.Result{}, &roachpb.WriteIntentError{Intents: intents}
+	} else {
+		__antithesis_instrumentation__.Notify(96449)
+		if len(intents) > 0 {
+			__antithesis_instrumentation__.Notify(96450)
+			return result.Result{}, &roachpb.WriteIntentError{Intents: intents}
+		} else {
+			__antithesis_instrumentation__.Notify(96451)
+		}
 	}
+	__antithesis_instrumentation__.Notify(96438)
 
-	// Before clearing, compute the delta in MVCCStats.
 	statsDelta, err := computeStatsDelta(ctx, readWriter, cArgs, from, to)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(96452)
 		return result.Result{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(96453)
 	}
+	__antithesis_instrumentation__.Notify(96439)
 	cArgs.Stats.Subtract(statsDelta)
 
-	// If the total size of data to be cleared is less than
-	// clearRangeBytesThreshold, clear the individual values with an iterator,
-	// instead of using a range tombstone (inefficient for small ranges).
-	//
-	// However, don't do this if the stats contain estimates -- this can only
-	// happen when we're clearing an entire range and we're using the existing
-	// range stats. We've seen cases where these estimates are wildly inaccurate
-	// (even negative), and it's better to drop an unnecessary range tombstone
-	// than to submit a huge write batch that'll get rejected by Raft.
-	if statsDelta.ContainsEstimates == 0 && statsDelta.Total() < ClearRangeBytesThreshold {
+	if statsDelta.ContainsEstimates == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(96454)
+		return statsDelta.Total() < ClearRangeBytesThreshold == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(96455)
 		log.VEventf(ctx, 2, "delta=%d < threshold=%d; using non-range clear",
 			statsDelta.Total(), ClearRangeBytesThreshold)
 		iter := readWriter.NewMVCCIterator(storage.MVCCKeyAndIntentsIterKind, storage.IterOptions{
@@ -122,63 +115,84 @@ func ClearRange(
 		})
 		defer iter.Close()
 		if err = readWriter.ClearIterRange(iter, from, to); err != nil {
+			__antithesis_instrumentation__.Notify(96457)
 			return result.Result{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(96458)
 		}
+		__antithesis_instrumentation__.Notify(96456)
 		return pd, nil
+	} else {
+		__antithesis_instrumentation__.Notify(96459)
 	}
+	__antithesis_instrumentation__.Notify(96440)
 
 	if err := readWriter.ClearMVCCRangeAndIntents(from, to); err != nil {
+		__antithesis_instrumentation__.Notify(96460)
 		return result.Result{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(96461)
 	}
+	__antithesis_instrumentation__.Notify(96441)
 	return pd, nil
 }
 
-// computeStatsDelta determines the change in stats caused by the
-// ClearRange command. If the cleared span is the entire range,
-// computing MVCCStats is easy. We just negate all fields except sys
-// bytes and count. Note that if a race build is enabled, we use the
-// expectation of running in a CI environment to compute stats by
-// iterating over the span to provide extra verification that the fast
-// path of simply subtracting the non-system values is accurate.
-// Returns the delta stats.
 func computeStatsDelta(
 	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, from, to roachpb.Key,
 ) (enginepb.MVCCStats, error) {
+	__antithesis_instrumentation__.Notify(96462)
 	desc := cArgs.EvalCtx.Desc()
 	var delta enginepb.MVCCStats
 
-	// We can avoid manually computing the stats delta if we're clearing
-	// the entire range.
-	fast := desc.StartKey.Equal(from) && desc.EndKey.Equal(to)
+	fast := desc.StartKey.Equal(from) && func() bool {
+		__antithesis_instrumentation__.Notify(96465)
+		return desc.EndKey.Equal(to) == true
+	}() == true
 	if fast {
-		// Note this it is safe to use the full range MVCC stats, as
-		// opposed to the usual method of computing only a localizied
-		// stats delta, because a full-range clear prevents any concurrent
-		// access to the stats. Concurrent changes to range-local keys are
-		// explicitly ignored (i.e. SysCount, SysBytes).
-		delta = cArgs.EvalCtx.GetMVCCStats()
-		delta.SysCount, delta.SysBytes, delta.AbortSpanBytes = 0, 0, 0 // no change to system stats
-	}
+		__antithesis_instrumentation__.Notify(96466)
 
-	// If we can't use the fast stats path, or race test is enabled,
-	// compute stats across the key span to be cleared.
-	if !fast || util.RaceEnabled {
+		delta = cArgs.EvalCtx.GetMVCCStats()
+		delta.SysCount, delta.SysBytes, delta.AbortSpanBytes = 0, 0, 0
+	} else {
+		__antithesis_instrumentation__.Notify(96467)
+	}
+	__antithesis_instrumentation__.Notify(96463)
+
+	if !fast || func() bool {
+		__antithesis_instrumentation__.Notify(96468)
+		return util.RaceEnabled == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(96469)
 		iter := readWriter.NewMVCCIterator(storage.MVCCKeyAndIntentsIterKind, storage.IterOptions{UpperBound: to})
 		computed, err := iter.ComputeStats(from, to, delta.LastUpdateNanos)
 		iter.Close()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(96472)
 			return enginepb.MVCCStats{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(96473)
 		}
-		// If we took the fast path but race is enabled, assert stats were correctly computed.
+		__antithesis_instrumentation__.Notify(96470)
+
 		if fast {
-			computed.ContainsEstimates = delta.ContainsEstimates // retained for tests under race
+			__antithesis_instrumentation__.Notify(96474)
+			computed.ContainsEstimates = delta.ContainsEstimates
 			if !delta.Equal(computed) {
+				__antithesis_instrumentation__.Notify(96475)
 				log.Fatalf(ctx, "fast-path MVCCStats computation gave wrong result: diff(fast, computed) = %s",
 					pretty.Diff(delta, computed))
+			} else {
+				__antithesis_instrumentation__.Notify(96476)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(96477)
 		}
+		__antithesis_instrumentation__.Notify(96471)
 		delta = computed
+	} else {
+		__antithesis_instrumentation__.Notify(96478)
 	}
+	__antithesis_instrumentation__.Notify(96464)
 
 	return delta, nil
 }

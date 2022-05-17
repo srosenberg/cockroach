@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,185 +21,244 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// setupLogging configures logging.
-//
-// The applyConfig argument, if unset, causes the function to merely
-// validate the configuration but does not actually enable it. This is
-// used by 'debug check-log-config' to display the result of
-// validation.
-//
-// The command then further distinguishes between server (e.g. start)
-// and non-server commands (e.g. 'node ls').
 func setupLogging(ctx context.Context, cmd *cobra.Command, isServerCmd, applyConfig bool) error {
-	// Compatibility check for command-line usage.
-	if cliCtx.deprecatedLogOverrides.anySet() &&
-		cliCtx.logConfigInput.isSet {
+	__antithesis_instrumentation__.Notify(33257)
+
+	if cliCtx.deprecatedLogOverrides.anySet() && func() bool {
+		__antithesis_instrumentation__.Notify(33276)
+		return cliCtx.logConfigInput.isSet == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(33277)
 		return errors.Newf("--%s is incompatible with legacy discrete logging flags", cliflags.Log.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(33278)
 	}
+	__antithesis_instrumentation__.Notify(33258)
 
-	// Sanity check to prevent misuse of API.
 	if active, firstUse := log.IsActive(); active {
+		__antithesis_instrumentation__.Notify(33279)
 		panic(errors.Newf("logging already active; first used at:\n%s", firstUse))
+	} else {
+		__antithesis_instrumentation__.Notify(33280)
 	}
+	__antithesis_instrumentation__.Notify(33259)
 
-	// Try to derive a default directory from the first store,
-	// if we have a server command.
 	var firstStoreDir *string
 	var ambiguousLogDirs bool
 	if isServerCmd {
+		__antithesis_instrumentation__.Notify(33281)
 		firstStoreDir, ambiguousLogDirs = getDefaultLogDirFromStores()
+	} else {
+		__antithesis_instrumentation__.Notify(33282)
 	}
+	__antithesis_instrumentation__.Notify(33260)
 	defaultLogDir := firstStoreDir
 
-	// Legacy log directory override.
-	// TODO(knz): Deprecated in v21.1. Remove in v21.2.
-	forceDisableLogDir := cliCtx.deprecatedLogOverrides.logDir.isSet &&
-		cliCtx.deprecatedLogOverrides.logDir.s == ""
+	forceDisableLogDir := cliCtx.deprecatedLogOverrides.logDir.isSet && func() bool {
+		__antithesis_instrumentation__.Notify(33283)
+		return cliCtx.deprecatedLogOverrides.logDir.s == "" == true
+	}() == true
 	if forceDisableLogDir {
+		__antithesis_instrumentation__.Notify(33284)
 		defaultLogDir = nil
+	} else {
+		__antithesis_instrumentation__.Notify(33285)
 	}
-	forceSetLogDir := cliCtx.deprecatedLogOverrides.logDir.isSet &&
-		cliCtx.deprecatedLogOverrides.logDir.s != ""
+	__antithesis_instrumentation__.Notify(33261)
+	forceSetLogDir := cliCtx.deprecatedLogOverrides.logDir.isSet && func() bool {
+		__antithesis_instrumentation__.Notify(33286)
+		return cliCtx.deprecatedLogOverrides.logDir.s != "" == true
+	}() == true
 	if forceSetLogDir {
+		__antithesis_instrumentation__.Notify(33287)
 		ambiguousLogDirs = false
 		defaultLogDir = &cliCtx.deprecatedLogOverrides.logDir.s
+	} else {
+		__antithesis_instrumentation__.Notify(33288)
 	}
+	__antithesis_instrumentation__.Notify(33262)
 
-	// Set up a base configuration template.
 	h := logconfig.Holder{Config: logconfig.DefaultConfig()}
-	if !isServerCmd || defaultLogDir == nil {
-		// Client commands, as well as servers without an on-disk store directory,
-		// default to output to stderr, with no capture of stray errors.
-		h.Config = logconfig.DefaultStderrConfig()
-	}
+	if !isServerCmd || func() bool {
+		__antithesis_instrumentation__.Notify(33289)
+		return defaultLogDir == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(33290)
 
-	// commandSpecificDefaultLegacyStderrOverride is used when --logtostderr (legacy
-	// flag) is passed without argument, see below.
+		h.Config = logconfig.DefaultStderrConfig()
+	} else {
+		__antithesis_instrumentation__.Notify(33291)
+	}
+	__antithesis_instrumentation__.Notify(33263)
+
 	commandSpecificDefaultLegacyStderrOverride := severity.INFO
 
 	if isDemoCmd(cmd) {
-		// `cockroach demo` is special: it starts a server, but without
-		// disk and interactively. We don't want to litter the console
-		// with warning or error messages unless overridden.
+		__antithesis_instrumentation__.Notify(33292)
+
 		h.Config.Sinks.Stderr.Filter = severity.NONE
-	} else if !isServerCmd && !isWorkloadCmd(cmd) {
-		// Client commands don't typically have a log directory so they
-		// naturally default to stderr logging. However, we don't want
-		// anything less serious than a warning to be displayed unless
-		// the user gives an override.
-		//
-		// The special case for 'workload' is legacy behavior: INFO
-		// verbosity on stderr.
-		//
-		// TODO(knz): This behavior is deprecated in v21.1. Remove the conditional
-		// and treat as regular client command.
+	} else {
+		__antithesis_instrumentation__.Notify(33293)
+		if !isServerCmd && func() bool {
+			__antithesis_instrumentation__.Notify(33294)
+			return !isWorkloadCmd(cmd) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(33295)
 
-		// This default applies when neither --log nor --logtostderr is applied.
-		h.Config.Sinks.Stderr.Filter = severity.WARNING
-		// This default applies below when --logtostderr is applied without argument.
-		commandSpecificDefaultLegacyStderrOverride = severity.WARNING
+			h.Config.Sinks.Stderr.Filter = severity.WARNING
+
+			commandSpecificDefaultLegacyStderrOverride = severity.WARNING
+		} else {
+			__antithesis_instrumentation__.Notify(33296)
+		}
 	}
+	__antithesis_instrumentation__.Notify(33264)
 
-	// If some overrides were specified via the discrete flags,
-	// apply them.
-	//
-	// NB: this is for backward-compatibility and is deprecated in
-	// v21.1.
-	// TODO(knz): Remove this.
 	cliCtx.deprecatedLogOverrides.propagate(&h.Config, commandSpecificDefaultLegacyStderrOverride)
 
-	// If a configuration was specified via --log, load it.
 	if cliCtx.logConfigInput.isSet {
+		__antithesis_instrumentation__.Notify(33297)
 		if err := h.Set(cliCtx.logConfigInput.s); err != nil {
+			__antithesis_instrumentation__.Notify(33299)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(33300)
 		}
+		__antithesis_instrumentation__.Notify(33298)
 		if h.Config.FileDefaults.Dir != nil {
+			__antithesis_instrumentation__.Notify(33301)
 			ambiguousLogDirs = false
+		} else {
+			__antithesis_instrumentation__.Notify(33302)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(33303)
 	}
+	__antithesis_instrumentation__.Notify(33265)
 
-	// Legacy behavior: if no files were specified by the configuration,
-	// add some pre-defined files in servers.
-	// TODO(knz): Deprecated in v21.1. Remove this.
-	if isServerCmd && len(h.Config.Sinks.FileGroups) == 0 {
+	if isServerCmd && func() bool {
+		__antithesis_instrumentation__.Notify(33304)
+		return len(h.Config.Sinks.FileGroups) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(33305)
 		addPredefinedLogFiles(&h.Config)
+	} else {
+		__antithesis_instrumentation__.Notify(33306)
 	}
+	__antithesis_instrumentation__.Notify(33266)
 
-	// Our configuration is complete. Validate it.
-	// This ensures that all optional fields are populated and
-	// non-specified flags are inherited from defaults.
 	if err := h.Config.Validate(defaultLogDir); err != nil {
+		__antithesis_instrumentation__.Notify(33307)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33308)
 	}
+	__antithesis_instrumentation__.Notify(33267)
 
-	// Store the result configuration so that the start code and debug
-	// check-log-config can see it.
 	cliCtx.logConfig = h.Config
 
-	// Was the default directory used in a context where there were
-	// multiple stores defined?
-	if ambiguousLogDirs && firstStoreDir != nil {
+	if ambiguousLogDirs && func() bool {
+		__antithesis_instrumentation__.Notify(33309)
+		return firstStoreDir != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(33310)
 		firstStoreDirUsed := false
 		if firstStoreAbs, err := filepath.Abs(*firstStoreDir); err == nil {
+			__antithesis_instrumentation__.Notify(33312)
 			_ = h.Config.IterateDirectories(func(logDir string) error {
-				firstStoreDirUsed = firstStoreDirUsed || logDir == firstStoreAbs
+				__antithesis_instrumentation__.Notify(33313)
+				firstStoreDirUsed = firstStoreDirUsed || func() bool {
+					__antithesis_instrumentation__.Notify(33314)
+					return logDir == firstStoreAbs == true
+				}() == true
 				return nil
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(33315)
 		}
+		__antithesis_instrumentation__.Notify(33311)
 		if firstStoreDirUsed {
+			__antithesis_instrumentation__.Notify(33316)
 			cliCtx.ambiguousLogDir = true
+		} else {
+			__antithesis_instrumentation__.Notify(33317)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(33318)
 	}
+	__antithesis_instrumentation__.Notify(33268)
 
-	// Configuration is complete and valid. If we are not applying
-	// (debug check-log-config), stop here.
 	if !applyConfig {
+		__antithesis_instrumentation__.Notify(33319)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(33320)
 	}
+	__antithesis_instrumentation__.Notify(33269)
 
-	// Configuration is ready to be applied. Ensure that the output log
-	// directories exist.
 	if err := h.Config.IterateDirectories(func(logDir string) error {
+		__antithesis_instrumentation__.Notify(33321)
 		return os.MkdirAll(logDir, 0755)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(33322)
 		return errors.Wrap(err, "unable to create log directory")
+	} else {
+		__antithesis_instrumentation__.Notify(33323)
 	}
+	__antithesis_instrumentation__.Notify(33270)
 
-	// Configuration ready and directories exist; apply it.
 	if _, err := log.ApplyConfig(h.Config); err != nil {
+		__antithesis_instrumentation__.Notify(33324)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33325)
 	}
+	__antithesis_instrumentation__.Notify(33271)
 
-	// If using a custom config, report the configuration at the start of the logging stream.
 	if cliCtx.logConfigInput.isSet {
+		__antithesis_instrumentation__.Notify(33326)
 		log.Ops.Infof(ctx, "using explicit logging configuration:\n%s", cliCtx.logConfigInput.s)
+	} else {
+		__antithesis_instrumentation__.Notify(33327)
 	}
+	__antithesis_instrumentation__.Notify(33272)
 
 	if cliCtx.ambiguousLogDir {
-		// Note that we can't report this message earlier, because the log directory
-		// may not have been ready before the call to MkdirAll() above.
+		__antithesis_instrumentation__.Notify(33328)
+
 		log.Ops.Shout(ctx, severity.WARNING,
 			"multiple stores configured, "+
 				"you may want to specify --log='file-defaults: {dir: ...}' to disambiguate.")
+	} else {
+		__antithesis_instrumentation__.Notify(33329)
 	}
+	__antithesis_instrumentation__.Notify(33273)
 
-	// Use the file sink for the DEV channel to generate goroutine dumps
-	// and heap profiles.
-	//
-	// We want to be careful to still produce useful debug dumps if the
-	// server configuration has disabled logging to files. In that case,
-	// we use the store directory if there is an on-disk store, or
-	// the current directory if there is no store.
 	outputDirectory := "."
 	if firstStoreDir != nil {
+		__antithesis_instrumentation__.Notify(33330)
 		outputDirectory = *firstStoreDir
+	} else {
+		__antithesis_instrumentation__.Notify(33331)
 	}
+	__antithesis_instrumentation__.Notify(33274)
 	for _, fc := range h.Config.Sinks.FileGroups {
-		if fc.Channels.AllChannels.HasChannel(channel.DEV) && fc.Dir != nil && *fc.Dir != "" {
+		__antithesis_instrumentation__.Notify(33332)
+		if fc.Channels.AllChannels.HasChannel(channel.DEV) && func() bool {
+			__antithesis_instrumentation__.Notify(33333)
+			return fc.Dir != nil == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(33334)
+			return *fc.Dir != "" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(33335)
 			outputDirectory = *fc.Dir
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(33336)
 		}
 	}
+	__antithesis_instrumentation__.Notify(33275)
 	serverCfg.GoroutineDumpDirName = filepath.Join(outputDirectory, base.GoroutineDumpDir)
 	serverCfg.HeapProfileDirName = filepath.Join(outputDirectory, base.HeapProfileDir)
 	serverCfg.CPUProfileDirName = filepath.Join(outputDirectory, base.CPUProfileDir)
@@ -216,68 +267,56 @@ func setupLogging(ctx context.Context, cmd *cobra.Command, isServerCmd, applyCon
 	return nil
 }
 
-// getDefaultLogDirFromStores derives a log directory path from the
-// configure first on-disk store. If more than one on-disk store is
-// defined, the ambiguousLogDirs return value is true.
 func getDefaultLogDirFromStores() (dir *string, ambiguousLogDirs bool) {
-	// Default the log directory to the "logs" subdirectory of the first
-	// non-memory store.
+	__antithesis_instrumentation__.Notify(33337)
+
 	for _, spec := range serverCfg.Stores.Specs {
+		__antithesis_instrumentation__.Notify(33339)
 		if spec.InMemory {
+			__antithesis_instrumentation__.Notify(33342)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(33343)
 		}
+		__antithesis_instrumentation__.Notify(33340)
 		if dir != nil {
+			__antithesis_instrumentation__.Notify(33344)
 			ambiguousLogDirs = true
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(33345)
 		}
+		__antithesis_instrumentation__.Notify(33341)
 		s := filepath.Join(spec.Path, "logs")
 		dir = &s
 	}
+	__antithesis_instrumentation__.Notify(33338)
 
 	return
 }
 
-// logConfigFlags makes it possible to override the
-// configuration with discrete command-line flags.
-//
-// This struct interfaces between the YAML-based configuration
-// mechanism in package 'logconfig', and the logic that initializes
-// the logging system.
-//
-// TODO(knz): Deprecated in v21.1. Remove this.
 type logConfigFlags struct {
-	// Override value of file-defaults:dir.
 	logDir settableString
 
-	// Override value for sinks:sql-audit:dir.
 	sqlAuditLogDir settableString
 
-	// Override value of file-defaults:max-file-size.
 	fileMaxSize    int64
 	fileMaxSizeVal *humanizeutil.BytesValue
 
-	// Override value of file-defaults:max-group-size.
 	maxGroupSize    int64
 	maxGroupSizeVal *humanizeutil.BytesValue
 
-	// Override value of file-defaults:threshold.
 	fileThreshold log.Severity
 
-	// Override value of sinks:stderr:threshold.
 	stderrThreshold log.Severity
 
-	// Override value of sinks:stderr:no-color.
 	stderrNoColor settableBool
 
-	// Override value of file-defaults:redactable.
 	redactableLogs settableBool
 }
 
-// newLogConfigOverrides defines a new logConfigFlags
-// from the default logging configuration.
-//
-// TODO(knz): Deprecated in v21.1. Remove this.
 func newLogConfigOverrides() *logConfigFlags {
+	__antithesis_instrumentation__.Notify(33346)
 	l := &logConfigFlags{}
 	l.fileMaxSizeVal = humanizeutil.NewBytesValue(&l.fileMaxSize)
 	l.maxGroupSizeVal = humanizeutil.NewBytesValue(&l.maxGroupSize)
@@ -286,6 +325,7 @@ func newLogConfigOverrides() *logConfigFlags {
 }
 
 func (l *logConfigFlags) reset() {
+	__antithesis_instrumentation__.Notify(33347)
 	d := logconfig.DefaultConfig()
 
 	l.logDir = settableString{}
@@ -301,55 +341,98 @@ func (l *logConfigFlags) reset() {
 }
 
 func (l *logConfigFlags) anySet() bool {
-	return l.logDir.isSet ||
-		l.sqlAuditLogDir.isSet ||
-		l.fileMaxSizeVal.IsSet() ||
-		l.maxGroupSizeVal.IsSet() ||
-		l.fileThreshold.IsSet() ||
-		l.stderrThreshold.IsSet() ||
-		l.stderrNoColor.isSet ||
-		l.redactableLogs.isSet
+	__antithesis_instrumentation__.Notify(33348)
+	return l.logDir.isSet || func() bool {
+		__antithesis_instrumentation__.Notify(33349)
+		return l.sqlAuditLogDir.isSet == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(33350)
+		return l.fileMaxSizeVal.IsSet() == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(33351)
+		return l.maxGroupSizeVal.IsSet() == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(33352)
+		return l.fileThreshold.IsSet() == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(33353)
+		return l.stderrThreshold.IsSet() == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(33354)
+		return l.stderrNoColor.isSet == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(33355)
+		return l.redactableLogs.isSet == true
+	}() == true
 }
 
-// propagate applies the overrides into a configuration. This must be
-// called on the logconfig.Config object before it undergoes
-// Validate().
 func (l *logConfigFlags) propagate(
 	c *logconfig.Config, commandSpecificDefaultLegacyStderrOverride log.Severity,
 ) {
-	if l.logDir.isSet && l.logDir.s != "" {
-		// Note: the case where .s == "" is handled in setupLogging()
-		// above.
+	__antithesis_instrumentation__.Notify(33356)
+	if l.logDir.isSet && func() bool {
+		__antithesis_instrumentation__.Notify(33363)
+		return l.logDir.s != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(33364)
+
 		c.FileDefaults.Dir = &l.logDir.s
+	} else {
+		__antithesis_instrumentation__.Notify(33365)
 	}
+	__antithesis_instrumentation__.Notify(33357)
 	if l.fileMaxSizeVal.IsSet() {
+		__antithesis_instrumentation__.Notify(33366)
 		s := logconfig.ByteSize(l.fileMaxSize)
 		c.FileDefaults.MaxFileSize = &s
+	} else {
+		__antithesis_instrumentation__.Notify(33367)
 	}
+	__antithesis_instrumentation__.Notify(33358)
 	if l.maxGroupSizeVal.IsSet() {
+		__antithesis_instrumentation__.Notify(33368)
 		s := logconfig.ByteSize(l.maxGroupSize)
 		c.FileDefaults.MaxGroupSize = &s
+	} else {
+		__antithesis_instrumentation__.Notify(33369)
 	}
+	__antithesis_instrumentation__.Notify(33359)
 	if l.fileThreshold.IsSet() {
+		__antithesis_instrumentation__.Notify(33370)
 		c.FileDefaults.Filter = l.fileThreshold
+	} else {
+		__antithesis_instrumentation__.Notify(33371)
 	}
+	__antithesis_instrumentation__.Notify(33360)
 	if l.stderrThreshold.IsSet() {
+		__antithesis_instrumentation__.Notify(33372)
 		if l.stderrThreshold == severity.DEFAULT {
+			__antithesis_instrumentation__.Notify(33373)
 			c.Sinks.Stderr.Filter = commandSpecificDefaultLegacyStderrOverride
 		} else {
+			__antithesis_instrumentation__.Notify(33374)
 			c.Sinks.Stderr.Filter = l.stderrThreshold
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(33375)
 	}
+	__antithesis_instrumentation__.Notify(33361)
 	if l.stderrNoColor.isSet {
+		__antithesis_instrumentation__.Notify(33376)
 		c.Sinks.Stderr.NoColor = l.stderrNoColor.val
+	} else {
+		__antithesis_instrumentation__.Notify(33377)
 	}
+	__antithesis_instrumentation__.Notify(33362)
 	if l.redactableLogs.isSet {
+		__antithesis_instrumentation__.Notify(33378)
 		c.FileDefaults.Redactable = &l.redactableLogs.val
 		c.Sinks.Stderr.Redactable = &l.redactableLogs.val
+	} else {
+		__antithesis_instrumentation__.Notify(33379)
 	}
 }
 
-// settableBool represents a string that can be set from the command line.
 type settableString struct {
 	s     string
 	isSet bool
@@ -362,79 +445,94 @@ type stringValue struct {
 var _ flag.Value = (*stringValue)(nil)
 var _ flag.Value = (*fileContentsValue)(nil)
 
-// Set implements the pflag.Value interface.
 func (l *stringValue) Set(s string) error {
+	__antithesis_instrumentation__.Notify(33380)
 	l.s = s
 	l.isSet = true
 	return nil
 }
 
-// Type implements the pflag.Value interface.
-func (l stringValue) Type() string { return "<string>" }
+func (l stringValue) Type() string { __antithesis_instrumentation__.Notify(33381); return "<string>" }
 
-// String implements the pflag.Value interface.
-func (l stringValue) String() string { return l.s }
+func (l stringValue) String() string { __antithesis_instrumentation__.Notify(33382); return l.s }
 
 type fileContentsValue struct {
 	*settableString
 	fileName string
 }
 
-// Set implements the pflag.Value interface.
 func (l *fileContentsValue) Set(s string) error {
+	__antithesis_instrumentation__.Notify(33383)
 	l.fileName = s
 	b, err := ioutil.ReadFile(s)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33385)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33386)
 	}
+	__antithesis_instrumentation__.Notify(33384)
 	l.s = string(b)
 	l.isSet = true
 	return nil
 }
 
-// Type implements the pflag.Value interface.
-func (l fileContentsValue) Type() string { return "<file>" }
+func (l fileContentsValue) Type() string {
+	__antithesis_instrumentation__.Notify(33387)
+	return "<file>"
+}
 
-// String implements the pflag.Value interface.
-func (l fileContentsValue) String() string { return l.fileName }
+func (l fileContentsValue) String() string {
+	__antithesis_instrumentation__.Notify(33388)
+	return l.fileName
+}
 
-// settableBool represents a boolean that can be set from the command line.
 type settableBool struct {
 	val   bool
 	isSet bool
 }
 
-// String implements the pflag.Value interface.
-func (s settableBool) String() string { return strconv.FormatBool(s.val) }
+func (s settableBool) String() string {
+	__antithesis_instrumentation__.Notify(33389)
+	return strconv.FormatBool(s.val)
+}
 
-// Type implements the pflag.Value interface.
-func (s settableBool) Type() string { return "bool" }
+func (s settableBool) Type() string { __antithesis_instrumentation__.Notify(33390); return "bool" }
 
-// Set implements the pflag.Value interface.
 func (s *settableBool) Set(v string) error {
+	__antithesis_instrumentation__.Notify(33391)
 	b, err := strconv.ParseBool(v)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33393)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33394)
 	}
+	__antithesis_instrumentation__.Notify(33392)
 	s.val = b
 	s.isSet = true
 	return nil
 }
 
 func addPredefinedLogFiles(c *logconfig.Config) {
+	__antithesis_instrumentation__.Notify(33395)
 	h := logconfig.Holder{Config: *c}
 	if err := h.Set(predefinedLogFiles); err != nil {
+		__antithesis_instrumentation__.Notify(33397)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "programming error: incorrect config"))
+	} else {
+		__antithesis_instrumentation__.Notify(33398)
 	}
+	__antithesis_instrumentation__.Notify(33396)
 	*c = h.Config
 	if cliCtx.deprecatedLogOverrides.sqlAuditLogDir.isSet {
+		__antithesis_instrumentation__.Notify(33399)
 		c.Sinks.FileGroups["sql-audit"].Dir = &cliCtx.deprecatedLogOverrides.sqlAuditLogDir.s
+	} else {
+		__antithesis_instrumentation__.Notify(33400)
 	}
 }
 
-// predefinedLogFiles are the files defined when the --log flag
-// does not otherwise override the file sinks.
-// TODO(knz): add the PRIVILEGES channel.
 const predefinedLogFiles = `
 sinks:
  file-groups:

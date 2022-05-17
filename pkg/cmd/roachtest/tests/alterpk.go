@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,8 +17,10 @@ import (
 )
 
 func registerAlterPK(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(45431)
 
 	setupTest := func(ctx context.Context, t test.Test, c cluster.Cluster) (option.NodeListOption, option.NodeListOption) {
+		__antithesis_instrumentation__.Notify(45436)
 		roachNodes := c.Range(1, c.Spec().NodeCount-1)
 		loadNode := c.Node(c.Spec().NodeCount)
 		t.Status("copying binaries")
@@ -37,9 +31,10 @@ func registerAlterPK(r registry.Registry) {
 		c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), roachNodes)
 		return roachNodes, loadNode
 	}
+	__antithesis_instrumentation__.Notify(45432)
 
-	// runAlterPKBank runs a primary key change while the bank workload runs.
 	runAlterPKBank := func(ctx context.Context, t test.Test, c cluster.Cluster) {
+		__antithesis_instrumentation__.Notify(45437)
 		const numRows = 1000000
 		const duration = 1 * time.Minute
 
@@ -50,28 +45,31 @@ func registerAlterPK(r registry.Registry) {
 
 		m := c.NewMonitor(ctx, roachNodes)
 		m.Go(func(ctx context.Context) error {
-			// Load up a relatively small dataset to perform a workload on.
+			__antithesis_instrumentation__.Notify(45440)
 
-			// Init the workload.
 			cmd := fmt.Sprintf("./workload init bank --drop --rows %d {pgurl%s}", numRows, roachNodes)
 			if err := c.RunE(ctx, loadNode, cmd); err != nil {
+				__antithesis_instrumentation__.Notify(45442)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(45443)
 			}
+			__antithesis_instrumentation__.Notify(45441)
 			initDone <- struct{}{}
 
-			// Run the workload while the primary key change is happening.
 			cmd = fmt.Sprintf("./workload run bank --duration=%s {pgurl%s}", duration, roachNodes)
 			c.Run(ctx, loadNode, cmd)
-			// Wait for the primary key change to finish.
+
 			<-pkChangeDone
 			t.Status("starting second run of the workload after primary key change")
-			// Run the workload after the primary key change occurs.
+
 			c.Run(ctx, loadNode, cmd)
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(45438)
 		m.Go(func(ctx context.Context) error {
-			// Wait for the initialization to finish. Once it's done,
-			// sleep for some time, then alter the primary key.
+			__antithesis_instrumentation__.Notify(45444)
+
 			<-initDone
 			time.Sleep(duration / 10)
 
@@ -84,17 +82,23 @@ func registerAlterPK(r registry.Registry) {
 			ALTER TABLE bank ALTER PRIMARY KEY USING COLUMNS (id, balance)
 			`
 			if _, err := db.ExecContext(ctx, cmd); err != nil {
+				__antithesis_instrumentation__.Notify(45446)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(45447)
 			}
+			__antithesis_instrumentation__.Notify(45445)
 			t.Status("primary key change finished")
 			pkChangeDone <- struct{}{}
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(45439)
 		m.Wait()
 	}
+	__antithesis_instrumentation__.Notify(45433)
 
-	// runAlterPKTPCC runs a primary key change while the TPCC workload runs.
 	runAlterPKTPCC := func(ctx context.Context, t test.Test, c cluster.Cluster, warehouses int, expensiveChecks bool) {
+		__antithesis_instrumentation__.Notify(45448)
 		const duration = 10 * time.Minute
 
 		roachNodes, loadNode := setupTest(ctx, t, c)
@@ -104,12 +108,17 @@ func registerAlterPK(r registry.Registry) {
 			warehouses,
 		)
 		if err := c.RunE(ctx, c.Node(roachNodes[0]), cmd); err != nil {
+			__antithesis_instrumentation__.Notify(45453)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(45454)
 		}
+		__antithesis_instrumentation__.Notify(45449)
 
 		m := c.NewMonitor(ctx, roachNodes)
 		m.Go(func(ctx context.Context) error {
-			// Start running the workload.
+			__antithesis_instrumentation__.Notify(45455)
+
 			runCmd := fmt.Sprintf(
 				"./workload run tpcc --warehouses=%d --split --scatter --duration=%s {pgurl%s}",
 				warehouses,
@@ -121,11 +130,12 @@ func registerAlterPK(r registry.Registry) {
 			t.Status("finished running workload")
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(45450)
 		m.Go(func(ctx context.Context) error {
-			// Start a primary key change after some delay.
+			__antithesis_instrumentation__.Notify(45456)
+
 			time.Sleep(duration / 10)
 
-			// Pick a random table to change the primary key of.
 			alterStmts := []string{
 				`ALTER TABLE warehouse ALTER PRIMARY KEY USING COLUMNS (w_id)`,
 				`ALTER TABLE district ALTER PRIMARY KEY USING COLUMNS (d_w_id, d_id)`,
@@ -147,19 +157,27 @@ func registerAlterPK(r registry.Registry) {
 			alterCmd := `USE tpcc; %s;`
 			t.Status("beginning primary key change")
 			if _, err := db.ExecContext(ctx, fmt.Sprintf(alterCmd, randStmt)); err != nil {
+				__antithesis_instrumentation__.Notify(45458)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(45459)
 			}
+			__antithesis_instrumentation__.Notify(45457)
 			t.Status("primary key change finished")
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(45451)
 
 		m.Wait()
 
-		// Run the verification checks of the TPCC workload post primary key change.
 		expensiveChecksArg := ""
 		if expensiveChecks {
+			__antithesis_instrumentation__.Notify(45460)
 			expensiveChecksArg = "--expensive-checks"
+		} else {
+			__antithesis_instrumentation__.Notify(45461)
 		}
+		__antithesis_instrumentation__.Notify(45452)
 		checkCmd := fmt.Sprintf(
 			"./workload check tpcc --warehouses %d %s {pgurl%s}",
 			warehouses,
@@ -170,32 +188,33 @@ func registerAlterPK(r registry.Registry) {
 		c.Run(ctx, loadNode, checkCmd)
 		t.Status("finished database verification")
 	}
+	__antithesis_instrumentation__.Notify(45434)
 	r.Add(registry.TestSpec{
 		Name:  "alterpk-bank",
 		Owner: registry.OwnerSQLSchema,
-		// Use a 4 node cluster -- 3 nodes will run cockroach, and the last will be the
-		// workload driver node.
+
 		Cluster: r.MakeClusterSpec(4),
 		Run:     runAlterPKBank,
 	})
 	r.Add(registry.TestSpec{
 		Name:  "alterpk-tpcc-250",
 		Owner: registry.OwnerSQLSchema,
-		// Use a 4 node cluster -- 3 nodes will run cockroach, and the last will be the
-		// workload driver node.
+
 		Cluster: r.MakeClusterSpec(4, spec.CPU(32)),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
-			runAlterPKTPCC(ctx, t, c, 250 /* warehouses */, true /* expensiveChecks */)
+			__antithesis_instrumentation__.Notify(45462)
+			runAlterPKTPCC(ctx, t, c, 250, true)
 		},
 	})
+	__antithesis_instrumentation__.Notify(45435)
 	r.Add(registry.TestSpec{
 		Name:  "alterpk-tpcc-500",
 		Owner: registry.OwnerSQLSchema,
-		// Use a 4 node cluster -- 3 nodes will run cockroach, and the last will be the
-		// workload driver node.
+
 		Cluster: r.MakeClusterSpec(4, spec.CPU(16)),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
-			runAlterPKTPCC(ctx, t, c, 500 /* warehouses */, false /* expensiveChecks */)
+			__antithesis_instrumentation__.Notify(45463)
+			runAlterPKTPCC(ctx, t, c, 500, false)
 		},
 	})
 }

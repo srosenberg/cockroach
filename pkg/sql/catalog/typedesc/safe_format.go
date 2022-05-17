@@ -1,31 +1,24 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package typedesc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/redact"
 )
 
-// SafeMessage makes immutable a SafeMessager.
 func (desc *immutable) SafeMessage() string {
+	__antithesis_instrumentation__.Notify(271836)
 	return formatSafeType("typedesc.immutable", desc)
 }
 
-// SafeMessage makes Mutable a SafeMessager.
 func (desc *Mutable) SafeMessage() string {
+	__antithesis_instrumentation__.Notify(271837)
 	return formatSafeType("typedesc.Mutable", desc)
 }
 
 func formatSafeType(typeName string, desc catalog.TypeDescriptor) string {
+	__antithesis_instrumentation__.Notify(271838)
 	var buf redact.StringBuilder
 	buf.Printf(typeName + ": {")
 	formatSafeTypeProperties(&buf, desc)
@@ -34,26 +27,48 @@ func formatSafeType(typeName string, desc catalog.TypeDescriptor) string {
 }
 
 func formatSafeTypeProperties(w *redact.StringBuilder, desc catalog.TypeDescriptor) {
+	__antithesis_instrumentation__.Notify(271839)
 	catalog.FormatSafeDescriptorProperties(w, desc)
 	td := desc.TypeDesc()
 	w.Printf(", Kind: %s", td.Kind)
 	if len(td.EnumMembers) > 0 {
+		__antithesis_instrumentation__.Notify(271844)
 		w.Printf(", NumEnumMembers: %d", len(td.EnumMembers))
+	} else {
+		__antithesis_instrumentation__.Notify(271845)
 	}
+	__antithesis_instrumentation__.Notify(271840)
 	if td.Alias != nil {
+		__antithesis_instrumentation__.Notify(271846)
 		w.Printf(", Alias: %d", td.Alias.Oid())
+	} else {
+		__antithesis_instrumentation__.Notify(271847)
 	}
+	__antithesis_instrumentation__.Notify(271841)
 	if td.ArrayTypeID != 0 {
+		__antithesis_instrumentation__.Notify(271848)
 		w.Printf(", ArrayTypeID: %d", td.ArrayTypeID)
+	} else {
+		__antithesis_instrumentation__.Notify(271849)
 	}
+	__antithesis_instrumentation__.Notify(271842)
 	for i := range td.ReferencingDescriptorIDs {
+		__antithesis_instrumentation__.Notify(271850)
 		w.Printf(", ")
 		if i == 0 {
+			__antithesis_instrumentation__.Notify(271852)
 			w.Printf("ReferencingDescriptorIDs: [")
+		} else {
+			__antithesis_instrumentation__.Notify(271853)
 		}
+		__antithesis_instrumentation__.Notify(271851)
 		w.Printf("%d", td.ReferencingDescriptorIDs[i])
 	}
+	__antithesis_instrumentation__.Notify(271843)
 	if len(td.ReferencingDescriptorIDs) > 0 {
+		__antithesis_instrumentation__.Notify(271854)
 		w.Printf("]")
+	} else {
+		__antithesis_instrumentation__.Notify(271855)
 	}
 }

@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"encoding/binary"
@@ -18,175 +10,164 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-// BatchType represents the type of an entry in an encoded RocksDB batch.
 type BatchType byte
 
-// These constants come from rocksdb/db/dbformat.h.
 const (
 	BatchTypeDeletion BatchType = 0x0
 	BatchTypeValue    BatchType = 0x1
 	BatchTypeMerge    BatchType = 0x2
 	BatchTypeLogData  BatchType = 0x3
-	// BatchTypeColumnFamilyDeletion       BatchType = 0x4
-	// BatchTypeColumnFamilyValue          BatchType = 0x5
-	// BatchTypeColumnFamilyMerge          BatchType = 0x6
+
 	BatchTypeSingleDeletion BatchType = 0x7
-	// BatchTypeColumnFamilySingleDeletion BatchType = 0x8
-	// BatchTypeBeginPrepareXID            BatchType = 0x9
-	// BatchTypeEndPrepareXID              BatchType = 0xA
-	// BatchTypeCommitXID                  BatchType = 0xB
-	// BatchTypeRollbackXID                BatchType = 0xC
-	// BatchTypeNoop                       BatchType = 0xD
-	// BatchTypeColumnFamilyRangeDeletion  BatchType = 0xE
+
 	BatchTypeRangeDeletion BatchType = 0xF
-	// BatchTypeColumnFamilyBlobIndex      BatchType = 0x10
-	// BatchTypeBlobIndex                  BatchType = 0x11
-	// BatchMaxValue                       BatchType = 0x7F
 )
 
 const (
-	// The batch header is composed of an 8-byte sequence number (all zeroes) and
-	// 4-byte count of the number of entries in the batch.
 	headerSize int = 12
 	countPos   int = 8
 )
 
-// Decode the header of RocksDB batch repr, returning both the count of the
-// entries in the batch and the suffix of data remaining in the batch.
 func rocksDBBatchDecodeHeader(repr []byte) (count int, orepr pebble.BatchReader, err error) {
+	__antithesis_instrumentation__.Notify(633558)
 	if len(repr) < headerSize {
+		__antithesis_instrumentation__.Notify(633562)
 		return 0, nil, errors.Errorf("batch repr too small: %d < %d", len(repr), headerSize)
+	} else {
+		__antithesis_instrumentation__.Notify(633563)
 	}
+	__antithesis_instrumentation__.Notify(633559)
 	seq := binary.LittleEndian.Uint64(repr[:countPos])
 	if seq != 0 {
+		__antithesis_instrumentation__.Notify(633564)
 		return 0, nil, errors.Errorf("bad sequence: expected 0, but found %d", seq)
+	} else {
+		__antithesis_instrumentation__.Notify(633565)
 	}
+	__antithesis_instrumentation__.Notify(633560)
 	r, c := pebble.ReadBatch(repr)
 	if c > math.MaxInt32 {
+		__antithesis_instrumentation__.Notify(633566)
 		return 0, nil, errors.Errorf("count %d would overflow max int", c)
+	} else {
+		__antithesis_instrumentation__.Notify(633567)
 	}
+	__antithesis_instrumentation__.Notify(633561)
 	return int(c), r, nil
 }
 
-// RocksDBBatchReader is used to iterate the entries in a RocksDB batch
-// representation.
-//
-// Example:
-// r, err := NewRocksDBBatchReader(...)
-// if err != nil {
-//   return err
-// }
-// for r.Next() {
-// 	 switch r.BatchType() {
-// 	 case BatchTypeDeletion:
-// 	   fmt.Printf("delete(%x)", r.Key())
-// 	 case BatchTypeValue:
-// 	   fmt.Printf("put(%x,%x)", r.Key(), r.Value())
-// 	 case BatchTypeMerge:
-// 	   fmt.Printf("merge(%x,%x)", r.Key(), r.Value())
-//   case BatchTypeSingleDeletion:
-// 	   fmt.Printf("single_delete(%x)", r.Key())
-//   case BatchTypeRangeDeletion:
-// 	   fmt.Printf("delete_range(%x,%x)", r.Key(), r.Value())
-// 	 }
-// }
-// if err := r.Error(); err != nil {
-//   return err
-// }
 type RocksDBBatchReader struct {
 	batchReader pebble.BatchReader
 
-	// The error encountered during iterator, if any
 	err error
 
-	// The total number of entries, decoded from the batch header
 	count int
 
-	// The following all represent the current entry and are updated by Next.
-	// `value` is not applicable for BatchTypeDeletion or BatchTypeSingleDeletion.
-	// `value` indicates the end key for BatchTypeRangeDeletion.
 	typ   BatchType
 	key   []byte
 	value []byte
 }
 
-// NewRocksDBBatchReader creates a RocksDBBatchReader from the given repr and
-// verifies the header.
 func NewRocksDBBatchReader(repr []byte) (*RocksDBBatchReader, error) {
+	__antithesis_instrumentation__.Notify(633568)
 	count, batchReader, err := rocksDBBatchDecodeHeader(repr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(633570)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(633571)
 	}
+	__antithesis_instrumentation__.Notify(633569)
 	return &RocksDBBatchReader{batchReader: batchReader, count: count}, nil
 }
 
-// Count returns the declared number of entries in the batch.
 func (r *RocksDBBatchReader) Count() int {
+	__antithesis_instrumentation__.Notify(633572)
 	return r.count
 }
 
-// Error returns the error, if any, which the iterator encountered.
 func (r *RocksDBBatchReader) Error() error {
+	__antithesis_instrumentation__.Notify(633573)
 	return r.err
 }
 
-// BatchType returns the type of the current batch entry.
 func (r *RocksDBBatchReader) BatchType() BatchType {
+	__antithesis_instrumentation__.Notify(633574)
 	return r.typ
 }
 
-// Key returns the key of the current batch entry.
 func (r *RocksDBBatchReader) Key() []byte {
+	__antithesis_instrumentation__.Notify(633575)
 	return r.key
 }
 
-// MVCCKey returns the MVCC key of the current batch entry.
 func (r *RocksDBBatchReader) MVCCKey() (MVCCKey, error) {
+	__antithesis_instrumentation__.Notify(633576)
 	return DecodeMVCCKey(r.Key())
 }
 
-// EngineKey returns the EngineKey for the current batch entry.
 func (r *RocksDBBatchReader) EngineKey() (EngineKey, error) {
+	__antithesis_instrumentation__.Notify(633577)
 	key, ok := DecodeEngineKey(r.Key())
 	if !ok {
+		__antithesis_instrumentation__.Notify(633579)
 		return key, errors.Errorf("invalid encoded engine key: %x", r.Key())
+	} else {
+		__antithesis_instrumentation__.Notify(633580)
 	}
+	__antithesis_instrumentation__.Notify(633578)
 	return key, nil
 }
 
-// Value returns the value of the current batch entry. Value panics if the
-// BatchType is BatchTypeDeleted.
 func (r *RocksDBBatchReader) Value() []byte {
-	if r.typ == BatchTypeDeletion || r.typ == BatchTypeSingleDeletion {
+	__antithesis_instrumentation__.Notify(633581)
+	if r.typ == BatchTypeDeletion || func() bool {
+		__antithesis_instrumentation__.Notify(633583)
+		return r.typ == BatchTypeSingleDeletion == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(633584)
 		panic("cannot call Value on a deletion entry")
+	} else {
+		__antithesis_instrumentation__.Notify(633585)
 	}
+	__antithesis_instrumentation__.Notify(633582)
 	return r.value
 }
 
-// MVCCEndKey returns the MVCC end key of the current batch entry.
-//lint:ignore U1001 unused
 func (r *RocksDBBatchReader) MVCCEndKey() (MVCCKey, error) {
+	__antithesis_instrumentation__.Notify(633586)
 	if r.typ != BatchTypeRangeDeletion {
+		__antithesis_instrumentation__.Notify(633588)
 		panic("can only ask for EndKey on a range deletion entry")
+	} else {
+		__antithesis_instrumentation__.Notify(633589)
 	}
+	__antithesis_instrumentation__.Notify(633587)
 	return DecodeMVCCKey(r.Value())
 }
 
-// EngineEndKey returns the engine end key of the current batch entry.
 func (r *RocksDBBatchReader) EngineEndKey() (EngineKey, error) {
+	__antithesis_instrumentation__.Notify(633590)
 	if r.typ != BatchTypeRangeDeletion {
+		__antithesis_instrumentation__.Notify(633593)
 		panic("can only ask for EndKey on a range deletion entry")
+	} else {
+		__antithesis_instrumentation__.Notify(633594)
 	}
+	__antithesis_instrumentation__.Notify(633591)
 	key, ok := DecodeEngineKey(r.Value())
 	if !ok {
+		__antithesis_instrumentation__.Notify(633595)
 		return key, errors.Errorf("invalid encoded engine key: %x", r.Value())
+	} else {
+		__antithesis_instrumentation__.Notify(633596)
 	}
+	__antithesis_instrumentation__.Notify(633592)
 	return key, nil
 }
 
-// Next advances to the next entry in the batch, returning false when the batch
-// is empty.
 func (r *RocksDBBatchReader) Next() bool {
+	__antithesis_instrumentation__.Notify(633597)
 	kind, ukey, value, ok := r.batchReader.Next()
 
 	r.typ = BatchType(kind)
@@ -196,11 +177,14 @@ func (r *RocksDBBatchReader) Next() bool {
 	return ok
 }
 
-// RocksDBBatchCount provides an efficient way to get the count of mutations
-// in a RocksDB Batch representation.
 func RocksDBBatchCount(repr []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(633598)
 	if len(repr) < headerSize {
+		__antithesis_instrumentation__.Notify(633600)
 		return 0, errors.Errorf("batch repr too small: %d < %d", len(repr), headerSize)
+	} else {
+		__antithesis_instrumentation__.Notify(633601)
 	}
+	__antithesis_instrumentation__.Notify(633599)
 	return int(binary.LittleEndian.Uint32(repr[countPos:headerSize])), nil
 }

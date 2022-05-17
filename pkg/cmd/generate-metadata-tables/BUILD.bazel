@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//pkg/cmd/generate-metadata-tables/rdbms:generate-metadata-tables-rdbms_lib",
         "//pkg/sql",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -15,4 +16,5 @@ go_binary(
     name = "generate-metadata-tables",
     embed = [":generate-metadata-tables_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

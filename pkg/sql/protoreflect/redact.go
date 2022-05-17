@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package protoreflect
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -22,57 +14,68 @@ import (
 	"github.com/gogo/protobuf/proto"
 )
 
-// anyResolver implements jsonpb.AnyResolver
-// This implementation exists as a hack to enable passing the flag "EmitRedacted"
-// to the jsonbpb.JSONPBMarshaler implementations.
-// TODO(yevgeniy): Eliminate this hack; this likely involves forking jsonbpb package.
 type anyResolver struct{}
 
-// Resolve implements jsonpb.AnyResolver interface.
-// This method is a copy of defaultResolveAny from jsonpb package.
 func (r *anyResolver) Resolve(typeURL string) (proto.Message, error) {
-	// Only the part of typeURL after the last slash is relevant.
+	__antithesis_instrumentation__.Notify(563356)
+
 	mname := typeURL
 	if slash := strings.LastIndex(mname, "/"); slash >= 0 {
+		__antithesis_instrumentation__.Notify(563359)
 		mname = mname[slash+1:]
+	} else {
+		__antithesis_instrumentation__.Notify(563360)
 	}
+	__antithesis_instrumentation__.Notify(563357)
 	mt := proto.MessageType(mname)
 	if mt == nil {
+		__antithesis_instrumentation__.Notify(563361)
 		return nil, fmt.Errorf("unknown message type %q", mname)
+	} else {
+		__antithesis_instrumentation__.Notify(563362)
 	}
+	__antithesis_instrumentation__.Notify(563358)
 	return reflect.New(mt.Elem()).Interface().(proto.Message), nil
 }
 
-// ShouldRedact returns true if the implementers of jsonpb.JSONPBMarshaller interface
-// should redact the returned data.
 func ShouldRedact(m *jsonpb.Marshaler) bool {
+	__antithesis_instrumentation__.Notify(563363)
 	_, shouldRedact := m.AnyResolver.(*anyResolver)
 	return shouldRedact
 }
 
-// redactionJSONBMarker is a JSON map that is concatenated with
-// the JSONB object produced by MessageToJSON to mark the message as redacted.
-// This marker is added so that resulting JSONB cannot be used directly as an argument
-// to the crdb_internal.json_to_pb call (a safety mechanism to prevent accidental
-// overrides with redacted data).
 var redactionJSONBMarker = func() jsonb.JSON {
+	__antithesis_instrumentation__.Notify(563364)
 	jb, err := jsonb.ParseJSON(`{"__redacted__": true}`)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(563366)
 		panic("unexpected error parsing redaction JSON")
+	} else {
+		__antithesis_instrumentation__.Notify(563367)
 	}
+	__antithesis_instrumentation__.Notify(563365)
 	return jb
 }()
 
 func marshalToJSONRedacted(msg protoutil.Message, emitDefaults bool) (jsonb.JSON, error) {
+	__antithesis_instrumentation__.Notify(563368)
 	jsonEncoder := jsonpb.Marshaler{EmitDefaults: emitDefaults}
 	jsonEncoder.AnyResolver = &anyResolver{}
 	msgJSON, err := jsonEncoder.MarshalToString(msg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(563371)
 		return nil, errors.Wrapf(err, "marshaling %s; msg=%+v", proto.MessageName(msg), msg)
+	} else {
+		__antithesis_instrumentation__.Notify(563372)
 	}
+	__antithesis_instrumentation__.Notify(563369)
 	jb, err := jsonb.ParseJSON(msgJSON)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(563373)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(563374)
 	}
+	__antithesis_instrumentation__.Notify(563370)
 	return jb.Concat(redactionJSONBMarker)
 }

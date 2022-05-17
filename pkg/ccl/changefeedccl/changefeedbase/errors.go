@@ -1,12 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedbase
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -17,59 +11,55 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// FailureType is the reason for the changefeed failure that maps to the
-// failure_type values we emit in the ChangefeedFailed telemetry events
 type FailureType = string
 
 const (
-	// ConnectionClosed means the user disconnected from a core changefeed
 	ConnectionClosed FailureType = "connection_closed"
 
-	// UserInput applies to errors in the create statement prior to job creation
 	UserInput FailureType = "user_input"
 
-	// OnStartup applies to all non-user-input errors during Planning
 	OnStartup FailureType = "on_startup"
 
-	// UnknownError applies to all errors not otherwise categorized
 	UnknownError FailureType = "unknown_error"
 )
 
-// Used for categorizing errors in logging
 type taggedError struct {
 	wrapped error
 	tag     string
 }
 
-// MarkTaggedError wraps the given error with an extra tag string property to be
-// read afterwards in cases such as logging
 func MarkTaggedError(e error, tag string) error {
+	__antithesis_instrumentation__.Notify(16588)
 	return &taggedError{wrapped: e, tag: tag}
 }
 
-// IsTaggedError returns whether or not the top level error is a TaggedError
-// along with its tag. This does not work if the tagged error is wrapped.
 func IsTaggedError(err error) (bool, string) {
+	__antithesis_instrumentation__.Notify(16589)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(16592)
 		return false, ""
+	} else {
+		__antithesis_instrumentation__.Notify(16593)
 	}
+	__antithesis_instrumentation__.Notify(16590)
 	if tagged := (*taggedError)(nil); errors.As(err, &tagged) {
+		__antithesis_instrumentation__.Notify(16594)
 		return true, tagged.tag
+	} else {
+		__antithesis_instrumentation__.Notify(16595)
 	}
+	__antithesis_instrumentation__.Notify(16591)
 	return false, ""
 }
 
-// Error implements the error interface.
 func (e *taggedError) Error() string {
+	__antithesis_instrumentation__.Notify(16596)
 	return e.wrapped.Error()
 }
 
-// Cause implements the github.com/pkg/errors.causer interface.
-func (e *taggedError) Cause() error { return e.wrapped }
+func (e *taggedError) Cause() error { __antithesis_instrumentation__.Notify(16597); return e.wrapped }
 
-// Unwrap implements the github.com/golang/xerrors.Wrapper interface, which is
-// planned to be moved to the stdlib in go 1.13.
-func (e *taggedError) Unwrap() error { return e.wrapped }
+func (e *taggedError) Unwrap() error { __antithesis_instrumentation__.Notify(16598); return e.wrapped }
 
 const retryableErrorString = "retryable changefeed error"
 
@@ -77,61 +67,66 @@ type retryableError struct {
 	wrapped error
 }
 
-// MarkRetryableError wraps the given error, marking it as retryable to
-// changefeeds.
 func MarkRetryableError(e error) error {
+	__antithesis_instrumentation__.Notify(16599)
 	return &retryableError{wrapped: e}
 }
 
-// Error implements the error interface.
 func (e *retryableError) Error() string {
+	__antithesis_instrumentation__.Notify(16600)
 	return fmt.Sprintf("%s: %s", retryableErrorString, e.wrapped.Error())
 }
 
-// Cause implements the github.com/pkg/errors.causer interface.
-func (e *retryableError) Cause() error { return e.wrapped }
+func (e *retryableError) Cause() error {
+	__antithesis_instrumentation__.Notify(16601)
+	return e.wrapped
+}
 
-// Unwrap implements the github.com/golang/xerrors.Wrapper interface, which is
-// planned to be moved to the stdlib in go 1.13.
-func (e *retryableError) Unwrap() error { return e.wrapped }
+func (e *retryableError) Unwrap() error {
+	__antithesis_instrumentation__.Notify(16602)
+	return e.wrapped
+}
 
-// IsRetryableError returns true if the supplied error, or any of its parent
-// causes, is a IsRetryableError.
 func IsRetryableError(err error) bool {
+	__antithesis_instrumentation__.Notify(16603)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(16607)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(16608)
 	}
+	__antithesis_instrumentation__.Notify(16604)
 	if errors.HasType(err, (*retryableError)(nil)) {
+		__antithesis_instrumentation__.Notify(16609)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(16610)
 	}
-
-	// TODO(knz): this is a bad implementation. Make it go away
-	// by avoiding string comparisons.
+	__antithesis_instrumentation__.Notify(16605)
 
 	errStr := err.Error()
 	if strings.Contains(errStr, retryableErrorString) {
-		// If a RetryableError occurs on a remote node, DistSQL serializes it such
-		// that we can't recover the structure and we have to rely on this
-		// unfortunate string comparison.
+		__antithesis_instrumentation__.Notify(16611)
+
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(16612)
 	}
+	__antithesis_instrumentation__.Notify(16606)
 
 	return joberror.IsDistSQLRetryableError(err)
 }
 
-// MaybeStripRetryableErrorMarker performs some minimal attempt to clean the
-// RetryableError marker out. This won't do anything if the RetryableError
-// itself has been wrapped, but that's okay, we'll just have an uglier string.
 func MaybeStripRetryableErrorMarker(err error) error {
-	// The following is a hack to work around the error cast linter.
-	// What we're doing here is really not kosher; this function
-	// has no business in assuming that the retryableError{} wrapper
-	// has not been wrapped already. We could even expect that
-	// it gets wrapped in the common case.
-	// TODO(knz): Remove/replace this.
+	__antithesis_instrumentation__.Notify(16613)
+
 	if reflect.TypeOf(err) == retryableErrorType {
+		__antithesis_instrumentation__.Notify(16615)
 		err = errors.UnwrapOnce(err)
+	} else {
+		__antithesis_instrumentation__.Notify(16616)
 	}
+	__antithesis_instrumentation__.Notify(16614)
 	return err
 }
 

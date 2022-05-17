@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
@@ -20,8 +12,6 @@ import (
 )
 
 type windowPlanState struct {
-	// infos contains information about windowFuncHolders in the same order as
-	// they appear in n.funcs.
 	infos   []*windowFuncInfo
 	n       *windowNode
 	planCtx *PlanningCtx
@@ -31,10 +21,13 @@ type windowPlanState struct {
 func createWindowPlanState(
 	n *windowNode, planCtx *PlanningCtx, plan *PhysicalPlan,
 ) *windowPlanState {
+	__antithesis_instrumentation__.Notify(467801)
 	infos := make([]*windowFuncInfo, 0, len(n.funcs))
 	for _, holder := range n.funcs {
+		__antithesis_instrumentation__.Notify(467803)
 		infos = append(infos, &windowFuncInfo{holder: holder})
 	}
+	__antithesis_instrumentation__.Notify(467802)
 	return &windowPlanState{
 		infos:   infos,
 		n:       n,
@@ -43,52 +36,66 @@ func createWindowPlanState(
 	}
 }
 
-// windowFuncInfo contains runtime information about a window function.
 type windowFuncInfo struct {
 	holder *windowFuncHolder
-	// isProcessed indicates whether holder has already been processed. It is set
-	// to true when holder is included in the set of window functions to be
-	// processed by findUnprocessedWindowFnsWithSamePartition.
+
 	isProcessed bool
 }
 
-// findUnprocessedWindowFnsWithSamePartition finds a set of unprocessed window
-// functions that use the same partitioning and updates their isProcessed flag
-// accordingly. It returns the set of unprocessed window functions and indices
-// of the columns in their PARTITION BY clause.
 func (s *windowPlanState) findUnprocessedWindowFnsWithSamePartition() (
 	samePartitionFuncs []*windowFuncHolder,
 	partitionIdxs []uint32,
 ) {
+	__antithesis_instrumentation__.Notify(467804)
 	windowFnToProcessIdx := -1
 	for windowFnIdx, windowFn := range s.infos {
+		__antithesis_instrumentation__.Notify(467809)
 		if !windowFn.isProcessed {
+			__antithesis_instrumentation__.Notify(467810)
 			windowFnToProcessIdx = windowFnIdx
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(467811)
 		}
 	}
+	__antithesis_instrumentation__.Notify(467805)
 	if windowFnToProcessIdx == -1 {
+		__antithesis_instrumentation__.Notify(467812)
 		panic("unexpected: no unprocessed window function")
+	} else {
+		__antithesis_instrumentation__.Notify(467813)
 	}
+	__antithesis_instrumentation__.Notify(467806)
 
 	windowFnToProcess := s.infos[windowFnToProcessIdx].holder
 	partitionIdxs = make([]uint32, len(windowFnToProcess.partitionIdxs))
 	for i, idx := range windowFnToProcess.partitionIdxs {
+		__antithesis_instrumentation__.Notify(467814)
 		partitionIdxs[i] = uint32(idx)
 	}
+	__antithesis_instrumentation__.Notify(467807)
 
 	samePartitionFuncs = make([]*windowFuncHolder, 0, len(s.infos)-windowFnToProcessIdx)
 	samePartitionFuncs = append(samePartitionFuncs, windowFnToProcess)
 	s.infos[windowFnToProcessIdx].isProcessed = true
 	for _, windowFn := range s.infos[windowFnToProcessIdx+1:] {
+		__antithesis_instrumentation__.Notify(467815)
 		if windowFn.isProcessed {
+			__antithesis_instrumentation__.Notify(467817)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(467818)
 		}
+		__antithesis_instrumentation__.Notify(467816)
 		if windowFnToProcess.samePartition(windowFn.holder) {
+			__antithesis_instrumentation__.Notify(467819)
 			samePartitionFuncs = append(samePartitionFuncs, windowFn.holder)
 			windowFn.isProcessed = true
+		} else {
+			__antithesis_instrumentation__.Notify(467820)
 		}
 	}
+	__antithesis_instrumentation__.Notify(467808)
 
 	return samePartitionFuncs, partitionIdxs
 }
@@ -96,34 +103,51 @@ func (s *windowPlanState) findUnprocessedWindowFnsWithSamePartition() (
 func (s *windowPlanState) createWindowFnSpec(
 	funcInProgress *windowFuncHolder,
 ) (execinfrapb.WindowerSpec_WindowFn, *types.T, error) {
+	__antithesis_instrumentation__.Notify(467821)
 	for _, argIdx := range funcInProgress.argsIdxs {
+		__antithesis_instrumentation__.Notify(467828)
 		if argIdx >= uint32(len(s.plan.GetResultTypes())) {
+			__antithesis_instrumentation__.Notify(467829)
 			return execinfrapb.WindowerSpec_WindowFn{}, nil, errors.Errorf("ColIdx out of range (%d)", argIdx)
+		} else {
+			__antithesis_instrumentation__.Notify(467830)
 		}
 	}
-	// Figure out which built-in to compute.
+	__antithesis_instrumentation__.Notify(467822)
+
 	funcSpec, err := rowexec.CreateWindowerSpecFunc(funcInProgress.expr.Func.String())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(467831)
 		return execinfrapb.WindowerSpec_WindowFn{}, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(467832)
 	}
+	__antithesis_instrumentation__.Notify(467823)
 	argTypes := make([]*types.T, len(funcInProgress.argsIdxs))
 	for i, argIdx := range funcInProgress.argsIdxs {
+		__antithesis_instrumentation__.Notify(467833)
 		argTypes[i] = s.plan.GetResultTypes()[argIdx]
 	}
+	__antithesis_instrumentation__.Notify(467824)
 	_, outputType, err := execinfra.GetWindowFunctionInfo(funcSpec, argTypes...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(467834)
 		return execinfrapb.WindowerSpec_WindowFn{}, outputType, err
+	} else {
+		__antithesis_instrumentation__.Notify(467835)
 	}
-	// Populating column ordering from ORDER BY clause of funcInProgress.
+	__antithesis_instrumentation__.Notify(467825)
+
 	ordCols := make([]execinfrapb.Ordering_Column, 0, len(funcInProgress.columnOrdering))
 	for _, column := range funcInProgress.columnOrdering {
+		__antithesis_instrumentation__.Notify(467836)
 		ordCols = append(ordCols, execinfrapb.Ordering_Column{
 			ColIdx: uint32(column.ColIdx),
-			// We need this -1 because encoding.Direction has extra value "_"
-			// as zeroth "entry" which its proto equivalent doesn't have.
+
 			Direction: execinfrapb.Ordering_Column_Direction(column.Direction - 1),
 		})
 	}
+	__antithesis_instrumentation__.Notify(467826)
 	funcInProgressSpec := execinfrapb.WindowerSpec_WindowFn{
 		Func:         funcSpec,
 		ArgsIdxs:     funcInProgress.argsIdxs,
@@ -132,115 +156,121 @@ func (s *windowPlanState) createWindowFnSpec(
 		OutputColIdx: uint32(funcInProgress.outputColIdx),
 	}
 	if funcInProgress.frame != nil {
-		// funcInProgress has a custom window frame.
+		__antithesis_instrumentation__.Notify(467837)
+
 		frameSpec := execinfrapb.WindowerSpec_Frame{}
 		if err := frameSpec.InitFromAST(funcInProgress.frame, s.planCtx.EvalContext()); err != nil {
+			__antithesis_instrumentation__.Notify(467839)
 			return execinfrapb.WindowerSpec_WindowFn{}, outputType, err
+		} else {
+			__antithesis_instrumentation__.Notify(467840)
 		}
+		__antithesis_instrumentation__.Notify(467838)
 		funcInProgressSpec.Frame = &frameSpec
+	} else {
+		__antithesis_instrumentation__.Notify(467841)
 	}
+	__antithesis_instrumentation__.Notify(467827)
 
 	return funcInProgressSpec, outputType, nil
 }
 
-// windowers currently cannot maintain the ordering (see #36310).
 var windowerMergeOrdering = execinfrapb.Ordering{}
 
-// addRenderingOrProjection checks whether any of the window functions' outputs
-// are used in another expression and, if they are, adds rendering to the plan.
-// If no rendering is required, it adds a projection to remove all columns that
-// were arguments to window functions or were used within OVER clauses.
 func (s *windowPlanState) addRenderingOrProjection() error {
-	// numWindowFuncsAsIs is the number of window functions output of which is
-	// used directly (i.e. simply as an output column). Note: the same window
-	// function might appear multiple times in the query, but its every
-	// occurrence is replaced by a different windowFuncHolder. For example, on
-	// query like 'SELECT avg(a) OVER (), avg(a) OVER () + 1 FROM t', only the
-	// first window function is used "as is."
+	__antithesis_instrumentation__.Notify(467842)
+
 	numWindowFuncsAsIs := 0
 	for _, render := range s.n.windowRender {
+		__antithesis_instrumentation__.Notify(467846)
 		if _, ok := render.(*windowFuncHolder); ok {
+			__antithesis_instrumentation__.Notify(467847)
 			numWindowFuncsAsIs++
+		} else {
+			__antithesis_instrumentation__.Notify(467848)
 		}
 	}
+	__antithesis_instrumentation__.Notify(467843)
 	if numWindowFuncsAsIs == len(s.infos) {
-		// All window functions' outputs are used directly, so there is no
-		// rendering to do and simple projection is sufficient.
+		__antithesis_instrumentation__.Notify(467849)
+
 		columns := make([]uint32, len(s.n.windowRender))
 		passedThruColIdx := uint32(0)
 		for i, render := range s.n.windowRender {
+			__antithesis_instrumentation__.Notify(467851)
 			if render == nil {
+				__antithesis_instrumentation__.Notify(467852)
 				columns[i] = passedThruColIdx
 				passedThruColIdx++
 			} else {
-				// We have done the type introspection above, so all non-nil renders
-				// are windowFuncHolders.
+				__antithesis_instrumentation__.Notify(467853)
+
 				holder := render.(*windowFuncHolder)
 				columns[i] = uint32(holder.outputColIdx)
 			}
 		}
+		__antithesis_instrumentation__.Notify(467850)
 		s.plan.AddProjection(columns, windowerMergeOrdering)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(467854)
 	}
+	__antithesis_instrumentation__.Notify(467844)
 
-	// windowNode contains render expressions that might contain:
-	// 1) IndexedVars that refer to columns by their indices in the full table,
-	// 2) IndexedVars that replaced regular aggregates that are above
-	//    "windowing level."
-	// The mapping of both types IndexedVars is stored in s.n.colAndAggContainer.
 	renderExprs := make([]tree.TypedExpr, len(s.n.windowRender))
 	visitor := replaceWindowFuncsVisitor{
 		columnsMap: s.n.colAndAggContainer.idxMap,
 	}
 
-	// All passed through columns are contiguous and at the beginning of the
-	// output schema.
 	passedThruColIdx := 0
 	renderTypes := make([]*types.T, 0, len(s.n.windowRender))
 	for i, render := range s.n.windowRender {
+		__antithesis_instrumentation__.Notify(467855)
 		if render != nil {
-			// render contains at least one reference to windowFuncHolder, so we need
-			// to walk over the render and replace all windowFuncHolders and (if found)
-			// IndexedVars using columnsMap and outputColIdx of windowFuncHolders.
+			__antithesis_instrumentation__.Notify(467857)
+
 			renderExprs[i] = visitor.replace(render)
 		} else {
-			// render is nil meaning that a column is being passed through.
+			__antithesis_instrumentation__.Notify(467858)
+
 			renderExprs[i] = tree.NewTypedOrdinalReference(passedThruColIdx, s.plan.GetResultTypes()[passedThruColIdx])
 			passedThruColIdx++
 		}
+		__antithesis_instrumentation__.Notify(467856)
 		outputType := renderExprs[i].ResolvedType()
 		renderTypes = append(renderTypes, outputType)
 	}
+	__antithesis_instrumentation__.Notify(467845)
 	return s.plan.AddRendering(renderExprs, s.planCtx, s.plan.PlanToStreamColMap, renderTypes, windowerMergeOrdering)
 }
 
-// replaceWindowFuncsVisitor is used to populate render expressions containing
-// the results of window functions. It recurses into all expressions except for
-// windowFuncHolders (which are replaced by the indices to the corresponding
-// output columns) and IndexedVars (which are replaced using columnsMap).
 type replaceWindowFuncsVisitor struct {
 	columnsMap map[int]int
 }
 
 var _ tree.Visitor = &replaceWindowFuncsVisitor{}
 
-// VisitPre satisfies the Visitor interface.
 func (v *replaceWindowFuncsVisitor) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
+	__antithesis_instrumentation__.Notify(467859)
 	switch t := expr.(type) {
 	case *windowFuncHolder:
+		__antithesis_instrumentation__.Notify(467861)
 		return false, tree.NewTypedOrdinalReference(t.outputColIdx, t.ResolvedType())
 	case *tree.IndexedVar:
+		__antithesis_instrumentation__.Notify(467862)
 		return false, tree.NewTypedOrdinalReference(v.columnsMap[t.Idx], t.ResolvedType())
 	}
+	__antithesis_instrumentation__.Notify(467860)
 	return true, expr
 }
 
-// VisitPost satisfies the Visitor interface.
 func (v *replaceWindowFuncsVisitor) VisitPost(expr tree.Expr) tree.Expr {
+	__antithesis_instrumentation__.Notify(467863)
 	return expr
 }
 
 func (v *replaceWindowFuncsVisitor) replace(typedExpr tree.TypedExpr) tree.TypedExpr {
+	__antithesis_instrumentation__.Notify(467864)
 	expr, _ := tree.WalkExpr(v, typedExpr)
 	return expr.(tree.TypedExpr)
 }

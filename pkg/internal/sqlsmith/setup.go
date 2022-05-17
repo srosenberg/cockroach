@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqlsmith
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -19,65 +11,64 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// Setup generates a SQL query that can be executed to initialize a database
-// for smithing.
 type Setup func(*rand.Rand) []string
 
-// RandTableSetupName is the name of the table setup that creates random tables.
 const RandTableSetupName = "rand-tables"
 
-// Setups is a collection of useful initial table states.
 var Setups = map[string]Setup{
 	"empty": wrapCommonSetup(stringSetup("")),
-	// seed is a SQL statement that creates a table with most data types
-	// and some sample rows.
+
 	"seed":              wrapCommonSetup(stringSetup(seedTable)),
 	"seed-multi-region": wrapCommonSetup(stringSetup(multiregionSeed)),
 	RandTableSetupName:  wrapCommonSetup(randTables),
 }
 
-// wrapCommonSetup wraps setup steps common to all SQLSmith setups around the
-// specific setup passed in.
 func wrapCommonSetup(setupFn Setup) Setup {
+	__antithesis_instrumentation__.Notify(69865)
 	return func(r *rand.Rand) []string {
+		__antithesis_instrumentation__.Notify(69866)
 		return setupFn(r)
 	}
 }
 
 var setupNames = func() []string {
+	__antithesis_instrumentation__.Notify(69867)
 	var ret []string
 	for k := range Setups {
+		__antithesis_instrumentation__.Notify(69869)
 		ret = append(ret, k)
 	}
+	__antithesis_instrumentation__.Notify(69868)
 	sort.Strings(ret)
 	return ret
 }()
 
-// RandSetup returns a random key from Setups.
 func RandSetup(r *rand.Rand) string {
+	__antithesis_instrumentation__.Notify(69870)
 	n := r.Intn(len(setupNames))
 	return setupNames[n]
 }
 
 func stringSetup(s string) Setup {
+	__antithesis_instrumentation__.Notify(69871)
 	return func(*rand.Rand) []string {
+		__antithesis_instrumentation__.Notify(69872)
 		return []string{s}
 	}
 }
 
-// randTables is a Setup function that creates 1-5 random tables.
 func randTables(r *rand.Rand) []string {
+	__antithesis_instrumentation__.Notify(69873)
 	return randTablesN(r, r.Intn(5)+1)
 }
 
-// randTablesN is a Setup function that creates n random tables.
 func randTablesN(r *rand.Rand, n int) []string {
+	__antithesis_instrumentation__.Notify(69874)
 	var stmts []string
-	// Since we use the stats mutator, disable auto stats generation.
+
 	stmts = append(stmts, `SET CLUSTER SETTING sql.stats.automatic_collection.enabled = false;`)
 	stmts = append(stmts, `SET CLUSTER SETTING sql.stats.histogram_collection.enabled = false;`)
 
-	// Create the random tables.
 	createTableStatements := randgen.RandCreateTables(r, "table", n,
 		randgen.StatisticsMutator,
 		randgen.PartialIndexMutator,
@@ -85,16 +76,19 @@ func randTablesN(r *rand.Rand, n int) []string {
 	)
 
 	for _, stmt := range createTableStatements {
+		__antithesis_instrumentation__.Notify(69877)
 		stmts = append(stmts, tree.SerializeForDisplay(stmt))
 	}
+	__antithesis_instrumentation__.Notify(69875)
 
-	// Create some random types as well.
 	numTypes := r.Intn(5) + 1
 	for i := 0; i < numTypes; i++ {
+		__antithesis_instrumentation__.Notify(69878)
 		name := fmt.Sprintf("rand_typ_%d", i)
 		stmt := randgen.RandCreateType(r, name, letters)
 		stmts = append(stmts, stmt.String())
 	}
+	__antithesis_instrumentation__.Notify(69876)
 	return stmts
 }
 
@@ -151,28 +145,21 @@ CREATE TABLE IF NOT EXISTS seed_mr_table AS
 `
 )
 
-// SettingFunc generates a Setting.
 type SettingFunc func(*rand.Rand) Setting
 
-// Setting defines options and execution modes for a Smither.
 type Setting struct {
 	Options []SmitherOption
 	Mode    ExecMode
 }
 
-// ExecMode definitions define how a Setting can be executed.
 type ExecMode int
 
 const (
-	// NoParallel indicates that, if determinism is desired, this Setting
-	// should not be executed in parallel.
 	NoParallel ExecMode = iota
-	// Parallel indicates that this Setting can be executed in parallel and
-	// still preserve determinism.
+
 	Parallel
 )
 
-// Settings is a collection of useful Setting options.
 var Settings = map[string]SettingFunc{
 	"default":           staticSetting(Parallel),
 	"no-mutations":      staticSetting(Parallel, DisableMutations()),
@@ -185,21 +172,26 @@ var Settings = map[string]SettingFunc{
 }
 
 var settingNames = func() []string {
+	__antithesis_instrumentation__.Notify(69879)
 	var ret []string
 	for k := range Settings {
+		__antithesis_instrumentation__.Notify(69881)
 		ret = append(ret, k)
 	}
+	__antithesis_instrumentation__.Notify(69880)
 	sort.Strings(ret)
 	return ret
 }()
 
-// RandSetting returns a random key from Settings.
 func RandSetting(r *rand.Rand) string {
+	__antithesis_instrumentation__.Notify(69882)
 	return settingNames[r.Intn(len(settingNames))]
 }
 
 func staticSetting(mode ExecMode, opts ...SmitherOption) SettingFunc {
+	__antithesis_instrumentation__.Notify(69883)
 	return func(*rand.Rand) Setting {
+		__antithesis_instrumentation__.Notify(69884)
 		return Setting{
 			Options: opts,
 			Mode:    mode,
@@ -208,13 +200,17 @@ func staticSetting(mode ExecMode, opts ...SmitherOption) SettingFunc {
 }
 
 func randSetting(mode ExecMode, staticOpts ...SmitherOption) SettingFunc {
+	__antithesis_instrumentation__.Notify(69885)
 	return func(r *rand.Rand) Setting {
-		// Generate a random subset of randOptions.
+		__antithesis_instrumentation__.Notify(69886)
+
 		opts := append([]SmitherOption(nil), randOptions...)
 		r.Shuffle(len(opts), func(i, j int) {
+			__antithesis_instrumentation__.Notify(69888)
 			opts[i], opts[j] = opts[j], opts[i]
 		})
-		// Use between (inclusive) none and all of the shuffled options.
+		__antithesis_instrumentation__.Notify(69887)
+
 		opts = opts[:r.Intn(len(opts)+1)]
 		opts = append(opts, staticOpts...)
 		return Setting{
@@ -224,9 +220,6 @@ func randSetting(mode ExecMode, staticOpts ...SmitherOption) SettingFunc {
 	}
 }
 
-// randOptions is the list of SmitherOptions that can be chosen from randomly
-// that are guaranteed to not add mutations or remove determinism from
-// generated queries.
 var randOptions = []SmitherOption{
 	AvoidConsts(),
 	CompareMode(),

@@ -1,12 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package cliccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -33,11 +27,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Defines CCL-specific debug commands, adds the encryption flag to debug commands in
-// `pkg/cli/debug.go`, and registers a callback to generate encryption options.
-
 const (
-	// These constants are defined in libroach. They should NOT be changed.
 	plaintextKeyID       = "plain"
 	keyRegistryFilename  = "COCKROACHDB_DATA_KEYS"
 	fileRegistryFilename = "COCKROACHDB_REGISTRY"
@@ -78,63 +68,67 @@ AES128_CTR:be235...   # AES-128 encryption with store key ID
 		RunE: clierrorplus.MaybeDecorateError(runEncryptionActiveKey),
 	}
 
-	// Add commands to the root debug command.
-	// We can't add them to the lists of commands (eg: DebugCmdsForPebble) as cli init() is called before us.
 	cli.DebugCmd.AddCommand(encryptionStatusCmd)
 	cli.DebugCmd.AddCommand(encryptionActiveKeyCmd)
 
-	// Add the encryption flag to commands that need it.
 	f := encryptionStatusCmd.Flags()
 	cli.VarFlag(f, &storeEncryptionSpecs, cliflagsccl.EnterpriseEncryption)
-	// And other flags.
+
 	f.BoolVar(&encryptionStatusOpts.activeStoreIDOnly, "active-store-key-id-only", false,
 		"print active store key ID and exit")
 
-	// Add encryption flag to all OSS debug commands that want it.
 	for _, cmd := range cli.DebugCommandsRequiringEncryption {
-		// storeEncryptionSpecs is in start.go.
+
 		cli.VarFlag(cmd.Flags(), &storeEncryptionSpecs, cliflagsccl.EnterpriseEncryption)
 	}
 
-	// init has already run in cli/debug.go since this package imports it, so
-	// DebugPebbleCmd already has all its subcommands. We could traverse those
-	// here. But we don't need to by using PersistentFlags.
 	cli.VarFlag(cli.DebugPebbleCmd.PersistentFlags(),
 		&storeEncryptionSpecs, cliflagsccl.EnterpriseEncryption)
 
 	cli.PopulateStorageConfigHook = fillEncryptionOptionsForStore
 }
 
-// fillEncryptionOptionsForStore fills the StorageConfig fields
-// based on the --enterprise-encryption flag value.
 func fillEncryptionOptionsForStore(cfg *base.StorageConfig) error {
+	__antithesis_instrumentation__.Notify(19070)
 	opts, err := baseccl.EncryptionOptionsForStore(cfg.Dir, storeEncryptionSpecs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19073)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19074)
 	}
+	__antithesis_instrumentation__.Notify(19071)
 
 	if opts != nil {
+		__antithesis_instrumentation__.Notify(19075)
 		cfg.EncryptionOptions = opts
 		cfg.UseFileRegistry = true
+	} else {
+		__antithesis_instrumentation__.Notify(19076)
 	}
+	__antithesis_instrumentation__.Notify(19072)
 	return nil
 }
 
 type keyInfoByAge []*enginepbccl.KeyInfo
 
-func (ki keyInfoByAge) Len() int           { return len(ki) }
-func (ki keyInfoByAge) Swap(i, j int)      { ki[i], ki[j] = ki[j], ki[i] }
-func (ki keyInfoByAge) Less(i, j int) bool { return ki[i].CreationTime < ki[j].CreationTime }
+func (ki keyInfoByAge) Len() int { __antithesis_instrumentation__.Notify(19077); return len(ki) }
+func (ki keyInfoByAge) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(19078)
+	ki[i], ki[j] = ki[j], ki[i]
+}
+func (ki keyInfoByAge) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(19079)
+	return ki[i].CreationTime < ki[j].CreationTime
+}
 
-// JSONTime is a json-marshalable time.Time.
 type JSONTime time.Time
 
-// MarshalJSON marshals time.Time into json.
 func (t JSONTime) MarshalJSON() ([]byte, error) {
+	__antithesis_instrumentation__.Notify(19080)
 	return []byte(fmt.Sprintf("\"%s\"", time.Time(t).String())), nil
 }
 
-// PrettyDataKey is the final json-exportable struct for a data key.
 type PrettyDataKey struct {
 	ID      string
 	Active  bool `json:",omitempty"`
@@ -143,7 +137,6 @@ type PrettyDataKey struct {
 	Files   []string `json:",omitempty"`
 }
 
-// PrettyStoreKey is the final json-exportable struct for a store key.
 type PrettyStoreKey struct {
 	ID       string
 	Active   bool `json:",omitempty"`
@@ -155,79 +148,123 @@ type PrettyStoreKey struct {
 }
 
 func runEncryptionStatus(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(19081)
 	stopper := stop.NewStopper()
 	defer stopper.Stop(context.Background())
 
 	dir := args[0]
 
-	db, err := cli.OpenExistingStore(dir, stopper, true /* readOnly */, false /* disableAutomaticCompactions */)
+	db, err := cli.OpenExistingStore(dir, stopper, true, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19095)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19096)
 	}
+	__antithesis_instrumentation__.Notify(19082)
 
 	registries, err := db.GetEncryptionRegistries()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19097)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19098)
 	}
+	__antithesis_instrumentation__.Notify(19083)
 
 	if len(registries.KeyRegistry) == 0 {
+		__antithesis_instrumentation__.Notify(19099)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(19100)
 	}
+	__antithesis_instrumentation__.Notify(19084)
 
 	var fileRegistry enginepb.FileRegistry
 	if err := protoutil.Unmarshal(registries.FileRegistry, &fileRegistry); err != nil {
+		__antithesis_instrumentation__.Notify(19101)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19102)
 	}
+	__antithesis_instrumentation__.Notify(19085)
 
 	var keyRegistry enginepbccl.DataKeysRegistry
 	if err := protoutil.Unmarshal(registries.KeyRegistry, &keyRegistry); err != nil {
+		__antithesis_instrumentation__.Notify(19103)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19104)
 	}
+	__antithesis_instrumentation__.Notify(19086)
 
 	if encryptionStatusOpts.activeStoreIDOnly {
+		__antithesis_instrumentation__.Notify(19105)
 		fmt.Println(keyRegistry.ActiveStoreKeyId)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(19106)
 	}
+	__antithesis_instrumentation__.Notify(19087)
 
-	// Build a map of 'key ID' -> list of files
 	fileKeyMap := make(map[string][]string)
 
 	for name, entry := range fileRegistry.Files {
+		__antithesis_instrumentation__.Notify(19107)
 		keyID := plaintextKeyID
 
-		if entry.EnvType != enginepb.EnvType_Plaintext && len(entry.EncryptionSettings) > 0 {
+		if entry.EnvType != enginepb.EnvType_Plaintext && func() bool {
+			__antithesis_instrumentation__.Notify(19109)
+			return len(entry.EncryptionSettings) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(19110)
 			var setting enginepbccl.EncryptionSettings
 			if err := protoutil.Unmarshal(entry.EncryptionSettings, &setting); err != nil {
+				__antithesis_instrumentation__.Notify(19112)
 				fmt.Fprintf(os.Stderr, "could not unmarshal encryption settings for file %s: %v", name, err)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(19113)
 			}
+			__antithesis_instrumentation__.Notify(19111)
 			keyID = setting.KeyId
+		} else {
+			__antithesis_instrumentation__.Notify(19114)
 		}
+		__antithesis_instrumentation__.Notify(19108)
 
 		fileKeyMap[keyID] = append(fileKeyMap[keyID], name)
 	}
+	__antithesis_instrumentation__.Notify(19088)
 
-	// Build a map of 'store key ID' -> list of child data key info
 	childKeyMap := make(map[string]keyInfoByAge)
 
 	for _, dataKey := range keyRegistry.DataKeys {
+		__antithesis_instrumentation__.Notify(19115)
 		info := dataKey.Info
 		parentKey := plaintextKeyID
 		if len(info.ParentKeyId) > 0 {
+			__antithesis_instrumentation__.Notify(19117)
 			parentKey = info.ParentKeyId
+		} else {
+			__antithesis_instrumentation__.Notify(19118)
 		}
+		__antithesis_instrumentation__.Notify(19116)
 		childKeyMap[parentKey] = append(childKeyMap[parentKey], info)
 	}
+	__antithesis_instrumentation__.Notify(19089)
 
-	// Make a sortable slice of store key infos.
 	storeKeyList := make(keyInfoByAge, 0)
 	for _, ki := range keyRegistry.StoreKeys {
+		__antithesis_instrumentation__.Notify(19119)
 		storeKeyList = append(storeKeyList, ki)
 	}
+	__antithesis_instrumentation__.Notify(19090)
 
 	storeKeys := make([]PrettyStoreKey, 0, len(storeKeyList))
 	sort.Sort(storeKeyList)
 	for _, storeKey := range storeKeyList {
+		__antithesis_instrumentation__.Notify(19120)
 		storeNode := PrettyStoreKey{
 			ID:      storeKey.KeyId,
 			Active:  (storeKey.KeyId == keyRegistry.ActiveStoreKeyId),
@@ -236,19 +273,23 @@ func runEncryptionStatus(cmd *cobra.Command, args []string) error {
 			Source:  storeKey.Source,
 		}
 
-		// Files encrypted by the store key. This should only be the data key registry.
 		if files, ok := fileKeyMap[storeKey.KeyId]; ok {
+			__antithesis_instrumentation__.Notify(19123)
 			sort.Strings(files)
 			storeNode.Files = files
 			delete(fileKeyMap, storeKey.KeyId)
+		} else {
+			__antithesis_instrumentation__.Notify(19124)
 		}
+		__antithesis_instrumentation__.Notify(19121)
 
-		// Child keys.
 		if children, ok := childKeyMap[storeKey.KeyId]; ok {
+			__antithesis_instrumentation__.Notify(19125)
 			storeNode.DataKeys = make([]PrettyDataKey, 0, len(children))
 
 			sort.Sort(children)
 			for _, c := range children {
+				__antithesis_instrumentation__.Notify(19127)
 				dataNode := PrettyDataKey{
 					ID:      c.KeyId,
 					Active:  (c.KeyId == keyRegistry.ActiveDataKeyId),
@@ -257,82 +298,135 @@ func runEncryptionStatus(cmd *cobra.Command, args []string) error {
 				}
 				files, ok := fileKeyMap[c.KeyId]
 				if ok {
+					__antithesis_instrumentation__.Notify(19129)
 					sort.Strings(files)
 					dataNode.Files = files
 					delete(fileKeyMap, c.KeyId)
+				} else {
+					__antithesis_instrumentation__.Notify(19130)
 				}
+				__antithesis_instrumentation__.Notify(19128)
 				storeNode.DataKeys = append(storeNode.DataKeys, dataNode)
 			}
+			__antithesis_instrumentation__.Notify(19126)
 			delete(childKeyMap, storeKey.KeyId)
+		} else {
+			__antithesis_instrumentation__.Notify(19131)
 		}
+		__antithesis_instrumentation__.Notify(19122)
 		storeKeys = append(storeKeys, storeNode)
 	}
+	__antithesis_instrumentation__.Notify(19091)
 
 	j, err := json.MarshalIndent(storeKeys, "", "  ")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19132)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19133)
 	}
+	__antithesis_instrumentation__.Notify(19092)
 	fmt.Printf("%s\n", j)
 
 	if len(fileKeyMap) > 0 {
+		__antithesis_instrumentation__.Notify(19134)
 		fmt.Fprintf(os.Stderr, "WARNING: could not find key info for some files: %+v\n", fileKeyMap)
+	} else {
+		__antithesis_instrumentation__.Notify(19135)
 	}
+	__antithesis_instrumentation__.Notify(19093)
 	if len(childKeyMap) > 0 {
+		__antithesis_instrumentation__.Notify(19136)
 		fmt.Fprintf(os.Stderr, "WARNING: could not find parent key info for some data keys: %+v\n", childKeyMap)
+	} else {
+		__antithesis_instrumentation__.Notify(19137)
 	}
+	__antithesis_instrumentation__.Notify(19094)
 
 	return nil
 }
 
 func runEncryptionActiveKey(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(19138)
 	keyType, keyID, err := getActiveEncryptionkey(args[0])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19140)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19141)
 	}
+	__antithesis_instrumentation__.Notify(19139)
 
 	fmt.Printf("%s:%s\n", keyType, keyID)
 	return nil
 }
 
-// getActiveEncryptionkey opens the file registry directly, bypassing Pebble.
-// This allows looking up the active encryption key ID without knowing it.
 func getActiveEncryptionkey(dir string) (string, string, error) {
+	__antithesis_instrumentation__.Notify(19142)
 	registryFile := filepath.Join(dir, fileRegistryFilename)
 
-	// If the data directory does not exist, we return an error.
 	if _, err := os.Stat(dir); err != nil {
+		__antithesis_instrumentation__.Notify(19149)
 		return "", "", errors.Wrapf(err, "data directory %s does not exist", dir)
+	} else {
+		__antithesis_instrumentation__.Notify(19150)
 	}
+	__antithesis_instrumentation__.Notify(19143)
 
-	// Open the file registry. Return plaintext if it does not exist.
 	contents, err := ioutil.ReadFile(registryFile)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19151)
 		if oserror.IsNotExist(err) {
+			__antithesis_instrumentation__.Notify(19153)
 			return enginepbccl.EncryptionType_Plaintext.String(), "", nil
+		} else {
+			__antithesis_instrumentation__.Notify(19154)
 		}
+		__antithesis_instrumentation__.Notify(19152)
 		return "", "", errors.Wrapf(err, "could not open registry file %s", registryFile)
+	} else {
+		__antithesis_instrumentation__.Notify(19155)
 	}
+	__antithesis_instrumentation__.Notify(19144)
 
 	var fileRegistry enginepb.FileRegistry
 	if err := protoutil.Unmarshal(contents, &fileRegistry); err != nil {
+		__antithesis_instrumentation__.Notify(19156)
 		return "", "", err
+	} else {
+		__antithesis_instrumentation__.Notify(19157)
 	}
+	__antithesis_instrumentation__.Notify(19145)
 
-	// Find the entry for the key registry file.
 	entry, ok := fileRegistry.Files[keyRegistryFilename]
 	if !ok {
+		__antithesis_instrumentation__.Notify(19158)
 		return "", "", fmt.Errorf("key registry file %s was not found in the file registry", keyRegistryFilename)
+	} else {
+		__antithesis_instrumentation__.Notify(19159)
 	}
+	__antithesis_instrumentation__.Notify(19146)
 
-	if entry.EnvType == enginepb.EnvType_Plaintext || len(entry.EncryptionSettings) == 0 {
-		// Plaintext: no encryption settings to unmarshal.
+	if entry.EnvType == enginepb.EnvType_Plaintext || func() bool {
+		__antithesis_instrumentation__.Notify(19160)
+		return len(entry.EncryptionSettings) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(19161)
+
 		return enginepbccl.EncryptionType_Plaintext.String(), "", nil
+	} else {
+		__antithesis_instrumentation__.Notify(19162)
 	}
+	__antithesis_instrumentation__.Notify(19147)
 
 	var setting enginepbccl.EncryptionSettings
 	if err := protoutil.Unmarshal(entry.EncryptionSettings, &setting); err != nil {
+		__antithesis_instrumentation__.Notify(19163)
 		return "", "", errors.Wrapf(err, "could not unmarshal encryption settings for %s", keyRegistryFilename)
+	} else {
+		__antithesis_instrumentation__.Notify(19164)
 	}
+	__antithesis_instrumentation__.Notify(19148)
 
 	return setting.EncryptionType.String(), setting.KeyId, nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,10 +26,8 @@ const (
 	clusterCapacityAvailableRatioRuleName = "cluster:capacity_available:ratio"
 )
 
-// CreateAndAddRules initializes all KV metric rules and adds them
-// to the rule registry for tracking. All rules are exported in the
-// YAML format.
 func CreateAndAddRules(ctx context.Context, ruleRegistry *metric.RuleRegistry) {
+	__antithesis_instrumentation__.Notify(110226)
 	createAndRegisterUnavailableRangesRule(ctx, ruleRegistry)
 	createAndRegisterTrippedReplicaCircuitBreakersRule(ctx, ruleRegistry)
 	createAndRegisterUnderReplicatedRangesRule(ctx, ruleRegistry)
@@ -55,6 +45,7 @@ func CreateAndAddRules(ctx context.Context, ruleRegistry *metric.RuleRegistry) {
 func createAndRegisterUnavailableRangesRule(
 	ctx context.Context, ruleRegistry *metric.RuleRegistry,
 ) {
+	__antithesis_instrumentation__.Notify(110227)
 	expr := "(sum by(instance, cluster) (ranges_unavailable)) > 0"
 	var annotations []metric.LabelPair
 	annotations = append(annotations, metric.LabelPair{
@@ -79,6 +70,7 @@ func createAndRegisterUnavailableRangesRule(
 func createAndRegisterTrippedReplicaCircuitBreakersRule(
 	ctx context.Context, ruleRegistry *metric.RuleRegistry,
 ) {
+	__antithesis_instrumentation__.Notify(110228)
 	expr := "(sum by(instance, cluster) (kv_replica_circuit_breaker_num_tripped_replicas)) > 0"
 	var annotations []metric.LabelPair
 	annotations = append(annotations, metric.LabelPair{
@@ -103,6 +95,7 @@ func createAndRegisterTrippedReplicaCircuitBreakersRule(
 func createAndRegisterUnderReplicatedRangesRule(
 	ctx context.Context, ruleRegistry *metric.RuleRegistry,
 ) {
+	__antithesis_instrumentation__.Notify(110229)
 	expr := "(sum by(instance, cluster) (ranges_underreplicated)) > 0"
 	var annotations []metric.LabelPair
 	annotations = append(annotations, metric.LabelPair{
@@ -127,6 +120,7 @@ func createAndRegisterUnderReplicatedRangesRule(
 func createAndRegisterRequestsStuckInRaftRule(
 	ctx context.Context, ruleRegistry *metric.RuleRegistry,
 ) {
+	__antithesis_instrumentation__.Notify(110230)
 	expr := "requests_slow_raft > 0"
 	var annotations []metric.LabelPair
 	annotations = append(annotations, metric.LabelPair{
@@ -149,6 +143,7 @@ func createAndRegisterRequestsStuckInRaftRule(
 }
 
 func createAndRegisterHighOpenFDCountRule(ctx context.Context, ruleRegistry *metric.RuleRegistry) {
+	__antithesis_instrumentation__.Notify(110231)
 	expr := "sys_fd_open / sys_fd_softlimit > 0.8"
 	var annotations []metric.LabelPair
 	annotations = append(annotations, metric.LabelPair{
@@ -171,6 +166,7 @@ func createAndRegisterHighOpenFDCountRule(ctx context.Context, ruleRegistry *met
 }
 
 func createAndRegisterNodeCapacityRule(ctx context.Context, ruleRegistry *metric.RuleRegistry) {
+	__antithesis_instrumentation__.Notify(110232)
 	expr := "sum without(store) (capacity)"
 	help := "Aggregation expression to compute node capacity."
 	nodeCapacity, err := metric.NewAggregationRule(
@@ -184,6 +180,7 @@ func createAndRegisterNodeCapacityRule(ctx context.Context, ruleRegistry *metric
 }
 
 func createAndRegisterClusterCapacityRule(ctx context.Context, ruleRegistry *metric.RuleRegistry) {
+	__antithesis_instrumentation__.Notify(110233)
 	expr := "sum without(instance) (node:capacity)"
 	help := "Aggregation expression to compute cluster capacity."
 
@@ -200,6 +197,7 @@ func createAndRegisterClusterCapacityRule(ctx context.Context, ruleRegistry *met
 func createAndRegisterNodeCapacityAvailableRule(
 	ctx context.Context, ruleRegistry *metric.RuleRegistry,
 ) {
+	__antithesis_instrumentation__.Notify(110234)
 	expr := "sum without(store) (capacity_available)"
 	help := "Aggregation expression to compute available capacity for a node."
 
@@ -217,6 +215,7 @@ func createAndRegisterNodeCapacityAvailableRule(
 func createAndRegisterClusterCapacityAvailableRule(
 	ctx context.Context, ruleRegistry *metric.RuleRegistry,
 ) {
+	__antithesis_instrumentation__.Notify(110235)
 	expr := "sum without(instance) (node:capacity_available)"
 	help := "Aggregation expression to compute available capacity for a cluster."
 
@@ -233,6 +232,7 @@ func createAndRegisterClusterCapacityAvailableRule(
 func createAndRegisterCapacityAvailableRatioRule(
 	ctx context.Context, ruleRegistry *metric.RuleRegistry,
 ) {
+	__antithesis_instrumentation__.Notify(110236)
 	expr := "capacity_available / capacity"
 	help := "Aggregation expression to compute available capacity ratio."
 
@@ -249,6 +249,7 @@ func createAndRegisterCapacityAvailableRatioRule(
 func createAndRegisterNodeCapacityAvailableRatioRule(
 	ctx context.Context, ruleRegistry *metric.RuleRegistry,
 ) {
+	__antithesis_instrumentation__.Notify(110237)
 	expr := "node:capacity_available / node:capacity"
 	help := "Aggregation expression to compute available capacity ratio for a node."
 
@@ -265,6 +266,7 @@ func createAndRegisterNodeCapacityAvailableRatioRule(
 func createAndRegisterClusterCapacityAvailableRatioRule(
 	ctx context.Context, ruleRegistry *metric.RuleRegistry,
 ) {
+	__antithesis_instrumentation__.Notify(110238)
 	expr := "cluster:capacity_available/cluster:capacity"
 	help := "Aggregation expression to compute available capacity ratio for a cluster."
 
@@ -281,11 +283,20 @@ func createAndRegisterClusterCapacityAvailableRatioRule(
 func maybeAddRuleToRegistry(
 	ctx context.Context, err error, name string, rule metric.Rule, ruleRegistry *metric.RuleRegistry,
 ) {
+	__antithesis_instrumentation__.Notify(110239)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(110242)
 		log.Warningf(ctx, "unable to create kv rule %s: %s", name, err.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(110243)
 	}
+	__antithesis_instrumentation__.Notify(110240)
 	if ruleRegistry == nil {
+		__antithesis_instrumentation__.Notify(110244)
 		log.Warningf(ctx, "unable to add kv rule %s: rule registry uninitialized", name)
+	} else {
+		__antithesis_instrumentation__.Notify(110245)
 	}
+	__antithesis_instrumentation__.Notify(110241)
 	ruleRegistry.AddRule(rule)
 }

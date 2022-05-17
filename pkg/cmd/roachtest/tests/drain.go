@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,41 +21,40 @@ import (
 )
 
 func registerDrain(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(47411)
 	{
+		__antithesis_instrumentation__.Notify(47412)
 		r.Add(registry.TestSpec{
 			Name:    "drain/early-exit-conn-wait",
 			Owner:   registry.OwnerSQLExperience,
 			Cluster: r.MakeClusterSpec(1),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(47414)
 				runEarlyExitInConnectionWait(ctx, t, c)
 			},
 		})
+		__antithesis_instrumentation__.Notify(47413)
 
 		r.Add(registry.TestSpec{
 			Name:    "drain/warn-conn-wait-timeout",
 			Owner:   registry.OwnerSQLExperience,
 			Cluster: r.MakeClusterSpec(1),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(47415)
 				runTestWarningForConnWait(ctx, t, c)
 			},
 		})
 	}
 }
 
-// runEarlyExitInConnectionWait is to verify that draining proceeds immediately
-// after connections are closed client-side.
 func runEarlyExitInConnectionWait(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(47416)
 	var err error
 	const (
-		// Set the duration of each phase of the draining period.
 		drainWaitDuration      = 5 * time.Second
 		connectionWaitDuration = 100 * time.Second
 		queryWaitDuration      = 10 * time.Second
-		// pokeDuringConnWaitTimestamp is the timestamp after the server
-		// starts waiting for SQL connections to close (with the start of the whole
-		// draining process marked as timestamp 0). It should be set larger than
-		// drainWaitDuration, but smaller than (drainWaitDuration +
-		// connectionWaitDuration).
+
 		pokeDuringConnWaitTimestamp = 15 * time.Second
 		connMaxLifetime             = 10 * time.Second
 		connMaxCount                = 5
@@ -81,39 +72,42 @@ func runEarlyExitInConnectionWait(ctx context.Context, t test.Test, c cluster.Cl
 
 	var conns []*gosql.Conn
 
-	// Get two connections from the connection pools.
 	for j := 0; j < 2; j++ {
+		__antithesis_instrumentation__.Notify(47421)
 		conn, err := db.Conn(ctx)
 
 		require.NoError(t, err, "failed to a SQL connection from the connection pool")
 
 		conns = append(conns, conn)
 	}
+	__antithesis_instrumentation__.Notify(47417)
 
-	// Start draining the node.
 	m := c.NewMonitor(ctx, c.Node(nodeToDrain))
 
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(47422)
 		t.Status(fmt.Sprintf("start draining node %d", nodeToDrain))
 		return c.RunE(ctx,
 			c.Node(nodeToDrain),
 			fmt.Sprintf("./cockroach node drain --insecure --drain-wait=%fs",
 				totalWaitDuration.Seconds()))
 	})
+	__antithesis_instrumentation__.Notify(47418)
 
 	drainStartTimestamp := timeutil.Now()
 
-	// Sleep till the server is in the status of waiting for users to close SQL
-	// connections. Verify that the server is rejecting new SQL connections now.
 	time.Sleep(pokeDuringConnWaitTimestamp)
 
 	if _, err := db.Conn(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(47423)
 		t.Status(fmt.Sprintf("%s after draining starts, server is rejecting "+
 			"new SQL connections: %v", pokeDuringConnWaitTimestamp, err))
 	} else {
+		__antithesis_instrumentation__.Notify(47424)
 		t.Fatal(errors.New("new SQL connections should not be allowed when the server " +
 			"starts waiting for the user to close SQL connections"))
 	}
+	__antithesis_instrumentation__.Notify(47419)
 
 	require.Equalf(t, db.Stats().OpenConnections, 2, "number of open connections should be 2")
 
@@ -122,17 +116,17 @@ func runEarlyExitInConnectionWait(ctx context.Context, t test.Test, c cluster.Cl
 	randConn := conns[rand.Intn(len(conns))]
 	t.Status("execting sql query with connection %s", randConn)
 
-	// When server is waiting clients to close connections, verify that SQL
-	// queries do not fail.
 	_, err = randConn.ExecContext(ctx, "SELECT 1;")
 	require.NoError(t, err, "expected query not to fail before the "+
 		"server starts draining SQL connections")
 
 	for _, conn := range conns {
+		__antithesis_instrumentation__.Notify(47425)
 		err := conn.Close()
 		require.NoError(t, err,
 			"expected connection to be able to be successfully closed client-side")
 	}
+	__antithesis_instrumentation__.Notify(47420)
 
 	t.Status("all SQL connections are put back to the connection pool")
 
@@ -145,18 +139,19 @@ func runEarlyExitInConnectionWait(ctx context.Context, t test.Test, c cluster.Cl
 	t.L().Printf("the draining lasted %f seconds", actualDrainDuration)
 
 	if actualDrainDuration >= float64(totalWaitDuration)-10 {
+		__antithesis_instrumentation__.Notify(47426)
 		t.Fatal(errors.New("the draining process didn't early exit " +
 			"when waiting for server to close all SQL connections"))
+	} else {
+		__antithesis_instrumentation__.Notify(47427)
 	}
 
 }
 
-// runTestWarningForConnWait is to verify a warning exists in the case that
-// connectionWait expires.
 func runTestWarningForConnWait(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(47428)
 	var err error
 	const (
-		// Set the duration of the draining period.
 		drainWaitDuration      = 0 * time.Second
 		connectionWaitDuration = 10 * time.Second
 		queryWaitDuration      = 20 * time.Second
@@ -170,19 +165,20 @@ func runTestWarningForConnWait(ctx context.Context, t test.Test, c cluster.Clust
 	db := c.Conn(ctx, t.L(), nodeToDrain)
 	defer db.Close()
 
-	// Get a connection from the connection pool.
 	_, err = db.Conn(ctx)
 
 	require.NoError(t, err, "cannot get a SQL connection from the connection pool")
 
 	m := c.NewMonitor(ctx, c.Node(nodeToDrain))
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(47430)
 		t.Status(fmt.Sprintf("draining node %d", nodeToDrain))
 		return c.RunE(ctx,
 			c.Node(nodeToDrain),
 			fmt.Sprintf("./cockroach node drain --insecure --drain-wait=%fs",
 				totalWaitDuration.Seconds()))
 	})
+	__antithesis_instrumentation__.Notify(47429)
 
 	err = m.WaitE()
 	require.NoError(t, err, "error waiting for the draining to finish")
@@ -193,8 +189,6 @@ func runTestWarningForConnWait(ctx context.Context, t test.Test, c cluster.Clust
 	require.NoError(t, err, "warning is not logged in the log file")
 }
 
-// prepareCluster is to start the server on nodes in the given cluster, and set
-// the cluster setting for duration of each phase of the draining process.
 func prepareCluster(
 	ctx context.Context,
 	t test.Test,
@@ -203,6 +197,7 @@ func prepareCluster(
 	connectionWait time.Duration,
 	queryWait time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(47431)
 	var err error
 	err = c.PutE(ctx, t.L(), t.Cockroach(), "./cockroach", c.All())
 	require.NoError(t, err, "cannot mount cockroach binary")

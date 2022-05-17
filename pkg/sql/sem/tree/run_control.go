@@ -1,84 +1,79 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// ControlJobs represents a PAUSE/RESUME/CANCEL JOBS statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type ControlJobs struct {
 	Jobs    *Select
 	Command JobCommand
 	Reason  Expr
 }
 
-// JobCommand determines which type of action to effect on the selected job(s).
 type JobCommand int
 
-// JobCommand values
 const (
 	PauseJob JobCommand = iota
 	CancelJob
 	ResumeJob
 )
 
-// JobCommandToStatement translates a job command integer to a statement prefix.
 var JobCommandToStatement = map[JobCommand]string{
 	PauseJob:  "PAUSE",
 	CancelJob: "CANCEL",
 	ResumeJob: "RESUME",
 }
 
-// Format implements the NodeFormatter interface.
 func (n *ControlJobs) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(612987)
 	ctx.WriteString(JobCommandToStatement[n.Command])
 	ctx.WriteString(" JOBS ")
 	ctx.FormatNode(n.Jobs)
 	if n.Reason != nil {
+		__antithesis_instrumentation__.Notify(612988)
 		ctx.WriteString(" WITH REASON = ")
 		ctx.FormatNode(n.Reason)
+	} else {
+		__antithesis_instrumentation__.Notify(612989)
 	}
 }
 
-// CancelQueries represents a CANCEL QUERIES statement.
 type CancelQueries struct {
 	Queries  *Select
 	IfExists bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *CancelQueries) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(612990)
 	ctx.WriteString("CANCEL QUERIES ")
 	if node.IfExists {
+		__antithesis_instrumentation__.Notify(612992)
 		ctx.WriteString("IF EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(612993)
 	}
+	__antithesis_instrumentation__.Notify(612991)
 	ctx.FormatNode(node.Queries)
 }
 
-// CancelSessions represents a CANCEL SESSIONS statement.
 type CancelSessions struct {
 	Sessions *Select
 	IfExists bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *CancelSessions) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(612994)
 	ctx.WriteString("CANCEL SESSIONS ")
 	if node.IfExists {
+		__antithesis_instrumentation__.Notify(612996)
 		ctx.WriteString("IF EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(612997)
 	}
+	__antithesis_instrumentation__.Notify(612995)
 	ctx.FormatNode(node.Sessions)
 }
 
-// ScheduleCommand determines which type of action to effect on the selected job(s).
 type ScheduleCommand int
 
-// ScheduleCommand values
 const (
 	PauseSchedule ScheduleCommand = iota
 	ResumeSchedule
@@ -86,19 +81,23 @@ const (
 )
 
 func (c ScheduleCommand) String() string {
+	__antithesis_instrumentation__.Notify(612998)
 	switch c {
 	case PauseSchedule:
+		__antithesis_instrumentation__.Notify(612999)
 		return "PAUSE"
 	case ResumeSchedule:
+		__antithesis_instrumentation__.Notify(613000)
 		return "RESUME"
 	case DropSchedule:
+		__antithesis_instrumentation__.Notify(613001)
 		return "DROP"
 	default:
+		__antithesis_instrumentation__.Notify(613002)
 		panic("unhandled schedule command")
 	}
 }
 
-// ControlSchedules represents PAUSE/RESUME SCHEDULE statement.
 type ControlSchedules struct {
 	Schedules *Select
 	Command   ScheduleCommand
@@ -106,37 +105,33 @@ type ControlSchedules struct {
 
 var _ Statement = &ControlSchedules{}
 
-// Format implements the NodeFormatter interface.
 func (n *ControlSchedules) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613003)
 	ctx.WriteString(n.Command.String())
 	ctx.WriteString(" SCHEDULES ")
 	ctx.FormatNode(n.Schedules)
 }
 
-// ControlJobsForSchedules represents PAUSE/RESUME/CANCEL clause
-// which applies job command to the jobs matching specified schedule(s).
 type ControlJobsForSchedules struct {
 	Schedules *Select
 	Command   JobCommand
 }
 
-// ControlJobsOfType represents PAUSE/RESUME/CANCEL clause which
-// applies the job command to the job matching a specified type
 type ControlJobsOfType struct {
 	Type    string
 	Command JobCommand
 }
 
-// Format implements the NodeFormatter interface.
 func (n *ControlJobsOfType) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613004)
 	ctx.WriteString(JobCommandToStatement[n.Command])
 	ctx.WriteString(" ALL ")
 	ctx.WriteString(n.Type)
 	ctx.WriteString(" JOBS")
 }
 
-// Format implements NodeFormatter interface.
 func (n *ControlJobsForSchedules) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613005)
 	ctx.WriteString(JobCommandToStatement[n.Command])
 	ctx.WriteString(" JOBS FOR SCHEDULES ")
 	ctx.FormatNode(n.Schedules)

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package row
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,8 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// KVFetcher wraps KVBatchFetcher, providing a NextKV interface that returns the
-// next kv from its input.
 type KVFetcher struct {
 	KVBatchFetcher
 
@@ -36,20 +26,11 @@ type KVFetcher struct {
 	batchResponse []byte
 	newSpan       bool
 
-	// Observability fields.
-	// Note: these need to be read via an atomic op.
 	atomics struct {
 		bytesRead int64
 	}
 }
 
-// NewKVFetcher creates a new KVFetcher.
-// If acc is non-nil, this fetcher will track its fetches and must be Closed.
-//
-// The fetcher takes ownership of the spans slice - it can modify the slice and
-// will perform the memory accounting accordingly (if acc is non-nil). The
-// caller can only reuse the spans slice after the fetcher has been closed, and
-// if the caller does, it becomes responsible for the memory accounting.
 func NewKVFetcher(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -64,31 +45,41 @@ func NewKVFetcher(
 	acc *mon.BoundAccount,
 	forceProductionKVBatchSize bool,
 ) (*KVFetcher, error) {
+	__antithesis_instrumentation__.Notify(568385)
 	var sendFn sendFunc
-	// Avoid the heap allocation by allocating sendFn specifically in the if.
+
 	if bsHeader == nil {
+		__antithesis_instrumentation__.Notify(568387)
 		sendFn = makeKVBatchFetcherDefaultSendFunc(txn)
 	} else {
+		__antithesis_instrumentation__.Notify(568388)
 		negotiated := false
 		sendFn = func(ctx context.Context, ba roachpb.BatchRequest) (br *roachpb.BatchResponse, _ error) {
+			__antithesis_instrumentation__.Notify(568389)
 			ba.RoutingPolicy = roachpb.RoutingPolicy_NEAREST
 			var pErr *roachpb.Error
-			// Only use NegotiateAndSend if we have not yet negotiated a timestamp.
-			// If we have, fallback to Send which will already have the timestamp
-			// fixed.
+
 			if !negotiated {
+				__antithesis_instrumentation__.Notify(568392)
 				ba.BoundedStaleness = bsHeader
 				br, pErr = txn.NegotiateAndSend(ctx, ba)
 				negotiated = true
 			} else {
+				__antithesis_instrumentation__.Notify(568393)
 				br, pErr = txn.Send(ctx, ba)
 			}
+			__antithesis_instrumentation__.Notify(568390)
 			if pErr != nil {
+				__antithesis_instrumentation__.Notify(568394)
 				return nil, pErr.GoError()
+			} else {
+				__antithesis_instrumentation__.Notify(568395)
 			}
+			__antithesis_instrumentation__.Notify(568391)
 			return br, nil
 		}
 	}
+	__antithesis_instrumentation__.Notify(568386)
 
 	kvBatchFetcher, err := makeKVBatchFetcher(
 		ctx,
@@ -108,95 +99,103 @@ func NewKVFetcher(
 	return newKVFetcher(&kvBatchFetcher), err
 }
 
-// NewKVStreamingFetcher returns a new KVFetcher that utilizes the provided
-// TxnKVStreamer to perform KV reads.
 func NewKVStreamingFetcher(streamer *TxnKVStreamer) *KVFetcher {
+	__antithesis_instrumentation__.Notify(568396)
 	return &KVFetcher{
 		KVBatchFetcher: streamer,
 	}
 }
 
 func newKVFetcher(batchFetcher KVBatchFetcher) *KVFetcher {
+	__antithesis_instrumentation__.Notify(568397)
 	return &KVFetcher{
 		KVBatchFetcher: batchFetcher,
 	}
 }
 
-// GetBytesRead returns the number of bytes read by this fetcher. It is safe for
-// concurrent use and is able to handle a case of uninitialized fetcher.
 func (f *KVFetcher) GetBytesRead() int64 {
+	__antithesis_instrumentation__.Notify(568398)
 	if f == nil {
+		__antithesis_instrumentation__.Notify(568400)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(568401)
 	}
+	__antithesis_instrumentation__.Notify(568399)
 	return atomic.LoadInt64(&f.atomics.bytesRead)
 }
 
-// ResetBytesRead resets the number of bytes read by this fetcher and returns
-// the number before the reset. It is safe for concurrent use and is able to
-// handle a case of uninitialized fetcher.
 func (f *KVFetcher) ResetBytesRead() int64 {
+	__antithesis_instrumentation__.Notify(568402)
 	if f == nil {
+		__antithesis_instrumentation__.Notify(568404)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(568405)
 	}
+	__antithesis_instrumentation__.Notify(568403)
 	return atomic.SwapInt64(&f.atomics.bytesRead, 0)
 }
 
-// MVCCDecodingStrategy controls if and how the fetcher should decode MVCC
-// timestamps from returned KV's.
 type MVCCDecodingStrategy int
 
 const (
-	// MVCCDecodingNotRequired is used when timestamps aren't needed.
 	MVCCDecodingNotRequired MVCCDecodingStrategy = iota
-	// MVCCDecodingRequired is used when timestamps are needed.
+
 	MVCCDecodingRequired
 )
 
-// NextKV returns the next kv from this fetcher. Returns false if there are no
-// more kvs to fetch, the kv that was fetched, and any errors that may have
-// occurred.
-// finalReferenceToBatch is set to true if the returned KV's byte slices are
-// the last reference into a larger backing byte slice. This parameter allows
-// calling code to control its memory usage: if finalReferenceToBatch is true,
-// it means that the next call to NextKV might potentially allocate a big chunk
-// of new memory, so the returned KeyValue should be copied into a small slice
-// that the caller owns to avoid retaining two large backing byte slices at once
-// unexpectedly.
 func (f *KVFetcher) NextKV(
 	ctx context.Context, mvccDecodeStrategy MVCCDecodingStrategy,
 ) (ok bool, kv roachpb.KeyValue, finalReferenceToBatch bool, err error) {
+	__antithesis_instrumentation__.Notify(568406)
 	for {
-		// Only one of f.kvs or f.batchResponse will be set at a given time. Which
-		// one is set depends on the format returned by a given BatchRequest.
+		__antithesis_instrumentation__.Notify(568407)
+
 		nKvs := len(f.kvs)
 		if nKvs != 0 {
+			__antithesis_instrumentation__.Notify(568412)
 			kv = f.kvs[0]
 			f.kvs = f.kvs[1:]
-			// We always return "false" for finalReferenceToBatch when returning data in the
-			// KV format, because each of the KVs doesn't share any backing memory -
-			// they are all independently garbage collectable.
+
 			return true, kv, false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(568413)
 		}
+		__antithesis_instrumentation__.Notify(568408)
 		if len(f.batchResponse) > 0 {
+			__antithesis_instrumentation__.Notify(568414)
 			var key []byte
 			var rawBytes []byte
 			var err error
 			var ts hlc.Timestamp
 			switch mvccDecodeStrategy {
 			case MVCCDecodingRequired:
+				__antithesis_instrumentation__.Notify(568418)
 				key, ts, rawBytes, f.batchResponse, err = enginepb.ScanDecodeKeyValue(f.batchResponse)
 			case MVCCDecodingNotRequired:
+				__antithesis_instrumentation__.Notify(568419)
 				key, rawBytes, f.batchResponse, err = enginepb.ScanDecodeKeyValueNoTS(f.batchResponse)
+			default:
+				__antithesis_instrumentation__.Notify(568420)
 			}
+			__antithesis_instrumentation__.Notify(568415)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(568421)
 				return false, kv, false, err
+			} else {
+				__antithesis_instrumentation__.Notify(568422)
 			}
-			// If we're finished decoding the batch response, nil our reference to it
-			// so that the garbage collector can reclaim the backing memory.
+			__antithesis_instrumentation__.Notify(568416)
+
 			lastKey := len(f.batchResponse) == 0
 			if lastKey {
+				__antithesis_instrumentation__.Notify(568423)
 				f.batchResponse = nil
+			} else {
+				__antithesis_instrumentation__.Notify(568424)
 			}
+			__antithesis_instrumentation__.Notify(568417)
 			return true, roachpb.KeyValue{
 				Key: key[:len(key):len(key)],
 				Value: roachpb.Value{
@@ -204,50 +203,61 @@ func (f *KVFetcher) NextKV(
 					Timestamp: ts,
 				},
 			}, lastKey, nil
+		} else {
+			__antithesis_instrumentation__.Notify(568425)
 		}
+		__antithesis_instrumentation__.Notify(568409)
 
 		ok, f.kvs, f.batchResponse, err = f.nextBatch(ctx)
-		if err != nil || !ok {
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(568426)
+			return !ok == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(568427)
 			return ok, kv, false, err
+		} else {
+			__antithesis_instrumentation__.Notify(568428)
 		}
+		__antithesis_instrumentation__.Notify(568410)
 		f.newSpan = true
 		nBytes := len(f.batchResponse)
 		for i := range f.kvs {
+			__antithesis_instrumentation__.Notify(568429)
 			nBytes += len(f.kvs[i].Key)
 			nBytes += len(f.kvs[i].Value.RawBytes)
 		}
+		__antithesis_instrumentation__.Notify(568411)
 		atomic.AddInt64(&f.atomics.bytesRead, int64(nBytes))
 	}
 }
 
-// Close releases the resources held by this KVFetcher. It must be called
-// at the end of execution if the fetcher was provisioned with a memory
-// monitor.
 func (f *KVFetcher) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(568430)
 	f.KVBatchFetcher.close(ctx)
 }
 
-// SpanKVFetcher is a KVBatchFetcher that returns a set slice of kvs.
 type SpanKVFetcher struct {
 	KVs []roachpb.KeyValue
 }
 
-// nextBatch implements the KVBatchFetcher interface.
 func (f *SpanKVFetcher) nextBatch(
 	ctx context.Context,
 ) (ok bool, kvs []roachpb.KeyValue, batchResponse []byte, err error) {
+	__antithesis_instrumentation__.Notify(568431)
 	if len(f.KVs) == 0 {
+		__antithesis_instrumentation__.Notify(568433)
 		return false, nil, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(568434)
 	}
+	__antithesis_instrumentation__.Notify(568432)
 	res := f.KVs
 	f.KVs = nil
 	return true, res, nil, nil
 }
 
-func (f *SpanKVFetcher) close(context.Context) {}
+func (f *SpanKVFetcher) close(context.Context) { __antithesis_instrumentation__.Notify(568435) }
 
-// BackupSSTKVFetcher is a KVBatchFetcher that wraps storage.SimpleMVCCIterator
-// and returns a batch of kv from backupSST.
 type BackupSSTKVFetcher struct {
 	iter          storage.SimpleMVCCIterator
 	endKeyMVCC    storage.MVCCKey
@@ -256,8 +266,6 @@ type BackupSSTKVFetcher struct {
 	withRevisions bool
 }
 
-// MakeBackupSSTKVFetcher creates a BackupSSTKVFetcher and
-// advances the iter to the first key >= startKeyMVCC
 func MakeBackupSSTKVFetcher(
 	startKeyMVCC, endKeyMVCC storage.MVCCKey,
 	iter storage.SimpleMVCCIterator,
@@ -265,6 +273,7 @@ func MakeBackupSSTKVFetcher(
 	endTime hlc.Timestamp,
 	withRev bool,
 ) BackupSSTKVFetcher {
+	__antithesis_instrumentation__.Notify(568436)
 	res := BackupSSTKVFetcher{
 		iter,
 		endKeyMVCC,
@@ -279,9 +288,11 @@ func MakeBackupSSTKVFetcher(
 func (f *BackupSSTKVFetcher) nextBatch(
 	ctx context.Context,
 ) (ok bool, kvs []roachpb.KeyValue, batchResponse []byte, err error) {
+	__antithesis_instrumentation__.Notify(568437)
 	res := make([]roachpb.KeyValue, 0)
 
 	copyKV := func(mvccKey storage.MVCCKey, value []byte) roachpb.KeyValue {
+		__antithesis_instrumentation__.Notify(568441)
 		keyCopy := make([]byte, len(mvccKey.Key))
 		copy(keyCopy, mvccKey.Key)
 		valueCopy := make([]byte, len(value))
@@ -291,59 +302,101 @@ func (f *BackupSSTKVFetcher) nextBatch(
 			Value: roachpb.Value{RawBytes: valueCopy, Timestamp: mvccKey.Timestamp},
 		}
 	}
+	__antithesis_instrumentation__.Notify(568438)
 
 	for {
+		__antithesis_instrumentation__.Notify(568442)
 		valid, err := f.iter.Valid()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(568447)
 			err = errors.Wrapf(err, "iter key value of table data")
 			return false, nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568448)
 		}
+		__antithesis_instrumentation__.Notify(568443)
 
-		if !valid || !f.iter.UnsafeKey().Less(f.endKeyMVCC) {
+		if !valid || func() bool {
+			__antithesis_instrumentation__.Notify(568449)
+			return !f.iter.UnsafeKey().Less(f.endKeyMVCC) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(568450)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(568451)
 		}
+		__antithesis_instrumentation__.Notify(568444)
 
 		if !f.endTime.IsEmpty() {
+			__antithesis_instrumentation__.Notify(568452)
 			if f.endTime.Less(f.iter.UnsafeKey().Timestamp) {
+				__antithesis_instrumentation__.Notify(568453)
 				f.iter.Next()
 				continue
-			}
-		}
-
-		if f.withRevisions {
-			if f.iter.UnsafeKey().Timestamp.Less(f.startTime) {
-				f.iter.NextKey()
-				continue
+			} else {
+				__antithesis_instrumentation__.Notify(568454)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(568455)
+		}
+		__antithesis_instrumentation__.Notify(568445)
+
+		if f.withRevisions {
+			__antithesis_instrumentation__.Notify(568456)
+			if f.iter.UnsafeKey().Timestamp.Less(f.startTime) {
+				__antithesis_instrumentation__.Notify(568457)
+				f.iter.NextKey()
+				continue
+			} else {
+				__antithesis_instrumentation__.Notify(568458)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(568459)
 			if len(f.iter.UnsafeValue()) == 0 {
-				if f.endTime.IsEmpty() || f.iter.UnsafeKey().Timestamp.Less(f.endTime) {
-					// Value is deleted at endTime.
+				__antithesis_instrumentation__.Notify(568460)
+				if f.endTime.IsEmpty() || func() bool {
+					__antithesis_instrumentation__.Notify(568461)
+					return f.iter.UnsafeKey().Timestamp.Less(f.endTime) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(568462)
+
 					f.iter.NextKey()
 					continue
 				} else {
-					// Otherwise we call Next to trace back the correct revision.
+					__antithesis_instrumentation__.Notify(568463)
+
 					f.iter.Next()
 					continue
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(568464)
 			}
 		}
+		__antithesis_instrumentation__.Notify(568446)
 
 		res = append(res, copyKV(f.iter.UnsafeKey(), f.iter.UnsafeValue()))
 
 		if f.withRevisions {
+			__antithesis_instrumentation__.Notify(568465)
 			f.iter.Next()
 		} else {
+			__antithesis_instrumentation__.Notify(568466)
 			f.iter.NextKey()
 		}
 
 	}
+	__antithesis_instrumentation__.Notify(568439)
 	if len(res) == 0 {
+		__antithesis_instrumentation__.Notify(568467)
 		return false, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(568468)
 	}
+	__antithesis_instrumentation__.Notify(568440)
 	return true, res, nil, nil
 }
 
 func (f *BackupSSTKVFetcher) close(context.Context) {
+	__antithesis_instrumentation__.Notify(568469)
 	f.iter.Close()
 }

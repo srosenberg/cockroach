@@ -1,19 +1,9 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package contention
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/util/metric"
 
-// Metrics is a struct that include all metrics related to contention event
-// store.
 type Metrics struct {
 	ResolverQueueSize *metric.Gauge
 	ResolverRetries   *metric.Counter
@@ -22,11 +12,10 @@ type Metrics struct {
 
 var _ metric.Struct = Metrics{}
 
-// MetricStruct returns a new instance of Metrics.
-func (Metrics) MetricStruct() {}
+func (Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(459117) }
 
-// NewMetrics returns a new instance of Metrics.
 func NewMetrics() Metrics {
+	__antithesis_instrumentation__.Notify(459118)
 	return Metrics{
 		ResolverQueueSize: metric.NewGauge(metric.Metadata{
 			Name:        "sql.contention.resolver.queue_size",

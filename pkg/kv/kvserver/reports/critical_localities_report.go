@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package reports
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,9 +16,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// criticalLocalitiesReportID is the id of the row in the system. reports_meta
-// table corresponding to the critical localities report (i.e. the
-// system.replication_critical_localities table).
 const criticalLocalitiesReportID reportID = 2
 
 type localityKey struct {
@@ -34,49 +23,43 @@ type localityKey struct {
 	locality LocalityRepr
 }
 
-// LocalityRepr is a representation of a locality.
 type LocalityRepr string
 
 type localityStatus struct {
 	atRiskRanges int32
 }
 
-// LocalityReport stores the range status information for each locality and
-// applicable zone.
 type LocalityReport map[localityKey]localityStatus
 
-// replicationCriticalLocalitiesReportSaver deals with saving a LocalityReport
-// to the database. The idea is for it to be used to save new version of the
-// report over and over. It maintains the previously-saved version of the report
-// in order to speed-up the saving of the next one.
 type replicationCriticalLocalitiesReportSaver struct {
 	previousVersion     LocalityReport
 	lastGenerated       time.Time
 	lastUpdatedRowCount int
 }
 
-// makeReplicationCriticalLocalitiesReportSaver creates a new report saver.
 func makeReplicationCriticalLocalitiesReportSaver() replicationCriticalLocalitiesReportSaver {
+	__antithesis_instrumentation__.Notify(121663)
 	return replicationCriticalLocalitiesReportSaver{}
 }
 
-// LastUpdatedRowCount is the count of the rows that were touched during the last save.
 func (r *replicationCriticalLocalitiesReportSaver) LastUpdatedRowCount() int {
+	__antithesis_instrumentation__.Notify(121664)
 	return r.lastUpdatedRowCount
 }
 
-// CountRangeAtRisk increments the number of ranges at-risk for the report entry
-// corresponding to the given zone and locality. In other words, the report will
-// count the respective locality as critical for one more range in the given
-// zone.
 func (r LocalityReport) CountRangeAtRisk(zKey ZoneKey, loc LocalityRepr) {
+	__antithesis_instrumentation__.Notify(121665)
 	lKey := localityKey{
 		ZoneKey:  zKey,
 		locality: loc,
 	}
 	if _, ok := r[lKey]; !ok {
+		__antithesis_instrumentation__.Notify(121667)
 		r[lKey] = localityStatus{}
+	} else {
+		__antithesis_instrumentation__.Notify(121668)
 	}
+	__antithesis_instrumentation__.Notify(121666)
 	lStat := r[lKey]
 	lStat.atRiskRanges++
 	r[lKey] = lStat
@@ -85,34 +68,47 @@ func (r LocalityReport) CountRangeAtRisk(zKey ZoneKey, loc LocalityRepr) {
 func (r *replicationCriticalLocalitiesReportSaver) loadPreviousVersion(
 	ctx context.Context, ex sqlutil.InternalExecutor, txn *kv.Txn,
 ) error {
-	// The data for the previous save needs to be loaded if:
-	// - this is the first time that we call this method and lastUpdatedAt has never been set
-	// - in case that the lastUpdatedAt is set but is different than the timestamp in reports_meta
-	//   this indicates that some other worker wrote after we did the write.
+	__antithesis_instrumentation__.Notify(121669)
+
 	if !r.lastGenerated.IsZero() {
+		__antithesis_instrumentation__.Notify(121673)
 		generated, err := getReportGenerationTime(ctx, criticalLocalitiesReportID, ex, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(121675)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(121676)
 		}
-		// If the report is missing, this is the first time we are running and the
-		// reload is needed. In that case, generated will be the zero value.
+		__antithesis_instrumentation__.Notify(121674)
+
 		if generated == r.lastGenerated {
-			// We have the latest report; reload not needed.
+			__antithesis_instrumentation__.Notify(121677)
+
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(121678)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(121679)
 	}
+	__antithesis_instrumentation__.Notify(121670)
 	const prevViolations = "select zone_id, subzone_id, locality, at_risk_ranges " +
 		"from system.replication_critical_localities"
 	it, err := ex.QueryIterator(
 		ctx, "get-previous-replication-critical-localities", txn, prevViolations,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121680)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(121681)
 	}
+	__antithesis_instrumentation__.Notify(121671)
 
 	r.previousVersion = make(LocalityReport)
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(121682)
 		row := it.Cur()
 		key := localityKey{}
 		key.ZoneID = (config.ObjectID)(*row[0].(*tree.DInt))
@@ -120,19 +116,28 @@ func (r *replicationCriticalLocalitiesReportSaver) loadPreviousVersion(
 		key.locality = (LocalityRepr)(*row[2].(*tree.DString))
 		r.previousVersion[key] = localityStatus{(int32)(*row[3].(*tree.DInt))}
 	}
+	__antithesis_instrumentation__.Notify(121672)
 	return err
 }
 
 func (r *replicationCriticalLocalitiesReportSaver) updateTimestamp(
 	ctx context.Context, ex sqlutil.InternalExecutor, txn *kv.Txn, reportTS time.Time,
 ) error {
-	if !r.lastGenerated.IsZero() && reportTS == r.lastGenerated {
+	__antithesis_instrumentation__.Notify(121683)
+	if !r.lastGenerated.IsZero() && func() bool {
+		__antithesis_instrumentation__.Notify(121685)
+		return reportTS == r.lastGenerated == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(121686)
 		return errors.Errorf(
 			"The new time %s is the same as the time of the last update %s",
 			reportTS.String(),
 			r.lastGenerated.String(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(121687)
 	}
+	__antithesis_instrumentation__.Notify(121684)
 
 	_, err := ex.Exec(
 		ctx,
@@ -145,11 +150,6 @@ func (r *replicationCriticalLocalitiesReportSaver) updateTimestamp(
 	return err
 }
 
-// Save the report to the database.
-//
-// report should not be used by the caller any more after this call; the callee
-// takes ownership.
-// reportTS is the time that will be set in the updated_at column for every row.
 func (r *replicationCriticalLocalitiesReportSaver) Save(
 	ctx context.Context,
 	report LocalityReport,
@@ -157,28 +157,45 @@ func (r *replicationCriticalLocalitiesReportSaver) Save(
 	db *kv.DB,
 	ex sqlutil.InternalExecutor,
 ) error {
+	__antithesis_instrumentation__.Notify(121688)
 	r.lastUpdatedRowCount = 0
 	if err := db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(121690)
 		err := r.loadPreviousVersion(ctx, ex, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(121695)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(121696)
 		}
+		__antithesis_instrumentation__.Notify(121691)
 
 		err = r.updateTimestamp(ctx, ex, txn, reportTS)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(121697)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(121698)
 		}
+		__antithesis_instrumentation__.Notify(121692)
 
 		for key, status := range report {
+			__antithesis_instrumentation__.Notify(121699)
 			if err := r.upsertLocality(
 				ctx, reportTS, txn, key, status, db, ex,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(121700)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(121701)
 			}
 		}
+		__antithesis_instrumentation__.Notify(121693)
 
 		for key := range r.previousVersion {
+			__antithesis_instrumentation__.Notify(121702)
 			if _, ok := report[key]; !ok {
+				__antithesis_instrumentation__.Notify(121703)
 				_, err := ex.Exec(
 					ctx,
 					"delete-old-replication-critical-localities",
@@ -191,16 +208,27 @@ func (r *replicationCriticalLocalitiesReportSaver) Save(
 				)
 
 				if err != nil {
+					__antithesis_instrumentation__.Notify(121705)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(121706)
 				}
+				__antithesis_instrumentation__.Notify(121704)
 				r.lastUpdatedRowCount++
+			} else {
+				__antithesis_instrumentation__.Notify(121707)
 			}
 		}
+		__antithesis_instrumentation__.Notify(121694)
 
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(121708)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(121709)
 	}
+	__antithesis_instrumentation__.Notify(121689)
 
 	r.lastGenerated = reportTS
 	r.previousVersion = report
@@ -208,9 +236,6 @@ func (r *replicationCriticalLocalitiesReportSaver) Save(
 	return nil
 }
 
-// upsertLocality upserts a row into system.replication_critical_localities.
-//
-// existing is used to decide is this is a new violation.
 func (r *replicationCriticalLocalitiesReportSaver) upsertLocality(
 	ctx context.Context,
 	reportTS time.Time,
@@ -220,14 +245,21 @@ func (r *replicationCriticalLocalitiesReportSaver) upsertLocality(
 	db *kv.DB,
 	ex sqlutil.InternalExecutor,
 ) error {
+	__antithesis_instrumentation__.Notify(121710)
 	var err error
 	previousStatus, hasOldVersion := r.previousVersion[key]
-	if hasOldVersion && previousStatus.atRiskRanges == status.atRiskRanges {
-		// No change in the status so no update.
-		return nil
-	}
+	if hasOldVersion && func() bool {
+		__antithesis_instrumentation__.Notify(121713)
+		return previousStatus.atRiskRanges == status.atRiskRanges == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(121714)
 
-	// Updating an old row.
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(121715)
+	}
+	__antithesis_instrumentation__.Notify(121711)
+
 	_, err = ex.Exec(
 		ctx, "upsert-replication-critical-localities", txn,
 		"upsert into system.replication_critical_localities(report_id, zone_id, subzone_id, "+
@@ -237,32 +269,27 @@ func (r *replicationCriticalLocalitiesReportSaver) upsertLocality(
 	)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121716)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(121717)
 	}
+	__antithesis_instrumentation__.Notify(121712)
 
 	r.lastUpdatedRowCount++
 	return nil
 }
 
-// criticalLocalitiesVisitor is a visitor that, when passed to visitRanges(), builds
-// a LocalityReport.
 type criticalLocalitiesVisitor struct {
 	allLocalities map[roachpb.NodeID]map[string]roachpb.Locality
 	cfg           *config.SystemConfig
-	// storeResolver resolves a range to the store descriptors of all its
-	// replicas. Empty descriptors will be returned for stores that gossip
-	// doesn't have a descriptor for.
+
 	storeResolver StoreResolver
 	nodeChecker   nodeChecker
 
-	// report is the output of the visitor. visit*() methods populate it.
-	// After visiting all the ranges, it can be retrieved with Report().
 	report   LocalityReport
 	visitErr bool
 
-	// prevZoneKey maintains state from one range to the next. This state can be
-	// reused when a range is covered by the same zone config as the previous one.
-	// Reusing it speeds up the report generation.
 	prevZoneKey ZoneKey
 }
 
@@ -275,6 +302,7 @@ func makeCriticalLocalitiesVisitor(
 	storeResolver StoreResolver,
 	nodeChecker nodeChecker,
 ) criticalLocalitiesVisitor {
+	__antithesis_instrumentation__.Notify(121718)
 	allLocalities := expandLocalities(nodeLocalities)
 	v := criticalLocalitiesVisitor{
 		allLocalities: allLocalities,
@@ -286,44 +314,45 @@ func makeCriticalLocalitiesVisitor(
 	return v
 }
 
-// expandLocalities expands each locality in its input into multiple localities,
-// each at a different level of granularity. For example the locality
-// "region=r1,dc=dc1,az=az1" is expanded into ["region=r1", "region=r1,dc=dc1",
-// "region=r1,dc=dc1,az=az1"].
-// The localities are returned in a format convenient for the
-// criticalLocalitiesVisitor.
 func expandLocalities(
 	nodeLocalities map[roachpb.NodeID]roachpb.Locality,
 ) map[roachpb.NodeID]map[string]roachpb.Locality {
+	__antithesis_instrumentation__.Notify(121719)
 	res := make(map[roachpb.NodeID]map[string]roachpb.Locality)
 	for nid, loc := range nodeLocalities {
+		__antithesis_instrumentation__.Notify(121721)
 		if len(loc.Tiers) == 0 {
+			__antithesis_instrumentation__.Notify(121723)
 			res[nid] = nil
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(121724)
 		}
+		__antithesis_instrumentation__.Notify(121722)
 		res[nid] = make(map[string]roachpb.Locality, len(loc.Tiers))
 		for i := range loc.Tiers {
+			__antithesis_instrumentation__.Notify(121725)
 			partialLoc := roachpb.Locality{Tiers: make([]roachpb.Tier, i+1)}
 			copy(partialLoc.Tiers, loc.Tiers[:i+1])
 			res[nid][partialLoc.String()] = partialLoc
 		}
 	}
+	__antithesis_instrumentation__.Notify(121720)
 	return res
 }
 
-// failed is part of the rangeVisitor interface.
 func (v *criticalLocalitiesVisitor) failed() bool {
+	__antithesis_instrumentation__.Notify(121726)
 	return v.visitErr
 }
 
-// Report returns the LocalityReport that was populated by previous visit*()
-// calls.
 func (v *criticalLocalitiesVisitor) Report() LocalityReport {
+	__antithesis_instrumentation__.Notify(121727)
 	return v.report
 }
 
-// reset is part of the rangeVisitor interface.
 func (v *criticalLocalitiesVisitor) reset(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(121728)
 	*v = criticalLocalitiesVisitor{
 		allLocalities: v.allLocalities,
 		cfg:           v.cfg,
@@ -333,81 +362,86 @@ func (v *criticalLocalitiesVisitor) reset(ctx context.Context) {
 	}
 }
 
-// visitNewZone is part of the rangeVisitor interface.
 func (v *criticalLocalitiesVisitor) visitNewZone(
 	ctx context.Context, r *roachpb.RangeDescriptor,
 ) (retErr error) {
+	__antithesis_instrumentation__.Notify(121729)
 
 	defer func() {
+		__antithesis_instrumentation__.Notify(121734)
 		v.visitErr = retErr != nil
 	}()
+	__antithesis_instrumentation__.Notify(121730)
 
-	// Get the zone.
 	var zKey ZoneKey
 	found, err := visitZones(ctx, r, v.cfg, ignoreSubzonePlaceholders,
 		func(_ context.Context, zone *zonepb.ZoneConfig, key ZoneKey) bool {
+			__antithesis_instrumentation__.Notify(121735)
 			if !zoneChangesReplication(zone) {
+				__antithesis_instrumentation__.Notify(121737)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(121738)
 			}
+			__antithesis_instrumentation__.Notify(121736)
 			zKey = key
 			return true
 		})
+	__antithesis_instrumentation__.Notify(121731)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121739)
 		return errors.NewAssertionErrorWithWrappedErrf(err, "unexpected error visiting zones")
+	} else {
+		__antithesis_instrumentation__.Notify(121740)
 	}
+	__antithesis_instrumentation__.Notify(121732)
 	if !found {
+		__antithesis_instrumentation__.Notify(121741)
 		return errors.AssertionFailedf("no suitable zone config found for range: %s", r)
+	} else {
+		__antithesis_instrumentation__.Notify(121742)
 	}
+	__antithesis_instrumentation__.Notify(121733)
 	v.prevZoneKey = zKey
 
 	v.countRange(ctx, zKey, r)
 	return nil
 }
 
-// visitSameZone is part of the rangeVisitor interface.
 func (v *criticalLocalitiesVisitor) visitSameZone(ctx context.Context, r *roachpb.RangeDescriptor) {
+	__antithesis_instrumentation__.Notify(121743)
 	v.countRange(ctx, v.prevZoneKey, r)
 }
 
 func (v *criticalLocalitiesVisitor) countRange(
 	ctx context.Context, zoneKey ZoneKey, r *roachpb.RangeDescriptor,
 ) {
+	__antithesis_instrumentation__.Notify(121744)
 	stores := v.storeResolver(r)
 
-	// Collect all the localities of all the replicas. Note that we collect
-	// "expanded" localities: if a replica has a multi-tier locality like
-	// "region:us-east,dc=new-york", we collect both "region:us-east" and
-	// "region:us-east,dc=new-york".
 	dedupLocal := make(map[string]roachpb.Locality)
 	for _, rep := range r.Replicas().Descriptors() {
+		__antithesis_instrumentation__.Notify(121746)
 		for s, loc := range v.allLocalities[rep.NodeID] {
+			__antithesis_instrumentation__.Notify(121747)
 			if _, ok := dedupLocal[s]; ok {
+				__antithesis_instrumentation__.Notify(121749)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(121750)
 			}
+			__antithesis_instrumentation__.Notify(121748)
 			dedupLocal[s] = loc
 		}
 	}
+	__antithesis_instrumentation__.Notify(121745)
 
-	// Any of the localities of any of the nodes could be critical. We'll check
-	// them one by one.
 	for _, loc := range dedupLocal {
+		__antithesis_instrumentation__.Notify(121751)
 		processLocalityForRange(ctx, r, zoneKey, loc, v.nodeChecker, stores, v.report)
 	}
 }
 
-// processLocalityForRange checks whether a given locality loc is critical for
-// range r with replicas in each of the stores given. If the locality is found
-// to be critical, rep will be updated. A locality is critical if the range
-// cannot make progress if all the replicas in the locality were to become
-// unavailable (in addition to the replicas indicated by the nodeChecker to also
-// be unavailable).
-//
-// storeDescs are the descriptors for the stores of all the replicas, in order.
-// Empty descriptors are passed in for stores about which we're missing info;
-// such stores will not be considered to be in loc.
-//
-// Note that if a range is unavailable to begin with, the localities of all its
-// replicas are considered to be critical.
 func processLocalityForRange(
 	ctx context.Context,
 	r *roachpb.RangeDescriptor,
@@ -417,37 +451,64 @@ func processLocalityForRange(
 	storeDescs []roachpb.StoreDescriptor,
 	rep LocalityReport,
 ) {
-	// inLoc returns whether other is the same, or a sub-locality of loc.
+	__antithesis_instrumentation__.Notify(121752)
+
 	inLoc := func(other roachpb.Locality) bool {
-		// Consume the common tiers, if any.
+		__antithesis_instrumentation__.Notify(121755)
+
 		i := 0
-		for i < len(loc.Tiers) && i < len(other.Tiers) && loc.Tiers[i] == other.Tiers[i] {
+		for i < len(loc.Tiers) && func() bool {
+			__antithesis_instrumentation__.Notify(121757)
+			return i < len(other.Tiers) == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(121758)
+			return loc.Tiers[i] == other.Tiers[i] == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(121759)
 			i++
 		}
-		// If I've exhausted loc, then other is either the same, or a
+		__antithesis_instrumentation__.Notify(121756)
+
 		return i == len(loc.Tiers)
 	}
+	__antithesis_instrumentation__.Notify(121753)
 
 	unavailableWithoutLoc := !r.Replicas().CanMakeProgress(func(rDesc roachpb.ReplicaDescriptor) bool {
+		__antithesis_instrumentation__.Notify(121760)
 		alive := nodeChecker(rDesc.NodeID)
 
 		var replicaInLoc bool
 		var sDesc roachpb.StoreDescriptor
 		for _, sd := range storeDescs {
+			__antithesis_instrumentation__.Notify(121763)
 			if sd.StoreID == rDesc.StoreID {
+				__antithesis_instrumentation__.Notify(121764)
 				sDesc = sd
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(121765)
 			}
 		}
+		__antithesis_instrumentation__.Notify(121761)
 		if sDesc.StoreID == 0 {
+			__antithesis_instrumentation__.Notify(121766)
 			replicaInLoc = false
 		} else {
+			__antithesis_instrumentation__.Notify(121767)
 			replicaInLoc = inLoc(sDesc.Node.Locality)
 		}
-		return alive && !replicaInLoc
+		__antithesis_instrumentation__.Notify(121762)
+		return alive && func() bool {
+			__antithesis_instrumentation__.Notify(121768)
+			return !replicaInLoc == true
+		}() == true
 	})
+	__antithesis_instrumentation__.Notify(121754)
 
 	if unavailableWithoutLoc {
+		__antithesis_instrumentation__.Notify(121769)
 		rep.CountRangeAtRisk(zoneKey, LocalityRepr(loc.String()))
+	} else {
+		__antithesis_instrumentation__.Notify(121770)
 	}
 }

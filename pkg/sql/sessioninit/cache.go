@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sessioninit
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,11 +24,8 @@ import (
 	"github.com/cockroachdb/logtags"
 )
 
-// CacheEnabledSettingName is the name of the CacheEnabled cluster setting.
 var CacheEnabledSettingName = "server.authentication_cache.enabled"
 
-// CacheEnabled is a cluster setting that determines if the
-// sessioninit.Cache and associated logic is enabled.
 var CacheEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	CacheEnabledSettingName,
@@ -45,63 +34,51 @@ var CacheEnabled = settings.RegisterBoolSetting(
 	true,
 ).WithPublic()
 
-// Cache is a shared cache for hashed passwords and other information used
-// during user authentication and session initialization.
 type Cache struct {
 	syncutil.Mutex
 	usersTableVersion          descpb.DescriptorVersion
 	roleOptionsTableVersion    descpb.DescriptorVersion
 	dbRoleSettingsTableVersion descpb.DescriptorVersion
 	boundAccount               mon.BoundAccount
-	// authInfoCache is a mapping from username to AuthInfo.
+
 	authInfoCache map[security.SQLUsername]AuthInfo
-	// settingsCache is a mapping from (dbID, username) to default settings.
+
 	settingsCache map[SettingsCacheKey][]string
-	// populateCacheGroup is used to ensure that there is at most one in-flight
-	// request for populating each cache entry.
+
 	populateCacheGroup singleflight.Group
 	stopper            *stop.Stopper
 }
 
-// AuthInfo contains data that is used to perform an authentication attempt.
 type AuthInfo struct {
-	// UserExists is set to true if the user has a row in system.users.
 	UserExists bool
-	// CanLoginSQL is set to false if the user has the NOLOGIN or NOSQLLOGIN role option.
+
 	CanLoginSQL bool
-	// CanLoginDBConsole is set to false if the user has NOLOGIN role option.
+
 	CanLoginDBConsole bool
-	// HashedPassword is the hashed password and can be nil.
+
 	HashedPassword security.PasswordHash
-	// ValidUntil is the VALID UNTIL role option.
+
 	ValidUntil *tree.DTimestamp
 }
 
-// SettingsCacheKey is the key used for the settingsCache.
 type SettingsCacheKey struct {
 	DatabaseID descpb.ID
 	Username   security.SQLUsername
 }
 
-// SettingsCacheEntry represents an entry in the settingsCache. It is
-// used so that the entries can be returned in a stable order.
 type SettingsCacheEntry struct {
 	SettingsCacheKey
 	Settings []string
 }
 
-// NewCache initializes a new sessioninit.Cache.
 func NewCache(account mon.BoundAccount, stopper *stop.Stopper) *Cache {
+	__antithesis_instrumentation__.Notify(621583)
 	return &Cache{
 		boundAccount: account,
 		stopper:      stopper,
 	}
 }
 
-// GetAuthInfo consults the sessioninit.Cache and returns the AuthInfo for the
-// provided username and databaseName. If the information is not in the cache,
-// or if the underlying tables have changed since the cache was populated,
-// then the readFromSystemTables callback is used to load new data.
 func (a *Cache) GetAuthInfo(
 	ctx context.Context,
 	settings *cluster.Settings,
@@ -115,15 +92,21 @@ func (a *Cache) GetAuthInfo(
 		username security.SQLUsername,
 	) (AuthInfo, error),
 ) (aInfo AuthInfo, err error) {
+	__antithesis_instrumentation__.Notify(621584)
 	if !CacheEnabled.Get(&settings.SV) {
+		__antithesis_instrumentation__.Notify(621591)
 		return readFromSystemTables(ctx, ie, username)
+	} else {
+		__antithesis_instrumentation__.Notify(621592)
 	}
+	__antithesis_instrumentation__.Notify(621585)
 
 	var usersTableDesc catalog.TableDescriptor
 	var roleOptionsTableDesc catalog.TableDescriptor
 	err = f.Txn(ctx, ie, db, func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(621593)
 		_, usersTableDesc, err = descriptors.GetImmutableTableByName(
 			ctx,
 			txn,
@@ -131,8 +114,12 @@ func (a *Cache) GetAuthInfo(
 			tree.ObjectLookupFlagsWithRequired(),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(621595)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(621596)
 		}
+		__antithesis_instrumentation__.Notify(621594)
 		_, roleOptionsTableDesc, err = descriptors.GetImmutableTableByName(
 			ctx,
 			txn,
@@ -141,36 +128,45 @@ func (a *Cache) GetAuthInfo(
 		)
 		return err
 	})
+	__antithesis_instrumentation__.Notify(621586)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(621597)
 		return AuthInfo{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(621598)
 	}
+	__antithesis_instrumentation__.Notify(621587)
 
 	usersTableVersion := usersTableDesc.GetVersion()
 	roleOptionsTableVersion := roleOptionsTableDesc.GetVersion()
 
-	// Check version and maybe clear cache while holding the mutex.
 	var found bool
 	aInfo, found = a.readAuthInfoFromCache(ctx, usersTableVersion, roleOptionsTableVersion, username)
 
 	if found {
+		__antithesis_instrumentation__.Notify(621599)
 		return aInfo, nil
+	} else {
+		__antithesis_instrumentation__.Notify(621600)
 	}
+	__antithesis_instrumentation__.Notify(621588)
 
-	// Lookup the data outside the lock. There will be at most one
-	// request in-flight for each user. The user and role_options table
-	// versions are also part of the request key so that we don't read data
-	// from an old version of either table.
 	val, err := a.loadValueOutsideOfCache(
 		ctx, fmt.Sprintf("authinfo-%s-%d-%d", username.Normalized(), usersTableVersion, roleOptionsTableVersion),
 		func(loadCtx context.Context) (interface{}, error) {
+			__antithesis_instrumentation__.Notify(621601)
 			return readFromSystemTables(loadCtx, ie, username)
 		})
+	__antithesis_instrumentation__.Notify(621589)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(621602)
 		return aInfo, err
+	} else {
+		__antithesis_instrumentation__.Notify(621603)
 	}
+	__antithesis_instrumentation__.Notify(621590)
 	aInfo = val.(AuthInfo)
 
-	// Write data back to the cache if the table version hasn't changed.
 	a.maybeWriteAuthInfoBackToCache(
 		ctx,
 		usersTableVersion,
@@ -188,52 +184,53 @@ func (a *Cache) readAuthInfoFromCache(
 	roleOptionsTableVersion descpb.DescriptorVersion,
 	username security.SQLUsername,
 ) (AuthInfo, bool) {
+	__antithesis_instrumentation__.Notify(621604)
 	a.Lock()
 	defer a.Unlock()
-	// We don't need to check dbRoleSettingsTableVersion here, so pass in the
-	// one we already have.
+
 	isEligibleForCache := a.clearCacheIfStale(ctx, usersTableVersion, roleOptionsTableVersion, a.dbRoleSettingsTableVersion)
 	if !isEligibleForCache {
+		__antithesis_instrumentation__.Notify(621606)
 		return AuthInfo{}, false
+	} else {
+		__antithesis_instrumentation__.Notify(621607)
 	}
+	__antithesis_instrumentation__.Notify(621605)
 	ai, foundAuthInfo := a.authInfoCache[username]
 	return ai, foundAuthInfo
 }
 
-// loadValueOutsideOfCache loads the value for the given requestKey using the provided
-// function. It ensures that there is only at most one in-flight request for
-// each key at any time.
 func (a *Cache) loadValueOutsideOfCache(
 	ctx context.Context, requestKey string, fn func(loadCtx context.Context) (interface{}, error),
 ) (interface{}, error) {
+	__antithesis_instrumentation__.Notify(621608)
 	ch, _ := a.populateCacheGroup.DoChan(requestKey, func() (interface{}, error) {
-		// Use a different context to fetch, so that it isn't possible for
-		// one query to timeout and cause all the goroutines that are waiting
-		// to get a timeout error.
+		__antithesis_instrumentation__.Notify(621610)
+
 		loadCtx, cancel := a.stopper.WithCancelOnQuiesce(
 			logtags.WithTags(context.Background(), logtags.FromContext(ctx)),
 		)
 		defer cancel()
 		return fn(loadCtx)
 	})
+	__antithesis_instrumentation__.Notify(621609)
 	select {
 	case res := <-ch:
+		__antithesis_instrumentation__.Notify(621611)
 		if res.Err != nil {
+			__antithesis_instrumentation__.Notify(621614)
 			return AuthInfo{}, res.Err
+		} else {
+			__antithesis_instrumentation__.Notify(621615)
 		}
+		__antithesis_instrumentation__.Notify(621612)
 		return res.Val, nil
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(621613)
 		return AuthInfo{}, ctx.Err()
 	}
 }
 
-// maybeWriteAuthInfoBackToCache tries to put the fetched AuthInfo into the
-// authInfoCache, and returns true if it succeeded. If the underlying system
-// tables have been modified since they were read, the authInfoCache is not
-// updated.
-// Note that reading from system tables may give us data from a newer table
-// version than the one we pass in here, that is okay since the cache will
-// be invalidated upon the next read.
 func (a *Cache) maybeWriteAuthInfoBackToCache(
 	ctx context.Context,
 	usersTableVersion descpb.DescriptorVersion,
@@ -241,41 +238,49 @@ func (a *Cache) maybeWriteAuthInfoBackToCache(
 	aInfo AuthInfo,
 	username security.SQLUsername,
 ) bool {
+	__antithesis_instrumentation__.Notify(621616)
 	a.Lock()
 	defer a.Unlock()
-	// Table versions have changed while we were looking: don't cache the data.
-	if a.usersTableVersion != usersTableVersion || a.roleOptionsTableVersion != roleOptionsTableVersion {
+
+	if a.usersTableVersion != usersTableVersion || func() bool {
+		__antithesis_instrumentation__.Notify(621620)
+		return a.roleOptionsTableVersion != roleOptionsTableVersion == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(621621)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(621622)
 	}
-	// Table version remains the same: update map, unlock, return.
+	__antithesis_instrumentation__.Notify(621617)
+
 	const sizeOfUsername = int(unsafe.Sizeof(security.SQLUsername{}))
 	const sizeOfAuthInfo = int(unsafe.Sizeof(AuthInfo{}))
 	const sizeOfTimestamp = int(unsafe.Sizeof(tree.DTimestamp{}))
 
 	hpSize := 0
 	if aInfo.HashedPassword != nil {
+		__antithesis_instrumentation__.Notify(621623)
 		hpSize = aInfo.HashedPassword.Size()
+	} else {
+		__antithesis_instrumentation__.Notify(621624)
 	}
+	__antithesis_instrumentation__.Notify(621618)
 
 	sizeOfEntry := sizeOfUsername + len(username.Normalized()) +
 		sizeOfAuthInfo + hpSize +
 		sizeOfTimestamp
 	if err := a.boundAccount.Grow(ctx, int64(sizeOfEntry)); err != nil {
-		// If there is no memory available to cache the entry, we can still
-		// proceed with authentication so that users are not locked out of
-		// the database.
+		__antithesis_instrumentation__.Notify(621625)
+
 		log.Ops.Warningf(ctx, "no memory available to cache authentication info: %v", err)
 	} else {
+		__antithesis_instrumentation__.Notify(621626)
 		a.authInfoCache[username] = aInfo
 	}
+	__antithesis_instrumentation__.Notify(621619)
 	return true
 }
 
-// GetDefaultSettings consults the sessioninit.Cache and returns the list of
-// SettingsCacheEntry for the provided username and databaseName. If the
-// information is not in the cache, or if the underlying tables have changed
-// since the cache was populated, then the readFromSystemTables callback is
-// used to load new data.
 func (a *Cache) GetDefaultSettings(
 	ctx context.Context,
 	settings *cluster.Settings,
@@ -291,11 +296,13 @@ func (a *Cache) GetDefaultSettings(
 		databaseID descpb.ID,
 	) ([]SettingsCacheEntry, error),
 ) (settingsEntries []SettingsCacheEntry, err error) {
+	__antithesis_instrumentation__.Notify(621627)
 	var dbRoleSettingsTableDesc catalog.TableDescriptor
 	var databaseID descpb.ID
 	err = f.Txn(ctx, ie, db, func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(621634)
 		_, dbRoleSettingsTableDesc, err = descriptors.GetImmutableTableByName(
 			ctx,
 			txn,
@@ -303,30 +310,47 @@ func (a *Cache) GetDefaultSettings(
 			tree.ObjectLookupFlagsWithRequired(),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(621637)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(621638)
 		}
+		__antithesis_instrumentation__.Notify(621635)
 		databaseID = descpb.ID(0)
 		if databaseName != "" {
+			__antithesis_instrumentation__.Notify(621639)
 			dbDesc, err := descriptors.GetImmutableDatabaseByName(ctx, txn, databaseName, tree.DatabaseLookupFlags{})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(621641)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(621642)
 			}
-			// If dbDesc is nil, the database name was not valid, but that should
-			// not cause a login-preventing error.
+			__antithesis_instrumentation__.Notify(621640)
+
 			if dbDesc != nil {
+				__antithesis_instrumentation__.Notify(621643)
 				databaseID = dbDesc.GetID()
+			} else {
+				__antithesis_instrumentation__.Notify(621644)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(621645)
 		}
+		__antithesis_instrumentation__.Notify(621636)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(621628)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(621646)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(621647)
 	}
+	__antithesis_instrumentation__.Notify(621629)
 
-	// We can't check if the cache is disabled earlier, since we always need to
-	// start the `CollectionFactory.Txn()` regardless in order to look up the
-	// database descriptor ID.
 	if !CacheEnabled.Get(&settings.SV) {
+		__antithesis_instrumentation__.Notify(621648)
 		settingsEntries, err = readFromSystemTables(
 			ctx,
 			ie,
@@ -334,35 +358,41 @@ func (a *Cache) GetDefaultSettings(
 			databaseID,
 		)
 		return settingsEntries, err
+	} else {
+		__antithesis_instrumentation__.Notify(621649)
 	}
+	__antithesis_instrumentation__.Notify(621630)
 
 	dbRoleSettingsTableVersion := dbRoleSettingsTableDesc.GetVersion()
 
-	// Check version and maybe clear cache while holding the mutex.
 	var found bool
 	settingsEntries, found = a.readDefaultSettingsFromCache(ctx, dbRoleSettingsTableVersion, username, databaseID)
 
 	if found {
+		__antithesis_instrumentation__.Notify(621650)
 		return settingsEntries, nil
+	} else {
+		__antithesis_instrumentation__.Notify(621651)
 	}
+	__antithesis_instrumentation__.Notify(621631)
 
-	// Lookup the data outside the lock. There will be at most one request
-	// in-flight for each user+database. The db_role_settings table version is
-	// also part of the request key so that we don't read data from an old
-	// version of the table.
 	val, err := a.loadValueOutsideOfCache(
 		ctx, fmt.Sprintf("defaultsettings-%s-%d-%d", username.Normalized(), databaseID, dbRoleSettingsTableVersion),
 		func(loadCtx context.Context) (interface{}, error) {
+			__antithesis_instrumentation__.Notify(621652)
 			return readFromSystemTables(loadCtx, ie, username, databaseID)
 		},
 	)
+	__antithesis_instrumentation__.Notify(621632)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(621653)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(621654)
 	}
+	__antithesis_instrumentation__.Notify(621633)
 	settingsEntries = val.([]SettingsCacheEntry)
 
-	// Write the fetched data back to the cache if the table version hasn't
-	// changed.
 	a.maybeWriteDefaultSettingsBackToCache(
 		ctx,
 		dbRoleSettingsTableVersion,
@@ -377,121 +407,144 @@ func (a *Cache) readDefaultSettingsFromCache(
 	username security.SQLUsername,
 	databaseID descpb.ID,
 ) ([]SettingsCacheEntry, bool) {
+	__antithesis_instrumentation__.Notify(621655)
 	a.Lock()
 	defer a.Unlock()
-	// We don't need to check usersTableVersion or roleOptionsTableVersion here,
-	// so pass in the values we already have.
+
 	isEligibleForCache := a.clearCacheIfStale(
 		ctx, a.usersTableVersion, a.roleOptionsTableVersion, dbRoleSettingsTableVersion,
 	)
 	if !isEligibleForCache {
+		__antithesis_instrumentation__.Notify(621658)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(621659)
 	}
+	__antithesis_instrumentation__.Notify(621656)
 	foundAllDefaultSettings := true
 	var sEntries []SettingsCacheEntry
-	// Search through the cache for the settings entries we need. Since we look up
-	// multiple entries in the cache, the same setting might appear multiple
-	// times. Note that GenerateSettingsCacheKeys goes in order of precedence,
-	// so the order of the returned []SettingsCacheEntry is important and the
-	// caller must take care not to apply a setting if it has already appeared
-	// earlier in the list.
+
 	for _, k := range GenerateSettingsCacheKeys(databaseID, username) {
+		__antithesis_instrumentation__.Notify(621660)
 		s, ok := a.settingsCache[k]
 		if !ok {
+			__antithesis_instrumentation__.Notify(621662)
 			foundAllDefaultSettings = false
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(621663)
 		}
+		__antithesis_instrumentation__.Notify(621661)
 		sEntries = append(sEntries, SettingsCacheEntry{k, s})
 	}
+	__antithesis_instrumentation__.Notify(621657)
 	return sEntries, foundAllDefaultSettings
 }
 
-// maybeWriteDefaultSettingsBackToCache tries to put the fetched SettingsCacheEntry
-// list into the settingsCache, and returns true if it succeeded. If the
-// underlying system tables have been modified since they were read, the
-// settingsCache is not updated.
-// Note that reading from system tables may give us data from a newer table
-// version than the one we pass in here, that is okay since the cache will
-// be invalidated upon the next read.
 func (a *Cache) maybeWriteDefaultSettingsBackToCache(
 	ctx context.Context,
 	dbRoleSettingsTableVersion descpb.DescriptorVersion,
 	settingsEntries []SettingsCacheEntry,
 ) bool {
+	__antithesis_instrumentation__.Notify(621664)
 	a.Lock()
 	defer a.Unlock()
-	// Table version has changed while we were looking: don't cache the data.
-	if a.dbRoleSettingsTableVersion > dbRoleSettingsTableVersion {
-		return false
-	}
 
-	// Table version remains the same: update map, unlock, return.
+	if a.dbRoleSettingsTableVersion > dbRoleSettingsTableVersion {
+		__antithesis_instrumentation__.Notify(621668)
+		return false
+	} else {
+		__antithesis_instrumentation__.Notify(621669)
+	}
+	__antithesis_instrumentation__.Notify(621665)
+
 	const sizeOfSettingsCacheEntry = int(unsafe.Sizeof(SettingsCacheEntry{}))
 	sizeOfSettings := 0
 	for _, sEntry := range settingsEntries {
+		__antithesis_instrumentation__.Notify(621670)
 		if _, ok := a.settingsCache[sEntry.SettingsCacheKey]; ok {
-			// Avoid double-counting memory if a key is already in the cache.
+			__antithesis_instrumentation__.Notify(621672)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(621673)
 		}
+		__antithesis_instrumentation__.Notify(621671)
 		sizeOfSettings += sizeOfSettingsCacheEntry
 		sizeOfSettings += len(sEntry.SettingsCacheKey.Username.Normalized())
 		for _, s := range sEntry.Settings {
+			__antithesis_instrumentation__.Notify(621674)
 			sizeOfSettings += len(s)
 		}
 	}
+	__antithesis_instrumentation__.Notify(621666)
 	if err := a.boundAccount.Grow(ctx, int64(sizeOfSettings)); err != nil {
-		// If there is no memory available to cache the entry, we can still
-		// proceed with authentication so that users are not locked out of
-		// the database.
+		__antithesis_instrumentation__.Notify(621675)
+
 		log.Ops.Warningf(ctx, "no memory available to cache authentication info: %v", err)
 	} else {
+		__antithesis_instrumentation__.Notify(621676)
 		for _, sEntry := range settingsEntries {
-			// Avoid re-storing an existing key.
+			__antithesis_instrumentation__.Notify(621677)
+
 			if _, ok := a.settingsCache[sEntry.SettingsCacheKey]; !ok {
+				__antithesis_instrumentation__.Notify(621678)
 				a.settingsCache[sEntry.SettingsCacheKey] = sEntry.Settings
+			} else {
+				__antithesis_instrumentation__.Notify(621679)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(621667)
 	return true
 }
 
-// clearCacheIfStale compares the cached table versions to the current table
-// versions. If the cached versions are older, the cache is cleared. If the
-// cached versions are newer, then false is returned to indicate that the
-// cached data should not be used.
 func (a *Cache) clearCacheIfStale(
 	ctx context.Context,
 	usersTableVersion descpb.DescriptorVersion,
 	roleOptionsTableVersion descpb.DescriptorVersion,
 	dbRoleSettingsTableVersion descpb.DescriptorVersion,
 ) (isEligibleForCache bool) {
-	if a.usersTableVersion < usersTableVersion ||
-		a.roleOptionsTableVersion < roleOptionsTableVersion ||
-		a.dbRoleSettingsTableVersion < dbRoleSettingsTableVersion {
-		// If the cache is based on old table versions, then update versions and
-		// drop the map.
+	__antithesis_instrumentation__.Notify(621680)
+	if a.usersTableVersion < usersTableVersion || func() bool {
+		__antithesis_instrumentation__.Notify(621682)
+		return a.roleOptionsTableVersion < roleOptionsTableVersion == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(621683)
+		return a.dbRoleSettingsTableVersion < dbRoleSettingsTableVersion == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(621684)
+
 		a.usersTableVersion = usersTableVersion
 		a.roleOptionsTableVersion = roleOptionsTableVersion
 		a.dbRoleSettingsTableVersion = dbRoleSettingsTableVersion
 		a.authInfoCache = make(map[security.SQLUsername]AuthInfo)
 		a.settingsCache = make(map[SettingsCacheKey][]string)
 		a.boundAccount.Empty(ctx)
-	} else if a.usersTableVersion > usersTableVersion ||
-		a.roleOptionsTableVersion > roleOptionsTableVersion ||
-		a.dbRoleSettingsTableVersion > dbRoleSettingsTableVersion {
-		// If the cache is based on newer table versions, then this transaction
-		// should not use the cached data.
-		return false
+	} else {
+		__antithesis_instrumentation__.Notify(621685)
+		if a.usersTableVersion > usersTableVersion || func() bool {
+			__antithesis_instrumentation__.Notify(621686)
+			return a.roleOptionsTableVersion > roleOptionsTableVersion == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(621687)
+			return a.dbRoleSettingsTableVersion > dbRoleSettingsTableVersion == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(621688)
+
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(621689)
+		}
 	}
+	__antithesis_instrumentation__.Notify(621681)
 	return true
 }
 
-// GenerateSettingsCacheKeys returns a slice of all the SettingsCacheKey
-// that are relevant for the given databaseID and username. The slice is
-// ordered in descending order of precedence.
 func GenerateSettingsCacheKeys(
 	databaseID descpb.ID, username security.SQLUsername,
 ) []SettingsCacheKey {
+	__antithesis_instrumentation__.Notify(621690)
 	return []SettingsCacheKey{
 		{
 			DatabaseID: databaseID,

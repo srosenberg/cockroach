@@ -7,6 +7,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/security",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_olekukonko_tablewriter//:tablewriter",
     ],
@@ -16,5 +17,8 @@ go_test(
     name = "identmap_test",
     srcs = ["ident_map_test.go"],
     embed = [":identmap"],
-    deps = ["@com_github_stretchr_testify//assert"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@com_github_stretchr_testify//assert",
+    ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rel
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sort"
@@ -18,120 +10,125 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Query searches for sets of entities which uphold a set of constraints.
 type Query struct {
 	schema *Schema
-	// clauses are the original clauses. They exist for debugging.
+
 	clauses []Clause
-	// variables is the set of variables used in the query
-	// stored in the order in which they appear.
+
 	variables []Var
-	// variableSlots is the mapping of names to slots.
+
 	variableSlots map[Var]slotIdx
-	// entities is the mapping of entities to slots.
+
 	entities []slotIdx
-	// slots store the data and metadata about the slots.
+
 	slots []slot
-	// facts are the set of facts which must be unified.
+
 	facts []fact
-	// filters are the set of predicate filters to evaluate.
+
 	filters []filter
 
-	// cache one evalContext for reuse to accelerate benchmarks and deal with
-	// the common case.
 	mu struct {
 		syncutil.Mutex
 		cached *evalContext
 	}
 }
 
-// Result represents A setting of entities which fulfills the
-// constraints of its corresponding query. It is a rather low-level
-// interface.
 type Result interface {
-
-	// Var returns the value bound to the given variable.
-	// If the variable does not exist in the query, nil will be
-	// returned.
 	Var(name Var) interface{}
 }
 
-// ResultIterator is used to iterate results of A query.
-// Iteration can be halted with the use of iterutils.StopIteration.
 type ResultIterator func(r Result) error
 
-// NewQuery construct a new query with the provided clauses forming the
-// conjunction of constraints on the results of the query when it is
-// evaluated against a database.
 func NewQuery(sc *Schema, clauses ...Clause) (_ *Query, err error) {
+	__antithesis_instrumentation__.Notify(578597)
 	defer func() {
+		__antithesis_instrumentation__.Notify(578599)
 		switch r := recover().(type) {
 		case nil:
+			__antithesis_instrumentation__.Notify(578600)
 			return
 		case error:
+			__antithesis_instrumentation__.Notify(578601)
 			err = errors.Wrap(r, "failed to construct query")
 		default:
+			__antithesis_instrumentation__.Notify(578602)
 			err = errors.AssertionFailedf("failed to construct query: %v", r)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(578598)
 	q := newQuery(sc, clauses)
 	return q, nil
 }
 
-// Iterate will call the result iterator for every valid binding of each
-// distinct entity variable such that all the variables in the query are
-// bound and all filters passing.
 func (q *Query) Iterate(db *Database, ri ResultIterator) error {
+	__antithesis_instrumentation__.Notify(578603)
 	ec := q.getEvalContext()
 	defer q.putEvalContext(ec)
 	return ec.Iterate(db, ri)
 }
 
-// getEvalContext grabs a cached evalContext from the query
-// if one exists, otherwise it creates a new one.
 func (q *Query) getEvalContext() *evalContext {
+	__antithesis_instrumentation__.Notify(578604)
 	getCachedEvalContext := func() (ec *evalContext) {
+		__antithesis_instrumentation__.Notify(578607)
 		q.mu.Lock()
 		defer q.mu.Unlock()
 		ec, q.mu.cached = q.mu.cached, ec
 		return ec
 	}
+	__antithesis_instrumentation__.Notify(578605)
 	if ec := getCachedEvalContext(); ec != nil {
+		__antithesis_instrumentation__.Notify(578608)
 		return ec
+	} else {
+		__antithesis_instrumentation__.Notify(578609)
 	}
+	__antithesis_instrumentation__.Notify(578606)
 	return newEvalContext(q)
 }
 
-// putEvalContext puts the evalContext in the cache if there is not one.
 func (q *Query) putEvalContext(ec *evalContext) {
+	__antithesis_instrumentation__.Notify(578610)
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.mu.cached == nil {
+		__antithesis_instrumentation__.Notify(578611)
 		q.mu.cached = ec
+	} else {
+		__antithesis_instrumentation__.Notify(578612)
 	}
 }
 
-// Entities returns the entities in the query in their join order.
-// This method exists primarily for introspection.
 func (q *Query) Entities() []Var {
+	__antithesis_instrumentation__.Notify(578613)
 	var entitySlots util.FastIntSet
 	for _, slotIdx := range q.entities {
+		__antithesis_instrumentation__.Notify(578617)
 		entitySlots.Add(int(slotIdx))
 	}
+	__antithesis_instrumentation__.Notify(578614)
 	vars := make([]Var, 0, len(q.entities))
 	for v, slotIdx := range q.variableSlots {
+		__antithesis_instrumentation__.Notify(578618)
 		if !entitySlots.Contains(int(slotIdx)) {
+			__antithesis_instrumentation__.Notify(578620)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(578621)
 		}
+		__antithesis_instrumentation__.Notify(578619)
 		vars = append(vars, v)
 	}
+	__antithesis_instrumentation__.Notify(578615)
 	sort.Slice(vars, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(578622)
 		return q.variableSlots[vars[i]] < q.variableSlots[vars[j]]
 	})
+	__antithesis_instrumentation__.Notify(578616)
 	return vars
 }
 
-// Clauses returns the query's Clauses.
 func (q *Query) Clauses() Clauses {
+	__antithesis_instrumentation__.Notify(578623)
 	return q.clauses
 }

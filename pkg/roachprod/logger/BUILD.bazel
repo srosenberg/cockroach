@@ -8,5 +8,6 @@ go_library(
     deps = [
         "//pkg/util/log",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

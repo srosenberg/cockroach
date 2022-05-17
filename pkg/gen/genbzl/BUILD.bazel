@@ -11,6 +11,7 @@ go_library(
     visibility = ["//visibility:private"],
     deps = [
         "//pkg/cli/exit",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -19,4 +20,5 @@ go_binary(
     name = "genbzl",
     embed = [":genbzl_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

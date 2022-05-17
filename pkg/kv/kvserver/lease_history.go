@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
@@ -16,17 +8,16 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// leaseHistoryMaxEntries controls if replica lease histories are enabled and
-// how much memory they take up when enabled.
 var leaseHistoryMaxEntries = envutil.EnvOrDefaultInt("COCKROACH_LEASE_HISTORY", 5)
 
 type leaseHistory struct {
 	syncutil.Mutex
 	index   int
-	history []roachpb.Lease // A circular buffer with index.
+	history []roachpb.Lease
 }
 
 func newLeaseHistory() *leaseHistory {
+	__antithesis_instrumentation__.Notify(107943)
 	lh := &leaseHistory{
 		history: make([]roachpb.Lease, 0, leaseHistoryMaxEntries),
 	}
@@ -34,32 +25,50 @@ func newLeaseHistory() *leaseHistory {
 }
 
 func (lh *leaseHistory) add(lease roachpb.Lease) {
+	__antithesis_instrumentation__.Notify(107944)
 	lh.Lock()
 	defer lh.Unlock()
 
-	// Not through the first pass through the buffer.
 	if lh.index == len(lh.history) {
+		__antithesis_instrumentation__.Notify(107946)
 		lh.history = append(lh.history, lease)
 	} else {
+		__antithesis_instrumentation__.Notify(107947)
 		lh.history[lh.index] = lease
 	}
+	__antithesis_instrumentation__.Notify(107945)
 	lh.index++
 	if lh.index >= leaseHistoryMaxEntries {
+		__antithesis_instrumentation__.Notify(107948)
 		lh.index = 0
+	} else {
+		__antithesis_instrumentation__.Notify(107949)
 	}
 }
 
 func (lh *leaseHistory) get() []roachpb.Lease {
+	__antithesis_instrumentation__.Notify(107950)
 	lh.Lock()
 	defer lh.Unlock()
 	if len(lh.history) == 0 {
+		__antithesis_instrumentation__.Notify(107953)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(107954)
 	}
-	if len(lh.history) < leaseHistoryMaxEntries || lh.index == 0 {
+	__antithesis_instrumentation__.Notify(107951)
+	if len(lh.history) < leaseHistoryMaxEntries || func() bool {
+		__antithesis_instrumentation__.Notify(107955)
+		return lh.index == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(107956)
 		result := make([]roachpb.Lease, len(lh.history))
 		copy(result, lh.history)
 		return result
+	} else {
+		__antithesis_instrumentation__.Notify(107957)
 	}
+	__antithesis_instrumentation__.Notify(107952)
 	first := lh.history[lh.index:]
 	second := lh.history[:lh.index]
 	result := make([]roachpb.Lease, len(first)+len(second))

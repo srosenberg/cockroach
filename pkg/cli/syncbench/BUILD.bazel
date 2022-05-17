@@ -13,6 +13,7 @@ go_library(
         "//pkg/util/syncutil",
         "//pkg/util/sysutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_codahale_hdrhistogram//:hdrhistogram",
     ],

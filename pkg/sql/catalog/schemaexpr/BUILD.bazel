@@ -32,6 +32,7 @@ go_library(
         "//pkg/sql/sessiondata",
         "//pkg/sql/types",
         "//pkg/util/errorutil/unimplemented",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -61,6 +62,7 @@ go_test(
         "//pkg/testutils",
         "//pkg/util/leaktest",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
     ],
 )

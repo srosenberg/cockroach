@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfigkvsubscriber
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,16 +20,14 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// spanConfigDecoder decodes rows from system.span_configurations. It's not
-// safe for concurrent use.
 type spanConfigDecoder struct {
 	alloc   tree.DatumAlloc
 	columns []catalog.Column
 	decoder valueside.Decoder
 }
 
-// newSpanConfigDecoder instantiates a spanConfigDecoder.
 func newSpanConfigDecoder() *spanConfigDecoder {
+	__antithesis_instrumentation__.Notify(240637)
 	columns := systemschema.SpanConfigurationsTable.PublicColumns()
 	return &spanConfigDecoder{
 		columns: columns,
@@ -45,47 +35,78 @@ func newSpanConfigDecoder() *spanConfigDecoder {
 	}
 }
 
-// decode a span config entry given a KV from the
-// system.span_configurations table.
 func (sd *spanConfigDecoder) decode(kv roachpb.KeyValue) (spanconfig.Record, error) {
-	// First we need to decode the start_key field from the index key.
+	__antithesis_instrumentation__.Notify(240638)
+
 	var rawSp roachpb.Span
 	var conf roachpb.SpanConfig
 	{
+		__antithesis_instrumentation__.Notify(240645)
 		types := []*types.T{sd.columns[0].GetType()}
 		startKeyRow := make([]rowenc.EncDatum, 1)
-		_, _, err := rowenc.DecodeIndexKey(keys.SystemSQLCodec, types, startKeyRow, nil /* colDirs */, kv.Key)
+		_, _, err := rowenc.DecodeIndexKey(keys.SystemSQLCodec, types, startKeyRow, nil, kv.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240648)
 			return spanconfig.Record{}, errors.Wrapf(err, "failed to decode key: %v", kv.Key)
+		} else {
+			__antithesis_instrumentation__.Notify(240649)
 		}
+		__antithesis_instrumentation__.Notify(240646)
 		if err := startKeyRow[0].EnsureDecoded(types[0], &sd.alloc); err != nil {
+			__antithesis_instrumentation__.Notify(240650)
 			return spanconfig.Record{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(240651)
 		}
+		__antithesis_instrumentation__.Notify(240647)
 		rawSp.Key = []byte(tree.MustBeDBytes(startKeyRow[0].Datum))
 	}
+	__antithesis_instrumentation__.Notify(240639)
 	if !kv.Value.IsPresent() {
+		__antithesis_instrumentation__.Notify(240652)
 		return spanconfig.Record{},
 			errors.AssertionFailedf("missing value for start key: %s", rawSp.Key)
+	} else {
+		__antithesis_instrumentation__.Notify(240653)
 	}
+	__antithesis_instrumentation__.Notify(240640)
 
-	// The remaining columns are stored as a family.
 	bytes, err := kv.Value.GetTuple()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(240654)
 		return spanconfig.Record{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(240655)
 	}
+	__antithesis_instrumentation__.Notify(240641)
 
 	datums, err := sd.decoder.Decode(&sd.alloc, bytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(240656)
 		return spanconfig.Record{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(240657)
 	}
+	__antithesis_instrumentation__.Notify(240642)
 	if endKey := datums[1]; endKey != tree.DNull {
+		__antithesis_instrumentation__.Notify(240658)
 		rawSp.EndKey = []byte(tree.MustBeDBytes(endKey))
+	} else {
+		__antithesis_instrumentation__.Notify(240659)
 	}
+	__antithesis_instrumentation__.Notify(240643)
 	if config := datums[2]; config != tree.DNull {
+		__antithesis_instrumentation__.Notify(240660)
 		if err := protoutil.Unmarshal([]byte(tree.MustBeDBytes(config)), &conf); err != nil {
+			__antithesis_instrumentation__.Notify(240661)
 			return spanconfig.Record{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(240662)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(240663)
 	}
+	__antithesis_instrumentation__.Notify(240644)
 
 	return spanconfig.MakeRecord(spanconfig.DecodeTarget(rawSp), conf)
 }
@@ -93,49 +114,67 @@ func (sd *spanConfigDecoder) decode(kv roachpb.KeyValue) (spanconfig.Record, err
 func (sd *spanConfigDecoder) translateEvent(
 	ctx context.Context, ev *roachpb.RangeFeedValue,
 ) rangefeedbuffer.Event {
+	__antithesis_instrumentation__.Notify(240664)
 	deleted := !ev.Value.IsPresent()
 	var value roachpb.Value
 	if deleted {
+		__antithesis_instrumentation__.Notify(240669)
 		if !ev.PrevValue.IsPresent() {
-			// It's possible to write a KV tombstone on top of another KV
-			// tombstone -- both the new and old value will be empty. We simply
-			// ignore these events.
-			return nil
-		}
+			__antithesis_instrumentation__.Notify(240671)
 
-		// Since the end key is not part of the primary key, we need to
-		// decode the previous value in order to determine what it is.
+			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(240672)
+		}
+		__antithesis_instrumentation__.Notify(240670)
+
 		value = ev.PrevValue
 	} else {
+		__antithesis_instrumentation__.Notify(240673)
 		value = ev.Value
 	}
+	__antithesis_instrumentation__.Notify(240665)
 	record, err := sd.decode(roachpb.KeyValue{
 		Key:   ev.Key,
 		Value: value,
 	})
 	if err != nil {
-		log.Fatalf(ctx, "failed to decode row: %v", err) // non-retryable error; just fatal
+		__antithesis_instrumentation__.Notify(240674)
+		log.Fatalf(ctx, "failed to decode row: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(240675)
 	}
+	__antithesis_instrumentation__.Notify(240666)
 
 	if log.ExpensiveLogEnabled(ctx, 1) {
+		__antithesis_instrumentation__.Notify(240676)
 		log.Infof(ctx, "received span configuration update for %s (deleted=%t)",
 			record.GetTarget(), deleted)
+	} else {
+		__antithesis_instrumentation__.Notify(240677)
 	}
+	__antithesis_instrumentation__.Notify(240667)
 
 	var update spanconfig.Update
 	if deleted {
+		__antithesis_instrumentation__.Notify(240678)
 		update, err = spanconfig.Deletion(record.GetTarget())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240679)
 			log.Fatalf(ctx, "failed to construct Deletion: %+v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(240680)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(240681)
 		update = spanconfig.Update(record)
 	}
+	__antithesis_instrumentation__.Notify(240668)
 
 	return &bufferEvent{update, ev.Value.Timestamp}
 }
 
-// TestingDecoderFn exports the decoding routine for testing purposes.
 func TestingDecoderFn() func(roachpb.KeyValue) (spanconfig.Record, error) {
+	__antithesis_instrumentation__.Notify(240682)
 	return newSpanConfigDecoder().decode
 }

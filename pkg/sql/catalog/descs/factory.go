@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,7 +13,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/lease"
 )
 
-// CollectionFactory is used to construct a new Collection.
 type CollectionFactory struct {
 	settings           *cluster.Settings
 	codec              keys.SQLCodec
@@ -33,8 +24,6 @@ type CollectionFactory struct {
 	spanConfigLimiter  spanconfig.Limiter
 }
 
-// NewCollectionFactory constructs a new CollectionFactory which holds onto
-// the node-level dependencies needed to construct a Collection.
 func NewCollectionFactory(
 	settings *cluster.Settings,
 	leaseMgr *lease.Manager,
@@ -43,6 +32,7 @@ func NewCollectionFactory(
 	spanConfigSplitter spanconfig.Splitter,
 	spanConfigLimiter spanconfig.Limiter,
 ) *CollectionFactory {
+	__antithesis_instrumentation__.Notify(264500)
 	return &CollectionFactory{
 		settings:           settings,
 		codec:              leaseMgr.Codec(),
@@ -55,29 +45,28 @@ func NewCollectionFactory(
 	}
 }
 
-// NewBareBonesCollectionFactory constructs a new CollectionFactory which holds
-// onto a minimum of dependencies needed to construct an operable Collection.
 func NewBareBonesCollectionFactory(
 	settings *cluster.Settings, codec keys.SQLCodec,
 ) *CollectionFactory {
+	__antithesis_instrumentation__.Notify(264501)
 	return &CollectionFactory{
 		settings: settings,
 		codec:    codec,
 	}
 }
 
-// MakeCollection constructs a Collection for the purposes of embedding.
 func (cf *CollectionFactory) MakeCollection(
 	ctx context.Context, temporarySchemaProvider TemporarySchemaProvider,
 ) Collection {
+	__antithesis_instrumentation__.Notify(264502)
 	return makeCollection(ctx, cf.leaseMgr, cf.settings, cf.codec, cf.hydratedTables, cf.systemDatabase,
 		cf.virtualSchemas, temporarySchemaProvider)
 }
 
-// NewCollection constructs a new Collection.
 func (cf *CollectionFactory) NewCollection(
 	ctx context.Context, temporarySchemaProvider TemporarySchemaProvider,
 ) *Collection {
+	__antithesis_instrumentation__.Notify(264503)
 	c := cf.MakeCollection(ctx, temporarySchemaProvider)
 	return &c
 }

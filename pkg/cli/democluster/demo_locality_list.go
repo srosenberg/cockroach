@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package democluster
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strings"
@@ -16,46 +8,54 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 )
 
-// DemoLocalityList represents a list of localities for the cockroach
-// demo command.
 type DemoLocalityList []roachpb.Locality
 
-// Type implements the pflag.Value interface.
-func (l *DemoLocalityList) Type() string { return "demoLocalityList" }
+func (l *DemoLocalityList) Type() string {
+	__antithesis_instrumentation__.Notify(32458)
+	return "demoLocalityList"
+}
 
-// String implements the pflag.Value interface.
 func (l *DemoLocalityList) String() string {
+	__antithesis_instrumentation__.Notify(32459)
 	s := ""
 	for _, loc := range []roachpb.Locality(*l) {
+		__antithesis_instrumentation__.Notify(32461)
 		s += loc.String()
 	}
+	__antithesis_instrumentation__.Notify(32460)
 	return s
 }
 
-// Set implements the pflag.Value interface.
 func (l *DemoLocalityList) Set(value string) error {
+	__antithesis_instrumentation__.Notify(32462)
 	*l = []roachpb.Locality{}
 	locs := strings.Split(value, ":")
 	for _, value := range locs {
+		__antithesis_instrumentation__.Notify(32464)
 		parsedLoc := &roachpb.Locality{}
 		if err := parsedLoc.Set(value); err != nil {
+			__antithesis_instrumentation__.Notify(32466)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(32467)
 		}
+		__antithesis_instrumentation__.Notify(32465)
 		*l = append(*l, *parsedLoc)
 	}
+	__antithesis_instrumentation__.Notify(32463)
 	return nil
 }
 
 var defaultLocalities = DemoLocalityList{
-	// Default localities for a 3 node cluster
+
 	{Tiers: []roachpb.Tier{{Key: "region", Value: "us-east1"}, {Key: "az", Value: "b"}}},
 	{Tiers: []roachpb.Tier{{Key: "region", Value: "us-east1"}, {Key: "az", Value: "c"}}},
 	{Tiers: []roachpb.Tier{{Key: "region", Value: "us-east1"}, {Key: "az", Value: "d"}}},
-	// Default localities for a 6 node cluster
+
 	{Tiers: []roachpb.Tier{{Key: "region", Value: "us-west1"}, {Key: "az", Value: "a"}}},
 	{Tiers: []roachpb.Tier{{Key: "region", Value: "us-west1"}, {Key: "az", Value: "b"}}},
 	{Tiers: []roachpb.Tier{{Key: "region", Value: "us-west1"}, {Key: "az", Value: "c"}}},
-	// Default localities for a 9 node cluster
+
 	{Tiers: []roachpb.Tier{{Key: "region", Value: "europe-west1"}, {Key: "az", Value: "b"}}},
 	{Tiers: []roachpb.Tier{{Key: "region", Value: "europe-west1"}, {Key: "az", Value: "c"}}},
 	{Tiers: []roachpb.Tier{{Key: "region", Value: "europe-west1"}, {Key: "az", Value: "d"}}},

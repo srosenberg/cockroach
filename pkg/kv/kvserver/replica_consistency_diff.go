@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -19,30 +11,29 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// ReplicaSnapshotDiff is a part of a []ReplicaSnapshotDiff which represents a diff between
-// two replica snapshots. For now it's only a diff between their KV pairs.
 type ReplicaSnapshotDiff struct {
-	// LeaseHolder is set to true of this kv pair is only present on the lease
-	// holder.
 	LeaseHolder bool
 	Key         roachpb.Key
 	Timestamp   hlc.Timestamp
 	Value       []byte
 }
 
-// ReplicaSnapshotDiffSlice groups multiple ReplicaSnapshotDiff records and
-// exposes a formatting helper.
 type ReplicaSnapshotDiffSlice []ReplicaSnapshotDiff
 
-// SafeFormat implements redact.SafeFormatter.
 func (rsds ReplicaSnapshotDiffSlice) SafeFormat(buf redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(117087)
 	buf.Printf("--- leaseholder\n+++ follower\n")
 	for _, d := range rsds {
+		__antithesis_instrumentation__.Notify(117088)
 		prefix := redact.SafeString("+")
 		if d.LeaseHolder {
-			// Lease holder (RHS) has something follower (LHS) does not have.
+			__antithesis_instrumentation__.Notify(117090)
+
 			prefix = redact.SafeString("-")
+		} else {
+			__antithesis_instrumentation__.Notify(117091)
 		}
+		__antithesis_instrumentation__.Notify(117089)
 		const format = `%s%s %s
 %s    ts:%s
 %s    value:%s
@@ -52,89 +43,137 @@ func (rsds ReplicaSnapshotDiffSlice) SafeFormat(buf redact.SafePrinter, _ rune) 
 		buf.Printf(format,
 			prefix, d.Timestamp, d.Key,
 			prefix, d.Timestamp.GoTime(),
-			prefix, SprintMVCCKeyValue(storage.MVCCKeyValue{Key: mvccKey, Value: d.Value}, false /* printKey */),
+			prefix, SprintMVCCKeyValue(storage.MVCCKeyValue{Key: mvccKey, Value: d.Value}, false),
 			prefix, storage.EncodeMVCCKey(mvccKey), d.Value)
 	}
 }
 
 func (rsds ReplicaSnapshotDiffSlice) String() string {
+	__antithesis_instrumentation__.Notify(117092)
 	return redact.StringWithoutMarkers(rsds)
 }
 
-// diffs the two kv dumps between the lease holder and the replica.
 func diffRange(l, r *roachpb.RaftSnapshotData) ReplicaSnapshotDiffSlice {
-	if l == nil || r == nil {
+	__antithesis_instrumentation__.Notify(117093)
+	if l == nil || func() bool {
+		__antithesis_instrumentation__.Notify(117096)
+		return r == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(117097)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(117098)
 	}
+	__antithesis_instrumentation__.Notify(117094)
 	var diff []ReplicaSnapshotDiff
 	i, j := 0, 0
 	for {
+		__antithesis_instrumentation__.Notify(117099)
 		var e, v roachpb.RaftSnapshotData_KeyValue
 		if i < len(l.KV) {
+			__antithesis_instrumentation__.Notify(117105)
 			e = l.KV[i]
+		} else {
+			__antithesis_instrumentation__.Notify(117106)
 		}
+		__antithesis_instrumentation__.Notify(117100)
 		if j < len(r.KV) {
+			__antithesis_instrumentation__.Notify(117107)
 			v = r.KV[j]
+		} else {
+			__antithesis_instrumentation__.Notify(117108)
 		}
+		__antithesis_instrumentation__.Notify(117101)
 
 		addLeaseHolder := func() {
+			__antithesis_instrumentation__.Notify(117109)
 			diff = append(diff, ReplicaSnapshotDiff{LeaseHolder: true, Key: e.Key, Timestamp: e.Timestamp, Value: e.Value})
 			i++
 		}
+		__antithesis_instrumentation__.Notify(117102)
 		addReplica := func() {
+			__antithesis_instrumentation__.Notify(117110)
 			diff = append(diff, ReplicaSnapshotDiff{LeaseHolder: false, Key: v.Key, Timestamp: v.Timestamp, Value: v.Value})
 			j++
 		}
+		__antithesis_instrumentation__.Notify(117103)
 
-		// Compare keys.
 		var comp int
-		// Check if it has finished traversing over all the lease holder keys.
+
 		if e.Key == nil {
+			__antithesis_instrumentation__.Notify(117111)
 			if v.Key == nil {
-				// Done traversing over all the replica keys. Done!
+				__antithesis_instrumentation__.Notify(117112)
+
 				break
 			} else {
+				__antithesis_instrumentation__.Notify(117113)
 				comp = 1
 			}
 		} else {
-			// Check if it has finished traversing over all the replica keys.
+			__antithesis_instrumentation__.Notify(117114)
+
 			if v.Key == nil {
+				__antithesis_instrumentation__.Notify(117115)
 				comp = -1
 			} else {
-				// Both lease holder and replica keys exist. Compare them.
+				__antithesis_instrumentation__.Notify(117116)
+
 				comp = bytes.Compare(e.Key, v.Key)
 			}
 		}
+		__antithesis_instrumentation__.Notify(117104)
 		switch comp {
 		case -1:
+			__antithesis_instrumentation__.Notify(117117)
 			addLeaseHolder()
 
 		case 0:
-			// Timestamp sorting is weird. Timestamp{} sorts first, the
-			// remainder sort in descending order. See storage/engine/doc.go.
+			__antithesis_instrumentation__.Notify(117118)
+
 			if !e.Timestamp.EqOrdering(v.Timestamp) {
+				__antithesis_instrumentation__.Notify(117121)
 				if e.Timestamp.IsEmpty() {
-					addLeaseHolder()
-				} else if v.Timestamp.IsEmpty() {
-					addReplica()
-				} else if v.Timestamp.Less(e.Timestamp) {
+					__antithesis_instrumentation__.Notify(117122)
 					addLeaseHolder()
 				} else {
-					addReplica()
+					__antithesis_instrumentation__.Notify(117123)
+					if v.Timestamp.IsEmpty() {
+						__antithesis_instrumentation__.Notify(117124)
+						addReplica()
+					} else {
+						__antithesis_instrumentation__.Notify(117125)
+						if v.Timestamp.Less(e.Timestamp) {
+							__antithesis_instrumentation__.Notify(117126)
+							addLeaseHolder()
+						} else {
+							__antithesis_instrumentation__.Notify(117127)
+							addReplica()
+						}
+					}
 				}
-			} else if !bytes.Equal(e.Value, v.Value) {
-				addLeaseHolder()
-				addReplica()
 			} else {
-				// No diff; skip.
-				i++
-				j++
+				__antithesis_instrumentation__.Notify(117128)
+				if !bytes.Equal(e.Value, v.Value) {
+					__antithesis_instrumentation__.Notify(117129)
+					addLeaseHolder()
+					addReplica()
+				} else {
+					__antithesis_instrumentation__.Notify(117130)
+
+					i++
+					j++
+				}
 			}
 
 		case 1:
+			__antithesis_instrumentation__.Notify(117119)
 			addReplica()
+		default:
+			__antithesis_instrumentation__.Notify(117120)
 
 		}
 	}
+	__antithesis_instrumentation__.Notify(117095)
 	return diff
 }

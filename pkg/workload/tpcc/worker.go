@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpcc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,27 +20,22 @@ import (
 )
 
 const (
-	// NumWorkersPerWarehouse is the default number of workers per warehouse.
 	NumWorkersPerWarehouse = 10
 	numConnsPerWarehouse   = 2
 )
 
-// tpccTX is an interface for running a TPCC transaction.
 type tpccTx interface {
-	// run executes the TPCC transaction against the given warehouse ID.
 	run(ctx context.Context, wID int) (interface{}, error)
 }
 
 type createTxFn func(ctx context.Context, config *tpcc, mcp *workload.MultiConnPool) (tpccTx, error)
 
-// txInfo stores high-level information about the TPCC transactions. The create
-// function is used to create an object that implements tpccTx.
 type txInfo struct {
-	name        string // display name
+	name        string
 	constructor createTxFn
-	keyingTime  int     // keying time in seconds, see 5.2.5.7
-	thinkTime   float64 // minimum mean of think time distribution, 5.2.5.7
-	weight      int     // percent likelihood that each transaction type is run
+	keyingTime  int
+	thinkTime   float64
+	weight      int
 }
 
 var allTxs = [...]txInfo{
@@ -85,17 +72,17 @@ var allTxs = [...]txInfo{
 }
 
 type txCounter struct {
-	// success and error count the number of successes and failures, respectively,
-	// for the given tx.
 	success, error prometheus.Counter
 }
 
 type txCounters map[string]txCounter
 
 func setupTPCCMetrics(reg prometheus.Registerer) txCounters {
+	__antithesis_instrumentation__.Notify(698597)
 	m := txCounters{}
 	f := promauto.With(reg)
 	for _, tx := range allTxs {
+		__antithesis_instrumentation__.Notify(698599)
 		m[tx.name] = txCounter{
 			success: f.NewCounter(
 				prometheus.CounterOpts{
@@ -114,54 +101,75 @@ func setupTPCCMetrics(reg prometheus.Registerer) txCounters {
 				}),
 		}
 	}
+	__antithesis_instrumentation__.Notify(698598)
 	return m
 }
 
 func initializeMix(config *tpcc) error {
+	__antithesis_instrumentation__.Notify(698600)
 	config.txInfos = append([]txInfo(nil), allTxs[0:]...)
 	nameToTx := make(map[string]int)
 	for i, tx := range config.txInfos {
+		__antithesis_instrumentation__.Notify(698604)
 		nameToTx[tx.name] = i
 	}
+	__antithesis_instrumentation__.Notify(698601)
 
 	items := strings.Split(config.mix, `,`)
 	totalWeight := 0
 	for _, item := range items {
+		__antithesis_instrumentation__.Notify(698605)
 		kv := strings.Split(item, `=`)
 		if len(kv) != 2 {
+			__antithesis_instrumentation__.Notify(698609)
 			return errors.Errorf(`Invalid mix %s: %s is not a k=v pair`, config.mix, item)
+		} else {
+			__antithesis_instrumentation__.Notify(698610)
 		}
+		__antithesis_instrumentation__.Notify(698606)
 		txName, weightStr := kv[0], kv[1]
 
 		weight, err := strconv.Atoi(weightStr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(698611)
 			return errors.Errorf(
 				`Invalid percentage mix %s: %s is not an integer`, config.mix, weightStr)
+		} else {
+			__antithesis_instrumentation__.Notify(698612)
 		}
+		__antithesis_instrumentation__.Notify(698607)
 
 		i, ok := nameToTx[txName]
 		if !ok {
+			__antithesis_instrumentation__.Notify(698613)
 			return errors.Errorf(
 				`Invalid percentage mix %s: no such transaction %s`, config.mix, txName)
+		} else {
+			__antithesis_instrumentation__.Notify(698614)
 		}
+		__antithesis_instrumentation__.Notify(698608)
 
 		config.txInfos[i].weight = weight
 		totalWeight += weight
 	}
+	__antithesis_instrumentation__.Notify(698602)
 
 	config.deck = make([]int, 0, totalWeight)
 	for i, t := range config.txInfos {
+		__antithesis_instrumentation__.Notify(698615)
 		for j := 0; j < t.weight; j++ {
+			__antithesis_instrumentation__.Notify(698616)
 			config.deck = append(config.deck, i)
 		}
 	}
+	__antithesis_instrumentation__.Notify(698603)
 
 	return nil
 }
 
 type worker struct {
 	config *tpcc
-	// txs maps 1-to-1 with config.txInfos.
+
 	txs       []tpccTx
 	hists     *histogram.Histograms
 	warehouse int
@@ -180,6 +188,7 @@ func newWorker(
 	counters txCounters,
 	warehouse int,
 ) (*worker, error) {
+	__antithesis_instrumentation__.Notify(698617)
 	w := &worker{
 		config:    config,
 		txs:       make([]tpccTx, len(config.txInfos)),
@@ -190,65 +199,73 @@ func newWorker(
 		counters:  counters,
 	}
 	for i := range w.txs {
+		__antithesis_instrumentation__.Notify(698619)
 		var err error
 		w.txs[i], err = config.txInfos[i].constructor(ctx, config, mcp)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(698620)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(698621)
 		}
 	}
+	__antithesis_instrumentation__.Notify(698618)
 	return w, nil
 }
 
 func (w *worker) run(ctx context.Context) error {
-	// 5.2.4.2: the required mix is achieved by selecting each new transaction
-	// uniformly at random from a deck whose content guarantees the required
-	// transaction mix. Each pass through a deck must be made in a different
-	// uniformly random order.
+	__antithesis_instrumentation__.Notify(698622)
+
 	if w.permIdx == len(w.deckPerm) {
+		__antithesis_instrumentation__.Notify(698627)
 		rand.Shuffle(len(w.deckPerm), func(i, j int) {
+			__antithesis_instrumentation__.Notify(698629)
 			w.deckPerm[i], w.deckPerm[j] = w.deckPerm[j], w.deckPerm[i]
 		})
+		__antithesis_instrumentation__.Notify(698628)
 		w.permIdx = 0
+	} else {
+		__antithesis_instrumentation__.Notify(698630)
 	}
-	// Move through our permutation slice until its exhausted, using each value to
-	// to index into our deck of transactions, which contains indexes into the
-	// txInfos / txs slices.
+	__antithesis_instrumentation__.Notify(698623)
+
 	opIdx := w.deckPerm[w.permIdx]
 	txInfo := &w.config.txInfos[opIdx]
 	tx := w.txs[opIdx]
 	w.permIdx++
 
 	warehouseID := w.warehouse
-	// Wait out the entire keying and think time even if the context is
-	// expired. This prevents all workers from immediately restarting when
-	// the workload's ramp period expires, which can overload a cluster.
+
 	time.Sleep(time.Duration(float64(txInfo.keyingTime) * float64(time.Second) * w.config.waitFraction))
 
-	// Run transactions with a background context because we don't want to
-	// cancel them when the context expires. Instead, let them finish normally
-	// but don't account for them in the histogram.
 	start := timeutil.Now()
 	if _, err := tx.run(context.Background(), warehouseID); err != nil {
+		__antithesis_instrumentation__.Notify(698631)
 		w.counters[txInfo.name].error.Inc()
 		return errors.Wrapf(err, "error in %s", txInfo.name)
+	} else {
+		__antithesis_instrumentation__.Notify(698632)
 	}
+	__antithesis_instrumentation__.Notify(698624)
 	if ctx.Err() == nil {
+		__antithesis_instrumentation__.Notify(698633)
 		elapsed := timeutil.Since(start)
-		// NB: this histogram *should* be named along the lines of
-		// `txInfo.name+"_success"` but we already rely on the names and shouldn't
-		// change them now.
+
 		w.hists.Get(txInfo.name).Record(elapsed)
+	} else {
+		__antithesis_instrumentation__.Notify(698634)
 	}
+	__antithesis_instrumentation__.Notify(698625)
 	w.counters[txInfo.name].success.Inc()
 
-	// 5.2.5.4: Think time is taken independently from a negative exponential
-	// distribution. Think time = -log(r) * u, where r is a uniform random number
-	// between 0 and 1 and u is the mean think time per operation.
-	// Each distribution is truncated at 10 times its mean value.
 	thinkTime := -math.Log(rand.Float64()) * txInfo.thinkTime
 	if thinkTime > (txInfo.thinkTime * 10) {
+		__antithesis_instrumentation__.Notify(698635)
 		thinkTime = txInfo.thinkTime * 10
+	} else {
+		__antithesis_instrumentation__.Notify(698636)
 	}
+	__antithesis_instrumentation__.Notify(698626)
 	time.Sleep(time.Duration(thinkTime * float64(time.Second) * w.config.waitFraction))
 	return ctx.Err()
 }

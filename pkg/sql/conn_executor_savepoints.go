@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,80 +17,80 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/fsm"
 )
 
-// commitOnReleaseSavepointName is the name of the savepoint with special
-// release semantics: releasing this savepoint commits the underlying KV txn.
-// This special savepoint is used to catch deferred serializability violations
-// and is part of the client-directed transaction retries protocol.
 const commitOnReleaseSavepointName = "cockroach_restart"
 
-// execSavepointInOpenState runs a SAVEPOINT statement inside an open
-// txn.
 func (ex *connExecutor) execSavepointInOpenState(
 	ctx context.Context, s *tree.Savepoint, res RestrictedCommandResult,
 ) (fsm.Event, fsm.EventPayload, error) {
+	__antithesis_instrumentation__.Notify(458751)
 	savepoints := &ex.extraTxnState.savepoints
-	// Sanity check for "SAVEPOINT cockroach_restart".
+
 	commitOnRelease := ex.isCommitOnReleaseSavepoint(s.Name)
 	if commitOnRelease {
-		// Validate the special savepoint cockroach_restart. It cannot be nested
-		// because it has special release semantics.
+		__antithesis_instrumentation__.Notify(458754)
+
 		active := ex.state.mu.txn.Active()
 		l := len(*savepoints)
-		// If we've already declared this savepoint, but we haven't done anything
-		// with the KV txn yet (or, more importantly, we haven't done an anything
-		// with the KV txn since we've rolled back to it), treat the recreation of
-		// the savepoint as a no-op instead of erroring out because this savepoint
-		// cannot be nested (even within itself).
-		// This serves to support the following pattern:
-		// SAVEPOINT cockroach_restart
-		// <foo> -> serializability failure
-		// ROLLBACK TO SAVEPOINT cockroach_restart
-		// SAVEPOINT cockroach_restart
-		//
-		// Some of our examples use this pattern, issuing the SAVEPOINT cockroach_restart
-		// inside the retry loop.
-		//
-		// Of course, this means that the following doesn't work:
-		// SAVEPOINT cockroach_restart
-		// SAVEPOINT cockroach_restart
-		// RELEASE SAVEPOINT cockroach_restart
-		// ROLLBACK TO SAVEPOINT cockroach_restart  -> the savepoint no longer exists here
-		//
-		// Although it would work for any other savepoint but cockroach_restart. But
-		// that's natural given the release semantics.
-		if l == 1 && (*savepoints)[0].commitOnRelease && !active {
+
+		if l == 1 && func() bool {
+			__antithesis_instrumentation__.Notify(458757)
+			return (*savepoints)[0].commitOnRelease == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(458758)
+			return !active == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(458759)
 			return nil, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(458760)
 		}
+		__antithesis_instrumentation__.Notify(458755)
 
 		err := func() error {
+			__antithesis_instrumentation__.Notify(458761)
 			if !savepoints.empty() {
+				__antithesis_instrumentation__.Notify(458764)
 				return pgerror.Newf(pgcode.Syntax,
 					"SAVEPOINT \"%s\" cannot be nested",
 					tree.ErrNameString(commitOnReleaseSavepointName))
+			} else {
+				__antithesis_instrumentation__.Notify(458765)
 			}
-			// We want to disallow restart SAVEPOINTs to be issued after a KV
-			// transaction has started running. It is desirable to allow metadata
-			// queries against vtables to proceed before starting a SAVEPOINT for better
-			// ORM compatibility.
-			// See also https://github.com/cockroachdb/cockroach/issues/15012.
+			__antithesis_instrumentation__.Notify(458762)
+
 			if ex.state.mu.txn.Active() {
+				__antithesis_instrumentation__.Notify(458766)
 				return pgerror.Newf(pgcode.Syntax,
 					"SAVEPOINT \"%s\" needs to be the first statement in a transaction",
 					tree.ErrNameString(commitOnReleaseSavepointName))
+			} else {
+				__antithesis_instrumentation__.Notify(458767)
 			}
+			__antithesis_instrumentation__.Notify(458763)
 			return nil
 		}()
+		__antithesis_instrumentation__.Notify(458756)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(458768)
 			ev, payload := ex.makeErrEvent(err, s)
 			return ev, payload, nil
+		} else {
+			__antithesis_instrumentation__.Notify(458769)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(458770)
 	}
+	__antithesis_instrumentation__.Notify(458752)
 
 	token, err := ex.state.mu.txn.CreateSavepoint(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(458771)
 		ev, payload := ex.makeErrEvent(err, s)
 		return ev, payload, nil
+	} else {
+		__antithesis_instrumentation__.Notify(458772)
 	}
+	__antithesis_instrumentation__.Notify(458753)
 
 	sp := savepoint{
 		name:            s.Name,
@@ -112,48 +104,52 @@ func (ex *connExecutor) execSavepointInOpenState(
 	return nil, nil, nil
 }
 
-// execRelease runs a RELEASE SAVEPOINT statement inside an open txn.
 func (ex *connExecutor) execRelease(
 	ctx context.Context, s *tree.ReleaseSavepoint, res RestrictedCommandResult,
 ) (fsm.Event, fsm.EventPayload) {
+	__antithesis_instrumentation__.Notify(458773)
 	env := &ex.extraTxnState.savepoints
 	entry, idx := env.find(s.Savepoint)
 	if entry == nil {
+		__antithesis_instrumentation__.Notify(458778)
 		ev, payload := ex.makeErrEvent(
 			pgerror.Newf(pgcode.InvalidSavepointSpecification,
 				"savepoint \"%s\" does not exist", &s.Savepoint), s)
 		return ev, payload
+	} else {
+		__antithesis_instrumentation__.Notify(458779)
 	}
+	__antithesis_instrumentation__.Notify(458774)
 
-	// When doing RELEASE SAVEPOINT, all LOCAL session parameters are preserved.
 	currSessionData := ex.sessionDataStack.Top()
 
-	// Discard our savepoint and all further ones. Depending on what happens with
-	// the release below, we might add this savepoint back.
 	env.popToIdx(idx - 1)
 
-	// Pop all the savepoint SessionData objects, and then an extra element.
-	// We will restore the currSessionData on to the stack, as releasing still
-	// preserves the current SessionData in the transaction.
-	// We do not have to report param status updates as the SessionData
-	// remains the same after this transformation!
 	numPoppedElems := (len(ex.extraTxnState.savepoints) - idx) + 1
 	if err := ex.sessionDataStack.PopN(numPoppedElems); err != nil {
+		__antithesis_instrumentation__.Notify(458780)
 		return ex.makeErrEvent(err, s)
+	} else {
+		__antithesis_instrumentation__.Notify(458781)
 	}
+	__antithesis_instrumentation__.Notify(458775)
 	ex.sessionDataStack.Push(currSessionData)
 
 	if entry.commitOnRelease {
+		__antithesis_instrumentation__.Notify(458782)
 		res.ResetStmtType((*tree.CommitTransaction)(nil))
 		err := ex.commitSQLTransactionInternal(ctx)
 		if err == nil {
+			__antithesis_instrumentation__.Notify(458785)
 			return eventTxnReleased{}, nil
+		} else {
+			__antithesis_instrumentation__.Notify(458786)
 		}
-		// Committing the transaction failed. We'll go to state RestartWait if
-		// it's a retriable error, or to state RollbackWait otherwise.
+		__antithesis_instrumentation__.Notify(458783)
+
 		if errIsRetriable(err) {
-			// Add the savepoint back. We want to allow a ROLLBACK TO SAVEPOINT
-			// cockroach_restart (that's the whole point of commitOnRelease).
+			__antithesis_instrumentation__.Notify(458787)
+
 			env.push(*entry)
 			ex.sessionDataStack.PushTopClone()
 
@@ -164,97 +160,117 @@ func (ex *connExecutor) execRelease(
 			}
 			payload := eventRetriableErrPayload{err: err, rewCap: rc}
 			return ev, payload
+		} else {
+			__antithesis_instrumentation__.Notify(458788)
 		}
+		__antithesis_instrumentation__.Notify(458784)
 
-		// Non-retriable error. The transaction might have committed (i.e. the
-		// error might be ambiguous). We can't allow a ROLLBACK TO SAVEPOINT to
-		// recover the transaction, so we're not adding the savepoint back.
 		ex.rollbackSQLTransaction(ctx, s)
 		ev := eventNonRetriableErr{IsCommit: fsm.FromBool(false)}
 		payload := eventNonRetriableErrPayload{err: err}
 		return ev, payload
+	} else {
+		__antithesis_instrumentation__.Notify(458789)
 	}
+	__antithesis_instrumentation__.Notify(458776)
 
 	if err := ex.state.mu.txn.ReleaseSavepoint(ctx, entry.kvToken); err != nil {
+		__antithesis_instrumentation__.Notify(458790)
 		ev, payload := ex.makeErrEvent(err, s)
 		return ev, payload
+	} else {
+		__antithesis_instrumentation__.Notify(458791)
 	}
+	__antithesis_instrumentation__.Notify(458777)
 
 	return nil, nil
 }
 
-// execRollbackToSavepointInOpenState runs a ROLLBACK TO SAVEPOINT
-// statement inside an open txn.
 func (ex *connExecutor) execRollbackToSavepointInOpenState(
 	ctx context.Context, s *tree.RollbackToSavepoint, res RestrictedCommandResult,
 ) (fsm.Event, fsm.EventPayload) {
+	__antithesis_instrumentation__.Notify(458792)
 	entry, idx := ex.extraTxnState.savepoints.find(s.Savepoint)
 	if entry == nil {
+		__antithesis_instrumentation__.Notify(458798)
 		ev, payload := ex.makeErrEvent(pgerror.Newf(pgcode.InvalidSavepointSpecification,
 			"savepoint \"%s\" does not exist", &s.Savepoint), s)
 		return ev, payload
+	} else {
+		__antithesis_instrumentation__.Notify(458799)
 	}
+	__antithesis_instrumentation__.Notify(458793)
 
 	if ev, payload, ok := ex.checkRollbackValidity(ctx, s, entry); !ok {
+		__antithesis_instrumentation__.Notify(458800)
 		return ev, payload
+	} else {
+		__antithesis_instrumentation__.Notify(458801)
 	}
+	__antithesis_instrumentation__.Notify(458794)
 
 	if err := ex.state.mu.txn.RollbackToSavepoint(ctx, entry.kvToken); err != nil {
+		__antithesis_instrumentation__.Notify(458802)
 		ev, payload := ex.makeErrEvent(err, s)
 		return ev, payload
+	} else {
+		__antithesis_instrumentation__.Notify(458803)
 	}
+	__antithesis_instrumentation__.Notify(458795)
 
 	if err := ex.popSavepointsToIdx(s, idx); err != nil {
+		__antithesis_instrumentation__.Notify(458804)
 		return ex.makeErrEvent(err, s)
+	} else {
+		__antithesis_instrumentation__.Notify(458805)
 	}
+	__antithesis_instrumentation__.Notify(458796)
 
 	if entry.kvToken.Initial() {
+		__antithesis_instrumentation__.Notify(458806)
 		return eventTxnRestart{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(458807)
 	}
-	// No event is necessary; there's nothing for the state machine to do.
+	__antithesis_instrumentation__.Notify(458797)
+
 	return nil, nil
 }
 
-// checkRollbackValidity verifies that a ROLLBACK TO SAVEPOINT
-// statement should be allowed in the current txn state.
-// It returns ok == false if the operation should be prevented
-// from proceeding, in which case it also populates the event
-// and payload with a suitable user error.
 func (ex *connExecutor) checkRollbackValidity(
 	ctx context.Context, s *tree.RollbackToSavepoint, entry *savepoint,
 ) (ev fsm.Event, payload fsm.EventPayload, ok bool) {
+	__antithesis_instrumentation__.Notify(458808)
 	if ex.extraTxnState.numDDL <= entry.numDDL {
-		// No DDL; all the checks below only care about txns containing
-		// DDL, so we don't have anything else to do here.
+		__antithesis_instrumentation__.Notify(458812)
+
 		return ev, payload, true
+	} else {
+		__antithesis_instrumentation__.Notify(458813)
 	}
+	__antithesis_instrumentation__.Notify(458809)
 
 	if !entry.kvToken.Initial() {
-		// We don't yet support rolling back a regular savepoint over
-		// DDL. Instead of creating an inconsistent txn or schema state,
-		// prefer to tell the users we don't know how to proceed
-		// yet. Initial savepoints are a special case - we can always
-		// rollback to them because we can reset all the schema change
-		// state.
+		__antithesis_instrumentation__.Notify(458814)
+
 		ev, payload = ex.makeErrEvent(unimplemented.NewWithIssueDetail(10735, "rollback-after-ddl",
 			"ROLLBACK TO SAVEPOINT not yet supported after DDL statements"), s)
 		return ev, payload, false
+	} else {
+		__antithesis_instrumentation__.Notify(458815)
 	}
+	__antithesis_instrumentation__.Notify(458810)
 
 	if ex.state.mu.txn.UserPriority() == roachpb.MaxUserPriority {
-		// Because we use the same priority (MaxUserPriority) for SET
-		// TRANSACTION PRIORITY HIGH and lease acquisitions, we'd get a
-		// deadlock if we let DDL proceed at high priority.
-		// See https://github.com/cockroachdb/cockroach/issues/46414
-		// for details.
-		//
-		// Note: this check must remain even when regular savepoints are
-		// taught to roll back over DDL (that's the other check in
-		// execSavepointInOpenState), until #46414 gets solved.
+		__antithesis_instrumentation__.Notify(458816)
+
 		ev, payload = ex.makeErrEvent(unimplemented.NewWithIssue(46414,
 			"cannot use ROLLBACK TO SAVEPOINT in a HIGH PRIORITY transaction containing DDL"), s)
 		return ev, payload, false
+	} else {
+		__antithesis_instrumentation__.Notify(458817)
 	}
+	__antithesis_instrumentation__.Notify(458811)
 
 	return ev, payload, true
 }
@@ -262,154 +278,183 @@ func (ex *connExecutor) checkRollbackValidity(
 func (ex *connExecutor) execRollbackToSavepointInAbortedState(
 	ctx context.Context, s *tree.RollbackToSavepoint,
 ) (fsm.Event, fsm.EventPayload) {
+	__antithesis_instrumentation__.Notify(458818)
 	makeErr := func(err error) (fsm.Event, fsm.EventPayload) {
+		__antithesis_instrumentation__.Notify(458825)
 		ev := eventNonRetriableErr{IsCommit: fsm.False}
 		payload := eventNonRetriableErrPayload{
 			err: err,
 		}
 		return ev, payload
 	}
+	__antithesis_instrumentation__.Notify(458819)
 
 	entry, idx := ex.extraTxnState.savepoints.find(s.Savepoint)
 	if entry == nil {
+		__antithesis_instrumentation__.Notify(458826)
 		return makeErr(pgerror.Newf(pgcode.InvalidSavepointSpecification,
 			"savepoint \"%s\" does not exist", tree.ErrString(&s.Savepoint)))
+	} else {
+		__antithesis_instrumentation__.Notify(458827)
 	}
+	__antithesis_instrumentation__.Notify(458820)
 
 	if ev, payload, ok := ex.checkRollbackValidity(ctx, s, entry); !ok {
+		__antithesis_instrumentation__.Notify(458828)
 		return ev, payload
+	} else {
+		__antithesis_instrumentation__.Notify(458829)
 	}
+	__antithesis_instrumentation__.Notify(458821)
 
 	if err := ex.popSavepointsToIdx(s, idx); err != nil {
+		__antithesis_instrumentation__.Notify(458830)
 		return ex.makeErrEvent(err, s)
+	} else {
+		__antithesis_instrumentation__.Notify(458831)
 	}
+	__antithesis_instrumentation__.Notify(458822)
 
 	if err := ex.state.mu.txn.RollbackToSavepoint(ctx, entry.kvToken); err != nil {
+		__antithesis_instrumentation__.Notify(458832)
 		return ex.makeErrEvent(err, s)
+	} else {
+		__antithesis_instrumentation__.Notify(458833)
 	}
+	__antithesis_instrumentation__.Notify(458823)
 
 	if entry.kvToken.Initial() {
+		__antithesis_instrumentation__.Notify(458834)
 		return eventTxnRestart{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(458835)
 	}
+	__antithesis_instrumentation__.Notify(458824)
 	return eventSavepointRollback{}, nil
 }
 
-// popSavepointsToIdx pops savepoints and SessionData elements related to
-// the savepoint up to the given idx.
 func (ex *connExecutor) popSavepointsToIdx(stmt tree.Statement, idx int) error {
+	__antithesis_instrumentation__.Notify(458836)
 	if err := ex.reportSessionDataChanges(func() error {
+		__antithesis_instrumentation__.Notify(458838)
 		numPoppedElems := len(ex.extraTxnState.savepoints) - idx
 		ex.extraTxnState.savepoints.popToIdx(idx)
 		if err := ex.sessionDataStack.PopN(numPoppedElems); err != nil {
+			__antithesis_instrumentation__.Notify(458840)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(458841)
 		}
-		// We need to restore the top of the session data stack, which was the
-		// SessionData just before the the savepoint was created.
+		__antithesis_instrumentation__.Notify(458839)
+
 		ex.sessionDataStack.PushTopClone()
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(458842)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(458843)
 	}
+	__antithesis_instrumentation__.Notify(458837)
 	return nil
 }
 
-// isCommitOnReleaseSavepoint returns true if the savepoint name implies special
-// release semantics: releasing it commits the underlying KV txn.
 func (ex *connExecutor) isCommitOnReleaseSavepoint(savepoint tree.Name) bool {
+	__antithesis_instrumentation__.Notify(458844)
 	if ex.sessionData().ForceSavepointRestart {
-		// The session setting force_savepoint_restart implies that all
-		// uses of the SAVEPOINT statement are targeting restarts.
+		__antithesis_instrumentation__.Notify(458846)
+
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(458847)
 	}
+	__antithesis_instrumentation__.Notify(458845)
 	return strings.HasPrefix(string(savepoint), commitOnReleaseSavepointName)
 }
 
-// savepoint represents a SQL savepoint - a snapshot of the current
-// transaction's state at a previous point in time.
-//
-// Savepoints' behavior on RELEASE differs based on commitOnRelease, and their
-// behavior on ROLLBACK after retriable errors differs based on
-// kvToken.Initial().
 type savepoint struct {
 	name tree.Name
 
-	// commitOnRelease is set if the special syntax "SAVEPOINT cockroach_restart"
-	// was used. Such a savepoint is special in that a RELEASE actually commits
-	// the transaction - giving the client a change to find out about any
-	// retriable error and issue another "ROLLBACK TO SAVEPOINT cockroach_restart"
-	// afterwards. Regular savepoints (even top-level savepoints) cannot commit
-	// the transaction on RELEASE.
-	//
-	// Only an `initial` savepoint can have this set (see
-	// client.SavepointToken.Initial()).
 	commitOnRelease bool
 
 	kvToken kv.SavepointToken
 
-	// The number of DDL statements that had been executed in the transaction (at
-	// the time the savepoint was created). We refuse to roll back a savepoint if
-	// more DDL statements were executed since the savepoint's creation.
-	// TODO(knz): support partial DDL cancellation in pending txns.
 	numDDL int
 }
 
 type savepointStack []savepoint
 
-func (stack savepointStack) empty() bool { return len(stack) == 0 }
+func (stack savepointStack) empty() bool {
+	__antithesis_instrumentation__.Notify(458848)
+	return len(stack) == 0
+}
 
-func (stack *savepointStack) clear() { *stack = (*stack)[:0] }
+func (stack *savepointStack) clear() {
+	__antithesis_instrumentation__.Notify(458849)
+	*stack = (*stack)[:0]
+}
 
 func (stack *savepointStack) push(s savepoint) {
+	__antithesis_instrumentation__.Notify(458850)
 	*stack = append(*stack, s)
 }
 
-// find finds the most recent savepoint with the given name.
-//
-// The returned savepoint can be modified (rolling back modifies the kvToken).
-// Callers shouldn't maintain references to the returned savepoint, as
-// references can be invalidated by further operations on the savepoints.
 func (stack savepointStack) find(sn tree.Name) (*savepoint, int) {
+	__antithesis_instrumentation__.Notify(458851)
 	for i := len(stack) - 1; i >= 0; i-- {
+		__antithesis_instrumentation__.Notify(458853)
 		if stack[i].name == sn {
+			__antithesis_instrumentation__.Notify(458854)
 			return &stack[i], i
+		} else {
+			__antithesis_instrumentation__.Notify(458855)
 		}
 	}
+	__antithesis_instrumentation__.Notify(458852)
 	return nil, -1
 }
 
-// popToIdx pops (discards) all the savepoints at higher indexes.
 func (stack *savepointStack) popToIdx(idx int) {
+	__antithesis_instrumentation__.Notify(458856)
 	*stack = (*stack)[:idx+1]
 }
 
 func (stack savepointStack) clone() savepointStack {
+	__antithesis_instrumentation__.Notify(458857)
 	if len(stack) == 0 {
-		// Avoid allocating a slice.
+		__antithesis_instrumentation__.Notify(458859)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(458860)
 	}
+	__antithesis_instrumentation__.Notify(458858)
 	cpy := make(savepointStack, len(stack))
 	copy(cpy, stack)
 	return cpy
 }
 
-// runShowSavepointState executes a SHOW SAVEPOINT STATUS statement.
-//
-// If an error is returned, the connection needs to stop processing queries.
 func (ex *connExecutor) runShowSavepointState(
 	ctx context.Context, res RestrictedCommandResult,
 ) error {
+	__antithesis_instrumentation__.Notify(458861)
 	res.SetColumns(ctx, colinfo.ResultColumns{
 		{Name: "savepoint_name", Typ: types.String},
 		{Name: "is_initial_savepoint", Typ: types.Bool},
 	})
 
 	for _, entry := range ex.extraTxnState.savepoints {
+		__antithesis_instrumentation__.Notify(458863)
 		if err := res.AddRow(ctx, tree.Datums{
 			tree.NewDString(string(entry.name)),
 			tree.MakeDBool(tree.DBool(entry.kvToken.Initial())),
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(458864)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(458865)
 		}
 	}
+	__antithesis_instrumentation__.Notify(458862)
 	return nil
 }

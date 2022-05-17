@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package screl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -21,21 +13,29 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// NodeString formats a node as a string by invoking FormatNode.
 func NodeString(n *Node) string {
+	__antithesis_instrumentation__.Notify(595001)
 	var v redact.StringBuilder
 	if err := FormatNode(&v, n); err != nil {
+		__antithesis_instrumentation__.Notify(595003)
 		return fmt.Sprintf("failed for format node: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(595004)
 	}
+	__antithesis_instrumentation__.Notify(595002)
 	return v.String()
 }
 
-// FormatNode formats the node into the SafeWriter.
 func FormatNode(w redact.SafeWriter, e *Node) (err error) {
+	__antithesis_instrumentation__.Notify(595005)
 	w.SafeString("[[")
 	if err := FormatElement(w, e.Element()); err != nil {
+		__antithesis_instrumentation__.Notify(595007)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(595008)
 	}
+	__antithesis_instrumentation__.Notify(595006)
 	w.SafeString(", ")
 	w.SafeString(redact.SafeString(e.Target.TargetStatus.String()))
 	w.SafeString("], ")
@@ -44,39 +44,60 @@ func FormatNode(w redact.SafeWriter, e *Node) (err error) {
 	return nil
 }
 
-// ElementString formats an element as a string by invoking FormatElement.
 func ElementString(e scpb.Element) string {
+	__antithesis_instrumentation__.Notify(595009)
 	var v redact.StringBuilder
 	if err := FormatElement(&v, e); err != nil {
+		__antithesis_instrumentation__.Notify(595011)
 		return fmt.Sprintf("failed for format element %T: %v", e, err)
+	} else {
+		__antithesis_instrumentation__.Notify(595012)
 	}
+	__antithesis_instrumentation__.Notify(595010)
 	return v.String()
 }
 
-// FormatElement formats the element into the SafeWriter.
 func FormatElement(w redact.SafeWriter, e scpb.Element) (err error) {
+	__antithesis_instrumentation__.Notify(595013)
 	if e == nil {
+		__antithesis_instrumentation__.Notify(595016)
 		return errors.Errorf("nil element")
+	} else {
+		__antithesis_instrumentation__.Notify(595017)
 	}
+	__antithesis_instrumentation__.Notify(595014)
 	w.SafeString(redact.SafeString(reflect.TypeOf(e).Elem().Name()))
 	w.SafeString(":{")
 	var written int
 	if err := Schema.IterateAttributes(e, func(attr rel.Attr, value interface{}) error {
+		__antithesis_instrumentation__.Notify(595018)
 		if written > 0 {
+			__antithesis_instrumentation__.Notify(595021)
 			w.SafeString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(595022)
 		}
+		__antithesis_instrumentation__.Notify(595019)
 		written++
-		// Change the type of strings so that they get quoted appropriately.
+
 		if str, isStr := value.(string); isStr {
+			__antithesis_instrumentation__.Notify(595023)
 			value = tree.Name(str)
+		} else {
+			__antithesis_instrumentation__.Notify(595024)
 		}
+		__antithesis_instrumentation__.Notify(595020)
 		w.SafeString(redact.SafeString(attr.String()))
 		w.SafeString(": ")
 		w.Printf("%v", value)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(595025)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(595026)
 	}
+	__antithesis_instrumentation__.Notify(595015)
 	w.SafeRune('}')
 	return nil
 }

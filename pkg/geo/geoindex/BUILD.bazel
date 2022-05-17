@@ -19,6 +19,7 @@ go_library(
         "//pkg/geo/geopb",
         "//pkg/geo/geoprojbase",
         "//pkg/geo/geos",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_golang_geo//r3",
         "@com_github_golang_geo//s1",
@@ -45,6 +46,7 @@ go_test(
         "//pkg/geo/geos",
         "//pkg/testutils",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@com_github_golang_geo//s2",
         "@com_github_stretchr_testify//require",
@@ -56,7 +58,9 @@ proto_library(
     srcs = ["config.proto"],
     strip_import_prefix = "/pkg",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto:gogo_proto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto:gogo_proto",
+    ],
 )
 
 go_proto_library(
@@ -65,5 +69,7 @@ go_proto_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/geo/geoindex",
     proto = ":geoindex_proto",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto",
+    ],
 )

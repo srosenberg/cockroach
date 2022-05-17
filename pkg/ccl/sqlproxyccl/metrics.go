@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package sqlproxyccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/base"
@@ -14,7 +8,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// metrics contains pointers to the metrics for monitoring proxy operations.
 type metrics struct {
 	BackendDisconnectCount *metric.Counter
 	IdleDisconnectCount    *metric.Counter
@@ -35,19 +28,12 @@ type metrics struct {
 	ConnMigrationTransferResponseMessageSize *metric.Histogram
 }
 
-// MetricStruct implements the metrics.Struct interface.
-func (metrics) MetricStruct() {}
+func (metrics) MetricStruct() { __antithesis_instrumentation__.Notify(21772) }
 
 var _ metric.Struct = metrics{}
 
 const (
-	// maxExpectedTransferResponseMessageSize corresponds to maximum expected
-	// response message size for the SHOW TRANSFER STATE query. We choose 16MB
-	// here to match the defaultMaxReadBufferSize used for ingesting SQL
-	// statements in the SQL server (see pkg/sql/pgwire/pgwirebase/encoding.go).
-	//
-	// This will be used to tune sql.session_transfer.max_session_size.
-	maxExpectedTransferResponseMessageSize = 1 << 24 // 16MB
+	maxExpectedTransferResponseMessageSize = 1 << 24
 )
 
 var (
@@ -111,9 +97,7 @@ var (
 		Measurement: "Expired Client Connections",
 		Unit:        metric.Unit_COUNT,
 	}
-	// Connection migration metrics.
-	//
-	// attempted = success + error_fatal + error_recoverable
+
 	metaConnMigrationSuccessCount = metric.Metadata{
 		Name:        "proxy.conn_migration.success",
 		Help:        "Number of successful connection migrations",
@@ -121,14 +105,14 @@ var (
 		Unit:        metric.Unit_COUNT,
 	}
 	metaConnMigrationErrorFatalCount = metric.Metadata{
-		// When connection migrations errored out, connections will be closed.
+
 		Name:        "proxy.conn_migration.error_fatal",
 		Help:        "Number of failed connection migrations which resulted in terminations",
 		Measurement: "Connection Migrations",
 		Unit:        metric.Unit_COUNT,
 	}
 	metaConnMigrationErrorRecoverableCount = metric.Metadata{
-		// Connections are recoverable, so they won't be closed.
+
 		Name:        "proxy.conn_migration.error_recoverable",
 		Help:        "Number of failed connection migrations that were recoverable",
 		Measurement: "Connection Migrations",
@@ -154,8 +138,8 @@ var (
 	}
 )
 
-// makeProxyMetrics instantiates the metrics holder for proxy monitoring.
 func makeProxyMetrics() metrics {
+	__antithesis_instrumentation__.Notify(21773)
 	return metrics{
 		BackendDisconnectCount: metric.NewCounter(metaBackendDisconnectCount),
 		IdleDisconnectCount:    metric.NewCounter(metaIdleDisconnectCount),
@@ -167,7 +151,7 @@ func makeProxyMetrics() metrics {
 		SuccessfulConnCount:    metric.NewCounter(metaSuccessfulConnCount),
 		AuthFailedCount:        metric.NewCounter(metaAuthFailedCount),
 		ExpiredClientConnCount: metric.NewCounter(metaExpiredClientConnCount),
-		// Connection migration metrics.
+
 		ConnMigrationSuccessCount:          metric.NewCounter(metaConnMigrationSuccessCount),
 		ConnMigrationErrorFatalCount:       metric.NewCounter(metaConnMigrationErrorFatalCount),
 		ConnMigrationErrorRecoverableCount: metric.NewCounter(metaConnMigrationErrorRecoverableCount),
@@ -185,33 +169,49 @@ func makeProxyMetrics() metrics {
 	}
 }
 
-// updateForError updates the metrics relevant for the type of the error
-// message.
 func (metrics *metrics) updateForError(err error) {
+	__antithesis_instrumentation__.Notify(21774)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(21776)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(21777)
 	}
+	__antithesis_instrumentation__.Notify(21775)
 	codeErr := (*codeError)(nil)
 	if errors.As(err, &codeErr) {
+		__antithesis_instrumentation__.Notify(21778)
 		switch codeErr.code {
 		case codeExpiredClientConnection:
+			__antithesis_instrumentation__.Notify(21779)
 			metrics.ExpiredClientConnCount.Inc(1)
 		case codeBackendDisconnected:
+			__antithesis_instrumentation__.Notify(21780)
 			metrics.BackendDisconnectCount.Inc(1)
 		case codeClientDisconnected:
+			__antithesis_instrumentation__.Notify(21781)
 			metrics.ClientDisconnectCount.Inc(1)
 		case codeIdleDisconnect:
+			__antithesis_instrumentation__.Notify(21782)
 			metrics.IdleDisconnectCount.Inc(1)
 		case codeProxyRefusedConnection:
+			__antithesis_instrumentation__.Notify(21783)
 			metrics.RefusedConnCount.Inc(1)
 			metrics.BackendDownCount.Inc(1)
 		case codeParamsRoutingFailed, codeUnavailable:
+			__antithesis_instrumentation__.Notify(21784)
 			metrics.RoutingErrCount.Inc(1)
 			metrics.BackendDownCount.Inc(1)
 		case codeBackendDown:
+			__antithesis_instrumentation__.Notify(21785)
 			metrics.BackendDownCount.Inc(1)
 		case codeAuthFailed:
+			__antithesis_instrumentation__.Notify(21786)
 			metrics.AuthFailedCount.Inc(1)
+		default:
+			__antithesis_instrumentation__.Notify(21787)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(21788)
 	}
 }

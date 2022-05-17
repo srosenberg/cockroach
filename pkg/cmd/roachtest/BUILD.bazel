@@ -38,6 +38,7 @@ go_library(
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
         "//pkg/util/version",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_armon_circbuf//:circbuf",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_logtags//:logtags",
@@ -54,6 +55,7 @@ go_binary(
     name = "roachtest",
     embed = [":roachtest_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -79,6 +81,7 @@ go_test(
         "//pkg/util/stop",
         "//pkg/util/syncutil",
         "//pkg/util/version",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_kr_pretty//:pretty",
         "@com_github_stretchr_testify//assert",

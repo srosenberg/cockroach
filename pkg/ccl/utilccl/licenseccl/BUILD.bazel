@@ -10,6 +10,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/util/protoutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -19,7 +20,9 @@ proto_library(
     srcs = ["license.proto"],
     strip_import_prefix = "/pkg",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto:gogo_proto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto:gogo_proto",
+    ],
 )
 
 go_proto_library(

@@ -34,6 +34,7 @@ go_library(
         "//pkg/util/log",
         "//pkg/util/log/eventpb",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_redact//:redact",
     ],
@@ -50,6 +51,7 @@ go_test(
     ],
     deps = [
         ":scexec",
+        "@com_antithesis_instrumentation//wrappers",
         "//pkg/base",
         "//pkg/jobs",
         "//pkg/jobs/jobspb",

@@ -34,5 +34,6 @@ go_library(
     deps = [
         "//pkg/util/hlc",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

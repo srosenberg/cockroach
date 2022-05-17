@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package debug
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -35,20 +27,31 @@ func init() {
 }
 
 func tpccMergeResults(cmd *cobra.Command, args []string) error {
-	// We want to take histograms and merge them
+	__antithesis_instrumentation__.Notify(694038)
+
 	warehouses, err := cmd.Flags().GetInt("warehouses")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694043)
 		return errors.Wrap(err, "no warehouses flag found")
+	} else {
+		__antithesis_instrumentation__.Notify(694044)
 	}
+	__antithesis_instrumentation__.Notify(694039)
 	var results []*tpcc.Result
 
 	for _, fname := range args {
+		__antithesis_instrumentation__.Notify(694045)
 		snapshots, err := histogram.DecodeSnapshots(fname)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(694047)
 			return errors.Wrapf(err, "failed to decode histograms at %q", fname)
+		} else {
+			__antithesis_instrumentation__.Notify(694048)
 		}
+		__antithesis_instrumentation__.Notify(694046)
 		results = append(results, tpcc.NewResultWithSnapshots(warehouses, 0, snapshots))
 	}
+	__antithesis_instrumentation__.Notify(694040)
 
 	res := tpcc.MergeResults(results...)
 	out := cmd.OutOrStdout()
@@ -58,10 +61,13 @@ func tpccMergeResults(cmd *cobra.Command, args []string) error {
 
 	var queries []string
 	for query := range res.Cumulative {
+		__antithesis_instrumentation__.Notify(694049)
 		queries = append(queries, query)
 	}
+	__antithesis_instrumentation__.Notify(694041)
 	sort.Strings(queries)
 	for _, query := range queries {
+		__antithesis_instrumentation__.Notify(694050)
 		hist := res.Cumulative[query]
 		_, _ = fmt.Fprintf(out, "%7.1fs %14.1f %8.1f %8.1f %8.1f %8.1f %8.1f %s\n",
 			res.Elapsed.Seconds(),
@@ -74,5 +80,6 @@ func tpccMergeResults(cmd *cobra.Command, args []string) error {
 			query,
 		)
 	}
+	__antithesis_instrumentation__.Notify(694042)
 	return nil
 }

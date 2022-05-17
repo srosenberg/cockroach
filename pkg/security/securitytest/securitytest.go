@@ -1,15 +1,7 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package securitytest embeds the TLS test certificates.
 package securitytest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"io/ioutil"
@@ -21,85 +13,111 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-//go:generate go-bindata -mode 0600 -modtime 1400000000 -pkg securitytest -o embedded.go -ignore README.md -ignore regenerate.sh test_certs
-//go:generate gofmt -s -w embedded.go
-//go:generate goimports -w embedded.go
-
-// RestrictedCopy creates an on-disk copy of the embedded security asset
-// with the provided path. The copy will be created in the provided directory.
-// Returns the path of the file and a cleanup function that will delete the file.
-//
-// The file will have restrictive file permissions (0600), making it
-// appropriate for usage by libraries that require security assets to have such
-// restrictive permissions.
 func RestrictedCopy(path, tempdir, name string) (string, error) {
+	__antithesis_instrumentation__.Notify(187205)
 	contents, err := Asset(path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187208)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(187209)
 	}
+	__antithesis_instrumentation__.Notify(187206)
 	tempPath := filepath.Join(tempdir, name)
 	if err := ioutil.WriteFile(tempPath, contents, 0600); err != nil {
+		__antithesis_instrumentation__.Notify(187210)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(187211)
 	}
+	__antithesis_instrumentation__.Notify(187207)
 	return tempPath, nil
 }
 
-// AppendFile appends an on-disk copy of the embedded security asset
-// with the provided path, to the file designated by the second path.
 func AppendFile(assetPath, dstPath string) error {
+	__antithesis_instrumentation__.Notify(187212)
 	contents, err := Asset(assetPath)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187215)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(187216)
 	}
-	f, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_APPEND, 0 /* unused */)
+	__antithesis_instrumentation__.Notify(187213)
+	f, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_APPEND, 0)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187217)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(187218)
 	}
+	__antithesis_instrumentation__.Notify(187214)
 	_, err = f.Write(contents)
 	return errors.CombineErrors(err, f.Close())
 }
 
-// AssetReadDir mimics ioutil.ReadDir, returning a list of []os.FileInfo for
-// the specified directory. Contrary to ioutil.ReadDir however, it skips sub-
-// directories.
 func AssetReadDir(name string) ([]os.FileInfo, error) {
+	__antithesis_instrumentation__.Notify(187219)
 	names, err := AssetDir(name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187222)
 		if strings.HasSuffix(err.Error(), "not found") {
+			__antithesis_instrumentation__.Notify(187224)
 			return nil, os.ErrNotExist
+		} else {
+			__antithesis_instrumentation__.Notify(187225)
 		}
+		__antithesis_instrumentation__.Notify(187223)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187226)
 	}
+	__antithesis_instrumentation__.Notify(187220)
 	infos := make([]os.FileInfo, 0, len(names))
 	for _, n := range names {
+		__antithesis_instrumentation__.Notify(187227)
 		joined := filepath.Join(name, n)
 		info, err := AssetInfo(joined)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(187229)
 			if _, dirErr := AssetDir(joined); dirErr != nil {
-				// nolint:errwrap
+				__antithesis_instrumentation__.Notify(187231)
+
 				return nil, errors.Wrapf(err, "missing directory (%v)", dirErr)
+			} else {
+				__antithesis_instrumentation__.Notify(187232)
 			}
-			continue // skip subdirectory
+			__antithesis_instrumentation__.Notify(187230)
+			continue
+		} else {
+			__antithesis_instrumentation__.Notify(187233)
 		}
-		// Convert back to bindataFileInfo and strip directory from filename.
+		__antithesis_instrumentation__.Notify(187228)
+
 		binInfo := info.(bindataFileInfo)
 		binInfo.name = filepath.Base(binInfo.name)
 		infos = append(infos, binInfo)
 	}
+	__antithesis_instrumentation__.Notify(187221)
 	return infos, nil
 }
 
-// AssetStat wraps AssetInfo, but returns os.ErrNotExist if the requested
-// file is not found.
 func AssetStat(name string) (os.FileInfo, error) {
+	__antithesis_instrumentation__.Notify(187234)
 	info, err := AssetInfo(name)
-	if err != nil && strings.HasSuffix(err.Error(), "not found") {
+	if err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(187236)
+		return strings.HasSuffix(err.Error(), "not found") == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(187237)
 		return info, os.ErrNotExist
+	} else {
+		__antithesis_instrumentation__.Notify(187238)
 	}
+	__antithesis_instrumentation__.Notify(187235)
 	return info, err
 }
 
-// EmbeddedAssets is an AssetLoader pointing to embedded asset functions.
 var EmbeddedAssets = security.AssetLoader{
 	ReadDir:  AssetReadDir,
 	ReadFile: Asset,

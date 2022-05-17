@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package movr
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	gosql "database/sql"
@@ -27,18 +19,20 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-// maybeFormatWithCity formats %[1]s with `city,` and %[2]s with `vehicle_city`
-// if we are not using a multi-region movr.
 func (g *movr) maybeFormatWithCity(fmtString string) string {
+	__antithesis_instrumentation__.Notify(694752)
 	var posOne, posTwo string
 	if !g.multiRegion {
+		__antithesis_instrumentation__.Notify(694754)
 		posOne = "city, "
 		posTwo = "vehicle_city, "
+	} else {
+		__antithesis_instrumentation__.Notify(694755)
 	}
+	__antithesis_instrumentation__.Notify(694753)
 	return fmt.Sprintf(fmtString, posOne, posTwo)
 }
 
-// Indexes into the slice returned by `Tables`.
 const (
 	TablesUsersIdx                    = 0
 	TablesVehiclesIdx                 = 1
@@ -49,6 +43,7 @@ const (
 )
 
 func (g *movr) movrUsersSchema() string {
+	__antithesis_instrumentation__.Notify(694756)
 	return g.maybeFormatWithCity(`(
   id UUID NOT NULL,
   city VARCHAR NOT NULL,
@@ -59,13 +54,13 @@ func (g *movr) movrUsersSchema() string {
 )`)
 }
 
-// Indexes into the rows in movrUsers.
 const (
 	usersIDIdx   = 0
 	usersCityIdx = 1
 )
 
 func (g *movr) movrVehiclesSchema() string {
+	__antithesis_instrumentation__.Notify(694757)
 	return g.maybeFormatWithCity(`(
   id UUID NOT NULL,
   city VARCHAR NOT NULL,
@@ -81,13 +76,13 @@ func (g *movr) movrVehiclesSchema() string {
 	)
 }
 
-// Indexes into the rows in movrVehicles.
 const (
 	vehiclesIDIdx   = 0
 	vehiclesCityIdx = 1
 )
 
 func (g *movr) movrRidesSchema() string {
+	__antithesis_instrumentation__.Notify(694758)
 	return g.maybeFormatWithCity(`(
   id UUID NOT NULL,
   city VARCHAR NOT NULL,
@@ -106,13 +101,13 @@ func (g *movr) movrRidesSchema() string {
 )`)
 }
 
-// Indexes into the rows in movrRides.
 const (
 	ridesIDIdx   = 0
 	ridesCityIdx = 1
 )
 
 func (g *movr) movrVehicleLocationHistoriesSchema() string {
+	__antithesis_instrumentation__.Notify(694759)
 	return g.maybeFormatWithCity(`(
   city VARCHAR NOT NULL,
   ride_id UUID NOT NULL,
@@ -133,6 +128,7 @@ const movrPromoCodesSchema = `(
 )`
 
 func (g *movr) movrUserPromoCodesSchema() string {
+	__antithesis_instrumentation__.Notify(694760)
 	return g.maybeFormatWithCity(`(
   city VARCHAR NOT NULL,
   user_id UUID NOT NULL,
@@ -204,6 +200,7 @@ var movrMeta = workload.Meta{
 	Version:      `1.0.0`,
 	PublicFacing: true,
 	New: func() workload.Generator {
+		__antithesis_instrumentation__.Notify(694761)
 		g := &movr{}
 		g.flags.FlagSet = pflag.NewFlagSet(`movr`, pflag.ContinueOnError)
 		g.flags.Uint64Var(&g.seed, `seed`, 1, `Key hash seed.`)
@@ -240,34 +237,48 @@ Otherwise defaults to the gateway_region.`,
 	},
 }
 
-// Meta implements the Generator interface.
-func (*movr) Meta() workload.Meta { return movrMeta }
+func (*movr) Meta() workload.Meta { __antithesis_instrumentation__.Notify(694762); return movrMeta }
 
-// Flags implements the Flagser interface.
-func (g *movr) Flags() workload.Flags { return g.flags }
+func (g *movr) Flags() workload.Flags { __antithesis_instrumentation__.Notify(694763); return g.flags }
 
-// Hooks implements the Hookser interface.
 func (g *movr) Hooks() workload.Hooks {
+	__antithesis_instrumentation__.Notify(694764)
 	return workload.Hooks{
 		Validate: func() error {
-			// Force there to be at least one user/vehicle/ride/history per city.
-			// Otherwise, some cities will be empty, which means we can't construct
-			// the FKs we need.
+			__antithesis_instrumentation__.Notify(694765)
+
 			if g.users.numRows < len(cities) {
+				__antithesis_instrumentation__.Notify(694770)
 				return errors.Errorf(`at least %d users are required`, len(cities))
+			} else {
+				__antithesis_instrumentation__.Notify(694771)
 			}
+			__antithesis_instrumentation__.Notify(694766)
 			if g.vehicles.numRows < len(cities) {
+				__antithesis_instrumentation__.Notify(694772)
 				return errors.Errorf(`at least %d vehicles are required`, len(cities))
+			} else {
+				__antithesis_instrumentation__.Notify(694773)
 			}
+			__antithesis_instrumentation__.Notify(694767)
 			if g.rides.numRows < len(cities) {
+				__antithesis_instrumentation__.Notify(694774)
 				return errors.Errorf(`at least %d rides are required`, len(cities))
+			} else {
+				__antithesis_instrumentation__.Notify(694775)
 			}
+			__antithesis_instrumentation__.Notify(694768)
 			if g.histories.numRows < len(cities) {
+				__antithesis_instrumentation__.Notify(694776)
 				return errors.Errorf(`at least %d histories are required`, len(cities))
+			} else {
+				__antithesis_instrumentation__.Notify(694777)
 			}
+			__antithesis_instrumentation__.Notify(694769)
 			return nil
 		},
 		PostLoad: func(db *gosql.DB) error {
+			__antithesis_instrumentation__.Notify(694778)
 			fkStmts := []string{
 				g.maybeFormatWithCity(
 					`ALTER TABLE vehicles ADD FOREIGN KEY
@@ -292,30 +303,42 @@ func (g *movr) Hooks() workload.Hooks {
 			}
 
 			for _, fkStmt := range fkStmts {
+				__antithesis_instrumentation__.Notify(694780)
 				if _, err := db.Exec(fkStmt); err != nil {
-					// If the statement failed because the fk already exists,
-					// ignore it. Return the error for any other reason.
+					__antithesis_instrumentation__.Notify(694781)
+
 					const duplicateFKErr = "columns cannot be used by multiple foreign key constraints"
 					if !strings.Contains(err.Error(), duplicateFKErr) {
+						__antithesis_instrumentation__.Notify(694782)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(694783)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(694784)
 				}
 			}
+			__antithesis_instrumentation__.Notify(694779)
 			return nil
 		},
-		// This partitioning step is intended for a 3 region cluster, which have the localities region=us-east1,
-		// region=us-west1, region=europe-west1.
+
 		Partition: func(db *gosql.DB) error {
+			__antithesis_instrumentation__.Notify(694785)
 			if g.multiRegion {
+				__antithesis_instrumentation__.Notify(694788)
 				var survivalGoal string
 				switch g.survivalGoal {
 				case "az":
+					__antithesis_instrumentation__.Notify(694793)
 					survivalGoal = "ZONE"
 				case "region":
+					__antithesis_instrumentation__.Notify(694794)
 					survivalGoal = "REGION"
 				default:
+					__antithesis_instrumentation__.Notify(694795)
 					return errors.Errorf("unsupported survival goal: %s", g.survivalGoal)
 				}
+				__antithesis_instrumentation__.Notify(694789)
 				qs := fmt.Sprintf(
 					`
 ALTER DATABASE %[1]s SET PRIMARY REGION "us-east1";
@@ -327,18 +350,28 @@ ALTER DATABASE %[1]s SURVIVE %s FAILURE
 					survivalGoal,
 				)
 				for _, q := range strings.Split(qs, ";") {
+					__antithesis_instrumentation__.Notify(694796)
 					if _, err := db.Exec(q); err != nil {
+						__antithesis_instrumentation__.Notify(694797)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(694798)
 					}
 				}
+				__antithesis_instrumentation__.Notify(694790)
 				for _, rbrTable := range rbrTables {
+					__antithesis_instrumentation__.Notify(694799)
 					if g.inferCRDBRegionColumn {
+						__antithesis_instrumentation__.Notify(694801)
 						regionToCities := make(map[string][]string)
 						for _, city := range cities {
+							__antithesis_instrumentation__.Notify(694804)
 							regionToCities[city.region] = append(regionToCities[city.region], city.city)
 						}
+						__antithesis_instrumentation__.Notify(694802)
 						cityClauses := make([]string, 0, len(regionToCities))
 						for region, cities := range regionToCities {
+							__antithesis_instrumentation__.Notify(694805)
 							cityClauses = append(
 								cityClauses,
 								fmt.Sprintf(
@@ -348,6 +381,7 @@ ALTER DATABASE %[1]s SURVIVE %s FAILURE
 								),
 							)
 						}
+						__antithesis_instrumentation__.Notify(694803)
 						sort.Strings(cityClauses)
 						if _, err := db.Exec(
 							fmt.Sprintf(
@@ -360,34 +394,52 @@ ALTER DATABASE %[1]s SURVIVE %s FAILURE
 								strings.Join(cityClauses, "\n"),
 							),
 						); err != nil {
+							__antithesis_instrumentation__.Notify(694806)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(694807)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(694808)
 					}
+					__antithesis_instrumentation__.Notify(694800)
 					if _, err := db.Exec(
 						fmt.Sprintf(
 							`ALTER TABLE %s SET LOCALITY REGIONAL BY ROW`,
 							rbrTable,
 						),
 					); err != nil {
+						__antithesis_instrumentation__.Notify(694809)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(694810)
 					}
 				}
+				__antithesis_instrumentation__.Notify(694791)
 				for _, globalTable := range globalTables {
+					__antithesis_instrumentation__.Notify(694811)
 					if _, err := db.Exec(
 						fmt.Sprintf(
 							`ALTER TABLE %s SET LOCALITY GLOBAL`,
 							globalTable,
 						),
 					); err != nil {
+						__antithesis_instrumentation__.Notify(694812)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(694813)
 					}
 				}
+				__antithesis_instrumentation__.Notify(694792)
 
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(694814)
 			}
+			__antithesis_instrumentation__.Notify(694786)
 
 			qs := []string{
-				// Create us-west, us-east and europe-west partitions.
+
 				`ALTER TABLE users PARTITION BY LIST (city) (
 					PARTITION us_west VALUES IN ('seattle', 'san francisco', 'los angeles'),
 					PARTITION us_east VALUES IN ('new york', 'boston', 'washington dc'),
@@ -429,7 +481,6 @@ ALTER DATABASE %[1]s SURVIVE %s FAILURE
 					PARTITION europe_west VALUES IN ('amsterdam', 'paris', 'rome')
 				);`,
 
-				// Alter the partitions to place replicas in the appropriate zones.
 				`ALTER PARTITION us_west OF INDEX users@* CONFIGURE ZONE USING CONSTRAINTS='["+region=us-west1"]';`,
 				`ALTER PARTITION us_east OF INDEX users@* CONFIGURE ZONE USING CONSTRAINTS='["+region=us-east1"]';`,
 				`ALTER PARTITION europe_west OF INDEX users@* CONFIGURE ZONE USING CONSTRAINTS='["+region=europe-west1"]';`,
@@ -450,11 +501,9 @@ ALTER DATABASE %[1]s SURVIVE %s FAILURE
 				`ALTER PARTITION us_east OF INDEX vehicle_location_histories@* CONFIGURE ZONE USING CONSTRAINTS='["+region=us-east1"]';`,
 				`ALTER PARTITION europe_west OF INDEX vehicle_location_histories@* CONFIGURE ZONE USING CONSTRAINTS='["+region=europe-west1"]';`,
 
-				// Create some duplicate indexes for the promo_codes table.
 				`CREATE INDEX promo_codes_idx_us_west ON promo_codes (code) STORING (description, creation_time,expiration_time, rules);`,
 				`CREATE INDEX promo_codes_idx_europe_west ON promo_codes (code) STORING (description, creation_time, expiration_time, rules);`,
 
-				// Apply configurations to the index for fast reads.
 				`ALTER TABLE promo_codes CONFIGURE ZONE USING num_replicas = 3,
 					constraints = '{"+region=us-east1": 1}',
 					lease_preferences = '[[+region=us-east1]]';`,
@@ -468,20 +517,27 @@ ALTER DATABASE %[1]s SURVIVE %s FAILURE
 					lease_preferences = '[[+region=europe-west1]]';`,
 			}
 			for _, q := range qs {
+				__antithesis_instrumentation__.Notify(694815)
 				if _, err := db.Exec(q); err != nil {
+					__antithesis_instrumentation__.Notify(694816)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(694817)
 				}
 			}
+			__antithesis_instrumentation__.Notify(694787)
 			return nil
 		},
 	}
 }
 
-// Tables implements the Generator interface.
 func (g *movr) Tables() []workload.Table {
+	__antithesis_instrumentation__.Notify(694818)
 	g.fakerOnce.Do(func() {
+		__antithesis_instrumentation__.Notify(694823)
 		g.faker = faker.NewFaker()
 	})
+	__antithesis_instrumentation__.Notify(694819)
 	tables := make([]workload.Table, 6)
 	tables[TablesUsersIdx] = workload.Table{
 		Name:   `users`,
@@ -493,15 +549,21 @@ func (g *movr) Tables() []workload.Table {
 		Splits: workload.Tuples(
 			g.ranges-1,
 			func(splitIdx int) []interface{} {
+				__antithesis_instrumentation__.Notify(694824)
 				row := g.movrUsersInitialRow((splitIdx + 1) * (g.users.numRows / g.ranges))
 				if g.multiRegion {
+					__antithesis_instrumentation__.Notify(694826)
 					return []interface{}{row[usersIDIdx]}
+				} else {
+					__antithesis_instrumentation__.Notify(694827)
 				}
-				// The split tuples returned must be valid primary key columns.
+				__antithesis_instrumentation__.Notify(694825)
+
 				return []interface{}{row[usersCityIdx], row[usersIDIdx]}
 			},
 		),
 	}
+	__antithesis_instrumentation__.Notify(694820)
 	tables[TablesVehiclesIdx] = workload.Table{
 		Name:   `vehicles`,
 		Schema: g.movrVehiclesSchema(),
@@ -512,15 +574,21 @@ func (g *movr) Tables() []workload.Table {
 		Splits: workload.Tuples(
 			g.ranges-1,
 			func(splitIdx int) []interface{} {
+				__antithesis_instrumentation__.Notify(694828)
 				row := g.movrVehiclesInitialRow((splitIdx + 1) * (g.vehicles.numRows / g.ranges))
 				if g.multiRegion {
+					__antithesis_instrumentation__.Notify(694830)
 					return []interface{}{row[vehiclesIDIdx]}
+				} else {
+					__antithesis_instrumentation__.Notify(694831)
 				}
-				// The split tuples returned must be valid primary key columns.
+				__antithesis_instrumentation__.Notify(694829)
+
 				return []interface{}{row[vehiclesCityIdx], row[vehiclesIDIdx]}
 			},
 		),
 	}
+	__antithesis_instrumentation__.Notify(694821)
 	tables[TablesRidesIdx] = workload.Table{
 		Name:   `rides`,
 		Schema: g.movrRidesSchema(),
@@ -531,15 +599,21 @@ func (g *movr) Tables() []workload.Table {
 		Splits: workload.Tuples(
 			g.ranges-1,
 			func(splitIdx int) []interface{} {
+				__antithesis_instrumentation__.Notify(694832)
 				row := g.movrRidesInitialRow((splitIdx + 1) * (g.rides.numRows / g.ranges))
 				if g.multiRegion {
+					__antithesis_instrumentation__.Notify(694834)
 					return []interface{}{row[ridesIDIdx]}
+				} else {
+					__antithesis_instrumentation__.Notify(694835)
 				}
-				// The split tuples returned must be valid primary key columns.
+				__antithesis_instrumentation__.Notify(694833)
+
 				return []interface{}{row[ridesCityIdx], row[ridesIDIdx]}
 			},
 		),
 	}
+	__antithesis_instrumentation__.Notify(694822)
 	tables[TablesVehicleLocationHistoriesIdx] = workload.Table{
 		Name:   `vehicle_location_histories`,
 		Schema: g.movrVehicleLocationHistoriesSchema(),
@@ -567,68 +641,83 @@ func (g *movr) Tables() []workload.Table {
 	return tables
 }
 
-// cityDistributor deterministically maps each of numRows to a city. It also
-// maps a city back to a range of rows. This allows the generator functions
-// below to select random rows from the same city in another table. numRows is
-// required to be at least `len(cities)`.
 type cityDistributor struct {
 	numRows int
 }
 
 func (d cityDistributor) cityForRow(rowIdx int) int {
+	__antithesis_instrumentation__.Notify(694836)
 	if d.numRows < len(cities) {
+		__antithesis_instrumentation__.Notify(694838)
 		panic(errors.Errorf(`a minimum of %d rows are required got %d`, len(cities), d.numRows))
+	} else {
+		__antithesis_instrumentation__.Notify(694839)
 	}
+	__antithesis_instrumentation__.Notify(694837)
 	numPerCity := float64(d.numRows) / float64(len(cities))
 	cityIdx := int(float64(rowIdx) / numPerCity)
 	return cityIdx
 }
 
 func (d cityDistributor) rowsForCity(cityIdx int) (min, max int) {
+	__antithesis_instrumentation__.Notify(694840)
 	if d.numRows < len(cities) {
+		__antithesis_instrumentation__.Notify(694844)
 		panic(errors.Errorf(`a minimum of %d rows are required got %d`, len(cities), d.numRows))
+	} else {
+		__antithesis_instrumentation__.Notify(694845)
 	}
+	__antithesis_instrumentation__.Notify(694841)
 	numPerCity := float64(d.numRows) / float64(len(cities))
 	min = int(math.Ceil(float64(cityIdx) * numPerCity))
 	max = int(math.Ceil(float64(cityIdx+1) * numPerCity))
 	if min >= d.numRows {
+		__antithesis_instrumentation__.Notify(694846)
 		min = d.numRows
+	} else {
+		__antithesis_instrumentation__.Notify(694847)
 	}
+	__antithesis_instrumentation__.Notify(694842)
 	if max >= d.numRows {
+		__antithesis_instrumentation__.Notify(694848)
 		max = d.numRows
+	} else {
+		__antithesis_instrumentation__.Notify(694849)
 	}
+	__antithesis_instrumentation__.Notify(694843)
 	return min, max
 }
 
 func (d cityDistributor) randRowInCity(rng *rand.Rand, cityIdx int) int {
+	__antithesis_instrumentation__.Notify(694850)
 	min, max := d.rowsForCity(cityIdx)
 	return min + rng.Intn(max-min)
 }
 
 func (g *movr) movrUsersInitialRow(rowIdx int) []interface{} {
+	__antithesis_instrumentation__.Notify(694851)
 	rng := rand.New(rand.NewSource(g.seed + uint64(rowIdx)))
 	cityIdx := g.users.cityForRow(rowIdx)
 	city := cities[cityIdx]
 
-	// Make evenly-spaced UUIDs sorted in the same order as the rows.
 	var id uuid.UUID
 	id.DeterministicV4(uint64(rowIdx), uint64(g.users.numRows))
 
 	return []interface{}{
-		id.String(),                // id
-		city.city,                  // city
-		g.faker.Name(rng),          // name
-		g.faker.StreetAddress(rng), // address
-		randCreditCard(rng),        // credit_card
+		id.String(),
+		city.city,
+		g.faker.Name(rng),
+		g.faker.StreetAddress(rng),
+		randCreditCard(rng),
 	}
 }
 
 func (g *movr) movrVehiclesInitialRow(rowIdx int) []interface{} {
+	__antithesis_instrumentation__.Notify(694852)
 	rng := rand.New(rand.NewSource(g.seed + uint64(rowIdx)))
 	cityIdx := g.vehicles.cityForRow(rowIdx)
 	city := cities[cityIdx]
 
-	// Make evenly-spaced UUIDs sorted in the same order as the rows.
 	var id uuid.UUID
 	id.DeterministicV4(uint64(rowIdx), uint64(g.vehicles.numRows))
 
@@ -637,23 +726,23 @@ func (g *movr) movrVehiclesInitialRow(rowIdx int) []interface{} {
 	ownerID := g.movrUsersInitialRow(ownerRowIdx)[0]
 
 	return []interface{}{
-		id.String(),                            // id
-		city.city,                              // city
-		vehicleType,                            // type
-		ownerID,                                // owner_id
-		g.creationTime.Format(timestampFormat), // creation_time
-		randVehicleStatus(rng),                 // status
-		g.faker.StreetAddress(rng),             // current_location
-		randVehicleMetadata(rng, vehicleType),  // ext
+		id.String(),
+		city.city,
+		vehicleType,
+		ownerID,
+		g.creationTime.Format(timestampFormat),
+		randVehicleStatus(rng),
+		g.faker.StreetAddress(rng),
+		randVehicleMetadata(rng, vehicleType),
 	}
 }
 
 func (g *movr) movrRidesInitialRow(rowIdx int) []interface{} {
+	__antithesis_instrumentation__.Notify(694853)
 	rng := rand.New(rand.NewSource(g.seed + uint64(rowIdx)))
 	cityIdx := g.rides.cityForRow(rowIdx)
 	city := cities[cityIdx]
 
-	// Make evenly-spaced UUIDs sorted in the same order as the rows.
 	var id uuid.UUID
 	id.DeterministicV4(uint64(rowIdx), uint64(g.rides.numRows))
 
@@ -665,20 +754,21 @@ func (g *movr) movrRidesInitialRow(rowIdx int) []interface{} {
 	endTime := startTime.Add(time.Duration(rng.Intn(60)) * time.Hour)
 
 	return []interface{}{
-		id.String(),                       // id
-		city.city,                         // city
-		city.city,                         // vehicle_city
-		riderID,                           // rider_id
-		vehicleID,                         // vehicle_id
-		g.faker.StreetAddress(rng),        // start_address
-		g.faker.StreetAddress(rng),        // end_address
-		startTime.Format(timestampFormat), // start_time
-		endTime.Format(timestampFormat),   // end_time
-		rng.Intn(100),                     // revenue
+		id.String(),
+		city.city,
+		city.city,
+		riderID,
+		vehicleID,
+		g.faker.StreetAddress(rng),
+		g.faker.StreetAddress(rng),
+		startTime.Format(timestampFormat),
+		endTime.Format(timestampFormat),
+		rng.Intn(100),
 	}
 }
 
 func (g *movr) movrVehicleLocationHistoriesInitialRow(rowIdx int) []interface{} {
+	__antithesis_instrumentation__.Notify(694854)
 	rng := rand.New(rand.NewSource(g.seed + uint64(rowIdx)))
 	cityIdx := g.histories.cityForRow(rowIdx)
 	city := cities[cityIdx]
@@ -689,36 +779,38 @@ func (g *movr) movrVehicleLocationHistoriesInitialRow(rowIdx int) []interface{} 
 	lat, long := randLatLong(rng)
 
 	return []interface{}{
-		city.city,                    // city
-		rideID,                       // ride_id,
-		time.Format(timestampFormat), // timestamp
-		lat,                          // lat
-		long,                         // long
+		city.city,
+		rideID,
+		time.Format(timestampFormat),
+		lat,
+		long,
 	}
 }
 
 func (g *movr) movrPromoCodesInitialRow(rowIdx int) []interface{} {
+	__antithesis_instrumentation__.Notify(694855)
 	rng := rand.New(rand.NewSource(g.seed + uint64(rowIdx)))
 	code := strings.ToLower(strings.Join(g.faker.Words(rng, 3), `_`))
 	code = fmt.Sprintf("%d_%s", rowIdx, code)
 	description := g.faker.Paragraph(rng)
 	expirationTime := g.creationTime.Add(time.Duration(rng.Intn(30)) * 24 * time.Hour)
-	// TODO(dan): This is nil in the reference impl, is that intentional?
+
 	creationTime := expirationTime.Add(-time.Duration(rng.Intn(30)) * 24 * time.Hour)
 	const rulesJSON = `{"type": "percent_discount", "value": "10%"}`
 
 	return []interface{}{
-		code,           // code
-		description,    // description
-		creationTime,   // creation_time
-		expirationTime, // expiration_time
-		rulesJSON,      // rules
+		code,
+		description,
+		creationTime,
+		expirationTime,
+		rulesJSON,
 	}
 }
 
 func (g *movr) movrUserPromoCodesInitialRow(rowIdx int) []interface{} {
+	__antithesis_instrumentation__.Notify(694856)
 	rng := rand.New(rand.NewSource(g.seed + uint64(rowIdx)))
-	// Make evenly-spaced UUIDs sorted in the same order as the rows.
+
 	var id uuid.UUID
 	id.DeterministicV4(uint64(rowIdx), uint64(g.users.numRows))
 	cityIdx := g.users.cityForRow(rowIdx)
@@ -727,10 +819,10 @@ func (g *movr) movrUserPromoCodesInitialRow(rowIdx int) []interface{} {
 	code = fmt.Sprintf("%d_%s", rowIdx, code)
 	time := g.creationTime.Add(time.Duration(rowIdx) * time.Millisecond)
 	return []interface{}{
-		city.city,                    // city
-		id.String(),                  // user_id
-		code,                         // code
-		time.Format(timestampFormat), // timestamp
-		rng.Intn(20),                 // usage_count
+		city.city,
+		id.String(),
+		code,
+		time.Format(timestampFormat),
+		rng.Intn(20),
 	}
 }

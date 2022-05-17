@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colexecutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/col/coldata"
@@ -19,63 +11,52 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// MakeWindowIntoBatch updates windowedBatch so that it provides a "window"
-// into inputBatch that contains tuples in [startIdx, endIdx) range. It handles
-// selection vectors on inputBatch as well (in which case windowedBatch will
-// also have a "windowed" selection vector).
-//
-// Note: this method assumes that startIdx < endIdx.
 func MakeWindowIntoBatch(
 	windowedBatch, inputBatch coldata.Batch, startIdx, endIdx int, inputTypes []*types.T,
 ) {
+	__antithesis_instrumentation__.Notify(432056)
 	windowStart := startIdx
 	windowEnd := endIdx
 	if sel := inputBatch.Selection(); sel != nil {
-		// We have a selection vector on the input batch, and in order to avoid
-		// deselecting (i.e. moving the data over), we will provide an adjusted
-		// selection vector to the windowed batch as well.
+		__antithesis_instrumentation__.Notify(432059)
+
 		windowedBatch.SetSelection(true)
 		windowIntoSel := sel[startIdx:endIdx]
 		copy(windowedBatch.Selection(), windowIntoSel)
-		// We have to adjust the indices of our window based on the selection
-		// vector. The window needs to start from the zeroth tuple (even if it
-		// is not included in the selection vector) so that we don't have to
-		// shift the selection vector on the windowed batch.
+
 		windowStart = 0
-		// The window also needs to include the very last tuple that is selected
-		// to be in the window. Here we rely on the invariant that the selection
-		// vectors are increasing sequences.
+
 		windowEnd = windowIntoSel[len(windowIntoSel)-1] + 1
 	} else {
+		__antithesis_instrumentation__.Notify(432060)
 		windowedBatch.SetSelection(false)
 	}
+	__antithesis_instrumentation__.Notify(432057)
 	for i := range inputTypes {
+		__antithesis_instrumentation__.Notify(432061)
 		window := inputBatch.ColVec(i).Window(windowStart, windowEnd)
 		windowedBatch.ReplaceCol(window, i)
 	}
+	__antithesis_instrumentation__.Notify(432058)
 	windowedBatch.SetLength(endIdx - startIdx)
 }
 
-// NewAppendOnlyBufferedBatch returns a new AppendOnlyBufferedBatch that has
-// initial zero capacity and could grow arbitrarily large with append() method.
-// It is intended to be used by the operators that need to buffer unknown
-// number of tuples.
-// colsToStore indicates the positions of columns to actually store in this
-// batch. All columns are stored if colsToStore is nil, but when it is non-nil,
-// then columns with positions not present in colsToStore will remain
-// zero-capacity vectors.
-// TODO(yuzefovich): consider whether it is beneficial to start out with
-// non-zero capacity.
 func NewAppendOnlyBufferedBatch(
 	allocator *colmem.Allocator, typs []*types.T, colsToStore []int,
 ) *AppendOnlyBufferedBatch {
+	__antithesis_instrumentation__.Notify(432062)
 	if colsToStore == nil {
+		__antithesis_instrumentation__.Notify(432064)
 		colsToStore = make([]int, len(typs))
 		for i := range colsToStore {
+			__antithesis_instrumentation__.Notify(432065)
 			colsToStore[i] = i
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(432066)
 	}
-	batch := allocator.NewMemBatchWithFixedCapacity(typs, 0 /* capacity */)
+	__antithesis_instrumentation__.Notify(432063)
+	batch := allocator.NewMemBatchWithFixedCapacity(typs, 0)
 	return &AppendOnlyBufferedBatch{
 		batch:       batch,
 		allocator:   allocator,
@@ -84,126 +65,116 @@ func NewAppendOnlyBufferedBatch(
 	}
 }
 
-// AppendOnlyBufferedBatch is a wrapper around coldata.Batch that should be
-// used by operators that buffer many tuples into a single batch by appending
-// to it. It stores the length of the batch separately and intercepts calls to
-// Length() and SetLength() in order to avoid updating offsets on vectors of
-// types.Bytes type - which would result in a quadratic behavior - because
-// it is not necessary since coldata.Vec.Append maintains the correct offsets.
-//
-// Note: "AppendOnly" in the name indicates that the tuples should *only* be
-// appended to the vectors (which can be done via explicit Vec.Append calls or
-// using utility append() method); however, this batch prohibits appending and
-// replacing of the vectors themselves.
 type AppendOnlyBufferedBatch struct {
-	// We intentionally do not simply embed the batch so that we have to think
-	// through the implementation of each method of coldata.Batch interface.
 	batch coldata.Batch
 
 	allocator   *colmem.Allocator
 	length      int
 	colVecs     []coldata.Vec
 	colsToStore []int
-	// sel is the selection vector on this batch. Note that it is stored
-	// separately from embedded coldata.Batch because we need to be able to
-	// support a vector of an arbitrary length.
+
 	sel []int
 }
 
 var _ coldata.Batch = &AppendOnlyBufferedBatch{}
 
-// Length implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) Length() int {
+	__antithesis_instrumentation__.Notify(432067)
 	return b.length
 }
 
-// SetLength implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) SetLength(n int) {
+	__antithesis_instrumentation__.Notify(432068)
 	b.length = n
 }
 
-// Capacity implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) Capacity() int {
-	// We assume that the AppendOnlyBufferedBatch has unlimited capacity, so all
-	// callers should use that assumption instead of calling Capacity().
+	__antithesis_instrumentation__.Notify(432069)
+
 	colexecerror.InternalError(errors.AssertionFailedf("Capacity is prohibited on AppendOnlyBufferedBatch"))
-	// This code is unreachable, but the compiler cannot infer that.
+
 	return 0
 }
 
-// Width implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) Width() int {
+	__antithesis_instrumentation__.Notify(432070)
 	return b.batch.Width()
 }
 
-// ColVec implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) ColVec(i int) coldata.Vec {
+	__antithesis_instrumentation__.Notify(432071)
 	return b.colVecs[i]
 }
 
-// ColVecs implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) ColVecs() []coldata.Vec {
+	__antithesis_instrumentation__.Notify(432072)
 	return b.colVecs
 }
 
-// Selection implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) Selection() []int {
+	__antithesis_instrumentation__.Notify(432073)
 	if b.batch.Selection() != nil {
+		__antithesis_instrumentation__.Notify(432075)
 		return b.sel
+	} else {
+		__antithesis_instrumentation__.Notify(432076)
 	}
+	__antithesis_instrumentation__.Notify(432074)
 	return nil
 }
 
-// SetSelection implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) SetSelection(useSel bool) {
+	__antithesis_instrumentation__.Notify(432077)
 	b.batch.SetSelection(useSel)
 	if useSel {
-		// Make sure that selection vector is of the appropriate length.
+		__antithesis_instrumentation__.Notify(432078)
+
 		if cap(b.sel) < b.length {
+			__antithesis_instrumentation__.Notify(432079)
 			b.sel = make([]int, b.length)
 		} else {
+			__antithesis_instrumentation__.Notify(432080)
 			b.sel = b.sel[:b.length]
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(432081)
 	}
 }
 
-// AppendCol implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) AppendCol(coldata.Vec) {
+	__antithesis_instrumentation__.Notify(432082)
 	colexecerror.InternalError(errors.AssertionFailedf("AppendCol is prohibited on AppendOnlyBufferedBatch"))
 }
 
-// ReplaceCol implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) ReplaceCol(coldata.Vec, int) {
+	__antithesis_instrumentation__.Notify(432083)
 	colexecerror.InternalError(errors.AssertionFailedf("ReplaceCol is prohibited on AppendOnlyBufferedBatch"))
 }
 
-// Reset implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) Reset([]*types.T, int, coldata.ColumnFactory) {
+	__antithesis_instrumentation__.Notify(432084)
 	colexecerror.InternalError(errors.AssertionFailedf("Reset is prohibited on AppendOnlyBufferedBatch"))
 }
 
-// ResetInternalBatch implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) ResetInternalBatch() int64 {
-	b.SetLength(0 /* n */)
+	__antithesis_instrumentation__.Notify(432085)
+	b.SetLength(0)
 	return b.batch.ResetInternalBatch()
 }
 
-// String implements the coldata.Batch interface.
 func (b *AppendOnlyBufferedBatch) String() string {
-	// String should not be used in the fast paths, so we will set the length on
-	// the wrapped batch (which might be a bit expensive but is ok).
+	__antithesis_instrumentation__.Notify(432086)
+
 	b.batch.SetLength(b.length)
 	return b.batch.String()
 }
 
-// AppendTuples is a helper method that appends all tuples with indices in range
-// [startIdx, endIdx) from batch (paying attention to the selection vector)
-// into b. The newly allocated memory is registered with the allocator used to
-// create this AppendOnlyBufferedBatch.
-// NOTE: batch must be of non-zero length.
 func (b *AppendOnlyBufferedBatch) AppendTuples(batch coldata.Batch, startIdx, endIdx int) {
+	__antithesis_instrumentation__.Notify(432087)
 	b.allocator.PerformAppend(b, func() {
+		__antithesis_instrumentation__.Notify(432088)
 		for _, colIdx := range b.colsToStore {
+			__antithesis_instrumentation__.Notify(432090)
 			b.colVecs[colIdx].Append(
 				coldata.SliceArgs{
 					Src:         batch.ColVec(colIdx),
@@ -214,102 +185,116 @@ func (b *AppendOnlyBufferedBatch) AppendTuples(batch coldata.Batch, startIdx, en
 				},
 			)
 		}
+		__antithesis_instrumentation__.Notify(432089)
 		b.length += endIdx - startIdx
 	})
 }
 
-// MaybeAllocateUint64Array makes sure that the passed in array is allocated, of
-// the desired length and zeroed out.
 func MaybeAllocateUint64Array(array []uint64, length int) []uint64 {
+	__antithesis_instrumentation__.Notify(432091)
 	if cap(array) < length {
+		__antithesis_instrumentation__.Notify(432094)
 		return make([]uint64, length)
+	} else {
+		__antithesis_instrumentation__.Notify(432095)
 	}
+	__antithesis_instrumentation__.Notify(432092)
 	array = array[:length]
 	for n := 0; n < length; n += copy(array[n:], ZeroUint64Column) {
+		__antithesis_instrumentation__.Notify(432096)
 	}
+	__antithesis_instrumentation__.Notify(432093)
 	return array
 }
 
-// MaybeAllocateBoolArray makes sure that the passed in array is allocated, of
-// the desired length and zeroed out.
 func MaybeAllocateBoolArray(array []bool, length int) []bool {
+	__antithesis_instrumentation__.Notify(432097)
 	if cap(array) < length {
+		__antithesis_instrumentation__.Notify(432100)
 		return make([]bool, length)
+	} else {
+		__antithesis_instrumentation__.Notify(432101)
 	}
+	__antithesis_instrumentation__.Notify(432098)
 	array = array[:length]
 	for n := 0; n < length; n += copy(array[n:], ZeroBoolColumn) {
+		__antithesis_instrumentation__.Notify(432102)
 	}
+	__antithesis_instrumentation__.Notify(432099)
 	return array
 }
 
-// MaybeAllocateLimitedUint64Array is an optimized version of
-// MaybeAllocateUint64Array that can *only* be used when length is at most
-// coldata.MaxBatchSize.
 func MaybeAllocateLimitedUint64Array(array []uint64, length int) []uint64 {
+	__antithesis_instrumentation__.Notify(432103)
 	if cap(array) < length {
+		__antithesis_instrumentation__.Notify(432105)
 		return make([]uint64, length)
+	} else {
+		__antithesis_instrumentation__.Notify(432106)
 	}
+	__antithesis_instrumentation__.Notify(432104)
 	array = array[:length]
 	copy(array, ZeroUint64Column)
 	return array
 }
 
-// MaybeAllocateLimitedBoolArray is an optimized version of
-// maybeAllocateBool64Array that can *only* be used when length is at most
-// coldata.MaxBatchSize.
 func MaybeAllocateLimitedBoolArray(array []bool, length int) []bool {
+	__antithesis_instrumentation__.Notify(432107)
 	if cap(array) < length {
+		__antithesis_instrumentation__.Notify(432109)
 		return make([]bool, length)
+	} else {
+		__antithesis_instrumentation__.Notify(432110)
 	}
+	__antithesis_instrumentation__.Notify(432108)
 	array = array[:length]
 	copy(array, ZeroBoolColumn)
 	return array
 }
 
 var (
-	// ZeroBoolColumn is zeroed out boolean slice of coldata.MaxBatchSize
-	// length.
 	ZeroBoolColumn = make([]bool, coldata.MaxBatchSize)
-	// ZeroUint64Column is zeroed out uint64 slice of coldata.MaxBatchSize
-	// length.
+
 	ZeroUint64Column = make([]uint64, coldata.MaxBatchSize)
 )
 
-// HandleErrorFromDiskQueue takes in non-nil error emitted by colcontainer.Queue
-// or colcontainer.PartitionedDiskQueue implementations and propagates it
-// throughout the vectorized engine.
 func HandleErrorFromDiskQueue(err error) {
+	__antithesis_instrumentation__.Notify(432111)
 	if sqlerrors.IsDiskFullError(err) {
-		// We don't want to annotate the disk full error, so we propagate it
-		// as expected one.
+		__antithesis_instrumentation__.Notify(432112)
+
 		colexecerror.ExpectedError(err)
 	} else {
+		__antithesis_instrumentation__.Notify(432113)
 		colexecerror.InternalError(err)
 	}
 }
 
-// EnsureSelectionVectorLength returns an int slice that is guaranteed to have
-// the specified length. old is reused if possible but is *not* zeroed out.
 func EnsureSelectionVectorLength(old []int, length int) []int {
+	__antithesis_instrumentation__.Notify(432114)
 	if cap(old) >= length {
+		__antithesis_instrumentation__.Notify(432116)
 		return old[:length]
+	} else {
+		__antithesis_instrumentation__.Notify(432117)
 	}
+	__antithesis_instrumentation__.Notify(432115)
 	return make([]int, length)
 }
 
-// UpdateBatchState updates batch to have the specified length and the selection
-// vector. If usesSel is true, then sel must be non-nil; otherwise, sel is
-// ignored.
 func UpdateBatchState(batch coldata.Batch, length int, usesSel bool, sel []int) {
+	__antithesis_instrumentation__.Notify(432118)
 	batch.SetSelection(usesSel)
 	if usesSel {
+		__antithesis_instrumentation__.Notify(432120)
 		copy(batch.Selection()[:length], sel[:length])
+	} else {
+		__antithesis_instrumentation__.Notify(432121)
 	}
+	__antithesis_instrumentation__.Notify(432119)
 	batch.SetLength(length)
 }
 
-// DefaultSelectionVector contains all integers in [0, coldata.MaxBatchSize)
-// range.
 var DefaultSelectionVector []int
 
 func init() {

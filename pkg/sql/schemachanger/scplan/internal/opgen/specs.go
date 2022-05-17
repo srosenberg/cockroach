@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package opgen
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scop"
@@ -33,37 +25,45 @@ type transitionProperty interface {
 }
 
 func to(to scpb.Status, properties ...transitionProperty) transitionSpec {
+	__antithesis_instrumentation__.Notify(594090)
 	ts := transitionSpec{
 		to:         to,
 		revertible: true,
 	}
 	for _, p := range properties {
+		__antithesis_instrumentation__.Notify(594092)
 		p.apply(&ts)
 	}
+	__antithesis_instrumentation__.Notify(594091)
 	return ts
 }
 
 func revertible(b bool) transitionProperty {
+	__antithesis_instrumentation__.Notify(594093)
 	return revertibleProperty(b)
 }
 
 func minPhase(p scop.Phase) transitionProperty {
+	__antithesis_instrumentation__.Notify(594094)
 	return phaseProperty(p)
 }
 
 func emit(fn interface{}) transitionProperty {
+	__antithesis_instrumentation__.Notify(594095)
 	return emitFnSpec{fn}
 }
 
 type phaseProperty scop.Phase
 
 func (p phaseProperty) apply(spec *transitionSpec) {
+	__antithesis_instrumentation__.Notify(594096)
 	spec.minPhase = scop.Phase(p)
 }
 
 type revertibleProperty bool
 
 func (r revertibleProperty) apply(spec *transitionSpec) {
+	__antithesis_instrumentation__.Notify(594097)
 	spec.revertible = bool(r)
 }
 
@@ -74,5 +74,6 @@ type emitFnSpec struct {
 }
 
 func (e emitFnSpec) apply(spec *transitionSpec) {
+	__antithesis_instrumentation__.Notify(594098)
 	spec.emitFns = append(spec.emitFns, e.fn)
 }

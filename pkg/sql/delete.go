@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,6 +14,7 @@ import (
 
 var deleteNodePool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(465891)
 		return &deleteNode{}
 	},
 }
@@ -29,182 +22,226 @@ var deleteNodePool = sync.Pool{
 type deleteNode struct {
 	source planNode
 
-	// columns is set if this DELETE is returning any rows, to be
-	// consumed by a renderNode upstream. This occurs when there is a
-	// RETURNING clause with some scalar expressions.
 	columns colinfo.ResultColumns
 
 	run deleteRun
 }
 
-// deleteRun contains the run-time state of deleteNode during local execution.
 type deleteRun struct {
 	td         tableDeleter
 	rowsNeeded bool
 
-	// done informs a new call to BatchedNext() that the previous call
-	// to BatchedNext() has completed the work already.
 	done bool
 
-	// traceKV caches the current KV tracing flag.
 	traceKV bool
 
-	// partialIndexDelValsOffset is the offset of partial index delete
-	// indicators in the source values. It is equal to the number of fetched
-	// columns.
 	partialIndexDelValsOffset int
 
-	// rowIdxToRetIdx is the mapping from the columns returned by the deleter
-	// to the columns in the resultRowBuffer. A value of -1 is used to indicate
-	// that the column at that index is not part of the resultRowBuffer
-	// of the mutation. Otherwise, the value at the i-th index refers to the
-	// index of the resultRowBuffer where the i-th column is to be returned.
 	rowIdxToRetIdx []int
 }
 
 var _ mutationPlanNode = &deleteNode{}
 
 func (d *deleteNode) startExec(params runParams) error {
-	// cache traceKV during execution, to avoid re-evaluating it for every row.
+	__antithesis_instrumentation__.Notify(465892)
+
 	d.run.traceKV = params.p.ExtendedEvalContext().Tracing.KVTracingEnabled()
 
 	if d.run.rowsNeeded {
+		__antithesis_instrumentation__.Notify(465894)
 		d.run.td.rows = rowcontainer.NewRowContainer(
 			params.EvalContext().Mon.MakeBoundAccount(),
 			colinfo.ColTypeInfoFromResCols(d.columns))
+	} else {
+		__antithesis_instrumentation__.Notify(465895)
 	}
+	__antithesis_instrumentation__.Notify(465893)
 	return d.run.td.init(params.ctx, params.p.txn, params.EvalContext(), &params.EvalContext().Settings.SV)
 }
 
-// Next is required because batchedPlanNode inherits from planNode, but
-// batchedPlanNode doesn't really provide it. See the explanatory comments
-// in plan_batch.go.
-func (d *deleteNode) Next(params runParams) (bool, error) { panic("not valid") }
+func (d *deleteNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(465896)
+	panic("not valid")
+}
 
-// Values is required because batchedPlanNode inherits from planNode, but
-// batchedPlanNode doesn't really provide it. See the explanatory comments
-// in plan_batch.go.
-func (d *deleteNode) Values() tree.Datums { panic("not valid") }
+func (d *deleteNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(465897)
+	panic("not valid")
+}
 
-// BatchedNext implements the batchedPlanNode interface.
 func (d *deleteNode) BatchedNext(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(465898)
 	if d.run.done {
+		__antithesis_instrumentation__.Notify(465903)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(465904)
 	}
+	__antithesis_instrumentation__.Notify(465899)
 
-	// Advance one batch. First, clear the last batch.
 	d.run.td.clearLastBatch(params.ctx)
-	// Now consume/accumulate the rows for this batch.
+
 	lastBatch := false
 	for {
+		__antithesis_instrumentation__.Notify(465905)
 		if err := params.p.cancelChecker.Check(); err != nil {
+			__antithesis_instrumentation__.Notify(465909)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(465910)
 		}
+		__antithesis_instrumentation__.Notify(465906)
 
-		// Advance one individual row.
 		if next, err := d.source.Next(params); !next {
+			__antithesis_instrumentation__.Notify(465911)
 			lastBatch = true
 			if err != nil {
+				__antithesis_instrumentation__.Notify(465913)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(465914)
 			}
+			__antithesis_instrumentation__.Notify(465912)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(465915)
 		}
+		__antithesis_instrumentation__.Notify(465907)
 
-		// Process the deletion of the current source row,
-		// potentially accumulating the result row for later.
 		if err := d.processSourceRow(params, d.source.Values()); err != nil {
+			__antithesis_instrumentation__.Notify(465916)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(465917)
 		}
+		__antithesis_instrumentation__.Notify(465908)
 
-		// Are we done yet with the current batch?
-		if d.run.td.currentBatchSize >= d.run.td.maxBatchSize ||
-			d.run.td.b.ApproximateMutationBytes() >= d.run.td.maxBatchByteSize {
+		if d.run.td.currentBatchSize >= d.run.td.maxBatchSize || func() bool {
+			__antithesis_instrumentation__.Notify(465918)
+			return d.run.td.b.ApproximateMutationBytes() >= d.run.td.maxBatchByteSize == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(465919)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(465920)
 		}
 	}
+	__antithesis_instrumentation__.Notify(465900)
 
 	if d.run.td.currentBatchSize > 0 {
+		__antithesis_instrumentation__.Notify(465921)
 		if !lastBatch {
-			// We only run/commit the batch if there were some rows processed
-			// in this batch.
+			__antithesis_instrumentation__.Notify(465922)
+
 			if err := d.run.td.flushAndStartNewBatch(params.ctx); err != nil {
+				__antithesis_instrumentation__.Notify(465923)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(465924)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(465925)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(465926)
 	}
+	__antithesis_instrumentation__.Notify(465901)
 
 	if lastBatch {
+		__antithesis_instrumentation__.Notify(465927)
 		d.run.td.setRowsWrittenLimit(params.extendedEvalCtx.SessionData())
 		if err := d.run.td.finalize(params.ctx); err != nil {
+			__antithesis_instrumentation__.Notify(465929)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(465930)
 		}
-		// Remember we're done for the next call to BatchedNext().
-		d.run.done = true
-	}
+		__antithesis_instrumentation__.Notify(465928)
 
-	// Possibly initiate a run of CREATE STATISTICS.
+		d.run.done = true
+	} else {
+		__antithesis_instrumentation__.Notify(465931)
+	}
+	__antithesis_instrumentation__.Notify(465902)
+
 	params.ExecCfg().StatsRefresher.NotifyMutation(d.run.td.tableDesc(), d.run.td.lastBatchSize)
 
 	return d.run.td.lastBatchSize > 0, nil
 }
 
-// processSourceRow processes one row from the source for deletion and, if
-// result rows are needed, saves it in the result row container
 func (d *deleteNode) processSourceRow(params runParams, sourceVals tree.Datums) error {
-	// Create a set of partial index IDs to not delete from. Indexes should not
-	// be deleted from when they are partial indexes and the row does not
-	// satisfy the predicate and therefore do not exist in the partial index.
-	// This set is passed as a argument to tableDeleter.row below.
+	__antithesis_instrumentation__.Notify(465932)
+
 	var pm row.PartialIndexUpdateHelper
 	if n := len(d.run.td.tableDesc().PartialIndexes()); n > 0 {
+		__antithesis_instrumentation__.Notify(465936)
 		offset := d.run.partialIndexDelValsOffset
 		partialIndexDelVals := sourceVals[offset : offset+n]
 
 		err := pm.Init(tree.Datums{}, partialIndexDelVals, d.run.td.tableDesc())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(465938)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(465939)
 		}
+		__antithesis_instrumentation__.Notify(465937)
 
-		// Truncate sourceVals so that it no longer includes partial index
-		// predicate values.
 		sourceVals = sourceVals[:d.run.partialIndexDelValsOffset]
+	} else {
+		__antithesis_instrumentation__.Notify(465940)
 	}
+	__antithesis_instrumentation__.Notify(465933)
 
-	// Queue the deletion in the KV batch.
 	if err := d.run.td.row(params.ctx, sourceVals, pm, d.run.traceKV); err != nil {
+		__antithesis_instrumentation__.Notify(465941)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465942)
 	}
+	__antithesis_instrumentation__.Notify(465934)
 
-	// If result rows need to be accumulated, do it.
 	if d.run.td.rows != nil {
-		// The new values can include all columns, so the values may contain
-		// additional columns for every newly dropped column not visible. We do not
-		// want them to be available for RETURNING.
-		//
-		// d.run.rows.NumCols() is guaranteed to only contain the requested
-		// public columns.
+		__antithesis_instrumentation__.Notify(465943)
+
 		resultValues := make(tree.Datums, d.run.td.rows.NumCols())
 		for i, retIdx := range d.run.rowIdxToRetIdx {
+			__antithesis_instrumentation__.Notify(465945)
 			if retIdx >= 0 {
+				__antithesis_instrumentation__.Notify(465946)
 				resultValues[retIdx] = sourceVals[i]
+			} else {
+				__antithesis_instrumentation__.Notify(465947)
 			}
 		}
+		__antithesis_instrumentation__.Notify(465944)
 
 		if _, err := d.run.td.rows.AddRow(params.ctx, resultValues); err != nil {
+			__antithesis_instrumentation__.Notify(465948)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(465949)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(465950)
 	}
+	__antithesis_instrumentation__.Notify(465935)
 
 	return nil
 }
 
-// BatchedCount implements the batchedPlanNode interface.
-func (d *deleteNode) BatchedCount() int { return d.run.td.lastBatchSize }
+func (d *deleteNode) BatchedCount() int {
+	__antithesis_instrumentation__.Notify(465951)
+	return d.run.td.lastBatchSize
+}
 
-// BatchedCount implements the batchedPlanNode interface.
-func (d *deleteNode) BatchedValues(rowIdx int) tree.Datums { return d.run.td.rows.At(rowIdx) }
+func (d *deleteNode) BatchedValues(rowIdx int) tree.Datums {
+	__antithesis_instrumentation__.Notify(465952)
+	return d.run.td.rows.At(rowIdx)
+}
 
 func (d *deleteNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(465953)
 	d.source.Close(ctx)
 	d.run.td.close(ctx)
 	*d = deleteNode{}
@@ -212,9 +249,11 @@ func (d *deleteNode) Close(ctx context.Context) {
 }
 
 func (d *deleteNode) rowsWritten() int64 {
+	__antithesis_instrumentation__.Notify(465954)
 	return d.run.td.rowsWritten
 }
 
 func (d *deleteNode) enableAutoCommit() {
+	__antithesis_instrumentation__.Notify(465955)
 	d.run.td.enableAutoCommit()
 }

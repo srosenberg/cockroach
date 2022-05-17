@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package heapprofiler
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,26 +19,12 @@ import (
 )
 
 var (
-	// varianceBytes is subtracted from the maxRSS value, in order to take
-	// a more liberal strategy when determining whether or not we should query
-	// dump. Chosen arbitrarily.
 	varianceBytes          = int64(64 * 1024 * 1024)
 	memLimitFn             = cgroups.GetMemoryLimit
 	memUsageFn             = cgroups.GetMemoryUsage
 	memInactiveFileUsageFn = cgroups.GetMemoryInactiveFileUsage
 )
 
-// ActiveQueryProfiler is used to take profiles of current active queries across all
-// sessions within a sql.SessionRegistry.
-//
-// MaybeDumpQueries() is meant to be called periodically. A profile is taken
-// every time the rate of change of memory usage (defined as the memory cgroup's
-// measure of current memory usage, minus file-backed memory on inactive LRU
-// list) from the previous run indicates that an OOM is probable before the next
-// call, given the process cgroup's memory limit.
-//
-// Profiles are also GCed periodically. The latest is always kept, and a couple
-// of the ones with the largest heap are also kept.
 type ActiveQueryProfiler struct {
 	profiler
 	cgroupMemLimit int64
@@ -57,30 +35,40 @@ type ActiveQueryProfiler struct {
 }
 
 const (
-	// QueryFileNamePrefix is the prefix of files containing pprof data.
 	QueryFileNamePrefix = "activequeryprof"
-	// QueryFileNameSuffix is the suffix of files containing query data.
+
 	QueryFileNameSuffix = ".csv"
 )
 
-// NewActiveQueryProfiler creates a NewQueryProfiler. dir is the directory in which
-// profiles are to be stored.
 func NewActiveQueryProfiler(
 	ctx context.Context, dir string, st *cluster.Settings,
 ) (*ActiveQueryProfiler, error) {
+	__antithesis_instrumentation__.Notify(193503)
 	if dir == "" {
+		__antithesis_instrumentation__.Notify(193507)
 		return nil, errors.AssertionFailedf("need to specify dir for NewQueryProfiler")
+	} else {
+		__antithesis_instrumentation__.Notify(193508)
 	}
+	__antithesis_instrumentation__.Notify(193504)
 
 	dumpStore := dumpstore.NewStore(dir, maxCombinedFileSize, st)
 
 	maxMem, warn, err := memLimitFn()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193509)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193510)
 	}
+	__antithesis_instrumentation__.Notify(193505)
 	if warn != "" {
+		__antithesis_instrumentation__.Notify(193511)
 		log.Warningf(ctx, "warning when reading cgroup memory limit: %s", warn)
+	} else {
+		__antithesis_instrumentation__.Notify(193512)
 	}
+	__antithesis_instrumentation__.Notify(193506)
 
 	log.Infof(ctx, "writing go query profiles to %s", dir)
 	qp := &ActiveQueryProfiler{
@@ -92,63 +80,86 @@ func NewActiveQueryProfiler(
 	return qp, nil
 }
 
-// MaybeDumpQueries takes a query profile if the rate of change between curRSS
-// and prevRSS indicates that we are close to the system memory limit, implying
-// OOM is probable.
 func (o *ActiveQueryProfiler) MaybeDumpQueries(
 	ctx context.Context, registry *sql.SessionRegistry, st *cluster.Settings,
 ) {
+	__antithesis_instrumentation__.Notify(193513)
 	defer func() {
+		__antithesis_instrumentation__.Notify(193515)
 		if p := recover(); p != nil {
+			__antithesis_instrumentation__.Notify(193516)
 			logcrash.ReportPanic(ctx, &st.SV, p, 1)
+		} else {
+			__antithesis_instrumentation__.Notify(193517)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(193514)
 	shouldDump, memUsage := o.shouldDump(ctx, st)
 	now := o.now()
-	if shouldDump && o.takeQueryProfile(ctx, registry, now, memUsage) {
-		// We only remove old files if the current dump was
-		// successful. Otherwise, the GC may remove "interesting" files
-		// from a previous crash.
+	if shouldDump && func() bool {
+		__antithesis_instrumentation__.Notify(193518)
+		return o.takeQueryProfile(ctx, registry, now, memUsage) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(193519)
+
 		o.store.gcProfiles(ctx, now)
+	} else {
+		__antithesis_instrumentation__.Notify(193520)
 	}
 }
 
-// shouldDump indicates whether or not a query dump should occur, based on the
-// heuristics involving runtime stats such as memory usage. The current memory
-// usage is also returned for use when generating a new filename for the
-// heapprofiler store.
-//
-// Always returns false if the ActiveQueryDumpsEnabled cluster setting is
-// disabled.
 func (o *ActiveQueryProfiler) shouldDump(ctx context.Context, st *cluster.Settings) (bool, int64) {
+	__antithesis_instrumentation__.Notify(193521)
 	if !ActiveQueryDumpsEnabled.Get(&st.SV) {
+		__antithesis_instrumentation__.Notify(193527)
 		return false, 0
+	} else {
+		__antithesis_instrumentation__.Notify(193528)
 	}
+	__antithesis_instrumentation__.Notify(193522)
 	cgMemUsage, _, err := memUsageFn()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193529)
 		log.Errorf(ctx, "failed to fetch cgroup memory usage: %v", err)
 		return false, 0
+	} else {
+		__antithesis_instrumentation__.Notify(193530)
 	}
+	__antithesis_instrumentation__.Notify(193523)
 	cgInactiveFileUsage, _, err := memInactiveFileUsageFn()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193531)
 		log.Errorf(ctx, "failed to fetch cgroup memory inactive file usage: %v", err)
 		return false, 0
+	} else {
+		__antithesis_instrumentation__.Notify(193532)
 	}
+	__antithesis_instrumentation__.Notify(193524)
 	curMemUsage := cgMemUsage - cgInactiveFileUsage
 
 	defer func() {
+		__antithesis_instrumentation__.Notify(193533)
 		o.mu.Lock()
 		defer o.mu.Unlock()
 		o.mu.prevMemUsage = curMemUsage
 	}()
+	__antithesis_instrumentation__.Notify(193525)
 
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.mu.prevMemUsage == 0 ||
-		curMemUsage <= o.mu.prevMemUsage ||
-		o.knobs.dontWriteProfiles {
+	if o.mu.prevMemUsage == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(193534)
+		return curMemUsage <= o.mu.prevMemUsage == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(193535)
+		return o.knobs.dontWriteProfiles == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(193536)
 		return false, curMemUsage
+	} else {
+		__antithesis_instrumentation__.Notify(193537)
 	}
+	__antithesis_instrumentation__.Notify(193526)
 	diff := curMemUsage - o.mu.prevMemUsage
 
 	return curMemUsage+diff >= o.cgroupMemLimit-varianceBytes, curMemUsage
@@ -157,20 +168,29 @@ func (o *ActiveQueryProfiler) shouldDump(ctx context.Context, st *cluster.Settin
 func (o *ActiveQueryProfiler) takeQueryProfile(
 	ctx context.Context, registry *sql.SessionRegistry, now time.Time, curMemUsage int64,
 ) bool {
+	__antithesis_instrumentation__.Notify(193538)
 	path := o.store.makeNewFileName(now, curMemUsage)
 
 	f, err := os.Create(path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193541)
 		log.Errorf(ctx, "error creating query profile %s: %v", path, err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193542)
 	}
+	__antithesis_instrumentation__.Notify(193539)
 	defer f.Close()
 
 	writer := debug.NewActiveQueriesWriter(registry.SerializeAll(), f)
 	err = writer.Write()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193543)
 		log.Errorf(ctx, "error writing active queries to profile: %v", err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193544)
 	}
+	__antithesis_instrumentation__.Notify(193540)
 	return true
 }

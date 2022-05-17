@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package heapprofiler
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,33 +15,25 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// StatsProfiler is used to take snapshots of the overall memory statistics
-// to break down overall RSS memory usage.
-//
-// MaybeTakeProfile() is supposed to be called periodically. A profile is taken
-// every time RSS bytes exceeds the previous high-water mark. The
-// recorded high-water mark is also reset periodically, so that we take some
-// profiles periodically.
-// Profiles are also GCed periodically. The latest is always kept, and a couple
-// of the ones with the largest heap are also kept.
 type StatsProfiler struct {
 	profiler
 }
 
-// StatsFileNamePrefix is the prefix of memory stats dumps.
 const StatsFileNamePrefix = "memstats"
 
-// StatsFileNameSuffix is the suffix of memory stats dumps.
 const StatsFileNameSuffix = ".txt"
 
-// NewStatsProfiler creates a StatsProfiler. dir is the
-// directory in which profiles are to be stored.
 func NewStatsProfiler(
 	ctx context.Context, dir string, st *cluster.Settings,
 ) (*StatsProfiler, error) {
+	__antithesis_instrumentation__.Notify(193634)
 	if dir == "" {
+		__antithesis_instrumentation__.Notify(193636)
 		return nil, errors.AssertionFailedf("need to specify dir for NewStatsProfiler")
+	} else {
+		__antithesis_instrumentation__.Notify(193637)
 	}
+	__antithesis_instrumentation__.Notify(193635)
 
 	log.Infof(ctx, "writing memory stats to %s at last every %s", dir, resetHighWaterMarkInterval)
 
@@ -63,36 +47,56 @@ func NewStatsProfiler(
 	return hp, nil
 }
 
-// MaybeTakeProfile takes a profile if the non-go size is big enough.
 func (o *StatsProfiler) MaybeTakeProfile(
 	ctx context.Context, curRSS int64, ms *status.GoMemStats, cs *status.CGoMemStats,
 ) {
-	o.maybeTakeProfile(ctx, curRSS, func(ctx context.Context, path string) bool { return saveStats(ctx, path, ms, cs) })
+	__antithesis_instrumentation__.Notify(193638)
+	o.maybeTakeProfile(ctx, curRSS, func(ctx context.Context, path string) bool {
+		__antithesis_instrumentation__.Notify(193639)
+		return saveStats(ctx, path, ms, cs)
+	})
 }
 
 func saveStats(
 	ctx context.Context, path string, ms *status.GoMemStats, cs *status.CGoMemStats,
 ) bool {
+	__antithesis_instrumentation__.Notify(193640)
 	f, err := os.Create(path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193645)
 		log.Warningf(ctx, "error creating stats profile %s: %v", path, err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193646)
 	}
+	__antithesis_instrumentation__.Notify(193641)
 	defer f.Close()
 	msJ, err := json.MarshalIndent(&ms.MemStats, "", "  ")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193647)
 		log.Warningf(ctx, "error marshaling stats profile %s: %v", path, err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193648)
 	}
+	__antithesis_instrumentation__.Notify(193642)
 	csJ, err := json.MarshalIndent(cs, "", "  ")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193649)
 		log.Warningf(ctx, "error marshaling stats profile %s: %v", path, err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193650)
 	}
+	__antithesis_instrumentation__.Notify(193643)
 	_, err = fmt.Fprintf(f, "Go memory stats:\n%s\n----\nNon-Go stats:\n%s\n", msJ, csJ)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193651)
 		log.Warningf(ctx, "error writing stats profile %s: %v", path, err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193652)
 	}
+	__antithesis_instrumentation__.Notify(193644)
 	return true
 }

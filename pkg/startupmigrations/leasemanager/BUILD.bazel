@@ -13,6 +13,7 @@ go_library(
         "//pkg/roachpb",
         "//pkg/util/hlc",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -35,6 +36,7 @@ go_test(
         "//pkg/testutils/serverutils",
         "//pkg/util/hlc",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

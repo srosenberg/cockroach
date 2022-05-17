@@ -8,4 +8,5 @@ go_library(
     ],
     importpath = "github.com/cockroachdb/cockroach/pkg/roachprod/ui",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

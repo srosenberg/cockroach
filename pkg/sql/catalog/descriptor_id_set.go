@@ -1,74 +1,73 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catalog
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/util"
 )
 
-// DescriptorIDSet efficiently stores an unordered set of descriptor ids.
 type DescriptorIDSet struct {
 	set util.FastIntSet
 }
 
-// MakeDescriptorIDSet returns a set initialized with the given values.
 func MakeDescriptorIDSet(ids ...descpb.ID) DescriptorIDSet {
+	__antithesis_instrumentation__.Notify(264059)
 	s := DescriptorIDSet{}
 	for _, id := range ids {
+		__antithesis_instrumentation__.Notify(264061)
 		s.Add(id)
 	}
+	__antithesis_instrumentation__.Notify(264060)
 	return s
 }
 
-// Suppress the linter.
 var _ = MakeDescriptorIDSet
 
-// Add adds an id to the set. No-op if the id is already in the set.
 func (d *DescriptorIDSet) Add(id descpb.ID) {
+	__antithesis_instrumentation__.Notify(264062)
 	d.set.Add(int(id))
 }
 
-// Len returns the number of the ids in the set.
 func (d DescriptorIDSet) Len() int {
+	__antithesis_instrumentation__.Notify(264063)
 	return d.set.Len()
 }
 
-// Contains returns true if the set contains the column.
 func (d DescriptorIDSet) Contains(id descpb.ID) bool {
+	__antithesis_instrumentation__.Notify(264064)
 	return d.set.Contains(int(id))
 }
 
-// ForEach calls a function for each column in the set (in increasing order).
 func (d DescriptorIDSet) ForEach(f func(id descpb.ID)) {
-	d.set.ForEach(func(i int) { f(descpb.ID(i)) })
+	__antithesis_instrumentation__.Notify(264065)
+	d.set.ForEach(func(i int) { __antithesis_instrumentation__.Notify(264066); f(descpb.ID(i)) })
 }
 
-// Empty returns true if the set is empty.
-func (d DescriptorIDSet) Empty() bool { return d.set.Empty() }
+func (d DescriptorIDSet) Empty() bool {
+	__antithesis_instrumentation__.Notify(264067)
+	return d.set.Empty()
+}
 
-// Ordered returns a slice with all the descpb.IDs in the set, in
-// increasing order.
 func (d DescriptorIDSet) Ordered() []descpb.ID {
+	__antithesis_instrumentation__.Notify(264068)
 	if d.Empty() {
+		__antithesis_instrumentation__.Notify(264071)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(264072)
 	}
+	__antithesis_instrumentation__.Notify(264069)
 	result := make([]descpb.ID, 0, d.Len())
 	d.ForEach(func(i descpb.ID) {
+		__antithesis_instrumentation__.Notify(264073)
 		result = append(result, i)
 	})
+	__antithesis_instrumentation__.Notify(264070)
 	return result
 }
 
-// Remove removes the ID from the set.
 func (d *DescriptorIDSet) Remove(id descpb.ID) {
+	__antithesis_instrumentation__.Notify(264074)
 	d.set.Remove(int(id))
 }

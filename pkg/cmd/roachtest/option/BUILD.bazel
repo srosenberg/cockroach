@@ -13,5 +13,6 @@ go_library(
     deps = [
         "//pkg/roachprod",
         "//pkg/roachprod/install",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

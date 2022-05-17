@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
@@ -20,29 +12,56 @@ import (
 func (d *delegator) delegateShowClusterSettingList(
 	stmt *tree.ShowClusterSettingList,
 ) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465449)
 	isAdmin, err := d.catalog.HasAdminRole(d.ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465455)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465456)
 	}
+	__antithesis_instrumentation__.Notify(465450)
 	hasModify, err := d.catalog.HasRoleOption(d.ctx, roleoption.MODIFYCLUSTERSETTING)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465457)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465458)
 	}
+	__antithesis_instrumentation__.Notify(465451)
 	hasView, err := d.catalog.HasRoleOption(d.ctx, roleoption.VIEWCLUSTERSETTING)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465459)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465460)
 	}
-	if !hasModify && !hasView && !isAdmin {
+	__antithesis_instrumentation__.Notify(465452)
+	if !hasModify && func() bool {
+		__antithesis_instrumentation__.Notify(465461)
+		return !hasView == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(465462)
+		return !isAdmin == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(465463)
 		return nil, pgerror.Newf(pgcode.InsufficientPrivilege,
 			"only users with either %s or %s privileges are allowed to SHOW CLUSTER SETTINGS",
 			roleoption.MODIFYCLUSTERSETTING, roleoption.VIEWCLUSTERSETTING)
+	} else {
+		__antithesis_instrumentation__.Notify(465464)
 	}
+	__antithesis_instrumentation__.Notify(465453)
 	if stmt.All {
+		__antithesis_instrumentation__.Notify(465465)
 		return parse(
 			`SELECT variable, value, type AS setting_type, public, description
        FROM   crdb_internal.cluster_settings`,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(465466)
 	}
+	__antithesis_instrumentation__.Notify(465454)
 	return parse(
 		`SELECT variable, value, type AS setting_type, description
      FROM   crdb_internal.cluster_settings
@@ -53,32 +72,36 @@ func (d *delegator) delegateShowClusterSettingList(
 func (d *delegator) delegateShowTenantClusterSettingList(
 	stmt *tree.ShowTenantClusterSettingList,
 ) (tree.Statement, error) {
-	// Viewing cluster settings for other tenants is a more
-	// privileged operation than viewing local cluster settings. So we
-	// shouldn't be allowing with just the role option
-	// VIEWCLUSTERSETTINGS.
-	//
-	// TODO(knz): Using admin authz for now; we may want to introduce a
-	// more specific role option later.
+	__antithesis_instrumentation__.Notify(465467)
+
 	if err := d.catalog.RequireAdminRole(d.ctx, "show a tenant cluster setting"); err != nil {
+		__antithesis_instrumentation__.Notify(465471)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465472)
 	}
+	__antithesis_instrumentation__.Notify(465468)
 
 	if !d.evalCtx.Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(465473)
 		return nil, pgerror.Newf(pgcode.InsufficientPrivilege,
 			"SHOW CLUSTER SETTINGS FOR TENANT can only be called by system operators")
+	} else {
+		__antithesis_instrumentation__.Notify(465474)
 	}
+	__antithesis_instrumentation__.Notify(465469)
 
 	publicCol := `allsettings.public,`
 	var publicFilter string
 	if !stmt.All {
+		__antithesis_instrumentation__.Notify(465475)
 		publicCol = ``
 		publicFilter = `WHERE public IS TRUE`
+	} else {
+		__antithesis_instrumentation__.Notify(465476)
 	}
+	__antithesis_instrumentation__.Notify(465470)
 
-	// Note: we do the validation in SQL (via CASE...END) because the
-	// TenantID expression may be complex (incl subqueries, etc) and we
-	// cannot evaluate it in the go code.
 	return parse(`
 WITH
   tenant_id AS (SELECT (` + stmt.TenantID.String() + `):::INT AS tenant_id),

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -35,19 +27,26 @@ var convertURLCmd = &cobra.Command{
 }
 
 func runConvertURL(cmd *cobra.Command, _ []string) error {
+	__antithesis_instrumentation__.Notify(30379)
 	var u *pgurl.URL
 	if convertCtx.url == "" {
+		__antithesis_instrumentation__.Notify(30382)
 		fmt.Println("# WARNING: no URL specified via --url; using a random URL as example.")
 		fmt.Println()
 
 		u = pgurl.New()
 	} else {
+		__antithesis_instrumentation__.Notify(30383)
 		var err error
 		u, err = pgurl.Parse(convertCtx.url)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30384)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30385)
 		}
 	}
+	__antithesis_instrumentation__.Notify(30380)
 	u.
 		WithDefaultUsername(security.RootUser).
 		WithDefaultDatabase(catalogkeys.DefaultDatabaseName).
@@ -55,8 +54,12 @@ func runConvertURL(cmd *cobra.Command, _ []string) error {
 		WithDefaultPort(cliCtx.clientConnPort)
 
 	if err := u.Validate(); err != nil {
+		__antithesis_instrumentation__.Notify(30386)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30387)
 	}
+	__antithesis_instrumentation__.Notify(30381)
 
 	cp := ttycolor.StdoutProfile
 	yc := cp[ttycolor.Yellow]

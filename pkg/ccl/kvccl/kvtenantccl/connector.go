@@ -1,14 +1,8 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 // Package kvtenantccl provides utilities required by SQL-only tenant processes
 // in order to interact with the key-value layer.
 package kvtenantccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -48,27 +42,13 @@ func init() {
 	kvtenant.Factory = connectorFactory{}
 }
 
-// Connector mediates the communication of cluster-wide state to sandboxed
-// SQL-only tenant processes through a restricted interface.
-//
-// A Connector is instantiated inside a tenant's SQL process and is seeded with
-// a set of one or more network addresses that reference existing KV nodes in
-// the host cluster (or a load-balancer which fans out to some/all KV nodes). On
-// startup, it establishes contact with one of these nodes to learn about the
-// topology of the cluster and bootstrap the rest of SQL <-> KV network
-// communication.
-//
-// The Connector communicates with the host cluster through the roachpb.Internal
-// API.
-//
-// See below for the Connector's roles.
 type Connector struct {
 	log.AmbientContext
 
 	tenantID        roachpb.TenantID
 	rpcContext      *rpc.Context
 	rpcRetryOptions retry.Options
-	rpcDialTimeout  time.Duration // for testing
+	rpcDialTimeout  time.Duration
 	rpcDial         singleflight.Group
 	defaultZoneCfg  *zonepb.ZoneConfig
 	addrs           []string
@@ -86,56 +66,38 @@ type Connector struct {
 
 		allTenantOverrides map[string]settings.EncodedValue
 		specificOverrides  map[string]settings.EncodedValue
-		// notifyCh receives an event when there are changes to overrides.
+
 		notifyCh chan struct{}
 	}
 }
 
-// client represents an RPC client that proxies to a KV instance.
 type client struct {
 	roachpb.InternalClient
 	serverpb.StatusClient
 }
 
-// Connector is capable of providing information on each of the KV nodes in the
-// cluster in the form of NodeDescriptors. This obviates the need for SQL-only
-// tenant processes to join the cluster-wide gossip network.
 var _ kvcoord.NodeDescStore = (*Connector)(nil)
 
-// Connector is capable of providing Range addressing information in the form of
-// RangeDescriptors through delegated RangeLookup requests. This is necessary
-// because SQL-only tenants are restricted from reading Range Metadata keys
-// directly. Instead, the RangeLookup requests are proxied through existing KV
-// nodes while being subject to additional validation (e.g. is the Range being
-// requested owned by the requesting tenant?).
 var _ rangecache.RangeDescriptorDB = (*Connector)(nil)
 
-// Connector is capable of providing a filtered view of the SystemConfig
-// containing only information applicable to secondary tenants. This obviates
-// the need for SQL-only tenant processes to join the cluster-wide gossip
-// network.
 var _ config.SystemConfigProvider = (*Connector)(nil)
 
-// Connector is capable of find the region of every node in the cluster.
-// This is necessary for region validation for zone configurations and
-// multi-region primitives.
 var _ serverpb.RegionsServer = (*Connector)(nil)
 
-// Connector is capable of finding debug information about the current
-// tenant within the cluster. This is necessary for things such as
-// debug zip and range reports.
 var _ serverpb.TenantStatusServer = (*Connector)(nil)
 
-// Connector is capable of accessing span configurations for secondary tenants.
 var _ spanconfig.KVAccessor = (*Connector)(nil)
 
-// NewConnector creates a new Connector.
-// NOTE: Calling Start will set cfg.RPCContext.ClusterID.
 func NewConnector(cfg kvtenant.ConnectorConfig, addrs []string) *Connector {
+	__antithesis_instrumentation__.Notify(19641)
 	cfg.AmbientCtx.AddLogTag("tenant-connector", nil)
 	if cfg.TenantID.IsSystem() {
+		__antithesis_instrumentation__.Notify(19643)
 		panic("TenantID not set")
+	} else {
+		__antithesis_instrumentation__.Notify(19644)
 	}
+	__antithesis_instrumentation__.Notify(19642)
 	c := &Connector{
 		tenantID:        cfg.TenantID,
 		AmbientContext:  cfg.AmbientCtx,
@@ -152,371 +114,479 @@ func NewConnector(cfg kvtenant.ConnectorConfig, addrs []string) *Connector {
 	return c
 }
 
-// connectorFactory implements kvtenant.ConnectorFactory.
 type connectorFactory struct{}
 
 func (connectorFactory) NewConnector(
 	cfg kvtenant.ConnectorConfig, addrs []string,
 ) (kvtenant.Connector, error) {
+	__antithesis_instrumentation__.Notify(19645)
 	return NewConnector(cfg, addrs), nil
 }
 
-// Start launches the connector's worker thread and waits for it to successfully
-// connect to a KV node. Start returns once the connector has determined the
-// cluster's ID and set Connector.rpcContext.ClusterID.
 func (c *Connector) Start(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(19646)
 	gossipStartupCh := make(chan struct{})
 	settingsStartupCh := make(chan struct{})
 	bgCtx := c.AnnotateCtx(context.Background())
 
 	if err := c.rpcContext.Stopper.RunAsyncTask(bgCtx, "connector-gossip", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(19650)
 		ctx = c.AnnotateCtx(ctx)
 		ctx, cancel := c.rpcContext.Stopper.WithCancelOnQuiesce(ctx)
 		defer cancel()
 		c.runGossipSubscription(ctx, gossipStartupCh)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(19651)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19652)
 	}
+	__antithesis_instrumentation__.Notify(19647)
 
 	if err := c.rpcContext.Stopper.RunAsyncTask(bgCtx, "connector-settings", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(19653)
 		ctx = c.AnnotateCtx(ctx)
 		ctx, cancel := c.rpcContext.Stopper.WithCancelOnQuiesce(ctx)
 		defer cancel()
 		c.runTenantSettingsSubscription(ctx, settingsStartupCh)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(19654)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19655)
 	}
+	__antithesis_instrumentation__.Notify(19648)
 
-	// Block until we receive the first GossipSubscription event and the initial
-	// setting overrides.
-	for gossipStartupCh != nil || settingsStartupCh != nil {
+	for gossipStartupCh != nil || func() bool {
+		__antithesis_instrumentation__.Notify(19656)
+		return settingsStartupCh != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(19657)
 		select {
 		case <-gossipStartupCh:
+			__antithesis_instrumentation__.Notify(19658)
 			log.Infof(ctx, "kv connector gossip subscription started")
 			gossipStartupCh = nil
 		case <-settingsStartupCh:
+			__antithesis_instrumentation__.Notify(19659)
 			log.Infof(ctx, "kv connector tenant settings started")
 			settingsStartupCh = nil
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(19660)
 			return ctx.Err()
 		}
 	}
+	__antithesis_instrumentation__.Notify(19649)
 	return nil
 }
 
-// runGossipSubscription listens for gossip subscription events. It closes the
-// given channel once the ClusterID gossip key has been handled.
-// Exits when the context is done.
 func (c *Connector) runGossipSubscription(ctx context.Context, startupCh chan struct{}) {
+	__antithesis_instrumentation__.Notify(19661)
 	for ctx.Err() == nil {
+		__antithesis_instrumentation__.Notify(19662)
 		client, err := c.getClient(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19665)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(19666)
 		}
+		__antithesis_instrumentation__.Notify(19663)
 		stream, err := client.GossipSubscription(ctx, &roachpb.GossipSubscriptionRequest{
 			Patterns: gossipSubsPatterns,
 		})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19667)
 			log.Warningf(ctx, "error issuing GossipSubscription RPC: %v", err)
 			c.tryForgetClient(ctx, client)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(19668)
 		}
+		__antithesis_instrumentation__.Notify(19664)
 		for {
+			__antithesis_instrumentation__.Notify(19669)
 			e, err := stream.Recv()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(19673)
 				if err == io.EOF {
+					__antithesis_instrumentation__.Notify(19675)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(19676)
 				}
-				// Soft RPC error. Drop client and retry.
+				__antithesis_instrumentation__.Notify(19674)
+
 				log.Warningf(ctx, "error consuming GossipSubscription RPC: %v", err)
 				c.tryForgetClient(ctx, client)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(19677)
 			}
+			__antithesis_instrumentation__.Notify(19670)
 			if e.Error != nil {
-				// Hard logical error. We expect io.EOF next.
+				__antithesis_instrumentation__.Notify(19678)
+
 				log.Errorf(ctx, "error consuming GossipSubscription RPC: %v", e.Error)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(19679)
 			}
+			__antithesis_instrumentation__.Notify(19671)
 			handler, ok := gossipSubsHandlers[e.PatternMatched]
 			if !ok {
+				__antithesis_instrumentation__.Notify(19680)
 				log.Errorf(ctx, "unknown GossipSubscription pattern: %q", e.PatternMatched)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(19681)
 			}
+			__antithesis_instrumentation__.Notify(19672)
 			handler(c, ctx, e.Key, e.Content)
 
-			// Signal that startup is complete once the ClusterID gossip key has
-			// been handled.
-			if startupCh != nil && e.PatternMatched == gossip.KeyClusterID {
+			if startupCh != nil && func() bool {
+				__antithesis_instrumentation__.Notify(19682)
+				return e.PatternMatched == gossip.KeyClusterID == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(19683)
 				close(startupCh)
 				startupCh = nil
+			} else {
+				__antithesis_instrumentation__.Notify(19684)
 			}
 		}
 	}
 }
 
 var gossipSubsHandlers = map[string]func(*Connector, context.Context, string, roachpb.Value){
-	// Subscribe to the ClusterID update.
+
 	gossip.KeyClusterID: (*Connector).updateClusterID,
-	// Subscribe to all *NodeDescriptor updates.
+
 	gossip.MakePrefixPattern(gossip.KeyNodeIDPrefix): (*Connector).updateNodeAddress,
-	// Subscribe to a filtered view of *SystemConfig updates.
+
 	gossip.KeyDeprecatedSystemConfig: (*Connector).updateSystemConfig,
 }
 
 var gossipSubsPatterns = func() []string {
+	__antithesis_instrumentation__.Notify(19685)
 	patterns := make([]string, 0, len(gossipSubsHandlers))
 	for pattern := range gossipSubsHandlers {
+		__antithesis_instrumentation__.Notify(19687)
 		patterns = append(patterns, pattern)
 	}
+	__antithesis_instrumentation__.Notify(19686)
 	sort.Strings(patterns)
 	return patterns
 }()
 
-// updateClusterID handles updates to the "ClusterID" gossip key, and sets the
-// rpcContext so that it's available to other code running in the tenant.
 func (c *Connector) updateClusterID(ctx context.Context, key string, content roachpb.Value) {
+	__antithesis_instrumentation__.Notify(19688)
 	bytes, err := content.GetBytes()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19691)
 		log.Errorf(ctx, "invalid ClusterID value: %v", content.RawBytes)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(19692)
 	}
+	__antithesis_instrumentation__.Notify(19689)
 	clusterID, err := uuid.FromBytes(bytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19693)
 		log.Errorf(ctx, "invalid ClusterID value: %v", content.RawBytes)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(19694)
 	}
+	__antithesis_instrumentation__.Notify(19690)
 	c.rpcContext.StorageClusterID.Set(ctx, clusterID)
 }
 
-// updateNodeAddress handles updates to "node" gossip keys, performing the
-// corresponding update to the Connector's cached NodeDescriptor set.
 func (c *Connector) updateNodeAddress(ctx context.Context, key string, content roachpb.Value) {
+	__antithesis_instrumentation__.Notify(19695)
 	desc := new(roachpb.NodeDescriptor)
 	if err := content.GetProto(desc); err != nil {
+		__antithesis_instrumentation__.Notify(19697)
 		log.Errorf(ctx, "could not unmarshal node descriptor: %v", err)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(19698)
 	}
+	__antithesis_instrumentation__.Notify(19696)
 
-	// TODO(nvanbenschoten): this doesn't handle NodeDescriptor removal from the
-	// gossip network. As it turns out, neither does Gossip.updateNodeAddress.
-	// There is some logic in Gossip.updateNodeAddress that attempts to remove
-	// replaced network addresses, but that logic has been dead since 5bce267.
-	// Other than that, gossip callbacks are not invoked on info expiration, so
-	// nothing ever removes them from Gossip.nodeDescs. Fix this.
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.mu.nodeDescs[desc.NodeID] = desc
 }
 
-// GetNodeDescriptor implements the kvcoord.NodeDescStore interface.
 func (c *Connector) GetNodeDescriptor(nodeID roachpb.NodeID) (*roachpb.NodeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(19699)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	desc, ok := c.mu.nodeDescs[nodeID]
 	if !ok {
+		__antithesis_instrumentation__.Notify(19701)
 		return nil, errors.Errorf("unable to look up descriptor for n%d", nodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(19702)
 	}
+	__antithesis_instrumentation__.Notify(19700)
 	return desc, nil
 }
 
-// updateSystemConfig handles updates to a filtered view of the "system-db"
-// gossip key, performing the corresponding update to the Connector's cached
-// SystemConfig.
 func (c *Connector) updateSystemConfig(ctx context.Context, key string, content roachpb.Value) {
+	__antithesis_instrumentation__.Notify(19703)
 	cfg := config.NewSystemConfig(c.defaultZoneCfg)
 	if err := content.GetProto(&cfg.SystemConfigEntries); err != nil {
+		__antithesis_instrumentation__.Notify(19705)
 		log.Errorf(ctx, "could not unmarshal system config: %v", err)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(19706)
 	}
+	__antithesis_instrumentation__.Notify(19704)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.mu.systemConfig = cfg
 	for c := range c.mu.systemConfigChannels {
+		__antithesis_instrumentation__.Notify(19707)
 		select {
 		case c <- struct{}{}:
+			__antithesis_instrumentation__.Notify(19708)
 		default:
+			__antithesis_instrumentation__.Notify(19709)
 		}
 	}
 }
 
-// GetSystemConfig implements the config.SystemConfigProvider interface.
 func (c *Connector) GetSystemConfig() *config.SystemConfig {
-	// TODO(nvanbenschoten): we need to wait in `(*Connector).Start()` until the
-	// system config is populated. As is, there's a small chance that we return
-	// nil, which SQL does not handle.
+	__antithesis_instrumentation__.Notify(19710)
+
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.mu.systemConfig
 }
 
-// RegisterSystemConfigChannel implements the config.SystemConfigProvider
-// interface.
 func (c *Connector) RegisterSystemConfigChannel() (_ <-chan struct{}, unregister func()) {
-	// Create channel that receives new system config notifications. The channel
-	// has a size of 1 to prevent connector from having to block on it.
+	__antithesis_instrumentation__.Notify(19711)
+
 	ch := make(chan struct{}, 1)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.mu.systemConfigChannels[ch] = struct{}{}
 
-	// Notify the channel right away if we have a config.
 	if c.mu.systemConfig != nil {
+		__antithesis_instrumentation__.Notify(19713)
 		ch <- struct{}{}
+	} else {
+		__antithesis_instrumentation__.Notify(19714)
 	}
+	__antithesis_instrumentation__.Notify(19712)
 	return ch, func() {
+		__antithesis_instrumentation__.Notify(19715)
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		delete(c.mu.systemConfigChannels, ch)
 	}
 }
 
-// RangeLookup implements the kvcoord.RangeDescriptorDB interface.
 func (c *Connector) RangeLookup(
 	ctx context.Context, key roachpb.RKey, useReverseScan bool,
 ) ([]roachpb.RangeDescriptor, []roachpb.RangeDescriptor, error) {
-	// Proxy range lookup requests through the Internal service.
+	__antithesis_instrumentation__.Notify(19716)
+
 	ctx = c.AnnotateCtx(ctx)
 	for ctx.Err() == nil {
+		__antithesis_instrumentation__.Notify(19718)
 		client, err := c.getClient(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19722)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(19723)
 		}
+		__antithesis_instrumentation__.Notify(19719)
 		resp, err := client.RangeLookup(ctx, &roachpb.RangeLookupRequest{
 			Key: key,
-			// We perform the range lookup scan with a READ_UNCOMMITTED consistency
-			// level because we want the scan to return intents as well as committed
-			// values. The reason for this is because it's not clear whether the
-			// intent or the previous value points to the correct location of the
-			// Range. It gets even more complicated when there are split-related
-			// intents or a txn record co-located with a replica involved in the
-			// split. Since we cannot know the correct answer, we lookup both the
-			// pre- and post- transaction values.
+
 			ReadConsistency: roachpb.READ_UNCOMMITTED,
-			// Until we add protection in the Internal service implementation to
-			// prevent prefetching from traversing into RangeDescriptors owned by
-			// other tenants, we must disable prefetching.
+
 			PrefetchNum:     0,
 			PrefetchReverse: useReverseScan,
 		})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19724)
 			log.Warningf(ctx, "error issuing RangeLookup RPC: %v", err)
 			if grpcutil.IsAuthError(err) {
-				// Authentication or authorization error. Propagate.
+				__antithesis_instrumentation__.Notify(19726)
+
 				return nil, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(19727)
 			}
-			// Soft RPC error. Drop client and retry.
+			__antithesis_instrumentation__.Notify(19725)
+
 			c.tryForgetClient(ctx, client)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(19728)
 		}
+		__antithesis_instrumentation__.Notify(19720)
 		if resp.Error != nil {
-			// Hard logical error. Propagate.
+			__antithesis_instrumentation__.Notify(19729)
+
 			return nil, nil, resp.Error.GoError()
+		} else {
+			__antithesis_instrumentation__.Notify(19730)
 		}
+		__antithesis_instrumentation__.Notify(19721)
 		return resp.Descriptors, resp.PrefetchedDescriptors, nil
 	}
+	__antithesis_instrumentation__.Notify(19717)
 	return nil, nil, ctx.Err()
 }
 
-// Regions implements the serverpb.RegionsServer interface.
 func (c *Connector) Regions(
 	ctx context.Context, req *serverpb.RegionsRequest,
 ) (resp *serverpb.RegionsResponse, _ error) {
+	__antithesis_instrumentation__.Notify(19731)
 	if err := c.withClient(ctx, func(ctx context.Context, c *client) error {
+		__antithesis_instrumentation__.Notify(19733)
 		var err error
 		resp, err = c.Regions(ctx, req)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(19734)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(19735)
 	}
+	__antithesis_instrumentation__.Notify(19732)
 
 	return resp, nil
 }
 
-// TenantRanges implements the serverpb.TenantStatusServer interface
 func (c *Connector) TenantRanges(
 	ctx context.Context, req *serverpb.TenantRangesRequest,
 ) (resp *serverpb.TenantRangesResponse, _ error) {
+	__antithesis_instrumentation__.Notify(19736)
 	if err := c.withClient(ctx, func(ctx context.Context, c *client) error {
+		__antithesis_instrumentation__.Notify(19738)
 		var err error
 		resp, err = c.TenantRanges(ctx, req)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(19739)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(19740)
 	}
+	__antithesis_instrumentation__.Notify(19737)
 
 	return resp, nil
 }
 
-// FirstRange implements the kvcoord.RangeDescriptorDB interface.
 func (c *Connector) FirstRange() (*roachpb.RangeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(19741)
 	return nil, status.Error(codes.Unauthenticated, "kvtenant.Proxy does not have access to FirstRange")
 }
 
-// TokenBucket implements the kvtenant.TokenBucketProvider interface.
 func (c *Connector) TokenBucket(
 	ctx context.Context, in *roachpb.TokenBucketRequest,
 ) (*roachpb.TokenBucketResponse, error) {
-	// Proxy token bucket requests through the Internal service.
+	__antithesis_instrumentation__.Notify(19742)
+
 	ctx = c.AnnotateCtx(ctx)
 	for ctx.Err() == nil {
+		__antithesis_instrumentation__.Notify(19744)
 		client, err := c.getClient(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19748)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(19749)
 		}
+		__antithesis_instrumentation__.Notify(19745)
 		resp, err := client.TokenBucket(ctx, in)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19750)
 			log.Warningf(ctx, "error issuing TokenBucket RPC: %v", err)
 			if grpcutil.IsAuthError(err) {
-				// Authentication or authorization error. Propagate.
+				__antithesis_instrumentation__.Notify(19752)
+
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(19753)
 			}
-			// Soft RPC error. Drop client and retry.
+			__antithesis_instrumentation__.Notify(19751)
+
 			c.tryForgetClient(ctx, client)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(19754)
 		}
+		__antithesis_instrumentation__.Notify(19746)
 		if resp.Error != (errorspb.EncodedError{}) {
-			// Hard logical error. Propagate.
+			__antithesis_instrumentation__.Notify(19755)
+
 			return nil, errors.DecodeError(ctx, resp.Error)
+		} else {
+			__antithesis_instrumentation__.Notify(19756)
 		}
+		__antithesis_instrumentation__.Notify(19747)
 		return resp, nil
 	}
+	__antithesis_instrumentation__.Notify(19743)
 	return nil, ctx.Err()
 }
 
-// GetSpanConfigRecords implements the spanconfig.KVAccessor interface.
 func (c *Connector) GetSpanConfigRecords(
 	ctx context.Context, targets []spanconfig.Target,
 ) (records []spanconfig.Record, _ error) {
+	__antithesis_instrumentation__.Notify(19757)
 	if err := c.withClient(ctx, func(ctx context.Context, c *client) error {
+		__antithesis_instrumentation__.Notify(19759)
 		resp, err := c.GetSpanConfigs(ctx, &roachpb.GetSpanConfigsRequest{
 			Targets: spanconfig.TargetsToProtos(targets),
 		})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19762)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(19763)
 		}
+		__antithesis_instrumentation__.Notify(19760)
 
 		records, err = spanconfig.EntriesToRecords(resp.SpanConfigEntries)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19764)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(19765)
 		}
+		__antithesis_instrumentation__.Notify(19761)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(19766)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(19767)
 	}
+	__antithesis_instrumentation__.Notify(19758)
 	return records, nil
 }
 
-// UpdateSpanConfigRecords implements the spanconfig.KVAccessor
-// interface.
 func (c *Connector) UpdateSpanConfigRecords(
 	ctx context.Context,
 	toDelete []spanconfig.Target,
 	toUpsert []spanconfig.Record,
 	minCommitTS, maxCommitTS hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(19768)
 	return c.withClient(ctx, func(ctx context.Context, c *client) error {
+		__antithesis_instrumentation__.Notify(19769)
 		resp, err := c.UpdateSpanConfigs(ctx, &roachpb.UpdateSpanConfigsRequest{
 			ToDelete:           spanconfig.TargetsToProtos(toDelete),
 			ToUpsert:           spanconfig.RecordsToEntries(toUpsert),
@@ -524,144 +594,201 @@ func (c *Connector) UpdateSpanConfigRecords(
 			MaxCommitTimestamp: maxCommitTS,
 		})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19772)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(19773)
 		}
+		__antithesis_instrumentation__.Notify(19770)
 		if resp.Error.IsSet() {
-			// Logical error; propagate as such.
+			__antithesis_instrumentation__.Notify(19774)
+
 			return errors.DecodeError(ctx, resp.Error)
+		} else {
+			__antithesis_instrumentation__.Notify(19775)
 		}
+		__antithesis_instrumentation__.Notify(19771)
 		return nil
 	})
 }
 
-// GetAllSystemSpanConfigsThatApply implements the spanconfig.KVAccessor
-// interface.
 func (c *Connector) GetAllSystemSpanConfigsThatApply(
 	ctx context.Context, id roachpb.TenantID,
 ) ([]roachpb.SpanConfig, error) {
+	__antithesis_instrumentation__.Notify(19776)
 	var spanConfigs []roachpb.SpanConfig
 	if err := c.withClient(ctx, func(ctx context.Context, c *client) error {
+		__antithesis_instrumentation__.Notify(19778)
 		var err error
 		resp, err := c.GetAllSystemSpanConfigsThatApply(
 			ctx, &roachpb.GetAllSystemSpanConfigsThatApplyRequest{
 				TenantID: id,
 			})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19780)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(19781)
 		}
+		__antithesis_instrumentation__.Notify(19779)
 
 		spanConfigs = resp.SpanConfigs
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(19782)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(19783)
 	}
+	__antithesis_instrumentation__.Notify(19777)
 	return spanConfigs, nil
 }
 
-// WithTxn implements the spanconfig.KVAccessor interface.
 func (c *Connector) WithTxn(context.Context, *kv.Txn) spanconfig.KVAccessor {
+	__antithesis_instrumentation__.Notify(19784)
 	panic("not applicable")
 }
 
-// withClient is a convenience wrapper that executes the given closure while
-// papering over InternalClient retrieval errors.
 func (c *Connector) withClient(
 	ctx context.Context, f func(ctx context.Context, c *client) error,
 ) error {
+	__antithesis_instrumentation__.Notify(19785)
 	ctx = c.AnnotateCtx(ctx)
 	for ctx.Err() == nil {
+		__antithesis_instrumentation__.Notify(19787)
 		c, err := c.getClient(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19789)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(19790)
 		}
+		__antithesis_instrumentation__.Notify(19788)
 		return f(ctx, c)
 	}
+	__antithesis_instrumentation__.Notify(19786)
 	return ctx.Err()
 }
 
-// getClient returns the singleton InternalClient if one is currently active. If
-// not, the method attempts to dial one of the configured addresses. The method
-// blocks until either a connection is successfully established or the provided
-// context is canceled.
 func (c *Connector) getClient(ctx context.Context) (*client, error) {
+	__antithesis_instrumentation__.Notify(19791)
 	c.mu.RLock()
 	if client := c.mu.client; client != nil {
+		__antithesis_instrumentation__.Notify(19794)
 		c.mu.RUnlock()
 		return client, nil
+	} else {
+		__antithesis_instrumentation__.Notify(19795)
 	}
+	__antithesis_instrumentation__.Notify(19792)
 	ch, _ := c.rpcDial.DoChan("dial", func() (interface{}, error) {
+		__antithesis_instrumentation__.Notify(19796)
 		dialCtx := c.AnnotateCtx(context.Background())
 		dialCtx, cancel := c.rpcContext.Stopper.WithCancelOnQuiesce(dialCtx)
 		defer cancel()
 		var client *client
 		err := c.rpcContext.Stopper.RunTaskWithErr(dialCtx, "kvtenant.Connector: dial",
 			func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(19799)
 				var err error
 				client, err = c.dialAddrs(ctx)
 				return err
 			})
+		__antithesis_instrumentation__.Notify(19797)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19800)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(19801)
 		}
+		__antithesis_instrumentation__.Notify(19798)
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		c.mu.client = client
 		return client, nil
 	})
+	__antithesis_instrumentation__.Notify(19793)
 	c.mu.RUnlock()
 
 	select {
 	case res := <-ch:
+		__antithesis_instrumentation__.Notify(19802)
 		if res.Err != nil {
+			__antithesis_instrumentation__.Notify(19805)
 			return nil, res.Err
+		} else {
+			__antithesis_instrumentation__.Notify(19806)
 		}
+		__antithesis_instrumentation__.Notify(19803)
 		return res.Val.(*client), nil
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(19804)
 		return nil, ctx.Err()
 	}
 }
 
-// dialAddrs attempts to dial each of the configured addresses in a retry loop.
-// The method will only return a non-nil error on context cancellation.
 func (c *Connector) dialAddrs(ctx context.Context) (*client, error) {
+	__antithesis_instrumentation__.Notify(19807)
 	for r := retry.StartWithCtx(ctx, c.rpcRetryOptions); r.Next(); {
-		// Try each address on each retry iteration (in random order).
+		__antithesis_instrumentation__.Notify(19809)
+
 		for _, i := range rand.Perm(len(c.addrs)) {
+			__antithesis_instrumentation__.Notify(19810)
 			addr := c.addrs[i]
 			conn, err := c.dialAddr(ctx, addr)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(19812)
 				log.Warningf(ctx, "error dialing tenant KV address %s: %v", addr, err)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(19813)
 			}
+			__antithesis_instrumentation__.Notify(19811)
 			return &client{
 				InternalClient: roachpb.NewInternalClient(conn),
 				StatusClient:   serverpb.NewStatusClient(conn),
 			}, nil
 		}
 	}
+	__antithesis_instrumentation__.Notify(19808)
 	return nil, ctx.Err()
 }
 
 func (c *Connector) dialAddr(ctx context.Context, addr string) (conn *grpc.ClientConn, err error) {
+	__antithesis_instrumentation__.Notify(19814)
 	if c.rpcDialTimeout == 0 {
+		__antithesis_instrumentation__.Notify(19817)
 		return c.rpcContext.GRPCUnvalidatedDial(addr).Connect(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(19818)
 	}
+	__antithesis_instrumentation__.Notify(19815)
 	err = contextutil.RunWithTimeout(ctx, "dial addr", c.rpcDialTimeout, func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(19819)
 		conn, err = c.rpcContext.GRPCUnvalidatedDial(addr).Connect(ctx)
 		return err
 	})
+	__antithesis_instrumentation__.Notify(19816)
 	return conn, err
 }
 
 func (c *Connector) tryForgetClient(ctx context.Context, client roachpb.InternalClient) {
+	__antithesis_instrumentation__.Notify(19820)
 	if ctx.Err() != nil {
-		// Error (may be) due to context. Don't forget client.
+		__antithesis_instrumentation__.Notify(19822)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(19823)
 	}
-	// Compare-and-swap to avoid thrashing.
+	__antithesis_instrumentation__.Notify(19821)
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.mu.client == client {
+		__antithesis_instrumentation__.Notify(19824)
 		c.mu.client = nil
+	} else {
+		__antithesis_instrumentation__.Notify(19825)
 	}
 }

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,10 +13,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// FollowerReadsEnabled controls whether replicas attempt to serve follower
-// reads. The closed timestamp machinery is unaffected by this, i.e. the same
-// information is collected and passed around, regardless of the value of this
-// setting.
 var FollowerReadsEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"kv.closed_timestamp.follower_reads_enabled",
@@ -32,89 +20,98 @@ var FollowerReadsEnabled = settings.RegisterBoolSetting(
 	true,
 ).WithPublic()
 
-// BatchCanBeEvaluatedOnFollower determines if a batch consists exclusively of
-// requests that can be evaluated on a follower replica, given a sufficiently
-// advanced closed timestamp.
 func BatchCanBeEvaluatedOnFollower(ba roachpb.BatchRequest) bool {
-	// Explanation of conditions:
-	// 1. the batch cannot have or intend to receive a timestamp set from a
-	//    server-side clock. If a follower with a lagging clock sets its timestamp
-	//    and this then allows the follower to evaluate the batch as a follower
-	//    read, then the batch might miss past writes served at higher timestamps
-	//    on the leaseholder.
-	// 2. each request in the batch needs to be "transactional", because those are
-	//    the only ones that have clearly defined semantics when served under the
-	//    closed timestamp.
-	// 3. the batch needs to be read-only, because a follower replica cannot
-	//    propose writes to Raft.
-	// 4. the batch needs to be non-locking, because unreplicated locks are only
-	//    held on the leaseholder.
-	tsFromServerClock := ba.Txn == nil && (ba.Timestamp.IsEmpty() || ba.TimestampFromServerClock != nil)
+	__antithesis_instrumentation__.Notify(117417)
+
+	tsFromServerClock := ba.Txn == nil && func() bool {
+		__antithesis_instrumentation__.Notify(117419)
+		return (ba.Timestamp.IsEmpty() || func() bool {
+			__antithesis_instrumentation__.Notify(117420)
+			return ba.TimestampFromServerClock != nil == true
+		}() == true) == true
+	}() == true
 	if tsFromServerClock {
+		__antithesis_instrumentation__.Notify(117421)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(117422)
 	}
-	return ba.IsAllTransactional() && ba.IsReadOnly() && !ba.IsLocking()
+	__antithesis_instrumentation__.Notify(117418)
+	return ba.IsAllTransactional() && func() bool {
+		__antithesis_instrumentation__.Notify(117423)
+		return ba.IsReadOnly() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(117424)
+		return !ba.IsLocking() == true
+	}() == true
 }
 
-// canServeFollowerReadRLocked tests, when a range lease could not be acquired,
-// whether the batch can be served as a follower read despite the error. Only
-// non-locking, read-only requests can be served as follower reads. The batch
-// must be transactional and composed exclusively of this kind of request to be
-// accepted as a follower read.
 func (r *Replica) canServeFollowerReadRLocked(ctx context.Context, ba *roachpb.BatchRequest) bool {
-	eligible := BatchCanBeEvaluatedOnFollower(*ba) && FollowerReadsEnabled.Get(&r.store.cfg.Settings.SV)
+	__antithesis_instrumentation__.Notify(117425)
+	eligible := BatchCanBeEvaluatedOnFollower(*ba) && func() bool {
+		__antithesis_instrumentation__.Notify(117430)
+		return FollowerReadsEnabled.Get(&r.store.cfg.Settings.SV) == true
+	}() == true
 	if !eligible {
-		// We couldn't do anything with the error, propagate it.
+		__antithesis_instrumentation__.Notify(117431)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(117432)
 	}
+	__antithesis_instrumentation__.Notify(117426)
 
 	repDesc, err := r.getReplicaDescriptorRLocked()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(117433)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(117434)
 	}
+	__antithesis_instrumentation__.Notify(117427)
 
 	switch typ := repDesc.GetType(); typ {
 	case roachpb.VOTER_FULL, roachpb.VOTER_INCOMING, roachpb.NON_VOTER:
+		__antithesis_instrumentation__.Notify(117435)
 	default:
+		__antithesis_instrumentation__.Notify(117436)
 		log.Eventf(ctx, "%s replicas cannot serve follower reads", typ)
 		return false
 	}
+	__antithesis_instrumentation__.Notify(117428)
 
 	requiredFrontier := ba.RequiredFrontier()
-	maxClosed := r.getClosedTimestampRLocked(ctx, requiredFrontier /* sufficient */)
+	maxClosed := r.getClosedTimestampRLocked(ctx, requiredFrontier)
 	canServeFollowerRead := requiredFrontier.LessEq(maxClosed)
 	tsDiff := requiredFrontier.GoTime().Sub(maxClosed.GoTime())
 	if !canServeFollowerRead {
+		__antithesis_instrumentation__.Notify(117437)
 		uncertaintyLimitStr := "n/a"
 		if ba.Txn != nil {
+			__antithesis_instrumentation__.Notify(117439)
 			uncertaintyLimitStr = ba.Txn.GlobalUncertaintyLimit.String()
+		} else {
+			__antithesis_instrumentation__.Notify(117440)
 		}
+		__antithesis_instrumentation__.Notify(117438)
 
-		// We can't actually serve the read based on the closed timestamp.
-		// Signal the clients that we want an update so that future requests can succeed.
 		log.Eventf(ctx, "can't serve follower read; closed timestamp too low by: %s; maxClosed: %s ts: %s uncertaintyLimit: %s",
 			tsDiff, maxClosed, ba.Timestamp, uncertaintyLimitStr)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(117441)
 	}
+	__antithesis_instrumentation__.Notify(117429)
 
-	// This replica can serve this read!
-	//
-	// TODO(tschottdorf): once a read for a timestamp T has been served, the replica may
-	// serve reads for that and smaller timestamps forever.
 	log.Eventf(ctx, "%s; query timestamp below closed timestamp by %s", kvbase.FollowerReadServingMsg, -tsDiff)
 	r.store.metrics.FollowerReadsCount.Inc(1)
 	return true
 }
 
-// getClosedTimestampRLocked is like maxClosed, except that it requires r.mu to be
-// rlocked. It also optionally takes a hint: if sufficient is not
-// empty, getClosedTimestampRLocked might return a timestamp that's lower than the
-// maximum closed timestamp that we know about, as long as the returned
-// timestamp is still >= sufficient. This is a performance optimization because
-// we can avoid consulting the ClosedTimestampReceiver.
 func (r *Replica) getClosedTimestampRLocked(
 	ctx context.Context, sufficient hlc.Timestamp,
 ) hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(117442)
 	appliedLAI := ctpb.LAI(r.mu.state.LeaseAppliedIndex)
 	leaseholder := r.mu.state.Lease.Replica.NodeID
 	raftClosed := r.mu.state.RaftClosedTimestamp
@@ -126,11 +123,9 @@ func (r *Replica) getClosedTimestampRLocked(
 	return maxClosed
 }
 
-// GetClosedTimestamp returns the maximum closed timestamp for this range.
-//
-// GetClosedTimestamp is part of the EvalContext interface.
 func (r *Replica) GetClosedTimestamp(ctx context.Context) hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(117443)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.getClosedTimestampRLocked(ctx, hlc.Timestamp{} /* sufficient */)
+	return r.getClosedTimestampRLocked(ctx, hlc.Timestamp{})
 }

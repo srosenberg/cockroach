@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package install
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,14 +20,10 @@ const (
 )
 
 type archInfo struct {
-	// DebugArchitecture is the "target triple" string for debug
-	// builds on the given architecture.
 	DebugArchitecture string
-	// ReleaseArchitecture is the "target triple" string for debug
-	// builds on the given architecture.
+
 	ReleaseArchitecture string
-	// LibraryExtension is the extensions that dynamic libraries
-	// have on the given architecture.
+
 	LibraryExtension string
 }
 
@@ -59,71 +47,87 @@ var (
 	crdbLibraries = []string{"libgeos", "libgeos_c"}
 )
 
-// ArchInfoForOS returns an ArchInfo for the given OS if the OS is
-// currently supported.
 func archInfoForOS(os string) (archInfo, error) {
+	__antithesis_instrumentation__.Notify(181746)
 	switch os {
 	case "linux":
+		__antithesis_instrumentation__.Notify(181747)
 		return linuxArchInfo, nil
 	case "darwin":
+		__antithesis_instrumentation__.Notify(181748)
 		return darwinArchInfo, nil
 	case "windows":
+		__antithesis_instrumentation__.Notify(181749)
 		return windowsArchInfo, nil
 	default:
+		__antithesis_instrumentation__.Notify(181750)
 		return archInfo{}, errors.Errorf("no release architecture information for %q", os)
 	}
 }
 
-// GetEdgeURL returns a URL from the edge binary archive. If no SHA is
-// given, the latest version is returned.
 func getEdgeURL(urlPathBase, SHA, arch string, ext string) (*url.URL, error) {
+	__antithesis_instrumentation__.Notify(181751)
 	edgeBinaryLocation, err := url.Parse(edgeBinaryServer)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181755)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(181756)
 	}
+	__antithesis_instrumentation__.Notify(181752)
 	edgeBinaryLocation.Path = urlPathBase
-	// If a target architecture is provided, attach that.
+
 	if len(arch) > 0 {
+		__antithesis_instrumentation__.Notify(181757)
 		edgeBinaryLocation.Path += "." + arch
+	} else {
+		__antithesis_instrumentation__.Notify(181758)
 	}
-	// If a specific SHA is provided, just attach that.
+	__antithesis_instrumentation__.Notify(181753)
+
 	if len(SHA) > 0 {
+		__antithesis_instrumentation__.Notify(181759)
 		edgeBinaryLocation.Path += "." + SHA + ext
 	} else {
+		__antithesis_instrumentation__.Notify(181760)
 		edgeBinaryLocation.Path += ext + ".LATEST"
-		// Otherwise, find the latest SHA binary available. This works because
-		// "[executable].LATEST" redirects to the latest SHA.
+
 		resp, err := httputil.Head(context.TODO(), edgeBinaryLocation.String())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(181762)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(181763)
 		}
+		__antithesis_instrumentation__.Notify(181761)
 		defer resp.Body.Close()
 		edgeBinaryLocation = resp.Request.URL
 	}
+	__antithesis_instrumentation__.Notify(181754)
 
 	return edgeBinaryLocation, nil
 }
 
-// shaFromEdgeURL returns the SHA of the given URL. The SHA is based
-// on the current format of URLs.
 func shaFromEdgeURL(u *url.URL) string {
+	__antithesis_instrumentation__.Notify(181764)
 	urlSplit := strings.Split(u.Path, ".")
 	return urlSplit[len(urlSplit)-1]
 }
 
 func cockroachReleaseURL(version string, arch string) (*url.URL, error) {
+	__antithesis_instrumentation__.Notify(181765)
 	binURL, err := url.Parse(releaseBinaryServer)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181767)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(181768)
 	}
+	__antithesis_instrumentation__.Notify(181766)
 	binURL.Path += fmt.Sprintf("cockroach-%s.%s.tgz", version, arch)
 	return binURL, nil
 }
 
-// StageApplication downloads the appropriate artifact for the given
-// application name into the specified directory on each node in the
-// cluster. If no version is specified, the latest artifact is used if
-// available.
 func StageApplication(
 	ctx context.Context,
 	l *logger.Logger,
@@ -133,22 +137,32 @@ func StageApplication(
 	os string,
 	destDir string,
 ) error {
+	__antithesis_instrumentation__.Notify(181769)
 	archInfo, err := archInfoForOS(os)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181771)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181772)
 	}
+	__antithesis_instrumentation__.Notify(181770)
 
 	switch applicationName {
 	case "cockroach":
+		__antithesis_instrumentation__.Notify(181773)
 		sha, err := StageRemoteBinary(
 			ctx, l, c, applicationName, "cockroach/cockroach", version, archInfo.DebugArchitecture, destDir,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(181779)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(181780)
 		}
-		// NOTE: libraries may not be present in older versions.
-		// Use the sha for the binary to download the same remote library.
+		__antithesis_instrumentation__.Notify(181774)
+
 		for _, library := range crdbLibraries {
+			__antithesis_instrumentation__.Notify(181781)
 			if err := StageOptionalRemoteLibrary(
 				ctx,
 				l,
@@ -160,40 +174,56 @@ func StageApplication(
 				archInfo.LibraryExtension,
 				destDir,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(181782)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(181783)
 			}
 		}
+		__antithesis_instrumentation__.Notify(181775)
 		return nil
 	case "workload":
+		__antithesis_instrumentation__.Notify(181776)
 		_, err := StageRemoteBinary(
-			ctx, l, c, applicationName, "cockroach/workload", version, "" /* arch */, destDir,
+			ctx, l, c, applicationName, "cockroach/workload", version, "", destDir,
 		)
 		return err
 	case "release":
+		__antithesis_instrumentation__.Notify(181777)
 		return StageCockroachRelease(ctx, l, c, version, archInfo.ReleaseArchitecture, destDir)
 	default:
+		__antithesis_instrumentation__.Notify(181778)
 		return fmt.Errorf("unknown application %s", applicationName)
 	}
 }
 
-// URLsForApplication returns a slice of URLs that should be
-// downloaded for the given application.
 func URLsForApplication(application string, version string, os string) ([]*url.URL, error) {
+	__antithesis_instrumentation__.Notify(181784)
 	archInfo, err := archInfoForOS(os)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181786)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(181787)
 	}
+	__antithesis_instrumentation__.Notify(181785)
 
 	switch application {
 	case "cockroach":
-		u, err := getEdgeURL("cockroach/cockroach", version, archInfo.DebugArchitecture, "" /* extension */)
+		__antithesis_instrumentation__.Notify(181788)
+		u, err := getEdgeURL("cockroach/cockroach", version, archInfo.DebugArchitecture, "")
 		if err != nil {
+			__antithesis_instrumentation__.Notify(181796)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(181797)
 		}
+		__antithesis_instrumentation__.Notify(181789)
 
 		urls := []*url.URL{u}
 		sha := shaFromEdgeURL(u)
 		for _, library := range crdbLibraries {
+			__antithesis_instrumentation__.Notify(181798)
 			u, err := getEdgeURL(
 				fmt.Sprintf("cockroach/lib/%s", library),
 				sha,
@@ -201,42 +231,59 @@ func URLsForApplication(application string, version string, os string) ([]*url.U
 				archInfo.LibraryExtension,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(181800)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(181801)
 			}
+			__antithesis_instrumentation__.Notify(181799)
 			urls = append(urls, u)
 		}
+		__antithesis_instrumentation__.Notify(181790)
 		return urls, nil
 	case "workload":
-		u, err := getEdgeURL("cockroach/workload", version, "" /* arch */, "" /* extension */)
+		__antithesis_instrumentation__.Notify(181791)
+		u, err := getEdgeURL("cockroach/workload", version, "", "")
 		if err != nil {
+			__antithesis_instrumentation__.Notify(181802)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(181803)
 		}
+		__antithesis_instrumentation__.Notify(181792)
 		return []*url.URL{u}, nil
 	case "release":
+		__antithesis_instrumentation__.Notify(181793)
 		u, err := cockroachReleaseURL(version, archInfo.ReleaseArchitecture)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(181804)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(181805)
 		}
+		__antithesis_instrumentation__.Notify(181794)
 		return []*url.URL{u}, nil
 	default:
+		__antithesis_instrumentation__.Notify(181795)
 		return nil, fmt.Errorf("unknown application %s", application)
 	}
 }
 
-// StageRemoteBinary downloads a cockroach edge binary with the provided
-// application path to each specified by the cluster to the specified directory.
-// If no SHA is specified, the latest build of the binary is used instead.
-// Returns the SHA of the resolved binary.
 func StageRemoteBinary(
 	ctx context.Context,
 	l *logger.Logger,
 	c *SyncedCluster,
 	applicationName, urlPathBase, SHA, arch, dir string,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(181806)
 	binURL, err := getEdgeURL(urlPathBase, SHA, arch, "")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181808)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(181809)
 	}
+	__antithesis_instrumentation__.Notify(181807)
 	l.Printf("Resolved binary url for %s: %s", applicationName, binURL)
 	target := filepath.Join(dir, applicationName)
 	cmdStr := fmt.Sprintf(
@@ -247,20 +294,21 @@ func StageRemoteBinary(
 	)
 }
 
-// StageOptionalRemoteLibrary downloads a library from the cockroach edge with
-// the provided application path to each specified by the cluster to <dir>/lib.
-// If no SHA is specified, the latest build of the library is used instead.
-// It will not error if the library does not exist on the edge.
 func StageOptionalRemoteLibrary(
 	ctx context.Context,
 	l *logger.Logger,
 	c *SyncedCluster,
 	libraryName, urlPathBase, SHA, arch, ext, dir string,
 ) error {
+	__antithesis_instrumentation__.Notify(181810)
 	url, err := getEdgeURL(urlPathBase, SHA, arch, ext)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181812)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181813)
 	}
+	__antithesis_instrumentation__.Notify(181811)
 	libDir := filepath.Join(dir, "lib")
 	target := filepath.Join(libDir, libraryName+ext)
 	l.Printf("Resolved library url for %s: %s", libraryName, url)
@@ -277,27 +325,29 @@ curl -sfSL -o "%s" "%s" 2>/dev/null || echo 'optional library %s not found; cont
 	)
 }
 
-// StageCockroachRelease downloads an official CockroachDB release binary with
-// the specified version.
 func StageCockroachRelease(
 	ctx context.Context, l *logger.Logger, c *SyncedCluster, version, arch, dir string,
 ) error {
+	__antithesis_instrumentation__.Notify(181814)
 	if len(version) == 0 {
+		__antithesis_instrumentation__.Notify(181817)
 		return fmt.Errorf(
 			"release application cannot be staged without specifying a specific version",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(181818)
 	}
+	__antithesis_instrumentation__.Notify(181815)
 	binURL, err := cockroachReleaseURL(version, arch)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181819)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181820)
 	}
+	__antithesis_instrumentation__.Notify(181816)
 	l.Printf("Resolved release url for cockroach version %s: %s", version, binURL)
 
-	// This command incantation:
-	// - Creates a temporary directory on the remote machine
-	// - Downloads and unpacks the cockroach release into the temp directory
-	// - Moves the cockroach executable from the binary to the provided directory
-	//   and gives it the correct permissions.
 	cmdStr := fmt.Sprintf(`
 tmpdir="$(mktemp -d /tmp/cockroach-release.XXX)" && \
 dir=%s && \

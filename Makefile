@@ -380,7 +380,7 @@ vendor/modules.txt: | bin/.submodules-initialized
 # change.
 # These should be synced with `./pkg/cmd/import-tools/main.go`.
 bin/.bootstrap: $(GITHOOKS) vendor/modules.txt | bin/.submodules-initialized
-	@$(GO_INSTALL) -v \
+	@$(GO_INSTALL) -v -mod=readonly\
 		github.com/client9/misspell/cmd/misspell \
 		github.com/cockroachdb/crlfmt \
 		github.com/cockroachdb/gostdlib/cmd/gofmt \
@@ -1445,10 +1445,10 @@ ui-maintainer-clean: ui-clean
 	rm -rf pkg/ui/node_modules pkg/ui/workspaces/db-console/node_modules pkg/ui/yarn.installed pkg/ui/workspaces/cluster-ui/node_modules
 
 pkg/roachprod/vm/aws/embedded.go: bin/.bootstrap pkg/roachprod/vm/aws/config.json pkg/roachprod/vm/aws/old.json bin/terraformgen
-	(cd pkg/roachprod/vm/aws && $(GO) generate)
+	(cd pkg/roachprod/vm/aws && $(GO) generate -mod=readonly)
 
 pkg/security/securitytest/embedded.go: bin/.bootstrap $(shell find pkg/security/securitytest/test_certs -type f -not -name README.md -not -name regenerate.sh)
-	(cd pkg/security/securitytest && $(GO) generate)
+	(cd pkg/security/securitytest && $(GO) generate -mod=readonly)
 
 .SECONDARY: pkg/sql/parser/gen/sql.go.tmp
 pkg/sql/parser/gen/sql.go.tmp: pkg/sql/parser/gen/sql-gen.y bin/.bootstrap
@@ -1790,7 +1790,7 @@ $(bins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
 	@echo go install -v $*
 	$(PREREQS) $(if $($*-package),$($*-package),./pkg/cmd/$*) > $@.d.tmp
 	mv -f $@.d.tmp $@.d
-	$(GO_INSTALL) -ldflags '$(LINKFLAGS)' -v $(if $($*-package),$($*-package),./pkg/cmd/$*)
+	$(GO_INSTALL) -ldflags '$(LINKFLAGS)' -v -mod=readonly $(if $($*-package),$($*-package),./pkg/cmd/$*)
 
 $(xbins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
 	@echo go build -v $(GOFLAGS) $(GOMODVENDORFLAGS) -tags '$(TAGS)' -ldflags '$(LINKFLAGS)' -o $@ $*
@@ -1806,7 +1806,7 @@ $(testbins): bin/%: bin/%.d | bin/prereqs $(SUBMODULES_TARGET)
 
 bin/prereqs: ./pkg/cmd/prereqs/*.go | bin/.submodules-initialized
 	@echo go install -v ./pkg/cmd/prereqs
-	@$(GO_INSTALL) -v ./pkg/cmd/prereqs
+	@$(GO_INSTALL) -v -mod=readonly ./pkg/cmd/prereqs
 
 .PHONY: fuzz
 fuzz: ## Run fuzz tests.

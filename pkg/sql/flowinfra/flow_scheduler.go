@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package flowinfra
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"container/list"
@@ -33,15 +25,6 @@ import (
 
 const flowDoneChanSize = 8
 
-// We think that it makes sense to scale the default value for
-// max_running_flows based on how beefy the machines are, so we make it a
-// multiple of the number of available CPU cores.
-//
-// The choice of 128 as the default multiple is driven by the old default value
-// of 500 and is such that if we have 4 CPUs, then we'll get the value of 512,
-// pretty close to the old default.
-// TODO(yuzefovich): we probably want to remove / disable this limit completely
-// when we enable the admission control.
 var settingMaxRunningFlows = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"sql.distsql.max_running_flows",
@@ -51,21 +34,20 @@ var settingMaxRunningFlows = settings.RegisterIntSetting(
 	-128,
 ).WithPublic()
 
-// getMaxRunningFlows returns an absolute value that determines the maximum
-// number of concurrent remote flows on this node.
 func getMaxRunningFlows(settings *cluster.Settings) int64 {
+	__antithesis_instrumentation__.Notify(491765)
 	maxRunningFlows := settingMaxRunningFlows.Get(&settings.SV)
 	if maxRunningFlows < 0 {
-		// We use GOMAXPROCS instead of NumCPU because the former could be
-		// adjusted based on cgroup limits (see cgroups.AdjustMaxProcs).
+		__antithesis_instrumentation__.Notify(491767)
+
 		return -maxRunningFlows * int64(runtime.GOMAXPROCS(0))
+	} else {
+		__antithesis_instrumentation__.Notify(491768)
 	}
+	__antithesis_instrumentation__.Notify(491766)
 	return maxRunningFlows
 }
 
-// FlowScheduler manages running flows and decides when to queue and when to
-// start flows. The main interface it presents is ScheduleFlows, which passes a
-// flow to be run.
 type FlowScheduler struct {
 	log.AmbientContext
 	stopper    *stop.Stopper
@@ -74,15 +56,9 @@ type FlowScheduler struct {
 
 	mu struct {
 		syncutil.Mutex
-		// queue keeps track of all scheduled flows that cannot be run at the
-		// moment because the maximum number of running flows has been reached.
+
 		queue *list.List
-		// runningFlows keeps track of all flows that are currently running via
-		// this FlowScheduler. The mapping is from flow ID to the timestamp when
-		// the flow started running, in the UTC timezone.
-		//
-		// The memory usage of this map is not accounted for because it is
-		// limited by maxRunningFlows in size.
+
 		runningFlows map[execinfrapb.FlowID]execinfrapb.DistSQLRemoteFlowInfo
 	}
 
@@ -92,36 +68,26 @@ type FlowScheduler struct {
 	}
 
 	TestingKnobs struct {
-		// CancelDeadFlowsCallback, if set, will be called at the end of every
-		// CancelDeadFlows call with the number of flows that the call canceled.
-		//
-		// The callback must be concurrency-safe.
 		CancelDeadFlowsCallback func(numCanceled int)
 	}
 }
 
-// flowWithCtx stores a flow to run and a context to run it with.
-// TODO(asubiotto): Figure out if asynchronous flow execution can be rearranged
-// to avoid the need to store the context.
 type flowWithCtx struct {
 	ctx         context.Context
 	flow        Flow
 	enqueueTime time.Time
 }
 
-// cleanupBeforeRun cleans up the flow's resources in case this flow will never
-// run.
 func (f *flowWithCtx) cleanupBeforeRun() {
-	// Note: passing f.ctx is important; that's the context that has the flow's
-	// span in it, and that span needs Finish()ing.
+	__antithesis_instrumentation__.Notify(491769)
+
 	f.flow.Cleanup(f.ctx)
 }
 
-// NewFlowScheduler creates a new FlowScheduler which must be initialized before
-// use.
 func NewFlowScheduler(
 	ambient log.AmbientContext, stopper *stop.Stopper, settings *cluster.Settings,
 ) *FlowScheduler {
+	__antithesis_instrumentation__.Notify(491770)
 	fs := &FlowScheduler{
 		AmbientContext: ambient,
 		stopper:        stopper,
@@ -132,81 +98,94 @@ func NewFlowScheduler(
 	fs.mu.runningFlows = make(map[execinfrapb.FlowID]execinfrapb.DistSQLRemoteFlowInfo, maxRunningFlows)
 	fs.atomics.maxRunningFlows = int32(maxRunningFlows)
 	settingMaxRunningFlows.SetOnChange(&settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(491772)
 		atomic.StoreInt32(&fs.atomics.maxRunningFlows, int32(getMaxRunningFlows(settings)))
 	})
+	__antithesis_instrumentation__.Notify(491771)
 	return fs
 }
 
-// Init initializes the FlowScheduler.
 func (fs *FlowScheduler) Init(metrics *execinfra.DistSQLMetrics) {
+	__antithesis_instrumentation__.Notify(491773)
 	fs.metrics = metrics
 }
 
-// canRunFlow returns whether the FlowScheduler can run the flow. If true is
-// returned, numRunning is also incremented.
-// TODO(radu): we will have more complex resource accounting (like memory).
-//  For now we just limit the number of concurrent flows.
 func (fs *FlowScheduler) canRunFlow(_ Flow) bool {
-	// Optimistically increase numRunning to account for this new flow.
+	__antithesis_instrumentation__.Notify(491774)
+
 	newNumRunning := atomic.AddInt32(&fs.atomics.numRunning, 1)
 	if newNumRunning <= atomic.LoadInt32(&fs.atomics.maxRunningFlows) {
-		// Happy case. This flow did not bring us over the limit, so return that the
-		// flow can be run and is accounted for in numRunning.
+		__antithesis_instrumentation__.Notify(491776)
+
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(491777)
 	}
+	__antithesis_instrumentation__.Notify(491775)
 	atomic.AddInt32(&fs.atomics.numRunning, -1)
 	return false
 }
 
-// runFlowNow starts the given flow; does not wait for the flow to complete. The
-// caller is responsible for incrementing numRunning. locked indicates whether
-// fs.mu is currently being held.
 func (fs *FlowScheduler) runFlowNow(ctx context.Context, f Flow, locked bool) error {
+	__antithesis_instrumentation__.Notify(491778)
 	log.VEventf(
 		ctx, 1, "flow scheduler running flow %s, currently running %d", f.GetID(), atomic.LoadInt32(&fs.atomics.numRunning)-1,
 	)
 	fs.metrics.FlowStart()
 	if !locked {
+		__antithesis_instrumentation__.Notify(491783)
 		fs.mu.Lock()
+	} else {
+		__antithesis_instrumentation__.Notify(491784)
 	}
+	__antithesis_instrumentation__.Notify(491779)
 	fs.mu.runningFlows[f.GetID()] = execinfrapb.DistSQLRemoteFlowInfo{
 		FlowID:       f.GetID(),
 		Timestamp:    timeutil.Now(),
 		StatementSQL: f.StatementSQL(),
 	}
 	if !locked {
+		__antithesis_instrumentation__.Notify(491785)
 		fs.mu.Unlock()
+	} else {
+		__antithesis_instrumentation__.Notify(491786)
 	}
-	if err := f.Start(ctx, func() { fs.flowDoneCh <- f }); err != nil {
+	__antithesis_instrumentation__.Notify(491780)
+	if err := f.Start(ctx, func() { __antithesis_instrumentation__.Notify(491787); fs.flowDoneCh <- f }); err != nil {
+		__antithesis_instrumentation__.Notify(491788)
 		f.Cleanup(ctx)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(491789)
 	}
-	// TODO(radu): we could replace the WaitGroup with a structure that keeps a
-	// refcount and automatically runs Cleanup() when the count reaches 0.
+	__antithesis_instrumentation__.Notify(491781)
+
 	go func() {
+		__antithesis_instrumentation__.Notify(491790)
 		f.Wait()
 		fs.mu.Lock()
 		delete(fs.mu.runningFlows, f.GetID())
 		fs.mu.Unlock()
 		f.Cleanup(ctx)
 	}()
+	__antithesis_instrumentation__.Notify(491782)
 	return nil
 }
 
-// ScheduleFlow is the main interface of the flow scheduler: it runs or enqueues
-// the given flow. If the flow is not enqueued, it is guaranteed to be cleaned
-// up when this function returns.
-//
-// If the flow can start immediately, errors encountered when starting the flow
-// are returned. If the flow is enqueued, these error will be later ignored.
 func (fs *FlowScheduler) ScheduleFlow(ctx context.Context, f Flow) error {
+	__antithesis_instrumentation__.Notify(491791)
 	err := fs.stopper.RunTaskWithErr(
 		ctx, "flowinfra.FlowScheduler: scheduling flow", func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(491794)
 			fs.metrics.FlowsScheduled.Inc(1)
 			telemetry.Inc(sqltelemetry.DistSQLFlowsScheduled)
 			if fs.canRunFlow(f) {
-				return fs.runFlowNow(ctx, f, false /* locked */)
+				__antithesis_instrumentation__.Notify(491796)
+				return fs.runFlowNow(ctx, f, false)
+			} else {
+				__antithesis_instrumentation__.Notify(491797)
 			}
+			__antithesis_instrumentation__.Notify(491795)
 			fs.mu.Lock()
 			defer fs.mu.Unlock()
 			log.VEventf(ctx, 1, "flow scheduler enqueuing flow %s to be run later", f.GetID())
@@ -220,85 +199,98 @@ func (fs *FlowScheduler) ScheduleFlow(ctx context.Context, f Flow) error {
 			return nil
 
 		})
-	if err != nil && errors.Is(err, stop.ErrUnavailable) {
-		// If the server is quiescing, we have to explicitly clean up the flow.
+	__antithesis_instrumentation__.Notify(491792)
+	if err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(491798)
+		return errors.Is(err, stop.ErrUnavailable) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(491799)
+
 		f.Cleanup(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(491800)
 	}
+	__antithesis_instrumentation__.Notify(491793)
 	return err
 }
 
-// NumFlowsInQueue returns the number of flows currently in the queue to be
-// scheduled.
 func (fs *FlowScheduler) NumFlowsInQueue() int {
+	__antithesis_instrumentation__.Notify(491801)
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 	return fs.mu.queue.Len()
 }
 
-// NumRunningFlows returns the number of flows scheduled via fs that are
-// currently running.
 func (fs *FlowScheduler) NumRunningFlows() int {
+	__antithesis_instrumentation__.Notify(491802)
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	// Note that we choose not to use fs.atomics.numRunning here because that
-	// could be imprecise in an edge (when we optimistically increase that value
-	// by 1 in canRunFlow only to decrement it later and NumRunningFlows is
-	// called in between those two events).
+
 	return len(fs.mu.runningFlows)
 }
 
-// CancelDeadFlows cancels all flows mentioned in the request that haven't been
-// started yet (meaning they have been queued up).
 func (fs *FlowScheduler) CancelDeadFlows(req *execinfrapb.CancelDeadFlowsRequest) {
-	// Quick check whether the queue is empty. If it is, there is nothing to do.
+	__antithesis_instrumentation__.Notify(491803)
+
 	fs.mu.Lock()
 	isEmpty := fs.mu.queue.Len() == 0
 	fs.mu.Unlock()
 	if isEmpty {
+		__antithesis_instrumentation__.Notify(491807)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(491808)
 	}
+	__antithesis_instrumentation__.Notify(491804)
 
 	ctx := fs.AnnotateCtx(context.Background())
 	log.VEventf(ctx, 1, "flow scheduler will attempt to cancel %d dead flows", len(req.FlowIDs))
-	// We'll be holding the lock over the queue, so we'll speed up the process
-	// of looking up whether a particular queued flow needs to be canceled by
-	// building a map of those that do. This map shouldn't grow larger than
-	// thousands of UUIDs in size, so it is ok to not account for the memory
-	// under it.
+
 	toCancel := make(map[uuid.UUID]struct{}, len(req.FlowIDs))
 	for _, f := range req.FlowIDs {
+		__antithesis_instrumentation__.Notify(491809)
 		toCancel[f.UUID] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(491805)
 	numCanceled := 0
 	defer func() {
+		__antithesis_instrumentation__.Notify(491810)
 		log.VEventf(ctx, 1, "flow scheduler canceled %d dead flows", numCanceled)
 		if fs.TestingKnobs.CancelDeadFlowsCallback != nil {
+			__antithesis_instrumentation__.Notify(491811)
 			fs.TestingKnobs.CancelDeadFlowsCallback(numCanceled)
+		} else {
+			__antithesis_instrumentation__.Notify(491812)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(491806)
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	// Iterate over the whole queue and remove the dead flows.
+
 	var next *list.Element
 	for e := fs.mu.queue.Front(); e != nil; e = next {
-		// We need to call Next() before Remove() below because the latter
-		// zeroes out the links between elements.
+		__antithesis_instrumentation__.Notify(491813)
+
 		next = e.Next()
 		f := e.Value.(*flowWithCtx)
 		if _, shouldCancel := toCancel[f.flow.GetID().UUID]; shouldCancel {
+			__antithesis_instrumentation__.Notify(491814)
 			fs.mu.queue.Remove(e)
 			fs.metrics.FlowsQueued.Dec(1)
 			numCanceled++
 			f.cleanupBeforeRun()
+		} else {
+			__antithesis_instrumentation__.Notify(491815)
 		}
 	}
 }
 
-// Start launches the main loop of the scheduler.
 func (fs *FlowScheduler) Start() {
+	__antithesis_instrumentation__.Notify(491816)
 	ctx := fs.AnnotateCtx(context.Background())
 	_ = fs.stopper.RunAsyncTask(ctx, "flow-scheduler", func(context.Context) {
+		__antithesis_instrumentation__.Notify(491817)
 		stopped := false
 		fs.mu.Lock()
 		defer fs.mu.Unlock()
@@ -306,37 +298,57 @@ func (fs *FlowScheduler) Start() {
 		quiesceCh := fs.stopper.ShouldQuiesce()
 
 		for {
+			__antithesis_instrumentation__.Notify(491818)
 			if stopped {
-				// Drain the queue.
+				__antithesis_instrumentation__.Notify(491820)
+
 				if l := fs.mu.queue.Len(); l > 0 {
+					__antithesis_instrumentation__.Notify(491823)
 					log.Infof(ctx, "abandoning %d flows that will never run", l)
+				} else {
+					__antithesis_instrumentation__.Notify(491824)
 				}
+				__antithesis_instrumentation__.Notify(491821)
 				for {
+					__antithesis_instrumentation__.Notify(491825)
 					e := fs.mu.queue.Front()
 					if e == nil {
+						__antithesis_instrumentation__.Notify(491827)
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(491828)
 					}
+					__antithesis_instrumentation__.Notify(491826)
 					fs.mu.queue.Remove(e)
 					n := e.Value.(*flowWithCtx)
-					// TODO(radu): somehow send an error to whoever is waiting on this flow.
+
 					n.cleanupBeforeRun()
 				}
+				__antithesis_instrumentation__.Notify(491822)
 
 				if atomic.LoadInt32(&fs.atomics.numRunning) == 0 {
+					__antithesis_instrumentation__.Notify(491829)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(491830)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(491831)
 			}
+			__antithesis_instrumentation__.Notify(491819)
 			fs.mu.Unlock()
 
 			select {
 			case <-fs.flowDoneCh:
+				__antithesis_instrumentation__.Notify(491832)
 				fs.mu.Lock()
-				// Decrement numRunning lazily (i.e. only if there is no new flow to
-				// run).
+
 				decrementNumRunning := stopped
 				fs.metrics.FlowStop()
 				if !stopped {
+					__antithesis_instrumentation__.Notify(491836)
 					if frElem := fs.mu.queue.Front(); frElem != nil {
+						__antithesis_instrumentation__.Notify(491837)
 						n := frElem.Value.(*flowWithCtx)
 						fs.mu.queue.Remove(frElem)
 						wait := timeutil.Since(n.enqueueTime)
@@ -345,50 +357,64 @@ func (fs *FlowScheduler) Start() {
 						)
 						fs.metrics.FlowsQueued.Dec(1)
 						fs.metrics.QueueWaitHist.RecordValue(int64(wait))
-						// Note: we use the flow's context instead of the worker
-						// context, to ensure that logging etc is relative to the
-						// specific flow.
-						if err := fs.runFlowNow(n.ctx, n.flow, true /* locked */); err != nil {
+
+						if err := fs.runFlowNow(n.ctx, n.flow, true); err != nil {
+							__antithesis_instrumentation__.Notify(491838)
 							log.Errorf(n.ctx, "error starting queued flow: %s", err)
+						} else {
+							__antithesis_instrumentation__.Notify(491839)
 						}
 					} else {
+						__antithesis_instrumentation__.Notify(491840)
 						decrementNumRunning = true
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(491841)
 				}
+				__antithesis_instrumentation__.Notify(491833)
 				if decrementNumRunning {
+					__antithesis_instrumentation__.Notify(491842)
 					atomic.AddInt32(&fs.atomics.numRunning, -1)
+				} else {
+					__antithesis_instrumentation__.Notify(491843)
 				}
 
 			case <-quiesceCh:
+				__antithesis_instrumentation__.Notify(491834)
 				fs.mu.Lock()
 				stopped = true
 				if l := atomic.LoadInt32(&fs.atomics.numRunning); l != 0 {
+					__antithesis_instrumentation__.Notify(491844)
 					log.Infof(ctx, "waiting for %d running flows", l)
+				} else {
+					__antithesis_instrumentation__.Notify(491845)
 				}
-				// Inhibit this arm of the select so that we don't spin on it.
+				__antithesis_instrumentation__.Notify(491835)
+
 				quiesceCh = nil
 			}
 		}
 	})
 }
 
-// Serialize returns all currently running and queued flows that were scheduled
-// on behalf of other nodes. Notably the returned slices don't contain the
-// "local" flows from the perspective of the gateway node of the query because
-// such flows don't go through the flow scheduler.
 func (fs *FlowScheduler) Serialize() (
 	running []execinfrapb.DistSQLRemoteFlowInfo,
 	queued []execinfrapb.DistSQLRemoteFlowInfo,
 ) {
+	__antithesis_instrumentation__.Notify(491846)
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 	running = make([]execinfrapb.DistSQLRemoteFlowInfo, 0, len(fs.mu.runningFlows))
 	for _, info := range fs.mu.runningFlows {
+		__antithesis_instrumentation__.Notify(491849)
 		running = append(running, info)
 	}
+	__antithesis_instrumentation__.Notify(491847)
 	if fs.mu.queue.Len() > 0 {
+		__antithesis_instrumentation__.Notify(491850)
 		queued = make([]execinfrapb.DistSQLRemoteFlowInfo, 0, fs.mu.queue.Len())
 		for e := fs.mu.queue.Front(); e != nil; e = e.Next() {
+			__antithesis_instrumentation__.Notify(491851)
 			f := e.Value.(*flowWithCtx)
 			queued = append(queued, execinfrapb.DistSQLRemoteFlowInfo{
 				FlowID:       f.flow.GetID(),
@@ -396,6 +422,9 @@ func (fs *FlowScheduler) Serialize() (
 				StatementSQL: f.flow.StatementSQL(),
 			})
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(491852)
 	}
+	__antithesis_instrumentation__.Notify(491848)
 	return running, queued
 }

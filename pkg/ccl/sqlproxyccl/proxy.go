@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package sqlproxyccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"net"
@@ -18,22 +12,22 @@ import (
 
 const pgAcceptSSLRequest = 'S'
 
-// See https://www.postgresql.org/docs/9.1/protocol-message-formats.html.
 var pgSSLRequest = []int32{8, 80877103}
 
-// sendErrToClientAndUpdateMetrics simply combines the update of the metrics and
-// the transmission of the err back to the client.
 func updateMetricsAndSendErrToClient(err error, conn net.Conn, metrics *metrics) {
+	__antithesis_instrumentation__.Notify(21789)
 	metrics.updateForError(err)
 	SendErrToClient(conn, err)
 }
 
 func toPgError(err error) *pgproto3.ErrorResponse {
+	__antithesis_instrumentation__.Notify(21790)
 	codeErr := (*codeError)(nil)
 	if errors.As(err, &codeErr) {
+		__antithesis_instrumentation__.Notify(21792)
 		var msg string
 		switch codeErr.code {
-		// These are send as is.
+
 		case codeExpiredClientConnection,
 			codeBackendDown,
 			codeParamsRoutingFailed,
@@ -43,18 +37,26 @@ func toPgError(err error) *pgproto3.ErrorResponse {
 			codeProxyRefusedConnection,
 			codeIdleDisconnect,
 			codeUnavailable:
+			__antithesis_instrumentation__.Notify(21795)
 			msg = codeErr.Error()
-		// The rest - the message sent back is sanitized.
+
 		case codeUnexpectedInsecureStartupMessage:
+			__antithesis_instrumentation__.Notify(21796)
 			msg = "server requires encryption"
+		default:
+			__antithesis_instrumentation__.Notify(21797)
 		}
+		__antithesis_instrumentation__.Notify(21793)
 
 		var pgCode string
 		if codeErr.code == codeIdleDisconnect {
+			__antithesis_instrumentation__.Notify(21798)
 			pgCode = pgcode.AdminShutdown.String()
 		} else {
+			__antithesis_instrumentation__.Notify(21799)
 			pgCode = pgcode.SQLserverRejectedEstablishmentOfSQLconnection.String()
 		}
+		__antithesis_instrumentation__.Notify(21794)
 
 		return &pgproto3.ErrorResponse{
 			Severity: "FATAL",
@@ -62,8 +64,11 @@ func toPgError(err error) *pgproto3.ErrorResponse {
 			Message:  msg,
 			Hint:     errors.FlattenHints(err),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(21800)
 	}
-	// Return a generic "internal server error" message.
+	__antithesis_instrumentation__.Notify(21791)
+
 	return &pgproto3.ErrorResponse{
 		Severity: "FATAL",
 		Code:     pgcode.SQLserverRejectedEstablishmentOfSQLconnection.String(),
@@ -71,12 +76,17 @@ func toPgError(err error) *pgproto3.ErrorResponse {
 	}
 }
 
-// SendErrToClient will encode and pass back to the SQL client an error message.
-// It can be called by the implementors of proxyHandler to give more
-// information to the end user in case of a problem.
 var SendErrToClient = func(conn net.Conn, err error) {
-	if err == nil || conn == nil {
+	__antithesis_instrumentation__.Notify(21801)
+	if err == nil || func() bool {
+		__antithesis_instrumentation__.Notify(21803)
+		return conn == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(21804)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(21805)
 	}
+	__antithesis_instrumentation__.Notify(21802)
 	_, _ = conn.Write(toPgError(err).Encode(nil))
 }

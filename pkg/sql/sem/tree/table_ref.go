@@ -1,60 +1,54 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
 
-// ID is a custom type for {Database,Table}Descriptor IDs.
 type ID = catid.ColumnID
 
-// ColumnID is a custom type for ColumnDescriptor IDs.
 type ColumnID = catid.ColumnID
 
-// TableRef represents a numeric table reference.
-// (Syntax !NNN in SQL.)
 type TableRef struct {
-	// TableID is the descriptor ID of the requested table.
 	TableID int64
 
-	// ColumnIDs is the list of column IDs requested in the table.
-	// Note that a nil array here means "unspecified" (all columns)
-	// whereas an array of length 0 means "zero columns".
-	// Lists of zero columns are not supported and will throw an error.
 	Columns []ColumnID
 
-	// As determines the names that can be used in the surrounding query
-	// to refer to this source.
 	As AliasClause
 }
 
-// Format implements the NodeFormatter interface.
 func (n *TableRef) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(614503)
 	ctx.Printf("[%d", n.TableID)
 	if n.Columns != nil {
+		__antithesis_instrumentation__.Notify(614506)
 		ctx.WriteByte('(')
 		for i, c := range n.Columns {
+			__antithesis_instrumentation__.Notify(614508)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(614510)
 				ctx.WriteString(", ")
+			} else {
+				__antithesis_instrumentation__.Notify(614511)
 			}
+			__antithesis_instrumentation__.Notify(614509)
 			ctx.Printf("%d", c)
 		}
+		__antithesis_instrumentation__.Notify(614507)
 		ctx.WriteByte(')')
+	} else {
+		__antithesis_instrumentation__.Notify(614512)
 	}
+	__antithesis_instrumentation__.Notify(614504)
 	if n.As.Alias != "" {
+		__antithesis_instrumentation__.Notify(614513)
 		ctx.WriteString(" AS ")
 		ctx.FormatNode(&n.As)
+	} else {
+		__antithesis_instrumentation__.Notify(614514)
 	}
+	__antithesis_instrumentation__.Notify(614505)
 	ctx.WriteByte(']')
 }
-func (n *TableRef) String() string { return AsString(n) }
+func (n *TableRef) String() string { __antithesis_instrumentation__.Notify(614515); return AsString(n) }
 
-// tableExpr implements the TableExpr interface.
-func (n *TableRef) tableExpr() {}
+func (n *TableRef) tableExpr() { __antithesis_instrumentation__.Notify(614516) }

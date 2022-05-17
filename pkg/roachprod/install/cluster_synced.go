@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package install
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -47,102 +39,115 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// A SyncedCluster is created from the cluster metadata in the synced clusters
-// cache and is used as the target for installing and managing various software
-// components.
 type SyncedCluster struct {
-	// Cluster metadata, obtained from the respective cloud provider.
 	cloud.Cluster
 
-	// Nodes is used by most commands (e.g. Start, Stop, Monitor). It describes
-	// the list of nodes the operation pertains to.
 	Nodes Nodes
 
 	ClusterSettings
 
 	Localities []string
 
-	// AuthorizedKeys is used by SetupSSH to add additional authorized keys.
 	AuthorizedKeys []byte
 }
 
-// NewSyncedCluster creates a SyncedCluster, given the cluster metadata, node
-// selector string, and settings.
-//
-// See ListNodes for a description of the node selector string.
 func NewSyncedCluster(
 	metadata *cloud.Cluster, nodeSelector string, settings ClusterSettings,
 ) (*SyncedCluster, error) {
+	__antithesis_instrumentation__.Notify(180465)
 	c := &SyncedCluster{
 		Cluster:         *metadata,
 		ClusterSettings: settings,
 	}
 	c.Localities = make([]string, len(c.VMs))
 	for i := range c.VMs {
+		__antithesis_instrumentation__.Notify(180468)
 		locality, err := c.VMs[i].Locality()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180471)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180472)
 		}
+		__antithesis_instrumentation__.Notify(180469)
 		if c.NumRacks > 0 {
+			__antithesis_instrumentation__.Notify(180473)
 			if locality != "" {
+				__antithesis_instrumentation__.Notify(180475)
 				locality += ","
+			} else {
+				__antithesis_instrumentation__.Notify(180476)
 			}
+			__antithesis_instrumentation__.Notify(180474)
 			locality += fmt.Sprintf("rack=%d", i%c.NumRacks)
+		} else {
+			__antithesis_instrumentation__.Notify(180477)
 		}
+		__antithesis_instrumentation__.Notify(180470)
 		c.Localities[i] = locality
 	}
+	__antithesis_instrumentation__.Notify(180466)
 
 	nodes, err := ListNodes(nodeSelector, len(c.VMs))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180478)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(180479)
 	}
+	__antithesis_instrumentation__.Notify(180467)
 	c.Nodes = nodes
 	return c, nil
 }
 
-// Host returns the public IP of a node.
 func (c *SyncedCluster) Host(n Node) string {
+	__antithesis_instrumentation__.Notify(180480)
 	return c.VMs[n-1].PublicIP
 }
 
 func (c *SyncedCluster) user(n Node) string {
+	__antithesis_instrumentation__.Notify(180481)
 	return c.VMs[n-1].RemoteUser
 }
 
 func (c *SyncedCluster) locality(n Node) string {
+	__antithesis_instrumentation__.Notify(180482)
 	return c.Localities[n-1]
 }
 
-// IsLocal returns true if this is a local cluster (see vm/local).
 func (c *SyncedCluster) IsLocal() bool {
+	__antithesis_instrumentation__.Notify(180483)
 	return config.IsLocalClusterName(c.Name)
 }
 
 func (c *SyncedCluster) localVMDir(n Node) string {
+	__antithesis_instrumentation__.Notify(180484)
 	return local.VMDir(c.Name, int(n))
 }
 
-// TargetNodes is the fully expanded, ordered list of nodes that any given
-// roachprod command is intending to target.
-//
-//  $ roachprod create local -n 4
-//  $ roachprod start local          # [1, 2, 3, 4]
-//  $ roachprod start local:2-4      # [2, 3, 4]
-//  $ roachprod start local:2,1,4    # [1, 2, 4]
 func (c *SyncedCluster) TargetNodes() Nodes {
+	__antithesis_instrumentation__.Notify(180485)
 	return append(Nodes{}, c.Nodes...)
 }
 
-// GetInternalIP returns the internal IP address of the specified node.
 func (c *SyncedCluster) GetInternalIP(ctx context.Context, n Node) (string, error) {
+	__antithesis_instrumentation__.Notify(180486)
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(180491)
 		return c.Host(n), nil
+	} else {
+		__antithesis_instrumentation__.Notify(180492)
 	}
+	__antithesis_instrumentation__.Notify(180487)
 
 	session, err := c.newSession(n)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180493)
 		return "", errors.Wrapf(err, "GetInternalIP: failed dial %s:%d", c.Name, n)
+	} else {
+		__antithesis_instrumentation__.Notify(180494)
 	}
+	__antithesis_instrumentation__.Notify(180488)
 	defer session.Close()
 
 	var stdout, stderr strings.Builder
@@ -150,93 +155,93 @@ func (c *SyncedCluster) GetInternalIP(ctx context.Context, n Node) (string, erro
 	session.SetStderr(&stderr)
 	cmd := `hostname --all-ip-addresses`
 	if err := session.Run(ctx, cmd); err != nil {
+		__antithesis_instrumentation__.Notify(180495)
 		return "", errors.Wrapf(err,
 			"GetInternalIP: failed to execute hostname on %s:%d:\n(stdout) %s\n(stderr) %s",
 			c.Name, n, stdout.String(), stderr.String())
+	} else {
+		__antithesis_instrumentation__.Notify(180496)
 	}
+	__antithesis_instrumentation__.Notify(180489)
 	ip := strings.TrimSpace(stdout.String())
 	if ip == "" {
+		__antithesis_instrumentation__.Notify(180497)
 		return "", errors.Errorf(
 			"empty internal IP returned, stdout:\n%s\nstderr:\n%s",
 			stdout.String(), stderr.String(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(180498)
 	}
+	__antithesis_instrumentation__.Notify(180490)
 	return ip, nil
 }
 
-// roachprodEnvValue returns the value of the ROACHPROD environment variable
-// that is set when starting a process. This value is used to recognize the
-// correct process, when monitoring or stopping.
-//
-// Normally, the value is of the form:
-//   [<local-cluster-name>/]<node-id>[/tag]
-//
-// Examples:
-//
-//  - non-local cluster without tags:
-//      ROACHPROD=1
-//
-//  - non-local cluster with tag foo:
-//      ROACHPROD=1/foo
-//
-//  - non-local cluster with hierarchical tag foo/bar:
-//      ROACHPROD=1/foo/bar
-//
-//  - local cluster:
-//      ROACHPROD=local-foo/1
-//
-//  - local cluster with tag bar:
-//      ROACHPROD=local-foo/1/bar
-//
 func (c *SyncedCluster) roachprodEnvValue(node Node) string {
+	__antithesis_instrumentation__.Notify(180499)
 	var parts []string
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(180502)
 		parts = append(parts, c.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(180503)
 	}
+	__antithesis_instrumentation__.Notify(180500)
 	parts = append(parts, fmt.Sprintf("%d", node))
 	if c.Tag != "" {
+		__antithesis_instrumentation__.Notify(180504)
 		parts = append(parts, c.Tag)
+	} else {
+		__antithesis_instrumentation__.Notify(180505)
 	}
+	__antithesis_instrumentation__.Notify(180501)
 	return strings.Join(parts, "/")
 }
 
-// roachprodEnvRegex returns a regexp that matches the ROACHPROD value for the
-// given node.
 func (c *SyncedCluster) roachprodEnvRegex(node Node) string {
+	__antithesis_instrumentation__.Notify(180506)
 	escaped := strings.Replace(c.roachprodEnvValue(node), "/", "\\/", -1)
-	// We look for either a trailing space or a slash (in which case, we tolerate
-	// any remaining tag suffix).
+
 	return fmt.Sprintf(`ROACHPROD=%s[ \/]`, escaped)
 }
 
 func (c *SyncedCluster) newSession(node Node) (session, error) {
+	__antithesis_instrumentation__.Notify(180507)
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(180509)
 		return newLocalSession(), nil
+	} else {
+		__antithesis_instrumentation__.Notify(180510)
 	}
+	__antithesis_instrumentation__.Notify(180508)
 	return newRemoteSession(c.user(node), c.Host(node), c.DebugDir)
 }
 
-// Stop is used to stop cockroach on all nodes in the cluster.
-//
-// It sends a signal to all processes that have been started with ROACHPROD env
-// var and optionally waits until the processes stop.
-//
-// When running roachprod stop without other flags, the signal is 9 (SIGKILL)
-// and wait is true.
 func (c *SyncedCluster) Stop(ctx context.Context, l *logger.Logger, sig int, wait bool) error {
+	__antithesis_instrumentation__.Notify(180511)
 	display := fmt.Sprintf("%s: stopping", c.Name)
 	if wait {
+		__antithesis_instrumentation__.Notify(180513)
 		display += " and waiting"
+	} else {
+		__antithesis_instrumentation__.Notify(180514)
 	}
+	__antithesis_instrumentation__.Notify(180512)
 	return c.Parallel(l, display, len(c.Nodes), 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180515)
 		sess, err := c.newSession(c.Nodes[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180518)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180519)
 		}
+		__antithesis_instrumentation__.Notify(180516)
 		defer sess.Close()
 
 		var waitCmd string
 		if wait {
+			__antithesis_instrumentation__.Notify(180520)
 			waitCmd = fmt.Sprintf(`
   for pid in ${pids}; do
     echo "${pid}: checking" >> %[1]s/roachprod.log
@@ -248,12 +253,13 @@ func (c *SyncedCluster) Stop(ctx context.Context, l *logger.Logger, sig int, wai
     done
     echo "${pid}: dead" >> %[1]s/roachprod.log
   done`,
-				c.LogDir(c.Nodes[i]), // [1]
+				c.LogDir(c.Nodes[i]),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(180521)
 		}
+		__antithesis_instrumentation__.Notify(180517)
 
-		// NB: the awkward-looking `awk` invocation serves to avoid having the
-		// awk process match its own output from `ps`.
 		cmd := fmt.Sprintf(`
 mkdir -p %[1]s
 echo ">>> roachprod stop: $(date)" >> %[1]s/roachprod.log
@@ -265,61 +271,86 @@ if [ -n "${pids}" ]; then
   kill -%[3]d ${pids}
 %[4]s
 fi`,
-			c.LogDir(c.Nodes[i]),            // [1]
-			c.roachprodEnvRegex(c.Nodes[i]), // [2]
-			sig,                             // [3]
-			waitCmd,                         // [4]
+			c.LogDir(c.Nodes[i]),
+			c.roachprodEnvRegex(c.Nodes[i]),
+			sig,
+			waitCmd,
 		)
 		return sess.CombinedOutput(ctx, cmd)
 	})
 }
 
-// Wipe TODO(peter): document
 func (c *SyncedCluster) Wipe(ctx context.Context, l *logger.Logger, preserveCerts bool) error {
+	__antithesis_instrumentation__.Notify(180522)
 	display := fmt.Sprintf("%s: wiping", c.Name)
-	if err := c.Stop(ctx, l, 9, true /* wait */); err != nil {
+	if err := c.Stop(ctx, l, 9, true); err != nil {
+		__antithesis_instrumentation__.Notify(180524)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180525)
 	}
+	__antithesis_instrumentation__.Notify(180523)
 	return c.Parallel(l, display, len(c.Nodes), 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180526)
 		sess, err := c.newSession(c.Nodes[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180529)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180530)
 		}
+		__antithesis_instrumentation__.Notify(180527)
 		defer sess.Close()
 
 		var cmd string
 		if c.IsLocal() {
-			// Not all shells like brace expansion, so we'll do it here
+			__antithesis_instrumentation__.Notify(180531)
+
 			dirs := []string{"data", "logs"}
 			if !preserveCerts {
+				__antithesis_instrumentation__.Notify(180533)
 				dirs = append(dirs, "certs*")
+			} else {
+				__antithesis_instrumentation__.Notify(180534)
 			}
+			__antithesis_instrumentation__.Notify(180532)
 			for _, dir := range dirs {
+				__antithesis_instrumentation__.Notify(180535)
 				cmd += fmt.Sprintf(`rm -fr %s/%s ;`, c.localVMDir(c.Nodes[i]), dir)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(180536)
 			cmd = `sudo find /mnt/data* -maxdepth 1 -type f -exec rm -f {} \; &&
 sudo rm -fr /mnt/data*/{auxiliary,local,tmp,cassandra,cockroach,cockroach-temp*,mongo-data} &&
 sudo rm -fr logs &&
 `
 			if !preserveCerts {
+				__antithesis_instrumentation__.Notify(180537)
 				cmd += "sudo rm -fr certs* ;\n"
+			} else {
+				__antithesis_instrumentation__.Notify(180538)
 			}
 		}
+		__antithesis_instrumentation__.Notify(180528)
 		return sess.CombinedOutput(ctx, cmd)
 	})
 }
 
-// Status TODO(peter): document
 func (c *SyncedCluster) Status(ctx context.Context, l *logger.Logger) error {
+	__antithesis_instrumentation__.Notify(180539)
 	display := fmt.Sprintf("%s: status", c.Name)
 	results := make([]string, len(c.Nodes))
 	if err := c.Parallel(l, display, len(c.Nodes), 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180542)
 		sess, err := c.newSession(c.Nodes[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180546)
 			results[i] = err.Error()
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(180547)
 		}
+		__antithesis_instrumentation__.Notify(180543)
 		defer sess.Close()
 
 		binary := cockroachNodeBinary(c, c.Nodes[i])
@@ -338,81 +369,85 @@ fi
 		out, err := sess.CombinedOutput(ctx, cmd)
 		var msg string
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180548)
 			return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
+		} else {
+			__antithesis_instrumentation__.Notify(180549)
 		}
+		__antithesis_instrumentation__.Notify(180544)
 		msg = strings.TrimSpace(string(out))
 		if msg == "" {
+			__antithesis_instrumentation__.Notify(180550)
 			msg = "not running"
+		} else {
+			__antithesis_instrumentation__.Notify(180551)
 		}
+		__antithesis_instrumentation__.Notify(180545)
 		results[i] = msg
 		return nil, nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(180552)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180553)
 	}
+	__antithesis_instrumentation__.Notify(180540)
 	for i, r := range results {
+		__antithesis_instrumentation__.Notify(180554)
 		l.Printf("  %2d: %s\n", c.Nodes[i], r)
 	}
+	__antithesis_instrumentation__.Notify(180541)
 	return nil
 }
 
-// NodeMonitorInfo is a message describing a cockroach process' status.
 type NodeMonitorInfo struct {
-	// The index of the node (in a SyncedCluster) at which the message originated.
 	Node Node
-	// A message about the node. This is either a PID, "dead", "nc exited", or
-	// "skipped".
-	// Anything but a PID or "skipped" is an indication that there is some
-	// problem with the node and that the process is not running.
+
 	Msg string
-	// Err is an error that may occur when trying to probe the status of the node.
-	// If Err is non-nil, Msg is empty. After an error is returned, the node with
-	// the given index will no longer be probed. Errors typically indicate networking
-	// issues or nodes that have (physically) shut down.
+
 	Err error
 }
 
-// MonitorOpts is used to pass the options needed by Monitor.
 type MonitorOpts struct {
-	OneShot          bool // Report the status of all targeted nodes once, then exit.
-	IgnoreEmptyNodes bool // Only monitor nodes with a nontrivial data directory.
+	OneShot          bool
+	IgnoreEmptyNodes bool
 }
 
-// Monitor writes NodeMonitorInfo for the cluster nodes to the returned channel.
-// Infos sent to the channel always have the Index and exactly one of Msg or Err
-// set.
-//
-// If oneShot is true, infos are retrieved only once for each node and the
-// channel is subsequently closed; otherwise the process continues indefinitely
-// (emitting new information as the status of the cockroach process changes).
-//
-// If ignoreEmptyNodes is true, nodes on which no CockroachDB data is found
-// (in {store-dir}) will not be probed and single message, "skipped", will
-// be emitted for them.
 func (c *SyncedCluster) Monitor(ctx context.Context, opts MonitorOpts) chan NodeMonitorInfo {
+	__antithesis_instrumentation__.Notify(180555)
 	ch := make(chan NodeMonitorInfo)
 	nodes := c.TargetNodes()
 	var wg sync.WaitGroup
 
 	for i := range nodes {
+		__antithesis_instrumentation__.Notify(180558)
 		wg.Add(1)
 		go func(i int) {
+			__antithesis_instrumentation__.Notify(180559)
 			defer wg.Done()
 			sess, err := c.newSession(nodes[i])
 			if err != nil {
+				__antithesis_instrumentation__.Notify(180567)
 				ch <- NodeMonitorInfo{Node: nodes[i], Err: err}
 				wg.Done()
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(180568)
 			}
+			__antithesis_instrumentation__.Notify(180560)
 			defer sess.Close()
 
 			p, err := sess.StdoutPipe()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(180569)
 				ch <- NodeMonitorInfo{Node: nodes[i], Err: err}
 				wg.Done()
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(180570)
 			}
+			__antithesis_instrumentation__.Notify(180561)
 
-			// On each monitored node, we loop looking for a cockroach process.
 			data := struct {
 				OneShot     bool
 				IgnoreEmpty bool
@@ -422,7 +457,7 @@ func (c *SyncedCluster) Monitor(ctx context.Context, opts MonitorOpts) chan Node
 			}{
 				OneShot:     opts.OneShot,
 				IgnoreEmpty: opts.IgnoreEmptyNodes,
-				Store:       c.NodeDir(nodes[i], 1 /* storeIndex */),
+				Store:       c.NodeDir(nodes[i], 1),
 				Port:        c.NodePort(nodes[i]),
 				Local:       c.IsLocal(),
 			}
@@ -486,61 +521,82 @@ done
 			t := template.Must(template.New("script").Parse(snippet))
 			var buf bytes.Buffer
 			if err := t.Execute(&buf, data); err != nil {
+				__antithesis_instrumentation__.Notify(180571)
 				ch <- NodeMonitorInfo{Node: nodes[i], Err: err}
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(180572)
 			}
+			__antithesis_instrumentation__.Notify(180562)
 
-			// Request a PTY so that the script will receive a SIGPIPE when the
-			// session is closed.
 			if err := sess.RequestPty(); err != nil {
+				__antithesis_instrumentation__.Notify(180573)
 				ch <- NodeMonitorInfo{Node: nodes[i], Err: err}
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(180574)
 			}
+			__antithesis_instrumentation__.Notify(180563)
 
 			var readerWg sync.WaitGroup
 			readerWg.Add(1)
 			go func(p io.Reader) {
+				__antithesis_instrumentation__.Notify(180575)
 				defer readerWg.Done()
 				r := bufio.NewReader(p)
 				for {
+					__antithesis_instrumentation__.Notify(180576)
 					line, _, err := r.ReadLine()
 					if err == io.EOF {
+						__antithesis_instrumentation__.Notify(180578)
 						return
+					} else {
+						__antithesis_instrumentation__.Notify(180579)
 					}
+					__antithesis_instrumentation__.Notify(180577)
 					ch <- NodeMonitorInfo{Node: nodes[i], Msg: string(line)}
 				}
 			}(p)
+			__antithesis_instrumentation__.Notify(180564)
 
 			if err := sess.Start(buf.String()); err != nil {
+				__antithesis_instrumentation__.Notify(180580)
 				ch <- NodeMonitorInfo{Node: nodes[i], Err: err}
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(180581)
 			}
+			__antithesis_instrumentation__.Notify(180565)
 
-			// Watch for context cancellation.
 			go func() {
+				__antithesis_instrumentation__.Notify(180582)
 				<-ctx.Done()
 				sess.Close()
 			}()
+			__antithesis_instrumentation__.Notify(180566)
 
 			readerWg.Wait()
-			// We must call `sess.Wait()` only after finishing reading from the stdout
-			// pipe. Otherwise it can be closed under us, causing the reader to loop
-			// infinitely receiving a non-`io.EOF` error.
+
 			if err := sess.Wait(); err != nil {
+				__antithesis_instrumentation__.Notify(180583)
 				ch <- NodeMonitorInfo{Node: nodes[i], Err: err}
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(180584)
 			}
 		}(i)
 	}
+	__antithesis_instrumentation__.Notify(180556)
 	go func() {
+		__antithesis_instrumentation__.Notify(180585)
 		wg.Wait()
 		close(ch)
 	}()
+	__antithesis_instrumentation__.Notify(180557)
 
 	return ch
 }
 
-// RunResultDetails holds details of the result of commands executed by Run().
 type RunResultDetails struct {
 	Node             Node
 	Stdout           string
@@ -550,28 +606,36 @@ type RunResultDetails struct {
 }
 
 func processStdout(stdout string) (string, string) {
+	__antithesis_instrumentation__.Notify(180586)
 	retStdout := stdout
 	exitStatusPattern := "LAST EXIT STATUS: "
 	exitStatusIndex := strings.LastIndex(retStdout, exitStatusPattern)
 	remoteExitStatus := "-1"
-	// If exitStatusIndex is -1 then "echo LAST EXIT STATUS: $?" didn't run
-	// mostly due to an ssh error but avoid speculation and temporarily
-	// use "-1" for unknown error before checking if it's SSH related later.
+
 	if exitStatusIndex != -1 {
+		__antithesis_instrumentation__.Notify(180588)
 		retStdout = stdout[:exitStatusIndex]
 		remoteExitStatus = strings.TrimSpace(stdout[exitStatusIndex+len(exitStatusPattern):])
+	} else {
+		__antithesis_instrumentation__.Notify(180589)
 	}
+	__antithesis_instrumentation__.Notify(180587)
 	return retStdout, remoteExitStatus
 }
 
 func runCmdOnSingleNode(
 	ctx context.Context, l *logger.Logger, c *SyncedCluster, node Node, cmd string,
 ) (RunResultDetails, error) {
+	__antithesis_instrumentation__.Notify(180590)
 	result := RunResultDetails{Node: node}
 	sess, err := c.newSession(node)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180595)
 		return result, err
+	} else {
+		__antithesis_instrumentation__.Notify(180596)
 	}
+	__antithesis_instrumentation__.Notify(180591)
 	defer sess.Close()
 
 	sess.SetWithExitStatus(true)
@@ -579,247 +643,309 @@ func runCmdOnSingleNode(
 	sess.SetStdout(&stdoutBuffer)
 	sess.SetStderr(&stderrBuffer)
 
-	// Argument template expansion is node specific (e.g. for {store-dir}).
 	e := expander{
 		node: node,
 	}
 	expandedCmd, err := e.expand(ctx, l, c, cmd)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180597)
 		return result, err
+	} else {
+		__antithesis_instrumentation__.Notify(180598)
 	}
+	__antithesis_instrumentation__.Notify(180592)
 
-	// Be careful about changing these command strings. In particular, we need
-	// to support running commands in the background on both local and remote
-	// nodes. For example:
-	//
-	//   roachprod run cluster -- "sleep 60 &> /dev/null < /dev/null &"
-	//
-	// That command should return immediately. And a "roachprod status" should
-	// reveal that the sleep command is running on the cluster.
 	nodeCmd := fmt.Sprintf(`export ROACHPROD=%s GOTRACEBACK=crash && bash -c %s`,
 		c.roachprodEnvValue(node), ssh.Escape1(expandedCmd))
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(180599)
 		nodeCmd = fmt.Sprintf("cd %s; %s", c.localVMDir(node), nodeCmd)
+	} else {
+		__antithesis_instrumentation__.Notify(180600)
 	}
+	__antithesis_instrumentation__.Notify(180593)
 
 	err = sess.Run(ctx, nodeCmd)
 	result.Stderr = stderrBuffer.String()
 	result.Stdout, result.RemoteExitStatus = processStdout(stdoutBuffer.String())
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180601)
 		detailMsg := fmt.Sprintf("Node %d. Command with error:\n```\n%s\n```\n", node, cmd)
 		err = errors.WithDetail(err, detailMsg)
 		err = rperrors.ClassifyCmdError(err)
 		if reflect.TypeOf(err) == reflect.TypeOf(rperrors.SSH{}) {
+			__antithesis_instrumentation__.Notify(180603)
 			result.RemoteExitStatus = "255"
+		} else {
+			__antithesis_instrumentation__.Notify(180604)
 		}
+		__antithesis_instrumentation__.Notify(180602)
 		result.Err = err
-	} else if result.RemoteExitStatus != "0" {
-		result.Err = &NonZeroExitCode{fmt.Sprintf("Non-zero exit code: %s", result.RemoteExitStatus)}
+	} else {
+		__antithesis_instrumentation__.Notify(180605)
+		if result.RemoteExitStatus != "0" {
+			__antithesis_instrumentation__.Notify(180606)
+			result.Err = &NonZeroExitCode{fmt.Sprintf("Non-zero exit code: %s", result.RemoteExitStatus)}
+		} else {
+			__antithesis_instrumentation__.Notify(180607)
+		}
 	}
+	__antithesis_instrumentation__.Notify(180594)
 	return result, nil
 }
 
-// NonZeroExitCode is returned when a command executed by Run() exits with a non-zero status.
 type NonZeroExitCode struct {
 	message string
 }
 
 func (e *NonZeroExitCode) Error() string {
+	__antithesis_instrumentation__.Notify(180608)
 	return e.message
 }
 
-// Run a command on >= 1 node in the cluster.
-//
-// When running on just one node, the command output is streamed to stdout.
-// When running on multiple nodes, the commands run in parallel, their output
-// is cached and then emitted all together once all commands are completed.
-//
-// stdout: Where stdout messages are written
-// stderr: Where stderr messages are written
-// nodes: The cluster nodes where the command will be run.
-// title: A description of the command being run that is output to the logs.
-// cmd: The command to run.
 func (c *SyncedCluster) Run(
 	ctx context.Context, l *logger.Logger, stdout, stderr io.Writer, nodes Nodes, title, cmd string,
 ) error {
-	// Stream output if we're running the command on only 1 node.
+	__antithesis_instrumentation__.Notify(180609)
+
 	stream := len(nodes) == 1
 	var display string
 	if !stream {
+		__antithesis_instrumentation__.Notify(180613)
 		display = fmt.Sprintf("%s: %s", c.Name, title)
+	} else {
+		__antithesis_instrumentation__.Notify(180614)
 	}
+	__antithesis_instrumentation__.Notify(180610)
 
 	errs := make([]error, len(nodes))
 	results := make([]string, len(nodes))
 	if err := c.Parallel(l, display, len(nodes), 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180615)
 		sess, err := c.newSession(nodes[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180621)
 			errs[i] = err
 			results[i] = err.Error()
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(180622)
 		}
+		__antithesis_instrumentation__.Notify(180616)
 		defer sess.Close()
 
-		// Argument template expansion is node specific (e.g. for {store-dir}).
 		e := expander{
 			node: nodes[i],
 		}
 		expandedCmd, err := e.expand(ctx, l, c, cmd)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180623)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180624)
 		}
+		__antithesis_instrumentation__.Notify(180617)
 
-		// Be careful about changing these command strings. In particular, we need
-		// to support running commands in the background on both local and remote
-		// nodes. For example:
-		//
-		//   roachprod run cluster -- "sleep 60 &> /dev/null < /dev/null &"
-		//
-		// That command should return immediately. And a "roachprod status" should
-		// reveal that the sleep command is running on the cluster.
 		nodeCmd := fmt.Sprintf(`export ROACHPROD=%s GOTRACEBACK=crash && bash -c %s`,
 			c.roachprodEnvValue(nodes[i]), ssh.Escape1(expandedCmd))
 		if c.IsLocal() {
+			__antithesis_instrumentation__.Notify(180625)
 			nodeCmd = fmt.Sprintf("cd %s; %s", c.localVMDir(nodes[i]), nodeCmd)
+		} else {
+			__antithesis_instrumentation__.Notify(180626)
 		}
+		__antithesis_instrumentation__.Notify(180618)
 
 		if stream {
+			__antithesis_instrumentation__.Notify(180627)
 			sess.SetStdout(stdout)
 			sess.SetStderr(stderr)
 			errs[i] = sess.Run(ctx, nodeCmd)
 			if errs[i] != nil {
+				__antithesis_instrumentation__.Notify(180629)
 				detailMsg := fmt.Sprintf("Node %d. Command with error:\n```\n%s\n```\n", nodes[i], cmd)
 				err = errors.WithDetail(errs[i], detailMsg)
 				err = rperrors.ClassifyCmdError(err)
 				errs[i] = err
+			} else {
+				__antithesis_instrumentation__.Notify(180630)
 			}
+			__antithesis_instrumentation__.Notify(180628)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(180631)
 		}
+		__antithesis_instrumentation__.Notify(180619)
 
 		out, err := sess.CombinedOutput(ctx, nodeCmd)
 		msg := strings.TrimSpace(string(out))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180632)
 			detailMsg := fmt.Sprintf("Node %d. Command with error:\n```\n%s\n```\n", nodes[i], cmd)
 			err = errors.WithDetail(err, detailMsg)
 			err = rperrors.ClassifyCmdError(err)
 			errs[i] = err
 			msg += fmt.Sprintf("\n%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(180633)
 		}
+		__antithesis_instrumentation__.Notify(180620)
 		results[i] = msg
 		return nil, nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(180634)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180635)
 	}
+	__antithesis_instrumentation__.Notify(180611)
 
 	if !stream {
+		__antithesis_instrumentation__.Notify(180636)
 		for i, r := range results {
+			__antithesis_instrumentation__.Notify(180637)
 			fmt.Fprintf(stdout, "  %2d: %s\n", nodes[i], r)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(180638)
 	}
+	__antithesis_instrumentation__.Notify(180612)
 	return rperrors.SelectPriorityError(errs)
 }
 
-// RunWithDetails runs a command on the specified nodes and returns results details and an error.
 func (c *SyncedCluster) RunWithDetails(
 	ctx context.Context, l *logger.Logger, nodes Nodes, title, cmd string,
 ) ([]RunResultDetails, error) {
+	__antithesis_instrumentation__.Notify(180639)
 	display := fmt.Sprintf("%s: %s", c.Name, title)
 	results := make([]RunResultDetails, len(nodes))
 
 	failed, err := c.ParallelE(l, display, len(nodes), 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180642)
 		result, err := runCmdOnSingleNode(ctx, l, c, nodes[i], cmd)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180644)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180645)
 		}
+		__antithesis_instrumentation__.Notify(180643)
 		results[i] = result
 		return nil, nil
 	})
+	__antithesis_instrumentation__.Notify(180640)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180646)
 		for _, node := range failed {
+			__antithesis_instrumentation__.Notify(180647)
 			results[node.Index].Err = node.Err
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(180648)
 	}
+	__antithesis_instrumentation__.Notify(180641)
 	return results, nil
 }
 
-// Wait TODO(peter): document
 func (c *SyncedCluster) Wait(ctx context.Context, l *logger.Logger) error {
+	__antithesis_instrumentation__.Notify(180649)
 	display := fmt.Sprintf("%s: waiting for nodes to start", c.Name)
 	errs := make([]error, len(c.Nodes))
 	if err := c.Parallel(l, display, len(c.Nodes), 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180653)
 		for j := 0; j < 600; j++ {
+			__antithesis_instrumentation__.Notify(180655)
 			sess, err := c.newSession(c.Nodes[i])
 			if err != nil {
+				__antithesis_instrumentation__.Notify(180658)
 				time.Sleep(500 * time.Millisecond)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(180659)
 			}
+			__antithesis_instrumentation__.Notify(180656)
 			defer sess.Close()
 
 			_, err = sess.CombinedOutput(ctx, "test -e /mnt/data1/.roachprod-initialized")
 			if err != nil {
+				__antithesis_instrumentation__.Notify(180660)
 				time.Sleep(500 * time.Millisecond)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(180661)
 			}
+			__antithesis_instrumentation__.Notify(180657)
 			return nil, nil
 		}
+		__antithesis_instrumentation__.Notify(180654)
 		errs[i] = errors.New("timed out after 5m")
 		return nil, nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(180662)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180663)
 	}
+	__antithesis_instrumentation__.Notify(180650)
 
 	var foundErr bool
 	for i, err := range errs {
+		__antithesis_instrumentation__.Notify(180664)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180665)
 			l.Printf("  %2d: %v", c.Nodes[i], err)
 			foundErr = true
+		} else {
+			__antithesis_instrumentation__.Notify(180666)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180651)
 	if foundErr {
+		__antithesis_instrumentation__.Notify(180667)
 		return errors.New("not all nodes booted successfully")
+	} else {
+		__antithesis_instrumentation__.Notify(180668)
 	}
+	__antithesis_instrumentation__.Notify(180652)
 	return nil
 }
 
-// SetupSSH configures the cluster for use with SSH. This is generally run after
-// the cloud.Cluster has been synced which resets the SSH credentials on the
-// machines and sets them up for the current user. This method enables the
-// hosts to talk to eachother and optionally configures additional keys to be
-// added to the hosts via the c.AuthorizedKeys field. It does so in the following
-// steps:
-//
-//   1. Creates an ssh key pair on the first host to be used on all hosts if
-//      none exists.
-//   2. Distributes the public key, private key, and authorized_keys file from
-//      the first host to the others.
-//   3. Merges the data in c.AuthorizedKeys with the existing authorized_keys
-//      files on all hosts.
-//
-// This call strives to be idempotent.
 func (c *SyncedCluster) SetupSSH(ctx context.Context, l *logger.Logger) error {
+	__antithesis_instrumentation__.Notify(180669)
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(180679)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(180680)
 	}
+	__antithesis_instrumentation__.Notify(180670)
 
-	if len(c.Nodes) == 0 || len(c.VMs) == 0 {
+	if len(c.Nodes) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(180681)
+		return len(c.VMs) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(180682)
 		return fmt.Errorf("%s: invalid cluster: nodes=%d hosts=%d",
 			c.Name, len(c.Nodes), len(c.VMs))
+	} else {
+		__antithesis_instrumentation__.Notify(180683)
 	}
+	__antithesis_instrumentation__.Notify(180671)
 
-	// Generate an ssh key that we'll distribute to all of the nodes in the
-	// cluster in order to allow inter-node ssh.
 	var sshTar []byte
 	if err := c.Parallel(l, "generating ssh key", 1, 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180684)
 		sess, err := c.newSession(1)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180687)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180688)
 		}
+		__antithesis_instrumentation__.Notify(180685)
 		defer sess.Close()
 
-		// Create the ssh key and then tar up the public, private and
-		// authorized_keys files and output them to stdout. We'll take this output
-		// and pipe it back into tar on the other nodes in the cluster.
 		cmd := `
 test -f .ssh/id_rsa || \
   (ssh-keygen -q -f .ssh/id_rsa -t rsa -N '' && \
@@ -833,70 +959,107 @@ tar cf - .ssh/id_rsa .ssh/id_rsa.pub .ssh/authorized_keys
 		sess.SetStderr(&stderr)
 
 		if err := sess.Run(ctx, cmd); err != nil {
+			__antithesis_instrumentation__.Notify(180689)
 			return nil, errors.Wrapf(err, "%s: stderr:\n%s", cmd, stderr.String())
+		} else {
+			__antithesis_instrumentation__.Notify(180690)
 		}
+		__antithesis_instrumentation__.Notify(180686)
 		sshTar = stdout.Bytes()
 		return nil, nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(180691)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180692)
 	}
+	__antithesis_instrumentation__.Notify(180672)
 
-	// Skip the first node which is where we generated the key.
 	nodes := c.Nodes[1:]
 	if err := c.Parallel(l, "distributing ssh key", len(nodes), 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180693)
 		sess, err := c.newSession(nodes[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180696)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180697)
 		}
+		__antithesis_instrumentation__.Notify(180694)
 		defer sess.Close()
 
 		sess.SetStdin(bytes.NewReader(sshTar))
 		cmd := `tar xf -`
 		if out, err := sess.CombinedOutput(ctx, cmd); err != nil {
+			__antithesis_instrumentation__.Notify(180698)
 			return nil, errors.Wrapf(err, "%s: output:\n%s", cmd, out)
+		} else {
+			__antithesis_instrumentation__.Notify(180699)
 		}
+		__antithesis_instrumentation__.Notify(180695)
 		return nil, nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(180700)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180701)
 	}
+	__antithesis_instrumentation__.Notify(180673)
 
-	// Populate the known_hosts file with both internal and external IPs of all
-	// of the nodes in the cluster. Note that as a side effect, this creates the
-	// known hosts file in unhashed format, working around a limitation of jsch
-	// (which is used in jepsen tests).
 	ips := make([]string, len(c.Nodes), len(c.Nodes)*2)
 	if err := c.Parallel(l, "retrieving hosts", len(c.Nodes), 0, func(i int) ([]byte, error) {
-		for j := 0; j < 20 && ips[i] == ""; j++ {
+		__antithesis_instrumentation__.Notify(180702)
+		for j := 0; j < 20 && func() bool {
+			__antithesis_instrumentation__.Notify(180705)
+			return ips[i] == "" == true
+		}() == true; j++ {
+			__antithesis_instrumentation__.Notify(180706)
 			var err error
 			ips[i], err = c.GetInternalIP(ctx, c.Nodes[i])
 			if err != nil {
+				__antithesis_instrumentation__.Notify(180708)
 				return nil, errors.Wrapf(err, "pgurls")
+			} else {
+				__antithesis_instrumentation__.Notify(180709)
 			}
+			__antithesis_instrumentation__.Notify(180707)
 			time.Sleep(time.Second)
 		}
+		__antithesis_instrumentation__.Notify(180703)
 		if ips[i] == "" {
+			__antithesis_instrumentation__.Notify(180710)
 			return nil, fmt.Errorf("retrieved empty IP address")
+		} else {
+			__antithesis_instrumentation__.Notify(180711)
 		}
+		__antithesis_instrumentation__.Notify(180704)
 		return nil, nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(180712)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180713)
 	}
+	__antithesis_instrumentation__.Notify(180674)
 
 	for _, i := range c.Nodes {
+		__antithesis_instrumentation__.Notify(180714)
 		ips = append(ips, c.Host(i))
 	}
+	__antithesis_instrumentation__.Notify(180675)
 	var knownHostsData []byte
 	if err := c.Parallel(l, "scanning hosts", 1, 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180715)
 		sess, err := c.newSession(c.Nodes[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180718)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180719)
 		}
+		__antithesis_instrumentation__.Notify(180716)
 		defer sess.Close()
 
-		// ssh-keyscan may return fewer than the desired number of entries if the
-		// remote nodes are not responding yet, so we loop until we have a scan that
-		// found host keys for all of the IPs. Merge the newly scanned keys with the
-		// existing list to make this process idempotent.
 		cmd := `
 set -e
 tmp="$(tempfile -d ~/.ssh -p 'roachprod' )"
@@ -920,19 +1083,32 @@ exit 1
 		sess.SetStdout(&stdout)
 		sess.SetStderr(&stderr)
 		if err := sess.Run(ctx, cmd); err != nil {
+			__antithesis_instrumentation__.Notify(180720)
 			return nil, errors.Wrapf(err, "%s: stderr:\n%s", cmd, stderr.String())
+		} else {
+			__antithesis_instrumentation__.Notify(180721)
 		}
+		__antithesis_instrumentation__.Notify(180717)
 		knownHostsData = stdout.Bytes()
 		return nil, nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(180722)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180723)
 	}
+	__antithesis_instrumentation__.Notify(180676)
 
 	if err := c.Parallel(l, "distributing known_hosts", len(c.Nodes), 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180724)
 		sess, err := c.newSession(c.Nodes[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180727)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180728)
 		}
+		__antithesis_instrumentation__.Notify(180725)
 		defer sess.Close()
 
 		sess.SetStdin(bytes.NewReader(knownHostsData))
@@ -964,24 +1140,34 @@ if [[ "$(whoami)" != "` + config.SharedUser + `" ]]; then
 fi
 `
 		if out, err := sess.CombinedOutput(ctx, cmd); err != nil {
+			__antithesis_instrumentation__.Notify(180729)
 			return nil, errors.Wrapf(err, "%s: output:\n%s", cmd, out)
+		} else {
+			__antithesis_instrumentation__.Notify(180730)
 		}
+		__antithesis_instrumentation__.Notify(180726)
 		return nil, nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(180731)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180732)
 	}
+	__antithesis_instrumentation__.Notify(180677)
 
 	if len(c.AuthorizedKeys) > 0 {
-		// When clusters are created using cloud APIs they only have a subset of
-		// desired keys installed on a subset of users. This code distributes
-		// additional authorized_keys to both the current user (your username on
-		// gce and the shared user on aws) as well as to the shared user on both
-		// platforms.
+		__antithesis_instrumentation__.Notify(180733)
+
 		if err := c.Parallel(l, "adding additional authorized keys", len(c.Nodes), 0, func(i int) ([]byte, error) {
+			__antithesis_instrumentation__.Notify(180734)
 			sess, err := c.newSession(c.Nodes[i])
 			if err != nil {
+				__antithesis_instrumentation__.Notify(180737)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(180738)
 			}
+			__antithesis_instrumentation__.Notify(180735)
 			defer sess.Close()
 
 			sess.SetStdin(bytes.NewReader(c.AuthorizedKeys))
@@ -1008,95 +1194,139 @@ if [[ "$(whoami)" != "` + config.SharedUser + `" ]]; then
 fi
 `
 			if out, err := sess.CombinedOutput(ctx, cmd); err != nil {
+				__antithesis_instrumentation__.Notify(180739)
 				return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
+			} else {
+				__antithesis_instrumentation__.Notify(180740)
 			}
+			__antithesis_instrumentation__.Notify(180736)
 			return nil, nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(180741)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(180742)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(180743)
 	}
+	__antithesis_instrumentation__.Notify(180678)
 
 	return nil
 }
 
-// DistributeCerts will generate and distribute certificates to all of the
-// nodes.
 func (c *SyncedCluster) DistributeCerts(ctx context.Context, l *logger.Logger) error {
+	__antithesis_instrumentation__.Notify(180744)
 	dir := ""
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(180753)
 		dir = c.localVMDir(1)
+	} else {
+		__antithesis_instrumentation__.Notify(180754)
 	}
+	__antithesis_instrumentation__.Notify(180745)
 
-	// Check to see if the certs have already been initialized.
 	var existsErr error
 	display := fmt.Sprintf("%s: checking certs", c.Name)
 	if err := c.Parallel(l, display, 1, 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180755)
 		sess, err := c.newSession(1)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180757)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180758)
 		}
+		__antithesis_instrumentation__.Notify(180756)
 		defer sess.Close()
 		_, existsErr = sess.CombinedOutput(ctx, `test -e `+filepath.Join(dir, `certs.tar`))
 		return nil, nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(180759)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180760)
 	}
+	__antithesis_instrumentation__.Notify(180746)
 	if existsErr == nil {
+		__antithesis_instrumentation__.Notify(180761)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(180762)
 	}
+	__antithesis_instrumentation__.Notify(180747)
 
-	// Gather the internal IP addresses for every node in the cluster, even
-	// if it won't be added to the cluster itself we still add the IP address
-	// to the node cert.
 	var msg string
 	display = fmt.Sprintf("%s: initializing certs", c.Name)
 	nodes := allNodes(len(c.VMs))
 	var ips []string
 	if !c.IsLocal() {
+		__antithesis_instrumentation__.Notify(180763)
 		ips = make([]string, len(nodes))
 		if err := c.Parallel(l, "", len(nodes), 0, func(i int) ([]byte, error) {
+			__antithesis_instrumentation__.Notify(180764)
 			var err error
 			ips[i], err = c.GetInternalIP(ctx, nodes[i])
 			return nil, errors.Wrapf(err, "IPs")
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(180765)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(180766)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(180767)
 	}
+	__antithesis_instrumentation__.Notify(180748)
 
-	// Generate the ca, client and node certificates on the first node.
 	if err := c.Parallel(l, display, 1, 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180768)
 		sess, err := c.newSession(1)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180773)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180774)
 		}
+		__antithesis_instrumentation__.Notify(180769)
 		defer sess.Close()
 
 		var nodeNames []string
 		if c.IsLocal() {
-			// For local clusters, we only need to add one of the VM IP addresses.
+			__antithesis_instrumentation__.Notify(180775)
+
 			nodeNames = append(nodeNames, "$(hostname)", c.VMs[0].PublicIP)
 		} else {
-			// Add both the local and external IP addresses, as well as the
-			// hostnames to the node certificate.
+			__antithesis_instrumentation__.Notify(180776)
+
 			nodeNames = append(nodeNames, ips...)
 			for i := range c.VMs {
+				__antithesis_instrumentation__.Notify(180778)
 				nodeNames = append(nodeNames, c.VMs[i].PublicIP)
 			}
+			__antithesis_instrumentation__.Notify(180777)
 			for i := range c.VMs {
+				__antithesis_instrumentation__.Notify(180779)
 				nodeNames = append(nodeNames, fmt.Sprintf("%s-%04d", c.Name, i+1))
-				// On AWS nodes internally have a DNS name in the form ip-<ip address>
-				// where dots have been replaces with dashes.
-				// See https://docs.aws.amazon.com/vpc/latest/userguide/vpc-dns.html#vpc-dns-hostnames
+
 				if c.VMs[i].Provider == aws.ProviderName {
+					__antithesis_instrumentation__.Notify(180780)
 					nodeNames = append(nodeNames, "ip-"+strings.ReplaceAll(ips[i], ".", "-"))
+				} else {
+					__antithesis_instrumentation__.Notify(180781)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(180770)
 
 		var cmd string
 		if c.IsLocal() {
+			__antithesis_instrumentation__.Notify(180782)
 			cmd = fmt.Sprintf(`cd %s ; `, c.localVMDir(1))
+		} else {
+			__antithesis_instrumentation__.Notify(180783)
 		}
+		__antithesis_instrumentation__.Notify(180771)
 		cmd += fmt.Sprintf(`
 rm -fr certs
 mkdir -p certs
@@ -1107,70 +1337,110 @@ mkdir -p certs
 tar cvf certs.tar certs
 `, cockroachNodeBinary(c, 1), strings.Join(nodeNames, " "))
 		if out, err := sess.CombinedOutput(ctx, cmd); err != nil {
+			__antithesis_instrumentation__.Notify(180784)
 			msg = fmt.Sprintf("%s: %v", out, err)
+		} else {
+			__antithesis_instrumentation__.Notify(180785)
 		}
+		__antithesis_instrumentation__.Notify(180772)
 		return nil, nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(180786)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180787)
 	}
+	__antithesis_instrumentation__.Notify(180749)
 
 	if msg != "" {
+		__antithesis_instrumentation__.Notify(180788)
 		fmt.Fprintln(os.Stderr, msg)
 		exit.WithCode(exit.UnspecifiedError())
+	} else {
+		__antithesis_instrumentation__.Notify(180789)
 	}
+	__antithesis_instrumentation__.Notify(180750)
 
 	var tmpfileName string
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(180790)
 		tmpfileName = os.ExpandEnv(filepath.Join(dir, "certs.tar"))
 	} else {
-		// Retrieve the certs.tar that was created on the first node.
+		__antithesis_instrumentation__.Notify(180791)
+
 		tmpfile, err := ioutil.TempFile("", "certs")
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180795)
 			fmt.Fprintln(os.Stderr, err)
 			exit.WithCode(exit.UnspecifiedError())
+		} else {
+			__antithesis_instrumentation__.Notify(180796)
 		}
+		__antithesis_instrumentation__.Notify(180792)
 		_ = tmpfile.Close()
 		defer func() {
-			_ = os.Remove(tmpfile.Name()) // clean up
+			__antithesis_instrumentation__.Notify(180797)
+			_ = os.Remove(tmpfile.Name())
 		}()
+		__antithesis_instrumentation__.Notify(180793)
 
 		if err := func() error {
+			__antithesis_instrumentation__.Notify(180798)
 			return c.scp(fmt.Sprintf("%s@%s:certs.tar", c.user(1), c.Host(1)), tmpfile.Name())
 		}(); err != nil {
+			__antithesis_instrumentation__.Notify(180799)
 			fmt.Fprintln(os.Stderr, err)
 			exit.WithCode(exit.UnspecifiedError())
+		} else {
+			__antithesis_instrumentation__.Notify(180800)
 		}
+		__antithesis_instrumentation__.Notify(180794)
 
 		tmpfileName = tmpfile.Name()
 	}
+	__antithesis_instrumentation__.Notify(180751)
 
-	// Read the certs.tar file we just downloaded. We'll be piping it to the
-	// other nodes in the cluster.
 	certsTar, err := ioutil.ReadFile(tmpfileName)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180801)
 		fmt.Fprintln(os.Stderr, err)
 		exit.WithCode(exit.UnspecifiedError())
+	} else {
+		__antithesis_instrumentation__.Notify(180802)
 	}
+	__antithesis_instrumentation__.Notify(180752)
 
-	// Skip the first node which is where we generated the certs.
 	display = c.Name + ": distributing certs"
 	nodes = nodes[1:]
 	return c.Parallel(l, display, len(nodes), 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(180803)
 		sess, err := c.newSession(nodes[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180807)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(180808)
 		}
+		__antithesis_instrumentation__.Notify(180804)
 		defer sess.Close()
 
 		sess.SetStdin(bytes.NewReader(certsTar))
 		var cmd string
 		if c.IsLocal() {
+			__antithesis_instrumentation__.Notify(180809)
 			cmd = fmt.Sprintf(`cd %s ; `, c.localVMDir(nodes[i]))
+		} else {
+			__antithesis_instrumentation__.Notify(180810)
 		}
+		__antithesis_instrumentation__.Notify(180805)
 		cmd += `tar xf -`
 		if out, err := sess.CombinedOutput(ctx, cmd); err != nil {
+			__antithesis_instrumentation__.Notify(180811)
 			return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
+		} else {
+			__antithesis_instrumentation__.Notify(180812)
 		}
+		__antithesis_instrumentation__.Notify(180806)
 		return nil, nil
 	})
 }
@@ -1179,48 +1449,73 @@ const progressDone = "=======================================>"
 const progressTodo = "----------------------------------------"
 
 func formatProgress(p float64) string {
+	__antithesis_instrumentation__.Notify(180813)
 	i := int(math.Ceil(float64(len(progressDone)) * (1 - p)))
 	if i > len(progressDone) {
+		__antithesis_instrumentation__.Notify(180816)
 		i = len(progressDone)
+	} else {
+		__antithesis_instrumentation__.Notify(180817)
 	}
+	__antithesis_instrumentation__.Notify(180814)
 	if i < 0 {
+		__antithesis_instrumentation__.Notify(180818)
 		i = 0
+	} else {
+		__antithesis_instrumentation__.Notify(180819)
 	}
+	__antithesis_instrumentation__.Notify(180815)
 	return fmt.Sprintf("[%s%s] %.0f%%", progressDone[i:], progressTodo[:i], 100*p)
 }
 
-// Put TODO(peter): document
 func (c *SyncedCluster) Put(ctx context.Context, l *logger.Logger, src, dest string) error {
-	// Check if source file exists and if it's a symlink.
+	__antithesis_instrumentation__.Notify(180820)
+
 	var potentialSymlinkPath string
 	var err error
 	if potentialSymlinkPath, err = filepath.EvalSymlinks(src); err != nil {
+		__antithesis_instrumentation__.Notify(180834)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180835)
 	}
-	// Different paths imply it is a symlink.
+	__antithesis_instrumentation__.Notify(180821)
+
 	if potentialSymlinkPath != src {
-		// Get target symlink access mode.
+		__antithesis_instrumentation__.Notify(180836)
+
 		var symlinkTargetInfo fs.FileInfo
 		if symlinkTargetInfo, err = os.Stat(potentialSymlinkPath); err != nil {
+			__antithesis_instrumentation__.Notify(180838)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(180839)
 		}
+		__antithesis_instrumentation__.Notify(180837)
 		redColor, resetColor := "\033[31m", "\033[0m"
 		l.Printf(redColor + "WARNING: Source file is a symlink." + resetColor)
 		l.Printf(redColor+"WARNING: Remote file will inherit the target permissions '%v'."+resetColor, symlinkTargetInfo.Mode())
+	} else {
+		__antithesis_instrumentation__.Notify(180840)
 	}
+	__antithesis_instrumentation__.Notify(180822)
 
-	// NB: This value was determined with a few experiments. Higher values were
-	// not tested.
 	const treeDistFanout = 10
 
 	var detail string
 	if !c.IsLocal() {
+		__antithesis_instrumentation__.Notify(180841)
 		if c.UseTreeDist {
+			__antithesis_instrumentation__.Notify(180842)
 			detail = " (dist)"
 		} else {
+			__antithesis_instrumentation__.Notify(180843)
 			detail = " (scp)"
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(180844)
 	}
+	__antithesis_instrumentation__.Notify(180823)
 	l.Printf("%s: putting%s %s %s\n", c.Name, detail, src, dest)
 
 	type result struct {
@@ -1234,248 +1529,326 @@ func (c *SyncedCluster) Put(ctx context.Context, l *logger.Logger, src, dest str
 	var wg sync.WaitGroup
 	wg.Add(len(c.Nodes))
 
-	// Each destination for the copy needs a source to copy from. We create a
-	// channel that has capacity for each destination. If we try to add a source
-	// and the channel is full we can simply drop that source as we know we won't
-	// need to use it.
 	sources := make(chan int, len(c.Nodes))
 	pushSource := func(i int) {
+		__antithesis_instrumentation__.Notify(180845)
 		select {
 		case sources <- i:
+			__antithesis_instrumentation__.Notify(180846)
 		default:
+			__antithesis_instrumentation__.Notify(180847)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180824)
 
 	if c.UseTreeDist {
-		// In treedist mode, only add the local source initially.
+		__antithesis_instrumentation__.Notify(180848)
+
 		pushSource(-1)
 	} else {
-		// In non-treedist mode, add the local source N times (once for each
-		// destination).
+		__antithesis_instrumentation__.Notify(180849)
+
 		for range c.Nodes {
+			__antithesis_instrumentation__.Notify(180850)
 			pushSource(-1)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180825)
 
 	mkpath := func(i int, dest string) (string, error) {
+		__antithesis_instrumentation__.Notify(180851)
 		if i == -1 {
+			__antithesis_instrumentation__.Notify(180854)
 			return src, nil
+		} else {
+			__antithesis_instrumentation__.Notify(180855)
 		}
-		// Expand the destination to allow, for example, putting directly
-		// into {store-dir}.
+		__antithesis_instrumentation__.Notify(180852)
+
 		e := expander{
 			node: c.Nodes[i],
 		}
 		dest, err := e.expand(ctx, l, c, dest)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180856)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(180857)
 		}
+		__antithesis_instrumentation__.Notify(180853)
 		return fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[i]), c.Host(c.Nodes[i]), dest), nil
 	}
+	__antithesis_instrumentation__.Notify(180826)
 
 	for i := range c.Nodes {
+		__antithesis_instrumentation__.Notify(180858)
 		go func(i int, dest string) {
+			__antithesis_instrumentation__.Notify(180859)
 			defer wg.Done()
 
 			if c.IsLocal() {
-				// Expand the destination to allow, for example, putting directly
-				// into {store-dir}.
+				__antithesis_instrumentation__.Notify(180863)
+
 				e := expander{
 					node: c.Nodes[i],
 				}
 				var err error
 				dest, err = e.expand(ctx, l, c, dest)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(180868)
 					results <- result{i, err}
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(180869)
 				}
+				__antithesis_instrumentation__.Notify(180864)
 				if _, err := os.Stat(src); err != nil {
+					__antithesis_instrumentation__.Notify(180870)
 					results <- result{i, err}
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(180871)
 				}
+				__antithesis_instrumentation__.Notify(180865)
 				from, err := filepath.Abs(src)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(180872)
 					results <- result{i, err}
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(180873)
 				}
-				// TODO(jlinder): this does not take into account things like
-				// roachprod put local:1 /some/file.txt /some/dir
-				// and will replace 'dir' with the contents of file.txt, instead
-				// of creating /some/dir/file.txt.
+				__antithesis_instrumentation__.Notify(180866)
+
 				var to string
 				if filepath.IsAbs(dest) {
+					__antithesis_instrumentation__.Notify(180874)
 					to = dest
 				} else {
+					__antithesis_instrumentation__.Notify(180875)
 					to = filepath.Join(c.localVMDir(c.Nodes[i]), dest)
 				}
-				// Remove the destination if it exists, ignoring errors which we'll
-				// handle via the os.Symlink() call.
+				__antithesis_instrumentation__.Notify(180867)
+
 				_ = os.Remove(to)
 				results <- result{i, os.Symlink(from, to)}
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(180876)
 			}
+			__antithesis_instrumentation__.Notify(180860)
 
-			// Determine the source to copy from.
-			//
-			// TODO(peter): Take the cluster topology into account. We should
-			// preferentially use a source in the same region and only perform a
-			// single copy between regions. We have the region information and
-			// achieving this approach is likely a generalization of the current
-			// code.
 			srcIndex := <-sources
 			from, err := mkpath(srcIndex, dest)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(180877)
 				results <- result{i, err}
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(180878)
 			}
-			// TODO(peter): For remote-to-remote copies, should the destination use
-			// the internal IP address? The external address works, but it might be
-			// slower.
+			__antithesis_instrumentation__.Notify(180861)
+
 			to, err := mkpath(i, dest)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(180879)
 				results <- result{i, err}
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(180880)
 			}
+			__antithesis_instrumentation__.Notify(180862)
 
 			err = c.scp(from, to)
 			results <- result{i, err}
 
 			if err != nil {
-				// The copy failed. Re-add the original source.
+				__antithesis_instrumentation__.Notify(180881)
+
 				pushSource(srcIndex)
 			} else {
-				// The copy failed. Re-add the original source if it is remote.
+				__antithesis_instrumentation__.Notify(180882)
+
 				if srcIndex != -1 {
+					__antithesis_instrumentation__.Notify(180884)
 					pushSource(srcIndex)
+				} else {
+					__antithesis_instrumentation__.Notify(180885)
 				}
-				// Add fanout number of new sources for the destination.
+				__antithesis_instrumentation__.Notify(180883)
+
 				for j := 0; j < treeDistFanout; j++ {
+					__antithesis_instrumentation__.Notify(180886)
 					pushSource(i)
 				}
 			}
 		}(i, dest)
 	}
+	__antithesis_instrumentation__.Notify(180827)
 
 	go func() {
+		__antithesis_instrumentation__.Notify(180887)
 		wg.Wait()
 		close(results)
 	}()
+	__antithesis_instrumentation__.Notify(180828)
 
 	var writer ui.Writer
 	var ticker *time.Ticker
 	if !config.Quiet {
+		__antithesis_instrumentation__.Notify(180888)
 		ticker = time.NewTicker(100 * time.Millisecond)
 	} else {
+		__antithesis_instrumentation__.Notify(180889)
 		ticker = time.NewTicker(1000 * time.Millisecond)
 	}
+	__antithesis_instrumentation__.Notify(180829)
 	defer ticker.Stop()
 	var errOnce sync.Once
 	var finalErr error
 	setErr := func(e error) {
+		__antithesis_instrumentation__.Notify(180890)
 		if e != nil {
+			__antithesis_instrumentation__.Notify(180891)
 			errOnce.Do(func() {
+				__antithesis_instrumentation__.Notify(180892)
 				finalErr = e
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(180893)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180830)
 
 	var spinner = []string{"|", "/", "-", "\\"}
 	spinnerIdx := 0
 
 	for done := false; !done; {
+		__antithesis_instrumentation__.Notify(180894)
 		select {
 		case <-ticker.C:
-			if config.Quiet && l.File == nil {
+			__antithesis_instrumentation__.Notify(180896)
+			if config.Quiet && func() bool {
+				__antithesis_instrumentation__.Notify(180898)
+				return l.File == nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(180899)
 				fmt.Printf(".")
+			} else {
+				__antithesis_instrumentation__.Notify(180900)
 			}
 		case r, ok := <-results:
+			__antithesis_instrumentation__.Notify(180897)
 			done = !ok
 			if ok {
+				__antithesis_instrumentation__.Notify(180901)
 				linesMu.Lock()
 				if r.err != nil {
+					__antithesis_instrumentation__.Notify(180903)
 					setErr(r.err)
 					lines[r.index] = r.err.Error()
 				} else {
+					__antithesis_instrumentation__.Notify(180904)
 					lines[r.index] = "done"
 				}
+				__antithesis_instrumentation__.Notify(180902)
 				linesMu.Unlock()
+			} else {
+				__antithesis_instrumentation__.Notify(180905)
 			}
 		}
+		__antithesis_instrumentation__.Notify(180895)
 		if !config.Quiet {
+			__antithesis_instrumentation__.Notify(180906)
 			linesMu.Lock()
 			for i := range lines {
+				__antithesis_instrumentation__.Notify(180908)
 				fmt.Fprintf(&writer, "  %2d: ", c.Nodes[i])
 				if lines[i] != "" {
+					__antithesis_instrumentation__.Notify(180910)
 					fmt.Fprintf(&writer, "%s", lines[i])
 				} else {
+					__antithesis_instrumentation__.Notify(180911)
 					fmt.Fprintf(&writer, "%s", spinner[spinnerIdx%len(spinner)])
 				}
+				__antithesis_instrumentation__.Notify(180909)
 				fmt.Fprintf(&writer, "\n")
 			}
+			__antithesis_instrumentation__.Notify(180907)
 			linesMu.Unlock()
 			_ = writer.Flush(l.Stdout)
 			spinnerIdx++
+		} else {
+			__antithesis_instrumentation__.Notify(180912)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180831)
 
-	if config.Quiet && l.File != nil {
+	if config.Quiet && func() bool {
+		__antithesis_instrumentation__.Notify(180913)
+		return l.File != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(180914)
 		l.Printf("\n")
 		linesMu.Lock()
 		for i := range lines {
+			__antithesis_instrumentation__.Notify(180916)
 			l.Printf("  %2d: %s", c.Nodes[i], lines[i])
 		}
+		__antithesis_instrumentation__.Notify(180915)
 		linesMu.Unlock()
+	} else {
+		__antithesis_instrumentation__.Notify(180917)
 	}
+	__antithesis_instrumentation__.Notify(180832)
 
 	if finalErr != nil {
+		__antithesis_instrumentation__.Notify(180918)
 		return errors.Wrapf(finalErr, "put %s failed", src)
+	} else {
+		__antithesis_instrumentation__.Notify(180919)
 	}
+	__antithesis_instrumentation__.Notify(180833)
 	return nil
 }
 
-// Logs will sync the logs from c to dest with each nodes logs under dest in
-// directories per node and stream the merged logs to out.
-// For example, if dest is "tpcc-test.logs" then the logs for each node will be
-// stored like:
-//
-//  tpcc-test.logs/1.logs/...
-//  tpcc-test.logs/2.logs/...
-//  ...
-//
-// Log file syncing uses rsync which attempts to be efficient when deciding
-// which files to update. The logs are merged by calling
-// `cockroach debug merge-logs <dest>/*/*` with the optional flag for filter.
-// The syncing and merging happens in a loop which pauses <interval> between
-// iterations and takes some care with the from/to flags in merge-logs to make
-// new logs appear to be streamed. If <from> is zero streaming begins from now.
-// If to is non-zero, when the stream of logs passes to, the function returns.
-// <user> allows retrieval of logs from a roachprod cluster being run by another
-// user and assumes that the current user used to create c has the ability to
-// sudo into <user>.
 func (c *SyncedCluster) Logs(
 	src, dest, user, filter, programFilter string,
 	interval time.Duration,
 	from, to time.Time,
 	out io.Writer,
 ) error {
+	__antithesis_instrumentation__.Notify(180920)
 	rsyncNodeLogs := func(ctx context.Context, node Node) error {
+		__antithesis_instrumentation__.Notify(180929)
 		base := fmt.Sprintf("%d.logs", node)
 		local := filepath.Join(dest, base) + "/"
 		sshUser := c.user(node)
 		rsyncArgs := []string{"-az", "--size-only"}
 		var remote string
 		if c.IsLocal() {
-			// This here is a bit of a hack to guess that the parent of the log dir is
-			// the "home" for the local node and that the srcBase is relative to that.
+			__antithesis_instrumentation__.Notify(180932)
+
 			localHome := filepath.Dir(c.LogDir(node))
 			remote = filepath.Join(localHome, src) + "/"
 		} else {
+			__antithesis_instrumentation__.Notify(180933)
 			logDir := src
-			if !filepath.IsAbs(logDir) && user != "" && user != sshUser {
+			if !filepath.IsAbs(logDir) && func() bool {
+				__antithesis_instrumentation__.Notify(180935)
+				return user != "" == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(180936)
+				return user != sshUser == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(180937)
 				logDir = "~" + user + "/" + logDir
+			} else {
+				__antithesis_instrumentation__.Notify(180938)
 			}
+			__antithesis_instrumentation__.Notify(180934)
 			remote = fmt.Sprintf("%s@%s:%s/", c.user(node), c.Host(node), logDir)
-			// Use control master to mitigate SSH connection setup cost.
+
 			rsyncArgs = append(rsyncArgs, "--rsh", "ssh "+
 				"-o StrictHostKeyChecking=no "+
 				"-o ControlMaster=auto "+
@@ -1483,111 +1856,194 @@ func (c *SyncedCluster) Logs(
 				"-o UserKnownHostsFile=/dev/null "+
 				"-o ControlPersist=2m "+
 				strings.Join(sshAuthArgs(), " "))
-			// Use rsync-path flag to sudo into user if different from sshUser.
-			if user != "" && user != sshUser {
+
+			if user != "" && func() bool {
+				__antithesis_instrumentation__.Notify(180939)
+				return user != sshUser == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(180940)
 				rsyncArgs = append(rsyncArgs, "--rsync-path",
 					fmt.Sprintf("sudo -u %s rsync", user))
+			} else {
+				__antithesis_instrumentation__.Notify(180941)
 			}
 		}
+		__antithesis_instrumentation__.Notify(180930)
 		rsyncArgs = append(rsyncArgs, remote, local)
 		cmd := exec.CommandContext(ctx, "rsync", rsyncArgs...)
 		var stderrBuf bytes.Buffer
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = &stderrBuf
 		if err := cmd.Run(); err != nil {
+			__antithesis_instrumentation__.Notify(180942)
 			if ctx.Err() != nil {
+				__antithesis_instrumentation__.Notify(180944)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(180945)
 			}
+			__antithesis_instrumentation__.Notify(180943)
 			return errors.Wrapf(err, "failed to rsync from %v to %v:\n%s\n",
 				src, dest, stderrBuf.String())
+		} else {
+			__antithesis_instrumentation__.Notify(180946)
 		}
+		__antithesis_instrumentation__.Notify(180931)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(180921)
 	rsyncLogs := func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(180947)
 		g, gctx := errgroup.WithContext(ctx)
 		for i := range c.Nodes {
+			__antithesis_instrumentation__.Notify(180949)
 			node := c.Nodes[i]
 			g.Go(func() error {
+				__antithesis_instrumentation__.Notify(180950)
 				return rsyncNodeLogs(gctx, node)
 			})
 		}
+		__antithesis_instrumentation__.Notify(180948)
 		return g.Wait()
 	}
+	__antithesis_instrumentation__.Notify(180922)
 	mergeLogs := func(ctx context.Context, prev, t time.Time) error {
+		__antithesis_instrumentation__.Notify(180951)
 		cmd := exec.CommandContext(ctx, "cockroach", "debug", "merge-logs",
 			dest+"/*/*",
 			"--from", prev.Format(time.RFC3339),
 			"--to", t.Format(time.RFC3339))
 		if filter != "" {
+			__antithesis_instrumentation__.Notify(180956)
 			cmd.Args = append(cmd.Args, "--filter", filter)
+		} else {
+			__antithesis_instrumentation__.Notify(180957)
 		}
+		__antithesis_instrumentation__.Notify(180952)
 		if programFilter != "" {
+			__antithesis_instrumentation__.Notify(180958)
 			cmd.Args = append(cmd.Args, "--program-filter", programFilter)
+		} else {
+			__antithesis_instrumentation__.Notify(180959)
 		}
-		// For local clusters capture the cluster ID from the sync path because the
-		// host information is useless.
+		__antithesis_instrumentation__.Notify(180953)
+
 		if c.IsLocal() {
+			__antithesis_instrumentation__.Notify(180960)
 			cmd.Args = append(cmd.Args,
 				"--file-pattern", "^(?:.*/)?(?P<id>[0-9]+).*/"+log.FileNamePattern+"$",
 				"--prefix", "${id}> ")
+		} else {
+			__antithesis_instrumentation__.Notify(180961)
 		}
+		__antithesis_instrumentation__.Notify(180954)
 		cmd.Stdout = out
 		var errBuf bytes.Buffer
 		cmd.Stderr = &errBuf
-		if err := cmd.Run(); err != nil && ctx.Err() == nil {
+		if err := cmd.Run(); err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(180962)
+			return ctx.Err() == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(180963)
 			return errors.Wrapf(err, "failed to run cockroach debug merge-logs:\n%v", errBuf.String())
+		} else {
+			__antithesis_instrumentation__.Notify(180964)
 		}
+		__antithesis_instrumentation__.Notify(180955)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(180923)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if err := os.MkdirAll(dest, 0755); err != nil {
+		__antithesis_instrumentation__.Notify(180965)
 		return errors.Wrapf(err, "failed to create destination directory")
+	} else {
+		__antithesis_instrumentation__.Notify(180966)
 	}
-	// Cancel context upon signaling.
+	__antithesis_instrumentation__.Notify(180924)
+
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-	defer func() { signal.Stop(ch); close(ch) }()
-	go func() { <-ch; cancel() }()
-	// TODO(ajwerner): consider SIGHUP-ing cockroach before the rsync to avoid the delays
+	defer func() { __antithesis_instrumentation__.Notify(180967); signal.Stop(ch); close(ch) }()
+	__antithesis_instrumentation__.Notify(180925)
+	go func() { __antithesis_instrumentation__.Notify(180968); <-ch; cancel() }()
+	__antithesis_instrumentation__.Notify(180926)
+
 	prev := from
 	if prev.IsZero() {
+		__antithesis_instrumentation__.Notify(180969)
 		prev = timeutil.Now().Add(-2 * time.Second).Truncate(time.Microsecond)
+	} else {
+		__antithesis_instrumentation__.Notify(180970)
 	}
-	for to.IsZero() || prev.Before(to) {
-		// Subtract ~1 second to deal with the flush delay in util/log.
+	__antithesis_instrumentation__.Notify(180927)
+	for to.IsZero() || func() bool {
+		__antithesis_instrumentation__.Notify(180971)
+		return prev.Before(to) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(180972)
+
 		t := timeutil.Now().Add(-1100 * time.Millisecond).Truncate(time.Microsecond)
 		if err := rsyncLogs(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(180977)
 			return errors.Wrapf(err, "failed to sync logs")
+		} else {
+			__antithesis_instrumentation__.Notify(180978)
 		}
-		if !to.IsZero() && t.After(to) {
+		__antithesis_instrumentation__.Notify(180973)
+		if !to.IsZero() && func() bool {
+			__antithesis_instrumentation__.Notify(180979)
+			return t.After(to) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(180980)
 			t = to
+		} else {
+			__antithesis_instrumentation__.Notify(180981)
 		}
+		__antithesis_instrumentation__.Notify(180974)
 		if err := mergeLogs(ctx, prev, t); err != nil {
+			__antithesis_instrumentation__.Notify(180982)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(180983)
 		}
+		__antithesis_instrumentation__.Notify(180975)
 		prev = t
-		if !to.IsZero() && !prev.Before(to) {
+		if !to.IsZero() && func() bool {
+			__antithesis_instrumentation__.Notify(180984)
+			return !prev.Before(to) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(180985)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(180986)
 		}
+		__antithesis_instrumentation__.Notify(180976)
 		select {
 		case <-time.After(interval):
+			__antithesis_instrumentation__.Notify(180987)
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(180988)
 			return nil
 		}
 	}
+	__antithesis_instrumentation__.Notify(180928)
 	return nil
 }
 
-// Get TODO(peter): document
 func (c *SyncedCluster) Get(l *logger.Logger, src, dest string) error {
-	// TODO(peter): Only get 10 nodes at a time. When a node completes, output a
-	// line indicating that.
+	__antithesis_instrumentation__.Notify(180989)
+
 	var detail string
 	if !c.IsLocal() {
+		__antithesis_instrumentation__.Notify(180997)
 		detail = " (scp)"
+	} else {
+		__antithesis_instrumentation__.Notify(180998)
 	}
+	__antithesis_instrumentation__.Notify(180990)
 	l.Printf("%s: getting%s %s %s\n", c.Name, detail, src, dest)
 
 	type result struct {
@@ -1602,74 +2058,119 @@ func (c *SyncedCluster) Get(l *logger.Logger, src, dest string) error {
 
 	var wg sync.WaitGroup
 	for i := range c.Nodes {
+		__antithesis_instrumentation__.Notify(180999)
 		wg.Add(1)
 		go func(i int) {
+			__antithesis_instrumentation__.Notify(181000)
 			defer wg.Done()
 
 			src := src
 			dest := dest
 			if len(c.Nodes) > 1 {
+				__antithesis_instrumentation__.Notify(181005)
 				base := fmt.Sprintf("%d.%s", c.Nodes[i], filepath.Base(dest))
 				dest = filepath.Join(filepath.Dir(dest), base)
+			} else {
+				__antithesis_instrumentation__.Notify(181006)
 			}
+			__antithesis_instrumentation__.Notify(181001)
 
 			progress := func(p float64) {
+				__antithesis_instrumentation__.Notify(181007)
 				linesMu.Lock()
 				defer linesMu.Unlock()
 				lines[i] = formatProgress(p)
 			}
+			__antithesis_instrumentation__.Notify(181002)
 
 			if c.IsLocal() {
+				__antithesis_instrumentation__.Notify(181008)
 				if !filepath.IsAbs(src) {
+					__antithesis_instrumentation__.Notify(181012)
 					src = filepath.Join(c.localVMDir(c.Nodes[i]), src)
+				} else {
+					__antithesis_instrumentation__.Notify(181013)
 				}
+				__antithesis_instrumentation__.Notify(181009)
 
 				var copy func(src, dest string, info os.FileInfo) error
 				copy = func(src, dest string, info os.FileInfo) error {
-					// Make sure the destination file is world readable.
-					// See:
-					// https://github.com/cockroachdb/cockroach/issues/44843
+					__antithesis_instrumentation__.Notify(181014)
+
 					mode := info.Mode() | 0444
 					if info.IsDir() {
+						__antithesis_instrumentation__.Notify(181020)
 						if err := os.MkdirAll(dest, mode); err != nil {
+							__antithesis_instrumentation__.Notify(181024)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(181025)
 						}
+						__antithesis_instrumentation__.Notify(181021)
 
 						infos, err := ioutil.ReadDir(src)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(181026)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(181027)
 						}
+						__antithesis_instrumentation__.Notify(181022)
 
 						for _, info := range infos {
+							__antithesis_instrumentation__.Notify(181028)
 							if err := copy(
 								filepath.Join(src, info.Name()),
 								filepath.Join(dest, info.Name()),
 								info,
 							); err != nil {
+								__antithesis_instrumentation__.Notify(181029)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(181030)
 							}
 						}
+						__antithesis_instrumentation__.Notify(181023)
 						return nil
+					} else {
+						__antithesis_instrumentation__.Notify(181031)
 					}
+					__antithesis_instrumentation__.Notify(181015)
 
 					if !mode.IsRegular() {
+						__antithesis_instrumentation__.Notify(181032)
 						return nil
+					} else {
+						__antithesis_instrumentation__.Notify(181033)
 					}
+					__antithesis_instrumentation__.Notify(181016)
 
 					out, err := os.Create(dest)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(181034)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(181035)
 					}
+					__antithesis_instrumentation__.Notify(181017)
 					defer out.Close()
 
 					if err := os.Chmod(out.Name(), mode); err != nil {
+						__antithesis_instrumentation__.Notify(181036)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(181037)
 					}
+					__antithesis_instrumentation__.Notify(181018)
 
 					in, err := os.Open(src)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(181038)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(181039)
 					}
+					__antithesis_instrumentation__.Notify(181019)
 					defer in.Close()
 
 					p := &ssh.ProgressWriter{
@@ -1681,56 +2182,81 @@ func (c *SyncedCluster) Get(l *logger.Logger, src, dest string) error {
 					_, err = io.Copy(p, in)
 					return err
 				}
+				__antithesis_instrumentation__.Notify(181010)
 
 				info, err := os.Stat(src)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(181040)
 					results <- result{i, err}
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(181041)
 				}
+				__antithesis_instrumentation__.Notify(181011)
 				err = copy(src, dest, info)
 				results <- result{i, err}
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(181042)
 			}
+			__antithesis_instrumentation__.Notify(181003)
 
 			err := c.scp(fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[0]), c.Host(c.Nodes[i]), src), dest)
 			if err == nil {
-				// Make sure all created files and directories are world readable.
-				// The CRDB process intentionally sets a 0007 umask (resulting in
-				// non-world-readable files). This creates annoyances during CI
-				// that we circumvent wholesale by adding o+r back here.
-				// See:
-				//
-				// https://github.com/cockroachdb/cockroach/issues/44843
+				__antithesis_instrumentation__.Notify(181043)
+
 				chmod := func(path string, info os.FileInfo, err error) error {
+					__antithesis_instrumentation__.Notify(181045)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(181048)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(181049)
 					}
+					__antithesis_instrumentation__.Notify(181046)
 					const oRead = 0004
 					if mode := info.Mode(); mode&oRead == 0 {
+						__antithesis_instrumentation__.Notify(181050)
 						if err := os.Chmod(path, mode|oRead); err != nil {
+							__antithesis_instrumentation__.Notify(181051)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(181052)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(181053)
 					}
+					__antithesis_instrumentation__.Notify(181047)
 					return nil
 				}
+				__antithesis_instrumentation__.Notify(181044)
 				err = filepath.Walk(dest, chmod)
+			} else {
+				__antithesis_instrumentation__.Notify(181054)
 			}
+			__antithesis_instrumentation__.Notify(181004)
 
 			results <- result{i, err}
 		}(i)
 	}
+	__antithesis_instrumentation__.Notify(180991)
 
 	go func() {
+		__antithesis_instrumentation__.Notify(181055)
 		wg.Wait()
 		close(results)
 	}()
+	__antithesis_instrumentation__.Notify(180992)
 
 	var ticker *time.Ticker
 	if config.Quiet {
+		__antithesis_instrumentation__.Notify(181056)
 		ticker = time.NewTicker(100 * time.Millisecond)
 	} else {
+		__antithesis_instrumentation__.Notify(181057)
 		ticker = time.NewTicker(1000 * time.Millisecond)
 	}
+	__antithesis_instrumentation__.Notify(180993)
 	defer ticker.Stop()
 	haveErr := false
 
@@ -1738,130 +2264,208 @@ func (c *SyncedCluster) Get(l *logger.Logger, src, dest string) error {
 	spinnerIdx := 0
 
 	for done := false; !done; {
+		__antithesis_instrumentation__.Notify(181058)
 		select {
 		case <-ticker.C:
-			if config.Quiet && l.File == nil {
+			__antithesis_instrumentation__.Notify(181060)
+			if config.Quiet && func() bool {
+				__antithesis_instrumentation__.Notify(181062)
+				return l.File == nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(181063)
 				fmt.Printf(".")
+			} else {
+				__antithesis_instrumentation__.Notify(181064)
 			}
 		case r, ok := <-results:
+			__antithesis_instrumentation__.Notify(181061)
 			done = !ok
 			if ok {
+				__antithesis_instrumentation__.Notify(181065)
 				linesMu.Lock()
 				if r.err != nil {
+					__antithesis_instrumentation__.Notify(181067)
 					haveErr = true
 					lines[r.index] = r.err.Error()
 				} else {
+					__antithesis_instrumentation__.Notify(181068)
 					lines[r.index] = "done"
 				}
+				__antithesis_instrumentation__.Notify(181066)
 				linesMu.Unlock()
+			} else {
+				__antithesis_instrumentation__.Notify(181069)
 			}
 		}
-		if !config.Quiet && l.File == nil {
+		__antithesis_instrumentation__.Notify(181059)
+		if !config.Quiet && func() bool {
+			__antithesis_instrumentation__.Notify(181070)
+			return l.File == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(181071)
 			linesMu.Lock()
 			for i := range lines {
+				__antithesis_instrumentation__.Notify(181073)
 				fmt.Fprintf(&writer, "  %2d: ", c.Nodes[i])
 				if lines[i] != "" {
+					__antithesis_instrumentation__.Notify(181075)
 					fmt.Fprintf(&writer, "%s", lines[i])
 				} else {
+					__antithesis_instrumentation__.Notify(181076)
 					fmt.Fprintf(&writer, "%s", spinner[spinnerIdx%len(spinner)])
 				}
+				__antithesis_instrumentation__.Notify(181074)
 				fmt.Fprintf(&writer, "\n")
 			}
+			__antithesis_instrumentation__.Notify(181072)
 			linesMu.Unlock()
 			_ = writer.Flush(l.Stdout)
 			spinnerIdx++
+		} else {
+			__antithesis_instrumentation__.Notify(181077)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180994)
 
-	if config.Quiet && l.File == nil {
+	if config.Quiet && func() bool {
+		__antithesis_instrumentation__.Notify(181078)
+		return l.File == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(181079)
 		l.Printf("\n")
 		linesMu.Lock()
 		for i := range lines {
+			__antithesis_instrumentation__.Notify(181081)
 			l.Printf("  %2d: %s", c.Nodes[i], lines[i])
 		}
+		__antithesis_instrumentation__.Notify(181080)
 		linesMu.Unlock()
+	} else {
+		__antithesis_instrumentation__.Notify(181082)
 	}
+	__antithesis_instrumentation__.Notify(180995)
 
 	if haveErr {
+		__antithesis_instrumentation__.Notify(181083)
 		return errors.Newf("get %s failed", src)
+	} else {
+		__antithesis_instrumentation__.Notify(181084)
 	}
+	__antithesis_instrumentation__.Notify(180996)
 	return nil
 }
 
-// pgurls returns a map of PG URLs for the given nodes.
 func (c *SyncedCluster) pgurls(
 	ctx context.Context, l *logger.Logger, nodes Nodes,
 ) (map[Node]string, error) {
+	__antithesis_instrumentation__.Notify(181085)
 	hosts, err := c.pghosts(ctx, l, nodes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181088)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(181089)
 	}
+	__antithesis_instrumentation__.Notify(181086)
 	m := make(map[Node]string, len(hosts))
 	for node, host := range hosts {
+		__antithesis_instrumentation__.Notify(181090)
 		m[node] = c.NodeURL(host, c.NodePort(node))
 	}
+	__antithesis_instrumentation__.Notify(181087)
 	return m, nil
 }
 
-// pghosts returns a map of IP addresses for the given nodes.
 func (c *SyncedCluster) pghosts(
 	ctx context.Context, l *logger.Logger, nodes Nodes,
 ) (map[Node]string, error) {
+	__antithesis_instrumentation__.Notify(181091)
 	ips := make([]string, len(nodes))
 	if err := c.Parallel(l, "", len(nodes), 0, func(i int) ([]byte, error) {
+		__antithesis_instrumentation__.Notify(181094)
 		var err error
 		ips[i], err = c.GetInternalIP(ctx, nodes[i])
 		return nil, errors.Wrapf(err, "pghosts")
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(181095)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(181096)
 	}
+	__antithesis_instrumentation__.Notify(181092)
 
 	m := make(map[Node]string, len(ips))
 	for i, ip := range ips {
+		__antithesis_instrumentation__.Notify(181097)
 		m[nodes[i]] = ip
 	}
+	__antithesis_instrumentation__.Notify(181093)
 	return m, nil
 }
 
-// SSH TODO(peter): document
 func (c *SyncedCluster) SSH(ctx context.Context, l *logger.Logger, sshArgs, args []string) error {
-	if len(c.Nodes) != 1 && len(args) == 0 {
-		// If trying to ssh to more than 1 node and the ssh session is interactive,
-		// try sshing with an iTerm2 split screen configuration.
+	__antithesis_instrumentation__.Notify(181098)
+	if len(c.Nodes) != 1 && func() bool {
+		__antithesis_instrumentation__.Notify(181103)
+		return len(args) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(181104)
+
 		sshed, err := maybeSplitScreenSSHITerm2(c)
 		if sshed {
+			__antithesis_instrumentation__.Notify(181105)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(181106)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(181107)
 	}
+	__antithesis_instrumentation__.Notify(181099)
 
-	// Perform template expansion on the arguments.
 	e := expander{
 		node: c.Nodes[0],
 	}
 	var expandedArgs []string
 	for _, arg := range args {
+		__antithesis_instrumentation__.Notify(181108)
 		expandedArg, err := e.expand(ctx, l, c, arg)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(181110)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(181111)
 		}
+		__antithesis_instrumentation__.Notify(181109)
 		expandedArgs = append(expandedArgs, strings.Split(expandedArg, " ")...)
 	}
+	__antithesis_instrumentation__.Notify(181100)
 
 	var allArgs []string
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(181112)
 		allArgs = []string{
 			"/bin/bash", "-c",
 		}
 		cmd := fmt.Sprintf("cd %s ; ", c.localVMDir(c.Nodes[0]))
-		if len(args) == 0 /* interactive */ {
+		if len(args) == 0 {
+			__antithesis_instrumentation__.Notify(181115)
 			cmd += "/bin/bash "
+		} else {
+			__antithesis_instrumentation__.Notify(181116)
 		}
+		__antithesis_instrumentation__.Notify(181113)
 		if len(args) > 0 {
+			__antithesis_instrumentation__.Notify(181117)
 			cmd += fmt.Sprintf("export ROACHPROD=%s ; ", c.roachprodEnvValue(c.Nodes[0]))
 			cmd += strings.Join(expandedArgs, " ")
+		} else {
+			__antithesis_instrumentation__.Notify(181118)
 		}
+		__antithesis_instrumentation__.Notify(181114)
 		allArgs = append(allArgs, cmd)
 	} else {
+		__antithesis_instrumentation__.Notify(181119)
 		allArgs = []string{
 			"ssh",
 			fmt.Sprintf("%s@%s", c.user(c.Nodes[0]), c.Host(c.Nodes[0])),
@@ -1871,21 +2475,31 @@ func (c *SyncedCluster) SSH(ctx context.Context, l *logger.Logger, sshArgs, args
 		allArgs = append(allArgs, sshAuthArgs()...)
 		allArgs = append(allArgs, sshArgs...)
 		if len(args) > 0 {
+			__antithesis_instrumentation__.Notify(181121)
 			allArgs = append(allArgs, fmt.Sprintf(
 				"export ROACHPROD=%s ;", c.roachprodEnvValue(c.Nodes[0]),
 			))
+		} else {
+			__antithesis_instrumentation__.Notify(181122)
 		}
+		__antithesis_instrumentation__.Notify(181120)
 		allArgs = append(allArgs, expandedArgs...)
 	}
+	__antithesis_instrumentation__.Notify(181101)
 
 	sshPath, err := exec.LookPath(allArgs[0])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181123)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181124)
 	}
+	__antithesis_instrumentation__.Notify(181102)
 	return syscall.Exec(sshPath, allArgs, os.Environ())
 }
 
 func (c *SyncedCluster) scp(src, dest string) error {
+	__antithesis_instrumentation__.Notify(181125)
 	args := []string{
 		"scp", "-r", "-C",
 		"-o", "StrictHostKeyChecking=no",
@@ -1895,57 +2509,70 @@ func (c *SyncedCluster) scp(src, dest string) error {
 	cmd := exec.Command(args[0], args[1:]...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181127)
 		return errors.Wrapf(err, "~ %s\n%s", strings.Join(args, " "), out)
+	} else {
+		__antithesis_instrumentation__.Notify(181128)
 	}
+	__antithesis_instrumentation__.Notify(181126)
 	return nil
 }
 
-// ParallelResult captures the result of a user-defined function
-// passed to Parallel or ParallelE.
 type ParallelResult struct {
 	Index int
 	Out   []byte
 	Err   error
 }
 
-// Parallel runs a user-defined function across the nodes in the
-// cluster. If any of the commands fail, Parallel will log an error
-// and exit the program.
-//
-// See ParallelE for more information.
 func (c *SyncedCluster) Parallel(
 	l *logger.Logger, display string, count, concurrency int, fn func(i int) ([]byte, error),
 ) error {
+	__antithesis_instrumentation__.Notify(181129)
 	failed, err := c.ParallelE(l, display, count, concurrency, fn)
 	if err != nil {
-		sort.Slice(failed, func(i, j int) bool { return failed[i].Index < failed[j].Index })
+		__antithesis_instrumentation__.Notify(181131)
+		sort.Slice(failed, func(i, j int) bool {
+			__antithesis_instrumentation__.Notify(181134)
+			return failed[i].Index < failed[j].Index
+		})
+		__antithesis_instrumentation__.Notify(181132)
 		for _, f := range failed {
+			__antithesis_instrumentation__.Notify(181135)
 			fmt.Fprintf(l.Stderr, "%d: %+v: %s\n", f.Index, f.Err, f.Out)
 		}
+		__antithesis_instrumentation__.Notify(181133)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181136)
 	}
+	__antithesis_instrumentation__.Notify(181130)
 	return nil
 }
 
-// ParallelE runs the given function in parallel across the given
-// nodes, returning an error if function returns an error.
-//
-// ParallelE runs the user-defined functions on the first `count`
-// nodes in the cluster. It runs at most `concurrency` (or
-// `config.MaxConcurrency` if it is lower) in parallel. If `concurrency` is
-// 0, then it defaults to `count`.
-//
-// If err is non-nil, the slice of ParallelResults will contain the
-// results from any of the failed invocations.
 func (c *SyncedCluster) ParallelE(
 	l *logger.Logger, display string, count, concurrency int, fn func(i int) ([]byte, error),
 ) ([]ParallelResult, error) {
-	if concurrency == 0 || concurrency > count {
+	__antithesis_instrumentation__.Notify(181137)
+	if concurrency == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(181148)
+		return concurrency > count == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(181149)
 		concurrency = count
+	} else {
+		__antithesis_instrumentation__.Notify(181150)
 	}
-	if config.MaxConcurrency > 0 && concurrency > config.MaxConcurrency {
+	__antithesis_instrumentation__.Notify(181138)
+	if config.MaxConcurrency > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(181151)
+		return concurrency > config.MaxConcurrency == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(181152)
 		concurrency = config.MaxConcurrency
+	} else {
+		__antithesis_instrumentation__.Notify(181153)
 	}
+	__antithesis_instrumentation__.Notify(181139)
 
 	results := make(chan ParallelResult, count)
 	var wg sync.WaitGroup
@@ -1953,39 +2580,57 @@ func (c *SyncedCluster) ParallelE(
 
 	var index int
 	startNext := func() {
+		__antithesis_instrumentation__.Notify(181154)
 		go func(i int) {
+			__antithesis_instrumentation__.Notify(181156)
 			defer wg.Done()
 			out, err := fn(i)
 			results <- ParallelResult{i, out, err}
 		}(index)
+		__antithesis_instrumentation__.Notify(181155)
 		index++
 	}
+	__antithesis_instrumentation__.Notify(181140)
 
 	for index < concurrency {
+		__antithesis_instrumentation__.Notify(181157)
 		startNext()
 	}
+	__antithesis_instrumentation__.Notify(181141)
 
 	go func() {
+		__antithesis_instrumentation__.Notify(181158)
 		wg.Wait()
 		close(results)
 	}()
+	__antithesis_instrumentation__.Notify(181142)
 
 	var writer ui.Writer
 	out := l.Stdout
 	if display == "" {
+		__antithesis_instrumentation__.Notify(181159)
 		out = ioutil.Discard
+	} else {
+		__antithesis_instrumentation__.Notify(181160)
 	}
+	__antithesis_instrumentation__.Notify(181143)
 
 	var ticker *time.Ticker
 	if !config.Quiet {
+		__antithesis_instrumentation__.Notify(181161)
 		ticker = time.NewTicker(100 * time.Millisecond)
 	} else {
+		__antithesis_instrumentation__.Notify(181162)
 		ticker = time.NewTicker(1000 * time.Millisecond)
 		fmt.Fprintf(out, "%s", display)
 		if l.File != nil {
+			__antithesis_instrumentation__.Notify(181163)
 			fmt.Fprintf(out, "\n")
+		} else {
+			__antithesis_instrumentation__.Notify(181164)
 		}
 	}
+	__antithesis_instrumentation__.Notify(181144)
 	defer ticker.Stop()
 	complete := make([]bool, count)
 	var failed []ParallelResult
@@ -1994,77 +2639,137 @@ func (c *SyncedCluster) ParallelE(
 	spinnerIdx := 0
 
 	for done := false; !done; {
+		__antithesis_instrumentation__.Notify(181165)
 		select {
 		case <-ticker.C:
-			if config.Quiet && l.File == nil {
+			__antithesis_instrumentation__.Notify(181167)
+			if config.Quiet && func() bool {
+				__antithesis_instrumentation__.Notify(181171)
+				return l.File == nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(181172)
 				fmt.Fprintf(out, ".")
+			} else {
+				__antithesis_instrumentation__.Notify(181173)
 			}
 		case r, ok := <-results:
+			__antithesis_instrumentation__.Notify(181168)
 			if r.Err != nil {
+				__antithesis_instrumentation__.Notify(181174)
 				failed = append(failed, r)
+			} else {
+				__antithesis_instrumentation__.Notify(181175)
 			}
+			__antithesis_instrumentation__.Notify(181169)
 			done = !ok
 			if ok {
+				__antithesis_instrumentation__.Notify(181176)
 				complete[r.Index] = true
+			} else {
+				__antithesis_instrumentation__.Notify(181177)
 			}
+			__antithesis_instrumentation__.Notify(181170)
 			if index < count {
+				__antithesis_instrumentation__.Notify(181178)
 				startNext()
+			} else {
+				__antithesis_instrumentation__.Notify(181179)
 			}
 		}
+		__antithesis_instrumentation__.Notify(181166)
 
-		if !config.Quiet && l.File == nil {
+		if !config.Quiet && func() bool {
+			__antithesis_instrumentation__.Notify(181180)
+			return l.File == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(181181)
 			fmt.Fprint(&writer, display)
 			var n int
 			for i := range complete {
+				__antithesis_instrumentation__.Notify(181184)
 				if complete[i] {
+					__antithesis_instrumentation__.Notify(181185)
 					n++
+				} else {
+					__antithesis_instrumentation__.Notify(181186)
 				}
 			}
+			__antithesis_instrumentation__.Notify(181182)
 			fmt.Fprintf(&writer, " %d/%d", n, len(complete))
 			if !done {
+				__antithesis_instrumentation__.Notify(181187)
 				fmt.Fprintf(&writer, " %s", spinner[spinnerIdx%len(spinner)])
+			} else {
+				__antithesis_instrumentation__.Notify(181188)
 			}
+			__antithesis_instrumentation__.Notify(181183)
 			fmt.Fprintf(&writer, "\n")
 			_ = writer.Flush(out)
 			spinnerIdx++
+		} else {
+			__antithesis_instrumentation__.Notify(181189)
 		}
 	}
+	__antithesis_instrumentation__.Notify(181145)
 
-	if config.Quiet && l.File == nil {
+	if config.Quiet && func() bool {
+		__antithesis_instrumentation__.Notify(181190)
+		return l.File == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(181191)
 		fmt.Fprintf(out, "\n")
+	} else {
+		__antithesis_instrumentation__.Notify(181192)
 	}
+	__antithesis_instrumentation__.Notify(181146)
 
 	if len(failed) > 0 {
+		__antithesis_instrumentation__.Notify(181193)
 		return failed, errors.New("one or more parallel execution failure")
+	} else {
+		__antithesis_instrumentation__.Notify(181194)
 	}
+	__antithesis_instrumentation__.Notify(181147)
 	return nil, nil
 }
 
-// Init initializes the cluster. It does it through node 1 (as per TargetNodes)
-// to maintain parity with auto-init behavior of `roachprod start` (when
-// --skip-init) is not specified. The implementation should be kept in
-// sync with Start().
 func (c *SyncedCluster) Init(ctx context.Context, l *logger.Logger) error {
-	// See Start(). We reserve a few special operations for the first node, so we
-	// strive to maintain the same here for interoperability.
+	__antithesis_instrumentation__.Notify(181195)
+
 	const firstNodeIdx = 0
 
 	l.Printf("%s: initializing cluster\n", c.Name)
 	initOut, err := c.initializeCluster(ctx, firstNodeIdx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181200)
 		return errors.WithDetail(err, "install.Init() failed: unable to initialize cluster.")
+	} else {
+		__antithesis_instrumentation__.Notify(181201)
 	}
+	__antithesis_instrumentation__.Notify(181196)
 	if initOut != "" {
+		__antithesis_instrumentation__.Notify(181202)
 		l.Printf(initOut)
+	} else {
+		__antithesis_instrumentation__.Notify(181203)
 	}
+	__antithesis_instrumentation__.Notify(181197)
 
 	l.Printf("%s: setting cluster settings", c.Name)
 	clusterSettingsOut, err := c.setClusterSettings(ctx, l, firstNodeIdx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181204)
 		return errors.WithDetail(err, "install.Init() failed: unable to set cluster settings.")
+	} else {
+		__antithesis_instrumentation__.Notify(181205)
 	}
+	__antithesis_instrumentation__.Notify(181198)
 	if clusterSettingsOut != "" {
+		__antithesis_instrumentation__.Notify(181206)
 		l.Printf(clusterSettingsOut)
+	} else {
+		__antithesis_instrumentation__.Notify(181207)
 	}
+	__antithesis_instrumentation__.Notify(181199)
 	return nil
 }

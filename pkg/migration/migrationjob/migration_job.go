@@ -1,16 +1,8 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package migrationjob contains the jobs.Resumer implementation
 // used for long-running migrations.
 package migrationjob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -36,10 +28,10 @@ func init() {
 	})
 }
 
-// NewRecord constructs a new jobs.Record for this migration.
 func NewRecord(
 	version clusterversion.ClusterVersion, user security.SQLUsername, name string,
 ) jobs.Record {
+	__antithesis_instrumentation__.Notify(128240)
 	return jobs.Record{
 		Description: name,
 		Details: jobspb.MigrationDetails{
@@ -58,30 +50,39 @@ type resumer struct {
 var _ jobs.Resumer = (*resumer)(nil)
 
 func (r resumer) Resume(ctx context.Context, execCtxI interface{}) error {
+	__antithesis_instrumentation__.Notify(128241)
 	execCtx := execCtxI.(sql.JobExecContext)
 	pl := r.j.Payload()
 	cv := *pl.GetMigration().ClusterVersion
 	ie := execCtx.ExecCfg().InternalExecutor
 
-	alreadyCompleted, err := CheckIfMigrationCompleted(ctx, nil /* txn */, ie, cv)
-	if alreadyCompleted || err != nil {
+	alreadyCompleted, err := CheckIfMigrationCompleted(ctx, nil, ie, cv)
+	if alreadyCompleted || func() bool {
+		__antithesis_instrumentation__.Notify(128247)
+		return err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(128248)
 		return errors.Wrapf(err, "checking migration completion for %v", cv)
+	} else {
+		__antithesis_instrumentation__.Notify(128249)
 	}
+	__antithesis_instrumentation__.Notify(128242)
 	mc := execCtx.MigrationJobDeps()
 	m, ok := mc.GetMigration(cv)
 	if !ok {
-		// TODO(ajwerner): Consider treating this as an assertion failure. Jobs
-		// should only be created for a cluster version if there is an associated
-		// migration. It seems possible that a migration job could be launched by
-		// a node running a older version where a migration then runs on a job
-		// with a newer version where the migration has been re-ordered to be later.
-		// This should only happen between alphas but is theoretically not illegal.
+		__antithesis_instrumentation__.Notify(128250)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(128251)
 	}
+	__antithesis_instrumentation__.Notify(128243)
 	switch m := m.(type) {
 	case *migration.SystemMigration:
+		__antithesis_instrumentation__.Notify(128252)
 		err = m.Run(ctx, cv, mc.SystemDeps(), r.j)
 	case *migration.TenantMigration:
+		__antithesis_instrumentation__.Notify(128253)
 		tenantDeps := migration.TenantDeps{
 			DB:                execCtx.ExecCfg().DB,
 			Codec:             execCtx.ExecCfg().Codec,
@@ -97,27 +98,32 @@ func (r resumer) Resume(ctx context.Context, execCtxI interface{}) error {
 
 		err = m.Run(ctx, cv, tenantDeps, r.j)
 	default:
+		__antithesis_instrumentation__.Notify(128254)
 		return errors.AssertionFailedf("unknown migration type %T", m)
 	}
+	__antithesis_instrumentation__.Notify(128244)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128255)
 		return errors.Wrapf(err, "running migration for %v", cv)
+	} else {
+		__antithesis_instrumentation__.Notify(128256)
 	}
+	__antithesis_instrumentation__.Notify(128245)
 
-	// Mark the migration as having been completed so that subsequent iterations
-	// no-op and new jobs are not created.
 	if err := markMigrationCompleted(ctx, ie, cv); err != nil {
+		__antithesis_instrumentation__.Notify(128257)
 		return errors.Wrapf(err, "marking migration complete for %v", cv)
+	} else {
+		__antithesis_instrumentation__.Notify(128258)
 	}
+	__antithesis_instrumentation__.Notify(128246)
 	return nil
 }
 
-// CheckIfMigrationCompleted queries the system.migrations table to determine
-// if the migration associated with this version has already been completed.
-// The txn may be nil, in which case the check will be run in its own
-// transaction.
 func CheckIfMigrationCompleted(
 	ctx context.Context, txn *kv.Txn, ie sqlutil.InternalExecutor, cv clusterversion.ClusterVersion,
 ) (alreadyCompleted bool, _ error) {
+	__antithesis_instrumentation__.Notify(128259)
 	row, err := ie.QueryRow(
 		ctx,
 		"migration-job-find-already-completed",
@@ -137,18 +143,23 @@ SELECT EXISTS(
 		cv.Patch,
 		cv.Internal)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128261)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(128262)
 	}
+	__antithesis_instrumentation__.Notify(128260)
 	return bool(*row[0].(*tree.DBool)), nil
 }
 
 func markMigrationCompleted(
 	ctx context.Context, ie sqlutil.InternalExecutor, cv clusterversion.ClusterVersion,
 ) error {
+	__antithesis_instrumentation__.Notify(128263)
 	_, err := ie.ExecEx(
 		ctx,
 		"migration-job-mark-job-succeeded",
-		nil, /* txn */
+		nil,
 		sessiondata.NodeUserSessionDataOverride,
 		`
 INSERT
@@ -169,7 +180,7 @@ VALUES ($1, $2, $3, $4, $5)`,
 	return err
 }
 
-// The long-running migration resumer has no reverting logic.
 func (r resumer) OnFailOrCancel(ctx context.Context, execCtx interface{}) error {
+	__antithesis_instrumentation__.Notify(128264)
 	return nil
 }

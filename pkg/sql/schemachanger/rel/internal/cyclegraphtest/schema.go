@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cyclegraphtest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -20,12 +12,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// testAttr is a rel.Attr used for testing.
 type testAttr int8
 
 var _ rel.Attr = testAttr(0)
 
-//go:generate stringer --type testAttr  --tags test
 const (
 	s testAttr = iota
 	s1
@@ -34,34 +24,28 @@ const (
 	name
 )
 
-// struct1 is a struct which holds a bunch of potentially circular references.
 type struct1 struct {
-	// Name identifies the struct.
 	Name string
-	// M1 points to some other struct1, maybe itself.
+
 	S1 *struct1
-	// M2 points to some other struct2, maybe itself.
+
 	S2 *struct2
-	// C points to some container which may contain itself.
+
 	C *container
 }
 
-// struct2 is like struct1 but has a different type.
 type struct2 struct1
 
-// container is a oneOf of struct1 or struct2.
 type container struct {
 	S1 *struct1
 	S2 *struct2
 }
 
-// message is an interface to capture struct1 and struct2.
 type message interface{ message() }
 
-func (s *struct1) message() {}
-func (s *struct2) message() {}
+func (s *struct1) message() { __antithesis_instrumentation__.Notify(578534) }
+func (s *struct2) message() { __antithesis_instrumentation__.Notify(578535) }
 
-// This schema exercises cyclic references.
 var schema = rel.MustSchema(
 	"testschema",
 	rel.AttrType(
@@ -87,24 +71,32 @@ var schema = rel.MustSchema(
 	),
 )
 
-// String helps ensure that serialization does not infinitely recurse.
-func (s *struct1) String() string { return fmt.Sprintf("struct1(%s)", s.Name) }
+func (s *struct1) String() string {
+	__antithesis_instrumentation__.Notify(578536)
+	return fmt.Sprintf("struct1(%s)", s.Name)
+}
 
-// String helps ensure that serialization does not infinitely recurse.
-func (s *struct2) String() string { return fmt.Sprintf("struct2(%s)", s.Name) }
+func (s *struct2) String() string {
+	__antithesis_instrumentation__.Notify(578537)
+	return fmt.Sprintf("struct2(%s)", s.Name)
+}
 
-// String helps ensure that serialization does not infinitely recurse.
 func (c *container) String() string {
+	__antithesis_instrumentation__.Notify(578538)
 	var name string
 	if c.S1 != nil {
+		__antithesis_instrumentation__.Notify(578540)
 		name = c.S1.Name
 	} else {
+		__antithesis_instrumentation__.Notify(578541)
 		name = c.S2.Name
 	}
+	__antithesis_instrumentation__.Notify(578539)
 	return fmt.Sprintf("container(%s)", name)
 }
 
 func (s *struct1) EncodeToYAML(t *testing.T, r *reltest.Registry) interface{} {
+	__antithesis_instrumentation__.Notify(578542)
 	yn := &yaml.Node{
 		Kind:  yaml.MappingNode,
 		Style: yaml.FlowStyle,
@@ -114,46 +106,68 @@ func (s *struct1) EncodeToYAML(t *testing.T, r *reltest.Registry) interface{} {
 		},
 	}
 	if s.S1 != nil {
+		__antithesis_instrumentation__.Notify(578546)
 		yn.Content = append(yn.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "s1"},
 			&yaml.Node{Kind: yaml.ScalarNode, Value: r.MustGetName(t, s.S1)},
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(578547)
 	}
+	__antithesis_instrumentation__.Notify(578543)
 	if s.S2 != nil {
+		__antithesis_instrumentation__.Notify(578548)
 		yn.Content = append(yn.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "s2"},
 			&yaml.Node{Kind: yaml.ScalarNode, Value: r.MustGetName(t, s.S2)},
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(578549)
 	}
+	__antithesis_instrumentation__.Notify(578544)
 	if s.C != nil {
+		__antithesis_instrumentation__.Notify(578550)
 		yn.Content = append(yn.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "c"},
 			&yaml.Node{Kind: yaml.ScalarNode, Value: r.MustGetName(t, s.C)},
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(578551)
 	}
+	__antithesis_instrumentation__.Notify(578545)
 	return yn
 }
 
 func (s *struct2) EncodeToYAML(t *testing.T, r *reltest.Registry) interface{} {
+	__antithesis_instrumentation__.Notify(578552)
 	return (*struct1)(s).EncodeToYAML(t, r)
 }
 
 func (c *container) EncodeToYAML(t *testing.T, r *reltest.Registry) interface{} {
+	__antithesis_instrumentation__.Notify(578553)
 	yn := &yaml.Node{
 		Kind:  yaml.MappingNode,
 		Style: yaml.FlowStyle,
 	}
 	if c.S1 != nil {
+		__antithesis_instrumentation__.Notify(578556)
 		yn.Content = append(yn.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "s1"},
 			&yaml.Node{Kind: yaml.ScalarNode, Value: r.MustGetName(t, c.S1)},
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(578557)
 	}
+	__antithesis_instrumentation__.Notify(578554)
 	if c.S2 != nil {
+		__antithesis_instrumentation__.Notify(578558)
 		yn.Content = append(yn.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "s2"},
 			&yaml.Node{Kind: yaml.ScalarNode, Value: r.MustGetName(t, c.S2)},
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(578559)
 	}
+	__antithesis_instrumentation__.Notify(578555)
 	return yn
 }

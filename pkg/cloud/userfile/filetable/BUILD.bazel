@@ -15,6 +15,7 @@ go_library(
         "//pkg/sql/sqlutil",
         "//pkg/util/ioctx",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ttljob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -27,8 +19,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// selectQueryBuilder is responsible for maintaining state around the
-// SELECT portion of the TTL job.
 type selectQueryBuilder struct {
 	tableID         descpb.ID
 	pkColumns       []string
@@ -37,17 +27,14 @@ type selectQueryBuilder struct {
 	selectBatchSize int
 	aost            tree.DTimestampTZ
 
-	// isFirst is true if we have not invoked a query using the builder yet.
 	isFirst bool
-	// cachedQuery is the cached query, which stays the same from the second
-	// iteration onwards.
+
 	cachedQuery string
-	// cachedArgs keeps a cache of args to use in the run query.
-	// The cache is of form [cutoff, <endFilterClause...>, <startFilterClause..>].
+
 	cachedArgs []interface{}
-	// pkColumnNamesSQL caches the column names of the PK.
+
 	pkColumnNamesSQL string
-	// endPKColumnNamesSQL caches the column names of the ending PK.
+
 	endPKColumnNamesSQL string
 }
 
@@ -60,16 +47,20 @@ func makeSelectQueryBuilder(
 	aost tree.DTimestampTZ,
 	selectBatchSize int,
 ) selectQueryBuilder {
-	// We will have a maximum of 1 + len(pkColumns)*2 columns, where one
-	// is reserved for AOST, and len(pkColumns) for both start and end key.
+	__antithesis_instrumentation__.Notify(628784)
+
 	cachedArgs := make([]interface{}, 0, 1+len(pkColumns)*2)
 	cachedArgs = append(cachedArgs, cutoff)
 	for _, d := range endPK {
+		__antithesis_instrumentation__.Notify(628787)
 		cachedArgs = append(cachedArgs, d)
 	}
+	__antithesis_instrumentation__.Notify(628785)
 	for _, d := range startPK {
+		__antithesis_instrumentation__.Notify(628788)
 		cachedArgs = append(cachedArgs, d)
 	}
+	__antithesis_instrumentation__.Notify(628786)
 
 	return selectQueryBuilder{
 		tableID:         tableID,
@@ -88,47 +79,74 @@ func makeSelectQueryBuilder(
 }
 
 func (b *selectQueryBuilder) buildQuery() string {
-	// Generate the end key clause for SELECT, which always stays the same.
-	// Start from $2 as $1 is for the now clause.
-	// The end key of a range is exclusive, so use <.
+	__antithesis_instrumentation__.Notify(628789)
+
 	var endFilterClause string
 	if len(b.endPK) > 0 {
+		__antithesis_instrumentation__.Notify(628792)
 		endFilterClause = fmt.Sprintf(" AND (%s) < (", b.endPKColumnNamesSQL)
 		for i := range b.endPK {
+			__antithesis_instrumentation__.Notify(628794)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(628796)
 				endFilterClause += ", "
+			} else {
+				__antithesis_instrumentation__.Notify(628797)
 			}
+			__antithesis_instrumentation__.Notify(628795)
 			endFilterClause += fmt.Sprintf("$%d", i+2)
 		}
+		__antithesis_instrumentation__.Notify(628793)
 		endFilterClause += ")"
+	} else {
+		__antithesis_instrumentation__.Notify(628798)
 	}
+	__antithesis_instrumentation__.Notify(628790)
 
 	var filterClause string
 	if !b.isFirst {
-		// After the first query, we always want (col1, ...) > (cursor_col_1, ...)
+		__antithesis_instrumentation__.Notify(628799)
+
 		filterClause = fmt.Sprintf(" AND (%s) > (", b.pkColumnNamesSQL)
 		for i := range b.pkColumns {
+			__antithesis_instrumentation__.Notify(628801)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(628803)
 				filterClause += ", "
+			} else {
+				__antithesis_instrumentation__.Notify(628804)
 			}
-			// We start from 2 if we don't have an endPK clause, but add len(b.endPK)
-			// if there is.
+			__antithesis_instrumentation__.Notify(628802)
+
 			filterClause += fmt.Sprintf("$%d", 2+len(b.endPK)+i)
 		}
+		__antithesis_instrumentation__.Notify(628800)
 		filterClause += ")"
-	} else if len(b.startPK) > 0 {
-		// For the the first query, we want (col1, ...) >= (cursor_col_1, ...)
-		filterClause = fmt.Sprintf(" AND (%s) >= (", makeColumnNamesSQL(b.pkColumns[:len(b.startPK)]))
-		for i := range b.startPK {
-			if i > 0 {
-				filterClause += ", "
+	} else {
+		__antithesis_instrumentation__.Notify(628805)
+		if len(b.startPK) > 0 {
+			__antithesis_instrumentation__.Notify(628806)
+
+			filterClause = fmt.Sprintf(" AND (%s) >= (", makeColumnNamesSQL(b.pkColumns[:len(b.startPK)]))
+			for i := range b.startPK {
+				__antithesis_instrumentation__.Notify(628808)
+				if i > 0 {
+					__antithesis_instrumentation__.Notify(628810)
+					filterClause += ", "
+				} else {
+					__antithesis_instrumentation__.Notify(628811)
+				}
+				__antithesis_instrumentation__.Notify(628809)
+
+				filterClause += fmt.Sprintf("$%d", 2+len(b.endPK)+i)
 			}
-			// We start from 2 if we don't have an endPK clause, but add len(b.endPK)
-			// if there is.
-			filterClause += fmt.Sprintf("$%d", 2+len(b.endPK)+i)
+			__antithesis_instrumentation__.Notify(628807)
+			filterClause += ")"
+		} else {
+			__antithesis_instrumentation__.Notify(628812)
 		}
-		filterClause += ")"
 	}
+	__antithesis_instrumentation__.Notify(628791)
 
 	return fmt.Sprintf(
 		`SELECT %[1]s FROM [%[2]d AS tbl_name]
@@ -146,32 +164,38 @@ LIMIT %[6]d`,
 }
 
 func (b *selectQueryBuilder) nextQuery() (string, []interface{}) {
+	__antithesis_instrumentation__.Notify(628813)
 	if b.isFirst {
+		__antithesis_instrumentation__.Notify(628816)
 		q := b.buildQuery()
 		b.isFirst = false
 		return q, b.cachedArgs
+	} else {
+		__antithesis_instrumentation__.Notify(628817)
 	}
-	// All subsequent query strings are the same.
-	// Populate the cache once, and then maintain it for all subsequent calls.
+	__antithesis_instrumentation__.Notify(628814)
+
 	if b.cachedQuery == "" {
+		__antithesis_instrumentation__.Notify(628818)
 		b.cachedQuery = b.buildQuery()
+	} else {
+		__antithesis_instrumentation__.Notify(628819)
 	}
+	__antithesis_instrumentation__.Notify(628815)
 	return b.cachedQuery, b.cachedArgs
 }
 
 func (b *selectQueryBuilder) run(
 	ctx context.Context, ie *sql.InternalExecutor,
 ) ([]tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(628820)
 	q, args := b.nextQuery()
 
-	// Use a nil txn so that the AOST clause is handled correctly. Currently,
-	// the internal executor will treat a passed-in txn as an explicit txn, so
-	// the AOST clause on the SELECT query would not be interpreted correctly.
 	qosLevel := sessiondatapb.TTLLow
 	ret, err := ie.QueryBufferedEx(
 		ctx,
 		b.selectOpName,
-		nil, /* txn */
+		nil,
 		sessiondata.InternalExecutorOverride{
 			User:             security.RootUserName(),
 			QualityOfService: &qosLevel,
@@ -180,48 +204,62 @@ func (b *selectQueryBuilder) run(
 		args...,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628823)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(628824)
 	}
+	__antithesis_instrumentation__.Notify(628821)
 	if err := b.moveCursor(ret); err != nil {
+		__antithesis_instrumentation__.Notify(628825)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(628826)
 	}
+	__antithesis_instrumentation__.Notify(628822)
 	return ret, nil
 }
 
 func (b *selectQueryBuilder) moveCursor(rows []tree.Datums) error {
-	// Move the cursor forward.
+	__antithesis_instrumentation__.Notify(628827)
+
 	if len(rows) > 0 {
+		__antithesis_instrumentation__.Notify(628829)
 		lastRow := rows[len(rows)-1]
 		b.cachedArgs = b.cachedArgs[:1+len(b.endPK)]
 		if len(lastRow) != len(b.pkColumns) {
+			__antithesis_instrumentation__.Notify(628831)
 			return errors.AssertionFailedf("expected %d columns for last row, got %d", len(b.pkColumns), len(lastRow))
+		} else {
+			__antithesis_instrumentation__.Notify(628832)
 		}
+		__antithesis_instrumentation__.Notify(628830)
 		for _, d := range lastRow {
+			__antithesis_instrumentation__.Notify(628833)
 			b.cachedArgs = append(b.cachedArgs, d)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(628834)
 	}
+	__antithesis_instrumentation__.Notify(628828)
 	return nil
 }
 
-// deleteQueryBuilder is responsible for maintaining state around the
-// SELECT portion of the TTL job.
 type deleteQueryBuilder struct {
 	tableID         descpb.ID
 	pkColumns       []string
 	deleteBatchSize int
 	deleteOpName    string
 
-	// cachedQuery is the cached query, which stays the same as long as we are
-	// deleting up to deleteBatchSize elements.
 	cachedQuery string
-	// cachedArgs keeps a cache of args to use in the run query.
-	// The cache is of form [cutoff, flattened PKs...].
+
 	cachedArgs []interface{}
 }
 
 func makeDeleteQueryBuilder(
 	tableID descpb.ID, cutoff time.Time, pkColumns []string, relationName string, deleteBatchSize int,
 ) deleteQueryBuilder {
+	__antithesis_instrumentation__.Notify(628835)
 	cachedArgs := make([]interface{}, 0, 1+len(pkColumns)*deleteBatchSize)
 	cachedArgs = append(cachedArgs, cutoff)
 
@@ -236,21 +274,34 @@ func makeDeleteQueryBuilder(
 }
 
 func (b *deleteQueryBuilder) buildQuery(numRows int) string {
+	__antithesis_instrumentation__.Notify(628836)
 	columnNamesSQL := makeColumnNamesSQL(b.pkColumns)
 	var placeholderStr string
 	for i := 0; i < numRows; i++ {
+		__antithesis_instrumentation__.Notify(628838)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(628841)
 			placeholderStr += ", "
+		} else {
+			__antithesis_instrumentation__.Notify(628842)
 		}
+		__antithesis_instrumentation__.Notify(628839)
 		placeholderStr += "("
 		for j := 0; j < len(b.pkColumns); j++ {
+			__antithesis_instrumentation__.Notify(628843)
 			if j > 0 {
+				__antithesis_instrumentation__.Notify(628845)
 				placeholderStr += ", "
+			} else {
+				__antithesis_instrumentation__.Notify(628846)
 			}
+			__antithesis_instrumentation__.Notify(628844)
 			placeholderStr += fmt.Sprintf("$%d", 2+i*len(b.pkColumns)+j)
 		}
+		__antithesis_instrumentation__.Notify(628840)
 		placeholderStr += ")"
 	}
+	__antithesis_instrumentation__.Notify(628837)
 
 	return fmt.Sprintf(
 		`DELETE FROM [%d AS tbl_name] WHERE crdb_internal_expiration <= $1 AND (%s) IN (%s)`,
@@ -261,27 +312,39 @@ func (b *deleteQueryBuilder) buildQuery(numRows int) string {
 }
 
 func (b *deleteQueryBuilder) buildQueryAndArgs(rows []tree.Datums) (string, []interface{}) {
+	__antithesis_instrumentation__.Notify(628847)
 	var q string
 	if len(rows) == b.deleteBatchSize {
+		__antithesis_instrumentation__.Notify(628850)
 		if b.cachedQuery == "" {
+			__antithesis_instrumentation__.Notify(628852)
 			b.cachedQuery = b.buildQuery(len(rows))
+		} else {
+			__antithesis_instrumentation__.Notify(628853)
 		}
+		__antithesis_instrumentation__.Notify(628851)
 		q = b.cachedQuery
 	} else {
+		__antithesis_instrumentation__.Notify(628854)
 		q = b.buildQuery(len(rows))
 	}
+	__antithesis_instrumentation__.Notify(628848)
 	deleteArgs := b.cachedArgs[:1]
 	for _, row := range rows {
+		__antithesis_instrumentation__.Notify(628855)
 		for _, col := range row {
+			__antithesis_instrumentation__.Notify(628856)
 			deleteArgs = append(deleteArgs, col)
 		}
 	}
+	__antithesis_instrumentation__.Notify(628849)
 	return q, deleteArgs
 }
 
 func (b *deleteQueryBuilder) run(
 	ctx context.Context, ie *sql.InternalExecutor, txn *kv.Txn, rows []tree.Datums,
 ) error {
+	__antithesis_instrumentation__.Notify(628857)
 	q, deleteArgs := b.buildQueryAndArgs(rows)
 	qosLevel := sessiondatapb.TTLLow
 	_, err := ie.ExecEx(
@@ -298,17 +361,20 @@ func (b *deleteQueryBuilder) run(
 	return err
 }
 
-// makeColumnNamesSQL converts columns into an escape string
-// for an order by clause, e.g.:
-//   {"a", "b"} => a, b
-//   {"escape-me", "b"} => "escape-me", b
 func makeColumnNamesSQL(columns []string) string {
+	__antithesis_instrumentation__.Notify(628858)
 	var b bytes.Buffer
 	for i, pkColumn := range columns {
+		__antithesis_instrumentation__.Notify(628860)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(628862)
 			b.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(628863)
 		}
+		__antithesis_instrumentation__.Notify(628861)
 		lexbase.EncodeRestrictedSQLIdent(&b, pkColumn, lexbase.EncNoFlags)
 	}
+	__antithesis_instrumentation__.Notify(628859)
 	return b.String()
 }

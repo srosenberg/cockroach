@@ -1,24 +1,10 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rpc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/gogo/protobuf/proto"
-	// Used instead of gogo/protobuf/proto for the fallback case
-	// to match the behavior of the upstream codec in
-	// google.golang.org/grpc/encoding/proto that we are
-	// replacing:
-	//
-	//   https://github.com/grpc/grpc-go/blob/7b167fd6eca1ab8f05ec14085d63197cacd41438/encoding/proto/proto.go
-	//
+
 	gproto "github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/encoding"
 )
@@ -30,19 +16,30 @@ type codec struct{}
 var _ encoding.Codec = codec{}
 
 func (codec) Marshal(v interface{}) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(184276)
 	if pm, ok := v.(proto.Marshaler); ok {
+		__antithesis_instrumentation__.Notify(184278)
 		return pm.Marshal()
+	} else {
+		__antithesis_instrumentation__.Notify(184279)
 	}
+	__antithesis_instrumentation__.Notify(184277)
 	return gproto.Marshal(v.(gproto.Message))
 }
 
 func (codec) Unmarshal(data []byte, v interface{}) error {
+	__antithesis_instrumentation__.Notify(184280)
 	if pm, ok := v.(proto.Unmarshaler); ok {
+		__antithesis_instrumentation__.Notify(184282)
 		return pm.Unmarshal(data)
+	} else {
+		__antithesis_instrumentation__.Notify(184283)
 	}
+	__antithesis_instrumentation__.Notify(184281)
 	return gproto.Unmarshal(data, v.(gproto.Message))
 }
 
 func (codec) Name() string {
+	__antithesis_instrumentation__.Notify(184284)
 	return name
 }

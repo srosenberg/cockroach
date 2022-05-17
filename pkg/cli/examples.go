@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -16,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/workload"
-	// Register the relevant examples
+
 	_ "github.com/cockroachdb/cockroach/pkg/workload/examples"
 	"github.com/cockroachdb/cockroach/pkg/workload/workloadsql"
 	"github.com/spf13/cobra"
@@ -50,21 +42,26 @@ func init() {
 }
 
 func runGenExamplesCmd(gen workload.Generator) {
+	__antithesis_instrumentation__.Notify(32659)
 	w := os.Stdout
 
 	meta := gen.Meta()
 	fmt.Fprintf(w, "CREATE DATABASE IF NOT EXISTS %s;\n", meta.Name)
 	fmt.Fprintf(w, "SET DATABASE=%s;\n", meta.Name)
 	for _, table := range gen.Tables() {
+		__antithesis_instrumentation__.Notify(32661)
 		fmt.Fprintf(w, "DROP TABLE IF EXISTS \"%s\";\n", table.Name)
 		fmt.Fprintf(w, "CREATE TABLE \"%s\" %s;\n", table.Name, table.Schema)
 		for rowIdx := 0; rowIdx < table.InitialRows.NumBatches; rowIdx++ {
+			__antithesis_instrumentation__.Notify(32662)
 			for _, row := range table.InitialRows.BatchRows(rowIdx) {
+				__antithesis_instrumentation__.Notify(32663)
 				rowTuple := strings.Join(workloadsql.StringTuple(row), `,`)
 				fmt.Fprintf(w, "INSERT INTO \"%s\" VALUES (%s);\n", table.Name, rowTuple)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(32660)
 
 	fmt.Fprint(w, footerComment)
 }

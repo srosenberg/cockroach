@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package paramparse
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
@@ -16,37 +8,44 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// UniqueConstraintParamContext is used as a validation context for
-// ValidateUniqueConstraintParams function.
-// IsPrimaryKey: set to true if the unique constraint for primary key.
-// IsSharded: set to true if the unique constraint has a hash sharded index.
 type UniqueConstraintParamContext struct {
 	IsPrimaryKey bool
 	IsSharded    bool
 }
 
-// ValidateUniqueConstraintParams checks if there is any storage parameters
-// invalid as a param for Unique Constraint.
 func ValidateUniqueConstraintParams(
 	params tree.StorageParams, ctx UniqueConstraintParamContext,
 ) error {
-	// Only `bucket_count` is allowed for primary key and unique index.
+	__antithesis_instrumentation__.Notify(552284)
+
 	for _, param := range params {
+		__antithesis_instrumentation__.Notify(552286)
 		switch param.Key {
 		case `bucket_count`:
+			__antithesis_instrumentation__.Notify(552287)
 			if ctx.IsSharded {
+				__antithesis_instrumentation__.Notify(552291)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(552292)
 			}
+			__antithesis_instrumentation__.Notify(552288)
 			return pgerror.New(
 				pgcode.InvalidParameterValue,
 				`"bucket_count" storage param should only be set with "USING HASH" for hash sharded index`,
 			)
 		default:
+			__antithesis_instrumentation__.Notify(552289)
 			if ctx.IsPrimaryKey {
+				__antithesis_instrumentation__.Notify(552293)
 				return pgerror.Newf(pgcode.InvalidParameterValue, "invalid storage param %q on primary key", params[0].Key)
+			} else {
+				__antithesis_instrumentation__.Notify(552294)
 			}
+			__antithesis_instrumentation__.Notify(552290)
 			return pgerror.Newf(pgcode.InvalidParameterValue, "invalid storage param %q on unique index", params[0].Key)
 		}
 	}
+	__antithesis_instrumentation__.Notify(552285)
 	return nil
 }

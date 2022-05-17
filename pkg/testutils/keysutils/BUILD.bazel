@@ -12,6 +12,7 @@ go_library(
         "//pkg/sql/sem/tree",
         "//pkg/util/encoding",
         "//pkg/util/keysutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -25,5 +26,6 @@ go_test(
         "//pkg/roachpb",
         "//pkg/testutils",
         "//pkg/util/encoding",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

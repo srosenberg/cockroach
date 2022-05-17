@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package security
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,36 +18,35 @@ var certPrincipalMap struct {
 	m map[string]string
 }
 
-// UserAuthHook authenticates a user based on their username and whether their
-// connection originates from a client or another node in the cluster. It
-// returns an optional func that is run at connection close.
-//
-// The systemIdentity is the external identity, from GSSAPI or an X.509
-// certificate, while databaseUsername reflects any username mappings
-// that may have been applied to the given connection.
 type UserAuthHook func(
 	ctx context.Context,
 	systemIdentity SQLUsername,
 	clientConnection bool,
 ) error
 
-// SetCertPrincipalMap sets the global principal map. Each entry in the mapping
-// list must either be empty or have the format <source>:<dest>. The principal
-// map is used to transform principal names found in the Subject.CommonName or
-// DNS-type SubjectAlternateNames fields of certificates. This function splits
-// each list entry on the final colon, allowing <source> to contain colons.
 func SetCertPrincipalMap(mappings []string) error {
+	__antithesis_instrumentation__.Notify(185690)
 	m := make(map[string]string, len(mappings))
 	for _, v := range mappings {
+		__antithesis_instrumentation__.Notify(185692)
 		if v == "" {
+			__antithesis_instrumentation__.Notify(185695)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(185696)
 		}
+		__antithesis_instrumentation__.Notify(185693)
 		idx := strings.LastIndexByte(v, ':')
 		if idx == -1 {
+			__antithesis_instrumentation__.Notify(185697)
 			return errors.Errorf("invalid <cert-principal>:<db-principal> mapping: %q", v)
+		} else {
+			__antithesis_instrumentation__.Notify(185698)
 		}
+		__antithesis_instrumentation__.Notify(185694)
 		m[v[:idx]] = v[idx+1:]
 	}
+	__antithesis_instrumentation__.Notify(185691)
 	certPrincipalMap.Lock()
 	certPrincipalMap.m = m
 	certPrincipalMap.Unlock()
@@ -63,160 +54,229 @@ func SetCertPrincipalMap(mappings []string) error {
 }
 
 func transformPrincipal(commonName string) string {
+	__antithesis_instrumentation__.Notify(185699)
 	certPrincipalMap.RLock()
 	mappedName, ok := certPrincipalMap.m[commonName]
 	certPrincipalMap.RUnlock()
 	if !ok {
+		__antithesis_instrumentation__.Notify(185701)
 		return commonName
+	} else {
+		__antithesis_instrumentation__.Notify(185702)
 	}
+	__antithesis_instrumentation__.Notify(185700)
 	return mappedName
 }
 
 func getCertificatePrincipals(cert *x509.Certificate) []string {
+	__antithesis_instrumentation__.Notify(185703)
 	results := make([]string, 0, 1+len(cert.DNSNames))
 	results = append(results, transformPrincipal(cert.Subject.CommonName))
 	for _, name := range cert.DNSNames {
+		__antithesis_instrumentation__.Notify(185705)
 		results = append(results, transformPrincipal(name))
 	}
+	__antithesis_instrumentation__.Notify(185704)
 	return results
 }
 
-// GetCertificateUsers extract the users from a client certificate.
 func GetCertificateUsers(tlsState *tls.ConnectionState) ([]string, error) {
+	__antithesis_instrumentation__.Notify(185706)
 	if tlsState == nil {
+		__antithesis_instrumentation__.Notify(185709)
 		return nil, errors.Errorf("request is not using TLS")
+	} else {
+		__antithesis_instrumentation__.Notify(185710)
 	}
+	__antithesis_instrumentation__.Notify(185707)
 	if len(tlsState.PeerCertificates) == 0 {
+		__antithesis_instrumentation__.Notify(185711)
 		return nil, errors.Errorf("no client certificates in request")
+	} else {
+		__antithesis_instrumentation__.Notify(185712)
 	}
-	// The go server handshake code verifies the first certificate, using
-	// any following certificates as intermediates. See:
-	// https://github.com/golang/go/blob/go1.8.1/src/crypto/tls/handshake_server.go#L723:L742
+	__antithesis_instrumentation__.Notify(185708)
+
 	peerCert := tlsState.PeerCertificates[0]
 	return getCertificatePrincipals(peerCert), nil
 }
 
-// Contains returns true if the specified string is present in the given slice.
 func Contains(sl []string, s string) bool {
+	__antithesis_instrumentation__.Notify(185713)
 	for i := range sl {
+		__antithesis_instrumentation__.Notify(185715)
 		if sl[i] == s {
+			__antithesis_instrumentation__.Notify(185716)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(185717)
 		}
 	}
+	__antithesis_instrumentation__.Notify(185714)
 	return false
 }
 
-// UserAuthCertHook builds an authentication hook based on the security
-// mode and client certificate.
 func UserAuthCertHook(insecureMode bool, tlsState *tls.ConnectionState) (UserAuthHook, error) {
+	__antithesis_instrumentation__.Notify(185718)
 	var certUsers []string
 
 	if !insecureMode {
+		__antithesis_instrumentation__.Notify(185720)
 		var err error
 		certUsers, err = GetCertificateUsers(tlsState)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(185721)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(185722)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(185723)
 	}
+	__antithesis_instrumentation__.Notify(185719)
 
 	return func(ctx context.Context, systemIdentity SQLUsername, clientConnection bool) error {
-		// TODO(marc): we may eventually need stricter user syntax rules.
+		__antithesis_instrumentation__.Notify(185724)
+
 		if systemIdentity.Undefined() {
+			__antithesis_instrumentation__.Notify(185730)
 			return errors.New("user is missing")
+		} else {
+			__antithesis_instrumentation__.Notify(185731)
 		}
+		__antithesis_instrumentation__.Notify(185725)
 
-		if !clientConnection && !systemIdentity.IsNodeUser() {
+		if !clientConnection && func() bool {
+			__antithesis_instrumentation__.Notify(185732)
+			return !systemIdentity.IsNodeUser() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(185733)
 			return errors.Errorf("user %s is not allowed", systemIdentity)
+		} else {
+			__antithesis_instrumentation__.Notify(185734)
 		}
+		__antithesis_instrumentation__.Notify(185726)
 
-		// If running in insecure mode, we have nothing to verify it against.
 		if insecureMode {
+			__antithesis_instrumentation__.Notify(185735)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(185736)
 		}
+		__antithesis_instrumentation__.Notify(185727)
 
-		// The client certificate should not be a tenant client type. For now just
-		// check that it doesn't have OU=Tenants. It would make sense to add
-		// explicit OU=Users to all client certificates and to check for match.
 		if IsTenantCertificate(tlsState.PeerCertificates[0]) {
+			__antithesis_instrumentation__.Notify(185737)
 			return errors.Errorf("using tenant client certificate as user certificate is not allowed")
+		} else {
+			__antithesis_instrumentation__.Notify(185738)
 		}
+		__antithesis_instrumentation__.Notify(185728)
 
-		// The client certificate user must match the requested user.
 		if !Contains(certUsers, systemIdentity.Normalized()) {
+			__antithesis_instrumentation__.Notify(185739)
 			return errors.Errorf("requested user is %s, but certificate is for %s", systemIdentity, certUsers)
+		} else {
+			__antithesis_instrumentation__.Notify(185740)
 		}
+		__antithesis_instrumentation__.Notify(185729)
 
 		return nil
 	}, nil
 }
 
-// IsTenantCertificate returns true if the passed certificate indicates an
-// inbound Tenant connection.
 func IsTenantCertificate(cert *x509.Certificate) bool {
+	__antithesis_instrumentation__.Notify(185741)
 	return Contains(cert.Subject.OrganizationalUnit, TenantsOU)
 }
 
-// UserAuthPasswordHook builds an authentication hook based on the security
-// mode, password, and its potentially matching hash.
 func UserAuthPasswordHook(
 	insecureMode bool, password string, hashedPassword PasswordHash,
 ) UserAuthHook {
+	__antithesis_instrumentation__.Notify(185742)
 	return func(ctx context.Context, systemIdentity SQLUsername, clientConnection bool) error {
+		__antithesis_instrumentation__.Notify(185743)
 		if systemIdentity.Undefined() {
+			__antithesis_instrumentation__.Notify(185750)
 			return errors.New("user is missing")
+		} else {
+			__antithesis_instrumentation__.Notify(185751)
 		}
+		__antithesis_instrumentation__.Notify(185744)
 
 		if !clientConnection {
+			__antithesis_instrumentation__.Notify(185752)
 			return errors.New("password authentication is only available for client connections")
+		} else {
+			__antithesis_instrumentation__.Notify(185753)
 		}
+		__antithesis_instrumentation__.Notify(185745)
 
 		if insecureMode {
+			__antithesis_instrumentation__.Notify(185754)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(185755)
 		}
+		__antithesis_instrumentation__.Notify(185746)
 
-		// If the requested user has an empty password, disallow authentication.
 		if len(password) == 0 {
+			__antithesis_instrumentation__.Notify(185756)
 			return NewErrPasswordUserAuthFailed(systemIdentity)
+		} else {
+			__antithesis_instrumentation__.Notify(185757)
 		}
+		__antithesis_instrumentation__.Notify(185747)
 		ok, err := CompareHashAndCleartextPassword(ctx, hashedPassword, password)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(185758)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(185759)
 		}
+		__antithesis_instrumentation__.Notify(185748)
 		if !ok {
+			__antithesis_instrumentation__.Notify(185760)
 			return NewErrPasswordUserAuthFailed(systemIdentity)
+		} else {
+			__antithesis_instrumentation__.Notify(185761)
 		}
+		__antithesis_instrumentation__.Notify(185749)
 
 		return nil
 	}
 }
 
-// NewErrPasswordUserAuthFailed constructs an error that represents
-// failed password authentication for a user. It should be used when
-// the password is incorrect or the user does not exist.
 func NewErrPasswordUserAuthFailed(username SQLUsername) error {
+	__antithesis_instrumentation__.Notify(185762)
 	return &PasswordUserAuthError{errors.Newf("password authentication failed for user %s", username)}
 }
 
-// PasswordUserAuthError indicates that an error was encountered
-// during the initial set-up of a SQL connection.
 type PasswordUserAuthError struct {
 	err error
 }
 
-// Error implements the error interface.
-func (i *PasswordUserAuthError) Error() string { return i.err.Error() }
+func (i *PasswordUserAuthError) Error() string {
+	__antithesis_instrumentation__.Notify(185763)
+	return i.err.Error()
+}
 
-// Cause implements causer for compatibility with pkg/errors.
-// NB: this is obsolete. Use Unwrap() instead.
-func (i *PasswordUserAuthError) Cause() error { return i.err }
+func (i *PasswordUserAuthError) Cause() error {
+	__antithesis_instrumentation__.Notify(185764)
+	return i.err
+}
 
-// Unwrap implements errors.Wrapper.
-func (i *PasswordUserAuthError) Unwrap() error { return i.err }
+func (i *PasswordUserAuthError) Unwrap() error {
+	__antithesis_instrumentation__.Notify(185765)
+	return i.err
+}
 
-// Format implements fmt.Formatter.
-func (i *PasswordUserAuthError) Format(s fmt.State, verb rune) { errors.FormatError(i, s, verb) }
+func (i *PasswordUserAuthError) Format(s fmt.State, verb rune) {
+	__antithesis_instrumentation__.Notify(185766)
+	errors.FormatError(i, s, verb)
+}
 
-// FormatError implements errors.Formatter.
 func (i *PasswordUserAuthError) FormatError(p errors.Printer) error {
+	__antithesis_instrumentation__.Notify(185767)
 	return i.err
 }

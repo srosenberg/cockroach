@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -54,10 +46,10 @@ var (
 	).WithPublic()
 )
 
-// startPurgeOldSessions runs an infinite loop in a goroutine
-// which regularly deletes old rows in the system.web_sessions table.
 func startPurgeOldSessions(ctx context.Context, s *authenticationServer) error {
+	__antithesis_instrumentation__.Notify(195413)
 	return s.sqlServer.stopper.RunAsyncTask(ctx, "purge-old-sessions", func(context.Context) {
+		__antithesis_instrumentation__.Notify(195414)
 		settingsValues := &s.sqlServer.execCfg.Settings.SV
 		period := webSessionPurgePeriod.Get(settingsValues)
 
@@ -66,13 +58,17 @@ func startPurgeOldSessions(ctx context.Context, s *authenticationServer) error {
 		timer.Reset(jitteredInterval(period))
 
 		for ; ; timer.Reset(webSessionPurgePeriod.Get(settingsValues)) {
+			__antithesis_instrumentation__.Notify(195415)
 			select {
 			case <-timer.C:
+				__antithesis_instrumentation__.Notify(195416)
 				timer.Read = true
 				s.purgeOldSessions(ctx)
 			case <-s.sqlServer.stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(195417)
 				return
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(195418)
 				return
 			}
 		}
@@ -80,12 +76,8 @@ func startPurgeOldSessions(ctx context.Context, s *authenticationServer) error {
 	)
 }
 
-// purgeOldSessions deletes old web session records.
-// Performs three purges: (1) one for sessions with expiration
-// older than the purge TTL, (2) one for sessions with revocation
-// older than the purge TTL, and (3) one for sessions that have
-// timed out since they were last used.
 func (s *authenticationServer) purgeOldSessions(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(195419)
 	var (
 		deleteOldExpiredSessionsStmt = `
 DELETE FROM system.web_sessions
@@ -123,42 +115,52 @@ RETURNING 1
 	if _, err := internalExecutor.ExecEx(
 		ctx,
 		"delete-old-expired-sessions",
-		nil, /* txn */
+		nil,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		deleteOldExpiredSessionsStmt,
 		purgeTime,
 		limit,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(195422)
 		log.Errorf(ctx, "error while deleting old expired web sessions: %+v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(195423)
 	}
+	__antithesis_instrumentation__.Notify(195420)
 
 	if _, err := internalExecutor.ExecEx(
 		ctx,
 		"delete-old-revoked-sessions",
-		nil, /* txn */
+		nil,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		deleteOldRevokedSessionsStmt,
 		purgeTime,
 		limit,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(195424)
 		log.Errorf(ctx, "error while deleting old revoked web sessions: %+v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(195425)
 	}
+	__antithesis_instrumentation__.Notify(195421)
 
 	if _, err := internalExecutor.ExecEx(
 		ctx,
 		"delete-sessions-timeout",
-		nil, /* txn */
+		nil,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		deleteSessionsAutoLogoutStmt,
 		autoLogoutTime,
 		limit,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(195426)
 		log.Errorf(ctx, "error while deleting web sessions older than auto-logout timeout: %+v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(195427)
 	}
 }
 
-// jitteredInterval returns a randomly jittered (+/-25%) duration
-// from the interval.
 func jitteredInterval(interval time.Duration) time.Duration {
+	__antithesis_instrumentation__.Notify(195428)
 	return time.Duration(float64(interval) * (0.75 + 0.5*math_rand.Float64()))
 }

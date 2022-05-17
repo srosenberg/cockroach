@@ -1,17 +1,9 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 //go:build gofuzz
 // +build gofuzz
 
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/util/timeutil"
 
@@ -20,17 +12,27 @@ var (
 )
 
 func FuzzParseDDecimal(data []byte) int {
+	__antithesis_instrumentation__.Notify(609908)
 	_, err := ParseDDecimal(string(data))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(609910)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(609911)
 	}
+	__antithesis_instrumentation__.Notify(609909)
 	return 1
 }
 
 func FuzzParseDDate(data []byte) int {
+	__antithesis_instrumentation__.Notify(609912)
 	_, _, err := ParseDDate(timeCtx, string(data))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(609914)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(609915)
 	}
+	__antithesis_instrumentation__.Notify(609913)
 	return 1
 }

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colserde
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -38,9 +30,6 @@ type fileBlock struct {
 	bodyLen     int64
 }
 
-// FileSerializer converts our in-mem columnar batch representation into the
-// arrow specification's file format. All batches serialized to a file must have
-// the same schema.
 type FileSerializer struct {
 	scratch [4]byte
 
@@ -53,17 +42,24 @@ type FileSerializer struct {
 	recordBatches []fileBlock
 }
 
-// NewFileSerializer creates a FileSerializer for the given types. The caller is
-// responsible for closing the given writer.
 func NewFileSerializer(w io.Writer, typs []*types.T) (*FileSerializer, error) {
+	__antithesis_instrumentation__.Notify(55600)
 	a, err := NewArrowBatchConverter(typs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(55603)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(55604)
 	}
+	__antithesis_instrumentation__.Notify(55601)
 	rb, err := NewRecordBatchSerializer(typs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(55605)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(55606)
 	}
+	__antithesis_instrumentation__.Notify(55602)
 	s := &FileSerializer{
 		typs: typs,
 		fb:   flatbuffers.NewBuilder(flatbufferBuilderInitialCapacity),
@@ -73,48 +69,68 @@ func NewFileSerializer(w io.Writer, typs []*types.T) (*FileSerializer, error) {
 	return s, s.Reset(w)
 }
 
-// Reset can be called to reuse this FileSerializer with a new io.Writer after
-// calling Finish. The types will remain the ones passed to the constructor. The
-// caller is responsible for closing the given writer.
 func (s *FileSerializer) Reset(w io.Writer) error {
+	__antithesis_instrumentation__.Notify(55607)
 	if s.w != nil {
+		__antithesis_instrumentation__.Notify(55612)
 		return errors.New(`Finish must be called before Reset`)
+	} else {
+		__antithesis_instrumentation__.Notify(55613)
 	}
+	__antithesis_instrumentation__.Notify(55608)
 	s.w = &countingWriter{wrapped: w}
 	s.recordBatches = s.recordBatches[:0]
 	if _, err := io.WriteString(s.w, fileMagic); err != nil {
+		__antithesis_instrumentation__.Notify(55614)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(55615)
 	}
-	// Pad to 8 byte boundary.
-	if _, err := s.w.Write(fileMagicPadding[:]); err != nil {
-		return err
-	}
+	__antithesis_instrumentation__.Notify(55609)
 
-	// The file format is a wrapper around the streaming format and the streaming
-	// format starts with a Schema message.
+	if _, err := s.w.Write(fileMagicPadding[:]); err != nil {
+		__antithesis_instrumentation__.Notify(55616)
+		return err
+	} else {
+		__antithesis_instrumentation__.Notify(55617)
+	}
+	__antithesis_instrumentation__.Notify(55610)
+
 	s.fb.Reset()
 	messageOffset := schemaMessage(s.fb, s.typs)
 	s.fb.Finish(messageOffset)
 	schemaBytes := s.fb.FinishedBytes()
 	if _, err := s.w.Write(schemaBytes); err != nil {
+		__antithesis_instrumentation__.Notify(55618)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(55619)
 	}
+	__antithesis_instrumentation__.Notify(55611)
 	_, err := s.w.Write(make([]byte, calculatePadding(len(schemaBytes))))
 	return err
 }
 
-// AppendBatch adds one batch of columnar data to the file.
 func (s *FileSerializer) AppendBatch(batch coldata.Batch) error {
+	__antithesis_instrumentation__.Notify(55620)
 	offset := int64(s.w.written)
 
 	arrow, err := s.a.BatchToArrow(batch)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(55623)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(55624)
 	}
+	__antithesis_instrumentation__.Notify(55621)
 	metadataLen, bodyLen, err := s.rb.Serialize(s.w, arrow, batch.Length())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(55625)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(55626)
 	}
+	__antithesis_instrumentation__.Notify(55622)
 
 	s.recordBatches = append(s.recordBatches, fileBlock{
 		offset:      offset,
@@ -124,36 +140,39 @@ func (s *FileSerializer) AppendBatch(batch coldata.Batch) error {
 	return nil
 }
 
-// Finish writes the footer metadata described by the arrow spec. Nothing can be
-// called after Finish except Reset.
 func (s *FileSerializer) Finish() error {
+	__antithesis_instrumentation__.Notify(55627)
 	defer func() {
+		__antithesis_instrumentation__.Notify(55631)
 		s.w = nil
 	}()
+	__antithesis_instrumentation__.Notify(55628)
 
-	// Write the footer flatbuffer, which has byte offsets of all the record
-	// batch messages in the file.
 	s.fb.Reset()
 	footerOffset := fileFooter(s.fb, s.typs, s.recordBatches)
 	s.fb.Finish(footerOffset)
 	footerBytes := s.fb.FinishedBytes()
 	if _, err := s.w.Write(footerBytes); err != nil {
+		__antithesis_instrumentation__.Notify(55632)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(55633)
 	}
-	// For the footer, and only the footer, the spec requires the length _after_
-	// the footer so that it can be read by starting at the back of the file and
-	// working forward.
+	__antithesis_instrumentation__.Notify(55629)
+
 	binary.LittleEndian.PutUint32(s.scratch[:], uint32(len(footerBytes)))
 	if _, err := s.w.Write(s.scratch[:]); err != nil {
+		__antithesis_instrumentation__.Notify(55634)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(55635)
 	}
-	// Spec wants the magic again here.
+	__antithesis_instrumentation__.Notify(55630)
+
 	_, err := io.WriteString(s.w, fileMagic)
 	return err
 }
 
-// FileDeserializer decodes columnar data batches from files encoded according
-// to the arrow spec.
 type FileDeserializer struct {
 	buf        []byte
 	bufCloseFn func() error
@@ -169,34 +188,37 @@ type FileDeserializer struct {
 	arrowScratch []*array.Data
 }
 
-// NewFileDeserializerFromBytes constructs a FileDeserializer for an in-memory
-// buffer.
 func NewFileDeserializerFromBytes(typs []*types.T, buf []byte) (*FileDeserializer, error) {
-	return newFileDeserializer(typs, buf, func() error { return nil })
+	__antithesis_instrumentation__.Notify(55636)
+	return newFileDeserializer(typs, buf, func() error { __antithesis_instrumentation__.Notify(55637); return nil })
 }
 
-// NewFileDeserializerFromPath constructs a FileDeserializer by reading it from
-// a file.
 func NewFileDeserializerFromPath(typs []*types.T, path string) (*FileDeserializer, error) {
+	__antithesis_instrumentation__.Notify(55638)
 	f, err := os.Open(path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(55641)
 		return nil, pgerror.Wrapf(err, pgcode.Io, `opening %s`, path)
+	} else {
+		__antithesis_instrumentation__.Notify(55642)
 	}
-	// TODO(dan): This is currently using copy on write semantics because we store
-	// the nulls differently in-mem than arrow does and there's an in-place
-	// conversion. If we used the same format that arrow does, this could be
-	// switched to mmap.RDONLY (it's easy to check, the test fails with a SIGBUS
-	// right now with mmap.RDONLY).
-	buf, err := mmap.Map(f, mmap.COPY, 0 /* flags */)
+	__antithesis_instrumentation__.Notify(55639)
+
+	buf, err := mmap.Map(f, mmap.COPY, 0)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(55643)
 		return nil, pgerror.Wrapf(err, pgcode.Io, `mmaping %s`, path)
+	} else {
+		__antithesis_instrumentation__.Notify(55644)
 	}
+	__antithesis_instrumentation__.Notify(55640)
 	return newFileDeserializer(typs, buf, buf.Unmap)
 }
 
 func newFileDeserializer(
 	typs []*types.T, buf []byte, bufCloseFn func() error,
 ) (*FileDeserializer, error) {
+	__antithesis_instrumentation__.Notify(55645)
 	d := &FileDeserializer{
 		buf:        buf,
 		bufCloseFn: bufCloseFn,
@@ -204,77 +226,102 @@ func newFileDeserializer(
 	}
 	var err error
 	if err = d.init(); err != nil {
+		__antithesis_instrumentation__.Notify(55649)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(55650)
 	}
+	__antithesis_instrumentation__.Notify(55646)
 	d.typs = typs
 
 	if d.a, err = NewArrowBatchConverter(typs); err != nil {
+		__antithesis_instrumentation__.Notify(55651)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(55652)
 	}
+	__antithesis_instrumentation__.Notify(55647)
 	if d.rb, err = NewRecordBatchSerializer(typs); err != nil {
+		__antithesis_instrumentation__.Notify(55653)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(55654)
 	}
+	__antithesis_instrumentation__.Notify(55648)
 	d.arrowScratch = make([]*array.Data, 0, len(typs))
 
 	return d, nil
 }
 
-// Close releases any resources held by this deserializer.
 func (d *FileDeserializer) Close() error {
+	__antithesis_instrumentation__.Notify(55655)
 	return d.bufCloseFn()
 }
 
-// Typs returns the in-memory types for the data stored in this file.
 func (d *FileDeserializer) Typs() []*types.T {
+	__antithesis_instrumentation__.Notify(55656)
 	return d.typs
 }
 
-// NumBatches returns the number of record batches stored in this file.
 func (d *FileDeserializer) NumBatches() int {
+	__antithesis_instrumentation__.Notify(55657)
 	return len(d.recordBatches)
 }
 
-// GetBatch fills in the given in-mem batch with the requested on-disk data.
 func (d *FileDeserializer) GetBatch(batchIdx int, b coldata.Batch) error {
+	__antithesis_instrumentation__.Notify(55658)
 	rb := d.recordBatches[batchIdx]
 	d.idx = int(rb.offset)
 	buf, err := d.read(metadataLengthNumBytes + int(rb.metadataLen) + int(rb.bodyLen))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(55661)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(55662)
 	}
+	__antithesis_instrumentation__.Notify(55659)
 	d.arrowScratch = d.arrowScratch[:0]
 	batchLength, err := d.rb.Deserialize(&d.arrowScratch, buf)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(55663)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(55664)
 	}
+	__antithesis_instrumentation__.Notify(55660)
 	return d.a.ArrowToBatch(d.arrowScratch, batchLength, b)
 }
 
-// read gets the next `n` bytes from the start of the buffer, consuming them.
 func (d *FileDeserializer) read(n int) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(55665)
 	if d.idx+n > d.end {
+		__antithesis_instrumentation__.Notify(55667)
 		return nil, io.EOF
+	} else {
+		__antithesis_instrumentation__.Notify(55668)
 	}
+	__antithesis_instrumentation__.Notify(55666)
 	start := d.idx
 	d.idx += n
 	return d.buf[start:d.idx], nil
 }
 
-// readBackward gets the `n` bytes from the end of the buffer, consuming them.
 func (d *FileDeserializer) readBackward(n int) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(55669)
 	if d.idx+n > d.end {
+		__antithesis_instrumentation__.Notify(55671)
 		return nil, io.EOF
+	} else {
+		__antithesis_instrumentation__.Notify(55672)
 	}
+	__antithesis_instrumentation__.Notify(55670)
 	end := d.end
 	d.end -= n
 	return d.buf[d.end:end], nil
 }
 
-// init verifies the file magic and headers. After init, the `idx` and `end`
-// fields are set to the range of record batches and dictionary batches
-// described by the arrow spec's streaming format.
 func (d *FileDeserializer) init() error {
-	// Check the header magic
+
 	if magic, err := d.read(8); err != nil {
 		return pgerror.Wrap(err, pgcode.DataException, `verifying arrow file header magic`)
 	} else if !bytes.Equal([]byte(fileMagic), magic[:len(fileMagic)]) {
@@ -319,88 +366,107 @@ type countingWriter struct {
 }
 
 func (w *countingWriter) Write(buf []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(55673)
 	n, err := w.wrapped.Write(buf)
 	w.written += n
 	return n, err
 }
 
 func schema(fb *flatbuffers.Builder, typs []*types.T) flatbuffers.UOffsetT {
+	__antithesis_instrumentation__.Notify(55674)
 	fieldOffsets := make([]flatbuffers.UOffsetT, len(typs))
 	for idx, typ := range typs {
+		__antithesis_instrumentation__.Notify(55677)
 		var fbTyp byte
 		var fbTypOffset flatbuffers.UOffsetT
 		switch typeconv.TypeFamilyToCanonicalTypeFamily(typ.Family()) {
 		case types.BoolFamily:
+			__antithesis_instrumentation__.Notify(55679)
 			arrowserde.BoolStart(fb)
 			fbTypOffset = arrowserde.BoolEnd(fb)
 			fbTyp = arrowserde.TypeBool
 		case types.BytesFamily, types.JsonFamily:
+			__antithesis_instrumentation__.Notify(55680)
 			arrowserde.BinaryStart(fb)
 			fbTypOffset = arrowserde.BinaryEnd(fb)
 			fbTyp = arrowserde.TypeBinary
 		case types.IntFamily:
+			__antithesis_instrumentation__.Notify(55681)
 			switch typ.Width() {
 			case 16:
+				__antithesis_instrumentation__.Notify(55688)
 				arrowserde.IntStart(fb)
 				arrowserde.IntAddBitWidth(fb, 16)
 				arrowserde.IntAddIsSigned(fb, 1)
 				fbTypOffset = arrowserde.IntEnd(fb)
 				fbTyp = arrowserde.TypeInt
 			case 32:
+				__antithesis_instrumentation__.Notify(55689)
 				arrowserde.IntStart(fb)
 				arrowserde.IntAddBitWidth(fb, 32)
 				arrowserde.IntAddIsSigned(fb, 1)
 				fbTypOffset = arrowserde.IntEnd(fb)
 				fbTyp = arrowserde.TypeInt
 			case 0, 64:
+				__antithesis_instrumentation__.Notify(55690)
 				arrowserde.IntStart(fb)
 				arrowserde.IntAddBitWidth(fb, 64)
 				arrowserde.IntAddIsSigned(fb, 1)
 				fbTypOffset = arrowserde.IntEnd(fb)
 				fbTyp = arrowserde.TypeInt
 			default:
+				__antithesis_instrumentation__.Notify(55691)
 				panic(errors.Errorf(`unexpected int width %d`, typ.Width()))
 			}
 		case types.FloatFamily:
+			__antithesis_instrumentation__.Notify(55682)
 			arrowserde.FloatingPointStart(fb)
 			arrowserde.FloatingPointAddPrecision(fb, arrowserde.PrecisionDOUBLE)
 			fbTypOffset = arrowserde.FloatingPointEnd(fb)
 			fbTyp = arrowserde.TypeFloatingPoint
 		case types.DecimalFamily:
-			// Decimals are marshaled into bytes, so we use binary headers.
+			__antithesis_instrumentation__.Notify(55683)
+
 			arrowserde.BinaryStart(fb)
 			fbTypOffset = arrowserde.BinaryEnd(fb)
 			fbTyp = arrowserde.TypeDecimal
 		case types.TimestampTZFamily:
-			// Timestamps are marshaled into bytes, so we use binary headers.
+			__antithesis_instrumentation__.Notify(55684)
+
 			arrowserde.BinaryStart(fb)
 			fbTypOffset = arrowserde.BinaryEnd(fb)
 			fbTyp = arrowserde.TypeTimestamp
 		case types.IntervalFamily:
-			// Intervals are marshaled into bytes, so we use binary headers.
+			__antithesis_instrumentation__.Notify(55685)
+
 			arrowserde.BinaryStart(fb)
 			fbTypOffset = arrowserde.BinaryEnd(fb)
 			fbTyp = arrowserde.TypeInterval
 		case typeconv.DatumVecCanonicalTypeFamily:
-			// Datums are marshaled into bytes, so we use binary headers.
+			__antithesis_instrumentation__.Notify(55686)
+
 			arrowserde.BinaryStart(fb)
 			fbTypOffset = arrowserde.BinaryEnd(fb)
 			fbTyp = arrowserde.TypeUtf8
 		default:
+			__antithesis_instrumentation__.Notify(55687)
 			panic(errors.Errorf(`don't know how to map %s`, typ))
 		}
+		__antithesis_instrumentation__.Notify(55678)
 		arrowserde.FieldStart(fb)
 		arrowserde.FieldAddTypeType(fb, fbTyp)
 		arrowserde.FieldAddType(fb, fbTypOffset)
 		fieldOffsets[idx] = arrowserde.FieldEnd(fb)
 	}
+	__antithesis_instrumentation__.Notify(55675)
 
 	arrowserde.SchemaStartFieldsVector(fb, len(typs))
-	// flatbuffers adds everything back to front. Reverse iterate so they're in
-	// the right order when they come out.
+
 	for i := len(fieldOffsets) - 1; i >= 0; i-- {
+		__antithesis_instrumentation__.Notify(55692)
 		fb.PrependUOffsetT(fieldOffsets[i])
 	}
+	__antithesis_instrumentation__.Notify(55676)
 	fields := fb.EndVector(len(typs))
 
 	arrowserde.SchemaStart(fb)
@@ -409,6 +475,7 @@ func schema(fb *flatbuffers.Builder, typs []*types.T) flatbuffers.UOffsetT {
 }
 
 func schemaMessage(fb *flatbuffers.Builder, typs []*types.T) flatbuffers.UOffsetT {
+	__antithesis_instrumentation__.Notify(55693)
 	schemaOffset := schema(fb, typs)
 	arrowserde.MessageStart(fb)
 	arrowserde.MessageAddVersion(fb, arrowserde.MetadataVersionV1)
@@ -420,14 +487,16 @@ func schemaMessage(fb *flatbuffers.Builder, typs []*types.T) flatbuffers.UOffset
 func fileFooter(
 	fb *flatbuffers.Builder, typs []*types.T, recordBatches []fileBlock,
 ) flatbuffers.UOffsetT {
+	__antithesis_instrumentation__.Notify(55694)
 	schemaOffset := schema(fb, typs)
 	arrowserde.FooterStartRecordBatchesVector(fb, len(recordBatches))
-	// flatbuffers adds everything back to front. Reverse iterate so they're in
-	// the right order when they come out.
+
 	for i := len(recordBatches) - 1; i >= 0; i-- {
+		__antithesis_instrumentation__.Notify(55696)
 		rb := recordBatches[i]
 		arrowserde.CreateBlock(fb, rb.offset, rb.metadataLen, rb.bodyLen)
 	}
+	__antithesis_instrumentation__.Notify(55695)
 	recordBatchesOffset := fb.EndVector(len(recordBatches))
 	arrowserde.FooterStart(fb)
 	arrowserde.FooterAddVersion(fb, arrowserde.MetadataVersionV1)

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scbuild
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/parser"
@@ -19,8 +11,6 @@ import (
 
 var _ scbuildstmt.TreeAnnotator = (*astAnnotator)(nil)
 
-// astAnnotator creates a copy of the AST that can be annotated or modified
-// safely without impacting the original statement.
 type astAnnotator struct {
 	statement        tree.Statement
 	annotation       tree.Annotations
@@ -28,11 +18,16 @@ type astAnnotator struct {
 }
 
 func newAstAnnotator(original tree.Statement) (*astAnnotator, error) {
-	// Clone the original tree by re-parsing the input back into an AST.
+	__antithesis_instrumentation__.Notify(579289)
+
 	statement, err := parser.ParseOne(original.String())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(579291)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(579292)
 	}
+	__antithesis_instrumentation__.Notify(579290)
 	return &astAnnotator{
 		nonExistentNames: map[*tree.TableName]struct{}{},
 		statement:        statement.AST,
@@ -40,49 +35,56 @@ func newAstAnnotator(original tree.Statement) (*astAnnotator, error) {
 	}, nil
 }
 
-// GetStatement returns the cloned copy of the AST that is stored inside
-// the annotator.
 func (ann *astAnnotator) GetStatement() tree.Statement {
+	__antithesis_instrumentation__.Notify(579293)
 	return ann.statement
 }
 
-// GetAnnotations implements scbuildstmt.TreeAnnotator.
 func (ann *astAnnotator) GetAnnotations() *tree.Annotations {
-	// Sanity: Validate the annotations before returning them
+	__antithesis_instrumentation__.Notify(579294)
+
 	return &ann.annotation
 }
 
-// MarkNameAsNonExistent implements scbuildstmt.TreeAnnotator.
 func (ann *astAnnotator) MarkNameAsNonExistent(name *tree.TableName) {
+	__antithesis_instrumentation__.Notify(579295)
 	ann.nonExistentNames[name] = struct{}{}
 }
 
-// SetUnresolvedNameAnnotation implements scbuildstmt.TreeAnnotator.
 func (ann *astAnnotator) SetUnresolvedNameAnnotation(
 	unresolvedName *tree.UnresolvedObjectName, annotation interface{},
 ) {
+	__antithesis_instrumentation__.Notify(579296)
 	unresolvedName.SetAnnotation(&ann.annotation, annotation)
 }
 
-// ValidateAnnotations validates if expected modifications have been applied
-// on the AST. After the build phase all names should be fully resolved either
-// by directly modifying the AST or through annotations.
 func (ann *astAnnotator) ValidateAnnotations() {
-	// Sanity: Goes through the entire AST and confirms that and table names that
-	// appear inside it are fully resolved, meaning that both the database and
-	// schema are known.
+	__antithesis_instrumentation__.Notify(579297)
+
 	f := tree.NewFmtCtx(
 		tree.FmtAlwaysQualifyTableNames|tree.FmtMarkRedactionNode,
 		tree.FmtAnnotations(&ann.annotation),
 		tree.FmtReformatTableNames(func(ctx *tree.FmtCtx, name *tree.TableName) {
-			// Name was not found during lookup inside the builder.
+			__antithesis_instrumentation__.Notify(579299)
+
 			if _, ok := ann.nonExistentNames[name]; ok {
+				__antithesis_instrumentation__.Notify(579301)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(579302)
 			}
-			if name.CatalogName == "" || name.SchemaName == "" {
+			__antithesis_instrumentation__.Notify(579300)
+			if name.CatalogName == "" || func() bool {
+				__antithesis_instrumentation__.Notify(579303)
+				return name.SchemaName == "" == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(579304)
 				panic(errors.AssertionFailedf("unresolved name inside annotated AST "+
 					"(%v)", name.String()))
+			} else {
+				__antithesis_instrumentation__.Notify(579305)
 			}
 		}))
+	__antithesis_instrumentation__.Notify(579298)
 	f.FormatNode(ann.statement)
 }

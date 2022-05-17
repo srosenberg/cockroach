@@ -1,137 +1,169 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package roachpb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/util/interval"
 
-// A SpanGroup is a specialization of interval.RangeGroup which deals
-// with key spans. The zero-value of a SpanGroup can be used immediately.
-//
-// A SpanGroup does not support concurrent use.
 type SpanGroup struct {
 	rg interval.RangeGroup
 }
 
 func (g *SpanGroup) checkInit() {
+	__antithesis_instrumentation__.Notify(179844)
 	if g.rg == nil {
+		__antithesis_instrumentation__.Notify(179845)
 		g.rg = interval.NewRangeTree()
+	} else {
+		__antithesis_instrumentation__.Notify(179846)
 	}
 }
 
-// Add will attempt to add the provided Spans to the SpanGroup,
-// returning whether the addition increased the span of the group
-// or not.
 func (g *SpanGroup) Add(spans ...Span) bool {
+	__antithesis_instrumentation__.Notify(179847)
 	if len(spans) == 0 {
+		__antithesis_instrumentation__.Notify(179850)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(179851)
 	}
+	__antithesis_instrumentation__.Notify(179848)
 	ret := false
 	g.checkInit()
 	for _, span := range spans {
-		ret = g.rg.Add(s2r(span)) || ret
+		__antithesis_instrumentation__.Notify(179852)
+		ret = g.rg.Add(s2r(span)) || func() bool {
+			__antithesis_instrumentation__.Notify(179853)
+			return ret == true
+		}() == true
 	}
+	__antithesis_instrumentation__.Notify(179849)
 	return ret
 }
 
-// Sub will attempt to subtract the provided Spans from the SpanGroup,
-// returning whether the subtraction increased the span of the group
-// or not.
 func (g *SpanGroup) Sub(spans ...Span) bool {
+	__antithesis_instrumentation__.Notify(179854)
 	if len(spans) == 0 {
+		__antithesis_instrumentation__.Notify(179857)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(179858)
 	}
+	__antithesis_instrumentation__.Notify(179855)
 	ret := false
 	g.checkInit()
 	for _, span := range spans {
-		ret = g.rg.Sub(s2r(span)) || ret
+		__antithesis_instrumentation__.Notify(179859)
+		ret = g.rg.Sub(s2r(span)) || func() bool {
+			__antithesis_instrumentation__.Notify(179860)
+			return ret == true
+		}() == true
 	}
+	__antithesis_instrumentation__.Notify(179856)
 	return ret
 }
 
-// Contains returns whether or not the provided Key is contained
-// within the group of Spans in the SpanGroup.
 func (g *SpanGroup) Contains(k Key) bool {
+	__antithesis_instrumentation__.Notify(179861)
 	if g.rg == nil {
+		__antithesis_instrumentation__.Notify(179863)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(179864)
 	}
+	__antithesis_instrumentation__.Notify(179862)
 	return g.rg.Encloses(interval.Range{
 		Start: interval.Comparable(k),
-		// Use the next key since range-ends are exclusive.
+
 		End: interval.Comparable(k.Next()),
 	})
 }
 
-// Encloses returns whether the provided Span is fully conained within the group
-// of Spans in the SpanGroup
 func (g *SpanGroup) Encloses(spans ...Span) bool {
+	__antithesis_instrumentation__.Notify(179865)
 	if g.rg == nil {
+		__antithesis_instrumentation__.Notify(179868)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(179869)
 	}
+	__antithesis_instrumentation__.Notify(179866)
 	for _, span := range spans {
+		__antithesis_instrumentation__.Notify(179870)
 		if !g.rg.Encloses(s2r(span)) {
+			__antithesis_instrumentation__.Notify(179871)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(179872)
 		}
 	}
+	__antithesis_instrumentation__.Notify(179867)
 	return true
 }
 
-// Len returns the number of Spans currently within the SpanGroup.
-// This will always be equal to or less than the number of spans added,
-// as spans that overlap will merge to produce a single larger span.
 func (g *SpanGroup) Len() int {
+	__antithesis_instrumentation__.Notify(179873)
 	if g.rg == nil {
+		__antithesis_instrumentation__.Notify(179875)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(179876)
 	}
+	__antithesis_instrumentation__.Notify(179874)
 	return g.rg.Len()
 }
 
 var _ = (*SpanGroup).Len
 
-// Slice will return the contents of the SpanGroup as a slice of Spans.
 func (g *SpanGroup) Slice() []Span {
+	__antithesis_instrumentation__.Notify(179877)
 	rg := g.rg
 	if rg == nil {
+		__antithesis_instrumentation__.Notify(179880)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(179881)
 	}
+	__antithesis_instrumentation__.Notify(179878)
 	ret := make([]Span, 0, rg.Len())
 	it := rg.Iterator()
 	for {
+		__antithesis_instrumentation__.Notify(179882)
 		rng, next := it.Next()
 		if !next {
+			__antithesis_instrumentation__.Notify(179884)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(179885)
 		}
+		__antithesis_instrumentation__.Notify(179883)
 		ret = append(ret, r2s(rng))
 	}
+	__antithesis_instrumentation__.Notify(179879)
 	return ret
 }
 
-// s2r converts a Span to an interval.Range.  Since the Key and
-// interval.Comparable types are both just aliases of []byte,
-// we don't have to perform any other conversion.
 func s2r(s Span) interval.Range {
-	// Per docs on Span, if the span represents only a single key,
-	// the EndKey value may be empty.  We'll handle this case by
-	// ensuring we always have an exclusive end key value.
+	__antithesis_instrumentation__.Notify(179886)
+
 	var end = s.EndKey
-	if len(end) == 0 || s.Key.Equal(s.EndKey) {
+	if len(end) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(179888)
+		return s.Key.Equal(s.EndKey) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(179889)
 		end = s.Key.Next()
+	} else {
+		__antithesis_instrumentation__.Notify(179890)
 	}
+	__antithesis_instrumentation__.Notify(179887)
 	return interval.Range{
 		Start: interval.Comparable(s.Key),
 		End:   interval.Comparable(end),
 	}
 }
 
-// r2s converts a Range to a Span
 func r2s(r interval.Range) Span {
+	__antithesis_instrumentation__.Notify(179891)
 	return Span{
 		Key:    Key(r.Start),
 		EndKey: Key(r.End),

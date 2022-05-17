@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rangefeedbuffer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sort"
@@ -16,56 +8,73 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 )
 
-// RangeFeedValueEventToKV is a function to type assert an Event into a
-// *roachpb.RangeFeedValue and then convert it to a roachpb.KeyValue.
 func RangeFeedValueEventToKV(event Event) roachpb.KeyValue {
+	__antithesis_instrumentation__.Notify(89880)
 	rfv := event.(*roachpb.RangeFeedValue)
 	return roachpb.KeyValue{Key: rfv.Key, Value: rfv.Value}
 }
 
-// EventsToKVs converts a slice of Events to a slice of KeyValue pairs.
 func EventsToKVs(events []Event, f func(ev Event) roachpb.KeyValue) []roachpb.KeyValue {
+	__antithesis_instrumentation__.Notify(89881)
 	kvs := make([]roachpb.KeyValue, 0, len(events))
 	for _, ev := range events {
+		__antithesis_instrumentation__.Notify(89883)
 		kvs = append(kvs, f(ev))
 	}
+	__antithesis_instrumentation__.Notify(89882)
 	return kvs
 }
 
-// MergeKVs merges two sets of KVs into a single set of KVs with at most one
-// KV for any key. The latest value in the merged set wins. If the latest
-// value in the set corresponds to a deletion (i.e. its IsPresent() method
-// returns false), the value will be omitted from the final set.
-//
-// Note that the assumption is that base has no duplicated keys. If the set
-// of updates is empty, base is returned directly.
 func MergeKVs(base, updates []roachpb.KeyValue) []roachpb.KeyValue {
+	__antithesis_instrumentation__.Notify(89884)
 	if len(updates) == 0 {
+		__antithesis_instrumentation__.Notify(89888)
 		return base
+	} else {
+		__antithesis_instrumentation__.Notify(89889)
 	}
+	__antithesis_instrumentation__.Notify(89885)
 	combined := make([]roachpb.KeyValue, 0, len(base)+len(updates))
 	combined = append(append(combined, base...), updates...)
 	sort.Slice(combined, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(89890)
 		cmp := combined[i].Key.Compare(combined[j].Key)
 		if cmp == 0 {
+			__antithesis_instrumentation__.Notify(89892)
 			return combined[i].Value.Timestamp.Less(combined[j].Value.Timestamp)
+		} else {
+			__antithesis_instrumentation__.Notify(89893)
 		}
+		__antithesis_instrumentation__.Notify(89891)
 		return cmp < 0
 	})
+	__antithesis_instrumentation__.Notify(89886)
 	r := combined[:0]
 	for _, kv := range combined {
-		prevIsSameKey := len(r) > 0 && r[len(r)-1].Key.Equal(kv.Key)
+		__antithesis_instrumentation__.Notify(89894)
+		prevIsSameKey := len(r) > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(89895)
+			return r[len(r)-1].Key.Equal(kv.Key) == true
+		}() == true
 		if kv.Value.IsPresent() {
+			__antithesis_instrumentation__.Notify(89896)
 			if prevIsSameKey {
+				__antithesis_instrumentation__.Notify(89897)
 				r[len(r)-1] = kv
 			} else {
+				__antithesis_instrumentation__.Notify(89898)
 				r = append(r, kv)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(89899)
 			if prevIsSameKey {
+				__antithesis_instrumentation__.Notify(89900)
 				r = r[:len(r)-1]
+			} else {
+				__antithesis_instrumentation__.Notify(89901)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(89887)
 	return r
 }

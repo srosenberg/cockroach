@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package codeowners
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -20,8 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// LintEverythingIsOwned verifies that all files in ./pkg/... have
-// at least one owning team. It is called from lints.
 func LintEverythingIsOwned(
 	t interface {
 		Logf(string, ...interface{})
@@ -32,31 +22,23 @@ func LintEverythingIsOwned(
 	verbose bool,
 	co *CodeOwners,
 	repoRoot string,
-	walkDir string, // filepath.Join(repoRoot, walkDir) will need owners
+	walkDir string,
 ) {
+	__antithesis_instrumentation__.Notify(68448)
 	debug := func(format string, args ...interface{}) {
+		__antithesis_instrumentation__.Notify(68454)
 		if !verbose {
+			__antithesis_instrumentation__.Notify(68456)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(68457)
 		}
+		__antithesis_instrumentation__.Notify(68455)
 		t.Helper()
 		t.Logf(format, args...)
 	}
+	__antithesis_instrumentation__.Notify(68449)
 
-	// Files to be skipped. For each directory or file we're walking over, we
-	// check both the path relative to ./pkg (=walkDir in this example) and the
-	// base name.
-	//
-	// Example: with entries "ccl/foo.go", "generated", and "README.md", we will skip:
-	// - ./pkg/ccl/foo.go
-	// - ./pkg/asd/xyz/README.md
-	// - ./pkg/README.md
-	// - ./pkg/foo/generated (and anything within)
-	// - ./pkg/generated (and anything within)
-	// - ./pkg/bar/generated (as a file)
-	// but not
-	// - ./pkg/asd/foo.go
-	// - ./pkg/ccl/bar/foo.go
-	// - ./pkg/asd/generated.go
 	skip := map[string]struct{}{
 		filepath.Join("ccl", "ccl_init.go"): {},
 		filepath.Join("node_modules"):       {},
@@ -67,105 +49,152 @@ func LintEverythingIsOwned(
 		"README.md":                         {},
 	}
 
-	// Map of (unowned dir relative to walkRoot) -> (triggering file relative to walkRoot).
-	// For example, kv/kvserver -> kv/kvserver/foo.go.
 	unowned := map[string]string{}
 
 	walkRoot := filepath.Join(repoRoot, walkDir)
 
 	unownedWalkFn := func(path string, info os.FileInfo) error {
+		__antithesis_instrumentation__.Notify(68458)
 		teams := co.Match(path)
 		if len(teams) > 0 {
-			// The file has an owner, so nothing to report.
+			__antithesis_instrumentation__.Notify(68461)
+
 			debug("%s <- has team(s) %v", path, teams)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(68462)
 		}
+		__antithesis_instrumentation__.Notify(68459)
 		if !info.IsDir() {
-			// We're looking at a file that has no owner.
-			//
-			// Let's say `path = ./pkg/foo/bar/baz.go`.
-			// If ./pkg, ./pkg/foo, or ./pkg/foo/bar are already
-			// marked as "unowned", avoid emitting an additional failure.
-			// If neither are, we mark ./pkg/foo/bar as unowned as a
-			// result of containing an unowned file. We could also mark
-			// the file itself as unowned, but most of the time we have
-			// one owner for the directory and also the failures get less
-			// noisy by tracking per-directory.
+			__antithesis_instrumentation__.Notify(68463)
+
 			parts := strings.Split(path, string(filepath.Separator))
 			var ok bool
 			for i := range parts {
+				__antithesis_instrumentation__.Notify(68465)
 				prefix := filepath.Join(parts[:i+1]...)
 				_, ok = unowned[prefix]
 				if ok {
+					__antithesis_instrumentation__.Notify(68466)
 					debug("pruning %s; %s is already unowned", path, prefix)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(68467)
 				}
 			}
+			__antithesis_instrumentation__.Notify(68464)
 			if !ok {
+				__antithesis_instrumentation__.Notify(68468)
 				debug("unowned: %s", path)
 				unowned[filepath.Dir(path)] = path
+			} else {
+				__antithesis_instrumentation__.Notify(68469)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(68470)
 		}
+		__antithesis_instrumentation__.Notify(68460)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(68450)
 
 	dirsToWalk := []string{walkRoot}
 	for len(dirsToWalk) != 0 {
-		// We first visit each directory's files, and then the subdirectories.
-		// See TestLintEverythingIsOwned for details.
-		require.NoError(t, filepath.Walk(dirsToWalk[0], func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
+		__antithesis_instrumentation__.Notify(68471)
 
-			// Path relative to walkRoot, i.e. `acceptance` instead of
-			// `some/stuff/pkg/acceptance`.
+		require.NoError(t, filepath.Walk(dirsToWalk[0], func(path string, info os.FileInfo, err error) error {
+			__antithesis_instrumentation__.Notify(68473)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(68479)
+				return err
+			} else {
+				__antithesis_instrumentation__.Notify(68480)
+			}
+			__antithesis_instrumentation__.Notify(68474)
+
 			relPath, err := filepath.Rel(walkRoot, path)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(68481)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(68482)
 			}
+			__antithesis_instrumentation__.Notify(68475)
 
 			if _, ok := skip[relPath]; ok {
+				__antithesis_instrumentation__.Notify(68483)
 				debug("skipping %s", relPath)
 				if info.IsDir() {
+					__antithesis_instrumentation__.Notify(68485)
 					return filepath.SkipDir
+				} else {
+					__antithesis_instrumentation__.Notify(68486)
 				}
+				__antithesis_instrumentation__.Notify(68484)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(68487)
 			}
+			__antithesis_instrumentation__.Notify(68476)
 			fname := filepath.Base(relPath)
 			if _, ok := skip[fname]; ok {
+				__antithesis_instrumentation__.Notify(68488)
 				debug("skipping %s", relPath)
 				if info.IsDir() {
+					__antithesis_instrumentation__.Notify(68490)
 					return filepath.SkipDir
+				} else {
+					__antithesis_instrumentation__.Notify(68491)
 				}
+				__antithesis_instrumentation__.Notify(68489)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(68492)
 			}
+			__antithesis_instrumentation__.Notify(68477)
 
 			if info.IsDir() {
+				__antithesis_instrumentation__.Notify(68493)
 				if path == dirsToWalk[0] {
+					__antithesis_instrumentation__.Notify(68495)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(68496)
 				}
+				__antithesis_instrumentation__.Notify(68494)
 				dirsToWalk = append(dirsToWalk, path)
 				return filepath.SkipDir
+			} else {
+				__antithesis_instrumentation__.Notify(68497)
 			}
+			__antithesis_instrumentation__.Notify(68478)
 			return unownedWalkFn(filepath.Join(walkDir, relPath), info)
 		}))
+		__antithesis_instrumentation__.Notify(68472)
 		dirsToWalk = dirsToWalk[1:]
 	}
+	__antithesis_instrumentation__.Notify(68451)
 	var sl []string
 	for path := range unowned {
+		__antithesis_instrumentation__.Notify(68498)
 		sl = append(sl, path)
 	}
+	__antithesis_instrumentation__.Notify(68452)
 	sort.Strings(sl)
 
 	var buf strings.Builder
 	for _, s := range sl {
+		__antithesis_instrumentation__.Notify(68499)
 		fmt.Fprintf(&buf, "%-28s @cockroachdb/<TODO>-noreview\n", string(filepath.Separator)+s+string(filepath.Separator))
 	}
+	__antithesis_instrumentation__.Notify(68453)
 	if buf.Len() > 0 {
+		__antithesis_instrumentation__.Notify(68500)
 		t.Errorf(`unowned packages found, please fill out the below and augment .github/CODEOWNERS:
 Remove the '-noreview' suffix if the team should be requested for Github reviews.
 
 %s`, buf.String())
+	} else {
+		__antithesis_instrumentation__.Notify(68501)
 	}
 }

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,19 +16,20 @@ import (
 )
 
 func registerSchemaChangeInvertedIndex(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(48592)
 	r.Add(registry.TestSpec{
 		Name:    "schemachange/invertedindex",
 		Owner:   registry.OwnerSQLSchema,
 		Cluster: r.MakeClusterSpec(5),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(48593)
 			runSchemaChangeInvertedIndex(ctx, t, c)
 		},
 	})
 }
 
-// runInvertedIndex tests the correctness and performance of building an
-// inverted index on randomly generated JSON data (from the JSON workload).
 func runSchemaChangeInvertedIndex(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(48594)
 	crdbNodes := c.Range(1, c.Spec().NodeCount-1)
 	workloadNode := c.Node(c.Spec().NodeCount)
 
@@ -47,16 +40,17 @@ func runSchemaChangeInvertedIndex(ctx context.Context, t test.Test, c cluster.Cl
 	cmdInit := "./workload init json {pgurl:1}"
 	c.Run(ctx, workloadNode, cmdInit)
 
-	// On a 4-node GCE cluster with the standard configuration, this generates ~10 million rows
 	initialDataDuration := time.Minute * 20
 	indexDuration := time.Hour
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(48599)
 		initialDataDuration = time.Minute
 		indexDuration = time.Minute
+	} else {
+		__antithesis_instrumentation__.Notify(48600)
 	}
+	__antithesis_instrumentation__.Notify(48595)
 
-	// First generate random JSON data using the JSON workload.
-	// TODO (lucy): Using a pre-generated test fixture would be much faster
 	m := c.NewMonitor(ctx, crdbNodes)
 
 	cmdWrite := fmt.Sprintf(
@@ -64,6 +58,7 @@ func runSchemaChangeInvertedIndex(ctx context.Context, t test.Test, c cluster.Cl
 		initialDataDuration.String(), c.Spec().NodeCount-1,
 	)
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(48601)
 		c.Run(ctx, workloadNode, cmdWrite)
 
 		db := c.Conn(ctx, t.L(), 1)
@@ -71,16 +66,20 @@ func runSchemaChangeInvertedIndex(ctx context.Context, t test.Test, c cluster.Cl
 
 		var count int
 		if err := db.QueryRow(`SELECT count(*) FROM json.j`).Scan(&count); err != nil {
+			__antithesis_instrumentation__.Notify(48603)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48604)
 		}
+		__antithesis_instrumentation__.Notify(48602)
 		t.L().Printf("finished writing %d rows to table", count)
 
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(48596)
 
 	m.Wait()
 
-	// Run the workload (with both reads and writes), and create the index at the same time.
 	m = c.NewMonitor(ctx, crdbNodes)
 
 	cmdWriteAndRead := fmt.Sprintf(
@@ -88,23 +87,31 @@ func runSchemaChangeInvertedIndex(ctx context.Context, t test.Test, c cluster.Cl
 		indexDuration.String(), c.Spec().NodeCount-1,
 	)
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(48605)
 		c.Run(ctx, workloadNode, cmdWriteAndRead)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(48597)
 
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(48606)
 		db := c.Conn(ctx, t.L(), 1)
 		defer db.Close()
 
 		t.L().Printf("creating index")
 		start := timeutil.Now()
 		if _, err := db.Exec(`CREATE INVERTED INDEX ON json.j (v)`); err != nil {
+			__antithesis_instrumentation__.Notify(48608)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(48609)
 		}
+		__antithesis_instrumentation__.Notify(48607)
 		t.L().Printf("index was created, took %v", timeutil.Since(start))
 
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(48598)
 
 	m.Wait()
 }

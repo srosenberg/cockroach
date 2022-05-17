@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package debug
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"net/http"
@@ -18,35 +10,39 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 )
 
-// CPUProfileOptions contains options for generating a CPU profile.
 type CPUProfileOptions struct {
-	// Number of seconds to profile for.
 	Seconds int32
-	// Whether to enable pprof labels while the profile is taken.
+
 	WithLabels bool
 }
 
-// Type returns the CPUProfileType corresponding to the options.
 func (opts CPUProfileOptions) Type() cluster.CPUProfileType {
+	__antithesis_instrumentation__.Notify(190190)
 	typ := cluster.CPUProfileDefault
 	if opts.WithLabels {
+		__antithesis_instrumentation__.Notify(190192)
 		typ = cluster.CPUProfileWithLabels
+	} else {
+		__antithesis_instrumentation__.Notify(190193)
 	}
+	__antithesis_instrumentation__.Notify(190191)
 	return typ
 }
 
-// CPUProfileOptionsFromRequest parses the `seconds` and `labels` fragments
-// from the URL and populates CPUProfileOptions from it.
-//
-// For convenience, `labels` defaults to true, that is, `?labels=false`
-// must be specified to disable them. `seconds` defaults to the pprof
-// default of 30s.
 func CPUProfileOptionsFromRequest(r *http.Request) CPUProfileOptions {
+	__antithesis_instrumentation__.Notify(190194)
 	seconds, err := strconv.ParseInt(r.FormValue("seconds"), 10, 32)
-	if err != nil || seconds <= 0 {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(190196)
+		return seconds <= 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(190197)
 		seconds = 30
+	} else {
+		__antithesis_instrumentation__.Notify(190198)
 	}
-	// NB: default to using labels unless it's specifically set to false.
+	__antithesis_instrumentation__.Notify(190195)
+
 	withLabels := r.FormValue("labels") != "false"
 	return CPUProfileOptions{
 		Seconds:    int32(seconds),
@@ -54,26 +50,32 @@ func CPUProfileOptionsFromRequest(r *http.Request) CPUProfileOptions {
 	}
 }
 
-// CPUProfileDo invokes the closure while enabling (and disabling) the supplied
-// CPUProfileMode. Errors if the profiling mode could not be set or if do()
-// returns an error.
 func CPUProfileDo(st *cluster.Settings, typ cluster.CPUProfileType, do func() error) error {
+	__antithesis_instrumentation__.Notify(190199)
 	if err := st.SetCPUProfiling(typ); err != nil {
+		__antithesis_instrumentation__.Notify(190202)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(190203)
 	}
-	defer func() { _ = st.SetCPUProfiling(cluster.CPUProfileNone) }()
+	__antithesis_instrumentation__.Notify(190200)
+	defer func() { __antithesis_instrumentation__.Notify(190204); _ = st.SetCPUProfiling(cluster.CPUProfileNone) }()
+	__antithesis_instrumentation__.Notify(190201)
 	return do()
 }
 
-// CPUProfileHandler is replacement for `pprof.Profile` that supports additional
-// options.
 func CPUProfileHandler(st *cluster.Settings, w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(190205)
 	opts := CPUProfileOptionsFromRequest(r)
 	if err := CPUProfileDo(st, opts.Type(), func() error {
+		__antithesis_instrumentation__.Notify(190206)
 		pprof.Profile(w, r)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(190207)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(190208)
 	}
 }

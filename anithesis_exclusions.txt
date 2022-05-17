@@ -1,0 +1,9 @@
+# sample exclusions for Antithesis Go instrumentor
+
+# exclude all vendored
+
+vendor/
+
+# Go unit tests (i.e. *_test.go) are automatically excluded. 
+# However, we might have other code in here that we want to exclude.
+

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,14 +21,18 @@ type invertedFilterNode struct {
 }
 
 func (n *invertedFilterNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(498779)
 	panic("invertedFiltererNode can't be run in local mode")
 }
 func (n *invertedFilterNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(498780)
 	n.input.Close(ctx)
 }
 func (n *invertedFilterNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(498781)
 	panic("invertedFiltererNode can't be run in local mode")
 }
 func (n *invertedFilterNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(498782)
 	panic("invertedFiltererNode can't be run in local mode")
 }

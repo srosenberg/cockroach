@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package connectionlatency
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,6 +31,7 @@ var connectionLatencyMeta = workload.Meta{
 	Description: `Testing Connection Latencies`,
 	Version:     `1.0.0`,
 	New: func() workload.Generator {
+		__antithesis_instrumentation__.Notify(693916)
 		c := &connectionLatency{}
 		c.flags.FlagSet = pflag.NewFlagSet(`connectionlatency`, pflag.ContinueOnError)
 		c.flags.StringVar(&c.locality, `locality`, ``, `Which locality is the workload running in? (east,west,central)`)
@@ -47,28 +40,37 @@ var connectionLatencyMeta = workload.Meta{
 	},
 }
 
-// Meta implements the Generator interface.
-func (connectionLatency) Meta() workload.Meta { return connectionLatencyMeta }
+func (connectionLatency) Meta() workload.Meta {
+	__antithesis_instrumentation__.Notify(693917)
+	return connectionLatencyMeta
+}
 
-// Flags implements the Flagser interface.
-func (c *connectionLatency) Flags() workload.Flags { return c.flags }
+func (c *connectionLatency) Flags() workload.Flags {
+	__antithesis_instrumentation__.Notify(693918)
+	return c.flags
+}
 
-// Tables implements the Generator interface.
 func (connectionLatency) Tables() []workload.Table {
+	__antithesis_instrumentation__.Notify(693919)
 	return nil
 }
 
-// Ops implements the Opser interface.
 func (c *connectionLatency) Ops(
 	ctx context.Context, urls []string, reg *histogram.Registry,
 ) (workload.QueryLoad, error) {
+	__antithesis_instrumentation__.Notify(693920)
 	ql := workload.QueryLoad{}
 	_, err := workload.SanitizeUrls(c, c.connFlags.DBOverride, urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(693923)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(693924)
 	}
+	__antithesis_instrumentation__.Notify(693921)
 
 	for _, url := range urls {
+		__antithesis_instrumentation__.Notify(693925)
 		op := &connectionOp{
 			url:   url,
 			hists: reg.GetHandle(),
@@ -76,16 +78,23 @@ func (c *connectionLatency) Ops(
 
 		conn, err := pgx.Connect(ctx, url)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(693928)
 			return workload.QueryLoad{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(693929)
 		}
+		__antithesis_instrumentation__.Notify(693926)
 
 		var locality string
 		err = conn.QueryRow(ctx, "SHOW LOCALITY").Scan(&locality)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(693930)
 			return workload.QueryLoad{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(693931)
 		}
-		// Just grab the zone name from the locality (if it exists) in order to
-		// keep the name smaller.
+		__antithesis_instrumentation__.Notify(693927)
+
 		localitySplit := strings.Split(locality, "zone=")
 		locality = localitySplit[len(localitySplit)-1]
 
@@ -93,6 +102,7 @@ func (c *connectionLatency) Ops(
 		op.connectTo = locality
 		ql.WorkerFns = append(ql.WorkerFns, op.run)
 	}
+	__antithesis_instrumentation__.Notify(693922)
 	return ql, nil
 }
 
@@ -104,23 +114,37 @@ type connectionOp struct {
 }
 
 func (o *connectionOp) run(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(693932)
 	start := timeutil.Now()
 	conn, err := pgx.Connect(ctx, o.url)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(693936)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(693937)
 	}
+	__antithesis_instrumentation__.Notify(693933)
 	defer func() {
+		__antithesis_instrumentation__.Notify(693938)
 		if err := conn.Close(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(693939)
 			log.Warningf(ctx, "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(693940)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(693934)
 	elapsed := timeutil.Since(start)
 	o.hists.Get(fmt.Sprintf(`connect-from-%s-to-%s`, o.connectFrom, o.connectTo)).Record(elapsed)
 
 	if _, err = conn.Exec(ctx, "SELECT 1"); err != nil {
+		__antithesis_instrumentation__.Notify(693941)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(693942)
 	}
-	// Record the time it takes to do a select after connecting for reference.
+	__antithesis_instrumentation__.Notify(693935)
+
 	elapsed = timeutil.Since(start)
 	o.hists.Get(`select`).Record(elapsed)
 	return nil

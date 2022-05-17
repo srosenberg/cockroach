@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catkv
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,17 +12,13 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/nstree"
 )
 
-// LookupIDs returns the IDs of the descriptor for the requested namespace table
-// row keys.
-// descpb.InvalidID is returned for each request for which there exists no
-// matching row in the namespace table.
 func LookupIDs(
 	ctx context.Context, txn *kv.Txn, codec keys.SQLCodec, nameInfos []descpb.NameInfo,
 ) ([]descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(265812)
 	return lookupIDs(ctx, txn, catalogQuerier{codec: codec}, nameInfos)
 }
 
-// LookupID is like LookupIDs but for one record.
 func LookupID(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -39,21 +27,26 @@ func LookupID(
 	parentSchemaID descpb.ID,
 	name string,
 ) (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(265813)
 	nameInfo := descpb.NameInfo{ParentID: parentID, ParentSchemaID: parentSchemaID, Name: name}
 	ids, err := LookupIDs(ctx, txn, codec, []descpb.NameInfo{nameInfo})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(265815)
 		return descpb.InvalidID, err
+	} else {
+		__antithesis_instrumentation__.Notify(265816)
 	}
+	__antithesis_instrumentation__.Notify(265814)
 	return ids[0], nil
 }
 
-// GetAllDatabaseDescriptorIDs looks up and returns all available database
-// descriptor IDs.
 func GetAllDatabaseDescriptorIDs(
 	ctx context.Context, txn *kv.Txn, codec keys.SQLCodec,
 ) (nstree.Catalog, error) {
+	__antithesis_instrumentation__.Notify(265817)
 	cq := catalogQuerier{codec: codec}
 	return cq.query(ctx, txn, func(codec keys.SQLCodec, b *kv.Batch) {
+		__antithesis_instrumentation__.Notify(265818)
 		b.Header.MaxSpanRequestKeys = 0
 		prefix := catalogkeys.MakeDatabaseNameKey(codec, "")
 		b.Scan(prefix, prefix.PrefixEnd())

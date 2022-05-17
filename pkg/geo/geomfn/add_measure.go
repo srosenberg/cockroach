@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package geomfn
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/geo"
@@ -17,116 +9,154 @@ import (
 	"github.com/twpayne/go-geom"
 )
 
-// AddMeasure takes a LineString or MultiLineString and linearly interpolates measure values for each line.
 func AddMeasure(geometry geo.Geometry, start float64, end float64) (geo.Geometry, error) {
+	__antithesis_instrumentation__.Notify(60976)
 	t, err := geometry.AsGeomT()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(60978)
 		return geometry, err
+	} else {
+		__antithesis_instrumentation__.Notify(60979)
 	}
+	__antithesis_instrumentation__.Notify(60977)
 
 	switch t := t.(type) {
 	case *geom.LineString:
+		__antithesis_instrumentation__.Notify(60980)
 		newLineString, err := addMeasureToLineString(t, start, end)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(60985)
 			return geometry, err
+		} else {
+			__antithesis_instrumentation__.Notify(60986)
 		}
+		__antithesis_instrumentation__.Notify(60981)
 		return geo.MakeGeometryFromGeomT(newLineString)
 	case *geom.MultiLineString:
+		__antithesis_instrumentation__.Notify(60982)
 		newMultiLineString, err := addMeasureToMultiLineString(t, start, end)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(60987)
 			return geometry, err
+		} else {
+			__antithesis_instrumentation__.Notify(60988)
 		}
+		__antithesis_instrumentation__.Notify(60983)
 		return geo.MakeGeometryFromGeomT(newMultiLineString)
 	default:
-		// Ideally we should return NULL here, but following PostGIS on this.
+		__antithesis_instrumentation__.Notify(60984)
+
 		return geometry, pgerror.Newf(pgcode.InvalidParameterValue, "input geometry must be LINESTRING or MULTILINESTRING")
 	}
 }
 
-// addMeasureToMultiLineString takes a MultiLineString and linearly interpolates measure values for each component line.
 func addMeasureToMultiLineString(
 	multiLineString *geom.MultiLineString, start float64, end float64,
 ) (*geom.MultiLineString, error) {
+	__antithesis_instrumentation__.Notify(60989)
 	newMultiLineString :=
 		geom.NewMultiLineString(augmentLayoutWithM(multiLineString.Layout())).SetSRID(multiLineString.SRID())
 
-	// Create a copy of the MultiLineString with measures added to each component LineString.
 	for i := 0; i < multiLineString.NumLineStrings(); i++ {
+		__antithesis_instrumentation__.Notify(60991)
 		newLineString, err := addMeasureToLineString(multiLineString.LineString(i), start, end)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(60993)
 			return multiLineString, err
+		} else {
+			__antithesis_instrumentation__.Notify(60994)
 		}
+		__antithesis_instrumentation__.Notify(60992)
 		err = newMultiLineString.Push(newLineString)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(60995)
 			return multiLineString, err
+		} else {
+			__antithesis_instrumentation__.Notify(60996)
 		}
 	}
+	__antithesis_instrumentation__.Notify(60990)
 
 	return newMultiLineString, nil
 }
 
-// addMeasureToLineString takes a LineString and linearly interpolates measure values.
 func addMeasureToLineString(
 	lineString *geom.LineString, start float64, end float64,
 ) (*geom.LineString, error) {
+	__antithesis_instrumentation__.Notify(60997)
 	newLineString := geom.NewLineString(augmentLayoutWithM(lineString.Layout())).SetSRID(lineString.SRID())
 
 	if lineString.Empty() {
+		__antithesis_instrumentation__.Notify(61003)
 		return newLineString, nil
+	} else {
+		__antithesis_instrumentation__.Notify(61004)
 	}
+	__antithesis_instrumentation__.Notify(60998)
 
-	// Extract the line's current points.
 	lineCoords := lineString.Coords()
 
-	// Compute the length of the line as the sum of the distances between each pair of points.
-	// Also, fill in pointMeasures with the partial sums.
 	prevPoint := lineCoords[0]
 	lineLength := float64(0)
 	pointMeasures := make([]float64, lineString.NumCoords())
 	for i := 0; i < lineString.NumCoords(); i++ {
+		__antithesis_instrumentation__.Notify(61005)
 		curPoint := lineCoords[i]
 		distBetweenPoints := coordNorm(coordSub(prevPoint, curPoint))
 		lineLength += distBetweenPoints
 		pointMeasures[i] = lineLength
 		prevPoint = curPoint
 	}
+	__antithesis_instrumentation__.Notify(60999)
 
-	// Compute the measures for each point.
 	for i := 0; i < lineString.NumCoords(); i++ {
-		// Handle special case where line is zero length.
+		__antithesis_instrumentation__.Notify(61006)
+
 		if lineLength == 0 {
+			__antithesis_instrumentation__.Notify(61007)
 			pointMeasures[i] = start + (end-start)*(float64(i)/float64(lineString.NumCoords()-1))
 		} else {
+			__antithesis_instrumentation__.Notify(61008)
 			pointMeasures[i] = start + (end-start)*(pointMeasures[i]/lineLength)
 		}
 	}
+	__antithesis_instrumentation__.Notify(61000)
 
-	// Replace M value if it exists, otherwise append it to each Coord.
 	for i := 0; i < lineString.NumCoords(); i++ {
+		__antithesis_instrumentation__.Notify(61009)
 		if lineString.Layout().MIndex() == -1 {
+			__antithesis_instrumentation__.Notify(61010)
 			lineCoords[i] = append(lineCoords[i], pointMeasures[i])
 		} else {
+			__antithesis_instrumentation__.Notify(61011)
 			lineCoords[i][lineString.Layout().MIndex()] = pointMeasures[i]
 		}
 	}
+	__antithesis_instrumentation__.Notify(61001)
 
-	// Create a new LineString with the measures tacked on.
 	_, err := newLineString.SetCoords(lineCoords)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61012)
 		return lineString, err
+	} else {
+		__antithesis_instrumentation__.Notify(61013)
 	}
+	__antithesis_instrumentation__.Notify(61002)
 
 	return newLineString, nil
 }
 
-// augmentLayoutWithM takes a layout and returns a layout with the M dimension added.
 func augmentLayoutWithM(layout geom.Layout) geom.Layout {
+	__antithesis_instrumentation__.Notify(61014)
 	switch layout {
 	case geom.XY, geom.XYM:
+		__antithesis_instrumentation__.Notify(61015)
 		return geom.XYM
 	case geom.XYZ, geom.XYZM:
+		__antithesis_instrumentation__.Notify(61016)
 		return geom.XYZM
 	default:
+		__antithesis_instrumentation__.Notify(61017)
 		return layout
 	}
 }

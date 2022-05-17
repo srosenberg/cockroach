@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,71 +32,42 @@ import (
 
 var _ sqlutil.InternalExecutor = &InternalExecutor{}
 
-// InternalExecutor can be used internally by code modules to execute SQL
-// statements without needing to open a SQL connection.
-//
-// InternalExecutor can execute one statement at a time. As of 03/2018, it
-// doesn't offer a session interface for maintaining session state or for
-// running explicit SQL transactions. However, it supports running SQL
-// statements inside a higher-lever (KV) txn and inheriting session variables
-// from another session.
-//
-// Methods not otherwise specified are safe for concurrent execution.
 type InternalExecutor struct {
 	s *Server
 
-	// mon is the monitor used by all queries executed through the
-	// InternalExecutor.
 	mon *mon.BytesMonitor
 
-	// memMetrics is the memory metrics that queries executed through the
-	// InternalExecutor will contribute to.
 	memMetrics MemoryMetrics
 
-	// sessionDataStack, if not nil, represents the session variable stack used by
-	// statements executed on this internalExecutor. Note that queries executed
-	// by the executor will run on copies of the top element of this data.
 	sessionDataStack *sessiondata.Stack
 
-	// syntheticDescriptors stores the synthetic descriptors to be injected into
-	// each query/statement's descs.Collection upon initialization.
-	//
-	// Warning: Not safe for concurrent use from multiple goroutines.
 	syntheticDescriptors []catalog.Descriptor
 }
 
-// WithSyntheticDescriptors sets the synthetic descriptors before running the
-// the provided closure and resets them afterward. Used for queries/statements
-// that need to use in-memory synthetic descriptors different from descriptors
-// written to disk. These descriptors override all other descriptors on the
-// immutable resolution path.
-//
-// Warning: Not safe for concurrent use from multiple goroutines. This API is
-// flawed in that the internal executor is meant to function as a stateless
-// wrapper, and creates a new connExecutor and descs.Collection on each query/
-// statement, so these descriptors should really be specified at a per-query/
-// statement level. See #34304.
 func (ie *InternalExecutor) WithSyntheticDescriptors(
 	descs []catalog.Descriptor, run func() error,
 ) error {
+	__antithesis_instrumentation__.Notify(497746)
 	ie.syntheticDescriptors = descs
 	defer func() {
+		__antithesis_instrumentation__.Notify(497748)
 		ie.syntheticDescriptors = nil
 	}()
+	__antithesis_instrumentation__.Notify(497747)
 	return run()
 }
 
-// MakeInternalExecutor creates an InternalExecutor.
 func MakeInternalExecutor(
 	ctx context.Context, s *Server, memMetrics MemoryMetrics, settings *cluster.Settings,
 ) InternalExecutor {
+	__antithesis_instrumentation__.Notify(497749)
 	monitor := mon.NewMonitor(
 		"internal SQL executor",
 		mon.MemoryResource,
 		memMetrics.CurBytesCount,
 		memMetrics.MaxBytesHist,
-		-1,            /* use default increment */
-		math.MaxInt64, /* noteworthy */
+		-1,
+		math.MaxInt64,
 		settings,
 	)
 	monitor.Start(ctx, s.pool, mon.BoundAccount{})
@@ -115,27 +78,12 @@ func MakeInternalExecutor(
 	}
 }
 
-// SetSessionData binds the session variables that will be used by queries
-// performed through this executor from now on. This creates a new session stack.
-// It is recommended to use SetSessionDataStack.
-//
-// SetSessionData cannot be called concurrently with query execution.
 func (ie *InternalExecutor) SetSessionData(sessionData *sessiondata.SessionData) {
+	__antithesis_instrumentation__.Notify(497750)
 	ie.s.populateMinimalSessionData(sessionData)
 	ie.sessionDataStack = sessiondata.NewStack(sessionData)
 }
 
-// initConnEx creates a connExecutor and runs it on a separate goroutine. It
-// takes in a StmtBuf into which commands can be pushed and a WaitGroup that
-// will be signaled when connEx.run() returns.
-//
-// If txn is not nil, the statement will be executed in the respective txn.
-//
-// The ieResultWriter coordinates communicating results to the client. It may
-// block execution when rows are being sent in order to prevent hazardous
-// concurrency.
-//
-// sd will constitute the executor's session state.
 func (ie *InternalExecutor) initConnEx(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -146,34 +94,31 @@ func (ie *InternalExecutor) initConnEx(
 	syncCallback func([]resWithPos),
 	errCallback func(error),
 ) {
+	__antithesis_instrumentation__.Notify(497751)
 	clientComm := &internalClientComm{
 		w: w,
-		// init lastDelivered below the position of the first result (0).
+
 		lastDelivered: -1,
 		sync:          syncCallback,
 	}
 
-	// When the connEx is serving an internal executor, it can inherit the
-	// application name from an outer session. This happens e.g. during ::regproc
-	// casts and built-in functions that use SQL internally. In that case, we do
-	// not want to record statistics against the outer application name directly;
-	// instead we want to use a separate bucket. However we will still want to
-	// have separate buckets for different applications so that we can measure
-	// their respective "pressure" on internal queries. Hence the choice here to
-	// add the delegate prefix to the current app name.
 	var appStatsBucketName string
 	if !strings.HasPrefix(sd.ApplicationName, catconstants.InternalAppNamePrefix) {
+		__antithesis_instrumentation__.Notify(497754)
 		appStatsBucketName = catconstants.DelegatedAppNamePrefix + sd.ApplicationName
 	} else {
-		// If this is already an "internal app", don't put more prefix.
+		__antithesis_instrumentation__.Notify(497755)
+
 		appStatsBucketName = sd.ApplicationName
 	}
+	__antithesis_instrumentation__.Notify(497752)
 	applicationStats := ie.s.sqlStats.GetApplicationStats(appStatsBucketName)
 
 	sds := sessiondata.NewStack(sd)
-	sdMutIterator := ie.s.makeSessionDataMutatorIterator(sds, nil /* sessionDefaults */)
+	sdMutIterator := ie.s.makeSessionDataMutatorIterator(sds, nil)
 	var ex *connExecutor
 	if txn == nil {
+		__antithesis_instrumentation__.Notify(497756)
 		ex = ie.s.newConnExecutor(
 			ctx,
 			sdMutIterator,
@@ -184,6 +129,7 @@ func (ie *InternalExecutor) initConnEx(
 			applicationStats,
 		)
 	} else {
+		__antithesis_instrumentation__.Notify(497757)
 		ex = ie.s.newConnExecutorWithTxn(
 			ctx,
 			sdMutIterator,
@@ -197,27 +143,36 @@ func (ie *InternalExecutor) initConnEx(
 			applicationStats,
 		)
 	}
+	__antithesis_instrumentation__.Notify(497753)
 
 	ex.executorType = executorTypeInternal
 
 	wg.Add(1)
 	go func() {
-		if err := ex.run(ctx, ie.mon, mon.BoundAccount{} /*reserved*/, nil /* cancel */); err != nil {
+		__antithesis_instrumentation__.Notify(497758)
+		if err := ex.run(ctx, ie.mon, mon.BoundAccount{}, nil); err != nil {
+			__antithesis_instrumentation__.Notify(497761)
 			sqltelemetry.RecordError(ctx, err, &ex.server.cfg.Settings.SV)
 			errCallback(err)
+		} else {
+			__antithesis_instrumentation__.Notify(497762)
 		}
+		__antithesis_instrumentation__.Notify(497759)
 		w.finish()
 		closeMode := normalClose
 		if txn != nil {
+			__antithesis_instrumentation__.Notify(497763)
 			closeMode = externalTxnClose
+		} else {
+			__antithesis_instrumentation__.Notify(497764)
 		}
+		__antithesis_instrumentation__.Notify(497760)
 		ex.close(ctx, closeMode)
 		wg.Done()
 	}()
 }
 
 type ieIteratorResult struct {
-	// Exactly one of these 4 fields will be set.
 	row                   tree.Datums
 	rowsAffectedIncrement *int
 	cols                  colinfo.ResultColumns
@@ -230,30 +185,18 @@ type rowsIterator struct {
 	rowsAffected int
 	resultCols   colinfo.ResultColumns
 
-	// first, if non-nil, is the first object read from r. We block the return
-	// of the created rowsIterator in execInternal() until the producer writes
-	// something into the corresponding ieResultWriter because this indicates
-	// that the query planning has been fully performed (we want to prohibit the
-	// concurrent usage of the transactions).
 	first *ieIteratorResult
 
 	lastRow tree.Datums
 	lastErr error
 	done    bool
 
-	// errCallback is an optional callback that will be called exactly once
-	// before an error is returned by Next() or Close().
 	errCallback func(err error) error
 
-	// stmtBuf will be closed on Close(). This is necessary in order to tell
-	// the connExecutor's goroutine to exit when the iterator's user wants to
-	// short-circuit the iteration (i.e. before Next() returns false).
 	stmtBuf *StmtBuf
 
-	// wg can be used to wait for the connExecutor's goroutine to exit.
 	wg *sync.WaitGroup
 
-	// sp will finished on Close().
 	sp *tracing.Span
 }
 
@@ -261,130 +204,161 @@ var _ sqlutil.InternalRows = &rowsIterator{}
 var _ tree.InternalRows = &rowsIterator{}
 
 func (r *rowsIterator) Next(ctx context.Context) (_ bool, retErr error) {
-	// Due to recursive calls to Next() below, this deferred function might get
-	// executed multiple times, yet it is not a problem because Close() is
-	// idempotent and we're unsetting the error callback.
+	__antithesis_instrumentation__.Notify(497765)
+
 	defer func() {
-		// If the iterator has just reached its terminal state, we'll close it
-		// automatically.
+		__antithesis_instrumentation__.Notify(497771)
+
 		if r.done {
-			// We can ignore the returned error because Close() will update
-			// r.lastErr if necessary.
-			_ /* err */ = r.Close()
+			__antithesis_instrumentation__.Notify(497774)
+
+			_ = r.Close()
+		} else {
+			__antithesis_instrumentation__.Notify(497775)
 		}
+		__antithesis_instrumentation__.Notify(497772)
 		if r.errCallback != nil {
+			__antithesis_instrumentation__.Notify(497776)
 			r.lastErr = r.errCallback(r.lastErr)
 			r.errCallback = nil
+		} else {
+			__antithesis_instrumentation__.Notify(497777)
 		}
+		__antithesis_instrumentation__.Notify(497773)
 		retErr = r.lastErr
 	}()
+	__antithesis_instrumentation__.Notify(497766)
 
 	if r.done {
+		__antithesis_instrumentation__.Notify(497778)
 		return false, r.lastErr
+	} else {
+		__antithesis_instrumentation__.Notify(497779)
 	}
+	__antithesis_instrumentation__.Notify(497767)
 
-	// handleDataObject processes a single object read from ieResultReader and
-	// returns the result to be returned by Next. It also might call Next
-	// recursively if the object is a piece of metadata.
 	handleDataObject := func(data ieIteratorResult) (bool, error) {
+		__antithesis_instrumentation__.Notify(497780)
 		if data.row != nil {
+			__antithesis_instrumentation__.Notify(497785)
 			r.rowsAffected++
-			// No need to make a copy because streamingCommandResult does that
-			// for us.
+
 			r.lastRow = data.row
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(497786)
 		}
+		__antithesis_instrumentation__.Notify(497781)
 		if data.rowsAffectedIncrement != nil {
+			__antithesis_instrumentation__.Notify(497787)
 			r.rowsAffected += *data.rowsAffectedIncrement
 			return r.Next(ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(497788)
 		}
+		__antithesis_instrumentation__.Notify(497782)
 		if data.cols != nil {
-			// Ignore the result columns if they are already set on the
-			// iterator: it is possible for ROWS statement type to be executed
-			// in a 'rows affected' mode, in such case the correct columns are
-			// set manually when instantiating the iterator, but the result
-			// columns of the statement are also sent by SetColumns() (we need
-			// to keep the former).
+			__antithesis_instrumentation__.Notify(497789)
+
 			if r.resultCols == nil {
+				__antithesis_instrumentation__.Notify(497791)
 				r.resultCols = data.cols
+			} else {
+				__antithesis_instrumentation__.Notify(497792)
 			}
+			__antithesis_instrumentation__.Notify(497790)
 			return r.Next(ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(497793)
 		}
+		__antithesis_instrumentation__.Notify(497783)
 		if data.err == nil {
+			__antithesis_instrumentation__.Notify(497794)
 			data.err = errors.AssertionFailedf("unexpectedly empty ieIteratorResult object")
+		} else {
+			__antithesis_instrumentation__.Notify(497795)
 		}
+		__antithesis_instrumentation__.Notify(497784)
 		r.lastErr = data.err
 		r.done = true
 		return false, r.lastErr
 	}
+	__antithesis_instrumentation__.Notify(497768)
 
 	if r.first != nil {
-		// This is the very first call to Next() and we have already buffered
-		// up the first piece of data before returning rowsIterator to the
-		// caller.
+		__antithesis_instrumentation__.Notify(497796)
+
 		first := r.first
 		r.first = nil
 		return handleDataObject(*first)
+	} else {
+		__antithesis_instrumentation__.Notify(497797)
 	}
+	__antithesis_instrumentation__.Notify(497769)
 
 	var next ieIteratorResult
 	next, r.done, r.lastErr = r.r.nextResult(ctx)
-	if r.done || r.lastErr != nil {
+	if r.done || func() bool {
+		__antithesis_instrumentation__.Notify(497798)
+		return r.lastErr != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(497799)
 		return false, r.lastErr
+	} else {
+		__antithesis_instrumentation__.Notify(497800)
 	}
+	__antithesis_instrumentation__.Notify(497770)
 	return handleDataObject(next)
 }
 
 func (r *rowsIterator) Cur() tree.Datums {
+	__antithesis_instrumentation__.Notify(497801)
 	return r.lastRow
 }
 
 func (r *rowsIterator) Close() error {
-	// Closing the stmtBuf will tell the connExecutor to stop executing commands
-	// (if it hasn't exited yet).
+	__antithesis_instrumentation__.Notify(497802)
+
 	r.stmtBuf.Close()
-	// We need to finish the span but only after the connExecutor goroutine is
-	// done.
+
 	defer func() {
+		__antithesis_instrumentation__.Notify(497805)
 		if r.sp != nil {
+			__antithesis_instrumentation__.Notify(497806)
 			r.wg.Wait()
 			r.sp.Finish()
 			r.sp = nil
+		} else {
+			__antithesis_instrumentation__.Notify(497807)
 		}
 	}()
-	// Close the ieResultReader to tell the writer that we're done.
-	if err := r.r.close(); err != nil && r.lastErr == nil {
+	__antithesis_instrumentation__.Notify(497803)
+
+	if err := r.r.close(); err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(497808)
+		return r.lastErr == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(497809)
 		r.lastErr = err
+	} else {
+		__antithesis_instrumentation__.Notify(497810)
 	}
+	__antithesis_instrumentation__.Notify(497804)
 	return r.lastErr
 }
 
 func (r *rowsIterator) Types() colinfo.ResultColumns {
+	__antithesis_instrumentation__.Notify(497811)
 	return r.resultCols
 }
 
-// QueryBuffered executes the supplied SQL statement and returns the resulting
-// rows (meaning all of them are buffered at once). If no user has been
-// previously set through SetSessionData, the statement is executed as the root
-// user.
-//
-// If txn is not nil, the statement will be executed in the respective txn.
-//
-// QueryBuffered is deprecated because it may transparently execute a query as
-// root. Use QueryBufferedEx instead.
 func (ie *InternalExecutor) QueryBuffered(
 	ctx context.Context, opName string, txn *kv.Txn, stmt string, qargs ...interface{},
 ) ([]tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(497812)
 	return ie.QueryBufferedEx(ctx, opName, txn, ie.maybeRootSessionDataOverride(opName), stmt, qargs...)
 }
 
-// QueryBufferedEx executes the supplied SQL statement and returns the resulting
-// rows (meaning all of them are buffered at once).
-//
-// If txn is not nil, the statement will be executed in the respective txn.
-//
-// The fields set in session that are set override the respective fields if they
-// have previously been set through SetSessionData().
 func (ie *InternalExecutor) QueryBufferedEx(
 	ctx context.Context,
 	opName string,
@@ -393,12 +367,11 @@ func (ie *InternalExecutor) QueryBufferedEx(
 	stmt string,
 	qargs ...interface{},
 ) ([]tree.Datums, error) {
-	datums, _, err := ie.queryInternalBuffered(ctx, opName, txn, session, stmt, 0 /* limit */, qargs...)
+	__antithesis_instrumentation__.Notify(497813)
+	datums, _, err := ie.queryInternalBuffered(ctx, opName, txn, session, stmt, 0, qargs...)
 	return datums, err
 }
 
-// QueryBufferedExWithCols is like QueryBufferedEx, additionally returning the computed
-// ResultColumns of the input query.
 func (ie *InternalExecutor) QueryBufferedExWithCols(
 	ctx context.Context,
 	opName string,
@@ -407,7 +380,8 @@ func (ie *InternalExecutor) QueryBufferedExWithCols(
 	stmt string,
 	qargs ...interface{},
 ) ([]tree.Datums, colinfo.ResultColumns, error) {
-	datums, cols, err := ie.queryInternalBuffered(ctx, opName, txn, session, stmt, 0 /* limit */, qargs...)
+	__antithesis_instrumentation__.Notify(497814)
+	datums, cols, err := ie.queryInternalBuffered(ctx, opName, txn, session, stmt, 0, qargs...)
 	return datums, cols, err
 }
 
@@ -417,49 +391,56 @@ func (ie *InternalExecutor) queryInternalBuffered(
 	txn *kv.Txn,
 	sessionDataOverride sessiondata.InternalExecutorOverride,
 	stmt string,
-	// Non-zero limit specifies the limit on the number of rows returned.
+
 	limit int,
 	qargs ...interface{},
 ) ([]tree.Datums, colinfo.ResultColumns, error) {
-	// We will run the query to completion, so we can use an async result
-	// channel.
+	__antithesis_instrumentation__.Notify(497815)
+
 	rw := newAsyncIEResultChannel()
 	it, err := ie.execInternal(ctx, opName, rw, txn, sessionDataOverride, stmt, qargs...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(497819)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(497820)
 	}
+	__antithesis_instrumentation__.Notify(497816)
 	var rows []tree.Datums
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(497821)
 		rows = append(rows, it.Cur())
-		if limit != 0 && len(rows) == limit {
-			// We have accumulated the requested number of rows, so we can
-			// short-circuit the iteration.
+		if limit != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(497822)
+			return len(rows) == limit == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(497823)
+
 			err = it.Close()
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(497824)
 		}
 	}
+	__antithesis_instrumentation__.Notify(497817)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(497825)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(497826)
 	}
+	__antithesis_instrumentation__.Notify(497818)
 	return rows, it.Types(), nil
 }
 
-// QueryRow is like Query, except it returns a single row, or nil if not row is
-// found, or an error if more that one row is returned.
-//
-// QueryRow is deprecated (like Query). Use QueryRowEx() instead.
 func (ie *InternalExecutor) QueryRow(
 	ctx context.Context, opName string, txn *kv.Txn, stmt string, qargs ...interface{},
 ) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(497827)
 	return ie.QueryRowEx(ctx, opName, txn, ie.maybeRootSessionDataOverride(opName), stmt, qargs...)
 }
 
-// QueryRowEx is like QueryRow, but allows the caller to override some session data
-// fields (e.g. the user).
-//
-// The fields set in session that are set override the respective fields if they
-// have previously been set through SetSessionData().
 func (ie *InternalExecutor) QueryRowEx(
 	ctx context.Context,
 	opName string,
@@ -468,12 +449,11 @@ func (ie *InternalExecutor) QueryRowEx(
 	stmt string,
 	qargs ...interface{},
 ) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(497828)
 	rows, _, err := ie.QueryRowExWithCols(ctx, opName, txn, session, stmt, qargs...)
 	return rows, err
 }
 
-// QueryRowExWithCols is like QueryRowEx, additionally returning the computed
-// ResultColumns of the input query.
 func (ie *InternalExecutor) QueryRowExWithCols(
 	ctx context.Context,
 	opName string,
@@ -482,39 +462,35 @@ func (ie *InternalExecutor) QueryRowExWithCols(
 	stmt string,
 	qargs ...interface{},
 ) (tree.Datums, colinfo.ResultColumns, error) {
-	rows, cols, err := ie.queryInternalBuffered(ctx, opName, txn, session, stmt, 2 /* limit */, qargs...)
+	__antithesis_instrumentation__.Notify(497829)
+	rows, cols, err := ie.queryInternalBuffered(ctx, opName, txn, session, stmt, 2, qargs...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(497831)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(497832)
 	}
+	__antithesis_instrumentation__.Notify(497830)
 	switch len(rows) {
 	case 0:
+		__antithesis_instrumentation__.Notify(497833)
 		return nil, nil, nil
 	case 1:
+		__antithesis_instrumentation__.Notify(497834)
 		return rows[0], cols, nil
 	default:
+		__antithesis_instrumentation__.Notify(497835)
 		return nil, nil, &tree.MultipleResultsError{SQL: stmt}
 	}
 }
 
-// Exec executes the supplied SQL statement and returns the number of rows
-// affected (not like the results; see Query()). If no user has been previously
-// set through SetSessionData, the statement is executed as the root user.
-//
-// If txn is not nil, the statement will be executed in the respective txn.
-//
-// Exec is deprecated because it may transparently execute a query as root. Use
-// ExecEx instead.
 func (ie *InternalExecutor) Exec(
 	ctx context.Context, opName string, txn *kv.Txn, stmt string, qargs ...interface{},
 ) (int, error) {
+	__antithesis_instrumentation__.Notify(497836)
 	return ie.ExecEx(ctx, opName, txn, ie.maybeRootSessionDataOverride(opName), stmt, qargs...)
 }
 
-// ExecEx is like Exec, but allows the caller to override some session data
-// fields (e.g. the user).
-//
-// The fields set in session that are set override the respective fields if they
-// have previously been set through SetSessionData().
 func (ie *InternalExecutor) ExecEx(
 	ctx context.Context,
 	opName string,
@@ -523,39 +499,40 @@ func (ie *InternalExecutor) ExecEx(
 	stmt string,
 	qargs ...interface{},
 ) (int, error) {
-	// We will run the query to completion, so we can use an async result
-	// channel.
+	__antithesis_instrumentation__.Notify(497837)
+
 	rw := newAsyncIEResultChannel()
 	it, err := ie.execInternal(ctx, opName, rw, txn, session, stmt, qargs...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(497841)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(497842)
 	}
-	// We need to exhaust the iterator so that it can count the number of rows
-	// affected.
+	__antithesis_instrumentation__.Notify(497838)
+
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(497843)
 	}
+	__antithesis_instrumentation__.Notify(497839)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(497844)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(497845)
 	}
+	__antithesis_instrumentation__.Notify(497840)
 	return it.rowsAffected, nil
 }
 
-// QueryIterator executes the query, returning an iterator that can be used
-// to get the results. If the call is successful, the returned iterator
-// *must* be closed.
-//
-// QueryIterator is deprecated because it may transparently execute a query
-// as root. Use QueryIteratorEx instead.
 func (ie *InternalExecutor) QueryIterator(
 	ctx context.Context, opName string, txn *kv.Txn, stmt string, qargs ...interface{},
 ) (sqlutil.InternalRows, error) {
+	__antithesis_instrumentation__.Notify(497846)
 	return ie.QueryIteratorEx(ctx, opName, txn, ie.maybeRootSessionDataOverride(opName), stmt, qargs...)
 }
 
-// QueryIteratorEx executes the query, returning an iterator that can be used
-// to get the results. If the call is successful, the returned iterator
-// *must* be closed.
 func (ie *InternalExecutor) QueryIteratorEx(
 	ctx context.Context,
 	opName string,
@@ -564,50 +541,87 @@ func (ie *InternalExecutor) QueryIteratorEx(
 	stmt string,
 	qargs ...interface{},
 ) (sqlutil.InternalRows, error) {
+	__antithesis_instrumentation__.Notify(497847)
 	return ie.execInternal(
 		ctx, opName, newSyncIEResultChannel(), txn, session, stmt, qargs...,
 	)
 }
 
-// applyOverrides overrides the respective fields from sd for all the fields set on o.
 func applyOverrides(o sessiondata.InternalExecutorOverride, sd *sessiondata.SessionData) {
+	__antithesis_instrumentation__.Notify(497848)
 	if !o.User.Undefined() {
+		__antithesis_instrumentation__.Notify(497854)
 		sd.UserProto = o.User.EncodeProto()
+	} else {
+		__antithesis_instrumentation__.Notify(497855)
 	}
+	__antithesis_instrumentation__.Notify(497849)
 	if o.Database != "" {
+		__antithesis_instrumentation__.Notify(497856)
 		sd.Database = o.Database
+	} else {
+		__antithesis_instrumentation__.Notify(497857)
 	}
+	__antithesis_instrumentation__.Notify(497850)
 	if o.ApplicationName != "" {
+		__antithesis_instrumentation__.Notify(497858)
 		sd.ApplicationName = o.ApplicationName
+	} else {
+		__antithesis_instrumentation__.Notify(497859)
 	}
+	__antithesis_instrumentation__.Notify(497851)
 	if o.SearchPath != nil {
+		__antithesis_instrumentation__.Notify(497860)
 		sd.SearchPath = *o.SearchPath
+	} else {
+		__antithesis_instrumentation__.Notify(497861)
 	}
+	__antithesis_instrumentation__.Notify(497852)
 	if o.DatabaseIDToTempSchemaID != nil {
+		__antithesis_instrumentation__.Notify(497862)
 		sd.DatabaseIDToTempSchemaID = o.DatabaseIDToTempSchemaID
+	} else {
+		__antithesis_instrumentation__.Notify(497863)
 	}
+	__antithesis_instrumentation__.Notify(497853)
 	if o.QualityOfService != nil {
+		__antithesis_instrumentation__.Notify(497864)
 		sd.DefaultTxnQualityOfService = o.QualityOfService.ValidateInternal()
+	} else {
+		__antithesis_instrumentation__.Notify(497865)
 	}
 }
 
 func (ie *InternalExecutor) maybeRootSessionDataOverride(
 	opName string,
 ) sessiondata.InternalExecutorOverride {
+	__antithesis_instrumentation__.Notify(497866)
 	if ie.sessionDataStack == nil {
+		__antithesis_instrumentation__.Notify(497870)
 		return sessiondata.InternalExecutorOverride{
 			User:            security.RootUserName(),
 			ApplicationName: catconstants.InternalAppNamePrefix + "-" + opName,
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(497871)
 	}
+	__antithesis_instrumentation__.Notify(497867)
 	o := sessiondata.InternalExecutorOverride{}
 	sd := ie.sessionDataStack.Top()
 	if sd.User().Undefined() {
+		__antithesis_instrumentation__.Notify(497872)
 		o.User = security.RootUserName()
+	} else {
+		__antithesis_instrumentation__.Notify(497873)
 	}
+	__antithesis_instrumentation__.Notify(497868)
 	if sd.ApplicationName == "" {
+		__antithesis_instrumentation__.Notify(497874)
 		o.ApplicationName = catconstants.InternalAppNamePrefix + "-" + opName
+	} else {
+		__antithesis_instrumentation__.Notify(497875)
 	}
+	__antithesis_instrumentation__.Notify(497869)
 	return o
 }
 
@@ -618,11 +632,6 @@ var rowsAffectedResultColumns = colinfo.ResultColumns{
 	},
 }
 
-// execInternal executes a statement.
-//
-// sessionDataOverride can be used to control select fields in the executor's
-// session data. It overrides what has been previously set through
-// SetSessionData(), if anything.
 func (ie *InternalExecutor) execInternal(
 	ctx context.Context,
 	opName string,
@@ -632,111 +641,154 @@ func (ie *InternalExecutor) execInternal(
 	stmt string,
 	qargs ...interface{},
 ) (r *rowsIterator, retErr error) {
+	__antithesis_instrumentation__.Notify(497876)
 	ctx = logtags.AddTag(ctx, "intExec", opName)
 
 	var sd *sessiondata.SessionData
 	if ie.sessionDataStack != nil {
-		// TODO(andrei): Properly clone (deep copy) ie.sessionData.
+		__antithesis_instrumentation__.Notify(497890)
+
 		sd = ie.sessionDataStack.Top().Clone()
 	} else {
+		__antithesis_instrumentation__.Notify(497891)
 		sd = ie.s.newSessionData(SessionArgs{})
 	}
+	__antithesis_instrumentation__.Notify(497877)
 	applyOverrides(sessionDataOverride, sd)
 	sd.Internal = true
 	if sd.User().Undefined() {
+		__antithesis_instrumentation__.Notify(497892)
 		return nil, errors.AssertionFailedf("no user specified for internal query")
+	} else {
+		__antithesis_instrumentation__.Notify(497893)
 	}
+	__antithesis_instrumentation__.Notify(497878)
 	if sd.ApplicationName == "" {
+		__antithesis_instrumentation__.Notify(497894)
 		sd.ApplicationName = catconstants.InternalAppNamePrefix + "-" + opName
+	} else {
+		__antithesis_instrumentation__.Notify(497895)
 	}
+	__antithesis_instrumentation__.Notify(497879)
 
-	// The returned span is finished by this function in all error paths, but if
-	// an iterator is returned, then we transfer the responsibility of closing
-	// the span to the iterator. This is necessary so that the connExecutor
-	// exits before the span is finished.
 	ctx, sp := tracing.EnsureChildSpan(ctx, ie.s.cfg.AmbientCtx.Tracer, opName)
 	stmtBuf := NewStmtBuf()
 	var wg sync.WaitGroup
 
 	defer func() {
-		// We wrap errors with the opName, but not if they're retriable - in that
-		// case we need to leave the error intact so that it can be retried at a
-		// higher level.
-		//
-		// TODO(knz): track the callers and check whether opName could be turned
-		// into a type safe for reporting.
-		if retErr != nil || r == nil {
-			// Both retErr and r can be nil in case of panic.
-			if retErr != nil && !errIsRetriable(retErr) {
+		__antithesis_instrumentation__.Notify(497896)
+
+		if retErr != nil || func() bool {
+			__antithesis_instrumentation__.Notify(497897)
+			return r == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(497898)
+
+			if retErr != nil && func() bool {
+				__antithesis_instrumentation__.Notify(497900)
+				return !errIsRetriable(retErr) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(497901)
 				retErr = errors.Wrapf(retErr, "%s", opName)
+			} else {
+				__antithesis_instrumentation__.Notify(497902)
 			}
+			__antithesis_instrumentation__.Notify(497899)
 			stmtBuf.Close()
 			wg.Wait()
 			sp.Finish()
 		} else {
+			__antithesis_instrumentation__.Notify(497903)
 			r.errCallback = func(err error) error {
-				if err != nil && !errIsRetriable(err) {
+				__antithesis_instrumentation__.Notify(497905)
+				if err != nil && func() bool {
+					__antithesis_instrumentation__.Notify(497907)
+					return !errIsRetriable(err) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(497908)
 					err = errors.Wrapf(err, "%s", opName)
+				} else {
+					__antithesis_instrumentation__.Notify(497909)
 				}
+				__antithesis_instrumentation__.Notify(497906)
 				return err
 			}
+			__antithesis_instrumentation__.Notify(497904)
 			r.sp = sp
 		}
 	}()
+	__antithesis_instrumentation__.Notify(497880)
 
 	timeReceived := timeutil.Now()
 	parseStart := timeReceived
 	parsed, err := parser.ParseOne(stmt)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(497910)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(497911)
 	}
+	__antithesis_instrumentation__.Notify(497881)
 	parseEnd := timeutil.Now()
 
-	// Transforms the args to datums. The datum types will be passed as type
-	// hints to the PrepareStmt command below.
 	datums, err := golangFillQueryArguments(qargs...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(497912)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(497913)
 	}
+	__antithesis_instrumentation__.Notify(497882)
 
-	// resPos will be set to the position of the command that represents the
-	// statement we care about before that command is sent for execution.
 	var resPos CmdPos
 
 	syncCallback := func(results []resWithPos) {
-		// Close the stmtBuf so that the connExecutor exits its run() loop.
+		__antithesis_instrumentation__.Notify(497914)
+
 		stmtBuf.Close()
 		for _, res := range results {
+			__antithesis_instrumentation__.Notify(497916)
 			if res.Err() != nil {
-				// If we encounter an error, there's no point in looking
-				// further; the rest of the commands in the batch have been
-				// skipped.
+				__antithesis_instrumentation__.Notify(497918)
+
 				_ = rw.addResult(ctx, ieIteratorResult{err: res.Err()})
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(497919)
 			}
+			__antithesis_instrumentation__.Notify(497917)
 			if res.pos == resPos {
+				__antithesis_instrumentation__.Notify(497920)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(497921)
 			}
 		}
+		__antithesis_instrumentation__.Notify(497915)
 		_ = rw.addResult(ctx, ieIteratorResult{
 			err: errors.AssertionFailedf(
 				"missing result for pos: %d and no previous error", resPos,
 			),
 		})
 	}
-	// errCallback is called if an error is returned from the connExecutor's
-	// run() loop.
+	__antithesis_instrumentation__.Notify(497883)
+
 	errCallback := func(err error) {
+		__antithesis_instrumentation__.Notify(497922)
 		_ = rw.addResult(ctx, ieIteratorResult{err: err})
 	}
+	__antithesis_instrumentation__.Notify(497884)
 	ie.initConnEx(ctx, txn, rw, sd, stmtBuf, &wg, syncCallback, errCallback)
 
 	typeHints := make(tree.PlaceholderTypes, len(datums))
 	for i, d := range datums {
-		// Arg numbers start from 1.
+		__antithesis_instrumentation__.Notify(497923)
+
 		typeHints[tree.PlaceholderIdx(i)] = d.ResolvedType()
 	}
+	__antithesis_instrumentation__.Notify(497885)
 	if len(qargs) == 0 {
+		__antithesis_instrumentation__.Notify(497924)
 		resPos = 0
 		if err := stmtBuf.Push(
 			ctx,
@@ -745,13 +797,16 @@ func (ie *InternalExecutor) execInternal(
 				TimeReceived: timeReceived,
 				ParseStart:   parseStart,
 				ParseEnd:     parseEnd,
-				// This is the only and last statement in the batch, so that this
-				// transaction can be autocommited as a single statement transaction.
+
 				LastInBatch: true,
 			}); err != nil {
+			__antithesis_instrumentation__.Notify(497925)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(497926)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(497927)
 		resPos = 2
 		if err := stmtBuf.Push(
 			ctx,
@@ -762,27 +817,42 @@ func (ie *InternalExecutor) execInternal(
 				TypeHints:  typeHints,
 			},
 		); err != nil {
+			__antithesis_instrumentation__.Notify(497930)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(497931)
 		}
+		__antithesis_instrumentation__.Notify(497928)
 
 		if err := stmtBuf.Push(ctx, BindStmt{internalArgs: datums}); err != nil {
+			__antithesis_instrumentation__.Notify(497932)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(497933)
 		}
+		__antithesis_instrumentation__.Notify(497929)
 
 		if err := stmtBuf.Push(ctx,
 			ExecPortal{
 				TimeReceived: timeReceived,
-				// Next command will be a sync, so this can be considered as another single
-				// statement transaction.
+
 				FollowedBySync: true,
 			},
 		); err != nil {
+			__antithesis_instrumentation__.Notify(497934)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(497935)
 		}
 	}
+	__antithesis_instrumentation__.Notify(497886)
 	if err := stmtBuf.Push(ctx, Sync{}); err != nil {
+		__antithesis_instrumentation__.Notify(497936)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(497937)
 	}
+	__antithesis_instrumentation__.Notify(497887)
 	r = &rowsIterator{
 		r:       rw,
 		stmtBuf: stmtBuf,
@@ -790,55 +860,59 @@ func (ie *InternalExecutor) execInternal(
 	}
 
 	if parsed.AST.StatementReturnType() != tree.Rows {
+		__antithesis_instrumentation__.Notify(497938)
 		r.resultCols = rowsAffectedResultColumns
+	} else {
+		__antithesis_instrumentation__.Notify(497939)
 	}
 
-	// Now we need to block the reader goroutine until the query planning has
-	// been performed by the connExecutor goroutine. We do so by waiting until
-	// the first object is sent on the data channel.
 	{
+		__antithesis_instrumentation__.Notify(497940)
 		var first ieIteratorResult
 		if first, r.done, r.lastErr = rw.firstResult(ctx); !r.done {
+			__antithesis_instrumentation__.Notify(497941)
 			r.first = &first
+		} else {
+			__antithesis_instrumentation__.Notify(497942)
 		}
 	}
-	if !r.done && r.first.cols != nil {
-		// If the query is of ROWS statement type, the very first thing sent on
-		// the channel will be the column schema. This will occur before the
-		// query is given to the execution engine, so we actually need to get
-		// the next piece from the data channel.
-		//
-		// Note that only statements of ROWS type should send the cols, but we
-		// choose to be defensive and don't assert that.
+	__antithesis_instrumentation__.Notify(497888)
+	if !r.done && func() bool {
+		__antithesis_instrumentation__.Notify(497943)
+		return r.first.cols != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(497944)
+
 		if r.resultCols == nil {
+			__antithesis_instrumentation__.Notify(497946)
 			r.resultCols = r.first.cols
+		} else {
+			__antithesis_instrumentation__.Notify(497947)
 		}
+		__antithesis_instrumentation__.Notify(497945)
 		var first ieIteratorResult
 		first, r.done, r.lastErr = rw.nextResult(ctx)
 		if !r.done {
+			__antithesis_instrumentation__.Notify(497948)
 			r.first = &first
+		} else {
+			__antithesis_instrumentation__.Notify(497949)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(497950)
 	}
+	__antithesis_instrumentation__.Notify(497889)
 
-	// Note that if a context cancellation error has occurred, we still return
-	// the iterator and nil retErr so that the iterator is properly closed by
-	// the caller which will cleanup the connExecutor goroutine.
 	return r, nil
 }
 
-// internalClientComm is an implementation of ClientComm used by the
-// InternalExecutor. Result rows are buffered in memory.
 type internalClientComm struct {
-	// results will contain the results of the commands executed by an
-	// InternalExecutor.
 	results []resWithPos
 
-	// The results of the query execution will be written into w.
 	w ieResultWriter
 
 	lastDelivered CmdPos
 
-	// sync, if set, is called whenever a Sync is executed.
 	sync func([]resWithPos)
 }
 
@@ -849,7 +923,6 @@ type resWithPos struct {
 	pos CmdPos
 }
 
-// CreateStatementResult is part of the ClientComm interface.
 func (icc *internalClientComm) CreateStatementResult(
 	_ tree.Statement,
 	_ RowDescOpt,
@@ -861,115 +934,125 @@ func (icc *internalClientComm) CreateStatementResult(
 	_ string,
 	_ bool,
 ) CommandResult {
-	return icc.createRes(pos, nil /* onClose */)
+	__antithesis_instrumentation__.Notify(497951)
+	return icc.createRes(pos, nil)
 }
 
-// createRes creates a result. onClose, if not nil, is called when the result is
-// closed.
 func (icc *internalClientComm) createRes(pos CmdPos, onClose func()) *streamingCommandResult {
+	__antithesis_instrumentation__.Notify(497952)
 	res := &streamingCommandResult{
 		w: icc.w,
 		closeCallback: func(res *streamingCommandResult, typ resCloseType) {
+			__antithesis_instrumentation__.Notify(497954)
 			if typ == discarded {
+				__antithesis_instrumentation__.Notify(497956)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(497957)
 			}
+			__antithesis_instrumentation__.Notify(497955)
 			icc.results = append(icc.results, resWithPos{streamingCommandResult: res, pos: pos})
 			if onClose != nil {
+				__antithesis_instrumentation__.Notify(497958)
 				onClose()
+			} else {
+				__antithesis_instrumentation__.Notify(497959)
 			}
 		},
 	}
+	__antithesis_instrumentation__.Notify(497953)
 	return res
 }
 
-// CreatePrepareResult is part of the ClientComm interface.
 func (icc *internalClientComm) CreatePrepareResult(pos CmdPos) ParseResult {
-	return icc.createRes(pos, nil /* onClose */)
+	__antithesis_instrumentation__.Notify(497960)
+	return icc.createRes(pos, nil)
 }
 
-// CreateBindResult is part of the ClientComm interface.
 func (icc *internalClientComm) CreateBindResult(pos CmdPos) BindResult {
-	return icc.createRes(pos, nil /* onClose */)
+	__antithesis_instrumentation__.Notify(497961)
+	return icc.createRes(pos, nil)
 }
 
-// CreateSyncResult is part of the ClientComm interface.
-//
-// The returned SyncResult will call the sync callback when its closed.
 func (icc *internalClientComm) CreateSyncResult(pos CmdPos) SyncResult {
+	__antithesis_instrumentation__.Notify(497962)
 	return icc.createRes(pos, func() {
+		__antithesis_instrumentation__.Notify(497963)
 		results := make([]resWithPos, len(icc.results))
 		copy(results, icc.results)
 		icc.results = icc.results[:0]
 		icc.sync(results)
 		icc.lastDelivered = pos
-	} /* onClose */)
+	})
 }
 
-// LockCommunication is part of the ClientComm interface.
 func (icc *internalClientComm) LockCommunication() ClientLock {
+	__antithesis_instrumentation__.Notify(497964)
 	return (*noopClientLock)(icc)
 }
 
-// Flush is part of the ClientComm interface.
 func (icc *internalClientComm) Flush(pos CmdPos) error {
+	__antithesis_instrumentation__.Notify(497965)
 	return nil
 }
 
-// CreateDescribeResult is part of the ClientComm interface.
 func (icc *internalClientComm) CreateDescribeResult(pos CmdPos) DescribeResult {
-	return icc.createRes(pos, nil /* onClose */)
+	__antithesis_instrumentation__.Notify(497966)
+	return icc.createRes(pos, nil)
 }
 
-// CreateDeleteResult is part of the ClientComm interface.
 func (icc *internalClientComm) CreateDeleteResult(pos CmdPos) DeleteResult {
+	__antithesis_instrumentation__.Notify(497967)
 	panic("unimplemented")
 }
 
-// CreateFlushResult is part of the ClientComm interface.
 func (icc *internalClientComm) CreateFlushResult(pos CmdPos) FlushResult {
+	__antithesis_instrumentation__.Notify(497968)
 	panic("unimplemented")
 }
 
-// CreateErrorResult is part of the ClientComm interface.
 func (icc *internalClientComm) CreateErrorResult(pos CmdPos) ErrorResult {
+	__antithesis_instrumentation__.Notify(497969)
 	panic("unimplemented")
 }
 
-// CreateEmptyQueryResult is part of the ClientComm interface.
 func (icc *internalClientComm) CreateEmptyQueryResult(pos CmdPos) EmptyQueryResult {
+	__antithesis_instrumentation__.Notify(497970)
 	panic("unimplemented")
 }
 
-// CreateCopyInResult is part of the ClientComm interface.
 func (icc *internalClientComm) CreateCopyInResult(pos CmdPos) CopyInResult {
+	__antithesis_instrumentation__.Notify(497971)
 	panic("unimplemented")
 }
 
-// CreateDrainResult is part of the ClientComm interface.
 func (icc *internalClientComm) CreateDrainResult(pos CmdPos) DrainResult {
+	__antithesis_instrumentation__.Notify(497972)
 	panic("unimplemented")
 }
 
-// noopClientLock is an implementation of ClientLock that says that no results
-// have been communicated to the client.
 type noopClientLock internalClientComm
 
-// Close is part of the ClientLock interface.
-func (ncl *noopClientLock) Close() {}
+func (ncl *noopClientLock) Close() { __antithesis_instrumentation__.Notify(497973) }
 
-// ClientPos is part of the ClientLock interface.
 func (ncl *noopClientLock) ClientPos() CmdPos {
+	__antithesis_instrumentation__.Notify(497974)
 	return ncl.lastDelivered
 }
 
-// RTrim is part of the ClientLock interface.
 func (ncl *noopClientLock) RTrim(_ context.Context, pos CmdPos) {
+	__antithesis_instrumentation__.Notify(497975)
 	var i int
 	var r resWithPos
 	for i, r = range ncl.results {
+		__antithesis_instrumentation__.Notify(497977)
 		if r.pos >= pos {
+			__antithesis_instrumentation__.Notify(497978)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(497979)
 		}
 	}
+	__antithesis_instrumentation__.Notify(497976)
 	ncl.results = ncl.results[:i]
 }

@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package roachpb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -48,192 +40,184 @@ import (
 
 const (
 	localPrefixByte = '\x01'
-	// LocalMaxByte is the end of the local key range.
+
 	LocalMaxByte = '\x02'
 )
 
 var (
-	// RKeyMin is a minimum key value which sorts before all other keys.
 	RKeyMin = RKey("")
-	// KeyMin is a minimum key value which sorts before all other keys.
+
 	KeyMin = Key(RKeyMin)
-	// RKeyMax is a maximum key value which sorts after all other keys.
+
 	RKeyMax = RKey(keysbase.KeyMax)
-	// KeyMax is a maximum key value which sorts after all other keys.
+
 	KeyMax = Key(RKeyMax)
 
-	// LocalPrefix is the prefix for all local keys.
 	LocalPrefix = Key{localPrefixByte}
-	// LocalMax is the end of the local key range. It is itself a global key.
+
 	LocalMax = Key{LocalMaxByte}
 
-	// PrettyPrintKey prints a key in human readable format. It's
-	// implemented in package git.com/cockroachdb/cockroach/keys to avoid
-	// package circle import.
-	// valDirs correspond to the encoding direction of each encoded value
-	// in the key (if known). If left unspecified, the default encoding
-	// direction for each value type is used (see
-	// encoding.go:prettyPrintFirstValue).
 	PrettyPrintKey func(valDirs []encoding.Direction, key Key) string
 
-	// PrettyPrintRange prints a key range in human readable format. It's
-	// implemented in package git.com/cockroachdb/cockroach/keys to avoid
-	// package circle import.
 	PrettyPrintRange func(start, end Key, maxChars int) string
 )
 
-// RKey denotes a Key whose local addressing has been accounted for.
-// A key can be transformed to an RKey by keys.Addr().
-//
-// RKey stands for "resolved key," as in a key whose address has been resolved.
 type RKey Key
 
-// AsRawKey returns the RKey as a Key. This is to be used only in select
-// situations in which an RKey is known to not contain a wrapped locally-
-// addressed Key. That is, it must only be used when the original Key was not a
-// local key. Whenever the Key which created the RKey is still available, it
-// should be used instead.
 func (rk RKey) AsRawKey() Key {
+	__antithesis_instrumentation__.Notify(158798)
 	return Key(rk)
 }
 
-// Less returns true if receiver < otherRK.
 func (rk RKey) Less(otherRK RKey) bool {
+	__antithesis_instrumentation__.Notify(158799)
 	return rk.Compare(otherRK) < 0
 }
 
-// Compare compares the two RKeys.
 func (rk RKey) Compare(other RKey) int {
+	__antithesis_instrumentation__.Notify(158800)
 	return bytes.Compare(rk, other)
 }
 
-// Equal checks for byte-wise equality.
 func (rk RKey) Equal(other []byte) bool {
+	__antithesis_instrumentation__.Notify(158801)
 	return bytes.Equal(rk, other)
 }
 
-// Next returns the RKey that sorts immediately after the given one.
-// The method may only take a shallow copy of the RKey, so both the
-// receiver and the return value should be treated as immutable after.
 func (rk RKey) Next() RKey {
+	__antithesis_instrumentation__.Notify(158802)
 	return RKey(BytesNext(rk))
 }
 
-// PrefixEnd determines the end key given key as a prefix, that is the
-// key that sorts precisely behind all keys starting with prefix: "1"
-// is added to the final byte and the carry propagated. The special
-// cases of nil and KeyMin always returns KeyMax.
 func (rk RKey) PrefixEnd() RKey {
+	__antithesis_instrumentation__.Notify(158803)
 	return RKey(keysbase.PrefixEnd(rk))
 }
 
 func (rk RKey) String() string {
+	__antithesis_instrumentation__.Notify(158804)
 	return Key(rk).String()
 }
 
-// StringWithDirs - see Key.String.WithDirs.
 func (rk RKey) StringWithDirs(valDirs []encoding.Direction, maxLen int) string {
+	__antithesis_instrumentation__.Notify(158805)
 	return Key(rk).StringWithDirs(valDirs, maxLen)
 }
 
-// Key is a custom type for a byte string in proto
-// messages which refer to Cockroach keys.
 type Key []byte
 
-// BytesNext returns the next possible byte slice, using the extra capacity
-// of the provided slice if possible, and if not, appending an \x00.
 func BytesNext(b []byte) []byte {
+	__antithesis_instrumentation__.Notify(158806)
 	if cap(b) > len(b) {
+		__antithesis_instrumentation__.Notify(158808)
 		bNext := b[:len(b)+1]
 		if bNext[len(bNext)-1] == 0 {
+			__antithesis_instrumentation__.Notify(158809)
 			return bNext
+		} else {
+			__antithesis_instrumentation__.Notify(158810)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(158811)
 	}
-	// TODO(spencer): Do we need to enforce KeyMaxLength here?
-	// Switched to "make and copy" pattern in #4963 for performance.
+	__antithesis_instrumentation__.Notify(158807)
+
 	bn := make([]byte, len(b)+1)
 	copy(bn, b)
 	bn[len(bn)-1] = 0
 	return bn
 }
 
-// Clone returns a copy of the key.
 func (k Key) Clone() Key {
+	__antithesis_instrumentation__.Notify(158812)
 	if k == nil {
+		__antithesis_instrumentation__.Notify(158814)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(158815)
 	}
+	__antithesis_instrumentation__.Notify(158813)
 	c := make(Key, len(k))
 	copy(c, k)
 	return c
 }
 
-// Next returns the next key in lexicographic sort order. The method may only
-// take a shallow copy of the Key, so both the receiver and the return
-// value should be treated as immutable after.
 func (k Key) Next() Key {
+	__antithesis_instrumentation__.Notify(158816)
 	return Key(BytesNext(k))
 }
 
-// IsPrev is a more efficient version of k.Next().Equal(m).
 func (k Key) IsPrev(m Key) bool {
+	__antithesis_instrumentation__.Notify(158817)
 	l := len(m) - 1
-	return l == len(k) && m[l] == 0 && k.Equal(m[:l])
+	return l == len(k) && func() bool {
+		__antithesis_instrumentation__.Notify(158818)
+		return m[l] == 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(158819)
+		return k.Equal(m[:l]) == true
+	}() == true
 }
 
-// PrefixEnd determines the end key given key as a prefix, that is the
-// key that sorts precisely behind all keys starting with prefix: "1"
-// is added to the final byte and the carry propagated. The special
-// cases of nil and KeyMin always returns KeyMax.
 func (k Key) PrefixEnd() Key {
+	__antithesis_instrumentation__.Notify(158820)
 	return Key(keysbase.PrefixEnd(k))
 }
 
-// Equal returns whether two keys are identical.
 func (k Key) Equal(l Key) bool {
+	__antithesis_instrumentation__.Notify(158821)
 	return bytes.Equal(k, l)
 }
 
-// Compare compares the two Keys.
 func (k Key) Compare(b Key) int {
+	__antithesis_instrumentation__.Notify(158822)
 	return bytes.Compare(k, b)
 }
 
-// String returns a string-formatted version of the key.
 func (k Key) String() string {
-	return k.StringWithDirs(nil /* valDirs */, 0 /* maxLen */)
+	__antithesis_instrumentation__.Notify(158823)
+	return k.StringWithDirs(nil, 0)
 }
 
-// StringWithDirs is the value encoding direction-aware version of String.
-//
-// Args:
-// valDirs: The direction for the key's components, generally needed for correct
-// 	decoding. If nil, the values are pretty-printed with default encoding
-// 	direction.
-// maxLen: If not 0, only the first maxLen chars from the decoded key are
-//   returned, plus a "..." suffix.
 func (k Key) StringWithDirs(valDirs []encoding.Direction, maxLen int) string {
+	__antithesis_instrumentation__.Notify(158824)
 	var s string
 	if PrettyPrintKey != nil {
+		__antithesis_instrumentation__.Notify(158827)
 		s = PrettyPrintKey(valDirs, k)
 	} else {
+		__antithesis_instrumentation__.Notify(158828)
 		s = fmt.Sprintf("%q", []byte(k))
 	}
-	if maxLen != 0 && len(s) > maxLen {
+	__antithesis_instrumentation__.Notify(158825)
+	if maxLen != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(158829)
+		return len(s) > maxLen == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(158830)
 		return s[0:maxLen] + "..."
+	} else {
+		__antithesis_instrumentation__.Notify(158831)
 	}
+	__antithesis_instrumentation__.Notify(158826)
 	return s
 }
 
-// Format implements the fmt.Formatter interface.
 func (k Key) Format(f fmt.State, verb rune) {
-	// Note: this implementation doesn't handle the width and precision
-	// specifiers such as "%20.10s".
+	__antithesis_instrumentation__.Notify(158832)
+
 	if verb == 'x' {
+		__antithesis_instrumentation__.Notify(158833)
 		fmt.Fprintf(f, "%x", []byte(k))
-	} else if PrettyPrintKey != nil {
-		fmt.Fprint(f, PrettyPrintKey(nil /* valDirs */, k))
 	} else {
-		fmt.Fprint(f, strconv.Quote(string(k)))
+		__antithesis_instrumentation__.Notify(158834)
+		if PrettyPrintKey != nil {
+			__antithesis_instrumentation__.Notify(158835)
+			fmt.Fprint(f, PrettyPrintKey(nil, k))
+		} else {
+			__antithesis_instrumentation__.Notify(158836)
+			fmt.Fprint(f, strconv.Quote(string(k)))
+		}
 	}
 }
 
@@ -245,196 +229,233 @@ const (
 )
 
 func (v Value) checksum() uint32 {
+	__antithesis_instrumentation__.Notify(158837)
 	if len(v.RawBytes) < checksumSize {
+		__antithesis_instrumentation__.Notify(158840)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(158841)
 	}
+	__antithesis_instrumentation__.Notify(158838)
 	_, u, err := encoding.DecodeUint32Ascending(v.RawBytes[:checksumSize])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(158842)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(158843)
 	}
+	__antithesis_instrumentation__.Notify(158839)
 	return u
 }
 
 func (v *Value) setChecksum(cksum uint32) {
+	__antithesis_instrumentation__.Notify(158844)
 	if len(v.RawBytes) >= checksumSize {
+		__antithesis_instrumentation__.Notify(158845)
 		encoding.EncodeUint32Ascending(v.RawBytes[:0], cksum)
+	} else {
+		__antithesis_instrumentation__.Notify(158846)
 	}
 }
 
-// InitChecksum initializes a checksum based on the provided key and
-// the contents of the value. If the value contains a byte slice, the
-// checksum includes it directly.
-//
-// TODO(peter): This method should return an error if the Value is corrupted
-// (e.g. the RawBytes field is > 0 but smaller than the header size).
 func (v *Value) InitChecksum(key []byte) {
+	__antithesis_instrumentation__.Notify(158847)
 	if v.RawBytes == nil {
+		__antithesis_instrumentation__.Notify(158850)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(158851)
 	}
-	// Should be uninitialized.
+	__antithesis_instrumentation__.Notify(158848)
+
 	if v.checksum() != checksumUninitialized {
+		__antithesis_instrumentation__.Notify(158852)
 		panic(fmt.Sprintf("initialized checksum = %x", v.checksum()))
+	} else {
+		__antithesis_instrumentation__.Notify(158853)
 	}
+	__antithesis_instrumentation__.Notify(158849)
 	v.setChecksum(v.computeChecksum(key))
 }
 
-// ClearChecksum clears the checksum value.
 func (v *Value) ClearChecksum() {
+	__antithesis_instrumentation__.Notify(158854)
 	v.setChecksum(0)
 }
 
-// Verify verifies the value's Checksum matches a newly-computed
-// checksum of the value's contents. If the value's Checksum is not
-// set the verification is a noop.
 func (v Value) Verify(key []byte) error {
+	__antithesis_instrumentation__.Notify(158855)
 	if err := v.VerifyHeader(); err != nil {
+		__antithesis_instrumentation__.Notify(158858)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(158859)
 	}
+	__antithesis_instrumentation__.Notify(158856)
 	if sum := v.checksum(); sum != 0 {
+		__antithesis_instrumentation__.Notify(158860)
 		if computedSum := v.computeChecksum(key); computedSum != sum {
+			__antithesis_instrumentation__.Notify(158861)
 			return fmt.Errorf("%s: invalid checksum (%x) value [% x]",
 				Key(key), computedSum, v.RawBytes)
+		} else {
+			__antithesis_instrumentation__.Notify(158862)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(158863)
 	}
+	__antithesis_instrumentation__.Notify(158857)
 	return nil
 }
 
-// VerifyHeader checks that, if the Value is not empty, it includes a header.
 func (v Value) VerifyHeader() error {
-	if n := len(v.RawBytes); n > 0 && n < headerSize {
+	__antithesis_instrumentation__.Notify(158864)
+	if n := len(v.RawBytes); n > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(158866)
+		return n < headerSize == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(158867)
 		return errors.Errorf("invalid header size: %d", n)
+	} else {
+		__antithesis_instrumentation__.Notify(158868)
 	}
+	__antithesis_instrumentation__.Notify(158865)
 	return nil
 }
 
-// ShallowClone returns a shallow clone of the receiver.
 func (v *Value) ShallowClone() *Value {
+	__antithesis_instrumentation__.Notify(158869)
 	if v == nil {
+		__antithesis_instrumentation__.Notify(158871)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(158872)
 	}
+	__antithesis_instrumentation__.Notify(158870)
 	t := *v
 	return &t
 }
 
-// IsPresent returns true if the value is present (existent and not a tombstone).
 func (v *Value) IsPresent() bool {
-	return v != nil && len(v.RawBytes) != 0
+	__antithesis_instrumentation__.Notify(158873)
+	return v != nil && func() bool {
+		__antithesis_instrumentation__.Notify(158874)
+		return len(v.RawBytes) != 0 == true
+	}() == true
 }
 
-// MakeValueFromString returns a value with bytes and tag set.
 func MakeValueFromString(s string) Value {
+	__antithesis_instrumentation__.Notify(158875)
 	v := Value{}
 	v.SetString(s)
 	return v
 }
 
-// MakeValueFromBytes returns a value with bytes and tag set.
 func MakeValueFromBytes(bs []byte) Value {
+	__antithesis_instrumentation__.Notify(158876)
 	v := Value{}
 	v.SetBytes(bs)
 	return v
 }
 
-// MakeValueFromBytesAndTimestamp returns a value with bytes, timestamp and
-// tag set.
 func MakeValueFromBytesAndTimestamp(bs []byte, t hlc.Timestamp) Value {
+	__antithesis_instrumentation__.Notify(158877)
 	v := Value{Timestamp: t}
 	v.SetBytes(bs)
 	return v
 }
 
-// GetTag retrieves the value type.
 func (v Value) GetTag() ValueType {
+	__antithesis_instrumentation__.Notify(158878)
 	if len(v.RawBytes) <= tagPos {
+		__antithesis_instrumentation__.Notify(158880)
 		return ValueType_UNKNOWN
+	} else {
+		__antithesis_instrumentation__.Notify(158881)
 	}
+	__antithesis_instrumentation__.Notify(158879)
 	return ValueType(v.RawBytes[tagPos])
 }
 
 func (v *Value) setTag(t ValueType) {
+	__antithesis_instrumentation__.Notify(158882)
 	v.RawBytes[tagPos] = byte(t)
 }
 
 func (v Value) dataBytes() []byte {
+	__antithesis_instrumentation__.Notify(158883)
 	return v.RawBytes[headerSize:]
 }
 
-// TagAndDataBytes returns the value's tag and data (no checksum, no timestamp).
-// This is suitable to be used as the expected value in a CPut.
 func (v Value) TagAndDataBytes() []byte {
+	__antithesis_instrumentation__.Notify(158884)
 	return v.RawBytes[tagPos:]
 }
 
 func (v *Value) ensureRawBytes(size int) {
+	__antithesis_instrumentation__.Notify(158885)
 	if cap(v.RawBytes) < size {
+		__antithesis_instrumentation__.Notify(158887)
 		v.RawBytes = make([]byte, size)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(158888)
 	}
+	__antithesis_instrumentation__.Notify(158886)
 	v.RawBytes = v.RawBytes[:size]
 	v.setChecksum(checksumUninitialized)
 }
 
-// EqualTagAndData returns a boolean reporting whether the receiver and the parameter
-// have equivalent byte values. This check ignores the optional checksum field
-// in the Values' byte slices, returning only whether the Values have the same
-// tag and encoded data.
-//
-// This method should be used whenever the raw bytes of two Values are being
-// compared instead of comparing the RawBytes slices directly because it ignores
-// the checksum header, which is optional.
 func (v Value) EqualTagAndData(o Value) bool {
+	__antithesis_instrumentation__.Notify(158889)
 	return bytes.Equal(v.TagAndDataBytes(), o.TagAndDataBytes())
 }
 
-// SetBytes copies the bytes and tag field to the receiver and clears the
-// checksum.
 func (v *Value) SetBytes(b []byte) {
+	__antithesis_instrumentation__.Notify(158890)
 	v.ensureRawBytes(headerSize + len(b))
 	copy(v.dataBytes(), b)
 	v.setTag(ValueType_BYTES)
 }
 
-// SetTagAndData copies the bytes and tag field to the receiver and clears the
-// checksum. As opposed to SetBytes, b is assumed to contain the tag too, not
-// just the data.
 func (v *Value) SetTagAndData(b []byte) {
+	__antithesis_instrumentation__.Notify(158891)
 	v.ensureRawBytes(checksumSize + len(b))
 	copy(v.TagAndDataBytes(), b)
 }
 
-// SetString sets the bytes and tag field of the receiver and clears the
-// checksum. This is identical to SetBytes, but specialized for a string
-// argument.
 func (v *Value) SetString(s string) {
+	__antithesis_instrumentation__.Notify(158892)
 	v.ensureRawBytes(headerSize + len(s))
 	copy(v.dataBytes(), s)
 	v.setTag(ValueType_BYTES)
 }
 
-// SetFloat encodes the specified float64 value into the bytes field of the
-// receiver, sets the tag and clears the checksum.
 func (v *Value) SetFloat(f float64) {
+	__antithesis_instrumentation__.Notify(158893)
 	v.ensureRawBytes(headerSize + 8)
 	encoding.EncodeUint64Ascending(v.RawBytes[headerSize:headerSize], math.Float64bits(f))
 	v.setTag(ValueType_FLOAT)
 }
 
-// SetGeo encodes the specified geo value into the bytes field of the
-// receiver, sets the tag and clears the checksum.
 func (v *Value) SetGeo(so geopb.SpatialObject) error {
+	__antithesis_instrumentation__.Notify(158894)
 	bytes, err := protoutil.Marshal(&so)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(158896)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(158897)
 	}
+	__antithesis_instrumentation__.Notify(158895)
 	v.ensureRawBytes(headerSize + len(bytes))
 	copy(v.dataBytes(), bytes)
 	v.setTag(ValueType_GEO)
 	return nil
 }
 
-// SetBox2D encodes the specified Box2D value into the bytes field of the
-// receiver, sets the tag and clears the checksum.
 func (v *Value) SetBox2D(b geopb.BoundingBox) {
+	__antithesis_instrumentation__.Notify(158898)
 	v.ensureRawBytes(headerSize + 32)
 	encoding.EncodeUint64Ascending(v.RawBytes[headerSize:headerSize], math.Float64bits(b.LoX))
 	encoding.EncodeUint64Ascending(v.RawBytes[headerSize+8:headerSize+8], math.Float64bits(b.HiX))
@@ -443,90 +464,94 @@ func (v *Value) SetBox2D(b geopb.BoundingBox) {
 	v.setTag(ValueType_BOX2D)
 }
 
-// SetBool encodes the specified bool value into the bytes field of the
-// receiver, sets the tag and clears the checksum.
 func (v *Value) SetBool(b bool) {
-	// 0 or 1 will always encode to a 1-byte long varint.
+	__antithesis_instrumentation__.Notify(158899)
+
 	v.ensureRawBytes(headerSize + 1)
 	i := int64(0)
 	if b {
+		__antithesis_instrumentation__.Notify(158901)
 		i = 1
+	} else {
+		__antithesis_instrumentation__.Notify(158902)
 	}
+	__antithesis_instrumentation__.Notify(158900)
 	_ = binary.PutVarint(v.RawBytes[headerSize:], i)
 	v.setTag(ValueType_INT)
 }
 
-// SetInt encodes the specified int64 value into the bytes field of the
-// receiver, sets the tag and clears the checksum.
 func (v *Value) SetInt(i int64) {
+	__antithesis_instrumentation__.Notify(158903)
 	v.ensureRawBytes(headerSize + binary.MaxVarintLen64)
 	n := binary.PutVarint(v.RawBytes[headerSize:], i)
 	v.RawBytes = v.RawBytes[:headerSize+n]
 	v.setTag(ValueType_INT)
 }
 
-// SetProto encodes the specified proto message into the bytes field of the
-// receiver and clears the checksum. If the proto message is an
-// InternalTimeSeriesData, the tag will be set to TIMESERIES rather than BYTES.
 func (v *Value) SetProto(msg protoutil.Message) error {
-	// All of the Cockroach protos implement MarshalTo and Size. So we marshal
-	// directly into the Value.RawBytes field instead of allocating a separate
-	// []byte and copying.
+	__antithesis_instrumentation__.Notify(158904)
+
 	v.ensureRawBytes(headerSize + msg.Size())
 	if _, err := protoutil.MarshalTo(msg, v.RawBytes[headerSize:]); err != nil {
+		__antithesis_instrumentation__.Notify(158907)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(158908)
 	}
-	// Special handling for timeseries data.
+	__antithesis_instrumentation__.Notify(158905)
+
 	if _, ok := msg.(*InternalTimeSeriesData); ok {
+		__antithesis_instrumentation__.Notify(158909)
 		v.setTag(ValueType_TIMESERIES)
 	} else {
+		__antithesis_instrumentation__.Notify(158910)
 		v.setTag(ValueType_BYTES)
 	}
+	__antithesis_instrumentation__.Notify(158906)
 	return nil
 }
 
-// SetTime encodes the specified time value into the bytes field of the
-// receiver, sets the tag and clears the checksum.
 func (v *Value) SetTime(t time.Time) {
+	__antithesis_instrumentation__.Notify(158911)
 	const encodingSizeOverestimate = 11
 	v.ensureRawBytes(headerSize + encodingSizeOverestimate)
 	v.RawBytes = encoding.EncodeTimeAscending(v.RawBytes[:headerSize], t)
 	v.setTag(ValueType_TIME)
 }
 
-// SetTimeTZ encodes the specified time value into the bytes field of the
-// receiver, sets the tag and clears the checksum.
 func (v *Value) SetTimeTZ(t timetz.TimeTZ) {
+	__antithesis_instrumentation__.Notify(158912)
 	v.ensureRawBytes(headerSize + encoding.EncodedTimeTZMaxLen)
 	v.RawBytes = encoding.EncodeTimeTZAscending(v.RawBytes[:headerSize], t)
 	v.setTag(ValueType_TIMETZ)
 }
 
-// SetDuration encodes the specified duration value into the bytes field of the
-// receiver, sets the tag and clears the checksum.
 func (v *Value) SetDuration(t duration.Duration) error {
+	__antithesis_instrumentation__.Notify(158913)
 	var err error
 	v.ensureRawBytes(headerSize + encoding.EncodedDurationMaxLen)
 	v.RawBytes, err = encoding.EncodeDurationAscending(v.RawBytes[:headerSize], t)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(158915)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(158916)
 	}
+	__antithesis_instrumentation__.Notify(158914)
 	v.setTag(ValueType_DURATION)
 	return nil
 }
 
-// SetBitArray encodes the specified bit array value into the bytes field of the
-// receiver, sets the tag and clears the checksum.
 func (v *Value) SetBitArray(t bitarray.BitArray) {
+	__antithesis_instrumentation__.Notify(158917)
 	words, _ := t.EncodingParts()
 	v.ensureRawBytes(headerSize + encoding.MaxNonsortingUvarintLen + 8*len(words))
 	v.RawBytes = encoding.EncodeUntaggedBitArrayValue(v.RawBytes[:headerSize], t)
 	v.setTag(ValueType_BITARRAY)
 }
 
-// SetDecimal encodes the specified decimal value into the bytes field of
-// the receiver using Gob encoding, sets the tag and clears the checksum.
 func (v *Value) SetDecimal(dec *apd.Decimal) error {
+	__antithesis_instrumentation__.Notify(158918)
 	decSize := encoding.UpperBoundNonsortingDecimalSize(dec)
 	v.ensureRawBytes(headerSize + decSize)
 	v.RawBytes = encoding.EncodeNonsortingDecimal(v.RawBytes[:headerSize], dec)
@@ -534,262 +559,355 @@ func (v *Value) SetDecimal(dec *apd.Decimal) error {
 	return nil
 }
 
-// SetTuple sets the tuple bytes and tag field of the receiver and clears the
-// checksum.
 func (v *Value) SetTuple(data []byte) {
+	__antithesis_instrumentation__.Notify(158919)
 	v.ensureRawBytes(headerSize + len(data))
 	copy(v.dataBytes(), data)
 	v.setTag(ValueType_TUPLE)
 }
 
-// GetBytes returns the bytes field of the receiver. If the tag is not
-// BYTES an error will be returned.
 func (v Value) GetBytes() ([]byte, error) {
+	__antithesis_instrumentation__.Notify(158920)
 	if tag := v.GetTag(); tag != ValueType_BYTES {
+		__antithesis_instrumentation__.Notify(158922)
 		return nil, fmt.Errorf("value type is not %s: %s", ValueType_BYTES, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158923)
 	}
+	__antithesis_instrumentation__.Notify(158921)
 	return v.dataBytes(), nil
 }
 
-// GetFloat decodes a float64 value from the bytes field of the receiver. If
-// the bytes field is not 8 bytes in length or the tag is not FLOAT an error
-// will be returned.
 func (v Value) GetFloat() (float64, error) {
+	__antithesis_instrumentation__.Notify(158924)
 	if tag := v.GetTag(); tag != ValueType_FLOAT {
+		__antithesis_instrumentation__.Notify(158928)
 		return 0, fmt.Errorf("value type is not %s: %s", ValueType_FLOAT, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158929)
 	}
+	__antithesis_instrumentation__.Notify(158925)
 	dataBytes := v.dataBytes()
 	if len(dataBytes) != 8 {
+		__antithesis_instrumentation__.Notify(158930)
 		return 0, fmt.Errorf("float64 value should be exactly 8 bytes: %d", len(dataBytes))
+	} else {
+		__antithesis_instrumentation__.Notify(158931)
 	}
+	__antithesis_instrumentation__.Notify(158926)
 	_, u, err := encoding.DecodeUint64Ascending(dataBytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(158932)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(158933)
 	}
+	__antithesis_instrumentation__.Notify(158927)
 	return math.Float64frombits(u), nil
 }
 
-// GetGeo decodes a geo value from the bytes field of the receiver. If the
-// tag is not GEO an error will be returned.
 func (v Value) GetGeo() (geopb.SpatialObject, error) {
+	__antithesis_instrumentation__.Notify(158934)
 	if tag := v.GetTag(); tag != ValueType_GEO {
+		__antithesis_instrumentation__.Notify(158936)
 		return geopb.SpatialObject{}, fmt.Errorf("value type is not %s: %s", ValueType_GEO, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158937)
 	}
+	__antithesis_instrumentation__.Notify(158935)
 	var ret geopb.SpatialObject
 	err := protoutil.Unmarshal(v.dataBytes(), &ret)
 	return ret, err
 }
 
-// GetBox2D decodes a geo value from the bytes field of the receiver. If the
-// tag is not BOX2D an error will be returned.
 func (v Value) GetBox2D() (geopb.BoundingBox, error) {
+	__antithesis_instrumentation__.Notify(158938)
 	box := geopb.BoundingBox{}
 	if tag := v.GetTag(); tag != ValueType_BOX2D {
+		__antithesis_instrumentation__.Notify(158945)
 		return box, fmt.Errorf("value type is not %s: %s", ValueType_BOX2D, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158946)
 	}
+	__antithesis_instrumentation__.Notify(158939)
 	dataBytes := v.dataBytes()
 	if len(dataBytes) != 32 {
+		__antithesis_instrumentation__.Notify(158947)
 		return box, fmt.Errorf("float64 value should be exactly 32 bytes: %d", len(dataBytes))
+	} else {
+		__antithesis_instrumentation__.Notify(158948)
 	}
+	__antithesis_instrumentation__.Notify(158940)
 	var err error
 	var val uint64
 	dataBytes, val, err = encoding.DecodeUint64Ascending(dataBytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(158949)
 		return box, err
+	} else {
+		__antithesis_instrumentation__.Notify(158950)
 	}
+	__antithesis_instrumentation__.Notify(158941)
 	box.LoX = math.Float64frombits(val)
 	dataBytes, val, err = encoding.DecodeUint64Ascending(dataBytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(158951)
 		return box, err
+	} else {
+		__antithesis_instrumentation__.Notify(158952)
 	}
+	__antithesis_instrumentation__.Notify(158942)
 	box.HiX = math.Float64frombits(val)
 	dataBytes, val, err = encoding.DecodeUint64Ascending(dataBytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(158953)
 		return box, err
+	} else {
+		__antithesis_instrumentation__.Notify(158954)
 	}
+	__antithesis_instrumentation__.Notify(158943)
 	box.LoY = math.Float64frombits(val)
 	_, val, err = encoding.DecodeUint64Ascending(dataBytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(158955)
 		return box, err
+	} else {
+		__antithesis_instrumentation__.Notify(158956)
 	}
+	__antithesis_instrumentation__.Notify(158944)
 	box.HiY = math.Float64frombits(val)
 
 	return box, nil
 }
 
-// GetBool decodes a bool value from the bytes field of the receiver. If the
-// tag is not INT (the tag used for bool values) or the value cannot be decoded
-// an error will be returned.
 func (v Value) GetBool() (bool, error) {
+	__antithesis_instrumentation__.Notify(158957)
 	if tag := v.GetTag(); tag != ValueType_INT {
+		__antithesis_instrumentation__.Notify(158961)
 		return false, fmt.Errorf("value type is not %s: %s", ValueType_INT, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158962)
 	}
+	__antithesis_instrumentation__.Notify(158958)
 	i, n := binary.Varint(v.dataBytes())
 	if n <= 0 {
+		__antithesis_instrumentation__.Notify(158963)
 		return false, fmt.Errorf("int64 varint decoding failed: %d", n)
+	} else {
+		__antithesis_instrumentation__.Notify(158964)
 	}
-	if i > 1 || i < 0 {
+	__antithesis_instrumentation__.Notify(158959)
+	if i > 1 || func() bool {
+		__antithesis_instrumentation__.Notify(158965)
+		return i < 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(158966)
 		return false, fmt.Errorf("invalid bool: %d", i)
+	} else {
+		__antithesis_instrumentation__.Notify(158967)
 	}
+	__antithesis_instrumentation__.Notify(158960)
 	return i != 0, nil
 }
 
-// GetInt decodes an int64 value from the bytes field of the receiver. If the
-// tag is not INT or the value cannot be decoded an error will be returned.
 func (v Value) GetInt() (int64, error) {
+	__antithesis_instrumentation__.Notify(158968)
 	if tag := v.GetTag(); tag != ValueType_INT {
+		__antithesis_instrumentation__.Notify(158971)
 		return 0, fmt.Errorf("value type is not %s: %s", ValueType_INT, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158972)
 	}
+	__antithesis_instrumentation__.Notify(158969)
 	i, n := binary.Varint(v.dataBytes())
 	if n <= 0 {
+		__antithesis_instrumentation__.Notify(158973)
 		return 0, fmt.Errorf("int64 varint decoding failed: %d", n)
+	} else {
+		__antithesis_instrumentation__.Notify(158974)
 	}
+	__antithesis_instrumentation__.Notify(158970)
 	return i, nil
 }
 
-// GetProto unmarshals the bytes field of the receiver into msg. If
-// unmarshalling fails or the tag is not BYTES, an error will be
-// returned.
 func (v Value) GetProto(msg protoutil.Message) error {
+	__antithesis_instrumentation__.Notify(158975)
 	expectedTag := ValueType_BYTES
 
-	// Special handling for ts data.
 	if _, ok := msg.(*InternalTimeSeriesData); ok {
+		__antithesis_instrumentation__.Notify(158978)
 		expectedTag = ValueType_TIMESERIES
+	} else {
+		__antithesis_instrumentation__.Notify(158979)
 	}
+	__antithesis_instrumentation__.Notify(158976)
 
 	if tag := v.GetTag(); tag != expectedTag {
+		__antithesis_instrumentation__.Notify(158980)
 		return fmt.Errorf("value type is not %s: %s", expectedTag, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158981)
 	}
+	__antithesis_instrumentation__.Notify(158977)
 	return protoutil.Unmarshal(v.dataBytes(), msg)
 }
 
-// GetTime decodes a time value from the bytes field of the receiver. If the
-// tag is not TIME an error will be returned.
 func (v Value) GetTime() (time.Time, error) {
+	__antithesis_instrumentation__.Notify(158982)
 	if tag := v.GetTag(); tag != ValueType_TIME {
+		__antithesis_instrumentation__.Notify(158984)
 		return time.Time{}, fmt.Errorf("value type is not %s: %s", ValueType_TIME, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158985)
 	}
+	__antithesis_instrumentation__.Notify(158983)
 	_, t, err := encoding.DecodeTimeAscending(v.dataBytes())
 	return t, err
 }
 
-// GetTimeTZ decodes a time value from the bytes field of the receiver. If the
-// tag is not TIMETZ an error will be returned.
 func (v Value) GetTimeTZ() (timetz.TimeTZ, error) {
+	__antithesis_instrumentation__.Notify(158986)
 	if tag := v.GetTag(); tag != ValueType_TIMETZ {
+		__antithesis_instrumentation__.Notify(158988)
 		return timetz.TimeTZ{}, fmt.Errorf("value type is not %s: %s", ValueType_TIMETZ, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158989)
 	}
+	__antithesis_instrumentation__.Notify(158987)
 	_, t, err := encoding.DecodeTimeTZAscending(v.dataBytes())
 	return t, err
 }
 
-// GetDuration decodes a duration value from the bytes field of the receiver. If
-// the tag is not DURATION an error will be returned.
 func (v Value) GetDuration() (duration.Duration, error) {
+	__antithesis_instrumentation__.Notify(158990)
 	if tag := v.GetTag(); tag != ValueType_DURATION {
+		__antithesis_instrumentation__.Notify(158992)
 		return duration.Duration{}, fmt.Errorf("value type is not %s: %s", ValueType_DURATION, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158993)
 	}
+	__antithesis_instrumentation__.Notify(158991)
 	_, t, err := encoding.DecodeDurationAscending(v.dataBytes())
 	return t, err
 }
 
-// GetBitArray decodes a bit array value from the bytes field of the receiver. If
-// the tag is not BITARRAY an error will be returned.
 func (v Value) GetBitArray() (bitarray.BitArray, error) {
+	__antithesis_instrumentation__.Notify(158994)
 	if tag := v.GetTag(); tag != ValueType_BITARRAY {
+		__antithesis_instrumentation__.Notify(158996)
 		return bitarray.BitArray{}, fmt.Errorf("value type is not %s: %s", ValueType_BITARRAY, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(158997)
 	}
+	__antithesis_instrumentation__.Notify(158995)
 	_, t, err := encoding.DecodeUntaggedBitArrayValue(v.dataBytes())
 	return t, err
 }
 
-// GetDecimal decodes a decimal value from the bytes of the receiver. If the
-// tag is not DECIMAL an error will be returned.
 func (v Value) GetDecimal() (apd.Decimal, error) {
+	__antithesis_instrumentation__.Notify(158998)
 	if tag := v.GetTag(); tag != ValueType_DECIMAL {
+		__antithesis_instrumentation__.Notify(159000)
 		return apd.Decimal{}, fmt.Errorf("value type is not %s: %s", ValueType_DECIMAL, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(159001)
 	}
+	__antithesis_instrumentation__.Notify(158999)
 	return encoding.DecodeNonsortingDecimal(v.dataBytes(), nil)
 }
 
-// GetDecimalInto decodes a decimal value from the bytes of the receiver,
-// writing it directly into the provided non-null apd.Decimal. If the
-// tag is not DECIMAL an error will be returned.
 func (v Value) GetDecimalInto(d *apd.Decimal) error {
+	__antithesis_instrumentation__.Notify(159002)
 	if tag := v.GetTag(); tag != ValueType_DECIMAL {
+		__antithesis_instrumentation__.Notify(159004)
 		return fmt.Errorf("value type is not %s: %s", ValueType_DECIMAL, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(159005)
 	}
+	__antithesis_instrumentation__.Notify(159003)
 	return encoding.DecodeIntoNonsortingDecimal(d, v.dataBytes(), nil)
 }
 
-// GetTimeseries decodes an InternalTimeSeriesData value from the bytes
-// field of the receiver. An error will be returned if the tag is not
-// TIMESERIES or if decoding fails.
 func (v Value) GetTimeseries() (InternalTimeSeriesData, error) {
+	__antithesis_instrumentation__.Notify(159006)
 	ts := InternalTimeSeriesData{}
-	// GetProto mutates its argument. `return ts, v.GetProto(&ts)`
-	// happens to work in gc, but does not work in gccgo.
-	//
-	// See https://github.com/golang/go/issues/23188.
+
 	err := v.GetProto(&ts)
 	return ts, err
 }
 
-// GetTuple returns the tuple bytes of the receiver. If the tag is not TUPLE an
-// error will be returned.
 func (v Value) GetTuple() ([]byte, error) {
+	__antithesis_instrumentation__.Notify(159007)
 	if tag := v.GetTag(); tag != ValueType_TUPLE {
+		__antithesis_instrumentation__.Notify(159009)
 		return nil, fmt.Errorf("value type is not %s: %s", ValueType_TUPLE, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(159010)
 	}
+	__antithesis_instrumentation__.Notify(159008)
 	return v.dataBytes(), nil
 }
 
 var crc32Pool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(159011)
 		return crc32.NewIEEE()
 	},
 }
 
 func computeChecksum(key, rawBytes []byte, crc hash.Hash32) uint32 {
+	__antithesis_instrumentation__.Notify(159012)
 	if len(rawBytes) < headerSize {
+		__antithesis_instrumentation__.Notify(159017)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(159018)
 	}
+	__antithesis_instrumentation__.Notify(159013)
 	if _, err := crc.Write(key); err != nil {
+		__antithesis_instrumentation__.Notify(159019)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(159020)
 	}
+	__antithesis_instrumentation__.Notify(159014)
 	if _, err := crc.Write(rawBytes[checksumSize:]); err != nil {
+		__antithesis_instrumentation__.Notify(159021)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(159022)
 	}
+	__antithesis_instrumentation__.Notify(159015)
 	sum := crc.Sum32()
 	crc.Reset()
-	// We reserved the value 0 (checksumUninitialized) to indicate that a checksum
-	// has not been initialized. This reservation is accomplished by folding a
-	// computed checksum of 0 to the value 1.
+
 	if sum == checksumUninitialized {
+		__antithesis_instrumentation__.Notify(159023)
 		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(159024)
 	}
+	__antithesis_instrumentation__.Notify(159016)
 	return sum
 }
 
-// computeChecksum computes a checksum based on the provided key and
-// the contents of the value.
 func (v Value) computeChecksum(key []byte) uint32 {
+	__antithesis_instrumentation__.Notify(159025)
 	crc := crc32Pool.Get().(hash.Hash32)
 	sum := computeChecksum(key, v.RawBytes, crc)
 	crc32Pool.Put(crc)
 	return sum
 }
 
-// PrettyPrint returns the value in a human readable format.
-// e.g. `Put /Table/51/1/1/0 -> /TUPLE/2:2:Int/7/1:3:Float/6.28`
-// In `1:3:Float/6.28`, the `1` is the column id diff as stored, `3` is the
-// computed (i.e. not stored) actual column id, `Float` is the type, and `6.28`
-// is the encoded value.
 func (v Value) PrettyPrint() string {
+	__antithesis_instrumentation__.Notify(159026)
 	if len(v.RawBytes) == 0 {
+		__antithesis_instrumentation__.Notify(159030)
 		return "/<empty>"
+	} else {
+		__antithesis_instrumentation__.Notify(159031)
 	}
+	__antithesis_instrumentation__.Notify(159027)
 	var buf bytes.Buffer
 	t := v.GetTag()
 	buf.WriteRune('/')
@@ -799,118 +917,141 @@ func (v Value) PrettyPrint() string {
 	var err error
 	switch t {
 	case ValueType_TUPLE:
+		__antithesis_instrumentation__.Notify(159032)
 		b := v.dataBytes()
 		var colID uint32
 		for i := 0; len(b) > 0; i++ {
+			__antithesis_instrumentation__.Notify(159041)
 			if i != 0 {
+				__antithesis_instrumentation__.Notify(159045)
 				buf.WriteRune('/')
+			} else {
+				__antithesis_instrumentation__.Notify(159046)
 			}
+			__antithesis_instrumentation__.Notify(159042)
 			_, _, colIDDiff, typ, err := encoding.DecodeValueTag(b)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(159047)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(159048)
 			}
+			__antithesis_instrumentation__.Notify(159043)
 			colID += colIDDiff
 			var s string
 			b, s, err = encoding.PrettyPrintValueEncoded(b)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(159049)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(159050)
 			}
+			__antithesis_instrumentation__.Notify(159044)
 			fmt.Fprintf(&buf, "%d:%d:%s/%s", colIDDiff, colID, typ, s)
 		}
 	case ValueType_INT:
+		__antithesis_instrumentation__.Notify(159033)
 		var i int64
 		i, err = v.GetInt()
 		buf.WriteString(strconv.FormatInt(i, 10))
 	case ValueType_FLOAT:
+		__antithesis_instrumentation__.Notify(159034)
 		var f float64
 		f, err = v.GetFloat()
 		buf.WriteString(strconv.FormatFloat(f, 'g', -1, 64))
 	case ValueType_BYTES:
+		__antithesis_instrumentation__.Notify(159035)
 		var data []byte
 		data, err = v.GetBytes()
 		if encoding.PrintableBytes(data) {
+			__antithesis_instrumentation__.Notify(159051)
 			buf.WriteString(string(data))
 		} else {
+			__antithesis_instrumentation__.Notify(159052)
 			buf.WriteString("0x")
 			buf.WriteString(hex.EncodeToString(data))
 		}
 	case ValueType_BITARRAY:
+		__antithesis_instrumentation__.Notify(159036)
 		var data bitarray.BitArray
 		data, err = v.GetBitArray()
 		buf.WriteByte('B')
 		data.Format(&buf)
 	case ValueType_TIME:
+		__antithesis_instrumentation__.Notify(159037)
 		var t time.Time
 		t, err = v.GetTime()
 		buf.WriteString(t.UTC().Format(time.RFC3339Nano))
 	case ValueType_DECIMAL:
+		__antithesis_instrumentation__.Notify(159038)
 		var d apd.Decimal
 		d, err = v.GetDecimal()
 		buf.WriteString(d.String())
 	case ValueType_DURATION:
+		__antithesis_instrumentation__.Notify(159039)
 		var d duration.Duration
 		d, err = v.GetDuration()
 		buf.WriteString(d.StringNanos())
 	default:
+		__antithesis_instrumentation__.Notify(159040)
 		err = errors.Errorf("unknown tag: %s", t)
 	}
+	__antithesis_instrumentation__.Notify(159028)
 	if err != nil {
-		// Ignore the contents of buf and return directly.
+		__antithesis_instrumentation__.Notify(159053)
+
 		return fmt.Sprintf("/<err: %s>", err)
+	} else {
+		__antithesis_instrumentation__.Notify(159054)
 	}
+	__antithesis_instrumentation__.Notify(159029)
 	return buf.String()
 }
 
-// Kind returns the kind of commit trigger as a string.
 func (ct InternalCommitTrigger) Kind() redact.SafeString {
+	__antithesis_instrumentation__.Notify(159055)
 	switch {
 	case ct.SplitTrigger != nil:
+		__antithesis_instrumentation__.Notify(159056)
 		return "split"
 	case ct.MergeTrigger != nil:
+		__antithesis_instrumentation__.Notify(159057)
 		return "merge"
 	case ct.ChangeReplicasTrigger != nil:
+		__antithesis_instrumentation__.Notify(159058)
 		return "change-replicas"
 	case ct.ModifiedSpanTrigger != nil:
+		__antithesis_instrumentation__.Notify(159059)
 		switch {
 		case ct.ModifiedSpanTrigger.SystemConfigSpan:
+			__antithesis_instrumentation__.Notify(159062)
 			return "modified-span (system-config)"
 		case ct.ModifiedSpanTrigger.NodeLivenessSpan != nil:
+			__antithesis_instrumentation__.Notify(159063)
 			return "modified-span (node-liveness)"
 		default:
+			__antithesis_instrumentation__.Notify(159064)
 			panic("unknown modified-span commit trigger kind")
 		}
 	case ct.StickyBitTrigger != nil:
+		__antithesis_instrumentation__.Notify(159060)
 		return "sticky-bit"
 	default:
+		__antithesis_instrumentation__.Notify(159061)
 		panic("unknown commit trigger kind")
 	}
 }
 
-// IsFinalized determines whether the transaction status is in a finalized
-// state. A finalized state is terminal, meaning that once a transaction
-// enters one of these states, it will never leave it.
 func (ts TransactionStatus) IsFinalized() bool {
-	return ts == COMMITTED || ts == ABORTED
+	__antithesis_instrumentation__.Notify(159065)
+	return ts == COMMITTED || func() bool {
+		__antithesis_instrumentation__.Notify(159066)
+		return ts == ABORTED == true
+	}() == true
 }
 
-// SafeValue implements the redact.SafeValue interface.
-func (TransactionStatus) SafeValue() {}
+func (TransactionStatus) SafeValue() { __antithesis_instrumentation__.Notify(159067) }
 
-// MakeTransaction creates a new transaction. The transaction key is
-// composed using the specified baseKey (for locality with data
-// affected by the transaction) and a random ID to guarantee
-// uniqueness. The specified user-level priority is combined with a
-// randomly chosen value to yield a final priority, used to settle
-// write conflicts in a way that avoids starvation of long-running
-// transactions (see Replica.PushTxn).
-//
-// coordinatorNodeID is provided to track the SQL (or possibly KV) node
-// that created this transaction, in order to be used (as
-// of this writing) to enable observability on contention events
-// between different transactions.
-//
-// baseKey can be nil, in which case it will be set when sending the first
-// write.
 func MakeTransaction(
 	name string,
 	baseKey Key,
@@ -919,10 +1060,9 @@ func MakeTransaction(
 	maxOffsetNs int64,
 	coordinatorNodeID int32,
 ) Transaction {
+	__antithesis_instrumentation__.Notify(159068)
 	u := uuid.FastMakeV4()
-	// TODO(nvanbenschoten): technically, gul should be a synthetic timestamp.
-	// Make this change in v21.2 when all nodes in a cluster are guaranteed to
-	// be aware of synthetic timestamps by addressing the TODO in Timestamp.Add.
+
 	gul := now.Add(maxOffsetNs, 0)
 
 	return Transaction{
@@ -932,7 +1072,7 @@ func MakeTransaction(
 			WriteTimestamp:    now,
 			MinTimestamp:      now,
 			Priority:          MakePriority(userPriority),
-			Sequence:          0, // 1-indexed, incremented before each Request
+			Sequence:          0,
 			CoordinatorNodeID: coordinatorNodeID,
 		},
 		Name:                   name,
@@ -942,168 +1082,120 @@ func MakeTransaction(
 	}
 }
 
-// LastActive returns the last timestamp at which client activity definitely
-// occurred, i.e. the maximum of ReadTimestamp and LastHeartbeat.
 func (t Transaction) LastActive() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(159069)
 	ts := t.LastHeartbeat
 	if !t.ReadTimestamp.Synthetic {
+		__antithesis_instrumentation__.Notify(159071)
 		ts.Forward(t.ReadTimestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(159072)
 	}
+	__antithesis_instrumentation__.Notify(159070)
 	return ts
 }
 
-// RequiredFrontier returns the largest timestamp at which the transaction may
-// read values when performing a read-only operation. This is the maximum of the
-// transaction's read timestamp, its write timestamp, and its global uncertainty
-// limit.
 func (t *Transaction) RequiredFrontier() hlc.Timestamp {
-	// A transaction can observe committed values up to its read timestamp.
+	__antithesis_instrumentation__.Notify(159073)
+
 	ts := t.ReadTimestamp
-	// Forward to the transaction's write timestamp. The transaction will read
-	// committed values at its read timestamp but may perform reads up to its
-	// intent timestamps if the transaction is reading its own intent writes,
-	// which we know to all be at timestamps <= its current write timestamp. See
-	// the ownIntent cases in pebbleMVCCScanner.getAndAdvance for more.
-	//
-	// There is a case where an intent written by a transaction is above the
-	// transaction's write timestamp — after a successful intent push. Such
-	// cases do allow a transaction to read values above its required frontier.
-	// However, this is fine for the purposes of follower reads because an
-	// intent that was pushed to a higher timestamp must have at some point been
-	// stored with its original write timestamp. The means that a follower with
-	// a closed timestamp above the original write timestamp but below the new
-	// pushed timestamp will either store the pre-pushed intent or the
-	// post-pushed intent, depending on whether replication of the push has
-	// completed yet. Either way, the intent will exist in some form on the
-	// follower, so either way, the transaction will be able to read its own
-	// write.
+
 	ts.Forward(t.WriteTimestamp)
-	// Forward to the transaction's global uncertainty limit, because the
-	// transaction may observe committed writes from other transactions up to
-	// this time and consider them to be "uncertain". When a transaction begins,
-	// this will be above its read timestamp, but the read timestamp can surpass
-	// the global uncertainty limit due to refreshes or retries.
+
 	ts.Forward(t.GlobalUncertaintyLimit)
 	return ts
 }
 
-// Clone creates a copy of the given transaction. The copy is shallow because
-// none of the references held by a transaction allow interior mutability.
 func (t Transaction) Clone() *Transaction {
+	__antithesis_instrumentation__.Notify(159074)
 	return &t
 }
 
-// AssertInitialized crashes if the transaction is not initialized.
 func (t *Transaction) AssertInitialized(ctx context.Context) {
-	if t.ID == (uuid.UUID{}) || t.WriteTimestamp.IsEmpty() {
+	__antithesis_instrumentation__.Notify(159075)
+	if t.ID == (uuid.UUID{}) || func() bool {
+		__antithesis_instrumentation__.Notify(159076)
+		return t.WriteTimestamp.IsEmpty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159077)
 		log.Fatalf(ctx, "uninitialized txn: %s", *t)
+	} else {
+		__antithesis_instrumentation__.Notify(159078)
 	}
 }
 
-// MakePriority generates a random priority value, biased by the specified
-// userPriority. If userPriority=100, the random priority will be 100x more
-// likely to be greater than if userPriority=1. If userPriority = 0.1, the
-// random priority will be 1/10th as likely to be greater than if
-// userPriority=NormalUserPriority ( = 1). Balance is achieved when
-// userPriority=NormalUserPriority, in which case the priority chosen is
-// unbiased.
-//
-// If userPriority is less than or equal to MinUserPriority, returns
-// MinTxnPriority; if greater than or equal to MaxUserPriority, returns
-// MaxTxnPriority. If userPriority is 0, returns NormalUserPriority.
 func MakePriority(userPriority UserPriority) enginepb.TxnPriority {
-	// A currently undocumented feature allows an explicit priority to
-	// be set by specifying priority < 1. The explicit priority is
-	// simply -userPriority in this case. This is hacky, but currently
-	// used for unittesting. Perhaps this should be documented and allowed.
-	if userPriority < 0 {
-		if -userPriority > UserPriority(math.MaxInt32) {
-			panic(fmt.Sprintf("cannot set explicit priority to a value less than -%d", math.MaxInt32))
-		}
-		return enginepb.TxnPriority(-userPriority)
-	} else if userPriority == 0 {
-		userPriority = NormalUserPriority
-	} else if userPriority >= MaxUserPriority {
-		return enginepb.MaxTxnPriority
-	} else if userPriority <= MinUserPriority {
-		return enginepb.MinTxnPriority
-	}
+	__antithesis_instrumentation__.Notify(159079)
 
-	// We generate random values which are biased according to priorities. If v1 is a value
-	// generated for priority p1 and v2 is a value of priority v2, we want the ratio of wins vs
-	// losses to be the same with the ratio of priorities:
-	//
-	//    P[ v1 > v2 ]     p1                                           p1
-	//    ------------  =  --     or, equivalently:    P[ v1 > v2 ] = -------
-	//    P[ v2 < v1 ]     p2                                         p1 + p2
-	//
-	//
-	// For example, priority 10 wins 10 out of 11 times over priority 1, and it wins 100 out of 101
-	// times over priority 0.1.
-	//
-	//
-	// We use the exponential distribution. This distribution has the probability density function
-	//   PDF_lambda(x) = lambda * exp(-lambda * x)
-	// and the cumulative distribution function (i.e. probability that a random value is smaller
-	// than x):
-	//   CDF_lambda(x) = Integral_0^x PDF_lambda(x) dx
-	//                 = 1 - exp(-lambda * x)
-	//
-	// Let's assume we generate x from the exponential distribution with the lambda rate set to
-	// l1 and we generate y from the distribution with the rate set to l2. The probability that x
-	// wins is:
-	//    P[ x > y ] = Integral_0^inf Integral_0^x PDF_l1(x) PDF_l2(y) dy dx
-	//               = Integral_0^inf PDF_l1(x) Integral_0^x PDF_l2(y) dy dx
-	//               = Integral_0^inf PDF_l1(x) CDF_l2(x) dx
-	//               = Integral_0^inf PDF_l1(x) (1 - exp(-l2 * x)) dx
-	//               = 1 - Integral_0^inf l1 * exp(-(l1+l2) * x) dx
-	//               = 1 - l1 / (l1 + l2) * Integral_0^inf PDF_(l1+l2)(x) dx
-	//               = 1 - l1 / (l1 + l2)
-	//               = l2 / (l1 + l2)
-	//
-	// We want this probability to be p1 / (p1 + p2) which we can get by setting
-	//    l1 = 1 / p1
-	//    l2 = 1 / p2
-	// It's easy to verify that (1/p2) / (1/p1 + 1/p2) = p1 / (p2 + p1).
-	//
-	// We can generate an exponentially distributed value using (rand.ExpFloat64() / lambda).
-	// In our case this works out to simply rand.ExpFloat64() * userPriority.
+	if userPriority < 0 {
+		__antithesis_instrumentation__.Notify(159082)
+		if -userPriority > UserPriority(math.MaxInt32) {
+			__antithesis_instrumentation__.Notify(159084)
+			panic(fmt.Sprintf("cannot set explicit priority to a value less than -%d", math.MaxInt32))
+		} else {
+			__antithesis_instrumentation__.Notify(159085)
+		}
+		__antithesis_instrumentation__.Notify(159083)
+		return enginepb.TxnPriority(-userPriority)
+	} else {
+		__antithesis_instrumentation__.Notify(159086)
+		if userPriority == 0 {
+			__antithesis_instrumentation__.Notify(159087)
+			userPriority = NormalUserPriority
+		} else {
+			__antithesis_instrumentation__.Notify(159088)
+			if userPriority >= MaxUserPriority {
+				__antithesis_instrumentation__.Notify(159089)
+				return enginepb.MaxTxnPriority
+			} else {
+				__antithesis_instrumentation__.Notify(159090)
+				if userPriority <= MinUserPriority {
+					__antithesis_instrumentation__.Notify(159091)
+					return enginepb.MinTxnPriority
+				} else {
+					__antithesis_instrumentation__.Notify(159092)
+				}
+			}
+		}
+	}
+	__antithesis_instrumentation__.Notify(159080)
+
 	val := rand.ExpFloat64() * float64(userPriority)
 
-	// To convert to an integer, we scale things to accommodate a few (5) standard deviations for
-	// the maximum priority. The choice of the value is a trade-off between loss of resolution for
-	// low priorities and overflow (capping the value to MaxInt32) for high priorities.
-	//
-	// For userPriority=MaxUserPriority, the probability of overflow is 0.7%.
-	// For userPriority=(MaxUserPriority/2), the probability of overflow is 0.005%.
 	val = (val / (5 * float64(MaxUserPriority))) * math.MaxInt32
 	if val < float64(enginepb.MinTxnPriority+1) {
+		__antithesis_instrumentation__.Notify(159093)
 		return enginepb.MinTxnPriority + 1
-	} else if val > float64(enginepb.MaxTxnPriority-1) {
-		return enginepb.MaxTxnPriority - 1
+	} else {
+		__antithesis_instrumentation__.Notify(159094)
+		if val > float64(enginepb.MaxTxnPriority-1) {
+			__antithesis_instrumentation__.Notify(159095)
+			return enginepb.MaxTxnPriority - 1
+		} else {
+			__antithesis_instrumentation__.Notify(159096)
+		}
 	}
+	__antithesis_instrumentation__.Notify(159081)
 	return enginepb.TxnPriority(val)
 }
 
-// Restart reconfigures a transaction for restart. The epoch is
-// incremented for an in-place restart. The timestamp of the
-// transaction on restart is set to the maximum of the transaction's
-// timestamp and the specified timestamp.
 func (t *Transaction) Restart(
 	userPriority UserPriority, upgradePriority enginepb.TxnPriority, timestamp hlc.Timestamp,
 ) {
+	__antithesis_instrumentation__.Notify(159097)
 	t.BumpEpoch()
 	if t.WriteTimestamp.Less(timestamp) {
+		__antithesis_instrumentation__.Notify(159099)
 		t.WriteTimestamp = timestamp
+	} else {
+		__antithesis_instrumentation__.Notify(159100)
 	}
+	__antithesis_instrumentation__.Notify(159098)
 	t.ReadTimestamp = t.WriteTimestamp
-	// Upgrade priority to the maximum of:
-	// - the current transaction priority
-	// - a random priority created from userPriority
-	// - the conflicting transaction's upgradePriority
+
 	t.UpgradePriority(MakePriority(userPriority))
 	t.UpgradePriority(upgradePriority)
-	// Reset all epoch-scoped state.
+
 	t.Sequence = 0
 	t.WriteTooOld = false
 	t.CommitTimestampFixed = false
@@ -1112,44 +1204,54 @@ func (t *Transaction) Restart(
 	t.IgnoredSeqNums = nil
 }
 
-// BumpEpoch increments the transaction's epoch, allowing for an in-place
-// restart. This invalidates all write intents previously written at lower
-// epochs.
 func (t *Transaction) BumpEpoch() {
+	__antithesis_instrumentation__.Notify(159101)
 	t.Epoch++
 }
 
-// Refresh reconfigures a transaction to account for a read refresh up to the
-// specified timestamp. For details about transaction read refreshes, see the
-// comment on txnSpanRefresher.
 func (t *Transaction) Refresh(timestamp hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(159102)
 	t.WriteTimestamp.Forward(timestamp)
 	t.ReadTimestamp.Forward(t.WriteTimestamp)
 	t.WriteTooOld = false
 }
 
-// Update ratchets priority, timestamp and original timestamp values (among
-// others) for the transaction. If t.ID is empty, then the transaction is
-// copied from o.
 func (t *Transaction) Update(o *Transaction) {
+	__antithesis_instrumentation__.Notify(159103)
 	if o == nil {
+		__antithesis_instrumentation__.Notify(159110)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(159111)
 	}
+	__antithesis_instrumentation__.Notify(159104)
 	o.AssertInitialized(context.TODO())
 	if t.ID == (uuid.UUID{}) {
+		__antithesis_instrumentation__.Notify(159112)
 		*t = *o
 		return
-	} else if t.ID != o.ID {
-		log.Fatalf(context.Background(), "updating txn %s with different txn %s", t.String(), o.String())
-		return
+	} else {
+		__antithesis_instrumentation__.Notify(159113)
+		if t.ID != o.ID {
+			__antithesis_instrumentation__.Notify(159114)
+			log.Fatalf(context.Background(), "updating txn %s with different txn %s", t.String(), o.String())
+			return
+		} else {
+			__antithesis_instrumentation__.Notify(159115)
+		}
 	}
+	__antithesis_instrumentation__.Notify(159105)
 	if len(t.Key) == 0 {
+		__antithesis_instrumentation__.Notify(159116)
 		t.Key = o.Key
+	} else {
+		__antithesis_instrumentation__.Notify(159117)
 	}
+	__antithesis_instrumentation__.Notify(159106)
 
-	// Update epoch-scoped state, depending on the two transactions' epochs.
 	if t.Epoch < o.Epoch {
-		// Replace all epoch-scoped state.
+		__antithesis_instrumentation__.Notify(159118)
+
 		t.Epoch = o.Epoch
 		t.Status = o.Status
 		t.WriteTooOld = o.WriteTooOld
@@ -1158,214 +1260,260 @@ func (t *Transaction) Update(o *Transaction) {
 		t.LockSpans = o.LockSpans
 		t.InFlightWrites = o.InFlightWrites
 		t.IgnoredSeqNums = o.IgnoredSeqNums
-	} else if t.Epoch == o.Epoch {
-		// Forward all epoch-scoped state.
-		switch t.Status {
-		case PENDING:
-			t.Status = o.Status
-		case STAGING:
-			if o.Status != PENDING {
+	} else {
+		__antithesis_instrumentation__.Notify(159119)
+		if t.Epoch == o.Epoch {
+			__antithesis_instrumentation__.Notify(159120)
+
+			switch t.Status {
+			case PENDING:
+				__antithesis_instrumentation__.Notify(159126)
 				t.Status = o.Status
-			}
-		case ABORTED:
-			if o.Status == COMMITTED {
-				log.Warningf(context.Background(), "updating ABORTED txn %s with COMMITTED txn %s", t.String(), o.String())
-			}
-		case COMMITTED:
-			// Nothing to do.
-		}
+			case STAGING:
+				__antithesis_instrumentation__.Notify(159127)
+				if o.Status != PENDING {
+					__antithesis_instrumentation__.Notify(159131)
+					t.Status = o.Status
+				} else {
+					__antithesis_instrumentation__.Notify(159132)
+				}
+			case ABORTED:
+				__antithesis_instrumentation__.Notify(159128)
+				if o.Status == COMMITTED {
+					__antithesis_instrumentation__.Notify(159133)
+					log.Warningf(context.Background(), "updating ABORTED txn %s with COMMITTED txn %s", t.String(), o.String())
+				} else {
+					__antithesis_instrumentation__.Notify(159134)
+				}
+			case COMMITTED:
+				__antithesis_instrumentation__.Notify(159129)
+			default:
+				__antithesis_instrumentation__.Notify(159130)
 
-		if t.ReadTimestamp == o.ReadTimestamp {
-			// If neither of the transactions has a bumped ReadTimestamp, then the
-			// WriteTooOld flag is cumulative.
-			t.WriteTooOld = t.WriteTooOld || o.WriteTooOld
-			t.CommitTimestampFixed = t.CommitTimestampFixed || o.CommitTimestampFixed
-		} else if t.ReadTimestamp.Less(o.ReadTimestamp) {
-			// If `o` has a higher ReadTimestamp (i.e. it's the result of a refresh,
-			// which refresh generally clears the WriteTooOld field), then it dictates
-			// the WriteTooOld field. This relies on refreshes not being performed
-			// concurrently with any requests whose response's WriteTooOld field
-			// matters.
-			t.WriteTooOld = o.WriteTooOld
-			t.CommitTimestampFixed = o.CommitTimestampFixed
-		}
-		// If t has a higher ReadTimestamp, than it gets to dictate the
-		// WriteTooOld field - so there's nothing to update.
+			}
+			__antithesis_instrumentation__.Notify(159121)
 
-		if t.Sequence < o.Sequence {
-			t.Sequence = o.Sequence
-		}
-		if len(o.LockSpans) > 0 {
-			t.LockSpans = o.LockSpans
-		}
-		if len(o.InFlightWrites) > 0 {
-			t.InFlightWrites = o.InFlightWrites
-		}
-		if len(o.IgnoredSeqNums) > 0 {
-			t.IgnoredSeqNums = o.IgnoredSeqNums
-		}
-	} else /* t.Epoch > o.Epoch */ {
-		// Ignore epoch-specific state from previous epoch. However, ensure that
-		// the transaction status still makes sense.
-		switch o.Status {
-		case ABORTED:
-			// Once aborted, always aborted. The transaction coordinator might
-			// have incremented the txn's epoch without realizing that it was
-			// aborted.
-			t.Status = ABORTED
-		case COMMITTED:
-			log.Warningf(context.Background(), "updating txn %s with COMMITTED txn at earlier epoch %s", t.String(), o.String())
+			if t.ReadTimestamp == o.ReadTimestamp {
+				__antithesis_instrumentation__.Notify(159135)
+
+				t.WriteTooOld = t.WriteTooOld || func() bool {
+					__antithesis_instrumentation__.Notify(159136)
+					return o.WriteTooOld == true
+				}() == true
+				t.CommitTimestampFixed = t.CommitTimestampFixed || func() bool {
+					__antithesis_instrumentation__.Notify(159137)
+					return o.CommitTimestampFixed == true
+				}() == true
+			} else {
+				__antithesis_instrumentation__.Notify(159138)
+				if t.ReadTimestamp.Less(o.ReadTimestamp) {
+					__antithesis_instrumentation__.Notify(159139)
+
+					t.WriteTooOld = o.WriteTooOld
+					t.CommitTimestampFixed = o.CommitTimestampFixed
+				} else {
+					__antithesis_instrumentation__.Notify(159140)
+				}
+			}
+			__antithesis_instrumentation__.Notify(159122)
+
+			if t.Sequence < o.Sequence {
+				__antithesis_instrumentation__.Notify(159141)
+				t.Sequence = o.Sequence
+			} else {
+				__antithesis_instrumentation__.Notify(159142)
+			}
+			__antithesis_instrumentation__.Notify(159123)
+			if len(o.LockSpans) > 0 {
+				__antithesis_instrumentation__.Notify(159143)
+				t.LockSpans = o.LockSpans
+			} else {
+				__antithesis_instrumentation__.Notify(159144)
+			}
+			__antithesis_instrumentation__.Notify(159124)
+			if len(o.InFlightWrites) > 0 {
+				__antithesis_instrumentation__.Notify(159145)
+				t.InFlightWrites = o.InFlightWrites
+			} else {
+				__antithesis_instrumentation__.Notify(159146)
+			}
+			__antithesis_instrumentation__.Notify(159125)
+			if len(o.IgnoredSeqNums) > 0 {
+				__antithesis_instrumentation__.Notify(159147)
+				t.IgnoredSeqNums = o.IgnoredSeqNums
+			} else {
+				__antithesis_instrumentation__.Notify(159148)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(159149)
+
+			switch o.Status {
+			case ABORTED:
+				__antithesis_instrumentation__.Notify(159150)
+
+				t.Status = ABORTED
+			case COMMITTED:
+				__antithesis_instrumentation__.Notify(159151)
+				log.Warningf(context.Background(), "updating txn %s with COMMITTED txn at earlier epoch %s", t.String(), o.String())
+			default:
+				__antithesis_instrumentation__.Notify(159152)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(159107)
 
-	// Forward each of the transaction timestamps.
 	t.WriteTimestamp.Forward(o.WriteTimestamp)
 	t.LastHeartbeat.Forward(o.LastHeartbeat)
 	t.GlobalUncertaintyLimit.Forward(o.GlobalUncertaintyLimit)
 	t.ReadTimestamp.Forward(o.ReadTimestamp)
 
-	// On update, set lower bound timestamps to the minimum seen by either txn.
-	// These shouldn't differ unless one of them is empty, but we're careful
-	// anyway.
 	if t.MinTimestamp.IsEmpty() {
+		__antithesis_instrumentation__.Notify(159153)
 		t.MinTimestamp = o.MinTimestamp
-	} else if !o.MinTimestamp.IsEmpty() {
-		t.MinTimestamp.Backward(o.MinTimestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(159154)
+		if !o.MinTimestamp.IsEmpty() {
+			__antithesis_instrumentation__.Notify(159155)
+			t.MinTimestamp.Backward(o.MinTimestamp)
+		} else {
+			__antithesis_instrumentation__.Notify(159156)
+		}
 	}
+	__antithesis_instrumentation__.Notify(159108)
 
-	// Absorb the collected clock uncertainty information.
 	for _, v := range o.ObservedTimestamps {
+		__antithesis_instrumentation__.Notify(159157)
 		t.UpdateObservedTimestamp(v.NodeID, v.Timestamp)
 	}
+	__antithesis_instrumentation__.Notify(159109)
 
-	// Ratchet the transaction priority.
 	t.UpgradePriority(o.Priority)
 }
 
-// UpgradePriority sets transaction priority to the maximum of current
-// priority and the specified minPriority. The exception is if the
-// current priority is set to the minimum, in which case the minimum
-// is preserved.
 func (t *Transaction) UpgradePriority(minPriority enginepb.TxnPriority) {
-	if minPriority > t.Priority && t.Priority != enginepb.MinTxnPriority {
+	__antithesis_instrumentation__.Notify(159158)
+	if minPriority > t.Priority && func() bool {
+		__antithesis_instrumentation__.Notify(159159)
+		return t.Priority != enginepb.MinTxnPriority == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159160)
 		t.Priority = minPriority
+	} else {
+		__antithesis_instrumentation__.Notify(159161)
 	}
 }
 
-// IsLocking returns whether the transaction has begun acquiring locks.
-// This method will never return false for a writing transaction.
 func (t *Transaction) IsLocking() bool {
+	__antithesis_instrumentation__.Notify(159162)
 	return t.Key != nil
 }
 
-// LocksAsLockUpdates turns t.LockSpans into a bunch of LockUpdates.
 func (t *Transaction) LocksAsLockUpdates() []LockUpdate {
+	__antithesis_instrumentation__.Notify(159163)
 	ret := make([]LockUpdate, len(t.LockSpans))
 	for i, sp := range t.LockSpans {
+		__antithesis_instrumentation__.Notify(159165)
 		ret[i] = MakeLockUpdate(t, sp)
 	}
+	__antithesis_instrumentation__.Notify(159164)
 	return ret
 }
 
-// String formats transaction into human readable string.
 func (t Transaction) String() string {
+	__antithesis_instrumentation__.Notify(159166)
 	return redact.StringWithoutMarkers(t)
 }
 
-// SafeFormat implements the redact.SafeFormatter interface.
 func (t Transaction) SafeFormat(w redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(159167)
 	if len(t.Name) > 0 {
+		__antithesis_instrumentation__.Notify(159171)
 		w.Printf("%q ", redact.SafeString(t.Name))
+	} else {
+		__antithesis_instrumentation__.Notify(159172)
 	}
+	__antithesis_instrumentation__.Notify(159168)
 	w.Printf("meta={%s} lock=%t stat=%s rts=%s wto=%t gul=%s",
 		t.TxnMeta, t.IsLocking(), t.Status, t.ReadTimestamp, t.WriteTooOld, t.GlobalUncertaintyLimit)
-	if ni := len(t.LockSpans); t.Status != PENDING && ni > 0 {
+	if ni := len(t.LockSpans); t.Status != PENDING && func() bool {
+		__antithesis_instrumentation__.Notify(159173)
+		return ni > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159174)
 		w.Printf(" int=%d", ni)
+	} else {
+		__antithesis_instrumentation__.Notify(159175)
 	}
-	if nw := len(t.InFlightWrites); t.Status != PENDING && nw > 0 {
+	__antithesis_instrumentation__.Notify(159169)
+	if nw := len(t.InFlightWrites); t.Status != PENDING && func() bool {
+		__antithesis_instrumentation__.Notify(159176)
+		return nw > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159177)
 		w.Printf(" ifw=%d", nw)
+	} else {
+		__antithesis_instrumentation__.Notify(159178)
 	}
+	__antithesis_instrumentation__.Notify(159170)
 	if ni := len(t.IgnoredSeqNums); ni > 0 {
+		__antithesis_instrumentation__.Notify(159179)
 		w.Printf(" isn=%d", ni)
+	} else {
+		__antithesis_instrumentation__.Notify(159180)
 	}
 }
 
-// ResetObservedTimestamps clears out all timestamps recorded from individual
-// nodes.
 func (t *Transaction) ResetObservedTimestamps() {
+	__antithesis_instrumentation__.Notify(159181)
 	t.ObservedTimestamps = nil
 }
 
-// UpdateObservedTimestamp stores a timestamp off a node's clock for future
-// operations in the transaction. When multiple calls are made for a single
-// nodeID, the lowest timestamp prevails.
 func (t *Transaction) UpdateObservedTimestamp(nodeID NodeID, timestamp hlc.ClockTimestamp) {
-	// Fast path optimization for either no observed timestamps or
-	// exactly one, for the same nodeID as we're updating.
+	__antithesis_instrumentation__.Notify(159182)
+
 	if l := len(t.ObservedTimestamps); l == 0 {
+		__antithesis_instrumentation__.Notify(159184)
 		t.ObservedTimestamps = []ObservedTimestamp{{NodeID: nodeID, Timestamp: timestamp}}
 		return
-	} else if l == 1 && t.ObservedTimestamps[0].NodeID == nodeID {
-		if timestamp.Less(t.ObservedTimestamps[0].Timestamp) {
-			t.ObservedTimestamps = []ObservedTimestamp{{NodeID: nodeID, Timestamp: timestamp}}
+	} else {
+		__antithesis_instrumentation__.Notify(159185)
+		if l == 1 && func() bool {
+			__antithesis_instrumentation__.Notify(159186)
+			return t.ObservedTimestamps[0].NodeID == nodeID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(159187)
+			if timestamp.Less(t.ObservedTimestamps[0].Timestamp) {
+				__antithesis_instrumentation__.Notify(159189)
+				t.ObservedTimestamps = []ObservedTimestamp{{NodeID: nodeID, Timestamp: timestamp}}
+			} else {
+				__antithesis_instrumentation__.Notify(159190)
+			}
+			__antithesis_instrumentation__.Notify(159188)
+			return
+		} else {
+			__antithesis_instrumentation__.Notify(159191)
 		}
-		return
 	}
+	__antithesis_instrumentation__.Notify(159183)
 	s := observedTimestampSlice(t.ObservedTimestamps)
 	t.ObservedTimestamps = s.update(nodeID, timestamp)
 }
 
-// GetObservedTimestamp returns the lowest HLC timestamp recorded from the given
-// node's clock during the transaction. The returned boolean is false if no
-// observation about the requested node was found. Otherwise, the transaction's
-// uncertainty limit can be lowered to the returned timestamp when reading from
-// nodeID.
 func (t *Transaction) GetObservedTimestamp(nodeID NodeID) (hlc.ClockTimestamp, bool) {
+	__antithesis_instrumentation__.Notify(159192)
 	s := observedTimestampSlice(t.ObservedTimestamps)
 	return s.get(nodeID)
 }
 
-// AddIgnoredSeqNumRange adds the given range to the given list of
-// ignored seqnum ranges. Since none of the references held by a Transaction
-// allow interior mutations, the existing list is copied instead of being
-// mutated in place.
-//
-// The following invariants are assumed to hold and are preserved:
-// - the list contains no overlapping ranges
-// - the list contains no contiguous ranges
-// - the list is sorted, with larger seqnums at the end
-//
-// Additionally, the caller must ensure:
-//
-// 1) if the new range overlaps with some range in the list, then it
-//    also overlaps with every subsequent range in the list.
-//
-// 2) the new range's "end" seqnum is larger or equal to the "end"
-//    seqnum of the last element in the list.
-//
-// For example:
-//     current list [3 5] [10 20] [22 24]
-//     new item:    [8 26]
-//     final list:  [3 5] [8 26]
-//
-//     current list [3 5] [10 20] [22 24]
-//     new item:    [28 32]
-//     final list:  [3 5] [10 20] [22 24] [28 32]
-//
-// This corresponds to savepoints semantics:
-//
-// - Property 1 says that a rollback to an earlier savepoint
-//   rolls back over all writes following that savepoint.
-// - Property 2 comes from that the new range's 'end' seqnum is the
-//   current write seqnum and thus larger than or equal to every
-//   previously seen value.
 func (t *Transaction) AddIgnoredSeqNumRange(newRange enginepb.IgnoredSeqNumRange) {
-	// Truncate the list at the last element not included in the new range.
+	__antithesis_instrumentation__.Notify(159193)
 
 	list := t.IgnoredSeqNums
 	i := sort.Search(len(list), func(i int) bool {
+		__antithesis_instrumentation__.Notify(159195)
 		return list[i].End >= newRange.Start
 	})
+	__antithesis_instrumentation__.Notify(159194)
 
 	cpy := make([]enginepb.IgnoredSeqNumRange, i+1)
 	copy(cpy[:i], list[:i])
@@ -1373,9 +1521,8 @@ func (t *Transaction) AddIgnoredSeqNumRange(newRange enginepb.IgnoredSeqNumRange
 	t.IgnoredSeqNums = cpy
 }
 
-// AsRecord returns a TransactionRecord object containing only the subset of
-// fields from the receiver that must be persisted in the transaction record.
 func (t *Transaction) AsRecord() TransactionRecord {
+	__antithesis_instrumentation__.Notify(159196)
 	var tr TransactionRecord
 	tr.TxnMeta = t.TxnMeta
 	tr.Status = t.Status
@@ -1386,10 +1533,8 @@ func (t *Transaction) AsRecord() TransactionRecord {
 	return tr
 }
 
-// AsTransaction returns a Transaction object containing populated fields for
-// state in the transaction record and empty fields for state omitted from the
-// transaction record.
 func (tr *TransactionRecord) AsTransaction() Transaction {
+	__antithesis_instrumentation__.Notify(159197)
 	var t Transaction
 	t.TxnMeta = tr.TxnMeta
 	t.Status = tr.Status
@@ -1400,157 +1545,152 @@ func (tr *TransactionRecord) AsTransaction() Transaction {
 	return t
 }
 
-// PrepareTransactionForRetry returns a new Transaction to be used for retrying
-// the original Transaction. Depending on the error, this might return an
-// already-existing Transaction with an incremented epoch, or a completely new
-// Transaction.
-//
-// The caller should generally check that the error was meant for this
-// Transaction before calling this.
-//
-// pri is the priority that should be used when giving the restarted transaction
-// the chance to get a higher priority. Not used when the transaction is being
-// aborted.
-//
-// In case retryErr tells us that a new Transaction needs to be created,
-// isolation and name help initialize this new transaction.
 func PrepareTransactionForRetry(
 	ctx context.Context, pErr *Error, pri UserPriority, clock *hlc.Clock,
 ) Transaction {
+	__antithesis_instrumentation__.Notify(159198)
 	if pErr.TransactionRestart() == TransactionRestart_NONE {
+		__antithesis_instrumentation__.Notify(159203)
 		log.Fatalf(ctx, "invalid retryable err (%T): %s", pErr.GetDetail(), pErr)
+	} else {
+		__antithesis_instrumentation__.Notify(159204)
 	}
+	__antithesis_instrumentation__.Notify(159199)
 
 	if pErr.GetTxn() == nil {
+		__antithesis_instrumentation__.Notify(159205)
 		log.Fatalf(ctx, "missing txn for retryable error: %s", pErr)
+	} else {
+		__antithesis_instrumentation__.Notify(159206)
 	}
+	__antithesis_instrumentation__.Notify(159200)
 
 	txn := *pErr.GetTxn()
 	aborted := false
 	switch tErr := pErr.GetDetail().(type) {
 	case *TransactionAbortedError:
-		// The txn coming with a TransactionAbortedError is not supposed to be used
-		// for the restart. Instead, a brand new transaction is created.
+		__antithesis_instrumentation__.Notify(159207)
+
 		aborted = true
-		// TODO(andrei): Should we preserve the ObservedTimestamps across the
-		// restart?
+
 		errTxnPri := txn.Priority
-		// Start the new transaction at the current time from the local clock.
-		// The local hlc should have been advanced to at least the error's
-		// timestamp already.
+
 		now := clock.NowAsClockTimestamp()
 		txn = MakeTransaction(
 			txn.Name,
-			nil, // baseKey
-			// We have errTxnPri, but this wants a UserPriority. So we're going to
-			// overwrite the priority below.
+			nil,
+
 			NormalUserPriority,
 			now.ToTimestamp(),
 			clock.MaxOffset().Nanoseconds(),
 			txn.CoordinatorNodeID,
 		)
-		// Use the priority communicated back by the server.
+
 		txn.Priority = errTxnPri
 	case *ReadWithinUncertaintyIntervalError:
+		__antithesis_instrumentation__.Notify(159208)
 		txn.WriteTimestamp.Forward(tErr.RetryTimestamp())
 	case *TransactionPushError:
-		// Increase timestamp if applicable, ensuring that we're just ahead of
-		// the pushee.
+		__antithesis_instrumentation__.Notify(159209)
+
 		txn.WriteTimestamp.Forward(tErr.PusheeTxn.WriteTimestamp)
 		txn.UpgradePriority(tErr.PusheeTxn.Priority - 1)
 	case *TransactionRetryError:
-		// Transaction.Timestamp has already been forwarded to be ahead of any
-		// timestamp cache entries or newer versions which caused the restart.
+		__antithesis_instrumentation__.Notify(159210)
+
 		if tErr.Reason == RETRY_SERIALIZABLE {
-			// For RETRY_SERIALIZABLE case, we want to bump timestamp further than
-			// timestamp cache.
-			// This helps transactions that had their commit timestamp fixed (See
-			// roachpb.Transaction.CommitTimestampFixed for details on when it happens)
-			// or transactions that hit read-write contention and can't bump
-			// read timestamp because of later writes.
-			// Upon retry, we want those transactions to restart on now() instead of
-			// closed ts to give them some time to complete without a need to refresh
-			// read spans yet again and possibly fail.
-			// The tradeoff here is that transactions that failed because they were
-			// waiting on locks or were slowed down in their first epoch for any other
-			// reason (e.g. lease transfers, network congestion, node failure, etc.)
-			// would have a chance to retry and succeed, but transactions that are
-			// just slow would still retry indefinitely and delay transactions that
-			// try to write to the keys this transaction reads because reads are not
-			// in the past anymore.
+			__antithesis_instrumentation__.Notify(159213)
+
 			now := clock.Now()
 			txn.WriteTimestamp.Forward(now)
+		} else {
+			__antithesis_instrumentation__.Notify(159214)
 		}
 	case *WriteTooOldError:
-		// Increase the timestamp to the ts at which we've actually written.
+		__antithesis_instrumentation__.Notify(159211)
+
 		txn.WriteTimestamp.Forward(tErr.RetryTimestamp())
 	default:
+		__antithesis_instrumentation__.Notify(159212)
 		log.Fatalf(ctx, "invalid retryable err (%T): %s", pErr.GetDetail(), pErr)
 	}
+	__antithesis_instrumentation__.Notify(159201)
 	if !aborted {
+		__antithesis_instrumentation__.Notify(159215)
 		if txn.Status.IsFinalized() {
+			__antithesis_instrumentation__.Notify(159217)
 			log.Fatalf(ctx, "transaction unexpectedly finalized in (%T): %s", pErr.GetDetail(), pErr)
+		} else {
+			__antithesis_instrumentation__.Notify(159218)
 		}
+		__antithesis_instrumentation__.Notify(159216)
 		txn.Restart(pri, txn.Priority, txn.WriteTimestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(159219)
 	}
+	__antithesis_instrumentation__.Notify(159202)
 	return txn
 }
 
-// TransactionRefreshTimestamp returns whether the supplied error is a retry
-// error that can be discarded if the transaction in the error is refreshed. If
-// true, the function returns the timestamp that the Transaction object should
-// be refreshed at in order to discard the error and avoid a restart.
 func TransactionRefreshTimestamp(pErr *Error) (bool, hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(159220)
 	txn := pErr.GetTxn()
 	if txn == nil {
+		__antithesis_instrumentation__.Notify(159223)
 		return false, hlc.Timestamp{}
+	} else {
+		__antithesis_instrumentation__.Notify(159224)
 	}
+	__antithesis_instrumentation__.Notify(159221)
 	timestamp := txn.WriteTimestamp
 	switch err := pErr.GetDetail().(type) {
 	case *TransactionRetryError:
-		if err.Reason != RETRY_SERIALIZABLE && err.Reason != RETRY_WRITE_TOO_OLD {
+		__antithesis_instrumentation__.Notify(159225)
+		if err.Reason != RETRY_SERIALIZABLE && func() bool {
+			__antithesis_instrumentation__.Notify(159229)
+			return err.Reason != RETRY_WRITE_TOO_OLD == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(159230)
 			return false, hlc.Timestamp{}
+		} else {
+			__antithesis_instrumentation__.Notify(159231)
 		}
 	case *WriteTooOldError:
-		// TODO(andrei): Chances of success for on write-too-old conditions might be
-		// usually small: if our txn previously read the key that generated this
-		// error, obviously the refresh will fail. It might be worth trying to
-		// detect these cases and save the futile attempt; we'd need to have access
-		// to the key that generated the error.
+		__antithesis_instrumentation__.Notify(159226)
+
 		timestamp.Forward(err.RetryTimestamp())
 	case *ReadWithinUncertaintyIntervalError:
+		__antithesis_instrumentation__.Notify(159227)
 		timestamp.Forward(err.RetryTimestamp())
 	default:
+		__antithesis_instrumentation__.Notify(159228)
 		return false, hlc.Timestamp{}
 	}
+	__antithesis_instrumentation__.Notify(159222)
 	return true, timestamp
 }
 
-// Replicas returns all of the replicas present in the descriptor after this
-// trigger applies.
 func (crt ChangeReplicasTrigger) Replicas() []ReplicaDescriptor {
+	__antithesis_instrumentation__.Notify(159232)
 	return crt.Desc.Replicas().Descriptors()
 }
 
-// NextReplicaID returns the next replica id to use after this trigger applies.
 func (crt ChangeReplicasTrigger) NextReplicaID() ReplicaID {
+	__antithesis_instrumentation__.Notify(159233)
 	return crt.Desc.NextReplicaID
 }
 
-// ConfChange returns the configuration change described by the trigger.
 func (crt ChangeReplicasTrigger) ConfChange(encodedCtx []byte) (raftpb.ConfChangeI, error) {
+	__antithesis_instrumentation__.Notify(159234)
 	return confChangeImpl(crt, encodedCtx)
 }
 
 func (crt ChangeReplicasTrigger) alwaysV2() bool {
-	// NB: we can return true in 20.1, but we don't win anything unless
-	// we are actively trying to migrate out of V1 membership changes, which
-	// could modestly simplify small areas of our codebase.
+	__antithesis_instrumentation__.Notify(159235)
+
 	return false
 }
 
-// confChangeImpl is the implementation of (ChangeReplicasTrigger).ConfChange
-// narrowed down to the inputs it actually needs for better testability.
 func confChangeImpl(
 	crt interface {
 		Added() []ReplicaDescriptor
@@ -1560,31 +1700,51 @@ func confChangeImpl(
 	},
 	encodedCtx []byte,
 ) (raftpb.ConfChangeI, error) {
+	__antithesis_instrumentation__.Notify(159236)
 	added, removed, replicas := crt.Added(), crt.Removed(), crt.Replicas()
 
 	var sl []raftpb.ConfChangeSingle
 
 	checkExists := func(in ReplicaDescriptor) error {
+		__antithesis_instrumentation__.Notify(159244)
 		for _, rDesc := range replicas {
+			__antithesis_instrumentation__.Notify(159246)
 			if rDesc.ReplicaID == in.ReplicaID {
+				__antithesis_instrumentation__.Notify(159247)
 				if a, b := in.GetType(), rDesc.GetType(); a != b {
+					__antithesis_instrumentation__.Notify(159249)
 					return errors.Errorf("have %s, but descriptor has %s", in, rDesc)
+				} else {
+					__antithesis_instrumentation__.Notify(159250)
 				}
+				__antithesis_instrumentation__.Notify(159248)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(159251)
 			}
 		}
+		__antithesis_instrumentation__.Notify(159245)
 		return errors.Errorf("%s missing from descriptors %v", in, replicas)
 	}
+	__antithesis_instrumentation__.Notify(159237)
 	checkNotExists := func(in ReplicaDescriptor) error {
+		__antithesis_instrumentation__.Notify(159252)
 		for _, rDesc := range replicas {
+			__antithesis_instrumentation__.Notify(159254)
 			if rDesc.ReplicaID == in.ReplicaID {
+				__antithesis_instrumentation__.Notify(159255)
 				return errors.Errorf("%s must no longer be present in descriptor", in)
+			} else {
+				__antithesis_instrumentation__.Notify(159256)
 			}
 		}
+		__antithesis_instrumentation__.Notify(159253)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(159238)
 
 	for _, rDesc := range removed {
+		__antithesis_instrumentation__.Notify(159257)
 		sl = append(sl, raftpb.ConfChangeSingle{
 			Type:   raftpb.ConfChangeRemoveNode,
 			NodeID: uint64(rDesc.ReplicaID),
@@ -1592,641 +1752,888 @@ func confChangeImpl(
 
 		switch rDesc.GetType() {
 		case VOTER_OUTGOING:
-			// If a voter is removed through joint consensus, it will
-			// be turned into an outgoing voter first.
+			__antithesis_instrumentation__.Notify(159258)
+
 			if err := checkExists(rDesc); err != nil {
+				__antithesis_instrumentation__.Notify(159265)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(159266)
 			}
 		case VOTER_DEMOTING_LEARNER, VOTER_DEMOTING_NON_VOTER:
-			// If a voter is demoted through joint consensus, it will
-			// be turned into a demoting voter first.
+			__antithesis_instrumentation__.Notify(159259)
+
 			if err := checkExists(rDesc); err != nil {
+				__antithesis_instrumentation__.Notify(159267)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(159268)
 			}
-			// It's being re-added as a learner, not only removed.
+			__antithesis_instrumentation__.Notify(159260)
+
 			sl = append(sl, raftpb.ConfChangeSingle{
 				Type:   raftpb.ConfChangeAddLearnerNode,
 				NodeID: uint64(rDesc.ReplicaID),
 			})
 		case LEARNER:
-			// A learner could in theory show up in the descriptor if the removal was
-			// really a demotion and no joint consensus is used. But etcd/raft
-			// currently forces us to go through joint consensus when demoting, so
-			// demotions will always have a VOTER_DEMOTING_LEARNER instead. We must be
-			// straight-up removing a voter or learner, so the target should be gone
-			// from the descriptor at this point.
+			__antithesis_instrumentation__.Notify(159261)
+
 			if err := checkNotExists(rDesc); err != nil {
+				__antithesis_instrumentation__.Notify(159269)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(159270)
 			}
 		case NON_VOTER:
-			// Like the case above, we must be removing a non-voter, so the target
-			// should be gone from the descriptor.
+			__antithesis_instrumentation__.Notify(159262)
+
 			if err := checkNotExists(rDesc); err != nil {
+				__antithesis_instrumentation__.Notify(159271)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(159272)
 			}
 		case VOTER_FULL:
-			// A voter can't be in the descriptor if it's being removed.
+			__antithesis_instrumentation__.Notify(159263)
+
 			if err := checkNotExists(rDesc); err != nil {
+				__antithesis_instrumentation__.Notify(159273)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(159274)
 			}
 		default:
+			__antithesis_instrumentation__.Notify(159264)
 			return nil, errors.Errorf("can't remove replica in state %v", rDesc.GetType())
 		}
 	}
+	__antithesis_instrumentation__.Notify(159239)
 
 	for _, rDesc := range added {
-		// The incoming descriptor must also be present in the set of all
-		// replicas, which is ultimately the authoritative one because that's
-		// what's written to the KV store.
+		__antithesis_instrumentation__.Notify(159275)
+
 		if err := checkExists(rDesc); err != nil {
+			__antithesis_instrumentation__.Notify(159278)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(159279)
 		}
+		__antithesis_instrumentation__.Notify(159276)
 
 		var changeType raftpb.ConfChangeType
 		switch rDesc.GetType() {
 		case VOTER_FULL:
-			// We're adding a new voter.
+			__antithesis_instrumentation__.Notify(159280)
+
 			changeType = raftpb.ConfChangeAddNode
 		case VOTER_INCOMING:
-			// We're adding a voter, but will transition into a joint config
-			// first.
+			__antithesis_instrumentation__.Notify(159281)
+
 			changeType = raftpb.ConfChangeAddNode
 		case LEARNER, NON_VOTER:
-			// We're adding a learner or non-voter.
-			// Note that we're guaranteed by virtue of the upstream ChangeReplicas txn
-			// that this learner/non-voter is not currently a voter. Demotions (i.e.
-			// transitioning from voter to learner/non-voter) are not represented in
-			// `added`; they're handled in `removed` above.
+			__antithesis_instrumentation__.Notify(159282)
+
 			changeType = raftpb.ConfChangeAddLearnerNode
 		default:
-			// A voter that is demoting was just removed and re-added in the
-			// `removals` handler. We should not see it again here.
-			// A voter that's outgoing similarly has no reason to show up here.
+			__antithesis_instrumentation__.Notify(159283)
+
 			return nil, errors.Errorf("can't add replica in state %v", rDesc.GetType())
 		}
+		__antithesis_instrumentation__.Notify(159277)
 		sl = append(sl, raftpb.ConfChangeSingle{
 			Type:   changeType,
 			NodeID: uint64(rDesc.ReplicaID),
 		})
 	}
+	__antithesis_instrumentation__.Notify(159240)
 
-	// Check whether we're entering a joint state. This is the case precisely when
-	// the resulting descriptors tells us that this is the case. Note that we've
-	// made sure above that all of the additions/removals are in tune with that
-	// descriptor already.
 	var enteringJoint bool
 	for _, rDesc := range replicas {
+		__antithesis_instrumentation__.Notify(159284)
 		switch rDesc.GetType() {
 		case VOTER_INCOMING, VOTER_OUTGOING, VOTER_DEMOTING_LEARNER, VOTER_DEMOTING_NON_VOTER:
+			__antithesis_instrumentation__.Notify(159285)
 			enteringJoint = true
 		default:
+			__antithesis_instrumentation__.Notify(159286)
 		}
 	}
+	__antithesis_instrumentation__.Notify(159241)
 	wantLeaveJoint := len(added)+len(removed) == 0
 	if !enteringJoint {
+		__antithesis_instrumentation__.Notify(159287)
 		if len(added)+len(removed) > 1 {
+			__antithesis_instrumentation__.Notify(159288)
 			return nil, errors.Errorf("change requires joint consensus")
+		} else {
+			__antithesis_instrumentation__.Notify(159289)
 		}
-	} else if wantLeaveJoint {
-		return nil, errors.Errorf("descriptor enters joint state, but trigger is requesting to leave one")
+	} else {
+		__antithesis_instrumentation__.Notify(159290)
+		if wantLeaveJoint {
+			__antithesis_instrumentation__.Notify(159291)
+			return nil, errors.Errorf("descriptor enters joint state, but trigger is requesting to leave one")
+		} else {
+			__antithesis_instrumentation__.Notify(159292)
+		}
 	}
+	__antithesis_instrumentation__.Notify(159242)
 
 	var cc raftpb.ConfChangeI
 
-	if enteringJoint || crt.alwaysV2() {
-		// V2 membership changes, which allow atomic replication changes. We
-		// track the joint state in the range descriptor and thus we need to be
-		// in charge of when to leave the joint state.
+	if enteringJoint || func() bool {
+		__antithesis_instrumentation__.Notify(159293)
+		return crt.alwaysV2() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159294)
+
 		transition := raftpb.ConfChangeTransitionJointExplicit
 		if !enteringJoint {
-			// If we're using V2 just to avoid V1 (and not because we actually
-			// have a change that requires V2), then use an auto transition
-			// which skips the joint state. This is necessary: our descriptor
-			// says we're not supposed to go through one.
+			__antithesis_instrumentation__.Notify(159296)
+
 			transition = raftpb.ConfChangeTransitionAuto
+		} else {
+			__antithesis_instrumentation__.Notify(159297)
 		}
+		__antithesis_instrumentation__.Notify(159295)
 		cc = raftpb.ConfChangeV2{
 			Transition: transition,
 			Changes:    sl,
 			Context:    encodedCtx,
 		}
-	} else if wantLeaveJoint {
-		// Transitioning out of a joint config.
-		cc = raftpb.ConfChangeV2{
-			Context: encodedCtx,
-		}
 	} else {
-		// Legacy path with exactly one change.
-		cc = raftpb.ConfChange{
-			Type:    sl[0].Type,
-			NodeID:  sl[0].NodeID,
-			Context: encodedCtx,
+		__antithesis_instrumentation__.Notify(159298)
+		if wantLeaveJoint {
+			__antithesis_instrumentation__.Notify(159299)
+
+			cc = raftpb.ConfChangeV2{
+				Context: encodedCtx,
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(159300)
+
+			cc = raftpb.ConfChange{
+				Type:    sl[0].Type,
+				NodeID:  sl[0].NodeID,
+				Context: encodedCtx,
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(159243)
 	return cc, nil
 }
 
 var _ fmt.Stringer = &ChangeReplicasTrigger{}
 
 func (crt ChangeReplicasTrigger) String() string {
+	__antithesis_instrumentation__.Notify(159301)
 	return redact.StringWithoutMarkers(crt)
 }
 
-// SafeFormat implements the redact.SafeFormatter interface.
 func (crt ChangeReplicasTrigger) SafeFormat(w redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(159302)
 	var nextReplicaID ReplicaID
 	var afterReplicas []ReplicaDescriptor
 	added, removed := crt.Added(), crt.Removed()
 	nextReplicaID = crt.Desc.NextReplicaID
-	// NB: we don't want to mutate InternalReplicas, so we don't call
-	// .Replicas()
-	//
-	// TODO(tbg): revisit after #39489 is merged.
+
 	afterReplicas = crt.Desc.InternalReplicas
 	cc, err := crt.ConfChange(nil)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(159306)
 		w.Printf("<malformed ChangeReplicasTrigger: %s>", err)
 	} else {
+		__antithesis_instrumentation__.Notify(159307)
 		ccv2 := cc.AsV2()
 		if ccv2.LeaveJoint() {
-			// NB: this isn't missing a trailing space.
-			//
-			// TODO(tbg): could list the replicas that will actually leave the
-			// voter set.
+			__antithesis_instrumentation__.Notify(159308)
+
 			w.SafeString("LEAVE_JOINT")
-		} else if _, ok := ccv2.EnterJoint(); ok {
-			w.Printf("ENTER_JOINT(%s) ", confChangesToRedactableString(ccv2.Changes))
 		} else {
-			w.Printf("SIMPLE(%s) ", confChangesToRedactableString(ccv2.Changes))
+			__antithesis_instrumentation__.Notify(159309)
+			if _, ok := ccv2.EnterJoint(); ok {
+				__antithesis_instrumentation__.Notify(159310)
+				w.Printf("ENTER_JOINT(%s) ", confChangesToRedactableString(ccv2.Changes))
+			} else {
+				__antithesis_instrumentation__.Notify(159311)
+				w.Printf("SIMPLE(%s) ", confChangesToRedactableString(ccv2.Changes))
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(159303)
 	if len(added) > 0 {
+		__antithesis_instrumentation__.Notify(159312)
 		w.Printf("%s", added)
+	} else {
+		__antithesis_instrumentation__.Notify(159313)
 	}
+	__antithesis_instrumentation__.Notify(159304)
 	if len(removed) > 0 {
+		__antithesis_instrumentation__.Notify(159314)
 		if len(added) > 0 {
+			__antithesis_instrumentation__.Notify(159316)
 			w.SafeString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(159317)
 		}
+		__antithesis_instrumentation__.Notify(159315)
 		w.Printf("%s", removed)
+	} else {
+		__antithesis_instrumentation__.Notify(159318)
 	}
+	__antithesis_instrumentation__.Notify(159305)
 	w.Printf(": after=%s next=%d", afterReplicas, nextReplicaID)
 }
 
-// confChangesToRedactableString produces a safe representation for
-// the configuration changes.
 func confChangesToRedactableString(ccs []raftpb.ConfChangeSingle) redact.RedactableString {
+	__antithesis_instrumentation__.Notify(159319)
 	return redact.Sprintfn(func(w redact.SafePrinter) {
+		__antithesis_instrumentation__.Notify(159320)
 		for i, cc := range ccs {
+			__antithesis_instrumentation__.Notify(159321)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(159324)
 				w.SafeRune(' ')
+			} else {
+				__antithesis_instrumentation__.Notify(159325)
 			}
+			__antithesis_instrumentation__.Notify(159322)
 			switch cc.Type {
 			case raftpb.ConfChangeAddNode:
+				__antithesis_instrumentation__.Notify(159326)
 				w.SafeRune('v')
 			case raftpb.ConfChangeAddLearnerNode:
+				__antithesis_instrumentation__.Notify(159327)
 				w.SafeRune('l')
 			case raftpb.ConfChangeRemoveNode:
+				__antithesis_instrumentation__.Notify(159328)
 				w.SafeRune('r')
 			case raftpb.ConfChangeUpdateNode:
+				__antithesis_instrumentation__.Notify(159329)
 				w.SafeRune('u')
 			default:
+				__antithesis_instrumentation__.Notify(159330)
 				w.SafeString("unknown")
 			}
+			__antithesis_instrumentation__.Notify(159323)
 			w.Print(cc.NodeID)
 		}
 	})
 }
 
-// Added returns the replicas added by this change (if there are any).
 func (crt ChangeReplicasTrigger) Added() []ReplicaDescriptor {
+	__antithesis_instrumentation__.Notify(159331)
 	return crt.InternalAddedReplicas
 }
 
-// Removed returns the replicas whose removal is initiated by this change (if there are any).
-// Note that in an atomic replication change, Removed() contains the replicas when they are
-// transitioning to VOTER_{OUTGOING,DEMOTING} (from VOTER_FULL). The subsequent trigger
-// leaving the joint configuration has an empty Removed().
 func (crt ChangeReplicasTrigger) Removed() []ReplicaDescriptor {
+	__antithesis_instrumentation__.Notify(159332)
 	return crt.InternalRemovedReplicas
 }
 
-// LeaseSequence is a custom type for a lease sequence number.
 type LeaseSequence int64
 
-// SafeValue implements the redact.SafeValue interface.
-func (s LeaseSequence) SafeValue() {}
+func (s LeaseSequence) SafeValue() { __antithesis_instrumentation__.Notify(159333) }
 
 var _ fmt.Stringer = &Lease{}
 
 func (l Lease) String() string {
+	__antithesis_instrumentation__.Notify(159334)
 	return redact.StringWithoutMarkers(l)
 }
 
-// SafeFormat implements the redact.SafeFormatter interface.
 func (l Lease) SafeFormat(w redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(159335)
 	if l.Empty() {
+		__antithesis_instrumentation__.Notify(159338)
 		w.SafeString("<empty>")
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(159339)
 	}
+	__antithesis_instrumentation__.Notify(159336)
 	if l.Type() == LeaseExpiration {
+		__antithesis_instrumentation__.Notify(159340)
 		w.Printf("repl=%s seq=%d start=%s exp=%s", l.Replica, l.Sequence, l.Start, l.Expiration)
 	} else {
+		__antithesis_instrumentation__.Notify(159341)
 		w.Printf("repl=%s seq=%d start=%s epo=%d", l.Replica, l.Sequence, l.Start, l.Epoch)
 	}
+	__antithesis_instrumentation__.Notify(159337)
 	if l.ProposedTS != nil {
+		__antithesis_instrumentation__.Notify(159342)
 		w.Printf(" pro=%s", l.ProposedTS)
+	} else {
+		__antithesis_instrumentation__.Notify(159343)
 	}
 }
 
-// Empty returns true for the Lease zero-value.
 func (l *Lease) Empty() bool {
-	return l == nil || *l == (Lease{})
+	__antithesis_instrumentation__.Notify(159344)
+	return l == nil || func() bool {
+		__antithesis_instrumentation__.Notify(159345)
+		return *l == (Lease{}) == true
+	}() == true
 }
 
-// OwnedBy returns whether the given store is the lease owner.
 func (l Lease) OwnedBy(storeID StoreID) bool {
+	__antithesis_instrumentation__.Notify(159346)
 	return l.Replica.StoreID == storeID
 }
 
-// LeaseType describes the type of lease.
 type LeaseType int
 
 const (
-	// LeaseNone specifies no lease, to be used as a default value.
 	LeaseNone LeaseType = iota
-	// LeaseExpiration allows range operations while the wall clock is
-	// within the expiration timestamp.
+
 	LeaseExpiration
-	// LeaseEpoch allows range operations while the node liveness epoch
-	// is equal to the lease epoch.
+
 	LeaseEpoch
 )
 
-// Type returns the lease type.
 func (l Lease) Type() LeaseType {
+	__antithesis_instrumentation__.Notify(159347)
 	if l.Epoch == 0 {
+		__antithesis_instrumentation__.Notify(159349)
 		return LeaseExpiration
+	} else {
+		__antithesis_instrumentation__.Notify(159350)
 	}
+	__antithesis_instrumentation__.Notify(159348)
 	return LeaseEpoch
 }
 
-// Speculative returns true if this lease instance doesn't correspond to a
-// committed lease (or at least to a lease that's *known* to have committed).
-// For example, nodes sometimes guess who a leaseholder might be and synthesize
-// a more or less complete lease struct. Such cases are identified by an empty
-// Sequence.
 func (l Lease) Speculative() bool {
+	__antithesis_instrumentation__.Notify(159351)
 	return l.Sequence == 0
 }
 
-// Equivalent determines whether ol is considered the same lease
-// for the purposes of matching leases when executing a command.
-// For expiration-based leases, extensions are allowed.
-// Ignore proposed timestamps for lease verification; for epoch-
-// based leases, the start time of the lease is sufficient to
-// avoid using an older lease with same epoch.
-//
-// NB: Lease.Equivalent is NOT symmetric. For expiration-based
-// leases, a lease is equivalent to another with an equal or
-// later expiration, but not an earlier expiration.
 func (l Lease) Equivalent(newL Lease) bool {
-	// Ignore proposed timestamp & deprecated start stasis.
+	__antithesis_instrumentation__.Notify(159352)
+
 	l.ProposedTS, newL.ProposedTS = nil, nil
 	l.DeprecatedStartStasis, newL.DeprecatedStartStasis = nil, nil
-	// Ignore sequence numbers, they are simply a reflection of
-	// the equivalency of other fields.
+
 	l.Sequence, newL.Sequence = 0, 0
-	// Ignore the acquisition type, as leases will always be extended via
-	// RequestLease requests regardless of how a leaseholder first acquired its
-	// lease.
+
 	l.AcquisitionType, newL.AcquisitionType = 0, 0
-	// Ignore the ReplicaDescriptor's type. This shouldn't affect lease
-	// equivalency because Raft state shouldn't be factored into the state of a
-	// Replica's lease. We don't expect a leaseholder to ever become a LEARNER
-	// replica, but that also shouldn't prevent it from extending its lease. The
-	// code also avoids a potential bug where an unset ReplicaType and a set
-	// VOTER ReplicaType are considered distinct and non-equivalent.
-	//
-	// Change this line to the following when ReplicaType becomes non-nullable:
-	//  l.Replica.Type, newL.Replica.Type = 0, 0
+
 	l.Replica.Type, newL.Replica.Type = nil, nil
-	// If both leases are epoch-based, we must dereference the epochs
-	// and then set to nil.
+
 	switch l.Type() {
 	case LeaseEpoch:
-		// Ignore expirations. This seems benign but since we changed the
-		// nullability of this field in the 1.2 cycle, it's crucial and
-		// tested in TestLeaseEquivalence.
+		__antithesis_instrumentation__.Notify(159354)
+
 		l.Expiration, newL.Expiration = nil, nil
 
 		if l.Epoch == newL.Epoch {
+			__antithesis_instrumentation__.Notify(159357)
 			l.Epoch, newL.Epoch = 0, 0
+		} else {
+			__antithesis_instrumentation__.Notify(159358)
 		}
 	case LeaseExpiration:
-		// See the comment above, though this field's nullability wasn't
-		// changed. We nil it out for completeness only.
+		__antithesis_instrumentation__.Notify(159355)
+
 		l.Epoch, newL.Epoch = 0, 0
 
-		// For expiration-based leases, extensions are considered equivalent.
-		// This is the one case where Equivalent is not commutative and, as
-		// such, requires special handling beneath Raft (see checkForcedErr).
 		if l.GetExpiration().LessEq(newL.GetExpiration()) {
+			__antithesis_instrumentation__.Notify(159359)
 			l.Expiration, newL.Expiration = nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(159360)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(159356)
 	}
+	__antithesis_instrumentation__.Notify(159353)
 	return l == newL
 }
 
-// GetExpiration returns the lease expiration or the zero timestamp if the
-// receiver is not an expiration-based lease.
 func (l Lease) GetExpiration() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(159361)
 	if l.Expiration == nil {
+		__antithesis_instrumentation__.Notify(159363)
 		return hlc.Timestamp{}
+	} else {
+		__antithesis_instrumentation__.Notify(159364)
 	}
+	__antithesis_instrumentation__.Notify(159362)
 	return *l.Expiration
 }
 
-// equivalentTimestamps compares two timestamps for equality and also considers
-// the nil timestamp equal to the zero timestamp.
 func equivalentTimestamps(a, b *hlc.Timestamp) bool {
+	__antithesis_instrumentation__.Notify(159365)
 	if a == nil {
+		__antithesis_instrumentation__.Notify(159367)
 		if b == nil {
+			__antithesis_instrumentation__.Notify(159369)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(159370)
 		}
+		__antithesis_instrumentation__.Notify(159368)
 		if b.IsEmpty() {
+			__antithesis_instrumentation__.Notify(159371)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(159372)
 		}
-	} else if b == nil {
-		if a.IsEmpty() {
-			return true
+	} else {
+		__antithesis_instrumentation__.Notify(159373)
+		if b == nil {
+			__antithesis_instrumentation__.Notify(159374)
+			if a.IsEmpty() {
+				__antithesis_instrumentation__.Notify(159375)
+				return true
+			} else {
+				__antithesis_instrumentation__.Notify(159376)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(159377)
 		}
 	}
+	__antithesis_instrumentation__.Notify(159366)
 	return a.Equal(b)
 }
 
-// Equal implements the gogoproto Equal interface. This implementation is
-// forked from the gogoproto generated code to allow l.Expiration == nil and
-// l.Expiration == &hlc.Timestamp{} to compare equal. Ditto for
-// DeprecatedStartStasis.
 func (l *Lease) Equal(that interface{}) bool {
+	__antithesis_instrumentation__.Notify(159378)
 	if that == nil {
+		__antithesis_instrumentation__.Notify(159389)
 		return l == nil
+	} else {
+		__antithesis_instrumentation__.Notify(159390)
 	}
+	__antithesis_instrumentation__.Notify(159379)
 
 	that1, ok := that.(*Lease)
 	if !ok {
+		__antithesis_instrumentation__.Notify(159391)
 		that2, ok := that.(Lease)
 		if ok {
+			__antithesis_instrumentation__.Notify(159392)
 			that1 = &that2
 		} else {
+			__antithesis_instrumentation__.Notify(159393)
 			panic(errors.AssertionFailedf("attempting to compare lease to %T", that))
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(159394)
 	}
+	__antithesis_instrumentation__.Notify(159380)
 	if that1 == nil {
+		__antithesis_instrumentation__.Notify(159395)
 		return l == nil
-	} else if l == nil {
-		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159396)
+		if l == nil {
+			__antithesis_instrumentation__.Notify(159397)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(159398)
+		}
 	}
+	__antithesis_instrumentation__.Notify(159381)
 
 	if !l.Start.Equal(&that1.Start) {
+		__antithesis_instrumentation__.Notify(159399)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159400)
 	}
+	__antithesis_instrumentation__.Notify(159382)
 	if !equivalentTimestamps(l.Expiration, that1.Expiration) {
+		__antithesis_instrumentation__.Notify(159401)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159402)
 	}
+	__antithesis_instrumentation__.Notify(159383)
 	if !l.Replica.Equal(&that1.Replica) {
+		__antithesis_instrumentation__.Notify(159403)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159404)
 	}
+	__antithesis_instrumentation__.Notify(159384)
 	if !equivalentTimestamps(l.DeprecatedStartStasis, that1.DeprecatedStartStasis) {
+		__antithesis_instrumentation__.Notify(159405)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159406)
 	}
+	__antithesis_instrumentation__.Notify(159385)
 	if !l.ProposedTS.Equal(that1.ProposedTS) {
+		__antithesis_instrumentation__.Notify(159407)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159408)
 	}
+	__antithesis_instrumentation__.Notify(159386)
 	if l.Epoch != that1.Epoch {
+		__antithesis_instrumentation__.Notify(159409)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159410)
 	}
+	__antithesis_instrumentation__.Notify(159387)
 	if l.Sequence != that1.Sequence {
+		__antithesis_instrumentation__.Notify(159411)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159412)
 	}
+	__antithesis_instrumentation__.Notify(159388)
 	return true
 }
 
-// MakeIntent makes an intent with the given txn and key.
-// This is suitable for use when constructing WriteIntentError.
 func MakeIntent(txn *enginepb.TxnMeta, key Key) Intent {
+	__antithesis_instrumentation__.Notify(159413)
 	var i Intent
 	i.Key = key
 	i.Txn = *txn
 	return i
 }
 
-// AsIntents takes a transaction and a slice of keys and
-// returns it as a slice of intents.
 func AsIntents(txn *enginepb.TxnMeta, keys []Key) []Intent {
+	__antithesis_instrumentation__.Notify(159414)
 	ret := make([]Intent, len(keys))
 	for i := range keys {
+		__antithesis_instrumentation__.Notify(159416)
 		ret[i] = MakeIntent(txn, keys[i])
 	}
+	__antithesis_instrumentation__.Notify(159415)
 	return ret
 }
 
-// MakeLockAcquisition makes a lock acquisition message from the given
-// txn, key, and durability level.
 func MakeLockAcquisition(txn *Transaction, key Key, dur lock.Durability) LockAcquisition {
+	__antithesis_instrumentation__.Notify(159417)
 	return LockAcquisition{Span: Span{Key: key}, Txn: txn.TxnMeta, Durability: dur}
 }
 
-// MakeLockUpdate makes a lock update from the given txn and span.
-//
-// See also txn.LocksAsLockUpdates().
 func MakeLockUpdate(txn *Transaction, span Span) LockUpdate {
+	__antithesis_instrumentation__.Notify(159418)
 	u := LockUpdate{Span: span}
 	u.SetTxn(txn)
 	return u
 }
 
-// SetTxn updates the transaction details in the lock update.
 func (u *LockUpdate) SetTxn(txn *Transaction) {
+	__antithesis_instrumentation__.Notify(159419)
 	u.Txn = txn.TxnMeta
 	u.Status = txn.Status
 	u.IgnoredSeqNums = txn.IgnoredSeqNums
 }
 
-// SafeFormat implements redact.SafeFormatter.
 func (ls LockStateInfo) SafeFormat(w redact.SafePrinter, r rune) {
+	__antithesis_instrumentation__.Notify(159420)
 	expand := w.Flag('+')
 	w.Printf("range_id=%d key=%s ", ls.RangeID, ls.Key)
 	redactableLockHolder := redact.Sprint(nil)
 	if ls.LockHolder != nil {
+		__antithesis_instrumentation__.Notify(159422)
 		if expand {
+			__antithesis_instrumentation__.Notify(159423)
 			redactableLockHolder = redact.Sprint(ls.LockHolder.ID)
 		} else {
+			__antithesis_instrumentation__.Notify(159424)
 			redactableLockHolder = redact.Sprint(ls.LockHolder.Short())
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(159425)
 	}
+	__antithesis_instrumentation__.Notify(159421)
 	w.Printf("holder=%s ", redactableLockHolder)
 	w.Printf("durability=%s ", ls.Durability)
 	w.Printf("duration=%s", ls.HoldDuration)
 	if len(ls.Waiters) > 0 {
+		__antithesis_instrumentation__.Notify(159426)
 		w.Printf("\n waiters:")
 
 		for _, lw := range ls.Waiters {
+			__antithesis_instrumentation__.Notify(159427)
 			if expand {
+				__antithesis_instrumentation__.Notify(159428)
 				w.Printf("\n  %+v", lw)
 			} else {
+				__antithesis_instrumentation__.Notify(159429)
 				w.Printf("\n  %s", lw)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(159430)
 	}
 }
 
 func (ls LockStateInfo) String() string {
+	__antithesis_instrumentation__.Notify(159431)
 	return redact.StringWithoutMarkers(ls)
 }
 
-// EqualValue is Equal.
-//
-// TODO(tbg): remove this passthrough.
 func (s Span) EqualValue(o Span) bool {
-	return s.Key.Equal(o.Key) && s.EndKey.Equal(o.EndKey)
+	__antithesis_instrumentation__.Notify(159432)
+	return s.Key.Equal(o.Key) && func() bool {
+		__antithesis_instrumentation__.Notify(159433)
+		return s.EndKey.Equal(o.EndKey) == true
+	}() == true
 }
 
-// Equal compares two spans.
 func (s Span) Equal(o Span) bool {
-	return s.Key.Equal(o.Key) && s.EndKey.Equal(o.EndKey)
+	__antithesis_instrumentation__.Notify(159434)
+	return s.Key.Equal(o.Key) && func() bool {
+		__antithesis_instrumentation__.Notify(159435)
+		return s.EndKey.Equal(o.EndKey) == true
+	}() == true
 }
 
-// Overlaps returns true WLOG for span A and B iff:
-// 1. Both spans contain one key (just the start key) and they are equal; or
-// 2. The span with only one key is contained inside the other span; or
-// 3. The end key of span A is strictly greater than the start key of span B
-//    and the end key of span B is strictly greater than the start key of span
-//    A.
 func (s Span) Overlaps(o Span) bool {
-	if !s.Valid() || !o.Valid() {
+	__antithesis_instrumentation__.Notify(159436)
+	if !s.Valid() || func() bool {
+		__antithesis_instrumentation__.Notify(159439)
+		return !o.Valid() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159440)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159441)
 	}
+	__antithesis_instrumentation__.Notify(159437)
 
-	if len(s.EndKey) == 0 && len(o.EndKey) == 0 {
+	if len(s.EndKey) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159442)
+		return len(o.EndKey) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159443)
 		return s.Key.Equal(o.Key)
-	} else if len(s.EndKey) == 0 {
-		return bytes.Compare(s.Key, o.Key) >= 0 && bytes.Compare(s.Key, o.EndKey) < 0
-	} else if len(o.EndKey) == 0 {
-		return bytes.Compare(o.Key, s.Key) >= 0 && bytes.Compare(o.Key, s.EndKey) < 0
+	} else {
+		__antithesis_instrumentation__.Notify(159444)
+		if len(s.EndKey) == 0 {
+			__antithesis_instrumentation__.Notify(159445)
+			return bytes.Compare(s.Key, o.Key) >= 0 && func() bool {
+				__antithesis_instrumentation__.Notify(159446)
+				return bytes.Compare(s.Key, o.EndKey) < 0 == true
+			}() == true
+		} else {
+			__antithesis_instrumentation__.Notify(159447)
+			if len(o.EndKey) == 0 {
+				__antithesis_instrumentation__.Notify(159448)
+				return bytes.Compare(o.Key, s.Key) >= 0 && func() bool {
+					__antithesis_instrumentation__.Notify(159449)
+					return bytes.Compare(o.Key, s.EndKey) < 0 == true
+				}() == true
+			} else {
+				__antithesis_instrumentation__.Notify(159450)
+			}
+		}
 	}
-	return bytes.Compare(s.EndKey, o.Key) > 0 && bytes.Compare(s.Key, o.EndKey) < 0
+	__antithesis_instrumentation__.Notify(159438)
+	return bytes.Compare(s.EndKey, o.Key) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159451)
+		return bytes.Compare(s.Key, o.EndKey) < 0 == true
+	}() == true
 }
 
-// Intersect returns the intersection of the key space covered by the two spans.
-// If there is no intersection between the two spans, an invalid span (see Valid)
-// is returned.
 func (s Span) Intersect(o Span) Span {
-	// If two spans do not overlap, there is no intersection between them.
-	if !s.Overlaps(o) {
-		return Span{}
-	}
+	__antithesis_instrumentation__.Notify(159452)
 
-	// An empty end key means this span contains a single key. Overlaps already
-	// has special code for the single-key cases, so here we return whichever key
-	// is the single key, if any. If they are both a single key, we know they are
-	// equal anyway so the order doesn't matter.
+	if !s.Overlaps(o) {
+		__antithesis_instrumentation__.Notify(159458)
+		return Span{}
+	} else {
+		__antithesis_instrumentation__.Notify(159459)
+	}
+	__antithesis_instrumentation__.Notify(159453)
+
 	if len(s.EndKey) == 0 {
+		__antithesis_instrumentation__.Notify(159460)
 		return s
+	} else {
+		__antithesis_instrumentation__.Notify(159461)
 	}
+	__antithesis_instrumentation__.Notify(159454)
 	if len(o.EndKey) == 0 {
+		__antithesis_instrumentation__.Notify(159462)
 		return o
+	} else {
+		__antithesis_instrumentation__.Notify(159463)
 	}
+	__antithesis_instrumentation__.Notify(159455)
 
 	key := s.Key
 	if key.Compare(o.Key) < 0 {
+		__antithesis_instrumentation__.Notify(159464)
 		key = o.Key
+	} else {
+		__antithesis_instrumentation__.Notify(159465)
 	}
+	__antithesis_instrumentation__.Notify(159456)
 	endKey := s.EndKey
 	if endKey.Compare(o.EndKey) > 0 {
+		__antithesis_instrumentation__.Notify(159466)
 		endKey = o.EndKey
+	} else {
+		__antithesis_instrumentation__.Notify(159467)
 	}
+	__antithesis_instrumentation__.Notify(159457)
 	return Span{key, endKey}
 }
 
-// Combine creates a new span containing the full union of the key
-// space covered by the two spans. This includes any key space not
-// covered by either span, but between them if the spans are disjoint.
-// Warning: using this method to combine local and non-local spans is
-// not recommended and will result in potentially database-wide
-// spans being returned. Use with caution.
 func (s Span) Combine(o Span) Span {
-	if !s.Valid() || !o.Valid() {
+	__antithesis_instrumentation__.Notify(159468)
+	if !s.Valid() || func() bool {
+		__antithesis_instrumentation__.Notify(159474)
+		return !o.Valid() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159475)
 		return Span{}
+	} else {
+		__antithesis_instrumentation__.Notify(159476)
 	}
+	__antithesis_instrumentation__.Notify(159469)
 
 	min := s.Key
 	max := s.Key
 	if len(s.EndKey) > 0 {
+		__antithesis_instrumentation__.Notify(159477)
 		max = s.EndKey
+	} else {
+		__antithesis_instrumentation__.Notify(159478)
 	}
+	__antithesis_instrumentation__.Notify(159470)
 	if o.Key.Compare(min) < 0 {
+		__antithesis_instrumentation__.Notify(159479)
 		min = o.Key
-	} else if o.Key.Compare(max) > 0 {
-		max = o.Key
+	} else {
+		__antithesis_instrumentation__.Notify(159480)
+		if o.Key.Compare(max) > 0 {
+			__antithesis_instrumentation__.Notify(159481)
+			max = o.Key
+		} else {
+			__antithesis_instrumentation__.Notify(159482)
+		}
 	}
-	if len(o.EndKey) > 0 && o.EndKey.Compare(max) > 0 {
+	__antithesis_instrumentation__.Notify(159471)
+	if len(o.EndKey) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159483)
+		return o.EndKey.Compare(max) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159484)
 		max = o.EndKey
+	} else {
+		__antithesis_instrumentation__.Notify(159485)
 	}
+	__antithesis_instrumentation__.Notify(159472)
 	if min.Equal(max) {
+		__antithesis_instrumentation__.Notify(159486)
 		return Span{Key: min}
-	} else if s.Key.Equal(max) || o.Key.Equal(max) {
-		return Span{Key: min, EndKey: max.Next()}
+	} else {
+		__antithesis_instrumentation__.Notify(159487)
+		if s.Key.Equal(max) || func() bool {
+			__antithesis_instrumentation__.Notify(159488)
+			return o.Key.Equal(max) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(159489)
+			return Span{Key: min, EndKey: max.Next()}
+		} else {
+			__antithesis_instrumentation__.Notify(159490)
+		}
 	}
+	__antithesis_instrumentation__.Notify(159473)
 	return Span{Key: min, EndKey: max}
 }
 
-// Contains returns whether the receiver contains the given span.
 func (s Span) Contains(o Span) bool {
-	if !s.Valid() || !o.Valid() {
+	__antithesis_instrumentation__.Notify(159491)
+	if !s.Valid() || func() bool {
+		__antithesis_instrumentation__.Notify(159494)
+		return !o.Valid() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159495)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159496)
 	}
+	__antithesis_instrumentation__.Notify(159492)
 
-	if len(s.EndKey) == 0 && len(o.EndKey) == 0 {
+	if len(s.EndKey) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159497)
+		return len(o.EndKey) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159498)
 		return s.Key.Equal(o.Key)
-	} else if len(s.EndKey) == 0 {
-		return false
-	} else if len(o.EndKey) == 0 {
-		return bytes.Compare(o.Key, s.Key) >= 0 && bytes.Compare(o.Key, s.EndKey) < 0
-	}
-	return bytes.Compare(s.Key, o.Key) <= 0 && bytes.Compare(s.EndKey, o.EndKey) >= 0
-}
-
-// ContainsKey returns whether the span contains the given key.
-func (s Span) ContainsKey(key Key) bool {
-	return bytes.Compare(key, s.Key) >= 0 && bytes.Compare(key, s.EndKey) < 0
-}
-
-// CompareKey returns -1 if the key precedes the span start, 0 if its contained
-// by the span and 1 if its after the end of the span.
-func (s Span) CompareKey(key Key) int {
-	if bytes.Compare(key, s.Key) >= 0 {
-		if bytes.Compare(key, s.EndKey) < 0 {
-			return 0
+	} else {
+		__antithesis_instrumentation__.Notify(159499)
+		if len(s.EndKey) == 0 {
+			__antithesis_instrumentation__.Notify(159500)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(159501)
+			if len(o.EndKey) == 0 {
+				__antithesis_instrumentation__.Notify(159502)
+				return bytes.Compare(o.Key, s.Key) >= 0 && func() bool {
+					__antithesis_instrumentation__.Notify(159503)
+					return bytes.Compare(o.Key, s.EndKey) < 0 == true
+				}() == true
+			} else {
+				__antithesis_instrumentation__.Notify(159504)
+			}
 		}
-		return 1
 	}
+	__antithesis_instrumentation__.Notify(159493)
+	return bytes.Compare(s.Key, o.Key) <= 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159505)
+		return bytes.Compare(s.EndKey, o.EndKey) >= 0 == true
+	}() == true
+}
+
+func (s Span) ContainsKey(key Key) bool {
+	__antithesis_instrumentation__.Notify(159506)
+	return bytes.Compare(key, s.Key) >= 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159507)
+		return bytes.Compare(key, s.EndKey) < 0 == true
+	}() == true
+}
+
+func (s Span) CompareKey(key Key) int {
+	__antithesis_instrumentation__.Notify(159508)
+	if bytes.Compare(key, s.Key) >= 0 {
+		__antithesis_instrumentation__.Notify(159510)
+		if bytes.Compare(key, s.EndKey) < 0 {
+			__antithesis_instrumentation__.Notify(159512)
+			return 0
+		} else {
+			__antithesis_instrumentation__.Notify(159513)
+		}
+		__antithesis_instrumentation__.Notify(159511)
+		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(159514)
+	}
+	__antithesis_instrumentation__.Notify(159509)
 	return -1
 }
 
-// ProperlyContainsKey returns whether the span properly contains the given key.
 func (s Span) ProperlyContainsKey(key Key) bool {
-	return bytes.Compare(key, s.Key) > 0 && bytes.Compare(key, s.EndKey) < 0
+	__antithesis_instrumentation__.Notify(159515)
+	return bytes.Compare(key, s.Key) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159516)
+		return bytes.Compare(key, s.EndKey) < 0 == true
+	}() == true
 }
 
-// AsRange returns the Span as an interval.Range.
 func (s Span) AsRange() interval.Range {
+	__antithesis_instrumentation__.Notify(159517)
 	startKey := s.Key
 	endKey := s.EndKey
 	if len(endKey) == 0 {
+		__antithesis_instrumentation__.Notify(159519)
 		endKey = s.Key.Next()
 		startKey = endKey[:len(startKey)]
+	} else {
+		__antithesis_instrumentation__.Notify(159520)
 	}
+	__antithesis_instrumentation__.Notify(159518)
 	return interval.Range{
 		Start: interval.Comparable(startKey),
 		End:   interval.Comparable(endKey),
@@ -2234,233 +2641,302 @@ func (s Span) AsRange() interval.Range {
 }
 
 func (s Span) String() string {
+	__antithesis_instrumentation__.Notify(159521)
 	const maxChars = math.MaxInt32
 	return PrettyPrintRange(s.Key, s.EndKey, maxChars)
 }
 
-// SplitOnKey returns two spans where the left span has EndKey and right span
-// has start Key of the split key, respectively.
-// If the split key lies outside the span, the original span is returned on the
-// left (and right is an invalid span with empty keys).
 func (s Span) SplitOnKey(key Key) (left Span, right Span) {
-	// Cannot split on or before start key or on or after end key.
-	if bytes.Compare(key, s.Key) <= 0 || bytes.Compare(key, s.EndKey) >= 0 {
+	__antithesis_instrumentation__.Notify(159522)
+
+	if bytes.Compare(key, s.Key) <= 0 || func() bool {
+		__antithesis_instrumentation__.Notify(159524)
+		return bytes.Compare(key, s.EndKey) >= 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159525)
 		return s, Span{}
+	} else {
+		__antithesis_instrumentation__.Notify(159526)
 	}
+	__antithesis_instrumentation__.Notify(159523)
 
 	return Span{Key: s.Key, EndKey: key}, Span{Key: key, EndKey: s.EndKey}
 }
 
-// Valid returns whether or not the span is a "valid span".
-// A valid span cannot have an empty start and end key and must satisfy either:
-// 1. The end key is empty.
-// 2. The start key is lexicographically-ordered before the end key.
 func (s Span) Valid() bool {
-	// s.Key can be empty if it is KeyMin.
-	// Can't have both KeyMin start and end keys.
-	if len(s.Key) == 0 && len(s.EndKey) == 0 {
+	__antithesis_instrumentation__.Notify(159527)
+
+	if len(s.Key) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159531)
+		return len(s.EndKey) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159532)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159533)
 	}
+	__antithesis_instrumentation__.Notify(159528)
 
 	if len(s.EndKey) == 0 {
+		__antithesis_instrumentation__.Notify(159534)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(159535)
 	}
+	__antithesis_instrumentation__.Notify(159529)
 
 	if bytes.Compare(s.Key, s.EndKey) >= 0 {
+		__antithesis_instrumentation__.Notify(159536)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(159537)
 	}
+	__antithesis_instrumentation__.Notify(159530)
 
 	return true
 }
 
-// SpanOverhead is the overhead of Span in bytes.
 const SpanOverhead = int64(unsafe.Sizeof(Span{}))
 
-// MemUsage returns the size of the Span in bytes for memory accounting
-// purposes.
 func (s Span) MemUsage() int64 {
+	__antithesis_instrumentation__.Notify(159538)
 	return SpanOverhead + int64(cap(s.Key)) + int64(cap(s.EndKey))
 }
 
-// Spans is a slice of spans.
 type Spans []Span
 
-// Implement sort.Interface.
-func (a Spans) Len() int           { return len(a) }
-func (a Spans) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a Spans) Less(i, j int) bool { return a[i].Key.Compare(a[j].Key) < 0 }
+func (a Spans) Len() int      { __antithesis_instrumentation__.Notify(159539); return len(a) }
+func (a Spans) Swap(i, j int) { __antithesis_instrumentation__.Notify(159540); a[i], a[j] = a[j], a[i] }
+func (a Spans) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(159541)
+	return a[i].Key.Compare(a[j].Key) < 0
+}
 
-// ContainsKey returns whether any of the spans in the set of spans contains
-// the given key.
 func (a Spans) ContainsKey(key Key) bool {
+	__antithesis_instrumentation__.Notify(159542)
 	for _, span := range a {
+		__antithesis_instrumentation__.Notify(159544)
 		if span.ContainsKey(key) {
+			__antithesis_instrumentation__.Notify(159545)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(159546)
 		}
 	}
+	__antithesis_instrumentation__.Notify(159543)
 
 	return false
 }
 
-// SpansOverhead is the overhead of Spans in bytes.
 const SpansOverhead = int64(unsafe.Sizeof(Spans{}))
 
-// MemUsage returns the size of the Spans in bytes for memory accounting
-// purposes.
 func (a Spans) MemUsage() int64 {
-	// Slice the full capacity of a so we can account for the memory
-	// used by spans past the length of a.
+	__antithesis_instrumentation__.Notify(159547)
+
 	aCap := a[:cap(a)]
 	size := SpansOverhead
 	for i := range aCap {
+		__antithesis_instrumentation__.Notify(159549)
 		size += aCap[i].MemUsage()
 	}
+	__antithesis_instrumentation__.Notify(159548)
 	return size
 }
 
 func (a Spans) String() string {
+	__antithesis_instrumentation__.Notify(159550)
 	var buf bytes.Buffer
 	for i, span := range a {
+		__antithesis_instrumentation__.Notify(159552)
 		if i != 0 {
+			__antithesis_instrumentation__.Notify(159554)
 			buf.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(159555)
 		}
+		__antithesis_instrumentation__.Notify(159553)
 		buf.WriteString(span.String())
 	}
+	__antithesis_instrumentation__.Notify(159551)
 	return buf.String()
 }
 
-// RSpan is a key range with an inclusive start RKey and an exclusive end RKey.
 type RSpan struct {
 	Key, EndKey RKey
 }
 
-// Equal compares for equality.
 func (rs RSpan) Equal(o RSpan) bool {
-	return rs.Key.Equal(o.Key) && rs.EndKey.Equal(o.EndKey)
+	__antithesis_instrumentation__.Notify(159556)
+	return rs.Key.Equal(o.Key) && func() bool {
+		__antithesis_instrumentation__.Notify(159557)
+		return rs.EndKey.Equal(o.EndKey) == true
+	}() == true
 }
 
-// ContainsKey returns whether this span contains the specified key.
 func (rs RSpan) ContainsKey(key RKey) bool {
-	return bytes.Compare(key, rs.Key) >= 0 && bytes.Compare(key, rs.EndKey) < 0
+	__antithesis_instrumentation__.Notify(159558)
+	return bytes.Compare(key, rs.Key) >= 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159559)
+		return bytes.Compare(key, rs.EndKey) < 0 == true
+	}() == true
 }
 
-// ContainsKeyInverted returns whether this span contains the specified key. The
-// receiver span is considered inverted, meaning that instead of containing the
-// range ["key","endKey"), it contains the range ("key","endKey"].
 func (rs RSpan) ContainsKeyInverted(key RKey) bool {
-	return bytes.Compare(key, rs.Key) > 0 && bytes.Compare(key, rs.EndKey) <= 0
+	__antithesis_instrumentation__.Notify(159560)
+	return bytes.Compare(key, rs.Key) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159561)
+		return bytes.Compare(key, rs.EndKey) <= 0 == true
+	}() == true
 }
 
-// ContainsKeyRange returns whether this span contains the specified
-// key range from start (inclusive) to end (exclusive).
-// If end is empty or start is equal to end, returns ContainsKey(start).
 func (rs RSpan) ContainsKeyRange(start, end RKey) bool {
+	__antithesis_instrumentation__.Notify(159562)
 	if len(end) == 0 {
+		__antithesis_instrumentation__.Notify(159565)
 		return rs.ContainsKey(start)
+	} else {
+		__antithesis_instrumentation__.Notify(159566)
 	}
+	__antithesis_instrumentation__.Notify(159563)
 	if comp := bytes.Compare(end, start); comp < 0 {
+		__antithesis_instrumentation__.Notify(159567)
 		return false
-	} else if comp == 0 {
-		return rs.ContainsKey(start)
+	} else {
+		__antithesis_instrumentation__.Notify(159568)
+		if comp == 0 {
+			__antithesis_instrumentation__.Notify(159569)
+			return rs.ContainsKey(start)
+		} else {
+			__antithesis_instrumentation__.Notify(159570)
+		}
 	}
-	return bytes.Compare(start, rs.Key) >= 0 && bytes.Compare(rs.EndKey, end) >= 0
+	__antithesis_instrumentation__.Notify(159564)
+	return bytes.Compare(start, rs.Key) >= 0 && func() bool {
+		__antithesis_instrumentation__.Notify(159571)
+		return bytes.Compare(rs.EndKey, end) >= 0 == true
+	}() == true
 }
 
 func (rs RSpan) String() string {
+	__antithesis_instrumentation__.Notify(159572)
 	const maxChars = math.MaxInt32
 	return PrettyPrintRange(Key(rs.Key), Key(rs.EndKey), maxChars)
 }
 
-// Intersect returns the intersection of the current span and the
-// descriptor's range. Returns an error if the span and the
-// descriptor's range do not overlap.
 func (rs RSpan) Intersect(desc *RangeDescriptor) (RSpan, error) {
-	if !rs.Key.Less(desc.EndKey) || !desc.StartKey.Less(rs.EndKey) {
+	__antithesis_instrumentation__.Notify(159573)
+	if !rs.Key.Less(desc.EndKey) || func() bool {
+		__antithesis_instrumentation__.Notify(159577)
+		return !desc.StartKey.Less(rs.EndKey) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159578)
 		return rs, errors.Errorf("span and descriptor's range do not overlap: %s vs %s", rs, desc)
+	} else {
+		__antithesis_instrumentation__.Notify(159579)
 	}
+	__antithesis_instrumentation__.Notify(159574)
 
 	key := rs.Key
 	if key.Less(desc.StartKey) {
+		__antithesis_instrumentation__.Notify(159580)
 		key = desc.StartKey
+	} else {
+		__antithesis_instrumentation__.Notify(159581)
 	}
+	__antithesis_instrumentation__.Notify(159575)
 	endKey := rs.EndKey
 	if !desc.ContainsKeyRange(desc.StartKey, endKey) {
+		__antithesis_instrumentation__.Notify(159582)
 		endKey = desc.EndKey
+	} else {
+		__antithesis_instrumentation__.Notify(159583)
 	}
+	__antithesis_instrumentation__.Notify(159576)
 	return RSpan{key, endKey}, nil
 }
 
-// AsRawSpanWithNoLocals returns the RSpan as a Span. This is to be used only
-// in select situations in which an RSpan is known to not contain a wrapped
-// locally-addressed Span.
 func (rs RSpan) AsRawSpanWithNoLocals() Span {
+	__antithesis_instrumentation__.Notify(159584)
 	return Span{
 		Key:    Key(rs.Key),
 		EndKey: Key(rs.EndKey),
 	}
 }
 
-// KeyValueByKey implements sorting of a slice of KeyValues by key.
 type KeyValueByKey []KeyValue
 
-// Len implements sort.Interface.
 func (kv KeyValueByKey) Len() int {
+	__antithesis_instrumentation__.Notify(159585)
 	return len(kv)
 }
 
-// Less implements sort.Interface.
 func (kv KeyValueByKey) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(159586)
 	return bytes.Compare(kv[i].Key, kv[j].Key) < 0
 }
 
-// Swap implements sort.Interface.
 func (kv KeyValueByKey) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(159587)
 	kv[i], kv[j] = kv[j], kv[i]
 }
 
 var _ sort.Interface = KeyValueByKey{}
 
-// observedTimestampSlice maintains an immutable sorted list of observed
-// timestamps.
 type observedTimestampSlice []ObservedTimestamp
 
 func (s observedTimestampSlice) index(nodeID NodeID) int {
+	__antithesis_instrumentation__.Notify(159588)
 	return sort.Search(len(s),
 		func(i int) bool {
+			__antithesis_instrumentation__.Notify(159589)
 			return s[i].NodeID >= nodeID
 		},
 	)
 }
 
-// get the observed timestamp for the specified node, returning false if no
-// timestamp exists.
 func (s observedTimestampSlice) get(nodeID NodeID) (hlc.ClockTimestamp, bool) {
+	__antithesis_instrumentation__.Notify(159590)
 	i := s.index(nodeID)
-	if i < len(s) && s[i].NodeID == nodeID {
+	if i < len(s) && func() bool {
+		__antithesis_instrumentation__.Notify(159592)
+		return s[i].NodeID == nodeID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159593)
 		return s[i].Timestamp, true
+	} else {
+		__antithesis_instrumentation__.Notify(159594)
 	}
+	__antithesis_instrumentation__.Notify(159591)
 	return hlc.ClockTimestamp{}, false
 }
 
-// update the timestamp for the specified node, or add a new entry in the
-// correct (sorted) location. The receiver is not mutated.
 func (s observedTimestampSlice) update(
 	nodeID NodeID, timestamp hlc.ClockTimestamp,
 ) observedTimestampSlice {
+	__antithesis_instrumentation__.Notify(159595)
 	i := s.index(nodeID)
-	if i < len(s) && s[i].NodeID == nodeID {
+	if i < len(s) && func() bool {
+		__antithesis_instrumentation__.Notify(159597)
+		return s[i].NodeID == nodeID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159598)
 		if timestamp.Less(s[i].Timestamp) {
-			// The input slice is immutable, so copy and update.
+			__antithesis_instrumentation__.Notify(159600)
+
 			cpy := make(observedTimestampSlice, len(s))
 			copy(cpy, s)
 			cpy[i].Timestamp = timestamp
 			return cpy
+		} else {
+			__antithesis_instrumentation__.Notify(159601)
 		}
+		__antithesis_instrumentation__.Notify(159599)
 		return s
+	} else {
+		__antithesis_instrumentation__.Notify(159602)
 	}
-	// The input slice is immutable, so copy and update. Don't append to
-	// avoid an allocation. Doing so could invalidate a previous update
-	// to this receiver.
+	__antithesis_instrumentation__.Notify(159596)
+
 	cpy := make(observedTimestampSlice, len(s)+1)
 	copy(cpy[:i], s[:i])
 	cpy[i] = ObservedTimestamp{NodeID: nodeID, Timestamp: timestamp}
@@ -2468,56 +2944,70 @@ func (s observedTimestampSlice) update(
 	return cpy
 }
 
-// SequencedWriteBySeq implements sorting of a slice of SequencedWrites
-// by sequence number.
 type SequencedWriteBySeq []SequencedWrite
 
-// Len implements sort.Interface.
-func (s SequencedWriteBySeq) Len() int { return len(s) }
+func (s SequencedWriteBySeq) Len() int { __antithesis_instrumentation__.Notify(159603); return len(s) }
 
-// Less implements sort.Interface.
-func (s SequencedWriteBySeq) Less(i, j int) bool { return s[i].Sequence < s[j].Sequence }
+func (s SequencedWriteBySeq) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(159604)
+	return s[i].Sequence < s[j].Sequence
+}
 
-// Swap implements sort.Interface.
-func (s SequencedWriteBySeq) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s SequencedWriteBySeq) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(159605)
+	s[i], s[j] = s[j], s[i]
+}
 
 var _ sort.Interface = SequencedWriteBySeq{}
 
-// Find searches for the index of the SequencedWrite with the provided
-// sequence number. Returns -1 if no corresponding write is found.
 func (s SequencedWriteBySeq) Find(seq enginepb.TxnSeq) int {
+	__antithesis_instrumentation__.Notify(159606)
 	if util.RaceEnabled {
+		__antithesis_instrumentation__.Notify(159609)
 		if !sort.IsSorted(s) {
+			__antithesis_instrumentation__.Notify(159610)
 			panic("SequencedWriteBySeq must be sorted")
+		} else {
+			__antithesis_instrumentation__.Notify(159611)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(159612)
 	}
+	__antithesis_instrumentation__.Notify(159607)
 	if i := sort.Search(len(s), func(i int) bool {
+		__antithesis_instrumentation__.Notify(159613)
 		return s[i].Sequence >= seq
-	}); i < len(s) && s[i].Sequence == seq {
+	}); i < len(s) && func() bool {
+		__antithesis_instrumentation__.Notify(159614)
+		return s[i].Sequence == seq == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(159615)
 		return i
+	} else {
+		__antithesis_instrumentation__.Notify(159616)
 	}
+	__antithesis_instrumentation__.Notify(159608)
 	return -1
 }
 
-// Silence unused warning.
 var _ = (SequencedWriteBySeq{}).Find
 
 func init() {
-	// Inject the format dependency into the enginepb package.
+
 	enginepb.FormatBytesAsKey = func(k []byte) string { return Key(k).String() }
 	enginepb.FormatBytesAsValue = func(v []byte) string { return Value{RawBytes: v}.PrettyPrint() }
 }
 
-// SafeValue implements the redact.SafeValue interface.
-func (ReplicaChangeType) SafeValue() {}
+func (ReplicaChangeType) SafeValue() { __antithesis_instrumentation__.Notify(159617) }
 
 func (ri RangeInfo) String() string {
+	__antithesis_instrumentation__.Notify(159618)
 	return fmt.Sprintf("desc: %s, lease: %s, closed_timestamp_policy: %s",
 		ri.Desc, ri.Lease, ri.ClosedTimestampPolicy)
 }
 
-// Add adds another RowCount to the receiver.
 func (r *RowCount) Add(other RowCount) {
+	__antithesis_instrumentation__.Notify(159619)
 	r.DataSize += other.DataSize
 	r.Rows += other.Rows
 	r.IndexEntries += other.IndexEntries

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
@@ -18,53 +10,63 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// TraceRedactedMarker is used to replace logs that weren't redacted.
 const TraceRedactedMarker = redact.RedactableString("verbose trace message redacted")
 
-// redactRecordingForTenant redacts the sensitive parts of log messages in the
-// recording if the tenant to which this recording is intended is not the system
-// tenant (the system tenant gets an. See https://github.com/cockroachdb/cockroach/issues/70407.
-// The recording is modified in place.
-//
-// tenID is the tenant that will receive this recording.
 func redactRecordingForTenant(tenID roachpb.TenantID, rec tracing.Recording) error {
+	__antithesis_instrumentation__.Notify(194854)
 	if tenID == roachpb.SystemTenantID {
+		__antithesis_instrumentation__.Notify(194857)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(194858)
 	}
+	__antithesis_instrumentation__.Notify(194855)
 	for i := range rec {
+		__antithesis_instrumentation__.Notify(194859)
 		sp := &rec[i]
 		sp.Tags = nil
 		for j := range sp.Logs {
+			__antithesis_instrumentation__.Notify(194860)
 			record := &sp.Logs[j]
-			if record.Message != "" && !sp.RedactableLogs {
-				// If Message is set, the record should have been produced by a 22.1
-				// node that also sets RedactableLogs.
+			if record.Message != "" && func() bool {
+				__antithesis_instrumentation__.Notify(194862)
+				return !sp.RedactableLogs == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(194863)
+
 				return errors.AssertionFailedf(
 					"recording has non-redactable span with the Message field set: %s", sp)
+			} else {
+				__antithesis_instrumentation__.Notify(194864)
 			}
+			__antithesis_instrumentation__.Notify(194861)
 			record.Message = record.Message.Redact()
 
-			// For compatibility with old versions, also redact DeprecatedFields.
 			for k := range record.DeprecatedFields {
+				__antithesis_instrumentation__.Notify(194865)
 				field := &record.DeprecatedFields[k]
 				if field.Key != tracingpb.LogMessageField {
-					// We don't have any of these fields, but let's not take any
-					// chances (our dependencies might slip them in).
+					__antithesis_instrumentation__.Notify(194868)
+
 					field.Value = TraceRedactedMarker
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(194869)
 				}
+				__antithesis_instrumentation__.Notify(194866)
 				if !sp.RedactableLogs {
-					// If we're handling a span that originated from an (early patch
-					// release) 22.1 node, all the containing information will be
-					// stripped. Note that this is not the common path here, as most
-					// information in the trace will be from the local node, which
-					// always creates redactable logs.
+					__antithesis_instrumentation__.Notify(194870)
+
 					field.Value = TraceRedactedMarker
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(194871)
 				}
+				__antithesis_instrumentation__.Notify(194867)
 				field.Value = field.Value.Redact()
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(194856)
 	return nil
 }

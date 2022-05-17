@@ -1,56 +1,50 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/errors"
 
-// DataPlacement represents the desired data placement strategy for a given
-// database.
 type DataPlacement uint32
 
 const (
-	// DataPlacementUnspecified indicates an unspecified placement policy.
-	// This will get translated to the default value when persisted.
 	DataPlacementUnspecified DataPlacement = iota
-	// DataPlacementDefault indicates specified default data placement policy,
+
 	DataPlacementDefault
-	// DataPlacementRestricted indicates the database will not use non-voters for
-	// REGIONAL BY [TABLE | ROW] tables.
+
 	DataPlacementRestricted
 )
 
-// Format implements the NodeFormatter interface.
 func (node *DataPlacement) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(605431)
 	switch *node {
 	case DataPlacementRestricted:
+		__antithesis_instrumentation__.Notify(605432)
 		ctx.WriteString("PLACEMENT RESTRICTED")
 	case DataPlacementDefault:
+		__antithesis_instrumentation__.Notify(605433)
 		ctx.WriteString("PLACEMENT DEFAULT")
 	case DataPlacementUnspecified:
+		__antithesis_instrumentation__.Notify(605434)
 	default:
+		__antithesis_instrumentation__.Notify(605435)
 		panic(errors.AssertionFailedf("unknown data placement strategy: %d", *node))
 	}
 }
 
-// TelemetryName returns a representation of DataPlacement suitable for
-// telemetry.
 func (node *DataPlacement) TelemetryName() string {
+	__antithesis_instrumentation__.Notify(605436)
 	switch *node {
 	case DataPlacementRestricted:
+		__antithesis_instrumentation__.Notify(605437)
 		return "restricted"
 	case DataPlacementDefault:
+		__antithesis_instrumentation__.Notify(605438)
 		return "default"
 	case DataPlacementUnspecified:
+		__antithesis_instrumentation__.Notify(605439)
 		return "unspecified"
 	default:
+		__antithesis_instrumentation__.Notify(605440)
 		panic(errors.AssertionFailedf("unknown data placement: %d", *node))
 	}
 }

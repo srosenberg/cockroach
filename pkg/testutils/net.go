@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package testutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,31 +13,9 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// bufferSize is the size of the buffer used by PartitionableConn. Writes to a
-// partitioned connection will block after the buffer gets filled.
-const bufferSize = 16 << 10 // 16 KB
+const bufferSize = 16 << 10
 
-// PartitionableConn is an implementation of net.Conn that allows the
-// client->server and/or the server->client directions to be temporarily
-// partitioned.
-//
-// A PartitionableConn wraps a provided net.Conn (the serverConn member) and
-// forwards every read and write to it. It interposes an arbiter in front of it
-// that's used to block reads/writes while the PartitionableConn is in the
-// partitioned mode.
-//
-// While a direction is partitioned, data sent in that direction doesn't flow. A
-// write while partitioned will block after an internal buffer gets filled. Data
-// written to the conn after the partition has been established is not delivered
-// to the remote party until the partition is lifted. At that time, all the
-// buffered data is delivered. Since data is delivered async, data written
-// before the partition is established may or may not be blocked by the
-// partition; use application-level ACKs if that's important.
 type PartitionableConn struct {
-	// We embed a net.Conn so that we inherit the interface. Note that we override
-	// Read() and Write().
-	//
-	// This embedded Conn is half of a net.Pipe(). The other half is clientConn.
 	net.Conn
 
 	clientConn net.Conn
@@ -54,48 +24,36 @@ type PartitionableConn struct {
 	mu struct {
 		syncutil.Mutex
 
-		// err, if set, is returned by any subsequent call to Read or Write.
 		err error
 
-		// Are any of the two direction (client-to-server, server-to-client)
-		// currently partitioned?
 		c2sPartitioned bool
 		s2cPartitioned bool
 
 		c2sBuffer buf
 		s2cBuffer buf
 
-		// Conds to be signaled when the corresponding partition is lifted.
 		c2sWaiter *sync.Cond
 		s2cWaiter *sync.Cond
 	}
 }
 
 type buf struct {
-	// A mutex used to synchronize access to all the fields. It will be set to the
-	// parent PartitionableConn's mutex.
 	*syncutil.Mutex
 
 	data     []byte
 	capacity int
 	closed   bool
-	// The error that was passed to Close(err). See Close() for more info.
-	closedErr error
-	name      string // A human-readable name, useful for debugging.
 
-	// readerWait is signaled when the reader should wake up and check the
-	// buffer's state: when new data is put in the buffer, when the buffer is
-	// closed, and whenever the PartitionableConn wants to unblock all reads (i.e.
-	// on partition).
+	closedErr error
+	name      string
+
 	readerWait *sync.Cond
 
-	// capacityWait is signaled when a blocked writer should wake up because data
-	// is taken out of the buffer and there's now some capacity. It's also
-	// signaled when the buffer is closed.
 	capacityWait *sync.Cond
 }
 
 func makeBuf(name string, capacity int, mu *syncutil.Mutex) buf {
+	__antithesis_instrumentation__.Notify(645572)
 	return buf{
 		Mutex:        mu,
 		name:         name,
@@ -105,66 +63,83 @@ func makeBuf(name string, capacity int, mu *syncutil.Mutex) buf {
 	}
 }
 
-// Write adds data to the buffer. If there's zero free capacity, it will block
-// until there's some capacity available or the buffer is closed. If there's
-// non-zero insufficient capacity, it will perform a partial write.
-//
-// The number of bytes written is returned.
 func (b *buf) Write(data []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(645573)
 	b.Lock()
 	defer b.Unlock()
-	for b.capacity == len(b.data) && !b.closed {
-		// Block for capacity.
+	for b.capacity == len(b.data) && func() bool {
+		__antithesis_instrumentation__.Notify(645577)
+		return !b.closed == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(645578)
+
 		b.capacityWait.Wait()
 	}
+	__antithesis_instrumentation__.Notify(645574)
 	if b.closed {
+		__antithesis_instrumentation__.Notify(645579)
 		return 0, b.closedErr
+	} else {
+		__antithesis_instrumentation__.Notify(645580)
 	}
+	__antithesis_instrumentation__.Notify(645575)
 	available := b.capacity - len(b.data)
 	toCopy := available
 	if len(data) < available {
+		__antithesis_instrumentation__.Notify(645581)
 		toCopy = len(data)
+	} else {
+		__antithesis_instrumentation__.Notify(645582)
 	}
+	__antithesis_instrumentation__.Notify(645576)
 	b.data = append(b.data, data[:toCopy]...)
 	b.wakeReaderLocked()
 	return toCopy, nil
 }
 
-// errEAgain is returned by buf.readLocked() when the read was blocked at the
-// time when buf.readerWait was signaled (in particular, after the
-// PartitionableConn interrupted the read because of a partition). The caller is
-// expected to try the read again after the partition is gone.
 var errEAgain = errors.New("try read again")
 
-// readLocked returns data from buf, up to "size" bytes. If there's no data in
-// the buffer, it blocks until either some data becomes available or the buffer
-// is closed.
 func (b *buf) readLocked(size int) ([]byte, error) {
-	if len(b.data) == 0 && !b.closed {
+	__antithesis_instrumentation__.Notify(645583)
+	if len(b.data) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(645587)
+		return !b.closed == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(645588)
 		b.readerWait.Wait()
-		// We were unblocked either by data arriving, or by a partition, or by
-		// another uninteresting reason. Return to the caller, in case it's because
-		// of a partition.
+
 		return nil, errEAgain
+	} else {
+		__antithesis_instrumentation__.Notify(645589)
 	}
-	if b.closed && len(b.data) == 0 {
+	__antithesis_instrumentation__.Notify(645584)
+	if b.closed && func() bool {
+		__antithesis_instrumentation__.Notify(645590)
+		return len(b.data) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(645591)
 		return nil, b.closedErr
+	} else {
+		__antithesis_instrumentation__.Notify(645592)
 	}
+	__antithesis_instrumentation__.Notify(645585)
 	var ret []byte
 	if len(b.data) < size {
+		__antithesis_instrumentation__.Notify(645593)
 		ret = b.data
 		b.data = nil
 	} else {
+		__antithesis_instrumentation__.Notify(645594)
 		ret = b.data[:size]
 		b.data = b.data[size:]
 	}
+	__antithesis_instrumentation__.Notify(645586)
 	b.capacityWait.Signal()
 	return ret, nil
 }
 
-// Close closes the buffer. All reads and writes that are currently blocked will
-// be woken and they'll all return err.
 func (b *buf) Close(err error) {
+	__antithesis_instrumentation__.Notify(645595)
 	b.Lock()
 	defer b.Unlock()
 	b.closed = true
@@ -173,16 +148,13 @@ func (b *buf) Close(err error) {
 	b.capacityWait.Signal()
 }
 
-// wakeReaderLocked wakes the reader in case it's blocked.
-// See comments on readerWait.
-//
-// This needs to be called while holding the buffer's mutex.
 func (b *buf) wakeReaderLocked() {
+	__antithesis_instrumentation__.Notify(645596)
 	b.readerWait.Signal()
 }
 
-// NewPartitionableConn wraps serverConn in a PartitionableConn.
 func NewPartitionableConn(serverConn net.Conn) *PartitionableConn {
+	__antithesis_instrumentation__.Notify(645597)
 	clientEnd, clientConn := net.Pipe()
 	c := &PartitionableConn{
 		Conn:       clientEnd,
@@ -194,58 +166,77 @@ func NewPartitionableConn(serverConn net.Conn) *PartitionableConn {
 	c.mu.c2sBuffer = makeBuf("c2sBuf", bufferSize, &c.mu.Mutex)
 	c.mu.s2cBuffer = makeBuf("s2cBuf", bufferSize, &c.mu.Mutex)
 
-	// Start copying from client to server.
 	go func() {
+		__antithesis_instrumentation__.Notify(645600)
 		err := c.copy(
-			c.clientConn, // src
-			c.serverConn, // dst
+			c.clientConn,
+			c.serverConn,
 			&c.mu.c2sBuffer,
-			func() { // waitForNoPartitionLocked
+			func() {
+				__antithesis_instrumentation__.Notify(645603)
 				for c.mu.c2sPartitioned {
+					__antithesis_instrumentation__.Notify(645604)
 					c.mu.c2sWaiter.Wait()
 				}
 			})
+		__antithesis_instrumentation__.Notify(645601)
 		c.mu.Lock()
 		c.mu.err = err
 		c.mu.Unlock()
 		if err := c.clientConn.Close(); err != nil {
+			__antithesis_instrumentation__.Notify(645605)
 			log.Errorf(context.TODO(), "unexpected error closing internal pipe: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(645606)
 		}
+		__antithesis_instrumentation__.Notify(645602)
 		if err := c.serverConn.Close(); err != nil {
+			__antithesis_instrumentation__.Notify(645607)
 			log.Errorf(context.TODO(), "error closing server conn: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(645608)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(645598)
 
-	// Start copying from server to client.
 	go func() {
+		__antithesis_instrumentation__.Notify(645609)
 		err := c.copy(
-			c.serverConn, // src
-			c.clientConn, // dst
+			c.serverConn,
+			c.clientConn,
 			&c.mu.s2cBuffer,
-			func() { // waitForNoPartitionLocked
+			func() {
+				__antithesis_instrumentation__.Notify(645612)
 				for c.mu.s2cPartitioned {
+					__antithesis_instrumentation__.Notify(645613)
 					c.mu.s2cWaiter.Wait()
 				}
 			})
+		__antithesis_instrumentation__.Notify(645610)
 		c.mu.Lock()
 		c.mu.err = err
 		c.mu.Unlock()
 		if err := c.clientConn.Close(); err != nil {
+			__antithesis_instrumentation__.Notify(645614)
 			log.Fatalf(context.TODO(), "unexpected error closing internal pipe: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(645615)
 		}
+		__antithesis_instrumentation__.Notify(645611)
 		if err := c.serverConn.Close(); err != nil {
+			__antithesis_instrumentation__.Notify(645616)
 			log.Errorf(context.TODO(), "error closing server conn: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(645617)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(645599)
 
 	return c
 }
 
-// Finish removes any partitions that may exist so that blocked goroutines can
-// finish.
-// Finish() must be called if a connection may have been left in a partitioned
-// state.
 func (c *PartitionableConn) Finish() {
+	__antithesis_instrumentation__.Notify(645618)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.mu.c2sPartitioned = false
@@ -254,166 +245,214 @@ func (c *PartitionableConn) Finish() {
 	c.mu.s2cWaiter.Signal()
 }
 
-// PartitionC2S partitions the client-to-server direction.
-// If UnpartitionC2S() is not called, Finish() must be called.
 func (c *PartitionableConn) PartitionC2S() {
+	__antithesis_instrumentation__.Notify(645619)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.mu.c2sPartitioned {
+		__antithesis_instrumentation__.Notify(645621)
 		panic("already partitioned")
+	} else {
+		__antithesis_instrumentation__.Notify(645622)
 	}
+	__antithesis_instrumentation__.Notify(645620)
 	c.mu.c2sPartitioned = true
 	c.mu.c2sBuffer.wakeReaderLocked()
 }
 
-// UnpartitionC2S lifts an existing client-to-server partition.
 func (c *PartitionableConn) UnpartitionC2S() {
+	__antithesis_instrumentation__.Notify(645623)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.mu.c2sPartitioned {
+		__antithesis_instrumentation__.Notify(645625)
 		panic("not partitioned")
+	} else {
+		__antithesis_instrumentation__.Notify(645626)
 	}
+	__antithesis_instrumentation__.Notify(645624)
 	c.mu.c2sPartitioned = false
 	c.mu.c2sWaiter.Signal()
 }
 
-// PartitionS2C partitions the server-to-client direction.
-// If UnpartitionS2C() is not called, Finish() must be called.
 func (c *PartitionableConn) PartitionS2C() {
+	__antithesis_instrumentation__.Notify(645627)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.mu.s2cPartitioned {
+		__antithesis_instrumentation__.Notify(645629)
 		panic("already partitioned")
+	} else {
+		__antithesis_instrumentation__.Notify(645630)
 	}
+	__antithesis_instrumentation__.Notify(645628)
 	c.mu.s2cPartitioned = true
 	c.mu.s2cBuffer.wakeReaderLocked()
 }
 
-// UnpartitionS2C lifts an existing server-to-client partition.
 func (c *PartitionableConn) UnpartitionS2C() {
+	__antithesis_instrumentation__.Notify(645631)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.mu.s2cPartitioned {
+		__antithesis_instrumentation__.Notify(645633)
 		panic("not partitioned")
+	} else {
+		__antithesis_instrumentation__.Notify(645634)
 	}
+	__antithesis_instrumentation__.Notify(645632)
 	c.mu.s2cPartitioned = false
 	c.mu.s2cWaiter.Signal()
 }
 
-// Read is part of the net.Conn interface.
 func (c *PartitionableConn) Read(b []byte) (n int, err error) {
+	__antithesis_instrumentation__.Notify(645635)
 	c.mu.Lock()
 	err = c.mu.err
 	c.mu.Unlock()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(645637)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(645638)
 	}
+	__antithesis_instrumentation__.Notify(645636)
 
-	// Forward to the embedded connection.
 	return c.Conn.Read(b)
 }
 
-// Write is part of the net.Conn interface.
 func (c *PartitionableConn) Write(b []byte) (n int, err error) {
+	__antithesis_instrumentation__.Notify(645639)
 	c.mu.Lock()
 	err = c.mu.err
 	c.mu.Unlock()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(645641)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(645642)
 	}
+	__antithesis_instrumentation__.Notify(645640)
 
-	// Forward to the embedded connection.
 	return c.Conn.Write(b)
 }
 
-// readFrom copies data from src into the buffer until src.Read() returns an
-// error (e.g. io.EOF). That error is returned.
-//
-// readFrom is written in the spirit of interface io.ReaderFrom, except it
-// returns the io.EOF error, and also doesn't guarantee that every byte that has
-// been read from src is put into the buffer (as the buffer allows concurrent
-// access and buf.Write can return an error).
 func (b *buf) readFrom(src io.Reader) error {
+	__antithesis_instrumentation__.Notify(645643)
 	data := make([]byte, 1024)
 	for {
+		__antithesis_instrumentation__.Notify(645644)
 		nr, err := src.Read(data)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(645646)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(645647)
 		}
+		__antithesis_instrumentation__.Notify(645645)
 		toSend := data[:nr]
 		for {
+			__antithesis_instrumentation__.Notify(645648)
 			nw, ew := b.Write(toSend)
 			if ew != nil {
+				__antithesis_instrumentation__.Notify(645651)
 				return ew
+			} else {
+				__antithesis_instrumentation__.Notify(645652)
 			}
+			__antithesis_instrumentation__.Notify(645649)
 			if nw == len(toSend) {
+				__antithesis_instrumentation__.Notify(645653)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(645654)
 			}
+			__antithesis_instrumentation__.Notify(645650)
 			toSend = toSend[nw:]
 		}
 	}
 }
 
-// copyFromBuffer copies data from src to dst until src.Read() returns EOF.
-// The EOF is returned (i.e. the return value is always != nil). This is because
-// the PartitionableConn wants to hold on to any error, including EOF.
-//
-// waitForNoPartitionLocked is a function to be called before consuming data
-// from src, in order to make sure that we only consume data when we're not
-// partitioned. It needs to be called under src.Mutex, as the check needs to be
-// done atomically with consuming the buffer's data.
 func (c *PartitionableConn) copyFromBuffer(
 	src *buf, dst net.Conn, waitForNoPartitionLocked func(),
 ) error {
+	__antithesis_instrumentation__.Notify(645655)
 	for {
-		// Don't read from the buffer while we're partitioned.
+		__antithesis_instrumentation__.Notify(645656)
+
 		src.Mutex.Lock()
 		waitForNoPartitionLocked()
 		data, err := src.readLocked(1024 * 1024)
 		src.Mutex.Unlock()
 
 		if len(data) > 0 {
+			__antithesis_instrumentation__.Notify(645658)
 			nw, ew := dst.Write(data)
 			if ew != nil {
+				__antithesis_instrumentation__.Notify(645660)
 				err = ew
+			} else {
+				__antithesis_instrumentation__.Notify(645661)
 			}
+			__antithesis_instrumentation__.Notify(645659)
 			if len(data) != nw {
+				__antithesis_instrumentation__.Notify(645662)
 				err = io.ErrShortWrite
+			} else {
+				__antithesis_instrumentation__.Notify(645663)
 			}
-		} else if err == nil {
-			err = io.EOF
-		} else if errors.Is(err, errEAgain) {
-			continue
+		} else {
+			__antithesis_instrumentation__.Notify(645664)
+			if err == nil {
+				__antithesis_instrumentation__.Notify(645665)
+				err = io.EOF
+			} else {
+				__antithesis_instrumentation__.Notify(645666)
+				if errors.Is(err, errEAgain) {
+					__antithesis_instrumentation__.Notify(645667)
+					continue
+				} else {
+					__antithesis_instrumentation__.Notify(645668)
+				}
+			}
 		}
+		__antithesis_instrumentation__.Notify(645657)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(645669)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(645670)
 		}
 	}
 }
 
-// copy copies data from src to dst while we're not partitioned and stops doing
-// so while partitioned.
-//
-// It runs two goroutines internally: one copying from src to an internal buffer
-// and one copying from the buffer to dst. The 2nd one deals with partitions.
 func (c *PartitionableConn) copy(
 	src net.Conn, dst net.Conn, buf *buf, waitForNoPartitionLocked func(),
 ) error {
+	__antithesis_instrumentation__.Notify(645671)
 	tasks := make(chan error)
 	go func() {
+		__antithesis_instrumentation__.Notify(645675)
 		err := buf.readFrom(src)
 		buf.Close(err)
 		tasks <- err
 	}()
+	__antithesis_instrumentation__.Notify(645672)
 	go func() {
+		__antithesis_instrumentation__.Notify(645676)
 		err := c.copyFromBuffer(buf, dst, waitForNoPartitionLocked)
 		buf.Close(err)
 		tasks <- err
 	}()
+	__antithesis_instrumentation__.Notify(645673)
 	err := <-tasks
 	err2 := <-tasks
 	if err == nil {
+		__antithesis_instrumentation__.Notify(645677)
 		err = err2
+	} else {
+		__antithesis_instrumentation__.Notify(645678)
 	}
+	__antithesis_instrumentation__.Notify(645674)
 	return err
 }

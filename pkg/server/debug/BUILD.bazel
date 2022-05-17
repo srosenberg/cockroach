@@ -30,6 +30,7 @@ go_library(
         "//pkg/util/stop",
         "//pkg/util/timeutil",
         "//pkg/util/uint128",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_pebble//tool",
         "@com_github_cockroachdb_redact//:redact",
@@ -51,6 +52,7 @@ go_test(
         "//pkg/util/log",
         "//pkg/util/log/logpb",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

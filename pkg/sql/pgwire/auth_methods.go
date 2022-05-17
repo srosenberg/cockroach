@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgwire
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -33,61 +25,30 @@ import (
 	"github.com/xdg-go/scram"
 )
 
-// This file contains the methods that are accepted to perform
-// authentication of users during the pgwire connection handshake.
-//
-// Which method are accepted for which user is selected using
-// the HBA config loaded into the cluster setting
-// server.host_based_authentication.configuration.
-//
-// Other methods can be added using RegisterAuthMethod(). This is done
-// e.g. in the CCL modules to add support for GSS authentication using
-// Kerberos.
-
 func loadDefaultMethods() {
-	// The "password" method requires a clear text password.
-	//
-	// Care should be taken by administrators to only accept this auth
-	// method over secure connections, e.g. those encrypted using SSL.
+	__antithesis_instrumentation__.Notify(559012)
+
 	RegisterAuthMethod("password", authPassword, hba.ConnAny, NoOptionsAllowed)
 
-	// The "cert" method requires a valid client certificate for the
-	// user attempting to connect.
-	//
-	// This method is only usable over SSL connections.
 	RegisterAuthMethod("cert", authCert, hba.ConnHostSSL, nil)
 
-	// The "cert-password" method requires either a valid client
-	// certificate for the connecting user, or, if no cert is provided,
-	// a cleartext password.
 	RegisterAuthMethod("cert-password", authCertPassword, hba.ConnAny, nil)
 
-	// The "scram-sha-256" authentication method uses the 5-way SCRAM
-	// handshake to negotiate password authn with the client. It hides
-	// the password from the network connection and is non-replayable.
 	RegisterAuthMethod("scram-sha-256", authScram, hba.ConnAny,
 		chainOptions(
 			requireClusterVersion(clusterversion.SCRAMAuthentication),
 			NoOptionsAllowed))
 
-	// The "cert-scram-sha-256" method is alike to "cert-password":
-	// it allows either a client certificate, or a valid 5-way SCRAM handshake.
 	RegisterAuthMethod("cert-scram-sha-256", authCertScram, hba.ConnAny,
 		chainOptions(
 			requireClusterVersion(clusterversion.SCRAMAuthentication),
 			NoOptionsAllowed))
 
-	// The "reject" method rejects any connection attempt that matches
-	// the current rule.
 	RegisterAuthMethod("reject", authReject, hba.ConnAny, NoOptionsAllowed)
 
-	// The "trust" method accepts any connection attempt that matches
-	// the current rule.
 	RegisterAuthMethod("trust", authTrust, hba.ConnAny, NoOptionsAllowed)
 }
 
-// AuthMethod is a top-level factory for composing the various
-// functionality needed to authenticate an incoming connection.
 type AuthMethod = func(
 	ctx context.Context,
 	c AuthConn,
@@ -106,9 +67,6 @@ var _ AuthMethod = authTrust
 var _ AuthMethod = authReject
 var _ AuthMethod = authSessionRevivalToken([]byte{})
 
-// authPassword is the AuthMethod constructor for HBA method
-// "password": authenticate using a cleartext password received from
-// the client.
 func authPassword(
 	_ context.Context,
 	c AuthConn,
@@ -117,6 +75,7 @@ func authPassword(
 	_ *hba.Entry,
 	_ *identmap.Conf,
 ) (*AuthBehaviors, error) {
+	__antithesis_instrumentation__.Notify(559013)
 	b := &AuthBehaviors{}
 	b.SetRoleMapper(UseProvidedIdentity)
 	b.SetAuthenticator(func(
@@ -125,15 +84,15 @@ func authPassword(
 		clientConnection bool,
 		pwRetrieveFn PasswordRetrievalFn,
 	) error {
+		__antithesis_instrumentation__.Notify(559015)
 		return passwordAuthenticator(ctx, systemIdentity, clientConnection, pwRetrieveFn, c, execCfg)
 	})
+	__antithesis_instrumentation__.Notify(559014)
 	return b, nil
 }
 
 var errExpiredPassword = errors.New("password is expired")
 
-// passwordAuthenticator is the authenticator function for the
-// behavior constructed by authPassword().
 func passwordAuthenticator(
 	ctx context.Context,
 	systemIdentity security.SQLUsername,
@@ -142,91 +101,102 @@ func passwordAuthenticator(
 	c AuthConn,
 	execCfg *sql.ExecutorConfig,
 ) error {
-	// First step: send a cleartext authentication request to the client.
-	if err := c.SendAuthRequest(authCleartextPassword, nil /* data */); err != nil {
-		return err
-	}
+	__antithesis_instrumentation__.Notify(559016)
 
-	// While waiting for the client response, concurrently
-	// load the credentials from storage (or cache).
-	// Note: if this fails, we can't return the error right away,
-	// because we need to consume the client response first. This
-	// will be handled below.
+	if err := c.SendAuthRequest(authCleartextPassword, nil); err != nil {
+		__antithesis_instrumentation__.Notify(559023)
+		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559024)
+	}
+	__antithesis_instrumentation__.Notify(559017)
+
 	expired, hashedPassword, pwRetrievalErr := pwRetrieveFn(ctx)
 
-	// Wait for the password response from the client.
 	pwdData, err := c.GetPwdData()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559025)
 		c.LogAuthFailed(ctx, eventpb.AuthFailReason_PRE_HOOK_ERROR, err)
 		if pwRetrievalErr != nil {
+			__antithesis_instrumentation__.Notify(559027)
 			return errors.CombineErrors(err, pwRetrievalErr)
+		} else {
+			__antithesis_instrumentation__.Notify(559028)
 		}
+		__antithesis_instrumentation__.Notify(559026)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559029)
 	}
-	// Now process the password retrieval error, if any.
+	__antithesis_instrumentation__.Notify(559018)
+
 	if pwRetrievalErr != nil {
+		__antithesis_instrumentation__.Notify(559030)
 		c.LogAuthFailed(ctx, eventpb.AuthFailReason_USER_RETRIEVAL_ERROR, pwRetrievalErr)
 		return pwRetrievalErr
+	} else {
+		__antithesis_instrumentation__.Notify(559031)
 	}
+	__antithesis_instrumentation__.Notify(559019)
 
-	// Extract the password response from the client.
 	password, err := passwordString(pwdData)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559032)
 		c.LogAuthFailed(ctx, eventpb.AuthFailReason_PRE_HOOK_ERROR, err)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559033)
 	}
+	__antithesis_instrumentation__.Notify(559020)
 
-	// Expiration check.
-	//
-	// NB: This check is advisory and could be omitted; the retrieval
-	// function ensures that the returned hashedPassword is
-	// security.MissingPasswordHash when the credentials have expired,
-	// so the credential check below would fail anyway.
 	if expired {
+		__antithesis_instrumentation__.Notify(559034)
 		c.LogAuthFailed(ctx, eventpb.AuthFailReason_CREDENTIALS_EXPIRED, nil)
 		return errExpiredPassword
-	} else if hashedPassword.Method() == security.HashMissingPassword {
-		c.LogAuthInfof(ctx, "user has no password defined")
-		// NB: the failure reason will be automatically handled by the fallback
-		// in auth.go (and report CREDENTIALS_INVALID).
-	}
+	} else {
+		__antithesis_instrumentation__.Notify(559035)
+		if hashedPassword.Method() == security.HashMissingPassword {
+			__antithesis_instrumentation__.Notify(559036)
+			c.LogAuthInfof(ctx, "user has no password defined")
 
-	// Now check the cleartext password against the retrieved credentials.
+		} else {
+			__antithesis_instrumentation__.Notify(559037)
+		}
+	}
+	__antithesis_instrumentation__.Notify(559021)
+
 	err = security.UserAuthPasswordHook(
-		false /*insecure*/, password, hashedPassword,
+		false, password, hashedPassword,
 	)(ctx, systemIdentity, clientConnection)
 
 	if err == nil {
-		// Password authentication succeeded using cleartext.  If the
-		// stored hash was encoded using crdb-bcrypt, we might want to
-		// upgrade it to SCRAM instead.
-		//
-		// This auto-conversion is a CockroachDB-specific feature, which
-		// pushes clusters upgraded from a previous version into using
-		// SCRAM-SHA-256.
+		__antithesis_instrumentation__.Notify(559038)
+
 		sql.MaybeUpgradeStoredPasswordHash(ctx,
 			execCfg,
 			systemIdentity,
 			password, hashedPassword)
+	} else {
+		__antithesis_instrumentation__.Notify(559039)
 	}
+	__antithesis_instrumentation__.Notify(559022)
 
 	return err
 }
 
 func passwordString(pwdData []byte) (string, error) {
-	// Make a string out of the byte array.
+	__antithesis_instrumentation__.Notify(559040)
+
 	if bytes.IndexByte(pwdData, 0) != len(pwdData)-1 {
+		__antithesis_instrumentation__.Notify(559042)
 		return "", fmt.Errorf("expected 0-terminated byte array")
+	} else {
+		__antithesis_instrumentation__.Notify(559043)
 	}
+	__antithesis_instrumentation__.Notify(559041)
 	return string(pwdData[:len(pwdData)-1]), nil
 }
 
-// authScram is the AuthMethod constructor for HBA method
-// "scram-sha-256": authenticate using a 5-way SCRAM handshake with
-// the client.
-// It is also the fallback constructor for HBA method
-// "cert-scram-sha-256", when the SQL client does not provide a TLS
-// client certificate.
 func authScram(
 	ctx context.Context,
 	c AuthConn,
@@ -235,6 +205,7 @@ func authScram(
 	_ *hba.Entry,
 	_ *identmap.Conf,
 ) (*AuthBehaviors, error) {
+	__antithesis_instrumentation__.Notify(559044)
 	b := &AuthBehaviors{}
 	b.SetRoleMapper(UseProvidedIdentity)
 	b.SetAuthenticator(func(
@@ -243,13 +214,13 @@ func authScram(
 		clientConnection bool,
 		pwRetrieveFn PasswordRetrievalFn,
 	) error {
+		__antithesis_instrumentation__.Notify(559046)
 		return scramAuthenticator(ctx, systemIdentity, clientConnection, pwRetrieveFn, c, execCfg)
 	})
+	__antithesis_instrumentation__.Notify(559045)
 	return b, nil
 }
 
-// scramAuthenticator is the authenticator function for the
-// behavior constructed by authScram().
 func scramAuthenticator(
 	ctx context.Context,
 	systemIdentity security.SQLUsername,
@@ -258,152 +229,186 @@ func scramAuthenticator(
 	c AuthConn,
 	execCfg *sql.ExecutorConfig,
 ) error {
-	// First step: send a SCRAM authentication request to the client.
-	// We do this with an auth request with the request type SASL,
-	// and a payload containing the list of supported SCRAM methods.
-	//
-	// NB: SCRAM-SHA-256-PLUS is not supported, see
-	// https://github.com/cockroachdb/cockroach/issues/74300
-	// There is one nul byte to terminate the first string,
-	// then another nul byte to terminate the list.
+	__antithesis_instrumentation__.Notify(559047)
+
 	const supportedMethods = "SCRAM-SHA-256\x00\x00"
 	if err := c.SendAuthRequest(authReqSASL, []byte(supportedMethods)); err != nil {
+		__antithesis_instrumentation__.Notify(559052)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559053)
 	}
+	__antithesis_instrumentation__.Notify(559048)
 
-	// While waiting for the client response, concurrently
-	// load the credentials from storage (or cache).
-	// Note: if this fails, we can't return the error right away,
-	// because we need to consume the client response first. This
-	// will be handled below.
 	expired, hashedPassword, pwRetrievalErr := pwRetrieveFn(ctx)
 
 	scramServer, _ := scram.SHA256.NewServer(func(user string) (creds scram.StoredCredentials, err error) {
-		// NB: the username passed in the SCRAM exchange (the user
-		// parameter in this callback) is ignored by PostgreSQL servers;
-		// see auth-scram.c, read_client_first_message().
-		//
-		// Therefore, we can't assume that SQL client drivers populate anything
-		// useful there. So we ignore it too.
+		__antithesis_instrumentation__.Notify(559054)
 
-		// We still need to check whether the credentials loaded above
-		// are valid. We place this check in this callback because it
-		// only needs to happen after the SCRAM handshake actually needs
-		// to know the credentials.
 		if expired {
+			__antithesis_instrumentation__.Notify(559057)
 			c.LogAuthFailed(ctx, eventpb.AuthFailReason_CREDENTIALS_EXPIRED, nil)
 			return creds, errExpiredPassword
-		} else if hashedPassword.Method() != security.HashSCRAMSHA256 {
-			const credentialsNotSCRAM = "user password hash not in SCRAM format"
-			c.LogAuthInfof(ctx, credentialsNotSCRAM)
-			return creds, errors.New(credentialsNotSCRAM)
+		} else {
+			__antithesis_instrumentation__.Notify(559058)
+			if hashedPassword.Method() != security.HashSCRAMSHA256 {
+				__antithesis_instrumentation__.Notify(559059)
+				const credentialsNotSCRAM = "user password hash not in SCRAM format"
+				c.LogAuthInfof(ctx, credentialsNotSCRAM)
+				return creds, errors.New(credentialsNotSCRAM)
+			} else {
+				__antithesis_instrumentation__.Notify(559060)
+			}
 		}
+		__antithesis_instrumentation__.Notify(559055)
 
-		// The method check above ensures this cast is always valid.
 		ok, creds := security.GetSCRAMStoredCredentials(hashedPassword)
 		if !ok {
+			__antithesis_instrumentation__.Notify(559061)
 			return creds, errors.AssertionFailedf("programming error: hash method is SCRAM but no stored credentials")
+		} else {
+			__antithesis_instrumentation__.Notify(559062)
 		}
+		__antithesis_instrumentation__.Notify(559056)
 		return creds, nil
 	})
+	__antithesis_instrumentation__.Notify(559049)
 
 	handshake := scramServer.NewConversation()
 
 	initial := true
 	for {
+		__antithesis_instrumentation__.Notify(559063)
 		if handshake.Done() {
+			__antithesis_instrumentation__.Notify(559070)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(559071)
 		}
+		__antithesis_instrumentation__.Notify(559064)
 
-		// Receive a response from the client.
 		resp, err := c.GetPwdData()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559072)
 			c.LogAuthFailed(ctx, eventpb.AuthFailReason_PRE_HOOK_ERROR, err)
 			if pwRetrievalErr != nil {
+				__antithesis_instrumentation__.Notify(559074)
 				return errors.CombineErrors(err, pwRetrievalErr)
+			} else {
+				__antithesis_instrumentation__.Notify(559075)
 			}
+			__antithesis_instrumentation__.Notify(559073)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(559076)
 		}
-		// Now process the password retrieval error, if any.
+		__antithesis_instrumentation__.Notify(559065)
+
 		if pwRetrievalErr != nil {
+			__antithesis_instrumentation__.Notify(559077)
 			c.LogAuthFailed(ctx, eventpb.AuthFailReason_USER_RETRIEVAL_ERROR, pwRetrievalErr)
 			return pwRetrievalErr
+		} else {
+			__antithesis_instrumentation__.Notify(559078)
 		}
+		__antithesis_instrumentation__.Notify(559066)
 
 		var input []byte
 		if initial {
-			// Quoth postgres, backend/auth.go:
-			//
-			// The first SASLInitialResponse message is different from the others.
-			// It indicates which SASL mechanism the client selected, and contains
-			// an optional Initial Client Response payload. The subsequent
-			// SASLResponse messages contain just the SASL payload.
-			//
+			__antithesis_instrumentation__.Notify(559079)
+
 			rb := pgwirebase.ReadBuffer{Msg: resp}
 			reqMethod, err := rb.GetString()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(559084)
 				c.LogAuthFailed(ctx, eventpb.AuthFailReason_PRE_HOOK_ERROR, err)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(559085)
 			}
+			__antithesis_instrumentation__.Notify(559080)
 			if reqMethod != "SCRAM-SHA-256" {
+				__antithesis_instrumentation__.Notify(559086)
 				c.LogAuthInfof(ctx, "client requests unknown scram method %q", reqMethod)
 				err := unimplemented.NewWithIssue(74300, "channel binding not supported")
-				// We need to manually report the unimplemented error because it is not
-				// passed through to the client as-is (authn errors are hidden behind
-				// a generic "authn failed" error).
+
 				sqltelemetry.RecordError(ctx, err, &execCfg.Settings.SV)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(559087)
 			}
+			__antithesis_instrumentation__.Notify(559081)
 			inputLen, err := rb.GetUint32()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(559088)
 				c.LogAuthFailed(ctx, eventpb.AuthFailReason_PRE_HOOK_ERROR, err)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(559089)
 			}
-			// PostgreSQL ignores input from clients that pass -1 as length,
-			// but does not treat it as invalid.
+			__antithesis_instrumentation__.Notify(559082)
+
 			if inputLen < math.MaxUint32 {
+				__antithesis_instrumentation__.Notify(559090)
 				input, err = rb.GetBytes(int(inputLen))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(559091)
 					c.LogAuthFailed(ctx, eventpb.AuthFailReason_PRE_HOOK_ERROR, err)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(559092)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(559093)
 			}
+			__antithesis_instrumentation__.Notify(559083)
 			initial = false
 		} else {
+			__antithesis_instrumentation__.Notify(559094)
 			input = resp
 		}
+		__antithesis_instrumentation__.Notify(559067)
 
-		// Feed the client message to the state machine.
 		got, err := handshake.Step(string(input))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559095)
 			c.LogAuthInfof(ctx, "scram handshake error: %v", err)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(559096)
 		}
-		// Decide which response to send to the client.
+		__antithesis_instrumentation__.Notify(559068)
+
 		reqType := authReqSASLContinue
 		if handshake.Done() {
-			// This is the last message.
+			__antithesis_instrumentation__.Notify(559097)
+
 			reqType = authReqSASLFin
+		} else {
+			__antithesis_instrumentation__.Notify(559098)
 		}
-		// Send the response to the client.
+		__antithesis_instrumentation__.Notify(559069)
+
 		if err := c.SendAuthRequest(reqType, []byte(got)); err != nil {
+			__antithesis_instrumentation__.Notify(559099)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(559100)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559050)
 
-	// Did authentication succeed?
 	if !handshake.Valid() {
+		__antithesis_instrumentation__.Notify(559101)
 		return security.NewErrPasswordUserAuthFailed(systemIdentity)
+	} else {
+		__antithesis_instrumentation__.Notify(559102)
 	}
+	__antithesis_instrumentation__.Notify(559051)
 
-	return nil // auth success!
+	return nil
 }
 
-// authCert is the AuthMethod constructor for HBA method "cert":
-// authenticate using TLS client certificates.
-// It is also the fallback constructor for HBA methods "cert-password"
-// and "cert-scram-sha-256" when the SQL client provides a TLS client
-// certificate.
 func authCert(
 	_ context.Context,
 	_ AuthConn,
@@ -412,6 +417,7 @@ func authCert(
 	hbaEntry *hba.Entry,
 	identMap *identmap.Conf,
 ) (*AuthBehaviors, error) {
+	__antithesis_instrumentation__.Notify(559103)
 	b := &AuthBehaviors{}
 	b.SetRoleMapper(HbaMapper(hbaEntry, identMap))
 	b.SetAuthenticator(func(
@@ -420,31 +426,32 @@ func authCert(
 		clientConnection bool,
 		pwRetrieveFn PasswordRetrievalFn,
 	) error {
+		__antithesis_instrumentation__.Notify(559105)
 		if len(tlsState.PeerCertificates) == 0 {
+			__antithesis_instrumentation__.Notify(559108)
 			return errors.New("no TLS peer certificates, but required for auth")
+		} else {
+			__antithesis_instrumentation__.Notify(559109)
 		}
-		// Normalize the username contained in the certificate.
+		__antithesis_instrumentation__.Notify(559106)
+
 		tlsState.PeerCertificates[0].Subject.CommonName = tree.Name(
 			tlsState.PeerCertificates[0].Subject.CommonName,
 		).Normalize()
-		hook, err := security.UserAuthCertHook(false /*insecure*/, &tlsState)
+		hook, err := security.UserAuthCertHook(false, &tlsState)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559110)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(559111)
 		}
+		__antithesis_instrumentation__.Notify(559107)
 		return hook(ctx, systemIdentity, clientConnection)
 	})
+	__antithesis_instrumentation__.Notify(559104)
 	return b, nil
 }
 
-// authCertPassword is the AuthMethod constructor for HBA method
-// "cert-password": authenticate EITHER using a TLS client cert OR a
-// password exchange.
-//
-// TLS client cert authn is used iff the client presents a TLS client cert.
-// Otherwise, the password authentication protocol is chosen
-// depending on the format of the stored credentials: SCRAM is preferred
-// if possible, otherwise fallback to cleartext.
-// See the documentation for authAutoSelectPasswordProtocol() below.
 func authCertPassword(
 	ctx context.Context,
 	c AuthConn,
@@ -453,28 +460,29 @@ func authCertPassword(
 	entry *hba.Entry,
 	identMap *identmap.Conf,
 ) (*AuthBehaviors, error) {
+	__antithesis_instrumentation__.Notify(559112)
 	var fn AuthMethod
 	if len(tlsState.PeerCertificates) == 0 {
+		__antithesis_instrumentation__.Notify(559114)
 		c.LogAuthInfof(ctx, "client did not present TLS certificate")
 		if AutoSelectPasswordAuth.Get(&execCfg.Settings.SV) {
-			// We don't call c.LogAuthInfo here; this is done in
-			// authAutoSelectPasswordProtocol() below.
+			__antithesis_instrumentation__.Notify(559115)
+
 			fn = authAutoSelectPasswordProtocol
 		} else {
+			__antithesis_instrumentation__.Notify(559116)
 			c.LogAuthInfof(ctx, "proceeding with password authentication")
 			fn = authPassword
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(559117)
 		c.LogAuthInfof(ctx, "client presented certificate, proceeding with certificate validation")
 		fn = authCert
 	}
+	__antithesis_instrumentation__.Notify(559113)
 	return fn(ctx, c, tlsState, execCfg, entry, identMap)
 }
 
-// AutoSelectPasswordAuth determines whether CockroachDB automatically promotes the password
-// protocol when a SCRAM hash is detected in the stored credentials.
-//
-// It is exported for use in tests.
 var AutoSelectPasswordAuth = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"server.user_login.cert_password_method.auto_scram_promotion.enabled",
@@ -482,14 +490,6 @@ var AutoSelectPasswordAuth = settings.RegisterBoolSetting(
 	true,
 ).WithPublic()
 
-// authAutoSelectPasswordProtocol is the AuthMethod constructor used
-// for HBA method "cert-password" when the SQL client does not provide
-// a TLS client certificate.
-//
-// It uses the effective format of the stored hash password to decide
-// the hash protocol: if the stored hash uses the SCRAM encoding,
-// SCRAM-SHA-256 is used (which is a safer handshake); otherwise,
-// cleartext password authentication is used.
 func authAutoSelectPasswordProtocol(
 	_ context.Context,
 	c AuthConn,
@@ -498,6 +498,7 @@ func authAutoSelectPasswordProtocol(
 	_ *hba.Entry,
 	_ *identmap.Conf,
 ) (*AuthBehaviors, error) {
+	__antithesis_instrumentation__.Notify(559118)
 	b := &AuthBehaviors{}
 	b.SetRoleMapper(UseProvidedIdentity)
 	b.SetAuthenticator(func(
@@ -506,39 +507,36 @@ func authAutoSelectPasswordProtocol(
 		clientConnection bool,
 		pwRetrieveFn PasswordRetrievalFn,
 	) error {
-		// Request information about the password hash.
-		expired, hashedPassword, err := pwRetrieveFn(ctx)
-		// Note: we could be checking 'expired' and 'err' here, and exit
-		// early. However, we already have code paths to do just that in
-		// each authenticator, so we might as well use them. To do this,
-		// we capture the same information into the closure that the
-		// authenticator will call anyway.
-		newpwfn := func(ctx context.Context) (bool, security.PasswordHash, error) { return expired, hashedPassword, err }
+		__antithesis_instrumentation__.Notify(559120)
 
-		// Was the password using the bcrypt hash encoding?
-		if err == nil && hashedPassword.Method() == security.HashBCrypt {
-			// Yes: we have no choice but to request a cleartext password.
+		expired, hashedPassword, err := pwRetrieveFn(ctx)
+
+		newpwfn := func(ctx context.Context) (bool, security.PasswordHash, error) {
+			__antithesis_instrumentation__.Notify(559123)
+			return expired, hashedPassword, err
+		}
+		__antithesis_instrumentation__.Notify(559121)
+
+		if err == nil && func() bool {
+			__antithesis_instrumentation__.Notify(559124)
+			return hashedPassword.Method() == security.HashBCrypt == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(559125)
+
 			c.LogAuthInfof(ctx, "found stored crdb-bcrypt credentials; requesting cleartext password")
 			return passwordAuthenticator(ctx, systemIdentity, clientConnection, newpwfn, c, execCfg)
+		} else {
+			__antithesis_instrumentation__.Notify(559126)
 		}
+		__antithesis_instrumentation__.Notify(559122)
 
-		// Error, no credentials or stored SCRAM hash: use the
-		// SCRAM-SHA-256 logic.
-		//
-		// Note: we use SCRAM as a fallback as an additional security
-		// measure: if the password retrieval fails due to a transient
-		// error, we don't want the fallback to force the client to
-		// transmit a password in clear.
 		c.LogAuthInfof(ctx, "no crdb-bcrypt credentials found; proceeding with SCRAM-SHA-256")
 		return scramAuthenticator(ctx, systemIdentity, clientConnection, newpwfn, c, execCfg)
 	})
+	__antithesis_instrumentation__.Notify(559119)
 	return b, nil
 }
 
-// authCertPassword is the AuthMethod constructor for HBA method
-// "cert-scram-sha-256": authenticate EITHER using a TLS client cert
-// OR a valid SCRAM exchange.
-// TLS client cert authn is used iff the client presents a TLS client cert.
 func authCertScram(
 	ctx context.Context,
 	c AuthConn,
@@ -547,19 +545,21 @@ func authCertScram(
 	entry *hba.Entry,
 	identMap *identmap.Conf,
 ) (*AuthBehaviors, error) {
+	__antithesis_instrumentation__.Notify(559127)
 	var fn AuthMethod
 	if len(tlsState.PeerCertificates) == 0 {
+		__antithesis_instrumentation__.Notify(559129)
 		c.LogAuthInfof(ctx, "no client certificate, proceeding with SCRAM authentication")
 		fn = authScram
 	} else {
+		__antithesis_instrumentation__.Notify(559130)
 		c.LogAuthInfof(ctx, "client presented certificate, proceeding with certificate validation")
 		fn = authCert
 	}
+	__antithesis_instrumentation__.Notify(559128)
 	return fn(ctx, c, tlsState, execCfg, entry, identMap)
 }
 
-// authTrust is the AuthMethod constructor for HBA method "trust":
-// always allow the client, do not perform authentication.
 func authTrust(
 	_ context.Context,
 	_ AuthConn,
@@ -568,16 +568,17 @@ func authTrust(
 	_ *hba.Entry,
 	_ *identmap.Conf,
 ) (*AuthBehaviors, error) {
+	__antithesis_instrumentation__.Notify(559131)
 	b := &AuthBehaviors{}
 	b.SetRoleMapper(UseProvidedIdentity)
 	b.SetAuthenticator(func(_ context.Context, _ security.SQLUsername, _ bool, _ PasswordRetrievalFn) error {
+		__antithesis_instrumentation__.Notify(559133)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(559132)
 	return b, nil
 }
 
-// authReject is the AuthMethod constructor for HBA method "reject":
-// never allow the client.
 func authReject(
 	_ context.Context,
 	_ AuthConn,
@@ -586,17 +587,19 @@ func authReject(
 	_ *hba.Entry,
 	_ *identmap.Conf,
 ) (*AuthBehaviors, error) {
+	__antithesis_instrumentation__.Notify(559134)
 	b := &AuthBehaviors{}
 	b.SetRoleMapper(UseProvidedIdentity)
 	b.SetAuthenticator(func(_ context.Context, _ security.SQLUsername, _ bool, _ PasswordRetrievalFn) error {
+		__antithesis_instrumentation__.Notify(559136)
 		return errors.New("authentication rejected by configuration")
 	})
+	__antithesis_instrumentation__.Notify(559135)
 	return b, nil
 }
 
-// authSessionRevivalToken is the AuthMethod constructor for the CRDB-specific
-// session revival token.
 func authSessionRevivalToken(token []byte) AuthMethod {
+	__antithesis_instrumentation__.Notify(559137)
 	return func(
 		_ context.Context,
 		c AuthConn,
@@ -605,22 +608,40 @@ func authSessionRevivalToken(token []byte) AuthMethod {
 		_ *hba.Entry,
 		_ *identmap.Conf,
 	) (*AuthBehaviors, error) {
+		__antithesis_instrumentation__.Notify(559138)
 		b := &AuthBehaviors{}
 		b.SetRoleMapper(UseProvidedIdentity)
 		b.SetAuthenticator(func(ctx context.Context, user security.SQLUsername, _ bool, _ PasswordRetrievalFn) error {
+			__antithesis_instrumentation__.Notify(559140)
 			c.LogAuthInfof(ctx, "session revival token detected; attempting to use it")
-			if !sql.AllowSessionRevival.Get(&execCfg.Settings.SV) || execCfg.Codec.ForSystemTenant() {
+			if !sql.AllowSessionRevival.Get(&execCfg.Settings.SV) || func() bool {
+				__antithesis_instrumentation__.Notify(559144)
+				return execCfg.Codec.ForSystemTenant() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(559145)
 				return errors.New("session revival tokens are not supported on this cluster")
+			} else {
+				__antithesis_instrumentation__.Notify(559146)
 			}
+			__antithesis_instrumentation__.Notify(559141)
 			cm, err := execCfg.RPCContext.SecurityContext.GetCertificateManager()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(559147)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(559148)
 			}
+			__antithesis_instrumentation__.Notify(559142)
 			if err := sessionrevival.ValidateSessionRevivalToken(cm, user, token); err != nil {
+				__antithesis_instrumentation__.Notify(559149)
 				return errors.Wrap(err, "invalid session revival token")
+			} else {
+				__antithesis_instrumentation__.Notify(559150)
 			}
+			__antithesis_instrumentation__.Notify(559143)
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(559139)
 		return b, nil
 	}
 }

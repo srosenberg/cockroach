@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package execinfra
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,82 +13,98 @@ import (
 	pbtypes "github.com/gogo/protobuf/types"
 )
 
-// ShouldCollectStats is a helper function used to determine if a processor
-// should collect stats. The two requirements are that tracing must be enabled
-// (to be able to output the stats somewhere), and that the flowCtx.CollectStats
-// flag was set by the gateway node.
 func ShouldCollectStats(ctx context.Context, flowCtx *FlowCtx) bool {
-	return tracing.SpanFromContext(ctx) != nil && flowCtx.CollectStats
+	__antithesis_instrumentation__.Notify(471459)
+	return tracing.SpanFromContext(ctx) != nil && func() bool {
+		__antithesis_instrumentation__.Notify(471460)
+		return flowCtx.CollectStats == true
+	}() == true
 }
 
-// GetCumulativeContentionTime is a helper function to calculate the cumulative
-// contention time from the tracing span from the context. All contention events
-// found in the trace are included.
 func GetCumulativeContentionTime(ctx context.Context) time.Duration {
+	__antithesis_instrumentation__.Notify(471461)
 	var cumulativeContentionTime time.Duration
 	recording := GetTraceData(ctx)
 	if recording == nil {
+		__antithesis_instrumentation__.Notify(471464)
 		return cumulativeContentionTime
+	} else {
+		__antithesis_instrumentation__.Notify(471465)
 	}
+	__antithesis_instrumentation__.Notify(471462)
 	var ev roachpb.ContentionEvent
 	for i := range recording {
+		__antithesis_instrumentation__.Notify(471466)
 		recording[i].Structured(func(any *pbtypes.Any, _ time.Time) {
+			__antithesis_instrumentation__.Notify(471467)
 			if !pbtypes.Is(any, &ev) {
+				__antithesis_instrumentation__.Notify(471470)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(471471)
 			}
+			__antithesis_instrumentation__.Notify(471468)
 			if err := pbtypes.UnmarshalAny(any, &ev); err != nil {
+				__antithesis_instrumentation__.Notify(471472)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(471473)
 			}
+			__antithesis_instrumentation__.Notify(471469)
 			cumulativeContentionTime += ev.Duration
 		})
 	}
+	__antithesis_instrumentation__.Notify(471463)
 	return cumulativeContentionTime
 }
 
-// ScanStats contains statistics on the internal MVCC operators used to satisfy
-// a scan. See storage/engine.go for a more thorough discussion of the meaning
-// of each stat.
-// TODO(sql-observability): include other fields that are in roachpb.ScanStats,
-// here and in execinfrapb.KVStats.
 type ScanStats struct {
-	// NumInterfaceSteps is the number of times the MVCC step function was called
-	// to satisfy a scan.
 	NumInterfaceSteps uint64
-	// NumInternalSteps is the number of times that MVCC step was invoked
-	// internally, including to step over internal, uncompacted Pebble versions.
+
 	NumInternalSteps uint64
-	// NumInterfaceSeeks is the number of times the MVCC seek function was called
-	// to satisfy a scan.
+
 	NumInterfaceSeeks uint64
-	// NumInternalSeeks is the number of times that MVCC seek was invoked
-	// internally, including to step over internal, uncompacted Pebble versions.
+
 	NumInternalSeeks uint64
 }
 
-// PopulateKVMVCCStats adds data from the input ScanStats to the input KVStats.
 func PopulateKVMVCCStats(kvStats *execinfrapb.KVStats, ss *ScanStats) {
+	__antithesis_instrumentation__.Notify(471474)
 	kvStats.NumInterfaceSteps = optional.MakeUint(ss.NumInterfaceSteps)
 	kvStats.NumInternalSteps = optional.MakeUint(ss.NumInternalSteps)
 	kvStats.NumInterfaceSeeks = optional.MakeUint(ss.NumInterfaceSeeks)
 	kvStats.NumInternalSeeks = optional.MakeUint(ss.NumInternalSeeks)
 }
 
-// GetScanStats is a helper function to calculate scan stats from the tracing
-// span from the context.
 func GetScanStats(ctx context.Context) (ss ScanStats) {
+	__antithesis_instrumentation__.Notify(471475)
 	recording := GetTraceData(ctx)
 	if recording == nil {
+		__antithesis_instrumentation__.Notify(471478)
 		return ScanStats{}
+	} else {
+		__antithesis_instrumentation__.Notify(471479)
 	}
+	__antithesis_instrumentation__.Notify(471476)
 	var ev roachpb.ScanStats
 	for i := range recording {
+		__antithesis_instrumentation__.Notify(471480)
 		recording[i].Structured(func(any *pbtypes.Any, _ time.Time) {
+			__antithesis_instrumentation__.Notify(471481)
 			if !pbtypes.Is(any, &ev) {
+				__antithesis_instrumentation__.Notify(471484)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(471485)
 			}
+			__antithesis_instrumentation__.Notify(471482)
 			if err := pbtypes.UnmarshalAny(any, &ev); err != nil {
+				__antithesis_instrumentation__.Notify(471486)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(471487)
 			}
+			__antithesis_instrumentation__.Notify(471483)
 
 			ss.NumInterfaceSteps += ev.NumInterfaceSteps
 			ss.NumInternalSteps += ev.NumInternalSteps
@@ -104,5 +112,6 @@ func GetScanStats(ctx context.Context) (ss ScanStats) {
 			ss.NumInternalSeeks += ev.NumInternalSeeks
 		})
 	}
+	__antithesis_instrumentation__.Notify(471477)
 	return ss
 }

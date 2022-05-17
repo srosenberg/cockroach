@@ -22,5 +22,6 @@ go_library(
         "//pkg/sql/sessiondatapb",
         "//pkg/sql/sessioninit",
         "//pkg/sql/sqlutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

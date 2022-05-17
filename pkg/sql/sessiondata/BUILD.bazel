@@ -21,6 +21,7 @@ go_library(
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
         "//pkg/util/timeutil/pgdate",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -35,6 +36,7 @@ go_test(
     embed = [":sessiondata"],
     deps = [
         "//pkg/sql/sessiondatapb",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",
     ],

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvnemesis
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,50 +19,31 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-// Validate checks for violations of our kv api guarantees. The Steps must all
-// have been applied and the kvs the result of those applications.
-//
-// For transactions, it is verified that all of their writes are present if and
-// only if the transaction committed (which is inferred from the KV data on
-// ambiguous results). Non-transactional read/write operations are treated as
-// though they had been wrapped in a transaction and are verified accordingly.
-//
-// TODO(dan): Verify that there is no causality inversion between steps. That
-// is, if transactions corresponding to two steps are sequential (i.e.
-// txn1CommitStep.After < txn2BeginStep.Before) then the commit timestamps need
-// to reflect this ordering.
-//
-// TODO(dan): Consider changing all of this validation to be based on the commit
-// timestamp as given back by kv.Txn. This doesn't currently work for
-// nontransactional read-only ops (i.e. single read or batch of only reads) but
-// that could be fixed by altering the API to communicating the timestamp back.
-//
-// Splits and merges are not verified for anything other than that they did not
-// return an error.
 func Validate(steps []Step, kvs *Engine) []error {
+	__antithesis_instrumentation__.Notify(93473)
 	v, err := makeValidator(kvs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(93480)
 		return []error{err}
+	} else {
+		__antithesis_instrumentation__.Notify(93481)
 	}
+	__antithesis_instrumentation__.Notify(93474)
 
-	// The validator works via AOST-style queries over the kvs emitted by
-	// RangeFeed. This means it can process steps in any order *except* that it
-	// needs to see all txn usage in order. Generator currently only emits
-	// ClosureTxnOperations, so it currently doesn't matter which order we process
-	// these.
-	//
-	// Originally there were separate operations for Begin/Use/Commit/Rollback
-	// Txn. If we add something like this back in (and I would like to), sorting
-	// by `After` timestamp is sufficient to get us the necessary ordering. This
-	// is because txns cannot be used concurrently, so none of the (Begin,After)
-	// timespans for a given transaction can overlap.
-	sort.Slice(steps, func(i, j int) bool { return steps[i].After.Less(steps[j].After) })
+	sort.Slice(steps, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(93482)
+		return steps[i].After.Less(steps[j].After)
+	})
+	__antithesis_instrumentation__.Notify(93475)
 	for _, s := range steps {
-		v.processOp(nil /* txnID */, s.Op)
+		__antithesis_instrumentation__.Notify(93483)
+		v.processOp(nil, s.Op)
 	}
+	__antithesis_instrumentation__.Notify(93476)
 
 	var extraKVs []observedOp
 	for _, kv := range v.kvByValue {
+		__antithesis_instrumentation__.Notify(93484)
 		kv := &observedWrite{
 			Key:          kv.Key.Key,
 			Value:        roachpb.Value{RawBytes: kv.Value},
@@ -79,129 +52,165 @@ func Validate(steps []Step, kvs *Engine) []error {
 		}
 		extraKVs = append(extraKVs, kv)
 	}
+	__antithesis_instrumentation__.Notify(93477)
 	for key, tombstones := range v.tombstonesForKey {
+		__antithesis_instrumentation__.Notify(93485)
 		numExtraWrites := len(tombstones) - v.committedDeletesForKey[key]
 		for i := 0; i < numExtraWrites; i++ {
+			__antithesis_instrumentation__.Notify(93486)
 			kv := &observedWrite{
 				Key:   []byte(key),
 				Value: roachpb.Value{},
-				// NB: As it's unclear which are "extra", timestamp is left missing.
+
 				Materialized: true,
 			}
 			extraKVs = append(extraKVs, kv)
 		}
 	}
+	__antithesis_instrumentation__.Notify(93478)
 	if len(extraKVs) > 0 {
+		__antithesis_instrumentation__.Notify(93487)
 		err := errors.Errorf(`extra writes: %s`, printObserved(extraKVs...))
 		v.failures = append(v.failures, err)
+	} else {
+		__antithesis_instrumentation__.Notify(93488)
 	}
+	__antithesis_instrumentation__.Notify(93479)
 
 	return v.failures
 }
 
-// timeSpan represents a range of time with an inclusive start and an exclusive
-// end.
 type timeSpan struct {
 	Start, End hlc.Timestamp
 }
 
 func (ts timeSpan) Intersect(o timeSpan) timeSpan {
+	__antithesis_instrumentation__.Notify(93489)
 	i := ts
 	if i.Start.Less(o.Start) {
+		__antithesis_instrumentation__.Notify(93492)
 		i.Start = o.Start
+	} else {
+		__antithesis_instrumentation__.Notify(93493)
 	}
+	__antithesis_instrumentation__.Notify(93490)
 	if o.End.Less(i.End) {
+		__antithesis_instrumentation__.Notify(93494)
 		i.End = o.End
+	} else {
+		__antithesis_instrumentation__.Notify(93495)
 	}
+	__antithesis_instrumentation__.Notify(93491)
 	return i
 }
 
 func (ts timeSpan) IsEmpty() bool {
+	__antithesis_instrumentation__.Notify(93496)
 	return !ts.Start.Less(ts.End)
 }
 
 func (ts timeSpan) String() string {
+	__antithesis_instrumentation__.Notify(93497)
 	var start string
 	if ts.Start == hlc.MinTimestamp {
+		__antithesis_instrumentation__.Notify(93500)
 		start = `<min>`
 	} else {
+		__antithesis_instrumentation__.Notify(93501)
 		start = ts.Start.String()
 	}
+	__antithesis_instrumentation__.Notify(93498)
 	var end string
 	if ts.End == hlc.MaxTimestamp {
+		__antithesis_instrumentation__.Notify(93502)
 		end = `<max>`
 	} else {
+		__antithesis_instrumentation__.Notify(93503)
 		end = ts.End.String()
 	}
+	__antithesis_instrumentation__.Notify(93499)
 	return fmt.Sprintf(`[%s, %s)`, start, end)
 }
 
-// disjointTimeSpans represents a collection of timeSpan objects for when
-// operations are valid. It exists as a convenience to be able to generate
-// intersections when there are overlaps with other timeSpan collections.
 type disjointTimeSpans []timeSpan
 
 func (ts disjointTimeSpans) validIntersections(
 	keyOpValidTimeSpans disjointTimeSpans,
 ) disjointTimeSpans {
+	__antithesis_instrumentation__.Notify(93504)
 	var newValidSpans disjointTimeSpans
 	for _, existingValidSpan := range ts {
+		__antithesis_instrumentation__.Notify(93506)
 		for _, opValidSpan := range keyOpValidTimeSpans {
+			__antithesis_instrumentation__.Notify(93507)
 			intersection := existingValidSpan.Intersect(opValidSpan)
 			if !intersection.IsEmpty() {
+				__antithesis_instrumentation__.Notify(93508)
 				newValidSpans = append(newValidSpans, intersection)
+			} else {
+				__antithesis_instrumentation__.Notify(93509)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(93505)
 	return newValidSpans
 }
 
-// multiKeyTimeSpan represents a collection of timeSpans: one for each key
-// accessed by a ranged operation and one for the keys missed by the ranged
-// operation.
 type multiKeyTimeSpan struct {
 	Keys []disjointTimeSpans
 	Gaps disjointTimeSpans
 }
 
 func (mts multiKeyTimeSpan) Combined() disjointTimeSpans {
+	__antithesis_instrumentation__.Notify(93510)
 	validPossibilities := mts.Gaps
 	for _, validKey := range mts.Keys {
+		__antithesis_instrumentation__.Notify(93512)
 		validPossibilities = validPossibilities.validIntersections(validKey)
 	}
+	__antithesis_instrumentation__.Notify(93511)
 	return validPossibilities
 }
 
 func (mts multiKeyTimeSpan) String() string {
+	__antithesis_instrumentation__.Notify(93513)
 	var buf strings.Builder
 	buf.WriteByte('{')
 	for i, timeSpans := range mts.Keys {
+		__antithesis_instrumentation__.Notify(93516)
 		fmt.Fprintf(&buf, "%d:", i)
 		for tsIdx, ts := range timeSpans {
+			__antithesis_instrumentation__.Notify(93518)
 			if tsIdx != 0 {
+				__antithesis_instrumentation__.Notify(93520)
 				fmt.Fprintf(&buf, ",")
+			} else {
+				__antithesis_instrumentation__.Notify(93521)
 			}
+			__antithesis_instrumentation__.Notify(93519)
 			fmt.Fprintf(&buf, "%s", ts)
 		}
+		__antithesis_instrumentation__.Notify(93517)
 		fmt.Fprintf(&buf, ", ")
 	}
+	__antithesis_instrumentation__.Notify(93514)
 	fmt.Fprintf(&buf, "gap:")
 	for idx, gapSpan := range mts.Gaps {
+		__antithesis_instrumentation__.Notify(93522)
 		if idx != 0 {
+			__antithesis_instrumentation__.Notify(93524)
 			fmt.Fprintf(&buf, ",")
+		} else {
+			__antithesis_instrumentation__.Notify(93525)
 		}
+		__antithesis_instrumentation__.Notify(93523)
 		fmt.Fprintf(&buf, "%s", gapSpan)
 	}
+	__antithesis_instrumentation__.Notify(93515)
 	fmt.Fprintf(&buf, "}")
 	return buf.String()
 }
 
-// observedOp is the unification of an externally observed KV read or write.
-// Validator collects these grouped by txn, then computes the time window that
-// it would have been valid to observe this read or write, then asserts that all
-// operations in a transaction have time at which they all overlap. (For any
-// transaction containing a write, this will be a single time, but for read-only
-// transactions it will usually be a range of times.)
 type observedOp interface {
 	observedMarker()
 }
@@ -209,15 +218,16 @@ type observedOp interface {
 type observedWrite struct {
 	Key   roachpb.Key
 	Value roachpb.Value
-	// Timestamp will only be filled if Materialized is true.
+
 	Timestamp     hlc.Timestamp
 	Materialized  bool
 	IsDeleteRange bool
 }
 
-func (*observedWrite) observedMarker() {}
+func (*observedWrite) observedMarker() { __antithesis_instrumentation__.Notify(93526) }
 
 func (o *observedWrite) isDelete() bool {
+	__antithesis_instrumentation__.Notify(93527)
 	return !o.Value.IsPresent()
 }
 
@@ -227,7 +237,7 @@ type observedRead struct {
 	ValidTimes disjointTimeSpans
 }
 
-func (*observedRead) observedMarker() {}
+func (*observedRead) observedMarker() { __antithesis_instrumentation__.Notify(93528) }
 
 type observedScan struct {
 	Span          roachpb.Span
@@ -237,27 +247,14 @@ type observedScan struct {
 	Valid         multiKeyTimeSpan
 }
 
-func (*observedScan) observedMarker() {}
+func (*observedScan) observedMarker() { __antithesis_instrumentation__.Notify(93529) }
 
 type validator struct {
 	kvs              *Engine
 	observedOpsByTxn map[string][]observedOp
 
-	// NB: The Generator carefully ensures that each value written is unique
-	// globally over a run, so there's a 1:1 relationship between a value that was
-	// written and the operation that wrote it.
 	kvByValue map[string]storage.MVCCKeyValue
 
-	// Unfortunately, with tombstones there is no 1:1 relationship between the nil
-	// value and the delete operation that wrote it, so we must store all tombstones
-	// for a given key. When validating committed delete operations, we validate
-	// that there is a tombstone with a timestamp that would be valid, similar
-	// to how reads are evaluated.  At the end of validation, we also validate
-	// that we have seen a correct number of materialized delete operations
-	// given the number of tombstones for each key; thus, we can see if we have
-	// any "missing" or "extra" writes at the end.
-	// Each key has a map of all the tombstone timestamps, stored with a boolean
-	// flag indicating if it has been matched to a transactional delete or not.
 	tombstonesForKey       map[string]map[hlc.Timestamp]bool
 	committedDeletesForKey map[string]int
 
@@ -265,39 +262,62 @@ type validator struct {
 }
 
 func makeValidator(kvs *Engine) (*validator, error) {
+	__antithesis_instrumentation__.Notify(93530)
 	kvByValue := make(map[string]storage.MVCCKeyValue)
 	tombstonesForKey := make(map[string]map[hlc.Timestamp]bool)
 	var err error
 	kvs.Iterate(func(key storage.MVCCKey, value []byte, iterErr error) {
+		__antithesis_instrumentation__.Notify(93533)
 		if iterErr != nil {
+			__antithesis_instrumentation__.Notify(93535)
 			err = errors.CombineErrors(err, iterErr)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(93536)
 		}
+		__antithesis_instrumentation__.Notify(93534)
 		v := roachpb.Value{RawBytes: value}
 		if v.GetTag() != roachpb.ValueType_UNKNOWN {
+			__antithesis_instrumentation__.Notify(93537)
 			valueStr := mustGetStringValue(value)
 			if existing, ok := kvByValue[valueStr]; ok {
-				// TODO(dan): This may be too strict. Some operations (db.Run on a
-				// Batch) seem to be double-committing. See #46374.
+				__antithesis_instrumentation__.Notify(93539)
+
 				panic(errors.AssertionFailedf(
 					`invariant violation: value %s was written by two operations %s and %s`,
 					valueStr, existing.Key, key))
+			} else {
+				__antithesis_instrumentation__.Notify(93540)
 			}
-			// NB: The Generator carefully ensures that each value written is unique
-			// globally over a run, so there's a 1:1 relationship between a value that
-			// was written and the operation that wrote it.
+			__antithesis_instrumentation__.Notify(93538)
+
 			kvByValue[valueStr] = storage.MVCCKeyValue{Key: key, Value: value}
-		} else if len(value) == 0 {
-			rawKey := string(key.Key)
-			if _, ok := tombstonesForKey[rawKey]; !ok {
-				tombstonesForKey[rawKey] = make(map[hlc.Timestamp]bool)
+		} else {
+			__antithesis_instrumentation__.Notify(93541)
+			if len(value) == 0 {
+				__antithesis_instrumentation__.Notify(93542)
+				rawKey := string(key.Key)
+				if _, ok := tombstonesForKey[rawKey]; !ok {
+					__antithesis_instrumentation__.Notify(93544)
+					tombstonesForKey[rawKey] = make(map[hlc.Timestamp]bool)
+				} else {
+					__antithesis_instrumentation__.Notify(93545)
+				}
+				__antithesis_instrumentation__.Notify(93543)
+				tombstonesForKey[rawKey][key.Timestamp] = false
+			} else {
+				__antithesis_instrumentation__.Notify(93546)
 			}
-			tombstonesForKey[rawKey][key.Timestamp] = false
 		}
 	})
+	__antithesis_instrumentation__.Notify(93531)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(93547)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(93548)
 	}
+	__antithesis_instrumentation__.Notify(93532)
 
 	return &validator{
 		kvs:                    kvs,
@@ -308,29 +328,42 @@ func makeValidator(kvs *Engine) (*validator, error) {
 	}, nil
 }
 
-// getDeleteForKey looks up a stored tombstone for a given key (if it
-// exists) from tombstonesForKey, returning the tombstone (i.e. MVCCKey) along
-// with a `true` boolean value if found, or the empty key and `false` if not.
 func (v *validator) getDeleteForKey(key string, txn *roachpb.Transaction) (storage.MVCCKey, bool) {
+	__antithesis_instrumentation__.Notify(93549)
 	if txn == nil {
+		__antithesis_instrumentation__.Notify(93552)
 		panic(errors.AssertionFailedf(`transaction required to look up delete for key: %v`, key))
+	} else {
+		__antithesis_instrumentation__.Notify(93553)
 	}
+	__antithesis_instrumentation__.Notify(93550)
 
-	if used, ok := v.tombstonesForKey[key][txn.TxnMeta.WriteTimestamp]; !used && ok {
+	if used, ok := v.tombstonesForKey[key][txn.TxnMeta.WriteTimestamp]; !used && func() bool {
+		__antithesis_instrumentation__.Notify(93554)
+		return ok == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(93555)
 		v.tombstonesForKey[key][txn.TxnMeta.WriteTimestamp] = true
 		return storage.MVCCKey{Key: []byte(key), Timestamp: txn.TxnMeta.WriteTimestamp}, true
+	} else {
+		__antithesis_instrumentation__.Notify(93556)
 	}
+	__antithesis_instrumentation__.Notify(93551)
 
 	return storage.MVCCKey{}, false
 }
 
 func (v *validator) processOp(txnID *string, op Operation) {
+	__antithesis_instrumentation__.Notify(93557)
 	switch t := op.GetValue().(type) {
 	case *GetOperation:
+		__antithesis_instrumentation__.Notify(93558)
 		v.failIfError(op, t.Result)
 		if txnID == nil {
+			__antithesis_instrumentation__.Notify(93573)
 			v.checkAtomic(`get`, t.Result, nil, op)
 		} else {
+			__antithesis_instrumentation__.Notify(93574)
 			read := &observedRead{
 				Key:   t.Key,
 				Value: roachpb.Value{RawBytes: t.Result.Value},
@@ -338,10 +371,13 @@ func (v *validator) processOp(txnID *string, op Operation) {
 			v.observedOpsByTxn[*txnID] = append(v.observedOpsByTxn[*txnID], read)
 		}
 	case *PutOperation:
+		__antithesis_instrumentation__.Notify(93559)
 		if txnID == nil {
+			__antithesis_instrumentation__.Notify(93575)
 			v.checkAtomic(`put`, t.Result, nil, op)
 		} else {
-			// Accumulate all the writes for this transaction.
+			__antithesis_instrumentation__.Notify(93576)
+
 			kv, ok := v.kvByValue[string(t.Value)]
 			delete(v.kvByValue, string(t.Value))
 			write := &observedWrite{
@@ -350,26 +386,22 @@ func (v *validator) processOp(txnID *string, op Operation) {
 				Materialized: ok,
 			}
 			if write.Materialized {
+				__antithesis_instrumentation__.Notify(93578)
 				write.Timestamp = kv.Key.Timestamp
+			} else {
+				__antithesis_instrumentation__.Notify(93579)
 			}
+			__antithesis_instrumentation__.Notify(93577)
 			v.observedOpsByTxn[*txnID] = append(v.observedOpsByTxn[*txnID], write)
 		}
 	case *DeleteOperation:
+		__antithesis_instrumentation__.Notify(93560)
 		if txnID == nil {
+			__antithesis_instrumentation__.Notify(93580)
 			v.checkAtomic(`delete`, t.Result, nil, op)
 		} else {
-			// NB: While Put operations can be identified as having materialized
-			// (or not) in the storage engine because the Generator guarantees each
-			// value to be unique (and thus, if a MVCC key/value pair exists in the
-			// storage engine with a value matching that of a write operation, it
-			// materialized), the same cannot be done for Delete operations, which
-			// all write the same tombstone value. Thus, Delete operations can only
-			// be identified as materialized by determining if the final write
-			// operation for a key in a given transaction was a Delete, and
-			// validating that a potential tombstone for that key was stored.
-			// This validation must be done at the end of the transaction;
-			// specifically, in the function `checkCommittedTxn(..)` where it looks
-			// up a corresponding tombstone with `getDeleteForKey(..)`.
+			__antithesis_instrumentation__.Notify(93581)
+
 			write := &observedWrite{
 				Key:   t.Key,
 				Value: roachpb.Value{},
@@ -377,14 +409,13 @@ func (v *validator) processOp(txnID *string, op Operation) {
 			v.observedOpsByTxn[*txnID] = append(v.observedOpsByTxn[*txnID], write)
 		}
 	case *DeleteRangeOperation:
+		__antithesis_instrumentation__.Notify(93561)
 		if txnID == nil {
+			__antithesis_instrumentation__.Notify(93582)
 			v.checkAtomic(`deleteRange`, t.Result, nil, op)
 		} else {
-			// For the purposes of validation, DelRange operations decompose into
-			// a specialized scan for keys with non-nil values, followed by
-			// writes for each key, with a span to validate that the keys we are
-			// deleting are within the proper bounds.  See above comment for how
-			// the individual deletion tombstones for each key are validated.
+			__antithesis_instrumentation__.Notify(93583)
+
 			scan := &observedScan{
 				Span: roachpb.Span{
 					Key:    t.Key,
@@ -395,6 +426,7 @@ func (v *validator) processOp(txnID *string, op Operation) {
 			}
 			deleteOps := make([]observedOp, len(t.Result.Keys))
 			for i, key := range t.Result.Keys {
+				__antithesis_instrumentation__.Notify(93585)
 				scan.KVs[i] = roachpb.KeyValue{
 					Key:   key,
 					Value: roachpb.Value{},
@@ -406,18 +438,26 @@ func (v *validator) processOp(txnID *string, op Operation) {
 				}
 				deleteOps[i] = write
 			}
+			__antithesis_instrumentation__.Notify(93584)
 			v.observedOpsByTxn[*txnID] = append(v.observedOpsByTxn[*txnID], scan)
 			v.observedOpsByTxn[*txnID] = append(v.observedOpsByTxn[*txnID], deleteOps...)
 		}
 	case *ScanOperation:
+		__antithesis_instrumentation__.Notify(93562)
 		v.failIfError(op, t.Result)
 		if txnID == nil {
+			__antithesis_instrumentation__.Notify(93586)
 			atomicScanType := `scan`
 			if t.Reverse {
+				__antithesis_instrumentation__.Notify(93588)
 				atomicScanType = `reverse scan`
+			} else {
+				__antithesis_instrumentation__.Notify(93589)
 			}
+			__antithesis_instrumentation__.Notify(93587)
 			v.checkAtomic(atomicScanType, t.Result, nil, op)
 		} else {
+			__antithesis_instrumentation__.Notify(93590)
 			scan := &observedScan{
 				Span: roachpb.Span{
 					Key:    t.Key,
@@ -427,110 +467,167 @@ func (v *validator) processOp(txnID *string, op Operation) {
 				Reverse: t.Reverse,
 			}
 			for i, kv := range t.Result.Values {
+				__antithesis_instrumentation__.Notify(93592)
 				scan.KVs[i] = roachpb.KeyValue{
 					Key:   kv.Key,
 					Value: roachpb.Value{RawBytes: kv.Value},
 				}
 			}
+			__antithesis_instrumentation__.Notify(93591)
 			v.observedOpsByTxn[*txnID] = append(v.observedOpsByTxn[*txnID], scan)
 		}
 	case *SplitOperation:
+		__antithesis_instrumentation__.Notify(93563)
 		v.failIfError(op, t.Result)
 	case *MergeOperation:
+		__antithesis_instrumentation__.Notify(93564)
 		if resultIsErrorStr(t.Result, `cannot merge final range`) {
-			// Because of some non-determinism, it is not worth it (or maybe not
-			// possible) to prevent these usage errors. Additionally, I (dan) think
-			// this hints at some unnecessary friction in the AdminMerge api. There is
-			// a similar inconsistency when a race condition means that AdminMerge is
-			// called on something that is not a split point. I propose that the
-			// AdminMerge contract should be that it can be called on any key, split
-			// point or not, and after a successful operation, the guarantee is that
-			// there is no split at that key. #44378
-			//
-			// In the meantime, no-op.
-		} else if resultIsErrorStr(t.Result, `merge failed: unexpected value`) {
-			// TODO(dan): If this error is going to remain a part of the kv API, we
-			// should make it sniffable with errors.As. Currently this seems to be
-			// broken by wrapping it with `roachpb.NewErrorf("merge failed: %s",
-			// err)`.
-			//
-			// However, I think the right thing to do is sniff this inside the
-			// AdminMerge code and retry so the client never sees it. In the meantime,
-			// no-op. #44377
-		} else if resultIsErrorStr(t.Result, `merge failed: cannot merge ranges when (rhs)|(lhs) is in a joint state or has learners`) {
-			// This operation executed concurrently with one that was changing
-			// replicas.
-		} else if resultIsErrorStr(t.Result, `merge failed: ranges not collocated`) {
-			// A merge requires that the two ranges have replicas on the same nodes,
-			// but Generator intentiontally does not try to avoid this so that this
-			// edge case is exercised.
-		} else if resultIsErrorStr(t.Result, `merge failed: waiting for all left-hand replicas to initialize`) {
-			// Probably should be transparently retried.
-		} else if resultIsErrorStr(t.Result, `merge failed: waiting for all right-hand replicas to catch up`) {
-			// Probably should be transparently retried.
-		} else if resultIsErrorStr(t.Result, `merge failed: non-deletion intent on local range descriptor`) {
-			// Probably should be transparently retried.
-		} else if resultIsErrorStr(t.Result, `merge failed: range missing intent on its local descriptor`) {
-			// Probably should be transparently retried.
-		} else if resultIsErrorStr(t.Result, `merge failed: RHS range bounds do not match`) {
-			// Probably should be transparently retried.
+			__antithesis_instrumentation__.Notify(93593)
+
 		} else {
-			v.failIfError(op, t.Result)
-		}
-	case *ChangeReplicasOperation:
-		var ignore bool
-		if err := errorFromResult(t.Result); err != nil {
-			ignore = kvserver.IsRetriableReplicationChangeError(err) ||
-				kvserver.IsIllegalReplicationChangeError(err)
-		}
-		if !ignore {
-			v.failIfError(op, t.Result)
-		}
-	case *TransferLeaseOperation:
-		if resultIsErrorStr(t.Result, `replica cannot hold lease`) {
-			// Only VOTER_FULL replicas can currently hold a range lease.
-			// Attempts to transfer to lease to any other replica type are
-			// rejected.
-		} else if resultIsErrorStr(t.Result, `replica not found in RangeDescriptor`) {
-			// Only replicas that are part of the range can be given
-			// the lease. This case is hit if a TransferLease op races
-			// with a ChangeReplicas op.
-		} else if resultIsErrorStr(t.Result, `unable to find store \d+ in range`) {
-			// A lease transfer that races with a replica removal may find that
-			// the store it was targeting is no longer part of the range.
-		} else if resultIsErrorStr(t.Result, `cannot transfer lease while merge in progress`) {
-			// A lease transfer is not permitted while a range merge is in its
-			// critical phase.
-		} else if resultIsError(t.Result, liveness.ErrRecordCacheMiss) {
-			// If the existing leaseholder has not yet heard about the transfer
-			// target's liveness record through gossip, it will return an error.
-		} else if resultIsErrorStr(t.Result, liveness.ErrRecordCacheMiss.Error()) {
-			// Same as above, but matches cases where ErrRecordCacheMiss is
-			// passed through a LeaseRejectedError. This is necessary until
-			// LeaseRejectedErrors works with errors.Cause.
-		} else {
-			v.failIfError(op, t.Result)
-		}
-	case *ChangeZoneOperation:
-		v.failIfError(op, t.Result)
-	case *BatchOperation:
-		if !resultIsRetryable(t.Result) {
-			v.failIfError(op, t.Result)
-			if txnID == nil {
-				v.checkAtomic(`batch`, t.Result, nil, t.Ops...)
+			__antithesis_instrumentation__.Notify(93594)
+			if resultIsErrorStr(t.Result, `merge failed: unexpected value`) {
+				__antithesis_instrumentation__.Notify(93595)
+
 			} else {
-				for _, op := range t.Ops {
-					v.processOp(txnID, op)
+				__antithesis_instrumentation__.Notify(93596)
+				if resultIsErrorStr(t.Result, `merge failed: cannot merge ranges when (rhs)|(lhs) is in a joint state or has learners`) {
+					__antithesis_instrumentation__.Notify(93597)
+
+				} else {
+					__antithesis_instrumentation__.Notify(93598)
+					if resultIsErrorStr(t.Result, `merge failed: ranges not collocated`) {
+						__antithesis_instrumentation__.Notify(93599)
+
+					} else {
+						__antithesis_instrumentation__.Notify(93600)
+						if resultIsErrorStr(t.Result, `merge failed: waiting for all left-hand replicas to initialize`) {
+							__antithesis_instrumentation__.Notify(93601)
+
+						} else {
+							__antithesis_instrumentation__.Notify(93602)
+							if resultIsErrorStr(t.Result, `merge failed: waiting for all right-hand replicas to catch up`) {
+								__antithesis_instrumentation__.Notify(93603)
+
+							} else {
+								__antithesis_instrumentation__.Notify(93604)
+								if resultIsErrorStr(t.Result, `merge failed: non-deletion intent on local range descriptor`) {
+									__antithesis_instrumentation__.Notify(93605)
+
+								} else {
+									__antithesis_instrumentation__.Notify(93606)
+									if resultIsErrorStr(t.Result, `merge failed: range missing intent on its local descriptor`) {
+										__antithesis_instrumentation__.Notify(93607)
+
+									} else {
+										__antithesis_instrumentation__.Notify(93608)
+										if resultIsErrorStr(t.Result, `merge failed: RHS range bounds do not match`) {
+											__antithesis_instrumentation__.Notify(93609)
+
+										} else {
+											__antithesis_instrumentation__.Notify(93610)
+											v.failIfError(op, t.Result)
+										}
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		}
+	case *ChangeReplicasOperation:
+		__antithesis_instrumentation__.Notify(93565)
+		var ignore bool
+		if err := errorFromResult(t.Result); err != nil {
+			__antithesis_instrumentation__.Notify(93611)
+			ignore = kvserver.IsRetriableReplicationChangeError(err) || func() bool {
+				__antithesis_instrumentation__.Notify(93612)
+				return kvserver.IsIllegalReplicationChangeError(err) == true
+			}() == true
+		} else {
+			__antithesis_instrumentation__.Notify(93613)
+		}
+		__antithesis_instrumentation__.Notify(93566)
+		if !ignore {
+			__antithesis_instrumentation__.Notify(93614)
+			v.failIfError(op, t.Result)
+		} else {
+			__antithesis_instrumentation__.Notify(93615)
+		}
+	case *TransferLeaseOperation:
+		__antithesis_instrumentation__.Notify(93567)
+		if resultIsErrorStr(t.Result, `replica cannot hold lease`) {
+			__antithesis_instrumentation__.Notify(93616)
+
+		} else {
+			__antithesis_instrumentation__.Notify(93617)
+			if resultIsErrorStr(t.Result, `replica not found in RangeDescriptor`) {
+				__antithesis_instrumentation__.Notify(93618)
+
+			} else {
+				__antithesis_instrumentation__.Notify(93619)
+				if resultIsErrorStr(t.Result, `unable to find store \d+ in range`) {
+					__antithesis_instrumentation__.Notify(93620)
+
+				} else {
+					__antithesis_instrumentation__.Notify(93621)
+					if resultIsErrorStr(t.Result, `cannot transfer lease while merge in progress`) {
+						__antithesis_instrumentation__.Notify(93622)
+
+					} else {
+						__antithesis_instrumentation__.Notify(93623)
+						if resultIsError(t.Result, liveness.ErrRecordCacheMiss) {
+							__antithesis_instrumentation__.Notify(93624)
+
+						} else {
+							__antithesis_instrumentation__.Notify(93625)
+							if resultIsErrorStr(t.Result, liveness.ErrRecordCacheMiss.Error()) {
+								__antithesis_instrumentation__.Notify(93626)
+
+							} else {
+								__antithesis_instrumentation__.Notify(93627)
+								v.failIfError(op, t.Result)
+							}
+						}
+					}
+				}
+			}
+		}
+	case *ChangeZoneOperation:
+		__antithesis_instrumentation__.Notify(93568)
+		v.failIfError(op, t.Result)
+	case *BatchOperation:
+		__antithesis_instrumentation__.Notify(93569)
+		if !resultIsRetryable(t.Result) {
+			__antithesis_instrumentation__.Notify(93628)
+			v.failIfError(op, t.Result)
+			if txnID == nil {
+				__antithesis_instrumentation__.Notify(93629)
+				v.checkAtomic(`batch`, t.Result, nil, t.Ops...)
+			} else {
+				__antithesis_instrumentation__.Notify(93630)
+				for _, op := range t.Ops {
+					__antithesis_instrumentation__.Notify(93631)
+					v.processOp(txnID, op)
+				}
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(93632)
+		}
 	case *ClosureTxnOperation:
+		__antithesis_instrumentation__.Notify(93570)
 		ops := t.Ops
 		if t.CommitInBatch != nil {
+			__antithesis_instrumentation__.Notify(93633)
 			ops = append(ops, t.CommitInBatch.Ops...)
+		} else {
+			__antithesis_instrumentation__.Notify(93634)
 		}
+		__antithesis_instrumentation__.Notify(93571)
 		v.checkAtomic(`txn`, t.Result, t.Txn, ops...)
 	default:
+		__antithesis_instrumentation__.Notify(93572)
 		panic(errors.AssertionFailedf(`unknown operation type: %T %v`, t, t))
 	}
 }
@@ -538,275 +635,321 @@ func (v *validator) processOp(txnID *string, op Operation) {
 func (v *validator) checkAtomic(
 	atomicType string, result Result, optTxn *roachpb.Transaction, ops ...Operation,
 ) {
+	__antithesis_instrumentation__.Notify(93635)
 	fakeTxnID := uuid.MakeV4().String()
 	for _, op := range ops {
+		__antithesis_instrumentation__.Notify(93637)
 		v.processOp(&fakeTxnID, op)
 	}
+	__antithesis_instrumentation__.Notify(93636)
 	txnObservations := v.observedOpsByTxn[fakeTxnID]
 	delete(v.observedOpsByTxn, fakeTxnID)
 
 	if result.Type != ResultType_Error {
+		__antithesis_instrumentation__.Notify(93638)
 		v.checkCommittedTxn(`committed `+atomicType, txnObservations, optTxn)
-	} else if resultIsAmbiguous(result) {
-		v.checkAmbiguousTxn(`ambiguous `+atomicType, txnObservations)
 	} else {
-		v.checkUncommittedTxn(`uncommitted `+atomicType, txnObservations)
+		__antithesis_instrumentation__.Notify(93639)
+		if resultIsAmbiguous(result) {
+			__antithesis_instrumentation__.Notify(93640)
+			v.checkAmbiguousTxn(`ambiguous `+atomicType, txnObservations)
+		} else {
+			__antithesis_instrumentation__.Notify(93641)
+			v.checkUncommittedTxn(`uncommitted `+atomicType, txnObservations)
+		}
 	}
 }
 
 func (v *validator) checkCommittedTxn(
 	atomicType string, txnObservations []observedOp, optTxn *roachpb.Transaction,
 ) {
-	// The following works by verifying that there is at least one time at which
-	// it was valid to see all the reads and writes that we saw in this
-	// transaction.
-	//
-	// Concretely a transaction:
-	// - Write k1@t2 -> v1
-	// - Read k2 -> v2
-	// - Scan [k3,k5) -> [v3,v4]
-	// - Delete k5@t2 -> <nil> (MVCC delete writes tombstone value)
-	// - Read k5 -> <nil>
-	//
-	// And what was present in KV after this and some other transactions:
-	// - k1@t2, v1
-	// - k1@t3, v5
-	// - k2@t1, v2
-	// - k2@t3, v6
-	// - k3@t0, v3
-	// - k4@t2, v4
-	// - k5@t1, v7
-	// - k5@t2, <nil>
-	//
-	// Each of the operations in the transaction, if taken individually, has some
-	// window at which it was valid. The Write was only valid for a commit exactly
-	// at t2: [t2,t2). This is because each Write's mvcc timestamp is the timestamp
-	// of the txn commit. The Read would have been valid for [t1,t3) because v2 was
-	// written at t1 and overwritten at t3. The scan would have been valid for
-	// [t2,∞) because v3 was written at t0 and v4 was written at t2 and neither were
-	// overwritten.  The Delete, same as the Write, is valid at the timestamp of
-	// the txn commit, as it is simply a Write with an empty (nil) value.  The
-	// final Read, it is worth noting, could be valid at two disjoint timespans
-	// that must be considered: [-∞, t1), and [t2,∞).
-	//
-	//
-	// As long as there is at least one time span in which all operations
-	// overlap validly, we're good. However, if another write had a timestamp of
-	// t3, then there is no timestamp at which the transaction could have
-	// committed, which is a violation of our consistency guarantees.
-	// Similarly if there was some read that was only valid from [t1,t2).
-	// While Reads of concrete values only ever have one valid timespan, with
-	// the introduction of Deletes, a Read that returns <nil> may have multiple
-	// valid timespans (i.e. before the key existed, after it was deleted).
-	//
-	// Listen up, this is where it gets tricky. Within a transaction, if the same
-	// key is written more than once, only the last one will ever be materialized
-	// in KV (and be sent out over the RangeFeed). However, any reads in between
-	// will see the overwritten values. This means that each transaction needs its
-	// own view of KV when determining what is and is not valid.
-	//
-	// Concretely:
-	// - Read k -> <nil>
-	// - Write k -> v1
-	// - Read k -> v1
-	// - Write k -> v2
-	// - Read k -> v2
-	//
-	// This is okay, but if we only use the writes that come out of RangeFeed to
-	// compute our read validities, then there would be no time at which v1 could
-	// have been read. So, we have to "layer" the k -> v1 write on top of our
-	// RangeFeed output. At the same time, it would not have been valid for the
-	// first or second read to see v2 because when they ran that value hadn't
-	// been written yet.
-	//
-	// So, what we do to compute the read validity time windows is first hide all
-	// the writes the transaction eventually did in some "view". Then step through
-	// it, un-hiding each of them as we encounter each write, and using the
-	// current state of the view as we encounter each read. Luckily this is easy
-	// to do by with a pebble.Batch "view".
-	batch := v.kvs.kvs.NewIndexedBatch()
-	defer func() { _ = batch.Close() }()
+	__antithesis_instrumentation__.Notify(93642)
 
-	// If the same key is written multiple times in a transaction, only the last
-	// one makes it to kv.
+	batch := v.kvs.kvs.NewIndexedBatch()
+	defer func() { __antithesis_instrumentation__.Notify(93648); _ = batch.Close() }()
+	__antithesis_instrumentation__.Notify(93643)
+
 	lastWriteIdxByKey := make(map[string]int, len(txnObservations))
 	for idx := len(txnObservations) - 1; idx >= 0; idx-- {
+		__antithesis_instrumentation__.Notify(93649)
 		observation := txnObservations[idx]
 		switch o := observation.(type) {
 		case *observedWrite:
+			__antithesis_instrumentation__.Notify(93650)
 			if _, ok := lastWriteIdxByKey[string(o.Key)]; !ok {
+				__antithesis_instrumentation__.Notify(93652)
 				lastWriteIdxByKey[string(o.Key)] = idx
 
-				// Mark which deletes are materialized and match them with a stored
-				// tombstone, since this cannot be done before the end of the txn.
-				// This is because materialized deletes do not write unique values,
-				// but must be the final write in a txn for that key.
 				if o.isDelete() {
+					__antithesis_instrumentation__.Notify(93653)
 					key := string(o.Key)
 					v.committedDeletesForKey[key]++
 					if optTxn == nil {
-						// In the case that the delete is not in a transaction (or in an
-						// ambiguous transaction), we do not match it to a specific
-						// tombstone as we cannot be certain which tombstone resulted from
-						// this operation; hence, we leave the timestamp empty.
+						__antithesis_instrumentation__.Notify(93654)
+
 						o.Materialized = v.committedDeletesForKey[key] <= len(v.tombstonesForKey[key])
-					} else if storedDelete, ok := v.getDeleteForKey(key, optTxn); ok {
-						o.Materialized = true
-						o.Timestamp = storedDelete.Timestamp
+					} else {
+						__antithesis_instrumentation__.Notify(93655)
+						if storedDelete, ok := v.getDeleteForKey(key, optTxn); ok {
+							__antithesis_instrumentation__.Notify(93656)
+							o.Materialized = true
+							o.Timestamp = storedDelete.Timestamp
+						} else {
+							__antithesis_instrumentation__.Notify(93657)
+						}
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(93658)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(93659)
 			}
+			__antithesis_instrumentation__.Notify(93651)
 			if !o.Timestamp.IsEmpty() {
+				__antithesis_instrumentation__.Notify(93660)
 				mvccKey := storage.MVCCKey{Key: o.Key, Timestamp: o.Timestamp}
 				if err := batch.Delete(storage.EncodeMVCCKey(mvccKey), nil); err != nil {
+					__antithesis_instrumentation__.Notify(93661)
 					panic(err)
+				} else {
+					__antithesis_instrumentation__.Notify(93662)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(93663)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(93644)
 
-	// Check if any key that was written twice in the txn had the overwritten
-	// writes materialize in kv. Also fill in all the read timestamps first so
-	// they show up in the failure message.
 	var failure string
 	for idx, observation := range txnObservations {
+		__antithesis_instrumentation__.Notify(93664)
 		if failure != `` {
+			__antithesis_instrumentation__.Notify(93666)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(93667)
 		}
+		__antithesis_instrumentation__.Notify(93665)
 		switch o := observation.(type) {
 		case *observedWrite:
+			__antithesis_instrumentation__.Notify(93668)
 			var mvccKey storage.MVCCKey
 			if lastWriteIdx := lastWriteIdxByKey[string(o.Key)]; idx == lastWriteIdx {
-				// The last write of a given key in the txn wins and should have made it
-				// to kv.
+				__antithesis_instrumentation__.Notify(93676)
+
 				mvccKey = storage.MVCCKey{Key: o.Key, Timestamp: o.Timestamp}
 			} else {
+				__antithesis_instrumentation__.Notify(93677)
 				if o.Materialized {
+					__antithesis_instrumentation__.Notify(93679)
 					failure = `committed txn overwritten key had write`
+				} else {
+					__antithesis_instrumentation__.Notify(93680)
 				}
-				// This write was never materialized in KV because the key got
-				// overwritten later in the txn. But reads in the txn could have seen
-				// it, so we put in the batch being maintained for validReadTimes using
-				// the timestamp of the write for this key that eventually "won".
+				__antithesis_instrumentation__.Notify(93678)
+
 				mvccKey = storage.MVCCKey{
 					Key:       o.Key,
 					Timestamp: txnObservations[lastWriteIdx].(*observedWrite).Timestamp,
 				}
 			}
+			__antithesis_instrumentation__.Notify(93669)
 			if err := batch.Set(storage.EncodeMVCCKey(mvccKey), o.Value.RawBytes, nil); err != nil {
+				__antithesis_instrumentation__.Notify(93681)
 				panic(err)
+			} else {
+				__antithesis_instrumentation__.Notify(93682)
 			}
 		case *observedRead:
+			__antithesis_instrumentation__.Notify(93670)
 			o.ValidTimes = validReadTimes(batch, o.Key, o.Value.RawBytes, false)
 		case *observedScan:
-			// All kvs should be within scan boundary.
+			__antithesis_instrumentation__.Notify(93671)
+
 			for _, kv := range o.KVs {
+				__antithesis_instrumentation__.Notify(93683)
 				if !o.Span.ContainsKey(kv.Key) {
+					__antithesis_instrumentation__.Notify(93684)
 					opCode := "scan"
 					if o.IsDeleteRange {
+						__antithesis_instrumentation__.Notify(93686)
 						opCode = "delete range"
+					} else {
+						__antithesis_instrumentation__.Notify(93687)
 					}
+					__antithesis_instrumentation__.Notify(93685)
 					failure = fmt.Sprintf(`key %s outside %s bounds`, kv.Key, opCode)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(93688)
 				}
 			}
-			// All kvs should be in order.
+			__antithesis_instrumentation__.Notify(93672)
+
 			orderedKVs := sort.Interface(roachpb.KeyValueByKey(o.KVs))
 			if o.Reverse {
+				__antithesis_instrumentation__.Notify(93689)
 				orderedKVs = sort.Reverse(orderedKVs)
+			} else {
+				__antithesis_instrumentation__.Notify(93690)
 			}
+			__antithesis_instrumentation__.Notify(93673)
 			if !sort.IsSorted(orderedKVs) {
+				__antithesis_instrumentation__.Notify(93691)
 				failure = `scan result not ordered correctly`
+			} else {
+				__antithesis_instrumentation__.Notify(93692)
 			}
+			__antithesis_instrumentation__.Notify(93674)
 			o.Valid = validScanTime(batch, o.Span, o.KVs, o.IsDeleteRange)
 		default:
+			__antithesis_instrumentation__.Notify(93675)
 			panic(errors.AssertionFailedf(`unknown observedOp: %T %s`, observation, observation))
 		}
 	}
+	__antithesis_instrumentation__.Notify(93645)
 
 	validPossibilities := disjointTimeSpans{{Start: hlc.MinTimestamp, End: hlc.MaxTimestamp}}
 	for idx, observation := range txnObservations {
+		__antithesis_instrumentation__.Notify(93693)
 		if failure != `` {
+			__antithesis_instrumentation__.Notify(93697)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(93698)
 		}
+		__antithesis_instrumentation__.Notify(93694)
 		var opValid disjointTimeSpans
 		switch o := observation.(type) {
 		case *observedWrite:
+			__antithesis_instrumentation__.Notify(93699)
 			isLastWriteForKey := idx == lastWriteIdxByKey[string(o.Key)]
 			if !isLastWriteForKey {
+				__antithesis_instrumentation__.Notify(93706)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(93707)
 			}
+			__antithesis_instrumentation__.Notify(93700)
 			if !o.Materialized {
+				__antithesis_instrumentation__.Notify(93708)
 				failure = atomicType + ` missing write`
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(93709)
 			}
+			__antithesis_instrumentation__.Notify(93701)
 
-			if o.isDelete() && len(txnObservations) == 1 {
-				// For delete operations outside of transactions, it is not possible to
-				// identify the precise tombstone, so we skip timestamp validation.
+			if o.isDelete() && func() bool {
+				__antithesis_instrumentation__.Notify(93710)
+				return len(txnObservations) == 1 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(93711)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(93712)
 			}
+			__antithesis_instrumentation__.Notify(93702)
 
 			opValid = disjointTimeSpans{{Start: o.Timestamp, End: o.Timestamp.Next()}}
 		case *observedRead:
+			__antithesis_instrumentation__.Notify(93703)
 			opValid = o.ValidTimes
 		case *observedScan:
+			__antithesis_instrumentation__.Notify(93704)
 			opValid = o.Valid.Combined()
 		default:
+			__antithesis_instrumentation__.Notify(93705)
 			panic(errors.AssertionFailedf(`unknown observedOp: %T %s`, observation, observation))
 		}
+		__antithesis_instrumentation__.Notify(93695)
 		newValidSpans := validPossibilities.validIntersections(opValid)
 		if len(newValidSpans) == 0 {
+			__antithesis_instrumentation__.Notify(93713)
 			failure = atomicType + ` non-atomic timestamps`
+		} else {
+			__antithesis_instrumentation__.Notify(93714)
 		}
+		__antithesis_instrumentation__.Notify(93696)
 		validPossibilities = newValidSpans
 	}
+	__antithesis_instrumentation__.Notify(93646)
 
-	// Finally, validate that the write timestamp of the transaction matches the
-	// write timestamp of each write within that transaction.
 	for _, observation := range txnObservations {
+		__antithesis_instrumentation__.Notify(93715)
 		if failure != `` {
+			__antithesis_instrumentation__.Notify(93717)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(93718)
 		}
+		__antithesis_instrumentation__.Notify(93716)
 		switch o := observation.(type) {
 		case *observedWrite:
-			if optTxn != nil && o.Materialized && optTxn.TxnMeta.WriteTimestamp != o.Timestamp {
+			__antithesis_instrumentation__.Notify(93719)
+			if optTxn != nil && func() bool {
+				__antithesis_instrumentation__.Notify(93720)
+				return o.Materialized == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(93721)
+				return optTxn.TxnMeta.WriteTimestamp != o.Timestamp == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(93722)
 				failure = fmt.Sprintf(`committed txn mismatched write timestamp %s`, optTxn.TxnMeta.WriteTimestamp)
+			} else {
+				__antithesis_instrumentation__.Notify(93723)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(93647)
 
 	if failure != `` {
+		__antithesis_instrumentation__.Notify(93724)
 		err := errors.Errorf("%s: %s", failure, printObserved(txnObservations...))
 		v.failures = append(v.failures, err)
+	} else {
+		__antithesis_instrumentation__.Notify(93725)
 	}
 }
 
 func (v *validator) checkAmbiguousTxn(atomicType string, txnObservations []observedOp) {
+	__antithesis_instrumentation__.Notify(93726)
 	var somethingCommitted bool
 	deletedKeysInTxn := make(map[string]int)
 	var hadWrite bool
 	for _, observation := range txnObservations {
+		__antithesis_instrumentation__.Notify(93728)
 		switch o := observation.(type) {
 		case *observedWrite:
+			__antithesis_instrumentation__.Notify(93729)
 			hadWrite = true
 			if o.Materialized {
+				__antithesis_instrumentation__.Notify(93731)
 				somethingCommitted = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(93732)
 			}
-			if o.isDelete() && len(v.tombstonesForKey[string(o.Key)]) > v.committedDeletesForKey[string(o.Key)] {
+			__antithesis_instrumentation__.Notify(93730)
+			if o.isDelete() && func() bool {
+				__antithesis_instrumentation__.Notify(93733)
+				return len(v.tombstonesForKey[string(o.Key)]) > v.committedDeletesForKey[string(o.Key)] == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(93734)
 				deletedKeysInTxn[string(o.Key)]++
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(93735)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(93727)
 
 	if len(deletedKeysInTxn) > 0 {
-		// TODO(sarkesian): Since we can't rely on the transaction write timestamp
-		// in an ambiguous transaction, and therefore cannot identify the tombstone
-		// resulting from a delete operation, it is impossible to validate if the
-		// transaction was actually atomic. For now, we have chosen to fail loudly,
-		// though if we are able to validate properly, this should be removed.
+		__antithesis_instrumentation__.Notify(93736)
+
 		err := errors.Errorf(
 			`unable to validate delete operations in ambiguous transactions: %s`,
 			printObserved(txnObservations...),
@@ -814,279 +957,420 @@ func (v *validator) checkAmbiguousTxn(atomicType string, txnObservations []obser
 		v.failures = append(v.failures, err)
 
 		for key := range deletedKeysInTxn {
-			// NB: We don't know for sure if these delete committed, but we know we
-			// still have tombstones for the keys. If we are incorrect in assuming it
-			// committed, it will affect delete counting in subsequent transactions;
-			// note that when dealing with ambiguous deletes that fail to commit,
-			// later deletes may show "committed delete missing write" errors.
+			__antithesis_instrumentation__.Notify(93737)
+
 			v.committedDeletesForKey[key]++
 		}
-	} else if !hadWrite {
-		// TODO(dan): Is it possible to receive an ambiguous read-only txn? Assume
-		// committed for now because the committed case has assertions about reads
-		// but the uncommitted case doesn't and this seems to work.
-		v.checkCommittedTxn(atomicType, txnObservations, nil)
-	} else if somethingCommitted {
-		v.checkCommittedTxn(atomicType, txnObservations, nil)
 	} else {
-		v.checkUncommittedTxn(atomicType, txnObservations)
+		__antithesis_instrumentation__.Notify(93738)
+		if !hadWrite {
+			__antithesis_instrumentation__.Notify(93739)
+
+			v.checkCommittedTxn(atomicType, txnObservations, nil)
+		} else {
+			__antithesis_instrumentation__.Notify(93740)
+			if somethingCommitted {
+				__antithesis_instrumentation__.Notify(93741)
+				v.checkCommittedTxn(atomicType, txnObservations, nil)
+			} else {
+				__antithesis_instrumentation__.Notify(93742)
+				v.checkUncommittedTxn(atomicType, txnObservations)
+			}
+		}
 	}
 }
 
 func (v *validator) checkUncommittedTxn(atomicType string, txnObservations []observedOp) {
+	__antithesis_instrumentation__.Notify(93743)
 	var failure string
 	for _, observed := range txnObservations {
+		__antithesis_instrumentation__.Notify(93745)
 		if failure != `` {
+			__antithesis_instrumentation__.Notify(93747)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(93748)
 		}
+		__antithesis_instrumentation__.Notify(93746)
 		switch o := observed.(type) {
 		case *observedWrite:
+			__antithesis_instrumentation__.Notify(93749)
 			if o.Materialized {
+				__antithesis_instrumentation__.Notify(93753)
 				failure = atomicType + ` had writes`
+			} else {
+				__antithesis_instrumentation__.Notify(93754)
 			}
-			// NB: While we don't check deletes here, as we cannot uniquely identify
-			// the particular delete operation that is responsible for a stored
-			// tombstone value for a key, if an uncommitted delete actually
-			// materialized in the storage engine, we will see an "extra write" error
-			// upon final validation.
+
 		case *observedRead:
-			// TODO(dan): Figure out what we can assert about reads in an uncommitted
-			// transaction.
+			__antithesis_instrumentation__.Notify(93750)
+
 		case *observedScan:
-			// TODO(dan): Figure out what we can assert about reads in an uncommitted
-			// transaction.
+			__antithesis_instrumentation__.Notify(93751)
+
 		default:
+			__antithesis_instrumentation__.Notify(93752)
 			panic(errors.AssertionFailedf(`unknown observedOp: %T %s`, observed, observed))
 		}
 	}
+	__antithesis_instrumentation__.Notify(93744)
 
 	if failure != `` {
+		__antithesis_instrumentation__.Notify(93755)
 		err := errors.Errorf("%s: %s", failure, printObserved(txnObservations...))
 		v.failures = append(v.failures, err)
+	} else {
+		__antithesis_instrumentation__.Notify(93756)
 	}
 }
 
 func (v *validator) failIfError(op Operation, r Result) {
+	__antithesis_instrumentation__.Notify(93757)
 	switch r.Type {
 	case ResultType_Unknown:
+		__antithesis_instrumentation__.Notify(93758)
 		err := errors.AssertionFailedf(`unknown result %s`, op)
 		v.failures = append(v.failures, err)
 	case ResultType_Error:
+		__antithesis_instrumentation__.Notify(93759)
 		ctx := context.Background()
 		err := errors.DecodeError(ctx, *r.Err)
 		err = errors.Wrapf(err, `error applying %s`, op)
 		v.failures = append(v.failures, err)
+	default:
+		__antithesis_instrumentation__.Notify(93760)
 	}
 }
 
 func errorFromResult(r Result) error {
+	__antithesis_instrumentation__.Notify(93761)
 	if r.Type != ResultType_Error {
+		__antithesis_instrumentation__.Notify(93763)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(93764)
 	}
+	__antithesis_instrumentation__.Notify(93762)
 	ctx := context.Background()
 	return errors.DecodeError(ctx, *r.Err)
 }
 
 func resultIsError(r Result, reference error) bool {
+	__antithesis_instrumentation__.Notify(93765)
 	return errors.Is(errorFromResult(r), reference)
 }
 
 func resultIsRetryable(r Result) bool {
+	__antithesis_instrumentation__.Notify(93766)
 	return errors.HasInterface(errorFromResult(r), (*roachpb.ClientVisibleRetryError)(nil))
 }
 
 func resultIsAmbiguous(r Result) bool {
+	__antithesis_instrumentation__.Notify(93767)
 	return errors.HasInterface(errorFromResult(r), (*roachpb.ClientVisibleAmbiguousError)(nil))
 }
 
-// TODO(dan): Checking errors using string containment is fragile at best and a
-// security issue at worst. Unfortunately, some errors that currently make it
-// out of our kv apis are created with `errors.New` and so do not have types
-// that can be sniffed. Some of these may be removed or handled differently but
-// the rest should graduate to documented parts of the public api. Remove this
-// once it happens.
 func resultIsErrorStr(r Result, msgRE string) bool {
+	__antithesis_instrumentation__.Notify(93768)
 	if err := errorFromResult(r); err != nil {
+		__antithesis_instrumentation__.Notify(93770)
 		return regexp.MustCompile(msgRE).MatchString(err.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(93771)
 	}
+	__antithesis_instrumentation__.Notify(93769)
 	return false
 }
 
 func mustGetStringValue(value []byte) string {
+	__antithesis_instrumentation__.Notify(93772)
 	if len(value) == 0 {
+		__antithesis_instrumentation__.Notify(93775)
 		return `<nil>`
+	} else {
+		__antithesis_instrumentation__.Notify(93776)
 	}
+	__antithesis_instrumentation__.Notify(93773)
 	v, err := roachpb.Value{RawBytes: value}.GetBytes()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(93777)
 		panic(errors.Wrapf(err, "decoding %x", value))
+	} else {
+		__antithesis_instrumentation__.Notify(93778)
 	}
+	__antithesis_instrumentation__.Notify(93774)
 	return string(v)
 }
 
 func validReadTimes(
 	b *pebble.Batch, key roachpb.Key, value []byte, anyValueAccepted bool,
 ) disjointTimeSpans {
+	__antithesis_instrumentation__.Notify(93779)
 	var validTimes disjointTimeSpans
 	end := hlc.MaxTimestamp
 
 	iter := b.NewIter(nil)
-	defer func() { _ = iter.Close() }()
+	defer func() { __antithesis_instrumentation__.Notify(93783); _ = iter.Close() }()
+	__antithesis_instrumentation__.Notify(93780)
 	iter.SeekGE(storage.EncodeMVCCKey(storage.MVCCKey{Key: key}))
 	for ; iter.Valid(); iter.Next() {
+		__antithesis_instrumentation__.Notify(93784)
 		mvccKey, err := storage.DecodeMVCCKey(iter.Key())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(93788)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(93789)
 		}
+		__antithesis_instrumentation__.Notify(93785)
 		if !mvccKey.Key.Equal(key) {
+			__antithesis_instrumentation__.Notify(93790)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(93791)
 		}
-		if (anyValueAccepted && len(iter.Value()) > 0) ||
-			(!anyValueAccepted && mustGetStringValue(iter.Value()) == mustGetStringValue(value)) {
+		__antithesis_instrumentation__.Notify(93786)
+		if (anyValueAccepted && func() bool {
+			__antithesis_instrumentation__.Notify(93792)
+			return len(iter.Value()) > 0 == true
+		}() == true) || func() bool {
+			__antithesis_instrumentation__.Notify(93793)
+			return (!anyValueAccepted && func() bool {
+				__antithesis_instrumentation__.Notify(93794)
+				return mustGetStringValue(iter.Value()) == mustGetStringValue(value) == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(93795)
 			validTimes = append(validTimes, timeSpan{Start: mvccKey.Timestamp, End: end})
+		} else {
+			__antithesis_instrumentation__.Notify(93796)
 		}
+		__antithesis_instrumentation__.Notify(93787)
 		end = mvccKey.Timestamp
 	}
-	if !anyValueAccepted && len(value) == 0 {
+	__antithesis_instrumentation__.Notify(93781)
+	if !anyValueAccepted && func() bool {
+		__antithesis_instrumentation__.Notify(93797)
+		return len(value) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(93798)
 		validTimes = append(disjointTimeSpans{{Start: hlc.MinTimestamp, End: end}}, validTimes...)
+	} else {
+		__antithesis_instrumentation__.Notify(93799)
 	}
+	__antithesis_instrumentation__.Notify(93782)
 
-	// NB: With the exception of deletes, the "only write each value once"
-	// property of the generator means that we have a 1:1 mapping between some
-	// `(key, non-nil-value)` observation and a time span in which it was valid.
-	// With deletes, there multiple disjoint spans for a `(key, nil-value)`
-	// observation (i.e. before the key existed, after it was deleted).
-	// This means that for each read, we must consider all possibly valid times.
 	return validTimes
 }
 
 func validScanTime(
 	b *pebble.Batch, span roachpb.Span, kvs []roachpb.KeyValue, isDeleteRange bool,
 ) multiKeyTimeSpan {
+	__antithesis_instrumentation__.Notify(93800)
 	valid := multiKeyTimeSpan{
 		Gaps: disjointTimeSpans{{Start: hlc.MinTimestamp, End: hlc.MaxTimestamp}},
 	}
 
-	// Find the valid time span for each kv returned.
 	for _, kv := range kvs {
-		// Since scan results don't include deleted keys, there should only ever
-		// be 0 or 1 valid read time span for each `(key, specific-non-nil-value)`
-		// returned, given that the values are guaranteed to be unique by the
-		// Generator. However, in the DeleteRange case where we are looking for
-		// `(key, any-non-nil-value)`, it is of course valid for there to be
-		// multiple disjoint time spans.
+		__antithesis_instrumentation__.Notify(93806)
+
 		validTimes := validReadTimes(b, kv.Key, kv.Value.RawBytes, isDeleteRange)
-		if !isDeleteRange && len(validTimes) > 1 {
+		if !isDeleteRange && func() bool {
+			__antithesis_instrumentation__.Notify(93809)
+			return len(validTimes) > 1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(93810)
 			panic(errors.AssertionFailedf(
 				`invalid number of read time spans for a (key,non-nil-value) pair in scan results: %s->%s`,
 				kv.Key, mustGetStringValue(kv.Value.RawBytes)))
+		} else {
+			__antithesis_instrumentation__.Notify(93811)
 		}
+		__antithesis_instrumentation__.Notify(93807)
 		if len(validTimes) == 0 {
+			__antithesis_instrumentation__.Notify(93812)
 			validTimes = append(validTimes, timeSpan{})
+		} else {
+			__antithesis_instrumentation__.Notify(93813)
 		}
+		__antithesis_instrumentation__.Notify(93808)
 		valid.Keys = append(valid.Keys, validTimes)
 	}
+	__antithesis_instrumentation__.Notify(93801)
 
-	// Augment with the valid time span for any kv not observed but that
-	// overlaps the scan span.
 	keys := make(map[string]struct{}, len(kvs))
 	for _, kv := range kvs {
+		__antithesis_instrumentation__.Notify(93814)
 		keys[string(kv.Key)] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(93802)
 
 	missingKeys := make(map[string]disjointTimeSpans)
 	iter := b.NewIter(nil)
-	defer func() { _ = iter.Close() }()
+	defer func() { __antithesis_instrumentation__.Notify(93815); _ = iter.Close() }()
+	__antithesis_instrumentation__.Notify(93803)
 	iter.SeekGE(storage.EncodeMVCCKey(storage.MVCCKey{Key: span.Key}))
 	for ; iter.Valid(); iter.Next() {
+		__antithesis_instrumentation__.Notify(93816)
 		mvccKey, err := storage.DecodeMVCCKey(iter.Key())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(93820)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(93821)
 		}
+		__antithesis_instrumentation__.Notify(93817)
 		if mvccKey.Key.Compare(span.EndKey) >= 0 {
-			// Past scan boundary.
+			__antithesis_instrumentation__.Notify(93822)
+
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(93823)
 		}
+		__antithesis_instrumentation__.Notify(93818)
 		if _, ok := keys[string(mvccKey.Key)]; ok {
-			// Key in scan response.
+			__antithesis_instrumentation__.Notify(93824)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(93825)
 		}
+		__antithesis_instrumentation__.Notify(93819)
 		if _, ok := missingKeys[string(mvccKey.Key)]; !ok {
-			// Key not in scan response. Only valid if scan was before key's time, or
-			// at a time when the key was deleted.
+			__antithesis_instrumentation__.Notify(93826)
+
 			missingKeys[string(mvccKey.Key)] = validReadTimes(b, mvccKey.Key, nil, false)
+		} else {
+			__antithesis_instrumentation__.Notify(93827)
 		}
 	}
+	__antithesis_instrumentation__.Notify(93804)
 
 	for _, nilValueReadTimes := range missingKeys {
+		__antithesis_instrumentation__.Notify(93828)
 		valid.Gaps = valid.Gaps.validIntersections(nilValueReadTimes)
 	}
+	__antithesis_instrumentation__.Notify(93805)
 
 	return valid
 }
 
 func printObserved(observedOps ...observedOp) string {
+	__antithesis_instrumentation__.Notify(93829)
 	var buf strings.Builder
 	for _, observed := range observedOps {
+		__antithesis_instrumentation__.Notify(93831)
 		if buf.Len() > 0 {
+			__antithesis_instrumentation__.Notify(93833)
 			buf.WriteString(" ")
+		} else {
+			__antithesis_instrumentation__.Notify(93834)
 		}
+		__antithesis_instrumentation__.Notify(93832)
 		switch o := observed.(type) {
 		case *observedWrite:
+			__antithesis_instrumentation__.Notify(93835)
 			opCode := "w"
 			if o.isDelete() {
+				__antithesis_instrumentation__.Notify(93846)
 				if o.IsDeleteRange {
+					__antithesis_instrumentation__.Notify(93847)
 					opCode = "dr.d"
 				} else {
+					__antithesis_instrumentation__.Notify(93848)
 					opCode = "d"
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(93849)
 			}
+			__antithesis_instrumentation__.Notify(93836)
 			ts := `missing`
 			if o.Materialized {
-				if o.isDelete() && o.Timestamp.IsEmpty() {
+				__antithesis_instrumentation__.Notify(93850)
+				if o.isDelete() && func() bool {
+					__antithesis_instrumentation__.Notify(93851)
+					return o.Timestamp.IsEmpty() == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(93852)
 					ts = `uncertain`
 				} else {
+					__antithesis_instrumentation__.Notify(93853)
 					ts = o.Timestamp.String()
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(93854)
 			}
+			__antithesis_instrumentation__.Notify(93837)
 			fmt.Fprintf(&buf, "[%s]%s:%s->%s",
 				opCode, o.Key, ts, mustGetStringValue(o.Value.RawBytes))
 		case *observedRead:
+			__antithesis_instrumentation__.Notify(93838)
 			fmt.Fprintf(&buf, "[r]%s:", o.Key)
 			validTimes := o.ValidTimes
 			if len(validTimes) == 0 {
+				__antithesis_instrumentation__.Notify(93855)
 				validTimes = append(validTimes, timeSpan{})
+			} else {
+				__antithesis_instrumentation__.Notify(93856)
 			}
+			__antithesis_instrumentation__.Notify(93839)
 			for idx, validTime := range validTimes {
+				__antithesis_instrumentation__.Notify(93857)
 				if idx != 0 {
+					__antithesis_instrumentation__.Notify(93859)
 					fmt.Fprintf(&buf, ",")
+				} else {
+					__antithesis_instrumentation__.Notify(93860)
 				}
+				__antithesis_instrumentation__.Notify(93858)
 				fmt.Fprintf(&buf, "%s", validTime)
 			}
+			__antithesis_instrumentation__.Notify(93840)
 			fmt.Fprintf(&buf, "->%s", mustGetStringValue(o.Value.RawBytes))
 		case *observedScan:
+			__antithesis_instrumentation__.Notify(93841)
 			opCode := "s"
 			if o.IsDeleteRange {
+				__antithesis_instrumentation__.Notify(93861)
 				opCode = "dr.s"
+			} else {
+				__antithesis_instrumentation__.Notify(93862)
 			}
+			__antithesis_instrumentation__.Notify(93842)
 			if o.Reverse {
+				__antithesis_instrumentation__.Notify(93863)
 				opCode = "rs"
+			} else {
+				__antithesis_instrumentation__.Notify(93864)
 			}
+			__antithesis_instrumentation__.Notify(93843)
 			var kvs strings.Builder
 			for i, kv := range o.KVs {
+				__antithesis_instrumentation__.Notify(93865)
 				if i > 0 {
+					__antithesis_instrumentation__.Notify(93867)
 					kvs.WriteString(`, `)
+				} else {
+					__antithesis_instrumentation__.Notify(93868)
 				}
+				__antithesis_instrumentation__.Notify(93866)
 				kvs.WriteString(kv.Key.String())
 				if !o.IsDeleteRange {
+					__antithesis_instrumentation__.Notify(93869)
 					kvs.WriteByte(':')
 					kvs.WriteString(mustGetStringValue(kv.Value.RawBytes))
+				} else {
+					__antithesis_instrumentation__.Notify(93870)
 				}
 			}
+			__antithesis_instrumentation__.Notify(93844)
 			fmt.Fprintf(&buf, "[%s]%s:%s->[%s]",
 				opCode, o.Span, o.Valid, kvs.String())
 		default:
+			__antithesis_instrumentation__.Notify(93845)
 			panic(errors.AssertionFailedf(`unknown observedOp: %T %s`, observed, observed))
 		}
 	}
+	__antithesis_instrumentation__.Notify(93830)
 	return buf.String()
 }

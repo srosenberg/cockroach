@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package schemachange
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,6 +15,7 @@ import (
 func (og *operationGenerator) tableExists(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695751)
 	return og.scanBool(ctx, tx, `SELECT EXISTS (
 	SELECT table_name
     FROM information_schema.tables 
@@ -34,6 +27,7 @@ func (og *operationGenerator) tableExists(
 func (og *operationGenerator) viewExists(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695752)
 	return og.scanBool(ctx, tx, `SELECT EXISTS (
 	SELECT table_name
     FROM information_schema.views 
@@ -45,6 +39,7 @@ func (og *operationGenerator) viewExists(
 func (og *operationGenerator) sequenceExists(
 	ctx context.Context, tx pgx.Tx, seqName *tree.TableName,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695753)
 	return og.scanBool(ctx, tx, `SELECT EXISTS (
 	SELECT sequence_name
     FROM information_schema.sequences
@@ -56,6 +51,7 @@ func (og *operationGenerator) sequenceExists(
 func (og *operationGenerator) columnExistsOnTable(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columnName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695754)
 	return og.scanBool(ctx, tx, `SELECT EXISTS (
 	SELECT column_name
     FROM information_schema.columns 
@@ -68,25 +64,32 @@ func (og *operationGenerator) columnExistsOnTable(
 func (og *operationGenerator) tableHasRows(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695755)
 	return og.scanBool(ctx, tx, fmt.Sprintf(`SELECT EXISTS (SELECT * FROM %s)`, tableName.String()))
 }
 
 func (og *operationGenerator) scanBool(
 	ctx context.Context, tx pgx.Tx, query string, args ...interface{},
 ) (b bool, err error) {
+	__antithesis_instrumentation__.Notify(695756)
 	err = tx.QueryRow(ctx, query, args...).Scan(&b)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(695758)
 		og.LogQueryResults(
 			fmt.Sprintf("%q %q", query, args),
 			fmt.Sprintf("%t", b),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(695759)
 	}
+	__antithesis_instrumentation__.Notify(695757)
 	return b, errors.Wrapf(err, "scanBool: %q %q", query, args)
 }
 
 func scanString(
 	ctx context.Context, tx pgx.Tx, query string, args ...interface{},
 ) (s string, err error) {
+	__antithesis_instrumentation__.Notify(695760)
 	err = tx.QueryRow(ctx, query, args...).Scan(&s)
 	return s, errors.Wrapf(err, "scanString: %q %q", query, args)
 }
@@ -94,6 +97,7 @@ func scanString(
 func (og *operationGenerator) schemaExists(
 	ctx context.Context, tx pgx.Tx, schemaName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695761)
 	return og.scanBool(ctx, tx, `SELECT EXISTS (
 	SELECT schema_name
 		FROM information_schema.schemata
@@ -104,6 +108,7 @@ func (og *operationGenerator) schemaExists(
 func (og *operationGenerator) tableHasDependencies(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695762)
 	return og.scanBool(ctx, tx, `
 	SELECT EXISTS(
         SELECT fd.descriptor_name
@@ -125,15 +130,8 @@ func (og *operationGenerator) tableHasDependencies(
 func (og *operationGenerator) columnIsDependedOn(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columnName string,
 ) (bool, error) {
-	// To see if a column is depended on, the ordinal_position of the column is looked up in
-	// information_schema.columns. Then, this position is used to see if that column has view dependencies
-	// or foreign key dependencies which would be stored in crdb_internal.forward_dependencies and
-	// pg_catalog.pg_constraint respectively.
-	//
-	// crdb_internal.forward_dependencies.dependedonby_details is an array of ordinal positions
-	// stored as a list of numbers in a string, so SQL functions are used to parse these values
-	// into arrays. unnest is used to flatten rows with this column of array type into multiple rows,
-	// so performing unions and joins is easier.
+	__antithesis_instrumentation__.Notify(695763)
+
 	return og.scanBool(ctx, tx, `SELECT EXISTS(
 		SELECT source.column_id
 			FROM (
@@ -176,6 +174,7 @@ func (og *operationGenerator) columnIsDependedOn(
 func (og *operationGenerator) colIsPrimaryKey(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columnName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695764)
 	primaryColumns, err := og.scanStringArray(ctx, tx,
 		`
 SELECT array_agg(column_name)
@@ -194,29 +193,39 @@ SELECT array_agg(column_name)
        );
 	`, tableName.Schema(), tableName.Object(), tableName.String())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695767)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(695768)
 	}
+	__antithesis_instrumentation__.Notify(695765)
 
 	for _, primaryColumn := range primaryColumns {
+		__antithesis_instrumentation__.Notify(695769)
 		if primaryColumn == columnName {
+			__antithesis_instrumentation__.Notify(695770)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(695771)
 		}
 	}
+	__antithesis_instrumentation__.Notify(695766)
 	return false, nil
 }
 
-// valuesViolateUniqueConstraints determines if any unique constraints (including primary constraints)
-// will be violated upon inserting the specified rows into the specified table.
 func (og *operationGenerator) violatesUniqueConstraints(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columns []string, rows [][]string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695772)
 
 	if len(rows) == 0 {
+		__antithesis_instrumentation__.Notify(695776)
 		return false, fmt.Errorf("violatesUniqueConstraints: no rows provided")
+	} else {
+		__antithesis_instrumentation__.Notify(695777)
 	}
+	__antithesis_instrumentation__.Notify(695773)
 
-	// Fetch unique constraints from the database. The format returned is an array of string arrays.
-	// Each string array is a group of column names for which a unique constraint exists.
 	constraints, err := scanStringArrayRows(ctx, tx, `
 	 SELECT DISTINCT array_agg(cols.column_name ORDER BY cols.column_name)
 					    FROM (
@@ -254,36 +263,48 @@ func (og *operationGenerator) violatesUniqueConstraints(
 					GROUP BY cons.conname;
 `, tableName.Schema(), tableName.Object())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695778)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(695779)
 	}
+	__antithesis_instrumentation__.Notify(695774)
 
 	for _, constraint := range constraints {
-		// previousRows is used to check unique constraints among the values which
-		// will be inserted into the database.
+		__antithesis_instrumentation__.Notify(695780)
+
 		previousRows := map[string]bool{}
 		for _, row := range rows {
+			__antithesis_instrumentation__.Notify(695781)
 			violation, err := og.violatesUniqueConstraintsHelper(
 				ctx, tx, tableName, columns, constraint, row, previousRows,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(695783)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(695784)
 			}
+			__antithesis_instrumentation__.Notify(695782)
 			if violation {
+				__antithesis_instrumentation__.Notify(695785)
 				return true, nil
+			} else {
+				__antithesis_instrumentation__.Notify(695786)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(695775)
 
 	return false, nil
 }
 
-// ErrSchemaChangesDisallowedDueToPkSwap is generated when schema changes are
-// disallowed on a table because PK swap is already in progress.
 var ErrSchemaChangesDisallowedDueToPkSwap = errors.New("not schema changes allowed on selected table due to PK swap")
 
 func (og *operationGenerator) tableHasPrimaryKeySwapActive(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName,
 ) error {
+	__antithesis_instrumentation__.Notify(695787)
 
 	indexName, err := og.scanStringArray(
 		ctx,
@@ -302,8 +323,12 @@ WHERE
 	`, tableName.String(),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695791)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(695792)
 	}
+	__antithesis_instrumentation__.Notify(695788)
 
 	allowed, err := og.scanBool(
 		ctx,
@@ -320,11 +345,19 @@ SELECT count(*) > 0
 		indexName[0],
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695793)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(695794)
 	}
+	__antithesis_instrumentation__.Notify(695789)
 	if !allowed {
+		__antithesis_instrumentation__.Notify(695795)
 		return ErrSchemaChangesDisallowedDueToPkSwap
+	} else {
+		__antithesis_instrumentation__.Notify(695796)
 	}
+	__antithesis_instrumentation__.Notify(695790)
 	return nil
 }
 
@@ -337,12 +370,14 @@ func (og *operationGenerator) violatesUniqueConstraintsHelper(
 	row []string,
 	previousRows map[string]bool,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695797)
 
-	// Put values to be inserted into a column name to value map to simplify lookups.
 	columnsToValues := map[string]string{}
 	for i := 0; i < len(columns); i++ {
+		__antithesis_instrumentation__.Notify(695804)
 		columnsToValues[columns[i]] = row[i]
 	}
+	__antithesis_instrumentation__.Notify(695798)
 
 	query := strings.Builder{}
 	query.WriteString(fmt.Sprintf(`SELECT EXISTS (
@@ -353,44 +388,61 @@ func (og *operationGenerator) violatesUniqueConstraintsHelper(
 
 	atLeastOneNonNullValue := false
 	for _, column := range constraint {
+		__antithesis_instrumentation__.Notify(695805)
 
-		// Null values are not checked because unique constraints do not apply to null values.
 		if columnsToValues[column] != "NULL" {
+			__antithesis_instrumentation__.Notify(695806)
 			if atLeastOneNonNullValue {
+				__antithesis_instrumentation__.Notify(695808)
 				query.WriteString(fmt.Sprintf(` AND %s = %s`, column, columnsToValues[column]))
 			} else {
+				__antithesis_instrumentation__.Notify(695809)
 				query.WriteString(fmt.Sprintf(`%s = %s`, column, columnsToValues[column]))
 			}
+			__antithesis_instrumentation__.Notify(695807)
 
 			atLeastOneNonNullValue = true
+		} else {
+			__antithesis_instrumentation__.Notify(695810)
 		}
 	}
+	__antithesis_instrumentation__.Notify(695799)
 	query.WriteString(")")
 
-	// If there are only null values being inserted for each of the constrained columns,
-	// then checking for uniqueness against other rows is not necessary.
 	if !atLeastOneNonNullValue {
+		__antithesis_instrumentation__.Notify(695811)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(695812)
 	}
+	__antithesis_instrumentation__.Notify(695800)
 
 	queryString := query.String()
 
-	// Check for uniqueness against other rows to be inserted. For simplicity, the `SELECT EXISTS`
-	// query used to check for uniqueness against rows in the database can also
-	// be used as a unique key to check for uniqueness among rows to be inserted.
 	if _, duplicateEntry := previousRows[queryString]; duplicateEntry {
+		__antithesis_instrumentation__.Notify(695813)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(695814)
 	}
+	__antithesis_instrumentation__.Notify(695801)
 	previousRows[queryString] = true
 
-	// Check for uniqueness against rows in the database.
 	exists, err := og.scanBool(ctx, tx, queryString)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695815)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(695816)
 	}
+	__antithesis_instrumentation__.Notify(695802)
 	if exists {
+		__antithesis_instrumentation__.Notify(695817)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(695818)
 	}
+	__antithesis_instrumentation__.Notify(695803)
 
 	return false, nil
 }
@@ -398,21 +450,32 @@ func (og *operationGenerator) violatesUniqueConstraintsHelper(
 func scanStringArrayRows(
 	ctx context.Context, tx pgx.Tx, query string, args ...interface{},
 ) ([][]string, error) {
+	__antithesis_instrumentation__.Notify(695819)
 	rows, err := tx.Query(ctx, query, args...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695822)
 		return nil, errors.Wrapf(err, "scanStringArrayRows: %q %q", query, args)
+	} else {
+		__antithesis_instrumentation__.Notify(695823)
 	}
+	__antithesis_instrumentation__.Notify(695820)
 	defer rows.Close()
 
 	results := [][]string{}
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(695824)
 		var columnNames []string
 		err := rows.Scan(&columnNames)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(695826)
 			return nil, errors.Wrapf(err, "scan: %q, args %q, scanArgs %q", query, columnNames, args)
+		} else {
+			__antithesis_instrumentation__.Notify(695827)
 		}
+		__antithesis_instrumentation__.Notify(695825)
 		results = append(results, columnNames)
 	}
+	__antithesis_instrumentation__.Notify(695821)
 
 	return results, nil
 }
@@ -420,6 +483,7 @@ func scanStringArrayRows(
 func (og *operationGenerator) indexExists(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, indexName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695828)
 	return og.scanBool(ctx, tx, `SELECT EXISTS(
 			SELECT *
 			  FROM information_schema.statistics
@@ -432,36 +496,39 @@ func (og *operationGenerator) indexExists(
 func (og *operationGenerator) scanStringArray(
 	ctx context.Context, tx pgx.Tx, query string, args ...interface{},
 ) (b []string, err error) {
+	__antithesis_instrumentation__.Notify(695829)
 	err = tx.QueryRow(ctx, query, args...).Scan(&b)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(695831)
 		og.LogQueryResultArray(
 			fmt.Sprintf("%q %q", query, args),
 			b,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(695832)
 	}
+	__antithesis_instrumentation__.Notify(695830)
 	return b, errors.Wrapf(err, "scanStringArray %q %q", query, args)
 }
 
-// canApplyUniqueConstraint checks if the rows in a table are unique with respect
-// to the specified columns such that a unique constraint can successfully be applied.
 func (og *operationGenerator) canApplyUniqueConstraint(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columns []string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695833)
 	columnNames := strings.Join(columns, ", ")
 
-	// If a row contains NULL in each of the columns relevant to a unique constraint,
-	// then the row will always be unique to other rows with respect to the constraint
-	// (even if there is another row with NULL values in each of the relevant columns).
-	// To account for this, the whereNotNullClause below is constructed to ignore rows
-	// with with NULL values in each of the relevant columns. Then, uniqueness can be
-	// verified easily using a SELECT DISTINCT statement.
 	whereNotNullClause := strings.Builder{}
 	for idx, column := range columns {
+		__antithesis_instrumentation__.Notify(695835)
 		whereNotNullClause.WriteString(fmt.Sprintf("%s IS NOT NULL ", column))
 		if idx != len(columns)-1 {
+			__antithesis_instrumentation__.Notify(695836)
 			whereNotNullClause.WriteString("OR ")
+		} else {
+			__antithesis_instrumentation__.Notify(695837)
 		}
 	}
+	__antithesis_instrumentation__.Notify(695834)
 
 	return og.scanBool(ctx, tx,
 		fmt.Sprintf(`
@@ -485,6 +552,7 @@ func (og *operationGenerator) canApplyUniqueConstraint(
 func (og *operationGenerator) columnContainsNull(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columnName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695838)
 	return og.scanBool(ctx, tx, fmt.Sprintf(`SELECT EXISTS (
 		SELECT %s
 		  FROM %s
@@ -495,6 +563,7 @@ func (og *operationGenerator) columnContainsNull(
 func (og *operationGenerator) constraintIsPrimary(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, constraintName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695839)
 	return og.scanBool(ctx, tx, fmt.Sprintf(`
 	SELECT EXISTS(
 	        SELECT *
@@ -506,10 +575,10 @@ func (og *operationGenerator) constraintIsPrimary(
 	`, tableName.String(), constraintName))
 }
 
-// Checks if a column has a single unique constraint.
 func (og *operationGenerator) columnHasSingleUniqueConstraint(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columnName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695840)
 	return og.scanBool(ctx, tx, `
 	SELECT EXISTS(
 	        SELECT column_name
@@ -534,6 +603,7 @@ func (og *operationGenerator) columnHasSingleUniqueConstraint(
 func (og *operationGenerator) constraintIsUnique(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, constraintName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695841)
 	return og.scanBool(ctx, tx, fmt.Sprintf(`
 	SELECT EXISTS(
 	        SELECT *
@@ -548,7 +618,8 @@ func (og *operationGenerator) constraintIsUnique(
 func (og *operationGenerator) columnIsStoredComputed(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columnName string,
 ) (bool, error) {
-	// Note that we COALESCE because the column may not exist.
+	__antithesis_instrumentation__.Notify(695842)
+
 	return og.scanBool(ctx, tx, `
 SELECT COALESCE(
         (
@@ -565,7 +636,8 @@ SELECT COALESCE(
 func (og *operationGenerator) columnIsComputed(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columnName string,
 ) (bool, error) {
-	// Note that we COALESCE because the column may not exist.
+	__antithesis_instrumentation__.Notify(695843)
+
 	return og.scanBool(ctx, tx, `
 SELECT COALESCE(
         (
@@ -582,6 +654,7 @@ SELECT COALESCE(
 func (og *operationGenerator) constraintExists(
 	ctx context.Context, tx pgx.Tx, constraintName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695844)
 	return og.scanBool(ctx, tx, fmt.Sprintf(`
 	SELECT EXISTS(
 	        SELECT *
@@ -599,10 +672,21 @@ func (og *operationGenerator) rowsSatisfyFkConstraint(
 	childTable *tree.TableName,
 	childColumn *column,
 ) (bool, error) {
-	// Self referential foreign key constraints are acceptable.
-	if parentTable.Schema() == childTable.Schema() && parentTable.Object() == childTable.Object() && parentColumn.name == childColumn.name {
+	__antithesis_instrumentation__.Notify(695845)
+
+	if parentTable.Schema() == childTable.Schema() && func() bool {
+		__antithesis_instrumentation__.Notify(695847)
+		return parentTable.Object() == childTable.Object() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(695848)
+		return parentColumn.name == childColumn.name == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(695849)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(695850)
 	}
+	__antithesis_instrumentation__.Notify(695846)
 	return og.scanBool(ctx, tx, fmt.Sprintf(`
 	SELECT NOT EXISTS(
 	  SELECT *
@@ -613,10 +697,10 @@ func (og *operationGenerator) rowsSatisfyFkConstraint(
   )`, childTable.String(), parentTable.String(), childColumn.name, parentColumn.name, parentColumn.name))
 }
 
-// violatesFkConstraints checks if the rows to be inserted will result in a foreign key violation.
 func (og *operationGenerator) violatesFkConstraints(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columns []string, rows [][]string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695851)
 	fkConstraints, err := scanStringArrayRows(ctx, tx, fmt.Sprintf(`
 		SELECT array[parent.table_schema, parent.table_name, parent.column_name, child.column_name]
 		  FROM (
@@ -647,45 +731,66 @@ func (og *operationGenerator) violatesFkConstraints(
 		 WHERE child.column_name != 'rowid';
 `, tableName.String(), tableName.Schema(), tableName.Object()))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695855)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(695856)
 	}
+	__antithesis_instrumentation__.Notify(695852)
 
-	// Maps a column name to its index. This way, the value of a column in a row can be looked up
-	// using row[colToIndexMap["columnName"]] = "valueForColumn"
 	columnNameToIndexMap := map[string]int{}
 	for i, name := range columns {
+		__antithesis_instrumentation__.Notify(695857)
 		columnNameToIndexMap[name] = i
 	}
+	__antithesis_instrumentation__.Notify(695853)
 	for _, row := range rows {
+		__antithesis_instrumentation__.Notify(695858)
 		for _, constraint := range fkConstraints {
+			__antithesis_instrumentation__.Notify(695859)
 			parentTableSchema := constraint[0]
 			parentTableName := constraint[1]
 			parentColumnName := constraint[2]
 			childColumnName := constraint[3]
 
-			// If self referential, there cannot be a violation.
-			if parentTableSchema == tableName.Schema() && parentTableName == tableName.Object() && parentColumnName == childColumnName {
+			if parentTableSchema == tableName.Schema() && func() bool {
+				__antithesis_instrumentation__.Notify(695862)
+				return parentTableName == tableName.Object() == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(695863)
+				return parentColumnName == childColumnName == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(695864)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(695865)
 			}
+			__antithesis_instrumentation__.Notify(695860)
 
 			violation, err := og.violatesFkConstraintsHelper(
 				ctx, tx, columnNameToIndexMap, parentTableSchema, parentTableName, parentColumnName, childColumnName, row,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(695866)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(695867)
 			}
+			__antithesis_instrumentation__.Notify(695861)
 
 			if violation {
+				__antithesis_instrumentation__.Notify(695868)
 				return true, nil
+			} else {
+				__antithesis_instrumentation__.Notify(695869)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(695854)
 
 	return false, nil
 }
 
-// violatesFkConstraintsHelper checks if a single row will violate a foreign key constraint
-// between the childColumn and parentColumn.
 func (og *operationGenerator) violatesFkConstraintsHelper(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -693,12 +798,16 @@ func (og *operationGenerator) violatesFkConstraintsHelper(
 	parentTableSchema, parentTableName, parentColumn, childColumn string,
 	row []string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695870)
 
-	// If the value to insert in the child column is NULL and the column default is NULL, then it is not possible to have a fk violation.
 	childValue := row[columnNameToIndexMap[childColumn]]
 	if childValue == "NULL" {
+		__antithesis_instrumentation__.Notify(695872)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(695873)
 	}
+	__antithesis_instrumentation__.Notify(695871)
 
 	return og.scanBool(ctx, tx, fmt.Sprintf(`
 	SELECT NOT EXISTS (
@@ -711,6 +820,7 @@ func (og *operationGenerator) violatesFkConstraintsHelper(
 func (og *operationGenerator) columnIsInDroppingIndex(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columnName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695874)
 	return og.scanBool(ctx, tx, `
 SELECT EXISTS(
         SELECT index_id
@@ -728,7 +838,6 @@ SELECT EXISTS(
 `, tableName.String(), columnName)
 }
 
-// A pair of CTE definitions that expect the first argument to be a table name.
 const descriptorsAndConstraintMutationsCTE = `descriptors AS (
                     SELECT crdb_internal.pb_to_json(
                             'cockroach.sql.sqlbase.Descriptor',
@@ -751,7 +860,8 @@ const descriptorsAndConstraintMutationsCTE = `descriptors AS (
 func (og *operationGenerator) constraintInDroppingState(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, constraintName string,
 ) (bool, error) {
-	// TODO(ajwerner): Figure out how to plumb the column name into this query.
+	__antithesis_instrumentation__.Notify(695875)
+
 	return og.scanBool(ctx, tx, `
   WITH `+descriptorsAndConstraintMutationsCTE+`
 SELECT true
@@ -768,6 +878,7 @@ SELECT true
 func (og *operationGenerator) columnNotNullConstraintInMutation(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName, columnName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695876)
 	return og.scanBool(ctx, tx, `
   WITH `+descriptorsAndConstraintMutationsCTE+`,
        col AS (
@@ -790,6 +901,7 @@ SELECT EXISTS(
 func (og *operationGenerator) schemaContainsTypesWithCrossSchemaReferences(
 	ctx context.Context, tx pgx.Tx, schemaName string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695877)
 	return og.scanBool(ctx, tx, `
   WITH database_id AS (
                     SELECT id
@@ -852,11 +964,10 @@ SELECT EXISTS(
        );`, schemaName)
 }
 
-// enumMemberPresent determines whether val is a member of the enum.
-// This includes non-public members.
 func (og *operationGenerator) enumMemberPresent(
 	ctx context.Context, tx pgx.Tx, enum string, val string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695878)
 	return og.scanBool(ctx, tx, `
 WITH enum_members AS (
 	SELECT
@@ -884,10 +995,10 @@ SELECT
 	)
 }
 
-// tableHasOngoingSchemaChanges returns whether the table has any mutations lined up.
 func (og *operationGenerator) tableHasOngoingSchemaChanges(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695879)
 	return og.scanBool(
 		ctx,
 		tx,
@@ -912,11 +1023,10 @@ WHERE
 	)
 }
 
-// tableHasOngoingAlterPKSchemaChanges checks whether a given table has an ALTER
-// PRIMARY KEY related change in progress.
 func (og *operationGenerator) tableHasOngoingAlterPKSchemaChanges(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695880)
 	return og.scanBool(
 		ctx,
 		tx,
@@ -955,22 +1065,27 @@ SELECT
 	)
 }
 
-// getRegionColumn returns the column used for partitioning a REGIONAL BY ROW
-// table. This column is either the tree.RegionalByRowRegionDefaultCol column,
-// or the column specified in the AS clause. This function asserts if the
-// supplied table is not REGIONAL BY ROW.
 func (og *operationGenerator) getRegionColumn(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(695881)
 	isTableRegionalByRow, err := og.tableIsRegionalByRow(ctx, tx, tableName)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695885)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(695886)
 	}
+	__antithesis_instrumentation__.Notify(695882)
 	if !isTableRegionalByRow {
+		__antithesis_instrumentation__.Notify(695887)
 		return "", errors.AssertionFailedf(
 			"invalid call to get region column of table %s which is not a REGIONAL BY ROW table",
 			tableName.String())
+	} else {
+		__antithesis_instrumentation__.Notify(695888)
 	}
+	__antithesis_instrumentation__.Notify(695883)
 
 	regionCol, err := scanString(
 		ctx,
@@ -999,16 +1114,20 @@ FROM
 		tree.RegionalByRowRegionDefaultCol,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695889)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(695890)
 	}
+	__antithesis_instrumentation__.Notify(695884)
 
 	return regionCol, nil
 }
 
-// tableIsRegionalByRow checks whether the given table is a REGIONAL BY ROW table.
 func (og *operationGenerator) tableIsRegionalByRow(
 	ctx context.Context, tx pgx.Tx, tableName *tree.TableName,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695891)
 	return og.scanBool(
 		ctx,
 		tx,
@@ -1041,9 +1160,8 @@ SELECT
 	)
 }
 
-// databaseHasMultiRegion determines whether the database is multi-region
-// enabled.
 func (og *operationGenerator) databaseIsMultiRegion(ctx context.Context, tx pgx.Tx) (bool, error) {
+	__antithesis_instrumentation__.Notify(695892)
 	return og.scanBool(
 		ctx,
 		tx,
@@ -1051,19 +1169,25 @@ func (og *operationGenerator) databaseIsMultiRegion(ctx context.Context, tx pgx.
 	)
 }
 
-// databaseHasRegionChange determines whether the database is currently undergoing
-// a region change.
 func (og *operationGenerator) databaseHasRegionChange(
 	ctx context.Context, tx pgx.Tx,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695893)
 	isMultiRegion, err := og.scanBool(
 		ctx,
 		tx,
 		`SELECT EXISTS (SELECT * FROM [SHOW REGIONS FROM DATABASE])`,
 	)
-	if err != nil || !isMultiRegion {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(695895)
+		return !isMultiRegion == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(695896)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(695897)
 	}
+	__antithesis_instrumentation__.Notify(695894)
 	return og.scanBool(
 		ctx,
 		tx,
@@ -1090,12 +1214,10 @@ SELECT EXISTS (
 	)
 }
 
-// databaseHasRegionalByRowChange checks whether a given database has any tables
-// which are currently undergoing a change to or from REGIONAL BY ROW, or
-// REGIONAL BY ROW tables with schema changes on it.
 func (og *operationGenerator) databaseHasRegionalByRowChange(
 	ctx context.Context, tx pgx.Tx,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(695898)
 	return og.scanBool(
 		ctx,
 		tx,

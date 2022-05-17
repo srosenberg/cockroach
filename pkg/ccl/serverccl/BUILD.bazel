@@ -5,6 +5,7 @@ go_library(
     srcs = ["doc.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/ccl/serverccl",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -47,6 +48,7 @@ go_test(
         "//pkg/util/protoutil",
         "//pkg/util/randutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_elastic_gosigar//:gosigar",
         "@com_github_lib_pq//:pq",
         "@com_github_prometheus_client_model//go",

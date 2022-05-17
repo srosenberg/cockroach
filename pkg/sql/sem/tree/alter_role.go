@@ -1,16 +1,7 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// AlterRole represents an `ALTER ROLE ... WITH options` statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type AlterRole struct {
 	Name      RoleSpec
 	IfExists  bool
@@ -18,26 +9,35 @@ type AlterRole struct {
 	KVOptions KVOptions
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterRole) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603035)
 	ctx.WriteString("ALTER")
 	if node.IsRole {
+		__antithesis_instrumentation__.Notify(603038)
 		ctx.WriteString(" ROLE ")
 	} else {
+		__antithesis_instrumentation__.Notify(603039)
 		ctx.WriteString(" USER ")
 	}
+	__antithesis_instrumentation__.Notify(603036)
 	if node.IfExists {
+		__antithesis_instrumentation__.Notify(603040)
 		ctx.WriteString("IF EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(603041)
 	}
+	__antithesis_instrumentation__.Notify(603037)
 	ctx.FormatNode(&node.Name)
 
 	if len(node.KVOptions) > 0 {
+		__antithesis_instrumentation__.Notify(603042)
 		ctx.WriteString(" WITH")
 		node.KVOptions.formatAsRoleOptions(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(603043)
 	}
 }
 
-// AlterRoleSet represents an `ALTER ROLE ... SET` statement.
 type AlterRoleSet struct {
 	RoleName     RoleSpec
 	IfExists     bool
@@ -47,27 +47,41 @@ type AlterRoleSet struct {
 	SetOrReset   *SetVar
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterRoleSet) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603044)
 	ctx.WriteString("ALTER")
 	if node.IsRole {
+		__antithesis_instrumentation__.Notify(603049)
 		ctx.WriteString(" ROLE ")
 	} else {
+		__antithesis_instrumentation__.Notify(603050)
 		ctx.WriteString(" USER ")
 	}
+	__antithesis_instrumentation__.Notify(603045)
 	if node.IfExists {
+		__antithesis_instrumentation__.Notify(603051)
 		ctx.WriteString("IF EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(603052)
 	}
+	__antithesis_instrumentation__.Notify(603046)
 	if node.AllRoles {
+		__antithesis_instrumentation__.Notify(603053)
 		ctx.WriteString("ALL ")
 	} else {
+		__antithesis_instrumentation__.Notify(603054)
 		ctx.FormatNode(&node.RoleName)
 		ctx.WriteString(" ")
 	}
+	__antithesis_instrumentation__.Notify(603047)
 	if node.DatabaseName != "" {
+		__antithesis_instrumentation__.Notify(603055)
 		ctx.WriteString("IN DATABASE ")
 		ctx.FormatNode(&node.DatabaseName)
 		ctx.WriteString(" ")
+	} else {
+		__antithesis_instrumentation__.Notify(603056)
 	}
+	__antithesis_instrumentation__.Notify(603048)
 	ctx.FormatNode(node.SetOrReset)
 }

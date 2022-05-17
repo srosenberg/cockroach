@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package roachpb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,274 +15,262 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/errorspb"
-	_ "github.com/cockroachdb/errors/extgrpc" // register EncodeError support for gRPC Status
+	_ "github.com/cockroachdb/errors/extgrpc"
 	"github.com/cockroachdb/redact"
 )
 
-// ClientVisibleRetryError is to be implemented by errors visible by
-// layers above and that can be handled by retrying the transaction.
 type ClientVisibleRetryError interface {
 	ClientVisibleRetryError()
 }
 
-// ClientVisibleAmbiguousError is to be implemented by errors visible
-// by layers above and that indicate uncertainty.
 type ClientVisibleAmbiguousError interface {
 	ClientVisibleAmbiguousError()
 }
 
 func (e *UnhandledRetryableError) Error() string {
+	__antithesis_instrumentation__.Notify(164277)
 	return e.String()
 }
 
 var _ error = &UnhandledRetryableError{}
 
-// SafeFormat implements redact.SafeFormatter.
 func (e *UnhandledRetryableError) SafeFormat(s redact.SafePrinter, r rune) {
+	__antithesis_instrumentation__.Notify(164278)
 	e.PErr.SafeFormat(s, r)
 }
 
 func (e *UnhandledRetryableError) String() string {
+	__antithesis_instrumentation__.Notify(164279)
 	return redact.StringWithoutMarkers(e)
 }
 
-// transactionRestartError is an interface implemented by errors that cause
-// a transaction to be restarted.
 type transactionRestartError interface {
 	canRestartTransaction() TransactionRestart
 }
 
-// ErrorUnexpectedlySet creates a string to panic with when a response (typically
-// a roachpb.BatchResponse) unexpectedly has Error set in its response header.
 func ErrorUnexpectedlySet(culprit, response interface{}) error {
+	__antithesis_instrumentation__.Notify(164280)
 	return errors.AssertionFailedf("error is unexpectedly set, culprit is %T:\n%+v", culprit, response)
 }
 
-// ErrorPriority is used to rank errors such that the "best" one is chosen to be
-// presented as the batch result when a batch is split up and observes multiple
-// errors. Higher values correspond to higher priorities.
 type ErrorPriority int
 
 const (
 	_ ErrorPriority = iota
-	// ErrorScoreTxnRestart indicates that the transaction should be restarted
-	// with an incremented epoch.
+
 	ErrorScoreTxnRestart
 
-	// ErrorScoreUnambiguousError is used for errors which are known to return a
-	// transaction reflecting the highest timestamp of any intent that was
-	// written. We allow the transaction to continue after such errors; we also
-	// allow RollbackToSavepoint() to be called after such errors. In particular,
-	// this is useful for SQL which wants to allow rolling back to a savepoint
-	// after ConditionFailedErrors (uniqueness violations) and WriteIntentError
-	// (lock not available errors). With continuing after errors its important for
-	// the coordinator to track the timestamp at which intents might have been
-	// written.
-	//
-	// Note that all the lower scores also are unambiguous in this sense, so this
-	// score can be seen as an upper-bound for unambiguous errors.
 	ErrorScoreUnambiguousError
 
-	// ErrorScoreNonRetriable indicates that the transaction performed an
-	// operation that does not warrant a retry. The error should be propagated to
-	// the client and the transaction should terminate immediately.
 	ErrorScoreNonRetriable
 
-	// ErrorScoreTxnAbort indicates that the transaction is aborted. The
-	// operation can only try again under the purview of a new transaction.
-	//
-	// This error has the highest priority because, as far as KV is concerned, a
-	// TransactionAbortedError is impossible to recover from (whereas
-	// non-retriable errors could conceivably be recovered if the client wanted to
-	// ignore them). Also, the TxnCoordSender likes to assume that a
-	// TransactionAbortedError is the only way it finds about an aborted
-	// transaction, and so it benefits from all other errors being merged into a
-	// TransactionAbortedError instead of the other way around.
 	ErrorScoreTxnAbort
 )
 
-// ErrPriority computes the priority of the given error.
 func ErrPriority(err error) ErrorPriority {
-	// TODO(tbg): this method could take an `*Error` if it weren't for SQL
-	// propagating these as an `error`. See `DistSQLReceiver.Push`.
+	__antithesis_instrumentation__.Notify(164281)
+
 	var detail ErrorDetailInterface
 	switch tErr := err.(type) {
 	case nil:
+		__antithesis_instrumentation__.Notify(164284)
 		return 0
 	case ErrorDetailInterface:
+		__antithesis_instrumentation__.Notify(164285)
 		detail = tErr
 	case *internalError:
+		__antithesis_instrumentation__.Notify(164286)
 		detail = (*Error)(tErr).GetDetail()
 	case *UnhandledRetryableError:
+		__antithesis_instrumentation__.Notify(164287)
 		if _, ok := tErr.PErr.GetDetail().(*TransactionAbortedError); ok {
+			__antithesis_instrumentation__.Notify(164289)
 			return ErrorScoreTxnAbort
+		} else {
+			__antithesis_instrumentation__.Notify(164290)
 		}
+		__antithesis_instrumentation__.Notify(164288)
 		return ErrorScoreTxnRestart
 	}
+	__antithesis_instrumentation__.Notify(164282)
 
 	switch v := detail.(type) {
 	case *TransactionRetryWithProtoRefreshError:
+		__antithesis_instrumentation__.Notify(164291)
 		if v.PrevTxnAborted() {
+			__antithesis_instrumentation__.Notify(164294)
 			return ErrorScoreTxnAbort
+		} else {
+			__antithesis_instrumentation__.Notify(164295)
 		}
+		__antithesis_instrumentation__.Notify(164292)
 		return ErrorScoreTxnRestart
 	case *ConditionFailedError, *WriteIntentError:
-		// We particularly care about returning the low ErrorScoreUnambiguousError
-		// because we don't want to transition a transaction that encounters a
-		// ConditionFailedError or a WriteIntentError to an error state. More
-		// specifically, we want to allow rollbacks to savepoint after one of these
-		// errors.
+		__antithesis_instrumentation__.Notify(164293)
+
 		return ErrorScoreUnambiguousError
 	}
+	__antithesis_instrumentation__.Notify(164283)
 	return ErrorScoreNonRetriable
 }
 
-// NewError creates an Error from the given error.
 func NewError(err error) *Error {
+	__antithesis_instrumentation__.Notify(164296)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(164299)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(164300)
 	}
+	__antithesis_instrumentation__.Notify(164297)
 	e := &Error{
 		EncodedError: errors.EncodeError(context.Background(), err),
 	}
 
-	// This block is deprecated behavior retained for compat with
-	// 20.2 nodes. It makes sure that if applicable, deprecatedMessage,
-	// ErrorDetail, and deprecatedTransactionRestart are set.
 	{
+		__antithesis_instrumentation__.Notify(164301)
 		if intErr, ok := err.(*internalError); ok {
+			__antithesis_instrumentation__.Notify(164302)
 			*e = *(*Error)(intErr)
-		} else if detail := ErrorDetailInterface(nil); errors.As(err, &detail) {
-			e.deprecatedMessage = detail.message(e)
-			if r, ok := detail.(transactionRestartError); ok {
-				e.deprecatedTransactionRestart = r.canRestartTransaction()
-			} else {
-				e.deprecatedTransactionRestart = TransactionRestart_NONE
-			}
-			e.deprecatedDetail.MustSetInner(detail)
-			e.checkTxnStatusValid()
 		} else {
-			e.deprecatedMessage = err.Error()
+			__antithesis_instrumentation__.Notify(164303)
+			if detail := ErrorDetailInterface(nil); errors.As(err, &detail) {
+				__antithesis_instrumentation__.Notify(164304)
+				e.deprecatedMessage = detail.message(e)
+				if r, ok := detail.(transactionRestartError); ok {
+					__antithesis_instrumentation__.Notify(164306)
+					e.deprecatedTransactionRestart = r.canRestartTransaction()
+				} else {
+					__antithesis_instrumentation__.Notify(164307)
+					e.deprecatedTransactionRestart = TransactionRestart_NONE
+				}
+				__antithesis_instrumentation__.Notify(164305)
+				e.deprecatedDetail.MustSetInner(detail)
+				e.checkTxnStatusValid()
+			} else {
+				__antithesis_instrumentation__.Notify(164308)
+				e.deprecatedMessage = err.Error()
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(164298)
 	return e
 }
 
-// NewErrorWithTxn creates an Error from the given error and a transaction.
-//
-// txn is cloned before being stored in Error.
 func NewErrorWithTxn(err error, txn *Transaction) *Error {
+	__antithesis_instrumentation__.Notify(164309)
 	e := NewError(err)
 	e.SetTxn(txn)
 	return e
 }
 
-// NewErrorf creates an Error from the given error message. It is a
-// passthrough to fmt.Errorf, with an additional prefix containing the
-// filename and line number.
 func NewErrorf(format string, a ...interface{}) *Error {
+	__antithesis_instrumentation__.Notify(164310)
 	err := errors.Newf(format, a...)
 	file, line, _ := caller.Lookup(1)
 	err = errors.Wrapf(err, "%s:%d", file, line)
 	return NewError(err)
 }
 
-// SafeFormat implements redact.SafeFormatter.
 func (e *Error) SafeFormat(s redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(164311)
 	if e == nil {
+		__antithesis_instrumentation__.Notify(164314)
 		s.Print(nil)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(164315)
 	}
+	__antithesis_instrumentation__.Notify(164312)
 
 	if e.EncodedError != (errors.EncodedError{}) {
+		__antithesis_instrumentation__.Notify(164316)
 		err := errors.DecodeError(context.Background(), e.EncodedError)
 		var iface ErrorDetailInterface
 		if errors.As(err, &iface) {
-			// Deprecated code: if there is a detail and the message produced by the detail
-			// (which gets to see the surrounding Error) is different, then use that message.
-			// What is likely the cause of that is that someone passed an updated Transaction
-			// to the Error via SetTxn, and the error detail prints that txn.
-			//
-			// TODO(tbg): change SetTxn so that instead of stashing the transaction on the
-			// Error struct, it wraps the EncodedError with an error containing the updated
-			// txn. Make GetTxn retrieve the first one it sees (overridden by UnexposedTxn
-			// while it's still around). Remove the `message(Error)` methods from ErrorDetailInterface.
-			// We also have to remove GetDetail() in the process since it doesn't understand the
-			// wrapping; instead we need a method that looks for a specific kind of detail, i.e.
-			// we basically want to use `errors.As` instead.
+			__antithesis_instrumentation__.Notify(164318)
+
 			deprecatedMsg := iface.message(e)
 			if deprecatedMsg != err.Error() {
+				__antithesis_instrumentation__.Notify(164319)
 				s.Print(deprecatedMsg)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(164320)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(164321)
 		}
+		__antithesis_instrumentation__.Notify(164317)
 		s.Print(err)
 	} else {
-		// TODO(tbg): remove this block in the 21.2 cycle and rely on EncodedError
-		// always being populated.
+		__antithesis_instrumentation__.Notify(164322)
+
 		switch t := e.GetDetail().(type) {
 		case nil:
+			__antithesis_instrumentation__.Notify(164323)
 			s.Print(e.deprecatedMessage)
 		default:
-			// We have a detail and ignore e.deprecatedMessage. We do assume that if a detail is
-			// present, e.deprecatedMessage does correspond to that detail's message. This
-			// assumption is not enforced but appears sane.
+			__antithesis_instrumentation__.Notify(164324)
+
 			s.Print(t)
 		}
 	}
+	__antithesis_instrumentation__.Notify(164313)
 
 	if txn := e.GetTxn(); txn != nil {
+		__antithesis_instrumentation__.Notify(164325)
 		s.SafeString(": ")
 		s.Print(txn)
+	} else {
+		__antithesis_instrumentation__.Notify(164326)
 	}
 }
 
-// String implements fmt.Stringer.
 func (e *Error) String() string {
+	__antithesis_instrumentation__.Notify(164327)
 	return redact.StringWithoutMarkers(e)
 }
 
-// TransactionRestart returns the TransactionRestart for this Error.
 func (e *Error) TransactionRestart() TransactionRestart {
+	__antithesis_instrumentation__.Notify(164328)
 	if e.EncodedError == (errorspb.EncodedError{}) {
-		// Legacy code.
-		//
-		// TODO(tbg): delete in 21.2.
+		__antithesis_instrumentation__.Notify(164331)
+
 		return e.deprecatedTransactionRestart
+	} else {
+		__antithesis_instrumentation__.Notify(164332)
 	}
+	__antithesis_instrumentation__.Notify(164329)
 	var iface transactionRestartError
 	if errors.As(errors.DecodeError(context.Background(), e.EncodedError), &iface) {
+		__antithesis_instrumentation__.Notify(164333)
 		return iface.canRestartTransaction()
+	} else {
+		__antithesis_instrumentation__.Notify(164334)
 	}
+	__antithesis_instrumentation__.Notify(164330)
 	return TransactionRestart_NONE
 }
 
 type internalError Error
 
 func (e *internalError) Error() string {
+	__antithesis_instrumentation__.Notify(164335)
 	return (*Error)(e).String()
 }
 
-// ErrorDetailInterface is an interface for each error detail.
-// These must not be implemented by anything other than our protobuf-backed error details
-// as we rely on a 1:1 correspondence between the interface and what can be stored via
-// `Error.DeprecatedSetDetail`.
 type ErrorDetailInterface interface {
 	error
 	protoutil.Message
-	// message returns an error message.
+
 	message(*Error) string
-	// Type returns the error's type.
+
 	Type() ErrorDetailType
 }
 
-// ErrorDetailType identifies the type of KV error.
 type ErrorDetailType int
 
-// This lists all ErrorDetail types. The numeric values in this list are used to
-// identify corresponding timeseries. The values correspond to the proto oneof
-// values.
-//go:generate stringer -type=ErrorDetailType
 const (
 	NotLeaseHolderErrType                   ErrorDetailType = 1
 	RangeNotFoundErrType                    ErrorDetailType = 2
@@ -325,199 +305,260 @@ const (
 	MinTimestampBoundUnsatisfiableErrType   ErrorDetailType = 42
 	RefreshFailedErrType                    ErrorDetailType = 43
 	MVCCHistoryMutationErrType              ErrorDetailType = 44
-	// When adding new error types, don't forget to update NumErrors below.
 
-	// CommunicationErrType indicates a gRPC error; this is not an ErrorDetail.
-	// The value 22 is chosen because it's reserved in the errors proto.
 	CommunicationErrType ErrorDetailType = 22
-	// InternalErrType indicates a pErr that doesn't contain a recognized error
-	// detail. The value 25 is chosen because it's reserved in the errors proto.
+
 	InternalErrType ErrorDetailType = 25
 
 	NumErrors int = 45
 )
 
-// GoError returns a Go error converted from Error. If the error is a transaction
-// retry error, it returns the error itself wrapped in an UnhandledRetryableError.
-// Otherwise, if an error detail is present, is is returned (i.e. the result will
-// match GetDetail()). Otherwise, returns the error itself masqueraded as an `error`.
 func (e *Error) GoError() error {
+	__antithesis_instrumentation__.Notify(164336)
 	if e == nil {
+		__antithesis_instrumentation__.Notify(164341)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(164342)
 	}
+	__antithesis_instrumentation__.Notify(164337)
 	if e.EncodedError != (errorspb.EncodedError{}) {
+		__antithesis_instrumentation__.Notify(164343)
 		err := errors.DecodeError(context.Background(), e.EncodedError)
 		var iface transactionRestartError
 		if errors.As(err, &iface) {
+			__antithesis_instrumentation__.Notify(164345)
 			if txnRestart := iface.canRestartTransaction(); txnRestart != TransactionRestart_NONE {
-				// TODO(tbg): revisit this unintuitive error wrapping here and see if
-				// a better solution can be found.
+				__antithesis_instrumentation__.Notify(164346)
+
 				return &UnhandledRetryableError{
 					PErr: *e,
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(164347)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(164348)
 		}
+		__antithesis_instrumentation__.Notify(164344)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(164349)
 	}
+	__antithesis_instrumentation__.Notify(164338)
 
-	// Everything below is legacy behavior that can be deleted in 21.2.
 	if e.TransactionRestart() != TransactionRestart_NONE {
+		__antithesis_instrumentation__.Notify(164350)
 		return &UnhandledRetryableError{
 			PErr: *e,
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(164351)
 	}
+	__antithesis_instrumentation__.Notify(164339)
 	if detail := e.GetDetail(); detail != nil {
+		__antithesis_instrumentation__.Notify(164352)
 		return detail
+	} else {
+		__antithesis_instrumentation__.Notify(164353)
 	}
+	__antithesis_instrumentation__.Notify(164340)
 	return (*internalError)(e)
 }
 
-// GetDetail returns an error detail associated with the error, or nil otherwise.
 func (e *Error) GetDetail() ErrorDetailInterface {
+	__antithesis_instrumentation__.Notify(164354)
 	if e == nil {
+		__antithesis_instrumentation__.Notify(164357)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(164358)
 	}
+	__antithesis_instrumentation__.Notify(164355)
 	var detail ErrorDetailInterface
 	if e.EncodedError != (errorspb.EncodedError{}) {
+		__antithesis_instrumentation__.Notify(164359)
 		errors.As(errors.DecodeError(context.Background(), e.EncodedError), &detail)
 	} else {
-		// Legacy behavior.
-		//
-		// TODO(tbg): delete in v21.2.
+		__antithesis_instrumentation__.Notify(164360)
+
 		detail, _ = e.deprecatedDetail.GetInner().(ErrorDetailInterface)
 	}
+	__antithesis_instrumentation__.Notify(164356)
 	return detail
 }
 
-// SetTxn sets the error transaction and resets the error message.
-// The argument is cloned before being stored in the Error.
 func (e *Error) SetTxn(txn *Transaction) {
+	__antithesis_instrumentation__.Notify(164361)
 	e.UnexposedTxn = nil
 	e.UpdateTxn(txn)
 }
 
-// UpdateTxn updates the error transaction and resets the error message.
-// The argument is cloned before being stored in the Error.
 func (e *Error) UpdateTxn(o *Transaction) {
+	__antithesis_instrumentation__.Notify(164362)
 	if o == nil {
+		__antithesis_instrumentation__.Notify(164366)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(164367)
 	}
+	__antithesis_instrumentation__.Notify(164363)
 	if e.UnexposedTxn == nil {
+		__antithesis_instrumentation__.Notify(164368)
 		e.UnexposedTxn = o.Clone()
 	} else {
+		__antithesis_instrumentation__.Notify(164369)
 		e.UnexposedTxn.Update(o)
 	}
+	__antithesis_instrumentation__.Notify(164364)
 	if sErr, ok := e.deprecatedDetail.GetInner().(ErrorDetailInterface); ok {
-		// Refresh the message as the txn is updated.
-		//
-		// TODO(tbg): deprecated, remove in 21.2.
+		__antithesis_instrumentation__.Notify(164370)
+
 		e.deprecatedMessage = sErr.message(e)
+	} else {
+		__antithesis_instrumentation__.Notify(164371)
 	}
+	__antithesis_instrumentation__.Notify(164365)
 	e.checkTxnStatusValid()
 }
 
-// checkTxnStatusValid verifies that the transaction status is in-sync with the
-// error detail.
 func (e *Error) checkTxnStatusValid() {
-	// TODO(tbg): this will need to be updated when we
-	// remove all of these deprecated fields in 21.2.
+	__antithesis_instrumentation__.Notify(164372)
 
 	txn := e.UnexposedTxn
 	err := e.deprecatedDetail.GetInner()
 	if txn == nil {
+		__antithesis_instrumentation__.Notify(164376)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(164377)
 	}
+	__antithesis_instrumentation__.Notify(164373)
 	if e.deprecatedTransactionRestart == TransactionRestart_NONE {
+		__antithesis_instrumentation__.Notify(164378)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(164379)
 	}
+	__antithesis_instrumentation__.Notify(164374)
 	if errors.HasType(err, (*TransactionAbortedError)(nil)) {
+		__antithesis_instrumentation__.Notify(164380)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(164381)
 	}
+	__antithesis_instrumentation__.Notify(164375)
 	if txn.Status.IsFinalized() {
+		__antithesis_instrumentation__.Notify(164382)
 		log.Fatalf(context.TODO(), "transaction unexpectedly finalized in (%T): %v", err, e)
+	} else {
+		__antithesis_instrumentation__.Notify(164383)
 	}
 }
 
-// GetTxn returns the txn.
 func (e *Error) GetTxn() *Transaction {
+	__antithesis_instrumentation__.Notify(164384)
 	if e == nil {
+		__antithesis_instrumentation__.Notify(164386)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(164387)
 	}
+	__antithesis_instrumentation__.Notify(164385)
 	return e.UnexposedTxn
 }
 
-// SetErrorIndex sets the index of the error.
 func (e *Error) SetErrorIndex(index int32) {
+	__antithesis_instrumentation__.Notify(164388)
 	e.Index = &ErrPosition{Index: index}
 }
 
 func (e *NodeUnavailableError) Error() string {
+	__antithesis_instrumentation__.Notify(164389)
 	return e.message(nil)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *NodeUnavailableError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164390)
 	return NodeUnavailableErrType
 }
 
 func (*NodeUnavailableError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164391)
 	return "node unavailable; try another peer"
 }
 
 var _ ErrorDetailInterface = &NodeUnavailableError{}
 
 func (e *NotLeaseHolderError) Error() string {
+	__antithesis_instrumentation__.Notify(164392)
 	return e.message(nil)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *NotLeaseHolderError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164393)
 	return NotLeaseHolderErrType
 }
 
 func (e *NotLeaseHolderError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164394)
 	var buf strings.Builder
 	buf.WriteString("[NotLeaseHolderError] ")
 	if e.CustomMsg != "" {
+		__antithesis_instrumentation__.Notify(164398)
 		buf.WriteString(e.CustomMsg)
 		buf.WriteString("; ")
+	} else {
+		__antithesis_instrumentation__.Notify(164399)
 	}
+	__antithesis_instrumentation__.Notify(164395)
 	fmt.Fprintf(&buf, "r%d: ", e.RangeID)
 	if e.Replica != (ReplicaDescriptor{}) {
+		__antithesis_instrumentation__.Notify(164400)
 		fmt.Fprintf(&buf, "replica %s not lease holder; ", e.Replica)
 	} else {
+		__antithesis_instrumentation__.Notify(164401)
 		fmt.Fprint(&buf, "replica not lease holder; ")
 	}
+	__antithesis_instrumentation__.Notify(164396)
 	if e.LeaseHolder == nil {
+		__antithesis_instrumentation__.Notify(164402)
 		fmt.Fprint(&buf, "lease holder unknown")
-	} else if e.Lease != nil {
-		fmt.Fprintf(&buf, "current lease is %s", e.Lease)
 	} else {
-		fmt.Fprintf(&buf, "replica %s is", *e.LeaseHolder)
+		__antithesis_instrumentation__.Notify(164403)
+		if e.Lease != nil {
+			__antithesis_instrumentation__.Notify(164404)
+			fmt.Fprintf(&buf, "current lease is %s", e.Lease)
+		} else {
+			__antithesis_instrumentation__.Notify(164405)
+			fmt.Fprintf(&buf, "replica %s is", *e.LeaseHolder)
+		}
 	}
+	__antithesis_instrumentation__.Notify(164397)
 	return buf.String()
 }
 
 var _ ErrorDetailInterface = &NotLeaseHolderError{}
 
-// Type is part of the ErrorDetailInterface.
 func (e *LeaseRejectedError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164406)
 	return LeaseRejectedErrType
 }
 
 func (e *LeaseRejectedError) Error() string {
+	__antithesis_instrumentation__.Notify(164407)
 	return e.message(nil)
 }
 
 func (e *LeaseRejectedError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164408)
 	return fmt.Sprintf("cannot replace lease %s with %s: %s", e.Existing, e.Requested.String(), e.Message)
 }
 
 var _ ErrorDetailInterface = &LeaseRejectedError{}
 
-// NewRangeNotFoundError initializes a new RangeNotFoundError for the given RangeID and, optionally,
-// a StoreID.
 func NewRangeNotFoundError(rangeID RangeID, storeID StoreID) *RangeNotFoundError {
+	__antithesis_instrumentation__.Notify(164409)
 	return &RangeNotFoundError{
 		RangeID: rangeID,
 		StoreID: storeID,
@@ -525,31 +566,35 @@ func NewRangeNotFoundError(rangeID RangeID, storeID StoreID) *RangeNotFoundError
 }
 
 func (e *RangeNotFoundError) Error() string {
+	__antithesis_instrumentation__.Notify(164410)
 	return e.message(nil)
 }
 
 func (e *RangeNotFoundError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164411)
 	msg := fmt.Sprintf("r%d was not found", e.RangeID)
 	if e.StoreID != 0 {
+		__antithesis_instrumentation__.Notify(164413)
 		msg += fmt.Sprintf(" on s%d", e.StoreID)
+	} else {
+		__antithesis_instrumentation__.Notify(164414)
 	}
+	__antithesis_instrumentation__.Notify(164412)
 	return msg
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *RangeNotFoundError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164415)
 	return RangeNotFoundErrType
 }
 
 var _ ErrorDetailInterface = &RangeNotFoundError{}
 
-// IsRangeNotFoundError returns true if err contains a *RangeNotFoundError.
 func IsRangeNotFoundError(err error) bool {
+	__antithesis_instrumentation__.Notify(164416)
 	return errors.HasType(err, (*RangeNotFoundError)(nil))
 }
 
-// NewRangeKeyMismatchErrorWithCTPolicy initializes a new RangeKeyMismatchError.
-// identical to NewRangeKeyMismatchError, with the given ClosedTimestampPolicy.
 func NewRangeKeyMismatchErrorWithCTPolicy(
 	ctx context.Context,
 	start, end Key,
@@ -557,22 +602,37 @@ func NewRangeKeyMismatchErrorWithCTPolicy(
 	lease *Lease,
 	ctPolicy RangeClosedTimestampPolicy,
 ) *RangeKeyMismatchError {
+	__antithesis_instrumentation__.Notify(164417)
 	if desc == nil {
+		__antithesis_instrumentation__.Notify(164421)
 		panic("NewRangeKeyMismatchError with nil descriptor")
+	} else {
+		__antithesis_instrumentation__.Notify(164422)
 	}
+	__antithesis_instrumentation__.Notify(164418)
 	if !desc.IsInitialized() {
-		// We must never send uninitialized ranges back to the client guard against
-		// regressions of #6027.
+		__antithesis_instrumentation__.Notify(164423)
+
 		panic(fmt.Sprintf("descriptor is not initialized: %+v", desc))
+	} else {
+		__antithesis_instrumentation__.Notify(164424)
 	}
+	__antithesis_instrumentation__.Notify(164419)
 	var l Lease
 	if lease != nil {
-		// We ignore leases that are not part of the descriptor.
+		__antithesis_instrumentation__.Notify(164425)
+
 		_, ok := desc.GetReplicaDescriptorByID(lease.Replica.ReplicaID)
 		if ok {
+			__antithesis_instrumentation__.Notify(164426)
 			l = *lease
+		} else {
+			__antithesis_instrumentation__.Notify(164427)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(164428)
 	}
+	__antithesis_instrumentation__.Notify(164420)
 	e := &RangeKeyMismatchError{
 		RequestStartKey: start,
 		RequestEndKey:   end,
@@ -582,143 +642,147 @@ func NewRangeKeyMismatchErrorWithCTPolicy(
 		Lease:                 l,
 		ClosedTimestampPolicy: ctPolicy,
 	}
-	// More ranges are sometimes added to rangesInternal later.
+
 	e.AppendRangeInfo(ctx, ri)
 	return e
 }
 
-// NewRangeKeyMismatchError initializes a new RangeKeyMismatchError.
-//
-// desc and lease represent info about the range that the request was
-// erroneously routed to. lease can be nil. If it's not nil but the leaseholder
-// is not part of desc, it is ignored. This allows callers to read the
-// descriptor and lease non-atomically without worrying about incoherence.
-//
-// Note that more range info is commonly added to the error after the error is
-// created.
 func NewRangeKeyMismatchError(
 	ctx context.Context, start, end Key, desc *RangeDescriptor, lease *Lease,
 ) *RangeKeyMismatchError {
+	__antithesis_instrumentation__.Notify(164429)
 	return NewRangeKeyMismatchErrorWithCTPolicy(ctx,
 		start,
 		end,
 		desc,
 		lease,
-		LAG_BY_CLUSTER_SETTING, /* default closed timestsamp policy*/
+		LAG_BY_CLUSTER_SETTING,
 	)
 }
 
 func (e *RangeKeyMismatchError) Error() string {
+	__antithesis_instrumentation__.Notify(164430)
 	return e.message(nil)
 }
 
 func (e *RangeKeyMismatchError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164431)
 	mr, err := e.MismatchedRange()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(164433)
 		return err.Error()
+	} else {
+		__antithesis_instrumentation__.Notify(164434)
 	}
+	__antithesis_instrumentation__.Notify(164432)
 	return fmt.Sprintf("key range %s-%s outside of bounds of range %s-%s; suggested ranges: %s",
 		e.RequestStartKey, e.RequestEndKey, mr.Desc.StartKey, mr.Desc.EndKey, e.Ranges)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *RangeKeyMismatchError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164435)
 	return RangeKeyMismatchErrType
 }
 
-// MismatchedRange returns the range info for the range that the request was
-// erroneously routed to, or an error if the Ranges slice is empty.
 func (e *RangeKeyMismatchError) MismatchedRange() (RangeInfo, error) {
+	__antithesis_instrumentation__.Notify(164436)
 	if len(e.Ranges) == 0 {
+		__antithesis_instrumentation__.Notify(164438)
 		return RangeInfo{}, errors.AssertionFailedf(
 			"RangeKeyMismatchError (key range %s-%s) with empty RangeInfo slice", e.RequestStartKey, e.RequestEndKey,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(164439)
 	}
+	__antithesis_instrumentation__.Notify(164437)
 	return e.Ranges[0], nil
 }
 
-// AppendRangeInfo appends info about a group of ranges to the set returned to the
-// kvclient.
-//
-// l can be empty. Otherwise, the leaseholder is asserted to be a replica in
-// desc.
 func (e *RangeKeyMismatchError) AppendRangeInfo(ctx context.Context, ris ...RangeInfo) {
+	__antithesis_instrumentation__.Notify(164440)
 	for _, ri := range ris {
+		__antithesis_instrumentation__.Notify(164441)
 		if !ri.Lease.Empty() {
+			__antithesis_instrumentation__.Notify(164443)
 			if _, ok := ri.Desc.GetReplicaDescriptorByID(ri.Lease.Replica.ReplicaID); !ok {
+				__antithesis_instrumentation__.Notify(164444)
 				log.Fatalf(ctx, "lease names missing replica; lease: %s, desc: %s", ri.Lease, ri.Desc)
+			} else {
+				__antithesis_instrumentation__.Notify(164445)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(164446)
 		}
+		__antithesis_instrumentation__.Notify(164442)
 		e.Ranges = append(e.Ranges, ri)
 	}
 }
 
 var _ ErrorDetailInterface = &RangeKeyMismatchError{}
 
-// ClientVisibleAmbiguousError implements the ClientVisibleAmbiguousError interface.
-func (e *AmbiguousResultError) ClientVisibleAmbiguousError() {}
+func (e *AmbiguousResultError) ClientVisibleAmbiguousError() {
+	__antithesis_instrumentation__.Notify(164447)
+}
 
 var _ ErrorDetailInterface = &AmbiguousResultError{}
 var _ ClientVisibleAmbiguousError = &AmbiguousResultError{}
 
 func (e *TransactionAbortedError) Error() string {
+	__antithesis_instrumentation__.Notify(164448)
 	return fmt.Sprintf("TransactionAbortedError(%s)", e.Reason)
 }
 
 func (e *TransactionAbortedError) message(pErr *Error) string {
+	__antithesis_instrumentation__.Notify(164449)
 	return fmt.Sprintf("TransactionAbortedError(%s): %s", e.Reason, pErr.GetTxn())
 }
 
 func (*TransactionAbortedError) canRestartTransaction() TransactionRestart {
+	__antithesis_instrumentation__.Notify(164450)
 	return TransactionRestart_IMMEDIATE
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *TransactionAbortedError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164451)
 	return TransactionAbortedErrType
 }
 
 var _ ErrorDetailInterface = &TransactionAbortedError{}
 var _ transactionRestartError = &TransactionAbortedError{}
 
-// ClientVisibleRetryError implements the ClientVisibleRetryError interface.
-func (e *TransactionRetryWithProtoRefreshError) ClientVisibleRetryError() {}
+func (e *TransactionRetryWithProtoRefreshError) ClientVisibleRetryError() {
+	__antithesis_instrumentation__.Notify(164452)
+}
 
 func (e *TransactionRetryWithProtoRefreshError) Error() string {
+	__antithesis_instrumentation__.Notify(164453)
 	return e.message(nil)
 }
 
 func (e *TransactionRetryWithProtoRefreshError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164454)
 	return fmt.Sprintf("TransactionRetryWithProtoRefreshError: %s", e.Msg)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *TransactionRetryWithProtoRefreshError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164455)
 	return TransactionRetryWithProtoRefreshErrType
 }
 
 var _ ClientVisibleRetryError = &TransactionRetryWithProtoRefreshError{}
 var _ ErrorDetailInterface = &TransactionRetryWithProtoRefreshError{}
 
-// NewTransactionAbortedError initializes a new TransactionAbortedError.
 func NewTransactionAbortedError(reason TransactionAbortedReason) *TransactionAbortedError {
+	__antithesis_instrumentation__.Notify(164456)
 	return &TransactionAbortedError{
 		Reason: reason,
 	}
 }
 
-// NewTransactionRetryWithProtoRefreshError initializes a new TransactionRetryWithProtoRefreshError.
-//
-// txnID is the ID of the transaction being restarted.
-// txn is the transaction that the client should use for the next attempts.
-//
-// TODO(tbg): the message passed here is usually pErr.String(), which is a bad
-// pattern (loses structure, thus redaction). We can leverage error chaining
-// to improve this: wrap `pErr.GoError()` with a barrier and then with the
-// TransactionRetryWithProtoRefreshError.
 func NewTransactionRetryWithProtoRefreshError(
 	msg string, txnID uuid.UUID, txn Transaction,
 ) *TransactionRetryWithProtoRefreshError {
+	__antithesis_instrumentation__.Notify(164457)
 	return &TransactionRetryWithProtoRefreshError{
 		Msg:         msg,
 		TxnID:       txnID,
@@ -726,49 +790,52 @@ func NewTransactionRetryWithProtoRefreshError(
 	}
 }
 
-// PrevTxnAborted returns true if this error originated from a
-// TransactionAbortedError. If true, the client will need to create a new
-// transaction, as opposed to continuing with the existing one at a bumped
-// epoch.
 func (e *TransactionRetryWithProtoRefreshError) PrevTxnAborted() bool {
+	__antithesis_instrumentation__.Notify(164458)
 	return !e.TxnID.Equal(e.Transaction.ID)
 }
 
-// NewTransactionPushError initializes a new TransactionPushError.
 func NewTransactionPushError(pusheeTxn Transaction) *TransactionPushError {
-	// Note: this error will cause a txn restart. The error that the client
-	// receives contains a txn that might have a modified priority.
+	__antithesis_instrumentation__.Notify(164459)
+
 	return &TransactionPushError{PusheeTxn: pusheeTxn}
 }
 
 func (e *TransactionPushError) Error() string {
+	__antithesis_instrumentation__.Notify(164460)
 	return e.message(nil)
 }
 
 func (e *TransactionPushError) message(pErr *Error) string {
+	__antithesis_instrumentation__.Notify(164461)
 	s := fmt.Sprintf("failed to push %s", e.PusheeTxn)
 	if pErr.GetTxn() == nil {
+		__antithesis_instrumentation__.Notify(164463)
 		return s
+	} else {
+		__antithesis_instrumentation__.Notify(164464)
 	}
+	__antithesis_instrumentation__.Notify(164462)
 	return fmt.Sprintf("txn %s %s", pErr.GetTxn(), s)
 }
 
 func (*TransactionPushError) canRestartTransaction() TransactionRestart {
+	__antithesis_instrumentation__.Notify(164465)
 	return TransactionRestart_IMMEDIATE
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *TransactionPushError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164466)
 	return TransactionPushErrType
 }
 
 var _ ErrorDetailInterface = &TransactionPushError{}
 var _ transactionRestartError = &TransactionPushError{}
 
-// NewTransactionRetryError initializes a new TransactionRetryError.
 func NewTransactionRetryError(
 	reason TransactionRetryReason, extraMsg string,
 ) *TransactionRetryError {
+	__antithesis_instrumentation__.Notify(164467)
 	return &TransactionRetryError{
 		Reason:   reason,
 		ExtraMsg: extraMsg,
@@ -776,34 +843,40 @@ func NewTransactionRetryError(
 }
 
 func (e *TransactionRetryError) Error() string {
+	__antithesis_instrumentation__.Notify(164468)
 	msg := ""
 	if e.ExtraMsg != "" {
+		__antithesis_instrumentation__.Notify(164470)
 		msg = " - " + e.ExtraMsg
+	} else {
+		__antithesis_instrumentation__.Notify(164471)
 	}
+	__antithesis_instrumentation__.Notify(164469)
 	return fmt.Sprintf("TransactionRetryError: retry txn (%s%s)", e.Reason, msg)
 }
 
 func (e *TransactionRetryError) message(pErr *Error) string {
+	__antithesis_instrumentation__.Notify(164472)
 	return fmt.Sprintf("%s: %s", e.Error(), pErr.GetTxn())
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *TransactionRetryError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164473)
 	return TransactionRetryErrType
 }
 
 func (*TransactionRetryError) canRestartTransaction() TransactionRestart {
+	__antithesis_instrumentation__.Notify(164474)
 	return TransactionRestart_IMMEDIATE
 }
 
 var _ ErrorDetailInterface = &TransactionRetryError{}
 var _ transactionRestartError = &TransactionRetryError{}
 
-// NewTransactionStatusError initializes a new TransactionStatusError with
-// the given message and reason.
 func NewTransactionStatusError(
 	reason TransactionStatusError_Reason, msg string,
 ) *TransactionStatusError {
+	__antithesis_instrumentation__.Notify(164475)
 	return &TransactionStatusError{
 		Msg:    msg,
 		Reason: reason,
@@ -811,88 +884,115 @@ func NewTransactionStatusError(
 }
 
 func (e *TransactionStatusError) Error() string {
+	__antithesis_instrumentation__.Notify(164476)
 	return fmt.Sprintf("TransactionStatusError: %s (%s)", e.Msg, e.Reason)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *TransactionStatusError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164477)
 	return TransactionStatusErrType
 }
 
 func (e *TransactionStatusError) message(pErr *Error) string {
+	__antithesis_instrumentation__.Notify(164478)
 	return fmt.Sprintf("%s: %s", e.Error(), pErr.GetTxn())
 }
 
 var _ ErrorDetailInterface = &TransactionStatusError{}
 
 func (e *WriteIntentError) Error() string {
+	__antithesis_instrumentation__.Notify(164479)
 	return e.message(nil)
 }
 
 func (e *WriteIntentError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164480)
 	var buf strings.Builder
 	buf.WriteString("conflicting intents on ")
 
-	// If we have a lot of intents, we only want to show the first and the last.
 	const maxBegin = 5
 	const maxEnd = 5
 	var begin, end []Intent
 	if len(e.Intents) <= maxBegin+maxEnd {
+		__antithesis_instrumentation__.Notify(164485)
 		begin = e.Intents
 	} else {
+		__antithesis_instrumentation__.Notify(164486)
 		begin = e.Intents[0:maxBegin]
 		end = e.Intents[len(e.Intents)-maxEnd : len(e.Intents)]
 	}
+	__antithesis_instrumentation__.Notify(164481)
 
 	for i := range begin {
+		__antithesis_instrumentation__.Notify(164487)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(164489)
 			buf.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(164490)
 		}
+		__antithesis_instrumentation__.Notify(164488)
 		buf.WriteString(begin[i].Key.String())
 	}
+	__antithesis_instrumentation__.Notify(164482)
 	if end != nil {
+		__antithesis_instrumentation__.Notify(164491)
 		buf.WriteString(" ... ")
 		for i := range end {
+			__antithesis_instrumentation__.Notify(164492)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(164494)
 				buf.WriteString(", ")
+			} else {
+				__antithesis_instrumentation__.Notify(164495)
 			}
+			__antithesis_instrumentation__.Notify(164493)
 			buf.WriteString(end[i].Key.String())
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(164496)
 	}
+	__antithesis_instrumentation__.Notify(164483)
 
 	switch e.Reason {
 	case WriteIntentError_REASON_UNSPECIFIED:
-		// Nothing to say.
+		__antithesis_instrumentation__.Notify(164497)
+
 	case WriteIntentError_REASON_WAIT_POLICY:
+		__antithesis_instrumentation__.Notify(164498)
 		buf.WriteString(" [reason=wait_policy]")
 	case WriteIntentError_REASON_LOCK_TIMEOUT:
+		__antithesis_instrumentation__.Notify(164499)
 		buf.WriteString(" [reason=lock_timeout]")
 	case WriteIntentError_REASON_LOCK_WAIT_QUEUE_MAX_LENGTH_EXCEEDED:
+		__antithesis_instrumentation__.Notify(164500)
 		buf.WriteString(" [reason=lock_wait_queue_max_length_exceeded]")
 	default:
-		// Could panic, better to silently ignore in case new reasons are added.
+		__antithesis_instrumentation__.Notify(164501)
+
 	}
+	__antithesis_instrumentation__.Notify(164484)
 	return buf.String()
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *WriteIntentError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164502)
 	return WriteIntentErrType
 }
 
 var _ ErrorDetailInterface = &WriteIntentError{}
 
-// NewWriteTooOldError creates a new write too old error. The function accepts
-// the timestamp of the operation that hit the error, along with the timestamp
-// immediately after the existing write which had a higher timestamp and which
-// caused the error. An optional Key parameter is accepted to denote one key
-// where this error was encountered.
 func NewWriteTooOldError(operationTS, actualTS hlc.Timestamp, key Key) *WriteTooOldError {
+	__antithesis_instrumentation__.Notify(164503)
 	if len(key) > 0 {
+		__antithesis_instrumentation__.Notify(164505)
 		oldKey := key
 		key = make([]byte, len(oldKey))
 		copy(key, oldKey)
+	} else {
+		__antithesis_instrumentation__.Notify(164506)
 	}
+	__antithesis_instrumentation__.Notify(164504)
 	return &WriteTooOldError{
 		Timestamp:       operationTS,
 		ActualTimestamp: actualTS,
@@ -901,56 +1001,64 @@ func NewWriteTooOldError(operationTS, actualTS hlc.Timestamp, key Key) *WriteToo
 }
 
 func (e *WriteTooOldError) Error() string {
+	__antithesis_instrumentation__.Notify(164507)
 	return e.message(nil)
 }
 
 func (e *WriteTooOldError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164508)
 	if len(e.Key) > 0 {
+		__antithesis_instrumentation__.Notify(164510)
 		return fmt.Sprintf("WriteTooOldError: write for key %s at timestamp %s too old; wrote at %s",
 			e.Key, e.Timestamp, e.ActualTimestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(164511)
 	}
+	__antithesis_instrumentation__.Notify(164509)
 	return fmt.Sprintf("WriteTooOldError: write at timestamp %s too old; wrote at %s",
 		e.Timestamp, e.ActualTimestamp)
 }
 
 func (*WriteTooOldError) canRestartTransaction() TransactionRestart {
+	__antithesis_instrumentation__.Notify(164512)
 	return TransactionRestart_IMMEDIATE
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *WriteTooOldError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164513)
 	return WriteTooOldErrType
 }
 
-// RetryTimestamp returns the timestamp that should be used to retry an
-// operation after encountering a WriteTooOldError.
 func (e *WriteTooOldError) RetryTimestamp() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(164514)
 	return e.ActualTimestamp
 }
 
 var _ ErrorDetailInterface = &WriteTooOldError{}
 var _ transactionRestartError = &WriteTooOldError{}
 
-// NewReadWithinUncertaintyIntervalError creates a new uncertainty retry error.
-// The read and existing timestamps as well as the txn are purely informational
-// and used for formatting the error message.
 func NewReadWithinUncertaintyIntervalError(
 	readTS, existingTS, localUncertaintyLimit hlc.Timestamp, txn *Transaction,
 ) *ReadWithinUncertaintyIntervalError {
+	__antithesis_instrumentation__.Notify(164515)
 	rwue := &ReadWithinUncertaintyIntervalError{
 		ReadTimestamp:         readTS,
 		ExistingTimestamp:     existingTS,
 		LocalUncertaintyLimit: localUncertaintyLimit,
 	}
 	if txn != nil {
+		__antithesis_instrumentation__.Notify(164517)
 		rwue.GlobalUncertaintyLimit = txn.GlobalUncertaintyLimit
 		rwue.ObservedTimestamps = txn.ObservedTimestamps
+	} else {
+		__antithesis_instrumentation__.Notify(164518)
 	}
+	__antithesis_instrumentation__.Notify(164516)
 	return rwue
 }
 
-// SafeFormat implements redact.SafeFormatter.
 func (e *ReadWithinUncertaintyIntervalError) SafeFormat(s redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(164519)
 	s.Printf("ReadWithinUncertaintyIntervalError: read at time %s encountered "+
 		"previous write with future timestamp %s within uncertainty interval `t <= "+
 		"(local=%v, global=%v)`; "+
@@ -959,64 +1067,50 @@ func (e *ReadWithinUncertaintyIntervalError) SafeFormat(s redact.SafePrinter, _ 
 
 	s.SafeRune('[')
 	for i, ot := range observedTimestampSlice(e.ObservedTimestamps) {
+		__antithesis_instrumentation__.Notify(164521)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(164523)
 			s.SafeRune(' ')
+		} else {
+			__antithesis_instrumentation__.Notify(164524)
 		}
+		__antithesis_instrumentation__.Notify(164522)
 		s.Printf("{%d %v}", ot.NodeID, ot.Timestamp)
 	}
+	__antithesis_instrumentation__.Notify(164520)
 	s.SafeRune(']')
 }
 
 func (e *ReadWithinUncertaintyIntervalError) String() string {
+	__antithesis_instrumentation__.Notify(164525)
 	return redact.StringWithoutMarkers(e)
 }
 
 func (e *ReadWithinUncertaintyIntervalError) Error() string {
+	__antithesis_instrumentation__.Notify(164526)
 	return e.String()
 }
 
 func (e *ReadWithinUncertaintyIntervalError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164527)
 	return e.String()
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *ReadWithinUncertaintyIntervalError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164528)
 	return ReadWithinUncertaintyIntervalErrType
 }
 
 func (*ReadWithinUncertaintyIntervalError) canRestartTransaction() TransactionRestart {
+	__antithesis_instrumentation__.Notify(164529)
 	return TransactionRestart_IMMEDIATE
 }
 
-// RetryTimestamp returns the timestamp that should be used to retry an
-// operation after encountering a ReadWithinUncertaintyIntervalError.
 func (e *ReadWithinUncertaintyIntervalError) RetryTimestamp() hlc.Timestamp {
-	// If the reader encountered a newer write within the uncertainty interval,
-	// we advance the txn's timestamp just past the uncertain value's timestamp.
-	// This ensures that we read above the uncertain value on a retry.
+	__antithesis_instrumentation__.Notify(164530)
+
 	ts := e.ExistingTimestamp.Next()
-	// In addition to advancing past the uncertainty value's timestamp, we also
-	// advance the txn's timestamp up to the local uncertainty limit on the node
-	// which hit the error. This ensures that no future read after the retry on
-	// this node (ignoring lease complications in ComputeLocalUncertaintyLimit
-	// and values with synthetic timestamps) will throw an uncertainty error,
-	// even when reading other keys.
-	//
-	// Note that if the request was not able to establish a local uncertainty
-	// limit due to a missing observed timestamp (for instance, if the request
-	// was evaluated on a follower replica and the txn had never visited the
-	// leaseholder), then LocalUncertaintyLimit will be empty and the Forward
-	// will be a no-op. In this case, we could advance all the way past the
-	// global uncertainty limit, but this time would likely be in the future, so
-	// this would necessitate a commit-wait period after committing.
-	//
-	// In general, we expect the local uncertainty limit, if set, to be above
-	// the uncertainty value's timestamp. So we expect this Forward to advance
-	// ts. However, this is not always the case. The one exception is if the
-	// uncertain value had a synthetic timestamp, so it was compared against the
-	// global uncertainty limit to determine uncertainty (see IsUncertain). In
-	// such cases, we're ok advancing just past the value's timestamp. Either
-	// way, we won't see the same value in our uncertainty interval on a retry.
+
 	ts.Forward(e.LocalUncertaintyLimit)
 	return ts
 }
@@ -1025,201 +1119,226 @@ var _ ErrorDetailInterface = &ReadWithinUncertaintyIntervalError{}
 var _ transactionRestartError = &ReadWithinUncertaintyIntervalError{}
 
 func (e *OpRequiresTxnError) Error() string {
+	__antithesis_instrumentation__.Notify(164531)
 	return e.message(nil)
 }
 
 func (e *OpRequiresTxnError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164532)
 	return "the operation requires transactional context"
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *OpRequiresTxnError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164533)
 	return OpRequiresTxnErrType
 }
 
 var _ ErrorDetailInterface = &OpRequiresTxnError{}
 
 func (e *ConditionFailedError) Error() string {
+	__antithesis_instrumentation__.Notify(164534)
 	return e.message(nil)
 }
 
 func (e *ConditionFailedError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164535)
 	return fmt.Sprintf("unexpected value: %s", e.ActualValue)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *ConditionFailedError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164536)
 	return ConditionFailedErrType
 }
 
 var _ ErrorDetailInterface = &ConditionFailedError{}
 
 func (e *RaftGroupDeletedError) Error() string {
+	__antithesis_instrumentation__.Notify(164537)
 	return e.message(nil)
 }
 
 func (*RaftGroupDeletedError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164538)
 	return "raft group deleted"
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *RaftGroupDeletedError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164539)
 	return RaftGroupDeletedErrType
 }
 
 var _ ErrorDetailInterface = &RaftGroupDeletedError{}
 
-// NewReplicaCorruptionError creates a new error indicating a corrupt replica.
-// The supplied error is used to provide additional detail in the error message.
 func NewReplicaCorruptionError(err error) *ReplicaCorruptionError {
+	__antithesis_instrumentation__.Notify(164540)
 	return &ReplicaCorruptionError{ErrorMsg: err.Error()}
 }
 
 func (e *ReplicaCorruptionError) Error() string {
+	__antithesis_instrumentation__.Notify(164541)
 	return e.message(nil)
 }
 
 func (e *ReplicaCorruptionError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164542)
 	msg := fmt.Sprintf("replica corruption (processed=%t)", e.Processed)
 	if e.ErrorMsg != "" {
+		__antithesis_instrumentation__.Notify(164544)
 		msg += ": " + e.ErrorMsg
+	} else {
+		__antithesis_instrumentation__.Notify(164545)
 	}
+	__antithesis_instrumentation__.Notify(164543)
 	return msg
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *ReplicaCorruptionError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164546)
 	return ReplicaCorruptionErrType
 }
 
 var _ ErrorDetailInterface = &ReplicaCorruptionError{}
 
-// NewReplicaTooOldError initializes a new ReplicaTooOldError.
 func NewReplicaTooOldError(replicaID ReplicaID) *ReplicaTooOldError {
+	__antithesis_instrumentation__.Notify(164547)
 	return &ReplicaTooOldError{
 		ReplicaID: replicaID,
 	}
 }
 
 func (e *ReplicaTooOldError) Error() string {
+	__antithesis_instrumentation__.Notify(164548)
 	return e.message(nil)
 }
 
 func (*ReplicaTooOldError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164549)
 	return "sender replica too old, discarding message"
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *ReplicaTooOldError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164550)
 	return ReplicaTooOldErrType
 }
 
 var _ ErrorDetailInterface = &ReplicaTooOldError{}
 
-// NewStoreNotFoundError initializes a new StoreNotFoundError.
 func NewStoreNotFoundError(storeID StoreID) *StoreNotFoundError {
+	__antithesis_instrumentation__.Notify(164551)
 	return &StoreNotFoundError{
 		StoreID: storeID,
 	}
 }
 
 func (e *StoreNotFoundError) Error() string {
+	__antithesis_instrumentation__.Notify(164552)
 	return e.message(nil)
 }
 
 func (e *StoreNotFoundError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164553)
 	return fmt.Sprintf("store %d was not found", e.StoreID)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *StoreNotFoundError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164554)
 	return StoreNotFoundErrType
 }
 
 var _ ErrorDetailInterface = &StoreNotFoundError{}
 
 func (e *TxnAlreadyEncounteredErrorError) Error() string {
+	__antithesis_instrumentation__.Notify(164555)
 	return e.message(nil)
 }
 
 func (e *TxnAlreadyEncounteredErrorError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164556)
 	return fmt.Sprintf(
 		"txn already encountered an error; cannot be used anymore (previous err: %s)",
 		e.PrevError,
 	)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *TxnAlreadyEncounteredErrorError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164557)
 	return TxnAlreadyEncounteredErrType
 }
 
 var _ ErrorDetailInterface = &TxnAlreadyEncounteredErrorError{}
 
 func (e *IntegerOverflowError) Error() string {
+	__antithesis_instrumentation__.Notify(164558)
 	return e.message(nil)
 }
 
 func (e *IntegerOverflowError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164559)
 	return fmt.Sprintf(
 		"key %s with value %d incremented by %d results in overflow",
 		e.Key, e.CurrentValue, e.IncrementValue)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *IntegerOverflowError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164560)
 	return IntegerOverflowErrType
 }
 
 var _ ErrorDetailInterface = &IntegerOverflowError{}
 
 func (e *UnsupportedRequestError) Error() string {
+	__antithesis_instrumentation__.Notify(164561)
 	return e.message(nil)
 }
 
 func (e *UnsupportedRequestError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164562)
 	return "unsupported request"
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *UnsupportedRequestError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164563)
 	return UnsupportedRequestErrType
 }
 
 var _ ErrorDetailInterface = &UnsupportedRequestError{}
 
 func (e *BatchTimestampBeforeGCError) Error() string {
+	__antithesis_instrumentation__.Notify(164564)
 	return e.message(nil)
 }
 
 func (e *BatchTimestampBeforeGCError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164565)
 	return fmt.Sprintf("batch timestamp %v must be after replica GC threshold %v", e.Timestamp, e.Threshold)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *BatchTimestampBeforeGCError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164566)
 	return BatchTimestampBeforeGCErrType
 }
 
 var _ ErrorDetailInterface = &BatchTimestampBeforeGCError{}
 
 func (e *MVCCHistoryMutationError) Error() string {
+	__antithesis_instrumentation__.Notify(164567)
 	return e.message(nil)
 }
 
 func (e *MVCCHistoryMutationError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164568)
 	return fmt.Sprintf("unexpected MVCC history mutation in span %s", e.Span)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *MVCCHistoryMutationError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164569)
 	return MVCCHistoryMutationErrType
 }
 
 var _ ErrorDetailInterface = &MVCCHistoryMutationError{}
 
-// NewIntentMissingError creates a new IntentMissingError.
 func NewIntentMissingError(key Key, wrongIntent *Intent) *IntentMissingError {
+	__antithesis_instrumentation__.Notify(164570)
 	return &IntentMissingError{
 		Key:         key,
 		WrongIntent: wrongIntent,
@@ -1227,23 +1346,30 @@ func NewIntentMissingError(key Key, wrongIntent *Intent) *IntentMissingError {
 }
 
 func (e *IntentMissingError) Error() string {
+	__antithesis_instrumentation__.Notify(164571)
 	return e.message(nil)
 }
 
 func (e *IntentMissingError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164572)
 	var detail string
 	if e.WrongIntent != nil {
+		__antithesis_instrumentation__.Notify(164574)
 		detail = fmt.Sprintf("; found intent %v at key instead", e.WrongIntent)
+	} else {
+		__antithesis_instrumentation__.Notify(164575)
 	}
+	__antithesis_instrumentation__.Notify(164573)
 	return fmt.Sprintf("intent missing%s", detail)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *IntentMissingError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164576)
 	return IntentMissingErrType
 }
 
 func (*IntentMissingError) canRestartTransaction() TransactionRestart {
+	__antithesis_instrumentation__.Notify(164577)
 	return TransactionRestart_IMMEDIATE
 }
 
@@ -1251,107 +1377,119 @@ var _ ErrorDetailInterface = &IntentMissingError{}
 var _ transactionRestartError = &IntentMissingError{}
 
 func (e *MergeInProgressError) Error() string {
+	__antithesis_instrumentation__.Notify(164578)
 	return e.message(nil)
 }
 
 func (e *MergeInProgressError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164579)
 	return "merge in progress"
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *MergeInProgressError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164580)
 	return MergeInProgressErrType
 }
 
 var _ ErrorDetailInterface = &MergeInProgressError{}
 
-// NewRangeFeedRetryError initializes a new RangeFeedRetryError.
 func NewRangeFeedRetryError(reason RangeFeedRetryError_Reason) *RangeFeedRetryError {
+	__antithesis_instrumentation__.Notify(164581)
 	return &RangeFeedRetryError{
 		Reason: reason,
 	}
 }
 
 func (e *RangeFeedRetryError) Error() string {
+	__antithesis_instrumentation__.Notify(164582)
 	return e.message(nil)
 }
 
 func (e *RangeFeedRetryError) message(pErr *Error) string {
+	__antithesis_instrumentation__.Notify(164583)
 	return fmt.Sprintf("retry rangefeed (%s)", e.Reason)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *RangeFeedRetryError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164584)
 	return RangeFeedRetryErrType
 }
 
 var _ ErrorDetailInterface = &RangeFeedRetryError{}
 
-// NewIndeterminateCommitError initializes a new IndeterminateCommitError.
 func NewIndeterminateCommitError(txn Transaction) *IndeterminateCommitError {
+	__antithesis_instrumentation__.Notify(164585)
 	return &IndeterminateCommitError{StagingTxn: txn}
 }
 
 func (e *IndeterminateCommitError) Error() string {
+	__antithesis_instrumentation__.Notify(164586)
 	return e.message(nil)
 }
 
 func (e *IndeterminateCommitError) message(pErr *Error) string {
+	__antithesis_instrumentation__.Notify(164587)
 	s := fmt.Sprintf("found txn in indeterminate STAGING state %s", e.StagingTxn)
 	if pErr.GetTxn() == nil {
+		__antithesis_instrumentation__.Notify(164589)
 		return s
+	} else {
+		__antithesis_instrumentation__.Notify(164590)
 	}
+	__antithesis_instrumentation__.Notify(164588)
 	return fmt.Sprintf("txn %s %s", pErr.GetTxn(), s)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *IndeterminateCommitError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164591)
 	return IndeterminateCommitErrType
 }
 
 var _ ErrorDetailInterface = &IndeterminateCommitError{}
 
 func (e *InvalidLeaseError) Error() string {
+	__antithesis_instrumentation__.Notify(164592)
 	return e.message(nil)
 }
 
 func (e *InvalidLeaseError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164593)
 	return "invalid lease"
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *InvalidLeaseError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164594)
 	return InvalidLeaseErrType
 }
 
 var _ ErrorDetailInterface = &InvalidLeaseError{}
 
-// NewOptimisticEvalConflictsError initializes a new
-// OptimisticEvalConflictsError.
 func NewOptimisticEvalConflictsError() *OptimisticEvalConflictsError {
+	__antithesis_instrumentation__.Notify(164595)
 	return &OptimisticEvalConflictsError{}
 }
 
 func (e *OptimisticEvalConflictsError) Error() string {
+	__antithesis_instrumentation__.Notify(164596)
 	return e.message(nil)
 }
 
 func (e *OptimisticEvalConflictsError) message(pErr *Error) string {
+	__antithesis_instrumentation__.Notify(164597)
 	return "optimistic eval encountered conflict"
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *OptimisticEvalConflictsError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164598)
 	return OptimisticEvalConflictsErrType
 }
 
 var _ ErrorDetailInterface = &OptimisticEvalConflictsError{}
 
-// NewMinTimestampBoundUnsatisfiableError initializes a new
-// MinTimestampBoundUnsatisfiableError.
 func NewMinTimestampBoundUnsatisfiableError(
 	minTimestampBound, resolvedTimestamp hlc.Timestamp,
 ) *MinTimestampBoundUnsatisfiableError {
+	__antithesis_instrumentation__.Notify(164599)
 	return &MinTimestampBoundUnsatisfiableError{
 		MinTimestampBound: minTimestampBound,
 		ResolvedTimestamp: resolvedTimestamp,
@@ -1359,28 +1497,28 @@ func NewMinTimestampBoundUnsatisfiableError(
 }
 
 func (e *MinTimestampBoundUnsatisfiableError) Error() string {
+	__antithesis_instrumentation__.Notify(164600)
 	return e.message(nil)
 }
 
 func (e *MinTimestampBoundUnsatisfiableError) message(pErr *Error) string {
+	__antithesis_instrumentation__.Notify(164601)
 	return fmt.Sprintf("bounded staleness read with minimum timestamp "+
 		"bound of %s could not be satisfied by a local resolved timestamp of %s",
 		e.MinTimestampBound, e.ResolvedTimestamp)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *MinTimestampBoundUnsatisfiableError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164602)
 	return MinTimestampBoundUnsatisfiableErrType
 }
 
 var _ ErrorDetailInterface = &MinTimestampBoundUnsatisfiableError{}
 
-// NewRefreshFailedError initializes a new RefreshFailedError. reason can be 'committed value'
-// or 'intent' which caused the failed refresh, key is the key that we failed
-// refreshing, and ts is the timestamp of the committed value or intent that was written.
 func NewRefreshFailedError(
 	reason RefreshFailedError_Reason, key Key, ts hlc.Timestamp,
 ) *RefreshFailedError {
+	__antithesis_instrumentation__.Notify(164603)
 	return &RefreshFailedError{
 		Reason:    reason,
 		Key:       key,
@@ -1389,35 +1527,42 @@ func NewRefreshFailedError(
 }
 
 func (e *RefreshFailedError) Error() string {
+	__antithesis_instrumentation__.Notify(164604)
 	return e.message(nil)
 }
 
-// FailureReason returns the failure reason as a string.
 func (e *RefreshFailedError) FailureReason() string {
+	__antithesis_instrumentation__.Notify(164605)
 	var r string
 	switch e.Reason {
 	case RefreshFailedError_REASON_COMMITTED_VALUE:
+		__antithesis_instrumentation__.Notify(164607)
 		r = "committed value"
 	case RefreshFailedError_REASON_INTENT:
+		__antithesis_instrumentation__.Notify(164608)
 		r = "intent"
 	default:
+		__antithesis_instrumentation__.Notify(164609)
 		r = "UNKNOWN"
 	}
+	__antithesis_instrumentation__.Notify(164606)
 	return r
 }
 
 func (e *RefreshFailedError) message(_ *Error) string {
+	__antithesis_instrumentation__.Notify(164610)
 	return fmt.Sprintf("encountered recently written %s %s @%s", e.FailureReason(), e.Key, e.Timestamp)
 }
 
-// Type is part of the ErrorDetailInterface.
 func (e *RefreshFailedError) Type() ErrorDetailType {
+	__antithesis_instrumentation__.Notify(164611)
 	return RefreshFailedErrType
 }
 
 var _ ErrorDetailInterface = &RefreshFailedError{}
 
 func (e *InsufficientSpaceError) Error() string {
+	__antithesis_instrumentation__.Notify(164612)
 	return fmt.Sprintf("store %d has insufficient remaining capacity to %s (remaining: %s / %.1f%%, min required: %.1f%%)",
 		e.StoreID, e.Op, humanizeutil.IBytes(e.Available), float64(e.Available)/float64(e.Capacity)*100, e.Required*100)
 }

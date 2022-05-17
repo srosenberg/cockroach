@@ -10,6 +10,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/testutils/lint/passes/passesutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@org_golang_x_tools//go/analysis",
         "@org_golang_x_tools//go/analysis/passes/inspect",
         "@org_golang_x_tools//go/ast/inspector",
@@ -27,6 +28,7 @@ go_test(
         "//pkg/build/bazel",
         "//pkg/testutils",
         "//pkg/testutils/skip",
+        "@com_antithesis_instrumentation//wrappers",
         "@org_golang_x_tools//go/analysis/analysistest",
     ],
 )

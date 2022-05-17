@@ -20,6 +20,7 @@ go_library(
         "//pkg/sql/sem/tree",
         "//pkg/util",
         "//pkg/util/encoding",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -45,5 +46,6 @@ go_test(
         "//pkg/util/leaktest",
         "//pkg/util/log",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package codeowners
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -23,110 +15,142 @@ import (
 	"github.com/zabawaba99/go-gitignore"
 )
 
-// Rule is a single rule within a CODEOWNERS file.
 type Rule struct {
 	Pattern string
 	Owners  []team.Alias
 }
 
-// CodeOwners is a struct encapsulating a CODEOWNERS file.
 type CodeOwners struct {
 	rules []Rule
 	teams map[team.Alias]team.Team
 }
 
-// LoadCodeOwners parses a CODEOWNERS file and returns the CodeOwners struct.
 func LoadCodeOwners(r io.Reader, teams map[team.Alias]team.Team) (*CodeOwners, error) {
+	__antithesis_instrumentation__.Notify(68407)
 	s := bufio.NewScanner(r)
 	ret := &CodeOwners{
 		teams: teams,
 	}
 	lineNum := 1
 	for s.Scan() {
+		__antithesis_instrumentation__.Notify(68409)
 		lineNum++
 		if s.Err() != nil {
+			__antithesis_instrumentation__.Notify(68414)
 			return nil, s.Err()
+		} else {
+			__antithesis_instrumentation__.Notify(68415)
 		}
+		__antithesis_instrumentation__.Notify(68410)
 		t := s.Text()
 		if strings.HasPrefix(t, "#") {
+			__antithesis_instrumentation__.Notify(68416)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(68417)
 		}
+		__antithesis_instrumentation__.Notify(68411)
 		t = strings.TrimSpace(t)
 		if len(t) == 0 {
+			__antithesis_instrumentation__.Notify(68418)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(68419)
 		}
+		__antithesis_instrumentation__.Notify(68412)
 
 		fields := strings.Fields(t)
 		rule := Rule{Pattern: fields[0]}
 		for _, field := range fields[1:] {
-			// @cockroachdb/kv[-noreview] --> cockroachdb/kv.
+			__antithesis_instrumentation__.Notify(68420)
+
 			owner := team.Alias(strings.TrimSuffix(strings.TrimPrefix(field, "@"), "-noreview"))
 
 			if _, ok := teams[owner]; !ok {
+				__antithesis_instrumentation__.Notify(68422)
 				return nil, errors.Newf("owner %s does not exist", owner)
+			} else {
+				__antithesis_instrumentation__.Notify(68423)
 			}
+			__antithesis_instrumentation__.Notify(68421)
 			rule.Owners = append(rule.Owners, owner)
 		}
+		__antithesis_instrumentation__.Notify(68413)
 		ret.rules = append(ret.rules, rule)
 	}
+	__antithesis_instrumentation__.Notify(68408)
 	return ret, nil
 }
 
-// DefaultLoadCodeOwners loads teams from .github/CODEOWNERS
-// (relative to the repo root).
 func DefaultLoadCodeOwners() (*CodeOwners, error) {
+	__antithesis_instrumentation__.Notify(68424)
 	teams, err := team.DefaultLoadTeams()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(68429)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(68430)
 	}
+	__antithesis_instrumentation__.Notify(68425)
 	path := reporoot.GetFor(".", ".github/CODEOWNERS")
 	if path == "" {
+		__antithesis_instrumentation__.Notify(68431)
 		return nil, errors.Errorf("CODEOWNERS not found")
+	} else {
+		__antithesis_instrumentation__.Notify(68432)
 	}
+	__antithesis_instrumentation__.Notify(68426)
 	path = filepath.Join(path, ".github/CODEOWNERS")
 	f, err := os.Open(path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(68433)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(68434)
 	}
-	defer func() { _ = f.Close() }()
+	__antithesis_instrumentation__.Notify(68427)
+	defer func() { __antithesis_instrumentation__.Notify(68435); _ = f.Close() }()
+	__antithesis_instrumentation__.Notify(68428)
 	return LoadCodeOwners(f, teams)
 }
 
-// Match matches the given file to the rules and returns the owning team(s),
-// according to the supplied *relative* path (which must be relative to the
-// repository root, i.e. like the CODEOWNERS file).
-//
-// Returns the zero value if there are no owning teams or the passed-in path is
-// absolute.
 func (co *CodeOwners) Match(filePath string) []team.Team {
+	__antithesis_instrumentation__.Notify(68436)
 	if filepath.IsAbs(filePath) {
-		// NB: don't try to look up the repository root here.
-		// The callers should do that.
+		__antithesis_instrumentation__.Notify(68439)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(68440)
 	}
+	__antithesis_instrumentation__.Notify(68437)
 	filePath = string(filepath.Separator) + filepath.Clean(filePath)
-	// filePath is now "absolute relative to the repo root", i.e.
-	// `/pkg/acceptance`, and the cleaning helps avoid inputs like
-	// `./pkg/acceptance` not working (when `pkg/acceptance` would).
-	//
-	// Keep matching until we hit the root directory.
+
 	lastFilePath := ""
 	for filePath != lastFilePath {
-		// Rules are matched backwards.
+		__antithesis_instrumentation__.Notify(68441)
+
 		for i := len(co.rules) - 1; i >= 0; i-- {
+			__antithesis_instrumentation__.Notify(68443)
 			rule := co.rules[i]
-			// For subdirectories, CODEOWNERS will add ** automatically for matches.
-			// As such, if the pattern ends with a directory (i.e. '/'), add the ** operator implicitly.
+
 			if gitignore.Match(rule.Pattern, filePath) {
+				__antithesis_instrumentation__.Notify(68444)
 				teams := make([]team.Team, len(rule.Owners))
 				for i, owner := range rule.Owners {
+					__antithesis_instrumentation__.Notify(68446)
 					teams[i] = co.teams[owner]
 				}
+				__antithesis_instrumentation__.Notify(68445)
 				return teams
+			} else {
+				__antithesis_instrumentation__.Notify(68447)
 			}
 		}
+		__antithesis_instrumentation__.Notify(68442)
 		lastFilePath = filePath
 		filePath = filepath.Dir(filePath)
 	}
+	__antithesis_instrumentation__.Notify(68438)
 	return nil
 }

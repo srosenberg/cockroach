@@ -9,6 +9,7 @@ go_library(
         "//pkg/util/timeutil",
         "//pkg/workload",
         "//pkg/workload/histogram",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_spf13_pflag//:pflag",
     ],
 )

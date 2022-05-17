@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package backupccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -40,7 +34,6 @@ import (
 	gogotypes "github.com/gogo/protobuf/types"
 )
 
-// Progress is streamed to the coordinator through metadata.
 var restoreDataOutputTypes = []*types.T{}
 
 type restoreDataProcessor struct {
@@ -51,26 +44,15 @@ type restoreDataProcessor struct {
 	input   execinfra.RowSource
 	output  execinfra.RowReceiver
 
-	// numWorkers is the number of workers this processor should use. Initialized
-	// at processor creation based on the cluster setting. If the cluster setting
-	// is updated, the job should be PAUSEd and RESUMEd for the new setting to
-	// take effect.
 	numWorkers int
 
-	// phaseGroup manages the phases of the restore:
-	// 1) reading entries from the input
-	// 2) ingesting the data associated with those entries in the concurrent
-	// restore data workers.
 	phaseGroup           ctxgroup.Group
 	cancelWorkersAndWait func()
 
-	// sstCh is a channel that holds SSTs opened by the processor, but not yet
-	// ingested.
 	sstCh chan mergedSST
-	// Metas from the input are forwarded to the output of this processor.
+
 	metaCh chan *execinfrapb.ProducerMetadata
-	// progress updates are accumulated on this channel. It is populated by the
-	// concurrent workers and sent down the flow by the processor.
+
 	progCh chan RestoreProgress
 }
 
@@ -84,34 +66,36 @@ const restoreDataProcName = "restoreDataProcessor"
 const maxConcurrentRestoreWorkers = 32
 
 func min(a, b int) int {
+	__antithesis_instrumentation__.Notify(10359)
 	if a < b {
+		__antithesis_instrumentation__.Notify(10361)
 		return a
+	} else {
+		__antithesis_instrumentation__.Notify(10362)
 	}
+	__antithesis_instrumentation__.Notify(10360)
 	return b
 }
 
 var defaultNumWorkers = util.ConstantWithMetamorphicTestRange(
 	"restore-worker-concurrency",
 	func() int {
-		// On low-CPU instances, a default value may still allow concurrent restore
-		// workers to tie up all cores so cap default value at cores-1 when the
-		// default value is higher.
+		__antithesis_instrumentation__.Notify(10363)
+
 		restoreWorkerCores := runtime.GOMAXPROCS(0) - 1
 		if restoreWorkerCores < 1 {
+			__antithesis_instrumentation__.Notify(10365)
 			restoreWorkerCores = 1
+		} else {
+			__antithesis_instrumentation__.Notify(10366)
 		}
+		__antithesis_instrumentation__.Notify(10364)
 		return min(4, restoreWorkerCores)
-	}(), /* defaultValue */
-	1, /* metamorphic min */
-	8, /* metamorphic max */
+	}(),
+	1,
+	8,
 )
 
-// TODO(pbardea): It may be worthwhile to combine this setting with the one that
-// controls the number of concurrent AddSSTable requests if each restore worker
-// spends all if its time sending AddSSTable requests.
-//
-// The maximum is not enforced since if the maximum is reduced in the future that
-// may cause the cluster setting to fail.
 var numRestoreWorkers = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"kv.bulk_io_write.restore_node_concurrency",
@@ -136,11 +120,16 @@ func newRestoreDataProcessor(
 	input execinfra.RowSource,
 	output execinfra.RowReceiver,
 ) (execinfra.Processor, error) {
+	__antithesis_instrumentation__.Notify(10367)
 	sv := &flowCtx.Cfg.Settings.SV
 
 	if spec.Validation != jobspb.RestoreValidation_DefaultRestore {
+		__antithesis_instrumentation__.Notify(10370)
 		return nil, errors.New("Restore Data Processor does not support validation yet")
+	} else {
+		__antithesis_instrumentation__.Notify(10371)
 	}
+	__antithesis_instrumentation__.Notify(10368)
 
 	rd := &restoreDataProcessor{
 		flowCtx:    flowCtx,
@@ -152,115 +141,158 @@ func newRestoreDataProcessor(
 		numWorkers: int(numRestoreWorkers.Get(sv)),
 	}
 
-	if err := rd.Init(rd, post, restoreDataOutputTypes, flowCtx, processorID, output, nil, /* memMonitor */
+	if err := rd.Init(rd, post, restoreDataOutputTypes, flowCtx, processorID, output, nil,
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{input},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				__antithesis_instrumentation__.Notify(10372)
 				rd.ConsumerClosed()
 				return nil
 			},
 		}); err != nil {
+		__antithesis_instrumentation__.Notify(10373)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(10374)
 	}
+	__antithesis_instrumentation__.Notify(10369)
 	return rd, nil
 }
 
-// Start is part of the RowSource interface.
 func (rd *restoreDataProcessor) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(10375)
 	ctx = logtags.AddTag(ctx, "job", rd.spec.JobID)
 	ctx = rd.StartInternal(ctx, restoreDataProcName)
 	rd.input.Start(ctx)
 
 	ctx, cancel := context.WithCancel(ctx)
 	rd.cancelWorkersAndWait = func() {
+		__antithesis_instrumentation__.Notify(10379)
 		cancel()
 		_ = rd.phaseGroup.Wait()
 	}
+	__antithesis_instrumentation__.Notify(10376)
 	rd.phaseGroup = ctxgroup.WithContext(ctx)
 	log.Infof(ctx, "starting restore data")
 
 	entries := make(chan execinfrapb.RestoreSpanEntry, rd.numWorkers)
 	rd.sstCh = make(chan mergedSST, rd.numWorkers)
 	rd.phaseGroup.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(10380)
 		defer close(entries)
 		return inputReader(ctx, rd.input, entries, rd.metaCh)
 	})
+	__antithesis_instrumentation__.Notify(10377)
 
 	rd.phaseGroup.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(10381)
 		defer close(rd.sstCh)
 		for entry := range entries {
+			__antithesis_instrumentation__.Notify(10383)
 			if err := rd.openSSTs(ctx, entry, rd.sstCh); err != nil {
+				__antithesis_instrumentation__.Notify(10384)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(10385)
 			}
 		}
+		__antithesis_instrumentation__.Notify(10382)
 
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(10378)
 
 	rd.phaseGroup.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(10386)
 		defer close(rd.progCh)
 		return rd.runRestoreWorkers(ctx, rd.sstCh)
 	})
 }
 
-// inputReader reads the rows from its input in a single thread and converts the
-// rows into either `entries` which are passed to the restore workers or
-// ProducerMetadata which is passed to `Next`.
-//
-// The contract of Next does not guarantee that the EncDatumRow returned by Next
-// remains valid after the following call to Next. This is why the input is
-// consumed on a single thread, rather than consumed by each worker.
 func inputReader(
 	ctx context.Context,
 	input execinfra.RowSource,
 	entries chan execinfrapb.RestoreSpanEntry,
 	metaCh chan *execinfrapb.ProducerMetadata,
 ) error {
+	__antithesis_instrumentation__.Notify(10387)
 	var alloc tree.DatumAlloc
 
 	for {
-		// We read rows from the SplitAndScatter processor. We expect each row to
-		// contain 2 columns. The first is used to route the row to this processor,
-		// and the second contains the RestoreSpanEntry that we're interested in.
+		__antithesis_instrumentation__.Notify(10388)
+
 		row, meta := input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(10395)
 			if meta.Err != nil {
+				__antithesis_instrumentation__.Notify(10398)
 				return meta.Err
+			} else {
+				__antithesis_instrumentation__.Notify(10399)
 			}
+			__antithesis_instrumentation__.Notify(10396)
 
 			select {
 			case metaCh <- meta:
+				__antithesis_instrumentation__.Notify(10400)
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(10401)
 				return ctx.Err()
 			}
+			__antithesis_instrumentation__.Notify(10397)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(10402)
 		}
+		__antithesis_instrumentation__.Notify(10389)
 
 		if row == nil {
-			// Consumed all rows.
+			__antithesis_instrumentation__.Notify(10403)
+
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(10404)
 		}
+		__antithesis_instrumentation__.Notify(10390)
 
 		if len(row) != 2 {
+			__antithesis_instrumentation__.Notify(10405)
 			return errors.New("expected input rows to have exactly 2 columns")
+		} else {
+			__antithesis_instrumentation__.Notify(10406)
 		}
+		__antithesis_instrumentation__.Notify(10391)
 		if err := row[1].EnsureDecoded(types.Bytes, &alloc); err != nil {
+			__antithesis_instrumentation__.Notify(10407)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(10408)
 		}
+		__antithesis_instrumentation__.Notify(10392)
 		datum := row[1].Datum
 		entryDatumBytes, ok := datum.(*tree.DBytes)
 		if !ok {
+			__antithesis_instrumentation__.Notify(10409)
 			return errors.AssertionFailedf(`unexpected datum type %T: %+v`, datum, row)
+		} else {
+			__antithesis_instrumentation__.Notify(10410)
 		}
+		__antithesis_instrumentation__.Notify(10393)
 
 		var entry execinfrapb.RestoreSpanEntry
 		if err := protoutil.Unmarshal([]byte(*entryDatumBytes), &entry); err != nil {
+			__antithesis_instrumentation__.Notify(10411)
 			return errors.Wrap(err, "un-marshaling restore span entry")
+		} else {
+			__antithesis_instrumentation__.Notify(10412)
 		}
+		__antithesis_instrumentation__.Notify(10394)
 
 		select {
 		case entries <- entry:
+			__antithesis_instrumentation__.Notify(10413)
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(10414)
 			return ctx.Err()
 		}
 	}
@@ -275,44 +307,56 @@ type mergedSST struct {
 func (rd *restoreDataProcessor) openSSTs(
 	ctx context.Context, entry execinfrapb.RestoreSpanEntry, sstCh chan mergedSST,
 ) error {
+	__antithesis_instrumentation__.Notify(10415)
 	ctxDone := ctx.Done()
 
-	// The sstables only contain MVCC data and no intents, so using an MVCC
-	// iterator is sufficient.
 	var iters []storage.SimpleMVCCIterator
 	var dirs []cloud.ExternalStorage
 
-	// If we bail early and haven't handed off responsibility of the dirs/iters to
-	// the channel, close anything that we had open.
 	defer func() {
+		__antithesis_instrumentation__.Notify(10419)
 		for _, iter := range iters {
+			__antithesis_instrumentation__.Notify(10421)
 			iter.Close()
 		}
+		__antithesis_instrumentation__.Notify(10420)
 
 		for _, dir := range dirs {
+			__antithesis_instrumentation__.Notify(10422)
 			if err := dir.Close(); err != nil {
+				__antithesis_instrumentation__.Notify(10423)
 				log.Warningf(ctx, "close export storage failed %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(10424)
 			}
 		}
 	}()
+	__antithesis_instrumentation__.Notify(10416)
 
-	// sendIters sends all of the currently accumulated iterators over the
-	// channel.
 	sendIters := func(itersToSend []storage.SimpleMVCCIterator, dirsToSend []cloud.ExternalStorage) error {
+		__antithesis_instrumentation__.Notify(10425)
 		multiIter := storage.MakeMultiIterator(itersToSend)
 
 		cleanup := func() {
+			__antithesis_instrumentation__.Notify(10428)
 			multiIter.Close()
 			for _, iter := range itersToSend {
+				__antithesis_instrumentation__.Notify(10430)
 				iter.Close()
 			}
+			__antithesis_instrumentation__.Notify(10429)
 
 			for _, dir := range dirsToSend {
+				__antithesis_instrumentation__.Notify(10431)
 				if err := dir.Close(); err != nil {
+					__antithesis_instrumentation__.Notify(10432)
 					log.Warningf(ctx, "close export storage failed %v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(10433)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(10426)
 
 		mSST := mergedSST{
 			entry:   entry,
@@ -322,72 +366,111 @@ func (rd *restoreDataProcessor) openSSTs(
 
 		select {
 		case sstCh <- mSST:
+			__antithesis_instrumentation__.Notify(10434)
 		case <-ctxDone:
+			__antithesis_instrumentation__.Notify(10435)
 			return ctx.Err()
 		}
+		__antithesis_instrumentation__.Notify(10427)
 
 		iters = make([]storage.SimpleMVCCIterator, 0)
 		dirs = make([]cloud.ExternalStorage, 0)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(10417)
 
-	log.VEventf(ctx, 1 /* level */, "ingesting span [%s-%s)", entry.Span.Key, entry.Span.EndKey)
+	log.VEventf(ctx, 1, "ingesting span [%s-%s)", entry.Span.Key, entry.Span.EndKey)
 
 	for _, file := range entry.Files {
+		__antithesis_instrumentation__.Notify(10436)
 		log.VEventf(ctx, 2, "import file %s which starts at %s", file.Path, entry.Span.Key)
 
 		dir, err := rd.flowCtx.Cfg.ExternalStorage(ctx, file.Dir)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(10439)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(10440)
 		}
+		__antithesis_instrumentation__.Notify(10437)
 		dirs = append(dirs, dir)
 
-		// TODO(pbardea): When memory monitoring is added, send the currently
-		// accumulated iterators on the channel if we run into memory pressure.
 		iter, err := storageccl.ExternalSSTReader(ctx, dir, file.Path, rd.spec.Encryption)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(10441)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(10442)
 		}
+		__antithesis_instrumentation__.Notify(10438)
 		iters = append(iters, iter)
 	}
+	__antithesis_instrumentation__.Notify(10418)
 
 	return sendIters(iters, dirs)
 }
 
 func (rd *restoreDataProcessor) runRestoreWorkers(ctx context.Context, ssts chan mergedSST) error {
+	__antithesis_instrumentation__.Notify(10443)
 	return ctxgroup.GroupWorkers(ctx, rd.numWorkers, func(ctx context.Context, _ int) error {
+		__antithesis_instrumentation__.Notify(10444)
 		kr, err := makeKeyRewriterFromRekeys(rd.FlowCtx.Codec(), rd.spec.TableRekeys, rd.spec.TenantRekeys)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(10446)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(10447)
 		}
+		__antithesis_instrumentation__.Notify(10445)
 
 		for {
+			__antithesis_instrumentation__.Notify(10448)
 			done, err := func() (done bool, _ error) {
+				__antithesis_instrumentation__.Notify(10451)
 				sstIter, ok := <-ssts
 				if !ok {
+					__antithesis_instrumentation__.Notify(10455)
 					done = true
 					return done, nil
+				} else {
+					__antithesis_instrumentation__.Notify(10456)
 				}
+				__antithesis_instrumentation__.Notify(10452)
 
 				summary, err := rd.processRestoreSpanEntry(ctx, kr, sstIter)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(10457)
 					return done, err
+				} else {
+					__antithesis_instrumentation__.Notify(10458)
 				}
+				__antithesis_instrumentation__.Notify(10453)
 
 				select {
 				case rd.progCh <- makeProgressUpdate(summary, sstIter.entry, rd.spec.PKIDs):
+					__antithesis_instrumentation__.Notify(10459)
 				case <-ctx.Done():
+					__antithesis_instrumentation__.Notify(10460)
 					return done, ctx.Err()
 				}
+				__antithesis_instrumentation__.Notify(10454)
 
 				return done, nil
 			}()
+			__antithesis_instrumentation__.Notify(10449)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(10461)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(10462)
 			}
+			__antithesis_instrumentation__.Notify(10450)
 
 			if done {
+				__antithesis_instrumentation__.Notify(10463)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(10464)
 			}
 		}
 	})
@@ -396,6 +479,7 @@ func (rd *restoreDataProcessor) runRestoreWorkers(ctx context.Context, ssts chan
 func (rd *restoreDataProcessor) processRestoreSpanEntry(
 	ctx context.Context, kr *KeyRewriter, sst mergedSST,
 ) (roachpb.BulkOpSummary, error) {
+	__antithesis_instrumentation__.Notify(10465)
 	db := rd.flowCtx.Cfg.DB
 	evalCtx := rd.EvalCtx
 	var summary roachpb.BulkOpSummary
@@ -405,29 +489,37 @@ func (rd *restoreDataProcessor) processRestoreSpanEntry(
 	defer sst.cleanup()
 
 	writeAtBatchTS := restoreAtNow.Get(&evalCtx.Settings.SV)
-	if writeAtBatchTS && !evalCtx.Settings.Version.IsActive(ctx, clusterversion.MVCCAddSSTable) {
+	if writeAtBatchTS && func() bool {
+		__antithesis_instrumentation__.Notify(10472)
+		return !evalCtx.Settings.Version.IsActive(ctx, clusterversion.MVCCAddSSTable) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(10473)
 		return roachpb.BulkOpSummary{}, errors.Newf(
 			"cannot use %s until version %s", restoreAtNow.Key(), clusterversion.MVCCAddSSTable.String(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(10474)
 	}
+	__antithesis_instrumentation__.Notify(10466)
 
-	// If the system tenant is restoring a guest tenant span, we don't want to
-	// forward all the restored data to now, as there may be importing tables in
-	// that span, that depend on the difference in timestamps on restored existing
-	// vs importing keys to rollback.
-	if writeAtBatchTS && kr.fromSystemTenant &&
-		(bytes.HasPrefix(entry.Span.Key, keys.TenantPrefix) || bytes.HasPrefix(entry.Span.EndKey, keys.TenantPrefix)) {
+	if writeAtBatchTS && func() bool {
+		__antithesis_instrumentation__.Notify(10475)
+		return kr.fromSystemTenant == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(10476)
+		return (bytes.HasPrefix(entry.Span.Key, keys.TenantPrefix) || func() bool {
+			__antithesis_instrumentation__.Notify(10477)
+			return bytes.HasPrefix(entry.Span.EndKey, keys.TenantPrefix) == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(10478)
 		log.Warningf(ctx, "restoring span %s at its original timestamps because it is a tenant span", entry.Span)
 		writeAtBatchTS = false
+	} else {
+		__antithesis_instrumentation__.Notify(10479)
 	}
+	__antithesis_instrumentation__.Notify(10467)
 
-	// "disallowing" shadowing of anything older than logical=1 is i.e. allow all
-	// shadowing. We must allow shadowing in case the RESTORE has to retry any
-	// ingestions, but setting a (permissive) disallow like this serves to force
-	// evaluation of AddSSTable to check for overlapping keys. That in turn will
-	// result in it maintaining exact MVCC stats rather than estimates. Of course
-	// this comes at the cost of said overlap check, but in the common case of
-	// non-overlapping ingestion into empty spans, that is just one seek.
 	disallowShadowingBelow := hlc.Timestamp{Logical: 1}
 	batcher, err := bulk.MakeSSTBatcher(ctx,
 		"restore",
@@ -435,12 +527,16 @@ func (rd *restoreDataProcessor) processRestoreSpanEntry(
 		evalCtx.Settings,
 		disallowShadowingBelow,
 		writeAtBatchTS,
-		false, /* splitFilledRanges */
+		false,
 		rd.flowCtx.Cfg.BackupMonitor.MakeBoundAccount(),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(10480)
 		return summary, err
+	} else {
+		__antithesis_instrumentation__.Notify(10481)
 	}
+	__antithesis_instrumentation__.Notify(10468)
 	defer batcher.Close(ctx)
 
 	var keyScratch, valueScratch []byte
@@ -449,31 +545,57 @@ func (rd *restoreDataProcessor) processRestoreSpanEntry(
 		storage.MVCCKey{Key: entry.Span.EndKey}
 
 	for iter.SeekGE(startKeyMVCC); ; {
+		__antithesis_instrumentation__.Notify(10482)
 		ok, err := iter.Valid()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(10491)
 			return summary, err
+		} else {
+			__antithesis_instrumentation__.Notify(10492)
 		}
+		__antithesis_instrumentation__.Notify(10483)
 		if !ok {
+			__antithesis_instrumentation__.Notify(10493)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(10494)
 		}
+		__antithesis_instrumentation__.Notify(10484)
 
 		if !rd.spec.RestoreTime.IsEmpty() {
-			// TODO(dan): If we have to skip past a lot of versions to find the
-			// latest one before args.EndTime, then this could be slow.
+			__antithesis_instrumentation__.Notify(10495)
+
 			if rd.spec.RestoreTime.Less(iter.UnsafeKey().Timestamp) {
+				__antithesis_instrumentation__.Notify(10496)
 				iter.Next()
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(10497)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(10498)
 		}
+		__antithesis_instrumentation__.Notify(10485)
 
-		if !ok || !iter.UnsafeKey().Less(endKeyMVCC) {
+		if !ok || func() bool {
+			__antithesis_instrumentation__.Notify(10499)
+			return !iter.UnsafeKey().Less(endKeyMVCC) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(10500)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(10501)
 		}
+		__antithesis_instrumentation__.Notify(10486)
 		if len(iter.UnsafeValue()) == 0 {
-			// Value is deleted.
+			__antithesis_instrumentation__.Notify(10502)
+
 			iter.NextKey()
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(10503)
 		}
+		__antithesis_instrumentation__.Notify(10487)
 
 		keyScratch = append(keyScratch[:0], iter.UnsafeKey().Key...)
 		valueScratch = append(valueScratch[:0], iter.UnsafeValue()...)
@@ -483,38 +605,67 @@ func (rd *restoreDataProcessor) processRestoreSpanEntry(
 
 		key.Key, ok, err = kr.RewriteKey(key.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(10504)
 			return summary, err
+		} else {
+			__antithesis_instrumentation__.Notify(10505)
 		}
+		__antithesis_instrumentation__.Notify(10488)
 		if !ok {
-			// If the key rewriter didn't match this key, it's not data for the
-			// table(s) we're interested in.
-			if log.V(5) {
-				log.Infof(ctx, "skipping %s %s", key.Key, value.PrettyPrint())
-			}
-			continue
-		}
+			__antithesis_instrumentation__.Notify(10506)
 
-		// Rewriting the key means the checksum needs to be updated.
+			if log.V(5) {
+				__antithesis_instrumentation__.Notify(10508)
+				log.Infof(ctx, "skipping %s %s", key.Key, value.PrettyPrint())
+			} else {
+				__antithesis_instrumentation__.Notify(10509)
+			}
+			__antithesis_instrumentation__.Notify(10507)
+			continue
+		} else {
+			__antithesis_instrumentation__.Notify(10510)
+		}
+		__antithesis_instrumentation__.Notify(10489)
+
 		value.ClearChecksum()
 		value.InitChecksum(key.Key)
 
 		if log.V(5) {
+			__antithesis_instrumentation__.Notify(10511)
 			log.Infof(ctx, "Put %s -> %s", key.Key, value.PrettyPrint())
+		} else {
+			__antithesis_instrumentation__.Notify(10512)
 		}
+		__antithesis_instrumentation__.Notify(10490)
 		if err := batcher.AddMVCCKey(ctx, key, value.RawBytes); err != nil {
+			__antithesis_instrumentation__.Notify(10513)
 			return summary, errors.Wrapf(err, "adding to batch: %s -> %s", key, value.PrettyPrint())
+		} else {
+			__antithesis_instrumentation__.Notify(10514)
 		}
 	}
-	// Flush out the last batch.
+	__antithesis_instrumentation__.Notify(10469)
+
 	if err := batcher.Flush(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(10515)
 		return summary, err
+	} else {
+		__antithesis_instrumentation__.Notify(10516)
 	}
+	__antithesis_instrumentation__.Notify(10470)
 
 	if restoreKnobs, ok := rd.flowCtx.TestingKnobs().BackupRestoreTestingKnobs.(*sql.BackupRestoreTestingKnobs); ok {
+		__antithesis_instrumentation__.Notify(10517)
 		if restoreKnobs.RunAfterProcessingRestoreSpanEntry != nil {
+			__antithesis_instrumentation__.Notify(10518)
 			restoreKnobs.RunAfterProcessingRestoreSpanEntry(ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(10519)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(10520)
 	}
+	__antithesis_instrumentation__.Notify(10471)
 
 	return batcher.GetSummary(), nil
 }
@@ -522,57 +673,83 @@ func (rd *restoreDataProcessor) processRestoreSpanEntry(
 func makeProgressUpdate(
 	summary roachpb.BulkOpSummary, entry execinfrapb.RestoreSpanEntry, pkIDs map[uint64]bool,
 ) (progDetails RestoreProgress) {
+	__antithesis_instrumentation__.Notify(10521)
 	progDetails.Summary = countRows(summary, pkIDs)
 	progDetails.ProgressIdx = entry.ProgressIdx
 	progDetails.DataSpan = entry.Span
 	return
 }
 
-// Next is part of the RowSource interface.
 func (rd *restoreDataProcessor) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(10522)
 	if rd.State != execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(10525)
 		return nil, rd.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(10526)
 	}
+	__antithesis_instrumentation__.Notify(10523)
 
 	var prog execinfrapb.RemoteProducerMetadata_BulkProcessorProgress
 
 	select {
 	case progDetails, ok := <-rd.progCh:
+		__antithesis_instrumentation__.Notify(10527)
 		if !ok {
-			// Done. Check if any phase exited early with an error.
+			__antithesis_instrumentation__.Notify(10532)
+
 			err := rd.phaseGroup.Wait()
 			rd.MoveToDraining(err)
 			return nil, rd.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(10533)
 		}
+		__antithesis_instrumentation__.Notify(10528)
 
 		details, err := gogotypes.MarshalAny(&progDetails)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(10534)
 			rd.MoveToDraining(err)
 			return nil, rd.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(10535)
 		}
+		__antithesis_instrumentation__.Notify(10529)
 		prog.ProgressDetails = *details
 	case meta := <-rd.metaCh:
+		__antithesis_instrumentation__.Notify(10530)
 		return nil, meta
 	case <-rd.Ctx.Done():
+		__antithesis_instrumentation__.Notify(10531)
 		rd.MoveToDraining(rd.Ctx.Err())
 		return nil, rd.DrainHelper()
 	}
+	__antithesis_instrumentation__.Notify(10524)
 
 	return nil, &execinfrapb.ProducerMetadata{BulkProcessorProgress: &prog}
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (rd *restoreDataProcessor) ConsumerClosed() {
+	__antithesis_instrumentation__.Notify(10536)
 	if rd.Closed {
+		__antithesis_instrumentation__.Notify(10539)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(10540)
 	}
+	__antithesis_instrumentation__.Notify(10537)
 	rd.cancelWorkersAndWait()
 	if rd.sstCh != nil {
-		// Cleanup all the remaining open SSTs that have not been consumed.
+		__antithesis_instrumentation__.Notify(10541)
+
 		for sst := range rd.sstCh {
+			__antithesis_instrumentation__.Notify(10542)
 			sst.cleanup()
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(10543)
 	}
+	__antithesis_instrumentation__.Notify(10538)
 	rd.InternalClose()
 }
 

@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package opgen
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
@@ -66,14 +58,22 @@ func init() {
 }
 
 func referencedTypeIDs(this *scpb.ColumnType) []catid.DescID {
+	__antithesis_instrumentation__.Notify(594061)
 	var ids catalog.DescriptorIDSet
 	if this.ComputeExpr != nil {
+		__antithesis_instrumentation__.Notify(594064)
 		for _, id := range this.ComputeExpr.UsesTypeIDs {
+			__antithesis_instrumentation__.Notify(594065)
 			ids.Add(id)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(594066)
 	}
+	__antithesis_instrumentation__.Notify(594062)
 	for _, id := range this.ClosedTypeIDs {
+		__antithesis_instrumentation__.Notify(594067)
 		ids.Add(id)
 	}
+	__antithesis_instrumentation__.Notify(594063)
 	return ids.Ordered()
 }

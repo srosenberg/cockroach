@@ -5,7 +5,10 @@ go_library(
     srcs = ["oidext.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/oidext",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_lib_pq//oid"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@com_github_lib_pq//oid",
+    ],
 )
 
 go_test(
@@ -14,6 +17,7 @@ go_test(
     srcs = ["oidext_test.go"],
     embed = [":oidext"],
     deps = [
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_lib_pq//oid",
         "@com_github_stretchr_testify//require",
     ],

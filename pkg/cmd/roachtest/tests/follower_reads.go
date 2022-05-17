@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -43,23 +35,30 @@ import (
 )
 
 func registerFollowerReads(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(47727)
 	register := func(
 		survival survivalGoal, locality localitySetting, rc readConsistency, insufficientQuorum bool,
 	) {
+		__antithesis_instrumentation__.Notify(47730)
 		name := fmt.Sprintf("follower-reads/survival=%s/locality=%s/reads=%s", survival, locality, rc)
 		if insufficientQuorum {
+			__antithesis_instrumentation__.Notify(47732)
 			name = name + "/insufficient-quorum"
+		} else {
+			__antithesis_instrumentation__.Notify(47733)
 		}
+		__antithesis_instrumentation__.Notify(47731)
 		r.Add(registry.TestSpec{
 			Name:  name,
 			Owner: registry.OwnerKV,
 			Cluster: r.MakeClusterSpec(
-				6, /* nodeCount */
+				6,
 				spec.CPU(4),
 				spec.Geo(),
 				spec.Zones("us-east1-b,us-east1-b,us-east1-b,us-west1-b,us-west1-b,europe-west2-b"),
 			),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(47734)
 				c.Put(ctx, t.Cockroach(), "./cockroach")
 				c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings())
 				topology := topologySpec{
@@ -73,42 +72,51 @@ func registerFollowerReads(r registry.Registry) {
 			},
 		})
 	}
+	__antithesis_instrumentation__.Notify(47728)
 	for _, survival := range []survivalGoal{zone, region} {
+		__antithesis_instrumentation__.Notify(47735)
 		for _, locality := range []localitySetting{regional, global} {
+			__antithesis_instrumentation__.Notify(47737)
 			for _, rc := range []readConsistency{strong, exactStaleness, boundedStaleness} {
-				if rc == strong && locality != global {
-					// Only GLOBAL tables can perform strongly consistent reads off followers.
+				__antithesis_instrumentation__.Notify(47738)
+				if rc == strong && func() bool {
+					__antithesis_instrumentation__.Notify(47740)
+					return locality != global == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(47741)
+
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(47742)
 				}
-				register(survival, locality, rc, false /* insufficientQuorum */)
+				__antithesis_instrumentation__.Notify(47739)
+				register(survival, locality, rc, false)
 			}
 		}
+		__antithesis_instrumentation__.Notify(47736)
 
-		// Register an additional variant that cuts off the primary region and
-		// verifies that bounded staleness reads are still available elsewhere.
-		register(survival, regional, boundedStaleness, true /* insufficientQuorum */)
+		register(survival, regional, boundedStaleness, true)
 	}
+	__antithesis_instrumentation__.Notify(47729)
 
 	r.Add(registry.TestSpec{
 		Name:  "follower-reads/mixed-version/single-region",
 		Owner: registry.OwnerKV,
 		Cluster: r.MakeClusterSpec(
-			3, /* nodeCount */
+			3,
 			spec.CPU(2),
 		),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(47743)
 			runFollowerReadsMixedVersionSingleRegionTest(ctx, t, c, *t.BuildVersion())
 		},
 	})
 }
 
-// The survival goal of a multi-region database: ZONE or REGION.
 type survivalGoal string
 
-// The locality setting of a multi-region table: REGIONAL or GLOBAL.
 type localitySetting string
 
-// The type of read to perform: strongly consistent, exact staleness, or bounded staleness.
 type readConsistency string
 
 const (
@@ -123,40 +131,15 @@ const (
 	boundedStaleness readConsistency = "bounded-staleness"
 )
 
-// topologySpec defines the settings of a follower-reads test.
 type topologySpec struct {
-	// multiRegion, if set, makes the cluster and database be multi-region.
 	multiRegion bool
-	// locality and survival are only relevant when multiRegion is set.
+
 	locality localitySetting
 	survival survivalGoal
-	// deadPrimaryRegion, if set, indicates that the nodes in the database's
-	// primary region should be stopped while running the read load. Only relevant
-	// when multiRegion is set.
+
 	deadPrimaryRegion bool
 }
 
-// runFollowerReadsTest is a basic litmus test that follower reads work.
-// The test does the following:
-//
-//  * Creates a multi-region database and table.
-//  * Configures the database's survival goals.
-//  * Configures the table's locality setting.
-//  * Installs a number of rows into that table.
-//  * Queries the data initially with a recent timestamp and expecting an
-//    error because the table does not exist in the past immediately following
-//    creation.
-//  * If using a REGIONAL table, waits until the required duration has elapsed
-//    such that the installed data can be read with a follower read issued using
-//    `follower_read_timestamp()`.
-//  * Performs a few select query against a single row on all of the nodes and
-//    then observes the counter metric for store-level follower reads ensuring
-//    that they occurred on at least two of the nodes. If using a REGIONAL table,
-//    these reads are stale through the use of `follower_read_timestamp()`.
-//  * Performs reads against the written data on all of the nodes at a steady
-//    rate for 20 seconds, ensure that the 90-%ile SQL latencies during that
-//    time are under 10ms which implies that no WAN RPCs occurred.
-//
 func runFollowerReadsTest(
 	ctx context.Context,
 	t test.Test,
@@ -165,87 +148,127 @@ func runFollowerReadsTest(
 	rc readConsistency,
 	data map[int]int64,
 ) {
+	__antithesis_instrumentation__.Notify(47744)
 	var conns []*gosql.DB
 	for i := 0; i < c.Spec().NodeCount; i++ {
+		__antithesis_instrumentation__.Notify(47764)
 		conns = append(conns, c.Conn(ctx, t.L(), i+1))
 		defer conns[i].Close()
 	}
+	__antithesis_instrumentation__.Notify(47745)
 	db := conns[0]
 
-	// chooseKV picks a random key-value pair by exploiting the pseudo-random
-	// ordering of keys when traversing a map within a range statement.
 	chooseKV := func() (k int, v int64) {
+		__antithesis_instrumentation__.Notify(47765)
 		for k, v = range data {
+			__antithesis_instrumentation__.Notify(47767)
 			return k, v
 		}
+		__antithesis_instrumentation__.Notify(47766)
 		panic("data is empty")
 	}
+	__antithesis_instrumentation__.Notify(47746)
 
 	var aost string
 	switch rc {
 	case strong:
+		__antithesis_instrumentation__.Notify(47768)
 		aost = ""
 	case exactStaleness:
+		__antithesis_instrumentation__.Notify(47769)
 		aost = "AS OF SYSTEM TIME follower_read_timestamp()"
 	case boundedStaleness:
+		__antithesis_instrumentation__.Notify(47770)
 		aost = "AS OF SYSTEM TIME with_max_staleness('10m')"
 	default:
+		__antithesis_instrumentation__.Notify(47771)
 		t.Fatalf("unexpected readConsistency %s", rc)
 	}
+	__antithesis_instrumentation__.Notify(47747)
 
 	verifySelect := func(ctx context.Context, node, k int, expectedVal int64) func() error {
+		__antithesis_instrumentation__.Notify(47772)
 		return func() error {
+			__antithesis_instrumentation__.Notify(47773)
 			nodeDB := conns[node-1]
 			q := fmt.Sprintf("SELECT v FROM test.test %s WHERE k = $1", aost)
 			r := nodeDB.QueryRowContext(ctx, q, k)
 			var got int64
 			if err := r.Scan(&got); err != nil {
-				// Ignore errors due to cancellation.
+				__antithesis_instrumentation__.Notify(47776)
+
 				if ctx.Err() != nil {
+					__antithesis_instrumentation__.Notify(47778)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(47779)
 				}
+				__antithesis_instrumentation__.Notify(47777)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(47780)
 			}
+			__antithesis_instrumentation__.Notify(47774)
 
 			if got != expectedVal {
+				__antithesis_instrumentation__.Notify(47781)
 				return errors.Errorf("Didn't get expected val on node %d: %v != %v",
 					node, got, expectedVal)
+			} else {
+				__antithesis_instrumentation__.Notify(47782)
 			}
+			__antithesis_instrumentation__.Notify(47775)
 			return nil
 		}
 	}
+	__antithesis_instrumentation__.Notify(47748)
 	doSelects := func(ctx context.Context, node int) func() error {
+		__antithesis_instrumentation__.Notify(47783)
 		return func() error {
+			__antithesis_instrumentation__.Notify(47784)
 			for ctx.Err() == nil {
+				__antithesis_instrumentation__.Notify(47786)
 				k, v := chooseKV()
 				err := verifySelect(ctx, node, k, v)()
-				if err != nil && ctx.Err() == nil {
+				if err != nil && func() bool {
+					__antithesis_instrumentation__.Notify(47787)
+					return ctx.Err() == nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(47788)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(47789)
 				}
 			}
+			__antithesis_instrumentation__.Notify(47785)
 			return nil
 		}
 	}
+	__antithesis_instrumentation__.Notify(47749)
 
 	if rc != strong {
-		// For stale reads, wait for follower_read_timestamp() historical reads to
-		// have data. For strongly consistent reads tables, this isn't needed.
+		__antithesis_instrumentation__.Notify(47790)
+
 		followerReadDuration, err := computeFollowerReadDuration(ctx, db)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(47792)
 			t.Fatalf("failed to compute follower read duration: %v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(47793)
 		}
+		__antithesis_instrumentation__.Notify(47791)
 		select {
 		case <-time.After(followerReadDuration):
+			__antithesis_instrumentation__.Notify(47794)
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(47795)
 			t.Fatalf("context canceled: %v", ctx.Err())
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(47796)
 	}
+	__antithesis_instrumentation__.Notify(47750)
 
-	// Enable the slow query log so we have a shot at identifying why follower
-	// reads are not being served after the fact when this test fails. Use a
-	// latency threshold of 25ms, which should be well below the latency of a
-	// cross-region hop to read from the leaseholder but well above the latency
-	// of a follower read.
 	const maxLatencyThreshold = 25 * time.Millisecond
 	_, err := db.ExecContext(
 		ctx, fmt.Sprintf(
@@ -254,163 +277,203 @@ func runFollowerReadsTest(
 		),
 	)
 	if err != nil {
-		// 20.2 doesn't have this setting.
-		if !strings.Contains(err.Error(), "unknown cluster setting") {
-			t.Fatal(err)
-		}
-	}
+		__antithesis_instrumentation__.Notify(47797)
 
-	// Read the follower read counts before issuing the follower reads to observe
-	// the delta and protect from follower reads which might have happened due to
-	// system queries.
-	time.Sleep(10 * time.Second) // wait a bit, otherwise sometimes I get a 404 below.
+		if !strings.Contains(err.Error(), "unknown cluster setting") {
+			__antithesis_instrumentation__.Notify(47798)
+			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(47799)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(47800)
+	}
+	__antithesis_instrumentation__.Notify(47751)
+
+	time.Sleep(10 * time.Second)
 	followerReadsBefore, err := getFollowerReadCounts(ctx, t, c)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(47801)
 		t.Fatalf("failed to get follower read counts: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(47802)
 	}
+	__antithesis_instrumentation__.Notify(47752)
 
-	// Perform reads on each node and ensure we get the expected value. Do so for
-	// 15 seconds to give closed timestamps a chance to propagate and caches time
-	// to warm up.
 	t.L().Printf("warming up reads")
 	g, gCtx := errgroup.WithContext(ctx)
 	k, v := chooseKV()
 	until := timeutil.Now().Add(15 * time.Second)
 	for i := 1; i <= c.Spec().NodeCount; i++ {
+		__antithesis_instrumentation__.Notify(47803)
 		fn := verifySelect(gCtx, i, k, v)
 		g.Go(func() error {
+			__antithesis_instrumentation__.Notify(47804)
 			for {
+				__antithesis_instrumentation__.Notify(47805)
 				if timeutil.Now().After(until) {
+					__antithesis_instrumentation__.Notify(47807)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(47808)
 				}
+				__antithesis_instrumentation__.Notify(47806)
 				if err := fn(); err != nil {
+					__antithesis_instrumentation__.Notify(47809)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(47810)
 				}
 			}
 		})
 	}
+	__antithesis_instrumentation__.Notify(47753)
 	if err := g.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(47811)
 		t.Fatalf("error verifying node values: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(47812)
 	}
-	// Verify that the follower read count increments on at least two nodes -
-	// which we expect to be in the non-primary regions.
+	__antithesis_instrumentation__.Notify(47754)
+
 	expNodesToSeeFollowerReads := 2
 	followerReadsAfter, err := getFollowerReadCounts(ctx, t, c)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(47813)
 		t.Fatalf("failed to get follower read counts: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(47814)
 	}
+	__antithesis_instrumentation__.Notify(47755)
 	nodesWhichSawFollowerReads := 0
 	for i := 0; i < len(followerReadsAfter); i++ {
+		__antithesis_instrumentation__.Notify(47815)
 		if followerReadsAfter[i] > followerReadsBefore[i] {
+			__antithesis_instrumentation__.Notify(47816)
 			nodesWhichSawFollowerReads++
+		} else {
+			__antithesis_instrumentation__.Notify(47817)
 		}
 	}
+	__antithesis_instrumentation__.Notify(47756)
 	if nodesWhichSawFollowerReads < expNodesToSeeFollowerReads {
+		__antithesis_instrumentation__.Notify(47818)
 		t.Fatalf("fewer than %v follower reads occurred: saw %v before and %v after",
 			expNodesToSeeFollowerReads, followerReadsBefore, followerReadsAfter)
+	} else {
+		__antithesis_instrumentation__.Notify(47819)
 	}
+	__antithesis_instrumentation__.Notify(47757)
 
-	// Kill nodes, if necessary.
 	liveNodes, deadNodes := make(map[int]struct{}), make(map[int]struct{})
 	for i := 1; i <= c.Spec().NodeCount; i++ {
-		if topology.deadPrimaryRegion && i <= 3 {
+		__antithesis_instrumentation__.Notify(47820)
+		if topology.deadPrimaryRegion && func() bool {
+			__antithesis_instrumentation__.Notify(47821)
+			return i <= 3 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(47822)
 			stopOpts := option.DefaultStopOpts()
 			stopOpts.RoachprodOpts.Sig = 9
 			c.Stop(ctx, t.L(), stopOpts, c.Node(i))
 			deadNodes[i] = struct{}{}
 		} else {
+			__antithesis_instrumentation__.Notify(47823)
 			liveNodes[i] = struct{}{}
 		}
 	}
+	__antithesis_instrumentation__.Notify(47758)
 
 	t.L().Printf("starting read load")
 	const loadDuration = 4 * time.Minute
 	timeoutCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	time.AfterFunc(loadDuration, func() {
+		__antithesis_instrumentation__.Notify(47824)
 		t.L().Printf("stopping load")
 		cancel()
 	})
+	__antithesis_instrumentation__.Notify(47759)
 	g, gCtx = errgroup.WithContext(timeoutCtx)
 	const concurrency = 32
 	var cur int
 	for i := 0; cur < concurrency; i++ {
+		__antithesis_instrumentation__.Notify(47825)
 		node := i%c.Spec().NodeCount + 1
 		if _, ok := liveNodes[node]; ok {
+			__antithesis_instrumentation__.Notify(47826)
 			g.Go(doSelects(gCtx, node))
 			cur++
+		} else {
+			__antithesis_instrumentation__.Notify(47827)
 		}
 	}
+	__antithesis_instrumentation__.Notify(47760)
 	start := timeutil.Now()
 
-	if err := g.Wait(); err != nil && timeoutCtx.Err() == nil {
+	if err := g.Wait(); err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(47828)
+		return timeoutCtx.Err() == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(47829)
 		t.Fatalf("error reading data: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(47830)
 	}
+	__antithesis_instrumentation__.Notify(47761)
 	end := timeutil.Now()
 	t.L().Printf("load stopped")
 
-	// Depending on the test's topology, we expect a different set of nodes to
-	// perform follower reads.
 	var expectedLowRatioNodes int
 	if !topology.multiRegion {
-		// We expect one node - the leaseholder - to have a low ratio because it
-		// doesn't perform follower reads; the other 2 replicas should serve
-		// follower reads. We assume single-region tests to have 3 nodes.
+		__antithesis_instrumentation__.Notify(47831)
+
 		expectedLowRatioNodes = 1
 	} else {
-		// We expect all the replicas to serve follower reads, except the
-		// leaseholder. In both the zone and the region-survival cases, there's one
-		// node in the cluster that doesn't have a replica - so that node also won't
-		// serve follower reads.
+		__antithesis_instrumentation__.Notify(47832)
+
 		expectedLowRatioNodes = 2
-		// However, if the primary region is dead, then we'll be consulting fewer
-		// nodes in verifyHighFollowerReadRatios (only liveNodes), so the expected
-		// number of nodes with a low follower read ratio drops. With zone survival,
-		// 2 of the remaining 3 nodes remaining will hold a non-voting replicas, so
-		// we expect only 1 node to not serve follower reads. With region survival,
-		// all 3 remaining nodes will hold a voting replica, but one will take over
-		// as the leaseholder, so we also expect 1 node to not serve follower reads.
+
 		if topology.deadPrimaryRegion {
+			__antithesis_instrumentation__.Notify(47833)
 			expectedLowRatioNodes = 1
+		} else {
+			__antithesis_instrumentation__.Notify(47834)
 		}
 	}
+	__antithesis_instrumentation__.Notify(47762)
 	verifyHighFollowerReadRatios(ctx, t, c, liveNodes, start, end, expectedLowRatioNodes)
 
 	if topology.multiRegion {
-		// Perform a ts query to verify that the SQL latencies were well below the
-		// WAN latencies which should be at least 50ms.
-		//
-		// We don't do this for singleRegion since, in a single region, there's no
-		// low latency and high-latency regimes.
-		verifySQLLatency(ctx, t, c, liveNodes, start, end, maxLatencyThreshold)
-	}
+		__antithesis_instrumentation__.Notify(47835)
 
-	// Restart dead nodes, if necessary.
+		verifySQLLatency(ctx, t, c, liveNodes, start, end, maxLatencyThreshold)
+	} else {
+		__antithesis_instrumentation__.Notify(47836)
+	}
+	__antithesis_instrumentation__.Notify(47763)
+
 	for i := range deadNodes {
+		__antithesis_instrumentation__.Notify(47837)
 		c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.Node(i))
 	}
 }
 
-// initFollowerReadsDB initializes a database for the follower reads test.
-// Returns the data inserted into the test table.
 func initFollowerReadsDB(
 	ctx context.Context, t test.Test, c cluster.Cluster, topology topologySpec,
 ) (data map[int]int64) {
+	__antithesis_instrumentation__.Notify(47838)
 	db := c.Conn(ctx, t.L(), 1)
-	// Disable load based splitting and range merging because splits and merges
-	// interfere with follower reads. This test's workload regularly triggers load
-	// based splitting in the first phase creating small ranges which later
-	// in the test are merged. The merging tends to coincide with the final phase
-	// of the test which attempts to observe low latency reads leading to
-	// flakiness.
+
 	_, err := db.ExecContext(ctx, "SET CLUSTER SETTING kv.range_split.by_load_enabled = 'false'")
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, "SET CLUSTER SETTING kv.range_merge.queue_enabled = 'false'")
 	require.NoError(t, err)
 
-	// Check the cluster regions.
 	if topology.multiRegion {
+		__antithesis_instrumentation__.Notify(47847)
 		if err := testutils.SucceedsSoonError(func() error {
+			__antithesis_instrumentation__.Notify(47848)
 			rows, err := db.QueryContext(ctx, "SELECT region, zones[1] FROM [SHOW REGIONS FROM CLUSTER] ORDER BY 1")
 			require.NoError(t, err)
 			defer rows.Close()
@@ -424,18 +487,28 @@ func initFollowerReadsDB(
 				{"us-west1", "us-west1-b"},
 			}
 			if !reflect.DeepEqual(matrix, expMatrix) {
+				__antithesis_instrumentation__.Notify(47850)
 				return errors.Errorf("unexpected cluster regions: want %+v, got %+v", expMatrix, matrix)
+			} else {
+				__antithesis_instrumentation__.Notify(47851)
 			}
+			__antithesis_instrumentation__.Notify(47849)
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(47852)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(47853)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(47854)
 	}
+	__antithesis_instrumentation__.Notify(47839)
 
-	// Create a multi-region database and table.
 	_, err = db.ExecContext(ctx, `CREATE DATABASE test`)
 	require.NoError(t, err)
 	if topology.multiRegion {
+		__antithesis_instrumentation__.Notify(47855)
 		_, err = db.ExecContext(ctx, `ALTER DATABASE test SET PRIMARY REGION "us-east1"`)
 		require.NoError(t, err)
 		_, err = db.ExecContext(ctx, `ALTER DATABASE test ADD REGION "us-west1"`)
@@ -444,30 +517,38 @@ func initFollowerReadsDB(
 		require.NoError(t, err)
 		_, err = db.ExecContext(ctx, fmt.Sprintf(`ALTER DATABASE test SURVIVE %s FAILURE`, topology.survival))
 		require.NoError(t, err)
+	} else {
+		__antithesis_instrumentation__.Notify(47856)
 	}
+	__antithesis_instrumentation__.Notify(47840)
 	_, err = db.ExecContext(ctx, `CREATE TABLE test.test ( k INT8, v INT8, PRIMARY KEY (k) )`)
 	require.NoError(t, err)
 	if topology.multiRegion {
+		__antithesis_instrumentation__.Notify(47857)
 		_, err = db.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE test.test SET LOCALITY %s`, topology.locality))
 		require.NoError(t, err)
+	} else {
+		__antithesis_instrumentation__.Notify(47858)
 	}
+	__antithesis_instrumentation__.Notify(47841)
 
-	// Wait until the table has completed up-replication.
 	t.L().Printf("waiting for up-replication...")
 	retryOpts := retry.Options{MaxBackoff: 15 * time.Second}
 	for r := retry.StartWithCtx(ctx, retryOpts); r.Next(); {
-		// Check that the table has the expected number of voting and non-voting
-		// replicas.
+		__antithesis_instrumentation__.Notify(47859)
+
 		var votersCol, nonVotersCol string
 		if topology.multiRegion {
+			__antithesis_instrumentation__.Notify(47864)
 			votersCol = "coalesce(array_length(voting_replicas, 1), 0)"
 			nonVotersCol = "coalesce(array_length(non_voting_replicas, 1), 0)"
 		} else {
-			// Hack to support v20.2 which doesn't have the non_voting_replicas
-			// column.
+			__antithesis_instrumentation__.Notify(47865)
+
 			votersCol = "coalesce(array_length(replicas, 1), 0)"
 			nonVotersCol = "0"
 		}
+		__antithesis_instrumentation__.Notify(47860)
 
 		q1 := fmt.Sprintf(`
 			SELECT
@@ -480,33 +561,55 @@ func initFollowerReadsDB(
 		var voters, nonVoters int
 		err := db.QueryRowContext(ctx, q1).Scan(&voters, &nonVoters)
 		if errors.Is(err, gosql.ErrNoRows) {
+			__antithesis_instrumentation__.Notify(47866)
 			t.L().Printf("up-replication not complete, missing range")
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(47867)
 		}
+		__antithesis_instrumentation__.Notify(47861)
 		require.NoError(t, err)
 
 		var ok bool
 		if !topology.multiRegion {
+			__antithesis_instrumentation__.Notify(47868)
 			ok = voters == 3
-		} else if topology.survival == zone {
-			// Expect 3 voting replicas and 2 non-voting replicas.
-			ok = voters == 3 && nonVoters == 2
 		} else {
-			// Expect 5 voting replicas and 0 non-voting replicas.
-			ok = voters == 5 && nonVoters == 0
+			__antithesis_instrumentation__.Notify(47869)
+			if topology.survival == zone {
+				__antithesis_instrumentation__.Notify(47870)
+
+				ok = voters == 3 && func() bool {
+					__antithesis_instrumentation__.Notify(47871)
+					return nonVoters == 2 == true
+				}() == true
+			} else {
+				__antithesis_instrumentation__.Notify(47872)
+
+				ok = voters == 5 && func() bool {
+					__antithesis_instrumentation__.Notify(47873)
+					return nonVoters == 0 == true
+				}() == true
+			}
 		}
+		__antithesis_instrumentation__.Notify(47862)
 		if ok {
+			__antithesis_instrumentation__.Notify(47874)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(47875)
 		}
+		__antithesis_instrumentation__.Notify(47863)
 
 		t.L().Printf("up-replication not complete, found %d voters and %d non_voters", voters, nonVoters)
 	}
+	__antithesis_instrumentation__.Notify(47842)
 
 	if topology.multiRegion {
+		__antithesis_instrumentation__.Notify(47876)
 		for r := retry.StartWithCtx(ctx, retryOpts); r.Next(); {
-			// Check that one of these replicas exists in each region. Do so by
-			// parsing the replica_localities array using the same pattern as the
-			// one used by SHOW REGIONS.
+			__antithesis_instrumentation__.Notify(47878)
+
 			const q2 = `
 			SELECT
 				count(distinct substring(unnest(replica_localities), 'region=([^,]*)'))
@@ -518,28 +621,35 @@ func initFollowerReadsDB(
 			var distinctRegions int
 			require.NoError(t, db.QueryRowContext(ctx, q2).Scan(&distinctRegions))
 			if distinctRegions == 3 {
+				__antithesis_instrumentation__.Notify(47880)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(47881)
 			}
+			__antithesis_instrumentation__.Notify(47879)
 
 			t.L().Printf("rebalancing not complete, table in %d regions", distinctRegions)
 		}
+		__antithesis_instrumentation__.Notify(47877)
 
 		if topology.deadPrimaryRegion {
+			__antithesis_instrumentation__.Notify(47882)
 			for r := retry.StartWithCtx(ctx, retryOpts); r.Next(); {
-				// If we're going to be killing nodes in a multi-region cluster, make
-				// sure system ranges have all upreplicated as expected as well. Do so
-				// using replication reports.
+				__antithesis_instrumentation__.Notify(47883)
+
 				WaitForUpdatedReplicationReport(ctx, t, db)
 
 				var expAtRisk int
 				if topology.survival == zone {
-					// Only the 'test' table's range should be at risk of a region
-					// failure.
+					__antithesis_instrumentation__.Notify(47886)
+
 					expAtRisk = 1
 				} else {
-					// No range should be at risk of a region failure.
+					__antithesis_instrumentation__.Notify(47887)
+
 					expAtRisk = 0
 				}
+				__antithesis_instrumentation__.Notify(47884)
 
 				const q3 = `
 				SELECT
@@ -554,59 +664,83 @@ func initFollowerReadsDB(
 				var atRisk int
 				require.NoError(t, db.QueryRowContext(ctx, q3).Scan(&atRisk))
 				if atRisk == expAtRisk {
+					__antithesis_instrumentation__.Notify(47888)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(47889)
 				}
+				__antithesis_instrumentation__.Notify(47885)
 
 				t.L().Printf("rebalancing not complete, expected %d at risk ranges, "+
 					"found %d", expAtRisk, atRisk)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(47890)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(47891)
 	}
+	__antithesis_instrumentation__.Notify(47843)
 
 	const rows = 100
 	const concurrency = 32
 	sem := make(chan struct{}, concurrency)
 	data = make(map[int]int64)
 	insert := func(ctx context.Context, k int) func() error {
+		__antithesis_instrumentation__.Notify(47892)
 		v := rand.Int63()
 		data[k] = v
 		return func() error {
+			__antithesis_instrumentation__.Notify(47893)
 			sem <- struct{}{}
-			defer func() { <-sem }()
+			defer func() { __antithesis_instrumentation__.Notify(47895); <-sem }()
+			__antithesis_instrumentation__.Notify(47894)
 			_, err := db.ExecContext(ctx, "INSERT INTO test.test VALUES ( $1, $2 )", k, v)
 			return err
 		}
 	}
+	__antithesis_instrumentation__.Notify(47844)
 
-	// Insert the data.
 	g, gCtx := errgroup.WithContext(ctx)
 	for i := 0; i < rows; i++ {
+		__antithesis_instrumentation__.Notify(47896)
 		g.Go(insert(gCtx, i))
 	}
+	__antithesis_instrumentation__.Notify(47845)
 	if err := g.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(47897)
 		t.Fatalf("failed to insert data: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(47898)
 	}
+	__antithesis_instrumentation__.Notify(47846)
 
 	return data
 }
 
 func computeFollowerReadDuration(ctx context.Context, db *gosql.DB) (time.Duration, error) {
+	__antithesis_instrumentation__.Notify(47899)
 	var d pgtype.Interval
 	err := db.QueryRowContext(ctx, "SELECT now() - follower_read_timestamp()").Scan(&d)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(47902)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(47903)
 	}
+	__antithesis_instrumentation__.Notify(47900)
 	var lag time.Duration
 	err = d.AssignTo(&lag)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(47904)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(47905)
 	}
+	__antithesis_instrumentation__.Notify(47901)
 	return lag, nil
 }
 
-// verifySQLLatency verifies that the client-facing SQL latencies in the 90th
-// percentile remain below target latency 80% of the time between start and end
-// ignoring the first 20s.
 func verifySQLLatency(
 	ctx context.Context,
 	t test.Test,
@@ -615,25 +749,34 @@ func verifySQLLatency(
 	start, end time.Time,
 	targetLatency time.Duration,
 ) {
-	// Query needed information over the timespan of the query.
+	__antithesis_instrumentation__.Notify(47906)
+
 	var adminNode int
 	for i := range liveNodes {
+		__antithesis_instrumentation__.Notify(47913)
 		adminNode = i
 		break
 	}
+	__antithesis_instrumentation__.Notify(47907)
 	adminURLs, err := c.ExternalAdminUIAddr(ctx, t.L(), c.Node(adminNode))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(47914)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(47915)
 	}
+	__antithesis_instrumentation__.Notify(47908)
 	url := "http://" + adminURLs[0] + "/ts/query"
 	var sources []string
 	for i := range liveNodes {
+		__antithesis_instrumentation__.Notify(47916)
 		sources = append(sources, strconv.Itoa(i))
 	}
+	__antithesis_instrumentation__.Notify(47909)
 	request := tspb.TimeSeriesQueryRequest{
 		StartNanos: start.UnixNano(),
 		EndNanos:   end.UnixNano(),
-		// Ask for 10s intervals.
+
 		SampleNanos: (10 * time.Second).Nanoseconds(),
 		Queries: []tspb.Query{{
 			Name:    "cr.node.sql.service.latency-p90",
@@ -642,32 +785,42 @@ func verifySQLLatency(
 	}
 	var response tspb.TimeSeriesQueryResponse
 	if err := httputil.PostJSON(http.Client{}, url, &request, &response); err != nil {
+		__antithesis_instrumentation__.Notify(47917)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(47918)
 	}
+	__antithesis_instrumentation__.Notify(47910)
 	perTenSeconds := response.Results[0].Datapoints
-	// Drop the first 20 seconds of datapoints as a "ramp-up" period.
+
 	if len(perTenSeconds) < 3 {
+		__antithesis_instrumentation__.Notify(47919)
 		t.Fatalf("not enough ts data to verify latency")
+	} else {
+		__antithesis_instrumentation__.Notify(47920)
 	}
+	__antithesis_instrumentation__.Notify(47911)
 	perTenSeconds = perTenSeconds[2:]
 	var above []time.Duration
 	for _, dp := range perTenSeconds {
+		__antithesis_instrumentation__.Notify(47921)
 		if val := time.Duration(dp.Value); val > targetLatency {
+			__antithesis_instrumentation__.Notify(47922)
 			above = append(above, val)
+		} else {
+			__antithesis_instrumentation__.Notify(47923)
 		}
 	}
+	__antithesis_instrumentation__.Notify(47912)
 	if permitted := int(.2 * float64(len(perTenSeconds))); len(above) > permitted {
+		__antithesis_instrumentation__.Notify(47924)
 		t.Fatalf("%d latency values (%v) are above target latency %v, %d permitted",
 			len(above), above, targetLatency, permitted)
+	} else {
+		__antithesis_instrumentation__.Notify(47925)
 	}
 }
 
-// verifyHighFollowerReadRatios analyzes the follower_reads.success_count and
-// the sql.select.count timeseries and checks that, in the majority of 10s
-// quantas, the ratio between the two is high (i.e. we're serving the load as
-// follower reads) for all but a few nodes (toleratedNodes). We tolerate a few
-// wacky quantas because, around leaseholder changes, the one node's ratio drops
-// to zero (the new leaseholder), and another one's rises (the old leaseholder).
 func verifyHighFollowerReadRatios(
 	ctx context.Context,
 	t test.Test,
@@ -676,28 +829,28 @@ func verifyHighFollowerReadRatios(
 	start, end time.Time,
 	toleratedNodes int,
 ) {
-	// Start reading timeseries 10s into the test. If the start time is too soon
-	// after cluster startup, it's possible that not every node returns the first
-	// datapoint (I think because it had not yet produced a sample before the
-	// start point?).
+	__antithesis_instrumentation__.Notify(47926)
+
 	start = start.Add(10 * time.Second)
 
-	// Query needed information over the timespan of the query.
 	var adminNode int
 	for i := range liveNodes {
+		__antithesis_instrumentation__.Notify(47934)
 		adminNode = i
 		break
 	}
+	__antithesis_instrumentation__.Notify(47927)
 	adminURLs, err := c.ExternalAdminUIAddr(ctx, t.L(), c.Node(adminNode))
 	require.NoError(t, err)
 	url := "http://" + adminURLs[0] + "/ts/query"
 	request := tspb.TimeSeriesQueryRequest{
 		StartNanos: start.UnixNano(),
 		EndNanos:   end.UnixNano(),
-		// Ask for 10s intervals.
+
 		SampleNanos: (10 * time.Second).Nanoseconds(),
 	}
 	for i := range liveNodes {
+		__antithesis_instrumentation__.Notify(47935)
 		nodeID := strconv.Itoa(i)
 		request.Queries = append(request.Queries, tspb.Query{
 			Name:       "cr.store.follower_reads.success_count",
@@ -710,31 +863,47 @@ func verifyHighFollowerReadRatios(
 			Derivative: tspb.TimeSeriesQueryDerivative_NON_NEGATIVE_DERIVATIVE.Enum(),
 		})
 	}
+	__antithesis_instrumentation__.Notify(47928)
 
 	var response tspb.TimeSeriesQueryResponse
 	if err := httputil.PostJSON(http.Client{}, url, &request, &response); err != nil {
+		__antithesis_instrumentation__.Notify(47936)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(47937)
 	}
+	__antithesis_instrumentation__.Notify(47929)
 
 	minDataPoints := len(response.Results[0].Datapoints)
 	for _, res := range response.Results[1:] {
+		__antithesis_instrumentation__.Notify(47938)
 		if len(res.Datapoints) < minDataPoints {
+			__antithesis_instrumentation__.Notify(47939)
 			minDataPoints = len(res.Datapoints)
+		} else {
+			__antithesis_instrumentation__.Notify(47940)
 		}
 	}
+	__antithesis_instrumentation__.Notify(47930)
 	if minDataPoints < 3 {
+		__antithesis_instrumentation__.Notify(47941)
 		t.Fatalf("not enough ts data to verify follower reads")
+	} else {
+		__antithesis_instrumentation__.Notify(47942)
 	}
+	__antithesis_instrumentation__.Notify(47931)
 
-	// Go through the timeseries and process them into a better format.
 	stats := make([]intervalStats, minDataPoints)
 	for i := range stats {
+		__antithesis_instrumentation__.Notify(47943)
 		var ratios []float64
 		for n := 0; n < len(response.Results); n += 2 {
+			__antithesis_instrumentation__.Notify(47945)
 			followerReadsPerTenSeconds := response.Results[n].Datapoints[i]
 			selectsPerTenSeconds := response.Results[n+1].Datapoints[i]
 			ratios = append(ratios, followerReadsPerTenSeconds.Value/selectsPerTenSeconds.Value)
 		}
+		__antithesis_instrumentation__.Notify(47944)
 		intervalEnd := timeutil.Unix(0, response.Results[0].Datapoints[i].TimestampNanos)
 		stats[i] = intervalStats{
 			ratiosPerNode: ratios,
@@ -742,29 +911,41 @@ func verifyHighFollowerReadRatios(
 			end:           intervalEnd,
 		}
 	}
+	__antithesis_instrumentation__.Notify(47932)
 
 	t.L().Printf("interval stats: %s", intervalsToString(stats))
 
-	// Now count how many intervals have more than the tolerated number of nodes
-	// with low follower read ratios.
 	const threshold = 0.9
 	var badIntervals []intervalStats
 	for _, stat := range stats {
+		__antithesis_instrumentation__.Notify(47946)
 		var nodesWithLowRatios int
 		for _, ratio := range stat.ratiosPerNode {
+			__antithesis_instrumentation__.Notify(47948)
 			if ratio < threshold {
+				__antithesis_instrumentation__.Notify(47949)
 				nodesWithLowRatios++
+			} else {
+				__antithesis_instrumentation__.Notify(47950)
 			}
 		}
+		__antithesis_instrumentation__.Notify(47947)
 		if nodesWithLowRatios > toleratedNodes {
+			__antithesis_instrumentation__.Notify(47951)
 			badIntervals = append(badIntervals, stat)
+		} else {
+			__antithesis_instrumentation__.Notify(47952)
 		}
 	}
+	__antithesis_instrumentation__.Notify(47933)
 	permitted := int(.2 * float64(len(stats)))
 	if len(badIntervals) > permitted {
+		__antithesis_instrumentation__.Notify(47953)
 		t.Fatalf("too many intervals with more than %d nodes with low follower read ratios: "+
 			"%d intervals > %d threshold. Bad intervals:\n%s",
 			toleratedNodes, len(badIntervals), permitted, intervalsToString(badIntervals))
+	} else {
+		__antithesis_instrumentation__.Notify(47954)
 	}
 }
 
@@ -774,68 +955,102 @@ type intervalStats struct {
 }
 
 func intervalsToString(stats []intervalStats) string {
+	__antithesis_instrumentation__.Notify(47955)
 	var s strings.Builder
 	for _, interval := range stats {
+		__antithesis_instrumentation__.Notify(47957)
 		s.WriteString(fmt.Sprintf("interval %s-%s: ",
 			interval.start.Format("15:04:05"), interval.end.Format("15:04:05")))
 		for i, r := range interval.ratiosPerNode {
+			__antithesis_instrumentation__.Notify(47959)
 			s.WriteString(fmt.Sprintf("n%d ratio: %.3f ", i+1, r))
 		}
+		__antithesis_instrumentation__.Notify(47958)
 		s.WriteRune('\n')
 	}
+	__antithesis_instrumentation__.Notify(47956)
 	return s.String()
 }
 
 const followerReadsMetric = "follower_reads_success_count"
 
-// getFollowerReadCounts returns a slice from node to follower read count
-// according to the metric.
 func getFollowerReadCounts(ctx context.Context, t test.Test, c cluster.Cluster) ([]int, error) {
+	__antithesis_instrumentation__.Notify(47960)
 	followerReadCounts := make([]int, c.Spec().NodeCount)
 	getFollowerReadCount := func(ctx context.Context, node int) func() error {
+		__antithesis_instrumentation__.Notify(47964)
 		return func() error {
+			__antithesis_instrumentation__.Notify(47965)
 			adminUIAddrs, err := c.ExternalAdminUIAddr(ctx, t.L(), c.Node(node))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(47970)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(47971)
 			}
+			__antithesis_instrumentation__.Notify(47966)
 			url := "http://" + adminUIAddrs[0] + "/_status/vars"
 			resp, err := httputil.Get(ctx, url)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(47972)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(47973)
 			}
+			__antithesis_instrumentation__.Notify(47967)
 			defer resp.Body.Close()
 			if resp.StatusCode != 200 {
+				__antithesis_instrumentation__.Notify(47974)
 				return errors.Errorf("invalid non-200 status code %v from node %d", resp.StatusCode, node)
+			} else {
+				__antithesis_instrumentation__.Notify(47975)
 			}
+			__antithesis_instrumentation__.Notify(47968)
 			scanner := bufio.NewScanner(resp.Body)
 			for scanner.Scan() {
+				__antithesis_instrumentation__.Notify(47976)
 				m, ok := parsePrometheusMetric(scanner.Text())
 				if ok {
+					__antithesis_instrumentation__.Notify(47977)
 					if m.metric == followerReadsMetric {
+						__antithesis_instrumentation__.Notify(47978)
 						v, err := strconv.ParseFloat(m.value, 64)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(47980)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(47981)
 						}
+						__antithesis_instrumentation__.Notify(47979)
 						followerReadCounts[node-1] = int(v)
+					} else {
+						__antithesis_instrumentation__.Notify(47982)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(47983)
 				}
 			}
+			__antithesis_instrumentation__.Notify(47969)
 			return nil
 		}
 	}
+	__antithesis_instrumentation__.Notify(47961)
 	g, gCtx := errgroup.WithContext(ctx)
 	for i := 1; i <= c.Spec().NodeCount; i++ {
+		__antithesis_instrumentation__.Notify(47984)
 		g.Go(getFollowerReadCount(gCtx, i))
 	}
+	__antithesis_instrumentation__.Notify(47962)
 	if err := g.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(47985)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(47986)
 	}
+	__antithesis_instrumentation__.Notify(47963)
 	return followerReadCounts, nil
 }
 
-// parse rows like:
-// sql_select_count  1.652807e+06
-// follower_reads_success_count{store="1"} 27606
 var prometheusMetricStringPattern = `^(?P<metric>\w+)(?:\{` +
 	`(?P<labelvalues>(\w+=\".*\",)*(\w+=\".*\")?)\})?\s+(?P<value>.*)$`
 var promethusMetricStringRE = regexp.MustCompile(prometheusMetricStringPattern)
@@ -847,10 +1062,15 @@ type prometheusMetric struct {
 }
 
 func parsePrometheusMetric(s string) (*prometheusMetric, bool) {
+	__antithesis_instrumentation__.Notify(47987)
 	matches := promethusMetricStringRE.FindStringSubmatch(s)
 	if matches == nil {
+		__antithesis_instrumentation__.Notify(47989)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(47990)
 	}
+	__antithesis_instrumentation__.Notify(47988)
 	return &prometheusMetric{
 		metric:      matches[1],
 		labelValues: matches[2],
@@ -858,42 +1078,40 @@ func parsePrometheusMetric(s string) (*prometheusMetric, bool) {
 	}, true
 }
 
-// runFollowerReadsMixedVersionSingleRegionTest runs a follower-reads test while
-// performing a cluster upgrade. The point is to exercise the closed-timestamp
-// mechanism in a mixed-version cluster. Running in a single region is
-// sufficient for this purpose; we're not testing non-voting replicas here
-// (which are used in multi-region tests).
 func runFollowerReadsMixedVersionSingleRegionTest(
 	ctx context.Context, t test.Test, c cluster.Cluster, buildVersion version.Version,
 ) {
+	__antithesis_instrumentation__.Notify(47991)
 	predecessorVersion, err := PredecessorVersion(buildVersion)
 	require.NoError(t, err)
-	// An empty string means that the cockroach binary specified by flag
-	// `cockroach` will be used.
+
 	const curVersion = ""
 
-	// Start the cluster at the old version.
 	settings := install.MakeClusterSettings()
 	settings.Binary = uploadVersion(ctx, t, c, c.All(), predecessorVersion)
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), settings, c.All())
 	topology := topologySpec{multiRegion: false}
 	data := initFollowerReadsDB(ctx, t, c, topology)
 
-	// Upgrade one node to the new version and run the test.
 	randNode := 1 + rand.Intn(c.Spec().NodeCount)
 	t.L().Printf("upgrading n%d to current version", randNode)
 	nodeToUpgrade := c.Node(randNode)
 	upgradeNodes(ctx, nodeToUpgrade, curVersion, t, c)
 	runFollowerReadsTest(ctx, t, c, topologySpec{multiRegion: false}, exactStaleness, data)
 
-	// Upgrade the remaining nodes to the new version and run the test.
 	var remainingNodes option.NodeListOption
 	for i := 0; i < c.Spec().NodeCount; i++ {
+		__antithesis_instrumentation__.Notify(47993)
 		if i+1 == randNode {
+			__antithesis_instrumentation__.Notify(47995)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(47996)
 		}
+		__antithesis_instrumentation__.Notify(47994)
 		remainingNodes = remainingNodes.Merge(c.Node(i + 1))
 	}
+	__antithesis_instrumentation__.Notify(47992)
 	t.L().Printf("upgrading nodes %s to current version", remainingNodes)
 	upgradeNodes(ctx, remainingNodes, curVersion, t, c)
 	runFollowerReadsTest(ctx, t, c, topologySpec{multiRegion: false}, exactStaleness, data)

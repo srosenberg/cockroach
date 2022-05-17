@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -18,18 +10,24 @@ import (
 )
 
 func (d *delegator) delegateShowDatabases(stmt *tree.ShowDatabases) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465528)
 	query := `SELECT
 	name AS database_name, owner, primary_region, regions, survival_goal`
 
 	if stmt.WithComment {
+		__antithesis_instrumentation__.Notify(465531)
 		query += `, comment`
+	} else {
+		__antithesis_instrumentation__.Notify(465532)
 	}
+	__antithesis_instrumentation__.Notify(465529)
 
 	query += `
 FROM
   "".crdb_internal.databases d
 `
 	if stmt.WithComment {
+		__antithesis_instrumentation__.Notify(465533)
 		query += fmt.Sprintf(`
 LEFT JOIN
 	(
@@ -42,7 +40,10 @@ LEFT JOIN
 	) c
 ON
 	c.object_id = d.id`, keys.DatabaseCommentType)
+	} else {
+		__antithesis_instrumentation__.Notify(465534)
 	}
+	__antithesis_instrumentation__.Notify(465530)
 
 	query += `
 ORDER BY

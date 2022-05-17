@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,97 +15,59 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Status about a node.
 type nodeStatus struct {
-	// NodeID is the integer ID of this node.
 	NodeID int32 `json:"node_id"`
-	// Address is the unresolved network listen address of this node.
+
 	Address  util.UnresolvedAddr `json:"address"`
 	Attrs    roachpb.Attributes  `json:"attrs"`
 	Locality roachpb.Locality    `json:"locality"`
-	// ServerVersion is the exact version of Cockroach this node is running.
+
 	ServerVersion roachpb.Version `json:"ServerVersion"`
-	// BuildTag is an internal build marker.
+
 	BuildTag string `json:"build_tag"`
-	// StartedAt is the time when this node was started, expressed as
-	// nanoseconds since Unix epoch.
+
 	StartedAt int64 `json:"started_at"`
-	// ClusterName is the string name of this cluster, if set.
+
 	ClusterName string `json:"cluster_name"`
-	// SQLAddress is the listen address to which SQL clients can connect.
+
 	SQLAddress util.UnresolvedAddr `json:"sql_address"`
 
-	// Metrics contain the last sampled metrics for this node.
 	Metrics map[string]float64 `json:"metrics,omitempty"`
-	// TotalSystemMemory is the total amount of available system memory on this
-	// node (or cgroup), in bytes.
+
 	TotalSystemMemory int64 `json:"total_system_memory,omitempty"`
-	// NumCpus is the number of CPUs on this node.
+
 	NumCpus int32 `json:"num_cpus,omitempty"`
-	// UpdatedAt is the time at which the node status record was last updated,
-	// in nanoseconds since Unix epoch.
+
 	UpdatedAt int64 `json:"updated_at,omitempty"`
 
-	// LivenessStatus is the status of the node from the perspective of the
-	// liveness subsystem. For internal use only.
 	LivenessStatus int32 `json:"liveness_status"`
 }
 
-// Response struct for listNodes.
-//
-// swagger:model nodesResponse
 type nodesResponse struct {
-	// Status of nodes.
-	//
-	// swagger:allOf
 	Nodes []nodeStatus `json:"nodes"`
-	// Continuation offset for the next paginated call, if more values are present.
-	// Specify as the `offset` parameter.
+
 	Next int `json:"next,omitempty"`
 }
 
-// swagger:operation GET /nodes/ listNodes
-//
-// List nodes
-//
-// List all nodes on this cluster.
-//
-// Client must be logged-in as a user with admin privileges.
-//
-// ---
-// parameters:
-// - name: limit
-//   type: integer
-//   in: query
-//   description: Maximum number of results to return in this call.
-//   required: false
-// - name: offset
-//   type: integer
-//   in: query
-//   description: Continuation offset for results after a past limited run.
-//   required: false
-// produces:
-// - application/json
-// security:
-// - api_session: []
-// responses:
-//   "200":
-//     description: List nodes response.
-//     schema:
-//       "$ref": "#/definitions/nodesResponse"
 func (a *apiV2Server) listNodes(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(189050)
 	ctx := r.Context()
 	limit, offset := getSimplePaginationValues(r)
 	ctx = apiToOutgoingGatewayCtx(ctx, r)
 
 	nodes, next, err := a.status.nodesHelper(ctx, limit, offset)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(189053)
 		apiV2InternalError(ctx, err, w)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(189054)
 	}
+	__antithesis_instrumentation__.Notify(189051)
 	var resp nodesResponse
 	resp.Next = next
 	for _, n := range nodes.Nodes {
+		__antithesis_instrumentation__.Notify(189055)
 		resp.Nodes = append(resp.Nodes, nodeStatus{
 			NodeID:            int32(n.Desc.NodeID),
 			Address:           n.Desc.Address,
@@ -131,69 +85,60 @@ func (a *apiV2Server) listNodes(w http.ResponseWriter, r *http.Request) {
 			LivenessStatus:    int32(nodes.LivenessByNodeID[n.Desc.NodeID]),
 		})
 	}
+	__antithesis_instrumentation__.Notify(189052)
 	writeJSONResponse(ctx, w, 200, resp)
 }
 
 func parseRangeIDs(input string, w http.ResponseWriter) (ranges []roachpb.RangeID, ok bool) {
+	__antithesis_instrumentation__.Notify(189056)
 	if len(input) == 0 {
+		__antithesis_instrumentation__.Notify(189059)
 		return nil, true
+	} else {
+		__antithesis_instrumentation__.Notify(189060)
 	}
+	__antithesis_instrumentation__.Notify(189057)
 	for _, reqRange := range strings.Split(input, ",") {
+		__antithesis_instrumentation__.Notify(189061)
 		rangeID, err := strconv.ParseInt(reqRange, 10, 64)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(189063)
 			http.Error(w, "invalid range ID", http.StatusBadRequest)
 			return nil, false
+		} else {
+			__antithesis_instrumentation__.Notify(189064)
 		}
+		__antithesis_instrumentation__.Notify(189062)
 
 		ranges = append(ranges, roachpb.RangeID(rangeID))
 	}
+	__antithesis_instrumentation__.Notify(189058)
 	return ranges, true
 }
 
 type nodeRangeResponse struct {
-	// swagger:allOf
 	RangeInfo rangeInfo `json:"range_info"`
 	Error     string    `json:"error,omitempty"`
 }
 
-// swagger:model rangeResponse
 type rangeResponse struct {
-	// swagger:allOf
 	Responses map[string]nodeRangeResponse `json:"responses_by_node_id"`
 }
 
-// swagger:operation GET /ranges/{range_id}/ listRange
-//
-// Get info about a range
-//
-// Retrieves more information about a specific range.
-//
-// Client must be logged-in as a user with admin privileges.
-//
-// ---
-// parameters:
-// - name: range_id
-//   in: path
-//   type: integer
-//   required: true
-// produces:
-// - application/json
-// security:
-// - api_session: []
-// responses:
-//   "200":
-//     description: List range response
-//     schema:
-//       "$ref": "#/definitions/rangeResponse"
 func (a *apiV2Server) listRange(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(189065)
 	ctx := r.Context()
 	ctx = apiToOutgoingGatewayCtx(ctx, r)
 	vars := mux.Vars(r)
 	rangeID, err := strconv.ParseInt(vars["range_id"], 10, 64)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(189072)
 		http.Error(w, "invalid range ID", http.StatusBadRequest)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(189073)
 	}
+	__antithesis_instrumentation__.Notify(189066)
 
 	response := &rangeResponse{
 		Responses: make(map[string]nodeRangeResponse),
@@ -204,56 +149,63 @@ func (a *apiV2Server) listRange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dialFn := func(ctx context.Context, nodeID roachpb.NodeID) (interface{}, error) {
+		__antithesis_instrumentation__.Notify(189074)
 		client, err := a.status.dialNode(ctx, nodeID)
 		return client, err
 	}
+	__antithesis_instrumentation__.Notify(189067)
 	nodeFn := func(ctx context.Context, client interface{}, _ roachpb.NodeID) (interface{}, error) {
+		__antithesis_instrumentation__.Notify(189075)
 		status := client.(serverpb.StatusClient)
 		return status.Ranges(ctx, rangesRequest)
 	}
+	__antithesis_instrumentation__.Notify(189068)
 	responseFn := func(nodeID roachpb.NodeID, resp interface{}) {
+		__antithesis_instrumentation__.Notify(189076)
 		rangesResp := resp.(*serverpb.RangesResponse)
-		// Age the MVCCStats to a consistent current timestamp. An age that is
-		// not up to date is less useful.
+
 		if len(rangesResp.Ranges) == 0 {
+			__antithesis_instrumentation__.Notify(189078)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(189079)
 		}
+		__antithesis_instrumentation__.Notify(189077)
 		var ri rangeInfo
 		ri.init(rangesResp.Ranges[0])
 		response.Responses[nodeID.String()] = nodeRangeResponse{RangeInfo: ri}
 	}
+	__antithesis_instrumentation__.Notify(189069)
 	errorFn := func(nodeID roachpb.NodeID, err error) {
+		__antithesis_instrumentation__.Notify(189080)
 		response.Responses[nodeID.String()] = nodeRangeResponse{
 			Error: err.Error(),
 		}
 	}
+	__antithesis_instrumentation__.Notify(189070)
 
 	if err := a.status.iterateNodes(
 		ctx, fmt.Sprintf("details about range %d", rangeID), dialFn, nodeFn, responseFn, errorFn,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(189081)
 		apiV2InternalError(ctx, err, w)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(189082)
 	}
+	__antithesis_instrumentation__.Notify(189071)
 	writeJSONResponse(ctx, w, 200, response)
 }
 
-// rangeDescriptorInfo contains a subset of fields from the Cockroach-internal
-// range descriptor that are safe to be returned from APIs.
 type rangeDescriptorInfo struct {
-	// RangeID is the integer id of this range.
 	RangeID int64 `json:"range_id"`
-	// StartKey is the resolved Cockroach-internal key that denotes the start of
-	// this range.
+
 	StartKey []byte `json:"start_key,omitempty"`
-	// EndKey is the resolved Cockroach-internal key that denotes the end of
-	// this range.
+
 	EndKey []byte `json:"end_key,omitempty"`
 
-	// StoreID is the ID of the store this hot range is on. Only set for hot
-	// ranges.
 	StoreID int32 `json:"store_id"`
-	// QueriesPerSecond is the number of queries per second this range is
-	// serving. Only set for hot ranges.
+
 	QueriesPerSecond float64 `json:"queries_per_second"`
 }
 
@@ -269,32 +221,25 @@ func (r *rangeDescriptorInfo) init(rd *roachpb.RangeDescriptor) {
 	}
 }
 
-// Info related to a range.
 type rangeInfo struct {
-	// swagger:allOf
 	Desc rangeDescriptorInfo `json:"desc"`
 
-	// Span is the pretty-ified start/end key span for this range.
 	Span serverpb.PrettySpan `json:"span"`
-	// SourceNodeID is the ID of the node where this range info was retrieved
-	// from.
+
 	SourceNodeID int32 `json:"source_node_id,omitempty"`
-	// SourceStoreID is the ID of the store on the node where this range info was
-	// retrieved from.
+
 	SourceStoreID int32 `json:"source_store_id,omitempty"`
-	// ErrorMessage is any error retrieved from the internal range info. For
-	// internal use only.
+
 	ErrorMessage string `json:"error_message,omitempty"`
-	// LeaseHistory is for internal use only.
+
 	LeaseHistory []roachpb.Lease `json:"lease_history"`
-	// Problems is a map of any issues reported by this range. For internal use
-	// only.
+
 	Problems serverpb.RangeProblems `json:"problems"`
-	// Stats is for internal use only.
+
 	Stats serverpb.RangeStatistics `json:"stats"`
-	// Quiescent is for internal use only.
+
 	Quiescent bool `json:"quiescent,omitempty"`
-	// Ticking is for internal use only.
+
 	Ticking bool `json:"ticking,omitempty"`
 }
 
@@ -313,76 +258,44 @@ func (ri *rangeInfo) init(r serverpb.RangeInfo) {
 	ri.Desc.init(r.State.Desc)
 }
 
-// Response struct for listNodeRanges.
-//
-// swagger:model nodeRangesResponse
 type nodeRangesResponse struct {
-	// Info about retrieved ranges.
 	Ranges []rangeInfo `json:"ranges"`
-	// Continuation token for the next limited run. Use in the `offset` parameter.
+
 	Next int `json:"next,omitempty"`
 }
 
-// swagger:operation GET /nodes/{node_id}/ranges/ listNodeRanges
-//
-// List ranges on a node
-//
-// Lists information about ranges on a specified node. If a list of range IDs
-// is specified, only information about those ranges is returned.
-//
-// Client must be logged-in as a user with admin privileges.
-//
-// ---
-// parameters:
-// - name: node_id
-//   in: path
-//   type: integer
-//   description: ID of node to query, or `local` for local node.
-//   required: true
-// - name: ranges
-//   in: query
-//   type: array
-//   required: false
-//   description: IDs of ranges to return information for. All ranges returned
-//     if unspecified.
-//   items:
-//     type: integer
-// - name: limit
-//   type: integer
-//   in: query
-//   description: Maximum number of results to return in this call.
-//   required: false
-// - name: offset
-//   type: integer
-//   in: query
-//   description: Continuation offset for results after a past limited run.
-//   required: false
-// produces:
-// - application/json
-// security:
-// - api_session: []
-// responses:
-//   "200":
-//     description: Node ranges response.
-//     schema:
-//       "$ref": "#/definitions/nodeRangesResponse"
 func (a *apiV2Server) listNodeRanges(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(189083)
 	ctx := r.Context()
 	ctx = apiToOutgoingGatewayCtx(ctx, r)
 	vars := mux.Vars(r)
 	nodeIDStr := vars["node_id"]
 	if nodeIDStr != "local" {
+		__antithesis_instrumentation__.Notify(189088)
 		nodeID, err := strconv.ParseInt(nodeIDStr, 10, 32)
-		if err != nil || nodeID <= 0 {
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(189089)
+			return nodeID <= 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(189090)
 			http.Error(w, "invalid node ID", http.StatusBadRequest)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(189091)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(189092)
 	}
+	__antithesis_instrumentation__.Notify(189084)
 
 	ranges, ok := parseRangeIDs(r.URL.Query().Get("ranges"), w)
 	if !ok {
+		__antithesis_instrumentation__.Notify(189093)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(189094)
 	}
+	__antithesis_instrumentation__.Notify(189085)
 	req := &serverpb.RangesRequest{
 		NodeId:   nodeIDStr,
 		RangeIDs: ranges,
@@ -390,18 +303,24 @@ func (a *apiV2Server) listNodeRanges(w http.ResponseWriter, r *http.Request) {
 	limit, offset := getSimplePaginationValues(r)
 	statusResp, next, err := a.status.rangesHelper(ctx, req, limit, offset)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(189095)
 		apiV2InternalError(ctx, err, w)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(189096)
 	}
+	__antithesis_instrumentation__.Notify(189086)
 	resp := nodeRangesResponse{
 		Ranges: make([]rangeInfo, 0, len(statusResp.Ranges)),
 		Next:   next,
 	}
 	for _, r := range statusResp.Ranges {
+		__antithesis_instrumentation__.Notify(189097)
 		var ri rangeInfo
 		ri.init(r)
 		resp.Ranges = append(resp.Ranges, ri)
 	}
+	__antithesis_instrumentation__.Notify(189087)
 	writeJSONResponse(ctx, w, 200, resp)
 }
 
@@ -410,21 +329,13 @@ type responseError struct {
 	NodeID       roachpb.NodeID `json:"node_id,omitempty"`
 }
 
-// Response struct for listHotRanges.
-//
-// swagger:model hotRangesResponse
 type hotRangesResponse struct {
 	Ranges []hotRangeInfo  `json:"ranges"`
 	Errors []responseError `json:"response_error,omitempty"`
-	// Continuation token for the next paginated call. Use as the `start`
-	// parameter.
+
 	Next string `json:"next,omitempty"`
 }
 
-// Hot range details struct describes common information about hot range,
-// (ie its range ID, QPS, table name, etc.).
-//
-// swagger:model hotRangeInfo
 type hotRangeInfo struct {
 	RangeID           roachpb.RangeID  `json:"range_id"`
 	NodeID            roachpb.NodeID   `json:"node_id"`
@@ -438,43 +349,8 @@ type hotRangeInfo struct {
 	StoreID           roachpb.StoreID  `json:"store_id"`
 }
 
-// swagger:operation GET /ranges/hot/ listHotRanges
-//
-// List hot ranges
-//
-// Lists information about hot ranges. If a list of range IDs
-// is specified, only information about those ranges is returned.
-//
-// Client must be logged-in as a user with admin privileges.
-//
-// ---
-// parameters:
-// - name: node_id
-//   in: query
-//   type: integer
-//   description: ID of node to query, or `local` for local node. If
-//     unspecified, all nodes are queried.
-//   required: false
-// - name: limit
-//   type: integer
-//   in: query
-//   description: Maximum number of results to return in this call.
-//   required: false
-// - name: start
-//   type: string
-//   in: query
-//   description: Continuation token for results after a past limited run.
-//   required: false
-// produces:
-// - application/json
-// security:
-// - api_session: []
-// responses:
-//   "200":
-//     description: Hot ranges response.
-//     schema:
-//       "$ref": "#/definitions/hotRangesResponse"
 func (a *apiV2Server) listHotRanges(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(189098)
 	ctx := r.Context()
 	ctx = apiToOutgoingGatewayCtx(ctx, r)
 	nodeIDStr := r.URL.Query().Get("node_id")
@@ -483,28 +359,47 @@ func (a *apiV2Server) listHotRanges(w http.ResponseWriter, r *http.Request) {
 	response := &hotRangesResponse{}
 	var requestedNodes []roachpb.NodeID
 	if len(nodeIDStr) > 0 {
+		__antithesis_instrumentation__.Notify(189106)
 		requestedNodeID, _, err := a.status.parseNodeID(nodeIDStr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(189108)
 			http.Error(w, "invalid node ID", http.StatusBadRequest)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(189109)
 		}
+		__antithesis_instrumentation__.Notify(189107)
 		requestedNodes = []roachpb.NodeID{requestedNodeID}
+	} else {
+		__antithesis_instrumentation__.Notify(189110)
 	}
+	__antithesis_instrumentation__.Notify(189099)
 
 	dialFn := func(ctx context.Context, nodeID roachpb.NodeID) (interface{}, error) {
+		__antithesis_instrumentation__.Notify(189111)
 		client, err := a.status.dialNode(ctx, nodeID)
 		return client, err
 	}
+	__antithesis_instrumentation__.Notify(189100)
 	remoteRequest := serverpb.HotRangesRequest{NodeID: "local"}
 	nodeFn := func(ctx context.Context, client interface{}, nodeID roachpb.NodeID) (interface{}, error) {
+		__antithesis_instrumentation__.Notify(189112)
 		status := client.(serverpb.StatusClient)
 		resp, err := status.HotRangesV2(ctx, &remoteRequest)
-		if err != nil || resp == nil {
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(189115)
+			return resp == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(189116)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(189117)
 		}
+		__antithesis_instrumentation__.Notify(189113)
 
 		var hotRangeInfos = make([]hotRangeInfo, len(resp.Ranges))
 		for i, r := range resp.Ranges {
+			__antithesis_instrumentation__.Notify(189118)
 			hotRangeInfos[i] = hotRangeInfo{
 				RangeID:           r.RangeID,
 				NodeID:            r.NodeID,
@@ -518,31 +413,44 @@ func (a *apiV2Server) listHotRanges(w http.ResponseWriter, r *http.Request) {
 				StoreID:           r.StoreID,
 			}
 		}
+		__antithesis_instrumentation__.Notify(189114)
 		return hotRangeInfos, nil
 	}
+	__antithesis_instrumentation__.Notify(189101)
 	responseFn := func(nodeID roachpb.NodeID, resp interface{}) {
+		__antithesis_instrumentation__.Notify(189119)
 		response.Ranges = append(response.Ranges, resp.([]hotRangeInfo)...)
 	}
+	__antithesis_instrumentation__.Notify(189102)
 	errorFn := func(nodeID roachpb.NodeID, err error) {
+		__antithesis_instrumentation__.Notify(189120)
 		response.Errors = append(response.Errors, responseError{
 			ErrorMessage: err.Error(),
 			NodeID:       nodeID,
 		})
 	}
+	__antithesis_instrumentation__.Notify(189103)
 
 	next, err := a.status.paginatedIterateNodes(
 		ctx, "hot ranges", limit, start, requestedNodes, dialFn,
 		nodeFn, responseFn, errorFn)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(189121)
 		apiV2InternalError(ctx, err, w)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(189122)
 	}
+	__antithesis_instrumentation__.Notify(189104)
 	var nextBytes []byte
 	if nextBytes, err = next.MarshalText(); err != nil {
+		__antithesis_instrumentation__.Notify(189123)
 		response.Errors = append(response.Errors, responseError{ErrorMessage: err.Error()})
 	} else {
+		__antithesis_instrumentation__.Notify(189124)
 		response.Next = string(nextBytes)
 	}
+	__antithesis_instrumentation__.Notify(189105)
 	writeJSONResponse(ctx, w, 200, response)
 }

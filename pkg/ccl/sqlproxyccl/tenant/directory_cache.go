@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package tenant
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,352 +17,300 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// DirectoryCache is the external interface for the tenant directory cache.
-//
-// See directoryCache for more information.
 type DirectoryCache interface {
-	// LookupTenantPods returns an IP address of one of the given tenant's SQL
-	// processes based on the tenantID and clusterName fields. This should block
-	// until the process associated with the IP is ready.
-	//
-	// If no matching pods are found (e.g. cluster name mismatch, or tenant was
-	// deleted), this will return a GRPC NotFound error.
 	LookupTenantPods(ctx context.Context, tenantID roachpb.TenantID, clusterName string) ([]*Pod, error)
 
-	// TryLookupTenantPods returns the IP addresses for all available SQL
-	// processes for the given tenant. It returns a GRPC NotFound error if the
-	// tenant does not exist.
-	//
-	// Unlike LookupTenantPods which blocks until there is an associated
-	// process, TryLookupTenantPods will just return an empty set if no processes
-	// are available for the tenant.
 	TryLookupTenantPods(ctx context.Context, tenantID roachpb.TenantID) ([]*Pod, error)
 
-	// ReportFailure is used to indicate to the directory cache that a
-	// connection attempt to connect to a particular SQL tenant pod have failed.
 	ReportFailure(ctx context.Context, tenantID roachpb.TenantID, addr string) error
 }
 
-// dirOptions control the behavior of directoryCache.
 type dirOptions struct {
 	deterministic bool
 	refreshDelay  time.Duration
 	podWatcher    chan *Pod
 }
 
-// DirOption defines an option that can be passed to directoryCache in order
-// to control its behavior.
 type DirOption func(opts *dirOptions)
 
-// RefreshDelay specifies the minimum amount of time that must elapse between
-// attempts to refresh pods for a given tenant after ReportFailure is
-// called. This delay has the effect of throttling calls to directory server, in
-// order to avoid overloading it.
-//
-// RefreshDelay defaults to 100ms. Use -1 to never throttle.
 func RefreshDelay(delay time.Duration) func(opts *dirOptions) {
+	__antithesis_instrumentation__.Notify(22954)
 	return func(opts *dirOptions) {
+		__antithesis_instrumentation__.Notify(22955)
 		opts.refreshDelay = delay
 	}
 }
 
-// PodWatcher provides a callback channel to which tenant pod change
-// notifications will be sent by the directory. Notifications will be sent when
-// a tenant pod is created, modified, or destroyed.
-// NOTE: The caller is responsible for handling the notifications by receiving
-// from the channel; if it does not, it may block the background pod watcher
-// goroutine.
 func PodWatcher(podWatcher chan *Pod) func(opts *dirOptions) {
+	__antithesis_instrumentation__.Notify(22956)
 	return func(opts *dirOptions) {
+		__antithesis_instrumentation__.Notify(22957)
 		opts.podWatcher = podWatcher
 	}
 }
 
-// directoryCache tracks the network locations of SQL tenant processes. It is
-// used by the sqlproxy to route incoming traffic to the correct backend process.
-// Process information is populated and kept relatively up-to-date using a
-// streaming watcher. However, since watchers deliver slightly stale
-// information, the directory will also make direct server calls to fetch the
-// latest information about a process that is not yet in the cache, or when a
-// process is suspected to have failed. When a new tenant is created, or is
-// resumed from suspension, this capability allows the directory to immediately
-// return the IP address for the new process.
-//
-// All methods in the directory are thread-safe. Methods are intended to be
-// called concurrently by many threads at once, and so locking is carefully
-// designed to minimize contention. While a lock shared across tenants is used
-// to synchronize access to shared in-memory data structures, each tenant also
-// has its own locks that are used to synchronize per-tenant operations such as
-// making directory server calls to fetch updated tenant information.
 type directoryCache struct {
-	// client is the directory client instance used to make directory server
-	// calls.
 	client DirectoryClient
 
-	// stopper is used for graceful shutdown of the pod watcher.
 	stopper *stop.Stopper
 
-	// options control how the environment operates.
 	options dirOptions
 
-	// mut synchronizes access to the in-memory tenant entry caches. Take care
-	// to never hold this lock during directory server calls - it should only be
-	// used while adding and removing tenant entries to/from the caches.
 	mut struct {
 		syncutil.Mutex
 
-		// tenants is a cache of tenant entries. Each entry tracks available IP
-		// addresses for SQL processes for a given tenant. Entries may not be
-		// fully initialized.
 		tenants map[roachpb.TenantID]*tenantEntry
 	}
 }
 
 var _ DirectoryCache = &directoryCache{}
 
-// NewDirectoryCache constructs a new directoryCache instance that tracks SQL
-// tenant processes managed by a given directory server. The given context is
-// used for tracing pod watcher activity.
-//
-// NOTE: stopper.Stop must be called on the directory when it is no longer
-// needed.
 func NewDirectoryCache(
 	ctx context.Context, stopper *stop.Stopper, client DirectoryClient, opts ...DirOption,
 ) (DirectoryCache, error) {
+	__antithesis_instrumentation__.Notify(22958)
 	dir := &directoryCache{client: client, stopper: stopper}
 
 	dir.mut.tenants = make(map[roachpb.TenantID]*tenantEntry)
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(22962)
 		opt(&dir.options)
 	}
+	__antithesis_instrumentation__.Notify(22959)
 	if dir.options.refreshDelay == 0 {
-		// Default to a delay of 100ms between refresh attempts for a given tenant.
-		dir.options.refreshDelay = 100 * time.Millisecond
-	}
+		__antithesis_instrumentation__.Notify(22963)
 
-	// Start the pod watcher on a background goroutine.
-	if err := dir.watchPods(ctx, stopper); err != nil {
-		return nil, err
+		dir.options.refreshDelay = 100 * time.Millisecond
+	} else {
+		__antithesis_instrumentation__.Notify(22964)
 	}
+	__antithesis_instrumentation__.Notify(22960)
+
+	if err := dir.watchPods(ctx, stopper); err != nil {
+		__antithesis_instrumentation__.Notify(22965)
+		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(22966)
+	}
+	__antithesis_instrumentation__.Notify(22961)
 
 	return dir, nil
 }
 
-// LookupTenantPods returns a list of SQL pods in the RUNNING and DRAINING
-// states for the given tenant. If the tenant was just created or is suspended,
-// such that there are no available RUNNING processes, then LookupTenantPods
-// will trigger resumption of a new instance (or a conversion of a DRAINING pod
-// to a RUNNING one) and block until that happens.
-//
-// If clusterName is non-empty, then a GRPC NotFound error is returned if no
-// pods match the cluster name. This can be used to ensure that the incoming SQL
-// connection "knows" some additional information about the tenant, such as the
-// name of the cluster, before being allowed to connect. Similarly, if the
-// tenant does not exist (e.g. because it was deleted), LookupTenantPods returns
-// a GRPC NotFound error.
-//
-// WARNING: Callers should never attempt to modify values returned by this
-// method, or else they may be a race. Other instances may be reading from the
-// same slice.
-//
-// LookupTenantPods implements the DirectoryCache interface.
 func (d *directoryCache) LookupTenantPods(
 	ctx context.Context, tenantID roachpb.TenantID, clusterName string,
 ) ([]*Pod, error) {
-	// Ensure that a directory entry has been created for this tenant.
-	entry, err := d.getEntry(ctx, tenantID, true /* allowCreate */)
-	if err != nil {
-		return nil, err
-	}
+	__antithesis_instrumentation__.Notify(22967)
 
-	// Check if the cluster name matches. This can be skipped if clusterName
-	// is empty, or the ClusterName returned by the directory server is empty.
-	if clusterName != "" && entry.ClusterName != "" && clusterName != entry.ClusterName {
-		// Return a GRPC NotFound error.
+	entry, err := d.getEntry(ctx, tenantID, true)
+	if err != nil {
+		__antithesis_instrumentation__.Notify(22972)
+		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(22973)
+	}
+	__antithesis_instrumentation__.Notify(22968)
+
+	if clusterName != "" && func() bool {
+		__antithesis_instrumentation__.Notify(22974)
+		return entry.ClusterName != "" == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(22975)
+		return clusterName != entry.ClusterName == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(22976)
+
 		log.Errorf(ctx, "cluster name %s doesn't match expected %s", clusterName, entry.ClusterName)
 		return nil, status.Errorf(codes.NotFound,
 			"cluster name %s doesn't match expected %s", clusterName, entry.ClusterName)
+	} else {
+		__antithesis_instrumentation__.Notify(22977)
 	}
+	__antithesis_instrumentation__.Notify(22969)
 
 	ctx, _ = d.stopper.WithCancelOnQuiesce(ctx)
 	tenantPods := entry.GetPods()
 
-	// Trigger resumption if there are no RUNNING pods.
 	hasRunningPod := false
 	for _, pod := range tenantPods {
+		__antithesis_instrumentation__.Notify(22978)
 		if pod.State == RUNNING {
+			__antithesis_instrumentation__.Notify(22979)
 			hasRunningPod = true
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(22980)
 		}
 	}
+	__antithesis_instrumentation__.Notify(22970)
 	if !hasRunningPod {
-		// There are no known pod IP addresses, so fetch pod information from
-		// the directory server. Resume the tenant if it is suspended; that
-		// will always result in at least one pod IP address (or an error).
+		__antithesis_instrumentation__.Notify(22981)
+
 		var err error
 		if tenantPods, err = entry.EnsureTenantPod(ctx, d.client, d.options.deterministic); err != nil {
+			__antithesis_instrumentation__.Notify(22982)
 			if status.Code(err) == codes.NotFound {
+				__antithesis_instrumentation__.Notify(22984)
 				d.deleteEntry(entry)
+			} else {
+				__antithesis_instrumentation__.Notify(22985)
 			}
+			__antithesis_instrumentation__.Notify(22983)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(22986)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(22987)
 	}
+	__antithesis_instrumentation__.Notify(22971)
 	return tenantPods, nil
 }
 
-// TryLookupTenantPods returns a list of SQL pods in the RUNNING and DRAINING
-// states for thegiven tenant. It returns a GRPC NotFound error if the tenant
-// does not exist (e.g. it has not yet been created) or if it has not yet been
-// fetched into the directory's cache (TryLookupTenantPods will never attempt to
-// fetch it). If no processes are available for the tenant, TryLookupTenantPods
-// will return the empty set (unlike LookupTenantPod).
-//
-// WARNING: Callers should never attempt to modify values returned by this
-// method, or else they may be a race. Other instances may be reading from the
-// same slice.
-//
-// TryLookupTenantPods implements the DirectoryCache interface.
 func (d *directoryCache) TryLookupTenantPods(
 	ctx context.Context, tenantID roachpb.TenantID,
 ) ([]*Pod, error) {
-	// Ensure that a directory entry has been created for this tenant.
-	entry, err := d.getEntry(ctx, tenantID, false /* allowCreate */)
+	__antithesis_instrumentation__.Notify(22988)
+
+	entry, err := d.getEntry(ctx, tenantID, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(22991)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(22992)
 	}
+	__antithesis_instrumentation__.Notify(22989)
 
 	if entry == nil {
+		__antithesis_instrumentation__.Notify(22993)
 		return nil, status.Errorf(
 			codes.NotFound, "tenant %d not in directory cache", tenantID.ToUint64())
+	} else {
+		__antithesis_instrumentation__.Notify(22994)
 	}
+	__antithesis_instrumentation__.Notify(22990)
 
 	return entry.GetPods(), nil
 }
 
-// ReportFailure should be called when attempts to connect to a particular SQL
-// tenant pod have failed. Since this could be due to a failed process,
-// ReportFailure will attempt to refresh the cache with the latest information
-// about available tenant processes.
-//
-// TODO(andyk): In the future, the ip parameter will be used to mark a
-// particular pod as "unhealthy" so that it's less likely to be chosen.
-// However, today there can be at most one pod for a given tenant, so it
-// must always be chosen. Keep the parameter as a placeholder for the future.
-//
-// TODO(jaylim-crl): To implement the TODO above, one strawman idea is to add
-// a healthy/unhealthy field (or failureCount) to *tenant.Pod. ReportFailure
-// sets that field to unhealthy, and we'll have another ReportSuccess API that
-// will reset that field to healthy once we have sufficient connection counts.
-// When routing a connection to a SQL pod, the balancer could then use that
-// field when calculating likelihoods.
-//
-// ReportFailure implements the DirectoryCache interface.
 func (d *directoryCache) ReportFailure(
 	ctx context.Context, tenantID roachpb.TenantID, addr string,
 ) error {
-	entry, err := d.getEntry(ctx, tenantID, false /* allowCreate */)
+	__antithesis_instrumentation__.Notify(22995)
+	entry, err := d.getEntry(ctx, tenantID, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(22997)
 		return err
-	} else if entry == nil {
-		// If no tenant is in the cache, no-op.
-		return nil
-	}
+	} else {
+		__antithesis_instrumentation__.Notify(22998)
+		if entry == nil {
+			__antithesis_instrumentation__.Notify(22999)
 
-	// Refresh the entry in case there is a new pod IP address.
+			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(23000)
+		}
+	}
+	__antithesis_instrumentation__.Notify(22996)
+
 	return entry.RefreshPods(ctx, d.client)
 }
 
-// getEntry returns a directory entry for the given tenant. If the directory
-// does not contain such an entry, then getEntry will create one if allowCreate
-// is true. Otherwise, it returns nil. If an entry is returned, then getEntry
-// ensures that it is fully initialized with tenant metadata. Obtaining this
-// metadata requires making a separate directory server call;
-// getEntry will block until that's complete.
 func (d *directoryCache) getEntry(
 	ctx context.Context, tenantID roachpb.TenantID, allowCreate bool,
 ) (*tenantEntry, error) {
+	__antithesis_instrumentation__.Notify(23001)
 	entry := func() *tenantEntry {
-		// Acquire the directory lock just long enough to check the tenants map
-		// for the given tenant ID. Don't complete initialization while holding
-		// this lock, since that requires directory server calls.
+		__antithesis_instrumentation__.Notify(23005)
+
 		d.mut.Lock()
 		defer d.mut.Unlock()
 
 		entry, ok := d.mut.tenants[tenantID]
 		if ok {
-			// Entry exists, so return it.
+			__antithesis_instrumentation__.Notify(23008)
+
 			return entry
+		} else {
+			__antithesis_instrumentation__.Notify(23009)
 		}
+		__antithesis_instrumentation__.Notify(23006)
 
 		if !allowCreate {
-			// No entry, but not allowed to create one, so done.
-			return nil
-		}
+			__antithesis_instrumentation__.Notify(23010)
 
-		// Create the tenant entry and enter it into the tenants map.
+			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(23011)
+		}
+		__antithesis_instrumentation__.Notify(23007)
+
 		log.Infof(ctx, "creating directory entry for tenant %d", tenantID)
 		entry = &tenantEntry{TenantID: tenantID, RefreshDelay: d.options.refreshDelay}
 		d.mut.tenants[tenantID] = entry
 		return entry
 	}()
+	__antithesis_instrumentation__.Notify(23002)
 
 	if entry == nil {
+		__antithesis_instrumentation__.Notify(23012)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(23013)
 	}
+	__antithesis_instrumentation__.Notify(23003)
 
-	// Initialize the entry now if not yet done.
 	err := entry.Initialize(ctx, d.client)
 	if err != nil {
-		// Remove the entry from the tenants map, since initialization failed.
+		__antithesis_instrumentation__.Notify(23014)
+
 		if d.deleteEntry(entry) {
+			__antithesis_instrumentation__.Notify(23016)
 			log.Infof(ctx, "error initializing tenant %d: %v", tenantID, err)
+		} else {
+			__antithesis_instrumentation__.Notify(23017)
 		}
+		__antithesis_instrumentation__.Notify(23015)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(23018)
 	}
+	__antithesis_instrumentation__.Notify(23004)
 
 	return entry, nil
 }
 
-// deleteEntry removes the given directory entry for the given tenant, if it
-// exists. It returns true if an entry was actually deleted.
 func (d *directoryCache) deleteEntry(entry *tenantEntry) bool {
-	// Remove the entry from the tenants map, since initialization failed.
+	__antithesis_instrumentation__.Notify(23019)
+
 	d.mut.Lock()
 	defer d.mut.Unlock()
 
-	// Threads can race to add/remove entries, so ensure that right entry is
-	// removed.
 	existing, ok := d.mut.tenants[entry.TenantID]
-	if ok && entry == existing {
+	if ok && func() bool {
+		__antithesis_instrumentation__.Notify(23021)
+		return entry == existing == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(23022)
 		delete(d.mut.tenants, entry.TenantID)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(23023)
 	}
+	__antithesis_instrumentation__.Notify(23020)
 
 	return false
 }
 
-// watchPods establishes a watcher that looks for changes to tenant pods.
-// Whenever tenant pods start or terminate, the watcher will get a notification
-// and update the directory to reflect that change.
 func (d *directoryCache) watchPods(ctx context.Context, stopper *stop.Stopper) error {
+	__antithesis_instrumentation__.Notify(23024)
 	req := WatchPodsRequest{}
 
-	// The loop that processes the event stream is running in a separate go
-	// routine. It is desirable however, before we return, to have a guarantee
-	// that the separate go routine started processing events. This wait group
-	// helps us achieve this. Without the wait group, it will be possible to:
-	//
-	// 1. call watchPods
-	// 2. call LookupTenantPods
-	// 3. wait forever to receive notification about the tenant that just started.
-	//
-	// The reason why the notification may not ever arrive is because the
-	// watchPods goroutine can start listening after the server started the
-	// tenant and sent notifications.
 	var waitInit sync.WaitGroup
 	waitInit.Add(1)
 
 	err := stopper.RunAsyncTask(ctx, "watch-pods-client", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(23027)
 		var client Directory_WatchPodsClient
 		var err error
 		firstRun := true
@@ -378,113 +320,173 @@ func (d *directoryCache) watchPods(ctx context.Context, stopper *stop.Stopper) e
 		recvErr := log.Every(10 * time.Second)
 
 		for {
+			__antithesis_instrumentation__.Notify(23028)
 			if client == nil {
+				__antithesis_instrumentation__.Notify(23032)
 				client, err = d.client.WatchPods(ctx, &req)
 				if firstRun {
+					__antithesis_instrumentation__.Notify(23034)
 					waitInit.Done()
 					firstRun = false
+				} else {
+					__antithesis_instrumentation__.Notify(23035)
 				}
+				__antithesis_instrumentation__.Notify(23033)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(23036)
 					if grpcutil.IsContextCanceled(err) {
+						__antithesis_instrumentation__.Notify(23039)
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(23040)
 					}
+					__antithesis_instrumentation__.Notify(23037)
 					if watchPodsErr.ShouldLog() {
+						__antithesis_instrumentation__.Notify(23041)
 						log.Errorf(ctx, "err creating new watch pod client: %s", err)
+					} else {
+						__antithesis_instrumentation__.Notify(23042)
 					}
+					__antithesis_instrumentation__.Notify(23038)
 					sleepContext(ctx, time.Second)
 					continue
 				} else {
+					__antithesis_instrumentation__.Notify(23043)
 					log.Info(ctx, "established watch on pods")
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(23044)
 			}
+			__antithesis_instrumentation__.Notify(23029)
 
-			// Read the next watcher event.
 			resp, err := client.Recv()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(23045)
 				if grpcutil.IsContextCanceled(err) {
+					__antithesis_instrumentation__.Notify(23049)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(23050)
 				}
+				__antithesis_instrumentation__.Notify(23046)
 				if recvErr.ShouldLog() {
+					__antithesis_instrumentation__.Notify(23051)
 					log.Errorf(ctx, "err receiving stream events: %s", err)
+				} else {
+					__antithesis_instrumentation__.Notify(23052)
 				}
-				// If stream ends, immediately try to establish a new one. Otherwise,
-				// wait for a second to avoid slamming server.
+				__antithesis_instrumentation__.Notify(23047)
+
 				if err != io.EOF {
+					__antithesis_instrumentation__.Notify(23053)
 					time.Sleep(time.Second)
+				} else {
+					__antithesis_instrumentation__.Notify(23054)
 				}
+				__antithesis_instrumentation__.Notify(23048)
 				client = nil
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(23055)
 			}
+			__antithesis_instrumentation__.Notify(23030)
 
-			// If caller is watching pods, send to its channel now.
 			if d.options.podWatcher != nil {
+				__antithesis_instrumentation__.Notify(23056)
 				select {
 				case d.options.podWatcher <- resp.Pod:
+					__antithesis_instrumentation__.Notify(23057)
 				case <-ctx.Done():
+					__antithesis_instrumentation__.Notify(23058)
 					return
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(23059)
 			}
+			__antithesis_instrumentation__.Notify(23031)
 
-			// Update the directory entry for the tenant with the latest
-			// information about this pod.
 			d.updateTenantEntry(ctx, resp.Pod)
 		}
 	})
+	__antithesis_instrumentation__.Notify(23025)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(23060)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(23061)
 	}
+	__antithesis_instrumentation__.Notify(23026)
 
-	// Block until the initial pod watcher client stream is constructed.
 	waitInit.Wait()
 	return err
 }
 
-// updateTenantEntry keeps tenant directory entries up-to-date by handling pod
-// watcher events. When a pod is created, destroyed, or modified, it updates the
-// tenant's entry to reflect that change.
 func (d *directoryCache) updateTenantEntry(ctx context.Context, pod *Pod) {
+	__antithesis_instrumentation__.Notify(23062)
 	if pod.Addr == "" {
-		// Nothing needs to be done if there is no IP address specified.
-		return
-	}
+		__antithesis_instrumentation__.Notify(23065)
 
-	// Ensure that a directory entry exists for this tenant.
-	entry, err := d.getEntry(ctx, roachpb.MakeTenantID(pod.TenantID), true /* allowCreate */)
-	if err != nil {
-		if !grpcutil.IsContextCanceled(err) {
-			// This should only happen in case of a deleted tenant or a transient
-			// error during fetch of tenant metadata (i.e. very rarely).
-			log.Errorf(ctx, "ignoring error getting entry for tenant %d: %v", pod.TenantID, err)
-		}
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(23066)
 	}
+	__antithesis_instrumentation__.Notify(23063)
+
+	entry, err := d.getEntry(ctx, roachpb.MakeTenantID(pod.TenantID), true)
+	if err != nil {
+		__antithesis_instrumentation__.Notify(23067)
+		if !grpcutil.IsContextCanceled(err) {
+			__antithesis_instrumentation__.Notify(23069)
+
+			log.Errorf(ctx, "ignoring error getting entry for tenant %d: %v", pod.TenantID, err)
+		} else {
+			__antithesis_instrumentation__.Notify(23070)
+		}
+		__antithesis_instrumentation__.Notify(23068)
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(23071)
+	}
+	__antithesis_instrumentation__.Notify(23064)
 
 	switch pod.State {
 	case RUNNING, DRAINING:
-		// Add entries of RUNNING and DRAINING pods if they are not already present.
+		__antithesis_instrumentation__.Notify(23072)
+
 		if entry.AddPod(pod) {
+			__antithesis_instrumentation__.Notify(23075)
 			log.Infof(ctx, "added IP address %s with load %.3f for tenant %d", pod.Addr, pod.Load, pod.TenantID)
 		} else {
+			__antithesis_instrumentation__.Notify(23076)
 			log.Infof(ctx, "updated IP address %s with load %.3f for tenant %d", pod.Addr, pod.Load, pod.TenantID)
 		}
-	// Update entries of UNKNOWN pods only if they are already present.
+
 	case UNKNOWN:
+		__antithesis_instrumentation__.Notify(23073)
 		if entry.UpdatePod(pod) {
+			__antithesis_instrumentation__.Notify(23077)
 			log.Infof(ctx, "updated IP address %s with load %.3f for tenant %d", pod.Addr, pod.Load, pod.TenantID)
+		} else {
+			__antithesis_instrumentation__.Notify(23078)
 		}
 	default:
-		// Remove addresses of DELETING pods.
+		__antithesis_instrumentation__.Notify(23074)
+
 		if entry.RemovePodByAddr(pod.Addr) {
+			__antithesis_instrumentation__.Notify(23079)
 			log.Infof(ctx, "deleted IP address %s for tenant %d", pod.Addr, pod.TenantID)
+		} else {
+			__antithesis_instrumentation__.Notify(23080)
 		}
 	}
 }
 
-// sleepContext sleeps for the given duration or until the given context is
-// canceled, whichever comes first.
 func sleepContext(ctx context.Context, delay time.Duration) {
+	__antithesis_instrumentation__.Notify(23081)
 	select {
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(23082)
 	case <-time.After(delay):
+		__antithesis_instrumentation__.Notify(23083)
 	}
 }

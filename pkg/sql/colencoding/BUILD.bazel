@@ -20,6 +20,7 @@ go_library(
         "//pkg/util/duration",
         "//pkg/util/encoding",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_apd_v3//:apd",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_redact//:redact",
@@ -40,5 +41,6 @@ go_test(
         "//pkg/sql/types",
         "//pkg/util/encoding",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

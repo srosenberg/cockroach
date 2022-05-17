@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cloud
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,7 +26,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Timeout is a cluster setting used for cloud storage interactions.
 var Timeout = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"cloudstorage.timeout",
@@ -49,8 +40,6 @@ var httpCustomCA = settings.RegisterStringSetting(
 	"",
 ).WithPublic()
 
-// HTTPRetryOptions defines the tunable settings which control the retry of HTTP
-// operations.
 var HTTPRetryOptions = retry.Options{
 	InitialBackoff: 100 * time.Millisecond,
 	MaxBackoff:     2 * time.Second,
@@ -58,43 +47,55 @@ var HTTPRetryOptions = retry.Options{
 	Multiplier:     4,
 }
 
-// MakeHTTPClient makes an http client configured with the common settings used
-// for interacting with cloud storage (timeouts, retries, CA certs, etc).
 func MakeHTTPClient(settings *cluster.Settings) (*http.Client, error) {
+	__antithesis_instrumentation__.Notify(35981)
 	var tlsConf *tls.Config
 	if pem := httpCustomCA.Get(&settings.SV); pem != "" {
+		__antithesis_instrumentation__.Notify(35983)
 		roots, err := x509.SystemCertPool()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(35986)
 			return nil, errors.Wrap(err, "could not load system root CA pool")
+		} else {
+			__antithesis_instrumentation__.Notify(35987)
 		}
+		__antithesis_instrumentation__.Notify(35984)
 		if !roots.AppendCertsFromPEM([]byte(pem)) {
+			__antithesis_instrumentation__.Notify(35988)
 			return nil, errors.Errorf("failed to parse root CA certificate from %q", pem)
+		} else {
+			__antithesis_instrumentation__.Notify(35989)
 		}
+		__antithesis_instrumentation__.Notify(35985)
 		tlsConf = &tls.Config{RootCAs: roots}
+	} else {
+		__antithesis_instrumentation__.Notify(35990)
 	}
+	__antithesis_instrumentation__.Notify(35982)
 	t := http.DefaultTransport.(*http.Transport).Clone()
-	// Add our custom CA.
+
 	t.TLSClientConfig = tlsConf
 	return &http.Client{Transport: t}, nil
 }
 
-// MaxDelayedRetryAttempts is the number of times the delayedRetry method will
-// re-run the provided function.
 const MaxDelayedRetryAttempts = 3
 
-// DelayedRetry runs fn and re-runs it a limited number of times if it
-// fails. It knows about specific kinds of errors that need longer retry
-// delays than normal.
 func DelayedRetry(
 	ctx context.Context, opName string, customDelay func(error) time.Duration, fn func() error,
 ) error {
+	__antithesis_instrumentation__.Notify(35991)
 	span := tracing.SpanFromContext(ctx)
 	attemptNumber := int32(1)
 	return retry.WithMaxAttempts(ctx, base.DefaultRetryOptions(), MaxDelayedRetryAttempts, func() error {
+		__antithesis_instrumentation__.Notify(35992)
 		err := fn()
 		if err == nil {
+			__antithesis_instrumentation__.Notify(35996)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(35997)
 		}
+		__antithesis_instrumentation__.Notify(35993)
 		retryEvent := &roachpb.RetryTracingEvent{
 			Operation:     opName,
 			AttemptNumber: attemptNumber,
@@ -102,69 +103,66 @@ func DelayedRetry(
 		}
 		span.RecordStructured(retryEvent)
 		if customDelay != nil {
+			__antithesis_instrumentation__.Notify(35998)
 			if d := customDelay(err); d > 0 {
+				__antithesis_instrumentation__.Notify(35999)
 				select {
 				case <-time.After(d):
+					__antithesis_instrumentation__.Notify(36000)
 				case <-ctx.Done():
+					__antithesis_instrumentation__.Notify(36001)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(36002)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(36003)
 		}
-		// See https:github.com/GoogleCloudPlatform/google-cloudimpl-go/issues/1012#issuecomment-393606797
-		// which suggests this GCE error message could be due to auth quota limits
-		// being reached.
+		__antithesis_instrumentation__.Notify(35994)
+
 		if strings.Contains(err.Error(), "net/http: timeout awaiting response headers") {
+			__antithesis_instrumentation__.Notify(36004)
 			select {
 			case <-time.After(time.Second * 5):
+				__antithesis_instrumentation__.Notify(36005)
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(36006)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(36007)
 		}
+		__antithesis_instrumentation__.Notify(35995)
 		attemptNumber++
 		return err
 	})
 }
 
-// IsResumableHTTPError returns true if we can
-// resume download after receiving an error 'err'.
-// We can attempt to resume download if the error is ErrUnexpectedEOF.
-// In particular, we should not worry about a case when error is io.EOF.
-// The reason for this is two-fold:
-//   1. The underlying http library converts io.EOF to io.ErrUnexpectedEOF
-//   if the number of bytes transferred is less than the number of
-//   bytes advertised in the Content-Length header.  So if we see
-//   io.ErrUnexpectedEOF we can simply request the next range.
-//   2. If the server did *not* advertise Content-Length, then
-//   there is really nothing we can do: http standard says that
-//   the stream ends when the server terminates connection.
-// In addition, we treat connection reset by peer errors (which can
-// happen if we didn't read from the connection too long due to e.g. load),
-// the same as unexpected eof errors.
 func IsResumableHTTPError(err error) bool {
-	return errors.Is(err, io.ErrUnexpectedEOF) ||
-		sysutil.IsErrConnectionReset(err) ||
-		sysutil.IsErrConnectionRefused(err)
+	__antithesis_instrumentation__.Notify(36008)
+	return errors.Is(err, io.ErrUnexpectedEOF) || func() bool {
+		__antithesis_instrumentation__.Notify(36009)
+		return sysutil.IsErrConnectionReset(err) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(36010)
+		return sysutil.IsErrConnectionRefused(err) == true
+	}() == true
 }
 
-// Maximum number of times we can attempt to retry reading from external storage,
-// without making any progress.
 const maxNoProgressReads = 3
 
-// ReaderOpenerAt describes a function that opens a ReadCloser at the passed
-// offset.
 type ReaderOpenerAt func(ctx context.Context, pos int64) (io.ReadCloser, error)
 
-// ResumingReader is a reader which retries reads in case of a transient errors.
 type ResumingReader struct {
-	Opener       ReaderOpenerAt   // Get additional content
-	Reader       io.ReadCloser    // Currently opened reader
-	Pos          int64            // How much data was received so far
-	RetryOnErrFn func(error) bool // custom retry-on-error function
-	// ErrFn injects a delay between retries on errors. nil means no delay.
+	Opener       ReaderOpenerAt
+	Reader       io.ReadCloser
+	Pos          int64
+	RetryOnErrFn func(error) bool
+
 	ErrFn func(error) time.Duration
 }
 
 var _ ioctx.ReadCloserCtx = &ResumingReader{}
 
-// NewResumingReader returns a ResumingReader instance.
 func NewResumingReader(
 	ctx context.Context,
 	opener ReaderOpenerAt,
@@ -173,6 +171,7 @@ func NewResumingReader(
 	retryOnErrFn func(error) bool,
 	errFn func(error) time.Duration,
 ) *ResumingReader {
+	__antithesis_instrumentation__.Notify(36011)
 	r := &ResumingReader{
 		Opener:       opener,
 		Reader:       reader,
@@ -181,44 +180,69 @@ func NewResumingReader(
 		ErrFn:        errFn,
 	}
 	if r.RetryOnErrFn == nil {
+		__antithesis_instrumentation__.Notify(36013)
 		log.Warning(ctx, "no RetryOnErrFn specified when configuring ResumingReader, setting to default value")
 		r.RetryOnErrFn = sysutil.IsErrConnectionReset
+	} else {
+		__antithesis_instrumentation__.Notify(36014)
 	}
+	__antithesis_instrumentation__.Notify(36012)
 	return r
 }
 
-// Open opens the reader at its current offset.
 func (r *ResumingReader) Open(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(36015)
 	return DelayedRetry(ctx, "ResumingReader.Opener", r.ErrFn, func() error {
+		__antithesis_instrumentation__.Notify(36016)
 		var readErr error
 		r.Reader, readErr = r.Opener(ctx, r.Pos)
 		return readErr
 	})
 }
 
-// Read implements ioctx.ReaderCtx.
 func (r *ResumingReader) Read(ctx context.Context, p []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(36017)
 	var lastErr error
 	for retries := 0; lastErr == nil; retries++ {
+		__antithesis_instrumentation__.Notify(36019)
 		if r.Reader == nil {
+			__antithesis_instrumentation__.Notify(36023)
 			lastErr = r.Open(ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(36024)
 		}
+		__antithesis_instrumentation__.Notify(36020)
 
 		if lastErr == nil {
+			__antithesis_instrumentation__.Notify(36025)
 			n, readErr := r.Reader.Read(p)
-			if readErr == nil || readErr == io.EOF {
+			if readErr == nil || func() bool {
+				__antithesis_instrumentation__.Notify(36027)
+				return readErr == io.EOF == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(36028)
 				r.Pos += int64(n)
 				return n, readErr
+			} else {
+				__antithesis_instrumentation__.Notify(36029)
 			}
+			__antithesis_instrumentation__.Notify(36026)
 			lastErr = readErr
+		} else {
+			__antithesis_instrumentation__.Notify(36030)
 		}
+		__antithesis_instrumentation__.Notify(36021)
 
 		if !errors.IsAny(lastErr, io.EOF, io.ErrUnexpectedEOF) {
+			__antithesis_instrumentation__.Notify(36031)
 			log.Errorf(ctx, "Read err: %s", lastErr)
+		} else {
+			__antithesis_instrumentation__.Notify(36032)
 		}
+		__antithesis_instrumentation__.Notify(36022)
 
-		// Use the configured retry-on-error decider to check for a resumable error.
 		if r.RetryOnErrFn(lastErr) {
+			__antithesis_instrumentation__.Notify(36033)
 			span := tracing.SpanFromContext(ctx)
 			retryEvent := &roachpb.RetryTracingEvent{
 				Operation:     "ResumingReader.Reader.Read",
@@ -227,87 +251,123 @@ func (r *ResumingReader) Read(ctx context.Context, p []byte) (int, error) {
 			}
 			span.RecordStructured(retryEvent)
 			if retries >= maxNoProgressReads {
+				__antithesis_instrumentation__.Notify(36036)
 				return 0, errors.Wrap(lastErr, "multiple Read calls return no data")
+			} else {
+				__antithesis_instrumentation__.Notify(36037)
 			}
+			__antithesis_instrumentation__.Notify(36034)
 			log.Errorf(ctx, "Retry IO: error %s", lastErr)
 			lastErr = nil
 			if r.Reader != nil {
+				__antithesis_instrumentation__.Notify(36038)
 				r.Reader.Close()
+			} else {
+				__antithesis_instrumentation__.Notify(36039)
 			}
+			__antithesis_instrumentation__.Notify(36035)
 			r.Reader = nil
+		} else {
+			__antithesis_instrumentation__.Notify(36040)
 		}
 	}
+	__antithesis_instrumentation__.Notify(36018)
 
-	// NB: Go says Read() callers need to expect n > 0 *and* non-nil error, and do
-	// something with what was read before the error, but this mostly applies to
-	// err = EOF case which we handle above, so likely OK that we're discarding n
-	// here and pretending it was zero.
 	return 0, lastErr
 }
 
-// Close implements io.Closer.
 func (r *ResumingReader) Close(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(36041)
 	if r.Reader != nil {
+		__antithesis_instrumentation__.Notify(36043)
 		return r.Reader.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(36044)
 	}
+	__antithesis_instrumentation__.Notify(36042)
 	return nil
 }
 
-// CheckHTTPContentRangeHeader parses Content-Range header and ensures that
-// range start offset is the same as the expected 'pos'. It returns the total
-// size of the remote object as extracted from the header.
-// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range
 func CheckHTTPContentRangeHeader(h string, pos int64) (int64, error) {
+	__antithesis_instrumentation__.Notify(36045)
 	if len(h) == 0 {
+		__antithesis_instrumentation__.Notify(36052)
 		return 0, errors.New("http server does not honor download resume")
+	} else {
+		__antithesis_instrumentation__.Notify(36053)
 	}
+	__antithesis_instrumentation__.Notify(36046)
 
 	h = strings.TrimPrefix(h, "bytes ")
 	dash := strings.IndexByte(h, '-')
 	if dash <= 0 {
+		__antithesis_instrumentation__.Notify(36054)
 		return 0, errors.Errorf("malformed Content-Range header: %s", h)
+	} else {
+		__antithesis_instrumentation__.Notify(36055)
 	}
+	__antithesis_instrumentation__.Notify(36047)
 
 	resume, err := strconv.ParseInt(h[:dash], 10, 64)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(36056)
 		return 0, errors.Errorf("malformed start offset in Content-Range header: %s", h)
+	} else {
+		__antithesis_instrumentation__.Notify(36057)
 	}
+	__antithesis_instrumentation__.Notify(36048)
 
 	if resume != pos {
+		__antithesis_instrumentation__.Notify(36058)
 		return 0, errors.Errorf(
 			"expected resume position %d, found %d instead in Content-Range header: %s",
 			pos, resume, h)
+	} else {
+		__antithesis_instrumentation__.Notify(36059)
 	}
+	__antithesis_instrumentation__.Notify(36049)
 
 	slash := strings.IndexByte(h, '/')
 	if slash <= 0 {
+		__antithesis_instrumentation__.Notify(36060)
 		return 0, errors.Errorf("malformed Content-Range header: %s", h)
+	} else {
+		__antithesis_instrumentation__.Notify(36061)
 	}
+	__antithesis_instrumentation__.Notify(36050)
 	size, err := strconv.ParseInt(h[slash+1:], 10, 64)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(36062)
 		return 0, errors.Errorf("malformed slash offset in Content-Range header: %s", h)
+	} else {
+		__antithesis_instrumentation__.Notify(36063)
 	}
+	__antithesis_instrumentation__.Notify(36051)
 
 	return size, nil
 }
 
-// BackgroundPipe is a helper for providing a Writer that is backed by a pipe
-// that has a background process reading from it. It *must* be Closed().
 func BackgroundPipe(
 	ctx context.Context, fn func(ctx context.Context, pr io.Reader) error,
 ) io.WriteCloser {
+	__antithesis_instrumentation__.Notify(36064)
 	pr, pw := io.Pipe()
 	w := &backgroundPipe{w: pw, grp: ctxgroup.WithContext(ctx), ctx: ctx}
 	w.grp.GoCtx(func(ctc context.Context) error {
+		__antithesis_instrumentation__.Notify(36066)
 		err := fn(ctx, pr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(36068)
 			closeErr := pr.CloseWithError(err)
 			err = errors.CombineErrors(err, closeErr)
 		} else {
+			__antithesis_instrumentation__.Notify(36069)
 			err = pr.Close()
 		}
+		__antithesis_instrumentation__.Notify(36067)
 		return err
 	})
+	__antithesis_instrumentation__.Notify(36065)
 	return w
 }
 
@@ -317,20 +377,19 @@ type backgroundPipe struct {
 	ctx context.Context
 }
 
-// Write writes to the writer.
 func (s *backgroundPipe) Write(p []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(36070)
 	return s.w.Write(p)
 }
 
-// Close closes the writer, finishing the write operation.
 func (s *backgroundPipe) Close() error {
+	__antithesis_instrumentation__.Notify(36071)
 	err := s.w.CloseWithError(s.ctx.Err())
 	return errors.CombineErrors(err, s.grp.Wait())
 }
 
-// WriteFile is a helper for writing the content of a Reader to the given path
-// of an ExternalStorage.
 func WriteFile(ctx context.Context, dest ExternalStorage, basename string, src io.Reader) error {
+	__antithesis_instrumentation__.Notify(36072)
 	var span *tracing.Span
 	ctx, span = tracing.ChildSpan(ctx, fmt.Sprintf("%s.WriteFile", dest.Conf().Provider.String()))
 	defer span.Finish()
@@ -341,11 +400,19 @@ func WriteFile(ctx context.Context, dest ExternalStorage, basename string, src i
 
 	w, err := dest.Writer(ctx, basename)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(36075)
 		return errors.Wrap(err, "opening object for writing")
+	} else {
+		__antithesis_instrumentation__.Notify(36076)
 	}
+	__antithesis_instrumentation__.Notify(36073)
 	if _, err := io.Copy(w, src); err != nil {
+		__antithesis_instrumentation__.Notify(36077)
 		cancel()
 		return errors.CombineErrors(w.Close(), err)
+	} else {
+		__antithesis_instrumentation__.Notify(36078)
 	}
+	__antithesis_instrumentation__.Notify(36074)
 	return errors.Wrap(w.Close(), "closing object")
 }

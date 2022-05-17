@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqltelemetry
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -16,21 +8,19 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 )
 
-// UserDefinedSchemaTelemetryType represents a type of user defined schema
-// related operation to record telemetry for.
 type UserDefinedSchemaTelemetryType int
 
 const (
 	_ UserDefinedSchemaTelemetryType = iota
-	// UserDefinedSchemaCreate represents a CREATE SCHEMA command.
+
 	UserDefinedSchemaCreate
-	// UserDefinedSchemaAlter represents an ALTER SCHEMA command.
+
 	UserDefinedSchemaAlter
-	// UserDefinedSchemaDrop represents a DROP SCHEMA command.
+
 	UserDefinedSchemaDrop
-	// UserDefinedSchemaReparentDatabase represents an ALTER DATABASE ... CONVERT TO SCHEMA command.
+
 	UserDefinedSchemaReparentDatabase
-	// UserDefinedSchemaUsedByObject tracks when an object is created in a user defined schema.
+
 	UserDefinedSchemaUsedByObject
 )
 
@@ -43,6 +33,7 @@ var userDefinedSchemaTelemetryMap = map[UserDefinedSchemaTelemetryType]string{
 }
 
 func (u UserDefinedSchemaTelemetryType) String() string {
+	__antithesis_instrumentation__.Notify(625846)
 	return userDefinedSchemaTelemetryMap[u]
 }
 
@@ -55,8 +46,7 @@ func init() {
 	}
 }
 
-// IncrementUserDefinedSchemaCounter is used to increment the telemetry counter
-// for a particular usage of user defined schemas.
 func IncrementUserDefinedSchemaCounter(userDefinedSchemaType UserDefinedSchemaTelemetryType) {
+	__antithesis_instrumentation__.Notify(625847)
 	telemetry.Inc(userDefinedSchemaTelemetryCounters[userDefinedSchemaType])
 }

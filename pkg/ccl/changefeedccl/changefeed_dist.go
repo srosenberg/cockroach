@@ -1,12 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,24 +28,6 @@ const (
 	changeFrontierProcName   = `changefntr`
 )
 
-// distChangefeedFlow plans and runs a distributed changefeed.
-//
-// One or more ChangeAggregator processors watch table data for changes. These
-// transform the changed kvs into changed rows and either emit them to a sink
-// (such as kafka) or, if there is no sink, forward them in columns 1,2,3 (where
-// they will be eventually returned directly via pgwire). In either case,
-// periodically a span will become resolved as of some timestamp, meaning that
-// no new rows will ever be emitted at or below that timestamp. These span-level
-// resolved timestamps are emitted as a marshaled `jobspb.ResolvedSpan` proto in
-// column 0.
-//
-// The flow will always have exactly one ChangeFrontier processor which all the
-// ChangeAggregators feed into. It collects all span-level resolved timestamps
-// and aggregates them into a changefeed-level resolved timestamp, which is the
-// minimum of the span-level resolved timestamps. This changefeed-level resolved
-// timestamp is emitted into the changefeed sink (or returned to the gateway if
-// there is no sink) whenever it advances. ChangeFrontier also updates the
-// progress of the changefeed's corresponding system job.
 func distChangefeedFlow(
 	ctx context.Context,
 	execCtx sql.JobExecContext,
@@ -60,71 +36,106 @@ func distChangefeedFlow(
 	progress jobspb.Progress,
 	resultsCh chan<- tree.Datums,
 ) error {
+	__antithesis_instrumentation__.Notify(15397)
 	var err error
 	details, err = validateDetails(details)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(15402)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(15403)
 	}
 
-	// NB: A non-empty high water indicates that we have checkpointed a resolved
-	// timestamp. Skipping the initial scan is equivalent to starting the
-	// changefeed from a checkpoint at its start time. Initialize the progress
-	// based on whether we should perform an initial scan.
 	{
+		__antithesis_instrumentation__.Notify(15404)
 		h := progress.GetHighWater()
-		noHighWater := (h == nil || h.IsEmpty())
-		// We want to set the highWater and thus avoid an initial scan if either
-		// this is a cursor and there was no request for one, or we don't have a
-		// cursor but we have a request to not have an initial scan.
+		noHighWater := (h == nil || func() bool {
+			__antithesis_instrumentation__.Notify(15406)
+			return h.IsEmpty() == true
+		}() == true)
+
 		initialScanType, err := initialScanTypeFromOpts(details.Opts)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(15407)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(15408)
 		}
-		if noHighWater && initialScanType == changefeedbase.NoInitialScan {
-			// If there is a cursor, the statement time has already been set to it.
+		__antithesis_instrumentation__.Notify(15405)
+		if noHighWater && func() bool {
+			__antithesis_instrumentation__.Notify(15409)
+			return initialScanType == changefeedbase.NoInitialScan == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(15410)
+
 			progress.Progress = &jobspb.Progress_HighWater{HighWater: &details.StatementTime}
+		} else {
+			__antithesis_instrumentation__.Notify(15411)
 		}
 	}
+	__antithesis_instrumentation__.Notify(15398)
 
 	execCfg := execCtx.ExecCfg()
 	var initialHighWater hlc.Timestamp
 	var trackedSpans []roachpb.Span
 	{
+		__antithesis_instrumentation__.Notify(15412)
 		spansTS := details.StatementTime
-		if h := progress.GetHighWater(); h != nil && !h.IsEmpty() {
+		if h := progress.GetHighWater(); h != nil && func() bool {
+			__antithesis_instrumentation__.Notify(15415)
+			return !h.IsEmpty() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(15416)
 			initialHighWater = *h
-			// If we have a high-water set, use it to compute the spans, since the
-			// ones at the statement time may have been garbage collected by now.
-			spansTS = initialHighWater
-		}
 
-		// We want to fetch the target spans as of the timestamp following the
-		// highwater unless the highwater corresponds to a timestamp of an initial
-		// scan. This logic is irritatingly complex but extremely important. Namely,
-		// we may be here because the schema changed at the current resolved
-		// timestamp. However, an initial scan should be performed at exactly the
-		// timestamp specified; initial scans can be created at the timestamp of a
-		// schema change and thus should see the side-effect of the schema change.
+			spansTS = initialHighWater
+		} else {
+			__antithesis_instrumentation__.Notify(15417)
+		}
+		__antithesis_instrumentation__.Notify(15413)
+
 		isRestartAfterCheckpointOrNoInitialScan := progress.GetHighWater() != nil
 		if isRestartAfterCheckpointOrNoInitialScan {
+			__antithesis_instrumentation__.Notify(15418)
 			spansTS = spansTS.Next()
+		} else {
+			__antithesis_instrumentation__.Notify(15419)
 		}
+		__antithesis_instrumentation__.Notify(15414)
 		var err error
 		trackedSpans, err = fetchSpansForTargets(ctx, execCfg, AllTargets(details), spansTS)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(15420)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(15421)
 		}
 	}
+	__antithesis_instrumentation__.Notify(15399)
 
 	var checkpoint jobspb.ChangefeedProgress_Checkpoint
-	if cf := progress.GetChangefeed(); cf != nil && cf.Checkpoint != nil {
+	if cf := progress.GetChangefeed(); cf != nil && func() bool {
+		__antithesis_instrumentation__.Notify(15422)
+		return cf.Checkpoint != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(15423)
 		checkpoint = *cf.Checkpoint
+	} else {
+		__antithesis_instrumentation__.Notify(15424)
 	}
+	__antithesis_instrumentation__.Notify(15400)
 
 	var distflowKnobs changefeeddist.TestingKnobs
-	if knobs, ok := execCfg.DistSQLSrv.TestingKnobs.Changefeed.(*TestingKnobs); ok && knobs != nil {
+	if knobs, ok := execCfg.DistSQLSrv.TestingKnobs.Changefeed.(*TestingKnobs); ok && func() bool {
+		__antithesis_instrumentation__.Notify(15425)
+		return knobs != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(15426)
 		distflowKnobs = knobs.DistflowKnobs
+	} else {
+		__antithesis_instrumentation__.Notify(15427)
 	}
+	__antithesis_instrumentation__.Notify(15401)
 
 	return changefeeddist.StartDistChangefeed(
 		ctx, execCtx, jobID, details, trackedSpans, initialHighWater, checkpoint, resultsCh, distflowKnobs)
@@ -136,35 +147,54 @@ func fetchSpansForTargets(
 	targets []jobspb.ChangefeedTargetSpecification,
 	ts hlc.Timestamp,
 ) ([]roachpb.Span, error) {
+	__antithesis_instrumentation__.Notify(15428)
 	var spans []roachpb.Span
 	fetchSpans := func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(15431)
 		spans = nil
 		if err := txn.SetFixedTimestamp(ctx, ts); err != nil {
+			__antithesis_instrumentation__.Notify(15434)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(15435)
 		}
+		__antithesis_instrumentation__.Notify(15432)
 		seen := make(map[descpb.ID]struct{}, len(targets))
-		// Note that all targets are currently guaranteed to have a Table ID
-		// and lie within the primary index span. Deduplication is important
-		// here as requesting the same span twice will deadlock.
+
 		for _, table := range targets {
+			__antithesis_instrumentation__.Notify(15436)
 			if _, dup := seen[table.TableID]; dup {
+				__antithesis_instrumentation__.Notify(15439)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(15440)
 			}
+			__antithesis_instrumentation__.Notify(15437)
 			seen[table.TableID] = struct{}{}
 			flags := tree.ObjectLookupFlagsWithRequired()
 			flags.AvoidLeased = true
 			tableDesc, err := descriptors.GetImmutableTableByID(ctx, txn, table.TableID, flags)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(15441)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(15442)
 			}
+			__antithesis_instrumentation__.Notify(15438)
 			spans = append(spans, tableDesc.PrimaryIndexSpan(execCfg.Codec))
 		}
+		__antithesis_instrumentation__.Notify(15433)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(15429)
 	if err := sql.DescsTxn(ctx, execCfg, fetchSpans); err != nil {
+		__antithesis_instrumentation__.Notify(15443)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(15444)
 	}
+	__antithesis_instrumentation__.Notify(15430)
 	return spans, nil
 }

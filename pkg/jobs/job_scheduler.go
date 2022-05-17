@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -35,12 +27,8 @@ import (
 	"github.com/cockroachdb/logtags"
 )
 
-// CreatedByScheduledJobs identifies the job that was created
-// by scheduled jobs system.
 const CreatedByScheduledJobs = "crdb_schedule"
 
-// jobScheduler is responsible for finding and starting scheduled
-// jobs that need to be executed.
 type jobScheduler struct {
 	*scheduledjobs.JobExecutionConfig
 	env      scheduledjobs.JobSchedulerEnv
@@ -53,9 +41,14 @@ func newJobScheduler(
 	env scheduledjobs.JobSchedulerEnv,
 	registry *metric.Registry,
 ) *jobScheduler {
+	__antithesis_instrumentation__.Notify(70263)
 	if env == nil {
+		__antithesis_instrumentation__.Notify(70265)
 		env = scheduledjobs.ProdJobSchedulerEnv
+	} else {
+		__antithesis_instrumentation__.Notify(70266)
 	}
+	__antithesis_instrumentation__.Notify(70264)
 
 	stats := MakeSchedulerMetrics()
 	registry.AddMetricStruct(stats)
@@ -72,9 +65,6 @@ const allSchedules = 0
 
 var errScheduleNotRunnable = errors.New("schedule not runnable")
 
-// loadCandidateScheduleForExecution looks up and locks candidate schedule for execution.
-// The schedule is locked via FOR UPDATE clause to ensure that only this scheduler can modify it.
-// If schedule cannot execute, a errScheduleNotRunnable error is returned.
 func loadCandidateScheduleForExecution(
 	ctx context.Context,
 	scheduleID int64,
@@ -82,6 +72,7 @@ func loadCandidateScheduleForExecution(
 	ie sqlutil.InternalExecutor,
 	txn *kv.Txn,
 ) (*ScheduledJob, error) {
+	__antithesis_instrumentation__.Notify(70267)
 	lookupStmt := fmt.Sprintf(
 		"SELECT * FROM %s WHERE schedule_id=%d AND next_run < %s FOR UPDATE",
 		env.ScheduledJobsTableName(), scheduleID, env.NowExpr())
@@ -91,38 +82,54 @@ func loadCandidateScheduleForExecution(
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		lookupStmt)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70271)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(70272)
 	}
+	__antithesis_instrumentation__.Notify(70268)
 
 	if row == nil {
+		__antithesis_instrumentation__.Notify(70273)
 		return nil, errScheduleNotRunnable
+	} else {
+		__antithesis_instrumentation__.Notify(70274)
 	}
+	__antithesis_instrumentation__.Notify(70269)
 
 	j := NewScheduledJob(env)
 	if err := j.InitFromDatums(row, cols); err != nil {
+		__antithesis_instrumentation__.Notify(70275)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(70276)
 	}
+	__antithesis_instrumentation__.Notify(70270)
 	return j, nil
 }
 
-// lookupNumRunningJobs returns the number of running jobs for the specified schedule.
 func lookupNumRunningJobs(
 	ctx context.Context,
 	scheduleID int64,
 	env scheduledjobs.JobSchedulerEnv,
 	ie sqlutil.InternalExecutor,
 ) (int64, error) {
+	__antithesis_instrumentation__.Notify(70277)
 	lookupStmt := fmt.Sprintf(
 		"SELECT count(*) FROM %s WHERE created_by_type = '%s' AND created_by_id = %d AND status IN %s",
 		env.SystemJobsTableName(), CreatedByScheduledJobs, scheduleID, NonTerminalStatusTupleString)
 	row, err := ie.QueryRowEx(
 		ctx, "lookup-num-running",
-		/*txn=*/ nil,
+		nil,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		lookupStmt)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70279)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(70280)
 	}
+	__antithesis_instrumentation__.Notify(70278)
 	return int64(tree.MustBeDInt(row[0])), nil
 }
 
@@ -131,50 +138,71 @@ const recheckRunningAfter = 1 * time.Minute
 func (s *jobScheduler) processSchedule(
 	ctx context.Context, schedule *ScheduledJob, numRunning int64, txn *kv.Txn,
 ) error {
+	__antithesis_instrumentation__.Notify(70281)
 	if numRunning > 0 {
+		__antithesis_instrumentation__.Notify(70287)
 		switch schedule.ScheduleDetails().Wait {
 		case jobspb.ScheduleDetails_WAIT:
-			// TODO(yevgeniy): We might need to persist more state.
-			// In particular, it'd be nice to add more time when repeatedly rescheduling
-			// a job.  It would also be nice not to log each event.
+			__antithesis_instrumentation__.Notify(70288)
+
 			schedule.SetNextRun(s.env.Now().Add(recheckRunningAfter))
 			schedule.SetScheduleStatus("delayed due to %d already running", numRunning)
 			s.metrics.RescheduleWait.Inc(1)
 			return schedule.Update(ctx, s.InternalExecutor, txn)
 		case jobspb.ScheduleDetails_SKIP:
+			__antithesis_instrumentation__.Notify(70289)
 			if err := schedule.ScheduleNextRun(); err != nil {
+				__antithesis_instrumentation__.Notify(70292)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(70293)
 			}
+			__antithesis_instrumentation__.Notify(70290)
 			schedule.SetScheduleStatus("rescheduled due to %d already running", numRunning)
 			s.metrics.RescheduleSkip.Inc(1)
 			return schedule.Update(ctx, s.InternalExecutor, txn)
+		default:
+			__antithesis_instrumentation__.Notify(70291)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(70294)
 	}
+	__antithesis_instrumentation__.Notify(70282)
 
 	schedule.ClearScheduleStatus()
 
-	// Schedule the next job run.
-	// We do this step early, before the actual execution, to grab a lock on
-	// the scheduledjobs table.
 	if schedule.HasRecurringSchedule() {
+		__antithesis_instrumentation__.Notify(70295)
 		if err := schedule.ScheduleNextRun(); err != nil {
+			__antithesis_instrumentation__.Notify(70296)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(70297)
 		}
 	} else {
-		// It's a one-off schedule.  Clear next run to indicate that this schedule executed.
+		__antithesis_instrumentation__.Notify(70298)
+
 		schedule.SetNextRun(time.Time{})
 	}
+	__antithesis_instrumentation__.Notify(70283)
 
 	if err := schedule.Update(ctx, s.InternalExecutor, txn); err != nil {
+		__antithesis_instrumentation__.Notify(70299)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70300)
 	}
+	__antithesis_instrumentation__.Notify(70284)
 
 	executor, err := GetScheduledJobExecutor(schedule.ExecutorType())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70301)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70302)
 	}
+	__antithesis_instrumentation__.Notify(70285)
 
-	// Grab job executor and execute the job.
 	log.Infof(ctx,
 		"Starting job for schedule %d (%q); scheduled to run at %s; next run scheduled for %s",
 		schedule.ScheduleID(), schedule.ScheduleLabel(),
@@ -182,12 +210,15 @@ func (s *jobScheduler) processSchedule(
 
 	execCtx := logtags.AddTag(ctx, "schedule", schedule.ScheduleID())
 	if err := executor.ExecuteJob(execCtx, s.JobExecutionConfig, s.env, schedule, txn); err != nil {
+		__antithesis_instrumentation__.Notify(70303)
 		return errors.Wrapf(err, "executing schedule %d", schedule.ScheduleID())
+	} else {
+		__antithesis_instrumentation__.Notify(70304)
 	}
+	__antithesis_instrumentation__.Notify(70286)
 
 	s.metrics.NumStarted.Inc(1)
 
-	// Persist any mutations to the underlying schedule.
 	return schedule.Update(ctx, s.InternalExecutor, txn)
 }
 
@@ -196,164 +227,228 @@ type savePointError struct {
 }
 
 func (e savePointError) Error() string {
+	__antithesis_instrumentation__.Notify(70305)
 	return e.err.Error()
 }
 
-// withSavePoint executes function fn() wrapped with savepoint.
-// The savepoint is either released (upon successful completion of fn())
-// or it is rolled back.
-// If an error occurs while performing savepoint operations, an instance
-// of savePointError is returned.  If fn() returns an error, then that
-// error is returned.
 func withSavePoint(ctx context.Context, txn *kv.Txn, fn func() error) error {
+	__antithesis_instrumentation__.Notify(70306)
 	sp, err := txn.CreateSavepoint(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70311)
 		return &savePointError{err}
+	} else {
+		__antithesis_instrumentation__.Notify(70312)
 	}
+	__antithesis_instrumentation__.Notify(70307)
 	execErr := fn()
 
 	if execErr == nil {
+		__antithesis_instrumentation__.Notify(70313)
 		if err := txn.ReleaseSavepoint(ctx, sp); err != nil {
+			__antithesis_instrumentation__.Notify(70315)
 			return &savePointError{err}
+		} else {
+			__antithesis_instrumentation__.Notify(70316)
 		}
+		__antithesis_instrumentation__.Notify(70314)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(70317)
 	}
+	__antithesis_instrumentation__.Notify(70308)
 
 	if errors.HasType(execErr, (*roachpb.TransactionRetryWithProtoRefreshError)(nil)) {
-		// If function execution failed because transaction was restarted,
-		// treat this error as a savePointError so that the execution code bails out
-		// and retries scheduling loop.
+		__antithesis_instrumentation__.Notify(70318)
+
 		return &savePointError{execErr}
+	} else {
+		__antithesis_instrumentation__.Notify(70319)
 	}
+	__antithesis_instrumentation__.Notify(70309)
 
 	if err := txn.RollbackToSavepoint(ctx, sp); err != nil {
+		__antithesis_instrumentation__.Notify(70320)
 		return &savePointError{errors.WithDetail(err, execErr.Error())}
+	} else {
+		__antithesis_instrumentation__.Notify(70321)
 	}
+	__antithesis_instrumentation__.Notify(70310)
 	return execErr
 }
 
-// executeCandidateSchedule attempts to execute schedule.
-// The schedule is executed only if it's running.
 func (s *jobScheduler) executeCandidateSchedule(
 	ctx context.Context, candidate int64, txn *kv.Txn,
 ) error {
+	__antithesis_instrumentation__.Notify(70322)
 	schedule, err := loadCandidateScheduleForExecution(ctx, candidate, s.env, s.InternalExecutor, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70327)
 		if errors.Is(err, errScheduleNotRunnable) {
+			__antithesis_instrumentation__.Notify(70329)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(70330)
 		}
+		__antithesis_instrumentation__.Notify(70328)
 		s.metrics.NumMalformedSchedules.Inc(1)
 		log.Errorf(ctx, "error parsing schedule %d: %s", candidate, err)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70331)
 	}
+	__antithesis_instrumentation__.Notify(70323)
 
 	if !s.env.IsExecutorEnabled(schedule.ExecutorType()) {
+		__antithesis_instrumentation__.Notify(70332)
 		log.Infof(ctx, "Ignoring schedule %d: %s executor disabled",
 			schedule.ScheduleID(), schedule.ExecutorType())
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(70333)
 	}
+	__antithesis_instrumentation__.Notify(70324)
 
 	numRunning, err := lookupNumRunningJobs(ctx, schedule.ScheduleID(), s.env, s.InternalExecutor)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70334)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70335)
 	}
+	__antithesis_instrumentation__.Notify(70325)
 
 	timeout := schedulerScheduleExecutionTimeout.Get(&s.Settings.SV)
 	if processErr := withSavePoint(ctx, txn, func() error {
+		__antithesis_instrumentation__.Notify(70336)
 		if timeout > 0 {
+			__antithesis_instrumentation__.Notify(70338)
 			return contextutil.RunWithTimeout(
 				ctx, fmt.Sprintf("process-schedule-%d", schedule.ScheduleID()), timeout,
 				func(ctx context.Context) error {
+					__antithesis_instrumentation__.Notify(70339)
 					return s.processSchedule(ctx, schedule, numRunning, txn)
 				})
+		} else {
+			__antithesis_instrumentation__.Notify(70340)
 		}
+		__antithesis_instrumentation__.Notify(70337)
 		return s.processSchedule(ctx, schedule, numRunning, txn)
 	}); processErr != nil {
+		__antithesis_instrumentation__.Notify(70341)
 		if errors.HasType(processErr, (*savePointError)(nil)) {
+			__antithesis_instrumentation__.Notify(70343)
 			return errors.Wrapf(processErr, "savepoint error for schedule %d", schedule.ScheduleID())
+		} else {
+			__antithesis_instrumentation__.Notify(70344)
 		}
+		__antithesis_instrumentation__.Notify(70342)
 
-		// Failed to process schedule.
 		s.metrics.NumErrSchedules.Inc(1)
 		log.Errorf(ctx,
 			"error processing schedule %d: %+v", schedule.ScheduleID(), processErr)
 
-		// Try updating schedule record to indicate schedule execution error.
 		if err := withSavePoint(ctx, txn, func() error {
-			// Discard changes already made to the schedule, and treat schedule
-			// execution failure the same way we treat job failure.
+			__antithesis_instrumentation__.Notify(70345)
+
 			schedule.ClearDirty()
 			DefaultHandleFailedRun(schedule,
 				"failed to create job for schedule %d: err=%s",
 				schedule.ScheduleID(), processErr)
 
-			// DefaultHandleFailedRun assumes schedule already had its next run set.
-			// So, if the policy is to reschedule based on regular recurring schedule,
-			// we need to set next run again..
-			if schedule.HasRecurringSchedule() &&
-				schedule.ScheduleDetails().OnError == jobspb.ScheduleDetails_RETRY_SCHED {
+			if schedule.HasRecurringSchedule() && func() bool {
+				__antithesis_instrumentation__.Notify(70347)
+				return schedule.ScheduleDetails().OnError == jobspb.ScheduleDetails_RETRY_SCHED == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(70348)
 				if err := schedule.ScheduleNextRun(); err != nil {
+					__antithesis_instrumentation__.Notify(70349)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(70350)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(70351)
 			}
+			__antithesis_instrumentation__.Notify(70346)
 			return schedule.Update(ctx, s.InternalExecutor, txn)
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(70352)
 			if errors.HasType(err, (*savePointError)(nil)) {
+				__antithesis_instrumentation__.Notify(70354)
 				return errors.Wrapf(err,
 					"savepoint error for schedule %d", schedule.ScheduleID())
+			} else {
+				__antithesis_instrumentation__.Notify(70355)
 			}
+			__antithesis_instrumentation__.Notify(70353)
 			log.Errorf(ctx, "error recording processing error for schedule %d: %+v",
 				schedule.ScheduleID(), err)
+		} else {
+			__antithesis_instrumentation__.Notify(70356)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(70357)
 	}
+	__antithesis_instrumentation__.Notify(70326)
 	return nil
 }
 
 func (s *jobScheduler) executeSchedules(ctx context.Context, maxSchedules int64) (retErr error) {
-	// Lookup a set of candidate schedules to execute.
-	// NB: this lookup happens under nil txn; we ensure the schedule is still runnable
-	// using per-schedule exclusive (for update) query.
+	__antithesis_instrumentation__.Notify(70358)
+
 	limitClause := ""
 	if maxSchedules != allSchedules {
+		__antithesis_instrumentation__.Notify(70363)
 		limitClause = fmt.Sprintf("LIMIT %d", maxSchedules)
+	} else {
+		__antithesis_instrumentation__.Notify(70364)
 	}
+	__antithesis_instrumentation__.Notify(70359)
 
 	findSchedulesStmt := fmt.Sprintf(
 		`SELECT schedule_id FROM %s WHERE next_run < %s ORDER BY random() %s`,
 		s.env.ScheduledJobsTableName(), s.env.NowExpr(), limitClause)
 	it, err := s.InternalExecutor.QueryIteratorEx(
 		ctx, "find-scheduled-jobs",
-		/*txn=*/ nil,
+		nil,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		findSchedulesStmt)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70365)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70366)
 	}
+	__antithesis_instrumentation__.Notify(70360)
 
-	// We have to make sure to close the iterator since we might return from the
-	// for loop early (before Next() returns false).
-	defer func() { retErr = errors.CombineErrors(retErr, it.Close()) }()
+	defer func() {
+		__antithesis_instrumentation__.Notify(70367)
+		retErr = errors.CombineErrors(retErr, it.Close())
+	}()
+	__antithesis_instrumentation__.Notify(70361)
 
-	// The loop below might encounter an error after some schedules have been
-	// executed (i.e. previous iterations succeeded), and this is ok.
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(70368)
 		row := it.Cur()
 		candidateID := int64(tree.MustBeDInt(row[0]))
 		if err := s.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(70369)
 			return s.executeCandidateSchedule(ctx, candidateID, txn)
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(70370)
 			log.Errorf(ctx, "error executing candidate schedule %d: %s", candidateID, err)
+		} else {
+			__antithesis_instrumentation__.Notify(70371)
 		}
 	}
+	__antithesis_instrumentation__.Notify(70362)
 
 	return err
 }
 
-// An internal, safety valve setting to revert scheduler execution to distributed mode.
-// This setting should be removed once scheduled job system no longer locks tables for excessive
-// periods of time.
 var schedulerRunsOnSingleNode = settings.RegisterBoolSetting(
 	settings.TenantReadOnly,
 	"jobs.scheduler.single_node_scheduler.enabled",
@@ -362,16 +457,28 @@ var schedulerRunsOnSingleNode = settings.RegisterBoolSetting(
 )
 
 func (s *jobScheduler) schedulerEnabledOnThisNode(ctx context.Context) bool {
-	if s.ShouldRunScheduler == nil || !schedulerRunsOnSingleNode.Get(&s.Settings.SV) {
+	__antithesis_instrumentation__.Notify(70372)
+	if s.ShouldRunScheduler == nil || func() bool {
+		__antithesis_instrumentation__.Notify(70375)
+		return !schedulerRunsOnSingleNode.Get(&s.Settings.SV) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70376)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(70377)
 	}
+	__antithesis_instrumentation__.Notify(70373)
 
 	enabled, err := s.ShouldRunScheduler(ctx, s.DB.Clock().NowAsClockTimestamp())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70378)
 		log.Errorf(ctx, "error determining if the scheduler enabled: %v; will recheck after %s",
 			err, recheckEnabledAfterPeriod)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(70379)
 	}
+	__antithesis_instrumentation__.Notify(70374)
 	return enabled
 }
 
@@ -380,28 +487,36 @@ type syncCancelFunc struct {
 	context.CancelFunc
 }
 
-// newCancelWhenDisabled arranges for scheduler enabled setting callback to cancel
-// currently executing context.
 func newCancelWhenDisabled(sv *settings.Values) *syncCancelFunc {
+	__antithesis_instrumentation__.Notify(70380)
 	sf := &syncCancelFunc{}
 	schedulerEnabledSetting.SetOnChange(sv, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(70382)
 		if !schedulerEnabledSetting.Get(sv) {
+			__antithesis_instrumentation__.Notify(70383)
 			sf.Lock()
 			if sf.CancelFunc != nil {
+				__antithesis_instrumentation__.Notify(70385)
 				sf.CancelFunc()
+			} else {
+				__antithesis_instrumentation__.Notify(70386)
 			}
+			__antithesis_instrumentation__.Notify(70384)
 			sf.Unlock()
+		} else {
+			__antithesis_instrumentation__.Notify(70387)
 		}
 	})
+	__antithesis_instrumentation__.Notify(70381)
 	return sf
 }
 
-// withCancelOnDisabled executes provided function with the context which will be cancelled
-// if scheduler is disabled.
 func (sf *syncCancelFunc) withCancelOnDisabled(
 	ctx context.Context, sv *settings.Values, f func(ctx context.Context) error,
 ) error {
+	__antithesis_instrumentation__.Notify(70388)
 	ctx, cancel := func() (context.Context, context.CancelFunc) {
+		__antithesis_instrumentation__.Notify(70390)
 		sf.Lock()
 		defer sf.Unlock()
 
@@ -409,22 +524,30 @@ func (sf *syncCancelFunc) withCancelOnDisabled(
 		sf.CancelFunc = cancel
 
 		if !schedulerEnabledSetting.Get(sv) {
+			__antithesis_instrumentation__.Notify(70392)
 			cancel()
+		} else {
+			__antithesis_instrumentation__.Notify(70393)
 		}
+		__antithesis_instrumentation__.Notify(70391)
 
 		return ctx, func() {
+			__antithesis_instrumentation__.Notify(70394)
 			sf.Lock()
 			defer sf.Unlock()
 			cancel()
 			sf.CancelFunc = nil
 		}
 	}()
+	__antithesis_instrumentation__.Notify(70389)
 	defer cancel()
 	return f(ctx)
 }
 
 func (s *jobScheduler) runDaemon(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(70395)
 	_ = stopper.RunAsyncTask(ctx, "job-scheduler", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(70396)
 		ctx, cancel := stopper.WithCancelOnQuiesce(ctx)
 		defer cancel()
 
@@ -432,26 +555,44 @@ func (s *jobScheduler) runDaemon(ctx context.Context, stopper *stop.Stopper) {
 		log.Infof(ctx, "waiting %v before scheduled jobs daemon start", initialDelay)
 
 		if err := RegisterExecutorsMetrics(s.registry); err != nil {
+			__antithesis_instrumentation__.Notify(70398)
 			log.Errorf(ctx, "error registering executor metrics: %+v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(70399)
 		}
+		__antithesis_instrumentation__.Notify(70397)
 
 		whenDisabled := newCancelWhenDisabled(&s.Settings.SV)
 
 		for timer := time.NewTimer(initialDelay); ; timer.Reset(
 			getWaitPeriod(ctx, &s.Settings.SV, s.schedulerEnabledOnThisNode, jitter, s.TestingKnobs)) {
+			__antithesis_instrumentation__.Notify(70400)
 			select {
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(70401)
 				return
 			case <-timer.C:
-				if !schedulerEnabledSetting.Get(&s.Settings.SV) || !s.schedulerEnabledOnThisNode(ctx) {
+				__antithesis_instrumentation__.Notify(70402)
+				if !schedulerEnabledSetting.Get(&s.Settings.SV) || func() bool {
+					__antithesis_instrumentation__.Notify(70404)
+					return !s.schedulerEnabledOnThisNode(ctx) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(70405)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(70406)
 				}
+				__antithesis_instrumentation__.Notify(70403)
 
 				maxSchedules := schedulerMaxJobsPerIterationSetting.Get(&s.Settings.SV)
 				if err := whenDisabled.withCancelOnDisabled(ctx, &s.Settings.SV, func(ctx context.Context) error {
+					__antithesis_instrumentation__.Notify(70407)
 					return s.executeSchedules(ctx, maxSchedules)
 				}); err != nil {
+					__antithesis_instrumentation__.Notify(70408)
 					log.Errorf(ctx, "error executing schedules: %+v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(70409)
 				}
 			}
 		}
@@ -486,27 +627,30 @@ var schedulerScheduleExecutionTimeout = settings.RegisterDurationSetting(
 	30*time.Second,
 )
 
-// Returns the amount of time to wait before starting initial scan.
 func getInitialScanDelay(knobs base.ModuleTestingKnobs) time.Duration {
-	if k, ok := knobs.(*TestingKnobs); ok && k.SchedulerDaemonInitialScanDelay != nil {
+	__antithesis_instrumentation__.Notify(70410)
+	if k, ok := knobs.(*TestingKnobs); ok && func() bool {
+		__antithesis_instrumentation__.Notify(70412)
+		return k.SchedulerDaemonInitialScanDelay != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70413)
 		return k.SchedulerDaemonInitialScanDelay()
+	} else {
+		__antithesis_instrumentation__.Notify(70414)
 	}
+	__antithesis_instrumentation__.Notify(70411)
 
-	// By default, we'll wait between 2 and 5 minutes before performing initial scan.
 	return time.Minute * time.Duration(2+rand.Intn(3))
 }
 
-// Fastest pace for the scheduler.
 const minPacePeriod = 10 * time.Second
 
-// Frequency to recheck if the daemon is enabled.
 const recheckEnabledAfterPeriod = 5 * time.Minute
 
 var warnIfPaceTooLow = log.Every(time.Minute)
 
 type jitterFn func(duration time.Duration) time.Duration
 
-// Returns duration to wait before scanning system.scheduled_jobs.
 func getWaitPeriod(
 	ctx context.Context,
 	sv *settings.Values,
@@ -514,32 +658,57 @@ func getWaitPeriod(
 	jitter jitterFn,
 	knobs base.ModuleTestingKnobs,
 ) time.Duration {
-	if k, ok := knobs.(*TestingKnobs); ok && k.SchedulerDaemonScanDelay != nil {
+	__antithesis_instrumentation__.Notify(70415)
+	if k, ok := knobs.(*TestingKnobs); ok && func() bool {
+		__antithesis_instrumentation__.Notify(70420)
+		return k.SchedulerDaemonScanDelay != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70421)
 		return k.SchedulerDaemonScanDelay()
+	} else {
+		__antithesis_instrumentation__.Notify(70422)
 	}
+	__antithesis_instrumentation__.Notify(70416)
 
 	if !schedulerEnabledSetting.Get(sv) {
+		__antithesis_instrumentation__.Notify(70423)
 		return recheckEnabledAfterPeriod
+	} else {
+		__antithesis_instrumentation__.Notify(70424)
 	}
+	__antithesis_instrumentation__.Notify(70417)
 
-	if enabledOnThisNode != nil && !enabledOnThisNode(ctx) {
+	if enabledOnThisNode != nil && func() bool {
+		__antithesis_instrumentation__.Notify(70425)
+		return !enabledOnThisNode(ctx) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70426)
 		return recheckEnabledAfterPeriod
+	} else {
+		__antithesis_instrumentation__.Notify(70427)
 	}
+	__antithesis_instrumentation__.Notify(70418)
 
 	pace := schedulerPaceSetting.Get(sv)
 	if pace < minPacePeriod {
+		__antithesis_instrumentation__.Notify(70428)
 		if warnIfPaceTooLow.ShouldLog() {
+			__antithesis_instrumentation__.Notify(70430)
 			log.Warningf(ctx,
 				"job.scheduler.pace setting too low (%s < %s)", pace, minPacePeriod)
+		} else {
+			__antithesis_instrumentation__.Notify(70431)
 		}
+		__antithesis_instrumentation__.Notify(70429)
 		pace = minPacePeriod
+	} else {
+		__antithesis_instrumentation__.Notify(70432)
 	}
+	__antithesis_instrumentation__.Notify(70419)
 
 	return jitter(pace)
 }
 
-// StartJobSchedulerDaemon starts a daemon responsible for periodically scanning
-// system.scheduled_jobs table to find and executing eligible scheduled jobs.
 func StartJobSchedulerDaemon(
 	ctx context.Context,
 	stopper *stop.Stopper,
@@ -547,32 +716,67 @@ func StartJobSchedulerDaemon(
 	cfg *scheduledjobs.JobExecutionConfig,
 	env scheduledjobs.JobSchedulerEnv,
 ) {
+	__antithesis_instrumentation__.Notify(70433)
 	schedulerEnv := env
 	var daemonKnobs *TestingKnobs
 	if jobsKnobs, ok := cfg.TestingKnobs.(*TestingKnobs); ok {
+		__antithesis_instrumentation__.Notify(70439)
 		daemonKnobs = jobsKnobs
+	} else {
+		__antithesis_instrumentation__.Notify(70440)
 	}
+	__antithesis_instrumentation__.Notify(70434)
 
-	if daemonKnobs != nil && daemonKnobs.CaptureJobExecutionConfig != nil {
+	if daemonKnobs != nil && func() bool {
+		__antithesis_instrumentation__.Notify(70441)
+		return daemonKnobs.CaptureJobExecutionConfig != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70442)
 		daemonKnobs.CaptureJobExecutionConfig(cfg)
+	} else {
+		__antithesis_instrumentation__.Notify(70443)
 	}
-	if daemonKnobs != nil && daemonKnobs.JobSchedulerEnv != nil {
+	__antithesis_instrumentation__.Notify(70435)
+	if daemonKnobs != nil && func() bool {
+		__antithesis_instrumentation__.Notify(70444)
+		return daemonKnobs.JobSchedulerEnv != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70445)
 		schedulerEnv = daemonKnobs.JobSchedulerEnv
+	} else {
+		__antithesis_instrumentation__.Notify(70446)
 	}
+	__antithesis_instrumentation__.Notify(70436)
 
 	scheduler := newJobScheduler(cfg, schedulerEnv, registry)
 
-	if daemonKnobs != nil && daemonKnobs.TakeOverJobsScheduling != nil {
+	if daemonKnobs != nil && func() bool {
+		__antithesis_instrumentation__.Notify(70447)
+		return daemonKnobs.TakeOverJobsScheduling != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70448)
 		daemonKnobs.TakeOverJobsScheduling(
 			func(ctx context.Context, maxSchedules int64) error {
+				__antithesis_instrumentation__.Notify(70450)
 				return scheduler.executeSchedules(ctx, maxSchedules)
 			})
+		__antithesis_instrumentation__.Notify(70449)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(70451)
 	}
+	__antithesis_instrumentation__.Notify(70437)
 
-	if daemonKnobs != nil && daemonKnobs.CaptureJobScheduler != nil {
+	if daemonKnobs != nil && func() bool {
+		__antithesis_instrumentation__.Notify(70452)
+		return daemonKnobs.CaptureJobScheduler != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70453)
 		daemonKnobs.CaptureJobScheduler(scheduler)
+	} else {
+		__antithesis_instrumentation__.Notify(70454)
 	}
+	__antithesis_instrumentation__.Notify(70438)
 
 	scheduler.runDaemon(ctx, stopper)
 }

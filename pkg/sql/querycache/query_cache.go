@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package querycache
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math/rand"
@@ -18,11 +10,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// C is a query cache, keyed on SQL statement strings (which can contain
-// placeholders).
-//
-// A cache can be used by multiple threads in parallel; however each different
-// context must use its own Session.
 type C struct {
 	totalMem int64
 
@@ -31,59 +18,51 @@ type C struct {
 
 		availableMem int64
 
-		// Sentinel list entries. All entries are part of either the used or the
-		// free circular list. Any entry in the used list has a corresponding entry
-		// in the map. The used list is in MRU order.
 		used, free entry
 
-		// Map with an entry for each used entry.
 		m map[string]*entry
 	}
 }
 
-// avgCachedSize is used to preallocate the number of "slots" in the cache.
-// Specifically, the cache will be able to store at most
-// (<size> / avgCachedSize) queries, even if their memory usage is small.
 const avgCachedSize = 1024
 
-// We disallow very large queries from being added to the cache.
 const maxCachedSize = 128 * 1024
 
-// CachedData is the data associated with a cache entry.
 type CachedData struct {
 	SQL  string
 	Memo *memo.Memo
-	// PrepareMetadata is set for prepare queries. In this case the memo contains
-	// unassigned placeholders. For non-prepared queries, it is nil.
+
 	PrepareMetadata *PrepareMetadata
-	// IsCorrelated memoizes whether the query contained correlated
-	// subqueries during planning (prior to de-correlation).
+
 	IsCorrelated bool
 }
 
 func (cd *CachedData) memoryEstimate() int64 {
+	__antithesis_instrumentation__.Notify(563687)
 	res := int64(len(cd.SQL)) + cd.Memo.MemoryEstimate()
 	if cd.PrepareMetadata != nil {
+		__antithesis_instrumentation__.Notify(563689)
 		res += cd.PrepareMetadata.MemoryEstimate()
+	} else {
+		__antithesis_instrumentation__.Notify(563690)
 	}
+	__antithesis_instrumentation__.Notify(563688)
 	return res
 }
 
-// entry in a circular linked list.
 type entry struct {
 	CachedData
 
-	// Linked list pointers.
 	prev, next *entry
 }
 
-// clear resets the CachedData in the entry.
 func (e *entry) clear() {
+	__antithesis_instrumentation__.Notify(563691)
 	e.CachedData = CachedData{}
 }
 
-// remove removes the entry from the linked list it is part of.
 func (e *entry) remove() {
+	__antithesis_instrumentation__.Notify(563692)
 	e.prev.next = e.next
 	e.next.prev = e.prev
 	e.prev = nil
@@ -91,6 +70,7 @@ func (e *entry) remove() {
 }
 
 func (e *entry) insertAfter(a *entry) {
+	__antithesis_instrumentation__.Notify(563693)
 	b := a.next
 
 	e.prev = a
@@ -100,116 +80,150 @@ func (e *entry) insertAfter(a *entry) {
 	b.prev = e
 }
 
-// New creates a query cache of the given size.
 func New(memorySize int64) *C {
+	__antithesis_instrumentation__.Notify(563694)
 	if memorySize < avgCachedSize {
+		__antithesis_instrumentation__.Notify(563697)
 		memorySize = avgCachedSize
+	} else {
+		__antithesis_instrumentation__.Notify(563698)
 	}
+	__antithesis_instrumentation__.Notify(563695)
 	numEntries := memorySize / avgCachedSize
 	c := &C{totalMem: memorySize}
 	c.mu.availableMem = memorySize
 	c.mu.m = make(map[string]*entry, numEntries)
 	entries := make([]entry, numEntries)
-	// The used list is empty.
+
 	c.mu.used.next = &c.mu.used
 	c.mu.used.prev = &c.mu.used
-	// Make a linked list of entries, starting with the sentinel.
+
 	c.mu.free.next = &entries[0]
 	c.mu.free.prev = &entries[numEntries-1]
 	for i := range entries {
+		__antithesis_instrumentation__.Notify(563699)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(563701)
 			entries[i].prev = &entries[i-1]
 		} else {
+			__antithesis_instrumentation__.Notify(563702)
 			entries[i].prev = &c.mu.free
 		}
+		__antithesis_instrumentation__.Notify(563700)
 		if i+1 < len(entries) {
+			__antithesis_instrumentation__.Notify(563703)
 			entries[i].next = &entries[i+1]
 		} else {
+			__antithesis_instrumentation__.Notify(563704)
 			entries[i].next = &c.mu.free
 		}
 	}
+	__antithesis_instrumentation__.Notify(563696)
 	return c
 }
 
-// Find returns the entry for the given query, if it is in the cache.
-//
-// If any cached data needs to be updated, it must be done via Add. In
-// particular, PrepareMetadata in the returned CachedData must not be modified.
 func (c *C) Find(session *Session, sql string) (_ CachedData, ok bool) {
+	__antithesis_instrumentation__.Notify(563705)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	e := c.mu.m[sql]
 	if e == nil {
+		__antithesis_instrumentation__.Notify(563707)
 		session.registerMiss()
 		return CachedData{}, false
+	} else {
+		__antithesis_instrumentation__.Notify(563708)
 	}
+	__antithesis_instrumentation__.Notify(563706)
 	session.registerHit()
-	// Move the entry to the front of the used list.
+
 	e.remove()
 	e.insertAfter(&c.mu.used)
 	return e.CachedData, true
 }
 
-// Add adds an entry to the cache (possibly evicting some other entry). If the
-// cache already has a corresponding entry for d.SQL, it is updated.
-// Note: d.PrepareMetadata cannot be modified once this method is called.
 func (c *C) Add(session *Session, d *CachedData) {
+	__antithesis_instrumentation__.Notify(563709)
 	if session.highMissRatio() {
-		// If the recent miss ratio in this session is high, we want to avoid the
-		// overhead of moving things in and out of the cache. But we do want the
-		// cache to "recover" if the workload becomes cacheable again. So we still
-		// add the entry, but only once in a while.
+		__antithesis_instrumentation__.Notify(563713)
+
 		if session.r == nil {
-			session.r = rand.New(rand.NewSource(1 /* seed */))
+			__antithesis_instrumentation__.Notify(563715)
+			session.r = rand.New(rand.NewSource(1))
+		} else {
+			__antithesis_instrumentation__.Notify(563716)
 		}
+		__antithesis_instrumentation__.Notify(563714)
 		if session.r.Intn(100) != 0 {
+			__antithesis_instrumentation__.Notify(563717)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(563718)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(563719)
 	}
+	__antithesis_instrumentation__.Notify(563710)
 	mem := d.memoryEstimate()
-	if d.SQL == "" || mem > maxCachedSize || mem > c.totalMem {
+	if d.SQL == "" || func() bool {
+		__antithesis_instrumentation__.Notify(563720)
+		return mem > maxCachedSize == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(563721)
+		return mem > c.totalMem == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(563722)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(563723)
 	}
+	__antithesis_instrumentation__.Notify(563711)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	e, ok := c.mu.m[d.SQL]
 	if ok {
-		// The query already exists in the cache.
+		__antithesis_instrumentation__.Notify(563724)
+
 		e.remove()
 		c.mu.availableMem += e.memoryEstimate()
 	} else {
-		// Get an entry to use for this query.
+		__antithesis_instrumentation__.Notify(563725)
+
 		e = c.getEntry()
 		c.mu.m[d.SQL] = e
 	}
+	__antithesis_instrumentation__.Notify(563712)
 
 	e.CachedData = *d
 
-	// Evict more entries if necessary.
 	c.makeSpace(mem)
 	c.mu.availableMem -= mem
 
-	// Insert the entry at the front of the used list.
 	e.insertAfter(&c.mu.used)
 }
 
-// makeSpace evicts entries from the used list until we have enough free space.
 func (c *C) makeSpace(needed int64) {
+	__antithesis_instrumentation__.Notify(563726)
 	for c.mu.availableMem < needed {
-		// Evict entries as necessary, putting them in the free list.
+		__antithesis_instrumentation__.Notify(563727)
+
 		c.evict().insertAfter(&c.mu.free)
 	}
 }
 
-// Evicts the last item in the used list.
 func (c *C) evict() *entry {
+	__antithesis_instrumentation__.Notify(563728)
 	e := c.mu.used.prev
 	if e == &c.mu.used {
+		__antithesis_instrumentation__.Notify(563730)
 		panic("no more used entries")
+	} else {
+		__antithesis_instrumentation__.Notify(563731)
 	}
+	__antithesis_instrumentation__.Notify(563729)
 	e.remove()
 	c.mu.availableMem += e.memoryEstimate()
 	delete(c.mu.m, e.SQL)
@@ -218,25 +232,27 @@ func (c *C) evict() *entry {
 	return e
 }
 
-// getEntry returns an entry that can be used for adding a new query to the
-// cache. If there are free entries, one is returned; otherwise, a used entry is
-// evicted.
 func (c *C) getEntry() *entry {
+	__antithesis_instrumentation__.Notify(563732)
 	if e := c.mu.free.next; e != &c.mu.free {
+		__antithesis_instrumentation__.Notify(563734)
 		e.remove()
 		return e
+	} else {
+		__antithesis_instrumentation__.Notify(563735)
 	}
-	// No free entries, we must evict an entry.
+	__antithesis_instrumentation__.Notify(563733)
+
 	return c.evict()
 }
 
-// Clear removes all the entries from the cache.
 func (c *C) Clear() {
+	__antithesis_instrumentation__.Notify(563736)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Clear the map.
 	for sql, e := range c.mu.m {
+		__antithesis_instrumentation__.Notify(563737)
 
 		c.mu.availableMem += e.memoryEstimate()
 		delete(c.mu.m, sql)
@@ -246,95 +262,102 @@ func (c *C) Clear() {
 	}
 }
 
-// Purge removes the entry for the given query, if it exists.
 func (c *C) Purge(sql string) {
+	__antithesis_instrumentation__.Notify(563738)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if e := c.mu.m[sql]; e != nil {
+		__antithesis_instrumentation__.Notify(563739)
 		c.mu.availableMem += e.memoryEstimate()
 		delete(c.mu.m, sql)
 		e.clear()
 		e.remove()
 		e.insertAfter(&c.mu.free)
+	} else {
+		__antithesis_instrumentation__.Notify(563740)
 	}
 }
 
-// check performs various assertions on the internal consistency of the cache
-// structures. Used by testing code.
 func (c *C) check() {
+	__antithesis_instrumentation__.Notify(563741)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Verify that all entries in the used list have a corresponding entry in the
-	// map, and that the memory accounting adds up.
 	numUsed := 0
 	memUsed := int64(0)
 	for e := c.mu.used.next; e != &c.mu.used; e = e.next {
+		__antithesis_instrumentation__.Notify(563744)
 		numUsed++
 		memUsed += e.memoryEstimate()
 		if e.SQL == "" {
+			__antithesis_instrumentation__.Notify(563746)
 			panic(errors.AssertionFailedf("used entry with empty SQL"))
+		} else {
+			__antithesis_instrumentation__.Notify(563747)
 		}
+		__antithesis_instrumentation__.Notify(563745)
 		if me, ok := c.mu.m[e.SQL]; !ok {
+			__antithesis_instrumentation__.Notify(563748)
 			panic(errors.AssertionFailedf("used entry %s not in map", e.SQL))
-		} else if e != me {
-			panic(errors.AssertionFailedf("map entry for %s doesn't match used entry", e.SQL))
+		} else {
+			__antithesis_instrumentation__.Notify(563749)
+			if e != me {
+				__antithesis_instrumentation__.Notify(563750)
+				panic(errors.AssertionFailedf("map entry for %s doesn't match used entry", e.SQL))
+			} else {
+				__antithesis_instrumentation__.Notify(563751)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(563742)
 
 	if numUsed != len(c.mu.m) {
+		__antithesis_instrumentation__.Notify(563752)
 		panic(errors.AssertionFailedf("map length %d doesn't match used list size %d", len(c.mu.m), numUsed))
+	} else {
+		__antithesis_instrumentation__.Notify(563753)
 	}
+	__antithesis_instrumentation__.Notify(563743)
 
 	if memUsed+c.mu.availableMem != c.totalMem {
+		__antithesis_instrumentation__.Notify(563754)
 		panic(errors.AssertionFailedf(
 			"memory usage doesn't add up: used=%d available=%d total=%d",
 			memUsed, c.mu.availableMem, c.totalMem,
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(563755)
 	}
 }
 
-// Session stores internal information related to a single session. A session
-// cannot be used by multiple threads in parallel.
 type Session struct {
-	// missRatioMMA is a running average of the recent miss ratio. This is a
-	// Modified Moving Average, which is an exponential moving average with factor
-	// 1/N. See:
-	//   https://en.wikipedia.org/wiki/Moving_average#Modified_moving_average.
-	//
-	// To avoid unnecessary floating point operations, the value is scaled by
-	// mmaScale and stored as an integer (specifically, a value of mmaScale means
-	// a 100% miss ratio).
 	missRatioMMA int64
 
-	// Initialized lazily as needed.
 	r *rand.Rand
 }
 
-// mmaN is the N factor and is chosen so that the miss ratio doesn't reach the
-// threshold until we've seen on the order of a thousand queries (we don't want
-// to reach the limit before we even get a chance to fill up the cache).
 const mmaN = 1024
 const mmaScale = 1000000000
 
-// Init initializes or resets a Session.
 func (s *Session) Init() {
+	__antithesis_instrumentation__.Notify(563756)
 	s.missRatioMMA = 0
 	s.r = nil
 }
 
 func (s *Session) registerHit() {
+	__antithesis_instrumentation__.Notify(563757)
 	s.missRatioMMA = s.missRatioMMA * (mmaN - 1) / mmaN
 }
 
 func (s *Session) registerMiss() {
+	__antithesis_instrumentation__.Notify(563758)
 	s.missRatioMMA = (s.missRatioMMA*(mmaN-1) + mmaScale) / mmaN
 }
 
-// highMissRatio returns true if the recent average miss ratio is above a
-// certain threshold (80%).
 func (s *Session) highMissRatio() bool {
+	__antithesis_instrumentation__.Notify(563759)
 	const threshold = mmaScale * 80 / 100
 	return s.missRatioMMA > threshold
 }

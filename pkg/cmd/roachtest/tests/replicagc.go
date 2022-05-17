@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,12 +20,15 @@ import (
 )
 
 func registerReplicaGC(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(50177)
 	for _, restart := range []bool{true, false} {
+		__antithesis_instrumentation__.Notify(50178)
 		r.Add(registry.TestSpec{
 			Name:    fmt.Sprintf("replicagc-changed-peers/restart=%t", restart),
 			Owner:   registry.OwnerKV,
 			Cluster: r.MakeClusterSpec(6),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(50179)
 				runReplicaGCChangedPeers(ctx, t, c, restart)
 			},
 		})
@@ -42,23 +37,17 @@ func registerReplicaGC(r registry.Registry) {
 
 var deadNodeAttr = "deadnode"
 
-// runReplicaGCChangedPeers checks that when a node has all of its replicas
-// taken away in absentia restarts, without it being able to talk to any of its
-// old peers, it will still replicaGC its (now stale) replicas quickly.
-//
-// It does so by setting up a six node cluster, but initially with just three
-// live nodes. After adding a bit of data into the system and waiting for full
-// replication, it downs a node and adds the remaining three nodes. It then
-// attempts to decommission the original three nodes in order to move the
-// replicas off of them, and after having done so, it recommissions the downed
-// node. It expects the downed node to discover the new replica placement and gc
-// its replicas.
 func runReplicaGCChangedPeers(
 	ctx context.Context, t test.Test, c cluster.Cluster, withRestart bool,
 ) {
+	__antithesis_instrumentation__.Notify(50180)
 	if c.Spec().NodeCount != 6 {
+		__antithesis_instrumentation__.Notify(50186)
 		t.Fatal("test needs to be run with 6 nodes")
+	} else {
+		__antithesis_instrumentation__.Notify(50187)
 	}
+	__antithesis_instrumentation__.Notify(50181)
 
 	c.Put(ctx, t.Cockroach(), "./cockroach")
 	c.Put(ctx, t.DeprecatedWorkload(), "./workload", c.Node(1))
@@ -70,21 +59,19 @@ func runReplicaGCChangedPeers(
 	t.Status("waiting for full replication")
 	h.waitForFullReplication(ctx)
 
-	// Fill in a bunch of data.
 	c.Run(ctx, c.Node(1), "./workload init kv {pgurl:1} --splits 100")
 
-	// Kill the third node so it won't know that all of its replicas are moved
-	// elsewhere (we don't use the first because that's what roachprod will
-	// join new nodes to).
 	c.Stop(ctx, t.L(), option.DefaultStopOpts(), c.Node(3))
 
-	// Start three new nodes that will take over all data.
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), settings, c.Range(4, 6))
 
-	// Decommission n1-3, with n3 in absentia, moving the replicas to n4-6.
 	if err := h.decommission(ctx, c.Range(1, 3), 2, "--wait=none"); err != nil {
+		__antithesis_instrumentation__.Notify(50188)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(50189)
 	}
+	__antithesis_instrumentation__.Notify(50182)
 
 	t.Status("waiting for zero replicas on n1")
 	h.waitForZeroReplicas(ctx, 1)
@@ -92,63 +79,45 @@ func runReplicaGCChangedPeers(
 	t.Status("waiting for zero replicas on n2")
 	h.waitForZeroReplicas(ctx, 2)
 
-	// Wait for the replica count on n3 to also drop to zero. This makes the test
-	// "test more" but also it prevents the test from failing spuriously, as later
-	// in the test any system ranges still on n3 would have a replication factor
-	// of five applied to them, and they would be unable to move off n3 as n1 and
-	// n2 will be down at that point. For details, see:
-	//
-	// https://github.com/cockroachdb/cockroach/issues/67910#issuecomment-884856356
 	t.Status("waiting for zero replicas on n3")
 	waitForZeroReplicasOnN3(ctx, t, c.Conn(ctx, t.L(), 1))
 
-	// Stop the remaining two old nodes, no replicas remaining there.
 	c.Stop(ctx, t.L(), option.DefaultStopOpts(), c.Range(1, 2))
 
-	// Set up zone configs to isolate out nodes with the `deadNodeAttr`
-	// attribute. We'll later start n3 using this attribute to test GC replica
-	// count.
-	h.isolateDeadNodes(ctx, 4) // Run this on n4 (it's live, that's all that matters).
+	h.isolateDeadNodes(ctx, 4)
 
-	// Recommission n3 so that when it starts again, it doesn't even know that
-	// it was marked for decommissioning (which basically let the replica
-	// GC queue run wild). We also recommission the other nodes, for if we didn't,
-	// n3 would learn that they were marked for decommissioning, and would try
-	// to perform replication changes on its ranges, which acquires the lease,
-	// which hits the eager GC path since the Raft groups get initialized.
 	if err := h.recommission(ctx, c.Range(1, 3), 4); err != nil {
+		__antithesis_instrumentation__.Notify(50190)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(50191)
 	}
+	__antithesis_instrumentation__.Notify(50183)
 
 	if withRestart {
-		// Restart the remainder of the cluster. This makes sure there are lots of
-		// dormant ranges but also and importantly removes all trace of n1 and n2
-		// from the Gossip network. If n3 upon restarting learns that n1 and n2
-		// used to exist, the replicate queue wakes up a number of ranges due to
-		// rebalancing and repair attempts. Lacking this information it does not
-		// do that within the store dead interval (5m, i.e. too long for this
-		// test).
+		__antithesis_instrumentation__.Notify(50192)
+
 		c.Stop(ctx, t.L(), option.DefaultStopOpts(), c.Range(4, 6))
 		c.Start(ctx, t.L(), option.DefaultStartOpts(), settings, c.Range(4, 6))
+	} else {
+		__antithesis_instrumentation__.Notify(50193)
 	}
+	__antithesis_instrumentation__.Notify(50184)
 
-	// Restart n3. We have to manually tell it where to find a new node or it
-	// won't be able to connect. Give it the deadNodeAttr attribute that we've
-	// used as a negative constraint for "everything", which should prevent new
-	// replicas from being added to it.
 	internalAddrs, err := c.InternalAddr(ctx, t.L(), c.Node(4))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(50194)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(50195)
 	}
+	__antithesis_instrumentation__.Notify(50185)
 	startOpts := option.DefaultStartOpts()
 	startOpts.RoachprodOpts.ExtraArgs = append(startOpts.RoachprodOpts.ExtraArgs, "--join="+internalAddrs[0], "--attrs="+deadNodeAttr, "--vmodule=raft=5,replicate_queue=5,allocator=5")
 	c.Start(ctx, t.L(), startOpts, settings, c.Node(3))
 
-	// Loop for two metric sample intervals (10s) to make sure n3 doesn't see any
-	// underreplicated ranges.
 	h.waitForZeroReplicas(ctx, 3)
 
-	// Restart the remaining nodes to satisfy the dead node detector.
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.Range(1, 2))
 }
 
@@ -158,131 +127,186 @@ type replicagcTestHelper struct {
 }
 
 func (h *replicagcTestHelper) waitForFullReplication(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(50196)
 	db := h.c.Conn(ctx, h.t.L(), 1)
 	defer func() {
+		__antithesis_instrumentation__.Notify(50198)
 		_ = db.Close()
 	}()
+	__antithesis_instrumentation__.Notify(50197)
 
 	for {
+		__antithesis_instrumentation__.Notify(50199)
 		var fullReplicated bool
 		if err := db.QueryRow(
-			// Check if all ranges are fully replicated.
+
 			"SELECT min(array_length(replicas, 1)) >= 3 FROM crdb_internal.ranges",
 		).Scan(&fullReplicated); err != nil {
+			__antithesis_instrumentation__.Notify(50202)
 			h.t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(50203)
 		}
+		__antithesis_instrumentation__.Notify(50200)
 		if fullReplicated {
+			__antithesis_instrumentation__.Notify(50204)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(50205)
 		}
+		__antithesis_instrumentation__.Notify(50201)
 		time.Sleep(time.Second)
 	}
 }
 
 func (h *replicagcTestHelper) waitForZeroReplicas(ctx context.Context, targetNode int) {
+	__antithesis_instrumentation__.Notify(50206)
 	db := h.c.Conn(ctx, h.t.L(), targetNode)
 	defer func() {
+		__antithesis_instrumentation__.Notify(50209)
 		_ = db.Close()
 	}()
+	__antithesis_instrumentation__.Notify(50207)
 
 	var n = 0
 	for tBegin := timeutil.Now(); timeutil.Since(tBegin) < 5*time.Minute; time.Sleep(5 * time.Second) {
+		__antithesis_instrumentation__.Notify(50210)
 		n = h.numReplicas(ctx, db, targetNode)
 		if n == 0 {
+			__antithesis_instrumentation__.Notify(50211)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(50212)
 		}
 	}
+	__antithesis_instrumentation__.Notify(50208)
 	if n != 0 {
+		__antithesis_instrumentation__.Notify(50213)
 		h.t.Fatalf("replica count on n%d didn't drop to zero: %d", targetNode, n)
+	} else {
+		__antithesis_instrumentation__.Notify(50214)
 	}
 }
 
-// numReplicas returns the number of replicas found on targetNode, provided a db
-// connected to the targetNode.
 func (h *replicagcTestHelper) numReplicas(ctx context.Context, db *gosql.DB, targetNode int) int {
+	__antithesis_instrumentation__.Notify(50215)
 	var n int
 	if err := db.QueryRowContext(
 		ctx,
 		`SELECT value FROM crdb_internal.node_metrics WHERE name = 'replicas'`,
 	).Scan(&n); err != nil {
+		__antithesis_instrumentation__.Notify(50217)
 		h.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(50218)
 	}
+	__antithesis_instrumentation__.Notify(50216)
 	h.t.L().Printf("found %d replicas found on n%d\n", n, targetNode)
 	return n
 }
 
-// decommission decommissions the given targetNodes, running the process
-// through the specified runNode.
 func (h *replicagcTestHelper) decommission(
 	ctx context.Context, targetNodes option.NodeListOption, runNode int, verbs ...string,
 ) error {
+	__antithesis_instrumentation__.Notify(50219)
 	args := []string{"node", "decommission"}
 	args = append(args, verbs...)
 
 	for _, target := range targetNodes {
+		__antithesis_instrumentation__.Notify(50221)
 		args = append(args, strconv.Itoa(target))
 	}
+	__antithesis_instrumentation__.Notify(50220)
 	_, err := execCLI(ctx, h.t, h.c, runNode, args...)
 	return err
 }
 
-// recommission recommissions the given targetNodes, running the process
-// through the specified runNode.
 func (h *replicagcTestHelper) recommission(
 	ctx context.Context, targetNodes option.NodeListOption, runNode int, verbs ...string,
 ) error {
+	__antithesis_instrumentation__.Notify(50222)
 	args := []string{"node", "recommission"}
 	args = append(args, verbs...)
 	for _, target := range targetNodes {
+		__antithesis_instrumentation__.Notify(50224)
 		args = append(args, strconv.Itoa(target))
 	}
+	__antithesis_instrumentation__.Notify(50223)
 	_, err := execCLI(ctx, h.t, h.c, runNode, args...)
 	return err
 }
 
-// isolateDeadNodes sets up the zone configs so as to avoid replica placement to
-// nodes started with deadNodeAttr. This can then be used as a negative
-// constraint for everything.
 func (h *replicagcTestHelper) isolateDeadNodes(ctx context.Context, runNode int) {
+	__antithesis_instrumentation__.Notify(50225)
 	db := h.c.Conn(ctx, h.t.L(), runNode)
 	defer func() {
+		__antithesis_instrumentation__.Notify(50227)
 		_ = db.Close()
 	}()
+	__antithesis_instrumentation__.Notify(50226)
 
 	for _, change := range []string{
 		"RANGE default", "RANGE meta", "RANGE system", "RANGE liveness", "DATABASE system", "TABLE system.jobs",
 	} {
+		__antithesis_instrumentation__.Notify(50228)
 		stmt := `ALTER ` + change + ` CONFIGURE ZONE = 'constraints: {"-` + deadNodeAttr + `"}'`
 		h.t.L().Printf(stmt + "\n")
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			__antithesis_instrumentation__.Notify(50229)
 			h.t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(50230)
 		}
 	}
 }
 
 func waitForZeroReplicasOnN3(ctx context.Context, t test.Test, db *gosql.DB) {
+	__antithesis_instrumentation__.Notify(50231)
 	if err := retry.ForDuration(5*time.Minute, func() error {
+		__antithesis_instrumentation__.Notify(50232)
 		const q = `select range_id, replicas from crdb_internal.ranges_no_leases where replicas @> ARRAY[3];`
 		rows, err := db.QueryContext(ctx, q)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(50237)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(50238)
 		}
+		__antithesis_instrumentation__.Notify(50233)
 		m := make(map[int64]string)
 		for rows.Next() {
+			__antithesis_instrumentation__.Notify(50239)
 			var rangeID int64
 			var replicas string
 			if err := rows.Scan(&rangeID, &replicas); err != nil {
+				__antithesis_instrumentation__.Notify(50241)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(50242)
 			}
+			__antithesis_instrumentation__.Notify(50240)
 			m[rangeID] = replicas
 		}
+		__antithesis_instrumentation__.Notify(50234)
 		if err := rows.Err(); err != nil {
+			__antithesis_instrumentation__.Notify(50243)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(50244)
 		}
+		__antithesis_instrumentation__.Notify(50235)
 		if len(m) == 0 {
+			__antithesis_instrumentation__.Notify(50245)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(50246)
 		}
+		__antithesis_instrumentation__.Notify(50236)
 		return errors.Errorf("ranges remained on n3 (according to meta2): %+v", m)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(50247)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(50248)
 	}
 }

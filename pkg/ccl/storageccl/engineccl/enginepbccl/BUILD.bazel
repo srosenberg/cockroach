@@ -10,7 +10,9 @@ proto_library(
     ],
     strip_import_prefix = "/pkg",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto:gogo_proto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto:gogo_proto",
+    ],
 )
 
 go_proto_library(
@@ -19,7 +21,9 @@ go_proto_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/ccl/storageccl/engineccl/enginepbccl",
     proto = ":enginepbccl_proto",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto",
+    ],
 )
 
 go_library(
@@ -27,4 +31,5 @@ go_library(
     embed = [":enginepbccl_go_proto"],
     importpath = "github.com/cockroachdb/cockroach/pkg/ccl/storageccl/engineccl/enginepbccl",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

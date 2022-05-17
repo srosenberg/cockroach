@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package physicalplan
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -24,24 +16,19 @@ import (
 
 const avgRangesPerNode = 5
 
-// fakeSpanResolver is a SpanResolver which splits spans and distributes them to
-// nodes randomly. Each Seek() call generates a random distribution with
-// expected avgRangesPerNode ranges for each node.
 type fakeSpanResolver struct {
 	nodes []*roachpb.NodeDescriptor
 }
 
 var _ SpanResolver = &fakeSpanResolver{}
 
-// NewFakeSpanResolver creates a fake span resolver.
 func NewFakeSpanResolver(nodes []*roachpb.NodeDescriptor) SpanResolver {
+	__antithesis_instrumentation__.Notify(562121)
 	return &fakeSpanResolver{
 		nodes: nodes,
 	}
 }
 
-// fakeRange indicates that a range between startKey and endKey is owned by a
-// certain node.
 type fakeRange struct {
 	startKey roachpb.Key
 	endKey   roachpb.Key
@@ -50,168 +37,198 @@ type fakeRange struct {
 
 type fakeSpanResolverIterator struct {
 	fsr *fakeSpanResolver
-	// the fake span resolver needs to perform scans as part of Seek(); these
-	// scans are performed outside of the context of a txn and with a weak
-	// isolation so that using the resolver doesn't introduce conflicts.
+
 	db  *kv.DB
 	err error
 
-	// ranges are ordered by the key; the start key of the first one is the
-	// beginning of the current range and the end key of the last one is the end
-	// of the queried span.
 	ranges []fakeRange
 }
 
-// NewSpanResolverIterator is part of the SpanResolver interface.
 func (fsr *fakeSpanResolver) NewSpanResolverIterator(txn *kv.Txn) SpanResolverIterator {
+	__antithesis_instrumentation__.Notify(562122)
 	return &fakeSpanResolverIterator{fsr: fsr, db: txn.DB()}
 }
 
-// Seek is part of the SpanResolverIterator interface. Each Seek call generates
-// a random distribution of the given span.
 func (fit *fakeSpanResolverIterator) Seek(
 	ctx context.Context, span roachpb.Span, scanDir kvcoord.ScanDirection,
 ) {
-	// Set aside the last range from the previous seek.
+	__antithesis_instrumentation__.Notify(562123)
+
 	var prevRange fakeRange
 	if fit.ranges != nil {
+		__antithesis_instrumentation__.Notify(562132)
 		prevRange = fit.ranges[len(fit.ranges)-1]
+	} else {
+		__antithesis_instrumentation__.Notify(562133)
 	}
+	__antithesis_instrumentation__.Notify(562124)
 
-	// Scan the range and keep a list of all potential split keys. Do so using a
-	// read_uncommitted scan outside of the txn to avoid undesired side effects
-	// like breaking tracing and blocking on locks.
 	var b kv.Batch
 	b.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 	b.Scan(span.Key, span.EndKey)
 	err := fit.db.Run(ctx, &b)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(562134)
 		log.Errorf(ctx, "error in fake span resolver scan: %s", err)
 		fit.err = err
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(562135)
 	}
+	__antithesis_instrumentation__.Notify(562125)
 	kvs := b.Results[0].Rows
 
-	// Populate splitKeys with potential split keys; all keys are strictly
-	// between span.Key and span.EndKey.
 	var splitKeys []roachpb.Key
 	lastKey := span.Key
 	for _, kv := range kvs {
-		// Extract the key for the row.
+		__antithesis_instrumentation__.Notify(562136)
+
 		splitKey, err := keys.EnsureSafeSplitKey(kv.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(562138)
 			fit.err = err
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(562139)
 		}
-		if !splitKey.Equal(lastKey) && span.ContainsKey(splitKey) {
+		__antithesis_instrumentation__.Notify(562137)
+		if !splitKey.Equal(lastKey) && func() bool {
+			__antithesis_instrumentation__.Notify(562140)
+			return span.ContainsKey(splitKey) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(562141)
 			splitKeys = append(splitKeys, splitKey)
 			lastKey = splitKey
+		} else {
+			__antithesis_instrumentation__.Notify(562142)
 		}
 	}
+	__antithesis_instrumentation__.Notify(562126)
 
-	// Generate fake splits. The number of splits is selected randomly between 0
-	// and a maximum value; we want to generate
-	//   x = #nodes * avgRangesPerNode
-	// splits on average, so the maximum number is 2x:
-	//   Expected[ rand(2x+1) ] = (0 + 1 + 2 + .. + 2x) / (2x + 1) = x.
 	maxSplits := 2 * len(fit.fsr.nodes) * avgRangesPerNode
 	if maxSplits > len(splitKeys) {
+		__antithesis_instrumentation__.Notify(562143)
 		maxSplits = len(splitKeys)
+	} else {
+		__antithesis_instrumentation__.Notify(562144)
 	}
+	__antithesis_instrumentation__.Notify(562127)
 	numSplits := rand.Intn(maxSplits + 1)
 
-	// Use Robert Floyd's algorithm to generate numSplits distinct integers
-	// between 0 and len(splitKeys), just because it's so cool!
 	chosen := make(map[int]struct{})
 	for j := len(splitKeys) - numSplits; j < len(splitKeys); j++ {
+		__antithesis_instrumentation__.Notify(562145)
 		t := rand.Intn(j + 1)
 		if _, alreadyChosen := chosen[t]; !alreadyChosen {
-			// Insert T.
+			__antithesis_instrumentation__.Notify(562146)
+
 			chosen[t] = struct{}{}
 		} else {
-			// Insert J.
+			__antithesis_instrumentation__.Notify(562147)
+
 			chosen[j] = struct{}{}
 		}
 	}
+	__antithesis_instrumentation__.Notify(562128)
 
 	splits := make([]roachpb.Key, 0, numSplits+2)
 	splits = append(splits, span.Key)
 	for i := range splitKeys {
+		__antithesis_instrumentation__.Notify(562148)
 		if _, ok := chosen[i]; ok {
+			__antithesis_instrumentation__.Notify(562149)
 			splits = append(splits, splitKeys[i])
+		} else {
+			__antithesis_instrumentation__.Notify(562150)
 		}
 	}
+	__antithesis_instrumentation__.Notify(562129)
 	splits = append(splits, span.EndKey)
 
 	if scanDir == kvcoord.Descending {
-		// Reverse the order of the splits.
+		__antithesis_instrumentation__.Notify(562151)
+
 		for i := 0; i < len(splits)/2; i++ {
+			__antithesis_instrumentation__.Notify(562152)
 			j := len(splits) - i - 1
 			splits[i], splits[j] = splits[j], splits[i]
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(562153)
 	}
+	__antithesis_instrumentation__.Notify(562130)
 
-	// Build ranges corresponding to the fake splits and assign them random
-	// replicas.
 	fit.ranges = make([]fakeRange, len(splits)-1)
 	for i := range fit.ranges {
+		__antithesis_instrumentation__.Notify(562154)
 		fit.ranges[i] = fakeRange{
 			startKey: splits[i],
 			endKey:   splits[i+1],
 			replica:  fit.fsr.nodes[rand.Intn(len(fit.fsr.nodes))],
 		}
 	}
+	__antithesis_instrumentation__.Notify(562131)
 
-	// Check for the case where the last range of the previous Seek() describes
-	// the same row as this seek. In this case we'll assign the same replica so we
-	// don't "split" column families of the same row across different replicas.
 	if prevRange.endKey != nil {
+		__antithesis_instrumentation__.Notify(562155)
 		prefix, err := keys.EnsureSafeSplitKey(span.Key)
-		// EnsureSafeSplitKey returns an error for keys which do not specify a
-		// column family. In this case we don't need to worry about splitting the
-		// row.
-		if err == nil && len(prevRange.endKey) >= len(prefix) &&
-			bytes.Equal(prefix, prevRange.endKey[:len(prefix)]) {
+
+		if err == nil && func() bool {
+			__antithesis_instrumentation__.Notify(562156)
+			return len(prevRange.endKey) >= len(prefix) == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(562157)
+			return bytes.Equal(prefix, prevRange.endKey[:len(prefix)]) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(562158)
 			fit.ranges[0].replica = prevRange.replica
+		} else {
+			__antithesis_instrumentation__.Notify(562159)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(562160)
 	}
 }
 
-// Valid is part of the SpanResolverIterator interface.
 func (fit *fakeSpanResolverIterator) Valid() bool {
+	__antithesis_instrumentation__.Notify(562161)
 	return fit.err == nil
 }
 
-// Error is part of the SpanResolverIterator interface.
 func (fit *fakeSpanResolverIterator) Error() error {
+	__antithesis_instrumentation__.Notify(562162)
 	return fit.err
 }
 
-// NeedAnother is part of the SpanResolverIterator interface.
 func (fit *fakeSpanResolverIterator) NeedAnother() bool {
+	__antithesis_instrumentation__.Notify(562163)
 	return len(fit.ranges) > 1
 }
 
-// Next is part of the SpanResolverIterator interface.
 func (fit *fakeSpanResolverIterator) Next(_ context.Context) {
+	__antithesis_instrumentation__.Notify(562164)
 	if len(fit.ranges) <= 1 {
+		__antithesis_instrumentation__.Notify(562166)
 		panic("Next called with no more ranges")
+	} else {
+		__antithesis_instrumentation__.Notify(562167)
 	}
+	__antithesis_instrumentation__.Notify(562165)
 	fit.ranges = fit.ranges[1:]
 }
 
-// Desc is part of the SpanResolverIterator interface.
 func (fit *fakeSpanResolverIterator) Desc() roachpb.RangeDescriptor {
+	__antithesis_instrumentation__.Notify(562168)
 	return roachpb.RangeDescriptor{
 		StartKey: roachpb.RKey(fit.ranges[0].startKey),
 		EndKey:   roachpb.RKey(fit.ranges[0].endKey),
 	}
 }
 
-// ReplicaInfo is part of the SpanResolverIterator interface.
 func (fit *fakeSpanResolverIterator) ReplicaInfo(
 	_ context.Context,
 ) (roachpb.ReplicaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(562169)
 	n := fit.ranges[0].replica
 	return roachpb.ReplicaDescriptor{NodeID: n.NodeID}, nil
 }

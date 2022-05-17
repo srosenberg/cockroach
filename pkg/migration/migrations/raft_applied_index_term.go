@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package migrations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -24,57 +16,56 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// defaultPageSize controls how many ranges are paged in by default when
-// iterating through all ranges in a cluster during any given migration. We
-// pulled this number out of thin air(-ish). Let's consider a cluster with 50k
-// ranges, with each range taking ~200ms. We're being somewhat conservative with
-// the duration, but in a wide-area cluster with large hops between the manager
-// and the replicas, it could be true. Here's how long it'll take for various
-// block sizes:
-//
-//   page size of 1   ~ 2h 46m
-//   page size of 50  ~ 3m 20s
-//   page size of 200 ~ 50s
 const defaultPageSize = 200
 
 func raftAppliedIndexTermMigration(
 	ctx context.Context, cv clusterversion.ClusterVersion, deps migration.SystemDeps, _ *jobs.Job,
 ) error {
+	__antithesis_instrumentation__.Notify(128563)
 	var batchIdx, numMigratedRanges int
-	init := func() { batchIdx, numMigratedRanges = 1, 0 }
+	init := func() { __antithesis_instrumentation__.Notify(128566); batchIdx, numMigratedRanges = 1, 0 }
+	__antithesis_instrumentation__.Notify(128564)
 	if err := deps.Cluster.IterateRangeDescriptors(ctx, defaultPageSize, init, func(descriptors ...roachpb.RangeDescriptor) error {
+		__antithesis_instrumentation__.Notify(128567)
 		for _, desc := range descriptors {
-			// NB: This is a bit of a wart. We want to reach the first range,
-			// but we can't address the (local) StartKey. However, keys.LocalMax
-			// is on r1, so we'll just use that instead to target r1.
+			__antithesis_instrumentation__.Notify(128569)
+
 			start, end := desc.StartKey, desc.EndKey
 			if bytes.Compare(desc.StartKey, keys.LocalMax) < 0 {
+				__antithesis_instrumentation__.Notify(128571)
 				start, _ = keys.Addr(keys.LocalMax)
+			} else {
+				__antithesis_instrumentation__.Notify(128572)
 			}
+			__antithesis_instrumentation__.Notify(128570)
 			if err := deps.DB.Migrate(ctx, start, end, cv.Version); err != nil {
+				__antithesis_instrumentation__.Notify(128573)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(128574)
 			}
 		}
+		__antithesis_instrumentation__.Notify(128568)
 
-		// TODO(irfansharif): Instead of logging this to the debug log, we
-		// should insert these into a `system.migrations` table for external
-		// observability.
 		numMigratedRanges += len(descriptors)
 		log.Infof(ctx, "[batch %d/??] migrated %d ranges", batchIdx, numMigratedRanges)
 		batchIdx++
 
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(128575)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128576)
 	}
+	__antithesis_instrumentation__.Notify(128565)
 
 	log.Infof(ctx, "[batch %d/%d] migrated %d ranges", batchIdx, batchIdx, numMigratedRanges)
 
-	// Make sure that all stores have synced. Given we're a below-raft
-	// migrations, this ensures that the applied state is flushed to disk.
 	req := &serverpb.SyncAllEnginesRequest{}
 	op := "flush-stores"
 	return deps.Cluster.ForEveryNode(ctx, op, func(ctx context.Context, client serverpb.MigrationClient) error {
+		__antithesis_instrumentation__.Notify(128577)
 		_, err := client.SyncAllEngines(ctx, req)
 		return err
 	})
@@ -83,17 +74,13 @@ func raftAppliedIndexTermMigration(
 func postRaftAppliedIndexTermMigration(
 	ctx context.Context, cv clusterversion.ClusterVersion, deps migration.SystemDeps, _ *jobs.Job,
 ) error {
-	// TODO(sumeer): this is copied from postTruncatedStateMigration. In
-	// comparison, postSeparatedIntentsMigration iterated over ranges and issues
-	// a noop below-raft migration. I am not clear on why there is a difference.
-	// Get this clarified.
+	__antithesis_instrumentation__.Notify(128578)
 
-	// Purge all replicas that haven't been migrated to use the unreplicated
-	// truncated state and the range applied state.
 	truncStateVersion := clusterversion.ByKey(clusterversion.AddRaftAppliedIndexTermMigration)
 	req := &serverpb.PurgeOutdatedReplicasRequest{Version: &truncStateVersion}
 	op := fmt.Sprintf("purge-outdated-replicas=%s", req.Version)
 	return deps.Cluster.ForEveryNode(ctx, op, func(ctx context.Context, client serverpb.MigrationClient) error {
+		__antithesis_instrumentation__.Notify(128579)
 		_, err := client.PurgeOutdatedReplicas(ctx, req)
 		return err
 	})

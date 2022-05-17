@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,6 +15,7 @@ import (
 )
 
 func registerInconsistency(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(48526)
 	r.Add(registry.TestSpec{
 		Name:    "inconsistency",
 		Owner:   registry.OwnerKV,
@@ -32,6 +25,7 @@ func registerInconsistency(r registry.Registry) {
 }
 
 func runInconsistency(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(48527)
 	startOps := option.DefaultStartOpts()
 
 	nodes := c.Range(1, 3)
@@ -39,25 +33,17 @@ func runInconsistency(ctx context.Context, t test.Test, c cluster.Cluster) {
 	c.Start(ctx, t.L(), startOps, install.MakeClusterSettings(), nodes)
 
 	{
+		__antithesis_instrumentation__.Notify(48537)
 		db := c.Conn(ctx, t.L(), 1)
-		// Disable consistency checks. We're going to be introducing an
-		// inconsistency and wish for it to be detected when we've set up the test
-		// to expect it.
+
 		_, err := db.ExecContext(ctx, `SET CLUSTER SETTING server.consistency_check.interval = '0'`)
 		require.NoError(t, err)
 		err = WaitFor3XReplication(ctx, t, db)
 		require.NoError(t, err)
 		_, db = db.Close(), nil
 	}
+	__antithesis_instrumentation__.Notify(48528)
 
-	// Stop the cluster "gracefully" by letting each node initiate a "hard
-	// shutdown" This will prevent any potential problems in which data isn't
-	// synced. It seems (remotely) possible (see #64602) that without this, we
-	// sometimes let the inconsistency win by ending up replicating it to all
-	// nodes. This has not been conclusively proven, though.
-	//
-	// First SIGINT initiates graceful shutdown, second one initiates a
-	// "hard" (i.e. don't shed leases, etc) shutdown.
 	stopOpts := option.DefaultStopOpts()
 	stopOpts.RoachprodOpts.Wait = false
 	stopOpts.RoachprodOpts.Sig = 2
@@ -65,98 +51,104 @@ func runInconsistency(ctx context.Context, t test.Test, c cluster.Cluster) {
 	stopOpts.RoachprodOpts.Wait = true
 	c.Stop(ctx, t.L(), stopOpts, nodes)
 
-	// Write an extraneous transaction record to n1's engine. This means n1 should
-	// ultimately be terminated by the consistency checker (as the other two nodes
-	// agree).
-	//
-	// Raw KVs created via:
-	//
-	// func TestFoo(t *testing.T) { // pkg/storage/batch_test.go
-	//   t.Errorf("hex:%x", EncodeKey(MVCCKey{
-	//     Key: keys.TransactionKey(keys.LocalMax, uuid.Nil),
-	//   }))
-	//   for i := 0; i < 3; i++ {
-	//     var m enginepb.MVCCMetadata
-	//     var txn enginepb.TxnMeta
-	//     txn.Key = []byte(fmt.Sprintf("fake transaction %d", i))
-	//     var err error
-	//     m.RawBytes, err = protoutil.Marshal(&txn)
-	//     require.NoError(t, err)
-	//     data, err := protoutil.Marshal(&m)
-	//     require.NoError(t, err)
-	//     t.Error(fmt.Sprintf("hex:%x", data))
-	//   }
-	// }
 	c.Run(ctx, c.Node(1), "./cockroach debug pebble db set {store-dir} "+
 		"hex:016b1202000174786e2d0000000000000000000000000000000000 "+
 		"hex:120408001000180020002800322a0a10000000000000000000000000000000001a1266616b65207472616e73616374696f6e20302a004a00")
 
 	m := c.NewMonitor(ctx)
-	// If the consistency check "fails to fail", the verbose logging will help
-	// determine why.
+
 	startOpts := option.DefaultStartOpts()
 	startOpts.RoachprodOpts.ExtraArgs = append(startOpts.RoachprodOpts.ExtraArgs, "--vmodule=consistency_queue=5,replica_consistency=5,queue=5")
 	c.Start(ctx, t.L(), startOpts, install.MakeClusterSettings(), nodes)
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(48538)
 		select {
 		case <-time.After(5 * time.Minute):
+			__antithesis_instrumentation__.Notify(48540)
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(48541)
 		}
+		__antithesis_instrumentation__.Notify(48539)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(48529)
 
-	time.Sleep(10 * time.Second) // wait for n1-n3 to all be known as live to each other
+	time.Sleep(10 * time.Second)
 
-	// set an aggressive consistency check interval, but only now (that we're
-	// reasonably sure all nodes are live, etc). This makes sure that the consistency
-	// check runs against all three nodes. If it targeted only two nodes, a random
-	// one would fatal - not what we want.
 	{
+		__antithesis_instrumentation__.Notify(48542)
 		db := c.Conn(ctx, t.L(), 2)
 		_, err := db.ExecContext(ctx, `SET CLUSTER SETTING server.consistency_check.interval = '10ms'`)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(48544)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48545)
 		}
+		__antithesis_instrumentation__.Notify(48543)
 		_ = db.Close()
 	}
+	__antithesis_instrumentation__.Notify(48530)
 
 	if err := m.WaitE(); err == nil {
+		__antithesis_instrumentation__.Notify(48546)
 		t.Fatal("expected a node to crash")
+	} else {
+		__antithesis_instrumentation__.Notify(48547)
 	}
+	__antithesis_instrumentation__.Notify(48531)
 
-	time.Sleep(20 * time.Second) // wait for liveness to time out for dead nodes
+	time.Sleep(20 * time.Second)
 
 	db := c.Conn(ctx, t.L(), 2)
 	rows, err := db.Query(`SELECT node_id FROM crdb_internal.gossip_nodes WHERE is_live = false;`)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(48548)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(48549)
 	}
+	__antithesis_instrumentation__.Notify(48532)
 	var ids []int
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(48550)
 		var id int
 		if err := rows.Scan(&id); err != nil {
+			__antithesis_instrumentation__.Notify(48552)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48553)
 		}
+		__antithesis_instrumentation__.Notify(48551)
 		ids = append(ids, id)
 	}
+	__antithesis_instrumentation__.Notify(48533)
 	if err := rows.Err(); err != nil {
+		__antithesis_instrumentation__.Notify(48554)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(48555)
 	}
+	__antithesis_instrumentation__.Notify(48534)
 	if len(ids) != 1 {
+		__antithesis_instrumentation__.Notify(48556)
 		t.Fatalf("expected one dead NodeID, got %v", ids)
+	} else {
+		__antithesis_instrumentation__.Notify(48557)
 	}
+	__antithesis_instrumentation__.Notify(48535)
 	const expr = "this.node.is.terminating.because.a.replica.inconsistency.was.detected"
 	c.Run(ctx, c.Node(1), "grep "+
 		expr+" "+"{log-dir}/cockroach.log")
 
 	if err := c.StartE(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.Node(1)); err == nil {
-		// NB: we can't easily verify the error because there's a lot of output
-		// which isn't fully included in the error returned from StartE.
-		t.Fatalf("node restart should have failed")
-	}
+		__antithesis_instrumentation__.Notify(48558)
 
-	// roachtest checks that no nodes are down when the test finishes, but in this
-	// case we have a down node that we can't restart. Remove the data dir, which
-	// tells roachtest to ignore this node.
+		t.Fatalf("node restart should have failed")
+	} else {
+		__antithesis_instrumentation__.Notify(48559)
+	}
+	__antithesis_instrumentation__.Notify(48536)
+
 	c.Wipe(ctx, c.Node(1))
 }

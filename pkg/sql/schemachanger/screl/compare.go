@@ -1,36 +1,30 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package screl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/rel"
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scpb"
 )
 
-// equalityAttrs are used to sort elements.
 var equalityAttrs = func() []rel.Attr {
+	__antithesis_instrumentation__.Notify(594996)
 	s := make([]rel.Attr, 0, AttrMax)
 	s = append(s, rel.Type)
 	for a := Attr(1); a <= AttrMax; a++ {
+		__antithesis_instrumentation__.Notify(594998)
 		s = append(s, a)
 	}
+	__antithesis_instrumentation__.Notify(594997)
 	return s
 }()
 
-// EqualElements returns true if the two elements are equal.
 func EqualElements(a, b scpb.Element) bool {
+	__antithesis_instrumentation__.Notify(594999)
 	return Schema.EqualOn(equalityAttrs, a, b)
 }
 
-// CompareElements orders two elements.
 func CompareElements(a, b scpb.Element) (less, eq bool) {
+	__antithesis_instrumentation__.Notify(595000)
 	return Schema.CompareOn(equalityAttrs, a, b)
 }

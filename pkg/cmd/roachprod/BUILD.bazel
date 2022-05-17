@@ -21,6 +21,7 @@ go_library(
         "//pkg/roachprod/vm",
         "//pkg/roachprod/vm/gce",
         "//pkg/util/flagutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_spf13_cobra//:cobra",
         "@org_golang_x_term//:term",
@@ -31,4 +32,5 @@ go_binary(
     name = "roachprod",
     embed = [":roachprod_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

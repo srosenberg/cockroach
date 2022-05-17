@@ -1,17 +1,9 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 //go:build !stdmalloc
 // +build !stdmalloc
 
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 // #cgo CPPFLAGS: -DJEMALLOC_NO_DEMANGLE
 // #cgo LDFLAGS: -ljemalloc
@@ -62,14 +54,17 @@ func init() {
 	}
 }
 
-// writeJemallocProfile tells jemalloc to write a heap profile to 'filename'.
-// It assumes that profiling is enabled and active.
 func writeJemallocProfile(filename string) error {
+	__antithesis_instrumentation__.Notify(34340)
 	cpath := C.CString(filename)
 	defer C.free(unsafe.Pointer(cpath))
 
 	if errCode := C.dump_heap_profile(cpath); errCode != 0 {
+		__antithesis_instrumentation__.Notify(34342)
 		return fmt.Errorf("error code %d", errCode)
+	} else {
+		__antithesis_instrumentation__.Notify(34343)
 	}
+	__antithesis_instrumentation__.Notify(34341)
 	return nil
 }

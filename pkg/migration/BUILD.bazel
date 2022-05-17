@@ -27,6 +27,7 @@ go_library(
         "//pkg/sql/sqlutil",
         "//pkg/util/log",
         "//pkg/util/stop",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_logtags//:logtags",
     ],
 )

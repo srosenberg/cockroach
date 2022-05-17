@@ -12,6 +12,7 @@ go_library(
         "//pkg/util/ctxgroup",
         "//pkg/util/httputil",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -19,4 +20,5 @@ go_binary(
     name = "generate-spatial-ref-sys",
     embed = [":generate-spatial-ref-sys_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

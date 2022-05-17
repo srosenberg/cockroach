@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catprivilege
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/security"
@@ -17,64 +9,60 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
 )
 
-// MaybeFixUsagePrivForTablesAndDBs fixes cases where privilege descriptors
-// with ZONECONFIG were corrupted after upgrading from 20.1 to 20.2.
-// USAGE was mistakenly added in the privilege bitfield above ZONECONFIG
-// causing privilege descriptors with ZONECONFIG in 20.1 to have USAGE privilege
-// instead of ZONECONFIG.
-// Fortunately ZONECONFIG was only valid on TABLES/DB while USAGE is not valid
-// on either so we know if the descriptor was corrupted.
 func MaybeFixUsagePrivForTablesAndDBs(ptr **catpb.PrivilegeDescriptor) bool {
+	__antithesis_instrumentation__.Notify(250812)
 	if *ptr == nil {
+		__antithesis_instrumentation__.Notify(250816)
 		*ptr = &catpb.PrivilegeDescriptor{}
+	} else {
+		__antithesis_instrumentation__.Notify(250817)
 	}
+	__antithesis_instrumentation__.Notify(250813)
 	p := *ptr
 
 	if p.Version > catpb.InitialVersion {
-		// InitialVersion is for descriptors that were created in versions 20.1 and
-		// earlier. If the privilege descriptor was created after 20.1, then we
-		// do not have to fix it. Furthermore privilege descriptor versions are
-		// currently never updated so we're guaranteed to only have this issue
-		// on privilege descriptors that are on "InitialVersion".
+		__antithesis_instrumentation__.Notify(250818)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(250819)
 	}
+	__antithesis_instrumentation__.Notify(250814)
 
 	modified := false
 	for i := range p.Users {
-		// Users is a slice of values, we need pointers to make them mutable.
+		__antithesis_instrumentation__.Notify(250820)
+
 		userPrivileges := &p.Users[i]
-		// Tables and Database should not have USAGE privilege in 20.2 onwards.
-		// The only reason they would have USAGE privilege is because they had
-		// ZoneConfig in 20.1 and upgrading to 20.2 where USAGE was added
-		// in the privilege bitfield where ZONECONFIG previously was.
+
 		if privilege.USAGE.Mask()&userPrivileges.Privileges != 0 {
-			// Remove USAGE privilege and add ZONECONFIG. The privilege was
-			// originally ZONECONFIG in 20.1 but got changed to USAGE in 20.2
-			// due to changing the bitfield values.
+			__antithesis_instrumentation__.Notify(250821)
+
 			userPrivileges.Privileges = (userPrivileges.Privileges - privilege.USAGE.Mask()) | privilege.ZONECONFIG.Mask()
 			modified = true
+		} else {
+			__antithesis_instrumentation__.Notify(250822)
 		}
 	}
+	__antithesis_instrumentation__.Notify(250815)
 
 	return modified
 }
 
-// MaybeFixPrivileges fixes the privilege descriptor if needed, including:
-// * adding default privileges for the "admin" role
-// * fixing default privileges for the "root" user
-// * fixing maximum privileges for users.
-// * populating the owner field if previously empty.
-// * updating version field to Version21_2.
-// MaybeFixPrivileges can be removed after v21.2.
 func MaybeFixPrivileges(
 	ptr **catpb.PrivilegeDescriptor,
 	parentID, parentSchemaID descpb.ID,
 	objectType privilege.ObjectType,
 	objectName string,
 ) bool {
+	__antithesis_instrumentation__.Notify(250823)
 	if *ptr == nil {
+		__antithesis_instrumentation__.Notify(250831)
 		*ptr = &catpb.PrivilegeDescriptor{}
+	} else {
+		__antithesis_instrumentation__.Notify(250832)
 	}
+	__antithesis_instrumentation__.Notify(250824)
 	p := *ptr
 	allowedPrivilegesBits := privilege.GetValidPrivilegesForObject(objectType).ToBitField()
 	systemPrivs := SystemSuperuserPrivileges(descpb.NameInfo{
@@ -83,92 +71,156 @@ func MaybeFixPrivileges(
 		Name:           objectName,
 	})
 	if systemPrivs != nil {
-		// System databases and tables have custom maximum allowed privileges.
+		__antithesis_instrumentation__.Notify(250833)
+
 		allowedPrivilegesBits = systemPrivs.ToBitField()
+	} else {
+		__antithesis_instrumentation__.Notify(250834)
 	}
+	__antithesis_instrumentation__.Notify(250825)
 
 	changed := false
 
 	fixSuperUser := func(user security.SQLUsername) {
+		__antithesis_instrumentation__.Notify(250835)
 		privs := p.FindOrCreateUser(user)
 		oldPrivilegeBits := privs.Privileges
 		if oldPrivilegeBits != allowedPrivilegesBits {
+			__antithesis_instrumentation__.Notify(250836)
 			if privilege.ALL.IsSetIn(allowedPrivilegesBits) {
+				__antithesis_instrumentation__.Notify(250838)
 				privs.Privileges = privilege.ALL.Mask()
 			} else {
+				__antithesis_instrumentation__.Notify(250839)
 				privs.Privileges = allowedPrivilegesBits
 			}
-			changed = (privs.Privileges != oldPrivilegeBits) || changed
+			__antithesis_instrumentation__.Notify(250837)
+			changed = (privs.Privileges != oldPrivilegeBits) || func() bool {
+				__antithesis_instrumentation__.Notify(250840)
+				return changed == true
+			}() == true
+		} else {
+			__antithesis_instrumentation__.Notify(250841)
 		}
 	}
+	__antithesis_instrumentation__.Notify(250826)
 
-	// Check "root" user and "admin" role.
 	fixSuperUser(security.RootUserName())
 	fixSuperUser(security.AdminRoleName())
 
-	if objectType == privilege.Table || objectType == privilege.Database {
-		changed = MaybeFixUsagePrivForTablesAndDBs(&p) || changed
+	if objectType == privilege.Table || func() bool {
+		__antithesis_instrumentation__.Notify(250842)
+		return objectType == privilege.Database == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(250843)
+		changed = MaybeFixUsagePrivForTablesAndDBs(&p) || func() bool {
+			__antithesis_instrumentation__.Notify(250844)
+			return changed == true
+		}() == true
+	} else {
+		__antithesis_instrumentation__.Notify(250845)
 	}
+	__antithesis_instrumentation__.Notify(250827)
 
 	for i := range p.Users {
-		// Users is a slice of values, we need pointers to make them mutable.
+		__antithesis_instrumentation__.Notify(250846)
+
 		u := &p.Users[i]
-		if u.User().IsRootUser() || u.User().IsAdminRole() {
-			// we've already checked super users.
+		if u.User().IsRootUser() || func() bool {
+			__antithesis_instrumentation__.Notify(250849)
+			return u.User().IsAdminRole() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(250850)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(250851)
 		}
+		__antithesis_instrumentation__.Notify(250847)
 
 		if u.Privileges&allowedPrivilegesBits != u.Privileges {
+			__antithesis_instrumentation__.Notify(250852)
 			changed = true
+		} else {
+			__antithesis_instrumentation__.Notify(250853)
 		}
+		__antithesis_instrumentation__.Notify(250848)
 		u.Privileges &= allowedPrivilegesBits
 	}
+	__antithesis_instrumentation__.Notify(250828)
 
 	if p.Owner().Undefined() {
+		__antithesis_instrumentation__.Notify(250854)
 		if systemPrivs != nil {
+			__antithesis_instrumentation__.Notify(250856)
 			p.SetOwner(security.NodeUserName())
 		} else {
+			__antithesis_instrumentation__.Notify(250857)
 			p.SetOwner(security.RootUserName())
 		}
+		__antithesis_instrumentation__.Notify(250855)
 		changed = true
+	} else {
+		__antithesis_instrumentation__.Notify(250858)
 	}
+	__antithesis_instrumentation__.Notify(250829)
 
 	if p.Version < catpb.Version21_2 {
+		__antithesis_instrumentation__.Notify(250859)
 		p.SetVersion(catpb.Version21_2)
 		changed = true
+	} else {
+		__antithesis_instrumentation__.Notify(250860)
 	}
+	__antithesis_instrumentation__.Notify(250830)
 	return changed
 }
 
-// MaybeUpdateGrantOptions iterates over the users of the descriptor and checks
-// if they have the GRANT privilege - if so, then set the user's grant option
-// bits equal to the privilege bits.
 func MaybeUpdateGrantOptions(p *catpb.PrivilegeDescriptor) bool {
-	// If admin has grant option bits set, then we know the descriptor was
-	// created by a new binary, so all the other grant options are already
-	// correct. Note that admin always has SELECT on *every* table including
-	// system tables.
+	__antithesis_instrumentation__.Notify(250861)
+
 	if p.CheckGrantOptions(security.AdminRoleName(), privilege.List{privilege.SELECT}) {
+		__antithesis_instrumentation__.Notify(250864)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(250865)
 	}
+	__antithesis_instrumentation__.Notify(250862)
 
 	changed := false
 	for i := range p.Users {
+		__antithesis_instrumentation__.Notify(250866)
 		u := &p.Users[i]
 		if privilege.ALL.IsSetIn(u.Privileges) {
+			__antithesis_instrumentation__.Notify(250868)
 			if !privilege.ALL.IsSetIn(u.WithGrantOption) {
+				__antithesis_instrumentation__.Notify(250870)
 				changed = true
+			} else {
+				__antithesis_instrumentation__.Notify(250871)
 			}
+			__antithesis_instrumentation__.Notify(250869)
 			u.WithGrantOption = privilege.ALL.Mask()
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(250872)
 		}
+		__antithesis_instrumentation__.Notify(250867)
 		if privilege.GRANT.IsSetIn(u.Privileges) {
+			__antithesis_instrumentation__.Notify(250873)
 			if u.Privileges != u.WithGrantOption {
+				__antithesis_instrumentation__.Notify(250875)
 				changed = true
+			} else {
+				__antithesis_instrumentation__.Notify(250876)
 			}
+			__antithesis_instrumentation__.Notify(250874)
 			u.WithGrantOption |= u.Privileges
+		} else {
+			__antithesis_instrumentation__.Notify(250877)
 		}
 	}
+	__antithesis_instrumentation__.Notify(250863)
 
 	return changed
 }

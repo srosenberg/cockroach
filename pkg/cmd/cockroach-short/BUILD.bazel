@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//pkg/ccl",
         "//pkg/cli",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -15,4 +16,5 @@ go_binary(
     name = "cockroach-short",
     embed = [":cockroach-short_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

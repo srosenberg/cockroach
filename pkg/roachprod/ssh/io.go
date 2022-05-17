@@ -1,18 +1,9 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ssh
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "io"
 
-// ProgressWriter TODO(peter): document
 type ProgressWriter struct {
 	Writer   io.Writer
 	Done     int64
@@ -21,13 +12,17 @@ type ProgressWriter struct {
 }
 
 func (p *ProgressWriter) Write(b []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(182528)
 	n, err := p.Writer.Write(b)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(182530)
 		p.Done += int64(n)
 		p.Progress(float64(p.Done) / float64(p.Total))
+	} else {
+		__antithesis_instrumentation__.Notify(182531)
 	}
+	__antithesis_instrumentation__.Notify(182529)
 	return n, err
 }
 
-// InsecureIgnoreHostKey TODO(peter): document
 var InsecureIgnoreHostKey bool

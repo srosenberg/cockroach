@@ -1,14 +1,8 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 // Package schematestutils is a utility package for constructing schema objects
 // in the context of cdc.
 package schematestutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strconv"
@@ -22,7 +16,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 )
 
-// MakeTableDesc makes a generic table descriptor with the provided properties.
 func MakeTableDesc(
 	tableID descpb.ID,
 	version descpb.DescriptorVersion,
@@ -30,6 +23,7 @@ func MakeTableDesc(
 	cols int,
 	primaryKeyIndex int,
 ) catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(17956)
 	td := descpb.TableDescriptor{
 		Name:             "foo",
 		ID:               tableID,
@@ -41,14 +35,16 @@ func MakeTableDesc(
 		},
 	}
 	for i := 0; i < cols; i++ {
+		__antithesis_instrumentation__.Notify(17958)
 		td.Columns = append(td.Columns, *MakeColumnDesc(td.NextColumnID))
 		td.NextColumnID++
 	}
+	__antithesis_instrumentation__.Notify(17957)
 	return tabledesc.NewBuilder(&td).BuildImmutableTable()
 }
 
-// MakeColumnDesc makes a generic column descriptor with the provided id.
 func MakeColumnDesc(id descpb.ColumnID) *descpb.ColumnDescriptor {
+	__antithesis_instrumentation__.Notify(17959)
 	return &descpb.ColumnDescriptor{
 		Name:        "c" + strconv.Itoa(int(id)),
 		ID:          id,
@@ -57,9 +53,8 @@ func MakeColumnDesc(id descpb.ColumnID) *descpb.ColumnDescriptor {
 	}
 }
 
-// SetLocalityRegionalByRow sets the LocalityConfig of the table
-// descriptor such that desc.IsLocalityRegionalByRow will return true.
 func SetLocalityRegionalByRow(desc catalog.TableDescriptor) catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(17960)
 	desc.TableDesc().LocalityConfig = &catpb.LocalityConfig{
 		Locality: &catpb.LocalityConfig_RegionalByRow_{
 			RegionalByRow: &catpb.LocalityConfig_RegionalByRow{},
@@ -68,9 +63,8 @@ func SetLocalityRegionalByRow(desc catalog.TableDescriptor) catalog.TableDescrip
 	return tabledesc.NewBuilder(desc.TableDesc()).BuildImmutableTable()
 }
 
-// AddColumnDropBackfillMutation adds a mutation to desc to drop a column.
-// Yes, this does modify an immutable.
 func AddColumnDropBackfillMutation(desc catalog.TableDescriptor) catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(17961)
 	desc.TableDesc().Mutations = append(desc.TableDesc().Mutations, descpb.DescriptorMutation{
 		State:       descpb.DescriptorMutation_DELETE_AND_WRITE_ONLY,
 		Direction:   descpb.DescriptorMutation_DROP,
@@ -79,9 +73,8 @@ func AddColumnDropBackfillMutation(desc catalog.TableDescriptor) catalog.TableDe
 	return tabledesc.NewBuilder(desc.TableDesc()).BuildImmutableTable()
 }
 
-// AddNewColumnBackfillMutation adds a mutation to desc to add a column.
-// Yes, this does modify an immutable.
 func AddNewColumnBackfillMutation(desc catalog.TableDescriptor) catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(17962)
 	desc.TableDesc().Mutations = append(desc.TableDesc().Mutations, descpb.DescriptorMutation{
 		Descriptor_: &descpb.DescriptorMutation_Column{Column: MakeColumnDesc(desc.GetNextColumnID())},
 		State:       descpb.DescriptorMutation_DELETE_AND_WRITE_ONLY,
@@ -92,9 +85,8 @@ func AddNewColumnBackfillMutation(desc catalog.TableDescriptor) catalog.TableDes
 	return tabledesc.NewBuilder(desc.TableDesc()).BuildImmutableTable()
 }
 
-// AddPrimaryKeySwapMutation adds a mutation to desc to do a primary key swap.
-// Yes, this does modify an immutable.
 func AddPrimaryKeySwapMutation(desc catalog.TableDescriptor) catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(17963)
 	desc.TableDesc().Mutations = append(desc.TableDesc().Mutations, descpb.DescriptorMutation{
 		State:       descpb.DescriptorMutation_DELETE_AND_WRITE_ONLY,
 		Direction:   descpb.DescriptorMutation_ADD,
@@ -103,9 +95,8 @@ func AddPrimaryKeySwapMutation(desc catalog.TableDescriptor) catalog.TableDescri
 	return tabledesc.NewBuilder(desc.TableDesc()).BuildImmutableTable()
 }
 
-// AddNewIndexMutation adds a mutation to desc to add an index.
-// Yes, this does modify an immutable.
 func AddNewIndexMutation(desc catalog.TableDescriptor) catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(17964)
 	desc.TableDesc().Mutations = append(desc.TableDesc().Mutations, descpb.DescriptorMutation{
 		State:       descpb.DescriptorMutation_DELETE_AND_WRITE_ONLY,
 		Direction:   descpb.DescriptorMutation_ADD,
@@ -114,9 +105,8 @@ func AddNewIndexMutation(desc catalog.TableDescriptor) catalog.TableDescriptor {
 	return tabledesc.NewBuilder(desc.TableDesc()).BuildImmutableTable()
 }
 
-// AddDropIndexMutation adds a mutation to desc to drop an index.
-// Yes, this does modify an immutable.
 func AddDropIndexMutation(desc catalog.TableDescriptor) catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(17965)
 	desc.TableDesc().Mutations = append(desc.TableDesc().Mutations, descpb.DescriptorMutation{
 		State:       descpb.DescriptorMutation_DELETE_AND_WRITE_ONLY,
 		Direction:   descpb.DescriptorMutation_DROP,

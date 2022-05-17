@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -19,8 +11,8 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// delegateShowRanges implements the SHOW REGIONS statement.
 func (d *delegator) delegateShowRegions(n *tree.ShowRegions) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465729)
 	zonesClause := `
 		SELECT
 			region, zones
@@ -29,6 +21,7 @@ func (d *delegator) delegateShowRegions(n *tree.ShowRegions) (tree.Statement, er
 `
 	switch n.ShowRegionsFrom {
 	case tree.ShowRegionsFromAllDatabases:
+		__antithesis_instrumentation__.Notify(465731)
 		sqltelemetry.IncrementShowCounter(sqltelemetry.RegionsFromAllDatabases)
 		return parse(`
 SELECT
@@ -41,14 +34,17 @@ ORDER BY database_name
 		)
 
 	case tree.ShowRegionsFromDatabase:
+		__antithesis_instrumentation__.Notify(465732)
 		sqltelemetry.IncrementShowCounter(sqltelemetry.RegionsFromDatabase)
 		dbName := string(n.DatabaseName)
 		if dbName == "" {
+			__antithesis_instrumentation__.Notify(465738)
 			dbName = d.evalCtx.SessionData().Database
+		} else {
+			__antithesis_instrumentation__.Notify(465739)
 		}
-		// Note the LEFT JOIN here -- in the case where regions no longer exist on the cluster
-		// but still exist on the database config, we want to still see this database region
-		// with no zones attached in this query.
+		__antithesis_instrumentation__.Notify(465733)
+
 		query := fmt.Sprintf(
 			`
 WITH zones_table(region, zones) AS (%s)
@@ -76,6 +72,7 @@ ORDER BY "primary" DESC, "region"`,
 		return parse(query)
 
 	case tree.ShowRegionsFromCluster:
+		__antithesis_instrumentation__.Notify(465734)
 		sqltelemetry.IncrementShowCounter(sqltelemetry.RegionsFromCluster)
 
 		query := fmt.Sprintf(
@@ -93,6 +90,7 @@ ORDER BY
 
 		return parse(query)
 	case tree.ShowRegionsFromDefault:
+		__antithesis_instrumentation__.Notify(465735)
 		sqltelemetry.IncrementShowCounter(sqltelemetry.Regions)
 
 		query := fmt.Sprintf(
@@ -130,6 +128,7 @@ ORDER BY zones_table.region
 		)
 		return parse(query)
 	case tree.ShowSuperRegionsFromDatabase:
+		__antithesis_instrumentation__.Notify(465736)
 		sqltelemetry.IncrementShowCounter(sqltelemetry.SuperRegions)
 
 		query := fmt.Sprintf(
@@ -139,6 +138,9 @@ SELECT database_name, super_region_name, regions
  WHERE database_name = '%s'`, n.DatabaseName)
 
 		return parse(query)
+	default:
+		__antithesis_instrumentation__.Notify(465737)
 	}
+	__antithesis_instrumentation__.Notify(465730)
 	return nil, errors.Newf("unhandled ShowRegionsFrom: %v", n.ShowRegionsFrom)
 }

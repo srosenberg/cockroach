@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colflow
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,94 +26,59 @@ import (
 	"github.com/marusama/semaphore"
 )
 
-// routerOutput is an interface implemented by router outputs. It exists for
-// easier test mocking of outputs.
 type routerOutput interface {
 	execinfra.OpNode
-	// initWithHashRouter passes a reference to the HashRouter that will be
-	// pushing batches to this output.
+
 	initWithHashRouter(*HashRouter)
-	// addBatch adds the elements specified by the selection vector from batch
-	// to the output. It returns whether or not the output changed its state to
-	// blocked (see implementations).
+
 	addBatch(context.Context, coldata.Batch) bool
-	// cancel tells the output to stop producing batches. Optionally forwards an
-	// error if not nil.
+
 	cancel(context.Context, error)
-	// forwardErr forwards an error to the output. The output should call
-	// colexecerror.ExpectedError with this error on the next call to Next.
-	// Calling forwardErr multiple times will result in the most recent error
-	// overwriting the previous error.
+
 	forwardErr(error)
-	// resetForTests resets the routerOutput for a benchmark or test run.
+
 	resetForTests(context.Context)
 }
 
-// getDefaultRouterOutputBlockedThreshold returns the number of unread values
-// buffered by the routerOutputOp after which the output is considered blocked.
-// It is a function rather than a variable so that in tests we could modify
-// coldata.BatchSize() (if it were a variable, then its value would be
-// evaluated before we set the desired batch size).
 func getDefaultRouterOutputBlockedThreshold() int {
+	__antithesis_instrumentation__.Notify(456180)
 	return coldata.BatchSize() * 2
 }
 
 type routerOutputOpState int
 
 const (
-	// routerOutputOpRunning is the state in which routerOutputOp operates
-	// normally. The router output transitions into routerOutputDoneAdding when
-	// a zero-length batch was added or routerOutputOpDraining when it
-	// encounters an error or the drain is requested.
 	routerOutputOpRunning routerOutputOpState = iota
-	// routerOutputDoneAdding is the state in which a zero-length was batch was
-	// added to routerOutputOp and no more batches will be added. The router
-	// output transitions to routerOutputOpDraining when the output is canceled
-	// (either closed or the drain is requested).
+
 	routerOutputDoneAdding
-	// routerOutputOpDraining is the state in which routerOutputOp always
-	// returns zero-length batches on calls to Next.
+
 	routerOutputOpDraining
 )
 
-// drainCoordinator is an interface that the HashRouter implements to coordinate
-// cancellation of all of its outputs in the case of an error and draining in
-// the case of graceful termination.
-// WARNING: No locks should be held when calling these methods, as the
-// HashRouter might call routerOutput methods (e.g. cancel) that attempt to
-// reacquire locks.
 type drainCoordinator interface {
-	// encounteredError should be called when a routerOutput encounters an error.
-	// This terminates execution. No locks should be held when calling this
-	// method, since cancellation could occur.
 	encounteredError(context.Context)
-	// drainMeta should be called exactly once when the routerOutput moves to
-	// draining.
+
 	drainMeta() []execinfrapb.ProducerMetadata
 }
 
 type routerOutputOp struct {
 	colexecop.InitHelper
-	// input is a reference to our router.
+
 	input execinfra.OpNode
-	// drainCoordinator is a reference to the HashRouter to be able to notify it
-	// if the output encounters an error or transitions to a draining state.
+
 	drainCoordinator drainCoordinator
 
 	types []*types.T
 
-	// unblockedEventsChan is signaled when a routerOutput changes state from
-	// blocked to unblocked.
 	unblockedEventsChan chan<- struct{}
 
 	mu struct {
 		syncutil.Mutex
 		state routerOutputOpState
-		// forwardedErr is an error that was forwarded by the HashRouter. If set,
-		// any subsequent calls to Next will return this error.
+
 		forwardedErr error
 		cond         *sync.Cond
-		// data is a SpillingQueue, a circular buffer backed by a disk queue.
+
 		data      *colexecutils.SpillingQueue
 		numUnread int
 		blocked   bool
@@ -131,67 +88,58 @@ type routerOutputOp struct {
 }
 
 func (o *routerOutputOp) ChildCount(verbose bool) int {
+	__antithesis_instrumentation__.Notify(456181)
 	return 1
 }
 
 func (o *routerOutputOp) Child(nth int, verbose bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(456182)
 	if nth == 0 {
+		__antithesis_instrumentation__.Notify(456184)
 		return o.input
+	} else {
+		__antithesis_instrumentation__.Notify(456185)
 	}
+	__antithesis_instrumentation__.Notify(456183)
 	colexecerror.InternalError(errors.AssertionFailedf("invalid index %d", nth))
-	// This code is unreachable, but the compiler cannot infer that.
+
 	return nil
 }
 
 var _ colexecop.Operator = &routerOutputOp{}
 
 type routerOutputOpTestingKnobs struct {
-	// blockedThreshold is the number of buffered values above which we consider
-	// a router output to be blocked. It defaults to
-	// defaultRouterOutputBlockedThreshold but can be modified by tests to test
-	// edge cases.
 	blockedThreshold int
-	// addBatchTestInducedErrorCb is called after any function call that could
-	// produce an error if that error is nil. If the callback returns an error,
-	// the router output overwrites the nil error with the returned error.
-	// It is guaranteed that this callback will be called at least once during
-	// normal execution.
+
 	addBatchTestInducedErrorCb func() error
-	// nextTestInducedErrorCb is called after any function call that could
-	// produce an error if that error is nil. If the callback returns an error,
-	// the router output overwrites the nil error with the returned error.
-	// It is guaranteed that this callback will be called at least once during
-	// normal execution.
+
 	nextTestInducedErrorCb func() error
 }
 
-// routerOutputOpArgs are the arguments to newRouterOutputOp. All fields apart
-// from the testing knobs are optional.
 type routerOutputOpArgs struct {
-	// All fields are required unless marked optional.
 	types []*types.T
 
-	// unlimitedAllocator should not have a memory limit. Pass in a soft
-	// memoryLimit that will be respected instead.
 	unlimitedAllocator *colmem.Allocator
-	// memoryLimit acts as a soft limit to allow the router output to use disk
-	// when it is exceeded.
+
 	memoryLimit int64
 	diskAcc     *mon.BoundAccount
 	cfg         colcontainer.DiskQueueCfg
 	fdSemaphore semaphore.Semaphore
 
-	// unblockedEventsChan must be a buffered channel.
 	unblockedEventsChan chan<- struct{}
 
 	testingKnobs routerOutputOpTestingKnobs
 }
 
-// newRouterOutputOp creates a new router output.
 func newRouterOutputOp(args routerOutputOpArgs) *routerOutputOp {
+	__antithesis_instrumentation__.Notify(456186)
 	if args.testingKnobs.blockedThreshold == 0 {
+		__antithesis_instrumentation__.Notify(456188)
 		args.testingKnobs.blockedThreshold = getDefaultRouterOutputBlockedThreshold()
+	} else {
+		__antithesis_instrumentation__.Notify(456189)
 	}
+	__antithesis_instrumentation__.Notify(456187)
 
 	o := &routerOutputOp{
 		types:               args.types,
@@ -215,62 +163,102 @@ func newRouterOutputOp(args routerOutputOpArgs) *routerOutputOp {
 }
 
 func (o *routerOutputOp) Init(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(456190)
 	o.InitHelper.Init(ctx)
 }
 
-// nextErrorLocked is a helper method that handles an error encountered in Next.
 func (o *routerOutputOp) nextErrorLocked(err error) {
+	__antithesis_instrumentation__.Notify(456191)
 	o.mu.state = routerOutputOpDraining
 	o.maybeUnblockLocked()
-	// Unlock the mutex, since the HashRouter will cancel all outputs.
+
 	o.mu.Unlock()
 	o.drainCoordinator.encounteredError(o.Ctx)
 	o.mu.Lock()
 	colexecerror.InternalError(err)
 }
 
-// Next returns the next coldata.Batch from the routerOutputOp. Note that Next
-// is designed for only one concurrent caller and will block until data is
-// ready.
 func (o *routerOutputOp) Next() coldata.Batch {
+	__antithesis_instrumentation__.Notify(456192)
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	for o.mu.forwardedErr == nil && o.mu.state == routerOutputOpRunning && o.mu.data.Empty() {
-		// Wait until there is data to read or the output is canceled.
+	for o.mu.forwardedErr == nil && func() bool {
+		__antithesis_instrumentation__.Notify(456200)
+		return o.mu.state == routerOutputOpRunning == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(456201)
+		return o.mu.data.Empty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(456202)
+
 		o.mu.cond.Wait()
 	}
+	__antithesis_instrumentation__.Notify(456193)
 	if o.mu.forwardedErr != nil {
+		__antithesis_instrumentation__.Notify(456203)
 		colexecerror.ExpectedError(o.mu.forwardedErr)
+	} else {
+		__antithesis_instrumentation__.Notify(456204)
 	}
+	__antithesis_instrumentation__.Notify(456194)
 	if o.mu.state == routerOutputOpDraining {
+		__antithesis_instrumentation__.Notify(456205)
 		return coldata.ZeroBatch
+	} else {
+		__antithesis_instrumentation__.Notify(456206)
 	}
+	__antithesis_instrumentation__.Notify(456195)
 	b, err := o.mu.data.Dequeue(o.Ctx)
-	if err == nil && o.testingKnobs.nextTestInducedErrorCb != nil {
+	if err == nil && func() bool {
+		__antithesis_instrumentation__.Notify(456207)
+		return o.testingKnobs.nextTestInducedErrorCb != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(456208)
 		err = o.testingKnobs.nextTestInducedErrorCb()
+	} else {
+		__antithesis_instrumentation__.Notify(456209)
 	}
+	__antithesis_instrumentation__.Notify(456196)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(456210)
 		o.nextErrorLocked(err)
+	} else {
+		__antithesis_instrumentation__.Notify(456211)
 	}
+	__antithesis_instrumentation__.Notify(456197)
 	o.mu.numUnread -= b.Length()
 	if o.mu.numUnread <= o.testingKnobs.blockedThreshold {
+		__antithesis_instrumentation__.Notify(456212)
 		o.maybeUnblockLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(456213)
 	}
+	__antithesis_instrumentation__.Notify(456198)
 	if b.Length() == 0 {
+		__antithesis_instrumentation__.Notify(456214)
 		if o.testingKnobs.nextTestInducedErrorCb != nil {
+			__antithesis_instrumentation__.Notify(456216)
 			if err := o.testingKnobs.nextTestInducedErrorCb(); err != nil {
+				__antithesis_instrumentation__.Notify(456217)
 				o.nextErrorLocked(err)
+			} else {
+				__antithesis_instrumentation__.Notify(456218)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(456219)
 		}
-		// This is the last batch. closeLocked will set done to protect against
-		// further calls to Next since this is allowed by the interface as well as
-		// cleaning up and releasing possible disk infrastructure.
+		__antithesis_instrumentation__.Notify(456215)
+
 		o.closeLocked(o.Ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(456220)
 	}
+	__antithesis_instrumentation__.Notify(456199)
 	return b
 }
 
 func (o *routerOutputOp) DrainMeta() []execinfrapb.ProducerMetadata {
+	__antithesis_instrumentation__.Notify(456221)
 	o.mu.Lock()
 	o.mu.state = routerOutputOpDraining
 	o.maybeUnblockLocked()
@@ -279,102 +267,123 @@ func (o *routerOutputOp) DrainMeta() []execinfrapb.ProducerMetadata {
 }
 
 func (o *routerOutputOp) initWithHashRouter(r *HashRouter) {
+	__antithesis_instrumentation__.Notify(456222)
 	o.input = r
 	o.drainCoordinator = r
 }
 
 func (o *routerOutputOp) closeLocked(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(456223)
 	o.mu.state = routerOutputOpDraining
 	if err := o.mu.data.Close(ctx); err != nil {
-		// This log message is Info instead of Warning because the flow will also
-		// attempt to clean up the parent directory, so this failure might not have
-		// any effect.
+		__antithesis_instrumentation__.Notify(456224)
+
 		log.Infof(ctx, "error closing vectorized hash router output, files may be left over: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(456225)
 	}
 }
 
-// cancel wakes up a reader in Next if there is one and results in the output
-// returning zero length batches for every Next call after cancel. Note that
-// all accumulated data that hasn't been read will not be returned.
 func (o *routerOutputOp) cancel(ctx context.Context, err error) {
+	__antithesis_instrumentation__.Notify(456226)
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.closeLocked(ctx)
 	o.forwardErrLocked(err)
-	// Some goroutine might be waiting on the condition variable, so wake it up.
-	// Note that read goroutines check o.mu.done, so won't wait on the condition
-	// variable after we unlock the mutex.
+
 	o.mu.cond.Signal()
 }
 
 func (o *routerOutputOp) forwardErrLocked(err error) {
+	__antithesis_instrumentation__.Notify(456227)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(456228)
 		o.mu.forwardedErr = err
+	} else {
+		__antithesis_instrumentation__.Notify(456229)
 	}
 }
 
 func (o *routerOutputOp) forwardErr(err error) {
+	__antithesis_instrumentation__.Notify(456230)
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.forwardErrLocked(err)
 	o.mu.cond.Signal()
 }
 
-// addBatch copies the batch (according to its selection vector) into an
-// internal buffer. Zero-length batch should be passed-in to indicate that no
-// more batches will be added.
-// TODO(asubiotto): We should explore pipelining addBatch if disk-spilling
-//  performance becomes a concern. The main router goroutine will be writing to
-//  disk as the code is written, meaning that we impact the performance of
-//  writing rows to a fast output if we have to write to disk for a single
-//  slow output.
 func (o *routerOutputOp) addBatch(ctx context.Context, batch coldata.Batch) bool {
+	__antithesis_instrumentation__.Notify(456231)
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	switch o.mu.state {
 	case routerOutputDoneAdding:
+		__antithesis_instrumentation__.Notify(456236)
 		colexecerror.InternalError(errors.AssertionFailedf("a batch was added to routerOutput in DoneAdding state"))
 	case routerOutputOpDraining:
-		// This output is draining, discard any data.
+		__antithesis_instrumentation__.Notify(456237)
+
 		return false
+	default:
+		__antithesis_instrumentation__.Notify(456238)
 	}
+	__antithesis_instrumentation__.Notify(456232)
 
 	o.mu.numUnread += batch.Length()
 	o.mu.data.Enqueue(ctx, batch)
 	if o.testingKnobs.addBatchTestInducedErrorCb != nil {
+		__antithesis_instrumentation__.Notify(456239)
 		if err := o.testingKnobs.addBatchTestInducedErrorCb(); err != nil {
+			__antithesis_instrumentation__.Notify(456240)
 			colexecerror.InternalError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(456241)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(456242)
 	}
+	__antithesis_instrumentation__.Notify(456233)
 
 	if batch.Length() == 0 {
+		__antithesis_instrumentation__.Notify(456243)
 		o.mu.state = routerOutputDoneAdding
 		o.mu.cond.Signal()
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(456244)
 	}
+	__antithesis_instrumentation__.Notify(456234)
 
 	stateChanged := false
-	if o.mu.numUnread > o.testingKnobs.blockedThreshold && !o.mu.blocked {
-		// The output is now blocked.
+	if o.mu.numUnread > o.testingKnobs.blockedThreshold && func() bool {
+		__antithesis_instrumentation__.Notify(456245)
+		return !o.mu.blocked == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(456246)
+
 		o.mu.blocked = true
 		stateChanged = true
+	} else {
+		__antithesis_instrumentation__.Notify(456247)
 	}
+	__antithesis_instrumentation__.Notify(456235)
 	o.mu.cond.Signal()
 	return stateChanged
 }
 
-// maybeUnblockLocked unblocks the router output if it is in a blocked state. If the
-// output was previously in a blocked state, an event will be sent on
-// routerOutputOp.unblockedEventsChan.
 func (o *routerOutputOp) maybeUnblockLocked() {
+	__antithesis_instrumentation__.Notify(456248)
 	if o.mu.blocked {
+		__antithesis_instrumentation__.Notify(456249)
 		o.mu.blocked = false
 		o.unblockedEventsChan <- struct{}{}
+	} else {
+		__antithesis_instrumentation__.Notify(456250)
 	}
 }
 
-// resetForTests resets the routerOutputOp for a test or benchmark run.
 func (o *routerOutputOp) resetForTests(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(456251)
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.mu.state = routerOutputOpRunning
@@ -384,75 +393,40 @@ func (o *routerOutputOp) resetForTests(ctx context.Context) {
 	o.mu.blocked = false
 }
 
-// hashRouterDrainState is a state that specifically describes the hashRouter's
-// state in the draining process. This differs from its "general" state. For
-// example, a hash router can have drained and exited the Run method but still
-// be in hashRouterDrainStateRunning until somebody calls drainMeta.
 type hashRouterDrainState int
 
 const (
-	// hashRouterDrainStateRunning is the state that a hashRouter is in when
-	// running normally (i.e. pulling and pushing batches).
 	hashRouterDrainStateRunning = iota
-	// hashRouterDrainStateRequested is the state that a hashRouter is in when
-	// either all outputs have called drainMeta or an error was encountered by one
-	// of the outputs.
+
 	hashRouterDrainStateRequested
-	// hashRouterDrainStateCompleted is the state that a hashRouter is in when
-	// draining has completed.
+
 	hashRouterDrainStateCompleted
 )
 
-// HashRouter hashes values according to provided hash columns and computes a
-// destination for each row. These destinations are exposed as Operators
-// returned by the constructor.
 type HashRouter struct {
 	colexecop.OneInputNode
-	// inputMetaInfo contains all of the meta components that the hash router
-	// is responsible for. Root field is exactly the same as OneInputNode.Input.
+
 	inputMetaInfo colexecargs.OpWithMetaInfo
-	// hashCols is a slice of indices of the columns used for hashing.
+
 	hashCols []uint32
 
-	// One output for each stream.
 	outputs []routerOutput
 
-	// unblockedEventsChan is a channel shared between the HashRouter and its
-	// outputs. outputs send events on this channel when they are unblocked by a
-	// read.
 	unblockedEventsChan <-chan struct{}
 	numBlockedOutputs   int
 
 	bufferedMeta []execinfrapb.ProducerMetadata
 
-	// atomics is shared state between the Run goroutine and any routerOutput
-	// goroutines that call drainMeta.
 	atomics struct {
-		// drainState is the state the hashRouter is in. The Run goroutine should
-		// only ever read these states, never set them.
 		drainState        int32
 		numDrainedOutputs int32
 	}
 
-	// waitForMetadata is a channel that the last output to drain will read from
-	// to pass on any metadata buffered through the Run goroutine.
 	waitForMetadata chan []execinfrapb.ProducerMetadata
 
-	// tupleDistributor is used to decide to which output a particular tuple
-	// should be routed.
 	tupleDistributor *colexechash.TupleHashDistributor
 }
 
-// NewHashRouter creates a new hash router that consumes coldata.Batches from
-// input and hashes each row according to hashCols to one of the outputs
-// returned as Operators.
-// The number of allocators provided will determine the number of outputs
-// returned. Note that each allocator must be unlimited, memory will be limited
-// by comparing memory use in the allocator with the memoryLimit argument. Each
-// Operator must have an independent allocator (this means that each allocator
-// should be linked to an independent mem account) as Operator.Next will usually
-// be called concurrently between different outputs. Similarly, each output
-// needs to have a separate disk account.
 func NewHashRouter(
 	unlimitedAllocators []*colmem.Allocator,
 	input colexecargs.OpWithMetaInfo,
@@ -463,24 +437,22 @@ func NewHashRouter(
 	fdSemaphore semaphore.Semaphore,
 	diskAccounts []*mon.BoundAccount,
 ) (*HashRouter, []colexecop.DrainableOperator) {
+	__antithesis_instrumentation__.Notify(456252)
 	outputs := make([]routerOutput, len(unlimitedAllocators))
 	outputsAsOps := make([]colexecop.DrainableOperator, len(unlimitedAllocators))
-	// unblockEventsChan is buffered to 2*numOutputs as we don't want the outputs
-	// writing to it to block.
-	// Unblock events only happen after a corresponding block event. Since these
-	// are state changes and are done under lock (including the output sending
-	// on the channel, which is why we want the channel to be buffered in the
-	// first place), every time the HashRouter blocks an output, it *must* read
-	// all unblock events preceding it since these *must* be on the channel.
+
 	unblockEventsChan := make(chan struct{}, 2*len(unlimitedAllocators))
 	memoryLimitPerOutput := memoryLimit / int64(len(unlimitedAllocators))
 	if memoryLimit == 1 {
-		// If total memory limit is 1, we're likely in a "force disk spill"
-		// scenario, so we'll give each output 1 byte too (if we don't override
-		// the value, outputs will end with up "no limit").
+		__antithesis_instrumentation__.Notify(456255)
+
 		memoryLimitPerOutput = 1
+	} else {
+		__antithesis_instrumentation__.Notify(456256)
 	}
+	__antithesis_instrumentation__.Notify(456253)
 	for i := range unlimitedAllocators {
+		__antithesis_instrumentation__.Notify(456257)
 		op := newRouterOutputOp(
 			routerOutputOpArgs{
 				types:               types,
@@ -495,6 +467,7 @@ func NewHashRouter(
 		outputs[i] = op
 		outputsAsOps[i] = op
 	}
+	__antithesis_instrumentation__.Notify(456254)
 	return newHashRouterWithOutputs(input, hashCols, unblockEventsChan, outputs), outputsAsOps
 }
 
@@ -504,206 +477,270 @@ func newHashRouterWithOutputs(
 	unblockEventsChan <-chan struct{},
 	outputs []routerOutput,
 ) *HashRouter {
+	__antithesis_instrumentation__.Notify(456258)
 	r := &HashRouter{
 		OneInputNode:        colexecop.NewOneInputNode(input.Root),
 		inputMetaInfo:       input,
 		hashCols:            hashCols,
 		outputs:             outputs,
 		unblockedEventsChan: unblockEventsChan,
-		// waitForMetadata is a buffered channel to avoid blocking if nobody will
-		// read the metadata.
+
 		waitForMetadata:  make(chan []execinfrapb.ProducerMetadata, 1),
 		tupleDistributor: colexechash.NewTupleHashDistributor(colexechash.DefaultInitHashValue, len(outputs)),
 	}
 	for i := range outputs {
+		__antithesis_instrumentation__.Notify(456260)
 		outputs[i].initWithHashRouter(r)
 	}
+	__antithesis_instrumentation__.Notify(456259)
 	return r
 }
 
-// cancelOutputs cancels all outputs and forwards the given error to all of
-// them if non-nil. The only case where the error is not forwarded is if no
-// output could be canceled due to an error. In this case each output will
-// forward the error returned during cancellation.
 func (r *HashRouter) cancelOutputs(ctx context.Context, errToForward error) {
+	__antithesis_instrumentation__.Notify(456261)
 	for _, o := range r.outputs {
+		__antithesis_instrumentation__.Notify(456262)
 		if err := colexecerror.CatchVectorizedRuntimeError(func() {
+			__antithesis_instrumentation__.Notify(456263)
 			o.cancel(ctx, errToForward)
 		}); err != nil {
-			// If there was an error canceling this output, this error can be
-			// forwarded to whoever is calling Next.
+			__antithesis_instrumentation__.Notify(456264)
+
 			o.forwardErr(err)
+		} else {
+			__antithesis_instrumentation__.Notify(456265)
 		}
 	}
 }
 
 func (r *HashRouter) setDrainState(drainState hashRouterDrainState) {
+	__antithesis_instrumentation__.Notify(456266)
 	atomic.StoreInt32(&r.atomics.drainState, int32(drainState))
 }
 
 func (r *HashRouter) getDrainState() hashRouterDrainState {
+	__antithesis_instrumentation__.Notify(456267)
 	return hashRouterDrainState(atomic.LoadInt32(&r.atomics.drainState))
 }
 
-// Run runs the HashRouter. Batches are read from the input and pushed to an
-// output calculated by hashing columns. Cancel the given context to terminate
-// early.
 func (r *HashRouter) Run(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(456268)
 	var span *tracing.Span
 	ctx, span = execinfra.ProcessorSpan(ctx, "hash router")
 	if span != nil {
+		__antithesis_instrumentation__.Notify(456272)
 		defer span.Finish()
+	} else {
+		__antithesis_instrumentation__.Notify(456273)
 	}
+	__antithesis_instrumentation__.Notify(456269)
 	var inputInitialized bool
-	// Since HashRouter runs in a separate goroutine, we want to be safe and
-	// make sure that we catch errors in all code paths, so we wrap the whole
-	// method with a catcher. Note that we also have "internal" catchers as
-	// well for more fine-grained control of error propagation.
+
 	if err := colexecerror.CatchVectorizedRuntimeError(func() {
+		__antithesis_instrumentation__.Notify(456274)
 		r.Input.Init(ctx)
 		inputInitialized = true
 		var done bool
 		processNextBatch := func() {
+			__antithesis_instrumentation__.Notify(456276)
 			done = r.processNextBatch(ctx)
 		}
+		__antithesis_instrumentation__.Notify(456275)
 		for {
+			__antithesis_instrumentation__.Notify(456277)
 			if r.getDrainState() != hashRouterDrainStateRunning {
+				__antithesis_instrumentation__.Notify(456283)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(456284)
 			}
+			__antithesis_instrumentation__.Notify(456278)
 
-			// Check for cancellation.
 			select {
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(456285)
 				r.cancelOutputs(ctx, ctx.Err())
 				return
 			default:
+				__antithesis_instrumentation__.Notify(456286)
 			}
+			__antithesis_instrumentation__.Notify(456279)
 
-			// Read all the routerOutput state changes that have happened since the
-			// last iteration.
 			for moreToRead := true; moreToRead; {
+				__antithesis_instrumentation__.Notify(456287)
 				select {
 				case <-r.unblockedEventsChan:
+					__antithesis_instrumentation__.Notify(456288)
 					r.numBlockedOutputs--
 				default:
-					// No more routerOutput state changes to read without blocking.
+					__antithesis_instrumentation__.Notify(456289)
+
 					moreToRead = false
 				}
 			}
+			__antithesis_instrumentation__.Notify(456280)
 
 			if r.numBlockedOutputs == len(r.outputs) {
-				// All outputs are blocked, wait until at least one output is unblocked.
+				__antithesis_instrumentation__.Notify(456290)
+
 				select {
 				case <-r.unblockedEventsChan:
+					__antithesis_instrumentation__.Notify(456291)
 					r.numBlockedOutputs--
 				case <-ctx.Done():
+					__antithesis_instrumentation__.Notify(456292)
 					r.cancelOutputs(ctx, ctx.Err())
 					return
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(456293)
 			}
+			__antithesis_instrumentation__.Notify(456281)
 
 			if err := colexecerror.CatchVectorizedRuntimeError(processNextBatch); err != nil {
+				__antithesis_instrumentation__.Notify(456294)
 				r.cancelOutputs(ctx, err)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(456295)
 			}
+			__antithesis_instrumentation__.Notify(456282)
 			if done {
-				// The input was done and we have notified the routerOutputs that there
-				// is no more data.
+				__antithesis_instrumentation__.Notify(456296)
+
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(456297)
 			}
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(456298)
 		r.cancelOutputs(ctx, err)
+	} else {
+		__antithesis_instrumentation__.Notify(456299)
 	}
+	__antithesis_instrumentation__.Notify(456270)
 	if inputInitialized {
-		// Retrieving stats and draining the metadata is only safe if the input
-		// to the hash router was properly initialized.
+		__antithesis_instrumentation__.Notify(456300)
+
 		if span != nil {
+			__antithesis_instrumentation__.Notify(456302)
 			for _, s := range r.inputMetaInfo.StatsCollectors {
+				__antithesis_instrumentation__.Notify(456304)
 				span.RecordStructured(s.GetStats())
 			}
+			__antithesis_instrumentation__.Notify(456303)
 			if meta := execinfra.GetTraceDataAsMetadata(span); meta != nil {
+				__antithesis_instrumentation__.Notify(456305)
 				r.bufferedMeta = append(r.bufferedMeta, *meta)
+			} else {
+				__antithesis_instrumentation__.Notify(456306)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(456307)
 		}
+		__antithesis_instrumentation__.Notify(456301)
 		r.bufferedMeta = append(r.bufferedMeta, r.inputMetaInfo.MetadataSources.DrainMeta()...)
+	} else {
+		__antithesis_instrumentation__.Notify(456308)
 	}
-	// Non-blocking send of metadata so that one of the outputs can return it
-	// in DrainMeta.
+	__antithesis_instrumentation__.Notify(456271)
+
 	r.waitForMetadata <- r.bufferedMeta
 	close(r.waitForMetadata)
 
 	r.inputMetaInfo.ToClose.CloseAndLogOnErr(ctx, "hash router")
 }
 
-// processNextBatch reads the next batch from its input, hashes it and adds
-// each column to its corresponding output, returning whether the input is
-// done.
 func (r *HashRouter) processNextBatch(ctx context.Context) bool {
+	__antithesis_instrumentation__.Notify(456309)
 	b := r.Input.Next()
 	n := b.Length()
 	if n == 0 {
-		// Done. Push an empty batch to outputs to tell them the data is done as
-		// well.
+		__antithesis_instrumentation__.Notify(456312)
+
 		for _, o := range r.outputs {
+			__antithesis_instrumentation__.Notify(456314)
 			o.addBatch(ctx, b)
 		}
+		__antithesis_instrumentation__.Notify(456313)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(456315)
 	}
+	__antithesis_instrumentation__.Notify(456310)
 
-	// It is ok that we call Init() on every batch since all calls except for
-	// the first one are noops.
 	r.tupleDistributor.Init(ctx)
 	selections := r.tupleDistributor.Distribute(b, r.hashCols)
 	for i, o := range r.outputs {
+		__antithesis_instrumentation__.Notify(456316)
 		if len(selections[i]) > 0 {
-			colexecutils.UpdateBatchState(b, len(selections[i]), true /* usesSel */, selections[i])
+			__antithesis_instrumentation__.Notify(456317)
+			colexecutils.UpdateBatchState(b, len(selections[i]), true, selections[i])
 			if o.addBatch(ctx, b) {
-				// This batch blocked the output.
+				__antithesis_instrumentation__.Notify(456318)
+
 				r.numBlockedOutputs++
+			} else {
+				__antithesis_instrumentation__.Notify(456319)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(456320)
 		}
 	}
+	__antithesis_instrumentation__.Notify(456311)
 	return false
 }
 
-// resetForTests resets the HashRouter for a test or benchmark run.
 func (r *HashRouter) resetForTests(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(456321)
 	if i, ok := r.Input.(colexecop.Resetter); ok {
+		__antithesis_instrumentation__.Notify(456324)
 		i.Reset(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(456325)
 	}
+	__antithesis_instrumentation__.Notify(456322)
 	r.setDrainState(hashRouterDrainStateRunning)
 	r.waitForMetadata = make(chan []execinfrapb.ProducerMetadata, 1)
 	r.atomics.numDrainedOutputs = 0
 	r.bufferedMeta = nil
 	r.numBlockedOutputs = 0
 	for moreToRead := true; moreToRead; {
+		__antithesis_instrumentation__.Notify(456326)
 		select {
 		case <-r.unblockedEventsChan:
+			__antithesis_instrumentation__.Notify(456327)
 		default:
+			__antithesis_instrumentation__.Notify(456328)
 			moreToRead = false
 		}
 	}
+	__antithesis_instrumentation__.Notify(456323)
 	for _, o := range r.outputs {
+		__antithesis_instrumentation__.Notify(456329)
 		o.resetForTests(ctx)
 	}
 }
 
 func (r *HashRouter) encounteredError(ctx context.Context) {
-	// Once one output returns an error the hash router needs to stop running
-	// and drain its input.
+	__antithesis_instrumentation__.Notify(456330)
+
 	r.setDrainState(hashRouterDrainStateRequested)
-	// cancel all outputs. The Run goroutine will eventually realize that the
-	// HashRouter is done and exit without draining.
-	r.cancelOutputs(ctx, nil /* errToForward */)
+
+	r.cancelOutputs(ctx, nil)
 }
 
 func (r *HashRouter) drainMeta() []execinfrapb.ProducerMetadata {
+	__antithesis_instrumentation__.Notify(456331)
 	if int(atomic.AddInt32(&r.atomics.numDrainedOutputs, 1)) != len(r.outputs) {
+		__antithesis_instrumentation__.Notify(456333)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(456334)
 	}
-	// All outputs have been drained, return any buffered metadata to the last
-	// output to call drainMeta.
+	__antithesis_instrumentation__.Notify(456332)
+
 	r.setDrainState(hashRouterDrainStateRequested)
 	meta := <-r.waitForMetadata
 	r.setDrainState(hashRouterDrainStateCompleted)

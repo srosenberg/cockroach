@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
@@ -21,7 +13,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// joinerBase is the common core of all joiners.
 type joinerBase struct {
 	execinfra.ProcessorBase
 
@@ -32,10 +23,6 @@ type joinerBase struct {
 	combinedRow rowenc.EncDatumRow
 }
 
-// Init initializes the joinerBase.
-//
-// opts is passed along to the underlying ProcessorBase. The zero value is used
-// if the processor using the joinerBase is not implementing RowSource.
 func (jb *joinerBase) init(
 	self execinfra.RowSource,
 	flowCtx *execinfra.FlowCtx,
@@ -68,7 +55,7 @@ func (jb *joinerBase) init(
 
 	rowSize := len(leftTypes) + len(rightTypes)
 	if outputContinuationColumn {
-		// NB: Can only be true for inner joins and left outer joins.
+
 		rowSize++
 	}
 	jb.combinedRow = make(rowenc.EncDatumRow, rowSize)
@@ -83,7 +70,7 @@ func (jb *joinerBase) init(
 	}
 
 	if err := jb.ProcessorBase.Init(
-		self, post, outputTypes, flowCtx, processorID, output, nil /* memMonitor */, opts,
+		self, post, outputTypes, flowCtx, processorID, output, nil, opts,
 	); err != nil {
 		return err
 	}
@@ -91,129 +78,166 @@ func (jb *joinerBase) init(
 	return jb.onCond.Init(onExpr, onCondTypes, semaCtx, jb.EvalCtx)
 }
 
-// joinSide is the utility type to distinguish between two sides of the join.
 type joinSide uint8
 
 const (
-	// leftSide indicates the left side of the join.
 	leftSide joinSide = 0
-	// rightSide indicates the right side of the join.
+
 	rightSide joinSide = 1
 )
 
 func (j joinSide) String() string {
+	__antithesis_instrumentation__.Notify(573109)
 	if j == leftSide {
+		__antithesis_instrumentation__.Notify(573111)
 		return "left"
+	} else {
+		__antithesis_instrumentation__.Notify(573112)
 	}
+	__antithesis_instrumentation__.Notify(573110)
 	return "right"
 }
 
-// renderUnmatchedRow creates a result row given an unmatched row on either
-// side. Only used for outer and anti joins. Note that if the join is outputting
-// a continuation column, the returned slice does not include the continuation
-// column, but has the capacity for it.
 func (jb *joinerBase) renderUnmatchedRow(row rowenc.EncDatumRow, side joinSide) rowenc.EncDatumRow {
+	__antithesis_instrumentation__.Notify(573113)
 	lrow, rrow := jb.emptyLeft, jb.emptyRight
 	if side == leftSide {
+		__antithesis_instrumentation__.Notify(573115)
 		lrow = row
 	} else {
+		__antithesis_instrumentation__.Notify(573116)
 		rrow = row
 	}
+	__antithesis_instrumentation__.Notify(573114)
 
 	return jb.renderForOutput(lrow, rrow)
 }
 
-// shouldEmitUnmatchedRow determines if we should emit an unmatched row (with
-// NULLs for the columns of the other stream). This happens in FULL OUTER joins
-// and LEFT or RIGHT OUTER joins and ANTI joins (depending on which stream is
-// stored).
 func shouldEmitUnmatchedRow(side joinSide, joinType descpb.JoinType) bool {
+	__antithesis_instrumentation__.Notify(573117)
 	switch joinType {
 	case descpb.InnerJoin, descpb.LeftSemiJoin, descpb.RightSemiJoin, descpb.IntersectAllJoin:
+		__antithesis_instrumentation__.Notify(573118)
 		return false
 	case descpb.RightOuterJoin:
+		__antithesis_instrumentation__.Notify(573119)
 		return side == rightSide
 	case descpb.LeftOuterJoin:
+		__antithesis_instrumentation__.Notify(573120)
 		return side == leftSide
 	case descpb.LeftAntiJoin:
+		__antithesis_instrumentation__.Notify(573121)
 		return side == leftSide
 	case descpb.RightAntiJoin:
+		__antithesis_instrumentation__.Notify(573122)
 		return side == rightSide
 	case descpb.ExceptAllJoin:
+		__antithesis_instrumentation__.Notify(573123)
 		return side == leftSide
 	case descpb.FullOuterJoin:
+		__antithesis_instrumentation__.Notify(573124)
 		return true
 	default:
+		__antithesis_instrumentation__.Notify(573125)
 		panic(errors.AssertionFailedf("unexpected join type %s", joinType))
 	}
 }
 
-// render constructs a row according to the join type (for semi/anti and set-op
-// joins only the columns of one side are included). The ON condition is
-// evaluated; if it fails, returns nil. Note that if the join is outputting a
-// continuation column, the returned slice does not include the continuation
-// column, but has the capacity for it.
 func (jb *joinerBase) render(lrow, rrow rowenc.EncDatumRow) (rowenc.EncDatumRow, error) {
+	__antithesis_instrumentation__.Notify(573126)
 	outputRow := jb.renderForOutput(lrow, rrow)
 
 	if jb.onCond.Expr != nil {
-		// We need to evaluate the ON condition which can refer to the columns
-		// from both sides of the join regardless of the join type, so we need
-		// to have the combined row.
+		__antithesis_instrumentation__.Notify(573128)
+
 		var combinedRow rowenc.EncDatumRow
-		if jb.joinType.ShouldIncludeLeftColsInOutput() && jb.joinType.ShouldIncludeRightColsInOutput() {
-			// When columns from both sides are needed in the output, we can
-			// just reuse the output row since it is the combined row too.
+		if jb.joinType.ShouldIncludeLeftColsInOutput() && func() bool {
+			__antithesis_instrumentation__.Notify(573130)
+			return jb.joinType.ShouldIncludeRightColsInOutput() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573131)
+
 			combinedRow = outputRow
 		} else {
+			__antithesis_instrumentation__.Notify(573132)
 			combinedRow = jb.combine(lrow, rrow)
 		}
+		__antithesis_instrumentation__.Notify(573129)
 		res, err := jb.onCond.EvalFilter(combinedRow)
-		if !res || err != nil {
+		if !res || func() bool {
+			__antithesis_instrumentation__.Notify(573133)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573134)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(573135)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573136)
 	}
+	__antithesis_instrumentation__.Notify(573127)
 
 	return outputRow, nil
 }
 
-// combine combines lrow and rrow together.
 func (jb *joinerBase) combine(lrow, rrow rowenc.EncDatumRow) rowenc.EncDatumRow {
+	__antithesis_instrumentation__.Notify(573137)
 	jb.combinedRow = jb.combinedRow[:len(lrow)+len(rrow)]
-	// If either of the rows is of length 1, it is faster to use direct
-	// assignment instead of copy.
+
 	if len(lrow) == 1 {
+		__antithesis_instrumentation__.Notify(573140)
 		jb.combinedRow[0] = lrow[0]
 	} else {
+		__antithesis_instrumentation__.Notify(573141)
 		copy(jb.combinedRow, lrow)
 	}
+	__antithesis_instrumentation__.Notify(573138)
 	if len(rrow) == 1 {
+		__antithesis_instrumentation__.Notify(573142)
 		jb.combinedRow[len(lrow)] = rrow[0]
 	} else {
+		__antithesis_instrumentation__.Notify(573143)
 		copy(jb.combinedRow[len(lrow):], rrow)
 	}
+	__antithesis_instrumentation__.Notify(573139)
 	return jb.combinedRow
 }
 
-// renderForOutput combines lrow and rrow together depending on the join type
-// and returns the row that can be used as the output of the join.
 func (jb *joinerBase) renderForOutput(lrow, rrow rowenc.EncDatumRow) rowenc.EncDatumRow {
+	__antithesis_instrumentation__.Notify(573144)
 	if !jb.joinType.ShouldIncludeLeftColsInOutput() {
+		__antithesis_instrumentation__.Notify(573147)
 		return rrow
+	} else {
+		__antithesis_instrumentation__.Notify(573148)
 	}
+	__antithesis_instrumentation__.Notify(573145)
 	if !jb.joinType.ShouldIncludeRightColsInOutput() {
+		__antithesis_instrumentation__.Notify(573149)
 		return lrow
+	} else {
+		__antithesis_instrumentation__.Notify(573150)
 	}
+	__antithesis_instrumentation__.Notify(573146)
 	return jb.combine(lrow, rrow)
 }
 
-// addColumnsNeededByOnExpr updates neededCols to include all IndexedVars from
-// onCond that are used and that have ordinals in [startIdx, endIdx) range.
-// Notably, every added needed column ordinal is shifted down by startIdx.
 func (jb *joinerBase) addColumnsNeededByOnExpr(neededCols *util.FastIntSet, startIdx, endIdx int) {
+	__antithesis_instrumentation__.Notify(573151)
 	for _, v := range jb.onCond.Vars.GetIndexedVars() {
-		if v.Used && v.Idx >= startIdx && v.Idx < endIdx {
+		__antithesis_instrumentation__.Notify(573152)
+		if v.Used && func() bool {
+			__antithesis_instrumentation__.Notify(573153)
+			return v.Idx >= startIdx == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(573154)
+			return v.Idx < endIdx == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573155)
 			neededCols.Add(v.Idx - startIdx)
+		} else {
+			__antithesis_instrumentation__.Notify(573156)
 		}
 	}
 }

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package row
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -29,24 +21,19 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Updater abstracts the key/value operations for updating table rows.
 type Updater struct {
 	Helper       rowHelper
 	DeleteHelper *rowHelper
 	FetchCols    []catalog.Column
-	// FetchColIDtoRowIndex must be kept in sync with FetchCols.
+
 	FetchColIDtoRowIndex  catalog.TableColMap
 	UpdateCols            []catalog.Column
 	UpdateColIDtoRowIndex catalog.TableColMap
 	primaryKeyColChange   bool
 
-	// rd and ri are used when the update this Updater is created for modifies
-	// the primary key of the table. In that case, rows must be deleted and
-	// re-added instead of merely updated, since the keys are changing.
 	rd Deleter
 	ri Inserter
 
-	// For allocation avoidance.
 	marshaled       []roachpb.Value
 	newValues       []tree.Datum
 	key             roachpb.Key
@@ -59,23 +46,11 @@ type Updater struct {
 type rowUpdaterType int
 
 const (
-	// UpdaterDefault indicates that an Updater should update everything
-	// about a row, including secondary indexes.
 	UpdaterDefault rowUpdaterType = 0
-	// UpdaterOnlyColumns indicates that an Updater should only update the
-	// columns of a row and not the secondary indexes.
+
 	UpdaterOnlyColumns rowUpdaterType = 1
 )
 
-// MakeUpdater creates a Updater for the given table.
-//
-// UpdateCols are the columns being updated and correspond to the updateValues
-// that will be passed to UpdateRow.
-//
-// The returned Updater contains a FetchCols field that defines the
-// expectation of which values are passed as oldValues to UpdateRow.
-// requestedCols must be non-nil and define the schema that determines
-// FetchCols.
 func MakeUpdater(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -89,82 +64,119 @@ func MakeUpdater(
 	internal bool,
 	metrics *Metrics,
 ) (Updater, error) {
+	__antithesis_instrumentation__.Notify(568651)
 	if requestedCols == nil {
+		__antithesis_instrumentation__.Notify(568659)
 		return Updater{}, errors.AssertionFailedf("requestedCols is nil in MakeUpdater")
+	} else {
+		__antithesis_instrumentation__.Notify(568660)
 	}
+	__antithesis_instrumentation__.Notify(568652)
 
 	updateColIDtoRowIndex := ColIDtoRowIndexFromCols(updateCols)
 
 	var primaryIndexCols catalog.TableColSet
 	for i := 0; i < tableDesc.GetPrimaryIndex().NumKeyColumns(); i++ {
+		__antithesis_instrumentation__.Notify(568661)
 		colID := tableDesc.GetPrimaryIndex().GetKeyColumnID(i)
 		primaryIndexCols.Add(colID)
 	}
+	__antithesis_instrumentation__.Notify(568653)
 
 	var primaryKeyColChange bool
 	for _, c := range updateCols {
+		__antithesis_instrumentation__.Notify(568662)
 		if primaryIndexCols.Contains(c.GetID()) {
+			__antithesis_instrumentation__.Notify(568663)
 			primaryKeyColChange = true
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(568664)
 		}
 	}
+	__antithesis_instrumentation__.Notify(568654)
 
-	// needsUpdate returns true if the given index may need to be updated for
-	// the current UPDATE mutation.
 	needsUpdate := func(index catalog.Index) bool {
-		// If the UPDATE is set to only update columns and not secondary
-		// indexes, return false.
+		__antithesis_instrumentation__.Notify(568665)
+
 		if updateType == UpdaterOnlyColumns {
+			__antithesis_instrumentation__.Notify(568670)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(568671)
 		}
-		// If the primary key changed, we need to update all secondary indexes.
+		__antithesis_instrumentation__.Notify(568666)
+
 		if primaryKeyColChange {
+			__antithesis_instrumentation__.Notify(568672)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(568673)
 		}
-		// If the index is a partial index, an update may be required even if
-		// the indexed columns aren't changing. For example, an index entry must
-		// be added when an update to a non-indexed column causes a row to
-		// satisfy the partial index predicate when it did not before.
-		// TODO(mgartner): needsUpdate does not need to return true for every
-		// partial index. A partial index will never require updating if neither
-		// its indexed columns nor the columns referenced in its predicate
-		// expression are changing.
+		__antithesis_instrumentation__.Notify(568667)
+
 		if index.IsPartial() {
+			__antithesis_instrumentation__.Notify(568674)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(568675)
 		}
+		__antithesis_instrumentation__.Notify(568668)
 		colIDs := index.CollectKeyColumnIDs()
 		colIDs.UnionWith(index.CollectSecondaryStoredColumnIDs())
 		colIDs.UnionWith(index.CollectKeySuffixColumnIDs())
 		for _, colID := range colIDs.Ordered() {
+			__antithesis_instrumentation__.Notify(568676)
 			if _, ok := updateColIDtoRowIndex.Get(colID); ok {
+				__antithesis_instrumentation__.Notify(568677)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(568678)
 			}
 		}
+		__antithesis_instrumentation__.Notify(568669)
 		return false
 	}
+	__antithesis_instrumentation__.Notify(568655)
 
 	includeIndexes := make([]catalog.Index, 0, len(tableDesc.WritableNonPrimaryIndexes()))
 	var deleteOnlyIndexes []catalog.Index
 	for _, index := range tableDesc.DeletableNonPrimaryIndexes() {
+		__antithesis_instrumentation__.Notify(568679)
 		if !needsUpdate(index) {
+			__antithesis_instrumentation__.Notify(568681)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(568682)
 		}
+		__antithesis_instrumentation__.Notify(568680)
 		if !index.DeleteOnly() {
+			__antithesis_instrumentation__.Notify(568683)
 			includeIndexes = append(includeIndexes, index)
 		} else {
+			__antithesis_instrumentation__.Notify(568684)
 			if deleteOnlyIndexes == nil {
-				// Allocate at most once.
+				__antithesis_instrumentation__.Notify(568686)
+
 				deleteOnlyIndexes = make([]catalog.Index, 0, len(tableDesc.DeleteOnlyNonPrimaryIndexes()))
+			} else {
+				__antithesis_instrumentation__.Notify(568687)
 			}
+			__antithesis_instrumentation__.Notify(568685)
 			deleteOnlyIndexes = append(deleteOnlyIndexes, index)
 		}
 	}
+	__antithesis_instrumentation__.Notify(568656)
 
 	var deleteOnlyHelper *rowHelper
 	if len(deleteOnlyIndexes) > 0 {
+		__antithesis_instrumentation__.Notify(568688)
 		rh := newRowHelper(codec, tableDesc, deleteOnlyIndexes, sv, internal, metrics)
 		deleteOnlyHelper = &rh
+	} else {
+		__antithesis_instrumentation__.Notify(568689)
 	}
+	__antithesis_instrumentation__.Notify(568657)
 
 	ru := Updater{
 		Helper:                newRowHelper(codec, tableDesc, includeIndexes, sv, internal, metrics),
@@ -180,31 +192,28 @@ func MakeUpdater(
 	}
 
 	if primaryKeyColChange {
-		// These fields are only used when the primary key is changing.
+		__antithesis_instrumentation__.Notify(568690)
+
 		var err error
 		ru.rd = MakeDeleter(codec, tableDesc, requestedCols, sv, internal, metrics)
 		if ru.ri, err = MakeInserter(
 			ctx, txn, codec, tableDesc, requestedCols, alloc, sv, internal, metrics,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(568691)
 			return Updater{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(568692)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(568693)
 	}
+	__antithesis_instrumentation__.Notify(568658)
 
-	// If we are fetching from specific families, we might get
-	// less columns than in the table. So we cannot assign this to
-	// have length len(tableCols).
 	ru.newValues = make(tree.Datums, len(ru.FetchCols))
 
 	return ru, nil
 }
 
-// UpdateRow adds to the batch the kv operations necessary to update a table row
-// with the given values.
-//
-// The row corresponding to oldValues is updated with the ones in updateValues.
-// Note that updateValues only contains the ones that are changing.
-//
-// The return value is only good until the next call to UpdateRow.
 func (ru *Updater) UpdateRow(
 	ctx context.Context,
 	batch *kv.Batch,
@@ -213,369 +222,464 @@ func (ru *Updater) UpdateRow(
 	pm PartialIndexUpdateHelper,
 	traceKV bool,
 ) ([]tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(568694)
 	if len(oldValues) != len(ru.FetchCols) {
+		__antithesis_instrumentation__.Notify(568707)
 		return nil, errors.Errorf("got %d values but expected %d", len(oldValues), len(ru.FetchCols))
+	} else {
+		__antithesis_instrumentation__.Notify(568708)
 	}
+	__antithesis_instrumentation__.Notify(568695)
 	if len(updateValues) != len(ru.UpdateCols) {
+		__antithesis_instrumentation__.Notify(568709)
 		return nil, errors.Errorf("got %d values but expected %d", len(updateValues), len(ru.UpdateCols))
+	} else {
+		__antithesis_instrumentation__.Notify(568710)
 	}
+	__antithesis_instrumentation__.Notify(568696)
 
 	primaryIndexKey, err := ru.Helper.encodePrimaryIndex(ru.FetchColIDtoRowIndex, oldValues)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(568711)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(568712)
 	}
+	__antithesis_instrumentation__.Notify(568697)
 	var deleteOldSecondaryIndexEntries map[catalog.Index][]rowenc.IndexEntry
 	if ru.DeleteHelper != nil {
-		// We want to include empty k/v pairs because we want
-		// to delete all k/v's for this row. By setting includeEmpty
-		// to true, we will get a k/v pair for each family in the row,
-		// which will guarantee that we delete all the k/v's in this row.
-		// N.B. that setting includeEmpty to true will sometimes cause
-		// deletes of keys that aren't present. We choose to make this
-		// compromise in order to avoid having to read all values of
-		// the row that is being updated.
+		__antithesis_instrumentation__.Notify(568713)
+
 		_, deleteOldSecondaryIndexEntries, err = ru.DeleteHelper.encodeIndexes(
-			ru.FetchColIDtoRowIndex, oldValues, pm.IgnoreForDel, true /* includeEmpty */)
+			ru.FetchColIDtoRowIndex, oldValues, pm.IgnoreForDel, true)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(568714)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568715)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(568716)
 	}
+	__antithesis_instrumentation__.Notify(568698)
 
-	// Check that the new value types match the column types. This needs to
-	// happen before index encoding because certain datum types (i.e. tuple)
-	// cannot be used as index values.
-	//
-	// TODO(radu): the legacy marshaling is used only in rare cases; this is
-	// wasteful.
 	for i, val := range updateValues {
+		__antithesis_instrumentation__.Notify(568717)
 		if ru.marshaled[i], err = valueside.MarshalLegacy(ru.UpdateCols[i].GetType(), val); err != nil {
+			__antithesis_instrumentation__.Notify(568718)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568719)
 		}
 	}
+	__antithesis_instrumentation__.Notify(568699)
 
-	// Update the row values.
 	copy(ru.newValues, oldValues)
 	for i, updateCol := range ru.UpdateCols {
+		__antithesis_instrumentation__.Notify(568720)
 		idx, ok := ru.FetchColIDtoRowIndex.Get(updateCol.GetID())
 		if !ok {
+			__antithesis_instrumentation__.Notify(568722)
 			return nil, errors.AssertionFailedf("update column without a corresponding fetch column")
+		} else {
+			__antithesis_instrumentation__.Notify(568723)
 		}
+		__antithesis_instrumentation__.Notify(568721)
 		ru.newValues[idx] = updateValues[i]
 	}
+	__antithesis_instrumentation__.Notify(568700)
 
 	rowPrimaryKeyChanged := false
 	if ru.primaryKeyColChange {
+		__antithesis_instrumentation__.Notify(568724)
 		var newPrimaryIndexKey []byte
 		newPrimaryIndexKey, err =
 			ru.Helper.encodePrimaryIndex(ru.FetchColIDtoRowIndex, ru.newValues)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(568726)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568727)
 		}
+		__antithesis_instrumentation__.Notify(568725)
 		rowPrimaryKeyChanged = !bytes.Equal(primaryIndexKey, newPrimaryIndexKey)
+	} else {
+		__antithesis_instrumentation__.Notify(568728)
 	}
+	__antithesis_instrumentation__.Notify(568701)
 
 	for i, index := range ru.Helper.Indexes {
-		// We don't want to insert any empty k/v's, so set includeEmpty to false.
-		// Consider the following case:
-		// TABLE t (
-		//   x INT PRIMARY KEY, y INT, z INT, w INT,
-		//   INDEX (y) STORING (z, w),
-		//   FAMILY (x), FAMILY (y), FAMILY (z), FAMILY (w)
-		//)
-		// If we are to perform an update on row (1, 2, 3, NULL), the k/v pair
-		// for index i that encodes column w would have an empty value because w
-		// is null and the sole resident of that family. We want to ensure that
-		// we don't insert empty k/v pairs during the process of the update, so
-		// set includeEmpty to false while generating the old and new index
-		// entries.
-		//
-		// Also, we don't build entries for old and new values if the index
-		// exists in ignoreIndexesForDel and ignoreIndexesForPut, respectively.
-		// Index IDs in these sets indicate that old and new values for the row
-		// do not satisfy a partial index's predicate expression.
+		__antithesis_instrumentation__.Notify(568729)
+
 		if pm.IgnoreForDel.Contains(int(index.GetID())) {
+			__antithesis_instrumentation__.Notify(568732)
 			ru.oldIndexEntries[i] = nil
 		} else {
+			__antithesis_instrumentation__.Notify(568733)
 			ru.oldIndexEntries[i], err = rowenc.EncodeSecondaryIndex(
 				ru.Helper.Codec,
 				ru.Helper.TableDesc,
 				index,
 				ru.FetchColIDtoRowIndex,
 				oldValues,
-				false, /* includeEmpty */
+				false,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(568734)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(568735)
 			}
 		}
+		__antithesis_instrumentation__.Notify(568730)
 		if pm.IgnoreForPut.Contains(int(index.GetID())) {
+			__antithesis_instrumentation__.Notify(568736)
 			ru.newIndexEntries[i] = nil
 		} else {
+			__antithesis_instrumentation__.Notify(568737)
 			ru.newIndexEntries[i], err = rowenc.EncodeSecondaryIndex(
 				ru.Helper.Codec,
 				ru.Helper.TableDesc,
 				index,
 				ru.FetchColIDtoRowIndex,
 				ru.newValues,
-				false, /* includeEmpty */
+				false,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(568738)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(568739)
 			}
 		}
-		if ru.Helper.Indexes[i].GetType() == descpb.IndexDescriptor_INVERTED && !ru.Helper.Indexes[i].IsTemporaryIndexForBackfill() {
-			// Deduplicate the keys we're adding and removing if we're updating an
-			// inverted index. For example, imagine a table with an inverted index on j:
-			//
-			// a | j
-			// --+----------------
-			// 1 | {"foo": "bar"}
-			//
-			// If we update the json value to be {"foo": "bar", "baz": "qux"}, we don't
-			// want to delete the /foo/bar key and re-add it, that would be wasted work.
-			// So, we are going to remove keys from both the new and old index entry
-			// array if they're identical.
-			//
-			// We don't do this deduplication on temporary indexes used during the
-			// backfill because any deletes that are elided here are not elided on the
-			// newly added index when it is in DELETE_ONLY.
+		__antithesis_instrumentation__.Notify(568731)
+		if ru.Helper.Indexes[i].GetType() == descpb.IndexDescriptor_INVERTED && func() bool {
+			__antithesis_instrumentation__.Notify(568740)
+			return !ru.Helper.Indexes[i].IsTemporaryIndexForBackfill() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(568741)
+
 			newIndexEntries := ru.newIndexEntries[i]
 			oldIndexEntries := ru.oldIndexEntries[i]
 			sort.Slice(oldIndexEntries, func(i, j int) bool {
+				__antithesis_instrumentation__.Notify(568745)
 				return compareIndexEntries(oldIndexEntries[i], oldIndexEntries[j]) < 0
 			})
+			__antithesis_instrumentation__.Notify(568742)
 			sort.Slice(newIndexEntries, func(i, j int) bool {
+				__antithesis_instrumentation__.Notify(568746)
 				return compareIndexEntries(newIndexEntries[i], newIndexEntries[j]) < 0
 			})
+			__antithesis_instrumentation__.Notify(568743)
 			oldLen, newLen := unique.UniquifyAcrossSlices(
 				oldIndexEntries, newIndexEntries,
 				func(l, r int) int {
+					__antithesis_instrumentation__.Notify(568747)
 					return compareIndexEntries(oldIndexEntries[l], newIndexEntries[r])
 				},
 				func(i, j int) {
+					__antithesis_instrumentation__.Notify(568748)
 					oldIndexEntries[i] = oldIndexEntries[j]
 				},
 				func(i, j int) {
+					__antithesis_instrumentation__.Notify(568749)
 					newIndexEntries[i] = newIndexEntries[j]
 				})
+			__antithesis_instrumentation__.Notify(568744)
 			ru.oldIndexEntries[i] = oldIndexEntries[:oldLen]
 			ru.newIndexEntries[i] = newIndexEntries[:newLen]
+		} else {
+			__antithesis_instrumentation__.Notify(568750)
 		}
 	}
+	__antithesis_instrumentation__.Notify(568702)
 
 	if rowPrimaryKeyChanged {
+		__antithesis_instrumentation__.Notify(568751)
 		if err := ru.rd.DeleteRow(ctx, batch, oldValues, pm, traceKV); err != nil {
+			__antithesis_instrumentation__.Notify(568754)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568755)
 		}
+		__antithesis_instrumentation__.Notify(568752)
 		if err := ru.ri.InsertRow(
-			ctx, batch, ru.newValues, pm, false /* ignoreConflicts */, traceKV,
+			ctx, batch, ru.newValues, pm, false, traceKV,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(568756)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568757)
 		}
+		__antithesis_instrumentation__.Notify(568753)
 
 		return ru.newValues, nil
+	} else {
+		__antithesis_instrumentation__.Notify(568758)
 	}
+	__antithesis_instrumentation__.Notify(568703)
 
-	// Add the new values.
 	ru.valueBuf, err = prepareInsertOrUpdateBatch(ctx, batch,
 		&ru.Helper, primaryIndexKey, ru.FetchCols,
 		ru.newValues, ru.FetchColIDtoRowIndex,
 		ru.marshaled, ru.UpdateColIDtoRowIndex,
-		&ru.key, &ru.value, ru.valueBuf, insertPutFn, true /* overwrite */, traceKV)
+		&ru.key, &ru.value, ru.valueBuf, insertPutFn, true, traceKV)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(568759)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(568760)
 	}
+	__antithesis_instrumentation__.Notify(568704)
 
-	// Update secondary indexes.
-	// We're iterating through all of the indexes, which should have corresponding entries
-	// in the new and old values.
 	for i, index := range ru.Helper.Indexes {
+		__antithesis_instrumentation__.Notify(568761)
 		if index.GetType() == descpb.IndexDescriptor_FORWARD {
+			__antithesis_instrumentation__.Notify(568762)
 			oldIdx, newIdx := 0, 0
 			oldEntries, newEntries := ru.oldIndexEntries[i], ru.newIndexEntries[i]
-			// The index entries for a particular index are stored in
-			// family sorted order. We use this fact to update rows.
-			// The algorithm to update a row using the old k/v pairs
-			// for the row and the new k/v pairs for the row is very
-			// similar to the algorithm to merge two sorted lists.
-			// We move in lock step through the entries, and potentially
-			// update k/v's that belong to the same family.
-			// If we are in the case where there exists a family's k/v
-			// in the old entries but not the new entries, we need to
-			// delete that k/v. If we are in the case where a family's
-			// k/v exists in the new index entries, then we need to just
-			// insert that new k/v.
-			for oldIdx < len(oldEntries) && newIdx < len(newEntries) {
+
+			for oldIdx < len(oldEntries) && func() bool {
+				__antithesis_instrumentation__.Notify(568765)
+				return newIdx < len(newEntries) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(568766)
 				oldEntry, newEntry := &oldEntries[oldIdx], &newEntries[newIdx]
 				if oldEntry.Family == newEntry.Family {
-					// If the families are equal, then check if the keys have changed. If so, delete the old key.
-					// Then, issue a CPut for the new value of the key if the value has changed.
-					// Because the indexes will always have a k/v for family 0, it suffices to only
-					// add foreign key checks in this case, because we are guaranteed to enter here.
+					__antithesis_instrumentation__.Notify(568767)
+
 					oldIdx++
 					newIdx++
 					var expValue []byte
 					if !bytes.Equal(oldEntry.Key, newEntry.Key) {
+						__antithesis_instrumentation__.Notify(568769)
 						if err := ru.Helper.deleteIndexEntry(ctx, batch, index, ru.Helper.secIndexValDirs[i], oldEntry, traceKV); err != nil {
+							__antithesis_instrumentation__.Notify(568770)
 							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(568771)
 						}
-					} else if !newEntry.Value.EqualTagAndData(oldEntry.Value) {
-						expValue = oldEntry.Value.TagAndDataBytes()
-					} else if !index.IsTemporaryIndexForBackfill() {
-						// If this is a temporary index for backfill, we want to make sure we write out all
-						// index values even in the case where they should be the same. We do this because the
-						// temporary index is eventually merged into a newly added index that might be in a
-						// DELETE_ONLY state at the time of this update and thus the temporary index needs to
-						// have all of the entries.
-						//
-						// Otherwise, skip this put since the key and value are the same.
-						continue
+					} else {
+						__antithesis_instrumentation__.Notify(568772)
+						if !newEntry.Value.EqualTagAndData(oldEntry.Value) {
+							__antithesis_instrumentation__.Notify(568773)
+							expValue = oldEntry.Value.TagAndDataBytes()
+						} else {
+							__antithesis_instrumentation__.Notify(568774)
+							if !index.IsTemporaryIndexForBackfill() {
+								__antithesis_instrumentation__.Notify(568775)
+
+								continue
+							} else {
+								__antithesis_instrumentation__.Notify(568776)
+							}
+						}
 					}
+					__antithesis_instrumentation__.Notify(568768)
 
 					if index.ForcePut() {
-						// See the comment on (catalog.Index).ForcePut() for more details.
+						__antithesis_instrumentation__.Notify(568777)
+
 						insertPutFn(ctx, batch, &newEntry.Key, &newEntry.Value, traceKV)
 					} else {
+						__antithesis_instrumentation__.Notify(568778)
 						if traceKV {
+							__antithesis_instrumentation__.Notify(568780)
 							k := keys.PrettyPrint(ru.Helper.secIndexValDirs[i], newEntry.Key)
 							v := newEntry.Value.PrettyPrint()
 							if expValue != nil {
+								__antithesis_instrumentation__.Notify(568781)
 								log.VEventf(ctx, 2, "CPut %s -> %v (replacing %v, if exists)", k, v, expValue)
 							} else {
+								__antithesis_instrumentation__.Notify(568782)
 								log.VEventf(ctx, 2, "CPut %s -> %v (expecting does not exist)", k, v)
 							}
+						} else {
+							__antithesis_instrumentation__.Notify(568783)
 						}
+						__antithesis_instrumentation__.Notify(568779)
 						batch.CPutAllowingIfNotExists(newEntry.Key, &newEntry.Value, expValue)
 					}
-				} else if oldEntry.Family < newEntry.Family {
-					if oldEntry.Family == descpb.FamilyID(0) {
-						return nil, errors.AssertionFailedf(
-							"index entry for family 0 for table %s, index %s was not generated",
-							ru.Helper.TableDesc.GetName(), index.GetName(),
-						)
-					}
-					// In this case, the index has a k/v for a family that does not exist in
-					// the new set of k/v's for the row. So, we need to delete the old k/v.
-					if err := ru.Helper.deleteIndexEntry(ctx, batch, index, ru.Helper.secIndexValDirs[i], oldEntry, traceKV); err != nil {
-						return nil, err
-					}
-					oldIdx++
 				} else {
-					if newEntry.Family == descpb.FamilyID(0) {
-						return nil, errors.AssertionFailedf(
-							"index entry for family 0 for table %s, index %s was not generated",
-							ru.Helper.TableDesc.GetName(), index.GetName(),
-						)
-					}
-
-					if index.ForcePut() {
-						// See the comment on (catalog.Index).ForcePut() for more details.
-						insertPutFn(ctx, batch, &newEntry.Key, &newEntry.Value, traceKV)
-					} else {
-						// In this case, the index now has a k/v that did not exist in the
-						// old row, so we should expect to not see a value for the new key,
-						// and put the new key in place.
-						if traceKV {
-							k := keys.PrettyPrint(ru.Helper.secIndexValDirs[i], newEntry.Key)
-							v := newEntry.Value.PrettyPrint()
-							log.VEventf(ctx, 2, "CPut %s -> %v (expecting does not exist)", k, v)
+					__antithesis_instrumentation__.Notify(568784)
+					if oldEntry.Family < newEntry.Family {
+						__antithesis_instrumentation__.Notify(568785)
+						if oldEntry.Family == descpb.FamilyID(0) {
+							__antithesis_instrumentation__.Notify(568788)
+							return nil, errors.AssertionFailedf(
+								"index entry for family 0 for table %s, index %s was not generated",
+								ru.Helper.TableDesc.GetName(), index.GetName(),
+							)
+						} else {
+							__antithesis_instrumentation__.Notify(568789)
 						}
-						batch.CPut(newEntry.Key, &newEntry.Value, nil)
+						__antithesis_instrumentation__.Notify(568786)
+
+						if err := ru.Helper.deleteIndexEntry(ctx, batch, index, ru.Helper.secIndexValDirs[i], oldEntry, traceKV); err != nil {
+							__antithesis_instrumentation__.Notify(568790)
+							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(568791)
+						}
+						__antithesis_instrumentation__.Notify(568787)
+						oldIdx++
+					} else {
+						__antithesis_instrumentation__.Notify(568792)
+						if newEntry.Family == descpb.FamilyID(0) {
+							__antithesis_instrumentation__.Notify(568795)
+							return nil, errors.AssertionFailedf(
+								"index entry for family 0 for table %s, index %s was not generated",
+								ru.Helper.TableDesc.GetName(), index.GetName(),
+							)
+						} else {
+							__antithesis_instrumentation__.Notify(568796)
+						}
+						__antithesis_instrumentation__.Notify(568793)
+
+						if index.ForcePut() {
+							__antithesis_instrumentation__.Notify(568797)
+
+							insertPutFn(ctx, batch, &newEntry.Key, &newEntry.Value, traceKV)
+						} else {
+							__antithesis_instrumentation__.Notify(568798)
+
+							if traceKV {
+								__antithesis_instrumentation__.Notify(568800)
+								k := keys.PrettyPrint(ru.Helper.secIndexValDirs[i], newEntry.Key)
+								v := newEntry.Value.PrettyPrint()
+								log.VEventf(ctx, 2, "CPut %s -> %v (expecting does not exist)", k, v)
+							} else {
+								__antithesis_instrumentation__.Notify(568801)
+							}
+							__antithesis_instrumentation__.Notify(568799)
+							batch.CPut(newEntry.Key, &newEntry.Value, nil)
+						}
+						__antithesis_instrumentation__.Notify(568794)
+						newIdx++
 					}
-					newIdx++
 				}
 			}
+			__antithesis_instrumentation__.Notify(568763)
 			for oldIdx < len(oldEntries) {
-				// Delete any remaining old entries that are not matched by new
-				// entries in this row because 1) the family does not exist in
-				// the new set of k/v's or 2) the index is a partial index and
-				// the new row values do not match the partial index predicate.
+				__antithesis_instrumentation__.Notify(568802)
+
 				oldEntry := &oldEntries[oldIdx]
 				if err := ru.Helper.deleteIndexEntry(ctx, batch, index, ru.Helper.secIndexValDirs[i], oldEntry, traceKV); err != nil {
+					__antithesis_instrumentation__.Notify(568804)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(568805)
 				}
+				__antithesis_instrumentation__.Notify(568803)
 				oldIdx++
 			}
+			__antithesis_instrumentation__.Notify(568764)
 			for newIdx < len(newEntries) {
-				// Insert any remaining new entries that are not present in the
-				// old row. Insert any remaining new entries that are not
-				// present in the old row because 1) the family does not exist
-				// in the old set of k/v's or 2) the index is a partial index
-				// and the old row values do not match the partial index
-				// predicate.
+				__antithesis_instrumentation__.Notify(568806)
+
 				newEntry := &newEntries[newIdx]
 				if index.ForcePut() {
-					// See the comment on (catalog.Index).ForcePut() for more details.
+					__antithesis_instrumentation__.Notify(568808)
+
 					insertPutFn(ctx, batch, &newEntry.Key, &newEntry.Value, traceKV)
 				} else {
+					__antithesis_instrumentation__.Notify(568809)
 					if traceKV {
+						__antithesis_instrumentation__.Notify(568811)
 						k := keys.PrettyPrint(ru.Helper.secIndexValDirs[i], newEntry.Key)
 						v := newEntry.Value.PrettyPrint()
 						log.VEventf(ctx, 2, "CPut %s -> %v (expecting does not exist)", k, v)
+					} else {
+						__antithesis_instrumentation__.Notify(568812)
 					}
+					__antithesis_instrumentation__.Notify(568810)
 					batch.CPut(newEntry.Key, &newEntry.Value, nil)
 				}
+				__antithesis_instrumentation__.Notify(568807)
 				newIdx++
 			}
 		} else {
-			// Remove all inverted index entries, and re-add them.
+			__antithesis_instrumentation__.Notify(568813)
+
 			for j := range ru.oldIndexEntries[i] {
-				if err := ru.Helper.deleteIndexEntry(ctx, batch, index, nil /*valDir*/, &ru.oldIndexEntries[i][j], traceKV); err != nil {
+				__antithesis_instrumentation__.Notify(568815)
+				if err := ru.Helper.deleteIndexEntry(ctx, batch, index, nil, &ru.oldIndexEntries[i][j], traceKV); err != nil {
+					__antithesis_instrumentation__.Notify(568816)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(568817)
 				}
 			}
-			// We're adding all of the inverted index entries from the row being updated.
+			__antithesis_instrumentation__.Notify(568814)
+
 			for j := range ru.newIndexEntries[i] {
+				__antithesis_instrumentation__.Notify(568818)
 				if index.ForcePut() {
-					// See the comment on (catalog.Index).ForcePut() for more details.
+					__antithesis_instrumentation__.Notify(568819)
+
 					insertPutFn(ctx, batch, &ru.newIndexEntries[i][j].Key, &ru.newIndexEntries[i][j].Value, traceKV)
 				} else {
+					__antithesis_instrumentation__.Notify(568820)
 					insertInvertedPutFn(ctx, batch, &ru.newIndexEntries[i][j].Key, &ru.newIndexEntries[i][j].Value, traceKV)
 				}
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(568705)
 
-	// We're deleting indexes in a delete only state. We're bounding this by the number of indexes because inverted
-	// indexed will be handled separately.
 	if ru.DeleteHelper != nil {
+		__antithesis_instrumentation__.Notify(568821)
 
-		// For determinism, add the entries for the secondary indexes in the same
-		// order as they appear in the helper.
 		for idx := range ru.DeleteHelper.Indexes {
+			__antithesis_instrumentation__.Notify(568822)
 			index := ru.DeleteHelper.Indexes[idx]
 			deletedSecondaryIndexEntries, ok := deleteOldSecondaryIndexEntries[index]
 
 			if ok {
+				__antithesis_instrumentation__.Notify(568823)
 				for _, deletedSecondaryIndexEntry := range deletedSecondaryIndexEntries {
-					if err := ru.DeleteHelper.deleteIndexEntry(ctx, batch, index, nil /*valDir*/, &deletedSecondaryIndexEntry, traceKV); err != nil {
+					__antithesis_instrumentation__.Notify(568824)
+					if err := ru.DeleteHelper.deleteIndexEntry(ctx, batch, index, nil, &deletedSecondaryIndexEntry, traceKV); err != nil {
+						__antithesis_instrumentation__.Notify(568825)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(568826)
 					}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(568827)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(568828)
 	}
+	__antithesis_instrumentation__.Notify(568706)
 
 	return ru.newValues, nil
 }
 
 func compareIndexEntries(left, right rowenc.IndexEntry) int {
+	__antithesis_instrumentation__.Notify(568829)
 	cmp := bytes.Compare(left.Key, right.Key)
 	if cmp != 0 {
+		__antithesis_instrumentation__.Notify(568831)
 		return cmp
+	} else {
+		__antithesis_instrumentation__.Notify(568832)
 	}
+	__antithesis_instrumentation__.Notify(568830)
 
 	return bytes.Compare(left.Value.RawBytes, right.Value.RawBytes)
 }
 
-// IsColumnOnlyUpdate returns true if this Updater is only updating column
-// data (in contrast to updating the primary key or other indexes).
 func (ru *Updater) IsColumnOnlyUpdate() bool {
-	// TODO(dan): This is used in the schema change backfill to assert that it was
-	// configured correctly and will not be doing things it shouldn't. This is an
-	// unfortunate bleeding of responsibility and indicates the abstraction could
-	// be improved. Specifically, Updater currently has two responsibilities
-	// (computing which indexes need to be updated and mapping sql rows to k/v
-	// operations) and these should be split.
-	return !ru.primaryKeyColChange && ru.DeleteHelper == nil && len(ru.Helper.Indexes) == 0
+	__antithesis_instrumentation__.Notify(568833)
+
+	return !ru.primaryKeyColChange && func() bool {
+		__antithesis_instrumentation__.Notify(568834)
+		return ru.DeleteHelper == nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(568835)
+		return len(ru.Helper.Indexes) == 0 == true
+	}() == true
 }

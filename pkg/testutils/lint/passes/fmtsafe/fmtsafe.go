@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package fmtsafe
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -24,7 +16,6 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 )
 
-// Doc documents this pass.
 var Doc = `checks that log and error functions don't leak PII.
 
 This linter checks the following:
@@ -49,7 +40,6 @@ string out of the linter using /* nolint:fmtsafe */ after the format
 argument. This escape hatch is not available in non-test code.
 `
 
-// Analyzer defines this pass.
 var Analyzer = &analysis.Analyzer{
 	Name:     "fmtsafe",
 	Doc:      Doc,
@@ -58,244 +48,337 @@ var Analyzer = &analysis.Analyzer{
 }
 
 func run(pass *analysis.Pass) (interface{}, error) {
+	__antithesis_instrumentation__.Notify(644592)
 	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	// Our analyzer just wants to see function definitions
-	// and call points.
 	nodeFilter := []ast.Node{
 		(*ast.FuncDecl)(nil),
 		(*ast.CallExpr)(nil),
 	}
 
-	// fmtOrMsgStr, if non-nil, indicates an incoming
-	// format or message string in the argument list of the
-	// current function.
-	//
-	// The pointer is set at the beginning of every function declaration
-	// for a function recognized by this linter (= any of those listed
-	// in functions.go). In non-recognized function, it is set to nil to
-	// indicate there is no known format or message string.
 	var fmtOrMsgStr *types.Var
 	var enclosingFnName string
 
-	// Now traverse the ASTs. The preorder traversal visits each
-	// function declaration node before its body, so we always get to
-	// set fmtOrMsgStr before the call points inside the body are
-	// visited.
 	inspect.Preorder(nodeFilter, func(n ast.Node) {
-		// Catch-all for possible bugs in the linter code.
+		__antithesis_instrumentation__.Notify(644594)
+
 		defer func() {
+			__antithesis_instrumentation__.Notify(644597)
 			if r := recover(); r != nil {
+				__antithesis_instrumentation__.Notify(644598)
 				if err, ok := r.(error); ok {
+					__antithesis_instrumentation__.Notify(644600)
 					pass.Reportf(n.Pos(), "internal linter error: %v", err)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(644601)
 				}
+				__antithesis_instrumentation__.Notify(644599)
 				panic(r)
+			} else {
+				__antithesis_instrumentation__.Notify(644602)
 			}
 		}()
+		__antithesis_instrumentation__.Notify(644595)
 
 		if fd, ok := n.(*ast.FuncDecl); ok {
-			// This is the function declaration header. Obtain the formal
-			// parameter and the name of the function being defined.
-			// We use the name in subsequent error messages to provide
-			// more context, and to facilitate the definition
-			// of precise exceptions in lint_test.go.
+			__antithesis_instrumentation__.Notify(644603)
+
 			enclosingFnName, fmtOrMsgStr = maybeGetConstStr(pass, fd)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(644604)
 		}
-		// At a call site.
+		__antithesis_instrumentation__.Notify(644596)
+
 		call := n.(*ast.CallExpr)
 		checkCallExpr(pass, enclosingFnName, call, fmtOrMsgStr)
 	})
+	__antithesis_instrumentation__.Notify(644593)
 	return nil, nil
 }
 
 func maybeGetConstStr(
 	pass *analysis.Pass, fd *ast.FuncDecl,
 ) (enclosingFnName string, res *types.Var) {
+	__antithesis_instrumentation__.Notify(644605)
 	if fd.Body == nil {
-		// No body. Since there won't be any callee, take
-		// an early return.
-		return "", nil
-	}
+		__antithesis_instrumentation__.Notify(644612)
 
-	// What's the function being defined?
+		return "", nil
+	} else {
+		__antithesis_instrumentation__.Notify(644613)
+	}
+	__antithesis_instrumentation__.Notify(644606)
+
 	fn := pass.TypesInfo.Defs[fd.Name].(*types.Func)
 	if fn == nil {
+		__antithesis_instrumentation__.Notify(644614)
 		return "", nil
+	} else {
+		__antithesis_instrumentation__.Notify(644615)
 	}
+	__antithesis_instrumentation__.Notify(644607)
 	fnName := stripVendor(fn.FullName())
 
 	var wantVariadic bool
 	var argIdx int
 
 	if requireConstFmt[fnName] {
-		// Expect a variadic function and the format parameter
-		// next-to-last in the parameter list.
+		__antithesis_instrumentation__.Notify(644616)
+
 		wantVariadic = true
 		argIdx = -2
-	} else if requireConstMsg[fnName] {
-		// Expect a non-variadic function and the format parameter last in
-		// the parameter list.
-		wantVariadic = false
-		argIdx = -1
 	} else {
-		// Not a recognized function. Bail.
-		return fn.Name(), nil
+		__antithesis_instrumentation__.Notify(644617)
+		if requireConstMsg[fnName] {
+			__antithesis_instrumentation__.Notify(644618)
+
+			wantVariadic = false
+			argIdx = -1
+		} else {
+			__antithesis_instrumentation__.Notify(644619)
+
+			return fn.Name(), nil
+		}
 	}
+	__antithesis_instrumentation__.Notify(644608)
 
 	sig := fn.Type().(*types.Signature)
 	if sig.Variadic() != wantVariadic {
+		__antithesis_instrumentation__.Notify(644620)
 		panic(errors.Newf("expected variadic %v, got %v", wantVariadic, sig.Variadic()))
+	} else {
+		__antithesis_instrumentation__.Notify(644621)
 	}
+	__antithesis_instrumentation__.Notify(644609)
 
 	params := sig.Params()
 	nparams := params.Len()
 
-	// Is message or format param a string?
 	if nparams+argIdx < 0 {
+		__antithesis_instrumentation__.Notify(644622)
 		panic(errors.New("not enough arguments"))
+	} else {
+		__antithesis_instrumentation__.Notify(644623)
 	}
+	__antithesis_instrumentation__.Notify(644610)
 	if p := params.At(nparams + argIdx); p.Type() == types.Typ[types.String] {
-		// Found it!
+		__antithesis_instrumentation__.Notify(644624)
+
 		return fn.Name(), p
+	} else {
+		__antithesis_instrumentation__.Notify(644625)
 	}
+	__antithesis_instrumentation__.Notify(644611)
 	return fn.Name(), nil
 }
 
 func checkCallExpr(pass *analysis.Pass, enclosingFnName string, call *ast.CallExpr, fv *types.Var) {
-	// What's the function being called?
+	__antithesis_instrumentation__.Notify(644626)
+
 	cfn := typeutil.Callee(pass.TypesInfo, call)
 	if cfn == nil {
-		// Not a call to a statically identified function.
-		// We can't lint.
+		__antithesis_instrumentation__.Notify(644637)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(644638)
 	}
+	__antithesis_instrumentation__.Notify(644627)
 	fn, ok := cfn.(*types.Func)
 	if !ok {
-		// Not a function with a name. We can't lint either.
-		return
-	}
+		__antithesis_instrumentation__.Notify(644639)
 
-	// What's the full name of the callee? This includes the package
-	// path and, for methods, the type of the supporting object.
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(644640)
+	}
+	__antithesis_instrumentation__.Notify(644628)
+
 	fnName := stripVendor(fn.FullName())
 
 	var wantVariadic bool
 	var argIdx int
 	var argType string
 
-	// Do the analysis of the callee.
 	if requireConstFmt[fnName] {
-		// Expect a variadic function and the format parameter
-		// next-to-last in the parameter list.
+		__antithesis_instrumentation__.Notify(644641)
+
 		wantVariadic = true
 		argIdx = -2
 		argType = "format"
-	} else if requireConstMsg[fnName] {
-		// Expect a non-variadic function and the format parameter last in
-		// the parameter list.
-		wantVariadic = false
-		argIdx = -1
-		argType = "message"
 	} else {
-		// Not a recognized function. Bail.
-		return
+		__antithesis_instrumentation__.Notify(644642)
+		if requireConstMsg[fnName] {
+			__antithesis_instrumentation__.Notify(644643)
+
+			wantVariadic = false
+			argIdx = -1
+			argType = "message"
+		} else {
+			__antithesis_instrumentation__.Notify(644644)
+
+			return
+		}
 	}
+	__antithesis_instrumentation__.Notify(644629)
 
 	typ := pass.TypesInfo.Types[call.Fun].Type
 	if typ == nil {
+		__antithesis_instrumentation__.Notify(644645)
 		panic(errors.New("can't find function type"))
+	} else {
+		__antithesis_instrumentation__.Notify(644646)
 	}
+	__antithesis_instrumentation__.Notify(644630)
 
 	sig, ok := typ.(*types.Signature)
 	if !ok {
+		__antithesis_instrumentation__.Notify(644647)
 		panic(errors.New("can't derive signature"))
+	} else {
+		__antithesis_instrumentation__.Notify(644648)
 	}
+	__antithesis_instrumentation__.Notify(644631)
 	if sig.Variadic() != wantVariadic {
+		__antithesis_instrumentation__.Notify(644649)
 		panic(errors.Newf("expected variadic %v, got %v", wantVariadic, sig.Variadic()))
+	} else {
+		__antithesis_instrumentation__.Notify(644650)
 	}
+	__antithesis_instrumentation__.Notify(644632)
 
 	idx := sig.Params().Len() + argIdx
 	if idx < 0 {
+		__antithesis_instrumentation__.Notify(644651)
 		panic(errors.New("not enough parameters"))
+	} else {
+		__antithesis_instrumentation__.Notify(644652)
 	}
+	__antithesis_instrumentation__.Notify(644633)
 
 	lit := pass.TypesInfo.Types[call.Args[idx]].Value
 	if lit != nil {
-		// A literal or constant! All is well.
-		return
-	}
+		__antithesis_instrumentation__.Notify(644653)
 
-	// Not a constant. If it's a variable and the variable
-	// refers to the incoming format/message from the arg list,
-	// tolerate that.
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(644654)
+	}
+	__antithesis_instrumentation__.Notify(644634)
+
 	if fv != nil {
+		__antithesis_instrumentation__.Notify(644655)
 		if id, ok := call.Args[idx].(*ast.Ident); ok {
+			__antithesis_instrumentation__.Notify(644656)
 			if pass.TypesInfo.ObjectOf(id) == fv {
-				// Same arg as incoming. All good.
-				return
-			}
-		}
-	}
+				__antithesis_instrumentation__.Notify(644657)
 
-	// If the argument is opting out of the linter with a special
-	// comment, tolerate that.
-	if hasNoLintComment(pass, call, idx) {
-		return
+				return
+			} else {
+				__antithesis_instrumentation__.Notify(644658)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(644659)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(644660)
 	}
+	__antithesis_instrumentation__.Notify(644635)
+
+	if hasNoLintComment(pass, call, idx) {
+		__antithesis_instrumentation__.Notify(644661)
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(644662)
+	}
+	__antithesis_instrumentation__.Notify(644636)
 
 	pass.Reportf(call.Lparen, escNl("%s(): %s argument is not a constant expression"+Tip),
 		enclosingFnName, argType)
 }
 
-// Tip is exported for use in tests.
 var Tip = `
 Tip: use YourFuncf("descriptive prefix %%s", ...) or list new formatting wrappers in pkg/testutils/lint/passes/fmtsafe/functions.go.`
 
 func hasNoLintComment(pass *analysis.Pass, call *ast.CallExpr, idx int) bool {
+	__antithesis_instrumentation__.Notify(644663)
 	fPos, f := findContainingFile(pass, call)
 
 	if !strings.HasSuffix(fPos.Name(), "_test.go") {
-		// The nolint: escape hatch is only supported in test files.
+		__antithesis_instrumentation__.Notify(644667)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(644668)
 	}
+	__antithesis_instrumentation__.Notify(644664)
 
 	startPos := call.Args[idx].End()
 	endPos := call.Rparen
 	if idx < len(call.Args)-1 {
+		__antithesis_instrumentation__.Notify(644669)
 		endPos = call.Args[idx+1].Pos()
+	} else {
+		__antithesis_instrumentation__.Notify(644670)
 	}
+	__antithesis_instrumentation__.Notify(644665)
 	for _, cg := range f.Comments {
-		if cg.Pos() > endPos || cg.End() < startPos {
+		__antithesis_instrumentation__.Notify(644671)
+		if cg.Pos() > endPos || func() bool {
+			__antithesis_instrumentation__.Notify(644673)
+			return cg.End() < startPos == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(644674)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(644675)
 		}
+		__antithesis_instrumentation__.Notify(644672)
 		for _, c := range cg.List {
+			__antithesis_instrumentation__.Notify(644676)
 			if strings.Contains(c.Text, "nolint:fmtsafe") {
+				__antithesis_instrumentation__.Notify(644677)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(644678)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(644666)
 	return false
 }
 
 func findContainingFile(pass *analysis.Pass, n ast.Node) (*token.File, *ast.File) {
+	__antithesis_instrumentation__.Notify(644679)
 	fPos := pass.Fset.File(n.Pos())
 	for _, f := range pass.Files {
+		__antithesis_instrumentation__.Notify(644681)
 		if pass.Fset.File(f.Pos()) == fPos {
+			__antithesis_instrumentation__.Notify(644682)
 			return fPos, f
+		} else {
+			__antithesis_instrumentation__.Notify(644683)
 		}
 	}
+	__antithesis_instrumentation__.Notify(644680)
 	panic(fmt.Errorf("cannot file file for %v", n))
 }
 
 func stripVendor(s string) string {
+	__antithesis_instrumentation__.Notify(644684)
 	if i := strings.Index(s, "/vendor/"); i != -1 {
+		__antithesis_instrumentation__.Notify(644686)
 		s = s[i+len("/vendor/"):]
+	} else {
+		__antithesis_instrumentation__.Notify(644687)
 	}
+	__antithesis_instrumentation__.Notify(644685)
 	return s
 }
 
 func escNl(msg string) string {
+	__antithesis_instrumentation__.Notify(644688)
 	return strings.ReplaceAll(msg, "\n", "\\n++")
 }

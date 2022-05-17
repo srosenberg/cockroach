@@ -20,6 +20,7 @@ go_library(
         "//pkg/util/netutil",
         "//pkg/util/stop",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@org_golang_google_grpc//:go_default_library",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,26 +16,19 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
-// sqlCheckConstraintCheckOperation is a check which validates a SQL
-// CHECK constraint on a table.
 type sqlCheckConstraintCheckOperation struct {
 	tableName *tree.TableName
 	tableDesc catalog.TableDescriptor
 	checkDesc *descpb.TableDescriptor_CheckConstraint
 	asOf      hlc.Timestamp
 
-	// columns is a list of the columns returned in the query result
-	// tree.Datums.
 	columns []catalog.Column
-	// primaryColIdxs maps PrimaryIndex.Columns to the row
-	// indexes in the query result tree.Datums.
+
 	primaryColIdxs []int
 
 	run sqlCheckConstraintCheckRun
 }
 
-// sqlCheckConstraintCheckRun contains the run-time state for
-// sqlCheckConstraintCheckOperation during local execution.
 type sqlCheckConstraintCheckRun struct {
 	started  bool
 	rows     []tree.Datums
@@ -56,6 +41,7 @@ func newSQLCheckConstraintCheckOperation(
 	checkDesc *descpb.TableDescriptor_CheckConstraint,
 	asOf hlc.Timestamp,
 ) *sqlCheckConstraintCheckOperation {
+	__antithesis_instrumentation__.Notify(595616)
 	return &sqlCheckConstraintCheckOperation{
 		tableName: tableName,
 		tableDesc: tableDesc,
@@ -64,18 +50,18 @@ func newSQLCheckConstraintCheckOperation(
 	}
 }
 
-// Start implements the checkOperation interface.
-// It creates a SELECT expression and generates a plan from it, which
-// then runs in the distSQL execution engine.
 func (o *sqlCheckConstraintCheckOperation) Start(params runParams) error {
+	__antithesis_instrumentation__.Notify(595617)
 	ctx := params.ctx
 	expr, err := parser.ParseExpr(o.checkDesc.Expr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595621)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(595622)
 	}
-	// Generate a query of the form:
-	//    SELECT a,b,c FROM db.t WHERE NOT (condition)
-	// We always fully qualify the table in the query.
+	__antithesis_instrumentation__.Notify(595618)
+
 	tn := *o.tableName
 	tn.ExplicitCatalog = true
 	tn.ExplicitSchema = true
@@ -90,32 +76,40 @@ func (o *sqlCheckConstraintCheckOperation) Start(params runParams) error {
 		},
 	}
 	if o.asOf != hlc.MaxTimestamp {
+		__antithesis_instrumentation__.Notify(595623)
 		sel.From.AsOf = tree.AsOfClause{
 			Expr: tree.NewNumVal(
 				constant.MakeInt64(o.asOf.WallTime),
-				"", /* origString */
-				false /* negative */),
+				"",
+				false),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(595624)
 	}
+	__antithesis_instrumentation__.Notify(595619)
 
 	rows, err := params.extendedEvalCtx.ExecCfg.InternalExecutor.QueryBuffered(
 		ctx, "check-constraint", params.p.txn, tree.AsStringWithFlags(sel, tree.FmtParsable),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595625)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(595626)
 	}
+	__antithesis_instrumentation__.Notify(595620)
 
 	o.run.started = true
 	o.run.rows = rows
-	// Collect all the columns.
+
 	o.columns = o.tableDesc.PublicColumns()
-	// Find the row indexes for all of the primary index columns.
+
 	o.primaryColIdxs, err = getPrimaryColIdxs(o.tableDesc, o.columns)
 	return err
 }
 
-// Next implements the checkOperation interface.
 func (o *sqlCheckConstraintCheckOperation) Next(params runParams) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(595627)
 	row := o.run.rows[o.run.rowIndex]
 	o.run.rowIndex++
 	timestamp, err := tree.MakeDTimestamp(
@@ -123,30 +117,42 @@ func (o *sqlCheckConstraintCheckOperation) Next(params runParams) (tree.Datums, 
 		time.Nanosecond,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595632)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(595633)
 	}
+	__antithesis_instrumentation__.Notify(595628)
 
 	var primaryKeyDatums tree.Datums
 	for _, rowIdx := range o.primaryColIdxs {
+		__antithesis_instrumentation__.Notify(595634)
 		primaryKeyDatums = append(primaryKeyDatums, row[rowIdx])
 	}
+	__antithesis_instrumentation__.Notify(595629)
 
 	details := make(map[string]interface{})
 	rowDetails := make(map[string]interface{})
 	details["row_data"] = rowDetails
 	details["constraint_name"] = o.checkDesc.Name
 	for rowIdx, col := range o.columns {
-		// TODO(joey): We should maybe try to get the underlying type.
+		__antithesis_instrumentation__.Notify(595635)
+
 		rowDetails[col.GetName()] = row[rowIdx].String()
 	}
+	__antithesis_instrumentation__.Notify(595630)
 	detailsJSON, err := tree.MakeDJSON(details)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595636)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(595637)
 	}
+	__antithesis_instrumentation__.Notify(595631)
 
 	return tree.Datums{
-		// TODO(joey): Add the job UUID once the SCRUB command uses jobs.
-		tree.DNull, /* job_uuid */
+
+		tree.DNull,
 		tree.NewDString(scrub.CheckConstraintViolation),
 		tree.NewDString(o.tableName.Catalog()),
 		tree.NewDString(o.tableName.Table()),
@@ -157,17 +163,20 @@ func (o *sqlCheckConstraintCheckOperation) Next(params runParams) (tree.Datums, 
 	}, nil
 }
 
-// Started implements the checkOperation interface.
 func (o *sqlCheckConstraintCheckOperation) Started() bool {
+	__antithesis_instrumentation__.Notify(595638)
 	return o.run.started
 }
 
-// Done implements the checkOperation interface.
 func (o *sqlCheckConstraintCheckOperation) Done(ctx context.Context) bool {
-	return o.run.rows == nil || o.run.rowIndex >= len(o.run.rows)
+	__antithesis_instrumentation__.Notify(595639)
+	return o.run.rows == nil || func() bool {
+		__antithesis_instrumentation__.Notify(595640)
+		return o.run.rowIndex >= len(o.run.rows) == true
+	}() == true
 }
 
-// Close implements the checkOperation interface.
 func (o *sqlCheckConstraintCheckOperation) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(595641)
 	o.run.rows = nil
 }

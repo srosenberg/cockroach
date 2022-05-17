@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,11 +12,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// RunningJobExists checks that whether there are any other jobs (matched by
-// payloadPredicate callback) in the pending, running, or paused status that
-// started earlier than the job with provided jobID.
-// If the provided jobID is a jobspb.InvalidJobID, this function checks if
-// exists any jobs that matches the payloadPredicate.
 func RunningJobExists(
 	ctx context.Context,
 	jobID jobspb.JobID,
@@ -32,6 +19,7 @@ func RunningJobExists(
 	txn *kv.Txn,
 	payloadPredicate func(payload *jobspb.Payload) bool,
 ) (exists bool, retErr error) {
+	__antithesis_instrumentation__.Notify(85064)
 	const stmt = `
 SELECT
   id, payload
@@ -48,28 +36,48 @@ ORDER BY created`
 		stmt,
 	)
 	if err != nil {
-		return false /* exists */, err
+		__antithesis_instrumentation__.Notify(85068)
+		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(85069)
 	}
-	// We have to make sure to close the iterator since we might return from the
-	// for loop early (before Next() returns false).
-	defer func() { retErr = errors.CombineErrors(retErr, it.Close()) }()
+	__antithesis_instrumentation__.Notify(85065)
+
+	defer func() {
+		__antithesis_instrumentation__.Notify(85070)
+		retErr = errors.CombineErrors(retErr, it.Close())
+	}()
+	__antithesis_instrumentation__.Notify(85066)
 
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(85071)
 		row := it.Cur()
 		payload, err := UnmarshalPayload(row[1])
 		if err != nil {
-			return false /* exists */, err
+			__antithesis_instrumentation__.Notify(85073)
+			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(85074)
 		}
+		__antithesis_instrumentation__.Notify(85072)
 
 		if payloadPredicate(payload) {
+			__antithesis_instrumentation__.Notify(85075)
 			id := jobspb.JobID(*row[0].(*tree.DInt))
 			if id == jobID {
+				__antithesis_instrumentation__.Notify(85077)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(85078)
 			}
+			__antithesis_instrumentation__.Notify(85076)
 
-			return true /* exists */, nil /* retErr */
+			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(85079)
 		}
 	}
-	return false /* exists */, err
+	__antithesis_instrumentation__.Notify(85067)
+	return false, err
 }

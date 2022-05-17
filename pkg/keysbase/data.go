@@ -1,36 +1,32 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package keysbase
 
-// KeyMax is a maximum key value which sorts after all other keys.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 var KeyMax = []byte{0xff, 0xff}
 
-// PrefixEnd determines the end key given b as a prefix, that is the key that
-// sorts precisely behind all keys starting with prefix: "1" is added to the
-// final byte and the carry propagated. The special cases of nil and KeyMin
-// always returns KeyMax.
 func PrefixEnd(b []byte) []byte {
+	__antithesis_instrumentation__.Notify(85919)
 	if len(b) == 0 {
+		__antithesis_instrumentation__.Notify(85922)
 		return KeyMax
+	} else {
+		__antithesis_instrumentation__.Notify(85923)
 	}
-	// Switched to "make and copy" pattern in #4963 for performance.
+	__antithesis_instrumentation__.Notify(85920)
+
 	end := make([]byte, len(b))
 	copy(end, b)
 	for i := len(end) - 1; i >= 0; i-- {
+		__antithesis_instrumentation__.Notify(85924)
 		end[i] = end[i] + 1
 		if end[i] != 0 {
+			__antithesis_instrumentation__.Notify(85925)
 			return end[:i+1]
+		} else {
+			__antithesis_instrumentation__.Notify(85926)
 		}
 	}
-	// This statement will only be reached if the key is already a maximal byte
-	// string (i.e. already \xff...).
+	__antithesis_instrumentation__.Notify(85921)
+
 	return b
 }

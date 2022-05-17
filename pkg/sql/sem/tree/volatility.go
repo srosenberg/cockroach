@@ -1,113 +1,84 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/errors"
 
-// Volatility indicates whether the result of a function is dependent *only*
-// on the values of its explicit arguments, or can change due to outside factors
-// (such as parameter variables or table contents).
-//
-// The values are ordered with smaller values being strictly more restrictive
-// than larger values.
-//
-// NOTE: functions having side-effects, such as setval(),
-// must be labeled volatile to ensure they will not get optimized away,
-// even if the actual return value is not changeable.
 type Volatility int8
 
 const (
-	// VolatilityLeakProof means that the operator cannot modify the database, the
-	// transaction state, or any other state. It cannot depend on configuration
-	// settings and is guaranteed to return the same results given the same
-	// arguments in any context. In addition, no information about the arguments
-	// is conveyed except via the return value. Any function that might throw an
-	// error depending on the values of its arguments is not leak-proof.
-	//
-	// USE THIS WITH CAUTION! The optimizer might call operators that are leak
-	// proof on inputs that they wouldn't normally be called on (e.g. pulling
-	// expressions out of a CASE). In the future, they may even run on rows that
-	// the user doesn't have permission to access.
-	//
-	// Note: VolatilityLeakProof is strictly stronger than VolatilityImmutable. In
-	// principle it could be possible to have leak-proof stable or volatile
-	// functions (perhaps now()); but this is not useful in practice as very few
-	// operators are marked leak-proof.
-	// Examples: integer comparison.
 	VolatilityLeakProof Volatility = 1 + iota
-	// VolatilityImmutable means that the operator cannot modify the database, the
-	// transaction state, or any other state. It cannot depend on configuration
-	// settings and is guaranteed to return the same results given the same
-	// arguments in any context. ImmutableCopy operators can be constant folded.
-	// Examples: log, from_json.
+
 	VolatilityImmutable
-	// VolatilityStable means that the operator cannot modify the database or the
-	// transaction state and is guaranteed to return the same results given the
-	// same arguments whenever it is evaluated within the same statement. Multiple
-	// calls to a stable operator can be optimized to a single call.
-	// Examples: current_timestamp, current_date.
+
 	VolatilityStable
-	// VolatilityVolatile means that the operator can do anything, including
-	// modifying database state.
-	// Examples: random, crdb_internal.force_error, nextval.
+
 	VolatilityVolatile
 )
 
-// String returns the byte representation of Volatility as a string.
 func (v Volatility) String() string {
+	__antithesis_instrumentation__.Notify(615934)
 	switch v {
 	case VolatilityLeakProof:
+		__antithesis_instrumentation__.Notify(615935)
 		return "leak-proof"
 	case VolatilityImmutable:
+		__antithesis_instrumentation__.Notify(615936)
 		return "immutable"
 	case VolatilityStable:
+		__antithesis_instrumentation__.Notify(615937)
 		return "stable"
 	case VolatilityVolatile:
+		__antithesis_instrumentation__.Notify(615938)
 		return "volatile"
 	default:
+		__antithesis_instrumentation__.Notify(615939)
 		return "invalid"
 	}
 }
 
-// ToPostgres returns the postgres "provolatile" string ("i" or "s" or "v") and
-// the "proleakproof" flag.
 func (v Volatility) ToPostgres() (provolatile string, proleakproof bool) {
+	__antithesis_instrumentation__.Notify(615940)
 	switch v {
 	case VolatilityLeakProof:
+		__antithesis_instrumentation__.Notify(615941)
 		return "i", true
 	case VolatilityImmutable:
+		__antithesis_instrumentation__.Notify(615942)
 		return "i", false
 	case VolatilityStable:
+		__antithesis_instrumentation__.Notify(615943)
 		return "s", false
 	case VolatilityVolatile:
+		__antithesis_instrumentation__.Notify(615944)
 		return "v", false
 	default:
+		__antithesis_instrumentation__.Notify(615945)
 		panic(errors.AssertionFailedf("invalid volatility %s", v))
 	}
 }
 
-// VolatilityFromPostgres returns a Volatility that matches the postgres
-// provolatile/proleakproof settings.
 func VolatilityFromPostgres(provolatile string, proleakproof bool) (Volatility, error) {
+	__antithesis_instrumentation__.Notify(615946)
 	switch provolatile {
 	case "i":
+		__antithesis_instrumentation__.Notify(615947)
 		if proleakproof {
+			__antithesis_instrumentation__.Notify(615952)
 			return VolatilityLeakProof, nil
+		} else {
+			__antithesis_instrumentation__.Notify(615953)
 		}
+		__antithesis_instrumentation__.Notify(615948)
 		return VolatilityImmutable, nil
 	case "s":
+		__antithesis_instrumentation__.Notify(615949)
 		return VolatilityStable, nil
 	case "v":
+		__antithesis_instrumentation__.Notify(615950)
 		return VolatilityVolatile, nil
 	default:
+		__antithesis_instrumentation__.Notify(615951)
 		return 0, errors.AssertionFailedf("invalid provolatile %s", provolatile)
 	}
 }

@@ -1,17 +1,9 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 //go:build gofuzz
 // +build gofuzz
 
 package pgwire
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,6 +20,7 @@ import (
 )
 
 func FuzzServeConn(data []byte) int {
+	__antithesis_instrumentation__.Notify(559825)
 	s := MakeServer(
 		log.AmbientContext{},
 		&base.Config{},
@@ -40,20 +33,27 @@ func FuzzServeConn(data []byte) int {
 		},
 	)
 
-	// Fake a connection using a pipe.
 	srv, client := net.Pipe()
 	go func() {
-		// Write the fuzz data to the connection and close.
+		__antithesis_instrumentation__.Notify(559829)
+
 		_, _ = client.Write(data)
 		_ = client.Close()
 	}()
+	__antithesis_instrumentation__.Notify(559826)
 	go func() {
-		// Discard all data sent from the server.
+		__antithesis_instrumentation__.Notify(559830)
+
 		_, _ = io.Copy(ioutil.Discard, client)
 	}()
+	__antithesis_instrumentation__.Notify(559827)
 	err := s.ServeConn(context.Background(), srv)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559831)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(559832)
 	}
+	__antithesis_instrumentation__.Notify(559828)
 	return 1
 }

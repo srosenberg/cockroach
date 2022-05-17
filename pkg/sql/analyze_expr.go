@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,14 +10,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 )
 
-// analyzeExpr performs semantic analysis of an expression, including:
-// - replacing sub-queries by a sql.subquery node;
-// - resolving names (optional);
-// - type checking (with optional type enforcement);
-// - normalization.
-// The parameters sources and IndexedVars, if both are non-nil, indicate
-// name resolution should be performed. The IndexedVars map will be filled
-// as a result.
 func (p *planner) analyzeExpr(
 	ctx context.Context,
 	raw tree.Expr,
@@ -35,31 +19,44 @@ func (p *planner) analyzeExpr(
 	requireType bool,
 	typingContext string,
 ) (tree.TypedExpr, error) {
-	// Perform optional name resolution.
+	__antithesis_instrumentation__.Notify(245227)
+
 	resolved := raw
 	if source != nil {
+		__antithesis_instrumentation__.Notify(245231)
 		var err error
 		resolved, err = p.resolveNames(raw, source, iVarHelper)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(245232)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(245233)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(245234)
 	}
+	__antithesis_instrumentation__.Notify(245228)
 
-	// Type check.
 	var typedExpr tree.TypedExpr
 	var err error
 	p.semaCtx.IVarContainer = iVarHelper.Container()
 	if requireType {
+		__antithesis_instrumentation__.Notify(245235)
 		typedExpr, err = tree.TypeCheckAndRequire(ctx, resolved, &p.semaCtx,
 			expectedType, typingContext)
 	} else {
+		__antithesis_instrumentation__.Notify(245236)
 		typedExpr, err = tree.TypeCheck(ctx, resolved, &p.semaCtx, expectedType)
 	}
+	__antithesis_instrumentation__.Notify(245229)
 	p.semaCtx.IVarContainer = nil
 	if err != nil {
+		__antithesis_instrumentation__.Notify(245237)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(245238)
 	}
+	__antithesis_instrumentation__.Notify(245230)
 
-	// Normalize.
 	return p.txCtx.NormalizeExpr(p.EvalContext(), typedExpr)
 }

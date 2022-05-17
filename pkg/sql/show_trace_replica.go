@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,23 +12,9 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// showTraceReplicaNode is a planNode that wraps another node and uses session
-// tracing (via SHOW TRACE) to report the replicas of all kv events that occur
-// during its execution. It is used as the top-level node for SHOW
-// EXPERIMENTAL_REPLICA TRACE FOR statements.
-//
-// TODO(dan): This works by selecting trace lines matching certain event
-// logs in command execution, which is possibly brittle. A much better
-// system would be to set the `ReturnRangeInfo` flag on all kv requests and
-// use the `RangeInfo`s that come back. Unfortunately, we wanted to get
-// _some_ version of this into 2.0 for partitioning users, but the RangeInfo
-// plumbing would have sunk the project. It's also possible that the
-// sovereignty work may require the RangeInfo plumbing and we should revisit
-// this then.
 type showTraceReplicaNode struct {
 	optColumnsSlot
 
-	// plan is the wrapped execution plan that will be traced.
 	plan planNode
 
 	run struct {
@@ -45,47 +23,77 @@ type showTraceReplicaNode struct {
 }
 
 func (n *showTraceReplicaNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(623324)
 	return nil
 }
 
 func (n *showTraceReplicaNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(623325)
 	var timestampD tree.Datum
 	var tag string
 	for {
+		__antithesis_instrumentation__.Notify(623331)
 		ok, err := n.plan.Next(params)
-		if !ok || err != nil {
+		if !ok || func() bool {
+			__antithesis_instrumentation__.Notify(623333)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(623334)
 			return ok, err
+		} else {
+			__antithesis_instrumentation__.Notify(623335)
 		}
+		__antithesis_instrumentation__.Notify(623332)
 		values := n.plan.Values()
-		// The rows are received from showTraceNode; see ShowTraceColumns.
+
 		const (
 			tsCol  = 0
 			msgCol = 2
 			tagCol = 3
 		)
 		if replicaMsgRE.MatchString(string(*values[msgCol].(*tree.DString))) {
+			__antithesis_instrumentation__.Notify(623336)
 			timestampD = values[tsCol]
 			tag = string(*values[tagCol].(*tree.DString))
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(623337)
 		}
 	}
+	__antithesis_instrumentation__.Notify(623326)
 
 	matches := nodeStoreRangeRE.FindStringSubmatch(tag)
 	if matches == nil {
+		__antithesis_instrumentation__.Notify(623338)
 		return false, errors.Errorf(`could not extract node, store, range from: %s`, tag)
+	} else {
+		__antithesis_instrumentation__.Notify(623339)
 	}
+	__antithesis_instrumentation__.Notify(623327)
 	nodeID, err := strconv.Atoi(matches[1])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(623340)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(623341)
 	}
+	__antithesis_instrumentation__.Notify(623328)
 	storeID, err := strconv.Atoi(matches[2])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(623342)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(623343)
 	}
+	__antithesis_instrumentation__.Notify(623329)
 	rangeID, err := strconv.Atoi(matches[3])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(623344)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(623345)
 	}
+	__antithesis_instrumentation__.Notify(623330)
 
 	n.run.values = append(
 		n.run.values[:0],
@@ -98,10 +106,12 @@ func (n *showTraceReplicaNode) Next(params runParams) (bool, error) {
 }
 
 func (n *showTraceReplicaNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(623346)
 	return n.run.values
 }
 
 func (n *showTraceReplicaNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(623347)
 	n.plan.Close(ctx)
 }
 

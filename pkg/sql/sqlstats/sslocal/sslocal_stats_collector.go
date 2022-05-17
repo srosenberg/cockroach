@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sslocal
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,16 +12,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// StatsCollector is used to collect statement and transaction statistics
-// from connExecutor.
 type StatsCollector struct {
 	sqlstats.ApplicationStats
 
-	// phaseTimes tracks session-level phase times.
 	phaseTimes *sessionphase.Times
 
-	// previousPhaseTimes tracks the session-level phase times for the previous
-	// query. This enables the `SHOW LAST QUERY STATISTICS` observer statement.
 	previousPhaseTimes *sessionphase.Times
 
 	flushTarget sqlstats.ApplicationStats
@@ -39,13 +26,13 @@ type StatsCollector struct {
 
 var _ sqlstats.ApplicationStats = &StatsCollector{}
 
-// NewStatsCollector returns an instance of sqlstats.StatsCollector.
 func NewStatsCollector(
 	st *cluster.Settings,
 	appStats sqlstats.ApplicationStats,
 	phaseTime *sessionphase.Times,
 	knobs *sqlstats.TestingKnobs,
 ) *StatsCollector {
+	__antithesis_instrumentation__.Notify(625446)
 	return &StatsCollector{
 		ApplicationStats: appStats,
 		phaseTimes:       phaseTime.Clone(),
@@ -54,55 +41,61 @@ func NewStatsCollector(
 	}
 }
 
-// PhaseTimes implements sqlstats.StatsCollector interface.
 func (s *StatsCollector) PhaseTimes() *sessionphase.Times {
+	__antithesis_instrumentation__.Notify(625447)
 	return s.phaseTimes
 }
 
-// PreviousPhaseTimes implements sqlstats.StatsCollector interface.
 func (s *StatsCollector) PreviousPhaseTimes() *sessionphase.Times {
+	__antithesis_instrumentation__.Notify(625448)
 	return s.previousPhaseTimes
 }
 
-// Reset implements sqlstats.StatsCollector interface.
 func (s *StatsCollector) Reset(appStats sqlstats.ApplicationStats, phaseTime *sessionphase.Times) {
+	__antithesis_instrumentation__.Notify(625449)
 	previousPhaseTime := s.phaseTimes
 	if s.isInExplicitTransaction() {
+		__antithesis_instrumentation__.Notify(625451)
 		s.flushTarget = appStats
 	} else {
+		__antithesis_instrumentation__.Notify(625452)
 		s.ApplicationStats = appStats
 	}
+	__antithesis_instrumentation__.Notify(625450)
 
 	s.previousPhaseTimes = previousPhaseTime
 	s.phaseTimes = phaseTime.Clone()
 }
 
-// StartExplicitTransaction implements sqlstats.StatsCollector interface.
 func (s *StatsCollector) StartExplicitTransaction() {
+	__antithesis_instrumentation__.Notify(625453)
 	s.flushTarget = s.ApplicationStats
 	s.ApplicationStats = s.flushTarget.NewApplicationStatsWithInheritedOptions()
 }
 
-// EndExplicitTransaction implements sqlstats.StatsCollector interface.
 func (s *StatsCollector) EndExplicitTransaction(
 	ctx context.Context, transactionFingerprintID roachpb.TransactionFingerprintID,
 ) {
-	// We possibly ignore the transactionFingerprintID, for situations where
-	// grouping by it would otherwise result in collecting higher-cardinality
-	// data in the system tables than the cleanup job is able to keep up with.
-	// See #78338.
+	__antithesis_instrumentation__.Notify(625454)
+
 	if !AssociateStmtWithTxnFingerprint.Get(&s.st.SV) {
+		__antithesis_instrumentation__.Notify(625458)
 		transactionFingerprintID = roachpb.InvalidTransactionFingerprintID
+	} else {
+		__antithesis_instrumentation__.Notify(625459)
 	}
+	__antithesis_instrumentation__.Notify(625455)
 
 	var discardedStats uint64
 	discardedStats += s.flushTarget.MergeApplicationStatementStats(
 		ctx,
 		s.ApplicationStats,
 		func(statistics *roachpb.CollectedStatementStatistics) {
+			__antithesis_instrumentation__.Notify(625460)
 			statistics.Key.TransactionFingerprintID = transactionFingerprintID
 		},
 	)
+	__antithesis_instrumentation__.Notify(625456)
 
 	discardedStats += s.flushTarget.MergeApplicationTransactionStats(
 		ctx,
@@ -110,26 +103,37 @@ func (s *StatsCollector) EndExplicitTransaction(
 	)
 
 	if discardedStats > 0 {
+		__antithesis_instrumentation__.Notify(625461)
 		log.Warningf(ctx, "%d statement statistics discarded due to memory limit", discardedStats)
+	} else {
+		__antithesis_instrumentation__.Notify(625462)
 	}
+	__antithesis_instrumentation__.Notify(625457)
 
 	s.ApplicationStats.Free(ctx)
 	s.ApplicationStats = s.flushTarget
 	s.flushTarget = nil
 }
 
-// ShouldSaveLogicalPlanDesc implements sqlstats.StatsCollector interface.
 func (s *StatsCollector) ShouldSaveLogicalPlanDesc(
 	fingerprint string, implicitTxn bool, database string,
 ) bool {
+	__antithesis_instrumentation__.Notify(625463)
 	if s.isInExplicitTransaction() {
-		return s.flushTarget.ShouldSaveLogicalPlanDesc(fingerprint, implicitTxn, database) &&
-			s.ApplicationStats.ShouldSaveLogicalPlanDesc(fingerprint, implicitTxn, database)
+		__antithesis_instrumentation__.Notify(625465)
+		return s.flushTarget.ShouldSaveLogicalPlanDesc(fingerprint, implicitTxn, database) && func() bool {
+			__antithesis_instrumentation__.Notify(625466)
+			return s.ApplicationStats.ShouldSaveLogicalPlanDesc(fingerprint, implicitTxn, database) == true
+		}() == true
+	} else {
+		__antithesis_instrumentation__.Notify(625467)
 	}
+	__antithesis_instrumentation__.Notify(625464)
 
 	return s.ApplicationStats.ShouldSaveLogicalPlanDesc(fingerprint, implicitTxn, database)
 }
 
 func (s *StatsCollector) isInExplicitTransaction() bool {
+	__antithesis_instrumentation__.Notify(625468)
 	return s.flushTarget != nil
 }

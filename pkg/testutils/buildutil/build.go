@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package buildutil
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"go/build"
@@ -21,16 +13,10 @@ import (
 )
 
 func short(in string) string {
+	__antithesis_instrumentation__.Notify(643978)
 	return strings.Replace(in, "github.com/cockroachdb/cockroach/pkg/", "./pkg/", -1)
 }
 
-// VerifyNoImports verifies that a package doesn't depend (directly or
-// indirectly) on forbidden packages. The forbidden packages are specified as
-// either exact matches or prefix matches.
-// A match is not reported if the package that includes the forbidden package
-// is listed in the allowlist.
-// If GOPATH isn't set, it is an indication that the source is not available and
-// the test is skipped.
 func VerifyNoImports(
 	t testing.TB,
 	pkgPath string,
@@ -38,11 +24,15 @@ func VerifyNoImports(
 	forbiddenPkgs, forbiddenPrefixes []string,
 	allowlist ...string,
 ) {
+	__antithesis_instrumentation__.Notify(643979)
 
-	// Skip test if source is not available.
 	if build.Default.GOPATH == "" {
+		__antithesis_instrumentation__.Notify(643982)
 		skip.IgnoreLint(t, "GOPATH isn't set")
+	} else {
+		__antithesis_instrumentation__.Notify(643983)
 	}
+	__antithesis_instrumentation__.Notify(643980)
 
 	buildContext := build.Default
 	buildContext.CgoEnabled = cgo
@@ -51,70 +41,128 @@ func VerifyNoImports(
 
 	var check func(string) error
 	check = func(path string) error {
+		__antithesis_instrumentation__.Notify(643984)
 		pkg, err := buildContext.Import(path, "", build.FindOnly)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(643987)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(643988)
 		}
+		__antithesis_instrumentation__.Notify(643985)
 		for _, imp := range pkg.Imports {
+			__antithesis_instrumentation__.Notify(643989)
 			for _, forbidden := range forbiddenPkgs {
+				__antithesis_instrumentation__.Notify(643996)
 				if forbidden == imp {
+					__antithesis_instrumentation__.Notify(643998)
 					allowlisted := false
 					for _, w := range allowlist {
+						__antithesis_instrumentation__.Notify(644000)
 						if path == w {
+							__antithesis_instrumentation__.Notify(644001)
 							allowlisted = true
 							break
+						} else {
+							__antithesis_instrumentation__.Notify(644002)
 						}
 					}
+					__antithesis_instrumentation__.Notify(643999)
 					if !allowlisted {
+						__antithesis_instrumentation__.Notify(644003)
 						return errors.Errorf("%s imports %s, which is forbidden", short(path), short(imp))
+					} else {
+						__antithesis_instrumentation__.Notify(644004)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(644005)
 				}
-				if forbidden == "c-deps" &&
-					imp == "C" &&
-					strings.HasPrefix(path, "github.com/cockroachdb/cockroach/pkg") &&
-					path != "github.com/cockroachdb/cockroach/pkg/geo/geoproj" {
+				__antithesis_instrumentation__.Notify(643997)
+				if forbidden == "c-deps" && func() bool {
+					__antithesis_instrumentation__.Notify(644006)
+					return imp == "C" == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(644007)
+					return strings.HasPrefix(path, "github.com/cockroachdb/cockroach/pkg") == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(644008)
+					return path != "github.com/cockroachdb/cockroach/pkg/geo/geoproj" == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(644009)
 					for _, name := range pkg.CgoFiles {
+						__antithesis_instrumentation__.Notify(644010)
 						if strings.Contains(name, "zcgo_flags") {
+							__antithesis_instrumentation__.Notify(644011)
 							return errors.Errorf("%s imports %s (%s), which is forbidden", short(path), short(imp), name)
+						} else {
+							__antithesis_instrumentation__.Notify(644012)
 						}
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(644013)
 				}
 			}
+			__antithesis_instrumentation__.Notify(643990)
 			for _, prefix := range forbiddenPrefixes {
+				__antithesis_instrumentation__.Notify(644014)
 				if strings.HasPrefix(imp, prefix) {
+					__antithesis_instrumentation__.Notify(644015)
 					return errors.Errorf("%s imports %s which has prefix %s, which is forbidden", short(path), short(imp), prefix)
+				} else {
+					__antithesis_instrumentation__.Notify(644016)
 				}
 			}
+			__antithesis_instrumentation__.Notify(643991)
 
-			// https://github.com/golang/tools/blob/master/refactor/importgraph/graph.go#L159
 			if imp == "C" {
-				continue // "C" is fake
+				__antithesis_instrumentation__.Notify(644017)
+				continue
+			} else {
+				__antithesis_instrumentation__.Notify(644018)
 			}
+			__antithesis_instrumentation__.Notify(643992)
 
 			importPkg, err := buildContext.Import(imp, pkg.Dir, build.FindOnly)
 			if err != nil {
-				// go/build does not know that gccgo's standard packages don't have
-				// source, and will report an error saying that it can not find them.
-				//
-				// See https://github.com/golang/go/issues/16701
-				// and https://github.com/golang/go/issues/23607.
+				__antithesis_instrumentation__.Notify(644019)
+
 				if runtime.Compiler == "gccgo" {
+					__antithesis_instrumentation__.Notify(644021)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(644022)
 				}
+				__antithesis_instrumentation__.Notify(644020)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(644023)
 			}
+			__antithesis_instrumentation__.Notify(643993)
 			imp = importPkg.ImportPath
 			if _, ok := checked[imp]; ok {
+				__antithesis_instrumentation__.Notify(644024)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(644025)
 			}
+			__antithesis_instrumentation__.Notify(643994)
 			if err := check(imp); err != nil {
+				__antithesis_instrumentation__.Notify(644026)
 				return errors.Wrapf(err, "%s depends on", short(path))
+			} else {
+				__antithesis_instrumentation__.Notify(644027)
 			}
+			__antithesis_instrumentation__.Notify(643995)
 			checked[pkg.ImportPath] = struct{}{}
 		}
+		__antithesis_instrumentation__.Notify(643986)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(643981)
 	if err := check(pkgPath); err != nil {
+		__antithesis_instrumentation__.Notify(644028)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(644029)
 	}
 }

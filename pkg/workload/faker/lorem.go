@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package faker
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strings"
@@ -21,55 +13,74 @@ type loremFaker struct {
 	words *weightedEntries
 }
 
-// Words returns the requested number of random en_US words.
 func (f *loremFaker) Words(rng *rand.Rand, num int) []string {
+	__antithesis_instrumentation__.Notify(694097)
 	w := make([]string, num)
 	for i := range w {
+		__antithesis_instrumentation__.Notify(694099)
 		w[i] = f.words.Rand(rng).(string)
 	}
+	__antithesis_instrumentation__.Notify(694098)
 	return w
 }
 
-// Sentences returns the requested number of random en_US sentences.
 func (f *loremFaker) Sentences(rng *rand.Rand, num int) []string {
+	__antithesis_instrumentation__.Notify(694100)
 	s := make([]string, num)
 	for i := range s {
+		__antithesis_instrumentation__.Notify(694102)
 		var b strings.Builder
 		numWords := randInt(rng, 4, 8)
 		for j := 0; j < numWords; j++ {
+			__antithesis_instrumentation__.Notify(694104)
 			word := f.words.Rand(rng).(string)
 			if j == 0 {
+				__antithesis_instrumentation__.Notify(694106)
 				word = firstToUpper(word)
+			} else {
+				__antithesis_instrumentation__.Notify(694107)
 			}
+			__antithesis_instrumentation__.Notify(694105)
 			b.WriteString(word)
 			if j == numWords-1 {
+				__antithesis_instrumentation__.Notify(694108)
 				b.WriteString(`.`)
 			} else {
+				__antithesis_instrumentation__.Notify(694109)
 				b.WriteString(` `)
 			}
 		}
+		__antithesis_instrumentation__.Notify(694103)
 		s[i] = b.String()
 	}
+	__antithesis_instrumentation__.Notify(694101)
 	return s
 }
 
 func firstToUpper(s string) string {
+	__antithesis_instrumentation__.Notify(694110)
 	isFirst := true
 	return strings.Map(func(r rune) rune {
+		__antithesis_instrumentation__.Notify(694111)
 		if isFirst {
+			__antithesis_instrumentation__.Notify(694113)
 			isFirst = false
 			return unicode.ToUpper(r)
+		} else {
+			__antithesis_instrumentation__.Notify(694114)
 		}
+		__antithesis_instrumentation__.Notify(694112)
 		return r
 	}, s)
 }
 
-// Paragraph returns a random en_US paragraph.
 func (f *loremFaker) Paragraph(rng *rand.Rand) string {
+	__antithesis_instrumentation__.Notify(694115)
 	return strings.Join(f.Sentences(rng, randInt(rng, 1, 5)), ` `)
 }
 
 func newLoremFaker() loremFaker {
+	__antithesis_instrumentation__.Notify(694116)
 	f := loremFaker{}
 	f.words = words()
 	return f

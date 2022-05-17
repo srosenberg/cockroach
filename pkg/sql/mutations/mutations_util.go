@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package mutations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sync/atomic"
@@ -22,51 +14,51 @@ var maxBatchSize = defaultMaxBatchSize
 
 var defaultMaxBatchSize = int64(util.ConstantWithMetamorphicTestRange(
 	"max-batch-size",
-	productionMaxBatchSize, /* defaultValue */
-	1,                      /* min */
-	productionMaxBatchSize, /* max */
+	productionMaxBatchSize,
+	1,
+	productionMaxBatchSize,
 ))
 
 var testingMaxBatchByteSize = util.ConstantWithMetamorphicTestRange(
 	"max-batch-byte-size",
-	0,      // we'll use the cluster setting instead if we see zero.
-	1,      /* min */
-	32<<20, /* max */
+	0,
+	1,
+	32<<20,
 )
 
-// MaxBatchSize returns the max number of entries in the KV batch for a
-// mutation operation (delete, insert, update, upsert) - including secondary
-// index updates, FK cascading updates, etc - before the current KV batch is
-// executed and a new batch is started.
-//
-// If forceProductionMaxBatchSize is true, then the "production" value will be
-// returned regardless of whether the build is metamorphic or not. This should
-// only be used by tests the output of which differs if maxBatchSize is
-// randomized.
 func MaxBatchSize(forceProductionMaxBatchSize bool) int {
+	__antithesis_instrumentation__.Notify(501771)
 	if forceProductionMaxBatchSize {
+		__antithesis_instrumentation__.Notify(501773)
 		return productionMaxBatchSize
+	} else {
+		__antithesis_instrumentation__.Notify(501774)
 	}
+	__antithesis_instrumentation__.Notify(501772)
 	return int(atomic.LoadInt64(&maxBatchSize))
 }
 
-// SetMaxBatchSizeForTests modifies maxBatchSize variable. It
-// should only be used in tests.
 func SetMaxBatchSizeForTests(newMaxBatchSize int) {
+	__antithesis_instrumentation__.Notify(501775)
 	atomic.SwapInt64(&maxBatchSize, int64(newMaxBatchSize))
 }
 
-// ResetMaxBatchSizeForTests resets the maxBatchSize variable to
-// the default mutation batch size. It should only be used in tests.
 func ResetMaxBatchSizeForTests() {
+	__antithesis_instrumentation__.Notify(501776)
 	atomic.SwapInt64(&maxBatchSize, defaultMaxBatchSize)
 }
 
-// MaxBatchByteSize takes the passed value read from the cluster setting and
-// returns it unless the testing metamorphic value overrides it.
 func MaxBatchByteSize(clusterSetting int, forceProductionBatchSizes bool) int {
-	if forceProductionBatchSizes || testingMaxBatchByteSize == 0 {
+	__antithesis_instrumentation__.Notify(501777)
+	if forceProductionBatchSizes || func() bool {
+		__antithesis_instrumentation__.Notify(501779)
+		return testingMaxBatchByteSize == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(501780)
 		return clusterSetting
+	} else {
+		__antithesis_instrumentation__.Notify(501781)
 	}
+	__antithesis_instrumentation__.Notify(501778)
 	return testingMaxBatchByteSize
 }

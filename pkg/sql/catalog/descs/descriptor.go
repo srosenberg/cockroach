@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,11 +18,10 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// GetMutableDescriptorsByID returns a mutable implementation of the descriptors
-// with the requested ids. An error is returned if no descriptor exists.
 func (tc *Collection) GetMutableDescriptorsByID(
 	ctx context.Context, txn *kv.Txn, ids ...descpb.ID,
 ) ([]catalog.MutableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264192)
 	flags := tree.CommonLookupFlags{
 		Required:       true,
 		RequireMutable: true,
@@ -39,67 +30,86 @@ func (tc *Collection) GetMutableDescriptorsByID(
 	}
 	descs, err := tc.getDescriptorsByID(ctx, txn, flags, ids...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264195)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264196)
 	}
+	__antithesis_instrumentation__.Notify(264193)
 	ret := make([]catalog.MutableDescriptor, len(descs))
 	for i, desc := range descs {
+		__antithesis_instrumentation__.Notify(264197)
 		ret[i] = desc.(catalog.MutableDescriptor)
 	}
+	__antithesis_instrumentation__.Notify(264194)
 	return ret, nil
 }
 
-// GetMutableDescriptorByID delegates to GetMutableDescriptorsByID.
 func (tc *Collection) GetMutableDescriptorByID(
 	ctx context.Context, txn *kv.Txn, id descpb.ID,
 ) (catalog.MutableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264198)
 	descs, err := tc.GetMutableDescriptorsByID(ctx, txn, id)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264200)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264201)
 	}
+	__antithesis_instrumentation__.Notify(264199)
 	return descs[0], nil
 }
 
-// GetImmutableDescriptorsByID returns an immutable implementation of the
-// descriptors with the requested ids. An error is returned if no descriptor
-// exists, regardless of whether the Required flag is set or not.
 func (tc *Collection) GetImmutableDescriptorsByID(
 	ctx context.Context, txn *kv.Txn, flags tree.CommonLookupFlags, ids ...descpb.ID,
 ) ([]catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(264202)
 	flags.RequireMutable = false
 	return tc.getDescriptorsByID(ctx, txn, flags, ids...)
 }
 
-// GetImmutableDescriptorByID delegates to GetImmutableDescriptorsByID.
 func (tc *Collection) GetImmutableDescriptorByID(
 	ctx context.Context, txn *kv.Txn, id descpb.ID, flags tree.CommonLookupFlags,
 ) (catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(264203)
 	descs, err := tc.GetImmutableDescriptorsByID(ctx, txn, flags, id)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264205)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264206)
 	}
+	__antithesis_instrumentation__.Notify(264204)
 	return descs[0], nil
 }
 
-// getDescriptorsByID returns a slice of descriptors by ID according to the
-// provided lookup flags. Note that flags.Required is ignored, and an error is
-// always returned if no descriptor with the ID exists.
 func (tc *Collection) getDescriptorsByID(
 	ctx context.Context, txn *kv.Txn, flags tree.CommonLookupFlags, ids ...descpb.ID,
 ) (descs []catalog.Descriptor, err error) {
+	__antithesis_instrumentation__.Notify(264207)
 	defer func() {
+		__antithesis_instrumentation__.Notify(264215)
 		if err == nil {
+			__antithesis_instrumentation__.Notify(264217)
 			err = filterDescriptorsStates(descs, flags)
+		} else {
+			__antithesis_instrumentation__.Notify(264218)
 		}
+		__antithesis_instrumentation__.Notify(264216)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(264219)
 			descs = nil
+		} else {
+			__antithesis_instrumentation__.Notify(264220)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(264208)
 
 	log.VEventf(ctx, 2, "looking up descriptors for ids %d", ids)
 	descs = make([]catalog.Descriptor, len(ids))
 	{
-		// Look up the descriptors in all layers except the KV layer on a
-		// best-effort basis.
+		__antithesis_instrumentation__.Notify(264221)
+
 		q := byIDLookupContext{
 			ctx:   ctx,
 			txn:   txn,
@@ -112,93 +122,136 @@ func (tc *Collection) getDescriptorsByID(
 			q.lookupUncommitted,
 			q.lookupLeased,
 		} {
+			__antithesis_instrumentation__.Notify(264222)
 			for i, id := range ids {
+				__antithesis_instrumentation__.Notify(264223)
 				if descs[i] != nil {
+					__antithesis_instrumentation__.Notify(264226)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(264227)
 				}
+				__antithesis_instrumentation__.Notify(264224)
 				desc, err := fn(id)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(264228)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(264229)
 				}
+				__antithesis_instrumentation__.Notify(264225)
 				descs[i] = desc
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(264209)
 
 	remainingIDs := make([]descpb.ID, 0, len(ids))
 	indexes := make([]int, 0, len(ids))
 	for i, id := range ids {
+		__antithesis_instrumentation__.Notify(264230)
 		if descs[i] != nil {
+			__antithesis_instrumentation__.Notify(264232)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(264233)
 		}
+		__antithesis_instrumentation__.Notify(264231)
 		remainingIDs = append(remainingIDs, id)
 		indexes = append(indexes, i)
 	}
+	__antithesis_instrumentation__.Notify(264210)
 	if len(remainingIDs) == 0 {
-		// No KV lookup necessary, return early.
+		__antithesis_instrumentation__.Notify(264234)
+
 		return descs, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264235)
 	}
+	__antithesis_instrumentation__.Notify(264211)
 	kvDescs, err := tc.withReadFromStore(flags.RequireMutable, func() ([]catalog.Descriptor, error) {
+		__antithesis_instrumentation__.Notify(264236)
 		ret := make([]catalog.Descriptor, len(remainingIDs))
-		// Try to re-use any unvalidated descriptors we may have.
+
 		kvIDs := make([]descpb.ID, 0, len(remainingIDs))
 		kvIndexes := make([]int, 0, len(remainingIDs))
 		for i, id := range remainingIDs {
-			if imm, status := tc.uncommitted.getImmutableByID(id); imm != nil && status == notValidatedYet {
+			__antithesis_instrumentation__.Notify(264239)
+			if imm, status := tc.uncommitted.getImmutableByID(id); imm != nil && func() bool {
+				__antithesis_instrumentation__.Notify(264241)
+				return status == notValidatedYet == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(264242)
 				err := tc.Validate(ctx, txn, catalog.ValidationReadTelemetry, catalog.ValidationLevelCrossReferences, imm)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(264244)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(264245)
 				}
+				__antithesis_instrumentation__.Notify(264243)
 				ret[i] = imm
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(264246)
 			}
+			__antithesis_instrumentation__.Notify(264240)
 			kvIDs = append(kvIDs, id)
 			kvIndexes = append(kvIndexes, i)
 		}
-		// Read all others from the store.
+		__antithesis_instrumentation__.Notify(264237)
+
 		if len(kvIDs) > 0 {
+			__antithesis_instrumentation__.Notify(264247)
 			vd := tc.newValidationDereferencer(txn)
 			kvDescs, err := tc.kv.getByIDs(ctx, tc.version, txn, vd, kvIDs)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264249)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264250)
 			}
+			__antithesis_instrumentation__.Notify(264248)
 			for k, imm := range kvDescs {
+				__antithesis_instrumentation__.Notify(264251)
 				ret[kvIndexes[k]] = imm
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(264252)
 		}
+		__antithesis_instrumentation__.Notify(264238)
 		return ret, nil
 	})
+	__antithesis_instrumentation__.Notify(264212)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264253)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264254)
 	}
+	__antithesis_instrumentation__.Notify(264213)
 	for j, desc := range kvDescs {
-		// Callers expect the descriptors to come back hydrated.
-		// In practice, array types here are not hydrated, and that's a bummer.
-		// Nobody presently is upset about it, but it's not a good thing.
-		// Ideally we'd have a clearer contract regarding hydration and the values
-		// stored in the various maps inside the collection. One might want to
-		// store only hydrated values in the various maps. This turns out to be
-		// somewhat tricky because we'd need to make sure to properly re-hydrate
-		// all the relevant descriptors when a type descriptor change. Leased
-		// descriptors are at least as tricky, plus, there we have a cache that
-		// works relatively well.
-		//
-		// TODO(ajwerner): Sort out the hydration mess; define clearly what is
-		// hydrated where and test the API boundary accordingly.
+		__antithesis_instrumentation__.Notify(264255)
+
 		if table, isTable := desc.(catalog.TableDescriptor); isTable {
+			__antithesis_instrumentation__.Notify(264257)
 			desc, err = tc.hydrateTypesInTableDesc(ctx, txn, table)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264258)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264259)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(264260)
 		}
+		__antithesis_instrumentation__.Notify(264256)
 		descs[indexes[j]] = desc
 	}
+	__antithesis_instrumentation__.Notify(264214)
 	return descs, nil
 }
 
-// byIDLookupContext is a helper struct for getDescriptorsByID which contains
-// the parameters for looking up descriptors by ID at various levels in the
-// Collection.
 type byIDLookupContext struct {
 	ctx   context.Context
 	txn   *kv.Txn
@@ -207,79 +260,131 @@ type byIDLookupContext struct {
 }
 
 func (q *byIDLookupContext) lookupVirtual(id descpb.ID) (catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(264261)
 	return q.tc.virtual.getByID(q.ctx, id, q.flags.RequireMutable)
 }
 
 func (q *byIDLookupContext) lookupSynthetic(id descpb.ID) (catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(264262)
 	if q.flags.AvoidSynthetic {
+		__antithesis_instrumentation__.Notify(264266)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264267)
 	}
+	__antithesis_instrumentation__.Notify(264263)
 	_, sd := q.tc.synthetic.getByID(id)
 	if sd == nil {
+		__antithesis_instrumentation__.Notify(264268)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264269)
 	}
+	__antithesis_instrumentation__.Notify(264264)
 	if q.flags.RequireMutable {
+		__antithesis_instrumentation__.Notify(264270)
 		return nil, newMutableSyntheticDescriptorAssertionError(sd.GetID())
+	} else {
+		__antithesis_instrumentation__.Notify(264271)
 	}
+	__antithesis_instrumentation__.Notify(264265)
 	return sd, nil
 }
 
 func (q *byIDLookupContext) lookupUncommitted(id descpb.ID) (_ catalog.Descriptor, err error) {
+	__antithesis_instrumentation__.Notify(264272)
 	ud, status := q.tc.uncommitted.getImmutableByID(id)
-	if ud == nil || status == notValidatedYet {
+	if ud == nil || func() bool {
+		__antithesis_instrumentation__.Notify(264275)
+		return status == notValidatedYet == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264276)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264277)
 	}
+	__antithesis_instrumentation__.Notify(264273)
 	log.VEventf(q.ctx, 2, "found uncommitted descriptor %d", id)
 	if !q.flags.RequireMutable {
+		__antithesis_instrumentation__.Notify(264278)
 		return ud, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264279)
 	}
+	__antithesis_instrumentation__.Notify(264274)
 	return q.tc.uncommitted.checkOut(id)
 }
 
 func (q *byIDLookupContext) lookupLeased(id descpb.ID) (catalog.Descriptor, error) {
-	if q.flags.AvoidLeased || q.flags.RequireMutable || lease.TestingTableLeasesAreDisabled() {
+	__antithesis_instrumentation__.Notify(264280)
+	if q.flags.AvoidLeased || func() bool {
+		__antithesis_instrumentation__.Notify(264284)
+		return q.flags.RequireMutable == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(264285)
+		return lease.TestingTableLeasesAreDisabled() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264286)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264287)
 	}
-	// If we have already read all of the descriptors, use it as a negative
-	// cache to short-circuit a lookup we know will be doomed to fail.
-	//
-	// TODO(ajwerner): More generally leverage this set of kv descriptors on
-	// the resolution path.
+	__antithesis_instrumentation__.Notify(264281)
+
 	if q.tc.kv.idDefinitelyDoesNotExist(id) {
+		__antithesis_instrumentation__.Notify(264288)
 		return nil, catalog.ErrDescriptorNotFound
+	} else {
+		__antithesis_instrumentation__.Notify(264289)
 	}
+	__antithesis_instrumentation__.Notify(264282)
 	desc, shouldReadFromStore, err := q.tc.leased.getByID(q.ctx, q.tc.deadlineHolder(q.txn), id)
-	if err != nil || shouldReadFromStore {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(264290)
+		return shouldReadFromStore == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264291)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264292)
 	}
+	__antithesis_instrumentation__.Notify(264283)
 	return desc, nil
 }
 
-// filterDescriptorsStates is a helper function for getDescriptorsByID.
 func filterDescriptorsStates(descs []catalog.Descriptor, flags tree.CommonLookupFlags) error {
+	__antithesis_instrumentation__.Notify(264293)
 	for _, desc := range descs {
-		// The first return value can safely be ignored, it will always be false
-		// because the required flag is set.
-		_, err := filterDescriptorState(desc, true /* required */, flags)
+		__antithesis_instrumentation__.Notify(264295)
+
+		_, err := filterDescriptorState(desc, true, flags)
 		if err == nil {
+			__antithesis_instrumentation__.Notify(264298)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(264299)
 		}
-		if desc.Adding() && (desc.IsUncommittedVersion() || flags.AvoidLeased || flags.RequireMutable) {
-			// This is a special case for tables in the adding state: Roughly speaking,
-			// we always need to resolve tables in the adding state by ID when they were
-			// newly created in the transaction for DDL statements and for some
-			// information queries (but not for ordinary name resolution for queries/
-			// DML), but we also need to make these tables public in the schema change
-			// job in a separate transaction.
-			// TODO (lucy): We need something like an IncludeAdding flag so that callers
-			// can specify this behavior, instead of having the collection infer the
-			// desired behavior based on the flags (and likely producing unintended
-			// behavior). See the similar comment on etDescriptorByName, which covers
-			// the ordinary name resolution path as well as DDL statements.
+		__antithesis_instrumentation__.Notify(264296)
+		if desc.Adding() && func() bool {
+			__antithesis_instrumentation__.Notify(264300)
+			return (desc.IsUncommittedVersion() || func() bool {
+				__antithesis_instrumentation__.Notify(264301)
+				return flags.AvoidLeased == true
+			}() == true || func() bool {
+				__antithesis_instrumentation__.Notify(264302)
+				return flags.RequireMutable == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264303)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(264304)
 		}
+		__antithesis_instrumentation__.Notify(264297)
 		return err
 	}
+	__antithesis_instrumentation__.Notify(264294)
 	return nil
 }
 
@@ -290,134 +395,205 @@ func (tc *Collection) getByName(
 	sc catalog.SchemaDescriptor,
 	name string,
 	avoidLeased, mutable, avoidSynthetic bool,
-	alwaysLookupLeasedPublicSchema bool, // passed through to getSchemaByName
+	alwaysLookupLeasedPublicSchema bool,
 ) (found bool, desc catalog.Descriptor, err error) {
+	__antithesis_instrumentation__.Notify(264305)
 	var parentID, parentSchemaID descpb.ID
 	if db != nil {
+		__antithesis_instrumentation__.Notify(264311)
 		if sc == nil {
-			// Schema descriptors are handled in a special way, see getSchemaByName
-			// function declaration for details.
+			__antithesis_instrumentation__.Notify(264313)
+
 			return getSchemaByName(
 				ctx, tc, txn, db, name, avoidLeased, mutable, avoidSynthetic,
 				alwaysLookupLeasedPublicSchema,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(264314)
 		}
+		__antithesis_instrumentation__.Notify(264312)
 		parentID, parentSchemaID = db.GetID(), sc.GetID()
+	} else {
+		__antithesis_instrumentation__.Notify(264315)
 	}
+	__antithesis_instrumentation__.Notify(264306)
 
-	if found, sd := tc.synthetic.getByName(parentID, parentSchemaID, name); found && !avoidSynthetic {
+	if found, sd := tc.synthetic.getByName(parentID, parentSchemaID, name); found && func() bool {
+		__antithesis_instrumentation__.Notify(264316)
+		return !avoidSynthetic == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264317)
 		if mutable {
+			__antithesis_instrumentation__.Notify(264319)
 			return false, nil, newMutableSyntheticDescriptorAssertionError(sd.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(264320)
 		}
+		__antithesis_instrumentation__.Notify(264318)
 		return true, sd, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264321)
 	}
 
 	{
+		__antithesis_instrumentation__.Notify(264322)
 		refuseFurtherLookup, ud := tc.uncommitted.getByName(parentID, parentSchemaID, name)
 		if ud != nil {
+			__antithesis_instrumentation__.Notify(264324)
 			log.VEventf(ctx, 2, "found uncommitted descriptor %d", ud.GetID())
 			if mutable {
+				__antithesis_instrumentation__.Notify(264326)
 				ud, err = tc.uncommitted.checkOut(ud.GetID())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(264327)
 					return false, nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(264328)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(264329)
 			}
+			__antithesis_instrumentation__.Notify(264325)
 			return true, ud, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264330)
 		}
+		__antithesis_instrumentation__.Notify(264323)
 		if refuseFurtherLookup {
+			__antithesis_instrumentation__.Notify(264331)
 			return false, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264332)
 		}
 	}
+	__antithesis_instrumentation__.Notify(264307)
 
-	if !avoidLeased && !mutable && !lease.TestingTableLeasesAreDisabled() {
+	if !avoidLeased && func() bool {
+		__antithesis_instrumentation__.Notify(264333)
+		return !mutable == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(264334)
+		return !lease.TestingTableLeasesAreDisabled() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264335)
 		var shouldReadFromStore bool
 		desc, shouldReadFromStore, err = tc.leased.getByName(ctx, tc.deadlineHolder(txn), parentID, parentSchemaID, name)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(264337)
 			return false, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(264338)
 		}
+		__antithesis_instrumentation__.Notify(264336)
 		if !shouldReadFromStore {
+			__antithesis_instrumentation__.Notify(264339)
 			return desc != nil, desc, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264340)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(264341)
 	}
+	__antithesis_instrumentation__.Notify(264308)
 
 	var descs []catalog.Descriptor
 	descs, err = tc.withReadFromStore(mutable, func() ([]catalog.Descriptor, error) {
-		// Try to re-use an unvalidated descriptor if there is one.
+		__antithesis_instrumentation__.Notify(264342)
+
 		if imm := tc.uncommitted.getUnvalidatedByName(parentID, parentSchemaID, name); imm != nil {
+			__antithesis_instrumentation__.Notify(264345)
 			return []catalog.Descriptor{imm},
 				tc.Validate(ctx, txn, catalog.ValidationReadTelemetry, catalog.ValidationLevelCrossReferences, imm)
+		} else {
+			__antithesis_instrumentation__.Notify(264346)
 		}
-		// If not possible, read it from the store.
+		__antithesis_instrumentation__.Notify(264343)
+
 		uncommittedParent, _ := tc.uncommitted.getImmutableByID(parentID)
 		uncommittedDB, _ := catalog.AsDatabaseDescriptor(uncommittedParent)
 		version := tc.settings.Version.ActiveVersion(ctx)
 		vd := tc.newValidationDereferencer(txn)
 		imm, err := tc.kv.getByName(ctx, version, txn, vd, uncommittedDB, parentID, parentSchemaID, name)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(264347)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(264348)
 		}
+		__antithesis_instrumentation__.Notify(264344)
 		return []catalog.Descriptor{imm}, nil
 	})
+	__antithesis_instrumentation__.Notify(264309)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264349)
 		return false, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264350)
 	}
+	__antithesis_instrumentation__.Notify(264310)
 	return descs[0] != nil, descs[0], err
 }
 
-// withReadFromStore updates the state of the Collection, especially its
-// uncommitted descriptors layer, after reading a descriptor from the storage
-// layer. The logic is the same regardless of whether the descriptor was read
-// by name or by ID.
 func (tc *Collection) withReadFromStore(
 	requireMutable bool, readFn func() ([]catalog.Descriptor, error),
 ) (descs []catalog.Descriptor, _ error) {
+	__antithesis_instrumentation__.Notify(264351)
 	descs, err := readFn()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264354)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264355)
 	}
+	__antithesis_instrumentation__.Notify(264352)
 	for i, desc := range descs {
+		__antithesis_instrumentation__.Notify(264356)
 		if desc == nil {
+			__antithesis_instrumentation__.Notify(264360)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(264361)
 		}
+		__antithesis_instrumentation__.Notify(264357)
 		desc, err = tc.uncommitted.add(desc.NewBuilder().BuildExistingMutable(), notCheckedOutYet)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(264362)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(264363)
 		}
+		__antithesis_instrumentation__.Notify(264358)
 		if requireMutable {
+			__antithesis_instrumentation__.Notify(264364)
 			desc, err = tc.uncommitted.checkOut(desc.GetID())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264365)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264366)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(264367)
 		}
+		__antithesis_instrumentation__.Notify(264359)
 		descs[i] = desc
 	}
+	__antithesis_instrumentation__.Notify(264353)
 	return descs, nil
 }
 
 func (tc *Collection) deadlineHolder(txn *kv.Txn) deadlineHolder {
+	__antithesis_instrumentation__.Notify(264368)
 	if tc.maxTimestampBoundDeadlineHolder.maxTimestampBound.IsEmpty() {
+		__antithesis_instrumentation__.Notify(264370)
 		return txn
+	} else {
+		__antithesis_instrumentation__.Notify(264371)
 	}
+	__antithesis_instrumentation__.Notify(264369)
 	return &tc.maxTimestampBoundDeadlineHolder
 }
 
-// Getting a schema by name uses a special resolution path which can avoid
-// a namespace lookup because the mapping of database to schema is stored on
-// the database itself. This is an important optimization in the case when
-// the schema does not exist.
-//
-// TODO(ajwerner): Understand and rationalize the namespace lookup given the
-// schema lookup by ID path only returns descriptors owned by this session.
-//
-// The alwaysLookupLeasedPublicSchema parameter indicates that a missing public
-// schema entry in the database descriptor should not be interpreted to
-// mean that the public schema is the synthetic public schema, and, instead
-// the public schema should be looked up via the lease manager by name.
-// This is a workaround activated during the public schema migration to
-// avoid a situation where the database does not know about the new public
-// schema but the table in the lease manager does.
-//
-// TODO(ajwerner): Remove alwaysLookupLeasedPublicSchema in 22.2.
 func getSchemaByName(
 	ctx context.Context,
 	tc *Collection,
@@ -427,74 +603,121 @@ func getSchemaByName(
 	avoidLeased, mutable, avoidSynthetic bool,
 	alwaysLookupLeasedPublicSchema bool,
 ) (bool, catalog.Descriptor, error) {
-	if !db.HasPublicSchemaWithDescriptor() && name == tree.PublicSchema {
-		// TODO(ajwerner): Remove alwaysLookupLeasedPublicSchema in 22.2.
+	__antithesis_instrumentation__.Notify(264372)
+	if !db.HasPublicSchemaWithDescriptor() && func() bool {
+		__antithesis_instrumentation__.Notify(264377)
+		return name == tree.PublicSchema == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264378)
+
 		if alwaysLookupLeasedPublicSchema {
+			__antithesis_instrumentation__.Notify(264380)
 			desc, _, err := tc.leased.getByName(ctx, txn, db.GetID(), 0, catconstants.PublicSchemaName)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264382)
 				return false, desc, err
+			} else {
+				__antithesis_instrumentation__.Notify(264383)
 			}
+			__antithesis_instrumentation__.Notify(264381)
 			return true, desc, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264384)
 		}
+		__antithesis_instrumentation__.Notify(264379)
 		return true, schemadesc.GetPublicSchema(), nil
+	} else {
+		__antithesis_instrumentation__.Notify(264385)
 	}
+	__antithesis_instrumentation__.Notify(264373)
 	if sc := tc.virtual.getSchemaByName(name); sc != nil {
+		__antithesis_instrumentation__.Notify(264386)
 		return true, sc, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264387)
 	}
+	__antithesis_instrumentation__.Notify(264374)
 	if isTemporarySchema(name) {
-		if isDone, sc := tc.temporary.getSchemaByName(ctx, db.GetID(), name); sc != nil || isDone {
+		__antithesis_instrumentation__.Notify(264388)
+		if isDone, sc := tc.temporary.getSchemaByName(ctx, db.GetID(), name); sc != nil || func() bool {
+			__antithesis_instrumentation__.Notify(264391)
+			return isDone == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264392)
 			return sc != nil, sc, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264393)
 		}
-		scID, err := tc.kv.lookupName(ctx, txn, nil /* maybeDB */, db.GetID(), keys.RootNamespaceID, name)
-		if err != nil || scID == descpb.InvalidID {
+		__antithesis_instrumentation__.Notify(264389)
+		scID, err := tc.kv.lookupName(ctx, txn, nil, db.GetID(), keys.RootNamespaceID, name)
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(264394)
+			return scID == descpb.InvalidID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264395)
 			return false, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(264396)
 		}
+		__antithesis_instrumentation__.Notify(264390)
 		return true, schemadesc.NewTemporarySchema(name, scID, db.GetID()), nil
+	} else {
+		__antithesis_instrumentation__.Notify(264397)
 	}
+	__antithesis_instrumentation__.Notify(264375)
 	if id := db.GetSchemaID(name); id != descpb.InvalidID {
-		// TODO(ajwerner): Fill in flags here or, more likely, get rid of
-		// it on this path.
+		__antithesis_instrumentation__.Notify(264398)
+
 		sc, err := tc.getSchemaByID(ctx, txn, id, tree.SchemaLookupFlags{
 			RequireMutable: mutable,
 			AvoidLeased:    avoidLeased,
 			AvoidSynthetic: avoidSynthetic,
 		})
 		if errors.Is(err, catalog.ErrDescriptorDropped) {
+			__antithesis_instrumentation__.Notify(264400)
 			err = nil
+		} else {
+			__antithesis_instrumentation__.Notify(264401)
 		}
+		__antithesis_instrumentation__.Notify(264399)
 		return sc != nil, sc, err
+	} else {
+		__antithesis_instrumentation__.Notify(264402)
 	}
+	__antithesis_instrumentation__.Notify(264376)
 	return false, nil, nil
 }
 
 func isTemporarySchema(name string) bool {
+	__antithesis_instrumentation__.Notify(264403)
 	return strings.HasPrefix(name, catconstants.PgTempSchemaName)
 }
 
-// filterDescriptorState wraps the more general catalog function to swallow
-// the error if the descriptor is being dropped and the descriptor is not
-// required. In that case, dropped will be true. A return value of false, nil
-// means this descriptor is okay given the flags.
-// TODO (lucy): We would like the ByID methods to ignore the Required flag and
-// unconditionally return an error for dropped descriptors if IncludeDropped is
-// not set, so we can't just pass the flags passed into the methods into this
-// function, hence the boolean argument. This is the only user of
-// catalog.FilterDescriptorState which needs to pass in nontrivial flags, at
-// time of writing, so we should clean up the interface around this bit of
-// functionality.
 func filterDescriptorState(
 	desc catalog.Descriptor, required bool, flags tree.CommonLookupFlags,
 ) (dropped bool, _ error) {
+	__antithesis_instrumentation__.Notify(264404)
 	flags = tree.CommonLookupFlags{
 		Required:       required,
 		IncludeOffline: flags.IncludeOffline,
 		IncludeDropped: flags.IncludeDropped,
 	}
 	if err := catalog.FilterDescriptorState(desc, flags); err != nil {
-		if required || !errors.Is(err, catalog.ErrDescriptorDropped) {
+		__antithesis_instrumentation__.Notify(264406)
+		if required || func() bool {
+			__antithesis_instrumentation__.Notify(264408)
+			return !errors.Is(err, catalog.ErrDescriptorDropped) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264409)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(264410)
 		}
+		__antithesis_instrumentation__.Notify(264407)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264411)
 	}
+	__antithesis_instrumentation__.Notify(264405)
 	return false, nil
 }

@@ -17,6 +17,7 @@ go_library(
         "//pkg/util/syncutil",
         "//pkg/util/sysutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -36,6 +37,7 @@ go_test(
         "//pkg/util/log",
         "//pkg/util/log/eventpb",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_golang_mock//gomock",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",

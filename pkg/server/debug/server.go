@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package debug
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -41,25 +33,23 @@ import (
 )
 
 func init() {
-	// Disable the net/trace auth handler.
+
 	trace.AuthRequest = func(r *http.Request) (allowed, sensitive bool) {
 		return true, true
 	}
 }
 
-// Endpoint is the entry point under which the debug tools are housed.
 const Endpoint = "/debug/"
 
 var _ = func() *settings.StringSetting {
-	// This setting definition still exists so as to not break
-	// deployment scripts that set it unconditionally.
+	__antithesis_instrumentation__.Notify(190457)
+
 	v := settings.RegisterStringSetting(
 		settings.TenantWritable, "server.remote_debugging.mode", "unused", "local")
 	v.SetRetired()
 	return v
 }()
 
-// Server serves the /debug/* family of tools.
 type Server struct {
 	ambientCtx log.AmbientContext
 	st         *cluster.Settings
@@ -67,56 +57,48 @@ type Server struct {
 	spy        logSpy
 }
 
-// NewServer sets up a debug server.
 func NewServer(
 	ambientContext log.AmbientContext,
 	st *cluster.Settings,
 	hbaConfDebugFn http.HandlerFunc,
 	profiler pprofui.Profiler,
 ) *Server {
+	__antithesis_instrumentation__.Notify(190458)
 	mux := http.NewServeMux()
 
-	// Install a redirect to the UI's collection of debug tools.
 	mux.HandleFunc(Endpoint, handleLanding)
 
-	// Cribbed straight from pprof's `init()` method. See:
-	// https://golang.org/src/net/http/pprof/pprof.go
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", func(w http.ResponseWriter, r *http.Request) {
+		__antithesis_instrumentation__.Notify(190462)
 		CPUProfileHandler(st, w, r)
 	})
+	__antithesis_instrumentation__.Notify(190459)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-	// Cribbed straight from trace's `init()` method. See:
-	// https://github.com/golang/net/blob/master/trace/trace.go
 	mux.HandleFunc("/debug/requests", trace.Traces)
 	mux.HandleFunc("/debug/events", trace.Events)
 
-	// This registers a superset of the variables exposed through the
-	// /debug/vars endpoint onto the /debug/metrics endpoint. It includes all
-	// expvars registered globally and all metrics registered on the
-	// DefaultRegistry.
 	mux.Handle("/debug/metrics", exp.ExpHandler(metrics.DefaultRegistry))
-	// Also register /debug/vars (even though /debug/metrics is better).
+
 	mux.Handle("/debug/vars", expvar.Handler())
 
 	if hbaConfDebugFn != nil {
-		// Expose the processed HBA configuration through the debug
-		// interface for inspection during troubleshooting.
-		mux.HandleFunc("/debug/hba_conf", hbaConfDebugFn)
-	}
+		__antithesis_instrumentation__.Notify(190463)
 
-	// Register the stopper endpoint, which lists all active tasks.
+		mux.HandleFunc("/debug/hba_conf", hbaConfDebugFn)
+	} else {
+		__antithesis_instrumentation__.Notify(190464)
+	}
+	__antithesis_instrumentation__.Notify(190460)
+
 	mux.HandleFunc("/debug/stopper", stop.HandleDebug)
 
-	// Set up the vmodule endpoint.
 	vsrv := &vmoduleServer{}
 	mux.HandleFunc("/debug/vmodule", vsrv.vmoduleHandleDebug)
 
-	// Set up the log spy, a tool that allows inspecting filtered logs at high
-	// verbosity.
 	spy := logSpy{
 		vsrv:         vsrv,
 		setIntercept: log.InterceptWith,
@@ -127,18 +109,24 @@ func NewServer(
 	mux.Handle("/debug/pprof/ui/", http.StripPrefix("/debug/pprof/ui", ps))
 
 	mux.HandleFunc("/debug/pprof/goroutineui/", func(w http.ResponseWriter, req *http.Request) {
+		__antithesis_instrumentation__.Notify(190465)
 		dump := goroutineui.NewDump()
 
 		_ = req.ParseForm()
 		switch req.Form.Get("sort") {
 		case "count":
+			__antithesis_instrumentation__.Notify(190467)
 			dump.SortCountDesc()
 		case "wait":
+			__antithesis_instrumentation__.Notify(190468)
 			dump.SortWaitDesc()
 		default:
+			__antithesis_instrumentation__.Notify(190469)
 		}
+		__antithesis_instrumentation__.Notify(190466)
 		_ = dump.HTML(w)
 	})
+	__antithesis_instrumentation__.Notify(190461)
 
 	return &Server{
 		ambientCtx: ambientContext,
@@ -149,108 +137,148 @@ func NewServer(
 }
 
 func analyzeLSM(dir string, writer io.Writer) error {
+	__antithesis_instrumentation__.Notify(190470)
 	manifestName, err := ioutil.ReadFile(path.Join(dir, "CURRENT"))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(190474)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(190475)
 	}
+	__antithesis_instrumentation__.Notify(190471)
 
 	manifestPath := path.Join(dir, string(bytes.TrimSpace(manifestName)))
 
 	t := pebbletool.New(pebbletool.Comparers(storage.EngineComparer))
 
-	// TODO(yevgeniy): Consider exposing LSM tool directly.
 	var lsm *cobra.Command
 	for _, c := range t.Commands {
+		__antithesis_instrumentation__.Notify(190476)
 		if c.Name() == "lsm" {
+			__antithesis_instrumentation__.Notify(190477)
 			lsm = c
+		} else {
+			__antithesis_instrumentation__.Notify(190478)
 		}
 	}
+	__antithesis_instrumentation__.Notify(190472)
 	if lsm == nil {
+		__antithesis_instrumentation__.Notify(190479)
 		return errors.New("no such command")
+	} else {
+		__antithesis_instrumentation__.Notify(190480)
 	}
+	__antithesis_instrumentation__.Notify(190473)
 
 	lsm.SetOutput(writer)
 	lsm.Run(lsm, []string{manifestPath})
 	return nil
 }
 
-// RegisterEngines setups up debug engine endpoints for the known storage engines.
 func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engine) error {
+	__antithesis_instrumentation__.Notify(190481)
 	if len(specs) != len(engines) {
-		// TODO(yevgeniy): Consider adding accessors to storage.Engine to get their path.
+		__antithesis_instrumentation__.Notify(190486)
+
 		return errors.New("number of store specs must match number of engines")
+	} else {
+		__antithesis_instrumentation__.Notify(190487)
 	}
+	__antithesis_instrumentation__.Notify(190482)
 
 	storeIDs := make([]roachpb.StoreIdent, len(engines))
 	for i := range engines {
+		__antithesis_instrumentation__.Notify(190488)
 		id, err := kvserver.ReadStoreIdent(context.Background(), engines[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(190490)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(190491)
 		}
+		__antithesis_instrumentation__.Notify(190489)
 		storeIDs[i] = id
 	}
+	__antithesis_instrumentation__.Notify(190483)
 
 	ds.mux.HandleFunc("/debug/lsm", func(w http.ResponseWriter, req *http.Request) {
+		__antithesis_instrumentation__.Notify(190492)
 		for i := range engines {
+			__antithesis_instrumentation__.Notify(190493)
 			fmt.Fprintf(w, "Store %d:\n", storeIDs[i].StoreID)
 			_, _ = io.WriteString(w, engines[i].GetMetrics().String())
 			fmt.Fprintln(w)
 		}
 	})
+	__antithesis_instrumentation__.Notify(190484)
 
 	for i := 0; i < len(specs); i++ {
+		__antithesis_instrumentation__.Notify(190494)
 		if specs[i].InMemory {
-			// TODO(yevgeniy): Add plumbing to support LSM visualization for in memory engines.
+			__antithesis_instrumentation__.Notify(190496)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(190497)
 		}
+		__antithesis_instrumentation__.Notify(190495)
 
 		dir := specs[i].Path
 		ds.mux.HandleFunc(fmt.Sprintf("/debug/lsm-viz/%d", storeIDs[i].StoreID),
 			func(w http.ResponseWriter, req *http.Request) {
+				__antithesis_instrumentation__.Notify(190498)
 				if err := analyzeLSM(dir, w); err != nil {
+					__antithesis_instrumentation__.Notify(190499)
 					fmt.Fprintf(w, "error analyzing LSM at %s: %v", dir, err)
+				} else {
+					__antithesis_instrumentation__.Notify(190500)
 				}
 			})
 	}
+	__antithesis_instrumentation__.Notify(190485)
 	return nil
 }
 
-// sidetransportReceiver abstracts *sidetransport.Receiver.
 type sidetransportReceiver interface {
 	HTML() string
 }
 
-// RegisterClosedTimestampSideTransport registers web endpoints for the closed
-// timestamp side transport sender and receiver.
 func (ds *Server) RegisterClosedTimestampSideTransport(
 	sender *sidetransport.Sender, receiver sidetransportReceiver,
 ) {
+	__antithesis_instrumentation__.Notify(190501)
 	ds.mux.HandleFunc("/debug/closedts-receiver",
 		func(w http.ResponseWriter, req *http.Request) {
+			__antithesis_instrumentation__.Notify(190503)
 			w.Header().Add("Content-type", "text/html")
 			fmt.Fprint(w, receiver.HTML())
 		})
+	__antithesis_instrumentation__.Notify(190502)
 	ds.mux.HandleFunc("/debug/closedts-sender",
 		func(w http.ResponseWriter, req *http.Request) {
+			__antithesis_instrumentation__.Notify(190504)
 			w.Header().Add("Content-type", "text/html")
 			fmt.Fprint(w, sender.HTML())
 		})
 }
 
-// ServeHTTP serves various tools under the /debug endpoint.
 func (ds *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(190505)
 	handler, _ := ds.mux.Handler(r)
 	handler.ServeHTTP(w, r)
 }
 
 func handleLanding(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(190506)
 	if r.URL.Path != Endpoint {
+		__antithesis_instrumentation__.Notify(190508)
 		http.Redirect(w, r, Endpoint, http.StatusMovedPermanently)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(190509)
 	}
+	__antithesis_instrumentation__.Notify(190507)
 
-	// The explicit header is necessary or (at least Chrome) will try to
-	// download a gzipped file (Content-type comes back application/x-gzip).
 	w.Header().Add("Content-type", "text/html")
 
 	fmt.Fprint(w, `

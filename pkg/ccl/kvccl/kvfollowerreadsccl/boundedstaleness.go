@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package kvfollowerreadsccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -22,6 +16,7 @@ import (
 )
 
 func checkBoundedStalenessEnabled(ctx *tree.EvalContext) error {
+	__antithesis_instrumentation__.Notify(19595)
 	st := ctx.Settings
 	return utilccl.CheckEnterpriseEnabled(
 		st,
@@ -32,25 +27,40 @@ func checkBoundedStalenessEnabled(ctx *tree.EvalContext) error {
 }
 
 func evalMaxStaleness(ctx *tree.EvalContext, d duration.Duration) (time.Time, error) {
+	__antithesis_instrumentation__.Notify(19596)
 	if err := checkBoundedStalenessEnabled(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(19599)
 		return time.Time{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(19600)
 	}
+	__antithesis_instrumentation__.Notify(19597)
 	if d.Compare(duration.FromInt64(0)) < 0 {
+		__antithesis_instrumentation__.Notify(19601)
 		return time.Time{}, pgerror.Newf(
 			pgcode.InvalidParameterValue,
 			"interval duration for %s must be greater or equal to 0",
 			tree.WithMaxStalenessFunctionName,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(19602)
 	}
+	__antithesis_instrumentation__.Notify(19598)
 	return duration.Add(ctx.GetStmtTimestamp(), d.Mul(-1)), nil
 }
 
 func evalMinTimestamp(ctx *tree.EvalContext, t time.Time) (time.Time, error) {
+	__antithesis_instrumentation__.Notify(19603)
 	if err := checkBoundedStalenessEnabled(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(19606)
 		return time.Time{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(19607)
 	}
+	__antithesis_instrumentation__.Notify(19604)
 	t = t.Round(time.Microsecond)
 	if stmtTimestamp := ctx.GetStmtTimestamp().Round(time.Microsecond); t.After(stmtTimestamp) {
+		__antithesis_instrumentation__.Notify(19608)
 		return time.Time{}, errors.WithDetailf(
 			pgerror.Newf(
 				pgcode.InvalidParameterValue,
@@ -61,7 +71,10 @@ func evalMinTimestamp(ctx *tree.EvalContext, t time.Time) (time.Time, error) {
 			stmtTimestamp.UnixNano(),
 			t.UnixNano(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(19609)
 	}
+	__antithesis_instrumentation__.Notify(19605)
 	return t, nil
 }
 

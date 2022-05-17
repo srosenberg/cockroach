@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgwire
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,50 +22,10 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// This file contains the logic for the configuration of HBA rules.
-//
-// In a nutshell, administrators customize the cluster setting
-// `server.host_based_authentication.configuration`; each time they
-// do so, all the nodes parse this configuration and re-initialize
-// their authentication rules (a list of entries) from the setting.
-//
-// If the cluster setting is not initialized, or when it is assigned
-// the empty string, a special "default" configuration is used
-// instead:
-//
-//     host all root all cert           # require certs for root
-//     host all all  all cert-password  # require certs or password for everyone else
-//
-// (In fact, the first line `host all root all cert` is always
-// inserted at the start of any custom configuration, as a safeguard.)
-//
-// The HBA configuration is an ordered list of rules. Each time
-// a client attempts to connect, the server scans the
-// rules from the beginning of the list. The first rule that
-// matches the connection decides how to authenticate.
-//
-// The syntax is inspired/derived from that of PostgreSQL's pg_hba.conf:
-// https://www.postgresql.org/docs/12/auth-pg-hba-conf.html
-//
-// For now, CockroachDB only supports the following syntax:
-//
-//     host  all  <user[,user]...>  <IP-address/mask-length>  <auth-method>
-//
-// The matching rules are as follows:
-// - A rule matches if the connecting username matches either of the
-//   usernames listed in the rule, or if the pseudo-user 'all' is
-//   present in the user column.
-// - A rule matches if the connecting client's IP address is included
-//   in the network address specified in the CIDR notation.
-//
-
-// serverHBAConfSetting is the name of the cluster setting that holds
-// the HBA configuration.
 const serverHBAConfSetting = "server.host_based_authentication.configuration"
 
-// connAuthConf is the cluster setting that holds the HBA
-// configuration.
 var connAuthConf = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(560090)
 	s := settings.RegisterValidatedStringSetting(
 		settings.TenantWritable,
 		serverHBAConfSetting,
@@ -85,144 +37,195 @@ var connAuthConf = func() *settings.StringSetting {
 	return s
 }()
 
-// loadLocalHBAConfigUponRemoteSettingChange initializes the local
-// node's cache of the HBA configuration each time the cluster setting
-// is updated.
 func loadLocalHBAConfigUponRemoteSettingChange(
 	ctx context.Context, server *Server, st *cluster.Settings,
 ) {
+	__antithesis_instrumentation__.Notify(560091)
 	val := connAuthConf.Get(&st.SV)
 
-	// An empty HBA configuration is special and means "use the
-	// default".
 	hbaConfig := DefaultHBAConfig
 	if val != "" {
+		__antithesis_instrumentation__.Notify(560093)
 		var err error
 		hbaConfig, err = ParseAndNormalize(val)
 		if err != nil {
-			// The default is also used if the node is unable to load the
-			// config from the cluster setting.
+			__antithesis_instrumentation__.Notify(560094)
+
 			log.Ops.Warningf(ctx, "invalid %s: %v", serverHBAConfSetting, err)
 			hbaConfig = DefaultHBAConfig
+		} else {
+			__antithesis_instrumentation__.Notify(560095)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(560096)
 	}
+	__antithesis_instrumentation__.Notify(560092)
 
 	server.auth.Lock()
 	defer server.auth.Unlock()
 	server.auth.conf = hbaConfig
 }
 
-// checkHBASyntaxBeforeUpdatingSetting is run by the SQL gateway each
-// time a SQL client attempts to update the cluster setting.
-// It is also used when initially loading the default value.
 func checkHBASyntaxBeforeUpdatingSetting(values *settings.Values, s string) error {
+	__antithesis_instrumentation__.Notify(560097)
 	if s == "" {
-		// An empty configuration is always valid.
+		__antithesis_instrumentation__.Notify(560102)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(560103)
 	}
-	// Note: we parse, but do not normalize, here, so as to
-	// check for unsupported features in the input.
+	__antithesis_instrumentation__.Notify(560098)
+
 	conf, err := hba.Parse(s)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(560104)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(560105)
 	}
+	__antithesis_instrumentation__.Notify(560099)
 
 	if len(conf.Entries) == 0 {
-		// If the string was not empty, the user likely intended to have
-		// *something* in the configuration, so us not finding anything
-		// likely indicates either a parsing bug, or that the user
-		// mistakenly put only comments in their config.
+		__antithesis_instrumentation__.Notify(560106)
+
 		return errors.WithHint(errors.New("no entries"),
 			"To use the default configuration, assign the empty string ('').")
+	} else {
+		__antithesis_instrumentation__.Notify(560107)
 	}
+	__antithesis_instrumentation__.Notify(560100)
 
 	for _, entry := range conf.Entries {
+		__antithesis_instrumentation__.Notify(560108)
 		switch entry.ConnType {
 		case hba.ConnHostAny:
+			__antithesis_instrumentation__.Notify(560113)
 		case hba.ConnLocal:
+			__antithesis_instrumentation__.Notify(560114)
 		case hba.ConnHostSSL, hba.ConnHostNoSSL:
+			__antithesis_instrumentation__.Notify(560115)
 
 		default:
+			__antithesis_instrumentation__.Notify(560116)
 			return unimplemented.Newf("hba-type-"+entry.ConnType.String(),
 				"unsupported connection type: %s", entry.ConnType)
 		}
+		__antithesis_instrumentation__.Notify(560109)
 		for _, db := range entry.Database {
+			__antithesis_instrumentation__.Notify(560117)
 			if !db.IsKeyword("all") {
+				__antithesis_instrumentation__.Notify(560118)
 				return errors.WithHint(
 					unimplemented.New("hba-per-db", "per-database HBA rules are not supported"),
 					"Use the special value 'all' (without quotes) to match all databases.")
+			} else {
+				__antithesis_instrumentation__.Notify(560119)
 			}
 		}
+		__antithesis_instrumentation__.Notify(560110)
 
 		if entry.ConnType != hba.ConnLocal {
-			// Verify the user is not requesting hostname-based validation,
-			// which is not yet implemented.
+			__antithesis_instrumentation__.Notify(560120)
+
 			addrOk := true
 			switch t := entry.Address.(type) {
 			case *net.IPNet:
+				__antithesis_instrumentation__.Notify(560122)
 			case hba.AnyAddr:
+				__antithesis_instrumentation__.Notify(560123)
 			case hba.String:
+				__antithesis_instrumentation__.Notify(560124)
 				addrOk = t.IsKeyword("all")
 			default:
+				__antithesis_instrumentation__.Notify(560125)
 				addrOk = false
 			}
+			__antithesis_instrumentation__.Notify(560121)
 			if !addrOk {
+				__antithesis_instrumentation__.Notify(560126)
 				return errors.WithHint(
 					unimplemented.New("hba-hostnames", "hostname-based HBA rules are not supported"),
 					"List the numeric CIDR notation instead, for example: 127.0.0.1/8.\n"+
 						"Alternatively, use 'all' (without quotes) for any IPv4/IPv6 address.")
+			} else {
+				__antithesis_instrumentation__.Notify(560127)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(560128)
 		}
+		__antithesis_instrumentation__.Notify(560111)
 
-		// Verify that the auth method is supported.
 		method, ok := hbaAuthMethods[entry.Method.Value]
-		if !ok || method.fn == nil {
+		if !ok || func() bool {
+			__antithesis_instrumentation__.Notify(560129)
+			return method.fn == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(560130)
 			return errors.WithHintf(unimplemented.Newf("hba-method-"+entry.Method.Value,
 				"unknown auth method %q", entry.Method.Value),
 				"Supported methods: %s", listRegisteredMethods())
+		} else {
+			__antithesis_instrumentation__.Notify(560131)
 		}
-		// Run the per-method validation.
+		__antithesis_instrumentation__.Notify(560112)
+
 		if check := hbaCheckHBAEntries[entry.Method.Value]; check != nil {
+			__antithesis_instrumentation__.Notify(560132)
 			if err := check(values, entry); err != nil {
+				__antithesis_instrumentation__.Notify(560133)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(560134)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(560135)
 		}
 	}
+	__antithesis_instrumentation__.Notify(560101)
 	return nil
 }
 
-// ParseAndNormalize calls hba.ParseAndNormalize and also ensures the
-// configuration starts with a rule that authenticates the root user
-// with client certificates.
-//
-// This prevents users from shooting themselves in the foot and making
-// root not able to login, thus disallowing anyone from fixing the HBA
-// configuration.
 func ParseAndNormalize(val string) (*hba.Conf, error) {
+	__antithesis_instrumentation__.Notify(560136)
 	conf, err := hba.ParseAndNormalize(val)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(560140)
 		return conf, err
+	} else {
+		__antithesis_instrumentation__.Notify(560141)
 	}
+	__antithesis_instrumentation__.Notify(560137)
 
-	if len(conf.Entries) == 0 || !conf.Entries[0].Equivalent(rootEntry) {
+	if len(conf.Entries) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(560142)
+		return !conf.Entries[0].Equivalent(rootEntry) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(560143)
 		entries := make([]hba.Entry, 1, len(conf.Entries)+1)
 		entries[0] = rootEntry
 		entries = append(entries, conf.Entries...)
 		conf.Entries = entries
+	} else {
+		__antithesis_instrumentation__.Notify(560144)
 	}
+	__antithesis_instrumentation__.Notify(560138)
 
-	// Lookup and cache the auth methods.
 	for i := range conf.Entries {
+		__antithesis_instrumentation__.Notify(560145)
 		method := conf.Entries[i].Method.Value
 		info, ok := hbaAuthMethods[method]
 		if !ok {
-			// TODO(knz): Determine if an error should be reported
-			// upon unknown auth methods.
-			// See: https://github.com/cockroachdb/cockroach/issues/43716
+			__antithesis_instrumentation__.Notify(560147)
+
 			return nil, errors.Errorf("unknown auth method %s", method)
+		} else {
+			__antithesis_instrumentation__.Notify(560148)
 		}
+		__antithesis_instrumentation__.Notify(560146)
 		conf.Entries[i].MethodFn = info
 	}
+	__antithesis_instrumentation__.Notify(560139)
 
 	return conf, nil
 }
@@ -249,82 +252,69 @@ var rootEntry = hba.Entry{
 	Input:    "host  all root all cert-password # CockroachDB mandatory rule",
 }
 
-// DefaultHBAConfig is used when the stored HBA configuration string
-// is empty or invalid.
 var DefaultHBAConfig = func() *hba.Conf {
+	__antithesis_instrumentation__.Notify(560149)
 	loadDefaultMethods()
 	conf, err := ParseAndNormalize(`
 host  all all  all cert-password # built-in CockroachDB default
 local all all      password      # built-in CockroachDB default
 `)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(560151)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(560152)
 	}
+	__antithesis_instrumentation__.Notify(560150)
 	return conf
 }()
 
-// GetAuthenticationConfiguration retrieves the current applicable
-// authentication configuration.
-//
-// This is guaranteed to return a valid configuration. Additionally,
-// the various setters for the configuration also pass through
-// ParseAndNormalize(), whereby an entry is always present at the start,
-// to enable root to log in with a valid client cert.
-//
-// The data returned by this method is also observable via the debug
-// endpoint /debug/hba_conf.
 func (s *Server) GetAuthenticationConfiguration() (*hba.Conf, *identmap.Conf) {
+	__antithesis_instrumentation__.Notify(560153)
 	s.auth.RLock()
 	auth := s.auth.conf
 	idMap := s.auth.identityMap
 	s.auth.RUnlock()
 
 	if auth == nil {
-		// This can happen when using the value for the first time before
-		// the cluster setting has ever been set.
+		__antithesis_instrumentation__.Notify(560156)
+
 		auth = DefaultHBAConfig
+	} else {
+		__antithesis_instrumentation__.Notify(560157)
 	}
+	__antithesis_instrumentation__.Notify(560154)
 	if idMap == nil {
+		__antithesis_instrumentation__.Notify(560158)
 		idMap = identmap.Empty()
+	} else {
+		__antithesis_instrumentation__.Notify(560159)
 	}
+	__antithesis_instrumentation__.Notify(560155)
 	return auth, idMap
 }
 
-// RegisterAuthMethod registers an AuthMethod for pgwire
-// authentication and for use in HBA configuration.
-//
-// The minReqVersion is checked upon configuration to verify whether
-// the current active cluster version is at least the version
-// specified.
-//
-// The validConnTypes is checked during rule matching when accepting
-// connections: if the connection type is not accepted by the auth
-// method, authentication is refused upfront. For example, the "cert"
-// method requires SSL; if a rule specifies "host .... cert" and the
-// client connects without SSL, the authentication is refused.
-// (To express "cert on SSL, password on non-SSL", the HBA conf
-// can list 'hostssl ... cert; hostnossl .... password' instead.)
-//
-// The checkEntry method, if provided, is called upon configuration
-// the cluster setting in the SQL client which attempts to change the
-// configuration. It can block the configuration if e.g. the syntax is
-// invalid.
 func RegisterAuthMethod(
 	method string, fn AuthMethod, validConnTypes hba.ConnType, checkEntry CheckHBAEntry,
 ) {
+	__antithesis_instrumentation__.Notify(560160)
 	hbaAuthMethods[method] = methodInfo{validConnTypes, fn}
 	if checkEntry != nil {
+		__antithesis_instrumentation__.Notify(560161)
 		hbaCheckHBAEntries[method] = checkEntry
+	} else {
+		__antithesis_instrumentation__.Notify(560162)
 	}
 }
 
-// listsupportedMethods returns a sorted, comma-delimited list
-// of registered AuthMethods.
 func listRegisteredMethods() string {
+	__antithesis_instrumentation__.Notify(560163)
 	methods := make([]string, 0, len(hbaAuthMethods))
 	for method := range hbaAuthMethods {
+		__antithesis_instrumentation__.Notify(560165)
 		methods = append(methods, method)
 	}
+	__antithesis_instrumentation__.Notify(560164)
 	sort.Strings(methods)
 	return strings.Join(methods, ", ")
 }
@@ -339,57 +329,73 @@ type methodInfo struct {
 	fn             AuthMethod
 }
 
-// CheckHBAEntry defines a method for validating an hba Entry upon
-// configuration of the cluster setting by a SQL client.
 type CheckHBAEntry func(*settings.Values, hba.Entry) error
 
-// NoOptionsAllowed is a CheckHBAEntry that returns an error if any
-// options are present in the entry.
 var NoOptionsAllowed CheckHBAEntry = func(sv *settings.Values, e hba.Entry) error {
+	__antithesis_instrumentation__.Notify(560166)
 	if len(e.Options) != 0 {
+		__antithesis_instrumentation__.Notify(560168)
 		return errors.Newf("the HBA method %q does not accept options", e.Method)
+	} else {
+		__antithesis_instrumentation__.Notify(560169)
 	}
+	__antithesis_instrumentation__.Notify(560167)
 	return nil
 }
 
-// chainOptions is an option that combines its argument options.
 func chainOptions(opts ...CheckHBAEntry) CheckHBAEntry {
+	__antithesis_instrumentation__.Notify(560170)
 	return func(values *settings.Values, e hba.Entry) error {
+		__antithesis_instrumentation__.Notify(560171)
 		for _, o := range opts {
+			__antithesis_instrumentation__.Notify(560173)
 			if err := o(values, e); err != nil {
+				__antithesis_instrumentation__.Notify(560174)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(560175)
 			}
 		}
+		__antithesis_instrumentation__.Notify(560172)
 		return nil
 	}
 }
 
-// requireClusterVersion is an HBA option check function that verifies
-// that the given cluster version key has been enabled before allowing
-// a client to use this authentication method.
 func requireClusterVersion(versionkey clusterversion.Key) CheckHBAEntry {
+	__antithesis_instrumentation__.Notify(560176)
 	return func(values *settings.Values, e hba.Entry) error {
-		// Retrieve the cluster version handle. We'll need to check the current cluster version.
+		__antithesis_instrumentation__.Notify(560177)
+
 		var vh clusterversion.Handle
 		if values != nil {
+			__antithesis_instrumentation__.Notify(560180)
 			vh = values.Opaque().(clusterversion.Handle)
+		} else {
+			__antithesis_instrumentation__.Notify(560181)
 		}
-		if vh != nil &&
-			!vh.IsActive(context.TODO(), versionkey) {
+		__antithesis_instrumentation__.Notify(560178)
+		if vh != nil && func() bool {
+			__antithesis_instrumentation__.Notify(560182)
+			return !vh.IsActive(context.TODO(), versionkey) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(560183)
 			return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 				`HBA authentication method %q requires all nodes to be upgraded to %s`,
 				e.Method,
 				clusterversion.ByKey(versionkey),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(560184)
 		}
+		__antithesis_instrumentation__.Notify(560179)
 		return nil
 	}
 }
 
-// HBADebugFn exposes the computed HBA configuration via the debug
-// interface, for inspection by tests.
 func (s *Server) HBADebugFn() http.HandlerFunc {
+	__antithesis_instrumentation__.Notify(560185)
 	return func(w http.ResponseWriter, req *http.Request) {
+		__antithesis_instrumentation__.Notify(560186)
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
 		auth, usernames := s.GetAuthenticationConfiguration()
@@ -397,8 +403,11 @@ func (s *Server) HBADebugFn() http.HandlerFunc {
 		_, _ = w.Write([]byte("# Active authentication configuration on this node:\n"))
 		_, _ = w.Write([]byte(auth.String()))
 		if !usernames.Empty() {
+			__antithesis_instrumentation__.Notify(560187)
 			_, _ = w.Write([]byte("# Active identity mapping on this node:\n"))
 			_, _ = w.Write([]byte(usernames.String()))
+		} else {
+			__antithesis_instrumentation__.Notify(560188)
 		}
 	}
 }

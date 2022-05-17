@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package desctestutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,41 +20,54 @@ var (
 	latestBinaryVersion = clusterversion.TestingClusterVersion
 )
 
-// TestingGetDatabaseDescriptorWitVersion retrieves a database descriptor directly from
-// the kv layer.
 func TestingGetDatabaseDescriptorWitVersion(
 	kvDB *kv.DB, codec keys.SQLCodec, version clusterversion.ClusterVersion, database string,
 ) catalog.DatabaseDescriptor {
+	__antithesis_instrumentation__.Notify(265355)
 	ctx := context.Background()
 	var desc catalog.Descriptor
 	if err := kvDB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
+		__antithesis_instrumentation__.Notify(265357)
 		id, err := catkv.LookupID(ctx, txn, codec, keys.RootNamespaceID, keys.RootNamespaceID, database)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265360)
 			panic(err)
-		} else if id == descpb.InvalidID {
-			panic(fmt.Sprintf("database %s not found", database))
+		} else {
+			__antithesis_instrumentation__.Notify(265361)
+			if id == descpb.InvalidID {
+				__antithesis_instrumentation__.Notify(265362)
+				panic(fmt.Sprintf("database %s not found", database))
+			} else {
+				__antithesis_instrumentation__.Notify(265363)
+			}
 		}
-		desc, err = catkv.MustGetDescriptorByID(ctx, version, codec, txn, nil /* vd */, id, catalog.Database)
+		__antithesis_instrumentation__.Notify(265358)
+		desc, err = catkv.MustGetDescriptorByID(ctx, version, codec, txn, nil, id, catalog.Database)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265364)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(265365)
 		}
+		__antithesis_instrumentation__.Notify(265359)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(265366)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(265367)
 	}
+	__antithesis_instrumentation__.Notify(265356)
 	return desc.(catalog.DatabaseDescriptor)
 }
 
-// TestingGetDatabaseDescriptor retrieves a database descriptor directly from
-// the kv layer.
 func TestingGetDatabaseDescriptor(
 	kvDB *kv.DB, codec keys.SQLCodec, database string,
 ) catalog.DatabaseDescriptor {
+	__antithesis_instrumentation__.Notify(265368)
 	return TestingGetDatabaseDescriptorWitVersion(kvDB, codec, latestBinaryVersion, database)
 }
 
-// TestingGetSchemaDescriptorWithVersion retrieves a schema descriptor directly from the kv
-// layer.
 func TestingGetSchemaDescriptorWithVersion(
 	kvDB *kv.DB,
 	codec keys.SQLCodec,
@@ -70,31 +75,48 @@ func TestingGetSchemaDescriptorWithVersion(
 	dbID descpb.ID,
 	schemaName string,
 ) catalog.SchemaDescriptor {
+	__antithesis_instrumentation__.Notify(265369)
 	ctx := context.Background()
 	var desc catalog.Descriptor
 	if err := kvDB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
+		__antithesis_instrumentation__.Notify(265371)
 		schemaID, err := catkv.LookupID(ctx, txn, codec, dbID, keys.RootNamespaceID, schemaName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265374)
 			panic(err)
-		} else if schemaID == descpb.InvalidID {
-			panic(fmt.Sprintf("schema %s not found", schemaName))
+		} else {
+			__antithesis_instrumentation__.Notify(265375)
+			if schemaID == descpb.InvalidID {
+				__antithesis_instrumentation__.Notify(265376)
+				panic(fmt.Sprintf("schema %s not found", schemaName))
+			} else {
+				__antithesis_instrumentation__.Notify(265377)
+			}
 		}
-		desc, err = catkv.MustGetDescriptorByID(ctx, version, codec, txn, nil /* vd */, schemaID, catalog.Schema)
+		__antithesis_instrumentation__.Notify(265372)
+		desc, err = catkv.MustGetDescriptorByID(ctx, version, codec, txn, nil, schemaID, catalog.Schema)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265378)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(265379)
 		}
+		__antithesis_instrumentation__.Notify(265373)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(265380)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(265381)
 	}
+	__antithesis_instrumentation__.Notify(265370)
 	return desc.(catalog.SchemaDescriptor)
 }
 
-// TestingGetSchemaDescriptor retrieves a schema descriptor directly from the kv
-// layer.
 func TestingGetSchemaDescriptor(
 	kvDB *kv.DB, codec keys.SQLCodec, dbID descpb.ID, schemaName string,
 ) catalog.SchemaDescriptor {
+	__antithesis_instrumentation__.Notify(265382)
 	return TestingGetSchemaDescriptorWithVersion(
 		kvDB,
 		codec,
@@ -104,8 +126,6 @@ func TestingGetSchemaDescriptor(
 	)
 }
 
-// TestingGetTableDescriptorWithVersion retrieves a table descriptor directly
-// from the KV layer.
 func TestingGetTableDescriptorWithVersion(
 	kvDB *kv.DB,
 	codec keys.SQLCodec,
@@ -114,47 +134,43 @@ func TestingGetTableDescriptorWithVersion(
 	schema string,
 	table string,
 ) catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(265383)
 	return testingGetObjectDescriptor(kvDB, codec, version, database, schema, table).(catalog.TableDescriptor)
 }
 
-// TestingGetTableDescriptor retrieves a table descriptor directly
-// from the KV layer.
 func TestingGetTableDescriptor(
 	kvDB *kv.DB, codec keys.SQLCodec, database string, schema string, table string,
 ) catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(265384)
 	return TestingGetTableDescriptorWithVersion(kvDB, codec, latestBinaryVersion, database, schema, table)
 }
 
-// TestingGetPublicTableDescriptor retrieves a table descriptor directly from
-// the KV layer.
 func TestingGetPublicTableDescriptor(
 	kvDB *kv.DB, codec keys.SQLCodec, database string, table string,
 ) catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(265385)
 	return testingGetObjectDescriptor(kvDB, codec, latestBinaryVersion, database, "public", table).(catalog.TableDescriptor)
 }
 
-// TestingGetMutableExistingTableDescriptor retrieves a mutable table descriptor
-// directly from the KV layer.
 func TestingGetMutableExistingTableDescriptor(
 	kvDB *kv.DB, codec keys.SQLCodec, database string, table string,
 ) *tabledesc.Mutable {
+	__antithesis_instrumentation__.Notify(265386)
 	imm := TestingGetPublicTableDescriptor(kvDB, codec, database, table)
 	return tabledesc.NewBuilder(imm.TableDesc()).BuildExistingMutableTable()
 }
 
-// TestingGetTypeDescriptor retrieves a type descriptor directly from
-// the KV layer.
 func TestingGetTypeDescriptor(
 	kvDB *kv.DB, codec keys.SQLCodec, database string, schema string, object string,
 ) catalog.TypeDescriptor {
+	__antithesis_instrumentation__.Notify(265387)
 	return testingGetObjectDescriptor(kvDB, codec, latestBinaryVersion, database, schema, object).(catalog.TypeDescriptor)
 }
 
-// TestingGetPublicTypeDescriptor retrieves a type descriptor directly from the
-// KV layer.
 func TestingGetPublicTypeDescriptor(
 	kvDB *kv.DB, codec keys.SQLCodec, database string, object string,
 ) catalog.TypeDescriptor {
+	__antithesis_instrumentation__.Notify(265388)
 	return TestingGetTypeDescriptor(kvDB, codec, database, "public", object)
 }
 
@@ -166,33 +182,63 @@ func testingGetObjectDescriptor(
 	schema string,
 	object string,
 ) (desc catalog.Descriptor) {
+	__antithesis_instrumentation__.Notify(265389)
 	ctx := context.Background()
 	if err := kvDB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
+		__antithesis_instrumentation__.Notify(265391)
 		dbID, err := catkv.LookupID(ctx, txn, codec, keys.RootNamespaceID, keys.RootNamespaceID, database)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265398)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(265399)
 		}
+		__antithesis_instrumentation__.Notify(265392)
 		if dbID == descpb.InvalidID {
+			__antithesis_instrumentation__.Notify(265400)
 			return errors.Errorf("database %s not found", database)
+		} else {
+			__antithesis_instrumentation__.Notify(265401)
 		}
+		__antithesis_instrumentation__.Notify(265393)
 		schemaID, err := catkv.LookupID(ctx, txn, codec, dbID, keys.RootNamespaceID, schema)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265402)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(265403)
 		}
+		__antithesis_instrumentation__.Notify(265394)
 		if schemaID == descpb.InvalidID {
+			__antithesis_instrumentation__.Notify(265404)
 			return errors.Errorf("schema %s not found", schema)
+		} else {
+			__antithesis_instrumentation__.Notify(265405)
 		}
+		__antithesis_instrumentation__.Notify(265395)
 		objectID, err := catkv.LookupID(ctx, txn, codec, dbID, schemaID, object)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265406)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(265407)
 		}
+		__antithesis_instrumentation__.Notify(265396)
 		if objectID == descpb.InvalidID {
+			__antithesis_instrumentation__.Notify(265408)
 			return errors.Errorf("object %s not found", object)
+		} else {
+			__antithesis_instrumentation__.Notify(265409)
 		}
-		desc, err = catkv.MustGetDescriptorByID(ctx, latestBinaryVersion, codec, txn, nil /* vd */, objectID, catalog.Any)
+		__antithesis_instrumentation__.Notify(265397)
+		desc, err = catkv.MustGetDescriptorByID(ctx, latestBinaryVersion, codec, txn, nil, objectID, catalog.Any)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(265410)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(265411)
 	}
+	__antithesis_instrumentation__.Notify(265390)
 	return desc
 }

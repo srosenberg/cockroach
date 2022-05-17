@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,20 +24,11 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// alterPrimaryKeyLocalitySwap contains metadata on a locality swap for
-// AlterPrimaryKey.
 type alterPrimaryKeyLocalitySwap struct {
 	localityConfigSwap descpb.PrimaryKeySwap_LocalityConfigSwap
-	// mutationIdxAllowedInSameTxn is the index of the mutation which is
-	// allowed to exist in the same transaction as an ALTER PRIMARY KEY.
-	// It is required for the case where we're adding a column to the table
-	// (the implicit crdb_internal_region column) as part of a PRIMARY KEY
-	// change, when transitioning a table to REGIONAL BY ROW.
-	// It is nilable to prevent the 0 index from being used in case the struct
-	// is initialized with values improperly set.
+
 	mutationIdxAllowedInSameTxn *int
-	// newColumnName is set if we are creating a new column before doing the
-	// ALTER PRIMARY KEY, for similar reasons as above.
+
 	newColumnName *tree.Name
 }
 
@@ -55,6 +38,7 @@ func (p *planner) AlterPrimaryKey(
 	alterPKNode tree.AlterTableAlterPrimaryKey,
 	alterPrimaryKeyLocalitySwap *alterPrimaryKeyLocalitySwap,
 ) error {
+	__antithesis_instrumentation__.Notify(243229)
 	if err := paramparse.ValidateUniqueConstraintParams(
 		alterPKNode.StorageParams,
 		paramparse.UniqueConstraintParamContext{
@@ -62,133 +46,204 @@ func (p *planner) AlterPrimaryKey(
 			IsSharded:    alterPKNode.Sharded != nil,
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(243252)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(243253)
 	}
+	__antithesis_instrumentation__.Notify(243230)
 
 	if alterPrimaryKeyLocalitySwap != nil {
+		__antithesis_instrumentation__.Notify(243254)
 		if err := p.checkNoRegionChangeUnderway(
 			ctx,
 			tableDesc.GetParentID(),
 			"perform this locality change",
 		); err != nil {
+			__antithesis_instrumentation__.Notify(243255)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(243256)
 		}
-	} else if tableDesc.IsLocalityRegionalByRow() {
-		if err := p.checkNoRegionChangeUnderway(
-			ctx,
-			tableDesc.GetParentID(),
-			"perform a primary key change on a REGIONAL BY ROW table",
-		); err != nil {
-			return err
+	} else {
+		__antithesis_instrumentation__.Notify(243257)
+		if tableDesc.IsLocalityRegionalByRow() {
+			__antithesis_instrumentation__.Notify(243258)
+			if err := p.checkNoRegionChangeUnderway(
+				ctx,
+				tableDesc.GetParentID(),
+				"perform a primary key change on a REGIONAL BY ROW table",
+			); err != nil {
+				__antithesis_instrumentation__.Notify(243259)
+				return err
+			} else {
+				__antithesis_instrumentation__.Notify(243260)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(243261)
 		}
 	}
+	__antithesis_instrumentation__.Notify(243231)
 
-	// Ensure that other schema changes on this table are not currently
-	// executing, and that other schema changes have not been performed
-	// in the current transaction.
 	currentMutationID := tableDesc.ClusterVersion().NextMutationID
 	for i := range tableDesc.Mutations {
+		__antithesis_instrumentation__.Notify(243262)
 		mut := &tableDesc.Mutations[i]
 		if mut.MutationID == currentMutationID {
+			__antithesis_instrumentation__.Notify(243264)
 			errBase := "primary key"
 			if alterPrimaryKeyLocalitySwap != nil {
+				__antithesis_instrumentation__.Notify(243266)
 				allowIdx := alterPrimaryKeyLocalitySwap.mutationIdxAllowedInSameTxn
-				if allowIdx != nil && *allowIdx == i {
+				if allowIdx != nil && func() bool {
+					__antithesis_instrumentation__.Notify(243268)
+					return *allowIdx == i == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(243269)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(243270)
 				}
+				__antithesis_instrumentation__.Notify(243267)
 				errBase = "locality"
+			} else {
+				__antithesis_instrumentation__.Notify(243271)
 			}
+			__antithesis_instrumentation__.Notify(243265)
 			return unimplemented.NewWithIssuef(
 				45510,
 				"cannot perform a %[1]s change on %[2]s with other schema changes on %[2]s in the same transaction",
 				errBase,
 				tableDesc.Name,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(243272)
 		}
+		__antithesis_instrumentation__.Notify(243263)
 		if mut.MutationID < currentMutationID {
-			// We can handle indexes being deleted concurrently. We do this
-			// in order to not be blocked on index drops created by a previous
-			// primary key change. If we errored out when seeing a previous
-			// index drop, then users would see a confusing message that a
-			// schema change is in progress when it doesn't seem like one is.
-			// TODO (rohany): This feels like such a hack until (#45510) is fixed.
-			if mut.GetIndex() != nil && mut.Direction == descpb.DescriptorMutation_DROP {
+			__antithesis_instrumentation__.Notify(243273)
+
+			if mut.GetIndex() != nil && func() bool {
+				__antithesis_instrumentation__.Notify(243275)
+				return mut.Direction == descpb.DescriptorMutation_DROP == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(243276)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(243277)
 			}
+			__antithesis_instrumentation__.Notify(243274)
 			return unimplemented.NewWithIssuef(
 				45510, "table %s is currently undergoing a schema change", tableDesc.Name)
+		} else {
+			__antithesis_instrumentation__.Notify(243278)
 		}
 	}
+	__antithesis_instrumentation__.Notify(243232)
 
 	for _, elem := range alterPKNode.Columns {
+		__antithesis_instrumentation__.Notify(243279)
 		col, err := tableDesc.FindColumnWithName(elem.Column)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(243284)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(243285)
 		}
+		__antithesis_instrumentation__.Notify(243280)
 		if col.Dropped() {
+			__antithesis_instrumentation__.Notify(243286)
 			return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 				"column %q is being dropped", col.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(243287)
 		}
+		__antithesis_instrumentation__.Notify(243281)
 		if col.IsInaccessible() {
+			__antithesis_instrumentation__.Notify(243288)
 			return pgerror.Newf(pgcode.InvalidSchemaDefinition, "cannot use inaccessible column %q in primary key", col.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(243289)
 		}
+		__antithesis_instrumentation__.Notify(243282)
 		if col.IsNullable() {
+			__antithesis_instrumentation__.Notify(243290)
 			return pgerror.Newf(pgcode.InvalidSchemaDefinition, "cannot use nullable column %q in primary key", col.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(243291)
 		}
+		__antithesis_instrumentation__.Notify(243283)
 		if !p.EvalContext().Settings.Version.IsActive(ctx, clusterversion.Start22_1) {
+			__antithesis_instrumentation__.Notify(243292)
 			if col.IsVirtual() {
+				__antithesis_instrumentation__.Notify(243293)
 				return pgerror.Newf(pgcode.FeatureNotSupported, "cannot use virtual column %q in primary key", col.GetName())
+			} else {
+				__antithesis_instrumentation__.Notify(243294)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(243295)
 		}
 	}
 
-	// Validate if the end result is the same as the current
-	// primary index, which would mean nothing needs to be modified
-	// here.
 	{
+		__antithesis_instrumentation__.Notify(243296)
 		requiresIndexChange, err := p.shouldCreateIndexes(ctx, tableDesc, &alterPKNode, alterPrimaryKeyLocalitySwap)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(243298)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(243299)
 		}
+		__antithesis_instrumentation__.Notify(243297)
 		if !requiresIndexChange {
+			__antithesis_instrumentation__.Notify(243300)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(243301)
 		}
 	}
+	__antithesis_instrumentation__.Notify(243233)
 
 	nameExists := func(name string) bool {
+		__antithesis_instrumentation__.Notify(243302)
 		_, err := tableDesc.FindIndexWithName(name)
 		return err == nil
 	}
+	__antithesis_instrumentation__.Notify(243234)
 
-	// Make a new index that is suitable to be a primary index.
 	name := tabledesc.GenerateUniqueName(
 		"new_primary_key",
 		nameExists,
 	)
-	if alterPKNode.Name != "" &&
-		// Allow reuse of existing primary key's name.
-		tableDesc.PrimaryIndex.Name != string(alterPKNode.Name) &&
-		nameExists(string(alterPKNode.Name)) {
+	if alterPKNode.Name != "" && func() bool {
+		__antithesis_instrumentation__.Notify(243303)
+		return tableDesc.PrimaryIndex.Name != string(alterPKNode.Name) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(243304)
+		return nameExists(string(alterPKNode.Name)) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(243305)
 		return pgerror.Newf(pgcode.DuplicateRelation, "index with name %s already exists", alterPKNode.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(243306)
 	}
+	__antithesis_instrumentation__.Notify(243235)
 	newPrimaryIndexDesc := &descpb.IndexDescriptor{
 		Name:              name,
 		Unique:            true,
 		CreatedExplicitly: true,
 		EncodingType:      descpb.PrimaryIndexEncoding,
 		Type:              descpb.IndexDescriptor_FORWARD,
-		// TODO(postamar): bump version to LatestIndexDescriptorVersion in 22.2
-		// This is not possible until then because of a limitation in 21.2 which
-		// affects mixed-21.2-22.1-version clusters (issue #78426).
+
 		Version:        descpb.StrictIndexColumnIDGuaranteesVersion,
 		ConstraintID:   tableDesc.GetNextConstraintID(),
 		CreatedAtNanos: p.EvalContext().GetTxnTimestamp(time.Microsecond).UnixNano(),
 	}
 	tableDesc.NextConstraintID++
 
-	// If the new index is requested to be sharded, set up the index descriptor
-	// to be sharded, and add the new shard column if it is missing.
 	if alterPKNode.Sharded != nil {
+		__antithesis_instrumentation__.Notify(243307)
 		shardCol, newColumns, err := setupShardedIndex(
 			ctx,
 			p.EvalContext(),
@@ -198,11 +253,15 @@ func (p *planner) AlterPrimaryKey(
 			tableDesc,
 			newPrimaryIndexDesc,
 			alterPKNode.StorageParams,
-			false, /* isNewTable */
+			false,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(243310)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(243311)
 		}
+		__antithesis_instrumentation__.Notify(243308)
 		alterPKNode.Columns = newColumns
 		if err := p.maybeSetupConstraintForShard(
 			ctx,
@@ -210,122 +269,189 @@ func (p *planner) AlterPrimaryKey(
 			shardCol,
 			newPrimaryIndexDesc.Sharded.ShardBuckets,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(243312)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(243313)
 		}
+		__antithesis_instrumentation__.Notify(243309)
 		telemetry.Inc(sqltelemetry.HashShardedIndexCounter)
+	} else {
+		__antithesis_instrumentation__.Notify(243314)
 	}
+	__antithesis_instrumentation__.Notify(243236)
 
 	if err := newPrimaryIndexDesc.FillColumns(alterPKNode.Columns); err != nil {
+		__antithesis_instrumentation__.Notify(243315)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(243316)
 	}
 
 	{
-		// Add all deletable non-virtual non-pk columns to new primary index.
+		__antithesis_instrumentation__.Notify(243317)
+
 		names := make(map[string]struct{}, len(newPrimaryIndexDesc.KeyColumnNames))
 		for _, name := range newPrimaryIndexDesc.KeyColumnNames {
+			__antithesis_instrumentation__.Notify(243320)
 			names[name] = struct{}{}
 		}
+		__antithesis_instrumentation__.Notify(243318)
 		deletable := tableDesc.DeletableColumns()
 		newPrimaryIndexDesc.StoreColumnNames = make([]string, 0, len(deletable))
 		for _, col := range deletable {
-			if _, found := names[col.GetName()]; found || col.IsVirtual() {
+			__antithesis_instrumentation__.Notify(243321)
+			if _, found := names[col.GetName()]; found || func() bool {
+				__antithesis_instrumentation__.Notify(243323)
+				return col.IsVirtual() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(243324)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(243325)
 			}
+			__antithesis_instrumentation__.Notify(243322)
 			newPrimaryIndexDesc.StoreColumnNames = append(newPrimaryIndexDesc.StoreColumnNames, col.GetName())
 		}
+		__antithesis_instrumentation__.Notify(243319)
 		if len(newPrimaryIndexDesc.StoreColumnNames) == 0 {
+			__antithesis_instrumentation__.Notify(243326)
 			newPrimaryIndexDesc.StoreColumnNames = nil
+		} else {
+			__antithesis_instrumentation__.Notify(243327)
 		}
 	}
+	__antithesis_instrumentation__.Notify(243237)
 
 	if err := tableDesc.AddIndexMutation(ctx, newPrimaryIndexDesc, descpb.DescriptorMutation_ADD, p.ExecCfg().Settings); err != nil {
+		__antithesis_instrumentation__.Notify(243328)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(243329)
 	}
+	__antithesis_instrumentation__.Notify(243238)
 	version := p.ExecCfg().Settings.Version.ActiveVersion(ctx)
 	if err := tableDesc.AllocateIDs(ctx, version); err != nil {
+		__antithesis_instrumentation__.Notify(243330)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(243331)
 	}
+	__antithesis_instrumentation__.Notify(243239)
 
 	var allowedNewColumnNames []tree.Name
 	var err error
-	// isNewPartitionAllBy is set if a new PARTITION ALL BY statement is introduced.
+
 	isNewPartitionAllBy := false
 	var partitionAllBy *tree.PartitionBy
-	// dropPartitionAllBy is set if we should be dropping the PARTITION ALL BY component.
+
 	dropPartitionAllBy := false
 
 	allowImplicitPartitioning := false
 
 	if alterPrimaryKeyLocalitySwap != nil {
+		__antithesis_instrumentation__.Notify(243332)
 		localityConfigSwap := alterPrimaryKeyLocalitySwap.localityConfigSwap
 		switch to := localityConfigSwap.NewLocalityConfig.Locality.(type) {
 		case *catpb.LocalityConfig_RegionalByRow_:
-			// Check we are migrating from a known locality.
+			__antithesis_instrumentation__.Notify(243333)
+
 			switch localityConfigSwap.OldLocalityConfig.Locality.(type) {
 			case *catpb.LocalityConfig_RegionalByRow_:
-				// We want to drop the old PARTITION ALL BY clause in this case for all
-				// the indexes if we were from a REGIONAL BY ROW.
+				__antithesis_instrumentation__.Notify(243340)
+
 				dropPartitionAllBy = true
 			case *catpb.LocalityConfig_Global_,
 				*catpb.LocalityConfig_RegionalByTable_:
+				__antithesis_instrumentation__.Notify(243341)
 			default:
+				__antithesis_instrumentation__.Notify(243342)
 				return errors.AssertionFailedf(
 					"unknown locality config swap: %T to %T",
 					localityConfigSwap.OldLocalityConfig.Locality,
 					localityConfigSwap.NewLocalityConfig.Locality,
 				)
 			}
+			__antithesis_instrumentation__.Notify(243334)
 
 			isNewPartitionAllBy = true
 			allowImplicitPartitioning = true
 			colName := tree.RegionalByRowRegionDefaultColName
 			if as := to.RegionalByRow.As; as != nil {
+				__antithesis_instrumentation__.Notify(243343)
 				colName = tree.Name(*as)
+			} else {
+				__antithesis_instrumentation__.Notify(243344)
 			}
+			__antithesis_instrumentation__.Notify(243335)
 			regionConfig, err := SynthesizeRegionConfig(
 				ctx, p.txn, tableDesc.GetParentID(), p.Descriptors(),
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(243345)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(243346)
 			}
+			__antithesis_instrumentation__.Notify(243336)
 			partitionAllBy = partitionByForRegionalByRow(
 				regionConfig,
 				colName,
 			)
 			if alterPrimaryKeyLocalitySwap.newColumnName != nil {
+				__antithesis_instrumentation__.Notify(243347)
 				allowedNewColumnNames = append(
 					allowedNewColumnNames,
 					*alterPrimaryKeyLocalitySwap.newColumnName,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(243348)
 			}
 		case *catpb.LocalityConfig_Global_,
 			*catpb.LocalityConfig_RegionalByTable_:
-			// We should only migrating from a REGIONAL BY ROW.
+			__antithesis_instrumentation__.Notify(243337)
+
 			if localityConfigSwap.OldLocalityConfig.GetRegionalByRow() == nil {
+				__antithesis_instrumentation__.Notify(243349)
 				return errors.AssertionFailedf(
 					"unknown locality config swap: %T to %T",
 					localityConfigSwap.OldLocalityConfig.Locality,
 					localityConfigSwap.NewLocalityConfig.Locality,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(243350)
 			}
-			// We don't want a PARTITION ALL BY anymore.
+			__antithesis_instrumentation__.Notify(243338)
+
 			dropPartitionAllBy = true
 		default:
+			__antithesis_instrumentation__.Notify(243339)
 			return errors.AssertionFailedf(
 				"unknown locality config swap: %T to %T",
 				localityConfigSwap.OldLocalityConfig.Locality,
 				localityConfigSwap.NewLocalityConfig.Locality,
 			)
 		}
-	} else if tableDesc.IsPartitionAllBy() {
-		allowImplicitPartitioning = true
-		partitionAllBy, err = partitionByFromTableDesc(p.ExecCfg().Codec, tableDesc)
-		if err != nil {
-			return err
+	} else {
+		__antithesis_instrumentation__.Notify(243351)
+		if tableDesc.IsPartitionAllBy() {
+			__antithesis_instrumentation__.Notify(243352)
+			allowImplicitPartitioning = true
+			partitionAllBy, err = partitionByFromTableDesc(p.ExecCfg().Codec, tableDesc)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(243353)
+				return err
+			} else {
+				__antithesis_instrumentation__.Notify(243354)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(243355)
 		}
 	}
+	__antithesis_instrumentation__.Notify(243240)
 
 	if partitionAllBy != nil {
+		__antithesis_instrumentation__.Notify(243356)
 		newImplicitCols, newPartitioning, err := CreatePartitioning(
 			ctx,
 			p.ExecCfg().Settings,
@@ -337,16 +463,22 @@ func (p *planner) AlterPrimaryKey(
 			allowImplicitPartitioning,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(243358)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(243359)
 		}
-		tabledesc.UpdateIndexPartitioning(newPrimaryIndexDesc, true /* isIndexPrimary */, newImplicitCols, newPartitioning)
+		__antithesis_instrumentation__.Notify(243357)
+		tabledesc.UpdateIndexPartitioning(newPrimaryIndexDesc, true, newImplicitCols, newPartitioning)
+	} else {
+		__antithesis_instrumentation__.Notify(243360)
 	}
+	__antithesis_instrumentation__.Notify(243241)
 
-	// Create a new index that indexes everything the old primary index
-	// does, but doesn't store anything.
 	if shouldCopyPrimaryKey(tableDesc, newPrimaryIndexDesc, alterPrimaryKeyLocalitySwap) {
+		__antithesis_instrumentation__.Notify(243361)
 		newUniqueIdx := tableDesc.GetPrimaryIndex().IndexDescDeepCopy()
-		// Clear the following fields so that they get generated by AllocateIDs.
+
 		newUniqueIdx.ID = 0
 		newUniqueIdx.Name = ""
 		newUniqueIdx.StoreColumnIDs = nil
@@ -354,121 +486,196 @@ func (p *planner) AlterPrimaryKey(
 		newUniqueIdx.KeySuffixColumnIDs = nil
 		newUniqueIdx.CompositeColumnIDs = nil
 		newUniqueIdx.KeyColumnIDs = nil
-		// Set correct version and encoding type.
-		//
-		// TODO(postamar): bump version to LatestIndexDescriptorVersion in 22.2
-		// This is not possible until then because of a limitation in 21.2 which
-		// affects mixed-21.2-22.1-version clusters (issue #78426).
+
 		newUniqueIdx.Version = descpb.StrictIndexColumnIDGuaranteesVersion
 		newUniqueIdx.EncodingType = descpb.SecondaryIndexEncoding
 		if err := addIndexMutationWithSpecificPrimaryKey(ctx, tableDesc, &newUniqueIdx, newPrimaryIndexDesc, p.ExecCfg().Settings); err != nil {
+			__antithesis_instrumentation__.Notify(243363)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(243364)
 		}
-		// Copy the old zone configuration into the newly created unique index for PARTITION ALL BY.
+		__antithesis_instrumentation__.Notify(243362)
+
 		if tableDesc.IsLocalityRegionalByRow() {
+			__antithesis_instrumentation__.Notify(243365)
 			if err := p.configureZoneConfigForNewIndexPartitioning(
 				ctx,
 				tableDesc,
 				newUniqueIdx,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(243366)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(243367)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(243368)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(243369)
 	}
+	__antithesis_instrumentation__.Notify(243242)
 
-	// We have to rewrite all indexes that either:
-	// * depend on uniqueness from the old primary key (inverted, non-unique, or unique with nulls).
-	// * don't store or index all columns in the new primary key.
-	// * is affected by a locality config swap.
 	shouldRewriteIndex := func(idx catalog.Index) (bool, error) {
+		__antithesis_instrumentation__.Notify(243370)
 		if alterPrimaryKeyLocalitySwap != nil {
+			__antithesis_instrumentation__.Notify(243376)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(243377)
 		}
+		__antithesis_instrumentation__.Notify(243371)
 		colIDs := idx.CollectKeyColumnIDs()
 		if !idx.Primary() {
+			__antithesis_instrumentation__.Notify(243378)
 			colIDs.UnionWith(idx.CollectSecondaryStoredColumnIDs())
 			colIDs.UnionWith(idx.CollectKeySuffixColumnIDs())
+		} else {
+			__antithesis_instrumentation__.Notify(243379)
 		}
+		__antithesis_instrumentation__.Notify(243372)
 		for _, colID := range newPrimaryIndexDesc.KeyColumnIDs {
+			__antithesis_instrumentation__.Notify(243380)
 			if !colIDs.Contains(colID) {
+				__antithesis_instrumentation__.Notify(243381)
 				return true, nil
+			} else {
+				__antithesis_instrumentation__.Notify(243382)
 			}
 		}
+		__antithesis_instrumentation__.Notify(243373)
 		if idx.IsUnique() {
+			__antithesis_instrumentation__.Notify(243383)
 			for i := 0; i < idx.NumKeyColumns(); i++ {
+				__antithesis_instrumentation__.Notify(243384)
 				colID := idx.GetKeyColumnID(i)
 				col, err := tableDesc.FindColumnWithID(colID)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(243386)
 					return false, err
+				} else {
+					__antithesis_instrumentation__.Notify(243387)
 				}
+				__antithesis_instrumentation__.Notify(243385)
 				if col.IsNullable() {
+					__antithesis_instrumentation__.Notify(243388)
 					return true, nil
+				} else {
+					__antithesis_instrumentation__.Notify(243389)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(243390)
 		}
+		__antithesis_instrumentation__.Notify(243374)
 
-		// If there is any virtual column of the secondary index not a primary key
-		// column, we should rewrite the index as well because we don't allow
-		// non-primary key virtual column in secondary index's suffix columns, and
-		// this would be violated if we don't rewrite the index.
 		if !idx.Primary() {
+			__antithesis_instrumentation__.Notify(243391)
 			newPrimaryKeyColIDs := catalog.MakeTableColSet(newPrimaryIndexDesc.KeyColumnIDs...)
 			for i := 0; i < idx.NumKeySuffixColumns(); i++ {
+				__antithesis_instrumentation__.Notify(243392)
 				colID := idx.GetKeySuffixColumnID(i)
 				col, err := tableDesc.FindColumnWithID(colID)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(243394)
 					return false, err
+				} else {
+					__antithesis_instrumentation__.Notify(243395)
 				}
-				if col.IsVirtual() && !newPrimaryKeyColIDs.Contains(colID) {
+				__antithesis_instrumentation__.Notify(243393)
+				if col.IsVirtual() && func() bool {
+					__antithesis_instrumentation__.Notify(243396)
+					return !newPrimaryKeyColIDs.Contains(colID) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(243397)
 					return true, err
+				} else {
+					__antithesis_instrumentation__.Notify(243398)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(243399)
 		}
+		__antithesis_instrumentation__.Notify(243375)
 
-		return !idx.IsUnique() || idx.GetType() == descpb.IndexDescriptor_INVERTED, nil
+		return !idx.IsUnique() || func() bool {
+			__antithesis_instrumentation__.Notify(243400)
+			return idx.GetType() == descpb.IndexDescriptor_INVERTED == true
+		}() == true, nil
 	}
+	__antithesis_instrumentation__.Notify(243243)
 	var indexesToRewrite []catalog.Index
 	for _, idx := range tableDesc.PublicNonPrimaryIndexes() {
+		__antithesis_instrumentation__.Notify(243401)
 		shouldRewrite, err := shouldRewriteIndex(idx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(243403)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(243404)
 		}
-		if idx.GetID() != newPrimaryIndexDesc.ID && shouldRewrite {
+		__antithesis_instrumentation__.Notify(243402)
+		if idx.GetID() != newPrimaryIndexDesc.ID && func() bool {
+			__antithesis_instrumentation__.Notify(243405)
+			return shouldRewrite == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(243406)
 			indexesToRewrite = append(indexesToRewrite, idx)
+		} else {
+			__antithesis_instrumentation__.Notify(243407)
 		}
 	}
+	__antithesis_instrumentation__.Notify(243244)
 
-	// TODO (rohany): this loop will be unused until #45510 is resolved.
 	for _, mut := range tableDesc.AllMutations() {
-		// If there is an index that is getting built right now that started in a previous txn, we
-		// need to potentially rebuild that index as well.
-		if idx := mut.AsIndex(); mut.MutationID() < currentMutationID && idx != nil && mut.Adding() {
+		__antithesis_instrumentation__.Notify(243408)
+
+		if idx := mut.AsIndex(); mut.MutationID() < currentMutationID && func() bool {
+			__antithesis_instrumentation__.Notify(243409)
+			return idx != nil == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(243410)
+			return mut.Adding() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(243411)
 			shouldRewrite, err := shouldRewriteIndex(idx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(243413)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(243414)
 			}
+			__antithesis_instrumentation__.Notify(243412)
 			if shouldRewrite {
+				__antithesis_instrumentation__.Notify(243415)
 				indexesToRewrite = append(indexesToRewrite, idx)
+			} else {
+				__antithesis_instrumentation__.Notify(243416)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(243417)
 		}
 	}
+	__antithesis_instrumentation__.Notify(243245)
 
-	// Queue up a mutation for each index that needs to be rewritten.
-	// This new index will have an altered KeySuffixColumnIDs to allow it to be
-	// rewritten using the unique-ifying columns from the new table.
 	var oldIndexIDs, newIndexIDs []descpb.IndexID
 	for _, idx := range indexesToRewrite {
-		// Clone the index that we want to rewrite.
+		__antithesis_instrumentation__.Notify(243418)
+
 		newIndex := idx.IndexDescDeepCopy()
 		basename := newIndex.Name + "_rewrite_for_primary_key_change"
 
-		// Drop any PARTITION ALL BY clause.
 		if dropPartitionAllBy {
-			tabledesc.UpdateIndexPartitioning(&newIndex, idx.Primary(), nil /* newImplicitCols */, catpb.PartitioningDescriptor{})
+			__antithesis_instrumentation__.Notify(243422)
+			tabledesc.UpdateIndexPartitioning(&newIndex, idx.Primary(), nil, catpb.PartitioningDescriptor{})
+		} else {
+			__antithesis_instrumentation__.Notify(243423)
 		}
+		__antithesis_instrumentation__.Notify(243419)
 
-		// Create partitioning if we are newly adding a PARTITION BY ALL statement.
 		if isNewPartitionAllBy {
+			__antithesis_instrumentation__.Notify(243424)
 			newImplicitCols, newPartitioning, err := CreatePartitioning(
 				ctx,
 				p.ExecCfg().Settings,
@@ -480,36 +687,50 @@ func (p *planner) AlterPrimaryKey(
 				allowImplicitPartitioning,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(243426)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(243427)
 			}
+			__antithesis_instrumentation__.Notify(243425)
 			tabledesc.UpdateIndexPartitioning(&newIndex, idx.Primary(), newImplicitCols, newPartitioning)
+		} else {
+			__antithesis_instrumentation__.Notify(243428)
 		}
+		__antithesis_instrumentation__.Notify(243420)
 
 		newIndex.Name = tabledesc.GenerateUniqueName(basename, nameExists)
-		// TODO(postamar): bump version to LatestIndexDescriptorVersion in 22.2
-		// This is not possible until then because of a limitation in 21.2 which
-		// affects mixed-21.2-22.1-version clusters (issue #78426).
+
 		newIndex.Version = descpb.StrictIndexColumnIDGuaranteesVersion
 		newIndex.EncodingType = descpb.SecondaryIndexEncoding
 		if err := addIndexMutationWithSpecificPrimaryKey(ctx, tableDesc, &newIndex, newPrimaryIndexDesc, p.ExecCfg().Settings); err != nil {
+			__antithesis_instrumentation__.Notify(243429)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(243430)
 		}
+		__antithesis_instrumentation__.Notify(243421)
 
 		oldIndexIDs = append(oldIndexIDs, idx.GetID())
 		newIndexIDs = append(newIndexIDs, newIndex.ID)
 	}
+	__antithesis_instrumentation__.Notify(243246)
 
-	// Determine if removing this index would lead to the uniqueness for a foreign
-	// key back reference, which will cause this swap operation to be blocked.
 	nonDropIndexes := tableDesc.NonDropIndexes()
 	remainingIndexes := make([]descpb.UniqueConstraint, 0, len(nonDropIndexes))
 	for i := range nonDropIndexes {
-		// We can't copy directly because of the interface conversion.
+		__antithesis_instrumentation__.Notify(243431)
+
 		if nonDropIndexes[i].GetID() == tableDesc.GetPrimaryIndex().GetID() {
+			__antithesis_instrumentation__.Notify(243433)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(243434)
 		}
+		__antithesis_instrumentation__.Notify(243432)
 		remainingIndexes = append(remainingIndexes, nonDropIndexes[i])
 	}
+	__antithesis_instrumentation__.Notify(243247)
 	remainingIndexes = append(remainingIndexes, newPrimaryIndexDesc)
 	err = p.tryRemoveFKBackReferences(
 		ctx,
@@ -518,8 +739,12 @@ func (p *planner) AlterPrimaryKey(
 		tree.DropRestrict,
 		remainingIndexes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(243435)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(243436)
 	}
+	__antithesis_instrumentation__.Notify(243248)
 
 	swapArgs := &descpb.PrimaryKeySwap{
 		OldPrimaryIndexId:   tableDesc.GetPrimaryIndexID(),
@@ -529,32 +754,37 @@ func (p *planner) AlterPrimaryKey(
 		NewPrimaryIndexName: string(alterPKNode.Name),
 	}
 	if alterPrimaryKeyLocalitySwap != nil {
+		__antithesis_instrumentation__.Notify(243437)
 		swapArgs.LocalityConfigSwap = &alterPrimaryKeyLocalitySwap.localityConfigSwap
+	} else {
+		__antithesis_instrumentation__.Notify(243438)
 	}
+	__antithesis_instrumentation__.Notify(243249)
 	tableDesc.AddPrimaryKeySwapMutation(swapArgs)
 
 	if err := descbuilder.ValidateSelf(tableDesc, version); err != nil {
+		__antithesis_instrumentation__.Notify(243439)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(243440)
 	}
 
-	// Mark the primary key of the table as valid.
 	{
+		__antithesis_instrumentation__.Notify(243441)
 		primaryIndex := *tableDesc.GetPrimaryIndex().IndexDesc()
 		primaryIndex.Disabled = false
 		tableDesc.SetPrimaryIndex(primaryIndex)
 	}
+	__antithesis_instrumentation__.Notify(243250)
 
-	// N.B. We don't schedule index deletions here because the existing
-	// indexes need to be visible to the user until the primary key swap
-	// actually occurs. Deletions will get enqueued in the phase when
-	// the swap happens.
-
-	// Send a notice to users about how this job is asynchronous.
-	// TODO(knz): Mention the job ID in the client notice.
 	noticeStr := "primary key changes are finalized asynchronously"
 	if alterPrimaryKeyLocalitySwap != nil {
+		__antithesis_instrumentation__.Notify(243442)
 		noticeStr = "LOCALITY changes will be finalized asynchronously"
+	} else {
+		__antithesis_instrumentation__.Notify(243443)
 	}
+	__antithesis_instrumentation__.Notify(243251)
 	p.BufferClientNotice(
 		ctx,
 		pgnotice.Newf(
@@ -567,124 +797,180 @@ func (p *planner) AlterPrimaryKey(
 	return nil
 }
 
-// Given the current table descriptor and the new primary keys
-// index descriptor  this function determines if the two are
-// equivalent and if any index creation operations are needed
-// by comparing properties.
 func (p *planner) shouldCreateIndexes(
 	ctx context.Context,
 	desc *tabledesc.Mutable,
 	alterPKNode *tree.AlterTableAlterPrimaryKey,
 	alterPrimaryKeyLocalitySwap *alterPrimaryKeyLocalitySwap,
 ) (requiresIndexChange bool, err error) {
+	__antithesis_instrumentation__.Notify(243444)
 	oldPK := desc.GetPrimaryIndex()
 
-	// Validate if basic properties between the two match.
-	if oldPK.NumKeyColumns() != len(alterPKNode.Columns) ||
-		oldPK.IsSharded() != (alterPKNode.Sharded != nil) {
+	if oldPK.NumKeyColumns() != len(alterPKNode.Columns) || func() bool {
+		__antithesis_instrumentation__.Notify(243450)
+		return oldPK.IsSharded() != (alterPKNode.Sharded != nil) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(243451)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(243452)
 	}
+	__antithesis_instrumentation__.Notify(243445)
 
-	// Validate if sharding properties are the same.
 	if alterPKNode.Sharded != nil {
+		__antithesis_instrumentation__.Notify(243453)
 		shardBuckets, err := tabledesc.EvalShardBucketCount(ctx, &p.semaCtx, p.EvalContext(), alterPKNode.Sharded.ShardBuckets, alterPKNode.StorageParams)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(243455)
 			return true, err
+		} else {
+			__antithesis_instrumentation__.Notify(243456)
 		}
+		__antithesis_instrumentation__.Notify(243454)
 		if oldPK.GetSharded().ShardBuckets != shardBuckets {
+			__antithesis_instrumentation__.Notify(243457)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(243458)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(243459)
 	}
+	__antithesis_instrumentation__.Notify(243446)
 
-	// If the old primary key is dropped, then recreation
-	// is required.
 	if oldPK.IsDisabled() {
+		__antithesis_instrumentation__.Notify(243460)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(243461)
 	}
+	__antithesis_instrumentation__.Notify(243447)
 
-	// Validate the columns on the indexes
 	for idx, elem := range alterPKNode.Columns {
+		__antithesis_instrumentation__.Notify(243462)
 		col, err := desc.FindColumnWithName(elem.Column)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(243465)
 			return true, err
+		} else {
+			__antithesis_instrumentation__.Notify(243466)
 		}
+		__antithesis_instrumentation__.Notify(243463)
 
 		if col.GetID() != oldPK.GetKeyColumnID(idx) {
+			__antithesis_instrumentation__.Notify(243467)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(243468)
 		}
-		if (elem.Direction == tree.Ascending &&
-			oldPK.GetKeyColumnDirection(idx) != descpb.IndexDescriptor_ASC) ||
-			(elem.Direction == tree.Descending &&
-				oldPK.GetKeyColumnDirection(idx) != descpb.IndexDescriptor_DESC) {
+		__antithesis_instrumentation__.Notify(243464)
+		if (elem.Direction == tree.Ascending && func() bool {
+			__antithesis_instrumentation__.Notify(243469)
+			return oldPK.GetKeyColumnDirection(idx) != descpb.IndexDescriptor_ASC == true
+		}() == true) || func() bool {
+			__antithesis_instrumentation__.Notify(243470)
+			return (elem.Direction == tree.Descending && func() bool {
+				__antithesis_instrumentation__.Notify(243471)
+				return oldPK.GetKeyColumnDirection(idx) != descpb.IndexDescriptor_DESC == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(243472)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(243473)
 		}
 	}
+	__antithesis_instrumentation__.Notify(243448)
 
-	// Check partitioning changes based on primary key locality,
-	// either the config changes, or the region column is changed
-	// then recreate indexes.
 	if alterPrimaryKeyLocalitySwap != nil {
+		__antithesis_instrumentation__.Notify(243474)
 		localitySwapConfig := alterPrimaryKeyLocalitySwap.localityConfigSwap
 		if !localitySwapConfig.NewLocalityConfig.Equal(localitySwapConfig.OldLocalityConfig) {
+			__antithesis_instrumentation__.Notify(243476)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(243477)
 		}
-		if localitySwapConfig.NewRegionalByRowColumnID != nil &&
-			*localitySwapConfig.NewRegionalByRowColumnID != oldPK.GetKeyColumnID(0) {
+		__antithesis_instrumentation__.Notify(243475)
+		if localitySwapConfig.NewRegionalByRowColumnID != nil && func() bool {
+			__antithesis_instrumentation__.Notify(243478)
+			return *localitySwapConfig.NewRegionalByRowColumnID != oldPK.GetKeyColumnID(0) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(243479)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(243480)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(243481)
 	}
+	__antithesis_instrumentation__.Notify(243449)
 	return false, nil
 }
 
-// We only recreate the old primary key of the table as a unique secondary
-// index if:
-// * The table has a primary key (no DROP PRIMARY KEY statements have
-//   been executed).
-// * The primary key is not the default rowid primary key.
-// * The new primary key isn't the same set of columns and directions
-//   other than hash sharding.
-// * There is no partitioning change.
 func shouldCopyPrimaryKey(
 	desc *tabledesc.Mutable,
 	newPK *descpb.IndexDescriptor,
 	alterPrimaryKeyLocalitySwap *alterPrimaryKeyLocalitySwap,
 ) bool {
+	__antithesis_instrumentation__.Notify(243482)
 
 	columnIDsAndDirsWithoutSharded := func(idx *descpb.IndexDescriptor) (
 		columnIDs descpb.ColumnIDs,
 		columnDirs []descpb.IndexDescriptor_Direction,
 	) {
+		__antithesis_instrumentation__.Notify(243485)
 		for i, colName := range idx.KeyColumnNames {
+			__antithesis_instrumentation__.Notify(243487)
 			if colName != idx.Sharded.Name {
+				__antithesis_instrumentation__.Notify(243488)
 				columnIDs = append(columnIDs, idx.KeyColumnIDs[i])
 				columnDirs = append(columnDirs, idx.KeyColumnDirections[i])
+			} else {
+				__antithesis_instrumentation__.Notify(243489)
 			}
 		}
+		__antithesis_instrumentation__.Notify(243486)
 		return columnIDs, columnDirs
 	}
+	__antithesis_instrumentation__.Notify(243483)
 	idsAndDirsMatch := func(old, new *descpb.IndexDescriptor) bool {
+		__antithesis_instrumentation__.Notify(243490)
 		oldIDs, oldDirs := columnIDsAndDirsWithoutSharded(old)
 		newIDs, newDirs := columnIDsAndDirsWithoutSharded(new)
 		if !oldIDs.Equals(newIDs) {
+			__antithesis_instrumentation__.Notify(243493)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(243494)
 		}
+		__antithesis_instrumentation__.Notify(243491)
 		for i := range oldDirs {
+			__antithesis_instrumentation__.Notify(243495)
 			if oldDirs[i] != newDirs[i] {
+				__antithesis_instrumentation__.Notify(243496)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(243497)
 			}
 		}
+		__antithesis_instrumentation__.Notify(243492)
 		return true
 	}
+	__antithesis_instrumentation__.Notify(243484)
 	oldPK := desc.GetPrimaryIndex().IndexDesc()
-	return alterPrimaryKeyLocalitySwap == nil &&
-		desc.HasPrimaryKey() &&
-		!desc.IsPrimaryIndexDefaultRowID() &&
-		!idsAndDirsMatch(oldPK, newPK)
+	return alterPrimaryKeyLocalitySwap == nil && func() bool {
+		__antithesis_instrumentation__.Notify(243498)
+		return desc.HasPrimaryKey() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(243499)
+		return !desc.IsPrimaryIndexDefaultRowID() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(243500)
+		return !idsAndDirsMatch(oldPK, newPK) == true
+	}() == true
 }
 
-// addIndexMutationWithSpecificPrimaryKey adds an index mutation into the given
-// table descriptor, but sets up the index with KeySuffixColumnIDs from the
-// given index, rather than the table's primary key.
 func addIndexMutationWithSpecificPrimaryKey(
 	ctx context.Context,
 	table *tabledesc.Mutable,
@@ -692,34 +978,50 @@ func addIndexMutationWithSpecificPrimaryKey(
 	primary *descpb.IndexDescriptor,
 	settings *cluster.Settings,
 ) error {
-	// Reset the ID so that a call to AllocateIDs will set up the index.
+	__antithesis_instrumentation__.Notify(243501)
+
 	toAdd.ID = 0
 	if err := table.AddIndexMutation(ctx, toAdd, descpb.DescriptorMutation_ADD, settings); err != nil {
+		__antithesis_instrumentation__.Notify(243505)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(243506)
 	}
+	__antithesis_instrumentation__.Notify(243502)
 	if err := table.AllocateIDsWithoutValidation(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(243507)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(243508)
 	}
+	__antithesis_instrumentation__.Notify(243503)
 
 	setKeySuffixColumnIDsFromPrimary(toAdd, primary)
 	if tempIdx := catalog.FindCorrespondingTemporaryIndexByID(table, toAdd.ID); tempIdx != nil {
+		__antithesis_instrumentation__.Notify(243509)
 		setKeySuffixColumnIDsFromPrimary(tempIdx.IndexDesc(), primary)
+	} else {
+		__antithesis_instrumentation__.Notify(243510)
 	}
+	__antithesis_instrumentation__.Notify(243504)
 
 	return nil
 }
 
-// setKeySuffixColumnIDsFromPrimary uses the columns in the given
-// primary index to construct this toAdd's KeySuffixColumnIDs list.
 func setKeySuffixColumnIDsFromPrimary(
 	toAdd *descpb.IndexDescriptor, primary *descpb.IndexDescriptor,
 ) {
+	__antithesis_instrumentation__.Notify(243511)
 	presentColIDs := catalog.MakeTableColSet(toAdd.KeyColumnIDs...)
 	presentColIDs.UnionWith(catalog.MakeTableColSet(toAdd.StoreColumnIDs...))
 	toAdd.KeySuffixColumnIDs = nil
 	for _, colID := range primary.KeyColumnIDs {
+		__antithesis_instrumentation__.Notify(243512)
 		if !presentColIDs.Contains(colID) {
+			__antithesis_instrumentation__.Notify(243513)
 			toAdd.KeySuffixColumnIDs = append(toAdd.KeySuffixColumnIDs, colID)
+		} else {
+			__antithesis_instrumentation__.Notify(243514)
 		}
 	}
 }

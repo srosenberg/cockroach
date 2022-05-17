@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,13 +15,16 @@ import (
 )
 
 func registerSecure(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(50855)
 	for _, numNodes := range []int{1, 3} {
+		__antithesis_instrumentation__.Notify(50856)
 		r.Add(registry.TestSpec{
 			Name:    fmt.Sprintf("smoketest/secure/nodes=%d", numNodes),
 			Tags:    []string{"smoketest", "weekly"},
-			Owner:   registry.OwnerKV, // TODO: OwnerTestEng once the open PR that introduces it has merged
+			Owner:   registry.OwnerKV,
 			Cluster: r.MakeClusterSpec(numNodes),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(50857)
 				c.Put(ctx, t.Cockroach(), "./cockroach")
 				settings := install.MakeClusterSettings(install.SecureOption(true))
 				c.Start(ctx, t.L(), option.DefaultStartOpts(), settings)

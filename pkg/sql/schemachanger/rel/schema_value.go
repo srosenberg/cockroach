@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rel
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"reflect"
@@ -22,20 +14,30 @@ var (
 )
 
 func makeComparableValue(val interface{}) (typedValue, error) {
+	__antithesis_instrumentation__.Notify(579240)
 	if typ, isType := val.(reflect.Type); isType {
+		__antithesis_instrumentation__.Notify(579243)
 		return typedValue{
 			typ:   reflectTypeType,
 			value: typ,
 		}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(579244)
 	}
+	__antithesis_instrumentation__.Notify(579241)
 	vv := reflect.ValueOf(val)
 	if err := checkNotNil(vv); err != nil {
+		__antithesis_instrumentation__.Notify(579245)
 		return typedValue{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(579246)
 	}
+	__antithesis_instrumentation__.Notify(579242)
 	typ := vv.Type()
 	switch {
 	case isSupportScalarKind(typ.Kind()):
-		// We need to allocate a new pointer.
+		__antithesis_instrumentation__.Notify(579247)
+
 		compType := getComparableType(typ)
 		vvNew := reflect.New(vv.Type())
 		vvNew.Elem().Set(vv)
@@ -44,24 +46,29 @@ func makeComparableValue(val interface{}) (typedValue, error) {
 			value: vvNew.Convert(reflect.PtrTo(compType)).Interface(),
 		}, nil
 	case typ.Kind() == reflect.Ptr:
+		__antithesis_instrumentation__.Notify(579248)
 		switch {
 		case isSupportScalarKind(typ.Elem().Kind()):
+			__antithesis_instrumentation__.Notify(579250)
 			compType := getComparableType(typ.Elem())
 			return typedValue{
 				typ:   vv.Type().Elem(),
 				value: vv.Convert(reflect.PtrTo(compType)).Interface(),
 			}, nil
 		case typ.Elem().Kind() == reflect.Struct:
+			__antithesis_instrumentation__.Notify(579251)
 			return typedValue{
 				typ:   vv.Type(),
 				value: val,
 			}, nil
 		default:
+			__antithesis_instrumentation__.Notify(579252)
 			return typedValue{}, errors.Errorf(
 				"unsupported pointer kind %v for type %T", typ.Elem().Kind(), val,
 			)
 		}
 	default:
+		__antithesis_instrumentation__.Notify(579249)
 		return typedValue{}, errors.Errorf(
 			"unsupported kind %v for type %T", typ.Kind(), val,
 		)
@@ -69,12 +76,24 @@ func makeComparableValue(val interface{}) (typedValue, error) {
 }
 
 func checkNotNil(v reflect.Value) error {
+	__antithesis_instrumentation__.Notify(579253)
 	if !v.IsValid() {
-		// you are not allowed to put A nil pointer here
+		__antithesis_instrumentation__.Notify(579256)
+
 		return errors.Errorf("invalid nil")
+	} else {
+		__antithesis_instrumentation__.Notify(579257)
 	}
-	if v.Kind() == reflect.Ptr && v.IsNil() {
+	__antithesis_instrumentation__.Notify(579254)
+	if v.Kind() == reflect.Ptr && func() bool {
+		__antithesis_instrumentation__.Notify(579258)
+		return v.IsNil() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(579259)
 		return errors.Errorf("invalid nil %v", v.Type())
+	} else {
+		__antithesis_instrumentation__.Notify(579260)
 	}
+	__antithesis_instrumentation__.Notify(579255)
 	return nil
 }

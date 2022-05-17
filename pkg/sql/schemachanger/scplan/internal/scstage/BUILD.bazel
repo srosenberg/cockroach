@@ -17,6 +17,7 @@ go_library(
         "//pkg/sql/schemachanger/scplan/internal/scgraph",
         "//pkg/sql/schemachanger/screl",
         "//pkg/util/iterutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

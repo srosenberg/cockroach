@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package migrations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,15 +11,18 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/systemschema"
 )
 
-// tenantSettingsTableMigration creates the system.tenant_settings table (for the
-// system tenant).
 func tenantSettingsTableMigration(
 	ctx context.Context, _ clusterversion.ClusterVersion, d migration.TenantDeps, _ *jobs.Job,
 ) error {
-	// Only create the table on the system tenant.
+	__antithesis_instrumentation__.Notify(128730)
+
 	if !d.Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(128732)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(128733)
 	}
+	__antithesis_instrumentation__.Notify(128731)
 	return createSystemTable(
 		ctx, d.DB, d.Codec, systemschema.TenantSettingsTable,
 	)

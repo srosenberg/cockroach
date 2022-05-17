@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,26 +26,33 @@ func declareKeysHeartbeatTransaction(
 	latchSpans, _ *spanset.SpanSet,
 	_ time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(96942)
 	declareKeysWriteTransaction(rs, header, req, latchSpans)
 }
 
-// HeartbeatTxn updates the transaction status and heartbeat
-// timestamp after receiving transaction heartbeat messages from
-// coordinator. Returns the updated transaction.
 func HeartbeatTxn(
 	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(96943)
 	args := cArgs.Args.(*roachpb.HeartbeatTxnRequest)
 	h := cArgs.Header
 	reply := resp.(*roachpb.HeartbeatTxnResponse)
 
 	if err := VerifyTransaction(h, args, roachpb.PENDING, roachpb.STAGING); err != nil {
+		__antithesis_instrumentation__.Notify(96948)
 		return result.Result{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(96949)
 	}
+	__antithesis_instrumentation__.Notify(96944)
 
 	if args.Now.IsEmpty() {
+		__antithesis_instrumentation__.Notify(96950)
 		return result.Result{}, fmt.Errorf("now not specified for heartbeat")
+	} else {
+		__antithesis_instrumentation__.Notify(96951)
 	}
+	__antithesis_instrumentation__.Notify(96945)
 
 	key := keys.TransactionKey(h.Txn.Key, h.Txn.ID)
 
@@ -61,28 +60,42 @@ func HeartbeatTxn(
 	if ok, err := storage.MVCCGetProto(
 		ctx, readWriter, key, hlc.Timestamp{}, &txn, storage.MVCCGetOptions{},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(96952)
 		return result.Result{}, err
-	} else if !ok {
-		// No existing transaction record was found - create one by writing
-		// it below.
-		txn = *h.Txn
+	} else {
+		__antithesis_instrumentation__.Notify(96953)
+		if !ok {
+			__antithesis_instrumentation__.Notify(96954)
 
-		// Verify that it is safe to create the transaction record.
-		if err := CanCreateTxnRecord(ctx, cArgs.EvalCtx, &txn); err != nil {
-			return result.Result{}, err
+			txn = *h.Txn
+
+			if err := CanCreateTxnRecord(ctx, cArgs.EvalCtx, &txn); err != nil {
+				__antithesis_instrumentation__.Notify(96955)
+				return result.Result{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(96956)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(96957)
 		}
 	}
+	__antithesis_instrumentation__.Notify(96946)
 
 	if !txn.Status.IsFinalized() {
-		// NOTE: this only updates the LastHeartbeat. It doesn't update any other
-		// field from h.Txn, even if it could. Whether that's a good thing or not
-		// is up for debate.
+		__antithesis_instrumentation__.Notify(96958)
+
 		txn.LastHeartbeat.Forward(args.Now)
 		txnRecord := txn.AsRecord()
 		if err := storage.MVCCPutProto(ctx, readWriter, cArgs.Stats, key, hlc.Timestamp{}, nil, &txnRecord); err != nil {
+			__antithesis_instrumentation__.Notify(96959)
 			return result.Result{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(96960)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(96961)
 	}
+	__antithesis_instrumentation__.Notify(96947)
 
 	reply.Txn = &txn
 	return result.Result{}, nil

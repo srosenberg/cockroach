@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kv
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,139 +13,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// RangeLookup is used to look up RangeDescriptors - a RangeDescriptor is a
-// metadata structure which describes the key range and replica locations of a
-// distinct range in the cluster. They map the logical keyspace in cockroach to
-// its physical replicas, allowing a node to send requests for a certain key to
-// the replicas that contain that key.
-//
-// RangeDescriptors are stored as values in the cockroach cluster's key-value
-// store. However, they are always stored using special "Range Metadata keys",
-// which are "ordinary" keys with a special prefix prepended. The Range Metadata
-// Key for an ordinary key can be generated with the `keys.RangeMetaKey(key)`
-// function. The RangeDescriptor for the range which contains a given key can be
-// retrieved by generating its Range Metadata Key and scanning from the key
-// forwards until the first RangeDescriptor is found. This is what this function
-// does with the provided key.
-//
-// Note that the Range Metadata Key sent as the StartKey of the lookup scan is
-// NOT the key at which the desired RangeDescriptor is stored. Instead, this
-// method returns the RangeDescriptor stored at the _lowest_ existing key which
-// is _greater_ than the given key. The returned RangeDescriptor will thus
-// contain the ordinary key which was provided to this function.
-//
-// The "Range Metadata Key" for a range is built by appending the end key of the
-// range to the respective meta prefix.
-//
-//
-// It is often useful to think of Cockroach's ranges as existing in a three
-// level tree:
-//
-//            [/meta1/,/meta1/max)   <-- always one range, gossipped, start here!
-//                     |
-//          -----------------------
-//          |                     |
-//  [/meta2/,/meta2/m)   [/meta2/m,/meta2/max)
-//          |                     |
-//      ---------             ---------
-//      |       |             |       |
-//    [a,g)   [g,m)         [m,s)   [s,max)   <- user data
-//
-// In this analogy, each node (range) contains a number of RangeDescriptors, and
-// these descriptors act as pointers to the location of its children. So given a
-// key we want to find, we can use the tree structure to find it, starting at
-// the tree's root (meta1). But starting at the root, how do we know which
-// pointer to follow? This is where RangeMetaKey comes into play - it turns a
-// key in one range into a meta key in its parent range. Then, when looking at
-// its parent range, we know that the descriptor we want is the first descriptor
-// to the right of this meta key in the parent's ordered set of keys.
-//
-//
-// Let's look at a few examples that demonstrate how RangeLookup performs this
-// task of finding a user RangeDescriptors from cached meta2 descriptors:
-//
-// Ex. 1:
-//  Meta2 Ranges: [/meta2/a,  /meta2/z)
-//  User  Ranges: [a, f) [f, p), [p, z)
-//  1.a: RangeLookup(key=f)
-//   In this case, we want to look up the range descriptor for the range [f, p)
-//   because "f" is in that range. Remember that this descriptor will be stored
-//   at "/meta2/p". Of course, when we're performing the RangeLookup, we don't
-//   actually know what the bounds of this range are or where exactly it's
-//   stored (that's what we're looking up!), so all we have to go off of is the
-//   lookup key. So, we first determine the meta key for the lookup key using
-//   RangeMetaKey, which is simply "/meta2/f". We then construct the scan bounds
-//   for this key using MetaScanBounds. This scan bound will be
-//   [/meta2/f.Next(),/meta2/max). The reason that this scan doesn't start at
-//   "/meta2/f" is because if this key is the start key of a range (like it is
-//   in this example!), the previous range descriptor will be stored at that
-//   key. We then issue a forward ScanRequest over this range. Since we're
-//   assuming we already cached the meta2 range that contains this span of keys,
-//   we send the request directly to that range's replica (if we didn't have
-//   this cached, the process would recurse to lookup the meta2 range
-//   descriptor). We then find that the first KV pair we see during the scan is
-//   at "/meta2/p". This is our desired range descriptor.
-//  1.b: RangeLookup(key=m)
-//   This case is similar. We construct a scan for this key "m" from
-//   [/meta2/m.Next(),/meta2/max) and everything works the same as before.
-//  1.b: RangeLookup(key=p)
-//   Here, we're looking for the descriptor for the range [p, z), because key "p"
-//   is included in that range, but not [f, p). We scan with bounds of
-//   [/meta2/p.Next(),/meta2/max) and everything works as expected.
-//
-// Ex. 2:
-//  Meta2 Ranges: [/meta2/a, /meta2/m) [/meta2/m, /meta2/z)
-//  User  Ranges: [a, f)           [f, p),           [p, z)
-//  2.a: RangeLookup(key=n)
-//   In this case, we want to look up the range descriptor for the range [f, p)
-//   because "n" is in that range. Remember that this descriptor will be stored
-//   at "/meta2/p", which in this case is on the second meta2 range. So, we
-//   construct the scan bounds of [/meta2/n.Next(),/meta2/max), send this scan
-//   to the second meta2 range, and find that the first descriptor found is the
-//   desired descriptor.
-//  2.b: RangeLookup(key=g)
-//   This is where things get a little tricky. As usual, we construct scan
-//   bounds of [/meta2/g.Next(),/meta2/max). However, this scan will be routed
-//   to the first meta2 range. It will scan forward and notice that no
-//   descriptors are stored between [/meta2/g.Next(),/meta2/m). We then rely on
-//   DistSender to continue this scan onto the next meta2 range since the result
-//   from the first meta2 range will be empty. Once on the next meta2 range,
-//   we'll find the desired descriptor at "/meta2/p".
-//
-// Ex. 3:
-//  Meta2 Ranges: [/meta2/a, /meta2/m)  [/meta2/m, /meta2/z)
-//  User  Ranges: [a, f)        [f, m), [m,s)         [p, z)
-//  3.a: RangeLookup(key=g)
-//   This is a little confusing, but actually behaves the exact same way at 2.b.
-//   Notice that the descriptor for [f, m) is actually stored on the second
-//   meta2 range! So the lookup scan will start on the first meta2 range and
-//   continue onto the second before finding the desired descriptor at /meta2/m.
-//   This is an unfortunate result of us storing RangeDescriptors at
-//   RangeMetaKey(desc.EndKey) instead of RangeMetaKey(desc.StartKey) even
-//   though our ranges are [inclusive,exclusive). Still everything works if we
-//   let DistSender do its job when scanning over the meta2 range.
-//
-//   See #16266 and #17565 for further discussion. Notably, it is not possible
-//   to pick meta2 boundaries such that we will never run into this issue. The
-//   only way to avoid this completely would be to store RangeDescriptors at
-//   RangeMetaKey(desc.StartKey) and only allow meta2 split boundaries at
-//   RangeMetaKey(existingSplitBoundary)
-//
-//
-// Lookups for range metadata keys usually want to perform reads at the
-// READ_UNCOMMITTED read consistency level read in order to observe intents as
-// well. However, some callers need a consistent result; both are supported be
-// specifying the ReadConsistencyType. If the lookup is consistent, the Sender
-// provided should be a TxnCoordSender.
-//
-// This method has an important optimization if the prefetchNum arg is larger
-// than 0: instead of just returning the request RangeDescriptor, it also
-// returns a slice of additional range descriptors immediately consecutive to
-// the desired RangeDescriptor. This is intended to serve as a sort of caching
-// pre-fetch, so that nodes can aggressively cache RangeDescriptors which are
-// likely to be desired by their current workload. The prefetchReverse flag
-// specifies whether descriptors are prefetched in descending or ascending
-// order.
 func RangeLookup(
 	ctx context.Context,
 	sender Sender,
@@ -162,25 +21,8 @@ func RangeLookup(
 	prefetchNum int64,
 	prefetchReverse bool,
 ) (rs, preRs []roachpb.RangeDescriptor, err error) {
-	// RangeLookup scans can span multiple ranges, as discussed above.
-	// Traditionally, in order to see a fully-consistent snapshot of multiple
-	// ranges, a scan needs to operate in a Txn with a fixed timestamp. Without
-	// this, the scan may read results from different ranges at different times,
-	// resulting in an inconsistent view. This is why DistSender returns
-	// OpRequiresTxnError for consistent scans outside of Txns that span
-	// multiple ranges.
-	//
-	// For RangeLookups, a consistent but outdated result is just as useless as
-	// an inconsistent result. Because of this, we allow both inconsistent scans
-	// and consistent scans outside of Txns for RangeLookups, and attempt to
-	// reconcile any inconsistencies due to races, rescanning if this is not
-	// possible.
-	//
-	// The retry options are set to be very aggressive because we should only
-	// need to retry if a scan races with a split which is writing its new
-	// RangeDescriptors across two different meta2 ranges. Because these meta2
-	// writes are transactional, performing the entire scan again immediately
-	// will not run into the same race.
+	__antithesis_instrumentation__.Notify(127599)
+
 	opts := retry.Options{
 		InitialBackoff: 1 * time.Millisecond,
 		MaxBackoff:     500 * time.Millisecond,
@@ -188,66 +30,103 @@ func RangeLookup(
 	}
 
 	for r := retry.StartWithCtx(ctx, opts); r.Next(); {
-		// Determine the "Range Metadata Key" for the provided key.
+		__antithesis_instrumentation__.Notify(127602)
+
 		rkey, err := addrForDir(prefetchReverse)(key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(127609)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(127610)
 		}
+		__antithesis_instrumentation__.Notify(127603)
 
 		descs, intentDescs, err := lookupRangeFwdScan(ctx, sender, rkey, rc, prefetchNum, prefetchReverse)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(127611)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(127612)
 		}
+		__antithesis_instrumentation__.Notify(127604)
 		if prefetchReverse {
+			__antithesis_instrumentation__.Notify(127613)
 			descs, intentDescs, err = lookupRangeRevScan(ctx, sender, rkey, rc, prefetchNum,
 				prefetchReverse, descs, intentDescs)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(127614)
 				return nil, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(127615)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(127616)
 		}
+		__antithesis_instrumentation__.Notify(127605)
 
 		desiredDesc := containsForDir(prefetchReverse, rkey)
 		var matchingRanges []roachpb.RangeDescriptor
 		var prefetchedRanges []roachpb.RangeDescriptor
 		for index := range descs {
+			__antithesis_instrumentation__.Notify(127617)
 			desc := &descs[index]
 			if desiredDesc(desc) {
+				__antithesis_instrumentation__.Notify(127618)
 				if len(matchingRanges) == 0 {
+					__antithesis_instrumentation__.Notify(127619)
 					matchingRanges = append(matchingRanges, *desc)
 				} else {
-					// Since we support scanning non-transactionally, it's possible that
-					// we pick up both the pre- and post-split descriptor for a range.
+					__antithesis_instrumentation__.Notify(127620)
+
 					if desc.Generation > matchingRanges[0].Generation {
-						// Take the range descriptor with the newer generation.
+						__antithesis_instrumentation__.Notify(127621)
+
 						matchingRanges[0] = *desc
+					} else {
+						__antithesis_instrumentation__.Notify(127622)
 					}
 				}
 			} else {
-				// If this is not the desired descriptor, it must be a prefetched
-				// descriptor.
+				__antithesis_instrumentation__.Notify(127623)
+
 				prefetchedRanges = append(prefetchedRanges, *desc)
 			}
 		}
+		__antithesis_instrumentation__.Notify(127606)
 		for i := range intentDescs {
+			__antithesis_instrumentation__.Notify(127624)
 			desc := &intentDescs[i]
 			if desiredDesc(desc) {
+				__antithesis_instrumentation__.Notify(127625)
 				matchingRanges = append(matchingRanges, *desc)
-				// We only want up to one intent descriptor.
+
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(127626)
 			}
 		}
+		__antithesis_instrumentation__.Notify(127607)
 		if len(matchingRanges) > 0 {
+			__antithesis_instrumentation__.Notify(127627)
 			return matchingRanges, prefetchedRanges, nil
+		} else {
+			__antithesis_instrumentation__.Notify(127628)
 		}
+		__antithesis_instrumentation__.Notify(127608)
 
 		log.Warningf(ctx, "range lookup of key %s found only non-matching ranges %v; retrying",
 			key, prefetchedRanges)
 	}
+	__antithesis_instrumentation__.Notify(127600)
 
 	ctxErr := ctx.Err()
 	if ctxErr == nil {
+		__antithesis_instrumentation__.Notify(127629)
 		log.Fatalf(ctx, "retry loop broke before context expired")
+	} else {
+		__antithesis_instrumentation__.Notify(127630)
 	}
+	__antithesis_instrumentation__.Notify(127601)
 	return nil, nil, ctxErr
 }
 
@@ -259,83 +138,104 @@ func lookupRangeFwdScan(
 	prefetchNum int64,
 	prefetchReverse bool,
 ) (rs, preRs []roachpb.RangeDescriptor, err error) {
-	if skipFwd := prefetchReverse && key.Equal(roachpb.KeyMax); skipFwd {
-		// Don't attempt a forward scan because it's neither defined nor required.
-		//
-		// If !prefetchReverse && key.Equal(roachpb.KeyMax), we'll throw an error
-		// below in keys.MetaScanBounds.
-		return nil, nil, nil
-	}
+	__antithesis_instrumentation__.Notify(127631)
+	if skipFwd := prefetchReverse && func() bool {
+		__antithesis_instrumentation__.Notify(127640)
+		return key.Equal(roachpb.KeyMax) == true
+	}() == true; skipFwd {
+		__antithesis_instrumentation__.Notify(127641)
 
-	// We want to search for the metadata key greater than metaKey. Scan for
-	// both the requested key and the keys immediately afterwards.
+		return nil, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(127642)
+	}
+	__antithesis_instrumentation__.Notify(127632)
+
 	metaKey := keys.RangeMetaKey(key)
 	bounds, err := keys.MetaScanBounds(metaKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(127643)
 		return nil, nil, errors.Wrap(err, "could not create scan bounds for range lookup")
+	} else {
+		__antithesis_instrumentation__.Notify(127644)
 	}
+	__antithesis_instrumentation__.Notify(127633)
 
 	ba := roachpb.BatchRequest{}
 	ba.ReadConsistency = rc
 	if prefetchReverse {
-		// Even if we're prefetching in the reverse direction, we still scan
-		// forward first to get the first range. There are two cases, which we
-		// can't detect in advance:
-		// 1. key is not an endpoint of the range.
-		// 2. key is the start/end key of the range.
-		//
-		// In case 1, we need the forward scan to get the first range
-		// descriptor, because a reverse scan can't do the work. Imagine we have
-		// ranges [a,c) and [c,f), and the reverse RangeLookup request's key is
-		// "d". "d" is less than "f", and so the meta row {f->[c,f)} would not
-		// be seen by the reverse scan. In this case, the forward scan will pick
-		// it up.
-		//
-		// In case 2, the range descriptor received from the forward scan is not
-		// needed. Imagine we have ranges [c,f) and [f,z), and the reverse
-		// RangeLookup request's key is "f". The forward scan will start at
-		// "f".Next() (see MetaScanBounds for details about the Next call) and
-		// will receive the descriptor {z->[f,z)}. Since this is not being asked
-		// for, we discard it below in lookupRangeRevScan. In this case, the
-		// reverse scan will pick up {f->[c,f)}.
+		__antithesis_instrumentation__.Notify(127645)
+
 		ba.MaxSpanRequestKeys = 1
 	} else {
+		__antithesis_instrumentation__.Notify(127646)
 		ba.MaxSpanRequestKeys = prefetchNum + 1
 	}
+	__antithesis_instrumentation__.Notify(127634)
 	ba.Add(&roachpb.ScanRequest{
 		RequestHeader: roachpb.RequestHeaderFromSpan(bounds.AsRawSpanWithNoLocals()),
 	})
 	if !TestingIsRangeLookup(ba) {
+		__antithesis_instrumentation__.Notify(127647)
 		log.Fatalf(ctx, "BatchRequest %v not detectable as RangeLookup", ba)
+	} else {
+		__antithesis_instrumentation__.Notify(127648)
 	}
+	__antithesis_instrumentation__.Notify(127635)
 
 	br, pErr := sender.Send(ctx, ba)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(127649)
 		return nil, nil, pErr.GoError()
+	} else {
+		__antithesis_instrumentation__.Notify(127650)
 	}
+	__antithesis_instrumentation__.Notify(127636)
 	scanRes := br.Responses[0].GetInner().(*roachpb.ScanResponse)
 
 	descs, err := kvsToRangeDescriptors(scanRes.Rows)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(127651)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(127652)
 	}
+	__antithesis_instrumentation__.Notify(127637)
 	intentDescs, err := kvsToRangeDescriptors(scanRes.IntentRows)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(127653)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(127654)
 	}
+	__antithesis_instrumentation__.Notify(127638)
 
-	// If the forward scan did not find the desired descriptor and this is
-	// prefetching in reverse, remove forward descriptors if they aren't needed.
-	// This occurs in case 2 from above.
 	if prefetchReverse {
+		__antithesis_instrumentation__.Notify(127655)
 		desiredDesc := containsForDir(prefetchReverse, key)
-		if len(descs) > 0 && !desiredDesc(&descs[0]) {
+		if len(descs) > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(127657)
+			return !desiredDesc(&descs[0]) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(127658)
 			descs = nil
+		} else {
+			__antithesis_instrumentation__.Notify(127659)
 		}
-		if len(intentDescs) > 0 && !desiredDesc(&intentDescs[0]) {
+		__antithesis_instrumentation__.Notify(127656)
+		if len(intentDescs) > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(127660)
+			return !desiredDesc(&intentDescs[0]) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(127661)
 			intentDescs = nil
+		} else {
+			__antithesis_instrumentation__.Notify(127662)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(127663)
 	}
+	__antithesis_instrumentation__.Notify(127639)
 	return descs, intentDescs, nil
 }
 
@@ -348,25 +248,32 @@ func lookupRangeRevScan(
 	prefetchReverse bool,
 	fwdDescs, fwdIntentDescs []roachpb.RangeDescriptor,
 ) (rs, preRs []roachpb.RangeDescriptor, err error) {
-	// If the forward scan already found the desired descriptor, subtract from
-	// the ReverseScanRequest's max keys. If this becomes 0, there's no need to
-	// do the scan.
+	__antithesis_instrumentation__.Notify(127664)
+
 	maxKeys := prefetchNum + 1
 	if len(fwdDescs) > 0 {
-		maxKeys-- // desired desc already found
+		__antithesis_instrumentation__.Notify(127671)
+		maxKeys--
 		if maxKeys == 0 {
+			__antithesis_instrumentation__.Notify(127672)
 			return fwdDescs, fwdIntentDescs, nil
+		} else {
+			__antithesis_instrumentation__.Notify(127673)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(127674)
 	}
+	__antithesis_instrumentation__.Notify(127665)
 
-	// We want to search for the metadata key just less or equal to
-	// metaKey. Scan in prefetchReverse order for both the requested key and the
-	// keys immediately backwards.
 	metaKey := keys.RangeMetaKey(key)
 	revBounds, err := keys.MetaReverseScanBounds(metaKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(127675)
 		return nil, nil, errors.Wrap(err, "could not create scan bounds for reverse range lookup")
+	} else {
+		__antithesis_instrumentation__.Notify(127676)
 	}
+	__antithesis_instrumentation__.Notify(127666)
 
 	ba := roachpb.BatchRequest{}
 	ba.ReadConsistency = rc
@@ -375,71 +282,98 @@ func lookupRangeRevScan(
 		RequestHeader: roachpb.RequestHeaderFromSpan(revBounds.AsRawSpanWithNoLocals()),
 	})
 	if !TestingIsRangeLookup(ba) {
+		__antithesis_instrumentation__.Notify(127677)
 		log.Fatalf(ctx, "BatchRequest %v not detectable as RangeLookup", ba)
+	} else {
+		__antithesis_instrumentation__.Notify(127678)
 	}
+	__antithesis_instrumentation__.Notify(127667)
 
 	br, pErr := sender.Send(ctx, ba)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(127679)
 		return nil, nil, pErr.GoError()
+	} else {
+		__antithesis_instrumentation__.Notify(127680)
 	}
+	__antithesis_instrumentation__.Notify(127668)
 	revScanRes := br.Responses[0].GetInner().(*roachpb.ReverseScanResponse)
 
 	revDescs, err := kvsToRangeDescriptors(revScanRes.Rows)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(127681)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(127682)
 	}
+	__antithesis_instrumentation__.Notify(127669)
 	revIntentDescs, err := kvsToRangeDescriptors(revScanRes.IntentRows)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(127683)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(127684)
 	}
+	__antithesis_instrumentation__.Notify(127670)
 	return append(fwdDescs, revDescs...), append(fwdIntentDescs, revIntentDescs...), nil
 }
 
-// addrForDir determines the key addressing function to use for a RangeLookup
-// scan in the given direction. With either addressing function, the result is
-// the identity fn if the key is not a local key. However, for local keys, we
-// want the scan to include the local key. See the respective comments on
-// keys.Addr and keys.AddrUpperBound for more detail.
 func addrForDir(prefetchReverse bool) func(roachpb.Key) (roachpb.RKey, error) {
+	__antithesis_instrumentation__.Notify(127685)
 	if prefetchReverse {
+		__antithesis_instrumentation__.Notify(127687)
 		return keys.AddrUpperBound
+	} else {
+		__antithesis_instrumentation__.Notify(127688)
 	}
+	__antithesis_instrumentation__.Notify(127686)
 	return keys.Addr
 }
 
 func containsForDir(prefetchReverse bool, key roachpb.RKey) func(*roachpb.RangeDescriptor) bool {
+	__antithesis_instrumentation__.Notify(127689)
 	return func(desc *roachpb.RangeDescriptor) bool {
+		__antithesis_instrumentation__.Notify(127690)
 		contains := (*roachpb.RangeDescriptor).ContainsKey
 		if prefetchReverse {
+			__antithesis_instrumentation__.Notify(127692)
 			contains = (*roachpb.RangeDescriptor).ContainsKeyInverted
+		} else {
+			__antithesis_instrumentation__.Notify(127693)
 		}
+		__antithesis_instrumentation__.Notify(127691)
 		return contains(desc, key)
 	}
 }
 
 func kvsToRangeDescriptors(kvs []roachpb.KeyValue) ([]roachpb.RangeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(127694)
 	descs := make([]roachpb.RangeDescriptor, len(kvs))
 	for i, kv := range kvs {
+		__antithesis_instrumentation__.Notify(127696)
 		if err := kv.Value.GetProto(&descs[i]); err != nil {
+			__antithesis_instrumentation__.Notify(127697)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(127698)
 		}
 	}
+	__antithesis_instrumentation__.Notify(127695)
 	return descs, nil
 }
 
-// TestingIsRangeLookup returns if the provided BatchRequest looks like a single
-// RangeLookup scan. It can return false positives and should only be used in
-// tests.
 func TestingIsRangeLookup(ba roachpb.BatchRequest) bool {
+	__antithesis_instrumentation__.Notify(127699)
 	if ba.IsSingleRequest() {
+		__antithesis_instrumentation__.Notify(127701)
 		return TestingIsRangeLookupRequest(ba.Requests[0].GetInner())
+	} else {
+		__antithesis_instrumentation__.Notify(127702)
 	}
+	__antithesis_instrumentation__.Notify(127700)
 	return false
 }
 
-// These spans bounds the start and end keys of the spans returned from
-// MetaScanBounds and MetaReverseScanBounds. Next is called on each span's
-// EndKey to make it end-inclusive so that ContainsKey works as expected.
 var rangeLookupStartKeyBounds = roachpb.Span{
 	Key:    keys.Meta1Prefix,
 	EndKey: keys.Meta2KeyMax.Next(),
@@ -449,17 +383,21 @@ var rangeLookupEndKeyBounds = roachpb.Span{
 	EndKey: keys.SystemPrefix.Next(),
 }
 
-// TestingIsRangeLookupRequest returns if the provided Request looks like a single
-// RangeLookup scan. It can return false positives and should only be used in
-// tests.
 func TestingIsRangeLookupRequest(req roachpb.Request) bool {
+	__antithesis_instrumentation__.Notify(127703)
 	switch req.(type) {
 	case *roachpb.ScanRequest:
+		__antithesis_instrumentation__.Notify(127705)
 	case *roachpb.ReverseScanRequest:
+		__antithesis_instrumentation__.Notify(127706)
 	default:
+		__antithesis_instrumentation__.Notify(127707)
 		return false
 	}
+	__antithesis_instrumentation__.Notify(127704)
 	s := req.Header()
-	return rangeLookupStartKeyBounds.ContainsKey(s.Key) &&
-		rangeLookupEndKeyBounds.ContainsKey(s.EndKey)
+	return rangeLookupStartKeyBounds.ContainsKey(s.Key) && func() bool {
+		__antithesis_instrumentation__.Notify(127708)
+		return rangeLookupEndKeyBounds.ContainsKey(s.EndKey) == true
+	}() == true
 }

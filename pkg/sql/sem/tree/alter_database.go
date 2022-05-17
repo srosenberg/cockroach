@@ -1,30 +1,20 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// AlterDatabaseOwner represents a ALTER DATABASE OWNER TO statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type AlterDatabaseOwner struct {
 	Name  Name
 	Owner RoleSpec
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterDatabaseOwner) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602948)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" OWNER TO ")
 	ctx.FormatNode(&node.Owner)
 }
 
-// AlterDatabaseAddRegion represents a ALTER DATABASE ADD REGION statement.
 type AlterDatabaseAddRegion struct {
 	Name        Name
 	Region      Name
@@ -33,18 +23,21 @@ type AlterDatabaseAddRegion struct {
 
 var _ Statement = &AlterDatabaseAddRegion{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterDatabaseAddRegion) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602949)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" ADD REGION ")
 	if node.IfNotExists {
+		__antithesis_instrumentation__.Notify(602951)
 		ctx.WriteString("IF NOT EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(602952)
 	}
+	__antithesis_instrumentation__.Notify(602950)
 	ctx.FormatNode(&node.Region)
 }
 
-// AlterDatabaseDropRegion represents a ALTER DATABASE DROP REGION statement.
 type AlterDatabaseDropRegion struct {
 	Name     Name
 	Region   Name
@@ -53,18 +46,21 @@ type AlterDatabaseDropRegion struct {
 
 var _ Statement = &AlterDatabaseDropRegion{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterDatabaseDropRegion) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602953)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" DROP REGION ")
 	if node.IfExists {
+		__antithesis_instrumentation__.Notify(602955)
 		ctx.WriteString("IF EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(602956)
 	}
+	__antithesis_instrumentation__.Notify(602954)
 	ctx.FormatNode(&node.Region)
 }
 
-// AlterDatabasePrimaryRegion represents a ALTER DATABASE PRIMARY REGION ... statement.
 type AlterDatabasePrimaryRegion struct {
 	Name          Name
 	PrimaryRegion Name
@@ -72,15 +68,14 @@ type AlterDatabasePrimaryRegion struct {
 
 var _ Statement = &AlterDatabasePrimaryRegion{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterDatabasePrimaryRegion) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602957)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" PRIMARY REGION ")
 	node.PrimaryRegion.Format(ctx)
 }
 
-// AlterDatabaseSurvivalGoal represents a ALTER DATABASE SURVIVE ... statement.
 type AlterDatabaseSurvivalGoal struct {
 	Name         Name
 	SurvivalGoal SurvivalGoal
@@ -88,15 +83,14 @@ type AlterDatabaseSurvivalGoal struct {
 
 var _ Statement = &AlterDatabaseSurvivalGoal{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterDatabaseSurvivalGoal) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602958)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" ")
 	node.SurvivalGoal.Format(ctx)
 }
 
-// AlterDatabasePlacement represents a ALTER DATABASE PLACEMENT statement.
 type AlterDatabasePlacement struct {
 	Name      Name
 	Placement DataPlacement
@@ -104,16 +98,14 @@ type AlterDatabasePlacement struct {
 
 var _ Statement = &AlterDatabasePlacement{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterDatabasePlacement) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602959)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" ")
 	node.Placement.Format(ctx)
 }
 
-// AlterDatabaseAddSuperRegion represents a
-// ALTER DATABASE ADD SUPER REGION ... statement.
 type AlterDatabaseAddSuperRegion struct {
 	DatabaseName    Name
 	SuperRegionName Name
@@ -122,23 +114,26 @@ type AlterDatabaseAddSuperRegion struct {
 
 var _ Statement = &AlterDatabaseAddSuperRegion{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterDatabaseAddSuperRegion) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602960)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.DatabaseName)
 	ctx.WriteString(" ADD SUPER REGION ")
 	ctx.FormatNode(&node.SuperRegionName)
 	ctx.WriteString(" VALUES ")
 	for i, region := range node.Regions {
+		__antithesis_instrumentation__.Notify(602961)
 		if i != 0 {
+			__antithesis_instrumentation__.Notify(602963)
 			ctx.WriteString(",")
+		} else {
+			__antithesis_instrumentation__.Notify(602964)
 		}
+		__antithesis_instrumentation__.Notify(602962)
 		ctx.FormatNode(&region)
 	}
 }
 
-// AlterDatabaseDropSuperRegion represents a
-// ALTER DATABASE DROP SUPER REGION ... statement.
 type AlterDatabaseDropSuperRegion struct {
 	DatabaseName    Name
 	SuperRegionName Name
@@ -146,16 +141,14 @@ type AlterDatabaseDropSuperRegion struct {
 
 var _ Statement = &AlterDatabaseDropSuperRegion{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterDatabaseDropSuperRegion) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602965)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.DatabaseName)
 	ctx.WriteString(" DROP SUPER REGION ")
 	ctx.FormatNode(&node.SuperRegionName)
 }
 
-// AlterDatabaseAlterSuperRegion represents a
-// ALTER DATABASE ADD SUPER REGION ... statement.
 type AlterDatabaseAlterSuperRegion struct {
 	DatabaseName    Name
 	SuperRegionName Name
@@ -164,17 +157,22 @@ type AlterDatabaseAlterSuperRegion struct {
 
 var _ Statement = &AlterDatabaseAlterSuperRegion{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterDatabaseAlterSuperRegion) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602966)
 	ctx.WriteString("ALTER DATABASE ")
 	ctx.FormatNode(&node.DatabaseName)
 	ctx.WriteString(" ALTER SUPER REGION ")
 	ctx.FormatNode(&node.SuperRegionName)
 	ctx.WriteString(" VALUES ")
 	for i, region := range node.Regions {
+		__antithesis_instrumentation__.Notify(602967)
 		if i != 0 {
+			__antithesis_instrumentation__.Notify(602969)
 			ctx.WriteString(",")
+		} else {
+			__antithesis_instrumentation__.Notify(602970)
 		}
+		__antithesis_instrumentation__.Notify(602968)
 		ctx.FormatNode(&region)
 	}
 }

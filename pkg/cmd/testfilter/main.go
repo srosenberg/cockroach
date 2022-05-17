@@ -1,13 +1,3 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // testfilter is a utility to manipulate JSON streams in [test2json] format.
 // Standard input is read and each line starting with `{` and ending with `}`
 // parsed (and expected to parse successfully). Lines not matching this pattern
@@ -29,6 +19,8 @@
 //
 // [test2json]: https://golang.org/cmd/test2json/
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -60,28 +52,39 @@ const (
 )
 
 func (m *modeT) Set(s string) error {
+	__antithesis_instrumentation__.Notify(53094)
 	switch s {
 	case "strip":
+		__antithesis_instrumentation__.Notify(53096)
 		*m = modeStrip
 	case "omit":
+		__antithesis_instrumentation__.Notify(53097)
 		*m = modeOmit
 	case "convert":
+		__antithesis_instrumentation__.Notify(53098)
 		*m = modeConvert
 	default:
+		__antithesis_instrumentation__.Notify(53099)
 		return errors.New("unsupported mode")
 	}
+	__antithesis_instrumentation__.Notify(53095)
 	return nil
 }
 
 func (m *modeT) String() string {
+	__antithesis_instrumentation__.Notify(53100)
 	switch *m {
 	case modeStrip:
+		__antithesis_instrumentation__.Notify(53101)
 		return "strip"
 	case modeOmit:
+		__antithesis_instrumentation__.Notify(53102)
 		return "omit"
 	case modeConvert:
+		__antithesis_instrumentation__.Notify(53103)
 		return "convert"
 	default:
+		__antithesis_instrumentation__.Notify(53104)
 		return "unknown"
 	}
 }
@@ -93,132 +96,166 @@ func init() {
 }
 
 type testEvent struct {
-	Time    time.Time // encodes as an RFC3339-format string
+	Time    time.Time
 	Action  string
 	Package string
 	Test    string
-	Elapsed float64 // seconds
+	Elapsed float64
 	Output  string
 }
 
 func (t *testEvent) json() string {
+	__antithesis_instrumentation__.Notify(53105)
 	j, err := json.Marshal(t)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(53107)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(53108)
 	}
+	__antithesis_instrumentation__.Notify(53106)
 	return string(j)
 }
 
 func main() {
+	__antithesis_instrumentation__.Notify(53109)
 	flag.Parse()
 	if err := filter(os.Stdin, os.Stdout, modeVar); err != nil {
+		__antithesis_instrumentation__.Notify(53110)
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(53111)
 	}
 }
 
 const packageLevelTestName = "PackageLevel"
 
-// tup identifies a single test.
 type tup struct {
 	pkg  string
 	test string
 }
 
 type ent struct {
-	first, last     string // RUN and (SKIP|PASS|FAIL)
-	strings.Builder        // output
+	first, last string
+	strings.Builder
 
-	// The following fields are set for package-level entries.
-	numActiveTests int // number of tests currently running in package.
-	numTestsFailed int // number of tests failed so far in package.
+	numActiveTests int
+	numTestsFailed int
 }
 
 func filter(in io.Reader, out io.Writer, mode modeT) error {
+	__antithesis_instrumentation__.Notify(53112)
 	scanner := bufio.NewScanner(in)
 	m := map[tup]*ent{}
 	ev := &testEvent{}
-	var n int               // number of JSON lines parsed
-	var passFailLine string // catch common error of piping non-json test output in
+	var n int
+	var passFailLine string
 	for scanner.Scan() {
-		line := scanner.Text() // has no EOL marker
-		if len(line) <= 2 || line[0] != '{' || line[len(line)-1] != '}' {
-			// Not test2json output, pass it through except in `omit` mode.
-			// It's important that we still see build errors etc when running
-			// in -mode=strip.
-			if passFailLine == "" && (strings.Contains(line, "PASS") || strings.Contains(line, "FAIL")) {
+		__antithesis_instrumentation__.Notify(53116)
+		line := scanner.Text()
+		if len(line) <= 2 || func() bool {
+			__antithesis_instrumentation__.Notify(53121)
+			return line[0] != '{' == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(53122)
+			return line[len(line)-1] != '}' == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(53123)
+
+			if passFailLine == "" && func() bool {
+				__antithesis_instrumentation__.Notify(53126)
+				return (strings.Contains(line, "PASS") || func() bool {
+					__antithesis_instrumentation__.Notify(53127)
+					return strings.Contains(line, "FAIL") == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(53128)
 				passFailLine = line
+			} else {
+				__antithesis_instrumentation__.Notify(53129)
 			}
+			__antithesis_instrumentation__.Notify(53124)
 			if mode != modeOmit {
+				__antithesis_instrumentation__.Notify(53130)
 				fmt.Fprintln(out, line)
+			} else {
+				__antithesis_instrumentation__.Notify(53131)
 			}
+			__antithesis_instrumentation__.Notify(53125)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(53132)
 		}
+		__antithesis_instrumentation__.Notify(53117)
 		*ev = testEvent{}
 		if err := json.Unmarshal([]byte(line), ev); err != nil {
+			__antithesis_instrumentation__.Notify(53133)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(53134)
 		}
+		__antithesis_instrumentation__.Notify(53118)
 		n++
 
 		if mode == modeConvert {
+			__antithesis_instrumentation__.Notify(53135)
 			if ev.Action == "output" {
+				__antithesis_instrumentation__.Notify(53137)
 				fmt.Fprint(out, ev.Output)
+			} else {
+				__antithesis_instrumentation__.Notify(53138)
 			}
+			__antithesis_instrumentation__.Notify(53136)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(53139)
 		}
+		__antithesis_instrumentation__.Notify(53119)
 
 		if ev.Test == "" {
-			// This is a package-level message.
+			__antithesis_instrumentation__.Notify(53140)
 
-			// Populate a fake test name. We need this because TC is blind
-			// to anything without a "Test" field.
 			ev.Test = packageLevelTestName
 			pkey := tup{ev.Package, ev.Test}
 
 			switch ev.Action {
 			case "fail":
+				__antithesis_instrumentation__.Notify(53144)
 				buf := m[pkey]
 
-				// Is the package failing with some non-terminated tests?
-				hasOpenSubTests := buf != nil && buf.numActiveTests > 0
+				hasOpenSubTests := buf != nil && func() bool {
+					__antithesis_instrumentation__.Notify(53146)
+					return buf.numActiveTests > 0 == true
+				}() == true
 
-				// Did the package contain any failing tests?
-				hadSomeFailedTests := buf != nil && buf.numTestsFailed > 0
+				hadSomeFailedTests := buf != nil && func() bool {
+					__antithesis_instrumentation__.Notify(53147)
+					return buf.numTestsFailed > 0 == true
+				}() == true
 
-				// If the package is failing without non-terminated tests,
-				// but it contained some failing tests, then we rely on these
-				// tests' output to explain what happened to the user. In that
-				// case, we are happy to ignore the package-level output.
-				//
-				// (If the package did not have any failing tests at all, we
-				// still want some package-level output: in that case, if it
-				// fails we want some details about that below. If there was
-				// any non-terminating test, we also mandate a package-level
-				// result, which will contain the list of non-terminating
-				// tests.)
-				if !hasOpenSubTests && hadSomeFailedTests {
+				if !hasOpenSubTests && func() bool {
+					__antithesis_instrumentation__.Notify(53148)
+					return hadSomeFailedTests == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(53149)
 					delete(m, pkey)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(53150)
 				}
+			default:
+				__antithesis_instrumentation__.Notify(53145)
 			}
+			__antithesis_instrumentation__.Notify(53141)
 
-			// At this point, either:
-			// - we are starting to see output for a package which
-			//   has not yet terminated processing; or
-			// - we are seeing the last pass/fail entry for a package,
-			//   and there is something "interesting" to report
-			//   for this package.
-			//
-			// In both cases, we are going to emit a test result for the
-			// package itself in the common output processing case below.
-			// For this to be valid/possible, we first need to ensure
-			// the map contains a package-level entry.
 			if err := ensurePackageEntry(m, out, ev, pkey, mode); err != nil {
+				__antithesis_instrumentation__.Notify(53151)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(53152)
 			}
-
-			// At this point, either we are still processing a package's
-			// output before it completes, or the last package event.
+			__antithesis_instrumentation__.Notify(53142)
 
 			const helpMessage = `
 Check full_output.txt in artifacts for stray panics or other errors that broke
@@ -233,35 +270,26 @@ https://user-images.githubusercontent.com/5076964/110923299-08d0e780-8321-11eb-9
 for details.
 `
 			if ev.Action != "output" {
-				// This is the final event for the package.
-				//
-				// Dump all the test scopes so far in this package, then
-				// forget about them. This ensures that the test scopes are
-				// closed before the package scope is closed the final output.
+				__antithesis_instrumentation__.Notify(53153)
+
 				var testReport strings.Builder
 				for key := range m {
-					if key.pkg == ev.Package && key.test != ev.Test {
-						// We only mention the test scopes without their sub-tests;
-						// otherwise we could get tens of thousands of output lines
-						// for a failed logic test run due to a panic.
+					__antithesis_instrumentation__.Notify(53155)
+					if key.pkg == ev.Package && func() bool {
+						__antithesis_instrumentation__.Notify(53156)
+						return key.test != ev.Test == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(53157)
+
 						if strings.Contains(key.test, "/") {
-							// Sub-test. Just forget all about it.
+							__antithesis_instrumentation__.Notify(53158)
+
 							delete(m, key)
 						} else {
-							// Not a sub-test.
+							__antithesis_instrumentation__.Notify(53159)
 
-							// Remember the test's name to report in the
-							// package-level output.
 							testReport.WriteString("\n" + key.test)
 
-							// Synthetize a "skip" message. We want "something" (and
-							// not nothing) so that we get some timing information
-							// in strip mode.
-							//
-							// We use "skip" and not "fail" to ensure that no issue
-							// gets filed for the open-ended tests by the github
-							// auto-poster: we don't have confidence for any of them
-							// that they are the particular cause of the failure.
 							syntheticSkipEv := testEvent{
 								Time:    ev.Time,
 								Action:  "skip",
@@ -270,95 +298,100 @@ for details.
 								Elapsed: 0,
 								Output:  "unfinished due to package-level failure" + helpMessage,
 							}
-							// Translate the synthetic message back into an output line.
+
 							syntheticLine := syntheticSkipEv.json()
 							if err := processTestEvent(m, out, &syntheticSkipEv, syntheticLine, mode); err != nil {
+								__antithesis_instrumentation__.Notify(53160)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(53161)
 							}
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(53162)
 					}
 				}
+				__antithesis_instrumentation__.Notify(53154)
 
-				// If the package is failing, tell the user that something was amiss.
 				if ev.Action == "fail" {
+					__antithesis_instrumentation__.Notify(53163)
 					ev.Output += helpMessage
 					if testReport.Len() > 0 {
+						__antithesis_instrumentation__.Notify(53164)
 						ev.Output += "\nThe following tests have not completed and could be the cause of the failure:" + testReport.String()
+					} else {
+						__antithesis_instrumentation__.Notify(53165)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(53166)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(53167)
 			}
+			__antithesis_instrumentation__.Notify(53143)
 
-			// Re-populate the line from the JSON payload for the
-			// PackageLevel pseudo-test.
 			line = ev.json()
+		} else {
+			__antithesis_instrumentation__.Notify(53168)
 		}
+		__antithesis_instrumentation__.Notify(53120)
 
-		// Common output processing.
 		if err := processTestEvent(m, out, ev, line, mode); err != nil {
+			__antithesis_instrumentation__.Notify(53169)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(53170)
 		}
 	}
-	// Some scopes might still be open. To the best of my knowledge,
-	// this is due to a panic/premature exit of a single-package test
-	// binary. In that case, it seems that neither is the package scope
-	// closed, nor the scopes for any tests that were running in
-	// parallel, so we pass that through if stripping, but not when
-	// omitting.
+	__antithesis_instrumentation__.Notify(53113)
+
 	if mode == modeStrip {
+		__antithesis_instrumentation__.Notify(53171)
 		for key := range m {
+			__antithesis_instrumentation__.Notify(53172)
 			buf := m[key]
-			// Skip over the package-level pseudo-entries. Since we're
-			// single-package, the remainder of the output is sufficient
-			// here.
+
 			if key.test == packageLevelTestName {
+				__antithesis_instrumentation__.Notify(53174)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(53175)
 			}
+			__antithesis_instrumentation__.Notify(53173)
 			fmt.Fprintln(out, buf.String())
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(53176)
 	}
-	// TODO(tbg): would like to return an error here for sanity, but the
-	// JSON just isn't well-formed all the time. For example, at the time
-	// of writing, here's a repro:
-	// make benchshort PKG=./pkg/bench BENCHES=BenchmarkIndexJoin 2>&1 | \
-	// testfilter -mode=strip
-	// Interestingly it works once we remove the `log.Scope(b).Close` in
-	// that test. Adding TESTFLAGS=-v doesn't matter apparently.
-	// if len(m) != 0 {
-	// 	return fmt.Errorf("%d tests did not terminate (a package likely exited prematurely)", len(m))
-	// }
-	if mode != modeConvert && n == 0 && passFailLine != "" {
-		// Without this, if the input to this command wasn't even JSON, we would
-		// pass. That's a mistake we should avoid at all costs. Note that even
-		// `go test -run - ./some/pkg` produces n>0 due to the start/pass events
-		// for the package, so if we're here then 100% something weird is going
-		// on.
+	__antithesis_instrumentation__.Notify(53114)
+
+	if mode != modeConvert && func() bool {
+		__antithesis_instrumentation__.Notify(53177)
+		return n == 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(53178)
+		return passFailLine != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(53179)
+
 		return fmt.Errorf("not a single test was parsed, but detected test output: %s", passFailLine)
+	} else {
+		__antithesis_instrumentation__.Notify(53180)
 	}
+	__antithesis_instrumentation__.Notify(53115)
 	return nil
 }
 
-// ensurePackageEntry ensures there is a package-level entry in the
-// map for each package.
-//
-// This is necessary because we want to consider package-level
-// results as regular test results. To achieve this
-// successfully, we need to understand how TC processes tests.
-//
-// TC is a bit peculiar and requires all tests to *start* with
-// an event with action "run", then zero or more "output"
-// actions, then one of either "pass", "skip" or "fail".
-//
-// Unfortunately, `go test` does not emit initial "run"
-// entries for package-level outputs. This is arguably a
-// bug. Instead it starts directly with either "output" or
-// "pass"/"fail" at the end. This prevents TC from treating
-// the package as a test. To fix that, We insert a synthetic
-// "run" entry for the package in the map here.
 func ensurePackageEntry(m map[tup]*ent, out io.Writer, ev *testEvent, pkey tup, mode modeT) error {
+	__antithesis_instrumentation__.Notify(53181)
 	if buf := m[pkey]; buf != nil {
+		__antithesis_instrumentation__.Notify(53183)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(53184)
 	}
-	// Package not known yet. Synthetize an entry.
+	__antithesis_instrumentation__.Notify(53182)
+
 	packageEvent := *ev
 	packageEvent.Test = packageLevelTestName
 	packageEvent.Action = "run"
@@ -368,57 +401,89 @@ func ensurePackageEntry(m map[tup]*ent, out io.Writer, ev *testEvent, pkey tup, 
 }
 
 func processTestEvent(m map[tup]*ent, out io.Writer, ev *testEvent, line string, mode modeT) error {
-	// The package key.
+	__antithesis_instrumentation__.Notify(53185)
+
 	pkey := tup{ev.Package, packageLevelTestName}
-	// The test's key.
+
 	key := tup{ev.Package, ev.Test}
 
-	// Is this a regular test? In that case, ensure there is a
-	// package-level entry for this test.
 	if ev.Test != packageLevelTestName {
+		__antithesis_instrumentation__.Notify(53190)
 		if err := ensurePackageEntry(m, out, ev, pkey, mode); err != nil {
+			__antithesis_instrumentation__.Notify(53191)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(53192)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(53193)
 	}
+	__antithesis_instrumentation__.Notify(53186)
 
-	// Now process the test itself.
 	buf := m[key]
 	if buf == nil {
+		__antithesis_instrumentation__.Notify(53194)
 		buf = &ent{first: line}
 		m[key] = buf
 		if key != pkey {
-			// Remember how many tests we're seeing.
+			__antithesis_instrumentation__.Notify(53195)
+
 			m[pkey].numActiveTests++
+		} else {
+			__antithesis_instrumentation__.Notify(53196)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(53197)
 	}
+	__antithesis_instrumentation__.Notify(53187)
 	if _, err := fmt.Fprintln(buf, line); err != nil {
+		__antithesis_instrumentation__.Notify(53198)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(53199)
 	}
+	__antithesis_instrumentation__.Notify(53188)
 	switch ev.Action {
 	case "pass", "skip", "fail":
+		__antithesis_instrumentation__.Notify(53200)
 		buf.last = line
 		if ev.Action == "fail" {
+			__antithesis_instrumentation__.Notify(53204)
 			fmt.Fprint(out, buf.String())
-		} else if mode == modeStrip {
-			// Output only the start and end of test so that we preserve the
-			// timing information. However, the output is omitted.
-			fmt.Fprintln(out, buf.first)
-			fmt.Fprintln(out, buf.last)
-		}
+		} else {
+			__antithesis_instrumentation__.Notify(53205)
+			if mode == modeStrip {
+				__antithesis_instrumentation__.Notify(53206)
 
-		// Forget the test.
+				fmt.Fprintln(out, buf.first)
+				fmt.Fprintln(out, buf.last)
+			} else {
+				__antithesis_instrumentation__.Notify(53207)
+			}
+		}
+		__antithesis_instrumentation__.Notify(53201)
+
 		delete(m, key)
 		if key != pkey {
+			__antithesis_instrumentation__.Notify(53208)
 			m[pkey].numActiveTests--
 			if ev.Action == "fail" {
+				__antithesis_instrumentation__.Notify(53209)
 				m[pkey].numTestsFailed++
+			} else {
+				__antithesis_instrumentation__.Notify(53210)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(53211)
 		}
 
 	case "run", "pause", "cont", "bench", "output":
+		__antithesis_instrumentation__.Notify(53202)
 	default:
-		// We must have parsed some JSON that wasn't a testData.
+		__antithesis_instrumentation__.Notify(53203)
+
 		return fmt.Errorf("unknown input: %s", line)
 	}
+	__antithesis_instrumentation__.Notify(53189)
 	return nil
 }

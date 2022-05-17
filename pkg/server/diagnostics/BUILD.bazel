@@ -37,6 +37,7 @@ go_library(
         "//pkg/util/system",
         "//pkg/util/timeutil",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_mitchellh_reflectwalk//:reflectwalk",
         "@com_github_shirou_gopsutil_v3//cpu",
@@ -69,6 +70,7 @@ go_test(
         "//pkg/util/cloudinfo",
         "//pkg/util/leaktest",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

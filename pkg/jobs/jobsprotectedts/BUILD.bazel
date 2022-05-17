@@ -16,6 +16,7 @@ go_library(
         "//pkg/sql/sqlutil",
         "//pkg/util/hlc",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -34,5 +35,6 @@ go_test(
         "//pkg/testutils/serverutils",
         "//pkg/testutils/testcluster",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

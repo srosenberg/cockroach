@@ -11,6 +11,7 @@ go_library(
     deps = [
         "//pkg/build",
         "//pkg/docs",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_kr_text//:text",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package flowinfra
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,162 +22,82 @@ import (
 
 type flowStatus int
 
-// Flow status indicators.
 const (
 	flowNotStarted flowStatus = iota
 	flowRunning
 	flowFinished
 )
 
-// Startable is any component that can be started (a router or an outbox).
 type Startable interface {
 	Start(ctx context.Context, wg *sync.WaitGroup, flowCtxCancel context.CancelFunc)
 }
 
-// StartableFn is an adapter when a customer function (i.e. a custom goroutine)
-// needs to become Startable.
 type StartableFn func(context.Context, *sync.WaitGroup, context.CancelFunc)
 
-// Start is a part of the Startable interface.
 func (f StartableFn) Start(
 	ctx context.Context, wg *sync.WaitGroup, flowCtxCancel context.CancelFunc,
 ) {
+	__antithesis_instrumentation__.Notify(491507)
 	f(ctx, wg, flowCtxCancel)
 }
 
-// FuseOpt specifies options for processor fusing at Flow.Setup() time.
 type FuseOpt bool
 
 const (
-	// FuseNormally means fuse what you can, but don't serialize unordered input
-	// synchronizers.
 	FuseNormally FuseOpt = false
-	// FuseAggressively means serialize unordered input synchronizers.
-	// This is useful for flows that might have mutations which can't have any
-	// concurrency.
+
 	FuseAggressively = true
 )
 
-// Flow represents a flow which consists of processors and streams.
 type Flow interface {
-	// Setup sets up all the infrastructure for the flow as defined by the flow
-	// spec. The flow will then need to be started or run. A new context (along
-	// with a context cancellation function) is derived. The new context must be
-	// used when running the flow so that all components running in their own
-	// goroutines could listen for a cancellation on the same context.
-	//
-	// The second return argument contains all operator chains planned on the
-	// gateway node if the flow is vectorized and the physical plan is fully
-	// local (in all other cases the second return argument is nil).
 	Setup(ctx context.Context, spec *execinfrapb.FlowSpec, opt FuseOpt) (context.Context, execinfra.OpChains, error)
 
-	// SetTxn is used to provide the transaction in which the flow will run.
-	// It needs to be called after Setup() and before Start/Run.
 	SetTxn(*kv.Txn)
 
-	// Start starts the flow. Processors run asynchronously in their own
-	// goroutines. Wait() needs to be called to wait for the flow to finish.
-	// See Run() for a synchronous version.
-	//
-	// If errors are encountered during the setup part, they're returned.
 	Start(_ context.Context, doneFn func()) error
 
-	// Run runs the flow to completion. The last processor is run in the current
-	// goroutine; others may run in different goroutines depending on how the
-	// flow was configured.
-	//
-	// f.Wait() is called internally, so the call blocks until all the flow's
-	// goroutines are done.
-	//
-	// It is assumed that rowSyncFlowConsumer is set, so all errors encountered
-	// when running this flow are sent to it.
-	//
-	// The caller needs to call f.Cleanup().
 	Run(_ context.Context, doneFn func())
 
-	// Wait waits for all the goroutines for this flow to exit. If the context gets
-	// canceled before all goroutines exit, it calls f.cancel().
 	Wait()
 
-	// IsLocal returns whether this flow is being run as part of a local-only
-	// query.
 	IsLocal() bool
 
-	// HasInboundStreams returns whether this flow has any inbound streams (i.e.
-	// it is part of the distributed plan and other nodes are sending data to
-	// this flow).
 	HasInboundStreams() bool
 
-	// IsVectorized returns whether this flow will run with vectorized execution.
 	IsVectorized() bool
 
-	// StatementSQL is the SQL statement for which this flow is executing. It is
-	// populated on a best effort basis (only available for user-issued queries
-	// that are also not like BulkIO/CDC related).
 	StatementSQL() string
 
-	// GetFlowCtx returns the flow context of this flow.
 	GetFlowCtx() *execinfra.FlowCtx
 
-	// AddStartable accumulates a Startable object.
 	AddStartable(Startable)
 
-	// GetID returns the flow ID.
 	GetID() execinfrapb.FlowID
 
-	// Cleanup must be called whenever the flow is done (meaning it either
-	// completes gracefully after all processors and mailboxes exited or an
-	// error is encountered that stops the flow from making progress). The
-	// implementations must be safe to execute in case the Flow is never Run()
-	// or Start()ed.
 	Cleanup(context.Context)
 
-	// ConcurrentTxnUse returns true if multiple processors/operators in the flow
-	// will execute concurrently (i.e. if not all of them have been fused) and
-	// more than one goroutine will be using a txn.
-	// Can only be called after Setup().
 	ConcurrentTxnUse() bool
 }
 
-// FlowBase is the shared logic between row based and vectorized flows. It
-// implements Flow interface for convenience and for usage in tests, but if
-// FlowBase.Setup is called, it'll panic.
 type FlowBase struct {
 	execinfra.FlowCtx
 
 	flowRegistry *FlowRegistry
 
-	// processors contains a subset of the processors in the flow - the ones that
-	// run in their own goroutines. Some processors that implement RowSource are
-	// scheduled to run in their consumer's goroutine; those are not present here.
 	processors []execinfra.Processor
-	// startables are entities that must be started when the flow starts;
-	// currently these are outboxes and routers.
+
 	startables []Startable
-	// rowSyncFlowConsumer is a special execinfra.RowReceiver which, instead of
-	// sending rows to another host (as the outboxes do), returns them directly
-	// (to the local host). It is always set.
+
 	rowSyncFlowConsumer execinfra.RowReceiver
-	// batchSyncFlowConsumer, if set, provides an alternative interface for
-	// pushing coldata.Batches to locally.
+
 	batchSyncFlowConsumer execinfra.BatchReceiver
 
 	localProcessors []execinfra.LocalProcessor
 
-	// startedGoroutines specifies whether this flow started any goroutines. This
-	// is used in Wait() to avoid the overhead of waiting for non-existent
-	// goroutines.
 	startedGoroutines bool
 
-	// inboundStreams are streams that receive data from other hosts; this map
-	// is to be passed to FlowRegistry.RegisterFlow. This map is populated in
-	// Flow.Setup(), so it is safe to lookup into concurrently later.
 	inboundStreams map[execinfrapb.StreamID]*InboundStreamInfo
 
-	// waitGroup is used to wait for async components of the flow:
-	//  - processors
-	//  - inbound streams
-	//  - outboxes
 	waitGroup sync.WaitGroup
 
 	onFlowCleanup func()
@@ -196,69 +108,69 @@ type FlowBase struct {
 
 	status flowStatus
 
-	// Cancel function for ctx. Call this to cancel the flow (safe to be called
-	// multiple times).
 	ctxCancel context.CancelFunc
 	ctxDone   <-chan struct{}
 
-	// sp is the span that this Flow runs in. Can be nil if no span was created
-	// for the flow. Flow.Cleanup() finishes it.
 	sp *tracing.Span
 
-	// spec is the request that produced this flow. Only used for debugging.
 	spec *execinfrapb.FlowSpec
 
 	admissionInfo admission.WorkInfo
 }
 
-// Setup is part of the Flow interface.
 func (f *FlowBase) Setup(
 	ctx context.Context, spec *execinfrapb.FlowSpec, _ FuseOpt,
 ) (context.Context, execinfra.OpChains, error) {
+	__antithesis_instrumentation__.Notify(491508)
 	ctx, f.ctxCancel = contextutil.WithCancel(ctx)
 	f.ctxDone = ctx.Done()
 	f.spec = spec
 	return ctx, nil, nil
 }
 
-// SetTxn is part of the Flow interface.
 func (f *FlowBase) SetTxn(txn *kv.Txn) {
+	__antithesis_instrumentation__.Notify(491509)
 	f.FlowCtx.Txn = txn
 	f.EvalCtx.Txn = txn
 }
 
-// ConcurrentTxnUse is part of the Flow interface.
 func (f *FlowBase) ConcurrentTxnUse() bool {
+	__antithesis_instrumentation__.Notify(491510)
 	numProcessorsThatMightUseTxn := 0
 	for _, proc := range f.processors {
-		if txnUser, ok := proc.(execinfra.DoesNotUseTxn); !ok || !txnUser.DoesNotUseTxn() {
+		__antithesis_instrumentation__.Notify(491512)
+		if txnUser, ok := proc.(execinfra.DoesNotUseTxn); !ok || func() bool {
+			__antithesis_instrumentation__.Notify(491513)
+			return !txnUser.DoesNotUseTxn() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(491514)
 			numProcessorsThatMightUseTxn++
 			if numProcessorsThatMightUseTxn > 1 {
+				__antithesis_instrumentation__.Notify(491515)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(491516)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(491517)
 		}
 	}
+	__antithesis_instrumentation__.Notify(491511)
 	return false
 }
 
-// SetStartedGoroutines sets FlowBase.startedGoroutines to the passed in value.
-// This allows notifying the FlowBase about the concurrent goroutines which are
-// started outside of the FlowBase.StartInternal machinery.
 func (f *FlowBase) SetStartedGoroutines(val bool) {
+	__antithesis_instrumentation__.Notify(491518)
 	f.startedGoroutines = val
 }
 
-// Started returns true if f has either been Run() or Start()ed.
 func (f *FlowBase) Started() bool {
+	__antithesis_instrumentation__.Notify(491519)
 	return f.status != flowNotStarted
 }
 
 var _ Flow = &FlowBase{}
 
-// NewFlowBase creates a new FlowBase.
-//
-// sp, if not nil, is the Span corresponding to the flow. The flow takes
-// ownership; Cleanup() will finish it.
 func NewFlowBase(
 	flowCtx execinfra.FlowCtx,
 	sp *tracing.Span,
@@ -269,19 +181,20 @@ func NewFlowBase(
 	onFlowCleanup func(),
 	statementSQL string,
 ) *FlowBase {
-	// We are either in a single tenant cluster, or a SQL node in a multi-tenant
-	// cluster, where the SQL node is single tenant. The tenant below is used
-	// within SQL (not KV), so using an arbitrary tenant is ok -- we choose to
-	// use SystemTenantID since it is already defined.
+	__antithesis_instrumentation__.Notify(491520)
+
 	admissionInfo := admission.WorkInfo{TenantID: roachpb.SystemTenantID}
 	if flowCtx.Txn == nil {
+		__antithesis_instrumentation__.Notify(491522)
 		admissionInfo.Priority = admission.NormalPri
 		admissionInfo.CreateTime = timeutil.Now().UnixNano()
 	} else {
+		__antithesis_instrumentation__.Notify(491523)
 		h := flowCtx.Txn.AdmissionHeader()
 		admissionInfo.Priority = admission.WorkPriority(h.Priority)
 		admissionInfo.CreateTime = h.CreateTime
 	}
+	__antithesis_instrumentation__.Notify(491521)
 	return &FlowBase{
 		FlowCtx:               flowCtx,
 		sp:                    sp,
@@ -296,234 +209,282 @@ func NewFlowBase(
 	}
 }
 
-// StatementSQL is part of the Flow interface.
 func (f *FlowBase) StatementSQL() string {
+	__antithesis_instrumentation__.Notify(491524)
 	return f.statementSQL
 }
 
-// GetFlowCtx is part of the Flow interface.
 func (f *FlowBase) GetFlowCtx() *execinfra.FlowCtx {
+	__antithesis_instrumentation__.Notify(491525)
 	return &f.FlowCtx
 }
 
-// AddStartable is part of the Flow interface.
 func (f *FlowBase) AddStartable(s Startable) {
+	__antithesis_instrumentation__.Notify(491526)
 	f.startables = append(f.startables, s)
 }
 
-// GetID is part of the Flow interface.
 func (f *FlowBase) GetID() execinfrapb.FlowID {
+	__antithesis_instrumentation__.Notify(491527)
 	return f.ID
 }
 
-// CheckInboundStreamID takes a stream ID and returns an error if an inbound
-// stream already exists with that ID in the inbound streams map, creating the
-// inbound streams map if it is nil.
 func (f *FlowBase) CheckInboundStreamID(sid execinfrapb.StreamID) error {
+	__antithesis_instrumentation__.Notify(491528)
 	if _, found := f.inboundStreams[sid]; found {
+		__antithesis_instrumentation__.Notify(491531)
 		return errors.Errorf("inbound stream %d already exists in map", sid)
+	} else {
+		__antithesis_instrumentation__.Notify(491532)
 	}
+	__antithesis_instrumentation__.Notify(491529)
 	if f.inboundStreams == nil {
+		__antithesis_instrumentation__.Notify(491533)
 		f.inboundStreams = make(map[execinfrapb.StreamID]*InboundStreamInfo)
+	} else {
+		__antithesis_instrumentation__.Notify(491534)
 	}
+	__antithesis_instrumentation__.Notify(491530)
 	return nil
 }
 
-// GetWaitGroup returns the wait group of this flow.
 func (f *FlowBase) GetWaitGroup() *sync.WaitGroup {
+	__antithesis_instrumentation__.Notify(491535)
 	return &f.waitGroup
 }
 
-// GetCtxDone returns done channel of the context of this flow.
 func (f *FlowBase) GetCtxDone() <-chan struct{} {
+	__antithesis_instrumentation__.Notify(491536)
 	return f.ctxDone
 }
 
-// GetCancelFlowFn returns the context cancellation function of the context of
-// this flow.
 func (f *FlowBase) GetCancelFlowFn() context.CancelFunc {
+	__antithesis_instrumentation__.Notify(491537)
 	return f.ctxCancel
 }
 
-// SetProcessors overrides the current f.processors with the provided
-// processors. This is used to set up the vectorized flow.
 func (f *FlowBase) SetProcessors(processors []execinfra.Processor) {
+	__antithesis_instrumentation__.Notify(491538)
 	f.processors = processors
 }
 
-// AddRemoteStream adds a remote stream to this flow.
 func (f *FlowBase) AddRemoteStream(streamID execinfrapb.StreamID, streamInfo *InboundStreamInfo) {
+	__antithesis_instrumentation__.Notify(491539)
 	f.inboundStreams[streamID] = streamInfo
 }
 
-// GetRowSyncFlowConsumer returns the special rowSyncFlowConsumer outbox.
 func (f *FlowBase) GetRowSyncFlowConsumer() execinfra.RowReceiver {
+	__antithesis_instrumentation__.Notify(491540)
 	return f.rowSyncFlowConsumer
 }
 
-// GetBatchSyncFlowConsumer returns the special batchSyncFlowConsumer outbox.
-// Will return nil if the consumer cannot receive batches.
 func (f *FlowBase) GetBatchSyncFlowConsumer() execinfra.BatchReceiver {
+	__antithesis_instrumentation__.Notify(491541)
 	return f.batchSyncFlowConsumer
 }
 
-// GetLocalProcessors return the execinfra.LocalProcessors of this flow.
 func (f *FlowBase) GetLocalProcessors() []execinfra.LocalProcessor {
+	__antithesis_instrumentation__.Notify(491542)
 	return f.localProcessors
 }
 
-// GetAdmissionInfo returns the information to use for admission control on
-// responses received from a remote flow.
 func (f *FlowBase) GetAdmissionInfo() admission.WorkInfo {
+	__antithesis_instrumentation__.Notify(491543)
 	return f.admissionInfo
 }
 
-// StartInternal starts the flow. All processors are started, each in their own
-// goroutine. The caller must forward any returned error to rowSyncFlowConsumer if
-// set.
 func (f *FlowBase) StartInternal(
 	ctx context.Context, processors []execinfra.Processor, doneFn func(),
 ) error {
+	__antithesis_instrumentation__.Notify(491544)
 	f.doneFn = doneFn
 	log.VEventf(
 		ctx, 1, "starting (%d processors, %d startables) asynchronously", len(processors), len(f.startables),
 	)
 
-	// Only register the flow if there will be inbound stream connections that
-	// need to look up this flow in the flow registry.
 	if f.HasInboundStreams() {
-		// Once we call RegisterFlow, the inbound streams become accessible; we must
-		// set up the WaitGroup counter before.
-		// The counter will be further incremented below to account for the
-		// processors.
+		__antithesis_instrumentation__.Notify(491549)
+
 		f.waitGroup.Add(len(f.inboundStreams))
 
 		if err := f.flowRegistry.RegisterFlow(
 			ctx, f.ID, f, f.inboundStreams, SettingFlowStreamTimeout.Get(&f.FlowCtx.Cfg.Settings.SV),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(491550)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(491551)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(491552)
 	}
+	__antithesis_instrumentation__.Notify(491545)
 
 	f.status = flowRunning
 
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(491553)
 		log.Infof(ctx, "registered flow %s", f.ID.Short())
+	} else {
+		__antithesis_instrumentation__.Notify(491554)
 	}
+	__antithesis_instrumentation__.Notify(491546)
 	for _, s := range f.startables {
+		__antithesis_instrumentation__.Notify(491555)
 		s.Start(ctx, &f.waitGroup, f.ctxCancel)
 	}
+	__antithesis_instrumentation__.Notify(491547)
 	for i := 0; i < len(processors); i++ {
+		__antithesis_instrumentation__.Notify(491556)
 		f.waitGroup.Add(1)
 		go func(i int) {
+			__antithesis_instrumentation__.Notify(491557)
 			processors[i].Run(ctx)
 			f.waitGroup.Done()
 		}(i)
 	}
-	// Note that we might have already set f.startedGoroutines to true if it is
-	// a vectorized flow with a parallel unordered synchronizer. That component
-	// starts goroutines on its own, so we need to preserve that fact so that we
-	// correctly wait in Wait().
-	f.startedGoroutines = f.startedGoroutines || len(f.startables) > 0 || len(processors) > 0 || f.HasInboundStreams()
+	__antithesis_instrumentation__.Notify(491548)
+
+	f.startedGoroutines = f.startedGoroutines || func() bool {
+		__antithesis_instrumentation__.Notify(491558)
+		return len(f.startables) > 0 == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(491559)
+		return len(processors) > 0 == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(491560)
+		return f.HasInboundStreams() == true
+	}() == true
 	return nil
 }
 
-// IsLocal returns whether this flow is being run as part of a local-only query.
 func (f *FlowBase) IsLocal() bool {
+	__antithesis_instrumentation__.Notify(491561)
 	return f.Local
 }
 
-// HasInboundStreams returns whether this flow has any inbound streams.
 func (f *FlowBase) HasInboundStreams() bool {
+	__antithesis_instrumentation__.Notify(491562)
 	return len(f.inboundStreams) != 0
 }
 
-// IsVectorized returns whether this flow will run with vectorized execution.
 func (f *FlowBase) IsVectorized() bool {
+	__antithesis_instrumentation__.Notify(491563)
 	panic("IsVectorized should not be called on FlowBase")
 }
 
-// Start is part of the Flow interface.
 func (f *FlowBase) Start(ctx context.Context, doneFn func()) error {
+	__antithesis_instrumentation__.Notify(491564)
 	return f.StartInternal(ctx, f.processors, doneFn)
 }
 
-// Run is part of the Flow interface.
 func (f *FlowBase) Run(ctx context.Context, doneFn func()) {
+	__antithesis_instrumentation__.Notify(491565)
 	defer f.Wait()
 
-	// We'll take care of the last processor in particular.
 	var headProc execinfra.Processor
 	if len(f.processors) == 0 {
-		f.rowSyncFlowConsumer.Push(nil /* row */, &execinfrapb.ProducerMetadata{Err: errors.AssertionFailedf("no processors in flow")})
+		__antithesis_instrumentation__.Notify(491568)
+		f.rowSyncFlowConsumer.Push(nil, &execinfrapb.ProducerMetadata{Err: errors.AssertionFailedf("no processors in flow")})
 		f.rowSyncFlowConsumer.ProducerDone()
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(491569)
 	}
+	__antithesis_instrumentation__.Notify(491566)
 	headProc = f.processors[len(f.processors)-1]
 	otherProcs := f.processors[:len(f.processors)-1]
 
 	var err error
 	if err = f.StartInternal(ctx, otherProcs, doneFn); err != nil {
-		f.rowSyncFlowConsumer.Push(nil /* row */, &execinfrapb.ProducerMetadata{Err: err})
+		__antithesis_instrumentation__.Notify(491570)
+		f.rowSyncFlowConsumer.Push(nil, &execinfrapb.ProducerMetadata{Err: err})
 		f.rowSyncFlowConsumer.ProducerDone()
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(491571)
 	}
+	__antithesis_instrumentation__.Notify(491567)
 	log.VEventf(ctx, 1, "running %T in the flow's goroutine", headProc)
 	headProc.Run(ctx)
 }
 
-// Wait is part of the Flow interface.
 func (f *FlowBase) Wait() {
+	__antithesis_instrumentation__.Notify(491572)
 	if !f.startedGoroutines {
+		__antithesis_instrumentation__.Notify(491577)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(491578)
 	}
+	__antithesis_instrumentation__.Notify(491573)
 
 	var panicVal interface{}
 	if panicVal = recover(); panicVal != nil {
-		// If Wait is called as part of stack unwinding during a panic, the flow
-		// context must be canceled to ensure that all asynchronous goroutines get
-		// the message that they must exit (otherwise we will wait indefinitely).
+		__antithesis_instrumentation__.Notify(491579)
+
 		f.ctxCancel()
+	} else {
+		__antithesis_instrumentation__.Notify(491580)
 	}
+	__antithesis_instrumentation__.Notify(491574)
 	waitChan := make(chan struct{})
 
 	go func() {
+		__antithesis_instrumentation__.Notify(491581)
 		f.waitGroup.Wait()
 		close(waitChan)
 	}()
+	__antithesis_instrumentation__.Notify(491575)
 
 	select {
 	case <-f.ctxDone:
+		__antithesis_instrumentation__.Notify(491582)
 		f.cancel()
 		<-waitChan
 	case <-waitChan:
-		// Exit normally
+		__antithesis_instrumentation__.Notify(491583)
+
 	}
+	__antithesis_instrumentation__.Notify(491576)
 	if panicVal != nil {
+		__antithesis_instrumentation__.Notify(491584)
 		panic(panicVal)
+	} else {
+		__antithesis_instrumentation__.Notify(491585)
 	}
 }
 
-// Cleanup is part of the Flow interface.
-// NOTE: this implements only the shared clean up logic between row-based and
-// vectorized flows.
 func (f *FlowBase) Cleanup(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(491586)
 	if f.status == flowFinished {
+		__antithesis_instrumentation__.Notify(491594)
 		panic("flow cleanup called twice")
+	} else {
+		__antithesis_instrumentation__.Notify(491595)
 	}
+	__antithesis_instrumentation__.Notify(491587)
 
-	// Release any descriptors accessed by this flow.
-	if f.Descriptors != nil && f.IsDescriptorsCleanupRequired {
+	if f.Descriptors != nil && func() bool {
+		__antithesis_instrumentation__.Notify(491596)
+		return f.IsDescriptorsCleanupRequired == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(491597)
 		f.Descriptors.ReleaseAll(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(491598)
 	}
+	__antithesis_instrumentation__.Notify(491588)
 
 	if f.sp != nil {
+		__antithesis_instrumentation__.Notify(491599)
 		defer f.sp.Finish()
-		if f.Gateway && f.CollectStats {
-			// If this is the gateway node and we're collecting execution stats,
-			// output the maximum memory usage to the flow span. Note that
-			// non-gateway nodes use the last outbox to send this information
-			// over.
+		if f.Gateway && func() bool {
+			__antithesis_instrumentation__.Notify(491600)
+			return f.CollectStats == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(491601)
+
 			f.sp.RecordStructured(&execinfrapb.ComponentStats{
 				Component: execinfrapb.FlowComponentID(f.NodeID.SQLInstanceID(), f.FlowCtx.ID),
 				FlowStats: execinfrapb.FlowStats{
@@ -531,45 +492,70 @@ func (f *FlowBase) Cleanup(ctx context.Context) {
 					MaxDiskUsage: optional.MakeUint(uint64(f.FlowCtx.DiskMonitor.MaximumBytes())),
 				},
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(491602)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(491603)
 	}
+	__antithesis_instrumentation__.Notify(491589)
 
-	// This closes the disk monitor opened in newFlowCtx.
 	f.DiskMonitor.Stop(ctx)
-	// This closes the monitor opened in ServerImpl.setupFlow.
+
 	f.EvalCtx.Stop(ctx)
 	for _, p := range f.processors {
+		__antithesis_instrumentation__.Notify(491604)
 		if d, ok := p.(execinfra.Releasable); ok {
+			__antithesis_instrumentation__.Notify(491605)
 			d.Release()
+		} else {
+			__antithesis_instrumentation__.Notify(491606)
 		}
 	}
+	__antithesis_instrumentation__.Notify(491590)
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(491607)
 		log.Infof(ctx, "cleaning up")
+	} else {
+		__antithesis_instrumentation__.Notify(491608)
 	}
-	if f.HasInboundStreams() && f.Started() {
+	__antithesis_instrumentation__.Notify(491591)
+	if f.HasInboundStreams() && func() bool {
+		__antithesis_instrumentation__.Notify(491609)
+		return f.Started() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(491610)
 		f.flowRegistry.UnregisterFlow(f.ID)
+	} else {
+		__antithesis_instrumentation__.Notify(491611)
 	}
+	__antithesis_instrumentation__.Notify(491592)
 	f.status = flowFinished
 	f.ctxCancel()
 	if f.onFlowCleanup != nil {
+		__antithesis_instrumentation__.Notify(491612)
 		f.onFlowCleanup()
+	} else {
+		__antithesis_instrumentation__.Notify(491613)
 	}
+	__antithesis_instrumentation__.Notify(491593)
 	if f.doneFn != nil {
+		__antithesis_instrumentation__.Notify(491614)
 		f.doneFn()
+	} else {
+		__antithesis_instrumentation__.Notify(491615)
 	}
 }
 
-// cancel cancels all unconnected streams of this flow. This function is called
-// in Wait() after the associated context has been canceled. In order to cancel
-// a flow, call f.ctxCancel() instead of this function.
-//
-// For a detailed description of the distsql query cancellation mechanism,
-// read docs/RFCS/query_cancellation.md.
 func (f *FlowBase) cancel() {
+	__antithesis_instrumentation__.Notify(491616)
 	if !f.HasInboundStreams() {
+		__antithesis_instrumentation__.Notify(491618)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(491619)
 	}
-	// Pending streams have yet to be started; send an error to its receivers
-	// and prevent them from being connected.
+	__antithesis_instrumentation__.Notify(491617)
+
 	f.flowRegistry.cancelPendingStreams(f.ID, cancelchecker.QueryCanceledError)
 }

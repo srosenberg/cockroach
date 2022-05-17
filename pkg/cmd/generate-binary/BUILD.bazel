@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//pkg/cmd/cmp-protocol/pgconnect",
         "//pkg/sql/pgwire/pgwirebase",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -15,4 +16,5 @@ go_binary(
     name = "generate-binary",
     embed = [":generate-binary_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package roleoption
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strings"
@@ -19,20 +11,15 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-//go:generate stringer -type=Option -linecomment
-
-// Option defines a role option. This is output by the parser
 type Option uint32
 
-// RoleOption represents an Option with a value.
 type RoleOption struct {
 	Option
 	HasValue bool
-	// Need to resolve value in Exec for the case of placeholders.
+
 	Value func() (bool, string, error)
 }
 
-// KindList of role options.
 const (
 	_ Option = iota
 	CREATEROLE
@@ -40,7 +27,7 @@ const (
 	PASSWORD
 	LOGIN
 	NOLOGIN
-	VALIDUNTIL // VALID UNTIL
+	VALIDUNTIL
 	CONTROLJOB
 	NOCONTROLJOB
 	CONTROLCHANGEFEED
@@ -49,11 +36,7 @@ const (
 	NOCREATEDB
 	CREATELOGIN
 	NOCREATELOGIN
-	// VIEWACTIVITY is responsible for controlling access to DB Console
-	// endpoints that allow a user to view data in the UI without having
-	// the Admin role. In addition, the VIEWACTIVITY role permits viewing
-	// *unredacted* data in the `/nodes` and `/nodes_ui` endpoints which
-	// display IP addresses and hostnames.
+
 	VIEWACTIVITY
 	NOVIEWACTIVITY
 	CANCELQUERY
@@ -69,8 +52,6 @@ const (
 	NOVIEWCLUSTERSETTING
 )
 
-// toSQLStmts is a map of Kind -> SQL statement string for applying the
-// option to the role.
 var toSQLStmts = map[Option]string{
 	CREATEROLE:             `UPSERT INTO system.role_options (username, option) VALUES ($1, 'CREATEROLE')`,
 	NOCREATEROLE:           `DELETE FROM system.role_options WHERE username = $1 AND option = 'CREATEROLE'`,
@@ -99,12 +80,11 @@ var toSQLStmts = map[Option]string{
 	NOVIEWCLUSTERSETTING:   `DELETE FROM system.role_options WHERE username = $1 AND option = 'VIEWCLUSTERSETTING'`,
 }
 
-// Mask returns the bitmask for a given role option.
 func (o Option) Mask() uint32 {
+	__antithesis_instrumentation__.Notify(567257)
 	return 1 << o
 }
 
-// ByName is a map of string -> kind value.
 var ByName = map[string]Option{
 	"CREATEROLE":             CREATEROLE,
 	"NOCREATEROLE":           NOCREATEROLE,
@@ -135,128 +115,212 @@ var ByName = map[string]Option{
 	"NOVIEWCLUSTERSETTING":   NOVIEWCLUSTERSETTING,
 }
 
-// ToOption takes a string and returns the corresponding Option.
 func ToOption(str string) (Option, error) {
+	__antithesis_instrumentation__.Notify(567258)
 	ret := ByName[strings.ToUpper(str)]
 	if ret == 0 {
+		__antithesis_instrumentation__.Notify(567260)
 		return 0, pgerror.Newf(pgcode.Syntax, "unrecognized role option %s", str)
+	} else {
+		__antithesis_instrumentation__.Notify(567261)
 	}
+	__antithesis_instrumentation__.Notify(567259)
 
 	return ret, nil
 }
 
-// List is a list of role options.
 type List []RoleOption
 
-// GetSQLStmts returns a map of SQL stmts to apply each role option.
-// Maps stmts to values (value of the role option).
 func (rol List) GetSQLStmts(op string) (map[string]func() (bool, string, error), error) {
+	__antithesis_instrumentation__.Notify(567262)
 	if len(rol) <= 0 {
+		__antithesis_instrumentation__.Notify(567266)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(567267)
 	}
+	__antithesis_instrumentation__.Notify(567263)
 
 	stmts := make(map[string]func() (bool, string, error), len(rol))
 
 	err := rol.CheckRoleOptionConflicts()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(567268)
 		return stmts, err
+	} else {
+		__antithesis_instrumentation__.Notify(567269)
 	}
+	__antithesis_instrumentation__.Notify(567264)
 
 	for _, ro := range rol {
+		__antithesis_instrumentation__.Notify(567270)
 		sqltelemetry.IncIAMOptionCounter(
 			op,
 			strings.ToLower(ro.Option.String()),
 		)
-		// Skip PASSWORD and DEFAULTSETTINGS options.
-		// Since PASSWORD still resides in system.users, we handle setting PASSWORD
-		// outside of this set stmt.
-		// DEFAULTSETTINGS is stored in system.database_role_settings.
-		// TODO(richardjcai): migrate password to system.role_options
-		if ro.Option == PASSWORD || ro.Option == DEFAULTSETTINGS {
+
+		if ro.Option == PASSWORD || func() bool {
+			__antithesis_instrumentation__.Notify(567272)
+			return ro.Option == DEFAULTSETTINGS == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(567273)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(567274)
 		}
+		__antithesis_instrumentation__.Notify(567271)
 
 		stmt := toSQLStmts[ro.Option]
 		if ro.HasValue {
+			__antithesis_instrumentation__.Notify(567275)
 			stmts[stmt] = ro.Value
 		} else {
+			__antithesis_instrumentation__.Notify(567276)
 			stmts[stmt] = nil
 		}
 	}
+	__antithesis_instrumentation__.Notify(567265)
 
 	return stmts, nil
 }
 
-// ToBitField returns the bitfield representation of
-// a list of role options.
 func (rol List) ToBitField() (uint32, error) {
+	__antithesis_instrumentation__.Notify(567277)
 	var ret uint32
 	for _, p := range rol {
+		__antithesis_instrumentation__.Notify(567279)
 		if ret&p.Option.Mask() != 0 {
+			__antithesis_instrumentation__.Notify(567281)
 			return 0, pgerror.Newf(pgcode.Syntax, "redundant role options")
+		} else {
+			__antithesis_instrumentation__.Notify(567282)
 		}
+		__antithesis_instrumentation__.Notify(567280)
 		ret |= p.Option.Mask()
 	}
+	__antithesis_instrumentation__.Notify(567278)
 	return ret, nil
 }
 
-// Contains returns true if List contains option, false otherwise.
 func (rol List) Contains(p Option) bool {
+	__antithesis_instrumentation__.Notify(567283)
 	for _, ro := range rol {
+		__antithesis_instrumentation__.Notify(567285)
 		if ro.Option == p {
+			__antithesis_instrumentation__.Notify(567286)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(567287)
 		}
 	}
+	__antithesis_instrumentation__.Notify(567284)
 
 	return false
 }
 
-// CheckRoleOptionConflicts returns an error if two or more options conflict with each other.
 func (rol List) CheckRoleOptionConflicts() error {
+	__antithesis_instrumentation__.Notify(567288)
 	roleOptionBits, err := rol.ToBitField()
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(567291)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(567292)
 	}
+	__antithesis_instrumentation__.Notify(567289)
 
-	if (roleOptionBits&CREATEROLE.Mask() != 0 &&
-		roleOptionBits&NOCREATEROLE.Mask() != 0) ||
-		(roleOptionBits&LOGIN.Mask() != 0 &&
-			roleOptionBits&NOLOGIN.Mask() != 0) ||
-		(roleOptionBits&CONTROLJOB.Mask() != 0 &&
-			roleOptionBits&NOCONTROLJOB.Mask() != 0) ||
-		(roleOptionBits&CONTROLCHANGEFEED.Mask() != 0 &&
-			roleOptionBits&NOCONTROLCHANGEFEED.Mask() != 0) ||
-		(roleOptionBits&CREATEDB.Mask() != 0 &&
-			roleOptionBits&NOCREATEDB.Mask() != 0) ||
-		(roleOptionBits&CREATELOGIN.Mask() != 0 &&
-			roleOptionBits&NOCREATELOGIN.Mask() != 0) ||
-		(roleOptionBits&VIEWACTIVITY.Mask() != 0 &&
-			roleOptionBits&NOVIEWACTIVITY.Mask() != 0) ||
-		(roleOptionBits&CANCELQUERY.Mask() != 0 &&
-			roleOptionBits&NOCANCELQUERY.Mask() != 0) ||
-		(roleOptionBits&MODIFYCLUSTERSETTING.Mask() != 0 &&
-			roleOptionBits&NOMODIFYCLUSTERSETTING.Mask() != 0) ||
-		(roleOptionBits&VIEWACTIVITYREDACTED.Mask() != 0 &&
-			roleOptionBits&NOVIEWACTIVITYREDACTED.Mask() != 0) ||
-		(roleOptionBits&SQLLOGIN.Mask() != 0 &&
-			roleOptionBits&NOSQLLOGIN.Mask() != 0) ||
-		(roleOptionBits&VIEWCLUSTERSETTING.Mask() != 0 &&
-			roleOptionBits&NOVIEWCLUSTERSETTING.Mask() != 0) {
+	if (roleOptionBits&CREATEROLE.Mask() != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(567293)
+		return roleOptionBits&NOCREATEROLE.Mask() != 0 == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(567294)
+		return (roleOptionBits&LOGIN.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567295)
+			return roleOptionBits&NOLOGIN.Mask() != 0 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(567296)
+		return (roleOptionBits&CONTROLJOB.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567297)
+			return roleOptionBits&NOCONTROLJOB.Mask() != 0 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(567298)
+		return (roleOptionBits&CONTROLCHANGEFEED.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567299)
+			return roleOptionBits&NOCONTROLCHANGEFEED.Mask() != 0 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(567300)
+		return (roleOptionBits&CREATEDB.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567301)
+			return roleOptionBits&NOCREATEDB.Mask() != 0 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(567302)
+		return (roleOptionBits&CREATELOGIN.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567303)
+			return roleOptionBits&NOCREATELOGIN.Mask() != 0 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(567304)
+		return (roleOptionBits&VIEWACTIVITY.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567305)
+			return roleOptionBits&NOVIEWACTIVITY.Mask() != 0 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(567306)
+		return (roleOptionBits&CANCELQUERY.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567307)
+			return roleOptionBits&NOCANCELQUERY.Mask() != 0 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(567308)
+		return (roleOptionBits&MODIFYCLUSTERSETTING.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567309)
+			return roleOptionBits&NOMODIFYCLUSTERSETTING.Mask() != 0 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(567310)
+		return (roleOptionBits&VIEWACTIVITYREDACTED.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567311)
+			return roleOptionBits&NOVIEWACTIVITYREDACTED.Mask() != 0 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(567312)
+		return (roleOptionBits&SQLLOGIN.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567313)
+			return roleOptionBits&NOSQLLOGIN.Mask() != 0 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(567314)
+		return (roleOptionBits&VIEWCLUSTERSETTING.Mask() != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(567315)
+			return roleOptionBits&NOVIEWCLUSTERSETTING.Mask() != 0 == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(567316)
 		return pgerror.Newf(pgcode.Syntax, "conflicting role options")
+	} else {
+		__antithesis_instrumentation__.Notify(567317)
 	}
+	__antithesis_instrumentation__.Notify(567290)
 	return nil
 }
 
-// GetPassword returns the value of the password or whether the
-// password was set to NULL. Returns error if the string was invalid
-// or if no password option is found.
 func (rol List) GetPassword() (isNull bool, password string, err error) {
+	__antithesis_instrumentation__.Notify(567318)
 	for _, ro := range rol {
+		__antithesis_instrumentation__.Notify(567320)
 		if ro.Option == PASSWORD {
+			__antithesis_instrumentation__.Notify(567321)
 			return ro.Value()
+		} else {
+			__antithesis_instrumentation__.Notify(567322)
 		}
 	}
-	// Password option not found.
+	__antithesis_instrumentation__.Notify(567319)
+
 	return false, "", errors.New("password not found in role options")
 }

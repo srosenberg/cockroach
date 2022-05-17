@@ -1,34 +1,17 @@
-// Copyright 2012, Google Inc. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in licenses/BSD-vitess.txt.
-
-// Portions of this file are additionally subject to the following
-// license and copyright.
-//
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// This code was derived from https://github.com/youtube/vitess.
-
 package tree
 
-// ValuesClause represents a VALUES clause.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type ValuesClause struct {
 	Rows []Exprs
 }
 
-// Format implements the NodeFormatter interface.
 func (node *ValuesClause) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(615896)
 	ctx.WriteString("VALUES ")
 	comma := ""
 	for i := range node.Rows {
+		__antithesis_instrumentation__.Notify(615897)
 		ctx.WriteString(comma)
 		ctx.WriteByte('(')
 		ctx.FormatNode(&node.Rows[i])

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -52,6 +44,7 @@ var sysbenchWorkloadName = map[sysbenchWorkload]string{
 }
 
 func (w sysbenchWorkload) String() string {
+	__antithesis_instrumentation__.Notify(51254)
 	return sysbenchWorkloadName[w]
 }
 
@@ -64,10 +57,15 @@ type sysbenchOptions struct {
 }
 
 func (o *sysbenchOptions) cmd(haproxy bool) string {
+	__antithesis_instrumentation__.Notify(51255)
 	pghost := "{pghost:1}"
 	if haproxy {
+		__antithesis_instrumentation__.Notify(51257)
 		pghost = "127.0.0.1"
+	} else {
+		__antithesis_instrumentation__.Notify(51258)
 	}
+	__antithesis_instrumentation__.Notify(51256)
 	return fmt.Sprintf(`sysbench \
 		--db-driver=pgsql \
 		--pgsql-host=%s \
@@ -92,6 +90,7 @@ func (o *sysbenchOptions) cmd(haproxy bool) string {
 }
 
 func runSysbench(ctx context.Context, t test.Test, c cluster.Cluster, opts sysbenchOptions) {
+	__antithesis_instrumentation__.Notify(51259)
 	allNodes := c.Range(1, c.Spec().NodeCount)
 	roachNodes := c.Range(1, c.Spec().NodeCount-1)
 	loadNode := c.Node(c.Spec().NodeCount)
@@ -104,37 +103,55 @@ func runSysbench(ctx context.Context, t test.Test, c cluster.Cluster, opts sysbe
 
 	t.Status("installing haproxy")
 	if err = c.Install(ctx, t.L(), loadNode, "haproxy"); err != nil {
+		__antithesis_instrumentation__.Notify(51263)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(51264)
 	}
+	__antithesis_instrumentation__.Notify(51260)
 	c.Run(ctx, loadNode, "./cockroach gen haproxy --insecure --url {pgurl:1}")
 	c.Run(ctx, loadNode, "haproxy -f haproxy.cfg -D")
 
 	t.Status("installing sysbench")
 	if err := c.Install(ctx, t.L(), loadNode, "sysbench"); err != nil {
+		__antithesis_instrumentation__.Notify(51265)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(51266)
 	}
+	__antithesis_instrumentation__.Notify(51261)
 
 	m := c.NewMonitor(ctx, roachNodes)
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(51267)
 		t.Status("preparing workload")
 		c.Run(ctx, c.Node(1), `./cockroach sql --insecure -e "CREATE DATABASE sysbench"`)
-		c.Run(ctx, loadNode, opts.cmd(false /* haproxy */)+" prepare")
+		c.Run(ctx, loadNode, opts.cmd(false)+" prepare")
 
 		t.Status("running workload")
-		err := c.RunE(ctx, loadNode, opts.cmd(true /* haproxy */)+" run")
-		// Sysbench occasionally segfaults. When that happens, don't fail the
-		// test.
-		if err != nil && !strings.Contains(err.Error(), "Segmentation fault") {
+		err := c.RunE(ctx, loadNode, opts.cmd(true)+" run")
+
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(51269)
+			return !strings.Contains(err.Error(), "Segmentation fault") == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(51270)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(51271)
 		}
+		__antithesis_instrumentation__.Notify(51268)
 		t.L().Printf("sysbench segfaulted; passing test anyway")
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(51262)
 	m.Wait()
 }
 
 func registerSysbench(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(51272)
 	for w := sysbenchWorkload(0); w < numSysbenchWorkloads; w++ {
+		__antithesis_instrumentation__.Notify(51273)
 		const n = 3
 		const cpus = 32
 		const conc = 4 * cpus
@@ -151,6 +168,7 @@ func registerSysbench(r registry.Registry) {
 			Owner:   registry.OwnerKV,
 			Cluster: r.MakeClusterSpec(n+1, spec.CPU(cpus)),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(51274)
 				runSysbench(ctx, t, c, opts)
 			},
 		})

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package persistedsqlstats
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,10 +14,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlutil"
 )
 
-// Controller implements the SQL Stats subsystem control plane. This exposes
-// administrative interfaces that can be consumed by other parts of the database
-// (e.g. status server, builtins) to control the behavior of the SQL Stats
-// subsystem.
 type Controller struct {
 	*sslocal.Controller
 	db *kv.DB
@@ -33,13 +21,13 @@ type Controller struct {
 	st *cluster.Settings
 }
 
-// NewController returns a new instance of sqlstats.Controller.
 func NewController(
 	sqlStats *PersistedSQLStats,
 	status serverpb.SQLStatusServer,
 	db *kv.DB,
 	ie sqlutil.InternalExecutor,
 ) *Controller {
+	__antithesis_instrumentation__.Notify(624675)
 	return &Controller{
 		Controller: sslocal.NewController(sqlStats.SQLStats, status),
 		db:         db,
@@ -48,40 +36,52 @@ func NewController(
 	}
 }
 
-// CreateSQLStatsCompactionSchedule implements the tree.SQLStatsController
-// interface.
 func (s *Controller) CreateSQLStatsCompactionSchedule(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(624676)
 	return s.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(624677)
 		_, err := CreateSQLStatsCompactionScheduleIfNotYetExist(ctx, s.ie, txn, s.st)
 		return err
 	})
 }
 
-// ResetClusterSQLStats implements the tree.SQLStatsController interface. This
-// method resets both the cluster-wide in-memory stats (via RPC fanout) and
-// persisted stats (via TRUNCATE SQL statement)
 func (s *Controller) ResetClusterSQLStats(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(624678)
 	if err := s.Controller.ResetClusterSQLStats(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(624682)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(624683)
 	}
+	__antithesis_instrumentation__.Notify(624679)
 
 	resetSysTableStats := func(tableName string) error {
+		__antithesis_instrumentation__.Notify(624684)
 		if _, err := s.ie.ExecEx(
 			ctx,
 			"reset-sql-stats",
-			nil, /* txn */
+			nil,
 			sessiondata.InternalExecutorOverride{
 				User: security.NodeUserName(),
 			},
 			"TRUNCATE "+tableName); err != nil {
+			__antithesis_instrumentation__.Notify(624686)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(624687)
 		}
+		__antithesis_instrumentation__.Notify(624685)
 
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(624680)
 	if err := resetSysTableStats("system.statement_statistics"); err != nil {
+		__antithesis_instrumentation__.Notify(624688)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(624689)
 	}
+	__antithesis_instrumentation__.Notify(624681)
 
 	return resetSysTableStats("system.transaction_statistics")
 }

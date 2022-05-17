@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,15 +15,16 @@ import (
 )
 
 func registerLedger(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(49176)
 	const nodes = 6
-	// NB: us-central1-a has been causing issues, see:
-	// https://github.com/cockroachdb/cockroach/issues/66184
+
 	const azs = "us-central1-f,us-central1-b,us-central1-c"
 	r.Add(registry.TestSpec{
 		Name:    fmt.Sprintf("ledger/nodes=%d/multi-az", nodes),
 		Owner:   registry.OwnerKV,
 		Cluster: r.MakeClusterSpec(nodes+1, spec.CPU(16), spec.Geo(), spec.Zones(azs)),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(49177)
 			roachNodes := c.Range(1, nodes)
 			gatewayNodes := c.Range(1, nodes/3)
 			loadNode := c.Node(nodes + 1)
@@ -43,6 +36,7 @@ func registerLedger(r registry.Registry) {
 			t.Status("running workload")
 			m := c.NewMonitor(ctx, roachNodes)
 			m.Go(func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(49179)
 				concurrency := ifLocal(c, "", " --concurrency="+fmt.Sprint(nodes*32))
 				duration := " --duration=" + ifLocal(c, "10s", "10m")
 
@@ -51,6 +45,7 @@ func registerLedger(r registry.Registry) {
 				c.Run(ctx, loadNode, cmd)
 				return nil
 			})
+			__antithesis_instrumentation__.Notify(49178)
 			m.Wait()
 		},
 	})

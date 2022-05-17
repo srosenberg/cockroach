@@ -9,6 +9,7 @@ go_library(
         "//pkg/ccl/workloadccl/allccl",
         "//pkg/ccl/workloadccl/cliccl",
         "//pkg/workload/cli",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -16,4 +17,5 @@ go_binary(
     name = "workload",
     embed = [":workload_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

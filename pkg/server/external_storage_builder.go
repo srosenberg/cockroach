@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,11 +17,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// externalStorageBuilder is a wrapper around the ExternalStorage factory
-// methods. It allows us to separate the creation and initialization of the
-// builder between NewServer() and Start() respectively.
-// TODO(adityamaru): Consider moving this to pkg/cloud/impl at a future
-// stage of the ongoing refactor.
 type externalStorageBuilder struct {
 	conf              base.ExternalIODirConfig
 	settings          *cluster.Settings
@@ -70,9 +57,14 @@ func (e *externalStorageBuilder) init(
 func (e *externalStorageBuilder) makeExternalStorage(
 	ctx context.Context, dest roachpb.ExternalStorage,
 ) (cloud.ExternalStorage, error) {
+	__antithesis_instrumentation__.Notify(193402)
 	if !e.initCalled {
+		__antithesis_instrumentation__.Notify(193404)
 		return nil, errors.New("cannot create external storage before init")
+	} else {
+		__antithesis_instrumentation__.Notify(193405)
 	}
+	__antithesis_instrumentation__.Notify(193403)
 	return cloud.MakeExternalStorage(ctx, dest, e.conf, e.settings, e.blobClientFactory, e.ie,
 		e.db, e.limiters)
 }
@@ -80,8 +72,13 @@ func (e *externalStorageBuilder) makeExternalStorage(
 func (e *externalStorageBuilder) makeExternalStorageFromURI(
 	ctx context.Context, uri string, user security.SQLUsername,
 ) (cloud.ExternalStorage, error) {
+	__antithesis_instrumentation__.Notify(193406)
 	if !e.initCalled {
+		__antithesis_instrumentation__.Notify(193408)
 		return nil, errors.New("cannot create external storage before init")
+	} else {
+		__antithesis_instrumentation__.Notify(193409)
 	}
+	__antithesis_instrumentation__.Notify(193407)
 	return cloud.ExternalStorageFromURI(ctx, uri, e.conf, e.settings, e.blobClientFactory, user, e.ie, e.db, e.limiters)
 }

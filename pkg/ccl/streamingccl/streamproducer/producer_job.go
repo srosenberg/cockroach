@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package streamproducer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,6 +23,7 @@ import (
 )
 
 func makeTenantSpan(tenantID uint64) *roachpb.Span {
+	__antithesis_instrumentation__.Notify(26953)
 	prefix := keys.MakeTenantPrefix(roachpb.MakeTenantID(tenantID))
 	return &roachpb.Span{Key: prefix, EndKey: prefix.PrefixEnd()}
 }
@@ -40,6 +35,7 @@ func makeProducerJobRecord(
 	username security.SQLUsername,
 	ptsID uuid.UUID,
 ) jobs.Record {
+	__antithesis_instrumentation__.Notify(26954)
 	return jobs.Record{
 		JobID:       registry.MakeJobID(),
 		Description: fmt.Sprintf("stream replication for tenant %d", tenantID),
@@ -61,50 +57,70 @@ type producerJobResumer struct {
 	timer      timeutil.TimerI
 }
 
-// Resume is part of the jobs.Resumer interface.
 func (p *producerJobResumer) Resume(ctx context.Context, execCtx interface{}) error {
+	__antithesis_instrumentation__.Notify(26955)
 	jobExec := execCtx.(sql.JobExecContext)
 	execCfg := jobExec.ExecCfg()
 	isTimedOut := func(job *jobs.Job) bool {
+		__antithesis_instrumentation__.Notify(26958)
 		progress := p.job.Progress()
 		return progress.GetStreamReplication().Expiration.Before(p.timeSource.Now())
 	}
+	__antithesis_instrumentation__.Notify(26956)
 	trackFrequency := streamingccl.StreamReplicationStreamLivenessTrackFrequency.Get(execCfg.SV())
 	if isTimedOut(p.job) {
+		__antithesis_instrumentation__.Notify(26959)
 		return errors.Errorf("replication stream %d timed out", p.job.ID())
+	} else {
+		__antithesis_instrumentation__.Notify(26960)
 	}
+	__antithesis_instrumentation__.Notify(26957)
 	p.timer.Reset(trackFrequency)
 	for {
+		__antithesis_instrumentation__.Notify(26961)
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(26962)
 			return ctx.Err()
 		case <-p.timer.Ch():
+			__antithesis_instrumentation__.Notify(26963)
 			p.timer.MarkRead()
 			p.timer.Reset(trackFrequency)
 			j, err := execCfg.JobRegistry.LoadJob(ctx, p.job.ID())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(26965)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(26966)
 			}
+			__antithesis_instrumentation__.Notify(26964)
 			if isTimedOut(j) {
+				__antithesis_instrumentation__.Notify(26967)
 				return errors.Errorf("replication stream %d timed out", p.job.ID())
+			} else {
+				__antithesis_instrumentation__.Notify(26968)
 			}
 		}
 	}
 }
 
-// OnFailOrCancel implements jobs.Resumer interface
 func (p *producerJobResumer) OnFailOrCancel(ctx context.Context, execCtx interface{}) error {
+	__antithesis_instrumentation__.Notify(26969)
 	jobExec := execCtx.(sql.JobExecContext)
 	execCfg := jobExec.ExecCfg()
 
-	// Releases the protected timestamp record.
 	ptr := p.job.Details().(jobspb.StreamReplicationDetails).ProtectedTimestampRecord
 	return execCfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(26970)
 		err := execCfg.ProtectedTimestampProvider.Release(ctx, txn, *ptr)
-		// In case that a retry happens, the record might have been released.
+
 		if errors.Is(err, exec.ErrNotFound) {
+			__antithesis_instrumentation__.Notify(26972)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(26973)
 		}
+		__antithesis_instrumentation__.Notify(26971)
 		return err
 	})
 }

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -23,184 +15,148 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// uncommittedDescriptorStatus is the status of an uncommitted descriptor.
 type uncommittedDescriptorStatus int
 
 const (
-	// notValidatedYet designates descriptors which have been read from
-	// storage but have not been validated yet. Until they're validated they
-	// cannot be used for anything else than validating other descriptors.
 	notValidatedYet uncommittedDescriptorStatus = iota
 
-	// notCheckedOutYet designates descriptors which have been properly read from
-	// storage and have been validated but have never been checked out yet. This
-	// means that the mutable and immutable descriptor protos are known to be the
-	// exact same.
 	notCheckedOutYet
 
-	// checkedOutAtLeastOnce designates descriptors which have been checked out at
-	// least once. Newly-created descriptors are considered to have been checked
-	// out as well.
 	checkedOutAtLeastOnce
 )
 
-// uncommittedDescriptor is a descriptor that has been modified in the current
-// transaction.
 type uncommittedDescriptor struct {
-
-	// immutable holds the descriptor as it was when this struct was initialized,
-	// either after being read from storage or after being checked in.
 	immutable catalog.Descriptor
 
-	// mutable is initialized as a mutable copy of immutable when the descriptor
-	// is read from storage.
-	// This value might be nil in some rare cases where we completely bypass
-	// storage for performance reasons because the descriptor is guaranteed to
-	// never change. Such is the case of the system database descriptor for
-	// instance.
-	// This value should not make its way outside the uncommittedDescriptors
-	// other than via checkOut.
 	mutable catalog.MutableDescriptor
 
-	// uncommittedDescriptorStatus describes the status of the mutable and
-	// immutable descriptors
 	uncommittedDescriptorStatus
 }
 
-// GetName implements the catalog.NameEntry interface.
 func (u *uncommittedDescriptor) GetName() string {
+	__antithesis_instrumentation__.Notify(265120)
 	return u.immutable.GetName()
 }
 
-// GetParentID implements the catalog.NameEntry interface.
 func (u *uncommittedDescriptor) GetParentID() descpb.ID {
+	__antithesis_instrumentation__.Notify(265121)
 	return u.immutable.GetParentID()
 }
 
-// GetParentSchemaID implements the catalog.NameEntry interface.
 func (u uncommittedDescriptor) GetParentSchemaID() descpb.ID {
+	__antithesis_instrumentation__.Notify(265122)
 	return u.immutable.GetParentSchemaID()
 }
 
-// GetID implements the catalog.NameEntry interface.
 func (u uncommittedDescriptor) GetID() descpb.ID {
+	__antithesis_instrumentation__.Notify(265123)
 	return u.immutable.GetID()
 }
 
-// checkOut is how the mutable descriptor should be accessed.
 func (u *uncommittedDescriptor) checkOut() catalog.MutableDescriptor {
+	__antithesis_instrumentation__.Notify(265124)
 	if u.mutable == nil {
-		// This special case is allowed for certain system descriptors which
-		// for performance reasons are never actually read from storage, instead
-		// we use a copy of the descriptor hard-coded in the system schema used for
-		// bootstrapping a cluster.
-		//
-		// This implies that these descriptors never undergo any changes and
-		// therefore checking out a mutable descriptor is pointless for the most
-		// part. This may nonetheless legitimately happen during migrations
-		// which change all descriptors somehow, so we need to support this.
+		__antithesis_instrumentation__.Notify(265126)
+
 		return u.immutable.NewBuilder().BuildExistingMutable()
+	} else {
+		__antithesis_instrumentation__.Notify(265127)
 	}
+	__antithesis_instrumentation__.Notify(265125)
 	u.uncommittedDescriptorStatus = checkedOutAtLeastOnce
 	return u.mutable
 }
 
 var _ catalog.NameEntry = (*uncommittedDescriptor)(nil)
 
-// uncommittedDescriptors is the data structure holding all
-// uncommittedDescriptor objects for a Collection.
-//
-// Immutable descriptors can be freely looked up.
-// Mutable descriptors can be:
-// 1. added into it,
-// 2. checked out of it,
-// 3. checked back in to it.
-//
-// An error will be triggered by:
-// - checking out a mutable descriptor that hasn't yet been added,
-// - checking in a descriptor that has been added but not yet checked out,
-// - any checked-out-but-not-checked-in mutable descriptors at commit time.
-//
 type uncommittedDescriptors struct {
-
-	// Descriptors modified by the uncommitted transaction affiliated with this
-	// Collection. This allows a transaction to see its own modifications while
-	// bypassing the descriptor lease mechanism. The lease mechanism will have its
-	// own transaction to read the descriptor and will hang waiting for the
-	// uncommitted changes to the descriptor. These descriptors are local to this
-	// Collection and invisible to other transactions.
 	descs nstree.Map
 
-	// descNames is the set of names which a read or written
-	// descriptor took on at some point in its lifetime. Everything added to
-	// uncommittedDescriptors is added to descNames as well
-	// as all of the known draining names. The idea is that if we find that
-	// a name is not in the above map but is in the set, then we can avoid
-	// doing a lookup.
-	//
-	// TODO(postamar): better uncommitted namespace changes handling after 22.1.
 	descNames nstree.Set
 
-	// addedSystemDatabase is used to mark whether the optimization to add the
-	// system database to the set of uncommitted descriptors has occurred.
 	addedSystemDatabase bool
 }
 
 func (ud *uncommittedDescriptors) reset() {
+	__antithesis_instrumentation__.Notify(265128)
 	ud.descs.Clear()
 	ud.descNames.Clear()
 	ud.addedSystemDatabase = false
 }
 
-// add adds a descriptor to the set of uncommitted descriptors and returns
-// an immutable copy of that descriptor.
 func (ud *uncommittedDescriptors) add(
 	mut catalog.MutableDescriptor, status uncommittedDescriptorStatus,
 ) (catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(265129)
 	uNew, err := makeUncommittedDescriptor(mut, status)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(265133)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(265134)
 	}
+	__antithesis_instrumentation__.Notify(265130)
 	for _, n := range uNew.immutable.GetDrainingNames() {
+		__antithesis_instrumentation__.Notify(265135)
 		ud.descNames.Add(n)
 	}
+	__antithesis_instrumentation__.Notify(265131)
 	if prev, ok := ud.descs.GetByID(mut.GetID()).(*uncommittedDescriptor); ok {
+		__antithesis_instrumentation__.Notify(265136)
 		if prev.mutable.OriginalVersion() != mut.OriginalVersion() {
+			__antithesis_instrumentation__.Notify(265137)
 			return nil, errors.AssertionFailedf(
 				"cannot add a version of descriptor with a different original version" +
 					" than it was previously added with")
+		} else {
+			__antithesis_instrumentation__.Notify(265138)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(265139)
 	}
+	__antithesis_instrumentation__.Notify(265132)
 	ud.descs.Upsert(uNew)
 	return uNew.immutable, err
 }
 
-// checkOut checks out an uncommitted mutable descriptor for use in the
-// transaction. This descriptor should later be checked in again.
 func (ud *uncommittedDescriptors) checkOut(id descpb.ID) (_ catalog.MutableDescriptor, err error) {
+	__antithesis_instrumentation__.Notify(265140)
 	defer func() {
+		__antithesis_instrumentation__.Notify(265145)
 		err = errors.NewAssertionErrorWithWrappedErrf(
 			err, "cannot check out uncommitted descriptor with ID %d", id,
 		)
 	}()
+	__antithesis_instrumentation__.Notify(265141)
 	if id == keys.SystemDatabaseID {
+		__antithesis_instrumentation__.Notify(265146)
 		ud.maybeAddSystemDatabase()
+	} else {
+		__antithesis_instrumentation__.Notify(265147)
 	}
+	__antithesis_instrumentation__.Notify(265142)
 	entry := ud.descs.GetByID(id)
 	if entry == nil {
+		__antithesis_instrumentation__.Notify(265148)
 		return nil, errors.New("descriptor hasn't been added yet")
+	} else {
+		__antithesis_instrumentation__.Notify(265149)
 	}
+	__antithesis_instrumentation__.Notify(265143)
 	u := entry.(*uncommittedDescriptor)
 	if u.uncommittedDescriptorStatus == notValidatedYet {
+		__antithesis_instrumentation__.Notify(265150)
 		return nil, errors.New("descriptor hasn't been validated yet")
+	} else {
+		__antithesis_instrumentation__.Notify(265151)
 	}
+	__antithesis_instrumentation__.Notify(265144)
 	return u.checkOut(), nil
 }
 
-// checkIn checks in an uncommitted mutable descriptor that was previously
-// checked out.
 func (ud *uncommittedDescriptors) checkIn(mut catalog.MutableDescriptor) error {
-	// TODO(postamar): actually check that the descriptor has been checked out.
+	__antithesis_instrumentation__.Notify(265152)
+
 	_, err := ud.add(mut, checkedOutAtLeastOnce)
 	return err
 }
@@ -208,18 +164,30 @@ func (ud *uncommittedDescriptors) checkIn(mut catalog.MutableDescriptor) error {
 func makeUncommittedDescriptor(
 	desc catalog.MutableDescriptor, status uncommittedDescriptorStatus,
 ) (*uncommittedDescriptor, error) {
+	__antithesis_instrumentation__.Notify(265153)
 	version := desc.GetVersion()
 	origVersion := desc.OriginalVersion()
-	if version != origVersion && version != origVersion+1 {
+	if version != origVersion && func() bool {
+		__antithesis_instrumentation__.Notify(265156)
+		return version != origVersion+1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(265157)
 		return nil, errors.AssertionFailedf(
 			"descriptor %d version %d not compatible with cluster version %d",
 			desc.GetID(), version, origVersion)
+	} else {
+		__antithesis_instrumentation__.Notify(265158)
 	}
+	__antithesis_instrumentation__.Notify(265154)
 
 	mutable, err := maybeRefreshCachedFieldsOnTypeDescriptor(desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(265159)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(265160)
 	}
+	__antithesis_instrumentation__.Notify(265155)
 
 	return &uncommittedDescriptor{
 		mutable:                     mutable,
@@ -228,62 +196,85 @@ func makeUncommittedDescriptor(
 	}, nil
 }
 
-// maybeRefreshCachedFieldsOnTypeDescriptor refreshes the cached fields on a
-// Mutable if the given descriptor is a type descriptor and works as a pass
-// through for all other descriptors. Mutable type descriptors are refreshed to
-// reconstruct enumMetadata. This ensures that tables hydration following a
-// type descriptor update (in the same txn) happens using the modified fields.
 func maybeRefreshCachedFieldsOnTypeDescriptor(
 	desc catalog.MutableDescriptor,
 ) (catalog.MutableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(265161)
 	typeDesc, ok := desc.(catalog.TypeDescriptor)
 	if ok {
+		__antithesis_instrumentation__.Notify(265163)
 		return typedesc.UpdateCachedFieldsOnModifiedMutable(typeDesc)
+	} else {
+		__antithesis_instrumentation__.Notify(265164)
 	}
+	__antithesis_instrumentation__.Notify(265162)
 	return desc, nil
 }
 
-// getImmutableByID looks up an uncommitted descriptor by ID.
 func (ud *uncommittedDescriptors) getImmutableByID(
 	id descpb.ID,
 ) (catalog.Descriptor, uncommittedDescriptorStatus) {
+	__antithesis_instrumentation__.Notify(265165)
 	if id == keys.SystemDatabaseID {
+		__antithesis_instrumentation__.Notify(265168)
 		ud.maybeAddSystemDatabase()
+	} else {
+		__antithesis_instrumentation__.Notify(265169)
 	}
+	__antithesis_instrumentation__.Notify(265166)
 	entry := ud.descs.GetByID(id)
 	if entry == nil {
+		__antithesis_instrumentation__.Notify(265170)
 		return nil, notValidatedYet
+	} else {
+		__antithesis_instrumentation__.Notify(265171)
 	}
+	__antithesis_instrumentation__.Notify(265167)
 	u := entry.(*uncommittedDescriptor)
 	return u.immutable, u.uncommittedDescriptorStatus
 }
 
-// getByName returns a descriptor for the requested name if the requested name
-// is for a descriptor modified within the transaction affiliated with the
-// Collection.
-//
-// The first return value "hasKnownRename" is true when there is a known
-// rename of that descriptor, so it would be invalid to miss the cache and go to
-// KV (where the descriptor prior to the rename may still exist).
 func (ud *uncommittedDescriptors) getByName(
 	dbID descpb.ID, schemaID descpb.ID, name string,
 ) (hasKnownRename bool, desc catalog.Descriptor) {
-	if dbID == 0 && schemaID == 0 && name == systemschema.SystemDatabaseName {
+	__antithesis_instrumentation__.Notify(265172)
+	if dbID == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(265176)
+		return schemaID == 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(265177)
+		return name == systemschema.SystemDatabaseName == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(265178)
 		ud.maybeAddSystemDatabase()
+	} else {
+		__antithesis_instrumentation__.Notify(265179)
 	}
-	// Walk latest to earliest so that a DROP followed by a CREATE with the same
-	// name will result in the CREATE being seen.
+	__antithesis_instrumentation__.Notify(265173)
+
 	if got := ud.descs.GetByName(dbID, schemaID, name); got != nil {
+		__antithesis_instrumentation__.Notify(265180)
 		u := got.(*uncommittedDescriptor)
 		if u.uncommittedDescriptorStatus == notValidatedYet {
+			__antithesis_instrumentation__.Notify(265182)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(265183)
 		}
+		__antithesis_instrumentation__.Notify(265181)
 		return false, u.immutable
+	} else {
+		__antithesis_instrumentation__.Notify(265184)
 	}
-	// Check whether the set is empty to avoid allocating the NameInfo.
+	__antithesis_instrumentation__.Notify(265174)
+
 	if ud.descNames.Empty() {
+		__antithesis_instrumentation__.Notify(265185)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(265186)
 	}
+	__antithesis_instrumentation__.Notify(265175)
 	return ud.descNames.Contains(descpb.NameInfo{
 		ParentID:       dbID,
 		ParentSchemaID: schemaID,
@@ -291,36 +282,70 @@ func (ud *uncommittedDescriptors) getByName(
 	}), nil
 }
 
-// getUnvalidatedByName looks up an unvalidated descriptor by name.
 func (ud *uncommittedDescriptors) getUnvalidatedByName(
 	dbID descpb.ID, schemaID descpb.ID, name string,
 ) catalog.Descriptor {
-	if dbID == 0 && schemaID == 0 && name == systemschema.SystemDatabaseName {
+	__antithesis_instrumentation__.Notify(265187)
+	if dbID == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(265191)
+		return schemaID == 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(265192)
+		return name == systemschema.SystemDatabaseName == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(265193)
 		ud.maybeAddSystemDatabase()
+	} else {
+		__antithesis_instrumentation__.Notify(265194)
 	}
+	__antithesis_instrumentation__.Notify(265188)
 	entry := ud.descs.GetByName(dbID, schemaID, name)
 	if entry == nil {
+		__antithesis_instrumentation__.Notify(265195)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(265196)
 	}
+	__antithesis_instrumentation__.Notify(265189)
 	u := entry.(*uncommittedDescriptor)
 	if u.uncommittedDescriptorStatus != notValidatedYet {
+		__antithesis_instrumentation__.Notify(265197)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(265198)
 	}
+	__antithesis_instrumentation__.Notify(265190)
 	return u.immutable
 }
 
 func (ud *uncommittedDescriptors) iterateNewVersionByID(
 	fn func(originalVersion lease.IDVersion) error,
 ) error {
+	__antithesis_instrumentation__.Notify(265199)
 	return ud.descs.IterateByID(func(entry catalog.NameEntry) error {
+		__antithesis_instrumentation__.Notify(265200)
 		u := entry.(*uncommittedDescriptor)
 		if u.uncommittedDescriptorStatus == notValidatedYet {
+			__antithesis_instrumentation__.Notify(265203)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(265204)
 		}
+		__antithesis_instrumentation__.Notify(265201)
 		mut := u.mutable
-		if mut == nil || mut.IsNew() || !mut.IsUncommittedVersion() {
+		if mut == nil || func() bool {
+			__antithesis_instrumentation__.Notify(265205)
+			return mut.IsNew() == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(265206)
+			return !mut.IsUncommittedVersion() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(265207)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(265208)
 		}
+		__antithesis_instrumentation__.Notify(265202)
 		return fn(lease.NewIDVersionPrev(mut.OriginalName(), mut.OriginalID(), mut.OriginalVersion()))
 	})
 }
@@ -328,66 +353,102 @@ func (ud *uncommittedDescriptors) iterateNewVersionByID(
 func (ud *uncommittedDescriptors) iterateUncommittedByID(
 	fn func(imm catalog.Descriptor) error,
 ) error {
+	__antithesis_instrumentation__.Notify(265209)
 	return ud.descs.IterateByID(func(entry catalog.NameEntry) error {
+		__antithesis_instrumentation__.Notify(265210)
 		u := entry.(*uncommittedDescriptor)
-		if u.uncommittedDescriptorStatus != checkedOutAtLeastOnce || !u.immutable.IsUncommittedVersion() {
+		if u.uncommittedDescriptorStatus != checkedOutAtLeastOnce || func() bool {
+			__antithesis_instrumentation__.Notify(265212)
+			return !u.immutable.IsUncommittedVersion() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(265213)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(265214)
 		}
+		__antithesis_instrumentation__.Notify(265211)
 		return fn(u.immutable)
 	})
 }
 
 func (ud *uncommittedDescriptors) getUncommittedTables() (tables []catalog.TableDescriptor) {
+	__antithesis_instrumentation__.Notify(265215)
 	_ = ud.iterateUncommittedByID(func(desc catalog.Descriptor) error {
+		__antithesis_instrumentation__.Notify(265217)
 		if table, ok := desc.(catalog.TableDescriptor); ok {
+			__antithesis_instrumentation__.Notify(265219)
 			tables = append(tables, table)
+		} else {
+			__antithesis_instrumentation__.Notify(265220)
 		}
+		__antithesis_instrumentation__.Notify(265218)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(265216)
 	return tables
 }
 
 func (ud *uncommittedDescriptors) getUncommittedDescriptorsForValidation() (
 	descs []catalog.Descriptor,
 ) {
+	__antithesis_instrumentation__.Notify(265221)
 	_ = ud.iterateUncommittedByID(func(desc catalog.Descriptor) error {
+		__antithesis_instrumentation__.Notify(265223)
 		descs = append(descs, desc)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(265222)
 	return descs
 }
 
 func (ud *uncommittedDescriptors) hasUncommittedTables() (has bool) {
+	__antithesis_instrumentation__.Notify(265224)
 	_ = ud.iterateUncommittedByID(func(desc catalog.Descriptor) error {
+		__antithesis_instrumentation__.Notify(265226)
 		if _, has = desc.(catalog.TableDescriptor); has {
+			__antithesis_instrumentation__.Notify(265228)
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(265229)
 		}
+		__antithesis_instrumentation__.Notify(265227)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(265225)
 	return has
 }
 
 func (ud *uncommittedDescriptors) hasUncommittedTypes() (has bool) {
+	__antithesis_instrumentation__.Notify(265230)
 	_ = ud.iterateUncommittedByID(func(desc catalog.Descriptor) error {
+		__antithesis_instrumentation__.Notify(265232)
 		if _, has = desc.(catalog.TypeDescriptor); has {
+			__antithesis_instrumentation__.Notify(265234)
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(265235)
 		}
+		__antithesis_instrumentation__.Notify(265233)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(265231)
 	return has
 }
 
 var systemUncommittedDatabase = &uncommittedDescriptor{
 	immutable: dbdesc.NewBuilder(systemschema.SystemDB.DatabaseDesc()).BuildImmutableDatabase(),
-	// Note that the mutable field is left as nil. We'll generate a new
-	// value lazily when this is needed, which ought to be exceedingly rare.
+
 	mutable:                     nil,
 	uncommittedDescriptorStatus: notCheckedOutYet,
 }
 
 func (ud *uncommittedDescriptors) maybeAddSystemDatabase() {
+	__antithesis_instrumentation__.Notify(265236)
 	if !ud.addedSystemDatabase {
+		__antithesis_instrumentation__.Notify(265237)
 		ud.addedSystemDatabase = true
 		ud.descs.Upsert(systemUncommittedDatabase)
+	} else {
+		__antithesis_instrumentation__.Notify(265238)
 	}
 }

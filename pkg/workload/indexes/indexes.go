@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package indexes
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -63,6 +55,7 @@ var indexesMeta = workload.Meta{
 	Description: `Indexes writes to a table with a variable number of secondary indexes`,
 	Version:     `1.0.0`,
 	New: func() workload.Generator {
+		__antithesis_instrumentation__.Notify(694211)
 		g := &indexes{}
 		g.flags.FlagSet = pflag.NewFlagSet(`indexes`, pflag.ContinueOnError)
 		g.flags.Int64Var(&g.seed, `seed`, 1, `Key hash seed.`)
@@ -76,70 +69,111 @@ var indexesMeta = workload.Meta{
 	},
 }
 
-// Meta implements the Generator interface.
-func (*indexes) Meta() workload.Meta { return indexesMeta }
+func (*indexes) Meta() workload.Meta {
+	__antithesis_instrumentation__.Notify(694212)
+	return indexesMeta
+}
 
-// Flags implements the Flagser interface.
-func (w *indexes) Flags() workload.Flags { return w.flags }
+func (w *indexes) Flags() workload.Flags {
+	__antithesis_instrumentation__.Notify(694213)
+	return w.flags
+}
 
-// Hooks implements the Hookser interface.
 func (w *indexes) Hooks() workload.Hooks {
+	__antithesis_instrumentation__.Notify(694214)
 	return workload.Hooks{
 		Validate: func() error {
-			if w.idxs < 0 || w.idxs > 99 {
+			__antithesis_instrumentation__.Notify(694215)
+			if w.idxs < 0 || func() bool {
+				__antithesis_instrumentation__.Notify(694218)
+				return w.idxs > 99 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(694219)
 				return errors.Errorf(`--secondary-indexes must be in range [0, 99]`)
+			} else {
+				__antithesis_instrumentation__.Notify(694220)
 			}
+			__antithesis_instrumentation__.Notify(694216)
 			if w.payload < 1 {
+				__antithesis_instrumentation__.Notify(694221)
 				return errors.Errorf(`--payload size must be equal to or greater than 1`)
+			} else {
+				__antithesis_instrumentation__.Notify(694222)
 			}
+			__antithesis_instrumentation__.Notify(694217)
 			return nil
 		},
 		PostLoad: func(sqlDB *gosql.DB) error {
-			// Prevent the merge queue from immediately discarding our splits.
+			__antithesis_instrumentation__.Notify(694223)
+
 			if err := maybeDisableMergeQueue(sqlDB); err != nil {
+				__antithesis_instrumentation__.Notify(694226)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(694227)
 			}
-			// Split at the beginning of each index so that as long as the
-			// table has a single index, all writes will be multi-range.
+			__antithesis_instrumentation__.Notify(694224)
+
 			for i := 0; i < w.idxs; i++ {
+				__antithesis_instrumentation__.Notify(694228)
 				split := fmt.Sprintf(`ALTER INDEX idx%d SPLIT AT VALUES (%d)`, i, math.MinInt64)
 				if _, err := sqlDB.Exec(split); err != nil {
+					__antithesis_instrumentation__.Notify(694229)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(694230)
 				}
 			}
+			__antithesis_instrumentation__.Notify(694225)
 			return nil
 		},
 	}
 }
 
 func maybeDisableMergeQueue(sqlDB *gosql.DB) error {
+	__antithesis_instrumentation__.Notify(694231)
 	var ok bool
 	if err := sqlDB.QueryRow(
 		`SELECT count(*) > 0 FROM [ SHOW ALL CLUSTER SETTINGS ] AS _ (v) WHERE v = 'kv.range_merge.queue_enabled'`,
-	).Scan(&ok); err != nil || !ok {
+	).Scan(&ok); err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(694233)
+		return !ok == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(694234)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694235)
 	}
+	__antithesis_instrumentation__.Notify(694232)
 	_, err := sqlDB.Exec("SET CLUSTER SETTING kv.range_merge.queue_enabled = false")
 	return err
 }
 
-// Tables implements the Generator interface.
 func (w *indexes) Tables() []workload.Table {
-	// Construct the schema with all indexes.
+	__antithesis_instrumentation__.Notify(694236)
+
 	var unique string
 	if w.unique {
+		__antithesis_instrumentation__.Notify(694239)
 		unique = "UNIQUE "
+	} else {
+		__antithesis_instrumentation__.Notify(694240)
 	}
+	__antithesis_instrumentation__.Notify(694237)
 	var b strings.Builder
 	b.WriteString(schemaBase)
 	for i := 0; i < w.idxs; i++ {
+		__antithesis_instrumentation__.Notify(694241)
 		col1, col2 := i/10, i%10
 		if col1 == col2 {
+			__antithesis_instrumentation__.Notify(694242)
 			fmt.Fprintf(&b, ",\n\t\t%sINDEX idx%d (col%d)", unique, i, col1)
 		} else {
+			__antithesis_instrumentation__.Notify(694243)
 			fmt.Fprintf(&b, ",\n\t\t%sINDEX idx%d (col%d, col%d)", unique, i, col1, col2)
 		}
 	}
+	__antithesis_instrumentation__.Notify(694238)
 	b.WriteString("\n)")
 
 	return []workload.Table{{
@@ -148,25 +182,34 @@ func (w *indexes) Tables() []workload.Table {
 	}}
 }
 
-// Ops implements the Opser interface.
 func (w *indexes) Ops(
 	ctx context.Context, urls []string, reg *histogram.Registry,
 ) (workload.QueryLoad, error) {
+	__antithesis_instrumentation__.Notify(694244)
 	sqlDatabase, err := workload.SanitizeUrls(w, w.connFlags.DBOverride, urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694248)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(694249)
 	}
+	__antithesis_instrumentation__.Notify(694245)
 	cfg := workload.MultiConnPoolCfg{
 		MaxTotalConnections: w.connFlags.Concurrency + 1,
 	}
 	mcp, err := workload.NewMultiConnPool(ctx, cfg, urls...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694250)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(694251)
 	}
+	__antithesis_instrumentation__.Notify(694246)
 
 	ql := workload.QueryLoad{SQLDatabase: sqlDatabase}
 	const stmt = `UPSERT INTO indexes VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 	for i := 0; i < w.connFlags.Concurrency; i++ {
+		__antithesis_instrumentation__.Notify(694252)
 		op := &indexesOp{
 			config: w,
 			hists:  reg.GetHandle(),
@@ -175,10 +218,15 @@ func (w *indexes) Ops(
 		}
 		op.stmt = op.sr.Define(stmt)
 		if err := op.sr.Init(ctx, "indexes", mcp, w.connFlags); err != nil {
+			__antithesis_instrumentation__.Notify(694254)
 			return workload.QueryLoad{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(694255)
 		}
+		__antithesis_instrumentation__.Notify(694253)
 		ql.WorkerFns = append(ql.WorkerFns, op.run)
 	}
+	__antithesis_instrumentation__.Notify(694247)
 	return ql, nil
 }
 
@@ -192,21 +240,22 @@ type indexesOp struct {
 }
 
 func (o *indexesOp) run(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(694256)
 	keyLo := o.rand.Uint64() % o.config.cycleLength
 	_, _ = o.rand.Read(o.buf[:])
 	args := []interface{}{
-		uuid.FromUint128(uint128.FromInts(0, keyLo)).String(), // key
-		int64(keyLo + 0), // col0
-		int64(keyLo + 1), // col1
-		int64(keyLo + 2), // col2
-		int64(keyLo + 3), // col3
-		int64(keyLo + 4), // col4
-		int64(keyLo + 5), // col5
-		int64(keyLo + 6), // col6
-		int64(keyLo + 7), // col7
-		int64(keyLo + 8), // col8
-		int64(keyLo + 9), // col9
-		o.buf[:],         // payload
+		uuid.FromUint128(uint128.FromInts(0, keyLo)).String(),
+		int64(keyLo + 0),
+		int64(keyLo + 1),
+		int64(keyLo + 2),
+		int64(keyLo + 3),
+		int64(keyLo + 4),
+		int64(keyLo + 5),
+		int64(keyLo + 6),
+		int64(keyLo + 7),
+		int64(keyLo + 8),
+		int64(keyLo + 9),
+		o.buf[:],
 	}
 
 	start := timeutil.Now()

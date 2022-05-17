@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package schemaexpr
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,18 +13,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 )
 
-// ValidatePartialIndexPredicate verifies that an expression is a valid partial
-// index predicate. If the expression is valid, it returns the serialized
-// expression with the columns dequalified.
-//
-// A predicate expression is valid if all of the following are true:
-//
-//   - It results in a boolean.
-//   - It refers only to columns in the table.
-//   - It does not include subqueries.
-//   - It does not include non-immutable, aggregate, window, or set returning
-//     functions.
-//
 func ValidatePartialIndexPredicate(
 	ctx context.Context,
 	desc catalog.TableDescriptor,
@@ -40,6 +20,7 @@ func ValidatePartialIndexPredicate(
 	tn *tree.TableName,
 	semaCtx *tree.SemaContext,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(268251)
 	expr, _, _, err := DequalifyAndValidateExpr(
 		ctx,
 		desc,
@@ -51,20 +32,16 @@ func ValidatePartialIndexPredicate(
 		tn,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(268253)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(268254)
 	}
+	__antithesis_instrumentation__.Notify(268252)
 
 	return expr, nil
 }
 
-// MakePartialIndexExprs returns a map of predicate expressions for each
-// partial index in the input list of indexes, or nil if none of the indexes
-// are partial indexes. It also returns a set of all column IDs referenced in
-// the expressions.
-//
-// If the expressions are being built within the context of an index add
-// mutation in a transaction, the cols argument must include mutation columns
-// that are added previously in the same transaction.
 func MakePartialIndexExprs(
 	ctx context.Context,
 	indexes []catalog.Index,
@@ -73,16 +50,26 @@ func MakePartialIndexExprs(
 	evalCtx *tree.EvalContext,
 	semaCtx *tree.SemaContext,
 ) (_ map[descpb.IndexID]tree.TypedExpr, refColIDs catalog.TableColSet, _ error) {
-	// If none of the indexes are partial indexes, return early.
+	__antithesis_instrumentation__.Notify(268255)
+
 	partialIndexCount := 0
 	for i := range indexes {
+		__antithesis_instrumentation__.Notify(268259)
 		if indexes[i].IsPartial() {
+			__antithesis_instrumentation__.Notify(268260)
 			partialIndexCount++
+		} else {
+			__antithesis_instrumentation__.Notify(268261)
 		}
 	}
+	__antithesis_instrumentation__.Notify(268256)
 	if partialIndexCount == 0 {
+		__antithesis_instrumentation__.Notify(268262)
 		return nil, refColIDs, nil
+	} else {
+		__antithesis_instrumentation__.Notify(268263)
 	}
+	__antithesis_instrumentation__.Notify(268257)
 
 	exprs := make(map[descpb.IndexID]tree.TypedExpr, partialIndexCount)
 
@@ -92,37 +79,60 @@ func MakePartialIndexExprs(
 
 	var txCtx transform.ExprTransformContext
 	for _, idx := range indexes {
+		__antithesis_instrumentation__.Notify(268264)
 		if idx.IsPartial() {
+			__antithesis_instrumentation__.Notify(268265)
 			expr, err := parser.ParseExpr(idx.GetPredicate())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(268271)
 				return nil, refColIDs, err
+			} else {
+				__antithesis_instrumentation__.Notify(268272)
 			}
+			__antithesis_instrumentation__.Notify(268266)
 
-			// Collect all column IDs that are referenced in the partial index
-			// predicate expression.
 			colIDs, err := ExtractColumnIDs(tableDesc, expr)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(268273)
 				return nil, refColIDs, err
+			} else {
+				__antithesis_instrumentation__.Notify(268274)
 			}
+			__antithesis_instrumentation__.Notify(268267)
 			refColIDs.UnionWith(colIDs)
 
 			expr, err = nr.resolveNames(expr)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(268275)
 				return nil, refColIDs, err
+			} else {
+				__antithesis_instrumentation__.Notify(268276)
 			}
+			__antithesis_instrumentation__.Notify(268268)
 
 			typedExpr, err := tree.TypeCheck(ctx, expr, semaCtx, types.Bool)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(268277)
 				return nil, refColIDs, err
+			} else {
+				__antithesis_instrumentation__.Notify(268278)
 			}
+			__antithesis_instrumentation__.Notify(268269)
 
 			if typedExpr, err = txCtx.NormalizeExpr(evalCtx, typedExpr); err != nil {
+				__antithesis_instrumentation__.Notify(268279)
 				return nil, refColIDs, err
+			} else {
+				__antithesis_instrumentation__.Notify(268280)
 			}
+			__antithesis_instrumentation__.Notify(268270)
 
 			exprs[idx.GetID()] = typedExpr
+		} else {
+			__antithesis_instrumentation__.Notify(268281)
 		}
 	}
+	__antithesis_instrumentation__.Notify(268258)
 
 	return exprs, refColIDs, nil
 }

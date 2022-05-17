@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colexectestutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,38 +16,28 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 )
 
-// MockTypeContext is a mock typing context for the typechecker.
 type MockTypeContext struct {
 	Typs []*types.T
 }
 
 var _ tree.IndexedVarContainer = &MockTypeContext{}
 
-// IndexedVarEval implements the tree.IndexedVarContainer interface.
 func (p *MockTypeContext) IndexedVarEval(idx int, ctx *tree.EvalContext) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(431006)
 	return tree.DNull.Eval(ctx)
 }
 
-// IndexedVarResolvedType implements the tree.IndexedVarContainer interface.
 func (p *MockTypeContext) IndexedVarResolvedType(idx int) *types.T {
+	__antithesis_instrumentation__.Notify(431007)
 	return p.Typs[idx]
 }
 
-// IndexedVarNodeFormatter implements the tree.IndexedVarContainer interface.
 func (p *MockTypeContext) IndexedVarNodeFormatter(idx int) tree.NodeFormatter {
+	__antithesis_instrumentation__.Notify(431008)
 	n := tree.Name(fmt.Sprintf("$%d", idx))
 	return &n
 }
 
-// CreateTestProjectingOperator creates a projecting operator that performs
-// projectingExpr on input that has inputTypes as its output columns. It does
-// so by making a noop processor core with post-processing step that passes
-// through all input columns and renders an additional column using
-// projectingExpr to create the render; then, the processor core is used to
-// plan all necessary infrastructure using NewColOperator call.
-//
-// Note: colexecargs.TestNewColOperator must have been injected into the package
-// in which the tests are running.
 func CreateTestProjectingOperator(
 	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
@@ -64,21 +46,32 @@ func CreateTestProjectingOperator(
 	projectingExpr string,
 	testMemAcc *mon.BoundAccount,
 ) (colexecop.Operator, error) {
+	__antithesis_instrumentation__.Notify(431009)
 	expr, err := parser.ParseExpr(projectingExpr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(431014)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(431015)
 	}
+	__antithesis_instrumentation__.Notify(431010)
 	p := &MockTypeContext{Typs: inputTypes}
 	semaCtx := tree.MakeSemaContext()
 	semaCtx.IVarContainer = p
 	typedExpr, err := tree.TypeCheck(ctx, expr, &semaCtx, types.Any)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(431016)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(431017)
 	}
+	__antithesis_instrumentation__.Notify(431011)
 	renderExprs := make([]execinfrapb.Expression, len(inputTypes)+1)
 	for i := range inputTypes {
+		__antithesis_instrumentation__.Notify(431018)
 		renderExprs[i].Expr = fmt.Sprintf("@%d", i+1)
 	}
+	__antithesis_instrumentation__.Notify(431012)
 	renderExprs[len(inputTypes)].LocalExpr = typedExpr
 	spec := &execinfrapb.ProcessorSpec{
 		Input: []execinfrapb.InputSyncSpec{{ColumnTypes: inputTypes}},
@@ -97,7 +90,11 @@ func CreateTestProjectingOperator(
 	}
 	result, err := colexecargs.TestNewColOperator(ctx, flowCtx, args)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(431019)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(431020)
 	}
+	__antithesis_instrumentation__.Notify(431013)
 	return result.Root, nil
 }

@@ -1,16 +1,8 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package sctest contains tools to run end-to-end datadriven tests in both
 // ccl and non-ccl settings.
 package sctest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,14 +31,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// NewClusterFunc provides functionality to construct a new cluster
-// given testing knobs.
 type NewClusterFunc func(
 	t *testing.T, knobs *scrun.TestingKnobs,
 ) (_ *gosql.DB, cleanup func())
 
-// SingleNodeCluster is a NewClusterFunc.
 func SingleNodeCluster(t *testing.T, knobs *scrun.TestingKnobs) (*gosql.DB, func()) {
+	__antithesis_instrumentation__.Notify(595420)
 	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{
 		Knobs: base.TestingKnobs{
 			SQLDeclarativeSchemaChanger: knobs,
@@ -54,54 +44,54 @@ func SingleNodeCluster(t *testing.T, knobs *scrun.TestingKnobs) (*gosql.DB, func
 		},
 	})
 	return db, func() {
+		__antithesis_instrumentation__.Notify(595421)
 		s.Stopper().Stop(context.Background())
 	}
 }
 
-// EndToEndSideEffects is a data-driven test runner that executes DDL statements in the
-// declarative schema changer injected with test dependencies and compares the
-// accumulated side effects logs with expected results from the data-driven
-// test file.
-//
-// It shares a data-driven format with Rollback.
 func EndToEndSideEffects(t *testing.T, dir string, newCluster NewClusterFunc) {
+	__antithesis_instrumentation__.Notify(595422)
 	ctx := context.Background()
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
-		// Create a test cluster.
-		db, cleanup := newCluster(t, nil /* knobs */)
+		__antithesis_instrumentation__.Notify(595423)
+
+		db, cleanup := newCluster(t, nil)
 		tdb := sqlutils.MakeSQLRunner(db)
 		defer cleanup()
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
+			__antithesis_instrumentation__.Notify(595424)
 			stmts, err := parser.Parse(d.Input)
 			require.NoError(t, err)
 			require.NotEmpty(t, stmts)
 			execStmts := func() {
+				__antithesis_instrumentation__.Notify(595426)
 				for _, stmt := range stmts {
+					__antithesis_instrumentation__.Notify(595428)
 					tdb.Exec(t, stmt.SQL)
 				}
+				__antithesis_instrumentation__.Notify(595427)
 				waitForSchemaChangesToSucceed(t, tdb)
 			}
+			__antithesis_instrumentation__.Notify(595425)
 
 			switch d.Cmd {
 			case "setup":
+				__antithesis_instrumentation__.Notify(595429)
 				a := prettyNamespaceDump(t, tdb)
 				execStmts()
 				b := prettyNamespaceDump(t, tdb)
 				return sctestutils.Diff(a, b, sctestutils.DiffArgs{CompactLevel: 1})
 
 			case "test":
+				__antithesis_instrumentation__.Notify(595430)
 				require.Len(t, stmts, 1)
 				stmt := stmts[0]
-				// Keep test cluster in sync.
+
 				defer execStmts()
 
-				// Wait for any jobs due to previous schema changes to finish.
 				sctestdeps.WaitForNoRunningSchemaChanges(t, tdb)
 				var deps *sctestdeps.TestState
-				// Create test dependencies and execute the schema changer.
-				// The schema changer test dependencies do not hold any reference to the
-				// test cluster, here the SQLRunner is only used to populate the mocked
-				// catalog state.
+
 				deps = sctestdeps.NewTestDependencies(
 					sctestdeps.WithDescriptors(sctestdeps.ReadDescriptorsFromDB(ctx, t, tdb).Catalog),
 					sctestdeps.WithNamespace(sctestdeps.ReadNamespaceFromDB(t, tdb).Catalog),
@@ -109,66 +99,70 @@ func EndToEndSideEffects(t *testing.T, dir string, newCluster NewClusterFunc) {
 					sctestdeps.WithSessionData(sctestdeps.ReadSessionDataFromDB(t, tdb, func(
 						sd *sessiondata.SessionData,
 					) {
-						// For setting up a builder inside tests we will ensure that the new schema
-						// changer will allow non-fully implemented operations.
+						__antithesis_instrumentation__.Notify(595433)
+
 						sd.NewSchemaChangerMode = sessiondatapb.UseNewSchemaChangerUnsafe
 						sd.ApplicationName = ""
 					})),
 					sctestdeps.WithTestingKnobs(&scrun.TestingKnobs{
 						BeforeStage: func(p scplan.Plan, stageIdx int) error {
+							__antithesis_instrumentation__.Notify(595434)
 							deps.LogSideEffectf("## %s", p.Stages[stageIdx].String())
 							return nil
 						},
 					}),
 					sctestdeps.WithStatements(stmt.SQL))
+				__antithesis_instrumentation__.Notify(595431)
 				execStatementWithTestDeps(ctx, t, deps, stmt)
 				return replaceNonDeterministicOutput(deps.SideEffectLog())
 
 			default:
+				__antithesis_instrumentation__.Notify(595432)
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
 	})
 }
 
-// scheduleIDRegexp captures either `scheduleId: 384784` or `scheduleId: "374764"`.
 var scheduleIDRegexp = regexp.MustCompile(`scheduleId: "?[0-9]+"?`)
 
-// dropTimeRegexp captures either `dropTime: \"time\"`.
 var dropTimeRegexp = regexp.MustCompile("dropTime: \"[0-9]+")
 
 func replaceNonDeterministicOutput(text string) string {
-	// scheduleIDs change based on execution time, so redact the output.
+	__antithesis_instrumentation__.Notify(595435)
+
 	nextString := scheduleIDRegexp.ReplaceAllString(text, "scheduleId: <redacted>")
 	return dropTimeRegexp.ReplaceAllString(nextString, "dropTime: <redacted>")
 }
 
-// execStatementWithTestDeps executes the DDL statement using the declarative
-// schema changer with testing dependencies injected.
 func execStatementWithTestDeps(
 	ctx context.Context, t *testing.T, deps *sctestdeps.TestState, stmt parser.Statement,
 ) {
+	__antithesis_instrumentation__.Notify(595436)
 	state, err := scbuild.Build(ctx, deps, scpb.CurrentState{}, stmt.AST)
 	require.NoError(t, err, "error in builder")
 
 	var jobID jobspb.JobID
 	deps.WithTxn(func(s *sctestdeps.TestState) {
-		// Run statement phase.
+		__antithesis_instrumentation__.Notify(595438)
+
 		deps.IncrementPhase()
 		deps.LogSideEffectf("# begin %s", deps.Phase())
 		state, _, err = scrun.RunStatementPhase(ctx, s.TestingKnobs(), s, state)
 		require.NoError(t, err, "error in %s", s.Phase())
 		deps.LogSideEffectf("# end %s", deps.Phase())
-		// Run pre-commit phase.
+
 		deps.IncrementPhase()
 		deps.LogSideEffectf("# begin %s", deps.Phase())
 		state, jobID, err = scrun.RunPreCommitPhase(ctx, s.TestingKnobs(), s, state)
 		require.NoError(t, err, "error in %s", s.Phase())
 		deps.LogSideEffectf("# end %s", deps.Phase())
 	})
+	__antithesis_instrumentation__.Notify(595437)
 
 	if job := deps.JobRecord(jobID); job != nil {
-		// Run post-commit phase in mock schema change job.
+		__antithesis_instrumentation__.Notify(595439)
+
 		deps.IncrementPhase()
 		deps.LogSideEffectf("# begin %s", deps.Phase())
 		const rollback = false
@@ -177,12 +171,13 @@ func execStatementWithTestDeps(
 		)
 		require.NoError(t, err, "error in mock schema change job execution")
 		deps.LogSideEffectf("# end %s", deps.Phase())
+	} else {
+		__antithesis_instrumentation__.Notify(595440)
 	}
 }
 
-// prettyNamespaceDump prints the state of the namespace table, minus
-// descriptorless public schema and system database entries.
 func prettyNamespaceDump(t *testing.T, tdb *sqlutils.SQLRunner) string {
+	__antithesis_instrumentation__.Notify(595441)
 	rows := tdb.QueryStr(t, fmt.Sprintf(`
 		SELECT "parentID", "parentSchemaID", name, id
 		FROM system.namespace
@@ -194,34 +189,45 @@ func prettyNamespaceDump(t *testing.T, tdb *sqlutils.SQLRunner) string {
 	))
 	lines := make([]string, 0, len(rows))
 	for _, row := range rows {
+		__antithesis_instrumentation__.Notify(595443)
 		parentID, parentSchemaID, name, id := row[0], row[1], row[2], row[3]
 		nameType := "object"
 		if parentSchemaID == "0" {
+			__antithesis_instrumentation__.Notify(595445)
 			if parentID == "0" {
+				__antithesis_instrumentation__.Notify(595446)
 				nameType = "database"
 			} else {
+				__antithesis_instrumentation__.Notify(595447)
 				nameType = "schema"
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(595448)
 		}
+		__antithesis_instrumentation__.Notify(595444)
 		line := fmt.Sprintf("%s {%s %s %s} -> %s", nameType, parentID, parentSchemaID, name, id)
 		lines = append(lines, line)
 	}
+	__antithesis_instrumentation__.Notify(595442)
 	return strings.Join(lines, "\n")
 }
 
 func waitForSchemaChangesToSucceed(t *testing.T, tdb *sqlutils.SQLRunner) {
+	__antithesis_instrumentation__.Notify(595449)
 	tdb.CheckQueryResultsRetry(
 		t, schemaChangeWaitQuery(`('succeeded')`), [][]string{},
 	)
 }
 
 func waitForSchemaChangesToFinish(t *testing.T, tdb *sqlutils.SQLRunner) {
+	__antithesis_instrumentation__.Notify(595450)
 	tdb.CheckQueryResultsRetry(
 		t, schemaChangeWaitQuery(`('succeeded', 'failed')`), [][]string{},
 	)
 }
 
 func schemaChangeWaitQuery(statusInString string) string {
+	__antithesis_instrumentation__.Notify(595451)
 	q := fmt.Sprintf(
 		`SELECT status, job_type, description FROM [SHOW JOBS] WHERE job_type IN ('%s', '%s', '%s') AND status NOT IN %s`,
 		jobspb.TypeSchemaChange,

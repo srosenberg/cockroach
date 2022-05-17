@@ -1,17 +1,9 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // cockroach-sql is an entry point for a CockroachDB binary that only
 // includes the SQL shell and does not include any server components.
 // It also does not include CCL features.
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -30,6 +22,7 @@ import (
 
 var url = "postgresql://localhost:26257/defaultdb"
 var cfg = func() *clisqlcfg.Context {
+	__antithesis_instrumentation__.Notify(38144)
 	cliCtx := &clicfg.Context{}
 	c := &clisqlcfg.Context{
 		CliCtx:  cliCtx,
@@ -41,13 +34,10 @@ var cfg = func() *clisqlcfg.Context {
 }()
 
 func main() {
-	// TODO(knz): We should deprecate auto-connecting to 'defaultdb'
-	// and instead do something like psql, i.e. use the current
-	// unix username as default target database.
+	__antithesis_instrumentation__.Notify(38145)
+
 	cfg.Database = "defaultdb"
-	// TODO(knz): We should deprecate auto-connecting as 'root'
-	// and instead do something like psql, i.e. use the current
-	// unix username to log into the database.
+
 	cfg.User = "root"
 	cfg.ApplicationName = "$ cockroach sql"
 	cfg.ConnectTimeout = 15
@@ -61,21 +51,27 @@ func main() {
 	f.DurationVar(&cfg.ShellCtx.RepeatDelay, cliflags.Watch.Name, cfg.ShellCtx.RepeatDelay, cliflags.Watch.Description)
 	f.Var(&cfg.SafeUpdates, cliflags.SafeUpdates.Name, cliflags.SafeUpdates.Description)
 	f.BoolVar(&cfg.ReadOnly, cliflags.ReadOnly.Name, cfg.ReadOnly, cliflags.ReadOnly.Description)
-	f.Lookup(cliflags.SafeUpdates.Name).NoOptDefVal = "true" // allow the flag to not be given any value
+	f.Lookup(cliflags.SafeUpdates.Name).NoOptDefVal = "true"
 	f.BoolVar(&cfg.ConnCtx.DebugMode, cliflags.CliDebugMode.Name, cfg.ConnCtx.DebugMode, cliflags.CliDebugMode.Description)
 	f.BoolVar(&cfg.ConnCtx.Echo, cliflags.EchoSQL.Name, cfg.ConnCtx.Echo, cliflags.EchoSQL.Description)
 
 	errCode := exit.Success()
 	if err := sqlCmd.Execute(); err != nil {
-		clierror.OutputError(os.Stderr, err, true /*showSeverity*/, false /*verbose*/)
-		// Finally, extract the error code, as optionally specified
-		// by the sub-command.
+		__antithesis_instrumentation__.Notify(38147)
+		clierror.OutputError(os.Stderr, err, true, false)
+
 		errCode = exit.UnspecifiedError()
 		var cliErr *clierror.Error
 		if errors.As(err, &cliErr) {
+			__antithesis_instrumentation__.Notify(38148)
 			errCode = cliErr.GetExitCode()
+		} else {
+			__antithesis_instrumentation__.Notify(38149)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(38150)
 	}
+	__antithesis_instrumentation__.Notify(38146)
 	exit.WithCode(errCode)
 }
 
@@ -84,34 +80,44 @@ var sqlCmd = &cobra.Command{
 	Short: "start the SQL shell",
 	Args:  cobra.MaximumNArgs(1),
 	RunE:  runSQL,
-	// Disable automatic printing of usage information whenever an error
-	// occurs. Many errors are not the result of a bad command invocation,
-	// e.g. attempting to start a node on an in-use port, and printing the
-	// usage information in these cases obscures the cause of the error.
-	// Commands should manually print usage information when the error is,
-	// in fact, a result of a bad invocation, e.g. too many arguments.
+
 	SilenceUsage: true,
-	// Disable automatic printing of the error. We want to also print
-	// details and hints, which cobra does not do for us. Instead
-	// we do the printing in Main().
+
 	SilenceErrors: true,
 }
 
 func runSQL(_ *cobra.Command, args []string) (resErr error) {
-	if url == "" && len(args) > 0 {
+	__antithesis_instrumentation__.Notify(38151)
+	if url == "" && func() bool {
+		__antithesis_instrumentation__.Notify(38158)
+		return len(args) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(38159)
 		url = args[0]
+	} else {
+		__antithesis_instrumentation__.Notify(38160)
 	}
+	__antithesis_instrumentation__.Notify(38152)
 	if url == "" {
+		__antithesis_instrumentation__.Notify(38161)
 		return errors.New("no connection URL specified")
+	} else {
+		__antithesis_instrumentation__.Notify(38162)
 	}
+	__antithesis_instrumentation__.Notify(38153)
 
 	closeFn, err := cfg.Open(os.Stdin)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(38163)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(38164)
 	}
+	__antithesis_instrumentation__.Notify(38154)
 	defer closeFn()
 
 	if cfg.CliCtx.IsInteractive {
+		__antithesis_instrumentation__.Notify(38165)
 		const welcomeMessage = `#
 # Welcome to the CockroachDB SQL shell.
 # All statements must be terminated by a semicolon.
@@ -119,13 +125,24 @@ func runSQL(_ *cobra.Command, args []string) (resErr error) {
 #
 `
 		fmt.Print(welcomeMessage)
+	} else {
+		__antithesis_instrumentation__.Notify(38166)
 	}
+	__antithesis_instrumentation__.Notify(38155)
 
 	conn, err := cfg.MakeConn(url)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(38167)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(38168)
 	}
-	defer func() { resErr = errors.CombineErrors(resErr, conn.Close()) }()
+	__antithesis_instrumentation__.Notify(38156)
+	defer func() {
+		__antithesis_instrumentation__.Notify(38169)
+		resErr = errors.CombineErrors(resErr, conn.Close())
+	}()
+	__antithesis_instrumentation__.Notify(38157)
 
 	return cfg.Run(conn)
 }

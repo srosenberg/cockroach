@@ -1,15 +1,7 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package nocopy defines an Analyzer that detects invalid uses of util.NoCopy.
 package nocopy
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"go/ast"
@@ -19,10 +11,8 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// Doc documents this pass.
 const Doc = `check for invalid uses of util.NoCopy`
 
-// Analyzer defines this pass.
 var Analyzer = &analysis.Analyzer{
 	Name:     "nocopy",
 	Doc:      Doc,
@@ -32,51 +22,57 @@ var Analyzer = &analysis.Analyzer{
 
 const noCopyType = "github.com/cockroachdb/cockroach/pkg/util.NoCopy"
 
-// nocopy ensures that the util.NoCopy type is not misused. Specifically, it
-// ensures that the type is always embedded without a name as the first field in
-// a parent struct like:
-//
-//     type s struct {
-//         _ util.NoCopy
-//         ...
-//     }
-//
-// We lint against including the type in other positions in structs both for
-// uniformity and because it can have runtime performance effects. Specifically,
-// if util.NoCopy is included as the last field in a parent struct then it will
-// increase the size of the parent struct even though util.NoCopy is zero-sized.
-// This is explained in detail in https://github.com/golang/go/issues/9401 and
-// is demonstrated in https://play.golang.org/p/jwB2Az5owcm.
 func run(pass *analysis.Pass) (interface{}, error) {
+	__antithesis_instrumentation__.Notify(645062)
 	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	inspect.Preorder([]ast.Node{
 		(*ast.StructType)(nil),
 	}, func(n ast.Node) {
+		__antithesis_instrumentation__.Notify(645064)
 		str := n.(*ast.StructType)
 		if str.Fields == nil {
+			__antithesis_instrumentation__.Notify(645066)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(645067)
 		}
+		__antithesis_instrumentation__.Notify(645065)
 		for i, f := range str.Fields.List {
+			__antithesis_instrumentation__.Notify(645068)
 			tv, ok := pass.TypesInfo.Types[f.Type]
 			if !ok {
+				__antithesis_instrumentation__.Notify(645071)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(645072)
 			}
+			__antithesis_instrumentation__.Notify(645069)
 			if tv.Type.String() != noCopyType {
+				__antithesis_instrumentation__.Notify(645073)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(645074)
 			}
+			__antithesis_instrumentation__.Notify(645070)
 			switch {
 			case i != 0:
+				__antithesis_instrumentation__.Notify(645075)
 				pass.Reportf(f.Pos(), "Illegal use of util.NoCopy - must be first field in struct")
 			case len(f.Names) == 0:
+				__antithesis_instrumentation__.Notify(645076)
 				pass.Reportf(f.Pos(), "Illegal use of util.NoCopy - should not be embedded")
 			case len(f.Names) > 1:
+				__antithesis_instrumentation__.Notify(645077)
 				pass.Reportf(f.Pos(), "Illegal use of util.NoCopy - should be included only once")
 			case f.Names[0].Name != "_":
+				__antithesis_instrumentation__.Notify(645078)
 				pass.Reportf(f.Pos(), "Illegal use of util.NoCopy - should be unnamed")
 			default:
-				// Valid use.
+				__antithesis_instrumentation__.Notify(645079)
+
 			}
 		}
 	})
+	__antithesis_instrumentation__.Notify(645063)
 	return nil, nil
 }

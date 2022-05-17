@@ -10,6 +10,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@org_golang_google_grpc//codes",
         "@org_golang_google_grpc//status",
     ],

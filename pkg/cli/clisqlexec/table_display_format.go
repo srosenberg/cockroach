@@ -1,110 +1,108 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package clisqlexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/pflag"
 )
 
-// TableDisplayFormat identifies the format with which SQL tabular
-// results should be displayed.
 type TableDisplayFormat int
 
-// The following constants identify the supported table formats.
 const (
-	// TableDisplayTSV has the values separated by tabs. It is like CSV
-	// but using tabs instead of commas.
 	TableDisplayTSV TableDisplayFormat = iota
-	// TableDisplayCSV has the values separated by commas. Values that
-	// contain commas themselves are enclosed in double quotes.
+
 	TableDisplayCSV
-	// TableDisplayTable is a tabular output format, that ensures that
-	// all values in the same column are rendered with the same
-	// width. This format follows what 'psql' does by default. It also
-	// supports an additional customization option called 'border mode'.
+
 	TableDisplayTable
-	// TableDisplayRecords is a record-oriented format. It is somewhat
-	// compatible with 'psql' "expanded display" mode.
+
 	TableDisplayRecords
-	// TableDisplaySQL reports results using SQL statements that mimic
-	// the creation of a SQL table containing the result values.
+
 	TableDisplaySQL
-	// TableDisplayHTML reports the results using a HTML table.  HTML
-	// special characters inside the values are escaped.
+
 	TableDisplayHTML
-	// TableDisplayRawHTML is a variant of the HTML output format
-	// supported specifically to generate CockroachDB's documentation.
+
 	TableDisplayRawHTML
-	// TableDisplayRaw is a special format optimized to ensure that the
-	// values can be parsed accurately from the text output.
+
 	TableDisplayRaw
 
-	// TableDisplayLastFormat is a marker for the end of the list of
-	// formats, for use in tests.
-	TableDisplayLastFormat // this must remain at the end of the list.
+	TableDisplayLastFormat
 )
 
 var _ pflag.Value = (*TableDisplayFormat)(nil)
 
-// Type implements the pflag.Value interface.
-func (f *TableDisplayFormat) Type() string { return "string" }
+func (f *TableDisplayFormat) Type() string {
+	__antithesis_instrumentation__.Notify(29394)
+	return "string"
+}
 
-// String implements the pflag.Value interface.
 func (f *TableDisplayFormat) String() string {
+	__antithesis_instrumentation__.Notify(29395)
 	switch *f {
 	case TableDisplayTSV:
+		__antithesis_instrumentation__.Notify(29397)
 		return "tsv"
 	case TableDisplayCSV:
+		__antithesis_instrumentation__.Notify(29398)
 		return "csv"
 	case TableDisplayTable:
+		__antithesis_instrumentation__.Notify(29399)
 		return "table"
 	case TableDisplayRecords:
+		__antithesis_instrumentation__.Notify(29400)
 		return "records"
 	case TableDisplaySQL:
+		__antithesis_instrumentation__.Notify(29401)
 		return "sql"
 	case TableDisplayHTML:
+		__antithesis_instrumentation__.Notify(29402)
 		return "html"
 	case TableDisplayRawHTML:
+		__antithesis_instrumentation__.Notify(29403)
 		return "rawhtml"
 	case TableDisplayRaw:
+		__antithesis_instrumentation__.Notify(29404)
 		return "raw"
+	default:
+		__antithesis_instrumentation__.Notify(29405)
 	}
+	__antithesis_instrumentation__.Notify(29396)
 	return ""
 }
 
-// Set implements the pflag.Value interface.
 func (f *TableDisplayFormat) Set(s string) error {
+	__antithesis_instrumentation__.Notify(29406)
 	switch s {
 	case "tsv":
+		__antithesis_instrumentation__.Notify(29408)
 		*f = TableDisplayTSV
 	case "csv":
+		__antithesis_instrumentation__.Notify(29409)
 		*f = TableDisplayCSV
 	case "table":
+		__antithesis_instrumentation__.Notify(29410)
 		*f = TableDisplayTable
 	case "records":
+		__antithesis_instrumentation__.Notify(29411)
 		*f = TableDisplayRecords
 	case "sql":
+		__antithesis_instrumentation__.Notify(29412)
 		*f = TableDisplaySQL
 	case "html":
+		__antithesis_instrumentation__.Notify(29413)
 		*f = TableDisplayHTML
 	case "rawhtml":
+		__antithesis_instrumentation__.Notify(29414)
 		*f = TableDisplayRawHTML
 	case "raw":
+		__antithesis_instrumentation__.Notify(29415)
 		*f = TableDisplayRaw
 	default:
+		__antithesis_instrumentation__.Notify(29416)
 		return errors.Newf("invalid table display format: %s "+
-			// Note: rawhtml is omitted intentionally. It is
-			// only supported for the 'gen settings-table' command.
+
 			"(possible values: tsv, csv, table, records, sql, html, raw)", s)
 	}
+	__antithesis_instrumentation__.Notify(29407)
 	return nil
 }

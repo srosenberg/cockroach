@@ -72,6 +72,7 @@ go_library(
         "//pkg/util/timeutil",
         "//pkg/util/unique",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -118,6 +119,7 @@ go_test(
         "//pkg/util/mon",
         "//pkg/util/protoutil",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",

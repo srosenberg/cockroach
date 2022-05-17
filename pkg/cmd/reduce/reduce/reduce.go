@@ -1,18 +1,10 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package reduce implements a reducer core for reducing the size of test
 // failure cases.
 //
 // See: https://blog.regehr.org/archives/1678.
 package reduce
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,58 +17,36 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Pass defines a reduce pass.
 type Pass interface {
-	// New creates a new opaque state object for the input string.
 	New(string) State
-	// Transform applies this transformation pass to the input string using
-	// State to determine which occurrence to transform. It returns the
-	// transformed string, a Result indicating whether to proceed or not, and
-	// an error if the transformation could not be performed.
+
 	Transform(string, State) (string, Result, error)
-	// Advance moves State to the next occurrence of a transformation in
-	// the given input string and returns the new State.
+
 	Advance(string, State) State
-	// Name returns the name of the Pass.
+
 	Name() string
 }
 
-// Result is returned by a Transform func.
 type Result int
 
 const (
-	// OK indicates there are more transforms in the current Pass.
 	OK Result = iota
-	// STOP indicates there are no more transforms.
+
 	STOP
 )
 
-// State is opaque state for a Pass.
 type State interface{}
 
-// InterestingFn returns true if the string triggers the target test failure. It
-// should be context-aware and stop work if the context is canceled. It can
-// return a function which will be called if the original test case is not
-// interesting. The function should log a hint that will help the user
-// understand why the original test case is not interesting.
 type InterestingFn func(context.Context, string) (_ bool, logOriginalHint func())
 
-// Mode is an enum specifying how to determine if forward progress was made.
 type Mode int
 
 const (
-	// ModeSize instructs Reduce to use filesize as the progress indicator.
 	ModeSize Mode = iota
-	// ModeInteresting instructs Reduce to use the interestingness as the
-	// progress indicator. That is, if any pass generates an interesting
-	// result (even if the file size increases), that is considered
-	// progress.
+
 	ModeInteresting
 )
 
-// Reduce executes the test case reduction algorithm. logger, if not nil, will
-// log progress output. numGoroutines is the number of parallel workers, or 0
-// for GOMAXPROCS.
 func Reduce(
 	logger *log.Logger,
 	originalTestCase string,
@@ -86,62 +56,80 @@ func Reduce(
 	chunkReducer ChunkReducer,
 	passList ...Pass,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(41835)
 	if numGoroutines < 1 {
+		__antithesis_instrumentation__.Notify(41843)
 		numGoroutines = runtime.GOMAXPROCS(0)
+	} else {
+		__antithesis_instrumentation__.Notify(41844)
 	}
+	__antithesis_instrumentation__.Notify(41836)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if interesting, logHint := isInteresting(ctx, originalTestCase); !interesting {
+		__antithesis_instrumentation__.Notify(41845)
 		if logHint != nil {
+			__antithesis_instrumentation__.Notify(41847)
 			logHint()
+		} else {
+			__antithesis_instrumentation__.Notify(41848)
 		}
+		__antithesis_instrumentation__.Notify(41846)
 		return "", errors.New("original test case not interesting")
+	} else {
+		__antithesis_instrumentation__.Notify(41849)
 	}
+	__antithesis_instrumentation__.Notify(41837)
 
 	chunkReducedTestCase, err := attemptChunkReduction(logger, originalTestCase, isInteresting, chunkReducer)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41850)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(41851)
 	}
+	__antithesis_instrumentation__.Notify(41838)
 
-	// findNextInteresting finds the next interesting result. It does this
-	// by starting some worker goroutines and running the interestingness
-	// test on different variants of each of them. To preserve determinism,
-	// if an interesting variant is found, it is only reported if all tests
-	// before it were uninteresting. This is tracked by giving each worker
-	// a done chan from the previous worker.
-	// See https://blog.regehr.org/archives/1679.
 	findNextInteresting := func(vs varState) (*varState, error) {
+		__antithesis_instrumentation__.Notify(41852)
 		ctx := context.Background()
 		g := ctxgroup.WithContext(ctx)
 		variants := make(chan varState)
 		g.GoCtx(func(ctx context.Context) error {
-			// This goroutine generates all variants from passList and sends
-			// them on a chan for testing. It closes the variants chan when
-			// there are no more. Since numGoroutines are working at one time,
-			// this goroutine will block until one is available. If an
-			// interesting variant is found, ctx will close and this goroutine
-			// will shut down.
+			__antithesis_instrumentation__.Notify(41856)
+
 			defer close(variants)
 			current := vs.file
 			state := vs.s
 			var done, prev chan struct{}
-			// Pre-populate the first prev.
+
 			prev = make(chan struct{}, 1)
 			prev <- struct{}{}
 			for pi := vs.pi; pi < len(passList); pi++ {
+				__antithesis_instrumentation__.Notify(41858)
 				p := passList[pi]
 				if state == nil {
+					__antithesis_instrumentation__.Notify(41860)
 					state = p.New(current)
+				} else {
+					__antithesis_instrumentation__.Notify(41861)
 				}
+				__antithesis_instrumentation__.Notify(41859)
 				for {
+					__antithesis_instrumentation__.Notify(41862)
 					variant, result, err := p.Transform(current, state)
-					if err != nil || result != OK {
+					if err != nil || func() bool {
+						__antithesis_instrumentation__.Notify(41865)
+						return result != OK == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(41866)
 						state = nil
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(41867)
 					}
-					// Done must be buffered because it will only be received
-					// from if the following variant was interesting, and in
-					// other cases the send must not block.
+					__antithesis_instrumentation__.Notify(41863)
+
 					done = make(chan struct{}, 1)
 					select {
 					case variants <- varState{
@@ -151,199 +139,250 @@ func Reduce(
 						done: done,
 						prev: prev,
 					}:
+						__antithesis_instrumentation__.Notify(41868)
 						prev = done
 					case <-ctx.Done():
+						__antithesis_instrumentation__.Notify(41869)
 						return nil
 					}
+					__antithesis_instrumentation__.Notify(41864)
 					state = p.Advance(current, state)
 				}
 			}
+			__antithesis_instrumentation__.Notify(41857)
 			return nil
 		})
-		// Start the workers.
+		__antithesis_instrumentation__.Notify(41853)
+
 		for i := 0; i < numGoroutines; i++ {
+			__antithesis_instrumentation__.Notify(41870)
 			g.GoCtx(func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(41871)
 				for vs := range variants {
+					__antithesis_instrumentation__.Notify(41873)
 					if interesting, _ := isInteresting(ctx, vs.file); interesting {
-						// Wait for the previous test to finish.
+						__antithesis_instrumentation__.Notify(41875)
+
 						select {
 						case <-ctx.Done():
+							__antithesis_instrumentation__.Notify(41876)
 							return nil
 						case <-vs.prev:
-							// Since the send on vs.done is below this next return,
-							// vs.prev will only send if the previous (and thus all previous)
-							// interestingness tests failed, so we know if we got here
-							// we're the first interesting variant.
+							__antithesis_instrumentation__.Notify(41877)
 
-							// Return a non-nil error to shut down all the other go routines.
 							return errInteresting(vs)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(41878)
 					}
+					__antithesis_instrumentation__.Notify(41874)
 					vs.done <- struct{}{}
 				}
+				__antithesis_instrumentation__.Notify(41872)
 				return nil
 			})
 		}
-		// Wait for the errgroup to shut down. If an error is produced,
-		// it could be a normal error in which case return it. An error
-		// could also be the sentinel errInteresting type (i.e., a
-		// varState), which means an interesting variant was found and
-		// we should return that varState. If no error is returned it
-		// means there were no more interesting variants found starting
-		// from the passed varState.
+		__antithesis_instrumentation__.Notify(41854)
+
 		if err := g.Wait(); err != nil {
+			__antithesis_instrumentation__.Notify(41879)
 			var ierr errInteresting
 			if errors.As(err, &ierr) {
+				__antithesis_instrumentation__.Notify(41881)
 				vs := varState(ierr)
 				if logger != nil {
+					__antithesis_instrumentation__.Notify(41883)
 					logger.Printf("\tpass %d of %d (%s): %d bytes\n", vs.pi+1, len(passList),
 						passList[vs.pi].Name(), len(vs.file))
+				} else {
+					__antithesis_instrumentation__.Notify(41884)
 				}
+				__antithesis_instrumentation__.Notify(41882)
 				return &vs, nil
+			} else {
+				__antithesis_instrumentation__.Notify(41885)
 			}
+			__antithesis_instrumentation__.Notify(41880)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(41886)
 		}
+		__antithesis_instrumentation__.Notify(41855)
 		return nil, nil
 	}
+	__antithesis_instrumentation__.Notify(41839)
 
 	start := timeutil.Now()
 	vs := varState{
 		file: chunkReducedTestCase,
 	}
 	if logger != nil {
+		__antithesis_instrumentation__.Notify(41887)
 		logger.Printf("size: %d\n", len(vs.file))
+	} else {
+		__antithesis_instrumentation__.Notify(41888)
 	}
+	__antithesis_instrumentation__.Notify(41840)
 	for {
+		__antithesis_instrumentation__.Notify(41889)
 		sizeAtStart := len(vs.file)
 		foundInteresting := false
 		for {
+			__antithesis_instrumentation__.Notify(41893)
 			next, err := findNextInteresting(vs)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(41896)
 				if logger != nil {
+					__antithesis_instrumentation__.Notify(41898)
 					logger.Printf("unexpected error: %s", err)
+				} else {
+					__antithesis_instrumentation__.Notify(41899)
 				}
-				//nolint:returnerrcheck
+				__antithesis_instrumentation__.Notify(41897)
+
 				return "", nil
+			} else {
+				__antithesis_instrumentation__.Notify(41900)
 			}
+			__antithesis_instrumentation__.Notify(41894)
 			if next == nil {
+				__antithesis_instrumentation__.Notify(41901)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(41902)
 			}
+			__antithesis_instrumentation__.Notify(41895)
 			foundInteresting = true
 			vs = *next
 		}
+		__antithesis_instrumentation__.Notify(41890)
 		done := false
 		switch mode {
 		case ModeSize:
+			__antithesis_instrumentation__.Notify(41903)
 			if len(vs.file) >= sizeAtStart {
+				__antithesis_instrumentation__.Notify(41906)
 				done = true
+			} else {
+				__antithesis_instrumentation__.Notify(41907)
 			}
 		case ModeInteresting:
+			__antithesis_instrumentation__.Notify(41904)
 			done = !foundInteresting
 		default:
+			__antithesis_instrumentation__.Notify(41905)
 			panic("unknown mode")
 		}
+		__antithesis_instrumentation__.Notify(41891)
 		if done {
+			__antithesis_instrumentation__.Notify(41908)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(41909)
 		}
-		// Need to do another round. Clear pi and state.
+		__antithesis_instrumentation__.Notify(41892)
+
 		vs = varState{
 			file: vs.file,
 		}
 	}
+	__antithesis_instrumentation__.Notify(41841)
 	if logger != nil {
+		__antithesis_instrumentation__.Notify(41910)
 		logger.Printf("total time: %v\n", timeutil.Since(start))
 		logger.Printf("original size: %v\n", len(originalTestCase))
 		if chunkReducer != nil {
+			__antithesis_instrumentation__.Notify(41912)
 			logger.Printf("chunk-reduced size: %v\n", len(chunkReducedTestCase))
+		} else {
+			__antithesis_instrumentation__.Notify(41913)
 		}
+		__antithesis_instrumentation__.Notify(41911)
 		logger.Printf("final size: %v\n", len(vs.file))
 		logger.Printf("reduction: %v%%\n", 100-int(100*float64(len(vs.file))/float64(len(originalTestCase))))
+	} else {
+		__antithesis_instrumentation__.Notify(41914)
 	}
+	__antithesis_instrumentation__.Notify(41842)
 	return vs.file, nil
 }
 
-// errInteresting is an error version of varState that is a special sentinel
-// error. It is used to shutdown the other goroutines in the errgroup while
-// also transmitting the new varState to resume from.
 type errInteresting varState
 
 func (e errInteresting) Error() string {
+	__antithesis_instrumentation__.Notify(41915)
 	return "interesting"
 }
 
-// varState tracks the current variant state, which is a tuple of the current
-// pass, file, and state.
 type varState struct {
 	pi   int
 	file string
 	s    State
 
-	// done and prev are used to synchronize work between variant
-	// testing. A variant sends on done when it has verified its test is
-	// uninteresting. If its test was interesting, it receives on prev,
-	// which thus guarantees that it was the first interesting variant.
 	done, prev chan struct{}
 }
 
-// A ChunkReducer can eliminate large chunks of a test case before performing
-// the more granular and expensive reduction algorithm. It breaks a test case
-// into segments. Segments can be grouped into chunks than can be removed
-// entirely from the test case if they aren't required to produce an interesting
-// result.
 type ChunkReducer interface {
-	// HaltAfter returns the number of consecutive failed reduction attempts
-	// allowed before chunk reduction is halted.
 	HaltAfter() int
-	// Init the ChunkReducer with the given string.
+
 	Init(string) error
-	// NumSegments returns the total number of segments that are eligible to be
-	// reduced en masse.
+
 	NumSegments() int
-	// DeleteSegments returns a string with segments [start, end) removed from
-	// the original string.
+
 	DeleteSegments(start, end int) string
 }
 
-// attemptChunkReduction attempts to reduce chunks of originalTestCase en masse
-// using the provided ChunkReducer. It randomly deletes a range of segments and
-// tests if the remaining segments satisfy isInteresting. It will continually
-// reduce segments until it fails to reduce chunkReducer.HaltAfter() times in a
-// row.
 func attemptChunkReduction(
 	logger *log.Logger,
 	originalTestCase string,
 	isInteresting InterestingFn,
 	chunkReducer ChunkReducer,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(41916)
 	if chunkReducer == nil {
+		__antithesis_instrumentation__.Notify(41919)
 		return originalTestCase, nil
+	} else {
+		__antithesis_instrumentation__.Notify(41920)
 	}
+	__antithesis_instrumentation__.Notify(41917)
 
 	ctx := context.Background()
 	reduced := originalTestCase
 
 	failedAttempts := 0
 	for failedAttempts < chunkReducer.HaltAfter() {
+		__antithesis_instrumentation__.Notify(41921)
 		err := chunkReducer.Init(reduced)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(41923)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(41924)
 		}
+		__antithesis_instrumentation__.Notify(41922)
 
-		// Pick two random indexes and remove all statements between them.
 		start := rand.Intn(chunkReducer.NumSegments())
 		end := rand.Intn(chunkReducer.NumSegments()-start) + start + 1
 
 		localReduced := chunkReducer.DeleteSegments(start, end)
 		if interesting, _ := isInteresting(ctx, localReduced); interesting {
+			__antithesis_instrumentation__.Notify(41925)
 			reduced = localReduced
 			if logger != nil {
+				__antithesis_instrumentation__.Notify(41927)
 				logger.Printf("\tchunk reduction: %d bytes\n", len(reduced))
+			} else {
+				__antithesis_instrumentation__.Notify(41928)
 			}
+			__antithesis_instrumentation__.Notify(41926)
 			failedAttempts = 0
 		} else {
+			__antithesis_instrumentation__.Notify(41929)
 			failedAttempts++
 		}
 	}
+	__antithesis_instrumentation__.Notify(41918)
 
 	return reduced, nil
 }

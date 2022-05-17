@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package builtins
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -18,17 +10,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 )
 
-// AllBuiltinNames is an array containing all the built-in function
-// names, sorted in alphabetical order. This can be used for a
-// deterministic walk through the Builtins map.
 var AllBuiltinNames []string
 
-// AllAggregateBuiltinNames is an array containing the subset of
-// AllBuiltinNames that corresponds to aggregate functions.
 var AllAggregateBuiltinNames []string
 
-// AllWindowBuiltinNames is an array containing the subset of
-// AllBuiltinNames that corresponds to window functions.
 var AllWindowBuiltinNames []string
 
 func init() {
@@ -47,7 +32,7 @@ func init() {
 		fDef := tree.NewFunctionDefinition(name, &def.props, def.overloads)
 		tree.FunDefs[name] = fDef
 		if !fDef.ShouldDocument() {
-			// Avoid listing help for undocumented functions.
+
 			continue
 		}
 		AllBuiltinNames = append(AllBuiltinNames, name)
@@ -84,7 +69,6 @@ func init() {
 		}
 	}
 
-	// Generate missing categories.
 	for _, name := range AllBuiltinNames {
 		def := builtins[name]
 		if def.props.Category == "" {
@@ -99,31 +83,46 @@ func init() {
 }
 
 func getCategory(b []tree.Overload) string {
-	// If single argument attempt to categorize by the type of the argument.
+	__antithesis_instrumentation__.Notify(596937)
+
 	for _, ovl := range b {
+		__antithesis_instrumentation__.Notify(596939)
 		switch typ := ovl.Types.(type) {
 		case tree.ArgTypes:
+			__antithesis_instrumentation__.Notify(596941)
 			if len(typ) == 1 {
+				__antithesis_instrumentation__.Notify(596942)
 				return categorizeType(typ[0].Typ)
+			} else {
+				__antithesis_instrumentation__.Notify(596943)
 			}
 		}
-		// Fall back to categorizing by return type.
+		__antithesis_instrumentation__.Notify(596940)
+
 		if retType := ovl.FixedReturnType(); retType != nil {
+			__antithesis_instrumentation__.Notify(596944)
 			return categorizeType(retType)
+		} else {
+			__antithesis_instrumentation__.Notify(596945)
 		}
 	}
+	__antithesis_instrumentation__.Notify(596938)
 	return ""
 }
 
 func collectOverloads(
 	props tree.FunctionProperties, types []*types.T, gens ...func(*types.T) tree.Overload,
 ) builtinDefinition {
+	__antithesis_instrumentation__.Notify(596946)
 	r := make([]tree.Overload, 0, len(types)*len(gens))
 	for _, f := range gens {
+		__antithesis_instrumentation__.Notify(596948)
 		for _, t := range types {
+			__antithesis_instrumentation__.Notify(596949)
 			r = append(r, f(t))
 		}
 	}
+	__antithesis_instrumentation__.Notify(596947)
 	return builtinDefinition{
 		props:     props,
 		overloads: r,

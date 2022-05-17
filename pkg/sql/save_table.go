@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,49 +10,46 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// saveTableNode is used for internal testing. It is a node that passes through
-// input data but saves it in a table. The table can be used subsequently, e.g.
-// to look at statistics.
-//
-// The node creates the table on startup. If the table exists, it errors out.
 type saveTableNode struct {
 	source planNode
 
 	target tree.TableName
 
-	// Column names from the saved table. These could be different than the names
-	// of the columns in the source plan. Note that saveTableNode passes through
-	// the source plan's column names.
 	colNames []string
 
 	run struct {
-		// vals accumulates a ValuesClause with the rows.
 		vals tree.ValuesClause
 	}
 }
 
-// saveTableInsertBatch is the number of rows per issued INSERT statement.
 const saveTableInsertBatch = 100
 
 func (p *planner) makeSaveTable(
 	source planNode, target *tree.TableName, colNames []string,
 ) planNode {
+	__antithesis_instrumentation__.Notify(576343)
 	return &saveTableNode{source: source, target: *target, colNames: colNames}
 }
 
 func (n *saveTableNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(576344)
 	create := &tree.CreateTable{
 		Table: n.target,
 	}
 
 	cols := planColumns(n.source)
 	if len(n.colNames) != len(cols) {
+		__antithesis_instrumentation__.Notify(576347)
 		return errors.AssertionFailedf(
 			"number of column names (%d) does not match number of columns (%d)",
 			len(n.colNames), len(cols),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(576348)
 	}
+	__antithesis_instrumentation__.Notify(576345)
 	for i := 0; i < len(cols); i++ {
+		__antithesis_instrumentation__.Notify(576349)
 		def := &tree.ColumnTableDef{
 			Name: tree.Name(n.colNames[i]),
 			Type: cols[i].Typ,
@@ -68,64 +57,90 @@ func (n *saveTableNode) startExec(params runParams) error {
 		def.Nullable.Nullability = tree.SilentNull
 		create.Defs = append(create.Defs, def)
 	}
+	__antithesis_instrumentation__.Notify(576346)
 
 	_, err := params.p.ExtendedEvalContext().ExecCfg.InternalExecutor.Exec(
 		params.ctx,
 		"create save table",
-		nil, /* txn */
+		nil,
 		create.String(),
 	)
 	return err
 }
 
-// issue inserts rows into the target table of the saveTableNode.
 func (n *saveTableNode) issue(params runParams) error {
+	__antithesis_instrumentation__.Notify(576350)
 	if v := &n.run.vals; len(v.Rows) > 0 {
+		__antithesis_instrumentation__.Notify(576352)
 		stmt := fmt.Sprintf("INSERT INTO %s %s", n.target.String(), v.String())
 		if _, err := params.p.ExtendedEvalContext().ExecCfg.InternalExecutor.Exec(
 			params.ctx,
 			"insert into save table",
-			nil, /* txn */
+			nil,
 			stmt,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(576354)
 			return errors.Wrapf(err, "while running %s", stmt)
+		} else {
+			__antithesis_instrumentation__.Notify(576355)
 		}
+		__antithesis_instrumentation__.Notify(576353)
 		v.Rows = nil
+	} else {
+		__antithesis_instrumentation__.Notify(576356)
 	}
+	__antithesis_instrumentation__.Notify(576351)
 	return nil
 }
 
-// Next is part of the planNode interface.
 func (n *saveTableNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(576357)
 	res, err := n.source.Next(params)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(576362)
 		return res, err
+	} else {
+		__antithesis_instrumentation__.Notify(576363)
 	}
+	__antithesis_instrumentation__.Notify(576358)
 	if !res {
-		// We are done. Insert any accumulated rows.
+		__antithesis_instrumentation__.Notify(576364)
+
 		err := n.issue(params)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(576365)
 	}
+	__antithesis_instrumentation__.Notify(576359)
 	row := n.source.Values()
 	exprs := make(tree.Exprs, len(row))
 	for i := range row {
+		__antithesis_instrumentation__.Notify(576366)
 		exprs[i] = row[i]
 	}
+	__antithesis_instrumentation__.Notify(576360)
 	n.run.vals.Rows = append(n.run.vals.Rows, exprs)
 	if len(n.run.vals.Rows) >= saveTableInsertBatch {
+		__antithesis_instrumentation__.Notify(576367)
 		if err := n.issue(params); err != nil {
+			__antithesis_instrumentation__.Notify(576368)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(576369)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(576370)
 	}
+	__antithesis_instrumentation__.Notify(576361)
 	return true, nil
 }
 
-// Values is part of the planNode interface.
 func (n *saveTableNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(576371)
 	return n.source.Values()
 }
 
-// Close is part of the planNode interface.
 func (n *saveTableNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(576372)
 	n.source.Close(ctx)
 }

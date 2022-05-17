@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package entitynodetest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"reflect"
@@ -31,6 +23,7 @@ type node struct {
 }
 
 func (n *node) EncodeToYAML(t *testing.T, r *reltest.Registry) interface{} {
+	__antithesis_instrumentation__.Notify(578567)
 	yn := yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
 	for _, f := range []struct {
 		name  string
@@ -41,25 +34,29 @@ func (n *node) EncodeToYAML(t *testing.T, r *reltest.Registry) interface{} {
 		{"left", n.Left, n.Left != nil},
 		{"right", n.Right, n.Right != nil},
 	} {
+		__antithesis_instrumentation__.Notify(578569)
 		if !f.ok {
+			__antithesis_instrumentation__.Notify(578571)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(578572)
 		}
+		__antithesis_instrumentation__.Notify(578570)
 		yn.Content = append(yn.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: f.name},
 			&yaml.Node{Kind: yaml.ScalarNode, Value: r.MustGetName(t, f.field)},
 		)
 	}
+	__antithesis_instrumentation__.Notify(578568)
 	return &yn
 }
 
 var _ reltest.RegistryYAMLEncoder = (*node)(nil)
 
-// testAttr is a rel.Attr used for testing.
 type testAttr int8
 
 var _ rel.Attr = testAttr(0)
 
-//go:generate stringer --type testAttr  --tags test
 const (
 	i8 testAttr = iota
 	pi8

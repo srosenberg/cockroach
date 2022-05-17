@@ -21,6 +21,7 @@ go_library(
         "//pkg/sql/catalog/descpb",
         "//pkg/sql/catalog/internal/validate",
         "//pkg/util/iterutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_google_btree//:btree",
     ],
@@ -40,6 +41,7 @@ go_test(
         "//pkg/sql/catalog/descpb",
         "//pkg/testutils",
         "//pkg/util/iterutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package loqrecovery
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,65 +18,37 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// PrepareStoreReport contains information about all prepared changes for the
-// stores. Its purpose is to inform user about actions to be performed.
 type PrepareStoreReport struct {
-	// MissingStores contains a set of stores that node on which this update is
-	// performed is expected to have according to update plan, but are not
-	// provided in config.
-	// While having a missing store is suspicious, it is not necessary a failure
-	// and user would be asked to confirm if it is a desired situation.
 	MissingStores []roachpb.StoreID
-	// Replicas contain update info about all replicas that are planned for update.
+
 	UpdatedReplicas []PrepareReplicaReport
-	// Replicas identified as ones that doesn't need updating (currently because
-	// update was already done).
+
 	SkippedReplicas []PrepareReplicaReport
 }
 
-// PrepareReplicaReport contains information about prepared change for a replica.
-// Its purpose is to inform user about actions to be performed. And create a record
-// that would be applied to structured log, rangelog and other downstream systems
-// for audit purposes.
 type PrepareReplicaReport struct {
-	// Replica identification data.
 	Replica    roachpb.ReplicaDescriptor
 	Descriptor roachpb.RangeDescriptor
 	OldReplica roachpb.ReplicaDescriptor
 
-	// AlreadyUpdated is true if state of replica in store already matches desired
-	// target state. This would happen if the plan is applied more than once which
-	// is safe because it is idempotent, but we want to notify user of the
-	// situation.
 	AlreadyUpdated bool
 
-	// RemovedReplicas is a set of replicas that were removed from range descriptor.
 	RemovedReplicas roachpb.ReplicaSet
 
-	// Fields indicating if descriptor change intent was found and removed as a
-	// part or recovery preparation.
 	AbortedTransaction   bool
 	AbortedTransactionID uuid.UUID
 }
 
-// RangeID of underlying range.
 func (r PrepareReplicaReport) RangeID() roachpb.RangeID {
+	__antithesis_instrumentation__.Notify(108733)
 	return r.Descriptor.RangeID
 }
 
-// StartKey of underlying range.
 func (r PrepareReplicaReport) StartKey() roachpb.RKey {
+	__antithesis_instrumentation__.Notify(108734)
 	return r.Descriptor.StartKey
 }
 
-// PrepareUpdateReplicas prepares all changes to be committed to provided stores
-// as a first step of apply stage. This function would write changes to stores
-// using provided batches and return a summary of changes that were done together
-// with any discrepancies found. The caller could then confirm actions and either
-// commit or discard the changes.
-// Changes also include update records in the store local keys that are consumed
-// on the first start of node. See keys.StoreUnsafeReplicaRecoveryKey for
-// details.
 func PrepareUpdateReplicas(
 	ctx context.Context,
 	plan loqrecoverypb.ReplicaUpdatePlan,
@@ -93,184 +57,176 @@ func PrepareUpdateReplicas(
 	nodeID roachpb.NodeID,
 	batches map[roachpb.StoreID]storage.Batch,
 ) (PrepareStoreReport, error) {
+	__antithesis_instrumentation__.Notify(108735)
 	var report PrepareStoreReport
 
-	// Map contains a set of store names that were found in plan for this node,
-	// but were not configured in this command invocation.
 	missing := make(map[roachpb.StoreID]struct{})
 	for _, update := range plan.Updates {
+		__antithesis_instrumentation__.Notify(108738)
 		if nodeID != update.NodeID() {
+			__antithesis_instrumentation__.Notify(108740)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(108741)
 		}
+		__antithesis_instrumentation__.Notify(108739)
 		if readWriter, ok := batches[update.StoreID()]; !ok {
+			__antithesis_instrumentation__.Notify(108742)
 			missing[update.StoreID()] = struct{}{}
 			continue
 		} else {
+			__antithesis_instrumentation__.Notify(108743)
 			replicaReport, err := applyReplicaUpdate(ctx, readWriter, update)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(108745)
 				return PrepareStoreReport{}, errors.Wrapf(
 					err,
 					"failed to prepare update replica for range r%v on store s%d", update.RangeID,
 					update.StoreID())
+			} else {
+				__antithesis_instrumentation__.Notify(108746)
 			}
+			__antithesis_instrumentation__.Notify(108744)
 			if !replicaReport.AlreadyUpdated {
+				__antithesis_instrumentation__.Notify(108747)
 				report.UpdatedReplicas = append(report.UpdatedReplicas, replicaReport)
 				uuid, err := uuidGen.NewV1()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(108749)
 					return PrepareStoreReport{}, errors.Wrap(err,
 						"failed to generate uuid to write replica recovery evidence record")
+				} else {
+					__antithesis_instrumentation__.Notify(108750)
 				}
+				__antithesis_instrumentation__.Notify(108748)
 				if err := writeReplicaRecoveryStoreRecord(
 					uuid, updateTime.UnixNano(), update, replicaReport, readWriter); err != nil {
+					__antithesis_instrumentation__.Notify(108751)
 					return PrepareStoreReport{}, errors.Wrap(err,
 						"failed writing replica recovery evidence record")
+				} else {
+					__antithesis_instrumentation__.Notify(108752)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(108753)
 				report.SkippedReplicas = append(report.SkippedReplicas, replicaReport)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(108736)
 
 	if len(missing) > 0 {
+		__antithesis_instrumentation__.Notify(108754)
 		report.MissingStores = storeSliceFromSet(missing)
+	} else {
+		__antithesis_instrumentation__.Notify(108755)
 	}
+	__antithesis_instrumentation__.Notify(108737)
 	return report, nil
 }
 
 func applyReplicaUpdate(
 	ctx context.Context, readWriter storage.ReadWriter, update loqrecoverypb.ReplicaUpdate,
 ) (PrepareReplicaReport, error) {
+	__antithesis_instrumentation__.Notify(108756)
 	clock := hlc.NewClock(hlc.UnixNano, 0)
 	report := PrepareReplicaReport{
 		Replica: update.NewReplica,
 	}
 
-	// Write the rewritten descriptor to the range-local descriptor
-	// key. We do not update the meta copies of the descriptor.
-	// Instead, we leave them in a temporarily inconsistent state and
-	// they will be overwritten when the cluster recovers and
-	// up-replicates this range from its single copy to multiple
-	// copies. We rely on the fact that all range descriptor updates
-	// start with a CPut on the range-local copy followed by a blind
-	// Put to the meta copy.
-	//
-	// For example, if we have replicas on s1-s4 but s3 and s4 are
-	// dead, we will rewrite the replica on s2 to have s2 as its only
-	// member only. When the cluster is restarted (and the dead nodes
-	// remain dead), the rewritten replica will be the only one able
-	// to make progress. It will elect itself leader and upreplicate.
-	//
-	// The old replica on s1 is untouched by this process. It will
-	// eventually either be overwritten by a new replica when s2
-	// upreplicates, or it will be destroyed by the replica GC queue
-	// after upreplication has happened and s1 is no longer a member.
-	// (Note that in the latter case, consistency between s1 and s2 no
-	// longer matters; the consistency checker will only run on nodes
-	// that the new leader believes are members of the range).
-	//
-	// Note that this tool does not guarantee fully consistent
-	// results; the most recent writes to the raft log may have been
-	// lost. In the most unfortunate cases, this means that we would
-	// be "winding back" a split or a merge, which is almost certainly
-	// to result in irrecoverable corruption (for example, not only
-	// will individual values stored in the meta ranges diverge, but
-	// there will be keys not represented by any ranges or vice
-	// versa).
 	key := keys.RangeDescriptorKey(update.StartKey.AsRKey())
 	value, intent, err := storage.MVCCGet(
 		ctx, readWriter, key, clock.Now(), storage.MVCCGetOptions{Inconsistent: true})
 	if value == nil {
+		__antithesis_instrumentation__.Notify(108767)
 		return PrepareReplicaReport{}, errors.Errorf(
 			"failed to find a range descriptor for range %v", key)
+	} else {
+		__antithesis_instrumentation__.Notify(108768)
 	}
+	__antithesis_instrumentation__.Notify(108757)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(108769)
 		return PrepareReplicaReport{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(108770)
 	}
+	__antithesis_instrumentation__.Notify(108758)
 	var localDesc roachpb.RangeDescriptor
 	if err := value.GetProto(&localDesc); err != nil {
+		__antithesis_instrumentation__.Notify(108771)
 		return PrepareReplicaReport{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(108772)
 	}
-	// Sanity check that this is indeed the right range.
+	__antithesis_instrumentation__.Notify(108759)
+
 	if localDesc.RangeID != update.RangeID {
+		__antithesis_instrumentation__.Notify(108773)
 		return PrepareReplicaReport{}, errors.Errorf(
 			"unexpected range ID at key: expected r%d but found r%d", update.RangeID, localDesc.RangeID)
+	} else {
+		__antithesis_instrumentation__.Notify(108774)
 	}
-	// Check if replica is in a fixed state already if we already applied the change.
-	if len(localDesc.InternalReplicas) == 1 &&
-		localDesc.InternalReplicas[0].ReplicaID == update.NewReplica.ReplicaID &&
-		localDesc.NextReplicaID == update.NextReplicaID {
+	__antithesis_instrumentation__.Notify(108760)
+
+	if len(localDesc.InternalReplicas) == 1 && func() bool {
+		__antithesis_instrumentation__.Notify(108775)
+		return localDesc.InternalReplicas[0].ReplicaID == update.NewReplica.ReplicaID == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(108776)
+		return localDesc.NextReplicaID == update.NextReplicaID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(108777)
 		report.AlreadyUpdated = true
 		return report, nil
+	} else {
+		__antithesis_instrumentation__.Notify(108778)
 	}
+	__antithesis_instrumentation__.Notify(108761)
 
 	sl := stateloader.Make(localDesc.RangeID)
 	ms, err := sl.LoadMVCCStats(ctx, readWriter)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(108779)
 		return PrepareReplicaReport{}, errors.Wrap(err, "loading MVCCStats")
+	} else {
+		__antithesis_instrumentation__.Notify(108780)
 	}
+	__antithesis_instrumentation__.Notify(108762)
 
-	// We need to abort the transaction and clean intent here because otherwise
-	// we won't be able to do MVCCPut later during recovery for the new
-	// descriptor. It should have no effect on the recovery process itself as
-	// transaction would be rolled back anyways.
 	if intent != nil {
-		// We rely on the property that transactions involving the range
-		// descriptor always start on the range-local descriptor's key. When there
-		// is an intent, this means that it is likely that the transaction did not
-		// commit, so we abort the intent.
-		//
-		// However, this is not guaranteed. For one, applying a command is not
-		// synced to disk, so in theory whichever store becomes the designated
-		// survivor may temporarily have "forgotten" that the transaction
-		// committed in its applied state (it would still have the committed log
-		// entry, as this is durable state, so it would come back once the node
-		// was running, but we don't see that materialized state in
-		// unsafe-remove-dead-replicas). This is unlikely to be a problem in
-		// practice, since we assume that the store was shut down gracefully and
-		// besides, the write likely had plenty of time to make it to durable
-		// storage. More troubling is the fact that the designated survivor may
-		// simply not yet have learned that the transaction committed; it may not
-		// have been in the quorum and could've been slow to catch up on the log.
-		// It may not even have the intent; in theory the remaining replica could
-		// have missed any number of transactions on the range descriptor (even if
-		// they are in the log, they may not yet be applied, and the replica may
-		// not yet have learned that they are committed). This is particularly
-		// troubling when we miss a split, as the right-hand side of the split
-		// will exist in the meta ranges and could even be able to make progress.
-		// For yet another thing to worry about, note that the determinism (across
-		// different nodes) assumed in this tool can easily break down in similar
-		// ways (not all stores are going to have the same view of what the
-		// descriptors are), and so multiple replicas of a range may declare
-		// themselves the designated survivor. Long story short, use of this tool
-		// with or without the presence of an intent can - in theory - really
-		// tear the cluster apart.
-		//
-		// A solution to this would require a global view, where in a first step
-		// we collect from each store in the cluster the replicas present and
-		// compute from that a "recovery plan", i.e. set of replicas that will
-		// form the recovered keyspace. We may then find that no such recovery
-		// plan is trivially achievable, due to any of the above problems. But
-		// in the common case, we do expect one to exist.
+		__antithesis_instrumentation__.Notify(108781)
+
 		report.AbortedTransaction = true
 		report.AbortedTransactionID = intent.Txn.ID
 
-		// A crude form of the intent resolution process: abort the
-		// transaction by deleting its record.
 		txnKey := keys.TransactionKey(intent.Txn.Key, intent.Txn.ID)
 		if err := storage.MVCCDelete(ctx, readWriter, &ms, txnKey, hlc.Timestamp{}, nil); err != nil {
+			__antithesis_instrumentation__.Notify(108784)
 			return PrepareReplicaReport{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(108785)
 		}
+		__antithesis_instrumentation__.Notify(108782)
 		update := roachpb.LockUpdate{
 			Span:   roachpb.Span{Key: intent.Key},
 			Txn:    intent.Txn,
 			Status: roachpb.ABORTED,
 		}
 		if _, err := storage.MVCCResolveWriteIntent(ctx, readWriter, &ms, update); err != nil {
+			__antithesis_instrumentation__.Notify(108786)
 			return PrepareReplicaReport{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(108787)
 		}
+		__antithesis_instrumentation__.Notify(108783)
 		report.AbortedTransaction = true
 		report.AbortedTransactionID = intent.Txn.ID
+	} else {
+		__antithesis_instrumentation__.Notify(108788)
 	}
+	__antithesis_instrumentation__.Notify(108763)
 	newDesc := localDesc
 	replicas := []roachpb.ReplicaDescriptor{
 		{
@@ -285,59 +241,74 @@ func applyReplicaUpdate(
 
 	if err := storage.MVCCPutProto(
 		ctx, readWriter, &ms, key, clock.Now(),
-		nil /* txn */, &newDesc); err != nil {
+		nil, &newDesc); err != nil {
+		__antithesis_instrumentation__.Notify(108789)
 		return PrepareReplicaReport{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(108790)
 	}
+	__antithesis_instrumentation__.Notify(108764)
 	report.Descriptor = newDesc
 	report.RemovedReplicas = localDesc.Replicas()
 	report.OldReplica, _ = report.RemovedReplicas.RemoveReplica(
 		update.NewReplica.NodeID, update.NewReplica.StoreID)
 
-	// Persist the new replica ID.
 	if err := sl.SetRaftReplicaID(ctx, readWriter, update.NewReplica.ReplicaID); err != nil {
+		__antithesis_instrumentation__.Notify(108791)
 		return PrepareReplicaReport{}, errors.Wrap(err, "setting new replica ID")
+	} else {
+		__antithesis_instrumentation__.Notify(108792)
 	}
+	__antithesis_instrumentation__.Notify(108765)
 
-	// Refresh stats
 	if err := sl.SetMVCCStats(ctx, readWriter, &ms); err != nil {
+		__antithesis_instrumentation__.Notify(108793)
 		return PrepareReplicaReport{}, errors.Wrap(err, "updating MVCCStats")
+	} else {
+		__antithesis_instrumentation__.Notify(108794)
 	}
+	__antithesis_instrumentation__.Notify(108766)
 
 	return report, nil
 }
 
-// ApplyUpdateReport contains info about recovery changes applied to stores.
 type ApplyUpdateReport struct {
-	// IDs of successfully updated stores.
 	UpdatedStores []roachpb.StoreID
 }
 
-// CommitReplicaChanges saves content storage batches into stores. This is the
-// second step of applying recovery plan.
 func CommitReplicaChanges(batches map[roachpb.StoreID]storage.Batch) (ApplyUpdateReport, error) {
+	__antithesis_instrumentation__.Notify(108795)
 	var report ApplyUpdateReport
 	failed := false
 	var updateErrors []string
-	// Commit changes to all stores. Stores could have pending changes if plan
-	// contains replicas belonging to them, or have no changes if no replicas
-	// belong to it or if changes has been applied earlier, and we try to reapply
-	// the same plan twice.
+
 	for id, batch := range batches {
+		__antithesis_instrumentation__.Notify(108798)
 		if batch.Empty() {
+			__antithesis_instrumentation__.Notify(108800)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(108801)
 		}
+		__antithesis_instrumentation__.Notify(108799)
 		if err := batch.Commit(true); err != nil {
-			// If we fail here, we can only try to run the whole process from scratch
-			// as this store is somehow broken.
+			__antithesis_instrumentation__.Notify(108802)
+
 			updateErrors = append(updateErrors, fmt.Sprintf("failed to update store s%d: %v", id, err))
 			failed = true
 		} else {
+			__antithesis_instrumentation__.Notify(108803)
 			report.UpdatedStores = append(report.UpdatedStores, id)
 		}
 	}
+	__antithesis_instrumentation__.Notify(108796)
 	if failed {
+		__antithesis_instrumentation__.Notify(108804)
 		return report, errors.Errorf(
 			"failed to commit update to one or more stores: %s", strings.Join(updateErrors, "; "))
+	} else {
+		__antithesis_instrumentation__.Notify(108805)
 	}
+	__antithesis_instrumentation__.Notify(108797)
 	return report, nil
 }

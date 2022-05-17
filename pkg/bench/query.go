@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package bench
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,20 +13,16 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 )
 
-// This is the TPC-B(ish) query that pgbench runs.
-// We don't use placeholders because pgwire protocol does not
-// allow multiple statements in prepared queries.
 const tpcbQuery = `BEGIN;
 UPDATE pgbench_accounts SET abalance = abalance + %[1]d WHERE aid = %[2]d;
 SELECT abalance FROM pgbench_accounts WHERE aid = %[2]d;
 UPDATE pgbench_tellers SET tbalance = tbalance + %[1]d WHERE tid = %[3]d;
 UPDATE pgbench_branches SET bbalance = bbalance + %[1]d WHERE bid = %[4]d;
 INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (%[3]d, %[4]d, %[2]d, %[1]d, CURRENT_TIMESTAMP);
-END;` // vars: 1 delta, 2 aid, 3 tid, 4 bid
+END;`
 
-// RunOne executes one iteration of the query batch that `pgbench` executes.
-// Calls b.Fatalf if it encounters an error.
 func RunOne(db sqlutils.DBHandle, r *rand.Rand, accounts int) error {
+	__antithesis_instrumentation__.Notify(1814)
 	account := r.Intn(accounts)
 	delta := r.Intn(5000)
 	teller := r.Intn(tellers)
@@ -45,27 +33,37 @@ func RunOne(db sqlutils.DBHandle, r *rand.Rand, accounts int) error {
 	return err
 }
 
-// ExecPgbench returns a ready-to-run pgbench Cmd, that will run
-// against the db specified by `pgURL`.
 func ExecPgbench(pgURL url.URL, dbname string, count int) (*exec.Cmd, error) {
+	__antithesis_instrumentation__.Notify(1815)
 	host, port, err := net.SplitHostPort(pgURL.Host)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(1818)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(1819)
 	}
+	__antithesis_instrumentation__.Notify(1816)
 
 	args := []string{
-		"-n", // disable (pg-specific) vacuum
-		"-r", // print stats
+		"-n",
+		"-r",
 		fmt.Sprintf("--transactions=%d", count),
 		"-h", host,
 		"-p", port,
 	}
 
 	if pgURL.User != nil {
+		__antithesis_instrumentation__.Notify(1820)
 		if user := pgURL.User.Username(); user != "" {
+			__antithesis_instrumentation__.Notify(1821)
 			args = append(args, "-U", user)
+		} else {
+			__antithesis_instrumentation__.Notify(1822)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(1823)
 	}
+	__antithesis_instrumentation__.Notify(1817)
 	args = append(args, dbname)
 
 	return exec.Command("pgbench", args...), nil

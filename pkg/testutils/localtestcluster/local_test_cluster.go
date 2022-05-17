@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package localtestcluster
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -42,17 +34,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 )
 
-// A LocalTestCluster encapsulates an in-memory instantiation of a
-// cockroach node with a single store using a local sender. Example
-// usage of a LocalTestCluster follows:
-//
-//   s := &LocalTestCluster{}
-//   s.Start(t, testutils.NewNodeTestBaseContext(),
-//           kv.InitFactoryForLocalTestCluster)
-//   defer s.Stop()
-//
-// Note that the LocalTestCluster is different from server.TestCluster
-// in that although it uses a distributed sender, there is no RPC traffic.
 type LocalTestCluster struct {
 	AmbientCtx        log.AmbientContext
 	Cfg               kvserver.StoreConfig
@@ -66,27 +47,14 @@ type LocalTestCluster struct {
 	DB                *kv.DB
 	Stores            *kvserver.Stores
 	stopper           *stop.Stopper
-	Latency           time.Duration // sleep for each RPC sent
+	Latency           time.Duration
 	tester            testing.TB
 
-	// DisableLivenessHeartbeat, if set, inhibits the heartbeat loop. Some tests
-	// need this because, for example, the heartbeat loop increments some
-	// transaction metrics.
-	// However, note that without heartbeats, ranges with epoch-based leases
-	// cannot be accessed because the leases cannot be granted.
-	// See also DontCreateSystemRanges.
 	DisableLivenessHeartbeat bool
 
-	// DontCreateSystemRanges, if set, makes the cluster start with a single
-	// range, not with all the system ranges (as regular cluster start).
-	// If DisableLivenessHeartbeat is set, you probably want to also set this so
-	// that ranges requiring epoch-based leases are not created automatically.
 	DontCreateSystemRanges bool
 }
 
-// InitFactoryFn is a callback used to initiate the txn coordinator
-// sender factory (we don't do it directly from this package to avoid
-// a dependency on kv).
 type InitFactoryFn func(
 	ctx context.Context,
 	st *cluster.Settings,
@@ -99,17 +67,13 @@ type InitFactoryFn func(
 	gossip *gossip.Gossip,
 ) kv.TxnSenderFactory
 
-// Stopper returns the Stopper.
 func (ltc *LocalTestCluster) Stopper() *stop.Stopper {
+	__antithesis_instrumentation__.Notify(645517)
 	return ltc.stopper
 }
 
-// Start starts the test cluster by bootstrapping an in-memory store
-// (defaults to maximum of 50M). The server is started, launching the
-// node RPC server and all HTTP endpoints. Use the value of
-// TestServer.Addr after Start() for client connections. Use Stop()
-// to shutdown the server after the test completes.
 func (ltc *LocalTestCluster) Start(t testing.TB, baseCtx *base.Config, initFactory InitFactoryFn) {
+	__antithesis_instrumentation__.Notify(645518)
 	manualClock := hlc.NewManualClock(123)
 	clock := hlc.NewClock(manualClock.UnixNano, 50*time.Millisecond)
 	cfg := kvserver.TestStoreConfig(clock)
@@ -141,18 +105,22 @@ func (ltc *LocalTestCluster) Start(t testing.TB, baseCtx *base.Config, initFacto
 	})
 	cfg.RPCContext.NodeID.Set(ctx, nodeID)
 	clusterID := cfg.RPCContext.StorageClusterID
-	server := rpc.NewServer(cfg.RPCContext) // never started
+	server := rpc.NewServer(cfg.RPCContext)
 	ltc.Gossip = gossip.New(ambient, clusterID, nc, cfg.RPCContext, server, ltc.stopper, metric.NewRegistry(), roachpb.Locality{}, zonepb.DefaultZoneConfigRef())
 	var err error
 	ltc.Eng, err = storage.Open(
 		ctx,
 		storage.InMemory(),
 		storage.CacheSize(0),
-		storage.MaxSize(50<<20 /* 50 MiB */),
+		storage.MaxSize(50<<20),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(645529)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(645530)
 	}
+	__antithesis_instrumentation__.Notify(645519)
 	ltc.stopper.AddCloser(ltc.Eng)
 
 	ltc.Stores = kvserver.NewStores(ambient, ltc.Clock)
@@ -169,14 +137,16 @@ func (ltc *LocalTestCluster) Start(t testing.TB, baseCtx *base.Config, initFacto
 	}
 	ltc.DB = kv.NewDBWithContext(cfg.AmbientCtx, factory, ltc.Clock, *ltc.dbContext)
 	transport := kvserver.NewDummyRaftTransport(cfg.Settings, cfg.AmbientCtx.Tracer)
-	// By default, disable the replica scanner and split queue, which
-	// confuse tests using LocalTestCluster.
+
 	if ltc.StoreTestingKnobs == nil {
+		__antithesis_instrumentation__.Notify(645531)
 		cfg.TestingKnobs.DisableScanner = true
 		cfg.TestingKnobs.DisableSplitQueue = true
 	} else {
+		__antithesis_instrumentation__.Notify(645532)
 		cfg.TestingKnobs = *ltc.StoreTestingKnobs
 	}
+	__antithesis_instrumentation__.Notify(645520)
 	cfg.DB = ltc.DB
 	cfg.Gossip = ltc.Gossip
 	cfg.HistogramWindowInterval = metric.TestSampleInterval
@@ -199,29 +169,41 @@ func (ltc *LocalTestCluster) Start(t testing.TB, baseCtx *base.Config, initFacto
 		cfg.Clock,
 		cfg.NodeLiveness.GetNodeCount,
 		kvserver.MakeStorePoolNodeLivenessFunc(cfg.NodeLiveness),
-		/* deterministic */ false,
+		false,
 	)
 	cfg.Transport = transport
-	cfg.ClosedTimestampReceiver = sidetransport.NewReceiver(nc, ltc.stopper, ltc.Stores, nil /* testingKnobs */)
+	cfg.ClosedTimestampReceiver = sidetransport.NewReceiver(nc, ltc.stopper, ltc.Stores, nil)
 
 	if err := kvserver.WriteClusterVersion(ctx, ltc.Eng, clusterversion.TestingClusterVersion); err != nil {
+		__antithesis_instrumentation__.Notify(645533)
 		t.Fatalf("unable to write cluster version: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(645534)
 	}
+	__antithesis_instrumentation__.Notify(645521)
 	if err := kvserver.InitEngine(
 		ctx, ltc.Eng, roachpb.StoreIdent{NodeID: nodeID, StoreID: 1},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(645535)
 		t.Fatalf("unable to start local test cluster: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(645536)
 	}
+	__antithesis_instrumentation__.Notify(645522)
 
-	rangeFeedFactory, err := rangefeed.NewFactory(ltc.stopper, ltc.DB, cfg.Settings, nil /* knobs */)
+	rangeFeedFactory, err := rangefeed.NewFactory(ltc.stopper, ltc.DB, cfg.Settings, nil)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(645537)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(645538)
 	}
+	__antithesis_instrumentation__.Notify(645523)
 	cfg.SpanConfigSubscriber = spanconfigkvsubscriber.New(
 		clock,
 		rangeFeedFactory,
 		keys.SpanConfigurationsTableID,
-		1<<20, /* 1 MB */
+		1<<20,
 		cfg.DefaultSpanConfig,
 		nil,
 	)
@@ -237,6 +219,7 @@ func (ltc *LocalTestCluster) Start(t testing.TB, baseCtx *base.Config, initFacto
 	var initialValues []roachpb.KeyValue
 	var splits []roachpb.RKey
 	if !ltc.DontCreateSystemRanges {
+		__antithesis_instrumentation__.Notify(645539)
 		schema := bootstrap.MakeMetadataSchema(
 			keys.SystemSQLCodec, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
 		)
@@ -244,53 +227,77 @@ func (ltc *LocalTestCluster) Start(t testing.TB, baseCtx *base.Config, initFacto
 		initialValues, tableSplits = schema.GetInitialValues()
 		splits = append(config.StaticSplits(), tableSplits...)
 		sort.Slice(splits, func(i, j int) bool {
+			__antithesis_instrumentation__.Notify(645540)
 			return splits[i].Less(splits[j])
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(645541)
 	}
+	__antithesis_instrumentation__.Notify(645524)
 
 	if err := kvserver.WriteInitialClusterData(
 		ctx,
 		ltc.Eng,
 		initialValues,
 		clusterversion.TestingBinaryVersion,
-		1, /* numStores */
+		1,
 		splits,
 		ltc.Clock.PhysicalNow(),
 		cfg.TestingKnobs,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(645542)
 		t.Fatalf("unable to start local test cluster: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(645543)
 	}
+	__antithesis_instrumentation__.Notify(645525)
 
-	// The heartbeat loop depends on gossip to retrieve the node ID, so we're
-	// sure to set it first.
 	nc.Set(ctx, nodeDesc.NodeID)
 	if err := ltc.Gossip.SetNodeDescriptor(nodeDesc); err != nil {
+		__antithesis_instrumentation__.Notify(645544)
 		t.Fatalf("unable to set node descriptor: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(645545)
 	}
+	__antithesis_instrumentation__.Notify(645526)
 
 	if !ltc.DisableLivenessHeartbeat {
+		__antithesis_instrumentation__.Notify(645546)
 		cfg.NodeLiveness.Start(ctx,
 			liveness.NodeLivenessStartOptions{Stopper: ltc.stopper, Engines: []storage.Engine{ltc.Eng}})
+	} else {
+		__antithesis_instrumentation__.Notify(645547)
 	}
+	__antithesis_instrumentation__.Notify(645527)
 
 	if err := ltc.Store.Start(ctx, ltc.stopper); err != nil {
+		__antithesis_instrumentation__.Notify(645548)
 		t.Fatalf("unable to start local test cluster: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(645549)
 	}
+	__antithesis_instrumentation__.Notify(645528)
 
 	ltc.Stores.AddStore(ltc.Store)
 	ltc.Cfg = cfg
 }
 
-// Stop stops the cluster.
 func (ltc *LocalTestCluster) Stop() {
-	// If the test has failed, we don't attempt to clean up: This often hangs,
-	// and leaktest will disable itself for the remaining tests so that no
-	// unrelated errors occur from a dirty shutdown.
+	__antithesis_instrumentation__.Notify(645550)
+
 	if ltc.tester.Failed() {
+		__antithesis_instrumentation__.Notify(645553)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(645554)
 	}
+	__antithesis_instrumentation__.Notify(645551)
 	if r := recover(); r != nil {
+		__antithesis_instrumentation__.Notify(645555)
 		panic(r)
+	} else {
+		__antithesis_instrumentation__.Notify(645556)
 	}
+	__antithesis_instrumentation__.Notify(645552)
 	ltc.stopper.Stop(context.TODO())
 }

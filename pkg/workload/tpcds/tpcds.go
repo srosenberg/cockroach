@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpcds
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -46,6 +38,7 @@ var tpcdsMeta = workload.Meta{
 	Description: `TPC-DS is a read-only workload of "decision support" queries on large datasets.`,
 	Version:     `1.0.0`,
 	New: func() workload.Generator {
+		__antithesis_instrumentation__.Notify(698682)
 		g := &tpcds{}
 		g.flags.FlagSet = pflag.NewFlagSet(`tpcds`, pflag.ContinueOnError)
 		g.flags.Meta = map[string]workload.FlagMeta{
@@ -55,8 +48,6 @@ var tpcdsMeta = workload.Meta{
 			`vectorize`:        {RuntimeOnly: true},
 		}
 
-		// NOTE: we're skipping queries 27, 36, 70, and 86 by default at the moment
-		// because they require some modifications.
 		g.flags.StringVar(&g.queriesToOmitRaw, `queries-to-omit`,
 			`27,36,70,86`,
 			`Queries not to run (i.e. all others will be run). Use a comma separated list of query numbers`)
@@ -73,61 +64,98 @@ var tpcdsMeta = workload.Meta{
 	},
 }
 
-// Meta implements the Generator interface.
-func (*tpcds) Meta() workload.Meta { return tpcdsMeta }
+func (*tpcds) Meta() workload.Meta { __antithesis_instrumentation__.Notify(698683); return tpcdsMeta }
 
-// Flags implements the Flagser interface.
-func (w *tpcds) Flags() workload.Flags { return w.flags }
+func (w *tpcds) Flags() workload.Flags { __antithesis_instrumentation__.Notify(698684); return w.flags }
 
-// Hooks implements the Hookser interface.
 func (w *tpcds) Hooks() workload.Hooks {
+	__antithesis_instrumentation__.Notify(698685)
 	return workload.Hooks{
 		Validate: func() error {
+			__antithesis_instrumentation__.Notify(698686)
 			if w.queryTimeLimit <= 0 {
+				__antithesis_instrumentation__.Notify(698691)
 				return errors.Errorf("non-positive query time limit was set: %s", w.queryTimeLimit)
+			} else {
+				__antithesis_instrumentation__.Notify(698692)
 			}
+			__antithesis_instrumentation__.Notify(698687)
 			skipQuery := make([]bool, NumQueries+1)
 			for _, queryName := range strings.Split(w.queriesToOmitRaw, `,`) {
+				__antithesis_instrumentation__.Notify(698693)
 				queryNum, err := strconv.Atoi(queryName)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(698696)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(698697)
 				}
-				if queryNum < 1 || queryNum > NumQueries {
+				__antithesis_instrumentation__.Notify(698694)
+				if queryNum < 1 || func() bool {
+					__antithesis_instrumentation__.Notify(698698)
+					return queryNum > NumQueries == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(698699)
 					return errors.Errorf("unknown query %d (only queries in range [1, %d] are supported)",
 						queryNum, NumQueries)
+				} else {
+					__antithesis_instrumentation__.Notify(698700)
 				}
+				__antithesis_instrumentation__.Notify(698695)
 				skipQuery[queryNum] = true
 			}
+			__antithesis_instrumentation__.Notify(698688)
 			if w.queriesToRunRaw != `` {
+				__antithesis_instrumentation__.Notify(698701)
 				for _, queryName := range strings.Split(w.queriesToRunRaw, `,`) {
+					__antithesis_instrumentation__.Notify(698703)
 					queryNum, err := strconv.Atoi(queryName)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(698706)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(698707)
 					}
+					__antithesis_instrumentation__.Notify(698704)
 					if _, ok := QueriesByNumber[queryNum]; !ok {
+						__antithesis_instrumentation__.Notify(698708)
 						return errors.Errorf(`unknown query: %s (probably, the query needs modifications, `+
 							`so it is disabled for now)`, queryName)
+					} else {
+						__antithesis_instrumentation__.Notify(698709)
 					}
+					__antithesis_instrumentation__.Notify(698705)
 					if !skipQuery[queryNum] {
+						__antithesis_instrumentation__.Notify(698710)
 						w.selectedQueries = append(w.selectedQueries, queryNum)
+					} else {
+						__antithesis_instrumentation__.Notify(698711)
 					}
 				}
+				__antithesis_instrumentation__.Notify(698702)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(698712)
 			}
+			__antithesis_instrumentation__.Notify(698689)
 			for queryNum := 1; queryNum <= NumQueries; queryNum++ {
+				__antithesis_instrumentation__.Notify(698713)
 				if !skipQuery[queryNum] {
+					__antithesis_instrumentation__.Notify(698714)
 					w.selectedQueries = append(w.selectedQueries, queryNum)
+				} else {
+					__antithesis_instrumentation__.Notify(698715)
 				}
 			}
+			__antithesis_instrumentation__.Notify(698690)
 			return nil
 		},
 	}
 }
 
-// Tables implements the Generator interface.
 func (w *tpcds) Tables() []workload.Table {
-	// Note: we specify InitialRows for the Tables with non-zero count of tuples
-	// so that `workload init` returns an error that tpcds doesn't support init.
+	__antithesis_instrumentation__.Notify(698716)
+
 	return []workload.Table{
 		{
 			Name:        `call_center`,
@@ -257,30 +285,40 @@ func (w *tpcds) Tables() []workload.Table {
 	}
 }
 
-// Ops implements the Opser interface.
 func (w *tpcds) Ops(
 	ctx context.Context, urls []string, reg *histogram.Registry,
 ) (workload.QueryLoad, error) {
+	__antithesis_instrumentation__.Notify(698717)
 	sqlDatabase, err := workload.SanitizeUrls(w, w.connFlags.DBOverride, urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698721)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(698722)
 	}
+	__antithesis_instrumentation__.Notify(698718)
 	db, err := gosql.Open(`cockroach`, strings.Join(urls, ` `))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698723)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(698724)
 	}
-	// Allow a maximum of concurrency+1 connections to the database.
+	__antithesis_instrumentation__.Notify(698719)
+
 	db.SetMaxOpenConns(w.connFlags.Concurrency + 1)
 	db.SetMaxIdleConns(w.connFlags.Concurrency + 1)
 
 	ql := workload.QueryLoad{SQLDatabase: sqlDatabase}
 	for i := 0; i < w.connFlags.Concurrency; i++ {
+		__antithesis_instrumentation__.Notify(698725)
 		worker := &worker{
 			config: w,
 			db:     db,
 		}
 		ql.WorkerFns = append(ql.WorkerFns, worker.run)
 	}
+	__antithesis_instrumentation__.Notify(698720)
 	return ql, nil
 }
 
@@ -291,6 +329,7 @@ type worker struct {
 }
 
 func (w *worker) run(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(698726)
 	queryNum := w.config.selectedQueries[w.ops%len(w.config.selectedQueries)]
 	w.ops++
 
@@ -298,45 +337,67 @@ func (w *worker) run(ctx context.Context) error {
 		w.config.queryTimeLimit, w.config.vectorize)
 	_, err := w.db.Exec(prep)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698733)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(698734)
 	}
+	__antithesis_instrumentation__.Notify(698727)
 	query := QueriesByNumber[queryNum]
 
 	var rows *gosql.Rows
 	start := timeutil.Now()
 	err = func() error {
+		__antithesis_instrumentation__.Notify(698735)
 		done := make(chan error, 1)
 		go func(context.Context) {
+			__antithesis_instrumentation__.Notify(698737)
 			var err error
 			rows, err = w.db.Query(query)
 			done <- err
 		}(ctx)
+		__antithesis_instrumentation__.Notify(698736)
 		select {
 		case <-time.After(w.config.queryTimeLimit * 2):
+			__antithesis_instrumentation__.Notify(698738)
 			return errors.Errorf("[q%d] timed out, but did not cancel execution", queryNum)
 		case err := <-done:
+			__antithesis_instrumentation__.Notify(698739)
 			return err
 		}
 	}()
+	__antithesis_instrumentation__.Notify(698728)
 	if rows != nil {
+		__antithesis_instrumentation__.Notify(698740)
 		defer rows.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(698741)
 	}
+	__antithesis_instrumentation__.Notify(698729)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698742)
 		log.Infof(ctx, "[q%d] error: %s", queryNum, err)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(698743)
 	}
+	__antithesis_instrumentation__.Notify(698730)
 	var numRows int
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(698744)
 		numRows++
 	}
+	__antithesis_instrumentation__.Notify(698731)
 	if err := rows.Err(); err != nil {
+		__antithesis_instrumentation__.Notify(698745)
 		log.Infof(ctx, "[q%d] error: %s", queryNum, err)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(698746)
 	}
+	__antithesis_instrumentation__.Notify(698732)
 	elapsed := timeutil.Since(start)
-	// TODO(yuzefovich): at the moment, we're not printing out the histograms
-	// since that would just be too much noise; however, having the percentiles
-	// in the output would also be useful.
+
 	log.Infof(ctx, "[q%d] returned %d rows after %.2f seconds",
 		queryNum, numRows, elapsed.Seconds())
 	return nil

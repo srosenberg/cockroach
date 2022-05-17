@@ -24,6 +24,7 @@ go_library(
         "//pkg/sql/types",
         "//pkg/util/json",  # keep
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_apd_v3//:apd",  # keep
         "@com_github_cockroachdb_errors//:errors",
     ],
@@ -53,6 +54,7 @@ go_test(
         "//pkg/util/log",
         "//pkg/util/mon",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -71,4 +73,6 @@ eg_go_filegroup(
 )
 
 # Define gen rules for individual eg.go files.
-gen_eg_go_rules(targets)
+gen_eg_go_rules(
+    targets,
+)

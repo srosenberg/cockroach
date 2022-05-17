@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package cdctest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"crypto/tls"
@@ -18,7 +12,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// MockWebhookSink is the Webhook sink used in tests.
 type MockWebhookSink struct {
 	basicAuth          bool
 	username, password string
@@ -32,19 +25,23 @@ type MockWebhookSink struct {
 	}
 }
 
-// StartMockWebhookSinkInsecure starts a mock webhook sink without TLS.
 func StartMockWebhookSinkInsecure() (*MockWebhookSink, error) {
+	__antithesis_instrumentation__.Notify(14681)
 	s := makeMockWebhookSink()
 	s.server.Start()
 	return s, nil
 }
 
-// StartMockWebhookSink creates and starts a mock webhook sink for tests.
 func StartMockWebhookSink(certificate *tls.Certificate) (*MockWebhookSink, error) {
+	__antithesis_instrumentation__.Notify(14682)
 	s := makeMockWebhookSink()
 	if certificate == nil {
+		__antithesis_instrumentation__.Notify(14684)
 		return nil, errors.Errorf("Must pass a CA cert when creating a mock webhook sink.")
+	} else {
+		__antithesis_instrumentation__.Notify(14685)
 	}
+	__antithesis_instrumentation__.Notify(14683)
 	s.server.TLS = &tls.Config{
 		Certificates: []tls.Certificate{*certificate},
 	}
@@ -52,13 +49,16 @@ func StartMockWebhookSink(certificate *tls.Certificate) (*MockWebhookSink, error
 	return s, nil
 }
 
-// StartMockWebhookSinkSecure creates and starts a mock webhook sink server that
-// requires clients to provide client certificates for authentication
 func StartMockWebhookSinkSecure(certificate *tls.Certificate) (*MockWebhookSink, error) {
+	__antithesis_instrumentation__.Notify(14686)
 	s := makeMockWebhookSink()
 	if certificate == nil {
+		__antithesis_instrumentation__.Notify(14688)
 		return nil, errors.Errorf("Must pass a CA cert when creating a mock webhook sink.")
+	} else {
+		__antithesis_instrumentation__.Notify(14689)
 	}
+	__antithesis_instrumentation__.Notify(14687)
 
 	s.server.TLS = &tls.Config{
 		Certificates: []tls.Certificate{*certificate},
@@ -69,115 +69,157 @@ func StartMockWebhookSinkSecure(certificate *tls.Certificate) (*MockWebhookSink,
 	return s, nil
 }
 
-// StartMockWebhookSinkWithBasicAuth creates and starts a mock webhook sink for
-// tests with basic username/password auth.
 func StartMockWebhookSinkWithBasicAuth(
 	certificate *tls.Certificate, username, password string,
 ) (*MockWebhookSink, error) {
+	__antithesis_instrumentation__.Notify(14690)
 	s := makeMockWebhookSink()
 	s.basicAuth = true
 	s.username = username
 	s.password = password
 	if certificate != nil {
+		__antithesis_instrumentation__.Notify(14692)
 		s.server.TLS = &tls.Config{
 			Certificates: []tls.Certificate{*certificate},
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(14693)
 	}
+	__antithesis_instrumentation__.Notify(14691)
 	s.server.StartTLS()
 	return s, nil
 }
 
 func makeMockWebhookSink() *MockWebhookSink {
+	__antithesis_instrumentation__.Notify(14694)
 	s := &MockWebhookSink{}
 	s.mu.statusCodes = []int{http.StatusOK}
 	s.server = httptest.NewUnstartedServer(http.HandlerFunc(s.requestHandler))
 	return s
 }
 
-// URL returns the http address of this mock Webhook sink.
 func (s *MockWebhookSink) URL() string {
+	__antithesis_instrumentation__.Notify(14695)
 	return s.server.URL
 }
 
-// GetNumCalls returns how many times the sink handler has been invoked.
 func (s *MockWebhookSink) GetNumCalls() int {
+	__antithesis_instrumentation__.Notify(14696)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.mu.numCalls
 }
 
-// SetStatusCodes sets the list of HTTP status codes (in order) to use when
-// responding to a request (wraps around after completion). Useful for testing
-// error handling behavior on client side.
 func (s *MockWebhookSink) SetStatusCodes(statusCodes []int) {
+	__antithesis_instrumentation__.Notify(14697)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mu.statusCodes = statusCodes
 }
 
-// Close closes the mock Webhook sink.
 func (s *MockWebhookSink) Close() {
+	__antithesis_instrumentation__.Notify(14698)
 	s.server.Close()
 	s.server.CloseClientConnections()
 }
 
-// Latest returns the most recent message received by the MockWebhookSink.
 func (s *MockWebhookSink) Latest() string {
+	__antithesis_instrumentation__.Notify(14699)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.mu.rows) == 0 {
+		__antithesis_instrumentation__.Notify(14701)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(14702)
 	}
+	__antithesis_instrumentation__.Notify(14700)
 	latest := s.mu.rows[len(s.mu.rows)-1]
 	return latest
 }
 
-// Pop deletes and returns the oldest message from MockWebhookSink
 func (s *MockWebhookSink) Pop() string {
+	__antithesis_instrumentation__.Notify(14703)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.mu.rows) > 0 {
+		__antithesis_instrumentation__.Notify(14705)
 		oldest := s.mu.rows[0]
 		s.mu.rows = s.mu.rows[1:]
 		return oldest
+	} else {
+		__antithesis_instrumentation__.Notify(14706)
 	}
+	__antithesis_instrumentation__.Notify(14704)
 	return ""
 }
 
 func (s *MockWebhookSink) requestHandler(hw http.ResponseWriter, hr *http.Request) {
+	__antithesis_instrumentation__.Notify(14707)
 	method := hr.Method
 
 	var err error
 	switch {
 	case method == http.MethodPost:
+		__antithesis_instrumentation__.Notify(14709)
 		if s.basicAuth {
+			__antithesis_instrumentation__.Notify(14712)
 			username, password, ok := hr.BasicAuth()
-			if !ok || s.username != username || s.password != password {
+			if !ok || func() bool {
+				__antithesis_instrumentation__.Notify(14713)
+				return s.username != username == true
+			}() == true || func() bool {
+				__antithesis_instrumentation__.Notify(14714)
+				return s.password != password == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(14715)
 				hw.WriteHeader(http.StatusUnauthorized)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(14716)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(14717)
 		}
+		__antithesis_instrumentation__.Notify(14710)
 		err = s.publish(hw, hr)
 	default:
+		__antithesis_instrumentation__.Notify(14711)
 		hw.WriteHeader(http.StatusNotFound)
 		return
 	}
+	__antithesis_instrumentation__.Notify(14708)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(14718)
 		http.Error(hw, err.Error(), http.StatusInternalServerError)
+	} else {
+		__antithesis_instrumentation__.Notify(14719)
 	}
 }
 
 func (s *MockWebhookSink) publish(hw http.ResponseWriter, hr *http.Request) error {
+	__antithesis_instrumentation__.Notify(14720)
 	defer hr.Body.Close()
 	row, err := ioutil.ReadAll(hr.Body)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(14723)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(14724)
 	}
+	__antithesis_instrumentation__.Notify(14721)
 	s.mu.Lock()
 	s.mu.numCalls++
-	if s.mu.statusCodes[s.mu.statusCodesIndex] >= http.StatusOK && s.mu.statusCodes[s.mu.statusCodesIndex] < http.StatusMultipleChoices {
+	if s.mu.statusCodes[s.mu.statusCodesIndex] >= http.StatusOK && func() bool {
+		__antithesis_instrumentation__.Notify(14725)
+		return s.mu.statusCodes[s.mu.statusCodesIndex] < http.StatusMultipleChoices == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(14726)
 		s.mu.rows = append(s.mu.rows, string(row))
+	} else {
+		__antithesis_instrumentation__.Notify(14727)
 	}
+	__antithesis_instrumentation__.Notify(14722)
 	hw.WriteHeader(s.mu.statusCodes[s.mu.statusCodesIndex])
 	s.mu.statusCodesIndex = (s.mu.statusCodesIndex + 1) % len(s.mu.statusCodes)
 	s.mu.Unlock()

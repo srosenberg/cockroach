@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descpb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 type Descriptor struct{}
 
@@ -21,17 +13,21 @@ type TypeDescriptor struct{}
 type SchemaDescriptor struct{}
 
 func (m *Descriptor) GetTable() *TableDescriptor {
+	__antithesis_instrumentation__.Notify(644780)
 	return nil
 }
 
 func (m *Descriptor) GetDatabase() *DatabaseDescriptor {
+	__antithesis_instrumentation__.Notify(644781)
 	return nil
 }
 
 func (m *Descriptor) GetType() *TypeDescriptor {
+	__antithesis_instrumentation__.Notify(644782)
 	return nil
 }
 
 func (m *Descriptor) GetSchema() *SchemaDescriptor {
+	__antithesis_instrumentation__.Notify(644783)
 	return nil
 }

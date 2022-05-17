@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -21,13 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TODO(mjibson): This subcommand has more flags than I would prefer. My
-// goal is to have it have just -e and nothing else. gofmt initially started
-// with tabs/spaces and width specifiers but later regretted that decision
-// and removed them. I would like to get to the point where we achieve SQL
-// formatting nirvana and we make this an opinionated formatter with few or
-// zero options, hopefully before 2.1.
-
 var sqlfmtCmd = &cobra.Command{
 	Use:   "sqlfmt",
 	Short: "format SQL statements",
@@ -36,32 +21,56 @@ var sqlfmtCmd = &cobra.Command{
 }
 
 func runSQLFmt(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(33964)
 	if sqlfmtCtx.len < 1 {
+		__antithesis_instrumentation__.Notify(33970)
 		return errors.Errorf("line length must be > 0: %d", sqlfmtCtx.len)
+	} else {
+		__antithesis_instrumentation__.Notify(33971)
 	}
+	__antithesis_instrumentation__.Notify(33965)
 	if sqlfmtCtx.tabWidth < 1 {
+		__antithesis_instrumentation__.Notify(33972)
 		return errors.Errorf("tab width must be > 0: %d", sqlfmtCtx.tabWidth)
+	} else {
+		__antithesis_instrumentation__.Notify(33973)
 	}
+	__antithesis_instrumentation__.Notify(33966)
 
 	var sl parser.Statements
 	if len(sqlfmtCtx.execStmts) != 0 {
+		__antithesis_instrumentation__.Notify(33974)
 		for _, exec := range sqlfmtCtx.execStmts {
+			__antithesis_instrumentation__.Notify(33975)
 			stmts, err := parser.Parse(exec)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(33977)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(33978)
 			}
+			__antithesis_instrumentation__.Notify(33976)
 			sl = append(sl, stmts...)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(33979)
 		in, err := ioutil.ReadAll(os.Stdin)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(33981)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(33982)
 		}
+		__antithesis_instrumentation__.Notify(33980)
 		sl, err = parser.Parse(string(in))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(33983)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(33984)
 		}
 	}
+	__antithesis_instrumentation__.Notify(33967)
 
 	cfg := tree.DefaultPrettyCfg()
 	cfg.UseTabs = !sqlfmtCtx.useSpaces
@@ -71,15 +80,25 @@ func runSQLFmt(cmd *cobra.Command, args []string) error {
 	cfg.Align = tree.PrettyNoAlign
 	cfg.JSONFmt = true
 	if sqlfmtCtx.align {
+		__antithesis_instrumentation__.Notify(33985)
 		cfg.Align = tree.PrettyAlignAndDeindent
+	} else {
+		__antithesis_instrumentation__.Notify(33986)
 	}
+	__antithesis_instrumentation__.Notify(33968)
 
 	for i := range sl {
+		__antithesis_instrumentation__.Notify(33987)
 		fmt.Print(cfg.Pretty(sl[i].AST))
 		if len(sl) > 1 {
+			__antithesis_instrumentation__.Notify(33989)
 			fmt.Print(";")
+		} else {
+			__antithesis_instrumentation__.Notify(33990)
 		}
+		__antithesis_instrumentation__.Notify(33988)
 		fmt.Println()
 	}
+	__antithesis_instrumentation__.Notify(33969)
 	return nil
 }

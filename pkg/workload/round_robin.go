@@ -1,51 +1,47 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package workload
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	gosql "database/sql"
 	"sync/atomic"
 )
 
-// RoundRobinDB is a wrapper around *gosql.DB's that round robins individual
-// queries among the different databases that it was created with.
 type RoundRobinDB struct {
 	handles []*gosql.DB
 	current uint32
 }
 
-// NewRoundRobinDB creates a RoundRobinDB from the input list of
-// database connection URLs.
 func NewRoundRobinDB(urls []string) (*RoundRobinDB, error) {
+	__antithesis_instrumentation__.Notify(695715)
 	r := &RoundRobinDB{current: 0, handles: make([]*gosql.DB, 0, len(urls))}
 	for _, url := range urls {
+		__antithesis_instrumentation__.Notify(695717)
 		db, err := gosql.Open(`cockroach`, url)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(695719)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(695720)
 		}
+		__antithesis_instrumentation__.Notify(695718)
 		r.handles = append(r.handles, db)
 	}
+	__antithesis_instrumentation__.Notify(695716)
 	return r, nil
 }
 
 func (db *RoundRobinDB) next() *gosql.DB {
+	__antithesis_instrumentation__.Notify(695721)
 	return db.handles[(atomic.AddUint32(&db.current, 1)-1)%uint32(len(db.handles))]
 }
 
-// QueryRow executes (*gosql.DB).QueryRow on the next available DB.
 func (db *RoundRobinDB) QueryRow(query string, args ...interface{}) *gosql.Row {
+	__antithesis_instrumentation__.Notify(695722)
 	return db.next().QueryRow(query, args...)
 }
 
-// Exec executes (*gosql.DB).Exec on the next available DB.
 func (db *RoundRobinDB) Exec(query string, args ...interface{}) (gosql.Result, error) {
+	__antithesis_instrumentation__.Notify(695723)
 	return db.next().Exec(query, args...)
 }

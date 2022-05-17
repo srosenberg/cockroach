@@ -59,6 +59,7 @@ go_library(
         "//pkg/geo/geopb",
         "//pkg/sql/pgwire/pgcode",
         "//pkg/sql/pgwire/pgerror",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -70,6 +71,7 @@ go_test(
     data = ["@cockroach//c-deps:libgeos"],
     embed = [":geos"],
     deps = [
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",
     ],

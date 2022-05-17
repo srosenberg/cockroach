@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rangefeedcache
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,35 +24,6 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// Watcher is used to implement a consistent cache over spans of KV data
-// on top of a RangeFeed. Note that while rangefeeds offer events as they
-// happen at low latency, a consistent snapshot cannot be constructed until
-// resolved timestamp checkpoints have been received for the relevant spans.
-// The watcher internally buffers events until the complete span has been
-// resolved to some timestamp, at which point the events up to that timestamp
-// are published as an update. This will take on the order of the
-// kv.closed_timestamp.target_duration cluster setting (default 3s).
-//
-// If the buffer overflows (as dictated by the buffer limit the Watcher is
-// instantiated with), the old rangefeed is wound down and a new one
-// re-established. The client interacts with data from the RangeFeed in two
-// ways, firstly, by translating raw KVs into kvbuffer.Events, and by handling
-// a batch of such events when either the initial scan completes or the
-// frontier changes. The OnUpdateCallback which is handed a batch of events,
-// called an Update, is informed whether the batch of events corresponds to a
-// complete or incremental update.
-//
-// It's expected to be Start-ed once. Start internally invokes Run in a retry
-// loop.
-//
-// The expectation is that the caller will use a mutex to update an underlying
-// data structure.
-//
-// NOTE (for emphasis): Update events after the initial scan published at a
-// delay corresponding to kv.closed_timestamp.target_duration (default 3s).
-// Users seeking to leverage the Updates which arrive with that delay but also
-// react to the row-level events as they arrive can hijack the translateEvent
-// function to trigger some non-blocking action.
 type Watcher struct {
 	name             redact.SafeString
 	clock            *hlc.Clock
@@ -69,86 +32,50 @@ type Watcher struct {
 	bufferSize       int
 	withPrevValue    bool
 
-	started int32 // accessed atomically
+	started int32
 
 	translateEvent TranslateEventFunc
 	onUpdate       OnUpdateFunc
 
-	lastFrontierTS hlc.Timestamp // used to assert monotonicity across rangefeed attempts
+	lastFrontierTS hlc.Timestamp
 
 	knobs TestingKnobs
 }
 
-// UpdateType is passed to an OnUpdateFunc to indicate whether the set of
-// events represents a complete update or an incremental update.
 type UpdateType bool
 
 const (
-	// CompleteUpdate indicates that the events represent the entirety of data
-	// in the spans.
 	CompleteUpdate UpdateType = true
 
-	// IncrementalUpdate indicates that the events represent an incremental update
-	// since the previous update.
 	IncrementalUpdate UpdateType = false
 )
 
-// TranslateEventFunc is used by the client to translate a low-level event
-// into an event for buffering. If nil is returned, the event is skipped.
 type TranslateEventFunc func(
 	context.Context, *roachpb.RangeFeedValue,
 ) rangefeedbuffer.Event
 
-// OnUpdateFunc is used by the client to receive an Update, which is a batch
-// of events which represent either a CompleteUpdate or an IncrementalUpdate.
 type OnUpdateFunc func(context.Context, Update)
 
-// Update corresponds to a set of events derived from the underlying RangeFeed.
 type Update struct {
 	Type      UpdateType
 	Timestamp hlc.Timestamp
 	Events    []rangefeedbuffer.Event
 }
 
-// TestingKnobs allows tests to inject behavior into the Watcher.
 type TestingKnobs struct {
-	// PostRangeFeedStart is invoked after the rangefeed is started.
 	PostRangeFeedStart func()
 
-	// PreExit is invoked right before returning from Run, after tearing
-	// down internal components.
 	PreExit func()
 
-	// OnTimestampAdvance is called after the update to the data have been
-	// handled for the given timestamp.
 	OnTimestampAdvance func(timestamp hlc.Timestamp)
 
-	// ErrorInjectionCh is a way for tests to conveniently inject buffer
-	// overflow errors in order to test recovery.
 	ErrorInjectionCh chan error
 }
 
-// ModuleTestingKnobs is part of the base.ModuleTestingKnobs interface.
-func (k *TestingKnobs) ModuleTestingKnobs() {}
+func (k *TestingKnobs) ModuleTestingKnobs() { __antithesis_instrumentation__.Notify(89902) }
 
 var _ base.ModuleTestingKnobs = (*TestingKnobs)(nil)
 
-// NewWatcher instantiates a Watcher. The two key drivers of the watcher are
-// translateEvent and onUpdate.
-//
-// The translateEvent function is called on each RangeFeedValue event as they
-// arrive (including the events synthesized from the initial scan). Callers may
-// utilize translateEvent to trigger actions without waiting for the delay due
-// to resolving the complete set of spans. If nil is returned, no event will
-// be buffered.
-//
-// Once a resolved timestamp for the complete set of spans has been processed,
-// an Update is passed to onUpdate. Note that the update may contain no
-// buffered events.
-//
-// Callers can control whether the values passed to translateEvent carry a
-// populated PrevValue using the withPrevValue parameter. See
-// rangefeed.WithDiff for more details.
 func NewWatcher(
 	name redact.SafeString,
 	clock *hlc.Clock,
@@ -160,6 +87,7 @@ func NewWatcher(
 	onUpdate OnUpdateFunc,
 	knobs *TestingKnobs,
 ) *Watcher {
+	__antithesis_instrumentation__.Notify(89903)
 	w := &Watcher{
 		name:             name,
 		clock:            clock,
@@ -171,170 +99,219 @@ func NewWatcher(
 		onUpdate:         onUpdate,
 	}
 	if knobs != nil {
+		__antithesis_instrumentation__.Notify(89905)
 		w.knobs = *knobs
+	} else {
+		__antithesis_instrumentation__.Notify(89906)
 	}
+	__antithesis_instrumentation__.Notify(89904)
 	return w
 }
 
-// Start calls Run on the Watcher as an async task with exponential backoff.
-// If the Watcher ran for what is deemed long enough, the backoff is reset.
 func Start(ctx context.Context, stopper *stop.Stopper, c *Watcher, onError func(error)) error {
+	__antithesis_instrumentation__.Notify(89907)
 	return stopper.RunAsyncTask(ctx, string(c.name), func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(89908)
 		ctx, cancel := stopper.WithCancelOnQuiesce(ctx)
 		defer cancel()
 
-		const aWhile = 5 * time.Minute // arbitrary but much longer than a retry
+		const aWhile = 5 * time.Minute
 		for r := retry.StartWithCtx(ctx, base.DefaultRetryOptions()); r.Next(); {
+			__antithesis_instrumentation__.Notify(89909)
 			started := timeutil.Now()
 			if err := c.Run(ctx); err != nil {
+				__antithesis_instrumentation__.Notify(89911)
 				if errors.Is(err, context.Canceled) {
-					return // we're done here
+					__antithesis_instrumentation__.Notify(89915)
+					return
+				} else {
+					__antithesis_instrumentation__.Notify(89916)
 				}
+				__antithesis_instrumentation__.Notify(89912)
 				if onError != nil {
+					__antithesis_instrumentation__.Notify(89917)
 					onError(err)
+				} else {
+					__antithesis_instrumentation__.Notify(89918)
 				}
+				__antithesis_instrumentation__.Notify(89913)
 
 				if timeutil.Since(started) > aWhile {
+					__antithesis_instrumentation__.Notify(89919)
 					r.Reset()
+				} else {
+					__antithesis_instrumentation__.Notify(89920)
 				}
+				__antithesis_instrumentation__.Notify(89914)
 
 				log.Warningf(ctx, "%s: failed with %v, retrying...", c.name, err)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(89921)
 			}
+			__antithesis_instrumentation__.Notify(89910)
 
-			return // we're done here (the stopper was stopped, Run exited cleanly)
+			return
 		}
 	})
 }
 
-// Run establishes a rangefeed over the configured spans, first performing an
-// initial scan, which will be presented as a CompleteUpdate, and then
-// accumulating events until a relevant checkpoint arrives, at which point
-// an IncrementalUpdate will be published.
-//
-// This is a blocking operation, returning only when the context is canceled,
-// or when an error occurs. For the latter, it's expected that callers will
-// re-run the watcher.
 func (s *Watcher) Run(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(89922)
 	if !atomic.CompareAndSwapInt32(&s.started, 0, 1) {
+		__antithesis_instrumentation__.Notify(89932)
 		log.Fatal(ctx, "currently started: only allowed once at any point in time")
+	} else {
+		__antithesis_instrumentation__.Notify(89933)
 	}
+	__antithesis_instrumentation__.Notify(89923)
 	if fn := s.knobs.PreExit; fn != nil {
+		__antithesis_instrumentation__.Notify(89934)
 		defer fn()
+	} else {
+		__antithesis_instrumentation__.Notify(89935)
 	}
-	defer func() { atomic.StoreInt32(&s.started, 0) }()
+	__antithesis_instrumentation__.Notify(89924)
+	defer func() { __antithesis_instrumentation__.Notify(89936); atomic.StoreInt32(&s.started, 0) }()
+	__antithesis_instrumentation__.Notify(89925)
 
-	// Initially construct an "unbounded" buffer. We want our initial scan to
-	// succeed, regardless of size. If we exceed a hard-coded limit during the
-	// initial scan, that's not recoverable/retryable -- a subsequent retry would
-	// run into the same limit. Instead, we'll forego limiting for now but
-	// set it below, when handling incremental updates.
-	//
-	// TODO(irfansharif): If this unbounded initial scan buffer proves worrying,
-	// we could re-work these interfaces to have callers use the rangefeedcache to
-	// keep a subset of the total table in-memory, fed by the rangefeed, and
-	// transparently query the backing table if the record requested is not found.
-	// We could also have the initial scan operate in chunks, handing off results
-	// to the caller incrementally, all within the "initial scan" phase.
 	buffer := rangefeedbuffer.New(math.MaxInt)
 	frontierBumpedCh, initialScanDoneCh, errCh := make(chan struct{}), make(chan struct{}), make(chan error)
-	mu := struct { // serializes access between the rangefeed and the main thread here
+	mu := struct {
 		syncutil.Mutex
 		frontierTS hlc.Timestamp
 	}{}
 
 	defer func() {
+		__antithesis_instrumentation__.Notify(89937)
 		mu.Lock()
 		s.lastFrontierTS.Forward(mu.frontierTS)
 		mu.Unlock()
 	}()
+	__antithesis_instrumentation__.Notify(89926)
 
 	onValue := func(ctx context.Context, ev *roachpb.RangeFeedValue) {
+		__antithesis_instrumentation__.Notify(89938)
 		bEv := s.translateEvent(ctx, ev)
 		if bEv == nil {
+			__antithesis_instrumentation__.Notify(89940)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(89941)
 		}
+		__antithesis_instrumentation__.Notify(89939)
 
 		if err := buffer.Add(bEv); err != nil {
+			__antithesis_instrumentation__.Notify(89942)
 			select {
 			case <-ctx.Done():
-				// The context is canceled when the rangefeed is closed by the
-				// main handler goroutine. It's closed after we stop listening
-				// to errCh.
+				__antithesis_instrumentation__.Notify(89943)
+
 			case errCh <- err:
+				__antithesis_instrumentation__.Notify(89944)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(89945)
 		}
 	}
+	__antithesis_instrumentation__.Notify(89927)
 
 	initialScanTS := s.clock.Now()
 	if initialScanTS.Less(s.lastFrontierTS) {
+		__antithesis_instrumentation__.Notify(89946)
 		log.Fatalf(ctx, "%s: initial scan timestamp (%s) regressed from last recorded frontier (%s)", s.name, initialScanTS, s.lastFrontierTS)
+	} else {
+		__antithesis_instrumentation__.Notify(89947)
 	}
+	__antithesis_instrumentation__.Notify(89928)
 
 	rangeFeed := s.rangefeedFactory.New(string(s.name), initialScanTS,
 		onValue,
 		rangefeed.WithInitialScan(func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(89948)
 			select {
 			case <-ctx.Done():
-				// The context is canceled when the rangefeed is closed by the
-				// main handler goroutine. It's closed after we stop listening
-				// to initialScanDoneCh.
+				__antithesis_instrumentation__.Notify(89949)
+
 			case initialScanDoneCh <- struct{}{}:
+				__antithesis_instrumentation__.Notify(89950)
 			}
 		}),
 		rangefeed.WithOnFrontierAdvance(func(ctx context.Context, frontierTS hlc.Timestamp) {
+			__antithesis_instrumentation__.Notify(89951)
 			mu.Lock()
 			mu.frontierTS = frontierTS
 			mu.Unlock()
 
 			select {
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(89952)
 			case frontierBumpedCh <- struct{}{}:
+				__antithesis_instrumentation__.Notify(89953)
 			}
 		}),
 		rangefeed.WithDiff(s.withPrevValue),
 		rangefeed.WithRowTimestampInInitialScan(true),
 		rangefeed.WithOnInitialScanError(func(ctx context.Context, err error) (shouldFail bool) {
-			// TODO(irfansharif): Consider if there are other errors which we
-			// want to treat as permanent. This was cargo culted from the
-			// settings watcher.
-			if grpcutil.IsAuthError(err) ||
-				strings.Contains(err.Error(), "rpc error: code = Unauthenticated") {
+			__antithesis_instrumentation__.Notify(89954)
+
+			if grpcutil.IsAuthError(err) || func() bool {
+				__antithesis_instrumentation__.Notify(89956)
+				return strings.Contains(err.Error(), "rpc error: code = Unauthenticated") == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(89957)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(89958)
 			}
+			__antithesis_instrumentation__.Notify(89955)
 			return false
 		}),
 	)
+	__antithesis_instrumentation__.Notify(89929)
 	if err := rangeFeed.Start(ctx, s.spans); err != nil {
+		__antithesis_instrumentation__.Notify(89959)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(89960)
 	}
+	__antithesis_instrumentation__.Notify(89930)
 	defer rangeFeed.Close()
 	if fn := s.knobs.PostRangeFeedStart; fn != nil {
+		__antithesis_instrumentation__.Notify(89961)
 		fn()
+	} else {
+		__antithesis_instrumentation__.Notify(89962)
 	}
+	__antithesis_instrumentation__.Notify(89931)
 
 	log.Infof(ctx, "%s: established range feed cache", s.name)
 
 	for {
+		__antithesis_instrumentation__.Notify(89963)
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(89964)
 			return ctx.Err()
 
 		case <-frontierBumpedCh:
+			__antithesis_instrumentation__.Notify(89965)
 			mu.Lock()
 			frontierTS := mu.frontierTS
 			mu.Unlock()
 			s.handleUpdate(ctx, buffer, frontierTS, IncrementalUpdate)
 
 		case <-initialScanDoneCh:
+			__antithesis_instrumentation__.Notify(89966)
 			s.handleUpdate(ctx, buffer, initialScanTS, CompleteUpdate)
-			// We're done with our initial scan, set a hard limit for incremental
-			// updates going forward.
+
 			buffer.SetLimit(s.bufferSize)
 
 		case err := <-errCh:
+			__antithesis_instrumentation__.Notify(89967)
 			return err
 		case err := <-s.knobs.ErrorInjectionCh:
+			__antithesis_instrumentation__.Notify(89968)
 			return err
 		}
 	}
@@ -343,12 +320,16 @@ func (s *Watcher) Run(ctx context.Context) error {
 func (s *Watcher) handleUpdate(
 	ctx context.Context, buffer *rangefeedbuffer.Buffer, ts hlc.Timestamp, updateType UpdateType,
 ) {
+	__antithesis_instrumentation__.Notify(89969)
 	s.onUpdate(ctx, Update{
 		Type:      updateType,
 		Timestamp: ts,
 		Events:    buffer.Flush(ctx, ts),
 	})
 	if fn := s.knobs.OnTimestampAdvance; fn != nil {
+		__antithesis_instrumentation__.Notify(89970)
 		fn(ts)
+	} else {
+		__antithesis_instrumentation__.Notify(89971)
 	}
 }

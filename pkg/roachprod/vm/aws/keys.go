@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package aws
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"crypto/sha1"
@@ -26,8 +18,8 @@ import (
 
 const sshPublicKeyFile = "${HOME}/.ssh/id_rsa.pub"
 
-// sshKeyExists checks to see if there is a an SSH key with the given name in the given region.
 func (p *Provider) sshKeyExists(keyName, region string) (bool, error) {
+	__antithesis_instrumentation__.Notify(182998)
 	var data struct {
 		KeyPairs []struct {
 			KeyName string
@@ -39,36 +31,56 @@ func (p *Provider) sshKeyExists(keyName, region string) (bool, error) {
 	}
 	err := p.runJSONCommand(args, &data)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183001)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(183002)
 	}
+	__antithesis_instrumentation__.Notify(182999)
 	for _, keyPair := range data.KeyPairs {
+		__antithesis_instrumentation__.Notify(183003)
 		if keyPair.KeyName == keyName {
+			__antithesis_instrumentation__.Notify(183004)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(183005)
 		}
 	}
+	__antithesis_instrumentation__.Notify(183000)
 	return false, nil
 }
 
-// sshKeyImport takes the user's local, public SSH key and imports it into the ec2 region so that
-// we can create new hosts with it.
 func (p *Provider) sshKeyImport(keyName, region string) error {
+	__antithesis_instrumentation__.Notify(183006)
 	_, err := os.Stat(os.ExpandEnv(sshPublicKeyFile))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183010)
 		if oserror.IsNotExist(err) {
+			__antithesis_instrumentation__.Notify(183012)
 			return errors.Wrapf(err, "please run ssh-keygen externally to create your %s file", sshPublicKeyFile)
+		} else {
+			__antithesis_instrumentation__.Notify(183013)
 		}
+		__antithesis_instrumentation__.Notify(183011)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(183014)
 	}
+	__antithesis_instrumentation__.Notify(183007)
 
 	var data struct {
 		KeyName string
 	}
-	_ = data.KeyName // silence unused warning
+	_ = data.KeyName
 
 	user, err := p.FindActiveAccount()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183015)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(183016)
 	}
+	__antithesis_instrumentation__.Notify(183008)
 
 	timestamp := timeutil.Now()
 	createdAt := timestamp.Format(time.RFC3339)
@@ -85,33 +97,55 @@ func (p *Provider) sshKeyImport(keyName, region string) error {
 		"--tag-specifications", tagSpecs,
 	}
 	err = p.runJSONCommand(args, &data)
-	// If two roachprod instances run at the same time with the same key, they may
-	// race to upload the key pair.
-	if err == nil || strings.Contains(err.Error(), "InvalidKeyPair.Duplicate") {
+
+	if err == nil || func() bool {
+		__antithesis_instrumentation__.Notify(183017)
+		return strings.Contains(err.Error(), "InvalidKeyPair.Duplicate") == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(183018)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(183019)
 	}
+	__antithesis_instrumentation__.Notify(183009)
 	return err
 }
 
-// sshKeyName computes the name of the ec2 ssh key that we'll store the local user's public key in
 func (p *Provider) sshKeyName() (string, error) {
+	__antithesis_instrumentation__.Notify(183020)
 	user, err := p.FindActiveAccount()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183024)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183025)
 	}
+	__antithesis_instrumentation__.Notify(183021)
 
 	keyBytes, err := ioutil.ReadFile(os.ExpandEnv(sshPublicKeyFile))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183026)
 		if oserror.IsNotExist(err) {
+			__antithesis_instrumentation__.Notify(183028)
 			return "", errors.Wrapf(err, "please run ssh-keygen externally to create your %s file", sshPublicKeyFile)
+		} else {
+			__antithesis_instrumentation__.Notify(183029)
 		}
+		__antithesis_instrumentation__.Notify(183027)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183030)
 	}
+	__antithesis_instrumentation__.Notify(183022)
 
 	hash := sha1.New()
 	if _, err := hash.Write(keyBytes); err != nil {
+		__antithesis_instrumentation__.Notify(183031)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183032)
 	}
+	__antithesis_instrumentation__.Notify(183023)
 	hashBytes := hash.Sum(nil)
 	hashText := base64.URLEncoding.EncodeToString(hashBytes)
 

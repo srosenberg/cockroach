@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,29 +16,20 @@ import (
 )
 
 func newFailedLeaseTrigger(isTransfer bool) result.Result {
+	__antithesis_instrumentation__.Notify(96967)
 	var trigger result.Result
 	trigger.Local.Metrics = new(result.Metrics)
 	if isTransfer {
+		__antithesis_instrumentation__.Notify(96969)
 		trigger.Local.Metrics.LeaseTransferError = 1
 	} else {
+		__antithesis_instrumentation__.Notify(96970)
 		trigger.Local.Metrics.LeaseRequestError = 1
 	}
+	__antithesis_instrumentation__.Notify(96968)
 	return trigger
 }
 
-// evalNewLease checks that the lease contains a valid interval and that
-// the new lease holder is still a member of the replica set, and then proceeds
-// to write the new lease to the batch, emitting an appropriate trigger.
-//
-// The new lease might be a lease for a range that didn't previously have an
-// active lease, might be an extension or a lease transfer.
-//
-// isExtension should be set if the lease holder does not change with this
-// lease. If it doesn't change, we don't need the application of this lease to
-// block reads.
-//
-// TODO(tschottdorf): refactoring what's returned from the trigger here makes
-// sense to minimize the amount of code intolerant of rolling updates.
 func evalNewLease(
 	ctx context.Context,
 	rec EvalContext,
@@ -58,13 +41,20 @@ func evalNewLease(
 	isExtension bool,
 	isTransfer bool,
 ) (result.Result, error) {
-	// When returning an error from this method, must always return
-	// a newFailedLeaseTrigger() to satisfy stats.
+	__antithesis_instrumentation__.Notify(96971)
 
-	// Ensure either an Epoch is set or Start < Expiration.
-	if (lease.Type() == roachpb.LeaseExpiration && lease.GetExpiration().LessEq(lease.Start.ToTimestamp())) ||
-		(lease.Type() == roachpb.LeaseEpoch && lease.Expiration != nil) {
-		// This amounts to a bug.
+	if (lease.Type() == roachpb.LeaseExpiration && func() bool {
+		__antithesis_instrumentation__.Notify(96980)
+		return lease.GetExpiration().LessEq(lease.Start.ToTimestamp()) == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(96981)
+		return (lease.Type() == roachpb.LeaseEpoch && func() bool {
+			__antithesis_instrumentation__.Notify(96982)
+			return lease.Expiration != nil == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(96983)
+
 		return newFailedLeaseTrigger(isTransfer),
 			&roachpb.LeaseRejectedError{
 				Existing:  prevLease,
@@ -72,62 +62,64 @@ func evalNewLease(
 				Message: fmt.Sprintf("illegal lease: epoch=%d, interval=[%s, %s)",
 					lease.Epoch, lease.Start, lease.Expiration),
 			}
+	} else {
+		__antithesis_instrumentation__.Notify(96984)
 	}
+	__antithesis_instrumentation__.Notify(96972)
 
-	// Verify that requesting replica is part of the current replica set.
 	desc := rec.Desc()
 	if _, ok := desc.GetReplicaDescriptor(lease.Replica.StoreID); !ok {
+		__antithesis_instrumentation__.Notify(96985)
 		return newFailedLeaseTrigger(isTransfer),
 			&roachpb.LeaseRejectedError{
 				Existing:  prevLease,
 				Requested: lease,
 				Message:   "replica not found",
 			}
+	} else {
+		__antithesis_instrumentation__.Notify(96986)
 	}
+	__antithesis_instrumentation__.Notify(96973)
 
-	// Requests should not set the sequence number themselves. Set the sequence
-	// number here based on whether the lease is equivalent to the one it's
-	// succeeding.
 	if lease.Sequence != 0 {
+		__antithesis_instrumentation__.Notify(96987)
 		return newFailedLeaseTrigger(isTransfer),
 			&roachpb.LeaseRejectedError{
 				Existing:  prevLease,
 				Requested: lease,
 				Message:   "sequence number should not be set",
 			}
+	} else {
+		__antithesis_instrumentation__.Notify(96988)
 	}
+	__antithesis_instrumentation__.Notify(96974)
 	if prevLease.Equivalent(lease) {
-		// If the proposed lease is equivalent to the previous lease, it is
-		// given the same sequence number. This is subtle, but is important
-		// to ensure that leases which are meant to be considered the same
-		// lease for the purpose of matching leases during command execution
-		// (see Lease.Equivalent) will be considered so. For example, an
-		// extension to an expiration-based lease will result in a new lease
-		// with the same sequence number.
+		__antithesis_instrumentation__.Notify(96989)
+
 		lease.Sequence = prevLease.Sequence
 	} else {
-		// We set the new lease sequence to one more than the previous lease
-		// sequence. This is safe and will never result in repeated lease
-		// sequences because the sequence check beneath Raft acts as an atomic
-		// compare-and-swap of sorts. If two lease requests are proposed in
-		// parallel, both with the same previous lease, only one will be
-		// accepted and the other will get a LeaseRejectedError and need to
-		// retry with a different sequence number. This is actually exactly what
-		// the sequence number is used to enforce!
+		__antithesis_instrumentation__.Notify(96990)
+
 		lease.Sequence = prevLease.Sequence + 1
 	}
+	__antithesis_instrumentation__.Notify(96975)
 
-	// Record information about the type of event that resulted in this new lease.
 	if isTransfer {
+		__antithesis_instrumentation__.Notify(96991)
 		lease.AcquisitionType = roachpb.LeaseAcquisitionType_Transfer
 	} else {
+		__antithesis_instrumentation__.Notify(96992)
 		lease.AcquisitionType = roachpb.LeaseAcquisitionType_Request
 	}
+	__antithesis_instrumentation__.Notify(96976)
 
-	// Store the lease to disk & in-memory.
 	if err := MakeStateLoader(rec).SetLease(ctx, readWriter, ms, lease); err != nil {
+		__antithesis_instrumentation__.Notify(96993)
 		return newFailedLeaseTrigger(isTransfer), err
+	} else {
+		__antithesis_instrumentation__.Notify(96994)
 	}
+	__antithesis_instrumentation__.Notify(96977)
 
 	var pd result.Result
 	pd.Replicated.State = &kvserverpb.ReplicaState{
@@ -135,25 +127,29 @@ func evalNewLease(
 	}
 	pd.Replicated.PrevLeaseProposal = prevLease.ProposedTS
 
-	// If we're setting a new prior read summary, store it to disk & in-memory.
-	// We elide this step in mixed-version clusters as old nodes would ignore
-	// the PriorReadSummary field (they don't know about it). It's possible that
-	// in this particular case we could get away with it (as the in-mem field
-	// only ever updates in-mem state) but it's easy to get things wrong (in
-	// which case they could easily take a catastrophic turn) and the benefit is
-	// low.
 	if priorReadSum != nil {
+		__antithesis_instrumentation__.Notify(96995)
 		if err := readsummary.Set(ctx, readWriter, rec.GetRangeID(), ms, priorReadSum); err != nil {
+			__antithesis_instrumentation__.Notify(96997)
 			return newFailedLeaseTrigger(isTransfer), err
+		} else {
+			__antithesis_instrumentation__.Notify(96998)
 		}
+		__antithesis_instrumentation__.Notify(96996)
 		pd.Replicated.PriorReadSummary = priorReadSum
+	} else {
+		__antithesis_instrumentation__.Notify(96999)
 	}
+	__antithesis_instrumentation__.Notify(96978)
 
 	pd.Local.Metrics = new(result.Metrics)
 	if isTransfer {
+		__antithesis_instrumentation__.Notify(97000)
 		pd.Local.Metrics.LeaseTransferSuccess = 1
 	} else {
+		__antithesis_instrumentation__.Notify(97001)
 		pd.Local.Metrics.LeaseRequestSuccess = 1
 	}
+	__antithesis_instrumentation__.Notify(96979)
 	return pd, nil
 }

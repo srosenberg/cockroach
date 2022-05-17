@@ -6,6 +6,7 @@ go_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/cmd/uptodate",
     visibility = ["//visibility:private"],
     deps = [
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//oserror",
         "@com_github_michaeltjones_walk//:walk",
         "@com_github_spf13_pflag//:pflag",
@@ -16,4 +17,5 @@ go_binary(
     name = "uptodate",
     embed = [":uptodate_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

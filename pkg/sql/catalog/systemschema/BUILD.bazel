@@ -20,6 +20,7 @@ go_library(
         "//pkg/sql/sem/tree",
         "//pkg/sql/types",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -38,6 +39,7 @@ go_test(
         "//pkg/sql/catalog/schemadesc",
         "//pkg/sql/catalog/tabledesc",
         "//pkg/sql/catalog/typedesc",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

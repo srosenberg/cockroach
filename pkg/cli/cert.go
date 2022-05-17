@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -25,13 +17,9 @@ import (
 
 const defaultKeySize = 2048
 
-// We use 366 days on certificate lifetimes to at least match X years,
-// otherwise leap years risk putting us just under.
-const defaultCALifetime = 10 * 366 * 24 * time.Hour  // ten years
-const defaultCertLifetime = 5 * 366 * 24 * time.Hour // five years
+const defaultCALifetime = 10 * 366 * 24 * time.Hour
+const defaultCertLifetime = 5 * 366 * 24 * time.Hour
 
-// A createCACert command generates a CA certificate and stores it
-// in the cert directory.
 var createCACertCmd = &cobra.Command{
 	Use:   "create-ca --certs-dir=<path to cockroach certs dir> --ca-key=<path-to-ca-key>",
 	Short: "create CA certificate and key",
@@ -46,9 +34,8 @@ If the CA certificate exists and --overwrite is true, the new CA certificate is 
 	RunE: clierrorplus.MaybeDecorateError(runCreateCACert),
 }
 
-// runCreateCACert generates a key and CA certificate and writes them
-// to their corresponding files.
 func runCreateCACert(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(27996)
 	return errors.Wrap(
 		security.CreateCAPair(
 			certCtx.certsDir,
@@ -60,8 +47,6 @@ func runCreateCACert(cmd *cobra.Command, args []string) error {
 		"failed to generate CA cert and key")
 }
 
-// A createClientCACert command generates a client CA certificate and stores it
-// in the cert directory.
 var createClientCACertCmd = &cobra.Command{
 	Use:   "create-client-ca --certs-dir=<path to cockroach certs dir> --ca-key=<path-to-client-ca-key>",
 	Short: "create client CA certificate and key",
@@ -84,9 +69,8 @@ Once the client.node.crt exists, all client certificates will be verified using 
 	RunE: clierrorplus.MaybeDecorateError(runCreateClientCACert),
 }
 
-// runCreateClientCACert generates a key and CA certificate and writes them
-// to their corresponding files.
 func runCreateClientCACert(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(27997)
 	return errors.Wrap(
 		security.CreateClientCAPair(
 			certCtx.certsDir,
@@ -98,8 +82,6 @@ func runCreateClientCACert(cmd *cobra.Command, args []string) error {
 		"failed to generate client CA cert and key")
 }
 
-// A createNodeCert command generates a node certificate and stores it
-// in the cert directory.
 var createNodeCertCmd = &cobra.Command{
 	Use:   "create-node --certs-dir=<path to cockroach certs dir> --ca-key=<path-to-ca-key> <host 1> <host 2> ... <host N>",
 	Short: "create node certificate and key",
@@ -115,20 +97,21 @@ If "ca.crt" contains more than one certificate, the first is used.
 Creation fails if the CA expiration time is before the desired certificate expiration.
 `,
 	Args: func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(27998)
 		if len(args) == 0 {
+			__antithesis_instrumentation__.Notify(28000)
 			return errors.Errorf("create-node requires at least one host name or address, none was specified")
+		} else {
+			__antithesis_instrumentation__.Notify(28001)
 		}
+		__antithesis_instrumentation__.Notify(27999)
 		return nil
 	},
 	RunE: clierrorplus.MaybeDecorateError(runCreateNodeCert),
 }
 
-// runCreateNodeCert generates key pair and CA certificate and writes them
-// to their corresponding files.
-// TODO(marc): there is currently no way to specify which CA cert to use if more
-// than one is present. We should try to load each certificate along with the key
-// and pick the one that works. That way, the key specifies the certificate.
 func runCreateNodeCert(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(28002)
 	return errors.Wrap(
 		security.CreateNodePair(
 			certCtx.certsDir,
@@ -140,8 +123,6 @@ func runCreateNodeCert(cmd *cobra.Command, args []string) error {
 		"failed to generate node certificate and key")
 }
 
-// A createClientCert command generates a client certificate and stores it
-// in the cert directory under <username>.crt and key under <username>.key.
 var createClientCertCmd = &cobra.Command{
 	Use:   "create-client --certs-dir=<path to cockroach certs dir> --ca-key=<path-to-ca-key> <username>",
 	Short: "create client certificate and key",
@@ -159,15 +140,16 @@ Creation fails if the CA expiration time is before the desired certificate expir
 	RunE: clierrorplus.MaybeDecorateError(runCreateClientCert),
 }
 
-// runCreateClientCert generates key pair and CA certificate and writes them
-// to their corresponding files.
-// TODO(marc): there is currently no way to specify which CA cert to use if more
-// than one if present.
 func runCreateClientCert(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(28003)
 	username, err := security.MakeSQLUsernameFromUserInput(args[0], security.UsernameCreation)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(28005)
 		return errors.Wrap(err, "failed to generate client certificate and key")
+	} else {
+		__antithesis_instrumentation__.Notify(28006)
 	}
+	__antithesis_instrumentation__.Notify(28004)
 
 	return errors.Wrap(
 		security.CreateClientPair(
@@ -181,8 +163,6 @@ func runCreateClientCert(cmd *cobra.Command, args []string) error {
 		"failed to generate client certificate and key")
 }
 
-// A listCerts command generates a client certificate and stores it
-// in the cert directory under <username>.crt and key under <username>.key.
 var listCertsCmd = &cobra.Command{
 	Use:   "list",
 	Short: "list certs in --certs-dir",
@@ -193,12 +173,16 @@ List certificates and keys found in the certificate directory.
 	RunE: clierrorplus.MaybeDecorateError(runListCerts),
 }
 
-// runListCerts loads and lists all certs.
 func runListCerts(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(28007)
 	cm, err := security.NewCertificateManager(certCtx.certsDir, security.CommandTLSSettings{})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(28016)
 		return errors.Wrap(err, "cannot load certificates")
+	} else {
+		__antithesis_instrumentation__.Notify(28017)
 	}
+	__antithesis_instrumentation__.Notify(28008)
 
 	fmt.Fprintf(os.Stdout, "Certificate directory: %s\n", certCtx.certsDir)
 
@@ -207,10 +191,15 @@ func runListCerts(cmd *cobra.Command, args []string) error {
 	var rows [][]string
 
 	addRow := func(ci *security.CertInfo, notes string) {
+		__antithesis_instrumentation__.Notify(28018)
 		var errString string
 		if ci.Error != nil {
+			__antithesis_instrumentation__.Notify(28020)
 			errString = ci.Error.Error()
+		} else {
+			__antithesis_instrumentation__.Notify(28021)
 		}
+		__antithesis_instrumentation__.Notify(28019)
 		rows = append(rows, []string{
 			ci.FileUsage.String(),
 			ci.Filename,
@@ -220,69 +209,133 @@ func runListCerts(cmd *cobra.Command, args []string) error {
 			errString,
 		})
 	}
+	__antithesis_instrumentation__.Notify(28009)
 
 	if cert := cm.CACert(); cert != nil {
+		__antithesis_instrumentation__.Notify(28022)
 		var notes string
-		if cert.Error == nil && len(cert.ParsedCertificates) > 0 {
+		if cert.Error == nil && func() bool {
+			__antithesis_instrumentation__.Notify(28024)
+			return len(cert.ParsedCertificates) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(28025)
 			notes = fmt.Sprintf("num certs: %d", len(cert.ParsedCertificates))
+		} else {
+			__antithesis_instrumentation__.Notify(28026)
 		}
+		__antithesis_instrumentation__.Notify(28023)
 		addRow(cert, notes)
+	} else {
+		__antithesis_instrumentation__.Notify(28027)
 	}
+	__antithesis_instrumentation__.Notify(28010)
 
 	if cert := cm.ClientCACert(); cert != nil {
+		__antithesis_instrumentation__.Notify(28028)
 		var notes string
-		if cert.Error == nil && len(cert.ParsedCertificates) > 0 {
+		if cert.Error == nil && func() bool {
+			__antithesis_instrumentation__.Notify(28030)
+			return len(cert.ParsedCertificates) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(28031)
 			notes = fmt.Sprintf("num certs: %d", len(cert.ParsedCertificates))
+		} else {
+			__antithesis_instrumentation__.Notify(28032)
 		}
+		__antithesis_instrumentation__.Notify(28029)
 		addRow(cert, notes)
+	} else {
+		__antithesis_instrumentation__.Notify(28033)
 	}
+	__antithesis_instrumentation__.Notify(28011)
 
 	if cert := cm.UICACert(); cert != nil {
+		__antithesis_instrumentation__.Notify(28034)
 		var notes string
-		if cert.Error == nil && len(cert.ParsedCertificates) > 0 {
+		if cert.Error == nil && func() bool {
+			__antithesis_instrumentation__.Notify(28036)
+			return len(cert.ParsedCertificates) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(28037)
 			notes = fmt.Sprintf("num certs: %d", len(cert.ParsedCertificates))
+		} else {
+			__antithesis_instrumentation__.Notify(28038)
 		}
+		__antithesis_instrumentation__.Notify(28035)
 		addRow(cert, notes)
+	} else {
+		__antithesis_instrumentation__.Notify(28039)
 	}
+	__antithesis_instrumentation__.Notify(28012)
 
 	if cert := cm.NodeCert(); cert != nil {
+		__antithesis_instrumentation__.Notify(28040)
 		var addresses []string
-		if cert.Error == nil && len(cert.ParsedCertificates) > 0 {
+		if cert.Error == nil && func() bool {
+			__antithesis_instrumentation__.Notify(28042)
+			return len(cert.ParsedCertificates) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(28043)
 			addresses = cert.ParsedCertificates[0].DNSNames
 			for _, ip := range cert.ParsedCertificates[0].IPAddresses {
+				__antithesis_instrumentation__.Notify(28044)
 				addresses = append(addresses, ip.String())
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(28045)
 			addresses = append(addresses, "<unknown>")
 		}
+		__antithesis_instrumentation__.Notify(28041)
 
 		addRow(cert, fmt.Sprintf("addresses: %s", strings.Join(addresses, ",")))
+	} else {
+		__antithesis_instrumentation__.Notify(28046)
 	}
+	__antithesis_instrumentation__.Notify(28013)
 
 	if cert := cm.UICert(); cert != nil {
+		__antithesis_instrumentation__.Notify(28047)
 		var addresses []string
-		if cert.Error == nil && len(cert.ParsedCertificates) > 0 {
+		if cert.Error == nil && func() bool {
+			__antithesis_instrumentation__.Notify(28049)
+			return len(cert.ParsedCertificates) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(28050)
 			addresses = cert.ParsedCertificates[0].DNSNames
 			for _, ip := range cert.ParsedCertificates[0].IPAddresses {
+				__antithesis_instrumentation__.Notify(28051)
 				addresses = append(addresses, ip.String())
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(28052)
 			addresses = append(addresses, "<unknown>")
 		}
+		__antithesis_instrumentation__.Notify(28048)
 
 		addRow(cert, fmt.Sprintf("addresses: %s", strings.Join(addresses, ",")))
+	} else {
+		__antithesis_instrumentation__.Notify(28053)
 	}
+	__antithesis_instrumentation__.Notify(28014)
 
 	for _, cert := range cm.ClientCerts() {
+		__antithesis_instrumentation__.Notify(28054)
 		var user string
-		if cert.Error == nil && len(cert.ParsedCertificates) > 0 {
+		if cert.Error == nil && func() bool {
+			__antithesis_instrumentation__.Notify(28056)
+			return len(cert.ParsedCertificates) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(28057)
 			user = cert.ParsedCertificates[0].Subject.CommonName
 		} else {
+			__antithesis_instrumentation__.Notify(28058)
 			user = "<unknown>"
 		}
+		__antithesis_instrumentation__.Notify(28055)
 
 		addRow(cert, fmt.Sprintf("user: %s", user))
 	}
+	__antithesis_instrumentation__.Notify(28015)
 
 	return sqlExecCtx.PrintQueryOutput(os.Stdout, stderr, certTableHeaders, clisqlexec.NewRowSliceIter(rows, alignment))
 }
@@ -299,6 +352,7 @@ var certCmds = []*cobra.Command{
 }
 
 var certCmd = func() *cobra.Command {
+	__antithesis_instrumentation__.Notify(28059)
 	cmd := &cobra.Command{
 		Use:   "cert",
 		Short: "create ca, node, and client certs",

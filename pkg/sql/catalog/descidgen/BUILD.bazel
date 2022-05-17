@@ -9,5 +9,6 @@ go_library(
         "//pkg/keys",
         "//pkg/kv",
         "//pkg/sql/catalog/descpb",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

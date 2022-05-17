@@ -29,6 +29,7 @@ go_library(
         "//pkg/util/protoutil",
         "//pkg/util/stop",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

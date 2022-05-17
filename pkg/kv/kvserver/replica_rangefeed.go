@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -38,10 +30,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// RangefeedEnabled is a cluster setting that enables rangefeed requests.
-// Certain ranges have span configs that specifically enable rangefeeds (system
-// ranges and ranges covering tables in the system database); this setting
-// covers everything else.
 var RangefeedEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"kv.rangefeed.enabled",
@@ -49,8 +37,6 @@ var RangefeedEnabled = settings.RegisterBoolSetting(
 	false,
 ).WithPublic()
 
-// RangeFeedRefreshInterval controls the frequency with which we deliver closed
-// timestamp updates to rangefeeds.
 var RangeFeedRefreshInterval = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"kv.rangefeed.closed_timestamp_refresh_interval",
@@ -60,7 +46,6 @@ var RangeFeedRefreshInterval = settings.RegisterDurationSetting(
 	settings.NonNegativeDuration,
 )
 
-// RangefeedTBIEnabled controls whether or not we use a TBI during catch-up scan.
 var RangefeedTBIEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"kv.rangefeed.catchup_scan_iterator_optimization.enabled",
@@ -68,42 +53,39 @@ var RangefeedTBIEnabled = settings.RegisterBoolSetting(
 	util.ConstantWithMetamorphicTestBool("kv.rangefeed.catchup_scan_iterator_optimization.enabled", true),
 )
 
-// lockedRangefeedStream is an implementation of rangefeed.Stream which provides
-// support for concurrent calls to Send. Note that the default implementation of
-// grpc.Stream is not safe for concurrent calls to Send.
 type lockedRangefeedStream struct {
 	wrapped rangefeed.Stream
 	sendMu  syncutil.Mutex
 }
 
 func (s *lockedRangefeedStream) Context() context.Context {
+	__antithesis_instrumentation__.Notify(119901)
 	return s.wrapped.Context()
 }
 
 func (s *lockedRangefeedStream) Send(e *roachpb.RangeFeedEvent) error {
+	__antithesis_instrumentation__.Notify(119902)
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
 	return s.wrapped.Send(e)
 }
 
-// rangefeedTxnPusher is a shim around intentResolver that implements the
-// rangefeed.TxnPusher interface.
 type rangefeedTxnPusher struct {
 	ir *intentresolver.IntentResolver
 	r  *Replica
 }
 
-// PushTxns is part of the rangefeed.TxnPusher interface. It performs a
-// high-priority push at the specified timestamp to each of the specified
-// transactions.
 func (tp *rangefeedTxnPusher) PushTxns(
 	ctx context.Context, txns []enginepb.TxnMeta, ts hlc.Timestamp,
 ) ([]*roachpb.Transaction, error) {
+	__antithesis_instrumentation__.Notify(119903)
 	pushTxnMap := make(map[uuid.UUID]*enginepb.TxnMeta, len(txns))
 	for i := range txns {
+		__antithesis_instrumentation__.Notify(119907)
 		txn := &txns[i]
 		pushTxnMap[txn.ID] = txn
 	}
+	__antithesis_instrumentation__.Notify(119904)
 
 	h := roachpb.Header{
 		Timestamp: ts,
@@ -115,151 +97,173 @@ func (tp *rangefeedTxnPusher) PushTxns(
 	}
 
 	pushedTxnMap, pErr := tp.ir.MaybePushTransactions(
-		ctx, pushTxnMap, h, roachpb.PUSH_TIMESTAMP, false, /* skipIfInFlight */
+		ctx, pushTxnMap, h, roachpb.PUSH_TIMESTAMP, false,
 	)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(119908)
 		return nil, pErr.GoError()
+	} else {
+		__antithesis_instrumentation__.Notify(119909)
 	}
+	__antithesis_instrumentation__.Notify(119905)
 
 	pushedTxns := make([]*roachpb.Transaction, 0, len(pushedTxnMap))
 	for _, txn := range pushedTxnMap {
+		__antithesis_instrumentation__.Notify(119910)
 		pushedTxns = append(pushedTxns, txn)
 	}
+	__antithesis_instrumentation__.Notify(119906)
 	return pushedTxns, nil
 }
 
-// ResolveIntents is part of the rangefeed.TxnPusher interface.
 func (tp *rangefeedTxnPusher) ResolveIntents(
 	ctx context.Context, intents []roachpb.LockUpdate,
 ) error {
+	__antithesis_instrumentation__.Notify(119911)
 	return tp.ir.ResolveIntents(ctx, intents,
-		// NB: Poison is ignored for non-ABORTED intents.
+
 		intentresolver.ResolveOptions{Poison: true},
 	).GoError()
 }
 
-// RangeFeed registers a rangefeed over the specified span. It sends updates to
-// the provided stream and returns with an optional error when the rangefeed is
-// complete. The provided ConcurrentRequestLimiter is used to limit the number
-// of rangefeeds using catch-up iterators at the same time.
 func (r *Replica) RangeFeed(
 	args *roachpb.RangeFeedRequest, stream rangefeed.Stream,
 ) *roachpb.Error {
+	__antithesis_instrumentation__.Notify(119912)
 	return r.rangeFeedWithRangeID(r.RangeID, args, stream)
 }
 
 func (r *Replica) rangeFeedWithRangeID(
 	_forStacks roachpb.RangeID, args *roachpb.RangeFeedRequest, stream rangefeed.Stream,
 ) *roachpb.Error {
-	if !r.isRangefeedEnabled() && !RangefeedEnabled.Get(&r.store.cfg.Settings.SV) {
+	__antithesis_instrumentation__.Notify(119913)
+	if !r.isRangefeedEnabled() && func() bool {
+		__antithesis_instrumentation__.Notify(119921)
+		return !RangefeedEnabled.Get(&r.store.cfg.Settings.SV) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(119922)
 		return roachpb.NewErrorf("rangefeeds require the kv.rangefeed.enabled setting. See %s",
 			docs.URL(`change-data-capture.html#enable-rangefeeds-to-reduce-latency`))
+	} else {
+		__antithesis_instrumentation__.Notify(119923)
 	}
+	__antithesis_instrumentation__.Notify(119914)
 	ctx := r.AnnotateCtx(stream.Context())
 
 	rSpan, err := keys.SpanAddr(args.Span)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(119924)
 		return roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(119925)
 	}
+	__antithesis_instrumentation__.Notify(119915)
 
 	if err := r.ensureClosedTimestampStarted(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(119926)
 		if err := stream.Send(&roachpb.RangeFeedEvent{Error: &roachpb.RangeFeedError{
 			Error: *err,
 		}}); err != nil {
+			__antithesis_instrumentation__.Notify(119928)
 			return roachpb.NewError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(119929)
 		}
+		__antithesis_instrumentation__.Notify(119927)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(119930)
 	}
+	__antithesis_instrumentation__.Notify(119916)
 
-	// If the RangeFeed is performing a catch-up scan then it will observe all
-	// values above args.Timestamp. If the RangeFeed is requesting previous
-	// values for every update then it will also need to look for the version
-	// proceeding each value observed during the catch-up scan timestamp. This
-	// means that the earliest value observed by the catch-up scan will be
-	// args.Timestamp.Next and the earliest timestamp used to retrieve the
-	// previous version of a value will be args.Timestamp, so this is the
-	// timestamp we must check against the GCThreshold.
 	checkTS := args.Timestamp
 	if checkTS.IsEmpty() {
-		// If no timestamp was provided then we're not going to run a catch-up
-		// scan, so make sure the GCThreshold in requestCanProceed succeeds.
+		__antithesis_instrumentation__.Notify(119931)
+
 		checkTS = r.Clock().Now()
+	} else {
+		__antithesis_instrumentation__.Notify(119932)
 	}
+	__antithesis_instrumentation__.Notify(119917)
 
 	lockedStream := &lockedRangefeedStream{wrapped: stream}
 	errC := make(chan *roachpb.Error, 1)
 
-	// If we will be using a catch-up iterator, wait for the limiter here before
-	// locking raftMu.
 	usingCatchUpIter := false
 	var iterSemRelease func()
 	if !args.Timestamp.IsEmpty() {
+		__antithesis_instrumentation__.Notify(119933)
 		usingCatchUpIter = true
 		alloc, err := r.store.limiters.ConcurrentRangefeedIters.Begin(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(119936)
 			return roachpb.NewError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(119937)
 		}
-		// Finish the iterator limit if we exit before the iterator finishes.
-		// The release function will be hooked into the Close method on the
-		// iterator below. The sync.Once prevents any races between exiting early
-		// from this call and finishing the catch-up scan underneath the
-		// rangefeed.Processor. We need to release here in case we fail to
-		// register the processor, or, more perniciously, in the case where the
-		// processor gets registered by shut down before starting the catch-up
-		// scan.
+		__antithesis_instrumentation__.Notify(119934)
+
 		var iterSemReleaseOnce sync.Once
 		iterSemRelease = func() {
+			__antithesis_instrumentation__.Notify(119938)
 			iterSemReleaseOnce.Do(alloc.Release)
 		}
+		__antithesis_instrumentation__.Notify(119935)
 		defer iterSemRelease()
+	} else {
+		__antithesis_instrumentation__.Notify(119939)
 	}
+	__antithesis_instrumentation__.Notify(119918)
 
-	// Lock the raftMu, then register the stream as a new rangefeed registration.
-	// raftMu is held so that the catch-up iterator is captured in the same
-	// critical-section as the registration is established. This ensures that
-	// the registration doesn't miss any events.
 	r.raftMu.Lock()
 	if err := r.checkExecutionCanProceedForRangeFeed(ctx, rSpan, checkTS); err != nil {
+		__antithesis_instrumentation__.Notify(119940)
 		r.raftMu.Unlock()
 		return roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(119941)
 	}
+	__antithesis_instrumentation__.Notify(119919)
 
-	// Register the stream with a catch-up iterator.
 	var catchUpIterFunc rangefeed.CatchUpIteratorConstructor
 	if usingCatchUpIter {
+		__antithesis_instrumentation__.Notify(119942)
 		catchUpIterFunc = func() *rangefeed.CatchUpIterator {
-			// Assert that we still hold the raftMu when this is called to ensure
-			// that the catchUpIter reads from the current snapshot.
+			__antithesis_instrumentation__.Notify(119943)
+
 			r.raftMu.AssertHeld()
 			return rangefeed.NewCatchUpIterator(r.Engine(),
 				args, RangefeedTBIEnabled.Get(&r.store.cfg.Settings.SV), iterSemRelease)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(119944)
 	}
+	__antithesis_instrumentation__.Notify(119920)
 	p := r.registerWithRangefeedRaftMuLocked(
 		ctx, rSpan, args.Timestamp, catchUpIterFunc, args.WithDiff, lockedStream, errC,
 	)
 	r.raftMu.Unlock()
 
-	// When this function returns, attempt to clean up the rangefeed.
 	defer r.maybeDisconnectEmptyRangefeed(p)
 
-	// Block on the registration's error channel. Note that the registration
-	// observes stream.Context().Done.
 	return <-errC
 }
 
 func (r *Replica) getRangefeedProcessorAndFilter() (*rangefeed.Processor, *rangefeed.Filter) {
+	__antithesis_instrumentation__.Notify(119945)
 	r.rangefeedMu.RLock()
 	defer r.rangefeedMu.RUnlock()
 	return r.rangefeedMu.proc, r.rangefeedMu.opFilter
 }
 
 func (r *Replica) getRangefeedProcessor() *rangefeed.Processor {
+	__antithesis_instrumentation__.Notify(119946)
 	p, _ := r.getRangefeedProcessorAndFilter()
 	return p
 }
 
 func (r *Replica) setRangefeedProcessor(p *rangefeed.Processor) {
+	__antithesis_instrumentation__.Notify(119947)
 	r.rangefeedMu.Lock()
 	defer r.rangefeedMu.Unlock()
 	r.rangefeedMu.proc = p
@@ -267,69 +271,72 @@ func (r *Replica) setRangefeedProcessor(p *rangefeed.Processor) {
 }
 
 func (r *Replica) unsetRangefeedProcessorLocked(p *rangefeed.Processor) {
+	__antithesis_instrumentation__.Notify(119948)
 	if r.rangefeedMu.proc != p {
-		// The processor was already unset.
+		__antithesis_instrumentation__.Notify(119950)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(119951)
 	}
+	__antithesis_instrumentation__.Notify(119949)
 	r.rangefeedMu.proc = nil
 	r.rangefeedMu.opFilter = nil
 	r.store.removeReplicaWithRangefeed(r.RangeID)
 }
 
 func (r *Replica) unsetRangefeedProcessor(p *rangefeed.Processor) {
+	__antithesis_instrumentation__.Notify(119952)
 	r.rangefeedMu.Lock()
 	defer r.rangefeedMu.Unlock()
 	r.unsetRangefeedProcessorLocked(p)
 }
 
 func (r *Replica) setRangefeedFilterLocked(f *rangefeed.Filter) {
+	__antithesis_instrumentation__.Notify(119953)
 	if f == nil {
+		__antithesis_instrumentation__.Notify(119955)
 		panic("filter nil")
+	} else {
+		__antithesis_instrumentation__.Notify(119956)
 	}
+	__antithesis_instrumentation__.Notify(119954)
 	r.rangefeedMu.opFilter = f
 }
 
 func (r *Replica) updateRangefeedFilterLocked() bool {
+	__antithesis_instrumentation__.Notify(119957)
 	f := r.rangefeedMu.proc.Filter()
-	// Return whether the update to the filter was successful or not. If
-	// the processor was already stopped then we can't update the filter.
+
 	if f != nil {
+		__antithesis_instrumentation__.Notify(119959)
 		r.setRangefeedFilterLocked(f)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(119960)
 	}
+	__antithesis_instrumentation__.Notify(119958)
 	return false
 }
 
-// The size of an event is 112 bytes, so this will result in an allocation on
-// the order of ~512KB per RangeFeed. That's probably ok given the number of
-// ranges on a node that we'd like to support with active rangefeeds, but it's
-// certainly on the upper end of the range.
-//
-// TODO(dan): Everyone seems to agree that this memory limit would be better set
-// at a store-wide level, but there doesn't seem to be an easy way to accomplish
-// that.
 const defaultEventChanCap = 4096
 
-// Rangefeed registration takes place under the raftMu, so log if we ever hold
-// the mutex for too long, as this could affect foreground traffic.
-//
-// At the time of writing (09/2021), the blocking call to Processor.syncEventC
-// in Processor.Register appears to be mildly concerning, but we have no reason
-// to believe that is blocks the raftMu in practice.
 func logSlowRangefeedRegistration(ctx context.Context) func() {
+	__antithesis_instrumentation__.Notify(119961)
 	const slowRaftMuWarnThreshold = 20 * time.Millisecond
 	start := timeutil.Now()
 	return func() {
+		__antithesis_instrumentation__.Notify(119962)
 		elapsed := timeutil.Since(start)
 		if elapsed >= slowRaftMuWarnThreshold {
+			__antithesis_instrumentation__.Notify(119963)
 			log.Warningf(ctx, "rangefeed registration took %s", elapsed)
+		} else {
+			__antithesis_instrumentation__.Notify(119964)
 		}
 	}
 }
 
-// registerWithRangefeedRaftMuLocked sets up a Rangefeed registration over the
-// provided span. It initializes a rangefeed for the Replica if one is not
-// already running. Requires raftMu be locked.
 func (r *Replica) registerWithRangefeedRaftMuLocked(
 	ctx context.Context,
 	span roachpb.RSpan,
@@ -339,34 +346,35 @@ func (r *Replica) registerWithRangefeedRaftMuLocked(
 	stream rangefeed.Stream,
 	errC chan<- *roachpb.Error,
 ) *rangefeed.Processor {
+	__antithesis_instrumentation__.Notify(119965)
 	defer logSlowRangefeedRegistration(ctx)()
 
-	// Attempt to register with an existing Rangefeed processor, if one exists.
-	// The locking here is a little tricky because we need to handle the case
-	// of concurrent processor shutdowns (see maybeDisconnectEmptyRangefeed).
 	r.rangefeedMu.Lock()
 	p := r.rangefeedMu.proc
 	if p != nil {
+		__antithesis_instrumentation__.Notify(119970)
 		reg, filter := p.Register(span, startTS, catchUpIter, withDiff, stream, errC)
 		if reg {
-			// Registered successfully with an existing processor.
-			// Update the rangefeed filter to avoid filtering ops
-			// that this new registration might be interested in.
+			__antithesis_instrumentation__.Notify(119972)
+
 			r.setRangefeedFilterLocked(filter)
 			r.rangefeedMu.Unlock()
 			return p
+		} else {
+			__antithesis_instrumentation__.Notify(119973)
 		}
-		// If the registration failed, the processor was already being shut
-		// down. Help unset it and then continue on with initializing a new
-		// processor.
+		__antithesis_instrumentation__.Notify(119971)
+
 		r.unsetRangefeedProcessorLocked(p)
 		p = nil
+	} else {
+		__antithesis_instrumentation__.Notify(119974)
 	}
+	__antithesis_instrumentation__.Notify(119966)
 	r.rangefeedMu.Unlock()
 
 	feedBudget := r.store.GetStoreConfig().RangefeedBudgetFactory.CreateBudget(r.startKey)
 
-	// Create a new rangefeed.
 	desc := r.Desc()
 	tp := rangefeedTxnPusher{ir: r.store.intentResolver, r: r}
 	cfg := rangefeed.Config{
@@ -384,12 +392,9 @@ func (r *Replica) registerWithRangefeedRaftMuLocked(
 	}
 	p = rangefeed.NewProcessor(cfg)
 
-	// Start it with an iterator to initialize the resolved timestamp.
 	rtsIter := func() rangefeed.IntentScanner {
-		// Assert that we still hold the raftMu when this is called to ensure
-		// that the rtsIter reads from the current snapshot. The replica
-		// synchronizes with the rangefeed Processor calling this function by
-		// waiting for the Register call below to return.
+		__antithesis_instrumentation__.Notify(119975)
+
 		r.raftMu.AssertHeld()
 
 		lowerBound, _ := keys.LockTableSingleKey(desc.StartKey.AsRawKey(), nil)
@@ -400,385 +405,439 @@ func (r *Replica) registerWithRangefeedRaftMuLocked(
 		})
 		return rangefeed.NewSeparatedIntentScanner(iter)
 	}
+	__antithesis_instrumentation__.Notify(119967)
 
-	// NB: This only errors if the stopper is stopping, and we have to return here
-	// in that case. We do check ShouldQuiesce() below, but that's not sufficient
-	// because the stopper has two states: stopping and quiescing. If this errors
-	// due to stopping, but before it enters the quiescing state, then the select
-	// below will fall through to the panic.
 	if err := p.Start(r.store.Stopper(), rtsIter); err != nil {
+		__antithesis_instrumentation__.Notify(119976)
 		errC <- roachpb.NewError(err)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(119977)
 	}
+	__antithesis_instrumentation__.Notify(119968)
 
-	// Register with the processor *before* we attach its reference to the
-	// Replica struct. This ensures that the registration is in place before
-	// any other goroutines are able to stop the processor. In other words,
-	// this ensures that the only time the registration fails is during
-	// server shutdown.
 	reg, filter := p.Register(span, startTS, catchUpIter, withDiff, stream, errC)
 	if !reg {
+		__antithesis_instrumentation__.Notify(119978)
 		select {
 		case <-r.store.Stopper().ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(119979)
 			errC <- roachpb.NewError(&roachpb.NodeUnavailableError{})
 			return nil
 		default:
+			__antithesis_instrumentation__.Notify(119980)
 			panic("unexpected Stopped processor")
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(119981)
 	}
+	__antithesis_instrumentation__.Notify(119969)
 
-	// Set the rangefeed processor and filter reference. We know that no other
-	// registration process could have raced with ours because calling this
-	// method requires raftMu to be exclusively locked.
 	r.setRangefeedProcessor(p)
 	r.setRangefeedFilterLocked(filter)
 
-	// Check for an initial closed timestamp update immediately to help
-	// initialize the rangefeed's resolved timestamp as soon as possible.
 	r.handleClosedTimestampUpdateRaftMuLocked(ctx, r.GetClosedTimestamp(ctx))
 
 	return p
 }
 
-// maybeDisconnectEmptyRangefeed tears down the provided Processor if it is
-// still active and if it no longer has any registrations.
 func (r *Replica) maybeDisconnectEmptyRangefeed(p *rangefeed.Processor) {
+	__antithesis_instrumentation__.Notify(119982)
 	r.rangefeedMu.Lock()
 	defer r.rangefeedMu.Unlock()
-	if p == nil || p != r.rangefeedMu.proc {
-		// The processor has already been removed or replaced.
+	if p == nil || func() bool {
+		__antithesis_instrumentation__.Notify(119984)
+		return p != r.rangefeedMu.proc == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(119985)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(119986)
 	}
-	if p.Len() == 0 || !r.updateRangefeedFilterLocked() {
-		// Stop the rangefeed processor if it has no registrations or if we are
-		// unable to update the operation filter.
+	__antithesis_instrumentation__.Notify(119983)
+	if p.Len() == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(119987)
+		return !r.updateRangefeedFilterLocked() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(119988)
+
 		p.Stop()
 		r.unsetRangefeedProcessorLocked(p)
+	} else {
+		__antithesis_instrumentation__.Notify(119989)
 	}
 }
 
-// disconnectRangefeedWithErr broadcasts the provided error to all rangefeed
-// registrations and tears down the provided rangefeed Processor.
 func (r *Replica) disconnectRangefeedWithErr(p *rangefeed.Processor, pErr *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(119990)
 	p.StopWithErr(pErr)
 	r.unsetRangefeedProcessor(p)
 }
 
-// disconnectRangefeedSpanWithErr broadcasts the provided error to all rangefeed
-// registrations that overlap the given span. Tears down the rangefeed Processor
-// if it has no remaining registrations.
 func (r *Replica) disconnectRangefeedSpanWithErr(span roachpb.Span, pErr *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(119991)
 	p := r.getRangefeedProcessor()
 	if p == nil {
+		__antithesis_instrumentation__.Notify(119993)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(119994)
 	}
+	__antithesis_instrumentation__.Notify(119992)
 	p.DisconnectSpanWithErr(span, pErr)
 	r.maybeDisconnectEmptyRangefeed(p)
 }
 
-// disconnectRangefeedWithReason broadcasts the provided rangefeed retry reason
-// to all rangefeed registrations and tears down the active rangefeed Processor.
-// No-op if a rangefeed is not active.
 func (r *Replica) disconnectRangefeedWithReason(reason roachpb.RangeFeedRetryError_Reason) {
+	__antithesis_instrumentation__.Notify(119995)
 	p := r.getRangefeedProcessor()
 	if p == nil {
+		__antithesis_instrumentation__.Notify(119997)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(119998)
 	}
+	__antithesis_instrumentation__.Notify(119996)
 	pErr := roachpb.NewError(roachpb.NewRangeFeedRetryError(reason))
 	r.disconnectRangefeedWithErr(p, pErr)
 }
 
-// numRangefeedRegistrations returns the number of registrations attached to the
-// Replica's rangefeed processor.
 func (r *Replica) numRangefeedRegistrations() int {
+	__antithesis_instrumentation__.Notify(119999)
 	p := r.getRangefeedProcessor()
 	if p == nil {
+		__antithesis_instrumentation__.Notify(120001)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(120002)
 	}
+	__antithesis_instrumentation__.Notify(120000)
 	return p.Len()
 }
 
-// populatePrevValsInLogicalOpLogRaftMuLocked updates the provided logical op
-// log with previous values read from the reader, which is expected to reflect
-// the state of the Replica before the operations in the logical op log are
-// applied. No-op if a rangefeed is not active. Requires raftMu to be locked.
 func (r *Replica) populatePrevValsInLogicalOpLogRaftMuLocked(
 	ctx context.Context, ops *kvserverpb.LogicalOpLog, prevReader storage.Reader,
 ) {
+	__antithesis_instrumentation__.Notify(120003)
 	p, filter := r.getRangefeedProcessorAndFilter()
 	if p == nil {
+		__antithesis_instrumentation__.Notify(120005)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(120006)
 	}
+	__antithesis_instrumentation__.Notify(120004)
 
-	// Read from the Reader to populate the PrevValue fields.
 	for _, op := range ops.Ops {
+		__antithesis_instrumentation__.Notify(120007)
 		var key []byte
 		var ts hlc.Timestamp
 		var prevValPtr *[]byte
 		switch t := op.GetValue().(type) {
 		case *enginepb.MVCCWriteValueOp:
+			__antithesis_instrumentation__.Notify(120011)
 			key, ts, prevValPtr = t.Key, t.Timestamp, &t.PrevValue
 		case *enginepb.MVCCCommitIntentOp:
+			__antithesis_instrumentation__.Notify(120012)
 			key, ts, prevValPtr = t.Key, t.Timestamp, &t.PrevValue
 		case *enginepb.MVCCWriteIntentOp,
 			*enginepb.MVCCUpdateIntentOp,
 			*enginepb.MVCCAbortIntentOp,
 			*enginepb.MVCCAbortTxnOp:
-			// Nothing to do.
+			__antithesis_instrumentation__.Notify(120013)
+
 			continue
 		default:
+			__antithesis_instrumentation__.Notify(120014)
 			panic(errors.AssertionFailedf("unknown logical op %T", t))
 		}
+		__antithesis_instrumentation__.Notify(120008)
 
-		// Don't read previous values from the reader for operations that are
-		// not needed by any rangefeed registration.
 		if !filter.NeedPrevVal(roachpb.Span{Key: key}) {
+			__antithesis_instrumentation__.Notify(120015)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(120016)
 		}
+		__antithesis_instrumentation__.Notify(120009)
 
-		// Read the previous value from the prev Reader. Unlike the new value
-		// (see handleLogicalOpLogRaftMuLocked), this one may be missing.
 		prevVal, _, err := storage.MVCCGet(
 			ctx, prevReader, key, ts, storage.MVCCGetOptions{Tombstones: true, Inconsistent: true},
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(120017)
 			r.disconnectRangefeedWithErr(p, roachpb.NewErrorf(
 				"error consuming %T for key %v @ ts %v: %v", op, key, ts, err,
 			))
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(120018)
 		}
+		__antithesis_instrumentation__.Notify(120010)
 		if prevVal != nil {
+			__antithesis_instrumentation__.Notify(120019)
 			*prevValPtr = prevVal.RawBytes
 		} else {
+			__antithesis_instrumentation__.Notify(120020)
 			*prevValPtr = nil
 		}
 	}
 }
 
-// handleLogicalOpLogRaftMuLocked passes the logical op log to the active
-// rangefeed, if one is running. The method accepts a reader, which is used to
-// look up the values associated with key-value writes in the log before handing
-// them to the rangefeed processor. No-op if a rangefeed is not active. Requires
-// raftMu to be locked.
 func (r *Replica) handleLogicalOpLogRaftMuLocked(
 	ctx context.Context, ops *kvserverpb.LogicalOpLog, reader storage.Reader,
 ) {
+	__antithesis_instrumentation__.Notify(120021)
 	p, filter := r.getRangefeedProcessorAndFilter()
 	if p == nil {
+		__antithesis_instrumentation__.Notify(120026)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(120027)
 	}
+	__antithesis_instrumentation__.Notify(120022)
 	if ops == nil {
-		// Rangefeeds can't be turned on unless RangefeedEnabled is set to true,
-		// after which point new Raft proposals will include logical op logs.
-		// However, there's a race present where old Raft commands without a
-		// logical op log might be passed to a rangefeed. Since the effect of
-		// these commands was not included in the catch-up scan of current
-		// registrations, we're forced to throw an error. The rangefeed clients
-		// can reconnect at a later time, at which point all new Raft commands
-		// should have logical op logs.
+		__antithesis_instrumentation__.Notify(120028)
+
 		r.disconnectRangefeedWithReason(roachpb.RangeFeedRetryError_REASON_LOGICAL_OPS_MISSING)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(120029)
 	}
+	__antithesis_instrumentation__.Notify(120023)
 	if len(ops.Ops) == 0 {
+		__antithesis_instrumentation__.Notify(120030)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(120031)
 	}
+	__antithesis_instrumentation__.Notify(120024)
 
-	// When reading straight from the Raft log, some logical ops will not be
-	// fully populated. Read from the Reader to populate all fields.
 	for _, op := range ops.Ops {
+		__antithesis_instrumentation__.Notify(120032)
 		var key []byte
 		var ts hlc.Timestamp
 		var valPtr *[]byte
 		switch t := op.GetValue().(type) {
 		case *enginepb.MVCCWriteValueOp:
+			__antithesis_instrumentation__.Notify(120037)
 			key, ts, valPtr = t.Key, t.Timestamp, &t.Value
 		case *enginepb.MVCCCommitIntentOp:
+			__antithesis_instrumentation__.Notify(120038)
 			key, ts, valPtr = t.Key, t.Timestamp, &t.Value
 		case *enginepb.MVCCWriteIntentOp,
 			*enginepb.MVCCUpdateIntentOp,
 			*enginepb.MVCCAbortIntentOp,
 			*enginepb.MVCCAbortTxnOp:
-			// Nothing to do.
+			__antithesis_instrumentation__.Notify(120039)
+
 			continue
 		default:
+			__antithesis_instrumentation__.Notify(120040)
 			panic(errors.AssertionFailedf("unknown logical op %T", t))
 		}
+		__antithesis_instrumentation__.Notify(120033)
 
-		// Don't read values from the reader for operations that are not needed
-		// by any rangefeed registration. We still need to inform the rangefeed
-		// processor of the changes to intents so that it can track unresolved
-		// intents, but we don't need to provide values.
-		//
-		// We could filter out MVCCWriteValueOp operations entirely at this
-		// point if they are not needed by any registration, but as long as we
-		// avoid the value lookup here, doing any more doesn't seem worth it.
 		if !filter.NeedVal(roachpb.Span{Key: key}) {
+			__antithesis_instrumentation__.Notify(120041)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(120042)
 		}
+		__antithesis_instrumentation__.Notify(120034)
 
-		// Read the value directly from the Reader. This is performed in the
-		// same raftMu critical section that the logical op's corresponding
-		// WriteBatch is applied, so the value should exist.
 		val, _, err := storage.MVCCGet(ctx, reader, key, ts, storage.MVCCGetOptions{Tombstones: true})
-		if val == nil && err == nil {
+		if val == nil && func() bool {
+			__antithesis_instrumentation__.Notify(120043)
+			return err == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(120044)
 			err = errors.New("value missing in reader")
+		} else {
+			__antithesis_instrumentation__.Notify(120045)
 		}
+		__antithesis_instrumentation__.Notify(120035)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(120046)
 			r.disconnectRangefeedWithErr(p, roachpb.NewErrorf(
 				"error consuming %T for key %v @ ts %v: %v", op, key, ts, err,
 			))
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(120047)
 		}
+		__antithesis_instrumentation__.Notify(120036)
 		*valPtr = val.RawBytes
 	}
+	__antithesis_instrumentation__.Notify(120025)
 
-	// Pass the ops to the rangefeed processor.
 	if !p.ConsumeLogicalOps(ctx, ops.Ops...) {
-		// Consumption failed and the rangefeed was stopped.
+		__antithesis_instrumentation__.Notify(120048)
+
 		r.unsetRangefeedProcessor(p)
+	} else {
+		__antithesis_instrumentation__.Notify(120049)
 	}
 }
 
-// handleSSTableRaftMuLocked emits an ingested SSTable from AddSSTable via the
-// rangefeed. These can be expected to have timestamps at the write timestamp
-// (i.e. submitted with SSTTimestampToRequestTimestamp) since we assert
-// elsewhere that MVCCHistoryMutation commands disconnect rangefeeds.
-//
-// NB: We currently don't have memory budgeting for rangefeeds, instead using a
-// large buffered channel, so this can easily OOM the node. This is "fine" for
-// now, since we do not currently expect AddSSTable across spans with
-// rangefeeds, but must be added before we start publishing SSTables in earnest.
-// See: https://github.com/cockroachdb/cockroach/issues/73616
 func (r *Replica) handleSSTableRaftMuLocked(
 	ctx context.Context, sst []byte, sstSpan roachpb.Span, writeTS hlc.Timestamp,
 ) {
+	__antithesis_instrumentation__.Notify(120050)
 	p, _ := r.getRangefeedProcessorAndFilter()
 	if p == nil {
+		__antithesis_instrumentation__.Notify(120052)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(120053)
 	}
+	__antithesis_instrumentation__.Notify(120051)
 	if !p.ConsumeSSTable(ctx, sst, sstSpan, writeTS) {
+		__antithesis_instrumentation__.Notify(120054)
 		r.unsetRangefeedProcessor(p)
+	} else {
+		__antithesis_instrumentation__.Notify(120055)
 	}
 }
 
-// handleClosedTimestampUpdate takes the a closed timestamp for the replica
-// and informs the rangefeed, if one is running. No-op if a
-// rangefeed is not active.
-//
-// closeTS is generally expected to be the highest closed timestamp known, but
-// it doesn't need to be - handleClosedTimestampUpdate can be called with
-// updates out of order.
 func (r *Replica) handleClosedTimestampUpdate(ctx context.Context, closedTS hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(120056)
 	ctx = r.AnnotateCtx(ctx)
 	r.raftMu.Lock()
 	defer r.raftMu.Unlock()
 	r.handleClosedTimestampUpdateRaftMuLocked(ctx, closedTS)
 }
 
-// handleClosedTimestampUpdateRaftMuLocked is like handleClosedTimestampUpdate,
-// but it requires raftMu to be locked.
 func (r *Replica) handleClosedTimestampUpdateRaftMuLocked(
 	ctx context.Context, closedTS hlc.Timestamp,
 ) {
+	__antithesis_instrumentation__.Notify(120057)
 	p := r.getRangefeedProcessor()
 	if p == nil {
+		__antithesis_instrumentation__.Notify(120061)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(120062)
 	}
+	__antithesis_instrumentation__.Notify(120058)
 
-	// If the closed timestamp is sufficiently stale, signal that we want an
-	// update to the leaseholder so that it will eventually begin to progress
-	// again.
 	behind := r.Clock().PhysicalTime().Sub(closedTS.GoTime())
 	slowClosedTSThresh := 5 * closedts.TargetDuration.Get(&r.store.cfg.Settings.SV)
 	if behind > slowClosedTSThresh {
+		__antithesis_instrumentation__.Notify(120063)
 		m := r.store.metrics.RangeFeedMetrics
 		if m.RangeFeedSlowClosedTimestampLogN.ShouldLog() {
+			__antithesis_instrumentation__.Notify(120066)
 			if closedTS.IsEmpty() {
+				__antithesis_instrumentation__.Notify(120067)
 				log.Infof(ctx, "RangeFeed closed timestamp is empty")
 			} else {
+				__antithesis_instrumentation__.Notify(120068)
 				log.Infof(ctx, "RangeFeed closed timestamp %s is behind by %s", closedTS, behind)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(120069)
 		}
+		__antithesis_instrumentation__.Notify(120064)
 
-		// Asynchronously attempt to nudge the closed timestamp in case it's stuck.
 		key := fmt.Sprintf(`rangefeed-slow-closed-timestamp-nudge-r%d`, r.RangeID)
-		// Ignore the result of DoChan since, to keep this all async, it always
-		// returns nil and any errors are logged by the closure passed to the
-		// `DoChan` call.
+
 		taskCtx, sp := tracing.EnsureForkSpan(ctx, r.AmbientContext.Tracer, key)
 		_, leader := m.RangeFeedSlowClosedTimestampNudge.DoChan(key, func() (interface{}, error) {
+			__antithesis_instrumentation__.Notify(120070)
 			defer sp.Finish()
-			// Also ignore the result of RunTask, since it only returns errors when
-			// the task didn't start because we're shutting down.
+
 			_ = r.store.stopper.RunTask(taskCtx, key, func(ctx context.Context) {
-				// Limit the amount of work this can suddenly spin up. In particular,
-				// this is to protect against the case of a system-wide slowdown on
-				// closed timestamps, which would otherwise potentially launch a huge
-				// number of lease acquisitions all at once.
+				__antithesis_instrumentation__.Notify(120072)
+
 				select {
 				case <-ctx.Done():
-					// Don't need to do this anymore.
+					__antithesis_instrumentation__.Notify(120075)
+
 					return
 				case m.RangeFeedSlowClosedTimestampNudgeSem <- struct{}{}:
+					__antithesis_instrumentation__.Notify(120076)
 				}
-				defer func() { <-m.RangeFeedSlowClosedTimestampNudgeSem }()
+				__antithesis_instrumentation__.Notify(120073)
+				defer func() { __antithesis_instrumentation__.Notify(120077); <-m.RangeFeedSlowClosedTimestampNudgeSem }()
+				__antithesis_instrumentation__.Notify(120074)
 				if err := r.ensureClosedTimestampStarted(ctx); err != nil {
+					__antithesis_instrumentation__.Notify(120078)
 					log.Infof(ctx, `RangeFeed failed to nudge: %s`, err)
+				} else {
+					__antithesis_instrumentation__.Notify(120079)
 				}
 			})
+			__antithesis_instrumentation__.Notify(120071)
 			return nil, nil
 		})
+		__antithesis_instrumentation__.Notify(120065)
 		if !leader {
-			// In the leader case, we've passed ownership of sp to the task. If the
-			// task was not triggered, though, it's up to us to Finish() it.
-			sp.Finish()
-		}
-	}
+			__antithesis_instrumentation__.Notify(120080)
 
-	// If the closed timestamp is not empty, inform the Processor.
-	if closedTS.IsEmpty() {
-		return
+			sp.Finish()
+		} else {
+			__antithesis_instrumentation__.Notify(120081)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(120082)
 	}
+	__antithesis_instrumentation__.Notify(120059)
+
+	if closedTS.IsEmpty() {
+		__antithesis_instrumentation__.Notify(120083)
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(120084)
+	}
+	__antithesis_instrumentation__.Notify(120060)
 	if !p.ForwardClosedTS(ctx, closedTS) {
-		// Consumption failed and the rangefeed was stopped.
+		__antithesis_instrumentation__.Notify(120085)
+
 		r.unsetRangefeedProcessor(p)
+	} else {
+		__antithesis_instrumentation__.Notify(120086)
 	}
 }
 
-// ensureClosedTimestampStarted does its best to make sure that this node is
-// receiving closed timestamp updates for this replica's range. Note that this
-// forces a valid lease to exist on the range and so can be reasonably expensive
-// if there is not already a valid lease.
 func (r *Replica) ensureClosedTimestampStarted(ctx context.Context) *roachpb.Error {
-	// Make sure there's a valid lease. If there's no lease, nobody's sending
-	// closed timestamp updates.
+	__antithesis_instrumentation__.Notify(120087)
+
 	lease := r.CurrentLeaseStatus(ctx)
 
 	if !lease.IsValid() {
-		// Send a cheap request that needs a leaseholder, in order to ensure a
-		// lease. We don't care about the request's result, only its routing. We're
-		// employing higher-level machinery here (the DistSender); there's no better
-		// way to ensure that someone (potentially another replica) takes a lease.
-		// In particular, r.redirectOnOrAcquireLease() doesn't work because, if the
-		// current lease is invalid and the current replica is not a leader, the
-		// current replica will not take a lease.
+		__antithesis_instrumentation__.Notify(120089)
+
 		log.VEventf(ctx, 2, "ensuring lease for rangefeed range. current lease invalid: %s", lease.Lease)
 		err := contextutil.RunWithTimeout(ctx, "read forcing lease acquisition", 5*time.Second,
 			func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(120091)
 				var b kv.Batch
 				liReq := &roachpb.LeaseInfoRequest{}
 				liReq.Key = r.Desc().StartKey.AsRawKey()
 				b.AddRawRequest(liReq)
 				return r.store.DB().Run(ctx, &b)
 			})
+		__antithesis_instrumentation__.Notify(120090)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(120092)
 			if errors.HasType(err, (*contextutil.TimeoutError)(nil)) {
+				__antithesis_instrumentation__.Notify(120094)
 				err = &roachpb.RangeFeedRetryError{
 					Reason: roachpb.RangeFeedRetryError_REASON_NO_LEASEHOLDER,
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(120095)
 			}
+			__antithesis_instrumentation__.Notify(120093)
 			return roachpb.NewError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(120096)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(120097)
 	}
+	__antithesis_instrumentation__.Notify(120088)
 	return nil
 }

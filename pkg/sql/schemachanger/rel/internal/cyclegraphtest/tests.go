@@ -1,21 +1,12 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cyclegraphtest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/rel"
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/rel/reltest"
 )
 
-// Suite is the suite for testproto.
 var Suite = reltest.Suite{
 	Name:          "cyclegraph",
 	Schema:        schema,
@@ -26,8 +17,8 @@ var Suite = reltest.Suite{
 var (
 	reg = reltest.NewRegistry()
 
-	// Here we create a bunch of cyclic relationships between these 4 entities.
 	message1, message2, container1, container2 = func() (*struct1, *struct2, *container, *container) {
+		__antithesis_instrumentation__.Notify(578566)
 		s1, s2, c1, c2 := &struct1{}, &struct2{}, &container{}, &container{}
 		*c1 = container{S1: s1}
 		*c2 = container{S2: s2}
@@ -44,7 +35,7 @@ var (
 
 	databaseTests = []reltest.DatabaseTest{
 		{
-			Data: []string{"container1"}, // recursively will add it all, test that
+			Data: []string{"container1"},
 			Indexes: [][][]rel.Attr{
 				nil,
 				{{s}, {c}, {name}},

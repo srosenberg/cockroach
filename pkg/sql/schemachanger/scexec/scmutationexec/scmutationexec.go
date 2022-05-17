@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scmutationexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -16,10 +8,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scop"
 )
 
-// NewMutationVisitor creates a new scop.MutationVisitor.
 func NewMutationVisitor(
 	s MutationVisitorStateUpdater, nr NameResolver, sd SyntheticDescriptors, clock Clock,
 ) scop.MutationVisitor {
+	__antithesis_instrumentation__.Notify(582365)
 	return &visitor{
 		nr:    nr,
 		sd:    sd,
@@ -38,5 +30,6 @@ type visitor struct {
 }
 
 func (m *visitor) NotImplemented(_ context.Context, _ scop.NotImplemented) error {
+	__antithesis_instrumentation__.Notify(582366)
 	return nil
 }

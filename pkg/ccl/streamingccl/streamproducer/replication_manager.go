@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package streamproducer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/ccl/streamingccl/streampb"
@@ -22,66 +16,77 @@ import (
 
 type replicationStreamManagerImpl struct{}
 
-// CompleteStreamIngestion implements ReplicationStreamManager interface.
 func (r *replicationStreamManagerImpl) CompleteStreamIngestion(
 	evalCtx *tree.EvalContext,
 	txn *kv.Txn,
 	streamID streaming.StreamID,
 	cutoverTimestamp hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(26974)
 	return completeStreamIngestion(evalCtx, txn, streamID, cutoverTimestamp)
 }
 
-// StartReplicationStream implements ReplicationStreamManager interface.
 func (r *replicationStreamManagerImpl) StartReplicationStream(
 	evalCtx *tree.EvalContext, txn *kv.Txn, tenantID uint64,
 ) (streaming.StreamID, error) {
+	__antithesis_instrumentation__.Notify(26975)
 	return startReplicationStreamJob(evalCtx, txn, tenantID)
 }
 
-// UpdateReplicationStreamProgress implements ReplicationStreamManager interface.
 func (r *replicationStreamManagerImpl) UpdateReplicationStreamProgress(
 	evalCtx *tree.EvalContext, streamID streaming.StreamID, frontier hlc.Timestamp, txn *kv.Txn,
 ) (streampb.StreamReplicationStatus, error) {
+	__antithesis_instrumentation__.Notify(26976)
 	return heartbeatReplicationStream(evalCtx, streamID, frontier, txn)
 }
 
-// StreamPartition returns a value generator which yields events for the specified partition.
-// opaqueSpec contains streampb.PartitionSpec protocol message.
-// streamID specifies the streaming job this partition belongs too.
 func (r *replicationStreamManagerImpl) StreamPartition(
 	evalCtx *tree.EvalContext, streamID streaming.StreamID, opaqueSpec []byte,
 ) (tree.ValueGenerator, error) {
+	__antithesis_instrumentation__.Notify(26977)
 	return streamPartition(evalCtx, streamID, opaqueSpec)
 }
 
-// GetReplicationStreamSpec implements ReplicationStreamManager interface.
 func (r *replicationStreamManagerImpl) GetReplicationStreamSpec(
 	evalCtx *tree.EvalContext, txn *kv.Txn, streamID streaming.StreamID,
 ) (*streampb.ReplicationStreamSpec, error) {
+	__antithesis_instrumentation__.Notify(26978)
 	return getReplicationStreamSpec(evalCtx, txn, streamID)
 }
 
 func newReplicationStreamManagerWithPrivilegesCheck(
 	evalCtx *tree.EvalContext,
 ) (streaming.ReplicationStreamManager, error) {
+	__antithesis_instrumentation__.Notify(26979)
 	isAdmin, err := evalCtx.SessionAccessor.HasAdminRole(evalCtx.Context)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(26983)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(26984)
 	}
+	__antithesis_instrumentation__.Notify(26980)
 
 	if !isAdmin {
+		__antithesis_instrumentation__.Notify(26985)
 		return nil,
 			pgerror.New(pgcode.InsufficientPrivilege, "replication restricted to ADMIN role")
+	} else {
+		__antithesis_instrumentation__.Notify(26986)
 	}
+	__antithesis_instrumentation__.Notify(26981)
 
 	execCfg := evalCtx.Planner.ExecutorConfig().(*sql.ExecutorConfig)
 	enterpriseCheckErr := utilccl.CheckEnterpriseEnabled(
 		execCfg.Settings, execCfg.LogicalClusterID(), execCfg.Organization(), "REPLICATION")
 	if enterpriseCheckErr != nil {
+		__antithesis_instrumentation__.Notify(26987)
 		return nil, pgerror.Wrap(enterpriseCheckErr,
 			pgcode.InsufficientPrivilege, "replication requires enterprise license")
+	} else {
+		__antithesis_instrumentation__.Notify(26988)
 	}
+	__antithesis_instrumentation__.Notify(26982)
 
 	return &replicationStreamManagerImpl{}, nil
 }

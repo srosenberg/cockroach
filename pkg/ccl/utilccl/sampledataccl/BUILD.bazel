@@ -10,6 +10,7 @@ go_library(
         "//pkg/testutils/serverutils",
         "//pkg/workload",
         "//pkg/workload/workloadsql",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -26,5 +27,6 @@ go_test(
         "//pkg/testutils/serverutils",
         "//pkg/testutils/testcluster",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

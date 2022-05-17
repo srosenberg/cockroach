@@ -1,20 +1,11 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package lock provides type definitions for locking-related concepts used by
 // concurrency control in the key-value layer.
 package lock
 
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 import fmt "fmt"
 
-// MaxDurability is the maximum value in the Durability enum.
 const MaxDurability = Unreplicated
 
 func init() {
@@ -25,11 +16,8 @@ func init() {
 	}
 }
 
-// SafeValue implements redact.SafeValue.
-func (Strength) SafeValue() {}
+func (Strength) SafeValue() { __antithesis_instrumentation__.Notify(99393) }
 
-// SafeValue implements redact.SafeValue.
-func (Durability) SafeValue() {}
+func (Durability) SafeValue() { __antithesis_instrumentation__.Notify(99394) }
 
-// SafeValue implements redact.SafeValue.
-func (WaitPolicy) SafeValue() {}
+func (WaitPolicy) SafeValue() { __antithesis_instrumentation__.Notify(99395) }

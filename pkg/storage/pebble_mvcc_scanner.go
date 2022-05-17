@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -31,89 +23,82 @@ import (
 const (
 	maxItersBeforeSeek = 10
 
-	// Key value lengths take up 8 bytes (2 x Uint32).
 	kvLenSize = 8
 )
 
-// Struct to store MVCCScan / MVCCGet in the same binary format as that
-// expected by MVCCScanDecodeKeyValue.
 type pebbleResults struct {
 	count int64
 	bytes int64
 	repr  []byte
 	bufs  [][]byte
 
-	// lastOffsets is a ring buffer that keeps track of byte offsets for the last
-	// N KV pairs. It is used to discard a partial SQL row at the end of the
-	// result via maybeTrimPartialLastRows() -- such rows can span multiple KV
-	// pairs. The length of lastOffsets is interpreted as the maximum expected SQL
-	// row size (i.e.  number of column families).
-	//
-	// lastOffsets is initialized with a fixed length giving the N number of last
-	// KV pair offsets to track. lastOffsetIdx contains the index in lastOffsets
-	// where the next KV byte offset will be written, wrapping around to 0 when it
-	// reaches the end of lastOffsets.
-	//
-	// The lastOffsets values are byte offsets in p.repr and p.bufs. The latest
-	// lastOffset (i.e. the one at lastOffsetIdx-1) will be an offset in p.repr.
-	// When iterating backwards through the ring buffer and crossing a byte offset
-	// of 0, the next iterated byte offset in the ring buffer (at i-1) will then
-	// point to the previous buffer in p.bufs.
-	//
-	// Actual and default 0 values in the slice are disambiguated when iterating
-	// backwards through p.repr and p.bufs. If we iterate to the start of all byte
-	// buffers without iterating through all of lastOffsets (i.e. when there are
-	// fewer KV pairs than the length of lastOffsets), then we must be at the start
-	// of lastOffsets, and any 0 values at the end are of no interest.
-	lastOffsetsEnabled bool // NB: significantly faster than checking lastOffsets != nil
+	lastOffsetsEnabled bool
 	lastOffsets        []int
 	lastOffsetIdx      int
 }
 
 func (p *pebbleResults) clear() {
+	__antithesis_instrumentation__.Notify(643243)
 	*p = pebbleResults{}
 }
 
-// The repr that MVCCScan / MVCCGet expects to provide as output goes:
-// <valueLen:Uint32><keyLen:Uint32><Key><Value>
-// This function adds to repr in that format.
 func (p *pebbleResults) put(
 	ctx context.Context, key []byte, value []byte, memAccount *mon.BoundAccount,
 ) error {
+	__antithesis_instrumentation__.Notify(643244)
 	const minSize = 16
-	const maxSize = 128 << 20 // 128 MB
+	const maxSize = 128 << 20
 
-	// We maintain a list of buffers, always encoding into the last one (a.k.a.
-	// pebbleResults.repr). The size of the buffers is exponentially increasing,
-	// capped at maxSize. The exponential increase allows us to amortize the
-	// cost of the allocation over multiple put calls. If this (key, value) pair
-	// needs capacity greater than maxSize, we allocate exactly the size needed.
 	lenKey := len(key)
 	lenValue := len(value)
 	lenToAdd := p.sizeOf(lenKey, lenValue)
 	if len(p.repr)+lenToAdd > cap(p.repr) {
+		__antithesis_instrumentation__.Notify(643247)
 		newSize := 2 * cap(p.repr)
-		if newSize == 0 || newSize > maxSize {
-			// If the previous buffer exceeded maxSize, we don't double its capacity
-			// for next allocation, and instead reset the exponential increase, in
-			// case we had a stray huge key-value.
+		if newSize == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(643252)
+			return newSize > maxSize == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(643253)
+
 			newSize = minSize
+		} else {
+			__antithesis_instrumentation__.Notify(643254)
 		}
+		__antithesis_instrumentation__.Notify(643248)
 		if lenToAdd >= maxSize {
+			__antithesis_instrumentation__.Notify(643255)
 			newSize = lenToAdd
 		} else {
-			for newSize < lenToAdd && newSize < maxSize {
+			__antithesis_instrumentation__.Notify(643256)
+			for newSize < lenToAdd && func() bool {
+				__antithesis_instrumentation__.Notify(643257)
+				return newSize < maxSize == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(643258)
 				newSize *= 2
 			}
 		}
+		__antithesis_instrumentation__.Notify(643249)
 		if len(p.repr) > 0 {
+			__antithesis_instrumentation__.Notify(643259)
 			p.bufs = append(p.bufs, p.repr)
+		} else {
+			__antithesis_instrumentation__.Notify(643260)
 		}
+		__antithesis_instrumentation__.Notify(643250)
 		if err := memAccount.Grow(ctx, int64(newSize)); err != nil {
+			__antithesis_instrumentation__.Notify(643261)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(643262)
 		}
+		__antithesis_instrumentation__.Notify(643251)
 		p.repr = nonZeroingMakeByteSlice(newSize)[:0]
+	} else {
+		__antithesis_instrumentation__.Notify(643263)
 	}
+	__antithesis_instrumentation__.Notify(643245)
 
 	startIdx := len(p.repr)
 	p.repr = p.repr[:startIdx+lenToAdd]
@@ -124,104 +109,141 @@ func (p *pebbleResults) put(
 	p.count++
 	p.bytes += int64(lenToAdd)
 
-	// If we're tracking KV offsets, update the ring buffer.
 	if p.lastOffsetsEnabled {
+		__antithesis_instrumentation__.Notify(643264)
 		p.lastOffsets[p.lastOffsetIdx] = startIdx
 		p.lastOffsetIdx++
-		// NB: Branching is significantly faster than modulo in benchmarks, likely
-		// because of a high branch prediction hit rate.
+
 		if p.lastOffsetIdx == len(p.lastOffsets) {
+			__antithesis_instrumentation__.Notify(643265)
 			p.lastOffsetIdx = 0
+		} else {
+			__antithesis_instrumentation__.Notify(643266)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(643267)
 	}
+	__antithesis_instrumentation__.Notify(643246)
 
 	return nil
 }
 
 func (p *pebbleResults) sizeOf(lenKey, lenValue int) int {
+	__antithesis_instrumentation__.Notify(643268)
 	return kvLenSize + lenKey + lenValue
 }
 
-// continuesFirstRow returns true if the given key belongs to the same SQL row
-// as the first KV pair in the result (or if the result is empty). If either
-// key is not a valid SQL row key, returns false.
 func (p *pebbleResults) continuesFirstRow(key roachpb.Key) bool {
+	__antithesis_instrumentation__.Notify(643269)
 	repr := p.repr
 	if len(p.bufs) > 0 {
+		__antithesis_instrumentation__.Notify(643273)
 		repr = p.bufs[0]
+	} else {
+		__antithesis_instrumentation__.Notify(643274)
 	}
+	__antithesis_instrumentation__.Notify(643270)
 	if len(repr) == 0 {
-		return true // no rows in the result
+		__antithesis_instrumentation__.Notify(643275)
+		return true
+	} else {
+		__antithesis_instrumentation__.Notify(643276)
 	}
+	__antithesis_instrumentation__.Notify(643271)
 
 	rowPrefix := getRowPrefix(key)
 	if rowPrefix == nil {
+		__antithesis_instrumentation__.Notify(643277)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643278)
 	}
+	__antithesis_instrumentation__.Notify(643272)
 	return bytes.Equal(rowPrefix, getRowPrefix(extractResultKey(repr)))
 }
 
-// lastRowHasFinalColumnFamily returns true if the last key in the result is the
-// maximum column family ID of the row (i.e. when it equals len(lastOffsets)-1).
-// If so, we know that the row is complete. However, the inverse is not true:
-// the final column families of the row may be omitted, in which case the caller
-// has to scan to the next key to find out whether the row is complete.
 func (p *pebbleResults) lastRowHasFinalColumnFamily() bool {
-	if !p.lastOffsetsEnabled || p.count == 0 {
+	__antithesis_instrumentation__.Notify(643279)
+	if !p.lastOffsetsEnabled || func() bool {
+		__antithesis_instrumentation__.Notify(643283)
+		return p.count == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643284)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643285)
 	}
+	__antithesis_instrumentation__.Notify(643280)
 
-	lastOffsetIdx := p.lastOffsetIdx - 1 // p.lastOffsetIdx is where next offset would be stored
+	lastOffsetIdx := p.lastOffsetIdx - 1
 	if lastOffsetIdx < 0 {
+		__antithesis_instrumentation__.Notify(643286)
 		lastOffsetIdx = len(p.lastOffsets) - 1
+	} else {
+		__antithesis_instrumentation__.Notify(643287)
 	}
+	__antithesis_instrumentation__.Notify(643281)
 	lastOffset := p.lastOffsets[lastOffsetIdx]
 
 	key := extractResultKey(p.repr[lastOffset:])
 	colFamilyID, err := keys.DecodeFamilyKey(key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(643288)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643289)
 	}
+	__antithesis_instrumentation__.Notify(643282)
 	return int(colFamilyID) == len(p.lastOffsets)-1
 }
 
-// maybeTrimPartialLastRow removes the last KV pairs from the result that are part
-// of the same SQL row as the given key, returning the earliest key removed. The
-// row cannot be made up of more KV pairs than given by len(lastOffsets),
-// otherwise an error is returned. Must be called before finish().
 func (p *pebbleResults) maybeTrimPartialLastRow(nextKey roachpb.Key) (roachpb.Key, error) {
-	if !p.lastOffsetsEnabled || len(p.repr) == 0 {
+	__antithesis_instrumentation__.Notify(643290)
+	if !p.lastOffsetsEnabled || func() bool {
+		__antithesis_instrumentation__.Notify(643294)
+		return len(p.repr) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643295)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(643296)
 	}
+	__antithesis_instrumentation__.Notify(643291)
 	trimRowPrefix := getRowPrefix(nextKey)
 	if trimRowPrefix == nil {
+		__antithesis_instrumentation__.Notify(643297)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(643298)
 	}
+	__antithesis_instrumentation__.Notify(643292)
 
 	var firstTrimmedKey roachpb.Key
 
-	// We're iterating backwards through the p.lastOffsets ring buffer, starting
-	// at p.lastOffsetIdx-1 (which is where the last KV was stored). The loop
-	// condition simply makes sure we limit the number of iterations to the size
-	// of the ring buffer, to prevent wrapping around.
 	for i := 0; i < len(p.lastOffsets); i++ {
-		lastOffsetIdx := p.lastOffsetIdx - 1 // p.lastOffsetIdx is where next offset would be stored
+		__antithesis_instrumentation__.Notify(643299)
+		lastOffsetIdx := p.lastOffsetIdx - 1
 		if lastOffsetIdx < 0 {
+			__antithesis_instrumentation__.Notify(643302)
 			lastOffsetIdx = len(p.lastOffsets) - 1
+		} else {
+			__antithesis_instrumentation__.Notify(643303)
 		}
+		__antithesis_instrumentation__.Notify(643300)
 		lastOffset := p.lastOffsets[lastOffsetIdx]
 
-		// The remainder of repr from the offset is now a single KV.
 		repr := p.repr[lastOffset:]
 		key := extractResultKey(repr)
 		rowPrefix := getRowPrefix(key)
 
-		// If the prefix belongs to a different row, we're done trimming.
 		if !bytes.Equal(rowPrefix, trimRowPrefix) {
+			__antithesis_instrumentation__.Notify(643304)
 			return firstTrimmedKey, nil
+		} else {
+			__antithesis_instrumentation__.Notify(643305)
 		}
+		__antithesis_instrumentation__.Notify(643301)
 
-		// Remove this KV pair.
 		p.repr = p.repr[:lastOffset]
 		p.count--
 		p.bytes -= int64(len(repr))
@@ -231,152 +253,152 @@ func (p *pebbleResults) maybeTrimPartialLastRow(nextKey roachpb.Key) (roachpb.Ke
 		p.lastOffsets[lastOffsetIdx] = 0
 
 		if len(p.repr) == 0 {
+			__antithesis_instrumentation__.Notify(643306)
 			if len(p.bufs) == 0 {
-				// The entire result set was trimmed, so we're done.
+				__antithesis_instrumentation__.Notify(643308)
+
 				return firstTrimmedKey, nil
+			} else {
+				__antithesis_instrumentation__.Notify(643309)
 			}
-			// Pop the last buf back into repr.
+			__antithesis_instrumentation__.Notify(643307)
+
 			p.repr = p.bufs[len(p.bufs)-1]
 			p.bufs = p.bufs[:len(p.bufs)-1]
+		} else {
+			__antithesis_instrumentation__.Notify(643310)
 		}
 	}
+	__antithesis_instrumentation__.Notify(643293)
 	return nil, errors.Errorf("row exceeds expected max size (%d): %s", len(p.lastOffsets), nextKey)
 }
 
 func (p *pebbleResults) finish() [][]byte {
+	__antithesis_instrumentation__.Notify(643311)
 	if len(p.repr) > 0 {
+		__antithesis_instrumentation__.Notify(643313)
 		p.bufs = append(p.bufs, p.repr)
 		p.repr = nil
+	} else {
+		__antithesis_instrumentation__.Notify(643314)
 	}
+	__antithesis_instrumentation__.Notify(643312)
 	return p.bufs
 }
 
-// getRowPrefix decodes a SQL row prefix from the given key. Returns nil if the
-// key is not a valid SQL row, or if the prefix is the entire key.
 func getRowPrefix(key roachpb.Key) []byte {
+	__antithesis_instrumentation__.Notify(643315)
 	if len(key) == 0 {
+		__antithesis_instrumentation__.Notify(643318)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(643319)
 	}
+	__antithesis_instrumentation__.Notify(643316)
 	n, err := keys.GetRowPrefixLength(key)
-	if err != nil || n <= 0 || n >= len(key) {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(643320)
+		return n <= 0 == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(643321)
+		return n >= len(key) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643322)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(643323)
 	}
+	__antithesis_instrumentation__.Notify(643317)
 	return key[:n]
 }
 
-// extractResultKey takes in a binary KV result representation, finds the raw
-// key, decodes it as an MVCC key, and returns the key (without timestamp).
-// Returns nil if the key could not be decoded. repr must be a valid, non-empty
-// KV representation, otherwise this may panic.
 func extractResultKey(repr []byte) roachpb.Key {
+	__antithesis_instrumentation__.Notify(643324)
 	keyLen := binary.LittleEndian.Uint32(repr[4:8])
 	key, _, ok := enginepb.SplitMVCCKey(repr[8 : 8+keyLen])
 	if !ok {
+		__antithesis_instrumentation__.Notify(643326)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(643327)
 	}
+	__antithesis_instrumentation__.Notify(643325)
 	return key
 }
 
-// Go port of mvccScanner in libroach/mvcc.h. Stores all variables relating to
-// one MVCCGet / MVCCScan call.
 type pebbleMVCCScanner struct {
 	parent MVCCIterator
-	// memAccount is used to account for the size of the scan results.
+
 	memAccount *mon.BoundAccount
 	reverse    bool
 	peeked     bool
-	// Iteration bounds. Does not contain MVCC timestamp.
+
 	start, end roachpb.Key
-	// Timestamp with which MVCCScan/MVCCGet was called.
+
 	ts hlc.Timestamp
-	// Max number of keys to return.
+
 	maxKeys int64
-	// Stop adding keys once p.result.bytes matches or exceeds this threshold,
-	// if nonzero.
+
 	targetBytes int64
-	// If true, don't exceed targetBytes except for the first kv pair.
-	//
-	// TODO(erikgrinaker): This option exists for backwards compatibility with
-	// 21.2 RPC clients, in 22.1 it should always be enabled.
+
 	targetBytesAvoidExcess bool
-	// If true, return an empty result if the first result exceeds targetBytes
-	// and targetBytesAvoidExcess is true.
+
 	allowEmpty bool
-	// If set, don't return partial SQL rows (spanning multiple KV pairs) when
-	// hitting a limit. Partial rows at the end of the result will be trimmed. If
-	// allowEmpty is false, and the partial row is the first row in the result,
-	// the row will instead be completed by fetching additional KV pairs.
-	//
-	// Requires init() to have been called with trackLastOffsets set to the
-	// maximum number of KV pairs in a row.
+
 	wholeRows bool
-	// Stop adding intents and abort scan once maxIntents threshold is reached.
-	// This limit is only applicable to consistent scans since they return
-	// intents as an error.
-	// Not used in inconsistent scans.
-	// Ignored if zero.
+
 	maxIntents int64
-	// Resume fields describe the resume span to return. resumeReason must be set
-	// to a non-zero value to return a resume span, the others are optional.
+
 	resumeReason    roachpb.ResumeReason
-	resumeKey       roachpb.Key // if unset, falls back to p.advanceKey()
-	resumeNextBytes int64       // set when targetBytes is exceeded
-	// Transaction epoch and sequence number.
+	resumeKey       roachpb.Key
+	resumeNextBytes int64
+
 	txn               *roachpb.Transaction
 	txnEpoch          enginepb.TxnEpoch
 	txnSequence       enginepb.TxnSeq
 	txnIgnoredSeqNums []enginepb.IgnoredSeqNumRange
-	// Uncertainty related fields.
+
 	uncertainty      uncertainty.Interval
 	checkUncertainty bool
-	// Metadata object for unmarshalling intents.
+
 	meta enginepb.MVCCMetadata
-	// Bools copied over from MVCC{Scan,Get}Options. See the comment on the
-	// package level MVCCScan for what these mean.
+
 	inconsistent, tombstones bool
 	failOnMoreRecent         bool
 	isGet                    bool
 	keyBuf                   []byte
 	savedBuf                 []byte
-	// cur* variables store the "current" record we're pointing to. Updated in
-	// updateCurrent. Note that the timestamp can be clobbered in the case of
-	// adding an intent from the intent history but is otherwise meaningful.
+
 	curUnsafeKey MVCCKey
 	curRawKey    []byte
 	curValue     []byte
 	results      pebbleResults
 	intents      pebble.Batch
-	// mostRecentTS stores the largest timestamp observed that is equal to or
-	// above the scan timestamp. Only applicable if failOnMoreRecent is true. If
-	// set and no other error is hit, a WriteToOld error will be returned from
-	// the scan. mostRecentKey is one of the keys (not necessarily at
-	// mostRecentTS) that was more recent than the scan.
+
 	mostRecentTS  hlc.Timestamp
 	mostRecentKey roachpb.Key
-	// Stores any error returned. If non-nil, iteration short circuits.
+
 	err error
-	// Number of iterations to try before we do a Seek/SeekReverse. Stays within
-	// [1, maxItersBeforeSeek] and defaults to maxItersBeforeSeek/2 .
+
 	itersBeforeSeek int
 }
 
-// Pool for allocating pebble MVCC Scanners.
 var pebbleMVCCScannerPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(643328)
 		return &pebbleMVCCScanner{}
 	},
 }
 
 func (p *pebbleMVCCScanner) release() {
-	// Discard most memory references before placing in pool.
+	__antithesis_instrumentation__.Notify(643329)
+
 	*p = pebbleMVCCScanner{
 		keyBuf: p.keyBuf,
 	}
 	pebbleMVCCScannerPool.Put(p)
 }
 
-// init sets bounds on the underlying pebble iterator, and initializes other
-// fields not set by the calling method.
 func (p *pebbleMVCCScanner) init(
 	txn *roachpb.Transaction, ui uncertainty.Interval, trackLastOffsets int,
 ) {
@@ -394,67 +416,96 @@ func (p *pebbleMVCCScanner) init(
 	}
 
 	p.uncertainty = ui
-	// We must check uncertainty even if p.ts >= local_uncertainty_limit
-	// because the local uncertainty limit cannot be applied to values with
-	// synthetic timestamps. We are only able to skip uncertainty checks if
-	// p.ts >= global_uncertainty_limit.
+
 	p.checkUncertainty = p.ts.Less(p.uncertainty.GlobalLimit)
 }
 
-// get iterates exactly once and adds one KV to the result set.
 func (p *pebbleMVCCScanner) get(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(643330)
 	p.isGet = true
 	p.parent.SeekGE(MVCCKey{Key: p.start})
 	if !p.updateCurrent() {
+		__antithesis_instrumentation__.Notify(643332)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(643333)
 	}
+	__antithesis_instrumentation__.Notify(643331)
 	p.getAndAdvance(ctx)
 	p.maybeFailOnMoreRecent()
 }
 
-// scan iterates until a limit is exceeded, the underlying iterator is
-// exhausted, or an error is encountered. If a limit was exceeded, it returns a
-// resume span, resume reason, and for targetBytes the size of the next result.
 func (p *pebbleMVCCScanner) scan(
 	ctx context.Context,
 ) (*roachpb.Span, roachpb.ResumeReason, int64, error) {
-	if p.wholeRows && !p.results.lastOffsetsEnabled {
+	__antithesis_instrumentation__.Notify(643334)
+	if p.wholeRows && func() bool {
+		__antithesis_instrumentation__.Notify(643340)
+		return !p.results.lastOffsetsEnabled == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643341)
 		return nil, 0, 0, errors.AssertionFailedf("cannot use wholeRows without trackLastOffsets")
+	} else {
+		__antithesis_instrumentation__.Notify(643342)
 	}
+	__antithesis_instrumentation__.Notify(643335)
 
 	p.isGet = false
 	if p.reverse {
+		__antithesis_instrumentation__.Notify(643343)
 		if !p.iterSeekReverse(MVCCKey{Key: p.end}) {
+			__antithesis_instrumentation__.Notify(643344)
 			return nil, 0, 0, p.err
+		} else {
+			__antithesis_instrumentation__.Notify(643345)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(643346)
 		if !p.iterSeek(MVCCKey{Key: p.start}) {
+			__antithesis_instrumentation__.Notify(643347)
 			return nil, 0, 0, p.err
+		} else {
+			__antithesis_instrumentation__.Notify(643348)
 		}
 	}
+	__antithesis_instrumentation__.Notify(643336)
 
 	for p.getAndAdvance(ctx) {
+		__antithesis_instrumentation__.Notify(643349)
 	}
+	__antithesis_instrumentation__.Notify(643337)
 	p.maybeFailOnMoreRecent()
 
 	if p.err != nil {
+		__antithesis_instrumentation__.Notify(643350)
 		return nil, 0, 0, p.err
+	} else {
+		__antithesis_instrumentation__.Notify(643351)
 	}
+	__antithesis_instrumentation__.Notify(643338)
 
 	if p.resumeReason != 0 {
+		__antithesis_instrumentation__.Notify(643352)
 		resumeKey := p.resumeKey
 		if len(resumeKey) == 0 {
+			__antithesis_instrumentation__.Notify(643355)
 			if !p.advanceKey() {
-				return nil, 0, 0, nil // nothing to resume
+				__antithesis_instrumentation__.Notify(643357)
+				return nil, 0, 0, nil
+			} else {
+				__antithesis_instrumentation__.Notify(643358)
 			}
+			__antithesis_instrumentation__.Notify(643356)
 			resumeKey = p.curUnsafeKey.Key
+		} else {
+			__antithesis_instrumentation__.Notify(643359)
 		}
+		__antithesis_instrumentation__.Notify(643353)
 
 		var resumeSpan *roachpb.Span
 		if p.reverse {
-			// NB: this is equivalent to:
-			//  append(roachpb.Key(nil), resumeKey...).Next()
-			// but with half the allocations.
+			__antithesis_instrumentation__.Notify(643360)
+
 			resumeKeyCopy := make(roachpb.Key, len(resumeKey), len(resumeKey)+1)
 			copy(resumeKeyCopy, resumeKey)
 			resumeSpan = &roachpb.Span{
@@ -462,77 +513,93 @@ func (p *pebbleMVCCScanner) scan(
 				EndKey: resumeKeyCopy.Next(),
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(643361)
 			resumeSpan = &roachpb.Span{
 				Key:    append(roachpb.Key(nil), resumeKey...),
 				EndKey: p.end,
 			}
 		}
+		__antithesis_instrumentation__.Notify(643354)
 		return resumeSpan, p.resumeReason, p.resumeNextBytes, nil
+	} else {
+		__antithesis_instrumentation__.Notify(643362)
 	}
+	__antithesis_instrumentation__.Notify(643339)
 	return nil, 0, 0, nil
 }
 
-// Increments itersBeforeSeek while ensuring it stays <= maxItersBeforeSeek
 func (p *pebbleMVCCScanner) incrementItersBeforeSeek() {
+	__antithesis_instrumentation__.Notify(643363)
 	p.itersBeforeSeek++
 	if p.itersBeforeSeek > maxItersBeforeSeek {
+		__antithesis_instrumentation__.Notify(643364)
 		p.itersBeforeSeek = maxItersBeforeSeek
+	} else {
+		__antithesis_instrumentation__.Notify(643365)
 	}
 }
 
-// Decrements itersBeforeSeek while ensuring it stays positive.
 func (p *pebbleMVCCScanner) decrementItersBeforeSeek() {
+	__antithesis_instrumentation__.Notify(643366)
 	p.itersBeforeSeek--
 	if p.itersBeforeSeek < 1 {
+		__antithesis_instrumentation__.Notify(643367)
 		p.itersBeforeSeek = 1
+	} else {
+		__antithesis_instrumentation__.Notify(643368)
 	}
 }
 
-// Try to read from the current value's intent history. Assumes p.meta has been
-// unmarshalled already. Returns found = true if a value was found and returned.
 func (p *pebbleMVCCScanner) getFromIntentHistory() (value []byte, found bool) {
+	__antithesis_instrumentation__.Notify(643369)
 	intentHistory := p.meta.IntentHistory
-	// upIdx is the index of the first intent in intentHistory with a sequence
-	// number greater than our transaction's sequence number. Subtract 1 from it
-	// to get the index of the intent with the highest sequence number that is
-	// still less than or equal to p.txnSeq.
+
 	upIdx := sort.Search(len(intentHistory), func(i int) bool {
+		__antithesis_instrumentation__.Notify(643373)
 		return intentHistory[i].Sequence > p.txnSequence
 	})
-	// If the candidate intent has a sequence number that is ignored by this txn,
-	// iterate backward along the sorted intent history until we come across an
-	// intent which isn't ignored.
-	//
-	// TODO(itsbilal): Explore if this iteration can be improved through binary
-	// search.
-	for upIdx > 0 && enginepb.TxnSeqIsIgnored(p.meta.IntentHistory[upIdx-1].Sequence, p.txnIgnoredSeqNums) {
+	__antithesis_instrumentation__.Notify(643370)
+
+	for upIdx > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(643374)
+		return enginepb.TxnSeqIsIgnored(p.meta.IntentHistory[upIdx-1].Sequence, p.txnIgnoredSeqNums) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643375)
 		upIdx--
 	}
+	__antithesis_instrumentation__.Notify(643371)
 	if upIdx == 0 {
-		// It is possible that no intent exists such that the sequence is less
-		// than the read sequence, and is not ignored by this transaction.
-		// In this case, we cannot read a value from the intent history.
+		__antithesis_instrumentation__.Notify(643376)
+
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(643377)
 	}
+	__antithesis_instrumentation__.Notify(643372)
 	intent := &p.meta.IntentHistory[upIdx-1]
 	return intent.Value, true
 }
 
-// Returns a write too old error if an error is not already set on the scanner
-// and a more recent value was found during the scan.
 func (p *pebbleMVCCScanner) maybeFailOnMoreRecent() {
-	if p.err != nil || p.mostRecentTS.IsEmpty() {
+	__antithesis_instrumentation__.Notify(643378)
+	if p.err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(643380)
+		return p.mostRecentTS.IsEmpty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643381)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(643382)
 	}
-	// The txn can't write at the existing timestamp, so we provide the error
-	// with the timestamp immediately after it.
+	__antithesis_instrumentation__.Notify(643379)
+
 	p.err = roachpb.NewWriteTooOldError(p.ts, p.mostRecentTS.Next(), p.mostRecentKey)
 	p.results.clear()
 	p.intents.Reset()
 }
 
-// Returns an uncertainty error with the specified timestamp and p.txn.
 func (p *pebbleMVCCScanner) uncertaintyError(ts hlc.Timestamp) bool {
+	__antithesis_instrumentation__.Notify(643383)
 	p.err = roachpb.NewReadWithinUncertaintyIntervalError(
 		p.ts, ts, p.uncertainty.LocalLimit.ToTimestamp(), p.txn)
 	p.results.clear()
@@ -540,633 +607,841 @@ func (p *pebbleMVCCScanner) uncertaintyError(ts hlc.Timestamp) bool {
 	return false
 }
 
-// Emit a tuple and return true if we have reason to believe iteration can
-// continue.
 func (p *pebbleMVCCScanner) getAndAdvance(ctx context.Context) bool {
+	__antithesis_instrumentation__.Notify(643384)
 	if !p.curUnsafeKey.Timestamp.IsEmpty() {
-		// ts < read_ts
-		if p.curUnsafeKey.Timestamp.Less(p.ts) {
-			// 1. Fast path: there is no intent and our read timestamp is newer
-			// than the most recent version's timestamp.
-			return p.addAndAdvance(ctx, p.curUnsafeKey.Key, p.curRawKey, p.curValue)
-		}
+		__antithesis_instrumentation__.Notify(643396)
 
-		// ts == read_ts
+		if p.curUnsafeKey.Timestamp.Less(p.ts) {
+			__antithesis_instrumentation__.Notify(643401)
+
+			return p.addAndAdvance(ctx, p.curUnsafeKey.Key, p.curRawKey, p.curValue)
+		} else {
+			__antithesis_instrumentation__.Notify(643402)
+		}
+		__antithesis_instrumentation__.Notify(643397)
+
 		if p.curUnsafeKey.Timestamp.EqOrdering(p.ts) {
+			__antithesis_instrumentation__.Notify(643403)
 			if p.failOnMoreRecent {
-				// 2. Our txn's read timestamp is equal to the most recent
-				// version's timestamp and the scanner has been configured to
-				// throw a write too old error on equal or more recent versions.
-				// Merge the current timestamp with the maximum timestamp we've
-				// seen so we know to return an error, but then keep scanning so
-				// that we can return the largest possible time.
+				__antithesis_instrumentation__.Notify(643405)
+
 				p.mostRecentTS.Forward(p.curUnsafeKey.Timestamp)
 				if len(p.mostRecentKey) == 0 {
+					__antithesis_instrumentation__.Notify(643407)
 					p.mostRecentKey = append(p.mostRecentKey, p.curUnsafeKey.Key...)
+				} else {
+					__antithesis_instrumentation__.Notify(643408)
 				}
+				__antithesis_instrumentation__.Notify(643406)
 				return p.advanceKey()
+			} else {
+				__antithesis_instrumentation__.Notify(643409)
 			}
+			__antithesis_instrumentation__.Notify(643404)
 
-			// 3. There is no intent and our read timestamp is equal to the most
-			// recent version's timestamp.
 			return p.addAndAdvance(ctx, p.curUnsafeKey.Key, p.curRawKey, p.curValue)
+		} else {
+			__antithesis_instrumentation__.Notify(643410)
 		}
+		__antithesis_instrumentation__.Notify(643398)
 
-		// ts > read_ts
 		if p.failOnMoreRecent {
-			// 4. Our txn's read timestamp is less than the most recent
-			// version's timestamp and the scanner has been configured to
-			// throw a write too old error on equal or more recent versions.
-			// Merge the current timestamp with the maximum timestamp we've
-			// seen so we know to return an error, but then keep scanning so
-			// that we can return the largest possible time.
+			__antithesis_instrumentation__.Notify(643411)
+
 			p.mostRecentTS.Forward(p.curUnsafeKey.Timestamp)
 			if len(p.mostRecentKey) == 0 {
+				__antithesis_instrumentation__.Notify(643413)
 				p.mostRecentKey = append(p.mostRecentKey, p.curUnsafeKey.Key...)
+			} else {
+				__antithesis_instrumentation__.Notify(643414)
 			}
+			__antithesis_instrumentation__.Notify(643412)
 			return p.advanceKey()
+		} else {
+			__antithesis_instrumentation__.Notify(643415)
 		}
+		__antithesis_instrumentation__.Notify(643399)
 
 		if p.checkUncertainty {
-			// 5. Our txn's read timestamp is less than the max timestamp
-			// seen by the txn. We need to check for clock uncertainty
-			// errors.
+			__antithesis_instrumentation__.Notify(643416)
+
 			if p.uncertainty.IsUncertain(p.curUnsafeKey.Timestamp) {
+				__antithesis_instrumentation__.Notify(643418)
 				return p.uncertaintyError(p.curUnsafeKey.Timestamp)
+			} else {
+				__antithesis_instrumentation__.Notify(643419)
 			}
+			__antithesis_instrumentation__.Notify(643417)
 
-			// This value is not within the reader's uncertainty window, but
-			// there could be other uncertain committed values, so seek and
-			// check uncertainty using the uncertainty interval's GlobalLimit.
 			return p.seekVersion(ctx, p.uncertainty.GlobalLimit, true)
+		} else {
+			__antithesis_instrumentation__.Notify(643420)
 		}
+		__antithesis_instrumentation__.Notify(643400)
 
-		// 6. Our txn's read timestamp is greater than or equal to the
-		// max timestamp seen by the txn so clock uncertainty checks are
-		// unnecessary. We need to seek to the desired version of the
-		// value (i.e. one with a timestamp earlier than our read
-		// timestamp).
 		return p.seekVersion(ctx, p.ts, false)
+	} else {
+		__antithesis_instrumentation__.Notify(643421)
 	}
+	__antithesis_instrumentation__.Notify(643385)
 
 	if len(p.curValue) == 0 {
+		__antithesis_instrumentation__.Notify(643422)
 		p.err = errors.Errorf("zero-length mvcc metadata")
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643423)
 	}
+	__antithesis_instrumentation__.Notify(643386)
 	err := protoutil.Unmarshal(p.curValue, &p.meta)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(643424)
 		p.err = errors.Wrap(err, "unable to decode MVCCMetadata")
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643425)
 	}
+	__antithesis_instrumentation__.Notify(643387)
 	if len(p.meta.RawBytes) != 0 {
-		// 7. Emit immediately if the value is inline.
+		__antithesis_instrumentation__.Notify(643426)
+
 		return p.addAndAdvance(ctx, p.curUnsafeKey.Key, p.curRawKey, p.meta.RawBytes)
+	} else {
+		__antithesis_instrumentation__.Notify(643427)
 	}
+	__antithesis_instrumentation__.Notify(643388)
 
 	if p.meta.Txn == nil {
+		__antithesis_instrumentation__.Notify(643428)
 		p.err = errors.Errorf("intent without transaction")
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643429)
 	}
+	__antithesis_instrumentation__.Notify(643389)
 	metaTS := p.meta.Timestamp.ToTimestamp()
 
-	// metaTS is the timestamp of an intent value, which we may or may
-	// not end up ignoring, depending on factors codified below. If we do ignore
-	// the intent then we want to read at a lower timestamp that's strictly
-	// below the intent timestamp (to skip the intent), but also does not exceed
-	// our read timestamp (to avoid erroneously picking up future committed
-	// values); this timestamp is prevTS.
 	prevTS := p.ts
 	if metaTS.LessEq(p.ts) {
+		__antithesis_instrumentation__.Notify(643430)
 		prevTS = metaTS.Prev()
+	} else {
+		__antithesis_instrumentation__.Notify(643431)
 	}
+	__antithesis_instrumentation__.Notify(643390)
 
-	ownIntent := p.txn != nil && p.meta.Txn.ID.Equal(p.txn.ID)
-	conflictingIntent := metaTS.LessEq(p.ts) || p.failOnMoreRecent
+	ownIntent := p.txn != nil && func() bool {
+		__antithesis_instrumentation__.Notify(643432)
+		return p.meta.Txn.ID.Equal(p.txn.ID) == true
+	}() == true
+	conflictingIntent := metaTS.LessEq(p.ts) || func() bool {
+		__antithesis_instrumentation__.Notify(643433)
+		return p.failOnMoreRecent == true
+	}() == true
 
-	if !ownIntent && !conflictingIntent {
-		// 8. The key contains an intent, but we're reading below the intent.
-		// Seek to the desired version, checking for uncertainty if necessary.
-		//
-		// Note that if we own the intent (i.e. we're reading transactionally)
-		// we want to read the intent regardless of our read timestamp and fall
-		// into case 11 below.
+	if !ownIntent && func() bool {
+		__antithesis_instrumentation__.Notify(643434)
+		return !conflictingIntent == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643435)
+
 		if p.checkUncertainty {
+			__antithesis_instrumentation__.Notify(643437)
 			if p.uncertainty.IsUncertain(metaTS) {
+				__antithesis_instrumentation__.Notify(643439)
 				return p.uncertaintyError(metaTS)
+			} else {
+				__antithesis_instrumentation__.Notify(643440)
 			}
-			// The intent is not within the uncertainty window, but there could
-			// be an uncertain committed value, so seek and check uncertainty
-			// using the uncertainty interval's GlobalLimit.
+			__antithesis_instrumentation__.Notify(643438)
+
 			return p.seekVersion(ctx, p.uncertainty.GlobalLimit, true)
+		} else {
+			__antithesis_instrumentation__.Notify(643441)
 		}
+		__antithesis_instrumentation__.Notify(643436)
 		return p.seekVersion(ctx, p.ts, false)
+	} else {
+		__antithesis_instrumentation__.Notify(643442)
 	}
+	__antithesis_instrumentation__.Notify(643391)
 
 	if p.inconsistent {
-		// 9. The key contains an intent and we're doing an inconsistent
-		// read at a timestamp newer than the intent. We ignore the
-		// intent by insisting that the timestamp we're reading at is a
-		// historical timestamp < the intent timestamp. However, we
-		// return the intent separately; the caller may want to resolve
-		// it.
-		//
-		// p.intents is a pebble.Batch which grows its byte slice capacity in
-		// chunks to amortize allocations. The memMonitor is under-counting here
-		// by only accounting for the key and value bytes.
+		__antithesis_instrumentation__.Notify(643443)
+
 		if p.err = p.memAccount.Grow(ctx, int64(len(p.curRawKey)+len(p.curValue))); p.err != nil {
+			__antithesis_instrumentation__.Notify(643446)
 			p.err = errors.Wrapf(p.err, "scan with start key %s", p.start)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643447)
 		}
+		__antithesis_instrumentation__.Notify(643444)
 		p.err = p.intents.Set(p.curRawKey, p.curValue, nil)
 		if p.err != nil {
+			__antithesis_instrumentation__.Notify(643448)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643449)
 		}
+		__antithesis_instrumentation__.Notify(643445)
 
 		return p.seekVersion(ctx, prevTS, false)
+	} else {
+		__antithesis_instrumentation__.Notify(643450)
 	}
+	__antithesis_instrumentation__.Notify(643392)
 
 	if !ownIntent {
-		// 10. The key contains an intent which was not written by our
-		// transaction and either:
-		// - our read timestamp is equal to or newer than that of the
-		//   intent
-		// - our read timestamp is older than that of the intent but
-		//   the intent is in our transaction's uncertainty interval
-		// - our read timestamp is older than that of the intent but
-		//   we want to fail on more recent writes
-		// Note that this will trigger an error higher up the stack. We
-		// continue scanning so that we can return all of the intents
-		// in the scan range.
-		//
-		// p.intents is a pebble.Batch which grows its byte slice capacity in
-		// chunks to amortize allocations. The memMonitor is under-counting here
-		// by only accounting for the key and value bytes.
+		__antithesis_instrumentation__.Notify(643451)
+
 		if p.err = p.memAccount.Grow(ctx, int64(len(p.curRawKey)+len(p.curValue))); p.err != nil {
+			__antithesis_instrumentation__.Notify(643455)
 			p.err = errors.Wrapf(p.err, "scan with start key %s", p.start)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643456)
 		}
+		__antithesis_instrumentation__.Notify(643452)
 		p.err = p.intents.Set(p.curRawKey, p.curValue, nil)
 		if p.err != nil {
+			__antithesis_instrumentation__.Notify(643457)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643458)
 		}
-		// Limit number of intents returned in write intent error.
-		if p.maxIntents > 0 && int64(p.intents.Count()) >= p.maxIntents {
+		__antithesis_instrumentation__.Notify(643453)
+
+		if p.maxIntents > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(643459)
+			return int64(p.intents.Count()) >= p.maxIntents == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(643460)
 			p.resumeReason = roachpb.RESUME_INTENT_LIMIT
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643461)
 		}
+		__antithesis_instrumentation__.Notify(643454)
 		return p.advanceKey()
+	} else {
+		__antithesis_instrumentation__.Notify(643462)
 	}
+	__antithesis_instrumentation__.Notify(643393)
 
 	if p.txnEpoch == p.meta.Txn.Epoch {
-		if p.txnSequence >= p.meta.Txn.Sequence && !enginepb.TxnSeqIsIgnored(p.meta.Txn.Sequence, p.txnIgnoredSeqNums) {
-			// 11. We're reading our own txn's intent at an equal or higher sequence.
-			// Note that we read at the intent timestamp, not at our read timestamp
-			// as the intent timestamp may have been pushed forward by another
-			// transaction. Txn's always need to read their own writes.
-			return p.seekVersion(ctx, metaTS, false)
-		}
+		__antithesis_instrumentation__.Notify(643463)
+		if p.txnSequence >= p.meta.Txn.Sequence && func() bool {
+			__antithesis_instrumentation__.Notify(643466)
+			return !enginepb.TxnSeqIsIgnored(p.meta.Txn.Sequence, p.txnIgnoredSeqNums) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(643467)
 
-		// 12. We're reading our own txn's intent at a lower sequence than is
-		// currently present in the intent. This means the intent we're seeing
-		// was written at a higher sequence than the read and that there may or
-		// may not be earlier versions of the intent (with lower sequence
-		// numbers) that we should read. If there exists a value in the intent
-		// history that has a sequence number equal to or less than the read
-		// sequence, read that value.
+			return p.seekVersion(ctx, metaTS, false)
+		} else {
+			__antithesis_instrumentation__.Notify(643468)
+		}
+		__antithesis_instrumentation__.Notify(643464)
+
 		if value, found := p.getFromIntentHistory(); found {
-			// If we're adding a value due to a previous intent, we want to populate
-			// the timestamp as of current metaTimestamp. Note that this may be
-			// controversial as this maybe be neither the write timestamp when this
-			// intent was written. However, this was the only case in which a value
-			// could have been returned from a read without an MVCC timestamp.
-			//
-			// Note: this assumes that it is safe to corrupt curKey here because we're
-			// about to advance. If this proves to be a problem later, we can extend
-			// addAndAdvance to take an MVCCKey explicitly.
+			__antithesis_instrumentation__.Notify(643469)
+
 			p.curUnsafeKey.Timestamp = metaTS
 			p.keyBuf = EncodeMVCCKeyToBuf(p.keyBuf[:0], p.curUnsafeKey)
 			return p.addAndAdvance(ctx, p.curUnsafeKey.Key, p.keyBuf, value)
+		} else {
+			__antithesis_instrumentation__.Notify(643470)
 		}
-		// 13. If no value in the intent history has a sequence number equal to
-		// or less than the read, we must ignore the intents laid down by the
-		// transaction all together. We ignore the intent by insisting that the
-		// timestamp we're reading at is a historical timestamp < the intent
-		// timestamp.
+		__antithesis_instrumentation__.Notify(643465)
+
 		return p.seekVersion(ctx, prevTS, false)
+	} else {
+		__antithesis_instrumentation__.Notify(643471)
 	}
+	__antithesis_instrumentation__.Notify(643394)
 
 	if p.txnEpoch < p.meta.Txn.Epoch {
-		// 14. We're reading our own txn's intent but the current txn has
-		// an earlier epoch than the intent. Return an error so that the
-		// earlier incarnation of our transaction aborts (presumably
-		// this is some operation that was retried).
+		__antithesis_instrumentation__.Notify(643472)
+
 		p.err = errors.Errorf("failed to read with epoch %d due to a write intent with epoch %d",
 			p.txnEpoch, p.meta.Txn.Epoch)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643473)
 	}
+	__antithesis_instrumentation__.Notify(643395)
 
-	// 15. We're reading our own txn's intent but the current txn has a
-	// later epoch than the intent. This can happen if the txn was
-	// restarted and an earlier iteration wrote the value we're now
-	// reading. In this case, we ignore the intent and read the
-	// previous value as if the transaction were starting fresh.
 	return p.seekVersion(ctx, prevTS, false)
 }
 
-// nextKey advances to the next user key.
 func (p *pebbleMVCCScanner) nextKey() bool {
+	__antithesis_instrumentation__.Notify(643474)
 	p.keyBuf = append(p.keyBuf[:0], p.curUnsafeKey.Key...)
 
 	for i := 0; i < p.itersBeforeSeek; i++ {
+		__antithesis_instrumentation__.Notify(643476)
 		if !p.iterNext() {
+			__antithesis_instrumentation__.Notify(643478)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643479)
 		}
+		__antithesis_instrumentation__.Notify(643477)
 		if !bytes.Equal(p.curUnsafeKey.Key, p.keyBuf) {
+			__antithesis_instrumentation__.Notify(643480)
 			p.incrementItersBeforeSeek()
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(643481)
 		}
 	}
+	__antithesis_instrumentation__.Notify(643475)
 
 	p.decrementItersBeforeSeek()
-	// We're pointed at a different version of the same key. Fall back to
-	// seeking to the next key. We append a NUL to account for the "next-key".
-	// Note that we cannot rely on curUnsafeKey.Key being unchanged even though
-	// we are at a different version of the same key -- the underlying
-	// MVCCIterator is free to mutate the backing for p.curUnsafeKey.Key
-	// arbitrarily. Therefore we use p.keyBuf here which we have handy.
+
 	p.keyBuf = append(p.keyBuf, 0)
 	return p.iterSeek(MVCCKey{Key: p.keyBuf})
 }
 
-// backwardLatestVersion backs up the iterator to the latest version for the
-// specified key. The parameter i is used to maintain iteration count between
-// the loop here and the caller (usually prevKey). Returns false if the
-// iterator was exhausted. Assumes that the iterator is currently positioned at
-// the oldest version of key.
 func (p *pebbleMVCCScanner) backwardLatestVersion(key []byte, i int) bool {
+	__antithesis_instrumentation__.Notify(643482)
 	p.keyBuf = append(p.keyBuf[:0], key...)
 
 	for ; i < p.itersBeforeSeek; i++ {
+		__antithesis_instrumentation__.Notify(643484)
 		peekedKey, ok := p.iterPeekPrev()
 		if !ok {
-			// No previous entry exists, so we're at the latest version of key.
+			__antithesis_instrumentation__.Notify(643487)
+
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(643488)
 		}
+		__antithesis_instrumentation__.Notify(643485)
 		if !bytes.Equal(peekedKey, p.keyBuf) {
+			__antithesis_instrumentation__.Notify(643489)
 			p.incrementItersBeforeSeek()
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(643490)
 		}
+		__antithesis_instrumentation__.Notify(643486)
 		if !p.iterPrev() {
+			__antithesis_instrumentation__.Notify(643491)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643492)
 		}
 	}
+	__antithesis_instrumentation__.Notify(643483)
 
-	// We're still not pointed to the latest version of the key. Fall back to
-	// seeking to the latest version. Note that we cannot rely on key being
-	// unchanged even though we are at a different version of the same key --
-	// the underlying MVCCIterator is free to mutate the backing for key
-	// arbitrarily. Therefore we use p.keyBuf here which we have handy.
 	p.decrementItersBeforeSeek()
 	return p.iterSeek(MVCCKey{Key: p.keyBuf})
 }
 
-// prevKey advances to the newest version of the user key preceding the
-// specified key. Assumes that the iterator is currently positioned at
-// key or 1 record after key.
 func (p *pebbleMVCCScanner) prevKey(key []byte) bool {
+	__antithesis_instrumentation__.Notify(643493)
 	p.keyBuf = append(p.keyBuf[:0], key...)
 
 	for i := 0; i < p.itersBeforeSeek; i++ {
+		__antithesis_instrumentation__.Notify(643495)
 		peekedKey, ok := p.iterPeekPrev()
 		if !ok {
+			__antithesis_instrumentation__.Notify(643498)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643499)
 		}
+		__antithesis_instrumentation__.Notify(643496)
 		if !bytes.Equal(peekedKey, p.keyBuf) {
+			__antithesis_instrumentation__.Notify(643500)
 			return p.backwardLatestVersion(peekedKey, i+1)
+		} else {
+			__antithesis_instrumentation__.Notify(643501)
 		}
+		__antithesis_instrumentation__.Notify(643497)
 		if !p.iterPrev() {
+			__antithesis_instrumentation__.Notify(643502)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643503)
 		}
 	}
+	__antithesis_instrumentation__.Notify(643494)
 
 	p.decrementItersBeforeSeek()
 	return p.iterSeekReverse(MVCCKey{Key: p.keyBuf})
 }
 
-// advanceKey advances to the next key in the iterator's direction.
 func (p *pebbleMVCCScanner) advanceKey() bool {
+	__antithesis_instrumentation__.Notify(643504)
 	if p.isGet {
+		__antithesis_instrumentation__.Notify(643507)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643508)
 	}
+	__antithesis_instrumentation__.Notify(643505)
 	if p.reverse {
+		__antithesis_instrumentation__.Notify(643509)
 		return p.prevKey(p.curUnsafeKey.Key)
+	} else {
+		__antithesis_instrumentation__.Notify(643510)
 	}
+	__antithesis_instrumentation__.Notify(643506)
 	return p.nextKey()
 }
 
-// advanceKeyAtEnd advances to the next key when the iterator's end has been
-// reached.
 func (p *pebbleMVCCScanner) advanceKeyAtEnd() bool {
+	__antithesis_instrumentation__.Notify(643511)
 	if p.reverse {
-		// Iterating to the next key might have caused the iterator to reach the
-		// end of the key space. If that happens, back up to the very last key.
+		__antithesis_instrumentation__.Notify(643513)
+
 		p.peeked = false
 		p.parent.SeekLT(MVCCKey{Key: p.end})
 		if !p.updateCurrent() {
+			__antithesis_instrumentation__.Notify(643515)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643516)
 		}
+		__antithesis_instrumentation__.Notify(643514)
 		return p.advanceKey()
+	} else {
+		__antithesis_instrumentation__.Notify(643517)
 	}
-	// We've reached the end of the iterator and there is nothing left to do.
+	__antithesis_instrumentation__.Notify(643512)
+
 	return false
 }
 
-// advanceKeyAtNewKey advances to the key after the specified key, assuming we
-// have just reached the specified key.
 func (p *pebbleMVCCScanner) advanceKeyAtNewKey(key []byte) bool {
+	__antithesis_instrumentation__.Notify(643518)
 	if p.reverse {
-		// We've advanced to the next key but need to move back to the previous
-		// key.
+		__antithesis_instrumentation__.Notify(643520)
+
 		return p.prevKey(key)
+	} else {
+		__antithesis_instrumentation__.Notify(643521)
 	}
-	// We're already at the new key so there is nothing to do.
+	__antithesis_instrumentation__.Notify(643519)
+
 	return true
 }
 
-// Adds the specified key and value to the result set, excluding tombstones unless
-// p.tombstones is true. Advances to the next key unless we've reached the max
-// results limit.
 func (p *pebbleMVCCScanner) addAndAdvance(
 	ctx context.Context, key roachpb.Key, rawKey []byte, val []byte,
 ) bool {
-	// Don't include deleted versions len(val) == 0, unless we've been instructed
-	// to include tombstones in the results.
-	if len(val) == 0 && !p.tombstones {
-		return p.advanceKey()
-	}
+	__antithesis_instrumentation__.Notify(643522)
 
-	// Check if adding the key would exceed a limit.
-	if p.targetBytes > 0 && (p.results.bytes >= p.targetBytes || (p.targetBytesAvoidExcess &&
-		p.results.bytes+int64(p.results.sizeOf(len(rawKey), len(val))) > p.targetBytes)) {
+	if len(val) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(643528)
+		return !p.tombstones == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643529)
+		return p.advanceKey()
+	} else {
+		__antithesis_instrumentation__.Notify(643530)
+	}
+	__antithesis_instrumentation__.Notify(643523)
+
+	if p.targetBytes > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(643531)
+		return (p.results.bytes >= p.targetBytes || func() bool {
+			__antithesis_instrumentation__.Notify(643532)
+			return (p.targetBytesAvoidExcess && func() bool {
+				__antithesis_instrumentation__.Notify(643533)
+				return p.results.bytes+int64(p.results.sizeOf(len(rawKey), len(val))) > p.targetBytes == true
+			}() == true) == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643534)
 		p.resumeReason = roachpb.RESUME_BYTE_LIMIT
 		p.resumeNextBytes = int64(p.results.sizeOf(len(rawKey), len(val)))
 
-	} else if p.maxKeys > 0 && p.results.count >= p.maxKeys {
-		p.resumeReason = roachpb.RESUME_KEY_LIMIT
+	} else {
+		__antithesis_instrumentation__.Notify(643535)
+		if p.maxKeys > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(643536)
+			return p.results.count >= p.maxKeys == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(643537)
+			p.resumeReason = roachpb.RESUME_KEY_LIMIT
+		} else {
+			__antithesis_instrumentation__.Notify(643538)
+		}
 	}
+	__antithesis_instrumentation__.Notify(643524)
 
 	if p.resumeReason != 0 {
-		// If we exceeded a limit, but we're not allowed to return an empty result,
-		// then make sure we include the first key in the result. If wholeRows is
-		// enabled, then also make sure we complete the first SQL row.
-		if !p.allowEmpty &&
-			(p.results.count == 0 || (p.wholeRows && p.results.continuesFirstRow(key))) {
+		__antithesis_instrumentation__.Notify(643539)
+
+		if !p.allowEmpty && func() bool {
+			__antithesis_instrumentation__.Notify(643540)
+			return (p.results.count == 0 || func() bool {
+				__antithesis_instrumentation__.Notify(643541)
+				return (p.wholeRows && func() bool {
+					__antithesis_instrumentation__.Notify(643542)
+					return p.results.continuesFirstRow(key) == true
+				}() == true) == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(643543)
 			p.resumeReason = 0
 			p.resumeNextBytes = 0
 		} else {
+			__antithesis_instrumentation__.Notify(643544)
 			p.resumeKey = key
 
-			// If requested, remove any partial SQL rows from the end of the result.
 			if p.wholeRows {
+				__antithesis_instrumentation__.Notify(643546)
 				trimmedKey, err := p.results.maybeTrimPartialLastRow(key)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(643548)
 					p.err = err
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(643549)
 				}
+				__antithesis_instrumentation__.Notify(643547)
 				if trimmedKey != nil {
+					__antithesis_instrumentation__.Notify(643550)
 					p.resumeKey = trimmedKey
+				} else {
+					__antithesis_instrumentation__.Notify(643551)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(643552)
 			}
+			__antithesis_instrumentation__.Notify(643545)
 			return false
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(643553)
 	}
+	__antithesis_instrumentation__.Notify(643525)
 
 	if err := p.results.put(ctx, rawKey, val, p.memAccount); err != nil {
+		__antithesis_instrumentation__.Notify(643554)
 		p.err = errors.Wrapf(err, "scan with start key %s", p.start)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643555)
 	}
+	__antithesis_instrumentation__.Notify(643526)
 
-	// Check if we hit the key limit just now to avoid scanning further before
-	// checking the key limit above on the next iteration. This has a small cost
-	// (~0.5% for large scans), but avoids the potentially large cost of scanning
-	// lots of garbage before the next key -- especially when maxKeys is small.
-	if p.maxKeys > 0 && p.results.count >= p.maxKeys {
-		// If we're not allowed to return partial SQL rows, check whether the last
-		// KV pair in the result has the maximum column family ID of the row. If so,
-		// we can return early. However, if it doesn't then we can't know yet
-		// whether the row is complete or not, because the final column families of
-		// the row may have been omitted (if they are all NULL values) -- to find
-		// out, we must continue scanning to the next key and handle it above.
-		if !p.wholeRows || p.results.lastRowHasFinalColumnFamily() {
+	if p.maxKeys > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(643556)
+		return p.results.count >= p.maxKeys == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643557)
+
+		if !p.wholeRows || func() bool {
+			__antithesis_instrumentation__.Notify(643558)
+			return p.results.lastRowHasFinalColumnFamily() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(643559)
 			p.resumeReason = roachpb.RESUME_KEY_LIMIT
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643560)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(643561)
 	}
+	__antithesis_instrumentation__.Notify(643527)
 	return p.advanceKey()
 }
 
-// Seeks to the latest revision of the current key that's still less than or
-// equal to the specified timestamp, adds it to the result set, then moves onto
-// the next user key.
 func (p *pebbleMVCCScanner) seekVersion(
 	ctx context.Context, seekTS hlc.Timestamp, uncertaintyCheck bool,
 ) bool {
+	__antithesis_instrumentation__.Notify(643562)
 	seekKey := MVCCKey{Key: p.curUnsafeKey.Key, Timestamp: seekTS}
 	p.keyBuf = EncodeMVCCKeyToBuf(p.keyBuf[:0], seekKey)
 	origKey := p.keyBuf[:len(p.curUnsafeKey.Key)]
-	// We will need seekKey below, if the next's don't suffice. Even though the
-	// MVCCIterator will be at a different version of the same key, it is free
-	// to mutate the backing for p.curUnsafeKey.Key in an arbitrary manner. So
-	// assign to this copy, to make it stable.
+
 	seekKey.Key = origKey
 
 	for i := 0; i < p.itersBeforeSeek; i++ {
+		__antithesis_instrumentation__.Notify(643565)
 		if !p.iterNext() {
+			__antithesis_instrumentation__.Notify(643568)
 			return p.advanceKeyAtEnd()
+		} else {
+			__antithesis_instrumentation__.Notify(643569)
 		}
+		__antithesis_instrumentation__.Notify(643566)
 		if !bytes.Equal(p.curUnsafeKey.Key, origKey) {
+			__antithesis_instrumentation__.Notify(643570)
 			p.incrementItersBeforeSeek()
 			return p.advanceKeyAtNewKey(origKey)
+		} else {
+			__antithesis_instrumentation__.Notify(643571)
 		}
+		__antithesis_instrumentation__.Notify(643567)
 		if p.curUnsafeKey.Timestamp.LessEq(seekTS) {
+			__antithesis_instrumentation__.Notify(643572)
 			p.incrementItersBeforeSeek()
-			if !uncertaintyCheck || p.curUnsafeKey.Timestamp.LessEq(p.ts) {
+			if !uncertaintyCheck || func() bool {
+				__antithesis_instrumentation__.Notify(643574)
+				return p.curUnsafeKey.Timestamp.LessEq(p.ts) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(643575)
 				return p.addAndAdvance(ctx, p.curUnsafeKey.Key, p.curRawKey, p.curValue)
+			} else {
+				__antithesis_instrumentation__.Notify(643576)
 			}
-			// Iterate through uncertainty interval. Though we found a value in
-			// the interval, it may not be uncertainty. This is because seekTS
-			// is set to the transaction's global uncertainty limit, so we are
-			// seeking based on the worst-case uncertainty, but values with a
-			// time in the range (uncertainty.LocalLimit, uncertainty.GlobalLimit]
-			// are only uncertain if their timestamps are synthetic. Meanwhile,
-			// any value with a time in the range (ts, uncertainty.LocalLimit]
-			// is uncertain.
+			__antithesis_instrumentation__.Notify(643573)
+
 			if p.uncertainty.IsUncertain(p.curUnsafeKey.Timestamp) {
+				__antithesis_instrumentation__.Notify(643577)
 				return p.uncertaintyError(p.curUnsafeKey.Timestamp)
+			} else {
+				__antithesis_instrumentation__.Notify(643578)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(643579)
 		}
 	}
+	__antithesis_instrumentation__.Notify(643563)
 
 	p.decrementItersBeforeSeek()
 	if !p.iterSeek(seekKey) {
+		__antithesis_instrumentation__.Notify(643580)
 		return p.advanceKeyAtEnd()
+	} else {
+		__antithesis_instrumentation__.Notify(643581)
 	}
+	__antithesis_instrumentation__.Notify(643564)
 	for {
+		__antithesis_instrumentation__.Notify(643582)
 		if !bytes.Equal(p.curUnsafeKey.Key, origKey) {
+			__antithesis_instrumentation__.Notify(643586)
 			return p.advanceKeyAtNewKey(origKey)
+		} else {
+			__antithesis_instrumentation__.Notify(643587)
 		}
-		if !uncertaintyCheck || p.curUnsafeKey.Timestamp.LessEq(p.ts) {
+		__antithesis_instrumentation__.Notify(643583)
+		if !uncertaintyCheck || func() bool {
+			__antithesis_instrumentation__.Notify(643588)
+			return p.curUnsafeKey.Timestamp.LessEq(p.ts) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(643589)
 			return p.addAndAdvance(ctx, p.curUnsafeKey.Key, p.curRawKey, p.curValue)
+		} else {
+			__antithesis_instrumentation__.Notify(643590)
 		}
-		// Iterate through uncertainty interval. See the comment above about why
-		// a value in this interval is not necessarily cause for an uncertainty
-		// error.
+		__antithesis_instrumentation__.Notify(643584)
+
 		if p.uncertainty.IsUncertain(p.curUnsafeKey.Timestamp) {
+			__antithesis_instrumentation__.Notify(643591)
 			return p.uncertaintyError(p.curUnsafeKey.Timestamp)
+		} else {
+			__antithesis_instrumentation__.Notify(643592)
 		}
+		__antithesis_instrumentation__.Notify(643585)
 		if !p.iterNext() {
+			__antithesis_instrumentation__.Notify(643593)
 			return p.advanceKeyAtEnd()
+		} else {
+			__antithesis_instrumentation__.Notify(643594)
 		}
 	}
 }
 
-// Updates cur{RawKey, Key, TS} to match record the iterator is pointing to.
 func (p *pebbleMVCCScanner) updateCurrent() bool {
+	__antithesis_instrumentation__.Notify(643595)
 	if !p.iterValid() {
+		__antithesis_instrumentation__.Notify(643598)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643599)
 	}
+	__antithesis_instrumentation__.Notify(643596)
 
 	p.curRawKey = p.parent.UnsafeRawMVCCKey()
 
 	var err error
 	p.curUnsafeKey, err = DecodeMVCCKey(p.curRawKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(643600)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(643601)
 	}
+	__antithesis_instrumentation__.Notify(643597)
 	p.curValue = p.parent.UnsafeValue()
 	return true
 }
 
 func (p *pebbleMVCCScanner) iterValid() bool {
+	__antithesis_instrumentation__.Notify(643602)
 	if valid, err := p.parent.Valid(); !valid {
-		// Defensive: unclear if p.err can already be non-nil here, but
-		// regardless, don't overwrite unless we have a non-nil err.
+		__antithesis_instrumentation__.Notify(643604)
+
 		if err != nil {
+			__antithesis_instrumentation__.Notify(643606)
 			p.err = err
+		} else {
+			__antithesis_instrumentation__.Notify(643607)
 		}
+		__antithesis_instrumentation__.Notify(643605)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643608)
 	}
+	__antithesis_instrumentation__.Notify(643603)
 	return true
 }
 
-// iterSeek seeks to the latest revision of the specified key (or a greater key).
 func (p *pebbleMVCCScanner) iterSeek(key MVCCKey) bool {
+	__antithesis_instrumentation__.Notify(643609)
 	p.clearPeeked()
 	p.parent.SeekGE(key)
 	return p.updateCurrent()
 }
 
-// iterSeekReverse seeks to the latest revision of the key before the specified key.
 func (p *pebbleMVCCScanner) iterSeekReverse(key MVCCKey) bool {
+	__antithesis_instrumentation__.Notify(643610)
 	p.clearPeeked()
 	p.parent.SeekLT(key)
 	if !p.updateCurrent() {
-		// We have seeked to before the start key. Return.
+		__antithesis_instrumentation__.Notify(643613)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(643614)
 	}
+	__antithesis_instrumentation__.Notify(643611)
 
 	if p.curUnsafeKey.Timestamp.IsEmpty() {
-		// We landed on an intent or inline value.
+		__antithesis_instrumentation__.Notify(643615)
+
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(643616)
 	}
-	// We landed on a versioned value, we need to back up to find the
-	// latest version.
+	__antithesis_instrumentation__.Notify(643612)
+
 	return p.backwardLatestVersion(p.curUnsafeKey.Key, 0)
 }
 
-// iterNext advances to the next MVCC key.
 func (p *pebbleMVCCScanner) iterNext() bool {
-	if p.reverse && p.peeked {
-		// If we have peeked at the previous entry, we need to advance the iterator
-		// twice.
+	__antithesis_instrumentation__.Notify(643617)
+	if p.reverse && func() bool {
+		__antithesis_instrumentation__.Notify(643619)
+		return p.peeked == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643620)
+
 		p.peeked = false
 		if !p.iterValid() {
-			// We were peeked off the beginning of iteration. Seek to the first
-			// entry, and then advance one step.
+			__antithesis_instrumentation__.Notify(643622)
+
 			p.parent.SeekGE(MVCCKey{Key: p.start})
 			if !p.iterValid() {
+				__antithesis_instrumentation__.Notify(643624)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(643625)
 			}
+			__antithesis_instrumentation__.Notify(643623)
 			p.parent.Next()
 			return p.updateCurrent()
+		} else {
+			__antithesis_instrumentation__.Notify(643626)
 		}
+		__antithesis_instrumentation__.Notify(643621)
 		p.parent.Next()
 		if !p.iterValid() {
+			__antithesis_instrumentation__.Notify(643627)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(643628)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(643629)
 	}
+	__antithesis_instrumentation__.Notify(643618)
 	p.parent.Next()
 	return p.updateCurrent()
 }
 
-// iterPrev advances to the previous MVCC Key.
 func (p *pebbleMVCCScanner) iterPrev() bool {
+	__antithesis_instrumentation__.Notify(643630)
 	if p.peeked {
+		__antithesis_instrumentation__.Notify(643632)
 		p.peeked = false
 		return p.updateCurrent()
+	} else {
+		__antithesis_instrumentation__.Notify(643633)
 	}
+	__antithesis_instrumentation__.Notify(643631)
 	p.parent.Prev()
 	return p.updateCurrent()
 }
 
-// Peek the previous key and store the result in peekedKey. Note that this
-// moves the iterator backward, while leaving p.cur{key,value,rawKey} untouched
-// and therefore out of sync. iterPrev and iterNext take this into account.
 func (p *pebbleMVCCScanner) iterPeekPrev() ([]byte, bool) {
+	__antithesis_instrumentation__.Notify(643634)
 	if !p.peeked {
+		__antithesis_instrumentation__.Notify(643636)
 		p.peeked = true
-		// We need to save a copy of the current iterator key and value and adjust
-		// curRawKey, curKey and curValue to point to this saved data. We use a
-		// single buffer for this purpose: savedBuf.
+
 		p.savedBuf = append(p.savedBuf[:0], p.curRawKey...)
 		p.savedBuf = append(p.savedBuf, p.curValue...)
 		p.curRawKey = p.savedBuf[:len(p.curRawKey)]
 		p.curValue = p.savedBuf[len(p.curRawKey):]
-		// The raw key is always a prefix of the encoded MVCC key. Take advantage of this to
-		// sub-slice the raw key directly, instead of calling SplitMVCCKey.
+
 		p.curUnsafeKey.Key = p.curRawKey[:len(p.curUnsafeKey.Key)]
 
-		// With the current iterator state saved we can move the iterator to the
-		// previous entry.
 		p.parent.Prev()
 		if !p.iterValid() {
-			// The iterator is now invalid, but note that this case is handled in
-			// both iterNext and iterPrev. In the former case, we'll position the
-			// iterator at the first entry, and in the latter iteration will be done.
+			__antithesis_instrumentation__.Notify(643637)
+
 			return nil, false
+		} else {
+			__antithesis_instrumentation__.Notify(643638)
 		}
-	} else if !p.iterValid() {
-		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(643639)
+		if !p.iterValid() {
+			__antithesis_instrumentation__.Notify(643640)
+			return nil, false
+		} else {
+			__antithesis_instrumentation__.Notify(643641)
+		}
 	}
+	__antithesis_instrumentation__.Notify(643635)
 
 	peekedKey := p.parent.UnsafeKey()
 	return peekedKey.Key, true
 }
 
-// Clear the peeked flag. Call this before any iterator operations.
 func (p *pebbleMVCCScanner) clearPeeked() {
+	__antithesis_instrumentation__.Notify(643642)
 	if p.reverse {
+		__antithesis_instrumentation__.Notify(643643)
 		p.peeked = false
+	} else {
+		__antithesis_instrumentation__.Notify(643644)
 	}
 }
 
 func (p *pebbleMVCCScanner) intentsRepr() []byte {
+	__antithesis_instrumentation__.Notify(643645)
 	if p.intents.Count() == 0 {
+		__antithesis_instrumentation__.Notify(643647)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(643648)
 	}
+	__antithesis_instrumentation__.Notify(643646)
 	return p.intents.Repr()
 }
 
 func (p *pebbleMVCCScanner) stats() IteratorStats {
+	__antithesis_instrumentation__.Notify(643649)
 	return p.parent.Stats()
 }

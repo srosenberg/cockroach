@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -22,64 +14,79 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ErrTransactionUnsupported is returned when a non-transactional command is
-// evaluated in the context of a transaction.
 var ErrTransactionUnsupported = errors.AssertionFailedf("not supported within a transaction")
 
-// VerifyTransaction runs sanity checks verifying that the transaction in the
-// header and the request are compatible.
 func VerifyTransaction(
 	h roachpb.Header, args roachpb.Request, permittedStatuses ...roachpb.TransactionStatus,
 ) error {
+	__antithesis_instrumentation__.Notify(97876)
 	if h.Txn == nil {
+		__antithesis_instrumentation__.Notify(97881)
 		return errors.AssertionFailedf("no transaction specified to %s", args.Method())
+	} else {
+		__antithesis_instrumentation__.Notify(97882)
 	}
+	__antithesis_instrumentation__.Notify(97877)
 	if !bytes.Equal(args.Header().Key, h.Txn.Key) {
+		__antithesis_instrumentation__.Notify(97883)
 		return errors.AssertionFailedf("request key %s should match txn key %s", args.Header().Key, h.Txn.Key)
+	} else {
+		__antithesis_instrumentation__.Notify(97884)
 	}
+	__antithesis_instrumentation__.Notify(97878)
 	statusPermitted := false
 	for _, s := range permittedStatuses {
+		__antithesis_instrumentation__.Notify(97885)
 		if h.Txn.Status == s {
+			__antithesis_instrumentation__.Notify(97886)
 			statusPermitted = true
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(97887)
 		}
 	}
+	__antithesis_instrumentation__.Notify(97879)
 	if !statusPermitted {
+		__antithesis_instrumentation__.Notify(97888)
 		reason := roachpb.TransactionStatusError_REASON_UNKNOWN
 		if h.Txn.Status == roachpb.COMMITTED {
+			__antithesis_instrumentation__.Notify(97890)
 			reason = roachpb.TransactionStatusError_REASON_TXN_COMMITTED
+		} else {
+			__antithesis_instrumentation__.Notify(97891)
 		}
+		__antithesis_instrumentation__.Notify(97889)
 		return roachpb.NewTransactionStatusError(reason,
 			fmt.Sprintf("cannot perform %s with txn status %v", args.Method(), h.Txn.Status))
+	} else {
+		__antithesis_instrumentation__.Notify(97892)
 	}
+	__antithesis_instrumentation__.Notify(97880)
 	return nil
 }
 
-// WriteAbortSpanOnResolve returns true if the abort span must be written when
-// the transaction with the given status is resolved. It avoids instructing the
-// caller to write to the abort span if the caller didn't actually remove any
-// intents but intends to poison.
 func WriteAbortSpanOnResolve(status roachpb.TransactionStatus, poison, removedIntents bool) bool {
+	__antithesis_instrumentation__.Notify(97893)
 	if status != roachpb.ABORTED {
-		// Only update the AbortSpan for aborted transactions.
+		__antithesis_instrumentation__.Notify(97896)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(97897)
 	}
+	__antithesis_instrumentation__.Notify(97894)
 	if !poison {
-		// We can remove any entries from the AbortSpan.
+		__antithesis_instrumentation__.Notify(97898)
+
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(97899)
 	}
-	// We only need to add AbortSpan entries for transactions that we have
-	// invalidated by removing intents. This avoids leaking AbortSpan entries if
-	// a request raced with txn record GC and mistakenly interpreted a committed
-	// txn as aborted only to return to the intent it wanted to push and find it
-	// already resolved. We're only required to write an entry if we do
-	// something that could confuse/invalidate a zombie transaction.
+	__antithesis_instrumentation__.Notify(97895)
+
 	return removedIntents
 }
 
-// UpdateAbortSpan clears any AbortSpan entry if poison is false. Otherwise, if
-// poison is true, it creates an entry for this transaction in the AbortSpan to
-// prevent future reads or writes from spuriously succeeding on this range.
 func UpdateAbortSpan(
 	ctx context.Context,
 	rec EvalContext,
@@ -88,111 +95,119 @@ func UpdateAbortSpan(
 	txn enginepb.TxnMeta,
 	poison bool,
 ) error {
-	// Read the current state of the AbortSpan so we can detect when
-	// no changes are needed. This can help us avoid unnecessary Raft
-	// proposals.
+	__antithesis_instrumentation__.Notify(97900)
+
 	var curEntry roachpb.AbortSpanEntry
 	exists, err := rec.AbortSpan().Get(ctx, readWriter, txn.ID, &curEntry)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(97904)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(97905)
 	}
+	__antithesis_instrumentation__.Notify(97901)
 
 	if !poison {
+		__antithesis_instrumentation__.Notify(97906)
 		if !exists {
+			__antithesis_instrumentation__.Notify(97908)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(97909)
 		}
+		__antithesis_instrumentation__.Notify(97907)
 		return rec.AbortSpan().Del(ctx, readWriter, ms, txn.ID)
+	} else {
+		__antithesis_instrumentation__.Notify(97910)
 	}
+	__antithesis_instrumentation__.Notify(97902)
 
 	entry := roachpb.AbortSpanEntry{
 		Key:       txn.Key,
 		Timestamp: txn.WriteTimestamp,
 		Priority:  txn.Priority,
 	}
-	if exists && curEntry.Equal(entry) {
+	if exists && func() bool {
+		__antithesis_instrumentation__.Notify(97911)
+		return curEntry.Equal(entry) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(97912)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(97913)
 	}
-	// curEntry already escapes, so assign entry to curEntry and pass
-	// that to Put instead of allowing entry to escape as well.
+	__antithesis_instrumentation__.Notify(97903)
+
 	curEntry = entry
 	return rec.AbortSpan().Put(ctx, readWriter, ms, txn.ID, &curEntry)
 }
 
-// CanPushWithPriority returns true if the given pusher can push the pushee
-// based on its priority.
 func CanPushWithPriority(pusher, pushee *roachpb.Transaction) bool {
-	return (pusher.Priority > enginepb.MinTxnPriority && pushee.Priority == enginepb.MinTxnPriority) ||
-		(pusher.Priority == enginepb.MaxTxnPriority && pushee.Priority < pusher.Priority)
+	__antithesis_instrumentation__.Notify(97914)
+	return (pusher.Priority > enginepb.MinTxnPriority && func() bool {
+		__antithesis_instrumentation__.Notify(97915)
+		return pushee.Priority == enginepb.MinTxnPriority == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(97916)
+		return (pusher.Priority == enginepb.MaxTxnPriority && func() bool {
+			__antithesis_instrumentation__.Notify(97917)
+			return pushee.Priority < pusher.Priority == true
+		}() == true) == true
+	}() == true
 }
 
-// CanCreateTxnRecord determines whether a transaction record can be created for
-// the provided transaction. If not, the function will return an error. If so,
-// the function may modify the provided transaction.
 func CanCreateTxnRecord(ctx context.Context, rec EvalContext, txn *roachpb.Transaction) error {
-	// The transaction could not have written a transaction record previously
-	// with a timestamp below txn.MinTimestamp.
+	__antithesis_instrumentation__.Notify(97918)
+
 	ok, minCommitTS, reason := rec.CanCreateTxnRecord(ctx, txn.ID, txn.Key, txn.MinTimestamp)
 	if !ok {
+		__antithesis_instrumentation__.Notify(97921)
 		log.VEventf(ctx, 2, "txn tombstone present; transaction has been aborted")
 		return roachpb.NewTransactionAbortedError(reason)
+	} else {
+		__antithesis_instrumentation__.Notify(97922)
 	}
+	__antithesis_instrumentation__.Notify(97919)
 	if bumped := txn.WriteTimestamp.Forward(minCommitTS); bumped {
+		__antithesis_instrumentation__.Notify(97923)
 		log.VEventf(ctx, 2, "write timestamp bumped by txn tombstone to: %s", txn.WriteTimestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(97924)
 	}
+	__antithesis_instrumentation__.Notify(97920)
 	return nil
 }
 
-// SynthesizeTxnFromMeta creates a synthetic transaction object from
-// the provided transaction metadata. The synthetic transaction is not
-// meant to be persisted, but can serve as a representation of the
-// transaction for outside observation. The function also checks
-// whether it is possible for the transaction to ever create a
-// transaction record in the future. If not, the returned transaction
-// will be marked as ABORTED and it is safe to assume that the
-// transaction record will never be written in the future.
-//
-// Note that the Transaction object returned by this function is
-// inadequate to perform further KV reads or to perform intent
-// resolution on its behalf, even if its state is PENDING. This is
-// because the original Transaction object may have been partially
-// rolled back and marked some of its intents as "ignored"
-// (txn.IgnoredSeqNums != nil), but this state is not stored in
-// TxnMeta. Proceeding to KV reads or intent resolution without this
-// information would cause a partial rollback, if any, to be reverted
-// and yield inconsistent data.
 func SynthesizeTxnFromMeta(
 	ctx context.Context, rec EvalContext, txn enginepb.TxnMeta,
 ) roachpb.Transaction {
+	__antithesis_instrumentation__.Notify(97925)
 	synth := roachpb.TransactionRecord{
 		TxnMeta: txn,
 		Status:  roachpb.PENDING,
-		// Set the LastHeartbeat timestamp to the transactions's MinTimestamp. We
-		// use this as an indication of client activity. Note that we cannot use
-		// txn.WriteTimestamp for that purpose, as the WriteTimestamp could have
-		// been bumped by other pushers.
+
 		LastHeartbeat: txn.MinTimestamp,
 	}
 
-	// If the transaction metadata's min timestamp is empty this intent must
-	// have been written by a transaction coordinator before v19.2. We can just
-	// consider the transaction to be aborted, because its coordinator must now
-	// be dead.
 	if txn.MinTimestamp.IsEmpty() {
+		__antithesis_instrumentation__.Notify(97928)
 		synth.Status = roachpb.ABORTED
 		return synth.AsTransaction()
+	} else {
+		__antithesis_instrumentation__.Notify(97929)
 	}
+	__antithesis_instrumentation__.Notify(97926)
 
-	// Determine whether the record could ever be allowed to be written in the
-	// future. The transaction could not have written a transaction record
-	// previously with a timestamp below txn.MinTimestamp.
 	ok, minCommitTS, _ := rec.CanCreateTxnRecord(ctx, txn.ID, txn.Key, txn.MinTimestamp)
 	if ok {
-		// Forward the provisional commit timestamp by the minimum timestamp that
-		// the transaction would be able to create a transaction record at.
+		__antithesis_instrumentation__.Notify(97930)
+
 		synth.WriteTimestamp.Forward(minCommitTS)
 	} else {
-		// Mark the transaction as ABORTED because it is uncommittable.
+		__antithesis_instrumentation__.Notify(97931)
+
 		synth.Status = roachpb.ABORTED
 	}
+	__antithesis_instrumentation__.Notify(97927)
 	return synth.AsTransaction()
 }

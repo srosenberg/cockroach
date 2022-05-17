@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,20 +18,14 @@ import (
 	"github.com/gogo/protobuf/types"
 )
 
-// InlineExecutorName is the name associated with scheduled job executor which
-// runs jobs "inline" -- that is, it doesn't spawn external system.job to do its work.
 const InlineExecutorName = "inline"
 
-// inlineScheduledJobExecutor implements ScheduledJobExecutor interface.
-// This executor runs SQL statement "inline" -- that is, it executes statement
-// directly under transaction.
 type inlineScheduledJobExecutor struct{}
 
 var _ ScheduledJobExecutor = &inlineScheduledJobExecutor{}
 
 const retryFailedJobAfter = time.Minute
 
-// ExecuteJob implements ScheduledJobExecutor interface.
 func (e *inlineScheduledJobExecutor) ExecuteJob(
 	ctx context.Context,
 	cfg *scheduledjobs.JobExecutionConfig,
@@ -47,30 +33,33 @@ func (e *inlineScheduledJobExecutor) ExecuteJob(
 	schedule *ScheduledJob,
 	txn *kv.Txn,
 ) error {
+	__antithesis_instrumentation__.Notify(70246)
 	sqlArgs := &jobspb.SqlStatementExecutionArg{}
 
 	if err := types.UnmarshalAny(schedule.ExecutionArgs().Args, sqlArgs); err != nil {
+		__antithesis_instrumentation__.Notify(70249)
 		return errors.Wrapf(err, "expected SqlStatementExecutionArg")
+	} else {
+		__antithesis_instrumentation__.Notify(70250)
 	}
+	__antithesis_instrumentation__.Notify(70247)
 
-	// TODO(yevgeniy): this is too simplistic.  It would be nice
-	// to capture execution traces, or some similar debug information and save that.
-	// Also, performing this under the same transaction as the scan loop is not ideal
-	// since a single failure would result in rollback for all of the changes.
 	_, err := cfg.InternalExecutor.ExecEx(ctx, "inline-exec", txn,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		sqlArgs.Statement,
 	)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70251)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70252)
 	}
+	__antithesis_instrumentation__.Notify(70248)
 
-	// TODO(yevgeniy): Log execution result
 	return nil
 }
 
-// NotifyJobTermination implements ScheduledJobExecutor interface.
 func (e *inlineScheduledJobExecutor) NotifyJobTermination(
 	ctx context.Context,
 	jobID jobspb.JobID,
@@ -81,15 +70,20 @@ func (e *inlineScheduledJobExecutor) NotifyJobTermination(
 	ex sqlutil.InternalExecutor,
 	txn *kv.Txn,
 ) error {
-	// For now, only interested in failed status.
+	__antithesis_instrumentation__.Notify(70253)
+
 	if jobStatus == StatusFailed {
+		__antithesis_instrumentation__.Notify(70255)
 		DefaultHandleFailedRun(schedule, "job %d failed", jobID)
+	} else {
+		__antithesis_instrumentation__.Notify(70256)
 	}
+	__antithesis_instrumentation__.Notify(70254)
 	return nil
 }
 
-// Metrics implements ScheduledJobExecutor interface
 func (e *inlineScheduledJobExecutor) Metrics() metric.Struct {
+	__antithesis_instrumentation__.Notify(70257)
 	return nil
 }
 
@@ -101,6 +95,7 @@ func (e *inlineScheduledJobExecutor) GetCreateScheduleStatement(
 	sj *ScheduledJob,
 	ex sqlutil.InternalExecutor,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(70258)
 	return "", errors.AssertionFailedf("unimplemented method: 'GetCreateScheduleStatement'")
 }
 

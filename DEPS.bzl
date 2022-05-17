@@ -9381,3 +9381,10 @@ def go_deps():
             "https://storage.googleapis.com/cockroach-godeps/gomod/gotest.tools/v3/tools_gotest_v3-v3.0.3.zip",
         ],
     )
+    go_repository(
+    	name = "com_antithesis_instrumentation",
+    	importpath = "antithesis.com/instrumentation",
+    	vcs = "git",
+	commit = "ecb162d2cba6a9df6062779365ddf8a378874969",
+    	remote = "/home/srosenberg/go/src/antithesis.com/instrumentation/",
+   )

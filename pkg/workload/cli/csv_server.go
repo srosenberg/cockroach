@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -34,10 +26,9 @@ func init() {
 }
 
 func runCSVServer(_ *cobra.Command, _ []string) error {
+	__antithesis_instrumentation__.Notify(693669)
 	mux := workload.CSVMux(workload.Registered())
 
-	// Cribbed straight from pprof's `init()` method. See:
-	// https://golang.org/src/net/http/pprof/pprof.go
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)

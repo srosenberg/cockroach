@@ -31,6 +31,7 @@ go_library(
         "//pkg/workload",
         "//pkg/workload/histogram",
         "//pkg/workload/workloadimpl",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_cockroach_go_v2//crdb/crdbpgx",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_codahale_hdrhistogram//:hdrhistogram",
@@ -57,6 +58,7 @@ go_test(
     deps = [
         "//pkg/testutils",
         "//pkg/workload",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

@@ -11,6 +11,7 @@ go_library(
         "//pkg/util",
         "//pkg/util/buildutil",
         "//pkg/util/tracing/tracingpb",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -42,6 +43,7 @@ go_test(
         "//pkg/util/optional",
         "//pkg/util/tracing",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",
     ],

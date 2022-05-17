@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package migrations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,8 +13,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/systemschema"
 )
 
-// Target schema changes in the system.statement_diagnostics_requests table,
-// adding two columns and updating the secondary index to store those columns.
 const (
 	addColsToStmtDiagReqs = `
 ALTER TABLE system.statement_diagnostics_requests
@@ -36,12 +26,10 @@ CREATE INDEX completed_idx_v2 ON system.statement_diagnostics_requests (complete
 	dropCompletedIdx = `DROP INDEX IF EXISTS completed_idx`
 )
 
-// alterSystemStmtDiagReqs changes the schema of the
-// system.statement_diagnostics_requests table. It adds two columns which are
-// then included into STORING clause of the secondary index.
 func alterSystemStmtDiagReqs(
 	ctx context.Context, cs clusterversion.ClusterVersion, d migration.TenantDeps, _ *jobs.Job,
 ) error {
+	__antithesis_instrumentation__.Notify(128374)
 	for _, op := range []operation{
 		{
 			name:           "add-stmt-diag-reqs-conditional-columns",
@@ -60,13 +48,19 @@ func alterSystemStmtDiagReqs(
 			schemaList: []string{"completed_idx"},
 			query:      dropCompletedIdx,
 			schemaExistsFn: func(catalog.TableDescriptor, catalog.TableDescriptor, string) (bool, error) {
+				__antithesis_instrumentation__.Notify(128376)
 				return false, nil
 			},
 		},
 	} {
+		__antithesis_instrumentation__.Notify(128377)
 		if err := migrateTable(ctx, cs, d, op, keys.StatementDiagnosticsRequestsTableID, systemschema.StatementDiagnosticsRequestsTable); err != nil {
+			__antithesis_instrumentation__.Notify(128378)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128379)
 		}
 	}
+	__antithesis_instrumentation__.Notify(128375)
 	return nil
 }

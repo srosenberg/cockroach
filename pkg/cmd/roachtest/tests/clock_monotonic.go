@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,21 +18,33 @@ import (
 func runClockMonotonicity(
 	ctx context.Context, t test.Test, c cluster.Cluster, tc clockMonotonicityTestCase,
 ) {
-	// Test with a single node so that the node does not crash due to MaxOffset
-	// violation when introducing offset
+	__antithesis_instrumentation__.Notify(46666)
+
 	if c.Spec().NodeCount != 1 {
+		__antithesis_instrumentation__.Notify(46676)
 		t.Fatalf("Expected num nodes to be 1, got: %d", c.Spec().NodeCount)
+	} else {
+		__antithesis_instrumentation__.Notify(46677)
 	}
+	__antithesis_instrumentation__.Notify(46667)
 
 	t.Status("deploying offset injector")
 	offsetInjector := newOffsetInjector(t, c)
 	if err := offsetInjector.deploy(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(46678)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46679)
 	}
+	__antithesis_instrumentation__.Notify(46668)
 
 	if err := c.RunE(ctx, c.Node(1), "test -x ./cockroach"); err != nil {
+		__antithesis_instrumentation__.Notify(46680)
 		c.Put(ctx, t.Cockroach(), "./cockroach", c.All())
+	} else {
+		__antithesis_instrumentation__.Notify(46681)
 	}
+	__antithesis_instrumentation__.Notify(46669)
 	c.Wipe(ctx)
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings())
 
@@ -49,28 +53,42 @@ func runClockMonotonicity(
 	if _, err := db.Exec(
 		fmt.Sprintf(`SET CLUSTER SETTING server.clock.persist_upper_bound_interval = '%v'`,
 			tc.persistWallTimeInterval)); err != nil {
+		__antithesis_instrumentation__.Notify(46682)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46683)
 	}
+	__antithesis_instrumentation__.Notify(46670)
 
-	// Wait for Cockroach to process the above cluster setting
 	time.Sleep(10 * time.Second)
 
 	if !isAlive(db, t.L()) {
+		__antithesis_instrumentation__.Notify(46684)
 		t.Fatal("Node unexpectedly crashed")
+	} else {
+		__antithesis_instrumentation__.Notify(46685)
 	}
+	__antithesis_instrumentation__.Notify(46671)
 
 	preRestartTime, err := dbUnixEpoch(db)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46686)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46687)
 	}
+	__antithesis_instrumentation__.Notify(46672)
 
-	// Recover from the injected clock offset after validation completes.
 	defer func() {
+		__antithesis_instrumentation__.Notify(46688)
 		if !isAlive(db, t.L()) {
+			__antithesis_instrumentation__.Notify(46690)
 			t.Fatal("Node unexpectedly crashed")
+		} else {
+			__antithesis_instrumentation__.Notify(46691)
 		}
-		// Stop cockroach node before recovering from clock offset as this clock
-		// jump can crash the node.
+		__antithesis_instrumentation__.Notify(46689)
+
 		c.Stop(ctx, t.L(), option.DefaultStopOpts(), c.Node(c.Spec().NodeCount))
 		t.L().Printf("recovering from injected clock offset")
 
@@ -78,11 +96,14 @@ func runClockMonotonicity(
 
 		c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.Node(c.Spec().NodeCount))
 		if !isAlive(db, t.L()) {
+			__antithesis_instrumentation__.Notify(46692)
 			t.Fatal("Node unexpectedly crashed")
+		} else {
+			__antithesis_instrumentation__.Notify(46693)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(46673)
 
-	// Inject a clock offset after stopping a node
 	t.Status("stopping cockroach")
 	c.Stop(ctx, t.L(), option.DefaultStopOpts(), c.Node(c.Spec().NodeCount))
 	t.Status("injecting offset")
@@ -91,13 +112,21 @@ func runClockMonotonicity(
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.Node(c.Spec().NodeCount))
 
 	if !isAlive(db, t.L()) {
+		__antithesis_instrumentation__.Notify(46694)
 		t.Fatal("Node unexpectedly crashed")
+	} else {
+		__antithesis_instrumentation__.Notify(46695)
 	}
+	__antithesis_instrumentation__.Notify(46674)
 
 	postRestartTime, err := dbUnixEpoch(db)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46696)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46697)
 	}
+	__antithesis_instrumentation__.Notify(46675)
 
 	t.Status("validating clock monotonicity")
 	t.L().Printf("pre-restart time:  %f\n", preRestartTime)
@@ -106,12 +135,20 @@ func runClockMonotonicity(
 	t.L().Printf("time-difference: %v\n", time.Duration(difference*float64(time.Second)))
 
 	if tc.expectIncreasingWallTime {
+		__antithesis_instrumentation__.Notify(46698)
 		if preRestartTime > postRestartTime {
+			__antithesis_instrumentation__.Notify(46699)
 			t.Fatalf("Expected pre-restart time %f < post-restart time %f", preRestartTime, postRestartTime)
+		} else {
+			__antithesis_instrumentation__.Notify(46700)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(46701)
 		if preRestartTime < postRestartTime {
+			__antithesis_instrumentation__.Notify(46702)
 			t.Fatalf("Expected pre-restart time %f > post-restart time %f", preRestartTime, postRestartTime)
+		} else {
+			__antithesis_instrumentation__.Notify(46703)
 		}
 	}
 }
@@ -124,6 +161,7 @@ type clockMonotonicityTestCase struct {
 }
 
 func registerClockMonotonicTests(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(46704)
 	testCases := []clockMonotonicityTestCase{
 		{
 			name:                     "persistent",
@@ -134,17 +172,19 @@ func registerClockMonotonicTests(r registry.Registry) {
 	}
 
 	for i := range testCases {
+		__antithesis_instrumentation__.Notify(46705)
 		tc := testCases[i]
 		s := registry.TestSpec{
 			Name:  "clock/monotonic/" + tc.name,
 			Owner: registry.OwnerKV,
-			// These tests muck with NTP, therefor we don't want the cluster reused by
-			// others.
+
 			Cluster: r.MakeClusterSpec(1, spec.ReuseTagged("offset-injector")),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(46707)
 				runClockMonotonicity(ctx, t, c, tc)
 			},
 		}
+		__antithesis_instrumentation__.Notify(46706)
 		r.Add(s)
 	}
 }

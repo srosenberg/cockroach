@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scdeps
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -33,8 +25,6 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// NewBuilderDependencies returns an scbuild.Dependencies implementation built
-// from the given arguments.
 func NewBuilderDependencies(
 	clusterID uuid.UUID,
 	codec keys.SQLCodec,
@@ -48,6 +38,7 @@ func NewBuilderDependencies(
 	settings *cluster.Settings,
 	statements []string,
 ) scbuild.Dependencies {
+	__antithesis_instrumentation__.Notify(580561)
 	return &buildDeps{
 		clusterID:       clusterID,
 		codec:           codec,
@@ -79,40 +70,52 @@ type buildDeps struct {
 
 var _ scbuild.CatalogReader = (*buildDeps)(nil)
 
-// MayResolveDatabase implements the scbuild.CatalogReader interface.
 func (d *buildDeps) MayResolveDatabase(
 	ctx context.Context, name tree.Name,
 ) catalog.DatabaseDescriptor {
+	__antithesis_instrumentation__.Notify(580562)
 	db, err := d.descsCollection.GetImmutableDatabaseByName(ctx, d.txn, string(name), tree.DatabaseLookupFlags{
 		AvoidLeased: true,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580564)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(580565)
 	}
+	__antithesis_instrumentation__.Notify(580563)
 	return db
 }
 
-// MayResolveSchema implements the scbuild.CatalogReader interface.
 func (d *buildDeps) MayResolveSchema(
 	ctx context.Context, name tree.ObjectNamePrefix,
 ) (catalog.DatabaseDescriptor, catalog.SchemaDescriptor) {
+	__antithesis_instrumentation__.Notify(580566)
 	if !name.ExplicitCatalog {
+		__antithesis_instrumentation__.Notify(580569)
 		name.CatalogName = tree.Name(d.schemaResolver.CurrentDatabase())
+	} else {
+		__antithesis_instrumentation__.Notify(580570)
 	}
+	__antithesis_instrumentation__.Notify(580567)
 	db := d.MayResolveDatabase(ctx, name.CatalogName)
 	schema, err := d.descsCollection.GetSchemaByName(ctx, d.txn, db, name.Schema(), tree.SchemaLookupFlags{
 		AvoidLeased: true,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580571)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(580572)
 	}
+	__antithesis_instrumentation__.Notify(580568)
 	return db, schema
 }
 
-// MayResolveTable implements the scbuild.CatalogReader interface.
 func (d *buildDeps) MayResolveTable(
 	ctx context.Context, name tree.UnresolvedObjectName,
 ) (catalog.ResolvedObjectPrefix, catalog.TableDescriptor) {
+	__antithesis_instrumentation__.Notify(580573)
 	desc, prefix, err := resolver.ResolveExistingObject(ctx, d.schemaResolver, &name, tree.ObjectLookupFlags{
 		CommonLookupFlags: tree.CommonLookupFlags{
 			AvoidLeased: true,
@@ -120,18 +123,26 @@ func (d *buildDeps) MayResolveTable(
 		DesiredObjectKind: tree.TableObject,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580576)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(580577)
 	}
+	__antithesis_instrumentation__.Notify(580574)
 	if desc == nil {
+		__antithesis_instrumentation__.Notify(580578)
 		return prefix, nil
+	} else {
+		__antithesis_instrumentation__.Notify(580579)
 	}
+	__antithesis_instrumentation__.Notify(580575)
 	return prefix, desc.(catalog.TableDescriptor)
 }
 
-// MayResolveType implements the scbuild.CatalogReader interface.
 func (d *buildDeps) MayResolveType(
 	ctx context.Context, name tree.UnresolvedObjectName,
 ) (catalog.ResolvedObjectPrefix, catalog.TypeDescriptor) {
+	__antithesis_instrumentation__.Notify(580580)
 	desc, prefix, err := resolver.ResolveExistingObject(ctx, d.schemaResolver, &name, tree.ObjectLookupFlags{
 		CommonLookupFlags: tree.CommonLookupFlags{
 			AvoidLeased: true,
@@ -139,18 +150,26 @@ func (d *buildDeps) MayResolveType(
 		DesiredObjectKind: tree.TypeObject,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580583)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(580584)
 	}
+	__antithesis_instrumentation__.Notify(580581)
 	if desc == nil {
+		__antithesis_instrumentation__.Notify(580585)
 		return prefix, nil
+	} else {
+		__antithesis_instrumentation__.Notify(580586)
 	}
+	__antithesis_instrumentation__.Notify(580582)
 	return prefix, desc.(catalog.TypeDescriptor)
 }
 
-// ReadObjectNamesAndIDs implements the scbuild.CatalogReader interface.
 func (d *buildDeps) ReadObjectNamesAndIDs(
 	ctx context.Context, db catalog.DatabaseDescriptor, schema catalog.SchemaDescriptor,
 ) (tree.TableNames, descpb.IDs) {
+	__antithesis_instrumentation__.Notify(580587)
 	names, ids, err := d.descsCollection.GetObjectNamesAndIDs(ctx, d.txn, db, schema.GetName(), tree.DatabaseListFlags{
 		CommonLookupFlags: tree.CommonLookupFlags{
 			Required:       true,
@@ -162,37 +181,41 @@ func (d *buildDeps) ReadObjectNamesAndIDs(
 		ExplicitPrefix: true,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580589)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(580590)
 	}
+	__antithesis_instrumentation__.Notify(580588)
 	return names, ids
 }
 
-// ResolveType implements the scbuild.CatalogReader interface.
 func (d *buildDeps) ResolveType(
 	ctx context.Context, name *tree.UnresolvedObjectName,
 ) (*types.T, error) {
+	__antithesis_instrumentation__.Notify(580591)
 	return d.schemaResolver.ResolveType(ctx, name)
 }
 
-// ResolveTypeByOID implements the scbuild.CatalogReader interface.
 func (d *buildDeps) ResolveTypeByOID(ctx context.Context, oid oid.Oid) (*types.T, error) {
+	__antithesis_instrumentation__.Notify(580592)
 	return d.schemaResolver.ResolveTypeByOID(ctx, oid)
 }
 
-// GetQualifiedTableNameByID implements the scbuild.CatalogReader interface.
 func (d *buildDeps) GetQualifiedTableNameByID(
 	ctx context.Context, id int64, requiredType tree.RequiredTableKind,
 ) (*tree.TableName, error) {
+	__antithesis_instrumentation__.Notify(580593)
 	return d.schemaResolver.GetQualifiedTableNameByID(ctx, id, requiredType)
 }
 
-// CurrentDatabase implements the scbuild.CatalogReader interface.
 func (d *buildDeps) CurrentDatabase() string {
+	__antithesis_instrumentation__.Notify(580594)
 	return d.schemaResolver.CurrentDatabase()
 }
 
-// MustReadDescriptor implements the scbuild.CatalogReader interface.
 func (d *buildDeps) MustReadDescriptor(ctx context.Context, id descpb.ID) catalog.Descriptor {
+	__antithesis_instrumentation__.Notify(580595)
 	flags := tree.CommonLookupFlags{
 		Required:       true,
 		RequireMutable: false,
@@ -202,76 +225,83 @@ func (d *buildDeps) MustReadDescriptor(ctx context.Context, id descpb.ID) catalo
 	}
 	desc, err := d.descsCollection.GetImmutableDescriptorByID(ctx, d.txn, id, flags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580597)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(580598)
 	}
+	__antithesis_instrumentation__.Notify(580596)
 	return desc
 }
 
-// MustGetSchemasForDatabase  implements the scbuild.CatalogReader interface.
 func (d *buildDeps) MustGetSchemasForDatabase(
 	ctx context.Context, database catalog.DatabaseDescriptor,
 ) map[descpb.ID]string {
+	__antithesis_instrumentation__.Notify(580599)
 	schemas, err := d.descsCollection.GetSchemasForDatabase(ctx, d.txn, database)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580601)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(580602)
 	}
+	__antithesis_instrumentation__.Notify(580600)
 	return schemas
 }
 
-// CreatePartitioningCCL is the public hook point for the CCL-licensed
-// partitioning creation code.
 var CreatePartitioningCCL scbuild.CreatePartitioningCCLCallback
 
 var _ scbuild.Dependencies = (*buildDeps)(nil)
 
-// AuthorizationAccessor implements the scbuild.Dependencies interface.
 func (d *buildDeps) AuthorizationAccessor() scbuild.AuthorizationAccessor {
+	__antithesis_instrumentation__.Notify(580603)
 	return d.authAccessor
 }
 
-// CatalogReader implements the scbuild.Dependencies interface.
 func (d *buildDeps) CatalogReader() scbuild.CatalogReader {
+	__antithesis_instrumentation__.Notify(580604)
 	return d
 }
 
-// ClusterID implements the scbuild.Dependencies interface.
 func (d *buildDeps) ClusterID() uuid.UUID {
+	__antithesis_instrumentation__.Notify(580605)
 	return d.clusterID
 }
 
-// Codec implements the scbuild.Dependencies interface.
 func (d *buildDeps) Codec() keys.SQLCodec {
+	__antithesis_instrumentation__.Notify(580606)
 	return d.codec
 }
 
-// SessionData implements the scbuild.Dependencies interface.
 func (d *buildDeps) SessionData() *sessiondata.SessionData {
+	__antithesis_instrumentation__.Notify(580607)
 	return d.sessionData
 }
 
-// ClusterSettings implements the scbuild.Dependencies interface.
 func (d *buildDeps) ClusterSettings() *cluster.Settings {
+	__antithesis_instrumentation__.Notify(580608)
 	return d.settings
 }
 
-// Statements implements the scbuild.Dependencies interface.
 func (d *buildDeps) Statements() []string {
+	__antithesis_instrumentation__.Notify(580609)
 	return d.statements
 }
 
-// AstFormatter implements the scbuild.Dependencies interface.
 func (d *buildDeps) AstFormatter() scbuild.AstFormatter {
+	__antithesis_instrumentation__.Notify(580610)
 	return d.astFormatter
 }
 
-// FeatureChecker implements the scbuild.Dependencies interface.
 func (d *buildDeps) FeatureChecker() scbuild.FeatureChecker {
+	__antithesis_instrumentation__.Notify(580611)
 	return d.featureChecker
 }
 
-// IndexPartitioningCCLCallback implements the scbuild.Dependencies interface.
 func (d *buildDeps) IndexPartitioningCCLCallback() scbuild.CreatePartitioningCCLCallback {
+	__antithesis_instrumentation__.Notify(580612)
 	if CreatePartitioningCCL == nil {
+		__antithesis_instrumentation__.Notify(580614)
 		return func(
 			_ context.Context,
 			_ *cluster.Settings,
@@ -283,38 +313,43 @@ func (d *buildDeps) IndexPartitioningCCLCallback() scbuild.CreatePartitioningCCL
 			_ []tree.Name,
 			_ bool,
 		) ([]catalog.Column, catpb.PartitioningDescriptor, error) {
+			__antithesis_instrumentation__.Notify(580615)
 			return nil, catpb.PartitioningDescriptor{}, sqlerrors.NewCCLRequiredError(errors.New(
 				"creating or manipulating partitions requires a CCL binary"))
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(580616)
 	}
+	__antithesis_instrumentation__.Notify(580613)
 	return CreatePartitioningCCL
 }
 
-// IncrementSchemaChangeAlterCounter implements the scbuild.Dependencies
-// interface.
 func (d *buildDeps) IncrementSchemaChangeAlterCounter(counterType string, extra ...string) {
+	__antithesis_instrumentation__.Notify(580617)
 	var maybeExtra string
 	if len(extra) > 0 {
+		__antithesis_instrumentation__.Notify(580619)
 		maybeExtra = extra[0]
+	} else {
+		__antithesis_instrumentation__.Notify(580620)
 	}
+	__antithesis_instrumentation__.Notify(580618)
 	telemetry.Inc(sqltelemetry.SchemaChangeAlterCounterWithExtra(counterType, maybeExtra))
 }
 
-// IncrementSchemaChangeDropCounter implements the scbuild.Dependencies
-// interface.
 func (d *buildDeps) IncrementSchemaChangeDropCounter(counterType string) {
+	__antithesis_instrumentation__.Notify(580621)
 	telemetry.Inc(sqltelemetry.SchemaChangeDropCounter(counterType))
 }
 
-// IncrementUserDefinedSchemaCounter implements the scbuild.Dependencies
-// interface.
 func (d *buildDeps) IncrementUserDefinedSchemaCounter(
 	counterType sqltelemetry.UserDefinedSchemaTelemetryType,
 ) {
+	__antithesis_instrumentation__.Notify(580622)
 	sqltelemetry.IncrementUserDefinedSchemaCounter(counterType)
 }
 
-// IncrementEnumCounter implements the scbuild.Dependencies interface.
 func (d *buildDeps) IncrementEnumCounter(counterType sqltelemetry.EnumTelemetryType) {
+	__antithesis_instrumentation__.Notify(580623)
 	sqltelemetry.IncrementEnumCounter(counterType)
 }

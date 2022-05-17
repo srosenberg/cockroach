@@ -7,6 +7,7 @@ def gen_sort_partitioner_rule(name, target, visibility = ["//visibility:private"
         outs = [target],
         cmd = """\
 export COCKROACH_INTERNAL_DISABLE_METAMORPHIC_TESTING=true
+export LD_LIBRARY_PATH=/home/srosenberg/go/src/antithesis.com/instrumentation/lib/
 $(location :execgen) -template $(SRCS) -fmt=false pkg/sql/colexec/$@ > $@
 $(location :goimports) -w $@
 """,

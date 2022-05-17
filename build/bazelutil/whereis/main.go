@@ -9,25 +9,30 @@
 // licenses/APL.txt.
 package main
 
+import __antithesis_instrumentation__ "antithesis.com/go/instrumentation/instrumented_module_4d5c339ebeff"
+
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 )
 
-// whereis is a helper executable that is basically just `realpath`. It's meant
-// to be used like:
-//     bazel run ... --run_under //build/bazelutil/whereis
-// ... which will print the location of the binary you're running. Useful
-// because Bazel can be a little unclear about where exactly to find any given
-// executable.
 func main() {
+	__antithesis_instrumentation__.Notify(1)
 	if len(os.Args) != 2 {
+		__antithesis_instrumentation__.Notify(4)
 		panic("expected a single argument")
+	} else {
+		__antithesis_instrumentation__.Notify(5)
 	}
+	__antithesis_instrumentation__.Notify(2)
 	abs, err := filepath.Abs(os.Args[1])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(7)
 	}
+	__antithesis_instrumentation__.Notify(3)
 	fmt.Printf("%s\n", abs)
 }

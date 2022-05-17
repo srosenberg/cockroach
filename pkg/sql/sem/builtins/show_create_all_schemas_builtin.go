@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package builtins
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,8 +13,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 )
 
-// getSchemaIDs returns the set of schema ids from
-// crdb_internal.show_create_all_schemas for a specified database.
 func getSchemaIDs(
 	ctx context.Context,
 	evalPlanner tree.EvalPlanner,
@@ -30,6 +20,7 @@ func getSchemaIDs(
 	dbName string,
 	acc *mon.BoundAccount,
 ) ([]int64, error) {
+	__antithesis_instrumentation__.Notify(602358)
 	query := fmt.Sprintf(`
 		SELECT descriptor_id
 		FROM %s.crdb_internal.create_schema_statements
@@ -44,32 +35,44 @@ func getSchemaIDs(
 		dbName,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602362)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(602363)
 	}
+	__antithesis_instrumentation__.Notify(602359)
 
 	var schemaIDs []int64
 
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(602364)
 		tid := tree.MustBeDInt(it.Cur()[0])
 
 		schemaIDs = append(schemaIDs, int64(tid))
 		if err = acc.Grow(ctx, int64(unsafe.Sizeof(tid))); err != nil {
+			__antithesis_instrumentation__.Notify(602365)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(602366)
 		}
 	}
+	__antithesis_instrumentation__.Notify(602360)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602367)
 		return schemaIDs, err
+	} else {
+		__antithesis_instrumentation__.Notify(602368)
 	}
+	__antithesis_instrumentation__.Notify(602361)
 
 	return schemaIDs, nil
 }
 
-// getSchemaCreateStatement gets the create statement to recreate a schema (ignoring fks)
-// for a given schema id in a database.
 func getSchemaCreateStatement(
 	ctx context.Context, evalPlanner tree.EvalPlanner, txn *kv.Txn, id int64, dbName string,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(602369)
 	query := fmt.Sprintf(`
 		SELECT
 			create_statement
@@ -86,7 +89,11 @@ func getSchemaCreateStatement(
 	)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602371)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(602372)
 	}
+	__antithesis_instrumentation__.Notify(602370)
 	return row[0], nil
 }

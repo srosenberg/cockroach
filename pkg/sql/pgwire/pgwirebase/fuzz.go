@@ -1,17 +1,9 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 //go:build gofuzz
 // +build gofuzz
 
 package pgwirebase
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,20 +14,27 @@ import (
 )
 
 var (
-	// Compile a slice of all typs.
 	typs = func() []*types.T {
+		__antithesis_instrumentation__.Notify(561386)
 		var ret []*types.T
 		for _, typ := range types.OidToType {
+			__antithesis_instrumentation__.Notify(561388)
 			ret = append(ret, typ)
 		}
+		__antithesis_instrumentation__.Notify(561387)
 		return ret
 	}()
 )
 
 func FuzzDecodeDatum(data []byte) int {
+	__antithesis_instrumentation__.Notify(561389)
 	if len(data) < 2 {
+		__antithesis_instrumentation__.Notify(561392)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(561393)
 	}
+	__antithesis_instrumentation__.Notify(561390)
 
 	typ := typs[int(data[1])%len(typs)]
 	code := FormatCode(data[0]) % (FormatBinary + 1)
@@ -46,7 +45,11 @@ func FuzzDecodeDatum(data []byte) int {
 
 	_, err := DecodeDatum(evalCtx, typ, code, b)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(561394)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(561395)
 	}
+	__antithesis_instrumentation__.Notify(561391)
 	return 1
 }

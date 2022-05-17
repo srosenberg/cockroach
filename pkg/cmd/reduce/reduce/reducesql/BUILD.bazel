@@ -10,6 +10,7 @@ go_library(
         "//pkg/sql/parser",
         "//pkg/sql/sem/builtins",
         "//pkg/sql/sem/tree",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -25,6 +26,7 @@ go_test(
         "//pkg/security",
         "//pkg/server",
         "//pkg/testutils/skip",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_jackc_pgx_v4//:pgx",
     ],
 )

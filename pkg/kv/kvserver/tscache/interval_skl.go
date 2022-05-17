@@ -1,15 +1,6 @@
-// Copyright 2017 Andy Kimball
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tscache
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -29,561 +20,492 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// rangeOptions are passed to AddRange to indicate the bounds of the range. By
-// default, the "from" and "to" keys are inclusive. Setting these bit flags
-// indicates that one or both is exclusive instead.
 type rangeOptions int
 
 const (
-	// excludeFrom indicates that the range does not include the starting key.
 	excludeFrom = rangeOptions(1 << iota)
 
-	// excludeTo indicates that the range does not include the ending key.
 	excludeTo
 )
 
-// nodeOptions are meta tags on skiplist nodes that indicate the status and role
-// of that node in the intervalSkl. The options are bit flags that can be
-// independently added and removed.
-//
-// Each node in the intervalSkl holds a key and, optionally, the latest read
-// timestamp for that key. In addition, the node optionally holds the latest
-// read timestamp for the range of keys between itself and the next key that is
-// present in the skiplist. This space between keys is called the "gap", and the
-// timestamp for that range is called the "gap timestamp". Here is a simplified
-// representation that would result after these ranges were added to an empty
-// intervalSkl:
-//   ["apple", "orange") = 200
-//   ["kiwi", "raspberry"] = 100
-//
-//   "apple"    "orange"   "raspberry"
-//   keyts=200  keyts=100  keyts=100
-//   gapts=200  gapts=100  gapts=0
-//
-// That is, the range from apple (inclusive) to orange (exclusive) has a read
-// timestamp of 200. The range from orange (inclusive) to raspberry (inclusive)
-// has a read timestamp of 100. All other keys have a read timestamp of 0.
 type nodeOptions int
 
 const (
-	// initialized indicates that the node has been created and fully
-	// initialized. Key and gap values are final, and can now be used.
 	initialized = 1 << iota
 
-	// cantInit indicates that the node should never be allowed to initialize.
-	// This is set on nodes which were unable to ratchet their values at some
-	// point because of a full arena. In this case, the node's values should
-	// never become final and any goroutines trying to initialize it it will be
-	// forced to create it again in a new page when they notice this flag.
 	cantInit
 
-	// hasKey indicates that the node has an associated key value. If this is
-	// not set, then the key timestamp is assumed to be zero and the key is
-	// assumed to not have a corresponding txnID.
 	hasKey
 
-	// hasGap indicates that the node has an associated gap value. If this is
-	// not set, then the gap timestamp is assumed to be zero and the gap is
-	// assumed to not have a corresponding txnID.
 	hasGap
 )
 
 const (
 	encodedValSize = int(unsafe.Sizeof(cacheValue{}))
 
-	// initialSklPageSize is the initial size of each page in the sklImpl's
-	// intervalSkl. The pages start small to limit the memory footprint of
-	// the data structure for short-lived tests. Reducing this size can hurt
-	// performance but it decreases the risk of OOM failures when many tests
-	// are running concurrently.
-	initialSklPageSize = 128 << 10 // 128 KB
-	// maximumSklPageSize is the maximum size of each page in the sklImpl's
-	// intervalSkl. A long-running server is expected to settle on pages of
-	// this size under steady-state load.
-	maximumSklPageSize = 32 << 20 // 32 MB
+	initialSklPageSize = 128 << 10
+
+	maximumSklPageSize = 32 << 20
 
 	defaultMinSklPages = 2
 )
 
-// initialSklAllocSize is the amount of space in its arena that an empty
-// arenaskl.Skiplist consumes.
 var initialSklAllocSize = func() int {
+	__antithesis_instrumentation__.Notify(126816)
 	a := arenaskl.NewArena(1000)
 	_ = arenaskl.NewSkiplist(a)
 	return int(a.Size())
 }()
 
-// intervalSkl efficiently tracks the latest logical time at which any key or
-// range of keys has been accessed. Keys are binary values of any length, and
-// times are represented as hybrid logical timestamps (see hlc package). The
-// data structure guarantees that the read timestamp of any given key or range
-// will never decrease. In other words, if a lookup returns timestamp A and
-// repeating the same lookup returns timestamp B, then B >= A.
-//
-// Add and lookup operations do not block or interfere with one another, which
-// enables predictable operation latencies. Also, the impact of the structure on
-// the GC is virtually nothing, even when the structure is very large. These
-// properties are enabled by employing a lock-free skiplist implementation that
-// uses an arena allocator. Skiplist nodes refer to one another by offset into
-// the arena rather than by pointer, so the GC has very few objects to track.
-//
-//
-// The data structure can conceptually be thought of as being parameterized over
-// a key and a value type, such that the key implements a Comparable interface
-// (see interval.Comparable) and the value implements a Ratchetable interface:
-//
-//   type Ratchetable interface {
-//     Ratchet(other Ratchetable) (changed bool)
-//   }
-//
-// In other words, if Go supported zero-cost abstractions, this type might look
-// like:
-//
-//   type intervalSkl<K: Comparable, V: Ratchetable>
-//
 type intervalSkl struct {
-	// rotMutex synchronizes page rotation with all other operations. The read
-	// lock is acquired by the Add and Lookup operations. The write lock is
-	// acquired only when the pages are rotated. Since that is very rare, the
-	// vast majority of operations can proceed without blocking.
 	rotMutex syncutil.RWMutex
 
-	// The following fields are used to enforce a minimum retention window on
-	// all timestamp intervals. intervalSkl promises to retain all timestamp
-	// intervals until they are at least this old before allowing the floor
-	// timestamp to ratchet and subsume them. If clock is nil then no minimum
-	// retention policy will be employed.
 	clock  *hlc.Clock
 	minRet time.Duration
 
-	// The size of the last allocated page in the data structure, in bytes. When
-	// a page fills, a new page will be allocate, the pages will be rotated, and
-	// older entries will be discarded. Page sizes grow exponentially as pages
-	// are allocated up to a maximum of maximumSklPageSize. The value will never
-	// regress over the lifetime of an intervalSkl instance.
-	//
-	// The entire data structure is typically bound to a maximum a size of
-	// maximumSklPageSize*minPages. However, this limit can be violated if the
-	// intervalSkl needs to grow larger to enforce a minimum retention policy.
 	pageSize      uint32
-	pageSizeFixed bool // testing only
+	pageSizeFixed bool
 
-	// The linked list maintains fixed-size skiplist pages, ordered by creation
-	// time such that the first page is the one most recently created. When the
-	// first page fills, a new empty page is prepended to the front of the list
-	// and all others are pushed back. This first page is the only sklPage that
-	// is written to, all others are immutable after they have left the front of
-	// the list. However, earlier pages are accessed whenever necessary during
-	// lookups. Pages are evicted when they become too old, subject to a minimum
-	// retention policy described above.
-	pages    list.List // List<*sklPage>
+	pages    list.List
 	minPages int
 
-	// In order to ensure that timestamps never decrease, intervalSkl maintains
-	// a floor timestamp, which is the minimum timestamp that can be returned by
-	// the lookup operations. When the earliest page is discarded, its current
-	// maximum timestamp becomes the new floor timestamp for the overall
-	// intervalSkl.
 	floorTS hlc.Timestamp
 
 	metrics sklMetrics
 }
 
-// newIntervalSkl creates a new interval skiplist with the given minimum
-// retention duration and the maximum size.
 func newIntervalSkl(clock *hlc.Clock, minRet time.Duration, metrics sklMetrics) *intervalSkl {
+	__antithesis_instrumentation__.Notify(126817)
 	s := intervalSkl{
 		clock:    clock,
 		minRet:   minRet,
-		pageSize: initialSklPageSize / 2, // doubled in pushNewPage
+		pageSize: initialSklPageSize / 2,
 		minPages: defaultMinSklPages,
 		metrics:  metrics,
 	}
-	s.pushNewPage(0 /* maxTime */, nil /* arena */)
+	s.pushNewPage(0, nil)
 	s.metrics.Pages.Update(1)
 	return &s
 }
 
-// Add marks the a single key as having been read at the given timestamp. Once
-// Add completes, future lookups of this key are guaranteed to return an equal
-// or greater timestamp.
 func (s *intervalSkl) Add(key []byte, val cacheValue) {
+	__antithesis_instrumentation__.Notify(126818)
 	s.AddRange(nil, key, 0, val)
 }
 
-// AddRange marks the given range of keys [from, to] as having been read at the
-// given timestamp. The starting and ending points of the range are inclusive by
-// default, but can be excluded by passing the applicable range options. nil can
-// be passed as the "from" key, in which case only the end key will be added.
-// nil can also be passed as the "to" key, in which case an open range will be
-// added spanning [from, infinity). However, it is illegal to pass nil for both
-// "from" and "to". It is also illegal for "from" > "to", which would be an
-// inverted range.
-//
-// intervalSkl defines the domain of possible keys to span ["", nil). A range
-// with a starting key of []byte("") is treated as a closed range beginning at
-// the minimum key. A range with an ending key of []byte(nil) is treated as an
-// open range extending to infinity (as such, excludeTo has not effect on it). A
-// range starting at []byte("") and ending at []byte(nil) will span all keys.
-//
-// If some or all of the range was previously read at a higher timestamp, then
-// the range is split into sub-ranges that are each marked with the maximum read
-// timestamp for that sub-range. Once AddRange completes, future lookups at any
-// point in the range are guaranteed to return an equal or greater timestamp.
 func (s *intervalSkl) AddRange(from, to []byte, opt rangeOptions, val cacheValue) {
-	if from == nil && to == nil {
+	__antithesis_instrumentation__.Notify(126819)
+	if from == nil && func() bool {
+		__antithesis_instrumentation__.Notify(126823)
+		return to == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(126824)
 		panic("from and to keys cannot be nil")
+	} else {
+		__antithesis_instrumentation__.Notify(126825)
 	}
+	__antithesis_instrumentation__.Notify(126820)
 	if encodedRangeSize(from, to, opt) > int(s.maximumPageSize())-initialSklAllocSize {
-		// Without this check, we could fall into an infinite page rotation loop
-		// if a range would take up more space than available in an empty page.
+		__antithesis_instrumentation__.Notify(126826)
+
 		panic("key range too large to fit in any page")
+	} else {
+		__antithesis_instrumentation__.Notify(126827)
 	}
+	__antithesis_instrumentation__.Notify(126821)
 
 	if to != nil {
+		__antithesis_instrumentation__.Notify(126828)
 		cmp := 0
 		if from != nil {
+			__antithesis_instrumentation__.Notify(126830)
 			cmp = bytes.Compare(from, to)
+		} else {
+			__antithesis_instrumentation__.Notify(126831)
 		}
+		__antithesis_instrumentation__.Notify(126829)
 
 		switch {
 		case cmp > 0:
-			// Starting key is after ending key. This shouldn't happen. Determine
-			// the index where the keys diverged and panic.
+			__antithesis_instrumentation__.Notify(126832)
+
 			d := 0
-			for d < len(from) && d < len(to) {
+			for d < len(from) && func() bool {
+				__antithesis_instrumentation__.Notify(126837)
+				return d < len(to) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(126838)
 				if from[d] != to[d] {
+					__antithesis_instrumentation__.Notify(126840)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(126841)
 				}
+				__antithesis_instrumentation__.Notify(126839)
 				d++
 			}
+			__antithesis_instrumentation__.Notify(126833)
 			msg := fmt.Sprintf("inverted range (issue #32149): key lens = [%d,%d), diff @ index %d",
 				len(from), len(to), d)
 			log.Errorf(context.Background(), "%s, [%s,%s)", msg, from, to)
 			panic(redact.Safe(msg))
 		case cmp == 0:
-			// Starting key is same as ending key, so just add single node.
-			if opt == (excludeFrom | excludeTo) {
-				// Both from and to keys are excluded, so range is zero length.
-				return
-			}
+			__antithesis_instrumentation__.Notify(126834)
 
-			// Just add the ending key.
+			if opt == (excludeFrom | excludeTo) {
+				__antithesis_instrumentation__.Notify(126842)
+
+				return
+			} else {
+				__antithesis_instrumentation__.Notify(126843)
+			}
+			__antithesis_instrumentation__.Notify(126835)
+
 			from = nil
 			opt = 0
+		default:
+			__antithesis_instrumentation__.Notify(126836)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126844)
 	}
+	__antithesis_instrumentation__.Notify(126822)
 
 	for {
-		// Try to add the range to the later page.
+		__antithesis_instrumentation__.Notify(126845)
+
 		filledPage := s.addRange(from, to, opt, val)
 		if filledPage == nil {
+			__antithesis_instrumentation__.Notify(126847)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(126848)
 		}
+		__antithesis_instrumentation__.Notify(126846)
 
-		// The page was filled up, so rotate the pages and then try again.
 		s.rotatePages(filledPage)
 	}
 }
 
-// addRange marks the given range of keys [from, to] as having been read at the
-// given timestamp. The key range and the rangeOptions observe the same behavior
-// as is specified for AddRange above. Notably, addRange treats nil "from" and
-// "to" arguments in accordance with AddRange's contract. It returns nil if the
-// operation was successful, or a pointer to an sklPage if the operation failed
-// because that page was full.
 func (s *intervalSkl) addRange(from, to []byte, opt rangeOptions, val cacheValue) *sklPage {
-	// Acquire the rotation mutex read lock so that the page will not be rotated
-	// while add or lookup operations are in progress.
+	__antithesis_instrumentation__.Notify(126849)
+
 	s.rotMutex.RLock()
 	defer s.rotMutex.RUnlock()
 
-	// If floor ts is greater than the requested timestamp, then no need to
-	// perform a search or add any records. We don't return early when the
-	// timestamps are equal, because their flags may differ.
 	if val.ts.Less(s.floorTS) {
+		__antithesis_instrumentation__.Notify(126857)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(126858)
 	}
+	__antithesis_instrumentation__.Notify(126850)
 
 	fp := s.frontPage()
 
 	var it arenaskl.Iterator
 	it.Init(fp.list)
 
-	// Start by ensuring that the ending node has been created (unless "to" is
-	// nil, in which case the range extends indefinitely). Do this before creating
-	// the start node, so that the range won't extend past the end point during
-	// the period between creating the two endpoints. Since we need the ending node
-	// to be initialized before creating the starting node, we pass mustInit = true.
 	var err error
 	if to != nil {
+		__antithesis_instrumentation__.Notify(126859)
 		if (opt & excludeTo) == 0 {
-			err = fp.addNode(&it, to, val, hasKey, true /* mustInit */)
+			__antithesis_instrumentation__.Notify(126861)
+			err = fp.addNode(&it, to, val, hasKey, true)
 		} else {
-			err = fp.addNode(&it, to, val, 0, true /* mustInit */)
+			__antithesis_instrumentation__.Notify(126862)
+			err = fp.addNode(&it, to, val, 0, true)
 		}
+		__antithesis_instrumentation__.Notify(126860)
 
 		if errors.Is(err, arenaskl.ErrArenaFull) {
+			__antithesis_instrumentation__.Notify(126863)
 			return fp
+		} else {
+			__antithesis_instrumentation__.Notify(126864)
 		}
-	}
-
-	// If from is nil, then the "range" is just a single key. We already
-	// asserted above that if from == nil then to != nil.
-	if from == nil {
-		return nil
-	}
-
-	// Ensure that the starting node has been created.
-	if (opt & excludeFrom) == 0 {
-		err = fp.addNode(&it, from, val, hasKey|hasGap, false /* mustInit */)
 	} else {
-		err = fp.addNode(&it, from, val, hasGap, false /* mustInit */)
+		__antithesis_instrumentation__.Notify(126865)
 	}
+	__antithesis_instrumentation__.Notify(126851)
+
+	if from == nil {
+		__antithesis_instrumentation__.Notify(126866)
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(126867)
+	}
+	__antithesis_instrumentation__.Notify(126852)
+
+	if (opt & excludeFrom) == 0 {
+		__antithesis_instrumentation__.Notify(126868)
+		err = fp.addNode(&it, from, val, hasKey|hasGap, false)
+	} else {
+		__antithesis_instrumentation__.Notify(126869)
+		err = fp.addNode(&it, from, val, hasGap, false)
+	}
+	__antithesis_instrumentation__.Notify(126853)
 
 	if errors.Is(err, arenaskl.ErrArenaFull) {
+		__antithesis_instrumentation__.Notify(126870)
 		return fp
+	} else {
+		__antithesis_instrumentation__.Notify(126871)
 	}
+	__antithesis_instrumentation__.Notify(126854)
 
-	// Seek to the node immediately after the "from" node.
-	//
-	// If there are no nodes after the "from" node (only possible if to == nil),
-	// then ensureFloorValue below will be a no-op because no other nodes need
-	// to be adjusted.
-	if !it.Valid() || !bytes.Equal(it.Key(), from) {
-		// We will only reach this state if we didn't need to add a node at
-		// "from" due to the previous gap value being larger than val. The fast
-		// path for this case is in sklPage.addNode. For all other times, adding
-		// the new node will have positioned the iterator at "from".
-		//
-		// If Seek returns false then we're already at the following node, so
-		// there's no need to call Next.
+	if !it.Valid() || func() bool {
+		__antithesis_instrumentation__.Notify(126872)
+		return !bytes.Equal(it.Key(), from) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(126873)
+
 		if it.Seek(from) {
+			__antithesis_instrumentation__.Notify(126874)
 			it.Next()
+		} else {
+			__antithesis_instrumentation__.Notify(126875)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(126876)
 		it.Next()
 	}
+	__antithesis_instrumentation__.Notify(126855)
 
-	// Now iterate forwards and ensure that all nodes between the start and
-	// end (exclusive) have timestamps that are >= the range timestamp. end
-	// is exclusive because we already added a node at that key.
 	if !fp.ensureFloorValue(&it, to, val) {
-		// Page is filled up, so rotate pages and try again.
+		__antithesis_instrumentation__.Notify(126877)
+
 		return fp
+	} else {
+		__antithesis_instrumentation__.Notify(126878)
 	}
+	__antithesis_instrumentation__.Notify(126856)
 
 	return nil
 }
 
-// frontPage returns the front page of the intervalSkl.
 func (s *intervalSkl) frontPage() *sklPage {
+	__antithesis_instrumentation__.Notify(126879)
 	return s.pages.Front().Value.(*sklPage)
 }
 
-// pushNewPage prepends a new empty page to the front of the pages list. It
-// accepts an optional arena argument to facilitate re-use.
 func (s *intervalSkl) pushNewPage(maxTime ratchetingTime, arena *arenaskl.Arena) {
+	__antithesis_instrumentation__.Notify(126880)
 	size := s.nextPageSize()
-	if arena != nil && arena.Cap() == size {
-		// Re-use the provided arena, if possible.
+	if arena != nil && func() bool {
+		__antithesis_instrumentation__.Notify(126882)
+		return arena.Cap() == size == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(126883)
+
 		arena.Reset()
 	} else {
-		// Otherwise, construct new memory arena.
+		__antithesis_instrumentation__.Notify(126884)
+
 		arena = arenaskl.NewArena(size)
 	}
+	__antithesis_instrumentation__.Notify(126881)
 	p := newSklPage(arena)
 	p.maxTime = maxTime
 	s.pages.PushFront(p)
 }
 
-// nextPageSize returns the size that the next allocated page should use.
 func (s *intervalSkl) nextPageSize() uint32 {
-	if s.pageSizeFixed || s.pageSize == maximumSklPageSize {
+	__antithesis_instrumentation__.Notify(126885)
+	if s.pageSizeFixed || func() bool {
+		__antithesis_instrumentation__.Notify(126888)
+		return s.pageSize == maximumSklPageSize == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(126889)
 		return s.pageSize
+	} else {
+		__antithesis_instrumentation__.Notify(126890)
 	}
+	__antithesis_instrumentation__.Notify(126886)
 	s.pageSize *= 2
 	if s.pageSize > maximumSklPageSize {
+		__antithesis_instrumentation__.Notify(126891)
 		s.pageSize = maximumSklPageSize
+	} else {
+		__antithesis_instrumentation__.Notify(126892)
 	}
+	__antithesis_instrumentation__.Notify(126887)
 	return s.pageSize
 }
 
-// maximumPageSize returns the maximum page size that this instance of the
-// intervalSkl will be able to accommodate. The method takes into consideration
-// whether the page size is fixed or dynamic.
 func (s *intervalSkl) maximumPageSize() uint32 {
+	__antithesis_instrumentation__.Notify(126893)
 	if s.pageSizeFixed {
+		__antithesis_instrumentation__.Notify(126895)
 		return s.pageSize
+	} else {
+		__antithesis_instrumentation__.Notify(126896)
 	}
+	__antithesis_instrumentation__.Notify(126894)
 	return maximumSklPageSize
 }
 
-// rotatePages makes the later page the earlier page, and then discards the
-// earlier page. The max timestamp of the earlier page becomes the new floor
-// timestamp, in order to guarantee that timestamp lookups never return decreasing
-// values.
 func (s *intervalSkl) rotatePages(filledPage *sklPage) {
-	// Acquire the rotation mutex write lock to lock the entire intervalSkl.
+	__antithesis_instrumentation__.Notify(126897)
+
 	s.rotMutex.Lock()
 	defer s.rotMutex.Unlock()
 
 	fp := s.frontPage()
 	if filledPage != fp {
-		// Another thread already rotated the pages, so don't do anything more.
-		return
-	}
+		__antithesis_instrumentation__.Notify(126901)
 
-	// Determine the minimum timestamp a page must contain to be within the
-	// minimum retention window. If clock is nil, we have no minimum retention
-	// window.
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(126902)
+	}
+	__antithesis_instrumentation__.Notify(126898)
+
 	minTSToRetain := hlc.MaxTimestamp
 	if s.clock != nil {
+		__antithesis_instrumentation__.Notify(126903)
 		minTSToRetain = s.clock.Now().Add(-s.minRet.Nanoseconds(), 0)
+	} else {
+		__antithesis_instrumentation__.Notify(126904)
 	}
+	__antithesis_instrumentation__.Notify(126899)
 
-	// Iterate over the pages in reverse, evicting pages that are no longer
-	// needed and ratcheting up the floor timestamp in the process.
-	//
-	// If possible, keep a reference to an evicted page's arena so that we can
-	// re-use it. This is safe because we're holding the rotation mutex write
-	// lock, so there cannot be concurrent readers and no reader will ever
-	// access evicted pages once we unlock.
 	back := s.pages.Back()
 	var oldArena *arenaskl.Arena
 	for s.pages.Len() >= s.minPages {
+		__antithesis_instrumentation__.Notify(126905)
 		bp := back.Value.(*sklPage)
 		bpMaxTS := bp.getMaxTimestamp()
 		if minTSToRetain.LessEq(bpMaxTS) {
-			// The back page's maximum timestamp is within the time
-			// window we've promised to retain, so we can't evict it.
-			break
-		}
+			__antithesis_instrumentation__.Notify(126907)
 
-		// Max timestamp of the back page becomes the new floor timestamp.
+			break
+		} else {
+			__antithesis_instrumentation__.Notify(126908)
+		}
+		__antithesis_instrumentation__.Notify(126906)
+
 		s.floorTS.Forward(bpMaxTS)
 
-		// Evict the page.
 		oldArena = bp.list.Arena()
 		evict := back
 		back = back.Prev()
 		s.pages.Remove(evict)
 	}
+	__antithesis_instrumentation__.Notify(126900)
 
-	// Push a new empty page on the front of the pages list. We give this page
-	// the maxTime of the old front page. This assures that the maxTime for a
-	// page is always equal to or greater than that for all earlier pages. In
-	// other words, it assures that the maxTime for a page is not only the
-	// maximum timestamp for all values it contains, but also for all values any
-	// earlier pages contain.
 	s.pushNewPage(fp.maxTime, oldArena)
 
-	// Update metrics.
 	s.metrics.Pages.Update(int64(s.pages.Len()))
 	s.metrics.PageRotations.Inc(1)
 }
 
-// LookupTimestamp returns the latest timestamp value at which the given key was
-// read. If this operation is repeated with the same key, it will always result
-// in an equal or greater timestamp.
 func (s *intervalSkl) LookupTimestamp(key []byte) cacheValue {
+	__antithesis_instrumentation__.Notify(126909)
 	return s.LookupTimestampRange(nil, key, 0)
 }
 
-// LookupTimestampRange returns the latest timestamp value of any key within the
-// specified range. If this operation is repeated with the same range, it will
-// always result in an equal or greater timestamp.
 func (s *intervalSkl) LookupTimestampRange(from, to []byte, opt rangeOptions) cacheValue {
-	if from == nil && to == nil {
+	__antithesis_instrumentation__.Notify(126910)
+	if from == nil && func() bool {
+		__antithesis_instrumentation__.Notify(126913)
+		return to == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(126914)
 		panic("from and to keys cannot be nil")
+	} else {
+		__antithesis_instrumentation__.Notify(126915)
 	}
+	__antithesis_instrumentation__.Notify(126911)
 
-	// Acquire the rotation mutex read lock so that the page will not be rotated
-	// while add or lookup operations are in progress.
 	s.rotMutex.RLock()
 	defer s.rotMutex.RUnlock()
 
-	// Iterate over the pages, performing the lookup on each and remembering the
-	// maximum value we've seen so far.
 	var val cacheValue
 	for e := s.pages.Front(); e != nil; e = e.Next() {
+		__antithesis_instrumentation__.Notify(126916)
 		p := e.Value.(*sklPage)
 
-		// If the maximum value's timestamp is greater than the max timestamp in
-		// the current page, then there's no need to do the lookup in this page.
-		// There's also no reason to do the lookup in any earlier pages either,
-		// because rotatePages assures that a page will never have a max
-		// timestamp smaller than that of any page earlier than it.
-		//
-		// NB: if the max timestamp of the current page is equal to the maximum
-		// value's timestamp, then we still need to perform the lookup. This is
-		// because the current page's max timestamp _may_ (if the hlc.Timestamp
-		// ceil operation in sklPage.ratchetMaxTimestamp was a no-op) correspond
-		// to a real range's timestamp, and this range _may_ overlap with our
-		// lookup range. If that is the case and that other range has a
-		// different txnID than our current cacheValue result (val), then we
-		// need to remove the txnID from our result, per the ratcheting policy
-		// for cacheValues. This is tested in TestIntervalSklMaxPageTS.
 		maxTS := p.getMaxTimestamp()
 		if maxTS.Less(val.ts) {
+			__antithesis_instrumentation__.Notify(126918)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(126919)
 		}
+		__antithesis_instrumentation__.Notify(126917)
 
 		val2 := p.lookupTimestampRange(from, to, opt)
 		val, _ = ratchetValue(val, val2)
 	}
+	__antithesis_instrumentation__.Notify(126912)
 
-	// Return the higher value from the page lookups and the floor
-	// timestamp.
 	floorVal := cacheValue{ts: s.floorTS, txnID: noTxnID}
 	val, _ = ratchetValue(val, floorVal)
 
 	return val
 }
 
-// FloorTS returns the receiver's floor timestamp.
 func (s *intervalSkl) FloorTS() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(126920)
 	s.rotMutex.RLock()
 	defer s.rotMutex.RUnlock()
 	return s.floorTS
 }
 
-// sklPage maintains a skiplist based on a fixed-size arena. When the arena has
-// filled up, it returns arenaskl.ErrArenaFull. At that point, a new fixed page
-// must be allocated and used instead.
 type sklPage struct {
 	list    *arenaskl.Skiplist
-	maxTime ratchetingTime // accessed atomically
-	isFull  int32          // accessed atomically
+	maxTime ratchetingTime
+	isFull  int32
 }
 
 func newSklPage(arena *arenaskl.Arena) *sklPage {
+	__antithesis_instrumentation__.Notify(126921)
 	return &sklPage{list: arenaskl.NewSkiplist(arena)}
 }
 
 func (p *sklPage) lookupTimestampRange(from, to []byte, opt rangeOptions) cacheValue {
+	__antithesis_instrumentation__.Notify(126922)
 	if to != nil {
+		__antithesis_instrumentation__.Notify(126924)
 		cmp := 0
 		if from != nil {
+			__antithesis_instrumentation__.Notify(126927)
 			cmp = bytes.Compare(from, to)
+		} else {
+			__antithesis_instrumentation__.Notify(126928)
 		}
+		__antithesis_instrumentation__.Notify(126925)
 
 		if cmp > 0 {
-			// Starting key is after ending key, so range is zero length.
-			return cacheValue{}
-		}
-		if cmp == 0 {
-			// Starting key is same as ending key.
-			if opt == (excludeFrom | excludeTo) {
-				// Both from and to keys are excluded, so range is zero length.
-				return cacheValue{}
-			}
+			__antithesis_instrumentation__.Notify(126929)
 
-			// Scan over a single key.
+			return cacheValue{}
+		} else {
+			__antithesis_instrumentation__.Notify(126930)
+		}
+		__antithesis_instrumentation__.Notify(126926)
+		if cmp == 0 {
+			__antithesis_instrumentation__.Notify(126931)
+
+			if opt == (excludeFrom | excludeTo) {
+				__antithesis_instrumentation__.Notify(126933)
+
+				return cacheValue{}
+			} else {
+				__antithesis_instrumentation__.Notify(126934)
+			}
+			__antithesis_instrumentation__.Notify(126932)
+
 			from = to
 			opt = 0
+		} else {
+			__antithesis_instrumentation__.Notify(126935)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126936)
 	}
+	__antithesis_instrumentation__.Notify(126923)
 
 	var it arenaskl.Iterator
 	it.Init(p.list)
@@ -592,624 +514,601 @@ func (p *sklPage) lookupTimestampRange(from, to []byte, opt rangeOptions) cacheV
 	return p.maxInRange(&it, from, to, opt)
 }
 
-// addNode adds a new node at key with the provided value if one does not exist.
-// If one does exist, it ratchets the existing node's value instead.
-//
-// If the mustInit flag is set, the function will ensure that the node is
-// initialized by the time the method returns, even if a different goroutine
-// created the node. If the flag is not set and a different goroutine created
-// the node, the method won't try to help.
 func (p *sklPage) addNode(
 	it *arenaskl.Iterator, key []byte, val cacheValue, opt nodeOptions, mustInit bool,
 ) error {
-	// Array with constant size will remain on the stack.
+	__antithesis_instrumentation__.Notify(126937)
+
 	var arr [encodedValSize * 2]byte
 	var keyVal, gapVal cacheValue
 
 	if (opt & hasKey) != 0 {
+		__antithesis_instrumentation__.Notify(126943)
 		keyVal = val
+	} else {
+		__antithesis_instrumentation__.Notify(126944)
 	}
+	__antithesis_instrumentation__.Notify(126938)
 
 	if (opt & hasGap) != 0 {
+		__antithesis_instrumentation__.Notify(126945)
 		gapVal = val
+	} else {
+		__antithesis_instrumentation__.Notify(126946)
 	}
+	__antithesis_instrumentation__.Notify(126939)
 
 	if !it.SeekForPrev(key) {
-		// The key was not found. Scan for the previous gap value.
+		__antithesis_instrumentation__.Notify(126947)
+
 		prevGapVal := p.incomingGapVal(it, key)
 
 		var err error
-		if it.Valid() && bytes.Equal(it.Key(), key) {
-			// Another thread raced and added a node at key while we were
-			// scanning backwards. Ratchet the new node.
+		if it.Valid() && func() bool {
+			__antithesis_instrumentation__.Notify(126949)
+			return bytes.Equal(it.Key(), key) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(126950)
+
 			err = arenaskl.ErrRecordExists
 		} else {
-			// There is still no node at key. If the previous node has a gap
-			// value that would not be updated with the new value, then there is
-			// no need to add another node, since its timestamp would be the
-			// same as the gap timestamp and its txnID would be the same as the
-			// gap txnID.
-			if _, update := ratchetValue(prevGapVal, val); !update {
-				return nil
-			}
+			__antithesis_instrumentation__.Notify(126951)
 
-			// Ratchet max timestamp before adding the node.
+			if _, update := ratchetValue(prevGapVal, val); !update {
+				__antithesis_instrumentation__.Notify(126953)
+				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(126954)
+			}
+			__antithesis_instrumentation__.Notify(126952)
+
 			p.ratchetMaxTimestamp(val.ts)
 
-			// Ensure that a new node is created. It needs to stay in the
-			// initializing state until the gap value of its preceding node
-			// has been found and used to ratchet this node's value. During
-			// the search for the gap value, this node acts as a sentinel
-			// for other ongoing operations - when they see this node they're
-			// forced to stop and ratchet its value before they can continue.
 			b, meta := encodeValueSet(arr[:0], keyVal, gapVal)
 			err = it.Add(key, b, meta)
 		}
+		__antithesis_instrumentation__.Notify(126948)
 
 		switch {
 		case errors.Is(err, arenaskl.ErrArenaFull):
+			__antithesis_instrumentation__.Notify(126955)
 			atomic.StoreInt32(&p.isFull, 1)
 			return err
 		case errors.Is(err, arenaskl.ErrRecordExists):
-			// Another thread raced and added the node, so just ratchet its
-			// values instead (down below).
+			__antithesis_instrumentation__.Notify(126956)
+
 		case err == nil:
-			// Add was successful, so finish initialization by scanning for gap
-			// value and using it to ratchet the new nodes' values.
+			__antithesis_instrumentation__.Notify(126957)
+
 			return p.ensureInitialized(it, key)
 		default:
+			__antithesis_instrumentation__.Notify(126958)
 			panic(fmt.Sprintf("unexpected error: %v", err))
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126959)
 	}
+	__antithesis_instrumentation__.Notify(126940)
 
-	// If mustInit is set to true then we're promising that the node will be
-	// initialized by the time this method returns. Ensure this by helping out
-	// the goroutine that created the node.
-	if (it.Meta()&initialized) == 0 && mustInit {
+	if (it.Meta()&initialized) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(126960)
+		return mustInit == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(126961)
 		if err := p.ensureInitialized(it, key); err != nil {
+			__antithesis_instrumentation__.Notify(126962)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(126963)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126964)
 	}
+	__antithesis_instrumentation__.Notify(126941)
 
-	// Ratchet up the timestamps on the existing node, but don't set the
-	// initialized bit. If mustInit is set then we already made sure the node
-	// was initialized. If mustInit is not set then we don't require it to be
-	// initialized.
 	if opt == 0 {
-		// Don't need to set either key or gap value, so done.
+		__antithesis_instrumentation__.Notify(126965)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(126966)
 	}
-	return p.ratchetValueSet(it, always, keyVal, gapVal, false /* setInit */)
+	__antithesis_instrumentation__.Notify(126942)
+	return p.ratchetValueSet(it, always, keyVal, gapVal, false)
 }
 
-// ensureInitialized ensures that the node at the specified key is initialized.
-// It does so by first scanning backwards to the first initialized node and
-// using its gap value as the initial "previous gap value". It then scans
-// forward until it reaches the desired key, ratcheting any uninitialized nodes
-// it encounters (but not initializing them), and updating the candidate
-// "previous gap value" as it goes. Finally, it initializes the node with the
-// "previous gap value".
-//
-// Iterating backwards and then forwards solves potential race conditions with
-// other threads. During backwards iteration, other nodes can be inserting new
-// nodes between the previous node and the lookup node, which could change the
-// choice for the "previous gap value". The solution is two-fold:
-//
-// 1. Add new nodes in two phases - initializing and then initialized. Nodes in
-//    the initializing state act as a synchronization point between goroutines
-//    that are adding a particular node and goroutines that are scanning for gap
-//    values. Scanning goroutines encounter the initializing nodes and are
-//    forced to ratchet them before continuing. If they fail to ratchet them
-//    because an arena is full, the nodes must never be initialized so they are
-//    set to cantInit. This is critical for correctness, because if one of these
-//    initializing nodes was not ratcheted when encountered during a forward
-//    scan and later initialized, we could see a ratchet inversion. For example,
-//    the inversion would occur if:
-//    - 1: a goroutine is scanning forwards after finding a previous gap value
-//         from node A in which it plans to initialize node C.
-//    - 2: node B is created and initialized between node A and node C with a
-//         larger value than either.
-//    - 1: the iterator scanning forwards to node C is already past node B when
-//         it is created.
-//    - 3: a lookup for the timestamp of node C comes in. Since it's not
-//         initialized, it uses node B's gap value.
-//    - 1: the iterator reaches node C and initializes it with node A's gap
-//         value, which is smaller than node B's.
-//    - 4: another lookup for the timestamp of node C comes it. It returns the
-//         nodes newly initialized value, which is smaller than the one it
-//         reported before.
-//    Ratcheting initializing nodes when encountered with the current gap value
-//    avoids this race.
-//
-//    However, only a goroutine that saw a node in an uninitialized state before
-//    scanning backwards can switch it from initializing to initialized. This
-//    enforces a "happens-before" relationship between the creation of a node
-//    and the discovery of the gap value that is used when initializing it. If
-//    any goroutine was able to initialize a node, then this relationship would
-//    not exist and we could experience races where a newly inserted node A's
-//    call to ensureFloorValue could come before the insertion of a node B, but
-//    node B could be initialized with a gap value discovered before the
-//    insertion of node A. For more on this, see the discussion in #19672.
-//
-// 2. After the gap value of the first initialized node with a key less than or
-//    equal to the desired key has been found, the scanning goroutine will scan
-//    forwards until it reaches the original key. It will ratchet any
-//    uninitialized nodes along the way and inherit the gap value from them as
-//    it goes. By the time it reaches the original key, it has a valid gap
-//    value, which we have called the "previous gap value". At this point, if
-//    the node at key is uninitialized, the node can be initialized with the
-//    "previous gap value".
-//
-// It is an error to call ensureInitialized on a key without a node. When
-// finished, the iterator will be positioned the same as if it.Seek(key) had
-// been called.
 func (p *sklPage) ensureInitialized(it *arenaskl.Iterator, key []byte) error {
-	// Determine the incoming gap value.
+	__antithesis_instrumentation__.Notify(126967)
+
 	prevGapVal := p.incomingGapVal(it, key)
 
-	// Make sure we're on the right key again.
-	if util.RaceEnabled && !bytes.Equal(it.Key(), key) {
+	if util.RaceEnabled && func() bool {
+		__antithesis_instrumentation__.Notify(126969)
+		return !bytes.Equal(it.Key(), key) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(126970)
 		panic("no node found")
+	} else {
+		__antithesis_instrumentation__.Notify(126971)
 	}
+	__antithesis_instrumentation__.Notify(126968)
 
-	// If the node isn't initialized, initialize it.
-	return p.ratchetValueSet(it, onlyIfUninitialized, prevGapVal, prevGapVal, true /* setInit */)
+	return p.ratchetValueSet(it, onlyIfUninitialized, prevGapVal, prevGapVal, true)
 }
 
-// ensureFloorValue scans from the current position of the iterator to the
-// provided key, ratcheting all initialized or uninitialized nodes as it goes
-// with the provided value. It returns a boolean indicating whether it was
-// successful (true) or whether it saw an ErrArenaFull while ratcheting (false).
 func (p *sklPage) ensureFloorValue(it *arenaskl.Iterator, to []byte, val cacheValue) bool {
+	__antithesis_instrumentation__.Notify(126972)
 	for it.Valid() {
+		__antithesis_instrumentation__.Notify(126974)
 		util.RacePreempt()
 
-		// If "to" is not nil (open range) then it is treated as an exclusive
-		// bound.
-		if to != nil && bytes.Compare(it.Key(), to) >= 0 {
+		if to != nil && func() bool {
+			__antithesis_instrumentation__.Notify(126978)
+			return bytes.Compare(it.Key(), to) >= 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(126979)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(126980)
 		}
+		__antithesis_instrumentation__.Notify(126975)
 
 		if atomic.LoadInt32(&p.isFull) == 1 {
-			// Page is full, so stop iterating. The caller will then be able to
-			// release the read lock and rotate the pages. Not doing this could
-			// result in forcing all other operations to wait for this thread to
-			// completely finish iteration. That could take a long time if this
-			// range is very large.
-			return false
-		}
+			__antithesis_instrumentation__.Notify(126981)
 
-		// Don't clear the initialization bit, since we don't have the gap
-		// timestamp from the previous node, and don't need an initialized node
-		// for this operation anyway.
-		err := p.ratchetValueSet(it, always, val, val, false /* setInit */)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(126982)
+		}
+		__antithesis_instrumentation__.Notify(126976)
+
+		err := p.ratchetValueSet(it, always, val, val, false)
 		switch {
 		case err == nil:
-			// Continue scanning.
+			__antithesis_instrumentation__.Notify(126983)
+
 		case errors.Is(err, arenaskl.ErrArenaFull):
-			// Page is too full to ratchet value, so stop iterating.
+			__antithesis_instrumentation__.Notify(126984)
+
 			return false
 		default:
+			__antithesis_instrumentation__.Notify(126985)
 			panic(fmt.Sprintf("unexpected error: %v", err))
 		}
+		__antithesis_instrumentation__.Notify(126977)
 
 		it.Next()
 	}
+	__antithesis_instrumentation__.Notify(126973)
 
 	return true
 }
 
 func (p *sklPage) ratchetMaxTimestamp(ts hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(126986)
 	new := makeRatchetingTime(ts)
 	for {
+		__antithesis_instrumentation__.Notify(126987)
 		old := ratchetingTime(atomic.LoadInt64((*int64)(&p.maxTime)))
 		if new <= old {
+			__antithesis_instrumentation__.Notify(126989)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(126990)
 		}
+		__antithesis_instrumentation__.Notify(126988)
 
 		if atomic.CompareAndSwapInt64((*int64)(&p.maxTime), int64(old), int64(new)) {
+			__antithesis_instrumentation__.Notify(126991)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(126992)
 		}
 	}
 }
 
 func (p *sklPage) getMaxTimestamp() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(126993)
 	return ratchetingTime(atomic.LoadInt64((*int64)(&p.maxTime))).get()
 }
 
-// ratchetingTime is a compressed representation of an hlc.Timestamp, reduced
-// down to 64 bits to support atomic access.
-//
-// ratchetingTime implements compression such that any loss of information when
-// passing through the type results in the resulting Timestamp being ratcheted
-// to a larger value. This provides the guarantee that the following relation
-// holds, regardless of the value of x:
-//
-//   x.LessEq(makeRatchetingTime(x).get())
-//
-// It also provides the guarantee that if the synthetic flag is set on the
-// initial timestamp, then this flag is set on the resulting Timestamp. So the
-// following relation is guaranteed to hold, regardless of the value of x:
-//
-//   x.IsFlagSet(SYNTHETIC) == makeRatchetingTime(x).get().IsFlagSet(SYNTHETIC)
-//
-// Compressed ratchetingTime values compare such that taking the maximum of any
-// two ratchetingTime values and converting that back to a Timestamp is always
-// equal to or larger than the equivalent call through the Timestamp.Forward
-// method. So the following relation is guaranteed to hold, regardless of the
-// value of x or y:
-//
-//   z := max(makeRatchetingTime(x), makeRatchetingTime(y)).get()
-//   x.Forward(y).LessEq(z)
-//
-// Bit layout (LSB to MSB):
-//  bits 0:      inverted synthetic flag
-//  bits 1 - 63: upper 63 bits of wall time
 type ratchetingTime int64
 
 func makeRatchetingTime(ts hlc.Timestamp) ratchetingTime {
-	// Cheat and just use the max wall time portion of the timestamp, since it's
-	// fine for the max timestamp to be a bit too large. This is the case
-	// because it's always safe to increase the timestamp in a range. It's also
-	// always safe to remove the transaction ID from a range. Either of these
-	// changes may force a transaction to lose "ownership" over a range of keys,
-	// but they'll never allow a transaction to gain "ownership" over a range of
-	// keys that it wouldn't otherwise have. In other words, it's ok for the
-	// intervalSkl to produce false negatives but never ok for it to produce
-	// false positives.
-	//
-	// We could use an atomic.Value to store a "MaxValue" cacheValue for a given
-	// page, but this would be more expensive and it's not clear that it would
-	// be worth it.
+	__antithesis_instrumentation__.Notify(126994)
+
 	rt := ratchetingTime(ts.WallTime)
 	if ts.Logical > 0 {
+		__antithesis_instrumentation__.Notify(126998)
 		rt++
+	} else {
+		__antithesis_instrumentation__.Notify(126999)
 	}
+	__antithesis_instrumentation__.Notify(126995)
 
-	// Similarly, cheat and use the last bit in the wall time to indicate
-	// whether the timestamp is synthetic or not. Do so by first rounding up the
-	// last bit of the wall time so that it is empty. This is safe for the same
-	// reason that rounding up the logical portion of the timestamp in the wall
-	// time is safe (see above).
-	//
-	// We use the last bit to indicate that the flag is NOT set. This ensures
-	// that if two timestamps have the same ordering but different values for
-	// the synthetic flag, the timestamp without the synthetic flag has a larger
-	// ratchetingTime value. This follows how Timestamp.Forward treats the flag.
 	if rt&1 == 1 {
+		__antithesis_instrumentation__.Notify(127000)
 		rt++
+	} else {
+		__antithesis_instrumentation__.Notify(127001)
 	}
+	__antithesis_instrumentation__.Notify(126996)
 	if !ts.Synthetic {
+		__antithesis_instrumentation__.Notify(127002)
 		rt |= 1
+	} else {
+		__antithesis_instrumentation__.Notify(127003)
 	}
+	__antithesis_instrumentation__.Notify(126997)
 
 	return rt
 }
 
 func (rt ratchetingTime) get() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(127004)
 	var ts hlc.Timestamp
 	ts.WallTime = int64(rt &^ 1)
 	if rt&1 == 0 {
+		__antithesis_instrumentation__.Notify(127006)
 		ts.Synthetic = true
+	} else {
+		__antithesis_instrumentation__.Notify(127007)
 	}
+	__antithesis_instrumentation__.Notify(127005)
 	return ts
 }
 
-// ratchetPolicy defines the behavior a ratcheting attempt should take when
-// trying to ratchet a node. Certain operations require nodes to be ratcheted
-// regardless of whether they're already initialized or not. Other operations
-// only want nodes that are uninitialized to be ratcheted.
 type ratchetPolicy bool
 
 const (
-	// always is a policy to ratchet a node regardless of whether it is already
-	// initialized or not.
 	always ratchetPolicy = false
-	// onlyIfUninitialized is a policy to only ratchet a node if it has not been
-	// initialized yet.
+
 	onlyIfUninitialized ratchetPolicy = true
 )
 
-// ratchetValueSet will update the current node's key and gap values to the
-// maximum of their current values or the given values. If setInit is true, then
-// the initialized bit will be set, indicating that the node is now fully
-// initialized and its values can now be relied upon.
-//
-// The method will return ErrArenaFull if the arena was too full to ratchet the
-// node's value set. In that case, the node will be marked with the "cantInit"
-// flag because its values should never be trusted in isolation.
 func (p *sklPage) ratchetValueSet(
 	it *arenaskl.Iterator, policy ratchetPolicy, keyVal, gapVal cacheValue, setInit bool,
 ) error {
-	// Array with constant size will remain on the stack.
+	__antithesis_instrumentation__.Notify(127008)
+
 	var arr [encodedValSize * 2]byte
 
 	for {
+		__antithesis_instrumentation__.Notify(127009)
 		util.RacePreempt()
 
 		meta := it.Meta()
 		inited := (meta & initialized) != 0
-		if inited && policy == onlyIfUninitialized {
-			// If the node is already initialized and the policy is
-			// onlyIfUninitialized, return. If this isn't the first ratcheting
-			// attempt then we must have raced with node initialization before.
+		if inited && func() bool {
+			__antithesis_instrumentation__.Notify(127013)
+			return policy == onlyIfUninitialized == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(127014)
+
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(127015)
 		}
+		__antithesis_instrumentation__.Notify(127010)
 		if (meta & cantInit) != 0 {
-			// If the meta has the cantInit flag set to true, we fail with an
-			// ErrArenaFull error to force the current goroutine to retry on a
-			// new page.
+			__antithesis_instrumentation__.Notify(127016)
+
 			return arenaskl.ErrArenaFull
+		} else {
+			__antithesis_instrumentation__.Notify(127017)
 		}
+		__antithesis_instrumentation__.Notify(127011)
 
 		newMeta := meta
-		updateInit := setInit && !inited
+		updateInit := setInit && func() bool {
+			__antithesis_instrumentation__.Notify(127018)
+			return !inited == true
+		}() == true
 		if updateInit {
+			__antithesis_instrumentation__.Notify(127019)
 			newMeta |= initialized
+		} else {
+			__antithesis_instrumentation__.Notify(127020)
 		}
+		__antithesis_instrumentation__.Notify(127012)
 
 		var keyValUpdate, gapValUpdate bool
 		oldKeyVal, oldGapVal := decodeValueSet(it.Value(), meta)
 		keyVal, keyValUpdate = ratchetValue(oldKeyVal, keyVal)
 		gapVal, gapValUpdate = ratchetValue(oldGapVal, gapVal)
-		updateVals := keyValUpdate || gapValUpdate
+		updateVals := keyValUpdate || func() bool {
+			__antithesis_instrumentation__.Notify(127021)
+			return gapValUpdate == true
+		}() == true
 
 		if updateVals {
-			// If we're updating the values (and maybe the init flag) then we
-			// need to call it.Set. This can return an ErrArenaFull, which we
-			// must handle with care.
+			__antithesis_instrumentation__.Notify(127022)
 
-			// Ratchet the max timestamp.
 			maxTs := keyVal.ts
 			maxTs.Forward(gapVal.ts)
 			p.ratchetMaxTimestamp(maxTs)
 
-			// Remove the hasKey and hasGap flags from the meta. These will be
-			// replaced below.
 			newMeta &^= (hasKey | hasGap)
 
-			// Update the values, possibly preserving the init bit.
 			b, valMeta := encodeValueSet(arr[:0], keyVal, gapVal)
 			newMeta |= valMeta
 
 			err := it.Set(b, newMeta)
 			switch {
 			case err == nil:
-				// Success.
+				__antithesis_instrumentation__.Notify(127023)
+
 				return nil
 			case errors.Is(err, arenaskl.ErrRecordUpdated):
-				// Record was updated by another thread, so restart ratchet attempt.
+				__antithesis_instrumentation__.Notify(127024)
+
 				continue
 			case errors.Is(err, arenaskl.ErrArenaFull):
-				// The arena was full which means that we were unable to ratchet
-				// the value of this node. Mark the page as full and make sure
-				// that the node is moved to the "cantInit" state if it hasn't
-				// been initialized yet. This is critical because if the node
-				// was initialized after this, its value set would be relied
-				// upon to stand on its own even though it would be missing the
-				// ratcheting we tried to perform here.
+				__antithesis_instrumentation__.Notify(127025)
+
 				atomic.StoreInt32(&p.isFull, 1)
 
-				if !inited && (meta&cantInit) == 0 {
+				if !inited && func() bool {
+					__antithesis_instrumentation__.Notify(127028)
+					return (meta & cantInit) == 0 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(127029)
 					err := it.SetMeta(meta | cantInit)
 					switch {
 					case errors.Is(err, arenaskl.ErrRecordUpdated):
-						// Record was updated by another thread, so restart
-						// ratchet attempt.
+						__antithesis_instrumentation__.Notify(127030)
+
 						continue
 					case errors.Is(err, arenaskl.ErrArenaFull):
+						__antithesis_instrumentation__.Notify(127031)
 						panic(fmt.Sprintf("SetMeta with larger meta should not return %v", err))
+					default:
+						__antithesis_instrumentation__.Notify(127032)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(127033)
 				}
+				__antithesis_instrumentation__.Notify(127026)
 				return arenaskl.ErrArenaFull
 			default:
-				panic(fmt.Sprintf("unexpected error: %v", err))
-			}
-		} else if updateInit {
-			// If we're only updating the init flag and not the values, we can
-			// use it.SetMeta instead of it.Set, which avoids allocating new
-			// chunks in the arena.
-			err := it.SetMeta(newMeta)
-			switch {
-			case err == nil:
-				// Success.
-				return nil
-			case errors.Is(err, arenaskl.ErrRecordUpdated):
-				// Record was updated by another thread, so restart ratchet attempt.
-				continue
-			case errors.Is(err, arenaskl.ErrArenaFull):
-				panic(fmt.Sprintf("SetMeta with larger meta should not return %v", err))
-			default:
+				__antithesis_instrumentation__.Notify(127027)
 				panic(fmt.Sprintf("unexpected error: %v", err))
 			}
 		} else {
-			return nil
+			__antithesis_instrumentation__.Notify(127034)
+			if updateInit {
+				__antithesis_instrumentation__.Notify(127035)
+
+				err := it.SetMeta(newMeta)
+				switch {
+				case err == nil:
+					__antithesis_instrumentation__.Notify(127036)
+
+					return nil
+				case errors.Is(err, arenaskl.ErrRecordUpdated):
+					__antithesis_instrumentation__.Notify(127037)
+
+					continue
+				case errors.Is(err, arenaskl.ErrArenaFull):
+					__antithesis_instrumentation__.Notify(127038)
+					panic(fmt.Sprintf("SetMeta with larger meta should not return %v", err))
+				default:
+					__antithesis_instrumentation__.Notify(127039)
+					panic(fmt.Sprintf("unexpected error: %v", err))
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(127040)
+				return nil
+			}
 		}
 	}
 }
 
-// maxInRange scans the range of keys between from and to and returns the
-// maximum (initialized or uninitialized) value found. When finished, the
-// iterator will be positioned the same as if it.Seek(to) had been called.
 func (p *sklPage) maxInRange(it *arenaskl.Iterator, from, to []byte, opt rangeOptions) cacheValue {
-	// Determine the previous gap value. This will move the iterator to the
-	// first node >= from.
+	__antithesis_instrumentation__.Notify(127041)
+
 	prevGapVal := p.incomingGapVal(it, from)
 
 	if !it.Valid() {
-		// No more nodes.
-		return prevGapVal
-	} else if bytes.Equal(it.Key(), from) {
-		// Found a node at from.
-		if (it.Meta() & initialized) != 0 {
-			// The node was initialized. Ignore the previous gap value.
-			prevGapVal = cacheValue{}
-		}
-	} else {
-		// No node at from. Remove excludeFrom option.
-		opt &^= excludeFrom
-	}
+		__antithesis_instrumentation__.Notify(127043)
 
-	// Scan the rest of the way. Notice that we provide the previous gap value.
-	// This is important for two reasons:
-	// 1. it will be counted towards the maxVal result.
-	// 2. it will be used to ratchet uninitialized nodes that the scan sees
-	//    before any initialized nodes.
+		return prevGapVal
+	} else {
+		__antithesis_instrumentation__.Notify(127044)
+		if bytes.Equal(it.Key(), from) {
+			__antithesis_instrumentation__.Notify(127045)
+
+			if (it.Meta() & initialized) != 0 {
+				__antithesis_instrumentation__.Notify(127046)
+
+				prevGapVal = cacheValue{}
+			} else {
+				__antithesis_instrumentation__.Notify(127047)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(127048)
+
+			opt &^= excludeFrom
+		}
+	}
+	__antithesis_instrumentation__.Notify(127042)
+
 	_, maxVal := p.scanTo(it, to, opt, prevGapVal)
 	return maxVal
 }
 
-// incomingGapVal determines the gap value active at the specified key by first
-// scanning backwards to the first initialized node and then scanning forwards
-// to the specified key. If there is already a node at key then the previous gap
-// value will be returned. When finished, the iterator will be positioned the
-// same as if it.Seek(key) had been called.
-//
-// During forward iteration, if another goroutine inserts a new gap node in the
-// interval between the previous node and the original key, then either:
-//
-// 1. The forward iteration finds it and looks up its gap value. That node's gap
-//    value now becomes the new "previous gap value", and iteration continues.
-//
-// 2. The new node is created after the iterator has move past its position. As
-//    part of node creation, the creator had to scan backwards to find the gap
-//    value of the previous node. It is guaranteed to find a gap value that is
-//    >= the gap value found by the original goroutine.
-//
-// This means that no matter what gets inserted, or when it gets inserted, the
-// scanning goroutine is guaranteed to end up with a value that will never
-// decrease on future lookups, which is the critical invariant.
 func (p *sklPage) incomingGapVal(it *arenaskl.Iterator, key []byte) cacheValue {
-	// Iterate backwards to the nearest initialized node.
+	__antithesis_instrumentation__.Notify(127049)
+
 	prevInitNode(it)
 
-	// Iterate forwards to key, remembering the last gap value.
 	prevGapVal, _ := p.scanTo(it, key, 0, cacheValue{})
 	return prevGapVal
 }
 
-// scanTo scans from the current iterator position until the key "to". While
-// scanning, any uninitialized values are ratcheted with the current gap value,
-// which is essential to avoiding ratchet inversions (see the comment on
-// ensureInitialized).
-//
-// The function then returns the maximum value seen along with the gap value at
-// the end of the scan. If the iterator is positioned at a key > "to", the
-// function will return zero values. The function takes an optional initial gap
-// value argument, which is used to initialize the running maximum and gap
-// values. When finished, the iterator will be positioned the same as if
-// it.Seek(to) had been called.
 func (p *sklPage) scanTo(
 	it *arenaskl.Iterator, to []byte, opt rangeOptions, initGapVal cacheValue,
 ) (prevGapVal, maxVal cacheValue) {
+	__antithesis_instrumentation__.Notify(127050)
 	prevGapVal, maxVal = initGapVal, initGapVal
 	first := true
 	for {
+		__antithesis_instrumentation__.Notify(127051)
 		util.RacePreempt()
 
 		if !it.Valid() {
-			// No more nodes, which can happen for open ranges.
+			__antithesis_instrumentation__.Notify(127058)
+
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(127059)
 		}
+		__antithesis_instrumentation__.Notify(127052)
 
 		toCmp := bytes.Compare(it.Key(), to)
 		if to == nil {
-			// to == nil means open range, so toCmp will always be -1.
+			__antithesis_instrumentation__.Notify(127060)
+
 			toCmp = -1
+		} else {
+			__antithesis_instrumentation__.Notify(127061)
 		}
-		if toCmp > 0 || (toCmp == 0 && (opt&excludeTo) != 0) {
-			// Past the end key or we don't want to consider the end key.
+		__antithesis_instrumentation__.Notify(127053)
+		if toCmp > 0 || func() bool {
+			__antithesis_instrumentation__.Notify(127062)
+			return (toCmp == 0 && func() bool {
+				__antithesis_instrumentation__.Notify(127063)
+				return (opt & excludeTo) != 0 == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(127064)
+
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(127065)
 		}
+		__antithesis_instrumentation__.Notify(127054)
 
-		// Ratchet uninitialized nodes. We pass onlyIfUninitialized, so if
-		// the node is already initialized then this is a no-op.
 		ratchetErr := p.ratchetValueSet(it, onlyIfUninitialized,
-			prevGapVal, prevGapVal, false /* setInit */)
+			prevGapVal, prevGapVal, false)
 
-		// Decode the current node's value set.
 		keyVal, gapVal := decodeValueSet(it.Value(), it.Meta())
 		if errors.Is(ratchetErr, arenaskl.ErrArenaFull) {
-			// If we failed to ratchet an uninitialized node above, the desired
-			// ratcheting won't be reflected in the decoded values. Perform the
-			// ratcheting manually.
+			__antithesis_instrumentation__.Notify(127066)
+
 			keyVal, _ = ratchetValue(keyVal, prevGapVal)
 			gapVal, _ = ratchetValue(gapVal, prevGapVal)
+		} else {
+			__antithesis_instrumentation__.Notify(127067)
 		}
+		__antithesis_instrumentation__.Notify(127055)
 
-		if !(first && (opt&excludeFrom) != 0) {
-			// As long as this isn't the first key and opt says to exclude the
-			// first key, we ratchet the maxVal.
+		if !(first && func() bool {
+			__antithesis_instrumentation__.Notify(127068)
+			return (opt & excludeFrom) != 0 == true
+		}() == true) {
+			__antithesis_instrumentation__.Notify(127069)
+
 			maxVal, _ = ratchetValue(maxVal, keyVal)
+		} else {
+			__antithesis_instrumentation__.Notify(127070)
 		}
+		__antithesis_instrumentation__.Notify(127056)
 
 		if toCmp == 0 {
-			// We're on the scan's end key, so return the max value seen.
-			return
-		}
+			__antithesis_instrumentation__.Notify(127071)
 
-		// Ratchet the maxVal by the current gapVal.
+			return
+		} else {
+			__antithesis_instrumentation__.Notify(127072)
+		}
+		__antithesis_instrumentation__.Notify(127057)
+
 		maxVal, _ = ratchetValue(maxVal, gapVal)
 
-		// Haven't yet reached the scan's end key, so keep iterating.
 		prevGapVal = gapVal
 		first = false
 		it.Next()
 	}
 }
 
-// prevInitNode moves the iterator backwards to the nearest initialized node. If
-// the iterator is already positioned on an initialized node then this function
-// is a no-op.
 func prevInitNode(it *arenaskl.Iterator) {
+	__antithesis_instrumentation__.Notify(127073)
 	for {
+		__antithesis_instrumentation__.Notify(127074)
 		util.RacePreempt()
 
 		if !it.Valid() {
-			// No more previous nodes, so use the zero value.
+			__antithesis_instrumentation__.Notify(127077)
+
 			it.SeekToFirst()
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(127078)
 		}
+		__antithesis_instrumentation__.Notify(127075)
 
 		if (it.Meta() & initialized) != 0 {
-			// Found an initialized node.
-			break
-		}
+			__antithesis_instrumentation__.Notify(127079)
 
-		// Haven't yet reached an initialized node, so keep iterating.
+			break
+		} else {
+			__antithesis_instrumentation__.Notify(127080)
+		}
+		__antithesis_instrumentation__.Notify(127076)
+
 		it.Prev()
 	}
 }
 
 func decodeValueSet(b []byte, meta uint16) (keyVal, gapVal cacheValue) {
+	__antithesis_instrumentation__.Notify(127081)
 	if (meta & hasKey) != 0 {
+		__antithesis_instrumentation__.Notify(127084)
 		b, keyVal = decodeValue(b)
+	} else {
+		__antithesis_instrumentation__.Notify(127085)
 	}
+	__antithesis_instrumentation__.Notify(127082)
 
 	if (meta & hasGap) != 0 {
+		__antithesis_instrumentation__.Notify(127086)
 		_, gapVal = decodeValue(b)
+	} else {
+		__antithesis_instrumentation__.Notify(127087)
 	}
+	__antithesis_instrumentation__.Notify(127083)
 
 	return
 }
 
 func encodeValueSet(b []byte, keyVal, gapVal cacheValue) (ret []byte, meta uint16) {
+	__antithesis_instrumentation__.Notify(127088)
 	if !keyVal.ts.IsEmpty() {
+		__antithesis_instrumentation__.Notify(127091)
 		b = encodeValue(b, keyVal)
 		meta |= hasKey
+	} else {
+		__antithesis_instrumentation__.Notify(127092)
 	}
+	__antithesis_instrumentation__.Notify(127089)
 
 	if !gapVal.ts.IsEmpty() {
+		__antithesis_instrumentation__.Notify(127093)
 		b = encodeValue(b, gapVal)
 		meta |= hasGap
+	} else {
+		__antithesis_instrumentation__.Notify(127094)
 	}
+	__antithesis_instrumentation__.Notify(127090)
 
 	ret = b
 	return
 }
 
 func decodeValue(b []byte) (ret []byte, val cacheValue) {
-	// Copy and interpret the byte slice as a cacheValue.
+	__antithesis_instrumentation__.Notify(127095)
+
 	valPtr := (*[encodedValSize]byte)(unsafe.Pointer(&val))
 	copy(valPtr[:], b)
 	ret = b[encodedValSize:]
@@ -1217,7 +1116,8 @@ func decodeValue(b []byte) (ret []byte, val cacheValue) {
 }
 
 func encodeValue(b []byte, val cacheValue) []byte {
-	// Interpret the cacheValue as a byte slice and copy.
+	__antithesis_instrumentation__.Notify(127096)
+
 	prev := len(b)
 	b = b[:prev+encodedValSize]
 	valPtr := (*[encodedValSize]byte)(unsafe.Pointer(&val))
@@ -1226,14 +1126,22 @@ func encodeValue(b []byte, val cacheValue) []byte {
 }
 
 func encodedRangeSize(from, to []byte, opt rangeOptions) int {
+	__antithesis_instrumentation__.Notify(127097)
 	vals := 1
 	if (opt & excludeTo) == 0 {
+		__antithesis_instrumentation__.Notify(127100)
 		vals++
+	} else {
+		__antithesis_instrumentation__.Notify(127101)
 	}
+	__antithesis_instrumentation__.Notify(127098)
 	if (opt & excludeFrom) == 0 {
+		__antithesis_instrumentation__.Notify(127102)
 		vals++
+	} else {
+		__antithesis_instrumentation__.Notify(127103)
 	}
-	// This will be an overestimate because nodes will almost
-	// always be smaller than arenaskl.MaxNodeSize.
+	__antithesis_instrumentation__.Notify(127099)
+
 	return len(from) + len(to) + (vals * encodedValSize) + (2 * arenaskl.MaxNodeSize)
 }

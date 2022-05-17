@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverbase"
@@ -18,10 +10,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// CommandFilters provides facilities for registering "TestingCommandFilters"
-// (i.e. functions to be run on every replica command).
-// CommandFilters is thread-safe.
-// CommandFilters also optionally does replay protection if filters need it.
 type CommandFilters struct {
 	syncutil.RWMutex
 	filters []struct {
@@ -35,37 +23,40 @@ type CommandFilters struct {
 	replayProtection          kvserverbase.ReplicaCommandFilter
 }
 
-// RunFilters executes the registered filters, stopping at the first one
-// that returns an error.
 func (c *CommandFilters) RunFilters(args kvserverbase.FilterArgs) *roachpb.Error {
+	__antithesis_instrumentation__.Notify(628311)
 	c.RLock()
 	defer c.RUnlock()
 
 	if c.replayProtection != nil {
+		__antithesis_instrumentation__.Notify(628313)
 		return c.replayProtection(args)
+	} else {
+		__antithesis_instrumentation__.Notify(628314)
 	}
+	__antithesis_instrumentation__.Notify(628312)
 	return c.runFiltersInternal(args)
 }
 
 func (c *CommandFilters) runFiltersInternal(args kvserverbase.FilterArgs) *roachpb.Error {
+	__antithesis_instrumentation__.Notify(628315)
 	for _, f := range c.filters {
+		__antithesis_instrumentation__.Notify(628317)
 		if pErr := f.filter(args); pErr != nil {
+			__antithesis_instrumentation__.Notify(628318)
 			return pErr
+		} else {
+			__antithesis_instrumentation__.Notify(628319)
 		}
 	}
+	__antithesis_instrumentation__.Notify(628316)
 	return nil
 }
 
-// AppendFilter registers a filter function to run after all the previously
-// registered filters.
-// idempotent specifies if this filter can be safely run multiple times on the
-// same command. If this property doesn't hold, CommandFilters will start
-// tracking commands for replay protection, which might be expensive.
-// Returns a closure that the client must run for doing cleanup when the
-// filter should be deregistered.
 func (c *CommandFilters) AppendFilter(
 	filter kvserverbase.ReplicaCommandFilter, idempotent bool,
 ) func() {
+	__antithesis_instrumentation__.Notify(628320)
 
 	c.Lock()
 	defer c.Unlock()
@@ -78,34 +69,54 @@ func (c *CommandFilters) AppendFilter(
 	}{id, idempotent, filter})
 
 	if !idempotent {
+		__antithesis_instrumentation__.Notify(628322)
 		if c.numFiltersTrackingReplays == 0 {
+			__antithesis_instrumentation__.Notify(628324)
 			c.replayProtection =
 				storageutils.WrapFilterForReplayProtection(c.runFiltersInternal)
+		} else {
+			__antithesis_instrumentation__.Notify(628325)
 		}
+		__antithesis_instrumentation__.Notify(628323)
 		c.numFiltersTrackingReplays++
+	} else {
+		__antithesis_instrumentation__.Notify(628326)
 	}
+	__antithesis_instrumentation__.Notify(628321)
 
 	return func() {
+		__antithesis_instrumentation__.Notify(628327)
 		c.removeFilter(id)
 	}
 }
 
-// removeFilter removes a filter previously registered. Meant to be used as the
-// closure returned by AppendFilter.
 func (c *CommandFilters) removeFilter(id int) {
+	__antithesis_instrumentation__.Notify(628328)
 	c.Lock()
 	defer c.Unlock()
 	for i, f := range c.filters {
+		__antithesis_instrumentation__.Notify(628330)
 		if f.id == id {
+			__antithesis_instrumentation__.Notify(628331)
 			if !f.idempotent {
+				__antithesis_instrumentation__.Notify(628333)
 				c.numFiltersTrackingReplays--
 				if c.numFiltersTrackingReplays == 0 {
+					__antithesis_instrumentation__.Notify(628334)
 					c.replayProtection = nil
+				} else {
+					__antithesis_instrumentation__.Notify(628335)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(628336)
 			}
+			__antithesis_instrumentation__.Notify(628332)
 			c.filters = append(c.filters[:i], c.filters[i+1:]...)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(628337)
 		}
 	}
+	__antithesis_instrumentation__.Notify(628329)
 	panic(errors.AssertionFailedf("failed to find filter with id: %d.", id))
 }

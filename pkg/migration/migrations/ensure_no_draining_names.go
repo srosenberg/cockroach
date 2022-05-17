@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package migrations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -46,31 +38,41 @@ WHERE
 LIMIT 1;
 `
 
-// ensureNoDrainingNames waits until every descriptor has no draining names.
 func ensureNoDrainingNames(
 	ctx context.Context, _ clusterversion.ClusterVersion, d migration.TenantDeps, _ *jobs.Job,
 ) error {
+	__antithesis_instrumentation__.Notify(128445)
 	retryOpts := retry.Options{
 		MaxBackoff: 10 * time.Second,
 	}
 	for r := retry.StartWithCtx(ctx, retryOpts); r.Next(); {
+		__antithesis_instrumentation__.Notify(128447)
 		rows, err := d.InternalExecutor.QueryBufferedEx(
 			ctx,
 			"ensure-no-draining-names",
-			nil, /* txn */
+			nil,
 			sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 			query,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(128450)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128451)
 		}
+		__antithesis_instrumentation__.Notify(128448)
 		if len(rows) == 0 {
+			__antithesis_instrumentation__.Notify(128452)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(128453)
 		}
+		__antithesis_instrumentation__.Notify(128449)
 		datums := rows[0]
 		id := descpb.ID(*datums[0].(*tree.DInt))
 		name := string(*datums[1].(*tree.DString))
 		log.Infof(ctx, "descriptor with ID %d and name %q still has draining names", id, name)
 	}
+	__antithesis_instrumentation__.Notify(128446)
 	return ctx.Err()
 }

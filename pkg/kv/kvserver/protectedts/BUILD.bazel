@@ -20,6 +20,7 @@ go_library(
         "//pkg/util/metric",
         "//pkg/util/stop",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -29,4 +30,5 @@ go_test(
     size = "small",
     srcs = ["protectedts_test.go"],
     embed = [":protectedts"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

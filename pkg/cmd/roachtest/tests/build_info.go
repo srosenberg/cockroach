@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,21 +15,29 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/httputil"
 )
 
-// RunBuildInfo is a test that sanity checks the build info.
 func RunBuildInfo(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(45896)
 	c.Put(ctx, t.Cockroach(), "./cockroach")
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings())
 
 	var details serverpb.DetailsResponse
 	adminUIAddrs, err := c.ExternalAdminUIAddr(ctx, t.L(), c.Node(1))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(45899)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(45900)
 	}
+	__antithesis_instrumentation__.Notify(45897)
 	url := `http://` + adminUIAddrs[0] + `/_status/details/local`
 	err = httputil.GetJSON(http.Client{}, url, &details)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(45901)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(45902)
 	}
+	__antithesis_instrumentation__.Notify(45898)
 
 	bi := details.BuildInfo
 	testData := map[string]string{
@@ -47,54 +47,46 @@ func RunBuildInfo(ctx context.Context, t test.Test, c cluster.Cluster) {
 		"revision":   bi.Revision,
 	}
 	for key, val := range testData {
+		__antithesis_instrumentation__.Notify(45903)
 		if val == "" {
+			__antithesis_instrumentation__.Notify(45904)
 			t.Fatalf("build info not set for \"%s\"", key)
+		} else {
+			__antithesis_instrumentation__.Notify(45905)
 		}
 	}
 }
 
-// RunBuildAnalyze performs static analysis on the built binary to
-// ensure it's built as expected.
 func RunBuildAnalyze(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(45906)
 
 	if c.IsLocal() {
-		// This test is linux-specific and needs to be able to install apt
-		// packages, so only run it on dedicated remote VMs.
+		__antithesis_instrumentation__.Notify(45909)
+
 		t.Skip("local execution not supported")
+	} else {
+		__antithesis_instrumentation__.Notify(45910)
 	}
+	__antithesis_instrumentation__.Notify(45907)
 
 	c.Put(ctx, t.Cockroach(), "./cockroach")
 
-	// 1. Check for executable stack.
-	//
-	// Executable stack memory is a security risk (not a vulnerability
-	// in itself, but makes it easier to exploit other vulnerabilities).
-	// Whether or not the stack is executable is a property of the built
-	// executable, subject to some subtle heuristics. This test ensures
-	// that we're not hitting anything that causes our stacks to become
-	// executable.
-	//
-	// References:
-	// https://www.airs.com/blog/archives/518
-	// https://wiki.ubuntu.com/SecurityTeam/Roadmap/ExecutableStacks
-	// https://github.com/cockroachdb/cockroach/issues/37885
-
-	// There are several ways to do this analysis: `readelf -lW`,
-	// `scanelf -qe`, and `execstack -q`. `readelf` is part of binutils,
-	// so it's relatively ubiquitous, but we don't have it in the
-	// roachtest environment. Since we don't have anything preinstalled
-	// we can use, choose `scanelf` for being the simplest to use (empty
-	// output indicates everything's fine, non-empty means something
-	// bad).
 	c.Run(ctx, c.Node(1), "sudo apt-get update")
 	c.Run(ctx, c.Node(1), "sudo apt-get -qqy install pax-utils")
 
 	result, err := c.RunWithDetailsSingleNode(ctx, t.L(), c.Node(1), "scanelf -qe cockroach")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(45911)
 		t.Fatalf("scanelf failed: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(45912)
 	}
+	__antithesis_instrumentation__.Notify(45908)
 	output := strings.TrimSpace(result.Stdout)
 	if len(output) > 0 {
+		__antithesis_instrumentation__.Notify(45913)
 		t.Fatalf("scanelf returned non-empty output (executable stack): %s", output)
+	} else {
+		__antithesis_instrumentation__.Notify(45914)
 	}
 }

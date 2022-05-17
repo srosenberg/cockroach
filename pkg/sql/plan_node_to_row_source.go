@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,7 +31,6 @@ type planNodeToRowSource struct {
 
 	firstNotWrapped planNode
 
-	// run time state machine values
 	row rowenc.EncDatumRow
 }
 
@@ -48,15 +39,17 @@ var _ execinfra.OpNode = &planNodeToRowSource{}
 func makePlanNodeToRowSource(
 	source planNode, params runParams, fastPath bool,
 ) (*planNodeToRowSource, error) {
+	__antithesis_instrumentation__.Notify(562725)
 	var typs []*types.T
 	if fastPath {
-		// If our node is a "fast path node", it means that we're set up to
-		// just return a row count meaning we'll output a single row with a
-		// single INT column.
+		__antithesis_instrumentation__.Notify(562727)
+
 		typs = []*types.T{types.Int}
 	} else {
+		__antithesis_instrumentation__.Notify(562728)
 		typs = getTypesFromResultColumns(planColumns(source))
 	}
+	__antithesis_instrumentation__.Notify(562726)
 	row := make(rowenc.EncDatumRow, len(typs))
 
 	return &planNodeToRowSource{
@@ -70,169 +63,223 @@ func makePlanNodeToRowSource(
 
 var _ execinfra.LocalProcessor = &planNodeToRowSource{}
 
-// MustBeStreaming implements the execinfra.Processor interface.
 func (p *planNodeToRowSource) MustBeStreaming() bool {
-	// hookFnNode is special because it might be blocked forever if we decide to
-	// buffer its output.
+	__antithesis_instrumentation__.Notify(562729)
+
 	_, isHookFnNode := p.node.(*hookFnNode)
 	return isHookFnNode
 }
 
-// InitWithOutput implements the LocalProcessor interface.
 func (p *planNodeToRowSource) InitWithOutput(
 	flowCtx *execinfra.FlowCtx, post *execinfrapb.PostProcessSpec, output execinfra.RowReceiver,
 ) error {
+	__antithesis_instrumentation__.Notify(562730)
 	return p.InitWithEvalCtx(
 		p,
 		post,
 		p.outputTypes,
 		flowCtx,
-		// Note that we have already created a copy of the extendedEvalContext
-		// (which made a copy of the EvalContext) right before calling
-		// makePlanNodeToRowSource, so we can just use the eval context from the
-		// params.
+
 		p.params.EvalContext(),
-		0, /* processorID */
+		0,
 		output,
-		nil, /* memMonitor */
+		nil,
 		execinfra.ProcStateOpts{
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				__antithesis_instrumentation__.Notify(562731)
 				var meta []execinfrapb.ProducerMetadata
 				if p.InternalClose() {
-					// Check if we're wrapping a mutation and emit the rows
-					// written metric if so.
+					__antithesis_instrumentation__.Notify(562733)
+
 					if m, ok := p.node.(mutationPlanNode); ok {
+						__antithesis_instrumentation__.Notify(562734)
 						metrics := execinfrapb.GetMetricsMeta()
 						metrics.RowsWritten = m.rowsWritten()
 						meta = []execinfrapb.ProducerMetadata{{Metrics: metrics}}
+					} else {
+						__antithesis_instrumentation__.Notify(562735)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(562736)
 				}
+				__antithesis_instrumentation__.Notify(562732)
 				return meta
 			},
 		},
 	)
 }
 
-// SetInput implements the LocalProcessor interface.
-// input is the first upstream RowSource. When we're done executing, we need to
-// drain this row source of its metadata in case the planNode tree we're
-// wrapping returned an error, since planNodes don't know how to drain trailing
-// metadata.
 func (p *planNodeToRowSource) SetInput(ctx context.Context, input execinfra.RowSource) error {
+	__antithesis_instrumentation__.Notify(562737)
 	if p.firstNotWrapped == nil {
-		// Short-circuit if we never set firstNotWrapped - indicating this planNode
-		// tree had no DistSQL-plannable subtrees.
+		__antithesis_instrumentation__.Notify(562739)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(562740)
 	}
+	__antithesis_instrumentation__.Notify(562738)
 	p.input = input
 	p.AddInputToDrain(input)
-	// Search the plan we're wrapping for firstNotWrapped, which is the planNode
-	// that DistSQL planning resumed in. Replace that planNode with input,
-	// wrapped as a planNode.
+
 	return walkPlan(ctx, p.node, planObserver{
 		replaceNode: func(ctx context.Context, nodeName string, plan planNode) (planNode, error) {
+			__antithesis_instrumentation__.Notify(562741)
 			if plan == p.firstNotWrapped {
+				__antithesis_instrumentation__.Notify(562743)
 				return makeRowSourceToPlanNode(input, p, planColumns(p.firstNotWrapped), p.firstNotWrapped), nil
+			} else {
+				__antithesis_instrumentation__.Notify(562744)
 			}
+			__antithesis_instrumentation__.Notify(562742)
 			return nil, nil
 		},
 	})
 }
 
 func (p *planNodeToRowSource) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(562745)
 	ctx = p.StartInternalNoSpan(ctx)
 	p.params.ctx = ctx
-	// This starts all of the nodes below this node.
+
 	if err := startExec(p.params, p.node); err != nil {
+		__antithesis_instrumentation__.Notify(562746)
 		p.MoveToDraining(err)
+	} else {
+		__antithesis_instrumentation__.Notify(562747)
 	}
 }
 
 func (p *planNodeToRowSource) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
-	if p.State == execinfra.StateRunning && p.fastPath {
+	__antithesis_instrumentation__.Notify(562748)
+	if p.State == execinfra.StateRunning && func() bool {
+		__antithesis_instrumentation__.Notify(562751)
+		return p.fastPath == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(562752)
 		var count int
-		// If our node is a "fast path node", it means that we're set up to just
-		// return a row count. So trigger the fast path and return the row count as
-		// a row with a single column.
+
 		fastPath, ok := p.node.(planNodeFastPath)
 
 		if ok {
+			__antithesis_instrumentation__.Notify(562755)
 			var res bool
 			if count, res = fastPath.FastPathResults(); res {
+				__antithesis_instrumentation__.Notify(562756)
 				if p.params.extendedEvalCtx.Tracing.Enabled() {
+					__antithesis_instrumentation__.Notify(562757)
 					log.VEvent(p.params.ctx, 2, "fast path completed")
+				} else {
+					__antithesis_instrumentation__.Notify(562758)
 				}
 			} else {
-				// Fall back to counting the rows.
+				__antithesis_instrumentation__.Notify(562759)
+
 				count = 0
 				ok = false
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(562760)
 		}
+		__antithesis_instrumentation__.Notify(562753)
 
 		if !ok {
-			// If we have no fast path to trigger, fall back to counting the rows
-			// by Nexting our source until exhaustion.
+			__antithesis_instrumentation__.Notify(562761)
+
 			next, err := p.node.Next(p.params)
 			for ; next; next, err = p.node.Next(p.params) {
+				__antithesis_instrumentation__.Notify(562763)
 				count++
 			}
+			__antithesis_instrumentation__.Notify(562762)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(562764)
 				p.MoveToDraining(err)
 				return nil, p.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(562765)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(562766)
 		}
-		p.MoveToDraining(nil /* err */)
-		// Return the row count the only way we can: as a single-column row with
-		// the count inside.
+		__antithesis_instrumentation__.Notify(562754)
+		p.MoveToDraining(nil)
+
 		return rowenc.EncDatumRow{rowenc.EncDatum{Datum: tree.NewDInt(tree.DInt(count))}}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(562767)
 	}
+	__antithesis_instrumentation__.Notify(562749)
 
 	for p.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(562768)
 		valid, err := p.node.Next(p.params)
-		if err != nil || !valid {
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(562771)
+			return !valid == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(562772)
 			p.MoveToDraining(err)
 			return nil, p.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(562773)
 		}
+		__antithesis_instrumentation__.Notify(562769)
 
 		for i, datum := range p.node.Values() {
+			__antithesis_instrumentation__.Notify(562774)
 			if datum != nil {
+				__antithesis_instrumentation__.Notify(562775)
 				p.row[i] = rowenc.DatumToEncDatum(p.outputTypes[i], datum)
+			} else {
+				__antithesis_instrumentation__.Notify(562776)
 			}
 		}
-		// ProcessRow here is required to deal with projections, which won't be
-		// pushed into the wrapped plan.
+		__antithesis_instrumentation__.Notify(562770)
+
 		if outRow := p.ProcessRowHelper(p.row); outRow != nil {
+			__antithesis_instrumentation__.Notify(562777)
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(562778)
 		}
 	}
+	__antithesis_instrumentation__.Notify(562750)
 	return nil, p.DrainHelper()
 }
 
-// forwardMetadata will be called by any upstream rowSourceToPlanNode processors
-// that need to forward metadata to the end of the flow. They can't pass
-// metadata through local processors, so they instead add the metadata to our
-// trailing metadata and expect us to forward it further.
 func (p *planNodeToRowSource) forwardMetadata(metadata *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(562779)
 	p.ProcessorBase.AppendTrailingMeta(*metadata)
 }
 
-// ChildCount is part of the execinfra.OpNode interface.
 func (p *planNodeToRowSource) ChildCount(verbose bool) int {
+	__antithesis_instrumentation__.Notify(562780)
 	if _, ok := p.input.(execinfra.OpNode); ok {
+		__antithesis_instrumentation__.Notify(562782)
 		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(562783)
 	}
+	__antithesis_instrumentation__.Notify(562781)
 	return 0
 }
 
-// Child is part of the execinfra.OpNode interface.
 func (p *planNodeToRowSource) Child(nth int, verbose bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(562784)
 	switch nth {
 	case 0:
+		__antithesis_instrumentation__.Notify(562785)
 		if n, ok := p.input.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(562788)
 			return n
+		} else {
+			__antithesis_instrumentation__.Notify(562789)
 		}
+		__antithesis_instrumentation__.Notify(562786)
 		panic("input to planNodeToRowSource is not an execinfra.OpNode")
 	default:
+		__antithesis_instrumentation__.Notify(562787)
 		panic(errors.AssertionFailedf("invalid index %d", nth))
 	}
 }

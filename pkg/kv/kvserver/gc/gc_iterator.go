@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/rditer"
@@ -17,8 +9,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/bufalloc"
 )
 
-// gcIterator wraps an rditer.ReplicaMVCCDataIterator which it reverse iterates for
-// the purpose of discovering gc-able replicated data.
 type gcIterator struct {
 	it   *rditer.ReplicaMVCCDataIterator
 	done bool
@@ -27,8 +17,9 @@ type gcIterator struct {
 }
 
 func makeGCIterator(desc *roachpb.RangeDescriptor, snap storage.Reader) gcIterator {
+	__antithesis_instrumentation__.Notify(101452)
 	return gcIterator{
-		it: rditer.NewReplicaMVCCDataIterator(desc, snap, true /* seekEnd */),
+		it: rditer.NewReplicaMVCCDataIterator(desc, snap, true),
 	}
 }
 
@@ -36,95 +27,138 @@ type gcIteratorState struct {
 	cur, next, afterNext *storage.MVCCKeyValue
 }
 
-// curIsNewest returns true if the current MVCCKeyValue in the gcIteratorState
-// is the newest committed version of the key.
-//
-// It returns true if next is nil or if next is an intent.
 func (s *gcIteratorState) curIsNewest() bool {
-	return s.cur.Key.IsValue() &&
-		(s.next == nil || (s.afterNext != nil && !s.afterNext.Key.IsValue()))
+	__antithesis_instrumentation__.Notify(101453)
+	return s.cur.Key.IsValue() && func() bool {
+		__antithesis_instrumentation__.Notify(101454)
+		return (s.next == nil || func() bool {
+			__antithesis_instrumentation__.Notify(101455)
+			return (s.afterNext != nil && func() bool {
+				__antithesis_instrumentation__.Notify(101456)
+				return !s.afterNext.Key.IsValue() == true
+			}() == true) == true
+		}() == true) == true
+	}() == true
 }
 
-// curIsNotValue returns true if the current MVCCKeyValue in the gcIteratorState
-// is not a value, i.e. does not have a timestamp.
 func (s *gcIteratorState) curIsNotValue() bool {
+	__antithesis_instrumentation__.Notify(101457)
 	return !s.cur.Key.IsValue()
 }
 
-// curIsIntent returns true if the current MVCCKeyValue in the gcIteratorState
-// is an intent.
 func (s *gcIteratorState) curIsIntent() bool {
-	return s.next != nil && !s.next.Key.IsValue()
+	__antithesis_instrumentation__.Notify(101458)
+	return s.next != nil && func() bool {
+		__antithesis_instrumentation__.Notify(101459)
+		return !s.next.Key.IsValue() == true
+	}() == true
 }
 
-// state returns the current state of the iterator. The state contains the
-// current and the two following versions of the current key if they exist.
-//
-// If ok is false, further iteration is unsafe; either the end of iteration has
-// been reached or an error has occurred. Callers should check it.err to
-// determine whether an error has occurred in cases where ok is false.
-//
-// It is not safe to use values in the state after subsequent calls to
-// it.step().
 func (it *gcIterator) state() (s gcIteratorState, ok bool) {
-	// The current key is the newest if the key which comes next is different or
-	// the key which comes after the current key is an intent or this is the first
-	// key in the range.
+	__antithesis_instrumentation__.Notify(101460)
+
 	s.cur, ok = it.peekAt(0)
 	if !ok {
+		__antithesis_instrumentation__.Notify(101466)
 		return gcIteratorState{}, false
+	} else {
+		__antithesis_instrumentation__.Notify(101467)
 	}
+	__antithesis_instrumentation__.Notify(101461)
 	next, ok := it.peekAt(1)
-	if !ok && it.err != nil { // cur is the first key in the range
+	if !ok && func() bool {
+		__antithesis_instrumentation__.Notify(101468)
+		return it.err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(101469)
 		return gcIteratorState{}, false
+	} else {
+		__antithesis_instrumentation__.Notify(101470)
 	}
-	if !ok || !next.Key.Key.Equal(s.cur.Key.Key) {
+	__antithesis_instrumentation__.Notify(101462)
+	if !ok || func() bool {
+		__antithesis_instrumentation__.Notify(101471)
+		return !next.Key.Key.Equal(s.cur.Key.Key) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(101472)
 		return s, true
+	} else {
+		__antithesis_instrumentation__.Notify(101473)
 	}
+	__antithesis_instrumentation__.Notify(101463)
 	s.next = next
 	afterNext, ok := it.peekAt(2)
-	if !ok && it.err != nil { // cur is the first key in the range
+	if !ok && func() bool {
+		__antithesis_instrumentation__.Notify(101474)
+		return it.err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(101475)
 		return gcIteratorState{}, false
+	} else {
+		__antithesis_instrumentation__.Notify(101476)
 	}
-	if !ok || !afterNext.Key.Key.Equal(s.cur.Key.Key) {
+	__antithesis_instrumentation__.Notify(101464)
+	if !ok || func() bool {
+		__antithesis_instrumentation__.Notify(101477)
+		return !afterNext.Key.Key.Equal(s.cur.Key.Key) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(101478)
 		return s, true
+	} else {
+		__antithesis_instrumentation__.Notify(101479)
 	}
+	__antithesis_instrumentation__.Notify(101465)
 	s.afterNext = afterNext
 	return s, true
 }
 
 func (it *gcIterator) step() {
+	__antithesis_instrumentation__.Notify(101480)
 	it.buf.removeFront()
 }
 
 func (it *gcIterator) peekAt(i int) (*storage.MVCCKeyValue, bool) {
+	__antithesis_instrumentation__.Notify(101481)
 	if it.buf.len <= i {
+		__antithesis_instrumentation__.Notify(101483)
 		if !it.fillTo(i + 1) {
+			__antithesis_instrumentation__.Notify(101484)
 			return nil, false
+		} else {
+			__antithesis_instrumentation__.Notify(101485)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(101486)
 	}
+	__antithesis_instrumentation__.Notify(101482)
 	return it.buf.at(i), true
 }
 
 func (it *gcIterator) fillTo(targetLen int) (ok bool) {
+	__antithesis_instrumentation__.Notify(101487)
 	for it.buf.len < targetLen {
+		__antithesis_instrumentation__.Notify(101489)
 		if ok, err := it.it.Valid(); !ok {
+			__antithesis_instrumentation__.Notify(101491)
 			it.err, it.done = err, err == nil
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(101492)
 		}
+		__antithesis_instrumentation__.Notify(101490)
 		it.buf.pushBack(it.it)
 		it.it.Prev()
 	}
+	__antithesis_instrumentation__.Notify(101488)
 	return true
 }
 
 func (it *gcIterator) close() {
+	__antithesis_instrumentation__.Notify(101493)
 	it.it.Close()
 	it.it = nil
 }
 
-// gcIteratorRingBufSize is 3 because the gcIterator.state method at most needs
-// to look forward two keys ahead of the current key.
 const gcIteratorRingBufSize = 3
 
 type gcIteratorRingBuf struct {
@@ -135,16 +169,26 @@ type gcIteratorRingBuf struct {
 }
 
 func (b *gcIteratorRingBuf) at(i int) *storage.MVCCKeyValue {
+	__antithesis_instrumentation__.Notify(101494)
 	if i >= b.len {
+		__antithesis_instrumentation__.Notify(101496)
 		panic("index out of range")
+	} else {
+		__antithesis_instrumentation__.Notify(101497)
 	}
+	__antithesis_instrumentation__.Notify(101495)
 	return &b.buf[(b.head+i)%gcIteratorRingBufSize]
 }
 
 func (b *gcIteratorRingBuf) removeFront() {
+	__antithesis_instrumentation__.Notify(101498)
 	if b.len == 0 {
+		__antithesis_instrumentation__.Notify(101500)
 		panic("cannot remove from empty gcIteratorRingBuf")
+	} else {
+		__antithesis_instrumentation__.Notify(101501)
 	}
+	__antithesis_instrumentation__.Notify(101499)
 	b.buf[b.head] = storage.MVCCKeyValue{}
 	b.head = (b.head + 1) % gcIteratorRingBufSize
 	b.len--
@@ -156,9 +200,14 @@ type iterator interface {
 }
 
 func (b *gcIteratorRingBuf) pushBack(it iterator) {
+	__antithesis_instrumentation__.Notify(101502)
 	if b.len == gcIteratorRingBufSize {
+		__antithesis_instrumentation__.Notify(101504)
 		panic("cannot add to full gcIteratorRingBuf")
+	} else {
+		__antithesis_instrumentation__.Notify(101505)
 	}
+	__antithesis_instrumentation__.Notify(101503)
 	i := (b.head + b.len) % gcIteratorRingBufSize
 	b.allocs[i] = b.allocs[i].Truncate()
 	k := it.UnsafeKey()

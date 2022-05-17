@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,21 +24,14 @@ import (
 
 var insertFastPathNodePool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(497466)
 		return &insertFastPathNode{}
 	},
 }
 
-// insertFastPathNode is a faster implementation of inserting values in a table
-// and performing FK checks. It is used when all the foreign key checks can be
-// performed via a direct lookup in an index, and when the input is VALUES of
-// limited size (at most mutations.MaxBatchSize).
 type insertFastPathNode struct {
-	// input values, similar to a valuesNode.
 	input [][]tree.TypedExpr
 
-	// columns is set if this INSERT is returning any rows, to be
-	// consumed by a renderNode upstream. This occurs when there is a
-	// RETURNING clause with some scalar expressions.
 	columns colinfo.ResultColumns
 
 	run insertFastPathRun
@@ -61,31 +46,20 @@ type insertFastPathRun struct {
 
 	numInputCols int
 
-	// inputBuf stores the evaluation result of the input rows, linearized into a
-	// single slice; see inputRow(). Unfortunately we can't do everything one row
-	// at a time, because we need the datums for generating error messages in case
-	// an FK check fails.
 	inputBuf tree.Datums
 
-	// fkBatch accumulates the FK existence checks.
 	fkBatch roachpb.BatchRequest
-	// fkSpanInfo keeps track of information for each fkBatch.Request entry.
+
 	fkSpanInfo []insertFastPathFKSpanInfo
 
-	// fkSpanMap is used to de-duplicate FK existence checks. Only used if there
-	// is more than one input row.
 	fkSpanMap map[string]struct{}
 }
 
-// insertFastPathFKSpanInfo records information about each Request in the
-// fkBatch, associating it with a specific check and row index.
 type insertFastPathFKSpanInfo struct {
 	check  *insertFastPathFKCheck
 	rowIdx int
 }
 
-// insertFastPathFKCheck extends exec.InsertFastPathFKCheck with metadata that
-// is computed once and can be reused across rows.
 type insertFastPathFKCheck struct {
 	exec.InsertFastPathFKCheck
 
@@ -105,7 +79,7 @@ func (c *insertFastPathFKCheck) init(params runParams) error {
 	codec := params.ExecCfg().Codec
 	c.keyPrefix = rowenc.MakeIndexKeyPrefix(codec, c.tabDesc.GetID(), c.idx.GetID())
 	c.spanBuilder.Init(params.EvalContext(), codec, c.tabDesc, c.idx)
-	c.spanSplitter = span.MakeSplitter(c.tabDesc, c.idx, util.FastIntSet{} /* neededColOrdinals */)
+	c.spanSplitter = span.MakeSplitter(c.tabDesc, c.idx, util.FastIntSet{})
 
 	if len(c.InsertCols) > idx.numLaxKeyCols {
 		return errors.AssertionFailedf(
@@ -125,67 +99,98 @@ func (c *insertFastPathFKCheck) init(params runParams) error {
 	return nil
 }
 
-// generateSpan returns the span that we need to look up to confirm existence of
-// the referenced row.
 func (c *insertFastPathFKCheck) generateSpan(inputRow tree.Datums) (roachpb.Span, error) {
+	__antithesis_instrumentation__.Notify(497467)
 	return row.FKCheckSpan(&c.spanBuilder, c.spanSplitter, inputRow, c.colMap, len(c.InsertCols))
 }
 
-// errorForRow returns an error indicating failure of this FK check for the
-// given row.
 func (c *insertFastPathFKCheck) errorForRow(inputRow tree.Datums) error {
+	__antithesis_instrumentation__.Notify(497468)
 	values := make(tree.Datums, len(c.InsertCols))
 	for i, ord := range c.InsertCols {
+		__antithesis_instrumentation__.Notify(497470)
 		values[i] = inputRow[ord]
 	}
+	__antithesis_instrumentation__.Notify(497469)
 	return c.MkErr(values)
 }
 
 func (r *insertFastPathRun) inputRow(rowIdx int) tree.Datums {
+	__antithesis_instrumentation__.Notify(497471)
 	start := rowIdx * r.numInputCols
 	end := start + r.numInputCols
 	return r.inputBuf[start:end:end]
 }
 
-// addFKChecks adds Requests to fkBatch and entries in fkSpanInfo / fkSpanMap as
-// needed for checking foreign keys for the given row.
 func (r *insertFastPathRun) addFKChecks(
 	ctx context.Context, rowIdx int, inputRow tree.Datums,
 ) error {
+	__antithesis_instrumentation__.Notify(497472)
 	for i := range r.fkChecks {
+		__antithesis_instrumentation__.Notify(497474)
 		c := &r.fkChecks[i]
 
-		// See if we have any nulls.
 		numNulls := 0
 		for _, ord := range c.InsertCols {
+			__antithesis_instrumentation__.Notify(497480)
 			if inputRow[ord] == tree.DNull {
+				__antithesis_instrumentation__.Notify(497481)
 				numNulls++
+			} else {
+				__antithesis_instrumentation__.Notify(497482)
 			}
 		}
+		__antithesis_instrumentation__.Notify(497475)
 		if numNulls > 0 {
-			if c.MatchMethod == tree.MatchFull && numNulls != len(c.InsertCols) {
+			__antithesis_instrumentation__.Notify(497483)
+			if c.MatchMethod == tree.MatchFull && func() bool {
+				__antithesis_instrumentation__.Notify(497485)
+				return numNulls != len(c.InsertCols) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(497486)
 				return c.errorForRow(inputRow)
+			} else {
+				__antithesis_instrumentation__.Notify(497487)
 			}
-			// We have a row with only NULLS, or a row with some NULLs and match
-			// method PARTIAL. We can skip this FK check for this row.
+			__antithesis_instrumentation__.Notify(497484)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(497488)
 		}
+		__antithesis_instrumentation__.Notify(497476)
 
 		span, err := c.generateSpan(inputRow)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(497489)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(497490)
 		}
+		__antithesis_instrumentation__.Notify(497477)
 		if r.fkSpanMap != nil {
+			__antithesis_instrumentation__.Notify(497491)
 			_, exists := r.fkSpanMap[string(span.Key)]
 			if exists {
-				// Duplicate span.
+				__antithesis_instrumentation__.Notify(497493)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(497494)
 			}
+			__antithesis_instrumentation__.Notify(497492)
 			r.fkSpanMap[string(span.Key)] = struct{}{}
+		} else {
+			__antithesis_instrumentation__.Notify(497495)
 		}
+		__antithesis_instrumentation__.Notify(497478)
 		if r.traceKV {
+			__antithesis_instrumentation__.Notify(497496)
 			log.VEventf(ctx, 2, "FKScan %s", span)
+		} else {
+			__antithesis_instrumentation__.Notify(497497)
 		}
+		__antithesis_instrumentation__.Notify(497479)
 		reqIdx := len(r.fkBatch.Requests)
 		r.fkBatch.Requests = append(r.fkBatch.Requests, roachpb.RequestUnion{})
 		r.fkBatch.Requests[reqIdx].MustSetInner(&roachpb.ScanRequest{
@@ -196,37 +201,50 @@ func (r *insertFastPathRun) addFKChecks(
 			rowIdx: rowIdx,
 		})
 	}
+	__antithesis_instrumentation__.Notify(497473)
 	return nil
 }
 
-// runFKChecks runs the fkBatch and checks that all spans return at least one
-// key.
 func (n *insertFastPathNode) runFKChecks(params runParams) error {
+	__antithesis_instrumentation__.Notify(497498)
 	if len(n.run.fkBatch.Requests) == 0 {
+		__antithesis_instrumentation__.Notify(497502)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(497503)
 	}
+	__antithesis_instrumentation__.Notify(497499)
 	defer n.run.fkBatch.Reset()
 
-	// Run the FK checks batch.
 	br, err := params.p.txn.Send(params.ctx, n.run.fkBatch)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(497504)
 		return err.GoError()
+	} else {
+		__antithesis_instrumentation__.Notify(497505)
 	}
+	__antithesis_instrumentation__.Notify(497500)
 
 	for i := range br.Responses {
+		__antithesis_instrumentation__.Notify(497506)
 		resp := br.Responses[i].GetInner().(*roachpb.ScanResponse)
 		if len(resp.Rows) == 0 {
-			// No results for lookup; generate the violation error.
+			__antithesis_instrumentation__.Notify(497507)
+
 			info := n.run.fkSpanInfo[i]
 			return info.check.errorForRow(n.run.inputRow(info.rowIdx))
+		} else {
+			__antithesis_instrumentation__.Notify(497508)
 		}
 	}
+	__antithesis_instrumentation__.Notify(497501)
 
 	return nil
 }
 
 func (n *insertFastPathNode) startExec(params runParams) error {
-	// Cache traceKV during execution, to avoid re-evaluating it for every row.
+	__antithesis_instrumentation__.Notify(497509)
+
 	n.run.traceKV = params.p.ExtendedEvalContext().Tracing.KVTracingEnabled()
 
 	n.run.initRowContainer(params, n.columns)
@@ -235,169 +253,225 @@ func (n *insertFastPathNode) startExec(params runParams) error {
 	n.run.inputBuf = make(tree.Datums, len(n.input)*n.run.numInputCols)
 
 	if len(n.input) > 1 {
+		__antithesis_instrumentation__.Notify(497512)
 		n.run.fkSpanMap = make(map[string]struct{})
+	} else {
+		__antithesis_instrumentation__.Notify(497513)
 	}
+	__antithesis_instrumentation__.Notify(497510)
 
 	if len(n.run.fkChecks) > 0 {
+		__antithesis_instrumentation__.Notify(497514)
 		for i := range n.run.fkChecks {
+			__antithesis_instrumentation__.Notify(497516)
 			if err := n.run.fkChecks[i].init(params); err != nil {
+				__antithesis_instrumentation__.Notify(497517)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(497518)
 			}
 		}
+		__antithesis_instrumentation__.Notify(497515)
 		maxSpans := len(n.run.fkChecks) * len(n.input)
 		n.run.fkBatch.Requests = make([]roachpb.RequestUnion, 0, maxSpans)
 		n.run.fkSpanInfo = make([]insertFastPathFKSpanInfo, 0, maxSpans)
 		if len(n.input) > 1 {
+			__antithesis_instrumentation__.Notify(497519)
 			n.run.fkSpanMap = make(map[string]struct{}, maxSpans)
+		} else {
+			__antithesis_instrumentation__.Notify(497520)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(497521)
 	}
+	__antithesis_instrumentation__.Notify(497511)
 
 	return n.run.ti.init(params.ctx, params.p.txn, params.EvalContext(), &params.EvalContext().Settings.SV)
 }
 
-// Next is required because batchedPlanNode inherits from planNode, but
-// batchedPlanNode doesn't really provide it. See the explanatory comments
-// in plan_batch.go.
-func (n *insertFastPathNode) Next(params runParams) (bool, error) { panic("not valid") }
+func (n *insertFastPathNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(497522)
+	panic("not valid")
+}
 
-// Values is required because batchedPlanNode inherits from planNode, but
-// batchedPlanNode doesn't really provide it. See the explanatory comments
-// in plan_batch.go.
-func (n *insertFastPathNode) Values() tree.Datums { panic("not valid") }
+func (n *insertFastPathNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(497523)
+	panic("not valid")
+}
 
-// BatchedNext implements the batchedPlanNode interface.
 func (n *insertFastPathNode) BatchedNext(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(497524)
 	if n.run.done {
+		__antithesis_instrumentation__.Notify(497529)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(497530)
 	}
-
-	// The fast path node does everything in one batch.
+	__antithesis_instrumentation__.Notify(497525)
 
 	for rowIdx, tupleRow := range n.input {
+		__antithesis_instrumentation__.Notify(497531)
 		if err := params.p.cancelChecker.Check(); err != nil {
+			__antithesis_instrumentation__.Notify(497535)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(497536)
 		}
+		__antithesis_instrumentation__.Notify(497532)
 		inputRow := n.run.inputRow(rowIdx)
 		for col, typedExpr := range tupleRow {
+			__antithesis_instrumentation__.Notify(497537)
 			var err error
 			inputRow[col], err = typedExpr.Eval(params.EvalContext())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(497538)
 				err = interceptAlterColumnTypeParseError(n.run.insertCols, col, err)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(497539)
 			}
 		}
-		// Process the insertion for the current source row, potentially
-		// accumulating the result row for later.
+		__antithesis_instrumentation__.Notify(497533)
+
 		if err := n.run.processSourceRow(params, inputRow); err != nil {
+			__antithesis_instrumentation__.Notify(497540)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(497541)
 		}
+		__antithesis_instrumentation__.Notify(497534)
 
-		// Add FK existence checks.
 		if len(n.run.fkChecks) > 0 {
+			__antithesis_instrumentation__.Notify(497542)
 			if err := n.run.addFKChecks(params.ctx, rowIdx, inputRow); err != nil {
+				__antithesis_instrumentation__.Notify(497543)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(497544)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(497545)
 		}
 	}
+	__antithesis_instrumentation__.Notify(497526)
 
-	// Perform the FK checks.
-	// TODO(radu): we could run the FK batch in parallel with the main batch (if
-	// we aren't auto-committing).
 	if err := n.runFKChecks(params); err != nil {
+		__antithesis_instrumentation__.Notify(497546)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(497547)
 	}
+	__antithesis_instrumentation__.Notify(497527)
 
 	n.run.ti.setRowsWrittenLimit(params.extendedEvalCtx.SessionData())
 	if err := n.run.ti.finalize(params.ctx); err != nil {
+		__antithesis_instrumentation__.Notify(497548)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(497549)
 	}
-	// Remember we're done for the next call to BatchedNext().
+	__antithesis_instrumentation__.Notify(497528)
+
 	n.run.done = true
 
-	// Possibly initiate a run of CREATE STATISTICS.
 	params.ExecCfg().StatsRefresher.NotifyMutation(n.run.ti.ri.Helper.TableDesc, len(n.input))
 
 	return true, nil
 }
 
-// BatchedCount implements the batchedPlanNode interface.
-func (n *insertFastPathNode) BatchedCount() int { return len(n.input) }
+func (n *insertFastPathNode) BatchedCount() int {
+	__antithesis_instrumentation__.Notify(497550)
+	return len(n.input)
+}
 
-// BatchedCount implements the batchedPlanNode interface.
-func (n *insertFastPathNode) BatchedValues(rowIdx int) tree.Datums { return n.run.ti.rows.At(rowIdx) }
+func (n *insertFastPathNode) BatchedValues(rowIdx int) tree.Datums {
+	__antithesis_instrumentation__.Notify(497551)
+	return n.run.ti.rows.At(rowIdx)
+}
 
 func (n *insertFastPathNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(497552)
 	n.run.ti.close(ctx)
 	*n = insertFastPathNode{}
 	insertFastPathNodePool.Put(n)
 }
 
 func (n *insertFastPathNode) rowsWritten() int64 {
+	__antithesis_instrumentation__.Notify(497553)
 	return n.run.ti.rowsWritten
 }
 
-// See planner.autoCommit.
 func (n *insertFastPathNode) enableAutoCommit() {
+	__antithesis_instrumentation__.Notify(497554)
 	n.run.ti.enableAutoCommit()
 }
 
-// interceptAlterColumnTypeParseError wraps a type parsing error with a warning
-// about the column undergoing an ALTER COLUMN TYPE schema change.
-// If colNum is not -1, only the colNum'th column in insertCols will be checked
-// for AlterColumnTypeInProgress, otherwise every column in insertCols will
-// be checked.
 func interceptAlterColumnTypeParseError(insertCols []catalog.Column, colNum int, err error) error {
-	// Only intercept the error if the column being inserted into
-	// is an actual column. This is to avoid checking on values that don't
-	// correspond to an actual column, for example a check constraint.
+	__antithesis_instrumentation__.Notify(497555)
+
 	if colNum >= len(insertCols) {
+		__antithesis_instrumentation__.Notify(497560)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(497561)
 	}
+	__antithesis_instrumentation__.Notify(497556)
 	var insertCol catalog.Column
 
-	// wrapParseError is a helper function that checks if an insertCol has the
-	// AlterColumnTypeInProgress flag and wraps the parse error msg stating
-	// that the error may be because the column is being altered.
-	// Returns if the error msg has been wrapped and the wrapped error msg.
 	wrapParseError := func(insertCol catalog.Column, colNum int, err error) (bool, error) {
+		__antithesis_instrumentation__.Notify(497562)
 		if insertCol.ColumnDesc().AlterColumnTypeInProgress {
+			__antithesis_instrumentation__.Notify(497564)
 			code := pgerror.GetPGCode(err)
 			if code == pgcode.InvalidTextRepresentation {
+				__antithesis_instrumentation__.Notify(497565)
 				if colNum != -1 {
-					// If a column is specified, we can ensure the parse error
-					// is happening because the column is undergoing an alter column type
-					// schema change.
+					__antithesis_instrumentation__.Notify(497567)
+
 					return true, errors.Wrapf(err,
 						"This table is still undergoing the ALTER COLUMN TYPE schema change, "+
 							"this insert is not supported until the schema change is finalized")
+				} else {
+					__antithesis_instrumentation__.Notify(497568)
 				}
-				// If no column is specified, the error message is slightly changed to say
-				// that the error MAY be because a column is undergoing an alter column type
-				// schema change.
+				__antithesis_instrumentation__.Notify(497566)
+
 				return true, errors.Wrap(err,
 					"This table is still undergoing the ALTER COLUMN TYPE schema change, "+
 						"this insert may not be supported until the schema change is finalized")
+			} else {
+				__antithesis_instrumentation__.Notify(497569)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(497570)
 		}
+		__antithesis_instrumentation__.Notify(497563)
 		return false, err
 	}
+	__antithesis_instrumentation__.Notify(497557)
 
-	// If a colNum is specified, we just check the one column for
-	// AlterColumnTypeInProgress and return the error whether it's wrapped or not.
 	if colNum != -1 {
+		__antithesis_instrumentation__.Notify(497571)
 		insertCol = insertCols[colNum]
 		_, err = wrapParseError(insertCol, colNum, err)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(497572)
 	}
+	__antithesis_instrumentation__.Notify(497558)
 
-	// If the colNum is -1, we check every insertCol for AlterColumnTypeInProgress.
 	for _, insertCol = range insertCols {
+		__antithesis_instrumentation__.Notify(497573)
 		var changed bool
 		changed, err = wrapParseError(insertCol, colNum, err)
 		if changed {
+			__antithesis_instrumentation__.Notify(497574)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(497575)
 		}
 	}
+	__antithesis_instrumentation__.Notify(497559)
 
 	return err
 }

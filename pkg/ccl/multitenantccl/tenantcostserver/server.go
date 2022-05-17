@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package tenantcostserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -29,8 +23,6 @@ type instance struct {
 	settings   *cluster.Settings
 }
 
-// Note: the "four" in the description comes from
-//   tenantcostclient.extendedReportingPeriodFactor.
 var instanceInactivity = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"tenant_usage_instance_inactivity",
@@ -45,6 +37,7 @@ func newInstance(
 	executor *sql.InternalExecutor,
 	timeSource timeutil.TimeSource,
 ) *instance {
+	__antithesis_instrumentation__.Notify(20224)
 	res := &instance{
 		db:         db,
 		executor:   executor,
@@ -55,8 +48,8 @@ func newInstance(
 	return res
 }
 
-// Metrics is part of the multitenant.TenantUsageServer.
 func (s *instance) Metrics() metric.Struct {
+	__antithesis_instrumentation__.Notify(20225)
 	return &s.metrics
 }
 

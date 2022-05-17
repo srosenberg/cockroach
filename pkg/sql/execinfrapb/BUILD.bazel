@@ -51,6 +51,7 @@ go_library(
         "//pkg/util/tracing",
         "//pkg/util/tracing/tracingpb",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_logtags//:logtags",
         "@com_github_dustin_go_humanize//:go-humanize",
@@ -82,6 +83,7 @@ go_test(
         "//pkg/sql/types",
         "//pkg/util/leaktest",
         "//pkg/util/optional",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

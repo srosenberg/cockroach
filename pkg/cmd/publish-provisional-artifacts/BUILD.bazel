@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//pkg/release",
         "//pkg/util/version",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_aws_aws_sdk_go//aws",
         "@com_github_aws_aws_sdk_go//aws/session",
         "@com_github_aws_aws_sdk_go//service/s3",
@@ -19,6 +20,7 @@ go_binary(
     name = "publish-provisional-artifacts",
     embed = [":publish-provisional-artifacts_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -29,6 +31,7 @@ go_test(
     deps = [
         "//pkg/release",
         "//pkg/testutils",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_alessio_shellescape//:shellescape",
         "@com_github_aws_aws_sdk_go//service/s3",
         "@com_github_cockroachdb_errors//:errors",

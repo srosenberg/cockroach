@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catprivilege
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -28,7 +20,7 @@ var (
 		catconstants.ProtectedTimestampsRecordsTableName,
 		catconstants.StatementStatisticsTableName,
 		catconstants.TransactionStatisticsTableName,
-		// TODO(postamar): remove in 21.2
+
 		catconstants.PreMigrationNamespaceTableName,
 	}
 
@@ -67,27 +59,31 @@ var (
 	}
 
 	systemSuperuserPrivileges = func() map[descpb.NameInfo]privilege.List {
+		__antithesis_instrumentation__.Notify(250878)
 		m := make(map[descpb.NameInfo]privilege.List)
 		tableKey := descpb.NameInfo{
 			ParentID:       keys.SystemDatabaseID,
 			ParentSchemaID: keys.SystemPublicSchemaID,
 		}
 		for _, rw := range readWriteSystemTables {
+			__antithesis_instrumentation__.Notify(250881)
 			tableKey.Name = string(rw)
 			m[tableKey] = privilege.ReadWriteData
 		}
+		__antithesis_instrumentation__.Notify(250879)
 		for _, r := range readSystemTables {
+			__antithesis_instrumentation__.Notify(250882)
 			tableKey.Name = string(r)
 			m[tableKey] = privilege.ReadData
 		}
+		__antithesis_instrumentation__.Notify(250880)
 		m[descpb.NameInfo{Name: catconstants.SystemDatabaseName}] = privilege.List{privilege.CONNECT}
 		return m
 	}()
 )
 
-// SystemSuperuserPrivileges returns the privilege list for super-users found
-// for the given system descriptor name key. Returns nil if none was found.
 func SystemSuperuserPrivileges(nameKey catalog.NameKey) privilege.List {
+	__antithesis_instrumentation__.Notify(250883)
 	key := descpb.NameInfo{
 		ParentID:       nameKey.GetParentID(),
 		ParentSchemaID: nameKey.GetParentSchemaID(),

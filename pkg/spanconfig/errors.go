@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfig
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,41 +15,40 @@ type mismatchedDescriptorTypesError struct {
 	d1, d2 catalog.DescriptorType
 }
 
-// NewMismatchedDescriptorTypesError constructs a mismatchedDescriptorTypesError.
 func NewMismatchedDescriptorTypesError(d1, d2 catalog.DescriptorType) error {
+	__antithesis_instrumentation__.Notify(240249)
 	return mismatchedDescriptorTypesError{d1, d2}
 }
 
-// IsMismatchedDescriptorTypesError returns whether the given error is the
-// mismatchedDescriptorTypesError kind.
 func IsMismatchedDescriptorTypesError(err error) bool {
+	__antithesis_instrumentation__.Notify(240250)
 	return errors.HasType(err, mismatchedDescriptorTypesError{})
 }
 
-// Error implements the error interface.
 func (e mismatchedDescriptorTypesError) Error() string {
+	__antithesis_instrumentation__.Notify(240251)
 	return fmt.Sprintf("mismatched descriptor types (%s, %s) for the same id", e.d1, e.d2)
 }
 
-// commitTimestampOutOfBoundsError is returned when it's not possible to commit
-// an update within the specified time interval.
 type commitTimestampOutOfBoundsError struct{}
 
-// NewCommitTimestampOutOfBoundsError constructs a commitTimestampOutOfBoundsError.
 func NewCommitTimestampOutOfBoundsError() error {
+	__antithesis_instrumentation__.Notify(240252)
 	return commitTimestampOutOfBoundsError{}
 }
 
-// IsCommitTimestampOutOfBoundsError returns whether the given error is the
-// commitTimestampOutOfBoundsError kind.
 func IsCommitTimestampOutOfBoundsError(err error) bool {
+	__antithesis_instrumentation__.Notify(240253)
 	return errors.Is(err, commitTimestampOutOfBoundsError{})
 }
 
-// Error implements the error interface.
-func (e commitTimestampOutOfBoundsError) Error() string { return "lease expired" }
+func (e commitTimestampOutOfBoundsError) Error() string {
+	__antithesis_instrumentation__.Notify(240254)
+	return "lease expired"
+}
 
 func decodeRetryableLeaseExpiredError(context.Context, string, []string, proto.Message) error {
+	__antithesis_instrumentation__.Notify(240255)
 	return NewCommitTimestampOutOfBoundsError()
 }
 

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package schemadesc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
@@ -17,21 +9,17 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 )
 
-// GetVirtualSchemaByID returns a virtual schema with a given ID if it exists.
-//
-// The returned descriptor carries only a basic functionality, requiring the
-// caller to check the SchemaKind to determine how to use the descriptor. The
-// returned descriptor is not mapped to a database; every database has all of
-// the same virtual schemas and the ParentID on the returned descriptor will be
-// descpb.InvalidID.
 func GetVirtualSchemaByID(id descpb.ID) (catalog.SchemaDescriptor, bool) {
+	__antithesis_instrumentation__.Notify(267770)
 	sc, ok := virtualSchemasByID[id]
 	return sc, ok
 }
 
 var virtualSchemasByID = func() map[descpb.ID]catalog.SchemaDescriptor {
+	__antithesis_instrumentation__.Notify(267771)
 	m := make(map[descpb.ID]catalog.SchemaDescriptor, len(catconstants.StaticSchemaIDMap))
 	for id, name := range catconstants.StaticSchemaIDMap {
+		__antithesis_instrumentation__.Notify(267773)
 		id := descpb.ID(id)
 		sc := virtual{
 			synthetic: synthetic{virtualBase{}},
@@ -40,11 +28,10 @@ var virtualSchemasByID = func() map[descpb.ID]catalog.SchemaDescriptor {
 		}
 		m[id] = sc
 	}
+	__antithesis_instrumentation__.Notify(267772)
 	return m
 }()
 
-// virtual represents the virtual schemas which are part of every database.
-// See the commentary on GetVirtualSchemaByID.
 type virtual struct {
 	synthetic
 	id   descpb.ID
@@ -53,10 +40,14 @@ type virtual struct {
 
 var _ catalog.SchemaDescriptor = virtual{}
 
-func (p virtual) GetID() descpb.ID       { return p.id }
-func (p virtual) GetName() string        { return p.name }
-func (p virtual) GetParentID() descpb.ID { return descpb.InvalidID }
+func (p virtual) GetID() descpb.ID { __antithesis_instrumentation__.Notify(267774); return p.id }
+func (p virtual) GetName() string  { __antithesis_instrumentation__.Notify(267775); return p.name }
+func (p virtual) GetParentID() descpb.ID {
+	__antithesis_instrumentation__.Notify(267776)
+	return descpb.InvalidID
+}
 func (p virtual) GetPrivileges() *catpb.PrivilegeDescriptor {
+	__antithesis_instrumentation__.Notify(267777)
 	return catpb.NewVirtualSchemaPrivilegeDescriptor()
 }
 
@@ -64,5 +55,11 @@ type virtualBase struct{}
 
 var _ syntheticBase = virtualBase{}
 
-func (v virtualBase) kindName() string                 { return "virtual" }
-func (v virtualBase) kind() catalog.ResolvedSchemaKind { return catalog.SchemaVirtual }
+func (v virtualBase) kindName() string {
+	__antithesis_instrumentation__.Notify(267778)
+	return "virtual"
+}
+func (v virtualBase) kind() catalog.ResolvedSchemaKind {
+	__antithesis_instrumentation__.Notify(267779)
+	return catalog.SchemaVirtual
+}

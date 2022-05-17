@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package kvtenantccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,133 +13,183 @@ import (
 	"github.com/cockroachdb/errors/errorspb"
 )
 
-// runTenantSettingsSubscription listens for tenant setting override changes.
-// It closes the given channel once the initial set of overrides were obtained.
-// Exits when the context is done.
 func (c *Connector) runTenantSettingsSubscription(ctx context.Context, startupCh chan struct{}) {
+	__antithesis_instrumentation__.Notify(19826)
 	for ctx.Err() == nil {
+		__antithesis_instrumentation__.Notify(19827)
 		client, err := c.getClient(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19830)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(19831)
 		}
+		__antithesis_instrumentation__.Notify(19828)
 		stream, err := client.TenantSettings(ctx, &roachpb.TenantSettingsRequest{
 			TenantID: c.tenantID,
 		})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19832)
 			log.Warningf(ctx, "error issuing TenantSettings RPC: %v", err)
 			c.tryForgetClient(ctx, client)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(19833)
 		}
+		__antithesis_instrumentation__.Notify(19829)
 		for firstEventInStream := true; ; firstEventInStream = false {
+			__antithesis_instrumentation__.Notify(19834)
 			e, err := stream.Recv()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(19838)
 				if err == io.EOF {
+					__antithesis_instrumentation__.Notify(19840)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(19841)
 				}
-				// Soft RPC error. Drop client and retry.
+				__antithesis_instrumentation__.Notify(19839)
+
 				log.Warningf(ctx, "error consuming TenantSettings RPC: %v", err)
 				c.tryForgetClient(ctx, client)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(19842)
 			}
+			__antithesis_instrumentation__.Notify(19835)
 			if e.Error != (errorspb.EncodedError{}) {
-				// Hard logical error. We expect io.EOF next.
+				__antithesis_instrumentation__.Notify(19843)
+
 				log.Errorf(ctx, "error consuming TenantSettings RPC: %v", e.Error)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(19844)
 			}
+			__antithesis_instrumentation__.Notify(19836)
 
 			if err := c.processSettingsEvent(e, firstEventInStream); err != nil {
+				__antithesis_instrumentation__.Notify(19845)
 				log.Errorf(ctx, "error processing tenant settings event: %v", err)
 				_ = stream.CloseSend()
 				c.tryForgetClient(ctx, client)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(19846)
 			}
+			__antithesis_instrumentation__.Notify(19837)
 
-			// Signal that startup is complete once we receive an event.
 			if startupCh != nil {
+				__antithesis_instrumentation__.Notify(19847)
 				close(startupCh)
 				startupCh = nil
+			} else {
+				__antithesis_instrumentation__.Notify(19848)
 			}
 		}
 	}
 }
 
-// processSettingsEvent updates the setting overrides based on the event.
 func (c *Connector) processSettingsEvent(
 	e *roachpb.TenantSettingsEvent, firstEventInStream bool,
 ) error {
-	if firstEventInStream && e.Incremental {
+	__antithesis_instrumentation__.Notify(19849)
+	if firstEventInStream && func() bool {
+		__antithesis_instrumentation__.Notify(19855)
+		return e.Incremental == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(19856)
 		return errors.Newf("first event must not be Incremental")
+	} else {
+		__antithesis_instrumentation__.Notify(19857)
 	}
+	__antithesis_instrumentation__.Notify(19850)
 	c.settingsMu.Lock()
 	defer c.settingsMu.Unlock()
 
 	var m map[string]settings.EncodedValue
 	switch e.Precedence {
 	case roachpb.AllTenantsOverrides:
+		__antithesis_instrumentation__.Notify(19858)
 		m = c.settingsMu.allTenantOverrides
 	case roachpb.SpecificTenantOverrides:
+		__antithesis_instrumentation__.Notify(19859)
 		m = c.settingsMu.specificOverrides
 	default:
+		__antithesis_instrumentation__.Notify(19860)
 		return errors.Newf("unknown precedence value %d", e.Precedence)
 	}
+	__antithesis_instrumentation__.Notify(19851)
 
-	// If the event is not incremental, clear the map.
 	if !e.Incremental {
+		__antithesis_instrumentation__.Notify(19861)
 		for k := range m {
+			__antithesis_instrumentation__.Notify(19862)
 			delete(m, k)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(19863)
 	}
-	// Merge in the override changes.
+	__antithesis_instrumentation__.Notify(19852)
+
 	for _, o := range e.Overrides {
+		__antithesis_instrumentation__.Notify(19864)
 		if o.Value == (settings.EncodedValue{}) {
-			// Empty value indicates that the override is removed.
+			__antithesis_instrumentation__.Notify(19865)
+
 			delete(m, o.Name)
 		} else {
+			__antithesis_instrumentation__.Notify(19866)
 			m[o.Name] = o.Value
 		}
 	}
+	__antithesis_instrumentation__.Notify(19853)
 
-	// Do a non-blocking send on the notification channel (if it is not nil). This
-	// is a buffered channel and if it already contains a message, there's no
-	// point in sending a duplicate notification.
 	select {
 	case c.settingsMu.notifyCh <- struct{}{}:
+		__antithesis_instrumentation__.Notify(19867)
 	default:
+		__antithesis_instrumentation__.Notify(19868)
 	}
+	__antithesis_instrumentation__.Notify(19854)
 
 	return nil
 }
 
-// RegisterOverridesChannel is part of the settingswatcher.OverridesMonitor
-// interface.
 func (c *Connector) RegisterOverridesChannel() <-chan struct{} {
+	__antithesis_instrumentation__.Notify(19869)
 	c.settingsMu.Lock()
 	defer c.settingsMu.Unlock()
 	if c.settingsMu.notifyCh != nil {
+		__antithesis_instrumentation__.Notify(19871)
 		panic(errors.AssertionFailedf("multiple calls not supported"))
+	} else {
+		__antithesis_instrumentation__.Notify(19872)
 	}
+	__antithesis_instrumentation__.Notify(19870)
 	ch := make(chan struct{}, 1)
-	// Send an initial message on the channel.
+
 	ch <- struct{}{}
 	c.settingsMu.notifyCh = ch
 	return ch
 }
 
-// Overrides is part of the settingswatcher.OverridesMonitor interface.
 func (c *Connector) Overrides() map[string]settings.EncodedValue {
-	// We could be more efficient here, but we expect this function to be called
-	// only when there are changes (which should be rare).
+	__antithesis_instrumentation__.Notify(19873)
+
 	res := make(map[string]settings.EncodedValue)
 	c.settingsMu.Lock()
 	defer c.settingsMu.Unlock()
-	// First copy the all-tenant overrides.
+
 	for name, val := range c.settingsMu.allTenantOverrides {
+		__antithesis_instrumentation__.Notify(19876)
 		res[name] = val
 	}
-	// Then copy the specific overrides (which can overwrite some all-tenant
-	// overrides).
+	__antithesis_instrumentation__.Notify(19874)
+
 	for name, val := range c.settingsMu.specificOverrides {
+		__antithesis_instrumentation__.Notify(19877)
 		res[name] = val
 	}
+	__antithesis_instrumentation__.Notify(19875)
 	return res
 }

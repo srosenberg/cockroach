@@ -30,6 +30,7 @@ go_test(
         "//pkg/util/leaktest",
         "//pkg/util/log",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -38,4 +39,5 @@ go_library(
     srcs = ["doc.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/ccl/schemachangerccl",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

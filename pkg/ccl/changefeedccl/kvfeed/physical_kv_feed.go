@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package kvfeed
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,8 +13,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// physicalFeedFactory constructs a physical feed which writes into sink and
-// runs until the group's context expires.
 type physicalFeedFactory interface {
 	Run(ctx context.Context, sink kvevent.Writer, cfg physicalConfig) error
 }
@@ -47,23 +39,8 @@ type rangefeed struct {
 }
 
 func (p rangefeedFactory) Run(ctx context.Context, sink kvevent.Writer, cfg physicalConfig) error {
-	// To avoid blocking raft, RangeFeed puts all entries in a server side
-	// buffer. But to keep things simple, it's a small fixed-sized buffer. This
-	// means we need to ingest everything we get back as quickly as possible, so
-	// we throw it in a buffer here to pick up the slack between RangeFeed and
-	// the sink.
-	//
-	// TODO(dan): Right now, there are two buffers in the changefeed flow when
-	// using RangeFeeds, one here and the usual one between the KVFeed and the
-	// rest of the changefeed (the latter of which is implemented with an
-	// unbuffered channel, and so doesn't actually buffer). Ideally, we'd have
-	// one, but the structure of the KVFeed code right now makes this hard.
-	// Specifically, when a schema change happens, we need a barrier where we
-	// flush out every change before the schema change timestamp before we start
-	// emitting any changes from after the schema change. The KVFeed's
-	// `SchemaFeed` is responsible for detecting and enforcing these , but the
-	// after-KVFeed buffer doesn't have access to any of this state. A cleanup is
-	// in order.
+	__antithesis_instrumentation__.Notify(17346)
+
 	feed := rangefeed{
 		memBuf: sink,
 		cfg:    cfg,
@@ -72,56 +49,87 @@ func (p rangefeedFactory) Run(ctx context.Context, sink kvevent.Writer, cfg phys
 	g := ctxgroup.WithContext(ctx)
 	g.GoCtx(feed.addEventsToBuffer)
 	g.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(17348)
 		return p(ctx, cfg.Spans, cfg.Timestamp, cfg.WithDiff, feed.eventC)
 	})
+	__antithesis_instrumentation__.Notify(17347)
 	return g.Wait()
 }
 
 func (p *rangefeed) addEventsToBuffer(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(17349)
 	var backfillTimestamp hlc.Timestamp
 	for {
+		__antithesis_instrumentation__.Notify(17350)
 		select {
 		case e := <-p.eventC:
+			__antithesis_instrumentation__.Notify(17351)
 			switch t := e.GetValue().(type) {
 			case *roachpb.RangeFeedValue:
+				__antithesis_instrumentation__.Notify(17353)
 				kv := roachpb.KeyValue{Key: t.Key, Value: t.Value}
 				if p.cfg.Knobs.OnRangeFeedValue != nil {
+					__antithesis_instrumentation__.Notify(17360)
 					if err := p.cfg.Knobs.OnRangeFeedValue(kv); err != nil {
+						__antithesis_instrumentation__.Notify(17361)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(17362)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(17363)
 				}
+				__antithesis_instrumentation__.Notify(17354)
 				var prevVal roachpb.Value
 				if p.cfg.WithDiff {
+					__antithesis_instrumentation__.Notify(17364)
 					prevVal = t.PrevValue
+				} else {
+					__antithesis_instrumentation__.Notify(17365)
 				}
+				__antithesis_instrumentation__.Notify(17355)
 				if err := p.memBuf.Add(
 					ctx,
 					kvevent.MakeKVEvent(kv, prevVal, backfillTimestamp),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(17366)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(17367)
 				}
 			case *roachpb.RangeFeedCheckpoint:
-				if !t.ResolvedTS.IsEmpty() && t.ResolvedTS.Less(p.cfg.Timestamp) {
-					// RangeFeed happily forwards any closed timestamps it receives as
-					// soon as there are no outstanding intents under them.
-					// Changefeeds don't care about these at all, so throw them out.
+				__antithesis_instrumentation__.Notify(17356)
+				if !t.ResolvedTS.IsEmpty() && func() bool {
+					__antithesis_instrumentation__.Notify(17368)
+					return t.ResolvedTS.Less(p.cfg.Timestamp) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(17369)
+
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(17370)
 				}
+				__antithesis_instrumentation__.Notify(17357)
 				if err := p.memBuf.Add(
 					ctx,
 					kvevent.MakeResolvedEvent(t.Span, t.ResolvedTS, jobspb.ResolvedSpan_NONE),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(17371)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(17372)
 				}
 			case *roachpb.RangeFeedSSTable:
-				// For now, we just error on SST ingestion, since we currently don't
-				// expect SST ingestion into spans with active changefeeds.
+				__antithesis_instrumentation__.Notify(17358)
+
 				return errors.Errorf("unexpected SST ingestion: %v", t)
 
 			default:
+				__antithesis_instrumentation__.Notify(17359)
 				return errors.Errorf("unexpected RangeFeedEvent variant %v", t)
 			}
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(17352)
 			return ctx.Err()
 		}
 	}

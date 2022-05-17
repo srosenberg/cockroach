@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvcoord
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,202 +12,241 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// A RangeIterator provides a mechanism for iterating over all ranges
-// in a key span. A new RangeIterator must be positioned with Seek()
-// to begin iteration.
-//
-// RangeIterator is not thread-safe.
 type RangeIterator struct {
 	ds      *DistSender
 	scanDir ScanDirection
 	key     roachpb.RKey
-	// token represents the results of the latest cache lookup.
+
 	token rangecache.EvictionToken
 	init  bool
 	err   error
 }
 
-// MakeRangeIterator creates a new RangeIterator.
 func MakeRangeIterator(ds *DistSender) RangeIterator {
+	__antithesis_instrumentation__.Notify(87825)
 	return RangeIterator{
 		ds: ds,
 	}
 }
 
-// ScanDirection determines the semantics of RangeIterator.Next() and
-// RangeIterator.NeedAnother().
 type ScanDirection byte
 
 const (
-	// Ascending means Next() will advance towards keys that compare higher.
 	Ascending ScanDirection = iota
-	// Descending means Next() will advance towards keys that compare lower.
+
 	Descending
 )
 
-// Key returns the current key. The iterator must be valid.
 func (ri *RangeIterator) Key() roachpb.RKey {
+	__antithesis_instrumentation__.Notify(87826)
 	if !ri.Valid() {
+		__antithesis_instrumentation__.Notify(87828)
 		panic(ri.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(87829)
 	}
+	__antithesis_instrumentation__.Notify(87827)
 	return ri.key
 }
 
-// Desc returns the descriptor of the range at which the iterator is
-// currently positioned. The iterator must be valid.
-//
-// The returned descriptor is immutable.
 func (ri *RangeIterator) Desc() *roachpb.RangeDescriptor {
+	__antithesis_instrumentation__.Notify(87830)
 	if !ri.Valid() {
+		__antithesis_instrumentation__.Notify(87832)
 		panic(ri.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(87833)
 	}
+	__antithesis_instrumentation__.Notify(87831)
 	return ri.token.Desc()
 }
 
-// Leaseholder returns information about the leaseholder of the range at which
-// the iterator is currently positioned. The iterator must be valid.
-//
-// The lease information comes from a cache, and so it can be stale. Returns nil
-// if no lease information is known.
-//
-// The returned lease is immutable.
 func (ri *RangeIterator) Leaseholder() *roachpb.ReplicaDescriptor {
+	__antithesis_instrumentation__.Notify(87834)
 	if !ri.Valid() {
+		__antithesis_instrumentation__.Notify(87836)
 		panic(ri.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(87837)
 	}
+	__antithesis_instrumentation__.Notify(87835)
 	return ri.token.Leaseholder()
 }
 
-// ClosedTimestampPolicy returns the closed timestamp policy of the range at
-// which the iterator is currently positioned. The iterator must be valid.
-//
-// The policy information comes from a cache, and so it can be stale. Returns
-// the default policy of LAG_BY_CLUSTER_SETTING if no policy information is
-// known.
 func (ri *RangeIterator) ClosedTimestampPolicy() roachpb.RangeClosedTimestampPolicy {
+	__antithesis_instrumentation__.Notify(87838)
 	if !ri.Valid() {
+		__antithesis_instrumentation__.Notify(87840)
 		panic(ri.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(87841)
 	}
+	__antithesis_instrumentation__.Notify(87839)
 	return ri.token.ClosedTimestampPolicy()
 }
 
-// Token returns the eviction token corresponding to the range
-// descriptor for the current iteration. The iterator must be valid.
 func (ri *RangeIterator) Token() rangecache.EvictionToken {
+	__antithesis_instrumentation__.Notify(87842)
 	if !ri.Valid() {
+		__antithesis_instrumentation__.Notify(87844)
 		panic(ri.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(87845)
 	}
+	__antithesis_instrumentation__.Notify(87843)
 	return ri.token
 }
 
-// NeedAnother checks whether the iteration needs to continue to cover
-// the remainder of the ranges described by the supplied key span. The
-// iterator must be valid.
 func (ri *RangeIterator) NeedAnother(rs roachpb.RSpan) bool {
+	__antithesis_instrumentation__.Notify(87846)
 	if !ri.Valid() {
+		__antithesis_instrumentation__.Notify(87850)
 		panic(ri.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(87851)
 	}
+	__antithesis_instrumentation__.Notify(87847)
 	if rs.EndKey == nil {
+		__antithesis_instrumentation__.Notify(87852)
 		panic("NeedAnother() undefined for spans representing a single key")
+	} else {
+		__antithesis_instrumentation__.Notify(87853)
 	}
+	__antithesis_instrumentation__.Notify(87848)
 	if ri.scanDir == Ascending {
+		__antithesis_instrumentation__.Notify(87854)
 		return ri.Desc().EndKey.Less(rs.EndKey)
+	} else {
+		__antithesis_instrumentation__.Notify(87855)
 	}
+	__antithesis_instrumentation__.Notify(87849)
 	return rs.Key.Less(ri.Desc().StartKey)
 }
 
-// Valid returns whether the iterator is valid. To be valid, the
-// iterator must be have been seeked to an initial position using
-// Seek(), and must not have encountered an error.
 func (ri *RangeIterator) Valid() bool {
+	__antithesis_instrumentation__.Notify(87856)
 	return ri.Error() == nil
 }
 
 var errRangeIterNotInitialized = errors.New("range iterator not intialized with Seek()")
 
-// Error returns the error the iterator encountered, if any. If
-// the iterator has not been initialized, returns iterator error.
 func (ri *RangeIterator) Error() error {
+	__antithesis_instrumentation__.Notify(87857)
 	if !ri.init {
-		return errRangeIterNotInitialized // hot path
+		__antithesis_instrumentation__.Notify(87859)
+		return errRangeIterNotInitialized
+	} else {
+		__antithesis_instrumentation__.Notify(87860)
 	}
+	__antithesis_instrumentation__.Notify(87858)
 	return ri.err
 }
 
-// Reset resets the RangeIterator to its initial state.
 func (ri *RangeIterator) Reset() {
+	__antithesis_instrumentation__.Notify(87861)
 	*ri = RangeIterator{ds: ri.ds}
 }
 
-// Silence unused warning.
 var _ = (*RangeIterator)(nil).Reset
 
-// Next advances the iterator to the next range. The direction of
-// advance is dependent on whether the iterator is reversed. The
-// iterator must be valid.
 func (ri *RangeIterator) Next(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(87862)
 	if !ri.Valid() {
+		__antithesis_instrumentation__.Notify(87864)
 		panic(ri.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(87865)
 	}
-	// Determine next span when the current range is subtracted.
+	__antithesis_instrumentation__.Notify(87863)
+
 	if ri.scanDir == Ascending {
+		__antithesis_instrumentation__.Notify(87866)
 		ri.Seek(ctx, ri.Desc().EndKey, ri.scanDir)
 	} else {
+		__antithesis_instrumentation__.Notify(87867)
 		ri.Seek(ctx, ri.Desc().StartKey, ri.scanDir)
 	}
 }
 
-// Seek positions the iterator at the specified key.
 func (ri *RangeIterator) Seek(ctx context.Context, key roachpb.RKey, scanDir ScanDirection) {
+	__antithesis_instrumentation__.Notify(87868)
 	if log.HasSpanOrEvent(ctx) {
+		__antithesis_instrumentation__.Notify(87872)
 		rev := ""
 		if scanDir == Descending {
+			__antithesis_instrumentation__.Notify(87874)
 			rev = " (rev)"
+		} else {
+			__antithesis_instrumentation__.Notify(87875)
 		}
+		__antithesis_instrumentation__.Notify(87873)
 		log.Eventf(ctx, "querying next range at %s%s", key, rev)
+	} else {
+		__antithesis_instrumentation__.Notify(87876)
 	}
+	__antithesis_instrumentation__.Notify(87869)
 	ri.scanDir = scanDir
-	ri.init = true // the iterator is now initialized
-	ri.err = nil   // clear any prior error
-	ri.key = key   // set the key
+	ri.init = true
+	ri.err = nil
+	ri.key = key
 
-	if (scanDir == Ascending && key.Equal(roachpb.RKeyMax)) ||
-		(scanDir == Descending && key.Equal(roachpb.RKeyMin)) {
+	if (scanDir == Ascending && func() bool {
+		__antithesis_instrumentation__.Notify(87877)
+		return key.Equal(roachpb.RKeyMax) == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(87878)
+		return (scanDir == Descending && func() bool {
+			__antithesis_instrumentation__.Notify(87879)
+			return key.Equal(roachpb.RKeyMin) == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87880)
 		ri.err = errors.Errorf("RangeIterator seek to invalid key %s", key)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(87881)
 	}
+	__antithesis_instrumentation__.Notify(87870)
 
-	// Retry loop for looking up next range in the span. The retry loop
-	// deals with retryable range descriptor lookups.
 	var err error
 	for r := retry.StartWithCtx(ctx, ri.ds.rpcRetryOptions); r.Next(); {
+		__antithesis_instrumentation__.Notify(87882)
 		var rngInfo rangecache.EvictionToken
 		rngInfo, err = ri.ds.getRoutingInfo(ctx, ri.key, ri.token, ri.scanDir == Descending)
 
-		// getRoutingInfo may fail retryably if, for example, the first
-		// range isn't available via Gossip. Assume that all errors at
-		// this level are retryable. Non-retryable errors would be for
-		// things like malformed requests which we should have checked
-		// for before reaching this point.
 		if err != nil {
+			__antithesis_instrumentation__.Notify(87885)
 			log.VEventf(ctx, 1, "range descriptor lookup failed: %s", err)
 			if !rangecache.IsRangeLookupErrorRetryable(err) {
+				__antithesis_instrumentation__.Notify(87887)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(87888)
 			}
+			__antithesis_instrumentation__.Notify(87886)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(87889)
 		}
+		__antithesis_instrumentation__.Notify(87883)
 		if log.V(2) {
+			__antithesis_instrumentation__.Notify(87890)
 			log.Infof(ctx, "key: %s, desc: %s", ri.key, rngInfo.Desc())
+		} else {
+			__antithesis_instrumentation__.Notify(87891)
 		}
+		__antithesis_instrumentation__.Notify(87884)
 
 		ri.token = rngInfo
 		return
 	}
+	__antithesis_instrumentation__.Notify(87871)
 
-	// Check for an early exit from the retry loop.
 	if deducedErr := ri.ds.deduceRetryEarlyExitError(ctx); deducedErr != nil {
+		__antithesis_instrumentation__.Notify(87892)
 		ri.err = deducedErr
 	} else {
+		__antithesis_instrumentation__.Notify(87893)
 		ri.err = errors.Wrapf(err, "RangeIterator failed to seek to %s", key)
 	}
 }

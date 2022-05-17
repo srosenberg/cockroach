@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,8 +22,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// rowFetcher is an interface used to abstract a row.Fetcher so that a stat
-// collector wrapper can be plugged in.
 type rowFetcher interface {
 	StartScan(
 		_ context.Context, _ *kv.Txn, _ roachpb.Spans, batchBytesLimit rowinfra.BytesLimit,
@@ -56,16 +46,13 @@ type rowFetcher interface {
 		ctx context.Context, destination rowenc.EncDatumRow, colIdxMap catalog.TableColMap,
 	) (ok bool, err error)
 
-	// PartialKey is not stat-related but needs to be supported.
 	PartialKey(nCols int) (roachpb.Key, error)
 	Reset()
 	GetBytesRead() int64
-	// Close releases any resources held by this fetcher.
+
 	Close(ctx context.Context)
 }
 
-// makeRowFetcherLegacy is a legacy version of the row fetcher which uses
-// the valNeededForCol ordinal set to determine the fetcher columns.
 func makeRowFetcherLegacy(
 	flowCtx *execinfra.FlowCtx,
 	desc catalog.TableDescriptor,
@@ -78,30 +65,52 @@ func makeRowFetcherLegacy(
 	lockWaitPolicy descpb.ScanLockingWaitPolicy,
 	withSystemColumns bool,
 ) (*row.Fetcher, error) {
+	__antithesis_instrumentation__.Notify(574443)
 	colIDs := make([]descpb.ColumnID, 0, len(desc.AllColumns()))
 	for i, col := range desc.ReadableColumns() {
+		__antithesis_instrumentation__.Notify(574449)
 		if valNeededForCol.Contains(i) {
+			__antithesis_instrumentation__.Notify(574450)
 			colIDs = append(colIDs, col.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(574451)
 		}
 	}
+	__antithesis_instrumentation__.Notify(574444)
 	if withSystemColumns {
+		__antithesis_instrumentation__.Notify(574452)
 		start := len(desc.ReadableColumns())
 		for i, col := range desc.SystemColumns() {
+			__antithesis_instrumentation__.Notify(574453)
 			if valNeededForCol.Contains(start + i) {
+				__antithesis_instrumentation__.Notify(574454)
 				colIDs = append(colIDs, col.GetID())
+			} else {
+				__antithesis_instrumentation__.Notify(574455)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(574456)
 	}
+	__antithesis_instrumentation__.Notify(574445)
 
 	if indexIdx >= len(desc.ActiveIndexes()) {
+		__antithesis_instrumentation__.Notify(574457)
 		return nil, errors.Errorf("invalid indexIdx %d", indexIdx)
+	} else {
+		__antithesis_instrumentation__.Notify(574458)
 	}
+	__antithesis_instrumentation__.Notify(574446)
 	index := desc.ActiveIndexes()[indexIdx]
 
 	var spec descpb.IndexFetchSpec
 	if err := rowenc.InitIndexFetchSpec(&spec, flowCtx.Codec(), desc, index, colIDs); err != nil {
+		__antithesis_instrumentation__.Notify(574459)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(574460)
 	}
+	__antithesis_instrumentation__.Notify(574447)
 
 	fetcher := &row.Fetcher{}
 	if err := fetcher.Init(
@@ -114,7 +123,11 @@ func makeRowFetcherLegacy(
 		mon,
 		&spec,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(574461)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(574462)
 	}
+	__antithesis_instrumentation__.Notify(574448)
 	return fetcher, nil
 }

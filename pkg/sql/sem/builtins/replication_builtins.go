@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package builtins
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
@@ -19,18 +11,21 @@ import (
 )
 
 func initReplicationBuiltins() {
-	// Add all replicationBuiltins to the Builtins map after a sanity check.
+	__antithesis_instrumentation__.Notify(602309)
+
 	for k, v := range replicationBuiltins {
+		__antithesis_instrumentation__.Notify(602310)
 		if _, exists := builtins[k]; exists {
+			__antithesis_instrumentation__.Notify(602312)
 			panic("duplicate builtin: " + k)
+		} else {
+			__antithesis_instrumentation__.Notify(602313)
 		}
+		__antithesis_instrumentation__.Notify(602311)
 		builtins[k] = v
 	}
 }
 
-// replication builtins contains the cluster to cluster replication built-in functions indexed by name.
-//
-// For use in other packages, see AllBuiltinNames and GetBuiltinProperties().
 var replicationBuiltins = map[string]builtinDefinition{
 	"crdb_internal.complete_stream_ingestion_job": makeBuiltin(
 		tree.FunctionProperties{
@@ -44,18 +39,27 @@ var replicationBuiltins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(602314)
 				mgr, err := streaming.GetReplicationStreamManager(evalCtx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602317)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602318)
 				}
+				__antithesis_instrumentation__.Notify(602315)
 
 				streamID := streaming.StreamID(*args[0].(*tree.DInt))
 				cutoverTime := args[1].(*tree.DTimestampTZ).Time
 				cutoverTimestamp := hlc.Timestamp{WallTime: cutoverTime.UnixNano()}
 				err = mgr.CompleteStreamIngestion(evalCtx, evalCtx.Txn, streamID, cutoverTimestamp)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602319)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602320)
 				}
+				__antithesis_instrumentation__.Notify(602316)
 				return tree.NewDInt(tree.DInt(streamID)), err
 			},
 			Info: "This function can be used to signal a running stream ingestion job to complete. " +
@@ -81,18 +85,31 @@ var replicationBuiltins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(602321)
 				mgr, err := streaming.GetReplicationStreamManager(evalCtx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602325)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602326)
 				}
+				__antithesis_instrumentation__.Notify(602322)
 				tenantID, err := mustBeDIntInTenantRange(args[0])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602327)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602328)
 				}
+				__antithesis_instrumentation__.Notify(602323)
 				jobID, err := mgr.StartReplicationStream(evalCtx, evalCtx.Txn, uint64(tenantID))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602329)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602330)
 				}
+				__antithesis_instrumentation__.Notify(602324)
 				return tree.NewDInt(tree.DInt(jobID)), err
 			},
 			Info: "This function can be used on the producer side to start a replication stream for " +
@@ -115,23 +132,40 @@ var replicationBuiltins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(602331)
 				mgr, err := streaming.GetReplicationStreamManager(evalCtx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602336)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602337)
 				}
+				__antithesis_instrumentation__.Notify(602332)
 				frontier, err := hlc.ParseTimestamp(string(tree.MustBeDString(args[1])))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602338)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602339)
 				}
+				__antithesis_instrumentation__.Notify(602333)
 				streamID := streaming.StreamID(int(tree.MustBeDInt(args[0])))
 				sps, err := mgr.UpdateReplicationStreamProgress(evalCtx, streamID, frontier, evalCtx.Txn)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602340)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602341)
 				}
+				__antithesis_instrumentation__.Notify(602334)
 				rawStatus, err := protoutil.Marshal(&sps)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602342)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602343)
 				}
+				__antithesis_instrumentation__.Notify(602335)
 				return tree.NewDBytes(tree.DBytes(rawStatus)), nil
 			},
 			Info: "This function can be used on the consumer side to heartbeat its replication progress to " +
@@ -156,10 +190,15 @@ var replicationBuiltins = map[string]builtinDefinition{
 				[]string{"stream_event"},
 			),
 			func(evalCtx *tree.EvalContext, args tree.Datums) (tree.ValueGenerator, error) {
+				__antithesis_instrumentation__.Notify(602344)
 				mgr, err := streaming.GetReplicationStreamManager(evalCtx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602346)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602347)
 				}
+				__antithesis_instrumentation__.Notify(602345)
 				return mgr.StreamPartition(
 					evalCtx,
 					streaming.StreamID(tree.MustBeDInt(args[0])),
@@ -182,20 +221,33 @@ var replicationBuiltins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(602348)
 				mgr, err := streaming.GetReplicationStreamManager(evalCtx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602352)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602353)
 				}
+				__antithesis_instrumentation__.Notify(602349)
 
 				streamID := int64(tree.MustBeDInt(args[0]))
 				spec, err := mgr.GetReplicationStreamSpec(evalCtx, evalCtx.Txn, streaming.StreamID(streamID))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602354)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602355)
 				}
+				__antithesis_instrumentation__.Notify(602350)
 				rawSpec, err := protoutil.Marshal(spec)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(602356)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(602357)
 				}
+				__antithesis_instrumentation__.Notify(602351)
 				return tree.NewDBytes(tree.DBytes(rawSpec)), err
 			},
 			Info: "This function can be used on the consumer side to get a replication stream specification " +

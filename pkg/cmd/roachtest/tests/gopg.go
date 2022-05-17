@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -27,12 +19,11 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Currently, we're running a version like 'v9.0.1'.
 var gopgReleaseTagRegex = regexp.MustCompile(`^v(?P<major>\d+)(?:\.(?P<minor>\d+)(?:\.(?P<point>\d+))?)?$`)
 var gopgSupportedTag = "v10.9.0"
 
-// This test runs gopg full test suite against a single cockroach node.
 func registerGopg(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(48015)
 	const (
 		destPath        = `/mnt/data1/go-pg/pg`
 		resultsDirPath  = `~/logs/report/gopg-results`
@@ -44,27 +35,44 @@ func registerGopg(r registry.Registry) {
 		t test.Test,
 		c cluster.Cluster,
 	) {
+		__antithesis_instrumentation__.Notify(48017)
 		if c.IsLocal() {
+			__antithesis_instrumentation__.Notify(48030)
 			t.Fatal("cannot be run in local mode")
+		} else {
+			__antithesis_instrumentation__.Notify(48031)
 		}
+		__antithesis_instrumentation__.Notify(48018)
 		node := c.Node(1)
 		t.Status("setting up cockroach")
 		c.Put(ctx, t.Cockroach(), "./cockroach", c.All())
 		c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.All())
 		version, err := fetchCockroachVersion(ctx, t.L(), c, node[0])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(48032)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48033)
 		}
+		__antithesis_instrumentation__.Notify(48019)
 
 		if err := alterZoneConfigAndClusterSettings(ctx, t, version, c, node[0]); err != nil {
+			__antithesis_instrumentation__.Notify(48034)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48035)
 		}
+		__antithesis_instrumentation__.Notify(48020)
 
 		t.Status("cloning gopg and installing prerequisites")
 		gopgLatestTag, err := repeatGetLatestTag(ctx, t, "go-pg", "pg", gopgReleaseTagRegex)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(48036)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48037)
 		}
+		__antithesis_instrumentation__.Notify(48021)
 		t.L().Printf("Latest gopg release is %s.", gopgLatestTag)
 		t.L().Printf("Supported gopg release is %s.", gopgSupportedTag)
 
@@ -74,8 +82,12 @@ func registerGopg(r registry.Registry) {
 			ctx, t, c, node, "remove old gopg",
 			fmt.Sprintf(`sudo rm -rf %s`, destPath),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(48038)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48039)
 		}
+		__antithesis_instrumentation__.Notify(48022)
 
 		if err := repeatGitCloneE(
 			ctx,
@@ -86,27 +98,40 @@ func registerGopg(r registry.Registry) {
 			gopgSupportedTag,
 			node,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(48040)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48041)
 		}
+		__antithesis_instrumentation__.Notify(48023)
 
 		blocklistName, expectedFailures, ignorelistName, ignorelist := gopgBlocklists.getLists(version)
 		if expectedFailures == nil {
+			__antithesis_instrumentation__.Notify(48042)
 			t.Fatalf("No gopg blocklist defined for cockroach version %s", version)
+		} else {
+			__antithesis_instrumentation__.Notify(48043)
 		}
+		__antithesis_instrumentation__.Notify(48024)
 		if ignorelist == nil {
+			__antithesis_instrumentation__.Notify(48044)
 			t.Fatalf("No gopg ignorelist defined for cockroach version %s", version)
+		} else {
+			__antithesis_instrumentation__.Notify(48045)
 		}
+		__antithesis_instrumentation__.Notify(48025)
 		t.L().Printf("Running cockroach version %s, using blocklist %s, using ignorelist %s",
 			version, blocklistName, ignorelistName)
 
 		if err := c.RunE(ctx, node, fmt.Sprintf("mkdir -p %s", resultsDirPath)); err != nil {
+			__antithesis_instrumentation__.Notify(48046)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48047)
 		}
+		__antithesis_instrumentation__.Notify(48026)
 		t.Status("running gopg test suite")
 
-		// go test provides colorful output which - when redirected - interferes
-		// with matching of the blocklisted tests, so we will strip off all color
-		// code escape sequences.
 		const removeColorCodes = `sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"`
 
 		result, err := c.RunWithDetailsSingleNode(ctx, t.L(), node,
@@ -115,63 +140,68 @@ func registerGopg(r registry.Registry) {
 				destPath, removeColorCodes, resultsFilePath),
 		)
 
-		// Expected to fail but we should still scan the error to check if
-		// there's an SSH/roachprod error.
 		if err != nil {
-			// install.NonZeroExitCode includes unrelated to SSH errors ("255")
-			// or roachprod errors, so we call t.Fatal if the error is not an
-			// install.NonZeroExitCode error
+			__antithesis_instrumentation__.Notify(48048)
+
 			commandError := (*install.NonZeroExitCode)(nil)
 			if !errors.As(err, &commandError) {
+				__antithesis_instrumentation__.Notify(48049)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(48050)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(48051)
 		}
+		__antithesis_instrumentation__.Notify(48027)
 
 		rawResults := []byte(result.Stdout + result.Stderr)
 		t.Status("collating the test results")
 		t.L().Printf("Test Results: %s", rawResults)
 		results := newORMTestsResults()
 
-		// gopg test suite consists of multiple tests, some of them being a full
-		// test suites in themselves. Those are run with TestGinkgo test harness.
-		// First, we parse the result of running TestGinkgo.
 		if err := gopgParseTestGinkgoOutput(
 			results, rawResults, expectedFailures, ignorelist,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(48052)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48053)
 		}
-
-		// Now we parse the output of top-level tests.
+		__antithesis_instrumentation__.Notify(48028)
 
 		result, err = c.RunWithDetailsSingleNode(ctx, t.L(), node,
-			// We pipe the test output into go-junit-report tool which will output
-			// it in XML format.
+
 			fmt.Sprintf(`cd %s &&
 							GOPATH=%s go get -u github.com/jstemmer/go-junit-report &&
 							cat %s | %s/bin/go-junit-report`,
 				destPath, goPath, resultsFilePath, goPath),
 		)
 
-		// Expected to fail but we should still scan the error to check if
-		// there's an SSH/roachprod error.
 		if err != nil {
-			// install.NonZeroExitCode includes unrelated to SSH errors ("255")
-			// or roachprod errors, so we call t.Fatal if the error is not an
-			// install.NonZeroExitCode error
+			__antithesis_instrumentation__.Notify(48054)
+
 			commandError := (*install.NonZeroExitCode)(nil)
 			if !errors.As(err, &commandError) {
+				__antithesis_instrumentation__.Notify(48055)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(48056)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(48057)
 		}
+		__antithesis_instrumentation__.Notify(48029)
 
 		xmlResults := []byte(result.Stdout + result.Stderr)
 
 		results.parseJUnitXML(t, expectedFailures, ignorelist, xmlResults)
 		results.summarizeFailed(
 			t, "gopg", blocklistName, expectedFailures, version, gopgSupportedTag,
-			0, /* notRunCount */
+			0,
 		)
 	}
+	__antithesis_instrumentation__.Notify(48016)
 
 	r.Add(registry.TestSpec{
 		Name:    "gopg",
@@ -179,127 +209,148 @@ func registerGopg(r registry.Registry) {
 		Cluster: r.MakeClusterSpec(1),
 		Tags:    []string{`default`, `orm`},
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(48058)
 			runGopg(ctx, t, c)
 		},
 	})
 }
 
-// gopgParseTestGinkgoOutput parses the summary of failures of running internal
-// test suites from gopg ORM tests. TestGinkgo is a test harness that runs
-// several test suites described by gopg.
 func gopgParseTestGinkgoOutput(
 	r *ormTestsResults, rawResults []byte, expectedFailures, ignorelist blocklist,
 ) (err error) {
+	__antithesis_instrumentation__.Notify(48059)
 	var (
 		totalRunCount, totalTestCount int
 		testSuiteStart                = regexp.MustCompile(`Running Suite: (?P<testsuite>[\w]+)`)
 		summaryStartRegex             = regexp.MustCompile(`Summarizing [\d]+ Failures?:`)
 		summaryEndRegex               = regexp.MustCompile(`Ran (?P<runCount>[\d]+) of (?P<testCount>[\d]+) Specs? in [\d]+\.[\d]+ seconds`)
-		// The test failures are of the form '[Fail] DB.Select [It] selects bytea'.
-		// We assign each test a name of the form
-		// '<test suite name> | <class> | <name>'.
+
 		failureRegex                      = regexp.MustCompile(`\[(Fail|Panic!)\] (?P<class>.*) \[[\w]+\] (?P<name>.*)`)
 		testGinkgoInternalTestNamePattern = `%s | %s | %s`
 		testGinkgoInternalTestNameRE      = regexp.MustCompile(`.* | .* | .*`)
 	)
 	scanner := bufio.NewScanner(bytes.NewReader(rawResults))
 	for scanner.Scan() {
+		__antithesis_instrumentation__.Notify(48062)
 		line := scanner.Bytes()
 		if testSuiteStart.Match(line) {
+			__antithesis_instrumentation__.Notify(48063)
 			match := testSuiteStart.FindSubmatch(line)
 			if match == nil {
+				__antithesis_instrumentation__.Notify(48066)
 				return errors.New("unexpectedly didn't find the name of the internal test suite")
+			} else {
+				__antithesis_instrumentation__.Notify(48067)
 			}
+			__antithesis_instrumentation__.Notify(48064)
 			testSuiteName := string(match[1])
-			// The test output is huge, but it doesn't print out the passed tests, so
-			// we focus only on the failed ones. Conveniently, the output does
-			// provide a summary of all failed tests, so we skip everything until we
-			// get to it.
 
-			// First, we skip all the details about the failures until we get to the
-			// summary.
 			for scanner.Scan() {
+				__antithesis_instrumentation__.Notify(48068)
 				line = scanner.Bytes()
 				if testSuiteStart.Match(line) {
-					// We have reached the beginning of the new internal test suite which
-					// means that the current suite didn't have any failures, so we need
-					// to update the test suite name.
+					__antithesis_instrumentation__.Notify(48069)
+
 					match = testSuiteStart.FindSubmatch(line)
 					if match == nil {
+						__antithesis_instrumentation__.Notify(48071)
 						return errors.New("unexpectedly didn't find the name of the internal test suite")
+					} else {
+						__antithesis_instrumentation__.Notify(48072)
 					}
+					__antithesis_instrumentation__.Notify(48070)
 					testSuiteName = string(match[1])
-				} else if summaryStartRegex.Match(line) {
-					break
+				} else {
+					__antithesis_instrumentation__.Notify(48073)
+					if summaryStartRegex.Match(line) {
+						__antithesis_instrumentation__.Notify(48074)
+						break
+					} else {
+						__antithesis_instrumentation__.Notify(48075)
+					}
 				}
 			}
-			// Now we parse all failures for the test suite until we get to the end
-			// of the summary.
+			__antithesis_instrumentation__.Notify(48065)
+
 			for scanner.Scan() {
+				__antithesis_instrumentation__.Notify(48076)
 				line = scanner.Bytes()
-				// The summary ends with a line like
-				// 'Ran 134 of 134 Specs in 91.782 seconds',
-				// so we first check whether we have reached the end of the summary,
-				// and if so, we get the runCount and totalCount and stop parsing the
-				// test output.
+
 				match = summaryEndRegex.FindSubmatch(line)
 				if match != nil {
+					__antithesis_instrumentation__.Notify(48078)
 					var runCount, totalCount int
 					runCount, err = strconv.Atoi(string(match[1]))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(48081)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(48082)
 					}
+					__antithesis_instrumentation__.Notify(48079)
 					totalCount, err = strconv.Atoi(string(match[2]))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(48083)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(48084)
 					}
+					__antithesis_instrumentation__.Notify(48080)
 					totalRunCount += runCount
 					totalTestCount += totalCount
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(48085)
 				}
-				// The summary consists of entries like
-				// ```
-				//
-				// [Fail] DB.Select [It] selects bytea
-				// /mnt/data1/go-pg/pg/db_test.go:831
-				// ```
-				// for each test failure. We ignore all empty lines as well as all
-				// lines that point to the code and parse only the "core" of the
-				// entry.
+				__antithesis_instrumentation__.Notify(48077)
+
 				match = failureRegex.FindSubmatch(line)
 				if match != nil {
+					__antithesis_instrumentation__.Notify(48086)
 					class := string(match[2])
 					name := strings.TrimSpace(string(match[3]))
 					failedTest := fmt.Sprintf(testGinkgoInternalTestNamePattern, testSuiteName, class, name)
 					if _, ignore := ignorelist[failedTest]; ignore {
-						// We ignore this test failure.
+						__antithesis_instrumentation__.Notify(48088)
+
 						r.ignoredCount++
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(48089)
 					}
+					__antithesis_instrumentation__.Notify(48087)
 					r.currentFailures = append(r.currentFailures, failedTest)
 					if _, ok := expectedFailures[failedTest]; ok {
+						__antithesis_instrumentation__.Notify(48090)
 						r.failExpectedCount++
 					} else {
+						__antithesis_instrumentation__.Notify(48091)
 						r.failUnexpectedCount++
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(48092)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(48093)
 		}
 	}
+	__antithesis_instrumentation__.Notify(48060)
 
-	// Blocklist contains both the expected failures for "global" tests as well
-	// as TestGinkgo's tests. We need to figure the number of the latter ones.
 	testGinkgoExpectedFailures := 0
 	for failure := range expectedFailures {
+		__antithesis_instrumentation__.Notify(48094)
 		if testGinkgoInternalTestNameRE.MatchString(failure) {
+			__antithesis_instrumentation__.Notify(48095)
 			testGinkgoExpectedFailures++
+		} else {
+			__antithesis_instrumentation__.Notify(48096)
 		}
 	}
+	__antithesis_instrumentation__.Notify(48061)
 
-	// Since the passed tests within TestGinkgo are not printed out, we need to
-	// do a little bit of math to figure out the numbers below.
 	passCount := totalRunCount - r.failExpectedCount - r.failUnexpectedCount
 	r.passUnexpectedCount = testGinkgoExpectedFailures - r.failExpectedCount
 	r.passExpectedCount = passCount - r.passUnexpectedCount
-	return nil /* err */
+	return nil
 }

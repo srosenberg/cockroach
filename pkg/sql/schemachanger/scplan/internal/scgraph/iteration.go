@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scgraph
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scpb"
@@ -16,56 +8,70 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/iterutil"
 )
 
-// NodeIterator is used to iterate nodes. Return iterutil.StopIteration to
-// return early with no error.
 type NodeIterator func(n *screl.Node) error
 
-// ForEachNode iterates the nodes in the graph.
 func (g *Graph) ForEachNode(it NodeIterator) error {
+	__antithesis_instrumentation__.Notify(594351)
 	for _, m := range g.targetNodes {
+		__antithesis_instrumentation__.Notify(594353)
 		for i := 0; i < scpb.NumStatus; i++ {
+			__antithesis_instrumentation__.Notify(594354)
 			if ts, ok := m[scpb.Status(i)]; ok {
+				__antithesis_instrumentation__.Notify(594355)
 				if err := it(ts); err != nil {
+					__antithesis_instrumentation__.Notify(594356)
 					if iterutil.Done(err) {
+						__antithesis_instrumentation__.Notify(594358)
 						err = nil
+					} else {
+						__antithesis_instrumentation__.Notify(594359)
 					}
+					__antithesis_instrumentation__.Notify(594357)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(594360)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(594361)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(594352)
 	return nil
 }
 
-// EdgeIterator is used to iterate edges. Return iterutil.StopIteration to
-// return early with no error.
 type EdgeIterator func(e Edge) error
 
-// ForEachEdge iterates the edges in the graph.
 func (g *Graph) ForEachEdge(it EdgeIterator) error {
+	__antithesis_instrumentation__.Notify(594362)
 	for _, e := range g.edges {
+		__antithesis_instrumentation__.Notify(594364)
 		if err := it(e); err != nil {
+			__antithesis_instrumentation__.Notify(594365)
 			if iterutil.Done(err) {
+				__antithesis_instrumentation__.Notify(594367)
 				err = nil
+			} else {
+				__antithesis_instrumentation__.Notify(594368)
 			}
+			__antithesis_instrumentation__.Notify(594366)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(594369)
 		}
 	}
+	__antithesis_instrumentation__.Notify(594363)
 	return nil
 }
 
-// DepEdgeIterator is used to iterate dep edges. Return iterutil.StopIteration
-// to return early with no error.
 type DepEdgeIterator func(de *DepEdge) error
 
-// ForEachDepEdgeFrom iterates the dep edges in the graph with the selected
-// source.
 func (g *Graph) ForEachDepEdgeFrom(n *screl.Node, it DepEdgeIterator) (err error) {
+	__antithesis_instrumentation__.Notify(594370)
 	return g.depEdgesFrom.iterateSourceNode(n, it)
 }
 
-// ForEachDepEdgeTo iterates the dep edges in the graph with the selected
-// destination.
 func (g *Graph) ForEachDepEdgeTo(n *screl.Node, it DepEdgeIterator) (err error) {
+	__antithesis_instrumentation__.Notify(594371)
 	return g.depEdgesTo.iterateSourceNode(n, it)
 }

@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanset
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,309 +16,352 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// SpanAccess records the intended mode of access in a SpanSet.
 type SpanAccess int
 
-// Constants for SpanAccess. Higher-valued accesses imply lower-level ones.
 const (
 	SpanReadOnly SpanAccess = iota
 	SpanReadWrite
 	NumSpanAccess
 )
 
-// String returns a string representation of the SpanAccess.
 func (a SpanAccess) String() string {
+	__antithesis_instrumentation__.Notify(123233)
 	switch a {
 	case SpanReadOnly:
+		__antithesis_instrumentation__.Notify(123234)
 		return "read"
 	case SpanReadWrite:
+		__antithesis_instrumentation__.Notify(123235)
 		return "write"
 	default:
+		__antithesis_instrumentation__.Notify(123236)
 		panic("unreachable")
 	}
 }
 
-// SpanScope divides access types into local and global keys.
 type SpanScope int
 
-// Constants for span scopes.
 const (
 	SpanGlobal SpanScope = iota
 	SpanLocal
 	NumSpanScope
 )
 
-// String returns a string representation of the SpanScope.
 func (a SpanScope) String() string {
+	__antithesis_instrumentation__.Notify(123237)
 	switch a {
 	case SpanGlobal:
+		__antithesis_instrumentation__.Notify(123238)
 		return "global"
 	case SpanLocal:
+		__antithesis_instrumentation__.Notify(123239)
 		return "local"
 	default:
+		__antithesis_instrumentation__.Notify(123240)
 		panic("unreachable")
 	}
 }
 
-// Span is used to represent a keyspan accessed by a request at a given
-// timestamp. A zero timestamp indicates it's a non-MVCC access.
 type Span struct {
 	roachpb.Span
 	Timestamp hlc.Timestamp
 }
 
-// SpanSet tracks the set of key spans touched by a command, broken into MVCC
-// and non-MVCC accesses. The set is divided into subsets for access type
-// (read-only or read/write) and key scope (local or global; used to facilitate
-// use by the separate local and global latches).
-// The Span slice for a particular access and scope contains non-overlapping
-// spans in increasing key order after calls to SortAndDedup.
 type SpanSet struct {
 	spans [NumSpanAccess][NumSpanScope][]Span
 }
 
 var spanSetPool = sync.Pool{
-	New: func() interface{} { return new(SpanSet) },
+	New: func() interface{} { __antithesis_instrumentation__.Notify(123241); return new(SpanSet) },
 }
 
-// New creates a new empty SpanSet.
 func New() *SpanSet {
+	__antithesis_instrumentation__.Notify(123242)
 	return spanSetPool.Get().(*SpanSet)
 }
 
-// Release releases the SpanSet and its underlying slices. The receiver should
-// not be used after being released.
 func (s *SpanSet) Release() {
+	__antithesis_instrumentation__.Notify(123243)
 	for sa := SpanAccess(0); sa < NumSpanAccess; sa++ {
+		__antithesis_instrumentation__.Notify(123245)
 		for ss := SpanScope(0); ss < NumSpanScope; ss++ {
-			// Recycle slice if capacity below threshold.
+			__antithesis_instrumentation__.Notify(123246)
+
 			const maxRecycleCap = 8
 			var recycle []Span
 			if sl := s.spans[sa][ss]; cap(sl) <= maxRecycleCap {
+				__antithesis_instrumentation__.Notify(123248)
 				for i := range sl {
+					__antithesis_instrumentation__.Notify(123250)
 					sl[i] = Span{}
 				}
+				__antithesis_instrumentation__.Notify(123249)
 				recycle = sl[:0]
+			} else {
+				__antithesis_instrumentation__.Notify(123251)
 			}
+			__antithesis_instrumentation__.Notify(123247)
 			s.spans[sa][ss] = recycle
 		}
 	}
+	__antithesis_instrumentation__.Notify(123244)
 	spanSetPool.Put(s)
 }
 
-// String prints a string representation of the SpanSet.
 func (s *SpanSet) String() string {
+	__antithesis_instrumentation__.Notify(123252)
 	var buf strings.Builder
 	for sa := SpanAccess(0); sa < NumSpanAccess; sa++ {
+		__antithesis_instrumentation__.Notify(123254)
 		for ss := SpanScope(0); ss < NumSpanScope; ss++ {
+			__antithesis_instrumentation__.Notify(123255)
 			for _, cur := range s.GetSpans(sa, ss) {
+				__antithesis_instrumentation__.Notify(123256)
 				fmt.Fprintf(&buf, "%s %s: %s at %s\n",
 					sa, ss, cur.Span.String(), cur.Timestamp.String())
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(123253)
 	return buf.String()
 }
 
-// Len returns the total number of spans tracked across all accesses and scopes.
 func (s *SpanSet) Len() int {
+	__antithesis_instrumentation__.Notify(123257)
 	var count int
 	for sa := SpanAccess(0); sa < NumSpanAccess; sa++ {
+		__antithesis_instrumentation__.Notify(123259)
 		for ss := SpanScope(0); ss < NumSpanScope; ss++ {
+			__antithesis_instrumentation__.Notify(123260)
 			count += len(s.GetSpans(sa, ss))
 		}
 	}
+	__antithesis_instrumentation__.Notify(123258)
 	return count
 }
 
-// Empty returns whether the set contains any spans across all accesses and scopes.
 func (s *SpanSet) Empty() bool {
+	__antithesis_instrumentation__.Notify(123261)
 	return s.Len() == 0
 }
 
-// Copy copies the SpanSet.
 func (s *SpanSet) Copy() *SpanSet {
+	__antithesis_instrumentation__.Notify(123262)
 	n := New()
 	for sa := SpanAccess(0); sa < NumSpanAccess; sa++ {
+		__antithesis_instrumentation__.Notify(123264)
 		for ss := SpanScope(0); ss < NumSpanScope; ss++ {
+			__antithesis_instrumentation__.Notify(123265)
 			n.spans[sa][ss] = append(n.spans[sa][ss], s.spans[sa][ss]...)
 		}
 	}
+	__antithesis_instrumentation__.Notify(123263)
 	return n
 }
 
-// Iterate iterates over a SpanSet, calling the given function.
 func (s *SpanSet) Iterate(f func(SpanAccess, SpanScope, Span)) {
+	__antithesis_instrumentation__.Notify(123266)
 	if s == nil {
+		__antithesis_instrumentation__.Notify(123268)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(123269)
 	}
+	__antithesis_instrumentation__.Notify(123267)
 	for sa := SpanAccess(0); sa < NumSpanAccess; sa++ {
+		__antithesis_instrumentation__.Notify(123270)
 		for ss := SpanScope(0); ss < NumSpanScope; ss++ {
+			__antithesis_instrumentation__.Notify(123271)
 			for _, span := range s.spans[sa][ss] {
+				__antithesis_instrumentation__.Notify(123272)
 				f(sa, ss, span)
 			}
 		}
 	}
 }
 
-// Reserve space for N additional spans.
 func (s *SpanSet) Reserve(access SpanAccess, scope SpanScope, n int) {
+	__antithesis_instrumentation__.Notify(123273)
 	existing := s.spans[access][scope]
 	if n <= cap(existing)-len(existing) {
+		__antithesis_instrumentation__.Notify(123275)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(123276)
 	}
+	__antithesis_instrumentation__.Notify(123274)
 	s.spans[access][scope] = make([]Span, len(existing), n+len(existing))
 	copy(s.spans[access][scope], existing)
 }
 
-// AddNonMVCC adds a non-MVCC span to the span set. This should typically
-// local keys.
 func (s *SpanSet) AddNonMVCC(access SpanAccess, span roachpb.Span) {
+	__antithesis_instrumentation__.Notify(123277)
 	s.AddMVCC(access, span, hlc.Timestamp{})
 }
 
-// AddMVCC adds an MVCC span to the span set to be accessed at the given
-// timestamp. This should typically be used for MVCC keys, user keys for e.g.
 func (s *SpanSet) AddMVCC(access SpanAccess, span roachpb.Span, timestamp hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(123278)
 	scope := SpanGlobal
 	if keys.IsLocal(span.Key) {
+		__antithesis_instrumentation__.Notify(123280)
 		scope = SpanLocal
 		timestamp = hlc.Timestamp{}
+	} else {
+		__antithesis_instrumentation__.Notify(123281)
 	}
+	__antithesis_instrumentation__.Notify(123279)
 
 	s.spans[access][scope] = append(s.spans[access][scope], Span{Span: span, Timestamp: timestamp})
 }
 
-// Merge merges all spans in s2 into s. s2 is not modified.
 func (s *SpanSet) Merge(s2 *SpanSet) {
+	__antithesis_instrumentation__.Notify(123282)
 	for sa := SpanAccess(0); sa < NumSpanAccess; sa++ {
+		__antithesis_instrumentation__.Notify(123284)
 		for ss := SpanScope(0); ss < NumSpanScope; ss++ {
+			__antithesis_instrumentation__.Notify(123285)
 			s.spans[sa][ss] = append(s.spans[sa][ss], s2.spans[sa][ss]...)
 		}
 	}
+	__antithesis_instrumentation__.Notify(123283)
 	s.SortAndDedup()
 }
 
-// SortAndDedup sorts the spans in the SpanSet and removes any duplicates.
 func (s *SpanSet) SortAndDedup() {
+	__antithesis_instrumentation__.Notify(123286)
 	for sa := SpanAccess(0); sa < NumSpanAccess; sa++ {
+		__antithesis_instrumentation__.Notify(123287)
 		for ss := SpanScope(0); ss < NumSpanScope; ss++ {
-			s.spans[sa][ss], _ /* distinct */ = mergeSpans(&s.spans[sa][ss])
+			__antithesis_instrumentation__.Notify(123288)
+			s.spans[sa][ss], _ = mergeSpans(&s.spans[sa][ss])
 		}
 	}
 }
 
-// GetSpans returns a slice of spans with the given parameters.
 func (s *SpanSet) GetSpans(access SpanAccess, scope SpanScope) []Span {
+	__antithesis_instrumentation__.Notify(123289)
 	return s.spans[access][scope]
 }
 
-// BoundarySpan returns a span containing all the spans with the given params.
 func (s *SpanSet) BoundarySpan(scope SpanScope) roachpb.Span {
+	__antithesis_instrumentation__.Notify(123290)
 	var boundary roachpb.Span
 	for sa := SpanAccess(0); sa < NumSpanAccess; sa++ {
+		__antithesis_instrumentation__.Notify(123292)
 		for _, cur := range s.GetSpans(sa, scope) {
+			__antithesis_instrumentation__.Notify(123293)
 			if !boundary.Valid() {
+				__antithesis_instrumentation__.Notify(123295)
 				boundary = cur.Span
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(123296)
 			}
+			__antithesis_instrumentation__.Notify(123294)
 			boundary = boundary.Combine(cur.Span)
 		}
 	}
+	__antithesis_instrumentation__.Notify(123291)
 	return boundary
 }
 
-// Intersects returns true iff the span set denoted by `other` has any
-// overlapping spans with `s`, and that those spans overlap in access type. Note
-// that timestamps associated with the spans in the spanset are not considered,
-// only the span boundaries are checked.
 func (s *SpanSet) Intersects(other *SpanSet) bool {
+	__antithesis_instrumentation__.Notify(123297)
 	for sa := SpanAccess(0); sa < NumSpanAccess; sa++ {
+		__antithesis_instrumentation__.Notify(123299)
 		for ss := SpanScope(0); ss < NumSpanScope; ss++ {
+			__antithesis_instrumentation__.Notify(123300)
 			otherSpans := other.GetSpans(sa, ss)
 			for _, span := range otherSpans {
-				// If access is allowed, we must have an overlap.
+				__antithesis_instrumentation__.Notify(123301)
+
 				if err := s.CheckAllowed(sa, span.Span); err == nil {
+					__antithesis_instrumentation__.Notify(123302)
 					return true
+				} else {
+					__antithesis_instrumentation__.Notify(123303)
 				}
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(123298)
 	return false
 }
 
-// AssertAllowed calls CheckAllowed and fatals if the access is not allowed.
-// Timestamps associated with the spans in the spanset are not considered,
-// only the span boundaries are checked.
 func (s *SpanSet) AssertAllowed(access SpanAccess, span roachpb.Span) {
+	__antithesis_instrumentation__.Notify(123304)
 	if err := s.CheckAllowed(access, span); err != nil {
+		__antithesis_instrumentation__.Notify(123305)
 		log.Fatalf(context.TODO(), "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(123306)
 	}
 }
 
-// CheckAllowed returns an error if the access is not allowed over the given
-// keyspan based on the collection of spans in the spanset. Timestamps
-// associated with the spans in the spanset are not considered, only the span
-// boundaries are checked.
-//
-// If the provided span contains only an (exclusive) EndKey and has a nil
-// (inclusive) Key then Key is considered to be the key previous to EndKey,
-// i.e. [,b) will be considered [b.Prev(),b).
-//
-// TODO(irfansharif): This does not currently work for spans that straddle
-// across multiple added spans. Specifically a spanset with spans [a-c) and
-// [b-d) added under read only and read write access modes respectively would
-// fail at checking if read only access over the span [a-d) was requested. This
-// is also a problem if the added spans were read only and the spanset wasn't
-// already SortAndDedup-ed.
 func (s *SpanSet) CheckAllowed(access SpanAccess, span roachpb.Span) error {
+	__antithesis_instrumentation__.Notify(123307)
 	return s.checkAllowed(access, span, func(_ SpanAccess, _ Span) bool {
+		__antithesis_instrumentation__.Notify(123308)
 		return true
 	})
 }
 
-// CheckAllowedAt is like CheckAllowed, except it returns an error if the access
-// is not allowed over the given keyspan at the given timestamp.
 func (s *SpanSet) CheckAllowedAt(
 	access SpanAccess, span roachpb.Span, timestamp hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(123309)
 	mvcc := !timestamp.IsEmpty()
 	return s.checkAllowed(access, span, func(declAccess SpanAccess, declSpan Span) bool {
+		__antithesis_instrumentation__.Notify(123310)
 		declTimestamp := declSpan.Timestamp
 		if declTimestamp.IsEmpty() {
-			// When the span is declared as non-MVCC (i.e. with an empty
-			// timestamp), it's equivalent to a read/write mutex where we
-			// don't consider access timestamps.
+			__antithesis_instrumentation__.Notify(123312)
+
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(123313)
 		}
+		__antithesis_instrumentation__.Notify(123311)
 
 		switch declAccess {
 		case SpanReadOnly:
+			__antithesis_instrumentation__.Notify(123314)
 			switch access {
 			case SpanReadOnly:
-				// Read spans acquired at a specific timestamp only allow reads
-				// at that timestamp and below. Non-MVCC access is not allowed.
-				return mvcc && timestamp.LessEq(declTimestamp)
+				__antithesis_instrumentation__.Notify(123317)
+
+				return mvcc && func() bool {
+					__antithesis_instrumentation__.Notify(123320)
+					return timestamp.LessEq(declTimestamp) == true
+				}() == true
 			case SpanReadWrite:
-				// NB: should not get here, see checkAllowed.
+				__antithesis_instrumentation__.Notify(123318)
+
 				panic("unexpected SpanReadWrite access")
 			default:
+				__antithesis_instrumentation__.Notify(123319)
 				panic("unexpected span access")
 			}
 		case SpanReadWrite:
+			__antithesis_instrumentation__.Notify(123315)
 			switch access {
 			case SpanReadOnly:
-				// Write spans acquired at a specific timestamp allow reads at
-				// any timestamp. Non-MVCC access is not allowed.
+				__antithesis_instrumentation__.Notify(123321)
+
 				return mvcc
 			case SpanReadWrite:
-				// Write spans acquired at a specific timestamp allow writes at
-				// that timestamp of above. Non-MVCC access is not allowed.
-				return mvcc && declTimestamp.LessEq(timestamp)
+				__antithesis_instrumentation__.Notify(123322)
+
+				return mvcc && func() bool {
+					__antithesis_instrumentation__.Notify(123324)
+					return declTimestamp.LessEq(timestamp) == true
+				}() == true
 			default:
+				__antithesis_instrumentation__.Notify(123323)
 				panic("unexpected span access")
 			}
 		default:
+			__antithesis_instrumentation__.Notify(123316)
 			panic("unexpected span access")
 		}
 	})
@@ -335,55 +370,91 @@ func (s *SpanSet) CheckAllowedAt(
 func (s *SpanSet) checkAllowed(
 	access SpanAccess, span roachpb.Span, check func(SpanAccess, Span) bool,
 ) error {
+	__antithesis_instrumentation__.Notify(123325)
 	scope := SpanGlobal
-	if (span.Key != nil && keys.IsLocal(span.Key)) ||
-		(span.EndKey != nil && keys.IsLocal(span.EndKey)) {
+	if (span.Key != nil && func() bool {
+		__antithesis_instrumentation__.Notify(123328)
+		return keys.IsLocal(span.Key) == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(123329)
+		return (span.EndKey != nil && func() bool {
+			__antithesis_instrumentation__.Notify(123330)
+			return keys.IsLocal(span.EndKey) == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(123331)
 		scope = SpanLocal
+	} else {
+		__antithesis_instrumentation__.Notify(123332)
 	}
+	__antithesis_instrumentation__.Notify(123326)
 
 	for ac := access; ac < NumSpanAccess; ac++ {
+		__antithesis_instrumentation__.Notify(123333)
 		for _, cur := range s.spans[ac][scope] {
-			if contains(cur.Span, span) && check(ac, cur) {
+			__antithesis_instrumentation__.Notify(123334)
+			if contains(cur.Span, span) && func() bool {
+				__antithesis_instrumentation__.Notify(123335)
+				return check(ac, cur) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(123336)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(123337)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(123327)
 
 	return errors.Errorf("cannot %s undeclared span %s\ndeclared:\n%s\nstack:\n%s", access, span, s, debug.Stack())
 }
 
-// contains returns whether s1 contains s2. Unlike Span.Contains, this function
-// supports spans with a nil start key and a non-nil end key (e.g. "[nil, c)").
-// In this form, s2.Key (inclusive) is considered to be the previous key to
-// s2.EndKey (exclusive).
 func contains(s1, s2 roachpb.Span) bool {
+	__antithesis_instrumentation__.Notify(123338)
 	if s2.Key != nil {
-		// The common case.
-		return s1.Contains(s2)
-	}
+		__antithesis_instrumentation__.Notify(123341)
 
-	// The following is equivalent to:
-	//   s1.Contains(roachpb.Span{Key: s2.EndKey.Prev()})
+		return s1.Contains(s2)
+	} else {
+		__antithesis_instrumentation__.Notify(123342)
+	}
+	__antithesis_instrumentation__.Notify(123339)
 
 	if s1.EndKey == nil {
+		__antithesis_instrumentation__.Notify(123343)
 		return s1.Key.IsPrev(s2.EndKey)
+	} else {
+		__antithesis_instrumentation__.Notify(123344)
 	}
+	__antithesis_instrumentation__.Notify(123340)
 
-	return s1.Key.Compare(s2.EndKey) < 0 && s1.EndKey.Compare(s2.EndKey) >= 0
+	return s1.Key.Compare(s2.EndKey) < 0 && func() bool {
+		__antithesis_instrumentation__.Notify(123345)
+		return s1.EndKey.Compare(s2.EndKey) >= 0 == true
+	}() == true
 }
 
-// Validate returns an error if any spans that have been added to the set
-// are invalid.
 func (s *SpanSet) Validate() error {
+	__antithesis_instrumentation__.Notify(123346)
 	for sa := SpanAccess(0); sa < NumSpanAccess; sa++ {
+		__antithesis_instrumentation__.Notify(123348)
 		for ss := SpanScope(0); ss < NumSpanScope; ss++ {
+			__antithesis_instrumentation__.Notify(123349)
 			for _, cur := range s.GetSpans(sa, ss) {
-				if len(cur.EndKey) > 0 && cur.Key.Compare(cur.EndKey) >= 0 {
+				__antithesis_instrumentation__.Notify(123350)
+				if len(cur.EndKey) > 0 && func() bool {
+					__antithesis_instrumentation__.Notify(123351)
+					return cur.Key.Compare(cur.EndKey) >= 0 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(123352)
 					return errors.Errorf("inverted span %s %s", cur.Key, cur.EndKey)
+				} else {
+					__antithesis_instrumentation__.Notify(123353)
 				}
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(123347)
 
 	return nil
 }

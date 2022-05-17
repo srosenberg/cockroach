@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package debug
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,29 +23,48 @@ type vmoduleOptions struct {
 }
 
 func loadVmoduleOptionsFromValues(values url.Values) (vmoduleOptions, error) {
+	__antithesis_instrumentation__.Notify(190510)
 	rawValues := map[string]string{}
 	for k, vals := range values {
+		__antithesis_instrumentation__.Notify(190514)
 		if len(vals) > 0 {
+			__antithesis_instrumentation__.Notify(190515)
 			rawValues[k] = vals[0]
+		} else {
+			__antithesis_instrumentation__.Notify(190516)
 		}
 	}
+	__antithesis_instrumentation__.Notify(190511)
 	data, err := json.Marshal(rawValues)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(190517)
 		return vmoduleOptions{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(190518)
 	}
+	__antithesis_instrumentation__.Notify(190512)
 	var opts vmoduleOptions
 	if err := json.Unmarshal(data, &opts); err != nil {
+		__antithesis_instrumentation__.Notify(190519)
 		return vmoduleOptions{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(190520)
 	}
+	__antithesis_instrumentation__.Notify(190513)
 
 	opts.setDefaults(values)
 	return opts, nil
 }
 
 func (opts *vmoduleOptions) setDefaults(values url.Values) {
+	__antithesis_instrumentation__.Notify(190521)
 	if opts.Duration == 0 {
+		__antithesis_instrumentation__.Notify(190523)
 		opts.Duration = logSpyDefaultDuration
+	} else {
+		__antithesis_instrumentation__.Notify(190524)
 	}
+	__antithesis_instrumentation__.Notify(190522)
 
 	_, opts.hasVModule = values["vmodule"]
 }
@@ -63,94 +74,131 @@ type vmoduleServer struct {
 }
 
 func (s *vmoduleServer) lockVModule(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(190525)
 	if swapped := atomic.CompareAndSwapUint32(&s.lock, 0, 1); !swapped {
+		__antithesis_instrumentation__.Notify(190527)
 		return errors.New("another in-flight HTTP request is already managing vmodule")
+	} else {
+		__antithesis_instrumentation__.Notify(190528)
 	}
+	__antithesis_instrumentation__.Notify(190526)
 	return nil
 }
 
 func (s *vmoduleServer) unlockVModule(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(190529)
 	atomic.StoreUint32(&s.lock, 0)
 }
 
 func (s *vmoduleServer) vmoduleHandleDebug(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(190530)
 	opts, err := loadVmoduleOptionsFromValues(r.URL.Query())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(190532)
 		http.Error(w, "while parsing options: "+err.Error(), http.StatusInternalServerError)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(190533)
 	}
+	__antithesis_instrumentation__.Notify(190531)
 
 	w.Header().Add("Content-type", "text/plain; charset=UTF-8")
 	ctx := r.Context()
 	if err := s.vmoduleHandleDebugInternal(ctx, w, opts); err != nil {
-		// This is likely a broken HTTP connection, so nothing too unexpected.
+		__antithesis_instrumentation__.Notify(190534)
+
 		log.Infof(ctx, "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(190535)
 	}
 }
 
 func (s *vmoduleServer) vmoduleHandleDebugInternal(
 	ctx context.Context, w http.ResponseWriter, opts vmoduleOptions,
 ) error {
+	__antithesis_instrumentation__.Notify(190536)
 	prevSettings := log.GetVModule()
 
 	_, err := w.Write([]byte("previous vmodule configuration: " + prevSettings + "\n"))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(190545)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(190546)
 	}
+	__antithesis_instrumentation__.Notify(190537)
 	if !opts.hasVModule {
-		// Only retrieving the current options; nothing else to do.
+		__antithesis_instrumentation__.Notify(190547)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(190548)
 	}
+	__antithesis_instrumentation__.Notify(190538)
 
-	// If we are going to tweak the vmodule setting, ensure we have only
-	// one such request in-flight.
 	if err := s.lockVModule(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(190549)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return nil //nolint:returnerrcheck
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(190550)
 	}
+	__antithesis_instrumentation__.Notify(190539)
 
-	// Install the new configuration.
 	if err := log.SetVModule(opts.VModule); err != nil {
+		__antithesis_instrumentation__.Notify(190551)
 		s.unlockVModule(ctx)
 		http.Error(w, "setting vmodule: "+err.Error(), http.StatusInternalServerError)
-		return nil //nolint:returnerrcheck
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(190552)
 	}
+	__antithesis_instrumentation__.Notify(190540)
 
-	// Inform the HTTP client of the new config.
 	_, err = w.Write([]byte("new vmodule configuration: " + opts.VModule + "\n"))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(190553)
 		s.unlockVModule(ctx)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(190554)
 	}
+	__antithesis_instrumentation__.Notify(190541)
 
-	// Report the change in logs.
 	log.Infof(ctx, "configured vmodule: %q", redact.SafeString(opts.VModule))
 
 	if opts.Duration <= 0 {
+		__antithesis_instrumentation__.Notify(190555)
 		s.unlockVModule(ctx)
-		// The user did not request to restore the config after
-		// a delay. nothing else to do.
-		return nil
-	}
 
-	// Inform the HTTP client of the delayed restore.
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(190556)
+	}
+	__antithesis_instrumentation__.Notify(190542)
+
 	_, err = w.Write([]byte(fmt.Sprintf("will restore previous vmodule config after %s\n", opts.Duration)))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(190557)
 		s.unlockVModule(ctx)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(190558)
 	}
+	__antithesis_instrumentation__.Notify(190543)
 
 	go func() {
-		// Wait for the configured duration.
+		__antithesis_instrumentation__.Notify(190559)
+
 		time.Sleep(time.Duration(opts.Duration))
 
-		// Restore the configuration.
 		err := log.SetVModule(prevSettings)
-		// Report the change in logs.
+
 		log.Infof(context.Background(), "restoring vmodule configuration (%q): %v", redact.SafeString(prevSettings), err)
 
 		s.unlockVModule(context.Background())
 	}()
+	__antithesis_instrumentation__.Notify(190544)
 
 	return nil
 }

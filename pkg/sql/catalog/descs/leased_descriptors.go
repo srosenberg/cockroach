@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -43,42 +35,35 @@ type deadlineHolder interface {
 	UpdateDeadline(ctx context.Context, deadline hlc.Timestamp) error
 }
 
-// maxTimestampBoundDeadlineHolder is an implementation of deadlineHolder
-// which is intended for use during bounded staleness reads.
 type maxTimestampBoundDeadlineHolder struct {
 	maxTimestampBound hlc.Timestamp
 }
 
-// ReadTimestamp implements the deadlineHolder interface.
 func (m maxTimestampBoundDeadlineHolder) ReadTimestamp() hlc.Timestamp {
-	// We return .Prev() because maxTimestampBound is an exclusive upper bound.
+	__antithesis_instrumentation__.Notify(264668)
+
 	return m.maxTimestampBound.Prev()
 }
 
-// UpdateDeadline implements the deadlineHolder interface.
 func (m maxTimestampBoundDeadlineHolder) UpdateDeadline(
 	ctx context.Context, deadline hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(264669)
 	return nil
 }
 
 func makeLeasedDescriptors(lm leaseManager) leasedDescriptors {
+	__antithesis_instrumentation__.Notify(264670)
 	return leasedDescriptors{
 		lm: lm,
 	}
 }
 
-// leasedDescriptors holds references to all the descriptors leased in the
-// transaction, and supports access by name and by ID.
 type leasedDescriptors struct {
 	lm    leaseManager
 	cache nstree.Map
 }
 
-// getLeasedDescriptorByName return a leased descriptor valid for the
-// transaction, acquiring one if necessary. Due to a bug in lease acquisition
-// for dropped descriptors, the descriptor may have to be read from the store,
-// in which case shouldReadFromStore will be true.
 func (ld *leasedDescriptors) getByName(
 	ctx context.Context,
 	txn deadlineHolder,
@@ -86,21 +71,31 @@ func (ld *leasedDescriptors) getByName(
 	parentSchemaID descpb.ID,
 	name string,
 ) (desc catalog.Descriptor, shouldReadFromStore bool, err error) {
-	// First, look to see if we already have the descriptor.
-	// This ensures that, once a SQL transaction resolved name N to id X, it will
-	// continue to use N to refer to X even if N is renamed during the
-	// transaction.
+	__antithesis_instrumentation__.Notify(264671)
+
 	if cached := ld.cache.GetByName(parentID, parentSchemaID, name); cached != nil {
+		__antithesis_instrumentation__.Notify(264674)
 		if log.V(2) {
+			__antithesis_instrumentation__.Notify(264676)
 			log.Eventf(ctx, "found descriptor in collection for (%d, %d, '%s'): %d",
 				parentID, parentSchemaID, name, cached.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(264677)
 		}
+		__antithesis_instrumentation__.Notify(264675)
 		return cached.(lease.LeasedDescriptor).Underlying(), false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264678)
 	}
+	__antithesis_instrumentation__.Notify(264672)
 
 	if systemschema.IsUnleasableSystemDescriptorByName(parentID, parentSchemaID, name) {
+		__antithesis_instrumentation__.Notify(264679)
 		return nil, true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264680)
 	}
+	__antithesis_instrumentation__.Notify(264673)
 
 	readTimestamp := txn.ReadTimestamp()
 	ldesc, err := ld.lm.AcquireByName(ctx, readTimestamp, parentID, parentSchemaID, name)
@@ -108,19 +103,26 @@ func (ld *leasedDescriptors) getByName(
 	return ld.getResult(ctx, txn, setTxnDeadline, ldesc, err)
 }
 
-// getByID return a leased descriptor valid for the transaction,
-// acquiring one if necessary.
 func (ld *leasedDescriptors) getByID(
 	ctx context.Context, txn deadlineHolder, id descpb.ID,
 ) (_ catalog.Descriptor, shouldReadFromStore bool, _ error) {
-	// First, look to see if we already have the table in the shared cache.
+	__antithesis_instrumentation__.Notify(264681)
+
 	if cached := ld.getCachedByID(ctx, id); cached != nil {
+		__antithesis_instrumentation__.Notify(264684)
 		return cached, false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264685)
 	}
+	__antithesis_instrumentation__.Notify(264682)
 
 	if systemschema.IsUnleasableSystemDescriptorByID(id) {
+		__antithesis_instrumentation__.Notify(264686)
 		return nil, true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264687)
 	}
+	__antithesis_instrumentation__.Notify(264683)
 
 	readTimestamp := txn.ReadTimestamp()
 	desc, err := ld.lm.Acquire(ctx, readTimestamp, id)
@@ -129,19 +131,26 @@ func (ld *leasedDescriptors) getByID(
 }
 
 func (ld *leasedDescriptors) getCachedByID(ctx context.Context, id descpb.ID) catalog.Descriptor {
+	__antithesis_instrumentation__.Notify(264688)
 	cached := ld.cache.GetByID(id)
 	if cached == nil {
+		__antithesis_instrumentation__.Notify(264691)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(264692)
 	}
+	__antithesis_instrumentation__.Notify(264689)
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(264693)
 		log.Eventf(ctx, "found descriptor in collection for (%d, %d, '%s'): %d",
 			cached.GetParentID(), cached.GetParentSchemaID(), cached.GetName(), id)
+	} else {
+		__antithesis_instrumentation__.Notify(264694)
 	}
+	__antithesis_instrumentation__.Notify(264690)
 	return cached.(lease.LeasedDescriptor).Underlying()
 }
 
-// getResult is a helper to deal with the result that comes back from Acquire
-// or AcquireByName.
 func (ld *leasedDescriptors) getResult(
 	ctx context.Context,
 	txn deadlineHolder,
@@ -149,107 +158,164 @@ func (ld *leasedDescriptors) getResult(
 	ldesc lease.LeasedDescriptor,
 	err error,
 ) (_ catalog.Descriptor, shouldReadFromStore bool, _ error) {
+	__antithesis_instrumentation__.Notify(264695)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264700)
 		_, isBoundedStalenessRead := txn.(*maxTimestampBoundDeadlineHolder)
-		// Read the descriptor from the store in the face of some specific errors
-		// because of a known limitation of AcquireByName. See the known
-		// limitations of AcquireByName for details.
-		// Note we never should read from store during a bounded staleness read,
-		// as it is safe to return the schema as non-existent.
+
 		if shouldReadFromStore =
-			!isBoundedStalenessRead && ((catalog.HasInactiveDescriptorError(err) &&
-				errors.Is(err, catalog.ErrDescriptorDropped)) ||
-				errors.Is(err, catalog.ErrDescriptorNotFound)); shouldReadFromStore {
+			!isBoundedStalenessRead && func() bool {
+				__antithesis_instrumentation__.Notify(264702)
+				return ((catalog.HasInactiveDescriptorError(err) && func() bool {
+					__antithesis_instrumentation__.Notify(264703)
+					return errors.Is(err, catalog.ErrDescriptorDropped) == true
+				}() == true) || func() bool {
+					__antithesis_instrumentation__.Notify(264704)
+					return errors.Is(err, catalog.ErrDescriptorNotFound) == true
+				}() == true) == true
+			}() == true; shouldReadFromStore {
+			__antithesis_instrumentation__.Notify(264705)
 			return nil, true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264706)
 		}
-		// Lease acquisition failed with some other error. This we don't
-		// know how to deal with, so propagate the error.
+		__antithesis_instrumentation__.Notify(264701)
+
 		return nil, false, err
+	} else {
+		__antithesis_instrumentation__.Notify(264707)
 	}
+	__antithesis_instrumentation__.Notify(264696)
 
 	expiration := ldesc.Expiration()
 	readTimestamp := txn.ReadTimestamp()
 	if expiration.LessEq(txn.ReadTimestamp()) {
+		__antithesis_instrumentation__.Notify(264708)
 		log.Fatalf(ctx, "bad descriptor for T=%s, expiration=%s", readTimestamp, expiration)
+	} else {
+		__antithesis_instrumentation__.Notify(264709)
 	}
+	__antithesis_instrumentation__.Notify(264697)
 
 	ld.cache.Upsert(ldesc)
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(264710)
 		log.Eventf(ctx, "added descriptor '%s' to collection: %+v", ldesc.GetName(), ldesc.Underlying())
+	} else {
+		__antithesis_instrumentation__.Notify(264711)
 	}
+	__antithesis_instrumentation__.Notify(264698)
 
-	// If the descriptor we just acquired expires before the txn's deadline,
-	// reduce the deadline. We use ReadTimestamp() that doesn't return the commit
-	// timestamp, so we need to set a deadline on the transaction to prevent it
-	// from committing beyond the version's expiration time.
 	if setDeadline {
+		__antithesis_instrumentation__.Notify(264712)
 		if err := ld.maybeUpdateDeadline(ctx, txn, nil); err != nil {
+			__antithesis_instrumentation__.Notify(264713)
 			return nil, false, err
+		} else {
+			__antithesis_instrumentation__.Notify(264714)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(264715)
 	}
+	__antithesis_instrumentation__.Notify(264699)
 	return ldesc.Underlying(), false, nil
 }
 
 func (ld *leasedDescriptors) maybeUpdateDeadline(
 	ctx context.Context, txn deadlineHolder, session sqlliveness.Session,
 ) error {
-	// Set the transaction deadline to the minimum of the leased descriptor deadline
-	// and session expiration. The sqlliveness.Session will only be set in the
-	// multi-tenant environment for controlling transactions associated with ephemeral
-	// SQL pods.
+	__antithesis_instrumentation__.Notify(264716)
+
 	var deadline hlc.Timestamp
 	if session != nil {
+		__antithesis_instrumentation__.Notify(264720)
 		if expiration, txnTS := session.Expiration(), txn.ReadTimestamp(); txnTS.Less(expiration) {
+			__antithesis_instrumentation__.Notify(264721)
 			deadline = expiration
 		} else {
-			// If the session has expired relative to this transaction, propagate
-			// a clear error that that's what is going on.
+			__antithesis_instrumentation__.Notify(264722)
+
 			return errors.Errorf(
 				"liveness session expired %s before transaction",
 				txnTS.GoTime().Sub(expiration.GoTime()),
 			)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(264723)
 	}
-	if leaseDeadline, ok := ld.getDeadline(); ok && (deadline.IsEmpty() || leaseDeadline.Less(deadline)) {
-		// Set the deadline to the lease deadline if session expiration is empty
-		// or lease deadline is less than the session expiration.
+	__antithesis_instrumentation__.Notify(264717)
+	if leaseDeadline, ok := ld.getDeadline(); ok && func() bool {
+		__antithesis_instrumentation__.Notify(264724)
+		return (deadline.IsEmpty() || func() bool {
+			__antithesis_instrumentation__.Notify(264725)
+			return leaseDeadline.Less(deadline) == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264726)
+
 		deadline = leaseDeadline
+	} else {
+		__antithesis_instrumentation__.Notify(264727)
 	}
-	// If the deadline has been set, update the transaction deadline.
+	__antithesis_instrumentation__.Notify(264718)
+
 	if !deadline.IsEmpty() {
+		__antithesis_instrumentation__.Notify(264728)
 		return txn.UpdateDeadline(ctx, deadline)
+	} else {
+		__antithesis_instrumentation__.Notify(264729)
 	}
+	__antithesis_instrumentation__.Notify(264719)
 	return nil
 }
 
 func (ld *leasedDescriptors) getDeadline() (deadline hlc.Timestamp, haveDeadline bool) {
+	__antithesis_instrumentation__.Notify(264730)
 	_ = ld.cache.IterateByID(func(descriptor catalog.NameEntry) error {
+		__antithesis_instrumentation__.Notify(264732)
 		expiration := descriptor.(lease.LeasedDescriptor).Expiration()
-		if !haveDeadline || expiration.Less(deadline) {
+		if !haveDeadline || func() bool {
+			__antithesis_instrumentation__.Notify(264734)
+			return expiration.Less(deadline) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264735)
 			deadline, haveDeadline = expiration, true
+		} else {
+			__antithesis_instrumentation__.Notify(264736)
 		}
+		__antithesis_instrumentation__.Notify(264733)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(264731)
 	return deadline, haveDeadline
 }
 
 func (ld *leasedDescriptors) releaseAll(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(264737)
 	log.VEventf(ctx, 2, "releasing %d descriptors", ld.numDescriptors())
 	_ = ld.cache.IterateByID(func(descriptor catalog.NameEntry) error {
+		__antithesis_instrumentation__.Notify(264739)
 		descriptor.(lease.LeasedDescriptor).Release(ctx)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(264738)
 	ld.cache.Clear()
 }
 
 func (ld *leasedDescriptors) release(ctx context.Context, descs []lease.IDVersion) {
+	__antithesis_instrumentation__.Notify(264740)
 	for _, idv := range descs {
+		__antithesis_instrumentation__.Notify(264741)
 		if removed := ld.cache.Remove(idv.ID); removed != nil {
+			__antithesis_instrumentation__.Notify(264742)
 			removed.(lease.LeasedDescriptor).Release(ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(264743)
 		}
 	}
 }
 
 func (ld *leasedDescriptors) numDescriptors() int {
+	__antithesis_instrumentation__.Notify(264744)
 	return ld.cache.Len()
 }

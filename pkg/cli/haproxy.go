@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -65,45 +57,52 @@ An error is returned if no nodes match the locality filter.
 type haProxyNodeInfo struct {
 	NodeID   roachpb.NodeID
 	NodeAddr string
-	// The port on which health checks are performed.
+
 	CheckPort string
 	Locality  roachpb.Locality
 }
 
 func nodeStatusesToNodeInfos(nodes *serverpb.NodesResponse) []haProxyNodeInfo {
+	__antithesis_instrumentation__.Notify(33040)
 	fs := pflag.NewFlagSet("haproxy", pflag.ContinueOnError)
 
 	httpAddr := ""
 	httpPort := base.DefaultHTTPPort
-	fs.Var(addrSetter{&httpAddr, &httpPort}, cliflags.ListenHTTPAddr.Name, "" /* usage */)
-	fs.Var(aliasStrVar{&httpPort}, cliflags.ListenHTTPPort.Name, "" /* usage */)
+	fs.Var(addrSetter{&httpAddr, &httpPort}, cliflags.ListenHTTPAddr.Name, "")
+	fs.Var(aliasStrVar{&httpPort}, cliflags.ListenHTTPPort.Name, "")
 
-	// Discard parsing output.
 	fs.SetOutput(ioutil.Discard)
 
 	nodeInfos := make([]haProxyNodeInfo, 0, len(nodes.Nodes))
 
-	// The response can present nodes in arbitrary order. We want them sorted.
 	nodeIDs := make([]int, 0, len(nodes.Nodes))
 	statusByID := make(map[roachpb.NodeID]statuspb.NodeStatus)
 	for _, status := range nodes.Nodes {
+		__antithesis_instrumentation__.Notify(33043)
 		statusByID[status.Desc.NodeID] = status
 		nodeIDs = append(nodeIDs, int(status.Desc.NodeID))
 	}
+	__antithesis_instrumentation__.Notify(33041)
 	sort.Ints(nodeIDs)
 
 	for _, inodeID := range nodeIDs {
+		__antithesis_instrumentation__.Notify(33044)
 		nodeID := roachpb.NodeID(inodeID)
 		status := statusByID[nodeID]
 		liveness := nodes.LivenessByNodeID[nodeID]
 		switch liveness {
 		case livenesspb.NodeLivenessStatus_DECOMMISSIONING:
+			__antithesis_instrumentation__.Notify(33047)
 			fmt.Fprintf(stderr, "warning: node %d status is %s, excluding from haproxy configuration\n",
 				nodeID, liveness)
 			fallthrough
 		case livenesspb.NodeLivenessStatus_DECOMMISSIONED:
+			__antithesis_instrumentation__.Notify(33048)
 			continue
+		default:
+			__antithesis_instrumentation__.Notify(33049)
 		}
+		__antithesis_instrumentation__.Notify(33045)
 
 		info := haProxyNodeInfo{
 			NodeID:   nodeID,
@@ -112,153 +111,230 @@ func nodeStatusesToNodeInfos(nodes *serverpb.NodesResponse) []haProxyNodeInfo {
 		}
 
 		httpPort = base.DefaultHTTPPort
-		// Iterate over the arguments until the ServerHTTPPort flag is found and
-		// parse the remainder of the arguments. This is done because Parse returns
-		// when it encounters an undefined flag and we do not want to define all
-		// possible flags.
-		//
-		// TODO(knz): this logic is horrendously broken and
-		// incorrect. Replace it.
+
 		for j, arg := range status.Args {
-			if strings.Contains(arg, cliflags.ListenHTTPPort.Name) ||
-				strings.Contains(arg, cliflags.ListenHTTPAddr.Name) {
+			__antithesis_instrumentation__.Notify(33050)
+			if strings.Contains(arg, cliflags.ListenHTTPPort.Name) || func() bool {
+				__antithesis_instrumentation__.Notify(33051)
+				return strings.Contains(arg, cliflags.ListenHTTPAddr.Name) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(33052)
 				_ = fs.Parse(status.Args[j:])
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(33053)
 			}
 		}
+		__antithesis_instrumentation__.Notify(33046)
 
 		info.CheckPort = httpPort
 		nodeInfos = append(nodeInfos, info)
 	}
+	__antithesis_instrumentation__.Notify(33042)
 
 	return nodeInfos
 }
 
 func localityMatches(locality roachpb.Locality, desired roachpb.Locality) (bool, error) {
+	__antithesis_instrumentation__.Notify(33054)
 	for _, filterTier := range desired.Tiers {
-		// It's a little silly to recompile the regexp for each node, but not a big deal.
+		__antithesis_instrumentation__.Notify(33056)
+
 		var b strings.Builder
 		b.WriteString("^")
 		b.WriteString(filterTier.Value)
 		b.WriteString("$")
 		re, err := regexp.Compile(b.String())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(33059)
 			return false, errors.Wrapf(err, "could not compile regular expression for %q", filterTier)
+		} else {
+			__antithesis_instrumentation__.Notify(33060)
 		}
+		__antithesis_instrumentation__.Notify(33057)
 
 		keyFound := false
 		for _, nodeTier := range locality.Tiers {
+			__antithesis_instrumentation__.Notify(33061)
 			if filterTier.Key != nodeTier.Key {
+				__antithesis_instrumentation__.Notify(33064)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(33065)
 			}
+			__antithesis_instrumentation__.Notify(33062)
 
 			keyFound = true
 			if !re.MatchString(nodeTier.Value) {
-				// Mismatched tier value.
+				__antithesis_instrumentation__.Notify(33066)
+
 				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(33067)
 			}
+			__antithesis_instrumentation__.Notify(33063)
 
 			break
 		}
+		__antithesis_instrumentation__.Notify(33058)
 
 		if !keyFound {
-			// Tier not found.
+			__antithesis_instrumentation__.Notify(33068)
+
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(33069)
 		}
 	}
+	__antithesis_instrumentation__.Notify(33055)
 
 	return true, nil
 }
 
 func filterByLocality(nodeInfos []haProxyNodeInfo) ([]haProxyNodeInfo, error) {
+	__antithesis_instrumentation__.Notify(33070)
 	if len(haProxyLocality.Tiers) == 0 {
-		// No filter.
+		__antithesis_instrumentation__.Notify(33074)
+
 		return nodeInfos, nil
+	} else {
+		__antithesis_instrumentation__.Notify(33075)
 	}
+	__antithesis_instrumentation__.Notify(33071)
 
 	result := make([]haProxyNodeInfo, 0)
 	availableLocalities := make(map[string]struct{})
 
 	for _, info := range nodeInfos {
+		__antithesis_instrumentation__.Notify(33076)
 		l := info.Locality
 		if len(l.Tiers) == 0 {
+			__antithesis_instrumentation__.Notify(33079)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(33080)
 		}
+		__antithesis_instrumentation__.Notify(33077)
 
-		// Save seen locality.
 		availableLocalities[l.String()] = struct{}{}
 
 		matches, err := localityMatches(l, haProxyLocality)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(33081)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(33082)
 		}
+		__antithesis_instrumentation__.Notify(33078)
 
 		if matches {
+			__antithesis_instrumentation__.Notify(33083)
 			result = append(result, info)
+		} else {
+			__antithesis_instrumentation__.Notify(33084)
 		}
 	}
+	__antithesis_instrumentation__.Notify(33072)
 
 	if len(result) == 0 {
+		__antithesis_instrumentation__.Notify(33085)
 		seenLocalities := make([]string, len(availableLocalities))
 		i := 0
 		for l := range availableLocalities {
+			__antithesis_instrumentation__.Notify(33087)
 			seenLocalities[i] = l
 			i++
 		}
+		__antithesis_instrumentation__.Notify(33086)
 		sort.Strings(seenLocalities)
 		return nil, fmt.Errorf("no nodes match locality filter %s. Found localities: %v", haProxyLocality.String(), seenLocalities)
+	} else {
+		__antithesis_instrumentation__.Notify(33088)
 	}
+	__antithesis_instrumentation__.Notify(33073)
 
 	return result, nil
 }
 
 func runGenHAProxyCmd(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(33089)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	configTemplate, err := template.New("haproxy template").Parse(haProxyTemplate)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33097)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33098)
 	}
+	__antithesis_instrumentation__.Notify(33090)
 
 	conn, _, finish, err := getClientGRPCConn(ctx, serverCfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33099)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33100)
 	}
+	__antithesis_instrumentation__.Notify(33091)
 	defer finish()
 	c := serverpb.NewStatusClient(conn)
 
 	nodeStatuses, err := c.Nodes(ctx, &serverpb.NodesRequest{})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33101)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33102)
 	}
+	__antithesis_instrumentation__.Notify(33092)
 
 	var w io.Writer
 	var f *os.File
 	if haProxyPath == "-" {
+		__antithesis_instrumentation__.Notify(33103)
 		w = os.Stdout
-	} else if f, err = os.OpenFile(haProxyPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
-		return err
 	} else {
-		w = f
+		__antithesis_instrumentation__.Notify(33104)
+		if f, err = os.OpenFile(haProxyPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
+			__antithesis_instrumentation__.Notify(33105)
+			return err
+		} else {
+			__antithesis_instrumentation__.Notify(33106)
+			w = f
+		}
 	}
+	__antithesis_instrumentation__.Notify(33093)
 
 	nodeInfos := nodeStatusesToNodeInfos(nodeStatuses)
 	filteredNodeInfos, err := filterByLocality(nodeInfos)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33107)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33108)
 	}
+	__antithesis_instrumentation__.Notify(33094)
 
 	err = configTemplate.Execute(w, filteredNodeInfos)
 	if err != nil {
-		// Return earliest error, but still close the file.
+		__antithesis_instrumentation__.Notify(33109)
+
 		_ = f.Close()
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33110)
 	}
+	__antithesis_instrumentation__.Notify(33095)
 
 	if f != nil {
+		__antithesis_instrumentation__.Notify(33111)
 		return f.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(33112)
 	}
+	__antithesis_instrumentation__.Notify(33096)
 
 	return nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -45,52 +37,24 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// How long to keep consistency checker checksums in-memory for collection.
-// Typically a long-poll waits for the result of the computation, so it's almost
-// immediately collected. However, the consistency checker synchronously
-// collects the first replica's checksum before all others, so if the first one
-// is slow the checksum may not be collected right away, and that first
-// consistency check can take a long time due to rate limiting and range size.
 const replicaChecksumGCInterval = time.Hour
 
-// fatalOnStatsMismatch, if true, turns stats mismatches into fatal errors. A
-// stats mismatch is the event in which
-// - the consistency checker finds that all replicas are consistent
-//   (i.e. byte-by-byte identical)
-// - the (identical) stats tracked in them do not correspond to a recomputation
-//   via the data, i.e. the stats were incorrect
-// - ContainsEstimates==false, i.e. the stats claimed they were correct.
-//
-// Before issuing the fatal error, the cluster bootstrap version is verified.
-// We know that old versions of CockroachDB sometimes violated this invariant,
-// but we want to exclude these violations, focusing only on cases in which we
-// know old CRDB versions (<19.1 at time of writing) were not involved.
 var fatalOnStatsMismatch = envutil.EnvOrDefaultBool("COCKROACH_ENFORCE_CONSISTENT_STATS", false)
 
-// replicaChecksum contains progress on a replica checksum computation.
 type replicaChecksum struct {
 	CollectChecksumResponse
-	// started is true if the checksum computation has started.
+
 	started bool
-	// If gcTimestamp is nonzero, GC this checksum after gcTimestamp. gcTimestamp
-	// is zero if and only if the checksum computation is in progress.
+
 	gcTimestamp time.Time
-	// This channel is closed after the checksum is computed, and is used
-	// as a notification.
+
 	notify chan struct{}
 }
 
-// CheckConsistency runs a consistency check on the range. It first applies a
-// ComputeChecksum through Raft and then issues CollectChecksum commands to the
-// other replicas. These are inspected and a CheckConsistencyResponse is assembled.
-//
-// When args.Mode is CHECK_VIA_QUEUE and an inconsistency is detected and no
-// diff was requested, the consistency check will be re-run to collect a diff,
-// which is then printed before calling `log.Fatal`. This behavior should be
-// lifted to the consistency checker queue in the future.
 func (r *Replica) CheckConsistency(
 	ctx context.Context, args roachpb.CheckConsistencyRequest,
 ) (roachpb.CheckConsistencyResponse, *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(116824)
 	startKey := r.Desc().StartKey.AsRawKey()
 
 	checkArgs := roachpb.ComputeChecksumRequest{
@@ -106,8 +70,12 @@ func (r *Replica) CheckConsistency(
 
 	results, err := r.RunConsistencyCheck(ctx, checkArgs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(116837)
 		return roachpb.CheckConsistencyResponse{}, roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(116838)
 	}
+	__antithesis_instrumentation__.Notify(116825)
 
 	res := roachpb.CheckConsistencyResponse_Result{}
 	res.RangeID = r.RangeID
@@ -115,38 +83,56 @@ func (r *Replica) CheckConsistency(
 	shaToIdxs := map[string][]int{}
 	var missing []ConsistencyCheckResult
 	for i, result := range results {
+		__antithesis_instrumentation__.Notify(116839)
 		if result.Err != nil {
+			__antithesis_instrumentation__.Notify(116841)
 			missing = append(missing, result)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(116842)
 		}
+		__antithesis_instrumentation__.Notify(116840)
 		s := string(result.Response.Checksum)
 		shaToIdxs[s] = append(shaToIdxs[s], i)
 	}
+	__antithesis_instrumentation__.Notify(116826)
 
-	// When replicas diverge, anecdotally often the minority (usually of size
-	// one) is in the wrong. If there's more than one smallest minority (for
-	// example, if three replicas all return different hashes) we pick any of
-	// them.
 	var minoritySHA string
 	if len(shaToIdxs) > 1 {
+		__antithesis_instrumentation__.Notify(116843)
 		for sha, idxs := range shaToIdxs {
-			if minoritySHA == "" || len(shaToIdxs[minoritySHA]) > len(idxs) {
+			__antithesis_instrumentation__.Notify(116844)
+			if minoritySHA == "" || func() bool {
+				__antithesis_instrumentation__.Notify(116845)
+				return len(shaToIdxs[minoritySHA]) > len(idxs) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(116846)
 				minoritySHA = sha
+			} else {
+				__antithesis_instrumentation__.Notify(116847)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(116848)
 	}
-
-	// There is an inconsistency if and only if there is a minority SHA.
+	__antithesis_instrumentation__.Notify(116827)
 
 	if minoritySHA != "" {
+		__antithesis_instrumentation__.Notify(116849)
 		var buf redact.StringBuilder
-		buf.Printf("\n") // New line to align checksums below.
+		buf.Printf("\n")
 		for sha, idxs := range shaToIdxs {
+			__antithesis_instrumentation__.Notify(116852)
 			minority := redact.Safe("")
 			if sha == minoritySHA {
+				__antithesis_instrumentation__.Notify(116855)
 				minority = redact.Safe(" [minority]")
+			} else {
+				__antithesis_instrumentation__.Notify(116856)
 			}
+			__antithesis_instrumentation__.Notify(116853)
 			for _, idx := range idxs {
+				__antithesis_instrumentation__.Notify(116857)
 				buf.Printf("%s: checksum %x%s\n"+
 					"- stats: %+v\n"+
 					"- stats.Sub(recomputation): %+v\n",
@@ -157,113 +143,165 @@ func (r *Replica) CheckConsistency(
 					&results[idx].Response.Delta,
 				)
 			}
+			__antithesis_instrumentation__.Notify(116854)
 			minoritySnap := results[shaToIdxs[minoritySHA][0]].Response.Snapshot
 			curSnap := results[shaToIdxs[sha][0]].Response.Snapshot
-			if sha != minoritySHA && minoritySnap != nil && curSnap != nil {
+			if sha != minoritySHA && func() bool {
+				__antithesis_instrumentation__.Notify(116858)
+				return minoritySnap != nil == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(116859)
+				return curSnap != nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(116860)
 				diff := diffRange(curSnap, minoritySnap)
 				if report := r.store.cfg.TestingKnobs.ConsistencyTestingKnobs.BadChecksumReportDiff; report != nil {
+					__antithesis_instrumentation__.Notify(116862)
 					report(*r.store.Ident, diff)
+				} else {
+					__antithesis_instrumentation__.Notify(116863)
 				}
+				__antithesis_instrumentation__.Notify(116861)
 				buf.Printf("====== diff(%x, [minority]) ======\n%v", redact.Safe(sha), diff)
+			} else {
+				__antithesis_instrumentation__.Notify(116864)
 			}
 		}
+		__antithesis_instrumentation__.Notify(116850)
 
 		if isQueue {
+			__antithesis_instrumentation__.Notify(116865)
 			log.Errorf(ctx, "%v", &buf)
+		} else {
+			__antithesis_instrumentation__.Notify(116866)
 		}
+		__antithesis_instrumentation__.Notify(116851)
 		res.Detail += buf.String()
 	} else {
+		__antithesis_instrumentation__.Notify(116867)
 		res.Detail += fmt.Sprintf("stats: %+v\n", results[0].Response.Persisted)
 	}
+	__antithesis_instrumentation__.Notify(116828)
 	for _, result := range missing {
+		__antithesis_instrumentation__.Notify(116868)
 		res.Detail += fmt.Sprintf("%s: error: %v\n", result.Replica, result.Err)
 	}
+	__antithesis_instrumentation__.Notify(116829)
 
 	delta := enginepb.MVCCStats(results[0].Response.Delta)
 	var haveDelta bool
 	{
+		__antithesis_instrumentation__.Notify(116869)
 		d2 := delta
 		d2.AgeTo(0)
 		haveDelta = d2 != enginepb.MVCCStats{}
 	}
+	__antithesis_instrumentation__.Notify(116830)
 
 	res.StartKey = []byte(startKey)
 	res.Status = roachpb.CheckConsistencyResponse_RANGE_CONSISTENT
 	if minoritySHA != "" {
+		__antithesis_instrumentation__.Notify(116870)
 		res.Status = roachpb.CheckConsistencyResponse_RANGE_INCONSISTENT
-	} else if args.Mode != roachpb.ChecksumMode_CHECK_STATS && haveDelta {
-		if delta.ContainsEstimates > 0 {
-			// When ContainsEstimates is set, it's generally expected that we'll get a different
-			// result when we recompute from scratch.
-			res.Status = roachpb.CheckConsistencyResponse_RANGE_CONSISTENT_STATS_ESTIMATED
+	} else {
+		__antithesis_instrumentation__.Notify(116871)
+		if args.Mode != roachpb.ChecksumMode_CHECK_STATS && func() bool {
+			__antithesis_instrumentation__.Notify(116872)
+			return haveDelta == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(116873)
+			if delta.ContainsEstimates > 0 {
+				__antithesis_instrumentation__.Notify(116875)
+
+				res.Status = roachpb.CheckConsistencyResponse_RANGE_CONSISTENT_STATS_ESTIMATED
+			} else {
+				__antithesis_instrumentation__.Notify(116876)
+
+				res.Status = roachpb.CheckConsistencyResponse_RANGE_CONSISTENT_STATS_INCORRECT
+			}
+			__antithesis_instrumentation__.Notify(116874)
+			res.Detail += fmt.Sprintf("stats - recomputation: %+v\n", enginepb.MVCCStats(results[0].Response.Delta))
 		} else {
-			// When ContainsEstimates is unset, we expect the recomputation to agree with the stored stats.
-			// If that's not the case, that's a problem: it could be a bug in the stats computation
-			// or stats maintenance, but it could also hint at the replica having diverged from its peers.
-			res.Status = roachpb.CheckConsistencyResponse_RANGE_CONSISTENT_STATS_INCORRECT
+			__antithesis_instrumentation__.Notify(116877)
+			if len(missing) > 0 {
+				__antithesis_instrumentation__.Notify(116878)
+
+				res.Status = roachpb.CheckConsistencyResponse_RANGE_INDETERMINATE
+			} else {
+				__antithesis_instrumentation__.Notify(116879)
+			}
 		}
-		res.Detail += fmt.Sprintf("stats - recomputation: %+v\n", enginepb.MVCCStats(results[0].Response.Delta))
-	} else if len(missing) > 0 {
-		// No inconsistency was detected, but we didn't manage to inspect all replicas.
-		res.Status = roachpb.CheckConsistencyResponse_RANGE_INDETERMINATE
 	}
+	__antithesis_instrumentation__.Notify(116831)
 	var resp roachpb.CheckConsistencyResponse
 	resp.Result = append(resp.Result, res)
 
-	// Bail out at this point except if the queue is the caller. All of the stuff
-	// below should really happen in the consistency queue to keep CheckConsistency
-	// itself self-contained.
 	if !isQueue {
+		__antithesis_instrumentation__.Notify(116880)
 		return resp, nil
+	} else {
+		__antithesis_instrumentation__.Notify(116881)
 	}
+	__antithesis_instrumentation__.Notify(116832)
 
 	if minoritySHA == "" {
-		// The replicas were in sync. Check that the MVCCStats haven't diverged from
-		// what they should be. This code originated in the realization that there
-		// were many bugs in our stats computations. These are being fixed, but it
-		// is through this mechanism that existing ranges are updated. Hence, the
-		// logging below is relatively timid.
+		__antithesis_instrumentation__.Notify(116882)
 
-		// If there's no delta, there's nothing else to do.
 		if !haveDelta {
+			__antithesis_instrumentation__.Notify(116885)
 			return resp, nil
+		} else {
+			__antithesis_instrumentation__.Notify(116886)
 		}
+		__antithesis_instrumentation__.Notify(116883)
 
-		if delta.ContainsEstimates <= 0 && fatalOnStatsMismatch {
-			// We just found out that the recomputation doesn't match the persisted stats,
-			// so ContainsEstimates should have been strictly positive.
+		if delta.ContainsEstimates <= 0 && func() bool {
+			__antithesis_instrumentation__.Notify(116887)
+			return fatalOnStatsMismatch == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(116888)
 
 			var v roachpb.Version
 			if err := r.store.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+				__antithesis_instrumentation__.Notify(116890)
 				return txn.GetProto(ctx, keys.BootstrapVersionKey, &v)
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(116891)
 				log.Infof(ctx, "while retrieving cluster bootstrap version: %s", err)
-				// Intentionally continue with the assumption that it's the current version.
+
 				v = r.store.cfg.Settings.Version.ActiveVersion(ctx).Version
+			} else {
+				__antithesis_instrumentation__.Notify(116892)
 			}
-			// For clusters that ever ran <19.1, we're not so sure that the stats
-			// are consistent. Verify this only for clusters that started out on 19.1 or
-			// higher.
+			__antithesis_instrumentation__.Notify(116889)
+
 			if !v.Less(roachpb.Version{Major: 19, Minor: 1}) {
-				// If version >= 19.1 but < 20.1-14 (AbortSpanBytes before its removal),
-				// we want to ignore any delta in AbortSpanBytes when comparing stats
-				// since older versions will not be tracking abort span bytes.
+				__antithesis_instrumentation__.Notify(116893)
+
 				if v.Less(roachpb.Version{Major: 20, Minor: 1, Internal: 14}) {
+					__antithesis_instrumentation__.Notify(116896)
 					delta.AbortSpanBytes = 0
 					haveDelta = delta != enginepb.MVCCStats{}
+				} else {
+					__antithesis_instrumentation__.Notify(116897)
 				}
+				__antithesis_instrumentation__.Notify(116894)
 				if !haveDelta {
+					__antithesis_instrumentation__.Notify(116898)
 					return resp, nil
+				} else {
+					__antithesis_instrumentation__.Notify(116899)
 				}
+				__antithesis_instrumentation__.Notify(116895)
 				log.Fatalf(ctx, "found a delta of %+v", redact.Safe(delta))
+			} else {
+				__antithesis_instrumentation__.Notify(116900)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(116901)
 		}
+		__antithesis_instrumentation__.Notify(116884)
 
-		// We've found that there's something to correct; send an RecomputeStatsRequest. Note that this
-		// code runs only on the lease holder (at the time of initiating the computation), so this work
-		// isn't duplicated except in rare leaseholder change scenarios (and concurrent invocation of
-		// RecomputeStats is allowed because these requests block on one another). Also, we're
-		// essentially paced by the consistency checker so we won't call this too often.
 		log.Infof(ctx, "triggering stats recomputation to resolve delta of %+v", results[0].Response.Delta)
 
 		req := roachpb.RecomputeStatsRequest{
@@ -275,51 +313,48 @@ func (r *Replica) CheckConsistency(
 
 		err := r.store.db.Run(ctx, &b)
 		return resp, roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(116902)
 	}
+	__antithesis_instrumentation__.Notify(116833)
 
 	if args.WithDiff {
-		// A diff was already printed. Return because all the code below will do
-		// is request another consistency check, with a diff and with
-		// instructions to terminate the minority nodes.
+		__antithesis_instrumentation__.Notify(116903)
+
 		log.Errorf(ctx, "consistency check failed")
 		return resp, nil
+	} else {
+		__antithesis_instrumentation__.Notify(116904)
 	}
+	__antithesis_instrumentation__.Notify(116834)
 
-	// No diff was printed, so we want to re-run with diff.
-	// Note that this recursive call will be terminated in the `args.WithDiff`
-	// branch above.
 	args.WithDiff = true
 	args.Checkpoint = true
 	for _, idxs := range shaToIdxs[minoritySHA] {
+		__antithesis_instrumentation__.Notify(116905)
 		args.Terminate = append(args.Terminate, results[idxs].Replica)
 	}
-	// args.Terminate is a slice of properly redactable values, but
-	// with %v `redact` will not realize that and will redact the
-	// whole thing. Wrap it as a ReplicaSet which is a SafeFormatter
-	// and will get the job done.
-	//
-	// TODO(knz): clean up after https://github.com/cockroachdb/redact/issues/5.
+
 	{
+		__antithesis_instrumentation__.Notify(116906)
 		var tmp redact.SafeFormatter = roachpb.MakeReplicaSet(args.Terminate)
 		log.Errorf(ctx, "consistency check failed; fetching details and shutting down minority %v", tmp)
 	}
+	__antithesis_instrumentation__.Notify(116835)
 
-	// We've noticed in practice that if the snapshot diff is large, the
-	// log file to which it is printed is promptly rotated away, so up
-	// the limits while the diff printing occurs.
-	//
-	// See:
-	// https://github.com/cockroachdb/cockroach/issues/36861
 	defer log.TemporarilyDisableFileGCForMainLogger()()
 
 	if _, pErr := r.CheckConsistency(ctx, args); pErr != nil {
+		__antithesis_instrumentation__.Notify(116907)
 		log.Errorf(ctx, "replica inconsistency detected; could not obtain actual diff: %s", pErr)
+	} else {
+		__antithesis_instrumentation__.Notify(116908)
 	}
+	__antithesis_instrumentation__.Notify(116836)
 
 	return resp, nil
 }
 
-// A ConsistencyCheckResult contains the outcome of a CollectChecksum call.
 type ConsistencyCheckResult struct {
 	Replica  roachpb.ReplicaDescriptor
 	Response CollectChecksumResponse
@@ -329,11 +364,16 @@ type ConsistencyCheckResult struct {
 func (r *Replica) collectChecksumFromReplica(
 	ctx context.Context, replica roachpb.ReplicaDescriptor, id uuid.UUID, checksum []byte,
 ) (CollectChecksumResponse, error) {
+	__antithesis_instrumentation__.Notify(116909)
 	conn, err := r.store.cfg.NodeDialer.Dial(ctx, replica.NodeID, rpc.DefaultClass)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(116912)
 		return CollectChecksumResponse{},
 			errors.Wrapf(err, "could not dial node ID %d", replica.NodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(116913)
 	}
+	__antithesis_instrumentation__.Notify(116910)
 	client := NewPerReplicaClient(conn)
 	req := &CollectChecksumRequest{
 		StoreRequestHeader: StoreRequestHeader{NodeID: replica.NodeID, StoreID: replica.StoreID},
@@ -343,58 +383,73 @@ func (r *Replica) collectChecksumFromReplica(
 	}
 	resp, err := client.CollectChecksum(ctx, req)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(116914)
 		return CollectChecksumResponse{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(116915)
 	}
+	__antithesis_instrumentation__.Notify(116911)
 	return *resp, nil
 }
 
-// RunConsistencyCheck carries out a round of CheckConsistency/CollectChecksum
-// for the members of this range, returning the results (which it does not act
-// upon). The first result will belong to the local replica, and in particular
-// there is a first result when no error is returned.
 func (r *Replica) RunConsistencyCheck(
 	ctx context.Context, req roachpb.ComputeChecksumRequest,
 ) ([]ConsistencyCheckResult, error) {
-	// Send a ComputeChecksum which will trigger computation of the checksum on
-	// all replicas.
+	__antithesis_instrumentation__.Notify(116916)
+
 	res, pErr := kv.SendWrapped(ctx, r.store.db.NonTransactionalSender(), &req)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(116921)
 		return nil, pErr.GoError()
+	} else {
+		__antithesis_instrumentation__.Notify(116922)
 	}
+	__antithesis_instrumentation__.Notify(116917)
 	ccRes := res.(*roachpb.ComputeChecksumResponse)
 
 	var orderedReplicas []roachpb.ReplicaDescriptor
 	{
+		__antithesis_instrumentation__.Notify(116923)
 		desc := r.Desc()
 		localReplica, err := r.GetReplicaDescriptor()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(116925)
 			return nil, errors.Wrap(err, "could not get replica descriptor")
+		} else {
+			__antithesis_instrumentation__.Notify(116926)
 		}
+		__antithesis_instrumentation__.Notify(116924)
 
-		// Move the local replica to the front (which makes it the "master"
-		// we're comparing against).
 		orderedReplicas = append(orderedReplicas, desc.Replicas().Descriptors()...)
 
 		sort.Slice(orderedReplicas, func(i, j int) bool {
+			__antithesis_instrumentation__.Notify(116927)
 			return orderedReplicas[i] == localReplica
 		})
 	}
+	__antithesis_instrumentation__.Notify(116918)
 
 	resultCh := make(chan ConsistencyCheckResult, len(orderedReplicas))
 	var results []ConsistencyCheckResult
 	var wg sync.WaitGroup
 
 	for _, replica := range orderedReplicas {
+		__antithesis_instrumentation__.Notify(116928)
 		wg.Add(1)
-		replica := replica // per-iteration copy for the goroutine
+		replica := replica
 		if err := r.store.Stopper().RunAsyncTask(ctx, "storage.Replica: checking consistency",
 			func(ctx context.Context) {
+				__antithesis_instrumentation__.Notify(116930)
 				defer wg.Done()
 
 				var masterChecksum []byte
 				if len(results) > 0 {
+					__antithesis_instrumentation__.Notify(116932)
 					masterChecksum = results[0].Response.Checksum
+				} else {
+					__antithesis_instrumentation__.Notify(116933)
 				}
+				__antithesis_instrumentation__.Notify(116931)
 				resp, err := r.collectChecksumFromReplica(ctx, replica, ccRes.ChecksumID, masterChecksum)
 				resultCh <- ConsistencyCheckResult{
 					Replica:  replica,
@@ -402,174 +457,226 @@ func (r *Replica) RunConsistencyCheck(
 					Err:      err,
 				}
 			}); err != nil {
+			__antithesis_instrumentation__.Notify(116934)
 			wg.Done()
-			// If we can't start tasks, the node is likely draining. Just return the error verbatim.
-			return nil, err
-		}
 
-		// Collect the master result eagerly so that we can send a SHA in the
-		// remaining requests (this is used for logging inconsistencies on the
-		// remote nodes only).
+			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(116935)
+		}
+		__antithesis_instrumentation__.Notify(116929)
+
 		if len(results) == 0 {
+			__antithesis_instrumentation__.Notify(116936)
 			wg.Wait()
 			result := <-resultCh
 			if err := result.Err; err != nil {
-				// If we can't compute the local checksum, give up.
+				__antithesis_instrumentation__.Notify(116938)
+
 				return nil, errors.Wrap(err, "computing own checksum")
+			} else {
+				__antithesis_instrumentation__.Notify(116939)
 			}
+			__antithesis_instrumentation__.Notify(116937)
 			results = append(results, result)
+		} else {
+			__antithesis_instrumentation__.Notify(116940)
 		}
 	}
+	__antithesis_instrumentation__.Notify(116919)
 
 	wg.Wait()
 	close(resultCh)
 
-	// Collect the remaining results.
 	for result := range resultCh {
+		__antithesis_instrumentation__.Notify(116941)
 		results = append(results, result)
 	}
+	__antithesis_instrumentation__.Notify(116920)
 
 	return results, nil
 }
 
 func (r *Replica) gcOldChecksumEntriesLocked(now time.Time) {
+	__antithesis_instrumentation__.Notify(116942)
 	for id, val := range r.mu.checksums {
-		// The timestamp is valid only if set.
-		if !val.gcTimestamp.IsZero() && now.After(val.gcTimestamp) {
+		__antithesis_instrumentation__.Notify(116943)
+
+		if !val.gcTimestamp.IsZero() && func() bool {
+			__antithesis_instrumentation__.Notify(116944)
+			return now.After(val.gcTimestamp) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(116945)
 			delete(r.mu.checksums, id)
+		} else {
+			__antithesis_instrumentation__.Notify(116946)
 		}
 	}
 }
 
-// getChecksum waits for the result of ComputeChecksum and returns it.
-// It returns false if there is no checksum being computed for the id,
-// or it has already been GCed.
 func (r *Replica) getChecksum(ctx context.Context, id uuid.UUID) (replicaChecksum, error) {
+	__antithesis_instrumentation__.Notify(116947)
 	now := timeutil.Now()
 	r.mu.Lock()
 	r.gcOldChecksumEntriesLocked(now)
 	c, ok := r.mu.checksums[id]
 	if !ok {
-		// TODO(tbg): we need to unconditionally set a gcTimestamp or this
-		// request can simply get stuck forever or cancel anyway and leak an
-		// entry in r.mu.checksums.
+		__antithesis_instrumentation__.Notify(116953)
+
 		if d, dOk := ctx.Deadline(); dOk {
+			__antithesis_instrumentation__.Notify(116955)
 			c.gcTimestamp = d
+		} else {
+			__antithesis_instrumentation__.Notify(116956)
 		}
+		__antithesis_instrumentation__.Notify(116954)
 		c.notify = make(chan struct{})
 		r.mu.checksums[id] = c
+	} else {
+		__antithesis_instrumentation__.Notify(116957)
 	}
+	__antithesis_instrumentation__.Notify(116948)
 	r.mu.Unlock()
 
-	// Wait for the checksum to compute or at least to start.
 	computed, err := r.checksumInitialWait(ctx, id, c.notify)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(116958)
 		return replicaChecksum{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(116959)
 	}
-	// If the checksum started, but has not completed commit
-	// to waiting the full deadline.
+	__antithesis_instrumentation__.Notify(116949)
+
 	if !computed {
+		__antithesis_instrumentation__.Notify(116960)
 		_, err = r.checksumWait(ctx, id, c.notify, nil)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(116961)
 			return replicaChecksum{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(116962)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(116963)
 	}
+	__antithesis_instrumentation__.Notify(116950)
 
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(116964)
 		log.Infof(ctx, "waited for compute checksum for %s", timeutil.Since(now))
+	} else {
+		__antithesis_instrumentation__.Notify(116965)
 	}
+	__antithesis_instrumentation__.Notify(116951)
 	r.mu.RLock()
 	c, ok = r.mu.checksums[id]
 	r.mu.RUnlock()
-	// If the checksum wasn't found or the checksum could not be computed, error out.
-	// The latter case can occur when there's a version mismatch or, more generally,
-	// when the (async) checksum computation fails.
-	if !ok || c.Checksum == nil {
+
+	if !ok || func() bool {
+		__antithesis_instrumentation__.Notify(116966)
+		return c.Checksum == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(116967)
 		return replicaChecksum{}, errors.Errorf("no checksum found (ID = %s)", id)
+	} else {
+		__antithesis_instrumentation__.Notify(116968)
 	}
+	__antithesis_instrumentation__.Notify(116952)
 	return c, nil
 }
 
-// Waits for the checksum to be available or for the checksum to start computing.
-// If we waited for 10% of the deadline and it has not started, then it's
-// unlikely to start because this replica is most likely being restored from
-// snapshots.
 func (r *Replica) checksumInitialWait(
 	ctx context.Context, id uuid.UUID, notify chan struct{},
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(116969)
 	d, dOk := ctx.Deadline()
-	// The max wait time should be 5 seconds, so we dont end up waiting for
-	// minutes for a huge range.
+
 	maxInitialWait := 5 * time.Second
 	var initialWait <-chan time.Time
 	if dOk {
+		__antithesis_instrumentation__.Notify(116971)
 		duration := time.Duration(timeutil.Until(d).Nanoseconds() / 10)
 		if duration > maxInitialWait {
+			__antithesis_instrumentation__.Notify(116973)
 			duration = maxInitialWait
+		} else {
+			__antithesis_instrumentation__.Notify(116974)
 		}
+		__antithesis_instrumentation__.Notify(116972)
 		initialWait = time.After(duration)
 	} else {
+		__antithesis_instrumentation__.Notify(116975)
 		initialWait = time.After(maxInitialWait)
 	}
+	__antithesis_instrumentation__.Notify(116970)
 	return r.checksumWait(ctx, id, notify, initialWait)
 }
 
-// checksumWait waits for the checksum to be available or for the computation
-// to start  within the initialWait time. The bool return flag is used to
-// indicate if a checksum is available (true) or if the initial wait has expired
-// and the caller should wait more, since the checksum computation started.
 func (r *Replica) checksumWait(
 	ctx context.Context, id uuid.UUID, notify chan struct{}, initialWait <-chan time.Time,
 ) (bool, error) {
-	// Wait
+	__antithesis_instrumentation__.Notify(116976)
+
 	select {
 	case <-r.store.Stopper().ShouldQuiesce():
+		__antithesis_instrumentation__.Notify(116977)
 		return false,
 			errors.Errorf("store quiescing while waiting for compute checksum (ID = %s)", id)
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(116978)
 		return false,
 			errors.Wrapf(ctx.Err(), "while waiting for compute checksum (ID = %s)", id)
 	case <-initialWait:
+		__antithesis_instrumentation__.Notify(116979)
 		{
+			__antithesis_instrumentation__.Notify(116981)
 			r.mu.Lock()
 			started := r.mu.checksums[id].started
 			r.mu.Unlock()
 			if !started {
+				__antithesis_instrumentation__.Notify(116983)
 				return false,
 					errors.Errorf("checksum computation did not start in time for (ID = %s)", id)
+			} else {
+				__antithesis_instrumentation__.Notify(116984)
 			}
+			__antithesis_instrumentation__.Notify(116982)
 			return false, nil
 		}
 	case <-notify:
+		__antithesis_instrumentation__.Notify(116980)
 		return true, nil
 	}
 }
 
-// computeChecksumDone adds the computed checksum, sets a deadline for GCing the
-// checksum, and sends out a notification.
 func (r *Replica) computeChecksumDone(
 	ctx context.Context, id uuid.UUID, result *replicaHash, snapshot *roachpb.RaftSnapshotData,
 ) {
+	__antithesis_instrumentation__.Notify(116985)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if c, ok := r.mu.checksums[id]; ok {
+		__antithesis_instrumentation__.Notify(116986)
 		if result != nil {
+			__antithesis_instrumentation__.Notify(116988)
 			c.Checksum = result.SHA512[:]
 
 			delta := result.PersistedMS
 			delta.Subtract(result.RecomputedMS)
 			c.Delta = enginepb.MVCCStatsDelta(delta)
 			c.Persisted = result.PersistedMS
+		} else {
+			__antithesis_instrumentation__.Notify(116989)
 		}
+		__antithesis_instrumentation__.Notify(116987)
 		c.gcTimestamp = timeutil.Now().Add(replicaChecksumGCInterval)
 		c.Snapshot = snapshot
 		r.mu.checksums[id] = c
-		// Notify
+
 		close(c.notify)
 	} else {
-		// ComputeChecksum adds an entry into the map, and the entry can
-		// only be GCed once the gcTimestamp is set above. Something
-		// really bad happened.
+		__antithesis_instrumentation__.Notify(116990)
+
 		log.Errorf(ctx, "no map entry for checksum (ID = %s)", id)
 	}
 }
@@ -579,8 +686,6 @@ type replicaHash struct {
 	PersistedMS, RecomputedMS enginepb.MVCCStats
 }
 
-// sha512 computes the SHA512 hash of all the replica data at the snapshot.
-// It will dump all the kv data into snapshot if it is provided.
 func (*Replica) sha512(
 	ctx context.Context,
 	desc roachpb.RangeDescriptor,
@@ -589,9 +694,9 @@ func (*Replica) sha512(
 	mode roachpb.ChecksumMode,
 	limiter *quotapool.RateLimiter,
 ) (*replicaHash, error) {
+	__antithesis_instrumentation__.Notify(116991)
 	statsOnly := mode == roachpb.ChecksumMode_CHECK_STATS
 
-	// Iterate over all the data in the range.
 	var alloc bufalloc.ByteAllocator
 	var intBuf [8]byte
 	var legacyTimestamp hlc.LegacyTimestamp
@@ -599,214 +704,303 @@ func (*Replica) sha512(
 	hasher := sha512.New()
 
 	visitor := func(unsafeKey storage.MVCCKey, unsafeValue []byte) error {
-		// Rate Limit the scan through the range
+		__antithesis_instrumentation__.Notify(116996)
+
 		if err := limiter.WaitN(ctx, int64(len(unsafeKey.Key)+len(unsafeValue))); err != nil {
+			__antithesis_instrumentation__.Notify(117005)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(117006)
 		}
+		__antithesis_instrumentation__.Notify(116997)
 
 		if snapshot != nil {
-			// Add (a copy of) the kv pair into the debug message.
+			__antithesis_instrumentation__.Notify(117007)
+
 			kv := roachpb.RaftSnapshotData_KeyValue{
 				Timestamp: unsafeKey.Timestamp,
 			}
 			alloc, kv.Key = alloc.Copy(unsafeKey.Key, 0)
 			alloc, kv.Value = alloc.Copy(unsafeValue, 0)
 			snapshot.KV = append(snapshot.KV, kv)
+		} else {
+			__antithesis_instrumentation__.Notify(117008)
 		}
+		__antithesis_instrumentation__.Notify(116998)
 
-		// Encode the length of the key and value.
 		binary.LittleEndian.PutUint64(intBuf[:], uint64(len(unsafeKey.Key)))
 		if _, err := hasher.Write(intBuf[:]); err != nil {
+			__antithesis_instrumentation__.Notify(117009)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(117010)
 		}
+		__antithesis_instrumentation__.Notify(116999)
 		binary.LittleEndian.PutUint64(intBuf[:], uint64(len(unsafeValue)))
 		if _, err := hasher.Write(intBuf[:]); err != nil {
+			__antithesis_instrumentation__.Notify(117011)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(117012)
 		}
+		__antithesis_instrumentation__.Notify(117000)
 		if _, err := hasher.Write(unsafeKey.Key); err != nil {
+			__antithesis_instrumentation__.Notify(117013)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(117014)
 		}
+		__antithesis_instrumentation__.Notify(117001)
 		legacyTimestamp = unsafeKey.Timestamp.ToLegacyTimestamp()
 		if size := legacyTimestamp.Size(); size > cap(timestampBuf) {
+			__antithesis_instrumentation__.Notify(117015)
 			timestampBuf = make([]byte, size)
 		} else {
+			__antithesis_instrumentation__.Notify(117016)
 			timestampBuf = timestampBuf[:size]
 		}
+		__antithesis_instrumentation__.Notify(117002)
 		if _, err := protoutil.MarshalTo(&legacyTimestamp, timestampBuf); err != nil {
+			__antithesis_instrumentation__.Notify(117017)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(117018)
 		}
+		__antithesis_instrumentation__.Notify(117003)
 		if _, err := hasher.Write(timestampBuf); err != nil {
+			__antithesis_instrumentation__.Notify(117019)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(117020)
 		}
+		__antithesis_instrumentation__.Notify(117004)
 		_, err := hasher.Write(unsafeValue)
 		return err
 	}
+	__antithesis_instrumentation__.Notify(116992)
 
 	var ms enginepb.MVCCStats
-	// In statsOnly mode, we hash only the RangeAppliedState. In regular mode, hash
-	// all of the replicated key space.
+
 	if !statsOnly {
-		// Do not want the lock table ranges since the iter has been constructed
-		// using MVCCKeyAndIntentsIterKind.
-		//
-		// TODO(sumeer): When we have replicated locks other than exclusive locks,
-		// we will probably not have any interleaved intents so we could stop
-		// using MVCCKeyAndIntentsIterKind and consider all locks here.
+		__antithesis_instrumentation__.Notify(117021)
+
 		for _, span := range rditer.MakeReplicatedKeyRangesExceptLockTable(&desc) {
+			__antithesis_instrumentation__.Notify(117022)
 			iter := snap.NewMVCCIterator(storage.MVCCKeyAndIntentsIterKind,
 				storage.IterOptions{UpperBound: span.End})
 			spanMS, err := storage.ComputeStatsForRange(
-				iter, span.Start, span.End, 0 /* nowNanos */, visitor,
+				iter, span.Start, span.End, 0, visitor,
 			)
 			iter.Close()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(117024)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(117025)
 			}
+			__antithesis_instrumentation__.Notify(117023)
 			ms.Add(spanMS)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(117026)
 	}
+	__antithesis_instrumentation__.Notify(116993)
 
 	var result replicaHash
 	result.RecomputedMS = ms
 
 	rangeAppliedState, err := stateloader.Make(desc.RangeID).LoadRangeAppliedState(ctx, snap)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(117027)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(117028)
 	}
+	__antithesis_instrumentation__.Notify(116994)
 	result.PersistedMS = rangeAppliedState.RangeStats.ToStats()
 
 	if statsOnly {
+		__antithesis_instrumentation__.Notify(117029)
 		b, err := protoutil.Marshal(&rangeAppliedState)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(117032)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(117033)
 		}
+		__antithesis_instrumentation__.Notify(117030)
 		if snapshot != nil {
-			// Add LeaseAppliedState to the diff.
+			__antithesis_instrumentation__.Notify(117034)
+
 			kv := roachpb.RaftSnapshotData_KeyValue{
 				Timestamp: hlc.Timestamp{},
 			}
 			kv.Key = keys.RangeAppliedStateKey(desc.RangeID)
 			var v roachpb.Value
 			if err := v.SetProto(&rangeAppliedState); err != nil {
+				__antithesis_instrumentation__.Notify(117036)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(117037)
 			}
+			__antithesis_instrumentation__.Notify(117035)
 			kv.Value = v.RawBytes
 			snapshot.KV = append(snapshot.KV, kv)
+		} else {
+			__antithesis_instrumentation__.Notify(117038)
 		}
+		__antithesis_instrumentation__.Notify(117031)
 		if _, err := hasher.Write(b); err != nil {
+			__antithesis_instrumentation__.Notify(117039)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(117040)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(117041)
 	}
+	__antithesis_instrumentation__.Notify(116995)
 
 	hasher.Sum(result.SHA512[:0])
 
-	// We're not required to do so, but it looks nicer if both stats are aged to
-	// the same timestamp.
 	result.RecomputedMS.AgeTo(result.PersistedMS.LastUpdateNanos)
 
 	return &result, nil
 }
 
 func (r *Replica) computeChecksumPostApply(ctx context.Context, cc kvserverpb.ComputeChecksum) {
+	__antithesis_instrumentation__.Notify(117042)
 	stopper := r.store.Stopper()
 	now := timeutil.Now()
 	r.mu.Lock()
 	var notify chan struct{}
 	if c, ok := r.mu.checksums[cc.ChecksumID]; !ok {
-		// There is no record of this ID. Make a new notification.
+		__antithesis_instrumentation__.Notify(117047)
+
 		notify = make(chan struct{})
-	} else if !c.started {
-		// A CollectChecksumRequest is waiting on the existing notification.
-		notify = c.notify
 	} else {
-		log.Fatalf(ctx, "attempted to apply ComputeChecksum command with duplicated checksum ID %s",
-			cc.ChecksumID)
+		__antithesis_instrumentation__.Notify(117048)
+		if !c.started {
+			__antithesis_instrumentation__.Notify(117049)
+
+			notify = c.notify
+		} else {
+			__antithesis_instrumentation__.Notify(117050)
+			log.Fatalf(ctx, "attempted to apply ComputeChecksum command with duplicated checksum ID %s",
+				cc.ChecksumID)
+		}
 	}
+	__antithesis_instrumentation__.Notify(117043)
 
 	r.gcOldChecksumEntriesLocked(now)
 
-	// Create an entry with checksum == nil and gcTimestamp unset.
 	r.mu.checksums[cc.ChecksumID] = replicaChecksum{started: true, notify: notify}
 	desc := *r.mu.state.Desc
 	r.mu.Unlock()
 
 	if cc.Version != batcheval.ReplicaChecksumVersion {
+		__antithesis_instrumentation__.Notify(117051)
 		r.computeChecksumDone(ctx, cc.ChecksumID, nil, nil)
 		log.Infof(ctx, "incompatible ComputeChecksum versions (requested: %d, have: %d)",
 			cc.Version, batcheval.ReplicaChecksumVersion)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(117052)
 	}
+	__antithesis_instrumentation__.Notify(117044)
 
-	// Caller is holding raftMu, so an engine snapshot is automatically
-	// Raft-consistent (i.e. not in the middle of an AddSSTable).
 	snap := r.store.engine.NewSnapshot()
 	if cc.Checkpoint {
+		__antithesis_instrumentation__.Notify(117053)
 		sl := stateloader.Make(r.RangeID)
 		as, err := sl.LoadRangeAppliedState(ctx, snap)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(117055)
 			log.Warningf(ctx, "unable to load applied index, continuing anyway")
+		} else {
+			__antithesis_instrumentation__.Notify(117056)
 		}
-		// NB: the names here will match on all nodes, which is nice for debugging.
+		__antithesis_instrumentation__.Notify(117054)
+
 		tag := fmt.Sprintf("r%d_at_%d", r.RangeID, as.RaftAppliedIndex)
 		if dir, err := r.store.checkpoint(ctx, tag); err != nil {
+			__antithesis_instrumentation__.Notify(117057)
 			log.Warningf(ctx, "unable to create checkpoint %s: %+v", dir, err)
 		} else {
+			__antithesis_instrumentation__.Notify(117058)
 			log.Warningf(ctx, "created checkpoint %s", dir)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(117059)
 	}
+	__antithesis_instrumentation__.Notify(117045)
 
-	// Compute SHA asynchronously and store it in a map by UUID. Concurrent checks
-	// share the rate limit in r.store.consistencyLimiter, so we also limit the
-	// number of concurrent checks via r.store.consistencySem.
-	//
-	// Don't use the proposal's context for this, as it likely to be canceled very
-	// soon.
 	const taskName = "storage.Replica: computing checksum"
 	sem := r.store.consistencySem
 	if cc.Mode == roachpb.ChecksumMode_CHECK_STATS {
-		// Stats-only checks are cheap, and the DistSender parallelizes these across
-		// ranges (in particular when calling crdb_internal.check_consistency()), so
-		// they don't count towards the semaphore limit.
+		__antithesis_instrumentation__.Notify(117060)
+
 		sem = nil
+	} else {
+		__antithesis_instrumentation__.Notify(117061)
 	}
+	__antithesis_instrumentation__.Notify(117046)
 	if err := stopper.RunAsyncTaskEx(r.AnnotateCtx(context.Background()), stop.TaskOpts{
 		TaskName:   taskName,
 		Sem:        sem,
 		WaitForSem: false,
 	}, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(117062)
 		if err := contextutil.RunWithTimeout(ctx, taskName, consistencyCheckAsyncTimeout,
 			func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(117065)
 				defer snap.Close()
 				var snapshot *roachpb.RaftSnapshotData
 				if cc.SaveSnapshot {
+					__antithesis_instrumentation__.Notify(117068)
 					snapshot = &roachpb.RaftSnapshotData{}
+				} else {
+					__antithesis_instrumentation__.Notify(117069)
 				}
+				__antithesis_instrumentation__.Notify(117066)
 
 				result, err := r.sha512(ctx, desc, snap, snapshot, cc.Mode, r.store.consistencyLimiter)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(117070)
 					result = nil
+				} else {
+					__antithesis_instrumentation__.Notify(117071)
 				}
+				__antithesis_instrumentation__.Notify(117067)
 				r.computeChecksumDone(ctx, cc.ChecksumID, result, snapshot)
 				return err
 			},
 		); err != nil {
+			__antithesis_instrumentation__.Notify(117072)
 			log.Errorf(ctx, "checksum computation failed: %v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(117073)
 		}
+		__antithesis_instrumentation__.Notify(117063)
 
 		var shouldFatal bool
 		for _, rDesc := range cc.Terminate {
-			if rDesc.StoreID == r.store.StoreID() && rDesc.ReplicaID == r.replicaID {
+			__antithesis_instrumentation__.Notify(117074)
+			if rDesc.StoreID == r.store.StoreID() && func() bool {
+				__antithesis_instrumentation__.Notify(117075)
+				return rDesc.ReplicaID == r.replicaID == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(117076)
 				shouldFatal = true
+			} else {
+				__antithesis_instrumentation__.Notify(117077)
 			}
 		}
+		__antithesis_instrumentation__.Notify(117064)
 
 		if shouldFatal {
-			// This node should fatal as a result of a previous consistency
-			// check (i.e. this round is carried out only to obtain a diff).
-			// If we fatal too early, the diff won't make it back to the lease-
-			// holder and thus won't be printed to the logs. Since we're already
-			// in a goroutine that's about to end, simply sleep for a few seconds
-			// and then terminate.
+			__antithesis_instrumentation__.Notify(117078)
+
 			auxDir := r.store.engine.GetAuxiliaryDir()
 			_ = r.store.engine.MkdirAll(auxDir)
 			path := base.PreventedStartupFile(auxDir)
@@ -826,21 +1020,32 @@ A file preventing this node from restarting was placed at:
 `
 			preventStartupMsg := fmt.Sprintf(attentionFmt, r, auxDir, path)
 			if err := fs.WriteFile(r.store.engine, path, []byte(preventStartupMsg)); err != nil {
+				__antithesis_instrumentation__.Notify(117080)
 				log.Warningf(ctx, "%v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(117081)
 			}
+			__antithesis_instrumentation__.Notify(117079)
 
 			if p := r.store.cfg.TestingKnobs.ConsistencyTestingKnobs.OnBadChecksumFatal; p != nil {
+				__antithesis_instrumentation__.Notify(117082)
 				p(*r.store.Ident)
 			} else {
+				__antithesis_instrumentation__.Notify(117083)
 				time.Sleep(10 * time.Second)
 				log.Fatalf(r.AnnotateCtx(context.Background()), attentionFmt, r, auxDir, path)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(117084)
 		}
 
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(117085)
 		defer snap.Close()
 		log.Errorf(ctx, "could not run async checksum computation (ID = %s): %v", cc.ChecksumID, err)
-		// Set checksum to nil.
+
 		r.computeChecksumDone(ctx, cc.ChecksumID, nil, nil)
+	} else {
+		__antithesis_instrumentation__.Notify(117086)
 	}
 }

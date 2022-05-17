@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgwire
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -17,12 +9,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// AuthBehaviors encapsulates the per-connection behaviors that may be
-// configured. This type is returned by AuthMethod implementations.
-//
-// Callers should call the AuthBehaviors.ConnClose method once the
-// associated network connection has been terminated to allow external
-// resources to be released.
 type AuthBehaviors struct {
 	authenticator       Authenticator
 	connClose           func()
@@ -31,80 +17,76 @@ type AuthBehaviors struct {
 	roleMapper          RoleMapper
 }
 
-// Ensure that an AuthBehaviors is easily composable with itself.
 var _ Authenticator = (*AuthBehaviors)(nil).Authenticate
 var _ func() = (*AuthBehaviors)(nil).ConnClose
 var _ RoleMapper = (*AuthBehaviors)(nil).MapRole
 
-// This is a hack for the unused-symbols linter. These two functions
-// are, at present, only called by the GSSAPI integration. The code
-// is guarded by a build tag, which is ignored by the linter.
-// TODO(#dev-inf): Update the linter to include the "gss" build tag.
 var _ = (*AuthBehaviors)(nil).SetConnClose
 var _ = (*AuthBehaviors)(nil).SetReplacementIdentity
 
-// Authenticate delegates to the Authenticator passed to
-// SetAuthenticator or returns an error if SetAuthenticator has not been
-// called.
 func (b *AuthBehaviors) Authenticate(
 	ctx context.Context,
 	systemIdentity security.SQLUsername,
 	clientConnection bool,
 	pwRetrieveFn PasswordRetrievalFn,
 ) error {
+	__antithesis_instrumentation__.Notify(558996)
 	if found := b.authenticator; found != nil {
+		__antithesis_instrumentation__.Notify(558998)
 		return found(ctx, systemIdentity, clientConnection, pwRetrieveFn)
+	} else {
+		__antithesis_instrumentation__.Notify(558999)
 	}
+	__antithesis_instrumentation__.Notify(558997)
 	return errors.New("no Authenticator provided to AuthBehaviors")
 }
 
-// SetAuthenticator updates the Authenticator to be used.
 func (b *AuthBehaviors) SetAuthenticator(a Authenticator) {
+	__antithesis_instrumentation__.Notify(559000)
 	b.authenticator = a
 }
 
-// ConnClose delegates to the function passed to SetConnClose to release
-// any resources associated with the connection. This method is a no-op
-// if SetConnClose has not been called or was called with nil.
 func (b *AuthBehaviors) ConnClose() {
+	__antithesis_instrumentation__.Notify(559001)
 	if fn := b.connClose; fn != nil {
+		__antithesis_instrumentation__.Notify(559002)
 		fn()
+	} else {
+		__antithesis_instrumentation__.Notify(559003)
 	}
 }
 
-// SetConnClose updates the connection-close callback.
 func (b *AuthBehaviors) SetConnClose(fn func()) {
+	__antithesis_instrumentation__.Notify(559004)
 	b.connClose = fn
 }
 
-// ReplacementIdentity returns an optional replacement for the
-// client-provided identity when validating the incoming connection.
-// This allows "ambient" authentication mechanisms, such as GSSAPI, to
-// provide replacement values. This method will return ok==false if
-// SetReplacementIdentity has not been called.
 func (b *AuthBehaviors) ReplacementIdentity() (_ security.SQLUsername, ok bool) {
+	__antithesis_instrumentation__.Notify(559005)
 	return b.replacementIdentity, b.replacedIdentity
 }
 
-// SetReplacementIdentity allows the AuthMethod to override the
-// client-reported system identity.
 func (b *AuthBehaviors) SetReplacementIdentity(id security.SQLUsername) {
+	__antithesis_instrumentation__.Notify(559006)
 	b.replacementIdentity = id
 	b.replacedIdentity = true
 }
 
-// MapRole delegates to the RoleMapper passed to SetRoleMapper or
-// returns an error if SetRoleMapper has not been called.
 func (b *AuthBehaviors) MapRole(
 	ctx context.Context, systemIdentity security.SQLUsername,
 ) ([]security.SQLUsername, error) {
+	__antithesis_instrumentation__.Notify(559007)
 	if found := b.roleMapper; found != nil {
+		__antithesis_instrumentation__.Notify(559009)
 		return found(ctx, systemIdentity)
+	} else {
+		__antithesis_instrumentation__.Notify(559010)
 	}
+	__antithesis_instrumentation__.Notify(559008)
 	return nil, errors.New("no RoleMapper provided to AuthBehaviors")
 }
 
-// SetRoleMapper updates the RoleMapper to be used.
 func (b *AuthBehaviors) SetRoleMapper(m RoleMapper) {
+	__antithesis_instrumentation__.Notify(559011)
 	b.roleMapper = m
 }

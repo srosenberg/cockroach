@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package execinfra
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -17,14 +9,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/rowenc"
 )
 
-// MetadataTestSender intersperses a metadata record after every row.
 type MetadataTestSender struct {
 	ProcessorBase
 	input RowSource
 	id    string
 
-	// sendRowNumMeta is set to true when the next call to Next() must return
-	// RowNum metadata, and false otherwise.
 	sendRowNumMeta bool
 	rowNumCnt      int32
 }
@@ -34,7 +23,6 @@ var _ RowSource = &MetadataTestSender{}
 
 const metadataTestSenderProcName = "meta sender"
 
-// NewMetadataTestSender creates a new MetadataTestSender.
 func NewMetadataTestSender(
 	flowCtx *FlowCtx,
 	processorID int32,
@@ -43,6 +31,7 @@ func NewMetadataTestSender(
 	output RowReceiver,
 	id string,
 ) (*MetadataTestSender, error) {
+	__antithesis_instrumentation__.Notify(471106)
 	mts := &MetadataTestSender{input: input, id: id}
 	if err := mts.Init(
 		mts,
@@ -51,12 +40,13 @@ func NewMetadataTestSender(
 		flowCtx,
 		processorID,
 		output,
-		nil, /* memMonitor */
+		nil,
 		ProcStateOpts{
 			InputsToDrain: []RowSource{mts.input},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				__antithesis_instrumentation__.Notify(471108)
 				mts.InternalClose()
-				// Send a final record with LastMsg set.
+
 				meta := execinfrapb.ProducerMetadata{
 					RowNum: &execinfrapb.RemoteProducerMetadata_RowNum{
 						RowNum:   mts.rowNumCnt,
@@ -68,21 +58,26 @@ func NewMetadataTestSender(
 			},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(471109)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(471110)
 	}
+	__antithesis_instrumentation__.Notify(471107)
 	return mts, nil
 }
 
-// Start is part of the RowSource interface.
 func (mts *MetadataTestSender) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(471111)
 	ctx = mts.StartInternal(ctx, metadataTestSenderProcName)
 	mts.input.Start(ctx)
 }
 
-// Next is part of the RowSource interface.
 func (mts *MetadataTestSender) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
-	// Every call after a row has been returned returns a metadata record.
+	__antithesis_instrumentation__.Notify(471112)
+
 	if mts.sendRowNumMeta {
+		__antithesis_instrumentation__.Notify(471115)
 		mts.sendRowNumMeta = false
 		mts.rowNumCnt++
 		return nil, &execinfrapb.ProducerMetadata{
@@ -92,25 +87,39 @@ func (mts *MetadataTestSender) Next() (rowenc.EncDatumRow, *execinfrapb.Producer
 				LastMsg:  false,
 			},
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(471116)
 	}
+	__antithesis_instrumentation__.Notify(471113)
 
 	for mts.State == StateRunning {
+		__antithesis_instrumentation__.Notify(471117)
 		row, meta := mts.input.Next()
 		if meta != nil {
-			// Other processors will start draining when they get an error meta from
-			// their input. We don't do that here, as the mts should be an unintrusive
-			// as possible.
+			__antithesis_instrumentation__.Notify(471120)
+
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(471121)
 		}
+		__antithesis_instrumentation__.Notify(471118)
 		if row == nil {
-			mts.MoveToDraining(nil /* err */)
+			__antithesis_instrumentation__.Notify(471122)
+			mts.MoveToDraining(nil)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(471123)
 		}
+		__antithesis_instrumentation__.Notify(471119)
 
 		if outRow := mts.ProcessRowHelper(row); outRow != nil {
+			__antithesis_instrumentation__.Notify(471124)
 			mts.sendRowNumMeta = true
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(471125)
 		}
 	}
+	__antithesis_instrumentation__.Notify(471114)
 	return nil, mts.DrainHelper()
 }

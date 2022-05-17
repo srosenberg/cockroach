@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package typedesc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,56 +16,46 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// TableImplicitRecordType is an implementation of catalog.TypeDescriptor that
-// represents a record type for a particular table: meaning, the composite type
-// that contains, in order, all of the visible columns for the table.
 type TableImplicitRecordType struct {
-	// desc is the TableDescriptor that this implicit record type is created from.
 	desc catalog.TableDescriptor
 
-	// typ is the fully-hydrated types.T that is represented by this
-	// TypeDescriptor. It'll always be a tuple. The elements of the tuple will
-	// be the visible column types of the table, in order, and the labels will
-	// be the names of those columns.
 	typ *types.T
-	// privs holds the privileges for this implicit record type. It's calculated
-	// by examining the privileges for the table that the record type corresponds
-	// to, and providing the USAGE privilege if the table had the SELECT
-	// privilege.
+
 	privs *catpb.PrivilegeDescriptor
 }
 
 var _ catalog.TypeDescriptor = (*TableImplicitRecordType)(nil)
 
-// CreateImplicitRecordTypeFromTableDesc creates a TypeDescriptor that represents
-// the implicit record type for a table, which has 1 field for every visible
-// column in the table.
 func CreateImplicitRecordTypeFromTableDesc(
 	descriptor catalog.TableDescriptor,
 ) (catalog.TypeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(271856)
 
 	cols := descriptor.VisibleColumns()
 	typs := make([]*types.T, len(cols))
 	names := make([]string, len(cols))
 	for i, col := range cols {
-		if col.GetType().UserDefined() && !col.GetType().IsHydrated() {
+		__antithesis_instrumentation__.Notify(271859)
+		if col.GetType().UserDefined() && func() bool {
+			__antithesis_instrumentation__.Notify(271861)
+			return !col.GetType().IsHydrated() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(271862)
 			return nil, errors.AssertionFailedf("encountered unhydrated col %s while creating implicit record type from"+
 				" table %s", col.ColName(), descriptor.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(271863)
 		}
+		__antithesis_instrumentation__.Notify(271860)
 		typs[i] = col.GetType()
 		names[i] = col.GetName()
 	}
-	// The TypeDescriptor will be an alias to this Tuple type, which contains
-	// all of the table's visible columns in order, labeled by the table's column
-	// names.
+	__antithesis_instrumentation__.Notify(271857)
+
 	typ := types.MakeLabeledTuple(typs, names)
 	tableID := descriptor.GetID()
 	typeOID := TypeIDToOID(tableID)
-	// Setting the type's OID allows us to properly report and display this type
-	// as having ID <tableID> + 100000 in the pg_type table and ::REGTYPE casts.
-	// It will also be used to serialize expressions casted to this type for
-	// distribution with DistSQL. The receiver of such a serialized expression
-	// will then be able to look up and rehydrate this type via the type cache.
+
 	typ.InternalType.Oid = typeOID
 	typ.TypeMeta = types.UserDefinedTypeMetadata{
 		Name: &types.UserDefinedTypeName{
@@ -85,12 +67,17 @@ func CreateImplicitRecordTypeFromTableDesc(
 	tablePrivs := descriptor.GetPrivileges()
 	newPrivs := make([]catpb.UserPrivileges, len(tablePrivs.Users))
 	for i := range tablePrivs.Users {
+		__antithesis_instrumentation__.Notify(271864)
 		newPrivs[i].UserProto = tablePrivs.Users[i].UserProto
-		// A table's record type has USAGE privs if a user has SELECT on the table.
+
 		if privilege.SELECT.IsSetIn(tablePrivs.Users[i].Privileges) {
+			__antithesis_instrumentation__.Notify(271865)
 			newPrivs[i].Privileges = privilege.USAGE.Mask()
+		} else {
+			__antithesis_instrumentation__.Notify(271866)
 		}
 	}
+	__antithesis_instrumentation__.Notify(271858)
 
 	return &TableImplicitRecordType{
 		desc: descriptor,
@@ -103,144 +90,178 @@ func CreateImplicitRecordTypeFromTableDesc(
 	}, nil
 }
 
-// GetName implements the Namespace interface.
-func (v TableImplicitRecordType) GetName() string { return v.desc.GetName() }
+func (v TableImplicitRecordType) GetName() string {
+	__antithesis_instrumentation__.Notify(271867)
+	return v.desc.GetName()
+}
 
-// GetParentID implements the Namespace interface.
-func (v TableImplicitRecordType) GetParentID() descpb.ID { return v.desc.GetParentID() }
+func (v TableImplicitRecordType) GetParentID() descpb.ID {
+	__antithesis_instrumentation__.Notify(271868)
+	return v.desc.GetParentID()
+}
 
-// GetParentSchemaID implements the Namespace interface.
-func (v TableImplicitRecordType) GetParentSchemaID() descpb.ID { return v.desc.GetParentSchemaID() }
+func (v TableImplicitRecordType) GetParentSchemaID() descpb.ID {
+	__antithesis_instrumentation__.Notify(271869)
+	return v.desc.GetParentSchemaID()
+}
 
-// GetID implements the NameEntry interface.
-func (v TableImplicitRecordType) GetID() descpb.ID { return v.desc.GetID() }
+func (v TableImplicitRecordType) GetID() descpb.ID {
+	__antithesis_instrumentation__.Notify(271870)
+	return v.desc.GetID()
+}
 
-// IsUncommittedVersion implements the Descriptor interface.
-func (v TableImplicitRecordType) IsUncommittedVersion() bool { return v.desc.IsUncommittedVersion() }
+func (v TableImplicitRecordType) IsUncommittedVersion() bool {
+	__antithesis_instrumentation__.Notify(271871)
+	return v.desc.IsUncommittedVersion()
+}
 
-// GetVersion implements the Descriptor interface.
-func (v TableImplicitRecordType) GetVersion() descpb.DescriptorVersion { return v.desc.GetVersion() }
+func (v TableImplicitRecordType) GetVersion() descpb.DescriptorVersion {
+	__antithesis_instrumentation__.Notify(271872)
+	return v.desc.GetVersion()
+}
 
-// GetModificationTime implements the Descriptor interface.
 func (v TableImplicitRecordType) GetModificationTime() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(271873)
 	return v.desc.GetModificationTime()
 }
 
-// GetDrainingNames implements the Descriptor interface.
 func (v TableImplicitRecordType) GetDrainingNames() []descpb.NameInfo {
-	// Implicit record types don't have draining names.
+	__antithesis_instrumentation__.Notify(271874)
+
 	return nil
 }
 
-// GetPrivileges implements the Descriptor interface.
 func (v TableImplicitRecordType) GetPrivileges() *catpb.PrivilegeDescriptor {
+	__antithesis_instrumentation__.Notify(271875)
 	return v.privs
 }
 
-// DescriptorType implements the Descriptor interface.
 func (v TableImplicitRecordType) DescriptorType() catalog.DescriptorType {
+	__antithesis_instrumentation__.Notify(271876)
 	return catalog.Type
 }
 
-// GetAuditMode implements the Descriptor interface.
 func (v TableImplicitRecordType) GetAuditMode() descpb.TableDescriptor_AuditMode {
+	__antithesis_instrumentation__.Notify(271877)
 	return descpb.TableDescriptor_DISABLED
 }
 
-// Public implements the Descriptor interface.
-func (v TableImplicitRecordType) Public() bool { return v.desc.Public() }
+func (v TableImplicitRecordType) Public() bool {
+	__antithesis_instrumentation__.Notify(271878)
+	return v.desc.Public()
+}
 
-// Adding implements the Descriptor interface.
 func (v TableImplicitRecordType) Adding() bool {
+	__antithesis_instrumentation__.Notify(271879)
 	v.panicNotSupported("Adding")
 	return false
 }
 
-// Dropped implements the Descriptor interface.
 func (v TableImplicitRecordType) Dropped() bool {
+	__antithesis_instrumentation__.Notify(271880)
 	v.panicNotSupported("Dropped")
 	return false
 }
 
-// Offline implements the Descriptor interface.
 func (v TableImplicitRecordType) Offline() bool {
+	__antithesis_instrumentation__.Notify(271881)
 	v.panicNotSupported("Offline")
 	return false
 }
 
-// GetOfflineReason implements the Descriptor interface.
 func (v TableImplicitRecordType) GetOfflineReason() string {
+	__antithesis_instrumentation__.Notify(271882)
 	v.panicNotSupported("GetOfflineReason")
 	return ""
 }
 
-// DescriptorProto implements the Descriptor interface.
 func (v TableImplicitRecordType) DescriptorProto() *descpb.Descriptor {
+	__antithesis_instrumentation__.Notify(271883)
 	v.panicNotSupported("DescriptorProto")
 	return nil
 }
 
-// ByteSize implements the Descriptor interface.
 func (v TableImplicitRecordType) ByteSize() int64 {
+	__antithesis_instrumentation__.Notify(271884)
 	mem := v.desc.ByteSize()
 	if v.typ != nil {
+		__antithesis_instrumentation__.Notify(271887)
 		mem += int64(v.typ.Size())
+	} else {
+		__antithesis_instrumentation__.Notify(271888)
 	}
+	__antithesis_instrumentation__.Notify(271885)
 	if v.privs != nil {
+		__antithesis_instrumentation__.Notify(271889)
 		mem += int64(v.privs.Size())
+	} else {
+		__antithesis_instrumentation__.Notify(271890)
 	}
+	__antithesis_instrumentation__.Notify(271886)
 	return mem
 }
 
-// NewBuilder implements the Descriptor interface.
 func (v TableImplicitRecordType) NewBuilder() catalog.DescriptorBuilder {
+	__antithesis_instrumentation__.Notify(271891)
 	v.panicNotSupported("NewBuilder")
 	return nil
 }
 
-// GetReferencedDescIDs implements the Descriptor interface.
 func (v TableImplicitRecordType) GetReferencedDescIDs() (catalog.DescriptorIDSet, error) {
+	__antithesis_instrumentation__.Notify(271892)
 	return catalog.DescriptorIDSet{}, errors.AssertionFailedf(
 		"GetReferencedDescIDs are unsupported for implicit table record types")
 }
 
-// ValidateSelf implements the Descriptor interface.
 func (v TableImplicitRecordType) ValidateSelf(_ catalog.ValidationErrorAccumulator) {
+	__antithesis_instrumentation__.Notify(271893)
 }
 
-// ValidateCrossReferences implements the Descriptor interface.
 func (v TableImplicitRecordType) ValidateCrossReferences(
 	_ catalog.ValidationErrorAccumulator, _ catalog.ValidationDescGetter,
 ) {
+	__antithesis_instrumentation__.Notify(271894)
 }
 
-// ValidateTxnCommit implements the Descriptor interface.
 func (v TableImplicitRecordType) ValidateTxnCommit(
 	_ catalog.ValidationErrorAccumulator, _ catalog.ValidationDescGetter,
 ) {
+	__antithesis_instrumentation__.Notify(271895)
 }
 
-// TypeDesc implements the TypeDescriptor interface.
 func (v TableImplicitRecordType) TypeDesc() *descpb.TypeDescriptor {
+	__antithesis_instrumentation__.Notify(271896)
 	v.panicNotSupported("TypeDesc")
 	return nil
 }
 
-// HydrateTypeInfoWithName implements the TypeDescriptor interface.
 func (v TableImplicitRecordType) HydrateTypeInfoWithName(
 	ctx context.Context, typ *types.T, name *tree.TypeName, res catalog.TypeDescriptorResolver,
 ) error {
+	__antithesis_instrumentation__.Notify(271897)
 	if typ.IsHydrated() {
+		__antithesis_instrumentation__.Notify(271901)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(271902)
 	}
+	__antithesis_instrumentation__.Notify(271898)
 	if typ.Family() != types.TupleFamily {
+		__antithesis_instrumentation__.Notify(271903)
 		return errors.AssertionFailedf("unexpected hydration of non-tuple type %s with table implicit record type %d",
 			typ, v.GetID())
+	} else {
+		__antithesis_instrumentation__.Notify(271904)
 	}
+	__antithesis_instrumentation__.Notify(271899)
 	if typ.Oid() != TypeIDToOID(v.GetID()) {
+		__antithesis_instrumentation__.Notify(271905)
 		return errors.AssertionFailedf("unexpected mismatch during table implicit record type hydration: "+
 			"type %s has id %d, descriptor has id %d", typ, typ.Oid(), v.GetID())
+	} else {
+		__antithesis_instrumentation__.Notify(271906)
 	}
+	__antithesis_instrumentation__.Notify(271900)
 	typ.TypeMeta.Name = &types.UserDefinedTypeName{
 		Catalog:        name.Catalog(),
 		ExplicitSchema: name.ExplicitSchema,
@@ -251,113 +272,128 @@ func (v TableImplicitRecordType) HydrateTypeInfoWithName(
 	return EnsureTypeIsHydrated(ctx, typ, res)
 }
 
-// MakeTypesT implements the TypeDescriptor interface.
 func (v TableImplicitRecordType) MakeTypesT(
 	_ context.Context, _ *tree.TypeName, _ catalog.TypeDescriptorResolver,
 ) (*types.T, error) {
+	__antithesis_instrumentation__.Notify(271907)
 	return v.typ, nil
 }
 
-// HasPendingSchemaChanges implements the TypeDescriptor interface.
-func (v TableImplicitRecordType) HasPendingSchemaChanges() bool { return false }
+func (v TableImplicitRecordType) HasPendingSchemaChanges() bool {
+	__antithesis_instrumentation__.Notify(271908)
+	return false
+}
 
-// GetIDClosure implements the TypeDescriptor interface.
 func (v TableImplicitRecordType) GetIDClosure() (map[descpb.ID]struct{}, error) {
+	__antithesis_instrumentation__.Notify(271909)
 	return nil, errors.AssertionFailedf("IDClosure unsupported for implicit table record types")
 }
 
-// IsCompatibleWith implements the TypeDescriptorInterface.
 func (v TableImplicitRecordType) IsCompatibleWith(_ catalog.TypeDescriptor) error {
+	__antithesis_instrumentation__.Notify(271910)
 	return errors.AssertionFailedf("compatibility comparison unsupported for implicit table record types")
 }
 
-// PrimaryRegionName implements the TypeDescriptorInterface.
 func (v TableImplicitRecordType) PrimaryRegionName() (catpb.RegionName, error) {
+	__antithesis_instrumentation__.Notify(271911)
 	return "", errors.AssertionFailedf(
 		"can not get primary region of a implicit table record type")
 }
 
-// RegionNames implements the TypeDescriptorInterface.
 func (v TableImplicitRecordType) RegionNames() (catpb.RegionNames, error) {
+	__antithesis_instrumentation__.Notify(271912)
 	return nil, errors.AssertionFailedf(
 		"can not get region names of a implicit table record type")
 }
 
-// RegionNamesIncludingTransitioning implements the TypeDescriptorInterface.
 func (v TableImplicitRecordType) RegionNamesIncludingTransitioning() (catpb.RegionNames, error) {
+	__antithesis_instrumentation__.Notify(271913)
 	return nil, errors.AssertionFailedf(
 		"can not get region names of a implicit table record type")
 }
 
-// RegionNamesForValidation implements the TypeDescriptorInterface.
 func (v TableImplicitRecordType) RegionNamesForValidation() (catpb.RegionNames, error) {
+	__antithesis_instrumentation__.Notify(271914)
 	return nil, errors.AssertionFailedf(
 		"can not get region names of a implicit table record type")
 }
 
-// TransitioningRegionNames implements the TypeDescriptorInterface.
 func (v TableImplicitRecordType) TransitioningRegionNames() (catpb.RegionNames, error) {
+	__antithesis_instrumentation__.Notify(271915)
 	return nil, errors.AssertionFailedf(
 		"can not get region names of a implicit table record type")
 }
 
-// SuperRegions implements the TypeDescriptor interface.
 func (v TableImplicitRecordType) SuperRegions() ([]descpb.SuperRegion, error) {
+	__antithesis_instrumentation__.Notify(271916)
 	return nil, errors.AssertionFailedf(
 		"can not get super regions of a implicit table record type",
 	)
 }
 
-// ZoneConfigExtensions implements the TypeDescriptorInterface.
 func (v TableImplicitRecordType) ZoneConfigExtensions() (descpb.ZoneConfigExtensions, error) {
+	__antithesis_instrumentation__.Notify(271917)
 	return descpb.ZoneConfigExtensions{}, errors.AssertionFailedf(
 		"can not get the zone config extensions of a implicit table record type")
 }
 
-// GetArrayTypeID implements the TypeDescriptorInterface.
 func (v TableImplicitRecordType) GetArrayTypeID() descpb.ID {
+	__antithesis_instrumentation__.Notify(271918)
 	return 0
 }
 
-// GetKind implements the TypeDescriptorInterface.
 func (v TableImplicitRecordType) GetKind() descpb.TypeDescriptor_Kind {
+	__antithesis_instrumentation__.Notify(271919)
 	return descpb.TypeDescriptor_TABLE_IMPLICIT_RECORD_TYPE
 }
 
-// NumEnumMembers implements the TypeDescriptorInterface.
-func (v TableImplicitRecordType) NumEnumMembers() int { return 0 }
+func (v TableImplicitRecordType) NumEnumMembers() int {
+	__antithesis_instrumentation__.Notify(271920)
+	return 0
+}
 
-// GetMemberPhysicalRepresentation implements the TypeDescriptorInterface.
-func (v TableImplicitRecordType) GetMemberPhysicalRepresentation(_ int) []byte { return nil }
+func (v TableImplicitRecordType) GetMemberPhysicalRepresentation(_ int) []byte {
+	__antithesis_instrumentation__.Notify(271921)
+	return nil
+}
 
-// GetMemberLogicalRepresentation implements the TypeDescriptorInterface.
-func (v TableImplicitRecordType) GetMemberLogicalRepresentation(_ int) string { return "" }
+func (v TableImplicitRecordType) GetMemberLogicalRepresentation(_ int) string {
+	__antithesis_instrumentation__.Notify(271922)
+	return ""
+}
 
-// IsMemberReadOnly implements the TypeDescriptorInterface.
-func (v TableImplicitRecordType) IsMemberReadOnly(_ int) bool { return false }
+func (v TableImplicitRecordType) IsMemberReadOnly(_ int) bool {
+	__antithesis_instrumentation__.Notify(271923)
+	return false
+}
 
-// NumReferencingDescriptors implements the TypeDescriptorInterface.
-func (v TableImplicitRecordType) NumReferencingDescriptors() int { return 0 }
+func (v TableImplicitRecordType) NumReferencingDescriptors() int {
+	__antithesis_instrumentation__.Notify(271924)
+	return 0
+}
 
-// GetReferencingDescriptorID implements the TypeDescriptorInterface.
-func (v TableImplicitRecordType) GetReferencingDescriptorID(_ int) descpb.ID { return 0 }
+func (v TableImplicitRecordType) GetReferencingDescriptorID(_ int) descpb.ID {
+	__antithesis_instrumentation__.Notify(271925)
+	return 0
+}
 
-// GetPostDeserializationChanges implements the Descriptor interface.
 func (v TableImplicitRecordType) GetPostDeserializationChanges() catalog.PostDeserializationChanges {
+	__antithesis_instrumentation__.Notify(271926)
 	return catalog.PostDeserializationChanges{}
 }
 
-// HasConcurrentSchemaChanges implements catalog.Descriptor.
 func (v TableImplicitRecordType) HasConcurrentSchemaChanges() bool {
+	__antithesis_instrumentation__.Notify(271927)
 	return false
 }
 
 func (v TableImplicitRecordType) panicNotSupported(message string) {
+	__antithesis_instrumentation__.Notify(271928)
 	panic(errors.AssertionFailedf("implicit table record type for table %q: not supported: %s", v.GetName(), message))
 }
 
-// GetDeclarativeSchemaChangerState implements the Descriptor interface.
 func (v TableImplicitRecordType) GetDeclarativeSchemaChangerState() *scpb.DescriptorState {
+	__antithesis_instrumentation__.Notify(271929)
 	v.panicNotSupported("GetDeclarativeSchemaChangeState")
 	return nil
 }

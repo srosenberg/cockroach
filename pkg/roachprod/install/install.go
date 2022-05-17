@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package install
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -103,7 +95,6 @@ sudo apt-get update;
 sudo apt-get install -y gcc;
 `,
 
-	// graphviz and rlwrap are useful for pprof
 	"go": `
 sudo apt-get update;
 sudo apt-get install -y graphviz rlwrap;
@@ -150,38 +141,54 @@ sudo apt-get install -y \
 `,
 }
 
-// SortedCmds TODO(peter): document
 func SortedCmds() []string {
+	__antithesis_instrumentation__.Notify(181593)
 	cmds := make([]string, 0, len(installCmds))
 	for cmd := range installCmds {
+		__antithesis_instrumentation__.Notify(181595)
 		cmds = append(cmds, cmd)
 	}
+	__antithesis_instrumentation__.Notify(181594)
 	sort.Strings(cmds)
 	return cmds
 }
 
-// Install TODO(peter): document
 func Install(ctx context.Context, l *logger.Logger, c *SyncedCluster, args []string) error {
+	__antithesis_instrumentation__.Notify(181596)
 	do := func(title, cmd string) error {
+		__antithesis_instrumentation__.Notify(181599)
 		var buf bytes.Buffer
 		err := c.Run(ctx, l, &buf, &buf, c.Nodes, "installing "+title, cmd)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(181601)
 			l.Printf(buf.String())
+		} else {
+			__antithesis_instrumentation__.Notify(181602)
 		}
+		__antithesis_instrumentation__.Notify(181600)
 		return err
 	}
+	__antithesis_instrumentation__.Notify(181597)
 
 	for _, arg := range args {
+		__antithesis_instrumentation__.Notify(181603)
 		cmd, ok := installCmds[arg]
 		if !ok {
+			__antithesis_instrumentation__.Notify(181605)
 			return fmt.Errorf("unknown tool %q", arg)
+		} else {
+			__antithesis_instrumentation__.Notify(181606)
 		}
+		__antithesis_instrumentation__.Notify(181604)
 
-		// Ensure that we early exit if any of the shell statements fail.
 		cmd = "set -exuo pipefail;" + cmd
 		if err := do(arg, cmd); err != nil {
+			__antithesis_instrumentation__.Notify(181607)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(181608)
 		}
 	}
+	__antithesis_instrumentation__.Notify(181598)
 	return nil
 }

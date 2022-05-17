@@ -33,6 +33,7 @@ go_library(
         "//pkg/util/metric",
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -52,6 +53,7 @@ go_test(
         "//pkg/sql/catalog/tabledesc",
         "//pkg/util/hlc",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_gogo_protobuf//proto",
         "@com_github_stretchr_testify//require",

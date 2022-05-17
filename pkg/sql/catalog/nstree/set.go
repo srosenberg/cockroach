@@ -1,66 +1,73 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package nstree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/google/btree"
 )
 
-// Set is a set of namespace keys. Safe for use without initialization.
-// Calling Clear will return memory to a sync.Pool.
 type Set struct {
 	t *btree.BTree
 }
 
-// Add will add the relevant namespace key to the set.
 func (s *Set) Add(components catalog.NameKey) {
+	__antithesis_instrumentation__.Notify(267114)
 	s.maybeInitialize()
 	item := makeByNameItem(components).get()
-	item.v = item // the value needs to be non-nil
+	item.v = item
 	upsert(s.t, item)
 }
 
-// Contains will test whether the relevant namespace key was added.
 func (s *Set) Contains(components catalog.NameKey) bool {
+	__antithesis_instrumentation__.Notify(267115)
 	if !s.initialized() {
+		__antithesis_instrumentation__.Notify(267117)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(267118)
 	}
+	__antithesis_instrumentation__.Notify(267116)
 	return get(s.t, makeByNameItem(components).get()) != nil
 }
 
-// Clear will clear the set, returning any held memory to the sync.Pool.
 func (s *Set) Clear() {
+	__antithesis_instrumentation__.Notify(267119)
 	if !s.initialized() {
+		__antithesis_instrumentation__.Notify(267121)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(267122)
 	}
+	__antithesis_instrumentation__.Notify(267120)
 	clear(s.t)
 	btreeSyncPool.Put(s.t)
 	*s = Set{}
 }
 
-// Empty returns true if the set has no entries.
 func (s *Set) Empty() bool {
-	return !s.initialized() || s.t.Len() == 0
+	__antithesis_instrumentation__.Notify(267123)
+	return !s.initialized() || func() bool {
+		__antithesis_instrumentation__.Notify(267124)
+		return s.t.Len() == 0 == true
+	}() == true
 }
 
 func (s *Set) maybeInitialize() {
+	__antithesis_instrumentation__.Notify(267125)
 	if s.initialized() {
+		__antithesis_instrumentation__.Notify(267127)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(267128)
 	}
+	__antithesis_instrumentation__.Notify(267126)
 	*s = Set{
 		t: btreeSyncPool.Get().(*btree.BTree),
 	}
 }
 
 func (s Set) initialized() bool {
+	__antithesis_instrumentation__.Notify(267129)
 	return s != (Set{})
 }

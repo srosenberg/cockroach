@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -28,63 +20,103 @@ import (
 type target string
 
 func (t target) query() *template.Template {
+	__antithesis_instrumentation__.Notify(58514)
 	return queryTemplates.Lookup(string(t))
 }
 
 func (t target) execQuery(qd *queryData) (results []string, _ error) {
+	__antithesis_instrumentation__.Notify(58515)
 	f, err := ioutil.TempFile("", "")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(58522)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(58523)
 	}
-	defer func() { _ = os.Remove(f.Name()) }()
+	__antithesis_instrumentation__.Notify(58516)
+	defer func() { __antithesis_instrumentation__.Notify(58524); _ = os.Remove(f.Name()) }()
+	__antithesis_instrumentation__.Notify(58517)
 	if err := t.query().Execute(f, qd); err != nil {
+		__antithesis_instrumentation__.Notify(58525)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(58526)
 	}
+	__antithesis_instrumentation__.Notify(58518)
 	if err := f.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(58527)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(58528)
 	}
+	__antithesis_instrumentation__.Notify(58519)
 	cmd := exec.Command("bazel", "query", "--query_file", f.Name())
 	var stdout bytes.Buffer
 	var stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		__antithesis_instrumentation__.Notify(58529)
 		return nil, errors.Wrapf(err,
 			"failed to run %s: (stderr)\n%s", cmd, &stderr)
+	} else {
+		__antithesis_instrumentation__.Notify(58530)
 	}
+	__antithesis_instrumentation__.Notify(58520)
 	for sc := bufio.NewScanner(&stdout); sc.Scan(); {
+		__antithesis_instrumentation__.Notify(58531)
 		results = append(results, sc.Text())
 	}
+	__antithesis_instrumentation__.Notify(58521)
 	sort.Strings(results)
 	return results, nil
 }
 
 func (t target) filename() string {
+	__antithesis_instrumentation__.Notify(58532)
 	return string(t) + ".bzl"
 }
 
 func (t target) variable() string {
+	__antithesis_instrumentation__.Notify(58533)
 	return strings.ToUpper(string(t)) + "_SRCS"
 }
 
 func (t target) write(outDir string, out []string) error {
+	__antithesis_instrumentation__.Notify(58534)
 	var buf bytes.Buffer
 	if err := outputVariableTemplate.Execute(&buf, variableData{
 		Variable: t.variable(),
 		Targets:  out,
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(58539)
 		return errors.Wrapf(err, "failed to execute template for %s", t)
+	} else {
+		__antithesis_instrumentation__.Notify(58540)
 	}
+	__antithesis_instrumentation__.Notify(58535)
 	f, err := os.Create(filepath.Join(outDir, t.filename()))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(58541)
 		return errors.Wrapf(err, "failed to open file for %s", t)
+	} else {
+		__antithesis_instrumentation__.Notify(58542)
 	}
+	__antithesis_instrumentation__.Notify(58536)
 	if _, err := io.Copy(f, &buf); err != nil {
+		__antithesis_instrumentation__.Notify(58543)
 		return errors.Wrapf(err, "failed to write file for %s", t)
+	} else {
+		__antithesis_instrumentation__.Notify(58544)
 	}
+	__antithesis_instrumentation__.Notify(58537)
 	if err := f.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(58545)
 		return errors.Wrapf(err, "failed to write file for %s", t)
+	} else {
+		__antithesis_instrumentation__.Notify(58546)
 	}
+	__antithesis_instrumentation__.Notify(58538)
 	return nil
 }
 

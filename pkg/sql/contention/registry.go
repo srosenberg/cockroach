@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package contention
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -31,49 +23,21 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 )
 
-// Registry is an object that keeps track of aggregated contention information.
-// It can be thought of as three maps:
-// 1) The top-level map is a mapping from a tableID/indexID which uniquely
-// describes an index to that index's contention information.
-// 2) The contention information is itself a map from keys in that index
-// (maintained in sorted order for better observability) to a list of
-// transactions that caused contention events on the keys.
-// 3) These transactions map the transaction ID to the number of times that
-// transaction was observed (i.e. how many contention events that txn
-// generated).
-// It also tracks the information about contention on non-SQL keys separately.
-// The datadriven test contains string representations of this struct which make
-// it easier to visualize.
 type Registry struct {
-	// globalLock is a coarse-grained lock over the registry which allows for
-	// concurrent calls to AddContentionEvent. Note that this is not optimal since
-	// all calls to AddContentionEvent will need to acquire this global lock.
-	// This can be but is not optimized since this mutex only has the potential to
-	// be a bottleneck if there is a lot of contention. In this case, there are
-	// probably bigger problems to worry about.
 	globalLock syncutil.Mutex
-	// indexMap is an LRU cache that keeps track of up to indexMapMaxSize
-	// contended indexes.
+
 	indexMap *indexMap
-	// nonSQLKeysMap is an LRU cache that keeps track of up to
-	// orderedKeyMapMaxSize non-SQL contended keys.
+
 	nonSQLKeysMap *nonSQLKeysMap
 
-	// eventStore stores the historical contention events and maps the
-	// transactions in the contention events to their corresponding transaction
-	// fingerprint ID.
 	eventStore *eventStore
 }
 
 var (
-	// indexMapMaxSize specifies the maximum number of indexes a Registry should
-	// keep track of contention events for.
 	indexMapMaxSize = 50
-	// orderedKeyMapMaxSize specifies the maximum number of keys in a given table
-	// to keep track of contention events for.
+
 	orderedKeyMapMaxSize = 50
-	// maxNumTxns specifies the maximum number of txns that caused contention
-	// events to keep track of.
+
 	maxNumTxns = 10
 
 	_ eventReader = &Registry{}
@@ -82,6 +46,7 @@ var (
 var orderedKeyMapCfg = cache.Config{
 	Policy: cache.CacheLRU,
 	ShouldEvict: func(size int, _, _ interface{}) bool {
+		__antithesis_instrumentation__.Notify(459119)
 		return size > orderedKeyMapMaxSize
 	},
 }
@@ -89,14 +54,15 @@ var orderedKeyMapCfg = cache.Config{
 var txnCacheCfg = cache.Config{
 	Policy: cache.CacheLRU,
 	ShouldEvict: func(size int, _, _ interface{}) bool {
+		__antithesis_instrumentation__.Notify(459120)
 		return size > maxNumTxns
 	},
 }
 
 type comparableKey roachpb.Key
 
-// Compare implements llrb.Comparable.
 func (c comparableKey) Compare(other llrb.Comparable) int {
+	__antithesis_instrumentation__.Notify(459121)
 	return roachpb.Key(c).Compare(roachpb.Key(other.(comparableKey)))
 }
 
@@ -105,25 +71,16 @@ type indexMapKey struct {
 	indexID descpb.IndexID
 }
 
-// indexMapValue is the value associated with an indexMapKey. It contains
-// contention information about the tableID/indexID pair.
 type indexMapValue struct {
-	// numContentionEvents is the number of contention events that have happened.
 	numContentionEvents uint64
-	// cumulativeContentionTime is the total duration that transactions touching
-	// this index have spent contended.
+
 	cumulativeContentionTime time.Duration
-	// orderedKeyMap is an LRU cache that keeps track of up to
-	// orderedKeyMapMaxSize keys that were the subject of contention in the given
-	// index. The keys are roachpb.Keys and the values are *cache.UnorderedCaches,
-	// which in turn is a cache of txn IDs of txns that caused contention events
-	// and the number of times that each txn ID was observed.
+
 	orderedKeyMap *cache.OrderedCache
 }
 
-// newIndexMapValue creates a new indexMapValue for a contention event
-// initialized with that event's data.
 func newIndexMapValue(c roachpb.ContentionEvent) *indexMapValue {
+	__antithesis_instrumentation__.Notify(459122)
 	txnCache := cache.NewUnorderedCache(txnCacheCfg)
 	txnCache.Add(c.TxnMeta.ID, uint64(1))
 	keyMap := cache.NewOrderedCache(orderedKeyMapCfg)
@@ -135,80 +92,80 @@ func newIndexMapValue(c roachpb.ContentionEvent) *indexMapValue {
 	}
 }
 
-// addContentionEvent adds the given contention event to previously aggregated
-// contention data. It assumes that c.Key is a SQL key.
 func (v *indexMapValue) addContentionEvent(c roachpb.ContentionEvent) {
+	__antithesis_instrumentation__.Notify(459123)
 	v.numContentionEvents++
 	v.cumulativeContentionTime += c.Duration
 	var numTimesThisTxnWasEncountered uint64
 	txnCache, ok := v.orderedKeyMap.Get(comparableKey(c.Key))
 	if ok {
+		__antithesis_instrumentation__.Notify(459125)
 		if txnVal, ok := txnCache.(*cache.UnorderedCache).Get(c.TxnMeta.ID); ok {
+			__antithesis_instrumentation__.Notify(459126)
 			numTimesThisTxnWasEncountered = txnVal.(uint64)
+		} else {
+			__antithesis_instrumentation__.Notify(459127)
 		}
 	} else {
-		// This key was not found in the map. Create a new txn cache for this key.
+		__antithesis_instrumentation__.Notify(459128)
+
 		txnCache = cache.NewUnorderedCache(txnCacheCfg)
 		v.orderedKeyMap.Add(comparableKey(c.Key), txnCache)
 	}
+	__antithesis_instrumentation__.Notify(459124)
 	txnCache.(*cache.UnorderedCache).Add(c.TxnMeta.ID, numTimesThisTxnWasEncountered+1)
 }
 
-// indexMap is a helper struct that wraps an LRU cache sized up to
-// indexMapMaxSize and maps tableID/indexID pairs to indexMapValues.
 type indexMap struct {
 	internalCache *cache.UnorderedCache
 	scratchKey    indexMapKey
 }
 
 func newIndexMap() *indexMap {
+	__antithesis_instrumentation__.Notify(459129)
 	return &indexMap{
 		internalCache: cache.NewUnorderedCache(cache.Config{
 			Policy: cache.CacheLRU,
 			ShouldEvict: func(size int, _, _ interface{}) bool {
+				__antithesis_instrumentation__.Notify(459130)
 				return size > indexMapMaxSize
 			},
 		}),
 	}
 }
 
-// get gets the indexMapValue keyed by the tableID/indexID pair and returns it
-// and true if it exists, nil and false if not. This counts as a cache access.
 func (m *indexMap) get(tableID descpb.ID, indexID descpb.IndexID) (*indexMapValue, bool) {
+	__antithesis_instrumentation__.Notify(459131)
 	m.scratchKey.tableID = tableID
 	m.scratchKey.indexID = indexID
 	v, ok := m.internalCache.Get(m.scratchKey)
 	if !ok {
+		__antithesis_instrumentation__.Notify(459133)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(459134)
 	}
+	__antithesis_instrumentation__.Notify(459132)
 	return v.(*indexMapValue), true
 }
 
-// add adds the indexMapValue keyed by the tableID/indexID pair. This counts as
-// a cache access.
 func (m *indexMap) add(tableID descpb.ID, indexID descpb.IndexID, v *indexMapValue) {
+	__antithesis_instrumentation__.Notify(459135)
 	m.scratchKey.tableID = tableID
 	m.scratchKey.indexID = indexID
 	m.internalCache.Add(m.scratchKey, v)
 }
 
-// nonSQLKeyMapValue is the value associated with a non-SQL key. It contains
-// contention information about that key.
 type nonSQLKeyMapValue struct {
-	// numContentionEvents is the number of contention events that have
-	// happened on the key.
 	numContentionEvents uint64
-	// cumulativeContentionTime is the total duration that transactions touching
-	// the key have spent contended.
+
 	cumulativeContentionTime time.Duration
-	// txnCache is an LRU cache of txn IDs of txns that caused contention events
-	// and the number of times that each txn ID was observed.
+
 	txnCache *cache.UnorderedCache
 }
 
-// newNonSQLKeyMapValue creates a new nonSQLKeyMapValue for a contention event
-// initialized with that event's data.
 func newNonSQLKeyMapValue(c roachpb.ContentionEvent) *nonSQLKeyMapValue {
+	__antithesis_instrumentation__.Notify(459136)
 	txnCache := cache.NewUnorderedCache(txnCacheCfg)
 	txnCache.Add(c.TxnMeta.ID, uint64(1))
 	return &nonSQLKeyMapValue{
@@ -218,32 +175,34 @@ func newNonSQLKeyMapValue(c roachpb.ContentionEvent) *nonSQLKeyMapValue {
 	}
 }
 
-// addContentionEvent adds the given contention event to previously aggregated
-// contention data. It assumes that c.Key is a non-SQL key.
 func (v *nonSQLKeyMapValue) addContentionEvent(c roachpb.ContentionEvent) {
+	__antithesis_instrumentation__.Notify(459137)
 	v.numContentionEvents++
 	v.cumulativeContentionTime += c.Duration
 	var numTimesThisTxnWasEncountered uint64
 	if numTimes, ok := v.txnCache.Get(c.TxnMeta.ID); ok {
+		__antithesis_instrumentation__.Notify(459139)
 		numTimesThisTxnWasEncountered = numTimes.(uint64)
+	} else {
+		__antithesis_instrumentation__.Notify(459140)
 	}
+	__antithesis_instrumentation__.Notify(459138)
 	v.txnCache.Add(c.TxnMeta.ID, numTimesThisTxnWasEncountered+1)
 }
 
-// nonSQLKeysMap is a helper struct that wraps an LRU cache sized up to
-// orderedKeyMapMaxSize mapping non-SQL keys to nonSQLKeyMapValues.
 type nonSQLKeysMap struct {
 	*cache.OrderedCache
 }
 
 func newNonSQLKeysMap() *nonSQLKeysMap {
+	__antithesis_instrumentation__.Notify(459141)
 	return &nonSQLKeysMap{
 		OrderedCache: cache.NewOrderedCache(orderedKeyMapCfg),
 	}
 }
 
-// NewRegistry creates a new Registry.
 func NewRegistry(st *cluster.Settings, endpoint ResolverEndpoint, metrics *Metrics) *Registry {
+	__antithesis_instrumentation__.Notify(459142)
 	return &Registry{
 		indexMap:      newIndexMap(),
 		nonSQLKeysMap: newNonSQLKeysMap(),
@@ -251,77 +210,86 @@ func NewRegistry(st *cluster.Settings, endpoint ResolverEndpoint, metrics *Metri
 	}
 }
 
-// Start starts the background goroutines for the Registry.
 func (r *Registry) Start(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(459143)
 	r.eventStore.start(ctx, stopper)
 }
 
-// AddContentionEvent adds a new ContentionEvent to the Registry.
 func (r *Registry) AddContentionEvent(event contentionpb.ExtendedContentionEvent) {
+	__antithesis_instrumentation__.Notify(459144)
 	c := event.BlockingEvent
 	r.globalLock.Lock()
 	defer r.globalLock.Unlock()
-	// Remove the tenant ID prefix if there is any.
+
 	c.Key, _, _ = keys.DecodeTenantPrefix(c.Key)
 	_, rawTableID, rawIndexID, err := keys.DecodeTableIDIndexID(c.Key)
 	if err != nil {
-		// The key is not a valid SQL key, so we store it in a separate cache.
+		__antithesis_instrumentation__.Notify(459147)
+
 		if v, ok := r.nonSQLKeysMap.Get(comparableKey(c.Key)); !ok {
-			// This is the first contention event seen for this key.
+			__antithesis_instrumentation__.Notify(459149)
+
 			r.nonSQLKeysMap.Add(comparableKey(c.Key), newNonSQLKeyMapValue(c))
 		} else {
+			__antithesis_instrumentation__.Notify(459150)
 			v.(*nonSQLKeyMapValue).addContentionEvent(c)
 		}
+		__antithesis_instrumentation__.Notify(459148)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(459151)
 	}
+	__antithesis_instrumentation__.Notify(459145)
 	tableID := descpb.ID(rawTableID)
 	indexID := descpb.IndexID(rawIndexID)
 	if v, ok := r.indexMap.get(tableID, indexID); !ok {
-		// This is the first contention event seen for the given tableID/indexID
-		// pair.
+		__antithesis_instrumentation__.Notify(459152)
+
 		r.indexMap.add(tableID, indexID, newIndexMapValue(c))
 	} else {
+		__antithesis_instrumentation__.Notify(459153)
 		v.addContentionEvent(c)
 	}
+	__antithesis_instrumentation__.Notify(459146)
 
 	r.eventStore.addEvent(event)
 }
 
-// ForEachEvent implements the eventReader interface.
 func (r *Registry) ForEachEvent(op func(event *contentionpb.ExtendedContentionEvent) error) error {
+	__antithesis_instrumentation__.Notify(459154)
 	return r.eventStore.ForEachEvent(op)
 }
 
-// FlushEventsForTest flushes contention events in the write-buffer into the in-memory
-// store.
 func (r *Registry) FlushEventsForTest(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(459155)
 	return r.eventStore.flushAndResolve(ctx)
 }
 
 func serializeTxnCache(txnCache *cache.UnorderedCache) []contentionpb.SingleTxnContention {
+	__antithesis_instrumentation__.Notify(459156)
 	txns := make([]contentionpb.SingleTxnContention, txnCache.Len())
 	var txnCount int
 	txnCache.Do(func(e *cache.Entry) {
+		__antithesis_instrumentation__.Notify(459158)
 		txns[txnCount].TxnID = e.Key.(uuid.UUID)
 		txns[txnCount].Count = e.Value.(uint64)
 		txnCount++
 	})
+	__antithesis_instrumentation__.Notify(459157)
 	sortSingleTxnContention(txns)
 	return txns
 }
 
-// Serialize returns the serialized representation of the registry. Refer to
-// comments on contentionpb.SerializedRegistry for the orderings that are
-// maintained at different levels of objects.
 func (r *Registry) Serialize() contentionpb.SerializedRegistry {
+	__antithesis_instrumentation__.Notify(459159)
 	r.globalLock.Lock()
 	defer r.globalLock.Unlock()
 	var resp contentionpb.SerializedRegistry
 
-	// Process all SQL keys information.
 	resp.IndexContentionEvents = make([]contentionpb.IndexContentionEvents, r.indexMap.internalCache.Len())
 	var iceCount int
 	r.indexMap.internalCache.Do(func(e *cache.Entry) {
+		__antithesis_instrumentation__.Notify(459162)
 		ice := &resp.IndexContentionEvents[iceCount]
 		key := e.Key.(indexMapKey)
 		ice.TableID = key.tableID
@@ -332,6 +300,7 @@ func (r *Registry) Serialize() contentionpb.SerializedRegistry {
 		ice.Events = make([]contentionpb.SingleKeyContention, v.orderedKeyMap.Len())
 		var skcCount int
 		v.orderedKeyMap.Do(func(k, txnCacheInterface interface{}) bool {
+			__antithesis_instrumentation__.Notify(459164)
 			txnCache := txnCacheInterface.(*cache.UnorderedCache)
 			skc := &ice.Events[skcCount]
 			skc.Key = roachpb.Key(k.(comparableKey))
@@ -339,14 +308,16 @@ func (r *Registry) Serialize() contentionpb.SerializedRegistry {
 			skcCount++
 			return false
 		})
+		__antithesis_instrumentation__.Notify(459163)
 		iceCount++
 	})
+	__antithesis_instrumentation__.Notify(459160)
 	sortIndexContentionEvents(resp.IndexContentionEvents)
 
-	// Process all non-SQL keys information.
 	resp.NonSQLKeysContention = make([]contentionpb.SingleNonSQLKeyContention, r.nonSQLKeysMap.Len())
 	var snkcCount int
 	r.nonSQLKeysMap.Do(func(k, nonSQLKeyMapVal interface{}) bool {
+		__antithesis_instrumentation__.Notify(459165)
 		snkc := &resp.NonSQLKeysContention[snkcCount]
 		snkc.Key = roachpb.Key(k.(comparableKey))
 		v := nonSQLKeyMapVal.(*nonSQLKeyMapValue)
@@ -356,116 +327,134 @@ func (r *Registry) Serialize() contentionpb.SerializedRegistry {
 		snkcCount++
 		return false
 	})
+	__antithesis_instrumentation__.Notify(459161)
 
 	return resp
 }
 
-// sortIndexContentionEvents sorts all of the index contention events in-place
-// according to their importance (as defined by the total number of contention
-// events).
 func sortIndexContentionEvents(ice []contentionpb.IndexContentionEvents) {
+	__antithesis_instrumentation__.Notify(459166)
 	sort.Slice(ice, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(459167)
 		if ice[i].NumContentionEvents != ice[j].NumContentionEvents {
+			__antithesis_instrumentation__.Notify(459169)
 			return ice[i].NumContentionEvents > ice[j].NumContentionEvents
+		} else {
+			__antithesis_instrumentation__.Notify(459170)
 		}
+		__antithesis_instrumentation__.Notify(459168)
 		return ice[i].CumulativeContentionTime > ice[j].CumulativeContentionTime
 	})
 }
 
-// sortSingleTxnContention sorts the transactions in-place according to the
-// frequency of their occurrence in DESC order.
 func sortSingleTxnContention(txns []contentionpb.SingleTxnContention) {
+	__antithesis_instrumentation__.Notify(459171)
 	sort.Slice(txns, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(459172)
 		return txns[i].Count > txns[j].Count
 	})
 }
 
-// String returns a string representation of the Registry.
 func (r *Registry) String() string {
+	__antithesis_instrumentation__.Notify(459173)
 	var b strings.Builder
 	serialized := r.Serialize()
 	for i := range serialized.IndexContentionEvents {
+		__antithesis_instrumentation__.Notify(459176)
 		b.WriteString(serialized.IndexContentionEvents[i].String())
 	}
+	__antithesis_instrumentation__.Notify(459174)
 	for i := range serialized.NonSQLKeysContention {
+		__antithesis_instrumentation__.Notify(459177)
 		b.WriteString(serialized.NonSQLKeysContention[i].String())
 	}
+	__antithesis_instrumentation__.Notify(459175)
 	return b.String()
 }
 
-// MergeSerializedRegistries merges the serialized representations of two
-// Registries into one. first is modified in-place.
-//
-// The result will contain at most indexMapMaxSize number of
-// IndexContentionEvents objects (with the most important objects - as defined
-// by the total number of contention events - kept from both arguments) and at
-// most orderedKeyMapMaxSize number of SingleNonSQLKeyContention objects (those
-// with smaller lexicographically keys are kept from both arguments). Other
-// constants (orderedKeyMapMaxSize and maxNumTxns) are also respected by the
-// internal slices.
-//
-// The returned representation has the same ordering guarantees as described for
-// contentionpb.SerializedRegistry.
 func MergeSerializedRegistries(
 	first, second contentionpb.SerializedRegistry,
 ) contentionpb.SerializedRegistry {
-	// Merge IndexContentionEvents.
+	__antithesis_instrumentation__.Notify(459178)
+
 	firstICE, secondICE := first.IndexContentionEvents, second.IndexContentionEvents
 	for s := range secondICE {
+		__antithesis_instrumentation__.Notify(459183)
 		found := false
 		for f := range firstICE {
-			if firstICE[f].TableID == secondICE[s].TableID && firstICE[f].IndexID == secondICE[s].IndexID {
+			__antithesis_instrumentation__.Notify(459185)
+			if firstICE[f].TableID == secondICE[s].TableID && func() bool {
+				__antithesis_instrumentation__.Notify(459186)
+				return firstICE[f].IndexID == secondICE[s].IndexID == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(459187)
 				firstICE[f] = mergeIndexContentionEvents(firstICE[f], secondICE[s])
 				found = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(459188)
 			}
 		}
+		__antithesis_instrumentation__.Notify(459184)
 		if !found {
+			__antithesis_instrumentation__.Notify(459189)
 			firstICE = append(firstICE, secondICE[s])
+		} else {
+			__antithesis_instrumentation__.Notify(459190)
 		}
 	}
-	// Sort all of the index contention events so that more frequent ones are at
-	// the front and then truncate if needed.
+	__antithesis_instrumentation__.Notify(459179)
+
 	sortIndexContentionEvents(firstICE)
 	if len(firstICE) > indexMapMaxSize {
+		__antithesis_instrumentation__.Notify(459191)
 		firstICE = firstICE[:indexMapMaxSize]
+	} else {
+		__antithesis_instrumentation__.Notify(459192)
 	}
+	__antithesis_instrumentation__.Notify(459180)
 	first.IndexContentionEvents = firstICE
 
-	// Merge SingleNonSQLKeyContention.
-	//
-	// Go over the non-SQL keys from both inputs and merge them so that we stay
-	// under the limit. We take advantage of the fact that non-SQL keys for both
-	// inputs are already ordered.
-	//
-	// Note that this code is basically a copy of the corresponding code in
-	// mergeIndexContentionEvents, but it is very hard to abstract it away and
-	// reuse.
 	firstNKC, secondNKC := first.NonSQLKeysContention, second.NonSQLKeysContention
 	maxNumNonSQLKeys := len(firstNKC) + len(secondNKC)
 	if maxNumNonSQLKeys > orderedKeyMapMaxSize {
+		__antithesis_instrumentation__.Notify(459193)
 		maxNumNonSQLKeys = orderedKeyMapMaxSize
+	} else {
+		__antithesis_instrumentation__.Notify(459194)
 	}
+	__antithesis_instrumentation__.Notify(459181)
 	result := make([]contentionpb.SingleNonSQLKeyContention, maxNumNonSQLKeys)
 	resultIdx, firstIdx, secondIdx := 0, 0, 0
-	// Iterate while we haven't taken enough non-SQL keys and at least one input
-	// is not exhausted.
-	for resultIdx < maxNumNonSQLKeys && (firstIdx < len(firstNKC) || secondIdx < len(secondNKC)) {
+
+	for resultIdx < maxNumNonSQLKeys && func() bool {
+		__antithesis_instrumentation__.Notify(459195)
+		return (firstIdx < len(firstNKC) || func() bool {
+			__antithesis_instrumentation__.Notify(459196)
+			return secondIdx < len(secondNKC) == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(459197)
 		var cmp int
 		if firstIdx == len(firstNKC) {
-			// We've exhausted the list of non-SQL keys from the first input, so
-			// we will need to take from the second input.
+			__antithesis_instrumentation__.Notify(459200)
+
 			cmp = 1
-		} else if secondIdx == len(secondNKC) {
-			// We've exhausted the list of non-SQL keys from the second input,
-			// so we will need to take from the first input.
-			cmp = -1
 		} else {
-			cmp = firstNKC[firstIdx].Key.Compare(secondNKC[secondIdx].Key)
+			__antithesis_instrumentation__.Notify(459201)
+			if secondIdx == len(secondNKC) {
+				__antithesis_instrumentation__.Notify(459202)
+
+				cmp = -1
+			} else {
+				__antithesis_instrumentation__.Notify(459203)
+				cmp = firstNKC[firstIdx].Key.Compare(secondNKC[secondIdx].Key)
+			}
 		}
+		__antithesis_instrumentation__.Notify(459198)
 		if cmp == 0 {
-			// The keys are the same, so we're merging the contention
-			// information from both inputs.
+			__antithesis_instrumentation__.Notify(459204)
+
 			f := firstNKC[firstIdx]
 			s := secondNKC[secondIdx]
 			result[resultIdx].Key = f.Key
@@ -474,122 +463,154 @@ func MergeSerializedRegistries(
 			result[resultIdx].Txns = mergeSingleKeyContention(f.Txns, s.Txns)
 			firstIdx++
 			secondIdx++
-		} else if cmp < 0 {
-			// The first non-SQL key is smaller, so we will take it as is.
-			result[resultIdx] = firstNKC[firstIdx]
-			firstIdx++
 		} else {
-			// The second non-SQL key is smaller, so we will take it as is.
-			result[resultIdx] = secondNKC[secondIdx]
-			secondIdx++
+			__antithesis_instrumentation__.Notify(459205)
+			if cmp < 0 {
+				__antithesis_instrumentation__.Notify(459206)
+
+				result[resultIdx] = firstNKC[firstIdx]
+				firstIdx++
+			} else {
+				__antithesis_instrumentation__.Notify(459207)
+
+				result[resultIdx] = secondNKC[secondIdx]
+				secondIdx++
+			}
 		}
+		__antithesis_instrumentation__.Notify(459199)
 		resultIdx++
 	}
-	// We might have merged the contention information for some non-SQL so that
-	// we allocated more than necessary, so we need to truncate if that's the
-	// case.
+	__antithesis_instrumentation__.Notify(459182)
+
 	result = result[:resultIdx]
 	first.NonSQLKeysContention = result
 
 	return first
 }
 
-// mergeIndexContentionEvents merges two lists of contention events that
-// occurred on the same index. It will panic if the indexes are different.
-//
-// The result will contain at most orderedKeyMapMaxSize number of single key
-// contention events (ordered by the keys).
 func mergeIndexContentionEvents(
 	first contentionpb.IndexContentionEvents, second contentionpb.IndexContentionEvents,
 ) contentionpb.IndexContentionEvents {
-	if first.TableID != second.TableID || first.IndexID != second.IndexID {
+	__antithesis_instrumentation__.Notify(459208)
+	if first.TableID != second.TableID || func() bool {
+		__antithesis_instrumentation__.Notify(459212)
+		return first.IndexID != second.IndexID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(459213)
 		panic(fmt.Sprintf("attempting to merge contention events from different indexes\n%s%s", first.String(), second.String()))
+	} else {
+		__antithesis_instrumentation__.Notify(459214)
 	}
+	__antithesis_instrumentation__.Notify(459209)
 	var result contentionpb.IndexContentionEvents
 	result.TableID = first.TableID
 	result.IndexID = first.IndexID
 	result.NumContentionEvents = first.NumContentionEvents + second.NumContentionEvents
 	result.CumulativeContentionTime = first.CumulativeContentionTime + second.CumulativeContentionTime
-	// Go over the events from both inputs and merge them so that we stay under
-	// the limit. We take advantage of the fact that events for both inputs are
-	// already ordered by their keys.
-	//
-	// Note that this code is basically a copy of the corresponding code in
-	// MergeSerializedRegistries for non-SQL keys, but it is very hard to
-	// abstract it away and reuse.
+
 	maxNumEvents := len(first.Events) + len(second.Events)
 	if maxNumEvents > orderedKeyMapMaxSize {
+		__antithesis_instrumentation__.Notify(459215)
 		maxNumEvents = orderedKeyMapMaxSize
+	} else {
+		__antithesis_instrumentation__.Notify(459216)
 	}
+	__antithesis_instrumentation__.Notify(459210)
 	result.Events = make([]contentionpb.SingleKeyContention, maxNumEvents)
 	resultIdx, firstIdx, secondIdx := 0, 0, 0
-	// Iterate while we haven't taken enough events and at least one input is
-	// not exhausted.
-	for resultIdx < maxNumEvents && (firstIdx < len(first.Events) || secondIdx < len(second.Events)) {
+
+	for resultIdx < maxNumEvents && func() bool {
+		__antithesis_instrumentation__.Notify(459217)
+		return (firstIdx < len(first.Events) || func() bool {
+			__antithesis_instrumentation__.Notify(459218)
+			return secondIdx < len(second.Events) == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(459219)
 		var cmp int
 		if firstIdx == len(first.Events) {
-			// We've exhausted the list of events from the first input, so we
-			// will need to take from the second input.
+			__antithesis_instrumentation__.Notify(459222)
+
 			cmp = 1
-		} else if secondIdx == len(second.Events) {
-			// We've exhausted the list of events from the second input, so we
-			// will need to take from the first input.
-			cmp = -1
 		} else {
-			cmp = first.Events[firstIdx].Key.Compare(second.Events[secondIdx].Key)
+			__antithesis_instrumentation__.Notify(459223)
+			if secondIdx == len(second.Events) {
+				__antithesis_instrumentation__.Notify(459224)
+
+				cmp = -1
+			} else {
+				__antithesis_instrumentation__.Notify(459225)
+				cmp = first.Events[firstIdx].Key.Compare(second.Events[secondIdx].Key)
+			}
 		}
+		__antithesis_instrumentation__.Notify(459220)
 		if cmp == 0 {
-			// The keys are the same, so we're merging the events from both
-			// inputs.
+			__antithesis_instrumentation__.Notify(459226)
+
 			f := first.Events[firstIdx]
 			s := second.Events[secondIdx]
 			result.Events[resultIdx].Key = f.Key
 			result.Events[resultIdx].Txns = mergeSingleKeyContention(f.Txns, s.Txns)
 			firstIdx++
 			secondIdx++
-		} else if cmp < 0 {
-			// The first event is smaller, so we will take it as is.
-			result.Events[resultIdx] = first.Events[firstIdx]
-			firstIdx++
 		} else {
-			// The second event is smaller, so we will take it as is.
-			result.Events[resultIdx] = second.Events[secondIdx]
-			secondIdx++
+			__antithesis_instrumentation__.Notify(459227)
+			if cmp < 0 {
+				__antithesis_instrumentation__.Notify(459228)
+
+				result.Events[resultIdx] = first.Events[firstIdx]
+				firstIdx++
+			} else {
+				__antithesis_instrumentation__.Notify(459229)
+
+				result.Events[resultIdx] = second.Events[secondIdx]
+				secondIdx++
+			}
 		}
+		__antithesis_instrumentation__.Notify(459221)
 		resultIdx++
 	}
-	// We might have merged some events so that we allocated more than
-	// necessary, so we need to truncate if that's the case.
+	__antithesis_instrumentation__.Notify(459211)
+
 	result.Events = result.Events[:resultIdx]
 	return result
 }
 
-// mergeSingleKeyContention merges two lists of contention events that occurred
-// on the same key updating first in-place. Objects are ordered by the count
-// (after merge when applicable) in DESC order.
-//
-// The result will contain at most maxNumTxns number of transactions.
 func mergeSingleKeyContention(
 	first, second []contentionpb.SingleTxnContention,
 ) []contentionpb.SingleTxnContention {
+	__antithesis_instrumentation__.Notify(459230)
 	for s := range second {
+		__antithesis_instrumentation__.Notify(459233)
 		found := false
 		for f := range first {
+			__antithesis_instrumentation__.Notify(459235)
 			if bytes.Equal(first[f].TxnID.GetBytes(), second[s].TxnID.GetBytes()) {
+				__antithesis_instrumentation__.Notify(459236)
 				first[f].Count += second[s].Count
 				found = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(459237)
 			}
 		}
+		__antithesis_instrumentation__.Notify(459234)
 		if !found {
+			__antithesis_instrumentation__.Notify(459238)
 			first = append(first, second[s])
+		} else {
+			__antithesis_instrumentation__.Notify(459239)
 		}
 	}
-	// Sort all of the transactions so that more frequent ones are at the front
-	// and then truncate if needed.
+	__antithesis_instrumentation__.Notify(459231)
+
 	sortSingleTxnContention(first)
 	if len(first) > maxNumTxns {
+		__antithesis_instrumentation__.Notify(459240)
 		first = first[:maxNumTxns]
+	} else {
+		__antithesis_instrumentation__.Notify(459241)
 	}
+	__antithesis_instrumentation__.Notify(459232)
 	return first
 }

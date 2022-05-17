@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgwire
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -52,48 +44,27 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// conn implements a pgwire network connection (version 3 of the protocol,
-// implemented by Postgres v7.4 and later). conn.serve() reads protocol
-// messages, transforms them into commands that it pushes onto a StmtBuf (where
-// they'll be picked up and executed by the connExecutor).
-// The connExecutor produces results for the commands, which are delivered to
-// the client through the sql.ClientComm interface, implemented by this conn
-// (code is in command_result.go).
 type conn struct {
 	conn net.Conn
 
 	sessionArgs sql.SessionArgs
 	metrics     *ServerMetrics
 
-	// startTime is the time when the connection attempt was first received
-	// by the server.
 	startTime time.Time
 
-	// rd is a buffered reader consuming conn. All reads from conn go through
-	// this.
 	rd bufio.Reader
 
-	// parser is used to avoid allocating a parser each time.
 	parser parser.Parser
 
-	// stmtBuf is populated with commands queued for execution by this conn.
 	stmtBuf sql.StmtBuf
 
-	// res is used to avoid allocations in the conn's ClientComm implementation.
 	res commandResult
 
-	// err is an error, accessed atomically. It represents any error encountered
-	// while accessing the underlying network connection. This can read via
-	// GetErr() by anybody. If it is found to be != nil, the conn is no longer to
-	// be used.
 	err atomic.Value
 
-	// writerState groups together all aspects of the write-side state of the
-	// connection.
 	writerState struct {
 		fi flushInfo
-		// buf contains command results (rows, etc.) until they're flushed to the
-		// network connection.
+
 		buf    bytes.Buffer
 		tagBuf [64]byte
 	}
@@ -101,56 +72,15 @@ type conn struct {
 	readBuf    pgwirebase.ReadBuffer
 	msgBuilder writeBuffer
 
-	// vecsScratch is a scratch space used by bufferBatch.
 	vecsScratch coldata.TypedVecs
 
 	sv *settings.Values
 
-	// alwaysLogAuthActivity is used force-enables logging of authn events.
 	alwaysLogAuthActivity bool
 
-	// afterReadMsgTestingKnob is called after reading every message.
 	afterReadMsgTestingKnob func(context.Context) error
 }
 
-// serveConn creates a conn that will serve the netConn. It returns once the
-// network connection is closed.
-//
-// Internally, a connExecutor will be created to execute commands. Commands read
-// from the network are buffered in a stmtBuf which is consumed by the
-// connExecutor. The connExecutor produces results which are buffered and
-// sometimes synchronously flushed to the network.
-//
-// The reader goroutine (this one) outlives the connExecutor's goroutine (the
-// "processor goroutine").
-// However, they can both signal each other to stop. Here's how the different
-// cases work:
-// 1) The reader receives a ClientMsgTerminate protocol packet: the reader
-// closes the stmtBuf and also cancels the command processing context. These
-// actions will prompt the command processor to finish.
-// 2) The reader gets a read error from the network connection: like above, the
-// reader closes the command processor.
-// 3) The reader's context is canceled (happens when the server is draining but
-// the connection was busy and hasn't quit yet): the reader notices the canceled
-// context and, like above, closes the processor.
-// 4) The processor encounters an error. This error can come from various fatal
-// conditions encountered internally by the processor, or from a network
-// communication error encountered while flushing results to the network.
-// The processor will cancel the reader's context and terminate.
-// Note that query processing errors are different; they don't cause the
-// termination of the connection.
-//
-// Draining notes:
-//
-// The reader notices that the server is draining by polling the IsDraining
-// closure passed to serveImpl. At that point, the reader delegates the
-// responsibility of closing the connection to the statement processor: it will
-// push a DrainRequest to the stmtBuf which signals the processor to quit ASAP.
-// The processor will quit immediately upon seeing that command if it's not
-// currently in a transaction. If it is in a transaction, it will wait until the
-// first time a Sync command is processed outside of a transaction - the logic
-// being that we want to stop when we're both outside transactions and outside
-// batches.
 func (s *Server) serveConn(
 	ctx context.Context,
 	netConn net.Conn,
@@ -159,25 +89,31 @@ func (s *Server) serveConn(
 	connStart time.Time,
 	authOpt authOptions,
 ) {
+	__antithesis_instrumentation__.Notify(559299)
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(559302)
 		log.Infof(ctx, "new connection with options: %+v", sArgs)
+	} else {
+		__antithesis_instrumentation__.Notify(559303)
 	}
+	__antithesis_instrumentation__.Notify(559300)
 
 	c := newConn(netConn, sArgs, &s.metrics, connStart, &s.execCfg.Settings.SV)
-	c.alwaysLogAuthActivity = alwaysLogAuthActivity || atomic.LoadInt32(&s.testingAuthLogEnabled) > 0
+	c.alwaysLogAuthActivity = alwaysLogAuthActivity || func() bool {
+		__antithesis_instrumentation__.Notify(559304)
+		return atomic.LoadInt32(&s.testingAuthLogEnabled) > 0 == true
+	}() == true
 	if s.execCfg.PGWireTestingKnobs != nil {
+		__antithesis_instrumentation__.Notify(559305)
 		c.afterReadMsgTestingKnob = s.execCfg.PGWireTestingKnobs.AfterReadMsgTestingKnob
+	} else {
+		__antithesis_instrumentation__.Notify(559306)
 	}
+	__antithesis_instrumentation__.Notify(559301)
 
-	// Do the reading of commands from the network.
 	c.serveImpl(ctx, s.IsDraining, s.SQLServer, reserved, authOpt)
 }
 
-// alwaysLogAuthActivity makes it possible to unconditionally enable
-// authentication logging when cluster settings do not work reliably,
-// e.g. in multi-tenant setups in v20.2. This override mechanism
-// can be removed after all of CC is moved to use v21.1 or a version
-// which supports cluster settings.
 var alwaysLogAuthActivity = envutil.EnvOrDefaultBool("COCKROACH_ALWAYS_LOG_AUTHN_EVENTS", false)
 
 func newConn(
@@ -187,6 +123,7 @@ func newConn(
 	connStart time.Time,
 	sv *settings.Values,
 ) *conn {
+	__antithesis_instrumentation__.Notify(559307)
 	c := &conn{
 		conn:        netConn,
 		sessionArgs: sArgs,
@@ -206,72 +143,77 @@ func newConn(
 }
 
 func (c *conn) setErr(err error) {
+	__antithesis_instrumentation__.Notify(559308)
 	c.err.Store(err)
 }
 
 func (c *conn) GetErr() error {
+	__antithesis_instrumentation__.Notify(559309)
 	err := c.err.Load()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559311)
 		return err.(error)
+	} else {
+		__antithesis_instrumentation__.Notify(559312)
 	}
+	__antithesis_instrumentation__.Notify(559310)
 	return nil
 }
 
 func (c *conn) sendError(ctx context.Context, execCfg *sql.ExecutorConfig, err error) error {
-	// We could, but do not, report server-side network errors while
-	// trying to send the client error. This is because clients that
-	// receive error payload are highly correlated with clients
-	// disconnecting abruptly.
-	_ /* err */ = writeErr(ctx, &execCfg.Settings.SV, err, &c.msgBuilder, c.conn)
+	__antithesis_instrumentation__.Notify(559313)
+
+	_ = writeErr(ctx, &execCfg.Settings.SV, err, &c.msgBuilder, c.conn)
 	return err
 }
 
 func (c *conn) checkMaxConnections(ctx context.Context, sqlServer *sql.Server) error {
+	__antithesis_instrumentation__.Notify(559314)
 	if c.sessionArgs.IsSuperuser {
-		// This user is a super user and is therefore not affected by connection limits.
+		__antithesis_instrumentation__.Notify(559318)
+
 		sqlServer.IncrementConnectionCount()
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(559319)
 	}
+	__antithesis_instrumentation__.Notify(559315)
 
 	maxNumConnectionsValue := maxNumConnections.Get(&sqlServer.GetExecutorConfig().Settings.SV)
 	if maxNumConnectionsValue < 0 {
-		// Unlimited connections are allowed.
+		__antithesis_instrumentation__.Notify(559320)
+
 		sqlServer.IncrementConnectionCount()
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(559321)
 	}
+	__antithesis_instrumentation__.Notify(559316)
 	if !sqlServer.IncrementConnectionCountIfLessThan(maxNumConnectionsValue) {
+		__antithesis_instrumentation__.Notify(559322)
 		return c.sendError(ctx, sqlServer.GetExecutorConfig(), errors.WithHintf(
 			pgerror.New(pgcode.TooManyConnections, "sorry, too many clients already"),
 			"the maximum number of allowed connections is %d and can be modified using the %s config key",
 			maxNumConnectionsValue,
 			maxNumConnections.Key(),
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(559323)
 	}
+	__antithesis_instrumentation__.Notify(559317)
 	return nil
 }
 
 func (c *conn) authLogEnabled() bool {
-	return c.alwaysLogAuthActivity || logSessionAuth.Get(c.sv)
+	__antithesis_instrumentation__.Notify(559324)
+	return c.alwaysLogAuthActivity || func() bool {
+		__antithesis_instrumentation__.Notify(559325)
+		return logSessionAuth.Get(c.sv) == true
+	}() == true
 }
 
-// maxRepeatedErrorCount is the number of times an error can be received
-// while reading from the network connection before the server decides to give
-// up and abort the connection.
 const maxRepeatedErrorCount = 1 << 15
 
-// serveImpl continuously reads from the network connection and pushes execution
-// instructions into a sql.StmtBuf, from where they'll be processed by a command
-// "processor" goroutine (a connExecutor).
-// The method returns when the pgwire termination message is received, when
-// network communication fails, when the server is draining or when ctx is
-// canceled (which also happens when draining (but not from the get-go), and
-// when the processor encounters a fatal error).
-//
-// serveImpl always closes the network connection before returning.
-//
-// sqlServer is used to create the command processor. As a special facility for
-// tests, sqlServer can be nil, in which case the command processor and the
-// write-side of the connection will not be created.
 func (c *conn) serveImpl(
 	ctx context.Context,
 	draining func() bool,
@@ -279,20 +221,31 @@ func (c *conn) serveImpl(
 	reserved mon.BoundAccount,
 	authOpt authOptions,
 ) {
-	defer func() { _ = c.conn.Close() }()
+	__antithesis_instrumentation__.Notify(559326)
+	defer func() { __antithesis_instrumentation__.Notify(559335); _ = c.conn.Close() }()
+	__antithesis_instrumentation__.Notify(559327)
 
-	if c.sessionArgs.User.IsRootUser() || c.sessionArgs.User.IsNodeUser() {
+	if c.sessionArgs.User.IsRootUser() || func() bool {
+		__antithesis_instrumentation__.Notify(559336)
+		return c.sessionArgs.User.IsNodeUser() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(559337)
 		ctx = logtags.AddTag(ctx, "user", redact.Safe(c.sessionArgs.User))
 	} else {
+		__antithesis_instrumentation__.Notify(559338)
 		ctx = logtags.AddTag(ctx, "user", c.sessionArgs.User)
 	}
+	__antithesis_instrumentation__.Notify(559328)
 	tracing.SpanFromContext(ctx).SetTag("user", attribute.StringValue(c.sessionArgs.User.Normalized()))
 
 	inTestWithoutSQL := sqlServer == nil
 	if !inTestWithoutSQL {
+		__antithesis_instrumentation__.Notify(559339)
 		sessionStart := timeutil.Now()
 		defer func() {
+			__antithesis_instrumentation__.Notify(559340)
 			if c.authLogEnabled() {
+				__antithesis_instrumentation__.Notify(559341)
 				endTime := timeutil.Now()
 				ev := &eventpb.ClientSessionEnd{
 					CommonEventDetails:      eventpb.CommonEventDetails{Timestamp: endTime.UnixNano()},
@@ -300,61 +253,67 @@ func (c *conn) serveImpl(
 					Duration:                endTime.Sub(sessionStart).Nanoseconds(),
 				}
 				log.StructuredEvent(ctx, ev)
+			} else {
+				__antithesis_instrumentation__.Notify(559342)
 			}
 		}()
+	} else {
+		__antithesis_instrumentation__.Notify(559343)
 	}
-
-	// NOTE: We're going to write a few messages to the connection in this method,
-	// for the handshake. After that, all writes are done async, in the
-	// startWriter() goroutine.
+	__antithesis_instrumentation__.Notify(559329)
 
 	ctx, cancelConn := context.WithCancel(ctx)
-	defer cancelConn() // This calms the linter that wants these callbacks to always be called.
+	defer cancelConn()
 
 	var sentDrainSignal bool
-	// The net.Conn is switched to a conn that exits if the ctx is canceled.
+
 	c.conn = NewReadTimeoutConn(c.conn, func() error {
-		// If the context was canceled, it's time to stop reading. Either a
-		// higher-level server or the command processor have canceled us.
+		__antithesis_instrumentation__.Notify(559344)
+
 		if ctx.Err() != nil {
+			__antithesis_instrumentation__.Notify(559347)
 			return ctx.Err()
+		} else {
+			__antithesis_instrumentation__.Notify(559348)
 		}
-		// If the server is draining, we'll let the processor know by pushing a
-		// DrainRequest. This will make the processor quit whenever it finds a good
-		// time.
-		if !sentDrainSignal && draining() {
-			_ /* err */ = c.stmtBuf.Push(ctx, sql.DrainRequest{})
+		__antithesis_instrumentation__.Notify(559345)
+
+		if !sentDrainSignal && func() bool {
+			__antithesis_instrumentation__.Notify(559349)
+			return draining() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(559350)
+			_ = c.stmtBuf.Push(ctx, sql.DrainRequest{})
 			sentDrainSignal = true
+		} else {
+			__antithesis_instrumentation__.Notify(559351)
 		}
+		__antithesis_instrumentation__.Notify(559346)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(559330)
 	c.rd = *bufio.NewReader(c.conn)
 
-	// the authPipe below logs authentication messages iff its auth
-	// logger is non-nil. We define this here.
-	logAuthn := !inTestWithoutSQL && c.authLogEnabled()
+	logAuthn := !inTestWithoutSQL && func() bool {
+		__antithesis_instrumentation__.Notify(559352)
+		return c.authLogEnabled() == true
+	}() == true
 
-	// We'll build an authPipe to communicate with the authentication process.
 	authPipe := newAuthPipe(c, logAuthn, authOpt, c.sessionArgs.User)
 	var authenticator authenticatorIO = authPipe
 
-	// procCh is the channel on which we'll receive the termination signal from
-	// the command processor.
 	var procCh <-chan error
 
-	// We need a value for the unqualified int size here, but it is controlled
-	// by a session variable, and this layer doesn't have access to the session
-	// data. The callback below is called whenever default_int_size changes.
-	// It happens in a different goroutine, so it has to be changed atomically.
 	var atomicUnqualifiedIntSize = new(int32)
 	onDefaultIntSizeChange := func(newSize int32) {
+		__antithesis_instrumentation__.Notify(559353)
 		atomic.StoreInt32(atomicUnqualifiedIntSize, newSize)
 	}
+	__antithesis_instrumentation__.Notify(559331)
 
 	if sqlServer != nil {
-		// Spawn the command processing goroutine, which also handles connection
-		// authentication). It will notify us when it's done through procCh, and
-		// we'll also interact with the authentication process through ac.
+		__antithesis_instrumentation__.Notify(559354)
+
 		var ac AuthConn = authPipe
 		procCh = c.processCommandsAsync(
 			ctx,
@@ -366,267 +325,318 @@ func (c *conn) serveImpl(
 			onDefaultIntSizeChange,
 		)
 	} else {
-		// sqlServer == nil means we are in a local test. In this case
-		// we only need the minimum to make pgx happy.
+		__antithesis_instrumentation__.Notify(559355)
+
 		var err error
 		for param, value := range testingStatusReportParams {
+			__antithesis_instrumentation__.Notify(559358)
 			err = c.sendParamStatus(param, value)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(559359)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(559360)
 			}
 		}
+		__antithesis_instrumentation__.Notify(559356)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559361)
 			reserved.Close(ctx)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(559362)
 		}
+		__antithesis_instrumentation__.Notify(559357)
 		var ac AuthConn = authPipe
-		// Simulate auth succeeding.
+
 		ac.AuthOK(ctx)
 		dummyCh := make(chan error)
 		close(dummyCh)
 		procCh = dummyCh
 
-		if err := c.sendReadyForQuery(0 /* queryCancelKey */); err != nil {
+		if err := c.sendReadyForQuery(0); err != nil {
+			__antithesis_instrumentation__.Notify(559363)
 			reserved.Close(ctx)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(559364)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559332)
 
 	var terminateSeen bool
 	var authDone, ignoreUntilSync bool
 	var repeatedErrorCount int
 	for {
+		__antithesis_instrumentation__.Notify(559365)
 		breakLoop, isSimpleQuery, err := func() (bool, bool, error) {
+			__antithesis_instrumentation__.Notify(559368)
 			typ, n, err := c.readBuf.ReadTypedMsg(&c.rd)
 			c.metrics.BytesInCount.Inc(int64(n))
-			if err == nil && c.afterReadMsgTestingKnob != nil {
+			if err == nil && func() bool {
+				__antithesis_instrumentation__.Notify(559373)
+				return c.afterReadMsgTestingKnob != nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(559374)
 				err = c.afterReadMsgTestingKnob(ctx)
+			} else {
+				__antithesis_instrumentation__.Notify(559375)
 			}
+			__antithesis_instrumentation__.Notify(559369)
 			isSimpleQuery := typ == pgwirebase.ClientMsgSimpleQuery
 			if err != nil {
+				__antithesis_instrumentation__.Notify(559376)
 				if pgwirebase.IsMessageTooBigError(err) {
+					__antithesis_instrumentation__.Notify(559380)
 					log.VInfof(ctx, 1, "pgwire: found big error message; attempting to slurp bytes and return error: %s", err)
 
-					// Slurp the remaining bytes.
 					slurpN, slurpErr := c.readBuf.SlurpBytes(&c.rd, pgwirebase.GetMessageTooBigSize(err))
 					c.metrics.BytesInCount.Inc(int64(slurpN))
 					if slurpErr != nil {
+						__antithesis_instrumentation__.Notify(559381)
 						return false, isSimpleQuery, errors.Wrap(slurpErr, "pgwire: error slurping remaining bytes")
+					} else {
+						__antithesis_instrumentation__.Notify(559382)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(559383)
 				}
+				__antithesis_instrumentation__.Notify(559377)
 
-				// Write out the error over pgwire.
 				if err := c.stmtBuf.Push(ctx, sql.SendError{Err: err}); err != nil {
+					__antithesis_instrumentation__.Notify(559384)
 					return false, isSimpleQuery, errors.New("pgwire: error writing too big error message to the client")
+				} else {
+					__antithesis_instrumentation__.Notify(559385)
 				}
+				__antithesis_instrumentation__.Notify(559378)
 
-				// If this is a simple query, we have to send the sync message back as
-				// well.
 				if isSimpleQuery {
+					__antithesis_instrumentation__.Notify(559386)
 					if err := c.stmtBuf.Push(ctx, sql.Sync{}); err != nil {
+						__antithesis_instrumentation__.Notify(559387)
 						return false, isSimpleQuery, errors.New("pgwire: error writing sync to the client whilst message is too big")
+					} else {
+						__antithesis_instrumentation__.Notify(559388)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(559389)
 				}
+				__antithesis_instrumentation__.Notify(559379)
 
-				// We need to continue processing here for pgwire clients to be able to
-				// successfully read the error message off pgwire.
-				//
-				// If break here, we terminate the connection. The client will instead see that
-				// we terminated the connection prematurely (as opposed to seeing a ClientMsgTerminate
-				// packet) and instead return a broken pipe or io.EOF error message.
 				return false, isSimpleQuery, errors.Wrap(err, "pgwire: error reading input")
+			} else {
+				__antithesis_instrumentation__.Notify(559390)
 			}
+			__antithesis_instrumentation__.Notify(559370)
 			timeReceived := timeutil.Now()
 			log.VEventf(ctx, 2, "pgwire: processing %s", typ)
 
 			if ignoreUntilSync {
+				__antithesis_instrumentation__.Notify(559391)
 				if typ != pgwirebase.ClientMsgSync {
+					__antithesis_instrumentation__.Notify(559393)
 					log.VInfof(ctx, 1, "pgwire: skipping non-sync message after encountering error")
 					return false, isSimpleQuery, nil
+				} else {
+					__antithesis_instrumentation__.Notify(559394)
 				}
+				__antithesis_instrumentation__.Notify(559392)
 				ignoreUntilSync = false
+			} else {
+				__antithesis_instrumentation__.Notify(559395)
 			}
+			__antithesis_instrumentation__.Notify(559371)
 
 			if !authDone {
+				__antithesis_instrumentation__.Notify(559396)
 				if typ == pgwirebase.ClientMsgPassword {
+					__antithesis_instrumentation__.Notify(559399)
 					var pwd []byte
 					if pwd, err = c.readBuf.GetBytes(n - 4); err != nil {
+						__antithesis_instrumentation__.Notify(559402)
 						return false, isSimpleQuery, err
+					} else {
+						__antithesis_instrumentation__.Notify(559403)
 					}
-					// Pass the data to the authenticator. This hopefully causes it to finish
-					// authentication in the background and give us an intSizer when we loop
-					// around.
+					__antithesis_instrumentation__.Notify(559400)
+
 					if err = authenticator.sendPwdData(pwd); err != nil {
+						__antithesis_instrumentation__.Notify(559404)
 						return false, isSimpleQuery, err
+					} else {
+						__antithesis_instrumentation__.Notify(559405)
 					}
+					__antithesis_instrumentation__.Notify(559401)
 					return false, isSimpleQuery, nil
+				} else {
+					__antithesis_instrumentation__.Notify(559406)
 				}
-				// Wait for the auth result.
+				__antithesis_instrumentation__.Notify(559397)
+
 				if err = authenticator.authResult(); err != nil {
-					// The error has already been sent to the client.
-					return true, isSimpleQuery, nil //nolint:returnerrcheck
+					__antithesis_instrumentation__.Notify(559407)
+
+					return true, isSimpleQuery, nil
+				} else {
+					__antithesis_instrumentation__.Notify(559408)
 				}
+				__antithesis_instrumentation__.Notify(559398)
 				authDone = true
 
-				// We count the connection establish latency until we are ready to
-				// serve a SQL query. It includes the time it takes to authenticate.
 				duration := timeutil.Since(c.startTime).Nanoseconds()
 				c.metrics.ConnLatency.RecordValue(duration)
+			} else {
+				__antithesis_instrumentation__.Notify(559409)
 			}
+			__antithesis_instrumentation__.Notify(559372)
 
 			switch typ {
 			case pgwirebase.ClientMsgPassword:
-				// This messages are only acceptable during the auth phase, handled above.
+				__antithesis_instrumentation__.Notify(559410)
+
 				err = pgwirebase.NewProtocolViolationErrorf("unexpected authentication data")
 				return true, isSimpleQuery, writeErr(
 					ctx, &sqlServer.GetExecutorConfig().Settings.SV, err,
 					&c.msgBuilder, &c.writerState.buf)
 			case pgwirebase.ClientMsgSimpleQuery:
+				__antithesis_instrumentation__.Notify(559411)
 				if err = c.handleSimpleQuery(
 					ctx, &c.readBuf, timeReceived, parser.NakedIntTypeFromDefaultIntSize(atomic.LoadInt32(atomicUnqualifiedIntSize)),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(559424)
 					return false, isSimpleQuery, err
+				} else {
+					__antithesis_instrumentation__.Notify(559425)
 				}
+				__antithesis_instrumentation__.Notify(559412)
 				return false, isSimpleQuery, c.stmtBuf.Push(ctx, sql.Sync{})
 
 			case pgwirebase.ClientMsgExecute:
-				// To support the 1PC txn fast path, we peek at the next command to
-				// see if it is a Sync. This is because in the extended protocol, an
-				// implicit transaction cannot commit until the Sync is seen. If there's
-				// an error while peeking (for example, there are no bytes in the
-				// buffer), the error is ignored since it will be handled on the next
-				// loop iteration.
+				__antithesis_instrumentation__.Notify(559413)
+
 				followedBySync := false
-				if nextMsgType, err := c.rd.Peek(1); err == nil &&
-					pgwirebase.ClientMessageType(nextMsgType[0]) == pgwirebase.ClientMsgSync {
+				if nextMsgType, err := c.rd.Peek(1); err == nil && func() bool {
+					__antithesis_instrumentation__.Notify(559426)
+					return pgwirebase.ClientMessageType(nextMsgType[0]) == pgwirebase.ClientMsgSync == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(559427)
 					followedBySync = true
+				} else {
+					__antithesis_instrumentation__.Notify(559428)
 				}
+				__antithesis_instrumentation__.Notify(559414)
 				return false, isSimpleQuery, c.handleExecute(ctx, &c.readBuf, timeReceived, followedBySync)
 
 			case pgwirebase.ClientMsgParse:
+				__antithesis_instrumentation__.Notify(559415)
 				return false, isSimpleQuery, c.handleParse(ctx, &c.readBuf, parser.NakedIntTypeFromDefaultIntSize(atomic.LoadInt32(atomicUnqualifiedIntSize)))
 
 			case pgwirebase.ClientMsgDescribe:
+				__antithesis_instrumentation__.Notify(559416)
 				return false, isSimpleQuery, c.handleDescribe(ctx, &c.readBuf)
 
 			case pgwirebase.ClientMsgBind:
+				__antithesis_instrumentation__.Notify(559417)
 				return false, isSimpleQuery, c.handleBind(ctx, &c.readBuf)
 
 			case pgwirebase.ClientMsgClose:
+				__antithesis_instrumentation__.Notify(559418)
 				return false, isSimpleQuery, c.handleClose(ctx, &c.readBuf)
 
 			case pgwirebase.ClientMsgTerminate:
+				__antithesis_instrumentation__.Notify(559419)
 				terminateSeen = true
 				return true, isSimpleQuery, nil
 
 			case pgwirebase.ClientMsgSync:
-				// We're starting a batch here. If the client continues using the extended
-				// protocol and encounters an error, everything until the next sync
-				// message has to be skipped. See:
-				// https://www.postgresql.org/docs/current/10/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY
+				__antithesis_instrumentation__.Notify(559420)
 
 				return false, isSimpleQuery, c.stmtBuf.Push(ctx, sql.Sync{})
 
 			case pgwirebase.ClientMsgFlush:
+				__antithesis_instrumentation__.Notify(559421)
 				return false, isSimpleQuery, c.handleFlush(ctx)
 
 			case pgwirebase.ClientMsgCopyData, pgwirebase.ClientMsgCopyDone, pgwirebase.ClientMsgCopyFail:
-				// We're supposed to ignore these messages, per the protocol spec. This
-				// state will happen when an error occurs on the server-side during a copy
-				// operation: the server will send an error and a ready message back to
-				// the client, and must then ignore further copy messages. See:
-				// https://github.com/postgres/postgres/blob/6e1dd2773eb60a6ab87b27b8d9391b756e904ac3/src/backend/tcop/postgres.c#L4295
+				__antithesis_instrumentation__.Notify(559422)
+
 				return false, isSimpleQuery, nil
 			default:
+				__antithesis_instrumentation__.Notify(559423)
 				return false, isSimpleQuery, c.stmtBuf.Push(
 					ctx,
 					sql.SendError{Err: pgwirebase.NewUnrecognizedMsgTypeErr(typ)})
 			}
 		}()
+		__antithesis_instrumentation__.Notify(559366)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559429)
 			log.VEventf(ctx, 1, "pgwire: error processing message: %s", err)
 			if !isSimpleQuery {
-				// In the extended protocol, after seeing an error, we ignore all
-				// messages until receiving a sync.
+				__antithesis_instrumentation__.Notify(559431)
+
 				ignoreUntilSync = true
+			} else {
+				__antithesis_instrumentation__.Notify(559432)
 			}
+			__antithesis_instrumentation__.Notify(559430)
 			repeatedErrorCount++
-			// If we can't read data because of any one of the following conditions,
-			// then we should break:
-			// 1. the connection was closed.
-			// 2. the context was canceled (e.g. during authentication).
-			// 3. we reached an arbitrary threshold of repeated errors.
-			if netutil.IsClosedConnection(err) ||
-				errors.Is(err, context.Canceled) ||
-				repeatedErrorCount > maxRepeatedErrorCount {
+
+			if netutil.IsClosedConnection(err) || func() bool {
+				__antithesis_instrumentation__.Notify(559433)
+				return errors.Is(err, context.Canceled) == true
+			}() == true || func() bool {
+				__antithesis_instrumentation__.Notify(559434)
+				return repeatedErrorCount > maxRepeatedErrorCount == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(559435)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(559436)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(559437)
 			repeatedErrorCount = 0
 		}
+		__antithesis_instrumentation__.Notify(559367)
 		if breakLoop {
+			__antithesis_instrumentation__.Notify(559438)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(559439)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559333)
 
-	// We're done reading data from the client, so make the communication
-	// goroutine stop. Depending on what that goroutine is currently doing (or
-	// blocked on), we cancel and close all the possible channels to make sure we
-	// tickle it in the right way.
-
-	// Signal command processing to stop. It might be the case that the processor
-	// canceled our context and that's how we got here; in that case, this will
-	// be a no-op.
 	c.stmtBuf.Close()
-	// Cancel the processor's context.
+
 	cancelConn()
-	// In case the authenticator is blocked on waiting for data from the client,
-	// tell it that there's no more data coming. This is a no-op if authentication
-	// was completed already.
+
 	authenticator.noMorePwdData()
 
-	// Wait for the processor goroutine to finish, if it hasn't already. We're
-	// ignoring the error we get from it, as we have no use for it. It might be a
-	// connection error, or a context cancelation error case this goroutine is the
-	// one that triggered the execution to stop.
 	<-procCh
 
 	if terminateSeen {
+		__antithesis_instrumentation__.Notify(559440)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(559441)
 	}
-	// If we're draining, let the client know by piling on an AdminShutdownError
-	// and flushing the buffer.
+	__antithesis_instrumentation__.Notify(559334)
+
 	if draining() {
-		// TODO(andrei): I think sending this extra error to the client if we also
-		// sent another error for the last query (like a context canceled) is a bad
-		// idea; see #22630. I think we should find a way to return the
-		// AdminShutdown error as the only result of the query.
+		__antithesis_instrumentation__.Notify(559442)
+
 		log.Ops.Info(ctx, "closing existing connection while server is draining")
-		_ /* err */ = writeErr(ctx, &sqlServer.GetExecutorConfig().Settings.SV,
+		_ = writeErr(ctx, &sqlServer.GetExecutorConfig().Settings.SV,
 			newAdminShutdownErr(ErrDrainingExistingConn), &c.msgBuilder, &c.writerState.buf)
-		_ /* n */, _ /* err */ = c.writerState.buf.WriteTo(c.conn)
+		_, _ = c.writerState.buf.WriteTo(c.conn)
+	} else {
+		__antithesis_instrumentation__.Notify(559443)
 	}
 }
 
-// processCommandsAsync spawns a goroutine that authenticates the connection and
-// then processes commands from c.stmtBuf.
-//
-// It returns a channel that will be signaled when this goroutine is done.
-// Whatever error is returned on that channel has already been written to the
-// client connection, if applicable.
-//
-// If authentication fails, this goroutine finishes and, as always, cancelConn
-// is called.
-//
-// Args:
-// ac: An interface used by the authentication process to receive password data
-//   and to ultimately declare the authentication successful.
-// reserved: Reserved memory. This method takes ownership.
-// cancelConn: A function to be called when this goroutine exits. Its goal is to
-//   cancel the connection's context, thus stopping the connection's goroutine.
-//   The returned channel is also closed before this goroutine dies, but the
-//   connection's goroutine is not expected to be reading from that channel
-//   (instead, it's expected to always be monitoring the network connection).
 func (c *conn) processCommandsAsync(
 	ctx context.Context,
 	authOpt authOptions,
@@ -636,97 +646,133 @@ func (c *conn) processCommandsAsync(
 	cancelConn func(),
 	onDefaultIntSizeChange func(newSize int32),
 ) <-chan error {
-	// reservedOwned is true while we own reserved, false when we pass ownership
-	// away.
+	__antithesis_instrumentation__.Notify(559444)
+
 	reservedOwned := true
 	retCh := make(chan error, 1)
 	go func() {
+		__antithesis_instrumentation__.Notify(559446)
 		var retErr error
 		var connHandler sql.ConnectionHandler
 		var authOK bool
 		var connCloseAuthHandler func()
 		defer func() {
-			// Release resources, if we still own them.
+			__antithesis_instrumentation__.Notify(559452)
+
 			if reservedOwned {
+				__antithesis_instrumentation__.Notify(559457)
 				reserved.Close(ctx)
+			} else {
+				__antithesis_instrumentation__.Notify(559458)
 			}
-			// Notify the connection's goroutine that we're terminating. The
-			// connection might know already, as it might have triggered this
-			// goroutine's finish, but it also might be us that we're triggering the
-			// connection's death. This context cancelation serves to interrupt a
-			// network read on the connection's goroutine.
+			__antithesis_instrumentation__.Notify(559453)
+
 			cancelConn()
 
 			pgwireKnobs := sqlServer.GetExecutorConfig().PGWireTestingKnobs
-			if pgwireKnobs != nil && pgwireKnobs.CatchPanics {
+			if pgwireKnobs != nil && func() bool {
+				__antithesis_instrumentation__.Notify(559459)
+				return pgwireKnobs.CatchPanics == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(559460)
 				if r := recover(); r != nil {
-					// Catch the panic and return it to the client as an error.
+					__antithesis_instrumentation__.Notify(559461)
+
 					if err, ok := r.(error); ok {
-						// Mask the cause but keep the details.
+						__antithesis_instrumentation__.Notify(559463)
+
 						retErr = errors.Handled(err)
 					} else {
+						__antithesis_instrumentation__.Notify(559464)
 						retErr = errors.Newf("%+v", r)
 					}
+					__antithesis_instrumentation__.Notify(559462)
 					retErr = pgerror.WithCandidateCode(retErr, pgcode.CrashShutdown)
-					// Add a prefix. This also adds a stack trace.
+
 					retErr = errors.Wrap(retErr, "caught fatal error")
 					_ = writeErr(
 						ctx, &sqlServer.GetExecutorConfig().Settings.SV, retErr,
 						&c.msgBuilder, &c.writerState.buf)
-					_ /* n */, _ /* err */ = c.writerState.buf.WriteTo(c.conn)
+					_, _ = c.writerState.buf.WriteTo(c.conn)
 					c.stmtBuf.Close()
-					// Send a ready for query to make sure the client can react.
-					// TODO(andrei, jordan): Why are we sending this exactly?
+
 					c.bufferReadyForQuery('I')
+				} else {
+					__antithesis_instrumentation__.Notify(559465)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(559466)
 			}
+			__antithesis_instrumentation__.Notify(559454)
 			if !authOK {
+				__antithesis_instrumentation__.Notify(559467)
 				ac.AuthFail(retErr)
+			} else {
+				__antithesis_instrumentation__.Notify(559468)
 			}
+			__antithesis_instrumentation__.Notify(559455)
 			if connCloseAuthHandler != nil {
+				__antithesis_instrumentation__.Notify(559469)
 				connCloseAuthHandler()
+			} else {
+				__antithesis_instrumentation__.Notify(559470)
 			}
-			// Inform the connection goroutine of success or failure.
+			__antithesis_instrumentation__.Notify(559456)
+
 			retCh <- retErr
 		}()
+		__antithesis_instrumentation__.Notify(559447)
 
-		// Authenticate the connection.
 		if connCloseAuthHandler, retErr = c.handleAuthentication(
 			ctx, ac, authOpt, sqlServer.GetExecutorConfig(),
 		); retErr != nil {
-			// Auth failed or some other error.
+			__antithesis_instrumentation__.Notify(559471)
+
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(559472)
 		}
+		__antithesis_instrumentation__.Notify(559448)
 
 		if retErr = c.checkMaxConnections(ctx, sqlServer); retErr != nil {
+			__antithesis_instrumentation__.Notify(559473)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(559474)
 		}
+		__antithesis_instrumentation__.Notify(559449)
 		defer sqlServer.DecrementConnectionCount()
 
 		if retErr = c.authOKMessage(); retErr != nil {
+			__antithesis_instrumentation__.Notify(559475)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(559476)
 		}
+		__antithesis_instrumentation__.Notify(559450)
 
-		// Inform the client of the default session settings.
 		connHandler, retErr = c.sendInitialConnData(ctx, sqlServer, onDefaultIntSizeChange)
 		if retErr != nil {
+			__antithesis_instrumentation__.Notify(559477)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(559478)
 		}
-		// Signal the connection was established to the authenticator.
+		__antithesis_instrumentation__.Notify(559451)
+
 		ac.AuthOK(ctx)
-		// Mark the authentication as succeeded in case a panic
-		// is thrown below and we need to report to the client
-		// using the defer above.
+
 		authOK = true
 
-		// Now actually process commands.
-		reservedOwned = false // We're about to pass ownership away.
+		reservedOwned = false
 		retErr = sqlServer.ServeConn(ctx, connHandler, reserved, cancelConn)
 	}()
+	__antithesis_instrumentation__.Notify(559445)
 	return retCh
 }
 
 func (c *conn) sendParamStatus(param, value string) error {
+	__antithesis_instrumentation__.Notify(559479)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgParameterStatus)
 	c.msgBuilder.writeTerminatedString(param)
 	c.msgBuilder.writeTerminatedString(value)
@@ -734,6 +780,7 @@ func (c *conn) sendParamStatus(param, value string) error {
 }
 
 func (c *conn) bufferParamStatus(param, value string) error {
+	__antithesis_instrumentation__.Notify(559480)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgParameterStatus)
 	c.msgBuilder.writeTerminatedString(param)
 	c.msgBuilder.writeTerminatedString(value)
@@ -741,6 +788,7 @@ func (c *conn) bufferParamStatus(param, value string) error {
 }
 
 func (c *conn) bufferNotice(ctx context.Context, noticeErr pgnotice.Notice) error {
+	__antithesis_instrumentation__.Notify(559481)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgNoticeResponse)
 	return writeErrFields(ctx, c.sv, noticeErr, &c.msgBuilder, &c.writerState.buf)
 }
@@ -748,6 +796,7 @@ func (c *conn) bufferNotice(ctx context.Context, noticeErr pgnotice.Notice) erro
 func (c *conn) sendInitialConnData(
 	ctx context.Context, sqlServer *sql.Server, onDefaultIntSizeChange func(newSize int32),
 ) (sql.ConnectionHandler, error) {
+	__antithesis_instrumentation__.Notify(559482)
 	connHandler, err := sqlServer.SetupConn(
 		ctx,
 		c.sessionArgs,
@@ -757,77 +806,101 @@ func (c *conn) sendInitialConnData(
 		onDefaultIntSizeChange,
 	)
 	if err != nil {
-		_ /* err */ = writeErr(
+		__antithesis_instrumentation__.Notify(559487)
+		_ = writeErr(
 			ctx, &sqlServer.GetExecutorConfig().Settings.SV, err, &c.msgBuilder, c.conn)
 		return sql.ConnectionHandler{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(559488)
 	}
+	__antithesis_instrumentation__.Notify(559483)
 
-	// Send the initial "status parameters" to the client.  This
-	// overlaps partially with session variables. The client wants to
-	// see the values that result from the combination of server-side
-	// defaults with client-provided values.
-	// For details see: https://www.postgresql.org/docs/10/static/libpq-status.html
 	for _, param := range statusReportParams {
+		__antithesis_instrumentation__.Notify(559489)
 		param := param
 		value := connHandler.GetParamStatus(ctx, param)
 		if err := c.sendParamStatus(param, value); err != nil {
+			__antithesis_instrumentation__.Notify(559490)
 			return sql.ConnectionHandler{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(559491)
 		}
 	}
-	// The two following status parameters have no equivalent session
-	// variable.
+	__antithesis_instrumentation__.Notify(559484)
+
 	if err := c.sendParamStatus("session_authorization", c.sessionArgs.User.Normalized()); err != nil {
+		__antithesis_instrumentation__.Notify(559492)
 		return sql.ConnectionHandler{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(559493)
 	}
+	__antithesis_instrumentation__.Notify(559485)
 
 	if err := c.sendReadyForQuery(connHandler.GetQueryCancelKey()); err != nil {
+		__antithesis_instrumentation__.Notify(559494)
 		return sql.ConnectionHandler{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(559495)
 	}
+	__antithesis_instrumentation__.Notify(559486)
 	return connHandler, nil
 }
 
-// sendReadyForQuery sends the final messages of the connection handshake.
-// This includes a BackendKeyData message and a ServerMsgReady
-// message indicating that there is no active transaction.
 func (c *conn) sendReadyForQuery(queryCancelKey pgwirecancel.BackendKeyData) error {
-	// Send our BackendKeyData to the client, so they can cancel the connection.
+	__antithesis_instrumentation__.Notify(559496)
+
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgBackendKeyData)
 	c.msgBuilder.putInt64(int64(queryCancelKey))
 	if err := c.msgBuilder.finishMsg(c.conn); err != nil {
+		__antithesis_instrumentation__.Notify(559499)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559500)
 	}
+	__antithesis_instrumentation__.Notify(559497)
 
-	// An initial ServerMsgReady message is part of the handshake.
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgReady)
 	c.msgBuilder.writeByte(byte(sql.IdleTxnBlock))
 	if err := c.msgBuilder.finishMsg(c.conn); err != nil {
+		__antithesis_instrumentation__.Notify(559501)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559502)
 	}
+	__antithesis_instrumentation__.Notify(559498)
 	return nil
 }
 
-// An error is returned iff the statement buffer has been closed. In that case,
-// the connection should be considered toast.
 func (c *conn) handleSimpleQuery(
 	ctx context.Context,
 	buf *pgwirebase.ReadBuffer,
 	timeReceived time.Time,
 	unqualifiedIntSize *types.T,
 ) error {
+	__antithesis_instrumentation__.Notify(559503)
 	query, err := buf.GetString()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559508)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559509)
 	}
+	__antithesis_instrumentation__.Notify(559504)
 
 	startParse := timeutil.Now()
 	stmts, err := c.parser.ParseWithInt(query, unqualifiedIntSize)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559510)
 		log.SqlExec.Errorf(ctx, "failed to parse simple query: %s", query)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559511)
 	}
+	__antithesis_instrumentation__.Notify(559505)
 	endParse := timeutil.Now()
 
 	if len(stmts) == 0 {
+		__antithesis_instrumentation__.Notify(559512)
 		return c.stmtBuf.Push(
 			ctx, sql.ExecStmt{
 				Statement:    parser.Statement{},
@@ -835,33 +908,44 @@ func (c *conn) handleSimpleQuery(
 				ParseStart:   startParse,
 				ParseEnd:     endParse,
 			})
+	} else {
+		__antithesis_instrumentation__.Notify(559513)
 	}
+	__antithesis_instrumentation__.Notify(559506)
 
 	for i := range stmts {
-		// The CopyFrom statement is special. We need to detect it so we can hand
-		// control of the connection, through the stmtBuf, to a copyMachine, and
-		// block this network routine until control is passed back.
+		__antithesis_instrumentation__.Notify(559514)
+
 		if cp, ok := stmts[i].AST.(*tree.CopyFrom); ok {
+			__antithesis_instrumentation__.Notify(559516)
 			if len(stmts) != 1 {
-				// NOTE(andrei): I don't know if Postgres supports receiving a COPY
-				// together with other statements in the "simple" protocol, but I'd
-				// rather not worry about it since execution of COPY is special - it
-				// takes control over the connection.
+				__antithesis_instrumentation__.Notify(559519)
+
 				return c.stmtBuf.Push(
 					ctx,
 					sql.SendError{
 						Err: pgwirebase.NewProtocolViolationErrorf(
 							"COPY together with other statements in a query string is not supported"),
 					})
+			} else {
+				__antithesis_instrumentation__.Notify(559520)
 			}
+			__antithesis_instrumentation__.Notify(559517)
 			copyDone := sync.WaitGroup{}
 			copyDone.Add(1)
 			if err := c.stmtBuf.Push(ctx, sql.CopyIn{Conn: c, Stmt: cp, CopyDone: &copyDone}); err != nil {
+				__antithesis_instrumentation__.Notify(559521)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(559522)
 			}
+			__antithesis_instrumentation__.Notify(559518)
 			copyDone.Wait()
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(559523)
 		}
+		__antithesis_instrumentation__.Notify(559515)
 
 		if err := c.stmtBuf.Push(
 			ctx,
@@ -872,102 +956,152 @@ func (c *conn) handleSimpleQuery(
 				ParseEnd:     endParse,
 				LastInBatch:  i == len(stmts)-1,
 			}); err != nil {
+			__antithesis_instrumentation__.Notify(559524)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(559525)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559507)
 	return nil
 }
 
-// An error is returned iff the statement buffer has been closed. In that case,
-// the connection should be considered toast.
 func (c *conn) handleParse(
 	ctx context.Context, buf *pgwirebase.ReadBuffer, nakedIntSize *types.T,
 ) error {
+	__antithesis_instrumentation__.Notify(559526)
 	telemetry.Inc(sqltelemetry.ParseRequestCounter)
 	name, err := buf.GetString()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559537)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559538)
 	}
+	__antithesis_instrumentation__.Notify(559527)
 	query, err := buf.GetString()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559539)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559540)
 	}
-	// The client may provide type information for (some of) the placeholders.
+	__antithesis_instrumentation__.Notify(559528)
+
 	numQArgTypes, err := buf.GetUint16()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559541)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559542)
 	}
+	__antithesis_instrumentation__.Notify(559529)
 	inTypeHints := make([]oid.Oid, numQArgTypes)
 	for i := range inTypeHints {
+		__antithesis_instrumentation__.Notify(559543)
 		typ, err := buf.GetUint32()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559545)
 			return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+		} else {
+			__antithesis_instrumentation__.Notify(559546)
 		}
+		__antithesis_instrumentation__.Notify(559544)
 		inTypeHints[i] = oid.Oid(typ)
 	}
+	__antithesis_instrumentation__.Notify(559530)
 
 	startParse := timeutil.Now()
 	stmts, err := c.parser.ParseWithInt(query, nakedIntSize)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559547)
 		log.SqlExec.Errorf(ctx, "failed to parse: %s", query)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559548)
 	}
+	__antithesis_instrumentation__.Notify(559531)
 	if len(stmts) > 1 {
+		__antithesis_instrumentation__.Notify(559549)
 		err := pgerror.WrongNumberOfPreparedStatements(len(stmts))
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559550)
 	}
+	__antithesis_instrumentation__.Notify(559532)
 	var stmt parser.Statement
 	if len(stmts) == 1 {
+		__antithesis_instrumentation__.Notify(559551)
 		stmt = stmts[0]
+	} else {
+		__antithesis_instrumentation__.Notify(559552)
 	}
-	// len(stmts) == 0 results in a nil (empty) statement.
+	__antithesis_instrumentation__.Notify(559533)
 
 	if len(inTypeHints) > stmt.NumPlaceholders {
+		__antithesis_instrumentation__.Notify(559553)
 		err := pgwirebase.NewProtocolViolationErrorf(
 			"received too many type hints: %d vs %d placeholders in query",
 			len(inTypeHints), stmt.NumPlaceholders,
 		)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559554)
 	}
+	__antithesis_instrumentation__.Notify(559534)
 
 	var sqlTypeHints tree.PlaceholderTypes
 	if len(inTypeHints) > 0 {
-		// Prepare the mapping of SQL placeholder names to types. Pre-populate it with
-		// the type hints received from the client, if any.
+		__antithesis_instrumentation__.Notify(559555)
+
 		sqlTypeHints = make(tree.PlaceholderTypes, stmt.NumPlaceholders)
 		for i, t := range inTypeHints {
+			__antithesis_instrumentation__.Notify(559556)
 			if t == 0 {
+				__antithesis_instrumentation__.Notify(559560)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(559561)
 			}
-			// If the OID is user defined or unknown, then write nil into the type
-			// hints and let the consumer of the PrepareStmt resolve the types.
-			if t == oid.T_unknown || types.IsOIDUserDefinedType(t) {
+			__antithesis_instrumentation__.Notify(559557)
+
+			if t == oid.T_unknown || func() bool {
+				__antithesis_instrumentation__.Notify(559562)
+				return types.IsOIDUserDefinedType(t) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(559563)
 				sqlTypeHints[i] = nil
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(559564)
 			}
+			__antithesis_instrumentation__.Notify(559558)
 			v, ok := types.OidToType[t]
 			if !ok {
+				__antithesis_instrumentation__.Notify(559565)
 				err := pgwirebase.NewProtocolViolationErrorf("unknown oid type: %v", t)
 				return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+			} else {
+				__antithesis_instrumentation__.Notify(559566)
 			}
+			__antithesis_instrumentation__.Notify(559559)
 			sqlTypeHints[i] = v
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(559567)
 	}
+	__antithesis_instrumentation__.Notify(559535)
 
 	endParse := timeutil.Now()
 
 	if _, ok := stmt.AST.(*tree.CopyFrom); ok {
-		// We don't support COPY in extended protocol because it'd be complicated:
-		// it wouldn't be the preparing, but the execution that would need to
-		// execute the copyMachine.
-		// Be aware that the copyMachine assumes it always runs in the simple
-		// protocol, so if we ever support this, many parts of the copyMachine
-		// would need to be changed.
-		// Also note that COPY FROM in extended mode seems to be quite broken in
-		// Postgres too:
-		// https://www.postgresql.org/message-id/flat/CAMsr%2BYGvp2wRx9pPSxaKFdaObxX8DzWse%2BOkWk2xpXSvT0rq-g%40mail.gmail.com#CAMsr+YGvp2wRx9pPSxaKFdaObxX8DzWse+OkWk2xpXSvT0rq-g@mail.gmail.com
+		__antithesis_instrumentation__.Notify(559568)
+
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: fmt.Errorf("CopyFrom not supported in extended protocol mode")})
+	} else {
+		__antithesis_instrumentation__.Notify(559569)
 	}
+	__antithesis_instrumentation__.Notify(559536)
 
 	return c.stmtBuf.Push(
 		ctx,
@@ -981,18 +1115,25 @@ func (c *conn) handleParse(
 		})
 }
 
-// An error is returned iff the statement buffer has been closed. In that case,
-// the connection should be considered toast.
 func (c *conn) handleDescribe(ctx context.Context, buf *pgwirebase.ReadBuffer) error {
+	__antithesis_instrumentation__.Notify(559570)
 	telemetry.Inc(sqltelemetry.DescribeRequestCounter)
 	typ, err := buf.GetPrepareType()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559573)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559574)
 	}
+	__antithesis_instrumentation__.Notify(559571)
 	name, err := buf.GetString()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559575)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559576)
 	}
+	__antithesis_instrumentation__.Notify(559572)
 	return c.stmtBuf.Push(
 		ctx,
 		sql.DescribeStmt{
@@ -1001,18 +1142,25 @@ func (c *conn) handleDescribe(ctx context.Context, buf *pgwirebase.ReadBuffer) e
 		})
 }
 
-// An error is returned iff the statement buffer has been closed. In that case,
-// the connection should be considered toast.
 func (c *conn) handleClose(ctx context.Context, buf *pgwirebase.ReadBuffer) error {
+	__antithesis_instrumentation__.Notify(559577)
 	telemetry.Inc(sqltelemetry.CloseRequestCounter)
 	typ, err := buf.GetPrepareType()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559580)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559581)
 	}
+	__antithesis_instrumentation__.Notify(559578)
 	name, err := buf.GetString()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559582)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559583)
 	}
+	__antithesis_instrumentation__.Notify(559579)
 	return c.stmtBuf.Push(
 		ctx,
 		sql.DeletePreparedStmt{
@@ -1021,125 +1169,171 @@ func (c *conn) handleClose(ctx context.Context, buf *pgwirebase.ReadBuffer) erro
 		})
 }
 
-// If no format codes are provided then all arguments/result-columns use
-// the default format, text.
 var formatCodesAllText = []pgwirebase.FormatCode{pgwirebase.FormatText}
 
-// handleBind queues instructions for creating a portal from a prepared
-// statement.
-// An error is returned iff the statement buffer has been closed. In that case,
-// the connection should be considered toast.
 func (c *conn) handleBind(ctx context.Context, buf *pgwirebase.ReadBuffer) error {
+	__antithesis_instrumentation__.Notify(559584)
 	telemetry.Inc(sqltelemetry.BindRequestCounter)
 	portalName, err := buf.GetString()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559593)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559594)
 	}
+	__antithesis_instrumentation__.Notify(559585)
 	statementName, err := buf.GetString()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559595)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559596)
 	}
+	__antithesis_instrumentation__.Notify(559586)
 
-	// From the docs on number of argument format codes to bind:
-	// This can be zero to indicate that there are no arguments or that the
-	// arguments all use the default format (text); or one, in which case the
-	// specified format code is applied to all arguments; or it can equal the
-	// actual number of arguments.
-	// http://www.postgresql.org/docs/current/static/protocol-message-formats.html
 	numQArgFormatCodes, err := buf.GetUint16()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559597)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559598)
 	}
+	__antithesis_instrumentation__.Notify(559587)
 	var qArgFormatCodes []pgwirebase.FormatCode
 	switch numQArgFormatCodes {
 	case 0:
-		// No format codes means all arguments are passed as text.
+		__antithesis_instrumentation__.Notify(559599)
+
 		qArgFormatCodes = formatCodesAllText
 	case 1:
-		// `1` means read one code and apply it to every argument.
+		__antithesis_instrumentation__.Notify(559600)
+
 		ch, err := buf.GetUint16()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559603)
 			return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+		} else {
+			__antithesis_instrumentation__.Notify(559604)
 		}
+		__antithesis_instrumentation__.Notify(559601)
 		code := pgwirebase.FormatCode(ch)
 		if code == pgwirebase.FormatText {
+			__antithesis_instrumentation__.Notify(559605)
 			qArgFormatCodes = formatCodesAllText
 		} else {
+			__antithesis_instrumentation__.Notify(559606)
 			qArgFormatCodes = []pgwirebase.FormatCode{code}
 		}
 	default:
+		__antithesis_instrumentation__.Notify(559602)
 		qArgFormatCodes = make([]pgwirebase.FormatCode, numQArgFormatCodes)
-		// Read one format code for each argument and apply it to that argument.
+
 		for i := range qArgFormatCodes {
+			__antithesis_instrumentation__.Notify(559607)
 			ch, err := buf.GetUint16()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(559609)
 				return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+			} else {
+				__antithesis_instrumentation__.Notify(559610)
 			}
+			__antithesis_instrumentation__.Notify(559608)
 			qArgFormatCodes[i] = pgwirebase.FormatCode(ch)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559588)
 
 	numValues, err := buf.GetUint16()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559611)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559612)
 	}
+	__antithesis_instrumentation__.Notify(559589)
 	qargs := make([][]byte, numValues)
 	for i := 0; i < int(numValues); i++ {
+		__antithesis_instrumentation__.Notify(559613)
 		plen, err := buf.GetUint32()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559617)
 			return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+		} else {
+			__antithesis_instrumentation__.Notify(559618)
 		}
+		__antithesis_instrumentation__.Notify(559614)
 		if int32(plen) == -1 {
-			// The argument is a NULL value.
+			__antithesis_instrumentation__.Notify(559619)
+
 			qargs[i] = nil
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(559620)
 		}
+		__antithesis_instrumentation__.Notify(559615)
 		b, err := buf.GetBytes(int(plen))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559621)
 			return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+		} else {
+			__antithesis_instrumentation__.Notify(559622)
 		}
+		__antithesis_instrumentation__.Notify(559616)
 		qargs[i] = b
 	}
+	__antithesis_instrumentation__.Notify(559590)
 
-	// From the docs on number of result-column format codes to bind:
-	// This can be zero to indicate that there are no result columns or that
-	// the result columns should all use the default format (text); or one, in
-	// which case the specified format code is applied to all result columns
-	// (if any); or it can equal the actual number of result columns of the
-	// query.
-	// http://www.postgresql.org/docs/current/static/protocol-message-formats.html
 	numColumnFormatCodes, err := buf.GetUint16()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559623)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559624)
 	}
+	__antithesis_instrumentation__.Notify(559591)
 	var columnFormatCodes []pgwirebase.FormatCode
 	switch numColumnFormatCodes {
 	case 0:
-		// All columns will use the text format.
+		__antithesis_instrumentation__.Notify(559625)
+
 		columnFormatCodes = formatCodesAllText
 	case 1:
-		// All columns will use the one specified format.
+		__antithesis_instrumentation__.Notify(559626)
+
 		ch, err := buf.GetUint16()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559629)
 			return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+		} else {
+			__antithesis_instrumentation__.Notify(559630)
 		}
+		__antithesis_instrumentation__.Notify(559627)
 		code := pgwirebase.FormatCode(ch)
 		if code == pgwirebase.FormatText {
+			__antithesis_instrumentation__.Notify(559631)
 			columnFormatCodes = formatCodesAllText
 		} else {
+			__antithesis_instrumentation__.Notify(559632)
 			columnFormatCodes = []pgwirebase.FormatCode{code}
 		}
 	default:
+		__antithesis_instrumentation__.Notify(559628)
 		columnFormatCodes = make([]pgwirebase.FormatCode, numColumnFormatCodes)
-		// Read one format code for each column and apply it to that column.
+
 		for i := range columnFormatCodes {
+			__antithesis_instrumentation__.Notify(559633)
 			ch, err := buf.GetUint16()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(559635)
 				return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+			} else {
+				__antithesis_instrumentation__.Notify(559636)
 			}
+			__antithesis_instrumentation__.Notify(559634)
 			columnFormatCodes[i] = pgwirebase.FormatCode(ch)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559592)
 	return c.stmtBuf.Push(
 		ctx,
 		sql.BindStmt{
@@ -1151,20 +1345,27 @@ func (c *conn) handleBind(ctx context.Context, buf *pgwirebase.ReadBuffer) error
 		})
 }
 
-// An error is returned iff the statement buffer has been closed. In that case,
-// the connection should be considered toast.
 func (c *conn) handleExecute(
 	ctx context.Context, buf *pgwirebase.ReadBuffer, timeReceived time.Time, followedBySync bool,
 ) error {
+	__antithesis_instrumentation__.Notify(559637)
 	telemetry.Inc(sqltelemetry.ExecuteRequestCounter)
 	portalName, err := buf.GetString()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559640)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559641)
 	}
+	__antithesis_instrumentation__.Notify(559638)
 	limit, err := buf.GetUint32()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559642)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	} else {
+		__antithesis_instrumentation__.Notify(559643)
 	}
+	__antithesis_instrumentation__.Notify(559639)
 	return c.stmtBuf.Push(ctx, sql.ExecPortal{
 		Name:           portalName,
 		TimeReceived:   timeReceived,
@@ -1174,46 +1375,42 @@ func (c *conn) handleExecute(
 }
 
 func (c *conn) handleFlush(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(559644)
 	telemetry.Inc(sqltelemetry.FlushRequestCounter)
 	return c.stmtBuf.Push(ctx, sql.Flush{})
 }
 
-// BeginCopyIn is part of the pgwirebase.Conn interface.
 func (c *conn) BeginCopyIn(
 	ctx context.Context, columns []colinfo.ResultColumn, format pgwirebase.FormatCode,
 ) error {
+	__antithesis_instrumentation__.Notify(559645)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgCopyInResponse)
 	c.msgBuilder.writeByte(byte(format))
 	c.msgBuilder.putInt16(int16(len(columns)))
 	for range columns {
+		__antithesis_instrumentation__.Notify(559647)
 		c.msgBuilder.putInt16(int16(format))
 	}
+	__antithesis_instrumentation__.Notify(559646)
 	return c.msgBuilder.finishMsg(c.conn)
 }
 
-// SendCommandComplete is part of the pgwirebase.Conn interface.
 func (c *conn) SendCommandComplete(tag []byte) error {
+	__antithesis_instrumentation__.Notify(559648)
 	c.bufferCommandComplete(tag)
 	return nil
 }
 
-// Rd is part of the pgwirebase.Conn interface.
 func (c *conn) Rd() pgwirebase.BufferedReader {
+	__antithesis_instrumentation__.Notify(559649)
 	return &pgwireReader{conn: c}
 }
 
-// flushInfo encapsulates information about what results have been flushed to
-// the network.
 type flushInfo struct {
-	// buf is a reference to writerState.buf.
 	buf *bytes.Buffer
-	// lastFlushed indicates the highest command for which results have been
-	// flushed. The command may have further results in the buffer that haven't
-	// been flushed.
+
 	lastFlushed sql.CmdPos
-	// cmdStarts maintains the state about where the results for the respective
-	// positions begin. We utilize the invariant that positions are
-	// monotonically increasing sequences.
+
 	cmdStarts cmdIdxBuffer
 }
 
@@ -1224,103 +1421,118 @@ type cmdIdx struct {
 
 var cmdIdxPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(559650)
 		return &cmdIdx{}
 	},
 }
 
 func (c *cmdIdx) release() {
+	__antithesis_instrumentation__.Notify(559651)
 	*c = cmdIdx{}
 	cmdIdxPool.Put(c)
 }
 
 type cmdIdxBuffer struct {
-	// We intentionally do not just embed ring.Buffer in order to restrict the
-	// methods that can be called on cmdIdxBuffer.
 	buffer ring.Buffer
 }
 
 func (b *cmdIdxBuffer) empty() bool {
+	__antithesis_instrumentation__.Notify(559652)
 	return b.buffer.Len() == 0
 }
 
 func (b *cmdIdxBuffer) addLast(pos sql.CmdPos, idx int) {
+	__antithesis_instrumentation__.Notify(559653)
 	cmdIdx := cmdIdxPool.Get().(*cmdIdx)
 	cmdIdx.pos = pos
 	cmdIdx.idx = idx
 	b.buffer.AddLast(cmdIdx)
 }
 
-// removeLast removes the last cmdIdx from the buffer and will panic if the
-// buffer is empty.
 func (b *cmdIdxBuffer) removeLast() {
+	__antithesis_instrumentation__.Notify(559654)
 	b.getLast().release()
 	b.buffer.RemoveLast()
 }
 
-// getLast returns the last cmdIdx in the buffer and will panic if the buffer is
-// empty.
 func (b *cmdIdxBuffer) getLast() *cmdIdx {
+	__antithesis_instrumentation__.Notify(559655)
 	return b.buffer.GetLast().(*cmdIdx)
 }
 
 func (b *cmdIdxBuffer) clear() {
+	__antithesis_instrumentation__.Notify(559656)
 	for !b.empty() {
+		__antithesis_instrumentation__.Notify(559657)
 		b.removeLast()
 	}
 }
 
-// registerCmd updates cmdStarts buffer when the first result for a new command
-// is received.
 func (fi *flushInfo) registerCmd(pos sql.CmdPos) {
-	if !fi.cmdStarts.empty() && fi.cmdStarts.getLast().pos >= pos {
-		// Not a new command, nothing to do.
+	__antithesis_instrumentation__.Notify(559658)
+	if !fi.cmdStarts.empty() && func() bool {
+		__antithesis_instrumentation__.Notify(559660)
+		return fi.cmdStarts.getLast().pos >= pos == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(559661)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(559662)
 	}
+	__antithesis_instrumentation__.Notify(559659)
 	fi.cmdStarts.addLast(pos, fi.buf.Len())
 }
 
 func cookTag(
 	tagStr string, buf []byte, stmtType tree.StatementReturnType, rowsAffected int,
 ) []byte {
+	__antithesis_instrumentation__.Notify(559663)
 	if tagStr == "INSERT" {
-		// From the postgres docs (49.5. Message Formats):
-		// `INSERT oid rows`... oid is the object ID of the inserted row if
-		//	rows is 1 and the target table has OIDs; otherwise oid is 0.
+		__antithesis_instrumentation__.Notify(559666)
+
 		tagStr = "INSERT 0"
+	} else {
+		__antithesis_instrumentation__.Notify(559667)
 	}
+	__antithesis_instrumentation__.Notify(559664)
 	tag := append(buf, tagStr...)
 
 	switch stmtType {
 	case tree.RowsAffected:
+		__antithesis_instrumentation__.Notify(559668)
 		tag = append(tag, ' ')
 		tag = strconv.AppendInt(tag, int64(rowsAffected), 10)
 
 	case tree.Rows:
+		__antithesis_instrumentation__.Notify(559669)
 		tag = append(tag, ' ')
 		tag = strconv.AppendUint(tag, uint64(rowsAffected), 10)
 
 	case tree.Ack, tree.DDL:
+		__antithesis_instrumentation__.Notify(559670)
 		if tagStr == "SELECT" {
+			__antithesis_instrumentation__.Notify(559673)
 			tag = append(tag, ' ')
 			tag = strconv.AppendInt(tag, int64(rowsAffected), 10)
+		} else {
+			__antithesis_instrumentation__.Notify(559674)
 		}
 
 	case tree.CopyIn:
-		// Nothing to do. The CommandComplete message has been sent elsewhere.
+		__antithesis_instrumentation__.Notify(559671)
+
 		panic(errors.AssertionFailedf("CopyIn statements should have been handled elsewhere " +
 			"and not produce results"))
 	default:
+		__antithesis_instrumentation__.Notify(559672)
 		panic(errors.AssertionFailedf("unexpected result type %v", stmtType))
 	}
+	__antithesis_instrumentation__.Notify(559665)
 
 	return tag
 }
 
-// bufferRow serializes a row and adds it to the buffer.
-//
-// formatCodes describes the desired encoding for each column. It can be nil, in
-// which case all columns are encoded using the text encoding. Otherwise, it
-// needs to contain an entry for every column.
 func (c *conn) bufferRow(
 	ctx context.Context,
 	row tree.Datums,
@@ -1329,33 +1541,40 @@ func (c *conn) bufferRow(
 	sessionLoc *time.Location,
 	types []*types.T,
 ) {
+	__antithesis_instrumentation__.Notify(559675)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgDataRow)
 	c.msgBuilder.putInt16(int16(len(row)))
 	for i, col := range row {
+		__antithesis_instrumentation__.Notify(559677)
 		fmtCode := pgwirebase.FormatText
 		if formatCodes != nil {
+			__antithesis_instrumentation__.Notify(559679)
 			fmtCode = formatCodes[i]
+		} else {
+			__antithesis_instrumentation__.Notify(559680)
 		}
+		__antithesis_instrumentation__.Notify(559678)
 		switch fmtCode {
 		case pgwirebase.FormatText:
+			__antithesis_instrumentation__.Notify(559681)
 			c.msgBuilder.writeTextDatum(ctx, col, conv, sessionLoc, types[i])
 		case pgwirebase.FormatBinary:
+			__antithesis_instrumentation__.Notify(559682)
 			c.msgBuilder.writeBinaryDatum(ctx, col, sessionLoc, types[i])
 		default:
+			__antithesis_instrumentation__.Notify(559683)
 			c.msgBuilder.setError(errors.Errorf("unsupported format code %s", fmtCode))
 		}
 	}
+	__antithesis_instrumentation__.Notify(559676)
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559684)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559685)
 	}
 }
 
-// bufferBatch serializes a batch and adds all the rows from it to the buffer.
-// It is a noop for zero-length batch.
-//
-// formatCodes describes the desired encoding for each column. It can be nil, in
-// which case all columns are encoded using the text encoding. Otherwise, it
-// needs to contain an entry for every column.
 func (c *conn) bufferBatch(
 	ctx context.Context,
 	batch coldata.Batch,
@@ -1363,104 +1582,158 @@ func (c *conn) bufferBatch(
 	conv sessiondatapb.DataConversionConfig,
 	sessionLoc *time.Location,
 ) {
+	__antithesis_instrumentation__.Notify(559686)
 	sel := batch.Selection()
 	n := batch.Length()
 	if n > 0 {
+		__antithesis_instrumentation__.Notify(559687)
 		c.vecsScratch.SetBatch(batch)
-		// Make sure that c doesn't hold on to the memory of the batch.
+
 		defer c.vecsScratch.Reset()
 		width := int16(len(c.vecsScratch.Vecs))
 		for i := 0; i < n; i++ {
+			__antithesis_instrumentation__.Notify(559688)
 			rowIdx := i
 			if sel != nil {
+				__antithesis_instrumentation__.Notify(559691)
 				rowIdx = sel[rowIdx]
+			} else {
+				__antithesis_instrumentation__.Notify(559692)
 			}
+			__antithesis_instrumentation__.Notify(559689)
 			c.msgBuilder.initMsg(pgwirebase.ServerMsgDataRow)
 			c.msgBuilder.putInt16(width)
 			for vecIdx := 0; vecIdx < len(c.vecsScratch.Vecs); vecIdx++ {
+				__antithesis_instrumentation__.Notify(559693)
 				fmtCode := pgwirebase.FormatText
 				if formatCodes != nil {
+					__antithesis_instrumentation__.Notify(559695)
 					fmtCode = formatCodes[vecIdx]
+				} else {
+					__antithesis_instrumentation__.Notify(559696)
 				}
+				__antithesis_instrumentation__.Notify(559694)
 				switch fmtCode {
 				case pgwirebase.FormatText:
+					__antithesis_instrumentation__.Notify(559697)
 					c.msgBuilder.writeTextColumnarElement(ctx, &c.vecsScratch, vecIdx, rowIdx, conv, sessionLoc)
 				case pgwirebase.FormatBinary:
+					__antithesis_instrumentation__.Notify(559698)
 					c.msgBuilder.writeBinaryColumnarElement(ctx, &c.vecsScratch, vecIdx, rowIdx, sessionLoc)
 				default:
+					__antithesis_instrumentation__.Notify(559699)
 					c.msgBuilder.setError(errors.Errorf("unsupported format code %s", fmtCode))
 				}
 			}
+			__antithesis_instrumentation__.Notify(559690)
 			if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+				__antithesis_instrumentation__.Notify(559700)
 				panic(fmt.Sprintf("unexpected err from buffer: %s", err))
+			} else {
+				__antithesis_instrumentation__.Notify(559701)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(559702)
 	}
 }
 
 func (c *conn) bufferReadyForQuery(txnStatus byte) {
+	__antithesis_instrumentation__.Notify(559703)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgReady)
 	c.msgBuilder.writeByte(txnStatus)
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559704)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559705)
 	}
 }
 
 func (c *conn) bufferParseComplete() {
+	__antithesis_instrumentation__.Notify(559706)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgParseComplete)
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559707)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559708)
 	}
 }
 
 func (c *conn) bufferBindComplete() {
+	__antithesis_instrumentation__.Notify(559709)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgBindComplete)
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559710)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559711)
 	}
 }
 
 func (c *conn) bufferCloseComplete() {
+	__antithesis_instrumentation__.Notify(559712)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgCloseComplete)
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559713)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559714)
 	}
 }
 
 func (c *conn) bufferCommandComplete(tag []byte) {
+	__antithesis_instrumentation__.Notify(559715)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgCommandComplete)
 	c.msgBuilder.write(tag)
 	c.msgBuilder.nullTerminate()
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559716)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559717)
 	}
 }
 
 func (c *conn) bufferPortalSuspended() {
+	__antithesis_instrumentation__.Notify(559718)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgPortalSuspended)
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559719)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559720)
 	}
 }
 
 func (c *conn) bufferErr(ctx context.Context, err error) {
+	__antithesis_instrumentation__.Notify(559721)
 	if err := writeErr(ctx, c.sv,
 		err, &c.msgBuilder, &c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559722)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559723)
 	}
 }
 
 func (c *conn) bufferEmptyQueryResponse() {
+	__antithesis_instrumentation__.Notify(559724)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgEmptyQuery)
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559725)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559726)
 	}
 }
 
 func writeErr(
 	ctx context.Context, sv *settings.Values, err error, msgBuilder *writeBuffer, w io.Writer,
 ) error {
-	// Record telemetry for the error.
+	__antithesis_instrumentation__.Notify(559727)
+
 	sqltelemetry.RecordError(ctx, err, sv)
 	msgBuilder.initMsg(pgwirebase.ServerMsgErrorResponse)
 	return writeErrFields(ctx, sv, err, msgBuilder, w)
@@ -1469,6 +1742,7 @@ func writeErr(
 func writeErrFields(
 	ctx context.Context, sv *settings.Values, err error, msgBuilder *writeBuffer, w io.Writer,
 ) error {
+	__antithesis_instrumentation__.Notify(559728)
 	pgErr := pgerror.Flatten(err)
 
 	msgBuilder.putErrFieldMsg(pgwirebase.ServerErrFieldSeverity)
@@ -1478,37 +1752,64 @@ func writeErrFields(
 	msgBuilder.writeTerminatedString(pgErr.Code)
 
 	if pgErr.Detail != "" {
+		__antithesis_instrumentation__.Notify(559733)
 		msgBuilder.putErrFieldMsg(pgwirebase.ServerErrFieldDetail)
 		msgBuilder.writeTerminatedString(pgErr.Detail)
+	} else {
+		__antithesis_instrumentation__.Notify(559734)
 	}
+	__antithesis_instrumentation__.Notify(559729)
 
 	if pgErr.Hint != "" {
+		__antithesis_instrumentation__.Notify(559735)
 		msgBuilder.putErrFieldMsg(pgwirebase.ServerErrFieldHint)
 		msgBuilder.writeTerminatedString(pgErr.Hint)
+	} else {
+		__antithesis_instrumentation__.Notify(559736)
 	}
+	__antithesis_instrumentation__.Notify(559730)
 
 	if pgErr.ConstraintName != "" {
+		__antithesis_instrumentation__.Notify(559737)
 		msgBuilder.putErrFieldMsg(pgwirebase.ServerErrFieldConstraintName)
 		msgBuilder.writeTerminatedString(pgErr.ConstraintName)
+	} else {
+		__antithesis_instrumentation__.Notify(559738)
 	}
+	__antithesis_instrumentation__.Notify(559731)
 
 	if pgErr.Source != nil {
+		__antithesis_instrumentation__.Notify(559739)
 		errCtx := pgErr.Source
 		if errCtx.File != "" {
+			__antithesis_instrumentation__.Notify(559742)
 			msgBuilder.putErrFieldMsg(pgwirebase.ServerErrFieldSrcFile)
 			msgBuilder.writeTerminatedString(errCtx.File)
+		} else {
+			__antithesis_instrumentation__.Notify(559743)
 		}
+		__antithesis_instrumentation__.Notify(559740)
 
 		if errCtx.Line > 0 {
+			__antithesis_instrumentation__.Notify(559744)
 			msgBuilder.putErrFieldMsg(pgwirebase.ServerErrFieldSrcLine)
 			msgBuilder.writeTerminatedString(strconv.Itoa(int(errCtx.Line)))
+		} else {
+			__antithesis_instrumentation__.Notify(559745)
 		}
+		__antithesis_instrumentation__.Notify(559741)
 
 		if errCtx.Function != "" {
+			__antithesis_instrumentation__.Notify(559746)
 			msgBuilder.putErrFieldMsg(pgwirebase.ServerErrFieldSrcFunction)
 			msgBuilder.writeTerminatedString(errCtx.Function)
+		} else {
+			__antithesis_instrumentation__.Notify(559747)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(559748)
 	}
+	__antithesis_instrumentation__.Notify(559732)
 
 	msgBuilder.putErrFieldMsg(pgwirebase.ServerErrFieldMsgPrimary)
 	msgBuilder.writeTerminatedString(pgErr.Message)
@@ -1518,143 +1819,165 @@ func writeErrFields(
 }
 
 func (c *conn) bufferParamDesc(types []oid.Oid) {
+	__antithesis_instrumentation__.Notify(559749)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgParameterDescription)
 	c.msgBuilder.putInt16(int16(len(types)))
 	for _, t := range types {
+		__antithesis_instrumentation__.Notify(559751)
 		c.msgBuilder.putInt32(int32(t))
 	}
+	__antithesis_instrumentation__.Notify(559750)
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559752)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559753)
 	}
 }
 
 func (c *conn) bufferNoDataMsg() {
+	__antithesis_instrumentation__.Notify(559754)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgNoData)
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		__antithesis_instrumentation__.Notify(559755)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err from buffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(559756)
 	}
 }
 
-// writeRowDescription writes a row description to the given writer.
-//
-// formatCodes specifies the format for each column. It can be nil, in which
-// case all columns will use FormatText.
-//
-// If an error is returned, it has also been saved on c.err.
 func (c *conn) writeRowDescription(
 	ctx context.Context,
 	columns []colinfo.ResultColumn,
 	formatCodes []pgwirebase.FormatCode,
 	w io.Writer,
 ) error {
+	__antithesis_instrumentation__.Notify(559757)
 	c.msgBuilder.initMsg(pgwirebase.ServerMsgRowDescription)
 	c.msgBuilder.putInt16(int16(len(columns)))
 	for i, column := range columns {
+		__antithesis_instrumentation__.Notify(559760)
 		if log.V(2) {
+			__antithesis_instrumentation__.Notify(559762)
 			log.Infof(ctx, "pgwire: writing column %s of type: %s", column.Name, column.Typ)
+		} else {
+			__antithesis_instrumentation__.Notify(559763)
 		}
+		__antithesis_instrumentation__.Notify(559761)
 		c.msgBuilder.writeTerminatedString(column.Name)
 		typ := pgTypeForParserType(column.Typ)
-		c.msgBuilder.putInt32(int32(column.TableID))        // Table OID (optional).
-		c.msgBuilder.putInt16(int16(column.PGAttributeNum)) // Column attribute ID (optional).
+		c.msgBuilder.putInt32(int32(column.TableID))
+		c.msgBuilder.putInt16(int16(column.PGAttributeNum))
 		c.msgBuilder.putInt32(int32(typ.oid))
 		c.msgBuilder.putInt16(int16(typ.size))
-		c.msgBuilder.putInt32(column.GetTypeModifier()) // Type modifier
+		c.msgBuilder.putInt32(column.GetTypeModifier())
 		if formatCodes == nil {
+			__antithesis_instrumentation__.Notify(559764)
 			c.msgBuilder.putInt16(int16(pgwirebase.FormatText))
 		} else {
+			__antithesis_instrumentation__.Notify(559765)
 			c.msgBuilder.putInt16(int16(formatCodes[i]))
 		}
 	}
+	__antithesis_instrumentation__.Notify(559758)
 	if err := c.msgBuilder.finishMsg(w); err != nil {
+		__antithesis_instrumentation__.Notify(559766)
 		c.setErr(err)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559767)
 	}
+	__antithesis_instrumentation__.Notify(559759)
 	return nil
 }
 
-// Flush is part of the ClientComm interface.
-//
-// In case conn.err is set, this is a no-op - the previous err is returned.
 func (c *conn) Flush(pos sql.CmdPos) error {
-	// Check that there were no previous network errors. If there were, we'd
-	// probably also fail the write below, but this check is here to make
-	// absolutely sure that we don't send some results after we previously had
-	// failed to send others.
+	__antithesis_instrumentation__.Notify(559768)
+
 	if err := c.GetErr(); err != nil {
+		__antithesis_instrumentation__.Notify(559771)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559772)
 	}
+	__antithesis_instrumentation__.Notify(559769)
 
 	c.writerState.fi.lastFlushed = pos
-	// Make sure that the entire cmdStarts buffer is drained.
+
 	c.writerState.fi.cmdStarts.clear()
 
-	_ /* n */, err := c.writerState.buf.WriteTo(c.conn)
+	_, err := c.writerState.buf.WriteTo(c.conn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559773)
 		c.setErr(err)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559774)
 	}
+	__antithesis_instrumentation__.Notify(559770)
 	return nil
 }
 
-// maybeFlush flushes the buffer to the network connection if it exceeded
-// sessionArgs.ConnResultsBufferSize.
 func (c *conn) maybeFlush(pos sql.CmdPos) (bool, error) {
+	__antithesis_instrumentation__.Notify(559775)
 	if int64(c.writerState.buf.Len()) <= c.sessionArgs.ConnResultsBufferSize {
+		__antithesis_instrumentation__.Notify(559777)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(559778)
 	}
+	__antithesis_instrumentation__.Notify(559776)
 	return true, c.Flush(pos)
 }
 
-// LockCommunication is part of the ClientComm interface.
-//
-// The current implementation of conn writes results to the network
-// synchronously, as they are produced (modulo buffering). Therefore, there's
-// nothing to "lock" - communication is naturally blocked as the command
-// processor won't write any more results.
 func (c *conn) LockCommunication() sql.ClientLock {
+	__antithesis_instrumentation__.Notify(559779)
 	return (*clientConnLock)(&c.writerState.fi)
 }
 
-// clientConnLock is the connection's implementation of sql.ClientLock. It lets
-// the sql module lock the flushing of results and find out what has already
-// been flushed.
 type clientConnLock flushInfo
 
 var _ sql.ClientLock = &clientConnLock{}
 
-// Close is part of the sql.ClientLock interface.
 func (cl *clientConnLock) Close() {
-	// Nothing to do. See LockCommunication note.
+	__antithesis_instrumentation__.Notify(559780)
+
 }
 
-// ClientPos is part of the sql.ClientLock interface.
 func (cl *clientConnLock) ClientPos() sql.CmdPos {
+	__antithesis_instrumentation__.Notify(559781)
 	return cl.lastFlushed
 }
 
-// RTrim is part of the sql.ClientLock interface.
 func (cl *clientConnLock) RTrim(ctx context.Context, pos sql.CmdPos) {
+	__antithesis_instrumentation__.Notify(559782)
 	if pos <= cl.lastFlushed {
+		__antithesis_instrumentation__.Notify(559785)
 		panic(errors.AssertionFailedf("asked to trim to pos: %d, below the last flush: %d", pos, cl.lastFlushed))
+	} else {
+		__antithesis_instrumentation__.Notify(559786)
 	}
-	// If we don't have a start index for pos yet, it must be that no results
-	// for it yet have been produced yet.
+	__antithesis_instrumentation__.Notify(559783)
+
 	truncateIdx := cl.buf.Len()
-	// Update cmdStarts buffer: delete commands that were trimmed from the back
-	// of the cmdStarts buffer.
+
 	for !cl.cmdStarts.empty() {
+		__antithesis_instrumentation__.Notify(559787)
 		cmdStart := cl.cmdStarts.getLast()
 		if cmdStart.pos < pos {
+			__antithesis_instrumentation__.Notify(559789)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(559790)
 		}
+		__antithesis_instrumentation__.Notify(559788)
 		truncateIdx = cmdStart.idx
 		cl.cmdStarts.removeLast()
 	}
+	__antithesis_instrumentation__.Notify(559784)
 	cl.buf.Truncate(truncateIdx)
 }
 
-// CreateStatementResult is part of the sql.ClientComm interface.
 func (c *conn) CreateStatementResult(
 	stmt tree.Statement,
 	descOpt sql.RowDescOpt,
@@ -1666,133 +1989,123 @@ func (c *conn) CreateStatementResult(
 	portalName string,
 	implicitTxn bool,
 ) sql.CommandResult {
+	__antithesis_instrumentation__.Notify(559791)
 	return c.newCommandResult(descOpt, pos, stmt, formatCodes, conv, location, limit, portalName, implicitTxn)
 }
 
-// CreateSyncResult is part of the sql.ClientComm interface.
 func (c *conn) CreateSyncResult(pos sql.CmdPos) sql.SyncResult {
+	__antithesis_instrumentation__.Notify(559792)
 	return c.newMiscResult(pos, readyForQuery)
 }
 
-// CreateFlushResult is part of the sql.ClientComm interface.
 func (c *conn) CreateFlushResult(pos sql.CmdPos) sql.FlushResult {
+	__antithesis_instrumentation__.Notify(559793)
 	return c.newMiscResult(pos, flush)
 }
 
-// CreateDrainResult is part of the sql.ClientComm interface.
 func (c *conn) CreateDrainResult(pos sql.CmdPos) sql.DrainResult {
+	__antithesis_instrumentation__.Notify(559794)
 	return c.newMiscResult(pos, noCompletionMsg)
 }
 
-// CreateBindResult is part of the sql.ClientComm interface.
 func (c *conn) CreateBindResult(pos sql.CmdPos) sql.BindResult {
+	__antithesis_instrumentation__.Notify(559795)
 	return c.newMiscResult(pos, bindComplete)
 }
 
-// CreatePrepareResult is part of the sql.ClientComm interface.
 func (c *conn) CreatePrepareResult(pos sql.CmdPos) sql.ParseResult {
+	__antithesis_instrumentation__.Notify(559796)
 	return c.newMiscResult(pos, parseComplete)
 }
 
-// CreateDescribeResult is part of the sql.ClientComm interface.
 func (c *conn) CreateDescribeResult(pos sql.CmdPos) sql.DescribeResult {
+	__antithesis_instrumentation__.Notify(559797)
 	return c.newMiscResult(pos, noCompletionMsg)
 }
 
-// CreateEmptyQueryResult is part of the sql.ClientComm interface.
 func (c *conn) CreateEmptyQueryResult(pos sql.CmdPos) sql.EmptyQueryResult {
+	__antithesis_instrumentation__.Notify(559798)
 	return c.newMiscResult(pos, emptyQueryResponse)
 }
 
-// CreateDeleteResult is part of the sql.ClientComm interface.
 func (c *conn) CreateDeleteResult(pos sql.CmdPos) sql.DeleteResult {
+	__antithesis_instrumentation__.Notify(559799)
 	return c.newMiscResult(pos, closeComplete)
 }
 
-// CreateErrorResult is part of the sql.ClientComm interface.
 func (c *conn) CreateErrorResult(pos sql.CmdPos) sql.ErrorResult {
+	__antithesis_instrumentation__.Notify(559800)
 	res := c.newMiscResult(pos, noCompletionMsg)
 	res.errExpected = true
 	return res
 }
 
-// CreateCopyInResult is part of the sql.ClientComm interface.
 func (c *conn) CreateCopyInResult(pos sql.CmdPos) sql.CopyInResult {
+	__antithesis_instrumentation__.Notify(559801)
 	return c.newMiscResult(pos, noCompletionMsg)
 }
 
-// pgwireReader is an io.Reader that wraps a conn, maintaining its metrics as
-// it is consumed.
 type pgwireReader struct {
 	conn *conn
 }
 
-// pgwireReader implements the pgwirebase.BufferedReader interface.
 var _ pgwirebase.BufferedReader = &pgwireReader{}
 
-// Read is part of the pgwirebase.BufferedReader interface.
 func (r *pgwireReader) Read(p []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(559802)
 	n, err := r.conn.rd.Read(p)
 	r.conn.metrics.BytesInCount.Inc(int64(n))
 	return n, err
 }
 
-// ReadString is part of the pgwirebase.BufferedReader interface.
 func (r *pgwireReader) ReadString(delim byte) (string, error) {
+	__antithesis_instrumentation__.Notify(559803)
 	s, err := r.conn.rd.ReadString(delim)
 	r.conn.metrics.BytesInCount.Inc(int64(len(s)))
 	return s, err
 }
 
-// ReadByte is part of the pgwirebase.BufferedReader interface.
 func (r *pgwireReader) ReadByte() (byte, error) {
+	__antithesis_instrumentation__.Notify(559804)
 	b, err := r.conn.rd.ReadByte()
 	if err == nil {
+		__antithesis_instrumentation__.Notify(559806)
 		r.conn.metrics.BytesInCount.Inc(1)
+	} else {
+		__antithesis_instrumentation__.Notify(559807)
 	}
+	__antithesis_instrumentation__.Notify(559805)
 	return b, err
 }
 
-// statusReportParams is a list of session variables that are also
-// reported as server run-time parameters in the pgwire connection
-// initialization.
-//
-// The standard PostgreSQL status vars are listed here:
-// https://www.postgresql.org/docs/10/static/libpq-status.html
 var statusReportParams = []string{
 	"server_version",
 	"server_encoding",
 	"client_encoding",
 	"application_name",
-	// Note: session_authorization is handled specially in serveImpl().
+
 	"DateStyle",
 	"IntervalStyle",
 	"is_superuser",
 	"TimeZone",
 	"integer_datetimes",
 	"standard_conforming_strings",
-	"crdb_version", // CockroachDB extension.
+	"crdb_version",
 }
 
-// testingStatusReportParams is the minimum set of status parameters
-// needed to make pgx tests in the local package happy.
 var testingStatusReportParams = map[string]string{
 	"client_encoding":             "UTF8",
 	"standard_conforming_strings": "on",
 }
 
-// readTimeoutConn overloads net.Conn.Read by periodically calling
-// checkExitConds() and aborting the read if an error is returned.
 type readTimeoutConn struct {
 	net.Conn
-	// checkExitConds is called periodically by Read(). If it returns an error,
-	// the Read() returns that error. Future calls to Read() are allowed, in which
-	// case checkExitConds() will be called again.
+
 	checkExitConds func() error
 }
 
-// NewReadTimeoutConn wraps the given connection with a readTimeoutConn.
 func NewReadTimeoutConn(c net.Conn, checkExitConds func() error) net.Conn {
+	__antithesis_instrumentation__.Notify(559808)
 	return &readTimeoutConn{
 		Conn:           c,
 		checkExitConds: checkExitConds,
@@ -1800,29 +2113,45 @@ func NewReadTimeoutConn(c net.Conn, checkExitConds func() error) net.Conn {
 }
 
 func (c *readTimeoutConn) Read(b []byte) (int, error) {
-	// readTimeout is the amount of time ReadTimeoutConn should wait on a
-	// read before checking for exit conditions. The tradeoff is between the
-	// time it takes to react to session context cancellation and the overhead
-	// of waking up and checking for exit conditions.
+	__antithesis_instrumentation__.Notify(559809)
+
 	const readTimeout = 1 * time.Second
 
-	// Remove the read deadline when returning from this function to avoid
-	// unexpected behavior.
-	defer func() { _ = c.SetReadDeadline(time.Time{}) }()
+	defer func() { __antithesis_instrumentation__.Notify(559811); _ = c.SetReadDeadline(time.Time{}) }()
+	__antithesis_instrumentation__.Notify(559810)
 	for {
+		__antithesis_instrumentation__.Notify(559812)
 		if err := c.checkExitConds(); err != nil {
+			__antithesis_instrumentation__.Notify(559816)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(559817)
 		}
+		__antithesis_instrumentation__.Notify(559813)
 		if err := c.SetReadDeadline(timeutil.Now().Add(readTimeout)); err != nil {
+			__antithesis_instrumentation__.Notify(559818)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(559819)
 		}
+		__antithesis_instrumentation__.Notify(559814)
 		n, err := c.Conn.Read(b)
 		if err != nil {
-			// Continue if the error is due to timing out.
-			if ne := (net.Error)(nil); errors.As(err, &ne) && ne.Timeout() {
+			__antithesis_instrumentation__.Notify(559820)
+
+			if ne := (net.Error)(nil); errors.As(err, &ne) && func() bool {
+				__antithesis_instrumentation__.Notify(559821)
+				return ne.Timeout() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(559822)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(559823)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(559824)
 		}
+		__antithesis_instrumentation__.Notify(559815)
 		return n, err
 	}
 }

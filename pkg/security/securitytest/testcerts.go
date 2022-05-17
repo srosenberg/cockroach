@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package securitytest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"os"
@@ -17,12 +9,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/security"
 )
 
-// CreateTestCerts populates the test certificates in the given directory.
 func CreateTestCerts(certsDir string) (cleanup func() error) {
-	// Copy these assets to disk from embedded strings, so this test can
-	// run from a standalone binary.
-	// Disable embedded certs, or the security library will try to load
-	// our real files as embedded assets.
+	__antithesis_instrumentation__.Notify(187239)
+
 	security.ResetAssetLoader()
 
 	assets := []string{
@@ -36,13 +25,19 @@ func CreateTestCerts(certsDir string) (cleanup func() error) {
 	}
 
 	for _, a := range assets {
+		__antithesis_instrumentation__.Notify(187241)
 		_, err := RestrictedCopy(a, certsDir, filepath.Base(a))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(187242)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(187243)
 		}
 	}
+	__antithesis_instrumentation__.Notify(187240)
 
 	return func() error {
+		__antithesis_instrumentation__.Notify(187244)
 		security.SetAssetLoader(EmbeddedAssets)
 		return os.RemoveAll(certsDir)
 	}

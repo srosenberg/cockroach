@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gcjob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,76 +21,108 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// gcTables drops the table data and descriptor of tables that have an expired
-// deadline and updates the job details to mark the work it did.
-// The job progress is updated in place, but needs to be persisted to the job.
 func gcTables(
 	ctx context.Context, execCfg *sql.ExecutorConfig, progress *jobspb.SchemaChangeGCProgress,
 ) error {
+	__antithesis_instrumentation__.Notify(492674)
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(492677)
 		log.Infof(ctx, "GC is being considered for tables: %+v", progress.Tables)
+	} else {
+		__antithesis_instrumentation__.Notify(492678)
 	}
+	__antithesis_instrumentation__.Notify(492675)
 	for _, droppedTable := range progress.Tables {
+		__antithesis_instrumentation__.Notify(492679)
 		if droppedTable.Status != jobspb.SchemaChangeGCProgress_DELETING {
-			// Table is not ready to be dropped, or has already been dropped.
+			__antithesis_instrumentation__.Notify(492687)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(492688)
 		}
+		__antithesis_instrumentation__.Notify(492680)
 
 		var table catalog.TableDescriptor
 		if err := sql.DescsTxn(ctx, execCfg, func(ctx context.Context, txn *kv.Txn, col *descs.Collection) (err error) {
+			__antithesis_instrumentation__.Notify(492689)
 			table, err = col.Direct().MustGetTableDescByID(ctx, txn, droppedTable.ID)
 			return err
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(492690)
 			if errors.Is(err, catalog.ErrDescriptorNotFound) {
-				// This can happen if another GC job created for the same table got to
-				// the table first. See #50344.
+				__antithesis_instrumentation__.Notify(492692)
+
 				log.Warningf(ctx, "table descriptor %d not found while attempting to GC, skipping", droppedTable.ID)
-				// Update the details payload to indicate that the table was dropped.
+
 				markTableGCed(ctx, droppedTable.ID, progress)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(492693)
 			}
+			__antithesis_instrumentation__.Notify(492691)
 			return errors.Wrapf(err, "fetching table %d", droppedTable.ID)
+		} else {
+			__antithesis_instrumentation__.Notify(492694)
 		}
+		__antithesis_instrumentation__.Notify(492681)
 
 		if !table.Dropped() {
-			// We shouldn't drop this table yet.
-			continue
-		}
+			__antithesis_instrumentation__.Notify(492695)
 
-		// First, delete all the table data.
+			continue
+		} else {
+			__antithesis_instrumentation__.Notify(492696)
+		}
+		__antithesis_instrumentation__.Notify(492682)
+
 		if err := ClearTableData(
 			ctx, execCfg.DB, execCfg.DistSender, execCfg.Codec, &execCfg.Settings.SV, table,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(492697)
 			return errors.Wrapf(err, "clearing data for table %d", table.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(492698)
 		}
+		__antithesis_instrumentation__.Notify(492683)
 
-		delta, err := spanconfig.Delta(ctx, execCfg.SpanConfigSplitter, table, nil /* uncommitted */)
+		delta, err := spanconfig.Delta(ctx, execCfg.SpanConfigSplitter, table, nil)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492699)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(492700)
 		}
+		__antithesis_instrumentation__.Notify(492684)
 
-		// Deduct from system.span_count appropriately.
 		if err := execCfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(492701)
 			_, err := execCfg.SpanConfigLimiter.ShouldLimit(ctx, txn, delta)
 			return err
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(492702)
 			return errors.Wrapf(err, "deducting span count for table %d", table.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(492703)
 		}
+		__antithesis_instrumentation__.Notify(492685)
 
-		// Finished deleting all the table data, now delete the table meta data.
 		if err := sql.DeleteTableDescAndZoneConfig(
 			ctx, execCfg.DB, execCfg.Settings, execCfg.Codec, table,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(492704)
 			return errors.Wrapf(err, "dropping table descriptor for table %d", table.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(492705)
 		}
+		__antithesis_instrumentation__.Notify(492686)
 
-		// Update the details payload to indicate that the table was dropped.
 		markTableGCed(ctx, table.GetID(), progress)
 	}
+	__antithesis_instrumentation__.Notify(492676)
 	return nil
 }
 
-// ClearTableData deletes all of the data in the specified table.
 func ClearTableData(
 	ctx context.Context,
 	db *kv.DB,
@@ -107,6 +131,7 @@ func ClearTableData(
 	sv *settings.Values,
 	table catalog.TableDescriptor,
 ) error {
+	__antithesis_instrumentation__.Notify(492706)
 	log.Infof(ctx, "clearing data for table %d", table.GetID())
 	tableKey := roachpb.RKey(codec.TablePrefix(uint32(table.GetID())))
 	tableSpan := roachpb.RSpan{Key: tableKey, EndKey: tableKey.PrefixEnd()}
@@ -116,27 +141,8 @@ func ClearTableData(
 func clearSpanData(
 	ctx context.Context, db *kv.DB, distSender *kvcoord.DistSender, span roachpb.RSpan,
 ) error {
+	__antithesis_instrumentation__.Notify(492707)
 
-	// ClearRange requests lays down RocksDB range deletion tombstones that have
-	// serious performance implications (#24029). The logic below attempts to
-	// bound the number of tombstones in one store by sending the ClearRange
-	// requests to each range in the table in small, sequential batches rather
-	// than letting DistSender send them all in parallel, to hopefully give the
-	// compaction queue time to compact the range tombstones away in between
-	// requests.
-	//
-	// As written, this approach has several deficiencies. It does not actually
-	// wait for the compaction queue to compact the tombstones away before
-	// sending the next request. It is likely insufficient if multiple DROP
-	// TABLEs are in flight at once. It does not save its progress in case the
-	// coordinator goes down. These deficiencies could be addressed, but this code
-	// was originally a stopgap to avoid the range tombstone performance hit. The
-	// RocksDB range tombstone implementation has since been improved and the
-	// performance implications of many range tombstones has been reduced
-	// dramatically making this simplistic throttling sufficient.
-
-	// These numbers were chosen empirically for the clearrange roachtest and
-	// could certainly use more tuning.
 	const batchSize = 100
 	const waitTime = 500 * time.Millisecond
 
@@ -147,15 +153,28 @@ func clearSpanData(
 	defer timer.Stop()
 
 	for ri.Seek(ctx, span.Key, kvcoord.Ascending); ; ri.Next(ctx) {
+		__antithesis_instrumentation__.Notify(492709)
 		if !ri.Valid() {
+			__antithesis_instrumentation__.Notify(492712)
 			return ri.Error()
+		} else {
+			__antithesis_instrumentation__.Notify(492713)
 		}
+		__antithesis_instrumentation__.Notify(492710)
 
-		if n++; n >= batchSize || !ri.NeedAnother(span) {
+		if n++; n >= batchSize || func() bool {
+			__antithesis_instrumentation__.Notify(492714)
+			return !ri.NeedAnother(span) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(492715)
 			endKey := ri.Desc().EndKey
 			if span.EndKey.Less(endKey) {
+				__antithesis_instrumentation__.Notify(492718)
 				endKey = span.EndKey
+			} else {
+				__antithesis_instrumentation__.Notify(492719)
 			}
+			__antithesis_instrumentation__.Notify(492716)
 			var b kv.Batch
 			b.AddRawRequest(&roachpb.ClearRangeRequest{
 				RequestHeader: roachpb.RequestHeader{
@@ -165,23 +184,36 @@ func clearSpanData(
 			})
 			log.VEventf(ctx, 2, "ClearRange %s - %s", lastKey, endKey)
 			if err := db.Run(ctx, &b); err != nil {
+				__antithesis_instrumentation__.Notify(492720)
 				return errors.Wrapf(err, "clear range %s - %s", lastKey, endKey)
+			} else {
+				__antithesis_instrumentation__.Notify(492721)
 			}
+			__antithesis_instrumentation__.Notify(492717)
 			n = 0
 			lastKey = endKey
 			timer.Reset(waitTime)
 			select {
 			case <-timer.C:
+				__antithesis_instrumentation__.Notify(492722)
 				timer.Read = true
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(492723)
 				return ctx.Err()
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(492724)
 		}
+		__antithesis_instrumentation__.Notify(492711)
 
 		if !ri.NeedAnother(span) {
+			__antithesis_instrumentation__.Notify(492725)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(492726)
 		}
 	}
+	__antithesis_instrumentation__.Notify(492708)
 
 	return nil
 }

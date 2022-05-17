@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgwire
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,313 +32,341 @@ const (
 	emptyQueryResponse
 	readyForQuery
 	flush
-	// Some commands, like Describe, don't need a completion message.
+
 	noCompletionMsg
 )
 
-// commandResult is an implementation of sql.CommandResult that streams a
-// commands results over a pgwire network connection.
 type commandResult struct {
-	// conn is the parent connection of this commandResult.
 	conn *conn
-	// conv and location indicate the conversion settings for SQL values.
+
 	conv     sessiondatapb.DataConversionConfig
 	location *time.Location
-	// pos identifies the position of the command within the connection.
+
 	pos sql.CmdPos
 
-	// buffer contains items that are sent before the connection is closed.
 	buffer struct {
 		notices            []pgnotice.Notice
 		paramStatusUpdates []paramStatusUpdate
 	}
 
 	err error
-	// errExpected, if set, enforces that an error had been set when Close is
-	// called.
+
 	errExpected bool
 
 	typ completionMsgType
-	// If typ == commandComplete, this is the tag to be written in the
-	// CommandComplete message.
+
 	cmdCompleteTag string
 
 	stmtType     tree.StatementReturnType
 	descOpt      sql.RowDescOpt
 	rowsAffected int
 
-	// formatCodes describes the encoding of each column of result rows. It is nil
-	// for statements not returning rows (or for results for commands other than
-	// executing statements). It can also be nil for queries returning rows,
-	// meaning that all columns will be encoded in the text format (this is the
-	// case for queries executed through the simple protocol). Otherwise, it needs
-	// to have an entry for every column.
 	formatCodes []pgwirebase.FormatCode
 
-	// types is a map from result column index to its type T, similar to formatCodes
-	// (except types must always be set).
 	types []*types.T
 
-	// bufferingDisabled is conditionally set during planning of certain
-	// statements.
 	bufferingDisabled bool
 
-	// released is set when the command result has been released so that its
-	// memory can be reused. It is also used to assert against use-after-free
-	// errors.
 	released bool
 }
 
-// paramStatusUpdate is a status update to send to the client when a parameter is
-// updated.
 type paramStatusUpdate struct {
-	// param is the parameter name.
 	param string
-	// val is the new value of the given parameter.
+
 	val string
 }
 
 var _ sql.CommandResult = &commandResult{}
 
-// Close is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) Close(ctx context.Context, t sql.TransactionStatusIndicator) {
+	__antithesis_instrumentation__.Notify(559151)
 	r.assertNotReleased()
 	defer r.release()
-	if r.errExpected && r.err == nil {
+	if r.errExpected && func() bool {
+		__antithesis_instrumentation__.Notify(559156)
+		return r.err == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(559157)
 		panic("expected err to be set on result by Close, but wasn't")
+	} else {
+		__antithesis_instrumentation__.Notify(559158)
 	}
+	__antithesis_instrumentation__.Notify(559152)
 
 	r.conn.writerState.fi.registerCmd(r.pos)
 	if r.err != nil {
+		__antithesis_instrumentation__.Notify(559159)
 		r.conn.bufferErr(ctx, r.err)
-		// Sync is the only client message that results in ReadyForQuery, and it
-		// must *always* result in ReadyForQuery, even if there are errors during
-		// Sync.
+
 		if r.typ != readyForQuery {
+			__antithesis_instrumentation__.Notify(559160)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(559161)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(559162)
 	}
+	__antithesis_instrumentation__.Notify(559153)
 
 	for _, notice := range r.buffer.notices {
+		__antithesis_instrumentation__.Notify(559163)
 		if err := r.conn.bufferNotice(ctx, notice); err != nil {
+			__antithesis_instrumentation__.Notify(559164)
 			panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err when sending notice"))
+		} else {
+			__antithesis_instrumentation__.Notify(559165)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559154)
 
 	for _, paramStatusUpdate := range r.buffer.paramStatusUpdates {
+		__antithesis_instrumentation__.Notify(559166)
 		if err := r.conn.bufferParamStatus(
 			paramStatusUpdate.param,
 			paramStatusUpdate.val,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(559167)
 			panic(
 				errors.NewAssertionErrorWithWrappedErrf(err, "unexpected err when sending parameter status update"),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(559168)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559155)
 
-	// Send a completion message, specific to the type of result.
 	switch r.typ {
 	case commandComplete:
+		__antithesis_instrumentation__.Notify(559169)
 		tag := cookTag(
 			r.cmdCompleteTag, r.conn.writerState.tagBuf[:0], r.stmtType, r.rowsAffected,
 		)
 		r.conn.bufferCommandComplete(tag)
 	case parseComplete:
+		__antithesis_instrumentation__.Notify(559170)
 		r.conn.bufferParseComplete()
 	case bindComplete:
+		__antithesis_instrumentation__.Notify(559171)
 		r.conn.bufferBindComplete()
 	case closeComplete:
+		__antithesis_instrumentation__.Notify(559172)
 		r.conn.bufferCloseComplete()
 	case readyForQuery:
+		__antithesis_instrumentation__.Notify(559173)
 		r.conn.bufferReadyForQuery(byte(t))
-		// The error is saved on conn.err.
-		_ /* err */ = r.conn.Flush(r.pos)
+
+		_ = r.conn.Flush(r.pos)
 	case emptyQueryResponse:
+		__antithesis_instrumentation__.Notify(559174)
 		r.conn.bufferEmptyQueryResponse()
 	case flush:
-		// The error is saved on conn.err.
-		_ /* err */ = r.conn.Flush(r.pos)
+		__antithesis_instrumentation__.Notify(559175)
+
+		_ = r.conn.Flush(r.pos)
 	case noCompletionMsg:
-		// nothing to do
+		__antithesis_instrumentation__.Notify(559176)
+
 	default:
+		__antithesis_instrumentation__.Notify(559177)
 		panic(errors.AssertionFailedf("unknown type: %v", r.typ))
 	}
 }
 
-// Discard is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) Discard() {
+	__antithesis_instrumentation__.Notify(559178)
 	r.assertNotReleased()
 	defer r.release()
 }
 
-// Err is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) Err() error {
+	__antithesis_instrumentation__.Notify(559179)
 	r.assertNotReleased()
 	return r.err
 }
 
-// SetError is part of the sql.RestrictedCommandResult interface.
-//
-// We're not going to write any bytes to the buffer in order to support future
-// SetError() calls. The error will only be serialized at Close() time.
 func (r *commandResult) SetError(err error) {
+	__antithesis_instrumentation__.Notify(559180)
 	r.assertNotReleased()
 	r.err = err
 }
 
-// addInternal is the skeleton of AddRow and AddBatch implementations.
-// bufferData should update rowsAffected and buffer the data accordingly.
 func (r *commandResult) addInternal(bufferData func()) error {
+	__antithesis_instrumentation__.Notify(559181)
 	r.assertNotReleased()
 	if r.err != nil {
+		__antithesis_instrumentation__.Notify(559186)
 		panic(errors.NewAssertionErrorWithWrappedErrf(r.err, "can't call AddRow after having set error"))
+	} else {
+		__antithesis_instrumentation__.Notify(559187)
 	}
+	__antithesis_instrumentation__.Notify(559182)
 	r.conn.writerState.fi.registerCmd(r.pos)
 	if err := r.conn.GetErr(); err != nil {
+		__antithesis_instrumentation__.Notify(559188)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559189)
 	}
+	__antithesis_instrumentation__.Notify(559183)
 	if r.err != nil {
+		__antithesis_instrumentation__.Notify(559190)
 		panic("can't send row after error")
+	} else {
+		__antithesis_instrumentation__.Notify(559191)
 	}
+	__antithesis_instrumentation__.Notify(559184)
 
 	bufferData()
 
 	var err error
 	if r.bufferingDisabled {
+		__antithesis_instrumentation__.Notify(559192)
 		err = r.conn.Flush(r.pos)
 	} else {
-		_ /* flushed */, err = r.conn.maybeFlush(r.pos)
+		__antithesis_instrumentation__.Notify(559193)
+		_, err = r.conn.maybeFlush(r.pos)
 	}
+	__antithesis_instrumentation__.Notify(559185)
 	return err
 }
 
-// AddRow is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) AddRow(ctx context.Context, row tree.Datums) error {
+	__antithesis_instrumentation__.Notify(559194)
 	return r.addInternal(func() {
+		__antithesis_instrumentation__.Notify(559195)
 		r.rowsAffected++
 		r.conn.bufferRow(ctx, row, r.formatCodes, r.conv, r.location, r.types)
 	})
 }
 
-// AddBatch is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) AddBatch(ctx context.Context, batch coldata.Batch) error {
+	__antithesis_instrumentation__.Notify(559196)
 	return r.addInternal(func() {
+		__antithesis_instrumentation__.Notify(559197)
 		r.rowsAffected += batch.Length()
 		r.conn.bufferBatch(ctx, batch, r.formatCodes, r.conv, r.location)
 	})
 }
 
-// SupportsAddBatch is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) SupportsAddBatch() bool {
+	__antithesis_instrumentation__.Notify(559198)
 	return true
 }
 
-// DisableBuffering is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) DisableBuffering() {
+	__antithesis_instrumentation__.Notify(559199)
 	r.assertNotReleased()
 	r.bufferingDisabled = true
 }
 
-// BufferParamStatusUpdate is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) BufferParamStatusUpdate(param string, val string) {
+	__antithesis_instrumentation__.Notify(559200)
 	r.buffer.paramStatusUpdates = append(
 		r.buffer.paramStatusUpdates,
 		paramStatusUpdate{param: param, val: val},
 	)
 }
 
-// BufferNotice is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) BufferNotice(notice pgnotice.Notice) {
+	__antithesis_instrumentation__.Notify(559201)
 	r.buffer.notices = append(r.buffer.notices, notice)
 }
 
-// SetColumns is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) SetColumns(ctx context.Context, cols colinfo.ResultColumns) {
+	__antithesis_instrumentation__.Notify(559202)
 	r.assertNotReleased()
 	r.conn.writerState.fi.registerCmd(r.pos)
 	if r.descOpt == sql.NeedRowDesc {
-		_ /* err */ = r.conn.writeRowDescription(ctx, cols, r.formatCodes, &r.conn.writerState.buf)
+		__antithesis_instrumentation__.Notify(559204)
+		_ = r.conn.writeRowDescription(ctx, cols, r.formatCodes, &r.conn.writerState.buf)
+	} else {
+		__antithesis_instrumentation__.Notify(559205)
 	}
+	__antithesis_instrumentation__.Notify(559203)
 	r.types = make([]*types.T, len(cols))
 	for i, col := range cols {
+		__antithesis_instrumentation__.Notify(559206)
 		r.types[i] = col.Typ
 	}
 }
 
-// SetInferredTypes is part of the sql.DescribeResult interface.
 func (r *commandResult) SetInferredTypes(types []oid.Oid) {
+	__antithesis_instrumentation__.Notify(559207)
 	r.assertNotReleased()
 	r.conn.writerState.fi.registerCmd(r.pos)
 	r.conn.bufferParamDesc(types)
 }
 
-// SetNoDataRowDescription is part of the sql.DescribeResult interface.
 func (r *commandResult) SetNoDataRowDescription() {
+	__antithesis_instrumentation__.Notify(559208)
 	r.assertNotReleased()
 	r.conn.writerState.fi.registerCmd(r.pos)
 	r.conn.bufferNoDataMsg()
 }
 
-// SetPrepStmtOutput is part of the sql.DescribeResult interface.
 func (r *commandResult) SetPrepStmtOutput(ctx context.Context, cols colinfo.ResultColumns) {
+	__antithesis_instrumentation__.Notify(559209)
 	r.assertNotReleased()
 	r.conn.writerState.fi.registerCmd(r.pos)
-	_ /* err */ = r.conn.writeRowDescription(ctx, cols, nil /* formatCodes */, &r.conn.writerState.buf)
+	_ = r.conn.writeRowDescription(ctx, cols, nil, &r.conn.writerState.buf)
 }
 
-// SetPortalOutput is part of the sql.DescribeResult interface.
 func (r *commandResult) SetPortalOutput(
 	ctx context.Context, cols colinfo.ResultColumns, formatCodes []pgwirebase.FormatCode,
 ) {
+	__antithesis_instrumentation__.Notify(559210)
 	r.assertNotReleased()
 	r.conn.writerState.fi.registerCmd(r.pos)
-	_ /* err */ = r.conn.writeRowDescription(ctx, cols, formatCodes, &r.conn.writerState.buf)
+	_ = r.conn.writeRowDescription(ctx, cols, formatCodes, &r.conn.writerState.buf)
 }
 
-// IncrementRowsAffected is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) IncrementRowsAffected(ctx context.Context, n int) {
+	__antithesis_instrumentation__.Notify(559211)
 	r.assertNotReleased()
 	r.rowsAffected += n
 }
 
-// RowsAffected is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) RowsAffected() int {
+	__antithesis_instrumentation__.Notify(559212)
 	r.assertNotReleased()
 	return r.rowsAffected
 }
 
-// ResetStmtType is part of the sql.RestrictedCommandResult interface.
 func (r *commandResult) ResetStmtType(stmt tree.Statement) {
+	__antithesis_instrumentation__.Notify(559213)
 	r.assertNotReleased()
 	r.stmtType = stmt.StatementReturnType()
 	r.cmdCompleteTag = stmt.StatementTag()
 }
 
-// release frees the commandResult and allows its memory to be reused.
 func (r *commandResult) release() {
+	__antithesis_instrumentation__.Notify(559214)
 	*r = commandResult{released: true}
 }
 
-// assertNotReleased asserts that the commandResult is not being used after
-// being freed by one of the methods in the CommandResultClose interface. The
-// assertion can have false negatives, where it fails to detect a use-after-free
-// condition, but will never result in a false positive.
 func (r *commandResult) assertNotReleased() {
+	__antithesis_instrumentation__.Notify(559215)
 	if r.released {
+		__antithesis_instrumentation__.Notify(559216)
 		panic("commandResult used after being released")
+	} else {
+		__antithesis_instrumentation__.Notify(559217)
 	}
 }
 
 func (c *conn) allocCommandResult() *commandResult {
+	__antithesis_instrumentation__.Notify(559218)
 	r := &c.res
 	if r.released {
+		__antithesis_instrumentation__.Notify(559220)
 		r.released = false
 	} else {
-		// In practice, each conn only ever uses a single commandResult at a
-		// time, so we could make this panic. However, doing so would entail
-		// complicating the ClientComm interface, which doesn't seem worth it.
+		__antithesis_instrumentation__.Notify(559221)
+
 		r = new(commandResult)
 	}
+	__antithesis_instrumentation__.Notify(559219)
 	return r
 }
 
@@ -361,6 +381,7 @@ func (c *conn) newCommandResult(
 	portalName string,
 	implicitTxn bool,
 ) sql.CommandResult {
+	__antithesis_instrumentation__.Notify(559222)
 	r := c.allocCommandResult()
 	*r = commandResult{
 		conn:           c,
@@ -374,8 +395,12 @@ func (c *conn) newCommandResult(
 		formatCodes:    formatCodes,
 	}
 	if limit == 0 {
+		__antithesis_instrumentation__.Notify(559224)
 		return r
+	} else {
+		__antithesis_instrumentation__.Notify(559225)
 	}
+	__antithesis_instrumentation__.Notify(559223)
 	telemetry.Inc(sqltelemetry.PortalWithLimitRequestCounter)
 	return &limitedCommandResult{
 		limit:         limit,
@@ -386,6 +411,7 @@ func (c *conn) newCommandResult(
 }
 
 func (c *conn) newMiscResult(pos sql.CmdPos, typ completionMsgType) *commandResult {
+	__antithesis_instrumentation__.Notify(559226)
 	r := c.allocCommandResult()
 	*r = commandResult{
 		conn: c,
@@ -395,205 +421,256 @@ func (c *conn) newMiscResult(pos sql.CmdPos, typ completionMsgType) *commandResu
 	return r
 }
 
-// limitedCommandResult is a commandResult that has a limit, after which calls
-// to AddRow will block until the associated client connection asks for more
-// rows. It essentially implements the "execute portal with limit" part of the
-// Postgres protocol.
-//
-// This design is known to be flawed. It only supports a specific subset of the
-// protocol. We only allow a portal suspension in an explicit transaction where
-// the suspended portal is completely exhausted before any other pgwire command
-// is executed, otherwise an error is produced. You cannot, for example,
-// interleave portal executions (a portal must be executed to completion before
-// another can be executed). It also breaks the software layering by adding an
-// additional state machine here, instead of teaching the state machine in the
-// sql package about portals.
-//
-// This has been done because refactoring the executor to be able to correctly
-// suspend a portal will require a lot of work, and we wanted to move
-// forward. The work included is things like auditing all of the defers and
-// post-execution stuff (like stats collection) to have it only execute once
-// per statement instead of once per portal.
 type limitedCommandResult struct {
 	*commandResult
 	portalName  string
 	implicitTxn bool
 
 	seenTuples int
-	// If set, an error will be sent to the client if more rows are produced than
-	// this limit.
+
 	limit int
 }
 
-// AddRow is part of the sql.RestrictedCommandResult interface.
 func (r *limitedCommandResult) AddRow(ctx context.Context, row tree.Datums) error {
+	__antithesis_instrumentation__.Notify(559227)
 	if err := r.commandResult.AddRow(ctx, row); err != nil {
+		__antithesis_instrumentation__.Notify(559231)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559232)
 	}
+	__antithesis_instrumentation__.Notify(559228)
 	r.seenTuples++
 
 	if r.seenTuples == r.limit {
-		// If we've seen up to the limit of rows, send a "portal suspended" message
-		// and wait for another exec portal message.
+		__antithesis_instrumentation__.Notify(559233)
+
 		r.conn.bufferPortalSuspended()
 		if err := r.conn.Flush(r.pos); err != nil {
+			__antithesis_instrumentation__.Notify(559235)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(559236)
 		}
+		__antithesis_instrumentation__.Notify(559234)
 		r.seenTuples = 0
 
 		return r.moreResultsNeeded(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(559237)
 	}
-	if _ /* flushed */, err := r.conn.maybeFlush(r.pos); err != nil {
+	__antithesis_instrumentation__.Notify(559229)
+	if _, err := r.conn.maybeFlush(r.pos); err != nil {
+		__antithesis_instrumentation__.Notify(559238)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(559239)
 	}
+	__antithesis_instrumentation__.Notify(559230)
 	return nil
 }
 
-// SupportsAddBatch is part of the sql.RestrictedCommandResult interface.
-// TODO(yuzefovich): implement limiting behavior for AddBatch.
 func (r *limitedCommandResult) SupportsAddBatch() bool {
+	__antithesis_instrumentation__.Notify(559240)
 	return false
 }
 
-// moreResultsNeeded is a restricted connection handler that waits for more
-// requests for rows from the active portal, during the "execute portal" flow
-// when a limit has been specified.
 func (r *limitedCommandResult) moreResultsNeeded(ctx context.Context) error {
-	// Keep track of the previous CmdPos so we can rewind if needed.
+	__antithesis_instrumentation__.Notify(559241)
+
 	prevPos := r.conn.stmtBuf.AdvanceOne()
 	for {
+		__antithesis_instrumentation__.Notify(559242)
 		cmd, curPos, err := r.conn.stmtBuf.CurCmd()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(559245)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(559246)
 		}
+		__antithesis_instrumentation__.Notify(559243)
 		switch c := cmd.(type) {
 		case sql.DeletePreparedStmt:
-			// The client wants to close a portal or statement. We support the case
-			// where it is exactly this portal. We are in effect peeking to see if the
-			// next message is a delete portal.
-			if c.Type != pgwirebase.PreparePortal || c.Name != r.portalName {
+			__antithesis_instrumentation__.Notify(559247)
+
+			if c.Type != pgwirebase.PreparePortal || func() bool {
+				__antithesis_instrumentation__.Notify(559255)
+				return c.Name != r.portalName == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(559256)
 				telemetry.Inc(sqltelemetry.InterleavedPortalRequestCounter)
 				return errors.WithDetail(sql.ErrLimitedResultNotSupported,
 					"cannot close a portal while a different one is open")
+			} else {
+				__antithesis_instrumentation__.Notify(559257)
 			}
+			__antithesis_instrumentation__.Notify(559248)
 			return r.rewindAndClosePortal(ctx, prevPos)
 		case sql.ExecPortal:
-			// The happy case: the client wants more rows from the portal.
+			__antithesis_instrumentation__.Notify(559249)
+
 			if c.Name != r.portalName {
+				__antithesis_instrumentation__.Notify(559258)
 				telemetry.Inc(sqltelemetry.InterleavedPortalRequestCounter)
 				return errors.WithDetail(sql.ErrLimitedResultNotSupported,
 					"cannot execute a portal while a different one is open")
+			} else {
+				__antithesis_instrumentation__.Notify(559259)
 			}
+			__antithesis_instrumentation__.Notify(559250)
 			r.limit = c.Limit
-			// In order to get the correct command tag, we need to reset the seen rows.
+
 			r.rowsAffected = 0
 			return nil
 		case sql.Sync:
+			__antithesis_instrumentation__.Notify(559251)
 			if r.implicitTxn {
-				// Implicit transactions should treat a Sync as an auto-commit. This
-				// needs to be handled in conn_executor.
+				__antithesis_instrumentation__.Notify(559260)
+
 				return r.rewindAndClosePortal(ctx, prevPos)
+			} else {
+				__antithesis_instrumentation__.Notify(559261)
 			}
-			// The client wants to see a ready for query message
-			// back. Send it then run the for loop again.
+			__antithesis_instrumentation__.Notify(559252)
+
 			r.conn.stmtBuf.AdvanceOne()
-			// Trim old statements to reclaim memory. We need to perform this clean up
-			// here as the conn_executor cleanup is not executed because of the
-			// limitedCommandResult side state machine.
+
 			r.conn.stmtBuf.Ltrim(ctx, prevPos)
-			// We can hard code InTxnBlock here because implicit transactions are
-			// handled above.
+
 			r.conn.bufferReadyForQuery(byte(sql.InTxnBlock))
 			if err := r.conn.Flush(r.pos); err != nil {
+				__antithesis_instrumentation__.Notify(559262)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(559263)
 			}
 		default:
-			// If the portal is immediately followed by a COMMIT, we can proceed and
-			// let the portal be destroyed at the end of the transaction.
+			__antithesis_instrumentation__.Notify(559253)
+
 			if isCommit, err := r.isCommit(); err != nil {
+				__antithesis_instrumentation__.Notify(559264)
 				return err
-			} else if isCommit {
-				return r.rewindAndClosePortal(ctx, prevPos)
+			} else {
+				__antithesis_instrumentation__.Notify(559265)
+				if isCommit {
+					__antithesis_instrumentation__.Notify(559266)
+					return r.rewindAndClosePortal(ctx, prevPos)
+				} else {
+					__antithesis_instrumentation__.Notify(559267)
+				}
 			}
-			// We got some other message, but we only support executing to completion.
+			__antithesis_instrumentation__.Notify(559254)
+
 			telemetry.Inc(sqltelemetry.InterleavedPortalRequestCounter)
 			return errors.WithDetail(sql.ErrLimitedResultNotSupported,
 				fmt.Sprintf("cannot perform operation %T while a different portal is open", c))
 		}
+		__antithesis_instrumentation__.Notify(559244)
 		prevPos = curPos
 	}
 }
 
-// isCommit checks if the statement buffer has a COMMIT at the current
-// position. It may either be (1) a COMMIT in the simple protocol, or (2) a
-// Parse/Bind/Execute sequence for a COMMIT query.
 func (r *limitedCommandResult) isCommit() (bool, error) {
+	__antithesis_instrumentation__.Notify(559268)
 	cmd, _, err := r.conn.stmtBuf.CurCmd()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559276)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(559277)
 	}
-	// Case 1: Check if cmd is a simple COMMIT statement.
+	__antithesis_instrumentation__.Notify(559269)
+
 	if execStmt, ok := cmd.(sql.ExecStmt); ok {
+		__antithesis_instrumentation__.Notify(559278)
 		if _, isCommit := execStmt.AST.(*tree.CommitTransaction); isCommit {
+			__antithesis_instrumentation__.Notify(559279)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(559280)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(559281)
 	}
+	__antithesis_instrumentation__.Notify(559270)
 
 	commitStmtName := ""
 	commitPortalName := ""
-	// Case 2a: Check if cmd is a prepared COMMIT statement.
+
 	if prepareStmt, ok := cmd.(sql.PrepareStmt); ok {
+		__antithesis_instrumentation__.Notify(559282)
 		if _, isCommit := prepareStmt.AST.(*tree.CommitTransaction); isCommit {
+			__antithesis_instrumentation__.Notify(559283)
 			commitStmtName = prepareStmt.Name
 		} else {
+			__antithesis_instrumentation__.Notify(559284)
 			return false, nil
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(559285)
 		return false, nil
 	}
+	__antithesis_instrumentation__.Notify(559271)
 
 	r.conn.stmtBuf.AdvanceOne()
 	cmd, _, err = r.conn.stmtBuf.CurCmd()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559286)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(559287)
 	}
-	// Case 2b: The next cmd must be a bind command.
+	__antithesis_instrumentation__.Notify(559272)
+
 	if bindStmt, ok := cmd.(sql.BindStmt); ok {
-		// This bind command must be for the COMMIT statement that we just saw.
+		__antithesis_instrumentation__.Notify(559288)
+
 		if bindStmt.PreparedStatementName == commitStmtName {
+			__antithesis_instrumentation__.Notify(559289)
 			commitPortalName = bindStmt.PortalName
 		} else {
+			__antithesis_instrumentation__.Notify(559290)
 			return false, nil
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(559291)
 		return false, nil
 	}
+	__antithesis_instrumentation__.Notify(559273)
 
 	r.conn.stmtBuf.AdvanceOne()
 	cmd, _, err = r.conn.stmtBuf.CurCmd()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559292)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(559293)
 	}
-	// Case 2c: The next cmd must be an exec portal command.
+	__antithesis_instrumentation__.Notify(559274)
+
 	if execPortal, ok := cmd.(sql.ExecPortal); ok {
-		// This exec command must be for the portal that was just bound.
+		__antithesis_instrumentation__.Notify(559294)
+
 		if execPortal.Name == commitPortalName {
+			__antithesis_instrumentation__.Notify(559295)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(559296)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(559297)
 	}
+	__antithesis_instrumentation__.Notify(559275)
 	return false, nil
 }
 
-// rewindAndClosePortal closes the portal in the same way implicit transactions
-// do, but also rewinds the stmtBuf to still point to the portal close so that
-// the state machine can do its part of the cleanup.
 func (r *limitedCommandResult) rewindAndClosePortal(
 	ctx context.Context, rewindTo sql.CmdPos,
 ) error {
-	// Don't send an CommandComplete for the portal; it got suspended.
+	__antithesis_instrumentation__.Notify(559298)
+
 	r.typ = noCompletionMsg
-	// Rewind to before the delete so the AdvanceOne in connExecutor.execCmd ends
-	// up back on it.
+
 	r.conn.stmtBuf.Rewind(ctx, rewindTo)
 	return sql.ErrLimitedResultClosed
 }

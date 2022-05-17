@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfigstore
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sort"
@@ -19,170 +11,233 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// systemSpanConfigStore is an in-memory data structure to store system span
-// configurations. It is not safe for concurrent use.
 type systemSpanConfigStore struct {
 	store map[spanconfig.SystemTarget]roachpb.SpanConfig
 }
 
-// newSystemSpanConfigStore constructs and returns a new systemSpanConfigStore.
 func newSystemSpanConfigStore() *systemSpanConfigStore {
+	__antithesis_instrumentation__.Notify(241637)
 	store := systemSpanConfigStore{}
 	store.store = make(map[spanconfig.SystemTarget]roachpb.SpanConfig)
 	return &store
 }
 
-// apply takes an incremental set of system span config updates and applies them
-// to the underlying store. It returns a list of targets deleted/records added.
-//
-// TODO(arul): Even though this is called from spanconfig.Store.Apply, which
-// accepts a dryrun field, we don't accept a a dry run option here because it's
-// unused; instead, we plan on removing it entirely.
 func (s *systemSpanConfigStore) apply(
 	updates ...spanconfig.Update,
 ) (deleted []spanconfig.SystemTarget, added []spanconfig.Record, _ error) {
+	__antithesis_instrumentation__.Notify(241638)
 	if err := s.validateApplyArgs(updates); err != nil {
+		__antithesis_instrumentation__.Notify(241641)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(241642)
 	}
+	__antithesis_instrumentation__.Notify(241639)
 
 	for _, update := range updates {
+		__antithesis_instrumentation__.Notify(241643)
 		if update.Addition() {
+			__antithesis_instrumentation__.Notify(241645)
 			conf, found := s.store[update.GetTarget().GetSystemTarget()]
 			if found {
+				__antithesis_instrumentation__.Notify(241647)
 				if conf.Equal(update.GetConfig()) {
-					// no-op.
+					__antithesis_instrumentation__.Notify(241649)
+
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(241650)
 				}
+				__antithesis_instrumentation__.Notify(241648)
 				deleted = append(deleted, update.GetTarget().GetSystemTarget())
+			} else {
+				__antithesis_instrumentation__.Notify(241651)
 			}
+			__antithesis_instrumentation__.Notify(241646)
 
 			s.store[update.GetTarget().GetSystemTarget()] = update.GetConfig()
 			added = append(added, spanconfig.Record(update))
+		} else {
+			__antithesis_instrumentation__.Notify(241652)
 		}
+		__antithesis_instrumentation__.Notify(241644)
 
 		if update.Deletion() {
+			__antithesis_instrumentation__.Notify(241653)
 			_, found := s.store[update.GetTarget().GetSystemTarget()]
 			if !found {
-				continue // no-op
+				__antithesis_instrumentation__.Notify(241655)
+				continue
+			} else {
+				__antithesis_instrumentation__.Notify(241656)
 			}
+			__antithesis_instrumentation__.Notify(241654)
 			delete(s.store, update.GetTarget().GetSystemTarget())
 			deleted = append(deleted, update.GetTarget().GetSystemTarget())
+		} else {
+			__antithesis_instrumentation__.Notify(241657)
 		}
 	}
+	__antithesis_instrumentation__.Notify(241640)
 
 	return deleted, added, nil
 }
 
-// combine takes a key and an associated span configuration and combines it with
-// all system span configs that apply to the given key.
 func (s *systemSpanConfigStore) combine(
 	key roachpb.RKey, config roachpb.SpanConfig,
 ) (roachpb.SpanConfig, error) {
+	__antithesis_instrumentation__.Notify(241658)
 	_, tenID, err := keys.DecodeTenantPrefix(roachpb.Key(key))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241663)
 		return roachpb.SpanConfig{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(241664)
 	}
+	__antithesis_instrumentation__.Notify(241659)
 
 	hostSetOnTenant, err := spanconfig.MakeTenantKeyspaceTarget(
 		roachpb.SystemTenantID, tenID,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241665)
 		return roachpb.SpanConfig{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(241666)
 	}
-	// Construct a list of system targets that apply to the key given its tenant
-	// prefix. These are:
-	// 1. The system span config that applies over the entire keyspace.
-	// 2. The system span config set by the host over the tenant's keyspace.
-	// 3. The system span config set by the tenant itself over its own keyspace.
+	__antithesis_instrumentation__.Notify(241660)
+
 	targets := []spanconfig.SystemTarget{
 		spanconfig.MakeEntireKeyspaceTarget(),
 		hostSetOnTenant,
 	}
 
-	// We only need to do this for secondary tenants; we've already added this
-	// target if tenID == system tenant.
 	if tenID != roachpb.SystemTenantID {
+		__antithesis_instrumentation__.Notify(241667)
 		target, err := spanconfig.MakeTenantKeyspaceTarget(tenID, tenID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241669)
 			return roachpb.SpanConfig{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(241670)
 		}
+		__antithesis_instrumentation__.Notify(241668)
 		targets = append(targets, target)
+	} else {
+		__antithesis_instrumentation__.Notify(241671)
 	}
+	__antithesis_instrumentation__.Notify(241661)
 
 	for _, target := range targets {
+		__antithesis_instrumentation__.Notify(241672)
 		systemSpanConfig, found := s.store[target]
 		if found {
+			__antithesis_instrumentation__.Notify(241673)
 			config.GCPolicy.ProtectionPolicies = append(
 				config.GCPolicy.ProtectionPolicies, systemSpanConfig.GCPolicy.ProtectionPolicies...,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(241674)
 		}
 	}
+	__antithesis_instrumentation__.Notify(241662)
 	return config, nil
 }
 
-// copy returns a copy of the system span config store.
 func (s *systemSpanConfigStore) copy() *systemSpanConfigStore {
+	__antithesis_instrumentation__.Notify(241675)
 	clone := newSystemSpanConfigStore()
 	for k := range s.store {
+		__antithesis_instrumentation__.Notify(241677)
 		clone.store[k] = s.store[k]
 	}
+	__antithesis_instrumentation__.Notify(241676)
 	return clone
 }
 
-// iterate goes through all system span config entries in sorted order.
 func (s *systemSpanConfigStore) iterate(f func(record spanconfig.Record) error) error {
-	// Iterate through in sorted order.
+	__antithesis_instrumentation__.Notify(241678)
+
 	targets := make([]spanconfig.Target, 0, len(s.store))
 	for k := range s.store {
+		__antithesis_instrumentation__.Notify(241681)
 		targets = append(targets, spanconfig.MakeTargetFromSystemTarget(k))
 	}
+	__antithesis_instrumentation__.Notify(241679)
 	sort.Sort(spanconfig.Targets(targets))
 
 	for _, target := range targets {
+		__antithesis_instrumentation__.Notify(241682)
 		record, err := spanconfig.MakeRecord(target, s.store[target.GetSystemTarget()])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241684)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(241685)
 		}
+		__antithesis_instrumentation__.Notify(241683)
 		if err := f(record); err != nil {
+			__antithesis_instrumentation__.Notify(241686)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(241687)
 		}
 	}
+	__antithesis_instrumentation__.Notify(241680)
 	return nil
 }
 
-// validateApplyArgs ensures that updates can be applied to the system span
-// config store. In particular, it checks that the updates target system targets
-// and duplicate targets do not exist.
 func (s *systemSpanConfigStore) validateApplyArgs(updates []spanconfig.Update) error {
+	__antithesis_instrumentation__.Notify(241688)
 	for _, update := range updates {
+		__antithesis_instrumentation__.Notify(241692)
 		if !update.GetTarget().IsSystemTarget() {
+			__antithesis_instrumentation__.Notify(241694)
 			return errors.AssertionFailedf("expected update to system target update")
+		} else {
+			__antithesis_instrumentation__.Notify(241695)
 		}
+		__antithesis_instrumentation__.Notify(241693)
 
 		if update.GetTarget().GetSystemTarget().IsReadOnly() {
+			__antithesis_instrumentation__.Notify(241696)
 			return errors.AssertionFailedf("invalid system target update")
+		} else {
+			__antithesis_instrumentation__.Notify(241697)
 		}
 	}
+	__antithesis_instrumentation__.Notify(241689)
 
 	sorted := make([]spanconfig.Update, len(updates))
 	copy(sorted, updates)
 	sort.Slice(sorted, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(241698)
 		return sorted[i].GetTarget().Less(sorted[j].GetTarget())
 	})
-	updates = sorted // re-use the same variable
+	__antithesis_instrumentation__.Notify(241690)
+	updates = sorted
 
 	for i := range updates {
+		__antithesis_instrumentation__.Notify(241699)
 		if i == 0 {
+			__antithesis_instrumentation__.Notify(241701)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(241702)
 		}
+		__antithesis_instrumentation__.Notify(241700)
 
 		if updates[i].GetTarget().Equal(updates[i-1].GetTarget()) {
+			__antithesis_instrumentation__.Notify(241703)
 			return errors.Newf(
 				"found duplicate updates %s and %s",
 				updates[i-1].GetTarget(),
 				updates[i].GetTarget(),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(241704)
 		}
 	}
+	__antithesis_instrumentation__.Notify(241691)
 	return nil
 }

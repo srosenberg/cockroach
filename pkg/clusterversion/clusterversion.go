@@ -1,13 +1,3 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package clusterversion defines the interfaces to interact with cluster/binary
 // versions in order accommodate backward incompatible behaviors. It handles the
 // feature gates and so must maintain a fairly lightweight set of dependencies.
@@ -39,6 +29,8 @@
 //	 version.
 package clusterversion
 
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 import (
 	"context"
 
@@ -48,133 +40,47 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// Initialize initializes the global cluster version. Before this method has
-// been called, usage of the cluster version (through Handle) is illegal and
-// leads to a fatal error.
-//
-// Initialization of the cluster version is tightly coupled with the setting of
-// the active cluster version (`Handle.SetActiveVersion` below). Look towards
-// there for additional commentary.
 func Initialize(ctx context.Context, ver roachpb.Version, sv *settings.Values) error {
+	__antithesis_instrumentation__.Notify(37182)
 	return version.initialize(ctx, ver, sv)
 }
 
-// Handle is the interface through which callers access the active cluster
-// version and this binary's version details.
 type Handle interface {
-	// ActiveVersion returns the cluster's current active version: the minimum
-	// cluster version the caller may assume is in effect.
-	//
-	// ActiveVersion fatals if the cluster version setting has not been
-	// initialized (through `Initialize()`).
 	ActiveVersion(context.Context) ClusterVersion
 
-	// ActiveVersionOrEmpty is like ActiveVersion, but returns an empty version
-	// if the active version was not initialized.
 	ActiveVersionOrEmpty(context.Context) ClusterVersion
 
-	// IsActive returns true if the features of the supplied version key are
-	// active at the running version. In other words, if a particular version
-	// `v` returns true from this method, it means that you're guaranteed that
-	// all of the nodes in the cluster have running binaries that are at least
-	// as new as `v`, and that those nodes will never be downgraded to a binary
-	// with a version less than `v`.
-	//
-	// If this returns true then all nodes in the cluster will eventually see
-	// this version. However, this is not atomic because version gates (for a
-	// given version) are pushed through to each node concurrently. Because of
-	// this, nodes should not be gating proper handling of remotely initiated
-	// requests that their binary knows how to handle on this state. The
-	// following example shows why this is important:
-	//
-	//  The cluster restarts into the new version and the operator issues a SET
-	//  VERSION, but node1 learns of the bump 10 seconds before node2, so during
-	//  that window node1 might be receiving "old" requests that it itself
-	//  wouldn't issue any more. Similarly, node2 might be receiving "new"
-	//  requests that its binary must necessarily be able to handle (because the
-	//  SET VERSION was successful) but that it itself wouldn't issue yet.
-	//
-	// This is still a useful method to have as node1, in the example above, can
-	// use this information to know when it's safe to start issuing "new"
-	// outbound requests. When receiving these "new" inbound requests, despite
-	// not seeing the latest active version, node2 is aware that the sending
-	// node has, and it will too, eventually.
 	IsActive(context.Context, Key) bool
 
-	// BinaryVersion returns the build version of this binary.
 	BinaryVersion() roachpb.Version
 
-	// BinaryMinSupportedVersion returns the earliest binary version that can
-	// interoperate with this binary.
 	BinaryMinSupportedVersion() roachpb.Version
 
-	// SetActiveVersion lets the caller set the given cluster version as the
-	// currently active one. When a new active version is set, all subsequent
-	// calls to `ActiveVersion`, `IsActive`, etc. will reflect as much. The
-	// ClusterVersion supplied here is one retrieved from other node.
-	//
-	// This has a very specific intended usage pattern, and is probably only
-	// appropriate for usage within the BumpClusterVersion RPC and during server
-	// initialization.
-	//
-	// NB: It's important to note that this method is tightly coupled to cluster
-	// version initialization (through `Initialize` above) and the version
-	// persisted to disk. Specifically the following invariant must hold true:
-	//
-	//  If a version vX is active on a given server, upon restart, the version
-	//  that is immediately active must be >= vX (in practice it'll almost
-	//  always be vX).
-	//
-	// This is currently achieved by always durably persisting the target
-	// cluster version to the store local keys.StoreClusterVersionKey() before
-	// setting it to be active. This persisted version is also consulted during
-	// node restarts when initializing the cluster version, as seen by this
-	// node.
 	SetActiveVersion(context.Context, ClusterVersion) error
 
-	// SetOnChange installs a callback that's invoked when the active cluster
-	// version changes. The callback should avoid doing long-running or blocking
-	// work; it's called on the same goroutine handling all cluster setting
-	// updates.
 	SetOnChange(fn func(ctx context.Context, newVersion ClusterVersion))
 }
 
-// handleImpl is a concrete implementation of Handle. It mostly relegates to the
-// underlying cluster version setting, though provides a way for callers to
-// override the binary and minimum supported versions (for tests usually).
 type handleImpl struct {
-	// setting is the version that this handle operates on.
 	setting *clusterVersionSetting
-	// sv captures the mutable state associated with usage of the otherwise
-	// immutable cluster version setting.
+
 	sv *settings.Values
 
-	// Each handler stores its own view of the binary and minimum supported
-	// version. Tests can use `MakeVersionHandleWithOverride` to specify
-	// versions other than the baked in ones, but by default
-	// (`MakeVersionHandle`) they are initialized with this binary's build
-	// and minimum supported versions.
 	binaryVersion             roachpb.Version
 	binaryMinSupportedVersion roachpb.Version
 }
 
 var _ Handle = (*handleImpl)(nil)
 
-// MakeVersionHandle returns a Handle that has its binary and minimum
-// supported versions initialized to this binary's build and it's minimum
-// supported versions respectively.
 func MakeVersionHandle(sv *settings.Values) Handle {
+	__antithesis_instrumentation__.Notify(37183)
 	return MakeVersionHandleWithOverride(sv, binaryVersion, binaryMinSupportedVersion)
 }
 
-// MakeVersionHandleWithOverride returns a Handle that has its
-// binary and minimum supported versions initialized to the provided versions.
-//
-// It's typically used in tests that want to override the default binary and
-// minimum supported versions.
 func MakeVersionHandleWithOverride(
 	sv *settings.Values, binaryVersion, binaryMinSupportedVersion roachpb.Version,
 ) Handle {
+	__antithesis_instrumentation__.Notify(37184)
 	return newHandleImpl(version, sv, binaryVersion, binaryMinSupportedVersion)
 }
 
@@ -183,6 +89,7 @@ func newHandleImpl(
 	sv *settings.Values,
 	binaryVersion, binaryMinSupportedVersion roachpb.Version,
 ) Handle {
+	__antithesis_instrumentation__.Notify(37185)
 	return &handleImpl{
 		setting:                   setting,
 		sv:                        sv,
@@ -191,105 +98,115 @@ func newHandleImpl(
 	}
 }
 
-// ActiveVersion implements the Handle interface.
 func (v *handleImpl) ActiveVersion(ctx context.Context) ClusterVersion {
+	__antithesis_instrumentation__.Notify(37186)
 	return v.setting.activeVersion(ctx, v.sv)
 }
 
-// ActiveVersionOrEmpty implements the Handle interface.
 func (v *handleImpl) ActiveVersionOrEmpty(ctx context.Context) ClusterVersion {
+	__antithesis_instrumentation__.Notify(37187)
 	return v.setting.activeVersionOrEmpty(ctx, v.sv)
 }
 
-// SetActiveVersion implements the Handle interface.
 func (v *handleImpl) SetActiveVersion(ctx context.Context, cv ClusterVersion) error {
-	// We only perform binary version validation here. SetActiveVersion is only
-	// called on cluster versions received from other nodes (where `SET CLUSTER
-	// SETTING version` was originally called). The stricter form of validation
-	// happens there. SetActiveVersion is simply the cluster version bump that
-	// follows from it.
+	__antithesis_instrumentation__.Notify(37188)
+
 	if err := v.setting.validateBinaryVersions(cv.Version, v.sv); err != nil {
+		__antithesis_instrumentation__.Notify(37191)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(37192)
 	}
+	__antithesis_instrumentation__.Notify(37189)
 
 	encoded, err := protoutil.Marshal(&cv)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(37193)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(37194)
 	}
+	__antithesis_instrumentation__.Notify(37190)
 
 	v.setting.SetInternal(ctx, v.sv, encoded)
 	return nil
 }
 
-// SetOnChange implements the Handle interface.
 func (v *handleImpl) SetOnChange(fn func(ctx context.Context, newVersion ClusterVersion)) {
+	__antithesis_instrumentation__.Notify(37195)
 	v.setting.SetOnChange(v.sv, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(37196)
 		fn(ctx, v.ActiveVersion(ctx))
 	})
 }
 
-// IsActive implements the Handle interface.
 func (v *handleImpl) IsActive(ctx context.Context, key Key) bool {
+	__antithesis_instrumentation__.Notify(37197)
 	return v.setting.isActive(ctx, v.sv, key)
 }
 
-// BinaryVersion implements the Handle interface.
 func (v *handleImpl) BinaryVersion() roachpb.Version {
+	__antithesis_instrumentation__.Notify(37198)
 	return v.binaryVersion
 }
 
-// BinaryMinSupportedVersion implements the Handle interface.
 func (v *handleImpl) BinaryMinSupportedVersion() roachpb.Version {
+	__antithesis_instrumentation__.Notify(37199)
 	return v.binaryMinSupportedVersion
 }
 
-// IsActiveVersion returns true if the features of the supplied version are
-// active at the running version.
 func (cv ClusterVersion) IsActiveVersion(v roachpb.Version) bool {
+	__antithesis_instrumentation__.Notify(37200)
 	return !cv.Less(v)
 }
 
-// IsActive returns true if the features of the supplied version are active at
-// the running version.
 func (cv ClusterVersion) IsActive(versionKey Key) bool {
+	__antithesis_instrumentation__.Notify(37201)
 	v := ByKey(versionKey)
 	return cv.IsActiveVersion(v)
 }
 
 func (cv ClusterVersion) String() string {
+	__antithesis_instrumentation__.Notify(37202)
 	return redact.StringWithoutMarkers(cv)
 }
 
-// SafeFormat implements the redact.SafeFormatter interface.
 func (cv ClusterVersion) SafeFormat(p redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(37203)
 	p.Print(cv.Version)
 }
 
-// PrettyPrint returns the value in a format that makes it apparent whether or
-// not it is a fence version.
 func (cv ClusterVersion) PrettyPrint() string {
-	// If we're a version greater than v20.2 and have an odd internal version,
-	// we're a fence version. See fenceVersionFor in pkg/migration to understand
-	// what these are.
-	fenceVersion := !cv.Version.LessEq(roachpb.Version{Major: 20, Minor: 2}) && (cv.Internal%2) == 1
+	__antithesis_instrumentation__.Notify(37204)
+
+	fenceVersion := !cv.Version.LessEq(roachpb.Version{Major: 20, Minor: 2}) && func() bool {
+		__antithesis_instrumentation__.Notify(37206)
+		return (cv.Internal % 2) == 1 == true
+	}() == true
 	if !fenceVersion {
+		__antithesis_instrumentation__.Notify(37207)
 		return cv.String()
+	} else {
+		__antithesis_instrumentation__.Notify(37208)
 	}
+	__antithesis_instrumentation__.Notify(37205)
 	return redact.Sprintf("%s%s", cv.String(), "(fence)").StripMarkers()
 }
 
-// ClusterVersionImpl implements the settings.ClusterVersionImpl interface.
-func (cv ClusterVersion) ClusterVersionImpl() {}
+func (cv ClusterVersion) ClusterVersionImpl() { __antithesis_instrumentation__.Notify(37209) }
 
 var _ settings.ClusterVersionImpl = ClusterVersion{}
 
-// EncodingFromVersionStr is a shorthand to generate an encoded cluster version
-// from a version string.
 func EncodingFromVersionStr(v string) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(37210)
 	newV, err := roachpb.ParseVersion(v)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(37212)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(37213)
 	}
+	__antithesis_instrumentation__.Notify(37211)
 	newCV := ClusterVersion{Version: newV}
 	return protoutil.Marshal(&newCV)
 }

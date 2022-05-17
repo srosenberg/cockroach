@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package oidcccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -20,7 +14,6 @@ import (
 	"github.com/coreos/go-oidc"
 )
 
-// All cluster settings necessary for the OIDC feature.
 const (
 	baseOIDCSettingName           = "server.oidc_authentication."
 	OIDCEnabledSettingName        = baseOIDCSettingName + "enabled"
@@ -35,8 +28,8 @@ const (
 	OIDCAutoLoginSettingName      = baseOIDCSettingName + "autologin"
 )
 
-// OIDCEnabled enables or disabled OIDC login for the DB Console.
 var OIDCEnabled = func() *settings.BoolSetting {
+	__antithesis_instrumentation__.Notify(20555)
 	s := settings.RegisterBoolSetting(
 		settings.TenantWritable,
 		OIDCEnabledSettingName,
@@ -47,8 +40,8 @@ var OIDCEnabled = func() *settings.BoolSetting {
 	return s
 }()
 
-// OIDCClientID is the OIDC client id.
 var OIDCClientID = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(20556)
 	s := settings.RegisterStringSetting(
 		settings.TenantWritable,
 		OIDCClientIDSettingName,
@@ -59,8 +52,8 @@ var OIDCClientID = func() *settings.StringSetting {
 	return s
 }()
 
-// OIDCClientSecret is the OIDC client secret.
 var OIDCClientSecret = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(20557)
 	s := settings.RegisterStringSetting(
 		settings.TenantWritable,
 		OIDCClientSecretSettingName,
@@ -76,102 +69,106 @@ type redirectURLConf struct {
 	sru  *singleRedirectURL
 }
 
-// getForRegion is used when we have a cluster with regions configured.
-// Both configuration types can return valid responses here.
 func (conf *redirectURLConf) getForRegion(region string) (string, bool) {
+	__antithesis_instrumentation__.Notify(20558)
 	if conf.mrru != nil {
+		__antithesis_instrumentation__.Notify(20561)
 		s, ok := conf.mrru.RedirectURLs[region]
 		return s, ok
+	} else {
+		__antithesis_instrumentation__.Notify(20562)
 	}
+	__antithesis_instrumentation__.Notify(20559)
 	if conf.sru != nil {
+		__antithesis_instrumentation__.Notify(20563)
 		return conf.sru.RedirectURL, true
+	} else {
+		__antithesis_instrumentation__.Notify(20564)
 	}
+	__antithesis_instrumentation__.Notify(20560)
 	return "", false
 }
 
-// get is used in the case where regions are not configured on the cluster.
-// Only a singleRedirectURL configuration can return a valid result here.
 func (conf *redirectURLConf) get() (string, bool) {
+	__antithesis_instrumentation__.Notify(20565)
 	if conf.sru != nil {
+		__antithesis_instrumentation__.Notify(20567)
 		return conf.sru.RedirectURL, true
+	} else {
+		__antithesis_instrumentation__.Notify(20568)
 	}
+	__antithesis_instrumentation__.Notify(20566)
 	return "", false
 }
 
-// multiRegionRedirectURLs is a struct that defines a valid JSON body for the
-// OIDCRedirectURL cluster setting in multi-region environments.
 type multiRegionRedirectURLs struct {
 	RedirectURLs map[string]string `json:"redirect_urls"`
 }
 
-// singleRedirectURL is a struct containing a string that stores a single
-// redirect URL in the case where the configuration only has a single one.
 type singleRedirectURL struct {
 	RedirectURL string
 }
 
-// mustParseOIDCRedirectURL will read in a string that's from the
-// `OIDCRedirectURL` setting. We know from the validation that runs on that
-// setting that any value that's not valid JSON that deserializes into the
-// `multiRegionRedirectURLs` struct will be a URL.
 func mustParseOIDCRedirectURL(s string) redirectURLConf {
+	__antithesis_instrumentation__.Notify(20569)
 	var mrru = multiRegionRedirectURLs{}
 	decoder := json.NewDecoder(bytes.NewReader([]byte(s)))
 	err := decoder.Decode(&mrru)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20571)
 		return redirectURLConf{sru: &singleRedirectURL{RedirectURL: s}}
+	} else {
+		__antithesis_instrumentation__.Notify(20572)
 	}
+	__antithesis_instrumentation__.Notify(20570)
 	return redirectURLConf{mrru: &mrru}
 }
 
 func validateOIDCRedirectURL(values *settings.Values, s string) error {
+	__antithesis_instrumentation__.Notify(20573)
 	var mrru = multiRegionRedirectURLs{}
 
 	var jsonCheck json.RawMessage
 	if json.Unmarshal([]byte(s), &jsonCheck) != nil {
-		// If we know the string is *not* valid JSON, fall back to assuming basic URL
-		// string to use the simple redirect URL configuration option
+		__antithesis_instrumentation__.Notify(20577)
+
 		if _, err := url.Parse(s); err != nil {
+			__antithesis_instrumentation__.Notify(20579)
 			return errors.Wrap(err, "OIDC redirect URL not valid")
+		} else {
+			__antithesis_instrumentation__.Notify(20580)
 		}
+		__antithesis_instrumentation__.Notify(20578)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(20581)
 	}
+	__antithesis_instrumentation__.Notify(20574)
 
 	decoder := json.NewDecoder(bytes.NewReader([]byte(s)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&mrru); err != nil {
+		__antithesis_instrumentation__.Notify(20582)
 		return errors.Wrap(err, "OIDC redirect JSON not valid")
+	} else {
+		__antithesis_instrumentation__.Notify(20583)
 	}
+	__antithesis_instrumentation__.Notify(20575)
 	for _, route := range mrru.RedirectURLs {
+		__antithesis_instrumentation__.Notify(20584)
 		if _, err := url.Parse(route); err != nil {
+			__antithesis_instrumentation__.Notify(20585)
 			return errors.Wrapf(err, "OIDC redirect JSON contains invalid URL: %s", route)
+		} else {
+			__antithesis_instrumentation__.Notify(20586)
 		}
 	}
+	__antithesis_instrumentation__.Notify(20576)
 	return nil
 }
 
-// OIDCRedirectURL is the cluster URL to redirect to after OIDC auth completes.
-// This can be set to a simple string that Go can parse as a valid URL (although
-// it's incredibly permissive) or as a string that can be parsed as valid JSON
-// and deserialized into an instance of multiRegionRedirectURLs or
-// singleRedirectURL defined above which implement the `callbackRedirecter`
-// interface. In the latter case, it is expected that each node will use a
-// callback URL that matches its own `region` locality tag.
-//
-// Example valid values:
-// - 'https://cluster.example.com:8080/oidc/v1/callback'
-// - '{
-//    "redirect_urls": {
-//      "us-east-1": "https://localhost:8080/oidc/v1/callback",
-//      "eu-west-1": "example.com"
-//    }
-//   }'
-//
-// In a multi-region cluster where this setting is set to a URL string, we will
-// use the same callback URL on all auth requests. In a multi-region setting
-// where the cluster's region is not listed in the `redirect_urls` object, we
-// will use the required `default_url` callback URL.
 var OIDCRedirectURL = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(20587)
 	s := settings.RegisterValidatedStringSetting(
 		settings.TenantWritable,
 		OIDCRedirectURLSettingName,
@@ -186,28 +183,33 @@ var OIDCRedirectURL = func() *settings.StringSetting {
 	return s
 }()
 
-// OIDCProviderURL is the location of the OIDC discovery document for the auth
-// provider.
 var OIDCProviderURL = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(20588)
 	s := settings.RegisterValidatedStringSetting(
 		settings.TenantWritable,
 		OIDCProviderURLSettingName,
 		"sets OIDC provider URL ({provider_url}/.well-known/openid-configuration must resolve)",
 		"",
 		func(values *settings.Values, s string) error {
+			__antithesis_instrumentation__.Notify(20590)
 			if _, err := url.Parse(s); err != nil {
+				__antithesis_instrumentation__.Notify(20592)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(20593)
 			}
+			__antithesis_instrumentation__.Notify(20591)
 			return nil
 		},
 	)
+	__antithesis_instrumentation__.Notify(20589)
 	s.SetReportable(true)
 	s.SetVisibility(settings.Public)
 	return s
 }()
 
-// OIDCScopes contains the list of scopes to request from the auth provider.
 var OIDCScopes = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(20594)
 	s := settings.RegisterValidatedStringSetting(
 		settings.TenantWritable,
 		OIDCScopesSettingName,
@@ -215,19 +217,28 @@ var OIDCScopes = func() *settings.StringSetting {
 			"(space delimited list of strings, required to start with `openid`)",
 		"openid",
 		func(values *settings.Values, s string) error {
-			if s != oidc.ScopeOpenID && !strings.HasPrefix(s, oidc.ScopeOpenID+" ") {
+			__antithesis_instrumentation__.Notify(20596)
+			if s != oidc.ScopeOpenID && func() bool {
+				__antithesis_instrumentation__.Notify(20598)
+				return !strings.HasPrefix(s, oidc.ScopeOpenID+" ") == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(20599)
 				return errors.New("Missing `openid` scope which is required for OIDC")
+			} else {
+				__antithesis_instrumentation__.Notify(20600)
 			}
+			__antithesis_instrumentation__.Notify(20597)
 			return nil
 		},
 	)
+	__antithesis_instrumentation__.Notify(20595)
 	s.SetReportable(true)
 	s.SetVisibility(settings.Public)
 	return s
 }()
 
-// OIDCClaimJSONKey is the key of the claim to extract from the OIDC id_token.
 var OIDCClaimJSONKey = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(20601)
 	s := settings.RegisterStringSetting(
 		settings.TenantWritable,
 		OIDCClaimJSONKeySettingName,
@@ -238,9 +249,8 @@ var OIDCClaimJSONKey = func() *settings.StringSetting {
 	return s
 }()
 
-// OIDCPrincipalRegex is a regular expression to apply to the OIDC id_token
-// claim value to conver it to a DB principal.
 var OIDCPrincipalRegex = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(20602)
 	s := settings.RegisterValidatedStringSetting(
 		settings.TenantWritable,
 		OIDCPrincipalRegexSettingName,
@@ -248,20 +258,25 @@ var OIDCPrincipalRegex = func() *settings.StringSetting {
 			"translate to SQL user (golang regex format, must include 1 grouping to extract)",
 		"(.+)",
 		func(values *settings.Values, s string) error {
+			__antithesis_instrumentation__.Notify(20604)
 			if _, err := regexp.Compile(s); err != nil {
+				__antithesis_instrumentation__.Notify(20606)
 				return errors.Wrapf(err, "unable to initialize %s setting, regex does not compile",
 					OIDCPrincipalRegexSettingName)
+			} else {
+				__antithesis_instrumentation__.Notify(20607)
 			}
+			__antithesis_instrumentation__.Notify(20605)
 			return nil
 		},
 	)
+	__antithesis_instrumentation__.Notify(20603)
 	s.SetVisibility(settings.Public)
 	return s
 }()
 
-// OIDCButtonText is a string to display on the button in the DB Console to
-// login with OIDC.
 var OIDCButtonText = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(20608)
 	s := settings.RegisterStringSetting(
 		settings.TenantWritable,
 		OIDCButtonTextSettingName,
@@ -272,9 +287,8 @@ var OIDCButtonText = func() *settings.StringSetting {
 	return s
 }()
 
-// OIDCAutoLogin is a boolean that enables automatic redirection to OIDC auth in
-// the DB Console.
 var OIDCAutoLogin = func() *settings.BoolSetting {
+	__antithesis_instrumentation__.Notify(20609)
 	s := settings.RegisterBoolSetting(
 		settings.TenantWritable,
 		OIDCAutoLoginSettingName,

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package builtins
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,8 +13,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 )
 
-// getTypeIDs returns the set of type ids from
-// crdb_internal.show_create_all_types for a specified database.
 func getTypeIDs(
 	ctx context.Context,
 	evalPlanner tree.EvalPlanner,
@@ -30,6 +20,7 @@ func getTypeIDs(
 	dbName string,
 	acc *mon.BoundAccount,
 ) ([]int64, error) {
+	__antithesis_instrumentation__.Notify(602441)
 	query := fmt.Sprintf(`
 		SELECT descriptor_id
 		FROM %s.crdb_internal.create_type_statements
@@ -44,32 +35,44 @@ func getTypeIDs(
 		dbName,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602445)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(602446)
 	}
+	__antithesis_instrumentation__.Notify(602442)
 
 	var typeIDs []int64
 
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(602447)
 		tid := tree.MustBeDInt(it.Cur()[0])
 
 		typeIDs = append(typeIDs, int64(tid))
 		if err = acc.Grow(ctx, int64(unsafe.Sizeof(tid))); err != nil {
+			__antithesis_instrumentation__.Notify(602448)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(602449)
 		}
 	}
+	__antithesis_instrumentation__.Notify(602443)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602450)
 		return typeIDs, err
+	} else {
+		__antithesis_instrumentation__.Notify(602451)
 	}
+	__antithesis_instrumentation__.Notify(602444)
 
 	return typeIDs, nil
 }
 
-// getTypeCreateStatement gets the create statement to recreate a type (ignoring fks)
-// for a given type id in a database.
 func getTypeCreateStatement(
 	ctx context.Context, evalPlanner tree.EvalPlanner, txn *kv.Txn, id int64, dbName string,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(602452)
 	query := fmt.Sprintf(`
 		SELECT
 			create_statement
@@ -86,7 +89,11 @@ func getTypeCreateStatement(
 	)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602454)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(602455)
 	}
+	__antithesis_instrumentation__.Notify(602453)
 	return row[0], nil
 }

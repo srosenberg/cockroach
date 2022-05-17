@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package streamingest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -37,16 +31,16 @@ func distStreamIngestionPlanSpecs(
 	jobID jobspb.JobID,
 	streamID streaming.StreamID,
 ) ([]*execinfrapb.StreamIngestionDataSpec, *execinfrapb.StreamIngestionFrontierSpec, error) {
+	__antithesis_instrumentation__.Notify(25584)
 
-	// For each stream partition in the topology, assign it to a node.
 	streamIngestionSpecs := make([]*execinfrapb.StreamIngestionDataSpec, 0, len(sqlInstanceIDs))
 
 	trackedSpans := make([]roachpb.Span, 0)
 	for i, partition := range topology {
-		// Round robin assign the stream partitions to nodes. Partitions 0 through
-		// len(nodes) - 1 creates the spec. Future partitions just add themselves to
-		// the partition addresses.
+		__antithesis_instrumentation__.Notify(25586)
+
 		if i < len(sqlInstanceIDs) {
+			__antithesis_instrumentation__.Notify(25588)
 			spec := &execinfrapb.StreamIngestionDataSpec{
 				StreamID:           uint64(streamID),
 				JobID:              int64(jobID),
@@ -55,7 +49,10 @@ func distStreamIngestionPlanSpecs(
 				PartitionAddresses: make([]string, 0),
 			}
 			streamIngestionSpecs = append(streamIngestionSpecs, spec)
+		} else {
+			__antithesis_instrumentation__.Notify(25589)
 		}
+		__antithesis_instrumentation__.Notify(25587)
 		n := i % len(sqlInstanceIDs)
 
 		streamIngestionSpecs[n].PartitionIds = append(streamIngestionSpecs[n].PartitionIds, partition.ID)
@@ -63,17 +60,14 @@ func distStreamIngestionPlanSpecs(
 			string(partition.SubscriptionToken))
 		streamIngestionSpecs[n].PartitionAddresses = append(streamIngestionSpecs[n].PartitionAddresses,
 			string(partition.SrcAddr))
-		// We create "fake" spans to uniquely identify the partition. This is used
-		// to keep track of the resolved ts received for a particular partition in
-		// the frontier processor.
+
 		trackedSpans = append(trackedSpans, roachpb.Span{
 			Key:    roachpb.Key(partition.ID),
 			EndKey: roachpb.Key(partition.ID).Next(),
 		})
 	}
+	__antithesis_instrumentation__.Notify(25585)
 
-	// Create a spec for the StreamIngestionFrontier processor on the coordinator
-	// node.
 	streamIngestionFrontierSpec := &execinfrapb.StreamIngestionFrontierSpec{
 		HighWaterAtStart: initialHighWater,
 		TrackedSpans:     trackedSpans,
@@ -95,20 +89,26 @@ func distStreamIngest(
 	streamIngestionSpecs []*execinfrapb.StreamIngestionDataSpec,
 	streamIngestionFrontierSpec *execinfrapb.StreamIngestionFrontierSpec,
 ) error {
+	__antithesis_instrumentation__.Notify(25590)
 	ctx = logtags.AddTag(ctx, "stream-ingest-distsql", nil)
 	evalCtx := execCtx.ExtendedEvalContext()
 	var noTxn *kv.Txn
 
 	if len(streamIngestionSpecs) == 0 {
+		__antithesis_instrumentation__.Notify(25594)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(25595)
 	}
+	__antithesis_instrumentation__.Notify(25591)
 
-	// Setup a one-stage plan with one proc per input spec.
 	corePlacement := make([]physicalplan.ProcessorCorePlacement, len(streamIngestionSpecs))
 	for i := range streamIngestionSpecs {
+		__antithesis_instrumentation__.Notify(25596)
 		corePlacement[i].SQLInstanceID = sqlInstanceIDs[i]
 		corePlacement[i].Core.StreamIngestionData = streamIngestionSpecs[i]
 	}
+	__antithesis_instrumentation__.Notify(25592)
 
 	p := planCtx.NewPhysicalPlan()
 	p.AddNoInputStage(
@@ -121,11 +121,13 @@ func distStreamIngest(
 	execCfg := execCtx.ExecCfg()
 	gatewayNodeID, err := execCfg.NodeID.OptionalNodeIDErr(48274)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25597)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(25598)
 	}
+	__antithesis_instrumentation__.Notify(25593)
 
-	// The ResultRouters from the previous stage will feed in to the
-	// StreamIngestionFrontier processor.
 	p.AddSingleGroupStage(base.SQLInstanceID(gatewayNodeID),
 		execinfrapb.ProcessorCoreUnion{StreamIngestionFrontier: streamIngestionFrontierSpec},
 		execinfrapb.PostProcessSpec{}, streamIngestionResultTypes)
@@ -139,18 +141,17 @@ func distStreamIngest(
 		ctx,
 		rw,
 		tree.Rows,
-		nil, /* rangeCache */
+		nil,
 		noTxn,
-		nil, /* clockUpdater */
+		nil,
 		evalCtx.Tracing,
 		execCfg.ContentionRegistry,
-		nil, /* testingPushCallback */
+		nil,
 	)
 	defer recv.Release()
 
-	// Copy the evalCtx, as dsp.Run() might change it.
 	evalCtxCopy := *evalCtx
-	dsp.Run(ctx, planCtx, noTxn, p, recv, &evalCtxCopy, nil /* finishedSetupFn */)()
+	dsp.Run(ctx, planCtx, noTxn, p, recv, &evalCtxCopy, nil)()
 	return rw.Err()
 }
 
@@ -165,6 +166,7 @@ type streamIngestionResultWriter struct {
 func makeStreamIngestionResultWriter(
 	ctx context.Context, jobID jobspb.JobID, registry *jobs.Registry,
 ) *streamIngestionResultWriter {
+	__antithesis_instrumentation__.Notify(25599)
 	return &streamIngestionResultWriter{
 		ctx:      ctx,
 		registry: registry,
@@ -172,38 +174,50 @@ func makeStreamIngestionResultWriter(
 	}
 }
 
-// AddRow implements the sql.rowResultWriter interface.
 func (s *streamIngestionResultWriter) AddRow(ctx context.Context, row tree.Datums) error {
+	__antithesis_instrumentation__.Notify(25600)
 	if len(row) == 0 {
+		__antithesis_instrumentation__.Notify(25604)
 		return errors.New("streamIngestionResultWriter received an empty row")
+	} else {
+		__antithesis_instrumentation__.Notify(25605)
 	}
+	__antithesis_instrumentation__.Notify(25601)
 	if row[0] == nil {
+		__antithesis_instrumentation__.Notify(25606)
 		return errors.New("streamIngestionResultWriter expects non-nil row entry")
+	} else {
+		__antithesis_instrumentation__.Notify(25607)
 	}
+	__antithesis_instrumentation__.Notify(25602)
 
-	// Decode the row, write the ts into job record, and send a heartbeat to source cluster.
 	var ingestedHighWatermark hlc.Timestamp
 	if err := protoutil.Unmarshal([]byte(*row[0].(*tree.DBytes)),
 		&ingestedHighWatermark); err != nil {
+		__antithesis_instrumentation__.Notify(25608)
 		return errors.NewAssertionErrorWithWrappedErrf(err, `unmarshalling resolved timestamp`)
+	} else {
+		__antithesis_instrumentation__.Notify(25609)
 	}
-	return s.registry.UpdateJobWithTxn(ctx, s.jobID, nil /* txn */, false, /* useReadLock */
+	__antithesis_instrumentation__.Notify(25603)
+	return s.registry.UpdateJobWithTxn(ctx, s.jobID, nil, false,
 		func(txn *kv.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+			__antithesis_instrumentation__.Notify(25610)
 			return jobs.UpdateHighwaterProgressed(ingestedHighWatermark, md, ju)
 		})
 }
 
-// IncrementRowsAffected implements the sql.rowResultWriter interface.
 func (s *streamIngestionResultWriter) IncrementRowsAffected(ctx context.Context, n int) {
+	__antithesis_instrumentation__.Notify(25611)
 	s.rowsAffected += n
 }
 
-// SetError implements the sql.rowResultWriter interface.
 func (s *streamIngestionResultWriter) SetError(err error) {
+	__antithesis_instrumentation__.Notify(25612)
 	s.err = err
 }
 
-// Err implements the sql.rowResultWriter interface.
 func (s *streamIngestionResultWriter) Err() error {
+	__antithesis_instrumentation__.Notify(25613)
 	return s.err
 }

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package workloadimpl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sync"
@@ -16,46 +8,57 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-// PrecomputedRand is a precomputed sequence of random data in some alphabet.
 type PrecomputedRand []byte
 
-// PrecomputedRandInit returns a init function that lazily initializes and
-// returns a PrecomputedRand. This initialization work is done once and the
-// result is shared, subsequent calls to return this shared one. The init
-// function is concurrency safe.
 func PrecomputedRandInit(rng rand.Source, length int, alphabet string) func() PrecomputedRand {
+	__antithesis_instrumentation__.Notify(699063)
 	var prOnce sync.Once
 	var pr PrecomputedRand
 	return func() PrecomputedRand {
+		__antithesis_instrumentation__.Notify(699064)
 		prOnce.Do(func() {
+			__antithesis_instrumentation__.Notify(699066)
 			pr = make(PrecomputedRand, length)
 			RandStringFast(rng, pr, alphabet)
 		})
+		__antithesis_instrumentation__.Notify(699065)
 		return pr
 	}
 }
 
-// FillBytes fills the given buffer with precomputed random data, starting at
-// the given offset (which is like a seed) and returning a new offset to be used
-// on the next call. FillBytes is concurrency safe.
 func (pr PrecomputedRand) FillBytes(offset int, buf []byte) int {
+	__antithesis_instrumentation__.Notify(699067)
 	if len(pr) == 0 {
+		__antithesis_instrumentation__.Notify(699070)
 		panic(`cannot fill from empty precomputed rand`)
+	} else {
+		__antithesis_instrumentation__.Notify(699071)
 	}
+	__antithesis_instrumentation__.Notify(699068)
 	prIdx := offset
 	for bufIdx := 0; bufIdx < len(buf); {
+		__antithesis_instrumentation__.Notify(699072)
 		if prIdx == len(pr) {
+			__antithesis_instrumentation__.Notify(699075)
 			prIdx = 0
+		} else {
+			__antithesis_instrumentation__.Notify(699076)
 		}
+		__antithesis_instrumentation__.Notify(699073)
 		need, remaining := len(buf)-bufIdx, len(pr)-prIdx
 		copyLen := need
 		if copyLen > remaining {
+			__antithesis_instrumentation__.Notify(699077)
 			copyLen = remaining
+		} else {
+			__antithesis_instrumentation__.Notify(699078)
 		}
+		__antithesis_instrumentation__.Notify(699074)
 		newBufIdx, newPRIdx := bufIdx+copyLen, prIdx+copyLen
 		copy(buf[bufIdx:newBufIdx], pr[prIdx:newPRIdx])
 		bufIdx = newBufIdx
 		prIdx = newPRIdx
 	}
+	__antithesis_instrumentation__.Notify(699069)
 	return prIdx
 }

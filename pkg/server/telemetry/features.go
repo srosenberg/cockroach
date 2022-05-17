@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package telemetry
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -23,149 +15,160 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Bucket10 buckets a number by order of magnitude base 10, eg 637 -> 100.
-// This can be used in telemetry to get ballpark ideas of how users use a given
-// feature, such as file sizes, qps, etc, without being as revealing as the
-// raw numbers.
-// The numbers 0-10 are reported unchanged.
 func Bucket10(num int64) int64 {
+	__antithesis_instrumentation__.Notify(238207)
 	if num == math.MinInt64 {
-		// This is needed to prevent overflow in the negation below.
+		__antithesis_instrumentation__.Notify(238212)
+
 		return -1000000000000000000
+	} else {
+		__antithesis_instrumentation__.Notify(238213)
 	}
+	__antithesis_instrumentation__.Notify(238208)
 	sign := int64(1)
 	if num < 0 {
+		__antithesis_instrumentation__.Notify(238214)
 		sign = -1
 		num = -num
+	} else {
+		__antithesis_instrumentation__.Notify(238215)
 	}
+	__antithesis_instrumentation__.Notify(238209)
 	if num < 10 {
+		__antithesis_instrumentation__.Notify(238216)
 		return num * sign
+	} else {
+		__antithesis_instrumentation__.Notify(238217)
 	}
+	__antithesis_instrumentation__.Notify(238210)
 	res := int64(10)
-	for ; res < 1000000000000000000 && res*10 <= num; res *= 10 {
+	for ; res < 1000000000000000000 && func() bool {
+		__antithesis_instrumentation__.Notify(238218)
+		return res*10 <= num == true
+	}() == true; res *= 10 {
+		__antithesis_instrumentation__.Notify(238219)
 	}
+	__antithesis_instrumentation__.Notify(238211)
 	return res * sign
 }
 
-// CountBucketed counts the feature identified by prefix and the value, using
-// the bucketed value to pick a feature bucket to increment, e.g. a prefix of
-// "foo.bar" and value of 632 would be counted as "foo.bar.100".
 func CountBucketed(prefix string, value int64) {
+	__antithesis_instrumentation__.Notify(238220)
 	Count(fmt.Sprintf("%s.%d", prefix, Bucket10(value)))
 }
 
-// Count retrieves and increments the usage counter for the passed feature.
-// High-volume callers may want to instead use `GetCounter` and hold on to the
-// returned Counter between calls to Inc, to avoid contention in the registry.
 func Count(feature string) {
+	__antithesis_instrumentation__.Notify(238221)
 	Inc(GetCounter(feature))
 }
 
-// Counter represents the usage counter for a given 'feature'.
 type Counter *int32
 
-// Inc increments the counter.
 func Inc(c Counter) {
+	__antithesis_instrumentation__.Notify(238222)
 	atomic.AddInt32(c, 1)
 }
 
-// Read reads the current value of the counter.
 func Read(c Counter) int32 {
+	__antithesis_instrumentation__.Notify(238223)
 	return atomic.LoadInt32(c)
 }
 
-// GetCounterOnce returns a counter from the global registry,
-// and asserts it didn't exist previously.
 func GetCounterOnce(feature string) Counter {
+	__antithesis_instrumentation__.Notify(238224)
 	counters.RLock()
 	_, ok := counters.m[feature]
 	counters.RUnlock()
 	if ok {
+		__antithesis_instrumentation__.Notify(238226)
 		panic("counter already exists: " + feature)
+	} else {
+		__antithesis_instrumentation__.Notify(238227)
 	}
+	__antithesis_instrumentation__.Notify(238225)
 	return GetCounter(feature)
 }
 
-// GetCounter returns a counter from the global registry.
 func GetCounter(feature string) Counter {
+	__antithesis_instrumentation__.Notify(238228)
 	counters.RLock()
 	i, ok := counters.m[feature]
 	counters.RUnlock()
 	if ok {
+		__antithesis_instrumentation__.Notify(238231)
 		return i
+	} else {
+		__antithesis_instrumentation__.Notify(238232)
 	}
+	__antithesis_instrumentation__.Notify(238229)
 
 	counters.Lock()
 	defer counters.Unlock()
 	i, ok = counters.m[feature]
 	if !ok {
+		__antithesis_instrumentation__.Notify(238233)
 		i = new(int32)
 		counters.m[feature] = i
+	} else {
+		__antithesis_instrumentation__.Notify(238234)
 	}
+	__antithesis_instrumentation__.Notify(238230)
 	return i
 }
 
-// CounterWithMetric combines a telemetry and a metrics counter.
 type CounterWithMetric struct {
 	telemetry Counter
 	metric    *metric.Counter
 }
 
-// Necessary for metric metadata registration.
 var _ metric.Iterable = CounterWithMetric{}
 
-// NewCounterWithMetric creates a CounterWithMetric.
 func NewCounterWithMetric(metadata metric.Metadata) CounterWithMetric {
+	__antithesis_instrumentation__.Notify(238235)
 	return CounterWithMetric{
 		telemetry: GetCounter(metadata.Name),
 		metric:    metric.NewCounter(metadata),
 	}
 }
 
-// Inc increments both counters.
 func (c CounterWithMetric) Inc() {
+	__antithesis_instrumentation__.Notify(238236)
 	Inc(c.telemetry)
 	c.metric.Inc(1)
 }
 
-// Count returns the value of the metric, not the telemetry. Note that the
-// telemetry value may reset to zero when, for example, GetFeatureCounts() is
-// called with ResetCounts to generate a report.
 func (c CounterWithMetric) Count() int64 {
+	__antithesis_instrumentation__.Notify(238237)
 	return c.metric.Count()
 }
 
-// Forward the metric.Iterable interface to the metric counter. We
-// don't just embed the counter because our Inc() interface is a bit
-// different.
-
-// GetName implements metric.Iterable
 func (c CounterWithMetric) GetName() string {
+	__antithesis_instrumentation__.Notify(238238)
 	return c.metric.GetName()
 }
 
-// GetHelp implements metric.Iterable
 func (c CounterWithMetric) GetHelp() string {
+	__antithesis_instrumentation__.Notify(238239)
 	return c.metric.GetHelp()
 }
 
-// GetMeasurement implements metric.Iterable
 func (c CounterWithMetric) GetMeasurement() string {
+	__antithesis_instrumentation__.Notify(238240)
 	return c.metric.GetMeasurement()
 }
 
-// GetUnit implements metric.Iterable
 func (c CounterWithMetric) GetUnit() metric.Unit {
+	__antithesis_instrumentation__.Notify(238241)
 	return c.metric.GetUnit()
 }
 
-// GetMetadata implements metric.Iterable
 func (c CounterWithMetric) GetMetadata() metric.Metadata {
+	__antithesis_instrumentation__.Notify(238242)
 	return c.metric.GetMetadata()
 }
 
-// Inspect implements metric.Iterable
 func (c CounterWithMetric) Inspect(f func(interface{})) {
+	__antithesis_instrumentation__.Notify(238243)
 	c.metric.Inspect(f)
 }
 
@@ -175,97 +178,112 @@ func init() {
 
 var approxFeatureCount = 1500
 
-// counters stores the registry of feature-usage counts.
-// TODO(dt): consider a lock-free map.
 var counters struct {
 	syncutil.RWMutex
 	m map[string]Counter
 }
 
-// QuantizeCounts controls if counts are quantized when fetched.
 type QuantizeCounts bool
 
-// ResetCounters controls if counts are reset when fetched.
 type ResetCounters bool
 
 const (
-	// Quantized returns counts quantized to order of magnitude.
 	Quantized QuantizeCounts = true
-	// Raw returns the raw, unquantized counter values.
+
 	Raw QuantizeCounts = false
-	// ResetCounts resets the counter to zero after fetching its value.
+
 	ResetCounts ResetCounters = true
-	// ReadOnly leaves the counter value unchanged when reading it.
+
 	ReadOnly ResetCounters = false
 )
 
-// GetRawFeatureCounts returns current raw, un-quantized feature counter values.
 func GetRawFeatureCounts() map[string]int32 {
+	__antithesis_instrumentation__.Notify(238244)
 	return GetFeatureCounts(Raw, ReadOnly)
 }
 
-// GetFeatureCounts returns the current feature usage counts.
-//
-// It optionally quantizes quantizes the returned counts to just order of
-// magnitude using the `Bucket10` helper, and optionally resets the counters to
-// zero i.e. if flushing accumulated counts during a report.
 func GetFeatureCounts(quantize QuantizeCounts, reset ResetCounters) map[string]int32 {
+	__antithesis_instrumentation__.Notify(238245)
 	counters.RLock()
 	m := make(map[string]int32, len(counters.m))
 	for k, cnt := range counters.m {
+		__antithesis_instrumentation__.Notify(238248)
 		var val int32
 		if reset {
+			__antithesis_instrumentation__.Notify(238250)
 			val = atomic.SwapInt32(cnt, 0)
 		} else {
+			__antithesis_instrumentation__.Notify(238251)
 			val = atomic.LoadInt32(cnt)
 		}
+		__antithesis_instrumentation__.Notify(238249)
 		if val != 0 {
+			__antithesis_instrumentation__.Notify(238252)
 			m[k] = val
+		} else {
+			__antithesis_instrumentation__.Notify(238253)
 		}
 	}
+	__antithesis_instrumentation__.Notify(238246)
 	counters.RUnlock()
 	if quantize {
+		__antithesis_instrumentation__.Notify(238254)
 		for k := range m {
+			__antithesis_instrumentation__.Notify(238255)
 			m[k] = int32(Bucket10(int64(m[k])))
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(238256)
 	}
+	__antithesis_instrumentation__.Notify(238247)
 	return m
 }
 
-// ValidationTelemetryKeyPrefix is the prefix of telemetry keys pertaining to
-// descriptor validation failures.
 const ValidationTelemetryKeyPrefix = "sql.schema.validation_errors."
 
-// RecordError takes an error and increments the corresponding count
-// for its error code, and, if it is an unimplemented or internal
-// error, the count for that feature or the internal error's shortened
-// stack trace.
 func RecordError(err error) {
+	__antithesis_instrumentation__.Notify(238257)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(238259)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(238260)
 	}
+	__antithesis_instrumentation__.Notify(238258)
 
 	code := pgerror.GetPGCode(err)
 	Count("errorcodes." + code.String())
 
 	tkeys := errors.GetTelemetryKeys(err)
 	if len(tkeys) > 0 {
+		__antithesis_instrumentation__.Notify(238261)
 		var prefix string
 		switch code {
 		case pgcode.FeatureNotSupported:
+			__antithesis_instrumentation__.Notify(238263)
 			prefix = "unimplemented."
 		case pgcode.Internal:
+			__antithesis_instrumentation__.Notify(238264)
 			prefix = "internalerror."
 		default:
+			__antithesis_instrumentation__.Notify(238265)
 			prefix = "othererror." + code.String() + "."
 		}
+		__antithesis_instrumentation__.Notify(238262)
 		for _, tk := range tkeys {
+			__antithesis_instrumentation__.Notify(238266)
 			prefixedTelemetryKey := prefix + tk
 			if strings.HasPrefix(tk, ValidationTelemetryKeyPrefix) {
-				// Descriptor validation errors already have their own prefixing scheme.
+				__antithesis_instrumentation__.Notify(238268)
+
 				prefixedTelemetryKey = tk
+			} else {
+				__antithesis_instrumentation__.Notify(238269)
 			}
+			__antithesis_instrumentation__.Notify(238267)
 			Count(prefixedTelemetryKey)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(238270)
 	}
 }

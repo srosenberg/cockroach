@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,35 +16,41 @@ func init() {
 	RegisterReadOnlyCommand(roachpb.Refresh, DefaultDeclareKeys, Refresh)
 }
 
-// Refresh checks whether the key has any values written in the interval
-// (args.RefreshFrom, header.Timestamp].
 func Refresh(
 	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(97315)
 	args := cArgs.Args.(*roachpb.RefreshRequest)
 	h := cArgs.Header
 
 	if h.Txn == nil {
+		__antithesis_instrumentation__.Notify(97321)
 		return result.Result{}, errors.AssertionFailedf("no transaction specified to %s", args.Method())
+	} else {
+		__antithesis_instrumentation__.Notify(97322)
 	}
+	__antithesis_instrumentation__.Notify(97316)
 
-	// We're going to refresh up to the transaction's read timestamp.
 	if h.Timestamp != h.Txn.WriteTimestamp {
-		// We're expecting the read and write timestamp to have converged before the
-		// Refresh request was sent.
+		__antithesis_instrumentation__.Notify(97323)
+
 		log.Fatalf(ctx, "expected provisional commit ts %s == read ts %s. txn: %s", h.Timestamp,
 			h.Txn.WriteTimestamp, h.Txn)
+	} else {
+		__antithesis_instrumentation__.Notify(97324)
 	}
+	__antithesis_instrumentation__.Notify(97317)
 	refreshTo := h.Timestamp
 
 	refreshFrom := args.RefreshFrom
 	if refreshFrom.IsEmpty() {
+		__antithesis_instrumentation__.Notify(97325)
 		return result.Result{}, errors.AssertionFailedf("empty RefreshFrom: %s", args)
+	} else {
+		__antithesis_instrumentation__.Notify(97326)
 	}
+	__antithesis_instrumentation__.Notify(97318)
 
-	// Get the most recent committed value and return any intent by
-	// specifying consistent=false. Note that we include tombstones,
-	// which must be considered as updates on refresh.
 	log.VEventf(ctx, 2, "refresh %s @[%s-%s]", args.Span(), refreshFrom, refreshTo)
 	val, intent, err := storage.MVCCGet(ctx, reader, args.Key, refreshTo, storage.MVCCGetOptions{
 		Inconsistent: true,
@@ -60,20 +58,36 @@ func Refresh(
 	})
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(97327)
 		return result.Result{}, err
-	} else if val != nil {
-		if ts := val.Timestamp; refreshFrom.Less(ts) {
-			return result.Result{},
-				roachpb.NewRefreshFailedError(roachpb.RefreshFailedError_REASON_COMMITTED_VALUE, args.Key, ts)
+	} else {
+		__antithesis_instrumentation__.Notify(97328)
+		if val != nil {
+			__antithesis_instrumentation__.Notify(97329)
+			if ts := val.Timestamp; refreshFrom.Less(ts) {
+				__antithesis_instrumentation__.Notify(97330)
+				return result.Result{},
+					roachpb.NewRefreshFailedError(roachpb.RefreshFailedError_REASON_COMMITTED_VALUE, args.Key, ts)
+			} else {
+				__antithesis_instrumentation__.Notify(97331)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(97332)
 		}
 	}
+	__antithesis_instrumentation__.Notify(97319)
 
-	// Check if an intent which is not owned by this transaction was written
-	// at or beneath the refresh timestamp.
-	if intent != nil && intent.Txn.ID != h.Txn.ID {
+	if intent != nil && func() bool {
+		__antithesis_instrumentation__.Notify(97333)
+		return intent.Txn.ID != h.Txn.ID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(97334)
 		return result.Result{}, roachpb.NewRefreshFailedError(roachpb.RefreshFailedError_REASON_INTENT,
 			intent.Key, intent.Txn.WriteTimestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(97335)
 	}
+	__antithesis_instrumentation__.Notify(97320)
 
 	return result.Result{}, nil
 }

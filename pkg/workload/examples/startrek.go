@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package examples
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
@@ -34,14 +26,16 @@ var startrekMeta = workload.Meta{
 	Description:  `Star Trek models episodes and quotes from the tv show`,
 	Version:      `1.0.0`,
 	PublicFacing: true,
-	New:          func() workload.Generator { return startrek{} },
+	New:          func() workload.Generator { __antithesis_instrumentation__.Notify(694059); return startrek{} },
 }
 
-// Meta implements the Generator interface.
-func (startrek) Meta() workload.Meta { return startrekMeta }
+func (startrek) Meta() workload.Meta {
+	__antithesis_instrumentation__.Notify(694060)
+	return startrekMeta
+}
 
-// Tables implements the Generator interface.
 func (startrek) Tables() []workload.Table {
+	__antithesis_instrumentation__.Notify(694061)
 	return []workload.Table{
 		{
 			Name:   `episodes`,
@@ -49,7 +43,10 @@ func (startrek) Tables() []workload.Table {
 			InitialRows: workload.TypedTuples(
 				len(startrekEpisodes),
 				episodesTypes,
-				func(rowIdx int) []interface{} { return startrekEpisodes[rowIdx] },
+				func(rowIdx int) []interface{} {
+					__antithesis_instrumentation__.Notify(694062)
+					return startrekEpisodes[rowIdx]
+				},
 			),
 		},
 		{
@@ -58,7 +55,10 @@ func (startrek) Tables() []workload.Table {
 			InitialRows: workload.TypedTuples(
 				len(startrekQuotes),
 				quotesTypes,
-				func(rowIdx int) []interface{} { return startrekQuotes[rowIdx] },
+				func(rowIdx int) []interface{} {
+					__antithesis_instrumentation__.Notify(694063)
+					return startrekQuotes[rowIdx]
+				},
 			),
 		},
 	}
@@ -72,7 +72,6 @@ var episodesTypes = []*types.T{
 	types.Float,
 }
 
-// The data that follows was derived from the 'startrek' fortune cookie file.
 var startrekEpisodes = [...][]interface{}{
 	{1, 1, 1, `The Man Trap`, 1531.1},
 	{2, 1, 2, `Charlie X`, 1533.6},

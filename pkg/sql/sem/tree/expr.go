@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -25,51 +17,23 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Expr represents an expression.
 type Expr interface {
 	fmt.Stringer
 	NodeFormatter
-	// Walk recursively walks all children using WalkExpr. If any children are changed, it returns a
-	// copy of this node updated to point to the new children. Otherwise the receiver is returned.
-	// For childless (leaf) Exprs, its implementation is empty.
+
 	Walk(Visitor) Expr
-	// TypeCheck transforms the Expr into a well-typed TypedExpr, which further permits
-	// evaluation and type introspection, or an error if the expression cannot be well-typed.
-	// When type checking is complete, if no error was reported, the expression and all
-	// sub-expressions will be guaranteed to be well-typed, meaning that the method effectively
-	// maps the Expr tree into a TypedExpr tree.
-	//
-	// The semaCtx parameter defines the context in which to perform type checking.
-	// The desired parameter hints the desired type that the method's caller wants from
-	// the resulting TypedExpr. It is not valid to call TypeCheck with a nil desired
-	// type. Instead, call it with wildcard type types.Any if no specific type is
-	// desired. This restriction is also true of most methods and functions related
-	// to type checking.
+
 	TypeCheck(ctx context.Context, semaCtx *SemaContext, desired *types.T) (TypedExpr, error)
 }
 
-// TypedExpr represents a well-typed expression.
 type TypedExpr interface {
 	Expr
-	// Eval evaluates an SQL expression. Expression evaluation is a
-	// mostly straightforward walk over the parse tree. The only
-	// significant complexity is the handling of types and implicit
-	// conversions. See binOps and cmpOps for more details. Note that
-	// expression evaluation returns an error if certain node types are
-	// encountered: Placeholder, VarName (and related UnqualifiedStar,
-	// UnresolvedName and AllColumnsSelector) or Subquery. These nodes
-	// should be replaced prior to expression evaluation by an
-	// appropriate WalkExpr. For example, Placeholder should be replaced
-	// by the argument passed from the client.
+
 	Eval(*EvalContext) (Datum, error)
-	// ResolvedType provides the type of the TypedExpr, which is the type of Datum
-	// that the TypedExpr will return when evaluated.
+
 	ResolvedType() *types.T
 }
 
-// VariableExpr is an Expr that may change per row. It is used to
-// signal the evaluation/simplification machinery that the underlying
-// Expr is not constant.
 type VariableExpr interface {
 	Expr
 	Variable()
@@ -82,8 +46,6 @@ var _ VariableExpr = &UnresolvedName{}
 var _ VariableExpr = &AllColumnsSelector{}
 var _ VariableExpr = &ColumnItem{}
 
-// operatorExpr is used to identify expression types that involve operators;
-// used by exprStrWithParen.
 type operatorExpr interface {
 	Expr
 	operatorExpr()
@@ -100,7 +62,6 @@ var _ operatorExpr = &ComparisonExpr{}
 var _ operatorExpr = &RangeCond{}
 var _ operatorExpr = &IsOfTypeExpr{}
 
-// Operator is used to identify Operators; used in sql.y.
 type Operator interface {
 	Operator()
 }
@@ -109,9 +70,6 @@ var _ Operator = (*UnaryOperator)(nil)
 var _ Operator = (*treebin.BinaryOperator)(nil)
 var _ Operator = (*treecmp.ComparisonOperator)(nil)
 
-// SubqueryExpr is an interface used to identify an expression as a subquery.
-// It is implemented by both tree.Subquery and optbuilder.subquery, and is
-// used in TypeCheck.
 type SubqueryExpr interface {
 	Expr
 	SubqueryExpr()
@@ -119,295 +77,321 @@ type SubqueryExpr interface {
 
 var _ SubqueryExpr = &Subquery{}
 
-// exprFmtWithParen is a variant of Format() which adds a set of outer parens
-// if the expression involves an operator. It is used internally when the
-// expression is part of another expression and we know it is preceded or
-// followed by an operator.
 func exprFmtWithParen(ctx *FmtCtx, e Expr) {
+	__antithesis_instrumentation__.Notify(609333)
 	if _, ok := e.(operatorExpr); ok {
+		__antithesis_instrumentation__.Notify(609334)
 		ctx.WriteByte('(')
 		ctx.FormatNode(e)
 		ctx.WriteByte(')')
 	} else {
+		__antithesis_instrumentation__.Notify(609335)
 		ctx.FormatNode(e)
 	}
 }
 
-// typeAnnotation is an embeddable struct to provide a TypedExpr with a dynamic
-// type annotation.
 type typeAnnotation struct {
 	typ *types.T
 }
 
 func (ta typeAnnotation) ResolvedType() *types.T {
+	__antithesis_instrumentation__.Notify(609336)
 	ta.assertTyped()
 	return ta.typ
 }
 
 func (ta typeAnnotation) assertTyped() {
+	__antithesis_instrumentation__.Notify(609337)
 	if ta.typ == nil {
+		__antithesis_instrumentation__.Notify(609338)
 		panic(errors.AssertionFailedf(
 			"ReturnType called on TypedExpr with empty typeAnnotation. " +
 				"Was the underlying Expr type-checked before asserting a type of TypedExpr?"))
+	} else {
+		__antithesis_instrumentation__.Notify(609339)
 	}
 }
 
-// AndExpr represents an AND expression.
 type AndExpr struct {
 	Left, Right Expr
 
 	typeAnnotation
 }
 
-func (*AndExpr) operatorExpr() {}
+func (*AndExpr) operatorExpr() { __antithesis_instrumentation__.Notify(609340) }
 
 func binExprFmtWithParen(ctx *FmtCtx, e1 Expr, op string, e2 Expr, pad bool) {
+	__antithesis_instrumentation__.Notify(609341)
 	exprFmtWithParen(ctx, e1)
 	if pad {
+		__antithesis_instrumentation__.Notify(609344)
 		ctx.WriteByte(' ')
+	} else {
+		__antithesis_instrumentation__.Notify(609345)
 	}
+	__antithesis_instrumentation__.Notify(609342)
 	ctx.WriteString(op)
 	if pad {
+		__antithesis_instrumentation__.Notify(609346)
 		ctx.WriteByte(' ')
+	} else {
+		__antithesis_instrumentation__.Notify(609347)
 	}
+	__antithesis_instrumentation__.Notify(609343)
 	exprFmtWithParen(ctx, e2)
 }
 
 func binExprFmtWithParenAndSubOp(ctx *FmtCtx, e1 Expr, subOp, op string, e2 Expr) {
+	__antithesis_instrumentation__.Notify(609348)
 	exprFmtWithParen(ctx, e1)
 	ctx.WriteByte(' ')
 	if subOp != "" {
+		__antithesis_instrumentation__.Notify(609350)
 		ctx.WriteString(subOp)
 		ctx.WriteByte(' ')
+	} else {
+		__antithesis_instrumentation__.Notify(609351)
 	}
+	__antithesis_instrumentation__.Notify(609349)
 	ctx.WriteString(op)
 	ctx.WriteByte(' ')
 	exprFmtWithParen(ctx, e2)
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AndExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609352)
 	binExprFmtWithParen(ctx, node.Left, "AND", node.Right, true)
 }
 
-// NewTypedAndExpr returns a new AndExpr that is verified to be well-typed.
 func NewTypedAndExpr(left, right TypedExpr) *AndExpr {
+	__antithesis_instrumentation__.Notify(609353)
 	node := &AndExpr{Left: left, Right: right}
 	node.typ = types.Bool
 	return node
 }
 
-// TypedLeft returns the AndExpr's left expression as a TypedExpr.
 func (node *AndExpr) TypedLeft() TypedExpr {
+	__antithesis_instrumentation__.Notify(609354)
 	return node.Left.(TypedExpr)
 }
 
-// TypedRight returns the AndExpr's right expression as a TypedExpr.
 func (node *AndExpr) TypedRight() TypedExpr {
+	__antithesis_instrumentation__.Notify(609355)
 	return node.Right.(TypedExpr)
 }
 
-// OrExpr represents an OR expression.
 type OrExpr struct {
 	Left, Right Expr
 
 	typeAnnotation
 }
 
-func (*OrExpr) operatorExpr() {}
+func (*OrExpr) operatorExpr() { __antithesis_instrumentation__.Notify(609356) }
 
-// Format implements the NodeFormatter interface.
 func (node *OrExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609357)
 	binExprFmtWithParen(ctx, node.Left, "OR", node.Right, true)
 }
 
-// NewTypedOrExpr returns a new OrExpr that is verified to be well-typed.
 func NewTypedOrExpr(left, right TypedExpr) *OrExpr {
+	__antithesis_instrumentation__.Notify(609358)
 	node := &OrExpr{Left: left, Right: right}
 	node.typ = types.Bool
 	return node
 }
 
-// TypedLeft returns the OrExpr's left expression as a TypedExpr.
 func (node *OrExpr) TypedLeft() TypedExpr {
+	__antithesis_instrumentation__.Notify(609359)
 	return node.Left.(TypedExpr)
 }
 
-// TypedRight returns the OrExpr's right expression as a TypedExpr.
 func (node *OrExpr) TypedRight() TypedExpr {
+	__antithesis_instrumentation__.Notify(609360)
 	return node.Right.(TypedExpr)
 }
 
-// NotExpr represents a NOT expression.
 type NotExpr struct {
 	Expr Expr
 
 	typeAnnotation
 }
 
-func (*NotExpr) operatorExpr() {}
+func (*NotExpr) operatorExpr() { __antithesis_instrumentation__.Notify(609361) }
 
-// Format implements the NodeFormatter interface.
 func (node *NotExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609362)
 	ctx.WriteString("NOT ")
 	exprFmtWithParen(ctx, node.Expr)
 }
 
-// NewTypedNotExpr returns a new NotExpr that is verified to be well-typed.
 func NewTypedNotExpr(expr TypedExpr) *NotExpr {
+	__antithesis_instrumentation__.Notify(609363)
 	node := &NotExpr{Expr: expr}
 	node.typ = types.Bool
 	return node
 }
 
-// TypedInnerExpr returns the NotExpr's inner expression as a TypedExpr.
 func (node *NotExpr) TypedInnerExpr() TypedExpr {
+	__antithesis_instrumentation__.Notify(609364)
 	return node.Expr.(TypedExpr)
 }
 
-// IsNullExpr represents an IS NULL expression. This is equivalent to IS NOT
-// DISTINCT FROM NULL, except when the input is a tuple.
 type IsNullExpr struct {
 	Expr Expr
 
 	typeAnnotation
 }
 
-func (*IsNullExpr) operatorExpr() {}
+func (*IsNullExpr) operatorExpr() { __antithesis_instrumentation__.Notify(609365) }
 
-// Format implements the NodeFormatter interface.
 func (node *IsNullExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609366)
 	exprFmtWithParen(ctx, node.Expr)
 	ctx.WriteString(" IS NULL")
 }
 
-// NewTypedIsNullExpr returns a new IsNullExpr that is verified to be
-// well-typed.
 func NewTypedIsNullExpr(expr TypedExpr) *IsNullExpr {
+	__antithesis_instrumentation__.Notify(609367)
 	node := &IsNullExpr{Expr: expr}
 	node.typ = types.Bool
 	return node
 }
 
-// TypedInnerExpr returns the IsNullExpr's inner expression as a TypedExpr.
 func (node *IsNullExpr) TypedInnerExpr() TypedExpr {
+	__antithesis_instrumentation__.Notify(609368)
 	return node.Expr.(TypedExpr)
 }
 
-// IsNotNullExpr represents an IS NOT NULL expression. This is equivalent to IS
-// DISTINCT FROM NULL, except when the input is a tuple.
 type IsNotNullExpr struct {
 	Expr Expr
 
 	typeAnnotation
 }
 
-func (*IsNotNullExpr) operatorExpr() {}
+func (*IsNotNullExpr) operatorExpr() { __antithesis_instrumentation__.Notify(609369) }
 
-// Format implements the NodeFormatter interface.
 func (node *IsNotNullExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609370)
 	exprFmtWithParen(ctx, node.Expr)
 	ctx.WriteString(" IS NOT NULL")
 }
 
-// NewTypedIsNotNullExpr returns a new IsNotNullExpr that is verified to be
-// well-typed.
 func NewTypedIsNotNullExpr(expr TypedExpr) *IsNotNullExpr {
+	__antithesis_instrumentation__.Notify(609371)
 	node := &IsNotNullExpr{Expr: expr}
 	node.typ = types.Bool
 	return node
 }
 
-// TypedInnerExpr returns the IsNotNullExpr's inner expression as a TypedExpr.
 func (node *IsNotNullExpr) TypedInnerExpr() TypedExpr {
+	__antithesis_instrumentation__.Notify(609372)
 	return node.Expr.(TypedExpr)
 }
 
-// ParenExpr represents a parenthesized expression.
 type ParenExpr struct {
 	Expr Expr
 
 	typeAnnotation
 }
 
-// Format implements the NodeFormatter interface.
 func (node *ParenExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609373)
 	ctx.WriteByte('(')
 	ctx.FormatNode(node.Expr)
 	ctx.WriteByte(')')
 }
 
-// TypedInnerExpr returns the ParenExpr's inner expression as a TypedExpr.
 func (node *ParenExpr) TypedInnerExpr() TypedExpr {
+	__antithesis_instrumentation__.Notify(609374)
 	return node.Expr.(TypedExpr)
 }
 
-// StripParens strips any parentheses surrounding an expression and
-// returns the inner expression. For instance:
-//   1   -> 1
-//  (1)  -> 1
-// ((1)) -> 1
 func StripParens(expr Expr) Expr {
+	__antithesis_instrumentation__.Notify(609375)
 	if p, ok := expr.(*ParenExpr); ok {
+		__antithesis_instrumentation__.Notify(609377)
 		return StripParens(p.Expr)
+	} else {
+		__antithesis_instrumentation__.Notify(609378)
 	}
+	__antithesis_instrumentation__.Notify(609376)
 	return expr
 }
 
-// ComparisonExpr represents a two-value comparison expression.
 type ComparisonExpr struct {
 	Operator    treecmp.ComparisonOperator
-	SubOperator treecmp.ComparisonOperator // used for array operators (when Operator is Any, Some, or All)
+	SubOperator treecmp.ComparisonOperator
 	Left, Right Expr
 
 	typeAnnotation
 	Fn *CmpOp
 }
 
-func (*ComparisonExpr) operatorExpr() {}
+func (*ComparisonExpr) operatorExpr() { __antithesis_instrumentation__.Notify(609379) }
 
-// Format implements the NodeFormatter interface.
 func (node *ComparisonExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609380)
 	opStr := node.Operator.String()
-	// IS and IS NOT are equivalent to IS NOT DISTINCT FROM and IS DISTINCT
-	// FROM, respectively, when the RHS is true or false. We prefer the less
-	// verbose IS and IS NOT in those cases, unless we are in FmtHideConstants
-	// mode. In that mode we need the more verbose form in order to be able
-	// to re-parse the statement when reporting telemetry.
+
 	if !ctx.HasFlags(FmtHideConstants) {
-		if node.Operator.Symbol == treecmp.IsDistinctFrom && (node.Right == DBoolTrue || node.Right == DBoolFalse) {
+		__antithesis_instrumentation__.Notify(609382)
+		if node.Operator.Symbol == treecmp.IsDistinctFrom && func() bool {
+			__antithesis_instrumentation__.Notify(609383)
+			return (node.Right == DBoolTrue || func() bool {
+				__antithesis_instrumentation__.Notify(609384)
+				return node.Right == DBoolFalse == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(609385)
 			opStr = "IS NOT"
-		} else if node.Operator.Symbol == treecmp.IsNotDistinctFrom && (node.Right == DBoolTrue || node.Right == DBoolFalse) {
-			opStr = "IS"
+		} else {
+			__antithesis_instrumentation__.Notify(609386)
+			if node.Operator.Symbol == treecmp.IsNotDistinctFrom && func() bool {
+				__antithesis_instrumentation__.Notify(609387)
+				return (node.Right == DBoolTrue || func() bool {
+					__antithesis_instrumentation__.Notify(609388)
+					return node.Right == DBoolFalse == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(609389)
+				opStr = "IS"
+			} else {
+				__antithesis_instrumentation__.Notify(609390)
+			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(609391)
 	}
+	__antithesis_instrumentation__.Notify(609381)
 	if node.Operator.Symbol.HasSubOperator() {
+		__antithesis_instrumentation__.Notify(609392)
 		binExprFmtWithParenAndSubOp(ctx, node.Left, node.SubOperator.String(), opStr, node.Right)
 	} else {
+		__antithesis_instrumentation__.Notify(609393)
 		binExprFmtWithParen(ctx, node.Left, opStr, node.Right, true)
 	}
 }
 
-// NewTypedComparisonExpr returns a new ComparisonExpr that is verified to be well-typed.
 func NewTypedComparisonExpr(op treecmp.ComparisonOperator, left, right TypedExpr) *ComparisonExpr {
+	__antithesis_instrumentation__.Notify(609394)
 	node := &ComparisonExpr{Operator: op, Left: left, Right: right}
 	node.typ = types.Bool
 	node.memoizeFn()
 	return node
 }
 
-// NewTypedComparisonExprWithSubOp returns a new ComparisonExpr that is verified to be well-typed.
 func NewTypedComparisonExprWithSubOp(
 	op, subOp treecmp.ComparisonOperator, left, right TypedExpr,
 ) *ComparisonExpr {
+	__antithesis_instrumentation__.Notify(609395)
 	node := &ComparisonExpr{Operator: op, SubOperator: subOp, Left: left, Right: right}
 	node.typ = types.Bool
 	node.memoizeFn()
 	return node
 }
 
-// NewTypedIndirectionExpr returns a new IndirectionExpr that is verified to be well-typed.
 func NewTypedIndirectionExpr(expr, index TypedExpr, typ *types.T) *IndirectionExpr {
+	__antithesis_instrumentation__.Notify(609396)
 	node := &IndirectionExpr{
 		Expr:        expr,
 		Indirection: ArraySubscripts{&ArraySubscript{Begin: index}},
@@ -416,8 +400,8 @@ func NewTypedIndirectionExpr(expr, index TypedExpr, typ *types.T) *IndirectionEx
 	return node
 }
 
-// NewTypedCollateExpr returns a new CollateExpr that is verified to be well-typed.
 func NewTypedCollateExpr(expr TypedExpr, locale string) *CollateExpr {
+	__antithesis_instrumentation__.Notify(609397)
 	node := &CollateExpr{
 		Expr:   expr,
 		Locale: locale,
@@ -426,8 +410,8 @@ func NewTypedCollateExpr(expr TypedExpr, locale string) *CollateExpr {
 	return node
 }
 
-// NewTypedArrayFlattenExpr returns a new ArrayFlattenExpr that is verified to be well-typed.
 func NewTypedArrayFlattenExpr(input Expr) *ArrayFlatten {
+	__antithesis_instrumentation__.Notify(609398)
 	inputTyp := input.(TypedExpr).ResolvedType()
 	node := &ArrayFlatten{
 		Subquery: input,
@@ -436,120 +420,134 @@ func NewTypedArrayFlattenExpr(input Expr) *ArrayFlatten {
 	return node
 }
 
-// NewTypedIfErrExpr returns a new IfErrExpr that is verified to be well-typed.
 func NewTypedIfErrExpr(cond, orElse, errCode TypedExpr) *IfErrExpr {
+	__antithesis_instrumentation__.Notify(609399)
 	node := &IfErrExpr{
 		Cond:    cond,
 		Else:    orElse,
 		ErrCode: errCode,
 	}
 	if orElse == nil {
+		__antithesis_instrumentation__.Notify(609401)
 		node.typ = types.Bool
 	} else {
+		__antithesis_instrumentation__.Notify(609402)
 		node.typ = cond.ResolvedType()
 	}
+	__antithesis_instrumentation__.Notify(609400)
 	return node
 }
 
 func (node *ComparisonExpr) memoizeFn() {
+	__antithesis_instrumentation__.Notify(609403)
 	fOp, fLeft, fRight, _, _ := FoldComparisonExpr(node.Operator, node.Left, node.Right)
 	leftRet, rightRet := fLeft.(TypedExpr).ResolvedType(), fRight.(TypedExpr).ResolvedType()
 	switch node.Operator.Symbol {
 	case treecmp.Any, treecmp.Some, treecmp.All:
-		// Array operators memoize the SubOperator's CmpOp.
+		__antithesis_instrumentation__.Notify(609406)
+
 		fOp, _, _, _, _ = FoldComparisonExpr(node.SubOperator, nil, nil)
-		// The right operand is either an array or a tuple/subquery.
+
 		switch rightRet.Family() {
 		case types.ArrayFamily:
-			// For example:
-			//   x = ANY(ARRAY[1,2])
+			__antithesis_instrumentation__.Notify(609408)
+
 			rightRet = rightRet.ArrayContents()
 		case types.TupleFamily:
-			// For example:
-			//   x = ANY(SELECT y FROM t)
-			//   x = ANY(1,2)
+			__antithesis_instrumentation__.Notify(609409)
+
 			if len(rightRet.TupleContents()) > 0 {
+				__antithesis_instrumentation__.Notify(609411)
 				rightRet = rightRet.TupleContents()[0]
 			} else {
+				__antithesis_instrumentation__.Notify(609412)
 				rightRet = leftRet
 			}
+		default:
+			__antithesis_instrumentation__.Notify(609410)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(609407)
 	}
+	__antithesis_instrumentation__.Notify(609404)
 
 	fn, ok := CmpOps[fOp.Symbol].LookupImpl(leftRet, rightRet)
 	if !ok {
+		__antithesis_instrumentation__.Notify(609413)
 		panic(errors.AssertionFailedf("lookup for ComparisonExpr %s's CmpOp failed",
 			AsStringWithFlags(node, FmtShowTypes)))
+	} else {
+		__antithesis_instrumentation__.Notify(609414)
 	}
+	__antithesis_instrumentation__.Notify(609405)
 	node.Fn = fn
 }
 
-// TypedLeft returns the ComparisonExpr's left expression as a TypedExpr.
 func (node *ComparisonExpr) TypedLeft() TypedExpr {
+	__antithesis_instrumentation__.Notify(609415)
 	return node.Left.(TypedExpr)
 }
 
-// TypedRight returns the ComparisonExpr's right expression as a TypedExpr.
 func (node *ComparisonExpr) TypedRight() TypedExpr {
+	__antithesis_instrumentation__.Notify(609416)
 	return node.Right.(TypedExpr)
 }
 
-// RangeCond represents a BETWEEN [SYMMETRIC] or a NOT BETWEEN [SYMMETRIC]
-// expression.
 type RangeCond struct {
 	Not       bool
 	Symmetric bool
 	Left      Expr
 	From, To  Expr
 
-	// Typed version of Left for the comparison with To (where it may be
-	// type-checked differently). After type-checking, Left is set to the typed
-	// version for the comparison with From, and leftTo is set to the typed
-	// version for the comparison with To.
 	leftTo TypedExpr
 
 	typeAnnotation
 }
 
-func (*RangeCond) operatorExpr() {}
+func (*RangeCond) operatorExpr() { __antithesis_instrumentation__.Notify(609417) }
 
-// Format implements the NodeFormatter interface.
 func (node *RangeCond) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609418)
 	notStr := " BETWEEN "
 	if node.Not {
+		__antithesis_instrumentation__.Notify(609421)
 		notStr = " NOT BETWEEN "
+	} else {
+		__antithesis_instrumentation__.Notify(609422)
 	}
+	__antithesis_instrumentation__.Notify(609419)
 	exprFmtWithParen(ctx, node.Left)
 	ctx.WriteString(notStr)
 	if node.Symmetric {
+		__antithesis_instrumentation__.Notify(609423)
 		ctx.WriteString("SYMMETRIC ")
+	} else {
+		__antithesis_instrumentation__.Notify(609424)
 	}
+	__antithesis_instrumentation__.Notify(609420)
 	binExprFmtWithParen(ctx, node.From, "AND", node.To, true)
 }
 
-// TypedLeftFrom returns the RangeCond's left expression as a TypedExpr, in the
-// context of a comparison with TypedFrom().
 func (node *RangeCond) TypedLeftFrom() TypedExpr {
+	__antithesis_instrumentation__.Notify(609425)
 	return node.Left.(TypedExpr)
 }
 
-// TypedFrom returns the RangeCond's from expression as a TypedExpr.
 func (node *RangeCond) TypedFrom() TypedExpr {
+	__antithesis_instrumentation__.Notify(609426)
 	return node.From.(TypedExpr)
 }
 
-// TypedLeftTo returns the RangeCond's left expression as a TypedExpr, in the
-// context of a comparison with TypedTo().
 func (node *RangeCond) TypedLeftTo() TypedExpr {
+	__antithesis_instrumentation__.Notify(609427)
 	return node.leftTo
 }
 
-// TypedTo returns the RangeCond's to expression as a TypedExpr.
 func (node *RangeCond) TypedTo() TypedExpr {
+	__antithesis_instrumentation__.Notify(609428)
 	return node.To.(TypedExpr)
 }
 
-// IsOfTypeExpr represents an IS {,NOT} OF (type_list) expression.
 type IsOfTypeExpr struct {
 	Not   bool
 	Expr  Expr
@@ -560,36 +558,47 @@ type IsOfTypeExpr struct {
 	typeAnnotation
 }
 
-func (*IsOfTypeExpr) operatorExpr() {}
+func (*IsOfTypeExpr) operatorExpr() { __antithesis_instrumentation__.Notify(609429) }
 
-// ResolvedTypes returns a slice of resolved types corresponding
-// to the Types slice of unresolved types. It may only be accessed
-// after typechecking.
 func (node *IsOfTypeExpr) ResolvedTypes() []*types.T {
+	__antithesis_instrumentation__.Notify(609430)
 	if node.resolvedTypes == nil {
+		__antithesis_instrumentation__.Notify(609432)
 		panic("ResolvedTypes called on an IsOfTypeExpr before typechecking")
+	} else {
+		__antithesis_instrumentation__.Notify(609433)
 	}
+	__antithesis_instrumentation__.Notify(609431)
 	return node.resolvedTypes
 }
 
-// Format implements the NodeFormatter interface.
 func (node *IsOfTypeExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609434)
 	exprFmtWithParen(ctx, node.Expr)
 	ctx.WriteString(" IS")
 	if node.Not {
+		__antithesis_instrumentation__.Notify(609437)
 		ctx.WriteString(" NOT")
+	} else {
+		__antithesis_instrumentation__.Notify(609438)
 	}
+	__antithesis_instrumentation__.Notify(609435)
 	ctx.WriteString(" OF (")
 	for i, t := range node.Types {
+		__antithesis_instrumentation__.Notify(609439)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(609441)
 			ctx.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(609442)
 		}
+		__antithesis_instrumentation__.Notify(609440)
 		ctx.FormatTypeReference(t)
 	}
+	__antithesis_instrumentation__.Notify(609436)
 	ctx.WriteByte(')')
 }
 
-// IfErrExpr represents an IFERROR expression.
 type IfErrExpr struct {
 	Cond    Expr
 	Else    Expr
@@ -598,26 +607,36 @@ type IfErrExpr struct {
 	typeAnnotation
 }
 
-// Format implements the NodeFormatter interface.
 func (node *IfErrExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609443)
 	if node.Else != nil {
+		__antithesis_instrumentation__.Notify(609447)
 		ctx.WriteString("IFERROR(")
 	} else {
+		__antithesis_instrumentation__.Notify(609448)
 		ctx.WriteString("ISERROR(")
 	}
+	__antithesis_instrumentation__.Notify(609444)
 	ctx.FormatNode(node.Cond)
 	if node.Else != nil {
+		__antithesis_instrumentation__.Notify(609449)
 		ctx.WriteString(", ")
 		ctx.FormatNode(node.Else)
+	} else {
+		__antithesis_instrumentation__.Notify(609450)
 	}
+	__antithesis_instrumentation__.Notify(609445)
 	if node.ErrCode != nil {
+		__antithesis_instrumentation__.Notify(609451)
 		ctx.WriteString(", ")
 		ctx.FormatNode(node.ErrCode)
+	} else {
+		__antithesis_instrumentation__.Notify(609452)
 	}
+	__antithesis_instrumentation__.Notify(609446)
 	ctx.WriteByte(')')
 }
 
-// IfExpr represents an IF expression.
 type IfExpr struct {
 	Cond Expr
 	True Expr
@@ -626,23 +645,23 @@ type IfExpr struct {
 	typeAnnotation
 }
 
-// TypedTrueExpr returns the IfExpr's True expression as a TypedExpr.
 func (node *IfExpr) TypedTrueExpr() TypedExpr {
+	__antithesis_instrumentation__.Notify(609453)
 	return node.True.(TypedExpr)
 }
 
-// TypedCondExpr returns the IfExpr's Cond expression as a TypedExpr.
 func (node *IfExpr) TypedCondExpr() TypedExpr {
+	__antithesis_instrumentation__.Notify(609454)
 	return node.Cond.(TypedExpr)
 }
 
-// TypedElseExpr returns the IfExpr's Else expression as a TypedExpr.
 func (node *IfExpr) TypedElseExpr() TypedExpr {
+	__antithesis_instrumentation__.Notify(609455)
 	return node.Else.(TypedExpr)
 }
 
-// Format implements the NodeFormatter interface.
 func (node *IfExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609456)
 	ctx.WriteString("IF(")
 	ctx.FormatNode(node.Cond)
 	ctx.WriteString(", ")
@@ -652,7 +671,6 @@ func (node *IfExpr) Format(ctx *FmtCtx) {
 	ctx.WriteByte(')')
 }
 
-// NullIfExpr represents a NULLIF expression.
 type NullIfExpr struct {
 	Expr1 Expr
 	Expr2 Expr
@@ -660,8 +678,8 @@ type NullIfExpr struct {
 	typeAnnotation
 }
 
-// Format implements the NodeFormatter interface.
 func (node *NullIfExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609457)
 	ctx.WriteString("NULLIF(")
 	ctx.FormatNode(node.Expr1)
 	ctx.WriteString(", ")
@@ -669,7 +687,6 @@ func (node *NullIfExpr) Format(ctx *FmtCtx) {
 	ctx.WriteByte(')')
 }
 
-// CoalesceExpr represents a COALESCE or IFNULL expression.
 type CoalesceExpr struct {
 	Name  string
 	Exprs Exprs
@@ -677,127 +694,140 @@ type CoalesceExpr struct {
 	typeAnnotation
 }
 
-// NewTypedCoalesceExpr returns a CoalesceExpr that is well-typed.
 func NewTypedCoalesceExpr(typedExprs TypedExprs, typ *types.T) *CoalesceExpr {
+	__antithesis_instrumentation__.Notify(609458)
 	c := &CoalesceExpr{
 		Name:  "COALESCE",
 		Exprs: make(Exprs, len(typedExprs)),
 	}
 	for i := range typedExprs {
+		__antithesis_instrumentation__.Notify(609460)
 		c.Exprs[i] = typedExprs[i]
 	}
+	__antithesis_instrumentation__.Notify(609459)
 	c.typ = typ
 	return c
 }
 
-// NewTypedArray returns an Array that is well-typed.
 func NewTypedArray(typedExprs TypedExprs, typ *types.T) *Array {
+	__antithesis_instrumentation__.Notify(609461)
 	c := &Array{
 		Exprs: make(Exprs, len(typedExprs)),
 	}
 	for i := range typedExprs {
+		__antithesis_instrumentation__.Notify(609463)
 		c.Exprs[i] = typedExprs[i]
 	}
+	__antithesis_instrumentation__.Notify(609462)
 	c.typ = typ
 	return c
 }
 
-// TypedExprAt returns the expression at the specified index as a TypedExpr.
 func (node *CoalesceExpr) TypedExprAt(idx int) TypedExpr {
+	__antithesis_instrumentation__.Notify(609464)
 	return node.Exprs[idx].(TypedExpr)
 }
 
-// Format implements the NodeFormatter interface.
 func (node *CoalesceExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609465)
 	ctx.WriteString(node.Name)
 	ctx.WriteByte('(')
 	ctx.FormatNode(&node.Exprs)
 	ctx.WriteByte(')')
 }
 
-// DefaultVal represents the DEFAULT expression.
 type DefaultVal struct{}
 
-// Format implements the NodeFormatter interface.
 func (node DefaultVal) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609466)
 	ctx.WriteString("DEFAULT")
 }
 
-// ResolvedType implements the TypedExpr interface.
-func (DefaultVal) ResolvedType() *types.T { return nil }
+func (DefaultVal) ResolvedType() *types.T { __antithesis_instrumentation__.Notify(609467); return nil }
 
-// PartitionMaxVal represents the MAXVALUE expression.
 type PartitionMaxVal struct{}
 
-// Format implements the NodeFormatter interface.
 func (node PartitionMaxVal) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609468)
 	ctx.WriteString("MAXVALUE")
 }
 
-// PartitionMinVal represents the MINVALUE expression.
 type PartitionMinVal struct{}
 
-// Format implements the NodeFormatter interface.
 func (node PartitionMinVal) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609469)
 	ctx.WriteString("MINVALUE")
 }
 
-// Placeholder represents a named placeholder.
 type Placeholder struct {
 	Idx PlaceholderIdx
 
 	typeAnnotation
 }
 
-// NewPlaceholder allocates a Placeholder.
 func NewPlaceholder(name string) (*Placeholder, error) {
+	__antithesis_instrumentation__.Notify(609470)
 	uval, err := strconv.ParseUint(name, 10, 64)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(609473)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(609474)
 	}
-	// The string is the number that follows $ which is a 1-based index ($1, $2,
-	// etc), while PlaceholderIdx is 0-based.
-	if uval == 0 || uval > MaxPlaceholderIdx+1 {
+	__antithesis_instrumentation__.Notify(609471)
+
+	if uval == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(609475)
+		return uval > MaxPlaceholderIdx+1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(609476)
 		return nil, pgerror.Newf(
 			pgcode.NumericValueOutOfRange,
 			"placeholder index must be between 1 and %d", MaxPlaceholderIdx+1,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(609477)
 	}
+	__antithesis_instrumentation__.Notify(609472)
 	return &Placeholder{Idx: PlaceholderIdx(uval - 1)}, nil
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Placeholder) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609478)
 	if ctx.placeholderFormat != nil {
+		__antithesis_instrumentation__.Notify(609480)
 		ctx.placeholderFormat(ctx, node)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(609481)
 	}
+	__antithesis_instrumentation__.Notify(609479)
 	ctx.Printf("$%d", node.Idx+1)
 }
 
-// ResolvedType implements the TypedExpr interface.
 func (node *Placeholder) ResolvedType() *types.T {
+	__antithesis_instrumentation__.Notify(609482)
 	if node.typ == nil {
+		__antithesis_instrumentation__.Notify(609484)
 		return types.Any
+	} else {
+		__antithesis_instrumentation__.Notify(609485)
 	}
+	__antithesis_instrumentation__.Notify(609483)
 	return node.typ
 }
 
-// Tuple represents a parenthesized list of expressions.
 type Tuple struct {
 	Exprs  Exprs
 	Labels []string
 
-	// Row indicates whether `ROW` was used in the input syntax. This is
-	// used solely to generate column names automatically, see
-	// col_name.go.
 	Row bool
 
 	typ *types.T
 }
 
-// NewTypedTuple returns a new Tuple that is verified to be well-typed.
 func NewTypedTuple(typ *types.T, typedExprs Exprs) *Tuple {
+	__antithesis_instrumentation__.Notify(609486)
 	return &Tuple{
 		Exprs:  typedExprs,
 		Labels: typ.TupleLabels(),
@@ -805,192 +835,222 @@ func NewTypedTuple(typ *types.T, typedExprs Exprs) *Tuple {
 	}
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Tuple) Format(ctx *FmtCtx) {
-	// If there are labels, extra parentheses are required surrounding the
-	// expression.
+	__antithesis_instrumentation__.Notify(609487)
+
 	if len(node.Labels) > 0 {
+		__antithesis_instrumentation__.Notify(609490)
 		ctx.WriteByte('(')
+	} else {
+		__antithesis_instrumentation__.Notify(609491)
 	}
+	__antithesis_instrumentation__.Notify(609488)
 	ctx.WriteByte('(')
 	ctx.FormatNode(&node.Exprs)
 	if len(node.Exprs) == 1 {
-		// Ensure the pretty-printed 1-value tuple is not ambiguous with
-		// the equivalent value enclosed in grouping parentheses.
+		__antithesis_instrumentation__.Notify(609492)
+
 		ctx.WriteByte(',')
+	} else {
+		__antithesis_instrumentation__.Notify(609493)
 	}
+	__antithesis_instrumentation__.Notify(609489)
 	ctx.WriteByte(')')
 	if len(node.Labels) > 0 {
+		__antithesis_instrumentation__.Notify(609494)
 		ctx.WriteString(" AS ")
 		comma := ""
 		for i := range node.Labels {
+			__antithesis_instrumentation__.Notify(609496)
 			ctx.WriteString(comma)
 			ctx.FormatNode((*Name)(&node.Labels[i]))
 			comma = ", "
 		}
+		__antithesis_instrumentation__.Notify(609495)
 		ctx.WriteByte(')')
+	} else {
+		__antithesis_instrumentation__.Notify(609497)
 	}
 }
 
-// ResolvedType implements the TypedExpr interface.
 func (node *Tuple) ResolvedType() *types.T {
+	__antithesis_instrumentation__.Notify(609498)
 	return node.typ
 }
 
-// Array represents an array constructor.
 type Array struct {
 	Exprs Exprs
 
 	typeAnnotation
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Array) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609499)
 	ctx.WriteString("ARRAY[")
 	ctx.FormatNode(&node.Exprs)
 	ctx.WriteByte(']')
-	// If the array has a type, add an annotation. Don't add it if the type is
-	// UNKNOWN[], since that's not a valid annotation.
-	if ctx.HasFlags(FmtParsable) && node.typ != nil {
+
+	if ctx.HasFlags(FmtParsable) && func() bool {
+		__antithesis_instrumentation__.Notify(609500)
+		return node.typ != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(609501)
 		if node.typ.ArrayContents().Family() != types.UnknownFamily {
+			__antithesis_instrumentation__.Notify(609502)
 			ctx.WriteString(":::")
 			ctx.FormatTypeReference(node.typ)
+		} else {
+			__antithesis_instrumentation__.Notify(609503)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(609504)
 	}
 }
 
-// ArrayFlatten represents a subquery array constructor.
 type ArrayFlatten struct {
 	Subquery Expr
 
 	typeAnnotation
 }
 
-// Format implements the NodeFormatter interface.
 func (node *ArrayFlatten) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609505)
 	ctx.WriteString("ARRAY ")
 	exprFmtWithParen(ctx, node.Subquery)
 	if ctx.HasFlags(FmtParsable) {
+		__antithesis_instrumentation__.Notify(609506)
 		if t, ok := node.Subquery.(*DTuple); ok {
+			__antithesis_instrumentation__.Notify(609507)
 			if len(t.D) == 0 {
+				__antithesis_instrumentation__.Notify(609508)
 				ctx.WriteString(":::")
 				ctx.Buffer.WriteString(node.typ.SQLString())
+			} else {
+				__antithesis_instrumentation__.Notify(609509)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(609510)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(609511)
 	}
 }
 
-// Exprs represents a list of value expressions. It's not a valid expression
-// because it's not parenthesized.
 type Exprs []Expr
 
-// Format implements the NodeFormatter interface.
 func (node *Exprs) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609512)
 	for i, n := range *node {
+		__antithesis_instrumentation__.Notify(609513)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(609515)
 			ctx.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(609516)
 		}
+		__antithesis_instrumentation__.Notify(609514)
 		ctx.FormatNode(n)
 	}
 }
 
-// TypedExprs represents a list of well-typed value expressions. It's not a valid expression
-// because it's not parenthesized.
 type TypedExprs []TypedExpr
 
 func (node *TypedExprs) String() string {
+	__antithesis_instrumentation__.Notify(609517)
 	var prefix string
 	var buf bytes.Buffer
 	for _, n := range *node {
+		__antithesis_instrumentation__.Notify(609519)
 		fmt.Fprintf(&buf, "%s%s", prefix, n)
 		prefix = ", "
 	}
+	__antithesis_instrumentation__.Notify(609518)
 	return buf.String()
 }
 
-// Subquery represents a subquery.
 type Subquery struct {
 	Select SelectStatement
 	Exists bool
 
-	// Idx is a query-unique index for the subquery.
-	// Subqueries are 1-indexed to ensure that the default
-	// value 0 can be used to detect uninitialized subqueries.
 	Idx int
 
 	typeAnnotation
 }
 
-// SetType forces the type annotation on the Subquery node.
 func (node *Subquery) SetType(t *types.T) {
+	__antithesis_instrumentation__.Notify(609520)
 	node.typ = t
 }
 
-// Variable implements the VariableExpr interface.
-func (*Subquery) Variable() {}
+func (*Subquery) Variable() { __antithesis_instrumentation__.Notify(609521) }
 
-// SubqueryExpr implements the SubqueryExpr interface.
-func (*Subquery) SubqueryExpr() {}
+func (*Subquery) SubqueryExpr() { __antithesis_instrumentation__.Notify(609522) }
 
-// Format implements the NodeFormatter interface.
 func (node *Subquery) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609523)
 	if ctx.HasFlags(FmtSymbolicSubqueries) {
+		__antithesis_instrumentation__.Notify(609524)
 		ctx.Printf("@S%d", node.Idx)
 	} else {
-		// Ensure that type printing is disabled during the recursion, as
-		// the type annotations are not available in subqueries.
+		__antithesis_instrumentation__.Notify(609525)
+
 		ctx.WithFlags(ctx.flags & ^FmtShowTypes, func() {
+			__antithesis_instrumentation__.Notify(609526)
 			if node.Exists {
+				__antithesis_instrumentation__.Notify(609528)
 				ctx.WriteString("EXISTS ")
+			} else {
+				__antithesis_instrumentation__.Notify(609529)
 			}
+			__antithesis_instrumentation__.Notify(609527)
 			if node.Select == nil {
-				// If the subquery is generated by the optimizer, we
-				// don't have an actual statement.
+				__antithesis_instrumentation__.Notify(609530)
+
 				ctx.WriteString("<unknown>")
 			} else {
+				__antithesis_instrumentation__.Notify(609531)
 				ctx.FormatNode(node.Select)
 			}
 		})
 	}
 }
 
-// TypedDummy is a dummy expression that represents a dummy value with
-// a specified type. It can be used in situations where TypedExprs of a
-// particular type are required for semantic analysis.
 type TypedDummy struct {
 	Typ *types.T
 }
 
 func (node *TypedDummy) String() string {
+	__antithesis_instrumentation__.Notify(609532)
 	return AsString(node)
 }
 
-// Format implements the NodeFormatter interface.
 func (node *TypedDummy) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609533)
 	ctx.WriteString("dummyvalof(")
 	ctx.FormatTypeReference(node.Typ)
 	ctx.WriteString(")")
 }
 
-// ResolvedType implements the TypedExpr interface.
 func (node *TypedDummy) ResolvedType() *types.T {
+	__antithesis_instrumentation__.Notify(609534)
 	return node.Typ
 }
 
-// TypeCheck implements the Expr interface.
 func (node *TypedDummy) TypeCheck(context.Context, *SemaContext, *types.T) (TypedExpr, error) {
+	__antithesis_instrumentation__.Notify(609535)
 	return node, nil
 }
 
-// Walk implements the Expr interface.
-func (node *TypedDummy) Walk(Visitor) Expr { return node }
+func (node *TypedDummy) Walk(Visitor) Expr {
+	__antithesis_instrumentation__.Notify(609536)
+	return node
+}
 
-// Eval implements the TypedExpr interface.
 func (node *TypedDummy) Eval(*EvalContext) (Datum, error) {
+	__antithesis_instrumentation__.Notify(609537)
 	return nil, errors.AssertionFailedf("should not eval typed dummy")
 }
 
-// binaryOpPrio follows the precedence order in the grammar. Used for pretty-printing.
 var binaryOpPrio = [...]int{
 	treebin.Pow:  1,
 	treebin.Mult: 2, treebin.Div: 2, treebin.FloorDiv: 2, treebin.Mod: 2,
@@ -1002,8 +1062,6 @@ var binaryOpPrio = [...]int{
 	treebin.Concat: 8, treebin.JSONFetchVal: 8, treebin.JSONFetchText: 8, treebin.JSONFetchValPath: 8, treebin.JSONFetchTextPath: 8,
 }
 
-// binaryOpFullyAssoc indicates whether an operator is fully associative.
-// Reminder: an op R is fully associative if (a R b) R c == a R (b R c)
 var binaryOpFullyAssoc = [...]bool{
 	treebin.Pow:  false,
 	treebin.Mult: true, treebin.Div: false, treebin.FloorDiv: false, treebin.Mod: false,
@@ -1015,7 +1073,6 @@ var binaryOpFullyAssoc = [...]bool{
 	treebin.Concat: true, treebin.JSONFetchVal: false, treebin.JSONFetchText: false, treebin.JSONFetchValPath: false, treebin.JSONFetchTextPath: false,
 }
 
-// BinaryExpr represents a binary value expression.
 type BinaryExpr struct {
 	Operator    treebin.BinaryOperator
 	Left, Right Expr
@@ -1024,53 +1081,56 @@ type BinaryExpr struct {
 	Fn *BinOp
 }
 
-// TypedLeft returns the BinaryExpr's left expression as a TypedExpr.
 func (node *BinaryExpr) TypedLeft() TypedExpr {
+	__antithesis_instrumentation__.Notify(609538)
 	return node.Left.(TypedExpr)
 }
 
-// TypedRight returns the BinaryExpr's right expression as a TypedExpr.
 func (node *BinaryExpr) TypedRight() TypedExpr {
+	__antithesis_instrumentation__.Notify(609539)
 	return node.Right.(TypedExpr)
 }
 
-// ResolvedBinOp returns the resolved binary op overload; can only be called
-// after Resolve (which happens during TypeCheck).
 func (node *BinaryExpr) ResolvedBinOp() *BinOp {
+	__antithesis_instrumentation__.Notify(609540)
 	return node.Fn
 }
 
-// NewTypedBinaryExpr returns a new BinaryExpr that is well-typed.
 func NewTypedBinaryExpr(
 	op treebin.BinaryOperator, left, right TypedExpr, typ *types.T,
 ) *BinaryExpr {
+	__antithesis_instrumentation__.Notify(609541)
 	node := &BinaryExpr{Operator: op, Left: left, Right: right}
 	node.typ = typ
 	node.memoizeFn()
 	return node
 }
 
-func (*BinaryExpr) operatorExpr() {}
+func (*BinaryExpr) operatorExpr() { __antithesis_instrumentation__.Notify(609542) }
 
 func (node *BinaryExpr) memoizeFn() {
+	__antithesis_instrumentation__.Notify(609543)
 	leftRet, rightRet := node.Left.(TypedExpr).ResolvedType(), node.Right.(TypedExpr).ResolvedType()
 	fn, ok := BinOps[node.Operator.Symbol].lookupImpl(leftRet, rightRet)
 	if !ok {
+		__antithesis_instrumentation__.Notify(609545)
 		panic(errors.AssertionFailedf("lookup for BinaryExpr %s's BinOp failed",
 			AsStringWithFlags(node, FmtShowTypes)))
+	} else {
+		__antithesis_instrumentation__.Notify(609546)
 	}
+	__antithesis_instrumentation__.Notify(609544)
 	node.Fn = fn
 }
 
-// newBinExprIfValidOverload constructs a new BinaryExpr if and only
-// if the pair of arguments have a valid implementation for the given
-// BinaryOperator.
 func newBinExprIfValidOverload(
 	op treebin.BinaryOperator, left TypedExpr, right TypedExpr,
 ) *BinaryExpr {
+	__antithesis_instrumentation__.Notify(609547)
 	leftRet, rightRet := left.ResolvedType(), right.ResolvedType()
 	fn, ok := BinOps[op.Symbol].lookupImpl(leftRet, rightRet)
 	if ok {
+		__antithesis_instrumentation__.Notify(609549)
 		expr := &BinaryExpr{
 			Operator: op,
 			Left:     left,
@@ -1079,41 +1139,45 @@ func newBinExprIfValidOverload(
 		}
 		expr.typ = returnTypeToFixedType(fn.returnType(), []TypedExpr{left, right})
 		return expr
+	} else {
+		__antithesis_instrumentation__.Notify(609550)
 	}
+	__antithesis_instrumentation__.Notify(609548)
 	return nil
 }
 
-// Format implements the NodeFormatter interface.
 func (node *BinaryExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609551)
 	binExprFmtWithParen(ctx, node.Left, node.Operator.String(), node.Right, node.Operator.Symbol.IsPadded())
 }
 
-// UnaryOperator represents a unary operator used in a UnaryExpr.
 type UnaryOperator struct {
 	Symbol UnaryOperatorSymbol
-	// IsExplicitOperator is true if OPERATOR(symbol) is used.
+
 	IsExplicitOperator bool
 }
 
-// MakeUnaryOperator creates a UnaryOperator given a symbol.
 func MakeUnaryOperator(symbol UnaryOperatorSymbol) UnaryOperator {
+	__antithesis_instrumentation__.Notify(609552)
 	return UnaryOperator{Symbol: symbol}
 }
 
 func (o UnaryOperator) String() string {
+	__antithesis_instrumentation__.Notify(609553)
 	if o.IsExplicitOperator {
+		__antithesis_instrumentation__.Notify(609555)
 		return fmt.Sprintf("OPERATOR(%s)", o.Symbol.String())
+	} else {
+		__antithesis_instrumentation__.Notify(609556)
 	}
+	__antithesis_instrumentation__.Notify(609554)
 	return o.Symbol.String()
 }
 
-// Operator implements tree.Operator.
-func (UnaryOperator) Operator() {}
+func (UnaryOperator) Operator() { __antithesis_instrumentation__.Notify(609557) }
 
-// UnaryOperatorSymbol represents a unary operator.
 type UnaryOperatorSymbol uint8
 
-// UnaryExpr.Operator.Symbol
 const (
 	UnaryMinus UnaryOperatorSymbol = iota
 	UnaryComplement
@@ -1135,13 +1199,17 @@ var unaryOpName = [...]string{
 }
 
 func (i UnaryOperatorSymbol) String() string {
+	__antithesis_instrumentation__.Notify(609558)
 	if i > UnaryOperatorSymbol(len(unaryOpName)-1) {
+		__antithesis_instrumentation__.Notify(609560)
 		return fmt.Sprintf("UnaryOp(%d)", i)
+	} else {
+		__antithesis_instrumentation__.Notify(609561)
 	}
+	__antithesis_instrumentation__.Notify(609559)
 	return unaryOpName[i]
 }
 
-// UnaryExpr represents a unary value expression.
 type UnaryExpr struct {
 	Operator UnaryOperator
 	Expr     Expr
@@ -1150,57 +1218,73 @@ type UnaryExpr struct {
 	fn *UnaryOp
 }
 
-func (*UnaryExpr) operatorExpr() {}
+func (*UnaryExpr) operatorExpr() { __antithesis_instrumentation__.Notify(609562) }
 
-// Format implements the NodeFormatter interface.
 func (node *UnaryExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609563)
 	ctx.WriteString(node.Operator.String())
 	e := node.Expr
 	_, isOp := e.(operatorExpr)
 	_, isDatum := e.(Datum)
 	_, isConstant := e.(Constant)
-	if isOp || (node.Operator.Symbol == UnaryMinus && (isDatum || isConstant)) {
+	if isOp || func() bool {
+		__antithesis_instrumentation__.Notify(609564)
+		return (node.Operator.Symbol == UnaryMinus && func() bool {
+			__antithesis_instrumentation__.Notify(609565)
+			return (isDatum || func() bool {
+				__antithesis_instrumentation__.Notify(609566)
+				return isConstant == true
+			}() == true) == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(609567)
 		ctx.WriteByte('(')
 		ctx.FormatNode(e)
 		ctx.WriteByte(')')
 	} else {
+		__antithesis_instrumentation__.Notify(609568)
 		ctx.FormatNode(e)
 	}
 }
 
-// TypedInnerExpr returns the UnaryExpr's inner expression as a TypedExpr.
 func (node *UnaryExpr) TypedInnerExpr() TypedExpr {
+	__antithesis_instrumentation__.Notify(609569)
 	return node.Expr.(TypedExpr)
 }
 
-// NewTypedUnaryExpr returns a new UnaryExpr that is well-typed.
 func NewTypedUnaryExpr(op UnaryOperator, expr TypedExpr, typ *types.T) *UnaryExpr {
+	__antithesis_instrumentation__.Notify(609570)
 	node := &UnaryExpr{Operator: op, Expr: expr}
 	node.typ = typ
 	innerType := expr.ResolvedType()
 	for _, o := range UnaryOps[op.Symbol] {
+		__antithesis_instrumentation__.Notify(609572)
 		o := o.(*UnaryOp)
-		if innerType.Equivalent(o.Typ) && node.typ.Equivalent(o.ReturnType) {
+		if innerType.Equivalent(o.Typ) && func() bool {
+			__antithesis_instrumentation__.Notify(609573)
+			return node.typ.Equivalent(o.ReturnType) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(609574)
 			node.fn = o
 			return node
+		} else {
+			__antithesis_instrumentation__.Notify(609575)
 		}
 	}
+	__antithesis_instrumentation__.Notify(609571)
 	panic(errors.AssertionFailedf("invalid TypedExpr with unary op %d: %s", op.Symbol, expr))
 }
 
-// FuncExpr represents a function call.
 type FuncExpr struct {
 	Func  ResolvableFunctionReference
 	Type  funcType
 	Exprs Exprs
-	// Filter is used for filters on aggregates: SUM(k) FILTER (WHERE k > 0)
+
 	Filter    Expr
 	WindowDef *WindowDef
 
-	// AggType is used to specify the type of aggregation.
 	AggType AggType
-	// OrderBy is used for aggregations which specify an order. This same field
-	// is used for any type of aggregation.
+
 	OrderBy OrderBy
 
 	typeAnnotation
@@ -1208,7 +1292,6 @@ type FuncExpr struct {
 	fn      *Overload
 }
 
-// NewTypedFuncExpr returns a FuncExpr that is already well-typed and resolved.
 func NewTypedFuncExpr(
 	ref ResolvableFunctionReference,
 	aggQualifier funcType,
@@ -1219,6 +1302,7 @@ func NewTypedFuncExpr(
 	props *FunctionProperties,
 	overload *Overload,
 ) *FuncExpr {
+	__antithesis_instrumentation__.Notify(609576)
 	f := &FuncExpr{
 		Func:           ref,
 		Type:           aggQualifier,
@@ -1230,41 +1314,58 @@ func NewTypedFuncExpr(
 		fnProps:        props,
 	}
 	for i, e := range exprs {
+		__antithesis_instrumentation__.Notify(609578)
 		f.Exprs[i] = e
 	}
+	__antithesis_instrumentation__.Notify(609577)
 	return f
 }
 
-// ResolvedOverload returns the builtin definition; can only be called after
-// Resolve (which happens during TypeCheck).
 func (node *FuncExpr) ResolvedOverload() *Overload {
+	__antithesis_instrumentation__.Notify(609579)
 	return node.fn
 }
 
-// IsGeneratorApplication returns true iff the function applied is a generator (SRF).
 func (node *FuncExpr) IsGeneratorApplication() bool {
-	return node.fn != nil && (node.fn.Generator != nil || node.fn.GeneratorWithExprs != nil)
+	__antithesis_instrumentation__.Notify(609580)
+	return node.fn != nil && func() bool {
+		__antithesis_instrumentation__.Notify(609581)
+		return (node.fn.Generator != nil || func() bool {
+			__antithesis_instrumentation__.Notify(609582)
+			return node.fn.GeneratorWithExprs != nil == true
+		}() == true) == true
+	}() == true
 }
 
-// IsWindowFunctionApplication returns true iff the function is being applied as a window function.
 func (node *FuncExpr) IsWindowFunctionApplication() bool {
+	__antithesis_instrumentation__.Notify(609583)
 	return node.WindowDef != nil
 }
 
-// IsDistSQLBlocklist returns whether the function is not supported by DistSQL.
 func (node *FuncExpr) IsDistSQLBlocklist() bool {
-	return (node.fn != nil && node.fn.DistsqlBlocklist) || (node.fnProps != nil && node.fnProps.DistsqlBlocklist)
+	__antithesis_instrumentation__.Notify(609584)
+	return (node.fn != nil && func() bool {
+		__antithesis_instrumentation__.Notify(609585)
+		return node.fn.DistsqlBlocklist == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(609586)
+		return (node.fnProps != nil && func() bool {
+			__antithesis_instrumentation__.Notify(609587)
+			return node.fnProps.DistsqlBlocklist == true
+		}() == true) == true
+	}() == true
 }
 
-// CanHandleNulls returns whether or not the function can handle null
-// arguments.
 func (node *FuncExpr) CanHandleNulls() bool {
-	return node.fnProps != nil && node.fnProps.NullableArgs
+	__antithesis_instrumentation__.Notify(609588)
+	return node.fnProps != nil && func() bool {
+		__antithesis_instrumentation__.Notify(609589)
+		return node.fnProps.NullableArgs == true
+	}() == true
 }
 
 type funcType int
 
-// FuncExpr.Type
 const (
 	_ funcType = iota
 	DistinctFuncType
@@ -1276,75 +1377,106 @@ var funcTypeName = [...]string{
 	AllFuncType:      "ALL",
 }
 
-// AggType specifies the type of aggregation.
 type AggType int
 
-// FuncExpr.AggType
 const (
 	_ AggType = iota
-	// GeneralAgg is used for general-purpose aggregate functions.
-	// array_agg(col1 ORDER BY col2)
+
 	GeneralAgg
-	// OrderedSetAgg is used for ordered-set aggregate functions.
-	// percentile_disc(fraction) WITHIN GROUP (ORDER BY col1)
+
 	OrderedSetAgg
 )
 
-// Format implements the NodeFormatter interface.
 func (node *FuncExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609590)
 	var typ string
 	if node.Type != 0 {
+		__antithesis_instrumentation__.Notify(609597)
 		typ = funcTypeName[node.Type] + " "
+	} else {
+		__antithesis_instrumentation__.Notify(609598)
 	}
+	__antithesis_instrumentation__.Notify(609591)
 
-	// We need to remove name anonymization/redaction for the function name in
-	// particular. Do this by overriding the flags.
-	// TODO(thomas): when function names are correctly typed as FunctionDefinition
-	// remove FmtMarkRedactionNode from being overridden.
 	ctx.WithFlags(ctx.flags&^FmtAnonymize&^FmtMarkRedactionNode, func() {
+		__antithesis_instrumentation__.Notify(609599)
 		ctx.FormatNode(&node.Func)
 	})
+	__antithesis_instrumentation__.Notify(609592)
 
 	ctx.WriteByte('(')
 	ctx.WriteString(typ)
 	ctx.FormatNode(&node.Exprs)
-	if node.AggType == GeneralAgg && len(node.OrderBy) > 0 {
+	if node.AggType == GeneralAgg && func() bool {
+		__antithesis_instrumentation__.Notify(609600)
+		return len(node.OrderBy) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(609601)
 		ctx.WriteByte(' ')
 		ctx.FormatNode(&node.OrderBy)
+	} else {
+		__antithesis_instrumentation__.Notify(609602)
 	}
+	__antithesis_instrumentation__.Notify(609593)
 	ctx.WriteByte(')')
-	if ctx.HasFlags(FmtParsable) && node.typ != nil {
+	if ctx.HasFlags(FmtParsable) && func() bool {
+		__antithesis_instrumentation__.Notify(609603)
+		return node.typ != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(609604)
 		if node.fnProps.AmbiguousReturnType {
-			// There's no type annotation available for tuples.
-			// TODO(jordan,knz): clean this up. AmbiguousReturnType should be set only
-			// when we should and can put an annotation here. #28579
+			__antithesis_instrumentation__.Notify(609605)
+
 			if node.typ.Family() != types.TupleFamily {
+				__antithesis_instrumentation__.Notify(609606)
 				ctx.WriteString(":::")
 				ctx.Buffer.WriteString(node.typ.SQLString())
+			} else {
+				__antithesis_instrumentation__.Notify(609607)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(609608)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(609609)
 	}
-	if node.AggType == OrderedSetAgg && len(node.OrderBy) > 0 {
+	__antithesis_instrumentation__.Notify(609594)
+	if node.AggType == OrderedSetAgg && func() bool {
+		__antithesis_instrumentation__.Notify(609610)
+		return len(node.OrderBy) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(609611)
 		ctx.WriteString(" WITHIN GROUP (")
 		ctx.FormatNode(&node.OrderBy)
 		ctx.WriteString(")")
+	} else {
+		__antithesis_instrumentation__.Notify(609612)
 	}
+	__antithesis_instrumentation__.Notify(609595)
 	if node.Filter != nil {
+		__antithesis_instrumentation__.Notify(609613)
 		ctx.WriteString(" FILTER (WHERE ")
 		ctx.FormatNode(node.Filter)
 		ctx.WriteString(")")
+	} else {
+		__antithesis_instrumentation__.Notify(609614)
 	}
+	__antithesis_instrumentation__.Notify(609596)
 	if window := node.WindowDef; window != nil {
+		__antithesis_instrumentation__.Notify(609615)
 		ctx.WriteString(" OVER ")
 		if window.Name != "" {
+			__antithesis_instrumentation__.Notify(609616)
 			ctx.FormatNode(&window.Name)
 		} else {
+			__antithesis_instrumentation__.Notify(609617)
 			ctx.FormatNode(window)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(609618)
 	}
 }
 
-// CaseExpr represents a CASE expression.
 type CaseExpr struct {
 	Expr  Expr
 	Whens []*When
@@ -1353,42 +1485,51 @@ type CaseExpr struct {
 	typeAnnotation
 }
 
-// Format implements the NodeFormatter interface.
 func (node *CaseExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609619)
 	ctx.WriteString("CASE ")
 	if node.Expr != nil {
+		__antithesis_instrumentation__.Notify(609623)
 		ctx.FormatNode(node.Expr)
 		ctx.WriteByte(' ')
+	} else {
+		__antithesis_instrumentation__.Notify(609624)
 	}
+	__antithesis_instrumentation__.Notify(609620)
 	for _, when := range node.Whens {
+		__antithesis_instrumentation__.Notify(609625)
 		ctx.FormatNode(when)
 		ctx.WriteByte(' ')
 	}
+	__antithesis_instrumentation__.Notify(609621)
 	if node.Else != nil {
+		__antithesis_instrumentation__.Notify(609626)
 		ctx.WriteString("ELSE ")
 		ctx.FormatNode(node.Else)
 		ctx.WriteByte(' ')
+	} else {
+		__antithesis_instrumentation__.Notify(609627)
 	}
+	__antithesis_instrumentation__.Notify(609622)
 	ctx.WriteString("END")
 }
 
-// NewTypedCaseExpr returns a new CaseExpr that is verified to be well-typed.
 func NewTypedCaseExpr(
 	expr TypedExpr, whens []*When, elseStmt TypedExpr, typ *types.T,
 ) (*CaseExpr, error) {
+	__antithesis_instrumentation__.Notify(609628)
 	node := &CaseExpr{Expr: expr, Whens: whens, Else: elseStmt}
 	node.typ = typ
 	return node, nil
 }
 
-// When represents a WHEN sub-expression.
 type When struct {
 	Cond Expr
 	Val  Expr
 }
 
-// Format implements the NodeFormatter interface.
 func (node *When) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609629)
 	ctx.WriteString("WHEN ")
 	ctx.FormatNode(node.Cond)
 	ctx.WriteString(" THEN ")
@@ -1397,14 +1538,12 @@ func (node *When) Format(ctx *FmtCtx) {
 
 type castSyntaxMode int
 
-// These constants separate the syntax X::Y from CAST(X AS Y).
 const (
 	CastExplicit castSyntaxMode = iota
 	CastShort
 	CastPrepend
 )
 
-// CastExpr represents a CAST(expr AS type) expression.
 type CastExpr struct {
 	Expr Expr
 	Type ResolvableTypeReference
@@ -1413,73 +1552,82 @@ type CastExpr struct {
 	SyntaxMode castSyntaxMode
 }
 
-// Format implements the NodeFormatter interface.
 func (node *CastExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609630)
 	switch node.SyntaxMode {
 	case CastPrepend:
-		// This is a special case for things like INTERVAL '1s'. These only work
-		// with string constants; if the underlying expression was changed, we fall
-		// back to the short syntax.
+		__antithesis_instrumentation__.Notify(609631)
+
 		if _, ok := node.Expr.(*StrVal); ok {
+			__antithesis_instrumentation__.Notify(609635)
 			ctx.FormatTypeReference(node.Type)
 			ctx.WriteByte(' ')
-			// We need to replace this with a quoted string constants in certain
-			// cases because the grammar requires a string constant rather than an
-			// expression for this form of casting in the typed_literal rule
+
 			if ctx.HasFlags(FmtHideConstants) {
+				__antithesis_instrumentation__.Notify(609637)
 				ctx.WriteString("'_'")
 			} else {
+				__antithesis_instrumentation__.Notify(609638)
 				ctx.FormatNode(node.Expr)
 			}
+			__antithesis_instrumentation__.Notify(609636)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(609639)
 		}
+		__antithesis_instrumentation__.Notify(609632)
 		fallthrough
 	case CastShort:
+		__antithesis_instrumentation__.Notify(609633)
 		exprFmtWithParen(ctx, node.Expr)
 		ctx.WriteString("::")
 		ctx.FormatTypeReference(node.Type)
 	default:
+		__antithesis_instrumentation__.Notify(609634)
 		ctx.WriteString("CAST(")
 		ctx.FormatNode(node.Expr)
 		ctx.WriteString(" AS ")
-		if typ, ok := GetStaticallyKnownType(node.Type); ok && typ.Family() == types.CollatedStringFamily {
-			// Need to write closing parentheses before COLLATE clause, so create
-			// equivalent string type without the locale.
+		if typ, ok := GetStaticallyKnownType(node.Type); ok && func() bool {
+			__antithesis_instrumentation__.Notify(609640)
+			return typ.Family() == types.CollatedStringFamily == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(609641)
+
 			strTyp := types.MakeScalar(
 				types.StringFamily,
 				typ.Oid(),
 				typ.Precision(),
 				typ.Width(),
-				"", /* locale */
+				"",
 			)
 			ctx.WriteString(strTyp.SQLString())
 			ctx.WriteString(") COLLATE ")
 			lex.EncodeLocaleName(&ctx.Buffer, typ.Locale())
 		} else {
+			__antithesis_instrumentation__.Notify(609642)
 			ctx.FormatTypeReference(node.Type)
 			ctx.WriteByte(')')
 		}
 	}
 }
 
-// NewTypedCastExpr returns a new CastExpr that is verified to be well-typed.
 func NewTypedCastExpr(expr TypedExpr, typ *types.T) *CastExpr {
+	__antithesis_instrumentation__.Notify(609643)
 	node := &CastExpr{Expr: expr, Type: typ, SyntaxMode: CastShort}
 	node.typ = typ
 	return node
 }
 
-// ArraySubscripts represents a sequence of one or more array subscripts.
 type ArraySubscripts []*ArraySubscript
 
-// Format implements the NodeFormatter interface.
 func (a *ArraySubscripts) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609644)
 	for _, s := range *a {
+		__antithesis_instrumentation__.Notify(609645)
 		ctx.FormatNode(s)
 	}
 }
 
-// IndirectionExpr represents a subscript expression.
 type IndirectionExpr struct {
 	Expr        Expr
 	Indirection ArraySubscripts
@@ -1487,37 +1635,50 @@ type IndirectionExpr struct {
 	typeAnnotation
 }
 
-// Format implements the NodeFormatter interface.
 func (node *IndirectionExpr) Format(ctx *FmtCtx) {
-	// If the sub expression is a CastExpr or an Array that has a type,
-	// we need to wrap it in a ParenExpr, otherwise the indirection
-	// will get interpreted as part of the type.
-	// Ex. ('{a}'::_typ)[1] vs. '{a}'::_typ[1].
-	// Ex. (ARRAY['a'::typ]:::typ[])[1] vs. ARRAY['a'::typ]:::typ[][1].
+	__antithesis_instrumentation__.Notify(609646)
+
 	var annotateArray bool
-	if arr, ok := node.Expr.(*Array); ctx.HasFlags(FmtParsable) && ok && arr.typ != nil {
+	if arr, ok := node.Expr.(*Array); ctx.HasFlags(FmtParsable) && func() bool {
+		__antithesis_instrumentation__.Notify(609649)
+		return ok == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(609650)
+		return arr.typ != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(609651)
 		if arr.typ.ArrayContents().Family() != types.UnknownFamily {
+			__antithesis_instrumentation__.Notify(609652)
 			annotateArray = true
+		} else {
+			__antithesis_instrumentation__.Notify(609653)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(609654)
 	}
-	if _, isCast := node.Expr.(*CastExpr); isCast || annotateArray {
+	__antithesis_instrumentation__.Notify(609647)
+	if _, isCast := node.Expr.(*CastExpr); isCast || func() bool {
+		__antithesis_instrumentation__.Notify(609655)
+		return annotateArray == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(609656)
 		withParens := ParenExpr{Expr: node.Expr}
 		exprFmtWithParen(ctx, &withParens)
 	} else {
+		__antithesis_instrumentation__.Notify(609657)
 		exprFmtWithParen(ctx, node.Expr)
 	}
+	__antithesis_instrumentation__.Notify(609648)
 	ctx.FormatNode(&node.Indirection)
 }
 
 type annotateSyntaxMode int
 
-// These constants separate the syntax X:::Y from ANNOTATE_TYPE(X, Y)
 const (
 	AnnotateExplicit annotateSyntaxMode = iota
 	AnnotateShort
 )
 
-// AnnotateTypeExpr represents a ANNOTATE_TYPE(expr, type) expression.
 type AnnotateTypeExpr struct {
 	Expr Expr
 	Type ResolvableTypeReference
@@ -1525,15 +1686,17 @@ type AnnotateTypeExpr struct {
 	SyntaxMode annotateSyntaxMode
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AnnotateTypeExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609658)
 	switch node.SyntaxMode {
 	case AnnotateShort:
+		__antithesis_instrumentation__.Notify(609659)
 		exprFmtWithParen(ctx, node.Expr)
 		ctx.WriteString(":::")
 		ctx.FormatTypeReference(node.Type)
 
 	default:
+		__antithesis_instrumentation__.Notify(609660)
 		ctx.WriteString("ANNOTATE_TYPE(")
 		ctx.FormatNode(node.Expr)
 		ctx.WriteString(", ")
@@ -1542,12 +1705,11 @@ func (node *AnnotateTypeExpr) Format(ctx *FmtCtx) {
 	}
 }
 
-// TypedInnerExpr returns the AnnotateTypeExpr's inner expression as a TypedExpr.
 func (node *AnnotateTypeExpr) TypedInnerExpr() TypedExpr {
+	__antithesis_instrumentation__.Notify(609661)
 	return node.Expr.(TypedExpr)
 }
 
-// CollateExpr represents an (expr COLLATE locale) expression.
 type CollateExpr struct {
 	Expr   Expr
 	Locale string
@@ -1555,57 +1717,43 @@ type CollateExpr struct {
 	typeAnnotation
 }
 
-// Format implements the NodeFormatter interface.
 func (node *CollateExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609662)
 	exprFmtWithParen(ctx, node.Expr)
 	ctx.WriteString(" COLLATE ")
 	lex.EncodeLocaleName(&ctx.Buffer, node.Locale)
 }
 
-// TupleStar represents (E).* expressions.
-// It is meant to evaporate during star expansion.
 type TupleStar struct {
 	Expr Expr
 }
 
-// NormalizeVarName implements the VarName interface.
-func (node *TupleStar) NormalizeVarName() (VarName, error) { return node, nil }
+func (node *TupleStar) NormalizeVarName() (VarName, error) {
+	__antithesis_instrumentation__.Notify(609663)
+	return node, nil
+}
 
-// Format implements the NodeFormatter interface.
 func (node *TupleStar) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609664)
 	ctx.WriteByte('(')
 	ctx.FormatNode(node.Expr)
 	ctx.WriteString(").*")
 }
 
-// ColumnAccessExpr represents (E).x expressions. Specifically, it
-// allows accessing the column(s) from a Set Returning Function.
 type ColumnAccessExpr struct {
 	Expr Expr
 
-	// ByIndex, if set, indicates that the access is using a numeric
-	// column reference and ColIndex below is already set.
 	ByIndex bool
 
-	// ColName is the name of the column to access. Empty if ByIndex is
-	// set.
 	ColName Name
 
-	// ColIndex indicates the index of the column in the tuple. This is
-	// either:
-	// - set during type checking based on the label in ColName if
-	//   ByIndex is false,
-	// - or checked for validity during type checking if ByIndex is true.
-	// The first column in the tuple is at index 0. The input
-	// syntax (E).@N populates N-1 in this field.
 	ColIndex int
 
 	typeAnnotation
 }
 
-// NewTypedColumnAccessExpr creates a pre-typed ColumnAccessExpr.
-// A by-index ColumnAccessExpr can be specified by passing an empty string as colName.
 func NewTypedColumnAccessExpr(expr TypedExpr, colName Name, colIdx int) *ColumnAccessExpr {
+	__antithesis_instrumentation__.Notify(609665)
 	return &ColumnAccessExpr{
 		Expr:           expr,
 		ColName:        colName,
@@ -1615,83 +1763,289 @@ func NewTypedColumnAccessExpr(expr TypedExpr, colName Name, colIdx int) *ColumnA
 	}
 }
 
-// Format implements the NodeFormatter interface.
 func (node *ColumnAccessExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609666)
 	ctx.WriteByte('(')
 	ctx.FormatNode(node.Expr)
 	ctx.WriteString(").")
 	if node.ByIndex {
+		__antithesis_instrumentation__.Notify(609667)
 		fmt.Fprintf(ctx, "@%d", node.ColIndex+1)
 	} else {
+		__antithesis_instrumentation__.Notify(609668)
 		ctx.FormatNode(&node.ColName)
 	}
 }
 
-func (node *AliasedTableExpr) String() string { return AsString(node) }
-func (node *ParenTableExpr) String() string   { return AsString(node) }
-func (node *JoinTableExpr) String() string    { return AsString(node) }
-func (node *AndExpr) String() string          { return AsString(node) }
-func (node *Array) String() string            { return AsString(node) }
-func (node *BinaryExpr) String() string       { return AsString(node) }
-func (node *CaseExpr) String() string         { return AsString(node) }
-func (node *CastExpr) String() string         { return AsString(node) }
-func (node *CoalesceExpr) String() string     { return AsString(node) }
-func (node *ColumnAccessExpr) String() string { return AsString(node) }
-func (node *CollateExpr) String() string      { return AsString(node) }
-func (node *ComparisonExpr) String() string   { return AsString(node) }
-func (node *Datums) String() string           { return AsString(node) }
-func (node *DBitArray) String() string        { return AsString(node) }
-func (node *DBool) String() string            { return AsString(node) }
-func (node *DBytes) String() string           { return AsString(node) }
-func (node *DDate) String() string            { return AsString(node) }
-func (node *DTime) String() string            { return AsString(node) }
-func (node *DTimeTZ) String() string          { return AsString(node) }
-func (node *DDecimal) String() string         { return AsString(node) }
-func (node *DFloat) String() string           { return AsString(node) }
-func (node *DBox2D) String() string           { return AsString(node) }
-func (node *DGeography) String() string       { return AsString(node) }
-func (node *DGeometry) String() string        { return AsString(node) }
-func (node *DInt) String() string             { return AsString(node) }
-func (node *DInterval) String() string        { return AsString(node) }
-func (node *DJSON) String() string            { return AsString(node) }
-func (node *DUuid) String() string            { return AsString(node) }
-func (node *DIPAddr) String() string          { return AsString(node) }
-func (node *DString) String() string          { return AsString(node) }
-func (node *DCollatedString) String() string  { return AsString(node) }
-func (node *DTimestamp) String() string       { return AsString(node) }
-func (node *DTimestampTZ) String() string     { return AsString(node) }
-func (node *DTuple) String() string           { return AsString(node) }
-func (node *DArray) String() string           { return AsString(node) }
-func (node *DOid) String() string             { return AsString(node) }
-func (node *DOidWrapper) String() string      { return AsString(node) }
-func (node *DVoid) String() string            { return AsString(node) }
-func (node *Exprs) String() string            { return AsString(node) }
-func (node *ArrayFlatten) String() string     { return AsString(node) }
-func (node *FuncExpr) String() string         { return AsString(node) }
-func (node *IfExpr) String() string           { return AsString(node) }
-func (node *IfErrExpr) String() string        { return AsString(node) }
-func (node *IndexedVar) String() string       { return AsString(node) }
-func (node *IndirectionExpr) String() string  { return AsString(node) }
-func (node *IsOfTypeExpr) String() string     { return AsString(node) }
-func (node *Name) String() string             { return AsString(node) }
-func (node *UnrestrictedName) String() string { return AsString(node) }
-func (node *NotExpr) String() string          { return AsString(node) }
-func (node *IsNullExpr) String() string       { return AsString(node) }
-func (node *IsNotNullExpr) String() string    { return AsString(node) }
-func (node *NullIfExpr) String() string       { return AsString(node) }
-func (node *NumVal) String() string           { return AsString(node) }
-func (node *OrExpr) String() string           { return AsString(node) }
-func (node *ParenExpr) String() string        { return AsString(node) }
-func (node *RangeCond) String() string        { return AsString(node) }
-func (node *StrVal) String() string           { return AsString(node) }
-func (node *Subquery) String() string         { return AsString(node) }
-func (node *Tuple) String() string            { return AsString(node) }
-func (node *TupleStar) String() string        { return AsString(node) }
-func (node *AnnotateTypeExpr) String() string { return AsString(node) }
-func (node *UnaryExpr) String() string        { return AsString(node) }
-func (node DefaultVal) String() string        { return AsString(node) }
-func (node PartitionMaxVal) String() string   { return AsString(node) }
-func (node PartitionMinVal) String() string   { return AsString(node) }
-func (node *Placeholder) String() string      { return AsString(node) }
-func (node dNull) String() string             { return AsString(node) }
-func (list *NameList) String() string         { return AsString(list) }
+func (node *AliasedTableExpr) String() string {
+	__antithesis_instrumentation__.Notify(609669)
+	return AsString(node)
+}
+func (node *ParenTableExpr) String() string {
+	__antithesis_instrumentation__.Notify(609670)
+	return AsString(node)
+}
+func (node *JoinTableExpr) String() string {
+	__antithesis_instrumentation__.Notify(609671)
+	return AsString(node)
+}
+func (node *AndExpr) String() string {
+	__antithesis_instrumentation__.Notify(609672)
+	return AsString(node)
+}
+func (node *Array) String() string {
+	__antithesis_instrumentation__.Notify(609673)
+	return AsString(node)
+}
+func (node *BinaryExpr) String() string {
+	__antithesis_instrumentation__.Notify(609674)
+	return AsString(node)
+}
+func (node *CaseExpr) String() string {
+	__antithesis_instrumentation__.Notify(609675)
+	return AsString(node)
+}
+func (node *CastExpr) String() string {
+	__antithesis_instrumentation__.Notify(609676)
+	return AsString(node)
+}
+func (node *CoalesceExpr) String() string {
+	__antithesis_instrumentation__.Notify(609677)
+	return AsString(node)
+}
+func (node *ColumnAccessExpr) String() string {
+	__antithesis_instrumentation__.Notify(609678)
+	return AsString(node)
+}
+func (node *CollateExpr) String() string {
+	__antithesis_instrumentation__.Notify(609679)
+	return AsString(node)
+}
+func (node *ComparisonExpr) String() string {
+	__antithesis_instrumentation__.Notify(609680)
+	return AsString(node)
+}
+func (node *Datums) String() string {
+	__antithesis_instrumentation__.Notify(609681)
+	return AsString(node)
+}
+func (node *DBitArray) String() string {
+	__antithesis_instrumentation__.Notify(609682)
+	return AsString(node)
+}
+func (node *DBool) String() string {
+	__antithesis_instrumentation__.Notify(609683)
+	return AsString(node)
+}
+func (node *DBytes) String() string {
+	__antithesis_instrumentation__.Notify(609684)
+	return AsString(node)
+}
+func (node *DDate) String() string {
+	__antithesis_instrumentation__.Notify(609685)
+	return AsString(node)
+}
+func (node *DTime) String() string {
+	__antithesis_instrumentation__.Notify(609686)
+	return AsString(node)
+}
+func (node *DTimeTZ) String() string {
+	__antithesis_instrumentation__.Notify(609687)
+	return AsString(node)
+}
+func (node *DDecimal) String() string {
+	__antithesis_instrumentation__.Notify(609688)
+	return AsString(node)
+}
+func (node *DFloat) String() string {
+	__antithesis_instrumentation__.Notify(609689)
+	return AsString(node)
+}
+func (node *DBox2D) String() string {
+	__antithesis_instrumentation__.Notify(609690)
+	return AsString(node)
+}
+func (node *DGeography) String() string {
+	__antithesis_instrumentation__.Notify(609691)
+	return AsString(node)
+}
+func (node *DGeometry) String() string {
+	__antithesis_instrumentation__.Notify(609692)
+	return AsString(node)
+}
+func (node *DInt) String() string {
+	__antithesis_instrumentation__.Notify(609693)
+	return AsString(node)
+}
+func (node *DInterval) String() string {
+	__antithesis_instrumentation__.Notify(609694)
+	return AsString(node)
+}
+func (node *DJSON) String() string {
+	__antithesis_instrumentation__.Notify(609695)
+	return AsString(node)
+}
+func (node *DUuid) String() string {
+	__antithesis_instrumentation__.Notify(609696)
+	return AsString(node)
+}
+func (node *DIPAddr) String() string {
+	__antithesis_instrumentation__.Notify(609697)
+	return AsString(node)
+}
+func (node *DString) String() string {
+	__antithesis_instrumentation__.Notify(609698)
+	return AsString(node)
+}
+func (node *DCollatedString) String() string {
+	__antithesis_instrumentation__.Notify(609699)
+	return AsString(node)
+}
+func (node *DTimestamp) String() string {
+	__antithesis_instrumentation__.Notify(609700)
+	return AsString(node)
+}
+func (node *DTimestampTZ) String() string {
+	__antithesis_instrumentation__.Notify(609701)
+	return AsString(node)
+}
+func (node *DTuple) String() string {
+	__antithesis_instrumentation__.Notify(609702)
+	return AsString(node)
+}
+func (node *DArray) String() string {
+	__antithesis_instrumentation__.Notify(609703)
+	return AsString(node)
+}
+func (node *DOid) String() string {
+	__antithesis_instrumentation__.Notify(609704)
+	return AsString(node)
+}
+func (node *DOidWrapper) String() string {
+	__antithesis_instrumentation__.Notify(609705)
+	return AsString(node)
+}
+func (node *DVoid) String() string {
+	__antithesis_instrumentation__.Notify(609706)
+	return AsString(node)
+}
+func (node *Exprs) String() string {
+	__antithesis_instrumentation__.Notify(609707)
+	return AsString(node)
+}
+func (node *ArrayFlatten) String() string {
+	__antithesis_instrumentation__.Notify(609708)
+	return AsString(node)
+}
+func (node *FuncExpr) String() string {
+	__antithesis_instrumentation__.Notify(609709)
+	return AsString(node)
+}
+func (node *IfExpr) String() string {
+	__antithesis_instrumentation__.Notify(609710)
+	return AsString(node)
+}
+func (node *IfErrExpr) String() string {
+	__antithesis_instrumentation__.Notify(609711)
+	return AsString(node)
+}
+func (node *IndexedVar) String() string {
+	__antithesis_instrumentation__.Notify(609712)
+	return AsString(node)
+}
+func (node *IndirectionExpr) String() string {
+	__antithesis_instrumentation__.Notify(609713)
+	return AsString(node)
+}
+func (node *IsOfTypeExpr) String() string {
+	__antithesis_instrumentation__.Notify(609714)
+	return AsString(node)
+}
+func (node *Name) String() string {
+	__antithesis_instrumentation__.Notify(609715)
+	return AsString(node)
+}
+func (node *UnrestrictedName) String() string {
+	__antithesis_instrumentation__.Notify(609716)
+	return AsString(node)
+}
+func (node *NotExpr) String() string {
+	__antithesis_instrumentation__.Notify(609717)
+	return AsString(node)
+}
+func (node *IsNullExpr) String() string {
+	__antithesis_instrumentation__.Notify(609718)
+	return AsString(node)
+}
+func (node *IsNotNullExpr) String() string {
+	__antithesis_instrumentation__.Notify(609719)
+	return AsString(node)
+}
+func (node *NullIfExpr) String() string {
+	__antithesis_instrumentation__.Notify(609720)
+	return AsString(node)
+}
+func (node *NumVal) String() string {
+	__antithesis_instrumentation__.Notify(609721)
+	return AsString(node)
+}
+func (node *OrExpr) String() string {
+	__antithesis_instrumentation__.Notify(609722)
+	return AsString(node)
+}
+func (node *ParenExpr) String() string {
+	__antithesis_instrumentation__.Notify(609723)
+	return AsString(node)
+}
+func (node *RangeCond) String() string {
+	__antithesis_instrumentation__.Notify(609724)
+	return AsString(node)
+}
+func (node *StrVal) String() string {
+	__antithesis_instrumentation__.Notify(609725)
+	return AsString(node)
+}
+func (node *Subquery) String() string {
+	__antithesis_instrumentation__.Notify(609726)
+	return AsString(node)
+}
+func (node *Tuple) String() string {
+	__antithesis_instrumentation__.Notify(609727)
+	return AsString(node)
+}
+func (node *TupleStar) String() string {
+	__antithesis_instrumentation__.Notify(609728)
+	return AsString(node)
+}
+func (node *AnnotateTypeExpr) String() string {
+	__antithesis_instrumentation__.Notify(609729)
+	return AsString(node)
+}
+func (node *UnaryExpr) String() string {
+	__antithesis_instrumentation__.Notify(609730)
+	return AsString(node)
+}
+func (node DefaultVal) String() string {
+	__antithesis_instrumentation__.Notify(609731)
+	return AsString(node)
+}
+func (node PartitionMaxVal) String() string {
+	__antithesis_instrumentation__.Notify(609732)
+	return AsString(node)
+}
+func (node PartitionMinVal) String() string {
+	__antithesis_instrumentation__.Notify(609733)
+	return AsString(node)
+}
+func (node *Placeholder) String() string {
+	__antithesis_instrumentation__.Notify(609734)
+	return AsString(node)
+}
+func (node dNull) String() string {
+	__antithesis_instrumentation__.Notify(609735)
+	return AsString(node)
+}
+func (list *NameList) String() string {
+	__antithesis_instrumentation__.Notify(609736)
+	return AsString(list)
+}

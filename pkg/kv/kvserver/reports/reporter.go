@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package reports
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,8 +32,6 @@ import (
 	"github.com/cockroachdb/logtags"
 )
 
-// ReporterInterval is the interval between two generations of the reports.
-// When set to zero - disables the report generation.
 var ReporterInterval = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"kv.replication_reports.interval",
@@ -51,21 +41,11 @@ var ReporterInterval = settings.RegisterDurationSetting(
 	settings.NonNegativeDuration,
 ).WithPublic()
 
-// Reporter periodically produces a couple of reports on the cluster's data
-// distribution: the system tables: replication_constraint_stats,
-// replication_stats_report and replication_critical_localities.
-//
-// TODO(irfansharif): After #67679 these replication reports will be the last
-// remaining use of the system config span in KV. Strawman: we could hoist all
-// this code above KV and run it for each tenant. We'd have to expose a view
-// into node liveness and store descriptors, and instead of using the system
-// config span we could consult the tenant-scoped system.zones directly.
 type Reporter struct {
-	// Contains the list of the stores of the current node
 	localStores *kvserver.Stores
-	// The store that is the current meta 1 leaseholder
+
 	meta1LeaseHolder *kvserver.Store
-	// Latest zone config
+
 	latestConfig *config.SystemConfig
 
 	db        *kv.DB
@@ -82,7 +62,6 @@ type Reporter struct {
 	}
 }
 
-// NewReporter creates a Reporter.
 func NewReporter(
 	db *kv.DB,
 	localStores *kvserver.Stores,
@@ -92,6 +71,7 @@ func NewReporter(
 	executor sqlutil.InternalExecutor,
 	provider config.SystemConfigProvider,
 ) *Reporter {
+	__antithesis_instrumentation__.Notify(121894)
 	r := Reporter{
 		db:          db,
 		localStores: localStores,
@@ -105,119 +85,137 @@ func NewReporter(
 	return &r
 }
 
-// reportInterval returns the current value of the frequency setting and a
-// channel that will get closed when the value is not current any more.
 func (stats *Reporter) reportInterval() (time.Duration, <-chan struct{}) {
+	__antithesis_instrumentation__.Notify(121895)
 	stats.frequencyMu.Lock()
 	defer stats.frequencyMu.Unlock()
 	return ReporterInterval.Get(&stats.settings.SV), stats.frequencyMu.changeCh
 }
 
-// Start the periodic calls to Update().
 func (stats *Reporter) Start(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(121896)
 	ReporterInterval.SetOnChange(&stats.settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(121898)
 		stats.frequencyMu.Lock()
 		defer stats.frequencyMu.Unlock()
-		// Signal the current waiter (if any), and prepare the channel for future
-		// ones.
+
 		ch := stats.frequencyMu.changeCh
 		close(ch)
 		stats.frequencyMu.changeCh = make(chan struct{})
 		stats.frequencyMu.interval = ReporterInterval.Get(&stats.settings.SV)
 	})
+	__antithesis_instrumentation__.Notify(121897)
 	_ = stopper.RunAsyncTask(ctx, "stats-reporter", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(121899)
 		var timer timeutil.Timer
 		defer timer.Stop()
-		ctx = logtags.AddTag(ctx, "replication-reporter", nil /* value */)
+		ctx = logtags.AddTag(ctx, "replication-reporter", nil)
 
 		replStatsSaver := makeReplicationStatsReportSaver()
 		constraintsSaver := makeReplicationConstraintStatusReportSaver()
 		criticalLocSaver := makeReplicationCriticalLocalitiesReportSaver()
 
 		for {
-			// Read the interval setting. We'll generate a report and then sleep for
-			// that long. We'll also wake up if the setting changes; that's useful for
-			// tests which want to lower the setting drastically and expect the report
-			// to be regenerated quickly, and also for users increasing the frequency.
+			__antithesis_instrumentation__.Notify(121900)
+
 			interval, changeCh := stats.reportInterval()
 
 			var timerCh <-chan time.Time
 			if interval != 0 {
-				// If (some store on) this node is the leaseholder for range 1, do the
-				// work.
+				__antithesis_instrumentation__.Notify(121902)
+
 				stats.meta1LeaseHolder = stats.meta1LeaseHolderStore(ctx)
 				if stats.meta1LeaseHolder != nil {
+					__antithesis_instrumentation__.Notify(121904)
 					if err := stats.update(
 						ctx, &constraintsSaver, &replStatsSaver, &criticalLocSaver,
 					); err != nil {
+						__antithesis_instrumentation__.Notify(121905)
 						log.Errorf(ctx, "failed to generate replication reports: %s", err)
+					} else {
+						__antithesis_instrumentation__.Notify(121906)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(121907)
 				}
+				__antithesis_instrumentation__.Notify(121903)
 				timer.Reset(interval)
 				timerCh = timer.C
+			} else {
+				__antithesis_instrumentation__.Notify(121908)
 			}
+			__antithesis_instrumentation__.Notify(121901)
 
-			// Wait until the timer expires (if there's a timer) or until there's an
-			// update to the frequency setting.
 			select {
 			case <-timerCh:
+				__antithesis_instrumentation__.Notify(121909)
 				timer.Read = true
 			case <-changeCh:
+				__antithesis_instrumentation__.Notify(121910)
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(121911)
 				return
 			}
 		}
 	})
 }
 
-// update regenerates all the reports and saves them using the provided savers.
 func (stats *Reporter) update(
 	ctx context.Context,
 	constraintsSaver *replicationConstraintStatsReportSaver,
 	replStatsSaver *replicationStatsReportSaver,
 	locSaver *replicationCriticalLocalitiesReportSaver,
 ) error {
+	__antithesis_instrumentation__.Notify(121912)
 	start := timeutil.Now()
 	log.VEventf(ctx, 2, "updating replication reports...")
 	defer func() {
+		__antithesis_instrumentation__.Notify(121922)
 		log.VEventf(ctx, 2, "updating replication reports... done. Generation took: %s.",
 			timeutil.Since(start))
 	}()
+	__antithesis_instrumentation__.Notify(121913)
 	stats.updateLatestConfig()
 	if stats.latestConfig == nil {
+		__antithesis_instrumentation__.Notify(121923)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(121924)
 	}
+	__antithesis_instrumentation__.Notify(121914)
 
 	allStores := stats.storePool.GetStores()
 	var getStoresFromGossip StoreResolver = func(
 		r *roachpb.RangeDescriptor,
 	) []roachpb.StoreDescriptor {
+		__antithesis_instrumentation__.Notify(121925)
 		storeDescs := make([]roachpb.StoreDescriptor, len(r.Replicas().VoterDescriptors()))
-		// We'll return empty descriptors for stores that gossip doesn't have a
-		// descriptor for. These stores will be considered to satisfy all
-		// constraints.
-		// TODO(andrei): note down that some descriptors were missing from gossip
-		// somewhere in the report.
+
 		for i, repl := range r.Replicas().VoterDescriptors() {
+			__antithesis_instrumentation__.Notify(121927)
 			storeDescs[i] = allStores[repl.StoreID]
 		}
+		__antithesis_instrumentation__.Notify(121926)
 		return storeDescs
 	}
+	__antithesis_instrumentation__.Notify(121915)
 
 	isLiveMap := stats.liveness.GetIsLiveMap()
 	isNodeLive := func(nodeID roachpb.NodeID) bool {
+		__antithesis_instrumentation__.Notify(121928)
 		return isLiveMap[nodeID].IsLive
 	}
+	__antithesis_instrumentation__.Notify(121916)
 
 	nodeLocalities := make(map[roachpb.NodeID]roachpb.Locality, len(allStores))
 	for _, storeDesc := range allStores {
+		__antithesis_instrumentation__.Notify(121929)
 		nodeDesc := storeDesc.Node
-		// Note: We might overwrite the node's localities here. We assume that all
-		// the stores for a node have the same node descriptor.
+
 		nodeLocalities[nodeDesc.NodeID] = nodeDesc.Locality
 	}
+	__antithesis_instrumentation__.Notify(121917)
 
-	// Create the visitors that we're going to pass to visitRanges() below.
 	constraintConfVisitor := makeConstraintConformanceVisitor(
 		ctx, stats.latestConfig, getStoresFromGossip)
 	localityStatsVisitor := makeCriticalLocalitiesVisitor(
@@ -225,157 +223,206 @@ func (stats *Reporter) update(
 		getStoresFromGossip, isNodeLive)
 	replicationStatsVisitor := makeReplicationStatsVisitor(ctx, stats.latestConfig, isNodeLive)
 
-	// Iterate through all the ranges.
 	const descriptorReadBatchSize = 10000
 	rangeIter := makeMeta2RangeIter(stats.db, descriptorReadBatchSize)
 	if err := visitRanges(
 		ctx, &rangeIter, stats.latestConfig,
 		&constraintConfVisitor, &localityStatsVisitor, &replicationStatsVisitor,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(121930)
 		if errors.HasType(err, (*visitorError)(nil)) {
+			__antithesis_instrumentation__.Notify(121931)
 			log.Errorf(ctx, "some reports have not been generated: %s", err)
 		} else {
+			__antithesis_instrumentation__.Notify(121932)
 			return errors.Wrap(err, "failed to compute constraint conformance report")
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(121933)
 	}
+	__antithesis_instrumentation__.Notify(121918)
 
 	if !constraintConfVisitor.failed() {
+		__antithesis_instrumentation__.Notify(121934)
 		if err := constraintsSaver.Save(
-			ctx, constraintConfVisitor.report, timeutil.Now() /* reportTS */, stats.db, stats.executor,
+			ctx, constraintConfVisitor.report, timeutil.Now(), stats.db, stats.executor,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(121935)
 			return errors.Wrap(err, "failed to save constraint report")
+		} else {
+			__antithesis_instrumentation__.Notify(121936)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(121937)
 	}
+	__antithesis_instrumentation__.Notify(121919)
 	if !localityStatsVisitor.failed() {
+		__antithesis_instrumentation__.Notify(121938)
 		if err := locSaver.Save(
-			ctx, localityStatsVisitor.Report(), timeutil.Now() /* reportTS */, stats.db, stats.executor,
+			ctx, localityStatsVisitor.Report(), timeutil.Now(), stats.db, stats.executor,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(121939)
 			return errors.Wrap(err, "failed to save locality report")
+		} else {
+			__antithesis_instrumentation__.Notify(121940)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(121941)
 	}
+	__antithesis_instrumentation__.Notify(121920)
 	if !replicationStatsVisitor.failed() {
+		__antithesis_instrumentation__.Notify(121942)
 		if err := replStatsSaver.Save(
 			ctx, replicationStatsVisitor.Report(),
-			timeutil.Now() /* reportTS */, stats.db, stats.executor,
+			timeutil.Now(), stats.db, stats.executor,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(121943)
 			return errors.Wrap(err, "failed to save range status report")
+		} else {
+			__antithesis_instrumentation__.Notify(121944)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(121945)
 	}
+	__antithesis_instrumentation__.Notify(121921)
 	return nil
 }
 
-// meta1LeaseHolderStore returns the node store that is the leaseholder of Meta1
-// range or nil if none of the node's stores are holding the Meta1 lease.
 func (stats *Reporter) meta1LeaseHolderStore(ctx context.Context) *kvserver.Store {
+	__antithesis_instrumentation__.Notify(121946)
 	const meta1RangeID = roachpb.RangeID(1)
 	repl, store, err := stats.localStores.GetReplicaForRangeID(ctx, meta1RangeID)
 	if roachpb.IsRangeNotFoundError(err) {
+		__antithesis_instrumentation__.Notify(121950)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(121951)
 	}
+	__antithesis_instrumentation__.Notify(121947)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121952)
 		log.Fatalf(ctx, "unexpected error when visiting stores: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(121953)
 	}
+	__antithesis_instrumentation__.Notify(121948)
 	if repl.OwnsValidLease(ctx, store.Clock().NowAsClockTimestamp()) {
+		__antithesis_instrumentation__.Notify(121954)
 		return store
+	} else {
+		__antithesis_instrumentation__.Notify(121955)
 	}
+	__antithesis_instrumentation__.Notify(121949)
 	return nil
 }
 
 func (stats *Reporter) updateLatestConfig() {
+	__antithesis_instrumentation__.Notify(121956)
 	stats.latestConfig = stats.cfgs.GetSystemConfig()
 }
 
-// nodeChecker checks whether a node is to be considered alive or not.
 type nodeChecker func(nodeID roachpb.NodeID) bool
 
-// zoneResolver resolves ranges to their zone configs. It is optimized for the
-// case where a range falls in the same range as a the previously-resolved range
-// (which is the common case when asked to resolve ranges in key order).
 type zoneResolver struct {
 	init bool
-	// curObjectID is the object (i.e. usually table) of the configured range.
+
 	curObjectID config.ObjectID
-	// curRootZone is the lowest zone convering the previously resolved range
-	// that's not a subzone.
-	// This is used to compute the subzone for a range.
+
 	curRootZone *zonepb.ZoneConfig
-	// curZoneKey is the zone key for the previously resolved range.
+
 	curZoneKey ZoneKey
 }
 
-// resolveRange resolves a range to its zone.
 func (c *zoneResolver) resolveRange(
 	ctx context.Context, rng *roachpb.RangeDescriptor, cfg *config.SystemConfig,
 ) (ZoneKey, error) {
+	__antithesis_instrumentation__.Notify(121957)
 	if c.checkSameZone(ctx, rng) {
+		__antithesis_instrumentation__.Notify(121959)
 		return c.curZoneKey, nil
+	} else {
+		__antithesis_instrumentation__.Notify(121960)
 	}
+	__antithesis_instrumentation__.Notify(121958)
 	return c.updateZone(ctx, rng, cfg)
 }
 
-// setZone remembers the passed-in info as the reference for further
-// checkSameZone() calls.
-// Clients should generally use the higher-level updateZone().
 func (c *zoneResolver) setZone(objectID config.ObjectID, key ZoneKey, rootZone *zonepb.ZoneConfig) {
+	__antithesis_instrumentation__.Notify(121961)
 	c.init = true
 	c.curObjectID = objectID
 	c.curRootZone = rootZone
 	c.curZoneKey = key
 }
 
-// updateZone updates the state of the zoneChecker to the zone of the passed-in
-// range descriptor.
 func (c *zoneResolver) updateZone(
 	ctx context.Context, rd *roachpb.RangeDescriptor, cfg *config.SystemConfig,
 ) (ZoneKey, error) {
+	__antithesis_instrumentation__.Notify(121962)
 	objectID, _ := config.DecodeKeyIntoZoneIDAndSuffix(keys.SystemSQLCodec, rd.StartKey)
 	first := true
 	var zoneKey ZoneKey
 	var rootZone *zonepb.ZoneConfig
-	// We're going to walk the zone hierarchy looking for two things:
-	// 1) The lowest zone containing rd. We'll use the subzone ID for it.
-	// 2) The lowest zone containing rd that's not a subzone.
-	// visitZones() walks the zone hierarchy from the bottom upwards.
+
 	found, err := visitZones(
 		ctx, rd, cfg, includeSubzonePlaceholders,
 		func(_ context.Context, zone *zonepb.ZoneConfig, key ZoneKey) bool {
+			__antithesis_instrumentation__.Notify(121966)
 			if first {
+				__antithesis_instrumentation__.Notify(121969)
 				first = false
 				zoneKey = key
+			} else {
+				__antithesis_instrumentation__.Notify(121970)
 			}
+			__antithesis_instrumentation__.Notify(121967)
 			if key.SubzoneID == NoSubzone {
+				__antithesis_instrumentation__.Notify(121971)
 				rootZone = zone
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(121972)
 			}
+			__antithesis_instrumentation__.Notify(121968)
 			return false
 		})
+	__antithesis_instrumentation__.Notify(121963)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121973)
 		return ZoneKey{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(121974)
 	}
+	__antithesis_instrumentation__.Notify(121964)
 	if !found {
+		__antithesis_instrumentation__.Notify(121975)
 		return ZoneKey{}, errors.AssertionFailedf("failed to resolve zone for range: %s", rd)
+	} else {
+		__antithesis_instrumentation__.Notify(121976)
 	}
+	__antithesis_instrumentation__.Notify(121965)
 	c.setZone(objectID, zoneKey, rootZone)
 	return zoneKey, nil
 }
 
-// checkSameZone returns true if the most specific zone that contains rng is the
-// one previously passed to setZone().
-//
-// NB: This method allows for false negatives (but no false positives). For
-// example, if the zoneChecker was previously configured for a range starting at
-// /Table/51 and is now queried for /Table/52, it will say that the zones don't
-// match even if in fact they do (because neither table defines its own zone
-// and they're both inheriting a higher zone).
 func (c *zoneResolver) checkSameZone(ctx context.Context, rng *roachpb.RangeDescriptor) bool {
+	__antithesis_instrumentation__.Notify(121977)
 	if !c.init {
+		__antithesis_instrumentation__.Notify(121980)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(121981)
 	}
+	__antithesis_instrumentation__.Notify(121978)
 
 	objectID, keySuffix := config.DecodeKeyIntoZoneIDAndSuffix(keys.SystemSQLCodec, rng.StartKey)
 	if objectID != c.curObjectID {
+		__antithesis_instrumentation__.Notify(121982)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(121983)
 	}
+	__antithesis_instrumentation__.Notify(121979)
 	_, subzoneIdx := c.curRootZone.GetSubzoneForKeySuffix(keySuffix)
 	return subzoneIdx == c.curZoneKey.SubzoneID.ToSubzoneIndex()
 }
@@ -387,15 +434,6 @@ const (
 	includeSubzonePlaceholders visitOpt = true
 )
 
-// visitZones applies a visitor to the hierarchy of zone configs that apply to
-// the given range, starting from the most specific to the default zone config.
-//
-// visitor is called for each zone config until it returns true, or until the
-// default zone config is reached. It's passed zone configs and the
-// corresponding zoneKeys.
-//
-// visitZones returns true if the visitor returned true and returns false is the
-// zone hierarchy was exhausted.
 func visitZones(
 	ctx context.Context,
 	rng *roachpb.RangeDescriptor,
@@ -403,78 +441,113 @@ func visitZones(
 	opt visitOpt,
 	visitor func(context.Context, *zonepb.ZoneConfig, ZoneKey) bool,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(121984)
 	id, keySuffix := config.DecodeKeyIntoZoneIDAndSuffix(keys.SystemSQLCodec, rng.StartKey)
 	zone, err := getZoneByID(id, cfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121987)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121988)
 	}
-
-	// We've got the zone config (without considering for inheritance) for the
-	// "object" indicated by out key. Now we need to find where the constraints
-	// come from. We'll first look downwards - in subzones (if any). If there's no
-	// constraints there, we'll look in the zone config that we got. If not,
-	// we'll look upwards (e.g. database zone config, default zone config).
+	__antithesis_instrumentation__.Notify(121985)
 
 	if zone != nil {
-		// Try subzones.
+		__antithesis_instrumentation__.Notify(121989)
+
 		subzone, subzoneIdx := zone.GetSubzoneForKeySuffix(keySuffix)
 		if subzone != nil {
+			__antithesis_instrumentation__.Notify(121991)
 			if visitor(ctx, &subzone.Config, MakeZoneKey(id, base.SubzoneIDFromIndex(int(subzoneIdx)))) {
+				__antithesis_instrumentation__.Notify(121992)
 				return true, nil
+			} else {
+				__antithesis_instrumentation__.Notify(121993)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(121994)
 		}
-		// Try the zone for our object.
-		if (opt == includeSubzonePlaceholders) || !zone.IsSubzonePlaceholder() {
-			if visitor(ctx, zone, MakeZoneKey(id, 0)) {
-				return true, nil
-			}
-		}
-	}
+		__antithesis_instrumentation__.Notify(121990)
 
-	// Go upwards.
+		if (opt == includeSubzonePlaceholders) || func() bool {
+			__antithesis_instrumentation__.Notify(121995)
+			return !zone.IsSubzonePlaceholder() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(121996)
+			if visitor(ctx, zone, MakeZoneKey(id, 0)) {
+				__antithesis_instrumentation__.Notify(121997)
+				return true, nil
+			} else {
+				__antithesis_instrumentation__.Notify(121998)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(121999)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(122000)
+	}
+	__antithesis_instrumentation__.Notify(121986)
+
 	return visitAncestors(ctx, id, cfg, visitor)
 }
 
-// visitAncestors invokes the visitor of all the ancestors of the zone
-// corresponding to id. The zone corresponding to id itself is not visited.
 func visitAncestors(
 	ctx context.Context,
 	id config.ObjectID,
 	cfg *config.SystemConfig,
 	visitor func(context.Context, *zonepb.ZoneConfig, ZoneKey) bool,
 ) (bool, error) {
-	// Check to see if it's a table. If so, inherit from the database.
-	// For all other cases, inherit from the default.
+	__antithesis_instrumentation__.Notify(122001)
+
 	descVal := cfg.GetValue(catalogkeys.MakeDescMetadataKey(keys.TODOSQLCodec, descpb.ID(id)))
 	if descVal == nil {
-		// Couldn't find a descriptor. This is not expected to happen.
-		// Let's just look at the default zone config.
-		return visitDefaultZone(ctx, cfg, visitor), nil
-	}
+		__antithesis_instrumentation__.Notify(122007)
 
-	// TODO(ajwerner): Reconsider how this zone config picking apart happens. This
-	// isn't how we want to be retreiving table descriptors in general.
+		return visitDefaultZone(ctx, cfg, visitor), nil
+	} else {
+		__antithesis_instrumentation__.Notify(122008)
+	}
+	__antithesis_instrumentation__.Notify(122002)
+
 	var desc descpb.Descriptor
 	if err := descVal.GetProto(&desc); err != nil {
+		__antithesis_instrumentation__.Notify(122009)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(122010)
 	}
+	__antithesis_instrumentation__.Notify(122003)
 	tableDesc, _, _, _ := descpb.FromDescriptorWithMVCCTimestamp(&desc, descVal.Timestamp)
-	// If it's a database, the parent is the default zone.
-	if tableDesc == nil {
-		return visitDefaultZone(ctx, cfg, visitor), nil
-	}
 
-	// If it's a table, the parent is a database.
+	if tableDesc == nil {
+		__antithesis_instrumentation__.Notify(122011)
+		return visitDefaultZone(ctx, cfg, visitor), nil
+	} else {
+		__antithesis_instrumentation__.Notify(122012)
+	}
+	__antithesis_instrumentation__.Notify(122004)
+
 	zone, err := getZoneByID(config.ObjectID(tableDesc.ParentID), cfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(122013)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(122014)
 	}
+	__antithesis_instrumentation__.Notify(122005)
 	if zone != nil {
+		__antithesis_instrumentation__.Notify(122015)
 		if visitor(ctx, zone, MakeZoneKey(config.ObjectID(tableDesc.ParentID), NoSubzone)) {
+			__antithesis_instrumentation__.Notify(122016)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(122017)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(122018)
 	}
-	// The parent database did not have constraints. Its parent is the default zone.
+	__antithesis_instrumentation__.Notify(122006)
+
 	return visitDefaultZone(ctx, cfg, visitor), nil
 }
 
@@ -483,86 +556,76 @@ func visitDefaultZone(
 	cfg *config.SystemConfig,
 	visitor func(context.Context, *zonepb.ZoneConfig, ZoneKey) bool,
 ) bool {
+	__antithesis_instrumentation__.Notify(122019)
 	zone, err := getZoneByID(keys.RootNamespaceID, cfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(122022)
 		log.Fatalf(ctx, "failed to get default zone config: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(122023)
 	}
+	__antithesis_instrumentation__.Notify(122020)
 	if zone == nil {
+		__antithesis_instrumentation__.Notify(122024)
 		log.Fatal(ctx, "default zone config missing unexpectedly")
+	} else {
+		__antithesis_instrumentation__.Notify(122025)
 	}
+	__antithesis_instrumentation__.Notify(122021)
 	return visitor(ctx, zone, MakeZoneKey(keys.RootNamespaceID, NoSubzone))
 }
 
-// getZoneByID returns a zone given its id. Inheritance does not apply.
 func getZoneByID(id config.ObjectID, cfg *config.SystemConfig) (*zonepb.ZoneConfig, error) {
+	__antithesis_instrumentation__.Notify(122026)
 	zoneVal := cfg.GetValue(config.MakeZoneKey(keys.SystemSQLCodec, descpb.ID(id)))
 	if zoneVal == nil {
+		__antithesis_instrumentation__.Notify(122029)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(122030)
 	}
+	__antithesis_instrumentation__.Notify(122027)
 	zone := new(zonepb.ZoneConfig)
 	if err := zoneVal.GetProto(zone); err != nil {
+		__antithesis_instrumentation__.Notify(122031)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(122032)
 	}
+	__antithesis_instrumentation__.Notify(122028)
 	return zone, nil
 }
 
-// StoreResolver is a function resolving a range to a store descriptor for each
-// of the replicas. Empty store descriptors are to be returned when there's no
-// information available for the store.
 type StoreResolver func(*roachpb.RangeDescriptor) []roachpb.StoreDescriptor
 
-// rangeVisitor abstracts the interface for range iteration implemented by all
-// report generators.
 type rangeVisitor interface {
-	// visitNewZone/visitSameZone is called by visitRanges() for each range, in
-	// order. The visitor will update its report with the range's info. If an
-	// error is returned, visit() will not be called anymore before reset().
-	// If an error() is returned, failed() needs to return true until reset() is
-	// called.
-	//
-	// Once visitNewZone() has been called once, visitSameZone() is called for
-	// further ranges as long as these ranges are covered by the same zone config.
-	// As soon as the range is not covered by it, visitNewZone() is called again.
-	// The idea is that visitors can maintain state about that zone that applies
-	// to multiple ranges, and so visitSameZone() allows them to efficiently reuse
-	// that state (in particular, not unmarshall ZoneConfigs again).
 	visitNewZone(context.Context, *roachpb.RangeDescriptor) error
 	visitSameZone(context.Context, *roachpb.RangeDescriptor)
 
-	// failed returns true if an error was encountered by the last visit() call
-	// (and reset( ) wasn't called since).
-	// The idea is that, if failed() returns true, the report that the visitor
-	// produces will be considered incomplete and not persisted.
 	failed() bool
 
-	// reset resets the visitor's state, preparing it for visit() calls starting
-	// at the first range. This is called on retriable errors during range iteration.
 	reset(ctx context.Context)
 }
 
-// visitorError is returned by visitRanges when one or more visitors failed.
 type visitorError struct {
 	errs []error
 }
 
 func (e *visitorError) Error() string {
+	__antithesis_instrumentation__.Notify(122033)
 	s := make([]string, len(e.errs))
 	for i, err := range e.errs {
+		__antithesis_instrumentation__.Notify(122035)
 		s[i] = fmt.Sprintf("%d: %s", i, err)
 	}
+	__antithesis_instrumentation__.Notify(122034)
 	return fmt.Sprintf("%d visitors encountered errors:\n%s", len(e.errs), strings.Join(s, "\n"))
 }
 
-// visitRanges iterates through all the range descriptors in Meta2 and calls the
-// supplied visitors.
-//
-// An error is returned if some descriptors could not be read. Additionally,
-// visitorError is returned if some visitors failed during the iteration. In
-// that case, it is expected that the reports produced by those specific
-// visitors will not be persisted, but the other reports will.
 func visitRanges(
 	ctx context.Context, rangeStore RangeIterator, cfg *config.SystemConfig, visitors ...rangeVisitor,
 ) error {
+	__antithesis_instrumentation__.Notify(122036)
 	origVisitors := make([]rangeVisitor, len(visitors))
 	copy(origVisitors, visitors)
 	var visitorErrs []error
@@ -571,211 +634,288 @@ func visitRanges(
 	var key ZoneKey
 	first := true
 
-	// Iterate over all the ranges.
 	for {
+		__antithesis_instrumentation__.Notify(122039)
 		rd, err := rangeStore.Next(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(122043)
 			if errIsRetriable(err) {
+				__antithesis_instrumentation__.Notify(122044)
 				visitors = origVisitors
 				for _, v := range visitors {
+					__antithesis_instrumentation__.Notify(122046)
 					v.reset(ctx)
 				}
-				// The iterator has been positioned to the beginning.
+				__antithesis_instrumentation__.Notify(122045)
+
 				continue
 			} else {
+				__antithesis_instrumentation__.Notify(122047)
 				return err
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(122048)
 		}
+		__antithesis_instrumentation__.Notify(122040)
 		if rd.RangeID == 0 {
-			// We're done.
+			__antithesis_instrumentation__.Notify(122049)
+
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(122050)
 		}
+		__antithesis_instrumentation__.Notify(122041)
 
 		newKey, err := resolver.resolveRange(ctx, &rd, cfg)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(122051)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(122052)
 		}
-		sameZoneAsPrevRange := !first && key == newKey
+		__antithesis_instrumentation__.Notify(122042)
+		sameZoneAsPrevRange := !first && func() bool {
+			__antithesis_instrumentation__.Notify(122053)
+			return key == newKey == true
+		}() == true
 		key = newKey
 		first = false
 
 		for i, v := range visitors {
+			__antithesis_instrumentation__.Notify(122054)
 			var err error
 			if sameZoneAsPrevRange {
+				__antithesis_instrumentation__.Notify(122056)
 				v.visitSameZone(ctx, &rd)
 			} else {
+				__antithesis_instrumentation__.Notify(122057)
 				err = v.visitNewZone(ctx, &rd)
 			}
+			__antithesis_instrumentation__.Notify(122055)
 
 			if err != nil {
-				// Sanity check - v.failed() should return an error now (the same as err above).
+				__antithesis_instrumentation__.Notify(122058)
+
 				if !v.failed() {
+					__antithesis_instrumentation__.Notify(122060)
 					return errors.NewAssertionErrorWithWrappedErrf(err, "expected visitor %T to have failed() after error", v)
+				} else {
+					__antithesis_instrumentation__.Notify(122061)
 				}
-				// Remove this visitor; it shouldn't be called any more.
+				__antithesis_instrumentation__.Notify(122059)
+
 				visitors = append(visitors[:i], visitors[i+1:]...)
 				visitorErrs = append(visitorErrs, err)
+			} else {
+				__antithesis_instrumentation__.Notify(122062)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(122037)
 	if len(visitorErrs) > 0 {
+		__antithesis_instrumentation__.Notify(122063)
 		return &visitorError{errs: visitorErrs}
+	} else {
+		__antithesis_instrumentation__.Notify(122064)
 	}
+	__antithesis_instrumentation__.Notify(122038)
 	return nil
 }
 
-// RangeIterator abstracts the interface for reading range descriptors.
 type RangeIterator interface {
-	// Next returns the next range descriptors (in key order).
-	// Returns an empty RangeDescriptor when all the ranges have been exhausted. In that case,
-	// the iterator is not to be used any more (except for calling Close(), which will be a no-op).
-	//
-	// The returned error can be a retriable one (i.e.
-	// *roachpb.TransactionRetryWithProtoRefreshError, possibly wrapped). In that case, the iterator
-	// is reset automatically; the next Next() call ( should there be one) will
-	// return the first descriptor.
-	// In case of any other error, the iterator is automatically closed.
-	// It can't be used any more (except for calling Close(), which will be a noop).
 	Next(context.Context) (roachpb.RangeDescriptor, error)
 
-	// Close destroys the iterator, releasing resources. It does not need to be
-	// called after Next() indicates exhaustion by returning an empty descriptor,
-	// or after Next() returns non-retriable errors.
 	Close(context.Context)
 }
 
-// meta2RangeIter is an implementation of RangeIterator that scans meta2 in a
-// paginated way.
 type meta2RangeIter struct {
 	db *kv.DB
-	// The size of the batches that descriptors will be read in. 0 for no limit.
+
 	batchSize int
 
 	txn *kv.Txn
-	// buffer contains descriptors read in the first batch, but not yet returned
-	// to the client.
+
 	buffer []kv.KeyValue
-	// resumeSpan maintains the point where the meta2 scan stopped.
+
 	resumeSpan *roachpb.Span
-	// readingDone is set once we've scanned all of meta2. buffer may still
-	// contain descriptors.
+
 	readingDone bool
 }
 
 func makeMeta2RangeIter(db *kv.DB, batchSize int) meta2RangeIter {
+	__antithesis_instrumentation__.Notify(122065)
 	return meta2RangeIter{db: db, batchSize: batchSize}
 }
 
 var _ RangeIterator = &meta2RangeIter{}
 
-// Next is part of the rangeIterator interface.
 func (r *meta2RangeIter) Next(ctx context.Context) (_ roachpb.RangeDescriptor, retErr error) {
-	defer func() { r.handleErr(ctx, retErr) }()
+	__antithesis_instrumentation__.Notify(122066)
+	defer func() { __antithesis_instrumentation__.Notify(122071); r.handleErr(ctx, retErr) }()
+	__antithesis_instrumentation__.Notify(122067)
 
 	rd, err := r.consumerBuffer()
-	if err != nil || rd.RangeID != 0 {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(122072)
+		return rd.RangeID != 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(122073)
 		return rd, err
+	} else {
+		__antithesis_instrumentation__.Notify(122074)
 	}
+	__antithesis_instrumentation__.Notify(122068)
 
 	if r.readingDone {
-		// No more batches to read.
-		return roachpb.RangeDescriptor{}, nil
-	}
+		__antithesis_instrumentation__.Notify(122075)
 
-	// Read a batch and consume the first row (if any).
-	if err := r.readBatch(ctx); err != nil {
-		return roachpb.RangeDescriptor{}, err
+		return roachpb.RangeDescriptor{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(122076)
 	}
+	__antithesis_instrumentation__.Notify(122069)
+
+	if err := r.readBatch(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(122077)
+		return roachpb.RangeDescriptor{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(122078)
+	}
+	__antithesis_instrumentation__.Notify(122070)
 	return r.consumerBuffer()
 }
 
 func (r *meta2RangeIter) consumerBuffer() (roachpb.RangeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(122079)
 	if len(r.buffer) == 0 {
+		__antithesis_instrumentation__.Notify(122082)
 		return roachpb.RangeDescriptor{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(122083)
 	}
+	__antithesis_instrumentation__.Notify(122080)
 	first := r.buffer[0]
 	var desc roachpb.RangeDescriptor
 	if err := first.ValueProto(&desc); err != nil {
+		__antithesis_instrumentation__.Notify(122084)
 		return roachpb.RangeDescriptor{}, errors.NewAssertionErrorWithWrappedErrf(err,
 			"%s: unable to unmarshal range descriptor", first.Key)
+	} else {
+		__antithesis_instrumentation__.Notify(122085)
 	}
+	__antithesis_instrumentation__.Notify(122081)
 	r.buffer = r.buffer[1:]
 	return desc, nil
 }
 
-// Close is part of the RangeIterator interface.
 func (r *meta2RangeIter) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(122086)
 	if r.readingDone {
+		__antithesis_instrumentation__.Notify(122088)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(122089)
 	}
+	__antithesis_instrumentation__.Notify(122087)
 	_ = r.txn.Rollback(ctx)
 	r.txn = nil
 	r.readingDone = true
 }
 
 func (r *meta2RangeIter) readBatch(ctx context.Context) (retErr error) {
-	defer func() { r.handleErr(ctx, retErr) }()
+	__antithesis_instrumentation__.Notify(122090)
+	defer func() { __antithesis_instrumentation__.Notify(122097); r.handleErr(ctx, retErr) }()
+	__antithesis_instrumentation__.Notify(122091)
 
 	if len(r.buffer) > 0 {
+		__antithesis_instrumentation__.Notify(122098)
 		log.Fatalf(ctx, "buffer not exhausted: %d keys remaining", len(r.buffer))
+	} else {
+		__antithesis_instrumentation__.Notify(122099)
 	}
+	__antithesis_instrumentation__.Notify(122092)
 	if r.txn == nil {
+		__antithesis_instrumentation__.Notify(122100)
 		r.txn = r.db.NewTxn(ctx, "rangeStoreImpl")
+	} else {
+		__antithesis_instrumentation__.Notify(122101)
 	}
+	__antithesis_instrumentation__.Notify(122093)
 
 	b := r.txn.NewBatch()
 	start := keys.Meta2Prefix
 	if r.resumeSpan != nil {
+		__antithesis_instrumentation__.Notify(122102)
 		start = r.resumeSpan.Key
+	} else {
+		__antithesis_instrumentation__.Notify(122103)
 	}
+	__antithesis_instrumentation__.Notify(122094)
 	b.Scan(start, keys.MetaMax)
 	b.Header.MaxSpanRequestKeys = int64(r.batchSize)
 	err := r.txn.Run(ctx, b)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(122104)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(122105)
 	}
+	__antithesis_instrumentation__.Notify(122095)
 	r.buffer = b.Results[0].Rows
 	r.resumeSpan = b.Results[0].ResumeSpan
 	if r.resumeSpan == nil {
+		__antithesis_instrumentation__.Notify(122106)
 		if err := r.txn.Commit(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(122108)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(122109)
 		}
+		__antithesis_instrumentation__.Notify(122107)
 		r.txn = nil
 		r.readingDone = true
+	} else {
+		__antithesis_instrumentation__.Notify(122110)
 	}
+	__antithesis_instrumentation__.Notify(122096)
 	return nil
 }
 
 func errIsRetriable(err error) bool {
+	__antithesis_instrumentation__.Notify(122111)
 	return errors.HasType(err, (*roachpb.TransactionRetryWithProtoRefreshError)(nil))
 }
 
-// handleErr manipulates the iterator's state in response to an error.
-// In case of retriable error, the iterator is reset such that the next Next()
-// call returns the first range. In case of any other error, resources are
-// released and the iterator shouldn't be used any more.
-// A nil error may be passed, in which case handleErr is a no-op.
-//
-// handleErr is idempotent.
 func (r *meta2RangeIter) handleErr(ctx context.Context, err error) {
+	__antithesis_instrumentation__.Notify(122112)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(122114)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(122115)
 	}
+	__antithesis_instrumentation__.Notify(122113)
 	if !errIsRetriable(err) {
+		__antithesis_instrumentation__.Notify(122116)
 		if r.txn != nil {
-			// On any non-retriable error, rollback.
+			__antithesis_instrumentation__.Notify(122118)
+
 			r.txn.CleanupOnError(ctx, err)
 			r.txn = nil
+		} else {
+			__antithesis_instrumentation__.Notify(122119)
 		}
+		__antithesis_instrumentation__.Notify(122117)
 		r.reset()
 		r.readingDone = true
 	} else {
+		__antithesis_instrumentation__.Notify(122120)
 		r.reset()
 	}
 }
 
-// reset the iterator. The next Next() call will return the first range.
 func (r *meta2RangeIter) reset() {
+	__antithesis_instrumentation__.Notify(122121)
 	r.buffer = nil
 	r.resumeSpan = nil
 	r.readingDone = false
@@ -783,11 +923,10 @@ func (r *meta2RangeIter) reset() {
 
 type reportID int
 
-// getReportGenerationTime returns the time at a particular report was last
-// generated. Returns time.Time{} if the report is not found.
 func getReportGenerationTime(
 	ctx context.Context, rid reportID, ex sqlutil.InternalExecutor, txn *kv.Txn,
 ) (time.Time, error) {
+	__antithesis_instrumentation__.Notify(122122)
 	row, err := ex.QueryRowEx(
 		ctx,
 		"get-previous-timestamp",
@@ -797,21 +936,37 @@ func getReportGenerationTime(
 		rid,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(122127)
 		return time.Time{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(122128)
 	}
+	__antithesis_instrumentation__.Notify(122123)
 
 	if row == nil {
+		__antithesis_instrumentation__.Notify(122129)
 		return time.Time{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(122130)
 	}
+	__antithesis_instrumentation__.Notify(122124)
 
 	if len(row) != 1 {
+		__antithesis_instrumentation__.Notify(122131)
 		return time.Time{}, errors.AssertionFailedf(
 			"expected 1 column from intenal query, got: %d", len(row))
+	} else {
+		__antithesis_instrumentation__.Notify(122132)
 	}
+	__antithesis_instrumentation__.Notify(122125)
 	generated, ok := row[0].(*tree.DTimestampTZ)
 	if !ok {
+		__antithesis_instrumentation__.Notify(122133)
 		return time.Time{}, errors.AssertionFailedf("expected to get timestamptz from "+
 			"system.reports_meta got %+v (%T)", row[0], row[0])
+	} else {
+		__antithesis_instrumentation__.Notify(122134)
 	}
+	__antithesis_instrumentation__.Notify(122126)
 	return generated.Time, nil
 }

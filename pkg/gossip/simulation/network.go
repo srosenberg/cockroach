@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package simulation
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -33,9 +25,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-// Node represents a node used in a Network. It includes information
-// about the node's gossip instance, network address, and underlying
-// server.
 type Node struct {
 	Gossip    *gossip.Gossip
 	Server    *grpc.Server
@@ -44,25 +33,24 @@ type Node struct {
 	Addresses []util.UnresolvedAddr
 }
 
-// Addr returns the address of the connected listener.
 func (n *Node) Addr() net.Addr {
+	__antithesis_instrumentation__.Notify(68115)
 	return n.Listener.Addr()
 }
 
-// Network provides access to a test gossip network of nodes.
 type Network struct {
 	Nodes           []*Node
 	Stopper         *stop.Stopper
 	RPCContext      *rpc.Context
-	nodeIDAllocator roachpb.NodeID // provides unique node IDs
+	nodeIDAllocator roachpb.NodeID
 	tlsConfig       *tls.Config
 	started         bool
 }
 
-// NewNetwork creates nodeCount gossip nodes.
 func NewNetwork(
 	stopper *stop.Stopper, nodeCount int, createAddresses bool, defaultZoneConfig *zonepb.ZoneConfig,
 ) *Network {
+	__antithesis_instrumentation__.Notify(68116)
 	ctx := context.TODO()
 	log.Infof(ctx, "simulating gossip network with %d nodes", nodeCount)
 
@@ -81,50 +69,65 @@ func NewNetwork(
 	var err error
 	n.tlsConfig, err = n.RPCContext.GetServerTLSConfig()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(68119)
 		log.Fatalf(context.TODO(), "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(68120)
 	}
+	__antithesis_instrumentation__.Notify(68117)
 
-	// Ensure that tests using this test context and restart/shut down
-	// their servers do not inadvertently start talking to servers from
-	// unrelated concurrent tests.
 	n.RPCContext.StorageClusterID.Set(context.TODO(), uuid.MakeV4())
 
 	for i := 0; i < nodeCount; i++ {
+		__antithesis_instrumentation__.Notify(68121)
 		node, err := n.CreateNode(defaultZoneConfig)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(68123)
 			log.Fatalf(context.TODO(), "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(68124)
 		}
+		__antithesis_instrumentation__.Notify(68122)
 		if createAddresses {
+			__antithesis_instrumentation__.Notify(68125)
 			node.Addresses = []util.UnresolvedAddr{
 				util.MakeUnresolvedAddr("tcp", n.Nodes[0].Addr().String()),
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(68126)
 		}
 	}
+	__antithesis_instrumentation__.Notify(68118)
 	return n
 }
 
-// CreateNode creates a simulation node and starts an RPC server for it.
 func (n *Network) CreateNode(defaultZoneConfig *zonepb.ZoneConfig) (*Node, error) {
+	__antithesis_instrumentation__.Notify(68127)
 	server := rpc.NewServer(n.RPCContext)
 	ln, err := net.Listen(util.IsolatedTestAddr.Network(), util.IsolatedTestAddr.String())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(68130)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(68131)
 	}
+	__antithesis_instrumentation__.Notify(68128)
 	node := &Node{Server: server, Listener: ln, Registry: metric.NewRegistry()}
 	node.Gossip = gossip.NewTest(0, n.RPCContext, server, n.Stopper, node.Registry, defaultZoneConfig)
 	n.Stopper.AddCloser(stop.CloserFn(server.Stop))
 	_ = n.Stopper.RunAsyncTask(context.TODO(), "node-wait-quiesce", func(context.Context) {
+		__antithesis_instrumentation__.Notify(68132)
 		<-n.Stopper.ShouldQuiesce()
 		netutil.FatalIfUnexpected(ln.Close())
 		node.Gossip.EnableSimulationCycler(false)
 	})
+	__antithesis_instrumentation__.Notify(68129)
 	n.Nodes = append(n.Nodes, node)
 	return node, nil
 }
 
-// StartNode initializes a gossip instance for the simulation node and
-// starts it.
 func (n *Network) StartNode(node *Node) error {
+	__antithesis_instrumentation__.Notify(68133)
 	node.Gossip.Start(node.Addr(), node.Addresses)
 	node.Gossip.EnableSimulationCycler(true)
 	n.nodeIDAllocator++
@@ -133,142 +136,178 @@ func (n *Network) StartNode(node *Node) error {
 		NodeID:  node.Gossip.NodeID.Get(),
 		Address: util.MakeUnresolvedAddr(node.Addr().Network(), node.Addr().String()),
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(68136)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(68137)
 	}
+	__antithesis_instrumentation__.Notify(68134)
 	if err := node.Gossip.AddInfo(node.Addr().String(),
 		encoding.EncodeUint64Ascending(nil, 0), time.Hour); err != nil {
+		__antithesis_instrumentation__.Notify(68138)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(68139)
 	}
+	__antithesis_instrumentation__.Notify(68135)
 	bgCtx := context.TODO()
 	return n.Stopper.RunAsyncTask(bgCtx, "start-node", func(context.Context) {
+		__antithesis_instrumentation__.Notify(68140)
 		netutil.FatalIfUnexpected(node.Server.Serve(node.Listener))
 	})
 }
 
-// GetNodeFromID returns the simulation node associated with
-// provided node ID, or nil if there is no such node.
 func (n *Network) GetNodeFromID(nodeID roachpb.NodeID) (*Node, bool) {
+	__antithesis_instrumentation__.Notify(68141)
 	for _, node := range n.Nodes {
+		__antithesis_instrumentation__.Notify(68143)
 		if node.Gossip.NodeID.Get() == nodeID {
+			__antithesis_instrumentation__.Notify(68144)
 			return node, true
+		} else {
+			__antithesis_instrumentation__.Notify(68145)
 		}
 	}
+	__antithesis_instrumentation__.Notify(68142)
 	return nil, false
 }
 
-// SimulateNetwork runs until the simCallback returns false.
-//
-// At each cycle, every node gossips a key equal to its address (unique)
-// with the cycle as the value. The received cycle value can be used
-// to determine the aging of information between any two nodes in the
-// network.
-//
-// At each cycle of the simulation, node 0 gossips the sentinel.
-//
-// The simulation callback receives the cycle and the network as arguments.
 func (n *Network) SimulateNetwork(simCallback func(cycle int, network *Network) bool) {
+	__antithesis_instrumentation__.Notify(68146)
 	n.Start()
 	nodes := n.Nodes
 	for cycle := 1; ; cycle++ {
-		// Node 0 gossips sentinel & cluster ID every cycle.
+		__antithesis_instrumentation__.Notify(68148)
+
 		if err := nodes[0].Gossip.AddInfo(
 			gossip.KeySentinel,
 			encoding.EncodeUint64Ascending(nil, uint64(cycle)),
 			time.Hour,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(68153)
 			log.Fatalf(context.TODO(), "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(68154)
 		}
+		__antithesis_instrumentation__.Notify(68149)
 		if err := nodes[0].Gossip.AddInfo(
 			gossip.KeyClusterID,
 			encoding.EncodeUint64Ascending(nil, uint64(cycle)),
 			0*time.Second,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(68155)
 			log.Fatalf(context.TODO(), "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(68156)
 		}
-		// Every node gossips every cycle.
+		__antithesis_instrumentation__.Notify(68150)
+
 		for _, node := range nodes {
+			__antithesis_instrumentation__.Notify(68157)
 			if err := node.Gossip.AddInfo(
 				node.Addr().String(),
 				encoding.EncodeUint64Ascending(nil, uint64(cycle)),
 				time.Hour,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(68159)
 				log.Fatalf(context.TODO(), "%v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(68160)
 			}
+			__antithesis_instrumentation__.Notify(68158)
 			node.Gossip.SimulationCycle()
 		}
-		// If the simCallback returns false, we're done with the
-		// simulation; exit the loop. This condition is tested here
-		// instead of in the for statement in order to guarantee
-		// we run at least one iteration of this loop in order to
-		// gossip the cluster ID and sentinel.
+		__antithesis_instrumentation__.Notify(68151)
+
 		if !simCallback(cycle, n) {
+			__antithesis_instrumentation__.Notify(68161)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(68162)
 		}
+		__antithesis_instrumentation__.Notify(68152)
 		time.Sleep(5 * time.Millisecond)
 	}
+	__antithesis_instrumentation__.Notify(68147)
 	log.Infof(context.TODO(), "gossip network simulation: total infos sent=%d, received=%d", n.infosSent(), n.infosReceived())
 }
 
-// Start starts all gossip nodes.
-// TODO(spencer): make all methods in Network return errors instead of
-// fatal logging.
 func (n *Network) Start() {
+	__antithesis_instrumentation__.Notify(68163)
 	if n.started {
+		__antithesis_instrumentation__.Notify(68165)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(68166)
 	}
+	__antithesis_instrumentation__.Notify(68164)
 	n.started = true
 	for _, node := range n.Nodes {
+		__antithesis_instrumentation__.Notify(68167)
 		if err := n.StartNode(node); err != nil {
+			__antithesis_instrumentation__.Notify(68168)
 			log.Fatalf(context.TODO(), "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(68169)
 		}
 	}
 }
 
-// RunUntilFullyConnected blocks until the gossip network has received
-// gossip from every other node in the network. It returns the gossip
-// cycle at which the network became fully connected.
 func (n *Network) RunUntilFullyConnected() int {
+	__antithesis_instrumentation__.Notify(68170)
 	var connectedAtCycle int
 	n.SimulateNetwork(func(cycle int, network *Network) bool {
+		__antithesis_instrumentation__.Notify(68172)
 		if network.IsNetworkConnected() {
+			__antithesis_instrumentation__.Notify(68174)
 			connectedAtCycle = cycle
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(68175)
 		}
+		__antithesis_instrumentation__.Notify(68173)
 		return true
 	})
+	__antithesis_instrumentation__.Notify(68171)
 	return connectedAtCycle
 }
 
-// IsNetworkConnected returns true if the network is fully connected
-// with no partitions (i.e. every node knows every other node's
-// network address).
 func (n *Network) IsNetworkConnected() bool {
+	__antithesis_instrumentation__.Notify(68176)
 	for _, leftNode := range n.Nodes {
+		__antithesis_instrumentation__.Notify(68178)
 		for _, rightNode := range n.Nodes {
+			__antithesis_instrumentation__.Notify(68179)
 			if _, err := leftNode.Gossip.GetInfo(gossip.MakeNodeIDKey(rightNode.Gossip.NodeID.Get())); err != nil {
+				__antithesis_instrumentation__.Notify(68180)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(68181)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(68177)
 	return true
 }
 
-// infosSent returns the total count of infos sent from all nodes in
-// the network.
 func (n *Network) infosSent() int {
+	__antithesis_instrumentation__.Notify(68182)
 	var count int64
 	for _, node := range n.Nodes {
+		__antithesis_instrumentation__.Notify(68184)
 		count += node.Gossip.GetNodeMetrics().InfosSent.Counter.Count()
 	}
+	__antithesis_instrumentation__.Notify(68183)
 	return int(count)
 }
 
-// infosReceived returns the total count of infos received from all
-// nodes in the network.
 func (n *Network) infosReceived() int {
+	__antithesis_instrumentation__.Notify(68185)
 	var count int64
 	for _, node := range n.Nodes {
+		__antithesis_instrumentation__.Notify(68187)
 		count += node.Gossip.GetNodeMetrics().InfosReceived.Counter.Count()
 	}
+	__antithesis_instrumentation__.Notify(68186)
 	return int(count)
 }

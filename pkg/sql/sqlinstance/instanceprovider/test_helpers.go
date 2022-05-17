@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package instanceprovider
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,18 +11,15 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
 )
 
-// TestInstanceProvider exposes ShutdownSQLInstanceForTest
-// method for testing purposes.
 type TestInstanceProvider interface {
 	sqlinstance.Provider
 	ShutdownSQLInstanceForTest(context.Context)
 }
 
-// NewTestInstanceProvider initializes a instanceprovider.provider
-// for test purposes
 func NewTestInstanceProvider(
 	stopper *stop.Stopper, session sqlliveness.Instance, addr string,
 ) TestInstanceProvider {
+	__antithesis_instrumentation__.Notify(623967)
 	storage := instancestorage.NewFakeStorage()
 	p := &provider{
 		storage:      storage,
@@ -43,7 +32,7 @@ func NewTestInstanceProvider(
 	return p
 }
 
-// ShutdownSQLInstanceForTest explicitly calls shutdownSQLInstance for testing purposes.
 func (p *provider) ShutdownSQLInstanceForTest(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(623968)
 	p.shutdownSQLInstance(ctx)
 }

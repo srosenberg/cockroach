@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqlstatsutil
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"encoding/hex"
@@ -19,272 +11,66 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/json"
 )
 
-// ExplainTreePlanNodeToJSON builds a formatted JSON object from the explain tree nodes.
 func ExplainTreePlanNodeToJSON(node *roachpb.ExplainTreePlanNode) json.JSON {
+	__antithesis_instrumentation__.Notify(625069)
 
-	// Create a new json.ObjectBuilder with key-value pairs for the node's name (1),
-	// node's attributes (len(node.Attrs)), and the node's children (1).
-	nodePlan := json.NewObjectBuilder(len(node.Attrs) + 2 /* numAddsHint */)
+	nodePlan := json.NewObjectBuilder(len(node.Attrs) + 2)
 	nodeChildren := json.NewArrayBuilder(len(node.Children))
 
 	nodePlan.Add("Name", json.FromString(node.Name))
 
 	for _, attr := range node.Attrs {
+		__antithesis_instrumentation__.Notify(625072)
 		nodePlan.Add(strings.Title(attr.Key), json.FromString(attr.Value))
 	}
+	__antithesis_instrumentation__.Notify(625070)
 
 	for _, childNode := range node.Children {
+		__antithesis_instrumentation__.Notify(625073)
 		nodeChildren.Add(ExplainTreePlanNodeToJSON(childNode))
 	}
+	__antithesis_instrumentation__.Notify(625071)
 
 	nodePlan.Add("Children", nodeChildren.Build())
 	return nodePlan.Build()
 }
 
-// BuildStmtMetadataJSON returns a json.JSON object for the metadata section of
-// the roachpb.CollectedStatementStatistics.
-// JSON Schema for statement metadata:
-//    {
-//      "$schema": "https://json-schema.org/draft/2020-12/schema",
-//      "title": "system.statement_statistics.metadata",
-//      "type": "object",
-//      "properties": {
-//        "stmtTyp":              { "type": "string" },
-//        "query":                { "type": "string" },
-//        "db":                   { "type": "string" },
-//        "distsql":              { "type": "boolean" },
-//        "failed":               { "type": "boolean" },
-//        "implicitTxn":          { "type": "boolean" },
-//        "vec":                  { "type": "boolean" },
-//        "fullScan":             { "type": "boolean" },
-//      }
-//    }
 func BuildStmtMetadataJSON(statistics *roachpb.CollectedStatementStatistics) (json.JSON, error) {
+	__antithesis_instrumentation__.Notify(625074)
 	return (*stmtStatsMetadata)(statistics).jsonFields().encodeJSON()
 }
 
-// BuildStmtStatisticsJSON encodes the statistics section a given
-// roachpb.CollectedStatementStatistics into a json.JSON object.
-//
-// JSON Schema for stats portion:
-//    {
-//      "$schema": "https://json-schema.org/draft/2020-12/schema",
-//      "title": "system.statement_statistics.statistics",
-//      "type": "object",
-//
-//      "definitions": {
-//        "numeric_stats": {
-//          "type": "object",
-//          "properties": {
-//            "mean":   { "type": "number" },
-//            "sqDiff": { "type": "number" }
-//          },
-//          "required": ["mean", "sqDiff"]
-//        },
-//        "node_ids": {
-//          "type": "array",
-//          "items": {
-//            "type": "int",
-//          },
-//        },
-//        "statistics": {
-//          "type": "object",
-//          "properties": {
-//            "firstAttemptCnt":   { "type": "number" },
-//            "maxRetries":        { "type": "number" },
-//            "numRows":           { "$ref": "#/definitions/numeric_stats" },
-//            "parseLat":          { "$ref": "#/definitions/numeric_stats" },
-//            "planLat":           { "$ref": "#/definitions/numeric_stats" },
-//            "runLat":            { "$ref": "#/definitions/numeric_stats" },
-//            "svcLat":            { "$ref": "#/definitions/numeric_stats" },
-//            "ovhLat":            { "$ref": "#/definitions/numeric_stats" },
-//            "bytesRead":         { "$ref": "#/definitions/numeric_stats" },
-//            "rowsRead":          { "$ref": "#/definitions/numeric_stats" }
-//            "firstExecAt":       { "type": "string" },
-//            "lastExecAt":        { "type": "string" },
-//            "nodes":             { "type": "node_ids" },
-//          },
-//          "required": [
-//            "firstAttemptCnt",
-//            "maxRetries",
-//            "numRows",
-//            "parseLat",
-//            "planLat",
-//            "runLat",
-//            "svcLat",
-//            "ovhLat",
-//            "bytesRead",
-//            "rowsRead",
-//            "nodes"
-//          ]
-//        },
-//        "execution_statistics": {
-//          "type": "object",
-//          "properties": {
-//            "cnt":             { "type": "number" },
-//            "networkBytes":    { "$ref": "#/definitions/numeric_stats" },
-//            "maxMemUsage":     { "$ref": "#/definitions/numeric_stats" },
-//            "contentionTime":  { "$ref": "#/definitions/numeric_stats" },
-//            "networkMsgs":     { "$ref": "#/definitions/numeric_stats" },
-//            "maxDiskUsage":    { "$ref": "#/definitions/numeric_stats" },
-//          },
-//          "required": [
-//            "cnt",
-//            "networkBytes",
-//            "maxMemUsage",
-//            "contentionTime",
-//            "networkMsgs",
-//            "maxDiskUsage",
-//          ]
-//        }
-//      },
-//
-//      "properties": {
-//        "stats": { "$ref": "#/definitions/statistics" },
-//        "execStats": {
-//          "$ref": "#/definitions/execution_statistics"
-//        }
-//      }
-//    }
 func BuildStmtStatisticsJSON(statistics *roachpb.StatementStatistics) (json.JSON, error) {
+	__antithesis_instrumentation__.Notify(625075)
 	return (*stmtStats)(statistics).encodeJSON()
 }
 
-// BuildTxnMetadataJSON encodes the metadata portion a given
-// roachpb.CollectedTransactionStatistics into a json.JSON object.
-//
-// JSON Schema:
-// {
-//   "$schema": "https://json-schema.org/draft/2020-12/schema",
-//   "title": "system.transaction_statistics.metadata",
-//   "type": "object",
-//   "properties": {
-//     "stmtFingerprintIDs": {
-//       "type": "array",
-//       "items": {
-//         "type": "string"
-//       }
-//     },
-//     "firstExecAt": { "type": "string" },
-//     "lastExecAt":  { "type": "string" }
-//   }
-// }
-// TODO(azhng): add `firstExecAt` and `lastExecAt` into the protobuf definition.
 func BuildTxnMetadataJSON(statistics *roachpb.CollectedTransactionStatistics) (json.JSON, error) {
+	__antithesis_instrumentation__.Notify(625076)
 	return jsonFields{
 		{"stmtFingerprintIDs", (*stmtFingerprintIDArray)(&statistics.StatementFingerprintIDs)},
 	}.encodeJSON()
 }
 
-// BuildTxnStatisticsJSON encodes the statistics portion a given
-// roachpb.CollectedTransactionStatistics into a json.JSON.
-//
-// JSON Schema
-// {
-//   "$schema": "https://json-schema.org/draft/2020-12/schema",
-//   "title": "system.statement_statistics.statistics",
-//   "type": "object",
-//
-//   "definitions": {
-//     "numeric_stats": {
-//       "type": "object",
-//       "properties": {
-//         "mean":   { "type": "number" },
-//         "sqDiff": { "type": "number" }
-//       },
-//       "required": ["mean", "sqDiff"]
-//     },
-//     "statistics": {
-//       "type": "object",
-//       "properties": {
-//         "maxRetries": { "type": "number" },
-//         "numRows":    { "$ref": "#/definitions/numeric_stats" },
-//         "svcLat":     { "$ref": "#/definitions/numeric_stats" },
-//         "retryLat":   { "$ref": "#/definitions/numeric_stats" },
-//         "commitLat":  { "$ref": "#/definitions/numeric_stats" },
-//         "bytesRead":  { "$ref": "#/definitions/numeric_stats" },
-//         "rowsRead":   { "$ref": "#/definitions/numeric_stats" }
-//       },
-//       "required": [
-//         "maxRetries",
-//         "numRows",
-//         "svcLat",
-//         "retryLat",
-//         "commitLat",
-//         "bytesRead",
-//         "rowsRead",
-//       ]
-//     },
-//     "execution_statistics": {
-//       "type": "object",
-//       "properties": {
-//         "cnt":             { "type": "number" },
-//         "networkBytes":    { "$ref": "#/definitions/numeric_stats" },
-//         "maxMemUsage":     { "$ref": "#/definitions/numeric_stats" },
-//         "contentionTime":  { "$ref": "#/definitions/numeric_stats" },
-//         "networkMsg":      { "$ref": "#/definitions/numeric_stats" },
-//         "maxDiskUsage":    { "$ref": "#/definitions/numeric_stats" },
-//       },
-//       "required": [
-//         "cnt",
-//         "networkBytes",
-//         "maxMemUsage",
-//         "contentionTime",
-//         "networkMsg",
-//         "maxDiskUsage",
-//       ]
-//     }
-//   },
-//
-//   "properties": {
-//     "stats": { "$ref": "#/definitions/statistics" },
-//     "execStats": {
-//       "$ref": "#/definitions/execution_statistics"
-//     }
-//   }
-// }
 func BuildTxnStatisticsJSON(statistics *roachpb.CollectedTransactionStatistics) (json.JSON, error) {
+	__antithesis_instrumentation__.Notify(625077)
 	return (*txnStats)(&statistics.Stats).encodeJSON()
 }
 
-// BuildStmtDetailsMetadataJSON returns a json.JSON object for the aggregated metadata
-// roachpb.AggregatedStatementMetadata.
-// JSON Schema for statement aggregated metadata:
-//   {
-//     "$schema": "https://json-schema.org/draft/2020-12/schema",
-//     "title": "system.statement_statistics.aggregated_metadata",
-//     "type": "object",
-//
-//     "properties": {
-//       "stmtType":             { "type": "string" },
-//       "query":                { "type": "string" },
-//       "querySummary":         { "type": "string" },
-//       "implicitTxn":          { "type": "boolean" },
-//       "distSQLCount":         { "type": "number" },
-//       "failedCount":          { "type": "number" },
-//       "vecCount":             { "type": "number" },
-//       "fullScanCount":        { "type": "number" },
-//       "totalCount":           { "type": "number" },
-//       "db":                   {
-//      		"type": "array",
-//      		"items": {
-//      		  "type": "string"
-//      		}
-//     	},
-//     }
-//   }
 func BuildStmtDetailsMetadataJSON(
 	metadata *roachpb.AggregatedStatementMetadata,
 ) (json.JSON, error) {
+	__antithesis_instrumentation__.Notify(625078)
 	return (*aggregatedMetadata)(metadata).jsonFields().encodeJSON()
 }
 
-// EncodeUint64ToBytes returns the []byte representation of an uint64 value.
 func EncodeUint64ToBytes(id uint64) []byte {
+	__antithesis_instrumentation__.Notify(625079)
 	result := make([]byte, 0, 8)
 	return encoding.EncodeUint64Ascending(result, id)
 }
 
 func encodeStmtFingerprintIDToString(id roachpb.StmtFingerprintID) string {
+	__antithesis_instrumentation__.Notify(625080)
 	return hex.EncodeToString(EncodeUint64ToBytes(uint64(id)))
 }

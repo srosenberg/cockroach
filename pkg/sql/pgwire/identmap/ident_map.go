@@ -1,18 +1,10 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package identmap contains the code for parsing a pg_ident.conf file,
 // which allows a database operator to create some number of mappings
 // between system identities (e.g.: GSSAPI or X.509 principals) and
 // database usernames.
 package identmap
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -27,85 +19,85 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
-// Conf provides a multi-level, user-configurable mapping between an
-// external system identity (e.g.: GSSAPI or X.509 principals) and zero
-// or more database usernames which the external principal may act as.
-//
-// The Conf supports being initialized from a file format that
-// is compatible with Postgres's pg_ident.conf file:
-//
-//   # Comments
-//   map-name system-identity    database-username
-//   # Convert "carl@example.com" ==> "example-carl"
-//   map-name /^(.*)@example.com$  example-\1
-//
-// If the system-identity field starts with a slash, it will be
-// interpreted as a regular expression. The system-identity expression
-// may include a single capturing group, which may be substituted into
-// database-username with the character sequence \1 (backslash one). The
-// regular expression will be un-anchored for compatibility; users are
-// therefore encouraged to always specify anchors to eliminate ambiguity.
-//
-// See also: https://www.postgresql.org/docs/13/auth-username-maps.html
 type Conf struct {
-	// data is keyed by the map-map of a pg_ident entry.
 	data map[string][]element
-	// originalLines is for debugging use.
+
 	originalLines []string
-	// sortedKeys is for debugging use, to make String() deterministic.
+
 	sortedKeys []string
 }
 
-// Empty returns an empty configuration.
 func Empty() *Conf {
+	__antithesis_instrumentation__.Notify(560196)
 	return &Conf{}
 }
 
-// linePattern is just three columns of data, so let's be
-// lazy and use a regexp instead of a full-blown parser.
 var linePattern = regexp.MustCompile(`^(\S+)\s+(\S+)\s+(\S+)$`)
 
-// From parses a reader containing a pg_ident.conf file.
 func From(r io.Reader) (*Conf, error) {
+	__antithesis_instrumentation__.Notify(560197)
 	ret := &Conf{data: make(map[string][]element)}
 	scanner := bufio.NewScanner(r)
 	lineNo := 0
 
 	for scanner.Scan() {
+		__antithesis_instrumentation__.Notify(560199)
 		lineNo++
 		line := scanner.Text()
 		ret.originalLines = append(ret.originalLines, line)
 
 		line = tidyIdentMapLine(line)
 		if line == "" {
+			__antithesis_instrumentation__.Notify(560205)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(560206)
 		}
+		__antithesis_instrumentation__.Notify(560200)
 
 		parts := linePattern.FindStringSubmatch(line)
 		if len(parts) != 4 {
+			__antithesis_instrumentation__.Notify(560207)
 			return nil, errors.Errorf("unable to parse line %d: %q", lineNo, line)
+		} else {
+			__antithesis_instrumentation__.Notify(560208)
 		}
+		__antithesis_instrumentation__.Notify(560201)
 		mapName := parts[1]
 
 		var sysPattern *regexp.Regexp
 		var err error
 		if sysName := parts[2]; sysName[0] == '/' {
+			__antithesis_instrumentation__.Notify(560209)
 			sysPattern, err = regexp.Compile(sysName[1:])
 		} else {
+			__antithesis_instrumentation__.Notify(560210)
 			sysPattern, err = regexp.Compile("^" + regexp.QuoteMeta(sysName) + "$")
 		}
+		__antithesis_instrumentation__.Notify(560202)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(560211)
 			return nil, errors.Wrapf(err, "unable to parse line %d", lineNo)
+		} else {
+			__antithesis_instrumentation__.Notify(560212)
 		}
+		__antithesis_instrumentation__.Notify(560203)
 
 		dbUser := parts[3]
 		subIdx := strings.Index(dbUser, `\1`)
 		if subIdx >= 0 {
+			__antithesis_instrumentation__.Notify(560213)
 			if sysPattern.NumSubexp() == 0 {
+				__antithesis_instrumentation__.Notify(560214)
 				return nil, errors.Errorf(
 					`saw \1 substitution on line %d, but pattern contains no subexpressions`, lineNo)
+			} else {
+				__antithesis_instrumentation__.Notify(560215)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(560216)
 		}
+		__antithesis_instrumentation__.Notify(560204)
 
 		elt := element{
 			dbUser:       dbUser,
@@ -113,63 +105,88 @@ func From(r io.Reader) (*Conf, error) {
 			substituteAt: subIdx,
 		}
 		if existing, ok := ret.data[mapName]; ok {
+			__antithesis_instrumentation__.Notify(560217)
 			ret.data[mapName] = append(existing, elt)
 		} else {
+			__antithesis_instrumentation__.Notify(560218)
 			ret.sortedKeys = append(ret.sortedKeys, mapName)
 			ret.data[mapName] = []element{elt}
 		}
 	}
+	__antithesis_instrumentation__.Notify(560198)
 	sort.Strings(ret.sortedKeys)
 	return ret, nil
 }
 
-// Empty returns true if no mappings have been defined.
 func (c *Conf) Empty() bool {
-	return c.data == nil || len(c.data) == 0
+	__antithesis_instrumentation__.Notify(560219)
+	return c.data == nil || func() bool {
+		__antithesis_instrumentation__.Notify(560220)
+		return len(c.data) == 0 == true
+	}() == true
 }
 
-// Map returns the database usernames that a system identity maps to
-// within the named mapping. If there are no matching usernames, or if
-// mapName is unknown, nil will be returned. The returned list will be
-// ordered based on the order in which the rules were defined.  If there
-// are rules which generate identical mappings, only the first one will
-// be returned. That is, the returned list will be deduplicated,
-// preferring the first instance of any given username.
 func (c *Conf) Map(mapName, systemIdentity string) ([]security.SQLUsername, error) {
+	__antithesis_instrumentation__.Notify(560221)
 	if c.data == nil {
+		__antithesis_instrumentation__.Notify(560225)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(560226)
 	}
+	__antithesis_instrumentation__.Notify(560222)
 	elts := c.data[mapName]
 	if elts == nil {
+		__antithesis_instrumentation__.Notify(560227)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(560228)
 	}
+	__antithesis_instrumentation__.Notify(560223)
 	var names []security.SQLUsername
 	seen := make(map[string]bool)
 	for _, elt := range elts {
-		if n := elt.substitute(systemIdentity); n != "" && !seen[n] {
-			// We're returning this as a for-validation username since a
-			// pattern-based mapping could still result in invalid characters
-			// being incorporated into the input.
+		__antithesis_instrumentation__.Notify(560229)
+		if n := elt.substitute(systemIdentity); n != "" && func() bool {
+			__antithesis_instrumentation__.Notify(560230)
+			return !seen[n] == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(560231)
+
 			u, err := security.MakeSQLUsernameFromUserInput(n, security.UsernameValidation)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(560233)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(560234)
 			}
+			__antithesis_instrumentation__.Notify(560232)
 			names = append(names, u)
 			seen[n] = true
+		} else {
+			__antithesis_instrumentation__.Notify(560235)
 		}
 	}
+	__antithesis_instrumentation__.Notify(560224)
 	return names, nil
 }
 
 func (c *Conf) String() string {
+	__antithesis_instrumentation__.Notify(560236)
 	if len(c.data) == 0 {
+		__antithesis_instrumentation__.Notify(560240)
 		return "# (empty configuration)"
+	} else {
+		__antithesis_instrumentation__.Notify(560241)
 	}
+	__antithesis_instrumentation__.Notify(560237)
 	var sb strings.Builder
 	sb.WriteString("# Original configuration:\n")
 	for _, l := range c.originalLines {
+		__antithesis_instrumentation__.Notify(560242)
 		fmt.Fprintf(&sb, "# %s\n", l)
 	}
+	__antithesis_instrumentation__.Notify(560238)
 	sb.WriteString("# Active configuration:\n")
 	table := tablewriter.NewWriter(&sb)
 	table.SetAutoWrapText(false)
@@ -183,50 +200,65 @@ func (c *Conf) String() string {
 	row := []string{"# map-name", "system-username", "database-username", ""}
 	table.Append(row)
 	for _, k := range c.sortedKeys {
+		__antithesis_instrumentation__.Notify(560243)
 		row[0] = k
 		for _, elt := range c.data[k] {
+			__antithesis_instrumentation__.Notify(560244)
 			row[1] = elt.pattern.String()
 			row[2] = elt.dbUser
 			if elt.substituteAt == -1 {
+				__antithesis_instrumentation__.Notify(560246)
 				row[3] = ""
 			} else {
+				__antithesis_instrumentation__.Notify(560247)
 				row[3] = fmt.Sprintf("# substituteAt=%d", elt.substituteAt)
 			}
+			__antithesis_instrumentation__.Notify(560245)
 			table.Append(row)
 		}
 	}
+	__antithesis_instrumentation__.Notify(560239)
 	table.Render()
 	return sb.String()
 }
 
 type element struct {
 	dbUser string
-	// pattern may just be a literal match.
+
 	pattern *regexp.Regexp
-	// If substituteAt is non-negative, it indicates the index at which
-	// the \1 substitution token occurs. This also implies that pattern
-	// has at least one submatch in it.
+
 	substituteAt int
 }
 
-// substitute returns a non-empty string if the map element matches the
-// external system username.
 func (e element) substitute(systemUsername string) string {
+	__antithesis_instrumentation__.Notify(560248)
 	m := e.pattern.FindStringSubmatch(systemUsername)
 	if m == nil {
+		__antithesis_instrumentation__.Notify(560251)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(560252)
 	}
+	__antithesis_instrumentation__.Notify(560249)
 	if e.substituteAt == -1 {
+		__antithesis_instrumentation__.Notify(560253)
 		return e.dbUser
+	} else {
+		__antithesis_instrumentation__.Notify(560254)
 	}
+	__antithesis_instrumentation__.Notify(560250)
 	return e.dbUser[0:e.substituteAt] + m[1] + e.dbUser[e.substituteAt+2:]
 }
 
-// tidyIdentMapLine removes # comments and trims whitespace.
 func tidyIdentMapLine(line string) string {
+	__antithesis_instrumentation__.Notify(560255)
 	if commentIdx := strings.IndexByte(line, '#'); commentIdx != -1 {
+		__antithesis_instrumentation__.Notify(560257)
 		line = line[0:commentIdx]
+	} else {
+		__antithesis_instrumentation__.Notify(560258)
 	}
+	__antithesis_instrumentation__.Notify(560256)
 
 	return strings.TrimSpace(line)
 }

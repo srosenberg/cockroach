@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,224 +21,287 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Stores provides methods to access a collection of stores. There's
-// a visitor pattern and also an implementation of the client.Sender
-// interface which directs a call to the appropriate store based on
-// the call's key range. Stores also implements the gossip.Storage
-// interface, which allows gossip bootstrap information to be
-// persisted consistently to every store and the most recent bootstrap
-// information to be read at node startup.
 type Stores struct {
 	log.AmbientContext
 	clock    *hlc.Clock
-	storeMap syncutil.IntMap // map[roachpb.StoreID]*Store
+	storeMap syncutil.IntMap
 
 	mu struct {
 		syncutil.Mutex
-		biLatestTS hlc.Timestamp         // Timestamp of gossip bootstrap info
-		latestBI   *gossip.BootstrapInfo // Latest cached bootstrap info
+		biLatestTS hlc.Timestamp
+		latestBI   *gossip.BootstrapInfo
 	}
 }
 
-var _ kv.Sender = &Stores{}      // Stores implements the client.Sender interface
-var _ gossip.Storage = &Stores{} // Stores implements the gossip.Storage interface
+var _ kv.Sender = &Stores{}
+var _ gossip.Storage = &Stores{}
 
-// NewStores returns a local-only sender which directly accesses
-// a collection of stores.
 func NewStores(ambient log.AmbientContext, clock *hlc.Clock) *Stores {
+	__antithesis_instrumentation__.Notify(126419)
 	return &Stores{
 		AmbientContext: ambient,
 		clock:          clock,
 	}
 }
 
-// IsMeta1Leaseholder returns whether the specified stores owns
-// the meta1 lease. Returns an error if any.
 func (ls *Stores) IsMeta1Leaseholder(ctx context.Context, now hlc.ClockTimestamp) (bool, error) {
+	__antithesis_instrumentation__.Notify(126420)
 	repl, _, err := ls.GetReplicaForRangeID(ctx, 1)
 	if roachpb.IsRangeNotFoundError(err) {
+		__antithesis_instrumentation__.Notify(126423)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(126424)
 	}
+	__antithesis_instrumentation__.Notify(126421)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126425)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(126426)
 	}
+	__antithesis_instrumentation__.Notify(126422)
 	return repl.OwnsValidLease(ctx, now), nil
 }
 
-// GetStoreCount returns the number of stores this node is exporting.
 func (ls *Stores) GetStoreCount() int {
+	__antithesis_instrumentation__.Notify(126427)
 	var count int
 	ls.storeMap.Range(func(_ int64, _ unsafe.Pointer) bool {
+		__antithesis_instrumentation__.Notify(126429)
 		count++
 		return true
 	})
+	__antithesis_instrumentation__.Notify(126428)
 	return count
 }
 
-// HasStore returns true if the specified store is owned by this Stores.
 func (ls *Stores) HasStore(storeID roachpb.StoreID) bool {
+	__antithesis_instrumentation__.Notify(126430)
 	_, ok := ls.storeMap.Load(int64(storeID))
 	return ok
 }
 
-// GetStore looks up the store by store ID. Returns an error
-// if not found.
 func (ls *Stores) GetStore(storeID roachpb.StoreID) (*Store, error) {
+	__antithesis_instrumentation__.Notify(126431)
 	if value, ok := ls.storeMap.Load(int64(storeID)); ok {
+		__antithesis_instrumentation__.Notify(126433)
 		return (*Store)(value), nil
+	} else {
+		__antithesis_instrumentation__.Notify(126434)
 	}
+	__antithesis_instrumentation__.Notify(126432)
 	return nil, roachpb.NewStoreNotFoundError(storeID)
 }
 
-// AddStore adds the specified store to the store map.
 func (ls *Stores) AddStore(s *Store) {
+	__antithesis_instrumentation__.Notify(126435)
 	if _, loaded := ls.storeMap.LoadOrStore(int64(s.Ident.StoreID), unsafe.Pointer(s)); loaded {
+		__antithesis_instrumentation__.Notify(126437)
 		panic(fmt.Sprintf("cannot add store twice: %+v", s.Ident))
+	} else {
+		__antithesis_instrumentation__.Notify(126438)
 	}
-	// If we've already read the gossip bootstrap info, ensure that
-	// all stores have the most recent values.
+	__antithesis_instrumentation__.Notify(126436)
+
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
 	if !ls.mu.biLatestTS.IsEmpty() {
+		__antithesis_instrumentation__.Notify(126439)
 		if err := ls.updateBootstrapInfoLocked(ls.mu.latestBI); err != nil {
+			__antithesis_instrumentation__.Notify(126440)
 			ctx := ls.AnnotateCtx(context.TODO())
 			log.Errorf(ctx, "failed to update bootstrap info on newly added store: %+v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(126441)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126442)
 	}
 }
 
-// RemoveStore removes the specified store from the store map.
 func (ls *Stores) RemoveStore(s *Store) {
+	__antithesis_instrumentation__.Notify(126443)
 	ls.storeMap.Delete(int64(s.Ident.StoreID))
 }
 
-// ForwardSideTransportClosedTimestampForRange forwards the side-transport
-// closed timestamp for the local replicas of the given range.
 func (ls *Stores) ForwardSideTransportClosedTimestampForRange(
 	ctx context.Context, rangeID roachpb.RangeID, closedTS hlc.Timestamp, lai ctpb.LAI,
 ) {
+	__antithesis_instrumentation__.Notify(126444)
 	if err := ls.VisitStores(func(s *Store) error {
+		__antithesis_instrumentation__.Notify(126445)
 		r := s.GetReplicaIfExists(rangeID)
 		if r != nil {
+			__antithesis_instrumentation__.Notify(126447)
 			r.ForwardSideTransportClosedTimestamp(ctx, closedTS, lai)
+		} else {
+			__antithesis_instrumentation__.Notify(126448)
 		}
+		__antithesis_instrumentation__.Notify(126446)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(126449)
 		log.Fatalf(ctx, "unexpected error: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(126450)
 	}
 }
 
-// VisitStores implements a visitor pattern over stores in the
-// storeMap. The specified function is invoked with each store in
-// turn. Care is taken to invoke the visitor func without the lock
-// held to avoid inconsistent lock orderings, as some visitor
-// functions may call back into the Stores object. Stores are visited
-// in random order.
 func (ls *Stores) VisitStores(visitor func(s *Store) error) error {
+	__antithesis_instrumentation__.Notify(126451)
 	var err error
 	ls.storeMap.Range(func(k int64, v unsafe.Pointer) bool {
+		__antithesis_instrumentation__.Notify(126453)
 		err = visitor((*Store)(v))
 		return err == nil
 	})
+	__antithesis_instrumentation__.Notify(126452)
 	return err
 }
 
-// GetReplicaForRangeID returns the replica and store which contains the
-// specified range. If the replica is not found on any store then
-// roachpb.RangeNotFoundError will be returned.
 func (ls *Stores) GetReplicaForRangeID(
 	ctx context.Context, rangeID roachpb.RangeID,
 ) (*Replica, *Store, error) {
+	__antithesis_instrumentation__.Notify(126454)
 	var replica *Replica
 	var store *Store
 	if err := ls.VisitStores(func(s *Store) error {
+		__antithesis_instrumentation__.Notify(126457)
 		r := s.GetReplicaIfExists(rangeID)
 		if r != nil {
+			__antithesis_instrumentation__.Notify(126459)
 			replica, store = r, s
+		} else {
+			__antithesis_instrumentation__.Notify(126460)
 		}
+		__antithesis_instrumentation__.Notify(126458)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(126461)
 		log.Fatalf(ctx, "unexpected error: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(126462)
 	}
+	__antithesis_instrumentation__.Notify(126455)
 	if replica == nil {
+		__antithesis_instrumentation__.Notify(126463)
 		return nil, nil, roachpb.NewRangeNotFoundError(rangeID, 0)
+	} else {
+		__antithesis_instrumentation__.Notify(126464)
 	}
+	__antithesis_instrumentation__.Notify(126456)
 	return replica, store, nil
 }
 
-// Send implements the client.Sender interface. The store is looked up from the
-// store map using the ID specified in the request.
 func (ls *Stores) Send(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(126465)
 	if err := ba.ValidateForEvaluation(); err != nil {
+		__antithesis_instrumentation__.Notify(126469)
 		log.Fatalf(ctx, "invalid batch (%s): %s", ba, err)
+	} else {
+		__antithesis_instrumentation__.Notify(126470)
 	}
+	__antithesis_instrumentation__.Notify(126466)
 
 	store, err := ls.GetStore(ba.Replica.StoreID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126471)
 		return nil, roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(126472)
 	}
+	__antithesis_instrumentation__.Notify(126467)
 
 	br, pErr := store.Send(ctx, ba)
-	if br != nil && br.Error != nil {
+	if br != nil && func() bool {
+		__antithesis_instrumentation__.Notify(126473)
+		return br.Error != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(126474)
 		panic(roachpb.ErrorUnexpectedlySet(store, br))
+	} else {
+		__antithesis_instrumentation__.Notify(126475)
 	}
+	__antithesis_instrumentation__.Notify(126468)
 	return br, pErr
 }
 
-// RangeFeed registers a rangefeed over the specified span. It sends updates to
-// the provided stream and returns with an optional error when the rangefeed is
-// complete.
 func (ls *Stores) RangeFeed(
 	args *roachpb.RangeFeedRequest, stream roachpb.Internal_RangeFeedServer,
 ) *roachpb.Error {
+	__antithesis_instrumentation__.Notify(126476)
 	ctx := stream.Context()
 	if args.RangeID == 0 {
+		__antithesis_instrumentation__.Notify(126479)
 		log.Fatal(ctx, "rangefeed request missing range ID")
-	} else if args.Replica.StoreID == 0 {
-		log.Fatal(ctx, "rangefeed request missing store ID")
+	} else {
+		__antithesis_instrumentation__.Notify(126480)
+		if args.Replica.StoreID == 0 {
+			__antithesis_instrumentation__.Notify(126481)
+			log.Fatal(ctx, "rangefeed request missing store ID")
+		} else {
+			__antithesis_instrumentation__.Notify(126482)
+		}
 	}
+	__antithesis_instrumentation__.Notify(126477)
 
 	store, err := ls.GetStore(args.Replica.StoreID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126483)
 		return roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(126484)
 	}
+	__antithesis_instrumentation__.Notify(126478)
 
 	return store.RangeFeed(args, stream)
 }
 
-// ReadBootstrapInfo implements the gossip.Storage interface. Read
-// attempts to read gossip bootstrap info from every known store and
-// finds the most recent from all stores to initialize the bootstrap
-// info argument. Returns an error on any issues reading data for the
-// stores (but excluding the case in which no data has been persisted
-// yet).
 func (ls *Stores) ReadBootstrapInfo(bi *gossip.BootstrapInfo) error {
+	__antithesis_instrumentation__.Notify(126485)
 	var latestTS hlc.Timestamp
 
 	ctx := ls.AnnotateCtx(context.TODO())
 	var err error
 
-	// Find the most recent bootstrap info.
 	ls.storeMap.Range(func(k int64, v unsafe.Pointer) bool {
+		__antithesis_instrumentation__.Notify(126488)
 		s := (*Store)(v)
 		var storeBI gossip.BootstrapInfo
 		var ok bool
 		ok, err = storage.MVCCGetProto(ctx, s.engine, keys.StoreGossipKey(), hlc.Timestamp{}, &storeBI,
 			storage.MVCCGetOptions{})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(126491)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(126492)
 		}
-		if ok && latestTS.Less(storeBI.Timestamp) {
+		__antithesis_instrumentation__.Notify(126489)
+		if ok && func() bool {
+			__antithesis_instrumentation__.Notify(126493)
+			return latestTS.Less(storeBI.Timestamp) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(126494)
 			latestTS = storeBI.Timestamp
 			*bi = storeBI
+		} else {
+			__antithesis_instrumentation__.Notify(126495)
 		}
+		__antithesis_instrumentation__.Notify(126490)
 		return true
 	})
+	__antithesis_instrumentation__.Notify(126486)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126496)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126497)
 	}
+	__antithesis_instrumentation__.Notify(126487)
 	log.Infof(ctx, "read %d node addresses from persistent storage", len(bi.Addresses))
 
 	ls.mu.Lock()
@@ -254,157 +309,157 @@ func (ls *Stores) ReadBootstrapInfo(bi *gossip.BootstrapInfo) error {
 	return ls.updateBootstrapInfoLocked(bi)
 }
 
-// WriteBootstrapInfo implements the gossip.Storage interface. Write
-// persists the supplied bootstrap info to every known store. Returns
-// nil on success; otherwise returns first error encountered writing
-// to the stores.
 func (ls *Stores) WriteBootstrapInfo(bi *gossip.BootstrapInfo) error {
+	__antithesis_instrumentation__.Notify(126498)
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
 	bi.Timestamp = ls.clock.Now()
 	if err := ls.updateBootstrapInfoLocked(bi); err != nil {
+		__antithesis_instrumentation__.Notify(126500)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126501)
 	}
+	__antithesis_instrumentation__.Notify(126499)
 	ctx := ls.AnnotateCtx(context.TODO())
 	log.Infof(ctx, "wrote %d node addresses to persistent storage", len(bi.Addresses))
 	return nil
 }
 
 func (ls *Stores) updateBootstrapInfoLocked(bi *gossip.BootstrapInfo) error {
+	__antithesis_instrumentation__.Notify(126502)
 	if bi.Timestamp.Less(ls.mu.biLatestTS) {
+		__antithesis_instrumentation__.Notify(126505)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(126506)
 	}
+	__antithesis_instrumentation__.Notify(126503)
 	ctx := ls.AnnotateCtx(context.TODO())
-	// Update the latest timestamp and set cached version.
+
 	ls.mu.biLatestTS = bi.Timestamp
 	ls.mu.latestBI = protoutil.Clone(bi).(*gossip.BootstrapInfo)
-	// Update all stores.
+
 	var err error
 	ls.storeMap.Range(func(k int64, v unsafe.Pointer) bool {
+		__antithesis_instrumentation__.Notify(126507)
 		s := (*Store)(v)
 		err = storage.MVCCPutProto(ctx, s.engine, nil, keys.StoreGossipKey(), hlc.Timestamp{}, nil, bi)
 		return err == nil
 	})
+	__antithesis_instrumentation__.Notify(126504)
 	return err
 }
 
-// WriteClusterVersionToEngines writes the given version to the given engines,
-// Returns nil on success; otherwise returns first error encountered writing to
-// the stores. It makes no attempt to validate the supplied version.
-//
-// At the time of writing this is used during bootstrap, initial server start
-// (to perhaps fill into additional stores), and during cluster version bumps.
 func WriteClusterVersionToEngines(
 	ctx context.Context, engines []storage.Engine, cv clusterversion.ClusterVersion,
 ) error {
+	__antithesis_instrumentation__.Notify(126508)
 	for _, eng := range engines {
+		__antithesis_instrumentation__.Notify(126510)
 		if err := WriteClusterVersion(ctx, eng, cv); err != nil {
+			__antithesis_instrumentation__.Notify(126511)
 			return errors.Wrapf(err, "error writing version to engine %s", eng)
+		} else {
+			__antithesis_instrumentation__.Notify(126512)
 		}
 	}
+	__antithesis_instrumentation__.Notify(126509)
 	return nil
 }
 
-// SynthesizeClusterVersionFromEngines returns the cluster version that was read
-// from the engines or, if none are initialized, binaryMinSupportedVersion.
-// Typically all initialized engines will have the same version persisted,
-// though ill-timed crashes can result in situations where this is not the
-// case. Then, the largest version seen is returned.
-//
-// binaryVersion is the version of this binary. An error is returned if
-// any engine has a higher version, as this would indicate that this node
-// has previously acked the higher cluster version but is now running an
-// old binary, which is unsafe.
-//
-// binaryMinSupportedVersion is the minimum version supported by this binary. An
-// error is returned if any engine has a version lower that this.
 func SynthesizeClusterVersionFromEngines(
 	ctx context.Context,
 	engines []storage.Engine,
 	binaryVersion, binaryMinSupportedVersion roachpb.Version,
 ) (clusterversion.ClusterVersion, error) {
-	// Find the most recent bootstrap info.
+	__antithesis_instrumentation__.Notify(126513)
+
 	type originVersion struct {
 		roachpb.Version
 		origin string
 	}
 
-	maxPossibleVersion := roachpb.Version{Major: 999999} // Sort above any real version.
+	maxPossibleVersion := roachpb.Version{Major: 999999}
 	minStoreVersion := originVersion{
 		Version: maxPossibleVersion,
 		origin:  "(no store)",
 	}
 
-	// We run this twice because it's only after having seen all the versions
-	// that we can decide whether the node catches a version error. However, we
-	// also want to name at least one engine that violates the version
-	// constraints, which at the latest the second loop will achieve (because
-	// then minStoreVersion don't change any more).
 	for _, eng := range engines {
-		eng := eng.(storage.Reader) // we're read only
+		__antithesis_instrumentation__.Notify(126517)
+		eng := eng.(storage.Reader)
 		var cv clusterversion.ClusterVersion
 		cv, err := ReadClusterVersion(ctx, eng)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(126521)
 			return clusterversion.ClusterVersion{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(126522)
 		}
+		__antithesis_instrumentation__.Notify(126518)
 		if cv.Version == (roachpb.Version{}) {
-			// This is needed when a node first joins an existing cluster, in
-			// which case it won't know what version to use until the first
-			// Gossip update comes in.
-			cv.Version = binaryMinSupportedVersion
-		}
+			__antithesis_instrumentation__.Notify(126523)
 
-		// Avoid running a binary with a store that is too new. For example,
-		// restarting into 1.1 after having upgraded to 1.2 doesn't work.
+			cv.Version = binaryMinSupportedVersion
+		} else {
+			__antithesis_instrumentation__.Notify(126524)
+		}
+		__antithesis_instrumentation__.Notify(126519)
+
 		if binaryVersion.Less(cv.Version) {
+			__antithesis_instrumentation__.Notify(126525)
 			return clusterversion.ClusterVersion{}, errors.Errorf(
 				"cockroach version v%s is incompatible with data in store %s; use version v%s or later",
 				binaryVersion, eng, cv.Version)
+		} else {
+			__antithesis_instrumentation__.Notify(126526)
 		}
+		__antithesis_instrumentation__.Notify(126520)
 
-		// Track smallest use version encountered.
 		if cv.Version.Less(minStoreVersion.Version) {
+			__antithesis_instrumentation__.Notify(126527)
 			minStoreVersion.Version = cv.Version
 			minStoreVersion.origin = fmt.Sprint(eng)
+		} else {
+			__antithesis_instrumentation__.Notify(126528)
 		}
 	}
+	__antithesis_instrumentation__.Notify(126514)
 
-	// If no use version was found, fall back to our binaryMinSupportedVersion. This
-	// is the case when a brand new node is joining an existing cluster (which
-	// may be on any older version this binary supports).
 	if minStoreVersion.Version == maxPossibleVersion {
+		__antithesis_instrumentation__.Notify(126529)
 		minStoreVersion.Version = binaryMinSupportedVersion
+	} else {
+		__antithesis_instrumentation__.Notify(126530)
 	}
+	__antithesis_instrumentation__.Notify(126515)
 
 	cv := clusterversion.ClusterVersion{
 		Version: minStoreVersion.Version,
 	}
 	log.Eventf(ctx, "read ClusterVersion %+v", cv)
 
-	// Avoid running a binary too new for this store. This is what you'd catch
-	// if, say, you restarted directly from 1.0 into 1.2 (bumping the min
-	// version) without going through 1.1 first. It would also be what you catch if
-	// you are starting 1.1 for the first time (after 1.0), but it crashes
-	// half-way through the startup sequence (so now some stores have 1.1, but
-	// some 1.0), in which case you are expected to run 1.1 again (hopefully
-	// without the crash this time) which would then rewrite all the stores.
-	//
-	// We only verify this now because as we iterate through the stores, we
-	// may not yet have picked up the final versions we're actually planning
-	// to use.
 	if minStoreVersion.Version.Less(binaryMinSupportedVersion) {
+		__antithesis_instrumentation__.Notify(126531)
 		return clusterversion.ClusterVersion{}, errors.Errorf("store %s, last used with cockroach version v%s, "+
 			"is too old for running version v%s (which requires data from v%s or later)",
 			minStoreVersion.origin, minStoreVersion.Version, binaryVersion, binaryMinSupportedVersion)
+	} else {
+		__antithesis_instrumentation__.Notify(126532)
 	}
+	__antithesis_instrumentation__.Notify(126516)
 	return cv, nil
 }
 
 func (ls *Stores) engines() []storage.Engine {
+	__antithesis_instrumentation__.Notify(126533)
 	var engines []storage.Engine
 	ls.storeMap.Range(func(_ int64, v unsafe.Pointer) bool {
+		__antithesis_instrumentation__.Notify(126535)
 		engines = append(engines, (*Store)(v).Engine())
-		return true // want more
+		return true
 	})
+	__antithesis_instrumentation__.Notify(126534)
 	return engines
 }

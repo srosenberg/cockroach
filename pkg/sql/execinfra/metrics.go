@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package execinfra
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -16,8 +8,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 )
 
-// DistSQLMetrics contains pointers to the metrics for monitoring DistSQL
-// processing.
 type DistSQLMetrics struct {
 	QueriesActive         *metric.Gauge
 	QueriesTotal          *metric.Counter
@@ -37,8 +27,7 @@ type DistSQLMetrics struct {
 	SpilledBytesRead      *metric.Counter
 }
 
-// MetricStruct implements the metrics.Struct interface.
-func (DistSQLMetrics) MetricStruct() {}
+func (DistSQLMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(471126) }
 
 var _ metric.Struct = DistSQLMetrics{}
 
@@ -141,12 +130,10 @@ var (
 	}
 )
 
-// See pkg/sql/mem_metrics.go
-// log10int64times1000 = log10(math.MaxInt64) * 1000, rounded up somewhat
 const log10int64times1000 = 19 * 1000
 
-// MakeDistSQLMetrics instantiates the metrics holder for DistSQL monitoring.
 func MakeDistSQLMetrics(histogramWindow time.Duration) DistSQLMetrics {
+	__antithesis_instrumentation__.Notify(471127)
 	return DistSQLMetrics{
 		QueriesActive:         metric.NewGauge(metaQueriesActive),
 		QueriesTotal:          metric.NewCounter(metaQueriesTotal),
@@ -167,24 +154,24 @@ func MakeDistSQLMetrics(histogramWindow time.Duration) DistSQLMetrics {
 	}
 }
 
-// QueryStart registers the start of a new DistSQL query.
 func (m *DistSQLMetrics) QueryStart() {
+	__antithesis_instrumentation__.Notify(471128)
 	m.QueriesActive.Inc(1)
 	m.QueriesTotal.Inc(1)
 }
 
-// QueryStop registers the end of a DistSQL query.
 func (m *DistSQLMetrics) QueryStop() {
+	__antithesis_instrumentation__.Notify(471129)
 	m.QueriesActive.Dec(1)
 }
 
-// FlowStart registers the start of a new DistSQL flow.
 func (m *DistSQLMetrics) FlowStart() {
+	__antithesis_instrumentation__.Notify(471130)
 	m.FlowsActive.Inc(1)
 	m.FlowsTotal.Inc(1)
 }
 
-// FlowStop registers the end of a DistSQL flow.
 func (m *DistSQLMetrics) FlowStop() {
+	__antithesis_instrumentation__.Notify(471131)
 	m.FlowsActive.Dec(1)
 }

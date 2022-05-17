@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,15 +14,19 @@ import (
 func computeStoreProperties(
 	ctx context.Context, dir string, readonly bool, encryptionEnabled bool,
 ) roachpb.StoreProperties {
+	__antithesis_instrumentation__.Notify(643936)
 	props := roachpb.StoreProperties{
 		ReadOnly:  readonly,
 		Encrypted: encryptionEnabled,
 	}
 
-	// In-memory store?
 	if dir == "" {
+		__antithesis_instrumentation__.Notify(643938)
 		return props
+	} else {
+		__antithesis_instrumentation__.Notify(643939)
 	}
+	__antithesis_instrumentation__.Notify(643937)
 
 	fsprops := getFileSystemProperties(ctx, dir)
 	props.FileStoreProperties = &fsprops
@@ -38,58 +34,54 @@ func computeStoreProperties(
 }
 
 func getFileSystemProperties(ctx context.Context, dir string) roachpb.FileStoreProperties {
+	__antithesis_instrumentation__.Notify(643940)
 	fsprops := roachpb.FileStoreProperties{
 		Path: dir,
 	}
 
-	// Find which filesystem supports the store.
-
 	absPath, err := filepath.Abs(dir)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(643945)
 		log.Warningf(ctx, "cannot compute absolute file path for %q: %v", dir, err)
 		return fsprops
+	} else {
+		__antithesis_instrumentation__.Notify(643946)
 	}
+	__antithesis_instrumentation__.Notify(643941)
 
-	// Alas, only BSD reliably populates "fs" in os.StatFs(),
-	// so we must find the filesystem manually.
-	//
-	// Note that scanning the list of mounts is also
-	// what linux' df(1) command does.
-	//
 	var fslist gosigar.FileSystemList
 	if err := fslist.Get(); err != nil {
+		__antithesis_instrumentation__.Notify(643947)
 		log.Warningf(ctx, "cannot retrieve filesystem list: %v", err)
 		return fsprops
+	} else {
+		__antithesis_instrumentation__.Notify(643948)
 	}
+	__antithesis_instrumentation__.Notify(643942)
 
 	var fsInfo *gosigar.FileSystem
-	// We're reading the list of mounts in reverse order: we're assuming
-	// that mounts are LIFO and can only be stacked, so the best match
-	// will necessarily be the first filesystem that's a prefix of the
-	// target directory, when looking from the end of the file.
-	//
-	// TODO(ssd): Steven points out that gosigar reads from /etc/mtab on
-	// linux, which is sometimes managed by the user command 'mount' and
-	// can sometimes miss entries when `mount -n` is used. It might be
-	// better to change gosigar to use /proc/mounts instead.
-	//
-	// FWIW, we are OK with this for now, since the systems where crdb
-	// is typically being deployed are well-behaved in that regard:
-	// Kubernetes mirrors /proc/mount in /etc/mtab.
+
 	for i := len(fslist.List) - 1; i >= 0; i-- {
-		// filepath.Rel can reliably tell us if a path is relative to
-		// another: if it is not, an error is returned.
+		__antithesis_instrumentation__.Notify(643949)
+
 		_, err := filepath.Rel(fslist.List[i].DirName, absPath)
 		if err == nil {
+			__antithesis_instrumentation__.Notify(643950)
 			fsInfo = &fslist.List[i]
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(643951)
 		}
 	}
+	__antithesis_instrumentation__.Notify(643943)
 	if fsInfo == nil {
-		// This is surprising!? We're expecting at least a match on the
-		// root filesystem. Oh well.
+		__antithesis_instrumentation__.Notify(643952)
+
 		return fsprops
+	} else {
+		__antithesis_instrumentation__.Notify(643953)
 	}
+	__antithesis_instrumentation__.Notify(643944)
 
 	fsprops.FsType = fsInfo.SysTypeName
 	fsprops.BlockDevice = fsInfo.DevName

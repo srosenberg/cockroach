@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package valueside
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
@@ -18,103 +10,125 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Encode encodes `val` using value encoding and appends it to `appendTo`,
-// returning the new buffer.
-//
-// This is suitable for generating the value part of individual columns
-// in a column family.
-//
-// The encoded value is guaranteed to round trip and decode exactly to its
-// input, but is not lexicographically sortable.
-//
-// The scratch buffer is optional and is used as a temporary buffer for certain
-// datum types (JSON, arrays, tuples).
-//
-// See also: docs/tech-notes/encoding.md, keyside.Encode().
 func Encode(appendTo []byte, colID ColumnIDDelta, val tree.Datum, scratch []byte) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(571370)
 	if val == tree.DNull {
+		__antithesis_instrumentation__.Notify(571372)
 		return encoding.EncodeNullValue(appendTo, uint32(colID)), nil
+	} else {
+		__antithesis_instrumentation__.Notify(571373)
 	}
+	__antithesis_instrumentation__.Notify(571371)
 	switch t := tree.UnwrapDatum(nil, val).(type) {
 	case *tree.DBitArray:
+		__antithesis_instrumentation__.Notify(571374)
 		return encoding.EncodeBitArrayValue(appendTo, uint32(colID), t.BitArray), nil
 	case *tree.DBool:
+		__antithesis_instrumentation__.Notify(571375)
 		return encoding.EncodeBoolValue(appendTo, uint32(colID), bool(*t)), nil
 	case *tree.DInt:
+		__antithesis_instrumentation__.Notify(571376)
 		return encoding.EncodeIntValue(appendTo, uint32(colID), int64(*t)), nil
 	case *tree.DFloat:
+		__antithesis_instrumentation__.Notify(571377)
 		return encoding.EncodeFloatValue(appendTo, uint32(colID), float64(*t)), nil
 	case *tree.DDecimal:
+		__antithesis_instrumentation__.Notify(571378)
 		return encoding.EncodeDecimalValue(appendTo, uint32(colID), &t.Decimal), nil
 	case *tree.DString:
+		__antithesis_instrumentation__.Notify(571379)
 		return encoding.EncodeBytesValue(appendTo, uint32(colID), []byte(*t)), nil
 	case *tree.DBytes:
+		__antithesis_instrumentation__.Notify(571380)
 		return encoding.EncodeBytesValue(appendTo, uint32(colID), []byte(*t)), nil
 	case *tree.DDate:
+		__antithesis_instrumentation__.Notify(571381)
 		return encoding.EncodeIntValue(appendTo, uint32(colID), t.UnixEpochDaysWithOrig()), nil
 	case *tree.DBox2D:
+		__antithesis_instrumentation__.Notify(571382)
 		return encoding.EncodeBox2DValue(appendTo, uint32(colID), t.CartesianBoundingBox.BoundingBox)
 	case *tree.DGeography:
+		__antithesis_instrumentation__.Notify(571383)
 		return encoding.EncodeGeoValue(appendTo, uint32(colID), t.SpatialObjectRef())
 	case *tree.DGeometry:
+		__antithesis_instrumentation__.Notify(571384)
 		return encoding.EncodeGeoValue(appendTo, uint32(colID), t.SpatialObjectRef())
 	case *tree.DTime:
+		__antithesis_instrumentation__.Notify(571385)
 		return encoding.EncodeIntValue(appendTo, uint32(colID), int64(*t)), nil
 	case *tree.DTimeTZ:
+		__antithesis_instrumentation__.Notify(571386)
 		return encoding.EncodeTimeTZValue(appendTo, uint32(colID), t.TimeTZ), nil
 	case *tree.DTimestamp:
+		__antithesis_instrumentation__.Notify(571387)
 		return encoding.EncodeTimeValue(appendTo, uint32(colID), t.Time), nil
 	case *tree.DTimestampTZ:
+		__antithesis_instrumentation__.Notify(571388)
 		return encoding.EncodeTimeValue(appendTo, uint32(colID), t.Time), nil
 	case *tree.DInterval:
+		__antithesis_instrumentation__.Notify(571389)
 		return encoding.EncodeDurationValue(appendTo, uint32(colID), t.Duration), nil
 	case *tree.DUuid:
+		__antithesis_instrumentation__.Notify(571390)
 		return encoding.EncodeUUIDValue(appendTo, uint32(colID), t.UUID), nil
 	case *tree.DIPAddr:
+		__antithesis_instrumentation__.Notify(571391)
 		return encoding.EncodeIPAddrValue(appendTo, uint32(colID), t.IPAddr), nil
 	case *tree.DJSON:
+		__antithesis_instrumentation__.Notify(571392)
 		encoded, err := json.EncodeJSON(scratch, t.JSON)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571402)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(571403)
 		}
+		__antithesis_instrumentation__.Notify(571393)
 		return encoding.EncodeJSONValue(appendTo, uint32(colID), encoded), nil
 	case *tree.DArray:
+		__antithesis_instrumentation__.Notify(571394)
 		a, err := encodeArray(t, scratch)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571404)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(571405)
 		}
+		__antithesis_instrumentation__.Notify(571395)
 		return encoding.EncodeArrayValue(appendTo, uint32(colID), a), nil
 	case *tree.DTuple:
+		__antithesis_instrumentation__.Notify(571396)
 		return encodeTuple(t, appendTo, uint32(colID), scratch)
 	case *tree.DCollatedString:
+		__antithesis_instrumentation__.Notify(571397)
 		return encoding.EncodeBytesValue(appendTo, uint32(colID), []byte(t.Contents)), nil
 	case *tree.DOid:
+		__antithesis_instrumentation__.Notify(571398)
 		return encoding.EncodeIntValue(appendTo, uint32(colID), int64(t.DInt)), nil
 	case *tree.DEnum:
+		__antithesis_instrumentation__.Notify(571399)
 		return encoding.EncodeBytesValue(appendTo, uint32(colID), t.PhysicalRep), nil
 	case *tree.DVoid:
+		__antithesis_instrumentation__.Notify(571400)
 		return encoding.EncodeVoidValue(appendTo, uint32(colID)), nil
 	default:
+		__antithesis_instrumentation__.Notify(571401)
 		return nil, errors.Errorf("unable to encode table value: %T", t)
 	}
 }
 
-// ColumnIDDelta is the difference between two descpb.ColumnIDs. When multiple
-// columns are encoded in a single value, the difference relative to the
-// previous column ID is encoded for each column (to minimize space usage).
 type ColumnIDDelta uint32
 
-// NoColumnID is a sentinel used when we aren't encoding a specific column ID.
-// This is used when we use value encodings not to write KV Values but other
-// purposes, for example transferring a value over DistSQL (in the row engine).
 const NoColumnID = ColumnIDDelta(encoding.NoColumnID)
 
-// MakeColumnIDDelta creates the ColumnIDDelta for the difference between the
-// given columns in the same value. For the first column in the value,
-// `previous` should be zero / NoColumnID.
 func MakeColumnIDDelta(previous, current descpb.ColumnID) ColumnIDDelta {
+	__antithesis_instrumentation__.Notify(571406)
 	if previous > current {
+		__antithesis_instrumentation__.Notify(571408)
 		panic(errors.AssertionFailedf("cannot write column id %d after %d", current, previous))
+	} else {
+		__antithesis_instrumentation__.Notify(571409)
 	}
+	__antithesis_instrumentation__.Notify(571407)
 	return ColumnIDDelta(current - previous)
 }

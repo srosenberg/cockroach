@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colinfotestutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,31 +13,20 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 )
 
-// ColumnItemResolverTester is an interface that should be implemented by any
-// struct that also implements tree.ColumnItemResolver. It is used to test that
-// the implementation of tree.ColumnItemResolver is correct.
 type ColumnItemResolverTester interface {
-	// GetColumnItemResolver returns the tree.ColumnItemResolver. Since any
-	// struct implementing ColumnItemResolverTester should also implement
-	// tree.ColumnItemResolver, this is basically an identity function.
 	GetColumnItemResolver() colinfo.ColumnItemResolver
 
-	// AddTable adds a table with the given column names to the
-	// tree.ColumnItemResolver.
 	AddTable(tabName tree.TableName, colNames []tree.Name)
 
-	// ResolveQualifiedStarTestResults returns the results of running
-	// RunResolveQualifiedStarTest on the tree.ColumnItemResolver.
 	ResolveQualifiedStarTestResults(
 		srcName *tree.TableName, srcMeta colinfo.ColumnSourceMeta,
 	) (string, string, error)
 
-	// ResolveColumnItemTestResults returns the results of running
-	// RunResolveColumnItemTest on the tree.ColumnItemResolver.
 	ResolveColumnItemTestResults(colRes colinfo.ColumnResolutionResult) (string, error)
 }
 
 func initColumnItemResolverTester(t *testing.T, ct ColumnItemResolverTester) {
+	__antithesis_instrumentation__.Notify(250949)
 	ct.AddTable(tree.MakeTableNameWithSchema("", "crdb_internal", "tables"), []tree.Name{"table_name"})
 	ct.AddTable(tree.MakeTableNameWithSchema("db1", tree.PublicSchemaName, "foo"), []tree.Name{"x"})
 	ct.AddTable(tree.MakeTableNameWithSchema("db2", tree.PublicSchemaName, "foo"), []tree.Name{"x"})
@@ -53,9 +34,8 @@ func initColumnItemResolverTester(t *testing.T, ct ColumnItemResolverTester) {
 	ct.AddTable(tree.MakeTableNameWithSchema("db1", tree.PublicSchemaName, "kv"), []tree.Name{"k", "v"})
 }
 
-// RunResolveQualifiedStarTest tests that the given ColumnItemResolverTester
-// correctly resolves names of the form "<tableName>.*".
 func RunResolveQualifiedStarTest(t *testing.T, ct ColumnItemResolverTester) {
+	__antithesis_instrumentation__.Notify(250950)
 	testCases := []struct {
 		in    string
 		tnout string
@@ -73,48 +53,82 @@ func RunResolveQualifiedStarTest(t *testing.T, ct ColumnItemResolverTester) {
 	initColumnItemResolverTester(t, ct)
 	resolver := ct.GetColumnItemResolver()
 	for _, tc := range testCases {
+		__antithesis_instrumentation__.Notify(250951)
 		t.Run(tc.in, func(t *testing.T) {
+			__antithesis_instrumentation__.Notify(250952)
 			tnout, csout, err := func() (string, string, error) {
+				__antithesis_instrumentation__.Notify(250957)
 				stmt, err := parser.ParseOne(fmt.Sprintf("SELECT %s", tc.in))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(250962)
 					return "", "", err
+				} else {
+					__antithesis_instrumentation__.Notify(250963)
 				}
+				__antithesis_instrumentation__.Notify(250958)
 				v := stmt.AST.(*tree.Select).Select.(*tree.SelectClause).Exprs[0].Expr.(tree.VarName)
 				c, err := v.NormalizeVarName()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(250964)
 					return "", "", err
+				} else {
+					__antithesis_instrumentation__.Notify(250965)
 				}
+				__antithesis_instrumentation__.Notify(250959)
 				acs, ok := c.(*tree.AllColumnsSelector)
 				if !ok {
+					__antithesis_instrumentation__.Notify(250966)
 					return "", "", fmt.Errorf("var name %s (%T) did not resolve to AllColumnsSelector, found %T instead",
 						v, v, c)
+				} else {
+					__antithesis_instrumentation__.Notify(250967)
 				}
+				__antithesis_instrumentation__.Notify(250960)
 				tn, res, err := colinfo.ResolveAllColumnsSelector(context.Background(), resolver, acs)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(250968)
 					return "", "", err
+				} else {
+					__antithesis_instrumentation__.Notify(250969)
 				}
+				__antithesis_instrumentation__.Notify(250961)
 				return ct.ResolveQualifiedStarTestResults(tn, res)
 			}()
+			__antithesis_instrumentation__.Notify(250953)
 			if !testutils.IsError(err, tc.err) {
+				__antithesis_instrumentation__.Notify(250970)
 				t.Fatalf("%s: expected %s, but found %v", tc.in, tc.err, err)
+			} else {
+				__antithesis_instrumentation__.Notify(250971)
 			}
+			__antithesis_instrumentation__.Notify(250954)
 			if tc.err != "" {
+				__antithesis_instrumentation__.Notify(250972)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(250973)
 			}
+			__antithesis_instrumentation__.Notify(250955)
 
 			if tc.tnout != tnout {
+				__antithesis_instrumentation__.Notify(250974)
 				t.Fatalf("%s: expected tn %s, but found %s", tc.in, tc.tnout, tnout)
+			} else {
+				__antithesis_instrumentation__.Notify(250975)
 			}
+			__antithesis_instrumentation__.Notify(250956)
 			if tc.csout != csout {
+				__antithesis_instrumentation__.Notify(250976)
 				t.Fatalf("%s: expected cs %s, but found %s", tc.in, tc.csout, csout)
+			} else {
+				__antithesis_instrumentation__.Notify(250977)
 			}
 		})
 	}
 }
 
-// RunResolveColumnItemTest tests that the given ColumnItemResolverTester
-// correctly resolves column names.
 func RunResolveColumnItemTest(t *testing.T, ct ColumnItemResolverTester) {
+	__antithesis_instrumentation__.Notify(250978)
 	testCases := []struct {
 		in  string
 		out string
@@ -138,7 +152,6 @@ func RunResolveColumnItemTest(t *testing.T, ct ColumnItemResolverTester) {
 		{`public.foo.x`, ``, `ambiguous source name`},
 		{`public.kv.k`, `db1.public.kv.k`, ``},
 
-		// CockroachDB extension: d.t.x -> d.public.t.x
 		{`db1.foo.x`, `db1.public.foo.x`, ``},
 		{`db2.foo.x`, `db2.public.foo.x`, ``},
 
@@ -152,37 +165,68 @@ func RunResolveColumnItemTest(t *testing.T, ct ColumnItemResolverTester) {
 	initColumnItemResolverTester(t, ct)
 	resolver := ct.GetColumnItemResolver()
 	for _, tc := range testCases {
+		__antithesis_instrumentation__.Notify(250979)
 		t.Run(tc.in, func(t *testing.T) {
+			__antithesis_instrumentation__.Notify(250980)
 			out, err := func() (string, error) {
+				__antithesis_instrumentation__.Notify(250984)
 				stmt, err := parser.ParseOne(fmt.Sprintf("SELECT %s", tc.in))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(250989)
 					return "", err
+				} else {
+					__antithesis_instrumentation__.Notify(250990)
 				}
+				__antithesis_instrumentation__.Notify(250985)
 				v := stmt.AST.(*tree.Select).Select.(*tree.SelectClause).Exprs[0].Expr.(tree.VarName)
 				c, err := v.NormalizeVarName()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(250991)
 					return "", err
+				} else {
+					__antithesis_instrumentation__.Notify(250992)
 				}
+				__antithesis_instrumentation__.Notify(250986)
 				ci, ok := c.(*tree.ColumnItem)
 				if !ok {
+					__antithesis_instrumentation__.Notify(250993)
 					return "", fmt.Errorf("var name %s (%T) did not resolve to ColumnItem, found %T instead",
 						v, v, c)
+				} else {
+					__antithesis_instrumentation__.Notify(250994)
 				}
+				__antithesis_instrumentation__.Notify(250987)
 				res, err := colinfo.ResolveColumnItem(context.Background(), resolver, ci)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(250995)
 					return "", err
+				} else {
+					__antithesis_instrumentation__.Notify(250996)
 				}
+				__antithesis_instrumentation__.Notify(250988)
 				return ct.ResolveColumnItemTestResults(res)
 			}()
+			__antithesis_instrumentation__.Notify(250981)
 			if !testutils.IsError(err, tc.err) {
+				__antithesis_instrumentation__.Notify(250997)
 				t.Fatalf("%s: expected %s, but found %v", tc.in, tc.err, err)
+			} else {
+				__antithesis_instrumentation__.Notify(250998)
 			}
+			__antithesis_instrumentation__.Notify(250982)
 			if tc.err != "" {
+				__antithesis_instrumentation__.Notify(250999)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(251000)
 			}
+			__antithesis_instrumentation__.Notify(250983)
 
 			if tc.out != out {
+				__antithesis_instrumentation__.Notify(251001)
 				t.Fatalf("%s: expected %s, but found %s", tc.in, tc.out, out)
+			} else {
+				__antithesis_instrumentation__.Notify(251002)
 			}
 		})
 	}

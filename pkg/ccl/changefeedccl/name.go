@@ -1,12 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -21,97 +15,127 @@ var kafkaDisallowedRE = regexp.MustCompile(`[^a-zA-Z0-9\._\-]`)
 var avroDisallowedRE = regexp.MustCompile(`[^A-Za-z0-9_]`)
 
 func escapeRune(r rune) string {
+	__antithesis_instrumentation__.Notify(17551)
 	if r <= 1<<16 {
+		__antithesis_instrumentation__.Notify(17553)
 		return fmt.Sprintf(`_u%04x_`, r)
+	} else {
+		__antithesis_instrumentation__.Notify(17554)
 	}
+	__antithesis_instrumentation__.Notify(17552)
 	return fmt.Sprintf(`_u%08x_`, r)
 }
 
-// SQLNameToKafkaName escapes a sql table name into a valid kafka topic name.
-// This is reversible by KafkaNameToSQLName except when the escaped string is
-// longer than kafka's length limit.
-//
-// Kafka allows names matching `[a-zA-Z0-9\._\-]{1,249}` excepting `.` and `..`.
-//
-// Runes are escaped with _u<hex>_ in an attempt to look like U+0021. For
-// example `!` escapes to `_u0021_`.
 func SQLNameToKafkaName(s string) string {
+	__antithesis_instrumentation__.Notify(17555)
 	if s == `.` {
+		__antithesis_instrumentation__.Notify(17558)
 		return escapeRune('.')
-	} else if s == `..` {
-		return escapeRune('.') + escapeRune('.')
+	} else {
+		__antithesis_instrumentation__.Notify(17559)
+		if s == `..` {
+			__antithesis_instrumentation__.Notify(17560)
+			return escapeRune('.') + escapeRune('.')
+		} else {
+			__antithesis_instrumentation__.Notify(17561)
+		}
 	}
+	__antithesis_instrumentation__.Notify(17556)
 	s = escapeSQLName(s, kafkaDisallowedRE)
 	if len(s) > 249 {
-		// Not going to roundtrip, but not much we can do about that.
+		__antithesis_instrumentation__.Notify(17562)
+
 		return s[:249]
+	} else {
+		__antithesis_instrumentation__.Notify(17563)
 	}
+	__antithesis_instrumentation__.Notify(17557)
 	return s
 }
 
-// KafkaNameToSQLName is the inverse of SQLNameToKafkaName except when
-// SQLNameToKafkaName had to truncate.
 func KafkaNameToSQLName(s string) string {
+	__antithesis_instrumentation__.Notify(17564)
 	return unescapeSQLName(s)
 }
 
-// SQLNameToAvroName escapes a sql table name into a valid avro record or field
-// name. This is reversible by AvroNameToSQLName.
-//
-// Avro allows names matching `[a-zA-Z_][a-zA-Z0-9_]*`.
-//
-// Runes are escaped with _u<hex>_ in an attempt to look like U+0021. For
-// example `!` escapes to `_u0021_`.
 func SQLNameToAvroName(s string) string {
+	__antithesis_instrumentation__.Notify(17565)
 	r, firstSize := utf8.DecodeRuneInString(s)
 	if r == utf8.RuneError {
-		// Invalid or empty string. Not much we can do here.
+		__antithesis_instrumentation__.Notify(17568)
+
 		return s
+	} else {
+		__antithesis_instrumentation__.Notify(17569)
 	}
-	// Avro disallows a leading 0-9, but allows them otherwise.
-	if r >= '0' && r <= '9' {
+	__antithesis_instrumentation__.Notify(17566)
+
+	if r >= '0' && func() bool {
+		__antithesis_instrumentation__.Notify(17570)
+		return r <= '9' == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(17571)
 		return escapeRune(r) + escapeSQLName(s[firstSize:], avroDisallowedRE)
+	} else {
+		__antithesis_instrumentation__.Notify(17572)
 	}
+	__antithesis_instrumentation__.Notify(17567)
 	return escapeSQLName(s, avroDisallowedRE)
 }
 
-// AvroNameToSQLName is the inverse of SQLNameToAvroName.
 func AvroNameToSQLName(s string) string {
+	__antithesis_instrumentation__.Notify(17573)
 	return unescapeSQLName(s)
 }
 
 func escapeSQLName(s string, disallowedRE *regexp.Regexp) string {
-	// First replace anything that looks like an escape, so we can roundtrip.
+	__antithesis_instrumentation__.Notify(17574)
+
 	s = escapeRE.ReplaceAllStringFunc(s, func(match string) string {
+		__antithesis_instrumentation__.Notify(17577)
 		var ret strings.Builder
 		for _, r := range match {
+			__antithesis_instrumentation__.Notify(17579)
 			ret.WriteString(escapeRune(r))
 		}
+		__antithesis_instrumentation__.Notify(17578)
 		return ret.String()
 	})
-	// Then replace anything disallowed.
+	__antithesis_instrumentation__.Notify(17575)
+
 	s = disallowedRE.ReplaceAllStringFunc(s, func(match string) string {
+		__antithesis_instrumentation__.Notify(17580)
 		var ret strings.Builder
 		for _, r := range match {
+			__antithesis_instrumentation__.Notify(17582)
 			ret.WriteString(escapeRune(r))
 		}
+		__antithesis_instrumentation__.Notify(17581)
 		return ret.String()
 	})
+	__antithesis_instrumentation__.Notify(17576)
 	return s
 }
 
 func unescapeSQLName(s string) string {
+	__antithesis_instrumentation__.Notify(17583)
 	var buf [utf8.UTFMax]byte
 	s = escapeRE.ReplaceAllStringFunc(s, func(match string) string {
-		// Cut off the `_u` prefix and the `_` suffix.
+		__antithesis_instrumentation__.Notify(17585)
+
 		hex := match[2 : len(match)-1]
 		r, err := strconv.ParseInt(hex, 16, 32)
 		if err != nil {
-			// Should be unreachable.
+			__antithesis_instrumentation__.Notify(17587)
+
 			return match
+		} else {
+			__antithesis_instrumentation__.Notify(17588)
 		}
+		__antithesis_instrumentation__.Notify(17586)
 		n := utf8.EncodeRune(buf[:utf8.UTFMax], rune(r))
 		return string(buf[:n])
 	})
+	__antithesis_instrumentation__.Notify(17584)
 	return s
 }

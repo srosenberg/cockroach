@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -45,52 +37,37 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// optCatalog implements the cat.Catalog interface over the SchemaResolver
-// interface for the use of the new optimizer. The interfaces are simplified to
-// only include what the optimizer needs, and certain common lookups are cached
-// for faster performance.
 type optCatalog struct {
-	// planner needs to be set via a call to init before calling other methods.
 	planner *planner
 
-	// cfg is the gossiped and cached system config. It may be nil if the node
-	// does not yet have it available.
 	cfg *config.SystemConfig
 
-	// dataSources is a cache of table and view objects that's used to satisfy
-	// repeated calls for the same data source.
-	// Note that the data source object might still need to be recreated if
-	// something outside of the descriptor has changed (e.g. table stats).
 	dataSources map[catalog.TableDescriptor]cat.DataSource
 
-	// tn is a temporary name used during resolution to avoid heap allocation.
 	tn tree.TableName
 }
 
 var _ cat.Catalog = &optCatalog{}
 
-// init initializes an optCatalog instance (which the caller can pre-allocate).
-// The instance can be used across multiple queries, but reset() should be
-// called for each query.
 func (oc *optCatalog) init(planner *planner) {
 	oc.planner = planner
 	oc.dataSources = make(map[catalog.TableDescriptor]cat.DataSource)
 }
 
-// reset prepares the optCatalog to be used for a new query.
 func (oc *optCatalog) reset() {
-	// If we have accumulated too many tables in our map, throw everything away.
-	// This deals with possible edge cases where we do a lot of DDL in a
-	// long-lived session.
+	__antithesis_instrumentation__.Notify(550840)
+
 	if len(oc.dataSources) > 100 {
+		__antithesis_instrumentation__.Notify(550842)
 		oc.dataSources = make(map[catalog.TableDescriptor]cat.DataSource)
+	} else {
+		__antithesis_instrumentation__.Notify(550843)
 	}
+	__antithesis_instrumentation__.Notify(550841)
 
 	oc.cfg = oc.planner.execCfg.SystemConfig.GetSystemConfig()
 }
 
-// optSchema represents the parent database and schema for an object. It
-// implements the cat.Object and cat.Schema interfaces.
 type optSchema struct {
 	planner *planner
 
@@ -100,40 +77,43 @@ type optSchema struct {
 	name cat.SchemaName
 }
 
-// ID is part of the cat.Object interface.
 func (os *optSchema) ID() cat.StableID {
+	__antithesis_instrumentation__.Notify(550844)
 	switch os.schema.SchemaKind() {
 	case catalog.SchemaUserDefined, catalog.SchemaTemporary:
-		// User defined schemas and the temporary schema have real ID's, so use
-		// them here.
+		__antithesis_instrumentation__.Notify(550845)
+
 		return cat.StableID(os.schema.GetID())
 	default:
-		// Virtual schemas and the public schema don't, so just fall back to the
-		// parent database's ID.
+		__antithesis_instrumentation__.Notify(550846)
+
 		return cat.StableID(os.database.GetID())
 	}
 }
 
-// PostgresDescriptorID is part of the cat.Object interface.
 func (os *optSchema) PostgresDescriptorID() cat.StableID {
+	__antithesis_instrumentation__.Notify(550847)
 	return os.ID()
 }
 
-// Equals is part of the cat.Object interface.
 func (os *optSchema) Equals(other cat.Object) bool {
+	__antithesis_instrumentation__.Notify(550848)
 	otherSchema, ok := other.(*optSchema)
-	return ok && os.ID() == otherSchema.ID()
+	return ok && func() bool {
+		__antithesis_instrumentation__.Notify(550849)
+		return os.ID() == otherSchema.ID() == true
+	}() == true
 }
 
-// Name is part of the cat.Schema interface.
 func (os *optSchema) Name() *cat.SchemaName {
+	__antithesis_instrumentation__.Notify(550850)
 	return &os.name
 }
 
-// GetDataSourceNames is part of the cat.Schema interface.
 func (os *optSchema) GetDataSourceNames(
 	ctx context.Context,
 ) ([]cat.DataSourceName, descpb.IDs, error) {
+	__antithesis_instrumentation__.Notify(550851)
 	return resolver.GetObjectNamesAndIDs(
 		ctx,
 		os.planner.Txn(),
@@ -141,29 +121,40 @@ func (os *optSchema) GetDataSourceNames(
 		os.planner.ExecCfg().Codec,
 		os.database,
 		os.name.Schema(),
-		true, /* explicitPrefix */
+		true,
 	)
 }
 
 func (os *optSchema) getDescriptorForPermissionsCheck() catalog.Descriptor {
-	// If the schema is backed by a descriptor, then return it.
+	__antithesis_instrumentation__.Notify(550852)
+
 	if os.schema.SchemaKind() == catalog.SchemaUserDefined {
+		__antithesis_instrumentation__.Notify(550854)
 		return os.schema
+	} else {
+		__antithesis_instrumentation__.Notify(550855)
 	}
-	// Otherwise, just return the database descriptor.
+	__antithesis_instrumentation__.Notify(550853)
+
 	return os.database
 }
 
-// ResolveSchema is part of the cat.Catalog interface.
 func (oc *optCatalog) ResolveSchema(
 	ctx context.Context, flags cat.Flags, name *cat.SchemaName,
 ) (cat.Schema, cat.SchemaName, error) {
+	__antithesis_instrumentation__.Notify(550856)
 	if flags.AvoidDescriptorCaches {
+		__antithesis_instrumentation__.Notify(550860)
 		defer func(prev bool) {
+			__antithesis_instrumentation__.Notify(550862)
 			oc.planner.avoidLeasedDescriptors = prev
 		}(oc.planner.avoidLeasedDescriptors)
+		__antithesis_instrumentation__.Notify(550861)
 		oc.planner.avoidLeasedDescriptors = true
+	} else {
+		__antithesis_instrumentation__.Notify(550863)
 	}
+	__antithesis_instrumentation__.Notify(550857)
 
 	oc.tn.ObjectNamePrefix = *name
 	found, prefix, err := resolver.ResolveObjectNamePrefix(
@@ -171,18 +162,33 @@ func (oc *optCatalog) ResolveSchema(
 		oc.planner.CurrentSearchPath(), &oc.tn.ObjectNamePrefix,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550864)
 		return nil, cat.SchemaName{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(550865)
 	}
+	__antithesis_instrumentation__.Notify(550858)
 	if !found {
-		if !name.ExplicitSchema && !name.ExplicitCatalog {
+		__antithesis_instrumentation__.Notify(550866)
+		if !name.ExplicitSchema && func() bool {
+			__antithesis_instrumentation__.Notify(550868)
+			return !name.ExplicitCatalog == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(550869)
 			return nil, cat.SchemaName{}, pgerror.New(
 				pgcode.InvalidName, "no database or schema specified",
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(550870)
 		}
+		__antithesis_instrumentation__.Notify(550867)
 		return nil, cat.SchemaName{}, pgerror.Newf(
 			pgcode.InvalidSchemaName, "target database or schema does not exist",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(550871)
 	}
+	__antithesis_instrumentation__.Notify(550859)
 
 	return &optSchema{
 		planner:  oc.planner,
@@ -192,179 +198,252 @@ func (oc *optCatalog) ResolveSchema(
 	}, oc.tn.ObjectNamePrefix, nil
 }
 
-// ResolveDataSource is part of the cat.Catalog interface.
 func (oc *optCatalog) ResolveDataSource(
 	ctx context.Context, flags cat.Flags, name *cat.DataSourceName,
 ) (cat.DataSource, cat.DataSourceName, error) {
+	__antithesis_instrumentation__.Notify(550872)
 	if flags.AvoidDescriptorCaches {
+		__antithesis_instrumentation__.Notify(550877)
 		defer func(prev bool) {
+			__antithesis_instrumentation__.Notify(550879)
 			oc.planner.avoidLeasedDescriptors = prev
 		}(oc.planner.avoidLeasedDescriptors)
+		__antithesis_instrumentation__.Notify(550878)
 		oc.planner.avoidLeasedDescriptors = true
+	} else {
+		__antithesis_instrumentation__.Notify(550880)
 	}
+	__antithesis_instrumentation__.Notify(550873)
 
 	oc.tn = *name
 	lflags := tree.ObjectLookupFlagsWithRequiredTableKind(tree.ResolveAnyTableKind)
 	prefix, desc, err := resolver.ResolveExistingTableObject(ctx, oc.planner, &oc.tn, lflags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550881)
 		return nil, cat.DataSourceName{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(550882)
 	}
+	__antithesis_instrumentation__.Notify(550874)
 
-	// Ensure that the current user can access the target schema.
 	if err := oc.planner.canResolveDescUnderSchema(ctx, prefix.Schema, desc); err != nil {
+		__antithesis_instrumentation__.Notify(550883)
 		return nil, cat.DataSourceName{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(550884)
 	}
+	__antithesis_instrumentation__.Notify(550875)
 
 	ds, err := oc.dataSourceForDesc(ctx, flags, desc, &oc.tn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550885)
 		return nil, cat.DataSourceName{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(550886)
 	}
+	__antithesis_instrumentation__.Notify(550876)
 	return ds, oc.tn, nil
 }
 
-// ResolveDataSourceByID is part of the cat.Catalog interface.
 func (oc *optCatalog) ResolveDataSourceByID(
 	ctx context.Context, flags cat.Flags, dataSourceID cat.StableID,
 ) (_ cat.DataSource, isAdding bool, _ error) {
+	__antithesis_instrumentation__.Notify(550887)
 	if flags.AvoidDescriptorCaches {
+		__antithesis_instrumentation__.Notify(550890)
 		defer func(prev bool) {
+			__antithesis_instrumentation__.Notify(550892)
 			oc.planner.avoidLeasedDescriptors = prev
 		}(oc.planner.avoidLeasedDescriptors)
+		__antithesis_instrumentation__.Notify(550891)
 		oc.planner.avoidLeasedDescriptors = true
+	} else {
+		__antithesis_instrumentation__.Notify(550893)
 	}
+	__antithesis_instrumentation__.Notify(550888)
 
 	tableLookup, err := oc.planner.LookupTableByID(ctx, descpb.ID(dataSourceID))
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550894)
 		isAdding := catalog.HasAddingTableError(err)
-		if errors.Is(err, catalog.ErrDescriptorNotFound) || isAdding {
+		if errors.Is(err, catalog.ErrDescriptorNotFound) || func() bool {
+			__antithesis_instrumentation__.Notify(550896)
+			return isAdding == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(550897)
 			return nil, isAdding, sqlerrors.NewUndefinedRelationError(&tree.TableRef{TableID: int64(dataSourceID)})
+		} else {
+			__antithesis_instrumentation__.Notify(550898)
 		}
+		__antithesis_instrumentation__.Notify(550895)
 		return nil, false, err
+	} else {
+		__antithesis_instrumentation__.Notify(550899)
 	}
+	__antithesis_instrumentation__.Notify(550889)
 
-	// The name is only used for virtual tables, which can't be looked up by ID.
 	ds, err := oc.dataSourceForDesc(ctx, cat.Flags{}, tableLookup, &tree.TableName{})
 	return ds, false, err
 }
 
-// ResolveTypeByOID is part of the cat.Catalog interface.
 func (oc *optCatalog) ResolveTypeByOID(ctx context.Context, oid oid.Oid) (*types.T, error) {
+	__antithesis_instrumentation__.Notify(550900)
 	return oc.planner.ResolveTypeByOID(ctx, oid)
 }
 
-// ResolveType is part of the cat.Catalog interface.
 func (oc *optCatalog) ResolveType(
 	ctx context.Context, name *tree.UnresolvedObjectName,
 ) (*types.T, error) {
+	__antithesis_instrumentation__.Notify(550901)
 	return oc.planner.ResolveType(ctx, name)
 }
 
 func getDescFromCatalogObjectForPermissions(o cat.Object) (catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(550902)
 	switch t := o.(type) {
 	case *optSchema:
+		__antithesis_instrumentation__.Notify(550903)
 		return t.getDescriptorForPermissionsCheck(), nil
 	case *optTable:
+		__antithesis_instrumentation__.Notify(550904)
 		return t.desc, nil
 	case *optVirtualTable:
+		__antithesis_instrumentation__.Notify(550905)
 		return t.desc, nil
 	case *optView:
+		__antithesis_instrumentation__.Notify(550906)
 		return t.desc, nil
 	case *optSequence:
+		__antithesis_instrumentation__.Notify(550907)
 		return t.desc, nil
 	default:
+		__antithesis_instrumentation__.Notify(550908)
 		return nil, errors.AssertionFailedf("invalid object type: %T", o)
 	}
 }
 
 func getDescForDataSource(o cat.DataSource) (catalog.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(550909)
 	switch t := o.(type) {
 	case *optTable:
+		__antithesis_instrumentation__.Notify(550910)
 		return t.desc, nil
 	case *optVirtualTable:
+		__antithesis_instrumentation__.Notify(550911)
 		return t.desc, nil
 	case *optView:
+		__antithesis_instrumentation__.Notify(550912)
 		return t.desc, nil
 	case *optSequence:
+		__antithesis_instrumentation__.Notify(550913)
 		return t.desc, nil
 	default:
+		__antithesis_instrumentation__.Notify(550914)
 		return nil, errors.AssertionFailedf("invalid object type: %T", o)
 	}
 }
 
-// CheckPrivilege is part of the cat.Catalog interface.
 func (oc *optCatalog) CheckPrivilege(ctx context.Context, o cat.Object, priv privilege.Kind) error {
+	__antithesis_instrumentation__.Notify(550915)
 	desc, err := getDescFromCatalogObjectForPermissions(o)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550917)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(550918)
 	}
+	__antithesis_instrumentation__.Notify(550916)
 	return oc.planner.CheckPrivilege(ctx, desc, priv)
 }
 
-// CheckAnyPrivilege is part of the cat.Catalog interface.
 func (oc *optCatalog) CheckAnyPrivilege(ctx context.Context, o cat.Object) error {
+	__antithesis_instrumentation__.Notify(550919)
 	desc, err := getDescFromCatalogObjectForPermissions(o)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550921)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(550922)
 	}
+	__antithesis_instrumentation__.Notify(550920)
 	return oc.planner.CheckAnyPrivilege(ctx, desc)
 }
 
-// HasAdminRole is part of the cat.Catalog interface.
 func (oc *optCatalog) HasAdminRole(ctx context.Context) (bool, error) {
+	__antithesis_instrumentation__.Notify(550923)
 	return oc.planner.HasAdminRole(ctx)
 }
 
-// RequireAdminRole is part of the cat.Catalog interface.
 func (oc *optCatalog) RequireAdminRole(ctx context.Context, action string) error {
+	__antithesis_instrumentation__.Notify(550924)
 	return oc.planner.RequireAdminRole(ctx, action)
 }
 
-// HasRoleOption is part of the cat.Catalog interface.
 func (oc *optCatalog) HasRoleOption(
 	ctx context.Context, roleOption roleoption.Option,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(550925)
 	return oc.planner.HasRoleOption(ctx, roleOption)
 }
 
-// FullyQualifiedName is part of the cat.Catalog interface.
 func (oc *optCatalog) FullyQualifiedName(
 	ctx context.Context, ds cat.DataSource,
 ) (cat.DataSourceName, error) {
+	__antithesis_instrumentation__.Notify(550926)
 	return oc.fullyQualifiedNameWithTxn(ctx, ds, oc.planner.Txn())
 }
 
 func (oc *optCatalog) fullyQualifiedNameWithTxn(
 	ctx context.Context, ds cat.DataSource, txn *kv.Txn,
 ) (cat.DataSourceName, error) {
+	__antithesis_instrumentation__.Notify(550927)
 	if vt, ok := ds.(*optVirtualTable); ok {
-		// Virtual tables require special handling, because they can have multiple
-		// effective instances that utilize the same descriptor.
+		__antithesis_instrumentation__.Notify(550932)
+
 		return vt.name, nil
+	} else {
+		__antithesis_instrumentation__.Notify(550933)
 	}
+	__antithesis_instrumentation__.Notify(550928)
 
 	desc, err := getDescForDataSource(ds)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550934)
 		return cat.DataSourceName{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(550935)
 	}
+	__antithesis_instrumentation__.Notify(550929)
 
 	dbID := desc.GetParentID()
 	dbDesc, err := oc.planner.Descriptors().Direct().MustGetDatabaseDescByID(ctx, txn, dbID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550936)
 		return cat.DataSourceName{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(550937)
 	}
+	__antithesis_instrumentation__.Notify(550930)
 	scID := desc.GetParentSchemaID()
 	var scName tree.Name
-	// TODO(richardjcai): Remove this in 22.2.
+
 	if scID == keys.PublicSchemaID {
+		__antithesis_instrumentation__.Notify(550938)
 		scName = tree.PublicSchemaName
 	} else {
+		__antithesis_instrumentation__.Notify(550939)
 		scDesc, err := oc.planner.Descriptors().Direct().MustGetSchemaDescByID(ctx, txn, scID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(550941)
 			return cat.DataSourceName{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(550942)
 		}
+		__antithesis_instrumentation__.Notify(550940)
 		scName = tree.Name(scDesc.GetName())
 	}
+	__antithesis_instrumentation__.Notify(550931)
 
 	return tree.MakeTableNameWithSchema(
 			tree.Name(dbDesc.GetName()),
@@ -373,126 +452,166 @@ func (oc *optCatalog) fullyQualifiedNameWithTxn(
 		nil
 }
 
-// RoleExists is part of the cat.Catalog interface.
 func (oc *optCatalog) RoleExists(ctx context.Context, role security.SQLUsername) (bool, error) {
+	__antithesis_instrumentation__.Notify(550943)
 	return RoleExists(ctx, oc.planner.ExecCfg(), oc.planner.Txn(), role)
 }
 
-// dataSourceForDesc returns a data source wrapper for the given descriptor.
-// The wrapper might come from the cache, or it may be created now.
 func (oc *optCatalog) dataSourceForDesc(
 	ctx context.Context, flags cat.Flags, desc catalog.TableDescriptor, name *cat.DataSourceName,
 ) (cat.DataSource, error) {
-	// Because they are backed by physical data, we treat materialized views
-	// as tables for the purposes of planning.
-	if desc.IsTable() || desc.MaterializedView() {
-		// Tables require invalidation logic for cached wrappers.
+	__antithesis_instrumentation__.Notify(550944)
+
+	if desc.IsTable() || func() bool {
+		__antithesis_instrumentation__.Notify(550948)
+		return desc.MaterializedView() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(550949)
+
 		return oc.dataSourceForTable(ctx, flags, desc, name)
+	} else {
+		__antithesis_instrumentation__.Notify(550950)
 	}
+	__antithesis_instrumentation__.Notify(550945)
 
 	ds, ok := oc.dataSources[desc]
 	if ok {
+		__antithesis_instrumentation__.Notify(550951)
 		return ds, nil
+	} else {
+		__antithesis_instrumentation__.Notify(550952)
 	}
+	__antithesis_instrumentation__.Notify(550946)
 
 	switch {
 	case desc.IsView():
+		__antithesis_instrumentation__.Notify(550953)
 		ds = newOptView(desc)
 
 	case desc.IsSequence():
+		__antithesis_instrumentation__.Notify(550954)
 		ds = newOptSequence(desc)
 
 	default:
+		__antithesis_instrumentation__.Notify(550955)
 		return nil, errors.AssertionFailedf("unexpected table descriptor: %+v", desc)
 	}
+	__antithesis_instrumentation__.Notify(550947)
 
 	oc.dataSources[desc] = ds
 	return ds, nil
 }
 
-// dataSourceForTable returns a table data source wrapper for the given descriptor.
-// The wrapper might come from the cache, or it may be created now.
 func (oc *optCatalog) dataSourceForTable(
 	ctx context.Context, flags cat.Flags, desc catalog.TableDescriptor, name *cat.DataSourceName,
 ) (cat.DataSource, error) {
+	__antithesis_instrumentation__.Notify(550956)
 	if desc.IsVirtualTable() {
-		// Virtual tables can have multiple effective instances that utilize the
-		// same descriptor, so we can't cache them (see the comment for
-		// optVirtualTable.id for more information).
-		return newOptVirtualTable(ctx, oc, desc, name)
-	}
+		__antithesis_instrumentation__.Notify(550962)
 
-	// Even if we have a cached data source, we still have to cross-check that
-	// statistics and the zone config haven't changed.
+		return newOptVirtualTable(ctx, oc, desc, name)
+	} else {
+		__antithesis_instrumentation__.Notify(550963)
+	}
+	__antithesis_instrumentation__.Notify(550957)
+
 	var tableStats []*stats.TableStatistic
 	if !flags.NoTableStats {
+		__antithesis_instrumentation__.Notify(550964)
 		var err error
 		tableStats, err = oc.planner.execCfg.TableStatsCache.GetTableStats(context.TODO(), desc)
 		if err != nil {
-			// Ignore any error. We still want to be able to run queries even if we lose
-			// access to the statistics table.
-			// TODO(radu): at least log the error.
+			__antithesis_instrumentation__.Notify(550965)
+
 			tableStats = nil
+		} else {
+			__antithesis_instrumentation__.Notify(550966)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(550967)
 	}
+	__antithesis_instrumentation__.Notify(550958)
 
 	zoneConfig, err := oc.getZoneConfig(desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550968)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(550969)
 	}
+	__antithesis_instrumentation__.Notify(550959)
 
-	// Check to see if there's already a data source wrapper for this descriptor,
-	// and it was created with the same stats and zone config.
-	if ds, ok := oc.dataSources[desc]; ok && !ds.(*optTable).isStale(desc, tableStats, zoneConfig) {
+	if ds, ok := oc.dataSources[desc]; ok && func() bool {
+		__antithesis_instrumentation__.Notify(550970)
+		return !ds.(*optTable).isStale(desc, tableStats, zoneConfig) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(550971)
 		return ds, nil
+	} else {
+		__antithesis_instrumentation__.Notify(550972)
 	}
+	__antithesis_instrumentation__.Notify(550960)
 
 	ds, err := newOptTable(desc, oc.codec(), tableStats, zoneConfig)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550973)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(550974)
 	}
+	__antithesis_instrumentation__.Notify(550961)
 	oc.dataSources[desc] = ds
 	return ds, nil
 }
 
 var emptyZoneConfig = cat.EmptyZone()
 
-// getZoneConfig returns the ZoneConfig data structure for the given table.
-// ZoneConfigs are stored in protobuf binary format in the SystemConfig, which
-// is gossiped around the cluster. Note that the returned ZoneConfig might be
-// somewhat stale, since it's taken from the gossiped SystemConfig.
 func (oc *optCatalog) getZoneConfig(desc catalog.TableDescriptor) (cat.Zone, error) {
-	// Lookup table's zone if system config is available (it may not be as node
-	// is starting up and before it's received the gossiped config). If it is
-	// not available, use an empty config that has no zone constraints.
-	if oc.cfg == nil || desc.IsVirtualTable() {
+	__antithesis_instrumentation__.Notify(550975)
+
+	if oc.cfg == nil || func() bool {
+		__antithesis_instrumentation__.Notify(550979)
+		return desc.IsVirtualTable() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(550980)
 		return emptyZoneConfig, nil
+	} else {
+		__antithesis_instrumentation__.Notify(550981)
 	}
+	__antithesis_instrumentation__.Notify(550976)
 	zone, err := oc.cfg.GetZoneConfigForObject(
 		oc.codec(), oc.version(), config.ObjectID(desc.GetID()),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(550982)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(550983)
 	}
+	__antithesis_instrumentation__.Notify(550977)
 	if zone == nil {
-		// This can happen with tests that override the hook.
+		__antithesis_instrumentation__.Notify(550984)
+
 		return emptyZoneConfig, nil
+	} else {
+		__antithesis_instrumentation__.Notify(550985)
 	}
+	__antithesis_instrumentation__.Notify(550978)
 	return cat.AsZone(zone), nil
 }
 
 func (oc *optCatalog) codec() keys.SQLCodec {
+	__antithesis_instrumentation__.Notify(550986)
 	return oc.planner.ExecCfg().Codec
 }
 
 func (oc *optCatalog) version() clusterversion.ClusterVersion {
+	__antithesis_instrumentation__.Notify(550987)
 	return oc.planner.ExecCfg().Settings.Version.ActiveVersionOrEmpty(
 		oc.planner.EvalContext().Context,
 	)
 }
 
-// optView is a wrapper around catalog.TableDescriptor that implements
-// the cat.Object, cat.DataSource, and cat.View interfaces.
 type optView struct {
 	desc catalog.TableDescriptor
 }
@@ -500,61 +619,67 @@ type optView struct {
 var _ cat.View = &optView{}
 
 func newOptView(desc catalog.TableDescriptor) *optView {
+	__antithesis_instrumentation__.Notify(550988)
 	return &optView{desc: desc}
 }
 
-// ID is part of the cat.Object interface.
 func (ov *optView) ID() cat.StableID {
+	__antithesis_instrumentation__.Notify(550989)
 	return cat.StableID(ov.desc.GetID())
 }
 
-// PostgresDescriptorID is part of the cat.Object interface.
 func (ov *optView) PostgresDescriptorID() cat.StableID {
+	__antithesis_instrumentation__.Notify(550990)
 	return cat.StableID(ov.desc.GetID())
 }
 
-// Equals is part of the cat.Object interface.
 func (ov *optView) Equals(other cat.Object) bool {
+	__antithesis_instrumentation__.Notify(550991)
 	otherView, ok := other.(*optView)
 	if !ok {
+		__antithesis_instrumentation__.Notify(550993)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(550994)
 	}
-	return ov.desc.GetID() == otherView.desc.GetID() && ov.desc.GetVersion() == otherView.desc.GetVersion()
+	__antithesis_instrumentation__.Notify(550992)
+	return ov.desc.GetID() == otherView.desc.GetID() && func() bool {
+		__antithesis_instrumentation__.Notify(550995)
+		return ov.desc.GetVersion() == otherView.desc.GetVersion() == true
+	}() == true
 }
 
-// Name is part of the cat.View interface.
 func (ov *optView) Name() tree.Name {
+	__antithesis_instrumentation__.Notify(550996)
 	return tree.Name(ov.desc.GetName())
 }
 
-// IsSystemView is part of the cat.View interface.
 func (ov *optView) IsSystemView() bool {
+	__antithesis_instrumentation__.Notify(550997)
 	return ov.desc.IsVirtualTable()
 }
 
-// Query is part of the cat.View interface.
 func (ov *optView) Query() string {
+	__antithesis_instrumentation__.Notify(550998)
 	return ov.desc.GetViewQuery()
 }
 
-// ColumnNameCount is part of the cat.View interface.
 func (ov *optView) ColumnNameCount() int {
+	__antithesis_instrumentation__.Notify(550999)
 	return len(ov.desc.PublicColumns())
 }
 
-// ColumnName is part of the cat.View interface.
 func (ov *optView) ColumnName(i int) tree.Name {
+	__antithesis_instrumentation__.Notify(551000)
 	return ov.desc.PublicColumns()[i].ColName()
 }
 
-// CollectTypes is part of the cat.DataSource interface.
 func (ov *optView) CollectTypes(ord int) (descpb.IDs, error) {
+	__antithesis_instrumentation__.Notify(551001)
 	col := ov.desc.AllColumns()[ord]
 	return collectTypes(col)
 }
 
-// optSequence is a wrapper around catalog.TableDescriptor that
-// implements the cat.Object and cat.DataSource interfaces.
 type optSequence struct {
 	desc catalog.TableDescriptor
 }
@@ -563,79 +688,66 @@ var _ cat.DataSource = &optSequence{}
 var _ cat.Sequence = &optSequence{}
 
 func newOptSequence(desc catalog.TableDescriptor) *optSequence {
+	__antithesis_instrumentation__.Notify(551002)
 	return &optSequence{desc: desc}
 }
 
-// ID is part of the cat.Object interface.
 func (os *optSequence) ID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551003)
 	return cat.StableID(os.desc.GetID())
 }
 
-// PostgresDescriptorID is part of the cat.Object interface.
 func (os *optSequence) PostgresDescriptorID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551004)
 	return cat.StableID(os.desc.GetID())
 }
 
-// Equals is part of the cat.Object interface.
 func (os *optSequence) Equals(other cat.Object) bool {
+	__antithesis_instrumentation__.Notify(551005)
 	otherSeq, ok := other.(*optSequence)
 	if !ok {
+		__antithesis_instrumentation__.Notify(551007)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(551008)
 	}
-	return os.desc.GetID() == otherSeq.desc.GetID() && os.desc.GetVersion() == otherSeq.desc.GetVersion()
+	__antithesis_instrumentation__.Notify(551006)
+	return os.desc.GetID() == otherSeq.desc.GetID() && func() bool {
+		__antithesis_instrumentation__.Notify(551009)
+		return os.desc.GetVersion() == otherSeq.desc.GetVersion() == true
+	}() == true
 }
 
-// Name is part of the cat.Sequence interface.
 func (os *optSequence) Name() tree.Name {
+	__antithesis_instrumentation__.Notify(551010)
 	return tree.Name(os.desc.GetName())
 }
 
-// SequenceMarker is part of the cat.Sequence interface.
-func (os *optSequence) SequenceMarker() {}
+func (os *optSequence) SequenceMarker() { __antithesis_instrumentation__.Notify(551011) }
 
-// CollectTypes is part of the cat.DataSource interface.
 func (os *optSequence) CollectTypes(ord int) (descpb.IDs, error) {
+	__antithesis_instrumentation__.Notify(551012)
 	col := os.desc.AllColumns()[ord]
 	return collectTypes(col)
 }
 
-// optTable is a wrapper around catalog.TableDescriptor that caches
-// index wrappers and maintains a ColumnID => Column mapping for fast lookup.
 type optTable struct {
 	desc catalog.TableDescriptor
 
-	// columns contains all the columns presented to the catalog. This includes:
-	//  - ordinary table columns (those in the table descriptor)
-	//  - MVCC timestamp system column
-	//  - inverted columns
-	// They are stored in this order, though we shouldn't rely on that anywhere.
 	columns []cat.Column
 
-	// indexes are the inlined wrappers for the table's primary and secondary
-	// indexes.
 	indexes []optIndex
 
-	// codec is capable of encoding sql table keys.
 	codec keys.SQLCodec
 
-	// rawStats stores the original table statistics slice. Used for a fast-path
-	// check that the statistics haven't changed.
 	rawStats []*stats.TableStatistic
 
-	// stats are the inlined wrappers for table statistics.
 	stats []optTableStat
 
 	zone cat.Zone
 
-	// family is the inlined wrapper for the table's primary family. The primary
-	// family is the first family explicitly specified by the user. If no families
-	// were explicitly specified, then the primary family is synthesized.
 	primaryFamily optFamily
 
-	// families are the inlined wrappers for the table's non-primary families,
-	// which are all the families specified by the user after the first. The
-	// primary family is kept separate since the common case is that there's just
-	// one family.
 	families []optFamily
 
 	uniqueConstraints []optUniqueConstraint
@@ -643,13 +755,8 @@ type optTable struct {
 	outboundFKs []optForeignKeyConstraint
 	inboundFKs  []optForeignKeyConstraint
 
-	// checkConstraints is the set of check constraints for this table. It
-	// can be different from desc's constraints because of synthesized
-	// constraints for user defined types.
 	checkConstraints []cat.CheckConstraint
 
-	// colMap is a mapping from unique ColumnID to column ordinal within the
-	// table. This is a common lookup that needs to be fast.
 	colMap catalog.TableColMap
 }
 
@@ -661,6 +768,7 @@ func newOptTable(
 	stats []*stats.TableStatistic,
 	tblZone cat.Zone,
 ) (*optTable, error) {
+	__antithesis_instrumentation__.Notify(551013)
 	ot := &optTable{
 		desc:     desc,
 		codec:    codec,
@@ -668,43 +776,60 @@ func newOptTable(
 		zone:     tblZone,
 	}
 
-	// Determine the primary key columns.
 	pkCols := desc.GetPrimaryIndex().CollectKeyColumnIDs()
 
-	// Determine how many columns we will potentially need.
 	cols := ot.desc.DeletableColumns()
 	numCols := len(ot.desc.AllColumns())
-	// Add one for each inverted index column.
+
 	secondaryIndexes := ot.desc.DeletableNonPrimaryIndexes()
 	for _, index := range secondaryIndexes {
+		__antithesis_instrumentation__.Notify(551027)
 		if index.GetType() == descpb.IndexDescriptor_INVERTED {
+			__antithesis_instrumentation__.Notify(551028)
 			numCols++
+		} else {
+			__antithesis_instrumentation__.Notify(551029)
 		}
 	}
+	__antithesis_instrumentation__.Notify(551014)
 
 	ot.columns = make([]cat.Column, len(cols), numCols)
 	for _, col := range cols {
+		__antithesis_instrumentation__.Notify(551030)
 		var kind cat.ColumnKind
 		visibility := cat.Visible
 		switch {
 		case col.Public():
+			__antithesis_instrumentation__.Notify(551032)
 			kind = cat.Ordinary
 			if col.IsInaccessible() {
+				__antithesis_instrumentation__.Notify(551035)
 				visibility = cat.Inaccessible
-			} else if col.IsHidden() {
-				visibility = cat.Hidden
+			} else {
+				__antithesis_instrumentation__.Notify(551036)
+				if col.IsHidden() {
+					__antithesis_instrumentation__.Notify(551037)
+					visibility = cat.Hidden
+				} else {
+					__antithesis_instrumentation__.Notify(551038)
+				}
 			}
 		case col.WriteAndDeleteOnly():
+			__antithesis_instrumentation__.Notify(551033)
 			kind = cat.WriteOnly
 			visibility = cat.Inaccessible
 		default:
+			__antithesis_instrumentation__.Notify(551034)
 			kind = cat.DeleteOnly
 			visibility = cat.Inaccessible
 		}
-		// Primary key columns that are virtual in the descriptor are considered
-		// "stored" from the perspective of the optimizer because they are
-		// written to the primary index and all secondary indexes.
-		if !col.IsVirtual() || pkCols.Contains(col.GetID()) {
+		__antithesis_instrumentation__.Notify(551031)
+
+		if !col.IsVirtual() || func() bool {
+			__antithesis_instrumentation__.Notify(551039)
+			return pkCols.Contains(col.GetID()) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(551040)
 			ot.columns[col.Ordinal()].Init(
 				col.Ordinal(),
 				cat.StableID(col.GetID()),
@@ -720,9 +845,8 @@ func newOptTable(
 				col.ColumnDesc().GeneratedAsIdentitySequenceOption,
 			)
 		} else {
-			// Note: a WriteOnly or DeleteOnly mutation column doesn't require any
-			// special treatment inside the optimizer, other than having the correct
-			// visibility.
+			__antithesis_instrumentation__.Notify(551041)
+
 			ot.columns[col.Ordinal()].InitVirtualComputed(
 				col.Ordinal(),
 				cat.StableID(col.GetID()),
@@ -734,20 +858,24 @@ func newOptTable(
 			)
 		}
 	}
+	__antithesis_instrumentation__.Notify(551015)
 
 	newColumn := func() (col *cat.Column, ordinal int) {
+		__antithesis_instrumentation__.Notify(551042)
 		ordinal = len(ot.columns)
 		ot.columns = ot.columns[:ordinal+1]
 		return &ot.columns[ordinal], ordinal
 	}
+	__antithesis_instrumentation__.Notify(551016)
 
-	// Set up any registered system columns. However, we won't add the column
-	// in case a non-system column with the same name already exists in the table.
-	// This check is done for migration purposes. We need to avoid adding the
-	// system column if the table has a column with this name for some reason.
 	for _, sysCol := range ot.desc.SystemColumns() {
+		__antithesis_instrumentation__.Notify(551043)
 		found, _ := desc.FindColumnWithName(sysCol.ColName())
-		if found == nil || found.IsSystemColumn() {
+		if found == nil || func() bool {
+			__antithesis_instrumentation__.Notify(551044)
+			return found.IsSystemColumn() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(551045)
 			col, ord := newColumn()
 			col.Init(
 				ord,
@@ -763,18 +891,21 @@ func newOptTable(
 				mapGeneratedAsIdentityType(sysCol.GetGeneratedAsIdentityType()),
 				sysCol.ColumnDesc().GeneratedAsIdentitySequenceOption,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(551046)
 		}
 	}
+	__antithesis_instrumentation__.Notify(551017)
 
-	// Create the table's column mapping from descpb.ColumnID to column ordinal.
 	for i := range ot.columns {
+		__antithesis_instrumentation__.Notify(551047)
 		ot.colMap.Set(descpb.ColumnID(ot.columns[i].ColID()), i)
 	}
+	__antithesis_instrumentation__.Notify(551018)
 
-	// Add unique without index constraints. Constraints for implicitly
-	// partitioned unique indexes will be added below.
 	ot.uniqueConstraints = make([]optUniqueConstraint, 0, len(ot.desc.GetUniqueWithoutIndexConstraints()))
 	for i := range ot.desc.GetUniqueWithoutIndexConstraints() {
+		__antithesis_instrumentation__.Notify(551048)
 		u := &ot.desc.GetUniqueWithoutIndexConstraints()[i]
 		ot.uniqueConstraints = append(ot.uniqueConstraints, optUniqueConstraint{
 			name:         u.Name,
@@ -785,93 +916,109 @@ func newOptTable(
 			validity:     u.Validity,
 		})
 	}
+	__antithesis_instrumentation__.Notify(551019)
 
-	// Build the indexes.
 	ot.indexes = make([]optIndex, 1+len(secondaryIndexes))
 
 	for i := range ot.indexes {
+		__antithesis_instrumentation__.Notify(551049)
 		var idx catalog.Index
 		if i == 0 {
+			__antithesis_instrumentation__.Notify(551053)
 			idx = desc.GetPrimaryIndex()
 		} else {
+			__antithesis_instrumentation__.Notify(551054)
 			idx = secondaryIndexes[i-1]
 		}
+		__antithesis_instrumentation__.Notify(551050)
 
-		// If there is a subzone that applies to the entire index, use that, else
-		// use the table zone. Save subzones that apply to partitions, since we will
-		// use those later when initializing partitions in the index.
 		idxZone := tblZone
 		partZones := make(map[string]cat.Zone)
 		for j := 0; j < tblZone.SubzoneCount(); j++ {
+			__antithesis_instrumentation__.Notify(551055)
 			subzone := tblZone.Subzone(j)
 			if subzone.Index() == cat.StableID(idx.GetID()) {
+				__antithesis_instrumentation__.Notify(551056)
 				copyZone := subzone.Zone().InheritFromParent(tblZone)
 				if subzone.Partition() == "" {
-					// Subzone applies to the whole index.
+					__antithesis_instrumentation__.Notify(551057)
+
 					idxZone = copyZone
 				} else {
-					// Subzone applies to a partition.
+					__antithesis_instrumentation__.Notify(551058)
+
 					partZones[subzone.Partition()] = copyZone
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(551059)
 			}
 		}
+		__antithesis_instrumentation__.Notify(551051)
 		if idx.GetType() == descpb.IndexDescriptor_INVERTED {
-			// The inverted column of an inverted index is special: in the
-			// descriptors, it looks as if the table column is part of the
-			// index; in fact the key contains values *derived* from that
-			// column. In the catalog, we refer to this key as a separate,
-			// inverted column.
+			__antithesis_instrumentation__.Notify(551060)
+
 			invertedColumnID := idx.InvertedColumnID()
 			invertedColumnName := idx.InvertedColumnName()
 			invertedColumnType := idx.InvertedColumnKeyType()
 
 			invertedSourceColOrdinal, _ := ot.lookupColumnOrdinal(invertedColumnID)
 
-			// Add a inverted column that refers to the inverted index key.
 			invertedCol, invertedColOrd := newColumn()
 
-			// All inverted columns have type bytes.
 			invertedCol.InitInverted(
 				invertedColOrd,
 				tree.Name(invertedColumnName+"_inverted_key"),
 				invertedColumnType,
-				false, /* nullable */
+				false,
 				invertedSourceColOrdinal,
 			)
 			ot.indexes[i].init(ot, i, idx, idxZone, partZones, invertedColOrd)
 		} else {
-			ot.indexes[i].init(ot, i, idx, idxZone, partZones, -1 /* invertedColOrd */)
+			__antithesis_instrumentation__.Notify(551061)
+			ot.indexes[i].init(ot, i, idx, idxZone, partZones, -1)
 		}
+		__antithesis_instrumentation__.Notify(551052)
 
 		if idx.IsUnique() {
+			__antithesis_instrumentation__.Notify(551062)
 			if idx.GetPartitioning().NumImplicitColumns() > 0 {
-				// Add unique constraints for implicitly partitioned unique indexes.
+				__antithesis_instrumentation__.Notify(551063)
+
 				ot.uniqueConstraints = append(ot.uniqueConstraints, optUniqueConstraint{
 					name:         idx.GetName(),
 					table:        ot.ID(),
 					columns:      idx.IndexDesc().KeyColumnIDs[idx.IndexDesc().ExplicitColumnStartIdx():],
 					withoutIndex: true,
 					predicate:    idx.GetPredicate(),
-					// TODO(rytaft): will we ever support an unvalidated unique constraint
-					// here?
+
 					validity: descpb.ConstraintValidity_Validated,
 				})
-			} else if idx.IsSharded() {
-				// Add unique constraint for hash sharded indexes.
-				ot.uniqueConstraints = append(ot.uniqueConstraints, optUniqueConstraint{
-					name:                               idx.GetName(),
-					table:                              ot.ID(),
-					columns:                            idx.IndexDesc().KeyColumnIDs[idx.IndexDesc().ExplicitColumnStartIdx():],
-					withoutIndex:                       true,
-					predicate:                          idx.GetPredicate(),
-					validity:                           descpb.ConstraintValidity_Validated,
-					uniquenessGuaranteedByAnotherIndex: true,
-				})
+			} else {
+				__antithesis_instrumentation__.Notify(551064)
+				if idx.IsSharded() {
+					__antithesis_instrumentation__.Notify(551065)
+
+					ot.uniqueConstraints = append(ot.uniqueConstraints, optUniqueConstraint{
+						name:                               idx.GetName(),
+						table:                              ot.ID(),
+						columns:                            idx.IndexDesc().KeyColumnIDs[idx.IndexDesc().ExplicitColumnStartIdx():],
+						withoutIndex:                       true,
+						predicate:                          idx.GetPredicate(),
+						validity:                           descpb.ConstraintValidity_Validated,
+						uniquenessGuaranteedByAnotherIndex: true,
+					})
+				} else {
+					__antithesis_instrumentation__.Notify(551066)
+				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(551067)
 		}
 	}
+	__antithesis_instrumentation__.Notify(551020)
 
 	_ = ot.desc.ForeachOutboundFK(func(fk *descpb.ForeignKeyConstraint) error {
+		__antithesis_instrumentation__.Notify(551068)
 		ot.outboundFKs = append(ot.outboundFKs, optForeignKeyConstraint{
 			name:              fk.Name,
 			originTable:       ot.ID(),
@@ -885,7 +1032,9 @@ func newOptTable(
 		})
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(551021)
 	_ = ot.desc.ForeachInboundFK(func(fk *descpb.ForeignKeyConstraint) error {
+		__antithesis_instrumentation__.Notify(551069)
 		ot.inboundFKs = append(ot.inboundFKs, optForeignKeyConstraint{
 			name:              fk.Name,
 			originTable:       cat.StableID(fk.OriginTableID),
@@ -899,26 +1048,35 @@ func newOptTable(
 		})
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(551022)
 
 	ot.primaryFamily.init(ot, &desc.GetFamilies()[0])
 	ot.families = make([]optFamily, len(desc.GetFamilies())-1)
 	for i := range ot.families {
+		__antithesis_instrumentation__.Notify(551070)
 		ot.families[i].init(ot, &desc.GetFamilies()[i+1])
 	}
+	__antithesis_instrumentation__.Notify(551023)
 
-	// Synthesize any check constraints for user defined types.
 	var synthesizedChecks []cat.CheckConstraint
 	for i := 0; i < ot.ColumnCount(); i++ {
+		__antithesis_instrumentation__.Notify(551071)
 		col := ot.Column(i)
 		if col.IsMutation() {
-			// We do not synthesize check constraints for mutation columns.
+			__antithesis_instrumentation__.Notify(551073)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(551074)
 		}
+		__antithesis_instrumentation__.Notify(551072)
 		colType := col.DatumType()
 		if colType.UserDefined() {
+			__antithesis_instrumentation__.Notify(551075)
 			switch colType.Family() {
 			case types.EnumFamily:
-				// We synthesize an (x IN (v1, v2, v3...)) check for enum types.
+				__antithesis_instrumentation__.Notify(551076)
+
 				expr := &tree.ComparisonExpr{
 					Operator: treecmp.MakeComparisonOperator(treecmp.In),
 					Left:     &tree.ColumnItem{ColumnName: col.ColName()},
@@ -928,292 +1086,371 @@ func newOptTable(
 					Constraint: tree.Serialize(expr),
 					Validated:  true,
 				})
+			default:
+				__antithesis_instrumentation__.Notify(551077)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(551078)
 		}
 	}
-	// Move all existing and synthesized checks into the opt table.
+	__antithesis_instrumentation__.Notify(551024)
+
 	activeChecks := desc.ActiveChecks()
 	ot.checkConstraints = make([]cat.CheckConstraint, 0, len(activeChecks)+len(synthesizedChecks))
 	for i := range activeChecks {
+		__antithesis_instrumentation__.Notify(551079)
 		ot.checkConstraints = append(ot.checkConstraints, cat.CheckConstraint{
 			Constraint: activeChecks[i].Expr,
 			Validated:  activeChecks[i].Validity == descpb.ConstraintValidity_Validated,
 		})
 	}
+	__antithesis_instrumentation__.Notify(551025)
 	ot.checkConstraints = append(ot.checkConstraints, synthesizedChecks...)
 
-	// Add stats last, now that other metadata is initialized.
 	if stats != nil {
+		__antithesis_instrumentation__.Notify(551080)
 		ot.stats = make([]optTableStat, len(stats))
 		n := 0
 		for i := range stats {
-			// We skip any stats that have columns that don't exist in the table anymore.
+			__antithesis_instrumentation__.Notify(551082)
+
 			if ok, err := ot.stats[n].init(ot, stats[i]); err != nil {
+				__antithesis_instrumentation__.Notify(551083)
 				return nil, err
-			} else if ok {
-				n++
+			} else {
+				__antithesis_instrumentation__.Notify(551084)
+				if ok {
+					__antithesis_instrumentation__.Notify(551085)
+					n++
+				} else {
+					__antithesis_instrumentation__.Notify(551086)
+				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(551081)
 		ot.stats = ot.stats[:n]
+	} else {
+		__antithesis_instrumentation__.Notify(551087)
 	}
+	__antithesis_instrumentation__.Notify(551026)
 
 	return ot, nil
 }
 
-// ID is part of the cat.Object interface.
 func (ot *optTable) ID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551088)
 	return cat.StableID(ot.desc.GetID())
 }
 
-// PostgresDescriptorID is part of the cat.Object interface.
 func (ot *optTable) PostgresDescriptorID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551089)
 	return cat.StableID(ot.desc.GetID())
 }
 
-// isStale checks if the optTable object needs to be refreshed because the stats,
-// zone config, or used types have changed. False positives are ok.
 func (ot *optTable) isStale(
 	rawDesc catalog.TableDescriptor, tableStats []*stats.TableStatistic, zone cat.Zone,
 ) bool {
-	// Fast check to verify that the statistics haven't changed: we check the
-	// length and the address of the underlying array. This is not a perfect
-	// check (in principle, the stats could have left the cache and then gotten
-	// regenerated), but it works in the common case.
+	__antithesis_instrumentation__.Notify(551090)
+
 	if len(tableStats) != len(ot.rawStats) {
+		__antithesis_instrumentation__.Notify(551095)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(551096)
 	}
-	if len(tableStats) > 0 && &tableStats[0] != &ot.rawStats[0] {
+	__antithesis_instrumentation__.Notify(551091)
+	if len(tableStats) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(551097)
+		return &tableStats[0] != &ot.rawStats[0] == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551098)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(551099)
 	}
+	__antithesis_instrumentation__.Notify(551092)
 	if !zone.Equal(ot.zone) {
+		__antithesis_instrumentation__.Notify(551100)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(551101)
 	}
-	// Check if any of the version of column types have changed.
+	__antithesis_instrumentation__.Notify(551093)
+
 	if !catalog.UserDefinedTypeColsHaveSameVersion(ot.desc, rawDesc) {
+		__antithesis_instrumentation__.Notify(551102)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(551103)
 	}
+	__antithesis_instrumentation__.Notify(551094)
 	return false
 }
 
-// Equals is part of the cat.Object interface.
 func (ot *optTable) Equals(other cat.Object) bool {
+	__antithesis_instrumentation__.Notify(551104)
 	otherTable, ok := other.(*optTable)
 	if !ok {
+		__antithesis_instrumentation__.Notify(551112)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(551113)
 	}
+	__antithesis_instrumentation__.Notify(551105)
 	if ot == otherTable {
-		// Fast path when it is the same object.
-		return true
-	}
-	if ot.desc.GetID() != otherTable.desc.GetID() || ot.desc.GetVersion() != otherTable.desc.GetVersion() {
-		return false
-	}
+		__antithesis_instrumentation__.Notify(551114)
 
-	// Verify the stats are identical.
-	if len(ot.stats) != len(otherTable.stats) {
-		return false
+		return true
+	} else {
+		__antithesis_instrumentation__.Notify(551115)
 	}
+	__antithesis_instrumentation__.Notify(551106)
+	if ot.desc.GetID() != otherTable.desc.GetID() || func() bool {
+		__antithesis_instrumentation__.Notify(551116)
+		return ot.desc.GetVersion() != otherTable.desc.GetVersion() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551117)
+		return false
+	} else {
+		__antithesis_instrumentation__.Notify(551118)
+	}
+	__antithesis_instrumentation__.Notify(551107)
+
+	if len(ot.stats) != len(otherTable.stats) {
+		__antithesis_instrumentation__.Notify(551119)
+		return false
+	} else {
+		__antithesis_instrumentation__.Notify(551120)
+	}
+	__antithesis_instrumentation__.Notify(551108)
 	for i := range ot.stats {
+		__antithesis_instrumentation__.Notify(551121)
 		if !ot.stats[i].equals(&otherTable.stats[i]) {
+			__antithesis_instrumentation__.Notify(551122)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(551123)
 		}
 	}
+	__antithesis_instrumentation__.Notify(551109)
 
-	// Verify that all of the user defined types in the table are the same.
 	if !catalog.UserDefinedTypeColsHaveSameVersion(ot.desc, otherTable.desc) {
+		__antithesis_instrumentation__.Notify(551124)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(551125)
 	}
+	__antithesis_instrumentation__.Notify(551110)
 
-	// Verify that indexes are in same zones. For performance, skip deep equality
-	// check if it's the same as the previous index (common case).
 	var prevLeftZone, prevRightZone cat.Zone
 	for i := range ot.indexes {
+		__antithesis_instrumentation__.Notify(551126)
 		leftZone := ot.indexes[i].zone
 		rightZone := otherTable.indexes[i].zone
-		if leftZone == prevLeftZone && rightZone == prevRightZone {
+		if leftZone == prevLeftZone && func() bool {
+			__antithesis_instrumentation__.Notify(551129)
+			return rightZone == prevRightZone == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(551130)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(551131)
 		}
+		__antithesis_instrumentation__.Notify(551127)
 		if !leftZone.Equal(rightZone) {
+			__antithesis_instrumentation__.Notify(551132)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(551133)
 		}
+		__antithesis_instrumentation__.Notify(551128)
 		prevLeftZone = leftZone
 		prevRightZone = rightZone
 	}
+	__antithesis_instrumentation__.Notify(551111)
 
 	return true
 }
 
-// Name is part of the cat.Table interface.
 func (ot *optTable) Name() tree.Name {
+	__antithesis_instrumentation__.Notify(551134)
 	return tree.Name(ot.desc.GetName())
 }
 
-// IsVirtualTable is part of the cat.Table interface.
 func (ot *optTable) IsVirtualTable() bool {
+	__antithesis_instrumentation__.Notify(551135)
 	return false
 }
 
-// IsMaterializedView implements the cat.Table interface.
 func (ot *optTable) IsMaterializedView() bool {
+	__antithesis_instrumentation__.Notify(551136)
 	return ot.desc.MaterializedView()
 }
 
-// ColumnCount is part of the cat.Table interface.
 func (ot *optTable) ColumnCount() int {
+	__antithesis_instrumentation__.Notify(551137)
 	return len(ot.columns)
 }
 
-// Column is part of the cat.Table interface.
 func (ot *optTable) Column(i int) *cat.Column {
+	__antithesis_instrumentation__.Notify(551138)
 	return &ot.columns[i]
 }
 
-// getCol is part of optCatalogTableInterface.
 func (ot *optTable) getCol(i int) catalog.Column {
+	__antithesis_instrumentation__.Notify(551139)
 	if i < len(ot.desc.AllColumns()) {
+		__antithesis_instrumentation__.Notify(551141)
 		return ot.desc.AllColumns()[i]
+	} else {
+		__antithesis_instrumentation__.Notify(551142)
 	}
+	__antithesis_instrumentation__.Notify(551140)
 	return nil
 }
 
-// IndexCount is part of the cat.Table interface.
 func (ot *optTable) IndexCount() int {
-	// Primary index is always present, so count is always >= 1.
+	__antithesis_instrumentation__.Notify(551143)
+
 	return len(ot.desc.ActiveIndexes())
 }
 
-// WritableIndexCount is part of the cat.Table interface.
 func (ot *optTable) WritableIndexCount() int {
-	// Primary index is always present, so count is always >= 1.
+	__antithesis_instrumentation__.Notify(551144)
+
 	return 1 + len(ot.desc.WritableNonPrimaryIndexes())
 }
 
-// DeletableIndexCount is part of the cat.Table interface.
 func (ot *optTable) DeletableIndexCount() int {
-	// Primary index is always present, so count is always >= 1.
+	__antithesis_instrumentation__.Notify(551145)
+
 	return len(ot.desc.DeletableNonPrimaryIndexes()) + 1
 }
 
-// Index is part of the cat.Table interface.
 func (ot *optTable) Index(i cat.IndexOrdinal) cat.Index {
+	__antithesis_instrumentation__.Notify(551146)
 	return &ot.indexes[i]
 }
 
-// StatisticCount is part of the cat.Table interface.
 func (ot *optTable) StatisticCount() int {
+	__antithesis_instrumentation__.Notify(551147)
 	return len(ot.stats)
 }
 
-// Statistic is part of the cat.Table interface.
 func (ot *optTable) Statistic(i int) cat.TableStatistic {
+	__antithesis_instrumentation__.Notify(551148)
 	return &ot.stats[i]
 }
 
-// CheckCount is part of the cat.Table interface.
 func (ot *optTable) CheckCount() int {
+	__antithesis_instrumentation__.Notify(551149)
 	return len(ot.checkConstraints)
 }
 
-// Check is part of the cat.Table interface.
 func (ot *optTable) Check(i int) cat.CheckConstraint {
+	__antithesis_instrumentation__.Notify(551150)
 	return ot.checkConstraints[i]
 }
 
-// FamilyCount is part of the cat.Table interface.
 func (ot *optTable) FamilyCount() int {
+	__antithesis_instrumentation__.Notify(551151)
 	return 1 + len(ot.families)
 }
 
-// Family is part of the cat.Table interface.
 func (ot *optTable) Family(i int) cat.Family {
+	__antithesis_instrumentation__.Notify(551152)
 	if i == 0 {
+		__antithesis_instrumentation__.Notify(551154)
 		return &ot.primaryFamily
+	} else {
+		__antithesis_instrumentation__.Notify(551155)
 	}
+	__antithesis_instrumentation__.Notify(551153)
 	return &ot.families[i-1]
 }
 
-// OutboundForeignKeyCount is part of the cat.Table interface.
 func (ot *optTable) OutboundForeignKeyCount() int {
+	__antithesis_instrumentation__.Notify(551156)
 	return len(ot.outboundFKs)
 }
 
-// OutboundForeignKey is part of the cat.Table interface.
 func (ot *optTable) OutboundForeignKey(i int) cat.ForeignKeyConstraint {
+	__antithesis_instrumentation__.Notify(551157)
 	return &ot.outboundFKs[i]
 }
 
-// InboundForeignKeyCount is part of the cat.Table interface.
 func (ot *optTable) InboundForeignKeyCount() int {
+	__antithesis_instrumentation__.Notify(551158)
 	return len(ot.inboundFKs)
 }
 
-// InboundForeignKey is part of the cat.Table interface.
 func (ot *optTable) InboundForeignKey(i int) cat.ForeignKeyConstraint {
+	__antithesis_instrumentation__.Notify(551159)
 	return &ot.inboundFKs[i]
 }
 
-// UniqueCount is part of the cat.Table interface.
 func (ot *optTable) UniqueCount() int {
+	__antithesis_instrumentation__.Notify(551160)
 	return len(ot.uniqueConstraints)
 }
 
-// Unique is part of the cat.Table interface.
 func (ot *optTable) Unique(i cat.UniqueOrdinal) cat.UniqueConstraint {
+	__antithesis_instrumentation__.Notify(551161)
 	return &ot.uniqueConstraints[i]
 }
 
-// Zone is part of the cat.Table interface.
 func (ot *optTable) Zone() cat.Zone {
+	__antithesis_instrumentation__.Notify(551162)
 	return ot.zone
 }
 
-// IsPartitionAllBy is part of the cat.Table interface.
 func (ot *optTable) IsPartitionAllBy() bool {
+	__antithesis_instrumentation__.Notify(551163)
 	return ot.desc.IsPartitionAllBy()
 }
 
-// lookupColumnOrdinal returns the ordinal of the column with the given ID. A
-// cache makes the lookup O(1).
 func (ot *optTable) lookupColumnOrdinal(colID descpb.ColumnID) (int, error) {
+	__antithesis_instrumentation__.Notify(551164)
 	col, ok := ot.colMap.Get(colID)
 	if ok {
+		__antithesis_instrumentation__.Notify(551166)
 		return col, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551167)
 	}
+	__antithesis_instrumentation__.Notify(551165)
 	return col, pgerror.Newf(pgcode.UndefinedColumn,
 		"column [%d] does not exist", colID)
 }
 
-// convertTableToOptTable converts a table to an *optTable. This is either an
-// *optTable or a *indexrec.HypotheticalTable (which has an embedded *optTable).
 func convertTableToOptTable(tab cat.Table) *optTable {
+	__antithesis_instrumentation__.Notify(551168)
 	var optTab *optTable
 	switch t := tab.(type) {
 	case *optTable:
+		__antithesis_instrumentation__.Notify(551170)
 		optTab = t
 	case *indexrec.HypotheticalTable:
+		__antithesis_instrumentation__.Notify(551171)
 		optTab = t.Table.(*optTable)
 	}
+	__antithesis_instrumentation__.Notify(551169)
 	return optTab
 }
 
-// CollectTypes is part of the cat.DataSource interface.
 func (ot *optTable) CollectTypes(ord int) (descpb.IDs, error) {
+	__antithesis_instrumentation__.Notify(551172)
 	col := ot.desc.AllColumns()[ord]
 	return collectTypes(col)
 }
 
-// optIndex is a wrapper around catalog.Index that caches some
-// commonly accessed information and keeps a reference to the table wrapper.
 type optIndex struct {
 	tab  *optTable
 	idx  catalog.Index
 	zone cat.Zone
 
-	// columnOrds maps the index columns to table column ordinals.
 	columnOrds []int
 
-	// storedCols is the set of non-PK columns if this is the primary index,
-	// otherwise it is desc.StoreColumnIDs.
 	storedCols []descpb.ColumnID
 
 	indexOrdinal  int
@@ -1221,20 +1458,13 @@ type optIndex struct {
 	numKeyCols    int
 	numLaxKeyCols int
 
-	// partitions stores zone information and datums for PARTITION BY LIST
-	// partitions.
 	partitions []optPartition
 
-	// invertedColOrd is used if this is an inverted index; it stores
-	// the ordinal of the inverted column created to refer to the key of this
-	// index. It is -1 if this is not an inverted index.
 	invertedColOrd int
 }
 
 var _ cat.Index = &optIndex{}
 
-// init can be used instead of newOptIndex when we have a pre-allocated instance
-// (e.g. as part of a bigger struct).
 func (oi *optIndex) init(
 	tab *optTable,
 	indexOrdinal int,
@@ -1249,9 +1479,7 @@ func (oi *optIndex) init(
 	oi.indexOrdinal = indexOrdinal
 	oi.invertedColOrd = invertedColOrd
 	if idx.Primary() {
-		// Although the primary index contains all columns in the table, the index
-		// descriptor does not contain columns that are not explicitly part of the
-		// primary key. Retrieve those columns from the table descriptor.
+
 		oi.storedCols = make([]descpb.ColumnID, 0, tab.ColumnCount()-idx.NumKeyColumns())
 		pkCols := idx.CollectKeyColumnIDs()
 		for i, n := 0, tab.ColumnCount(); i < n; i++ {
@@ -1267,7 +1495,6 @@ func (oi *optIndex) init(
 		oi.numCols = idx.NumKeyColumns() + idx.NumKeySuffixColumns() + idx.NumSecondaryStoredColumns()
 	}
 
-	// Collect information about the partitions.
 	idxPartitioning := idx.GetPartitioning()
 	oi.partitions = make([]optPartition, 0, idxPartitioning.NumLists())
 	_ = idxPartitioning.ForEachList(func(name string, values [][]byte, subPartitioning catalog.Partitioning) error {
@@ -1277,26 +1504,22 @@ func (oi *optIndex) init(
 			datums: make([]tree.Datums, 0, len(values)),
 		}
 
-		// Get the zone.
 		if zone, ok := partZones[name]; ok {
 			op.zone = zone
 		}
 
-		// Get the partition values.
 		var a tree.DatumAlloc
 		for _, valueEncBuf := range values {
 			t, _, err := rowenc.DecodePartitionTuple(
 				&a, oi.tab.codec, oi.tab.desc, oi.idx, oi.idx.GetPartitioning(),
-				valueEncBuf, nil, /* prefixDatums */
+				valueEncBuf, nil,
 			)
 			if err != nil {
 				log.Fatalf(context.TODO(), "error while decoding partition tuple: %+v %+v",
 					oi.tab.desc, oi.tab.desc.GetDependsOnTypes())
 			}
 			op.datums = append(op.datums, t.Datums)
-			// TODO(radu): split into multiple prefixes if Subpartition is also by list.
-			// Note that this functionality should be kept in sync with the test catalog
-			// implementation (test_catalog.go).
+
 		}
 
 		oi.partitions = append(oi.partitions, op)
@@ -1315,26 +1538,20 @@ func (oi *optIndex) init(
 		}
 
 		if notNull {
-			// Unique index with no null columns: columns from index are sufficient
-			// to form a key without needing extra primary key columns. There is no
-			// separate lax key.
+
 			oi.numLaxKeyCols = idx.NumKeyColumns()
 			oi.numKeyCols = oi.numLaxKeyCols
 		} else {
-			// Unique index with at least one nullable column: extra primary key
-			// columns will be added to the row key when one of the unique index
-			// columns has a NULL value.
+
 			oi.numLaxKeyCols = idx.NumKeyColumns()
 			oi.numKeyCols = oi.numLaxKeyCols + idx.NumKeySuffixColumns()
 		}
 	} else {
-		// Non-unique index: extra primary key columns are always added to the row
-		// key. There is no separate lax key.
+
 		oi.numLaxKeyCols = idx.NumKeyColumns() + idx.NumKeySuffixColumns()
 		oi.numKeyCols = oi.numLaxKeyCols
 	}
 
-	// Populate columnOrds.
 	inverted := oi.IsInverted()
 	numKeyCols := idx.NumKeyColumns()
 	numKeySuffixCols := idx.NumKeySuffixColumns()
@@ -1355,143 +1572,157 @@ func (oi *optIndex) init(
 	}
 }
 
-// ID is part of the cat.Index interface.
 func (oi *optIndex) ID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551173)
 	return cat.StableID(oi.idx.GetID())
 }
 
-// Name is part of the cat.Index interface.
 func (oi *optIndex) Name() tree.Name {
+	__antithesis_instrumentation__.Notify(551174)
 	return tree.Name(oi.idx.GetName())
 }
 
-// IsUnique is part of the cat.Index interface.
 func (oi *optIndex) IsUnique() bool {
+	__antithesis_instrumentation__.Notify(551175)
 	return oi.idx.IsUnique()
 }
 
-// IsInverted is part of the cat.Index interface.
 func (oi *optIndex) IsInverted() bool {
+	__antithesis_instrumentation__.Notify(551176)
 	return oi.idx.GetType() == descpb.IndexDescriptor_INVERTED
 }
 
-// ColumnCount is part of the cat.Index interface.
 func (oi *optIndex) ColumnCount() int {
+	__antithesis_instrumentation__.Notify(551177)
 	return oi.numCols
 }
 
-// ExplicitColumnCount is part of the cat.Index interface.
 func (oi *optIndex) ExplicitColumnCount() int {
+	__antithesis_instrumentation__.Notify(551178)
 	return oi.idx.NumKeyColumns()
 }
 
-// KeyColumnCount is part of the cat.Index interface.
 func (oi *optIndex) KeyColumnCount() int {
+	__antithesis_instrumentation__.Notify(551179)
 	return oi.numKeyCols
 }
 
-// LaxKeyColumnCount is part of the cat.Index interface.
 func (oi *optIndex) LaxKeyColumnCount() int {
+	__antithesis_instrumentation__.Notify(551180)
 	return oi.numLaxKeyCols
 }
 
-// NonInvertedPrefixColumnCount is part of the cat.Index interface.
 func (oi *optIndex) NonInvertedPrefixColumnCount() int {
+	__antithesis_instrumentation__.Notify(551181)
 	if !oi.IsInverted() {
+		__antithesis_instrumentation__.Notify(551183)
 		panic("non-inverted indexes do not have inverted prefix columns")
+	} else {
+		__antithesis_instrumentation__.Notify(551184)
 	}
+	__antithesis_instrumentation__.Notify(551182)
 	return oi.idx.NumKeyColumns() - 1
 }
 
-// Column is part of the cat.Index interface.
 func (oi *optIndex) Column(i int) cat.IndexColumn {
+	__antithesis_instrumentation__.Notify(551185)
 	ord := oi.columnOrds[i]
-	// Only key columns have a direction.
-	descending := i < oi.idx.NumKeyColumns() && oi.idx.GetKeyColumnDirection(i) == descpb.IndexDescriptor_DESC
+
+	descending := i < oi.idx.NumKeyColumns() && func() bool {
+		__antithesis_instrumentation__.Notify(551186)
+		return oi.idx.GetKeyColumnDirection(i) == descpb.IndexDescriptor_DESC == true
+	}() == true
 	return cat.IndexColumn{
 		Column:     oi.tab.Column(ord),
 		Descending: descending,
 	}
 }
 
-// InvertedColumn is part of the cat.Index interface.
 func (oi *optIndex) InvertedColumn() cat.IndexColumn {
+	__antithesis_instrumentation__.Notify(551187)
 	if !oi.IsInverted() {
+		__antithesis_instrumentation__.Notify(551189)
 		panic(errors.AssertionFailedf("non-inverted indexes do not have inverted columns"))
+	} else {
+		__antithesis_instrumentation__.Notify(551190)
 	}
+	__antithesis_instrumentation__.Notify(551188)
 	ord := oi.idx.NumKeyColumns() - 1
 	return oi.Column(ord)
 }
 
-// Predicate is part of the cat.Index interface. It returns the predicate
-// expression and true if the index is a partial index. If the index is not
-// partial, the empty string and false is returned.
 func (oi *optIndex) Predicate() (string, bool) {
+	__antithesis_instrumentation__.Notify(551191)
 	return oi.idx.GetPredicate(), oi.idx.GetPredicate() != ""
 }
 
-// Zone is part of the cat.Index interface.
 func (oi *optIndex) Zone() cat.Zone {
+	__antithesis_instrumentation__.Notify(551192)
 	return oi.zone
 }
 
-// Span is part of the cat.Index interface.
 func (oi *optIndex) Span() roachpb.Span {
+	__antithesis_instrumentation__.Notify(551193)
 	desc := oi.tab.desc
-	// Tables up to MaxSystemConfigDescID are grouped in a single system config
-	// span.
+
 	if desc.GetID() <= keys.MaxSystemConfigDescID {
+		__antithesis_instrumentation__.Notify(551195)
 		return keys.SystemConfigSpan
+	} else {
+		__antithesis_instrumentation__.Notify(551196)
 	}
+	__antithesis_instrumentation__.Notify(551194)
 	return desc.IndexSpan(oi.tab.codec, oi.idx.GetID())
 }
 
-// Table is part of the cat.Index interface.
 func (oi *optIndex) Table() cat.Table {
+	__antithesis_instrumentation__.Notify(551197)
 	return oi.tab
 }
 
-// Ordinal is part of the cat.Index interface.
 func (oi *optIndex) Ordinal() int {
+	__antithesis_instrumentation__.Notify(551198)
 	return oi.indexOrdinal
 }
 
-// ImplicitColumnCount is part of the cat.Index interface.
 func (oi *optIndex) ImplicitColumnCount() int {
+	__antithesis_instrumentation__.Notify(551199)
 	implicitColCnt := oi.idx.GetPartitioning().NumImplicitColumns()
 	if oi.idx.IsSharded() {
+		__antithesis_instrumentation__.Notify(551201)
 		implicitColCnt++
+	} else {
+		__antithesis_instrumentation__.Notify(551202)
 	}
+	__antithesis_instrumentation__.Notify(551200)
 	return implicitColCnt
 }
 
-// ImplicitPartitioningColumnCount is part of the cat.Index interface.
 func (oi *optIndex) ImplicitPartitioningColumnCount() int {
+	__antithesis_instrumentation__.Notify(551203)
 	return oi.idx.GetPartitioning().NumImplicitColumns()
 }
 
-// GeoConfig is part of the cat.Index interface.
 func (oi *optIndex) GeoConfig() *geoindex.Config {
+	__antithesis_instrumentation__.Notify(551204)
 	return &oi.idx.IndexDesc().GeoConfig
 }
 
-// Version is part of the cat.Index interface.
 func (oi *optIndex) Version() descpb.IndexDescriptorVersion {
+	__antithesis_instrumentation__.Notify(551205)
 	return oi.idx.GetVersion()
 }
 
-// PartitionCount is part of the cat.Index interface.
 func (oi *optIndex) PartitionCount() int {
+	__antithesis_instrumentation__.Notify(551206)
 	return len(oi.partitions)
 }
 
-// Partition is part of the cat.Index interface.
 func (oi *optIndex) Partition(i int) cat.Partition {
+	__antithesis_instrumentation__.Notify(551207)
 	return &oi.partitions[i]
 }
 
-// optPartition implements cat.Partition and represents a PARTITION BY LIST
-// partition of an index.
 type optPartition struct {
 	name   string
 	zone   cat.Zone
@@ -1500,18 +1731,18 @@ type optPartition struct {
 
 var _ cat.Partition = &optPartition{}
 
-// Name is part of the cat.Partition interface.
 func (op *optPartition) Name() string {
+	__antithesis_instrumentation__.Notify(551208)
 	return op.name
 }
 
-// Zone is part of the cat.Partition interface.
 func (op *optPartition) Zone() cat.Zone {
+	__antithesis_instrumentation__.Notify(551209)
 	return op.zone
 }
 
-// PartitionByListPrefixes is part of the cat.Partition interface.
 func (op *optPartition) PartitionByListPrefixes() []tree.Datums {
+	__antithesis_instrumentation__.Notify(551210)
 	return op.datums
 }
 
@@ -1529,8 +1760,7 @@ func (os *optTableStat) init(tab *optTable, stat *stats.TableStatistic) (ok bool
 		var ok bool
 		os.columnOrdinals[i], ok = tab.colMap.Get(c)
 		if !ok {
-			// Column not in table (this is possible if the column was removed since
-			// the statistic was calculated).
+
 			return false, nil
 		}
 	}
@@ -1539,61 +1769,71 @@ func (os *optTableStat) init(tab *optTable, stat *stats.TableStatistic) (ok bool
 }
 
 func (os *optTableStat) equals(other *optTableStat) bool {
-	// Two table statistics are considered equal if they have been created at the
-	// same time, on the same set of columns.
-	if os.CreatedAt() != other.CreatedAt() || len(os.columnOrdinals) != len(other.columnOrdinals) {
+	__antithesis_instrumentation__.Notify(551211)
+
+	if os.CreatedAt() != other.CreatedAt() || func() bool {
+		__antithesis_instrumentation__.Notify(551214)
+		return len(os.columnOrdinals) != len(other.columnOrdinals) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551215)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(551216)
 	}
+	__antithesis_instrumentation__.Notify(551212)
 	for i, c := range os.columnOrdinals {
+		__antithesis_instrumentation__.Notify(551217)
 		if c != other.columnOrdinals[i] {
+			__antithesis_instrumentation__.Notify(551218)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(551219)
 		}
 	}
+	__antithesis_instrumentation__.Notify(551213)
 	return true
 }
 
-// CreatedAt is part of the cat.TableStatistic interface.
 func (os *optTableStat) CreatedAt() time.Time {
+	__antithesis_instrumentation__.Notify(551220)
 	return os.stat.CreatedAt
 }
 
-// ColumnCount is part of the cat.TableStatistic interface.
 func (os *optTableStat) ColumnCount() int {
+	__antithesis_instrumentation__.Notify(551221)
 	return len(os.columnOrdinals)
 }
 
-// ColumnOrdinal is part of the cat.TableStatistic interface.
 func (os *optTableStat) ColumnOrdinal(i int) int {
+	__antithesis_instrumentation__.Notify(551222)
 	return os.columnOrdinals[i]
 }
 
-// RowCount is part of the cat.TableStatistic interface.
 func (os *optTableStat) RowCount() uint64 {
+	__antithesis_instrumentation__.Notify(551223)
 	return os.stat.RowCount
 }
 
-// DistinctCount is part of the cat.TableStatistic interface.
 func (os *optTableStat) DistinctCount() uint64 {
+	__antithesis_instrumentation__.Notify(551224)
 	return os.stat.DistinctCount
 }
 
-// NullCount is part of the cat.TableStatistic interface.
 func (os *optTableStat) NullCount() uint64 {
+	__antithesis_instrumentation__.Notify(551225)
 	return os.stat.NullCount
 }
 
-// AvgSize is part of the cat.TableStatistic interface.
 func (os *optTableStat) AvgSize() uint64 {
+	__antithesis_instrumentation__.Notify(551226)
 	return os.stat.AvgSize
 }
 
-// Histogram is part of the cat.TableStatistic interface.
 func (os *optTableStat) Histogram() []cat.HistogramBucket {
+	__antithesis_instrumentation__.Notify(551227)
 	return os.stat.Histogram
 }
 
-// optFamily is a wrapper around descpb.ColumnFamilyDescriptor that keeps a
-// reference to the table wrapper.
 type optFamily struct {
 	tab  *optTable
 	desc *descpb.ColumnFamilyDescriptor
@@ -1601,41 +1841,37 @@ type optFamily struct {
 
 var _ cat.Family = &optFamily{}
 
-// init can be used instead of newOptFamily when we have a pre-allocated
-// instance (e.g. as part of a bigger struct).
 func (oi *optFamily) init(tab *optTable, desc *descpb.ColumnFamilyDescriptor) {
 	oi.tab = tab
 	oi.desc = desc
 }
 
-// ID is part of the cat.Family interface.
 func (oi *optFamily) ID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551228)
 	return cat.StableID(oi.desc.ID)
 }
 
-// Name is part of the cat.Family interface.
 func (oi *optFamily) Name() tree.Name {
+	__antithesis_instrumentation__.Notify(551229)
 	return tree.Name(oi.desc.Name)
 }
 
-// ColumnCount is part of the cat.Family interface.
 func (oi *optFamily) ColumnCount() int {
+	__antithesis_instrumentation__.Notify(551230)
 	return len(oi.desc.ColumnIDs)
 }
 
-// Column is part of the cat.Family interface.
 func (oi *optFamily) Column(i int) cat.FamilyColumn {
+	__antithesis_instrumentation__.Notify(551231)
 	ord, _ := oi.tab.lookupColumnOrdinal(oi.desc.ColumnIDs[i])
 	return cat.FamilyColumn{Column: oi.tab.Column(ord), Ordinal: ord}
 }
 
-// Table is part of the cat.Family interface.
 func (oi *optFamily) Table() cat.Table {
+	__antithesis_instrumentation__.Notify(551232)
 	return oi.tab
 }
 
-// optUniqueConstraint implements cat.UniqueConstraint and represents a
-// unique constraint.
 type optUniqueConstraint struct {
 	name string
 
@@ -1651,61 +1887,58 @@ type optUniqueConstraint struct {
 
 var _ cat.UniqueConstraint = &optUniqueConstraint{}
 
-// Name is part of the cat.UniqueConstraint interface.
 func (u *optUniqueConstraint) Name() string {
+	__antithesis_instrumentation__.Notify(551233)
 	return u.name
 }
 
-// TableID is part of the cat.UniqueConstraint interface.
 func (u *optUniqueConstraint) TableID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551234)
 	return u.table
 }
 
-// ColumnCount is part of the cat.UniqueConstraint interface.
 func (u *optUniqueConstraint) ColumnCount() int {
+	__antithesis_instrumentation__.Notify(551235)
 	return len(u.columns)
 }
 
-// ColumnOrdinal is part of the cat.UniqueConstraint interface.
 func (u *optUniqueConstraint) ColumnOrdinal(tab cat.Table, i int) int {
+	__antithesis_instrumentation__.Notify(551236)
 	if tab.ID() != u.table {
+		__antithesis_instrumentation__.Notify(551238)
 		panic(errors.AssertionFailedf(
 			"invalid table %d passed to ColumnOrdinal (expected %d)",
 			tab.ID(), u.table,
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(551239)
 	}
+	__antithesis_instrumentation__.Notify(551237)
 	optTab := convertTableToOptTable(tab)
 	ord, _ := optTab.lookupColumnOrdinal(u.columns[i])
 	return ord
 }
 
-// Predicate is part of the cat.UniqueConstraint interface.
 func (u *optUniqueConstraint) Predicate() (string, bool) {
+	__antithesis_instrumentation__.Notify(551240)
 	return u.predicate, u.predicate != ""
 }
 
-// WithoutIndex is part of the cat.UniqueConstraint interface.
 func (u *optUniqueConstraint) WithoutIndex() bool {
+	__antithesis_instrumentation__.Notify(551241)
 	return u.withoutIndex
 }
 
-// Validated is part of the cat.UniqueConstraint interface.
 func (u *optUniqueConstraint) Validated() bool {
+	__antithesis_instrumentation__.Notify(551242)
 	return u.validity == descpb.ConstraintValidity_Validated
 }
 
-// UniquenessGuaranteedByAnotherIndex is part of the cat.UniqueConstraint
-// interface. It is a hack to make unique hash sharded index work before issue
-// #75070 is resolved. Be sure to remove `ignoreUniquenessCheck` field from
-// `optUniqueConstraint` struct when dropping this hack.
 func (u *optUniqueConstraint) UniquenessGuaranteedByAnotherIndex() bool {
+	__antithesis_instrumentation__.Notify(551243)
 	return u.uniquenessGuaranteedByAnotherIndex
 }
 
-// optForeignKeyConstraint implements cat.ForeignKeyConstraint and represents a
-// foreign key relationship. Both the origin and the referenced table store the
-// same optForeignKeyConstraint (as an outbound and inbound reference,
-// respectively).
 type optForeignKeyConstraint struct {
 	name string
 
@@ -1723,108 +1956,94 @@ type optForeignKeyConstraint struct {
 
 var _ cat.ForeignKeyConstraint = &optForeignKeyConstraint{}
 
-// Name is part of the cat.ForeignKeyConstraint interface.
 func (fk *optForeignKeyConstraint) Name() string {
+	__antithesis_instrumentation__.Notify(551244)
 	return fk.name
 }
 
-// OriginTableID is part of the cat.ForeignKeyConstraint interface.
 func (fk *optForeignKeyConstraint) OriginTableID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551245)
 	return fk.originTable
 }
 
-// ReferencedTableID is part of the cat.ForeignKeyConstraint interface.
 func (fk *optForeignKeyConstraint) ReferencedTableID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551246)
 	return fk.referencedTable
 }
 
-// ColumnCount is part of the cat.ForeignKeyConstraint interface.
 func (fk *optForeignKeyConstraint) ColumnCount() int {
+	__antithesis_instrumentation__.Notify(551247)
 	return len(fk.originColumns)
 }
 
-// OriginColumnOrdinal is part of the cat.ForeignKeyConstraint interface.
 func (fk *optForeignKeyConstraint) OriginColumnOrdinal(originTable cat.Table, i int) int {
+	__antithesis_instrumentation__.Notify(551248)
 	if originTable.ID() != fk.originTable {
+		__antithesis_instrumentation__.Notify(551250)
 		panic(errors.AssertionFailedf(
 			"invalid table %d passed to OriginColumnOrdinal (expected %d)",
 			originTable.ID(), fk.originTable,
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(551251)
 	}
+	__antithesis_instrumentation__.Notify(551249)
 
 	tab := convertTableToOptTable(originTable)
 	ord, _ := tab.lookupColumnOrdinal(fk.originColumns[i])
 	return ord
 }
 
-// ReferencedColumnOrdinal is part of the cat.ForeignKeyConstraint interface.
 func (fk *optForeignKeyConstraint) ReferencedColumnOrdinal(referencedTable cat.Table, i int) int {
+	__antithesis_instrumentation__.Notify(551252)
 	if referencedTable.ID() != fk.referencedTable {
+		__antithesis_instrumentation__.Notify(551254)
 		panic(errors.AssertionFailedf(
 			"invalid table %d passed to ReferencedColumnOrdinal (expected %d)",
 			referencedTable.ID(), fk.referencedTable,
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(551255)
 	}
+	__antithesis_instrumentation__.Notify(551253)
 	tab := convertTableToOptTable(referencedTable)
 	ord, _ := tab.lookupColumnOrdinal(fk.referencedColumns[i])
 	return ord
 }
 
-// Validated is part of the cat.ForeignKeyConstraint interface.
 func (fk *optForeignKeyConstraint) Validated() bool {
+	__antithesis_instrumentation__.Notify(551256)
 	return fk.validity == descpb.ConstraintValidity_Validated
 }
 
-// MatchMethod is part of the cat.ForeignKeyConstraint interface.
 func (fk *optForeignKeyConstraint) MatchMethod() tree.CompositeKeyMatchMethod {
+	__antithesis_instrumentation__.Notify(551257)
 	return descpb.ForeignKeyReferenceMatchValue[fk.match]
 }
 
-// DeleteReferenceAction is part of the cat.ForeignKeyConstraint interface.
 func (fk *optForeignKeyConstraint) DeleteReferenceAction() tree.ReferenceAction {
+	__antithesis_instrumentation__.Notify(551258)
 	return descpb.ForeignKeyReferenceActionType[fk.deleteAction]
 }
 
-// UpdateReferenceAction is part of the cat.ForeignKeyConstraint interface.
 func (fk *optForeignKeyConstraint) UpdateReferenceAction() tree.ReferenceAction {
+	__antithesis_instrumentation__.Notify(551259)
 	return descpb.ForeignKeyReferenceActionType[fk.updateAction]
 }
 
-// optVirtualTable is similar to optTable but is used with virtual tables.
 type optVirtualTable struct {
 	desc catalog.TableDescriptor
 
-	// columns contains all the columns presented to the catalog. This includes
-	// the dummy PK column and the columns in the table descriptor.
 	columns []cat.Column
 
-	// A virtual table can effectively have multiple instances, with different
-	// contents. For example `db1.pg_catalog.pg_sequence` contains info about
-	// sequences in db1, whereas `db2.pg_catalog.pg_sequence` contains info about
-	// sequences in db2.
-	//
-	// These instances should have different stable IDs. To achieve this, the
-	// stable ID is the database ID concatenated with the descriptor ID.
-	//
-	// Note that some virtual tables have a special instance with empty catalog,
-	// for example "".information_schema.tables contains info about tables in
-	// all databases. We treat the empty catalog as having database ID 0.
 	id cat.StableID
 
-	// name is the fully qualified, fully resolved, fully normalized name of the
-	// virtual table.
 	name cat.DataSourceName
 
-	// indexes contains "virtual indexes", which are used to produce virtual table
-	// data given constraints using generator functions. The 0th index is a
-	// synthesized primary index.
 	indexes []optVirtualIndex
 
-	// family is a synthesized primary family.
 	family optVirtualFamily
 
-	// colMap is a mapping from unique ColumnID to column ordinal within the
-	// table. This is a common lookup that needs to be fast.
 	colMap catalog.TableColMap
 }
 
@@ -1833,30 +2052,32 @@ var _ cat.Table = &optVirtualTable{}
 func newOptVirtualTable(
 	ctx context.Context, oc *optCatalog, desc catalog.TableDescriptor, name *cat.DataSourceName,
 ) (*optVirtualTable, error) {
-	// Calculate the stable ID (see the comment for optVirtualTable.id).
+	__antithesis_instrumentation__.Notify(551260)
+
 	id := cat.StableID(desc.GetID())
 	if name.Catalog() != "" {
-		// TODO(radu): it's unfortunate that we have to lookup the schema again.
+		__antithesis_instrumentation__.Notify(551265)
+
 		found, prefix, err := oc.planner.LookupSchema(ctx, name.Catalog(), name.Schema())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(551267)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(551268)
 		}
+		__antithesis_instrumentation__.Notify(551266)
 		if !found {
-			// The database was not found. This can happen e.g. when
-			// accessing a virtual schema over a non-existent
-			// database. This is a common scenario when the current db
-			// in the session points to a database that was not created
-			// yet.
-			//
-			// In that case we use an invalid database ID. We
-			// distinguish this from the empty database case because the
-			// virtual tables do not "contain" the same information in
-			// both cases.
+			__antithesis_instrumentation__.Notify(551269)
+
 			id |= cat.StableID(math.MaxUint32) << 32
 		} else {
+			__antithesis_instrumentation__.Notify(551270)
 			id |= cat.StableID(prefix.Database.GetID()) << 32
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(551271)
 	}
+	__antithesis_instrumentation__.Notify(551261)
 
 	ot := &optVirtualTable{
 		desc: desc,
@@ -1865,22 +2086,23 @@ func newOptVirtualTable(
 	}
 
 	ot.columns = make([]cat.Column, len(desc.PublicColumns())+1)
-	// Init dummy PK column.
+
 	ot.columns[0].Init(
 		0,
-		math.MaxInt64, /* stableID */
+		math.MaxInt64,
 		"crdb_internal_vtable_pk",
 		cat.Ordinary,
 		types.Int,
-		false,      /* nullable */
-		cat.Hidden, /* hidden */
-		nil,        /* defaultExpr */
-		nil,        /* computedExpr */
-		nil,        /* onUpdateExpr */
+		false,
+		cat.Hidden,
+		nil,
+		nil,
+		nil,
 		cat.NotGeneratedAsIdentity,
-		nil, /* generatedAsIdentitySequenceOption */
+		nil,
 	)
 	for i, d := range desc.PublicColumns() {
+		__antithesis_instrumentation__.Notify(551272)
 		ot.columns[i+1].Init(
 			i+1,
 			cat.StableID(d.GetID()),
@@ -1896,21 +2118,21 @@ func newOptVirtualTable(
 			d.ColumnDesc().GeneratedAsIdentitySequenceOption,
 		)
 	}
+	__antithesis_instrumentation__.Notify(551262)
 
-	// Create the table's column mapping from descpb.ColumnID to column ordinal.
 	for i := range ot.columns {
+		__antithesis_instrumentation__.Notify(551273)
 		ot.colMap.Set(descpb.ColumnID(ot.columns[i].ColID()), i)
 	}
+	__antithesis_instrumentation__.Notify(551263)
 
 	ot.name.ExplicitSchema = true
 	ot.name.ExplicitCatalog = true
 
 	ot.family.init(ot)
 
-	// Build the indexes (add 1 to account for lack of primary index in
-	// indexes slice).
 	ot.indexes = make([]optVirtualIndex, len(ot.desc.ActiveIndexes()))
-	// Set up the primary index.
+
 	ot.indexes[0] = optVirtualIndex{
 		tab:          ot,
 		indexOrdinal: 0,
@@ -1918,123 +2140,150 @@ func newOptVirtualTable(
 	}
 
 	for _, idx := range ot.desc.PublicNonPrimaryIndexes() {
+		__antithesis_instrumentation__.Notify(551274)
 		if idx.NumKeyColumns() > 1 {
+			__antithesis_instrumentation__.Notify(551276)
 			panic(errors.AssertionFailedf("virtual indexes with more than 1 col not supported"))
+		} else {
+			__antithesis_instrumentation__.Notify(551277)
 		}
+		__antithesis_instrumentation__.Notify(551275)
 
-		// Add 1, since the 0th index will the primary that we added above.
 		ot.indexes[idx.Ordinal()] = optVirtualIndex{
 			tab:          ot,
 			idx:          idx,
 			indexOrdinal: idx.Ordinal(),
-			// The virtual indexes don't return the bogus PK key?
+
 			numCols: ot.ColumnCount(),
 		}
 	}
+	__antithesis_instrumentation__.Notify(551264)
 
 	return ot, nil
 }
 
-// ID is part of the cat.Object interface.
 func (ot *optVirtualTable) ID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551278)
 	return ot.id
 }
 
-// PostgresDescriptorID is part of the cat.Object interface.
 func (ot *optVirtualTable) PostgresDescriptorID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551279)
 	return cat.StableID(ot.desc.GetID())
 }
 
-// Equals is part of the cat.Object interface.
 func (ot *optVirtualTable) Equals(other cat.Object) bool {
+	__antithesis_instrumentation__.Notify(551280)
 	otherTable, ok := other.(*optVirtualTable)
 	if !ok {
+		__antithesis_instrumentation__.Notify(551284)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(551285)
 	}
+	__antithesis_instrumentation__.Notify(551281)
 	if ot == otherTable {
-		// Fast path when it is the same object.
+		__antithesis_instrumentation__.Notify(551286)
+
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(551287)
 	}
-	if ot.id != otherTable.id || ot.desc.GetVersion() != otherTable.desc.GetVersion() {
+	__antithesis_instrumentation__.Notify(551282)
+	if ot.id != otherTable.id || func() bool {
+		__antithesis_instrumentation__.Notify(551288)
+		return ot.desc.GetVersion() != otherTable.desc.GetVersion() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551289)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(551290)
 	}
+	__antithesis_instrumentation__.Notify(551283)
 
 	return true
 }
 
-// Name is part of the cat.Table interface.
 func (ot *optVirtualTable) Name() tree.Name {
+	__antithesis_instrumentation__.Notify(551291)
 	return ot.name.ObjectName
 }
 
-// IsVirtualTable is part of the cat.Table interface.
 func (ot *optVirtualTable) IsVirtualTable() bool {
+	__antithesis_instrumentation__.Notify(551292)
 	return true
 }
 
-// IsMaterializedView implements the cat.Table interface.
 func (ot *optVirtualTable) IsMaterializedView() bool {
+	__antithesis_instrumentation__.Notify(551293)
 	return false
 }
 
-// ColumnCount is part of the cat.Table interface.
 func (ot *optVirtualTable) ColumnCount() int {
+	__antithesis_instrumentation__.Notify(551294)
 	return len(ot.columns)
 }
 
-// Column is part of the cat.Table interface.
 func (ot *optVirtualTable) Column(i int) *cat.Column {
+	__antithesis_instrumentation__.Notify(551295)
 	return &ot.columns[i]
 }
 
-// getCol is part of optCatalogTableInterface.
 func (ot *optVirtualTable) getCol(i int) catalog.Column {
-	if i > 0 && i <= len(ot.desc.PublicColumns()) {
+	__antithesis_instrumentation__.Notify(551296)
+	if i > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(551298)
+		return i <= len(ot.desc.PublicColumns()) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551299)
 		return ot.desc.PublicColumns()[i-1]
+	} else {
+		__antithesis_instrumentation__.Notify(551300)
 	}
+	__antithesis_instrumentation__.Notify(551297)
 	return nil
 }
 
-// IndexCount is part of the cat.Table interface.
 func (ot *optVirtualTable) IndexCount() int {
-	// Primary index is always present, so count is always >= 1.
+	__antithesis_instrumentation__.Notify(551301)
+
 	return len(ot.desc.ActiveIndexes())
 }
 
-// WritableIndexCount is part of the cat.Table interface.
 func (ot *optVirtualTable) WritableIndexCount() int {
-	// Primary index is always present, so count is always >= 1.
+	__antithesis_instrumentation__.Notify(551302)
+
 	return 1 + len(ot.desc.WritableNonPrimaryIndexes())
 }
 
-// DeletableIndexCount is part of the cat.Table interface.
 func (ot *optVirtualTable) DeletableIndexCount() int {
-	// Primary index is always present, so count is always >= 1.
+	__antithesis_instrumentation__.Notify(551303)
+
 	return len(ot.desc.AllIndexes())
 }
 
-// Index is part of the cat.Table interface.
 func (ot *optVirtualTable) Index(i cat.IndexOrdinal) cat.Index {
+	__antithesis_instrumentation__.Notify(551304)
 	return &ot.indexes[i]
 }
 
-// StatisticCount is part of the cat.Table interface.
 func (ot *optVirtualTable) StatisticCount() int {
+	__antithesis_instrumentation__.Notify(551305)
 	return 0
 }
 
-// Statistic is part of the cat.Table interface.
 func (ot *optVirtualTable) Statistic(i int) cat.TableStatistic {
+	__antithesis_instrumentation__.Notify(551306)
 	panic(errors.AssertionFailedf("no stats"))
 }
 
-// CheckCount is part of the cat.Table interface.
 func (ot *optVirtualTable) CheckCount() int {
+	__antithesis_instrumentation__.Notify(551307)
 	return len(ot.desc.ActiveChecks())
 }
 
-// Check is part of the cat.Table interface.
 func (ot *optVirtualTable) Check(i int) cat.CheckConstraint {
+	__antithesis_instrumentation__.Notify(551308)
 	check := ot.desc.ActiveChecks()[i]
 	return cat.CheckConstraint{
 		Constraint: check.Expr,
@@ -2042,69 +2291,65 @@ func (ot *optVirtualTable) Check(i int) cat.CheckConstraint {
 	}
 }
 
-// FamilyCount is part of the cat.Table interface.
 func (ot *optVirtualTable) FamilyCount() int {
+	__antithesis_instrumentation__.Notify(551309)
 	return 1
 }
 
-// Family is part of the cat.Table interface.
 func (ot *optVirtualTable) Family(i int) cat.Family {
+	__antithesis_instrumentation__.Notify(551310)
 	return &ot.family
 }
 
-// OutboundForeignKeyCount is part of the cat.Table interface.
 func (ot *optVirtualTable) OutboundForeignKeyCount() int {
+	__antithesis_instrumentation__.Notify(551311)
 	return 0
 }
 
-// OutboundForeignKey is part of the cat.Table interface.
 func (ot *optVirtualTable) OutboundForeignKey(i int) cat.ForeignKeyConstraint {
+	__antithesis_instrumentation__.Notify(551312)
 	panic(errors.AssertionFailedf("no FKs"))
 }
 
-// InboundForeignKeyCount is part of the cat.Table interface.
 func (ot *optVirtualTable) InboundForeignKeyCount() int {
+	__antithesis_instrumentation__.Notify(551313)
 	return 0
 }
 
-// InboundForeignKey is part of the cat.Table interface.
 func (ot *optVirtualTable) InboundForeignKey(i int) cat.ForeignKeyConstraint {
+	__antithesis_instrumentation__.Notify(551314)
 	panic(errors.AssertionFailedf("no FKs"))
 }
 
-// UniqueCount is part of the cat.Table interface.
 func (ot *optVirtualTable) UniqueCount() int {
+	__antithesis_instrumentation__.Notify(551315)
 	return 0
 }
 
-// Unique is part of the cat.Table interface.
 func (ot *optVirtualTable) Unique(i cat.UniqueOrdinal) cat.UniqueConstraint {
+	__antithesis_instrumentation__.Notify(551316)
 	panic(errors.AssertionFailedf("no unique constraints"))
 }
 
-// Zone is part of the cat.Table interface.
 func (ot *optVirtualTable) Zone() cat.Zone {
+	__antithesis_instrumentation__.Notify(551317)
 	panic(errors.AssertionFailedf("no zone"))
 }
 
-// IsPartitionAllBy is part of the cat.Table interface.
 func (ot *optVirtualTable) IsPartitionAllBy() bool {
+	__antithesis_instrumentation__.Notify(551318)
 	return false
 }
 
-// CollectTypes is part of the cat.DataSource interface.
 func (ot *optVirtualTable) CollectTypes(ord int) (descpb.IDs, error) {
+	__antithesis_instrumentation__.Notify(551319)
 	col := ot.desc.AllColumns()[ord]
 	return collectTypes(col)
 }
 
-// optVirtualIndex is a dummy implementation of cat.Index for the indexes
-// reported by a virtual table. The index assumes that table column 0 is a dummy
-// PK column.
 type optVirtualIndex struct {
 	tab *optVirtualTable
 
-	// idx is set to nil if this is the dummy PK index for virtual tables.
 	idx catalog.Index
 
 	numCols int
@@ -2112,168 +2357,186 @@ type optVirtualIndex struct {
 	indexOrdinal int
 }
 
-// ID is part of the cat.Index interface.
 func (oi *optVirtualIndex) ID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551320)
 	if oi.idx == nil {
-		// Dummy PK index ID.
+		__antithesis_instrumentation__.Notify(551322)
+
 		return cat.StableID(0)
+	} else {
+		__antithesis_instrumentation__.Notify(551323)
 	}
+	__antithesis_instrumentation__.Notify(551321)
 	return cat.StableID(oi.idx.GetID())
 }
 
-// Name is part of the cat.Index interface.
 func (oi *optVirtualIndex) Name() tree.Name {
+	__antithesis_instrumentation__.Notify(551324)
 	if oi.idx == nil {
-		// Dummy PK index name.
+		__antithesis_instrumentation__.Notify(551326)
+
 		return "primary"
+	} else {
+		__antithesis_instrumentation__.Notify(551327)
 	}
+	__antithesis_instrumentation__.Notify(551325)
 	return tree.Name(oi.idx.GetName())
 }
 
-// IsUnique is part of the cat.Index interface.
 func (oi *optVirtualIndex) IsUnique() bool {
+	__antithesis_instrumentation__.Notify(551328)
 	if oi.idx == nil {
-		// Dummy PK index is not explicitly UNIQUE.
+		__antithesis_instrumentation__.Notify(551330)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(551331)
 	}
+	__antithesis_instrumentation__.Notify(551329)
 	return oi.idx.IsUnique()
 }
 
-// IsInverted is part of the cat.Index interface.
 func (oi *optVirtualIndex) IsInverted() bool {
+	__antithesis_instrumentation__.Notify(551332)
 	return false
 }
 
-// ExplicitColumnCount is part of the cat.Index interface.
 func (oi *optVirtualIndex) ExplicitColumnCount() int {
+	__antithesis_instrumentation__.Notify(551333)
 	return oi.idx.NumKeyColumns()
 }
 
-// ColumnCount is part of the cat.Index interface.
 func (oi *optVirtualIndex) ColumnCount() int {
+	__antithesis_instrumentation__.Notify(551334)
 	return oi.numCols
 }
 
-// KeyColumnCount is part of the cat.Index interface.
 func (oi *optVirtualIndex) KeyColumnCount() int {
-	// Virtual indexes for the time being always have exactly 2 key columns,
-	// because they're only constructable on a single column, and we don't support
-	// the concept of a unique virtual index. So, we always export 2 key columns:
-	// the first is the column to be indexed, and the second is the fake virtual
-	// index column that we pretend exists to guarantee uniqueness. See the
-	// implementation of optVirtualIndex.Column().
+	__antithesis_instrumentation__.Notify(551335)
+
 	return 2
 }
 
-// LaxKeyColumnCount is part of the cat.Index interface.
 func (oi *optVirtualIndex) LaxKeyColumnCount() int {
-	// Virtual indexes are never unique, so their lax key is the same as their
-	// key.
+	__antithesis_instrumentation__.Notify(551336)
+
 	return 2
 }
 
-// NonInvertedPrefixColumnCount is part of the cat.Index interface.
 func (oi *optVirtualIndex) NonInvertedPrefixColumnCount() int {
+	__antithesis_instrumentation__.Notify(551337)
 	panic("virtual indexes are not inverted")
 }
 
-// lookupColumnOrdinal returns the ordinal of the column with the given ID. A
-// cache makes the lookup O(1).
 func (ot *optVirtualTable) lookupColumnOrdinal(colID descpb.ColumnID) (int, error) {
+	__antithesis_instrumentation__.Notify(551338)
 	col, ok := ot.colMap.Get(colID)
 	if ok {
+		__antithesis_instrumentation__.Notify(551340)
 		return col, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551341)
 	}
+	__antithesis_instrumentation__.Notify(551339)
 	return col, pgerror.Newf(pgcode.UndefinedColumn,
 		"column [%d] does not exist", colID)
 }
 
-// Column is part of the cat.Index interface.
 func (oi *optVirtualIndex) Column(i int) cat.IndexColumn {
+	__antithesis_instrumentation__.Notify(551342)
 	if oi.idx == nil {
-		// Dummy PK index columns.
+		__antithesis_instrumentation__.Notify(551346)
+
 		return cat.IndexColumn{Column: oi.tab.Column(i)}
+	} else {
+		__antithesis_instrumentation__.Notify(551347)
 	}
+	__antithesis_instrumentation__.Notify(551343)
 	length := oi.idx.NumKeyColumns()
 	if i < length {
+		__antithesis_instrumentation__.Notify(551348)
 		ord, _ := oi.tab.lookupColumnOrdinal(oi.idx.GetKeyColumnID(i))
 		return cat.IndexColumn{
 			Column: oi.tab.Column(ord),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(551349)
 	}
+	__antithesis_instrumentation__.Notify(551344)
 	if i == length {
-		// The special bogus PK column goes at the end of the index columns. It
-		// has ID 0.
+		__antithesis_instrumentation__.Notify(551350)
+
 		return cat.IndexColumn{Column: oi.tab.Column(0)}
+	} else {
+		__antithesis_instrumentation__.Notify(551351)
 	}
+	__antithesis_instrumentation__.Notify(551345)
 
 	i -= length + 1
 	ord, _ := oi.tab.lookupColumnOrdinal(oi.idx.GetStoredColumnID(i))
 	return cat.IndexColumn{Column: oi.tab.Column(ord)}
 }
 
-// InvertedColumn is part of the cat.Index interface.
 func (oi *optVirtualIndex) InvertedColumn() cat.IndexColumn {
+	__antithesis_instrumentation__.Notify(551352)
 	panic(errors.AssertionFailedf("virtual indexes are not inverted"))
 }
 
-// Predicate is part of the cat.Index interface.
 func (oi *optVirtualIndex) Predicate() (string, bool) {
+	__antithesis_instrumentation__.Notify(551353)
 	return "", false
 }
 
-// Zone is part of the cat.Index interface.
 func (oi *optVirtualIndex) Zone() cat.Zone {
+	__antithesis_instrumentation__.Notify(551354)
 	panic(errors.AssertionFailedf("no zone"))
 }
 
-// Span is part of the cat.Index interface.
 func (oi *optVirtualIndex) Span() roachpb.Span {
+	__antithesis_instrumentation__.Notify(551355)
 	panic(errors.AssertionFailedf("no span"))
 }
 
-// Table is part of the cat.Index interface.
 func (oi *optVirtualIndex) Table() cat.Table {
+	__antithesis_instrumentation__.Notify(551356)
 	return oi.tab
 }
 
-// Ordinal is part of the cat.Index interface.
 func (oi *optVirtualIndex) Ordinal() int {
+	__antithesis_instrumentation__.Notify(551357)
 	return oi.indexOrdinal
 }
 
-// ImplicitColumnCount is part of the cat.Index interface.
 func (oi *optVirtualIndex) ImplicitColumnCount() int {
+	__antithesis_instrumentation__.Notify(551358)
 	return 0
 }
 
-// ImplicitPartitioningColumnCount is part of the cat.Index interface.
 func (oi *optVirtualIndex) ImplicitPartitioningColumnCount() int {
+	__antithesis_instrumentation__.Notify(551359)
 	return 0
 }
 
-// GeoConfig is part of the cat.Index interface.
 func (oi *optVirtualIndex) GeoConfig() *geoindex.Config {
+	__antithesis_instrumentation__.Notify(551360)
 	return nil
 }
 
-// Version is part of the cat.Index interface.
 func (oi *optVirtualIndex) Version() descpb.IndexDescriptorVersion {
+	__antithesis_instrumentation__.Notify(551361)
 	return 0
 }
 
-// PartitionCount is part of the cat.Index interface.
 func (oi *optVirtualIndex) PartitionCount() int {
+	__antithesis_instrumentation__.Notify(551362)
 	return 0
 }
 
-// Partition is part of the cat.Index interface.
 func (oi *optVirtualIndex) Partition(i int) cat.Partition {
+	__antithesis_instrumentation__.Notify(551363)
 	return nil
 }
 
-// optVirtualFamily is a dummy implementation of cat.Family for the only family
-// reported by a virtual table.
 type optVirtualFamily struct {
 	tab *optVirtualTable
 }
@@ -2284,86 +2547,112 @@ func (oi *optVirtualFamily) init(tab *optVirtualTable) {
 	oi.tab = tab
 }
 
-// ID is part of the cat.Family interface.
 func (oi *optVirtualFamily) ID() cat.StableID {
+	__antithesis_instrumentation__.Notify(551364)
 	return 0
 }
 
-// Name is part of the cat.Family interface.
 func (oi *optVirtualFamily) Name() tree.Name {
+	__antithesis_instrumentation__.Notify(551365)
 	return "primary"
 }
 
-// ColumnCount is part of the cat.Family interface.
 func (oi *optVirtualFamily) ColumnCount() int {
+	__antithesis_instrumentation__.Notify(551366)
 	return oi.tab.ColumnCount()
 }
 
-// Column is part of the cat.Family interface.
 func (oi *optVirtualFamily) Column(i int) cat.FamilyColumn {
+	__antithesis_instrumentation__.Notify(551367)
 	return cat.FamilyColumn{Column: oi.tab.Column(i), Ordinal: i}
 }
 
-// Table is part of the cat.Family interface.
 func (oi *optVirtualFamily) Table() cat.Table {
+	__antithesis_instrumentation__.Notify(551368)
 	return oi.tab
 }
 
 type optCatalogTableInterface interface {
-	// getCol returns the catalog.Column interface backing a given column,
-	// (or nil if it is a virtual column).
 	getCol(i int) catalog.Column
 }
 
 var _ optCatalogTableInterface = &optTable{}
 var _ optCatalogTableInterface = &optVirtualTable{}
 
-// collectTypes walks the given column's default and computed expression,
-// and collects any user defined types it finds. If the column itself is of
-// a user defined type, it will also be added to the set of user defined types.
 func collectTypes(col catalog.Column) (descpb.IDs, error) {
+	__antithesis_instrumentation__.Notify(551369)
 	visitor := &tree.TypeCollectorVisitor{
 		OIDs: make(map[oid.Oid]struct{}),
 	}
 	addOIDsInExpr := func(exprStr string) error {
+		__antithesis_instrumentation__.Notify(551375)
 		expr, err := parser.ParseExpr(exprStr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(551377)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(551378)
 		}
+		__antithesis_instrumentation__.Notify(551376)
 		tree.WalkExpr(visitor, expr)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(551370)
 
-	// Collect UDTs in default expression, computed column and the column type itself.
 	if col.HasDefault() {
+		__antithesis_instrumentation__.Notify(551379)
 		if err := addOIDsInExpr(col.GetDefaultExpr()); err != nil {
+			__antithesis_instrumentation__.Notify(551380)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(551381)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(551382)
 	}
+	__antithesis_instrumentation__.Notify(551371)
 	if col.IsComputed() {
+		__antithesis_instrumentation__.Notify(551383)
 		if err := addOIDsInExpr(col.GetComputeExpr()); err != nil {
+			__antithesis_instrumentation__.Notify(551384)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(551385)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(551386)
 	}
-	if typ := col.GetType(); typ != nil && typ.UserDefined() {
+	__antithesis_instrumentation__.Notify(551372)
+	if typ := col.GetType(); typ != nil && func() bool {
+		__antithesis_instrumentation__.Notify(551387)
+		return typ.UserDefined() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551388)
 		visitor.OIDs[typ.Oid()] = struct{}{}
+	} else {
+		__antithesis_instrumentation__.Notify(551389)
 	}
+	__antithesis_instrumentation__.Notify(551373)
 
 	ids := make(descpb.IDs, 0, len(visitor.OIDs))
 	for collectedOid := range visitor.OIDs {
+		__antithesis_instrumentation__.Notify(551390)
 		id, err := typedesc.UserDefinedTypeOIDToID(collectedOid)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(551392)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(551393)
 		}
+		__antithesis_instrumentation__.Notify(551391)
 		ids = append(ids, id)
 	}
+	__antithesis_instrumentation__.Notify(551374)
 	return ids, nil
 }
 
-// mapGeneratedAsIdentityType maps a descpb.GeneratedAsIdentityType into corresponding
-// cat.GeneratedAsIdentityType. This is a helper function for the read access to
-// the GeneratedAsIdentityType attribute for descpb.ColumnDescriptor.
 func mapGeneratedAsIdentityType(inType catpb.GeneratedAsIdentityType) cat.GeneratedAsIdentityType {
+	__antithesis_instrumentation__.Notify(551394)
 	mapGeneratedAsIdentityType := map[catpb.GeneratedAsIdentityType]cat.GeneratedAsIdentityType{
 		catpb.GeneratedAsIdentityType_NOT_IDENTITY_COLUMN:  cat.NotGeneratedAsIdentity,
 		catpb.GeneratedAsIdentityType_GENERATED_ALWAYS:     cat.GeneratedAlwaysAsIdentity,

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,31 +17,35 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// FirstNodeID is the NodeID assigned to the node bootstrapping a new cluster.
 const FirstNodeID = roachpb.NodeID(1)
 
-// FirstStoreID is the StoreID assigned to the first store on the node with ID
-// FirstNodeID.
 const FirstStoreID = roachpb.StoreID(1)
 
-// InitEngine writes a new store ident to the underlying engine. To
-// ensure that no crufty data already exists in the engine, it scans
-// the engine contents before writing the new store ident. The engine
-// should be completely empty save for a cluster version, which must
-// already have been persisted to it. Returns an error if this is not
-// the case.
 func InitEngine(ctx context.Context, eng storage.Engine, ident roachpb.StoreIdent) error {
+	__antithesis_instrumentation__.Notify(124903)
 	exIdent, err := ReadStoreIdent(ctx, eng)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(124909)
 		return errors.Errorf("engine %s is already initialized with ident %s", eng, exIdent.String())
+	} else {
+		__antithesis_instrumentation__.Notify(124910)
 	}
+	__antithesis_instrumentation__.Notify(124904)
 	if !errors.HasType(err, (*NotBootstrappedError)(nil)) {
+		__antithesis_instrumentation__.Notify(124911)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124912)
 	}
+	__antithesis_instrumentation__.Notify(124905)
 
 	if err := checkCanInitializeEngine(ctx, eng); err != nil {
+		__antithesis_instrumentation__.Notify(124913)
 		return errors.Wrap(err, "while trying to initialize engine")
+	} else {
+		__antithesis_instrumentation__.Notify(124914)
 	}
+	__antithesis_instrumentation__.Notify(124906)
 
 	batch := eng.NewBatch()
 	if err := storage.MVCCPutProto(
@@ -61,28 +57,24 @@ func InitEngine(ctx context.Context, eng storage.Engine, ident roachpb.StoreIden
 		nil,
 		&ident,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(124915)
 		batch.Close()
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124916)
 	}
-	if err := batch.Commit(true /* sync */); err != nil {
+	__antithesis_instrumentation__.Notify(124907)
+	if err := batch.Commit(true); err != nil {
+		__antithesis_instrumentation__.Notify(124917)
 		return errors.Wrap(err, "persisting engine initialization data")
+	} else {
+		__antithesis_instrumentation__.Notify(124918)
 	}
+	__antithesis_instrumentation__.Notify(124908)
 
 	return nil
 }
 
-// WriteInitialClusterData writes initialization data to an engine. It creates
-// system ranges (filling in meta1 and meta2) and the default zone config.
-//
-// Args:
-// eng: the engine to which data is to be written.
-// initialValues: an optional list of k/v to be written as well after each
-//   value's checksum is initialized.
-// bootstrapVersion: the version at which the cluster is bootstrapped.
-// numStores: the number of stores this node will have.
-// splits: an optional list of split points. Range addressing will be created
-//   for all the splits. The list needs to be sorted.
-// nowNanos: the timestamp at which to write the initial engine data.
 func WriteInitialClusterData(
 	ctx context.Context,
 	eng storage.Engine,
@@ -93,79 +85,82 @@ func WriteInitialClusterData(
 	nowNanos int64,
 	knobs StoreTestingKnobs,
 ) error {
-	// Bootstrap version information. We'll add the "bootstrap version" to the
-	// list of initialValues, so that we don't have to handle it specially
-	// (particularly since we don't want to manually figure out which range it
-	// falls into).
+	__antithesis_instrumentation__.Notify(124919)
+
 	bootstrapVal := roachpb.Value{}
 	if err := bootstrapVal.SetProto(&bootstrapVersion); err != nil {
+		__antithesis_instrumentation__.Notify(124925)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124926)
 	}
+	__antithesis_instrumentation__.Notify(124920)
 	initialValues = append(initialValues,
 		roachpb.KeyValue{Key: keys.BootstrapVersionKey, Value: bootstrapVal})
 
-	// Initialize various sequence generators.
 	var nodeIDVal, storeIDVal, rangeIDVal, livenessVal roachpb.Value
 
 	nodeIDVal.SetInt(int64(FirstNodeID))
-	// The caller will initialize the stores with ids FirstStoreID, ..., FirstStoreID+numStores-1.
+
 	storeIDVal.SetInt(int64(FirstStoreID) + int64(numStores) - 1)
-	// The last range has id = len(splits) + 1
+
 	rangeIDVal.SetInt(int64(len(splits) + 1))
 
-	// We're the first node in the cluster, let's seed our liveness record.
-	// It's crucial that we do to maintain the invariant that there's always a
-	// liveness record for a given node. We'll do something similar through the
-	// join RPC when adding new nodes to an already bootstrapped cluster [1].
-	//
-	// We start off at epoch=0; when nodes heartbeat their liveness records for
-	// the first time it'll get incremented to epoch=1 [2].
-	//
-	// [1]: See `(*NodeLiveness).CreateLivenessRecord` and usages for where that happens.
-	// [2]: See `(*NodeLiveness).Start` for where that happens.
 	livenessRecord := livenesspb.Liveness{NodeID: FirstNodeID, Epoch: 0}
 	if err := livenessVal.SetProto(&livenessRecord); err != nil {
+		__antithesis_instrumentation__.Notify(124927)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124928)
 	}
+	__antithesis_instrumentation__.Notify(124921)
 	initialValues = append(initialValues,
 		roachpb.KeyValue{Key: keys.NodeIDGenerator, Value: nodeIDVal},
 		roachpb.KeyValue{Key: keys.StoreIDGenerator, Value: storeIDVal},
 		roachpb.KeyValue{Key: keys.RangeIDGenerator, Value: rangeIDVal},
 		roachpb.KeyValue{Key: keys.NodeLivenessKey(FirstNodeID), Value: livenessVal})
 
-	// firstRangeMS is going to accumulate the stats for the first range, as we
-	// write the meta records for all the other ranges.
 	firstRangeMS := &enginepb.MVCCStats{}
 
-	// filter initial values for a given descriptor, returning only the ones that
-	// pertain to the respective range.
 	filterInitialValues := func(desc *roachpb.RangeDescriptor) []roachpb.KeyValue {
+		__antithesis_instrumentation__.Notify(124929)
 		var r []roachpb.KeyValue
 		for _, kv := range initialValues {
+			__antithesis_instrumentation__.Notify(124931)
 			if desc.ContainsKey(roachpb.RKey(kv.Key)) {
+				__antithesis_instrumentation__.Notify(124932)
 				r = append(r, kv)
+			} else {
+				__antithesis_instrumentation__.Notify(124933)
 			}
 		}
+		__antithesis_instrumentation__.Notify(124930)
 		return r
 	}
+	__antithesis_instrumentation__.Notify(124922)
 
 	initialReplicaVersion := bootstrapVersion
 	if knobs.InitialReplicaVersionOverride != nil {
+		__antithesis_instrumentation__.Notify(124934)
 		initialReplicaVersion = *knobs.InitialReplicaVersionOverride
+	} else {
+		__antithesis_instrumentation__.Notify(124935)
 	}
-	// We iterate through the ranges backwards, since they all need to contribute
-	// to the stats of the first range (i.e. because they all write meta2 records
-	// in the first range), and so we want to create the first range last so that
-	// the stats we compute for it are correct.
+	__antithesis_instrumentation__.Notify(124923)
+
 	startKey := roachpb.RKeyMax
 	for i := len(splits) - 1; i >= -1; i-- {
+		__antithesis_instrumentation__.Notify(124936)
 		endKey := startKey
-		rangeID := roachpb.RangeID(i + 2) // RangeIDs are 1-based.
+		rangeID := roachpb.RangeID(i + 2)
 		if i >= 0 {
+			__antithesis_instrumentation__.Notify(124947)
 			startKey = splits[i]
 		} else {
+			__antithesis_instrumentation__.Notify(124948)
 			startKey = roachpb.RKeyMin
 		}
+		__antithesis_instrumentation__.Notify(124937)
 
 		desc := &roachpb.RangeDescriptor{
 			RangeID:       rangeID,
@@ -183,8 +178,12 @@ func WriteInitialClusterData(
 		}
 		desc.SetReplicas(roachpb.MakeReplicaSet(replicas))
 		if err := desc.Validate(); err != nil {
+			__antithesis_instrumentation__.Notify(124949)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124950)
 		}
+		__antithesis_instrumentation__.Notify(124938)
 		rangeInitialValues := filterInitialValues(desc)
 		log.VEventf(
 			ctx, 2, "creating range %d [%s, %s). Initial values: %d",
@@ -197,72 +196,105 @@ func WriteInitialClusterData(
 			Logical:  0,
 		}
 
-		// NOTE: We don't do stats computations in any of the puts below. Instead,
-		// we write everything and then compute the stats over the whole range.
-
-		// Range descriptor.
 		if err := storage.MVCCPutProto(
-			ctx, batch, nil /* ms */, keys.RangeDescriptorKey(desc.StartKey),
-			now, nil /* txn */, desc,
+			ctx, batch, nil, keys.RangeDescriptorKey(desc.StartKey),
+			now, nil, desc,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(124951)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124952)
 		}
+		__antithesis_instrumentation__.Notify(124939)
 
-		// Replica GC timestamp.
 		if err := storage.MVCCPutProto(
-			ctx, batch, nil /* ms */, keys.RangeLastReplicaGCTimestampKey(desc.RangeID),
-			hlc.Timestamp{}, nil /* txn */, &now,
+			ctx, batch, nil, keys.RangeLastReplicaGCTimestampKey(desc.RangeID),
+			hlc.Timestamp{}, nil, &now,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(124953)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124954)
 		}
-		// Range addressing for meta2.
+		__antithesis_instrumentation__.Notify(124940)
+
 		meta2Key := keys.RangeMetaKey(endKey)
 		if err := storage.MVCCPutProto(ctx, batch, firstRangeMS, meta2Key.AsRawKey(),
-			now, nil /* txn */, desc,
+			now, nil, desc,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(124955)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124956)
 		}
+		__antithesis_instrumentation__.Notify(124941)
 
-		// The first range gets some special treatment.
 		if startKey.Equal(roachpb.RKeyMin) {
-			// Range addressing for meta1.
+			__antithesis_instrumentation__.Notify(124957)
+
 			meta1Key := keys.RangeMetaKey(keys.RangeMetaKey(roachpb.RKeyMax))
 			if err := storage.MVCCPutProto(
-				ctx, batch, nil /* ms */, meta1Key.AsRawKey(), now, nil /* txn */, desc,
+				ctx, batch, nil, meta1Key.AsRawKey(), now, nil, desc,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(124958)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(124959)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(124960)
 		}
+		__antithesis_instrumentation__.Notify(124942)
 
-		// Now add all passed-in default entries.
 		for _, kv := range rangeInitialValues {
-			// Initialize the checksums.
+			__antithesis_instrumentation__.Notify(124961)
+
 			kv.Value.InitChecksum(kv.Key)
 			if err := storage.MVCCPut(
-				ctx, batch, nil /* ms */, kv.Key, now, kv.Value, nil, /* txn */
+				ctx, batch, nil, kv.Key, now, kv.Value, nil,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(124962)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(124963)
 			}
 		}
+		__antithesis_instrumentation__.Notify(124943)
 
 		if err := stateloader.WriteInitialRangeState(
 			ctx, batch, *desc, firstReplicaID, initialReplicaVersion); err != nil {
+			__antithesis_instrumentation__.Notify(124964)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124965)
 		}
+		__antithesis_instrumentation__.Notify(124944)
 		computedStats, err := rditer.ComputeStatsForRange(desc, batch, now.WallTime)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(124966)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124967)
 		}
+		__antithesis_instrumentation__.Notify(124945)
 
 		sl := stateloader.Make(rangeID)
 		if err := sl.SetMVCCStats(ctx, batch, &computedStats); err != nil {
+			__antithesis_instrumentation__.Notify(124968)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124969)
 		}
+		__antithesis_instrumentation__.Notify(124946)
 
-		if err := batch.Commit(true /* sync */); err != nil {
+		if err := batch.Commit(true); err != nil {
+			__antithesis_instrumentation__.Notify(124970)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124971)
 		}
 	}
+	__antithesis_instrumentation__.Notify(124924)
 
 	return nil
 }

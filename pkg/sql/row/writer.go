@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package row
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,72 +15,49 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// This file contains common functions for the three writers, Inserter, Deleter
-// and Updater.
-
-// ColIDtoRowIndexFromCols groups a slice of ColumnDescriptors by their ID
-// field, returning a map from ID to the index of the column in the input slice.
-// It assumes there are no duplicate descriptors in the input.
 func ColIDtoRowIndexFromCols(cols []catalog.Column) catalog.TableColMap {
+	__antithesis_instrumentation__.Notify(568836)
 	var colIDtoRowIndex catalog.TableColMap
 	for i := range cols {
+		__antithesis_instrumentation__.Notify(568838)
 		colIDtoRowIndex.Set(cols[i].GetID(), i)
 	}
+	__antithesis_instrumentation__.Notify(568837)
 	return colIDtoRowIndex
 }
 
-// ColMapping returns a map from ordinals in the fromCols list to ordinals in
-// the toCols list. More precisely, for 0 <= i < fromCols:
-//
-//   result[i] = j such that fromCols[i].ID == toCols[j].ID, or
-//                -1 if the column is not part of toCols.
 func ColMapping(fromCols, toCols []catalog.Column) []int {
-	// colMap is a map from ColumnID to ordinal into fromCols.
+	__antithesis_instrumentation__.Notify(568839)
+
 	var colMap util.FastIntMap
 	for i := range fromCols {
+		__antithesis_instrumentation__.Notify(568843)
 		colMap.Set(int(fromCols[i].GetID()), i)
 	}
+	__antithesis_instrumentation__.Notify(568840)
 
 	result := make([]int, len(fromCols))
 	for i := range result {
-		// -1 value indicates that this column is not being returned.
+		__antithesis_instrumentation__.Notify(568844)
+
 		result[i] = -1
 	}
+	__antithesis_instrumentation__.Notify(568841)
 
-	// Set the appropriate index values for the returning columns.
 	for toOrd := range toCols {
+		__antithesis_instrumentation__.Notify(568845)
 		if fromOrd, ok := colMap.Get(int(toCols[toOrd].GetID())); ok {
+			__antithesis_instrumentation__.Notify(568846)
 			result[fromOrd] = toOrd
+		} else {
+			__antithesis_instrumentation__.Notify(568847)
 		}
 	}
+	__antithesis_instrumentation__.Notify(568842)
 
 	return result
 }
 
-// prepareInsertOrUpdateBatch constructs a KV batch that inserts or
-// updates a row in KV.
-// - batch is the KV batch where commands should be appended.
-// - putFn is the functions that can append Put/CPut commands to the batch.
-//   (must be adapted depending on whether 'overwrite' is set)
-// - helper is the rowHelper that knows about the table being modified.
-// - primaryIndexKey is the PK prefix for the current row.
-// - fetchedCols is the list of schema columns that have been fetched
-//   in preparation for this update.
-// - values is the SQL-level row values that are being written.
-// - marshaledValues contains the pre-encoded KV-level row values.
-//   marshaledValues is only used when writing single column families.
-//   Regardless of whether there are single column families,
-//   pre-encoding must occur prior to calling this function to check whether
-//   the encoding is _possible_ (i.e. values fit in the column types, etc).
-// - valColIDMapping/marshaledColIDMapping is the mapping from column
-//   IDs into positions of the slices values or marshaledValues.
-// - kvKey and kvValues must be heap-allocated scratch buffers to write
-//   roachpb.Key and roachpb.Value values.
-// - rawValueBuf must be a scratch byte array. This must be reinitialized
-//   to an empty slice on each call but can be preserved at its current
-//   capacity to avoid allocations. The function returns the slice.
-// - overwrite must be set to true for UPDATE and UPSERT.
-// - traceKV is to be set to log the KV operations added to the batch.
 func prepareInsertOrUpdateBatch(
 	ctx context.Context,
 	batch putter,
@@ -105,121 +74,186 @@ func prepareInsertOrUpdateBatch(
 	putFn func(ctx context.Context, b putter, key *roachpb.Key, value *roachpb.Value, traceKV bool),
 	overwrite, traceKV bool,
 ) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(568848)
 	families := helper.TableDesc.GetFamilies()
 	for i := range families {
+		__antithesis_instrumentation__.Notify(568850)
 		family := &families[i]
 		update := false
 		for _, colID := range family.ColumnIDs {
+			__antithesis_instrumentation__.Notify(568858)
 			if _, ok := marshaledColIDMapping.Get(colID); ok {
+				__antithesis_instrumentation__.Notify(568859)
 				update = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(568860)
 			}
 		}
-		// We can have an empty family.ColumnIDs in the following case:
-		// * A table is created with the primary key not in family 0, and another column in family 0.
-		// * The column in family 0 is dropped, leaving the 0'th family empty.
-		// In this case, we must keep the empty 0'th column family in order to ensure that column family 0
-		// is always encoded as the sentinel k/v for a row.
-		if !update && len(family.ColumnIDs) != 0 {
+		__antithesis_instrumentation__.Notify(568851)
+
+		if !update && func() bool {
+			__antithesis_instrumentation__.Notify(568861)
+			return len(family.ColumnIDs) != 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(568862)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(568863)
 		}
+		__antithesis_instrumentation__.Notify(568852)
 
 		if i > 0 {
-			// HACK: MakeFamilyKey appends to its argument, so on every loop iteration
-			// after the first, trim primaryIndexKey so nothing gets overwritten.
-			// TODO(dan): Instead of this, use something like engine.ChunkAllocator.
+			__antithesis_instrumentation__.Notify(568864)
+
 			primaryIndexKey = primaryIndexKey[:len(primaryIndexKey):len(primaryIndexKey)]
+		} else {
+			__antithesis_instrumentation__.Notify(568865)
 		}
+		__antithesis_instrumentation__.Notify(568853)
 
 		*kvKey = keys.MakeFamilyKey(primaryIndexKey, uint32(family.ID))
-		// We need to ensure that column family 0 contains extra metadata, like composite primary key values.
-		// Additionally, the decoders expect that column family 0 is encoded with a TUPLE value tag, so we
-		// don't want to use the untagged value encoding.
-		if len(family.ColumnIDs) == 1 && family.ColumnIDs[0] == family.DefaultColumnID && family.ID != 0 {
-			// Storage optimization to store DefaultColumnID directly as a value. Also
-			// backwards compatible with the original BaseFormatVersion.
+
+		if len(family.ColumnIDs) == 1 && func() bool {
+			__antithesis_instrumentation__.Notify(568866)
+			return family.ColumnIDs[0] == family.DefaultColumnID == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(568867)
+			return family.ID != 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(568868)
 
 			idx, ok := marshaledColIDMapping.Get(family.DefaultColumnID)
 			if !ok {
+				__antithesis_instrumentation__.Notify(568871)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(568872)
 			}
+			__antithesis_instrumentation__.Notify(568869)
 
 			if marshaledValues[idx].RawBytes == nil {
+				__antithesis_instrumentation__.Notify(568873)
 				if overwrite {
-					// If the new family contains a NULL value, then we must
-					// delete any pre-existing row.
+					__antithesis_instrumentation__.Notify(568874)
+
 					insertDelFn(ctx, batch, kvKey, traceKV)
+				} else {
+					__antithesis_instrumentation__.Notify(568875)
 				}
 			} else {
-				// We only output non-NULL values. Non-existent column keys are
-				// considered NULL during scanning and the row sentinel ensures we know
-				// the row exists.
+				__antithesis_instrumentation__.Notify(568876)
+
 				if err := helper.checkRowSize(ctx, kvKey, &marshaledValues[idx], family.ID); err != nil {
+					__antithesis_instrumentation__.Notify(568878)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(568879)
 				}
+				__antithesis_instrumentation__.Notify(568877)
 				putFn(ctx, batch, kvKey, &marshaledValues[idx], traceKV)
 			}
+			__antithesis_instrumentation__.Notify(568870)
 
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(568880)
 		}
+		__antithesis_instrumentation__.Notify(568854)
 
 		rawValueBuf = rawValueBuf[:0]
 
 		var lastColID descpb.ColumnID
 		familySortedColumnIDs, ok := helper.sortedColumnFamily(family.ID)
 		if !ok {
+			__antithesis_instrumentation__.Notify(568881)
 			return nil, errors.AssertionFailedf("invalid family sorted column id map")
+		} else {
+			__antithesis_instrumentation__.Notify(568882)
 		}
+		__antithesis_instrumentation__.Notify(568855)
 		for _, colID := range familySortedColumnIDs {
+			__antithesis_instrumentation__.Notify(568883)
 			idx, ok := valColIDMapping.Get(colID)
-			if !ok || values[idx] == tree.DNull {
-				// Column not being updated or inserted.
+			if !ok || func() bool {
+				__antithesis_instrumentation__.Notify(568887)
+				return values[idx] == tree.DNull == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(568888)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(568889)
 			}
+			__antithesis_instrumentation__.Notify(568884)
 
 			if skip, err := helper.skipColumnNotInPrimaryIndexValue(colID, values[idx]); err != nil {
+				__antithesis_instrumentation__.Notify(568890)
 				return nil, err
-			} else if skip {
-				continue
+			} else {
+				__antithesis_instrumentation__.Notify(568891)
+				if skip {
+					__antithesis_instrumentation__.Notify(568892)
+					continue
+				} else {
+					__antithesis_instrumentation__.Notify(568893)
+				}
 			}
+			__antithesis_instrumentation__.Notify(568885)
 
 			col := fetchedCols[idx]
 			if lastColID > col.GetID() {
+				__antithesis_instrumentation__.Notify(568894)
 				return nil, errors.AssertionFailedf("cannot write column id %d after %d", col.GetID(), lastColID)
+			} else {
+				__antithesis_instrumentation__.Notify(568895)
 			}
+			__antithesis_instrumentation__.Notify(568886)
 			colIDDelta := valueside.MakeColumnIDDelta(lastColID, col.GetID())
 			lastColID = col.GetID()
 			var err error
 			rawValueBuf, err = valueside.Encode(rawValueBuf, colIDDelta, values[idx], nil)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(568896)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(568897)
 			}
 		}
+		__antithesis_instrumentation__.Notify(568856)
 
-		if family.ID != 0 && len(rawValueBuf) == 0 {
+		if family.ID != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(568898)
+			return len(rawValueBuf) == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(568899)
 			if overwrite {
-				// The family might have already existed but every column in it is being
-				// set to NULL, so delete it.
+				__antithesis_instrumentation__.Notify(568900)
+
 				insertDelFn(ctx, batch, kvKey, traceKV)
+			} else {
+				__antithesis_instrumentation__.Notify(568901)
 			}
 		} else {
-			// Copy the contents of rawValueBuf into the roachpb.Value. This is
-			// a deep copy so rawValueBuf can be re-used by other calls to the
-			// function.
+			__antithesis_instrumentation__.Notify(568902)
+
 			kvValue.SetTuple(rawValueBuf)
 			if err := helper.checkRowSize(ctx, kvKey, kvValue, family.ID); err != nil {
+				__antithesis_instrumentation__.Notify(568904)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(568905)
 			}
+			__antithesis_instrumentation__.Notify(568903)
 			putFn(ctx, batch, kvKey, kvValue, traceKV)
 		}
+		__antithesis_instrumentation__.Notify(568857)
 
-		// Release reference to roachpb.Key.
 		*kvKey = nil
-		// Prevent future calls to prepareInsertOrUpdateBatch from mutating
-		// the RawBytes in the kvValue we just added to the batch. Remember
-		// that we share the kvValue reference across calls to this function.
+
 		*kvValue = roachpb.Value{}
 	}
+	__antithesis_instrumentation__.Notify(568849)
 
 	return rawValueBuf, nil
 }

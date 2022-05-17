@@ -11,6 +11,7 @@ go_library(
         "@co_honnef_go_tools//staticcheck",
         "@co_honnef_go_tools//stylecheck",
         "@co_honnef_go_tools//unused",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -18,4 +19,5 @@ go_binary(
     name = "generate-staticcheck",
     embed = [":generate-staticcheck_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sctestdeps
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,9 +20,6 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// TestState is a backing struct used to implement all schema changer
-// dependencies, like scbuild.Dependencies or scexec.Dependencies, for the
-// purpose of facilitating end-to-end testing of the declarative schema changer.
 type TestState struct {
 	catalog, synthetic      nstree.MutableCatalog
 	currentDatabase         string
@@ -44,84 +33,90 @@ type TestState struct {
 	txnCounter              int
 	sideEffectLogBuffer     strings.Builder
 
-	// The below portions fo the Dependencies are stored as interfaces because
-	// we permit users of this package to override the default implementations.
-	// This approach allows the TestState object to be flexibly used in various
-	// different testing contexts, providing a sane default implementation of
-	// dependencies with optional overrides.
 	backfiller        scexec.Backfiller
 	indexSpanSplitter scexec.IndexSpanSplitter
 	backfillTracker   scexec.BackfillTracker
 
-	// approximateTimestamp is used to populate approximate timestamps in
-	// descriptors.
 	approximateTimestamp time.Time
 }
 
-// NewTestDependencies returns a TestState populated with the provided options.
 func NewTestDependencies(options ...Option) *TestState {
+	__antithesis_instrumentation__.Notify(581233)
 	var s TestState
 	for _, o := range defaultOptions {
+		__antithesis_instrumentation__.Notify(581236)
 		o.apply(&s)
 	}
+	__antithesis_instrumentation__.Notify(581234)
 	for _, o := range options {
+		__antithesis_instrumentation__.Notify(581237)
 		o.apply(&s)
 	}
+	__antithesis_instrumentation__.Notify(581235)
 	return &s
 }
 
-// LogSideEffectf writes an entry to the side effect log, to keep track of any
-// state changes which would have occurred in real dependencies.
 func (s *TestState) LogSideEffectf(fmtstr string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(581238)
 	s.sideEffectLogBuffer.WriteString(fmt.Sprintf(fmtstr, args...))
 	s.sideEffectLogBuffer.WriteRune('\n')
 }
 
-// SideEffectLog returns the contents of the side effect log.
-// See LogSideEffectf for details.
 func (s *TestState) SideEffectLog() string {
+	__antithesis_instrumentation__.Notify(581239)
 	return s.sideEffectLogBuffer.String()
 }
 
-// WithTxn simulates the execution of a transaction.
 func (s *TestState) WithTxn(fn func(s *TestState)) {
+	__antithesis_instrumentation__.Notify(581240)
 	s.txnCounter++
 	defer s.synthetic.Clear()
 	defer func() {
+		__antithesis_instrumentation__.Notify(581242)
 		if len(s.createdJobsInCurrentTxn) == 0 {
+			__antithesis_instrumentation__.Notify(581244)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(581245)
 		}
+		__antithesis_instrumentation__.Notify(581243)
 		s.LogSideEffectf(
 			"notified job registry to adopt jobs: %v", s.createdJobsInCurrentTxn,
 		)
 		s.createdJobsInCurrentTxn = nil
 	}()
+	__antithesis_instrumentation__.Notify(581241)
 	defer s.LogSideEffectf("commit transaction #%d", s.txnCounter)
 	s.LogSideEffectf("begin transaction #%d", s.txnCounter)
 	fn(s)
 }
 
-// IncrementPhase sets the state to the next phase.
 func (s *TestState) IncrementPhase() {
+	__antithesis_instrumentation__.Notify(581246)
 	s.phase++
 }
 
-// JobRecord returns the job record in the fake job registry for the given job
-// ID, if it exists, nil otherwise.
 func (s *TestState) JobRecord(jobID jobspb.JobID) *jobs.Record {
+	__antithesis_instrumentation__.Notify(581247)
 	idx := int(jobID) - 1
-	if idx < 0 || idx >= len(s.jobs) {
+	if idx < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(581249)
+		return idx >= len(s.jobs) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(581250)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(581251)
 	}
+	__antithesis_instrumentation__.Notify(581248)
 	return &s.jobs[idx]
 }
 
-// FormatAstAsRedactableString implements scbuild.AstFormatter
 func (s *TestState) FormatAstAsRedactableString(
 	statement tree.Statement, ann *tree.Annotations,
 ) redact.RedactableString {
-	// Return the SQL back non-redacted and not fully resolved for the purposes
-	// of testing.
+	__antithesis_instrumentation__.Notify(581252)
+
 	f := tree.NewFmtCtx(
 		tree.FmtAlwaysQualifyTableNames|tree.FmtMarkRedactionNode,
 		tree.FmtAnnotations(ann))
@@ -130,18 +125,18 @@ func (s *TestState) FormatAstAsRedactableString(
 	return redact.RedactableString(formattedRedactableStatementString)
 }
 
-// AstFormatter dummy formatter for AST nodes.
 func (s *TestState) AstFormatter() scbuild.AstFormatter {
+	__antithesis_instrumentation__.Notify(581253)
 	return s
 }
 
-// CheckFeature implements scbuild.SchemaFeatureCheck
 func (s *TestState) CheckFeature(ctx context.Context, featureName tree.SchemaFeatureName) error {
+	__antithesis_instrumentation__.Notify(581254)
 	s.LogSideEffectf("checking for feature: %s", featureName)
 	return nil
 }
 
-// FeatureChecker implements scbuild.Dependencies
 func (s *TestState) FeatureChecker() scbuild.FeatureChecker {
+	__antithesis_instrumentation__.Notify(581255)
 	return s
 }

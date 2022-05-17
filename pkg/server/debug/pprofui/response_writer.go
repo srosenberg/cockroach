@@ -1,23 +1,12 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pprofui
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"io"
 	"net/http"
 )
 
-// responseBridge is a helper for fetching from the pprof profile handlers.
-// Their interface wants a http.ResponseWriter, so we give it one. The writes
-// are passed through to an `io.Writer` of our choosing.
 type responseBridge struct {
 	target     io.Writer
 	statusCode int
@@ -26,13 +15,16 @@ type responseBridge struct {
 var _ http.ResponseWriter = &responseBridge{}
 
 func (r *responseBridge) Header() http.Header {
+	__antithesis_instrumentation__.Notify(190330)
 	return http.Header{}
 }
 
 func (r *responseBridge) Write(b []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(190331)
 	return r.target.Write(b)
 }
 
 func (r *responseBridge) WriteHeader(statusCode int) {
+	__antithesis_instrumentation__.Notify(190332)
 	r.statusCode = statusCode
 }

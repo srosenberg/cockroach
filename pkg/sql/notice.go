@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,8 +11,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// NoticesEnabled is the cluster setting that allows users
-// to enable notices.
 var NoticesEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"sql.notices.enabled",
@@ -28,29 +18,40 @@ var NoticesEnabled = settings.RegisterBoolSetting(
 	true,
 ).WithPublic()
 
-// noticeSender is a subset of RestrictedCommandResult which allows
-// sending notices.
 type noticeSender interface {
 	BufferNotice(pgnotice.Notice)
 }
 
-// BufferClientNotice implements the tree.ClientNoticeSender interface.
 func (p *planner) BufferClientNotice(ctx context.Context, notice pgnotice.Notice) {
+	__antithesis_instrumentation__.Notify(501847)
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(501851)
 		log.Infof(ctx, "buffered notice: %+v", notice)
+	} else {
+		__antithesis_instrumentation__.Notify(501852)
 	}
+	__antithesis_instrumentation__.Notify(501848)
 	noticeSeverity, ok := pgnotice.ParseDisplaySeverity(pgerror.GetSeverity(notice))
 	if !ok {
+		__antithesis_instrumentation__.Notify(501853)
 		noticeSeverity = pgnotice.DisplaySeverityNotice
+	} else {
+		__antithesis_instrumentation__.Notify(501854)
 	}
-	if p.noticeSender == nil ||
-		noticeSeverity > pgnotice.DisplaySeverity(p.SessionData().NoticeDisplaySeverity) ||
-		!NoticesEnabled.Get(&p.execCfg.Settings.SV) {
-		// Notice cannot flow to the client - because of one of these conditions:
-		// * there is no client
-		// * the session's NoticeDisplaySeverity is higher than the severity of the notice.
-		// * the notice protocol was disabled
+	__antithesis_instrumentation__.Notify(501849)
+	if p.noticeSender == nil || func() bool {
+		__antithesis_instrumentation__.Notify(501855)
+		return noticeSeverity > pgnotice.DisplaySeverity(p.SessionData().NoticeDisplaySeverity) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(501856)
+		return !NoticesEnabled.Get(&p.execCfg.Settings.SV) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(501857)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(501858)
 	}
+	__antithesis_instrumentation__.Notify(501850)
 	p.noticeSender.BufferNotice(notice)
 }

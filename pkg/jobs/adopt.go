@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,8 +32,6 @@ const (
 	nonTerminalStatusList = claimableStatusList + `, ` +
 		`'` + string(StatusPaused) + `'`
 
-	// NonTerminalStatusTupleString is a sql tuple corresponding to statuses of
-	// non-terminal jobs.
 	NonTerminalStatusTupleString = `(` + nonTerminalStatusList + `)`
 
 	claimQuery = `
@@ -57,70 +47,96 @@ RETURNING id;`
 func (r *Registry) maybeDumpTrace(
 	resumerCtx context.Context, resumer Resumer, jobID, traceID int64, jobErr error,
 ) {
-	if _, ok := resumer.(TraceableJob); !ok || r.td == nil {
+	__antithesis_instrumentation__.Notify(70062)
+	if _, ok := resumer.(TraceableJob); !ok || func() bool {
+		__antithesis_instrumentation__.Notify(70066)
+		return r.td == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70067)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(70068)
 	}
+	__antithesis_instrumentation__.Notify(70063)
 	dumpMode := traceableJobDumpTraceMode.Get(&r.settings.SV)
 	if dumpMode == int64(noDump) {
+		__antithesis_instrumentation__.Notify(70069)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(70070)
 	}
+	__antithesis_instrumentation__.Notify(70064)
 
-	// Make a new ctx to use in the trace dumper. This is because the resumerCtx
-	// could have been canceled at this point.
 	dumpCtx, _ := r.makeCtx()
 
-	// If the job has failed, and the dump mode is set to anything
-	// except noDump, then we should dump the trace.
-	// The string comparison is unfortunate but is used to differentiate a job
-	// that has failed from a job that has been canceled.
-	if jobErr != nil && !HasErrJobCanceled(jobErr) && resumerCtx.Err() == nil {
+	if jobErr != nil && func() bool {
+		__antithesis_instrumentation__.Notify(70071)
+		return !HasErrJobCanceled(jobErr) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(70072)
+		return resumerCtx.Err() == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70073)
 		r.td.Dump(dumpCtx, strconv.Itoa(int(jobID)), traceID, r.ex)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(70074)
 	}
+	__antithesis_instrumentation__.Notify(70065)
 
-	// If the dump mode is set to `dumpOnStop` then we should dump the
-	// trace when the job is any of paused, canceled, succeeded or failed state.
 	if dumpMode == int64(dumpOnStop) {
+		__antithesis_instrumentation__.Notify(70075)
 		r.td.Dump(dumpCtx, strconv.Itoa(int(jobID)), traceID, r.ex)
+	} else {
+		__antithesis_instrumentation__.Notify(70076)
 	}
 }
 
-// claimJobs places a claim with the given SessionID to job rows that are
-// available.
 func (r *Registry) claimJobs(ctx context.Context, s sqlliveness.Session) error {
+	__antithesis_instrumentation__.Notify(70077)
 	return r.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-		// Run the claim transaction at low priority to ensure that it does not
-		// contend with foreground reads.
+		__antithesis_instrumentation__.Notify(70078)
+
 		if err := txn.SetUserPriority(roachpb.MinUserPriority); err != nil {
+			__antithesis_instrumentation__.Notify(70082)
 			return errors.WithAssertionFailure(err)
+		} else {
+			__antithesis_instrumentation__.Notify(70083)
 		}
+		__antithesis_instrumentation__.Notify(70079)
 		numRows, err := r.ex.Exec(
 			ctx, "claim-jobs", txn, claimQuery,
 			s.ID().UnsafeBytes(), r.ID(), maxAdoptionsPerLoop)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(70084)
 			return errors.Wrap(err, "could not query jobs table")
+		} else {
+			__antithesis_instrumentation__.Notify(70085)
 		}
+		__antithesis_instrumentation__.Notify(70080)
 		r.metrics.ClaimedJobs.Inc(int64(numRows))
-		if log.ExpensiveLogEnabled(ctx, 1) || numRows > 0 {
+		if log.ExpensiveLogEnabled(ctx, 1) || func() bool {
+			__antithesis_instrumentation__.Notify(70086)
+			return numRows > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(70087)
 			log.Infof(ctx, "claimed %d jobs", numRows)
+		} else {
+			__antithesis_instrumentation__.Notify(70088)
 		}
+		__antithesis_instrumentation__.Notify(70081)
 		return nil
 	})
 }
 
 const (
-	// processQueryStatusTupleString includes the states of a job in which a
-	// job can be claimed and resumed.
 	processQueryStatusTupleString = `(` +
 		`'` + string(StatusRunning) + `', ` +
 		`'` + string(StatusReverting) + `'` +
 		`)`
 
-	// canRunArgs are used in canRunClause, which specify whether a job can be
-	// run now or not.
 	canRunArgs = `(SELECT $3::TIMESTAMP AS ts, $4::FLOAT AS initial_delay, $5::FLOAT AS max_delay) args`
-	// NextRunClause calculates the next execution time of a job with exponential backoff delay, calculated
-	// using last_run and num_runs values.
+
 	NextRunClause = `
 COALESCE(last_run, created) + least(
 	IF(
@@ -131,8 +147,7 @@ COALESCE(last_run, created) + least(
 	args.max_delay
 )::INTERVAL`
 	canRunClause = `args.ts >= ` + NextRunClause
-	// processQueryBase and processQueryWhereBase select IDs of the jobs that
-	// can be processed among the claimed jobs.
+
 	processQueryBase      = `SELECT id FROM system.jobs`
 	processQueryWhereBase = ` status IN ` + processQueryStatusTupleString + ` AND (claim_session_id = $1 AND claim_instance_id = $2)`
 
@@ -145,21 +160,19 @@ COALESCE(last_run, created) + least(
 		` created_by_type, created_by_id  FROM system.jobs, ` + canRunArgs + " WHERE " + resumeQueryWhereBase
 )
 
-// getProcessQuery returns the query that selects the jobs that are claimed
-// by this node.
 func getProcessQuery(
 	ctx context.Context, s sqlliveness.Session, r *Registry,
 ) (string, []interface{}) {
-	// Select the running or reverting jobs that this node has claimed that can be
-	// executed right now.
+	__antithesis_instrumentation__.Notify(70089)
+
 	query := processQueryWithBackoff
 	args := []interface{}{s.ID().UnsafeBytes(), r.ID(),
 		r.clock.Now().GoTime(), r.RetryInitialDelay(), r.RetryMaxDelay()}
 	return query, args
 }
 
-// processClaimedJobs processes all jobs currently claimed by the registry.
 func (r *Registry) processClaimedJobs(ctx context.Context, s sqlliveness.Session) error {
+	__antithesis_instrumentation__.Notify(70090)
 	query, args := getProcessQuery(ctx, s, r)
 
 	it, err := r.ex.QueryIteratorEx(
@@ -167,76 +180,97 @@ func (r *Registry) processClaimedJobs(ctx context.Context, s sqlliveness.Session
 		sessiondata.InternalExecutorOverride{User: security.NodeUserName()}, query, args...,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70094)
 		return errors.Wrapf(err, "could not query for claimed jobs")
+	} else {
+		__antithesis_instrumentation__.Notify(70095)
 	}
+	__antithesis_instrumentation__.Notify(70091)
 
-	// This map will eventually contain the job ids that must be resumed.
 	claimedToResume := make(map[jobspb.JobID]struct{})
-	// Initially all claimed jobs are supposed to be resumed but some may be
-	// running on this registry already so we will filter them out later.
+
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(70096)
 		row := it.Cur()
 		id := jobspb.JobID(*row[0].(*tree.DInt))
 		claimedToResume[id] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(70092)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70097)
 		return errors.Wrapf(err, "could not query for claimed jobs")
+	} else {
+		__antithesis_instrumentation__.Notify(70098)
 	}
+	__antithesis_instrumentation__.Notify(70093)
 	r.filterAlreadyRunningAndCancelFromPreviousSessions(ctx, s, claimedToResume)
 	r.resumeClaimedJobs(ctx, s, claimedToResume)
 	return nil
 }
 
-// resumeClaimedJobs invokes r.resumeJob for each job in claimedToResume. It
-// does so concurrently.
 func (r *Registry) resumeClaimedJobs(
 	ctx context.Context, s sqlliveness.Session, claimedToResume map[jobspb.JobID]struct{},
 ) {
+	__antithesis_instrumentation__.Notify(70099)
 	const resumeConcurrency = 64
 	sem := make(chan struct{}, resumeConcurrency)
 	var wg sync.WaitGroup
-	add := func() { sem <- struct{}{}; wg.Add(1) }
-	done := func() { <-sem; wg.Done() }
+	add := func() { __antithesis_instrumentation__.Notify(70103); sem <- struct{}{}; wg.Add(1) }
+	__antithesis_instrumentation__.Notify(70100)
+	done := func() { __antithesis_instrumentation__.Notify(70104); <-sem; wg.Done() }
+	__antithesis_instrumentation__.Notify(70101)
 	for id := range claimedToResume {
+		__antithesis_instrumentation__.Notify(70105)
 		add()
 		go func(id jobspb.JobID) {
+			__antithesis_instrumentation__.Notify(70106)
 			defer done()
-			if err := r.resumeJob(ctx, id, s); err != nil && ctx.Err() == nil {
+			if err := r.resumeJob(ctx, id, s); err != nil && func() bool {
+				__antithesis_instrumentation__.Notify(70107)
+				return ctx.Err() == nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(70108)
 				log.Errorf(ctx, "could not run claimed job %d: %v", id, err)
+			} else {
+				__antithesis_instrumentation__.Notify(70109)
 			}
 		}(id)
 	}
+	__antithesis_instrumentation__.Notify(70102)
 	wg.Wait()
 }
 
-// filterAlreadyRunningAndCancelFromPreviousSessions will lock the registry and
-// inspect the set of currently running jobs, removing those entries from
-// claimedToResume. Additionally it verifies that the session associated with the
-// running job matches the current session, canceling the job if not.
 func (r *Registry) filterAlreadyRunningAndCancelFromPreviousSessions(
 	ctx context.Context, s sqlliveness.Session, claimedToResume map[jobspb.JobID]struct{},
 ) {
+	__antithesis_instrumentation__.Notify(70110)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	// Process all current adopted jobs in our in-memory jobs map.
+
 	for id, aj := range r.mu.adoptedJobs {
+		__antithesis_instrumentation__.Notify(70111)
 		if aj.session.ID() != s.ID() {
+			__antithesis_instrumentation__.Notify(70112)
 			log.Warningf(ctx, "job %d: running without having a live claim; canceling", id)
 			aj.cancel()
 			delete(r.mu.adoptedJobs, id)
 		} else {
+			__antithesis_instrumentation__.Notify(70113)
 			if _, ok := claimedToResume[id]; ok {
-				// job id is already running no need to resume it then.
+				__antithesis_instrumentation__.Notify(70114)
+
 				delete(claimedToResume, id)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(70115)
 			}
 		}
 	}
 }
 
-// resumeJob resumes a claimed job.
 func (r *Registry) resumeJob(ctx context.Context, jobID jobspb.JobID, s sqlliveness.Session) error {
+	__antithesis_instrumentation__.Notify(70116)
 	log.Infof(ctx, "job %d: resuming execution", jobID)
 	resumeQuery := resumeQueryWithBackoff
 	args := []interface{}{jobID, s.ID().UnsafeBytes(),
@@ -246,66 +280,92 @@ func (r *Registry) resumeJob(ctx context.Context, jobID jobspb.JobID, s sqlliven
 		sessiondata.InternalExecutorOverride{User: security.NodeUserName()}, resumeQuery, args...,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70130)
 		return errors.Wrapf(err, "job %d: could not query job table row", jobID)
+	} else {
+		__antithesis_instrumentation__.Notify(70131)
 	}
+	__antithesis_instrumentation__.Notify(70117)
 	if row == nil {
+		__antithesis_instrumentation__.Notify(70132)
 		return errors.Errorf("job %d: claim with session id %s does not exist", jobID, s.ID())
+	} else {
+		__antithesis_instrumentation__.Notify(70133)
 	}
+	__antithesis_instrumentation__.Notify(70118)
 
 	status := Status(*row[0].(*tree.DString))
 	if status == StatusSucceeded {
-		// A concurrent registry could have already executed the job.
+		__antithesis_instrumentation__.Notify(70134)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(70135)
 	}
-	if status != StatusRunning && status != StatusReverting {
-		// A concurrent registry could have requested the job to be paused or canceled.
+	__antithesis_instrumentation__.Notify(70119)
+	if status != StatusRunning && func() bool {
+		__antithesis_instrumentation__.Notify(70136)
+		return status != StatusReverting == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70137)
+
 		return errors.Errorf("job %d: status changed to %s which is not resumable`", jobID, status)
+	} else {
+		__antithesis_instrumentation__.Notify(70138)
 	}
+	__antithesis_instrumentation__.Notify(70120)
 
 	if isAlive := *row[3].(*tree.DBool); !isAlive {
+		__antithesis_instrumentation__.Notify(70139)
 		return errors.Errorf("job %d: claim with session id %s has expired", jobID, s.ID())
+	} else {
+		__antithesis_instrumentation__.Notify(70140)
 	}
+	__antithesis_instrumentation__.Notify(70121)
 
-	// It's too soon to run the job.
-	//
-	// We need this check to address a race between adopt-loop and an existing
-	// resumer, e.g., in the following schedule:
-	// Adopt loop: Cl(j,n1) St(r1)     Cl(j, n1)                       St(r2)
-	// Resumer 1:                Rg(j)          Up(n1->n2) Fl(j) Ur(j)
-	// Resumer 2:                                                            x-| Starting too soon
-	// Where:
-	//  - Cl(j,nx): claim job j when num_runs is x
-	//  - St(r1): start resumer r1
-	//  - Rg(j): Add jobID of j in adoptedJobs, disabling further resumers
-	//  - Ur(j): Remove jobID of j from adoptedJobs, enabling further resumers
-	//  - Up(n1->2): Update number of runs from 1 to 2
-	//  - Fl(j): Job j fails
 	if !(*row[4].(*tree.DBool)) {
+		__antithesis_instrumentation__.Notify(70141)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(70142)
 	}
+	__antithesis_instrumentation__.Notify(70122)
 
 	payload, err := UnmarshalPayload(row[1])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70143)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70144)
 	}
+	__antithesis_instrumentation__.Notify(70123)
 
-	// In version 20.1, the registry must not adopt 19.2-style schema change jobs
-	// until they've undergone a migration.
-	// TODO(lucy): Remove this in 20.2.
 	if deprecatedIsOldSchemaChangeJob(payload) {
+		__antithesis_instrumentation__.Notify(70145)
 		log.VEventf(ctx, 2, "job %d: skipping adoption because schema change job has not been migrated", jobID)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(70146)
 	}
+	__antithesis_instrumentation__.Notify(70124)
 
 	progress, err := UnmarshalProgress(row[2])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70147)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70148)
 	}
+	__antithesis_instrumentation__.Notify(70125)
 
 	createdBy, err := unmarshalCreatedBy(row[5], row[6])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70149)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70150)
 	}
+	__antithesis_instrumentation__.Notify(70126)
 
 	job := &Job{id: jobID, registry: r, createdBy: createdBy}
 	job.mu.payload = *payload
@@ -314,41 +374,52 @@ func (r *Registry) resumeJob(ctx context.Context, jobID jobspb.JobID, s sqlliven
 
 	resumer, err := r.createResumer(job, r.settings)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(70151)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70152)
 	}
+	__antithesis_instrumentation__.Notify(70127)
 	resumeCtx, cancel := r.makeCtx()
 
 	if alreadyAdopted := r.addAdoptedJob(jobID, s, cancel); alreadyAdopted {
+		__antithesis_instrumentation__.Notify(70153)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(70154)
 	}
+	__antithesis_instrumentation__.Notify(70128)
 
 	r.metrics.ResumedJobs.Inc(1)
 	if err := r.stopper.RunAsyncTask(ctx, job.taskName(), func(ctx context.Context) {
-		// Wait for the job to finish. No need to print the error because if there
-		// was one it's been set in the job status already.
+		__antithesis_instrumentation__.Notify(70155)
+
 		_ = r.runJob(resumeCtx, resumer, job, status, job.taskName())
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(70156)
 		r.unregister(jobID)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(70157)
 	}
+	__antithesis_instrumentation__.Notify(70129)
 	return nil
 }
 
-// addAdoptedJob adds the job to the set of currently running jobs. This set is
-// used for introspection, and, importantly, to serve as a lock to prevent
-// concurrent executions. Removal occurs in runJob or in the case that we were
-// unable to launch the goroutine to call runJob. If the returned boolean is
-// false, it means that the job is already registered as running and should not
-// be run again.
 func (r *Registry) addAdoptedJob(
 	jobID jobspb.JobID, session sqlliveness.Session, cancel context.CancelFunc,
 ) (alreadyAdopted bool) {
+	__antithesis_instrumentation__.Notify(70158)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if _, alreadyAdopted = r.mu.adoptedJobs[jobID]; alreadyAdopted {
+		__antithesis_instrumentation__.Notify(70160)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(70161)
 	}
+	__antithesis_instrumentation__.Notify(70159)
 
 	r.mu.adoptedJobs[jobID] = &adoptedJob{
 		session: session,
@@ -361,63 +432,82 @@ func (r *Registry) addAdoptedJob(
 func (r *Registry) runJob(
 	ctx context.Context, resumer Resumer, job *Job, status Status, taskName string,
 ) error {
+	__antithesis_instrumentation__.Notify(70162)
 	job.mu.Lock()
 	var finalResumeError error
 	if job.mu.payload.FinalResumeError != nil {
+		__antithesis_instrumentation__.Notify(70168)
 		finalResumeError = errors.DecodeError(ctx, *job.mu.payload.FinalResumeError)
+	} else {
+		__antithesis_instrumentation__.Notify(70169)
 	}
+	__antithesis_instrumentation__.Notify(70163)
 	username := job.mu.payload.UsernameProto.Decode()
 	typ := job.mu.payload.Type()
 	job.mu.Unlock()
 
-	// Make sure that we remove the job from the running set when this returns.
 	defer r.unregister(job.ID())
 
-	// Bookkeeping.
 	execCtx, cleanup := r.execCtx("resume-"+taskName, username)
 	defer cleanup()
 
-	// Create a new root span to trace the execution of the current instance of
-	// `job`. Creating a root span allows us to track all the spans linked to this
-	// job using the traceID allotted to the root span.
-	//
-	// A new root span will be created on every resumption of the job.
 	var spanOptions []tracing.SpanOption
-	if tj, ok := resumer.(TraceableJob); ok && tj.ForceRealSpan() {
+	if tj, ok := resumer.(TraceableJob); ok && func() bool {
+		__antithesis_instrumentation__.Notify(70170)
+		return tj.ForceRealSpan() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70171)
 		spanOptions = append(spanOptions, tracing.WithRecording(tracing.RecordingStructured))
+	} else {
+		__antithesis_instrumentation__.Notify(70172)
 	}
-	// TODO(ajwerner): Move this writing up the trace ID down into
-	// stepThroughStateMachine where we're already often (and soon with
-	// exponential backoff, always) updating the job in that call.
+	__antithesis_instrumentation__.Notify(70164)
+
 	ctx, span := r.ac.Tracer.StartSpanCtx(ctx, typ.String(), spanOptions...)
 	span.SetTag("job-id", attribute.Int64Value(int64(job.ID())))
 	defer span.Finish()
 	if span.TraceID() != 0 {
-		if err := job.Update(ctx, nil /* txn */, func(txn *kv.Txn, md JobMetadata,
+		__antithesis_instrumentation__.Notify(70173)
+		if err := job.Update(ctx, nil, func(txn *kv.Txn, md JobMetadata,
 			ju *JobUpdater) error {
+			__antithesis_instrumentation__.Notify(70174)
 			progress := *md.Progress
 			progress.TraceID = span.TraceID()
 			ju.UpdateProgress(&progress)
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(70175)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(70176)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(70177)
 	}
+	__antithesis_instrumentation__.Notify(70165)
 
-	// Run the actual job.
 	err := r.stepThroughStateMachine(ctx, execCtx, resumer, job, status, finalResumeError)
-	// If the context has been canceled, disregard errors for the sake of logging
-	// as presumably they are due to the context cancellation which commonly
-	// happens during shutdown.
-	if err != nil && ctx.Err() == nil {
+
+	if err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(70178)
+		return ctx.Err() == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(70179)
 		log.Errorf(ctx, "job %d: adoption completed with error %v", job.ID(), err)
+	} else {
+		__antithesis_instrumentation__.Notify(70180)
 	}
+	__antithesis_instrumentation__.Notify(70166)
 
 	r.maybeDumpTrace(ctx, resumer, int64(job.ID()), int64(span.TraceID()), err)
 	r.maybeRecordExecutionFailure(ctx, err, job)
 	if r.knobs.AfterJobStateMachine != nil {
+		__antithesis_instrumentation__.Notify(70181)
 		r.knobs.AfterJobStateMachine()
+	} else {
+		__antithesis_instrumentation__.Notify(70182)
 	}
+	__antithesis_instrumentation__.Notify(70167)
 	return err
 }
 
@@ -437,52 +527,66 @@ RETURNING id, status
 `
 
 func (r *Registry) servePauseAndCancelRequests(ctx context.Context, s sqlliveness.Session) error {
+	__antithesis_instrumentation__.Notify(70183)
 	return r.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-		// Run the claim transaction at low priority to ensure that it does not
-		// contend with foreground reads.
+		__antithesis_instrumentation__.Notify(70184)
+
 		if err := txn.SetUserPriority(roachpb.MinUserPriority); err != nil {
+			__antithesis_instrumentation__.Notify(70188)
 			return errors.WithAssertionFailure(err)
+		} else {
+			__antithesis_instrumentation__.Notify(70189)
 		}
-		// Note that we have to buffer all rows first - before processing each
-		// job - because we have to make sure that the query executes without an
-		// error (otherwise, the system.jobs table might diverge from the jobs
-		// registry).
+		__antithesis_instrumentation__.Notify(70185)
+
 		rows, err := r.ex.QueryBufferedEx(
 			ctx, "cancel/pause-requested", txn, sessiondata.InternalExecutorOverride{User: security.NodeUserName()},
 			pauseAndCancelUpdate, s.ID().UnsafeBytes(), r.ID(),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(70190)
 			return errors.Wrap(err, "could not query jobs table")
+		} else {
+			__antithesis_instrumentation__.Notify(70191)
 		}
+		__antithesis_instrumentation__.Notify(70186)
 		for _, row := range rows {
+			__antithesis_instrumentation__.Notify(70192)
 			id := jobspb.JobID(*row[0].(*tree.DInt))
 			job := &Job{id: id, registry: r}
 			statusString := *row[1].(*tree.DString)
 			switch Status(statusString) {
 			case StatusPaused:
+				__antithesis_instrumentation__.Notify(70193)
 				r.cancelRegisteredJobContext(id)
 				log.Infof(ctx, "job %d, session %s: paused", id, s.ID())
 			case StatusReverting:
+				__antithesis_instrumentation__.Notify(70194)
 				if err := job.Update(ctx, txn, func(txn *kv.Txn, md JobMetadata, ju *JobUpdater) error {
+					__antithesis_instrumentation__.Notify(70197)
 					r.cancelRegisteredJobContext(id)
 					md.Payload.Error = errJobCanceled.Error()
 					encodedErr := errors.EncodeError(ctx, errJobCanceled)
 					md.Payload.FinalResumeError = &encodedErr
 					ju.UpdatePayload(md.Payload)
-					// When we cancel a job, we want to reset its last_run and num_runs
-					// so that the job can be picked-up in the next adopt-loop, sooner
-					// than its current next-retry time.
-					ju.UpdateRunStats(0 /* numRuns */, r.clock.Now().GoTime() /* lastRun */)
+
+					ju.UpdateRunStats(0, r.clock.Now().GoTime())
 					return nil
 				}); err != nil {
+					__antithesis_instrumentation__.Notify(70198)
 					return errors.Wrapf(err, "job %d: tried to cancel but could not mark as reverting", id)
+				} else {
+					__antithesis_instrumentation__.Notify(70199)
 				}
+				__antithesis_instrumentation__.Notify(70195)
 				log.Infof(ctx, "job %d, session id: %s canceled: the job is now reverting",
 					id, s.ID())
 			default:
+				__antithesis_instrumentation__.Notify(70196)
 				return errors.AssertionFailedf("unexpected job status %s: %v", statusString, job)
 			}
 		}
+		__antithesis_instrumentation__.Notify(70187)
 		return nil
 	})
 }

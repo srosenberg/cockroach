@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/config/zonepb"
@@ -19,16 +11,13 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// systemDatabaseNamespaceCache is used to cache the IDs of system descriptors.
-// We get to assume that for a given name, it will never change for the life of
-// the process. This is helpful because unlike other descriptors, we can't
-// always leverage the lease manager to cache all system table IDs.
 type systemDatabaseNamespaceCache struct {
 	syncutil.RWMutex
 	ns map[descpb.NameInfo]descpb.ID
 }
 
 func newSystemDatabaseNamespaceCache(codec keys.SQLCodec) *systemDatabaseNamespaceCache {
+	__antithesis_instrumentation__.Notify(264893)
 	nc := &systemDatabaseNamespaceCache{}
 	nc.ns = make(map[descpb.NameInfo]descpb.ID)
 	ms := bootstrap.MakeMetadataSchema(
@@ -37,25 +26,33 @@ func newSystemDatabaseNamespaceCache(codec keys.SQLCodec) *systemDatabaseNamespa
 		zonepb.DefaultSystemZoneConfigRef(),
 	)
 	_ = ms.ForEachCatalogDescriptor(func(desc catalog.Descriptor) error {
+		__antithesis_instrumentation__.Notify(264895)
 		if desc.GetID() < keys.MaxReservedDescID {
+			__antithesis_instrumentation__.Notify(264897)
 			nc.ns[descpb.NameInfo{
 				ParentID:       desc.GetParentID(),
 				ParentSchemaID: desc.GetParentSchemaID(),
 				Name:           desc.GetName(),
 			}] = desc.GetID()
+		} else {
+			__antithesis_instrumentation__.Notify(264898)
 		}
+		__antithesis_instrumentation__.Notify(264896)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(264894)
 	return nc
 }
 
-// lookupSystemDatabaseNamespaceCache looks for the corresponding namespace
-// entry in the cache. If the cache is empty, it creates a bootstrap schema
-// and populates the cache with the descriptors in it.
 func (s *systemDatabaseNamespaceCache) lookup(schemaID descpb.ID, name string) descpb.ID {
+	__antithesis_instrumentation__.Notify(264899)
 	if s == nil {
+		__antithesis_instrumentation__.Notify(264901)
 		return descpb.InvalidID
+	} else {
+		__antithesis_instrumentation__.Notify(264902)
 	}
+	__antithesis_instrumentation__.Notify(264900)
 	s.RLock()
 	defer s.RUnlock()
 	return s.ns[descpb.NameInfo{
@@ -66,9 +63,14 @@ func (s *systemDatabaseNamespaceCache) lookup(schemaID descpb.ID, name string) d
 }
 
 func (s *systemDatabaseNamespaceCache) add(info descpb.NameInfo, id descpb.ID) {
+	__antithesis_instrumentation__.Notify(264903)
 	if s == nil {
+		__antithesis_instrumentation__.Notify(264905)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(264906)
 	}
+	__antithesis_instrumentation__.Notify(264904)
 	s.Lock()
 	defer s.Unlock()
 	s.ns[info] = id

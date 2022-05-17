@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,164 +17,110 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// pendingLogTruncations tracks proposed truncations for a replica that have
-// not yet been enacted due to the corresponding RaftAppliedIndex not yet
-// being durable. It is a field in the Replica struct
-// (Replica.pendingLogTruncations), but it is declared in this file since
-// it is really part of the raftLogTruncator state that is per-replica.
-//
-// Note that we should not hold pendingLogTruncations.mu for long since it
-// could block the raftLogQueue which needs to (only) read the pending
-// truncations. This becomes tricky for the raftLogTruncator, which needs to
-// do substantial work while reading these pending truncations, and then
-// upgrade to mutating these truncations. It cannot allow a mutator to be
-// running concurrently. We could add a second mutex to pendingLogTruncations
-// to achieve this mutation mutual exclusion. However, we instead rely on the
-// fact that all these mutation cases already hold Replica.raftMu (to prevent
-// the Replica from being destroyed while the truncation work is happening).
-//
-// The summary is that we require Replica.raftMu to be additionally held while
-// modifying the pending truncations. Hence, either one of those mutexes is
-// sufficient for reading. This behavior is abstracted by the definition of
-// replicaForTruncator below.
 type pendingLogTruncations struct {
 	mu struct {
-		// From a lock ordering perspective, this mutex is the lowest, i.e., it
-		// should not be held when trying to acquire any other mutex.
 		syncutil.Mutex
-		// We track up to two truncations: the oldest pending truncation, and a
-		// merge of all the subsequent pending truncations. We cannot track only
-		// one merged truncation since its index may always be ahead of the
-		// durable RaftAppliedIndex, and so we may never be able to truncate. We
-		// assume liveness of durability advancement, which means that if no new
-		// pending truncations are added, the latest one will eventually be
-		// enacted.
-		//
-		// Note that this liveness assumption is not completely true -- if there are
-		// no writes happening to the store, the durability (due to memtable
-		// flushes) may not advance. We deem this (a) an uninteresting case, since
-		// if there are no writes we possibly don't care about aggressively
-		// truncating the log, (b) fixing the liveness assumption is not within
-		// scope of the truncator (it has to work with what it is given).
-		//
-		// Invariants:
-		// - Queue slot i is empty iff truncs[i] == pendingTruncation{}
-		// - Slot 0 represents the first position in the queue. Therefore, it is
-		//   not possible for slot 0 to be empty and slot 1 to be non-empty.
-		//   An implication is that the queue is empty iff slot 0 is empty.
-		// - If slot 0 and 1 are both non-empty, truncs[0].Index < truncs[1].Index
+
 		truncs [2]pendingTruncation
 	}
 }
 
-// computePostTruncLogSize computes the size of the raft log under the
-// pretense that the pending truncations have been enacted.
 func (p *pendingLogTruncations) computePostTruncLogSize(raftLogSize int64) int64 {
+	__antithesis_instrumentation__.Notify(112840)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.iterateLocked(func(_ int, trunc pendingTruncation) {
+		__antithesis_instrumentation__.Notify(112843)
 		raftLogSize += trunc.logDeltaBytes
 	})
+	__antithesis_instrumentation__.Notify(112841)
 	if raftLogSize < 0 {
+		__antithesis_instrumentation__.Notify(112844)
 		raftLogSize = 0
+	} else {
+		__antithesis_instrumentation__.Notify(112845)
 	}
+	__antithesis_instrumentation__.Notify(112842)
 	return raftLogSize
 }
 
-// computePostTruncFirstIndex computes the first log index that is not
-// truncated, under the pretense that the pending truncations have been
-// enacted.
 func (p *pendingLogTruncations) computePostTruncFirstIndex(firstIndex uint64) uint64 {
+	__antithesis_instrumentation__.Notify(112846)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.iterateLocked(func(_ int, trunc pendingTruncation) {
+		__antithesis_instrumentation__.Notify(112848)
 		firstIndexAfterTrunc := trunc.firstIndexAfterTrunc()
 		if firstIndex < firstIndexAfterTrunc {
+			__antithesis_instrumentation__.Notify(112849)
 			firstIndex = firstIndexAfterTrunc
+		} else {
+			__antithesis_instrumentation__.Notify(112850)
 		}
 	})
+	__antithesis_instrumentation__.Notify(112847)
 	return firstIndex
 }
 
 func (p *pendingLogTruncations) isEmptyLocked() bool {
+	__antithesis_instrumentation__.Notify(112851)
 	return p.mu.truncs[0] == (pendingTruncation{})
 }
 
-// Returns the front (i.e. the least aggressive truncation) of the pending
-// truncations queue, without removing the element.
-// REQUIRES: !isEmptyLocked()
 func (p *pendingLogTruncations) frontLocked() pendingTruncation {
+	__antithesis_instrumentation__.Notify(112852)
 	return p.mu.truncs[0]
 }
 
-// Pops the front (i.e. the least aggressive truncation) of the pending
-// truncations queues.
-// REQUIRES: !isEmptyLocked()
 func (p *pendingLogTruncations) popLocked() {
+	__antithesis_instrumentation__.Notify(112853)
 	p.mu.truncs[0] = p.mu.truncs[1]
 	p.mu.truncs[1] = pendingTruncation{}
 }
 
-// Iterates over the queued truncations in the queue order, i.e., the oldest
-// first.
 func (p *pendingLogTruncations) iterateLocked(f func(index int, trunc pendingTruncation)) {
+	__antithesis_instrumentation__.Notify(112854)
 	for i, trunc := range p.mu.truncs {
+		__antithesis_instrumentation__.Notify(112855)
 		if !(trunc == (pendingTruncation{})) {
+			__antithesis_instrumentation__.Notify(112856)
 			f(i, trunc)
+		} else {
+			__antithesis_instrumentation__.Notify(112857)
 		}
 	}
 }
 
-// Empties the queue of pending truncations.
 func (p *pendingLogTruncations) reset() {
+	__antithesis_instrumentation__.Notify(112858)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for !p.isEmptyLocked() {
+		__antithesis_instrumentation__.Notify(112859)
 		p.popLocked()
 	}
 }
 
 func (p *pendingLogTruncations) capacity() int {
-	// Reminder: truncs is a fixed size array.
+	__antithesis_instrumentation__.Notify(112860)
+
 	return len(p.mu.truncs)
 }
 
 type pendingTruncation struct {
-	// The pending truncation will truncate entries up to
-	// RaftTruncatedState.Index, inclusive.
 	roachpb.RaftTruncatedState
 
-	// The logDeltaBytes are computed under the assumption that the
-	// truncation is deleting [expectedFirstIndex,RaftTruncatedState.Index]. It
-	// originates in ReplicatedEvalResult, where it is accurate.
-	// There are two reasons isDeltaTrusted could be considered false here:
-	// - The original "accurate" delta does not account for sideloaded files. It
-	//   is adjusted on this replica using
-	//   SideloadStorage.BytesIfTruncatedFromTo, but it is possible that the
-	//   truncated state of this replica is already > expectedFirstIndex. We
-	//   don't actually set isDeltaTrusted=false for this case since we will
-	//   change Replica.raftLogSizeTrusted to false after enacting this
-	//   truncation.
-	// - We merge pendingTruncation entries in the pendingTruncations struct. We
-	//   are making an effort to have consecutive TruncateLogRequests provide us
-	//   stats for index intervals that are adjacent and non-overlapping, but
-	//   that behavior is best-effort.
 	expectedFirstIndex uint64
-	// logDeltaBytes includes the bytes from sideloaded files. Like
-	// ReplicatedEvalResult.RaftLogDelta, this is <= 0.
+
 	logDeltaBytes  int64
 	isDeltaTrusted bool
 }
 
 func (pt *pendingTruncation) firstIndexAfterTrunc() uint64 {
-	// Reminder: RaftTruncatedState.Index is inclusive.
+	__antithesis_instrumentation__.Notify(112861)
+
 	return pt.Index + 1
 }
-
-// raftLogTruncator is responsible for actually enacting truncations.
-//
-// Mutex ordering: The Replica mutexes can be held when acquiring
-// raftLogTruncator.mu, but the reverse is not permitted.
 
 type raftLogTruncator struct {
 	ambientCtx context.Context
@@ -190,12 +128,9 @@ type raftLogTruncator struct {
 	stopper    *stop.Stopper
 	mu         struct {
 		syncutil.Mutex
-		// Ranges are queued into addRanges and batch dequeued by swapping with
-		// drainRanges. This avoids holding mu for any work proportional to the
-		// number of queued ranges.
+
 		addRanges, drainRanges map[roachpb.RangeID]struct{}
-		// State for scheduling the goroutine for background enacting of
-		// truncations.
+
 		runningTruncation  bool
 		queuedDurabilityCB bool
 	}
@@ -204,6 +139,7 @@ type raftLogTruncator struct {
 func makeRaftLogTruncator(
 	ambientCtx log.AmbientContext, store storeForTruncator, stopper *stop.Stopper,
 ) *raftLogTruncator {
+	__antithesis_instrumentation__.Notify(112862)
 	t := &raftLogTruncator{
 		ambientCtx: ambientCtx.AnnotateCtx(context.Background()),
 		store:      store,
@@ -214,61 +150,32 @@ func makeRaftLogTruncator(
 	return t
 }
 
-// storeForTruncator abstracts the interface of Store needed by the truncator.
 type storeForTruncator interface {
-	// acquireReplicaForTruncator ensures that the returned replicaForTruncator
-	// is not already destroyed. It may return nil. Any mutex protecting
-	// raft-state (e.g. Replica.raftMu) is acquired before returning. This
-	// method also ensures that the returned replica will not be destroyed until
-	// after releaseReplicaForTruncator is called.
 	acquireReplicaForTruncator(rangeID roachpb.RangeID) replicaForTruncator
-	// releaseReplicaForTruncator releases the replica.
+
 	releaseReplicaForTruncator(r replicaForTruncator)
-	// Engine accessor.
+
 	getEngine() storage.Engine
 }
 
-// replicaForTruncator abstracts the interface of Replica needed by the
-// truncator.
-//
-// A replica has raft state, including the queue of pending truncations, that
-// the truncator is modifying. There is a "raft-state" mutex to mutually
-// exclude other actions that are concurrently mutating this state. We assume
-// that this "raft-state" mutex is held for the lifetime of
-// replicaForTruncator. Hence there are no additional concurrency control
-// requirements on the methods that read or write raft-state (this includes
-// allowing pendingLogTruncations to be read without holding
-// pendingLogTruncations.mu).
-//
-// We acknowledge that this interface may seem peculiar -- this is due to the
-// constraint that it is abstracting Replica.
 type replicaForTruncator interface {
-	// Returns the Range ID.
 	getRangeID() roachpb.RangeID
-	// Returns the current truncated state.
+
 	getTruncatedState() roachpb.RaftTruncatedState
-	// Updates the replica state after the truncation is enacted.
+
 	setTruncatedStateAndSideEffects(
 		_ context.Context, _ *roachpb.RaftTruncatedState, expectedFirstIndexPreTruncation uint64,
 	) (expectedFirstIndexWasAccurate bool)
-	// Updates the stats related to the raft log size after the truncation is
-	// enacted.
+
 	setTruncationDeltaAndTrusted(deltaBytes int64, isDeltaTrusted bool)
-	// Returns the pending truncations queue. The caller is allowed to mutate
-	// the return value by additionally acquiring pendingLogTruncations.mu.
+
 	getPendingTruncs() *pendingLogTruncations
-	// Returns the sideloaded bytes that would be freed if we were to truncate
-	// [from, to).
+
 	sideloadedBytesIfTruncatedFromTo(
 		_ context.Context, from, to uint64) (freed int64, _ error)
 	getStateLoader() stateloader.StateLoader
-	// NB: Setting the persistent raft state is via the Engine exposed by
-	// storeForTruncator.
 }
 
-// raftExpectedFirstIndex and raftLogDelta have the same meaning as in
-// ReplicatedEvalResult. Never called before cluster is at
-// LooselyCoupledRaftLogTruncation.
 func (t *raftLogTruncator) addPendingTruncation(
 	ctx context.Context,
 	r replicaForTruncator,
@@ -276,6 +183,7 @@ func (t *raftLogTruncator) addPendingTruncation(
 	raftExpectedFirstIndex uint64,
 	raftLogDelta int64,
 ) {
+	__antithesis_instrumentation__.Notify(112863)
 	pendingTrunc := pendingTruncation{
 		RaftTruncatedState: trunc,
 		expectedFirstIndex: raftExpectedFirstIndex,
@@ -283,332 +191,406 @@ func (t *raftLogTruncator) addPendingTruncation(
 		isDeltaTrusted:     true,
 	}
 	pendingTruncs := r.getPendingTruncs()
-	// Need to figure out whether to add this new pendingTrunc to the
-	// truncations that are already queued, and if yes, where to add.
-	// i is the index of the last already queued truncation.
+
 	i := -1
-	// alreadyTruncIndex represents what has been already truncated.
+
 	alreadyTruncIndex := r.getTruncatedState().Index
-	// No need to acquire pendingTruncs.mu for read in this case (see
-	// replicaForTruncator comment).
+
 	pendingTruncs.iterateLocked(func(index int, trunc pendingTruncation) {
+		__antithesis_instrumentation__.Notify(112869)
 		i = index
 		if trunc.Index > alreadyTruncIndex {
+			__antithesis_instrumentation__.Notify(112870)
 			alreadyTruncIndex = trunc.Index
+		} else {
+			__antithesis_instrumentation__.Notify(112871)
 		}
 	})
+	__antithesis_instrumentation__.Notify(112864)
 	if alreadyTruncIndex >= pendingTrunc.Index {
-		// Noop.
+		__antithesis_instrumentation__.Notify(112872)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(112873)
 	}
-	// This new pending truncation will advance what is truncated.
-	// pos is where we will add the new pending truncation.
+	__antithesis_instrumentation__.Notify(112865)
+
 	pos := i + 1
 	mergeWithPending := false
 	if pos == pendingTruncs.capacity() {
-		// We need to merge with an existing pending truncation.
+		__antithesis_instrumentation__.Notify(112874)
+
 		pos--
 		mergeWithPending = true
+	} else {
+		__antithesis_instrumentation__.Notify(112875)
 	}
-	// It is possible that alreadyTruncIndex+1 != raftExpectedFirstIndex. When
-	// we merge or enact we will see this problem and set the trusted bit to
-	// false. But we can at least correctly count sideloaded entries, which can
-	// be large, since we do the computation for the sideloaded entries size
-	// here. When alreadyTruncIndex+1 > raftExpectedFirstIndex, this will avoid
-	// double counting sideloaded entries that will be freed, and when
-	// alreadyTruncIndex+1 < raftExpectedFirstIndex, this will ensure that we
-	// don't miss sideloaded entries that will be freed.
-	//
-	// In the common case of alreadyTruncIndex+1 == raftExpectedFirstIndex, the
-	// computation returns the same result regardless of which is plugged in as
-	// the lower bound.
+	__antithesis_instrumentation__.Notify(112866)
+
 	sideloadedFreed, err := r.sideloadedBytesIfTruncatedFromTo(
 		ctx, alreadyTruncIndex+1, pendingTrunc.firstIndexAfterTrunc())
 	if err != nil {
-		// Log a loud error since we need to continue enqueuing the truncation.
+		__antithesis_instrumentation__.Notify(112876)
+
 		log.Errorf(ctx, "while computing size of sideloaded files to truncate: %+v", err)
 		pendingTrunc.isDeltaTrusted = false
+	} else {
+		__antithesis_instrumentation__.Notify(112877)
 	}
+	__antithesis_instrumentation__.Notify(112867)
 	pendingTrunc.logDeltaBytes -= sideloadedFreed
 	if mergeWithPending {
-		// Merge the existing entry into the new one.
-		// No need to acquire pendingTruncs.mu for read in this case.
-		pendingTrunc.isDeltaTrusted = pendingTrunc.isDeltaTrusted &&
-			pendingTruncs.mu.truncs[pos].isDeltaTrusted
+		__antithesis_instrumentation__.Notify(112878)
+
+		pendingTrunc.isDeltaTrusted = pendingTrunc.isDeltaTrusted && func() bool {
+			__antithesis_instrumentation__.Notify(112880)
+			return pendingTruncs.mu.truncs[pos].isDeltaTrusted == true
+		}() == true
 		if pendingTruncs.mu.truncs[pos].firstIndexAfterTrunc() != pendingTrunc.expectedFirstIndex {
+			__antithesis_instrumentation__.Notify(112881)
 			pendingTrunc.isDeltaTrusted = false
+		} else {
+			__antithesis_instrumentation__.Notify(112882)
 		}
+		__antithesis_instrumentation__.Notify(112879)
 		pendingTrunc.logDeltaBytes += pendingTruncs.mu.truncs[pos].logDeltaBytes
 		pendingTrunc.expectedFirstIndex = pendingTruncs.mu.truncs[pos].expectedFirstIndex
+	} else {
+		__antithesis_instrumentation__.Notify(112883)
 	}
+	__antithesis_instrumentation__.Notify(112868)
 	pendingTruncs.mu.Lock()
-	// Install the new pending truncation.
+
 	pendingTruncs.mu.truncs[pos] = pendingTrunc
 	pendingTruncs.mu.Unlock()
 
 	if pos == 0 {
+		__antithesis_instrumentation__.Notify(112884)
 		if mergeWithPending {
+			__antithesis_instrumentation__.Notify(112886)
 			panic("should never be merging pending truncations at pos 0")
+		} else {
+			__antithesis_instrumentation__.Notify(112887)
 		}
-		// First entry in queue of pending truncations for this replica, so add
-		// the RangeID to the map.
+		__antithesis_instrumentation__.Notify(112885)
+
 		t.enqueueRange(r.getRangeID())
+	} else {
+		__antithesis_instrumentation__.Notify(112888)
 	}
 }
 
 type rangesByRangeID []roachpb.RangeID
 
 func (r rangesByRangeID) Len() int {
+	__antithesis_instrumentation__.Notify(112889)
 	return len(r)
 }
 func (r rangesByRangeID) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(112890)
 	return r[i] < r[j]
 }
 func (r rangesByRangeID) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(112891)
 	r[i], r[j] = r[j], r[i]
 }
 
-// Invoked whenever the durability of the store advances. We assume that this
-// is coarse in that the advancement of durability will apply to all ranges in
-// this store, and most of the preceding pending truncations have their goal
-// truncated index become durable in RangeAppliedState.RaftAppliedIndex. This
-// coarseness assumption is important for not wasting much work being done in
-// this method.
-//
-// This method schedules the actual work for asynchronous execution as we need
-// to return quickly, and not call into the engine since that could risk
-// deadlock (see storage.Engine.RegisterFlushCompletedCallback).
 func (t *raftLogTruncator) durabilityAdvancedCallback() {
+	__antithesis_instrumentation__.Notify(112892)
 	runTruncation := false
 	t.mu.Lock()
-	if !t.mu.runningTruncation && len(t.mu.addRanges) > 0 {
+	if !t.mu.runningTruncation && func() bool {
+		__antithesis_instrumentation__.Notify(112896)
+		return len(t.mu.addRanges) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(112897)
 		runTruncation = true
 		t.mu.runningTruncation = true
+	} else {
+		__antithesis_instrumentation__.Notify(112898)
 	}
-	if !runTruncation && len(t.mu.addRanges) > 0 {
+	__antithesis_instrumentation__.Notify(112893)
+	if !runTruncation && func() bool {
+		__antithesis_instrumentation__.Notify(112899)
+		return len(t.mu.addRanges) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(112900)
 		t.mu.queuedDurabilityCB = true
+	} else {
+		__antithesis_instrumentation__.Notify(112901)
 	}
+	__antithesis_instrumentation__.Notify(112894)
 	t.mu.Unlock()
 	if !runTruncation {
+		__antithesis_instrumentation__.Notify(112902)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(112903)
 	}
+	__antithesis_instrumentation__.Notify(112895)
 	if err := t.stopper.RunAsyncTask(t.ambientCtx, "raft-log-truncation",
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(112904)
 			for {
+				__antithesis_instrumentation__.Notify(112905)
 				t.durabilityAdvanced(ctx)
 				shouldReturn := false
 				t.mu.Lock()
 				queued := t.mu.queuedDurabilityCB
 				t.mu.queuedDurabilityCB = false
 				if !queued {
+					__antithesis_instrumentation__.Notify(112907)
 					t.mu.runningTruncation = false
 					shouldReturn = true
+				} else {
+					__antithesis_instrumentation__.Notify(112908)
 				}
+				__antithesis_instrumentation__.Notify(112906)
 				t.mu.Unlock()
 				if shouldReturn {
+					__antithesis_instrumentation__.Notify(112909)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(112910)
 				}
 			}
 		}); err != nil {
-		// Task did not run because stopper is stopped.
+		__antithesis_instrumentation__.Notify(112911)
+
 		func() {
+			__antithesis_instrumentation__.Notify(112912)
 			t.mu.Lock()
 			defer t.mu.Unlock()
 			if !t.mu.runningTruncation {
+				__antithesis_instrumentation__.Notify(112914)
 				panic("expected runningTruncation")
+			} else {
+				__antithesis_instrumentation__.Notify(112915)
 			}
+			__antithesis_instrumentation__.Notify(112913)
 			t.mu.runningTruncation = false
 		}()
+	} else {
+		__antithesis_instrumentation__.Notify(112916)
 	}
 }
 
-// Synchronously does the work to truncate the queued replicas.
 func (t *raftLogTruncator) durabilityAdvanced(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(112917)
 	t.mu.Lock()
 	t.mu.addRanges, t.mu.drainRanges = t.mu.drainRanges, t.mu.addRanges
-	// If another pendingTruncation is added to this Replica, it will not be
-	// added to the addRanges map since the Replica already has pending
-	// truncations. That is ok: we will try to enact all pending truncations for
-	// that Replica below, since there typically will only be one pending, and
-	// if there are any remaining we will add it back to the addRanges map.
-	//
-	// We can modify drainRanges after releasing t.mu since we are guaranteed
-	// that there is at most one durabilityAdvanced running at a time.
+
 	drainRanges := t.mu.drainRanges
 	t.mu.Unlock()
 	if len(drainRanges) == 0 {
+		__antithesis_instrumentation__.Notify(112920)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(112921)
 	}
+	__antithesis_instrumentation__.Notify(112918)
 	ranges := make([]roachpb.RangeID, 0, len(drainRanges))
 	for k := range drainRanges {
+		__antithesis_instrumentation__.Notify(112922)
 		ranges = append(ranges, k)
 		delete(drainRanges, k)
 	}
-	// Sort it for deterministic testing output.
+	__antithesis_instrumentation__.Notify(112919)
+
 	sort.Sort(rangesByRangeID(ranges))
-	// Create an engine Reader to provide a safe lower bound on what is durable.
+
 	reader := t.store.getEngine().NewReadOnly(storage.GuaranteedDurability)
 	defer reader.Close()
 	shouldQuiesce := t.stopper.ShouldQuiesce()
 	quiesced := false
 	for _, rangeID := range ranges {
+		__antithesis_instrumentation__.Notify(112923)
 		t.tryEnactTruncations(ctx, rangeID, reader)
-		// Check if the stopper is quiescing. This isn't strictly necessary, but
-		// if there are a huge number of ranges that need to be truncated, this
-		// will cause us to stop faster.
+
 		select {
 		case <-shouldQuiesce:
+			__antithesis_instrumentation__.Notify(112925)
 			quiesced = true
 		default:
+			__antithesis_instrumentation__.Notify(112926)
 		}
+		__antithesis_instrumentation__.Notify(112924)
 		if quiesced {
+			__antithesis_instrumentation__.Notify(112927)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(112928)
 		}
 	}
 }
-
-// TODO(tbg): Instead of directly calling tryEnactTruncations from the
-// raftLogTruncator, we would like to use the Store.processReady path to
-// centralize error handling and timing of all raft related processing. We
-// will continue to enact truncations across all replicas using a single
-// goroutine per store, and not use the raftScheduler workers -- this is
-// because a durabilityAdvanced callback triggers truncations for all queued
-// replicas and we don't want to use up all the workers for truncation
-// activity at the same time and starve foreground activity. We considered
-// localizing all changes in handleRaftReadyRaftMuLocked (not touching the
-// plumbing in processReady etc. that leads up to it), by marking the Replica
-// that it should try doing truncation, and calling processReady from the
-// truncator's goroutine. However, we are concerned that by marking the
-// Replica we allow for a race between the the truncator's goroutine and the
-// raftScheduler worker that can cause the latter to pick up the truncation
-// work. This race is not a correctness problem, but can cause needless
-// surprise. The current plan is to some refactoring of processReady so that
-// we can have a second entry point (processTruncation) that also goes through
-// most of the code that lives in processReady today (and passes a truncation
-// through to handleRaftReadyRaftMuLocked). The code in
-// handleRaftReadyRaftMyLocked would call something akin to
-// tryEnactTruncations. Note that tryEnactTruncations needs a storage.Reader
-// for reading only durable state -- currently we share it across replicas
-// since it is easy to do so. But in the future code we can construct such a
-// Reader in tryEnactTruncations.
 
 func (t *raftLogTruncator) tryEnactTruncations(
 	ctx context.Context, rangeID roachpb.RangeID, reader storage.Reader,
 ) {
+	__antithesis_instrumentation__.Notify(112929)
 	r := t.store.acquireReplicaForTruncator(rangeID)
 	if r == nil {
-		// Not found.
+		__antithesis_instrumentation__.Notify(112940)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(112941)
 	}
+	__antithesis_instrumentation__.Notify(112930)
 	defer t.store.releaseReplicaForTruncator(r)
 	truncState := r.getTruncatedState()
 	pendingTruncs := r.getPendingTruncs()
-	// Remove the noop pending truncations.
+
 	pendingTruncs.mu.Lock()
 	for !pendingTruncs.isEmptyLocked() {
+		__antithesis_instrumentation__.Notify(112942)
 		pendingTrunc := pendingTruncs.frontLocked()
 		if pendingTrunc.Index <= truncState.Index {
-			// The pending truncation is a noop. Even though we avoid queueing
-			// noop truncations, this is possible because a snapshot could have
-			// been applied to the replica after enqueueing the truncations.
+			__antithesis_instrumentation__.Notify(112943)
+
 			pendingTruncs.popLocked()
 		} else {
+			__antithesis_instrumentation__.Notify(112944)
 			break
 		}
 	}
-	// NB: Unlocking but can keep reading pendingTruncs due to
-	// replicaForTruncator contract.
+	__antithesis_instrumentation__.Notify(112931)
+
 	pendingTruncs.mu.Unlock()
 	if pendingTruncs.isEmptyLocked() {
-		// Nothing to do for this replica.
-		return
-	}
-	// Have some useful pending truncations.
+		__antithesis_instrumentation__.Notify(112945)
 
-	// Use the reader to decide what is durable.
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(112946)
+	}
+	__antithesis_instrumentation__.Notify(112932)
+
 	stateLoader := r.getStateLoader()
 	as, err := stateLoader.LoadRangeAppliedState(ctx, reader)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(112947)
 		log.Errorf(ctx, "error loading RangeAppliedState, dropping all pending log truncations: %s",
 			err)
 		pendingTruncs.reset()
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(112948)
 	}
-	// enactIndex represents the index of the latest queued truncation that
-	// can be enacted. We start with -1 since it is possible that nothing can
-	// be enacted.
+	__antithesis_instrumentation__.Notify(112933)
+
 	enactIndex := -1
 	pendingTruncs.iterateLocked(func(index int, trunc pendingTruncation) {
+		__antithesis_instrumentation__.Notify(112949)
 		if trunc.Index > as.RaftAppliedIndex {
+			__antithesis_instrumentation__.Notify(112951)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(112952)
 		}
+		__antithesis_instrumentation__.Notify(112950)
 		enactIndex = index
 	})
+	__antithesis_instrumentation__.Notify(112934)
 	if enactIndex < 0 {
-		// Enqueue the rangeID for the future.
+		__antithesis_instrumentation__.Notify(112953)
+
 		t.enqueueRange(rangeID)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(112954)
 	}
-	// Do the truncation of persistent raft entries, specified by enactIndex
-	// (this subsumes all the preceding queued truncations).
-	batch := t.store.getEngine().NewUnindexedBatch(false /* writeOnly */)
+	__antithesis_instrumentation__.Notify(112935)
+
+	batch := t.store.getEngine().NewUnindexedBatch(false)
 	defer batch.Close()
 	apply, err := handleTruncatedStateBelowRaftPreApply(ctx, &truncState,
 		&pendingTruncs.mu.truncs[enactIndex].RaftTruncatedState, stateLoader, batch)
-	if err != nil || !apply {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(112955)
+		return !apply == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(112956)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(112958)
 			log.Errorf(ctx, "while attempting to truncate raft log: %+v", err)
 		} else {
+			__antithesis_instrumentation__.Notify(112959)
 			err := errors.AssertionFailedf(
 				"unexpected !apply from handleTruncatedStateBelowRaftPreApply")
-			if buildutil.CrdbTestBuild || util.RaceEnabled {
+			if buildutil.CrdbTestBuild || func() bool {
+				__antithesis_instrumentation__.Notify(112960)
+				return util.RaceEnabled == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(112961)
 				log.Fatalf(ctx, "%s", err)
 			} else {
+				__antithesis_instrumentation__.Notify(112962)
 				log.Errorf(ctx, "%s", err)
 			}
 		}
+		__antithesis_instrumentation__.Notify(112957)
 		pendingTruncs.reset()
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(112963)
 	}
-	// sync=false since we don't need a guarantee that the truncation is
-	// durable. Loss of a truncation means we have more of the suffix of the
-	// raft log, which does not affect correctness.
-	if err := batch.Commit(false /* sync */); err != nil {
+	__antithesis_instrumentation__.Notify(112936)
+
+	if err := batch.Commit(false); err != nil {
+		__antithesis_instrumentation__.Notify(112964)
 		log.Errorf(ctx, "while committing batch to truncate raft log: %+v", err)
 		pendingTruncs.reset()
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(112965)
 	}
-	// Truncation done. Need to update the Replica state. This requires iterating
-	// over all the enacted entries.
+	__antithesis_instrumentation__.Notify(112937)
+
 	pendingTruncs.iterateLocked(func(index int, trunc pendingTruncation) {
+		__antithesis_instrumentation__.Notify(112966)
 		if index > enactIndex {
+			__antithesis_instrumentation__.Notify(112969)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(112970)
 		}
+		__antithesis_instrumentation__.Notify(112967)
 		isDeltaTrusted := true
 		expectedFirstIndexWasAccurate := r.setTruncatedStateAndSideEffects(
 			ctx, &trunc.RaftTruncatedState, trunc.expectedFirstIndex)
-		if !expectedFirstIndexWasAccurate || !trunc.isDeltaTrusted {
+		if !expectedFirstIndexWasAccurate || func() bool {
+			__antithesis_instrumentation__.Notify(112971)
+			return !trunc.isDeltaTrusted == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(112972)
 			isDeltaTrusted = false
+		} else {
+			__antithesis_instrumentation__.Notify(112973)
 		}
+		__antithesis_instrumentation__.Notify(112968)
 		r.setTruncationDeltaAndTrusted(trunc.logDeltaBytes, isDeltaTrusted)
 	})
-	// Now remove the enacted truncations. It is the same iteration as the
-	// previous one, but we do it while holding pendingTruncs.mu. Note that
-	// since we have updated the raft log size but not yet removed the pending
-	// truncations, a concurrent thread could race and compute a lower post
-	// truncation size. We ignore this race since it seems harmless, and closing
-	// it requires a more complicated replicaForTruncator interface.
+	__antithesis_instrumentation__.Notify(112938)
+
 	pendingTruncs.mu.Lock()
 	for i := 0; i <= enactIndex; i++ {
+		__antithesis_instrumentation__.Notify(112974)
 		pendingTruncs.popLocked()
 	}
+	__antithesis_instrumentation__.Notify(112939)
 	pendingTruncs.mu.Unlock()
 	if !pendingTruncs.isEmptyLocked() {
+		__antithesis_instrumentation__.Notify(112975)
 		t.enqueueRange(rangeID)
+	} else {
+		__antithesis_instrumentation__.Notify(112976)
 	}
 }
 
 func (t *raftLogTruncator) enqueueRange(rangeID roachpb.RangeID) {
+	__antithesis_instrumentation__.Notify(112977)
 	t.mu.Lock()
 	t.mu.addRanges[rangeID] = struct{}{}
 	t.mu.Unlock()

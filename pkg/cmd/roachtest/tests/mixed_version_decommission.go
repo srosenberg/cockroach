@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,30 +17,28 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// runDecommissionMixedVersions runs through randomized
-// decommission/recommission processes in mixed-version clusters.
 func runDecommissionMixedVersions(
 	ctx context.Context, t test.Test, c cluster.Cluster, buildVersion version.Version,
 ) {
+	__antithesis_instrumentation__.Notify(49254)
 	predecessorVersion, err := PredecessorVersion(buildVersion)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(49256)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(49257)
 	}
+	__antithesis_instrumentation__.Notify(49255)
 
 	h := newDecommTestHelper(t, c)
 
-	// The v20.2 CLI can only be run against servers running v20.2. For this
-	// reason, we grab a handle on a specific server slated for an upgrade.
 	pinnedUpgrade := h.getRandNode()
 	t.L().Printf("pinned n%d for upgrade", pinnedUpgrade)
 
-	// An empty string means that the cockroach binary specified by flag
-	// `cockroach` will be used.
 	const mainVersion = ""
 	allNodes := c.All()
 	u := newVersionUpgradeTest(c,
-		// We upload both binaries to each node, to be able to vary the binary
-		// used when issuing `cockroach node` subcommands.
+
 		uploadVersionStep(allNodes, predecessorVersion),
 		uploadVersionStep(allNodes, mainVersion),
 
@@ -56,41 +46,24 @@ func runDecommissionMixedVersions(
 		waitForUpgradeStep(allNodes),
 		preventAutoUpgradeStep(h.nodeIDs[0]),
 
-		// We upgrade a pinnedUpgrade and one other random node of the cluster to v20.2.
 		binaryUpgradeStep(c.Node(pinnedUpgrade), mainVersion),
 		binaryUpgradeStep(c.Node(h.getRandNodeOtherThan(pinnedUpgrade)), mainVersion),
 		checkAllMembership(pinnedUpgrade, "active"),
 
-		// Partially decommission a random node from another random node. We
-		// use the predecessor CLI to do so.
 		partialDecommissionStep(h.getRandNode(), h.getRandNode(), predecessorVersion),
 		checkOneDecommissioning(h.getRandNode()),
 		checkOneMembership(pinnedUpgrade, "decommissioning"),
 
-		// Recommission all nodes, including the partially decommissioned
-		// one, from a random node. Use the predecessor CLI to do so.
 		recommissionAllStep(h.getRandNode(), predecessorVersion),
 		checkNoDecommissioning(h.getRandNode()),
 		checkAllMembership(pinnedUpgrade, "active"),
 
-		// Roll back, which should to be fine because the cluster upgrade was
-		// not finalized.
 		binaryUpgradeStep(allNodes, predecessorVersion),
 
-		// Roll all nodes forward, and finalize upgrade.
 		binaryUpgradeStep(allNodes, mainVersion),
 		allowAutoUpgradeStep(1),
 		waitForUpgradeStep(allNodes),
 
-		// Fully decommission a random node. Note that we can no longer use the
-		// predecessor cli, as the cluster has upgraded and won't allow connections
-		// from the predecessor version binary.
-		//
-		// Note also that this has to remain the last step unless we want this test to
-		// handle the fact that the decommissioned node will no longer be able
-		// to communicate with the cluster (i.e. most commands against it will fail).
-		// This is also why we're making sure to avoid decommissioning pinnedUpgrade
-		// itself, as we use it to check the membership after.
 		fullyDecommissionStep(h.getRandNodeOtherThan(pinnedUpgrade), h.getRandNode(), ""),
 		checkOneMembership(pinnedUpgrade, "decommissioned"),
 	)
@@ -98,171 +71,220 @@ func runDecommissionMixedVersions(
 	u.run(ctx, t)
 }
 
-// cockroachBinaryPath is a shorthand to retrieve the path for a cockroach
-// binary of a given version.
 func cockroachBinaryPath(version string) string {
+	__antithesis_instrumentation__.Notify(49258)
 	if version == "" {
+		__antithesis_instrumentation__.Notify(49260)
 		return "./cockroach"
+	} else {
+		__antithesis_instrumentation__.Notify(49261)
 	}
+	__antithesis_instrumentation__.Notify(49259)
 	return fmt.Sprintf("./v%s/cockroach", version)
 }
 
-// partialDecommissionStep runs `cockroach node decommission --wait=none` from a
-// given node, targeting another. It uses the specified binary version to run
-// the command.
 func partialDecommissionStep(target, from int, binaryVersion string) versionStep {
+	__antithesis_instrumentation__.Notify(49262)
 	return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+		__antithesis_instrumentation__.Notify(49263)
 		c := u.c
 		c.Run(ctx, c.Node(from), cockroachBinaryPath(binaryVersion), "node", "decommission",
 			"--wait=none", "--insecure", strconv.Itoa(target))
 	}
 }
 
-// recommissionAllStep runs `cockroach node recommission` from a given node,
-// targeting all nodes in the cluster. It uses the specified binary version to
-// run the command.
 func recommissionAllStep(from int, binaryVersion string) versionStep {
+	__antithesis_instrumentation__.Notify(49264)
 	return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+		__antithesis_instrumentation__.Notify(49265)
 		c := u.c
 		c.Run(ctx, c.Node(from), cockroachBinaryPath(binaryVersion), "node", "recommission",
 			"--insecure", c.All().NodeIDsString())
 	}
 }
 
-// fullyDecommissionStep is like partialDecommissionStep, except it uses
-// `--wait=all`.
 func fullyDecommissionStep(target, from int, binaryVersion string) versionStep {
+	__antithesis_instrumentation__.Notify(49266)
 	return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+		__antithesis_instrumentation__.Notify(49267)
 		c := u.c
 		c.Run(ctx, c.Node(from), cockroachBinaryPath(binaryVersion), "node", "decommission",
 			"--wait=all", "--insecure", strconv.Itoa(target))
 	}
 }
 
-// checkOneDecommissioning checks against the `decommissioning` column in
-// crdb_internal.gossip_liveness, asserting that only one node is marked as
-// decommissioning. This check can be run against both v20.1 and v20.2 servers.
 func checkOneDecommissioning(from int) versionStep {
+	__antithesis_instrumentation__.Notify(49268)
 	return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
-		// We use a retry block here (and elsewhere) because we're consulting
-		// crdb_internal.gossip_liveness, and need to make allowances for gossip
-		// propagation delays.
+		__antithesis_instrumentation__.Notify(49269)
+
 		if err := retry.ForDuration(testutils.DefaultSucceedsSoonDuration, func() error {
+			__antithesis_instrumentation__.Notify(49270)
 			db := u.conn(ctx, t, from)
 			var count int
 			if err := db.QueryRow(
 				`select count(*) from crdb_internal.gossip_liveness where decommissioning = true;`).Scan(&count); err != nil {
+				__antithesis_instrumentation__.Notify(49274)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(49275)
 			}
+			__antithesis_instrumentation__.Notify(49271)
 
 			if count != 1 {
+				__antithesis_instrumentation__.Notify(49276)
 				return errors.Newf("expected to find 1 node with decommissioning=true, found %d", count)
+			} else {
+				__antithesis_instrumentation__.Notify(49277)
 			}
+			__antithesis_instrumentation__.Notify(49272)
 
 			var nodeID int
 			if err := db.QueryRow(
 				`select node_id from crdb_internal.gossip_liveness where decommissioning = true;`).Scan(&nodeID); err != nil {
+				__antithesis_instrumentation__.Notify(49278)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(49279)
 			}
+			__antithesis_instrumentation__.Notify(49273)
 			t.L().Printf("n%d decommissioning=true", nodeID)
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(49280)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(49281)
 		}
 	}
 }
 
-// checkNoDecommissioning checks against the `decommissioning` column in
-// crdb_internal.gossip_liveness, asserting that only no nodes are marked as
-// decommissioning. This check can be run against both v20.1 and v20.2 servers.
 func checkNoDecommissioning(from int) versionStep {
+	__antithesis_instrumentation__.Notify(49282)
 	return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+		__antithesis_instrumentation__.Notify(49283)
 		if err := retry.ForDuration(testutils.DefaultSucceedsSoonDuration, func() error {
+			__antithesis_instrumentation__.Notify(49284)
 			db := u.conn(ctx, t, from)
 			var count int
 			if err := db.QueryRow(
 				`select count(*) from crdb_internal.gossip_liveness where decommissioning = true;`).Scan(&count); err != nil {
+				__antithesis_instrumentation__.Notify(49287)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(49288)
 			}
+			__antithesis_instrumentation__.Notify(49285)
 
 			if count != 0 {
+				__antithesis_instrumentation__.Notify(49289)
 				return errors.Newf("expected to find 0 nodes with decommissioning=false, found %d", count)
+			} else {
+				__antithesis_instrumentation__.Notify(49290)
 			}
+			__antithesis_instrumentation__.Notify(49286)
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(49291)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(49292)
 		}
 	}
 }
 
-// checkOneMembership checks against the `membership` column in
-// crdb_internal.gossip_liveness, asserting that only one node is marked with
-// the specified membership status. This check can be only be run against
-// servers running v20.2 and beyond.
 func checkOneMembership(from int, membership string) versionStep {
+	__antithesis_instrumentation__.Notify(49293)
 	return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+		__antithesis_instrumentation__.Notify(49294)
 		if err := retry.ForDuration(testutils.DefaultSucceedsSoonDuration, func() error {
+			__antithesis_instrumentation__.Notify(49295)
 			db := u.conn(ctx, t, from)
 			var count int
 			if err := db.QueryRow(
 				`select count(*) from crdb_internal.gossip_liveness where membership = $1;`, membership).Scan(&count); err != nil {
+				__antithesis_instrumentation__.Notify(49299)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(49300)
 			}
+			__antithesis_instrumentation__.Notify(49296)
 
 			if count != 1 {
+				__antithesis_instrumentation__.Notify(49301)
 				return errors.Newf("expected to find 1 node with membership=%s, found %d", membership, count)
+			} else {
+				__antithesis_instrumentation__.Notify(49302)
 			}
+			__antithesis_instrumentation__.Notify(49297)
 
 			var nodeID int
 			if err := db.QueryRow(
 				`select node_id from crdb_internal.gossip_liveness where decommissioning = true;`).Scan(&nodeID); err != nil {
+				__antithesis_instrumentation__.Notify(49303)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(49304)
 			}
+			__antithesis_instrumentation__.Notify(49298)
 			t.L().Printf("n%d membership=%s", nodeID, membership)
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(49305)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(49306)
 		}
 	}
 }
 
-// checkAllMembership checks against the `membership` column in
-// crdb_internal.gossip_liveness, asserting that all nodes are marked with
-// the specified membership status. This check can be only be run against
-// servers running v20.2 and beyond.
 func checkAllMembership(from int, membership string) versionStep {
+	__antithesis_instrumentation__.Notify(49307)
 	return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+		__antithesis_instrumentation__.Notify(49308)
 		if err := retry.ForDuration(testutils.DefaultSucceedsSoonDuration, func() error {
+			__antithesis_instrumentation__.Notify(49309)
 			db := u.conn(ctx, t, from)
 			var count int
 			if err := db.QueryRow(
 				`select count(*) from crdb_internal.gossip_liveness where membership != $1;`, membership).Scan(&count); err != nil {
+				__antithesis_instrumentation__.Notify(49312)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(49313)
 			}
+			__antithesis_instrumentation__.Notify(49310)
 
 			if count != 0 {
+				__antithesis_instrumentation__.Notify(49314)
 				return errors.Newf("expected to find 0 nodes with membership!=%s, found %d", membership, count)
+			} else {
+				__antithesis_instrumentation__.Notify(49315)
 			}
+			__antithesis_instrumentation__.Notify(49311)
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(49316)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(49317)
 		}
 	}
 }
 
-// uploadVersionStep uploads the specified cockroach binary version on the specified
-// nodes.
 func uploadVersionStep(nodes option.NodeListOption, version string) versionStep {
+	__antithesis_instrumentation__.Notify(49318)
 	return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
-		// Put the binary.
+		__antithesis_instrumentation__.Notify(49319)
+
 		uploadVersion(ctx, t, u.c, nodes, version)
 	}
 }
 
-// startVersion starts the specified cockroach binary version on the specified
-// nodes.
 func startVersion(nodes option.NodeListOption, version string) versionStep {
+	__antithesis_instrumentation__.Notify(49320)
 	return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+		__antithesis_instrumentation__.Notify(49321)
 		settings := install.MakeClusterSettings(install.BinaryOption(cockroachBinaryPath(version)))
 		startOpts := option.DefaultStartOpts()
 		u.c.Start(ctx, t.L(), startOpts, settings, nodes)

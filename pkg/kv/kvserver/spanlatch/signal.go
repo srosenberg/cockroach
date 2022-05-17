@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanlatch
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sync/atomic"
@@ -16,98 +8,119 @@ import (
 )
 
 const (
-	// not yet signaled.
 	noSig int32 = iota
-	// signaled and the channel was not closed.
+
 	sig
-	// signaled and the channel was closed.
+
 	sigClosed
 )
 
-// signal is a type that can signal the completion of an operation.
-//
-// The type has three benefits over using a channel directly and
-// closing the channel when the operation completes:
-// 1. signaled() uses atomics to provide a fast-path for checking
-//    whether the operation has completed. It is ~75x faster than
-//    using a channel for this purpose.
-// 2. the receiver's channel is lazily initialized when signalChan()
-//    is called, avoiding the allocation when one is not needed.
-// 3. because of 2, the type's zero value can be used directly.
-//
 type signal struct {
 	a int32
-	c unsafe.Pointer // chan struct{}, lazily initialized
+	c unsafe.Pointer
 }
 
 func (s *signal) signal() {
-	s.signalWithChoice(false /* idempotent */)
+	__antithesis_instrumentation__.Notify(122884)
+	s.signalWithChoice(false)
 }
 
 func (s *signal) signalWithChoice(idempotent bool) {
+	__antithesis_instrumentation__.Notify(122885)
 	if !atomic.CompareAndSwapInt32(&s.a, noSig, sig) {
+		__antithesis_instrumentation__.Notify(122887)
 		if idempotent {
+			__antithesis_instrumentation__.Notify(122889)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(122890)
 		}
+		__antithesis_instrumentation__.Notify(122888)
 		panic("signaled twice")
+	} else {
+		__antithesis_instrumentation__.Notify(122891)
 	}
+	__antithesis_instrumentation__.Notify(122886)
 
-	// Close the channel if it was ever initialized.
 	if cPtr := atomic.LoadPointer(&s.c); cPtr != nil {
-		// Coordinate with signalChan to avoid double-closing.
+		__antithesis_instrumentation__.Notify(122892)
+
 		if atomic.CompareAndSwapInt32(&s.a, sig, sigClosed) {
+			__antithesis_instrumentation__.Notify(122893)
 			close(ptrToChan(cPtr))
+		} else {
+			__antithesis_instrumentation__.Notify(122894)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(122895)
 	}
 }
 
 func (s *signal) signaled() bool {
+	__antithesis_instrumentation__.Notify(122896)
 	return atomic.LoadInt32(&s.a) > noSig
 }
 
 func (s *signal) signalChan() <-chan struct{} {
-	// If the signal has already been signaled, return a closed channel.
+	__antithesis_instrumentation__.Notify(122897)
+
 	if s.signaled() {
+		__antithesis_instrumentation__.Notify(122902)
 		return closedC
+	} else {
+		__antithesis_instrumentation__.Notify(122903)
 	}
+	__antithesis_instrumentation__.Notify(122898)
 
-	// If the signal's channel has already been lazily initialized, return it.
 	if cPtr := atomic.LoadPointer(&s.c); cPtr != nil {
+		__antithesis_instrumentation__.Notify(122904)
 		return ptrToChan(cPtr)
+	} else {
+		__antithesis_instrumentation__.Notify(122905)
 	}
+	__antithesis_instrumentation__.Notify(122899)
 
-	// Lazily initialize the channel.
 	c := make(chan struct{})
 	if !atomic.CompareAndSwapPointer(&s.c, nil, chanToPtr(c)) {
-		// We raced with another initialization.
-		return ptrToChan(atomic.LoadPointer(&s.c))
-	}
+		__antithesis_instrumentation__.Notify(122906)
 
-	// Coordinate with signal to close the new channel, if necessary.
-	if atomic.CompareAndSwapInt32(&s.a, sig, sigClosed) {
-		close(c)
+		return ptrToChan(atomic.LoadPointer(&s.c))
+	} else {
+		__antithesis_instrumentation__.Notify(122907)
 	}
+	__antithesis_instrumentation__.Notify(122900)
+
+	if atomic.CompareAndSwapInt32(&s.a, sig, sigClosed) {
+		__antithesis_instrumentation__.Notify(122908)
+		close(c)
+	} else {
+		__antithesis_instrumentation__.Notify(122909)
+	}
+	__antithesis_instrumentation__.Notify(122901)
 	return c
 }
 
-// idempotentSignal is like signal, but its signal method is idempotent.
 type idempotentSignal struct {
 	sig signal
 }
 
 func (s *idempotentSignal) signal() {
-	s.sig.signalWithChoice(true /* idempotent */)
+	__antithesis_instrumentation__.Notify(122910)
+	s.sig.signalWithChoice(true)
 }
 
 func (s *idempotentSignal) signalChan() <-chan struct{} {
+	__antithesis_instrumentation__.Notify(122911)
 	return s.sig.signalChan()
 }
 
 func chanToPtr(c chan struct{}) unsafe.Pointer {
+	__antithesis_instrumentation__.Notify(122912)
 	return *(*unsafe.Pointer)(unsafe.Pointer(&c))
 }
 
 func ptrToChan(p unsafe.Pointer) chan struct{} {
+	__antithesis_instrumentation__.Notify(122913)
 	return *(*chan struct{})(unsafe.Pointer(&p))
 }
 

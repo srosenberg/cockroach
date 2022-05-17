@@ -1,33 +1,12 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package settings
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
 	"fmt"
 )
 
-// VersionSetting is the setting type that allows users to control the cluster
-// version. It starts off at an initial version and takes into account the
-// current version to validate proposed updates. This is (necessarily) tightly
-// coupled with the setting implementation in pkg/clusterversion, and it's done
-// through the VersionSettingImpl interface. We rely on the implementation to
-// decode to and from raw bytes, and to perform the validation itself. The
-// VersionSetting itself is then just the tiny shim that lets us hook into the
-// rest of the settings machinery (by interfacing with Values, to load and store
-// cluster versions).
-//
-// TODO(irfansharif): If the cluster version is no longer backed by gossip,
-// maybe we should stop pretending it's a regular gossip-backed cluster setting.
-// We could introduce new syntax here to motivate this shift.
 type VersionSetting struct {
 	impl VersionSettingImpl
 	common
@@ -35,148 +14,129 @@ type VersionSetting struct {
 
 var _ Setting = &VersionSetting{}
 
-// VersionSettingImpl is the interface bridging pkg/settings and
-// pkg/clusterversion. See VersionSetting for additional commentary.
 type VersionSettingImpl interface {
-	// Decode takes in an encoded cluster version and returns it as the native
-	// type (the ClusterVersion proto). Except it does it through the
-	// ClusterVersionImpl to avoid circular dependencies.
 	Decode(val []byte) (ClusterVersionImpl, error)
 
-	// Validate checks whether an version update is permitted. It takes in the
-	// old and the proposed new value (both in encoded form). This is called by
-	// SET CLUSTER SETTING.
 	ValidateVersionUpgrade(ctx context.Context, sv *Values, oldV, newV []byte) error
 
-	// ValidateBinaryVersions is a subset of Validate. It only checks that the
-	// current binary supports the proposed version. This is called when the
-	// version is being communicated to us by a different node (currently
-	// through gossip).
-	//
-	// TODO(irfansharif): Update this comment when we stop relying on gossip to
-	// propagate version bumps.
 	ValidateBinaryVersions(ctx context.Context, sv *Values, newV []byte) error
 
-	// SettingsListDefault returns the value that should be presented by
-	// `./cockroach gen settings-list`
 	SettingsListDefault() string
 }
 
-// ClusterVersionImpl is used to stub out the dependency on the ClusterVersion
-// type (in pkg/clusterversion). The VersionSetting below is used to set
-// ClusterVersion values, but we can't import the type directly due to the
-// cyclical dependency structure.
 type ClusterVersionImpl interface {
 	ClusterVersionImpl()
-	// We embed fmt.Stringer so to be able to later satisfy the `Setting`
-	// interface (which requires us to return a string representation of the
-	// current value of the setting)
+
 	fmt.Stringer
 }
 
-// MakeVersionSetting instantiates a version setting instance. See
-// VersionSetting for additional commentary.
 func MakeVersionSetting(impl VersionSettingImpl) VersionSetting {
+	__antithesis_instrumentation__.Notify(240220)
 	return VersionSetting{impl: impl}
 }
 
-// Decode takes in an encoded cluster version and returns it as the native
-// type (the ClusterVersion proto). Except it does it through the
-// ClusterVersionImpl to avoid circular dependencies.
 func (v *VersionSetting) Decode(val []byte) (ClusterVersionImpl, error) {
+	__antithesis_instrumentation__.Notify(240221)
 	return v.impl.Decode(val)
 }
 
-// Validate checks whether an version update is permitted. It takes in the
-// old and the proposed new value (both in encoded form). This is called by
-// SET CLUSTER SETTING.
 func (v *VersionSetting) Validate(ctx context.Context, sv *Values, oldV, newV []byte) error {
+	__antithesis_instrumentation__.Notify(240222)
 	return v.impl.ValidateVersionUpgrade(ctx, sv, oldV, newV)
 }
 
-// SettingsListDefault returns the value that should be presented by
-// `./cockroach gen settings-list`.
 func (v *VersionSetting) SettingsListDefault() string {
+	__antithesis_instrumentation__.Notify(240223)
 	return v.impl.SettingsListDefault()
 }
 
-// Typ is part of the Setting interface.
 func (*VersionSetting) Typ() string {
-	// This is named "m" (instead of "v") for backwards compatibility reasons.
+	__antithesis_instrumentation__.Notify(240224)
+
 	return "m"
 }
 
-// String is part of the Setting interface.
 func (v *VersionSetting) String(sv *Values) string {
+	__antithesis_instrumentation__.Notify(240225)
 	encV := []byte(v.Get(sv))
 	if encV == nil {
+		__antithesis_instrumentation__.Notify(240228)
 		panic("unexpected nil value")
+	} else {
+		__antithesis_instrumentation__.Notify(240229)
 	}
+	__antithesis_instrumentation__.Notify(240226)
 	cv, err := v.impl.Decode(encV)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(240230)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(240231)
 	}
+	__antithesis_instrumentation__.Notify(240227)
 	return cv.String()
 }
 
-// Encoded is part of the NonMaskedSetting interface.
 func (v *VersionSetting) Encoded(sv *Values) string {
+	__antithesis_instrumentation__.Notify(240232)
 	return v.Get(sv)
 }
 
-// EncodedDefault is part of the NonMaskedSetting interface.
 func (v *VersionSetting) EncodedDefault() string {
+	__antithesis_instrumentation__.Notify(240233)
 	return encodedDefaultVersion
 }
 
 const encodedDefaultVersion = "unsupported"
 
-// DecodeToString decodes and renders an encoded value.
 func (v *VersionSetting) DecodeToString(encoded string) (string, error) {
+	__antithesis_instrumentation__.Notify(240234)
 	if encoded == encodedDefaultVersion {
+		__antithesis_instrumentation__.Notify(240237)
 		return encodedDefaultVersion, nil
+	} else {
+		__antithesis_instrumentation__.Notify(240238)
 	}
+	__antithesis_instrumentation__.Notify(240235)
 	cv, err := v.impl.Decode([]byte(encoded))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(240239)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(240240)
 	}
+	__antithesis_instrumentation__.Notify(240236)
 	return cv.String(), nil
 }
 
-// Get retrieves the encoded value (in string form) in the setting. It panics if
-// set() has not been previously called.
-//
-// TODO(irfansharif): This (along with `set`) below should be folded into one of
-// the Setting interfaces, or be removed entirely. All readable settings
-// implement it.
 func (v *VersionSetting) Get(sv *Values) string {
+	__antithesis_instrumentation__.Notify(240241)
 	encV := v.GetInternal(sv)
 	if encV == nil {
+		__antithesis_instrumentation__.Notify(240243)
 		panic(fmt.Sprintf("missing value for version setting in slot %d", v.slot))
+	} else {
+		__antithesis_instrumentation__.Notify(240244)
 	}
+	__antithesis_instrumentation__.Notify(240242)
 	return string(encV.([]byte))
 }
 
-// GetInternal returns the setting's current value.
 func (v *VersionSetting) GetInternal(sv *Values) interface{} {
+	__antithesis_instrumentation__.Notify(240245)
 	return sv.getGeneric(v.slot)
 }
 
-// SetInternal updates the setting's value in the provided Values container.
 func (v *VersionSetting) SetInternal(ctx context.Context, sv *Values, newVal interface{}) {
+	__antithesis_instrumentation__.Notify(240246)
 	sv.setGeneric(ctx, v.slot, newVal)
 }
 
-// setToDefault is part of the extendingSetting interface. This is a no-op for
-// VersionSetting. They don't have defaults that they can go back to at any
-// time.
-//
-// TODO(irfansharif): Is this true? Shouldn't the default here just the the
-// version we initialize with?
-func (v *VersionSetting) setToDefault(ctx context.Context, sv *Values) {}
+func (v *VersionSetting) setToDefault(ctx context.Context, sv *Values) {
+	__antithesis_instrumentation__.Notify(240247)
+}
 
-// RegisterVersionSetting adds the provided version setting to the global
-// registry.
 func RegisterVersionSetting(class Class, key, desc string, setting *VersionSetting) {
+	__antithesis_instrumentation__.Notify(240248)
 	register(class, key, desc, setting)
 }

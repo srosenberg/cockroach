@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package migrations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,37 +17,48 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// CreateSystemTable is a function to inject a new system table. If the table
-// already exists, ths function is a no-op.
 func createSystemTable(
 	ctx context.Context, db *kv.DB, codec keys.SQLCodec, desc catalog.TableDescriptor,
 ) error {
-	// We install the table at the KV layer so that we have tighter control over the
-	// placement and fewer deep dependencies. Most new system table descriptors will
-	// have dynamically allocated IDs. This method supports that, but also continues
-	// to support adding fixed ID system table descriptors.
+	__antithesis_instrumentation__.Notify(128393)
+
 	return db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(128394)
 		tKey := catalogkeys.EncodeNameKey(codec, desc)
 
-		// If this descriptor doesn't have an ID, which happens for dynamic
-		// system tables, we need to allocate it an ID.
 		if desc.GetID() == descpb.InvalidID {
-			// If we're going to allocate an ID, make sure the table does not exist.
+			__antithesis_instrumentation__.Notify(128396)
+
 			got, err := txn.Get(ctx, tKey)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(128400)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(128401)
 			}
+			__antithesis_instrumentation__.Notify(128397)
 			if got.Value.IsPresent() {
+				__antithesis_instrumentation__.Notify(128402)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(128403)
 			}
+			__antithesis_instrumentation__.Notify(128398)
 			id, err := descidgen.GenerateUniqueDescID(ctx, db, codec)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(128404)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(128405)
 			}
+			__antithesis_instrumentation__.Notify(128399)
 			mut := desc.NewBuilder().BuildCreatedMutable().(*tabledesc.Mutable)
 			mut.ID = id
 			desc = mut
+		} else {
+			__antithesis_instrumentation__.Notify(128406)
 		}
+		__antithesis_instrumentation__.Notify(128395)
 
 		b := txn.NewBatch()
 		b.CPut(tKey, desc.GetID(), nil)
@@ -64,72 +67,118 @@ func createSystemTable(
 	})
 }
 
-// runPostDeserializationChangesOnAllDescriptors will paginate through the
-// descriptor table and upgrade all descriptors in need of upgrading.
 func runPostDeserializationChangesOnAllDescriptors(
 	ctx context.Context, d migration.TenantDeps,
 ) error {
-	// maybeUpgradeDescriptors writes the descriptors with the given IDs
-	// and writes new versions for all descriptors which required post
-	// deserialization changes.
+	__antithesis_instrumentation__.Notify(128407)
+
 	maybeUpgradeDescriptors := func(
 		ctx context.Context, d migration.TenantDeps, toUpgrade []descpb.ID,
 	) error {
+		__antithesis_instrumentation__.Notify(128415)
 		return d.CollectionFactory.Txn(ctx, d.InternalExecutor, d.DB, func(
 			ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 		) error {
+			__antithesis_instrumentation__.Notify(128416)
 			descs, err := descriptors.GetMutableDescriptorsByID(ctx, txn, toUpgrade...)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(128419)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(128420)
 			}
+			__antithesis_instrumentation__.Notify(128417)
 			batch := txn.NewBatch()
 			for _, desc := range descs {
+				__antithesis_instrumentation__.Notify(128421)
 				if !desc.GetPostDeserializationChanges().HasChanges() {
+					__antithesis_instrumentation__.Notify(128423)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(128424)
 				}
+				__antithesis_instrumentation__.Notify(128422)
 				if err := descriptors.WriteDescToBatch(
 					ctx, false, desc, batch,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(128425)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(128426)
 				}
 			}
+			__antithesis_instrumentation__.Notify(128418)
 			return txn.Run(ctx, batch)
 		})
 	}
+	__antithesis_instrumentation__.Notify(128408)
 
 	query := `SELECT id, length(descriptor) FROM system.descriptor ORDER BY id DESC`
 	rows, err := d.InternalExecutor.QueryIterator(
-		ctx, "retrieve-descriptors-for-upgrade", nil /* txn */, query,
+		ctx, "retrieve-descriptors-for-upgrade", nil, query,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128427)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128428)
 	}
-	defer func() { _ = rows.Close() }()
+	__antithesis_instrumentation__.Notify(128409)
+	defer func() { __antithesis_instrumentation__.Notify(128429); _ = rows.Close() }()
+	__antithesis_instrumentation__.Notify(128410)
 	var toUpgrade []descpb.ID
 	var curBatchBytes int
-	const maxBatchSize = 1 << 19 // 512 KiB
+	const maxBatchSize = 1 << 19
 	ok, err := rows.Next(ctx)
-	for ; ok && err == nil; ok, err = rows.Next(ctx) {
+	for ; ok && func() bool {
+		__antithesis_instrumentation__.Notify(128430)
+		return err == nil == true
+	}() == true; ok, err = rows.Next(ctx) {
+		__antithesis_instrumentation__.Notify(128431)
 		datums := rows.Cur()
 		id := tree.MustBeDInt(datums[0])
 		size := tree.MustBeDInt(datums[1])
-		if curBatchBytes+int(size) > maxBatchSize && curBatchBytes > 0 {
+		if curBatchBytes+int(size) > maxBatchSize && func() bool {
+			__antithesis_instrumentation__.Notify(128433)
+			return curBatchBytes > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(128434)
 			if err := maybeUpgradeDescriptors(ctx, d, toUpgrade); err != nil {
+				__antithesis_instrumentation__.Notify(128436)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(128437)
 			}
+			__antithesis_instrumentation__.Notify(128435)
 			toUpgrade = toUpgrade[:0]
+		} else {
+			__antithesis_instrumentation__.Notify(128438)
 		}
+		__antithesis_instrumentation__.Notify(128432)
 		curBatchBytes += int(size)
 		toUpgrade = append(toUpgrade, descpb.ID(id))
 	}
+	__antithesis_instrumentation__.Notify(128411)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128439)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128440)
 	}
+	__antithesis_instrumentation__.Notify(128412)
 	if err := rows.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(128441)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128442)
 	}
+	__antithesis_instrumentation__.Notify(128413)
 	if len(toUpgrade) == 0 {
+		__antithesis_instrumentation__.Notify(128443)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(128444)
 	}
+	__antithesis_instrumentation__.Notify(128414)
 	return maybeUpgradeDescriptors(ctx, d, toUpgrade)
 }

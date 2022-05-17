@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserverbase
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -25,8 +17,6 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// MergeQueueEnabled is a setting that controls whether the merge queue is
-// enabled.
 var MergeQueueEnabled = settings.RegisterBoolSetting(
 	settings.SystemOnly,
 	"kv.range_merge.queue_enabled",
@@ -34,30 +24,22 @@ var MergeQueueEnabled = settings.RegisterBoolSetting(
 	true,
 )
 
-// TxnCleanupThreshold is the threshold after which a transaction is
-// considered abandoned and fit for removal, as measured by the
-// maximum of its last heartbeat and timestamp. Abort spans for the
-// transaction are cleaned up at the same time.
-//
-// TODO(tschottdorf): need to enforce at all times that this is much
-// larger than the heartbeat interval used by the coordinator.
 const TxnCleanupThreshold = time.Hour
 
-// CmdIDKey is a Raft command id. This will be logged unredacted - keep it random.
 type CmdIDKey string
 
-// SafeFormat implements redact.SafeFormatter.
 func (s CmdIDKey) SafeFormat(sp redact.SafePrinter, verb rune) {
+	__antithesis_instrumentation__.Notify(101790)
 	sp.Printf("%q", redact.SafeString(s))
 }
 
 func (s CmdIDKey) String() string {
+	__antithesis_instrumentation__.Notify(101791)
 	return redact.StringWithoutMarkers(s)
 }
 
 var _ redact.SafeFormatter = CmdIDKey("")
 
-// FilterArgs groups the arguments to a ReplicaCommandFilter.
 type FilterArgs struct {
 	Ctx     context.Context
 	CmdID   CmdIDKey
@@ -66,10 +48,9 @@ type FilterArgs struct {
 	Req     roachpb.Request
 	Hdr     roachpb.Header
 	Version roachpb.Version
-	Err     error // only used for TestingPostEvalFilter
+	Err     error
 }
 
-// ProposalFilterArgs groups the arguments to ReplicaProposalFilter.
 type ProposalFilterArgs struct {
 	Ctx        context.Context
 	Cmd        kvserverpb.RaftCommand
@@ -78,148 +59,180 @@ type ProposalFilterArgs struct {
 	Req        roachpb.BatchRequest
 }
 
-// ApplyFilterArgs groups the arguments to a ReplicaApplyFilter.
 type ApplyFilterArgs struct {
 	kvserverpb.ReplicatedEvalResult
 	CmdID       CmdIDKey
 	RangeID     roachpb.RangeID
 	StoreID     roachpb.StoreID
-	Req         *roachpb.BatchRequest // only set on the leaseholder
+	Req         *roachpb.BatchRequest
 	ForcedError *roachpb.Error
 }
 
-// InRaftCmd returns true if the filter is running in the context of a Raft
-// command (it could be running outside of one, for example for a read).
 func (f *FilterArgs) InRaftCmd() bool {
+	__antithesis_instrumentation__.Notify(101792)
 	return f.CmdID != ""
 }
 
-// ReplicaRequestFilter can be used in testing to influence the error returned
-// from a request before it is evaluated. Return nil to continue with regular
-// processing or non-nil to terminate processing with the returned error.
 type ReplicaRequestFilter func(context.Context, roachpb.BatchRequest) *roachpb.Error
 
-// ReplicaConcurrencyRetryFilter can be used to examine a concurrency retry
-// error before it is handled and its batch is re-evaluated.
 type ReplicaConcurrencyRetryFilter func(context.Context, roachpb.BatchRequest, *roachpb.Error)
 
-// ReplicaCommandFilter may be used in tests through the StoreTestingKnobs to
-// intercept the handling of commands and artificially generate errors. Return
-// nil to continue with regular processing or non-nil to terminate processing
-// with the returned error.
 type ReplicaCommandFilter func(args FilterArgs) *roachpb.Error
 
-// ReplicaProposalFilter can be used in testing to influence the error returned
-// from proposals after a request is evaluated but before it is proposed.
 type ReplicaProposalFilter func(args ProposalFilterArgs) *roachpb.Error
 
-// A ReplicaApplyFilter is a testing hook into raft command application.
-// See StoreTestingKnobs.
 type ReplicaApplyFilter func(args ApplyFilterArgs) (int, *roachpb.Error)
 
-// ReplicaResponseFilter is used in unittests to modify the outbound
-// response returned to a waiting client after a replica command has
-// been processed. This filter is invoked only by the command proposer.
 type ReplicaResponseFilter func(context.Context, roachpb.BatchRequest, *roachpb.BatchResponse) *roachpb.Error
 
-// ReplicaRangefeedFilter is used in unit tests to modify the request, inject
-// responses, or return errors from rangefeeds.
 type ReplicaRangefeedFilter func(
 	args *roachpb.RangeFeedRequest, stream roachpb.Internal_RangeFeedServer,
 ) *roachpb.Error
 
-// ContainsKey returns whether this range contains the specified key.
 func ContainsKey(desc *roachpb.RangeDescriptor, key roachpb.Key) bool {
+	__antithesis_instrumentation__.Notify(101793)
 	if bytes.HasPrefix(key, keys.LocalRangeIDPrefix) {
+		__antithesis_instrumentation__.Notify(101796)
 		return bytes.HasPrefix(key, keys.MakeRangeIDPrefix(desc.RangeID))
+	} else {
+		__antithesis_instrumentation__.Notify(101797)
 	}
+	__antithesis_instrumentation__.Notify(101794)
 	keyAddr, err := keys.Addr(key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(101798)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(101799)
 	}
+	__antithesis_instrumentation__.Notify(101795)
 	return desc.ContainsKey(keyAddr)
 }
 
-// ContainsKeyRange returns whether this range contains the specified key range
-// from start to end.
 func ContainsKeyRange(desc *roachpb.RangeDescriptor, start, end roachpb.Key) bool {
+	__antithesis_instrumentation__.Notify(101800)
 	startKeyAddr, err := keys.Addr(start)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(101803)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(101804)
 	}
+	__antithesis_instrumentation__.Notify(101801)
 	endKeyAddr, err := keys.Addr(end)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(101805)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(101806)
 	}
+	__antithesis_instrumentation__.Notify(101802)
 	return desc.ContainsKeyRange(startKeyAddr, endKeyAddr)
 }
 
-// IntersectSpan takes an span and a descriptor. It then splits the span
-// into up to three pieces: A first piece which is contained in the Range,
-// and a slice of up to two further spans which are outside of the key
-// range. An span for which [Key, EndKey) is empty does not result in any
-// spans; thus intersectIntent only applies to span ranges.
-//
-// A range-local span range is never split: It's returned as either
-// belonging to or outside of the descriptor's key range, and passing an
-// span which begins range-local but ends non-local results in a panic.
-//
-// TODO(tschottdorf): move to proto, make more gen-purpose - kv.truncate does
-// some similar things.
 func IntersectSpan(
 	span roachpb.Span, desc *roachpb.RangeDescriptor,
 ) (middle *roachpb.Span, outside []roachpb.Span) {
+	__antithesis_instrumentation__.Notify(101807)
 	start, end := desc.StartKey.AsRawKey(), desc.EndKey.AsRawKey()
 	if len(span.EndKey) == 0 {
+		__antithesis_instrumentation__.Notify(101813)
 		outside = append(outside, span)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(101814)
 	}
+	__antithesis_instrumentation__.Notify(101808)
 	if bytes.Compare(span.Key, keys.LocalRangeMax) < 0 {
+		__antithesis_instrumentation__.Notify(101815)
 		if bytes.Compare(span.EndKey, keys.LocalRangeMax) >= 0 {
+			__antithesis_instrumentation__.Notify(101818)
 			panic(fmt.Sprintf("a local intent range may not have a non-local portion: %s", span))
+		} else {
+			__antithesis_instrumentation__.Notify(101819)
 		}
+		__antithesis_instrumentation__.Notify(101816)
 		if ContainsKeyRange(desc, span.Key, span.EndKey) {
+			__antithesis_instrumentation__.Notify(101820)
 			return &span, nil
+		} else {
+			__antithesis_instrumentation__.Notify(101821)
 		}
+		__antithesis_instrumentation__.Notify(101817)
 		return nil, append(outside, span)
+	} else {
+		__antithesis_instrumentation__.Notify(101822)
 	}
-	// From now on, we're dealing with plain old key ranges - no more local
-	// addressing.
+	__antithesis_instrumentation__.Notify(101809)
+
 	if bytes.Compare(span.Key, start) < 0 {
-		// Span spans a part to the left of [start, end).
+		__antithesis_instrumentation__.Notify(101823)
+
 		iCopy := span
 		if bytes.Compare(start, span.EndKey) < 0 {
+			__antithesis_instrumentation__.Notify(101825)
 			iCopy.EndKey = start
+		} else {
+			__antithesis_instrumentation__.Notify(101826)
 		}
+		__antithesis_instrumentation__.Notify(101824)
 		span.Key = iCopy.EndKey
 		outside = append(outside, iCopy)
+	} else {
+		__antithesis_instrumentation__.Notify(101827)
 	}
-	if bytes.Compare(span.Key, span.EndKey) < 0 && bytes.Compare(end, span.EndKey) < 0 {
-		// Span spans a part to the right of [start, end).
+	__antithesis_instrumentation__.Notify(101810)
+	if bytes.Compare(span.Key, span.EndKey) < 0 && func() bool {
+		__antithesis_instrumentation__.Notify(101828)
+		return bytes.Compare(end, span.EndKey) < 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(101829)
+
 		iCopy := span
 		if bytes.Compare(iCopy.Key, end) < 0 {
+			__antithesis_instrumentation__.Notify(101831)
 			iCopy.Key = end
+		} else {
+			__antithesis_instrumentation__.Notify(101832)
 		}
+		__antithesis_instrumentation__.Notify(101830)
 		span.EndKey = iCopy.Key
 		outside = append(outside, iCopy)
+	} else {
+		__antithesis_instrumentation__.Notify(101833)
 	}
-	if bytes.Compare(span.Key, span.EndKey) < 0 && bytes.Compare(span.Key, start) >= 0 && bytes.Compare(end, span.EndKey) >= 0 {
+	__antithesis_instrumentation__.Notify(101811)
+	if bytes.Compare(span.Key, span.EndKey) < 0 && func() bool {
+		__antithesis_instrumentation__.Notify(101834)
+		return bytes.Compare(span.Key, start) >= 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(101835)
+		return bytes.Compare(end, span.EndKey) >= 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(101836)
 		middle = &span
+	} else {
+		__antithesis_instrumentation__.Notify(101837)
 	}
+	__antithesis_instrumentation__.Notify(101812)
 	return
 }
 
-// SplitByLoadMergeDelay wraps "kv.range_split.by_load_merge_delay".
 var SplitByLoadMergeDelay = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"kv.range_split.by_load_merge_delay",
 	"the delay that range splits created due to load will wait before considering being merged away",
 	5*time.Minute,
 	func(v time.Duration) error {
+		__antithesis_instrumentation__.Notify(101838)
 		const minDelay = 5 * time.Second
 		if v < minDelay {
+			__antithesis_instrumentation__.Notify(101840)
 			return errors.Errorf("cannot be set to a value below %s", minDelay)
+		} else {
+			__antithesis_instrumentation__.Notify(101841)
 		}
+		__antithesis_instrumentation__.Notify(101839)
 		return nil
 	},
 )

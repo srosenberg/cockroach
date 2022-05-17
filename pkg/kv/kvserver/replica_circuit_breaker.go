@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -44,11 +36,7 @@ type replicaInCircuitBreaker interface {
 
 var defaultReplicaCircuitBreakerSlowReplicationThreshold = envutil.EnvOrDefaultDuration(
 	"COCKROACH_REPLICA_CIRCUIT_BREAKER_SLOW_REPLICATION_THRESHOLD",
-	// SlowRequestThreshold is used in various places to log warnings on slow
-	// request phases. We are even more conservative about the circuit breakers,
-	// i.e. multiply by a factor. This is mainly defense in depth; at time of
-	// writing the slow request threshold is 15s which *should* also be good
-	// enough for circuit breakers since it's already fairly conservative.
+
 	4*base.SlowRequestThreshold,
 )
 
@@ -58,25 +46,29 @@ var replicaCircuitBreakerSlowReplicationThreshold = settings.RegisterPublicDurat
 	"duration after which slow proposals trip the per-Replica circuit breaker (zero duration disables breakers)",
 	defaultReplicaCircuitBreakerSlowReplicationThreshold,
 	func(d time.Duration) error {
-		// Setting the breaker duration too low could be very dangerous to cluster
-		// health (breaking things to the point where the cluster setting can't be
-		// changed), so enforce a sane minimum.
+		__antithesis_instrumentation__.Notify(115698)
+
 		const min = 500 * time.Millisecond
 		if d == 0 {
+			__antithesis_instrumentation__.Notify(115701)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(115702)
 		}
+		__antithesis_instrumentation__.Notify(115699)
 		if d <= min {
+			__antithesis_instrumentation__.Notify(115703)
 			return errors.Errorf("must specify a minimum of %s", min)
+		} else {
+			__antithesis_instrumentation__.Notify(115704)
 		}
+		__antithesis_instrumentation__.Notify(115700)
 		return nil
 	},
 )
 
-// Telemetry counter to count number of trip events.
 var telemetryTripAsync = telemetry.GetCounterOnce("kv.replica_circuit_breaker.num_tripped_events")
 
-// replicaCircuitBreaker is a wrapper around *circuit.Breaker that makes it
-// convenient for use as a per-Replica circuit breaker.
 type replicaCircuitBreaker struct {
 	ambCtx  log.AmbientContext
 	stopper *stop.Stopper
@@ -84,45 +76,65 @@ type replicaCircuitBreaker struct {
 	st      *cluster.Settings
 	wrapped *circuit.Breaker
 
-	versionIsActive int32 // atomic
+	versionIsActive int32
 }
 
 func (br *replicaCircuitBreaker) HasMark(err error) bool {
+	__antithesis_instrumentation__.Notify(115705)
 	return br.wrapped.HasMark(err)
 }
 
 func (br *replicaCircuitBreaker) canEnable() bool {
+	__antithesis_instrumentation__.Notify(115706)
 	b := atomic.LoadInt32(&br.versionIsActive) == 1
 	if b {
-		return true // fast path
+		__antithesis_instrumentation__.Notify(115709)
+		return true
+	} else {
+		__antithesis_instrumentation__.Notify(115710)
 	}
-	// IsActive is mildly expensive since it has to unmarshal
-	// a protobuf.
+	__antithesis_instrumentation__.Notify(115707)
+
 	if br.st.Version.IsActive(context.Background(), clusterversion.ProbeRequest) {
+		__antithesis_instrumentation__.Notify(115711)
 		atomic.StoreInt32(&br.versionIsActive, 1)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(115712)
 	}
-	return false // slow path
+	__antithesis_instrumentation__.Notify(115708)
+	return false
 }
 
 func (br *replicaCircuitBreaker) enabled() bool {
-	return replicaCircuitBreakerSlowReplicationThreshold.Get(&br.st.SV) > 0 && br.canEnable()
+	__antithesis_instrumentation__.Notify(115713)
+	return replicaCircuitBreakerSlowReplicationThreshold.Get(&br.st.SV) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(115714)
+		return br.canEnable() == true
+	}() == true
 }
 
 func (br *replicaCircuitBreaker) TripAsync(err error) {
+	__antithesis_instrumentation__.Notify(115715)
 	if !br.enabled() {
+		__antithesis_instrumentation__.Notify(115717)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(115718)
 	}
+	__antithesis_instrumentation__.Notify(115716)
 
 	_ = br.stopper.RunAsyncTask(
 		br.ambCtx.AnnotateCtx(context.Background()), "trip-breaker",
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(115719)
 			br.tripSync(err)
 		},
 	)
 }
 
 func (br *replicaCircuitBreaker) tripSync(err error) {
+	__antithesis_instrumentation__.Notify(115720)
 	br.wrapped.Report(br.r.replicaUnavailableError(err))
 }
 
@@ -133,13 +145,21 @@ type signaller interface {
 
 type neverTripSignaller struct{}
 
-func (s neverTripSignaller) Err() error         { return nil }
-func (s neverTripSignaller) C() <-chan struct{} { return nil }
+func (s neverTripSignaller) Err() error { __antithesis_instrumentation__.Notify(115721); return nil }
+func (s neverTripSignaller) C() <-chan struct{} {
+	__antithesis_instrumentation__.Notify(115722)
+	return nil
+}
 
 func (br *replicaCircuitBreaker) Signal() signaller {
+	__antithesis_instrumentation__.Notify(115723)
 	if !br.enabled() {
+		__antithesis_instrumentation__.Notify(115725)
 		return neverTripSignaller{}
+	} else {
+		__antithesis_instrumentation__.Notify(115726)
 	}
+	__antithesis_instrumentation__.Notify(115724)
 	return br.wrapped.Signal()
 }
 
@@ -151,6 +171,7 @@ func newReplicaCircuitBreaker(
 	onTrip func(),
 	onReset func(),
 ) *replicaCircuitBreaker {
+	__antithesis_instrumentation__.Notify(115727)
 	br := &replicaCircuitBreaker{
 		stopper: stopper,
 		ambCtx:  ambientCtx,
@@ -158,11 +179,12 @@ func newReplicaCircuitBreaker(
 		st:      cs,
 	}
 	br.wrapped = circuit.NewBreaker(circuit.Options{
-		Name:       "breaker", // log bridge has ctx tags
+		Name:       "breaker",
 		AsyncProbe: br.asyncProbe,
 		EventHandler: &replicaCircuitBreakerLogger{
 			EventHandler: &circuit.EventLogger{
 				Log: func(buf redact.StringBuilder) {
+					__antithesis_instrumentation__.Notify(115729)
 					log.Infof(ambientCtx.AnnotateCtx(context.Background()), "%s", buf)
 				},
 			},
@@ -170,6 +192,7 @@ func newReplicaCircuitBreaker(
 			onReset: onReset,
 		},
 	})
+	__antithesis_instrumentation__.Notify(115728)
 
 	return br
 }
@@ -181,55 +204,71 @@ type replicaCircuitBreakerLogger struct {
 }
 
 func (r replicaCircuitBreakerLogger) OnTrip(br *circuit.Breaker, prev, cur error) {
+	__antithesis_instrumentation__.Notify(115730)
 	if prev == nil {
+		__antithesis_instrumentation__.Notify(115732)
 		r.onTrip()
+	} else {
+		__antithesis_instrumentation__.Notify(115733)
 	}
+	__antithesis_instrumentation__.Notify(115731)
 	r.EventHandler.OnTrip(br, prev, cur)
 }
 
 func (r replicaCircuitBreakerLogger) OnReset(br *circuit.Breaker) {
+	__antithesis_instrumentation__.Notify(115734)
 	r.onReset()
 	r.EventHandler.OnReset(br)
 }
 
 func (br *replicaCircuitBreaker) asyncProbe(report func(error), done func()) {
+	__antithesis_instrumentation__.Notify(115735)
 	bgCtx := br.ambCtx.AnnotateCtx(context.Background())
 	if err := br.stopper.RunAsyncTask(bgCtx, "replica-probe", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(115736)
 		defer done()
 
 		if !br.enabled() {
+			__antithesis_instrumentation__.Notify(115739)
 			report(nil)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(115740)
 		}
+		__antithesis_instrumentation__.Notify(115737)
 
 		brErr := br.Signal().Err()
 		if brErr == nil {
-			// This shouldn't happen, but if we're not even tripped, don't do
-			// anything.
-			return
-		}
+			__antithesis_instrumentation__.Notify(115741)
 
-		// Poison any inflight latches. Note that any new request that is added in
-		// while the probe is running but after poisonInflightLatches has been
-		// invoked will remain untouched. We rely on the replica to periodically
-		// access the circuit breaker to trigger additional probes in that case.
-		// (This happens in refreshProposalsLocked).
+			return
+		} else {
+			__antithesis_instrumentation__.Notify(115742)
+		}
+		__antithesis_instrumentation__.Notify(115738)
+
 		br.r.poisonInflightLatches(brErr)
 		err := sendProbe(ctx, br.r)
 		report(err)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(115743)
 		done()
+	} else {
+		__antithesis_instrumentation__.Notify(115744)
 	}
 }
 
 func sendProbe(ctx context.Context, r replicaInCircuitBreaker) error {
-	// NB: ProbeRequest has the bypassesCircuitBreaker flag. If in the future we
-	// enhance the probe, we may need to allow any additional requests we send to
-	// chose to bypass the circuit breaker explicitly.
+	__antithesis_instrumentation__.Notify(115745)
+
 	desc := r.Desc()
 	if !desc.IsInitialized() {
+		__antithesis_instrumentation__.Notify(115749)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(115750)
 	}
+	__antithesis_instrumentation__.Notify(115746)
 	ba := roachpb.BatchRequest{}
 	ba.Timestamp = r.Clock().Now()
 	ba.RangeID = r.Desc().RangeID
@@ -238,17 +277,26 @@ func sendProbe(ctx context.Context, r replicaInCircuitBreaker) error {
 	ba.Add(probeReq)
 	thresh, ok := r.slowReplicationThreshold(&ba)
 	if !ok {
-		// Breakers are disabled now.
+		__antithesis_instrumentation__.Notify(115751)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(115752)
 	}
+	__antithesis_instrumentation__.Notify(115747)
 	if err := contextutil.RunWithTimeout(ctx, "probe", thresh,
 		func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(115753)
 			_, pErr := r.Send(ctx, ba)
 			return pErr.GoError()
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(115754)
 		return r.replicaUnavailableError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(115755)
 	}
+	__antithesis_instrumentation__.Notify(115748)
 	return nil
 }
 
@@ -259,38 +307,51 @@ func replicaUnavailableError(
 	lm liveness.IsLiveMap,
 	rs *raft.Status,
 ) error {
+	__antithesis_instrumentation__.Notify(115756)
 	nonLiveRepls := roachpb.MakeReplicaSet(nil)
 	for _, rDesc := range desc.Replicas().Descriptors() {
+		__antithesis_instrumentation__.Notify(115760)
 		if lm[rDesc.NodeID].IsLive {
+			__antithesis_instrumentation__.Notify(115762)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(115763)
 		}
+		__antithesis_instrumentation__.Notify(115761)
 		nonLiveRepls.AddReplica(rDesc)
 	}
+	__antithesis_instrumentation__.Notify(115757)
 
 	canMakeProgress := desc.Replicas().CanMakeProgress(
 		func(replDesc roachpb.ReplicaDescriptor) bool {
+			__antithesis_instrumentation__.Notify(115764)
 			return lm[replDesc.NodeID].IsLive
 		},
 	)
+	__antithesis_instrumentation__.Notify(115758)
 
-	// Ensure good redaction.
 	var _ redact.SafeFormatter = nonLiveRepls
 	var _ redact.SafeFormatter = desc
 	var _ redact.SafeFormatter = replDesc
 
 	if len(nonLiveRepls.AsProto()) > 0 {
+		__antithesis_instrumentation__.Notify(115765)
 		err = errors.Wrapf(err, "replicas on non-live nodes: %v (lost quorum: %t)", nonLiveRepls, !canMakeProgress)
+	} else {
+		__antithesis_instrumentation__.Notify(115766)
 	}
+	__antithesis_instrumentation__.Notify(115759)
 
 	err = errors.Wrapf(
 		err,
-		"raft status: %+v", redact.Safe(rs), // raft status contains no PII
+		"raft status: %+v", redact.Safe(rs),
 	)
 
 	return roachpb.NewReplicaUnavailableError(err, desc, replDesc)
 }
 
 func (r *Replica) replicaUnavailableError(err error) error {
+	__antithesis_instrumentation__.Notify(115767)
 	desc := r.Desc()
 	replDesc, _ := desc.GetReplicaDescriptor(r.store.StoreID())
 

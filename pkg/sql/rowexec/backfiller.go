@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -35,14 +27,10 @@ import (
 )
 
 type chunkBackfiller interface {
-	// prepare must be called before runChunk.
 	prepare(ctx context.Context) error
 
-	// close should always be called to close a backfiller if prepare() was called.
 	close(ctx context.Context)
 
-	// runChunk returns the next-key and an error. next-key is nil
-	// once the backfill is complete.
 	runChunk(
 		ctx context.Context,
 		span roachpb.Span,
@@ -50,21 +38,16 @@ type chunkBackfiller interface {
 		readAsOf hlc.Timestamp,
 	) (roachpb.Key, error)
 
-	// CurrentBufferFill returns how fractionally full the configured buffer is.
 	CurrentBufferFill() float32
 
-	// flush must be called after the last chunk to finish buffered work.
 	flush(ctx context.Context) error
 }
 
-// backfiller is a processor that implements a distributed backfill of
-// an entity, like indexes or columns, during a schema change.
 type backfiller struct {
 	chunks chunkBackfiller
-	// name is the name of the kind of entity this backfiller processes.
+
 	name string
-	// mutationFilter returns true if the mutation should be processed by the
-	// chunkBackfiller.
+
 	filter backfill.MutationFilter
 
 	spec        execinfrapb.BackfillerSpec
@@ -74,66 +57,69 @@ type backfiller struct {
 	processorID int32
 }
 
-// OutputTypes is part of the execinfra.Processor interface.
 func (*backfiller) OutputTypes() []*types.T {
-	// No output types.
+	__antithesis_instrumentation__.Notify(571905)
+
 	return nil
 }
 
-// MustBeStreaming is part of the execinfra.Processor interface.
 func (*backfiller) MustBeStreaming() bool {
+	__antithesis_instrumentation__.Notify(571906)
 	return false
 }
 
-// Run is part of the execinfra.Processor interface.
 func (b *backfiller) Run(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(571907)
 	opName := fmt.Sprintf("%sBackfiller", b.name)
 	ctx = logtags.AddTag(ctx, opName, int(b.spec.Table.ID))
 	ctx, span := execinfra.ProcessorSpan(ctx, opName)
 	defer span.Finish()
 	meta := b.doRun(ctx)
 	execinfra.SendTraceData(ctx, b.output)
-	if emitHelper(ctx, b.output, &b.out, nil /* row */, meta, func(ctx context.Context) {}) {
+	if emitHelper(ctx, b.output, &b.out, nil, meta, func(ctx context.Context) { __antithesis_instrumentation__.Notify(571908) }) {
+		__antithesis_instrumentation__.Notify(571909)
 		b.output.ProducerDone()
+	} else {
+		__antithesis_instrumentation__.Notify(571910)
 	}
 }
 
 func (b *backfiller) doRun(ctx context.Context) *execinfrapb.ProducerMetadata {
+	__antithesis_instrumentation__.Notify(571911)
 	semaCtx := tree.MakeSemaContext()
 	if err := b.out.Init(&execinfrapb.PostProcessSpec{}, nil, &semaCtx, b.flowCtx.NewEvalCtx()); err != nil {
+		__antithesis_instrumentation__.Notify(571914)
 		return &execinfrapb.ProducerMetadata{Err: err}
+	} else {
+		__antithesis_instrumentation__.Notify(571915)
 	}
+	__antithesis_instrumentation__.Notify(571912)
 	finishedSpans, err := b.mainLoop(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(571916)
 		return &execinfrapb.ProducerMetadata{Err: err}
+	} else {
+		__antithesis_instrumentation__.Notify(571917)
 	}
+	__antithesis_instrumentation__.Notify(571913)
 	var prog execinfrapb.RemoteProducerMetadata_BulkProcessorProgress
 	prog.CompletedSpans = append(prog.CompletedSpans, finishedSpans...)
 	return &execinfrapb.ProducerMetadata{BulkProcessorProgress: &prog}
 }
 
-// mainLoop invokes runChunk on chunks of rows.
-// It does not close the output.
 func (b *backfiller) mainLoop(ctx context.Context) (roachpb.Spans, error) {
+	__antithesis_instrumentation__.Notify(571918)
 	if err := b.chunks.prepare(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(571922)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(571923)
 	}
+	__antithesis_instrumentation__.Notify(571919)
 	defer b.chunks.close(ctx)
 
-	// As we approach the end of the configured duration, we may want to actually
-	// opportunistically wrap up a bit early. Specifically, if doing so can avoid
-	// starting a new fresh buffer that would need to then be flushed shortly
-	// thereafter with very little in it, resulting in many small SSTs that are
-	// almost as expensive to for their recipients but don't actually add much
-	// data. Instead, if our buffer is full enough that it is likely to flush soon
-	// and we're near the end of the alloted time, go ahead and stop there, flush
-	// and return.
 	opportunisticCheckpointAfter := (b.spec.Duration * 4) / 5
-	// opportunisticFillThreshold is the buffer fill fraction above which we'll
-	// conclude that running another chunk risks starting *but not really filling*
-	// a new buffer. This can be set pretty high -- if a single chunk is likely to
-	// fill more than this amount and cause a flush, then it likely also fills
-	// a non-trivial part of the next buffer.
+
 	const opportunisticCheckpointThreshold = 0.8
 	start := timeutil.Now()
 	totalChunks := 0
@@ -141,53 +127,77 @@ func (b *backfiller) mainLoop(ctx context.Context) (roachpb.Spans, error) {
 	var finishedSpans roachpb.Spans
 
 	for i := range b.spec.Spans {
+		__antithesis_instrumentation__.Notify(571924)
 		log.VEventf(ctx, 2, "%s backfiller starting span %d of %d: %s",
 			b.name, i+1, len(b.spec.Spans), b.spec.Spans[i])
 		chunks := 0
 		todo := b.spec.Spans[i]
 		for todo.Key != nil {
+			__antithesis_instrumentation__.Notify(571927)
 			log.VEventf(ctx, 3, "%s backfiller starting chunk %d: %s", b.name, chunks, todo)
 			var err error
 			todo.Key, err = b.chunks.runChunk(ctx, todo, rowinfra.RowLimit(b.spec.ChunkSize), b.spec.ReadAsOf)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(571930)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(571931)
 			}
+			__antithesis_instrumentation__.Notify(571928)
 			chunks++
 			running := timeutil.Since(start)
-			if running > opportunisticCheckpointAfter && b.chunks.CurrentBufferFill() > opportunisticCheckpointThreshold {
+			if running > opportunisticCheckpointAfter && func() bool {
+				__antithesis_instrumentation__.Notify(571932)
+				return b.chunks.CurrentBufferFill() > opportunisticCheckpointThreshold == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(571933)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(571934)
 			}
+			__antithesis_instrumentation__.Notify(571929)
 			if running > b.spec.Duration {
+				__antithesis_instrumentation__.Notify(571935)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(571936)
 			}
 		}
+		__antithesis_instrumentation__.Notify(571925)
 		totalChunks += chunks
 
-		// If we exited the loop with a non-nil resume key, we ran out of time.
 		if todo.Key != nil {
+			__antithesis_instrumentation__.Notify(571937)
 			log.VEventf(ctx, 2,
 				"%s backfiller ran out of time on span %d of %d, will resume it at %s next time",
 				b.name, i+1, len(b.spec.Spans), todo)
 			finishedSpans = append(finishedSpans, roachpb.Span{Key: b.spec.Spans[i].Key, EndKey: todo.Key})
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(571938)
 		}
+		__antithesis_instrumentation__.Notify(571926)
 		log.VEventf(ctx, 2, "%s backfiller finished span %d of %d: %s",
 			b.name, i+1, len(b.spec.Spans), b.spec.Spans[i])
 		totalSpans++
 		finishedSpans = append(finishedSpans, b.spec.Spans[i])
 	}
+	__antithesis_instrumentation__.Notify(571920)
 
 	log.VEventf(ctx, 3, "%s backfiller flushing...", b.name)
 	if err := b.chunks.flush(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(571939)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(571940)
 	}
+	__antithesis_instrumentation__.Notify(571921)
 	log.VEventf(ctx, 2, "%s backfiller finished %d spans in %d chunks in %s",
 		b.name, totalSpans, totalChunks, timeutil.Since(start))
 
 	return finishedSpans, nil
 }
 
-// GetResumeSpans returns a ResumeSpanList from a job.
 func GetResumeSpans(
 	ctx context.Context,
 	jobsRegistry *jobs.Registry,
@@ -198,79 +208,124 @@ func GetResumeSpans(
 	mutationID descpb.MutationID,
 	filter backfill.MutationFilter,
 ) ([]roachpb.Span, *jobs.Job, int, error) {
+	__antithesis_instrumentation__.Notify(571941)
 	tableDesc, err := col.Direct().MustGetTableDescByID(ctx, txn, tableID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(571950)
 		return nil, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(571951)
 	}
+	__antithesis_instrumentation__.Notify(571942)
 
-	// Find the index of the first mutation that is being worked on.
 	const noIndex = -1
 	mutationIdx := noIndex
 	for i, m := range tableDesc.AllMutations() {
+		__antithesis_instrumentation__.Notify(571952)
 		if m.MutationID() != mutationID {
+			__antithesis_instrumentation__.Notify(571954)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(571955)
 		}
-		if mutationIdx == noIndex && filter(m) {
+		__antithesis_instrumentation__.Notify(571953)
+		if mutationIdx == noIndex && func() bool {
+			__antithesis_instrumentation__.Notify(571956)
+			return filter(m) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(571957)
 			mutationIdx = i
+		} else {
+			__antithesis_instrumentation__.Notify(571958)
 		}
 	}
+	__antithesis_instrumentation__.Notify(571943)
 
 	if mutationIdx == noIndex {
+		__antithesis_instrumentation__.Notify(571959)
 		return nil, nil, 0, errors.AssertionFailedf(
 			"mutation %d has completed", errors.Safe(mutationID))
+	} else {
+		__antithesis_instrumentation__.Notify(571960)
 	}
+	__antithesis_instrumentation__.Notify(571944)
 
-	// Find the job.
 	var jobID jobspb.JobID
 	if len(tableDesc.GetMutationJobs()) > 0 {
-		// TODO (lucy): We need to get rid of MutationJobs. This is the only place
-		// where we need to get the job where it's not completely straightforward to
-		// remove the use of MutationJobs, since the backfiller doesn't otherwise
-		// know which job it's associated with.
+		__antithesis_instrumentation__.Notify(571961)
+
 		for _, job := range tableDesc.GetMutationJobs() {
+			__antithesis_instrumentation__.Notify(571962)
 			if job.MutationID == mutationID {
+				__antithesis_instrumentation__.Notify(571963)
 				jobID = job.JobID
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(571964)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(571965)
 	}
+	__antithesis_instrumentation__.Notify(571945)
 
 	if jobID == 0 {
+		__antithesis_instrumentation__.Notify(571966)
 		log.Errorf(ctx, "mutation with no job: %d, table desc: %+v", mutationID, tableDesc)
 		return nil, nil, 0, errors.AssertionFailedf(
 			"no job found for mutation %d", errors.Safe(mutationID))
+	} else {
+		__antithesis_instrumentation__.Notify(571967)
 	}
+	__antithesis_instrumentation__.Notify(571946)
 
 	job, err := jobsRegistry.LoadJobWithTxn(ctx, jobID, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(571968)
 		return nil, nil, 0, errors.Wrapf(err, "can't find job %d", errors.Safe(jobID))
+	} else {
+		__antithesis_instrumentation__.Notify(571969)
 	}
+	__antithesis_instrumentation__.Notify(571947)
 	details, ok := job.Details().(jobspb.SchemaChangeDetails)
 	if !ok {
+		__antithesis_instrumentation__.Notify(571970)
 		return nil, nil, 0, errors.AssertionFailedf(
 			"expected SchemaChangeDetails job type, got %T", job.Details())
+	} else {
+		__antithesis_instrumentation__.Notify(571971)
 	}
+	__antithesis_instrumentation__.Notify(571948)
 
 	spanList := details.ResumeSpanList[mutationIdx].ResumeSpans
 	prefix := codec.TenantPrefix()
 	for i := range spanList {
+		__antithesis_instrumentation__.Notify(571972)
 		spanList[i], err = keys.RewriteSpanToTenantPrefix(spanList[i], prefix)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571973)
 			return nil, nil, 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(571974)
 		}
 	}
-	// Return the resume spans from the job using the mutation idx.
+	__antithesis_instrumentation__.Notify(571949)
+
 	return spanList, job, mutationIdx, nil
 }
 
-// SetResumeSpansInJob adds a list of resume spans into a job details field.
 func SetResumeSpansInJob(
 	ctx context.Context, spans []roachpb.Span, mutationIdx int, txn *kv.Txn, job *jobs.Job,
 ) error {
+	__antithesis_instrumentation__.Notify(571975)
 	details, ok := job.Details().(jobspb.SchemaChangeDetails)
 	if !ok {
+		__antithesis_instrumentation__.Notify(571977)
 		return errors.Errorf("expected SchemaChangeDetails job type, got %T", job.Details())
+	} else {
+		__antithesis_instrumentation__.Notify(571978)
 	}
+	__antithesis_instrumentation__.Notify(571976)
 	details.ResumeSpanList[mutationIdx].ResumeSpans = spans
 	return job.SetDetails(ctx, txn, details)
 }

@@ -1,17 +1,8 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tracedumper
 
-// TestingGetTraceDumpDir returns the trace directory that the TraceDumper was
-// configured with. This is used solely for testing purposes.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 func TestingGetTraceDumpDir(td *TraceDumper) string {
+	__antithesis_instrumentation__.Notify(239503)
 	return td.store.GetFullPath("")
 }

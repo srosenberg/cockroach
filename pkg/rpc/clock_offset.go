@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rpc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,18 +16,12 @@ import (
 	"github.com/montanaflynn/stats"
 )
 
-// RemoteClockMetrics is the collection of metrics for the clock monitor.
 type RemoteClockMetrics struct {
 	ClockOffsetMeanNanos   *metric.Gauge
 	ClockOffsetStdDevNanos *metric.Gauge
 	LatencyHistogramNanos  *metric.Histogram
 }
 
-// avgLatencyMeasurementAge determines how to exponentially weight the
-// moving average of latency measurements. This means that the weight
-// will center around the 20th oldest measurement, such that for measurements
-// that are made every 3 seconds, the average measurement will be about one
-// minute old.
 const avgLatencyMeasurementAge = 20.0
 
 var (
@@ -59,25 +45,31 @@ var (
 	}
 )
 
-// A stateful trigger that fires once when exceeding a threshold, then must
-// fall below another lower threshold before firing again.
 type resettingMaxTrigger bool
 
 func (t *resettingMaxTrigger) triggers(value, resetThreshold, triggerThreshold float64) bool {
+	__antithesis_instrumentation__.Notify(184194)
 	if *t {
-		// This is the "recently triggered" state.
-		// Never trigger. Transition to "normal" state if below resetThreshold.
+		__antithesis_instrumentation__.Notify(184196)
+
 		if value < resetThreshold {
+			__antithesis_instrumentation__.Notify(184197)
 			*t = false
+		} else {
+			__antithesis_instrumentation__.Notify(184198)
 		}
 	} else {
-		// This is the "normal" state.
-		// Trigger and transition to "recently triggered" if above triggerThreshold.
+		__antithesis_instrumentation__.Notify(184199)
+
 		if value > triggerThreshold {
+			__antithesis_instrumentation__.Notify(184200)
 			*t = true
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(184201)
 		}
 	}
+	__antithesis_instrumentation__.Notify(184195)
 	return false
 }
 
@@ -86,8 +78,6 @@ type latencyInfo struct {
 	trigger  resettingMaxTrigger
 }
 
-// RemoteClockMonitor keeps track of the most recent measurements of remote
-// offsets and round-trip latency from this node to connected nodes.
 type RemoteClockMonitor struct {
 	clock     *hlc.Clock
 	offsetTTL time.Duration
@@ -101,10 +91,10 @@ type RemoteClockMonitor struct {
 	metrics RemoteClockMetrics
 }
 
-// newRemoteClockMonitor returns a monitor with the given server clock.
 func newRemoteClockMonitor(
 	clock *hlc.Clock, offsetTTL time.Duration, histogramWindowInterval time.Duration,
 ) *RemoteClockMonitor {
+	__antithesis_instrumentation__.Notify(184202)
 	r := RemoteClockMonitor{
 		clock:     clock,
 		offsetTTL: offsetTTL,
@@ -112,8 +102,12 @@ func newRemoteClockMonitor(
 	r.mu.offsets = make(map[string]RemoteOffset)
 	r.mu.latencyInfos = make(map[string]*latencyInfo)
 	if histogramWindowInterval == 0 {
+		__antithesis_instrumentation__.Notify(184204)
 		histogramWindowInterval = time.Duration(math.MaxInt64)
+	} else {
+		__antithesis_instrumentation__.Notify(184205)
 	}
+	__antithesis_instrumentation__.Notify(184203)
 	r.metrics = RemoteClockMetrics{
 		ClockOffsetMeanNanos:   metric.NewGauge(metaClockOffsetMeanNanos),
 		ClockOffsetStdDevNanos: metric.NewGauge(metaClockOffsetStdDevNanos),
@@ -122,194 +116,258 @@ func newRemoteClockMonitor(
 	return &r
 }
 
-// Metrics returns the metrics struct. Useful to examine individual metrics,
-// or to add to the registry.
 func (r *RemoteClockMonitor) Metrics() *RemoteClockMetrics {
+	__antithesis_instrumentation__.Notify(184206)
 	return &r.metrics
 }
 
-// Latency returns the exponentially weighted moving average latency to the
-// given node address. Returns true if the measurement is valid, or false if
-// we don't have enough samples to compute a reliable average.
 func (r *RemoteClockMonitor) Latency(addr string) (time.Duration, bool) {
+	__antithesis_instrumentation__.Notify(184207)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if info, ok := r.mu.latencyInfos[addr]; ok && info.avgNanos.Value() != 0.0 {
+	if info, ok := r.mu.latencyInfos[addr]; ok && func() bool {
+		__antithesis_instrumentation__.Notify(184209)
+		return info.avgNanos.Value() != 0.0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(184210)
 		return time.Duration(int64(info.avgNanos.Value())), true
+	} else {
+		__antithesis_instrumentation__.Notify(184211)
 	}
+	__antithesis_instrumentation__.Notify(184208)
 	return 0, false
 }
 
-// AllLatencies returns a map of all currently valid latency measurements.
 func (r *RemoteClockMonitor) AllLatencies() map[string]time.Duration {
+	__antithesis_instrumentation__.Notify(184212)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	result := make(map[string]time.Duration)
 	for addr, info := range r.mu.latencyInfos {
+		__antithesis_instrumentation__.Notify(184214)
 		if info.avgNanos.Value() != 0.0 {
+			__antithesis_instrumentation__.Notify(184215)
 			result[addr] = time.Duration(int64(info.avgNanos.Value()))
+		} else {
+			__antithesis_instrumentation__.Notify(184216)
 		}
 	}
+	__antithesis_instrumentation__.Notify(184213)
 	return result
 }
 
-// UpdateOffset is a thread-safe way to update the remote clock and latency
-// measurements.
-//
-// It only updates the offset for addr if one of the following cases holds:
-// 1. There is no prior offset for that address.
-// 2. The old offset for addr was measured long enough ago to be considered
-// stale.
-// 3. The new offset's error is smaller than the old offset's error.
-//
-// Pass a roundTripLatency of 0 or less to avoid recording the latency.
 func (r *RemoteClockMonitor) UpdateOffset(
 	ctx context.Context, addr string, offset RemoteOffset, roundTripLatency time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(184217)
 	emptyOffset := offset == RemoteOffset{}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if oldOffset, ok := r.mu.offsets[addr]; !ok {
-		// We don't have a measurement - if the incoming measurement is not empty,
-		// set it.
+		__antithesis_instrumentation__.Notify(184220)
+
 		if !emptyOffset {
-			r.mu.offsets[addr] = offset
-		}
-	} else if oldOffset.isStale(r.offsetTTL, r.clock.PhysicalTime()) {
-		// We have a measurement but it's old - if the incoming measurement is not empty,
-		// set it, otherwise delete the old measurement.
-		if !emptyOffset {
+			__antithesis_instrumentation__.Notify(184221)
 			r.mu.offsets[addr] = offset
 		} else {
-			delete(r.mu.offsets, addr)
+			__antithesis_instrumentation__.Notify(184222)
 		}
-	} else if offset.Uncertainty < oldOffset.Uncertainty {
-		// We have a measurement but its uncertainty is greater than that of the
-		// incoming measurement - if the incoming measurement is not empty, set it.
-		if !emptyOffset {
-			r.mu.offsets[addr] = offset
+	} else {
+		__antithesis_instrumentation__.Notify(184223)
+		if oldOffset.isStale(r.offsetTTL, r.clock.PhysicalTime()) {
+			__antithesis_instrumentation__.Notify(184224)
+
+			if !emptyOffset {
+				__antithesis_instrumentation__.Notify(184225)
+				r.mu.offsets[addr] = offset
+			} else {
+				__antithesis_instrumentation__.Notify(184226)
+				delete(r.mu.offsets, addr)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(184227)
+			if offset.Uncertainty < oldOffset.Uncertainty {
+				__antithesis_instrumentation__.Notify(184228)
+
+				if !emptyOffset {
+					__antithesis_instrumentation__.Notify(184229)
+					r.mu.offsets[addr] = offset
+				} else {
+					__antithesis_instrumentation__.Notify(184230)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(184231)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(184218)
 
 	if roundTripLatency > 0 {
+		__antithesis_instrumentation__.Notify(184232)
 		info, ok := r.mu.latencyInfos[addr]
 		if !ok {
+			__antithesis_instrumentation__.Notify(184234)
 			info = &latencyInfo{
 				avgNanos: ewma.NewMovingAverage(avgLatencyMeasurementAge),
 			}
 			r.mu.latencyInfos[addr] = info
+		} else {
+			__antithesis_instrumentation__.Notify(184235)
 		}
+		__antithesis_instrumentation__.Notify(184233)
 
 		newLatencyf := float64(roundTripLatency.Nanoseconds())
 		prevAvg := info.avgNanos.Value()
 		info.avgNanos.Add(newLatencyf)
 		r.metrics.LatencyHistogramNanos.RecordValue(roundTripLatency.Nanoseconds())
 
-		// If the roundtrip jumps by 50% beyond the previously recorded average, report it in logs.
-		// Don't report it again until it falls below 40% above the average.
-		// (Also requires latency > 1ms to avoid trigger on noise on low-latency connections and
-		// the running average to be non-zero to avoid triggering on startup.)
-		if newLatencyf > 1e6 && prevAvg > 0.0 &&
-			info.trigger.triggers(newLatencyf, prevAvg*1.4, prevAvg*1.5) {
+		if newLatencyf > 1e6 && func() bool {
+			__antithesis_instrumentation__.Notify(184236)
+			return prevAvg > 0.0 == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(184237)
+			return info.trigger.triggers(newLatencyf, prevAvg*1.4, prevAvg*1.5) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(184238)
 			log.Health.Warningf(ctx, "latency jump (prev avg %.2fms, current %.2fms)",
 				prevAvg/1e6, newLatencyf/1e6)
+		} else {
+			__antithesis_instrumentation__.Notify(184239)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(184240)
 	}
+	__antithesis_instrumentation__.Notify(184219)
 
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(184241)
 		log.Dev.Infof(ctx, "update offset: %s %v", addr, r.mu.offsets[addr])
+	} else {
+		__antithesis_instrumentation__.Notify(184242)
 	}
 }
 
-// VerifyClockOffset calculates the number of nodes to which the known offset
-// is healthy (as defined by RemoteOffset.isHealthy). It returns nil iff more
-// than half the known offsets are healthy, and an error otherwise. A non-nil
-// return indicates that this node's clock is unreliable, and that the node
-// should terminate.
 func (r *RemoteClockMonitor) VerifyClockOffset(ctx context.Context) error {
-	// By the contract of the hlc, if the value is 0, then safety checking of
-	// the max offset is disabled. However we may still want to propagate the
-	// information to a status node.
-	//
-	// TODO(tschottdorf): disallow maxOffset == 0 but probably lots of tests to
-	// fix.
+	__antithesis_instrumentation__.Notify(184243)
+
 	if maxOffset := r.clock.MaxOffset(); maxOffset != 0 {
+		__antithesis_instrumentation__.Notify(184245)
 		now := r.clock.PhysicalTime()
 
 		healthyOffsetCount := 0
 
 		r.mu.Lock()
-		// Each measurement is recorded as its minimum and maximum value.
+
 		offsets := make(stats.Float64Data, 0, 2*len(r.mu.offsets))
 		for addr, offset := range r.mu.offsets {
+			__antithesis_instrumentation__.Notify(184250)
 			if offset.isStale(r.offsetTTL, now) {
+				__antithesis_instrumentation__.Notify(184252)
 				delete(r.mu.offsets, addr)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(184253)
 			}
+			__antithesis_instrumentation__.Notify(184251)
 			offsets = append(offsets, float64(offset.Offset+offset.Uncertainty))
 			offsets = append(offsets, float64(offset.Offset-offset.Uncertainty))
 			if offset.isHealthy(ctx, maxOffset) {
+				__antithesis_instrumentation__.Notify(184254)
 				healthyOffsetCount++
+			} else {
+				__antithesis_instrumentation__.Notify(184255)
 			}
 		}
+		__antithesis_instrumentation__.Notify(184246)
 		numClocks := len(r.mu.offsets)
 		r.mu.Unlock()
 
 		mean, err := offsets.Mean()
-		if err != nil && !errors.Is(err, stats.EmptyInput) {
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(184256)
+			return !errors.Is(err, stats.EmptyInput) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(184257)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(184258)
 		}
+		__antithesis_instrumentation__.Notify(184247)
 		stdDev, err := offsets.StandardDeviation()
-		if err != nil && !errors.Is(err, stats.EmptyInput) {
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(184259)
+			return !errors.Is(err, stats.EmptyInput) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(184260)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(184261)
 		}
+		__antithesis_instrumentation__.Notify(184248)
 		r.metrics.ClockOffsetMeanNanos.Update(int64(mean))
 		r.metrics.ClockOffsetStdDevNanos.Update(int64(stdDev))
 
-		if numClocks > 0 && healthyOffsetCount <= numClocks/2 {
+		if numClocks > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(184262)
+			return healthyOffsetCount <= numClocks/2 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(184263)
 			return errors.Errorf(
 				"clock synchronization error: this node is more than %s away from at least half of the known nodes (%d of %d are within the offset)",
 				maxOffset, healthyOffsetCount, numClocks)
+		} else {
+			__antithesis_instrumentation__.Notify(184264)
 		}
+		__antithesis_instrumentation__.Notify(184249)
 		if log.V(1) {
+			__antithesis_instrumentation__.Notify(184265)
 			log.Dev.Infof(ctx, "%d of %d nodes are within the maximum clock offset of %s", healthyOffsetCount, numClocks, maxOffset)
+		} else {
+			__antithesis_instrumentation__.Notify(184266)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(184267)
 	}
+	__antithesis_instrumentation__.Notify(184244)
 
 	return nil
 }
 
 func (r RemoteOffset) isHealthy(ctx context.Context, maxOffset time.Duration) bool {
-	// Tolerate up to 80% of the maximum offset.
+	__antithesis_instrumentation__.Notify(184268)
+
 	toleratedOffset := maxOffset * 4 / 5
 
-	// Offset may be negative, but Uncertainty is always positive.
 	absOffset := r.Offset
 	if absOffset < 0 {
+		__antithesis_instrumentation__.Notify(184270)
 		absOffset = -absOffset
+	} else {
+		__antithesis_instrumentation__.Notify(184271)
 	}
+	__antithesis_instrumentation__.Notify(184269)
 	switch {
 	case time.Duration(absOffset-r.Uncertainty)*time.Nanosecond > toleratedOffset:
-		// The minimum possible true offset exceeds the maximum offset; definitely
-		// unhealthy.
+		__antithesis_instrumentation__.Notify(184272)
+
 		return false
 
 	case time.Duration(absOffset+r.Uncertainty)*time.Nanosecond < toleratedOffset:
-		// The maximum possible true offset does not exceed the maximum offset;
-		// definitely healthy.
+		__antithesis_instrumentation__.Notify(184273)
+
 		return true
 
 	default:
-		// The maximum offset is in the uncertainty window of the measured offset;
-		// health is ambiguous. For now, we err on the side of not spuriously
-		// killing nodes.
+		__antithesis_instrumentation__.Notify(184274)
+
 		log.Health.Warningf(ctx, "uncertain remote offset %s for maximum tolerated offset %s, treating as healthy", r, toleratedOffset)
 		return true
 	}
 }
 
 func (r RemoteOffset) isStale(ttl time.Duration, now time.Time) bool {
+	__antithesis_instrumentation__.Notify(184275)
 	return r.measuredAt().Add(ttl).Before(now)
 }

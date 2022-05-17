@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -47,34 +39,41 @@ The user for which the HTTP session is opened can be arbitrary.
 }
 
 func runLogin(cmd *cobra.Command, args []string) error {
-	// In CockroachDB SQL, unlike in PostgreSQL, usernames are
-	// case-insensitive. Therefore we need to normalize the username
-	// here, so that the normalized username is retained in the session
-	// table: the APIs extract the username from the session table
-	// without further normalization.
+	__antithesis_instrumentation__.Notify(27948)
+
 	username := tree.Name(args[0]).Normalize()
 
 	id, httpCookie, err := createAuthSessionToken(username)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27951)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(27952)
 	}
+	__antithesis_instrumentation__.Notify(27949)
 	hC := httpCookie.String()
 
 	if authCtx.onlyCookie {
-		// Simple format suitable for automation.
+		__antithesis_instrumentation__.Notify(27953)
+
 		fmt.Println(hC)
 	} else {
-		// More complete format, suitable e.g. for appending to a CSV file
-		// with --format=csv.
+		__antithesis_instrumentation__.Notify(27954)
+
 		cols := []string{"username", "session ID", "authentication cookie"}
 		rows := [][]string{
 			{username, fmt.Sprintf("%d", id), hC},
 		}
 		if err := sqlExecCtx.PrintQueryOutput(os.Stdout, stderr, cols, clisqlexec.NewRowSliceIter(rows, "ll")); err != nil {
+			__antithesis_instrumentation__.Notify(27956)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(27957)
 		}
+		__antithesis_instrumentation__.Notify(27955)
 
 		if isatty.IsTerminal(os.Stdin.Fd()) {
+			__antithesis_instrumentation__.Notify(27958)
 			fmt.Fprintf(stderr, `#
 # Example uses:
 #
@@ -83,8 +82,11 @@ func runLogin(cmd *cobra.Command, args []string) error {
 #     wget [--no-check-certificate] --header='Cookie: %[1]s' https://...
 #
 `, hC)
+		} else {
+			__antithesis_instrumentation__.Notify(27959)
 		}
 	}
+	__antithesis_instrumentation__.Notify(27950)
 
 	return nil
 }
@@ -92,33 +94,51 @@ func runLogin(cmd *cobra.Command, args []string) error {
 func createAuthSessionToken(
 	username string,
 ) (sessionID int64, httpCookie *http.Cookie, resErr error) {
+	__antithesis_instrumentation__.Notify(27960)
 	sqlConn, err := makeSQLClient("cockroach auth-session login", useSystemDb)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27969)
 		return -1, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(27970)
 	}
-	defer func() { resErr = errors.CombineErrors(resErr, sqlConn.Close()) }()
+	__antithesis_instrumentation__.Notify(27961)
+	defer func() {
+		__antithesis_instrumentation__.Notify(27971)
+		resErr = errors.CombineErrors(resErr, sqlConn.Close())
+	}()
+	__antithesis_instrumentation__.Notify(27962)
 
 	ctx := context.Background()
 
-	// First things first. Does the user exist?
 	_, rows, err := sqlExecCtx.RunQuery(ctx,
 		sqlConn,
 		clisqlclient.MakeQuery(`SELECT count(username) FROM system.users WHERE username = $1 AND NOT "isRole"`, username), false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27972)
 		return -1, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(27973)
 	}
+	__antithesis_instrumentation__.Notify(27963)
 	if rows[0][0] != "1" {
+		__antithesis_instrumentation__.Notify(27974)
 		return -1, nil, fmt.Errorf("user %q does not exist", username)
+	} else {
+		__antithesis_instrumentation__.Notify(27975)
 	}
+	__antithesis_instrumentation__.Notify(27964)
 
-	// Make a secret.
 	secret, hashedSecret, err := server.CreateAuthSecret()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27976)
 		return -1, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(27977)
 	}
+	__antithesis_instrumentation__.Notify(27965)
 	expiration := timeutil.Now().Add(authCtx.validityPeriod)
 
-	// Create the session on the server to the server.
 	insertSessionStmt := `
 INSERT INTO system.web_sessions ("hashedSecret", username, "expiresAt")
 VALUES($1, $2, $3)
@@ -132,19 +152,30 @@ RETURNING id
 		expiration,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27978)
 		return -1, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(27979)
 	}
+	__antithesis_instrumentation__.Notify(27966)
 	if len(row) != 1 {
+		__antithesis_instrumentation__.Notify(27980)
 		return -1, nil, errors.Newf("expected 1 column, got %d", len(row))
+	} else {
+		__antithesis_instrumentation__.Notify(27981)
 	}
+	__antithesis_instrumentation__.Notify(27967)
 	id, ok := row[0].(int64)
 	if !ok {
+		__antithesis_instrumentation__.Notify(27982)
 		return -1, nil, errors.Newf("expected integer, got %T", row[0])
+	} else {
+		__antithesis_instrumentation__.Notify(27983)
 	}
+	__antithesis_instrumentation__.Notify(27968)
 
-	// Spell out the cookie.
 	sCookie := &serverpb.SessionCookie{ID: id, Secret: secret}
-	httpCookie, err = server.EncodeSessionCookie(sCookie, false /* forHTTPSOnly */)
+	httpCookie, err = server.EncodeSessionCookie(sCookie, false)
 	return id, httpCookie, err
 }
 
@@ -162,13 +193,22 @@ The user for which the HTTP sessions are revoked can be arbitrary.
 }
 
 func runLogout(cmd *cobra.Command, args []string) (resErr error) {
+	__antithesis_instrumentation__.Notify(27984)
 	username := tree.Name(args[0]).Normalize()
 
 	sqlConn, err := makeSQLClient("cockroach auth-session logout", useSystemDb)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27987)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(27988)
 	}
-	defer func() { resErr = errors.CombineErrors(resErr, sqlConn.Close()) }()
+	__antithesis_instrumentation__.Notify(27985)
+	defer func() {
+		__antithesis_instrumentation__.Notify(27989)
+		resErr = errors.CombineErrors(resErr, sqlConn.Close())
+	}()
+	__antithesis_instrumentation__.Notify(27986)
 
 	logoutQuery := clisqlclient.MakeQuery(
 		`UPDATE system.web_sessions SET "revokedAt" = if("revokedAt"::timestamptz<now(),"revokedAt",now())
@@ -195,11 +235,20 @@ The user invoking the 'list' CLI command must be an admin on the cluster.
 }
 
 func runAuthList(cmd *cobra.Command, args []string) (resErr error) {
+	__antithesis_instrumentation__.Notify(27990)
 	sqlConn, err := makeSQLClient("cockroach auth-session list", useSystemDb)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(27993)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(27994)
 	}
-	defer func() { resErr = errors.CombineErrors(resErr, sqlConn.Close()) }()
+	__antithesis_instrumentation__.Notify(27991)
+	defer func() {
+		__antithesis_instrumentation__.Notify(27995)
+		resErr = errors.CombineErrors(resErr, sqlConn.Close())
+	}()
+	__antithesis_instrumentation__.Notify(27992)
 
 	logoutQuery := clisqlclient.MakeQuery(`
 SELECT username,

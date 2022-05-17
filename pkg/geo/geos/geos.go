@@ -1,18 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// Package geos is a wrapper around the spatial data types between the geo
-// package and the GEOS C library. The GEOS library is dynamically loaded
-// at init time.
-// Operations will error if the GEOS library was not found.
 package geos
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"os"
@@ -36,26 +24,16 @@ import (
 // #include "geos.h"
 import "C"
 
-// EnsureInitErrorDisplay is used to control the error message displayed by
-// EnsureInit.
 type EnsureInitErrorDisplay int
 
 const (
-	// EnsureInitErrorDisplayPrivate displays the full error message, including
-	// path info. It is intended for log messages.
 	EnsureInitErrorDisplayPrivate EnsureInitErrorDisplay = iota
-	// EnsureInitErrorDisplayPublic displays a redacted error message, excluding
-	// path info. It is intended for errors to display for the client.
+
 	EnsureInitErrorDisplayPublic
 )
 
-// maxArrayLen is the maximum safe length for this architecture.
 const maxArrayLen = 1<<31 - 1
 
-// geosOnce contains the global instance of CR_GEOS, to be initialized
-// during at a maximum of once.
-// If it has failed to open, the error will be populated in "err".
-// This should only be touched by "fetchGEOSOrError".
 var geosOnce struct {
 	geos *C.CR_GEOS
 	loc  string
@@ -63,53 +41,64 @@ var geosOnce struct {
 	once sync.Once
 }
 
-// PreparedGeometry is an instance of a GEOS PreparedGeometry.
 type PreparedGeometry *C.CR_GEOS_PreparedGeometry
 
-// EnsureInit attempts to start GEOS if it has not been opened already
-// and returns the location if found, and an error if the CR_GEOS is not valid.
 func EnsureInit(
 	errDisplay EnsureInitErrorDisplay, flagLibraryDirectoryValue string,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(64093)
 	crdbBinaryLoc := ""
 	if len(os.Args) > 0 {
+		__antithesis_instrumentation__.Notify(64095)
 		crdbBinaryLoc = os.Args[0]
+	} else {
+		__antithesis_instrumentation__.Notify(64096)
 	}
+	__antithesis_instrumentation__.Notify(64094)
 	_, err := ensureInit(errDisplay, flagLibraryDirectoryValue, crdbBinaryLoc)
 	return geosOnce.loc, err
 }
 
-// ensureInitInternal ensures initialization has been done, always displaying
-// errors privately and not assuming a flag has been set if initialized
-// for the first time.
 func ensureInitInternal() (*C.CR_GEOS, error) {
+	__antithesis_instrumentation__.Notify(64097)
 	return ensureInit(EnsureInitErrorDisplayPrivate, "", "")
 }
 
-// ensureInits behaves as described in EnsureInit, but also returns the GEOS
-// C object which should be hidden from the public eye.
 func ensureInit(
 	errDisplay EnsureInitErrorDisplay, flagLibraryDirectoryValue string, crdbBinaryLoc string,
 ) (*C.CR_GEOS, error) {
+	__antithesis_instrumentation__.Notify(64098)
 	geosOnce.once.Do(func() {
+		__antithesis_instrumentation__.Notify(64101)
 		geosOnce.geos, geosOnce.loc, geosOnce.err = initGEOS(
 			findLibraryDirectories(flagLibraryDirectoryValue, crdbBinaryLoc),
 		)
 	})
-	if geosOnce.err != nil && errDisplay == EnsureInitErrorDisplayPublic {
+	__antithesis_instrumentation__.Notify(64099)
+	if geosOnce.err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(64102)
+		return errDisplay == EnsureInitErrorDisplayPublic == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(64103)
 		return nil, pgerror.Newf(pgcode.System, "geos: this operation is not available")
+	} else {
+		__antithesis_instrumentation__.Notify(64104)
 	}
+	__antithesis_instrumentation__.Notify(64100)
 	return geosOnce.geos, geosOnce.err
 }
 
-// appendLibraryExt appends the extension expected for the running OS.
 func getLibraryExt(base string) string {
+	__antithesis_instrumentation__.Notify(64105)
 	switch runtime.GOOS {
 	case "darwin":
+		__antithesis_instrumentation__.Notify(64106)
 		return base + ".dylib"
 	case "windows":
+		__antithesis_instrumentation__.Notify(64107)
 		return base + ".dll"
 	default:
+		__antithesis_instrumentation__.Notify(64108)
 		return base + ".so"
 	}
 }
@@ -119,25 +108,38 @@ const (
 	libgeoscFileName = "libgeos_c"
 )
 
-// findLibraryDirectories returns the default locations where GEOS is installed.
 func findLibraryDirectories(flagLibraryDirectoryValue string, crdbBinaryLoc string) []string {
-	// Try path by trying to find all parenting paths and appending
-	// `lib/libgeos_c.<ext>` to the current working directory, as well
-	// as the directory in which the cockroach binary is initialized.
+	__antithesis_instrumentation__.Notify(64109)
+
 	cwd, err := os.Getwd()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64113)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(64114)
 	}
+	__antithesis_instrumentation__.Notify(64110)
 	locs := []string{}
 	if flagLibraryDirectoryValue != "" {
+		__antithesis_instrumentation__.Notify(64115)
 		locs = append(locs, flagLibraryDirectoryValue)
+	} else {
+		__antithesis_instrumentation__.Notify(64116)
 	}
-	// Account for the libraries to be in a bazel runfile path.
+	__antithesis_instrumentation__.Notify(64111)
+
 	if bazel.BuiltWithBazel() {
+		__antithesis_instrumentation__.Notify(64117)
 		if p, err := bazel.Runfile(path.Join("c-deps", "libgeos", "lib")); err == nil {
+			__antithesis_instrumentation__.Notify(64118)
 			locs = append(locs, p)
+		} else {
+			__antithesis_instrumentation__.Notify(64119)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(64120)
 	}
+	__antithesis_instrumentation__.Notify(64112)
 	locs = append(
 		append(
 			locs,
@@ -148,41 +150,54 @@ func findLibraryDirectories(flagLibraryDirectoryValue string, crdbBinaryLoc stri
 	return locs
 }
 
-// findLibraryDirectoriesInParentingDirectories attempts to find GEOS by looking at
-// parenting folders and looking inside `lib/libgeos_c.*`.
-// This is basically only useful for CI runs.
 func findLibraryDirectoriesInParentingDirectories(dir string) []string {
+	__antithesis_instrumentation__.Notify(64121)
 	locs := []string{}
 
 	for {
+		__antithesis_instrumentation__.Notify(64123)
 		checkDir := filepath.Join(dir, "lib")
 		found := true
 		for _, file := range []string{
 			filepath.Join(checkDir, getLibraryExt(libgeoscFileName)),
 			filepath.Join(checkDir, getLibraryExt(libgeosFileName)),
 		} {
+			__antithesis_instrumentation__.Notify(64127)
 			if _, err := os.Stat(file); err != nil {
+				__antithesis_instrumentation__.Notify(64128)
 				found = false
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(64129)
 			}
 		}
+		__antithesis_instrumentation__.Notify(64124)
 		if found {
+			__antithesis_instrumentation__.Notify(64130)
 			locs = append(locs, checkDir)
+		} else {
+			__antithesis_instrumentation__.Notify(64131)
 		}
+		__antithesis_instrumentation__.Notify(64125)
 		parentDir := filepath.Dir(dir)
 		if parentDir == dir {
+			__antithesis_instrumentation__.Notify(64132)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(64133)
 		}
+		__antithesis_instrumentation__.Notify(64126)
 		dir = parentDir
 	}
+	__antithesis_instrumentation__.Notify(64122)
 	return locs
 }
 
-// initGEOS initializes the CR_GEOS by attempting to dlopen all
-// the paths as parsed in by locs.
 func initGEOS(dirs []string) (*C.CR_GEOS, string, error) {
+	__antithesis_instrumentation__.Notify(64134)
 	var err error
 	for _, dir := range dirs {
+		__antithesis_instrumentation__.Notify(64137)
 		var ret *C.CR_GEOS
 		newErr := statusToError(
 			C.CR_GEOS_Init(
@@ -192,8 +207,12 @@ func initGEOS(dirs []string) (*C.CR_GEOS, string, error) {
 			),
 		)
 		if newErr == nil {
+			__antithesis_instrumentation__.Notify(64139)
 			return ret, dir, nil
+		} else {
+			__antithesis_instrumentation__.Notify(64140)
 		}
+		__antithesis_instrumentation__.Notify(64138)
 		err = errors.CombineErrors(
 			err,
 			errors.Wrapf(
@@ -203,20 +222,31 @@ func initGEOS(dirs []string) (*C.CR_GEOS, string, error) {
 			),
 		)
 	}
+	__antithesis_instrumentation__.Notify(64135)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64141)
 		return nil, "", wrapGEOSInitError(errors.Wrap(err, "geos: error during GEOS init"))
+	} else {
+		__antithesis_instrumentation__.Notify(64142)
 	}
+	__antithesis_instrumentation__.Notify(64136)
 	return nil, "", wrapGEOSInitError(errors.Newf("geos: no locations to init GEOS"))
 }
 
 func wrapGEOSInitError(err error) error {
+	__antithesis_instrumentation__.Notify(64143)
 	page := "linux"
 	switch runtime.GOOS {
 	case "darwin":
+		__antithesis_instrumentation__.Notify(64145)
 		page = "mac"
 	case "windows":
+		__antithesis_instrumentation__.Notify(64146)
 		page = "windows"
+	default:
+		__antithesis_instrumentation__.Notify(64147)
 	}
+	__antithesis_instrumentation__.Notify(64144)
 	return errors.WithHintf(
 		err,
 		"Ensure you have the spatial libraries installed as per the instructions in %s",
@@ -224,34 +254,41 @@ func wrapGEOSInitError(err error) error {
 	)
 }
 
-// goToCSlice returns a CR_GEOS_Slice from a given Go byte slice.
 func goToCSlice(b []byte) C.CR_GEOS_Slice {
+	__antithesis_instrumentation__.Notify(64148)
 	if len(b) == 0 {
+		__antithesis_instrumentation__.Notify(64150)
 		return C.CR_GEOS_Slice{data: nil, len: 0}
+	} else {
+		__antithesis_instrumentation__.Notify(64151)
 	}
+	__antithesis_instrumentation__.Notify(64149)
 	return C.CR_GEOS_Slice{
 		data: (*C.char)(unsafe.Pointer(&b[0])),
 		len:  C.size_t(len(b)),
 	}
 }
 
-// cStringToUnsafeGoBytes convert a CR_GEOS_String to a Go
-// byte slice that refer to the underlying C memory.
 func cStringToUnsafeGoBytes(s C.CR_GEOS_String) []byte {
+	__antithesis_instrumentation__.Notify(64152)
 	return cToUnsafeGoBytes(s.data, s.len)
 }
 
 func cToUnsafeGoBytes(data *C.char, len C.size_t) []byte {
+	__antithesis_instrumentation__.Notify(64153)
 	if data == nil {
+		__antithesis_instrumentation__.Notify(64155)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(64156)
 	}
-	// Interpret the C pointer as a pointer to a Go array, then slice.
+	__antithesis_instrumentation__.Notify(64154)
+
 	return (*[maxArrayLen]byte)(unsafe.Pointer(data))[:len:len]
 }
 
-// cStringToSafeGoBytes converts a CR_GEOS_String to a Go byte slice.
-// Additionally, it frees the C memory.
 func cStringToSafeGoBytes(s C.CR_GEOS_String) []byte {
+	__antithesis_instrumentation__.Notify(64157)
 	unsafeBytes := cStringToUnsafeGoBytes(s)
 	b := make([]byte, len(unsafeBytes))
 	copy(b, unsafeBytes)
@@ -259,44 +296,43 @@ func cStringToSafeGoBytes(s C.CR_GEOS_String) []byte {
 	return b
 }
 
-// A Error wraps an error returned from a GEOS operation.
 type Error struct {
 	msg string
 }
 
-// Error implements the error interface.
 func (err *Error) Error() string {
+	__antithesis_instrumentation__.Notify(64158)
 	return err.msg
 }
 
 func statusToError(s C.CR_GEOS_Status) error {
+	__antithesis_instrumentation__.Notify(64159)
 	if s.data == nil {
+		__antithesis_instrumentation__.Notify(64161)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(64162)
 	}
+	__antithesis_instrumentation__.Notify(64160)
 	return &Error{msg: string(cStringToSafeGoBytes(s))}
 }
 
-// BufferParamsJoinStyle maps to the GEOSBufJoinStyles enum in geos_c.h.in.
 type BufferParamsJoinStyle int
 
-// These should be kept in sync with the geos_c.h.in corresponding enum definition.
 const (
 	BufferParamsJoinStyleRound = 1
 	BufferParamsJoinStyleMitre = 2
 	BufferParamsJoinStyleBevel = 3
 )
 
-// BufferParamsEndCapStyle maps to the GEOSBufCapStyles enum in geos_c.h.in.
 type BufferParamsEndCapStyle int
 
-// These should be kept in sync with the geos_c.h.in corresponding enum definition.
 const (
 	BufferParamsEndCapStyleRound  = 1
 	BufferParamsEndCapStyleFlat   = 2
 	BufferParamsEndCapStyleSquare = 3
 )
 
-// BufferParams are parameters to provide into the GEOS buffer function.
 type BufferParams struct {
 	JoinStyle        BufferParamsJoinStyle
 	EndCapStyle      BufferParamsEndCapStyle
@@ -305,16 +341,24 @@ type BufferParams struct {
 	MitreLimit       float64
 }
 
-// Buffer buffers the given geometry by the given distance and params.
 func Buffer(ewkb geopb.EWKB, params BufferParams, distance float64) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64163)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64167)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64168)
 	}
+	__antithesis_instrumentation__.Notify(64164)
 	singleSided := 0
 	if params.SingleSided {
+		__antithesis_instrumentation__.Notify(64169)
 		singleSided = 1
+	} else {
+		__antithesis_instrumentation__.Notify(64170)
 	}
+	__antithesis_instrumentation__.Notify(64165)
 	cParams := C.CR_GEOS_BufferParamsInput{
 		endCapStyle:      C.int(params.EndCapStyle),
 		joinStyle:        C.int(params.JoinStyle),
@@ -324,669 +368,1019 @@ func Buffer(ewkb geopb.EWKB, params BufferParams, distance float64) (geopb.EWKB,
 	}
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_Buffer(g, goToCSlice(ewkb), cParams, C.double(distance), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64171)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64172)
 	}
+	__antithesis_instrumentation__.Notify(64166)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// Area returns the area of an EWKB.
 func Area(ewkb geopb.EWKB) (float64, error) {
+	__antithesis_instrumentation__.Notify(64173)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64176)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64177)
 	}
+	__antithesis_instrumentation__.Notify(64174)
 	var area C.double
 	if err := statusToError(C.CR_GEOS_Area(g, goToCSlice(ewkb), &area)); err != nil {
+		__antithesis_instrumentation__.Notify(64178)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64179)
 	}
+	__antithesis_instrumentation__.Notify(64175)
 	return float64(area), nil
 }
 
-// Boundary returns the boundary of an EWKB.
 func Boundary(ewkb geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64180)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64183)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64184)
 	}
+	__antithesis_instrumentation__.Notify(64181)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_Boundary(g, goToCSlice(ewkb), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64185)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64186)
 	}
+	__antithesis_instrumentation__.Notify(64182)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// Difference returns the difference between two EWKB.
 func Difference(ewkb1 geopb.EWKB, ewkb2 geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64187)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64190)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64191)
 	}
+	__antithesis_instrumentation__.Notify(64188)
 	var diffEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_Difference(g, goToCSlice(ewkb1), goToCSlice(ewkb2), &diffEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64192)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64193)
 	}
+	__antithesis_instrumentation__.Notify(64189)
 	return cStringToSafeGoBytes(diffEWKB), nil
 }
 
-// Length returns the length of an EWKB.
 func Length(ewkb geopb.EWKB) (float64, error) {
+	__antithesis_instrumentation__.Notify(64194)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64197)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64198)
 	}
+	__antithesis_instrumentation__.Notify(64195)
 	var length C.double
 	if err := statusToError(C.CR_GEOS_Length(g, goToCSlice(ewkb), &length)); err != nil {
+		__antithesis_instrumentation__.Notify(64199)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64200)
 	}
+	__antithesis_instrumentation__.Notify(64196)
 	return float64(length), nil
 }
 
-// Normalize returns the geometry in its normalized form.
 func Normalize(a geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64201)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64204)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64205)
 	}
+	__antithesis_instrumentation__.Notify(64202)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_Normalize(g, goToCSlice(a), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64206)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64207)
 	}
+	__antithesis_instrumentation__.Notify(64203)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// LineMerge merges multilinestring constituents.
 func LineMerge(a geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64208)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64211)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64212)
 	}
+	__antithesis_instrumentation__.Notify(64209)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_LineMerge(g, goToCSlice(a), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64213)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64214)
 	}
+	__antithesis_instrumentation__.Notify(64210)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// IsSimple returns whether the EWKB is simple.
 func IsSimple(ewkb geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64215)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64218)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64219)
 	}
+	__antithesis_instrumentation__.Notify(64216)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_IsSimple(g, goToCSlice(ewkb), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64220)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64221)
 	}
+	__antithesis_instrumentation__.Notify(64217)
 	return ret == 1, nil
 }
 
-// Centroid returns the centroid of an EWKB.
 func Centroid(ewkb geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64222)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64225)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64226)
 	}
+	__antithesis_instrumentation__.Notify(64223)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_Centroid(g, goToCSlice(ewkb), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64227)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64228)
 	}
+	__antithesis_instrumentation__.Notify(64224)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// MinimumBoundingCircle returns minimum bounding circle of an EWKB
 func MinimumBoundingCircle(ewkb geopb.EWKB) (geopb.EWKB, geopb.EWKB, float64, error) {
+	__antithesis_instrumentation__.Notify(64229)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64232)
 		return nil, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64233)
 	}
+	__antithesis_instrumentation__.Notify(64230)
 	var centerEWKB C.CR_GEOS_String
 	var polygonEWKB C.CR_GEOS_String
 	var radius C.double
 
 	if err := statusToError(C.CR_GEOS_MinimumBoundingCircle(g, goToCSlice(ewkb), &radius, &centerEWKB, &polygonEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64234)
 		return nil, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64235)
 	}
+	__antithesis_instrumentation__.Notify(64231)
 	return cStringToSafeGoBytes(polygonEWKB), cStringToSafeGoBytes(centerEWKB), float64(radius), nil
 
 }
 
-// ConvexHull returns an EWKB which returns the convex hull of the given EWKB.
 func ConvexHull(ewkb geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64236)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64239)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64240)
 	}
+	__antithesis_instrumentation__.Notify(64237)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_ConvexHull(g, goToCSlice(ewkb), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64241)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64242)
 	}
+	__antithesis_instrumentation__.Notify(64238)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// Simplify returns an EWKB which returns the simplified EWKB.
 func Simplify(ewkb geopb.EWKB, tolerance float64) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64243)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64246)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64247)
 	}
+	__antithesis_instrumentation__.Notify(64244)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(
 		C.CR_GEOS_Simplify(g, goToCSlice(ewkb), &cEWKB, C.double(tolerance)),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64248)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64249)
 	}
+	__antithesis_instrumentation__.Notify(64245)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// TopologyPreserveSimplify returns an EWKB which returns the simplified EWKB
-// with the topology preserved.
 func TopologyPreserveSimplify(ewkb geopb.EWKB, tolerance float64) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64250)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64253)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64254)
 	}
+	__antithesis_instrumentation__.Notify(64251)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(
 		C.CR_GEOS_TopologyPreserveSimplify(g, goToCSlice(ewkb), &cEWKB, C.double(tolerance)),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64255)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64256)
 	}
+	__antithesis_instrumentation__.Notify(64252)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// PointOnSurface returns an EWKB with a point that is on the surface of the given EWKB.
 func PointOnSurface(ewkb geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64257)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64260)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64261)
 	}
+	__antithesis_instrumentation__.Notify(64258)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_PointOnSurface(g, goToCSlice(ewkb), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64262)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64263)
 	}
+	__antithesis_instrumentation__.Notify(64259)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// Intersection returns an EWKB which contains the geometries of intersection between A and B.
 func Intersection(a geopb.EWKB, b geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64264)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64267)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64268)
 	}
+	__antithesis_instrumentation__.Notify(64265)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_Intersection(g, goToCSlice(a), goToCSlice(b), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64269)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64270)
 	}
+	__antithesis_instrumentation__.Notify(64266)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// UnaryUnion Returns an EWKB which is a union of input geometry components.
 func UnaryUnion(a geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64271)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64274)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64275)
 	}
+	__antithesis_instrumentation__.Notify(64272)
 	var unionEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_UnaryUnion(g, goToCSlice(a), &unionEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64276)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64277)
 	}
+	__antithesis_instrumentation__.Notify(64273)
 	return cStringToSafeGoBytes(unionEWKB), nil
 }
 
-// Union returns an EWKB which is a union of shapes A and B.
 func Union(a geopb.EWKB, b geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64278)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64281)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64282)
 	}
+	__antithesis_instrumentation__.Notify(64279)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_Union(g, goToCSlice(a), goToCSlice(b), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64283)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64284)
 	}
+	__antithesis_instrumentation__.Notify(64280)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// SymDifference returns an EWKB which is the symmetric difference of shapes A and B.
 func SymDifference(a geopb.EWKB, b geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64285)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64288)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64289)
 	}
+	__antithesis_instrumentation__.Notify(64286)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_SymDifference(g, goToCSlice(a), goToCSlice(b), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64290)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64291)
 	}
+	__antithesis_instrumentation__.Notify(64287)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// InterpolateLine returns the point along the given LineString which is at
-// a given distance from starting point.
-// Note: For distance less than 0 it returns start point similarly for distance
-// greater LineString's length.
-// InterpolateLine also works with (Multi)LineString. However, the result is
-// not appropriate as it combines all the LineString present in (MULTI)LineString,
-// considering all the corner points of LineString overlaps each other.
 func InterpolateLine(ewkb geopb.EWKB, distance float64) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64292)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64295)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64296)
 	}
+	__antithesis_instrumentation__.Notify(64293)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_Interpolate(g, goToCSlice(ewkb), C.double(distance), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64297)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64298)
 	}
+	__antithesis_instrumentation__.Notify(64294)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// MinDistance returns the minimum distance between two EWKBs.
 func MinDistance(a geopb.EWKB, b geopb.EWKB) (float64, error) {
+	__antithesis_instrumentation__.Notify(64299)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64302)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64303)
 	}
+	__antithesis_instrumentation__.Notify(64300)
 	var distance C.double
 	if err := statusToError(C.CR_GEOS_Distance(g, goToCSlice(a), goToCSlice(b), &distance)); err != nil {
+		__antithesis_instrumentation__.Notify(64304)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64305)
 	}
+	__antithesis_instrumentation__.Notify(64301)
 	return float64(distance), nil
 }
 
-// MinimumClearance returns the minimum distance a vertex can move to result in an
-// invalid geometry.
 func MinimumClearance(ewkb geopb.EWKB) (float64, error) {
+	__antithesis_instrumentation__.Notify(64306)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64309)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64310)
 	}
+	__antithesis_instrumentation__.Notify(64307)
 	var distance C.double
 	if err := statusToError(C.CR_GEOS_MinimumClearance(g, goToCSlice(ewkb), &distance)); err != nil {
+		__antithesis_instrumentation__.Notify(64311)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64312)
 	}
+	__antithesis_instrumentation__.Notify(64308)
 	return float64(distance), nil
 }
 
-// MinimumClearanceLine returns the line spanning the minimum clearance a vertex can
-// move before producing an invalid geometry.
 func MinimumClearanceLine(ewkb geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64313)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64316)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64317)
 	}
+	__antithesis_instrumentation__.Notify(64314)
 	var clearanceEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_MinimumClearanceLine(g, goToCSlice(ewkb), &clearanceEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64318)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64319)
 	}
+	__antithesis_instrumentation__.Notify(64315)
 	return cStringToSafeGoBytes(clearanceEWKB), nil
 }
 
-// ClipByRect clips a EWKB to the specified rectangle.
 func ClipByRect(
 	ewkb geopb.EWKB, xMin float64, yMin float64, xMax float64, yMax float64,
 ) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64320)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64323)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64324)
 	}
+	__antithesis_instrumentation__.Notify(64321)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_ClipByRect(g, goToCSlice(ewkb), C.double(xMin),
 		C.double(yMin), C.double(xMax), C.double(yMax), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64325)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64326)
 	}
+	__antithesis_instrumentation__.Notify(64322)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-//
-// PreparedGeometry
-//
-
-// PrepareGeometry prepares a geometry in GEOS.
 func PrepareGeometry(a geopb.EWKB) (PreparedGeometry, error) {
+	__antithesis_instrumentation__.Notify(64327)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64330)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64331)
 	}
+	__antithesis_instrumentation__.Notify(64328)
 	var ret *C.CR_GEOS_PreparedGeometry
 	if err := statusToError(C.CR_GEOS_Prepare(g, goToCSlice(a), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64332)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64333)
 	}
+	__antithesis_instrumentation__.Notify(64329)
 	return PreparedGeometry(ret), nil
 }
 
-// PreparedGeomDestroy destroys a prepared geometry.
 func PreparedGeomDestroy(a PreparedGeometry) {
+	__antithesis_instrumentation__.Notify(64334)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64336)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "trying to destroy PreparedGeometry with no GEOS"))
+	} else {
+		__antithesis_instrumentation__.Notify(64337)
 	}
+	__antithesis_instrumentation__.Notify(64335)
 	ap := (*C.CR_GEOS_PreparedGeometry)(unsafe.Pointer(a))
 	if err := statusToError(C.CR_GEOS_PreparedGeometryDestroy(g, ap)); err != nil {
+		__antithesis_instrumentation__.Notify(64338)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "PreparedGeometryDestroy returned an error"))
+	} else {
+		__antithesis_instrumentation__.Notify(64339)
 	}
 }
 
-//
-// Binary predicates.
-//
-
-// Covers returns whether the EWKB provided by A covers the EWKB provided by B.
 func Covers(a geopb.EWKB, b geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64340)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64343)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64344)
 	}
+	__antithesis_instrumentation__.Notify(64341)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_Covers(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64345)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64346)
 	}
+	__antithesis_instrumentation__.Notify(64342)
 	return ret == 1, nil
 }
 
-// CoveredBy returns whether the EWKB provided by A is covered by the EWKB provided by B.
 func CoveredBy(a geopb.EWKB, b geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64347)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64350)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64351)
 	}
+	__antithesis_instrumentation__.Notify(64348)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_CoveredBy(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64352)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64353)
 	}
+	__antithesis_instrumentation__.Notify(64349)
 	return ret == 1, nil
 }
 
-// Contains returns whether the EWKB provided by A contains the EWKB provided by B.
 func Contains(a geopb.EWKB, b geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64354)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64357)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64358)
 	}
+	__antithesis_instrumentation__.Notify(64355)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_Contains(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64359)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64360)
 	}
+	__antithesis_instrumentation__.Notify(64356)
 	return ret == 1, nil
 }
 
-// Crosses returns whether the EWKB provided by A crosses the EWKB provided by B.
 func Crosses(a geopb.EWKB, b geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64361)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64364)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64365)
 	}
+	__antithesis_instrumentation__.Notify(64362)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_Crosses(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64366)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64367)
 	}
+	__antithesis_instrumentation__.Notify(64363)
 	return ret == 1, nil
 }
 
-// Disjoint returns whether the EWKB provided by A is disjoint from the EWKB provided by B.
 func Disjoint(a geopb.EWKB, b geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64368)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64371)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64372)
 	}
+	__antithesis_instrumentation__.Notify(64369)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_Disjoint(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64373)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64374)
 	}
+	__antithesis_instrumentation__.Notify(64370)
 	return ret == 1, nil
 }
 
-// Equals returns whether the EWKB provided by A equals the EWKB provided by B.
 func Equals(a geopb.EWKB, b geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64375)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64378)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64379)
 	}
+	__antithesis_instrumentation__.Notify(64376)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_Equals(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64380)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64381)
 	}
+	__antithesis_instrumentation__.Notify(64377)
 	return ret == 1, nil
 }
 
-// PreparedIntersects returns whether the EWKB provided by A intersects the EWKB provided by B.
 func PreparedIntersects(a PreparedGeometry, b geopb.EWKB) (bool, error) {
-	// Double check - since PreparedGeometry is actually a pointer to C type.
+	__antithesis_instrumentation__.Notify(64382)
+
 	if a == nil {
+		__antithesis_instrumentation__.Notify(64386)
 		return false, errors.New("provided PreparedGeometry is nil")
+	} else {
+		__antithesis_instrumentation__.Notify(64387)
 	}
+	__antithesis_instrumentation__.Notify(64383)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64388)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64389)
 	}
+	__antithesis_instrumentation__.Notify(64384)
 	var ret C.char
 	ap := (*C.CR_GEOS_PreparedGeometry)(unsafe.Pointer(a))
 	if err := statusToError(C.CR_GEOS_PreparedIntersects(g, ap, goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64390)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64391)
 	}
+	__antithesis_instrumentation__.Notify(64385)
 	return ret == 1, nil
 }
 
-// Intersects returns whether the EWKB provided by A intersects the EWKB provided by B.
 func Intersects(a geopb.EWKB, b geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64392)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64395)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64396)
 	}
+	__antithesis_instrumentation__.Notify(64393)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_Intersects(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64397)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64398)
 	}
+	__antithesis_instrumentation__.Notify(64394)
 	return ret == 1, nil
 }
 
-// Overlaps returns whether the EWKB provided by A overlaps the EWKB provided by B.
 func Overlaps(a geopb.EWKB, b geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64399)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64402)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64403)
 	}
+	__antithesis_instrumentation__.Notify(64400)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_Overlaps(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64404)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64405)
 	}
+	__antithesis_instrumentation__.Notify(64401)
 	return ret == 1, nil
 }
 
-// Touches returns whether the EWKB provided by A touches the EWKB provided by B.
 func Touches(a geopb.EWKB, b geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64406)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64409)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64410)
 	}
+	__antithesis_instrumentation__.Notify(64407)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_Touches(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64411)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64412)
 	}
+	__antithesis_instrumentation__.Notify(64408)
 	return ret == 1, nil
 }
 
-// Within returns whether the EWKB provided by A is within the EWKB provided by B.
 func Within(a geopb.EWKB, b geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64413)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64416)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64417)
 	}
+	__antithesis_instrumentation__.Notify(64414)
 	var ret C.char
 	if err := statusToError(C.CR_GEOS_Within(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64418)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64419)
 	}
+	__antithesis_instrumentation__.Notify(64415)
 	return ret == 1, nil
 }
 
-// FrechetDistance returns the Frechet distance between the geometries.
 func FrechetDistance(a, b geopb.EWKB) (float64, error) {
+	__antithesis_instrumentation__.Notify(64420)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64423)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64424)
 	}
+	__antithesis_instrumentation__.Notify(64421)
 	var distance C.double
 	if err := statusToError(
 		C.CR_GEOS_FrechetDistance(g, goToCSlice(a), goToCSlice(b), &distance),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64425)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64426)
 	}
+	__antithesis_instrumentation__.Notify(64422)
 	return float64(distance), nil
 }
 
-// FrechetDistanceDensify returns the Frechet distance between the geometries.
 func FrechetDistanceDensify(a, b geopb.EWKB, densifyFrac float64) (float64, error) {
+	__antithesis_instrumentation__.Notify(64427)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64430)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64431)
 	}
+	__antithesis_instrumentation__.Notify(64428)
 	var distance C.double
 	if err := statusToError(
 		C.CR_GEOS_FrechetDistanceDensify(g, goToCSlice(a), goToCSlice(b), C.double(densifyFrac), &distance),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64432)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64433)
 	}
+	__antithesis_instrumentation__.Notify(64429)
 	return float64(distance), nil
 }
 
-// HausdorffDistance returns the Hausdorff distance between the geometries.
 func HausdorffDistance(a, b geopb.EWKB) (float64, error) {
+	__antithesis_instrumentation__.Notify(64434)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64437)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64438)
 	}
+	__antithesis_instrumentation__.Notify(64435)
 	var distance C.double
 	if err := statusToError(
 		C.CR_GEOS_HausdorffDistance(g, goToCSlice(a), goToCSlice(b), &distance),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64439)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64440)
 	}
+	__antithesis_instrumentation__.Notify(64436)
 	return float64(distance), nil
 }
 
-// HausdorffDistanceDensify returns the Hausdorff distance between the geometries.
 func HausdorffDistanceDensify(a, b geopb.EWKB, densifyFrac float64) (float64, error) {
+	__antithesis_instrumentation__.Notify(64441)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64444)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64445)
 	}
+	__antithesis_instrumentation__.Notify(64442)
 	var distance C.double
 	if err := statusToError(
 		C.CR_GEOS_HausdorffDistanceDensify(g, goToCSlice(a), goToCSlice(b), C.double(densifyFrac), &distance),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64446)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(64447)
 	}
+	__antithesis_instrumentation__.Notify(64443)
 	return float64(distance), nil
 }
 
-// EqualsExact returns whether two geometry objects are equal with some epsilon
 func EqualsExact(lhs, rhs geopb.EWKB, epsilon float64) (bool, error) {
+	__antithesis_instrumentation__.Notify(64448)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64451)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64452)
 	}
+	__antithesis_instrumentation__.Notify(64449)
 	var ret C.char
 	if err := statusToError(
 		C.CR_GEOS_EqualsExact(g, goToCSlice(lhs), goToCSlice(rhs), C.double(epsilon), &ret),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64453)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64454)
 	}
+	__antithesis_instrumentation__.Notify(64450)
 	return ret == 1, nil
 }
 
-//
-// DE-9IM related
-//
-
-// Relate returns the DE-9IM relation between A and B.
 func Relate(a geopb.EWKB, b geopb.EWKB) (string, error) {
+	__antithesis_instrumentation__.Notify(64455)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64459)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(64460)
 	}
+	__antithesis_instrumentation__.Notify(64456)
 	var ret C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_Relate(g, goToCSlice(a), goToCSlice(b), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64461)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(64462)
 	}
+	__antithesis_instrumentation__.Notify(64457)
 	if ret.data == nil {
+		__antithesis_instrumentation__.Notify(64463)
 		return "", errors.Newf("expected DE-9IM string but found nothing")
+	} else {
+		__antithesis_instrumentation__.Notify(64464)
 	}
+	__antithesis_instrumentation__.Notify(64458)
 	return string(cStringToSafeGoBytes(ret)), nil
 }
 
-// RelateBoundaryNodeRule returns the DE-9IM relation between A and B given a boundary node rule.
 func RelateBoundaryNodeRule(a geopb.EWKB, b geopb.EWKB, bnr int) (string, error) {
+	__antithesis_instrumentation__.Notify(64465)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64469)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(64470)
 	}
+	__antithesis_instrumentation__.Notify(64466)
 	var ret C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_RelateBoundaryNodeRule(g, goToCSlice(a), goToCSlice(b), C.int(bnr), &ret)); err != nil {
+		__antithesis_instrumentation__.Notify(64471)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(64472)
 	}
+	__antithesis_instrumentation__.Notify(64467)
 	if ret.data == nil {
+		__antithesis_instrumentation__.Notify(64473)
 		return "", errors.Newf("expected DE-9IM string but found nothing")
+	} else {
+		__antithesis_instrumentation__.Notify(64474)
 	}
+	__antithesis_instrumentation__.Notify(64468)
 	return string(cStringToSafeGoBytes(ret)), nil
 }
 
-// RelatePattern whether A and B have a DE-9IM relation matching the given pattern.
 func RelatePattern(a geopb.EWKB, b geopb.EWKB, pattern string) (bool, error) {
+	__antithesis_instrumentation__.Notify(64475)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64478)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64479)
 	}
+	__antithesis_instrumentation__.Notify(64476)
 	var ret C.char
 	if err := statusToError(
 		C.CR_GEOS_RelatePattern(g, goToCSlice(a), goToCSlice(b), goToCSlice([]byte(pattern)), &ret),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64480)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64481)
 	}
+	__antithesis_instrumentation__.Notify(64477)
 	return ret == 1, nil
 }
 
-//
-// Validity checking.
-//
-
-// IsValid returns whether the given geometry is valid.
 func IsValid(ewkb geopb.EWKB) (bool, error) {
+	__antithesis_instrumentation__.Notify(64482)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64485)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64486)
 	}
+	__antithesis_instrumentation__.Notify(64483)
 	var ret C.char
 	if err := statusToError(
 		C.CR_GEOS_IsValid(g, goToCSlice(ewkb), &ret),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64487)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(64488)
 	}
+	__antithesis_instrumentation__.Notify(64484)
 	return ret == 1, nil
 }
 
-// IsValidReason the reasoning for whether the Geometry is valid or invalid.
 func IsValidReason(ewkb geopb.EWKB) (string, error) {
+	__antithesis_instrumentation__.Notify(64489)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64492)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(64493)
 	}
+	__antithesis_instrumentation__.Notify(64490)
 	var ret C.CR_GEOS_String
 	if err := statusToError(
 		C.CR_GEOS_IsValidReason(g, goToCSlice(ewkb), &ret),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64494)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(64495)
 	}
+	__antithesis_instrumentation__.Notify(64491)
 
 	return string(cStringToSafeGoBytes(ret)), nil
 }
 
-// IsValidDetail returns information regarding whether a geometry is valid or invalid.
-// It takes in a flag parameter which behaves the same as the GEOS module, where 1
-// means that self-intersecting rings forming holes are considered valid.
-// It returns a bool representing whether it is valid, a string giving a reason for
-// invalidity and an EWKB representing the location things are invalid at.
 func IsValidDetail(ewkb geopb.EWKB, flags int) (bool, string, geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64496)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64499)
 		return false, "", nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64500)
 	}
+	__antithesis_instrumentation__.Notify(64497)
 	var retIsValid C.char
 	var retReason C.CR_GEOS_String
 	var retLocationEWKB C.CR_GEOS_String
@@ -1000,103 +1394,157 @@ func IsValidDetail(ewkb geopb.EWKB, flags int) (bool, string, geopb.EWKB, error)
 			&retLocationEWKB,
 		),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64501)
 		return false, "", nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64502)
 	}
+	__antithesis_instrumentation__.Notify(64498)
 	return retIsValid == 1,
 		string(cStringToSafeGoBytes(retReason)),
 		cStringToSafeGoBytes(retLocationEWKB),
 		nil
 }
 
-// MakeValid returns a valid form of the EWKB.
 func MakeValid(ewkb geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64503)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64506)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64507)
 	}
+	__antithesis_instrumentation__.Notify(64504)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(C.CR_GEOS_MakeValid(g, goToCSlice(ewkb), &cEWKB)); err != nil {
+		__antithesis_instrumentation__.Notify(64508)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64509)
 	}
+	__antithesis_instrumentation__.Notify(64505)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// SharedPaths Returns a EWKB containing paths shared by the two given EWKBs.
 func SharedPaths(a geopb.EWKB, b geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64510)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64513)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64514)
 	}
+	__antithesis_instrumentation__.Notify(64511)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(
 		C.CR_GEOS_SharedPaths(g, goToCSlice(a), goToCSlice(b), &cEWKB),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64515)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64516)
 	}
+	__antithesis_instrumentation__.Notify(64512)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// Node returns a EWKB containing a set of linestrings using the least possible number of nodes while preserving all of the input ones.
 func Node(a geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64517)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64520)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64521)
 	}
+	__antithesis_instrumentation__.Notify(64518)
 	var cEWKB C.CR_GEOS_String
 	err = statusToError(C.CR_GEOS_Node(g, goToCSlice(a), &cEWKB))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64522)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64523)
 	}
+	__antithesis_instrumentation__.Notify(64519)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// VoronoiDiagram Computes the Voronoi Diagram from the vertices of the supplied EWKBs.
 func VoronoiDiagram(a, env geopb.EWKB, tolerance float64, onlyEdges bool) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64524)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64528)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64529)
 	}
+	__antithesis_instrumentation__.Notify(64525)
 	var cEWKB C.CR_GEOS_String
 	flag := 0
 	if onlyEdges {
+		__antithesis_instrumentation__.Notify(64530)
 		flag = 1
+	} else {
+		__antithesis_instrumentation__.Notify(64531)
 	}
+	__antithesis_instrumentation__.Notify(64526)
 	if err := statusToError(
 		C.CR_GEOS_VoronoiDiagram(g, goToCSlice(a), goToCSlice(env), C.double(tolerance), C.int(flag), &cEWKB),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64532)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64533)
 	}
+	__antithesis_instrumentation__.Notify(64527)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// MinimumRotatedRectangle Returns a minimum rotated rectangle enclosing a geometry
 func MinimumRotatedRectangle(ewkb geopb.EWKB) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64534)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64537)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64538)
 	}
+	__antithesis_instrumentation__.Notify(64535)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(
 		C.CR_GEOS_MinimumRotatedRectangle(g, goToCSlice(ewkb), &cEWKB),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64539)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64540)
 	}
+	__antithesis_instrumentation__.Notify(64536)
 	return cStringToSafeGoBytes(cEWKB), nil
 }
 
-// Snap returns the input EWKB with the vertices snapped to the target
-// EWKB. Tolerance is used to control where snapping is performed.
-// If no snapping occurs then the input geometry is returned unchanged.
 func Snap(input, target geopb.EWKB, tolerance float64) (geopb.EWKB, error) {
+	__antithesis_instrumentation__.Notify(64541)
 	g, err := ensureInitInternal()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64544)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64545)
 	}
+	__antithesis_instrumentation__.Notify(64542)
 	var cEWKB C.CR_GEOS_String
 	if err := statusToError(
 		C.CR_GEOS_Snap(g, goToCSlice(input), goToCSlice(target), C.double(tolerance), &cEWKB),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64546)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(64547)
 	}
+	__antithesis_instrumentation__.Notify(64543)
 	return cStringToSafeGoBytes(cEWKB), nil
 }

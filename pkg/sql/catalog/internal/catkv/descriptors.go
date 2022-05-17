@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catkv
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,11 +17,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// GetCatalogUnvalidated looks up and returns all available descriptors and
-// namespace system table entries but does not validate anything.
 func GetCatalogUnvalidated(
 	ctx context.Context, codec keys.SQLCodec, txn *kv.Txn,
 ) (nstree.Catalog, error) {
+	__antithesis_instrumentation__.Notify(265780)
 	cq := catalogQuerier{
 		isRequired:   true,
 		expectedType: catalog.Any,
@@ -37,6 +28,7 @@ func GetCatalogUnvalidated(
 	}
 	log.Eventf(ctx, "fetching all descriptors and namespace entries")
 	return cq.query(ctx, txn, func(codec keys.SQLCodec, b *kv.Batch) {
+		__antithesis_instrumentation__.Notify(265781)
 		b.Header.MaxSpanRequestKeys = 0
 		descsPrefix := catalogkeys.MakeAllDescsMetadataKey(codec)
 		b.Scan(descsPrefix, descsPrefix.PrefixEnd())
@@ -55,11 +47,20 @@ func lookupDescriptorsAndValidate(
 	vd validate.ValidationDereferencer,
 	ids []descpb.ID,
 ) ([]catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(265782)
 	descs, err := lookupDescriptorsUnvalidated(ctx, txn, cq, ids)
-	if err != nil || len(descs) == 0 {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(265786)
+		return len(descs) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(265787)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(265788)
 	}
+	__antithesis_instrumentation__.Notify(265783)
 	if vd == nil {
+		__antithesis_instrumentation__.Notify(265789)
 		vd = &readValidationDereferencer{
 			catalogQuerier: catalogQuerier{
 				expectedType: catalog.Any,
@@ -67,11 +68,18 @@ func lookupDescriptorsAndValidate(
 			},
 			txn: txn,
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(265790)
 	}
+	__antithesis_instrumentation__.Notify(265784)
 	ve := validate.Validate(ctx, version, vd, catalog.ValidationReadTelemetry, catalog.ValidationLevelCrossReferences, descs...)
 	if err := ve.CombinedError(); err != nil {
+		__antithesis_instrumentation__.Notify(265791)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(265792)
 	}
+	__antithesis_instrumentation__.Notify(265785)
 	return descs, nil
 }
 
@@ -82,26 +90,20 @@ type readValidationDereferencer struct {
 
 var _ validate.ValidationDereferencer = (*readValidationDereferencer)(nil)
 
-// DereferenceDescriptors implements the validate.ValidationDereferencer
-// interface.
 func (t *readValidationDereferencer) DereferenceDescriptors(
 	ctx context.Context, version clusterversion.ClusterVersion, reqs []descpb.ID,
 ) ([]catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(265793)
 	return GetCrossReferencedDescriptorsForValidation(ctx, version, t.codec, t.txn, reqs)
 }
 
-// DereferenceDescriptorIDs implements the validate.ValidationDereferencer
-// interface.
 func (t *readValidationDereferencer) DereferenceDescriptorIDs(
 	ctx context.Context, requests []descpb.NameInfo,
 ) ([]descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(265794)
 	return LookupIDs(ctx, t.txn, t.codec, requests)
 }
 
-// GetCrossReferencedDescriptorsForValidation looks up the descriptors given
-// their IDs on a best-effort basis and validates that they are internally
-// consistent.
-// These can then be used for cross-reference validation of another descriptor.
 func GetCrossReferencedDescriptorsForValidation(
 	ctx context.Context,
 	version clusterversion.ClusterVersion,
@@ -109,22 +111,32 @@ func GetCrossReferencedDescriptorsForValidation(
 	txn *kv.Txn,
 	ids []descpb.ID,
 ) ([]catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(265795)
 	cq := catalogQuerier{
 		expectedType: catalog.Any,
 		codec:        codec,
 	}
 	descs, err := lookupDescriptorsUnvalidated(ctx, txn, cq, ids)
-	if err != nil || len(descs) == 0 {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(265798)
+		return len(descs) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(265799)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(265800)
 	}
+	__antithesis_instrumentation__.Notify(265796)
 	if err := validate.Self(version, descs...); err != nil {
+		__antithesis_instrumentation__.Notify(265801)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(265802)
 	}
+	__antithesis_instrumentation__.Notify(265797)
 	return descs, nil
 }
 
-// MaybeGetDescriptorByID looks up the descriptor given its ID,
-// returning nil if the descriptor is not found.
 func MaybeGetDescriptorByID(
 	ctx context.Context,
 	version clusterversion.ClusterVersion,
@@ -134,19 +146,22 @@ func MaybeGetDescriptorByID(
 	id descpb.ID,
 	expectedType catalog.DescriptorType,
 ) (catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(265803)
 	cq := catalogQuerier{
 		expectedType: expectedType,
 		codec:        codec,
 	}
 	descs, err := lookupDescriptorsAndValidate(ctx, version, txn, cq, vd, []descpb.ID{id})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(265805)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(265806)
 	}
+	__antithesis_instrumentation__.Notify(265804)
 	return descs[0], nil
 }
 
-// MustGetDescriptorsByID looks up the descriptors given their IDs,
-// returning an error if any descriptor is not found.
 func MustGetDescriptorsByID(
 	ctx context.Context,
 	version clusterversion.ClusterVersion,
@@ -156,6 +171,7 @@ func MustGetDescriptorsByID(
 	ids []descpb.ID,
 	expectedType catalog.DescriptorType,
 ) ([]catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(265807)
 	cq := catalogQuerier{
 		codec:        codec,
 		isRequired:   true,
@@ -164,8 +180,6 @@ func MustGetDescriptorsByID(
 	return lookupDescriptorsAndValidate(ctx, version, txn, cq, vd, ids)
 }
 
-// MustGetDescriptorByID looks up the descriptor given its ID,
-// returning an error if the descriptor is not found.
 func MustGetDescriptorByID(
 	ctx context.Context,
 	version clusterversion.ClusterVersion,
@@ -175,9 +189,14 @@ func MustGetDescriptorByID(
 	id descpb.ID,
 	expectedType catalog.DescriptorType,
 ) (catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(265808)
 	descs, err := MustGetDescriptorsByID(ctx, version, codec, txn, vd, []descpb.ID{id}, expectedType)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(265810)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(265811)
 	}
+	__antithesis_instrumentation__.Notify(265809)
 	return descs[0], err
 }

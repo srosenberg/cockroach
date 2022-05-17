@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package tenantdirsvr
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,31 +14,20 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// TestSimpleDirectoryServer is a directory server that returns a single
-// pre-defined address for all tenants. It is expected that a SQL pod is
-// listening on that address.
-//
-// The metadata of such tenants will not have a clusterName returned, so
-// validation of cluster names through the directory cache will be skipped.
 type TestSimpleDirectoryServer struct {
-	// podAddr refers to the address of the SQL pod, which consists of both the
-	// host and port (e.g. "127.0.0.1:26257").
 	podAddr string
 
 	mu struct {
 		syncutil.Mutex
 
-		// deleted indicates that the tenant has been deleted. A NotFound
-		// error will be returned when trying to resume a SQL pod, or read the
-		// tenant's metadata.
 		deleted map[roachpb.TenantID]struct{}
 	}
 }
 
 var _ tenant.DirectoryServer = &TestSimpleDirectoryServer{}
 
-// NewTestSimpleDirectoryServer constructs a new simple directory server.
 func NewTestSimpleDirectoryServer(podAddr string) (tenant.DirectoryServer, *grpc.Server) {
+	__antithesis_instrumentation__.Notify(23289)
 	dir := &TestSimpleDirectoryServer{podAddr: podAddr}
 	dir.mu.deleted = make(map[roachpb.TenantID]struct{})
 	grpcServer := grpc.NewServer()
@@ -52,19 +35,19 @@ func NewTestSimpleDirectoryServer(podAddr string) (tenant.DirectoryServer, *grpc
 	return dir, grpcServer
 }
 
-// ListPods returns a list with a single RUNNING pod. The load of the pod will
-// always be zero, and the address of the pod will be the same regardless of
-// tenant ID. If the tenant has been deleted, no pods will be returned.
-//
-// ListPods implements the tenant.DirectoryServer interface.
 func (d *TestSimpleDirectoryServer) ListPods(
 	ctx context.Context, req *tenant.ListPodsRequest,
 ) (*tenant.ListPodsResponse, error) {
+	__antithesis_instrumentation__.Notify(23290)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if _, ok := d.mu.deleted[roachpb.MakeTenantID(req.TenantID)]; ok {
+		__antithesis_instrumentation__.Notify(23292)
 		return &tenant.ListPodsResponse{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(23293)
 	}
+	__antithesis_instrumentation__.Notify(23291)
 	return &tenant.ListPodsResponse{
 		Pods: []*tenant.Pod{
 			{
@@ -77,57 +60,48 @@ func (d *TestSimpleDirectoryServer) ListPods(
 	}, nil
 }
 
-// WatchPods is a no-op for the simple directory.
-//
-// WatchPods implements the tenant.DirectoryServer interface.
 func (d *TestSimpleDirectoryServer) WatchPods(
 	req *tenant.WatchPodsRequest, server tenant.Directory_WatchPodsServer,
 ) error {
+	__antithesis_instrumentation__.Notify(23294)
 	return nil
 }
 
-// EnsurePod is a no-op for the simple directory since it assumes that a SQL
-// pod is actively listening at the associated pod address. However, if the
-// tenant has been deleted, a GRPC NotFound error will be returned. This would
-// mimic the behavior that we have in the actual tenant directory.
-//
-// EnsurePod implements the tenant.DirectoryServer interface.
 func (d *TestSimpleDirectoryServer) EnsurePod(
 	ctx context.Context, req *tenant.EnsurePodRequest,
 ) (*tenant.EnsurePodResponse, error) {
+	__antithesis_instrumentation__.Notify(23295)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if _, ok := d.mu.deleted[roachpb.MakeTenantID(req.TenantID)]; ok {
+		__antithesis_instrumentation__.Notify(23297)
 		return nil, status.Errorf(codes.NotFound, "tenant has been deleted")
+	} else {
+		__antithesis_instrumentation__.Notify(23298)
 	}
+	__antithesis_instrumentation__.Notify(23296)
 	return &tenant.EnsurePodResponse{}, nil
 }
 
-// GetTenant returns an empty response regardless of tenants. However, if the
-// tenant has been deleted, a GRPC NotFound error will be returned.
-//
-// GetTenant implements the tenant.DirectoryServer interface.
 func (d *TestSimpleDirectoryServer) GetTenant(
 	ctx context.Context, req *tenant.GetTenantRequest,
 ) (*tenant.GetTenantResponse, error) {
+	__antithesis_instrumentation__.Notify(23299)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if _, ok := d.mu.deleted[roachpb.MakeTenantID(req.TenantID)]; ok {
+		__antithesis_instrumentation__.Notify(23301)
 		return nil, status.Errorf(codes.NotFound, "tenant has been deleted")
+	} else {
+		__antithesis_instrumentation__.Notify(23302)
 	}
-	// Note that we do not return a ClusterName field here. Doing this skips
-	// the clusterName validation in the directory cache which makes testing
-	// easier. If we hardcoded a cluster name here, all connection strings will
-	// need to be updated to use that cluster name, including the one used by
-	// the ORM tests, which is currently hardcoded to "prancing-pony":
-	// https://github.com/cockroachdb/cockroach-go/blob/e1659d1d/testserver/tenant.go#L244.
+	__antithesis_instrumentation__.Notify(23300)
+
 	return &tenant.GetTenantResponse{}, nil
 }
 
-// DeleteTenant marks the given tenant as deleted, so that a NotFound error
-// will be returned for certain directory server endpoints. This also changes
-// the behavior of ListPods so no pods are returned.
 func (d *TestSimpleDirectoryServer) DeleteTenant(tenantID roachpb.TenantID) {
+	__antithesis_instrumentation__.Notify(23303)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.mu.deleted[tenantID] = struct{}{}

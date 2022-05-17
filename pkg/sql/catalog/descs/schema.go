@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,12 +16,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// GetMutableSchemaByName resolves the schema and, if applicable, returns a
-// mutable descriptor usable by the transaction. RequireMutable is ignored.
-//
-// TODO(ajwerner): Change this to take database by name to avoid any weirdness
-// due to the descriptor being passed in having been cached and causing
-// problems.
 func (tc *Collection) GetMutableSchemaByName(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -37,16 +23,11 @@ func (tc *Collection) GetMutableSchemaByName(
 	schemaName string,
 	flags tree.SchemaLookupFlags,
 ) (catalog.SchemaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264824)
 	flags.RequireMutable = true
 	return tc.getSchemaByName(ctx, txn, db, schemaName, flags)
 }
 
-// GetSchemaByName returns true and a ResolvedSchema object if the target schema
-// exists under the target database.
-//
-// TODO(ajwerner): Change this to take database by name to avoid any weirdness
-// due to the descriptor being passed in having been cached and causing
-// problems.
 func (tc *Collection) GetSchemaByName(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -54,11 +35,10 @@ func (tc *Collection) GetSchemaByName(
 	scName string,
 	flags tree.SchemaLookupFlags,
 ) (catalog.SchemaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264825)
 	return tc.getSchemaByName(ctx, txn, db, scName, flags)
 }
 
-// getSchemaByName resolves the schema and, if applicable, returns a descriptor
-// usable by the transaction.
 func (tc *Collection) getSchemaByName(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -66,16 +46,13 @@ func (tc *Collection) getSchemaByName(
 	schemaName string,
 	flags tree.SchemaLookupFlags,
 ) (catalog.SchemaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264826)
 	const alwaysLookupLeasedPublicSchema = false
 	return tc.getSchemaByNameMaybeLookingUpPublicSchema(
 		ctx, txn, db, schemaName, flags, alwaysLookupLeasedPublicSchema,
 	)
 }
 
-// Like getSchemaByName but with the optional flag to avoid trusting a
-// cache miss in the database descriptor for the ID of the public schema.
-//
-// TODO(ajwerner): Remove this split in 22.2.
 func (tc *Collection) getSchemaByNameMaybeLookingUpPublicSchema(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -84,46 +61,67 @@ func (tc *Collection) getSchemaByNameMaybeLookingUpPublicSchema(
 	flags tree.SchemaLookupFlags,
 	alwaysLookupLeasedPublicSchema bool,
 ) (catalog.SchemaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264827)
 	found, desc, err := tc.getByName(
 		ctx, txn, db, nil, schemaName, flags.AvoidLeased, flags.RequireMutable,
 		flags.AvoidSynthetic, alwaysLookupLeasedPublicSchema,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264831)
 		return nil, err
-	} else if !found {
-		if flags.Required {
-			return nil, sqlerrors.NewUndefinedSchemaError(schemaName)
+	} else {
+		__antithesis_instrumentation__.Notify(264832)
+		if !found {
+			__antithesis_instrumentation__.Notify(264833)
+			if flags.Required {
+				__antithesis_instrumentation__.Notify(264835)
+				return nil, sqlerrors.NewUndefinedSchemaError(schemaName)
+			} else {
+				__antithesis_instrumentation__.Notify(264836)
+			}
+			__antithesis_instrumentation__.Notify(264834)
+			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264837)
 		}
-		return nil, nil
 	}
+	__antithesis_instrumentation__.Notify(264828)
 	schema, ok := desc.(catalog.SchemaDescriptor)
 	if !ok {
+		__antithesis_instrumentation__.Notify(264838)
 		if flags.Required {
+			__antithesis_instrumentation__.Notify(264840)
 			return nil, sqlerrors.NewUndefinedSchemaError(schemaName)
+		} else {
+			__antithesis_instrumentation__.Notify(264841)
 		}
+		__antithesis_instrumentation__.Notify(264839)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264842)
 	}
-	if dropped, err := filterDescriptorState(schema, flags.Required, flags); dropped || err != nil {
+	__antithesis_instrumentation__.Notify(264829)
+	if dropped, err := filterDescriptorState(schema, flags.Required, flags); dropped || func() bool {
+		__antithesis_instrumentation__.Notify(264843)
+		return err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264844)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264845)
 	}
+	__antithesis_instrumentation__.Notify(264830)
 	return schema, nil
 }
 
-// GetImmutableSchemaByID returns a ResolvedSchema wrapping an immutable
-// descriptor, if applicable. RequireMutable is ignored.
-// Required is ignored, and an error is always returned if no descriptor with
-// the ID exists.
 func (tc *Collection) GetImmutableSchemaByID(
 	ctx context.Context, txn *kv.Txn, schemaID descpb.ID, flags tree.SchemaLookupFlags,
 ) (catalog.SchemaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264846)
 	flags.RequireMutable = false
 	return tc.getSchemaByID(ctx, txn, schemaID, flags)
 }
 
-// GetImmutableSchemaByName returns a ResolvedSchema wrapping an immutable
-// descriptor, if applicable. RequireMutable is ignored.
-// Required is ignored, and an error is always returned if no descriptor with
-// the ID exists.
 func (tc *Collection) GetImmutableSchemaByName(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -131,6 +129,7 @@ func (tc *Collection) GetImmutableSchemaByName(
 	schemaName string,
 	flags tree.SchemaLookupFlags,
 ) (catalog.SchemaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264847)
 	flags.RequireMutable = false
 	return tc.getSchemaByName(ctx, txn, db, schemaName, flags)
 }
@@ -138,48 +137,83 @@ func (tc *Collection) GetImmutableSchemaByName(
 func (tc *Collection) getSchemaByID(
 	ctx context.Context, txn *kv.Txn, schemaID descpb.ID, flags tree.SchemaLookupFlags,
 ) (catalog.SchemaDescriptor, error) {
-	// TODO(richardjcai): Remove this in 22.2, new schemas created in 22.1
-	// are regular UDS and do not use keys.PublicSchemaID.
-	// We can remove this after 22.1 when we no longer have to consider
-	// mixed version clusters between 21.2 and 22.1.
+	__antithesis_instrumentation__.Notify(264848)
+
 	if schemaID == keys.PublicSchemaID {
+		__antithesis_instrumentation__.Notify(264854)
 		return schemadesc.GetPublicSchema(), nil
+	} else {
+		__antithesis_instrumentation__.Notify(264855)
 	}
+	__antithesis_instrumentation__.Notify(264849)
 	if sc, err := tc.virtual.getSchemaByID(
 		ctx, schemaID, flags.RequireMutable,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(264856)
 		if errors.Is(err, catalog.ErrDescriptorNotFound) {
+			__antithesis_instrumentation__.Notify(264858)
 			if flags.Required {
+				__antithesis_instrumentation__.Notify(264860)
 				return nil, sqlerrors.NewUndefinedSchemaError(fmt.Sprintf("[%d]", schemaID))
+			} else {
+				__antithesis_instrumentation__.Notify(264861)
 			}
+			__antithesis_instrumentation__.Notify(264859)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264862)
 		}
+		__antithesis_instrumentation__.Notify(264857)
 		return nil, err
-	} else if sc != nil {
-		return sc, err
+	} else {
+		__antithesis_instrumentation__.Notify(264863)
+		if sc != nil {
+			__antithesis_instrumentation__.Notify(264864)
+			return sc, err
+		} else {
+			__antithesis_instrumentation__.Notify(264865)
+		}
 	}
+	__antithesis_instrumentation__.Notify(264850)
 
-	// If this collection is attached to a session and the session has created
-	// a temporary schema, then check if the schema ID matches.
 	if sc := tc.temporary.getSchemaByID(ctx, schemaID); sc != nil {
+		__antithesis_instrumentation__.Notify(264866)
 		return sc, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264867)
 	}
+	__antithesis_instrumentation__.Notify(264851)
 
-	// Otherwise, fall back to looking up the descriptor with the desired ID.
 	descs, err := tc.getDescriptorsByID(ctx, txn, flags, schemaID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264868)
 		if errors.Is(err, catalog.ErrDescriptorNotFound) {
+			__antithesis_instrumentation__.Notify(264870)
 			if flags.Required {
+				__antithesis_instrumentation__.Notify(264872)
 				return nil, sqlerrors.NewUndefinedSchemaError(fmt.Sprintf("[%d]", schemaID))
+			} else {
+				__antithesis_instrumentation__.Notify(264873)
 			}
+			__antithesis_instrumentation__.Notify(264871)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264874)
 		}
+		__antithesis_instrumentation__.Notify(264869)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264875)
 	}
+	__antithesis_instrumentation__.Notify(264852)
 	schemaDesc, ok := descs[0].(catalog.SchemaDescriptor)
 	if !ok {
+		__antithesis_instrumentation__.Notify(264876)
 		return nil, sqlerrors.NewUndefinedSchemaError(fmt.Sprintf("[%d]", schemaID))
+	} else {
+		__antithesis_instrumentation__.Notify(264877)
 	}
+	__antithesis_instrumentation__.Notify(264853)
 
 	return schemaDesc, nil
 }

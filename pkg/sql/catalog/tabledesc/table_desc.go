@@ -1,15 +1,7 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package tabledesc provides concrete implementations of catalog.TableDesc.
 package tabledesc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/clusterversion"
@@ -28,19 +20,11 @@ var _ catalog.TableDescriptor = (*Mutable)(nil)
 var _ catalog.MutableDescriptor = (*Mutable)(nil)
 var _ catalog.TableDescriptor = (*wrapper)(nil)
 
-// ConstraintIDsAddedToTableDescsVersion constraint IDs have been added to table
-// descriptors at this cluster version.
 const ConstraintIDsAddedToTableDescsVersion = clusterversion.RemoveIncompatibleDatabasePrivileges
 
-// wrapper is the base implementation of the catalog.Descriptor
-// interface, which is overloaded by immutable and Mutable.
 type wrapper struct {
 	descpb.TableDescriptor
 
-	// mutationCache, indexCache and columnCache, when not nil, respectively point
-	// to a struct containing precomputed catalog.Mutation, catalog.Index or
-	// catalog.Column slices.
-	// Those can therefore only be set when creating an immutable.
 	mutationCache *mutationCache
 	indexCache    *indexCache
 	columnCache   *columnCache
@@ -48,517 +32,570 @@ type wrapper struct {
 	changes catalog.PostDeserializationChanges
 }
 
-// IsUncommittedVersion implements the catalog.Descriptor interface.
 func (*wrapper) IsUncommittedVersion() bool {
+	__antithesis_instrumentation__.Notify(270541)
 	return false
 }
 
-// GetPostDeserializationChanges returns the set of changes which occurred to
-// this descriptor post deserialization.
 func (desc *wrapper) GetPostDeserializationChanges() catalog.PostDeserializationChanges {
+	__antithesis_instrumentation__.Notify(270542)
 	return desc.changes
 }
 
-// HasConcurrentSchemaChanges implements catalog.Descriptor.
 func (desc *wrapper) HasConcurrentSchemaChanges() bool {
-	return (desc.DeclarativeSchemaChangerState != nil &&
-		desc.DeclarativeSchemaChangerState.JobID != catpb.InvalidJobID) ||
-		len(desc.Mutations) > 0
+	__antithesis_instrumentation__.Notify(270543)
+	return (desc.DeclarativeSchemaChangerState != nil && func() bool {
+		__antithesis_instrumentation__.Notify(270544)
+		return desc.DeclarativeSchemaChangerState.JobID != catpb.InvalidJobID == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(270545)
+		return len(desc.Mutations) > 0 == true
+	}() == true
 }
 
-// ActiveChecks implements the TableDescriptor interface.
 func (desc *wrapper) ActiveChecks() []descpb.TableDescriptor_CheckConstraint {
+	__antithesis_instrumentation__.Notify(270546)
 	checks := make([]descpb.TableDescriptor_CheckConstraint, len(desc.Checks))
 	for i, c := range desc.Checks {
+		__antithesis_instrumentation__.Notify(270548)
 		checks[i] = *c
 	}
+	__antithesis_instrumentation__.Notify(270547)
 	return checks
 }
 
-// immutable is a custom type for TableDescriptors
-// It holds precomputed values and the underlying TableDescriptor
-// should be const.
 type immutable struct {
 	wrapper
 
 	allChecks []descpb.TableDescriptor_CheckConstraint
 
-	// isUncommittedVersion is set to true if this descriptor was created from
-	// a copy of a Mutable with an uncommitted version.
 	isUncommittedVersion bool
-
-	// TODO (lucy): populate these and use them
-	// inboundFKs  []*ForeignKeyConstraint
-	// outboundFKs []*ForeignKeyConstraint
 }
 
-// IsUncommittedVersion implements the Descriptor interface.
 func (desc *immutable) IsUncommittedVersion() bool {
+	__antithesis_instrumentation__.Notify(270549)
 	return desc.isUncommittedVersion
 }
 
-// DescriptorProto implements the Descriptor interface.
 func (desc *wrapper) DescriptorProto() *descpb.Descriptor {
+	__antithesis_instrumentation__.Notify(270550)
 	return &descpb.Descriptor{
 		Union: &descpb.Descriptor_Table{Table: &desc.TableDescriptor},
 	}
 }
 
-// ByteSize implements the Descriptor interface.
 func (desc *wrapper) ByteSize() int64 {
+	__antithesis_instrumentation__.Notify(270551)
 	return int64(desc.Size())
 }
 
-// NewBuilder implements the catalog.Descriptor interface.
 func (desc *wrapper) NewBuilder() catalog.DescriptorBuilder {
+	__antithesis_instrumentation__.Notify(270552)
 	return newBuilder(desc.TableDesc(), desc.IsUncommittedVersion(), desc.changes)
 }
 
-// GetPrimaryIndexID implements the TableDescriptor interface.
 func (desc *wrapper) GetPrimaryIndexID() descpb.IndexID {
+	__antithesis_instrumentation__.Notify(270553)
 	return desc.PrimaryIndex.ID
 }
 
-// IsTemporary implements the TableDescriptor interface.
 func (desc *wrapper) IsTemporary() bool {
+	__antithesis_instrumentation__.Notify(270554)
 	return desc.GetTemporary()
 }
 
-// ImmutableCopy implements the MutableDescriptor interface.
 func (desc *Mutable) ImmutableCopy() catalog.Descriptor {
+	__antithesis_instrumentation__.Notify(270555)
 	return desc.NewBuilder().BuildImmutable()
 }
 
-// NewBuilder implements the catalog.Descriptor interface.
-//
-// It overrides the wrapper's implementation to deal with the fact that
-// mutable has overridden the definition of IsUncommittedVersion.
 func (desc *Mutable) NewBuilder() catalog.DescriptorBuilder {
+	__antithesis_instrumentation__.Notify(270556)
 	return newBuilder(desc.TableDesc(), desc.IsUncommittedVersion(), desc.changes)
 }
 
-// IsUncommittedVersion implements the Descriptor interface.
 func (desc *Mutable) IsUncommittedVersion() bool {
+	__antithesis_instrumentation__.Notify(270557)
 	clusterVersion := desc.ClusterVersion()
-	return desc.IsNew() || desc.GetVersion() != clusterVersion.GetVersion()
+	return desc.IsNew() || func() bool {
+		__antithesis_instrumentation__.Notify(270558)
+		return desc.GetVersion() != clusterVersion.GetVersion() == true
+	}() == true
 }
 
-// SetDrainingNames implements the MutableDescriptor interface.
-//
-// Deprecated: Do not use.
 func (desc *Mutable) SetDrainingNames(names []descpb.NameInfo) {
+	__antithesis_instrumentation__.Notify(270559)
 	desc.DrainingNames = names
 }
 
-// RemovePublicNonPrimaryIndex removes a secondary index by ordinal.
-// indexOrdinal must be in range [1, len(desc.Indexes)], 0 denotes the primary
-// index.
 func (desc *Mutable) RemovePublicNonPrimaryIndex(indexOrdinal int) {
+	__antithesis_instrumentation__.Notify(270560)
 	desc.Indexes = append(desc.Indexes[:indexOrdinal-1], desc.Indexes[indexOrdinal:]...)
 }
 
-// SetPublicNonPrimaryIndexes replaces all existing secondary indexes with new
-// ones passed to it.
 func (desc *Mutable) SetPublicNonPrimaryIndexes(indexes []descpb.IndexDescriptor) {
+	__antithesis_instrumentation__.Notify(270561)
 	desc.Indexes = append(desc.Indexes[:0], indexes...)
 }
 
-// AddPublicNonPrimaryIndex adds a new secondary index.
 func (desc *Mutable) AddPublicNonPrimaryIndex(index descpb.IndexDescriptor) {
+	__antithesis_instrumentation__.Notify(270562)
 	desc.Indexes = append(desc.Indexes, index)
 }
 
-// SetPrimaryIndex sets the primary index.
 func (desc *Mutable) SetPrimaryIndex(index descpb.IndexDescriptor) {
+	__antithesis_instrumentation__.Notify(270563)
 	desc.PrimaryIndex = index
 }
 
-// SetPublicNonPrimaryIndex sets one of the secondary indexes.
-// indexOrdinal must be in range [1, len(desc.Indexes)], 0 denotes the primary
-// index.
 func (desc *Mutable) SetPublicNonPrimaryIndex(indexOrdinal int, index descpb.IndexDescriptor) {
+	__antithesis_instrumentation__.Notify(270564)
 	desc.Indexes[indexOrdinal-1] = index
 }
 
-// UpdateIndexPartitioning applies the new partition and adjusts the column info
-// for the specified index descriptor. Returns false iff this was a no-op.
 func UpdateIndexPartitioning(
 	idx *descpb.IndexDescriptor,
 	isIndexPrimary bool,
 	newImplicitCols []catalog.Column,
 	newPartitioning catpb.PartitioningDescriptor,
 ) bool {
+	__antithesis_instrumentation__.Notify(270565)
 	oldNumImplicitCols := int(idx.Partitioning.NumImplicitColumns)
-	isNoOp := oldNumImplicitCols == len(newImplicitCols) && idx.Partitioning.Equal(newPartitioning)
+	isNoOp := oldNumImplicitCols == len(newImplicitCols) && func() bool {
+		__antithesis_instrumentation__.Notify(270571)
+		return idx.Partitioning.Equal(newPartitioning) == true
+	}() == true
 	numCols := len(idx.KeyColumnIDs)
 	newCap := numCols + len(newImplicitCols) - oldNumImplicitCols
 	newColumnIDs := make([]descpb.ColumnID, len(newImplicitCols), newCap)
 	newColumnNames := make([]string, len(newImplicitCols), newCap)
 	newColumnDirections := make([]descpb.IndexDescriptor_Direction, len(newImplicitCols), newCap)
 	for i, col := range newImplicitCols {
+		__antithesis_instrumentation__.Notify(270572)
 		newColumnIDs[i] = col.GetID()
 		newColumnNames[i] = col.GetName()
 		newColumnDirections[i] = descpb.IndexDescriptor_ASC
-		if isNoOp &&
-			(idx.KeyColumnIDs[i] != newColumnIDs[i] ||
-				idx.KeyColumnNames[i] != newColumnNames[i] ||
-				idx.KeyColumnDirections[i] != newColumnDirections[i]) {
+		if isNoOp && func() bool {
+			__antithesis_instrumentation__.Notify(270573)
+			return (idx.KeyColumnIDs[i] != newColumnIDs[i] || func() bool {
+				__antithesis_instrumentation__.Notify(270574)
+				return idx.KeyColumnNames[i] != newColumnNames[i] == true
+			}() == true || func() bool {
+				__antithesis_instrumentation__.Notify(270575)
+				return idx.KeyColumnDirections[i] != newColumnDirections[i] == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(270576)
 			isNoOp = false
+		} else {
+			__antithesis_instrumentation__.Notify(270577)
 		}
 	}
+	__antithesis_instrumentation__.Notify(270566)
 	if isNoOp {
+		__antithesis_instrumentation__.Notify(270578)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(270579)
 	}
+	__antithesis_instrumentation__.Notify(270567)
 	idx.KeyColumnIDs = append(newColumnIDs, idx.KeyColumnIDs[oldNumImplicitCols:]...)
 	idx.KeyColumnNames = append(newColumnNames, idx.KeyColumnNames[oldNumImplicitCols:]...)
 	idx.KeyColumnDirections = append(newColumnDirections, idx.KeyColumnDirections[oldNumImplicitCols:]...)
 	idx.Partitioning = newPartitioning
 	if !isIndexPrimary {
+		__antithesis_instrumentation__.Notify(270580)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(270581)
 	}
+	__antithesis_instrumentation__.Notify(270568)
 
 	newStoreColumnIDs := make([]descpb.ColumnID, 0, len(idx.StoreColumnIDs))
 	newStoreColumnNames := make([]string, 0, len(idx.StoreColumnNames))
 	for i := range idx.StoreColumnIDs {
+		__antithesis_instrumentation__.Notify(270582)
 		id := idx.StoreColumnIDs[i]
 		name := idx.StoreColumnNames[i]
 		found := false
 		for _, newColumnName := range newColumnNames {
+			__antithesis_instrumentation__.Notify(270584)
 			if newColumnName == name {
+				__antithesis_instrumentation__.Notify(270585)
 				found = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(270586)
 			}
 		}
+		__antithesis_instrumentation__.Notify(270583)
 		if !found {
+			__antithesis_instrumentation__.Notify(270587)
 			newStoreColumnIDs = append(newStoreColumnIDs, id)
 			newStoreColumnNames = append(newStoreColumnNames, name)
+		} else {
+			__antithesis_instrumentation__.Notify(270588)
 		}
 	}
+	__antithesis_instrumentation__.Notify(270569)
 	idx.StoreColumnIDs = newStoreColumnIDs
 	idx.StoreColumnNames = newStoreColumnNames
 	if len(idx.StoreColumnNames) == 0 {
+		__antithesis_instrumentation__.Notify(270589)
 		idx.StoreColumnIDs = nil
 		idx.StoreColumnNames = nil
+	} else {
+		__antithesis_instrumentation__.Notify(270590)
 	}
+	__antithesis_instrumentation__.Notify(270570)
 	return true
 }
 
-// GetPrimaryIndex implements the TableDescriptor interface.
 func (desc *wrapper) GetPrimaryIndex() catalog.Index {
+	__antithesis_instrumentation__.Notify(270591)
 	return desc.getExistingOrNewIndexCache().primary
 }
 
-// getExistingOrNewIndexCache should be the only place where the indexCache
-// field in wrapper is ever read.
 func (desc *wrapper) getExistingOrNewIndexCache() *indexCache {
+	__antithesis_instrumentation__.Notify(270592)
 	if desc.indexCache != nil {
+		__antithesis_instrumentation__.Notify(270594)
 		return desc.indexCache
+	} else {
+		__antithesis_instrumentation__.Notify(270595)
 	}
+	__antithesis_instrumentation__.Notify(270593)
 	return newIndexCache(desc.TableDesc(), desc.getExistingOrNewMutationCache())
 }
 
-// AllIndexes returns a slice with all indexes, public and non-public,
-// in the underlying proto, in their canonical order:
-// - the primary index,
-// - the public non-primary indexes in the Indexes array, in order,
-// - the non-public indexes present in the Mutations array, in order.
-//
-// See also catalog.Index.Ordinal().
 func (desc *wrapper) AllIndexes() []catalog.Index {
+	__antithesis_instrumentation__.Notify(270596)
 	return desc.getExistingOrNewIndexCache().all
 }
 
-// ActiveIndexes returns a slice with all public indexes in the underlying
-// proto, in their canonical order:
-// - the primary index,
-// - the public non-primary indexes in the Indexes array, in order.
-//
-// See also catalog.Index.Ordinal().
 func (desc *wrapper) ActiveIndexes() []catalog.Index {
+	__antithesis_instrumentation__.Notify(270597)
 	return desc.getExistingOrNewIndexCache().active
 }
 
-// NonDropIndexes returns a slice of all non-drop indexes in the underlying
-// proto, in their canonical order. This means:
-// - the primary index, if the table is a physical table,
-// - the public non-primary indexes in the Indexes array, in order,
-// - the non-public indexes present in the Mutations array, in order,
-//   if the mutation is not a drop.
-//
-// See also catalog.Index.Ordinal().
 func (desc *wrapper) NonDropIndexes() []catalog.Index {
+	__antithesis_instrumentation__.Notify(270598)
 	return desc.getExistingOrNewIndexCache().nonDrop
 }
 
-// NonDropIndexes returns a slice of all partial indexes in the underlying
-// proto, in their canonical order. This is equivalent to taking the slice
-// produced by AllIndexes and filtering indexes with non-empty expressions.
 func (desc *wrapper) PartialIndexes() []catalog.Index {
+	__antithesis_instrumentation__.Notify(270599)
 	return desc.getExistingOrNewIndexCache().partial
 }
 
-// NonPrimaryIndexes returns a slice of all non-primary indexes, in
-// their canonical order. This is equivalent to taking the slice
-// produced by AllIndexes and removing the primary index.
 func (desc *wrapper) NonPrimaryIndexes() []catalog.Index {
+	__antithesis_instrumentation__.Notify(270600)
 	return desc.getExistingOrNewIndexCache().nonPrimary
 }
 
-// PublicNonPrimaryIndexes returns a slice of all active secondary indexes,
-// in their canonical order. This is equivalent to the Indexes array in the
-// proto.
 func (desc *wrapper) PublicNonPrimaryIndexes() []catalog.Index {
+	__antithesis_instrumentation__.Notify(270601)
 	return desc.getExistingOrNewIndexCache().publicNonPrimary
 }
 
-// WritableNonPrimaryIndexes returns a slice of all non-primary indexes which
-// allow being written to: public + delete-and-write-only, in their canonical
-// order. This is equivalent to taking the slice produced by
-// DeletableNonPrimaryIndexes and removing the indexes which are in mutations
-// in the delete-only state.
 func (desc *wrapper) WritableNonPrimaryIndexes() []catalog.Index {
+	__antithesis_instrumentation__.Notify(270602)
 	return desc.getExistingOrNewIndexCache().writableNonPrimary
 }
 
-// DeletableNonPrimaryIndexes returns a slice of all non-primary
-// indexes which allow being deleted from: public +
-// delete-and-write-only + delete-only, in their canonical order. This
-// is equivalent to taking the slice produced by AllIndexes and
-// removing the primary index and backfilling indexes.
 func (desc *wrapper) DeletableNonPrimaryIndexes() []catalog.Index {
+	__antithesis_instrumentation__.Notify(270603)
 	return desc.getExistingOrNewIndexCache().deletableNonPrimary
 }
 
-// DeleteOnlyNonPrimaryIndexes returns a slice of all non-primary indexes
-// which allow only being deleted from, in their canonical order. This is
-// equivalent to taking the slice produced by DeletableNonPrimaryIndexes and
-// removing the indexes which are not in mutations or not in the delete-only
-// state.
 func (desc *wrapper) DeleteOnlyNonPrimaryIndexes() []catalog.Index {
+	__antithesis_instrumentation__.Notify(270604)
 	return desc.getExistingOrNewIndexCache().deleteOnlyNonPrimary
 }
 
-// FindIndexWithID returns the first catalog.Index that matches the id
-// in the set of all indexes, or an error if none was found. The order of
-// traversal is the canonical order, see catalog.Index.Ordinal().
 func (desc *wrapper) FindIndexWithID(id descpb.IndexID) (catalog.Index, error) {
+	__antithesis_instrumentation__.Notify(270605)
 	if idx := catalog.FindIndex(desc, catalog.IndexOpts{
 		NonPhysicalPrimaryIndex: true,
 		DropMutations:           true,
 		AddMutations:            true,
 	}, func(idx catalog.Index) bool {
+		__antithesis_instrumentation__.Notify(270607)
 		return idx.GetID() == id
 	}); idx != nil {
+		__antithesis_instrumentation__.Notify(270608)
 		return idx, nil
+	} else {
+		__antithesis_instrumentation__.Notify(270609)
 	}
+	__antithesis_instrumentation__.Notify(270606)
 	return nil, errors.Errorf("index-id \"%d\" does not exist", id)
 }
 
-// FindIndexWithName returns the first catalog.Index that matches the name in
-// the set of all indexes, excluding the primary index of non-physical
-// tables, or an error if none was found. The order of traversal is the
-// canonical order, see catalog.Index.Ordinal().
 func (desc *wrapper) FindIndexWithName(name string) (catalog.Index, error) {
+	__antithesis_instrumentation__.Notify(270610)
 	if idx := catalog.FindIndex(desc, catalog.IndexOpts{
 		NonPhysicalPrimaryIndex: false,
 		DropMutations:           true,
 		AddMutations:            true,
 	}, func(idx catalog.Index) bool {
+		__antithesis_instrumentation__.Notify(270612)
 		return idx.GetName() == name
 	}); idx != nil {
+		__antithesis_instrumentation__.Notify(270613)
 		return idx, nil
+	} else {
+		__antithesis_instrumentation__.Notify(270614)
 	}
+	__antithesis_instrumentation__.Notify(270611)
 	return nil, errors.Errorf("index %q does not exist", name)
 }
 
-// getExistingOrNewColumnCache should be the only place where the columnCache
-// field in wrapper is ever read.
 func (desc *wrapper) getExistingOrNewColumnCache() *columnCache {
+	__antithesis_instrumentation__.Notify(270615)
 	if desc.columnCache != nil {
+		__antithesis_instrumentation__.Notify(270617)
 		return desc.columnCache
+	} else {
+		__antithesis_instrumentation__.Notify(270618)
 	}
+	__antithesis_instrumentation__.Notify(270616)
 	return newColumnCache(desc.TableDesc(), desc.getExistingOrNewMutationCache())
 }
 
-// AllColumns implements the TableDescriptor interface.
 func (desc *wrapper) AllColumns() []catalog.Column {
+	__antithesis_instrumentation__.Notify(270619)
 	return desc.getExistingOrNewColumnCache().all
 }
 
-// PublicColumns implements the TableDescriptor interface.
 func (desc *wrapper) PublicColumns() []catalog.Column {
+	__antithesis_instrumentation__.Notify(270620)
 	return desc.getExistingOrNewColumnCache().public
 }
 
-// WritableColumns implements the TableDescriptor interface.
 func (desc *wrapper) WritableColumns() []catalog.Column {
+	__antithesis_instrumentation__.Notify(270621)
 	return desc.getExistingOrNewColumnCache().writable
 }
 
-// DeletableColumns implements the TableDescriptor interface.
 func (desc *wrapper) DeletableColumns() []catalog.Column {
+	__antithesis_instrumentation__.Notify(270622)
 	return desc.getExistingOrNewColumnCache().deletable
 }
 
-// NonDropColumns implements the TableDescriptor interface.
 func (desc *wrapper) NonDropColumns() []catalog.Column {
+	__antithesis_instrumentation__.Notify(270623)
 	return desc.getExistingOrNewColumnCache().nonDrop
 }
 
-// VisibleColumns implements the TableDescriptor interface.
 func (desc *wrapper) VisibleColumns() []catalog.Column {
+	__antithesis_instrumentation__.Notify(270624)
 	return desc.getExistingOrNewColumnCache().visible
 }
 
-// AccessibleColumns implements the TableDescriptor interface.
 func (desc *wrapper) AccessibleColumns() []catalog.Column {
+	__antithesis_instrumentation__.Notify(270625)
 	return desc.getExistingOrNewColumnCache().accessible
 }
 
-// UserDefinedTypeColumns implements the TableDescriptor interface.
 func (desc *wrapper) UserDefinedTypeColumns() []catalog.Column {
+	__antithesis_instrumentation__.Notify(270626)
 	return desc.getExistingOrNewColumnCache().withUDTs
 }
 
-// ReadableColumns implements the TableDescriptor interface.
 func (desc *wrapper) ReadableColumns() []catalog.Column {
+	__antithesis_instrumentation__.Notify(270627)
 	return desc.getExistingOrNewColumnCache().readable
 }
 
-// SystemColumns implements the TableDescriptor interface.
 func (desc *wrapper) SystemColumns() []catalog.Column {
+	__antithesis_instrumentation__.Notify(270628)
 	return desc.getExistingOrNewColumnCache().system
 }
 
-// FamilyDefaultColumns implements the TableDescriptor interface.
 func (desc *wrapper) FamilyDefaultColumns() []descpb.IndexFetchSpec_FamilyDefaultColumn {
+	__antithesis_instrumentation__.Notify(270629)
 	return desc.getExistingOrNewColumnCache().familyDefaultColumns
 }
 
-// PublicColumnIDs implements the TableDescriptor interface.
 func (desc *wrapper) PublicColumnIDs() []descpb.ColumnID {
+	__antithesis_instrumentation__.Notify(270630)
 	cols := desc.PublicColumns()
 	res := make([]descpb.ColumnID, len(cols))
 	for i, c := range cols {
+		__antithesis_instrumentation__.Notify(270632)
 		res[i] = c.GetID()
 	}
+	__antithesis_instrumentation__.Notify(270631)
 	return res
 }
 
-// IndexColumns implements the TableDescriptor interface.
 func (desc *wrapper) IndexColumns(idx catalog.Index) []catalog.Column {
+	__antithesis_instrumentation__.Notify(270633)
 	if ic := desc.getExistingOrNewIndexColumnCache(idx); ic != nil {
+		__antithesis_instrumentation__.Notify(270635)
 		return ic.all
+	} else {
+		__antithesis_instrumentation__.Notify(270636)
 	}
+	__antithesis_instrumentation__.Notify(270634)
 	return nil
 }
 
-// IndexKeyColumns implements the TableDescriptor interface.
 func (desc *wrapper) IndexKeyColumns(idx catalog.Index) []catalog.Column {
+	__antithesis_instrumentation__.Notify(270637)
 	if ic := desc.getExistingOrNewIndexColumnCache(idx); ic != nil {
+		__antithesis_instrumentation__.Notify(270639)
 		return ic.key
+	} else {
+		__antithesis_instrumentation__.Notify(270640)
 	}
+	__antithesis_instrumentation__.Notify(270638)
 	return nil
 }
 
-// IndexKeyColumnDirections implements the TableDescriptor interface.
 func (desc *wrapper) IndexKeyColumnDirections(
 	idx catalog.Index,
 ) []descpb.IndexDescriptor_Direction {
+	__antithesis_instrumentation__.Notify(270641)
 	if ic := desc.getExistingOrNewIndexColumnCache(idx); ic != nil {
+		__antithesis_instrumentation__.Notify(270643)
 		return ic.keyDirs
+	} else {
+		__antithesis_instrumentation__.Notify(270644)
 	}
+	__antithesis_instrumentation__.Notify(270642)
 	return nil
 }
 
-// IndexKeySuffixColumns implements the TableDescriptor interface.
 func (desc *wrapper) IndexKeySuffixColumns(idx catalog.Index) []catalog.Column {
+	__antithesis_instrumentation__.Notify(270645)
 	if ic := desc.getExistingOrNewIndexColumnCache(idx); ic != nil {
+		__antithesis_instrumentation__.Notify(270647)
 		return ic.keySuffix
+	} else {
+		__antithesis_instrumentation__.Notify(270648)
 	}
+	__antithesis_instrumentation__.Notify(270646)
 	return nil
 }
 
-// IndexFullColumns implements the TableDescriptor interface.
 func (desc *wrapper) IndexFullColumns(idx catalog.Index) []catalog.Column {
+	__antithesis_instrumentation__.Notify(270649)
 	if ic := desc.getExistingOrNewIndexColumnCache(idx); ic != nil {
+		__antithesis_instrumentation__.Notify(270651)
 		return ic.full
+	} else {
+		__antithesis_instrumentation__.Notify(270652)
 	}
+	__antithesis_instrumentation__.Notify(270650)
 	return nil
 }
 
-// IndexFullColumnDirections implements the TableDescriptor interface.
 func (desc *wrapper) IndexFullColumnDirections(
 	idx catalog.Index,
 ) []descpb.IndexDescriptor_Direction {
+	__antithesis_instrumentation__.Notify(270653)
 	if ic := desc.getExistingOrNewIndexColumnCache(idx); ic != nil {
+		__antithesis_instrumentation__.Notify(270655)
 		return ic.fullDirs
+	} else {
+		__antithesis_instrumentation__.Notify(270656)
 	}
+	__antithesis_instrumentation__.Notify(270654)
 	return nil
 }
 
-// IndexStoredColumns implements the TableDescriptor interface.
 func (desc *wrapper) IndexStoredColumns(idx catalog.Index) []catalog.Column {
+	__antithesis_instrumentation__.Notify(270657)
 	if ic := desc.getExistingOrNewIndexColumnCache(idx); ic != nil {
+		__antithesis_instrumentation__.Notify(270659)
 		return ic.stored
+	} else {
+		__antithesis_instrumentation__.Notify(270660)
 	}
+	__antithesis_instrumentation__.Notify(270658)
 	return nil
 }
 
-// IndexFetchSpecKeyAndSuffixColumns implements the TableDescriptor interface.
 func (desc *wrapper) IndexFetchSpecKeyAndSuffixColumns(
 	idx catalog.Index,
 ) []descpb.IndexFetchSpec_KeyColumn {
+	__antithesis_instrumentation__.Notify(270661)
 	if ic := desc.getExistingOrNewIndexColumnCache(idx); ic != nil {
+		__antithesis_instrumentation__.Notify(270663)
 		return ic.keyAndSuffix
+	} else {
+		__antithesis_instrumentation__.Notify(270664)
 	}
+	__antithesis_instrumentation__.Notify(270662)
 	return nil
 }
 
-// getExistingOrNewIndexColumnCache is a convenience method for Index*Columns
-// methods.
 func (desc *wrapper) getExistingOrNewIndexColumnCache(idx catalog.Index) *indexColumnCache {
+	__antithesis_instrumentation__.Notify(270665)
 	if idx == nil {
+		__antithesis_instrumentation__.Notify(270668)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(270669)
 	}
+	__antithesis_instrumentation__.Notify(270666)
 	c := desc.getExistingOrNewColumnCache()
 	if idx.Ordinal() >= len(c.index) {
+		__antithesis_instrumentation__.Notify(270670)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(270671)
 	}
+	__antithesis_instrumentation__.Notify(270667)
 	return &c.index[idx.Ordinal()]
 }
 
-// FindColumnWithID implements the TableDescriptor interface.
 func (desc *wrapper) FindColumnWithID(id descpb.ColumnID) (catalog.Column, error) {
+	__antithesis_instrumentation__.Notify(270672)
 	for _, col := range desc.AllColumns() {
+		__antithesis_instrumentation__.Notify(270674)
 		if col.GetID() == id {
+			__antithesis_instrumentation__.Notify(270675)
 			return col, nil
+		} else {
+			__antithesis_instrumentation__.Notify(270676)
 		}
 	}
+	__antithesis_instrumentation__.Notify(270673)
 
 	return nil, pgerror.Newf(pgcode.UndefinedColumn, "column-id \"%d\" does not exist", id)
 }
 
-// FindColumnWithName implements the TableDescriptor interface.
 func (desc *wrapper) FindColumnWithName(name tree.Name) (catalog.Column, error) {
+	__antithesis_instrumentation__.Notify(270677)
 	for _, col := range desc.AllColumns() {
+		__antithesis_instrumentation__.Notify(270679)
 		if col.ColName() == name {
+			__antithesis_instrumentation__.Notify(270680)
 			return col, nil
+		} else {
+			__antithesis_instrumentation__.Notify(270681)
 		}
 	}
+	__antithesis_instrumentation__.Notify(270678)
 	return nil, colinfo.NewUndefinedColumnError(string(name))
 }
 
-// getExistingOrNewMutationCache should be the only place where the
-// mutationCache field in wrapper is ever read.
 func (desc *wrapper) getExistingOrNewMutationCache() *mutationCache {
+	__antithesis_instrumentation__.Notify(270682)
 	if desc.mutationCache != nil {
+		__antithesis_instrumentation__.Notify(270684)
 		return desc.mutationCache
+	} else {
+		__antithesis_instrumentation__.Notify(270685)
 	}
+	__antithesis_instrumentation__.Notify(270683)
 	return newMutationCache(desc.TableDesc())
 }
 
-// AllMutations implements the TableDescriptor interface.
 func (desc *wrapper) AllMutations() []catalog.Mutation {
+	__antithesis_instrumentation__.Notify(270686)
 	return desc.getExistingOrNewMutationCache().all
 }

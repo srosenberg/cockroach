@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catprivilege
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -25,23 +17,18 @@ import (
 var _ catalog.DefaultPrivilegeDescriptor = &immutable{}
 var _ catalog.DefaultPrivilegeDescriptor = &Mutable{}
 
-// immutable is a wrapper for a DefaultPrivilegeDescriptor
-// that only exposes getters.
 type immutable struct {
 	defaultPrivilegeDescriptor *catpb.DefaultPrivilegeDescriptor
 }
 
-// Mutable is a wrapper for a DefaultPrivilegeDescriptor
-// that exposes getters and setters.
 type Mutable struct {
 	immutable
 }
 
-// MakeDefaultPrivilegeDescriptor returns a new DefaultPrivilegeDescriptor for
-// the specified DefaultPrivilegeDescriptorType.
 func MakeDefaultPrivilegeDescriptor(
 	typ catpb.DefaultPrivilegeDescriptor_DefaultPrivilegeDescriptorType,
 ) *catpb.DefaultPrivilegeDescriptor {
+	__antithesis_instrumentation__.Notify(250662)
 	var defaultPrivilegesForRole []catpb.DefaultPrivilegesForRole
 	return &catpb.DefaultPrivilegeDescriptor{
 		DefaultPrivilegesPerRole: defaultPrivilegesForRole,
@@ -49,32 +36,25 @@ func MakeDefaultPrivilegeDescriptor(
 	}
 }
 
-// MakeDefaultPrivileges returns an immutable
-// given a defaultPrivilegeDescriptor.
 func MakeDefaultPrivileges(
 	defaultPrivilegeDescriptor *catpb.DefaultPrivilegeDescriptor,
 ) catalog.DefaultPrivilegeDescriptor {
+	__antithesis_instrumentation__.Notify(250663)
 	return &immutable{
 		defaultPrivilegeDescriptor: defaultPrivilegeDescriptor,
 	}
 }
 
-// NewMutableDefaultPrivileges returns a Mutable
-// given a defaultPrivilegeDescriptor.
 func NewMutableDefaultPrivileges(
 	defaultPrivilegeDescriptor *catpb.DefaultPrivilegeDescriptor,
 ) *Mutable {
+	__antithesis_instrumentation__.Notify(250664)
 	return &Mutable{
 		immutable{
 			defaultPrivilegeDescriptor: defaultPrivilegeDescriptor,
 		}}
 }
 
-// grantOrRevokeDefaultPrivilegesHelper calls expandPrivileges before calling
-// the function passed in and calls foldPrivileges after calling grant/revoke
-// if the DefaultPrivilegeDescriptor is for a database.
-// If the DefaultPrivilegeDescriptor is for a schema we simply
-// call grant/revoke.
 func (d *immutable) grantOrRevokeDefaultPrivilegesHelper(
 	defaultPrivilegesForRole *catpb.DefaultPrivilegesForRole,
 	role catpb.DefaultPrivilegesRole,
@@ -85,32 +65,43 @@ func (d *immutable) grantOrRevokeDefaultPrivilegesHelper(
 	isGrant bool,
 	deprecateGrant bool,
 ) {
+	__antithesis_instrumentation__.Notify(250665)
 	defaultPrivileges := defaultPrivilegesForRole.DefaultPrivilegesPerObject[targetObject]
-	// expandPrivileges turns flags on the DefaultPrivilegesForRole representing
-	// special privilege cases into real privileges on the PrivilegeDescriptor.
-	// foldPrivileges converts the real privileges back into flags.
-	// We only need to do this if the default privileges are defined globally
-	// (for the database) as schemas do not have this special case.
+
 	if d.IsDatabaseDefaultPrivilege() {
+		__antithesis_instrumentation__.Notify(250670)
 		expandPrivileges(defaultPrivilegesForRole, role, &defaultPrivileges, targetObject)
+	} else {
+		__antithesis_instrumentation__.Notify(250671)
 	}
+	__antithesis_instrumentation__.Notify(250666)
 	if isGrant {
+		__antithesis_instrumentation__.Notify(250672)
 		defaultPrivileges.Grant(grantee, privList, withGrantOption)
 	} else {
+		__antithesis_instrumentation__.Notify(250673)
 		defaultPrivileges.Revoke(grantee, privList, targetObject.ToPrivilegeObjectType(), withGrantOption)
 	}
+	__antithesis_instrumentation__.Notify(250667)
 
 	if deprecateGrant {
+		__antithesis_instrumentation__.Notify(250674)
 		defaultPrivileges.GrantPrivilegeToGrantOptions(grantee, isGrant)
+	} else {
+		__antithesis_instrumentation__.Notify(250675)
 	}
+	__antithesis_instrumentation__.Notify(250668)
 
 	if d.IsDatabaseDefaultPrivilege() {
+		__antithesis_instrumentation__.Notify(250676)
 		foldPrivileges(defaultPrivilegesForRole, role, &defaultPrivileges, targetObject)
+	} else {
+		__antithesis_instrumentation__.Notify(250677)
 	}
+	__antithesis_instrumentation__.Notify(250669)
 	defaultPrivilegesForRole.DefaultPrivilegesPerObject[targetObject] = defaultPrivileges
 }
 
-// GrantDefaultPrivileges grants privileges for the specified users.
 func (d *Mutable) GrantDefaultPrivileges(
 	role catpb.DefaultPrivilegesRole,
 	privileges privilege.List,
@@ -119,13 +110,14 @@ func (d *Mutable) GrantDefaultPrivileges(
 	withGrantOption bool,
 	deprecateGrant bool,
 ) {
+	__antithesis_instrumentation__.Notify(250678)
 	defaultPrivilegesForRole := d.defaultPrivilegeDescriptor.FindOrCreateUser(role)
 	for _, grantee := range grantees {
-		d.grantOrRevokeDefaultPrivilegesHelper(defaultPrivilegesForRole, role, targetObject, grantee, privileges, withGrantOption, true /* isGrant */, deprecateGrant)
+		__antithesis_instrumentation__.Notify(250679)
+		d.grantOrRevokeDefaultPrivilegesHelper(defaultPrivilegesForRole, role, targetObject, grantee, privileges, withGrantOption, true, deprecateGrant)
 	}
 }
 
-// RevokeDefaultPrivileges revokes privileges for the specified users.
 func (d *Mutable) RevokeDefaultPrivileges(
 	role catpb.DefaultPrivilegesRole,
 	privileges privilege.List,
@@ -134,41 +126,56 @@ func (d *Mutable) RevokeDefaultPrivileges(
 	grantOptionFor bool,
 	deprecateGrant bool,
 ) {
+	__antithesis_instrumentation__.Notify(250680)
 	defaultPrivilegesForRole := d.defaultPrivilegeDescriptor.FindOrCreateUser(role)
 	for _, grantee := range grantees {
-		d.grantOrRevokeDefaultPrivilegesHelper(defaultPrivilegesForRole, role, targetObject, grantee, privileges, grantOptionFor, false /* isGrant */, deprecateGrant)
+		__antithesis_instrumentation__.Notify(250684)
+		d.grantOrRevokeDefaultPrivilegesHelper(defaultPrivilegesForRole, role, targetObject, grantee, privileges, grantOptionFor, false, deprecateGrant)
 	}
+	__antithesis_instrumentation__.Notify(250681)
 
 	defaultPrivilegesPerObject := defaultPrivilegesForRole.DefaultPrivilegesPerObject
-	// Check if there are any default privileges remaining on the descriptor.
-	// If there are no privileges left remaining and the descriptor is in the
-	// default state, we can remove it.
+
 	for _, defaultPrivs := range defaultPrivilegesPerObject {
+		__antithesis_instrumentation__.Notify(250685)
 		if len(defaultPrivs.Users) != 0 {
+			__antithesis_instrumentation__.Notify(250686)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(250687)
 		}
 	}
+	__antithesis_instrumentation__.Notify(250682)
 
-	// If the DefaultPrivilegeDescriptor is defined on a schema, the flags are
-	// not used and have no meaning.
-	if defaultPrivilegesForRole.IsExplicitRole() && d.IsDatabaseDefaultPrivilege() &&
-		(!GetRoleHasAllPrivilegesOnTargetObject(defaultPrivilegesForRole, tree.Tables) ||
-			!GetRoleHasAllPrivilegesOnTargetObject(defaultPrivilegesForRole, tree.Sequences) ||
-			!GetRoleHasAllPrivilegesOnTargetObject(defaultPrivilegesForRole, tree.Types) ||
-			!GetRoleHasAllPrivilegesOnTargetObject(defaultPrivilegesForRole, tree.Schemas)) ||
-		!GetPublicHasUsageOnTypes(defaultPrivilegesForRole) {
+	if defaultPrivilegesForRole.IsExplicitRole() && func() bool {
+		__antithesis_instrumentation__.Notify(250688)
+		return d.IsDatabaseDefaultPrivilege() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(250689)
+		return (!GetRoleHasAllPrivilegesOnTargetObject(defaultPrivilegesForRole, tree.Tables) || func() bool {
+			__antithesis_instrumentation__.Notify(250690)
+			return !GetRoleHasAllPrivilegesOnTargetObject(defaultPrivilegesForRole, tree.Sequences) == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(250691)
+			return !GetRoleHasAllPrivilegesOnTargetObject(defaultPrivilegesForRole, tree.Types) == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(250692)
+			return !GetRoleHasAllPrivilegesOnTargetObject(defaultPrivilegesForRole, tree.Schemas) == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(250693)
+		return !GetPublicHasUsageOnTypes(defaultPrivilegesForRole) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(250694)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(250695)
 	}
+	__antithesis_instrumentation__.Notify(250683)
 
-	// There no entries remaining, remove the entry for the role.
 	d.defaultPrivilegeDescriptor.RemoveUser(role)
 }
 
-// CreatePrivilegesFromDefaultPrivileges creates privileges for a
-// the specified object with the corresponding default privileges and
-// the appropriate owner (node for system, the restoring user otherwise.)
-// schemaDefaultPrivilegeDescriptor can be nil in the case where the object
-// being created is itself a schema.
 func CreatePrivilegesFromDefaultPrivileges(
 	dbDefaultPrivilegeDescriptor catalog.DefaultPrivilegeDescriptor,
 	schemaDefaultPrivilegeDescriptor catalog.DefaultPrivilegeDescriptor,
@@ -177,28 +184,38 @@ func CreatePrivilegesFromDefaultPrivileges(
 	targetObject tree.AlterDefaultPrivilegesTargetObject,
 	databasePrivileges *catpb.PrivilegeDescriptor,
 ) *catpb.PrivilegeDescriptor {
-	// If a new system table is being created (which should only be doable by
-	// an internal user account), make sure it gets the correct privileges.
+	__antithesis_instrumentation__.Notify(250696)
+
 	if dbID == keys.SystemDatabaseID {
+		__antithesis_instrumentation__.Notify(250700)
 		return catpb.NewBasePrivilegeDescriptor(security.NodeUserName())
+	} else {
+		__antithesis_instrumentation__.Notify(250701)
 	}
+	__antithesis_instrumentation__.Notify(250697)
 
 	defaultPrivilegeDescriptors := []catalog.DefaultPrivilegeDescriptor{
 		dbDefaultPrivilegeDescriptor,
 	}
 
 	if schemaDefaultPrivilegeDescriptor != nil {
+		__antithesis_instrumentation__.Notify(250702)
 		defaultPrivilegeDescriptors = append(defaultPrivilegeDescriptors, schemaDefaultPrivilegeDescriptor)
+	} else {
+		__antithesis_instrumentation__.Notify(250703)
 	}
+	__antithesis_instrumentation__.Notify(250698)
 
 	newPrivs := catpb.NewBasePrivilegeDescriptor(user)
 	role := catpb.DefaultPrivilegesRole{Role: user}
 	for _, d := range defaultPrivilegeDescriptors {
+		__antithesis_instrumentation__.Notify(250704)
 		if defaultPrivilegesForRole, found := d.GetDefaultPrivilegesForRole(role); !found {
-			// If default privileges are not defined for the creator role, we handle
-			// it as the case where the user has all privileges.
+			__antithesis_instrumentation__.Notify(250706)
+
 			defaultPrivilegesForCreatorRole := catpb.InitDefaultPrivilegesForRole(role, d.GetDefaultPrivilegeDescriptorType())
 			for _, user := range GetUserPrivilegesForObject(defaultPrivilegesForCreatorRole, targetObject) {
+				__antithesis_instrumentation__.Notify(250707)
 				applyDefaultPrivileges(
 					newPrivs,
 					user.UserProto.Decode(),
@@ -207,9 +224,10 @@ func CreatePrivilegesFromDefaultPrivileges(
 				)
 			}
 		} else {
-			// If default privileges were defined for the role, we create privileges
-			// using the default privileges.
+			__antithesis_instrumentation__.Notify(250708)
+
 			for _, user := range GetUserPrivilegesForObject(*defaultPrivilegesForRole, targetObject) {
+				__antithesis_instrumentation__.Notify(250709)
 				applyDefaultPrivileges(
 					newPrivs,
 					user.UserProto.Decode(),
@@ -218,13 +236,13 @@ func CreatePrivilegesFromDefaultPrivileges(
 				)
 			}
 		}
+		__antithesis_instrumentation__.Notify(250705)
 
-		// The privileges for the object are the union of the default privileges
-		// defined for the object for the object creator and the default privileges
-		// defined for all roles.
 		defaultPrivilegesForAllRoles, found := d.GetDefaultPrivilegesForRole(catpb.DefaultPrivilegesRole{ForAllRoles: true})
 		if found {
+			__antithesis_instrumentation__.Notify(250710)
 			for _, user := range GetUserPrivilegesForObject(*defaultPrivilegesForAllRoles, targetObject) {
+				__antithesis_instrumentation__.Notify(250711)
 				applyDefaultPrivileges(
 					newPrivs,
 					user.UserProto.Decode(),
@@ -232,238 +250,324 @@ func CreatePrivilegesFromDefaultPrivileges(
 					privilege.ListFromBitField(user.WithGrantOption, targetObject.ToPrivilegeObjectType()),
 				)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(250712)
 		}
 	}
+	__antithesis_instrumentation__.Notify(250699)
 
 	newPrivs.Version = catpb.Version21_2
 	return newPrivs
 }
 
-// ForEachDefaultPrivilegeForRole implements the
-// catalog.DefaultPrivilegeDescriptor interface.
-// ForEachDefaultPrivilegeForRole loops through the DefaultPrivilegeDescriptior's
-// DefaultPrivilegePerRole entry and calls f on it.
 func (d *immutable) ForEachDefaultPrivilegeForRole(
 	f func(defaultPrivilegesForRole catpb.DefaultPrivilegesForRole) error,
 ) error {
+	__antithesis_instrumentation__.Notify(250713)
 	if d.defaultPrivilegeDescriptor == nil {
+		__antithesis_instrumentation__.Notify(250716)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(250717)
 	}
+	__antithesis_instrumentation__.Notify(250714)
 	for _, defaultPrivilegesForRole := range d.defaultPrivilegeDescriptor.DefaultPrivilegesPerRole {
+		__antithesis_instrumentation__.Notify(250718)
 		if err := f(defaultPrivilegesForRole); err != nil {
+			__antithesis_instrumentation__.Notify(250719)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(250720)
 		}
 	}
+	__antithesis_instrumentation__.Notify(250715)
 	return nil
 }
 
-// GetDefaultPrivilegesForRole implements the
-// catalog.DefaultPrivilegeDescriptor interface.
-// GetDefaultPrivilegesForRole looks for a specific user in the list.
-// Returns (nil, false) if not found, or (ptr, true) if found.
 func (d *immutable) GetDefaultPrivilegesForRole(
 	role catpb.DefaultPrivilegesRole,
 ) (*catpb.DefaultPrivilegesForRole, bool) {
+	__antithesis_instrumentation__.Notify(250721)
 	idx := d.defaultPrivilegeDescriptor.FindUserIndex(role)
 	if idx == -1 {
+		__antithesis_instrumentation__.Notify(250723)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(250724)
 	}
+	__antithesis_instrumentation__.Notify(250722)
 	return &d.defaultPrivilegeDescriptor.DefaultPrivilegesPerRole[idx], true
 }
 
-// GetDefaultPrivilegeDescriptorType the Type of the default privilege descriptor.
 func (d *immutable) GetDefaultPrivilegeDescriptorType() catpb.DefaultPrivilegeDescriptor_DefaultPrivilegeDescriptorType {
+	__antithesis_instrumentation__.Notify(250725)
 	return d.defaultPrivilegeDescriptor.Type
 }
 
-// IsDatabaseDefaultPrivilege returns whether the Type of the default privilege
-// descriptor is for databases.
 func (d *immutable) IsDatabaseDefaultPrivilege() bool {
+	__antithesis_instrumentation__.Notify(250726)
 	return d.defaultPrivilegeDescriptor.Type == catpb.DefaultPrivilegeDescriptor_DATABASE
 }
 
-// foldPrivileges folds ALL privileges for role and USAGE on public into
-// the corresponding flag on the DefaultPrivilegesForRole object.
-// For example, if after a Grant operation, role has ALL on tables, ALL
-// privilege is removed from the UserPrivileges object and instead
-// RoleHasAllPrivilegesOnTable is set to true.
-// This is necessary as role having ALL privileges on tables is the default state
-// and should not prevent the role from being dropped if it has ALL privileges.
 func foldPrivileges(
 	defaultPrivilegesForRole *catpb.DefaultPrivilegesForRole,
 	role catpb.DefaultPrivilegesRole,
 	privileges *catpb.PrivilegeDescriptor,
 	targetObject tree.AlterDefaultPrivilegesTargetObject,
 ) {
-	if targetObject == tree.Types &&
-		privileges.CheckPrivilege(security.PublicRoleName(), privilege.USAGE) {
+	__antithesis_instrumentation__.Notify(250727)
+	if targetObject == tree.Types && func() bool {
+		__antithesis_instrumentation__.Notify(250730)
+		return privileges.CheckPrivilege(security.PublicRoleName(), privilege.USAGE) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(250731)
 		publicUser, ok := privileges.FindUser(security.PublicRoleName())
 		if ok {
+			__antithesis_instrumentation__.Notify(250732)
 			if !privilege.USAGE.IsSetIn(publicUser.WithGrantOption) {
+				__antithesis_instrumentation__.Notify(250733)
 				setPublicHasUsageOnTypes(defaultPrivilegesForRole, true)
 				privileges.Revoke(
 					security.PublicRoleName(),
 					privilege.List{privilege.USAGE},
 					privilege.Type,
-					false, /* grantOptionFor */
+					false,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(250734)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(250735)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(250736)
 	}
-	// ForAllRoles cannot be a grantee, nothing left to do.
+	__antithesis_instrumentation__.Notify(250728)
+
 	if role.ForAllRoles {
+		__antithesis_instrumentation__.Notify(250737)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(250738)
 	}
+	__antithesis_instrumentation__.Notify(250729)
 	if privileges.HasAllPrivileges(role.Role, targetObject.ToPrivilegeObjectType()) {
+		__antithesis_instrumentation__.Notify(250739)
 		user := privileges.FindOrCreateUser(role.Role)
 		if user.WithGrantOption == 0 {
+			__antithesis_instrumentation__.Notify(250740)
 			setRoleHasAllOnTargetObject(defaultPrivilegesForRole, true, targetObject)
 			privileges.RemoveUser(role.Role)
+		} else {
+			__antithesis_instrumentation__.Notify(250741)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(250742)
 	}
 }
 
-// expandPrivileges expands the pseudo privilege flags on
-// DefaultPrivilegesForRole into real privileges on the UserPrivileges object.
-// After expandPrivileges, UserPrivileges can be Granted/Revoked from normally.
-// For example - if RoleHasAllPrivilegesOnTables is true, ALL privilege is added
-// into the UserPrivileges array for the Role.
 func expandPrivileges(
 	defaultPrivilegesForRole *catpb.DefaultPrivilegesForRole,
 	role catpb.DefaultPrivilegesRole,
 	privileges *catpb.PrivilegeDescriptor,
 	targetObject tree.AlterDefaultPrivilegesTargetObject,
 ) {
-	if targetObject == tree.Types && GetPublicHasUsageOnTypes(defaultPrivilegesForRole) {
-		privileges.Grant(security.PublicRoleName(), privilege.List{privilege.USAGE}, false /* withGrantOption */)
+	__antithesis_instrumentation__.Notify(250743)
+	if targetObject == tree.Types && func() bool {
+		__antithesis_instrumentation__.Notify(250746)
+		return GetPublicHasUsageOnTypes(defaultPrivilegesForRole) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(250747)
+		privileges.Grant(security.PublicRoleName(), privilege.List{privilege.USAGE}, false)
 		setPublicHasUsageOnTypes(defaultPrivilegesForRole, false)
+	} else {
+		__antithesis_instrumentation__.Notify(250748)
 	}
-	// ForAllRoles cannot be a grantee, nothing left to do.
+	__antithesis_instrumentation__.Notify(250744)
+
 	if role.ForAllRoles {
+		__antithesis_instrumentation__.Notify(250749)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(250750)
 	}
+	__antithesis_instrumentation__.Notify(250745)
 	if GetRoleHasAllPrivilegesOnTargetObject(defaultPrivilegesForRole, targetObject) {
-		privileges.Grant(defaultPrivilegesForRole.GetExplicitRole().UserProto.Decode(), privilege.List{privilege.ALL}, false /* withGrantOption */)
+		__antithesis_instrumentation__.Notify(250751)
+		privileges.Grant(defaultPrivilegesForRole.GetExplicitRole().UserProto.Decode(), privilege.List{privilege.ALL}, false)
 		setRoleHasAllOnTargetObject(defaultPrivilegesForRole, false, targetObject)
+	} else {
+		__antithesis_instrumentation__.Notify(250752)
 	}
 }
 
-// GetUserPrivilegesForObject returns the set of []UserPrivileges constructed
-// from the DefaultPrivilegesForRole.
 func GetUserPrivilegesForObject(
 	p catpb.DefaultPrivilegesForRole, targetObject tree.AlterDefaultPrivilegesTargetObject,
 ) []catpb.UserPrivileges {
+	__antithesis_instrumentation__.Notify(250753)
 	var userPrivileges []catpb.UserPrivileges
 	if privileges, ok := p.DefaultPrivilegesPerObject[targetObject]; ok {
+		__antithesis_instrumentation__.Notify(250758)
 		userPrivileges = privileges.Users
+	} else {
+		__antithesis_instrumentation__.Notify(250759)
 	}
-	if GetPublicHasUsageOnTypes(&p) && targetObject == tree.Types {
+	__antithesis_instrumentation__.Notify(250754)
+	if GetPublicHasUsageOnTypes(&p) && func() bool {
+		__antithesis_instrumentation__.Notify(250760)
+		return targetObject == tree.Types == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(250761)
 		userPrivileges = append(userPrivileges, catpb.UserPrivileges{
 			UserProto:  security.PublicRoleName().EncodeProto(),
 			Privileges: privilege.USAGE.Mask(),
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(250762)
 	}
-	// If ForAllRoles is specified, we can return early.
-	// ForAllRoles is not a real role and does not have implicit default privileges
-	// for itself.
+	__antithesis_instrumentation__.Notify(250755)
+
 	if !p.IsExplicitRole() {
+		__antithesis_instrumentation__.Notify(250763)
 		return userPrivileges
+	} else {
+		__antithesis_instrumentation__.Notify(250764)
 	}
+	__antithesis_instrumentation__.Notify(250756)
 	userProto := p.GetExplicitRole().UserProto
 	if GetRoleHasAllPrivilegesOnTargetObject(&p, targetObject) {
+		__antithesis_instrumentation__.Notify(250765)
 		return append(userPrivileges, catpb.UserPrivileges{
 			UserProto:  userProto,
 			Privileges: privilege.ALL.Mask(),
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(250766)
 	}
+	__antithesis_instrumentation__.Notify(250757)
 	return userPrivileges
 }
 
-// GetPublicHasUsageOnTypes returns whether Public has Usage privilege on types.
 func GetPublicHasUsageOnTypes(defaultPrivilegesForRole *catpb.DefaultPrivilegesForRole) bool {
+	__antithesis_instrumentation__.Notify(250767)
 	if defaultPrivilegesForRole.IsExplicitRole() {
+		__antithesis_instrumentation__.Notify(250769)
 		return defaultPrivilegesForRole.GetExplicitRole().PublicHasUsageOnTypes
+	} else {
+		__antithesis_instrumentation__.Notify(250770)
 	}
+	__antithesis_instrumentation__.Notify(250768)
 	return defaultPrivilegesForRole.GetForAllRoles().PublicHasUsageOnTypes
 }
 
-// GetRoleHasAllPrivilegesOnTargetObject returns whether the creator role
-// has all privileges on the default privileges target object.
 func GetRoleHasAllPrivilegesOnTargetObject(
 	defaultPrivilegesForRole *catpb.DefaultPrivilegesForRole,
 	targetObject tree.AlterDefaultPrivilegesTargetObject,
 ) bool {
+	__antithesis_instrumentation__.Notify(250771)
 	if !defaultPrivilegesForRole.IsExplicitRole() {
-		// ForAllRoles is a pseudo role and does not actually have privileges on it.
+		__antithesis_instrumentation__.Notify(250773)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(250774)
 	}
+	__antithesis_instrumentation__.Notify(250772)
 	switch targetObject {
 	case tree.Tables:
+		__antithesis_instrumentation__.Notify(250775)
 		return defaultPrivilegesForRole.GetExplicitRole().RoleHasAllPrivilegesOnTables
 	case tree.Sequences:
+		__antithesis_instrumentation__.Notify(250776)
 		return defaultPrivilegesForRole.GetExplicitRole().RoleHasAllPrivilegesOnSequences
 	case tree.Types:
+		__antithesis_instrumentation__.Notify(250777)
 		return defaultPrivilegesForRole.GetExplicitRole().RoleHasAllPrivilegesOnTypes
 	case tree.Schemas:
+		__antithesis_instrumentation__.Notify(250778)
 		return defaultPrivilegesForRole.GetExplicitRole().RoleHasAllPrivilegesOnSchemas
 	default:
+		__antithesis_instrumentation__.Notify(250779)
 		panic(fmt.Sprintf("unknown target object %s", targetObject))
 	}
 }
 
-// setPublicHasUsageOnTypes sets PublicHasUsageOnTypes to publicHasUsageOnTypes.
 func setPublicHasUsageOnTypes(
 	defaultPrivilegesForRole *catpb.DefaultPrivilegesForRole, publicHasUsageOnTypes bool,
 ) {
+	__antithesis_instrumentation__.Notify(250780)
 	if defaultPrivilegesForRole.IsExplicitRole() {
+		__antithesis_instrumentation__.Notify(250781)
 		defaultPrivilegesForRole.GetExplicitRole().PublicHasUsageOnTypes = publicHasUsageOnTypes
 	} else {
+		__antithesis_instrumentation__.Notify(250782)
 		defaultPrivilegesForRole.GetForAllRoles().PublicHasUsageOnTypes = publicHasUsageOnTypes
 	}
 }
 
-// applyDefaultPrivileges adds new privileges to this descriptor and new grant options which
-// could be different from the privileges. Unlike the normal grant, the privileges
-// and the grant options being granted could be different
 func applyDefaultPrivileges(
 	p *catpb.PrivilegeDescriptor,
 	user security.SQLUsername,
 	privList privilege.List,
 	grantOptionList privilege.List,
 ) {
+	__antithesis_instrumentation__.Notify(250783)
 	userPriv := p.FindOrCreateUser(user)
-	if privilege.ALL.IsSetIn(userPriv.WithGrantOption) && privilege.ALL.IsSetIn(userPriv.Privileges) {
-		// User already has 'ALL' privilege: no-op.
-		// If userPriv.WithGrantOption has ALL, then userPriv.Privileges must also have ALL.
-		// It is possible however for userPriv.Privileges to have ALL but userPriv.WithGrantOption to not have ALL
+	if privilege.ALL.IsSetIn(userPriv.WithGrantOption) && func() bool {
+		__antithesis_instrumentation__.Notify(250787)
+		return privilege.ALL.IsSetIn(userPriv.Privileges) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(250788)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(250789)
 	}
+	__antithesis_instrumentation__.Notify(250784)
 
 	privBits := privList.ToBitField()
 	grantBits := grantOptionList.ToBitField()
 
-	// Should not be possible for a privilege to be in grantOptionList that is not in privList.
 	if !privilege.ALL.IsSetIn(privBits) {
+		__antithesis_instrumentation__.Notify(250790)
 		for _, grantOption := range grantOptionList {
+			__antithesis_instrumentation__.Notify(250791)
 			if privBits&grantOption.Mask() == 0 {
+				__antithesis_instrumentation__.Notify(250792)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(250793)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(250794)
 	}
+	__antithesis_instrumentation__.Notify(250785)
 
 	if privilege.ALL.IsSetIn(privBits) {
+		__antithesis_instrumentation__.Notify(250795)
 		userPriv.Privileges = privilege.ALL.Mask()
 	} else {
+		__antithesis_instrumentation__.Notify(250796)
 		if !privilege.ALL.IsSetIn(userPriv.Privileges) {
+			__antithesis_instrumentation__.Notify(250797)
 			userPriv.Privileges |= privBits
+		} else {
+			__antithesis_instrumentation__.Notify(250798)
 		}
 	}
+	__antithesis_instrumentation__.Notify(250786)
 
 	if privilege.ALL.IsSetIn(grantBits) {
+		__antithesis_instrumentation__.Notify(250799)
 		userPriv.WithGrantOption = privilege.ALL.Mask()
 	} else {
+		__antithesis_instrumentation__.Notify(250800)
 		if !privilege.ALL.IsSetIn(userPriv.WithGrantOption) {
+			__antithesis_instrumentation__.Notify(250801)
 			userPriv.WithGrantOption |= grantBits
+		} else {
+			__antithesis_instrumentation__.Notify(250802)
 		}
 	}
 }
@@ -473,20 +577,30 @@ func setRoleHasAllOnTargetObject(
 	roleHasAll bool,
 	targetObject tree.AlterDefaultPrivilegesTargetObject,
 ) {
+	__antithesis_instrumentation__.Notify(250803)
 	if !defaultPrivilegesForRole.IsExplicitRole() {
-		// ForAllRoles is a pseudo role and does not actually have privileges on it.
+		__antithesis_instrumentation__.Notify(250805)
+
 		panic("DefaultPrivilegesForRole must be for an explicit role")
+	} else {
+		__antithesis_instrumentation__.Notify(250806)
 	}
+	__antithesis_instrumentation__.Notify(250804)
 	switch targetObject {
 	case tree.Tables:
+		__antithesis_instrumentation__.Notify(250807)
 		defaultPrivilegesForRole.GetExplicitRole().RoleHasAllPrivilegesOnTables = roleHasAll
 	case tree.Sequences:
+		__antithesis_instrumentation__.Notify(250808)
 		defaultPrivilegesForRole.GetExplicitRole().RoleHasAllPrivilegesOnSequences = roleHasAll
 	case tree.Types:
+		__antithesis_instrumentation__.Notify(250809)
 		defaultPrivilegesForRole.GetExplicitRole().RoleHasAllPrivilegesOnTypes = roleHasAll
 	case tree.Schemas:
+		__antithesis_instrumentation__.Notify(250810)
 		defaultPrivilegesForRole.GetExplicitRole().RoleHasAllPrivilegesOnSchemas = roleHasAll
 	default:
+		__antithesis_instrumentation__.Notify(250811)
 		panic(fmt.Sprintf("unknown target object %s", targetObject))
 	}
 }

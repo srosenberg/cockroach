@@ -1,50 +1,45 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sessiondatapb
 
-// SequenceCache stores sequence values that have already been created in KV
-// and are available to be given out as sequence numbers. Values for sequences
-// are keyed by the descpb.ID of each sequence. These IDs are represented as
-// uint32 to prevent an import cycle with the descpb package. The cache should
-// only be accessed using the provided API.
-//
-// The cache ensures that values are invalidated when new descriptor versions are seen. Note that
-// new descriptor versions may not monotonically increase. For example, the sequence schema
-// may be altered in a txn, so the cache sees a new version V and invalidates/repopulates itself. Then,
-// the txn may get rolled back, so the cache will see version V-1 and invalidate/repopulate itself again.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type SequenceCache map[uint32]*SequenceCacheEntry
 
-// NextValue fetches the next value in the sequence cache. If the values in the cache have all been
-// given out or if the descriptor version has changed, then fetchNextValues() is used to repopulate the cache.
 func (sc SequenceCache) NextValue(
 	seqID uint32, clientVersion uint32, fetchNextValues func() (int64, int64, int64, error),
 ) (int64, error) {
-	// Create entry for this sequence ID if there are no existing entries.
+	__antithesis_instrumentation__.Notify(619856)
+
 	if _, found := sc[seqID]; !found {
+		__antithesis_instrumentation__.Notify(619860)
 		sc[seqID] = &SequenceCacheEntry{}
+	} else {
+		__antithesis_instrumentation__.Notify(619861)
 	}
+	__antithesis_instrumentation__.Notify(619857)
 	cacheEntry := sc[seqID]
 
-	if cacheEntry.NumValues > 0 && cacheEntry.CachedVersion == clientVersion {
+	if cacheEntry.NumValues > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(619862)
+		return cacheEntry.CachedVersion == clientVersion == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(619863)
 		cacheEntry.CurrentValue += cacheEntry.Increment
 		cacheEntry.NumValues--
 		return cacheEntry.CurrentValue - cacheEntry.Increment, nil
+	} else {
+		__antithesis_instrumentation__.Notify(619864)
 	}
+	__antithesis_instrumentation__.Notify(619858)
 
 	currentValue, increment, numValues, err := fetchNextValues()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(619865)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(619866)
 	}
+	__antithesis_instrumentation__.Notify(619859)
 
-	// One value must be returned, and the rest of the values are stored.
 	val := currentValue
 	cacheEntry.CurrentValue = currentValue + increment
 	cacheEntry.Increment = increment

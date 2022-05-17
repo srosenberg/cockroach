@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -19,8 +11,8 @@ import (
 )
 
 func (d *delegator) delegateShowTypes() (tree.Statement, error) {
-	// TODO (SQL Features, SQL Exec): Once more user defined types are added
-	//  they should be added here.
+	__antithesis_instrumentation__.Notify(465872)
+
 	return parse(`
 SELECT
   schema, name, owner
@@ -31,6 +23,7 @@ ORDER BY
 }
 
 func (d *delegator) delegateShowCreateAllTypes() (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465873)
 	sqltelemetry.IncrementShowCounter(sqltelemetry.Create)
 
 	const showCreateAllTypesQuery = `

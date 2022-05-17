@@ -1,17 +1,9 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 //go:build race
 // +build race
 
 package kvcoord
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,7 +20,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 )
 
-var running int32 // atomically updated
+var running int32
 var incoming chan *roachpb.BatchRequest
 
 func init() {
@@ -38,17 +30,18 @@ func init() {
 const defaultRaceInterval = 150 * time.Microsecond
 
 func jitter(avgInterval time.Duration) time.Duration {
-	// Use defaultRaceInterval as a minimum to limit how much time
-	// we spend here.
+	__antithesis_instrumentation__.Notify(88071)
+
 	if avgInterval < defaultRaceInterval {
+		__antithesis_instrumentation__.Notify(88073)
 		avgInterval = defaultRaceInterval
+	} else {
+		__antithesis_instrumentation__.Notify(88074)
 	}
+	__antithesis_instrumentation__.Notify(88072)
 	return time.Duration(rand.Int63n(int64(2 * avgInterval)))
 }
 
-// raceTransport wrap a Transport implementation and intercepts all
-// BatchRequests, sending them to the transport racer task to read
-// them asynchronously in a tight loop.
 type raceTransport struct {
 	Transport
 }
@@ -56,53 +49,41 @@ type raceTransport struct {
 func (tr raceTransport) SendNext(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, error) {
-	// Make a copy of the requests slice, and shallow copies of the requests.
-	// The caller is allowed to mutate the request after the call returns. Since
-	// this transport has no way of checking who's doing mutations (the client -
-	// which is allowed, or the server - which is not). So, for now, we exclude
-	// the slice and the requests from any checks, since those are the parts that
-	// the client currently mutates.
+	__antithesis_instrumentation__.Notify(88075)
+
 	requestsCopy := make([]roachpb.RequestUnion, len(ba.Requests))
 	for i, ru := range ba.Requests {
-		// ru is a RequestUnion interface, so we need some hoops to dereference it.
+		__antithesis_instrumentation__.Notify(88078)
+
 		requestsCopy[i] = reflect.Indirect(reflect.ValueOf(ru)).Interface().(roachpb.RequestUnion)
 	}
+	__antithesis_instrumentation__.Notify(88076)
 	ba.Requests = requestsCopy
 	select {
-	// We have a shallow copy here and so the top level scalar fields can't
-	// really race, but making more copies doesn't make anything more
-	// transparent, so from now on we operate on a pointer.
+
 	case incoming <- &ba:
+		__antithesis_instrumentation__.Notify(88079)
 	default:
-		// Avoid slowing down the tests if we're backed up.
+		__antithesis_instrumentation__.Notify(88080)
+
 	}
+	__antithesis_instrumentation__.Notify(88077)
 	return tr.Transport.SendNext(ctx, ba)
 }
 
-// GRPCTransportFactory during race builds wraps the implementation and
-// intercepts all BatchRequests, reading them asynchronously in a tight loop.
-// This allows the race detector to catch any mutations of a batch passed to the
-// transport. The dealio is that batches passed to the transport are immutable -
-// the server is not allowed to mutate anything and this transport makes sure
-// they don't. See client.Sender() for more.
-//
-// NOTE(andrei): We don't like this transport very much. It's slow, preventing
-// us from running clusters with race binaries and, the way it's written, it
-// prevents both the client and the server from mutating the BatchRequest. But
-// only the server is prohibited (according to the client.Sender interface). In
-// fact, we'd like to have the client reuse these requests and mutate them.
-// Instead of this transport, we should find other mechanisms ensuring that:
-// a) the server doesn't hold on to any memory, and
-// b) the server doesn't mutate the request
 func GRPCTransportFactory(
 	opts SendOptions, nodeDialer *nodedialer.Dialer, replicas ReplicaSlice,
 ) (Transport, error) {
+	__antithesis_instrumentation__.Notify(88081)
 	if atomic.AddInt32(&running, 1) <= 1 {
+		__antithesis_instrumentation__.Notify(88084)
 		if err := nodeDialer.Stopper().RunAsyncTask(
 			context.TODO(), "transport racer", func(ctx context.Context) {
+				__antithesis_instrumentation__.Notify(88085)
 				var iters int
 				var curIdx int
 				defer func() {
+					__antithesis_instrumentation__.Notify(88087)
 					atomic.StoreInt32(&running, 0)
 					log.Infof(
 						ctx,
@@ -110,50 +91,70 @@ func GRPCTransportFactory(
 						iters, curIdx+1,
 					)
 				}()
-				// Make a fixed-size slice of *BatchRequest. When full, entries
-				// are evicted in FIFO order.
+				__antithesis_instrumentation__.Notify(88086)
+
 				const size = 1000
 				bas := make([]*roachpb.BatchRequest, size)
 				encoder := json.NewEncoder(ioutil.Discard)
 				for {
+					__antithesis_instrumentation__.Notify(88088)
 					iters++
 					start := timeutil.Now()
 					for _, ba := range bas {
+						__antithesis_instrumentation__.Notify(88090)
 						if ba != nil {
+							__antithesis_instrumentation__.Notify(88091)
 							if err := encoder.Encode(ba); err != nil {
+								__antithesis_instrumentation__.Notify(88092)
 								panic(err)
+							} else {
+								__antithesis_instrumentation__.Notify(88093)
 							}
+						} else {
+							__antithesis_instrumentation__.Notify(88094)
 						}
 					}
-					// Prevent the goroutine from spinning too hot as this lets CI
-					// times skyrocket. Sleep on average for as long as we worked
-					// on the last iteration so we spend no more than half our CPU
-					// time on this task.
+					__antithesis_instrumentation__.Notify(88089)
+
 					jittered := time.After(jitter(timeutil.Since(start)))
-					// Collect incoming requests until the jittered timer fires,
-					// then access everything we have.
+
 					for {
+						__antithesis_instrumentation__.Notify(88095)
 						select {
 						case <-nodeDialer.Stopper().ShouldQuiesce():
+							__antithesis_instrumentation__.Notify(88097)
 							return
 						case ba := <-incoming:
+							__antithesis_instrumentation__.Notify(88098)
 							bas[curIdx%size] = ba
 							curIdx++
 							continue
 						case <-jittered:
+							__antithesis_instrumentation__.Notify(88099)
 						}
+						__antithesis_instrumentation__.Notify(88096)
 						break
 					}
 				}
 			}); err != nil {
-			// Failed to start async task, reset our state.
+			__antithesis_instrumentation__.Notify(88100)
+
 			atomic.StoreInt32(&running, 0)
+		} else {
+			__antithesis_instrumentation__.Notify(88101)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(88102)
 	}
+	__antithesis_instrumentation__.Notify(88082)
 
 	t, err := grpcTransportFactoryImpl(opts, nodeDialer, replicas)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(88103)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(88104)
 	}
+	__antithesis_instrumentation__.Notify(88083)
 	return &raceTransport{Transport: t}, nil
 }

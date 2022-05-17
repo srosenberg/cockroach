@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,12 +15,13 @@ import (
 )
 
 func registerRoachmart(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(50407)
 	runRoachmart := func(ctx context.Context, t test.Test, c cluster.Cluster, partition bool) {
+		__antithesis_instrumentation__.Notify(50409)
 		c.Put(ctx, t.Cockroach(), "./cockroach")
 		c.Put(ctx, t.DeprecatedWorkload(), "./workload")
 		c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings())
 
-		// TODO(benesch): avoid hardcoding this list.
 		nodes := []struct {
 			i    int
 			zone string
@@ -39,6 +32,7 @@ func registerRoachmart(r registry.Registry) {
 		}
 
 		roachmartRun := func(ctx context.Context, i int, args ...string) {
+			__antithesis_instrumentation__.Notify(50412)
 			args = append(args,
 				"--local-zone="+nodes[i].zone,
 				"--local-percent=90",
@@ -47,9 +41,13 @@ func registerRoachmart(r registry.Registry) {
 				fmt.Sprintf("--partition=%v", partition))
 
 			if err := c.RunE(ctx, c.Node(nodes[i].i), args...); err != nil {
+				__antithesis_instrumentation__.Notify(50413)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(50414)
 			}
 		}
+		__antithesis_instrumentation__.Notify(50410)
 		t.Status("initializing workload")
 		roachmartRun(ctx, 0, "./workload", "init", "roachmart")
 
@@ -58,23 +56,29 @@ func registerRoachmart(r registry.Registry) {
 		t.Status("running workload")
 		m := c.NewMonitor(ctx)
 		for i := range nodes {
+			__antithesis_instrumentation__.Notify(50415)
 			i := i
 			m.Go(func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(50416)
 				roachmartRun(ctx, i, "./workload", "run", "roachmart", duration)
 				return nil
 			})
 		}
+		__antithesis_instrumentation__.Notify(50411)
 
 		m.Wait()
 	}
+	__antithesis_instrumentation__.Notify(50408)
 
 	for _, v := range []bool{true, false} {
+		__antithesis_instrumentation__.Notify(50417)
 		v := v
 		r.Add(registry.TestSpec{
 			Name:    fmt.Sprintf("roachmart/partition=%v", v),
 			Owner:   registry.OwnerKV,
 			Cluster: r.MakeClusterSpec(9, spec.Geo(), spec.Zones("us-central1-b,us-west1-b,europe-west2-b")),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(50418)
 				runRoachmart(ctx, t, c, v)
 			},
 		})

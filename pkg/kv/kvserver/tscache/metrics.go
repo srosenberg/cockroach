@@ -1,30 +1,19 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tscache
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/util/metric"
 
-// Metrics holds all metrics relating to a Cache.
 type Metrics struct {
 	Skl sklMetrics
 }
 
-// sklMetrics holds all metrics relating to an intervalSkl.
 type sklMetrics struct {
 	Pages         *metric.Gauge
 	PageRotations *metric.Counter
 }
 
-// MetricStruct implements the metrics.Struct interface.
-func (sklMetrics) MetricStruct() {}
+func (sklMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(127104) }
 
 var _ metric.Struct = sklMetrics{}
 
@@ -44,6 +33,7 @@ var (
 )
 
 func makeMetrics() Metrics {
+	__antithesis_instrumentation__.Notify(127105)
 	return Metrics{
 		Skl: sklMetrics{
 			Pages:         metric.NewGauge(metaSklPages),

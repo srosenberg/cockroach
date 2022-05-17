@@ -1,23 +1,6 @@
-// Copyright 2012, Google Inc. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in licenses/BSD-vitess.txt.
-
-// Portions of this file are additionally subject to the following
-// license and copyright.
-//
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// This code was derived from https://github.com/youtube/vitess.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -30,18 +13,16 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// SelectStatement represents any SELECT statement.
 type SelectStatement interface {
 	Statement
 	selectStatement()
 }
 
-func (*ParenSelect) selectStatement()  {}
-func (*SelectClause) selectStatement() {}
-func (*UnionClause) selectStatement()  {}
-func (*ValuesClause) selectStatement() {}
+func (*ParenSelect) selectStatement()  { __antithesis_instrumentation__.Notify(613068) }
+func (*SelectClause) selectStatement() { __antithesis_instrumentation__.Notify(613069) }
+func (*UnionClause) selectStatement()  { __antithesis_instrumentation__.Notify(613070) }
+func (*ValuesClause) selectStatement() { __antithesis_instrumentation__.Notify(613071) }
 
-// Select represents a SelectStatement with an ORDER and/or LIMIT.
 type Select struct {
 	With    *With
 	Select  SelectStatement
@@ -50,34 +31,40 @@ type Select struct {
 	Locking LockingClause
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Select) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613072)
 	ctx.FormatNode(node.With)
 	ctx.FormatNode(node.Select)
 	if len(node.OrderBy) > 0 {
+		__antithesis_instrumentation__.Notify(613075)
 		ctx.WriteByte(' ')
 		ctx.FormatNode(&node.OrderBy)
+	} else {
+		__antithesis_instrumentation__.Notify(613076)
 	}
+	__antithesis_instrumentation__.Notify(613073)
 	if node.Limit != nil {
+		__antithesis_instrumentation__.Notify(613077)
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Limit)
+	} else {
+		__antithesis_instrumentation__.Notify(613078)
 	}
+	__antithesis_instrumentation__.Notify(613074)
 	ctx.FormatNode(&node.Locking)
 }
 
-// ParenSelect represents a parenthesized SELECT/UNION/VALUES statement.
 type ParenSelect struct {
 	Select *Select
 }
 
-// Format implements the NodeFormatter interface.
 func (node *ParenSelect) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613079)
 	ctx.WriteByte('(')
 	ctx.FormatNode(node.Select)
 	ctx.WriteByte(')')
 }
 
-// SelectClause represents a SELECT statement.
 type SelectClause struct {
 	From        From
 	DistinctOn  DistinctOn
@@ -90,422 +77,655 @@ type SelectClause struct {
 	TableSelect bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *SelectClause) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613080)
 	f := ctx.flags
 	if f.HasFlags(FmtSummary) {
+		__antithesis_instrumentation__.Notify(613082)
 		ctx.WriteString("SELECT")
 		if len(node.From.Tables) > 0 {
+			__antithesis_instrumentation__.Notify(613084)
 			ctx.WriteByte(' ')
 			ctx.FormatNode(&node.From)
+		} else {
+			__antithesis_instrumentation__.Notify(613085)
 		}
+		__antithesis_instrumentation__.Notify(613083)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(613086)
 	}
+	__antithesis_instrumentation__.Notify(613081)
 	if node.TableSelect {
+		__antithesis_instrumentation__.Notify(613087)
 		ctx.WriteString("TABLE ")
 		ctx.FormatNode(node.From.Tables[0])
 	} else {
+		__antithesis_instrumentation__.Notify(613088)
 		ctx.WriteString("SELECT ")
 		if node.Distinct {
+			__antithesis_instrumentation__.Notify(613094)
 			if node.DistinctOn != nil {
+				__antithesis_instrumentation__.Notify(613095)
 				ctx.FormatNode(&node.DistinctOn)
 				ctx.WriteByte(' ')
 			} else {
+				__antithesis_instrumentation__.Notify(613096)
 				ctx.WriteString("DISTINCT ")
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(613097)
 		}
+		__antithesis_instrumentation__.Notify(613089)
 		ctx.FormatNode(&node.Exprs)
 		if len(node.From.Tables) > 0 {
+			__antithesis_instrumentation__.Notify(613098)
 			ctx.WriteByte(' ')
 			ctx.FormatNode(&node.From)
+		} else {
+			__antithesis_instrumentation__.Notify(613099)
 		}
+		__antithesis_instrumentation__.Notify(613090)
 		if node.Where != nil {
+			__antithesis_instrumentation__.Notify(613100)
 			ctx.WriteByte(' ')
 			ctx.FormatNode(node.Where)
+		} else {
+			__antithesis_instrumentation__.Notify(613101)
 		}
+		__antithesis_instrumentation__.Notify(613091)
 		if len(node.GroupBy) > 0 {
+			__antithesis_instrumentation__.Notify(613102)
 			ctx.WriteByte(' ')
 			ctx.FormatNode(&node.GroupBy)
+		} else {
+			__antithesis_instrumentation__.Notify(613103)
 		}
+		__antithesis_instrumentation__.Notify(613092)
 		if node.Having != nil {
+			__antithesis_instrumentation__.Notify(613104)
 			ctx.WriteByte(' ')
 			ctx.FormatNode(node.Having)
+		} else {
+			__antithesis_instrumentation__.Notify(613105)
 		}
+		__antithesis_instrumentation__.Notify(613093)
 		if len(node.Window) > 0 {
+			__antithesis_instrumentation__.Notify(613106)
 			ctx.WriteByte(' ')
 			ctx.FormatNode(&node.Window)
+		} else {
+			__antithesis_instrumentation__.Notify(613107)
 		}
 	}
 }
 
-// SelectExprs represents SELECT expressions.
 type SelectExprs []SelectExpr
 
-// Format implements the NodeFormatter interface.
 func (node *SelectExprs) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613108)
 	for i := range *node {
+		__antithesis_instrumentation__.Notify(613109)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(613111)
 			ctx.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(613112)
 		}
+		__antithesis_instrumentation__.Notify(613110)
 		ctx.FormatNode(&(*node)[i])
 	}
 }
 
-// SelectExpr represents a SELECT expression.
 type SelectExpr struct {
 	Expr Expr
 	As   UnrestrictedName
 }
 
-// NormalizeTopLevelVarName preemptively expands any UnresolvedName at
-// the top level of the expression into a VarName. This is meant
-// to catch stars so that sql.checkRenderStar() can see it prior to
-// other expression transformations.
 func (node *SelectExpr) NormalizeTopLevelVarName() error {
+	__antithesis_instrumentation__.Notify(613113)
 	if vBase, ok := node.Expr.(VarName); ok {
+		__antithesis_instrumentation__.Notify(613115)
 		v, err := vBase.NormalizeVarName()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(613117)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(613118)
 		}
+		__antithesis_instrumentation__.Notify(613116)
 		node.Expr = v
+	} else {
+		__antithesis_instrumentation__.Notify(613119)
 	}
+	__antithesis_instrumentation__.Notify(613114)
 	return nil
 }
 
-// StarSelectExpr is a convenience function that represents an unqualified "*"
-// in a select expression.
 func StarSelectExpr() SelectExpr {
+	__antithesis_instrumentation__.Notify(613120)
 	return SelectExpr{Expr: StarExpr()}
 }
 
-// Format implements the NodeFormatter interface.
 func (node *SelectExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613121)
 	ctx.FormatNode(node.Expr)
 	if node.As != "" {
+		__antithesis_instrumentation__.Notify(613122)
 		ctx.WriteString(" AS ")
 		ctx.FormatNode(&node.As)
+	} else {
+		__antithesis_instrumentation__.Notify(613123)
 	}
 }
 
-// AliasClause represents an alias, optionally with a column list:
-// "AS name" or "AS name(col1, col2)".
 type AliasClause struct {
 	Alias Name
 	Cols  NameList
 }
 
-// Format implements the NodeFormatter interface.
 func (a *AliasClause) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613124)
 	ctx.FormatNode(&a.Alias)
 	if len(a.Cols) != 0 {
-		// Format as "alias (col1, col2, ...)".
+		__antithesis_instrumentation__.Notify(613125)
+
 		ctx.WriteString(" (")
 		ctx.FormatNode(&a.Cols)
 		ctx.WriteByte(')')
+	} else {
+		__antithesis_instrumentation__.Notify(613126)
 	}
 }
 
-// AsOfClause represents an as of time.
 type AsOfClause struct {
 	Expr Expr
 }
 
-// Format implements the NodeFormatter interface.
 func (a *AsOfClause) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613127)
 	ctx.WriteString("AS OF SYSTEM TIME ")
 	ctx.FormatNode(a.Expr)
 }
 
-// From represents a FROM clause.
 type From struct {
 	Tables TableExprs
 	AsOf   AsOfClause
 }
 
-// Format implements the NodeFormatter interface.
 func (node *From) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613128)
 	ctx.WriteString("FROM ")
 	ctx.FormatNode(&node.Tables)
 	if node.AsOf.Expr != nil {
+		__antithesis_instrumentation__.Notify(613129)
 		ctx.WriteByte(' ')
 		ctx.FormatNode(&node.AsOf)
+	} else {
+		__antithesis_instrumentation__.Notify(613130)
 	}
 }
 
-// TableExprs represents a list of table expressions.
 type TableExprs []TableExpr
 
-// Format implements the NodeFormatter interface.
 func (node *TableExprs) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613131)
 	prefix := ""
 	for _, n := range *node {
+		__antithesis_instrumentation__.Notify(613132)
 		ctx.WriteString(prefix)
 		ctx.FormatNode(n)
 		prefix = ", "
 	}
 }
 
-// TableExpr represents a table expression.
 type TableExpr interface {
 	NodeFormatter
 	tableExpr()
 	WalkTableExpr(Visitor) TableExpr
 }
 
-func (*AliasedTableExpr) tableExpr() {}
-func (*ParenTableExpr) tableExpr()   {}
-func (*JoinTableExpr) tableExpr()    {}
-func (*RowsFromExpr) tableExpr()     {}
-func (*Subquery) tableExpr()         {}
-func (*StatementSource) tableExpr()  {}
+func (*AliasedTableExpr) tableExpr() { __antithesis_instrumentation__.Notify(613133) }
+func (*ParenTableExpr) tableExpr()   { __antithesis_instrumentation__.Notify(613134) }
+func (*JoinTableExpr) tableExpr()    { __antithesis_instrumentation__.Notify(613135) }
+func (*RowsFromExpr) tableExpr()     { __antithesis_instrumentation__.Notify(613136) }
+func (*Subquery) tableExpr()         { __antithesis_instrumentation__.Notify(613137) }
+func (*StatementSource) tableExpr()  { __antithesis_instrumentation__.Notify(613138) }
 
-// StatementSource encapsulates one of the other statements as a data source.
 type StatementSource struct {
 	Statement Statement
 }
 
-// Format implements the NodeFormatter interface.
 func (node *StatementSource) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613139)
 	ctx.WriteByte('[')
 	ctx.FormatNode(node.Statement)
 	ctx.WriteByte(']')
 }
 
-// IndexID is a custom type for IndexDescriptor IDs.
 type IndexID = catid.IndexID
 
-// IndexFlags represents "@<index_name|index_id>" or "@{param[,param]}" where
-// param is one of:
-//  - FORCE_INDEX=<index_name|index_id>
-//  - ASC / DESC
-//  - NO_INDEX_JOIN
-//  - NO_ZIGZAG_JOIN
-//  - NO_FULL_SCAN
-//  - IGNORE_FOREIGN_KEYS
-//  - FORCE_ZIGZAG
-//  - FORCE_ZIGZAG=<index_name|index_id>*
-// It is used optionally after a table name in SELECT statements.
 type IndexFlags struct {
 	Index   UnrestrictedName
 	IndexID IndexID
-	// Direction of the scan, if provided. Can only be set if
-	// one of Index or IndexID is set.
+
 	Direction Direction
-	// NoIndexJoin cannot be specified together with an index.
+
 	NoIndexJoin bool
-	// NoZigzagJoin indicates we should not plan a zigzag join for this scan.
+
 	NoZigzagJoin bool
-	// NoFullScan indicates we should constrain this scan.
+
 	NoFullScan bool
-	// IgnoreForeignKeys disables optimizations based on outbound foreign key
-	// references from this table. This is useful in particular for scrub queries
-	// used to verify the consistency of foreign key relations.
+
 	IgnoreForeignKeys bool
-	// IgnoreUniqueWithoutIndexKeys disables optimizations based on unique without
-	// index constraints.
+
 	IgnoreUniqueWithoutIndexKeys bool
-	// Zigzag hinting fields are distinct:
-	// ForceZigzag means we saw a TABLE@{FORCE_ZIGZAG}
-	// ZigzagIndexes means we saw TABLE@{FORCE_ZIGZAG=name}
-	// ZigzagIndexIDs means we saw TABLE@{FORCE_ZIGZAG=[ID]}
-	// The only allowable combinations are when a valid id and name are combined.
+
 	ForceZigzag    bool
 	ZigzagIndexes  []UnrestrictedName
 	ZigzagIndexIDs []IndexID
 }
 
-// ForceIndex returns true if a forced index was specified, either using a name
-// or an IndexID.
 func (ih *IndexFlags) ForceIndex() bool {
-	return ih.Index != "" || ih.IndexID != 0
+	__antithesis_instrumentation__.Notify(613140)
+	return ih.Index != "" || func() bool {
+		__antithesis_instrumentation__.Notify(613141)
+		return ih.IndexID != 0 == true
+	}() == true
 }
 
-// CombineWith combines two IndexFlags structures, returning an error if they
-// conflict with one another.
 func (ih *IndexFlags) CombineWith(other *IndexFlags) error {
-	if ih.NoIndexJoin && other.NoIndexJoin {
+	__antithesis_instrumentation__.Notify(613142)
+	if ih.NoIndexJoin && func() bool {
+		__antithesis_instrumentation__.Notify(613153)
+		return other.NoIndexJoin == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613154)
 		return errors.New("NO_INDEX_JOIN specified multiple times")
+	} else {
+		__antithesis_instrumentation__.Notify(613155)
 	}
-	if ih.NoZigzagJoin && other.NoZigzagJoin {
+	__antithesis_instrumentation__.Notify(613143)
+	if ih.NoZigzagJoin && func() bool {
+		__antithesis_instrumentation__.Notify(613156)
+		return other.NoZigzagJoin == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613157)
 		return errors.New("NO_ZIGZAG_JOIN specified multiple times")
+	} else {
+		__antithesis_instrumentation__.Notify(613158)
 	}
-	if ih.NoFullScan && other.NoFullScan {
+	__antithesis_instrumentation__.Notify(613144)
+	if ih.NoFullScan && func() bool {
+		__antithesis_instrumentation__.Notify(613159)
+		return other.NoFullScan == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613160)
 		return errors.New("NO_FULL_SCAN specified multiple times")
+	} else {
+		__antithesis_instrumentation__.Notify(613161)
 	}
-	if ih.IgnoreForeignKeys && other.IgnoreForeignKeys {
+	__antithesis_instrumentation__.Notify(613145)
+	if ih.IgnoreForeignKeys && func() bool {
+		__antithesis_instrumentation__.Notify(613162)
+		return other.IgnoreForeignKeys == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613163)
 		return errors.New("IGNORE_FOREIGN_KEYS specified multiple times")
+	} else {
+		__antithesis_instrumentation__.Notify(613164)
 	}
-	if ih.IgnoreUniqueWithoutIndexKeys && other.IgnoreUniqueWithoutIndexKeys {
+	__antithesis_instrumentation__.Notify(613146)
+	if ih.IgnoreUniqueWithoutIndexKeys && func() bool {
+		__antithesis_instrumentation__.Notify(613165)
+		return other.IgnoreUniqueWithoutIndexKeys == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613166)
 		return errors.New("IGNORE_UNIQUE_WITHOUT_INDEX_KEYS specified multiple times")
+	} else {
+		__antithesis_instrumentation__.Notify(613167)
 	}
+	__antithesis_instrumentation__.Notify(613147)
 	result := *ih
-	result.NoIndexJoin = ih.NoIndexJoin || other.NoIndexJoin
-	result.NoZigzagJoin = ih.NoZigzagJoin || other.NoZigzagJoin
-	result.NoFullScan = ih.NoFullScan || other.NoFullScan
-	result.IgnoreForeignKeys = ih.IgnoreForeignKeys || other.IgnoreForeignKeys
-	result.IgnoreUniqueWithoutIndexKeys = ih.IgnoreUniqueWithoutIndexKeys ||
-		other.IgnoreUniqueWithoutIndexKeys
+	result.NoIndexJoin = ih.NoIndexJoin || func() bool {
+		__antithesis_instrumentation__.Notify(613168)
+		return other.NoIndexJoin == true
+	}() == true
+	result.NoZigzagJoin = ih.NoZigzagJoin || func() bool {
+		__antithesis_instrumentation__.Notify(613169)
+		return other.NoZigzagJoin == true
+	}() == true
+	result.NoFullScan = ih.NoFullScan || func() bool {
+		__antithesis_instrumentation__.Notify(613170)
+		return other.NoFullScan == true
+	}() == true
+	result.IgnoreForeignKeys = ih.IgnoreForeignKeys || func() bool {
+		__antithesis_instrumentation__.Notify(613171)
+		return other.IgnoreForeignKeys == true
+	}() == true
+	result.IgnoreUniqueWithoutIndexKeys = ih.IgnoreUniqueWithoutIndexKeys || func() bool {
+		__antithesis_instrumentation__.Notify(613172)
+		return other.IgnoreUniqueWithoutIndexKeys == true
+	}() == true
 
 	if other.Direction != 0 {
+		__antithesis_instrumentation__.Notify(613173)
 		if ih.Direction != 0 {
+			__antithesis_instrumentation__.Notify(613175)
 			return errors.New("ASC/DESC specified multiple times")
+		} else {
+			__antithesis_instrumentation__.Notify(613176)
 		}
+		__antithesis_instrumentation__.Notify(613174)
 		result.Direction = other.Direction
+	} else {
+		__antithesis_instrumentation__.Notify(613177)
 	}
+	__antithesis_instrumentation__.Notify(613148)
 
 	if other.ForceIndex() {
+		__antithesis_instrumentation__.Notify(613178)
 		if ih.ForceIndex() {
+			__antithesis_instrumentation__.Notify(613180)
 			return errors.New("FORCE_INDEX specified multiple times")
+		} else {
+			__antithesis_instrumentation__.Notify(613181)
 		}
+		__antithesis_instrumentation__.Notify(613179)
 		result.Index = other.Index
 		result.IndexID = other.IndexID
+	} else {
+		__antithesis_instrumentation__.Notify(613182)
 	}
+	__antithesis_instrumentation__.Notify(613149)
 
 	if other.ForceZigzag {
+		__antithesis_instrumentation__.Notify(613183)
 		if ih.ForceZigzag {
+			__antithesis_instrumentation__.Notify(613185)
 			return errors.New("FORCE_ZIGZAG specified multiple times")
+		} else {
+			__antithesis_instrumentation__.Notify(613186)
 		}
+		__antithesis_instrumentation__.Notify(613184)
 		result.ForceZigzag = true
+	} else {
+		__antithesis_instrumentation__.Notify(613187)
 	}
+	__antithesis_instrumentation__.Notify(613150)
 
-	// We can have N zigzag indexes (in theory, we only support 2 now).
 	if len(other.ZigzagIndexes) > 0 {
+		__antithesis_instrumentation__.Notify(613188)
 		if result.ForceZigzag {
+			__antithesis_instrumentation__.Notify(613190)
 			return errors.New("FORCE_ZIGZAG hints not distinct")
+		} else {
+			__antithesis_instrumentation__.Notify(613191)
 		}
+		__antithesis_instrumentation__.Notify(613189)
 		result.ZigzagIndexes = append(result.ZigzagIndexes, other.ZigzagIndexes...)
+	} else {
+		__antithesis_instrumentation__.Notify(613192)
 	}
+	__antithesis_instrumentation__.Notify(613151)
 
-	// We can have N zigzag indexes (in theory, we only support 2 now).
 	if len(other.ZigzagIndexIDs) > 0 {
+		__antithesis_instrumentation__.Notify(613193)
 		if result.ForceZigzag {
+			__antithesis_instrumentation__.Notify(613195)
 			return errors.New("FORCE_ZIGZAG hints not distinct")
+		} else {
+			__antithesis_instrumentation__.Notify(613196)
 		}
+		__antithesis_instrumentation__.Notify(613194)
 		result.ZigzagIndexIDs = append(result.ZigzagIndexIDs, other.ZigzagIndexIDs...)
+	} else {
+		__antithesis_instrumentation__.Notify(613197)
 	}
+	__antithesis_instrumentation__.Notify(613152)
 
-	// We only set at the end to avoid a partially changed structure in one of the
-	// error cases above.
 	*ih = result
 	return nil
 }
 
-// Check verifies if the flags are valid:
-//  - ascending/descending is not specified without an index;
-//  - no_index_join isn't specified with an index.
 func (ih *IndexFlags) Check() error {
-	if ih.NoIndexJoin && ih.ForceIndex() {
+	__antithesis_instrumentation__.Notify(613198)
+	if ih.NoIndexJoin && func() bool {
+		__antithesis_instrumentation__.Notify(613205)
+		return ih.ForceIndex() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613206)
 		return errors.New("FORCE_INDEX cannot be specified in conjunction with NO_INDEX_JOIN")
+	} else {
+		__antithesis_instrumentation__.Notify(613207)
 	}
-	if ih.Direction != 0 && !ih.ForceIndex() {
+	__antithesis_instrumentation__.Notify(613199)
+	if ih.Direction != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(613208)
+		return !ih.ForceIndex() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613209)
 		return errors.New("ASC/DESC must be specified in conjunction with an index")
+	} else {
+		__antithesis_instrumentation__.Notify(613210)
 	}
-	if ih.zigzagForced() && ih.NoIndexJoin {
+	__antithesis_instrumentation__.Notify(613200)
+	if ih.zigzagForced() && func() bool {
+		__antithesis_instrumentation__.Notify(613211)
+		return ih.NoIndexJoin == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613212)
 		return errors.New("FORCE_ZIGZAG cannot be specified in conjunction with NO_INDEX_JOIN")
+	} else {
+		__antithesis_instrumentation__.Notify(613213)
 	}
-	if ih.zigzagForced() && ih.ForceIndex() {
+	__antithesis_instrumentation__.Notify(613201)
+	if ih.zigzagForced() && func() bool {
+		__antithesis_instrumentation__.Notify(613214)
+		return ih.ForceIndex() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613215)
 		return errors.New("FORCE_ZIGZAG cannot be specified in conjunction with FORCE_INDEX")
+	} else {
+		__antithesis_instrumentation__.Notify(613216)
 	}
-	if ih.zigzagForced() && ih.NoZigzagJoin {
+	__antithesis_instrumentation__.Notify(613202)
+	if ih.zigzagForced() && func() bool {
+		__antithesis_instrumentation__.Notify(613217)
+		return ih.NoZigzagJoin == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613218)
 		return errors.New("FORCE_ZIGZAG cannot be specified in conjunction with NO_ZIGZAG_JOIN")
+	} else {
+		__antithesis_instrumentation__.Notify(613219)
 	}
+	__antithesis_instrumentation__.Notify(613203)
 	for _, name := range ih.ZigzagIndexes {
+		__antithesis_instrumentation__.Notify(613220)
 		if len(string(name)) == 0 {
+			__antithesis_instrumentation__.Notify(613221)
 			return errors.New("FORCE_ZIGZAG index name cannot be empty string")
+		} else {
+			__antithesis_instrumentation__.Notify(613222)
 		}
 	}
+	__antithesis_instrumentation__.Notify(613204)
 
 	return nil
 }
 
-// Format implements the NodeFormatter interface.
 func (ih *IndexFlags) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613223)
 	ctx.WriteByte('@')
-	if !ih.NoIndexJoin && !ih.NoZigzagJoin && !ih.NoFullScan && !ih.IgnoreForeignKeys &&
-		!ih.IgnoreUniqueWithoutIndexKeys && ih.Direction == 0 && !ih.zigzagForced() {
+	if !ih.NoIndexJoin && func() bool {
+		__antithesis_instrumentation__.Notify(613224)
+		return !ih.NoZigzagJoin == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(613225)
+		return !ih.NoFullScan == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(613226)
+		return !ih.IgnoreForeignKeys == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(613227)
+		return !ih.IgnoreUniqueWithoutIndexKeys == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(613228)
+		return ih.Direction == 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(613229)
+		return !ih.zigzagForced() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613230)
 		if ih.Index != "" {
+			__antithesis_instrumentation__.Notify(613231)
 			ctx.FormatNode(&ih.Index)
 		} else {
+			__antithesis_instrumentation__.Notify(613232)
 			ctx.Printf("[%d]", ih.IndexID)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(613233)
 		ctx.WriteByte('{')
 		var sep func()
 		sep = func() {
-			sep = func() { ctx.WriteByte(',') }
+			__antithesis_instrumentation__.Notify(613242)
+			sep = func() { __antithesis_instrumentation__.Notify(613243); ctx.WriteByte(',') }
 		}
-		if ih.Index != "" || ih.IndexID != 0 {
+		__antithesis_instrumentation__.Notify(613234)
+		if ih.Index != "" || func() bool {
+			__antithesis_instrumentation__.Notify(613244)
+			return ih.IndexID != 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(613245)
 			sep()
 			ctx.WriteString("FORCE_INDEX=")
 			if ih.Index != "" {
+				__antithesis_instrumentation__.Notify(613247)
 				ctx.FormatNode(&ih.Index)
 			} else {
+				__antithesis_instrumentation__.Notify(613248)
 				ctx.Printf("[%d]", ih.IndexID)
 			}
+			__antithesis_instrumentation__.Notify(613246)
 
 			if ih.Direction != 0 {
+				__antithesis_instrumentation__.Notify(613249)
 				ctx.Printf(",%s", ih.Direction)
+			} else {
+				__antithesis_instrumentation__.Notify(613250)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(613251)
 		}
+		__antithesis_instrumentation__.Notify(613235)
 		if ih.NoIndexJoin {
+			__antithesis_instrumentation__.Notify(613252)
 			sep()
 			ctx.WriteString("NO_INDEX_JOIN")
+		} else {
+			__antithesis_instrumentation__.Notify(613253)
 		}
+		__antithesis_instrumentation__.Notify(613236)
 
 		if ih.NoZigzagJoin {
+			__antithesis_instrumentation__.Notify(613254)
 			sep()
 			ctx.WriteString("NO_ZIGZAG_JOIN")
+		} else {
+			__antithesis_instrumentation__.Notify(613255)
 		}
+		__antithesis_instrumentation__.Notify(613237)
 
 		if ih.NoFullScan {
+			__antithesis_instrumentation__.Notify(613256)
 			sep()
 			ctx.WriteString("NO_FULL_SCAN")
+		} else {
+			__antithesis_instrumentation__.Notify(613257)
 		}
+		__antithesis_instrumentation__.Notify(613238)
 
 		if ih.IgnoreForeignKeys {
+			__antithesis_instrumentation__.Notify(613258)
 			sep()
 			ctx.WriteString("IGNORE_FOREIGN_KEYS")
+		} else {
+			__antithesis_instrumentation__.Notify(613259)
 		}
+		__antithesis_instrumentation__.Notify(613239)
 
 		if ih.IgnoreUniqueWithoutIndexKeys {
+			__antithesis_instrumentation__.Notify(613260)
 			sep()
 			ctx.WriteString("IGNORE_UNIQUE_WITHOUT_INDEX_KEYS")
+		} else {
+			__antithesis_instrumentation__.Notify(613261)
 		}
+		__antithesis_instrumentation__.Notify(613240)
 
-		if ih.ForceZigzag || len(ih.ZigzagIndexes) > 0 || len(ih.ZigzagIndexIDs) > 0 {
+		if ih.ForceZigzag || func() bool {
+			__antithesis_instrumentation__.Notify(613262)
+			return len(ih.ZigzagIndexes) > 0 == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(613263)
+			return len(ih.ZigzagIndexIDs) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(613264)
 			sep()
 			if ih.ForceZigzag {
+				__antithesis_instrumentation__.Notify(613265)
 				ctx.WriteString("FORCE_ZIGZAG")
 			} else {
+				__antithesis_instrumentation__.Notify(613266)
 				needSep := false
 				for _, name := range ih.ZigzagIndexes {
+					__antithesis_instrumentation__.Notify(613268)
 					if needSep {
+						__antithesis_instrumentation__.Notify(613270)
 						sep()
+					} else {
+						__antithesis_instrumentation__.Notify(613271)
 					}
+					__antithesis_instrumentation__.Notify(613269)
 					ctx.WriteString("FORCE_ZIGZAG=")
 					ctx.FormatNode(&name)
 					needSep = true
 				}
+				__antithesis_instrumentation__.Notify(613267)
 				for _, id := range ih.ZigzagIndexIDs {
+					__antithesis_instrumentation__.Notify(613272)
 					if needSep {
+						__antithesis_instrumentation__.Notify(613274)
 						sep()
+					} else {
+						__antithesis_instrumentation__.Notify(613275)
 					}
+					__antithesis_instrumentation__.Notify(613273)
 					ctx.WriteString("FORCE_ZIGZAG=")
 					ctx.Printf("[%d]", id)
 					needSep = true
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(613276)
 		}
+		__antithesis_instrumentation__.Notify(613241)
 		ctx.WriteString("}")
 	}
 }
 
 func (ih *IndexFlags) zigzagForced() bool {
-	return ih.ForceZigzag || len(ih.ZigzagIndexes) > 0 || len(ih.ZigzagIndexIDs) > 0
+	__antithesis_instrumentation__.Notify(613277)
+	return ih.ForceZigzag || func() bool {
+		__antithesis_instrumentation__.Notify(613278)
+		return len(ih.ZigzagIndexes) > 0 == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(613279)
+		return len(ih.ZigzagIndexIDs) > 0 == true
+	}() == true
 }
 
-// AliasedTableExpr represents a table expression coupled with an optional
-// alias.
 type AliasedTableExpr struct {
 	Expr       TableExpr
 	IndexFlags *IndexFlags
@@ -514,45 +734,62 @@ type AliasedTableExpr struct {
 	As         AliasClause
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AliasedTableExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613280)
 	if node.Lateral {
+		__antithesis_instrumentation__.Notify(613284)
 		ctx.WriteString("LATERAL ")
+	} else {
+		__antithesis_instrumentation__.Notify(613285)
 	}
+	__antithesis_instrumentation__.Notify(613281)
 	ctx.FormatNode(node.Expr)
 	if node.IndexFlags != nil {
+		__antithesis_instrumentation__.Notify(613286)
 		ctx.FormatNode(node.IndexFlags)
+	} else {
+		__antithesis_instrumentation__.Notify(613287)
 	}
+	__antithesis_instrumentation__.Notify(613282)
 	if node.Ordinality {
+		__antithesis_instrumentation__.Notify(613288)
 		ctx.WriteString(" WITH ORDINALITY")
+	} else {
+		__antithesis_instrumentation__.Notify(613289)
 	}
+	__antithesis_instrumentation__.Notify(613283)
 	if node.As.Alias != "" {
+		__antithesis_instrumentation__.Notify(613290)
 		ctx.WriteString(" AS ")
 		ctx.FormatNode(&node.As)
+	} else {
+		__antithesis_instrumentation__.Notify(613291)
 	}
 }
 
-// ParenTableExpr represents a parenthesized TableExpr.
 type ParenTableExpr struct {
 	Expr TableExpr
 }
 
-// Format implements the NodeFormatter interface.
 func (node *ParenTableExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613292)
 	ctx.WriteByte('(')
 	ctx.FormatNode(node.Expr)
 	ctx.WriteByte(')')
 }
 
-// StripTableParens strips any parentheses surrounding a selection clause.
 func StripTableParens(expr TableExpr) TableExpr {
+	__antithesis_instrumentation__.Notify(613293)
 	if p, ok := expr.(*ParenTableExpr); ok {
+		__antithesis_instrumentation__.Notify(613295)
 		return StripTableParens(p.Expr)
+	} else {
+		__antithesis_instrumentation__.Notify(613296)
 	}
+	__antithesis_instrumentation__.Notify(613294)
 	return expr
 }
 
-// JoinTableExpr represents a TableExpr that's a JOIN operation.
 type JoinTableExpr struct {
 	JoinType string
 	Left     TableExpr
@@ -561,7 +798,6 @@ type JoinTableExpr struct {
 	Hint     string
 }
 
-// JoinTableExpr.Join
 const (
 	AstFull  = "FULL"
 	AstLeft  = "LEFT"
@@ -570,7 +806,6 @@ const (
 	AstInner = "INNER"
 )
 
-// JoinTableExpr.Hint
 const (
 	AstHash     = "HASH"
 	AstLookup   = "LOOKUP"
@@ -578,152 +813,165 @@ const (
 	AstInverted = "INVERTED"
 )
 
-// Format implements the NodeFormatter interface.
 func (node *JoinTableExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613297)
 	ctx.FormatNode(node.Left)
 	ctx.WriteByte(' ')
 	if _, isNatural := node.Cond.(NaturalJoinCond); isNatural {
-		// Natural joins have a different syntax: "<a> NATURAL <join_type> <b>"
+		__antithesis_instrumentation__.Notify(613298)
+
 		ctx.FormatNode(node.Cond)
 		ctx.WriteByte(' ')
 		if node.JoinType != "" {
+			__antithesis_instrumentation__.Notify(613300)
 			ctx.WriteString(node.JoinType)
 			ctx.WriteByte(' ')
 			if node.Hint != "" {
+				__antithesis_instrumentation__.Notify(613301)
 				ctx.WriteString(node.Hint)
 				ctx.WriteByte(' ')
+			} else {
+				__antithesis_instrumentation__.Notify(613302)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(613303)
 		}
+		__antithesis_instrumentation__.Notify(613299)
 		ctx.WriteString("JOIN ")
 		ctx.FormatNode(node.Right)
 	} else {
-		// General syntax: "<a> <join_type> [<join_hint>] JOIN <b> <condition>"
+		__antithesis_instrumentation__.Notify(613304)
+
 		if node.JoinType != "" {
+			__antithesis_instrumentation__.Notify(613306)
 			ctx.WriteString(node.JoinType)
 			ctx.WriteByte(' ')
 			if node.Hint != "" {
+				__antithesis_instrumentation__.Notify(613307)
 				ctx.WriteString(node.Hint)
 				ctx.WriteByte(' ')
+			} else {
+				__antithesis_instrumentation__.Notify(613308)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(613309)
 		}
+		__antithesis_instrumentation__.Notify(613305)
 		ctx.WriteString("JOIN ")
 		ctx.FormatNode(node.Right)
 		if node.Cond != nil {
+			__antithesis_instrumentation__.Notify(613310)
 			ctx.WriteByte(' ')
 			ctx.FormatNode(node.Cond)
+		} else {
+			__antithesis_instrumentation__.Notify(613311)
 		}
 	}
 }
 
-// JoinCond represents a join condition.
 type JoinCond interface {
 	NodeFormatter
 	joinCond()
 }
 
-func (NaturalJoinCond) joinCond() {}
-func (*OnJoinCond) joinCond()     {}
-func (*UsingJoinCond) joinCond()  {}
+func (NaturalJoinCond) joinCond() { __antithesis_instrumentation__.Notify(613312) }
+func (*OnJoinCond) joinCond()     { __antithesis_instrumentation__.Notify(613313) }
+func (*UsingJoinCond) joinCond()  { __antithesis_instrumentation__.Notify(613314) }
 
-// NaturalJoinCond represents a NATURAL join condition
 type NaturalJoinCond struct{}
 
-// Format implements the NodeFormatter interface.
 func (NaturalJoinCond) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613315)
 	ctx.WriteString("NATURAL")
 }
 
-// OnJoinCond represents an ON join condition.
 type OnJoinCond struct {
 	Expr Expr
 }
 
-// Format implements the NodeFormatter interface.
 func (node *OnJoinCond) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613316)
 	ctx.WriteString("ON ")
 	ctx.FormatNode(node.Expr)
 }
 
-// UsingJoinCond represents a USING join condition.
 type UsingJoinCond struct {
 	Cols NameList
 }
 
-// Format implements the NodeFormatter interface.
 func (node *UsingJoinCond) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613317)
 	ctx.WriteString("USING (")
 	ctx.FormatNode(&node.Cols)
 	ctx.WriteByte(')')
 }
 
-// Where represents a WHERE or HAVING clause.
 type Where struct {
 	Type string
 	Expr Expr
 }
 
-// Where.Type
 const (
 	AstWhere  = "WHERE"
 	AstHaving = "HAVING"
 )
 
-// NewWhere creates a WHERE or HAVING clause out of an Expr. If the expression
-// is nil, it returns nil.
 func NewWhere(typ string, expr Expr) *Where {
+	__antithesis_instrumentation__.Notify(613318)
 	if expr == nil {
+		__antithesis_instrumentation__.Notify(613320)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(613321)
 	}
+	__antithesis_instrumentation__.Notify(613319)
 	return &Where{Type: typ, Expr: expr}
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Where) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613322)
 	ctx.WriteString(node.Type)
 	ctx.WriteByte(' ')
 	ctx.FormatNode(node.Expr)
 }
 
-// GroupBy represents a GROUP BY clause.
 type GroupBy []Expr
 
-// Format implements the NodeFormatter interface.
 func (node *GroupBy) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613323)
 	prefix := "GROUP BY "
 	for _, n := range *node {
+		__antithesis_instrumentation__.Notify(613324)
 		ctx.WriteString(prefix)
 		ctx.FormatNode(n)
 		prefix = ", "
 	}
 }
 
-// DistinctOn represents a DISTINCT ON clause.
 type DistinctOn []Expr
 
-// Format implements the NodeFormatter interface.
 func (node *DistinctOn) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613325)
 	ctx.WriteString("DISTINCT ON (")
 	ctx.FormatNode((*Exprs)(node))
 	ctx.WriteByte(')')
 }
 
-// OrderBy represents an ORDER BY clause.
 type OrderBy []*Order
 
-// Format implements the NodeFormatter interface.
 func (node *OrderBy) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613326)
 	prefix := "ORDER BY "
 	for _, n := range *node {
+		__antithesis_instrumentation__.Notify(613327)
 		ctx.WriteString(prefix)
 		ctx.FormatNode(n)
 		prefix = ", "
 	}
 }
 
-// Direction for ordering results.
 type Direction int8
 
-// Direction values.
 const (
 	DefaultDirection Direction = iota
 	Ascending
@@ -737,16 +985,22 @@ var directionName = [...]string{
 }
 
 func (d Direction) String() string {
-	if d < 0 || d > Direction(len(directionName)-1) {
+	__antithesis_instrumentation__.Notify(613328)
+	if d < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(613330)
+		return d > Direction(len(directionName)-1) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613331)
 		return fmt.Sprintf("Direction(%d)", d)
+	} else {
+		__antithesis_instrumentation__.Notify(613332)
 	}
+	__antithesis_instrumentation__.Notify(613329)
 	return directionName[d]
 }
 
-// NullsOrder for specifying ordering of NULLs.
 type NullsOrder int8
 
-// Null order values.
 const (
 	DefaultNullsOrder NullsOrder = iota
 	NullsFirst
@@ -760,111 +1014,151 @@ var nullsOrderName = [...]string{
 }
 
 func (n NullsOrder) String() string {
-	if n < 0 || n > NullsOrder(len(nullsOrderName)-1) {
+	__antithesis_instrumentation__.Notify(613333)
+	if n < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(613335)
+		return n > NullsOrder(len(nullsOrderName)-1) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(613336)
 		return fmt.Sprintf("NullsOrder(%d)", n)
+	} else {
+		__antithesis_instrumentation__.Notify(613337)
 	}
+	__antithesis_instrumentation__.Notify(613334)
 	return nullsOrderName[n]
 }
 
-// OrderType indicates which type of expression is used in ORDER BY.
 type OrderType int
 
 const (
-	// OrderByColumn is the regular "by expression/column" ORDER BY specification.
 	OrderByColumn OrderType = iota
-	// OrderByIndex enables the user to specify a given index' columns implicitly.
+
 	OrderByIndex
 )
 
-// Order represents an ordering expression.
 type Order struct {
 	OrderType  OrderType
 	Expr       Expr
 	Direction  Direction
 	NullsOrder NullsOrder
-	// Table/Index replaces Expr when OrderType = OrderByIndex.
+
 	Table TableName
-	// If Index is empty, then the order should use the primary key.
+
 	Index UnrestrictedName
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Order) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613338)
 	if node.OrderType == OrderByColumn {
+		__antithesis_instrumentation__.Notify(613341)
 		ctx.FormatNode(node.Expr)
 	} else {
+		__antithesis_instrumentation__.Notify(613342)
 		if node.Index == "" {
+			__antithesis_instrumentation__.Notify(613343)
 			ctx.WriteString("PRIMARY KEY ")
 			ctx.FormatNode(&node.Table)
 		} else {
+			__antithesis_instrumentation__.Notify(613344)
 			ctx.WriteString("INDEX ")
 			ctx.FormatNode(&node.Table)
 			ctx.WriteByte('@')
 			ctx.FormatNode(&node.Index)
 		}
 	}
+	__antithesis_instrumentation__.Notify(613339)
 	if node.Direction != DefaultDirection {
+		__antithesis_instrumentation__.Notify(613345)
 		ctx.WriteByte(' ')
 		ctx.WriteString(node.Direction.String())
+	} else {
+		__antithesis_instrumentation__.Notify(613346)
 	}
+	__antithesis_instrumentation__.Notify(613340)
 	if node.NullsOrder != DefaultNullsOrder {
+		__antithesis_instrumentation__.Notify(613347)
 		ctx.WriteByte(' ')
 		ctx.WriteString(node.NullsOrder.String())
+	} else {
+		__antithesis_instrumentation__.Notify(613348)
 	}
 }
 
-// Equal checks if the node ordering is equivalent to other.
 func (node *Order) Equal(other *Order) bool {
-	return node.Expr.String() == other.Expr.String() && node.Direction == other.Direction &&
-		node.Table == other.Table && node.OrderType == other.OrderType &&
-		node.NullsOrder == other.NullsOrder
+	__antithesis_instrumentation__.Notify(613349)
+	return node.Expr.String() == other.Expr.String() && func() bool {
+		__antithesis_instrumentation__.Notify(613350)
+		return node.Direction == other.Direction == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(613351)
+		return node.Table == other.Table == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(613352)
+		return node.OrderType == other.OrderType == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(613353)
+		return node.NullsOrder == other.NullsOrder == true
+	}() == true
 }
 
-// Limit represents a LIMIT clause.
 type Limit struct {
 	Offset, Count Expr
 	LimitAll      bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Limit) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613354)
 	needSpace := false
 	if node.Count != nil {
+		__antithesis_instrumentation__.Notify(613356)
 		ctx.WriteString("LIMIT ")
 		ctx.FormatNode(node.Count)
 		needSpace = true
-	} else if node.LimitAll {
-		ctx.WriteString("LIMIT ALL")
-		needSpace = true
-	}
-	if node.Offset != nil {
-		if needSpace {
-			ctx.WriteByte(' ')
+	} else {
+		__antithesis_instrumentation__.Notify(613357)
+		if node.LimitAll {
+			__antithesis_instrumentation__.Notify(613358)
+			ctx.WriteString("LIMIT ALL")
+			needSpace = true
+		} else {
+			__antithesis_instrumentation__.Notify(613359)
 		}
+	}
+	__antithesis_instrumentation__.Notify(613355)
+	if node.Offset != nil {
+		__antithesis_instrumentation__.Notify(613360)
+		if needSpace {
+			__antithesis_instrumentation__.Notify(613362)
+			ctx.WriteByte(' ')
+		} else {
+			__antithesis_instrumentation__.Notify(613363)
+		}
+		__antithesis_instrumentation__.Notify(613361)
 		ctx.WriteString("OFFSET ")
 		ctx.FormatNode(node.Offset)
+	} else {
+		__antithesis_instrumentation__.Notify(613364)
 	}
 }
 
-// RowsFromExpr represents a ROWS FROM(...) expression.
 type RowsFromExpr struct {
 	Items Exprs
 }
 
-// Format implements the NodeFormatter interface.
 func (node *RowsFromExpr) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613365)
 	ctx.WriteString("ROWS FROM (")
 	ctx.FormatNode(&node.Items)
 	ctx.WriteByte(')')
 }
 
-// Window represents a WINDOW clause.
 type Window []*WindowDef
 
-// Format implements the NodeFormatter interface.
 func (node *Window) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613366)
 	prefix := "WINDOW "
 	for _, n := range *node {
+		__antithesis_instrumentation__.Notify(613367)
 		ctx.WriteString(prefix)
 		ctx.FormatNode(&n.Name)
 		ctx.WriteString(" AS ")
@@ -873,7 +1167,6 @@ func (node *Window) Format(ctx *FmtCtx) {
 	}
 }
 
-// WindowDef represents a single window definition expression.
 type WindowDef struct {
 	Name       Name
 	RefName    Name
@@ -882,177 +1175,227 @@ type WindowDef struct {
 	Frame      *WindowFrame
 }
 
-// Format implements the NodeFormatter interface.
 func (node *WindowDef) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613368)
 	ctx.WriteByte('(')
 	needSpaceSeparator := false
 	if node.RefName != "" {
+		__antithesis_instrumentation__.Notify(613373)
 		ctx.FormatNode(&node.RefName)
 		needSpaceSeparator = true
+	} else {
+		__antithesis_instrumentation__.Notify(613374)
 	}
+	__antithesis_instrumentation__.Notify(613369)
 	if len(node.Partitions) > 0 {
+		__antithesis_instrumentation__.Notify(613375)
 		if needSpaceSeparator {
+			__antithesis_instrumentation__.Notify(613377)
 			ctx.WriteByte(' ')
+		} else {
+			__antithesis_instrumentation__.Notify(613378)
 		}
+		__antithesis_instrumentation__.Notify(613376)
 		ctx.WriteString("PARTITION BY ")
 		ctx.FormatNode(&node.Partitions)
 		needSpaceSeparator = true
+	} else {
+		__antithesis_instrumentation__.Notify(613379)
 	}
+	__antithesis_instrumentation__.Notify(613370)
 	if len(node.OrderBy) > 0 {
+		__antithesis_instrumentation__.Notify(613380)
 		if needSpaceSeparator {
+			__antithesis_instrumentation__.Notify(613382)
 			ctx.WriteByte(' ')
+		} else {
+			__antithesis_instrumentation__.Notify(613383)
 		}
+		__antithesis_instrumentation__.Notify(613381)
 		ctx.FormatNode(&node.OrderBy)
 		needSpaceSeparator = true
+	} else {
+		__antithesis_instrumentation__.Notify(613384)
 	}
+	__antithesis_instrumentation__.Notify(613371)
 	if node.Frame != nil {
+		__antithesis_instrumentation__.Notify(613385)
 		if needSpaceSeparator {
+			__antithesis_instrumentation__.Notify(613387)
 			ctx.WriteByte(' ')
+		} else {
+			__antithesis_instrumentation__.Notify(613388)
 		}
+		__antithesis_instrumentation__.Notify(613386)
 		ctx.FormatNode(node.Frame)
+	} else {
+		__antithesis_instrumentation__.Notify(613389)
 	}
+	__antithesis_instrumentation__.Notify(613372)
 	ctx.WriteRune(')')
 }
 
-// OverrideWindowDef implements the logic to have a base window definition which
-// then gets augmented by a different window definition.
 func OverrideWindowDef(base *WindowDef, override WindowDef) (WindowDef, error) {
-	// base.Partitions is always used.
+	__antithesis_instrumentation__.Notify(613390)
+
 	if len(override.Partitions) > 0 {
+		__antithesis_instrumentation__.Notify(613394)
 		return WindowDef{}, pgerror.Newf(pgcode.Windowing, "cannot override PARTITION BY clause of window %q", base.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(613395)
 	}
+	__antithesis_instrumentation__.Notify(613391)
 	override.Partitions = base.Partitions
 
-	// base.OrderBy is used if set.
 	if len(base.OrderBy) > 0 {
+		__antithesis_instrumentation__.Notify(613396)
 		if len(override.OrderBy) > 0 {
+			__antithesis_instrumentation__.Notify(613398)
 			return WindowDef{}, pgerror.Newf(pgcode.Windowing, "cannot override ORDER BY clause of window %q", base.Name)
+		} else {
+			__antithesis_instrumentation__.Notify(613399)
 		}
+		__antithesis_instrumentation__.Notify(613397)
 		override.OrderBy = base.OrderBy
+	} else {
+		__antithesis_instrumentation__.Notify(613400)
 	}
+	__antithesis_instrumentation__.Notify(613392)
 
 	if base.Frame != nil {
+		__antithesis_instrumentation__.Notify(613401)
 		return WindowDef{}, pgerror.Newf(pgcode.Windowing, "cannot copy window %q because it has a frame clause", base.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(613402)
 	}
+	__antithesis_instrumentation__.Notify(613393)
 
 	return override, nil
 }
 
-// WindowFrameBound specifies the offset and the type of boundary.
 type WindowFrameBound struct {
 	BoundType  treewindow.WindowFrameBoundType
 	OffsetExpr Expr
 }
 
-// HasOffset returns whether node contains an offset.
 func (node *WindowFrameBound) HasOffset() bool {
+	__antithesis_instrumentation__.Notify(613403)
 	return node.BoundType.IsOffset()
 }
 
-// WindowFrameBounds specifies boundaries of the window frame.
-// The row at StartBound is included whereas the row at EndBound is not.
 type WindowFrameBounds struct {
 	StartBound *WindowFrameBound
 	EndBound   *WindowFrameBound
 }
 
-// HasOffset returns whether node contains an offset in either of the bounds.
 func (node *WindowFrameBounds) HasOffset() bool {
-	return node.StartBound.HasOffset() || (node.EndBound != nil && node.EndBound.HasOffset())
+	__antithesis_instrumentation__.Notify(613404)
+	return node.StartBound.HasOffset() || func() bool {
+		__antithesis_instrumentation__.Notify(613405)
+		return (node.EndBound != nil && func() bool {
+			__antithesis_instrumentation__.Notify(613406)
+			return node.EndBound.HasOffset() == true
+		}() == true) == true
+	}() == true
 }
 
-// WindowFrame represents static state of window frame over which calculations are made.
 type WindowFrame struct {
-	Mode      treewindow.WindowFrameMode      // the mode of framing being used
-	Bounds    WindowFrameBounds               // the bounds of the frame
-	Exclusion treewindow.WindowFrameExclusion // optional frame exclusion
+	Mode      treewindow.WindowFrameMode
+	Bounds    WindowFrameBounds
+	Exclusion treewindow.WindowFrameExclusion
 }
 
-// Format implements the NodeFormatter interface.
 func (node *WindowFrameBound) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613407)
 	switch node.BoundType {
 	case treewindow.UnboundedPreceding:
+		__antithesis_instrumentation__.Notify(613408)
 		ctx.WriteString("UNBOUNDED PRECEDING")
 	case treewindow.OffsetPreceding:
+		__antithesis_instrumentation__.Notify(613409)
 		ctx.FormatNode(node.OffsetExpr)
 		ctx.WriteString(" PRECEDING")
 	case treewindow.CurrentRow:
+		__antithesis_instrumentation__.Notify(613410)
 		ctx.WriteString("CURRENT ROW")
 	case treewindow.OffsetFollowing:
+		__antithesis_instrumentation__.Notify(613411)
 		ctx.FormatNode(node.OffsetExpr)
 		ctx.WriteString(" FOLLOWING")
 	case treewindow.UnboundedFollowing:
+		__antithesis_instrumentation__.Notify(613412)
 		ctx.WriteString("UNBOUNDED FOLLOWING")
 	default:
+		__antithesis_instrumentation__.Notify(613413)
 		panic(errors.AssertionFailedf("unhandled case: %d", redact.Safe(node.BoundType)))
 	}
 }
 
-// Format implements the NodeFormatter interface.
 func (node *WindowFrame) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613414)
 	ctx.WriteString(treewindow.WindowModeName(node.Mode))
 	ctx.WriteByte(' ')
 	if node.Bounds.EndBound != nil {
+		__antithesis_instrumentation__.Notify(613416)
 		ctx.WriteString("BETWEEN ")
 		ctx.FormatNode(node.Bounds.StartBound)
 		ctx.WriteString(" AND ")
 		ctx.FormatNode(node.Bounds.EndBound)
 	} else {
+		__antithesis_instrumentation__.Notify(613417)
 		ctx.FormatNode(node.Bounds.StartBound)
 	}
+	__antithesis_instrumentation__.Notify(613415)
 	if node.Exclusion != treewindow.NoExclusion {
+		__antithesis_instrumentation__.Notify(613418)
 		ctx.WriteByte(' ')
 		ctx.WriteString(node.Exclusion.String())
+	} else {
+		__antithesis_instrumentation__.Notify(613419)
 	}
 }
 
-// LockingClause represents a locking clause, like FOR UPDATE.
 type LockingClause []*LockingItem
 
-// Format implements the NodeFormatter interface.
 func (node *LockingClause) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613420)
 	for _, n := range *node {
+		__antithesis_instrumentation__.Notify(613421)
 		ctx.FormatNode(n)
 	}
 }
 
-// LockingItem represents a single locking item in a locking clause.
-//
-// NOTE: if this struct changes, HashLockingItem and IsLockingItemEqual
-// in opt/memo/interner.go will need to be updated accordingly.
 type LockingItem struct {
 	Strength   LockingStrength
 	Targets    TableNames
 	WaitPolicy LockingWaitPolicy
 }
 
-// Format implements the NodeFormatter interface.
 func (f *LockingItem) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613422)
 	ctx.FormatNode(f.Strength)
 	if len(f.Targets) > 0 {
+		__antithesis_instrumentation__.Notify(613424)
 		ctx.WriteString(" OF ")
 		ctx.FormatNode(&f.Targets)
+	} else {
+		__antithesis_instrumentation__.Notify(613425)
 	}
+	__antithesis_instrumentation__.Notify(613423)
 	ctx.FormatNode(f.WaitPolicy)
 }
 
-// LockingStrength represents the possible row-level lock modes for a SELECT
-// statement.
 type LockingStrength byte
 
-// The ordering of the variants is important, because the highest numerical
-// value takes precedence when row-level locking is specified multiple ways.
 const (
-	// ForNone represents the default - no for statement at all.
-	// LockingItem AST nodes are never created with this strength.
 	ForNone LockingStrength = iota
-	// ForKeyShare represents FOR KEY SHARE.
+
 	ForKeyShare
-	// ForShare represents FOR SHARE.
+
 	ForShare
-	// ForNoKeyUpdate represents FOR NO KEY UPDATE.
+
 	ForNoKeyUpdate
-	// ForUpdate represents FOR UPDATE.
+
 	ForUpdate
 )
 
@@ -1065,38 +1408,33 @@ var lockingStrengthName = [...]string{
 }
 
 func (s LockingStrength) String() string {
+	__antithesis_instrumentation__.Notify(613426)
 	return lockingStrengthName[s]
 }
 
-// Format implements the NodeFormatter interface.
 func (s LockingStrength) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613427)
 	if s != ForNone {
+		__antithesis_instrumentation__.Notify(613428)
 		ctx.WriteString(" ")
 		ctx.WriteString(s.String())
+	} else {
+		__antithesis_instrumentation__.Notify(613429)
 	}
 }
 
-// Max returns the maximum of the two locking strengths.
 func (s LockingStrength) Max(s2 LockingStrength) LockingStrength {
+	__antithesis_instrumentation__.Notify(613430)
 	return LockingStrength(max(byte(s), byte(s2)))
 }
 
-// LockingWaitPolicy represents the possible policies for handling conflicting
-// locks held by other active transactions when attempting to lock rows due to
-// FOR UPDATE/SHARE clauses (i.e. it represents the NOWAIT and SKIP LOCKED
-// options).
 type LockingWaitPolicy byte
 
-// The ordering of the variants is important, because the highest numerical
-// value takes precedence when row-level locking is specified multiple ways.
 const (
-	// LockWaitBlock represents the default - wait for the lock to become
-	// available.
 	LockWaitBlock LockingWaitPolicy = iota
-	// LockWaitSkip represents SKIP LOCKED - skip rows that can't be locked.
+
 	LockWaitSkip
-	// LockWaitError represents NOWAIT - raise an error if a row cannot be
-	// locked.
+
 	LockWaitError
 )
 
@@ -1107,25 +1445,34 @@ var lockingWaitPolicyName = [...]string{
 }
 
 func (p LockingWaitPolicy) String() string {
+	__antithesis_instrumentation__.Notify(613431)
 	return lockingWaitPolicyName[p]
 }
 
-// Format implements the NodeFormatter interface.
 func (p LockingWaitPolicy) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613432)
 	if p != LockWaitBlock {
+		__antithesis_instrumentation__.Notify(613433)
 		ctx.WriteString(" ")
 		ctx.WriteString(p.String())
+	} else {
+		__antithesis_instrumentation__.Notify(613434)
 	}
 }
 
-// Max returns the maximum of the two locking wait policies.
 func (p LockingWaitPolicy) Max(p2 LockingWaitPolicy) LockingWaitPolicy {
+	__antithesis_instrumentation__.Notify(613435)
 	return LockingWaitPolicy(max(byte(p), byte(p2)))
 }
 
 func max(a, b byte) byte {
+	__antithesis_instrumentation__.Notify(613436)
 	if a > b {
+		__antithesis_instrumentation__.Notify(613438)
 		return a
+	} else {
+		__antithesis_instrumentation__.Notify(613439)
 	}
+	__antithesis_instrumentation__.Notify(613437)
 	return b
 }

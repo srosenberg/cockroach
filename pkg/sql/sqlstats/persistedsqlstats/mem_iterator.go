@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package persistedsqlstats
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -18,12 +10,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlstats/sslocal"
 )
 
-// memStmtStatsIterator wraps a sslocal.StmtStatsIterator. Since in-memory
-// statement statistics does not have aggregated_ts and aggregation_interval
-// fields populated, memStmtStatsIterator overrides the
-// sslocal.StmtStatsIterator's Cur() method to populate the aggregated_ts
-// and aggregation_interval fields on the returning
-// roachpb.CollectedStatementStatistics.
 type memStmtStatsIterator struct {
 	*sslocal.StmtStatsIterator
 	aggregatedTs time.Time
@@ -36,6 +22,7 @@ func newMemStmtStatsIterator(
 	aggregatedTS time.Time,
 	aggInterval time.Duration,
 ) *memStmtStatsIterator {
+	__antithesis_instrumentation__.Notify(624841)
 	return &memStmtStatsIterator{
 		StmtStatsIterator: stats.StmtStatsIterator(options),
 		aggregatedTs:      aggregatedTS,
@@ -43,21 +30,14 @@ func newMemStmtStatsIterator(
 	}
 }
 
-// Cur calls the m.StmtStatsIterator.Cur() and populates the c.AggregatedTs
-// field and c.AggregationInterval field.
 func (m *memStmtStatsIterator) Cur() *roachpb.CollectedStatementStatistics {
+	__antithesis_instrumentation__.Notify(624842)
 	c := m.StmtStatsIterator.Cur()
 	c.AggregatedTs = m.aggregatedTs
 	c.AggregationInterval = m.aggInterval
 	return c
 }
 
-// memTxnStatsIterator wraps a sslocal.TxnStatsIterator. Since in-memory
-// transaction statistics does not have aggregated_ts and aggregation_interval
-// fields populated, memTxnStatsIterator overrides the
-// sslocal.TxnStatsIterator's Cur() method to populate the aggregated_ts and
-// aggregatoin_interval fields fields on the returning
-// roachpb.CollectedTransactionStatistics.
 type memTxnStatsIterator struct {
 	*sslocal.TxnStatsIterator
 	aggregatedTs time.Time
@@ -70,6 +50,7 @@ func newMemTxnStatsIterator(
 	aggregatedTS time.Time,
 	aggInterval time.Duration,
 ) *memTxnStatsIterator {
+	__antithesis_instrumentation__.Notify(624843)
 	return &memTxnStatsIterator{
 		TxnStatsIterator: stats.TxnStatsIterator(options),
 		aggregatedTs:     aggregatedTS,
@@ -77,9 +58,8 @@ func newMemTxnStatsIterator(
 	}
 }
 
-// Cur calls the m.TxnStatsIterator.Cur() and populates the stats.AggregatedTs
-// and stats.AggregationInterval fields.
 func (m *memTxnStatsIterator) Cur() *roachpb.CollectedTransactionStatistics {
+	__antithesis_instrumentation__.Notify(624844)
 	stats := m.TxnStatsIterator.Cur()
 	stats.AggregatedTs = m.aggregatedTs
 	stats.AggregationInterval = m.aggInterval

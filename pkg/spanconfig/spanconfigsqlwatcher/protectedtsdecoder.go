@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfigsqlwatcher
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts/ptpb"
@@ -20,55 +12,74 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// protectedTimestampDecoder decodes rows from the system.protected_ts_records
-// table.
 type protectedTimestampDecoder struct {
 	alloc   tree.DatumAlloc
 	decoder valueside.Decoder
 }
 
-// newProtectedTimestampDecoder instantiates a protectedTimestampDecoder.
 func newProtectedTimestampDecoder() *protectedTimestampDecoder {
+	__antithesis_instrumentation__.Notify(241326)
 	columns := systemschema.ProtectedTimestampsRecordsTable.PublicColumns()
 	return &protectedTimestampDecoder{
 		decoder: valueside.MakeDecoder(columns),
 	}
 }
 
-// DecodeRow decodes a row of the system.protected_ts_records table.
 func (d *protectedTimestampDecoder) decode(kv roachpb.KeyValue) (target ptpb.Target, _ error) {
+	__antithesis_instrumentation__.Notify(241327)
 	if !kv.Value.IsPresent() {
+		__antithesis_instrumentation__.Notify(241333)
 		return ptpb.Target{},
 			errors.AssertionFailedf("missing value for key in system.protected_ts_records: %v", kv)
+	} else {
+		__antithesis_instrumentation__.Notify(241334)
 	}
+	__antithesis_instrumentation__.Notify(241328)
 
-	// The columns after the `id` field are stored as a family.
 	bytes, err := kv.Value.GetTuple()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241335)
 		return ptpb.Target{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(241336)
 	}
+	__antithesis_instrumentation__.Notify(241329)
 
 	datums, err := d.decoder.Decode(&d.alloc, bytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241337)
 		return ptpb.Target{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(241338)
 	}
+	__antithesis_instrumentation__.Notify(241330)
 
 	if len(datums) != 8 {
+		__antithesis_instrumentation__.Notify(241339)
 		return ptpb.Target{}, errors.AssertionFailedf("expected len(datums) == 8, but found %d", len(datums))
+	} else {
+		__antithesis_instrumentation__.Notify(241340)
 	}
+	__antithesis_instrumentation__.Notify(241331)
 
 	if t := datums[7]; t != tree.DNull {
+		__antithesis_instrumentation__.Notify(241341)
 		targetBytes := tree.MustBeDBytes(t)
 		if err := protoutil.Unmarshal([]byte(targetBytes), &target); err != nil {
+			__antithesis_instrumentation__.Notify(241342)
 			return ptpb.Target{}, errors.Wrap(err, "failed to unmarshal target")
+		} else {
+			__antithesis_instrumentation__.Notify(241343)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(241344)
 	}
+	__antithesis_instrumentation__.Notify(241332)
 
 	return target, nil
 }
 
-// TestingProtectedTimestampDecoderFn constructs a protectedTimestampDecoder and
-// exposes its decode method.
 func TestingProtectedTimestampDecoderFn() func(roachpb.KeyValue) (ptpb.Target, error) {
+	__antithesis_instrumentation__.Notify(241345)
 	return newProtectedTimestampDecoder().decode
 }

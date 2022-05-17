@@ -1,18 +1,8 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// AlterBackup represents an ALTER BACKUP statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type AlterBackup struct {
-	// Backup contains the locations for the backup we seek to add new keys to.
 	Backup Expr
 	Subdir Expr
 	Cmds   AlterBackupCmds
@@ -20,49 +10,55 @@ type AlterBackup struct {
 
 var _ Statement = &AlterBackup{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterBackup) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602921)
 	ctx.WriteString("ALTER BACKUP ")
 
 	if node.Subdir != nil {
+		__antithesis_instrumentation__.Notify(602923)
 		ctx.FormatNode(node.Subdir)
 		ctx.WriteString(" IN ")
+	} else {
+		__antithesis_instrumentation__.Notify(602924)
 	}
+	__antithesis_instrumentation__.Notify(602922)
 
 	ctx.FormatNode(node.Backup)
 	ctx.FormatNode(&node.Cmds)
 }
 
-// AlterBackupCmds is an array of type AlterBackupCmd
 type AlterBackupCmds []AlterBackupCmd
 
-// Format implements the NodeFormatter interface.
 func (node *AlterBackupCmds) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602925)
 	for i, n := range *node {
+		__antithesis_instrumentation__.Notify(602926)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(602928)
 			ctx.WriteString(" ")
+		} else {
+			__antithesis_instrumentation__.Notify(602929)
 		}
+		__antithesis_instrumentation__.Notify(602927)
 		ctx.FormatNode(n)
 	}
 }
 
-// AlterBackupCmd represents a backup modification operation.
 type AlterBackupCmd interface {
 	NodeFormatter
 	alterBackupCmd()
 }
 
-func (node *AlterBackupKMS) alterBackupCmd() {}
+func (node *AlterBackupKMS) alterBackupCmd() { __antithesis_instrumentation__.Notify(602930) }
 
 var _ AlterBackupCmd = &AlterBackupKMS{}
 
-// AlterBackupKMS represents a possible alter_backup_cmd option.
 type AlterBackupKMS struct {
 	KMSInfo BackupKMS
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterBackupKMS) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(602931)
 	ctx.WriteString(" ADD NEW_KMS=")
 	ctx.FormatNode(&node.KMSInfo.NewKMSURI)
 
@@ -70,7 +66,6 @@ func (node *AlterBackupKMS) Format(ctx *FmtCtx) {
 	ctx.FormatNode(&node.KMSInfo.OldKMSURI)
 }
 
-// BackupKMS represents possible options used when altering a backup KMS
 type BackupKMS struct {
 	NewKMSURI StringOrPlaceholderOptList
 	OldKMSURI StringOrPlaceholderOptList

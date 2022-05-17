@@ -1,16 +1,8 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package clisqlcfg defines configuration settings and mechanisms for
 // instances of the SQL shell.
 package clisqlcfg
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,209 +19,250 @@ import (
 	isatty "github.com/mattn/go-isatty"
 )
 
-// Context represents the configuration of a SQL shell instance.
 type Context struct {
-	// CliCtx is the CLI configuration.
 	CliCtx *clicfg.Context
-	// ConnCtx is the connection configuration.
+
 	ConnCtx *clisqlclient.Context
-	// ExecCtx is the query execution / result formatting configuration.
+
 	ExecCtx *clisqlexec.Context
-	// ShellCtx is the interactive shell configuration.
+
 	ShellCtx clisqlshell.Context
 
-	// ApplicationName is the application_name to use if not
-	// provided in the connection URL.
 	ApplicationName string
 
-	// Database is the database to use if not provided in the
-	// connection URL.
 	Database string
 
-	// User is the user to use if not provided in the connection URL.
 	User string
 
-	// ConnectTimeout is the connection timeout in seconds,
-	// if the connect_timeout is not provided in the connection URL.
 	ConnectTimeout int
 
-	// CmdOut is where the results and informational messages are
-	// emitted.
 	CmdOut *os.File
 
-	// CmdErr is where errors, warnings and notices are printed.
 	CmdErr *os.File
 
-	// InputFile is the file to read from.
-	// If empty, os.Stdin is used.
 	InputFile string
 
-	// SafeUpdates indicates whether to set sql_safe_updates in the CLI
-	// shell prior to running it.
-	// If the boolean is left unspecified, the default depends
-	// on whether the session is interactive.
 	SafeUpdates OptBool
 
-	// ReadOnly indicates where to set default_transaction_read_only in the
-	// CLI shell prior to running it.
 	ReadOnly bool
 
-	// The following fields are populated during Open().
 	opened bool
 	cmdIn  *os.File
 }
 
-// LoadDefaults loads default values.
 func (c *Context) LoadDefaults(cmdOut, cmdErr *os.File) {
+	__antithesis_instrumentation__.Notify(28447)
 	*c = Context{CliCtx: c.CliCtx, ConnCtx: c.ConnCtx, ExecCtx: c.ExecCtx}
 	c.ExecCtx.TerminalOutput = isatty.IsTerminal(cmdOut.Fd())
 	c.ExecCtx.TableDisplayFormat = clisqlexec.TableDisplayTSV
-	c.ExecCtx.TableBorderMode = 0 /* no outer lines + no inside row lines */
+	c.ExecCtx.TableBorderMode = 0
 	if c.ExecCtx.TerminalOutput {
-		// If a human is seeing results, use a tabular result format.
+		__antithesis_instrumentation__.Notify(28451)
+
 		c.ExecCtx.TableDisplayFormat = clisqlexec.TableDisplayTable
+	} else {
+		__antithesis_instrumentation__.Notify(28452)
 	}
+	__antithesis_instrumentation__.Notify(28448)
 	if cmdOut == nil {
+		__antithesis_instrumentation__.Notify(28453)
 		cmdOut = os.Stdout
+	} else {
+		__antithesis_instrumentation__.Notify(28454)
 	}
+	__antithesis_instrumentation__.Notify(28449)
 	if cmdErr == nil {
+		__antithesis_instrumentation__.Notify(28455)
 		cmdErr = os.Stderr
+	} else {
+		__antithesis_instrumentation__.Notify(28456)
 	}
+	__antithesis_instrumentation__.Notify(28450)
 	c.CmdOut = cmdOut
 	c.CmdErr = cmdErr
 }
 
-// Open binds the context to its input file/stream.
-// This should be called after customizations have been
-// populated into the configuration fields.
-// The specified input stream is only used if the configuration
-// does not otherwise specify a file to read from.
 func (c *Context) Open(defaultInput *os.File) (closeFn func(), err error) {
+	__antithesis_instrumentation__.Notify(28457)
 	if c.opened {
+		__antithesis_instrumentation__.Notify(28460)
 		return nil, errors.AssertionFailedf("programming error: Open called twice")
+	} else {
+		__antithesis_instrumentation__.Notify(28461)
 	}
+	__antithesis_instrumentation__.Notify(28458)
 
 	c.cmdIn, closeFn, err = c.getInputFile(defaultInput)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(28462)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(28463)
 	}
+	__antithesis_instrumentation__.Notify(28459)
 	c.checkInteractive()
 	c.opened = true
 	return closeFn, err
 }
 
-// getInputFile establishes where we are reading from.
 func (c *Context) getInputFile(defaultIn *os.File) (cmdIn *os.File, closeFn func(), err error) {
+	__antithesis_instrumentation__.Notify(28464)
 	if c.InputFile == "" {
-		return defaultIn, func() {}, nil
+		__antithesis_instrumentation__.Notify(28468)
+		return defaultIn, func() { __antithesis_instrumentation__.Notify(28469) }, nil
+	} else {
+		__antithesis_instrumentation__.Notify(28470)
 	}
+	__antithesis_instrumentation__.Notify(28465)
 
 	if len(c.ShellCtx.ExecStmts) != 0 {
+		__antithesis_instrumentation__.Notify(28471)
 		return nil, nil, errors.New("cannot specify both an input file and discrete statements")
+	} else {
+		__antithesis_instrumentation__.Notify(28472)
 	}
+	__antithesis_instrumentation__.Notify(28466)
 
 	f, err := os.Open(c.InputFile)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(28473)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(28474)
 	}
-	return f, func() { _ = f.Close() }, nil
+	__antithesis_instrumentation__.Notify(28467)
+	return f, func() { __antithesis_instrumentation__.Notify(28475); _ = f.Close() }, nil
 }
 
-// checkInteractive sets the isInteractive parameter depending on the
-// execution environment and the presence of -e flags.
 func (c *Context) checkInteractive() {
-	// We don't consider sessions interactive unless we have a
-	// serious hunch they are. For now, only `cockroach sql` *without*
-	// `-e` has the ability to input from a (presumably) human user,
-	// and we'll also assume that there is no human if the standard
-	// input is not terminal-like -- likely redirected from a file,
-	// etc.
-	c.CliCtx.IsInteractive = len(c.ShellCtx.ExecStmts) == 0 && isatty.IsTerminal(c.cmdIn.Fd())
+	__antithesis_instrumentation__.Notify(28476)
+
+	c.CliCtx.IsInteractive = len(c.ShellCtx.ExecStmts) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(28477)
+		return isatty.IsTerminal(c.cmdIn.Fd()) == true
+	}() == true
 }
 
-// MakeConn provides a shorthand interface to ConnCtx.MakeConn.
 func (c *Context) MakeConn(url string) (clisqlclient.Conn, error) {
+	__antithesis_instrumentation__.Notify(28478)
 	baseURL, err := pgurl.Parse(url)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(28483)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(28484)
 	}
+	__antithesis_instrumentation__.Notify(28479)
 
 	if c.Database != "" {
+		__antithesis_instrumentation__.Notify(28485)
 		baseURL.WithDefaultDatabase(c.Database)
+	} else {
+		__antithesis_instrumentation__.Notify(28486)
 	}
+	__antithesis_instrumentation__.Notify(28480)
 
 	baseURL.WithDefaultUsername(c.User)
 
-	// Load the application name. It's not a command-line flag, so
-	// anything already in the URL should take priority.
-	if prevAppName := baseURL.GetOption("application_name"); prevAppName == "" && c.ApplicationName != "" {
+	if prevAppName := baseURL.GetOption("application_name"); prevAppName == "" && func() bool {
+		__antithesis_instrumentation__.Notify(28487)
+		return c.ApplicationName != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(28488)
 		_ = baseURL.SetOption("application_name", c.ApplicationName)
+	} else {
+		__antithesis_instrumentation__.Notify(28489)
 	}
+	__antithesis_instrumentation__.Notify(28481)
 
-	// Set a connection timeout if none is provided already. This
-	// ensures that if the server was not initialized or there is some
-	// network issue, the client will not be left to hang forever.
-	//
-	// This is a lib/pq feature.
-	if baseURL.GetOption("connect_timeout") == "" && c.ConnectTimeout != 0 {
+	if baseURL.GetOption("connect_timeout") == "" && func() bool {
+		__antithesis_instrumentation__.Notify(28490)
+		return c.ConnectTimeout != 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(28491)
 		_ = baseURL.SetOption("connect_timeout", strconv.Itoa(c.ConnectTimeout))
+	} else {
+		__antithesis_instrumentation__.Notify(28492)
 	}
+	__antithesis_instrumentation__.Notify(28482)
 
 	usePw, pwdSet, _ := baseURL.GetAuthnPassword()
 	url = baseURL.ToPQ().String()
 
 	conn := c.ConnCtx.MakeSQLConn(c.CmdOut, c.CmdErr, url)
-	conn.SetMissingPassword(!usePw || !pwdSet)
+	conn.SetMissingPassword(!usePw || func() bool {
+		__antithesis_instrumentation__.Notify(28493)
+		return !pwdSet == true
+	}() == true)
 
 	return conn, nil
 }
 
-// Run executes the SQL shell.
 func (c *Context) Run(conn clisqlclient.Conn) error {
+	__antithesis_instrumentation__.Notify(28494)
 	if !c.opened {
+		__antithesis_instrumentation__.Notify(28498)
 		return errors.AssertionFailedf("programming error: Open not called yet")
+	} else {
+		__antithesis_instrumentation__.Notify(28499)
 	}
+	__antithesis_instrumentation__.Notify(28495)
 
-	// Open the connection to make sure everything is OK before running any
-	// statements. Performs authentication.
 	if err := conn.EnsureConn(); err != nil {
+		__antithesis_instrumentation__.Notify(28500)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(28501)
 	}
+	__antithesis_instrumentation__.Notify(28496)
 
 	c.maybeSetSafeUpdates(conn)
 	if err := c.maybeSetReadOnly(conn); err != nil {
+		__antithesis_instrumentation__.Notify(28502)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(28503)
 	}
+	__antithesis_instrumentation__.Notify(28497)
 
 	shell := clisqlshell.NewShell(c.CliCtx, c.ConnCtx, c.ExecCtx, &c.ShellCtx, conn)
 	return shell.RunInteractive(c.cmdIn, c.CmdOut, c.CmdErr)
 }
 
-// maybeSetSafeUpdates sets the session variable for safe updates to true
-// if the flag is specified or this is an interactive session. It prints
-// but does not do anything drastic if an error occurs.
 func (c *Context) maybeSetSafeUpdates(conn clisqlclient.Conn) {
+	__antithesis_instrumentation__.Notify(28504)
 	hasSafeUpdates, safeUpdates := c.SafeUpdates.Get()
 	if !hasSafeUpdates {
+		__antithesis_instrumentation__.Notify(28506)
 		safeUpdates = c.CliCtx.IsInteractive
+	} else {
+		__antithesis_instrumentation__.Notify(28507)
 	}
+	__antithesis_instrumentation__.Notify(28505)
 	if safeUpdates {
+		__antithesis_instrumentation__.Notify(28508)
 		if err := conn.Exec(context.Background(),
 			"SET sql_safe_updates = TRUE"); err != nil {
-			// We only enable the setting in interactive sessions. Ignoring
-			// the error with a warning is acceptable, because the user is
-			// there to decide what they want to do if it doesn't work.
+			__antithesis_instrumentation__.Notify(28509)
+
 			fmt.Fprintf(c.CmdErr, "warning: cannot enable safe updates: %v\n", err)
+		} else {
+			__antithesis_instrumentation__.Notify(28510)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(28511)
 	}
 }
 
-// maybeSetReadOnly sets the session variable default_transaction_read_only to
-// true if the user has requested it.
 func (c *Context) maybeSetReadOnly(conn clisqlclient.Conn) error {
+	__antithesis_instrumentation__.Notify(28512)
 	if !c.ReadOnly {
+		__antithesis_instrumentation__.Notify(28514)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(28515)
 	}
+	__antithesis_instrumentation__.Notify(28513)
 	return conn.Exec(context.Background(),
 		"SET default_transaction_read_only = TRUE")
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tabledesc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -27,475 +19,467 @@ import (
 
 var _ catalog.Index = (*index)(nil)
 
-// index implements the catalog.Index interface by wrapping the protobuf index
-// descriptor along with some metadata from its parent table descriptor.
 type index struct {
 	maybeMutation
 	desc    *descpb.IndexDescriptor
 	ordinal int
 }
 
-// IndexDesc returns the underlying protobuf descriptor.
-// Ideally, this method should be called as rarely as possible.
 func (w index) IndexDesc() *descpb.IndexDescriptor {
+	__antithesis_instrumentation__.Notify(268751)
 	return w.desc
 }
 
-// IndexDescDeepCopy returns a deep copy of the underlying protobuf descriptor.
 func (w index) IndexDescDeepCopy() descpb.IndexDescriptor {
+	__antithesis_instrumentation__.Notify(268752)
 	return *protoutil.Clone(w.desc).(*descpb.IndexDescriptor)
 }
 
-// Ordinal returns the ordinal of the index in its parent TableDescriptor.
-// The ordinal is defined as follows:
-// - 0 is the ordinal of the primary index,
-// - [1:1+len(desc.Indexes)] is the range of public non-primary indexes,
-// - [1+len(desc.Indexes):] is the range of non-public indexes.
 func (w index) Ordinal() int {
+	__antithesis_instrumentation__.Notify(268753)
 	return w.ordinal
 }
 
-// Primary returns true iff the index is the primary index for the table
-// descriptor.
 func (w index) Primary() bool {
+	__antithesis_instrumentation__.Notify(268754)
 	return w.ordinal == 0
 }
 
-// Public returns true iff the index is active, i.e. readable.
 func (w index) Public() bool {
+	__antithesis_instrumentation__.Notify(268755)
 	return !w.IsMutation()
 }
 
-// GetID returns the index ID.
 func (w index) GetID() descpb.IndexID {
+	__antithesis_instrumentation__.Notify(268756)
 	return w.desc.ID
 }
 
-// GetConstraintID returns the constraint ID.
 func (w index) GetConstraintID() descpb.ConstraintID {
+	__antithesis_instrumentation__.Notify(268757)
 	return w.desc.ConstraintID
 }
 
-// GetName returns the index name.
 func (w index) GetName() string {
+	__antithesis_instrumentation__.Notify(268758)
 	return w.desc.Name
 }
 
-// IsPartial returns true iff the index is a partial index.
 func (w index) IsPartial() bool {
+	__antithesis_instrumentation__.Notify(268759)
 	return w.desc.IsPartial()
 }
 
-// IsUnique returns true iff the index is a unique index.
 func (w index) IsUnique() bool {
+	__antithesis_instrumentation__.Notify(268760)
 	return w.desc.Unique
 }
 
-// IsDisabled returns true iff the index is disabled.
 func (w index) IsDisabled() bool {
+	__antithesis_instrumentation__.Notify(268761)
 	return w.desc.Disabled
 }
 
-// IsSharded returns true iff the index is hash sharded.
 func (w index) IsSharded() bool {
+	__antithesis_instrumentation__.Notify(268762)
 	return w.desc.IsSharded()
 }
 
-// IsCreatedExplicitly returns true iff this index was created explicitly, i.e.
-// via 'CREATE INDEX' statement.
 func (w index) IsCreatedExplicitly() bool {
+	__antithesis_instrumentation__.Notify(268763)
 	return w.desc.CreatedExplicitly
 }
 
-// GetPredicate returns the empty string when the index is not partial,
-// otherwise it returns the corresponding expression of the partial index.
-// Columns are referred to in the expression by their name.
 func (w index) GetPredicate() string {
+	__antithesis_instrumentation__.Notify(268764)
 	return w.desc.Predicate
 }
 
-// GetType returns the type of index, inverted or forward.
 func (w index) GetType() descpb.IndexDescriptor_Type {
+	__antithesis_instrumentation__.Notify(268765)
 	return w.desc.Type
 }
 
-// GetPartitioning returns the partitioning descriptor of the index.
 func (w index) GetPartitioning() catalog.Partitioning {
+	__antithesis_instrumentation__.Notify(268766)
 	return &partitioning{desc: &w.desc.Partitioning}
 }
 
-// ExplicitColumnStartIdx returns the first index in which the column is
-// explicitly part of the index.
 func (w index) ExplicitColumnStartIdx() int {
+	__antithesis_instrumentation__.Notify(268767)
 	return w.desc.ExplicitColumnStartIdx()
 }
 
-// IsValidOriginIndex returns whether the index can serve as an origin index for
-// a foreign key constraint with the provided set of originColIDs.
 func (w index) IsValidOriginIndex(originColIDs descpb.ColumnIDs) bool {
+	__antithesis_instrumentation__.Notify(268768)
 	return w.desc.IsValidOriginIndex(originColIDs)
 }
 
-// IsValidReferencedUniqueConstraint returns whether the index can serve as a
-// referenced index for a foreign  key constraint with the provided set of
-// referencedColumnIDs.
 func (w index) IsValidReferencedUniqueConstraint(referencedColIDs descpb.ColumnIDs) bool {
+	__antithesis_instrumentation__.Notify(268769)
 	return w.desc.IsValidReferencedUniqueConstraint(referencedColIDs)
 }
 
-// HasOldStoredColumns returns whether the index has stored columns in the old
-// format, in which the IDs of the stored columns were kept in the "extra"
-// column IDs slice, which is now called KeySuffixColumnIDs. Thus their data
-// was encoded the same way as if they were in an implicit column.
-// TODO(postamar): this concept should be migrated away.
 func (w index) HasOldStoredColumns() bool {
-	return w.NumKeySuffixColumns() > 0 &&
-		!w.Primary() &&
-		len(w.desc.StoreColumnIDs) < len(w.desc.StoreColumnNames)
+	__antithesis_instrumentation__.Notify(268770)
+	return w.NumKeySuffixColumns() > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(268771)
+		return !w.Primary() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(268772)
+		return len(w.desc.StoreColumnIDs) < len(w.desc.StoreColumnNames) == true
+	}() == true
 }
 
-// InvertedColumnID returns the ColumnID of the inverted column of the inverted
-// index. This is always the last column in KeyColumnIDs. Panics if the index is
-// not inverted.
 func (w index) InvertedColumnID() descpb.ColumnID {
+	__antithesis_instrumentation__.Notify(268773)
 	return w.desc.InvertedColumnID()
 }
 
-// InvertedColumnName returns the name of the inverted column of the inverted
-// index. This is always the last column in KeyColumnNames. Panics if the index is
-// not inverted.
 func (w index) InvertedColumnName() string {
+	__antithesis_instrumentation__.Notify(268774)
 	return w.desc.InvertedColumnName()
 }
 
-// InvertedColumnKeyType returns the type of the data element that is encoded
-// as the inverted index key. This is currently always Bytes.
-//
-// Panics if the index is not inverted.
 func (w index) InvertedColumnKeyType() *types.T {
+	__antithesis_instrumentation__.Notify(268775)
 	return w.desc.InvertedColumnKeyType()
 }
 
-// CollectKeyColumnIDs creates a new set containing the column IDs in the key
-// of this index.
 func (w index) CollectKeyColumnIDs() catalog.TableColSet {
+	__antithesis_instrumentation__.Notify(268776)
 	return catalog.MakeTableColSet(w.desc.KeyColumnIDs...)
 }
 
-// CollectPrimaryStoredColumnIDs creates a new set containing the column IDs
-// stored in this index if it is a primary index.
 func (w index) CollectPrimaryStoredColumnIDs() catalog.TableColSet {
+	__antithesis_instrumentation__.Notify(268777)
 	if !w.Primary() {
+		__antithesis_instrumentation__.Notify(268779)
 		return catalog.TableColSet{}
+	} else {
+		__antithesis_instrumentation__.Notify(268780)
 	}
+	__antithesis_instrumentation__.Notify(268778)
 	return catalog.MakeTableColSet(w.desc.StoreColumnIDs...)
 }
 
-// CollectSecondaryStoredColumnIDs creates a new set containing the column IDs
-// stored in this index if it is a secondary index.
 func (w index) CollectSecondaryStoredColumnIDs() catalog.TableColSet {
+	__antithesis_instrumentation__.Notify(268781)
 	if w.Primary() {
+		__antithesis_instrumentation__.Notify(268783)
 		return catalog.TableColSet{}
+	} else {
+		__antithesis_instrumentation__.Notify(268784)
 	}
+	__antithesis_instrumentation__.Notify(268782)
 	return catalog.MakeTableColSet(w.desc.StoreColumnIDs...)
 }
 
-// CollectKeySuffixColumnIDs creates a new set containing the key suffix column
-// IDs in this index. These are the columns from the table's primary index which
-// are otherwise not in this index.
 func (w index) CollectKeySuffixColumnIDs() catalog.TableColSet {
+	__antithesis_instrumentation__.Notify(268785)
 	return catalog.MakeTableColSet(w.desc.KeySuffixColumnIDs...)
 }
 
-// CollectCompositeColumnIDs creates a new set containing the composite column
-// IDs.
 func (w index) CollectCompositeColumnIDs() catalog.TableColSet {
+	__antithesis_instrumentation__.Notify(268786)
 	return catalog.MakeTableColSet(w.desc.CompositeColumnIDs...)
 }
 
-// GetGeoConfig returns the geo config in the index descriptor.
 func (w index) GetGeoConfig() geoindex.Config {
+	__antithesis_instrumentation__.Notify(268787)
 	return w.desc.GeoConfig
 }
 
-// GetSharded returns the ShardedDescriptor in the index descriptor
 func (w index) GetSharded() catpb.ShardedDescriptor {
+	__antithesis_instrumentation__.Notify(268788)
 	return w.desc.Sharded
 }
 
-// GetShardColumnName returns the name of the shard column if the index is hash
-// sharded, empty string otherwise.
 func (w index) GetShardColumnName() string {
+	__antithesis_instrumentation__.Notify(268789)
 	return w.desc.Sharded.Name
 }
 
-// GetVersion returns the version of the index descriptor.
 func (w index) GetVersion() descpb.IndexDescriptorVersion {
+	__antithesis_instrumentation__.Notify(268790)
 	return w.desc.Version
 }
 
-// GetEncodingType returns the encoding type of this index. For backward
-// compatibility reasons, this might not match what is stored in
-// w.desc.EncodingType.
 func (w index) GetEncodingType() descpb.IndexDescriptorEncodingType {
+	__antithesis_instrumentation__.Notify(268791)
 	if w.Primary() {
-		// Primary indexes always use the PrimaryIndexEncoding, regardless of what
-		// desc.EncodingType indicates.
+		__antithesis_instrumentation__.Notify(268793)
+
 		return descpb.PrimaryIndexEncoding
+	} else {
+		__antithesis_instrumentation__.Notify(268794)
 	}
+	__antithesis_instrumentation__.Notify(268792)
 	return w.desc.EncodingType
 }
 
-// NumKeyColumns returns the number of columns in the index key.
 func (w index) NumKeyColumns() int {
+	__antithesis_instrumentation__.Notify(268795)
 	return len(w.desc.KeyColumnIDs)
 }
 
-// GetKeyColumnID returns the ID of the columnOrdinal-th column in the index key.
 func (w index) GetKeyColumnID(columnOrdinal int) descpb.ColumnID {
+	__antithesis_instrumentation__.Notify(268796)
 	return w.desc.KeyColumnIDs[columnOrdinal]
 }
 
-// GetKeyColumnName returns the name of the columnOrdinal-th column in the index
-// key.
 func (w index) GetKeyColumnName(columnOrdinal int) string {
+	__antithesis_instrumentation__.Notify(268797)
 	return w.desc.KeyColumnNames[columnOrdinal]
 }
 
-// GetKeyColumnDirection returns the direction of the columnOrdinal-th column in
-// the index key.
 func (w index) GetKeyColumnDirection(columnOrdinal int) descpb.IndexDescriptor_Direction {
+	__antithesis_instrumentation__.Notify(268798)
 	return w.desc.KeyColumnDirections[columnOrdinal]
 }
 
-// NumPrimaryStoredColumns returns the number of columns which the index
-// stores in addition to the columns which are part of the primary key.
-// Returns 0 if the index isn't primary.
 func (w index) NumPrimaryStoredColumns() int {
+	__antithesis_instrumentation__.Notify(268799)
 	if !w.Primary() {
+		__antithesis_instrumentation__.Notify(268801)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(268802)
 	}
+	__antithesis_instrumentation__.Notify(268800)
 	return len(w.desc.StoreColumnIDs)
 }
 
-// NumSecondaryStoredColumns returns the number of columns which the index
-// stores in addition to the columns which are explicitly part of the index
-// (STORING clause). Returns 0 if the index isn't secondary.
 func (w index) NumSecondaryStoredColumns() int {
+	__antithesis_instrumentation__.Notify(268803)
 	if w.Primary() {
+		__antithesis_instrumentation__.Notify(268805)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(268806)
 	}
+	__antithesis_instrumentation__.Notify(268804)
 	return len(w.desc.StoreColumnIDs)
 }
 
-// GetStoredColumnID returns the ID of the storeColumnOrdinal-th store column.
 func (w index) GetStoredColumnID(storedColumnOrdinal int) descpb.ColumnID {
+	__antithesis_instrumentation__.Notify(268807)
 	return w.desc.StoreColumnIDs[storedColumnOrdinal]
 }
 
-// GetStoredColumnName returns the name of the storeColumnOrdinal-th store column.
 func (w index) GetStoredColumnName(storedColumnOrdinal int) string {
+	__antithesis_instrumentation__.Notify(268808)
 	return w.desc.StoreColumnNames[storedColumnOrdinal]
 }
 
-// NumKeySuffixColumns returns the number of additional columns referenced by
-// the index descriptor, which are not part of the index key but which are part
-// of the table's primary key.
 func (w index) NumKeySuffixColumns() int {
+	__antithesis_instrumentation__.Notify(268809)
 	return len(w.desc.KeySuffixColumnIDs)
 }
 
-// GetKeySuffixColumnID returns the ID of the extraColumnOrdinal-th key suffix
-// column.
 func (w index) GetKeySuffixColumnID(keySuffixColumnOrdinal int) descpb.ColumnID {
+	__antithesis_instrumentation__.Notify(268810)
 	return w.desc.KeySuffixColumnIDs[keySuffixColumnOrdinal]
 }
 
-// NumCompositeColumns returns the number of composite columns referenced by the
-// index descriptor.
 func (w index) NumCompositeColumns() int {
+	__antithesis_instrumentation__.Notify(268811)
 	return len(w.desc.CompositeColumnIDs)
 }
 
-// GetCompositeColumnID returns the ID of the compositeColumnOrdinal-th
-// composite column.
 func (w index) GetCompositeColumnID(compositeColumnOrdinal int) descpb.ColumnID {
+	__antithesis_instrumentation__.Notify(268812)
 	return w.desc.CompositeColumnIDs[compositeColumnOrdinal]
 }
 
-// UseDeletePreservingEncoding returns true if the index is to be encoded with
-// an additional bit that indicates whether or not the value has been deleted.
-//
-// Index key-values that are deleted in this way are not actually deleted,
-// but remain in the index with a value which has the delete bit set to true.
-// This is necessary to preserve the delete history for the MVCC-compatible
-// index backfiller
-// docs/RFCS/20211004_incremental_index_backfiller.md#new-index-encoding-for-deletions-vs-mvcc
-//
-// We only use the delete preserving encoding if the index is
-// writable. Otherwise, we may preserve a delete when in DELETE_ONLY but never
-// see a subsequent write that replaces it. This a problem for the
-// MVCC-compatible index backfiller which merges entries from a
-// delete-preserving index into a newly-added index. A delete preserved in
-// DELETE_ONLY could result in a value being erroneously deleted during the
-// merge process. While we could filter such deletes, the filtering would
-// require more data being stored in each deleted entry and further complicate
-// the merge process. See #75720 for further details.
 func (w index) UseDeletePreservingEncoding() bool {
-	return w.desc.UseDeletePreservingEncoding && !w.maybeMutation.DeleteOnly()
+	__antithesis_instrumentation__.Notify(268813)
+	return w.desc.UseDeletePreservingEncoding && func() bool {
+		__antithesis_instrumentation__.Notify(268814)
+		return !w.maybeMutation.DeleteOnly() == true
+	}() == true
 }
 
-// ForcePut returns true if writes to the index should only use Put (rather than
-// CPut or InitPut). This is used by indexes currently being built by the
-// MVCC-compliant index backfiller and the temporary indexes that support that
-// process.
 func (w index) ForcePut() bool {
-	return w.Merging() || w.desc.UseDeletePreservingEncoding
+	__antithesis_instrumentation__.Notify(268815)
+	return w.Merging() || func() bool {
+		__antithesis_instrumentation__.Notify(268816)
+		return w.desc.UseDeletePreservingEncoding == true
+	}() == true
 }
 
 func (w index) CreatedAt() time.Time {
+	__antithesis_instrumentation__.Notify(268817)
 	if w.desc.CreatedAtNanos == 0 {
+		__antithesis_instrumentation__.Notify(268819)
 		return time.Time{}
+	} else {
+		__antithesis_instrumentation__.Notify(268820)
 	}
+	__antithesis_instrumentation__.Notify(268818)
 	return timeutil.Unix(0, w.desc.CreatedAtNanos)
 }
 
-// IsTemporaryIndexForBackfill() returns true iff the index is
-// an index being used as the temporary index being used by an
-// in-progress index backfill.
-//
-// TODO(ssd): This could be its own boolean or we could store the ID
-// of the index it is a temporary index for.
 func (w index) IsTemporaryIndexForBackfill() bool {
+	__antithesis_instrumentation__.Notify(268821)
 	return w.desc.UseDeletePreservingEncoding
 }
 
-// partitioning is the backing struct for a catalog.Partitioning interface.
 type partitioning struct {
 	desc *catpb.PartitioningDescriptor
 }
 
-// PartitioningDesc returns the underlying protobuf descriptor.
 func (p partitioning) PartitioningDesc() *catpb.PartitioningDescriptor {
+	__antithesis_instrumentation__.Notify(268822)
 	return p.desc
 }
 
-// DeepCopy returns a deep copy of the receiver.
 func (p partitioning) DeepCopy() catalog.Partitioning {
+	__antithesis_instrumentation__.Notify(268823)
 	return &partitioning{desc: protoutil.Clone(p.desc).(*catpb.PartitioningDescriptor)}
 }
 
-// FindPartitionByName recursively searches the partitioning for a partition
-// whose name matches the input and returns it, or nil if no match is found.
 func (p partitioning) FindPartitionByName(name string) (found catalog.Partitioning) {
+	__antithesis_instrumentation__.Notify(268824)
 	_ = p.forEachPartitionName(func(partitioning catalog.Partitioning, currentName string) error {
+		__antithesis_instrumentation__.Notify(268826)
 		if name == currentName {
+			__antithesis_instrumentation__.Notify(268828)
 			found = partitioning
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(268829)
 		}
+		__antithesis_instrumentation__.Notify(268827)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(268825)
 	return found
 }
 
-// ForEachPartitionName applies fn on each of the partition names in this
-// partition and recursively in its subpartitions.
-// Supports iterutil.Done.
 func (p partitioning) ForEachPartitionName(fn func(name string) error) error {
+	__antithesis_instrumentation__.Notify(268830)
 	err := p.forEachPartitionName(func(_ catalog.Partitioning, name string) error {
+		__antithesis_instrumentation__.Notify(268833)
 		return fn(name)
 	})
+	__antithesis_instrumentation__.Notify(268831)
 	if iterutil.Done(err) {
+		__antithesis_instrumentation__.Notify(268834)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(268835)
 	}
+	__antithesis_instrumentation__.Notify(268832)
 	return err
 }
 
 func (p partitioning) forEachPartitionName(
 	fn func(partitioning catalog.Partitioning, name string) error,
 ) error {
+	__antithesis_instrumentation__.Notify(268836)
 	for _, l := range p.desc.List {
+		__antithesis_instrumentation__.Notify(268839)
 		err := fn(p, l.Name)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(268841)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(268842)
 		}
+		__antithesis_instrumentation__.Notify(268840)
 		err = partitioning{desc: &l.Subpartitioning}.forEachPartitionName(fn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(268843)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(268844)
 		}
 	}
+	__antithesis_instrumentation__.Notify(268837)
 	for _, r := range p.desc.Range {
+		__antithesis_instrumentation__.Notify(268845)
 		err := fn(p, r.Name)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(268846)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(268847)
 		}
 	}
+	__antithesis_instrumentation__.Notify(268838)
 	return nil
 }
 
-// NumLists returns the number of list elements in the underlying partitioning
-// descriptor.
 func (p partitioning) NumLists() int {
+	__antithesis_instrumentation__.Notify(268848)
 	return len(p.desc.List)
 }
 
-// NumRanges returns the number of range elements in the underlying
-// partitioning descriptor.
 func (p partitioning) NumRanges() int {
+	__antithesis_instrumentation__.Notify(268849)
 	return len(p.desc.Range)
 }
 
-// ForEachList applies fn on each list element of the wrapped partitioning.
-// Supports iterutil.Done.
 func (p partitioning) ForEachList(
 	fn func(name string, values [][]byte, subPartitioning catalog.Partitioning) error,
 ) error {
+	__antithesis_instrumentation__.Notify(268850)
 	for _, l := range p.desc.List {
+		__antithesis_instrumentation__.Notify(268852)
 		subp := partitioning{desc: &l.Subpartitioning}
 		err := fn(l.Name, l.Values, subp)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(268853)
 			if iterutil.Done(err) {
+				__antithesis_instrumentation__.Notify(268855)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(268856)
 			}
+			__antithesis_instrumentation__.Notify(268854)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(268857)
 		}
 	}
+	__antithesis_instrumentation__.Notify(268851)
 	return nil
 }
 
-// ForEachRange applies fn on each range element of the wrapped partitioning.
-// Supports iterutil.Done.
 func (p partitioning) ForEachRange(fn func(name string, from, to []byte) error) error {
+	__antithesis_instrumentation__.Notify(268858)
 	for _, r := range p.desc.Range {
+		__antithesis_instrumentation__.Notify(268860)
 		err := fn(r.Name, r.FromInclusive, r.ToExclusive)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(268861)
 			if iterutil.Done(err) {
+				__antithesis_instrumentation__.Notify(268863)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(268864)
 			}
+			__antithesis_instrumentation__.Notify(268862)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(268865)
 		}
 	}
+	__antithesis_instrumentation__.Notify(268859)
 	return nil
 }
 
-// NumColumns is how large of a prefix of the columns in an index are used in
-// the function mapping column values to partitions. If this is a
-// subpartition, this is offset to start from the end of the parent
-// partition's columns. If NumColumns is 0, then there is no partitioning.
 func (p partitioning) NumColumns() int {
+	__antithesis_instrumentation__.Notify(268866)
 	return int(p.desc.NumColumns)
 }
 
-// NumImplicitColumns specifies the number of columns that implicitly prefix a
-// given index. This occurs if a user specifies a PARTITION BY which is not a
-// prefix of the given index, in which case the KeyColumnIDs are added in front
-// of the index and this field denotes the number of columns added as a prefix.
-// If NumImplicitColumns is 0, no implicit columns are defined for the index.
 func (p partitioning) NumImplicitColumns() int {
+	__antithesis_instrumentation__.Notify(268867)
 	return int(p.desc.NumImplicitColumns)
 }
 
-// indexCache contains precomputed slices of catalog.Index interfaces.
 type indexCache struct {
 	primary              catalog.Index
 	all                  []catalog.Index
@@ -509,72 +493,108 @@ type indexCache struct {
 	partial              []catalog.Index
 }
 
-// newIndexCache returns a fresh fully-populated indexCache struct for the
-// TableDescriptor.
 func newIndexCache(desc *descpb.TableDescriptor, mutations *mutationCache) *indexCache {
+	__antithesis_instrumentation__.Notify(268868)
 	c := indexCache{}
-	// Build a slice of structs to back the public interfaces in c.all.
-	// This is better than allocating memory once per struct.
+
 	numPublic := 1 + len(desc.Indexes)
 	backingStructs := make([]index, numPublic)
 	backingStructs[0] = index{desc: &desc.PrimaryIndex}
 	for i := range desc.Indexes {
+		__antithesis_instrumentation__.Notify(268875)
 		backingStructs[i+1] = index{desc: &desc.Indexes[i], ordinal: i + 1}
 	}
-	// Populate the c.all slice with Index interfaces.
+	__antithesis_instrumentation__.Notify(268869)
+
 	numMutations := len(mutations.indexes)
 	c.all = make([]catalog.Index, numPublic, numPublic+numMutations)
 	for i := range backingStructs {
+		__antithesis_instrumentation__.Notify(268876)
 		c.all[i] = &backingStructs[i]
 	}
+	__antithesis_instrumentation__.Notify(268870)
 	for _, m := range mutations.indexes {
+		__antithesis_instrumentation__.Notify(268877)
 		c.all = append(c.all, m.AsIndex())
 	}
-	// Populate the remaining fields in c.
+	__antithesis_instrumentation__.Notify(268871)
+
 	c.primary = c.all[0]
 	c.active = c.all[:numPublic]
 	c.publicNonPrimary = c.active[1:]
 	for _, idx := range c.all[1:] {
+		__antithesis_instrumentation__.Notify(268878)
 		if !idx.Backfilling() {
+			__antithesis_instrumentation__.Notify(268880)
 			lazyAllocAppendIndex(&c.deletableNonPrimary, idx, len(c.all[1:]))
+		} else {
+			__antithesis_instrumentation__.Notify(268881)
 		}
+		__antithesis_instrumentation__.Notify(268879)
 		lazyAllocAppendIndex(&c.nonPrimary, idx, len(c.all[1:]))
 	}
+	__antithesis_instrumentation__.Notify(268872)
 
 	if numMutations == 0 {
+		__antithesis_instrumentation__.Notify(268882)
 		c.writableNonPrimary = c.publicNonPrimary
 	} else {
+		__antithesis_instrumentation__.Notify(268883)
 		for _, idx := range c.deletableNonPrimary {
+			__antithesis_instrumentation__.Notify(268884)
 			if idx.DeleteOnly() {
+				__antithesis_instrumentation__.Notify(268885)
 				lazyAllocAppendIndex(&c.deleteOnlyNonPrimary, idx, numMutations)
 			} else {
+				__antithesis_instrumentation__.Notify(268886)
 				lazyAllocAppendIndex(&c.writableNonPrimary, idx, len(c.deletableNonPrimary))
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(268873)
 	for _, idx := range c.all {
-		if !idx.Dropped() && (!idx.Primary() || desc.IsPhysicalTable()) {
+		__antithesis_instrumentation__.Notify(268887)
+		if !idx.Dropped() && func() bool {
+			__antithesis_instrumentation__.Notify(268889)
+			return (!idx.Primary() || func() bool {
+				__antithesis_instrumentation__.Notify(268890)
+				return desc.IsPhysicalTable() == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(268891)
 			lazyAllocAppendIndex(&c.nonDrop, idx, len(c.all))
+		} else {
+			__antithesis_instrumentation__.Notify(268892)
 		}
-		// TODO(ssd): We exclude backfilling indexes from
-		// IsPartial() for the unprincipled reason of not
-		// wanting to modify all of the code that assumes
-		// these are always at least delete-only.
-		if idx.IsPartial() && !idx.Backfilling() {
+		__antithesis_instrumentation__.Notify(268888)
+
+		if idx.IsPartial() && func() bool {
+			__antithesis_instrumentation__.Notify(268893)
+			return !idx.Backfilling() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(268894)
 			lazyAllocAppendIndex(&c.partial, idx, len(c.all))
+		} else {
+			__antithesis_instrumentation__.Notify(268895)
 		}
 	}
+	__antithesis_instrumentation__.Notify(268874)
 	return &c
 }
 
 func lazyAllocAppendIndex(slice *[]catalog.Index, idx catalog.Index, cap int) {
+	__antithesis_instrumentation__.Notify(268896)
 	if *slice == nil {
+		__antithesis_instrumentation__.Notify(268898)
 		*slice = make([]catalog.Index, 0, cap)
+	} else {
+		__antithesis_instrumentation__.Notify(268899)
 	}
+	__antithesis_instrumentation__.Notify(268897)
 	*slice = append(*slice, idx)
 }
 
-// ForeignKeyConstraintName forms a default foreign key constraint name.
 func ForeignKeyConstraintName(fromTable string, columnNames []string) string {
+	__antithesis_instrumentation__.Notify(268900)
 	return fmt.Sprintf("%s_%s_fkey", fromTable, strings.Join(columnNames, "_"))
 }

@@ -8,6 +8,7 @@ genrule(
     }),
     outs = ["assets.tar.gz"],
     cmd = """
+export LD_LIBRARY_PATH=/home/srosenberg/go/src/antithesis.com/instrumentation/lib/
 if [ -d $< ]
 then
   $(location //pkg/util/targz/gen) $</assets $@

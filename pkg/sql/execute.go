@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,47 +12,63 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// fillInPlaceholder helps with the EXECUTE foo(args) SQL statement: it takes in
-// a prepared statement returning
-// the referenced prepared statement and correctly updated placeholder info.
-// See https://www.postgresql.org/docs/current/static/sql-execute.html for details.
 func (p *planner) fillInPlaceholders(
 	ctx context.Context, ps *PreparedStatement, name string, params tree.Exprs,
 ) (*tree.PlaceholderInfo, error) {
+	__antithesis_instrumentation__.Notify(490950)
 	if len(ps.Types) != len(params) {
+		__antithesis_instrumentation__.Notify(490953)
 		return nil, pgerror.Newf(pgcode.Syntax,
 			"wrong number of parameters for prepared statement %q: expected %d, got %d",
 			name, len(ps.Types), len(params))
+	} else {
+		__antithesis_instrumentation__.Notify(490954)
 	}
+	__antithesis_instrumentation__.Notify(490951)
 
 	qArgs := make(tree.QueryArguments, len(params))
 	var semaCtx tree.SemaContext
 	for i, e := range params {
+		__antithesis_instrumentation__.Notify(490955)
 		idx := tree.PlaceholderIdx(i)
 
 		typ, ok := ps.ValueType(idx)
 		if !ok {
+			__antithesis_instrumentation__.Notify(490959)
 			return nil, errors.AssertionFailedf("no type for placeholder %s", idx)
+		} else {
+			__antithesis_instrumentation__.Notify(490960)
 		}
+		__antithesis_instrumentation__.Notify(490956)
 
-		// For user-defined types, we need to resolve the type to make sure we get
-		// the latest changes to the type.
 		if typ.UserDefined() {
+			__antithesis_instrumentation__.Notify(490961)
 			var err error
 			typ, err = p.ResolveTypeByOID(ctx, typ.Oid())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(490962)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(490963)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(490964)
 		}
+		__antithesis_instrumentation__.Notify(490957)
 		typedExpr, err := schemaexpr.SanitizeVarFreeExpr(
-			ctx, e, typ, "EXECUTE parameter" /* context */, &semaCtx, tree.VolatilityVolatile,
+			ctx, e, typ, "EXECUTE parameter", &semaCtx, tree.VolatilityVolatile,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(490965)
 			return nil, pgerror.WithCandidateCode(err, pgcode.WrongObjectType)
+		} else {
+			__antithesis_instrumentation__.Notify(490966)
 		}
+		__antithesis_instrumentation__.Notify(490958)
 
 		qArgs[idx] = typedExpr
 	}
+	__antithesis_instrumentation__.Notify(490952)
 	return &tree.PlaceholderInfo{
 		Values: qArgs,
 		PlaceholderTypesInfo: tree.PlaceholderTypesInfo{

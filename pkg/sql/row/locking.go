@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package row
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency/lock"
@@ -16,49 +8,55 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// getKeyLockingStrength returns the configured per-key locking strength to use
-// for key-value scans.
 func getKeyLockingStrength(lockStrength descpb.ScanLockingStrength) lock.Strength {
+	__antithesis_instrumentation__.Notify(568470)
 	switch lockStrength {
 	case descpb.ScanLockingStrength_FOR_NONE:
+		__antithesis_instrumentation__.Notify(568471)
 		return lock.None
 
 	case descpb.ScanLockingStrength_FOR_KEY_SHARE:
-		// Promote to FOR_SHARE.
+		__antithesis_instrumentation__.Notify(568472)
+
 		fallthrough
 	case descpb.ScanLockingStrength_FOR_SHARE:
-		// We currently perform no per-key locking when FOR_SHARE is used
-		// because Shared locks have not yet been implemented.
+		__antithesis_instrumentation__.Notify(568473)
+
 		return lock.None
 
 	case descpb.ScanLockingStrength_FOR_NO_KEY_UPDATE:
-		// Promote to FOR_UPDATE.
+		__antithesis_instrumentation__.Notify(568474)
+
 		fallthrough
 	case descpb.ScanLockingStrength_FOR_UPDATE:
-		// We currently perform exclusive per-key locking when FOR_UPDATE is
-		// used because Upgrade locks have not yet been implemented.
+		__antithesis_instrumentation__.Notify(568475)
+
 		return lock.Exclusive
 
 	default:
+		__antithesis_instrumentation__.Notify(568476)
 		panic(errors.AssertionFailedf("unknown locking strength %s", lockStrength))
 	}
 }
 
-// GetWaitPolicy returns the configured lock wait policy to use for key-value
-// scans.
 func GetWaitPolicy(lockWaitPolicy descpb.ScanLockingWaitPolicy) lock.WaitPolicy {
+	__antithesis_instrumentation__.Notify(568477)
 	switch lockWaitPolicy {
 	case descpb.ScanLockingWaitPolicy_BLOCK:
+		__antithesis_instrumentation__.Notify(568478)
 		return lock.WaitPolicy_Block
 
 	case descpb.ScanLockingWaitPolicy_SKIP:
-		// Should not get here. Query should be rejected during planning.
+		__antithesis_instrumentation__.Notify(568479)
+
 		panic(errors.AssertionFailedf("unsupported wait policy %s", lockWaitPolicy))
 
 	case descpb.ScanLockingWaitPolicy_ERROR:
+		__antithesis_instrumentation__.Notify(568480)
 		return lock.WaitPolicy_Error
 
 	default:
+		__antithesis_instrumentation__.Notify(568481)
 		panic(errors.AssertionFailedf("unknown wait policy %s", lockWaitPolicy))
 	}
 }

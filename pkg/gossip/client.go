@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gossip
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,32 +20,33 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// client is a client-side RPC connection to a gossip peer node.
 type client struct {
 	log.AmbientContext
 
 	createdAt             time.Time
-	peerID                roachpb.NodeID           // Peer node ID; 0 until first gossip response
-	resolvedPlaceholder   bool                     // Whether we've resolved the nodeSet's placeholder for this client
-	addr                  net.Addr                 // Peer node network address
-	forwardAddr           *util.UnresolvedAddr     // Set if disconnected with an alternate addr
-	remoteHighWaterStamps map[roachpb.NodeID]int64 // Remote server's high water timestamps
-	closer                chan struct{}            // Client shutdown channel
+	peerID                roachpb.NodeID
+	resolvedPlaceholder   bool
+	addr                  net.Addr
+	forwardAddr           *util.UnresolvedAddr
+	remoteHighWaterStamps map[roachpb.NodeID]int64
+	closer                chan struct{}
 	clientMetrics         Metrics
 	nodeMetrics           Metrics
 }
 
-// extractKeys returns a string representation of a gossip delta's keys.
 func extractKeys(delta map[string]*Info) string {
+	__antithesis_instrumentation__.Notify(65077)
 	keys := make([]string, 0, len(delta))
 	for key := range delta {
+		__antithesis_instrumentation__.Notify(65079)
 		keys = append(keys, key)
 	}
+	__antithesis_instrumentation__.Notify(65078)
 	return fmt.Sprintf("%s", keys)
 }
 
-// newClient creates and returns a client struct.
 func newClient(ambient log.AmbientContext, addr net.Addr, nodeMetrics Metrics) *client {
+	__antithesis_instrumentation__.Notify(65080)
 	return &client{
 		AmbientContext:        ambient,
 		createdAt:             timeutil.Now(),
@@ -65,9 +58,6 @@ func newClient(ambient log.AmbientContext, addr net.Addr, nodeMetrics Metrics) *
 	}
 }
 
-// start dials the remote addr and commences gossip once connected. Upon exit,
-// the client is sent on the disconnected channel. This method starts client
-// processing in a goroutine and returns immediately.
 func (c *client) startLocked(
 	g *Gossip,
 	disconnected chan *client,
@@ -75,82 +65,102 @@ func (c *client) startLocked(
 	stopper *stop.Stopper,
 	breaker *circuit.Breaker,
 ) {
-	// Add a placeholder for the new outgoing connection because we may not know
-	// the ID of the node we're connecting to yet. This will be resolved in
-	// (*client).handleResponse once we know the ID.
+	__antithesis_instrumentation__.Notify(65081)
+
 	g.outgoing.addPlaceholder()
 
 	ctx, cancel := context.WithCancel(c.AnnotateCtx(context.Background()))
 	if err := stopper.RunAsyncTask(ctx, "gossip-client", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(65082)
 		var wg sync.WaitGroup
 		defer func() {
-			// This closes the outgoing stream, causing any attempt to send or
-			// receive to return an error.
-			//
-			// Note: it is still possible for incoming gossip to be processed after
-			// this point.
+			__antithesis_instrumentation__.Notify(65085)
+
 			cancel()
 
-			// The stream is closed, but there may still be some incoming gossip
-			// being processed. Wait until that is complete to avoid racing the
-			// client's removal against the discovery of its remote's node ID.
 			wg.Wait()
 			disconnected <- c
 		}()
+		__antithesis_instrumentation__.Notify(65083)
 
 		consecFailures := breaker.ConsecFailures()
 		var stream Gossip_GossipClient
 		if err := breaker.Call(func() error {
-			// Note: avoid using `grpc.WithBlock` here. This code is already
-			// asynchronous from the caller's perspective, so the only effect of
-			// `WithBlock` here is blocking shutdown - at the time of this writing,
-			// that ends ups up making `kv` tests take twice as long.
+			__antithesis_instrumentation__.Notify(65086)
+
 			conn, err := rpcCtx.GRPCUnvalidatedDial(c.addr.String()).Connect(ctx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(65089)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(65090)
 			}
+			__antithesis_instrumentation__.Notify(65087)
 			if stream, err = NewGossipClient(conn).Gossip(ctx); err != nil {
+				__antithesis_instrumentation__.Notify(65091)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(65092)
 			}
+			__antithesis_instrumentation__.Notify(65088)
 			return c.requestGossip(g, stream)
 		}, 0); err != nil {
+			__antithesis_instrumentation__.Notify(65093)
 			if consecFailures == 0 {
+				__antithesis_instrumentation__.Notify(65095)
 				log.Warningf(ctx, "failed to start gossip client to %s: %s", c.addr, err)
+			} else {
+				__antithesis_instrumentation__.Notify(65096)
 			}
+			__antithesis_instrumentation__.Notify(65094)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(65097)
 		}
+		__antithesis_instrumentation__.Notify(65084)
 
-		// Start gossiping.
 		log.Infof(ctx, "started gossip client to n%d (%s)", c.peerID, c.addr)
 		if err := c.gossip(ctx, g, stream, stopper, &wg); err != nil {
+			__antithesis_instrumentation__.Notify(65098)
 			if !grpcutil.IsClosedConnection(err) {
+				__antithesis_instrumentation__.Notify(65099)
 				g.mu.RLock()
 				if c.peerID != 0 {
+					__antithesis_instrumentation__.Notify(65101)
 					log.Infof(ctx, "closing client to n%d (%s): %s", c.peerID, c.addr, err)
 				} else {
+					__antithesis_instrumentation__.Notify(65102)
 					log.Infof(ctx, "closing client to %s: %s", c.addr, err)
 				}
+				__antithesis_instrumentation__.Notify(65100)
 				g.mu.RUnlock()
+			} else {
+				__antithesis_instrumentation__.Notify(65103)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(65104)
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(65105)
 		disconnected <- c
+	} else {
+		__antithesis_instrumentation__.Notify(65106)
 	}
 }
 
-// close stops the client gossip loop and returns immediately.
 func (c *client) close() {
+	__antithesis_instrumentation__.Notify(65107)
 	select {
 	case <-c.closer:
+		__antithesis_instrumentation__.Notify(65108)
 	default:
+		__antithesis_instrumentation__.Notify(65109)
 		close(c.closer)
 	}
 }
 
-// requestGossip requests the latest gossip from the remote server by
-// supplying a map of this node's knowledge of other nodes' high water
-// timestamps.
 func (c *client) requestGossip(g *Gossip, stream Gossip_GossipClient) error {
+	__antithesis_instrumentation__.Notify(65110)
 	g.mu.RLock()
 	args := &Request{
 		NodeID:          g.NodeID.Get(),
@@ -167,21 +177,25 @@ func (c *client) requestGossip(g *Gossip, stream Gossip_GossipClient) error {
 	return stream.Send(args)
 }
 
-// sendGossip sends the latest gossip to the remote server, based on
-// the remote server's notion of other nodes' high water timestamps.
 func (c *client) sendGossip(g *Gossip, stream Gossip_GossipClient, firstReq bool) error {
+	__antithesis_instrumentation__.Notify(65111)
 	g.mu.Lock()
 	delta := g.mu.is.delta(c.remoteHighWaterStamps)
 	if firstReq {
+		__antithesis_instrumentation__.Notify(65114)
 		g.mu.is.populateMostDistantMarkers(delta)
+	} else {
+		__antithesis_instrumentation__.Notify(65115)
 	}
+	__antithesis_instrumentation__.Notify(65112)
 	if len(delta) > 0 {
-		// Ensure that the high water stamps for the remote server are kept up to
-		// date so that we avoid resending the same gossip infos as infos are
-		// updated locally.
+		__antithesis_instrumentation__.Notify(65116)
+
 		for _, i := range delta {
+			__antithesis_instrumentation__.Notify(65119)
 			ratchetHighWaterStamp(c.remoteHighWaterStamps, i.NodeID, i.OrigStamp)
 		}
+		__antithesis_instrumentation__.Notify(65117)
 
 		args := Request{
 			NodeID:          g.NodeID.Get(),
@@ -199,24 +213,32 @@ func (c *client) sendGossip(g *Gossip, stream Gossip_GossipClient, firstReq bool
 		c.nodeMetrics.InfosSent.Inc(infosSent)
 
 		if log.V(1) {
+			__antithesis_instrumentation__.Notify(65120)
 			ctx := c.AnnotateCtx(stream.Context())
 			if c.peerID != 0 {
+				__antithesis_instrumentation__.Notify(65121)
 				log.Infof(ctx, "sending %s to n%d (%s)", extractKeys(args.Delta), c.peerID, c.addr)
 			} else {
+				__antithesis_instrumentation__.Notify(65122)
 				log.Infof(ctx, "sending %s to %s", extractKeys(args.Delta), c.addr)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(65123)
 		}
+		__antithesis_instrumentation__.Notify(65118)
 
 		g.mu.Unlock()
 		return stream.Send(&args)
+	} else {
+		__antithesis_instrumentation__.Notify(65124)
 	}
+	__antithesis_instrumentation__.Notify(65113)
 	g.mu.Unlock()
 	return nil
 }
 
-// handleResponse handles errors, remote forwarding, and combines delta
-// gossip infos from the remote server with this node's infostore.
 func (c *client) handleResponse(ctx context.Context, g *Gossip, reply *Response) error {
+	__antithesis_instrumentation__.Notify(65125)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -227,70 +249,102 @@ func (c *client) handleResponse(ctx context.Context, g *Gossip, reply *Response)
 	c.nodeMetrics.BytesReceived.Inc(bytesReceived)
 	c.nodeMetrics.InfosReceived.Inc(infosReceived)
 
-	// Combine remote node's infostore delta with ours.
 	if reply.Delta != nil {
+		__antithesis_instrumentation__.Notify(65130)
 		freshCount, err := g.mu.is.combine(reply.Delta, reply.NodeID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(65133)
 			log.Warningf(ctx, "failed to fully combine delta from n%d: %s", reply.NodeID, err)
+		} else {
+			__antithesis_instrumentation__.Notify(65134)
 		}
+		__antithesis_instrumentation__.Notify(65131)
 		if infoCount := len(reply.Delta); infoCount > 0 {
+			__antithesis_instrumentation__.Notify(65135)
 			if log.V(1) {
+				__antithesis_instrumentation__.Notify(65136)
 				log.Infof(ctx, "received %s from n%d (%d fresh)", extractKeys(reply.Delta), reply.NodeID, freshCount)
+			} else {
+				__antithesis_instrumentation__.Notify(65137)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(65138)
 		}
+		__antithesis_instrumentation__.Notify(65132)
 		g.maybeTightenLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(65139)
 	}
+	__antithesis_instrumentation__.Notify(65126)
 	c.peerID = reply.NodeID
 	mergeHighWaterStamps(&c.remoteHighWaterStamps, reply.HighWaterStamps)
 
-	// If we haven't yet recorded which node ID we're connected to in the outgoing
-	// nodeSet, do so now. Note that we only want to do this if the peer has a
-	// node ID allocated (i.e. if it's nonzero), because otherwise it could change
-	// after we record it.
-	if !c.resolvedPlaceholder && c.peerID != 0 {
+	if !c.resolvedPlaceholder && func() bool {
+		__antithesis_instrumentation__.Notify(65140)
+		return c.peerID != 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(65141)
 		c.resolvedPlaceholder = true
 		g.outgoing.resolvePlaceholder(c.peerID)
+	} else {
+		__antithesis_instrumentation__.Notify(65142)
 	}
+	__antithesis_instrumentation__.Notify(65127)
 
-	// Handle remote forwarding.
 	if reply.AlternateAddr != nil {
-		if g.hasIncomingLocked(reply.AlternateNodeID) || g.hasOutgoingLocked(reply.AlternateNodeID) {
+		__antithesis_instrumentation__.Notify(65143)
+		if g.hasIncomingLocked(reply.AlternateNodeID) || func() bool {
+			__antithesis_instrumentation__.Notify(65146)
+			return g.hasOutgoingLocked(reply.AlternateNodeID) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(65147)
 			return errors.Errorf(
 				"received forward from n%d to n%d (%s); already have active connection, skipping",
 				reply.NodeID, reply.AlternateNodeID, reply.AlternateAddr)
+		} else {
+			__antithesis_instrumentation__.Notify(65148)
 		}
-		// We try to resolve the address, but don't actually use the result.
-		// The certificates (if any) may only be valid for the unresolved
-		// address.
+		__antithesis_instrumentation__.Notify(65144)
+
 		if _, err := reply.AlternateAddr.Resolve(); err != nil {
+			__antithesis_instrumentation__.Notify(65149)
 			return errors.Wrapf(err, "unable to resolve alternate address %s for n%d",
 				reply.AlternateAddr, reply.AlternateNodeID)
+		} else {
+			__antithesis_instrumentation__.Notify(65150)
 		}
+		__antithesis_instrumentation__.Notify(65145)
 		c.forwardAddr = reply.AlternateAddr
 		return errors.Errorf("received forward from n%d to n%d (%s)",
 			reply.NodeID, reply.AlternateNodeID, reply.AlternateAddr)
+	} else {
+		__antithesis_instrumentation__.Notify(65151)
 	}
+	__antithesis_instrumentation__.Notify(65128)
 
-	// Check whether we're connected at this point.
 	g.signalConnectedLocked()
 
-	// Check whether this outgoing client is duplicating work already
-	// being done by an incoming client, either because an outgoing
-	// matches an incoming or the client is connecting to itself.
 	if nodeID := g.NodeID.Get(); nodeID == c.peerID {
+		__antithesis_instrumentation__.Notify(65152)
 		return errors.Errorf("stopping outgoing client to n%d (%s); loopback connection", c.peerID, c.addr)
-	} else if g.hasIncomingLocked(c.peerID) && nodeID > c.peerID {
-		// To avoid mutual shutdown, we only shutdown our client if our
-		// node ID is higher than the peer's.
-		return errors.Errorf("stopping outgoing client to n%d (%s); already have incoming", c.peerID, c.addr)
+	} else {
+		__antithesis_instrumentation__.Notify(65153)
+		if g.hasIncomingLocked(c.peerID) && func() bool {
+			__antithesis_instrumentation__.Notify(65154)
+			return nodeID > c.peerID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(65155)
+
+			return errors.Errorf("stopping outgoing client to n%d (%s); already have incoming", c.peerID, c.addr)
+		} else {
+			__antithesis_instrumentation__.Notify(65156)
+		}
 	}
+	__antithesis_instrumentation__.Notify(65129)
 
 	return nil
 }
 
-// gossip loops, sending deltas of the infostore and receiving deltas
-// in turn. If an alternate is proposed on response, the client addr
-// is modified and method returns for forwarding by caller.
 func (c *client) gossip(
 	ctx context.Context,
 	g *Gossip,
@@ -298,91 +352,130 @@ func (c *client) gossip(
 	stopper *stop.Stopper,
 	wg *sync.WaitGroup,
 ) error {
+	__antithesis_instrumentation__.Notify(65157)
 	sendGossipChan := make(chan struct{}, 1)
 
-	// Register a callback for gossip updates.
 	updateCallback := func(_ string, _ roachpb.Value) {
+		__antithesis_instrumentation__.Notify(65162)
 		select {
 		case sendGossipChan <- struct{}{}:
+			__antithesis_instrumentation__.Notify(65163)
 		default:
+			__antithesis_instrumentation__.Notify(65164)
 		}
 	}
+	__antithesis_instrumentation__.Notify(65158)
 
 	errCh := make(chan error, 1)
 	initCh := make(chan struct{}, 1)
-	// This wait group is used to allow the caller to wait until gossip
-	// processing is terminated.
+
 	wg.Add(1)
 	if err := stopper.RunAsyncTask(ctx, "client-gossip", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(65165)
 		defer wg.Done()
 
 		errCh <- func() error {
+			__antithesis_instrumentation__.Notify(65166)
 			var peerID roachpb.NodeID
 
 			initCh := initCh
 			for init := true; ; init = false {
+				__antithesis_instrumentation__.Notify(65167)
 				reply, err := stream.Recv()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(65171)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(65172)
 				}
+				__antithesis_instrumentation__.Notify(65168)
 				if err := c.handleResponse(ctx, g, reply); err != nil {
+					__antithesis_instrumentation__.Notify(65173)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(65174)
 				}
+				__antithesis_instrumentation__.Notify(65169)
 				if init {
+					__antithesis_instrumentation__.Notify(65175)
 					initCh <- struct{}{}
+				} else {
+					__antithesis_instrumentation__.Notify(65176)
 				}
-				if peerID == 0 && c.peerID != 0 {
+				__antithesis_instrumentation__.Notify(65170)
+				if peerID == 0 && func() bool {
+					__antithesis_instrumentation__.Notify(65177)
+					return c.peerID != 0 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(65178)
 					peerID = c.peerID
 					g.updateClients()
+				} else {
+					__antithesis_instrumentation__.Notify(65179)
 				}
 			}
 		}()
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(65180)
 		wg.Done()
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(65181)
 	}
+	__antithesis_instrumentation__.Notify(65159)
 
-	// We attempt to defer registration of the callback until we've heard a
-	// response from the remote node which will contain the remote's high water
-	// stamps. This prevents the client from sending all of its infos to the
-	// remote (which would happen if we don't know the remote's high water
-	// stamps). Unfortunately, versions of cockroach before 2.1 did not always
-	// send a response when receiving an incoming connection, so we also start a
-	// timer and perform initialization after 1s if we haven't heard from the
-	// remote.
 	var unregister func()
 	defer func() {
+		__antithesis_instrumentation__.Notify(65182)
 		if unregister != nil {
+			__antithesis_instrumentation__.Notify(65183)
 			unregister()
+		} else {
+			__antithesis_instrumentation__.Notify(65184)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(65160)
 	maybeRegister := func() {
+		__antithesis_instrumentation__.Notify(65185)
 		if unregister == nil {
-			// We require redundant callbacks here as the update callback is
-			// propagating gossip infos to other nodes and needs to propagate the new
-			// expiration info.
+			__antithesis_instrumentation__.Notify(65186)
+
 			unregister = g.RegisterCallback(".*", updateCallback, Redundant)
+		} else {
+			__antithesis_instrumentation__.Notify(65187)
 		}
 	}
+	__antithesis_instrumentation__.Notify(65161)
 	initTimer := time.NewTimer(time.Second)
 	defer initTimer.Stop()
 
 	for count := 0; ; {
+		__antithesis_instrumentation__.Notify(65188)
 		select {
 		case <-c.closer:
+			__antithesis_instrumentation__.Notify(65189)
 			return nil
 		case <-stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(65190)
 			return nil
 		case err := <-errCh:
+			__antithesis_instrumentation__.Notify(65191)
 			return err
 		case <-initCh:
+			__antithesis_instrumentation__.Notify(65192)
 			maybeRegister()
 		case <-initTimer.C:
+			__antithesis_instrumentation__.Notify(65193)
 			maybeRegister()
 		case <-sendGossipChan:
+			__antithesis_instrumentation__.Notify(65194)
 			if err := c.sendGossip(g, stream, count == 0); err != nil {
+				__antithesis_instrumentation__.Notify(65196)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(65197)
 			}
+			__antithesis_instrumentation__.Notify(65195)
 			count++
 		}
 	}

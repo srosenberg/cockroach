@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -40,14 +32,12 @@ import (
 	"github.com/kr/pretty"
 )
 
-// TestingReset resets global mutable state so that Run can be called multiple
-// times from the same test process. It is public for cliccl.
 func TestingReset() {
-	// Reset the client contexts for each test.
+	__antithesis_instrumentation__.Notify(34659)
+
 	initCLIDefaults()
 }
 
-// TestCLI wraps a test server and is used by tests to make assertions about the output of CLI commands.
 type TestCLI struct {
 	*server.TestServer
 	tenant      serverutils.TestTenantInterface
@@ -55,83 +45,85 @@ type TestCLI struct {
 	cleanupFunc func() error
 	prevStderr  *os.File
 
-	// t is the testing.T instance used for this test.
-	// Example_xxx tests may have this set to nil.
 	t *testing.T
-	// logScope binds the lifetime of the log files to this test, when t
-	// is not nil.
+
 	logScope *log.TestLogScope
-	// if true, doesn't print args during RunWithArgs.
+
 	omitArgs bool
-	// if true, prints the requested exit code during RunWithArgs.
+
 	reportExitCode bool
 }
 
-// TestCLIParams contains parameters used by TestCLI.
 type TestCLIParams struct {
 	T        *testing.T
 	Insecure bool
-	// NoServer, if true, starts the test without a DB server.
+
 	NoServer bool
 
-	// The store specifications for the in-memory server.
 	StoreSpecs []base.StoreSpec
 
-	// The locality tiers for the in-memory server.
 	Locality roachpb.Locality
 
-	// NoNodelocal, if true, disables node-local external I/O storage.
 	NoNodelocal bool
 
-	// TenantArgs will be used to initialize the test tenant. This should
-	// be set when the test needs to run in multitenant mode.
 	TenantArgs *base.TestTenantArgs
 }
 
-// testTempFilePrefix is a sentinel marker to be used as the prefix of a
-// test file name. It is used to extract the file name from a uniquely
-// generated (temp directory) file path.
 const testTempFilePrefix = "test-temp-prefix-"
 
-// testUserfileUploadTempDirPrefix is a marker to be used as a prefix for the
-// temp directory created in the Example_userfile_upload_recursive() test.
-// It is used to extract the filepath.Base(), i.e. the directory name,
-// from the uniquely generated (temp directory) file path.
 const testUserfileUploadTempDirPrefix = "test-userfile-upload-temp-dir-"
 
 func (c *TestCLI) fail(err interface{}) {
+	__antithesis_instrumentation__.Notify(34660)
 	if c.t != nil {
+		__antithesis_instrumentation__.Notify(34661)
 		defer c.logScope.Close(c.t)
 		c.t.Fatal(err)
 	} else {
+		__antithesis_instrumentation__.Notify(34662)
 		panic(err)
 	}
 }
 
-// NewCLITest export for cclcli.
 func NewCLITest(params TestCLIParams) TestCLI {
+	__antithesis_instrumentation__.Notify(34663)
 	return newCLITestWithArgs(params, nil)
 }
 
 func newCLITestWithArgs(params TestCLIParams, argsFn func(args *base.TestServerArgs)) TestCLI {
+	__antithesis_instrumentation__.Notify(34664)
 	c := TestCLI{t: params.T}
 
 	certsDir, err := ioutil.TempDir("", "cli-test")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34670)
 		c.fail(err)
+	} else {
+		__antithesis_instrumentation__.Notify(34671)
 	}
+	__antithesis_instrumentation__.Notify(34665)
 	c.certsDir = certsDir
 
 	if c.t != nil {
+		__antithesis_instrumentation__.Notify(34672)
 		c.logScope = log.Scope(c.t)
+	} else {
+		__antithesis_instrumentation__.Notify(34673)
 	}
+	__antithesis_instrumentation__.Notify(34666)
 
-	c.cleanupFunc = func() error { return nil }
+	c.cleanupFunc = func() error { __antithesis_instrumentation__.Notify(34674); return nil }
+	__antithesis_instrumentation__.Notify(34667)
 
 	if !params.NoServer {
+		__antithesis_instrumentation__.Notify(34675)
 		if !params.Insecure {
+			__antithesis_instrumentation__.Notify(34680)
 			c.cleanupFunc = securitytest.CreateTestCerts(certsDir)
+		} else {
+			__antithesis_instrumentation__.Notify(34681)
 		}
+		__antithesis_instrumentation__.Notify(34676)
 
 		args := base.TestServerArgs{
 			Insecure:      params.Insecure,
@@ -146,65 +138,88 @@ func newCLITestWithArgs(params TestCLIParams, argsFn func(args *base.TestServerA
 			},
 		}
 		if argsFn != nil {
+			__antithesis_instrumentation__.Notify(34682)
 			argsFn(&args)
+		} else {
+			__antithesis_instrumentation__.Notify(34683)
 		}
+		__antithesis_instrumentation__.Notify(34677)
 		if params.NoNodelocal {
+			__antithesis_instrumentation__.Notify(34684)
 			args.ExternalIODir = ""
+		} else {
+			__antithesis_instrumentation__.Notify(34685)
 		}
+		__antithesis_instrumentation__.Notify(34678)
 		s, err := serverutils.StartServerRaw(args)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(34686)
 			c.fail(err)
+		} else {
+			__antithesis_instrumentation__.Notify(34687)
 		}
+		__antithesis_instrumentation__.Notify(34679)
 		c.TestServer = s.(*server.TestServer)
 
 		log.Infof(context.Background(), "server started at %s", c.ServingRPCAddr())
 		log.Infof(context.Background(), "SQL listener at %s", c.ServingSQLAddr())
+	} else {
+		__antithesis_instrumentation__.Notify(34688)
 	}
+	__antithesis_instrumentation__.Notify(34668)
 
 	if params.TenantArgs != nil {
+		__antithesis_instrumentation__.Notify(34689)
 		if c.TestServer == nil {
+			__antithesis_instrumentation__.Notify(34692)
 			c.fail(errors.AssertionFailedf("multitenant mode for CLI requires a DB server, try setting `NoServer` argument to false"))
+		} else {
+			__antithesis_instrumentation__.Notify(34693)
 		}
+		__antithesis_instrumentation__.Notify(34690)
 		if c.Insecure() {
+			__antithesis_instrumentation__.Notify(34694)
 			params.TenantArgs.ForceInsecure = true
+		} else {
+			__antithesis_instrumentation__.Notify(34695)
 		}
+		__antithesis_instrumentation__.Notify(34691)
 		c.tenant, _ = serverutils.StartTenant(c.t, c.TestServer, *params.TenantArgs)
+	} else {
+		__antithesis_instrumentation__.Notify(34696)
 	}
+	__antithesis_instrumentation__.Notify(34669)
 	baseCfg.User = security.NodeUserName()
 
-	// Ensure that CLI error messages and anything meant for the
-	// original stderr is redirected to stdout, where it can be
-	// captured.
 	c.prevStderr = stderr
 	stderr = os.Stdout
 
 	return c
 }
 
-// setCLIDefaultsForTests invokes initCLIDefaults but pretends the
-// output is not a terminal, even if it happens to be. This ensures
-// e.g. that tests ran with -v have the same output as those without.
 func setCLIDefaultsForTests() {
+	__antithesis_instrumentation__.Notify(34697)
 	initCLIDefaults()
 	sqlExecCtx.TerminalOutput = false
 	sqlExecCtx.ShowTimes = false
-	// Even though we pretend there is no terminal, most tests want
-	// pretty tables.
+
 	sqlExecCtx.TableDisplayFormat = clisqlexec.TableDisplayTable
 }
 
-// stopServer stops the test server.
 func (c *TestCLI) stopServer() {
+	__antithesis_instrumentation__.Notify(34698)
 	if c.TestServer != nil {
+		__antithesis_instrumentation__.Notify(34699)
 		log.Infof(context.Background(), "stopping server at %s / %s",
 			c.ServingRPCAddr(), c.ServingSQLAddr())
 		c.Stopper().Stop(context.Background())
+	} else {
+		__antithesis_instrumentation__.Notify(34700)
 	}
 }
 
-// RestartServer stops and restarts the test server. The ServingRPCAddr() may
-// have changed after this method returns.
 func (c *TestCLI) RestartServer(params TestCLIParams) {
+	__antithesis_instrumentation__.Notify(34701)
 	c.stopServer()
 	log.Info(context.Background(), "restarting server")
 	s, err := serverutils.StartServerRaw(base.TestServerArgs{
@@ -213,30 +228,44 @@ func (c *TestCLI) RestartServer(params TestCLIParams) {
 		StoreSpecs:  params.StoreSpecs,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34703)
 		c.fail(err)
+	} else {
+		__antithesis_instrumentation__.Notify(34704)
 	}
+	__antithesis_instrumentation__.Notify(34702)
 	c.TestServer = s.(*server.TestServer)
 	log.Infof(context.Background(), "restarted server at %s / %s",
 		c.ServingRPCAddr(), c.ServingSQLAddr())
 	if params.TenantArgs != nil {
+		__antithesis_instrumentation__.Notify(34705)
 		if c.Insecure() {
+			__antithesis_instrumentation__.Notify(34707)
 			params.TenantArgs.ForceInsecure = true
+		} else {
+			__antithesis_instrumentation__.Notify(34708)
 		}
+		__antithesis_instrumentation__.Notify(34706)
 		c.tenant, _ = serverutils.StartTenant(c.t, c.TestServer, *params.TenantArgs)
 		log.Infof(context.Background(), "restarted tenant SQL only server at %s", c.tenant.SQLAddr())
+	} else {
+		__antithesis_instrumentation__.Notify(34709)
 	}
 }
 
-// Cleanup cleans up after the test, stopping the server if necessary.
-// The log files are removed if the test has succeeded.
 func (c *TestCLI) Cleanup() {
+	__antithesis_instrumentation__.Notify(34710)
 	defer func() {
+		__antithesis_instrumentation__.Notify(34712)
 		if c.t != nil {
+			__antithesis_instrumentation__.Notify(34713)
 			c.logScope.Close(c.t)
+		} else {
+			__antithesis_instrumentation__.Notify(34714)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(34711)
 
-	// Restore stderr.
 	stderr = c.prevStderr
 
 	log.Info(context.Background(), "stopping server and cleaning up CLI test")
@@ -244,178 +273,252 @@ func (c *TestCLI) Cleanup() {
 	c.stopServer()
 
 	if err := c.cleanupFunc(); err != nil {
+		__antithesis_instrumentation__.Notify(34715)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(34716)
 	}
 }
 
-// Run line of commands.
 func (c TestCLI) Run(line string) {
+	__antithesis_instrumentation__.Notify(34717)
 	a := strings.Fields(line)
 	c.RunWithArgs(a)
 }
 
-// RunWithCapture runs c and returns a string containing the output of c
-// and any error that may have occurred capturing the output. We do not propagate
-// errors in executing c, because those will be caught when the test verifies
-// the output of c.
 func (c TestCLI) RunWithCapture(line string) (out string, err error) {
+	__antithesis_instrumentation__.Notify(34718)
 	return captureOutput(func() {
+		__antithesis_instrumentation__.Notify(34719)
 		c.Run(line)
 	})
 }
 
-// RunWithCaptureArgs args version of RunWithCapture.
 func (c TestCLI) RunWithCaptureArgs(args []string) (string, error) {
+	__antithesis_instrumentation__.Notify(34720)
 	return captureOutput(func() {
+		__antithesis_instrumentation__.Notify(34721)
 		c.RunWithArgs(args)
 	})
 }
 
-// captureOutput runs f and returns a string containing the output and any
-// error that may have occurred capturing the output.
 func captureOutput(f func()) (out string, err error) {
-	// Heavily inspired by Go's testing/example.go:runExample().
+	__antithesis_instrumentation__.Notify(34722)
 
-	// Funnel stdout into a pipe.
 	stdoutSave, stderrRedirSave := os.Stdout, stderr
 	r, w, err := os.Pipe()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34726)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(34727)
 	}
+	__antithesis_instrumentation__.Notify(34723)
 	os.Stdout = w
 	stderr = w
 
-	// Send all bytes from piped stdout through the output channel.
 	type captureResult struct {
 		out string
 		err error
 	}
 	outC := make(chan captureResult)
 	go func() {
+		__antithesis_instrumentation__.Notify(34728)
 		var buf bytes.Buffer
 		_, err := io.Copy(&buf, r)
 		r.Close()
 		outC <- captureResult{buf.String(), err}
 	}()
+	__antithesis_instrumentation__.Notify(34724)
 
-	// Clean up and record output in separate function to handle panics.
 	defer func() {
-		// Close pipe and restore normal stdout.
+		__antithesis_instrumentation__.Notify(34729)
+
 		w.Close()
 		os.Stdout = stdoutSave
 		stderr = stderrRedirSave
 		outResult := <-outC
 		out, err = outResult.out, outResult.err
 		if x := recover(); x != nil {
+			__antithesis_instrumentation__.Notify(34730)
 			err = errors.Errorf("panic: %v", x)
+		} else {
+			__antithesis_instrumentation__.Notify(34731)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(34725)
 
-	// Run the command. The output will be returned in the defer block.
 	f()
 	return
 }
 
 func isSQLCommand(args []string) (bool, error) {
+	__antithesis_instrumentation__.Notify(34732)
 	cmd, _, err := cockroachCmd.Find(args)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34735)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(34736)
 	}
-	// We use --echo-sql as a marker of SQL-only commands.
+	__antithesis_instrumentation__.Notify(34733)
+
 	if f := flagSetForCmd(cmd).Lookup(cliflags.EchoSQL.Name); f != nil {
+		__antithesis_instrumentation__.Notify(34737)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(34738)
 	}
+	__antithesis_instrumentation__.Notify(34734)
 	return false, nil
 }
 
 func (c TestCLI) getRPCAddr() string {
+	__antithesis_instrumentation__.Notify(34739)
 	if c.tenant != nil {
+		__antithesis_instrumentation__.Notify(34741)
 		return c.tenant.RPCAddr()
+	} else {
+		__antithesis_instrumentation__.Notify(34742)
 	}
+	__antithesis_instrumentation__.Notify(34740)
 	return c.ServingRPCAddr()
 }
 
 func (c TestCLI) getSQLAddr() string {
+	__antithesis_instrumentation__.Notify(34743)
 	if c.tenant != nil {
+		__antithesis_instrumentation__.Notify(34745)
 		return c.tenant.SQLAddr()
+	} else {
+		__antithesis_instrumentation__.Notify(34746)
 	}
+	__antithesis_instrumentation__.Notify(34744)
 	return c.ServingSQLAddr()
 }
 
-// RunWithArgs add args according to TestCLI cfg.
 func (c TestCLI) RunWithArgs(origArgs []string) {
+	__antithesis_instrumentation__.Notify(34747)
 	TestingReset()
 
 	if err := func() error {
+		__antithesis_instrumentation__.Notify(34748)
 		args := append([]string(nil), origArgs[:1]...)
 		if c.TestServer != nil {
+			__antithesis_instrumentation__.Notify(34753)
 			addr := c.getRPCAddr()
 			if isSQL, err := isSQLCommand(origArgs); err != nil {
+				__antithesis_instrumentation__.Notify(34756)
 				return err
-			} else if isSQL {
-				addr = c.getSQLAddr()
+			} else {
+				__antithesis_instrumentation__.Notify(34757)
+				if isSQL {
+					__antithesis_instrumentation__.Notify(34758)
+					addr = c.getSQLAddr()
+				} else {
+					__antithesis_instrumentation__.Notify(34759)
+				}
 			}
+			__antithesis_instrumentation__.Notify(34754)
 			h, p, err := net.SplitHostPort(addr)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(34760)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(34761)
 			}
+			__antithesis_instrumentation__.Notify(34755)
 			args = append(args, fmt.Sprintf("--host=%s", net.JoinHostPort(h, p)))
 			if c.Cfg.Insecure {
+				__antithesis_instrumentation__.Notify(34762)
 				args = append(args, "--insecure=true")
 			} else {
+				__antithesis_instrumentation__.Notify(34763)
 				args = append(args, "--insecure=false")
 				args = append(args, fmt.Sprintf("--certs-dir=%s", c.certsDir))
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(34764)
 		}
+		__antithesis_instrumentation__.Notify(34749)
 
 		args = append(args, origArgs[1:]...)
 
-		// `nodelocal upload` and `userfile upload -r` CLI tests create unique temp
-		// directories with random numbers in their names. Given that the expected
-		// output for such tests is defined as a static comment, it is not possible
-		// to match against the full path. So, we trim the paths as below.
-		if len(origArgs) >= 3 && strings.Contains(origArgs[2], testTempFilePrefix) {
+		if len(origArgs) >= 3 && func() bool {
+			__antithesis_instrumentation__.Notify(34765)
+			return strings.Contains(origArgs[2], testTempFilePrefix) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(34766)
 			splitFilePath := strings.Split(origArgs[2], testTempFilePrefix)
 			origArgs[2] = splitFilePath[1]
+		} else {
+			__antithesis_instrumentation__.Notify(34767)
 		}
-		if len(origArgs) >= 4 && strings.Contains(origArgs[3], testUserfileUploadTempDirPrefix) {
+		__antithesis_instrumentation__.Notify(34750)
+		if len(origArgs) >= 4 && func() bool {
+			__antithesis_instrumentation__.Notify(34768)
+			return strings.Contains(origArgs[3], testUserfileUploadTempDirPrefix) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(34769)
 			hasTrailingSlash := strings.HasSuffix(origArgs[3], "/")
 			origArgs[3] = filepath.Base(origArgs[3])
-			// Maintain trailing slash because the behavior of `userfile upload -r`
-			// depends on it.
+
 			if hasTrailingSlash {
+				__antithesis_instrumentation__.Notify(34770)
 				origArgs[3] += "/"
+			} else {
+				__antithesis_instrumentation__.Notify(34771)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(34772)
 		}
+		__antithesis_instrumentation__.Notify(34751)
 
 		if !c.omitArgs {
+			__antithesis_instrumentation__.Notify(34773)
 			fmt.Fprintf(os.Stderr, "%s\n", args)
 			fmt.Println(strings.Join(origArgs, " "))
+		} else {
+			__antithesis_instrumentation__.Notify(34774)
 		}
+		__antithesis_instrumentation__.Notify(34752)
 
 		return Run(args)
 	}(); err != nil {
-		clierror.OutputError(os.Stdout, err, true /*showSeverity*/, false /*verbose*/)
+		__antithesis_instrumentation__.Notify(34775)
+		clierror.OutputError(os.Stdout, err, true, false)
 		if c.reportExitCode {
+			__antithesis_instrumentation__.Notify(34776)
 			fmt.Fprintln(os.Stdout, "exit code:", getExitCode(err))
+		} else {
+			__antithesis_instrumentation__.Notify(34777)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(34778)
 		if c.reportExitCode {
+			__antithesis_instrumentation__.Notify(34779)
 			fmt.Fprintln(os.Stdout, "exit code:", exit.Success())
+		} else {
+			__antithesis_instrumentation__.Notify(34780)
 		}
 	}
 }
 
-// RunWithCAArgs adds ca args at run time.
 func (c TestCLI) RunWithCAArgs(origArgs []string) {
+	__antithesis_instrumentation__.Notify(34781)
 	TestingReset()
 
 	if err := func() error {
+		__antithesis_instrumentation__.Notify(34782)
 		args := append([]string(nil), origArgs[:1]...)
 		if c.TestServer != nil {
+			__antithesis_instrumentation__.Notify(34784)
 			args = append(args, fmt.Sprintf("--ca-key=%s", filepath.Join(c.certsDir, security.EmbeddedCAKey)))
 			args = append(args, fmt.Sprintf("--certs-dir=%s", c.certsDir))
+		} else {
+			__antithesis_instrumentation__.Notify(34785)
 		}
+		__antithesis_instrumentation__.Notify(34783)
 		args = append(args, origArgs[1:]...)
 
 		fmt.Fprintf(os.Stderr, "%s\n", args)
@@ -423,106 +526,157 @@ func (c TestCLI) RunWithCAArgs(origArgs []string) {
 
 		return Run(args)
 	}(); err != nil {
+		__antithesis_instrumentation__.Notify(34786)
 		fmt.Println(err)
+	} else {
+		__antithesis_instrumentation__.Notify(34787)
 	}
 }
 
-// ElideInsecureDeprecationNotice elides the deprecation notice for --insecure.
 func ElideInsecureDeprecationNotice(csvStr string) string {
-	// v20.1 introduces a deprecation notice for --insecure. Skip over it.
-	// TODO(knz): Remove this when --insecure is dropped.
-	// See: https://github.com/cockroachdb/cockroach/issues/53404
+	__antithesis_instrumentation__.Notify(34788)
+
 	lines := strings.SplitN(csvStr, "\n", 3)
-	if len(lines) > 0 && strings.HasPrefix(lines[0], "Flag --insecure has been deprecated") {
+	if len(lines) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(34790)
+		return strings.HasPrefix(lines[0], "Flag --insecure has been deprecated") == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(34791)
 		csvStr = lines[2]
+	} else {
+		__antithesis_instrumentation__.Notify(34792)
 	}
+	__antithesis_instrumentation__.Notify(34789)
 	return csvStr
 }
 
-// RemoveMatchingLines removes lines from the input string that match any of
-// the provided regexps. Mind that regexp could match a substrings, so you need
-// to put ^ and $ around to ensure full matches.
 func RemoveMatchingLines(output string, regexps []string) string {
+	__antithesis_instrumentation__.Notify(34793)
 	if len(regexps) == 0 {
+		__antithesis_instrumentation__.Notify(34798)
 		return output
+	} else {
+		__antithesis_instrumentation__.Notify(34799)
 	}
+	__antithesis_instrumentation__.Notify(34794)
 
 	var patterns []*regexp.Regexp
 	for _, weed := range regexps {
+		__antithesis_instrumentation__.Notify(34800)
 		p := regexp.MustCompile(weed)
 		patterns = append(patterns, p)
 	}
+	__antithesis_instrumentation__.Notify(34795)
 	filter := func(line string) bool {
+		__antithesis_instrumentation__.Notify(34801)
 		for _, pattern := range patterns {
+			__antithesis_instrumentation__.Notify(34803)
 			if pattern.MatchString(line) {
+				__antithesis_instrumentation__.Notify(34804)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(34805)
 			}
 		}
+		__antithesis_instrumentation__.Notify(34802)
 		return false
 	}
+	__antithesis_instrumentation__.Notify(34796)
 
 	result := strings.Builder{}
 	for _, line := range strings.Split(output, "\n") {
-		if filter(line) || len(line) == 0 {
+		__antithesis_instrumentation__.Notify(34806)
+		if filter(line) || func() bool {
+			__antithesis_instrumentation__.Notify(34808)
+			return len(line) == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(34809)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(34810)
 		}
+		__antithesis_instrumentation__.Notify(34807)
 		result.WriteString(line)
 		result.WriteRune('\n')
 	}
+	__antithesis_instrumentation__.Notify(34797)
 	return result.String()
 }
 
-// GetCsvNumCols returns the number of columns in the given csv string.
 func GetCsvNumCols(csvStr string) (cols int, err error) {
+	__antithesis_instrumentation__.Notify(34811)
 	csvStr = ElideInsecureDeprecationNotice(csvStr)
 	reader := csv.NewReader(strings.NewReader(csvStr))
 	records, err := reader.Read()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34813)
 		return 0, errors.Wrapf(err, "error reading csv input:\n %v\n", csvStr)
+	} else {
+		__antithesis_instrumentation__.Notify(34814)
 	}
+	__antithesis_instrumentation__.Notify(34812)
 	return len(records), nil
 }
 
-// MatchCSV matches a multi-line csv string with the provided regex
-// (matchColRow[i][j] will be matched against the i-th line, j-th column).
 func MatchCSV(csvStr string, matchColRow [][]string) (err error) {
+	__antithesis_instrumentation__.Notify(34815)
 	defer func() {
+		__antithesis_instrumentation__.Notify(34820)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(34821)
 			err = errors.Wrapf(err, "csv input:\n%v\nexpected:\n%s\n",
 				csvStr, pretty.Sprint(matchColRow))
+		} else {
+			__antithesis_instrumentation__.Notify(34822)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(34816)
 
 	csvStr = ElideInsecureDeprecationNotice(csvStr)
 	reader := csv.NewReader(strings.NewReader(csvStr))
 	reader.FieldsPerRecord = -1
 	records, err := reader.ReadAll()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34823)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(34824)
 	}
+	__antithesis_instrumentation__.Notify(34817)
 
 	lr, lm := len(records), len(matchColRow)
 	if lr < lm {
+		__antithesis_instrumentation__.Notify(34825)
 		return errors.Errorf("csv has %d rows, but expected at least %d", lr, lm)
+	} else {
+		__antithesis_instrumentation__.Notify(34826)
 	}
+	__antithesis_instrumentation__.Notify(34818)
 
-	// Compare only the last len(matchColRow) records. That is, if we want to
-	// match 4 rows and we have 100 records, we only really compare
-	// records[96:], that is, the last four rows.
 	records = records[lr-lm:]
 
 	for i := range records {
+		__antithesis_instrumentation__.Notify(34827)
 		if lr, lm := len(records[i]), len(matchColRow[i]); lr != lm {
+			__antithesis_instrumentation__.Notify(34829)
 			return errors.Errorf("row #%d: csv has %d columns, but expected %d", i+1, lr, lm)
+		} else {
+			__antithesis_instrumentation__.Notify(34830)
 		}
+		__antithesis_instrumentation__.Notify(34828)
 		for j := range records[i] {
+			__antithesis_instrumentation__.Notify(34831)
 			pat, str := matchColRow[i][j], records[i][j]
 			re := regexp.MustCompile(pat)
 			if !re.MatchString(str) {
+				__antithesis_instrumentation__.Notify(34832)
 				err = errors.Wrapf(err, "row #%d, col #%d: found %q which does not match %q",
 					i+1, j+1, str, pat)
+			} else {
+				__antithesis_instrumentation__.Notify(34833)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(34819)
 	return err
 }

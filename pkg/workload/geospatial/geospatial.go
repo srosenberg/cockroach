@@ -1,18 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// The tables here are from https://postgis.net/workshops/postgis-intro/ which
-// says about its data directory:
-//   All the data in the package is public domain and freely redistributable.
-
 package geospatial
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -36,33 +24,48 @@ var geospatialMeta = workload.Meta{
 	Description:  `geospatial contains PostGIS tutorial tables`,
 	Version:      `1.0.0`,
 	PublicFacing: true,
-	New:          func() workload.Generator { return geospatial{} },
+	New:          func() workload.Generator { __antithesis_instrumentation__.Notify(694132); return geospatial{} },
 }
 
-// Meta implements the Generator interface.
-func (geospatial) Meta() workload.Meta { return geospatialMeta }
+func (geospatial) Meta() workload.Meta {
+	__antithesis_instrumentation__.Notify(694133)
+	return geospatialMeta
+}
 
-//go:embed data/*
 var embedded embed.FS
 
-// Tables implements the Generator interface.
 func (geospatial) Tables() []workload.Table {
-	// Load the table rows from the embedded files.
+	__antithesis_instrumentation__.Notify(694134)
+
 	load := func(name string) [][]interface{} {
+		__antithesis_instrumentation__.Notify(694136)
 		compressed, err := embedded.ReadFile(fmt.Sprintf("data/%s.yaml.gz", name))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(694140)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(694141)
 		}
+		__antithesis_instrumentation__.Notify(694137)
 		r, err := gzip.NewReader(bytes.NewReader(compressed))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(694142)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(694143)
 		}
+		__antithesis_instrumentation__.Notify(694138)
 		var result [][]interface{}
 		if err := yaml.NewDecoder(r).Decode(&result); err != nil {
+			__antithesis_instrumentation__.Notify(694144)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(694145)
 		}
+		__antithesis_instrumentation__.Notify(694139)
 		return result
 	}
+	__antithesis_instrumentation__.Notify(694135)
 
 	nycCensusBlocksRows := load("nyc_census_blocks")
 	nycHomicidesRows := load("nyc_homicides")
@@ -90,6 +93,7 @@ func (geospatial) Tables() []workload.Table {
 			InitialRows: workload.Tuples(
 				len(nycCensusBlocksRows),
 				func(rowIdx int) []interface{} {
+					__antithesis_instrumentation__.Notify(694146)
 					return nycCensusBlocksRows[rowIdx]
 				},
 			),
@@ -124,6 +128,7 @@ func (geospatial) Tables() []workload.Table {
 					types.String,
 				},
 				func(rowIdx int) []interface{} {
+					__antithesis_instrumentation__.Notify(694147)
 					return nycHomicidesRows[rowIdx]
 				},
 			),
@@ -140,6 +145,7 @@ func (geospatial) Tables() []workload.Table {
 			InitialRows: workload.Tuples(
 				len(nycNeighborhoodsRows),
 				func(rowIdx int) []interface{} {
+					__antithesis_instrumentation__.Notify(694148)
 					return nycNeighborhoodsRows[rowIdx]
 				},
 			),
@@ -166,6 +172,7 @@ func (geospatial) Tables() []workload.Table {
 					types.String,
 				},
 				func(rowIdx int) []interface{} {
+					__antithesis_instrumentation__.Notify(694149)
 					return nycStreetsRows[rowIdx]
 				},
 			),
@@ -212,6 +219,7 @@ func (geospatial) Tables() []workload.Table {
 					types.String,
 				},
 				func(rowIdx int) []interface{} {
+					__antithesis_instrumentation__.Notify(694150)
 					return nycSubwayStationsRows[rowIdx]
 				},
 			),
@@ -224,6 +232,7 @@ func (geospatial) Tables() []workload.Table {
 			InitialRows: workload.Tuples(
 				len(subwayLinesRows),
 				func(rowIdx int) []interface{} {
+					__antithesis_instrumentation__.Notify(694151)
 					return subwayLinesRows[rowIdx]
 				},
 			),

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/base"
@@ -19,135 +11,157 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// ballastsEnabled allows overriding the automatic creation of the ballast
-// files through an environment variable. Developers working on CockroachDB
-// may want to include `COCKROACH_AUTO_BALLAST=false` in their environment to
-// prevent the automatic creation of large ballast files on their local
-// filesystem.
 var ballastsEnabled bool = envutil.EnvOrDefaultBool("COCKROACH_AUTO_BALLAST", true)
 
-// IsDiskFull examines the store indicated by spec, determining whether the
-// store's underlying disk is out of disk space. A disk is considered to be
-// full if available capacity is less than half of the store's ballast size.
-//
-// If the current on-disk ballast does not match the configured ballast size
-// in spec, IsDiskFull will resize the file if available capacity allows.
 func IsDiskFull(fs vfs.FS, spec base.StoreSpec) (bool, error) {
+	__antithesis_instrumentation__.Notify(633509)
 	if spec.InMemory {
+		__antithesis_instrumentation__.Notify(633514)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(633515)
 	}
+	__antithesis_instrumentation__.Notify(633510)
 
-	// The store directory might not exist yet. We don't want to try to create
-	// it yet, because there might not be any disk space to do so. Check the
-	// disk usage on the first parent that exists.
 	path := spec.Path
 	diskUsage, err := fs.GetDiskUsage(path)
 	for oserror.IsNotExist(err) {
+		__antithesis_instrumentation__.Notify(633516)
 		if parentPath := fs.PathDir(path); parentPath == path {
+			__antithesis_instrumentation__.Notify(633518)
 			break
 		} else {
+			__antithesis_instrumentation__.Notify(633519)
 			path = parentPath
 		}
+		__antithesis_instrumentation__.Notify(633517)
 		diskUsage, err = fs.GetDiskUsage(path)
 	}
+	__antithesis_instrumentation__.Notify(633511)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(633520)
 		return false, errors.Wrapf(err, "retrieving disk usage: %s", spec.Path)
+	} else {
+		__antithesis_instrumentation__.Notify(633521)
 	}
+	__antithesis_instrumentation__.Notify(633512)
 
-	// Try to resize the ballast now, if necessary. This is necessary to
-	// truncate the ballast if a new, lower ballast size was provided,
-	// and the disk space freed by truncation will allow us to start. If
-	// we need to create or grow the ballast but are unable because
-	// there's insufficient disk space, it'll be resized by the periodic
-	// capacity calculations when the conditions are met.
 	desiredSizeBytes := BallastSizeBytes(spec, diskUsage)
 	ballastPath := base.EmergencyBallastFile(fs.PathJoin, spec.Path)
 	if resized, err := maybeEstablishBallast(fs, ballastPath, desiredSizeBytes, diskUsage); err != nil {
+		__antithesis_instrumentation__.Notify(633522)
 		return false, err
-	} else if resized {
-		diskUsage, err = fs.GetDiskUsage(path)
-		if err != nil {
-			return false, errors.Wrapf(err, "retrieving disk usage: %s", spec.Path)
+	} else {
+		__antithesis_instrumentation__.Notify(633523)
+		if resized {
+			__antithesis_instrumentation__.Notify(633524)
+			diskUsage, err = fs.GetDiskUsage(path)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(633525)
+				return false, errors.Wrapf(err, "retrieving disk usage: %s", spec.Path)
+			} else {
+				__antithesis_instrumentation__.Notify(633526)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(633527)
 		}
 	}
+	__antithesis_instrumentation__.Notify(633513)
 
-	// If the filesystem reports less than half the disk space available,
-	// consider the disk full. If the ballast hasn't been removed yet,
-	// removing it will free enough disk space to start. We don't use exactly
-	// the ballast size in case some of the headroom gets consumed elsewhere:
-	// eg, the operator's shell history, system logs, copy-on-write filesystem
-	// metadata, etc.
 	return diskUsage.AvailBytes < uint64(desiredSizeBytes/2), nil
 }
 
-// BallastSizeBytes returns the desired size of the emergency ballast,
-// calculated from the provided store spec and disk usage. If the store spec
-// contains an explicit ballast size (either in bytes or as a percentage of
-// the disk's total capacity), the store spec's size is used. Otherwise,
-// BallastSizeBytes returns 1GiB or 1% of total capacity, whichever is
-// smaller.
 func BallastSizeBytes(spec base.StoreSpec, diskUsage vfs.DiskUsage) int64 {
+	__antithesis_instrumentation__.Notify(633528)
 	if spec.BallastSize != nil {
+		__antithesis_instrumentation__.Notify(633531)
 		v := spec.BallastSize.InBytes
 		if spec.BallastSize.Percent != 0 {
+			__antithesis_instrumentation__.Notify(633533)
 			v = int64(float64(diskUsage.TotalBytes) * spec.BallastSize.Percent / 100)
+		} else {
+			__antithesis_instrumentation__.Notify(633534)
 		}
+		__antithesis_instrumentation__.Notify(633532)
 		return v
+	} else {
+		__antithesis_instrumentation__.Notify(633535)
 	}
+	__antithesis_instrumentation__.Notify(633529)
 
-	// Default to a 1% or 1GiB ballast, whichever is smaller.
-	var v int64 = 1 << 30 // 1 GiB
+	var v int64 = 1 << 30
 	if p := int64(float64(diskUsage.TotalBytes) * 0.01); v > p {
+		__antithesis_instrumentation__.Notify(633536)
 		v = p
+	} else {
+		__antithesis_instrumentation__.Notify(633537)
 	}
+	__antithesis_instrumentation__.Notify(633530)
 	return v
 }
 
 func maybeEstablishBallast(
 	fs vfs.FS, ballastPath string, ballastSizeBytes int64, diskUsage vfs.DiskUsage,
 ) (resized bool, err error) {
+	__antithesis_instrumentation__.Notify(633538)
 	var currentSizeBytes int64
 	fi, err := fs.Stat(ballastPath)
-	if err != nil && !oserror.IsNotExist(err) {
+	if err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(633540)
+		return !oserror.IsNotExist(err) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(633541)
 		return false, err
-	} else if err == nil {
-		currentSizeBytes = fi.Size()
+	} else {
+		__antithesis_instrumentation__.Notify(633542)
+		if err == nil {
+			__antithesis_instrumentation__.Notify(633543)
+			currentSizeBytes = fi.Size()
+		} else {
+			__antithesis_instrumentation__.Notify(633544)
+		}
 	}
+	__antithesis_instrumentation__.Notify(633539)
 
 	switch {
 	case currentSizeBytes > ballastSizeBytes:
-		// If the current ballast is too big, shrink it regardless of current
-		// disk space availability.
-		// TODO(jackson): Expose Truncate on vfs.FS.
+		__antithesis_instrumentation__.Notify(633545)
+
 		return true, sysutil.ResizeLargeFile(ballastPath, ballastSizeBytes)
-	case currentSizeBytes < ballastSizeBytes && ballastsEnabled:
+	case currentSizeBytes < ballastSizeBytes && func() bool {
+		__antithesis_instrumentation__.Notify(633551)
+		return ballastsEnabled == true
+	}() == true:
+		__antithesis_instrumentation__.Notify(633546)
 		if err := fs.MkdirAll(fs.PathDir(ballastPath), 0755); err != nil {
+			__antithesis_instrumentation__.Notify(633552)
 			return false, errors.Wrap(err, "creating data directory")
+		} else {
+			__antithesis_instrumentation__.Notify(633553)
 		}
-		// We need to either create the ballast or extend the current ballast
-		// to make it larger. The ballast may have been intentionally removed
-		// to enable recovery. Only create/extend the ballast if there's
-		// sufficient disk space.
+		__antithesis_instrumentation__.Notify(633547)
+
 		extendBytes := ballastSizeBytes - currentSizeBytes
 
-		// If available disk space is >= 4x the required amount, create the
-		// ballast.
 		if extendBytes <= int64(diskUsage.AvailBytes)/4 {
+			__antithesis_instrumentation__.Notify(633554)
 			return true, sysutil.ResizeLargeFile(ballastPath, ballastSizeBytes)
+		} else {
+			__antithesis_instrumentation__.Notify(633555)
 		}
+		__antithesis_instrumentation__.Notify(633548)
 
-		// If the user configured a really large ballast, we might not ever
-		// have >= 4x the required amount available. Larger ballast sizes (eg,
-		// 5%, 10%) are not unreasonably large, but it's possible that after
-		// recovery available capacity won't exceed 4x the ballast sizes (eg,
-		// 20%, 40%). Allow extending the ballast if we will have 10 GiB
-		// available after the extension to account for these large ballasts.
-		if int64(diskUsage.AvailBytes)-extendBytes > (10 << 30 /* 10 GiB */) {
+		if int64(diskUsage.AvailBytes)-extendBytes > (10 << 30) {
+			__antithesis_instrumentation__.Notify(633556)
 			return true, sysutil.ResizeLargeFile(ballastPath, ballastSizeBytes)
+		} else {
+			__antithesis_instrumentation__.Notify(633557)
 		}
+		__antithesis_instrumentation__.Notify(633549)
 
 		return false, nil
 	default:
+		__antithesis_instrumentation__.Notify(633550)
 		return false, nil
 	}
 }

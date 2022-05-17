@@ -12,5 +12,6 @@ go_library(
     deps = [
         "//pkg/keys",
         "//pkg/settings",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

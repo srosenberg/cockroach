@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package settings
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -21,7 +13,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// EnumSetting is a StringSetting that restricts the values to be one of the `enumValues`
 type EnumSetting struct {
 	IntSetting
 	enumValues map[int64]string
@@ -29,117 +20,164 @@ type EnumSetting struct {
 
 var _ numericSetting = &EnumSetting{}
 
-// Typ returns the short (1 char) string denoting the type of setting.
 func (e *EnumSetting) Typ() string {
+	__antithesis_instrumentation__.Notify(239874)
 	return "e"
 }
 
-// String returns the enum's string value.
 func (e *EnumSetting) String(sv *Values) string {
+	__antithesis_instrumentation__.Notify(239875)
 	enumID := e.Get(sv)
 	if str, ok := e.enumValues[enumID]; ok {
+		__antithesis_instrumentation__.Notify(239877)
 		return str
+	} else {
+		__antithesis_instrumentation__.Notify(239878)
 	}
+	__antithesis_instrumentation__.Notify(239876)
 	return fmt.Sprintf("unknown(%d)", enumID)
 }
 
-// DecodeToString decodes and renders an encoded value.
 func (e *EnumSetting) DecodeToString(encoded string) (string, error) {
+	__antithesis_instrumentation__.Notify(239879)
 	v, err := e.DecodeValue(encoded)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(239882)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(239883)
 	}
+	__antithesis_instrumentation__.Notify(239880)
 	if str, ok := e.enumValues[v]; ok {
+		__antithesis_instrumentation__.Notify(239884)
 		return str, nil
+	} else {
+		__antithesis_instrumentation__.Notify(239885)
 	}
+	__antithesis_instrumentation__.Notify(239881)
 	return encoded, nil
 }
 
-// ParseEnum returns the enum value, and a boolean that indicates if it was parseable.
 func (e *EnumSetting) ParseEnum(raw string) (int64, bool) {
+	__antithesis_instrumentation__.Notify(239886)
 	rawLower := strings.ToLower(raw)
 	for k, v := range e.enumValues {
+		__antithesis_instrumentation__.Notify(239889)
 		if v == rawLower {
+			__antithesis_instrumentation__.Notify(239890)
 			return k, true
+		} else {
+			__antithesis_instrumentation__.Notify(239891)
 		}
 	}
-	// Attempt to parse the string as an integer since it isn't a valid enum string.
+	__antithesis_instrumentation__.Notify(239887)
+
 	v, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(239892)
 		return 0, false
+	} else {
+		__antithesis_instrumentation__.Notify(239893)
 	}
+	__antithesis_instrumentation__.Notify(239888)
 	_, ok := e.enumValues[v]
 	return v, ok
 }
 
-// GetAvailableValuesAsHint returns the possible enum settings as a string that
-// can be provided as an error hint to a user.
 func (e *EnumSetting) GetAvailableValuesAsHint() string {
-	// First stabilize output by sorting by key.
+	__antithesis_instrumentation__.Notify(239894)
+
 	valIdxs := make([]int, 0, len(e.enumValues))
 	for i := range e.enumValues {
+		__antithesis_instrumentation__.Notify(239897)
 		valIdxs = append(valIdxs, int(i))
 	}
+	__antithesis_instrumentation__.Notify(239895)
 	sort.Ints(valIdxs)
 
-	// Now use those indices
 	vals := make([]string, 0, len(e.enumValues))
 	for _, enumIdx := range valIdxs {
+		__antithesis_instrumentation__.Notify(239898)
 		vals = append(vals, fmt.Sprintf("%d: %s", enumIdx, e.enumValues[int64(enumIdx)]))
 	}
+	__antithesis_instrumentation__.Notify(239896)
 	return "Available values: " + strings.Join(vals, ", ")
 }
 
 func (e *EnumSetting) set(ctx context.Context, sv *Values, k int64) error {
+	__antithesis_instrumentation__.Notify(239899)
 	if _, ok := e.enumValues[k]; !ok {
+		__antithesis_instrumentation__.Notify(239901)
 		return errors.Errorf("unrecognized value %d", k)
+	} else {
+		__antithesis_instrumentation__.Notify(239902)
 	}
+	__antithesis_instrumentation__.Notify(239900)
 	return e.IntSetting.set(ctx, sv, k)
 }
 
 func enumValuesToDesc(enumValues map[int64]string) string {
+	__antithesis_instrumentation__.Notify(239903)
 	var buffer bytes.Buffer
 	values := make([]int64, 0, len(enumValues))
 	for k := range enumValues {
+		__antithesis_instrumentation__.Notify(239907)
 		values = append(values, k)
 	}
-	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+	__antithesis_instrumentation__.Notify(239904)
+	sort.Slice(values, func(i, j int) bool { __antithesis_instrumentation__.Notify(239908); return values[i] < values[j] })
+	__antithesis_instrumentation__.Notify(239905)
 
 	buffer.WriteString("[")
 	for i, k := range values {
+		__antithesis_instrumentation__.Notify(239909)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(239911)
 			buffer.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(239912)
 		}
+		__antithesis_instrumentation__.Notify(239910)
 		fmt.Fprintf(&buffer, "%s = %d", strings.ToLower(enumValues[k]), k)
 	}
+	__antithesis_instrumentation__.Notify(239906)
 	buffer.WriteString("]")
 	return buffer.String()
 }
 
-// WithPublic sets public visibility and can be chained.
 func (e *EnumSetting) WithPublic() *EnumSetting {
+	__antithesis_instrumentation__.Notify(239913)
 	e.SetVisibility(Public)
 	return e
 }
 
-// RegisterEnumSetting defines a new setting with type int.
 func RegisterEnumSetting(
 	class Class, key, desc string, defaultValue string, enumValues map[int64]string,
 ) *EnumSetting {
+	__antithesis_instrumentation__.Notify(239914)
 	enumValuesLower := make(map[int64]string)
 	var i int64
 	var found bool
 	for k, v := range enumValues {
+		__antithesis_instrumentation__.Notify(239917)
 		enumValuesLower[k] = strings.ToLower(v)
 		if v == defaultValue {
+			__antithesis_instrumentation__.Notify(239918)
 			i = k
 			found = true
+		} else {
+			__antithesis_instrumentation__.Notify(239919)
 		}
 	}
+	__antithesis_instrumentation__.Notify(239915)
 
 	if !found {
+		__antithesis_instrumentation__.Notify(239920)
 		panic(fmt.Sprintf("enum registered with default value %s not in map %s", defaultValue, enumValuesToDesc(enumValuesLower)))
+	} else {
+		__antithesis_instrumentation__.Notify(239921)
 	}
+	__antithesis_instrumentation__.Notify(239916)
 
 	setting := &EnumSetting{
 		IntSetting: IntSetting{defaultValue: i},

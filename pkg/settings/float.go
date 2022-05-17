@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package settings
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,9 +10,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// FloatSetting is the interface of a setting variable that will be
-// updated automatically when the corresponding cluster-wide setting
-// of type "float" is updated.
 type FloatSetting struct {
 	common
 	defaultValue float64
@@ -29,121 +18,162 @@ type FloatSetting struct {
 
 var _ internalSetting = &FloatSetting{}
 
-// Get retrieves the float value in the setting.
 func (f *FloatSetting) Get(sv *Values) float64 {
+	__antithesis_instrumentation__.Notify(239922)
 	return math.Float64frombits(uint64(sv.getInt64(f.slot)))
 }
 
 func (f *FloatSetting) String(sv *Values) string {
+	__antithesis_instrumentation__.Notify(239923)
 	return EncodeFloat(f.Get(sv))
 }
 
-// Encoded returns the encoded value of the current value of the setting.
 func (f *FloatSetting) Encoded(sv *Values) string {
+	__antithesis_instrumentation__.Notify(239924)
 	return f.String(sv)
 }
 
-// EncodedDefault returns the encoded value of the default value of the setting.
 func (f *FloatSetting) EncodedDefault() string {
+	__antithesis_instrumentation__.Notify(239925)
 	return EncodeFloat(f.defaultValue)
 }
 
-// DecodeToString decodes and renders an encoded value.
 func (f *FloatSetting) DecodeToString(encoded string) (string, error) {
+	__antithesis_instrumentation__.Notify(239926)
 	fv, err := f.DecodeValue(encoded)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(239928)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(239929)
 	}
+	__antithesis_instrumentation__.Notify(239927)
 	return EncodeFloat(fv), nil
 }
 
-// DecodeValue decodes the value into a float.
 func (f *FloatSetting) DecodeValue(encoded string) (float64, error) {
+	__antithesis_instrumentation__.Notify(239930)
 	return strconv.ParseFloat(encoded, 64)
 }
 
-// Typ returns the short (1 char) string denoting the type of setting.
 func (*FloatSetting) Typ() string {
+	__antithesis_instrumentation__.Notify(239931)
 	return "f"
 }
 
-// Default returns default value for setting.
 func (f *FloatSetting) Default() float64 {
+	__antithesis_instrumentation__.Notify(239932)
 	return f.defaultValue
 }
 
-// Defeat the linter.
 var _ = (*FloatSetting).Default
 
-// Override changes the setting panicking if validation fails and also overrides
-// the default value.
-//
-// For testing usage only.
 func (f *FloatSetting) Override(ctx context.Context, sv *Values, v float64) {
+	__antithesis_instrumentation__.Notify(239933)
 	if err := f.set(ctx, sv, v); err != nil {
+		__antithesis_instrumentation__.Notify(239935)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(239936)
 	}
+	__antithesis_instrumentation__.Notify(239934)
 	sv.setDefaultOverride(f.slot, v)
 }
 
-// Validate that a value conforms with the validation function.
 func (f *FloatSetting) Validate(v float64) error {
+	__antithesis_instrumentation__.Notify(239937)
 	if f.validateFn != nil {
+		__antithesis_instrumentation__.Notify(239939)
 		if err := f.validateFn(v); err != nil {
+			__antithesis_instrumentation__.Notify(239940)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(239941)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(239942)
 	}
+	__antithesis_instrumentation__.Notify(239938)
 	return nil
 }
 
 func (f *FloatSetting) set(ctx context.Context, sv *Values, v float64) error {
+	__antithesis_instrumentation__.Notify(239943)
 	if err := f.Validate(v); err != nil {
+		__antithesis_instrumentation__.Notify(239945)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(239946)
 	}
+	__antithesis_instrumentation__.Notify(239944)
 	sv.setInt64(ctx, f.slot, int64(math.Float64bits(v)))
 	return nil
 }
 
 func (f *FloatSetting) setToDefault(ctx context.Context, sv *Values) {
-	// See if the default value was overridden.
+	__antithesis_instrumentation__.Notify(239947)
+
 	if val := sv.getDefaultOverride(f.slot); val != nil {
-		// As per the semantics of override, these values don't go through
-		// validation.
+		__antithesis_instrumentation__.Notify(239949)
+
 		_ = f.set(ctx, sv, val.(float64))
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(239950)
 	}
+	__antithesis_instrumentation__.Notify(239948)
 	if err := f.set(ctx, sv, f.defaultValue); err != nil {
+		__antithesis_instrumentation__.Notify(239951)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(239952)
 	}
 }
 
-// WithPublic sets public visibility and can be chained.
 func (f *FloatSetting) WithPublic() *FloatSetting {
+	__antithesis_instrumentation__.Notify(239953)
 	f.SetVisibility(Public)
 	return f
 }
 
-// RegisterFloatSetting defines a new setting with type float.
 func RegisterFloatSetting(
 	class Class, key, desc string, defaultValue float64, validateFns ...func(float64) error,
 ) *FloatSetting {
+	__antithesis_instrumentation__.Notify(239954)
 	var validateFn func(float64) error
 	if len(validateFns) > 0 {
+		__antithesis_instrumentation__.Notify(239957)
 		validateFn = func(v float64) error {
+			__antithesis_instrumentation__.Notify(239958)
 			for _, fn := range validateFns {
+				__antithesis_instrumentation__.Notify(239960)
 				if err := fn(v); err != nil {
+					__antithesis_instrumentation__.Notify(239961)
 					return errors.Wrapf(err, "invalid value for %s", key)
+				} else {
+					__antithesis_instrumentation__.Notify(239962)
 				}
 			}
+			__antithesis_instrumentation__.Notify(239959)
 			return nil
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(239963)
 	}
+	__antithesis_instrumentation__.Notify(239955)
 
 	if validateFn != nil {
+		__antithesis_instrumentation__.Notify(239964)
 		if err := validateFn(defaultValue); err != nil {
+			__antithesis_instrumentation__.Notify(239965)
 			panic(errors.Wrap(err, "invalid default"))
+		} else {
+			__antithesis_instrumentation__.Notify(239966)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(239967)
 	}
+	__antithesis_instrumentation__.Notify(239956)
 	setting := &FloatSetting{
 		defaultValue: defaultValue,
 		validateFn:   validateFn,
@@ -152,18 +182,26 @@ func RegisterFloatSetting(
 	return setting
 }
 
-// NonNegativeFloat can be passed to RegisterFloatSetting.
 func NonNegativeFloat(v float64) error {
+	__antithesis_instrumentation__.Notify(239968)
 	if v < 0 {
+		__antithesis_instrumentation__.Notify(239970)
 		return errors.Errorf("cannot set to a negative value: %f", v)
+	} else {
+		__antithesis_instrumentation__.Notify(239971)
 	}
+	__antithesis_instrumentation__.Notify(239969)
 	return nil
 }
 
-// PositiveFloat can be passed to RegisterFloatSetting.
 func PositiveFloat(v float64) error {
+	__antithesis_instrumentation__.Notify(239972)
 	if v <= 0 {
+		__antithesis_instrumentation__.Notify(239974)
 		return errors.Errorf("cannot set to a non-positive value: %f", v)
+	} else {
+		__antithesis_instrumentation__.Notify(239975)
 	}
+	__antithesis_instrumentation__.Notify(239973)
 	return nil
 }

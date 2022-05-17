@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -43,33 +35,38 @@ type createTypeNode struct {
 	dbDesc   catalog.DatabaseDescriptor
 }
 
-// EnumType is the type of an enum.
 type EnumType int
 
 const (
-	// EnumTypeUserDefined is a user defined enum.
 	EnumTypeUserDefined = iota
-	// EnumTypeMultiRegion is a multi-region related enum.
+
 	EnumTypeMultiRegion
 )
 
-// Use to satisfy the linter.
 var _ planNode = &createTypeNode{n: nil}
 
 func (p *planner) CreateType(ctx context.Context, n *tree.CreateType) (planNode, error) {
+	__antithesis_instrumentation__.Notify(464902)
 	if err := checkSchemaChangeEnabled(
 		ctx,
 		p.ExecCfg(),
 		"CREATE TYPE",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(464905)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(464906)
 	}
+	__antithesis_instrumentation__.Notify(464903)
 
-	// Resolve the desired new type name.
 	typeName, db, err := resolveNewTypeName(p.RunParams(ctx), n.TypeName)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464907)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(464908)
 	}
+	__antithesis_instrumentation__.Notify(464904)
 	n.TypeName.SetAnnotation(&p.semaCtx.Annotations, typeName)
 	return &createTypeNode{
 		n:        n,
@@ -79,35 +76,42 @@ func (p *planner) CreateType(ctx context.Context, n *tree.CreateType) (planNode,
 }
 
 func (n *createTypeNode) startExec(params runParams) error {
-	// Check if a type with the same name exists already.
+	__antithesis_instrumentation__.Notify(464909)
+
 	flags := tree.ObjectLookupFlags{CommonLookupFlags: tree.CommonLookupFlags{
 		Required:    false,
 		AvoidLeased: true,
 	}}
 	found, _, err := params.p.Descriptors().GetImmutableTypeByName(params.ctx, params.p.Txn(), n.typeName, flags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464912)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(464913)
 	}
+	__antithesis_instrumentation__.Notify(464910)
 
-	// If we found a descriptor and have IfNotExists = true, then buffer a notice
-	// and exit without doing anything. Ideally, we would do this below by
-	// inspecting the type of error returned by getCreateTypeParams, but it
-	// doesn't return enough information for us to do so. For comparison, we
-	// handle this case in CREATE TABLE IF NOT EXISTS by checking the return code
-	// (pgcode.DuplicateRelation) of getCreateTableParams. However, there isn't
-	// a pgcode for duplicate types, only the more general pgcode.DuplicateObject.
-	if found && n.n.IfNotExists {
+	if found && func() bool {
+		__antithesis_instrumentation__.Notify(464914)
+		return n.n.IfNotExists == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(464915)
 		params.p.BufferClientNotice(
 			params.ctx,
 			pgnotice.Newf("type %q already exists, skipping", n.typeName),
 		)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(464916)
 	}
+	__antithesis_instrumentation__.Notify(464911)
 
 	switch n.n.Variety {
 	case tree.Enum:
+		__antithesis_instrumentation__.Notify(464917)
 		return params.p.createUserDefinedEnum(params, n)
 	default:
+		__antithesis_instrumentation__.Notify(464918)
 		return unimplemented.NewWithIssue(25123, "CREATE TYPE")
 	}
 }
@@ -115,55 +119,82 @@ func (n *createTypeNode) startExec(params runParams) error {
 func resolveNewTypeName(
 	params runParams, name *tree.UnresolvedObjectName,
 ) (*tree.TypeName, catalog.DatabaseDescriptor, error) {
-	// Resolve the target schema and database.
+	__antithesis_instrumentation__.Notify(464919)
+
 	db, _, prefix, err := params.p.ResolveTargetObject(params.ctx, name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464923)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(464924)
 	}
+	__antithesis_instrumentation__.Notify(464920)
 
 	if err := params.p.CheckPrivilege(params.ctx, db, privilege.CREATE); err != nil {
+		__antithesis_instrumentation__.Notify(464925)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(464926)
 	}
+	__antithesis_instrumentation__.Notify(464921)
 
-	// Disallow type creation in the system database.
 	if db.GetID() == keys.SystemDatabaseID {
+		__antithesis_instrumentation__.Notify(464927)
 		return nil, nil, errors.New("cannot create a type in the system database")
+	} else {
+		__antithesis_instrumentation__.Notify(464928)
 	}
+	__antithesis_instrumentation__.Notify(464922)
 
 	typename := tree.NewUnqualifiedTypeName(name.Object())
 	typename.ObjectNamePrefix = prefix
 	return typename, db, nil
 }
 
-// getCreateTypeParams performs some initial validation on the input new
-// TypeName and returns the ID of the parent schema.
 func getCreateTypeParams(
 	params runParams, name *tree.TypeName, db catalog.DatabaseDescriptor,
 ) (schema catalog.SchemaDescriptor, err error) {
-	// Check we are not creating a type which conflicts with an alias available
-	// as a built-in type in CockroachDB but an extension type on the public
-	// schema for PostgreSQL.
+	__antithesis_instrumentation__.Notify(464929)
+
 	if name.Schema() == tree.PublicSchema {
+		__antithesis_instrumentation__.Notify(464935)
 		if _, ok := types.PublicSchemaAliases[name.Object()]; ok {
+			__antithesis_instrumentation__.Notify(464936)
 			return nil, sqlerrors.NewTypeAlreadyExistsError(name.String())
+		} else {
+			__antithesis_instrumentation__.Notify(464937)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(464938)
 	}
-	// Get the ID of the schema the type is being created in.
+	__antithesis_instrumentation__.Notify(464930)
+
 	dbID := db.GetID()
 	schema, err = params.p.getNonTemporarySchemaForCreate(params.ctx, db, name.Schema())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464939)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(464940)
 	}
+	__antithesis_instrumentation__.Notify(464931)
 
-	// Check permissions on the schema.
 	if err := params.p.canCreateOnSchema(
 		params.ctx, schema.GetID(), dbID, params.p.User(), skipCheckPublicSchema); err != nil {
+		__antithesis_instrumentation__.Notify(464941)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(464942)
 	}
+	__antithesis_instrumentation__.Notify(464932)
 
 	if schema.SchemaKind() == catalog.SchemaUserDefined {
+		__antithesis_instrumentation__.Notify(464943)
 		sqltelemetry.IncrementUserDefinedSchemaCounter(sqltelemetry.UserDefinedSchemaUsedByObject)
+	} else {
+		__antithesis_instrumentation__.Notify(464944)
 	}
+	__antithesis_instrumentation__.Notify(464933)
 
 	err = params.p.Descriptors().Direct().CheckObjectCollision(
 		params.ctx,
@@ -173,16 +204,16 @@ func getCreateTypeParams(
 		name,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464945)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(464946)
 	}
+	__antithesis_instrumentation__.Notify(464934)
 
 	return schema, nil
 }
 
-// Postgres starts off trying to create the type as _<typename>. It then
-// continues adding "_" to the front of the name until it doesn't find
-// a collision. findFreeArrayTypeName performs this logic to find a free name
-// for the array type based off of a type with the input name.
 func findFreeArrayTypeName(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -190,25 +221,34 @@ func findFreeArrayTypeName(
 	parentID, schemaID descpb.ID,
 	name string,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(464947)
 	arrayName := "_" + name
 	for {
-		// See if there is a collision with the current name.
+		__antithesis_instrumentation__.Notify(464949)
+
 		objectID, err := col.Direct().LookupObjectID(ctx, txn, parentID, schemaID, arrayName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(464952)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(464953)
 		}
-		// If we found an empty spot, then break out.
+		__antithesis_instrumentation__.Notify(464950)
+
 		if objectID == descpb.InvalidID {
+			__antithesis_instrumentation__.Notify(464954)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(464955)
 		}
-		// Otherwise, append another "_" to the front of the name.
+		__antithesis_instrumentation__.Notify(464951)
+
 		arrayName = "_" + arrayName
 	}
+	__antithesis_instrumentation__.Notify(464948)
 	return arrayName, nil
 }
 
-// CreateEnumArrayTypeDesc creates a type descriptor for the array of the
-// given enum.
 func CreateEnumArrayTypeDesc(
 	params runParams,
 	typDesc *typedesc.Mutable,
@@ -217,17 +257,19 @@ func CreateEnumArrayTypeDesc(
 	id descpb.ID,
 	arrayTypeName string,
 ) (*typedesc.Mutable, error) {
-	// Create the element type for the array. Note that it must know about the
-	// ID of the array type in order for the array type to correctly created.
+	__antithesis_instrumentation__.Notify(464956)
+
 	var elemTyp *types.T
 	switch t := typDesc.Kind; t {
 	case descpb.TypeDescriptor_ENUM, descpb.TypeDescriptor_MULTIREGION_ENUM:
+		__antithesis_instrumentation__.Notify(464958)
 		elemTyp = types.MakeEnum(typedesc.TypeIDToOID(typDesc.GetID()), typedesc.TypeIDToOID(id))
 	default:
+		__antithesis_instrumentation__.Notify(464959)
 		return nil, errors.AssertionFailedf("cannot make array type for kind %s", t.String())
 	}
+	__antithesis_instrumentation__.Notify(464957)
 
-	// Construct the descriptor for the array type.
 	return typedesc.NewBuilder(&descpb.TypeDescriptor{
 		Name:           arrayTypeName,
 		ID:             id,
@@ -240,12 +282,6 @@ func CreateEnumArrayTypeDesc(
 	}).BuildCreatedMutableType(), nil
 }
 
-// createArrayType performs the implicit array type creation logic of Postgres.
-// When a type is created in Postgres, Postgres will implicitly create an array
-// type of that user defined type. This array type tracks changes to the
-// original type, and is dropped when the original type is dropped.
-// createArrayType creates the implicit array type for the input TypeDescriptor
-// and returns the ID of the created type.
 func (p *planner) createArrayType(
 	params runParams,
 	typ *tree.TypeName,
@@ -253,6 +289,7 @@ func (p *planner) createArrayType(
 	db catalog.DatabaseDescriptor,
 	schemaID descpb.ID,
 ) (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(464960)
 	arrayTypeName, err := findFreeArrayTypeName(
 		params.ctx,
 		params.p.txn,
@@ -262,15 +299,22 @@ func (p *planner) createArrayType(
 		typ.Type(),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464965)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(464966)
 	}
+	__antithesis_instrumentation__.Notify(464961)
 	arrayTypeKey := catalogkeys.MakeObjectNameKey(params.ExecCfg().Codec, db.GetID(), schemaID, arrayTypeName)
 
-	// Generate the stable ID for the array type.
 	id, err := descidgen.GenerateUniqueDescID(params.ctx, params.ExecCfg().DB, params.ExecCfg().Codec)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464967)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(464968)
 	}
+	__antithesis_instrumentation__.Notify(464962)
 
 	arrayTypDesc, err := CreateEnumArrayTypeDesc(
 		params,
@@ -281,8 +325,12 @@ func (p *planner) createArrayType(
 		arrayTypeName,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464969)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(464970)
 	}
+	__antithesis_instrumentation__.Notify(464963)
 
 	jobStr := fmt.Sprintf("implicit array type creation for %s", typ)
 	if err := p.createDescriptorWithID(
@@ -292,25 +340,33 @@ func (p *planner) createArrayType(
 		arrayTypDesc,
 		jobStr,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(464971)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(464972)
 	}
+	__antithesis_instrumentation__.Notify(464964)
 	return id, nil
 }
 
 func (p *planner) createUserDefinedEnum(params runParams, n *createTypeNode) error {
-	// Generate a stable ID for the new type.
+	__antithesis_instrumentation__.Notify(464973)
+
 	id, err := descidgen.GenerateUniqueDescID(
 		params.ctx, params.ExecCfg().DB, params.ExecCfg().Codec,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464975)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(464976)
 	}
+	__antithesis_instrumentation__.Notify(464974)
 	return params.p.createEnumWithID(
 		params, id, n.n.EnumLabels, n.dbDesc, n.typeName, EnumTypeUserDefined,
 	)
 }
 
-// CreateEnumTypeDesc creates a new enum type descriptor.
 func CreateEnumTypeDesc(
 	params runParams,
 	id descpb.ID,
@@ -320,26 +376,35 @@ func CreateEnumTypeDesc(
 	typeName *tree.TypeName,
 	enumType EnumType,
 ) (*typedesc.Mutable, error) {
-	// Ensure there are no duplicates in the input enum values.
+	__antithesis_instrumentation__.Notify(464977)
+
 	seenVals := make(map[tree.EnumValue]struct{})
 	for _, value := range enumLabels {
+		__antithesis_instrumentation__.Notify(464981)
 		_, ok := seenVals[value]
 		if ok {
+			__antithesis_instrumentation__.Notify(464983)
 			return nil, pgerror.Newf(pgcode.InvalidObjectDefinition,
 				"enum definition contains duplicate value %q", value)
+		} else {
+			__antithesis_instrumentation__.Notify(464984)
 		}
+		__antithesis_instrumentation__.Notify(464982)
 		seenVals[value] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(464978)
 
 	members := make([]descpb.TypeDescriptor_EnumMember, len(enumLabels))
 	physReps := enum.GenerateNEvenlySpacedBytes(len(enumLabels))
 	for i := range enumLabels {
+		__antithesis_instrumentation__.Notify(464985)
 		members[i] = descpb.TypeDescriptor_EnumMember{
 			LogicalRepresentation:  string(enumLabels[i]),
 			PhysicalRepresentation: physReps[i],
 			Capability:             descpb.TypeDescriptor_EnumMember_ALL,
 		}
 	}
+	__antithesis_instrumentation__.Notify(464979)
 
 	privs := catprivilege.CreatePrivilegesFromDefaultPrivileges(
 		dbDesc.GetDefaultPrivilegeDescriptor(),
@@ -353,21 +418,24 @@ func CreateEnumTypeDesc(
 	enumKind := descpb.TypeDescriptor_ENUM
 	var regionConfig *descpb.TypeDescriptor_RegionConfig
 	if enumType == EnumTypeMultiRegion {
+		__antithesis_instrumentation__.Notify(464986)
 		enumKind = descpb.TypeDescriptor_MULTIREGION_ENUM
 		primaryRegion, err := dbDesc.PrimaryRegionName()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(464988)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(464989)
 		}
+		__antithesis_instrumentation__.Notify(464987)
 		regionConfig = &descpb.TypeDescriptor_RegionConfig{
 			PrimaryRegion: primaryRegion,
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(464990)
 	}
+	__antithesis_instrumentation__.Notify(464980)
 
-	// TODO (rohany): OID's are computed using an offset of
-	//  oidext.CockroachPredefinedOIDMax from the descriptor ID. Once we have
-	//  a free list of descriptor ID's (#48438), we should allocate an ID from
-	//  there if id + oidext.CockroachPredefinedOIDMax overflows past the
-	//  maximum uint32 value.
 	return typedesc.NewBuilder(&descpb.TypeDescriptor{
 		Name:           typeName.Type(),
 		ID:             id,
@@ -389,29 +457,38 @@ func (p *planner) createEnumWithID(
 	typeName *tree.TypeName,
 	enumType EnumType,
 ) error {
+	__antithesis_instrumentation__.Notify(464991)
 	sqltelemetry.IncrementEnumCounter(sqltelemetry.EnumCreate)
 
-	// Generate a key in the namespace table and a new id for this type.
 	schema, err := getCreateTypeParams(params, typeName, dbDesc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464996)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(464997)
 	}
+	__antithesis_instrumentation__.Notify(464992)
 
 	typeDesc, err := CreateEnumTypeDesc(params, id, enumLabels, dbDesc, schema, typeName, enumType)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(464998)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(464999)
 	}
+	__antithesis_instrumentation__.Notify(464993)
 
-	// Create the implicit array type for this type before finishing the type.
 	arrayTypeID, err := p.createArrayType(params, typeName, typeDesc, dbDesc, schema.GetID())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465000)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465001)
 	}
+	__antithesis_instrumentation__.Notify(464994)
 
-	// Update the typeDesc with the created array type ID.
 	typeDesc.ArrayTypeID = arrayTypeID
 
-	// Now create the type after the implicit array type as been created.
 	if err := p.createDescriptorWithID(
 		params.ctx,
 		catalogkeys.MakeObjectNameKey(params.ExecCfg().Codec, dbDesc.GetID(), schema.GetID(), typeName.Type()),
@@ -419,10 +496,13 @@ func (p *planner) createEnumWithID(
 		typeDesc,
 		typeName.String(),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(465002)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465003)
 	}
+	__antithesis_instrumentation__.Notify(464995)
 
-	// Log the event.
 	return p.logEvent(params.ctx,
 		typeDesc.GetID(),
 		&eventpb.CreateType{
@@ -430,7 +510,13 @@ func (p *planner) createEnumWithID(
 		})
 }
 
-func (n *createTypeNode) Next(params runParams) (bool, error) { return false, nil }
-func (n *createTypeNode) Values() tree.Datums                 { return tree.Datums{} }
-func (n *createTypeNode) Close(ctx context.Context)           {}
-func (n *createTypeNode) ReadingOwnWrites()                   {}
+func (n *createTypeNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(465004)
+	return false, nil
+}
+func (n *createTypeNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(465005)
+	return tree.Datums{}
+}
+func (n *createTypeNode) Close(ctx context.Context) { __antithesis_instrumentation__.Notify(465006) }
+func (n *createTypeNode) ReadingOwnWrites()         { __antithesis_instrumentation__.Notify(465007) }

@@ -1,22 +1,16 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 
-// ResetConstructors resets the registered Resumer constructors.
 func ResetConstructors() func() {
+	__antithesis_instrumentation__.Notify(70259)
 	old := make(map[jobspb.Type]Constructor)
 	for k, v := range constructors {
+		__antithesis_instrumentation__.Notify(70261)
 		old[k] = v
 	}
-	return func() { constructors = old }
+	__antithesis_instrumentation__.Notify(70260)
+	return func() { __antithesis_instrumentation__.Notify(70262); constructors = old }
 }

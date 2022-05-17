@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package balancer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -17,8 +11,6 @@ import (
 	"github.com/cockroachdb/logtags"
 )
 
-// ConnTracker tracks all connection handles associated with each tenant, and
-// handles are grouped by SQL pods.
 type ConnTracker struct {
 	mu struct {
 		syncutil.Mutex
@@ -26,153 +18,163 @@ type ConnTracker struct {
 	}
 }
 
-// NewConnTracker returns a new instance of the connection tracker. All exposed
-// methods on the connection tracker are thread-safe.
 func NewConnTracker() *ConnTracker {
+	__antithesis_instrumentation__.Notify(21070)
 	t := &ConnTracker{}
 	t.mu.tenants = make(map[roachpb.TenantID]*tenantEntry)
 	return t
 }
 
-// OnConnect registers the connection handle for tracking under the given
-// tenant. If the handler has already been registered, this returns false.
 func (t *ConnTracker) OnConnect(tenantID roachpb.TenantID, handle ConnectionHandle) bool {
+	__antithesis_instrumentation__.Notify(21071)
 	e := t.ensureTenantEntry(tenantID)
 	success := e.addHandle(handle)
 	if success {
+		__antithesis_instrumentation__.Notify(21073)
 		logTrackerEvent("OnConnect", handle)
+	} else {
+		__antithesis_instrumentation__.Notify(21074)
 	}
+	__antithesis_instrumentation__.Notify(21072)
 	return success
 }
 
-// OnDisconnect unregisters the connection handle under the given tenant. If
-// the handler cannot be found, this returns false.
 func (t *ConnTracker) OnDisconnect(tenantID roachpb.TenantID, handle ConnectionHandle) bool {
+	__antithesis_instrumentation__.Notify(21075)
 	e := t.ensureTenantEntry(tenantID)
 	success := e.removeHandle(handle)
 	if success {
+		__antithesis_instrumentation__.Notify(21077)
 		logTrackerEvent("OnDisconnect", handle)
+	} else {
+		__antithesis_instrumentation__.Notify(21078)
 	}
+	__antithesis_instrumentation__.Notify(21076)
 	return success
 }
 
-// GetConns returns a snapshot of connections for the given tenant.
 func (t *ConnTracker) GetConns(tenantID roachpb.TenantID) []ConnectionHandle {
+	__antithesis_instrumentation__.Notify(21079)
 	e := t.ensureTenantEntry(tenantID)
 	return e.getConns()
 }
 
-// GetAllConns snapshots the connection tracker, and returns a list of tenants
-// together with handles associated with them. It is guaranteed that the tenants
-// in the list will have at least one connection handle each.
 func (t *ConnTracker) GetAllConns() map[roachpb.TenantID][]ConnectionHandle {
-	// Note that we do this because GetConns() on the tenant entry may take
-	// some time, and we don't want to hold onto t.mu while copying the
-	// individual tenant entries.
+	__antithesis_instrumentation__.Notify(21080)
+
 	snapshotTenantEntries := func() map[roachpb.TenantID]*tenantEntry {
+		__antithesis_instrumentation__.Notify(21083)
 		t.mu.Lock()
 		defer t.mu.Unlock()
 
 		m := make(map[roachpb.TenantID]*tenantEntry)
 		for tenantID, entry := range t.mu.tenants {
+			__antithesis_instrumentation__.Notify(21085)
 			m[tenantID] = entry
 		}
+		__antithesis_instrumentation__.Notify(21084)
 		return m
 	}
+	__antithesis_instrumentation__.Notify(21081)
 
 	m := make(map[roachpb.TenantID][]ConnectionHandle)
 	tenantsCopy := snapshotTenantEntries()
 	for tenantID, entry := range tenantsCopy {
+		__antithesis_instrumentation__.Notify(21086)
 		conns := entry.getConns()
 		if len(conns) == 0 {
+			__antithesis_instrumentation__.Notify(21088)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(21089)
 		}
+		__antithesis_instrumentation__.Notify(21087)
 		m[tenantID] = conns
 	}
+	__antithesis_instrumentation__.Notify(21082)
 	return m
 }
 
-// ensureTenantEntry ensures that an entry has been created for the given
-// tenant. If an entry already exists, that will be returned instead.
 func (t *ConnTracker) ensureTenantEntry(tenantID roachpb.TenantID) *tenantEntry {
+	__antithesis_instrumentation__.Notify(21090)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	entry, ok := t.mu.tenants[tenantID]
 	if !ok {
+		__antithesis_instrumentation__.Notify(21092)
 		entry = newTenantEntry()
 		t.mu.tenants[tenantID] = entry
+	} else {
+		__antithesis_instrumentation__.Notify(21093)
 	}
+	__antithesis_instrumentation__.Notify(21091)
 	return entry
 }
 
 func logTrackerEvent(event string, handle ConnectionHandle) {
-	// The right approach would be for the caller to pass in a ctx object. For
-	// simplicity, we'll just use a background context here since it's only used
-	// for logging. Since we want logs to tie back to the connection, we'll copy
-	// the logtags associated with the handle's context.
+	__antithesis_instrumentation__.Notify(21094)
+
 	logCtx := logtags.WithTags(context.Background(), logtags.FromContext(handle.Context()))
 	log.Infof(logCtx, "%s: %s", event, handle.ServerRemoteAddr())
 }
 
-// tenantEntry is a connection tracker entry that stores connection information
-// for a single tenant. All methods on tenantEntry are thread-safe.
 type tenantEntry struct {
-	// mu synchronizes access to the list of connections associated with this
-	// tenant.
 	mu struct {
 		syncutil.Mutex
 		conns map[ConnectionHandle]struct{}
 	}
 }
 
-// newTenantEntry returns a new instance of tenantEntry.
 func newTenantEntry() *tenantEntry {
+	__antithesis_instrumentation__.Notify(21095)
 	e := &tenantEntry{}
 	e.mu.conns = make(map[ConnectionHandle]struct{})
 	return e
 }
 
-// addHandle adds the handle to the entry based on the handle's active server
-// remote address. This returns true if the operation was successful, and false
-// otherwise.
 func (e *tenantEntry) addHandle(handle ConnectionHandle) bool {
+	__antithesis_instrumentation__.Notify(21096)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Handle already exists.
 	if _, ok := e.mu.conns[handle]; ok {
+		__antithesis_instrumentation__.Notify(21098)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(21099)
 	}
+	__antithesis_instrumentation__.Notify(21097)
 	e.mu.conns[handle] = struct{}{}
 	return true
 }
 
-// removeHandle deletes the handle from the tenant entry. This returns true if
-// the operation was successful, and false otherwise.
 func (e *tenantEntry) removeHandle(handle ConnectionHandle) bool {
+	__antithesis_instrumentation__.Notify(21100)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Handle does not exists.
 	if _, ok := e.mu.conns[handle]; !ok {
+		__antithesis_instrumentation__.Notify(21102)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(21103)
 	}
+	__antithesis_instrumentation__.Notify(21101)
 	delete(e.mu.conns, handle)
 	return true
 }
 
-// getConns returns a snapshot of connections.
 func (e *tenantEntry) getConns() []ConnectionHandle {
+	__antithesis_instrumentation__.Notify(21104)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Perform a copy to avoid races whenever the map gets mutated through
-	// addHandle or removeHandle. Copying 50K entries (the number of conns that
-	// we plan to support in each proxy) would be a few ms (~5ms).
 	conns := make([]ConnectionHandle, 0, len(e.mu.conns))
 	for handle := range e.mu.conns {
+		__antithesis_instrumentation__.Notify(21106)
 		conns = append(conns, handle)
 	}
+	__antithesis_instrumentation__.Notify(21105)
 	return conns
 }

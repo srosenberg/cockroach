@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package stats
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"container/heap"
@@ -24,27 +16,11 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// SampledRow is a row that was sampled.
 type SampledRow struct {
 	Row  rowenc.EncDatumRow
 	Rank uint64
 }
 
-// SampleReservoir implements reservoir sampling using random sort. Each
-// row is assigned a rank (which should be a uniformly generated random value),
-// and rows with the smallest K ranks are retained.
-//
-// This is implemented as a max-heap of the smallest K ranks; each row can
-// replace the row with the maximum rank. Note that heap operations only happen
-// when we actually encounter a row that is among the top K so far; the
-// probability of this is K/N if there were N rows so far; for large streams, we
-// would have O(K log K) heap operations. The overall running time for a stream
-// of size N is O(N + K log^2 K).
-//
-// The same structure can be used to combine sample sets (as long as the
-// original ranks are preserved) for distributed reservoir sampling. The
-// requirement is that the capacity of each distributed reservoir must have been
-// at least as large as this reservoir.
 type SampleReservoir struct {
 	samples  []SampledRow
 	colTypes []*types.T
@@ -52,29 +28,30 @@ type SampleReservoir struct {
 	ra       rowenc.EncDatumRowAlloc
 	memAcc   *mon.BoundAccount
 
-	// minNumSamples is the minimum capcity (K) needed for sampling to be
-	// meaningful. If the reservoir capacity would fall below this, SampleRow will
-	// err instead of decreasing it further.
 	minNumSamples int
 
-	// sampleCols contains the ordinals of columns that should be sampled from
-	// each row. Note that the sampled rows still contain all columns, but
-	// any columns not part of this set are given a null value.
 	sampleCols util.FastIntSet
 }
 
 var _ heap.Interface = &SampleReservoir{}
 
-// Init initializes a SampleReservoir.
 func (sr *SampleReservoir) Init(
 	numSamples, minNumSamples int,
 	colTypes []*types.T,
 	memAcc *mon.BoundAccount,
 	sampleCols util.FastIntSet,
 ) {
-	if minNumSamples < 1 || minNumSamples > numSamples {
+	__antithesis_instrumentation__.Notify(626734)
+	if minNumSamples < 1 || func() bool {
+		__antithesis_instrumentation__.Notify(626736)
+		return minNumSamples > numSamples == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(626737)
 		minNumSamples = numSamples
+	} else {
+		__antithesis_instrumentation__.Notify(626738)
 	}
+	__antithesis_instrumentation__.Notify(626735)
 	sr.samples = make([]SampledRow, 0, numSamples)
 	sr.minNumSamples = minNumSamples
 	sr.colTypes = colTypes
@@ -82,280 +59,350 @@ func (sr *SampleReservoir) Init(
 	sr.sampleCols = sampleCols
 }
 
-// Disable releases the memory of this SampleReservoir and sets its capacity
-// to zero.
 func (sr *SampleReservoir) Disable() {
+	__antithesis_instrumentation__.Notify(626739)
 	sr.samples = nil
 }
 
-// Len is part of heap.Interface.
 func (sr *SampleReservoir) Len() int {
+	__antithesis_instrumentation__.Notify(626740)
 	return len(sr.samples)
 }
 
-// Cap returns K, the maximum number of samples the reservoir can hold.
 func (sr *SampleReservoir) Cap() int {
+	__antithesis_instrumentation__.Notify(626741)
 	return cap(sr.samples)
 }
 
-// Less is part of heap.Interface.
 func (sr *SampleReservoir) Less(i, j int) bool {
-	// We want a max heap, so higher ranks sort first.
+	__antithesis_instrumentation__.Notify(626742)
+
 	return sr.samples[i].Rank > sr.samples[j].Rank
 }
 
-// Swap is part of heap.Interface.
 func (sr *SampleReservoir) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(626743)
 	sr.samples[i], sr.samples[j] = sr.samples[j], sr.samples[i]
 }
 
-// Push is part of heap.Interface, but we're not using it.
-func (sr *SampleReservoir) Push(x interface{}) { panic("unimplemented") }
+func (sr *SampleReservoir) Push(x interface{}) {
+	__antithesis_instrumentation__.Notify(626744)
+	panic("unimplemented")
+}
 
-// Pop is part of heap.Interface.
 func (sr *SampleReservoir) Pop() interface{} {
+	__antithesis_instrumentation__.Notify(626745)
 	n := len(sr.samples)
 	samp := sr.samples[n-1]
-	sr.samples[n-1] = SampledRow{} // Avoid leaking the popped sample.
+	sr.samples[n-1] = SampledRow{}
 	sr.samples = sr.samples[:n-1]
 	return samp
 }
 
-// MaybeResize safely shrinks the capacity of the reservoir (K) without
-// introducing bias if the requested capacity is less than the current
-// capacity, and returns whether the capacity changed. (Note that the capacity
-// can only decrease without introducing bias. Increasing capacity would cause
-// later rows to be over-represented relative to earlier rows.)
 func (sr *SampleReservoir) MaybeResize(ctx context.Context, k int) bool {
+	__antithesis_instrumentation__.Notify(626746)
 	if k >= cap(sr.samples) {
+		__antithesis_instrumentation__.Notify(626749)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(626750)
 	}
-	// Make sure we have initialized the heap before popping.
+	__antithesis_instrumentation__.Notify(626747)
+
 	heap.Init(sr)
 	for len(sr.samples) > k {
+		__antithesis_instrumentation__.Notify(626751)
 		samp := heap.Pop(sr).(SampledRow)
 		if sr.memAcc != nil {
+			__antithesis_instrumentation__.Notify(626752)
 			sr.memAcc.Shrink(ctx, int64(samp.Row.Size()))
+		} else {
+			__antithesis_instrumentation__.Notify(626753)
 		}
 	}
-	// Copy to a new array to allow garbage collection.
+	__antithesis_instrumentation__.Notify(626748)
+
 	samples := make([]SampledRow, len(sr.samples), k)
 	copy(samples, sr.samples)
 	sr.samples = samples
 	return true
 }
 
-// retryMaybeResize tries to execute a memory-allocating operation, shrinking
-// the capacity of the reservoir (K) as necessary until the operation succeeds
-// or the capacity reaches minNumSamples, at which point an error is returned.
 func (sr *SampleReservoir) retryMaybeResize(ctx context.Context, op func() error) error {
+	__antithesis_instrumentation__.Notify(626754)
 	for {
-		if err := op(); err == nil || !sqlerrors.IsOutOfMemoryError(err) ||
-			len(sr.samples) == 0 || len(sr.samples)/2 < sr.minNumSamples {
+		__antithesis_instrumentation__.Notify(626755)
+		if err := op(); err == nil || func() bool {
+			__antithesis_instrumentation__.Notify(626757)
+			return !sqlerrors.IsOutOfMemoryError(err) == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(626758)
+			return len(sr.samples) == 0 == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(626759)
+			return len(sr.samples)/2 < sr.minNumSamples == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(626760)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(626761)
 		}
-		// We've used too much memory. Remove half the samples and try again.
+		__antithesis_instrumentation__.Notify(626756)
+
 		sr.MaybeResize(ctx, len(sr.samples)/2)
 	}
 }
 
-// SampleRow looks at a row and either drops it or adds it to the reservoir. The
-// capacity of the reservoir (K) will shrink if it hits a memory limit. If
-// capacity goes below minNumSamples, SampleRow will return an error. If
-// SampleRow returns an error (any type of error), no additional calls to
-// SampleRow should be made as the failed samples will have introduced bias.
 func (sr *SampleReservoir) SampleRow(
 	ctx context.Context, evalCtx *tree.EvalContext, row rowenc.EncDatumRow, rank uint64,
 ) error {
+	__antithesis_instrumentation__.Notify(626762)
 	return sr.retryMaybeResize(ctx, func() error {
+		__antithesis_instrumentation__.Notify(626763)
 		if len(sr.samples) < cap(sr.samples) {
-			// We haven't accumulated enough rows yet, just append.
+			__antithesis_instrumentation__.Notify(626766)
+
 			rowCopy := sr.ra.AllocRow(len(row))
 
-			// Perform memory accounting for the allocated EncDatumRow. We will
-			// account for the additional memory used after copying inside copyRow.
 			if sr.memAcc != nil {
+				__antithesis_instrumentation__.Notify(626770)
 				if err := sr.memAcc.Grow(ctx, int64(rowCopy.Size())); err != nil {
+					__antithesis_instrumentation__.Notify(626771)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(626772)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(626773)
 			}
+			__antithesis_instrumentation__.Notify(626767)
 			if err := sr.copyRow(ctx, evalCtx, rowCopy, row); err != nil {
+				__antithesis_instrumentation__.Notify(626774)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(626775)
 			}
+			__antithesis_instrumentation__.Notify(626768)
 			sr.samples = append(sr.samples, SampledRow{Row: rowCopy, Rank: rank})
 			if len(sr.samples) == cap(sr.samples) {
-				// We just reached the limit; initialize the heap.
+				__antithesis_instrumentation__.Notify(626776)
+
 				heap.Init(sr)
+			} else {
+				__antithesis_instrumentation__.Notify(626777)
 			}
+			__antithesis_instrumentation__.Notify(626769)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(626778)
 		}
-		// Replace the max rank if ours is smaller.
-		if len(sr.samples) > 0 && rank < sr.samples[0].Rank {
+		__antithesis_instrumentation__.Notify(626764)
+
+		if len(sr.samples) > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(626779)
+			return rank < sr.samples[0].Rank == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(626780)
 			if err := sr.copyRow(ctx, evalCtx, sr.samples[0].Row, row); err != nil {
-				// WARNING: At this point sr.samples[0].Row might have a mix of old and
-				// new values. The caller must call heap.Pop() to keep using the
-				// reservoir.
+				__antithesis_instrumentation__.Notify(626782)
+
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(626783)
 			}
+			__antithesis_instrumentation__.Notify(626781)
 			sr.samples[0].Rank = rank
 			heap.Fix(sr, 0)
+		} else {
+			__antithesis_instrumentation__.Notify(626784)
 		}
+		__antithesis_instrumentation__.Notify(626765)
 		return nil
 	})
 }
 
-// Get returns the sampled rows.
 func (sr *SampleReservoir) Get() []SampledRow {
+	__antithesis_instrumentation__.Notify(626785)
 	return sr.samples
 }
 
-// GetNonNullDatums returns the non-null values of the specified column. The
-// capacity of the reservoir (K) will shrink if we hit a memory limit while
-// building this return slice. If the capacity goes below minNumSamples,
-// GetNonNullDatums will return an error.
 func (sr *SampleReservoir) GetNonNullDatums(
 	ctx context.Context, memAcc *mon.BoundAccount, colIdx int,
 ) (values tree.Datums, err error) {
+	__antithesis_instrumentation__.Notify(626786)
 	err = sr.retryMaybeResize(ctx, func() error {
-		// Account for the memory we'll use copying the samples into values.
+		__antithesis_instrumentation__.Notify(626788)
+
 		if memAcc != nil {
+			__antithesis_instrumentation__.Notify(626791)
 			if err := memAcc.Grow(ctx, memsize.DatumOverhead*int64(len(sr.samples))); err != nil {
+				__antithesis_instrumentation__.Notify(626792)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(626793)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(626794)
 		}
+		__antithesis_instrumentation__.Notify(626789)
 		values = make(tree.Datums, 0, len(sr.samples))
 		for _, sample := range sr.samples {
+			__antithesis_instrumentation__.Notify(626795)
 			ed := &sample.Row[colIdx]
 			if ed.Datum == nil {
+				__antithesis_instrumentation__.Notify(626797)
 				values = nil
 				return errors.AssertionFailedf("value in column %d not decoded", colIdx)
+			} else {
+				__antithesis_instrumentation__.Notify(626798)
 			}
+			__antithesis_instrumentation__.Notify(626796)
 			if !ed.IsNull() {
+				__antithesis_instrumentation__.Notify(626799)
 				values = append(values, ed.Datum)
+			} else {
+				__antithesis_instrumentation__.Notify(626800)
 			}
 		}
+		__antithesis_instrumentation__.Notify(626790)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(626787)
 	return
 }
 
 func (sr *SampleReservoir) copyRow(
 	ctx context.Context, evalCtx *tree.EvalContext, dst, src rowenc.EncDatumRow,
 ) error {
+	__antithesis_instrumentation__.Notify(626801)
 	for i := range src {
+		__antithesis_instrumentation__.Notify(626803)
 		if !sr.sampleCols.Contains(i) {
+			__antithesis_instrumentation__.Notify(626807)
 			dst[i].Datum = tree.DNull
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(626808)
 		}
-		// Copy only the decoded datum to ensure that we remove any reference to
-		// the encoded bytes. The encoded bytes would have been scanned in a batch
-		// of ~10000 rows, so we must delete the reference to allow the garbage
-		// collector to release the memory from the batch.
+		__antithesis_instrumentation__.Notify(626804)
+
 		if err := src[i].EnsureDecoded(sr.colTypes[i], &sr.da); err != nil {
+			__antithesis_instrumentation__.Notify(626809)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(626810)
 		}
+		__antithesis_instrumentation__.Notify(626805)
 		beforeSize := dst[i].Size()
 		dst[i] = rowenc.DatumToEncDatum(sr.colTypes[i], src[i].Datum)
 		afterSize := dst[i].Size()
 
-		// If the datum is too large, truncate it (this also performs a copy).
-		// Otherwise, just perform a copy.
 		if afterSize > uintptr(maxBytesPerSample) {
+			__antithesis_instrumentation__.Notify(626811)
 			dst[i].Datum = truncateDatum(evalCtx, dst[i].Datum, maxBytesPerSample)
 			afterSize = dst[i].Size()
 		} else {
+			__antithesis_instrumentation__.Notify(626812)
 			dst[i].Datum = deepCopyDatum(evalCtx, dst[i].Datum)
 		}
+		__antithesis_instrumentation__.Notify(626806)
 
-		// Perform memory accounting.
 		if sr.memAcc != nil {
+			__antithesis_instrumentation__.Notify(626813)
 			if err := sr.memAcc.Resize(ctx, int64(beforeSize), int64(afterSize)); err != nil {
+				__antithesis_instrumentation__.Notify(626814)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(626815)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(626816)
 		}
 	}
+	__antithesis_instrumentation__.Notify(626802)
 	return nil
 }
 
 const maxBytesPerSample = 400
 
-// truncateDatum truncates large datums to avoid using excessive memory or disk
-// space. It performs a best-effort attempt to return a datum that is similar
-// to d using at most maxBytes bytes.
-//
-// For example, if maxBytes=10, "Cockroach Labs" would be truncated to
-// "Cockroach ".
 func truncateDatum(evalCtx *tree.EvalContext, d tree.Datum, maxBytes int) tree.Datum {
+	__antithesis_instrumentation__.Notify(626817)
 	switch t := d.(type) {
 	case *tree.DBitArray:
+		__antithesis_instrumentation__.Notify(626818)
 		b := tree.DBitArray{BitArray: t.ToWidth(uint(maxBytes * 8))}
 		return &b
 
 	case *tree.DBytes:
-		// Make a copy so the memory from the original byte string can be garbage
-		// collected.
+		__antithesis_instrumentation__.Notify(626819)
+
 		b := make([]byte, maxBytes)
 		copy(b, *t)
 		return tree.NewDBytes(tree.DBytes(b))
 
 	case *tree.DString:
+		__antithesis_instrumentation__.Notify(626820)
 		return tree.NewDString(truncateString(string(*t), maxBytes))
 
 	case *tree.DCollatedString:
+		__antithesis_instrumentation__.Notify(626821)
 		contents := truncateString(t.Contents, maxBytes)
 
-		// Note: this will end up being larger than maxBytes due to the key and
-		// locale, so this is just a best-effort attempt to limit the size.
 		res, err := tree.NewDCollatedString(contents, t.Locale, &evalCtx.CollationEnv)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(626825)
 			return d
+		} else {
+			__antithesis_instrumentation__.Notify(626826)
 		}
+		__antithesis_instrumentation__.Notify(626822)
 		return res
 
 	case *tree.DOidWrapper:
+		__antithesis_instrumentation__.Notify(626823)
 		return &tree.DOidWrapper{
 			Wrapped: truncateDatum(evalCtx, t.Wrapped, maxBytes),
 			Oid:     t.Oid,
 		}
 
 	default:
-		// It's not easy to truncate other types (e.g. Decimal).
+		__antithesis_instrumentation__.Notify(626824)
+
 		return d
 	}
 }
 
-// truncateString truncates long strings to the longest valid substring that is
-// less than maxBytes bytes. It is rune-aware so it does not cut unicode
-// characters in half.
 func truncateString(s string, maxBytes int) string {
+	__antithesis_instrumentation__.Notify(626827)
 	last := 0
-	// For strings, range skips from rune to rune and i is the byte index of
-	// the current rune.
+
 	for i := range s {
+		__antithesis_instrumentation__.Notify(626829)
 		if i > maxBytes {
+			__antithesis_instrumentation__.Notify(626831)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(626832)
 		}
+		__antithesis_instrumentation__.Notify(626830)
 		last = i
 	}
+	__antithesis_instrumentation__.Notify(626828)
 
-	// Copy the truncated string so that the memory from the longer string can
-	// be garbage collected.
 	b := make([]byte, last)
 	copy(b, s)
 	return string(b)
 }
 
-// deepCopyDatum performs a deep copy for datums such as DString to remove any
-// references to the kv batch and allow the batch to be garbage collected.
-// Note: this function is currently only called for key-encoded datums. Update
-// the calling function if there is a need to call this for value-encoded
-// datums as well.
 func deepCopyDatum(evalCtx *tree.EvalContext, d tree.Datum) tree.Datum {
+	__antithesis_instrumentation__.Notify(626833)
 	switch t := d.(type) {
 	case *tree.DString:
+		__antithesis_instrumentation__.Notify(626834)
 		return tree.NewDString(deepCopyString(string(*t)))
 
 	case *tree.DCollatedString:
+		__antithesis_instrumentation__.Notify(626835)
 		return &tree.DCollatedString{
 			Contents: deepCopyString(t.Contents),
 			Locale:   t.Locale,
@@ -363,20 +410,21 @@ func deepCopyDatum(evalCtx *tree.EvalContext, d tree.Datum) tree.Datum {
 		}
 
 	case *tree.DOidWrapper:
+		__antithesis_instrumentation__.Notify(626836)
 		return &tree.DOidWrapper{
 			Wrapped: deepCopyDatum(evalCtx, t.Wrapped),
 			Oid:     t.Oid,
 		}
 
 	default:
-		// We do not collect stats on JSON, and other types do not require a deep
-		// copy (or they are already copied during decoding).
+		__antithesis_instrumentation__.Notify(626837)
+
 		return d
 	}
 }
 
-// deepCopyString performs a deep copy of a string.
 func deepCopyString(s string) string {
+	__antithesis_instrumentation__.Notify(626838)
 	b := make([]byte, len(s))
 	copy(b, s)
 	return string(b)

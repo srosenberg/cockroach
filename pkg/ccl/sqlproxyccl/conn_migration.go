@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package sqlproxyccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,14 +21,8 @@ import (
 	pgproto3 "github.com/jackc/pgproto3/v2"
 )
 
-// defaultTransferTimeout corresponds to the timeout period for the connection
-// migration process. If the timeout gets triggered, and we're in a non
-// recoverable state, the connection will be closed.
-//
-// This is a variable instead of a constant to support testing hooks.
 var defaultTransferTimeout = 15 * time.Second
 
-// Used in testing.
 var transferConnectionConnectorTestHook func(context.Context, string) (net.Conn, error) = nil
 
 type transferContext struct {
@@ -46,7 +34,8 @@ type transferContext struct {
 }
 
 func newTransferContext(backgroundCtx context.Context) (*transferContext, context.CancelFunc) {
-	transferCtx, cancel := context.WithTimeout(backgroundCtx, defaultTransferTimeout) // nolint:context
+	__antithesis_instrumentation__.Notify(21120)
+	transferCtx, cancel := context.WithTimeout(backgroundCtx, defaultTransferTimeout)
 	ctx := &transferContext{
 		Context: transferCtx,
 	}
@@ -55,29 +44,31 @@ func newTransferContext(backgroundCtx context.Context) (*transferContext, contex
 }
 
 func (t *transferContext) markRecoverable(r bool) {
+	__antithesis_instrumentation__.Notify(21121)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.mu.recoverableConn = r
 }
 
 func (t *transferContext) isRecoverable() bool {
+	__antithesis_instrumentation__.Notify(21122)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.mu.recoverableConn
 }
 
-// tryBeginTransfer returns true if the transfer can be started, and false
-// otherwise. If the transfer can be started, it updates the state of the
-// forwarder to indicate that a transfer is in progress, and a cleanup function
-// will be returned.
 func (f *forwarder) tryBeginTransfer() (started bool, cleanupFn func()) {
+	__antithesis_instrumentation__.Notify(21123)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// Transfer is already in progress. No concurrent transfers are allowed.
 	if f.mu.isTransferring {
+		__antithesis_instrumentation__.Notify(21126)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(21127)
 	}
+	__antithesis_instrumentation__.Notify(21124)
 
 	request, response := f.mu.request, f.mu.response
 	request.mu.Lock()
@@ -86,17 +77,19 @@ func (f *forwarder) tryBeginTransfer() (started bool, cleanupFn func()) {
 	defer response.mu.Unlock()
 
 	if !isSafeTransferPointLocked(request, response) {
+		__antithesis_instrumentation__.Notify(21128)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(21129)
 	}
+	__antithesis_instrumentation__.Notify(21125)
 
-	// Once we mark the forwarder as transferring, attempt to suspend right
-	// away before unlocking, but without blocking. This ensures that no other
-	// messages are forwarded.
 	f.mu.isTransferring = true
 	request.mu.suspendReq = true
 	response.mu.suspendReq = true
 
 	return true, func() {
+		__antithesis_instrumentation__.Notify(21130)
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.mu.isTransferring = false
@@ -105,254 +98,235 @@ func (f *forwarder) tryBeginTransfer() (started bool, cleanupFn func()) {
 
 var errTransferCannotStart = errors.New("transfer cannot be started")
 
-// TransferConnection attempts a best-effort connection migration to an
-// available SQL pod based on the load-balancing algorithm. If a transfer has
-// already been started, or the forwarder has been closed, this returns an
-// error. This is a best-effort process because there could be a situation
-// where the forwarder is not in a state that is eligible for a connection
-// migration.
-//
-// NOTE: If the forwarder hasn't been closed, runTransfer has an invariant
-// where the processors have been resumed prior to calling this method. When
-// runTransfer returns, it is guaranteed that processors will either be
-// re-resumed, or the forwarder will be closed (in the case of a non-recoverable
-// error).
-//
-// TODO(jaylim-crl): It would be nice to introduce transfer policies in the
-// future. That way, we could either transfer to another random SQL pod, or to
-// a specific SQL pod. If we do that, TransferConnection would take in some kind
-// of policy parameter(s).
-//
-// TransferConnection implements the balancer.ConnectionHandle interface.
 func (f *forwarder) TransferConnection() (retErr error) {
-	// A previous non-recoverable transfer would have closed the forwarder, so
-	// return right away.
+	__antithesis_instrumentation__.Notify(21131)
+
 	if f.ctx.Err() != nil {
+		__antithesis_instrumentation__.Notify(21139)
 		return f.ctx.Err()
+	} else {
+		__antithesis_instrumentation__.Notify(21140)
 	}
+	__antithesis_instrumentation__.Notify(21132)
 
 	started, cleanupFn := f.tryBeginTransfer()
 	if !started {
+		__antithesis_instrumentation__.Notify(21141)
 		return errTransferCannotStart
+	} else {
+		__antithesis_instrumentation__.Notify(21142)
 	}
+	__antithesis_instrumentation__.Notify(21133)
 	defer cleanupFn()
 
 	f.metrics.ConnMigrationAttemptedCount.Inc(1)
 
-	// Create a transfer context, and timeout handler which gets triggered
-	// whenever the context expires. We have to close the forwarder because
-	// the transfer may be blocked on I/O, and the only way for now is to close
-	// the connections. This then allow runTransfer to return and cleanup.
 	ctx, cancel := newTransferContext(f.ctx)
 	defer cancel()
 
-	// Use a separate handler for timeouts. This is the only way to handle
-	// blocked I/Os as described above.
 	go func() {
+		__antithesis_instrumentation__.Notify(21143)
 		<-ctx.Done()
-		// This Close call here in addition to the one in the defer callback
-		// below is on purpose. This would help unblock situations where we're
-		// blocked on sending/reading messages from connections that couldn't
-		// be handled with context.Context.
+
 		if !ctx.isRecoverable() {
+			__antithesis_instrumentation__.Notify(21144)
 			f.Close()
+		} else {
+			__antithesis_instrumentation__.Notify(21145)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(21134)
 
-	// Use a separate context for logging because f.ctx will be closed whenever
-	// the connection is non-recoverable.
-	//
-	// TODO(jaylim-crl): There's a possible "use of Span after Finish" issue
-	// where proxy_handler.handle returns before this function returns because
-	// we're calling f.Close() in the timeout goroutine. When handle returns,
-	// the context (with the span) gets cleaned up. Some ideas to fix this:
-	// (1) errgroup (?), (2) use the stopper instead of the go keyword - that
-	// should fork a new span, and avoid this issue.
 	tBegin := timeutil.Now()
 	logCtx := logtags.WithTags(context.Background(), logtags.FromContext(f.ctx))
 	defer func() {
+		__antithesis_instrumentation__.Notify(21146)
 		latencyDur := timeutil.Since(tBegin)
 		f.metrics.ConnMigrationAttemptedLatency.RecordValue(latencyDur.Nanoseconds())
 
-		// When runTransfer returns, it's either the forwarder has been closed,
-		// or the procesors have been resumed.
 		if !ctx.isRecoverable() {
+			__antithesis_instrumentation__.Notify(21147)
 			log.Infof(logCtx, "transfer failed: connection closed, latency=%v, err=%v", latencyDur, retErr)
 			f.metrics.ConnMigrationErrorFatalCount.Inc(1)
 			f.Close()
 		} else {
-			// Transfer was successful.
+			__antithesis_instrumentation__.Notify(21148)
+
 			if retErr == nil {
+				__antithesis_instrumentation__.Notify(21150)
 				log.Infof(logCtx, "transfer successful, latency=%v", latencyDur)
 				f.metrics.ConnMigrationSuccessCount.Inc(1)
 			} else {
+				__antithesis_instrumentation__.Notify(21151)
 				log.Infof(logCtx, "transfer failed: connection recovered, latency=%v, err=%v", latencyDur, retErr)
 				f.metrics.ConnMigrationErrorRecoverableCount.Inc(1)
 			}
+			__antithesis_instrumentation__.Notify(21149)
 			if err := f.resumeProcessors(); err != nil {
+				__antithesis_instrumentation__.Notify(21152)
 				log.Infof(logCtx, "unable to resume processors: %v", err)
 				f.Close()
+			} else {
+				__antithesis_instrumentation__.Notify(21153)
 			}
 		}
 	}()
+	__antithesis_instrumentation__.Notify(21135)
 
-	// Suspend both processors before starting the transfer.
 	request, response := f.getProcessors()
 	if err := request.suspend(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(21154)
 		return errors.Wrap(err, "suspending request processor")
+	} else {
+		__antithesis_instrumentation__.Notify(21155)
 	}
+	__antithesis_instrumentation__.Notify(21136)
 	if err := response.suspend(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(21156)
 		return errors.Wrap(err, "suspending response processor")
+	} else {
+		__antithesis_instrumentation__.Notify(21157)
 	}
+	__antithesis_instrumentation__.Notify(21137)
 
-	// Transfer the connection.
 	clientConn, serverConn := f.getConns()
 	newServerConn, err := transferConnection(ctx, f.connector, f.metrics, clientConn, serverConn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21158)
 		return errors.Wrap(err, "transferring connection")
+	} else {
+		__antithesis_instrumentation__.Notify(21159)
 	}
+	__antithesis_instrumentation__.Notify(21138)
 
-	// Transfer was successful.
 	f.replaceServerConn(newServerConn)
 	return nil
 }
 
-// transferConnection performs the transfer operation for the current server
-// connection, and returns the a new connection to the server that the
-// connection got transferred to.
 func transferConnection(
 	ctx *transferContext,
 	connector *connector,
 	metrics *metrics,
 	clientConn, serverConn *interceptor.PGConn,
 ) (_ *interceptor.PGConn, retErr error) {
+	__antithesis_instrumentation__.Notify(21160)
 	ctx.markRecoverable(true)
 
-	// Context was cancelled.
 	if ctx.Err() != nil {
+		__antithesis_instrumentation__.Notify(21169)
 		return nil, ctx.Err()
+	} else {
+		__antithesis_instrumentation__.Notify(21170)
 	}
+	__antithesis_instrumentation__.Notify(21161)
 
 	transferKey := uuid.MakeV4().String()
 
-	// Send the SHOW TRANSFER STATE statement. At this point, connection is
-	// non-recoverable because the message has already been sent to the server.
 	ctx.markRecoverable(false)
 	if err := runShowTransferState(serverConn, transferKey); err != nil {
+		__antithesis_instrumentation__.Notify(21171)
 		return nil, errors.Wrap(err, "sending transfer request")
+	} else {
+		__antithesis_instrumentation__.Notify(21172)
 	}
+	__antithesis_instrumentation__.Notify(21162)
 
 	transferErr, state, revivalToken, err := waitForShowTransferState(
 		ctx, serverConn.ToFrontendConn(), clientConn, transferKey, metrics)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21173)
 		return nil, errors.Wrap(err, "waiting for transfer state")
+	} else {
+		__antithesis_instrumentation__.Notify(21174)
 	}
+	__antithesis_instrumentation__.Notify(21163)
 
-	// Failures after this point are recoverable, and connections should not be
-	// terminated.
 	ctx.markRecoverable(true)
 
-	// If we consumed until ReadyForQuery without errors, but the transfer state
-	// response returns an error, we could still resume the connection, but the
-	// transfer process will need to be aborted.
-	//
-	// This case may happen pretty frequently (e.g. open transactions, temporary
-	// tables, etc.).
 	if transferErr != "" {
+		__antithesis_instrumentation__.Notify(21175)
 		return nil, errors.Newf("%s", transferErr)
+	} else {
+		__antithesis_instrumentation__.Notify(21176)
 	}
+	__antithesis_instrumentation__.Notify(21164)
 
-	// Connect to a new SQL pod.
-	//
-	// TODO(jaylim-crl): There is a possibility where the same pod will get
-	// selected. Some ideas to solve this: pass in the remote address of
-	// serverConn to avoid choosing that pod, or maybe a filter callback?
-	// We can also consider adding a target pod as an argument to
-	// TransferConnection. That way a central component gets to choose where the
-	// connections go.
 	connectFn := connector.OpenTenantConnWithToken
 	if transferConnectionConnectorTestHook != nil {
+		__antithesis_instrumentation__.Notify(21177)
 		connectFn = transferConnectionConnectorTestHook
+	} else {
+		__antithesis_instrumentation__.Notify(21178)
 	}
+	__antithesis_instrumentation__.Notify(21165)
 	netConn, err := connectFn(ctx, revivalToken)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21179)
 		return nil, errors.Wrap(err, "opening connection")
+	} else {
+		__antithesis_instrumentation__.Notify(21180)
 	}
+	__antithesis_instrumentation__.Notify(21166)
 	defer func() {
+		__antithesis_instrumentation__.Notify(21181)
 		if retErr != nil {
+			__antithesis_instrumentation__.Notify(21182)
 			netConn.Close()
+		} else {
+			__antithesis_instrumentation__.Notify(21183)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(21167)
 	newServerConn := interceptor.NewPGConn(netConn)
 
-	// Deserialize session state within the new SQL pod.
 	if err := runAndWaitForDeserializeSession(
 		ctx, newServerConn.ToFrontendConn(), state,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(21184)
 		return nil, errors.Wrap(err, "deserializing session")
+	} else {
+		__antithesis_instrumentation__.Notify(21185)
 	}
+	__antithesis_instrumentation__.Notify(21168)
 
 	return newServerConn, nil
 }
 
-// isSafeTransferPointLocked returns true if we're at a point where we're safe
-// to transfer, and false otherwise.
 var isSafeTransferPointLocked = func(request *processor, response *processor) bool {
-	// Three conditions when evaluating a safe transfer point:
-	//   1. The last message sent to the SQL pod was a Sync(S) or SimpleQuery(Q),
-	//      and a ReadyForQuery(Z) has been received after.
-	//   2. The last message sent to the SQL pod was a CopyDone(c), and a
-	//      ReadyForQuery(Z) has been received after.
-	//   3. The last message sent to the SQL pod was a CopyFail(f), and a
-	//      ReadyForQuery(Z) has been received after.
+	__antithesis_instrumentation__.Notify(21186)
 
-	// The conditions above are not possible if this is true. They cannot be
-	// equal since the same logical clock is used (except during initialization).
 	if request.mu.lastMessageTransferredAt > response.mu.lastMessageTransferredAt {
+		__antithesis_instrumentation__.Notify(21188)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(21189)
 	}
+	__antithesis_instrumentation__.Notify(21187)
 
-	// We need to check zero values here to handle the initialization case
-	// since we would still want to be able to transfer connections which have
-	// not made any queries to the server.
 	switch pgwirebase.ClientMessageType(request.mu.lastMessageType) {
 	case pgwirebase.ClientMessageType(0),
 		pgwirebase.ClientMsgSync,
 		pgwirebase.ClientMsgSimpleQuery,
 		pgwirebase.ClientMsgCopyDone,
 		pgwirebase.ClientMsgCopyFail:
+		__antithesis_instrumentation__.Notify(21190)
 
 		serverMsg := pgwirebase.ServerMessageType(response.mu.lastMessageType)
-		return serverMsg == pgwirebase.ServerMsgReady || serverMsg == pgwirebase.ServerMessageType(0)
+		return serverMsg == pgwirebase.ServerMsgReady || func() bool {
+			__antithesis_instrumentation__.Notify(21192)
+			return serverMsg == pgwirebase.ServerMessageType(0) == true
+		}() == true
 	default:
+		__antithesis_instrumentation__.Notify(21191)
 		return false
 	}
 }
 
-// runShowTransferState sends a SHOW TRANSFER STATE query with the input
-// transferKey to the given writer. The transferKey will be used to uniquely
-// identify the request when parsing the response messages in
-// waitForShowTransferState.
-//
-// Unlike runAndWaitForDeserializeSession, we split the SHOW TRANSFER STATE
-// operation into `run` and `wait` since doing so allows us to send the query
-// ahead of time.
 var runShowTransferState = func(w io.Writer, transferKey string) error {
+	__antithesis_instrumentation__.Notify(21193)
 	return writeQuery(w, "SHOW TRANSFER STATE WITH '%s'", transferKey)
 }
 
-// waitForShowTransferState retrieves the transfer state from the SQL pod
-// through SHOW TRANSFER STATE WITH 'key'. It is assumed that the last message
-// from the server was ReadyForQuery, so the server is ready to accept a query.
-// Since ReadyForQuery may be for a previous pipelined query, this handles the
-// forwarding of messages back to the client in case we don't see our state yet.
-//
-// metrics is optional, and if not nil, it will be used to record the transfer
-// response message size in ConnMigrationTransferResponseMessageSize.
-//
-// WARNING: When using this, we assume that no other goroutines are using both
-// serverConn and clientConn. In the context of a transfer, the response
-// processor must be blocked to avoid concurrent reads from serverConn.
 var waitForShowTransferState = func(
 	ctx context.Context,
 	serverConn *interceptor.FrontendConn,
@@ -360,31 +334,23 @@ var waitForShowTransferState = func(
 	transferKey string,
 	metrics *metrics,
 ) (transferErr string, state string, revivalToken string, retErr error) {
-	// Wait for a response that looks like the following:
-	//
-	//   error | session_state_base64 | session_revival_token_base64 | transfer_key
-	// --------+----------------------+------------------------------+---------------
-	//   NULL  | .................... | ............................ | <transferKey>
-	// (1 row)
-	//
-	// Postgres messages always come in the following order for the
-	// SHOW TRANSFER STATE WITH '<transferKey>' query:
-	//   1. RowDescription
-	//   2. DataRow
-	//   3. CommandComplete
-	//   4. ReadyForQuery
+	__antithesis_instrumentation__.Notify(21194)
 
-	// 1. Wait for the relevant RowDescription.
 	if err := waitForSmallRowDescription(
 		ctx,
 		serverConn,
 		clientConn,
 		func(msg *pgproto3.RowDescription) bool {
-			// Do we have the right number of columns?
+			__antithesis_instrumentation__.Notify(21199)
+
 			if len(msg.Fields) != 4 {
+				__antithesis_instrumentation__.Notify(21202)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(21203)
 			}
-			// Do the names of the columns match?
+			__antithesis_instrumentation__.Notify(21200)
+
 			var transferStateCols = []string{
 				"error",
 				"session_state_base64",
@@ -392,300 +358,379 @@ var waitForShowTransferState = func(
 				"transfer_key",
 			}
 			for i, col := range transferStateCols {
+				__antithesis_instrumentation__.Notify(21204)
 				if string(msg.Fields[i].Name) != col {
+					__antithesis_instrumentation__.Notify(21205)
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(21206)
 				}
 			}
+			__antithesis_instrumentation__.Notify(21201)
 			return true
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(21207)
 		return "", "", "", errors.Wrap(err, "waiting for RowDescription")
+	} else {
+		__antithesis_instrumentation__.Notify(21208)
 	}
+	__antithesis_instrumentation__.Notify(21195)
 
-	// 2. Read DataRow.
 	if err := expectDataRow(ctx, serverConn, func(msg *pgproto3.DataRow, size int) bool {
-		// This has to be 4 since we validated RowDescription earlier.
+		__antithesis_instrumentation__.Notify(21209)
+
 		if len(msg.Values) != 4 {
+			__antithesis_instrumentation__.Notify(21213)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(21214)
 		}
+		__antithesis_instrumentation__.Notify(21210)
 
-		// Validate transfer key. It is possible that the end-user uses the SHOW
-		// TRANSFER STATE WITH 'transfer_key' statement, but that isn't designed
-		// for external usage, so it is fine to just terminate here if the
-		// transfer key does not match.
 		if string(msg.Values[3]) != transferKey {
+			__antithesis_instrumentation__.Notify(21215)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(21216)
 		}
+		__antithesis_instrumentation__.Notify(21211)
 
-		// NOTE: We have to cast to string and copy here since the slice
-		// referenced in msg will no longer be valid once we read the next pgwire
-		// message.
 		transferErr, state, revivalToken = string(msg.Values[0]), string(msg.Values[1]), string(msg.Values[2])
 
-		// Since the DataRow is valid, record response message size.
 		if metrics != nil {
+			__antithesis_instrumentation__.Notify(21217)
 			metrics.ConnMigrationTransferResponseMessageSize.RecordValue(int64(size))
+		} else {
+			__antithesis_instrumentation__.Notify(21218)
 		}
+		__antithesis_instrumentation__.Notify(21212)
 		return true
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(21219)
 		return "", "", "", errors.Wrap(err, "expecting DataRow")
+	} else {
+		__antithesis_instrumentation__.Notify(21220)
 	}
+	__antithesis_instrumentation__.Notify(21196)
 
-	// 3. Read CommandComplete.
 	if err := expectCommandComplete(ctx, serverConn, "SHOW TRANSFER STATE 1"); err != nil {
+		__antithesis_instrumentation__.Notify(21221)
 		return "", "", "", errors.Wrap(err, "expecting CommandComplete")
+	} else {
+		__antithesis_instrumentation__.Notify(21222)
 	}
+	__antithesis_instrumentation__.Notify(21197)
 
-	// 4. Read ReadyForQuery.
 	if err := expectReadyForQuery(ctx, serverConn); err != nil {
+		__antithesis_instrumentation__.Notify(21223)
 		return "", "", "", errors.Wrap(err, "expecting ReadyForQuery")
+	} else {
+		__antithesis_instrumentation__.Notify(21224)
 	}
+	__antithesis_instrumentation__.Notify(21198)
 
 	return transferErr, state, revivalToken, nil
 }
 
-// runAndWaitForDeserializeSession deserializes state into the SQL pod through
-// crdb_internal.deserialize_session. It is assumed that the last message from
-// the server was ReadyForQuery, so the server is ready to accept a query.
-//
-// This is meant to be used with a new connection, and nothing needs to be
-// forwarded back to the client.
-//
-// WARNING: When using this, we assume that no other goroutines are using both
-// serverConn and clientConn.
 var runAndWaitForDeserializeSession = func(
 	ctx context.Context, serverConn *interceptor.FrontendConn, state string,
 ) error {
-	// Send deserialization query.
+	__antithesis_instrumentation__.Notify(21225)
+
 	if err := writeQuery(serverConn,
 		"SELECT crdb_internal.deserialize_session(decode('%s', 'base64'))", state); err != nil {
+		__antithesis_instrumentation__.Notify(21231)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(21232)
 	}
+	__antithesis_instrumentation__.Notify(21226)
 
-	// Wait for a response that looks like the following:
-	//
-	//   crdb_internal.deserialize_session
-	// -------------------------------------
-	//                 true
-	// (1 row)
-	//
-	// Postgres messages always come in the following order for the
-	// deserialize_session query:
-	//   1. RowDescription
-	//   2. DataRow
-	//   3. CommandComplete
-	//   4. ReadyForQuery
-
-	// 1. Read RowDescription. We reuse waitFor here for convenience when we are
-	//    really expecting instead. This is fine because we only deserialize a
-	//    session for a new connection which hasn't been handed off to the user,
-	//    so we can guarantee that there won't be pipelined queries.
 	if err := waitForSmallRowDescription(
 		ctx,
 		serverConn,
 		&errWriter{},
 		func(msg *pgproto3.RowDescription) bool {
-			return len(msg.Fields) == 1 &&
-				string(msg.Fields[0].Name) == "crdb_internal.deserialize_session"
+			__antithesis_instrumentation__.Notify(21233)
+			return len(msg.Fields) == 1 && func() bool {
+				__antithesis_instrumentation__.Notify(21234)
+				return string(msg.Fields[0].Name) == "crdb_internal.deserialize_session" == true
+			}() == true
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(21235)
 		return errors.Wrap(err, "expecting RowDescription")
+	} else {
+		__antithesis_instrumentation__.Notify(21236)
 	}
+	__antithesis_instrumentation__.Notify(21227)
 
-	// 2. Read DataRow.
 	if err := expectDataRow(ctx, serverConn, func(msg *pgproto3.DataRow, _ int) bool {
-		return len(msg.Values) == 1 && string(msg.Values[0]) == "t"
+		__antithesis_instrumentation__.Notify(21237)
+		return len(msg.Values) == 1 && func() bool {
+			__antithesis_instrumentation__.Notify(21238)
+			return string(msg.Values[0]) == "t" == true
+		}() == true
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(21239)
 		return errors.Wrap(err, "expecting DataRow")
+	} else {
+		__antithesis_instrumentation__.Notify(21240)
 	}
+	__antithesis_instrumentation__.Notify(21228)
 
-	// 3. Read CommandComplete.
 	if err := expectCommandComplete(ctx, serverConn, "SELECT 1"); err != nil {
+		__antithesis_instrumentation__.Notify(21241)
 		return errors.Wrap(err, "expecting CommandComplete")
+	} else {
+		__antithesis_instrumentation__.Notify(21242)
 	}
+	__antithesis_instrumentation__.Notify(21229)
 
-	// 4. Read ReadyForQuery.
 	if err := expectReadyForQuery(ctx, serverConn); err != nil {
+		__antithesis_instrumentation__.Notify(21243)
 		return errors.Wrap(err, "expecting ReadyForQuery")
+	} else {
+		__antithesis_instrumentation__.Notify(21244)
 	}
+	__antithesis_instrumentation__.Notify(21230)
 
 	return nil
 }
 
-// writeQuery writes a SimpleQuery to the given writer w.
 func writeQuery(w io.Writer, format string, a ...interface{}) error {
+	__antithesis_instrumentation__.Notify(21245)
 	query := &pgproto3.Query{String: fmt.Sprintf(format, a...)}
 	_, err := w.Write(query.Encode(nil))
 	return err
 }
 
-// waitForSmallRowDescription waits until the next message from serverConn
-// is a *small* RowDescription message (i.e. within 4K bytes), and one that
-// passes matchFn. When that happens, this returns nil.
-//
-// For all other messages (i.e. non RowDescription or large messages), they will
-// be forwarded to clientConn. One exception to this would be the ErrorResponse
-// message, which will result in an error since we're in an ambiguous state.
-// The ErrorResponse message may be for a pipelined query, or the RowDescription
-// message that we're waiting.
 func waitForSmallRowDescription(
 	ctx context.Context,
 	serverConn *interceptor.FrontendConn,
 	clientConn io.Writer,
 	matchFn func(*pgproto3.RowDescription) bool,
 ) error {
-	// Since we're waiting for the first message that matches the given
-	// condition, we're going to loop here until we find one.
+	__antithesis_instrumentation__.Notify(21246)
+
 	for {
+		__antithesis_instrumentation__.Notify(21247)
 		if ctx.Err() != nil {
+			__antithesis_instrumentation__.Notify(21255)
 			return ctx.Err()
+		} else {
+			__antithesis_instrumentation__.Notify(21256)
 		}
+		__antithesis_instrumentation__.Notify(21248)
 
 		typ, size, err := serverConn.PeekMsg()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(21257)
 			return errors.Wrap(err, "peeking message")
+		} else {
+			__antithesis_instrumentation__.Notify(21258)
 		}
+		__antithesis_instrumentation__.Notify(21249)
 
-		// We don't know if the ErrorResponse is for the expected RowDescription
-		// or a previous pipelined query, so return an error.
 		if typ == pgwirebase.ServerMsgErrorResponse {
-			// Error messages are small, so read for debugging purposes.
+			__antithesis_instrumentation__.Notify(21259)
+
 			msg, err := serverConn.ReadMsg()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(21261)
 				return errors.Wrap(err, "ambiguous ErrorResponse")
+			} else {
+				__antithesis_instrumentation__.Notify(21262)
 			}
+			__antithesis_instrumentation__.Notify(21260)
 			return errors.Newf("ambiguous ErrorResponse: %v", jsonOrRaw(msg))
+		} else {
+			__antithesis_instrumentation__.Notify(21263)
 		}
+		__antithesis_instrumentation__.Notify(21250)
 
-		// Messages are intended for the client in two cases:
-		//   1. We have not seen a RowDescription message yet
-		//   2. Message was too large. This function only expects a few columns.
-		//
-		// This is mostly an optimization, and there's no point reading such
-		// messages into memory, so we'll just forward them back to the client
-		// right away.
-		const maxSmallMsgSize = 1 << 12 // 4KB
-		if typ != pgwirebase.ServerMsgRowDescription || size > maxSmallMsgSize {
+		const maxSmallMsgSize = 1 << 12
+		if typ != pgwirebase.ServerMsgRowDescription || func() bool {
+			__antithesis_instrumentation__.Notify(21264)
+			return size > maxSmallMsgSize == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(21265)
 			if _, err := serverConn.ForwardMsg(clientConn); err != nil {
+				__antithesis_instrumentation__.Notify(21267)
 				return errors.Wrap(err, "forwarding message")
+			} else {
+				__antithesis_instrumentation__.Notify(21268)
 			}
+			__antithesis_instrumentation__.Notify(21266)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(21269)
 		}
+		__antithesis_instrumentation__.Notify(21251)
 
 		msg, err := serverConn.ReadMsg()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(21270)
 			return errors.Wrap(err, "reading RowDescription")
+		} else {
+			__antithesis_instrumentation__.Notify(21271)
 		}
+		__antithesis_instrumentation__.Notify(21252)
 
 		pgMsg, ok := msg.(*pgproto3.RowDescription)
 		if !ok {
-			// This case will not occur since have validated the type earlier.
+			__antithesis_instrumentation__.Notify(21272)
+
 			return errors.Newf("unexpected message: %v", jsonOrRaw(msg))
+		} else {
+			__antithesis_instrumentation__.Notify(21273)
 		}
+		__antithesis_instrumentation__.Notify(21253)
 
-		// We have found our desired RowDescription.
 		if matchFn(pgMsg) {
+			__antithesis_instrumentation__.Notify(21274)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(21275)
 		}
+		__antithesis_instrumentation__.Notify(21254)
 
-		// Matching fails, so forward the message back to the client, and
-		// continue searching.
 		if _, err := clientConn.Write(msg.Encode(nil)); err != nil {
+			__antithesis_instrumentation__.Notify(21276)
 			return errors.Wrap(err, "writing message")
+		} else {
+			__antithesis_instrumentation__.Notify(21277)
 		}
 	}
 }
 
-// expectDataRow expects that the next message from serverConn is a DataRow
-// message. If the next message is a DataRow message, validateFn will be called
-// to validate the contents. This function will return an error if we don't see
-// a DataRow message or the validation failed.
-//
-// WARNING: Use this with care since this reads the entire message into memory.
-// Unlike the other expectX methods, DataRow messages may be large, and this
-// does not check for that. We are currently only using this for the SHOW
-// TRANSFER and crdb_internal.deserialize_session() statements, and they both
-// have been vetted. The former's size will be guarded behind a cluster setting,
-// whereas for the latter, the response is expected to be small.
 func expectDataRow(
 	ctx context.Context,
 	serverConn *interceptor.FrontendConn,
 	validateFn func(*pgproto3.DataRow, int) bool,
 ) error {
+	__antithesis_instrumentation__.Notify(21278)
 	if ctx.Err() != nil {
+		__antithesis_instrumentation__.Notify(21284)
 		return ctx.Err()
+	} else {
+		__antithesis_instrumentation__.Notify(21285)
 	}
+	__antithesis_instrumentation__.Notify(21279)
 	_, size, err := serverConn.PeekMsg()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21286)
 		return errors.Wrap(err, "peeking message")
+	} else {
+		__antithesis_instrumentation__.Notify(21287)
 	}
+	__antithesis_instrumentation__.Notify(21280)
 	msg, err := serverConn.ReadMsg()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21288)
 		return errors.Wrap(err, "reading message")
+	} else {
+		__antithesis_instrumentation__.Notify(21289)
 	}
+	__antithesis_instrumentation__.Notify(21281)
 	pgMsg, ok := msg.(*pgproto3.DataRow)
 	if !ok {
+		__antithesis_instrumentation__.Notify(21290)
 		return errors.Newf("unexpected message: %v", jsonOrRaw(msg))
+	} else {
+		__antithesis_instrumentation__.Notify(21291)
 	}
+	__antithesis_instrumentation__.Notify(21282)
 	if !validateFn(pgMsg, size) {
+		__antithesis_instrumentation__.Notify(21292)
 		return errors.Newf("validation failed for message: %v", jsonOrRaw(msg))
+	} else {
+		__antithesis_instrumentation__.Notify(21293)
 	}
+	__antithesis_instrumentation__.Notify(21283)
 	return nil
 }
 
-// expectCommandComplete expects that the next message from serverConn is a
-// CommandComplete message with the input tag, and returns an error if it isn't.
 func expectCommandComplete(
 	ctx context.Context, serverConn *interceptor.FrontendConn, tag string,
 ) error {
+	__antithesis_instrumentation__.Notify(21294)
 	if ctx.Err() != nil {
+		__antithesis_instrumentation__.Notify(21298)
 		return ctx.Err()
+	} else {
+		__antithesis_instrumentation__.Notify(21299)
 	}
+	__antithesis_instrumentation__.Notify(21295)
 	msg, err := serverConn.ReadMsg()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21300)
 		return errors.Wrap(err, "reading message")
+	} else {
+		__antithesis_instrumentation__.Notify(21301)
 	}
+	__antithesis_instrumentation__.Notify(21296)
 	pgMsg, ok := msg.(*pgproto3.CommandComplete)
-	if !ok || string(pgMsg.CommandTag) != tag {
+	if !ok || func() bool {
+		__antithesis_instrumentation__.Notify(21302)
+		return string(pgMsg.CommandTag) != tag == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(21303)
 		return errors.Newf("unexpected message: %v", jsonOrRaw(msg))
+	} else {
+		__antithesis_instrumentation__.Notify(21304)
 	}
+	__antithesis_instrumentation__.Notify(21297)
 	return nil
 }
 
-// expectReadyForQuery expects that the next message from serverConn is a
-// ReadyForQuery message, and returns an error if it isn't.
 func expectReadyForQuery(ctx context.Context, serverConn *interceptor.FrontendConn) error {
+	__antithesis_instrumentation__.Notify(21305)
 	if ctx.Err() != nil {
+		__antithesis_instrumentation__.Notify(21309)
 		return ctx.Err()
+	} else {
+		__antithesis_instrumentation__.Notify(21310)
 	}
+	__antithesis_instrumentation__.Notify(21306)
 	msg, err := serverConn.ReadMsg()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21311)
 		return errors.Wrap(err, "reading message")
+	} else {
+		__antithesis_instrumentation__.Notify(21312)
 	}
+	__antithesis_instrumentation__.Notify(21307)
 	_, ok := msg.(*pgproto3.ReadyForQuery)
 	if !ok {
+		__antithesis_instrumentation__.Notify(21313)
 		return errors.Newf("unexpected message: %v", jsonOrRaw(msg))
+	} else {
+		__antithesis_instrumentation__.Notify(21314)
 	}
+	__antithesis_instrumentation__.Notify(21308)
 	return nil
 }
 
-// jsonOrRaw returns msg in a json string representation if it can be marshaled
-// into one, or in a raw struct string representation otherwise. Only used for
-// displaying better error messages.
 func jsonOrRaw(msg pgproto3.BackendMessage) string {
+	__antithesis_instrumentation__.Notify(21315)
 	m, err := json.Marshal(msg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21317)
 		return fmt.Sprintf("%v", msg)
+	} else {
+		__antithesis_instrumentation__.Notify(21318)
 	}
+	__antithesis_instrumentation__.Notify(21316)
 	return string(m)
 }
 
 var _ io.Writer = &errWriter{}
 
-// errWriter is an io.Writer that fails whenever a Write call is made.
 type errWriter struct{}
 
-// Write implements the io.Writer interface.
 func (w *errWriter) Write(p []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(21319)
 	return 0, errors.AssertionFailedf("unexpected Write call")
 }

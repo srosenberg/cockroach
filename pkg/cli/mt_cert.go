@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -20,8 +12,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// mtCreateTenantCACertCmd generates a tenant CA certificate and stores it
-// in the cert directory.
 var mtCreateTenantCACertCmd = &cobra.Command{
 	Use:   "create-tenant-client-ca --certs-dir=<path to cockroach certs dir> --ca-key=<path>",
 	Short: "create tenant client CA certificate and key",
@@ -34,6 +24,7 @@ If the CA certificate exists and --overwrite is true, the new CA certificate is 
 `,
 	Args: cobra.NoArgs,
 	RunE: clierrorplus.MaybeDecorateError(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(33401)
 		return errors.Wrap(
 			security.CreateTenantCAPair(
 				certCtx.certsDir,
@@ -46,8 +37,6 @@ If the CA certificate exists and --overwrite is true, the new CA certificate is 
 	}),
 }
 
-// A createClientCert command generates a client certificate and stores it
-// in the cert directory under <username>.crt and key under <username>.key.
 var mtCreateTenantCertCmd = &cobra.Command{
 	Use:   "create-tenant-client --certs-dir=<path to cockroach certs dir> --ca-key=<path-to-ca-key> <tenant-id> <host 1> <host 2> ... <host N>",
 	Short: "create tenant client certificate and key",
@@ -66,19 +55,16 @@ If no server addresses are passed, then a default list containing 127.0.0.1, ::1
 	Args: cobra.MinimumNArgs(1),
 	RunE: clierrorplus.MaybeDecorateError(
 		func(cmd *cobra.Command, args []string) error {
+			__antithesis_instrumentation__.Notify(33402)
 			tenantIDs := args[0]
 
 			var hostAddrs []string
 			if len(args) > 1 {
+				__antithesis_instrumentation__.Notify(33406)
 				hostAddrs = args[1:]
 			} else {
-				// Default list.
-				// We need this default because of this CI problem:
-				// https://github.com/cockroachdb/cockroach/issues/71387
-				//
-				// If/when this issue is fixed, the command can be updated to
-				// not provide a default any more (which would be less error
-				// prone.)
+				__antithesis_instrumentation__.Notify(33407)
+
 				hostAddrs = []string{
 					"127.0.0.1",
 					"::1",
@@ -87,11 +73,16 @@ If no server addresses are passed, then a default list containing 127.0.0.1, ::1
 				}
 				fmt.Fprintf(stderr, "Warning: no server address specified. Using %+v.\n", hostAddrs)
 			}
+			__antithesis_instrumentation__.Notify(33403)
 
 			tenantID, err := strconv.ParseUint(tenantIDs, 10, 64)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(33408)
 				return errors.Wrapf(err, "%s is invalid uint64", tenantIDs)
+			} else {
+				__antithesis_instrumentation__.Notify(33409)
 			}
+			__antithesis_instrumentation__.Notify(33404)
 			cp, err := security.CreateTenantPair(
 				certCtx.certsDir,
 				certCtx.caKey,
@@ -101,19 +92,20 @@ If no server addresses are passed, then a default list containing 127.0.0.1, ::1
 				hostAddrs,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(33410)
 				return errors.Wrap(
 					err,
 					"failed to generate tenant client certificate and key")
+			} else {
+				__antithesis_instrumentation__.Notify(33411)
 			}
+			__antithesis_instrumentation__.Notify(33405)
 			return errors.Wrap(
 				security.WriteTenantPair(certCtx.certsDir, cp, certCtx.overwriteFiles),
 				"failed to write tenant client certificate and key")
 		}),
 }
 
-// A mtCreateTenantSigningCertCmd command generates a signing
-// certificate and stores it in the cert directory under
-// tenant-signing.<ID>.crt and key under tenant-signing.<ID>.key.
 var mtCreateTenantSigningCertCmd = &cobra.Command{
 	Use:   "create-tenant-signing --certs-dir=<path to cockroach certs dir> <tenant-id>",
 	Short: "create tenant signing certificate and key",
@@ -126,11 +118,16 @@ If --overwrite is true, any existing files are overwritten.
 	Args: cobra.ExactArgs(1),
 	RunE: clierrorplus.MaybeDecorateError(
 		func(cmd *cobra.Command, args []string) error {
+			__antithesis_instrumentation__.Notify(33412)
 			tenantIDs := args[0]
 			tenantID, err := strconv.ParseUint(tenantIDs, 10, 64)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(33414)
 				return errors.Wrapf(err, "%s is invalid uint64", tenantIDs)
+			} else {
+				__antithesis_instrumentation__.Notify(33415)
 			}
+			__antithesis_instrumentation__.Notify(33413)
 			return errors.Wrap(
 				security.CreateTenantSigningPair(
 					certCtx.certsDir,

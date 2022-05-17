@@ -1,17 +1,9 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package spanconfigsqltranslator provides logic to translate sql descriptors
 // and their corresponding zone configurations to constituent spans and span
 // configurations.
 package spanconfigsqltranslator
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,10 +23,8 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// SQLTranslator implements the spanconfig.SQLTranslator interface.
 var _ spanconfig.SQLTranslator = &SQLTranslator{}
 
-// SQLTranslator is the concrete implementation of spanconfig.SQLTranslator.
 type SQLTranslator struct {
 	ptsProvider protectedts.Provider
 	codec       keys.SQLCodec
@@ -44,20 +34,23 @@ type SQLTranslator struct {
 	descsCol *descs.Collection
 }
 
-// Factory is used to construct transaction-scoped SQLTranslators.
 type Factory struct {
 	ptsProvider protectedts.Provider
 	codec       keys.SQLCodec
 	knobs       *spanconfig.TestingKnobs
 }
 
-// NewFactory constructs and returns a Factory.
 func NewFactory(
 	ptsProvider protectedts.Provider, codec keys.SQLCodec, knobs *spanconfig.TestingKnobs,
 ) *Factory {
+	__antithesis_instrumentation__.Notify(241008)
 	if knobs == nil {
+		__antithesis_instrumentation__.Notify(241010)
 		knobs = &spanconfig.TestingKnobs{}
+	} else {
+		__antithesis_instrumentation__.Notify(241011)
 	}
+	__antithesis_instrumentation__.Notify(241009)
 	return &Factory{
 		ptsProvider: ptsProvider,
 		codec:       codec,
@@ -65,10 +58,8 @@ func NewFactory(
 	}
 }
 
-// NewSQLTranslator constructs and returns a transaction-scoped
-// spanconfig.SQLTranslator. The caller must ensure that the collection passed
-// in is associated with the supplied transaction.
 func (f *Factory) NewSQLTranslator(txn *kv.Txn, descsCol *descs.Collection) *SQLTranslator {
+	__antithesis_instrumentation__.Notify(241012)
 	return &SQLTranslator{
 		ptsProvider: f.ptsProvider,
 		codec:       f.codec,
@@ -78,145 +69,192 @@ func (f *Factory) NewSQLTranslator(txn *kv.Txn, descsCol *descs.Collection) *SQL
 	}
 }
 
-// Translate is part of the spanconfig.SQLTranslator interface.
 func (s *SQLTranslator) Translate(
 	ctx context.Context, ids descpb.IDs, generateSystemSpanConfigurations bool,
 ) (records []spanconfig.Record, _ hlc.Timestamp, _ error) {
-	// Construct an in-memory view of the system.protected_ts_records table to
-	// populate the protected timestamp field on the emitted span configs.
-	//
-	// TODO(adityamaru): This does a full table scan of the
-	// `system.protected_ts_records` table. While this is not assumed to be very
-	// expensive given the limited number of concurrent users of the protected
-	// timestamp subsystem, and the internal limits to limit the size of this
-	// table, there is scope for improvement in the future. One option could be
-	// a rangefeed-backed materialized view of the system table.
+	__antithesis_instrumentation__.Notify(241013)
+
 	ptsState, err := s.ptsProvider.GetState(ctx, s.txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241021)
 		return nil, hlc.Timestamp{}, errors.Wrap(err, "failed to get protected timestamp state")
+	} else {
+		__antithesis_instrumentation__.Notify(241022)
 	}
+	__antithesis_instrumentation__.Notify(241014)
 	ptsStateReader := spanconfig.NewProtectedTimestampStateReader(ctx, ptsState)
 
 	if generateSystemSpanConfigurations {
+		__antithesis_instrumentation__.Notify(241023)
 		records, err = s.generateSystemSpanConfigRecords(ptsStateReader)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241024)
 			return nil, hlc.Timestamp{}, errors.Wrap(err, "failed to generate SystemTarget records")
+		} else {
+			__antithesis_instrumentation__.Notify(241025)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(241026)
 	}
+	__antithesis_instrumentation__.Notify(241015)
 
-	// For every ID we want to translate, first expand it to descendant leaf
-	// IDs that have span configurations associated for them. We also
-	// de-duplicate leaf IDs to not generate redundant entries.
 	seen := make(map[descpb.ID]struct{})
 	var leafIDs descpb.IDs
 	for _, id := range ids {
+		__antithesis_instrumentation__.Notify(241027)
 		descendantLeafIDs, err := s.findDescendantLeafIDs(ctx, id, s.txn, s.descsCol)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241029)
 			return nil, hlc.Timestamp{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(241030)
 		}
+		__antithesis_instrumentation__.Notify(241028)
 		for _, descendantLeafID := range descendantLeafIDs {
+			__antithesis_instrumentation__.Notify(241031)
 			if _, found := seen[descendantLeafID]; !found {
+				__antithesis_instrumentation__.Notify(241032)
 				seen[descendantLeafID] = struct{}{}
 				leafIDs = append(leafIDs, descendantLeafID)
+			} else {
+				__antithesis_instrumentation__.Notify(241033)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(241016)
 
 	pseudoTableRecords, err := s.maybeGeneratePseudoTableRecords(ctx, s.txn, ids)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241034)
 		return nil, hlc.Timestamp{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(241035)
 	}
+	__antithesis_instrumentation__.Notify(241017)
 	records = append(records, pseudoTableRecords...)
 
 	scratchRangeRecord, err := s.maybeGenerateScratchRangeRecord(ctx, s.txn, ids)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241036)
 		return nil, hlc.Timestamp{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(241037)
 	}
+	__antithesis_instrumentation__.Notify(241018)
 	if !scratchRangeRecord.IsEmpty() {
+		__antithesis_instrumentation__.Notify(241038)
 		records = append(records, scratchRangeRecord)
+	} else {
+		__antithesis_instrumentation__.Notify(241039)
 	}
+	__antithesis_instrumentation__.Notify(241019)
 
-	// For every unique leaf ID, generate span configurations.
 	for _, leafID := range leafIDs {
+		__antithesis_instrumentation__.Notify(241040)
 		translatedRecords, err := s.generateSpanConfigurations(ctx, leafID, s.txn, s.descsCol, ptsStateReader)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241042)
 			return nil, hlc.Timestamp{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(241043)
 		}
+		__antithesis_instrumentation__.Notify(241041)
 		records = append(records, translatedRecords...)
 	}
+	__antithesis_instrumentation__.Notify(241020)
 
 	return records, s.txn.CommitTimestamp(), nil
 }
 
-// descLookupFlags is the set of look up flags used when fetching descriptors.
 var descLookupFlags = tree.CommonLookupFlags{
-	// We act on errors being surfaced when the descriptor being looked up is
-	// not found.
+
 	Required: true,
-	// We can (do) generate span configurations for dropped and offline tables.
+
 	IncludeDropped: true,
 	IncludeOffline: true,
-	// We want consistent reads.
+
 	AvoidLeased: true,
 }
 
-// generateSystemSpanConfigRecords is responsible for generating all the SpanConfigs
-// that apply to spanconfig.SystemTargets.
 func (s *SQLTranslator) generateSystemSpanConfigRecords(
 	ptsStateReader *spanconfig.ProtectedTimestampStateReader,
 ) ([]spanconfig.Record, error) {
+	__antithesis_instrumentation__.Notify(241044)
 	tenantPrefix := s.codec.TenantPrefix()
 	_, sourceTenantID, err := keys.DecodeTenantPrefix(tenantPrefix)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241048)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(241049)
 	}
+	__antithesis_instrumentation__.Notify(241045)
 	records := make([]spanconfig.Record, 0)
 
-	// Aggregate cluster target protections for the tenant.
 	clusterProtections := ptsStateReader.GetProtectionPoliciesForCluster()
 	if len(clusterProtections) != 0 {
+		__antithesis_instrumentation__.Notify(241050)
 		var systemTarget spanconfig.SystemTarget
 		var err error
 		if sourceTenantID == roachpb.SystemTenantID {
+			__antithesis_instrumentation__.Notify(241053)
 			systemTarget = spanconfig.MakeEntireKeyspaceTarget()
 		} else {
+			__antithesis_instrumentation__.Notify(241054)
 			systemTarget, err = spanconfig.MakeTenantKeyspaceTarget(sourceTenantID, sourceTenantID)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(241055)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(241056)
 			}
 		}
+		__antithesis_instrumentation__.Notify(241051)
 		clusterSystemRecord, err := spanconfig.MakeRecord(
 			spanconfig.MakeTargetFromSystemTarget(systemTarget),
 			roachpb.SpanConfig{GCPolicy: roachpb.GCPolicy{ProtectionPolicies: clusterProtections}})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241057)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(241058)
 		}
+		__antithesis_instrumentation__.Notify(241052)
 		records = append(records, clusterSystemRecord)
+	} else {
+		__antithesis_instrumentation__.Notify(241059)
 	}
+	__antithesis_instrumentation__.Notify(241046)
 
-	// Aggregate tenant target protections.
 	tenantProtections := ptsStateReader.GetProtectionPoliciesForTenants()
 	for _, protection := range tenantProtections {
+		__antithesis_instrumentation__.Notify(241060)
 		tenantProtection := protection
 		systemTarget, err := spanconfig.MakeTenantKeyspaceTarget(sourceTenantID, tenantProtection.GetTenantID())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241063)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(241064)
 		}
+		__antithesis_instrumentation__.Notify(241061)
 		tenantSystemRecord, err := spanconfig.MakeRecord(
 			spanconfig.MakeTargetFromSystemTarget(systemTarget),
 			roachpb.SpanConfig{GCPolicy: roachpb.GCPolicy{
 				ProtectionPolicies: tenantProtection.GetTenantProtections()}})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241065)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(241066)
 		}
+		__antithesis_instrumentation__.Notify(241062)
 		records = append(records, tenantSystemRecord)
 	}
+	__antithesis_instrumentation__.Notify(241047)
 	return records, nil
 }
 
-// generateSpanConfigurations generates the span configurations for the given
-// ID. The ID must belong to an object that has a span configuration associated
-// with it, i.e, it should either belong to a table or a named zone.
 func (s *SQLTranslator) generateSpanConfigurations(
 	ctx context.Context,
 	id descpb.ID,
@@ -224,73 +262,105 @@ func (s *SQLTranslator) generateSpanConfigurations(
 	descsCol *descs.Collection,
 	ptsStateReader *spanconfig.ProtectedTimestampStateReader,
 ) (_ []spanconfig.Record, err error) {
+	__antithesis_instrumentation__.Notify(241067)
 	if zonepb.IsNamedZoneID(uint32(id)) {
+		__antithesis_instrumentation__.Notify(241073)
 		return s.generateSpanConfigurationsForNamedZone(ctx, txn, id)
+	} else {
+		__antithesis_instrumentation__.Notify(241074)
 	}
+	__antithesis_instrumentation__.Notify(241068)
 
-	// We're dealing with a SQL object.
 	desc, err := descsCol.GetImmutableDescriptorByID(ctx, txn, id, descLookupFlags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241075)
 		if errors.Is(err, catalog.ErrDescriptorNotFound) {
-			return nil, nil // the descriptor has been deleted; nothing to do here
+			__antithesis_instrumentation__.Notify(241077)
+			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(241078)
 		}
+		__antithesis_instrumentation__.Notify(241076)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(241079)
 	}
-	if s.knobs.ExcludeDroppedDescriptorsFromLookup && desc.Dropped() {
-		return nil, nil // we're excluding this descriptor; nothing to do here
+	__antithesis_instrumentation__.Notify(241069)
+	if s.knobs.ExcludeDroppedDescriptorsFromLookup && func() bool {
+		__antithesis_instrumentation__.Notify(241080)
+		return desc.Dropped() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(241081)
+		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(241082)
 	}
+	__antithesis_instrumentation__.Notify(241070)
 
 	if desc.DescriptorType() != catalog.Table {
+		__antithesis_instrumentation__.Notify(241083)
 		return nil, errors.AssertionFailedf(
 			"can only generate span configurations for tables, but got %s", desc.DescriptorType(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(241084)
 	}
+	__antithesis_instrumentation__.Notify(241071)
 
 	table, ok := desc.(catalog.TableDescriptor)
 	if !ok {
+		__antithesis_instrumentation__.Notify(241085)
 		return nil, errors.AssertionFailedf(
 			"can only generate span configurations for tables, but got %s", desc.DescriptorType(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(241086)
 	}
+	__antithesis_instrumentation__.Notify(241072)
 	return s.generateSpanConfigurationsForTable(ctx, txn, table, ptsStateReader)
 }
 
-// generateSpanConfigurationsForNamedZone expects an ID corresponding to a named
-// zone and generates the span configurations for it.
 func (s *SQLTranslator) generateSpanConfigurationsForNamedZone(
 	ctx context.Context, txn *kv.Txn, id descpb.ID,
 ) ([]spanconfig.Record, error) {
+	__antithesis_instrumentation__.Notify(241087)
 	name, ok := zonepb.NamedZonesByID[uint32(id)]
 	if !ok {
+		__antithesis_instrumentation__.Notify(241093)
 		return nil, errors.AssertionFailedf("id %d does not belong to a named zone", id)
+	} else {
+		__antithesis_instrumentation__.Notify(241094)
 	}
+	__antithesis_instrumentation__.Notify(241088)
 
-	// Named zones other than RANGE DEFAULT are not a thing for secondary tenants.
-	if !s.codec.ForSystemTenant() && name != zonepb.DefaultZoneName {
+	if !s.codec.ForSystemTenant() && func() bool {
+		__antithesis_instrumentation__.Notify(241095)
+		return name != zonepb.DefaultZoneName == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(241096)
 		return nil,
 			errors.AssertionFailedf("secondary tenants do not have the notion of %s named zone", name)
+	} else {
+		__antithesis_instrumentation__.Notify(241097)
 	}
+	__antithesis_instrumentation__.Notify(241089)
 
 	var spans []roachpb.Span
 	switch name {
-	case zonepb.DefaultZoneName: // nothing to do.
+	case zonepb.DefaultZoneName:
+		__antithesis_instrumentation__.Notify(241098)
 	case zonepb.MetaZoneName:
+		__antithesis_instrumentation__.Notify(241099)
 		spans = append(spans, roachpb.Span{Key: keys.Meta1Span.Key, EndKey: keys.NodeLivenessSpan.Key})
 	case zonepb.LivenessZoneName:
+		__antithesis_instrumentation__.Notify(241100)
 		spans = append(spans, keys.NodeLivenessSpan)
 	case zonepb.TimeseriesZoneName:
+		__antithesis_instrumentation__.Notify(241101)
 		spans = append(spans, keys.TimeseriesSpan)
 	case zonepb.SystemZoneName:
-		// Add spans for the system range without the timeseries and
-		// liveness ranges, which are individually captured above.
-		//
-		// We also don't apply configurations over the SystemSpanConfigSpan; spans
-		// carved from this range have no data, instead, associated configurations
-		// for these spans have special meaning in `system.span_configurations`.
-		//
-		// Note that the NodeLivenessSpan sorts before the rest of the system
-		// keyspace, so the first span here starts at the end of the
-		// NodeLivenessSpan.
+		__antithesis_instrumentation__.Notify(241102)
+
 		spans = append(spans, roachpb.Span{
 			Key:    keys.NodeLivenessSpan.EndKey,
 			EndKey: keys.TimeseriesSpan.Key,
@@ -299,366 +369,411 @@ func (s *SQLTranslator) generateSpanConfigurationsForNamedZone(
 			Key:    keys.TimeseriesSpan.EndKey,
 			EndKey: keys.SystemSpanConfigSpan.Key,
 		})
-	case zonepb.TenantsZoneName: // nothing to do.
+	case zonepb.TenantsZoneName:
+		__antithesis_instrumentation__.Notify(241103)
 	default:
+		__antithesis_instrumentation__.Notify(241104)
 		return nil, errors.AssertionFailedf("unknown named zone config %s", name)
 	}
+	__antithesis_instrumentation__.Notify(241090)
 
 	zoneConfig, err := sql.GetHydratedZoneConfigForNamedZone(ctx, txn, s.codec, name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241105)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(241106)
 	}
+	__antithesis_instrumentation__.Notify(241091)
 	spanConfig := zoneConfig.AsSpanConfig()
 	var records []spanconfig.Record
 	for _, span := range spans {
+		__antithesis_instrumentation__.Notify(241107)
 		record, err := spanconfig.MakeRecord(spanconfig.MakeTargetFromSpan(span), spanConfig)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241109)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(241110)
 		}
+		__antithesis_instrumentation__.Notify(241108)
 		records = append(records, record)
 	}
+	__antithesis_instrumentation__.Notify(241092)
 	return records, nil
 }
 
-// generateSpanConfigurationsForTable generates the span configurations
-// corresponding to the given tableID. It uses a transactional view of
-// system.zones and system.descriptors to do so.
 func (s *SQLTranslator) generateSpanConfigurationsForTable(
 	ctx context.Context,
 	txn *kv.Txn,
 	table catalog.TableDescriptor,
 	ptsStateReader *spanconfig.ProtectedTimestampStateReader,
 ) ([]spanconfig.Record, error) {
-	// We don't want to create a record (and in-turn a split point) for a table
-	// descriptor that doesn't correspond to a physical table, as no data is
-	// stored in KV for such a table descriptor.
+	__antithesis_instrumentation__.Notify(241111)
+
 	if !table.IsPhysicalTable() {
+		__antithesis_instrumentation__.Notify(241118)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(241119)
 	}
+	__antithesis_instrumentation__.Notify(241112)
 
 	zone, err := sql.GetHydratedZoneConfigForTable(ctx, txn, s.codec, table.GetID())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241120)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(241121)
 	}
+	__antithesis_instrumentation__.Notify(241113)
 
 	isSystemDesc := catalog.IsSystemDescriptor(table)
 	tableStartKey := s.codec.TablePrefix(uint32(table.GetID()))
 	tableEndKey := tableStartKey.PrefixEnd()
 	tableSpanConfig := zone.AsSpanConfig()
 	if isSystemDesc {
-		// We enable rangefeeds for system tables; various internal subsystems
-		// (leveraging system tables) rely on rangefeeds to function.
-		tableSpanConfig.RangefeedEnabled = true
-		// We exclude system tables from strict GC enforcement, it's only really
-		// applicable to user tables.
-		tableSpanConfig.GCPolicy.IgnoreStrictEnforcement = true
-	}
+		__antithesis_instrumentation__.Notify(241122)
 
-	// Set the ProtectionPolicies on the table's SpanConfig to include protected
-	// timestamps that apply to the table, and its parent database.
+		tableSpanConfig.RangefeedEnabled = true
+
+		tableSpanConfig.GCPolicy.IgnoreStrictEnforcement = true
+	} else {
+		__antithesis_instrumentation__.Notify(241123)
+	}
+	__antithesis_instrumentation__.Notify(241114)
+
 	tableSpanConfig.GCPolicy.ProtectionPolicies = append(
 		ptsStateReader.GetProtectionPoliciesForSchemaObject(table.GetID()),
 		ptsStateReader.GetProtectionPoliciesForSchemaObject(table.GetParentID())...)
 
-	// Set whether the table's row data has been marked to be excluded from
-	// backups.
 	tableSpanConfig.ExcludeDataFromBackup = table.GetExcludeDataFromBackup()
 
 	records := make([]spanconfig.Record, 0)
 	if table.GetID() == keys.DescriptorTableID {
-		// We have some special handling for `system.descriptor` on account of
-		// it being the first non-empty table in every tenant's keyspace.
+		__antithesis_instrumentation__.Notify(241124)
+
 		if !s.codec.ForSystemTenant() {
-			// We start the span at the tenant prefix. This effectively installs
-			// the tenant's split boundary at /Tenant/<id> instead of
-			// /Tenant/<id>/Table/3. This doesn't really make a difference given
-			// there's no data within [/Tenant/<id>/ - /Tenant/<id>/Table/3),
-			// but looking at range boundaries, it's slightly less confusing
-			// this way.
+			__antithesis_instrumentation__.Notify(241126)
+
 			record, err := spanconfig.MakeRecord(
 				spanconfig.MakeTargetFromSpan(roachpb.Span{
 					Key:    s.codec.TenantPrefix(),
 					EndKey: tableEndKey,
 				}), tableSpanConfig)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(241128)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(241129)
 			}
+			__antithesis_instrumentation__.Notify(241127)
 			records = append(records, record)
 		} else {
-			// The same as above, except we have named ranges preceding
-			// `system.descriptor`. Not doing anything special here would mean
-			// splitting on /Table/3 instead of /Table/0 (pretty printed as
-			// /Table/SystemConfigSpan/Start), which is benign since there's no
-			// data under /Table/{0-2}. Still, doing it this way reduces the
-			// differences between the gossip-backed subsystem and this one --
-			// somewhat useful for understandability reasons and reducing the
-			// (tiny) re-splitting costs when switching between the two
-			// subsystems.
+			__antithesis_instrumentation__.Notify(241130)
+
 			record, err := spanconfig.MakeRecord(spanconfig.MakeTargetFromSpan(roachpb.Span{
 				Key:    keys.SystemConfigSpan.Key,
 				EndKey: tableEndKey,
 			}), tableSpanConfig)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(241132)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(241133)
 			}
+			__antithesis_instrumentation__.Notify(241131)
 			records = append(records, record)
 		}
+		__antithesis_instrumentation__.Notify(241125)
 
 		return records, nil
 
-		// TODO(irfansharif): There's an attack vector here that we haven't
-		// addressed satisfactorily. By splitting only on start keys of span
-		// configs, a malicious tenant could augment their reconciliation
-		// process to install configs starting much later in their addressable
-		// keyspace. This could induce KV to consider a range boundary that
-		// starts at the previous tenant's keyspace (albeit the tail end of it)
-		// and ending within the malicious tenant's one -- that's no good. We
-		// could do two things:
-		// (i)  Have each tenant install a span config that demarcates the end of
-		//      its keyspace (in our example the previous tenant would defensively
-		//      prevent leaking its user data through this hard boundary);
-		// (ii) Have KV enforce these hard boundaries in with keyspans that
-		//      straddle tenant keyspaces.
-		//
-		// Doing (ii) feels saner, and we already do something similar when
-		// seeding `system.span_configurations` for newly created tenants. We
-		// could have secondary tenants still govern span configurations over
-		// their keyspace, but we'd always split on the tenant boundary. For
-		// malicious tenants, the config we'd apply over that range would be the
-		// fallback one KV already uses for missing spans. For non-malicious
-		// tenants, it could either be the config for (i) `system.descriptor` as
-		// done above, or (ii) whatever the tenant's RANGE DEFAULT is.
-		//
-		// See #73749.
+	} else {
+		__antithesis_instrumentation__.Notify(241134)
 	}
+	__antithesis_instrumentation__.Notify(241115)
 
 	prevEndKey := tableStartKey
 	for i := range zone.SubzoneSpans {
-		// We need to prepend the tablePrefix to the spans stored inside the
-		// SubzoneSpans field because we store the stripped version there for
-		// historical reasons.
-		//
-		// NB: Re-using tableStartKey/prevEndKey here, or pulling out a
-		// variable, would be buggy -- the underlying buffer gets mutated by the
-		// append, throwing everything else off below.
+		__antithesis_instrumentation__.Notify(241135)
+
 		span := roachpb.Span{
 			Key:    append(s.codec.TablePrefix(uint32(table.GetID())), zone.SubzoneSpans[i].Key...),
 			EndKey: append(s.codec.TablePrefix(uint32(table.GetID())), zone.SubzoneSpans[i].EndKey...),
 		}
 
 		{
-			// The zone config code sets the EndKey to be nil before storing the
-			// proto if it is equal to `Key.PrefixEnd()`, so we bring it back if
-			// required.
+			__antithesis_instrumentation__.Notify(241140)
+
 			if zone.SubzoneSpans[i].EndKey == nil {
+				__antithesis_instrumentation__.Notify(241141)
 				span.EndKey = span.Key.PrefixEnd()
+			} else {
+				__antithesis_instrumentation__.Notify(241142)
 			}
 		}
+		__antithesis_instrumentation__.Notify(241136)
 
-		// If there is a "hole" in the spans covered by the subzones array we fill
-		// it using the parent zone configuration.
 		if !prevEndKey.Equal(span.Key) {
+			__antithesis_instrumentation__.Notify(241143)
 			record, err := spanconfig.MakeRecord(spanconfig.MakeTargetFromSpan(
 				roachpb.Span{Key: prevEndKey, EndKey: span.Key}), tableSpanConfig)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(241145)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(241146)
 			}
+			__antithesis_instrumentation__.Notify(241144)
 			records = append(records, record)
+		} else {
+			__antithesis_instrumentation__.Notify(241147)
 		}
+		__antithesis_instrumentation__.Notify(241137)
 
-		// Add an entry for the subzone.
 		subzoneSpanConfig := zone.Subzones[zone.SubzoneSpans[i].SubzoneIndex].Config.AsSpanConfig()
-		// Copy relevant fields that apply to the table's SpanConfig onto its
-		// SubzoneSpanConfig.
+
 		subzoneSpanConfig.GCPolicy.ProtectionPolicies = tableSpanConfig.GCPolicy.ProtectionPolicies[:]
 		subzoneSpanConfig.ExcludeDataFromBackup = tableSpanConfig.ExcludeDataFromBackup
-		if isSystemDesc { // same as above
+		if isSystemDesc {
+			__antithesis_instrumentation__.Notify(241148)
 			subzoneSpanConfig.RangefeedEnabled = true
 			subzoneSpanConfig.GCPolicy.IgnoreStrictEnforcement = true
+		} else {
+			__antithesis_instrumentation__.Notify(241149)
 		}
+		__antithesis_instrumentation__.Notify(241138)
 		record, err := spanconfig.MakeRecord(
 			spanconfig.MakeTargetFromSpan(roachpb.Span{Key: span.Key, EndKey: span.EndKey}), subzoneSpanConfig)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241150)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(241151)
 		}
+		__antithesis_instrumentation__.Notify(241139)
 		records = append(records, record)
 
 		prevEndKey = span.EndKey
 	}
+	__antithesis_instrumentation__.Notify(241116)
 
-	// If the last subzone span doesn't cover the entire table's keyspace then
-	// we cover the remaining key range with the table's zone configuration.
 	if !prevEndKey.Equal(tableEndKey) {
+		__antithesis_instrumentation__.Notify(241152)
 		record, err := spanconfig.MakeRecord(
 			spanconfig.MakeTargetFromSpan(roachpb.Span{Key: prevEndKey, EndKey: tableEndKey}), tableSpanConfig)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241154)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(241155)
 		}
+		__antithesis_instrumentation__.Notify(241153)
 		records = append(records, record)
+	} else {
+		__antithesis_instrumentation__.Notify(241156)
 	}
+	__antithesis_instrumentation__.Notify(241117)
 	return records, nil
 }
 
-// findDescendantLeafIDs finds all leaf IDs below the given ID in the zone
-// configuration hierarchy. Leaf IDs are either table IDs or named zone IDs
-// (other than RANGE DEFAULT).
 func (s *SQLTranslator) findDescendantLeafIDs(
 	ctx context.Context, id descpb.ID, txn *kv.Txn, descsCol *descs.Collection,
 ) (descpb.IDs, error) {
+	__antithesis_instrumentation__.Notify(241157)
 	if zonepb.IsNamedZoneID(uint32(id)) {
+		__antithesis_instrumentation__.Notify(241159)
 		return s.findDescendantLeafIDsForNamedZone(ctx, id, txn, descsCol)
+	} else {
+		__antithesis_instrumentation__.Notify(241160)
 	}
-	// We're dealing with a SQL Object here.
+	__antithesis_instrumentation__.Notify(241158)
+
 	return s.findDescendantLeafIDsForDescriptor(ctx, id, txn, descsCol)
 }
 
-// findDescendantLeafIDsForDescriptor finds all leaf object IDs below the given
-// descriptor ID in the zone configuration hierarchy. Based on the descriptor
-// type, these are:
-// - Database: IDs of all tables inside the database.
-// - Table: ID of the table itself.
-// - Schema/Type: Nothing, as schemas/types do not carry zone configurations and
-// are not part of the zone configuration hierarchy.
 func (s *SQLTranslator) findDescendantLeafIDsForDescriptor(
 	ctx context.Context, id descpb.ID, txn *kv.Txn, descsCol *descs.Collection,
 ) (descpb.IDs, error) {
+	__antithesis_instrumentation__.Notify(241161)
 	desc, err := descsCol.GetImmutableDescriptorByID(ctx, txn, id, descLookupFlags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241168)
 		if errors.Is(err, catalog.ErrDescriptorNotFound) {
-			return nil, nil // the descriptor has been deleted; nothing to do here
+			__antithesis_instrumentation__.Notify(241170)
+			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(241171)
 		}
+		__antithesis_instrumentation__.Notify(241169)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(241172)
 	}
-	if s.knobs.ExcludeDroppedDescriptorsFromLookup && desc.Dropped() {
-		return nil, nil // we're excluding this descriptor; nothing to do here
+	__antithesis_instrumentation__.Notify(241162)
+	if s.knobs.ExcludeDroppedDescriptorsFromLookup && func() bool {
+		__antithesis_instrumentation__.Notify(241173)
+		return desc.Dropped() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(241174)
+		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(241175)
 	}
+	__antithesis_instrumentation__.Notify(241163)
 
 	switch desc.DescriptorType() {
 	case catalog.Type, catalog.Schema:
-		// There is nothing to do for {Type, Schema} descriptors as they are not
-		// part of the zone configuration hierarchy.
+		__antithesis_instrumentation__.Notify(241176)
+
 		return nil, nil
 	case catalog.Table:
-		// Tables are leaf objects in the zone configuration hierarchy, so simply
-		// return the ID.
+		__antithesis_instrumentation__.Notify(241177)
+
 		return descpb.IDs{id}, nil
 	case catalog.Database:
-	// Fallthrough.
+		__antithesis_instrumentation__.Notify(241178)
+
 	default:
+		__antithesis_instrumentation__.Notify(241179)
 		return nil, errors.AssertionFailedf("unknown descriptor type: %s", desc.DescriptorType())
 	}
+	__antithesis_instrumentation__.Notify(241164)
 
-	// There's nothing for us to do if the descriptor is offline or has been
-	// dropped.
-	if desc.Offline() || desc.Dropped() {
+	if desc.Offline() || func() bool {
+		__antithesis_instrumentation__.Notify(241180)
+		return desc.Dropped() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(241181)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(241182)
 	}
+	__antithesis_instrumentation__.Notify(241165)
 
-	// Expand the database descriptor to all the tables inside it and return their
-	// IDs.
 	tables, err := descsCol.GetAllTableDescriptorsInDatabase(ctx, txn, desc.GetID())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241183)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(241184)
 	}
+	__antithesis_instrumentation__.Notify(241166)
 	ret := make(descpb.IDs, 0, len(tables))
 	for _, table := range tables {
+		__antithesis_instrumentation__.Notify(241185)
 		ret = append(ret, table.GetID())
 	}
+	__antithesis_instrumentation__.Notify(241167)
 	return ret, nil
 }
 
-// findDescendantLeafIDsForNamedZone finds all leaf IDs below the given named
-// zone ID in the zone configuration hierarchy.
-// Depending on the named zone, these are:
-// - RANGE DEFAULT: All tables (and named zones iff system tenant).
-// - Any other named zone: ID of the named zone itself.
 func (s *SQLTranslator) findDescendantLeafIDsForNamedZone(
 	ctx context.Context, id descpb.ID, txn *kv.Txn, descsCol *descs.Collection,
 ) (descpb.IDs, error) {
+	__antithesis_instrumentation__.Notify(241186)
 	name, ok := zonepb.NamedZonesByID[uint32(id)]
 	if !ok {
+		__antithesis_instrumentation__.Notify(241192)
 		return nil, errors.AssertionFailedf("id %d does not belong to a named zone", id)
+	} else {
+		__antithesis_instrumentation__.Notify(241193)
 	}
+	__antithesis_instrumentation__.Notify(241187)
 
 	if name != zonepb.DefaultZoneName {
-		// No IDs lie below named zones other than RANGE DEFAULT in the zone config
-		// hierarchy, so simply return the named zone ID.
-		return descpb.IDs{id}, nil
-	}
+		__antithesis_instrumentation__.Notify(241194)
 
-	// A change to RANGE DEFAULT translates to every SQL object of the tenant.
+		return descpb.IDs{id}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(241195)
+	}
+	__antithesis_instrumentation__.Notify(241188)
+
 	databases, err := descsCol.GetAllDatabaseDescriptors(ctx, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241196)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(241197)
 	}
+	__antithesis_instrumentation__.Notify(241189)
 	var descendantIDs descpb.IDs
 	for _, dbDesc := range databases {
+		__antithesis_instrumentation__.Notify(241198)
 		tableIDs, err := s.findDescendantLeafIDsForDescriptor(
 			ctx, dbDesc.GetID(), txn, descsCol,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241200)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(241201)
 		}
+		__antithesis_instrumentation__.Notify(241199)
 		descendantIDs = append(descendantIDs, tableIDs...)
 	}
+	__antithesis_instrumentation__.Notify(241190)
 
-	// All named zones (other than RANGE DEFAULT itself, ofcourse) inherit from
-	// RANGE DEFAULT.
-	// NB: Only the system tenant has named zones other than RANGE DEFAULT.
 	if s.codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(241202)
 		for _, namedZone := range zonepb.NamedZonesList {
-			// Add an entry for all named zones bar RANGE DEFAULT.
+			__antithesis_instrumentation__.Notify(241203)
+
 			if namedZone == zonepb.DefaultZoneName {
+				__antithesis_instrumentation__.Notify(241205)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(241206)
 			}
+			__antithesis_instrumentation__.Notify(241204)
 			descendantIDs = append(descendantIDs, descpb.ID(zonepb.NamedZones[namedZone]))
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(241207)
 	}
+	__antithesis_instrumentation__.Notify(241191)
 	return descendantIDs, nil
 }
 
-// maybeGeneratePseudoTableRecords generates span configs for
-// pseudo table ID key spans, if applicable.
 func (s *SQLTranslator) maybeGeneratePseudoTableRecords(
 	ctx context.Context, txn *kv.Txn, ids descpb.IDs,
 ) ([]spanconfig.Record, error) {
+	__antithesis_instrumentation__.Notify(241208)
 	if !s.codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(241211)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(241212)
 	}
+	__antithesis_instrumentation__.Notify(241209)
 
 	for _, id := range ids {
-		if id != keys.SystemDatabaseID && id != keys.RootNamespaceID {
-			continue // nothing to do
+		__antithesis_instrumentation__.Notify(241213)
+		if id != keys.SystemDatabaseID && func() bool {
+			__antithesis_instrumentation__.Notify(241217)
+			return id != keys.RootNamespaceID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(241218)
+			continue
+		} else {
+			__antithesis_instrumentation__.Notify(241219)
 		}
+		__antithesis_instrumentation__.Notify(241214)
 
-		// We have special handling for the system database (and RANGE DEFAULT,
-		// which the system database inherits from). The system config span
-		// infrastructure generates splits along (empty) pseudo table
-		// boundaries[1] -- we do the same. Not doing so is safe, but this helps
-		// reduce the differences between the two subsystems which has practical
-		// implications for our bootstrap code and tests that bake in
-		// assumptions about these splits. While the two systems exist
-		// side-by-side, it's easier to just minimize these differences (it also
-		// removes the tiny re-splitting costs when switching between them). We
-		// can get rid of this special handling once the system config span is
-		// removed (#70560).
-		//
-		// [1]: Consider the liveness range [/System/NodeLiveness,
-		//      /System/NodeLivenessMax). It's identified using the pseudo ID 22
-		//      (i.e. keys.LivenessRangesID). Because we're using a pseudo ID,
-		//      what of [/Table/22-/Table/23)? This is a keyspan with no
-		//      contents, yet one the system config span splits along to create
-		//      an empty range. It's precisely this "feature" we're looking to
-		//      emulate. As for what config to apply over said range -- we do as
-		//      the system config span does, applying the config for the system
-		//      database.
 		zone, err := sql.GetHydratedZoneConfigForDatabase(ctx, txn, s.codec, keys.SystemDatabaseID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241220)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(241221)
 		}
+		__antithesis_instrumentation__.Notify(241215)
 		tableSpanConfig := zone.AsSpanConfig()
 		var records []spanconfig.Record
 		for _, pseudoTableID := range keys.PseudoTableIDs {
+			__antithesis_instrumentation__.Notify(241222)
 			tableStartKey := s.codec.TablePrefix(pseudoTableID)
 			tableEndKey := tableStartKey.PrefixEnd()
 			record, err := spanconfig.MakeRecord(spanconfig.MakeTargetFromSpan(roachpb.Span{
@@ -666,13 +781,19 @@ func (s *SQLTranslator) maybeGeneratePseudoTableRecords(
 				EndKey: tableEndKey,
 			}), tableSpanConfig)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(241224)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(241225)
 			}
+			__antithesis_instrumentation__.Notify(241223)
 			records = append(records, record)
 		}
+		__antithesis_instrumentation__.Notify(241216)
 
 		return records, nil
 	}
+	__antithesis_instrumentation__.Notify(241210)
 
 	return nil, nil
 }
@@ -680,19 +801,36 @@ func (s *SQLTranslator) maybeGeneratePseudoTableRecords(
 func (s *SQLTranslator) maybeGenerateScratchRangeRecord(
 	ctx context.Context, txn *kv.Txn, ids descpb.IDs,
 ) (spanconfig.Record, error) {
-	if !s.knobs.ConfigureScratchRange || !s.codec.ForSystemTenant() {
-		return spanconfig.Record{}, nil // nothing to do
+	__antithesis_instrumentation__.Notify(241226)
+	if !s.knobs.ConfigureScratchRange || func() bool {
+		__antithesis_instrumentation__.Notify(241229)
+		return !s.codec.ForSystemTenant() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(241230)
+		return spanconfig.Record{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(241231)
 	}
+	__antithesis_instrumentation__.Notify(241227)
 
 	for _, id := range ids {
+		__antithesis_instrumentation__.Notify(241232)
 		if id != keys.RootNamespaceID {
-			continue // nothing to do
+			__antithesis_instrumentation__.Notify(241236)
+			continue
+		} else {
+			__antithesis_instrumentation__.Notify(241237)
 		}
+		__antithesis_instrumentation__.Notify(241233)
 
 		zone, err := sql.GetHydratedZoneConfigForDatabase(ctx, txn, s.codec, keys.RootNamespaceID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241238)
 			return spanconfig.Record{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(241239)
 		}
+		__antithesis_instrumentation__.Notify(241234)
 
 		record, err := spanconfig.MakeRecord(
 			spanconfig.MakeTargetFromSpan(roachpb.Span{
@@ -700,10 +838,15 @@ func (s *SQLTranslator) maybeGenerateScratchRangeRecord(
 				EndKey: keys.ScratchRangeMax,
 			}), zone.AsSpanConfig())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241240)
 			return spanconfig.Record{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(241241)
 		}
+		__antithesis_instrumentation__.Notify(241235)
 		return record, nil
 	}
+	__antithesis_instrumentation__.Notify(241228)
 
 	return spanconfig.Record{}, nil
 }

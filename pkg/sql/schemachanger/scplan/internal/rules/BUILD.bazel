@@ -19,6 +19,7 @@ go_library(
         "//pkg/sql/schemachanger/screl",
         "//pkg/util/log",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -30,6 +31,7 @@ go_test(
     embed = [":rules"],
     deps = [
         "//pkg/testutils",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@in_gopkg_yaml_v3//:yaml_v3",
     ],

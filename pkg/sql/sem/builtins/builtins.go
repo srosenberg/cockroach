@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package builtins
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -101,8 +93,7 @@ var (
 	errStringTooLarge = pgerror.Newf(pgcode.ProgramLimitExceeded,
 		"requested length too large, exceeds %s", humanizeutil.IBytes(maxAllocatedStringSize))
 	errInvalidNull = pgerror.New(pgcode.InvalidParameterValue, "input cannot be NULL")
-	// SequenceNameArg represents the name of sequence (string) arguments in
-	// builtin functions.
+
 	SequenceNameArg = "sequence_name"
 )
 
@@ -136,26 +127,25 @@ const (
 )
 
 func categorizeType(t *types.T) string {
+	__antithesis_instrumentation__.Notify(596950)
 	switch t.Family() {
 	case types.DateFamily, types.IntervalFamily, types.TimestampFamily, types.TimestampTZFamily:
+		__antithesis_instrumentation__.Notify(596951)
 		return categoryDateAndTime
 	case types.StringFamily, types.BytesFamily:
+		__antithesis_instrumentation__.Notify(596952)
 		return categoryString
 	default:
+		__antithesis_instrumentation__.Notify(596953)
 		return strings.ToUpper(t.String())
 	}
 }
 
 const (
-	// GatewayRegionBuiltinName is the name for the builtin that returns the gateway
-	// region of the current node.
 	GatewayRegionBuiltinName = "gateway_region"
-	// DefaultToDatabasePrimaryRegionBuiltinName is the name for the builtin that
-	// takes in a region and returns it if it is a valid region on the database.
-	// Otherwise, it returns the primary region.
+
 	DefaultToDatabasePrimaryRegionBuiltinName = "default_to_database_primary_region"
-	// RehomeRowBuiltinName is the name for the builtin that rehomes a row to the
-	// user's gateway region, defaulting to the database primary region.
+
 	RehomeRowBuiltinName = "rehome_row"
 )
 
@@ -182,38 +172,43 @@ CockroachDB supports the following flags:
 | p    | no                               | no                                   |
 | m/n  | no                               | yes                                  |`
 
-// builtinDefinition represents a built-in function before it becomes
-// a tree.FunctionDefinition.
 type builtinDefinition struct {
 	props     tree.FunctionProperties
 	overloads []tree.Overload
 }
 
-// GetBuiltinProperties provides low-level access to a built-in function's properties.
-// For a better, semantic-rich interface consider using tree.FunctionDefinition
-// instead, and resolve function names via ResolvableFunctionReference.Resolve().
 func GetBuiltinProperties(name string) (*tree.FunctionProperties, []tree.Overload) {
+	__antithesis_instrumentation__.Notify(596954)
 	def, ok := builtins[name]
 	if !ok {
+		__antithesis_instrumentation__.Notify(596956)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(596957)
 	}
+	__antithesis_instrumentation__.Notify(596955)
 	return &def.props, def.overloads
 }
 
-// defProps is used below to define built-in functions with default properties.
-func defProps() tree.FunctionProperties { return tree.FunctionProperties{} }
+func defProps() tree.FunctionProperties {
+	__antithesis_instrumentation__.Notify(596958)
+	return tree.FunctionProperties{}
+}
 
-// arrayProps is used below for array functions.
-func arrayProps() tree.FunctionProperties { return tree.FunctionProperties{Category: categoryArray} }
+func arrayProps() tree.FunctionProperties {
+	__antithesis_instrumentation__.Notify(596959)
+	return tree.FunctionProperties{Category: categoryArray}
+}
 
-// arrayPropsNullableArgs is used below for array functions that accept NULLs as arguments.
 func arrayPropsNullableArgs() tree.FunctionProperties {
+	__antithesis_instrumentation__.Notify(596960)
 	p := arrayProps()
 	p.NullableArgs = true
 	return p
 }
 
 func makeBuiltin(props tree.FunctionProperties, overloads ...tree.Overload) builtinDefinition {
+	__antithesis_instrumentation__.Notify(596961)
 	return builtinDefinition{
 		props:     props,
 		overloads: overloads,
@@ -221,35 +216,40 @@ func makeBuiltin(props tree.FunctionProperties, overloads ...tree.Overload) buil
 }
 
 func newDecodeError(enc string) error {
+	__antithesis_instrumentation__.Notify(596962)
 	return pgerror.Newf(pgcode.CharacterNotInRepertoire,
 		"invalid byte sequence for encoding %q", enc)
 }
 
 func newEncodeError(c rune, enc string) error {
+	__antithesis_instrumentation__.Notify(596963)
 	return pgerror.Newf(pgcode.UntranslatableCharacter,
 		"character %q has no representation in encoding %q", c, enc)
 }
 
 func mustBeDIntInTenantRange(e tree.Expr) (tree.DInt, error) {
+	__antithesis_instrumentation__.Notify(596964)
 	tenID := tree.MustBeDInt(e)
 	if int64(tenID) <= 0 {
+		__antithesis_instrumentation__.Notify(596966)
 		return 0, pgerror.New(pgcode.InvalidParameterValue, "tenant ID must be positive")
+	} else {
+		__antithesis_instrumentation__.Notify(596967)
 	}
+	__antithesis_instrumentation__.Notify(596965)
 	return tenID, nil
 }
 
-// builtins contains the built-in functions indexed by name.
-//
-// For use in other packages, see AllBuiltinNames and GetBuiltinProperties().
 var builtins = map[string]builtinDefinition{
-	// TODO(XisiHuang): support encoding, i.e., length(str, encoding).
-	"length":           lengthImpls(true /* includeBitOverload */),
-	"char_length":      lengthImpls(false /* includeBitOverload */),
-	"character_length": lengthImpls(false /* includeBitOverload */),
+
+	"length":           lengthImpls(true),
+	"char_length":      lengthImpls(false),
+	"character_length": lengthImpls(false),
 
 	"bit_length": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596968)
 				return tree.NewDInt(tree.DInt(len(s) * 8)), nil
 			},
 			types.Int,
@@ -258,6 +258,7 @@ var builtins = map[string]builtinDefinition{
 		),
 		bytesOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596969)
 				return tree.NewDInt(tree.DInt(len(s) * 8)), nil
 			},
 			types.Int,
@@ -266,6 +267,7 @@ var builtins = map[string]builtinDefinition{
 		),
 		bitsOverload1(
 			func(_ *tree.EvalContext, s *tree.DBitArray) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596970)
 				return tree.NewDInt(tree.DInt(s.BitArray.BitLen())), nil
 			},
 			types.Int,
@@ -277,6 +279,7 @@ var builtins = map[string]builtinDefinition{
 	"octet_length": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596971)
 				return tree.NewDInt(tree.DInt(len(s))), nil
 			},
 			types.Int,
@@ -285,6 +288,7 @@ var builtins = map[string]builtinDefinition{
 		),
 		bytesOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596972)
 				return tree.NewDInt(tree.DInt(len(s))), nil
 			},
 			types.Int,
@@ -293,6 +297,7 @@ var builtins = map[string]builtinDefinition{
 		),
 		bitsOverload1(
 			func(_ *tree.EvalContext, s *tree.DBitArray) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596973)
 				return tree.NewDInt(tree.DInt((s.BitArray.BitLen() + 7) / 8)), nil
 			},
 			types.Int,
@@ -301,11 +306,10 @@ var builtins = map[string]builtinDefinition{
 		),
 	),
 
-	// TODO(pmattis): What string functions should also support types.Bytes?
-
 	"lower": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		stringOverload1(
 			func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596974)
 				return tree.NewDString(strings.ToLower(s)), nil
 			},
 			types.String,
@@ -317,15 +321,20 @@ var builtins = map[string]builtinDefinition{
 	"unaccent": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		stringOverload1(
 			func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596975)
 				var b strings.Builder
 				for _, ch := range s {
+					__antithesis_instrumentation__.Notify(596977)
 					v, ok := unaccent.Dictionary[ch]
 					if ok {
+						__antithesis_instrumentation__.Notify(596978)
 						b.WriteString(v)
 					} else {
+						__antithesis_instrumentation__.Notify(596979)
 						b.WriteRune(ch)
 					}
 				}
+				__antithesis_instrumentation__.Notify(596976)
 				return tree.NewDString(b.String()), nil
 			},
 			types.String,
@@ -337,6 +346,7 @@ var builtins = map[string]builtinDefinition{
 	"upper": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		stringOverload1(
 			func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596980)
 				return tree.NewDString(strings.ToUpper(s)), nil
 			},
 			types.String,
@@ -348,10 +358,15 @@ var builtins = map[string]builtinDefinition{
 	"prettify_statement": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		stringOverload1(
 			func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596981)
 				formattedStmt, err := prettyStatement(tree.DefaultPrettyCfg(), s)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(596983)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(596984)
 				}
+				__antithesis_instrumentation__.Notify(596982)
 				return tree.NewDString(formattedStmt), nil
 			},
 			types.String,
@@ -367,14 +382,19 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596985)
 				stmt := string(tree.MustBeDString(args[0]))
 				lineWidth := int(tree.MustBeDInt(args[1]))
 				alignMode := int(tree.MustBeDInt(args[2]))
 				caseMode := int(tree.MustBeDInt(args[3]))
 				formattedStmt, err := prettyStatementCustomConfig(stmt, lineWidth, alignMode, caseMode)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(596987)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(596988)
 				}
+				__antithesis_instrumentation__.Notify(596986)
 				return tree.NewDString(formattedStmt), nil
 			},
 			Info: "Prettifies a statement using a user-configured pretty-printing config.\n" +
@@ -387,8 +407,6 @@ var builtins = map[string]builtinDefinition{
 	"substr":    substringImpls,
 	"substring": substringImpls,
 
-	// concat concatenates the text representations of all the arguments.
-	// NULL arguments are ignored.
 	"concat": makeBuiltin(
 		tree.FunctionProperties{
 			NullableArgs: true,
@@ -397,26 +415,34 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.VariadicType{VarType: types.String},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596989)
 				var buffer bytes.Buffer
 				length := 0
 				for _, d := range args {
+					__antithesis_instrumentation__.Notify(596991)
 					if d == tree.DNull {
+						__antithesis_instrumentation__.Notify(596994)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(596995)
 					}
+					__antithesis_instrumentation__.Notify(596992)
 					length += len(string(tree.MustBeDString(d)))
 					if length > maxAllocatedStringSize {
+						__antithesis_instrumentation__.Notify(596996)
 						return nil, errStringTooLarge
+					} else {
+						__antithesis_instrumentation__.Notify(596997)
 					}
+					__antithesis_instrumentation__.Notify(596993)
 					buffer.WriteString(string(tree.MustBeDString(d)))
 				}
+				__antithesis_instrumentation__.Notify(596990)
 				return tree.NewDString(buffer.String()), nil
 			},
 			Info:       "Concatenates a comma-separated list of strings.",
 			Volatility: tree.VolatilityImmutable,
-			// In Postgres concat can take any arguments, converting them to
-			// their text representation. Since the text representation can
-			// depend on the context (e.g. timezone), the function is Stable. In
-			// our case, we only take String inputs so our version is ImmutableCopy.
+
 			IgnoreVolatilityCheck: true,
 		},
 	),
@@ -429,68 +455,93 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.VariadicType{VarType: types.String},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(596998)
 				if len(args) == 0 {
+					__antithesis_instrumentation__.Notify(597002)
 					return nil, pgerror.Newf(pgcode.UndefinedFunction, errInsufficientArgsFmtString, "concat_ws")
+				} else {
+					__antithesis_instrumentation__.Notify(597003)
 				}
+				__antithesis_instrumentation__.Notify(596999)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597004)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597005)
 				}
+				__antithesis_instrumentation__.Notify(597000)
 				sep := string(tree.MustBeDString(args[0]))
 				var buf bytes.Buffer
 				prefix := ""
 				length := 0
 				for _, d := range args[1:] {
+					__antithesis_instrumentation__.Notify(597006)
 					if d == tree.DNull {
+						__antithesis_instrumentation__.Notify(597009)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(597010)
 					}
+					__antithesis_instrumentation__.Notify(597007)
 					length += len(prefix) + len(string(tree.MustBeDString(d)))
 					if length > maxAllocatedStringSize {
+						__antithesis_instrumentation__.Notify(597011)
 						return nil, errStringTooLarge
+					} else {
+						__antithesis_instrumentation__.Notify(597012)
 					}
-					// Note: we can't use the range index here because that
-					// would break when the 2nd argument is NULL.
+					__antithesis_instrumentation__.Notify(597008)
+
 					buf.WriteString(prefix)
 					prefix = sep
 					buf.WriteString(string(tree.MustBeDString(d)))
 				}
+				__antithesis_instrumentation__.Notify(597001)
 				return tree.NewDString(buf.String()), nil
 			},
 			Info: "Uses the first argument as a separator between the concatenation of the " +
 				"subsequent arguments. \n\nFor example `concat_ws('!','wow','great')` " +
 				"returns `wow!great`.",
 			Volatility: tree.VolatilityImmutable,
-			// In Postgres concat_ws can take any arguments, converting them to
-			// their text representation. Since the text representation can
-			// depend on the context (e.g. timezone), the function is Stable. In
-			// our case, we only take String inputs so our version is ImmutableCopy.
+
 			IgnoreVolatilityCheck: true,
 		},
 	),
 
-	// https://www.postgresql.org/docs/10/static/functions-string.html#FUNCTIONS-STRING-OTHER
 	"convert_from": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"str", types.Bytes}, {"enc", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597013)
 				str := []byte(tree.MustBeDBytes(args[0]))
 				enc := CleanEncodingName(string(tree.MustBeDString(args[1])))
 				switch enc {
-				// All the following are aliases to each other in PostgreSQL.
+
 				case "utf8", "unicode", "cp65001":
+					__antithesis_instrumentation__.Notify(597015)
 					if !utf8.Valid(str) {
+						__antithesis_instrumentation__.Notify(597020)
 						return nil, newDecodeError("UTF8")
+					} else {
+						__antithesis_instrumentation__.Notify(597021)
 					}
+					__antithesis_instrumentation__.Notify(597016)
 					return tree.NewDString(string(str)), nil
 
-					// All the following are aliases to each other in PostgreSQL.
 				case "latin1", "iso88591", "cp28591":
+					__antithesis_instrumentation__.Notify(597017)
 					var buf strings.Builder
 					for _, c := range str {
+						__antithesis_instrumentation__.Notify(597022)
 						buf.WriteRune(rune(c))
 					}
+					__antithesis_instrumentation__.Notify(597018)
 					return tree.NewDString(buf.String()), nil
+				default:
+					__antithesis_instrumentation__.Notify(597019)
 				}
+				__antithesis_instrumentation__.Notify(597014)
 				return nil, pgerror.Newf(pgcode.InvalidParameterValue,
 					"invalid source encoding name %q", enc)
 			},
@@ -500,30 +551,40 @@ var builtins = map[string]builtinDefinition{
 			IgnoreVolatilityCheck: true,
 		}),
 
-	// https://www.postgresql.org/docs/10/static/functions-string.html#FUNCTIONS-STRING-OTHER
 	"convert_to": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"str", types.String}, {"enc", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597023)
 				str := string(tree.MustBeDString(args[0]))
 				enc := CleanEncodingName(string(tree.MustBeDString(args[1])))
 				switch enc {
-				// All the following are aliases to each other in PostgreSQL.
+
 				case "utf8", "unicode", "cp65001":
+					__antithesis_instrumentation__.Notify(597025)
 					return tree.NewDBytes(tree.DBytes([]byte(str))), nil
 
-					// All the following are aliases to each other in PostgreSQL.
 				case "latin1", "iso88591", "cp28591":
+					__antithesis_instrumentation__.Notify(597026)
 					res := make([]byte, 0, len(str))
 					for _, c := range str {
+						__antithesis_instrumentation__.Notify(597029)
 						if c > 255 {
+							__antithesis_instrumentation__.Notify(597031)
 							return nil, newEncodeError(c, "LATIN1")
+						} else {
+							__antithesis_instrumentation__.Notify(597032)
 						}
+						__antithesis_instrumentation__.Notify(597030)
 						res = append(res, byte(c))
 					}
+					__antithesis_instrumentation__.Notify(597027)
 					return tree.NewDBytes(tree.DBytes(res)), nil
+				default:
+					__antithesis_instrumentation__.Notify(597028)
 				}
+				__antithesis_instrumentation__.Notify(597024)
 				return nil, pgerror.Newf(pgcode.InvalidParameterValue,
 					"invalid destination encoding name %q", enc)
 			},
@@ -533,18 +594,22 @@ var builtins = map[string]builtinDefinition{
 			IgnoreVolatilityCheck: true,
 		}),
 
-	// https://www.postgresql.org/docs/9.0/functions-binarystring.html#FUNCTIONS-BINARYSTRING-OTHER
 	"get_bit": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"bit_string", types.VarBit}, {"index", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597033)
 				bitString := tree.MustBeDBitArray(args[0])
 				index := int(tree.MustBeDInt(args[1]))
 				bit, err := bitString.GetBitAtIndex(index)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597035)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597036)
 				}
+				__antithesis_instrumentation__.Notify(597034)
 				return tree.NewDInt(tree.DInt(bit)), nil
 			},
 			Info:       "Extracts a bit at given index in the bit array.",
@@ -554,45 +619,61 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"byte_string", types.Bytes}, {"index", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597037)
 				byteString := []byte(*args[0].(*tree.DBytes))
 				index := int(tree.MustBeDInt(args[1]))
-				// Check whether index asked is inside ByteArray.
-				if index < 0 || index >= 8*len(byteString) {
+
+				if index < 0 || func() bool {
+					__antithesis_instrumentation__.Notify(597040)
+					return index >= 8*len(byteString) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597041)
 					return nil, pgerror.Newf(pgcode.ArraySubscript,
 						"bit index %d out of valid range (0..%d)", index, 8*len(byteString)-1)
+				} else {
+					__antithesis_instrumentation__.Notify(597042)
 				}
-				// To extract a bit at the given index, we have to determine the
-				// position within byte array, i.e. index/8 after that checked
-				// the bit at residual index.
+				__antithesis_instrumentation__.Notify(597038)
+
 				if byteString[index/8]&(byte(1)<<(byte(index)%8)) != 0 {
+					__antithesis_instrumentation__.Notify(597043)
 					return tree.NewDInt(tree.DInt(1)), nil
+				} else {
+					__antithesis_instrumentation__.Notify(597044)
 				}
+				__antithesis_instrumentation__.Notify(597039)
 				return tree.NewDInt(tree.DInt(0)), nil
 			},
 			Info:       "Extracts a bit at the given index in the byte array.",
 			Volatility: tree.VolatilityImmutable,
 		}),
 
-	// https://www.postgresql.org/docs/9.0/functions-binarystring.html#FUNCTIONS-BINARYSTRING-OTHER
 	"get_byte": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"byte_string", types.Bytes}, {"index", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597045)
 				byteString := []byte(*args[0].(*tree.DBytes))
 				index := int(tree.MustBeDInt(args[1]))
-				// Check whether index asked is inside ByteArray.
-				if index < 0 || index >= len(byteString) {
+
+				if index < 0 || func() bool {
+					__antithesis_instrumentation__.Notify(597047)
+					return index >= len(byteString) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597048)
 					return nil, pgerror.Newf(pgcode.ArraySubscript,
 						"byte index %d out of valid range (0..%d)", index, len(byteString)-1)
+				} else {
+					__antithesis_instrumentation__.Notify(597049)
 				}
+				__antithesis_instrumentation__.Notify(597046)
 				return tree.NewDInt(tree.DInt(byteString[index])), nil
 			},
 			Info:       "Extracts a byte at the given index in the byte array.",
 			Volatility: tree.VolatilityImmutable,
 		}),
 
-	// https://www.postgresql.org/docs/9.0/functions-binarystring.html#FUNCTIONS-BINARYSTRING-OTHER
 	"set_bit": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		tree.Overload{
 			Types: tree.ArgTypes{
@@ -602,19 +683,30 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.VarBit),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597050)
 				bitString := tree.MustBeDBitArray(args[0])
 				index := int(tree.MustBeDInt(args[1]))
 				toSet := int(tree.MustBeDInt(args[2]))
 
-				// Value of bit can only be set to 1 or 0.
-				if toSet != 0 && toSet != 1 {
+				if toSet != 0 && func() bool {
+					__antithesis_instrumentation__.Notify(597053)
+					return toSet != 1 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597054)
 					return nil, pgerror.Newf(pgcode.InvalidParameterValue,
 						"new bit must be 0 or 1.")
+				} else {
+					__antithesis_instrumentation__.Notify(597055)
 				}
+				__antithesis_instrumentation__.Notify(597051)
 				updatedBitString, err := bitString.SetBitAtIndex(index, toSet)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597056)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597057)
 				}
+				__antithesis_instrumentation__.Notify(597052)
 				return &tree.DBitArray{BitArray: updatedBitString}, nil
 			},
 			Info:       "Updates a bit at given index in the bit array.",
@@ -628,25 +720,37 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597058)
 				byteString := []byte(*args[0].(*tree.DBytes))
 				index := int(tree.MustBeDInt(args[1]))
 				toSet := int(tree.MustBeDInt(args[2]))
-				// Value of bit can only be set to 1 or 0.
-				if toSet != 0 && toSet != 1 {
+
+				if toSet != 0 && func() bool {
+					__antithesis_instrumentation__.Notify(597061)
+					return toSet != 1 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597062)
 					return nil, pgerror.Newf(pgcode.InvalidParameterValue,
 						"new bit must be 0 or 1")
+				} else {
+					__antithesis_instrumentation__.Notify(597063)
 				}
-				// Check whether index asked is inside ByteArray.
-				if index < 0 || index >= 8*len(byteString) {
+				__antithesis_instrumentation__.Notify(597059)
+
+				if index < 0 || func() bool {
+					__antithesis_instrumentation__.Notify(597064)
+					return index >= 8*len(byteString) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597065)
 					return nil, pgerror.Newf(pgcode.ArraySubscript,
 						"bit index %d out of valid range (0..%d)", index, 8*len(byteString)-1)
+				} else {
+					__antithesis_instrumentation__.Notify(597066)
 				}
-				// To update a bit at the given index, we have to determine the
-				// position within byte array, i.e. index/8 after that checked
-				// the bit at residual index.
-				// Forcefully making bit at the index to 0.
+				__antithesis_instrumentation__.Notify(597060)
+
 				byteString[index/8] &= ^(byte(1) << (byte(index) % 8))
-				// Updating value at the index to toSet.
+
 				byteString[index/8] |= byte(toSet) << (byte(index) % 8)
 				return tree.NewDBytes(tree.DBytes(byteString)), nil
 			},
@@ -654,7 +758,6 @@ var builtins = map[string]builtinDefinition{
 			Volatility: tree.VolatilityImmutable,
 		}),
 
-	// https://www.postgresql.org/docs/9.0/functions-binarystring.html#FUNCTIONS-BINARYSTRING-OTHER
 	"set_byte": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		tree.Overload{
 			Types: tree.ArgTypes{
@@ -664,14 +767,22 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597067)
 				byteString := []byte(*args[0].(*tree.DBytes))
 				index := int(tree.MustBeDInt(args[1]))
 				toSet := int(tree.MustBeDInt(args[2]))
-				// Check whether index asked is inside ByteArray.
-				if index < 0 || index >= len(byteString) {
+
+				if index < 0 || func() bool {
+					__antithesis_instrumentation__.Notify(597069)
+					return index >= len(byteString) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597070)
 					return nil, pgerror.Newf(pgcode.ArraySubscript,
 						"byte index %d out of valid range (0..%d)", index, len(byteString)-1)
+				} else {
+					__antithesis_instrumentation__.Notify(597071)
 				}
+				__antithesis_instrumentation__.Notify(597068)
 				byteString[index] = byte(toSet)
 				return tree.NewDBytes(tree.DBytes(byteString)), nil
 			},
@@ -687,11 +798,16 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597072)
 				s := string(tree.MustBeDString(args[0]))
 				uv, err := uuid.FromString(s)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597074)
 					return nil, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid UUID")
+				} else {
+					__antithesis_instrumentation__.Notify(597075)
 				}
+				__antithesis_instrumentation__.Notify(597073)
 				return tree.NewDBytes(tree.DBytes(uv.GetBytes())), nil
 			},
 			Info: "Converts the character string representation of a UUID to its byte string " +
@@ -705,11 +821,16 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.Bytes}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597076)
 				b := []byte(*args[0].(*tree.DBytes))
 				uv, err := uuid.FromBytes(b)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597078)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597079)
 				}
+				__antithesis_instrumentation__.Notify(597077)
 				return tree.NewDString(uv.String()), nil
 			},
 			Info: "Converts the byte string representation of a UUID to its character string " +
@@ -726,6 +847,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Uuid),
 			Fn: func(_ *tree.EvalContext, _ tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597080)
 				entropy := ulid.Monotonic(cryptorand.Reader, 0)
 				uv := ulid.MustNew(ulid.Now(), entropy)
 				return tree.NewDUuid(tree.DUuid{UUID: uuid.UUID(uv)}), nil
@@ -740,11 +862,16 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.Uuid}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597081)
 				b := (*args[0].(*tree.DUuid)).GetBytes()
 				var ul ulid.ULID
 				if err := ul.UnmarshalBinary(b); err != nil {
+					__antithesis_instrumentation__.Notify(597083)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597084)
 				}
+				__antithesis_instrumentation__.Notify(597082)
 				return tree.NewDString(ul.String()), nil
 			},
 			Info:       "Converts a UUID-encoded ULID to its string representation.",
@@ -757,19 +884,32 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.String}},
 			ReturnType: tree.FixedReturnType(types.Uuid),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597085)
 				s := tree.MustBeDString(args[0])
 				u, err := ulid.Parse(string(s))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597089)
 					return nil, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid ULID")
+				} else {
+					__antithesis_instrumentation__.Notify(597090)
 				}
+				__antithesis_instrumentation__.Notify(597086)
 				b, err := u.MarshalBinary()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597091)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597092)
 				}
+				__antithesis_instrumentation__.Notify(597087)
 				uv, err := uuid.FromBytes(b)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597093)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597094)
 				}
+				__antithesis_instrumentation__.Notify(597088)
 				return tree.NewDUuid(tree.DUuid{UUID: uv}), nil
 			},
 			Info:       "Converts a ULID string to its UUID-encoded representation.",
@@ -777,25 +917,12 @@ var builtins = map[string]builtinDefinition{
 		},
 	),
 
-	// The following functions are all part of the NET address functions. They can
-	// be found in the postgres reference at https://www.postgresql.org/docs/9.6/static/functions-net.html#CIDR-INET-FUNCTIONS-TABLE
-	// This includes:
-	// - abbrev
-	// - broadcast
-	// - family
-	// - host
-	// - hostmask
-	// - masklen
-	// - netmask
-	// - set_masklen
-	// - text(inet)
-	// - inet_same_family
-
 	"abbrev": makeBuiltin(defProps(),
 		tree.Overload{
 			Types:      tree.ArgTypes{{"val", types.INet}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597095)
 				dIPAddr := tree.MustBeDIPAddr(args[0])
 				return tree.NewDString(dIPAddr.IPAddr.String()), nil
 			},
@@ -811,6 +938,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.INet}},
 			ReturnType: tree.FixedReturnType(types.INet),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597096)
 				dIPAddr := tree.MustBeDIPAddr(args[0])
 				broadcastIPAddr := dIPAddr.IPAddr.Broadcast()
 				return &tree.DIPAddr{IPAddr: broadcastIPAddr}, nil
@@ -826,10 +954,15 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.INet}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597097)
 				dIPAddr := tree.MustBeDIPAddr(args[0])
 				if dIPAddr.Family == ipaddr.IPv4family {
+					__antithesis_instrumentation__.Notify(597099)
 					return tree.NewDInt(tree.DInt(4)), nil
+				} else {
+					__antithesis_instrumentation__.Notify(597100)
 				}
+				__antithesis_instrumentation__.Notify(597098)
 				return tree.NewDInt(tree.DInt(6)), nil
 			},
 			Info: "Extracts the IP family of the value; 4 for IPv4, 6 for IPv6." +
@@ -843,11 +976,16 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.INet}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597101)
 				dIPAddr := tree.MustBeDIPAddr(args[0])
 				s := dIPAddr.IPAddr.String()
 				if i := strings.IndexByte(s, '/'); i != -1 {
+					__antithesis_instrumentation__.Notify(597103)
 					return tree.NewDString(s[:i]), nil
+				} else {
+					__antithesis_instrumentation__.Notify(597104)
 				}
+				__antithesis_instrumentation__.Notify(597102)
 				return tree.NewDString(s), nil
 			},
 			Info: "Extracts the address part of the combined address/prefixlen value as text." +
@@ -861,6 +999,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.INet}},
 			ReturnType: tree.FixedReturnType(types.INet),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597105)
 				dIPAddr := tree.MustBeDIPAddr(args[0])
 				ipAddr := dIPAddr.IPAddr.Hostmask()
 				return &tree.DIPAddr{IPAddr: ipAddr}, nil
@@ -876,6 +1015,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.INet}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597106)
 				dIPAddr := tree.MustBeDIPAddr(args[0])
 				return tree.NewDInt(tree.DInt(dIPAddr.Mask)), nil
 			},
@@ -890,6 +1030,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.INet}},
 			ReturnType: tree.FixedReturnType(types.INet),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597107)
 				dIPAddr := tree.MustBeDIPAddr(args[0])
 				ipAddr := dIPAddr.IPAddr.Netmask()
 				return &tree.DIPAddr{IPAddr: ipAddr}, nil
@@ -908,13 +1049,33 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.INet),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597108)
 				dIPAddr := tree.MustBeDIPAddr(args[0])
 				mask := int(tree.MustBeDInt(args[1]))
 
-				if !(dIPAddr.Family == ipaddr.IPv4family && mask >= 0 && mask <= 32) && !(dIPAddr.Family == ipaddr.IPv6family && mask >= 0 && mask <= 128) {
+				if !(dIPAddr.Family == ipaddr.IPv4family && func() bool {
+					__antithesis_instrumentation__.Notify(597110)
+					return mask >= 0 == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(597111)
+					return mask <= 32 == true
+				}() == true) && func() bool {
+					__antithesis_instrumentation__.Notify(597112)
+					return !(dIPAddr.Family == ipaddr.IPv6family && func() bool {
+						__antithesis_instrumentation__.Notify(597113)
+						return mask >= 0 == true
+					}() == true && func() bool {
+						__antithesis_instrumentation__.Notify(597114)
+						return mask <= 128 == true
+					}() == true) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597115)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue, "invalid mask length: %d", mask)
+				} else {
+					__antithesis_instrumentation__.Notify(597116)
 				}
+				__antithesis_instrumentation__.Notify(597109)
 				return &tree.DIPAddr{IPAddr: ipaddr.IPAddr{Family: dIPAddr.Family, Addr: dIPAddr.Addr, Mask: byte(mask)}}, nil
 			},
 			Info: "Sets the prefix length of `val` to `prefixlen`.\n\n" +
@@ -928,12 +1089,17 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.INet}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597117)
 				dIPAddr := tree.MustBeDIPAddr(args[0])
 				s := dIPAddr.IPAddr.String()
-				// Ensure the string has a "/mask" suffix.
+
 				if strings.IndexByte(s, '/') == -1 {
+					__antithesis_instrumentation__.Notify(597119)
 					s += "/" + strconv.Itoa(int(dIPAddr.Mask))
+				} else {
+					__antithesis_instrumentation__.Notify(597120)
 				}
+				__antithesis_instrumentation__.Notify(597118)
 				return tree.NewDString(s), nil
 			},
 			Info:       "Converts the IP address and prefix length to text.",
@@ -949,6 +1115,7 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597121)
 				first := tree.MustBeDIPAddr(args[0])
 				other := tree.MustBeDIPAddr(args[1])
 				return tree.MakeDBool(tree.DBool(first.Family == other.Family)), nil
@@ -966,6 +1133,7 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597122)
 				ipAddr := tree.MustBeDIPAddr(args[0]).IPAddr
 				other := tree.MustBeDIPAddr(args[1]).IPAddr
 				return tree.MakeDBool(tree.DBool(ipAddr.ContainedByOrEquals(&other))), nil
@@ -984,6 +1152,7 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597123)
 				ipAddr := tree.MustBeDIPAddr(args[0]).IPAddr
 				other := tree.MustBeDIPAddr(args[1]).IPAddr
 				return tree.MakeDBool(tree.DBool(ipAddr.ContainsOrEquals(&other))), nil
@@ -999,13 +1168,18 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.Bytes}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597124)
 				ipstr := args[0].(*tree.DBytes)
 				nboip := net.IP(*ipstr)
 				sv := nboip.String()
-				// if nboip has a length of 0, sv will be "<nil>"
+
 				if sv == "<nil>" {
+					__antithesis_instrumentation__.Notify(597126)
 					return nil, errZeroIP
+				} else {
+					__antithesis_instrumentation__.Notify(597127)
 				}
+				__antithesis_instrumentation__.Notify(597125)
 				return tree.NewDString(sv), nil
 			},
 			Info: "Converts the byte string representation of an IP to its character string " +
@@ -1019,14 +1193,18 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597128)
 				ipdstr := tree.MustBeDString(args[0])
 				ip := net.ParseIP(string(ipdstr))
-				// If ipdstr could not be parsed to a valid IP,
-				// ip will be nil.
+
 				if ip == nil {
+					__antithesis_instrumentation__.Notify(597130)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue, "invalid IP format: %s", ipdstr.String())
+				} else {
+					__antithesis_instrumentation__.Notify(597131)
 				}
+				__antithesis_instrumentation__.Notify(597129)
 				return tree.NewDBytes(tree.DBytes(ip)), nil
 			},
 			Info: "Converts the character string representation of an IP to its byte string " +
@@ -1044,19 +1222,28 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597132)
 				text := string(tree.MustBeDString(args[0]))
 				sep := string(tree.MustBeDString(args[1]))
 				field := int(tree.MustBeDInt(args[2]))
 
 				if field <= 0 {
+					__antithesis_instrumentation__.Notify(597135)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue, "field position %d must be greater than zero", field)
+				} else {
+					__antithesis_instrumentation__.Notify(597136)
 				}
+				__antithesis_instrumentation__.Notify(597133)
 
 				splits := strings.Split(text, sep)
 				if field > len(splits) {
+					__antithesis_instrumentation__.Notify(597137)
 					return tree.NewDString(""), nil
+				} else {
+					__antithesis_instrumentation__.Notify(597138)
 				}
+				__antithesis_instrumentation__.Notify(597134)
 				return tree.NewDString(splits[field-1]), nil
 			},
 			Info: "Splits `input` on `delimiter` and return the value in the `return_index_pos`  " +
@@ -1071,20 +1258,32 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"input", types.String}, {"repeat_counter", types.Int}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (_ tree.Datum, err error) {
+				__antithesis_instrumentation__.Notify(597139)
 				s := string(tree.MustBeDString(args[0]))
 				count := int(tree.MustBeDInt(args[1]))
 
 				ln := len(s) * count
-				// Use <= here instead of < to prevent a possible divide-by-zero in the next
-				// if block.
+
 				if count <= 0 {
+					__antithesis_instrumentation__.Notify(597141)
 					count = 0
-				} else if ln/count != len(s) {
-					// Detect overflow and trigger an error.
-					return nil, errStringTooLarge
-				} else if ln > maxAllocatedStringSize {
-					return nil, errStringTooLarge
+				} else {
+					__antithesis_instrumentation__.Notify(597142)
+					if ln/count != len(s) {
+						__antithesis_instrumentation__.Notify(597143)
+
+						return nil, errStringTooLarge
+					} else {
+						__antithesis_instrumentation__.Notify(597144)
+						if ln > maxAllocatedStringSize {
+							__antithesis_instrumentation__.Notify(597145)
+							return nil, errStringTooLarge
+						} else {
+							__antithesis_instrumentation__.Notify(597146)
+						}
+					}
 				}
+				__antithesis_instrumentation__.Notify(597140)
 
 				return tree.NewDString(strings.Repeat(s, count)), nil
 			},
@@ -1094,20 +1293,24 @@ var builtins = map[string]builtinDefinition{
 		},
 	),
 
-	// https://www.postgresql.org/docs/10/static/functions-binarystring.html
 	"encode": makeBuiltin(defProps(),
 		tree.Overload{
 			Types:      tree.ArgTypes{{"data", types.Bytes}, {"format", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (_ tree.Datum, err error) {
+				__antithesis_instrumentation__.Notify(597147)
 				data, format := *args[0].(*tree.DBytes), string(tree.MustBeDString(args[1]))
 				be, ok := lex.BytesEncodeFormatFromString(format)
 				if !ok {
+					__antithesis_instrumentation__.Notify(597149)
 					return nil, pgerror.New(pgcode.InvalidParameterValue,
 						"only 'hex', 'escape', and 'base64' formats are supported for encode()")
+				} else {
+					__antithesis_instrumentation__.Notify(597150)
 				}
+				__antithesis_instrumentation__.Notify(597148)
 				return tree.NewDString(lex.EncodeByteArrayToRawBytes(
-					string(data), be, true /* skipHexPrefix */)), nil
+					string(data), be, true)), nil
 			},
 			Info:       "Encodes `data` using `format` (`hex` / `escape` / `base64`).",
 			Volatility: tree.VolatilityImmutable,
@@ -1119,16 +1322,25 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"text", types.String}, {"format", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (_ tree.Datum, err error) {
+				__antithesis_instrumentation__.Notify(597151)
 				data, format := string(tree.MustBeDString(args[0])), string(tree.MustBeDString(args[1]))
 				be, ok := lex.BytesEncodeFormatFromString(format)
 				if !ok {
+					__antithesis_instrumentation__.Notify(597154)
 					return nil, pgerror.New(pgcode.InvalidParameterValue,
 						"only 'hex', 'escape', and 'base64' formats are supported for decode()")
+				} else {
+					__antithesis_instrumentation__.Notify(597155)
 				}
+				__antithesis_instrumentation__.Notify(597152)
 				res, err := lex.DecodeRawBytesToByteArray(data, be)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597156)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597157)
 				}
+				__antithesis_instrumentation__.Notify(597153)
 				return tree.NewDBytes(tree.DBytes(res)), nil
 			},
 			Info:       "Decodes `data` using `format` (`hex` / `escape` / `base64`).",
@@ -1141,20 +1353,31 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"data", types.Bytes}, {"codec", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (_ tree.Datum, err error) {
+				__antithesis_instrumentation__.Notify(597158)
 				uncompressedData := []byte(tree.MustBeDBytes(args[0]))
 				codec := string(tree.MustBeDString(args[1]))
 				switch strings.ToUpper(codec) {
 				case "GZIP":
+					__antithesis_instrumentation__.Notify(597159)
 					gzipBuf := bytes.NewBuffer([]byte{})
 					gz := gzip.NewWriter(gzipBuf)
 					if _, err := gz.Write(uncompressedData); err != nil {
+						__antithesis_instrumentation__.Notify(597163)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597164)
 					}
+					__antithesis_instrumentation__.Notify(597160)
 					if err := gz.Close(); err != nil {
+						__antithesis_instrumentation__.Notify(597165)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597166)
 					}
+					__antithesis_instrumentation__.Notify(597161)
 					return tree.NewDBytes(tree.DBytes(gzipBuf.Bytes())), nil
 				default:
+					__antithesis_instrumentation__.Notify(597162)
 					return nil, pgerror.New(pgcode.InvalidParameterValue,
 						"only 'gzip' codec is supported for compress()")
 				}
@@ -1169,21 +1392,32 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"data", types.Bytes}, {"codec", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (_ tree.Datum, err error) {
+				__antithesis_instrumentation__.Notify(597167)
 				compressedData := []byte(tree.MustBeDBytes(args[0]))
 				codec := string(tree.MustBeDString(args[1]))
 				switch strings.ToUpper(codec) {
 				case "GZIP":
+					__antithesis_instrumentation__.Notify(597168)
 					r, err := gzip.NewReader(bytes.NewBuffer(compressedData))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597172)
 						return nil, errors.Wrap(err, "failed to decompress")
+					} else {
+						__antithesis_instrumentation__.Notify(597173)
 					}
+					__antithesis_instrumentation__.Notify(597169)
 					defer r.Close()
 					decompressedBytes, err := ioutil.ReadAll(r)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597174)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597175)
 					}
+					__antithesis_instrumentation__.Notify(597170)
 					return tree.NewDBytes(tree.DBytes(decompressedBytes)), nil
 				default:
+					__antithesis_instrumentation__.Notify(597171)
 					return nil, pgerror.New(pgcode.InvalidParameterValue,
 						"only 'gzip' codec is supported for decompress()")
 				}
@@ -1196,9 +1430,12 @@ var builtins = map[string]builtinDefinition{
 	"ascii": makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597176)
 				for _, ch := range s {
+					__antithesis_instrumentation__.Notify(597178)
 					return tree.NewDInt(tree.DInt(ch)), nil
 				}
+				__antithesis_instrumentation__.Notify(597177)
 				return nil, errEmptyInputString
 			},
 			types.Int,
@@ -1211,16 +1448,21 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.Int}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597179)
 				x := tree.MustBeDInt(args[0])
 				var answer string
 				switch {
 				case x < 0:
+					__antithesis_instrumentation__.Notify(597181)
 					return nil, errChrValueTooSmall
 				case x > utf8.MaxRune:
+					__antithesis_instrumentation__.Notify(597182)
 					return nil, errChrValueTooLarge
 				default:
+					__antithesis_instrumentation__.Notify(597183)
 					answer = string(rune(x))
 				}
+				__antithesis_instrumentation__.Notify(597180)
 				return tree.NewDString(answer), nil
 			},
 			Info:       "Returns the character with the code given in `val`. Inverse function of `ascii()`.",
@@ -1229,62 +1471,65 @@ var builtins = map[string]builtinDefinition{
 	),
 
 	"md5": hashBuiltin(
-		func() hash.Hash { return md5.New() },
+		func() hash.Hash { __antithesis_instrumentation__.Notify(597184); return md5.New() },
 		"Calculates the MD5 hash value of a set of values.",
 	),
 
 	"sha1": hashBuiltin(
-		func() hash.Hash { return sha1.New() },
+		func() hash.Hash { __antithesis_instrumentation__.Notify(597185); return sha1.New() },
 		"Calculates the SHA1 hash value of a set of values.",
 	),
 
 	"sha224": hashBuiltin(
-		func() hash.Hash { return sha256.New224() },
+		func() hash.Hash { __antithesis_instrumentation__.Notify(597186); return sha256.New224() },
 		"Calculates the SHA224 hash value of a set of values.",
 	),
 
 	"sha256": hashBuiltin(
-		func() hash.Hash { return sha256.New() },
+		func() hash.Hash { __antithesis_instrumentation__.Notify(597187); return sha256.New() },
 		"Calculates the SHA256 hash value of a set of values.",
 	),
 
 	"sha384": hashBuiltin(
-		func() hash.Hash { return sha512.New384() },
+		func() hash.Hash { __antithesis_instrumentation__.Notify(597188); return sha512.New384() },
 		"Calculates the SHA384 hash value of a set of values.",
 	),
 
 	"sha512": hashBuiltin(
-		func() hash.Hash { return sha512.New() },
+		func() hash.Hash { __antithesis_instrumentation__.Notify(597189); return sha512.New() },
 		"Calculates the SHA512 hash value of a set of values.",
 	),
 
 	"fnv32": hash32Builtin(
-		func() hash.Hash32 { return fnv.New32() },
+		func() hash.Hash32 { __antithesis_instrumentation__.Notify(597190); return fnv.New32() },
 		"Calculates the 32-bit FNV-1 hash value of a set of values.",
 	),
 
 	"fnv32a": hash32Builtin(
-		func() hash.Hash32 { return fnv.New32a() },
+		func() hash.Hash32 { __antithesis_instrumentation__.Notify(597191); return fnv.New32a() },
 		"Calculates the 32-bit FNV-1a hash value of a set of values.",
 	),
 
 	"fnv64": hash64Builtin(
-		func() hash.Hash64 { return fnv.New64() },
+		func() hash.Hash64 { __antithesis_instrumentation__.Notify(597192); return fnv.New64() },
 		"Calculates the 64-bit FNV-1 hash value of a set of values.",
 	),
 
 	"fnv64a": hash64Builtin(
-		func() hash.Hash64 { return fnv.New64a() },
+		func() hash.Hash64 { __antithesis_instrumentation__.Notify(597193); return fnv.New64a() },
 		"Calculates the 64-bit FNV-1a hash value of a set of values.",
 	),
 
 	"crc32ieee": hash32Builtin(
-		func() hash.Hash32 { return crc32.New(crc32.IEEETable) },
+		func() hash.Hash32 { __antithesis_instrumentation__.Notify(597194); return crc32.New(crc32.IEEETable) },
 		"Calculates the CRC-32 hash using the IEEE polynomial.",
 	),
 
 	"crc32c": hash32Builtin(
-		func() hash.Hash32 { return crc32.New(crc32.MakeTable(crc32.Castagnoli)) },
+		func() hash.Hash32 {
+			__antithesis_instrumentation__.Notify(597195)
+			return crc32.New(crc32.MakeTable(crc32.Castagnoli))
+		},
 		"Calculates the CRC-32 hash using the Castagnoli polynomial.",
 	),
 
@@ -1294,15 +1539,27 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"data", types.String}, {"type", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597196)
 				alg := tree.MustBeDString(args[1])
 				hashFunc, err := getHashFunc(string(alg))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597199)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597200)
 				}
+				__antithesis_instrumentation__.Notify(597197)
 				h := hashFunc()
-				if ok, err := feedHash(h, args[:1]); !ok || err != nil {
+				if ok, err := feedHash(h, args[:1]); !ok || func() bool {
+					__antithesis_instrumentation__.Notify(597201)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597202)
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(597203)
 				}
+				__antithesis_instrumentation__.Notify(597198)
 				return tree.NewDBytes(tree.DBytes(h.Sum(nil))), nil
 			},
 			Info: "Computes a binary hash of the given `data`. `type` is the algorithm " +
@@ -1313,15 +1570,27 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"data", types.Bytes}, {"type", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597204)
 				alg := tree.MustBeDString(args[1])
 				hashFunc, err := getHashFunc(string(alg))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597207)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597208)
 				}
+				__antithesis_instrumentation__.Notify(597205)
 				h := hashFunc()
-				if ok, err := feedHash(h, args[:1]); !ok || err != nil {
+				if ok, err := feedHash(h, args[:1]); !ok || func() bool {
+					__antithesis_instrumentation__.Notify(597209)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597210)
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(597211)
 				}
+				__antithesis_instrumentation__.Notify(597206)
 				return tree.NewDBytes(tree.DBytes(h.Sum(nil))), nil
 			},
 			Info: "Computes a binary hash of the given `data`. `type` is the algorithm " +
@@ -1336,16 +1605,28 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"data", types.String}, {"key", types.String}, {"type", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597212)
 				key := tree.MustBeDString(args[1])
 				alg := tree.MustBeDString(args[2])
 				hashFunc, err := getHashFunc(string(alg))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597215)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597216)
 				}
+				__antithesis_instrumentation__.Notify(597213)
 				h := hmac.New(hashFunc, []byte(key))
-				if ok, err := feedHash(h, args[:1]); !ok || err != nil {
+				if ok, err := feedHash(h, args[:1]); !ok || func() bool {
+					__antithesis_instrumentation__.Notify(597217)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597218)
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(597219)
 				}
+				__antithesis_instrumentation__.Notify(597214)
 				return tree.NewDBytes(tree.DBytes(h.Sum(nil))), nil
 			},
 			Info:       "Calculates hashed MAC for `data` with key `key`. `type` is the same as in `digest()`.",
@@ -1355,16 +1636,28 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"data", types.Bytes}, {"key", types.Bytes}, {"type", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597220)
 				key := tree.MustBeDBytes(args[1])
 				alg := tree.MustBeDString(args[2])
 				hashFunc, err := getHashFunc(string(alg))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597223)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597224)
 				}
+				__antithesis_instrumentation__.Notify(597221)
 				h := hmac.New(hashFunc, []byte(key))
-				if ok, err := feedHash(h, args[:1]); !ok || err != nil {
+				if ok, err := feedHash(h, args[:1]); !ok || func() bool {
+					__antithesis_instrumentation__.Notify(597225)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597226)
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(597227)
 				}
+				__antithesis_instrumentation__.Notify(597222)
 				return tree.NewDBytes(tree.DBytes(h.Sum(nil))), nil
 			},
 			Info:       "Calculates hashed MAC for `data` with key `key`. `type` is the same as in `digest()`.",
@@ -1378,11 +1671,9 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.Int}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597228)
 				val := tree.MustBeDInt(args[0])
-				// This should technically match the precision of the types entered
-				// into the function, e.g. `-1 :: int4` should use uint32 for correctness.
-				// However, we don't encode that information for function resolution.
-				// As such, always assume bigint / uint64.
+
 				return tree.NewDString(fmt.Sprintf("%x", uint64(val))), nil
 			},
 			Info:       "Converts `val` to its hexadecimal representation.",
@@ -1392,6 +1683,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.Bytes}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597229)
 				return tree.NewDString(fmt.Sprintf("%x", tree.MustBeDBytes(args[0]))), nil
 			},
 			Info:       "Converts `val` to its hexadecimal representation.",
@@ -1401,6 +1693,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597230)
 				return tree.NewDString(fmt.Sprintf("%x", tree.MustBeDString(args[0]))), nil
 			},
 			Info:       "Converts `val` to its hexadecimal representation.",
@@ -1414,30 +1707,46 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.Int}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597231)
 				val := int(*args[0].(*tree.DInt))
 				var buf bytes.Buffer
 				var digits []string
 				if val < 0 {
+					__antithesis_instrumentation__.Notify(597235)
 					buf.WriteString("minus-")
 					if val == math.MinInt64 {
-						// Converting MinInt64 to positive overflows the value.
-						// Take the first digit pre-emptively.
+						__antithesis_instrumentation__.Notify(597237)
+
 						digits = append(digits, digitNames[8])
 						val /= 10
+					} else {
+						__antithesis_instrumentation__.Notify(597238)
 					}
+					__antithesis_instrumentation__.Notify(597236)
 					val = -val
+				} else {
+					__antithesis_instrumentation__.Notify(597239)
 				}
+				__antithesis_instrumentation__.Notify(597232)
 				digits = append(digits, digitNames[val%10])
 				for val > 9 {
+					__antithesis_instrumentation__.Notify(597240)
 					val /= 10
 					digits = append(digits, digitNames[val%10])
 				}
+				__antithesis_instrumentation__.Notify(597233)
 				for i := len(digits) - 1; i >= 0; i-- {
+					__antithesis_instrumentation__.Notify(597241)
 					if i < len(digits)-1 {
+						__antithesis_instrumentation__.Notify(597243)
 						buf.WriteByte('-')
+					} else {
+						__antithesis_instrumentation__.Notify(597244)
 					}
+					__antithesis_instrumentation__.Notify(597242)
 					buf.WriteString(digits[i])
 				}
+				__antithesis_instrumentation__.Notify(597234)
 				return tree.NewDString(buf.String()), nil
 			},
 			Info:       "This function enunciates the value of its argument using English cardinals.",
@@ -1445,17 +1754,21 @@ var builtins = map[string]builtinDefinition{
 		},
 	),
 
-	// The SQL parser coerces POSITION to STRPOS.
 	"strpos": makeBuiltin(
 		tree.FunctionProperties{Category: categoryString},
 		stringOverload2(
 			"input",
 			"find",
 			func(_ *tree.EvalContext, s, substring string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597245)
 				index := strings.Index(s, substring)
 				if index < 0 {
+					__antithesis_instrumentation__.Notify(597247)
 					return tree.DZero, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597248)
 				}
+				__antithesis_instrumentation__.Notify(597246)
 
 				return tree.NewDInt(tree.DInt(utf8.RuneCountInString(s[:index]) + 1)), nil
 			},
@@ -1466,10 +1779,15 @@ var builtins = map[string]builtinDefinition{
 		),
 		bitsOverload2("input", "find",
 			func(_ *tree.EvalContext, bitString, bitSubstring *tree.DBitArray) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597249)
 				index := strings.Index(bitString.BitArray.String(), bitSubstring.BitArray.String())
 				if index < 0 {
+					__antithesis_instrumentation__.Notify(597251)
 					return tree.DZero, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597252)
 				}
+				__antithesis_instrumentation__.Notify(597250)
 				return tree.NewDInt(tree.DInt(index + 1)), nil
 			},
 			types.Int,
@@ -1480,10 +1798,15 @@ var builtins = map[string]builtinDefinition{
 			"input",
 			"find",
 			func(_ *tree.EvalContext, byteString, byteSubstring string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597253)
 				index := strings.Index(byteString, byteSubstring)
 				if index < 0 {
+					__antithesis_instrumentation__.Notify(597255)
 					return tree.DZero, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597256)
 				}
+				__antithesis_instrumentation__.Notify(597254)
 				return tree.NewDInt(tree.DInt(index + 1)), nil
 			},
 			types.Int,
@@ -1500,6 +1823,7 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597257)
 				s := string(tree.MustBeDString(args[0]))
 				to := string(tree.MustBeDString(args[1]))
 				pos := int(tree.MustBeDInt(args[2]))
@@ -1520,6 +1844,7 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597258)
 				s := string(tree.MustBeDString(args[0]))
 				to := string(tree.MustBeDString(args[1]))
 				pos := int(tree.MustBeDInt(args[2]))
@@ -1538,12 +1863,17 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"string", types.String}, {"length", types.Int}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597259)
 				s := string(tree.MustBeDString(args[0]))
 				length := int(tree.MustBeDInt(args[1]))
 				ret, err := lpad(s, length, " ")
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597261)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597262)
 				}
+				__antithesis_instrumentation__.Notify(597260)
 				return tree.NewDString(ret), nil
 			},
 			Info: "Pads `string` to `length` by adding ' ' to the left of `string`." +
@@ -1554,13 +1884,18 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"string", types.String}, {"length", types.Int}, {"fill", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597263)
 				s := string(tree.MustBeDString(args[0]))
 				length := int(tree.MustBeDInt(args[1]))
 				fill := string(tree.MustBeDString(args[2]))
 				ret, err := lpad(s, length, fill)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597265)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597266)
 				}
+				__antithesis_instrumentation__.Notify(597264)
 				return tree.NewDString(ret), nil
 			},
 			Info: "Pads `string` by adding `fill` to the left of `string` to make it `length`. " +
@@ -1575,12 +1910,17 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"string", types.String}, {"length", types.Int}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597267)
 				s := string(tree.MustBeDString(args[0]))
 				length := int(tree.MustBeDInt(args[1]))
 				ret, err := rpad(s, length, " ")
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597269)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597270)
 				}
+				__antithesis_instrumentation__.Notify(597268)
 				return tree.NewDString(ret), nil
 			},
 			Info: "Pads `string` to `length` by adding ' ' to the right of string. " +
@@ -1591,13 +1931,18 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"string", types.String}, {"length", types.Int}, {"fill", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597271)
 				s := string(tree.MustBeDString(args[0]))
 				length := int(tree.MustBeDInt(args[1]))
 				fill := string(tree.MustBeDString(args[2]))
 				ret, err := rpad(s, length, fill)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597273)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597274)
 				}
+				__antithesis_instrumentation__.Notify(597272)
 				return tree.NewDString(ret), nil
 			},
 			Info: "Pads `string` to `length` by adding `fill` to the right of `string`. " +
@@ -1606,12 +1951,12 @@ var builtins = map[string]builtinDefinition{
 		},
 	),
 
-	// The SQL parser coerces TRIM(...) and TRIM(BOTH ...) to BTRIM(...).
 	"btrim": makeBuiltin(defProps(),
 		stringOverload2(
 			"input",
 			"trim_chars",
 			func(_ *tree.EvalContext, s, chars string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597275)
 				return tree.NewDString(strings.Trim(s, chars)), nil
 			},
 			types.String,
@@ -1622,6 +1967,7 @@ var builtins = map[string]builtinDefinition{
 		),
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597276)
 				return tree.NewDString(strings.TrimSpace(s)), nil
 			},
 			types.String,
@@ -1630,12 +1976,12 @@ var builtins = map[string]builtinDefinition{
 		),
 	),
 
-	// The SQL parser coerces TRIM(LEADING ...) to LTRIM(...).
 	"ltrim": makeBuiltin(defProps(),
 		stringOverload2(
 			"input",
 			"trim_chars",
 			func(_ *tree.EvalContext, s, chars string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597277)
 				return tree.NewDString(strings.TrimLeft(s, chars)), nil
 			},
 			types.String,
@@ -1646,6 +1992,7 @@ var builtins = map[string]builtinDefinition{
 		),
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597278)
 				return tree.NewDString(strings.TrimLeftFunc(s, unicode.IsSpace)), nil
 			},
 			types.String,
@@ -1654,12 +2001,12 @@ var builtins = map[string]builtinDefinition{
 		),
 	),
 
-	// The SQL parser coerces TRIM(TRAILING ...) to RTRIM(...).
 	"rtrim": makeBuiltin(defProps(),
 		stringOverload2(
 			"input",
 			"trim_chars",
 			func(_ *tree.EvalContext, s, chars string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597279)
 				return tree.NewDString(strings.TrimRight(s, chars)), nil
 			},
 			types.String,
@@ -1670,6 +2017,7 @@ var builtins = map[string]builtinDefinition{
 		),
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597280)
 				return tree.NewDString(strings.TrimRightFunc(s, unicode.IsSpace)), nil
 			},
 			types.String,
@@ -1681,13 +2029,20 @@ var builtins = map[string]builtinDefinition{
 	"reverse": makeBuiltin(defProps(),
 		stringOverload1(
 			func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597281)
 				if len(s) > maxAllocatedStringSize {
+					__antithesis_instrumentation__.Notify(597284)
 					return nil, errStringTooLarge
+				} else {
+					__antithesis_instrumentation__.Notify(597285)
 				}
+				__antithesis_instrumentation__.Notify(597282)
 				runes := []rune(s)
 				for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+					__antithesis_instrumentation__.Notify(597286)
 					runes[i], runes[j] = runes[j], runes[i]
 				}
+				__antithesis_instrumentation__.Notify(597283)
 				return tree.NewDString(string(runes)), nil
 			},
 			types.String,
@@ -1702,21 +2057,33 @@ var builtins = map[string]builtinDefinition{
 			"find",
 			"replace",
 			func(evalCtx *tree.EvalContext, input, from, to string) (tree.Datum, error) {
-				// Reserve memory for the largest possible result.
+				__antithesis_instrumentation__.Notify(597287)
+
 				var maxResultLen int64
 				if len(from) == 0 {
-					// Replacing the empty string causes len(input)+1 insertions.
+					__antithesis_instrumentation__.Notify(597290)
+
 					maxResultLen = int64(len(input) + (len(input)+1)*len(to))
-				} else if len(from) < len(to) {
-					// Largest result is if input is [from] repeated over and over.
-					maxResultLen = int64(len(input) / len(from) * len(to))
 				} else {
-					// Largest result is if there are no replacements.
-					maxResultLen = int64(len(input))
+					__antithesis_instrumentation__.Notify(597291)
+					if len(from) < len(to) {
+						__antithesis_instrumentation__.Notify(597292)
+
+						maxResultLen = int64(len(input) / len(from) * len(to))
+					} else {
+						__antithesis_instrumentation__.Notify(597293)
+
+						maxResultLen = int64(len(input))
+					}
 				}
+				__antithesis_instrumentation__.Notify(597288)
 				if maxResultLen > maxAllocatedStringSize {
+					__antithesis_instrumentation__.Notify(597294)
 					return nil, errStringTooLarge
+				} else {
+					__antithesis_instrumentation__.Notify(597295)
 				}
+				__antithesis_instrumentation__.Notify(597289)
 				result := strings.Replace(input, from, to, -1)
 				return tree.NewDString(result), nil
 			},
@@ -1729,28 +2096,41 @@ var builtins = map[string]builtinDefinition{
 	"translate": makeBuiltin(defProps(),
 		stringOverload3("input", "find", "replace",
 			func(evalCtx *tree.EvalContext, s, from, to string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597296)
 				const deletionRune = utf8.MaxRune + 1
 				translation := make(map[rune]rune, len(from))
 				for _, fromRune := range from {
+					__antithesis_instrumentation__.Notify(597299)
 					toRune, size := utf8.DecodeRuneInString(to)
 					if toRune == utf8.RuneError {
+						__antithesis_instrumentation__.Notify(597301)
 						toRune = deletionRune
 					} else {
+						__antithesis_instrumentation__.Notify(597302)
 						to = to[size:]
 					}
+					__antithesis_instrumentation__.Notify(597300)
 					translation[fromRune] = toRune
 				}
+				__antithesis_instrumentation__.Notify(597297)
 
 				runes := make([]rune, 0, len(s))
 				for _, c := range s {
+					__antithesis_instrumentation__.Notify(597303)
 					if t, ok := translation[c]; ok {
+						__antithesis_instrumentation__.Notify(597304)
 						if t != deletionRune {
+							__antithesis_instrumentation__.Notify(597305)
 							runes = append(runes, t)
+						} else {
+							__antithesis_instrumentation__.Notify(597306)
 						}
 					} else {
+						__antithesis_instrumentation__.Notify(597307)
 						runes = append(runes, c)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597298)
 				return tree.NewDString(string(runes)), nil
 			},
 			types.String,
@@ -1766,6 +2146,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"input", types.String}, {"regex", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597308)
 				s := string(tree.MustBeDString(args[0]))
 				pattern := string(tree.MustBeDString(args[1]))
 				return regexpExtract(ctx, s, pattern, `\`)
@@ -1784,13 +2165,18 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597309)
 				s := string(tree.MustBeDString(args[0]))
 				pattern := string(tree.MustBeDString(args[1]))
 				to := string(tree.MustBeDString(args[2]))
 				result, err := regexpReplace(evalCtx, s, pattern, to, "")
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597311)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597312)
 				}
+				__antithesis_instrumentation__.Notify(597310)
 				return result, nil
 			},
 			Info: "Replaces matches for the Regular Expression `regex` in `input` with the " +
@@ -1806,14 +2192,19 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597313)
 				s := string(tree.MustBeDString(args[0]))
 				pattern := string(tree.MustBeDString(args[1]))
 				to := string(tree.MustBeDString(args[2]))
 				sqlFlags := string(tree.MustBeDString(args[3]))
 				result, err := regexpReplace(evalCtx, s, pattern, to, sqlFlags)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597315)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597316)
 				}
+				__antithesis_instrumentation__.Notify(597314)
 				return result, nil
 			},
 			Info: "Replaces matches for the regular expression `regex` in `input` with the regular " +
@@ -1831,7 +2222,8 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.MakeArray(types.String)),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				return regexpSplitToArray(ctx, args, false /* hasFlags */)
+				__antithesis_instrumentation__.Notify(597317)
+				return regexpSplitToArray(ctx, args, false)
 			},
 			Info:       "Split string using a POSIX regular expression as the delimiter.",
 			Volatility: tree.VolatilityImmutable,
@@ -1844,7 +2236,8 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.MakeArray(types.String)),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				return regexpSplitToArray(ctx, args, true /* hasFlags */)
+				__antithesis_instrumentation__.Notify(597318)
+				return regexpSplitToArray(ctx, args, true)
 			},
 			Info:       "Split string using a POSIX regular expression as the delimiter with flags." + regexpFlagInfo,
 			Volatility: tree.VolatilityImmutable,
@@ -1855,6 +2248,7 @@ var builtins = map[string]builtinDefinition{
 		stringOverload3(
 			"unescaped", "pattern", "escape",
 			func(evalCtx *tree.EvalContext, unescaped, pattern, escape string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597319)
 				return tree.MatchLikeEscape(evalCtx, unescaped, pattern, escape, false)
 			},
 			types.Bool,
@@ -1867,10 +2261,15 @@ var builtins = map[string]builtinDefinition{
 		stringOverload3(
 			"unescaped", "pattern", "escape",
 			func(evalCtx *tree.EvalContext, unescaped, pattern, escape string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597320)
 				dmatch, err := tree.MatchLikeEscape(evalCtx, unescaped, pattern, escape, false)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597322)
 					return dmatch, err
+				} else {
+					__antithesis_instrumentation__.Notify(597323)
 				}
+				__antithesis_instrumentation__.Notify(597321)
 				bmatch, err := tree.GetBool(dmatch)
 				return tree.MakeDBool(!bmatch), err
 			},
@@ -1883,6 +2282,7 @@ var builtins = map[string]builtinDefinition{
 		stringOverload3(
 			"unescaped", "pattern", "escape",
 			func(evalCtx *tree.EvalContext, unescaped, pattern, escape string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597324)
 				return tree.MatchLikeEscape(evalCtx, unescaped, pattern, escape, true)
 			},
 			types.Bool,
@@ -1894,10 +2294,15 @@ var builtins = map[string]builtinDefinition{
 		stringOverload3(
 			"unescaped", "pattern", "escape",
 			func(evalCtx *tree.EvalContext, unescaped, pattern, escape string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597325)
 				dmatch, err := tree.MatchLikeEscape(evalCtx, unescaped, pattern, escape, true)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597327)
 					return dmatch, err
+				} else {
+					__antithesis_instrumentation__.Notify(597328)
 				}
+				__antithesis_instrumentation__.Notify(597326)
 				bmatch, err := tree.GetBool(dmatch)
 				return tree.MakeDBool(!bmatch), err
 			},
@@ -1919,6 +2324,7 @@ var builtins = map[string]builtinDefinition{
 			stringOverload3(
 				"unescaped", "pattern", "escape",
 				func(evalCtx *tree.EvalContext, unescaped, pattern, escape string) (tree.Datum, error) {
+					__antithesis_instrumentation__.Notify(597329)
 					return tree.SimilarToEscape(evalCtx, unescaped, pattern, escape)
 				},
 				types.Bool,
@@ -1932,10 +2338,15 @@ var builtins = map[string]builtinDefinition{
 		stringOverload3(
 			"unescaped", "pattern", "escape",
 			func(evalCtx *tree.EvalContext, unescaped, pattern, escape string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597330)
 				dmatch, err := tree.SimilarToEscape(evalCtx, unescaped, pattern, escape)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597332)
 					return dmatch, err
+				} else {
+					__antithesis_instrumentation__.Notify(597333)
 				}
+				__antithesis_instrumentation__.Notify(597331)
 				bmatch, err := tree.GetBool(dmatch)
 				return tree.MakeDBool(!bmatch), err
 			},
@@ -1947,6 +2358,7 @@ var builtins = map[string]builtinDefinition{
 	"initcap": makeBuiltin(defProps(),
 		stringOverload1(
 			func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597334)
 				return tree.NewDString(strings.Title(strings.ToLower(s))), nil
 			},
 			types.String,
@@ -1957,6 +2369,7 @@ var builtins = map[string]builtinDefinition{
 	"quote_ident": makeBuiltin(defProps(),
 		stringOverload1(
 			func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597335)
 				var buf bytes.Buffer
 				lexbase.EncodeRestrictedSQLIdent(&buf, s, lexbase.EncNoFlags)
 				return tree.NewDString(buf.String()), nil
@@ -1972,6 +2385,7 @@ var builtins = map[string]builtinDefinition{
 			ReturnType:        tree.FixedReturnType(types.String),
 			PreferredOverload: true,
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597336)
 				s := tree.MustBeDString(args[0])
 				return tree.NewDString(lexbase.EscapeSQLString(string(s))), nil
 			},
@@ -1982,13 +2396,17 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.Any}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				// PostgreSQL specifies that this variant first casts to the SQL string type,
-				// and only then quotes. We can't use (Datum).String() directly.
+				__antithesis_instrumentation__.Notify(597337)
+
 				d := tree.UnwrapDatum(ctx, args[0])
 				strD, err := tree.PerformCast(ctx, d, types.String)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597339)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597340)
 				}
+				__antithesis_instrumentation__.Notify(597338)
 				return tree.NewDString(strD.String()), nil
 			},
 			Info:       "Coerce `val` to a string and then quote it as a literal.",
@@ -1996,7 +2414,6 @@ var builtins = map[string]builtinDefinition{
 		},
 	),
 
-	// quote_nullable is the same as quote_literal but accepts NULL arguments.
 	"quote_nullable": makeBuiltin(
 		tree.FunctionProperties{
 			Category:     categoryString,
@@ -2007,9 +2424,14 @@ var builtins = map[string]builtinDefinition{
 			ReturnType:        tree.FixedReturnType(types.String),
 			PreferredOverload: true,
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597341)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597343)
 					return tree.NewDString("NULL"), nil
+				} else {
+					__antithesis_instrumentation__.Notify(597344)
 				}
+				__antithesis_instrumentation__.Notify(597342)
 				s := tree.MustBeDString(args[0])
 				return tree.NewDString(lexbase.EscapeSQLString(string(s))), nil
 			},
@@ -2020,16 +2442,24 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"val", types.Any}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597345)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597348)
 					return tree.NewDString("NULL"), nil
+				} else {
+					__antithesis_instrumentation__.Notify(597349)
 				}
-				// PostgreSQL specifies that this variant first casts to the SQL string type,
-				// and only then quotes. We can't use (Datum).String() directly.
+				__antithesis_instrumentation__.Notify(597346)
+
 				d := tree.UnwrapDatum(ctx, args[0])
 				strD, err := tree.PerformCast(ctx, d, types.String)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597350)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597351)
 				}
+				__antithesis_instrumentation__.Notify(597347)
 				return tree.NewDString(strD.String()), nil
 			},
 			Info:       "Coerce `val` to a string and then quote it as a literal. If `val` is NULL, returns 'NULL'.",
@@ -2042,16 +2472,29 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"input", types.Bytes}, {"return_set", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597352)
 				bytes := []byte(*args[0].(*tree.DBytes))
 				n := int(tree.MustBeDInt(args[1]))
 
 				if n < -len(bytes) {
+					__antithesis_instrumentation__.Notify(597354)
 					n = 0
-				} else if n < 0 {
-					n = len(bytes) + n
-				} else if n > len(bytes) {
-					n = len(bytes)
+				} else {
+					__antithesis_instrumentation__.Notify(597355)
+					if n < 0 {
+						__antithesis_instrumentation__.Notify(597356)
+						n = len(bytes) + n
+					} else {
+						__antithesis_instrumentation__.Notify(597357)
+						if n > len(bytes) {
+							__antithesis_instrumentation__.Notify(597358)
+							n = len(bytes)
+						} else {
+							__antithesis_instrumentation__.Notify(597359)
+						}
+					}
 				}
+				__antithesis_instrumentation__.Notify(597353)
 				return tree.NewDBytes(tree.DBytes(bytes[:n])), nil
 			},
 			Info:       "Returns the first `return_set` bytes from `input`.",
@@ -2061,16 +2504,29 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"input", types.String}, {"return_set", types.Int}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597360)
 				runes := []rune(string(tree.MustBeDString(args[0])))
 				n := int(tree.MustBeDInt(args[1]))
 
 				if n < -len(runes) {
+					__antithesis_instrumentation__.Notify(597362)
 					n = 0
-				} else if n < 0 {
-					n = len(runes) + n
-				} else if n > len(runes) {
-					n = len(runes)
+				} else {
+					__antithesis_instrumentation__.Notify(597363)
+					if n < 0 {
+						__antithesis_instrumentation__.Notify(597364)
+						n = len(runes) + n
+					} else {
+						__antithesis_instrumentation__.Notify(597365)
+						if n > len(runes) {
+							__antithesis_instrumentation__.Notify(597366)
+							n = len(runes)
+						} else {
+							__antithesis_instrumentation__.Notify(597367)
+						}
+					}
 				}
+				__antithesis_instrumentation__.Notify(597361)
 				return tree.NewDString(string(runes[:n])), nil
 			},
 			Info:       "Returns the first `return_set` characters from `input`.",
@@ -2083,16 +2539,29 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"input", types.Bytes}, {"return_set", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597368)
 				bytes := []byte(*args[0].(*tree.DBytes))
 				n := int(tree.MustBeDInt(args[1]))
 
 				if n < -len(bytes) {
+					__antithesis_instrumentation__.Notify(597370)
 					n = 0
-				} else if n < 0 {
-					n = len(bytes) + n
-				} else if n > len(bytes) {
-					n = len(bytes)
+				} else {
+					__antithesis_instrumentation__.Notify(597371)
+					if n < 0 {
+						__antithesis_instrumentation__.Notify(597372)
+						n = len(bytes) + n
+					} else {
+						__antithesis_instrumentation__.Notify(597373)
+						if n > len(bytes) {
+							__antithesis_instrumentation__.Notify(597374)
+							n = len(bytes)
+						} else {
+							__antithesis_instrumentation__.Notify(597375)
+						}
+					}
 				}
+				__antithesis_instrumentation__.Notify(597369)
 				return tree.NewDBytes(tree.DBytes(bytes[len(bytes)-n:])), nil
 			},
 			Info:       "Returns the last `return_set` bytes from `input`.",
@@ -2102,16 +2571,29 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"input", types.String}, {"return_set", types.Int}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597376)
 				runes := []rune(string(tree.MustBeDString(args[0])))
 				n := int(tree.MustBeDInt(args[1]))
 
 				if n < -len(runes) {
+					__antithesis_instrumentation__.Notify(597378)
 					n = 0
-				} else if n < 0 {
-					n = len(runes) + n
-				} else if n > len(runes) {
-					n = len(runes)
+				} else {
+					__antithesis_instrumentation__.Notify(597379)
+					if n < 0 {
+						__antithesis_instrumentation__.Notify(597380)
+						n = len(runes) + n
+					} else {
+						__antithesis_instrumentation__.Notify(597381)
+						if n > len(runes) {
+							__antithesis_instrumentation__.Notify(597382)
+							n = len(runes)
+						} else {
+							__antithesis_instrumentation__.Notify(597383)
+						}
+					}
 				}
+				__antithesis_instrumentation__.Notify(597377)
 				return tree.NewDString(string(runes[len(runes)-n:])), nil
 			},
 			Info:       "Returns the last `return_set` characters from `input`.",
@@ -2125,6 +2607,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Float),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597384)
 				return tree.NewDFloat(tree.DFloat(rand.Float64())), nil
 			},
 			Info: "Returns a random floating-point number between 0 (inclusive) and 1 (exclusive). " +
@@ -2141,6 +2624,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597385)
 				return tree.NewDInt(GenerateUniqueInt(ctx.NodeID.SQLInstanceID())), nil
 			},
 			Info: "Returns a unique ID used by CockroachDB to generate unique row IDs if a " +
@@ -2160,6 +2644,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597386)
 				v := GenerateUniqueUnorderedID(ctx.NodeID.SQLInstanceID())
 				return tree.NewDInt(v), nil
 			},
@@ -2171,8 +2656,6 @@ var builtins = map[string]builtinDefinition{
 		},
 	),
 
-	// Sequence functions.
-
 	"nextval": makeBuiltin(
 		tree.FunctionProperties{
 			Category:             categorySequences,
@@ -2183,15 +2666,24 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{SequenceNameArg, types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597387)
 				name := tree.MustBeDString(args[0])
 				dOid, err := tree.ParseDOid(evalCtx, string(name), types.RegClass)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597390)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597391)
 				}
+				__antithesis_instrumentation__.Notify(597388)
 				res, err := evalCtx.Sequence.IncrementSequenceByID(evalCtx.Ctx(), int64(dOid.DInt))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597392)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597393)
 				}
+				__antithesis_instrumentation__.Notify(597389)
 				return tree.NewDInt(tree.DInt(res)), nil
 			},
 			Info:       "Advances the given sequence and returns its new value.",
@@ -2201,11 +2693,16 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{SequenceNameArg, types.RegClass}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597394)
 				oid := tree.MustBeDOid(args[0])
 				res, err := evalCtx.Sequence.IncrementSequenceByID(evalCtx.Ctx(), int64(oid.DInt))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597396)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597397)
 				}
+				__antithesis_instrumentation__.Notify(597395)
 				return tree.NewDInt(tree.DInt(res)), nil
 			},
 			Info:       "Advances the given sequence and returns its new value.",
@@ -2223,15 +2720,24 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{SequenceNameArg, types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597398)
 				name := tree.MustBeDString(args[0])
 				dOid, err := tree.ParseDOid(evalCtx, string(name), types.RegClass)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597401)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597402)
 				}
+				__antithesis_instrumentation__.Notify(597399)
 				res, err := evalCtx.Sequence.GetLatestValueInSessionForSequenceByID(evalCtx.Ctx(), int64(dOid.DInt))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597403)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597404)
 				}
+				__antithesis_instrumentation__.Notify(597400)
 				return tree.NewDInt(tree.DInt(res)), nil
 			},
 			Info:       "Returns the latest value obtained with nextval for this sequence in this session.",
@@ -2241,11 +2747,16 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{SequenceNameArg, types.RegClass}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597405)
 				oid := tree.MustBeDOid(args[0])
 				res, err := evalCtx.Sequence.GetLatestValueInSessionForSequenceByID(evalCtx.Ctx(), int64(oid.DInt))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597407)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597408)
 				}
+				__antithesis_instrumentation__.Notify(597406)
 				return tree.NewDInt(tree.DInt(res)), nil
 			},
 			Info:       "Returns the latest value obtained with nextval for this sequence in this session.",
@@ -2261,10 +2772,15 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597409)
 				val, err := evalCtx.SessionData().SequenceState.GetLastValue()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597411)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597412)
 				}
+				__antithesis_instrumentation__.Notify(597410)
 				return tree.NewDInt(tree.DInt(val)), nil
 			},
 			Info:       "Return value most recently obtained with nextval in this session.",
@@ -2272,8 +2788,6 @@ var builtins = map[string]builtinDefinition{
 		},
 	),
 
-	// Note: behavior is slightly different than Postgres for performance reasons.
-	// See https://github.com/cockroachdb/cockroach/issues/21564
 	"setval": makeBuiltin(
 		tree.FunctionProperties{
 			Category:             categorySequences,
@@ -2284,17 +2798,26 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{SequenceNameArg, types.String}, {"value", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597413)
 				name := tree.MustBeDString(args[0])
 				dOid, err := tree.ParseDOid(evalCtx, string(name), types.RegClass)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597416)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597417)
 				}
+				__antithesis_instrumentation__.Notify(597414)
 
 				newVal := tree.MustBeDInt(args[1])
 				if err := evalCtx.Sequence.SetSequenceValueByID(
-					evalCtx.Ctx(), uint32(dOid.DInt), int64(newVal), true /* isCalled */); err != nil {
+					evalCtx.Ctx(), uint32(dOid.DInt), int64(newVal), true); err != nil {
+					__antithesis_instrumentation__.Notify(597418)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597419)
 				}
+				__antithesis_instrumentation__.Notify(597415)
 				return args[1], nil
 			},
 			Info: "Set the given sequence's current value. The next call to nextval will return " +
@@ -2305,12 +2828,17 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{SequenceNameArg, types.RegClass}, {"value", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597420)
 				oid := tree.MustBeDOid(args[0])
 				newVal := tree.MustBeDInt(args[1])
 				if err := evalCtx.Sequence.SetSequenceValueByID(
-					evalCtx.Ctx(), uint32(oid.DInt), int64(newVal), true /* isCalled */); err != nil {
+					evalCtx.Ctx(), uint32(oid.DInt), int64(newVal), true); err != nil {
+					__antithesis_instrumentation__.Notify(597422)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597423)
 				}
+				__antithesis_instrumentation__.Notify(597421)
 				return args[1], nil
 			},
 			Info: "Set the given sequence's current value. The next call to nextval will return " +
@@ -2323,18 +2851,27 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597424)
 				name := tree.MustBeDString(args[0])
 				dOid, err := tree.ParseDOid(evalCtx, string(name), types.RegClass)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597427)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597428)
 				}
+				__antithesis_instrumentation__.Notify(597425)
 				isCalled := bool(tree.MustBeDBool(args[2]))
 
 				newVal := tree.MustBeDInt(args[1])
 				if err := evalCtx.Sequence.SetSequenceValueByID(
 					evalCtx.Ctx(), uint32(dOid.DInt), int64(newVal), isCalled); err != nil {
+					__antithesis_instrumentation__.Notify(597429)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597430)
 				}
+				__antithesis_instrumentation__.Notify(597426)
 				return args[1], nil
 			},
 			Info: "Set the given sequence's current value. If is_called is false, the next call to " +
@@ -2347,14 +2884,19 @@ var builtins = map[string]builtinDefinition{
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597431)
 				oid := tree.MustBeDOid(args[0])
 				isCalled := bool(tree.MustBeDBool(args[2]))
 
 				newVal := tree.MustBeDInt(args[1])
 				if err := evalCtx.Sequence.SetSequenceValueByID(
 					evalCtx.Ctx(), uint32(oid.DInt), int64(newVal), isCalled); err != nil {
+					__antithesis_instrumentation__.Notify(597433)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597434)
 				}
+				__antithesis_instrumentation__.Notify(597432)
 				return args[1], nil
 			},
 			Info: "Set the given sequence's current value. If is_called is false, the next call to " +
@@ -2375,7 +2917,8 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.HomogeneousType{},
 			ReturnType: tree.FirstNonNullReturnType(),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				return tree.PickFromTuple(ctx, true /* greatest */, args)
+				__antithesis_instrumentation__.Notify(597435)
+				return tree.PickFromTuple(ctx, true, args)
 			},
 			Info:       "Returns the element with the greatest value.",
 			Volatility: tree.VolatilityImmutable,
@@ -2391,14 +2934,13 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.HomogeneousType{},
 			ReturnType: tree.FirstNonNullReturnType(),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				return tree.PickFromTuple(ctx, false /* greatest */, args)
+				__antithesis_instrumentation__.Notify(597436)
+				return tree.PickFromTuple(ctx, false, args)
 			},
 			Info:       "Returns the element with the lowest value.",
 			Volatility: tree.VolatilityImmutable,
 		},
 	),
-
-	// Timestamp/Date functions.
 
 	"experimental_strftime": makeBuiltin(
 		tree.FunctionProperties{
@@ -2408,12 +2950,17 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"input", types.Timestamp}, {"extract_format", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597437)
 				fromTime := args[0].(*tree.DTimestamp).Time
 				format := string(tree.MustBeDString(args[1]))
 				t, err := strtime.Strftime(fromTime, format)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597439)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597440)
 				}
+				__antithesis_instrumentation__.Notify(597438)
 				return tree.NewDString(t), nil
 			},
 			Info: "From `input`, extracts and formats the time as identified in `extract_format` " +
@@ -2424,15 +2971,24 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"input", types.Date}, {"extract_format", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597441)
 				fromTime, err := args[0].(*tree.DDate).ToTime()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597444)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597445)
 				}
+				__antithesis_instrumentation__.Notify(597442)
 				format := string(tree.MustBeDString(args[1]))
 				t, err := strtime.Strftime(fromTime, format)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597446)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597447)
 				}
+				__antithesis_instrumentation__.Notify(597443)
 				return tree.NewDString(t), nil
 			},
 			Info: "From `input`, extracts and formats the time as identified in `extract_format` " +
@@ -2443,12 +2999,17 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"input", types.TimestampTZ}, {"extract_format", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597448)
 				fromTime := args[0].(*tree.DTimestampTZ).Time
 				format := string(tree.MustBeDString(args[1]))
 				t, err := strtime.Strftime(fromTime, format)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597450)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597451)
 				}
+				__antithesis_instrumentation__.Notify(597449)
 				return tree.NewDString(t), nil
 			},
 			Info: "From `input`, extracts and formats the time as identified in `extract_format` " +
@@ -2465,12 +3026,17 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"input", types.String}, {"format", types.String}},
 			ReturnType: tree.FixedReturnType(types.TimestampTZ),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597452)
 				toParse := string(tree.MustBeDString(args[0]))
 				format := string(tree.MustBeDString(args[1]))
 				t, err := strtime.Strptime(toParse, format)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597454)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597455)
 				}
+				__antithesis_instrumentation__.Notify(597453)
 				return tree.MakeDTimestampTZ(t.UTC(), time.Microsecond)
 			},
 			Info: "Returns `input` as a timestamptz using `format` (which uses standard " +
@@ -2485,6 +3051,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"interval", types.Interval}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597456)
 				d := tree.MustBeDInterval(args[0]).Duration
 				var buf bytes.Buffer
 				d.FormatWithStyle(&buf, duration.IntervalStyle_POSTGRES)
@@ -2497,6 +3064,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"timestamp", types.Timestamp}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597457)
 				ts := tree.MustBeDTimestamp(args[0])
 				return tree.NewDString(tree.AsStringWithFlags(&ts, tree.FmtBareStrings)), nil
 			},
@@ -2507,6 +3075,7 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"date", types.Date}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597458)
 				ts := tree.MustBeDDate(args[0])
 				return tree.NewDString(tree.AsStringWithFlags(&ts, tree.FmtBareStrings)), nil
 			},
@@ -2521,16 +3090,21 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"interval", types.Interval}, {"style", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597459)
 				d := tree.MustBeDInterval(args[0]).Duration
 				styleStr := string(tree.MustBeDString(args[1]))
 				styleVal, ok := duration.IntervalStyle_value[strings.ToUpper(styleStr)]
 				if !ok {
+					__antithesis_instrumentation__.Notify(597461)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"invalid IntervalStyle: %s",
 						styleStr,
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(597462)
 				}
+				__antithesis_instrumentation__.Notify(597460)
 				var buf bytes.Buffer
 				d.FormatWithStyle(&buf, duration.IntervalStyle(styleVal))
 				return tree.NewDString(buf.String()), nil
@@ -2542,15 +3116,24 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"timestamp", types.Timestamp}, {"datestyle", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597463)
 				ts := tree.MustBeDTimestamp(args[0])
 				dateStyleStr := string(tree.MustBeDString(args[1]))
 				ds, err := pgdate.ParseDateStyle(dateStyleStr, pgdate.DefaultDateStyle())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597466)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597467)
 				}
+				__antithesis_instrumentation__.Notify(597464)
 				if ds.Style != pgdate.Style_ISO {
+					__antithesis_instrumentation__.Notify(597468)
 					return nil, unimplemented.NewWithIssue(41773, "only ISO style is supported")
+				} else {
+					__antithesis_instrumentation__.Notify(597469)
 				}
+				__antithesis_instrumentation__.Notify(597465)
 				return tree.NewDString(tree.AsStringWithFlags(&ts, tree.FmtBareStrings)), nil
 			},
 			Info:       "Convert an timestamp to a string assuming the string is formatted using the given DateStyle.",
@@ -2560,15 +3143,24 @@ var builtins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"date", types.Date}, {"datestyle", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597470)
 				ts := tree.MustBeDDate(args[0])
 				dateStyleStr := string(tree.MustBeDString(args[1]))
 				ds, err := pgdate.ParseDateStyle(dateStyleStr, pgdate.DefaultDateStyle())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597473)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597474)
 				}
+				__antithesis_instrumentation__.Notify(597471)
 				if ds.Style != pgdate.Style_ISO {
+					__antithesis_instrumentation__.Notify(597475)
 					return nil, unimplemented.NewWithIssue(41773, "only ISO style is supported")
+				} else {
+					__antithesis_instrumentation__.Notify(597476)
 				}
+				__antithesis_instrumentation__.Notify(597472)
 				return tree.NewDString(tree.AsStringWithFlags(&ts, tree.FmtBareStrings)), nil
 			},
 			Info:       "Convert an date to a string assuming the string is formatted using the given DateStyle.",
@@ -2576,13 +3168,13 @@ var builtins = map[string]builtinDefinition{
 		},
 	),
 
-	// https://www.postgresql.org/docs/10/static/functions-datetime.html
 	"age": makeBuiltin(
 		tree.FunctionProperties{},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"val", types.TimestampTZ}},
 			ReturnType: tree.FixedReturnType(types.Interval),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597477)
 				return &tree.DInterval{
 					Duration: duration.Age(
 						ctx.GetTxnTimestamp(time.Microsecond).Time,
@@ -2601,6 +3193,7 @@ months and years, use ` + "`now() - timestamptz`" + `.`,
 			Types:      tree.ArgTypes{{"end", types.TimestampTZ}, {"begin", types.TimestampTZ}},
 			ReturnType: tree.FixedReturnType(types.Interval),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597478)
 				return &tree.DInterval{
 					Duration: duration.Age(
 						args[0].(*tree.DTimestampTZ).Time,
@@ -2643,6 +3236,7 @@ months and years, use the timestamptz subtraction operator.`,
 			ReturnType:        tree.FixedReturnType(types.TimestampTZ),
 			PreferredOverload: true,
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597479)
 				return tree.MakeDTimestampTZ(ctx.GetStmtTimestamp(), time.Microsecond)
 			},
 			Info:       "Returns the start time of the current statement.",
@@ -2652,6 +3246,7 @@ months and years, use the timestamptz subtraction operator.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Timestamp),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597480)
 				return tree.MakeDTimestamp(ctx.GetStmtTimestamp(), time.Microsecond)
 			},
 			Info:       "Returns the start time of the current statement.",
@@ -2700,9 +3295,10 @@ nearest replica.`, defaultFollowerReadDuration),
 			},
 			ReturnType: tree.FixedReturnType(types.TimestampTZ),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597481)
 				return withMinTimestamp(ctx, tree.MustBeDTimestampTZ(args[0]).Time)
 			},
-			Info:       withMinTimestampInfo(false /* nearestOnly */),
+			Info:       withMinTimestampInfo(false),
 			Volatility: tree.VolatilityVolatile,
 		},
 		tree.Overload{
@@ -2712,9 +3308,10 @@ nearest replica.`, defaultFollowerReadDuration),
 			},
 			ReturnType: tree.FixedReturnType(types.TimestampTZ),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597482)
 				return withMinTimestamp(ctx, tree.MustBeDTimestampTZ(args[0]).Time)
 			},
-			Info:       withMinTimestampInfo(true /* nearestOnly */),
+			Info:       withMinTimestampInfo(true),
 			Volatility: tree.VolatilityVolatile,
 		},
 	),
@@ -2727,9 +3324,10 @@ nearest replica.`, defaultFollowerReadDuration),
 			},
 			ReturnType: tree.FixedReturnType(types.TimestampTZ),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597483)
 				return withMaxStaleness(ctx, tree.MustBeDInterval(args[0]).Duration)
 			},
-			Info:       withMaxStalenessInfo(false /* nearestOnly */),
+			Info:       withMaxStalenessInfo(false),
 			Volatility: tree.VolatilityVolatile,
 		},
 		tree.Overload{
@@ -2739,9 +3337,10 @@ nearest replica.`, defaultFollowerReadDuration),
 			},
 			ReturnType: tree.FixedReturnType(types.TimestampTZ),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597484)
 				return withMaxStaleness(ctx, tree.MustBeDInterval(args[0]).Duration)
 			},
-			Info:       withMaxStalenessInfo(true /* nearestOnly */),
+			Info:       withMaxStalenessInfo(true),
 			Volatility: tree.VolatilityVolatile,
 		},
 	),
@@ -2754,6 +3353,7 @@ nearest replica.`, defaultFollowerReadDuration),
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Decimal),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597485)
 				return ctx.GetClusterTimestamp(), nil
 			},
 			Info: `Returns the logical time of the current transaction as
@@ -2771,6 +3371,7 @@ may increase either contention or retry errors, or both.`,
 			Types:      tree.ArgTypes{{"hlc", types.Decimal}},
 			ReturnType: tree.FixedReturnType(types.TimestampTZ),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597486)
 				d := tree.MustBeDDecimal(args[0])
 				return tree.DecimalToInexactDTimestampTZ(&d)
 			},
@@ -2790,6 +3391,7 @@ value if you rely on the HLC for accuracy.`,
 			ReturnType:        tree.FixedReturnType(types.TimestampTZ),
 			PreferredOverload: true,
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597487)
 				return tree.MakeDTimestampTZ(timeutil.Now(), time.Microsecond)
 			},
 			Info:       "Returns the current system time on one of the cluster nodes.",
@@ -2799,6 +3401,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Timestamp),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597488)
 				return tree.MakeDTimestamp(timeutil.Now(), time.Microsecond)
 			},
 			Info:       "Returns the current system time on one of the cluster nodes.",
@@ -2812,9 +3415,9 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597489)
 				ctxTime := ctx.GetRelativeParseTime()
-				// From postgres@a166d408eb0b35023c169e765f4664c3b114b52e src/backend/utils/adt/timestamp.c#L1637,
-				// we should support "%a %b %d %H:%M:%S.%%06d %Y %Z".
+
 				return tree.NewDString(ctxTime.Format("Mon Jan 2 15:04:05.000000 2006 -0700")), nil
 			},
 			Info:       "Returns the current system time on one of the cluster nodes as a string.",
@@ -2825,34 +3428,40 @@ value if you rely on the HLC for accuracy.`,
 	"extract":   extractBuiltin,
 	"date_part": extractBuiltin,
 
-	// TODO(knz,otan): Remove in 20.2.
 	"extract_duration": makeBuiltin(
 		tree.FunctionProperties{Category: categoryDateAndTime},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"element", types.String}, {"input", types.Interval}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				// extract timeSpan fromTime.
+				__antithesis_instrumentation__.Notify(597490)
+
 				fromInterval := *args[1].(*tree.DInterval)
 				timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 				switch timeSpan {
 				case "hour", "hours":
+					__antithesis_instrumentation__.Notify(597491)
 					return tree.NewDInt(tree.DInt(fromInterval.Nanos() / int64(time.Hour))), nil
 
 				case "minute", "minutes":
+					__antithesis_instrumentation__.Notify(597492)
 					return tree.NewDInt(tree.DInt(fromInterval.Nanos() / int64(time.Minute))), nil
 
 				case "second", "seconds":
+					__antithesis_instrumentation__.Notify(597493)
 					return tree.NewDInt(tree.DInt(fromInterval.Nanos() / int64(time.Second))), nil
 
 				case "millisecond", "milliseconds":
-					// This a PG extension not supported in MySQL.
+					__antithesis_instrumentation__.Notify(597494)
+
 					return tree.NewDInt(tree.DInt(fromInterval.Nanos() / int64(time.Millisecond))), nil
 
 				case "microsecond", "microseconds":
+					__antithesis_instrumentation__.Notify(597495)
 					return tree.NewDInt(tree.DInt(fromInterval.Nanos() / int64(time.Microsecond))), nil
 
 				default:
+					__antithesis_instrumentation__.Notify(597496)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue, "unsupported timespan: %s", timeSpan)
 				}
@@ -2864,53 +3473,23 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// https://www.postgresql.org/docs/10/static/functions-datetime.html#FUNCTIONS-DATETIME-TRUNC
-	//
-	// PostgreSQL documents date_trunc for timestamp, timestamptz and
-	// interval. It will also handle date and time inputs by casting them,
-	// so we support those for compatibility. This gives us the following
-	// function signatures:
-	//
-	//  date_trunc(string, time)        -> interval
-	//  date_trunc(string, date)        -> timestamptz
-	//  date_trunc(string, timestamp)   -> timestamp
-	//  date_trunc(string, timestamptz) -> timestamptz
-	//
-	// See the following snippet from running the functions in PostgreSQL:
-	//
-	// 		postgres=# select pg_typeof(date_trunc('month', '2017-04-11 00:00:00'::timestamp));
-	// 							pg_typeof
-	// 		-----------------------------
-	// 		timestamp without time zone
-	//
-	// 		postgres=# select pg_typeof(date_trunc('month', '2017-04-11 00:00:00'::date));
-	// 						pg_typeof
-	// 		--------------------------
-	// 		timestamp with time zone
-	//
-	// 		postgres=# select pg_typeof(date_trunc('month', '2017-04-11 00:00:00'::time));
-	// 		pg_typeof
-	// 		-----------
-	// 		interval
-	//
-	// This implicit casting behavior is mentioned in the PostgreSQL documentation:
-	// https://www.postgresql.org/docs/10/static/functions-datetime.html
-	// > source is a value expression of type timestamp or interval. (Values
-	// > of type date and time are cast automatically to timestamp or interval,
-	// > respectively.)
-	//
 	"date_trunc": makeBuiltin(
 		tree.FunctionProperties{Category: categoryDateAndTime},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"element", types.String}, {"input", types.Timestamp}},
 			ReturnType: tree.FixedReturnType(types.Timestamp),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597497)
 				timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 				fromTS := args[1].(*tree.DTimestamp)
 				tsTZ, err := truncateTimestamp(fromTS.Time, timeSpan)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597499)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597500)
 				}
+				__antithesis_instrumentation__.Notify(597498)
 				return tree.MakeDTimestamp(tsTZ.Time, time.Microsecond)
 			},
 			Info: "Truncates `input` to precision `element`.  Sets all fields that are less\n" +
@@ -2923,13 +3502,18 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"element", types.String}, {"input", types.Date}},
 			ReturnType: tree.FixedReturnType(types.TimestampTZ),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597501)
 				timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 				date := args[1].(*tree.DDate)
-				// Localize the timestamp into the given location.
+
 				fromTSTZ, err := tree.MakeDTimestampTZFromDate(ctx.GetLocation(), date)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597503)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597504)
 				}
+				__antithesis_instrumentation__.Notify(597502)
 				return truncateTimestamp(fromTSTZ.Time, timeSpan)
 			},
 			Info: "Truncates `input` to precision `element`.  Sets all fields that are less\n" +
@@ -2942,12 +3526,17 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"element", types.String}, {"input", types.Time}},
 			ReturnType: tree.FixedReturnType(types.Interval),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597505)
 				timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 				fromTime := args[1].(*tree.DTime)
 				time, err := truncateTime(fromTime, timeSpan)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597507)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597508)
 				}
+				__antithesis_instrumentation__.Notify(597506)
 				return &tree.DInterval{Duration: duration.MakeDuration(int64(*time)*1000, 0, 0)}, nil
 			},
 			Info: "Truncates `input` to precision `element`.  Sets all fields that are less\n" +
@@ -2959,6 +3548,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"element", types.String}, {"input", types.TimestampTZ}},
 			ReturnType: tree.FixedReturnType(types.TimestampTZ),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597509)
 				fromTSTZ := args[1].(*tree.DTimestampTZ)
 				timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 				return truncateTimestamp(fromTSTZ.Time.In(ctx.GetLocation()), timeSpan)
@@ -2973,6 +3563,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"element", types.String}, {"input", types.Interval}},
 			ReturnType: tree.FixedReturnType(types.Interval),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597510)
 				fromInterval := args[1].(*tree.DInterval)
 				timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 				return truncateInterval(fromInterval, timeSpan)
@@ -2990,28 +3581,43 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"row", types.AnyTuple}},
 			ReturnType: tree.FixedReturnType(types.Jsonb),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597511)
 				tuple := args[0].(*tree.DTuple)
 				builder := json.NewObjectBuilder(len(tuple.D))
 				typ := tuple.ResolvedType()
 				labels := typ.TupleLabels()
 				for i, d := range tuple.D {
+					__antithesis_instrumentation__.Notify(597513)
 					var label string
 					if labels != nil {
+						__antithesis_instrumentation__.Notify(597517)
 						label = labels[i]
+					} else {
+						__antithesis_instrumentation__.Notify(597518)
 					}
+					__antithesis_instrumentation__.Notify(597514)
 					if label == "" {
+						__antithesis_instrumentation__.Notify(597519)
 						label = fmt.Sprintf("f%d", i+1)
+					} else {
+						__antithesis_instrumentation__.Notify(597520)
 					}
+					__antithesis_instrumentation__.Notify(597515)
 					val, err := tree.AsJSON(
 						d,
 						ctx.SessionData().DataConversionConfig,
 						ctx.GetLocation(),
 					)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597521)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597522)
 					}
+					__antithesis_instrumentation__.Notify(597516)
 					builder.Add(label, val)
 				}
+				__antithesis_instrumentation__.Notify(597512)
 				return tree.NewDJSON(builder.Build()), nil
 			},
 			Info:       "Returns the row as a JSON object.",
@@ -3019,10 +3625,8 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// https://www.postgresql.org/docs/9.6/functions-datetime.html
 	"timezone": makeBuiltin(defProps(),
-		// NOTE(otan): this should be deleted and replaced with the correct
-		// function overload promoting the string to timestamptz.
+
 		tree.Overload{
 			Types: tree.ArgTypes{
 				{"timezone", types.String},
@@ -3030,16 +3634,25 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Timestamp),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597523)
 				tzArg := string(tree.MustBeDString(args[0]))
 				tsArg := string(tree.MustBeDString(args[1]))
 				ts, _, err := tree.ParseDTimestampTZ(ctx, tsArg, time.Microsecond)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597526)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597527)
 				}
+				__antithesis_instrumentation__.Notify(597524)
 				loc, err := timeutil.TimeZoneStringToLocation(tzArg, timeutil.TimeZoneStringToLocationPOSIXStandard)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597528)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597529)
 				}
+				__antithesis_instrumentation__.Notify(597525)
 				return ts.EvalAtTimeZone(ctx, loc)
 			},
 			Info:       "Convert given time stamp with time zone to the new time zone, with no time zone designation.",
@@ -3052,6 +3665,7 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.TimestampTZ),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597530)
 				tzStr := string(tree.MustBeDString(args[0]))
 				ts := tree.MustBeDTimestamp(args[1])
 				loc, err := timeutil.TimeZoneStringToLocation(
@@ -3059,8 +3673,12 @@ value if you rely on the HLC for accuracy.`,
 					timeutil.TimeZoneStringToLocationPOSIXStandard,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597532)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597533)
 				}
+				__antithesis_instrumentation__.Notify(597531)
 				_, beforeOffsetSecs := ts.Time.Zone()
 				_, afterOffsetSecs := ts.Time.In(loc).Zone()
 				durationDelta := time.Duration(beforeOffsetSecs-afterOffsetSecs) * time.Second
@@ -3076,6 +3694,7 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Timestamp),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597534)
 				tzStr := string(tree.MustBeDString(args[0]))
 				ts := tree.MustBeDTimestampTZ(args[1])
 				loc, err := timeutil.TimeZoneStringToLocation(
@@ -3083,8 +3702,12 @@ value if you rely on the HLC for accuracy.`,
 					timeutil.TimeZoneStringToLocationPOSIXStandard,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597536)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597537)
 				}
+				__antithesis_instrumentation__.Notify(597535)
 				return ts.EvalAtTimeZone(ctx, loc)
 			},
 			Info:       "Convert given time stamp with time zone to the new time zone, with no time zone designation.",
@@ -3097,6 +3720,7 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.TimeTZ),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597538)
 				tzStr := string(tree.MustBeDString(args[0]))
 				tArg := args[1].(*tree.DTime)
 				loc, err := timeutil.TimeZoneStringToLocation(
@@ -3104,8 +3728,12 @@ value if you rely on the HLC for accuracy.`,
 					timeutil.TimeZoneStringToLocationPOSIXStandard,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597540)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597541)
 				}
+				__antithesis_instrumentation__.Notify(597539)
 				tTime := timeofday.TimeOfDay(*tArg).ToTime()
 				_, beforeOffsetSecs := tTime.In(ctx.GetLocation()).Zone()
 				durationDelta := time.Duration(-beforeOffsetSecs) * time.Second
@@ -3113,8 +3741,7 @@ value if you rely on the HLC for accuracy.`,
 			},
 			Info:       "Treat given time without time zone as located in the specified time zone.",
 			Volatility: tree.VolatilityStable,
-			// This overload's volatility does not match Postgres. See
-			// https://github.com/cockroachdb/cockroach/pull/51037 for details.
+
 			IgnoreVolatilityCheck: true,
 		},
 		tree.Overload{
@@ -3124,7 +3751,8 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.TimeTZ),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				// This one should disappear with implicit casts.
+				__antithesis_instrumentation__.Notify(597542)
+
 				tzStr := string(tree.MustBeDString(args[0]))
 				tArg := args[1].(*tree.DTimeTZ)
 				loc, err := timeutil.TimeZoneStringToLocation(
@@ -3132,42 +3760,49 @@ value if you rely on the HLC for accuracy.`,
 					timeutil.TimeZoneStringToLocationPOSIXStandard,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597544)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597545)
 				}
+				__antithesis_instrumentation__.Notify(597543)
 				tTime := tArg.TimeTZ.ToTime()
 				return tree.NewDTimeTZ(timetz.MakeTimeTZFromTime(tTime.In(loc))), nil
 			},
 			Info:       "Convert given time with time zone to the new time zone.",
 			Volatility: tree.VolatilityStable,
-			// This overload's volatility does not match Postgres. See
-			// https://github.com/cockroachdb/cockroach/pull/51037 for details.
+
 			IgnoreVolatilityCheck: true,
 		},
 	),
 
-	// parse_timestamp converts strings to timestamps. It is useful in expressions
-	// where casts (which are not immutable) cannot be used, like computed column
-	// expressions or partial index predicates. Only absolute timestamps that do
-	// not depend on the current context are supported (relative timestamps like
-	// 'now' are not supported).
 	"parse_timestamp": makeBuiltin(
 		defProps(),
 		stringOverload1(
 			func(ctx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597546)
 				ts, dependsOnContext, err := tree.ParseDTimestamp(
 					tree.NewParseTimeContext(ctx.GetTxnTimestamp(time.Microsecond).Time),
 					s,
 					time.Microsecond,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597549)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597550)
 				}
+				__antithesis_instrumentation__.Notify(597547)
 				if dependsOnContext {
+					__antithesis_instrumentation__.Notify(597551)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"relative timestamps are not supported",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(597552)
 				}
+				__antithesis_instrumentation__.Notify(597548)
 				return ts, nil
 			},
 			types.Timestamp,
@@ -3178,26 +3813,39 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"string", types.String}, {"datestyle", types.String}},
 			ReturnType: tree.FixedReturnType(types.Timestamp),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597553)
 				arg := string(tree.MustBeDString(args[0]))
 				dateStyle := string(tree.MustBeDString(args[1]))
 				parseCtx, err := parseContextFromDateStyle(ctx, dateStyle)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597557)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597558)
 				}
+				__antithesis_instrumentation__.Notify(597554)
 				ts, dependsOnContext, err := tree.ParseDTimestamp(
 					parseCtx,
 					arg,
 					time.Microsecond,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597559)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597560)
 				}
+				__antithesis_instrumentation__.Notify(597555)
 				if dependsOnContext {
+					__antithesis_instrumentation__.Notify(597561)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"relative timestamps are not supported",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(597562)
 				}
+				__antithesis_instrumentation__.Notify(597556)
 				return ts, nil
 			},
 			Info:       "Convert a string containing an absolute timestamp to the corresponding timestamp assuming dates formatted using the given DateStyle.",
@@ -3209,19 +3857,28 @@ value if you rely on the HLC for accuracy.`,
 		defProps(),
 		stringOverload1(
 			func(ctx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597563)
 				ts, dependsOnContext, err := tree.ParseDDate(
 					tree.NewParseTimeContext(ctx.GetTxnTimestamp(time.Microsecond).Time),
 					s,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597566)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597567)
 				}
+				__antithesis_instrumentation__.Notify(597564)
 				if dependsOnContext {
+					__antithesis_instrumentation__.Notify(597568)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"relative dates are not supported",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(597569)
 				}
+				__antithesis_instrumentation__.Notify(597565)
 				return ts, nil
 			},
 			types.Date,
@@ -3232,22 +3889,35 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"string", types.String}, {"datestyle", types.String}},
 			ReturnType: tree.FixedReturnType(types.Date),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597570)
 				arg := string(tree.MustBeDString(args[0]))
 				dateStyle := string(tree.MustBeDString(args[1]))
 				parseCtx, err := parseContextFromDateStyle(ctx, dateStyle)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597574)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597575)
 				}
+				__antithesis_instrumentation__.Notify(597571)
 				ts, dependsOnContext, err := tree.ParseDDate(parseCtx, arg)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597576)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597577)
 				}
+				__antithesis_instrumentation__.Notify(597572)
 				if dependsOnContext {
+					__antithesis_instrumentation__.Notify(597578)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"relative dates are not supported",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(597579)
 				}
+				__antithesis_instrumentation__.Notify(597573)
 				return ts, nil
 			},
 			Info:       "Parses a date assuming it is in format specified by DateStyle.",
@@ -3259,20 +3929,29 @@ value if you rely on the HLC for accuracy.`,
 		defProps(),
 		stringOverload1(
 			func(ctx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597580)
 				t, dependsOnContext, err := tree.ParseDTime(
 					tree.NewParseTimeContext(ctx.GetTxnTimestamp(time.Microsecond).Time),
 					s,
 					time.Microsecond,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597583)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597584)
 				}
+				__antithesis_instrumentation__.Notify(597581)
 				if dependsOnContext {
+					__antithesis_instrumentation__.Notify(597585)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"relative times are not supported",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(597586)
 				}
+				__antithesis_instrumentation__.Notify(597582)
 				return t, nil
 			},
 			types.Time,
@@ -3283,22 +3962,35 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"string", types.String}, {"timestyle", types.String}},
 			ReturnType: tree.FixedReturnType(types.Time),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597587)
 				arg := string(tree.MustBeDString(args[0]))
 				dateStyle := string(tree.MustBeDString(args[1]))
 				parseCtx, err := parseContextFromDateStyle(ctx, dateStyle)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597591)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597592)
 				}
+				__antithesis_instrumentation__.Notify(597588)
 				t, dependsOnContext, err := tree.ParseDTime(parseCtx, arg, time.Microsecond)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597593)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597594)
 				}
+				__antithesis_instrumentation__.Notify(597589)
 				if dependsOnContext {
+					__antithesis_instrumentation__.Notify(597595)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"relative times are not supported",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(597596)
 				}
+				__antithesis_instrumentation__.Notify(597590)
 				return t, nil
 			},
 			Info:       "Parses a time assuming the date (if any) is in format specified by DateStyle.",
@@ -3310,6 +4002,7 @@ value if you rely on the HLC for accuracy.`,
 		defProps(),
 		stringOverload1(
 			func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597597)
 				return tree.ParseDInterval(duration.IntervalStyle_POSTGRES, s)
 			},
 			types.Interval,
@@ -3320,16 +4013,21 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"string", types.String}, {"style", types.String}},
 			ReturnType: tree.FixedReturnType(types.Interval),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597598)
 				s := string(tree.MustBeDString(args[0]))
 				styleStr := string(tree.MustBeDString(args[1]))
 				styleVal, ok := duration.IntervalStyle_value[strings.ToUpper(styleStr)]
 				if !ok {
+					__antithesis_instrumentation__.Notify(597600)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"invalid IntervalStyle: %s",
 						styleStr,
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(597601)
 				}
+				__antithesis_instrumentation__.Notify(597599)
 				return tree.ParseDInterval(duration.IntervalStyle(styleVal), s)
 			},
 			Info:       "Convert a string to an interval using the given IntervalStyle.",
@@ -3341,20 +4039,29 @@ value if you rely on the HLC for accuracy.`,
 		defProps(),
 		stringOverload1(
 			func(ctx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597602)
 				t, dependsOnContext, err := tree.ParseDTimeTZ(
 					tree.NewParseTimeContext(ctx.GetTxnTimestamp(time.Microsecond).Time),
 					s,
 					time.Microsecond,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597605)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597606)
 				}
+				__antithesis_instrumentation__.Notify(597603)
 				if dependsOnContext {
+					__antithesis_instrumentation__.Notify(597607)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"relative times are not supported",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(597608)
 				}
+				__antithesis_instrumentation__.Notify(597604)
 				return t, nil
 			},
 			types.TimeTZ,
@@ -3365,22 +4072,35 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"string", types.String}, {"timestyle", types.String}},
 			ReturnType: tree.FixedReturnType(types.TimeTZ),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597609)
 				arg := string(tree.MustBeDString(args[0]))
 				dateStyle := string(tree.MustBeDString(args[1]))
 				parseCtx, err := parseContextFromDateStyle(ctx, dateStyle)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597613)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597614)
 				}
+				__antithesis_instrumentation__.Notify(597610)
 				t, dependsOnContext, err := tree.ParseDTimeTZ(parseCtx, arg, time.Microsecond)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597615)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597616)
 				}
+				__antithesis_instrumentation__.Notify(597611)
 				if dependsOnContext {
+					__antithesis_instrumentation__.Notify(597617)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"relative times are not supported",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(597618)
 				}
+				__antithesis_instrumentation__.Notify(597612)
 				return t, nil
 			},
 			Info:       "Parses a timetz assuming the date (if any) is in format specified by DateStyle.",
@@ -3388,16 +4108,19 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Array functions.
-
 	"string_to_array": makeBuiltin(arrayPropsNullableArgs(),
 		tree.Overload{
 			Types:      tree.ArgTypes{{"str", types.String}, {"delimiter", types.String}},
 			ReturnType: tree.FixedReturnType(types.StringArray),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597619)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597621)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597622)
 				}
+				__antithesis_instrumentation__.Notify(597620)
 				str := string(tree.MustBeDString(args[0]))
 				delimOrNil := stringOrNil(args[1])
 				return stringToArray(str, delimOrNil, nil)
@@ -3409,9 +4132,14 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"str", types.String}, {"delimiter", types.String}, {"null", types.String}},
 			ReturnType: tree.FixedReturnType(types.StringArray),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597623)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597625)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597626)
 				}
+				__antithesis_instrumentation__.Notify(597624)
 				str := string(tree.MustBeDString(args[0]))
 				delimOrNil := stringOrNil(args[1])
 				nullStr := stringOrNil(args[2])
@@ -3427,9 +4155,17 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"input", types.AnyArray}, {"delim", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				if args[0] == tree.DNull || args[1] == tree.DNull {
+				__antithesis_instrumentation__.Notify(597627)
+				if args[0] == tree.DNull || func() bool {
+					__antithesis_instrumentation__.Notify(597629)
+					return args[1] == tree.DNull == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597630)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597631)
 				}
+				__antithesis_instrumentation__.Notify(597628)
 				arr := tree.MustBeDArray(args[0])
 				delim := string(tree.MustBeDString(args[1]))
 				return arrayToString(evalCtx, arr, delim, nil)
@@ -3441,9 +4177,17 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"input", types.AnyArray}, {"delimiter", types.String}, {"null", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				if args[0] == tree.DNull || args[1] == tree.DNull {
+				__antithesis_instrumentation__.Notify(597632)
+				if args[0] == tree.DNull || func() bool {
+					__antithesis_instrumentation__.Notify(597634)
+					return args[1] == tree.DNull == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597635)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597636)
 				}
+				__antithesis_instrumentation__.Notify(597633)
 				arr := tree.MustBeDArray(args[0])
 				delim := string(tree.MustBeDString(args[1]))
 				nullStr := stringOrNil(args[2])
@@ -3459,6 +4203,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"input", types.AnyArray}, {"array_dimension", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597637)
 				arr := tree.MustBeDArray(args[0])
 				dimen := int64(tree.MustBeDInt(args[1]))
 				return arrayLength(arr, dimen), nil
@@ -3475,6 +4220,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"input", types.AnyArray}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597638)
 				arr := tree.MustBeDArray(args[0])
 				return cardinality(arr), nil
 			},
@@ -3488,6 +4234,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"input", types.AnyArray}, {"array_dimension", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597639)
 				arr := tree.MustBeDArray(args[0])
 				dimen := int64(tree.MustBeDInt(args[1]))
 				return arrayLower(arr, dimen), nil
@@ -3504,6 +4251,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"input", types.AnyArray}, {"array_dimension", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597640)
 				arr := tree.MustBeDArray(args[0])
 				dimen := int64(tree.MustBeDInt(args[1]))
 				return arrayLength(arr, dimen), nil
@@ -3516,17 +4264,27 @@ value if you rely on the HLC for accuracy.`,
 	),
 
 	"array_append": setProps(arrayPropsNullableArgs(), arrayBuiltin(func(typ *types.T) tree.Overload {
+		__antithesis_instrumentation__.Notify(597641)
 		return tree.Overload{
 			Types: tree.ArgTypes{{"array", types.MakeArray(typ)}, {"elem", typ}},
 			ReturnType: func(args []tree.TypedExpr) *types.T {
+				__antithesis_instrumentation__.Notify(597642)
 				if len(args) > 0 {
+					__antithesis_instrumentation__.Notify(597644)
 					if argTyp := args[0].ResolvedType(); argTyp.Family() != types.UnknownFamily {
+						__antithesis_instrumentation__.Notify(597645)
 						return argTyp
+					} else {
+						__antithesis_instrumentation__.Notify(597646)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(597647)
 				}
+				__antithesis_instrumentation__.Notify(597643)
 				return types.MakeArray(typ)
 			},
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597648)
 				return tree.AppendToMaybeNullArray(typ, args[0], args[1])
 			},
 			Info:       "Appends `elem` to `array`, returning the result.",
@@ -3535,17 +4293,27 @@ value if you rely on the HLC for accuracy.`,
 	})),
 
 	"array_prepend": setProps(arrayPropsNullableArgs(), arrayBuiltin(func(typ *types.T) tree.Overload {
+		__antithesis_instrumentation__.Notify(597649)
 		return tree.Overload{
 			Types: tree.ArgTypes{{"elem", typ}, {"array", types.MakeArray(typ)}},
 			ReturnType: func(args []tree.TypedExpr) *types.T {
+				__antithesis_instrumentation__.Notify(597650)
 				if len(args) > 1 {
+					__antithesis_instrumentation__.Notify(597652)
 					if argTyp := args[1].ResolvedType(); argTyp.Family() != types.UnknownFamily {
+						__antithesis_instrumentation__.Notify(597653)
 						return argTyp
+					} else {
+						__antithesis_instrumentation__.Notify(597654)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(597655)
 				}
+				__antithesis_instrumentation__.Notify(597651)
 				return types.MakeArray(typ)
 			},
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597656)
 				return tree.PrependToMaybeNullArray(typ, args[0], args[1])
 			},
 			Info:       "Prepends `elem` to `array`, returning the result.",
@@ -3554,22 +4322,39 @@ value if you rely on the HLC for accuracy.`,
 	})),
 
 	"array_cat": setProps(arrayPropsNullableArgs(), arrayBuiltin(func(typ *types.T) tree.Overload {
+		__antithesis_instrumentation__.Notify(597657)
 		return tree.Overload{
 			Types: tree.ArgTypes{{"left", types.MakeArray(typ)}, {"right", types.MakeArray(typ)}},
 			ReturnType: func(args []tree.TypedExpr) *types.T {
+				__antithesis_instrumentation__.Notify(597658)
 				if len(args) > 1 {
+					__antithesis_instrumentation__.Notify(597661)
 					if argTyp := args[1].ResolvedType(); argTyp.Family() != types.UnknownFamily {
+						__antithesis_instrumentation__.Notify(597662)
 						return argTyp
+					} else {
+						__antithesis_instrumentation__.Notify(597663)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(597664)
 				}
+				__antithesis_instrumentation__.Notify(597659)
 				if len(args) > 2 {
+					__antithesis_instrumentation__.Notify(597665)
 					if argTyp := args[2].ResolvedType(); argTyp.Family() != types.UnknownFamily {
+						__antithesis_instrumentation__.Notify(597666)
 						return argTyp
+					} else {
+						__antithesis_instrumentation__.Notify(597667)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(597668)
 				}
+				__antithesis_instrumentation__.Notify(597660)
 				return types.MakeArray(typ)
 			},
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597669)
 				return tree.ConcatArrays(typ, args[0], args[1])
 			},
 			Info:       "Appends two arrays.",
@@ -3578,25 +4363,43 @@ value if you rely on the HLC for accuracy.`,
 	})),
 
 	"array_remove": setProps(arrayPropsNullableArgs(), arrayBuiltin(func(typ *types.T) tree.Overload {
+		__antithesis_instrumentation__.Notify(597670)
 		return tree.Overload{
 			Types:      tree.ArgTypes{{"array", types.MakeArray(typ)}, {"elem", typ}},
 			ReturnType: tree.IdentityReturnType(0),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597671)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597674)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597675)
 				}
+				__antithesis_instrumentation__.Notify(597672)
 				result := tree.NewDArray(typ)
 				for _, e := range tree.MustBeDArray(args[0]).Array {
+					__antithesis_instrumentation__.Notify(597676)
 					cmp, err := e.CompareError(ctx, args[1])
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597678)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597679)
 					}
+					__antithesis_instrumentation__.Notify(597677)
 					if cmp != 0 {
+						__antithesis_instrumentation__.Notify(597680)
 						if err := result.Append(e); err != nil {
+							__antithesis_instrumentation__.Notify(597681)
 							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(597682)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(597683)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597673)
 				return result, nil
 			},
 			Info:       "Remove from `array` all elements equal to `elem`.",
@@ -3605,29 +4408,49 @@ value if you rely on the HLC for accuracy.`,
 	})),
 
 	"array_replace": setProps(arrayPropsNullableArgs(), arrayBuiltin(func(typ *types.T) tree.Overload {
+		__antithesis_instrumentation__.Notify(597684)
 		return tree.Overload{
 			Types:      tree.ArgTypes{{"array", types.MakeArray(typ)}, {"toreplace", typ}, {"replacewith", typ}},
 			ReturnType: tree.IdentityReturnType(0),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597685)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597688)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597689)
 				}
+				__antithesis_instrumentation__.Notify(597686)
 				result := tree.NewDArray(typ)
 				for _, e := range tree.MustBeDArray(args[0]).Array {
+					__antithesis_instrumentation__.Notify(597690)
 					cmp, err := e.CompareError(ctx, args[1])
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597692)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597693)
 					}
+					__antithesis_instrumentation__.Notify(597691)
 					if cmp == 0 {
+						__antithesis_instrumentation__.Notify(597694)
 						if err := result.Append(args[2]); err != nil {
+							__antithesis_instrumentation__.Notify(597695)
 							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(597696)
 						}
 					} else {
+						__antithesis_instrumentation__.Notify(597697)
 						if err := result.Append(e); err != nil {
+							__antithesis_instrumentation__.Notify(597698)
 							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(597699)
 						}
 					}
 				}
+				__antithesis_instrumentation__.Notify(597687)
 				return result, nil
 			},
 			Info:       "Replace all occurrences of `toreplace` in `array` with `replacewith`.",
@@ -3636,22 +4459,37 @@ value if you rely on the HLC for accuracy.`,
 	})),
 
 	"array_position": setProps(arrayPropsNullableArgs(), arrayBuiltin(func(typ *types.T) tree.Overload {
+		__antithesis_instrumentation__.Notify(597700)
 		return tree.Overload{
 			Types:      tree.ArgTypes{{"array", types.MakeArray(typ)}, {"elem", typ}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597701)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597704)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597705)
 				}
+				__antithesis_instrumentation__.Notify(597702)
 				for i, e := range tree.MustBeDArray(args[0]).Array {
+					__antithesis_instrumentation__.Notify(597706)
 					cmp, err := e.CompareError(ctx, args[1])
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597708)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597709)
 					}
+					__antithesis_instrumentation__.Notify(597707)
 					if cmp == 0 {
+						__antithesis_instrumentation__.Notify(597710)
 						return tree.NewDInt(tree.DInt(i + 1)), nil
+					} else {
+						__antithesis_instrumentation__.Notify(597711)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597703)
 				return tree.DNull, nil
 			},
 			Info:       "Return the index of the first occurrence of `elem` in `array`.",
@@ -3660,25 +4498,43 @@ value if you rely on the HLC for accuracy.`,
 	})),
 
 	"array_positions": setProps(arrayPropsNullableArgs(), arrayBuiltin(func(typ *types.T) tree.Overload {
+		__antithesis_instrumentation__.Notify(597712)
 		return tree.Overload{
 			Types:      tree.ArgTypes{{"array", types.MakeArray(typ)}, {"elem", typ}},
 			ReturnType: tree.FixedReturnType(types.IntArray),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597713)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597716)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597717)
 				}
+				__antithesis_instrumentation__.Notify(597714)
 				result := tree.NewDArray(types.Int)
 				for i, e := range tree.MustBeDArray(args[0]).Array {
+					__antithesis_instrumentation__.Notify(597718)
 					cmp, err := e.CompareError(ctx, args[1])
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597720)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597721)
 					}
+					__antithesis_instrumentation__.Notify(597719)
 					if cmp == 0 {
+						__antithesis_instrumentation__.Notify(597722)
 						if err := result.Append(tree.NewDInt(tree.DInt(i + 1))); err != nil {
+							__antithesis_instrumentation__.Notify(597723)
 							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(597724)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(597725)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597715)
 				return result, nil
 			},
 			Info:       "Returns and array of indexes of all occurrences of `elem` in `array`.",
@@ -3686,7 +4542,6 @@ value if you rely on the HLC for accuracy.`,
 		}
 	})),
 
-	// Full text search functions.
 	"ts_match_qv":                    makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 7821, Category: categoryFullTextSearch}),
 	"ts_match_vq":                    makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 7821, Category: categoryFullTextSearch}),
 	"tsvector_cmp":                   makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 7821, Category: categoryFullTextSearch}),
@@ -3717,13 +4572,13 @@ value if you rely on the HLC for accuracy.`,
 	"tsvector_update_trigger":        makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 7821, Category: categoryFullTextSearch}),
 	"tsvector_update_trigger_column": makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 7821, Category: categoryFullTextSearch}),
 
-	// Fuzzy String Matching
 	"soundex": makeBuiltin(
 		tree.FunctionProperties{Category: categoryString},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"source", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597726)
 				s := string(tree.MustBeDString(args[0]))
 				t := fuzzystrmatch.Soundex(s)
 				return tree.NewDString(t), nil
@@ -3732,15 +4587,14 @@ value if you rely on the HLC for accuracy.`,
 			Volatility: tree.VolatilityImmutable,
 		},
 	),
-	// The function is confusingly named, `similarity` would have been a better name,
-	// but this name matches the name in PostgreSQL.
-	// See https://www.postgresql.org/docs/current/fuzzystrmatch.html"
+
 	"difference": makeBuiltin(
 		tree.FunctionProperties{Category: categoryString},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"source", types.String}, {"target", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597727)
 				s, t := string(tree.MustBeDString(args[0])), string(tree.MustBeDString(args[1]))
 				diff := fuzzystrmatch.Difference(s, t)
 				return tree.NewDString(strconv.Itoa(diff)), nil
@@ -3754,12 +4608,20 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"source", types.String}, {"target", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597728)
 				s, t := string(tree.MustBeDString(args[0])), string(tree.MustBeDString(args[1]))
 				const maxLen = 255
-				if len(s) > maxLen || len(t) > maxLen {
+				if len(s) > maxLen || func() bool {
+					__antithesis_instrumentation__.Notify(597730)
+					return len(t) > maxLen == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597731)
 					return nil, pgerror.Newf(pgcode.InvalidParameterValue,
 						"levenshtein argument exceeds maximum length of %d characters", maxLen)
+				} else {
+					__antithesis_instrumentation__.Notify(597732)
 				}
+				__antithesis_instrumentation__.Notify(597729)
 				ld := fuzzystrmatch.LevenshteinDistance(s, t)
 				return tree.NewDInt(tree.DInt(ld)), nil
 			},
@@ -3771,13 +4633,21 @@ value if you rely on the HLC for accuracy.`,
 				{"ins_cost", types.Int}, {"del_cost", types.Int}, {"sub_cost", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597733)
 				s, t := string(tree.MustBeDString(args[0])), string(tree.MustBeDString(args[1]))
 				ins, del, sub := int(tree.MustBeDInt(args[2])), int(tree.MustBeDInt(args[3])), int(tree.MustBeDInt(args[4]))
 				const maxLen = 255
-				if len(s) > maxLen || len(t) > maxLen {
+				if len(s) > maxLen || func() bool {
+					__antithesis_instrumentation__.Notify(597735)
+					return len(t) > maxLen == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597736)
 					return nil, pgerror.Newf(pgcode.InvalidParameterValue,
 						"levenshtein argument exceeds maximum length of %d characters", maxLen)
+				} else {
+					__antithesis_instrumentation__.Notify(597737)
 				}
+				__antithesis_instrumentation__.Notify(597734)
 				ld := fuzzystrmatch.LevenshteinDistanceWithCost(s, t, ins, del, sub)
 				return tree.NewDInt(tree.DInt(ld)), nil
 			},
@@ -3789,17 +4659,12 @@ value if you rely on the HLC for accuracy.`,
 	"metaphone":              makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 56820, Category: categoryFuzzyStringMatching}),
 	"dmetaphone_alt":         makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 56820, Category: categoryFuzzyStringMatching}),
 
-	// Trigram functions.
 	"similarity":             makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 41285, Category: categoryTrigram}),
 	"show_trgm":              makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 41285, Category: categoryTrigram}),
 	"word_similarity":        makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 41285, Category: categoryTrigram}),
 	"strict_word_similarity": makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 41285, Category: categoryTrigram}),
 	"show_limit":             makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 41285, Category: categoryTrigram}),
 	"set_limit":              makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 41285, Category: categoryTrigram}),
-
-	// JSON functions.
-	// The behavior of both the JSON and JSONB data types in CockroachDB is
-	// similar to the behavior of the JSONB data type in Postgres.
 
 	"json_to_recordset":  makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 33285, Category: categoryJSON}),
 	"jsonb_to_recordset": makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 33285, Category: categoryJSON}),
@@ -3817,15 +4682,24 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"val", types.Jsonb}, {"path", types.StringArray}},
 			ReturnType: tree.FixedReturnType(types.Jsonb),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597738)
 				ary := *tree.MustBeDArray(args[1])
 				if err := checkHasNulls(ary); err != nil {
+					__antithesis_instrumentation__.Notify(597741)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597742)
 				}
+				__antithesis_instrumentation__.Notify(597739)
 				path, _ := darrayToStringSlice(ary)
 				s, _, err := tree.MustBeDJSON(args[0]).JSON.RemovePath(path)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597743)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597744)
 				}
+				__antithesis_instrumentation__.Notify(597740)
 				return &tree.DJSON{JSON: s}, nil
 			},
 			Info:       "Remove the specified path from the JSON object.",
@@ -3852,10 +4726,15 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"val", types.Jsonb}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597745)
 				s, err := json.Pretty(tree.MustBeDJSON(args[0]).JSON)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597747)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597748)
 				}
+				__antithesis_instrumentation__.Notify(597746)
 				return tree.NewDString(s), nil
 			},
 			Info:       "Returns the given JSON value as a STRING indented and with newlines.",
@@ -3902,6 +4781,7 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(e *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597749)
 				return tree.JSONExistsAny(e, tree.MustBeDJSON(args[0]), tree.MustBeDArray(args[1]))
 			},
 			Info:       "Returns whether any of the strings in the text array exist as top-level keys or array elements",
@@ -3917,6 +4797,7 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(e *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597750)
 				return jsonValidate(e, tree.MustBeDString(args[0])), nil
 			},
 			Info:       "Returns whether the given string is a valid JSON or not",
@@ -3927,20 +4808,31 @@ value if you rely on the HLC for accuracy.`,
 	"crdb_internal.pb_to_json": makeBuiltin(
 		jsonProps(),
 		func() []tree.Overload {
+			__antithesis_instrumentation__.Notify(597751)
 			returnType := tree.FixedReturnType(types.Jsonb)
 			const info = "Converts protocol message to its JSONB representation."
 			volatility := tree.VolatilityImmutable
 			pbToJSON := func(typ string, data []byte, flags protoreflect.FmtFlags) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597753)
 				msg, err := protoreflect.DecodeMessage(typ, data)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597756)
 					return nil, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid protocol message")
+				} else {
+					__antithesis_instrumentation__.Notify(597757)
 				}
+				__antithesis_instrumentation__.Notify(597754)
 				j, err := protoreflect.MessageToJSON(msg, flags)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597758)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597759)
 				}
+				__antithesis_instrumentation__.Notify(597755)
 				return tree.NewDJSON(j), nil
 			}
+			__antithesis_instrumentation__.Notify(597752)
 
 			return []tree.Overload{
 				{
@@ -3952,6 +4844,7 @@ value if you rely on the HLC for accuracy.`,
 					},
 					ReturnType: returnType,
 					Fn: func(context *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+						__antithesis_instrumentation__.Notify(597760)
 						return pbToJSON(
 							string(tree.MustBeDString(args[0])),
 							[]byte(tree.MustBeDBytes(args[1])),
@@ -3969,6 +4862,7 @@ value if you rely on the HLC for accuracy.`,
 					},
 					ReturnType: returnType,
 					Fn: func(context *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+						__antithesis_instrumentation__.Notify(597761)
 						return pbToJSON(
 							string(tree.MustBeDString(args[0])),
 							[]byte(tree.MustBeDBytes(args[1])),
@@ -3990,6 +4884,7 @@ value if you rely on the HLC for accuracy.`,
 					},
 					ReturnType: returnType,
 					Fn: func(context *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+						__antithesis_instrumentation__.Notify(597762)
 						return pbToJSON(
 							string(tree.MustBeDString(args[0])),
 							[]byte(tree.MustBeDBytes(args[1])),
@@ -4012,14 +4907,23 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597763)
 				msg, err := protoreflect.NewMessage(string(tree.MustBeDString(args[0])))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597766)
 					return nil, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid proto name")
+				} else {
+					__antithesis_instrumentation__.Notify(597767)
 				}
+				__antithesis_instrumentation__.Notify(597764)
 				data, err := protoreflect.JSONBMarshalToMessage(tree.MustBeDJSON(args[1]).JSON, msg)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597768)
 					return nil, pgerror.Wrap(err, pgcode.InvalidParameterValue, "invalid proto JSON")
+				} else {
+					__antithesis_instrumentation__.Notify(597769)
 				}
+				__antithesis_instrumentation__.Notify(597765)
 				return tree.NewDBytes(tree.DBytes(data)), nil
 			},
 			Info:       "Convert JSONB data to protocol message bytes",
@@ -4034,6 +4938,7 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597770)
 				uri := string(tree.MustBeDString(args[0]))
 				content, err := evalCtx.Planner.ExternalReadFile(evalCtx.Ctx(), uri)
 				return tree.NewDBytes(tree.DBytes(content)), err
@@ -4051,11 +4956,16 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597771)
 				data := tree.MustBeDBytes(args[0])
 				uri := string(tree.MustBeDString(args[1]))
 				if err := evalCtx.Planner.ExternalWriteFile(evalCtx.Ctx(), uri, []byte(data)); err != nil {
+					__antithesis_instrumentation__.Notify(597773)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597774)
 				}
+				__antithesis_instrumentation__.Notify(597772)
 				return tree.NewDInt(tree.DInt(len(data))), nil
 			},
 			Info:       "Write the content passed to a file at the supplied external storage URI",
@@ -4070,24 +4980,30 @@ value if you rely on the HLC for accuracy.`,
 			CompositeInsensitive: true,
 		},
 		tree.Overload{
-			// Note that datums_to_bytes(a) == datums_to_bytes(b) iff (a IS NOT DISTINCT FROM b)
+
 			Info: "Converts datums into key-encoded bytes. " +
 				"Supports NULLs and all data types which may be used in index keys",
 			Types:      tree.VariadicType{VarType: types.Any},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597775)
 				var out []byte
 				for i, arg := range args {
+					__antithesis_instrumentation__.Notify(597777)
 					var err error
 					out, err = keyside.Encode(out, arg, encoding.Ascending)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597778)
 						return nil, pgerror.Newf(
 							pgcode.DatatypeMismatch,
 							"illegal argument %d of type %s",
 							i, arg.ResolvedType(),
 						)
+					} else {
+						__antithesis_instrumentation__.Notify(597779)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597776)
 				return tree.NewDBytes(tree.DBytes(out)), nil
 			},
 			Volatility: tree.VolatilityImmutable,
@@ -4098,25 +5014,40 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"input", types.JSONArray}},
 			ReturnType: tree.FixedReturnType(types.Jsonb),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597780)
 				arr := tree.MustBeDArray(args[0])
 				var aggregatedStats roachpb.StatementStatistics
 				for _, statsDatum := range arr.Array {
+					__antithesis_instrumentation__.Notify(597783)
 					if statsDatum == tree.DNull {
+						__antithesis_instrumentation__.Notify(597786)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(597787)
 					}
+					__antithesis_instrumentation__.Notify(597784)
 					var stats roachpb.StatementStatistics
 					statsJSON := tree.MustBeDJSON(statsDatum).JSON
 					if err := sqlstatsutil.DecodeStmtStatsStatisticsJSON(statsJSON, &stats); err != nil {
+						__antithesis_instrumentation__.Notify(597788)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597789)
 					}
+					__antithesis_instrumentation__.Notify(597785)
 
 					aggregatedStats.Add(&stats)
 				}
+				__antithesis_instrumentation__.Notify(597781)
 
 				aggregatedJSON, err := sqlstatsutil.BuildStmtStatisticsJSON(&aggregatedStats)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597790)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597791)
 				}
+				__antithesis_instrumentation__.Notify(597782)
 
 				return tree.NewDJSON(aggregatedJSON), nil
 			},
@@ -4129,28 +5060,43 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"input", types.JSONArray}},
 			ReturnType: tree.FixedReturnType(types.Jsonb),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597792)
 				arr := tree.MustBeDArray(args[0])
 				var aggregatedStats roachpb.TransactionStatistics
 				for _, statsDatum := range arr.Array {
+					__antithesis_instrumentation__.Notify(597795)
 					if statsDatum == tree.DNull {
+						__antithesis_instrumentation__.Notify(597798)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(597799)
 					}
+					__antithesis_instrumentation__.Notify(597796)
 					var stats roachpb.TransactionStatistics
 					statsJSON := tree.MustBeDJSON(statsDatum).JSON
 					if err := sqlstatsutil.DecodeTxnStatsStatisticsJSON(statsJSON, &stats); err != nil {
+						__antithesis_instrumentation__.Notify(597800)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597801)
 					}
+					__antithesis_instrumentation__.Notify(597797)
 
 					aggregatedStats.Add(&stats)
 				}
+				__antithesis_instrumentation__.Notify(597793)
 
 				aggregatedJSON, err := sqlstatsutil.BuildTxnStatisticsJSON(
 					&roachpb.CollectedTransactionStatistics{
 						Stats: aggregatedStats,
 					})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597802)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597803)
 				}
+				__antithesis_instrumentation__.Notify(597794)
 
 				return tree.NewDJSON(aggregatedJSON), nil
 			},
@@ -4163,20 +5109,30 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"input", types.JSONArray}},
 			ReturnType: tree.FixedReturnType(types.Jsonb),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597804)
 				arr := tree.MustBeDArray(args[0])
 				metadata := &roachpb.AggregatedStatementMetadata{}
 
 				for _, metadataDatum := range arr.Array {
+					__antithesis_instrumentation__.Notify(597807)
 					if metadataDatum == tree.DNull {
+						__antithesis_instrumentation__.Notify(597814)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(597815)
 					}
+					__antithesis_instrumentation__.Notify(597808)
 
 					var statistics roachpb.CollectedStatementStatistics
 					metadataJSON := tree.MustBeDJSON(metadataDatum).JSON
 					err := sqlstatsutil.DecodeStmtStatsMetadataJSON(metadataJSON, &statistics)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597816)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597817)
 					}
+					__antithesis_instrumentation__.Notify(597809)
 					metadata.ImplicitTxn = statistics.Key.ImplicitTxn
 					metadata.Query = statistics.Key.Query
 					metadata.QuerySummary = statistics.Key.QuerySummary
@@ -4184,23 +5140,44 @@ value if you rely on the HLC for accuracy.`,
 					metadata.Databases = util.CombineUniqueString(metadata.Databases, []string{statistics.Key.Database})
 
 					if statistics.Key.DistSQL {
+						__antithesis_instrumentation__.Notify(597818)
 						metadata.DistSQLCount++
+					} else {
+						__antithesis_instrumentation__.Notify(597819)
 					}
+					__antithesis_instrumentation__.Notify(597810)
 					if statistics.Key.Failed {
+						__antithesis_instrumentation__.Notify(597820)
 						metadata.FailedCount++
+					} else {
+						__antithesis_instrumentation__.Notify(597821)
 					}
+					__antithesis_instrumentation__.Notify(597811)
 					if statistics.Key.FullScan {
+						__antithesis_instrumentation__.Notify(597822)
 						metadata.FullScanCount++
+					} else {
+						__antithesis_instrumentation__.Notify(597823)
 					}
+					__antithesis_instrumentation__.Notify(597812)
 					if statistics.Key.Vec {
+						__antithesis_instrumentation__.Notify(597824)
 						metadata.VecCount++
+					} else {
+						__antithesis_instrumentation__.Notify(597825)
 					}
+					__antithesis_instrumentation__.Notify(597813)
 					metadata.TotalCount++
 				}
+				__antithesis_instrumentation__.Notify(597805)
 				aggregatedJSON, err := sqlstatsutil.BuildStmtDetailsMetadataJSON(metadata)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597826)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597827)
 				}
+				__antithesis_instrumentation__.Notify(597806)
 
 				return tree.NewDJSON(aggregatedJSON), nil
 			},
@@ -4209,21 +5186,29 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Enum functions.
 	"enum_first": makeBuiltin(
 		tree.FunctionProperties{NullableArgs: true, Category: categoryEnum},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"val", types.AnyEnum}},
 			ReturnType: tree.IdentityReturnType(0),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597828)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597831)
 					return nil, pgerror.Newf(pgcode.NullValueNotAllowed, "argument cannot be NULL")
+				} else {
+					__antithesis_instrumentation__.Notify(597832)
 				}
+				__antithesis_instrumentation__.Notify(597829)
 				arg := args[0].(*tree.DEnum)
 				min, ok := arg.MinWriteable()
 				if !ok {
+					__antithesis_instrumentation__.Notify(597833)
 					return nil, errors.Newf("enum %s contains no values", arg.ResolvedType().Name())
+				} else {
+					__antithesis_instrumentation__.Notify(597834)
 				}
+				__antithesis_instrumentation__.Notify(597830)
 				return min, nil
 			},
 			Info:       "Returns the first value of the input enum type.",
@@ -4237,14 +5222,23 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"val", types.AnyEnum}},
 			ReturnType: tree.IdentityReturnType(0),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597835)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597838)
 					return nil, pgerror.Newf(pgcode.NullValueNotAllowed, "argument cannot be NULL")
+				} else {
+					__antithesis_instrumentation__.Notify(597839)
 				}
+				__antithesis_instrumentation__.Notify(597836)
 				arg := args[0].(*tree.DEnum)
 				max, ok := arg.MaxWriteable()
 				if !ok {
+					__antithesis_instrumentation__.Notify(597840)
 					return nil, errors.Newf("enum %s contains no values", arg.ResolvedType().Name())
+				} else {
+					__antithesis_instrumentation__.Notify(597841)
 				}
+				__antithesis_instrumentation__.Notify(597837)
 				return max, nil
 			},
 			Info:       "Returns the last value of the input enum type.",
@@ -4258,26 +5252,40 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"val", types.AnyEnum}},
 			ReturnType: tree.ArrayOfFirstNonNullReturnType(),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597842)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(597845)
 					return nil, pgerror.Newf(pgcode.NullValueNotAllowed, "argument cannot be NULL")
+				} else {
+					__antithesis_instrumentation__.Notify(597846)
 				}
+				__antithesis_instrumentation__.Notify(597843)
 				arg := args[0].(*tree.DEnum)
 				typ := arg.EnumTyp
 				arr := tree.NewDArray(typ)
 				for i := range typ.TypeMeta.EnumData.LogicalRepresentations {
-					// Read-only members should be excluded.
+					__antithesis_instrumentation__.Notify(597847)
+
 					if typ.TypeMeta.EnumData.IsMemberReadOnly[i] {
+						__antithesis_instrumentation__.Notify(597849)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(597850)
 					}
+					__antithesis_instrumentation__.Notify(597848)
 					enum := &tree.DEnum{
 						EnumTyp:     typ,
 						PhysicalRep: typ.TypeMeta.EnumData.PhysicalRepresentations[i],
 						LogicalRep:  typ.TypeMeta.EnumData.LogicalRepresentations[i],
 					}
 					if err := arr.Append(enum); err != nil {
+						__antithesis_instrumentation__.Notify(597851)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597852)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597844)
 				return arr, nil
 			},
 			Info:       "Returns all values of the input enum in an ordered array.",
@@ -4287,64 +5295,104 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"lower", types.AnyEnum}, {"upper", types.AnyEnum}},
 			ReturnType: tree.ArrayOfFirstNonNullReturnType(),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				if args[0] == tree.DNull && args[1] == tree.DNull {
+				__antithesis_instrumentation__.Notify(597853)
+				if args[0] == tree.DNull && func() bool {
+					__antithesis_instrumentation__.Notify(597857)
+					return args[1] == tree.DNull == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(597858)
 					return nil, pgerror.Newf(pgcode.NullValueNotAllowed, "both arguments cannot be NULL")
+				} else {
+					__antithesis_instrumentation__.Notify(597859)
 				}
+				__antithesis_instrumentation__.Notify(597854)
 				var bottom, top int
 				var typ *types.T
 				switch {
 				case args[0] == tree.DNull:
+					__antithesis_instrumentation__.Notify(597860)
 					right := args[1].(*tree.DEnum)
 					typ = right.ResolvedType()
 					idx, err := typ.EnumGetIdxOfPhysical(right.PhysicalRep)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597867)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597868)
 					}
+					__antithesis_instrumentation__.Notify(597861)
 					bottom, top = 0, idx
 				case args[1] == tree.DNull:
+					__antithesis_instrumentation__.Notify(597862)
 					left := args[0].(*tree.DEnum)
 					typ = left.ResolvedType()
 					idx, err := typ.EnumGetIdxOfPhysical(left.PhysicalRep)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597869)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597870)
 					}
+					__antithesis_instrumentation__.Notify(597863)
 					bottom, top = idx, len(typ.TypeMeta.EnumData.PhysicalRepresentations)-1
 				default:
+					__antithesis_instrumentation__.Notify(597864)
 					left, right := args[0].(*tree.DEnum), args[1].(*tree.DEnum)
 					if !left.ResolvedType().Equivalent(right.ResolvedType()) {
+						__antithesis_instrumentation__.Notify(597871)
 						return nil, pgerror.Newf(
 							pgcode.DatatypeMismatch,
 							"mismatched types %s and %s",
 							left.ResolvedType(),
 							right.ResolvedType(),
 						)
+					} else {
+						__antithesis_instrumentation__.Notify(597872)
 					}
+					__antithesis_instrumentation__.Notify(597865)
 					typ = left.ResolvedType()
 					var err error
 					bottom, err = typ.EnumGetIdxOfPhysical(left.PhysicalRep)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597873)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597874)
 					}
+					__antithesis_instrumentation__.Notify(597866)
 					top, err = typ.EnumGetIdxOfPhysical(right.PhysicalRep)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(597875)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597876)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597855)
 				arr := tree.NewDArray(typ)
 				for i := bottom; i <= top; i++ {
-					// Read-only members should be excluded.
+					__antithesis_instrumentation__.Notify(597877)
+
 					if typ.TypeMeta.EnumData.IsMemberReadOnly[i] {
+						__antithesis_instrumentation__.Notify(597879)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(597880)
 					}
+					__antithesis_instrumentation__.Notify(597878)
 					enum := &tree.DEnum{
 						EnumTyp:     typ,
 						PhysicalRep: typ.TypeMeta.EnumData.PhysicalRepresentations[i],
 						LogicalRep:  typ.TypeMeta.EnumData.LogicalRepresentations[i],
 					}
 					if err := arr.Append(enum); err != nil {
+						__antithesis_instrumentation__.Notify(597881)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(597882)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597856)
 				return arr, nil
 			},
 			Info:       "Returns all values of the input enum in an ordered array between the two arguments (inclusive).",
@@ -4352,15 +5400,13 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Metadata functions.
-
-	// https://www.postgresql.org/docs/10/static/functions-info.html
 	"version": makeBuiltin(
 		tree.FunctionProperties{Category: categorySystemInfo},
 		tree.Overload{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597883)
 				return tree.NewDString(build.GetInfo().Short()), nil
 			},
 			Info:       "Returns the node's version of CockroachDB.",
@@ -4368,16 +5414,20 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// https://www.postgresql.org/docs/10/static/functions-info.html
 	"current_database": makeBuiltin(
 		tree.FunctionProperties{Category: categorySystemInfo},
 		tree.Overload{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597884)
 				if len(ctx.SessionData().Database) == 0 {
+					__antithesis_instrumentation__.Notify(597886)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597887)
 				}
+				__antithesis_instrumentation__.Notify(597885)
 				return tree.NewDString(ctx.SessionData().Database), nil
 			},
 			Info:       "Returns the current database.",
@@ -4385,13 +5435,6 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// https://www.postgresql.org/docs/10/static/functions-info.html
-	//
-	// Note that in addition to what the pg doc says ("current_schema =
-	// first item in search path"), the pg server actually skips over
-	// non-existent schemas in the search path to determine
-	// current_schema. This is not documented but can be verified by a
-	// SQL client against a pg server.
 	"current_schema": makeBuiltin(
 		tree.FunctionProperties{
 			Category:         categorySystemInfo,
@@ -4401,17 +5444,30 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597888)
 				ctx := evalCtx.Ctx()
 				curDb := evalCtx.SessionData().Database
 				iter := evalCtx.SessionData().SearchPath.IterWithoutImplicitPGSchemas()
 				for scName, ok := iter.Next(); ok; scName, ok = iter.Next() {
-					if found, err := evalCtx.Planner.SchemaExists(ctx, curDb, scName); found || err != nil {
+					__antithesis_instrumentation__.Notify(597890)
+					if found, err := evalCtx.Planner.SchemaExists(ctx, curDb, scName); found || func() bool {
+						__antithesis_instrumentation__.Notify(597891)
+						return err != nil == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(597892)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(597894)
 							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(597895)
 						}
+						__antithesis_instrumentation__.Notify(597893)
 						return tree.NewDString(scName), nil
+					} else {
+						__antithesis_instrumentation__.Notify(597896)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597889)
 				return tree.DNull, nil
 			},
 			Info:       "Returns the current schema.",
@@ -4419,16 +5475,6 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// https://www.postgresql.org/docs/10/static/functions-info.html
-	//
-	// Note that in addition to what the pg doc says ("current_schemas =
-	// items in search path with or without pg_catalog depending on
-	// argument"), the pg server actually skips over non-existent
-	// schemas in the search path to compute current_schemas. This is
-	// not documented but can be verified by a SQL client against a pg
-	// server.
-	// The argument supplied applies to all implicit pg schemas, which includes
-	// pg_catalog and pg_temp (if one exists).
 	"current_schemas": makeBuiltin(
 		tree.FunctionProperties{
 			Category:         categorySystemInfo,
@@ -4438,26 +5484,45 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"include_pg_catalog", types.Bool}},
 			ReturnType: tree.FixedReturnType(types.StringArray),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597897)
 				ctx := evalCtx.Ctx()
 				curDb := evalCtx.SessionData().Database
 				includeImplicitPgSchemas := *(args[0].(*tree.DBool))
 				schemas := tree.NewDArray(types.String)
 				var iter sessiondata.SearchPathIter
 				if includeImplicitPgSchemas {
+					__antithesis_instrumentation__.Notify(597900)
 					iter = evalCtx.SessionData().SearchPath.Iter()
 				} else {
+					__antithesis_instrumentation__.Notify(597901)
 					iter = evalCtx.SessionData().SearchPath.IterWithoutImplicitPGSchemas()
 				}
+				__antithesis_instrumentation__.Notify(597898)
 				for scName, ok := iter.Next(); ok; scName, ok = iter.Next() {
-					if found, err := evalCtx.Planner.SchemaExists(ctx, curDb, scName); found || err != nil {
+					__antithesis_instrumentation__.Notify(597902)
+					if found, err := evalCtx.Planner.SchemaExists(ctx, curDb, scName); found || func() bool {
+						__antithesis_instrumentation__.Notify(597903)
+						return err != nil == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(597904)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(597906)
 							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(597907)
 						}
+						__antithesis_instrumentation__.Notify(597905)
 						if err := schemas.Append(tree.NewDString(scName)); err != nil {
+							__antithesis_instrumentation__.Notify(597908)
 							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(597909)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(597910)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597899)
 				return schemas, nil
 			},
 			Info:       "Returns the valid schemas in the search path.",
@@ -4465,16 +5530,20 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// https://www.postgresql.org/docs/10/static/functions-info.html
 	"current_user": makeBuiltin(
 		tree.FunctionProperties{Category: categorySystemInfo},
 		tree.Overload{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597911)
 				if ctx.SessionData().User().Undefined() {
+					__antithesis_instrumentation__.Notify(597913)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597914)
 				}
+				__antithesis_instrumentation__.Notify(597912)
 				return tree.NewDString(ctx.SessionData().User().Normalized()), nil
 			},
 			Info: "Returns the current user. This function is provided for " +
@@ -4489,10 +5558,15 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597915)
 				u := ctx.SessionData().SessionUser()
 				if u.Undefined() {
+					__antithesis_instrumentation__.Notify(597917)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597918)
 				}
+				__antithesis_instrumentation__.Notify(597916)
 				return tree.NewDString(u.Normalized()), nil
 			},
 			Info: "Returns the session user. This function is provided for " +
@@ -4501,40 +5575,55 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Get the current trace ID.
 	"crdb_internal.trace_id": makeBuiltin(
 		tree.FunctionProperties{Category: categorySystemInfo},
 		tree.Overload{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				// The user must be an admin to use this builtin.
+				__antithesis_instrumentation__.Notify(597919)
+
 				isAdmin, err := ctx.SessionAccessor.HasAdminRole(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597924)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597925)
 				}
+				__antithesis_instrumentation__.Notify(597920)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(597926)
 					return nil, errInsufficientPriv
+				} else {
+					__antithesis_instrumentation__.Notify(597927)
 				}
+				__antithesis_instrumentation__.Notify(597921)
 
 				sp := tracing.SpanFromContext(ctx.Context)
 				if sp == nil {
+					__antithesis_instrumentation__.Notify(597928)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597929)
 				}
+				__antithesis_instrumentation__.Notify(597922)
 
 				traceID := sp.TraceID()
 				if traceID == 0 {
+					__antithesis_instrumentation__.Notify(597930)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597931)
 				}
+				__antithesis_instrumentation__.Notify(597923)
 				return tree.NewDInt(tree.DInt(traceID)), nil
 			},
 			Info: "Returns the current trace ID or an error if no trace is open.",
-			// NB: possibly this is or could be made stable, but it's not worth it.
+
 			Volatility: tree.VolatilityVolatile,
 		},
 	),
 
-	// Toggles all spans of the requested trace to verbose or non-verbose.
 	"crdb_internal.set_trace_verbose": makeBuiltin(
 		tree.FunctionProperties{Category: categorySystemInfo},
 		tree.Overload{
@@ -4544,41 +5633,73 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				// The user must be an admin to use this builtin.
+				__antithesis_instrumentation__.Notify(597932)
+
 				isAdmin, err := ctx.SessionAccessor.HasAdminRole(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597939)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597940)
 				}
+				__antithesis_instrumentation__.Notify(597933)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(597941)
 					return nil, errInsufficientPriv
+				} else {
+					__antithesis_instrumentation__.Notify(597942)
 				}
+				__antithesis_instrumentation__.Notify(597934)
 
 				traceID := tracingpb.TraceID(*(args[0].(*tree.DInt)))
 				verbosity := bool(*(args[1].(*tree.DBool)))
 
 				var rootSpan tracing.RegistrySpan
 				if ctx.Tracer == nil {
+					__antithesis_instrumentation__.Notify(597943)
 					return nil, errors.AssertionFailedf("Tracer not configured")
+				} else {
+					__antithesis_instrumentation__.Notify(597944)
 				}
+				__antithesis_instrumentation__.Notify(597935)
 				if err := ctx.Tracer.VisitSpans(func(span tracing.RegistrySpan) error {
-					if span.TraceID() == traceID && rootSpan == nil {
+					__antithesis_instrumentation__.Notify(597945)
+					if span.TraceID() == traceID && func() bool {
+						__antithesis_instrumentation__.Notify(597947)
+						return rootSpan == nil == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(597948)
 						rootSpan = span
+					} else {
+						__antithesis_instrumentation__.Notify(597949)
 					}
+					__antithesis_instrumentation__.Notify(597946)
 
 					return nil
 				}); err != nil {
+					__antithesis_instrumentation__.Notify(597950)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597951)
 				}
-				if rootSpan == nil { // not found
+				__antithesis_instrumentation__.Notify(597936)
+				if rootSpan == nil {
+					__antithesis_instrumentation__.Notify(597952)
 					return tree.DBoolFalse, nil
+				} else {
+					__antithesis_instrumentation__.Notify(597953)
 				}
+				__antithesis_instrumentation__.Notify(597937)
 
 				var recType tracing.RecordingType
 				if verbosity {
+					__antithesis_instrumentation__.Notify(597954)
 					recType = tracing.RecordingVerbose
 				} else {
+					__antithesis_instrumentation__.Notify(597955)
 					recType = tracing.RecordingOff
 				}
+				__antithesis_instrumentation__.Notify(597938)
 				rootSpan.SetRecordingType(recType)
 				return tree.DBoolTrue, nil
 			},
@@ -4593,17 +5714,27 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"key", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597956)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(597959)
 					return nil, errors.Newf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(597960)
 				}
+				__antithesis_instrumentation__.Notify(597957)
 				key := string(s)
 				for i := range ctx.Locality.Tiers {
+					__antithesis_instrumentation__.Notify(597961)
 					tier := &ctx.Locality.Tiers[i]
 					if tier.Key == key {
+						__antithesis_instrumentation__.Notify(597962)
 						return tree.NewDString(tier.Value), nil
+					} else {
+						__antithesis_instrumentation__.Notify(597963)
 					}
 				}
+				__antithesis_instrumentation__.Notify(597958)
 				return tree.DNull, nil
 			},
 			Info:       "Returns the value of the specified locality key.",
@@ -4617,23 +5748,35 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"setting", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597964)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(597968)
 					return nil, errors.AssertionFailedf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(597969)
 				}
+				__antithesis_instrumentation__.Notify(597965)
 				name := strings.ToLower(string(s))
 				rawSetting, ok := settings.Lookup(
 					name, settings.LookupForLocalAccess, ctx.Codec.ForSystemTenant(),
 				)
 				if !ok {
+					__antithesis_instrumentation__.Notify(597970)
 					return nil, errors.Newf("unknown cluster setting '%s'", name)
+				} else {
+					__antithesis_instrumentation__.Notify(597971)
 				}
+				__antithesis_instrumentation__.Notify(597966)
 				setting, ok := rawSetting.(settings.NonMaskedSetting)
 				if !ok {
-					// If we arrive here, this means Lookup() did not properly
-					// ignore the masked setting, which is a bug in Lookup().
+					__antithesis_instrumentation__.Notify(597972)
+
 					return nil, errors.AssertionFailedf("setting '%s' is masked", name)
+				} else {
+					__antithesis_instrumentation__.Notify(597973)
 				}
+				__antithesis_instrumentation__.Notify(597967)
 
 				return tree.NewDString(setting.EncodedDefault()), nil
 			},
@@ -4651,31 +5794,51 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597974)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(597980)
 					return nil, errors.AssertionFailedf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(597981)
 				}
+				__antithesis_instrumentation__.Notify(597975)
 				encoded, ok := tree.AsDString(args[1])
 				if !ok {
+					__antithesis_instrumentation__.Notify(597982)
 					return nil, errors.AssertionFailedf("expected string value, got %T", args[1])
+				} else {
+					__antithesis_instrumentation__.Notify(597983)
 				}
+				__antithesis_instrumentation__.Notify(597976)
 				name := strings.ToLower(string(s))
 				rawSetting, ok := settings.Lookup(
 					name, settings.LookupForLocalAccess, ctx.Codec.ForSystemTenant(),
 				)
 				if !ok {
+					__antithesis_instrumentation__.Notify(597984)
 					return nil, errors.Newf("unknown cluster setting '%s'", name)
+				} else {
+					__antithesis_instrumentation__.Notify(597985)
 				}
+				__antithesis_instrumentation__.Notify(597977)
 				setting, ok := rawSetting.(settings.NonMaskedSetting)
 				if !ok {
-					// If we arrive here, this means Lookup() did not properly
-					// ignore the masked setting, which is a bug in Lookup().
+					__antithesis_instrumentation__.Notify(597986)
+
 					return nil, errors.AssertionFailedf("setting '%s' is masked", name)
+				} else {
+					__antithesis_instrumentation__.Notify(597987)
 				}
+				__antithesis_instrumentation__.Notify(597978)
 				repr, err := setting.DecodeToString(string(encoded))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597988)
 					return nil, errors.Wrapf(err, "%v", name)
+				} else {
+					__antithesis_instrumentation__.Notify(597989)
 				}
+				__antithesis_instrumentation__.Notify(597979)
 				return tree.NewDString(repr), nil
 			},
 			Info:       "Decodes the given encoded value for a cluster setting.",
@@ -4689,6 +5852,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597990)
 				v := ctx.Settings.Version.BinaryVersion().String()
 				return tree.NewDString(v), nil
 			},
@@ -4703,15 +5867,24 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Jsonb),
 			Fn: func(ctx *tree.EvalContext, _ tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597991)
 				activeVersion := ctx.Settings.Version.ActiveVersionOrEmpty(ctx.Context)
 				jsonStr, err := gojson.Marshal(&activeVersion.Version)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597994)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597995)
 				}
+				__antithesis_instrumentation__.Notify(597992)
 				jsonDatum, err := tree.ParseDJSON(string(jsonStr))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(597996)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(597997)
 				}
+				__antithesis_instrumentation__.Notify(597993)
 				return jsonDatum, nil
 			},
 			Info:       "Returns the current active cluster version.",
@@ -4725,21 +5898,38 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"version", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(597998)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598003)
 					return nil, errors.Newf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(598004)
 				}
+				__antithesis_instrumentation__.Notify(597999)
 				arg, err := roachpb.ParseVersion(string(s))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598005)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598006)
 				}
+				__antithesis_instrumentation__.Notify(598000)
 				activeVersion := ctx.Settings.Version.ActiveVersionOrEmpty(ctx.Context)
 				if activeVersion == (clusterversion.ClusterVersion{}) {
+					__antithesis_instrumentation__.Notify(598007)
 					return nil, errors.AssertionFailedf("invalid uninitialized version")
+				} else {
+					__antithesis_instrumentation__.Notify(598008)
 				}
+				__antithesis_instrumentation__.Notify(598001)
 				if arg.LessEq(activeVersion.Version) {
+					__antithesis_instrumentation__.Notify(598009)
 					return tree.DBoolTrue, nil
+				} else {
+					__antithesis_instrumentation__.Notify(598010)
 				}
+				__antithesis_instrumentation__.Notify(598002)
 				return tree.DBoolFalse, nil
 			},
 			Info:       "Returns true if the cluster version is not older than the argument.",
@@ -4753,6 +5943,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"timestamp", types.Decimal}},
 			ReturnType: tree.FixedReturnType(types.Timestamp),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598011)
 				return tree.DecimalToInexactDTimestamp(args[0].(*tree.DDecimal))
 			},
 			Info:       "Converts the crdb_internal_mvcc_timestamp column into an approximate timestamp.",
@@ -4766,6 +5957,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Uuid),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598012)
 				return tree.NewDUuid(tree.DUuid{UUID: ctx.ClusterID}), nil
 			},
 			Info:       "Returns the logical cluster ID for this tenant.",
@@ -4779,10 +5971,15 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598013)
 				dNodeID := tree.DNull
 				if nodeID, ok := ctx.NodeID.OptionalNodeID(); ok {
+					__antithesis_instrumentation__.Notify(598015)
 					dNodeID = tree.NewDInt(tree.DInt(nodeID))
+				} else {
+					__antithesis_instrumentation__.Notify(598016)
 				}
+				__antithesis_instrumentation__.Notify(598014)
 				return dNodeID, nil
 			},
 			Info:       "Returns the node ID.",
@@ -4796,6 +5993,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598017)
 				return tree.NewDString(ctx.ClusterName), nil
 			},
 			Info:       "Returns the cluster name.",
@@ -4815,16 +6013,29 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598018)
 				if err := requireNonNull(args[0]); err != nil {
+					__antithesis_instrumentation__.Notify(598022)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598023)
 				}
+				__antithesis_instrumentation__.Notify(598019)
 				sTenID, err := mustBeDIntInTenantRange(args[0])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598024)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598025)
 				}
+				__antithesis_instrumentation__.Notify(598020)
 				if err := ctx.Tenant.CreateTenant(ctx.Context, uint64(sTenID)); err != nil {
+					__antithesis_instrumentation__.Notify(598026)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598027)
 				}
+				__antithesis_instrumentation__.Notify(598021)
 				return args[0], nil
 			},
 			Info:       "Creates a new tenant with the provided ID. Must be run by the System tenant.",
@@ -4838,10 +6049,15 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598028)
 				token, err := ctx.JoinTokenCreator.CreateJoinToken(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598030)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598031)
 				}
+				__antithesis_instrumentation__.Notify(598029)
 				return tree.NewDString(token), nil
 			},
 			Info:       "Creates a join token for use when adding a new node to a secure cluster.",
@@ -4860,15 +6076,24 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598032)
 				sTenID, err := mustBeDIntInTenantRange(args[0])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598035)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598036)
 				}
+				__antithesis_instrumentation__.Notify(598033)
 				if err := ctx.Tenant.DestroyTenant(
-					ctx.Context, uint64(sTenID), false, /* synchronous */
+					ctx.Context, uint64(sTenID), false,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598037)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598038)
 				}
+				__antithesis_instrumentation__.Notify(598034)
 				return args[0], nil
 			},
 			Info:       "Destroys a tenant with the provided ID. Must be run by the System tenant.",
@@ -4881,16 +6106,25 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598039)
 				sTenID, err := mustBeDIntInTenantRange(args[0])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598042)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598043)
 				}
+				__antithesis_instrumentation__.Notify(598040)
 				synchronous := tree.MustBeDBool(args[1])
 				if err := ctx.Tenant.DestroyTenant(
 					ctx.Context, uint64(sTenID), bool(synchronous),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598044)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598045)
 				}
+				__antithesis_instrumentation__.Notify(598041)
 				return args[0], nil
 			},
 			Info: "Destroys a tenant with the provided ID. Must be run by the System tenant. " +
@@ -4909,65 +6143,104 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598046)
 				tableID := int(tree.MustBeDInt(args[0]))
 				indexID := int(tree.MustBeDInt(args[1]))
 				rowDatums, ok := tree.AsDTuple(args[2])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598057)
 					return nil, pgerror.Newf(
 						pgcode.DatatypeMismatch,
 						"expected tuple argument for row_tuple, found %s",
 						args[2],
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(598058)
 				}
+				__antithesis_instrumentation__.Notify(598047)
 
-				// Get the referenced table and index.
 				tableDescI, err := ctx.Planner.GetImmutableTableInterfaceByID(ctx.Ctx(), tableID)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598059)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598060)
 				}
+				__antithesis_instrumentation__.Notify(598048)
 				tableDesc := tableDescI.(catalog.TableDescriptor)
 				index, err := tableDesc.FindIndexWithID(descpb.IndexID(indexID))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598061)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598062)
 				}
-				// Collect the index columns. If the index is a non-unique secondary
-				// index, it might have some extra key columns.
+				__antithesis_instrumentation__.Notify(598049)
+
 				indexColIDs := make([]descpb.ColumnID, index.NumKeyColumns(), index.NumKeyColumns()+index.NumKeySuffixColumns())
 				for i := 0; i < index.NumKeyColumns(); i++ {
+					__antithesis_instrumentation__.Notify(598063)
 					indexColIDs[i] = index.GetKeyColumnID(i)
 				}
-				if index.GetID() != tableDesc.GetPrimaryIndexID() && !index.IsUnique() {
+				__antithesis_instrumentation__.Notify(598050)
+				if index.GetID() != tableDesc.GetPrimaryIndexID() && func() bool {
+					__antithesis_instrumentation__.Notify(598064)
+					return !index.IsUnique() == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598065)
 					for i := 0; i < index.NumKeySuffixColumns(); i++ {
+						__antithesis_instrumentation__.Notify(598066)
 						indexColIDs = append(indexColIDs, index.GetKeySuffixColumnID(i))
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(598067)
 				}
+				__antithesis_instrumentation__.Notify(598051)
 
-				// Ensure that the input tuple length equals the number of index cols.
 				if len(rowDatums.D) != len(indexColIDs) {
+					__antithesis_instrumentation__.Notify(598068)
 					err := errors.Newf(
 						"number of values must equal number of columns in index %q",
 						index.GetName(),
 					)
-					// If the index has some extra key columns, then output an error
-					// message with some extra information to explain the subtlety.
-					if index.GetID() != tableDesc.GetPrimaryIndexID() && !index.IsUnique() && index.NumKeySuffixColumns() > 0 {
+
+					if index.GetID() != tableDesc.GetPrimaryIndexID() && func() bool {
+						__antithesis_instrumentation__.Notify(598070)
+						return !index.IsUnique() == true
+					}() == true && func() bool {
+						__antithesis_instrumentation__.Notify(598071)
+						return index.NumKeySuffixColumns() > 0 == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(598072)
 						var extraColNames []string
 						for i := 0; i < index.NumKeySuffixColumns(); i++ {
+							__antithesis_instrumentation__.Notify(598075)
 							id := index.GetKeySuffixColumnID(i)
 							col, colErr := tableDesc.FindColumnWithID(id)
 							if colErr != nil {
+								__antithesis_instrumentation__.Notify(598077)
 								return nil, errors.CombineErrors(err, colErr)
+							} else {
+								__antithesis_instrumentation__.Notify(598078)
 							}
+							__antithesis_instrumentation__.Notify(598076)
 							extraColNames = append(extraColNames, col.GetName())
 						}
+						__antithesis_instrumentation__.Notify(598073)
 						var allColNames []string
 						for _, id := range indexColIDs {
+							__antithesis_instrumentation__.Notify(598079)
 							col, colErr := tableDesc.FindColumnWithID(id)
 							if colErr != nil {
+								__antithesis_instrumentation__.Notify(598081)
 								return nil, errors.CombineErrors(err, colErr)
+							} else {
+								__antithesis_instrumentation__.Notify(598082)
 							}
+							__antithesis_instrumentation__.Notify(598080)
 							allColNames = append(allColNames, col.GetName())
 						}
+						__antithesis_instrumentation__.Notify(598074)
 						return nil, errors.WithHintf(
 							err,
 							"columns %v are implicitly part of index %q's key, include columns %v in this order",
@@ -4975,54 +6248,79 @@ value if you rely on the HLC for accuracy.`,
 							index.GetName(),
 							allColNames,
 						)
+					} else {
+						__antithesis_instrumentation__.Notify(598083)
 					}
+					__antithesis_instrumentation__.Notify(598069)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598084)
 				}
+				__antithesis_instrumentation__.Notify(598052)
 
-				// Check that the input datums are typed as the index columns types.
 				var datums tree.Datums
 				for i, d := range rowDatums.D {
-					// We perform a cast here rather than a type check because datums
-					// already have a fixed type, and not enough information is known at
-					// typechecking time to ensure that the datums are typed with the
-					// types of the index columns. So, try to cast the input datums to
-					// the types of the index columns here.
+					__antithesis_instrumentation__.Notify(598085)
+
 					var newDatum tree.Datum
 					col, err := tableDesc.FindColumnWithID(indexColIDs[i])
 					if err != nil {
+						__antithesis_instrumentation__.Notify(598088)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(598089)
 					}
+					__antithesis_instrumentation__.Notify(598086)
 					if d.ResolvedType() == types.Unknown {
+						__antithesis_instrumentation__.Notify(598090)
 						if !col.IsNullable() {
+							__antithesis_instrumentation__.Notify(598092)
 							return nil, pgerror.Newf(pgcode.NotNullViolation, "NULL provided as a value for a non-nullable column")
+						} else {
+							__antithesis_instrumentation__.Notify(598093)
 						}
+						__antithesis_instrumentation__.Notify(598091)
 						newDatum = tree.DNull
 					} else {
+						__antithesis_instrumentation__.Notify(598094)
 						expectedTyp := col.GetType()
 						newDatum, err = tree.PerformCast(ctx, d, expectedTyp)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(598095)
 							return nil, errors.WithHint(err, "try to explicitly cast each value to the corresponding column type")
+						} else {
+							__antithesis_instrumentation__.Notify(598096)
 						}
 					}
+					__antithesis_instrumentation__.Notify(598087)
 					datums = append(datums, newDatum)
 				}
+				__antithesis_instrumentation__.Notify(598053)
 
-				// Create a column id to row index map. In this case, each column ID
-				// just maps to the i'th ordinal.
 				var colMap catalog.TableColMap
 				for i, id := range indexColIDs {
+					__antithesis_instrumentation__.Notify(598097)
 					colMap.Set(id, i)
 				}
-				// Finally, encode the index key using the provided datums.
+				__antithesis_instrumentation__.Notify(598054)
+
 				keyPrefix := rowenc.MakeIndexKeyPrefix(ctx.Codec, tableDesc.GetID(), index.GetID())
 				keyAndSuffixCols := tableDesc.IndexFetchSpecKeyAndSuffixColumns(index)
 				if len(datums) > len(keyAndSuffixCols) {
+					__antithesis_instrumentation__.Notify(598098)
 					return nil, errors.Errorf("encoding too many columns (%d)", len(datums))
+				} else {
+					__antithesis_instrumentation__.Notify(598099)
 				}
+				__antithesis_instrumentation__.Notify(598055)
 				res, _, err := rowenc.EncodePartialIndexKey(keyAndSuffixCols[:len(datums)], colMap, datums, keyPrefix)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598100)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598101)
 				}
+				__antithesis_instrumentation__.Notify(598056)
 				return tree.NewDBytes(tree.DBytes(res)), nil
 			},
 			Info:       "Generate the key for a row on a particular table and index.",
@@ -5038,21 +6336,33 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"errorCode", types.String}, {"msg", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598102)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598106)
 					return nil, errors.Newf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(598107)
 				}
+				__antithesis_instrumentation__.Notify(598103)
 				errCode := string(s)
 				s, ok = tree.AsDString(args[1])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598108)
 					return nil, errors.Newf("expected string value, got %T", args[1])
+				} else {
+					__antithesis_instrumentation__.Notify(598109)
 				}
+				__antithesis_instrumentation__.Notify(598104)
 				msg := string(s)
-				// We construct the errors below via %s as the
-				// message may contain PII.
+
 				if errCode == "" {
+					__antithesis_instrumentation__.Notify(598110)
 					return nil, errors.Newf("%s", msg)
+				} else {
+					__antithesis_instrumentation__.Notify(598111)
 				}
+				__antithesis_instrumentation__.Notify(598105)
 				return nil, pgerror.Newf(pgcode.MakeCode(errCode), "%s", msg)
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5068,10 +6378,15 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"msg", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598112)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598114)
 					return nil, errors.Newf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(598115)
 				}
+				__antithesis_instrumentation__.Notify(598113)
 				msg := string(s)
 				return crdbInternalSendNotice(ctx, "NOTICE", msg)
 			},
@@ -5082,19 +6397,32 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"severity", types.String}, {"msg", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598116)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598120)
 					return nil, errors.Newf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(598121)
 				}
+				__antithesis_instrumentation__.Notify(598117)
 				severityString := string(s)
 				s, ok = tree.AsDString(args[1])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598122)
 					return nil, errors.Newf("expected string value, got %T", args[1])
+				} else {
+					__antithesis_instrumentation__.Notify(598123)
 				}
+				__antithesis_instrumentation__.Notify(598118)
 				msg := string(s)
 				if _, ok := pgnotice.ParseDisplaySeverity(severityString); !ok {
+					__antithesis_instrumentation__.Notify(598124)
 					return nil, pgerror.Newf(pgcode.InvalidParameterValue, "severity %s is invalid", severityString)
+				} else {
+					__antithesis_instrumentation__.Notify(598125)
 				}
+				__antithesis_instrumentation__.Notify(598119)
 				return crdbInternalSendNotice(ctx, severityString, msg)
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5110,10 +6438,15 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"msg", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598126)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598128)
 					return nil, errors.Newf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(598129)
 				}
+				__antithesis_instrumentation__.Notify(598127)
 				msg := string(s)
 				return nil, errors.AssertionFailedf("%s", msg)
 			},
@@ -5130,6 +6463,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Void),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598130)
 				return tree.DVoidDatum, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5145,24 +6479,34 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"msg", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598131)
 				isAdmin, err := ctx.SessionAccessor.HasAdminRole(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598135)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598136)
 				}
+				__antithesis_instrumentation__.Notify(598132)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(598137)
 					return nil, errInsufficientPriv
+				} else {
+					__antithesis_instrumentation__.Notify(598138)
 				}
+				__antithesis_instrumentation__.Notify(598133)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598139)
 					return nil, errors.Newf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(598140)
 				}
+				__antithesis_instrumentation__.Notify(598134)
 				msg := string(s)
-				// Use a special method to panic in order to go around the
-				// vectorized panic-catcher (which would catch the panic from
-				// Golang's 'panic' and would convert it into an internal
-				// error).
+
 				colexecerror.NonCatchablePanic(msg)
-				// This code is unreachable.
+
 				panic(msg)
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5178,17 +6522,30 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"msg", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598141)
 				isAdmin, err := ctx.SessionAccessor.HasAdminRole(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598145)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598146)
 				}
+				__antithesis_instrumentation__.Notify(598142)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(598147)
 					return nil, errInsufficientPriv
+				} else {
+					__antithesis_instrumentation__.Notify(598148)
 				}
+				__antithesis_instrumentation__.Notify(598143)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598149)
 					return nil, errors.Newf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(598150)
 				}
+				__antithesis_instrumentation__.Notify(598144)
 				msg := string(s)
 				log.Fatalf(ctx.Ctx(), "force_log_fatal(): %s", msg)
 				return nil, nil
@@ -5198,11 +6555,6 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// If force_retry is called during the specified interval from the beginning
-	// of the transaction it returns a retryable error. If not, 0 is returned
-	// instead of an error.
-	// The second version allows one to create an error intended for a transaction
-	// different than the current statement's transaction.
 	"crdb_internal.force_retry": makeBuiltin(
 		tree.FunctionProperties{
 			Category: categorySystemInfo,
@@ -5211,12 +6563,17 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"val", types.Interval}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598151)
 				minDuration := args[0].(*tree.DInterval).Duration
 				elapsed := duration.MakeDuration(int64(ctx.StmtTimestamp.Sub(ctx.TxnTimestamp)), 0, 0)
 				if elapsed.Compare(minDuration) < 0 {
+					__antithesis_instrumentation__.Notify(598153)
 					return nil, ctx.Txn.GenerateForcedRetryableError(
 						ctx.Ctx(), "forced by crdb_internal.force_retry()")
+				} else {
+					__antithesis_instrumentation__.Notify(598154)
 				}
+				__antithesis_instrumentation__.Notify(598152)
 				return tree.DZero, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5224,7 +6581,6 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Fetches the corresponding lease_holder for the request key.
 	"crdb_internal.lease_holder": makeBuiltin(
 		tree.FunctionProperties{
 			Category: categorySystemInfo,
@@ -5233,6 +6589,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"key", types.Bytes}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598155)
 				key := []byte(tree.MustBeDBytes(args[0]))
 				b := &kv.Batch{}
 				b.AddRawRequest(&roachpb.LeaseInfoRequest{
@@ -5241,8 +6598,12 @@ value if you rely on the HLC for accuracy.`,
 					},
 				})
 				if err := ctx.Txn.Run(ctx.Context, b); err != nil {
+					__antithesis_instrumentation__.Notify(598157)
 					return nil, pgerror.Wrap(err, pgcode.InvalidParameterValue, "error fetching leaseholder")
+				} else {
+					__antithesis_instrumentation__.Notify(598158)
 				}
+				__antithesis_instrumentation__.Notify(598156)
 				resp := b.RawResponse().Responses[0].GetInner().(*roachpb.LeaseInfoResponse)
 
 				return tree.NewDInt(tree.DInt(resp.Lease.Replica.StoreID)), nil
@@ -5252,7 +6613,6 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Identity function which is marked as impure to avoid constant folding.
 	"crdb_internal.no_constant_folding": makeBuiltin(
 		tree.FunctionProperties{
 			Category: categorySystemInfo,
@@ -5261,6 +6621,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"input", types.Any}},
 			ReturnType: tree.IdentityReturnType(0),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598159)
 				return args[0], nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5268,8 +6629,6 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Return a pretty key for a given raw key, skipping the specified number of
-	// fields.
 	"crdb_internal.pretty_key": makeBuiltin(
 		tree.FunctionProperties{
 			Category: categorySystemInfo,
@@ -5281,8 +6640,9 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598160)
 				return tree.NewDString(catalogkeys.PrettyKey(
-					nil, /* valDirs */
+					nil,
 					roachpb.Key(tree.MustBeDBytes(args[0])),
 					int(tree.MustBeDInt(args[1])))), nil
 			},
@@ -5291,8 +6651,6 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Return a pretty string for a given span, skipping the specified number of
-	// fields.
 	"crdb_internal.pretty_span": makeBuiltin(
 		tree.FunctionProperties{
 			Category: categorySystemInfo,
@@ -5305,19 +6663,19 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598161)
 				span := roachpb.Span{
 					Key:    roachpb.Key(tree.MustBeDBytes(args[0])),
 					EndKey: roachpb.Key(tree.MustBeDBytes(args[1])),
 				}
 				skip := int(tree.MustBeDInt(args[2]))
-				return tree.NewDString(catalogkeys.PrettySpan(nil /* valDirs */, span, skip)), nil
+				return tree.NewDString(catalogkeys.PrettySpan(nil, span, skip)), nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
 			Volatility: tree.VolatilityImmutable,
 		},
 	),
 
-	// Return statistics about a range.
 	"crdb_internal.range_stats": makeBuiltin(
 		tree.FunctionProperties{
 			Category: categorySystemInfo,
@@ -5328,6 +6686,7 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Jsonb),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598162)
 				key := []byte(tree.MustBeDBytes(args[0]))
 				b := &kv.Batch{}
 				b.AddRawRequest(&roachpb.RangeStatsRequest{
@@ -5336,17 +6695,29 @@ value if you rely on the HLC for accuracy.`,
 					},
 				})
 				if err := ctx.Txn.Run(ctx.Context, b); err != nil {
+					__antithesis_instrumentation__.Notify(598166)
 					return nil, pgerror.Wrap(err, pgcode.InvalidParameterValue, "error fetching range stats")
+				} else {
+					__antithesis_instrumentation__.Notify(598167)
 				}
+				__antithesis_instrumentation__.Notify(598163)
 				resp := b.RawResponse().Responses[0].GetInner().(*roachpb.RangeStatsResponse).MVCCStats
 				jsonStr, err := gojson.Marshal(&resp)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598168)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598169)
 				}
+				__antithesis_instrumentation__.Notify(598164)
 				jsonDatum, err := tree.ParseDJSON(string(jsonStr))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598170)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598171)
 				}
+				__antithesis_instrumentation__.Notify(598165)
 				return jsonDatum, nil
 			},
 			Info:       "This function is used to retrieve range statistics information as a JSON object.",
@@ -5354,17 +6725,13 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Returns a namespace_id based on parentID and a given name.
-	// Allows a non-admin to query the system.namespace table, but performs
-	// the relevant permission checks to ensure secure access.
-	// Returns NULL if none is found.
-	// Errors if there is no permission for the current user to view the descriptor.
 	"crdb_internal.get_namespace_id": makeBuiltin(
 		tree.FunctionProperties{Category: categorySystemInfo},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"parent_id", types.Int}, {"name", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598172)
 				parentID := tree.MustBeDInt(args[0])
 				name := tree.MustBeDString(args[1])
 				id, found, err := ctx.PrivilegedAccessor.LookupNamespaceID(
@@ -5374,11 +6741,19 @@ value if you rely on the HLC for accuracy.`,
 					string(name),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598175)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598176)
 				}
+				__antithesis_instrumentation__.Notify(598173)
 				if !found {
+					__antithesis_instrumentation__.Notify(598177)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(598178)
 				}
+				__antithesis_instrumentation__.Notify(598174)
 				return tree.NewDInt(id), nil
 			},
 			Volatility: tree.VolatilityStable,
@@ -5390,6 +6765,7 @@ value if you rely on the HLC for accuracy.`,
 				{"name", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598179)
 				parentID := tree.MustBeDInt(args[0])
 				parentSchemaID := tree.MustBeDInt(args[1])
 				name := tree.MustBeDString(args[2])
@@ -5400,28 +6776,32 @@ value if you rely on the HLC for accuracy.`,
 					string(name),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598182)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598183)
 				}
+				__antithesis_instrumentation__.Notify(598180)
 				if !found {
+					__antithesis_instrumentation__.Notify(598184)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(598185)
 				}
+				__antithesis_instrumentation__.Notify(598181)
 				return tree.NewDInt(id), nil
 			},
 			Volatility: tree.VolatilityStable,
 		},
 	),
 
-	// Returns the descriptor of a database based on its name.
-	// Allows a non-admin to query the system.namespace table, but performs
-	// the relevant permission checks to ensure secure access.
-	// Returns NULL if none is found.
-	// Errors if there is no permission for the current user to view the descriptor.
 	"crdb_internal.get_database_id": makeBuiltin(
 		tree.FunctionProperties{Category: categorySystemInfo},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"name", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598186)
 				name := tree.MustBeDString(args[0])
 				id, found, err := ctx.PrivilegedAccessor.LookupNamespaceID(
 					ctx.Context,
@@ -5430,37 +6810,51 @@ value if you rely on the HLC for accuracy.`,
 					string(name),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598189)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598190)
 				}
+				__antithesis_instrumentation__.Notify(598187)
 				if !found {
+					__antithesis_instrumentation__.Notify(598191)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(598192)
 				}
+				__antithesis_instrumentation__.Notify(598188)
 				return tree.NewDInt(id), nil
 			},
 			Volatility: tree.VolatilityStable,
 		},
 	),
 
-	// Returns the zone config based on a given namespace id.
-	// Returns NULL if a zone configuration is not found.
-	// Errors if there is no permission for the current user to view the zone config.
 	"crdb_internal.get_zone_config": makeBuiltin(
 		tree.FunctionProperties{Category: categorySystemInfo},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"namespace_id", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598193)
 				id := tree.MustBeDInt(args[0])
 				bytes, found, err := ctx.PrivilegedAccessor.LookupZoneConfigByNamespaceID(
 					ctx.Context,
 					int64(id),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598196)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598197)
 				}
+				__antithesis_instrumentation__.Notify(598194)
 				if !found {
+					__antithesis_instrumentation__.Notify(598198)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(598199)
 				}
+				__antithesis_instrumentation__.Notify(598195)
 				return tree.NewDBytes(bytes), nil
 			},
 			Volatility: tree.VolatilityStable,
@@ -5475,18 +6869,31 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"vmodule_string", types.String}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598200)
 				isAdmin, err := ctx.SessionAccessor.HasAdminRole(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598204)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598205)
 				}
+				__antithesis_instrumentation__.Notify(598201)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(598206)
 					return nil, errInsufficientPriv
+				} else {
+					__antithesis_instrumentation__.Notify(598207)
 				}
+				__antithesis_instrumentation__.Notify(598202)
 
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598208)
 					return nil, errors.Newf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(598209)
 				}
+				__antithesis_instrumentation__.Notify(598203)
 				vmodule := string(s)
 				return tree.DZero, log.SetVModule(vmodule)
 			},
@@ -5507,14 +6914,23 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, _ tree.Datums) (tree.Datum, error) {
-				// The user must be an admin to use this builtin.
+				__antithesis_instrumentation__.Notify(598210)
+
 				isAdmin, err := ctx.SessionAccessor.HasAdminRole(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598213)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598214)
 				}
+				__antithesis_instrumentation__.Notify(598211)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(598215)
 					return nil, errInsufficientPriv
+				} else {
+					__antithesis_instrumentation__.Notify(598216)
 				}
+				__antithesis_instrumentation__.Notify(598212)
 				return tree.NewDString(log.GetVModule()), nil
 			},
 			Info:       "Returns the vmodule configuration on the gateway node processing this request.",
@@ -5522,8 +6938,6 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Returns the number of distinct inverted index entries that would be
-	// generated for a value.
 	"crdb_internal.num_geo_inverted_index_entries": makeBuiltin(
 		tree.FunctionProperties{
 			Category:     categorySystemInfo,
@@ -5537,31 +6951,57 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				if args[0] == tree.DNull || args[1] == tree.DNull || args[2] == tree.DNull {
+				__antithesis_instrumentation__.Notify(598217)
+				if args[0] == tree.DNull || func() bool {
+					__antithesis_instrumentation__.Notify(598223)
+					return args[1] == tree.DNull == true
+				}() == true || func() bool {
+					__antithesis_instrumentation__.Notify(598224)
+					return args[2] == tree.DNull == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598225)
 					return tree.DZero, nil
+				} else {
+					__antithesis_instrumentation__.Notify(598226)
 				}
+				__antithesis_instrumentation__.Notify(598218)
 				tableID := int(tree.MustBeDInt(args[0]))
 				indexID := int(tree.MustBeDInt(args[1]))
 				g := tree.MustBeDGeography(args[2])
-				// TODO(postamar): give the tree.EvalContext a useful interface
-				// instead of cobbling a descs.Collection in this way.
+
 				cf := descs.NewBareBonesCollectionFactory(ctx.Settings, ctx.Codec)
 				descsCol := cf.MakeCollection(ctx.Context, descs.NewTemporarySchemaProvider(ctx.SessionDataStack))
 				tableDesc, err := descsCol.Direct().MustGetTableDescByID(ctx.Ctx(), ctx.Txn, descpb.ID(tableID))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598227)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598228)
 				}
+				__antithesis_instrumentation__.Notify(598219)
 				index, err := tableDesc.FindIndexWithID(descpb.IndexID(indexID))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598229)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598230)
 				}
+				__antithesis_instrumentation__.Notify(598220)
 				if index.GetGeoConfig().S2Geography == nil {
+					__antithesis_instrumentation__.Notify(598231)
 					return nil, errors.Errorf("index_id %d is not a geography inverted index", indexID)
+				} else {
+					__antithesis_instrumentation__.Notify(598232)
 				}
+				__antithesis_instrumentation__.Notify(598221)
 				keys, err := rowenc.EncodeGeoInvertedIndexTableKeys(g, nil, index.GetGeoConfig())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598233)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598234)
 				}
+				__antithesis_instrumentation__.Notify(598222)
 				return tree.NewDInt(tree.DInt(len(keys))), nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5575,38 +7015,63 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				if args[0] == tree.DNull || args[1] == tree.DNull || args[2] == tree.DNull {
+				__antithesis_instrumentation__.Notify(598235)
+				if args[0] == tree.DNull || func() bool {
+					__antithesis_instrumentation__.Notify(598241)
+					return args[1] == tree.DNull == true
+				}() == true || func() bool {
+					__antithesis_instrumentation__.Notify(598242)
+					return args[2] == tree.DNull == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598243)
 					return tree.DZero, nil
+				} else {
+					__antithesis_instrumentation__.Notify(598244)
 				}
+				__antithesis_instrumentation__.Notify(598236)
 				tableID := int(tree.MustBeDInt(args[0]))
 				indexID := int(tree.MustBeDInt(args[1]))
 				g := tree.MustBeDGeometry(args[2])
-				// TODO(postamar): give the tree.EvalContext a useful interface
-				// instead of cobbling a descs.Collection in this way.
+
 				cf := descs.NewBareBonesCollectionFactory(ctx.Settings, ctx.Codec)
 				descsCol := cf.MakeCollection(ctx.Context, descs.NewTemporarySchemaProvider(ctx.SessionDataStack))
 				tableDesc, err := descsCol.Direct().MustGetTableDescByID(ctx.Ctx(), ctx.Txn, descpb.ID(tableID))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598245)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598246)
 				}
+				__antithesis_instrumentation__.Notify(598237)
 				index, err := tableDesc.FindIndexWithID(descpb.IndexID(indexID))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598247)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598248)
 				}
+				__antithesis_instrumentation__.Notify(598238)
 				if index.GetGeoConfig().S2Geometry == nil {
+					__antithesis_instrumentation__.Notify(598249)
 					return nil, errors.Errorf("index_id %d is not a geometry inverted index", indexID)
+				} else {
+					__antithesis_instrumentation__.Notify(598250)
 				}
+				__antithesis_instrumentation__.Notify(598239)
 				keys, err := rowenc.EncodeGeoInvertedIndexTableKeys(g, nil, index.GetGeoConfig())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598251)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598252)
 				}
+				__antithesis_instrumentation__.Notify(598240)
 				return tree.NewDInt(tree.DInt(len(keys))), nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
 			Volatility: tree.VolatilityStable,
 		}),
-	// Returns the number of distinct inverted index entries that would be
-	// generated for a value.
+
 	"crdb_internal.num_inverted_index_entries": makeBuiltin(
 		tree.FunctionProperties{
 			Category:     categorySystemInfo,
@@ -5616,6 +7081,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"val", types.Jsonb}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598253)
 				return jsonNumInvertedIndexEntries(ctx, args[0])
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5625,6 +7091,7 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"val", types.AnyArray}},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598254)
 				return arrayNumInvertedIndexEntries(ctx, args[0], tree.DNull)
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5637,11 +7104,8 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				// The version argument is currently ignored for JSON inverted indexes,
-				// since all prior versions of JSON inverted indexes include the same
-				// entries. (The version argument was introduced for array indexes,
-				// since prior versions of array indexes did not include keys for empty
-				// arrays.)
+				__antithesis_instrumentation__.Notify(598255)
+
 				return jsonNumInvertedIndexEntries(ctx, args[0])
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5654,14 +7118,13 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598256)
 				return arrayNumInvertedIndexEntries(ctx, args[0], args[1])
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
 			Volatility: tree.VolatilityStable,
 		}),
 
-	// Returns true iff the current user has admin role.
-	// Note: it would be a privacy leak to extend this to check arbitrary usernames.
 	"crdb_internal.is_admin": makeBuiltin(
 		tree.FunctionProperties{
 			Category:         categorySystemInfo,
@@ -5671,14 +7134,23 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, _ tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598257)
 				if evalCtx.SessionAccessor == nil {
+					__antithesis_instrumentation__.Notify(598260)
 					return nil, errors.AssertionFailedf("session accessor not set")
+				} else {
+					__antithesis_instrumentation__.Notify(598261)
 				}
+				__antithesis_instrumentation__.Notify(598258)
 				ctx := evalCtx.Ctx()
 				isAdmin, err := evalCtx.SessionAccessor.HasAdminRole(ctx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598262)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598263)
 				}
+				__antithesis_instrumentation__.Notify(598259)
 				return tree.MakeDBool(tree.DBool(isAdmin)), nil
 			},
 			Info:       "Retrieves the current user's admin status.",
@@ -5686,8 +7158,6 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Returns true iff the current user has the specified role option.
-	// Note: it would be a privacy leak to extend this to check arbitrary usernames.
 	"crdb_internal.has_role_option": makeBuiltin(
 		tree.FunctionProperties{
 			Category:         categorySystemInfo,
@@ -5699,19 +7169,32 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598264)
 				if evalCtx.SessionAccessor == nil {
+					__antithesis_instrumentation__.Notify(598268)
 					return nil, errors.AssertionFailedf("session accessor not set")
+				} else {
+					__antithesis_instrumentation__.Notify(598269)
 				}
+				__antithesis_instrumentation__.Notify(598265)
 				optionStr := string(tree.MustBeDString(args[0]))
 				option, ok := roleoption.ByName[optionStr]
 				if !ok {
+					__antithesis_instrumentation__.Notify(598270)
 					return nil, errors.Newf("unrecognized role option %s", optionStr)
+				} else {
+					__antithesis_instrumentation__.Notify(598271)
 				}
+				__antithesis_instrumentation__.Notify(598266)
 				ctx := evalCtx.Ctx()
 				ok, err := evalCtx.SessionAccessor.HasRoleOption(ctx, option)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598272)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598273)
 				}
+				__antithesis_instrumentation__.Notify(598267)
 				return tree.MakeDBool(tree.DBool(ok)), nil
 			},
 			Info:       "Returns whether the current user has the specified role option",
@@ -5722,8 +7205,7 @@ value if you rely on the HLC for accuracy.`,
 	"crdb_internal.assignment_cast": makeBuiltin(
 		tree.FunctionProperties{
 			Category: categorySystemInfo,
-			// The idiomatic usage of this function is to "pass" a target type T
-			// by passing NULL::T, so we must allow NULL arguments.
+
 			NullableArgs: true,
 		},
 		tree.Overload{
@@ -5733,16 +7215,20 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.IdentityReturnType(1),
 			FnWithExprs: func(evalCtx *tree.EvalContext, args tree.Exprs) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598274)
 				targetType := args[1].(tree.TypedExpr).ResolvedType()
 				val, err := args[0].(tree.TypedExpr).Eval(evalCtx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598276)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598277)
 				}
+				__antithesis_instrumentation__.Notify(598275)
 				return tree.PerformAssignmentCast(evalCtx, val, targetType)
 			},
 			Info: "This function is used internally to perform assignment casts during mutations.",
-			// The volatility of an assignment cast depends on the argument
-			// types, so we set it to the maximum volatility of all casts.
+
 			Volatility: tree.VolatilityStable,
 		},
 	),
@@ -5758,6 +7244,7 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Decimal),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598278)
 				value := args[0].(*tree.DDecimal)
 				scale := int32(tree.MustBeDInt(args[1]))
 				return roundDDecimal(value, scale)
@@ -5772,36 +7259,56 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.DecimalArray),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598279)
 				value := args[0].(*tree.DArray)
 				scale := int32(tree.MustBeDInt(args[1]))
 
-				// Lazily allocate a new array only if/when one of its elements
-				// is rounded.
 				var newArr tree.Datums
 				for i, elem := range value.Array {
-					// Skip NULL values.
+					__antithesis_instrumentation__.Notify(598282)
+
 					if elem == tree.DNull {
+						__antithesis_instrumentation__.Notify(598285)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(598286)
 					}
+					__antithesis_instrumentation__.Notify(598283)
 
 					rounded, err := roundDDecimal(elem.(*tree.DDecimal), scale)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(598287)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(598288)
 					}
+					__antithesis_instrumentation__.Notify(598284)
 					if rounded != elem {
+						__antithesis_instrumentation__.Notify(598289)
 						if newArr == nil {
+							__antithesis_instrumentation__.Notify(598291)
 							newArr = make(tree.Datums, len(value.Array))
 							copy(newArr, value.Array)
+						} else {
+							__antithesis_instrumentation__.Notify(598292)
 						}
+						__antithesis_instrumentation__.Notify(598290)
 						newArr[i] = rounded
+					} else {
+						__antithesis_instrumentation__.Notify(598293)
 					}
 				}
+				__antithesis_instrumentation__.Notify(598280)
 				if newArr != nil {
+					__antithesis_instrumentation__.Notify(598294)
 					ret := &tree.DArray{}
 					*ret = *value
 					ret.Array = newArr
 					return ret, nil
+				} else {
+					__antithesis_instrumentation__.Notify(598295)
 				}
+				__antithesis_instrumentation__.Notify(598281)
 				return value, nil
 			},
 			Info:       "This function is used internally to round decimal array values during mutations.",
@@ -5816,19 +7323,30 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.StringArray),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598296)
 				prefix := ctx.Codec.MigrationKeyPrefix()
-				keyvals, err := ctx.Txn.Scan(ctx.Context, prefix, prefix.PrefixEnd(), 0 /* maxRows */)
+				keyvals, err := ctx.Txn.Scan(ctx.Context, prefix, prefix.PrefixEnd(), 0)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598299)
 					return nil, errors.Wrapf(err, "failed to get list of completed migrations")
+				} else {
+					__antithesis_instrumentation__.Notify(598300)
 				}
+				__antithesis_instrumentation__.Notify(598297)
 				ret := &tree.DArray{ParamTyp: types.String, Array: make(tree.Datums, 0, len(keyvals))}
 				for _, keyval := range keyvals {
+					__antithesis_instrumentation__.Notify(598301)
 					key := keyval.Key
 					if len(key) > len(keys.MigrationPrefix) {
+						__antithesis_instrumentation__.Notify(598303)
 						key = key[len(keys.MigrationPrefix):]
+					} else {
+						__antithesis_instrumentation__.Notify(598304)
 					}
+					__antithesis_instrumentation__.Notify(598302)
 					ret.Array = append(ret.Array, tree.NewDString(string(key)))
 				}
+				__antithesis_instrumentation__.Notify(598298)
 				return ret, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5848,12 +7366,17 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598305)
 				if err := ctx.Planner.UnsafeUpsertDescriptor(ctx.Context,
 					int64(*args[0].(*tree.DInt)),
 					[]byte(*args[1].(*tree.DBytes)),
-					false /* force */); err != nil {
+					false); err != nil {
+					__antithesis_instrumentation__.Notify(598307)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598308)
 				}
+				__antithesis_instrumentation__.Notify(598306)
 				return tree.DBoolTrue, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5867,12 +7390,17 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598309)
 				if err := ctx.Planner.UnsafeUpsertDescriptor(ctx.Context,
 					int64(*args[0].(*tree.DInt)),
 					[]byte(*args[1].(*tree.DBytes)),
 					bool(*args[2].(*tree.DBool))); err != nil {
+					__antithesis_instrumentation__.Notify(598311)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598312)
 				}
+				__antithesis_instrumentation__.Notify(598310)
 				return tree.DBoolTrue, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5891,12 +7419,17 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598313)
 				if err := ctx.Planner.UnsafeDeleteDescriptor(ctx.Context,
 					int64(*args[0].(*tree.DInt)),
-					false, /* force */
+					false,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598315)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598316)
 				}
+				__antithesis_instrumentation__.Notify(598314)
 				return tree.DBoolTrue, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5909,12 +7442,17 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598317)
 				if err := ctx.Planner.UnsafeDeleteDescriptor(ctx.Context,
 					int64(*args[0].(*tree.DInt)),
 					bool(*args[1].(*tree.DBool)),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598319)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598320)
 				}
+				__antithesis_instrumentation__.Notify(598318)
 				return tree.DBoolTrue, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5937,16 +7475,21 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598321)
 				if err := ctx.Planner.UnsafeUpsertNamespaceEntry(
 					ctx.Context,
-					int64(*args[0].(*tree.DInt)),     // parentID
-					int64(*args[1].(*tree.DInt)),     // parentSchemaID
-					string(*args[2].(*tree.DString)), // name
-					int64(*args[3].(*tree.DInt)),     // descID
-					bool(*args[4].(*tree.DBool)),     // force
+					int64(*args[0].(*tree.DInt)),
+					int64(*args[1].(*tree.DInt)),
+					string(*args[2].(*tree.DString)),
+					int64(*args[3].(*tree.DInt)),
+					bool(*args[4].(*tree.DBool)),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598323)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598324)
 				}
+				__antithesis_instrumentation__.Notify(598322)
 				return tree.DBoolTrue, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5961,16 +7504,21 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598325)
 				if err := ctx.Planner.UnsafeUpsertNamespaceEntry(
 					ctx.Context,
-					int64(*args[0].(*tree.DInt)),     // parentID
-					int64(*args[1].(*tree.DInt)),     // parentSchemaID
-					string(*args[2].(*tree.DString)), // name
-					int64(*args[3].(*tree.DInt)),     // descID
-					false,                            // force
+					int64(*args[0].(*tree.DInt)),
+					int64(*args[1].(*tree.DInt)),
+					string(*args[2].(*tree.DString)),
+					int64(*args[3].(*tree.DInt)),
+					false,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598327)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598328)
 				}
+				__antithesis_instrumentation__.Notify(598326)
 				return tree.DBoolTrue, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -5992,16 +7540,21 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598329)
 				if err := ctx.Planner.UnsafeDeleteNamespaceEntry(
 					ctx.Context,
-					int64(*args[0].(*tree.DInt)),     // parentID
-					int64(*args[1].(*tree.DInt)),     // parentSchemaID
-					string(*args[2].(*tree.DString)), // name
-					int64(*args[3].(*tree.DInt)),     // id
-					false,                            // force
+					int64(*args[0].(*tree.DInt)),
+					int64(*args[1].(*tree.DInt)),
+					string(*args[2].(*tree.DString)),
+					int64(*args[3].(*tree.DInt)),
+					false,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598331)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598332)
 				}
+				__antithesis_instrumentation__.Notify(598330)
 				return tree.DBoolTrue, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -6017,16 +7570,21 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598333)
 				if err := ctx.Planner.UnsafeDeleteNamespaceEntry(
 					ctx.Context,
-					int64(*args[0].(*tree.DInt)),     // parentID
-					int64(*args[1].(*tree.DInt)),     // parentSchemaID
-					string(*args[2].(*tree.DString)), // name
-					int64(*args[3].(*tree.DInt)),     // id
-					bool(*args[4].(*tree.DBool)),     // force
+					int64(*args[0].(*tree.DInt)),
+					int64(*args[1].(*tree.DInt)),
+					string(*args[2].(*tree.DString)),
+					int64(*args[3].(*tree.DInt)),
+					bool(*args[4].(*tree.DBool)),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598335)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598336)
 				}
+				__antithesis_instrumentation__.Notify(598334)
 				return tree.DBoolTrue, nil
 			},
 			Info:       "This function is used only by CockroachDB's developers for testing purposes.",
@@ -6034,18 +7592,22 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Returns true iff the given sqlliveness session is not expired.
 	"crdb_internal.sql_liveness_is_alive": makeBuiltin(
 		tree.FunctionProperties{Category: categoryMultiTenancy},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"session_id", types.Bytes}},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598337)
 				sid := sqlliveness.SessionID(*(args[0].(*tree.DBytes)))
 				live, err := evalCtx.SQLLivenessReader.IsAlive(evalCtx.Context, sid)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598339)
 					return tree.MakeDBool(true), err
+				} else {
+					__antithesis_instrumentation__.Notify(598340)
 				}
+				__antithesis_instrumentation__.Notify(598338)
 				return tree.MakeDBool(tree.DBool(live)), nil
 			},
 			Info:       "Checks is given sqlliveness session id is not expired",
@@ -6054,8 +7616,7 @@ value if you rely on the HLC for accuracy.`,
 	),
 
 	"crdb_internal.gc_tenant": makeBuiltin(
-		// TODO(jeffswenson): Delete internal_crdb.gc_tenant after the DestroyTenant
-		// changes are deployed to all Cockroach Cloud serverless hosts.
+
 		tree.FunctionProperties{
 			Category:     categoryMultiTenancy,
 			Undocumented: true,
@@ -6066,13 +7627,22 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598341)
 				sTenID, err := mustBeDIntInTenantRange(args[0])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598344)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598345)
 				}
+				__antithesis_instrumentation__.Notify(598342)
 				if err := ctx.Tenant.GCTenant(ctx.Context, uint64(sTenID)); err != nil {
+					__antithesis_instrumentation__.Notify(598346)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598347)
 				}
+				__antithesis_instrumentation__.Notify(598343)
 				return args[0], nil
 			},
 			Info:       "Garbage collects a tenant with the provided ID. Must be run by the System tenant.",
@@ -6080,7 +7650,6 @@ value if you rely on the HLC for accuracy.`,
 		},
 	),
 
-	// Used to configure the tenant token bucket. See UpdateTenantResourceLimits.
 	"crdb_internal.update_tenant_resource_limits": makeBuiltin(
 		tree.FunctionProperties{
 			Category:     categoryMultiTenancy,
@@ -6097,10 +7666,15 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598348)
 				sTenID, err := mustBeDIntInTenantRange(args[0])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598351)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598352)
 				}
+				__antithesis_instrumentation__.Notify(598349)
 				availableRU := float64(tree.MustBeDFloat(args[1]))
 				refillRate := float64(tree.MustBeDFloat(args[2]))
 				maxBurstRU := float64(tree.MustBeDFloat(args[3]))
@@ -6116,8 +7690,12 @@ value if you rely on the HLC for accuracy.`,
 					asOf,
 					asOfConsumed,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598353)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598354)
 				}
+				__antithesis_instrumentation__.Notify(598350)
 				return args[0], nil
 			},
 			Info:       "Updates resource limits for the tenant with the provided ID. Must be run by the System tenant.",
@@ -6140,14 +7718,19 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598355)
 				nodeID := int32(tree.MustBeDInt(args[0]))
 				storeID := int32(tree.MustBeDInt(args[1]))
 				startKey := []byte(tree.MustBeDBytes(args[2]))
 				endKey := []byte(tree.MustBeDBytes(args[3]))
 				if err := ctx.CompactEngineSpan(
 					ctx.Context, nodeID, storeID, startKey, endKey); err != nil {
+					__antithesis_instrumentation__.Notify(598357)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598358)
 				}
+				__antithesis_instrumentation__.Notify(598356)
 				return tree.DBoolTrue, nil
 			},
 			Info: "This function is used only by CockroachDB's developers for restoring engine health. " +
@@ -6171,10 +7754,15 @@ value if you rely on the HLC for accuracy.`,
 			Types:      tree.ArgTypes{{"feature", types.String}},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598359)
 				s, ok := tree.AsDString(args[0])
 				if !ok {
+					__antithesis_instrumentation__.Notify(598361)
 					return nil, errors.Newf("expected string value, got %T", args[0])
+				} else {
+					__antithesis_instrumentation__.Notify(598362)
 				}
+				__antithesis_instrumentation__.Notify(598360)
 				feature := string(s)
 				telemetry.Inc(sqltelemetry.HashedFeatureCounter(feature))
 				return tree.DBoolTrue, nil
@@ -6196,12 +7784,18 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598363)
 				var numNulls int
 				for _, arg := range args {
+					__antithesis_instrumentation__.Notify(598365)
 					if arg == tree.DNull {
+						__antithesis_instrumentation__.Notify(598366)
 						numNulls++
+					} else {
+						__antithesis_instrumentation__.Notify(598367)
 					}
 				}
+				__antithesis_instrumentation__.Notify(598364)
 				return tree.NewDInt(tree.DInt(numNulls)), nil
 			},
 			Info:       "Returns the number of null arguments.",
@@ -6219,12 +7813,18 @@ value if you rely on the HLC for accuracy.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598368)
 				var numNonNulls int
 				for _, arg := range args {
+					__antithesis_instrumentation__.Notify(598370)
 					if arg != tree.DNull {
+						__antithesis_instrumentation__.Notify(598371)
 						numNonNulls++
+					} else {
+						__antithesis_instrumentation__.Notify(598372)
 					}
 				}
+				__antithesis_instrumentation__.Notify(598369)
 				return tree.NewDInt(tree.DInt(numNonNulls)), nil
 			},
 			Info:       "Returns the number of nonnull arguments.",
@@ -6235,20 +7835,25 @@ value if you rely on the HLC for accuracy.`,
 	GatewayRegionBuiltinName: makeBuiltin(
 		tree.FunctionProperties{
 			Category: categoryMultiRegion,
-			// We should always evaluate this built-in at the gateway.
+
 			DistsqlBlocklist: true,
 		},
 		tree.Overload{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, arg tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598373)
 				region, found := evalCtx.Locality.Find("region")
 				if !found {
+					__antithesis_instrumentation__.Notify(598375)
 					return nil, pgerror.Newf(
 						pgcode.ConfigFile,
 						"no region set on the locality flag on this node",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(598376)
 				}
+				__antithesis_instrumentation__.Notify(598374)
 				return tree.NewDString(region), nil
 			},
 			Info: `Returns the region of the connection's current node as defined by
@@ -6260,20 +7865,33 @@ the locality flag on node startup. Returns an error if no region is set.`,
 		tree.FunctionProperties{Category: categoryMultiRegion},
 		stringOverload1(
 			func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598377)
 				regionConfig, err := evalCtx.Regions.CurrentDatabaseRegionConfig(evalCtx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598381)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598382)
 				}
+				__antithesis_instrumentation__.Notify(598378)
 				if regionConfig == nil {
+					__antithesis_instrumentation__.Notify(598383)
 					return nil, pgerror.Newf(
 						pgcode.InvalidDatabaseDefinition,
 						"current database %s is not multi-region enabled",
 						evalCtx.SessionData().Database,
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(598384)
 				}
+				__antithesis_instrumentation__.Notify(598379)
 				if regionConfig.IsValidRegionNameString(s) {
+					__antithesis_instrumentation__.Notify(598385)
 					return tree.NewDString(s), nil
+				} else {
+					__antithesis_instrumentation__.Notify(598386)
 				}
+				__antithesis_instrumentation__.Notify(598380)
 				primaryRegion := regionConfig.PrimaryRegionString()
 				return tree.NewDString(primaryRegion), nil
 			},
@@ -6290,27 +7908,44 @@ the locality flag on node startup. Returns an error if no region is set.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, arg tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598387)
 				regionConfig, err := evalCtx.Regions.CurrentDatabaseRegionConfig(evalCtx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598392)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598393)
 				}
+				__antithesis_instrumentation__.Notify(598388)
 				if regionConfig == nil {
+					__antithesis_instrumentation__.Notify(598394)
 					return nil, pgerror.Newf(
 						pgcode.InvalidDatabaseDefinition,
 						"current database %s is not multi-region enabled",
 						evalCtx.SessionData().Database,
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(598395)
 				}
+				__antithesis_instrumentation__.Notify(598389)
 				gatewayRegion, found := evalCtx.Locality.Find("region")
 				if !found {
+					__antithesis_instrumentation__.Notify(598396)
 					return nil, pgerror.Newf(
 						pgcode.ConfigFile,
 						"no region set on the locality flag on this node",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(598397)
 				}
+				__antithesis_instrumentation__.Notify(598390)
 				if regionConfig.IsValidRegionNameString(gatewayRegion) {
+					__antithesis_instrumentation__.Notify(598398)
 					return tree.NewDString(gatewayRegion), nil
+				} else {
+					__antithesis_instrumentation__.Notify(598399)
 				}
+				__antithesis_instrumentation__.Notify(598391)
 				primaryRegion := regionConfig.PrimaryRegionString()
 				return tree.NewDString(primaryRegion), nil
 			},
@@ -6326,11 +7961,16 @@ the locality flag on node startup. Returns an error if no region is set.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598400)
 				if err := evalCtx.Regions.ValidateAllMultiRegionZoneConfigsInCurrentDatabase(
 					evalCtx.Context,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598402)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598403)
 				}
+				__antithesis_instrumentation__.Notify(598401)
 				return tree.MakeDBool(true), nil
 			},
 			Info: `Validates all multi-region zone configurations are correctly setup
@@ -6346,14 +7986,19 @@ the locality flag on node startup. Returns an error if no region is set.`,
 			Types:      tree.ArgTypes{{"id", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598404)
 				id := int64(*args[0].(*tree.DInt))
 
 				if err := evalCtx.Regions.ResetMultiRegionZoneConfigsForTable(
 					evalCtx.Context,
 					id,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598406)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598407)
 				}
+				__antithesis_instrumentation__.Notify(598405)
 				return tree.MakeDBool(true), nil
 			},
 			Info: `Resets the zone configuration for a multi-region table to
@@ -6368,14 +8013,19 @@ table.`,
 			Types:      tree.ArgTypes{{"id", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598408)
 				id := int64(*args[0].(*tree.DInt))
 
 				if err := evalCtx.Regions.ResetMultiRegionZoneConfigsForDatabase(
 					evalCtx.Context,
 					id,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598410)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598411)
 				}
+				__antithesis_instrumentation__.Notify(598409)
 				return tree.MakeDBool(true), nil
 			},
 			Info: `Resets the zone configuration for a multi-region database to
@@ -6388,26 +8038,42 @@ enabled.`,
 		tree.FunctionProperties{Category: categoryMultiRegion},
 		stringOverload1(
 			func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598412)
 				stmt, err := parser.ParseOne(s)
 				if err != nil {
-					// Return the same statement if it does not parse.
-					// This can happen for invalid zone config state, in which case
-					// it is better not to error as opposed to blocking SHOW CREATE TABLE.
-					return tree.NewDString(s), nil //nolint:returnerrcheck
+					__antithesis_instrumentation__.Notify(598417)
+
+					return tree.NewDString(s), nil
+				} else {
+					__antithesis_instrumentation__.Notify(598418)
 				}
+				__antithesis_instrumentation__.Notify(598413)
 				zs, ok := stmt.AST.(*tree.SetZoneConfig)
 				if !ok {
+					__antithesis_instrumentation__.Notify(598419)
 					return nil, errors.Newf("invalid CONFIGURE ZONE statement (type %T): %s", stmt.AST, stmt)
+				} else {
+					__antithesis_instrumentation__.Notify(598420)
 				}
+				__antithesis_instrumentation__.Notify(598414)
 				newKVOptions := zs.Options[:0]
 				for _, opt := range zs.Options {
+					__antithesis_instrumentation__.Notify(598421)
 					if _, ok := zonepb.MultiRegionZoneConfigFieldsSet[opt.Key]; !ok {
+						__antithesis_instrumentation__.Notify(598422)
 						newKVOptions = append(newKVOptions, opt)
+					} else {
+						__antithesis_instrumentation__.Notify(598423)
 					}
 				}
+				__antithesis_instrumentation__.Notify(598415)
 				if len(newKVOptions) == 0 {
+					__antithesis_instrumentation__.Notify(598424)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(598425)
 				}
+				__antithesis_instrumentation__.Notify(598416)
 				zs.Options = newKVOptions
 				return tree.NewDString(zs.String()), nil
 			},
@@ -6422,26 +8088,43 @@ table's zone configuration this will return NULL.`,
 	"crdb_internal.reset_index_usage_stats": makeBuiltin(
 		tree.FunctionProperties{
 			Category:         categorySystemInfo,
-			DistsqlBlocklist: true, // applicable only on the gateway
+			DistsqlBlocklist: true,
 		},
 		tree.Overload{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598426)
 				isAdmin, err := evalCtx.SessionAccessor.HasAdminRole(evalCtx.Ctx())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598431)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598432)
 				}
+				__antithesis_instrumentation__.Notify(598427)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(598433)
 					return nil, errors.New("crdb_internal.reset_index_usage_stats() requires admin privilege")
+				} else {
+					__antithesis_instrumentation__.Notify(598434)
 				}
+				__antithesis_instrumentation__.Notify(598428)
 				if evalCtx.IndexUsageStatsController == nil {
+					__antithesis_instrumentation__.Notify(598435)
 					return nil, errors.AssertionFailedf("index usage stats controller not set")
+				} else {
+					__antithesis_instrumentation__.Notify(598436)
 				}
+				__antithesis_instrumentation__.Notify(598429)
 				ctx := evalCtx.Ctx()
 				if err := evalCtx.IndexUsageStatsController.ResetIndexUsageStats(ctx); err != nil {
+					__antithesis_instrumentation__.Notify(598437)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598438)
 				}
+				__antithesis_instrumentation__.Notify(598430)
 				return tree.MakeDBool(true), nil
 			},
 			Info:       `This function is used to clear the collected index usage statistics.`,
@@ -6451,36 +8134,50 @@ table's zone configuration this will return NULL.`,
 	"crdb_internal.reset_sql_stats": makeBuiltin(
 		tree.FunctionProperties{
 			Category:         categorySystemInfo,
-			DistsqlBlocklist: true, // applicable only on the gateway
+			DistsqlBlocklist: true,
 		},
 		tree.Overload{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598439)
 				isAdmin, err := evalCtx.SessionAccessor.HasAdminRole(evalCtx.Ctx())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598444)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598445)
 				}
+				__antithesis_instrumentation__.Notify(598440)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(598446)
 					return nil, errors.New("crdb_internal.reset_sql_stats() requires admin privilege")
+				} else {
+					__antithesis_instrumentation__.Notify(598447)
 				}
+				__antithesis_instrumentation__.Notify(598441)
 				if evalCtx.SQLStatsController == nil {
+					__antithesis_instrumentation__.Notify(598448)
 					return nil, errors.AssertionFailedf("sql stats controller not set")
+				} else {
+					__antithesis_instrumentation__.Notify(598449)
 				}
+				__antithesis_instrumentation__.Notify(598442)
 				ctx := evalCtx.Ctx()
 				if err := evalCtx.SQLStatsController.ResetClusterSQLStats(ctx); err != nil {
+					__antithesis_instrumentation__.Notify(598450)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598451)
 				}
+				__antithesis_instrumentation__.Notify(598443)
 				return tree.MakeDBool(true), nil
 			},
 			Info:       `This function is used to clear the collected SQL statistics.`,
 			Volatility: tree.VolatilityVolatile,
 		},
 	),
-	// Deletes the underlying spans backing a table, only
-	// if the user provides explicit acknowledgement of the
-	// form "I acknowledge this will irrevocably delete all revisions
-	// for table %d"
+
 	"crdb_internal.force_delete_table_data": makeBuiltin(
 		tree.FunctionProperties{
 			Category: categorySystemRepair,
@@ -6489,12 +8186,17 @@ table's zone configuration this will return NULL.`,
 			Types:      tree.ArgTypes{{"id", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598452)
 				id := int64(*args[0].(*tree.DInt))
 
 				err := ctx.Planner.ForceDeleteTableData(ctx.Context, id)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598454)
 					return tree.DBoolFalse, err
+				} else {
+					__antithesis_instrumentation__.Notify(598455)
 				}
+				__antithesis_instrumentation__.Notify(598453)
 				return tree.DBoolTrue, err
 			},
 			Info:       "This function can be used to clear the data belonging to a table, when the table cannot be dropped.",
@@ -6510,6 +8212,7 @@ table's zone configuration this will return NULL.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598456)
 				return evalCtx.Planner.SerializeSessionState()
 			},
 			Info:       `This function serializes the variables in the current session.`,
@@ -6525,6 +8228,7 @@ table's zone configuration this will return NULL.`,
 			Types:      tree.ArgTypes{{"session", types.Bytes}},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598457)
 				state := tree.MustBeDBytes(args[0])
 				return evalCtx.Planner.DeserializeSessionState(tree.NewDBytes(state))
 			},
@@ -6541,6 +8245,7 @@ table's zone configuration this will return NULL.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598458)
 				return evalCtx.Planner.CreateSessionRevivalToken()
 			},
 			Info:       `Generate a token that can be used to create a new session for the current user.`,
@@ -6555,6 +8260,7 @@ table's zone configuration this will return NULL.`,
 			Types:      tree.ArgTypes{{"token", types.Bytes}},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598459)
 				token := tree.MustBeDBytes(args[0])
 				return evalCtx.Planner.ValidateSessionRevivalToken(&token)
 			},
@@ -6571,6 +8277,7 @@ table's zone configuration this will return NULL.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Void),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598460)
 				return tree.DVoidDatum, evalCtx.Planner.ValidateTTLScheduledJobsInCurrentDB(evalCtx.Context)
 			},
 			Info:       `Validate all TTL tables have a valid scheduled job attached.`,
@@ -6586,10 +8293,15 @@ table's zone configuration this will return NULL.`,
 			Types:      tree.ArgTypes{{"oid", types.Oid}},
 			ReturnType: tree.FixedReturnType(types.Void),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598461)
 				oid := tree.MustBeDOid(args[0])
 				if err := evalCtx.Planner.RepairTTLScheduledJobForTable(evalCtx.Ctx(), int64(oid.DInt)); err != nil {
+					__antithesis_instrumentation__.Notify(598463)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598464)
 				}
+				__antithesis_instrumentation__.Notify(598462)
 				return tree.DVoidDatum, nil
 			},
 			Info:       `Repairs the scheduled job for a TTL table if it is missing.`,
@@ -6605,15 +8317,24 @@ table's zone configuration this will return NULL.`,
 			Types:      tree.ArgTypes{{"password", types.Bytes}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598465)
 				arg := []byte(tree.MustBeDBytes(args[0]))
 				ctx := evalCtx.Ctx()
 				isHashed, _, _, schemeName, _, err := security.CheckPasswordHashValidity(ctx, arg)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598468)
 					return tree.DNull, pgerror.WithCandidateCode(err, pgcode.Syntax)
+				} else {
+					__antithesis_instrumentation__.Notify(598469)
 				}
+				__antithesis_instrumentation__.Notify(598466)
 				if !isHashed {
+					__antithesis_instrumentation__.Notify(598470)
 					return tree.DNull, pgerror.New(pgcode.Syntax, "hash format not recognized")
+				} else {
+					__antithesis_instrumentation__.Notify(598471)
 				}
+				__antithesis_instrumentation__.Notify(598467)
 				return tree.NewDString(schemeName), nil
 			},
 			Info:       "This function checks whether a string is a precomputed password hash. Returns the hash algorithm.",
@@ -6629,14 +8350,23 @@ table's zone configuration this will return NULL.`,
 			Types:      tree.ArgTypes{{"session", types.Bytes}},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598472)
 				if evalCtx.SQLStatsController == nil {
+					__antithesis_instrumentation__.Notify(598475)
 					return nil, errors.AssertionFailedf("sql stats controller not set")
+				} else {
+					__antithesis_instrumentation__.Notify(598476)
 				}
+				__antithesis_instrumentation__.Notify(598473)
 				ctx := evalCtx.Ctx()
 				if err := evalCtx.SQLStatsController.CreateSQLStatsCompactionSchedule(ctx); err != nil {
+					__antithesis_instrumentation__.Notify(598477)
 
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(598478)
 				}
+				__antithesis_instrumentation__.Notify(598474)
 				return tree.DBoolTrue, nil
 			},
 			Info:       "This function is used to start a SQL stats compaction job.",
@@ -6652,9 +8382,14 @@ table's zone configuration this will return NULL.`,
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.Void),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598479)
 				if err := evalCtx.Planner.RevalidateUniqueConstraintsInCurrentDB(evalCtx.Ctx()); err != nil {
+					__antithesis_instrumentation__.Notify(598481)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598482)
 				}
+				__antithesis_instrumentation__.Notify(598480)
 				return tree.DVoidDatum, nil
 			},
 			Info: `This function is used to revalidate all unique constraints in tables
@@ -6671,14 +8406,23 @@ in the current database. Returns an error if validation fails.`,
 			Types:      tree.ArgTypes{{"table_name", types.String}},
 			ReturnType: tree.FixedReturnType(types.Void),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598483)
 				name := tree.MustBeDString(args[0])
 				dOid, err := tree.ParseDOid(evalCtx, string(name), types.RegClass)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598486)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598487)
 				}
+				__antithesis_instrumentation__.Notify(598484)
 				if err := evalCtx.Planner.RevalidateUniqueConstraintsInTable(evalCtx.Ctx(), int(dOid.DInt)); err != nil {
+					__antithesis_instrumentation__.Notify(598488)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598489)
 				}
+				__antithesis_instrumentation__.Notify(598485)
 				return tree.DVoidDatum, nil
 			},
 			Info: `This function is used to revalidate all unique constraints in the given
@@ -6695,17 +8439,26 @@ table. Returns an error if validation fails.`,
 			Types:      tree.ArgTypes{{"table_name", types.String}, {"constraint_name", types.String}},
 			ReturnType: tree.FixedReturnType(types.Void),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598490)
 				tableName := tree.MustBeDString(args[0])
 				constraintName := tree.MustBeDString(args[1])
 				dOid, err := tree.ParseDOid(evalCtx, string(tableName), types.RegClass)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598493)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598494)
 				}
+				__antithesis_instrumentation__.Notify(598491)
 				if err = evalCtx.Planner.RevalidateUniqueConstraint(
 					evalCtx.Ctx(), int(dOid.DInt), string(constraintName),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(598495)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598496)
 				}
+				__antithesis_instrumentation__.Notify(598492)
 				return tree.DVoidDatum, nil
 			},
 			Info: `This function is used to revalidate the given unique constraint in the given
@@ -6717,7 +8470,7 @@ table. Returns an error if validation fails.`,
 	"crdb_internal.kv_set_queue_active": makeBuiltin(
 		tree.FunctionProperties{
 			Category:         categorySystemRepair,
-			DistsqlBlocklist: true, // applicable only on the gateway
+			DistsqlBlocklist: true,
 			Undocumented:     true,
 		},
 		tree.Overload{
@@ -6727,22 +8480,36 @@ table. Returns an error if validation fails.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598497)
 				isAdmin, err := ctx.SessionAccessor.HasAdminRole(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598501)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598502)
 				}
+				__antithesis_instrumentation__.Notify(598498)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(598503)
 					return nil, errInsufficientPriv
+				} else {
+					__antithesis_instrumentation__.Notify(598504)
 				}
+				__antithesis_instrumentation__.Notify(598499)
 
 				queue := string(tree.MustBeDString(args[0]))
 				active := bool(tree.MustBeDBool(args[1]))
 
 				if err := ctx.KVStoresIterator.ForEachStore(func(store kvserverbase.Store) error {
+					__antithesis_instrumentation__.Notify(598505)
 					return store.SetQueueActive(active, queue)
 				}); err != nil {
+					__antithesis_instrumentation__.Notify(598506)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598507)
 				}
+				__antithesis_instrumentation__.Notify(598500)
 
 				return tree.DBoolTrue, nil
 			},
@@ -6759,13 +8526,22 @@ One of 'mvccGC', 'merge', 'split', 'replicate', 'replicaGC', 'raftlog',
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598508)
 				isAdmin, err := ctx.SessionAccessor.HasAdminRole(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598513)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598514)
 				}
+				__antithesis_instrumentation__.Notify(598509)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(598515)
 					return nil, errInsufficientPriv
+				} else {
+					__antithesis_instrumentation__.Notify(598516)
 				}
+				__antithesis_instrumentation__.Notify(598510)
 
 				queue := string(tree.MustBeDString(args[0]))
 				active := bool(tree.MustBeDBool(args[1]))
@@ -6773,18 +8549,31 @@ One of 'mvccGC', 'merge', 'split', 'replicate', 'replicaGC', 'raftlog',
 
 				var foundStore bool
 				if err := ctx.KVStoresIterator.ForEachStore(func(store kvserverbase.Store) error {
+					__antithesis_instrumentation__.Notify(598517)
 					if storeID == store.StoreID() {
+						__antithesis_instrumentation__.Notify(598519)
 						foundStore = true
 						return store.SetQueueActive(active, queue)
+					} else {
+						__antithesis_instrumentation__.Notify(598520)
 					}
+					__antithesis_instrumentation__.Notify(598518)
 					return nil
 				}); err != nil {
+					__antithesis_instrumentation__.Notify(598521)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598522)
 				}
+				__antithesis_instrumentation__.Notify(598511)
 
 				if !foundStore {
+					__antithesis_instrumentation__.Notify(598523)
 					return nil, errors.Errorf("store %s not found on this node", storeID)
+				} else {
+					__antithesis_instrumentation__.Notify(598524)
 				}
+				__antithesis_instrumentation__.Notify(598512)
 				return tree.DBoolTrue, nil
 			},
 			Info: `Used to enable/disable the named queue on the specified store on the node it's
@@ -6797,7 +8586,7 @@ run from. One of 'mvccGC', 'merge', 'split', 'replicate', 'replicaGC',
 	"crdb_internal.kv_enqueue_replica": makeBuiltin(
 		tree.FunctionProperties{
 			Category:         categorySystemRepair,
-			DistsqlBlocklist: true, // applicable only on the gateway
+			DistsqlBlocklist: true,
 			Undocumented:     true,
 		},
 		tree.Overload{
@@ -6808,13 +8597,22 @@ run from. One of 'mvccGC', 'merge', 'split', 'replicate', 'replicaGC',
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598525)
 				isAdmin, err := ctx.SessionAccessor.HasAdminRole(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598530)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598531)
 				}
+				__antithesis_instrumentation__.Notify(598526)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(598532)
 					return nil, errInsufficientPriv
+				} else {
+					__antithesis_instrumentation__.Notify(598533)
 				}
+				__antithesis_instrumentation__.Notify(598527)
 
 				rangeID := roachpb.RangeID(tree.MustBeDInt(args[0]))
 				queue := string(tree.MustBeDString(args[1]))
@@ -6822,23 +8620,40 @@ run from. One of 'mvccGC', 'merge', 'split', 'replicate', 'replicaGC',
 
 				var foundRepl bool
 				if err := ctx.KVStoresIterator.ForEachStore(func(store kvserverbase.Store) error {
+					__antithesis_instrumentation__.Notify(598534)
 					err := store.Enqueue(ctx.Context, queue, rangeID, skipShouldQueue)
 					if err == nil {
+						__antithesis_instrumentation__.Notify(598537)
 						foundRepl = true
 						return nil
+					} else {
+						__antithesis_instrumentation__.Notify(598538)
 					}
+					__antithesis_instrumentation__.Notify(598535)
 
 					if errors.HasType(err, (*roachpb.RangeNotFoundError)(nil)) {
+						__antithesis_instrumentation__.Notify(598539)
 						return nil
+					} else {
+						__antithesis_instrumentation__.Notify(598540)
 					}
+					__antithesis_instrumentation__.Notify(598536)
 					return err
 				}); err != nil {
+					__antithesis_instrumentation__.Notify(598541)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598542)
 				}
+				__antithesis_instrumentation__.Notify(598528)
 
 				if !foundRepl {
+					__antithesis_instrumentation__.Notify(598543)
 					return nil, errors.Errorf("replica with range id %s not found on this node", rangeID)
+				} else {
+					__antithesis_instrumentation__.Notify(598544)
 				}
+				__antithesis_instrumentation__.Notify(598529)
 				return tree.DBoolTrue, nil
 			},
 			Info: `Enqueue the replica with the given range ID into the named queue, on the
@@ -6856,13 +8671,22 @@ specified store on the node it's run from. One of 'mvccGC', 'merge', 'split',
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598545)
 				isAdmin, err := ctx.SessionAccessor.HasAdminRole(ctx.Context)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598550)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598551)
 				}
+				__antithesis_instrumentation__.Notify(598546)
 				if !isAdmin {
+					__antithesis_instrumentation__.Notify(598552)
 					return nil, errInsufficientPriv
+				} else {
+					__antithesis_instrumentation__.Notify(598553)
 				}
+				__antithesis_instrumentation__.Notify(598547)
 
 				rangeID := roachpb.RangeID(tree.MustBeDInt(args[0]))
 				queue := string(tree.MustBeDString(args[1]))
@@ -6871,18 +8695,31 @@ specified store on the node it's run from. One of 'mvccGC', 'merge', 'split',
 
 				var foundStore bool
 				if err := ctx.KVStoresIterator.ForEachStore(func(store kvserverbase.Store) error {
+					__antithesis_instrumentation__.Notify(598554)
 					if storeID == store.StoreID() {
+						__antithesis_instrumentation__.Notify(598556)
 						foundStore = true
 						return store.Enqueue(ctx.Context, queue, rangeID, skipShouldQueue)
+					} else {
+						__antithesis_instrumentation__.Notify(598557)
 					}
+					__antithesis_instrumentation__.Notify(598555)
 					return nil
 				}); err != nil {
+					__antithesis_instrumentation__.Notify(598558)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598559)
 				}
+				__antithesis_instrumentation__.Notify(598548)
 
 				if !foundStore {
+					__antithesis_instrumentation__.Notify(598560)
 					return nil, errors.Errorf("store %s not found on this node", storeID)
+				} else {
+					__antithesis_instrumentation__.Notify(598561)
 				}
+				__antithesis_instrumentation__.Notify(598549)
 				return tree.DBoolTrue, nil
 			},
 			Info: `Enqueue the replica with the given range ID into the named queue, on the
@@ -6895,9 +8732,11 @@ specified store on the node it's run from. One of 'mvccGC', 'merge', 'split',
 }
 
 var lengthImpls = func(incBitOverload bool) builtinDefinition {
+	__antithesis_instrumentation__.Notify(598562)
 	b := makeBuiltin(tree.FunctionProperties{Category: categoryString},
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598565)
 				return tree.NewDInt(tree.DInt(utf8.RuneCountInString(s))), nil
 			},
 			types.Int,
@@ -6906,6 +8745,7 @@ var lengthImpls = func(incBitOverload bool) builtinDefinition {
 		),
 		bytesOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598566)
 				return tree.NewDInt(tree.DInt(len(s))), nil
 			},
 			types.Int,
@@ -6913,17 +8753,23 @@ var lengthImpls = func(incBitOverload bool) builtinDefinition {
 			tree.VolatilityImmutable,
 		),
 	)
+	__antithesis_instrumentation__.Notify(598563)
 	if incBitOverload {
+		__antithesis_instrumentation__.Notify(598567)
 		b.overloads = append(
 			b.overloads,
 			bitsOverload1(
 				func(_ *tree.EvalContext, s *tree.DBitArray) (tree.Datum, error) {
+					__antithesis_instrumentation__.Notify(598568)
 					return tree.NewDInt(tree.DInt(s.BitArray.BitLen())), nil
 				}, types.Int, "Calculates the number of bits in `val`.",
 				tree.VolatilityImmutable,
 			),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(598569)
 	}
+	__antithesis_instrumentation__.Notify(598564)
 	return b
 }
 
@@ -6935,6 +8781,7 @@ var substringImpls = makeBuiltin(tree.FunctionProperties{Category: categoryStrin
 		},
 		ReturnType: tree.FixedReturnType(types.String),
 		Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598570)
 			substring := getSubstringFromIndex(string(tree.MustBeDString(args[0])), int(tree.MustBeDInt(args[1])))
 			return tree.NewDString(substring), nil
 		},
@@ -6950,14 +8797,19 @@ var substringImpls = makeBuiltin(tree.FunctionProperties{Category: categoryStrin
 		SpecializedVecBuiltin: tree.SubstringStringIntInt,
 		ReturnType:            tree.FixedReturnType(types.String),
 		Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598571)
 			str := string(tree.MustBeDString(args[0]))
 			start := int(tree.MustBeDInt(args[1]))
 			length := int(tree.MustBeDInt(args[2]))
 
 			substring, err := getSubstringFromIndexOfLength(str, "substring", start, length)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(598573)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(598574)
 			}
+			__antithesis_instrumentation__.Notify(598572)
 			return tree.NewDString(substring), nil
 		},
 		Info: "Returns a substring of `input` starting at `start_pos` (count starts at 1) and " +
@@ -6971,6 +8823,7 @@ var substringImpls = makeBuiltin(tree.FunctionProperties{Category: categoryStrin
 		},
 		ReturnType: tree.FixedReturnType(types.String),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598575)
 			s := string(tree.MustBeDString(args[0]))
 			pattern := string(tree.MustBeDString(args[1]))
 			return regexpExtract(ctx, s, pattern, `\`)
@@ -6986,6 +8839,7 @@ var substringImpls = makeBuiltin(tree.FunctionProperties{Category: categoryStrin
 		},
 		ReturnType: tree.FixedReturnType(types.String),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598576)
 			s := string(tree.MustBeDString(args[0]))
 			pattern := string(tree.MustBeDString(args[1]))
 			escape := string(tree.MustBeDString(args[2]))
@@ -7002,6 +8856,7 @@ var substringImpls = makeBuiltin(tree.FunctionProperties{Category: categoryStrin
 		},
 		ReturnType: tree.FixedReturnType(types.VarBit),
 		Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598577)
 			bitString := tree.MustBeDBitArray(args[0])
 			start := int(tree.MustBeDInt(args[1]))
 			substring := getSubstringFromIndex(bitString.BitArray.String(), start)
@@ -7018,14 +8873,19 @@ var substringImpls = makeBuiltin(tree.FunctionProperties{Category: categoryStrin
 		},
 		ReturnType: tree.FixedReturnType(types.VarBit),
 		Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598578)
 			bitString := tree.MustBeDBitArray(args[0])
 			start := int(tree.MustBeDInt(args[1]))
 			length := int(tree.MustBeDInt(args[2]))
 
 			substring, err := getSubstringFromIndexOfLength(bitString.BitArray.String(), "bit subarray", start, length)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(598580)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(598581)
 			}
+			__antithesis_instrumentation__.Notify(598579)
 			return tree.ParseDBitArray(substring)
 		},
 		Info: "Returns a bit subarray of `input` starting at `start_pos` (count starts at 1) and " +
@@ -7039,6 +8899,7 @@ var substringImpls = makeBuiltin(tree.FunctionProperties{Category: categoryStrin
 		},
 		ReturnType: tree.FixedReturnType(types.Bytes),
 		Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598582)
 			byteString := string(*args[0].(*tree.DBytes))
 			start := int(tree.MustBeDInt(args[1]))
 			substring := getSubstringFromIndexBytes(byteString, start)
@@ -7055,14 +8916,19 @@ var substringImpls = makeBuiltin(tree.FunctionProperties{Category: categoryStrin
 		},
 		ReturnType: tree.FixedReturnType(types.Bytes),
 		Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598583)
 			byteString := string(*args[0].(*tree.DBytes))
 			start := int(tree.MustBeDInt(args[1]))
 			length := int(tree.MustBeDInt(args[2]))
 
 			substring, err := getSubstringFromIndexOfLengthBytes(byteString, "byte subarray", start, length)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(598585)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(598586)
 			}
+			__antithesis_instrumentation__.Notify(598584)
 			return tree.NewDBytes(tree.DBytes(substring)), nil
 		},
 		Info: "Returns a byte subarray of `input` starting at `start_pos` (count starts at 1) and " +
@@ -7071,92 +8937,153 @@ var substringImpls = makeBuiltin(tree.FunctionProperties{Category: categoryStrin
 	},
 )
 
-// Returns a substring of given string starting at given position.
 func getSubstringFromIndex(str string, start int) string {
+	__antithesis_instrumentation__.Notify(598587)
 	runes := []rune(str)
-	// SQL strings are 1-indexed.
+
 	start--
 
 	if start < 0 {
+		__antithesis_instrumentation__.Notify(598589)
 		start = 0
-	} else if start > len(runes) {
-		start = len(runes)
+	} else {
+		__antithesis_instrumentation__.Notify(598590)
+		if start > len(runes) {
+			__antithesis_instrumentation__.Notify(598591)
+			start = len(runes)
+		} else {
+			__antithesis_instrumentation__.Notify(598592)
+		}
 	}
+	__antithesis_instrumentation__.Notify(598588)
 	return string(runes[start:])
 }
 
-// Returns a substring of given string starting at given position and
-// include up to a certain length.
 func getSubstringFromIndexOfLength(str, errMsg string, start, length int) (string, error) {
+	__antithesis_instrumentation__.Notify(598593)
 	runes := []rune(str)
-	// SQL strings are 1-indexed.
+
 	start--
 
 	if length < 0 {
+		__antithesis_instrumentation__.Notify(598597)
 		return "", pgerror.Newf(
 			pgcode.InvalidParameterValue, "negative %s length %d not allowed", errMsg, length)
+	} else {
+		__antithesis_instrumentation__.Notify(598598)
 	}
+	__antithesis_instrumentation__.Notify(598594)
 
 	end := start + length
-	// Check for integer overflow.
+
 	if end < start {
+		__antithesis_instrumentation__.Notify(598599)
 		end = len(runes)
-	} else if end < 0 {
-		end = 0
-	} else if end > len(runes) {
-		end = len(runes)
+	} else {
+		__antithesis_instrumentation__.Notify(598600)
+		if end < 0 {
+			__antithesis_instrumentation__.Notify(598601)
+			end = 0
+		} else {
+			__antithesis_instrumentation__.Notify(598602)
+			if end > len(runes) {
+				__antithesis_instrumentation__.Notify(598603)
+				end = len(runes)
+			} else {
+				__antithesis_instrumentation__.Notify(598604)
+			}
+		}
 	}
+	__antithesis_instrumentation__.Notify(598595)
 
 	if start < 0 {
+		__antithesis_instrumentation__.Notify(598605)
 		start = 0
-	} else if start > len(runes) {
-		start = len(runes)
+	} else {
+		__antithesis_instrumentation__.Notify(598606)
+		if start > len(runes) {
+			__antithesis_instrumentation__.Notify(598607)
+			start = len(runes)
+		} else {
+			__antithesis_instrumentation__.Notify(598608)
+		}
 	}
+	__antithesis_instrumentation__.Notify(598596)
 	return string(runes[start:end]), nil
 }
 
-// Returns a substring of given string starting at given position by
-// interpreting the string as raw bytes.
 func getSubstringFromIndexBytes(str string, start int) string {
+	__antithesis_instrumentation__.Notify(598609)
 	bytes := []byte(str)
-	// SQL strings are 1-indexed.
+
 	start--
 
 	if start < 0 {
+		__antithesis_instrumentation__.Notify(598611)
 		start = 0
-	} else if start > len(bytes) {
-		start = len(bytes)
+	} else {
+		__antithesis_instrumentation__.Notify(598612)
+		if start > len(bytes) {
+			__antithesis_instrumentation__.Notify(598613)
+			start = len(bytes)
+		} else {
+			__antithesis_instrumentation__.Notify(598614)
+		}
 	}
+	__antithesis_instrumentation__.Notify(598610)
 	return string(bytes[start:])
 }
 
-// Returns a substring of given string starting at given position and include up
-// to a certain length by interpreting the string as raw bytes.
 func getSubstringFromIndexOfLengthBytes(str, errMsg string, start, length int) (string, error) {
+	__antithesis_instrumentation__.Notify(598615)
 	bytes := []byte(str)
-	// SQL strings are 1-indexed.
+
 	start--
 
 	if length < 0 {
+		__antithesis_instrumentation__.Notify(598619)
 		return "", pgerror.Newf(
 			pgcode.InvalidParameterValue, "negative %s length %d not allowed", errMsg, length)
+	} else {
+		__antithesis_instrumentation__.Notify(598620)
 	}
+	__antithesis_instrumentation__.Notify(598616)
 
 	end := start + length
-	// Check for integer overflow.
+
 	if end < start {
+		__antithesis_instrumentation__.Notify(598621)
 		end = len(bytes)
-	} else if end < 0 {
-		end = 0
-	} else if end > len(bytes) {
-		end = len(bytes)
+	} else {
+		__antithesis_instrumentation__.Notify(598622)
+		if end < 0 {
+			__antithesis_instrumentation__.Notify(598623)
+			end = 0
+		} else {
+			__antithesis_instrumentation__.Notify(598624)
+			if end > len(bytes) {
+				__antithesis_instrumentation__.Notify(598625)
+				end = len(bytes)
+			} else {
+				__antithesis_instrumentation__.Notify(598626)
+			}
+		}
 	}
+	__antithesis_instrumentation__.Notify(598617)
 
 	if start < 0 {
+		__antithesis_instrumentation__.Notify(598627)
 		start = 0
-	} else if start > len(bytes) {
-		start = len(bytes)
+	} else {
+		__antithesis_instrumentation__.Notify(598628)
+		if start > len(bytes) {
+			__antithesis_instrumentation__.Notify(598629)
+			start = len(bytes)
+		} else {
+			__antithesis_instrumentation__.Notify(598630)
+		}
 	}
+	__antithesis_instrumentation__.Notify(598618)
 	return string(bytes[start:end]), nil
 }
 
@@ -7168,6 +9095,7 @@ var generateRandomUUIDImpl = makeBuiltin(
 		Types:      tree.ArgTypes{},
 		ReturnType: tree.FixedReturnType(types.Uuid),
 		Fn: func(_ *tree.EvalContext, _ tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598631)
 			uv := uuid.MakeV4()
 			return tree.NewDUuid(tree.DUuid{UUID: uv}), nil
 		},
@@ -7184,6 +9112,7 @@ var uuidV4Impl = makeBuiltin(
 		Types:      tree.ArgTypes{},
 		ReturnType: tree.FixedReturnType(types.Bytes),
 		Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598632)
 			return tree.NewDBytes(tree.DBytes(uuid.MakeV4().GetBytes())), nil
 		},
 		Info:       "Returns a UUID.",
@@ -7202,16 +9131,21 @@ This function is the preferred overload and will be evaluated by default.`
 const txnTSDoc = `Returns the time of the current transaction.` + txnTSContextDoc
 
 func getTimeAdditionalDesc(preferTZOverload bool) (string, string) {
+	__antithesis_instrumentation__.Notify(598633)
 	var tzAdditionalDesc, noTZAdditionalDesc string
 	if preferTZOverload {
+		__antithesis_instrumentation__.Notify(598635)
 		tzAdditionalDesc = txnPreferredOverloadStr
 	} else {
+		__antithesis_instrumentation__.Notify(598636)
 		noTZAdditionalDesc = txnPreferredOverloadStr
 	}
+	__antithesis_instrumentation__.Notify(598634)
 	return tzAdditionalDesc, noTZAdditionalDesc
 }
 
 func txnTSOverloads(preferTZOverload bool) []tree.Overload {
+	__antithesis_instrumentation__.Notify(598637)
 	tzAdditionalDesc, noTZAdditionalDesc := getTimeAdditionalDesc(preferTZOverload)
 	return []tree.Overload{
 		{
@@ -7219,6 +9153,7 @@ func txnTSOverloads(preferTZOverload bool) []tree.Overload {
 			ReturnType:        tree.FixedReturnType(types.TimestampTZ),
 			PreferredOverload: preferTZOverload,
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598638)
 				return ctx.GetTxnTimestamp(time.Microsecond), nil
 			},
 			Info:       txnTSDoc + tzAdditionalDesc,
@@ -7229,6 +9164,7 @@ func txnTSOverloads(preferTZOverload bool) []tree.Overload {
 			ReturnType:        tree.FixedReturnType(types.Timestamp),
 			PreferredOverload: !preferTZOverload,
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598639)
 				return ctx.GetTxnTimestampNoZone(time.Microsecond), nil
 			},
 			Info:       txnTSDoc + noTZAdditionalDesc,
@@ -7245,6 +9181,7 @@ func txnTSOverloads(preferTZOverload bool) []tree.Overload {
 }
 
 func txnTSWithPrecisionOverloads(preferTZOverload bool) []tree.Overload {
+	__antithesis_instrumentation__.Notify(598640)
 	tzAdditionalDesc, noTZAdditionalDesc := getTimeAdditionalDesc(preferTZOverload)
 	return append(
 		[]tree.Overload{
@@ -7253,10 +9190,18 @@ func txnTSWithPrecisionOverloads(preferTZOverload bool) []tree.Overload {
 				ReturnType:        tree.FixedReturnType(types.TimestampTZ),
 				PreferredOverload: preferTZOverload,
 				Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+					__antithesis_instrumentation__.Notify(598641)
 					prec := int32(tree.MustBeDInt(args[0]))
-					if prec < 0 || prec > 6 {
+					if prec < 0 || func() bool {
+						__antithesis_instrumentation__.Notify(598643)
+						return prec > 6 == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(598644)
 						return nil, pgerror.Newf(pgcode.NumericValueOutOfRange, "precision %d out of range", prec)
+					} else {
+						__antithesis_instrumentation__.Notify(598645)
 					}
+					__antithesis_instrumentation__.Notify(598642)
 					return ctx.GetTxnTimestamp(tree.TimeFamilyPrecisionToRoundDuration(prec)), nil
 				},
 				Info:       txnTSDoc + tzAdditionalDesc,
@@ -7267,10 +9212,18 @@ func txnTSWithPrecisionOverloads(preferTZOverload bool) []tree.Overload {
 				ReturnType:        tree.FixedReturnType(types.Timestamp),
 				PreferredOverload: !preferTZOverload,
 				Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+					__antithesis_instrumentation__.Notify(598646)
 					prec := int32(tree.MustBeDInt(args[0]))
-					if prec < 0 || prec > 6 {
+					if prec < 0 || func() bool {
+						__antithesis_instrumentation__.Notify(598648)
+						return prec > 6 == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(598649)
 						return nil, pgerror.Newf(pgcode.NumericValueOutOfRange, "precision %d out of range", prec)
+					} else {
+						__antithesis_instrumentation__.Notify(598650)
 					}
+					__antithesis_instrumentation__.Notify(598647)
 					return ctx.GetTxnTimestampNoZone(tree.TimeFamilyPrecisionToRoundDuration(prec)), nil
 				},
 				Info:       txnTSDoc + noTZAdditionalDesc,
@@ -7280,10 +9233,18 @@ func txnTSWithPrecisionOverloads(preferTZOverload bool) []tree.Overload {
 				Types:      tree.ArgTypes{{"precision", types.Int}},
 				ReturnType: tree.FixedReturnType(types.Date),
 				Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+					__antithesis_instrumentation__.Notify(598651)
 					prec := int32(tree.MustBeDInt(args[0]))
-					if prec < 0 || prec > 6 {
+					if prec < 0 || func() bool {
+						__antithesis_instrumentation__.Notify(598653)
+						return prec > 6 == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(598654)
 						return nil, pgerror.Newf(pgcode.NumericValueOutOfRange, "precision %d out of range", prec)
+					} else {
+						__antithesis_instrumentation__.Notify(598655)
 					}
+					__antithesis_instrumentation__.Notify(598652)
 					return currentDate(ctx, args)
 				},
 				Info:       txnTSDoc,
@@ -7295,6 +9256,7 @@ func txnTSWithPrecisionOverloads(preferTZOverload bool) []tree.Overload {
 }
 
 func txnTSImplBuiltin(preferTZOverload bool) builtinDefinition {
+	__antithesis_instrumentation__.Notify(598656)
 	return makeBuiltin(
 		tree.FunctionProperties{
 			Category: categoryDateAndTime,
@@ -7304,6 +9266,7 @@ func txnTSImplBuiltin(preferTZOverload bool) builtinDefinition {
 }
 
 func txnTSWithPrecisionImplBuiltin(preferTZOverload bool) builtinDefinition {
+	__antithesis_instrumentation__.Notify(598657)
 	return makeBuiltin(
 		tree.FunctionProperties{
 			Category: categoryDateAndTime,
@@ -7313,6 +9276,7 @@ func txnTSWithPrecisionImplBuiltin(preferTZOverload bool) builtinDefinition {
 }
 
 func txnTimeWithPrecisionBuiltin(preferTZOverload bool) builtinDefinition {
+	__antithesis_instrumentation__.Notify(598658)
 	tzAdditionalDesc, noTZAdditionalDesc := getTimeAdditionalDesc(preferTZOverload)
 	return makeBuiltin(
 		tree.FunctionProperties{},
@@ -7321,6 +9285,7 @@ func txnTimeWithPrecisionBuiltin(preferTZOverload bool) builtinDefinition {
 			ReturnType:        tree.FixedReturnType(types.TimeTZ),
 			PreferredOverload: preferTZOverload,
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598659)
 				return ctx.GetTxnTime(time.Microsecond), nil
 			},
 			Info:       "Returns the current transaction's time with time zone." + tzAdditionalDesc,
@@ -7331,6 +9296,7 @@ func txnTimeWithPrecisionBuiltin(preferTZOverload bool) builtinDefinition {
 			ReturnType:        tree.FixedReturnType(types.Time),
 			PreferredOverload: !preferTZOverload,
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598660)
 				return ctx.GetTxnTimeNoZone(time.Microsecond), nil
 			},
 			Info:       "Returns the current transaction's time with no time zone." + noTZAdditionalDesc,
@@ -7341,10 +9307,18 @@ func txnTimeWithPrecisionBuiltin(preferTZOverload bool) builtinDefinition {
 			ReturnType:        tree.FixedReturnType(types.TimeTZ),
 			PreferredOverload: preferTZOverload,
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598661)
 				prec := int32(tree.MustBeDInt(args[0]))
-				if prec < 0 || prec > 6 {
+				if prec < 0 || func() bool {
+					__antithesis_instrumentation__.Notify(598663)
+					return prec > 6 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598664)
 					return nil, pgerror.Newf(pgcode.NumericValueOutOfRange, "precision %d out of range", prec)
+				} else {
+					__antithesis_instrumentation__.Notify(598665)
 				}
+				__antithesis_instrumentation__.Notify(598662)
 				return ctx.GetTxnTime(tree.TimeFamilyPrecisionToRoundDuration(prec)), nil
 			},
 			Info:       "Returns the current transaction's time with time zone." + tzAdditionalDesc,
@@ -7355,10 +9329,18 @@ func txnTimeWithPrecisionBuiltin(preferTZOverload bool) builtinDefinition {
 			ReturnType:        tree.FixedReturnType(types.Time),
 			PreferredOverload: !preferTZOverload,
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598666)
 				prec := int32(tree.MustBeDInt(args[0]))
-				if prec < 0 || prec > 6 {
+				if prec < 0 || func() bool {
+					__antithesis_instrumentation__.Notify(598668)
+					return prec > 6 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598669)
 					return nil, pgerror.Newf(pgcode.NumericValueOutOfRange, "precision %d out of range", prec)
+				} else {
+					__antithesis_instrumentation__.Notify(598670)
 				}
+				__antithesis_instrumentation__.Notify(598667)
 				return ctx.GetTxnTimeNoZone(tree.TimeFamilyPrecisionToRoundDuration(prec)), nil
 			},
 			Info:       "Returns the current transaction's time with no time zone." + noTZAdditionalDesc,
@@ -7368,6 +9350,7 @@ func txnTimeWithPrecisionBuiltin(preferTZOverload bool) builtinDefinition {
 }
 
 func currentDate(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(598671)
 	t := ctx.GetTxnTimestamp(time.Microsecond).Time
 	t = t.In(ctx.GetLocation())
 	return tree.NewDDateFromTime(t)
@@ -7395,13 +9378,22 @@ var jsonExtractPathImpl = tree.Overload{
 	Types:      tree.VariadicType{FixedTypes: []*types.T{types.Jsonb}, VarType: types.String},
 	ReturnType: tree.FixedReturnType(types.Jsonb),
 	Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598672)
 		result, err := jsonExtractPathHelper(args)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(598675)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(598676)
 		}
+		__antithesis_instrumentation__.Notify(598673)
 		if result == nil {
+			__antithesis_instrumentation__.Notify(598677)
 			return tree.DNull, nil
+		} else {
+			__antithesis_instrumentation__.Notify(598678)
 		}
+		__antithesis_instrumentation__.Notify(598674)
 		return &tree.DJSON{JSON: result}, nil
 	},
 	Info:       "Returns the JSON value pointed to by the variadic arguments.",
@@ -7412,20 +9404,37 @@ var jsonExtractPathTextImpl = tree.Overload{
 	Types:      tree.VariadicType{FixedTypes: []*types.T{types.Jsonb}, VarType: types.String},
 	ReturnType: tree.FixedReturnType(types.String),
 	Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598679)
 		result, err := jsonExtractPathHelper(args)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(598684)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(598685)
 		}
+		__antithesis_instrumentation__.Notify(598680)
 		if result == nil {
+			__antithesis_instrumentation__.Notify(598686)
 			return tree.DNull, nil
+		} else {
+			__antithesis_instrumentation__.Notify(598687)
 		}
+		__antithesis_instrumentation__.Notify(598681)
 		text, err := result.AsText()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(598688)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(598689)
 		}
+		__antithesis_instrumentation__.Notify(598682)
 		if text == nil {
+			__antithesis_instrumentation__.Notify(598690)
 			return tree.DNull, nil
+		} else {
+			__antithesis_instrumentation__.Notify(598691)
 		}
+		__antithesis_instrumentation__.Notify(598683)
 		return tree.NewDString(*text), nil
 	},
 	Info:       "Returns the JSON value as text pointed to by the variadic arguments.",
@@ -7433,42 +9442,66 @@ var jsonExtractPathTextImpl = tree.Overload{
 }
 
 func jsonExtractPathHelper(args tree.Datums) (json.JSON, error) {
+	__antithesis_instrumentation__.Notify(598692)
 	j := tree.MustBeDJSON(args[0])
 	path := make([]string, len(args)-1)
 	for i, v := range args {
+		__antithesis_instrumentation__.Notify(598694)
 		if i == 0 {
+			__antithesis_instrumentation__.Notify(598697)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(598698)
 		}
+		__antithesis_instrumentation__.Notify(598695)
 		if v == tree.DNull {
+			__antithesis_instrumentation__.Notify(598699)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(598700)
 		}
+		__antithesis_instrumentation__.Notify(598696)
 		path[i-1] = string(tree.MustBeDString(v))
 	}
+	__antithesis_instrumentation__.Notify(598693)
 	return json.FetchPath(j.JSON, path)
 }
 
-// darrayToStringSlice converts an array of string datums to a Go array of
-// strings. If any of the elements are NULL, then ok will be returned as false.
 func darrayToStringSlice(d tree.DArray) (result []string, ok bool) {
+	__antithesis_instrumentation__.Notify(598701)
 	result = make([]string, len(d.Array))
 	for i, s := range d.Array {
+		__antithesis_instrumentation__.Notify(598703)
 		if s == tree.DNull {
+			__antithesis_instrumentation__.Notify(598705)
 			return nil, false
+		} else {
+			__antithesis_instrumentation__.Notify(598706)
 		}
+		__antithesis_instrumentation__.Notify(598704)
 		result[i] = string(tree.MustBeDString(s))
 	}
+	__antithesis_instrumentation__.Notify(598702)
 	return result, true
 }
 
-// checkHasNulls returns an appropriate error if the array contains a NULL.
 func checkHasNulls(ary tree.DArray) error {
+	__antithesis_instrumentation__.Notify(598707)
 	if ary.HasNulls {
+		__antithesis_instrumentation__.Notify(598709)
 		for i := range ary.Array {
+			__antithesis_instrumentation__.Notify(598710)
 			if ary.Array[i] == tree.DNull {
+				__antithesis_instrumentation__.Notify(598711)
 				return pgerror.Newf(pgcode.NullValueNotAllowed, "path element at position %d is null", i+1)
+			} else {
+				__antithesis_instrumentation__.Notify(598712)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(598713)
 	}
+	__antithesis_instrumentation__.Notify(598708)
 	return nil
 }
 
@@ -7480,6 +9513,7 @@ var jsonSetImpl = tree.Overload{
 	},
 	ReturnType: tree.FixedReturnType(types.Jsonb),
 	Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598714)
 		return jsonDatumSet(args[0], args[1], args[2], tree.DBoolTrue)
 	},
 	Info:       "Returns the JSON value pointed to by the variadic arguments.",
@@ -7495,6 +9529,7 @@ var jsonSetWithCreateMissingImpl = tree.Overload{
 	},
 	ReturnType: tree.FixedReturnType(types.Jsonb),
 	Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598715)
 		return jsonDatumSet(args[0], args[1], args[2], args[3])
 	},
 	Info: "Returns the JSON value pointed to by the variadic arguments. " +
@@ -7506,20 +9541,32 @@ var jsonSetWithCreateMissingImpl = tree.Overload{
 func jsonDatumSet(
 	targetD tree.Datum, pathD tree.Datum, toD tree.Datum, createMissingD tree.Datum,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(598716)
 	ary := *tree.MustBeDArray(pathD)
-	// jsonb_set only errors if there is a null at the first position, but not
-	// at any other positions.
+
 	if err := checkHasNulls(ary); err != nil {
+		__antithesis_instrumentation__.Notify(598720)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(598721)
 	}
+	__antithesis_instrumentation__.Notify(598717)
 	path, ok := darrayToStringSlice(ary)
 	if !ok {
+		__antithesis_instrumentation__.Notify(598722)
 		return targetD, nil
+	} else {
+		__antithesis_instrumentation__.Notify(598723)
 	}
+	__antithesis_instrumentation__.Notify(598718)
 	j, err := json.DeepSet(tree.MustBeDJSON(targetD).JSON, path, tree.MustBeDJSON(toD).JSON, bool(tree.MustBeDBool(createMissingD)))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(598724)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(598725)
 	}
+	__antithesis_instrumentation__.Notify(598719)
 	return &tree.DJSON{JSON: j}, nil
 }
 
@@ -7531,6 +9578,7 @@ var jsonInsertImpl = tree.Overload{
 	},
 	ReturnType: tree.FixedReturnType(types.Jsonb),
 	Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598726)
 		return insertToJSONDatum(args[0], args[1], args[2], tree.DBoolFalse)
 	},
 	Info:       "Returns the JSON value pointed to by the variadic arguments. `new_val` will be inserted before path target.",
@@ -7546,6 +9594,7 @@ var jsonInsertWithInsertAfterImpl = tree.Overload{
 	},
 	ReturnType: tree.FixedReturnType(types.Jsonb),
 	Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598727)
 		return insertToJSONDatum(args[0], args[1], args[2], args[3])
 	},
 	Info: "Returns the JSON value pointed to by the variadic arguments. " +
@@ -7556,21 +9605,32 @@ var jsonInsertWithInsertAfterImpl = tree.Overload{
 func insertToJSONDatum(
 	targetD tree.Datum, pathD tree.Datum, newValD tree.Datum, insertAfterD tree.Datum,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(598728)
 	ary := *tree.MustBeDArray(pathD)
 
-	// jsonb_insert only errors if there is a null at the first position, but not
-	// at any other positions.
 	if err := checkHasNulls(ary); err != nil {
+		__antithesis_instrumentation__.Notify(598732)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(598733)
 	}
+	__antithesis_instrumentation__.Notify(598729)
 	path, ok := darrayToStringSlice(ary)
 	if !ok {
+		__antithesis_instrumentation__.Notify(598734)
 		return targetD, nil
+	} else {
+		__antithesis_instrumentation__.Notify(598735)
 	}
+	__antithesis_instrumentation__.Notify(598730)
 	j, err := json.DeepInsert(tree.MustBeDJSON(targetD).JSON, path, tree.MustBeDJSON(newValD).JSON, bool(tree.MustBeDBool(insertAfterD)))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(598736)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(598737)
 	}
+	__antithesis_instrumentation__.Notify(598731)
 	return &tree.DJSON{JSON: j}, nil
 }
 
@@ -7578,21 +9638,31 @@ var jsonTypeOfImpl = tree.Overload{
 	Types:      tree.ArgTypes{{"val", types.Jsonb}},
 	ReturnType: tree.FixedReturnType(types.String),
 	Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598738)
 		t := tree.MustBeDJSON(args[0]).JSON.Type()
 		switch t {
 		case json.NullJSONType:
+			__antithesis_instrumentation__.Notify(598740)
 			return jsonNullDString, nil
 		case json.StringJSONType:
+			__antithesis_instrumentation__.Notify(598741)
 			return jsonStringDString, nil
 		case json.NumberJSONType:
+			__antithesis_instrumentation__.Notify(598742)
 			return jsonNumberDString, nil
 		case json.FalseJSONType, json.TrueJSONType:
+			__antithesis_instrumentation__.Notify(598743)
 			return jsonBooleanDString, nil
 		case json.ArrayJSONType:
+			__antithesis_instrumentation__.Notify(598744)
 			return jsonArrayDString, nil
 		case json.ObjectJSONType:
+			__antithesis_instrumentation__.Notify(598745)
 			return jsonObjectDString, nil
+		default:
+			__antithesis_instrumentation__.Notify(598746)
 		}
+		__antithesis_instrumentation__.Notify(598739)
 		return nil, errors.AssertionFailedf("unexpected JSON type %d", t)
 	},
 	Info:       "Returns the type of the outermost JSON value as a text string.",
@@ -7600,12 +9670,14 @@ var jsonTypeOfImpl = tree.Overload{
 }
 
 func jsonProps() tree.FunctionProperties {
+	__antithesis_instrumentation__.Notify(598747)
 	return tree.FunctionProperties{
 		Category: categoryJSON,
 	}
 }
 
 func jsonPropsNullableArgs() tree.FunctionProperties {
+	__antithesis_instrumentation__.Notify(598748)
 	d := jsonProps()
 	d.NullableArgs = true
 	return d
@@ -7615,17 +9687,27 @@ var jsonBuildObjectImpl = tree.Overload{
 	Types:      tree.VariadicType{VarType: types.Any},
 	ReturnType: tree.FixedReturnType(types.Jsonb),
 	Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598749)
 		if len(args)%2 != 0 {
+			__antithesis_instrumentation__.Notify(598752)
 			return nil, pgerror.New(pgcode.InvalidParameterValue,
 				"argument list must have even number of elements")
+		} else {
+			__antithesis_instrumentation__.Notify(598753)
 		}
+		__antithesis_instrumentation__.Notify(598750)
 
 		builder := json.NewObjectBuilder(len(args) / 2)
 		for i := 0; i < len(args); i += 2 {
+			__antithesis_instrumentation__.Notify(598754)
 			if args[i] == tree.DNull {
+				__antithesis_instrumentation__.Notify(598758)
 				return nil, pgerror.Newf(pgcode.InvalidParameterValue,
 					"argument %d cannot be null", i+1)
+			} else {
+				__antithesis_instrumentation__.Notify(598759)
 			}
+			__antithesis_instrumentation__.Notify(598755)
 
 			key, err := asJSONBuildObjectKey(
 				args[i],
@@ -7633,8 +9715,12 @@ var jsonBuildObjectImpl = tree.Overload{
 				ctx.GetLocation(),
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(598760)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(598761)
 			}
+			__antithesis_instrumentation__.Notify(598756)
 
 			val, err := tree.AsJSON(
 				args[i+1],
@@ -7642,11 +9728,16 @@ var jsonBuildObjectImpl = tree.Overload{
 				ctx.GetLocation(),
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(598762)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(598763)
 			}
+			__antithesis_instrumentation__.Notify(598757)
 
 			builder.Add(key, val)
 		}
+		__antithesis_instrumentation__.Notify(598751)
 
 		return tree.NewDJSON(builder.Build()), nil
 	},
@@ -7658,6 +9749,7 @@ var toJSONImpl = tree.Overload{
 	Types:      tree.ArgTypes{{"val", types.Any}},
 	ReturnType: tree.FixedReturnType(types.Jsonb),
 	Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598764)
 		return toJSONObject(ctx, args[0])
 	},
 	Info:       "Returns the value as JSON or JSONB.",
@@ -7678,10 +9770,15 @@ var arrayToJSONImpls = makeBuiltin(jsonProps(),
 		Types:      tree.ArgTypes{{"array", types.AnyArray}, {"pretty_bool", types.Bool}},
 		ReturnType: tree.FixedReturnType(types.Jsonb),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598765)
 			prettyPrint := bool(tree.MustBeDBool(args[1]))
 			if prettyPrint {
+				__antithesis_instrumentation__.Notify(598767)
 				return nil, prettyPrintNotSupportedError
+			} else {
+				__antithesis_instrumentation__.Notify(598768)
 			}
+			__antithesis_instrumentation__.Notify(598766)
 			return toJSONObject(ctx, args[0])
 		},
 		Info:       "Returns the array as JSON or JSONB.",
@@ -7693,18 +9790,25 @@ var jsonBuildArrayImpl = tree.Overload{
 	Types:      tree.VariadicType{VarType: types.Any},
 	ReturnType: tree.FixedReturnType(types.Jsonb),
 	Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598769)
 		builder := json.NewArrayBuilder(len(args))
 		for _, arg := range args {
+			__antithesis_instrumentation__.Notify(598771)
 			j, err := tree.AsJSON(
 				arg,
 				ctx.SessionData().DataConversionConfig,
 				ctx.GetLocation(),
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(598773)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(598774)
 			}
+			__antithesis_instrumentation__.Notify(598772)
 			builder.Add(j)
 		}
+		__antithesis_instrumentation__.Notify(598770)
 		return tree.NewDJSON(builder.Build()), nil
 	},
 	Info:       "Builds a possibly-heterogeneously-typed JSON or JSONB array out of a variadic argument list.",
@@ -7716,29 +9820,48 @@ var jsonObjectImpls = makeBuiltin(jsonProps(),
 		Types:      tree.ArgTypes{{"texts", types.StringArray}},
 		ReturnType: tree.FixedReturnType(types.Jsonb),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598775)
 			arr := tree.MustBeDArray(args[0])
 			if arr.Len()%2 != 0 {
+				__antithesis_instrumentation__.Notify(598778)
 				return nil, errJSONObjectNotEvenNumberOfElements
+			} else {
+				__antithesis_instrumentation__.Notify(598779)
 			}
+			__antithesis_instrumentation__.Notify(598776)
 			builder := json.NewObjectBuilder(arr.Len() / 2)
 			for i := 0; i < arr.Len(); i += 2 {
+				__antithesis_instrumentation__.Notify(598780)
 				if arr.Array[i] == tree.DNull {
+					__antithesis_instrumentation__.Notify(598784)
 					return nil, errJSONObjectNullValueForKey
+				} else {
+					__antithesis_instrumentation__.Notify(598785)
 				}
+				__antithesis_instrumentation__.Notify(598781)
 				key, err := asJSONObjectKey(arr.Array[i])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598786)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598787)
 				}
+				__antithesis_instrumentation__.Notify(598782)
 				val, err := tree.AsJSON(
 					arr.Array[i+1],
 					ctx.SessionData().DataConversionConfig,
 					ctx.GetLocation(),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598788)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598789)
 				}
+				__antithesis_instrumentation__.Notify(598783)
 				builder.Add(key, val)
 			}
+			__antithesis_instrumentation__.Notify(598777)
 			return tree.NewDJSON(builder.Build()), nil
 		},
 		Info: "Builds a JSON or JSONB object out of a text array. The array must have " +
@@ -7751,30 +9874,49 @@ var jsonObjectImpls = makeBuiltin(jsonProps(),
 			{"values", types.StringArray}},
 		ReturnType: tree.FixedReturnType(types.Jsonb),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598790)
 			keys := tree.MustBeDArray(args[0])
 			values := tree.MustBeDArray(args[1])
 			if keys.Len() != values.Len() {
+				__antithesis_instrumentation__.Notify(598793)
 				return nil, errJSONObjectMismatchedArrayDim
+			} else {
+				__antithesis_instrumentation__.Notify(598794)
 			}
+			__antithesis_instrumentation__.Notify(598791)
 			builder := json.NewObjectBuilder(keys.Len())
 			for i := 0; i < keys.Len(); i++ {
+				__antithesis_instrumentation__.Notify(598795)
 				if keys.Array[i] == tree.DNull {
+					__antithesis_instrumentation__.Notify(598799)
 					return nil, errJSONObjectNullValueForKey
+				} else {
+					__antithesis_instrumentation__.Notify(598800)
 				}
+				__antithesis_instrumentation__.Notify(598796)
 				key, err := asJSONObjectKey(keys.Array[i])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598801)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598802)
 				}
+				__antithesis_instrumentation__.Notify(598797)
 				val, err := tree.AsJSON(
 					values.Array[i],
 					ctx.SessionData().DataConversionConfig,
 					ctx.GetLocation(),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(598803)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(598804)
 				}
+				__antithesis_instrumentation__.Notify(598798)
 				builder.Add(key, val)
 			}
+			__antithesis_instrumentation__.Notify(598792)
 			return tree.NewDJSON(builder.Build()), nil
 		},
 		Info: "This form of json_object takes keys and values pairwise from two " +
@@ -7788,6 +9930,7 @@ var jsonStripNullsImpl = tree.Overload{
 	Types:      tree.ArgTypes{{"from_json", types.Jsonb}},
 	ReturnType: tree.FixedReturnType(types.Jsonb),
 	Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598805)
 		j, _, err := tree.MustBeDJSON(args[0]).StripNulls()
 		return tree.NewDJSON(j), err
 	},
@@ -7799,14 +9942,18 @@ var jsonArrayLengthImpl = tree.Overload{
 	Types:      tree.ArgTypes{{"json", types.Jsonb}},
 	ReturnType: tree.FixedReturnType(types.Int),
 	Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(598806)
 		j := tree.MustBeDJSON(args[0])
 		switch j.Type() {
 		case json.ArrayJSONType:
+			__antithesis_instrumentation__.Notify(598807)
 			return tree.NewDInt(tree.DInt(j.Len())), nil
 		case json.ObjectJSONType:
+			__antithesis_instrumentation__.Notify(598808)
 			return nil, pgerror.New(pgcode.InvalidParameterValue,
 				"cannot get array length of a non-array")
 		default:
+			__antithesis_instrumentation__.Notify(598809)
 			return nil, pgerror.New(pgcode.InvalidParameterValue,
 				"cannot get array length of a scalar")
 		}
@@ -7820,9 +9967,14 @@ var similarOverloads = []tree.Overload{
 		Types:      tree.ArgTypes{{"pattern", types.String}},
 		ReturnType: tree.FixedReturnType(types.String),
 		Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598810)
 			if args[0] == tree.DNull {
+				__antithesis_instrumentation__.Notify(598812)
 				return tree.DNull, nil
+			} else {
+				__antithesis_instrumentation__.Notify(598813)
 			}
+			__antithesis_instrumentation__.Notify(598811)
 			pattern := string(tree.MustBeDString(args[0]))
 			return tree.SimilarPattern(pattern, "")
 		},
@@ -7833,13 +9985,22 @@ var similarOverloads = []tree.Overload{
 		Types:      tree.ArgTypes{{"pattern", types.String}, {"escape", types.String}},
 		ReturnType: tree.FixedReturnType(types.String),
 		Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598814)
 			if args[0] == tree.DNull {
+				__antithesis_instrumentation__.Notify(598817)
 				return tree.DNull, nil
+			} else {
+				__antithesis_instrumentation__.Notify(598818)
 			}
+			__antithesis_instrumentation__.Notify(598815)
 			pattern := string(tree.MustBeDString(args[0]))
 			if args[1] == tree.DNull {
+				__antithesis_instrumentation__.Notify(598819)
 				return tree.SimilarPattern(pattern, "")
+			} else {
+				__antithesis_instrumentation__.Notify(598820)
 			}
+			__antithesis_instrumentation__.Notify(598816)
 			escape := string(tree.MustBeDString(args[1]))
 			return tree.SimilarPattern(pattern, escape)
 		},
@@ -7849,13 +10010,19 @@ var similarOverloads = []tree.Overload{
 }
 
 func arrayBuiltin(impl func(*types.T) tree.Overload) builtinDefinition {
+	__antithesis_instrumentation__.Notify(598821)
 	overloads := make([]tree.Overload, 0, len(types.Scalar)+2)
 	for _, typ := range append(types.Scalar, types.AnyEnum) {
+		__antithesis_instrumentation__.Notify(598823)
 		if ok, _ := types.IsValidArrayElementType(typ); ok {
+			__antithesis_instrumentation__.Notify(598824)
 			overloads = append(overloads, impl(typ))
+		} else {
+			__antithesis_instrumentation__.Notify(598825)
 		}
 	}
-	// Prevent usage in DistSQL because it cannot handle arrays of untyped tuples.
+	__antithesis_instrumentation__.Notify(598822)
+
 	tupleOverload := impl(types.AnyTuple)
 	tupleOverload.DistsqlBlocklist = true
 	overloads = append(overloads, tupleOverload)
@@ -7866,6 +10033,7 @@ func arrayBuiltin(impl func(*types.T) tree.Overload) builtinDefinition {
 }
 
 func setProps(props tree.FunctionProperties, d builtinDefinition) builtinDefinition {
+	__antithesis_instrumentation__.Notify(598826)
 	d.props = props
 	return d
 }
@@ -7876,10 +10044,12 @@ func jsonOverload1(
 	info string,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(598827)
 	return tree.Overload{
 		Types:      tree.ArgTypes{{"val", types.Jsonb}},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598828)
 			return f(evalCtx, tree.MustBeDJSON(args[0]).JSON)
 		},
 		Info:       info,
@@ -7893,10 +10063,12 @@ func stringOverload1(
 	info string,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(598829)
 	return tree.Overload{
 		Types:      tree.ArgTypes{{"val", types.String}},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598830)
 			return f(evalCtx, string(tree.MustBeDString(args[0])))
 		},
 		Info:       info,
@@ -7911,10 +10083,12 @@ func stringOverload2(
 	info string,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(598831)
 	return tree.Overload{
 		Types:      tree.ArgTypes{{a, types.String}, {b, types.String}},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598832)
 			return f(evalCtx, string(tree.MustBeDString(args[0])), string(tree.MustBeDString(args[1])))
 		},
 		Info:       info,
@@ -7929,10 +10103,12 @@ func stringOverload3(
 	info string,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(598833)
 	return tree.Overload{
 		Types:      tree.ArgTypes{{a, types.String}, {b, types.String}, {c, types.String}},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598834)
 			return f(evalCtx, string(tree.MustBeDString(args[0])), string(tree.MustBeDString(args[1])), string(tree.MustBeDString(args[2])))
 		},
 		Info:       info,
@@ -7946,10 +10122,12 @@ func bytesOverload1(
 	info string,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(598835)
 	return tree.Overload{
 		Types:      tree.ArgTypes{{"val", types.Bytes}},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598836)
 			return f(evalCtx, string(*args[0].(*tree.DBytes)))
 		},
 		Info:       info,
@@ -7964,10 +10142,12 @@ func bytesOverload2(
 	info string,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(598837)
 	return tree.Overload{
 		Types:      tree.ArgTypes{{a, types.Bytes}, {b, types.Bytes}},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598838)
 			return f(evalCtx, string(*args[0].(*tree.DBytes)), string(*args[1].(*tree.DBytes)))
 		},
 		Info:       info,
@@ -7981,10 +10161,12 @@ func bitsOverload1(
 	info string,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(598839)
 	return tree.Overload{
 		Types:      tree.ArgTypes{{"val", types.VarBit}},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598840)
 			return f(evalCtx, args[0].(*tree.DBitArray))
 		},
 		Info:       info,
@@ -7999,10 +10181,12 @@ func bitsOverload2(
 	info string,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(598841)
 	return tree.Overload{
 		Types:      tree.ArgTypes{{a, types.VarBit}, {b, types.VarBit}},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(598842)
 			return f(evalCtx, args[0].(*tree.DBitArray), args[1].(*tree.DBitArray))
 		},
 		Info:       info,
@@ -8010,61 +10194,87 @@ func bitsOverload2(
 	}
 }
 
-// getHashFunc returns a function that will create a new hash.Hash using the
-// given algorithm.
 func getHashFunc(alg string) (func() hash.Hash, error) {
+	__antithesis_instrumentation__.Notify(598843)
 	switch strings.ToLower(alg) {
 	case "md5":
+		__antithesis_instrumentation__.Notify(598844)
 		return md5.New, nil
 	case "sha1":
+		__antithesis_instrumentation__.Notify(598845)
 		return sha1.New, nil
 	case "sha224":
+		__antithesis_instrumentation__.Notify(598846)
 		return sha256.New224, nil
 	case "sha256":
+		__antithesis_instrumentation__.Notify(598847)
 		return sha256.New, nil
 	case "sha384":
+		__antithesis_instrumentation__.Notify(598848)
 		return sha512.New384, nil
 	case "sha512":
+		__antithesis_instrumentation__.Notify(598849)
 		return sha512.New, nil
 	default:
+		__antithesis_instrumentation__.Notify(598850)
 		return nil, pgerror.Newf(pgcode.InvalidParameterValue, "cannot use %q, no such hash algorithm", alg)
 	}
 }
 
-// feedHash returns true if it encounters any non-Null datum.
 func feedHash(h hash.Hash, args tree.Datums) (bool, error) {
+	__antithesis_instrumentation__.Notify(598851)
 	var nonNullSeen bool
 	for _, datum := range args {
+		__antithesis_instrumentation__.Notify(598853)
 		if datum == tree.DNull {
+			__antithesis_instrumentation__.Notify(598856)
 			continue
 		} else {
+			__antithesis_instrumentation__.Notify(598857)
 			nonNullSeen = true
 		}
+		__antithesis_instrumentation__.Notify(598854)
 		var buf string
 		if d, ok := datum.(*tree.DBytes); ok {
+			__antithesis_instrumentation__.Notify(598858)
 			buf = string(*d)
 		} else {
+			__antithesis_instrumentation__.Notify(598859)
 			buf = string(tree.MustBeDString(datum))
 		}
+		__antithesis_instrumentation__.Notify(598855)
 		_, err := h.Write([]byte(buf))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(598860)
 			return false, errors.NewAssertionErrorWithWrappedErrf(err,
 				`"It never returns an error." -- https://golang.org/pkg/hash: %T`, h)
+		} else {
+			__antithesis_instrumentation__.Notify(598861)
 		}
 	}
+	__antithesis_instrumentation__.Notify(598852)
 	return nonNullSeen, nil
 }
 
 func hashBuiltin(newHash func() hash.Hash, info string) builtinDefinition {
+	__antithesis_instrumentation__.Notify(598862)
 	return makeBuiltin(tree.FunctionProperties{NullableArgs: true},
 		tree.Overload{
 			Types:      tree.VariadicType{VarType: types.String},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598863)
 				h := newHash()
-				if ok, err := feedHash(h, args); !ok || err != nil {
+				if ok, err := feedHash(h, args); !ok || func() bool {
+					__antithesis_instrumentation__.Notify(598865)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598866)
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(598867)
 				}
+				__antithesis_instrumentation__.Notify(598864)
 				return tree.NewDString(fmt.Sprintf("%x", h.Sum(nil))), nil
 			},
 			Info:       info,
@@ -8074,10 +10284,18 @@ func hashBuiltin(newHash func() hash.Hash, info string) builtinDefinition {
 			Types:      tree.VariadicType{VarType: types.Bytes},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598868)
 				h := newHash()
-				if ok, err := feedHash(h, args); !ok || err != nil {
+				if ok, err := feedHash(h, args); !ok || func() bool {
+					__antithesis_instrumentation__.Notify(598870)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598871)
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(598872)
 				}
+				__antithesis_instrumentation__.Notify(598869)
 				return tree.NewDString(fmt.Sprintf("%x", h.Sum(nil))), nil
 			},
 			Info:       info,
@@ -8087,15 +10305,24 @@ func hashBuiltin(newHash func() hash.Hash, info string) builtinDefinition {
 }
 
 func hash32Builtin(newHash func() hash.Hash32, info string) builtinDefinition {
+	__antithesis_instrumentation__.Notify(598873)
 	return makeBuiltin(tree.FunctionProperties{NullableArgs: true},
 		tree.Overload{
 			Types:      tree.VariadicType{VarType: types.String},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598874)
 				h := newHash()
-				if ok, err := feedHash(h, args); !ok || err != nil {
+				if ok, err := feedHash(h, args); !ok || func() bool {
+					__antithesis_instrumentation__.Notify(598876)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598877)
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(598878)
 				}
+				__antithesis_instrumentation__.Notify(598875)
 				return tree.NewDInt(tree.DInt(h.Sum32())), nil
 			},
 			Info:       info,
@@ -8105,10 +10332,18 @@ func hash32Builtin(newHash func() hash.Hash32, info string) builtinDefinition {
 			Types:      tree.VariadicType{VarType: types.Bytes},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598879)
 				h := newHash()
-				if ok, err := feedHash(h, args); !ok || err != nil {
+				if ok, err := feedHash(h, args); !ok || func() bool {
+					__antithesis_instrumentation__.Notify(598881)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598882)
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(598883)
 				}
+				__antithesis_instrumentation__.Notify(598880)
 				return tree.NewDInt(tree.DInt(h.Sum32())), nil
 			},
 			Info:       info,
@@ -8118,15 +10353,24 @@ func hash32Builtin(newHash func() hash.Hash32, info string) builtinDefinition {
 }
 
 func hash64Builtin(newHash func() hash.Hash64, info string) builtinDefinition {
+	__antithesis_instrumentation__.Notify(598884)
 	return makeBuiltin(tree.FunctionProperties{NullableArgs: true},
 		tree.Overload{
 			Types:      tree.VariadicType{VarType: types.String},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598885)
 				h := newHash()
-				if ok, err := feedHash(h, args); !ok || err != nil {
+				if ok, err := feedHash(h, args); !ok || func() bool {
+					__antithesis_instrumentation__.Notify(598887)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598888)
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(598889)
 				}
+				__antithesis_instrumentation__.Notify(598886)
 				return tree.NewDInt(tree.DInt(h.Sum64())), nil
 			},
 			Info:       info,
@@ -8136,10 +10380,18 @@ func hash64Builtin(newHash func() hash.Hash64, info string) builtinDefinition {
 			Types:      tree.VariadicType{VarType: types.Bytes},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(598890)
 				h := newHash()
-				if ok, err := feedHash(h, args); !ok || err != nil {
+				if ok, err := feedHash(h, args); !ok || func() bool {
+					__antithesis_instrumentation__.Notify(598892)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(598893)
 					return tree.DNull, err
+				} else {
+					__antithesis_instrumentation__.Notify(598894)
 				}
+				__antithesis_instrumentation__.Notify(598891)
 				return tree.NewDInt(tree.DInt(h.Sum64())), nil
 			},
 			Info:       info,
@@ -8153,30 +10405,47 @@ type regexpEscapeKey struct {
 	sqlEscape  string
 }
 
-// Pattern implements the RegexpCacheKey interface.
 func (k regexpEscapeKey) Pattern() (string, error) {
+	__antithesis_instrumentation__.Notify(598895)
 	pattern := k.sqlPattern
 	if k.sqlEscape != `\` {
+		__antithesis_instrumentation__.Notify(598897)
 		pattern = strings.Replace(pattern, `\`, `\\`, -1)
 		pattern = strings.Replace(pattern, k.sqlEscape, `\`, -1)
+	} else {
+		__antithesis_instrumentation__.Notify(598898)
 	}
+	__antithesis_instrumentation__.Notify(598896)
 	return pattern, nil
 }
 
 func regexpExtract(ctx *tree.EvalContext, s, pattern, escape string) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(598899)
 	patternRe, err := ctx.ReCache.GetRegexp(regexpEscapeKey{pattern, escape})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(598903)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(598904)
 	}
+	__antithesis_instrumentation__.Notify(598900)
 
 	match := patternRe.FindStringSubmatch(s)
 	if match == nil {
+		__antithesis_instrumentation__.Notify(598905)
 		return tree.DNull, nil
+	} else {
+		__antithesis_instrumentation__.Notify(598906)
 	}
+	__antithesis_instrumentation__.Notify(598901)
 
 	if len(match) > 1 {
+		__antithesis_instrumentation__.Notify(598907)
 		return tree.NewDString(match[1]), nil
+	} else {
+		__antithesis_instrumentation__.Notify(598908)
 	}
+	__antithesis_instrumentation__.Notify(598902)
 	return tree.NewDString(match[0]), nil
 }
 
@@ -8185,121 +10454,159 @@ type regexpFlagKey struct {
 	sqlFlags   string
 }
 
-// Pattern implements the RegexpCacheKey interface.
 func (k regexpFlagKey) Pattern() (string, error) {
+	__antithesis_instrumentation__.Notify(598909)
 	return regexpEvalFlags(k.sqlPattern, k.sqlFlags)
 }
 
 func regexpSplit(ctx *tree.EvalContext, args tree.Datums, hasFlags bool) ([]string, error) {
+	__antithesis_instrumentation__.Notify(598910)
 	s := string(tree.MustBeDString(args[0]))
 	pattern := string(tree.MustBeDString(args[1]))
 	sqlFlags := ""
 	if hasFlags {
+		__antithesis_instrumentation__.Notify(598913)
 		sqlFlags = string(tree.MustBeDString(args[2]))
+	} else {
+		__antithesis_instrumentation__.Notify(598914)
 	}
+	__antithesis_instrumentation__.Notify(598911)
 	patternRe, err := ctx.ReCache.GetRegexp(regexpFlagKey{pattern, sqlFlags})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(598915)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(598916)
 	}
+	__antithesis_instrumentation__.Notify(598912)
 	return patternRe.Split(s, -1), nil
 }
 
 func regexpSplitToArray(
 	ctx *tree.EvalContext, args tree.Datums, hasFlags bool,
 ) (tree.Datum, error) {
-	words, err := regexpSplit(ctx, args, hasFlags /* hasFlags */)
+	__antithesis_instrumentation__.Notify(598917)
+	words, err := regexpSplit(ctx, args, hasFlags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(598920)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(598921)
 	}
+	__antithesis_instrumentation__.Notify(598918)
 	result := tree.NewDArray(types.String)
 	for _, word := range words {
+		__antithesis_instrumentation__.Notify(598922)
 		if err := result.Append(tree.NewDString(word)); err != nil {
+			__antithesis_instrumentation__.Notify(598923)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(598924)
 		}
 	}
+	__antithesis_instrumentation__.Notify(598919)
 	return result, nil
 }
 
 func regexpReplace(ctx *tree.EvalContext, s, pattern, to, sqlFlags string) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(598925)
 	patternRe, err := ctx.ReCache.GetRegexp(regexpFlagKey{pattern, sqlFlags})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(598929)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(598930)
 	}
+	__antithesis_instrumentation__.Notify(598926)
 
 	matchCount := 1
 	if strings.ContainsRune(sqlFlags, 'g') {
+		__antithesis_instrumentation__.Notify(598931)
 		matchCount = -1
+	} else {
+		__antithesis_instrumentation__.Notify(598932)
 	}
+	__antithesis_instrumentation__.Notify(598927)
 
 	finalIndex := 0
 	var newString bytes.Buffer
 
-	// regexp.ReplaceAllStringFunc cannot be used here because it does not provide
-	// access to regexp submatches for expansion in the replacement string.
-	// regexp.ReplaceAllString cannot be used here because it does not allow
-	// replacement of a specific number of matches, and does not expose the full
-	// match for expansion in the replacement string.
-	//
-	// regexp.FindAllStringSubmatchIndex must therefore be used, which returns a 2D
-	// int array. The outer array is iterated over with this for-range loop, and corresponds
-	// to each match of the pattern in the string s. Inside each outer array is an int
-	// array with index pairs. The first pair in a given match n ([n][0] & [n][1]) represents
-	// the start and end index in s of the matched pattern. Subsequent pairs ([n][2] & [n][3],
-	// and so on) represent the start and end index in s of matched subexpressions within the
-	// pattern.
 	for _, matchIndex := range patternRe.FindAllStringSubmatchIndex(s, matchCount) {
-		// matchStart and matchEnd are the boundaries of the current regexp match
-		// in the searched text.
+		__antithesis_instrumentation__.Notify(598933)
+
 		matchStart := matchIndex[0]
 		matchEnd := matchIndex[1]
 
-		// Add sections of s either before the first match or between matches.
 		preMatch := s[finalIndex:matchStart]
 		newString.WriteString(preMatch)
 
-		// We write out `to` into `newString` in chunks, flushing out the next chunk
-		// when we hit a `\\` or a backreference.
-		// chunkStart is the start of the next chunk we will flush out.
 		chunkStart := 0
-		// i is the current position in the replacement text that we are scanning
-		// through.
+
 		i := 0
 		for i < len(to) {
-			if to[i] == '\\' && i+1 < len(to) {
+			__antithesis_instrumentation__.Notify(598935)
+			if to[i] == '\\' && func() bool {
+				__antithesis_instrumentation__.Notify(598937)
+				return i+1 < len(to) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(598938)
 				i++
 				if to[i] == '\\' {
-					// `\\` is special in regexpReplace to insert a literal backslash.
+					__antithesis_instrumentation__.Notify(598939)
+
 					newString.WriteString(to[chunkStart:i])
 					chunkStart = i + 1
-				} else if ('0' <= to[i] && to[i] <= '9') || to[i] == '&' {
-					newString.WriteString(to[chunkStart : i-1])
-					chunkStart = i + 1
-					if to[i] == '&' {
-						// & refers to the entire match.
-						newString.WriteString(s[matchStart:matchEnd])
-					} else {
-						captureGroupNumber := int(to[i] - '0')
-						// regexpReplace expects references to "out-of-bounds"
-						// and empty (when the corresponding match indices
-						// are negative) capture groups to be ignored.
-						if matchIndexPos := 2 * captureGroupNumber; matchIndexPos < len(matchIndex) {
-							startPos := matchIndex[matchIndexPos]
-							endPos := matchIndex[matchIndexPos+1]
-							if startPos >= 0 {
-								newString.WriteString(s[startPos:endPos])
+				} else {
+					__antithesis_instrumentation__.Notify(598940)
+					if ('0' <= to[i] && func() bool {
+						__antithesis_instrumentation__.Notify(598941)
+						return to[i] <= '9' == true
+					}() == true) || func() bool {
+						__antithesis_instrumentation__.Notify(598942)
+						return to[i] == '&' == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(598943)
+						newString.WriteString(to[chunkStart : i-1])
+						chunkStart = i + 1
+						if to[i] == '&' {
+							__antithesis_instrumentation__.Notify(598944)
+
+							newString.WriteString(s[matchStart:matchEnd])
+						} else {
+							__antithesis_instrumentation__.Notify(598945)
+							captureGroupNumber := int(to[i] - '0')
+
+							if matchIndexPos := 2 * captureGroupNumber; matchIndexPos < len(matchIndex) {
+								__antithesis_instrumentation__.Notify(598946)
+								startPos := matchIndex[matchIndexPos]
+								endPos := matchIndex[matchIndexPos+1]
+								if startPos >= 0 {
+									__antithesis_instrumentation__.Notify(598947)
+									newString.WriteString(s[startPos:endPos])
+								} else {
+									__antithesis_instrumentation__.Notify(598948)
+								}
+							} else {
+								__antithesis_instrumentation__.Notify(598949)
 							}
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(598950)
 					}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(598951)
 			}
+			__antithesis_instrumentation__.Notify(598936)
 			i++
 		}
+		__antithesis_instrumentation__.Notify(598934)
 		newString.WriteString(to[chunkStart:])
 
 		finalIndex = matchEnd
 	}
+	__antithesis_instrumentation__.Notify(598928)
 
-	// Add the section of s past the final match.
 	newString.WriteString(s[finalIndex:])
 
 	return tree.NewDString(newString.String()), nil
@@ -8314,181 +10621,245 @@ var flagToNotByte = map[syntax.Flags]byte{
 	syntax.OneLine: 'm',
 }
 
-// regexpEvalFlags evaluates the provided Postgres regexp flags in
-// accordance with their definitions provided at
-// http://www.postgresql.org/docs/9.0/static/functions-matching.html#POSIX-EMBEDDED-OPTIONS-TABLE.
-// It then returns an adjusted regexp pattern.
 func regexpEvalFlags(pattern, sqlFlags string) (string, error) {
+	__antithesis_instrumentation__.Notify(598952)
 	flags := syntax.DotNL | syntax.OneLine
 
 	for _, sqlFlag := range sqlFlags {
+		__antithesis_instrumentation__.Notify(598957)
 		switch sqlFlag {
 		case 'g':
-			// Handled in `regexpReplace`.
+			__antithesis_instrumentation__.Notify(598958)
+
 		case 'i':
+			__antithesis_instrumentation__.Notify(598959)
 			flags |= syntax.FoldCase
 		case 'c':
+			__antithesis_instrumentation__.Notify(598960)
 			flags &^= syntax.FoldCase
 		case 's':
+			__antithesis_instrumentation__.Notify(598961)
 			flags &^= syntax.DotNL
 		case 'm', 'n':
+			__antithesis_instrumentation__.Notify(598962)
 			flags &^= syntax.DotNL
 			flags &^= syntax.OneLine
 		case 'p':
+			__antithesis_instrumentation__.Notify(598963)
 			flags &^= syntax.DotNL
 			flags |= syntax.OneLine
 		case 'w':
+			__antithesis_instrumentation__.Notify(598964)
 			flags |= syntax.DotNL
 			flags &^= syntax.OneLine
 		default:
+			__antithesis_instrumentation__.Notify(598965)
 			return "", pgerror.Newf(
 				pgcode.InvalidRegularExpression, "invalid regexp flag: %q", sqlFlag)
 		}
 	}
+	__antithesis_instrumentation__.Notify(598953)
 
 	var goFlags bytes.Buffer
 	for flag, b := range flagToByte {
+		__antithesis_instrumentation__.Notify(598966)
 		if flags&flag != 0 {
+			__antithesis_instrumentation__.Notify(598967)
 			goFlags.WriteByte(b)
+		} else {
+			__antithesis_instrumentation__.Notify(598968)
 		}
 	}
+	__antithesis_instrumentation__.Notify(598954)
 	for flag, b := range flagToNotByte {
+		__antithesis_instrumentation__.Notify(598969)
 		if flags&flag == 0 {
+			__antithesis_instrumentation__.Notify(598970)
 			goFlags.WriteByte(b)
+		} else {
+			__antithesis_instrumentation__.Notify(598971)
 		}
 	}
-	// Bytes() instead of String() to save an allocation.
+	__antithesis_instrumentation__.Notify(598955)
+
 	bs := goFlags.Bytes()
 	if len(bs) == 0 {
+		__antithesis_instrumentation__.Notify(598972)
 		return pattern, nil
+	} else {
+		__antithesis_instrumentation__.Notify(598973)
 	}
+	__antithesis_instrumentation__.Notify(598956)
 	return fmt.Sprintf("(?%s:%s)", bs, pattern), nil
 }
 
 func overlay(s, to string, pos, size int) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(598974)
 	if pos < 1 {
+		__antithesis_instrumentation__.Notify(598978)
 		return nil, pgerror.Newf(
 			pgcode.InvalidParameterValue, "non-positive substring length not allowed: %d", pos)
+	} else {
+		__antithesis_instrumentation__.Notify(598979)
 	}
+	__antithesis_instrumentation__.Notify(598975)
 	pos--
 
 	runes := []rune(s)
 	if pos > len(runes) {
+		__antithesis_instrumentation__.Notify(598980)
 		pos = len(runes)
+	} else {
+		__antithesis_instrumentation__.Notify(598981)
 	}
+	__antithesis_instrumentation__.Notify(598976)
 	after := pos + size
 	if after < 0 {
+		__antithesis_instrumentation__.Notify(598982)
 		after = 0
-	} else if after > len(runes) {
-		after = len(runes)
+	} else {
+		__antithesis_instrumentation__.Notify(598983)
+		if after > len(runes) {
+			__antithesis_instrumentation__.Notify(598984)
+			after = len(runes)
+		} else {
+			__antithesis_instrumentation__.Notify(598985)
+		}
 	}
+	__antithesis_instrumentation__.Notify(598977)
 	return tree.NewDString(string(runes[:pos]) + to + string(runes[after:])), nil
 }
 
-// NodeIDBits is the number of bits stored in the lower portion of
-// GenerateUniqueInt.
 const NodeIDBits = 15
 
-// GenerateUniqueUnorderedID creates a unique int64 composed of the current time
-// at a 10-microsecond granularity and the instance-id. The top-bit is left
-// empty so that negative values are not returned. The 48 bits following after
-// represent the reversed timestamp and then 15 bits of the node id.
 func GenerateUniqueUnorderedID(instanceID base.SQLInstanceID) tree.DInt {
+	__antithesis_instrumentation__.Notify(598986)
 	orig := uint64(GenerateUniqueInt(instanceID))
 	uniqueUnorderedID := mapToUnorderedUniqueInt(orig)
 	return tree.DInt(uniqueUnorderedID)
 }
 
-// mapToUnorderedUniqueInt is used by GenerateUniqueUnorderedID to convert a
-// serial unique uint64 to an unordered unique int64. The bit manipulation
-// should preserve the number of 1-bits.
 func mapToUnorderedUniqueInt(val uint64) uint64 {
-	// val is [0][48 bits of ts][15 bits of node id]
+	__antithesis_instrumentation__.Notify(598987)
+
 	ts := (val & ((uint64(math.MaxUint64) >> 16) << 15)) >> 15
 	v := (bits.Reverse64(ts) >> 1) | (val & (1<<15 - 1))
 	return v
 }
 
-// GenerateUniqueInt creates a unique int composed of the current time at a
-// 10-microsecond granularity and the instance-id. The instance-id is stored in the
-// lower 15 bits of the returned value and the timestamp is stored in the upper
-// 48 bits. The top-bit is left empty so that negative values are not returned.
-// The 48-bit timestamp field provides for 89 years of timestamps. We use a
-// custom epoch (Jan 1, 2015) in order to utilize the entire timestamp range.
-//
-// Note that GenerateUniqueInt() imposes a limit on instance IDs while
-// generateUniqueBytes() does not.
-//
-// TODO(pmattis): Do we have to worry about persisting the milliseconds value
-// periodically to avoid the clock ever going backwards (e.g. due to NTP
-// adjustment)?
 func GenerateUniqueInt(instanceID base.SQLInstanceID) tree.DInt {
+	__antithesis_instrumentation__.Notify(598988)
 	const precision = uint64(10 * time.Microsecond)
 
 	nowNanos := timeutil.Now().UnixNano()
-	// Paranoia: nowNanos should never be less than uniqueIntEpoch.
+
 	if nowNanos < uniqueIntEpoch {
+		__antithesis_instrumentation__.Notify(598991)
 		nowNanos = uniqueIntEpoch
+	} else {
+		__antithesis_instrumentation__.Notify(598992)
 	}
+	__antithesis_instrumentation__.Notify(598989)
 	timestamp := uint64(nowNanos-uniqueIntEpoch) / precision
 
 	uniqueIntState.Lock()
 	if timestamp <= uniqueIntState.timestamp {
+		__antithesis_instrumentation__.Notify(598993)
 		timestamp = uniqueIntState.timestamp + 1
+	} else {
+		__antithesis_instrumentation__.Notify(598994)
 	}
+	__antithesis_instrumentation__.Notify(598990)
 	uniqueIntState.timestamp = timestamp
 	uniqueIntState.Unlock()
 
 	return GenerateUniqueID(int32(instanceID), timestamp)
 }
 
-// GenerateUniqueID encapsulates the logic to generate a unique number from
-// a nodeID and timestamp.
 func GenerateUniqueID(instanceID int32, timestamp uint64) tree.DInt {
-	// We xor in the instanceID so that instanceIDs larger than 32K will flip bits
-	// in the timestamp portion of the final value instead of always setting them.
+	__antithesis_instrumentation__.Notify(598995)
+
 	id := (timestamp << NodeIDBits) ^ uint64(instanceID)
 	return tree.DInt(id)
 }
 
 func cardinality(arr *tree.DArray) tree.Datum {
+	__antithesis_instrumentation__.Notify(598996)
 	if arr.ParamTyp.Family() != types.ArrayFamily {
+		__antithesis_instrumentation__.Notify(598999)
 		return tree.NewDInt(tree.DInt(arr.Len()))
+	} else {
+		__antithesis_instrumentation__.Notify(599000)
 	}
+	__antithesis_instrumentation__.Notify(598997)
 	card := 0
 	for _, a := range arr.Array {
+		__antithesis_instrumentation__.Notify(599001)
 		card += int(tree.MustBeDInt(cardinality(tree.MustBeDArray(a))))
 	}
+	__antithesis_instrumentation__.Notify(598998)
 	return tree.NewDInt(tree.DInt(card))
 }
 
 func arrayLength(arr *tree.DArray, dim int64) tree.Datum {
-	if arr.Len() == 0 || dim < 1 {
+	__antithesis_instrumentation__.Notify(599002)
+	if arr.Len() == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(599006)
+		return dim < 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(599007)
 		return tree.DNull
+	} else {
+		__antithesis_instrumentation__.Notify(599008)
 	}
+	__antithesis_instrumentation__.Notify(599003)
 	if dim == 1 {
+		__antithesis_instrumentation__.Notify(599009)
 		return tree.NewDInt(tree.DInt(arr.Len()))
+	} else {
+		__antithesis_instrumentation__.Notify(599010)
 	}
+	__antithesis_instrumentation__.Notify(599004)
 	a, ok := tree.AsDArray(arr.Array[0])
 	if !ok {
+		__antithesis_instrumentation__.Notify(599011)
 		return tree.DNull
+	} else {
+		__antithesis_instrumentation__.Notify(599012)
 	}
+	__antithesis_instrumentation__.Notify(599005)
 	return arrayLength(a, dim-1)
 }
 
 var intOne = tree.NewDInt(tree.DInt(1))
 
 func arrayLower(arr *tree.DArray, dim int64) tree.Datum {
-	if arr.Len() == 0 || dim < 1 {
+	__antithesis_instrumentation__.Notify(599013)
+	if arr.Len() == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(599017)
+		return dim < 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(599018)
 		return tree.DNull
+	} else {
+		__antithesis_instrumentation__.Notify(599019)
 	}
+	__antithesis_instrumentation__.Notify(599014)
 	if dim == 1 {
+		__antithesis_instrumentation__.Notify(599020)
 		return intOne
+	} else {
+		__antithesis_instrumentation__.Notify(599021)
 	}
+	__antithesis_instrumentation__.Notify(599015)
 	a, ok := tree.AsDArray(arr.Array[0])
 	if !ok {
+		__antithesis_instrumentation__.Notify(599022)
 		return tree.DNull
+	} else {
+		__antithesis_instrumentation__.Notify(599023)
 	}
+	__antithesis_instrumentation__.Notify(599016)
 	return arrayLower(a, dim-1)
 }
 
@@ -8498,7 +10869,8 @@ var extractBuiltin = makeBuiltin(
 		Types:      tree.ArgTypes{{"element", types.String}, {"input", types.Timestamp}},
 		ReturnType: tree.FixedReturnType(types.Float),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-			// extract timeSpan fromTime.
+			__antithesis_instrumentation__.Notify(599024)
+
 			fromTS := args[1].(*tree.DTimestamp)
 			timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 			return extractTimeSpanFromTimestamp(ctx, fromTS.Time, timeSpan)
@@ -8513,6 +10885,7 @@ var extractBuiltin = makeBuiltin(
 		Types:      tree.ArgTypes{{"element", types.String}, {"input", types.Interval}},
 		ReturnType: tree.FixedReturnType(types.Float),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(599025)
 			fromInterval := args[1].(*tree.DInterval)
 			timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 			return extractTimeSpanFromInterval(fromInterval, timeSpan)
@@ -8526,12 +10899,17 @@ var extractBuiltin = makeBuiltin(
 		Types:      tree.ArgTypes{{"element", types.String}, {"input", types.Date}},
 		ReturnType: tree.FixedReturnType(types.Float),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(599026)
 			timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 			date := args[1].(*tree.DDate)
 			fromTime, err := date.ToTime()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(599028)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(599029)
 			}
+			__antithesis_instrumentation__.Notify(599027)
 			return extractTimeSpanFromTimestamp(ctx, fromTime, timeSpan)
 		},
 		Info: "Extracts `element` from `input`.\n\n" +
@@ -8544,6 +10922,7 @@ var extractBuiltin = makeBuiltin(
 		Types:      tree.ArgTypes{{"element", types.String}, {"input", types.TimestampTZ}},
 		ReturnType: tree.FixedReturnType(types.Float),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(599030)
 			fromTSTZ := args[1].(*tree.DTimestampTZ)
 			timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 			return extractTimeSpanFromTimestampTZ(ctx, fromTSTZ.Time.In(ctx.GetLocation()), timeSpan)
@@ -8559,6 +10938,7 @@ var extractBuiltin = makeBuiltin(
 		Types:      tree.ArgTypes{{"element", types.String}, {"input", types.Time}},
 		ReturnType: tree.FixedReturnType(types.Float),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(599031)
 			fromTime := args[1].(*tree.DTime)
 			timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 			return extractTimeSpanFromTime(fromTime, timeSpan)
@@ -8571,6 +10951,7 @@ var extractBuiltin = makeBuiltin(
 		Types:      tree.ArgTypes{{"element", types.String}, {"input", types.TimeTZ}},
 		ReturnType: tree.FixedReturnType(types.Float),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(599032)
 			fromTime := args[1].(*tree.DTimeTZ)
 			timeSpan := strings.ToLower(string(tree.MustBeDString(args[0])))
 			return extractTimeSpanFromTimeTZ(fromTime, timeSpan)
@@ -8583,67 +10964,95 @@ var extractBuiltin = makeBuiltin(
 )
 
 func extractTimeSpanFromTime(fromTime *tree.DTime, timeSpan string) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599033)
 	t := timeofday.TimeOfDay(*fromTime)
 	return extractTimeSpanFromTimeOfDay(t, timeSpan)
 }
 
 func extractTimezoneFromOffset(offsetSecs int32, timeSpan string) tree.Datum {
+	__antithesis_instrumentation__.Notify(599034)
 	switch timeSpan {
 	case "timezone":
+		__antithesis_instrumentation__.Notify(599036)
 		return tree.NewDFloat(tree.DFloat(float64(offsetSecs)))
 	case "timezone_hour", "timezone_hours":
+		__antithesis_instrumentation__.Notify(599037)
 		numHours := offsetSecs / duration.SecsPerHour
 		return tree.NewDFloat(tree.DFloat(float64(numHours)))
 	case "timezone_minute", "timezone_minutes":
+		__antithesis_instrumentation__.Notify(599038)
 		numMinutes := offsetSecs / duration.SecsPerMinute
 		return tree.NewDFloat(tree.DFloat(float64(numMinutes % 60)))
+	default:
+		__antithesis_instrumentation__.Notify(599039)
 	}
+	__antithesis_instrumentation__.Notify(599035)
 	return nil
 }
 
 func extractTimeSpanFromTimeTZ(fromTime *tree.DTimeTZ, timeSpan string) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599040)
 	if ret := extractTimezoneFromOffset(-fromTime.OffsetSecs, timeSpan); ret != nil {
+		__antithesis_instrumentation__.Notify(599043)
 		return ret, nil
+	} else {
+		__antithesis_instrumentation__.Notify(599044)
 	}
+	__antithesis_instrumentation__.Notify(599041)
 	switch timeSpan {
 	case "epoch":
-		// Epoch should additionally add the zone offset.
+		__antithesis_instrumentation__.Notify(599045)
+
 		seconds := float64(time.Duration(fromTime.TimeOfDay))*float64(time.Microsecond)/float64(time.Second) + float64(fromTime.OffsetSecs)
 		return tree.NewDFloat(tree.DFloat(seconds)), nil
+	default:
+		__antithesis_instrumentation__.Notify(599046)
 	}
+	__antithesis_instrumentation__.Notify(599042)
 	return extractTimeSpanFromTimeOfDay(fromTime.TimeOfDay, timeSpan)
 }
 
 func extractTimeSpanFromTimeOfDay(t timeofday.TimeOfDay, timeSpan string) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599047)
 	switch timeSpan {
 	case "hour", "hours":
+		__antithesis_instrumentation__.Notify(599048)
 		return tree.NewDFloat(tree.DFloat(t.Hour())), nil
 	case "minute", "minutes":
+		__antithesis_instrumentation__.Notify(599049)
 		return tree.NewDFloat(tree.DFloat(t.Minute())), nil
 	case "second", "seconds":
+		__antithesis_instrumentation__.Notify(599050)
 		return tree.NewDFloat(tree.DFloat(float64(t.Second()) + float64(t.Microsecond())/(duration.MicrosPerMilli*duration.MillisPerSec))), nil
 	case "millisecond", "milliseconds":
+		__antithesis_instrumentation__.Notify(599051)
 		return tree.NewDFloat(tree.DFloat(float64(t.Second()*duration.MillisPerSec) + float64(t.Microsecond())/duration.MicrosPerMilli)), nil
 	case "microsecond", "microseconds":
+		__antithesis_instrumentation__.Notify(599052)
 		return tree.NewDFloat(tree.DFloat((t.Second() * duration.MillisPerSec * duration.MicrosPerMilli) + t.Microsecond())), nil
 	case "epoch":
+		__antithesis_instrumentation__.Notify(599053)
 		seconds := float64(time.Duration(t)) * float64(time.Microsecond) / float64(time.Second)
 		return tree.NewDFloat(tree.DFloat(seconds)), nil
 	default:
+		__antithesis_instrumentation__.Notify(599054)
 		return nil, pgerror.Newf(
 			pgcode.InvalidParameterValue, "unsupported timespan: %s", timeSpan)
 	}
 }
 
-// dateToJulianDay is based on the date2j function in PostgreSQL 10.5.
 func dateToJulianDay(year int, month int, day int) int {
+	__antithesis_instrumentation__.Notify(599055)
 	if month > 2 {
+		__antithesis_instrumentation__.Notify(599057)
 		month++
 		year += 4800
 	} else {
+		__antithesis_instrumentation__.Notify(599058)
 		month += 13
 		year += 4799
 	}
+	__antithesis_instrumentation__.Notify(599056)
 
 	century := year / 100
 	jd := year*365 - 32167
@@ -8656,19 +11065,23 @@ func dateToJulianDay(year int, month int, day int) int {
 func extractTimeSpanFromTimestampTZ(
 	ctx *tree.EvalContext, fromTime time.Time, timeSpan string,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599059)
 	_, offsetSecs := fromTime.Zone()
 	if ret := extractTimezoneFromOffset(int32(offsetSecs), timeSpan); ret != nil {
+		__antithesis_instrumentation__.Notify(599061)
 		return ret, nil
+	} else {
+		__antithesis_instrumentation__.Notify(599062)
 	}
+	__antithesis_instrumentation__.Notify(599060)
 
 	switch timeSpan {
 	case "epoch":
+		__antithesis_instrumentation__.Notify(599063)
 		return extractTimeSpanFromTimestamp(ctx, fromTime, timeSpan)
 	default:
-		// time.Time's Year(), Month(), Day(), ISOWeek(), etc. all deal in terms
-		// of UTC, rather than as the timezone.
-		// Remedy this by assuming that the timezone is UTC (to prevent confusion)
-		// and offsetting time when using extractTimeSpanFromTimestamp.
+		__antithesis_instrumentation__.Notify(599064)
+
 		pretendTime := fromTime.In(time.UTC).Add(time.Duration(offsetSecs) * time.Second)
 		return extractTimeSpanFromTimestamp(ctx, pretendTime, timeSpan)
 	}
@@ -8677,44 +11090,58 @@ func extractTimeSpanFromTimestampTZ(
 func extractTimeSpanFromInterval(
 	fromInterval *tree.DInterval, timeSpan string,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599065)
 	switch timeSpan {
 	case "millennia", "millennium", "millenniums":
+		__antithesis_instrumentation__.Notify(599066)
 		return tree.NewDFloat(tree.DFloat(fromInterval.Months / (duration.MonthsPerYear * 1000))), nil
 
 	case "centuries", "century":
+		__antithesis_instrumentation__.Notify(599067)
 		return tree.NewDFloat(tree.DFloat(fromInterval.Months / (duration.MonthsPerYear * 100))), nil
 
 	case "decade", "decades":
+		__antithesis_instrumentation__.Notify(599068)
 		return tree.NewDFloat(tree.DFloat(fromInterval.Months / (duration.MonthsPerYear * 10))), nil
 
 	case "year", "years":
+		__antithesis_instrumentation__.Notify(599069)
 		return tree.NewDFloat(tree.DFloat(fromInterval.Months / duration.MonthsPerYear)), nil
 
 	case "month", "months":
+		__antithesis_instrumentation__.Notify(599070)
 		return tree.NewDFloat(tree.DFloat(fromInterval.Months % duration.MonthsPerYear)), nil
 
 	case "day", "days":
+		__antithesis_instrumentation__.Notify(599071)
 		return tree.NewDFloat(tree.DFloat(fromInterval.Days)), nil
 
 	case "hour", "hours":
+		__antithesis_instrumentation__.Notify(599072)
 		return tree.NewDFloat(tree.DFloat(fromInterval.Nanos() / int64(time.Hour))), nil
 
 	case "minute", "minutes":
-		// Remove the hour component.
+		__antithesis_instrumentation__.Notify(599073)
+
 		return tree.NewDFloat(tree.DFloat((fromInterval.Nanos() % int64(time.Second*duration.SecsPerHour)) / int64(time.Minute))), nil
 
 	case "second", "seconds":
+		__antithesis_instrumentation__.Notify(599074)
 		return tree.NewDFloat(tree.DFloat(float64(fromInterval.Nanos()%int64(time.Minute)) / float64(time.Second))), nil
 
 	case "millisecond", "milliseconds":
-		// This a PG extension not supported in MySQL.
+		__antithesis_instrumentation__.Notify(599075)
+
 		return tree.NewDFloat(tree.DFloat(float64(fromInterval.Nanos()%int64(time.Minute)) / float64(time.Millisecond))), nil
 
 	case "microsecond", "microseconds":
+		__antithesis_instrumentation__.Notify(599076)
 		return tree.NewDFloat(tree.DFloat(float64(fromInterval.Nanos()%int64(time.Minute)) / float64(time.Microsecond))), nil
 	case "epoch":
+		__antithesis_instrumentation__.Notify(599077)
 		return tree.NewDFloat(tree.DFloat(fromInterval.AsFloat64())), nil
 	default:
+		__antithesis_instrumentation__.Notify(599078)
 		return nil, pgerror.Newf(
 			pgcode.InvalidParameterValue, "unsupported timespan: %s", timeSpan)
 	}
@@ -8723,78 +11150,112 @@ func extractTimeSpanFromInterval(
 func extractTimeSpanFromTimestamp(
 	_ *tree.EvalContext, fromTime time.Time, timeSpan string,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599079)
 	switch timeSpan {
 	case "millennia", "millennium", "millenniums":
+		__antithesis_instrumentation__.Notify(599080)
 		year := fromTime.Year()
 		if year > 0 {
+			__antithesis_instrumentation__.Notify(599104)
 			return tree.NewDFloat(tree.DFloat((year + 999) / 1000)), nil
+		} else {
+			__antithesis_instrumentation__.Notify(599105)
 		}
+		__antithesis_instrumentation__.Notify(599081)
 		return tree.NewDFloat(tree.DFloat(-((999 - (year - 1)) / 1000))), nil
 
 	case "centuries", "century":
+		__antithesis_instrumentation__.Notify(599082)
 		year := fromTime.Year()
 		if year > 0 {
+			__antithesis_instrumentation__.Notify(599106)
 			return tree.NewDFloat(tree.DFloat((year + 99) / 100)), nil
+		} else {
+			__antithesis_instrumentation__.Notify(599107)
 		}
+		__antithesis_instrumentation__.Notify(599083)
 		return tree.NewDFloat(tree.DFloat(-((99 - (year - 1)) / 100))), nil
 
 	case "decade", "decades":
+		__antithesis_instrumentation__.Notify(599084)
 		year := fromTime.Year()
 		if year >= 0 {
+			__antithesis_instrumentation__.Notify(599108)
 			return tree.NewDFloat(tree.DFloat(year / 10)), nil
+		} else {
+			__antithesis_instrumentation__.Notify(599109)
 		}
+		__antithesis_instrumentation__.Notify(599085)
 		return tree.NewDFloat(tree.DFloat(-((8 - (year - 1)) / 10))), nil
 
 	case "year", "years":
+		__antithesis_instrumentation__.Notify(599086)
 		return tree.NewDFloat(tree.DFloat(fromTime.Year())), nil
 
 	case "isoyear":
+		__antithesis_instrumentation__.Notify(599087)
 		year, _ := fromTime.ISOWeek()
 		return tree.NewDFloat(tree.DFloat(year)), nil
 
 	case "quarter":
+		__antithesis_instrumentation__.Notify(599088)
 		return tree.NewDFloat(tree.DFloat((fromTime.Month()-1)/3 + 1)), nil
 
 	case "month", "months":
+		__antithesis_instrumentation__.Notify(599089)
 		return tree.NewDFloat(tree.DFloat(fromTime.Month())), nil
 
 	case "week", "weeks":
+		__antithesis_instrumentation__.Notify(599090)
 		_, week := fromTime.ISOWeek()
 		return tree.NewDFloat(tree.DFloat(week)), nil
 
 	case "day", "days":
+		__antithesis_instrumentation__.Notify(599091)
 		return tree.NewDFloat(tree.DFloat(fromTime.Day())), nil
 
 	case "dayofweek", "dow":
+		__antithesis_instrumentation__.Notify(599092)
 		return tree.NewDFloat(tree.DFloat(fromTime.Weekday())), nil
 
 	case "isodow":
+		__antithesis_instrumentation__.Notify(599093)
 		day := fromTime.Weekday()
 		if day == 0 {
+			__antithesis_instrumentation__.Notify(599110)
 			return tree.NewDFloat(tree.DFloat(7)), nil
+		} else {
+			__antithesis_instrumentation__.Notify(599111)
 		}
+		__antithesis_instrumentation__.Notify(599094)
 		return tree.NewDFloat(tree.DFloat(day)), nil
 
 	case "dayofyear", "doy":
+		__antithesis_instrumentation__.Notify(599095)
 		return tree.NewDFloat(tree.DFloat(fromTime.YearDay())), nil
 
 	case "julian":
+		__antithesis_instrumentation__.Notify(599096)
 		julianDay := float64(dateToJulianDay(fromTime.Year(), int(fromTime.Month()), fromTime.Day())) +
 			(float64(fromTime.Hour()*duration.SecsPerHour+fromTime.Minute()*duration.SecsPerMinute+fromTime.Second())+
 				float64(fromTime.Nanosecond())/float64(time.Second))/duration.SecsPerDay
 		return tree.NewDFloat(tree.DFloat(julianDay)), nil
 
 	case "hour", "hours":
+		__antithesis_instrumentation__.Notify(599097)
 		return tree.NewDFloat(tree.DFloat(fromTime.Hour())), nil
 
 	case "minute", "minutes":
+		__antithesis_instrumentation__.Notify(599098)
 		return tree.NewDFloat(tree.DFloat(fromTime.Minute())), nil
 
 	case "second", "seconds":
+		__antithesis_instrumentation__.Notify(599099)
 		return tree.NewDFloat(tree.DFloat(float64(fromTime.Second()) + float64(fromTime.Nanosecond())/float64(time.Second))), nil
 
 	case "millisecond", "milliseconds":
-		// This a PG extension not supported in MySQL.
+		__antithesis_instrumentation__.Notify(599100)
+
 		return tree.NewDFloat(
 			tree.DFloat(
 				float64(fromTime.Second()*duration.MillisPerSec) + float64(fromTime.Nanosecond())/
@@ -8803,6 +11264,7 @@ func extractTimeSpanFromTimestamp(
 		), nil
 
 	case "microsecond", "microseconds":
+		__antithesis_instrumentation__.Notify(599101)
 		return tree.NewDFloat(
 			tree.DFloat(
 				float64(fromTime.Second()*duration.MillisPerSec*duration.MicrosPerMilli) + float64(fromTime.Nanosecond())/
@@ -8811,14 +11273,17 @@ func extractTimeSpanFromTimestamp(
 		), nil
 
 	case "epoch":
+		__antithesis_instrumentation__.Notify(599102)
 		return tree.NewDFloat(tree.DFloat(float64(fromTime.UnixNano()) / float64(time.Second))), nil
 
 	default:
+		__antithesis_instrumentation__.Notify(599103)
 		return nil, pgerror.Newf(pgcode.InvalidParameterValue, "unsupported timespan: %s", timeSpan)
 	}
 }
 
 func truncateTime(fromTime *tree.DTime, timeSpan string) (*tree.DTime, error) {
+	__antithesis_instrumentation__.Notify(599112)
 	t := timeofday.TimeOfDay(*fromTime)
 	hour := t.Hour()
 	min := t.Minute()
@@ -8831,106 +11296,159 @@ func truncateTime(fromTime *tree.DTime, timeSpan string) (*tree.DTime, error) {
 
 	switch timeSpan {
 	case "hour", "hours":
+		__antithesis_instrumentation__.Notify(599114)
 		min, sec, micro = minTrunc, secTrunc, microTrunc
 	case "minute", "minutes":
+		__antithesis_instrumentation__.Notify(599115)
 		sec, micro = secTrunc, microTrunc
 	case "second", "seconds":
+		__antithesis_instrumentation__.Notify(599116)
 		micro = microTrunc
 	case "millisecond", "milliseconds":
-		// This a PG extension not supported in MySQL.
+		__antithesis_instrumentation__.Notify(599117)
+
 		micro = (micro / duration.MicrosPerMilli) * duration.MicrosPerMilli
 	case "microsecond", "microseconds":
+		__antithesis_instrumentation__.Notify(599118)
 	default:
+		__antithesis_instrumentation__.Notify(599119)
 		return nil, pgerror.Newf(pgcode.InvalidParameterValue, "unsupported timespan: %s", timeSpan)
 	}
+	__antithesis_instrumentation__.Notify(599113)
 
 	return tree.MakeDTime(timeofday.New(hour, min, sec, micro)), nil
 }
 
 func stringOrNil(d tree.Datum) *string {
+	__antithesis_instrumentation__.Notify(599120)
 	if d == tree.DNull {
+		__antithesis_instrumentation__.Notify(599122)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(599123)
 	}
+	__antithesis_instrumentation__.Notify(599121)
 	s := string(tree.MustBeDString(d))
 	return &s
 }
 
-// stringToArray implements the string_to_array builtin - str is split on delim to form an array of strings.
-// If nullStr is set, any elements equal to it will be NULL.
 func stringToArray(str string, delimPtr *string, nullStr *string) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599124)
 	var split []string
 
 	if delimPtr != nil {
+		__antithesis_instrumentation__.Notify(599127)
 		delim := *delimPtr
 		if str == "" {
+			__antithesis_instrumentation__.Notify(599128)
 			split = nil
-		} else if delim == "" {
-			split = []string{str}
 		} else {
-			split = strings.Split(str, delim)
+			__antithesis_instrumentation__.Notify(599129)
+			if delim == "" {
+				__antithesis_instrumentation__.Notify(599130)
+				split = []string{str}
+			} else {
+				__antithesis_instrumentation__.Notify(599131)
+				split = strings.Split(str, delim)
+			}
 		}
 	} else {
-		// When given a NULL delimiter, string_to_array splits into each character.
+		__antithesis_instrumentation__.Notify(599132)
+
 		split = make([]string, len(str))
 		for i, c := range str {
+			__antithesis_instrumentation__.Notify(599133)
 			split[i] = string(c)
 		}
 	}
+	__antithesis_instrumentation__.Notify(599125)
 
 	result := tree.NewDArray(types.String)
 	for _, s := range split {
+		__antithesis_instrumentation__.Notify(599134)
 		var next tree.Datum = tree.NewDString(s)
-		if nullStr != nil && s == *nullStr {
+		if nullStr != nil && func() bool {
+			__antithesis_instrumentation__.Notify(599136)
+			return s == *nullStr == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(599137)
 			next = tree.DNull
+		} else {
+			__antithesis_instrumentation__.Notify(599138)
 		}
+		__antithesis_instrumentation__.Notify(599135)
 		if err := result.Append(next); err != nil {
+			__antithesis_instrumentation__.Notify(599139)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(599140)
 		}
 	}
+	__antithesis_instrumentation__.Notify(599126)
 	return result, nil
 }
 
-// arrayToString implements the array_to_string builtin - arr is joined using
-// delim. If nullStr is non-nil, NULL values in the array will be replaced by
-// it.
 func arrayToString(
 	evalCtx *tree.EvalContext, arr *tree.DArray, delim string, nullStr *string,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599141)
 	f := evalCtx.FmtCtx(tree.FmtArrayToString)
 
 	for i := range arr.Array {
+		__antithesis_instrumentation__.Notify(599143)
 		if arr.Array[i] == tree.DNull {
+			__antithesis_instrumentation__.Notify(599145)
 			if nullStr == nil {
+				__antithesis_instrumentation__.Notify(599147)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(599148)
 			}
+			__antithesis_instrumentation__.Notify(599146)
 			f.WriteString(*nullStr)
 		} else {
+			__antithesis_instrumentation__.Notify(599149)
 			f.FormatNode(arr.Array[i])
 		}
+		__antithesis_instrumentation__.Notify(599144)
 		if i < len(arr.Array)-1 {
+			__antithesis_instrumentation__.Notify(599150)
 			f.WriteString(delim)
+		} else {
+			__antithesis_instrumentation__.Notify(599151)
 		}
 	}
+	__antithesis_instrumentation__.Notify(599142)
 	return tree.NewDString(f.CloseAndGetString()), nil
 }
 
-// encodeEscape implements the encode(..., 'escape') Postgres builtin. It's
-// described "escape converts zero bytes and high-bit-set bytes to octal
-// sequences (\nnn) and doubles backslashes."
 func encodeEscape(input []byte) string {
+	__antithesis_instrumentation__.Notify(599152)
 	var result bytes.Buffer
 	start := 0
 	for i := range input {
-		if input[i] == 0 || input[i]&128 != 0 {
+		__antithesis_instrumentation__.Notify(599154)
+		if input[i] == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(599155)
+			return input[i]&128 != 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(599156)
 			result.Write(input[start:i])
 			start = i + 1
 			result.WriteString(fmt.Sprintf(`\%03o`, input[i]))
-		} else if input[i] == '\\' {
-			result.Write(input[start:i])
-			start = i + 1
-			result.WriteString(`\\`)
+		} else {
+			__antithesis_instrumentation__.Notify(599157)
+			if input[i] == '\\' {
+				__antithesis_instrumentation__.Notify(599158)
+				result.Write(input[start:i])
+				start = i + 1
+				result.WriteString(`\\`)
+			} else {
+				__antithesis_instrumentation__.Notify(599159)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(599153)
 	result.Write(input[start:])
 	return result.String()
 }
@@ -8938,40 +11456,63 @@ func encodeEscape(input []byte) string {
 var errInvalidSyntaxForDecode = pgerror.New(pgcode.InvalidParameterValue, "invalid syntax for decode(..., 'escape')")
 
 func isOctalDigit(c byte) bool {
-	return '0' <= c && c <= '7'
+	__antithesis_instrumentation__.Notify(599160)
+	return '0' <= c && func() bool {
+		__antithesis_instrumentation__.Notify(599161)
+		return c <= '7' == true
+	}() == true
 }
 
 func decodeOctalTriplet(input string) byte {
+	__antithesis_instrumentation__.Notify(599162)
 	return (input[0]-'0')*64 + (input[1]-'0')*8 + (input[2] - '0')
 }
 
-// decodeEscape implements the decode(..., 'escape') Postgres builtin. The
-// escape format is described as "escape converts zero bytes and high-bit-set
-// bytes to octal sequences (\nnn) and doubles backslashes."
 func decodeEscape(input string) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(599163)
 	result := make([]byte, 0, len(input))
 	for i := 0; i < len(input); i++ {
+		__antithesis_instrumentation__.Notify(599165)
 		if input[i] == '\\' {
-			if i+1 < len(input) && input[i+1] == '\\' {
+			__antithesis_instrumentation__.Notify(599166)
+			if i+1 < len(input) && func() bool {
+				__antithesis_instrumentation__.Notify(599167)
+				return input[i+1] == '\\' == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(599168)
 				result = append(result, '\\')
 				i++
-			} else if i+3 < len(input) &&
-				isOctalDigit(input[i+1]) &&
-				isOctalDigit(input[i+2]) &&
-				isOctalDigit(input[i+3]) {
-				result = append(result, decodeOctalTriplet(input[i+1:i+4]))
-				i += 3
 			} else {
-				return nil, errInvalidSyntaxForDecode
+				__antithesis_instrumentation__.Notify(599169)
+				if i+3 < len(input) && func() bool {
+					__antithesis_instrumentation__.Notify(599170)
+					return isOctalDigit(input[i+1]) == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(599171)
+					return isOctalDigit(input[i+2]) == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(599172)
+					return isOctalDigit(input[i+3]) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(599173)
+					result = append(result, decodeOctalTriplet(input[i+1:i+4]))
+					i += 3
+				} else {
+					__antithesis_instrumentation__.Notify(599174)
+					return nil, errInvalidSyntaxForDecode
+				}
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(599175)
 			result = append(result, input[i])
 		}
 	}
+	__antithesis_instrumentation__.Notify(599164)
 	return result, nil
 }
 
 func truncateTimestamp(fromTime time.Time, timeSpan string) (*tree.DTimestampTZ, error) {
+	__antithesis_instrumentation__.Notify(599176)
 	year := fromTime.Year()
 	month := fromTime.Month()
 	day := fromTime.Day()
@@ -8992,177 +11533,229 @@ func truncateTimestamp(fromTime time.Time, timeSpan string) (*tree.DTimestampTZ,
 
 	switch timeSpan {
 	case "millennia", "millennium", "millenniums":
+		__antithesis_instrumentation__.Notify(599179)
 		if year > 0 {
+			__antithesis_instrumentation__.Notify(599197)
 			year = ((year+999)/1000)*1000 - 999
 		} else {
+			__antithesis_instrumentation__.Notify(599198)
 			year = -((999-(year-1))/1000)*1000 + 1
 		}
+		__antithesis_instrumentation__.Notify(599180)
 		month, day, hour, min, sec, nsec = monthTrunc, dayTrunc, hourTrunc, minTrunc, secTrunc, nsecTrunc
 
 	case "centuries", "century":
+		__antithesis_instrumentation__.Notify(599181)
 		if year > 0 {
+			__antithesis_instrumentation__.Notify(599199)
 			year = ((year+99)/100)*100 - 99
 		} else {
+			__antithesis_instrumentation__.Notify(599200)
 			year = -((99-(year-1))/100)*100 + 1
 		}
+		__antithesis_instrumentation__.Notify(599182)
 		month, day, hour, min, sec, nsec = monthTrunc, dayTrunc, hourTrunc, minTrunc, secTrunc, nsecTrunc
 
 	case "decade", "decades":
+		__antithesis_instrumentation__.Notify(599183)
 		if year >= 0 {
+			__antithesis_instrumentation__.Notify(599201)
 			year = (year / 10) * 10
 		} else {
+			__antithesis_instrumentation__.Notify(599202)
 			year = -((8 - (year - 1)) / 10) * 10
 		}
+		__antithesis_instrumentation__.Notify(599184)
 		month, day, hour, min, sec, nsec = monthTrunc, dayTrunc, hourTrunc, minTrunc, secTrunc, nsecTrunc
 
 	case "year", "years":
+		__antithesis_instrumentation__.Notify(599185)
 		month, day, hour, min, sec, nsec = monthTrunc, dayTrunc, hourTrunc, minTrunc, secTrunc, nsecTrunc
 
 	case "quarter":
+		__antithesis_instrumentation__.Notify(599186)
 		firstMonthInQuarter := ((month-1)/3)*3 + 1
 		month, day, hour, min, sec, nsec = firstMonthInQuarter, dayTrunc, hourTrunc, minTrunc, secTrunc, nsecTrunc
 
 	case "month", "months":
+		__antithesis_instrumentation__.Notify(599187)
 		day, hour, min, sec, nsec = dayTrunc, hourTrunc, minTrunc, secTrunc, nsecTrunc
 
 	case "week", "weeks":
-		// Subtract (day of week * nanoseconds per day) to get Sunday, then add a day to get Monday.
+		__antithesis_instrumentation__.Notify(599188)
+
 		previousMonday := fromTime.Add(-1 * time.Hour * 24 * time.Duration(fromTime.Weekday()-1))
 		if fromTime.Weekday() == time.Sunday {
-			// The math above does not work for Sunday, as it roll forward to the next Monday.
-			// As such, subtract six days instead.
+			__antithesis_instrumentation__.Notify(599203)
+
 			previousMonday = fromTime.Add(-6 * time.Hour * 24)
+		} else {
+			__antithesis_instrumentation__.Notify(599204)
 		}
+		__antithesis_instrumentation__.Notify(599189)
 		year, month, day = previousMonday.Year(), previousMonday.Month(), previousMonday.Day()
 		hour, min, sec, nsec = hourTrunc, minTrunc, secTrunc, nsecTrunc
 
 	case "day", "days":
+		__antithesis_instrumentation__.Notify(599190)
 		hour, min, sec, nsec = hourTrunc, minTrunc, secTrunc, nsecTrunc
 
 	case "hour", "hours":
+		__antithesis_instrumentation__.Notify(599191)
 		min, sec, nsec = minTrunc, secTrunc, nsecTrunc
 
 	case "minute", "minutes":
+		__antithesis_instrumentation__.Notify(599192)
 		sec, nsec = secTrunc, nsecTrunc
 
 	case "second", "seconds":
+		__antithesis_instrumentation__.Notify(599193)
 		nsec = nsecTrunc
 
 	case "millisecond", "milliseconds":
-		// This a PG extension not supported in MySQL.
+		__antithesis_instrumentation__.Notify(599194)
+
 		milliseconds := (nsec / int(time.Millisecond)) * int(time.Millisecond)
 		nsec = milliseconds
 
 	case "microsecond", "microseconds":
+		__antithesis_instrumentation__.Notify(599195)
 		microseconds := (nsec / int(time.Microsecond)) * int(time.Microsecond)
 		nsec = microseconds
 
 	default:
+		__antithesis_instrumentation__.Notify(599196)
 		return nil, pgerror.Newf(pgcode.InvalidParameterValue, "unsupported timespan: %s", timeSpan)
 	}
+	__antithesis_instrumentation__.Notify(599177)
 
 	toTime := time.Date(year, month, day, hour, min, sec, nsec, loc)
 	_, newZoneOffset := toTime.Zone()
-	// If we have a mismatching zone offset, check whether the truncated timestamp
-	// can exist at both the new and original zone time offset.
-	// e.g. in Bucharest, 2020-10-25 has 03:00+02 and 03:00+03. Using time.Date
-	// automatically assumes 03:00+02.
+
 	if origZoneOffset != newZoneOffset {
-		// To remedy this, try set the time.Date to have the same fixed offset as the original timezone
-		// and force it to use the same location as the incoming time.
-		// If using the fixed offset in the given location gives us a timestamp that is the
-		// same as the original time offset, use that timestamp instead.
+		__antithesis_instrumentation__.Notify(599205)
+
 		fixedOffsetLoc := timeutil.FixedTimeZoneOffsetToLocation(origZoneOffset, "date_trunc")
 		fixedOffsetTime := time.Date(year, month, day, hour, min, sec, nsec, fixedOffsetLoc)
 		locCorrectedOffsetTime := fixedOffsetTime.In(loc)
 
 		if _, zoneOffset := locCorrectedOffsetTime.Zone(); origZoneOffset == zoneOffset {
+			__antithesis_instrumentation__.Notify(599206)
 			toTime = locCorrectedOffsetTime
+		} else {
+			__antithesis_instrumentation__.Notify(599207)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(599208)
 	}
+	__antithesis_instrumentation__.Notify(599178)
 	return tree.MakeDTimestampTZ(toTime, time.Microsecond)
 }
 
 func truncateInterval(fromInterval *tree.DInterval, timeSpan string) (*tree.DInterval, error) {
+	__antithesis_instrumentation__.Notify(599209)
 
 	toInterval := tree.DInterval{}
 
 	switch timeSpan {
 	case "millennia", "millennium", "millenniums":
+		__antithesis_instrumentation__.Notify(599211)
 		toInterval.Months = fromInterval.Months - fromInterval.Months%(12*1000)
 
 	case "centuries", "century":
+		__antithesis_instrumentation__.Notify(599212)
 		toInterval.Months = fromInterval.Months - fromInterval.Months%(12*100)
 
 	case "decade", "decades":
+		__antithesis_instrumentation__.Notify(599213)
 		toInterval.Months = fromInterval.Months - fromInterval.Months%(12*10)
 
 	case "year", "years":
+		__antithesis_instrumentation__.Notify(599214)
 		toInterval.Months = fromInterval.Months - fromInterval.Months%12
 
 	case "quarter":
+		__antithesis_instrumentation__.Notify(599215)
 		toInterval.Months = fromInterval.Months - fromInterval.Months%3
 
 	case "month", "months":
+		__antithesis_instrumentation__.Notify(599216)
 		toInterval.Months = fromInterval.Months
 
 	case "week", "weeks":
-		// not supported by postgres 14 regardless of the fromInterval (error message is always the same)
+		__antithesis_instrumentation__.Notify(599217)
+
 		return nil, pgerror.Newf(pgcode.FeatureNotSupported, "interval units %q not supported because months usually have fractional weeks", timeSpan)
 
 	case "day", "days":
+		__antithesis_instrumentation__.Notify(599218)
 		toInterval.Months = fromInterval.Months
 		toInterval.Days = fromInterval.Days
 
 	case "hour", "hours":
+		__antithesis_instrumentation__.Notify(599219)
 		toInterval.Months = fromInterval.Months
 		toInterval.Days = fromInterval.Days
 		toInterval.SetNanos(fromInterval.Nanos() - fromInterval.Nanos()%time.Hour.Nanoseconds())
 
 	case "minute", "minutes":
+		__antithesis_instrumentation__.Notify(599220)
 		toInterval.Months = fromInterval.Months
 		toInterval.Days = fromInterval.Days
 		toInterval.SetNanos(fromInterval.Nanos() - fromInterval.Nanos()%time.Minute.Nanoseconds())
 
 	case "second", "seconds":
+		__antithesis_instrumentation__.Notify(599221)
 		toInterval.Months = fromInterval.Months
 		toInterval.Days = fromInterval.Days
 		toInterval.SetNanos(fromInterval.Nanos() - fromInterval.Nanos()%time.Second.Nanoseconds())
 
 	case "millisecond", "milliseconds":
+		__antithesis_instrumentation__.Notify(599222)
 		toInterval.Months = fromInterval.Months
 		toInterval.Days = fromInterval.Days
 		toInterval.SetNanos(fromInterval.Nanos() - fromInterval.Nanos()%time.Millisecond.Nanoseconds())
 
 	case "microsecond", "microseconds":
+		__antithesis_instrumentation__.Notify(599223)
 		toInterval.Months = fromInterval.Months
 		toInterval.Days = fromInterval.Days
 		toInterval.SetNanos(fromInterval.Nanos() - fromInterval.Nanos()%time.Microsecond.Nanoseconds())
 
 	default:
+		__antithesis_instrumentation__.Notify(599224)
 		return nil, pgerror.Newf(pgcode.InvalidParameterValue, "interval units %q not recognized", timeSpan)
 	}
+	__antithesis_instrumentation__.Notify(599210)
 
 	return &toInterval, nil
 }
 
-// Converts a scalar Datum to its string representation
 func asJSONBuildObjectKey(
 	d tree.Datum, dcc sessiondatapb.DataConversionConfig, loc *time.Location,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(599225)
 	switch t := d.(type) {
 	case *tree.DJSON, *tree.DArray, *tree.DTuple:
+		__antithesis_instrumentation__.Notify(599226)
 		return "", pgerror.New(pgcode.InvalidParameterValue,
 			"key value must be scalar, not array, tuple, or json")
 	case *tree.DString:
+		__antithesis_instrumentation__.Notify(599227)
 		return string(*t), nil
 	case *tree.DCollatedString:
+		__antithesis_instrumentation__.Notify(599228)
 		return t.Contents, nil
 	case *tree.DTimestampTZ:
+		__antithesis_instrumentation__.Notify(599229)
 		ts, err := tree.MakeDTimestampTZ(t.Time.In(loc), time.Microsecond)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(599233)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(599234)
 		}
+		__antithesis_instrumentation__.Notify(599230)
 		return tree.AsStringWithFlags(
 			ts,
 			tree.FmtBareStrings,
@@ -9171,114 +11764,173 @@ func asJSONBuildObjectKey(
 	case *tree.DBool, *tree.DInt, *tree.DFloat, *tree.DDecimal, *tree.DTimestamp,
 		*tree.DDate, *tree.DUuid, *tree.DInterval, *tree.DBytes, *tree.DIPAddr, *tree.DOid,
 		*tree.DTime, *tree.DTimeTZ, *tree.DBitArray, *tree.DGeography, *tree.DGeometry, *tree.DBox2D:
+		__antithesis_instrumentation__.Notify(599231)
 		return tree.AsStringWithFlags(d, tree.FmtBareStrings), nil
 	default:
+		__antithesis_instrumentation__.Notify(599232)
 		return "", errors.AssertionFailedf("unexpected type %T for key value", d)
 	}
 }
 
 func asJSONObjectKey(d tree.Datum) (string, error) {
+	__antithesis_instrumentation__.Notify(599235)
 	switch t := d.(type) {
 	case *tree.DString:
+		__antithesis_instrumentation__.Notify(599236)
 		return string(*t), nil
 	default:
+		__antithesis_instrumentation__.Notify(599237)
 		return "", errors.AssertionFailedf("unexpected type %T for asJSONObjectKey", d)
 	}
 }
 
 func toJSONObject(ctx *tree.EvalContext, d tree.Datum) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599238)
 	j, err := tree.AsJSON(d, ctx.SessionData().DataConversionConfig, ctx.GetLocation())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599240)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(599241)
 	}
+	__antithesis_instrumentation__.Notify(599239)
 	return tree.NewDJSON(j), nil
 }
 
 func jsonValidate(_ *tree.EvalContext, string tree.DString) *tree.DBool {
+	__antithesis_instrumentation__.Notify(599242)
 	var js interface{}
 	return tree.MakeDBool(gojson.Unmarshal([]byte(string), &js) == nil)
 }
 
-// padMaybeTruncate truncates the input string to length if the string is
-// longer or equal in size to length. If truncated, the first return value
-// will be true, and the last return value will be the truncated string.
-// The second return value is set to the length of the input string in runes.
 func padMaybeTruncate(s string, length int, fill string) (ok bool, slen int, ret string) {
+	__antithesis_instrumentation__.Notify(599243)
 	if length < 0 {
-		// lpad and rpad both return an empty string if the input length is
-		// negative.
+		__antithesis_instrumentation__.Notify(599248)
+
 		length = 0
+	} else {
+		__antithesis_instrumentation__.Notify(599249)
 	}
+	__antithesis_instrumentation__.Notify(599244)
 	slen = utf8.RuneCountInString(s)
 	if length == slen {
+		__antithesis_instrumentation__.Notify(599250)
 		return true, slen, s
+	} else {
+		__antithesis_instrumentation__.Notify(599251)
 	}
+	__antithesis_instrumentation__.Notify(599245)
 
-	// If string is longer then length truncate it to the requested number
-	// of characters.
 	if length < slen {
+		__antithesis_instrumentation__.Notify(599252)
 		return true, slen, string([]rune(s)[:length])
+	} else {
+		__antithesis_instrumentation__.Notify(599253)
 	}
+	__antithesis_instrumentation__.Notify(599246)
 
-	// If the input fill is the empty string, return the original string.
 	if len(fill) == 0 {
+		__antithesis_instrumentation__.Notify(599254)
 		return true, slen, s
+	} else {
+		__antithesis_instrumentation__.Notify(599255)
 	}
+	__antithesis_instrumentation__.Notify(599247)
 
 	return false, slen, s
 }
 
 func lpad(s string, length int, fill string) (string, error) {
+	__antithesis_instrumentation__.Notify(599256)
 	if length > maxAllocatedStringSize {
+		__antithesis_instrumentation__.Notify(599260)
 		return "", errStringTooLarge
+	} else {
+		__antithesis_instrumentation__.Notify(599261)
 	}
+	__antithesis_instrumentation__.Notify(599257)
 	ok, slen, ret := padMaybeTruncate(s, length, fill)
 	if ok {
+		__antithesis_instrumentation__.Notify(599262)
 		return ret, nil
+	} else {
+		__antithesis_instrumentation__.Notify(599263)
 	}
+	__antithesis_instrumentation__.Notify(599258)
 	var buf strings.Builder
 	fillRunes := []rune(fill)
 	for i := 0; i < length-slen; i++ {
+		__antithesis_instrumentation__.Notify(599264)
 		buf.WriteRune(fillRunes[i%len(fillRunes)])
 	}
+	__antithesis_instrumentation__.Notify(599259)
 	buf.WriteString(s)
 
 	return buf.String(), nil
 }
 
 func rpad(s string, length int, fill string) (string, error) {
+	__antithesis_instrumentation__.Notify(599265)
 	if length > maxAllocatedStringSize {
+		__antithesis_instrumentation__.Notify(599269)
 		return "", errStringTooLarge
+	} else {
+		__antithesis_instrumentation__.Notify(599270)
 	}
+	__antithesis_instrumentation__.Notify(599266)
 	ok, slen, ret := padMaybeTruncate(s, length, fill)
 	if ok {
+		__antithesis_instrumentation__.Notify(599271)
 		return ret, nil
+	} else {
+		__antithesis_instrumentation__.Notify(599272)
 	}
+	__antithesis_instrumentation__.Notify(599267)
 	var buf strings.Builder
 	buf.WriteString(s)
 	fillRunes := []rune(fill)
 	for i := 0; i < length-slen; i++ {
+		__antithesis_instrumentation__.Notify(599273)
 		buf.WriteRune(fillRunes[i%len(fillRunes)])
 	}
+	__antithesis_instrumentation__.Notify(599268)
 
 	return buf.String(), nil
 }
 
-// CleanEncodingName sanitizes the string meant to represent a
-// recognized encoding. This ignores any non-alphanumeric character.
-//
-// See function clean_encoding_name() in postgres' sources
-// in backend/utils/mb/encnames.c.
 func CleanEncodingName(s string) string {
+	__antithesis_instrumentation__.Notify(599274)
 	b := make([]byte, 0, len(s))
 	for i := 0; i < len(s); i++ {
+		__antithesis_instrumentation__.Notify(599276)
 		c := s[i]
-		if c >= 'A' && c <= 'Z' {
+		if c >= 'A' && func() bool {
+			__antithesis_instrumentation__.Notify(599277)
+			return c <= 'Z' == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(599278)
 			b = append(b, c-'A'+'a')
-		} else if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
-			b = append(b, c)
+		} else {
+			__antithesis_instrumentation__.Notify(599279)
+			if (c >= 'a' && func() bool {
+				__antithesis_instrumentation__.Notify(599280)
+				return c <= 'z' == true
+			}() == true) || func() bool {
+				__antithesis_instrumentation__.Notify(599281)
+				return (c >= '0' && func() bool {
+					__antithesis_instrumentation__.Notify(599282)
+					return c <= '9' == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(599283)
+				b = append(b, c)
+			} else {
+				__antithesis_instrumentation__.Notify(599284)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(599275)
 	return string(b)
 }
 
@@ -9286,63 +11938,81 @@ var errInsufficientPriv = pgerror.New(
 	pgcode.InsufficientPrivilege, "insufficient privilege",
 )
 
-// EvalFollowerReadOffset is a function used often with AS OF SYSTEM TIME queries
-// to determine the appropriate offset from now which is likely to be safe for
-// follower reads. It is injected by followerreadsccl. An error may be returned
-// if an enterprise license is not installed.
 var EvalFollowerReadOffset func(logicalClusterID uuid.UUID, _ *cluster.Settings) (time.Duration, error)
 
 func recentTimestamp(ctx *tree.EvalContext) (time.Time, error) {
+	__antithesis_instrumentation__.Notify(599285)
 	if EvalFollowerReadOffset == nil {
+		__antithesis_instrumentation__.Notify(599288)
 		telemetry.Inc(sqltelemetry.FollowerReadDisabledCCLCounter)
 		ctx.ClientNoticeSender.BufferClientNotice(
 			ctx.Context,
 			pgnotice.Newf("follower reads disabled because you are running a non-CCL distribution"),
 		)
 		return ctx.StmtTimestamp.Add(defaultFollowerReadDuration), nil
+	} else {
+		__antithesis_instrumentation__.Notify(599289)
 	}
+	__antithesis_instrumentation__.Notify(599286)
 	offset, err := EvalFollowerReadOffset(ctx.ClusterID, ctx.Settings)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599290)
 		if code := pgerror.GetPGCode(err); code == pgcode.CCLValidLicenseRequired {
+			__antithesis_instrumentation__.Notify(599292)
 			telemetry.Inc(sqltelemetry.FollowerReadDisabledNoEnterpriseLicense)
 			ctx.ClientNoticeSender.BufferClientNotice(
 				ctx.Context, pgnotice.Newf("follower reads disabled: %s", err.Error()),
 			)
 			return ctx.StmtTimestamp.Add(defaultFollowerReadDuration), nil
+		} else {
+			__antithesis_instrumentation__.Notify(599293)
 		}
+		__antithesis_instrumentation__.Notify(599291)
 		return time.Time{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(599294)
 	}
+	__antithesis_instrumentation__.Notify(599287)
 	return ctx.StmtTimestamp.Add(offset), nil
 }
 
 func requireNonNull(d tree.Datum) error {
+	__antithesis_instrumentation__.Notify(599295)
 	if d == tree.DNull {
+		__antithesis_instrumentation__.Notify(599297)
 		return errInvalidNull
+	} else {
+		__antithesis_instrumentation__.Notify(599298)
 	}
+	__antithesis_instrumentation__.Notify(599296)
 	return nil
 }
 
 func followerReadTimestamp(ctx *tree.EvalContext, _ tree.Datums) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599299)
 	ts, err := recentTimestamp(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599301)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(599302)
 	}
+	__antithesis_instrumentation__.Notify(599300)
 	return tree.MakeDTimestampTZ(ts, time.Microsecond)
 }
 
 var (
-	// WithMinTimestamp is an injectable function containing the implementation of the
-	// with_min_timestamp builtin.
 	WithMinTimestamp = func(ctx *tree.EvalContext, t time.Time) (time.Time, error) {
+		__antithesis_instrumentation__.Notify(599303)
 		return time.Time{}, pgerror.Newf(
 			pgcode.CCLRequired,
 			"%s can only be used with a CCL distribution",
 			tree.WithMinTimestampFunctionName,
 		)
 	}
-	// WithMaxStaleness is an injectable function containing the implementation of the
-	// with_max_staleness builtin.
+
 	WithMaxStaleness = func(ctx *tree.EvalContext, d duration.Duration) (time.Time, error) {
+		__antithesis_instrumentation__.Notify(599304)
 		return time.Time{}, pgerror.Newf(
 			pgcode.CCLRequired,
 			"%s can only be used with a CCL distribution",
@@ -9358,10 +12028,15 @@ available replica will error.
 `
 
 func withMinTimestampInfo(nearestOnly bool) string {
+	__antithesis_instrumentation__.Notify(599305)
 	var nearestOnlyText string
 	if nearestOnly {
+		__antithesis_instrumentation__.Notify(599307)
 		nearestOnlyText = nearestOnlyInfo
+	} else {
+		__antithesis_instrumentation__.Notify(599308)
 	}
+	__antithesis_instrumentation__.Notify(599306)
 	return fmt.Sprintf(
 		`When used in the AS OF SYSTEM TIME clause of an single-statement,
 read-only transaction, CockroachDB chooses the newest timestamp before the min_timestamp
@@ -9373,10 +12048,15 @@ Note this function requires an enterprise license on a CCL distribution.`,
 }
 
 func withMaxStalenessInfo(nearestOnly bool) string {
+	__antithesis_instrumentation__.Notify(599309)
 	var nearestOnlyText string
 	if nearestOnly {
+		__antithesis_instrumentation__.Notify(599311)
 		nearestOnlyText = nearestOnlyInfo
+	} else {
+		__antithesis_instrumentation__.Notify(599312)
 	}
+	__antithesis_instrumentation__.Notify(599310)
 	return fmt.Sprintf(
 		`When used in the AS OF SYSTEM TIME clause of an single-statement,
 read-only transaction, CockroachDB chooses the newest timestamp within the staleness
@@ -9388,62 +12068,103 @@ Note this function requires an enterprise license on a CCL distribution.`,
 }
 
 func withMinTimestamp(ctx *tree.EvalContext, t time.Time) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599313)
 	t, err := WithMinTimestamp(ctx, t)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599315)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(599316)
 	}
+	__antithesis_instrumentation__.Notify(599314)
 	return tree.MakeDTimestampTZ(t, time.Microsecond)
 }
 
 func withMaxStaleness(ctx *tree.EvalContext, d duration.Duration) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599317)
 	t, err := WithMaxStaleness(ctx, d)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599319)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(599320)
 	}
+	__antithesis_instrumentation__.Notify(599318)
 	return tree.MakeDTimestampTZ(t, time.Microsecond)
 }
 
 func jsonNumInvertedIndexEntries(_ *tree.EvalContext, val tree.Datum) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599321)
 	if val == tree.DNull {
+		__antithesis_instrumentation__.Notify(599324)
 		return tree.DZero, nil
+	} else {
+		__antithesis_instrumentation__.Notify(599325)
 	}
+	__antithesis_instrumentation__.Notify(599322)
 	n, err := json.NumInvertedIndexEntries(tree.MustBeDJSON(val).JSON)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599326)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(599327)
 	}
+	__antithesis_instrumentation__.Notify(599323)
 	return tree.NewDInt(tree.DInt(n)), nil
 }
 
 func arrayNumInvertedIndexEntries(
 	ctx *tree.EvalContext, val, version tree.Datum,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(599328)
 	if val == tree.DNull {
+		__antithesis_instrumentation__.Notify(599332)
 		return tree.DZero, nil
+	} else {
+		__antithesis_instrumentation__.Notify(599333)
 	}
+	__antithesis_instrumentation__.Notify(599329)
 	arr := tree.MustBeDArray(val)
 
 	v := descpb.EmptyArraysInInvertedIndexesVersion
 	if version != tree.DNull {
+		__antithesis_instrumentation__.Notify(599334)
 		v = descpb.IndexDescriptorVersion(tree.MustBeDInt(version))
+	} else {
+		__antithesis_instrumentation__.Notify(599335)
 	}
+	__antithesis_instrumentation__.Notify(599330)
 
 	keys, err := rowenc.EncodeInvertedIndexTableKeys(arr, nil, v)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599336)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(599337)
 	}
+	__antithesis_instrumentation__.Notify(599331)
 	return tree.NewDInt(tree.DInt(len(keys))), nil
 }
 
 func parseContextFromDateStyle(
 	ctx *tree.EvalContext, dateStyleStr string,
 ) (tree.ParseTimeContext, error) {
+	__antithesis_instrumentation__.Notify(599338)
 	ds, err := pgdate.ParseDateStyle(dateStyleStr, pgdate.DefaultDateStyle())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599341)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(599342)
 	}
+	__antithesis_instrumentation__.Notify(599339)
 	if ds.Style != pgdate.Style_ISO {
+		__antithesis_instrumentation__.Notify(599343)
 		return nil, unimplemented.NewWithIssue(41773, "only ISO style is supported")
+	} else {
+		__antithesis_instrumentation__.Notify(599344)
 	}
+	__antithesis_instrumentation__.Notify(599340)
 	return tree.NewParseTimeContext(
 		ctx.GetTxnTimestamp(time.Microsecond).Time,
 		tree.NewParseTimeContextOptionDateStyle(ds),
@@ -9453,30 +12174,50 @@ func parseContextFromDateStyle(
 func prettyStatementCustomConfig(
 	stmt string, lineWidth int, alignMode int, caseSetting int,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(599345)
 	cfg := tree.DefaultPrettyCfg()
 	cfg.LineWidth = lineWidth
 	cfg.Align = tree.PrettyAlignMode(alignMode)
 	caseMode := tree.CaseMode(caseSetting)
 	if caseMode == tree.LowerCase {
-		cfg.Case = func(str string) string { return strings.ToLower(str) }
-	} else if caseMode == tree.UpperCase {
-		cfg.Case = func(str string) string { return strings.ToUpper(str) }
+		__antithesis_instrumentation__.Notify(599347)
+		cfg.Case = func(str string) string { __antithesis_instrumentation__.Notify(599348); return strings.ToLower(str) }
+	} else {
+		__antithesis_instrumentation__.Notify(599349)
+		if caseMode == tree.UpperCase {
+			__antithesis_instrumentation__.Notify(599350)
+			cfg.Case = func(str string) string { __antithesis_instrumentation__.Notify(599351); return strings.ToUpper(str) }
+		} else {
+			__antithesis_instrumentation__.Notify(599352)
+		}
 	}
+	__antithesis_instrumentation__.Notify(599346)
 	return prettyStatement(cfg, stmt)
 }
 
 func prettyStatement(p tree.PrettyCfg, stmt string) (string, error) {
+	__antithesis_instrumentation__.Notify(599353)
 	stmts, err := parser.Parse(stmt)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599356)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(599357)
 	}
+	__antithesis_instrumentation__.Notify(599354)
 	var formattedStmt strings.Builder
 	for idx := range stmts {
+		__antithesis_instrumentation__.Notify(599358)
 		formattedStmt.WriteString(p.Pretty(stmts[idx].AST))
 		if len(stmts) > 1 {
+			__antithesis_instrumentation__.Notify(599360)
 			formattedStmt.WriteString(";")
+		} else {
+			__antithesis_instrumentation__.Notify(599361)
 		}
+		__antithesis_instrumentation__.Notify(599359)
 		formattedStmt.WriteString("\n")
 	}
+	__antithesis_instrumentation__.Notify(599355)
 	return formattedStmt.String(), nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sessiondatapb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -18,276 +10,258 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ExperimentalDistSQLPlanningMode controls if and when the opt-driven DistSQL
-// planning is used to create physical plans.
 type ExperimentalDistSQLPlanningMode int64
 
 const (
-	// ExperimentalDistSQLPlanningOff means that we always use the old path of
-	// going from opt.Expr to planNodes and then to processor specs.
 	ExperimentalDistSQLPlanningOff ExperimentalDistSQLPlanningMode = iota
-	// ExperimentalDistSQLPlanningOn means that we will attempt to use the new
-	// path for performing DistSQL planning in the optimizer, and if that
-	// doesn't succeed for some reason, we will fallback to the old path.
+
 	ExperimentalDistSQLPlanningOn
-	// ExperimentalDistSQLPlanningAlways means that we will only use the new path,
-	// and if it fails for any reason, the query will fail as well.
+
 	ExperimentalDistSQLPlanningAlways
 )
 
 func (m ExperimentalDistSQLPlanningMode) String() string {
+	__antithesis_instrumentation__.Notify(617978)
 	switch m {
 	case ExperimentalDistSQLPlanningOff:
+		__antithesis_instrumentation__.Notify(617979)
 		return "off"
 	case ExperimentalDistSQLPlanningOn:
+		__antithesis_instrumentation__.Notify(617980)
 		return "on"
 	case ExperimentalDistSQLPlanningAlways:
+		__antithesis_instrumentation__.Notify(617981)
 		return "always"
 	default:
+		__antithesis_instrumentation__.Notify(617982)
 		return fmt.Sprintf("invalid (%d)", m)
 	}
 }
 
-// ExperimentalDistSQLPlanningModeFromString converts a string into a
-// ExperimentalDistSQLPlanningMode. False is returned if the conversion was
-// unsuccessful.
 func ExperimentalDistSQLPlanningModeFromString(val string) (ExperimentalDistSQLPlanningMode, bool) {
+	__antithesis_instrumentation__.Notify(617983)
 	var m ExperimentalDistSQLPlanningMode
 	switch strings.ToUpper(val) {
 	case "OFF":
+		__antithesis_instrumentation__.Notify(617985)
 		m = ExperimentalDistSQLPlanningOff
 	case "ON":
+		__antithesis_instrumentation__.Notify(617986)
 		m = ExperimentalDistSQLPlanningOn
 	case "ALWAYS":
+		__antithesis_instrumentation__.Notify(617987)
 		m = ExperimentalDistSQLPlanningAlways
 	default:
+		__antithesis_instrumentation__.Notify(617988)
 		return 0, false
 	}
+	__antithesis_instrumentation__.Notify(617984)
 	return m, true
 }
 
-// DistSQLExecMode controls if and when the Executor distributes queries.
-// Since 2.1, we run everything through the DistSQL infrastructure,
-// and these settings control whether to use a distributed plan, or use a plan
-// that only involves local DistSQL processors.
 type DistSQLExecMode int64
 
 const (
-	// DistSQLOff means that we never distribute queries.
 	DistSQLOff DistSQLExecMode = iota
-	// DistSQLAuto means that we automatically decide on a case-by-case basis if
-	// we distribute queries.
+
 	DistSQLAuto
-	// DistSQLOn means that we distribute queries that are supported.
+
 	DistSQLOn
-	// DistSQLAlways means that we only distribute; unsupported queries fail.
+
 	DistSQLAlways
 )
 
 func (m DistSQLExecMode) String() string {
+	__antithesis_instrumentation__.Notify(617989)
 	switch m {
 	case DistSQLOff:
+		__antithesis_instrumentation__.Notify(617990)
 		return "off"
 	case DistSQLAuto:
+		__antithesis_instrumentation__.Notify(617991)
 		return "auto"
 	case DistSQLOn:
+		__antithesis_instrumentation__.Notify(617992)
 		return "on"
 	case DistSQLAlways:
+		__antithesis_instrumentation__.Notify(617993)
 		return "always"
 	default:
+		__antithesis_instrumentation__.Notify(617994)
 		return fmt.Sprintf("invalid (%d)", m)
 	}
 }
 
-// DistSQLExecModeFromString converts a string into a DistSQLExecMode
 func DistSQLExecModeFromString(val string) (_ DistSQLExecMode, ok bool) {
+	__antithesis_instrumentation__.Notify(617995)
 	switch strings.ToUpper(val) {
 	case "OFF":
+		__antithesis_instrumentation__.Notify(617996)
 		return DistSQLOff, true
 	case "AUTO":
+		__antithesis_instrumentation__.Notify(617997)
 		return DistSQLAuto, true
 	case "ON":
+		__antithesis_instrumentation__.Notify(617998)
 		return DistSQLOn, true
 	case "ALWAYS":
+		__antithesis_instrumentation__.Notify(617999)
 		return DistSQLAlways, true
 	default:
+		__antithesis_instrumentation__.Notify(618000)
 		return 0, false
 	}
 }
 
-// SerialNormalizationMode controls if and when the Executor uses DistSQL.
-// NB: The values of the enums must be stable across releases.
 type SerialNormalizationMode int64
 
 const (
-	// SerialUsesRowID means use INT NOT NULL DEFAULT unique_rowid().
 	SerialUsesRowID SerialNormalizationMode = 0
-	// SerialUsesVirtualSequences means create a virtual sequence and
-	// use INT NOT NULL DEFAULT nextval(...).
+
 	SerialUsesVirtualSequences SerialNormalizationMode = 1
-	// SerialUsesSQLSequences means create a regular SQL sequence and
-	// use INT NOT NULL DEFAULT nextval(...). Each call to nextval()
-	// is a distributed call to kv. This minimizes the size of gaps
-	// between successive sequence numbers (which occur due to
-	// node failures or errors), but the multiple kv calls
-	// can impact performance negatively.
+
 	SerialUsesSQLSequences SerialNormalizationMode = 2
-	// SerialUsesCachedSQLSequences is identical to SerialUsesSQLSequences with
-	// the exception that nodes can cache sequence values. This significantly
-	// reduces contention and distributed calls to kv, which results in better
-	// performance. Gaps between sequences may be larger as a result of cached
-	// values being lost to errors and/or node failures.
+
 	SerialUsesCachedSQLSequences SerialNormalizationMode = 3
-	// SerialUsesUnorderedRowID means use INT NOT NULL DEFAULT unordered_unique_rowid().
+
 	SerialUsesUnorderedRowID SerialNormalizationMode = 4
 )
 
 func (m SerialNormalizationMode) String() string {
+	__antithesis_instrumentation__.Notify(618001)
 	switch m {
 	case SerialUsesRowID:
+		__antithesis_instrumentation__.Notify(618002)
 		return "rowid"
 	case SerialUsesUnorderedRowID:
+		__antithesis_instrumentation__.Notify(618003)
 		return "unordered_rowid"
 	case SerialUsesVirtualSequences:
+		__antithesis_instrumentation__.Notify(618004)
 		return "virtual_sequence"
 	case SerialUsesSQLSequences:
+		__antithesis_instrumentation__.Notify(618005)
 		return "sql_sequence"
 	case SerialUsesCachedSQLSequences:
+		__antithesis_instrumentation__.Notify(618006)
 		return "sql_sequence_cached"
 	default:
+		__antithesis_instrumentation__.Notify(618007)
 		return fmt.Sprintf("invalid (%d)", m)
 	}
 }
 
-// SerialNormalizationModeFromString converts a string into a SerialNormalizationMode
 func SerialNormalizationModeFromString(val string) (_ SerialNormalizationMode, ok bool) {
+	__antithesis_instrumentation__.Notify(618008)
 	switch strings.ToUpper(val) {
 	case "ROWID":
+		__antithesis_instrumentation__.Notify(618009)
 		return SerialUsesRowID, true
 	case "UNORDERED_ROWID":
+		__antithesis_instrumentation__.Notify(618010)
 		return SerialUsesUnorderedRowID, true
 	case "VIRTUAL_SEQUENCE":
+		__antithesis_instrumentation__.Notify(618011)
 		return SerialUsesVirtualSequences, true
 	case "SQL_SEQUENCE":
+		__antithesis_instrumentation__.Notify(618012)
 		return SerialUsesSQLSequences, true
 	case "SQL_SEQUENCE_CACHED":
+		__antithesis_instrumentation__.Notify(618013)
 		return SerialUsesCachedSQLSequences, true
 	default:
+		__antithesis_instrumentation__.Notify(618014)
 		return 0, false
 	}
 }
 
-// NewSchemaChangerMode controls if and when the new schema changer (in
-// sql/schemachanger) is in use.
 type NewSchemaChangerMode int64
 
 const (
-	// UseNewSchemaChangerOff means that we never use the new schema changer.
 	UseNewSchemaChangerOff NewSchemaChangerMode = iota
-	// UseNewSchemaChangerOn means that we use the new schema changer for
-	// supported statements in implicit transactions, but fall back to the old
-	// schema changer otherwise.
+
 	UseNewSchemaChangerOn
-	// UseNewSchemaChangerUnsafe means that we attempt to use the new schema
-	// changer for implemented statements including ones which aren't production
-	// ready. Used for testing/development.
+
 	UseNewSchemaChangerUnsafe
-	// UseNewSchemaChangerUnsafeAlways means that we attempt to use the new schema
-	// changer for all statements and return errors for unsupported statements.
-	// Used for testing/development.
+
 	UseNewSchemaChangerUnsafeAlways
 )
 
 func (m NewSchemaChangerMode) String() string {
+	__antithesis_instrumentation__.Notify(618015)
 	switch m {
 	case UseNewSchemaChangerOff:
+		__antithesis_instrumentation__.Notify(618016)
 		return "off"
 	case UseNewSchemaChangerOn:
+		__antithesis_instrumentation__.Notify(618017)
 		return "on"
 	case UseNewSchemaChangerUnsafe:
+		__antithesis_instrumentation__.Notify(618018)
 		return "unsafe"
 	case UseNewSchemaChangerUnsafeAlways:
+		__antithesis_instrumentation__.Notify(618019)
 		return "unsafe_always"
 	default:
+		__antithesis_instrumentation__.Notify(618020)
 		return fmt.Sprintf("invalid (%d)", m)
 	}
 }
 
-// NewSchemaChangerModeFromString converts a string into a NewSchemaChangerMode
 func NewSchemaChangerModeFromString(val string) (_ NewSchemaChangerMode, ok bool) {
+	__antithesis_instrumentation__.Notify(618021)
 	switch strings.ToUpper(val) {
 	case "OFF":
+		__antithesis_instrumentation__.Notify(618022)
 		return UseNewSchemaChangerOff, true
 	case "ON":
+		__antithesis_instrumentation__.Notify(618023)
 		return UseNewSchemaChangerOn, true
 	case "UNSAFE":
+		__antithesis_instrumentation__.Notify(618024)
 		return UseNewSchemaChangerUnsafe, true
 	case "UNSAFE_ALWAYS":
+		__antithesis_instrumentation__.Notify(618025)
 		return UseNewSchemaChangerUnsafeAlways, true
 	default:
+		__antithesis_instrumentation__.Notify(618026)
 		return 0, false
 	}
 }
 
-// QoSLevel controls the level of admission control to use for new SQL requests.
 type QoSLevel admission.WorkPriority
 
 const (
-	// SystemLow denotes the minimum system QoS level, which is not settable as a
-	// session default_transaction_quality_of_service value.
 	SystemLow = QoSLevel(admission.LowPri)
 
-	// TTLStatsLow denotes a QoS level used internally by the TTL feature, which
-	// is not settable as a session default_transaction_quality_of_service value.
 	TTLStatsLow = QoSLevel(admission.TTLLowPri)
 
-	// TTLLow denotes a QoS level used internally by the TTL feature, which is not
-	// settable as a session default_transaction_quality_of_service value.
 	TTLLow = QoSLevel(admission.TTLLowPri)
 
-	// UserLow denotes an end user QoS level lower than the default.
 	UserLow = QoSLevel(admission.UserLowPri)
 
-	// Normal denotes an end user QoS level unchanged from the default.
 	Normal = QoSLevel(admission.NormalPri)
 
-	// UserHigh denotes an end user QoS level higher than the default.
 	UserHigh = QoSLevel(admission.UserHighPri)
 
-	// Locking denotes an internal increased priority for transactions that are
-	// acquiring locks.
 	Locking = QoSLevel(admission.LockingPri)
 
-	// SystemHigh denotes the maximum system QoS level, which is not settable as a
-	// session default_transaction_quality_of_service value.
 	SystemHigh = QoSLevel(admission.HighPri)
 )
 
 const (
-	// NormalName is the external session setting string value to use to mean
-	// Normal QoS level.
 	NormalName = "regular"
 
-	// UserHighName is the external session setting string value to use to mean
-	// UserHigh QoS level.
 	UserHighName = "critical"
 
-	// UserLowName is the external session setting string value to use to mean
-	// UserLow QoS level.
 	UserLowName = "background"
 
-	// SystemHighName is the string value to display indicating a SystemHigh
-	// QoS level.
 	SystemHighName = "maximum"
 
-	// SystemLowName is the string value to display indicating a SystemLow
-	// QoS level.
 	SystemLowName = "minimum"
 
-	// TTLLowName is the string value to display indicating a TTLLow QoS level.
 	TTLLowName = "ttl_low"
 
-	// LockingName is the string value to display indicating a Locking QoS level.
 	LockingName = "locking"
 )
 
@@ -301,54 +275,72 @@ var qosLevelsDict = map[QoSLevel]string{
 	SystemHigh: SystemHighName,
 }
 
-// ParseQoSLevelFromString converts a string into a QoSLevel
 func ParseQoSLevelFromString(val string) (_ QoSLevel, ok bool) {
+	__antithesis_instrumentation__.Notify(618027)
 	switch strings.ToUpper(val) {
 	case strings.ToUpper(UserHighName):
+		__antithesis_instrumentation__.Notify(618028)
 		return UserHigh, true
 	case strings.ToUpper(UserLowName):
+		__antithesis_instrumentation__.Notify(618029)
 		return UserLow, true
 	case strings.ToUpper(NormalName):
+		__antithesis_instrumentation__.Notify(618030)
 		return Normal, true
 	default:
+		__antithesis_instrumentation__.Notify(618031)
 		return 0, false
 	}
 }
 
-// String prints the string representation of the
-// default_transaction_quality_of_service session setting.
 func (e QoSLevel) String() string {
+	__antithesis_instrumentation__.Notify(618032)
 	if name, ok := qosLevelsDict[e]; ok {
+		__antithesis_instrumentation__.Notify(618034)
 		return name
+	} else {
+		__antithesis_instrumentation__.Notify(618035)
 	}
+	__antithesis_instrumentation__.Notify(618033)
 	return fmt.Sprintf("%d", int(e))
 }
 
-// ToQoSLevelString interprets an int32 value as a QoSLevel and returns its
-// String representation.
 func ToQoSLevelString(value int32) string {
-	if value > int32(SystemHigh) || value < int32(SystemLow) {
+	__antithesis_instrumentation__.Notify(618036)
+	if value > int32(SystemHigh) || func() bool {
+		__antithesis_instrumentation__.Notify(618038)
+		return value < int32(SystemLow) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(618039)
 		return fmt.Sprintf("%d", value)
+	} else {
+		__antithesis_instrumentation__.Notify(618040)
 	}
+	__antithesis_instrumentation__.Notify(618037)
 	qosLevel := QoSLevel(value)
 	return qosLevel.String()
 }
 
-// Validate checks for a valid user QoSLevel setting before returning it.
 func (e QoSLevel) Validate() QoSLevel {
+	__antithesis_instrumentation__.Notify(618041)
 	switch e {
 	case Normal, UserHigh, UserLow:
+		__antithesis_instrumentation__.Notify(618042)
 		return e
 	default:
+		__antithesis_instrumentation__.Notify(618043)
 		panic(errors.AssertionFailedf("use of illegal user QoSLevel: %s", e.String()))
 	}
 }
 
-// ValidateInternal checks for a valid internal QoSLevel setting before
-// returning it.
 func (e QoSLevel) ValidateInternal() QoSLevel {
+	__antithesis_instrumentation__.Notify(618044)
 	if _, ok := qosLevelsDict[e]; ok {
+		__antithesis_instrumentation__.Notify(618046)
 		return e
+	} else {
+		__antithesis_instrumentation__.Notify(618047)
 	}
+	__antithesis_instrumentation__.Notify(618045)
 	panic(errors.AssertionFailedf("use of illegal internal QoSLevel: %s", e.String()))
 }

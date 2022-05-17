@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descbuilder
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/clusterversion"
@@ -22,38 +14,36 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
-// NewBuilderWithMVCCTimestamp takes a descriptor as deserialized from storage,
-// along with its MVCC timestamp, and returns a catalog.DescriptorBuilder object.
-// Returns nil if nothing specific is found in desc.
 func NewBuilderWithMVCCTimestamp(
 	desc *descpb.Descriptor, mvccTimestamp hlc.Timestamp,
 ) catalog.DescriptorBuilder {
+	__antithesis_instrumentation__.Notify(251462)
 	table, database, typ, schema := descpb.FromDescriptorWithMVCCTimestamp(desc, mvccTimestamp)
 	switch {
 	case table != nil:
+		__antithesis_instrumentation__.Notify(251463)
 		return tabledesc.NewBuilder(table)
 	case database != nil:
+		__antithesis_instrumentation__.Notify(251464)
 		return dbdesc.NewBuilder(database)
 	case typ != nil:
+		__antithesis_instrumentation__.Notify(251465)
 		return typedesc.NewBuilder(typ)
 	case schema != nil:
+		__antithesis_instrumentation__.Notify(251466)
 		return schemadesc.NewBuilder(schema)
 	default:
+		__antithesis_instrumentation__.Notify(251467)
 		return nil
 	}
 }
 
-// NewBuilder is a convenience function which calls NewBuilderWithMVCCTimestamp
-// with an empty timestamp.
-// The expectation here, therefore, is that this function is called either for a
-// new descriptor that doesn't exist in storage yet, or already has its
-// modification time field (and others which depend on the MVCC timestamp)
-// set to a valid value.
 func NewBuilder(desc *descpb.Descriptor) catalog.DescriptorBuilder {
+	__antithesis_instrumentation__.Notify(251468)
 	return NewBuilderWithMVCCTimestamp(desc, hlc.Timestamp{})
 }
 
-// ValidateSelf validates that the descriptor is internally consistent.
 func ValidateSelf(desc catalog.Descriptor, version clusterversion.ClusterVersion) error {
+	__antithesis_instrumentation__.Notify(251469)
 	return validate.Self(version, desc)
 }

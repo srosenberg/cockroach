@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package clisqlclient
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strings"
@@ -16,15 +8,17 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ParseBool parses a boolean string for use in CLI SQL commands.
-// It recognizes booleans in a similar way as 'psql'.
 func ParseBool(s string) (bool, error) {
+	__antithesis_instrumentation__.Notify(28825)
 	switch strings.TrimSpace(strings.ToLower(s)) {
 	case "true", "on", "yes", "1":
+		__antithesis_instrumentation__.Notify(28826)
 		return true, nil
 	case "false", "off", "no", "0":
+		__antithesis_instrumentation__.Notify(28827)
 		return false, nil
 	default:
+		__antithesis_instrumentation__.Notify(28828)
 		return false, errors.Newf("invalid boolean value %q", s)
 	}
 }

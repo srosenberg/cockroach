@@ -1,18 +1,10 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package migrations contains the implementation of migrations. It is imported
 // by the server library.
 //
 // This package registers the migrations with the migration package.
 package migrations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,21 +14,17 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// GetMigration returns the migration corresponding to this version if
-// one exists.
 func GetMigration(key clusterversion.ClusterVersion) (migration.Migration, bool) {
+	__antithesis_instrumentation__.Notify(128492)
 	m, ok := registry[key]
 	return m, ok
 }
 
-// NoPrecondition is a PreconditionFunc that doesn't check anything.
 func NoPrecondition(context.Context, clusterversion.ClusterVersion, migration.TenantDeps) error {
+	__antithesis_instrumentation__.Notify(128493)
 	return nil
 }
 
-// registry defines the global mapping between a cluster version and the
-// associated migration. The migration is only executed after a cluster-wide
-// bump of the corresponding version gate.
 var registry = make(map[clusterversion.ClusterVersion]migration.Migration)
 
 var migrations = []migration.Migration{
@@ -155,6 +143,7 @@ func init() {
 }
 
 func toCV(key clusterversion.Key) clusterversion.ClusterVersion {
+	__antithesis_instrumentation__.Notify(128494)
 	return clusterversion.ClusterVersion{
 		Version: clusterversion.ByKey(key),
 	}

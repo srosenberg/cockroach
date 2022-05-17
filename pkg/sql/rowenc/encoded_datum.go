@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowenc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -28,108 +20,131 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// EncodingDirToDatumEncoding returns an equivalent descpb.DatumEncoding for the given
-// encoding direction.
 func EncodingDirToDatumEncoding(dir encoding.Direction) descpb.DatumEncoding {
+	__antithesis_instrumentation__.Notify(569908)
 	switch dir {
 	case encoding.Ascending:
+		__antithesis_instrumentation__.Notify(569909)
 		return descpb.DatumEncoding_ASCENDING_KEY
 	case encoding.Descending:
+		__antithesis_instrumentation__.Notify(569910)
 		return descpb.DatumEncoding_DESCENDING_KEY
 	default:
+		__antithesis_instrumentation__.Notify(569911)
 		panic(errors.AssertionFailedf("invalid encoding direction: %d", dir))
 	}
 }
 
-// EncDatum represents a datum that is "backed" by an encoding and/or by a
-// tree.Datum. It allows "passing through" a Datum without decoding and
-// reencoding.
 type EncDatum struct {
-	// Encoding type. Valid only if encoded is not nil.
 	encoding descpb.DatumEncoding
 
-	// Encoded datum (according to the encoding field).
 	encoded []byte
 
-	// Decoded datum.
 	Datum tree.Datum
 }
 
 func (ed *EncDatum) stringWithAlloc(typ *types.T, a *tree.DatumAlloc) string {
+	__antithesis_instrumentation__.Notify(569912)
 	if ed.Datum == nil {
+		__antithesis_instrumentation__.Notify(569914)
 		if ed.encoded == nil {
+			__antithesis_instrumentation__.Notify(569917)
 			return "<unset>"
+		} else {
+			__antithesis_instrumentation__.Notify(569918)
 		}
+		__antithesis_instrumentation__.Notify(569915)
 		if a == nil {
+			__antithesis_instrumentation__.Notify(569919)
 			a = &tree.DatumAlloc{}
+		} else {
+			__antithesis_instrumentation__.Notify(569920)
 		}
+		__antithesis_instrumentation__.Notify(569916)
 		err := ed.EnsureDecoded(typ, a)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569921)
 			return fmt.Sprintf("<error: %v>", err)
+		} else {
+			__antithesis_instrumentation__.Notify(569922)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(569923)
 	}
+	__antithesis_instrumentation__.Notify(569913)
 	return ed.Datum.String()
 }
 
 func (ed *EncDatum) String(typ *types.T) string {
+	__antithesis_instrumentation__.Notify(569924)
 	return ed.stringWithAlloc(typ, nil)
 }
 
-// BytesEqual is true if the EncDatum's encoded field is equal to the input.
 func (ed *EncDatum) BytesEqual(b []byte) bool {
+	__antithesis_instrumentation__.Notify(569925)
 	return bytes.Equal(ed.encoded, b)
 }
 
-// EncodedString returns an immutable copy of this EncDatum's encoded field.
 func (ed *EncDatum) EncodedString() string {
+	__antithesis_instrumentation__.Notify(569926)
 	return string(ed.encoded)
 }
 
-// EncodedBytes returns this EncDatum's encoded field. This should be rarely
-// used, and the caller must not modify the returned slice.
 func (ed *EncDatum) EncodedBytes() []byte {
+	__antithesis_instrumentation__.Notify(569927)
 	return ed.encoded
 }
 
-// EncDatumOverhead is the overhead of EncDatum in bytes.
 const EncDatumOverhead = unsafe.Sizeof(EncDatum{})
 
-// Size returns a lower bound on the total size of the receiver in bytes,
-// including memory referenced by the receiver.
 func (ed EncDatum) Size() uintptr {
+	__antithesis_instrumentation__.Notify(569928)
 	size := EncDatumOverhead
 	if ed.encoded != nil {
+		__antithesis_instrumentation__.Notify(569931)
 		size += uintptr(len(ed.encoded))
+	} else {
+		__antithesis_instrumentation__.Notify(569932)
 	}
+	__antithesis_instrumentation__.Notify(569929)
 	if ed.Datum != nil {
+		__antithesis_instrumentation__.Notify(569933)
 		size += ed.Datum.Size()
+	} else {
+		__antithesis_instrumentation__.Notify(569934)
 	}
+	__antithesis_instrumentation__.Notify(569930)
 	return size
 }
 
-// DiskSize returns the approximate size of the data without the EncDatum
-// overhead. If the data is encoded, it returns the number of encoded bytes.
-// If the data isn't encoded but has a valid Datum, it returns the size of the
-// Datum instead. Thus the data size is not double-counted, and the encoded
-// size is preferred.
 func (ed EncDatum) DiskSize() uintptr {
+	__antithesis_instrumentation__.Notify(569935)
 	if ed.encoded != nil {
+		__antithesis_instrumentation__.Notify(569938)
 		return uintptr(len(ed.encoded))
+	} else {
+		__antithesis_instrumentation__.Notify(569939)
 	}
+	__antithesis_instrumentation__.Notify(569936)
 	if ed.Datum != nil {
+		__antithesis_instrumentation__.Notify(569940)
 		return ed.Datum.Size()
+	} else {
+		__antithesis_instrumentation__.Notify(569941)
 	}
+	__antithesis_instrumentation__.Notify(569937)
 	return uintptr(0)
 }
 
-// EncDatumFromEncoded initializes an EncDatum with the given encoded
-// value. The encoded value is stored as a shallow copy, so the caller must
-// make sure the slice is not modified for the lifetime of the EncDatum.
-// The underlying Datum is nil.
 func EncDatumFromEncoded(enc descpb.DatumEncoding, encoded []byte) EncDatum {
+	__antithesis_instrumentation__.Notify(569942)
 	if len(encoded) == 0 {
+		__antithesis_instrumentation__.Notify(569944)
 		panic(errors.AssertionFailedf("empty encoded value"))
+	} else {
+		__antithesis_instrumentation__.Notify(569945)
 	}
+	__antithesis_instrumentation__.Notify(569943)
 	return EncDatum{
 		encoding: enc,
 		encoded:  encoded,
@@ -137,370 +152,508 @@ func EncDatumFromEncoded(enc descpb.DatumEncoding, encoded []byte) EncDatum {
 	}
 }
 
-// EncDatumFromBuffer initializes an EncDatum with an encoding that is
-// possibly followed by other data. Similar to EncDatumFromEncoded,
-// except that this function figures out where the encoding stops and returns a
-// slice for the rest of the buffer.
 func EncDatumFromBuffer(
 	typ *types.T, enc descpb.DatumEncoding, buf []byte,
 ) (EncDatum, []byte, error) {
+	__antithesis_instrumentation__.Notify(569946)
 	if len(buf) == 0 {
+		__antithesis_instrumentation__.Notify(569948)
 		return EncDatum{}, nil, errors.New("empty encoded value")
+	} else {
+		__antithesis_instrumentation__.Notify(569949)
 	}
+	__antithesis_instrumentation__.Notify(569947)
 	switch enc {
 	case descpb.DatumEncoding_ASCENDING_KEY, descpb.DatumEncoding_DESCENDING_KEY:
+		__antithesis_instrumentation__.Notify(569950)
 		var encLen int
 		var err error
 		encLen, err = encoding.PeekLength(buf)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569955)
 			return EncDatum{}, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(569956)
 		}
+		__antithesis_instrumentation__.Notify(569951)
 		ed := EncDatumFromEncoded(enc, buf[:encLen])
 		return ed, buf[encLen:], nil
 	case descpb.DatumEncoding_VALUE:
+		__antithesis_instrumentation__.Notify(569952)
 		typeOffset, encLen, err := encoding.PeekValueLength(buf)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569957)
 			return EncDatum{}, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(569958)
 		}
+		__antithesis_instrumentation__.Notify(569953)
 		ed := EncDatumFromEncoded(enc, buf[typeOffset:encLen])
 		return ed, buf[encLen:], nil
 	default:
+		__antithesis_instrumentation__.Notify(569954)
 		panic(errors.AssertionFailedf("unknown encoding %s", enc))
 	}
 }
 
-// EncDatumValueFromBufferWithOffsetsAndType is just like calling
-// EncDatumFromBuffer with descpb.DatumEncoding_VALUE, except it expects that you pass
-// in the result of calling DecodeValueTag on the input buf. Use this if you've
-// already called DecodeValueTag on buf already, to avoid it getting called
-// more than necessary.
 func EncDatumValueFromBufferWithOffsetsAndType(
 	buf []byte, typeOffset int, dataOffset int, typ encoding.Type,
 ) (EncDatum, []byte, error) {
+	__antithesis_instrumentation__.Notify(569959)
 	encLen, err := encoding.PeekValueLengthWithOffsetsAndType(buf, dataOffset, typ)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(569961)
 		return EncDatum{}, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(569962)
 	}
+	__antithesis_instrumentation__.Notify(569960)
 	ed := EncDatumFromEncoded(descpb.DatumEncoding_VALUE, buf[typeOffset:encLen])
 	return ed, buf[encLen:], nil
 }
 
-// DatumToEncDatum initializes an EncDatum with the given Datum.
 func DatumToEncDatum(ctyp *types.T, d tree.Datum) EncDatum {
+	__antithesis_instrumentation__.Notify(569963)
 	if d == nil {
+		__antithesis_instrumentation__.Notify(569966)
 		panic(errors.AssertionFailedf("cannot convert nil datum to EncDatum"))
+	} else {
+		__antithesis_instrumentation__.Notify(569967)
 	}
+	__antithesis_instrumentation__.Notify(569964)
 
 	dTyp := d.ResolvedType()
-	if d != tree.DNull && !ctyp.Equivalent(dTyp) && !dTyp.IsAmbiguous() {
+	if d != tree.DNull && func() bool {
+		__antithesis_instrumentation__.Notify(569968)
+		return !ctyp.Equivalent(dTyp) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(569969)
+		return !dTyp.IsAmbiguous() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(569970)
 		panic(errors.AssertionFailedf("invalid datum type given: %s, expected %s", dTyp, ctyp))
+	} else {
+		__antithesis_instrumentation__.Notify(569971)
 	}
+	__antithesis_instrumentation__.Notify(569965)
 	return EncDatum{Datum: d}
 }
 
-// UnsetDatum ensures subsequent IsUnset() calls return false.
 func (ed *EncDatum) UnsetDatum() {
+	__antithesis_instrumentation__.Notify(569972)
 	ed.encoded = nil
 	ed.Datum = nil
 	ed.encoding = 0
 }
 
-// IsUnset returns true if EncDatumFromEncoded or DatumToEncDatum were not called.
 func (ed *EncDatum) IsUnset() bool {
-	return ed.encoded == nil && ed.Datum == nil
+	__antithesis_instrumentation__.Notify(569973)
+	return ed.encoded == nil && func() bool {
+		__antithesis_instrumentation__.Notify(569974)
+		return ed.Datum == nil == true
+	}() == true
 }
 
-// IsNull returns true if the EncDatum value is NULL. Equivalent to checking if
-// ed.Datum is DNull after calling EnsureDecoded.
 func (ed *EncDatum) IsNull() bool {
+	__antithesis_instrumentation__.Notify(569975)
 	if ed.Datum != nil {
+		__antithesis_instrumentation__.Notify(569978)
 		return ed.Datum == tree.DNull
+	} else {
+		__antithesis_instrumentation__.Notify(569979)
 	}
+	__antithesis_instrumentation__.Notify(569976)
 	if ed.encoded == nil {
+		__antithesis_instrumentation__.Notify(569980)
 		panic(errors.AssertionFailedf("IsNull on unset EncDatum"))
+	} else {
+		__antithesis_instrumentation__.Notify(569981)
 	}
+	__antithesis_instrumentation__.Notify(569977)
 	switch ed.encoding {
 	case descpb.DatumEncoding_ASCENDING_KEY, descpb.DatumEncoding_DESCENDING_KEY:
+		__antithesis_instrumentation__.Notify(569982)
 		_, isNull := encoding.DecodeIfNull(ed.encoded)
 		return isNull
 
 	case descpb.DatumEncoding_VALUE:
+		__antithesis_instrumentation__.Notify(569983)
 		_, _, _, typ, err := encoding.DecodeValueTag(ed.encoded)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569986)
 			panic(errors.WithAssertionFailure(err))
+		} else {
+			__antithesis_instrumentation__.Notify(569987)
 		}
+		__antithesis_instrumentation__.Notify(569984)
 		return typ == encoding.Null
 
 	default:
+		__antithesis_instrumentation__.Notify(569985)
 		panic(errors.AssertionFailedf("unknown encoding %s", ed.encoding))
 	}
 }
 
-// EnsureDecoded ensures that the Datum field is set (decoding if it is not).
 func (ed *EncDatum) EnsureDecoded(typ *types.T, a *tree.DatumAlloc) error {
+	__antithesis_instrumentation__.Notify(569988)
 	if ed.Datum != nil {
+		__antithesis_instrumentation__.Notify(569994)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(569995)
 	}
+	__antithesis_instrumentation__.Notify(569989)
 	if ed.encoded == nil {
+		__antithesis_instrumentation__.Notify(569996)
 		return errors.AssertionFailedf("decoding unset EncDatum")
+	} else {
+		__antithesis_instrumentation__.Notify(569997)
 	}
+	__antithesis_instrumentation__.Notify(569990)
 	var err error
 	var rem []byte
 	switch ed.encoding {
 	case descpb.DatumEncoding_ASCENDING_KEY:
+		__antithesis_instrumentation__.Notify(569998)
 		ed.Datum, rem, err = keyside.Decode(a, typ, ed.encoded, encoding.Ascending)
 	case descpb.DatumEncoding_DESCENDING_KEY:
+		__antithesis_instrumentation__.Notify(569999)
 		ed.Datum, rem, err = keyside.Decode(a, typ, ed.encoded, encoding.Descending)
 	case descpb.DatumEncoding_VALUE:
+		__antithesis_instrumentation__.Notify(570000)
 		ed.Datum, rem, err = valueside.Decode(a, typ, ed.encoded)
 	default:
+		__antithesis_instrumentation__.Notify(570001)
 		return errors.AssertionFailedf("unknown encoding %d", redact.Safe(ed.encoding))
 	}
+	__antithesis_instrumentation__.Notify(569991)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(570002)
 		return errors.Wrapf(err, "error decoding %d bytes", redact.Safe(len(ed.encoded)))
+	} else {
+		__antithesis_instrumentation__.Notify(570003)
 	}
+	__antithesis_instrumentation__.Notify(569992)
 	if len(rem) != 0 {
+		__antithesis_instrumentation__.Notify(570004)
 		ed.Datum = nil
 		return errors.AssertionFailedf(
 			"%d trailing bytes in encoded value: %+v", redact.Safe(len(rem)), rem)
+	} else {
+		__antithesis_instrumentation__.Notify(570005)
 	}
+	__antithesis_instrumentation__.Notify(569993)
 	return nil
 }
 
-// Encoding returns the encoding that is already available (the latter indicated
-// by the bool return value).
 func (ed *EncDatum) Encoding() (descpb.DatumEncoding, bool) {
+	__antithesis_instrumentation__.Notify(570006)
 	if ed.encoded == nil {
+		__antithesis_instrumentation__.Notify(570008)
 		return 0, false
+	} else {
+		__antithesis_instrumentation__.Notify(570009)
 	}
+	__antithesis_instrumentation__.Notify(570007)
 	return ed.encoding, true
 }
 
-// Encode appends the encoded datum to the given slice using the requested
-// encoding.
-// Note: descpb.DatumEncoding_VALUE encodings are not unique because they can contain
-// a column ID so they should not be used to test for equality.
 func (ed *EncDatum) Encode(
 	typ *types.T, a *tree.DatumAlloc, enc descpb.DatumEncoding, appendTo []byte,
 ) ([]byte, error) {
-	if ed.encoded != nil && enc == ed.encoding {
-		// We already have an encoding that matches that we can use.
+	__antithesis_instrumentation__.Notify(570010)
+	if ed.encoded != nil && func() bool {
+		__antithesis_instrumentation__.Notify(570013)
+		return enc == ed.encoding == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(570014)
+
 		return append(appendTo, ed.encoded...), nil
+	} else {
+		__antithesis_instrumentation__.Notify(570015)
 	}
+	__antithesis_instrumentation__.Notify(570011)
 	if err := ed.EnsureDecoded(typ, a); err != nil {
+		__antithesis_instrumentation__.Notify(570016)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(570017)
 	}
+	__antithesis_instrumentation__.Notify(570012)
 	switch enc {
 	case descpb.DatumEncoding_ASCENDING_KEY:
+		__antithesis_instrumentation__.Notify(570018)
 		return keyside.Encode(appendTo, ed.Datum, encoding.Ascending)
 	case descpb.DatumEncoding_DESCENDING_KEY:
+		__antithesis_instrumentation__.Notify(570019)
 		return keyside.Encode(appendTo, ed.Datum, encoding.Descending)
 	case descpb.DatumEncoding_VALUE:
-		return valueside.Encode(appendTo, valueside.NoColumnID, ed.Datum, nil /* scratch */)
+		__antithesis_instrumentation__.Notify(570020)
+		return valueside.Encode(appendTo, valueside.NoColumnID, ed.Datum, nil)
 	default:
+		__antithesis_instrumentation__.Notify(570021)
 		panic(errors.AssertionFailedf("unknown encoding requested %s", enc))
 	}
 }
 
-// Fingerprint appends a unique hash of ed to the given slice. If datums are intended
-// to be deduplicated or grouped with hashes, this function should be used
-// instead of encode. Additionally, Fingerprint has the property that if the
-// fingerprints of a set of datums are appended together, the resulting
-// fingerprint will uniquely identify the set.
-// It takes an optional (can be nil) memory account that should be updated if
-// we need to allocate a new tree.Datum to get the desired encoding (i.e. we
-// will do <other encoding> -> tree.Datum -> <desired encoding> transition).
-// The caller is still responsible for accounting for the memory under the
-// returned byte slice. Note that the context will only be used if acc is
-// non-nil.
 func (ed *EncDatum) Fingerprint(
 	ctx context.Context, typ *types.T, a *tree.DatumAlloc, appendTo []byte, acc *mon.BoundAccount,
 ) ([]byte, error) {
-	// Note: we don't ed.EnsureDecoded on top of this method, because the default
-	// case uses ed.Encode, which has a fast path if the encoded bytes are already
-	// the right encoding.
+	__antithesis_instrumentation__.Notify(570022)
+
 	var fingerprint []byte
 	var err error
 	memUsageBefore := ed.Size()
 	switch typ.Family() {
 	case types.JsonFamily:
+		__antithesis_instrumentation__.Notify(570025)
 		if err = ed.EnsureDecoded(typ, a); err != nil {
+			__antithesis_instrumentation__.Notify(570028)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(570029)
 		}
-		// We must use value encodings without a column ID even if the EncDatum already
-		// is encoded with the value encoding so that the hashes are indeed unique.
-		fingerprint, err = valueside.Encode(appendTo, valueside.NoColumnID, ed.Datum, nil /* scratch */)
+		__antithesis_instrumentation__.Notify(570026)
+
+		fingerprint, err = valueside.Encode(appendTo, valueside.NoColumnID, ed.Datum, nil)
 	default:
-		// For values that are key encodable, using the ascending key.
-		// Note that using a value encoding will not easily work in case when
-		// there already exists the encoded representation because that
-		// contains a value tag as a prefix which makes it unsuitable for
-		// equality checks. We could have reused the descending key encoding
-		// when already present, but it doesn't seem worth it at this point.
-		// TODO(yuzefovich): consider reusing the descending key encoding when
-		// already present.
+		__antithesis_instrumentation__.Notify(570027)
+
 		fingerprint, err = ed.Encode(typ, a, descpb.DatumEncoding_ASCENDING_KEY, appendTo)
 	}
-	if err == nil && acc != nil {
+	__antithesis_instrumentation__.Notify(570023)
+	if err == nil && func() bool {
+		__antithesis_instrumentation__.Notify(570030)
+		return acc != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(570031)
 		return fingerprint, acc.Grow(ctx, int64(ed.Size()-memUsageBefore))
+	} else {
+		__antithesis_instrumentation__.Notify(570032)
 	}
+	__antithesis_instrumentation__.Notify(570024)
 	return fingerprint, err
 }
 
-// Compare returns:
-//    -1 if the receiver is less than rhs,
-//    0  if the receiver is equal to rhs,
-//    +1 if the receiver is greater than rhs.
 func (ed *EncDatum) Compare(
 	typ *types.T, a *tree.DatumAlloc, evalCtx *tree.EvalContext, rhs *EncDatum,
 ) (int, error) {
-	// TODO(radu): if we have both the Datum and a key encoding available, which
-	// one would be faster to use?
-	if ed.encoding == rhs.encoding && ed.encoded != nil && rhs.encoded != nil {
+	__antithesis_instrumentation__.Notify(570033)
+
+	if ed.encoding == rhs.encoding && func() bool {
+		__antithesis_instrumentation__.Notify(570037)
+		return ed.encoded != nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(570038)
+		return rhs.encoded != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(570039)
 		switch ed.encoding {
 		case descpb.DatumEncoding_ASCENDING_KEY:
+			__antithesis_instrumentation__.Notify(570040)
 			return bytes.Compare(ed.encoded, rhs.encoded), nil
 		case descpb.DatumEncoding_DESCENDING_KEY:
+			__antithesis_instrumentation__.Notify(570041)
 			return bytes.Compare(rhs.encoded, ed.encoded), nil
+		default:
+			__antithesis_instrumentation__.Notify(570042)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(570043)
 	}
+	__antithesis_instrumentation__.Notify(570034)
 	if err := ed.EnsureDecoded(typ, a); err != nil {
+		__antithesis_instrumentation__.Notify(570044)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(570045)
 	}
+	__antithesis_instrumentation__.Notify(570035)
 	if err := rhs.EnsureDecoded(typ, a); err != nil {
+		__antithesis_instrumentation__.Notify(570046)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(570047)
 	}
+	__antithesis_instrumentation__.Notify(570036)
 	return ed.Datum.Compare(evalCtx, rhs.Datum), nil
 }
 
-// GetInt decodes an EncDatum that is known to be of integer type and returns
-// the integer value. It is a more convenient and more efficient alternative to
-// calling EnsureDecoded and casting the Datum.
 func (ed *EncDatum) GetInt() (int64, error) {
+	__antithesis_instrumentation__.Notify(570048)
 	if ed.Datum != nil {
+		__antithesis_instrumentation__.Notify(570050)
 		if ed.Datum == tree.DNull {
+			__antithesis_instrumentation__.Notify(570052)
 			return 0, errors.Errorf("NULL INT value")
+		} else {
+			__antithesis_instrumentation__.Notify(570053)
 		}
+		__antithesis_instrumentation__.Notify(570051)
 		return int64(*ed.Datum.(*tree.DInt)), nil
+	} else {
+		__antithesis_instrumentation__.Notify(570054)
 	}
+	__antithesis_instrumentation__.Notify(570049)
 
 	switch ed.encoding {
 	case descpb.DatumEncoding_ASCENDING_KEY:
+		__antithesis_instrumentation__.Notify(570055)
 		if _, isNull := encoding.DecodeIfNull(ed.encoded); isNull {
+			__antithesis_instrumentation__.Notify(570063)
 			return 0, errors.Errorf("NULL INT value")
+		} else {
+			__antithesis_instrumentation__.Notify(570064)
 		}
+		__antithesis_instrumentation__.Notify(570056)
 		_, val, err := encoding.DecodeVarintAscending(ed.encoded)
 		return val, err
 
 	case descpb.DatumEncoding_DESCENDING_KEY:
+		__antithesis_instrumentation__.Notify(570057)
 		if _, isNull := encoding.DecodeIfNull(ed.encoded); isNull {
+			__antithesis_instrumentation__.Notify(570065)
 			return 0, errors.Errorf("NULL INT value")
+		} else {
+			__antithesis_instrumentation__.Notify(570066)
 		}
+		__antithesis_instrumentation__.Notify(570058)
 		_, val, err := encoding.DecodeVarintDescending(ed.encoded)
 		return val, err
 
 	case descpb.DatumEncoding_VALUE:
+		__antithesis_instrumentation__.Notify(570059)
 		_, dataOffset, _, typ, err := encoding.DecodeValueTag(ed.encoded)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(570067)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(570068)
 		}
-		// NULL, true, and false are special, because their values are fully encoded by their value tag.
+		__antithesis_instrumentation__.Notify(570060)
+
 		if typ == encoding.Null {
+			__antithesis_instrumentation__.Notify(570069)
 			return 0, errors.Errorf("NULL INT value")
+		} else {
+			__antithesis_instrumentation__.Notify(570070)
 		}
+		__antithesis_instrumentation__.Notify(570061)
 
 		_, val, err := encoding.DecodeUntaggedIntValue(ed.encoded[dataOffset:])
 		return val, err
 
 	default:
+		__antithesis_instrumentation__.Notify(570062)
 		return 0, errors.Errorf("unknown encoding %s", ed.encoding)
 	}
 }
 
-// EncDatumRow is a row of EncDatums.
 type EncDatumRow []EncDatum
 
 func (r EncDatumRow) stringToBuf(types []*types.T, a *tree.DatumAlloc, b *bytes.Buffer) {
+	__antithesis_instrumentation__.Notify(570071)
 	if len(types) != len(r) {
+		__antithesis_instrumentation__.Notify(570074)
 		panic(errors.AssertionFailedf("mismatched types (%v) and row (%v)", types, r))
+	} else {
+		__antithesis_instrumentation__.Notify(570075)
 	}
+	__antithesis_instrumentation__.Notify(570072)
 	b.WriteString("[")
 	for i := range r {
+		__antithesis_instrumentation__.Notify(570076)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(570078)
 			b.WriteString(" ")
+		} else {
+			__antithesis_instrumentation__.Notify(570079)
 		}
+		__antithesis_instrumentation__.Notify(570077)
 		b.WriteString(r[i].stringWithAlloc(types[i], a))
 	}
+	__antithesis_instrumentation__.Notify(570073)
 	b.WriteString("]")
 }
 
-// Copy makes a copy of this EncDatumRow. Convenient for tests. Use an
-// EncDatumRowAlloc in non-test code.
 func (r EncDatumRow) Copy() EncDatumRow {
+	__antithesis_instrumentation__.Notify(570080)
 	if r == nil {
+		__antithesis_instrumentation__.Notify(570082)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(570083)
 	}
+	__antithesis_instrumentation__.Notify(570081)
 	rCopy := make(EncDatumRow, len(r))
 	copy(rCopy, r)
 	return rCopy
 }
 
 func (r EncDatumRow) String(types []*types.T) string {
+	__antithesis_instrumentation__.Notify(570084)
 	var b bytes.Buffer
 	r.stringToBuf(types, &tree.DatumAlloc{}, &b)
 	return b.String()
 }
 
-// EncDatumRowOverhead is the overhead of EncDatumRow in bytes.
 const EncDatumRowOverhead = unsafe.Sizeof(EncDatumRow{})
 
-// Size returns a lower bound on the total size all EncDatum's in the receiver,
-// including memory referenced by all EncDatum's.
 func (r EncDatumRow) Size() uintptr {
+	__antithesis_instrumentation__.Notify(570085)
 	size := EncDatumRowOverhead
 	for _, ed := range r {
+		__antithesis_instrumentation__.Notify(570087)
 		size += ed.Size()
 	}
+	__antithesis_instrumentation__.Notify(570086)
 	return size
 }
 
-// EncDatumRowToDatums converts a given EncDatumRow to a Datums.
 func EncDatumRowToDatums(
 	types []*types.T, datums tree.Datums, row EncDatumRow, da *tree.DatumAlloc,
 ) error {
+	__antithesis_instrumentation__.Notify(570088)
 	if len(types) != len(row) {
+		__antithesis_instrumentation__.Notify(570092)
 		return errors.AssertionFailedf(
 			"mismatched types (%v) and row (%v)", types, row)
+	} else {
+		__antithesis_instrumentation__.Notify(570093)
 	}
+	__antithesis_instrumentation__.Notify(570089)
 	if len(row) != len(datums) {
+		__antithesis_instrumentation__.Notify(570094)
 		return errors.AssertionFailedf(
 			"Length mismatch (%d and %d) between datums and row", len(datums), len(row))
+	} else {
+		__antithesis_instrumentation__.Notify(570095)
 	}
+	__antithesis_instrumentation__.Notify(570090)
 	for i, encDatum := range row {
+		__antithesis_instrumentation__.Notify(570096)
 		if encDatum.IsUnset() {
+			__antithesis_instrumentation__.Notify(570099)
 			datums[i] = tree.DNull
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(570100)
 		}
+		__antithesis_instrumentation__.Notify(570097)
 		err := encDatum.EnsureDecoded(types[i], da)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(570101)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(570102)
 		}
+		__antithesis_instrumentation__.Notify(570098)
 		datums[i] = encDatum.Datum
 	}
+	__antithesis_instrumentation__.Notify(570091)
 	return nil
 }
 
-// Compare returns the relative ordering of two EncDatumRows according to a
-// ColumnOrdering:
-//   -1 if the receiver comes before the rhs in the ordering,
-//   +1 if the receiver comes after the rhs in the ordering,
-//   0 if the relative order does not matter (i.e. the two rows have the same
-//     values for the columns in the ordering).
-//
-// Note that a return value of 0 does not (in general) imply that the rows are
-// equal; for example, rows [1 1 5] and [1 1 6] when compared against ordering
-// {{0, asc}, {1, asc}} (i.e. ordered by first column and then by second
-// column).
 func (r EncDatumRow) Compare(
 	types []*types.T,
 	a *tree.DatumAlloc,
@@ -508,25 +661,45 @@ func (r EncDatumRow) Compare(
 	evalCtx *tree.EvalContext,
 	rhs EncDatumRow,
 ) (int, error) {
-	if len(r) != len(types) || len(rhs) != len(types) {
+	__antithesis_instrumentation__.Notify(570103)
+	if len(r) != len(types) || func() bool {
+		__antithesis_instrumentation__.Notify(570106)
+		return len(rhs) != len(types) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(570107)
 		panic(errors.AssertionFailedf("length mismatch: %d types, %d lhs, %d rhs\n%+v\n%+v\n%+v", len(types), len(r), len(rhs), types, r, rhs))
+	} else {
+		__antithesis_instrumentation__.Notify(570108)
 	}
+	__antithesis_instrumentation__.Notify(570104)
 	for _, c := range ordering {
+		__antithesis_instrumentation__.Notify(570109)
 		cmp, err := r[c.ColIdx].Compare(types[c.ColIdx], a, evalCtx, &rhs[c.ColIdx])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(570111)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(570112)
 		}
+		__antithesis_instrumentation__.Notify(570110)
 		if cmp != 0 {
+			__antithesis_instrumentation__.Notify(570113)
 			if c.Direction == encoding.Descending {
+				__antithesis_instrumentation__.Notify(570115)
 				cmp = -cmp
+			} else {
+				__antithesis_instrumentation__.Notify(570116)
 			}
+			__antithesis_instrumentation__.Notify(570114)
 			return cmp, nil
+		} else {
+			__antithesis_instrumentation__.Notify(570117)
 		}
 	}
+	__antithesis_instrumentation__.Notify(570105)
 	return 0, nil
 }
 
-// CompareToDatums is a version of Compare which compares against decoded Datums.
 func (r EncDatumRow) CompareToDatums(
 	types []*types.T,
 	a *tree.DatumAlloc,
@@ -534,114 +707,145 @@ func (r EncDatumRow) CompareToDatums(
 	evalCtx *tree.EvalContext,
 	rhs tree.Datums,
 ) (int, error) {
+	__antithesis_instrumentation__.Notify(570118)
 	for _, c := range ordering {
+		__antithesis_instrumentation__.Notify(570120)
 		if err := r[c.ColIdx].EnsureDecoded(types[c.ColIdx], a); err != nil {
+			__antithesis_instrumentation__.Notify(570122)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(570123)
 		}
+		__antithesis_instrumentation__.Notify(570121)
 		cmp := r[c.ColIdx].Datum.Compare(evalCtx, rhs[c.ColIdx])
 		if cmp != 0 {
+			__antithesis_instrumentation__.Notify(570124)
 			if c.Direction == encoding.Descending {
+				__antithesis_instrumentation__.Notify(570126)
 				cmp = -cmp
+			} else {
+				__antithesis_instrumentation__.Notify(570127)
 			}
+			__antithesis_instrumentation__.Notify(570125)
 			return cmp, nil
+		} else {
+			__antithesis_instrumentation__.Notify(570128)
 		}
 	}
+	__antithesis_instrumentation__.Notify(570119)
 	return 0, nil
 }
 
-// EncDatumRows is a slice of EncDatumRows having the same schema.
 type EncDatumRows []EncDatumRow
 
 func (r EncDatumRows) String(types []*types.T) string {
+	__antithesis_instrumentation__.Notify(570129)
 	var a tree.DatumAlloc
 	var b bytes.Buffer
 	b.WriteString("[")
 	for i, r := range r {
+		__antithesis_instrumentation__.Notify(570131)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(570133)
 			b.WriteString(" ")
+		} else {
+			__antithesis_instrumentation__.Notify(570134)
 		}
+		__antithesis_instrumentation__.Notify(570132)
 		r.stringToBuf(types, &a, &b)
 	}
+	__antithesis_instrumentation__.Notify(570130)
 	b.WriteString("]")
 	return b.String()
 }
 
-// EncDatumRowContainer holds rows and can cycle through them.
-// Must be Reset upon initialization.
 type EncDatumRowContainer struct {
 	rows  EncDatumRows
 	index int
 }
 
-// Peek returns the current element at the top of the container.
 func (c *EncDatumRowContainer) Peek() EncDatumRow {
+	__antithesis_instrumentation__.Notify(570135)
 	return c.rows[c.index]
 }
 
-// Pop returns the next row from the container. Will cycle through the rows
-// again if we reach the end.
 func (c *EncDatumRowContainer) Pop() EncDatumRow {
+	__antithesis_instrumentation__.Notify(570136)
 	if c.index < 0 {
+		__antithesis_instrumentation__.Notify(570138)
 		c.index = len(c.rows) - 1
+	} else {
+		__antithesis_instrumentation__.Notify(570139)
 	}
+	__antithesis_instrumentation__.Notify(570137)
 	row := c.rows[c.index]
 	c.index--
 	return row
 }
 
-// Push adds a row to the container.
 func (c *EncDatumRowContainer) Push(row EncDatumRow) {
+	__antithesis_instrumentation__.Notify(570140)
 	c.rows = append(c.rows, row)
 	c.index = len(c.rows) - 1
 }
 
-// Reset clears the container and resets the indexes.
-// Must be called upon creating a container.
 func (c *EncDatumRowContainer) Reset() {
+	__antithesis_instrumentation__.Notify(570141)
 	c.rows = c.rows[:0]
 	c.index = -1
 }
 
-// IsEmpty returns whether the container is "empty", which means that it's about
-// to cycle through its rows again on the next Pop.
 func (c *EncDatumRowContainer) IsEmpty() bool {
+	__antithesis_instrumentation__.Notify(570142)
 	return c.index == -1
 }
 
-// EncDatumRowAlloc is a helper that speeds up allocation of EncDatumRows
-// (preferably of the same length).
 type EncDatumRowAlloc struct {
 	buf []EncDatum
-	// Preallocate a small initial batch (helps cases where
-	// we only allocate a few small rows).
+
 	prealloc [16]EncDatum
 }
 
-// AllocRow allocates an EncDatumRow with the given number of columns.
 func (a *EncDatumRowAlloc) AllocRow(cols int) EncDatumRow {
+	__antithesis_instrumentation__.Notify(570143)
 	if a.buf == nil {
-		// First call.
+		__antithesis_instrumentation__.Notify(570146)
+
 		a.buf = a.prealloc[:]
+	} else {
+		__antithesis_instrumentation__.Notify(570147)
 	}
+	__antithesis_instrumentation__.Notify(570144)
 	if len(a.buf) < cols {
-		// If the rows are small, allocate storage for a bunch of rows at once.
+		__antithesis_instrumentation__.Notify(570148)
+
 		bufLen := cols
 		if cols <= 16 {
+			__antithesis_instrumentation__.Notify(570150)
 			bufLen *= 16
-		} else if cols <= 64 {
-			bufLen *= 4
+		} else {
+			__antithesis_instrumentation__.Notify(570151)
+			if cols <= 64 {
+				__antithesis_instrumentation__.Notify(570152)
+				bufLen *= 4
+			} else {
+				__antithesis_instrumentation__.Notify(570153)
+			}
 		}
+		__antithesis_instrumentation__.Notify(570149)
 		a.buf = make([]EncDatum, bufLen)
+	} else {
+		__antithesis_instrumentation__.Notify(570154)
 	}
-	// Chop off a row from buf, and limit its capacity to avoid corrupting the
-	// following row in the unlikely case that the caller appends to the slice.
+	__antithesis_instrumentation__.Notify(570145)
+
 	result := EncDatumRow(a.buf[:cols:cols])
 	a.buf = a.buf[cols:]
 	return result
 }
 
-// CopyRow allocates an EncDatumRow and copies the given row to it.
 func (a *EncDatumRowAlloc) CopyRow(row EncDatumRow) EncDatumRow {
+	__antithesis_instrumentation__.Notify(570155)
 	rowCopy := a.AllocRow(len(row))
 	copy(rowCopy, row)
 	return rowCopy

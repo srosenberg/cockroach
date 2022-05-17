@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ttlschedule
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -45,10 +37,8 @@ type rowLevelTTLMetrics struct {
 
 var _ metric.Struct = &rowLevelTTLMetrics{}
 
-// MetricStruct implements metric.Struct interface.
-func (m *rowLevelTTLMetrics) MetricStruct() {}
+func (m *rowLevelTTLMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(628864) }
 
-// OnDrop implements the jobs.ScheduledJobController interface.
 func (s rowLevelTTLExecutor) OnDrop(
 	ctx context.Context,
 	scheduleControllerEnv scheduledjobs.ScheduleControllerEnv,
@@ -57,22 +47,36 @@ func (s rowLevelTTLExecutor) OnDrop(
 	txn *kv.Txn,
 	descsCol *descs.Collection,
 ) error {
+	__antithesis_instrumentation__.Notify(628865)
 
 	var args catpb.ScheduledRowLevelTTLArgs
 	if err := pbtypes.UnmarshalAny(schedule.ExecutionArgs().Args, &args); err != nil {
+		__antithesis_instrumentation__.Notify(628869)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(628870)
 	}
+	__antithesis_instrumentation__.Notify(628866)
 
 	canDrop, err := canDropTTLSchedule(ctx, txn, descsCol, schedule, args)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628871)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(628872)
 	}
+	__antithesis_instrumentation__.Notify(628867)
 
 	if !canDrop {
+		__antithesis_instrumentation__.Notify(628873)
 		tn, err := descs.GetTableNameByID(ctx, txn, descsCol, args.TableID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(628875)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628876)
 		}
+		__antithesis_instrumentation__.Notify(628874)
 		return errors.WithHintf(
 			pgerror.Newf(
 				pgcode.InvalidTableDefinition,
@@ -81,13 +85,13 @@ func (s rowLevelTTLExecutor) OnDrop(
 			`use ALTER TABLE %s RESET (ttl) instead`,
 			tn.FQString(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(628877)
 	}
+	__antithesis_instrumentation__.Notify(628868)
 	return nil
 }
 
-// canDropTTLSchedule determines whether we can drop a given row-level TTL
-// schedule. This is intended to only be permitted for schedules which are not
-// valid.
 func canDropTTLSchedule(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -95,29 +99,49 @@ func canDropTTLSchedule(
 	schedule *jobs.ScheduledJob,
 	args catpb.ScheduledRowLevelTTLArgs,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(628878)
 	desc, err := descsCol.GetImmutableTableByID(ctx, txn, args.TableID, tree.ObjectLookupFlags{})
 	if err != nil {
-		// If the descriptor does not exist we can drop this schedule.
+		__antithesis_instrumentation__.Notify(628883)
+
 		if sqlerrors.IsUndefinedRelationError(err) {
+			__antithesis_instrumentation__.Notify(628885)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(628886)
 		}
+		__antithesis_instrumentation__.Notify(628884)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(628887)
 	}
+	__antithesis_instrumentation__.Notify(628879)
 	if desc == nil {
+		__antithesis_instrumentation__.Notify(628888)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(628889)
 	}
-	// If there is no row-level TTL on the table we can drop this schedule.
+	__antithesis_instrumentation__.Notify(628880)
+
 	if !desc.HasRowLevelTTL() {
+		__antithesis_instrumentation__.Notify(628890)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(628891)
 	}
-	// If there is a schedule id mismatch we can drop this schedule.
+	__antithesis_instrumentation__.Notify(628881)
+
 	if desc.GetRowLevelTTL().ScheduleID != schedule.ScheduleID() {
+		__antithesis_instrumentation__.Notify(628892)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(628893)
 	}
+	__antithesis_instrumentation__.Notify(628882)
 	return false, nil
 }
 
-// ExecuteJob implements the jobs.ScheduledJobController interface.
 func (s rowLevelTTLExecutor) ExecuteJob(
 	ctx context.Context,
 	cfg *scheduledjobs.JobExecutionConfig,
@@ -125,10 +149,15 @@ func (s rowLevelTTLExecutor) ExecuteJob(
 	sj *jobs.ScheduledJob,
 	txn *kv.Txn,
 ) error {
+	__antithesis_instrumentation__.Notify(628894)
 	args := &catpb.ScheduledRowLevelTTLArgs{}
 	if err := pbtypes.UnmarshalAny(sj.ExecutionArgs().Args, args); err != nil {
+		__antithesis_instrumentation__.Notify(628897)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(628898)
 	}
+	__antithesis_instrumentation__.Notify(628895)
 
 	p, cleanup := cfg.PlanHookMaker(
 		fmt.Sprintf("invoke-row-level-ttl-%d", args.TableID),
@@ -148,14 +177,17 @@ func (s rowLevelTTLExecutor) ExecuteJob(
 		p.(sql.PlanHookState).ExecCfg().JobRegistry,
 		*args,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(628899)
 		s.metrics.NumFailed.Inc(1)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(628900)
 	}
+	__antithesis_instrumentation__.Notify(628896)
 	s.metrics.NumStarted.Inc(1)
 	return nil
 }
 
-// NotifyJobTermination implements the jobs.ScheduledJobController interface.
 func (s rowLevelTTLExecutor) NotifyJobTermination(
 	ctx context.Context,
 	jobID jobspb.JobID,
@@ -166,7 +198,9 @@ func (s rowLevelTTLExecutor) NotifyJobTermination(
 	ex sqlutil.InternalExecutor,
 	txn *kv.Txn,
 ) error {
+	__antithesis_instrumentation__.Notify(628901)
 	if jobStatus == jobs.StatusFailed {
+		__antithesis_instrumentation__.Notify(628904)
 		jobs.DefaultHandleFailedRun(
 			sj,
 			"row level ttl for table [%d] job failed",
@@ -174,22 +208,28 @@ func (s rowLevelTTLExecutor) NotifyJobTermination(
 		)
 		s.metrics.NumFailed.Inc(1)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(628905)
 	}
+	__antithesis_instrumentation__.Notify(628902)
 
 	if jobStatus == jobs.StatusSucceeded {
+		__antithesis_instrumentation__.Notify(628906)
 		s.metrics.NumSucceeded.Inc(1)
+	} else {
+		__antithesis_instrumentation__.Notify(628907)
 	}
+	__antithesis_instrumentation__.Notify(628903)
 
 	sj.SetScheduleStatus(string(jobStatus))
 	return nil
 }
 
-// Metrics implements the jobs.ScheduledJobController interface.
 func (s rowLevelTTLExecutor) Metrics() metric.Struct {
+	__antithesis_instrumentation__.Notify(628908)
 	return &s.metrics
 }
 
-// GetCreateScheduleStatement implements the jobs.ScheduledJobController interface.
 func (s rowLevelTTLExecutor) GetCreateScheduleStatement(
 	ctx context.Context,
 	env scheduledjobs.JobSchedulerEnv,
@@ -198,14 +238,23 @@ func (s rowLevelTTLExecutor) GetCreateScheduleStatement(
 	sj *jobs.ScheduledJob,
 	ex sqlutil.InternalExecutor,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(628909)
 	args := &catpb.ScheduledRowLevelTTLArgs{}
 	if err := pbtypes.UnmarshalAny(sj.ExecutionArgs().Args, args); err != nil {
+		__antithesis_instrumentation__.Notify(628912)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(628913)
 	}
+	__antithesis_instrumentation__.Notify(628910)
 	tn, err := descs.GetTableNameByID(ctx, txn, descsCol, args.TableID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628914)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(628915)
 	}
+	__antithesis_instrumentation__.Notify(628911)
 	return fmt.Sprintf(`ALTER TABLE %s WITH (ttl = 'on', ...)`, tn.FQString()), nil
 }
 
@@ -217,10 +266,15 @@ func createRowLevelTTLJob(
 	jobRegistry *jobs.Registry,
 	ttlDetails catpb.ScheduledRowLevelTTLArgs,
 ) (jobspb.JobID, error) {
+	__antithesis_instrumentation__.Notify(628916)
 	tn, err := descs.GetTableNameByID(ctx, txn, descsCol, ttlDetails.TableID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628919)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(628920)
 	}
+	__antithesis_instrumentation__.Notify(628917)
 	record := jobs.Record{
 		Description: fmt.Sprintf("ttl for %s", tn.FQString()),
 		Username:    security.NodeUserName(),
@@ -234,8 +288,12 @@ func createRowLevelTTLJob(
 
 	jobID := jobRegistry.MakeJobID()
 	if _, err := jobRegistry.CreateAdoptableJobWithTxn(ctx, record, jobID, txn); err != nil {
+		__antithesis_instrumentation__.Notify(628921)
 		return jobspb.InvalidJobID, err
+	} else {
+		__antithesis_instrumentation__.Notify(628922)
 	}
+	__antithesis_instrumentation__.Notify(628918)
 	return jobID, nil
 }
 

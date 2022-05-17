@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package persistedsqlstats
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,8 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// StatsCompactor is responsible for compacting older SQL Stats. It is
-// executed by sql.sqlStatsCompactionResumer.
 type StatsCompactor struct {
 	st *cluster.Settings
 	db *kv.DB
@@ -42,7 +32,6 @@ type StatsCompactor struct {
 	}
 }
 
-// NewStatsCompactor returns a new instance of StatsCompactor.
 func NewStatsCompactor(
 	setting *cluster.Settings,
 	internalEx sqlutil.InternalExecutor,
@@ -50,6 +39,7 @@ func NewStatsCompactor(
 	rowsRemovedCounter *metric.Counter,
 	knobs *sqlstats.TestingKnobs,
 ) *StatsCompactor {
+	__antithesis_instrumentation__.Notify(624585)
 	return &StatsCompactor{
 		st:                 setting,
 		db:                 db,
@@ -59,16 +49,18 @@ func NewStatsCompactor(
 	}
 }
 
-// DeleteOldestEntries removes the oldest statement and transaction statistics
-// that exceeded the limit defined by `sql.stats.persisted_rows.max`
-// (persistedsqlstats.SQLStatsMaxPersistedRows).
 func (c *StatsCompactor) DeleteOldestEntries(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(624586)
 	if err := c.removeStaleRowsPerShard(
 		ctx,
 		stmtStatsCleanupOps,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(624588)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(624589)
 	}
+	__antithesis_instrumentation__.Notify(624587)
 
 	return c.removeStaleRowsPerShard(
 		ctx,
@@ -79,8 +71,10 @@ func (c *StatsCompactor) DeleteOldestEntries(ctx context.Context) error {
 func (c *StatsCompactor) removeStaleRowsPerShard(
 	ctx context.Context, ops *cleanupOperations,
 ) error {
+	__antithesis_instrumentation__.Notify(624590)
 	rowLimitPerShard := c.getRowLimitPerShard()
 	for shardIdx, rowLimit := range rowLimitPerShard {
+		__antithesis_instrumentation__.Notify(624592)
 		var existingRowCount int64
 
 		if err := c.getRowCountForShard(
@@ -89,12 +83,23 @@ func (c *StatsCompactor) removeStaleRowsPerShard(
 			shardIdx,
 			&existingRowCount,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(624595)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(624596)
 		}
+		__antithesis_instrumentation__.Notify(624593)
 
-		if c.knobs != nil && c.knobs.OnCleanupStartForShard != nil {
+		if c.knobs != nil && func() bool {
+			__antithesis_instrumentation__.Notify(624597)
+			return c.knobs.OnCleanupStartForShard != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(624598)
 			c.knobs.OnCleanupStartForShard(shardIdx, existingRowCount, rowLimit)
+		} else {
+			__antithesis_instrumentation__.Notify(624599)
 		}
+		__antithesis_instrumentation__.Notify(624594)
 
 		if err := c.removeStaleRowsForShard(
 			ctx,
@@ -103,9 +108,13 @@ func (c *StatsCompactor) removeStaleRowsPerShard(
 			existingRowCount,
 			rowLimit,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(624600)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(624601)
 		}
 	}
+	__antithesis_instrumentation__.Notify(624591)
 
 	return nil
 }
@@ -113,6 +122,7 @@ func (c *StatsCompactor) removeStaleRowsPerShard(
 func (c *StatsCompactor) getRowCountForShard(
 	ctx context.Context, stmt string, shardIdx int, count *int64,
 ) error {
+	__antithesis_instrumentation__.Notify(624602)
 	row, err := c.ie.QueryRowEx(ctx,
 		"scan-row-count",
 		nil,
@@ -121,56 +131,63 @@ func (c *StatsCompactor) getRowCountForShard(
 		shardIdx,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(624605)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(624606)
 	}
+	__antithesis_instrumentation__.Notify(624603)
 
 	if row.Len() != 1 {
+		__antithesis_instrumentation__.Notify(624607)
 		return errors.AssertionFailedf("unexpected number of column returned")
+	} else {
+		__antithesis_instrumentation__.Notify(624608)
 	}
+	__antithesis_instrumentation__.Notify(624604)
 	*count = int64(tree.MustBeDInt(row[0]))
 
 	return nil
 }
 
-// getRowLimitPerShard calculates the max number of rows we can keep per hash
-// bucket. It calculates using the cluster setting sql.stats.persisted_rows.max.
-//
-// It calculates as follows:
-// * quotient, remainder = sql.stats.persisted_rows.max / bucket count
-// * limitPerShard[0:remainder] = quotient
-// * limitPerShard[remainder:] = quotient + 1
 func (c *StatsCompactor) getRowLimitPerShard() []int64 {
+	__antithesis_instrumentation__.Notify(624609)
 	limitPerShard := make([]int64, systemschema.SQLStatsHashShardBucketCount)
 	maxPersistedRows := SQLStatsMaxPersistedRows.Get(&c.st.SV)
 
 	for shardIdx := int64(0); shardIdx < systemschema.SQLStatsHashShardBucketCount; shardIdx++ {
+		__antithesis_instrumentation__.Notify(624611)
 		limitPerShard[shardIdx] = maxPersistedRows / (systemschema.SQLStatsHashShardBucketCount - shardIdx)
 		maxPersistedRows -= limitPerShard[shardIdx]
 	}
+	__antithesis_instrumentation__.Notify(624610)
 
 	return limitPerShard
 }
 
-// removeStaleRowsForShard deletes the oldest rows in the given hash bucket.
-// It breaks the removal operation into multiple smaller transactions where
-// each transaction will delete up to maxDeleteRowsPerTxn rows. This is to
-// avoid having one large transaction.
 func (c *StatsCompactor) removeStaleRowsForShard(
 	ctx context.Context,
 	ops *cleanupOperations,
 	shardIdx int64,
 	existingRowCountPerShard, maxRowLimitPerShard int64,
 ) error {
+	__antithesis_instrumentation__.Notify(624612)
 	var err error
 	var lastDeletedRow tree.Datums
 	maxDeleteRowsPerTxn := CompactionJobRowsToDeletePerTxn.Get(&c.st.SV)
 
 	if rowsToRemove := existingRowCountPerShard - maxRowLimitPerShard; rowsToRemove > 0 {
+		__antithesis_instrumentation__.Notify(624614)
 		for remainToBeRemoved := rowsToRemove; remainToBeRemoved > 0; {
+			__antithesis_instrumentation__.Notify(624615)
 			rowsToRemovePerTxn := remainToBeRemoved
 			if remainToBeRemoved > maxDeleteRowsPerTxn {
+				__antithesis_instrumentation__.Notify(624619)
 				rowsToRemovePerTxn = maxDeleteRowsPerTxn
+			} else {
+				__antithesis_instrumentation__.Notify(624620)
 			}
+			__antithesis_instrumentation__.Notify(624616)
 
 			stmt := ops.getDeleteStmt(lastDeletedRow)
 			qargs := c.getQargs(shardIdx, rowsToRemovePerTxn, lastDeletedRow)
@@ -182,22 +199,29 @@ func (c *StatsCompactor) removeStaleRowsForShard(
 				qargs,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(624621)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(624622)
 			}
+			__antithesis_instrumentation__.Notify(624617)
 			c.rowsRemovedCounter.Inc(rowsToRemovePerTxn)
 
-			// If we removed less rows compared to what we intended, it means something
-			// else is interfering with the cleanup job, likely a human operator.
-			// This can happen when the operator forgot to cancel the job when manual
-			// intervention is happening.
 			if rowsRemoved < rowsToRemovePerTxn {
+				__antithesis_instrumentation__.Notify(624623)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(624624)
 			}
+			__antithesis_instrumentation__.Notify(624618)
 
 			remainToBeRemoved -= rowsToRemovePerTxn
 
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(624625)
 	}
+	__antithesis_instrumentation__.Notify(624613)
 
 	return nil
 }
@@ -205,42 +229,58 @@ func (c *StatsCompactor) removeStaleRowsForShard(
 func (c *StatsCompactor) executeDeleteStmt(
 	ctx context.Context, delStmt string, qargs []interface{},
 ) (lastRow tree.Datums, rowsDeleted int64, err error) {
+	__antithesis_instrumentation__.Notify(624626)
 	it, err := c.ie.QueryIteratorEx(ctx,
 		"delete-old-sql-stats",
-		nil, /* txn */
+		nil,
 		sessiondata.InternalExecutorOverride{User: security.NodeUserName()},
 		delStmt,
 		qargs...,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(624630)
 		return nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(624631)
 	}
+	__antithesis_instrumentation__.Notify(624627)
 	defer func() {
+		__antithesis_instrumentation__.Notify(624632)
 		err = errors.CombineErrors(err, it.Close())
 	}()
+	__antithesis_instrumentation__.Notify(624628)
 
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(624633)
 		lastRow = it.Cur()
 		rowsDeleted++
 	}
+	__antithesis_instrumentation__.Notify(624629)
 
 	return lastRow, rowsDeleted, err
 }
 
 func (c *StatsCompactor) getQargs(shardIdx, limit int64, lastDeletedRow tree.Datums) []interface{} {
+	__antithesis_instrumentation__.Notify(624634)
 	size := len(lastDeletedRow) + 2
 	if cap(c.scratch.qargs) < size {
+		__antithesis_instrumentation__.Notify(624637)
 		c.scratch.qargs = make([]interface{}, 0, size)
+	} else {
+		__antithesis_instrumentation__.Notify(624638)
 	}
+	__antithesis_instrumentation__.Notify(624635)
 	c.scratch.qargs = c.scratch.qargs[:0]
 
 	c.scratch.qargs = append(c.scratch.qargs, tree.NewDInt(tree.DInt(shardIdx)))
 	c.scratch.qargs = append(c.scratch.qargs, tree.NewDInt(tree.DInt(limit)))
 
 	for _, value := range lastDeletedRow {
+		__antithesis_instrumentation__.Notify(624639)
 		c.scratch.qargs = append(c.scratch.qargs, value)
 	}
+	__antithesis_instrumentation__.Notify(624636)
 
 	return c.scratch.qargs
 }
@@ -323,13 +363,19 @@ var (
 )
 
 func (c *cleanupOperations) getScanStmt(knobs *sqlstats.TestingKnobs) string {
+	__antithesis_instrumentation__.Notify(624640)
 	return fmt.Sprintf(c.initialScanStmtTemplate, knobs.GetAOSTClause())
 }
 
 func (c *cleanupOperations) getDeleteStmt(lastDeletedRow tree.Datums) string {
+	__antithesis_instrumentation__.Notify(624641)
 	if len(lastDeletedRow) == 0 {
+		__antithesis_instrumentation__.Notify(624643)
 		return c.unconstrainedDeleteStmt
+	} else {
+		__antithesis_instrumentation__.Notify(624644)
 	}
+	__antithesis_instrumentation__.Notify(624642)
 
 	return c.constrainedDeleteStmt
 }

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,9 +10,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// delayedNode wraps a planNode in cases where the planNode
-// constructor must be delayed during query execution (as opposed to
-// SQL prepare) for resource tracking purposes.
 type delayedNode struct {
 	name            string
 	columns         colinfo.ResultColumns
@@ -31,31 +20,45 @@ type delayedNode struct {
 
 type nodeConstructor func(context.Context, *planner) (planNode, error)
 
-func (d *delayedNode) Next(params runParams) (bool, error) { return d.plan.Next(params) }
-func (d *delayedNode) Values() tree.Datums                 { return d.plan.Values() }
+func (d *delayedNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(465376)
+	return d.plan.Next(params)
+}
+func (d *delayedNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(465377)
+	return d.plan.Values()
+}
 
 func (d *delayedNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(465378)
 	if d.plan != nil {
+		__antithesis_instrumentation__.Notify(465379)
 		d.plan.Close(ctx)
 		d.plan = nil
+	} else {
+		__antithesis_instrumentation__.Notify(465380)
 	}
 }
 
-// startExec constructs the wrapped planNode now that execution is underway.
 func (d *delayedNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(465381)
 	if d.plan != nil {
+		__antithesis_instrumentation__.Notify(465384)
 		panic("wrapped plan should not yet exist")
+	} else {
+		__antithesis_instrumentation__.Notify(465385)
 	}
+	__antithesis_instrumentation__.Notify(465382)
 
 	plan, err := d.constructor(params.ctx, params.p)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465386)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465387)
 	}
+	__antithesis_instrumentation__.Notify(465383)
 	d.plan = plan
 
-	// Recursively invoke startExec on new plan. Normally, startExec doesn't
-	// recurse - calling children is handled by the planNode walker. The reason
-	// this won't suffice here is that the child of this node doesn't exist
-	// until after startExec is invoked.
 	return startExec(params, plan)
 }

@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,7 +12,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlutil"
 )
 
-// systemTableIDResolver is the implementation for catalog.SystemTableIDResolver.
 type systemTableIDResolver struct {
 	collectionFactory *CollectionFactory
 	ie                sqlutil.InternalExecutor
@@ -29,10 +20,10 @@ type systemTableIDResolver struct {
 
 var _ catalog.SystemTableIDResolver = (*systemTableIDResolver)(nil)
 
-// MakeSystemTableIDResolver creates an object that implements catalog.SystemTableIDResolver.
 func MakeSystemTableIDResolver(
 	collectionFactory *CollectionFactory, ie sqlutil.InternalExecutor, db *kv.DB,
 ) catalog.SystemTableIDResolver {
+	__antithesis_instrumentation__.Notify(264907)
 	return &systemTableIDResolver{
 		collectionFactory: collectionFactory,
 		ie:                ie,
@@ -40,21 +31,26 @@ func MakeSystemTableIDResolver(
 	}
 }
 
-// LookupSystemTableID implements the catalog.SystemTableIDResolver method.
 func (r *systemTableIDResolver) LookupSystemTableID(
 	ctx context.Context, tableName string,
 ) (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(264908)
 
 	var id descpb.ID
 	if err := r.collectionFactory.Txn(ctx, r.ie, r.db, func(
 		ctx context.Context, txn *kv.Txn, descriptors *Collection,
 	) (err error) {
+		__antithesis_instrumentation__.Notify(264910)
 		id, err = descriptors.kv.lookupName(
-			ctx, txn, nil /* maybeDatabase */, keys.SystemDatabaseID, keys.PublicSchemaID, tableName,
+			ctx, txn, nil, keys.SystemDatabaseID, keys.PublicSchemaID, tableName,
 		)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(264911)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(264912)
 	}
+	__antithesis_instrumentation__.Notify(264909)
 	return id, nil
 }

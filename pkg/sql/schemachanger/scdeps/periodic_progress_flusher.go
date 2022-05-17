@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scdeps
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,11 +13,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// NewPeriodicProgressFlusher returns a PeriodicProgressFlusher that
-// will flush at the given intervals.
 func NewPeriodicProgressFlusher(
 	checkpointIntervalFn func() time.Duration, fractionIntervalFn func() time.Duration,
 ) scexec.PeriodicProgressFlusher {
+	__antithesis_instrumentation__.Notify(580732)
 	return &periodicProgressFlusher{
 		clock:              timeutil.DefaultTimeSource{},
 		checkpointInterval: checkpointIntervalFn,
@@ -36,14 +27,16 @@ func NewPeriodicProgressFlusher(
 func newPeriodicProgressFlusherForIndexBackfill(
 	settings *cluster.Settings,
 ) scexec.PeriodicProgressFlusher {
+	__antithesis_instrumentation__.Notify(580733)
 	return NewPeriodicProgressFlusher(
 		func() time.Duration {
+			__antithesis_instrumentation__.Notify(580734)
 			return backfill.IndexBackfillCheckpointInterval.Get(&settings.SV)
 
 		},
 		func() time.Duration {
-			// fractionInterval is copied from the logic in existing backfill code.
-			// TODO(ajwerner): Add a cluster setting to control this.
+			__antithesis_instrumentation__.Notify(580735)
+
 			const fractionInterval = 10 * time.Second
 			return fractionInterval
 		},
@@ -58,44 +51,63 @@ type periodicProgressFlusher struct {
 func (p *periodicProgressFlusher) StartPeriodicUpdates(
 	ctx context.Context, tracker scexec.BackfillProgressFlusher,
 ) (stop func() error) {
+	__antithesis_instrumentation__.Notify(580736)
 	stopCh := make(chan struct{})
 	runPeriodicWrite := func(
 		ctx context.Context,
 		write func(context.Context) error,
 		interval func() time.Duration,
 	) error {
+		__antithesis_instrumentation__.Notify(580740)
 		timer := p.clock.NewTimer()
 		defer timer.Stop()
 		for {
+			__antithesis_instrumentation__.Notify(580741)
 			timer.Reset(interval())
 			select {
 			case <-stopCh:
+				__antithesis_instrumentation__.Notify(580742)
 				return nil
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(580743)
 				return ctx.Err()
 			case <-timer.Ch():
+				__antithesis_instrumentation__.Notify(580744)
 				timer.MarkRead()
 				if err := write(ctx); err != nil {
+					__antithesis_instrumentation__.Notify(580745)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(580746)
 				}
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(580737)
 	var g errgroup.Group
 	g.Go(func() error {
+		__antithesis_instrumentation__.Notify(580747)
 		return runPeriodicWrite(
 			ctx, tracker.FlushFractionCompleted, p.fractionInterval)
 	})
+	__antithesis_instrumentation__.Notify(580738)
 	g.Go(func() error {
+		__antithesis_instrumentation__.Notify(580748)
 		return runPeriodicWrite(
 			ctx, tracker.FlushCheckpoint, p.checkpointInterval)
 	})
-	toClose := stopCh // make the returned function idempotent
+	__antithesis_instrumentation__.Notify(580739)
+	toClose := stopCh
 	return func() error {
+		__antithesis_instrumentation__.Notify(580749)
 		if toClose != nil {
+			__antithesis_instrumentation__.Notify(580751)
 			close(toClose)
 			toClose = nil
+		} else {
+			__antithesis_instrumentation__.Notify(580752)
 		}
+		__antithesis_instrumentation__.Notify(580750)
 		return g.Wait()
 	}
 }

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colexecutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,20 +16,6 @@ import (
 	"github.com/marusama/semaphore"
 )
 
-// SpillingBuffer wraps an AppendOnlyBufferedBatch to store tuples. It supports
-// an append operation, as well as access to a (read-only) windowed batch
-// starting at a given index.
-//
-// Once the memory limit is reached, SpillingBuffer spills to a disk queue.
-// SpillingBuffer makes a best effort to predict whether appending more tuples
-// will cause AppendOnlyBufferedBatch to exceed the memory limit. If this effort
-// succeeds, the tuples that are already in memory can be kept there once we
-// have spilled to disk. However, if the prediction fails and the in-memory
-// tuples exceed the memory limit, all tuples will have to be moved to disk.
-//
-// Note that due to the use of a disk queue to support direct access operations,
-// SpillingBuffer can be slow for certain access patterns once it has spilled to
-// disk.
 type SpillingBuffer struct {
 	memoryLimit        int64
 	diskReservedMem    int64
@@ -45,16 +23,10 @@ type SpillingBuffer struct {
 	inputTypes         []*types.T
 	storedTypes        []*types.T
 
-	// colIdxs contains the indexes of the columns that should be taken from the
-	// input batch during calls to AppendTuples.
 	colIdxs []int
 
-	// bufferedTuples is used to store tuples in-memory.
 	bufferedTuples *AppendOnlyBufferedBatch
 
-	// scratch is used when enqueueing into the disk queue to ensure that only the
-	// desired rows and columns are added. We do not allocate memory for it
-	// because it only provides a window into input data after disk spilling.
 	scratch coldata.Batch
 
 	diskQueueCfg colcontainer.DiskQueueCfg
@@ -66,36 +38,15 @@ type SpillingBuffer struct {
 	lastDequeuedBatchMemUsage int64
 	numDequeued               int
 
-	// doneAppending is used to signal whether the disk queue needs to have
-	// enqueue called with a zero length batch to signal that no more enqueues
-	// will happen, as well as to ensure that no tuples are appended after
-	// GetVecWithTuple is called.
 	doneAppending bool
 	length        int
 	closed        bool
 
 	testingKnobs struct {
-		// maxTuplesStoredInMemory, if greater than 0, indicates the maximum number
-		// of tuples that can be appended to the in-memory batch bufferedTuples
-		// (other limiting conditions might occur earlier). Once the length of
-		// bufferedTuples reaches this limit, all subsequent calls to AppendTuples
-		// will use the disk queue.
 		maxTuplesStoredInMemory int
 	}
 }
 
-// NewSpillingBuffer creates a new SpillingBuffer.
-//
-// The column indexes that are passed as the last argument(s) are used to
-// determine which columns should be used from input batches during calls to
-// AppendTuples. If nil, columns at indices 0...len(inputTypes)-1 will be used.
-// Note that the given inputTypes slice defines the types of the columns that
-// will be stored, but the input batches may have a different schema when
-// colIdxs is not nil.
-//
-// WARNING: when using SpillingBuffer all AppendTuples calls must occur
-// before any calls to GetVecWithTuple. This is due to a limitation of the
-// rewindable disk queue that is used in the event of spilling to disk.
 func NewSpillingBuffer(
 	unlimitedAllocator *colmem.Allocator,
 	memoryLimit int64,
@@ -105,24 +56,27 @@ func NewSpillingBuffer(
 	diskAcc *mon.BoundAccount,
 	colIdxs ...int,
 ) *SpillingBuffer {
+	__antithesis_instrumentation__.Notify(431773)
 	if colIdxs == nil {
+		__antithesis_instrumentation__.Notify(431776)
 		colIdxs = make([]int, len(inputTypes))
 		for i := range colIdxs {
+			__antithesis_instrumentation__.Notify(431777)
 			colIdxs[i] = i
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(431778)
 	}
+	__antithesis_instrumentation__.Notify(431774)
 	storedTypes := make([]*types.T, len(colIdxs))
 	for i, idx := range colIdxs {
+		__antithesis_instrumentation__.Notify(431779)
 		storedTypes[i] = inputTypes[idx]
 	}
+	__antithesis_instrumentation__.Notify(431775)
 
-	// The SpillingBuffer disk queue always uses
-	// DiskQueueCacheModeClearAndReuseCache since all writes happen before any
-	// reads.
 	diskQueueCfg.SetCacheMode(colcontainer.DiskQueueCacheModeClearAndReuseCache)
-	// Memory used by the AppendOnlyBufferedBatch cannot be partially released
-	// (and we would like to keep as many tuples in-memory as possible), so we
-	// must reserve memory for the disk queue and dequeue scratch batch.
+
 	diskReservedMem := colmem.EstimateBatchSizeBytes(storedTypes, coldata.BatchSize()) + int64(diskQueueCfg.BufferSizeBytes)
 	return &SpillingBuffer{
 		unlimitedAllocator: unlimitedAllocator,
@@ -132,210 +86,295 @@ func NewSpillingBuffer(
 		inputTypes:         inputTypes,
 		colIdxs:            colIdxs,
 		bufferedTuples:     NewAppendOnlyBufferedBatch(unlimitedAllocator, inputTypes, colIdxs),
-		scratch:            unlimitedAllocator.NewMemBatchNoCols(storedTypes, 0 /* capacity */),
+		scratch:            unlimitedAllocator.NewMemBatchNoCols(storedTypes, 0),
 		diskQueueCfg:       diskQueueCfg,
 		fdSemaphore:        fdSemaphore,
 		diskAcc:            diskAcc,
 	}
 }
 
-// The disk queue will always use DiskQueueCacheModeClearAndReuseCache, so
-// all writes will always occur before all reads.
 const numSpillingBufferFDs = 1
 
-// AppendTuples adds the columns from the given batch signified by colIdxs to
-// the SpillingBuffer. If the input batch has a selection vector, AppendTuples
-// panics.
 func (b *SpillingBuffer) AppendTuples(
 	ctx context.Context, batch coldata.Batch, startIdx, endIdx int,
 ) {
+	__antithesis_instrumentation__.Notify(431780)
 	var err error
 	if b.doneAppending {
+		__antithesis_instrumentation__.Notify(431788)
 		colexecerror.InternalError(
 			errors.AssertionFailedf("attempted to append to SpillingBuffer after calling GetVecWithTuple"))
+	} else {
+		__antithesis_instrumentation__.Notify(431789)
 	}
-	if startIdx >= endIdx || startIdx < 0 || endIdx > batch.Length() {
+	__antithesis_instrumentation__.Notify(431781)
+	if startIdx >= endIdx || func() bool {
+		__antithesis_instrumentation__.Notify(431790)
+		return startIdx < 0 == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(431791)
+		return endIdx > batch.Length() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(431792)
 		colexecerror.InternalError(
 			errors.AssertionFailedf("invalid indexes into source batch: %d, %d", startIdx, endIdx))
+	} else {
+		__antithesis_instrumentation__.Notify(431793)
 	}
+	__antithesis_instrumentation__.Notify(431782)
 	if batch.Selection() != nil {
+		__antithesis_instrumentation__.Notify(431794)
 		colexecerror.InternalError(
 			errors.AssertionFailedf("attempted to append batch with selection to SpillingBuffer"))
+	} else {
+		__antithesis_instrumentation__.Notify(431795)
 	}
+	__antithesis_instrumentation__.Notify(431783)
 	b.length += endIdx - startIdx
 	memLimitReached := b.unlimitedAllocator.Used()+b.diskReservedMem > b.memoryLimit
-	maxInMemTuplesLimitReached := b.testingKnobs.maxTuplesStoredInMemory > 0 &&
-		b.bufferedTuples.Length() >= b.testingKnobs.maxTuplesStoredInMemory
-	if !memLimitReached && b.diskQueue == nil && !maxInMemTuplesLimitReached {
+	maxInMemTuplesLimitReached := b.testingKnobs.maxTuplesStoredInMemory > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(431796)
+		return b.bufferedTuples.Length() >= b.testingKnobs.maxTuplesStoredInMemory == true
+	}() == true
+	if !memLimitReached && func() bool {
+		__antithesis_instrumentation__.Notify(431797)
+		return b.diskQueue == nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(431798)
+		return !maxInMemTuplesLimitReached == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(431799)
 		b.bufferedTuples.AppendTuples(batch, startIdx, endIdx)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(431800)
 	}
-	// Not all tuples could be stored in-memory; they will have to be placed in
-	// the queue.
+	__antithesis_instrumentation__.Notify(431784)
+
 	if b.diskQueue == nil {
+		__antithesis_instrumentation__.Notify(431801)
 		if b.fdSemaphore != nil {
+			__antithesis_instrumentation__.Notify(431804)
 			if err = b.fdSemaphore.Acquire(ctx, numSpillingBufferFDs); err != nil {
+				__antithesis_instrumentation__.Notify(431805)
 				colexecerror.InternalError(err)
+			} else {
+				__antithesis_instrumentation__.Notify(431806)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(431807)
 		}
+		__antithesis_instrumentation__.Notify(431802)
 		if b.diskQueue, err = colcontainer.NewRewindableDiskQueue(
 			ctx, b.storedTypes, b.diskQueueCfg, b.diskAcc); err != nil {
+			__antithesis_instrumentation__.Notify(431808)
 			colexecerror.InternalError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(431809)
 		}
+		__antithesis_instrumentation__.Notify(431803)
 		log.VEvent(ctx, 1, "spilled to disk")
+	} else {
+		__antithesis_instrumentation__.Notify(431810)
 	}
-	// Create a window into the correct columns and rows of the input batch.
+	__antithesis_instrumentation__.Notify(431785)
+
 	for i, idx := range b.colIdxs {
+		__antithesis_instrumentation__.Notify(431811)
 		window := batch.ColVec(idx).Window(startIdx, endIdx)
 		b.scratch.ReplaceCol(window, i)
 	}
+	__antithesis_instrumentation__.Notify(431786)
 	b.scratch.SetLength(endIdx - startIdx)
 	if err = b.diskQueue.Enqueue(ctx, b.scratch); err != nil {
+		__antithesis_instrumentation__.Notify(431812)
 		HandleErrorFromDiskQueue(err)
+	} else {
+		__antithesis_instrumentation__.Notify(431813)
 	}
-	// Release references to input columns.
+	__antithesis_instrumentation__.Notify(431787)
+
 	for i := range b.scratch.ColVecs() {
+		__antithesis_instrumentation__.Notify(431814)
 		b.scratch.ColVecs()[i] = nil
 	}
 }
 
-// GetVecWithTuple returns the column vector at the given column index that
-// contains the row at the requested index. It also returns the index of the
-// requested row within the returned vector, and the length up to which the
-// vector is valid. The vector is not allowed to be modified, or the data stored
-// in SpillingBuffer will be corrupted.
-//
-// No guarantees are made about the size of the vector beyond that it will
-// contain the requested row at the returned index (it may contain rows that
-// precede or follow the requested tuple). This is useful for callers that wish
-// to iterate through adjacent rows, and minimizes overhead when the tuple is
-// stored in-memory (since the in-memory vector can simply be returned).
-//
-// For tuples stored on-disk, GetVecWithTuple optimizes for the case when
-// subsequent calls access tuples from the same batch, and to a lesser degree
-// when tuples from a subsequent batch are accessed. If the index is less than
-// zero or greater than or equal to the buffer length, GetVecWithTuple will
-// panic.
-//
-// WARNING: the returned column vector is only valid until the next call to
-// GetVecWithTuple. If the caller wants to hold onto the vector, a copy must be
-// made.
 func (b *SpillingBuffer) GetVecWithTuple(
 	ctx context.Context, colIdx, idx int,
 ) (_ coldata.Vec, rowIdx int, length int) {
+	__antithesis_instrumentation__.Notify(431815)
 	var err error
-	if idx < 0 || idx >= b.Length() {
+	if idx < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(431821)
+		return idx >= b.Length() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(431822)
 		colexecerror.InternalError(
 			errors.AssertionFailedf("index out of range for spilling buffer: %d", idx))
+	} else {
+		__antithesis_instrumentation__.Notify(431823)
 	}
+	__antithesis_instrumentation__.Notify(431816)
 	if idx < b.bufferedTuples.Length() {
-		// The requested tuple is stored in-memory.
+		__antithesis_instrumentation__.Notify(431824)
+
 		return b.bufferedTuples.ColVec(b.colIdxs[colIdx]), idx, b.bufferedTuples.Length()
+	} else {
+		__antithesis_instrumentation__.Notify(431825)
 	}
-	// The requested tuple is stored on-disk. It will have to be retrieved from
-	// the rewindable queue. Normalize the index to refer to a location within the
-	// set of all enqueued tuples rather than all buffered tuples.
+	__antithesis_instrumentation__.Notify(431817)
+
 	idx -= b.bufferedTuples.Length()
 	if idx < b.numDequeued {
-		// The idx'th tuple is located before the current head of the queue, so we
-		// need to rewind. TODO(drewk): look for a more efficient way to handle
-		// spilling.
+		__antithesis_instrumentation__.Notify(431826)
+
 		if err = b.diskQueue.Rewind(); err != nil {
+			__antithesis_instrumentation__.Notify(431828)
 			colexecerror.InternalError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(431829)
 		}
+		__antithesis_instrumentation__.Notify(431827)
 		b.numDequeued = 0
 		if b.dequeueScratch != nil {
+			__antithesis_instrumentation__.Notify(431830)
 			b.dequeueScratch.SetLength(0)
+		} else {
+			__antithesis_instrumentation__.Notify(431831)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(431832)
 	}
+	__antithesis_instrumentation__.Notify(431818)
 	if b.dequeueScratch == nil {
-		// Similarly to SpillingQueue, we will unregister the memory estimate for
-		// now and then update the memory accounting once we have dequeued into it.
+		__antithesis_instrumentation__.Notify(431833)
+
 		b.dequeueScratch = b.unlimitedAllocator.NewMemBatchWithFixedCapacity(
 			b.storedTypes, coldata.BatchSize())
 		b.unlimitedAllocator.ReleaseMemory(colmem.GetBatchMemSize(b.dequeueScratch))
+	} else {
+		__antithesis_instrumentation__.Notify(431834)
 	}
+	__antithesis_instrumentation__.Notify(431819)
 	if !b.doneAppending {
+		__antithesis_instrumentation__.Notify(431835)
 		b.doneAppending = true
-		// We have to enqueue a zero-length batch to the disk queue before we can
-		// call Dequeue.
+
 		if err = b.diskQueue.Enqueue(ctx, coldata.ZeroBatch); err != nil {
+			__antithesis_instrumentation__.Notify(431836)
 			HandleErrorFromDiskQueue(err)
+		} else {
+			__antithesis_instrumentation__.Notify(431837)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(431838)
 	}
-	// Dequeue batches until we reach the one with the idx'th tuple.
+	__antithesis_instrumentation__.Notify(431820)
+
 	for {
+		__antithesis_instrumentation__.Notify(431839)
 		if idx-b.numDequeued < b.dequeueScratch.Length() {
-			// The requested row is within the dequeued batch. Return the requested
-			// vector from the dequeued batch along with the index of the requested
-			// row within it.
+			__antithesis_instrumentation__.Notify(431842)
+
 			rowIdx = idx - b.numDequeued
 
-			// Release the memory for the last dequeued batch since we've just reused
-			// it, then account for the current one.
 			b.unlimitedAllocator.ReleaseMemory(b.lastDequeuedBatchMemUsage)
 			b.lastDequeuedBatchMemUsage = colmem.GetBatchMemSize(b.dequeueScratch)
 			b.unlimitedAllocator.AdjustMemoryUsage(b.lastDequeuedBatchMemUsage)
 			return b.dequeueScratch.ColVec(colIdx), rowIdx, b.dequeueScratch.Length()
+		} else {
+			__antithesis_instrumentation__.Notify(431843)
 		}
-		// The requested tuple must be located further into the disk queue.
+		__antithesis_instrumentation__.Notify(431840)
+
 		var ok bool
 		b.numDequeued += b.dequeueScratch.Length()
 		if ok, err = b.diskQueue.Dequeue(ctx, b.dequeueScratch); err != nil {
+			__antithesis_instrumentation__.Notify(431844)
 			colexecerror.InternalError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(431845)
 		}
-		if !ok || b.dequeueScratch.Length() == 0 {
+		__antithesis_instrumentation__.Notify(431841)
+		if !ok || func() bool {
+			__antithesis_instrumentation__.Notify(431846)
+			return b.dequeueScratch.Length() == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(431847)
 			colexecerror.InternalError(
 				errors.AssertionFailedf("index out of range for SpillingBuffer"))
+		} else {
+			__antithesis_instrumentation__.Notify(431848)
 		}
 	}
 }
 
-// Length returns the number of tuples stored in the SpillingBuffer.
 func (b *SpillingBuffer) Length() int {
+	__antithesis_instrumentation__.Notify(431849)
 	return b.length
 }
 
 func (b *SpillingBuffer) closeSpillingQueue(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(431850)
 	if b.diskQueue != nil {
+		__antithesis_instrumentation__.Notify(431851)
 		if err := b.diskQueue.Close(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(431854)
 			colexecerror.InternalError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(431855)
 		}
+		__antithesis_instrumentation__.Notify(431852)
 		if b.fdSemaphore != nil {
+			__antithesis_instrumentation__.Notify(431856)
 			b.fdSemaphore.Release(numSpillingBufferFDs)
+		} else {
+			__antithesis_instrumentation__.Notify(431857)
 		}
+		__antithesis_instrumentation__.Notify(431853)
 		b.diskQueue = nil
+	} else {
+		__antithesis_instrumentation__.Notify(431858)
 	}
 }
 
-// Close closes the SpillingBuffer.
 func (b *SpillingBuffer) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(431859)
 	if b.closed {
+		__antithesis_instrumentation__.Notify(431861)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(431862)
 	}
+	__antithesis_instrumentation__.Notify(431860)
 	b.unlimitedAllocator.ReleaseMemory(b.unlimitedAllocator.Used())
 	b.closeSpillingQueue(ctx)
 
-	// Release all references so they can be garbage collected.
 	*b = SpillingBuffer{closed: true}
 }
 
-// Reset resets the SpillingBuffer.
 func (b *SpillingBuffer) Reset(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(431863)
 	b.doneAppending = false
 	b.numDequeued = 0
 	b.length = 0
 	if b.diskQueue != nil {
-		// We spilled to disk. Release the memory reserved by the
-		// AppendOnlyBufferedBatch and perform a deep reset.
+		__antithesis_instrumentation__.Notify(431865)
+
 		b.closeSpillingQueue(ctx)
 		b.unlimitedAllocator.ReleaseMemory(b.unlimitedAllocator.Used() - b.lastDequeuedBatchMemUsage)
 		b.bufferedTuples = NewAppendOnlyBufferedBatch(b.unlimitedAllocator, b.inputTypes, b.colIdxs)
 	} else {
-		// We didn't exceed the memory limit, so we can hold on to this memory.
+		__antithesis_instrumentation__.Notify(431866)
+
 		b.bufferedTuples.ResetInternalBatch()
 	}
+	__antithesis_instrumentation__.Notify(431864)
 	if b.dequeueScratch != nil {
+		__antithesis_instrumentation__.Notify(431867)
 		b.dequeueScratch.SetLength(0)
+	} else {
+		__antithesis_instrumentation__.Notify(431868)
 	}
 }

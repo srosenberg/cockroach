@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"encoding/binary"
@@ -21,9 +13,8 @@ import (
 )
 
 var (
-	// MVCCKeyMax sorts after all other MVCC keys.
 	MVCCKeyMax = MakeMVCCMetadataKey(roachpb.KeyMax)
-	// NilKey is the nil MVCCKey.
+
 	NilKey = MVCCKey{}
 )
 
@@ -35,295 +26,341 @@ const (
 	mvccEncodedTimeLengthLen    = 1
 )
 
-// MVCCKey is a versioned key, distinguished from roachpb.Key with the addition
-// of a timestamp.
 type MVCCKey struct {
 	Key       roachpb.Key
 	Timestamp hlc.Timestamp
 }
 
-// MakeMVCCMetadataKey creates an MVCCKey from a roachpb.Key.
 func MakeMVCCMetadataKey(key roachpb.Key) MVCCKey {
+	__antithesis_instrumentation__.Notify(641519)
 	return MVCCKey{Key: key}
 }
 
-// Next returns the next key.
 func (k MVCCKey) Next() MVCCKey {
+	__antithesis_instrumentation__.Notify(641520)
 	ts := k.Timestamp.Prev()
 	if ts.IsEmpty() {
+		__antithesis_instrumentation__.Notify(641522)
 		return MVCCKey{
 			Key: k.Key.Next(),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(641523)
 	}
+	__antithesis_instrumentation__.Notify(641521)
 	return MVCCKey{
 		Key:       k.Key,
 		Timestamp: ts,
 	}
 }
 
-// Compare returns -1 if this key is less than the given key, 0 if they're
-// equal, or 1 if this is greater. Comparison is by key,timestamp, where larger
-// timestamps sort before smaller ones except empty ones which sort first (like
-// elsewhere in MVCC).
 func (k MVCCKey) Compare(o MVCCKey) int {
+	__antithesis_instrumentation__.Notify(641524)
 	if c := k.Key.Compare(o.Key); c != 0 {
+		__antithesis_instrumentation__.Notify(641526)
 		return c
-	}
-	if k.Timestamp.IsEmpty() && !o.Timestamp.IsEmpty() {
-		return -1
-	} else if !k.Timestamp.IsEmpty() && o.Timestamp.IsEmpty() {
-		return 1
 	} else {
-		return -k.Timestamp.Compare(o.Timestamp) // timestamps sort in reverse
+		__antithesis_instrumentation__.Notify(641527)
+	}
+	__antithesis_instrumentation__.Notify(641525)
+	if k.Timestamp.IsEmpty() && func() bool {
+		__antithesis_instrumentation__.Notify(641528)
+		return !o.Timestamp.IsEmpty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641529)
+		return -1
+	} else {
+		__antithesis_instrumentation__.Notify(641530)
+		if !k.Timestamp.IsEmpty() && func() bool {
+			__antithesis_instrumentation__.Notify(641531)
+			return o.Timestamp.IsEmpty() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(641532)
+			return 1
+		} else {
+			__antithesis_instrumentation__.Notify(641533)
+			return -k.Timestamp.Compare(o.Timestamp)
+		}
 	}
 }
 
-// Less compares two keys.
 func (k MVCCKey) Less(l MVCCKey) bool {
+	__antithesis_instrumentation__.Notify(641534)
 	if c := k.Key.Compare(l.Key); c != 0 {
+		__antithesis_instrumentation__.Notify(641537)
 		return c < 0
+	} else {
+		__antithesis_instrumentation__.Notify(641538)
 	}
+	__antithesis_instrumentation__.Notify(641535)
 	if !k.IsValue() {
+		__antithesis_instrumentation__.Notify(641539)
 		return l.IsValue()
-	} else if !l.IsValue() {
-		return false
+	} else {
+		__antithesis_instrumentation__.Notify(641540)
+		if !l.IsValue() {
+			__antithesis_instrumentation__.Notify(641541)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(641542)
+		}
 	}
+	__antithesis_instrumentation__.Notify(641536)
 	return l.Timestamp.Less(k.Timestamp)
 }
 
-// Equal returns whether two keys are identical.
 func (k MVCCKey) Equal(l MVCCKey) bool {
-	return k.Key.Compare(l.Key) == 0 && k.Timestamp.EqOrdering(l.Timestamp)
+	__antithesis_instrumentation__.Notify(641543)
+	return k.Key.Compare(l.Key) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(641544)
+		return k.Timestamp.EqOrdering(l.Timestamp) == true
+	}() == true
 }
 
-// IsValue returns true iff the timestamp is non-zero.
 func (k MVCCKey) IsValue() bool {
+	__antithesis_instrumentation__.Notify(641545)
 	return !k.Timestamp.IsEmpty()
 }
 
-// EncodedSize returns the size of the MVCCKey when encoded.
-//
-// TODO(itsbilal): Reconcile this with Len(). Would require updating MVCC stats
-// tests to reflect the more accurate lengths provided by Len().
 func (k MVCCKey) EncodedSize() int {
+	__antithesis_instrumentation__.Notify(641546)
 	n := len(k.Key) + 1
 	if k.IsValue() {
-		// Note that this isn't quite accurate: timestamps consume between 8-13
-		// bytes. Fixing this only adjusts the accounting for timestamps, not the
-		// actual on disk storage.
+		__antithesis_instrumentation__.Notify(641548)
+
 		n += int(MVCCVersionTimestampSize)
+	} else {
+		__antithesis_instrumentation__.Notify(641549)
 	}
+	__antithesis_instrumentation__.Notify(641547)
 	return n
 }
 
-// String returns a string-formatted version of the key.
 func (k MVCCKey) String() string {
+	__antithesis_instrumentation__.Notify(641550)
 	if !k.IsValue() {
+		__antithesis_instrumentation__.Notify(641552)
 		return k.Key.String()
+	} else {
+		__antithesis_instrumentation__.Notify(641553)
 	}
+	__antithesis_instrumentation__.Notify(641551)
 	return fmt.Sprintf("%s/%s", k.Key, k.Timestamp)
 }
 
-// Format implements the fmt.Formatter interface.
 func (k MVCCKey) Format(f fmt.State, c rune) {
+	__antithesis_instrumentation__.Notify(641554)
 	fmt.Fprintf(f, "%s/%s", k.Key, k.Timestamp)
 }
 
-// Len returns the size of the MVCCKey when encoded. Implements the
-// pebble.Encodeable interface.
 func (k MVCCKey) Len() int {
+	__antithesis_instrumentation__.Notify(641555)
 	return encodedMVCCKeyLength(k)
 }
 
-// EncodeMVCCKey encodes an MVCCKey into its Pebble representation. The encoding
-// takes the following forms, where trailing time components are omitted when
-// zero-valued:
-//
-// [key] [sentinel] [timeWall] [timeLogical] [timeSynthetic] [timeLength]
-// [key] [sentinel] [timeWall] [timeLogical] [timeLength]
-// [key] [sentinel] [timeWall] [timeLength]
-// [key] [sentinel]
-//
-// key:           the unmodified binary key            (variable length)
-// sentinel:      separates key and timestamp          (1 byte: 0x00)
-// timeWall:      Timestamp.WallTime                   (8 bytes: big-endian uint64)
-// timeLogical:   Timestamp.Logical                    (4 bytes: big-endian uint32)
-// timeSynthetic: Timestamp.Synthetic                  (1 byte: 0x01 when set)
-// timeLength:    encoded timestamp length inc. itself (1 byte: uint8)
-//
-// The sentinel byte can be used to detect a key without a timestamp, since
-// timeLength will never be 0 (it includes itself in the length).
 func EncodeMVCCKey(key MVCCKey) []byte {
+	__antithesis_instrumentation__.Notify(641556)
 	keyLen := encodedMVCCKeyLength(key)
 	buf := make([]byte, keyLen)
 	encodeMVCCKeyToBuf(buf, key, keyLen)
 	return buf
 }
 
-// EncodeMVCCKeyToBuf encodes an MVCCKey into its Pebble representation, reusing
-// the given byte buffer if it has sufficient capacity.
 func EncodeMVCCKeyToBuf(buf []byte, key MVCCKey) []byte {
+	__antithesis_instrumentation__.Notify(641557)
 	keyLen := encodedMVCCKeyLength(key)
 	if cap(buf) < keyLen {
+		__antithesis_instrumentation__.Notify(641559)
 		buf = make([]byte, keyLen)
 	} else {
+		__antithesis_instrumentation__.Notify(641560)
 		buf = buf[:keyLen]
 	}
+	__antithesis_instrumentation__.Notify(641558)
 	encodeMVCCKeyToBuf(buf, key, keyLen)
 	return buf
 }
 
-// EncodeMVCCKeyPrefix encodes an MVCC user key (without timestamp) into its
-// Pebble prefix representation.
 func EncodeMVCCKeyPrefix(key roachpb.Key) []byte {
+	__antithesis_instrumentation__.Notify(641561)
 	return EncodeMVCCKey(MVCCKey{Key: key})
 }
 
-// encodeMVCCKeyToBuf encodes an MVCCKey into its Pebble representation to the
-// target buffer, which must have the correct size.
 func encodeMVCCKeyToBuf(buf []byte, key MVCCKey, keyLen int) {
+	__antithesis_instrumentation__.Notify(641562)
 	copy(buf, key.Key)
 	pos := len(key.Key)
 
-	buf[pos] = 0 // sentinel byte
+	buf[pos] = 0
 	pos += mvccEncodedTimeSentinelLen
 
 	tsLen := keyLen - pos - mvccEncodedTimeLengthLen
 	if tsLen > 0 {
+		__antithesis_instrumentation__.Notify(641563)
 		encodeMVCCTimestampToBuf(buf[pos:], key.Timestamp)
 		pos += tsLen
 		buf[pos] = byte(tsLen + mvccEncodedTimeLengthLen)
+	} else {
+		__antithesis_instrumentation__.Notify(641564)
 	}
 }
 
-// encodeMVCCTimestamp encodes an MVCC timestamp into its Pebble
-// representation, excluding length suffix and sentinel byte.
 func encodeMVCCTimestamp(ts hlc.Timestamp) []byte {
+	__antithesis_instrumentation__.Notify(641565)
 	tsLen := encodedMVCCTimestampLength(ts)
 	if tsLen == 0 {
+		__antithesis_instrumentation__.Notify(641567)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(641568)
 	}
+	__antithesis_instrumentation__.Notify(641566)
 	buf := make([]byte, tsLen)
 	encodeMVCCTimestampToBuf(buf, ts)
 	return buf
 }
 
-// EncodeMVCCTimestampSuffix encodes an MVCC timestamp into its Pebble
-// representation, including the length suffix but excluding the sentinel byte.
-// This is equivalent to the Pebble suffix.
 func EncodeMVCCTimestampSuffix(ts hlc.Timestamp) []byte {
+	__antithesis_instrumentation__.Notify(641569)
 	tsLen := encodedMVCCTimestampLength(ts)
 	if tsLen == 0 {
+		__antithesis_instrumentation__.Notify(641571)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(641572)
 	}
+	__antithesis_instrumentation__.Notify(641570)
 	buf := make([]byte, tsLen+mvccEncodedTimeLengthLen)
 	encodeMVCCTimestampToBuf(buf, ts)
 	buf[tsLen] = byte(tsLen + mvccEncodedTimeLengthLen)
 	return buf
 }
 
-// encodeMVCCTimestampToBuf encodes an MVCC timestamp into its Pebble
-// representation, excluding the length suffix and sentinel byte. The target
-// buffer must have the correct size, and the timestamp must not be empty.
 func encodeMVCCTimestampToBuf(buf []byte, ts hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(641573)
 	binary.BigEndian.PutUint64(buf, uint64(ts.WallTime))
-	if ts.Logical != 0 || ts.Synthetic {
+	if ts.Logical != 0 || func() bool {
+		__antithesis_instrumentation__.Notify(641574)
+		return ts.Synthetic == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641575)
 		binary.BigEndian.PutUint32(buf[mvccEncodedTimeWallLen:], uint32(ts.Logical))
 		if ts.Synthetic {
+			__antithesis_instrumentation__.Notify(641576)
 			buf[mvccEncodedTimeWallLen+mvccEncodedTimeLogicalLen] = 1
+		} else {
+			__antithesis_instrumentation__.Notify(641577)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(641578)
 	}
 }
 
-// encodedMVCCKeyLength returns the encoded length of the given MVCCKey.
 func encodedMVCCKeyLength(key MVCCKey) int {
-	// NB: We don't call into encodedMVCCKeyPrefixLength() or
-	// encodedMVCCTimestampSuffixLength() here because the additional function
-	// call overhead is significant.
+	__antithesis_instrumentation__.Notify(641579)
+
 	keyLen := len(key.Key) + mvccEncodedTimeSentinelLen
 	if !key.Timestamp.IsEmpty() {
+		__antithesis_instrumentation__.Notify(641581)
 		keyLen += mvccEncodedTimeWallLen + mvccEncodedTimeLengthLen
-		if key.Timestamp.Logical != 0 || key.Timestamp.Synthetic {
+		if key.Timestamp.Logical != 0 || func() bool {
+			__antithesis_instrumentation__.Notify(641582)
+			return key.Timestamp.Synthetic == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(641583)
 			keyLen += mvccEncodedTimeLogicalLen
 			if key.Timestamp.Synthetic {
+				__antithesis_instrumentation__.Notify(641584)
 				keyLen += mvccEncodedTimeSyntheticLen
+			} else {
+				__antithesis_instrumentation__.Notify(641585)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(641586)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(641587)
 	}
+	__antithesis_instrumentation__.Notify(641580)
 	return keyLen
 }
 
-// encodedMVCCKeyPrefixLength returns the encoded length of a roachpb.Key prefix
-// including the sentinel byte.
 func encodedMVCCKeyPrefixLength(key roachpb.Key) int {
+	__antithesis_instrumentation__.Notify(641588)
 	return len(key) + mvccEncodedTimeSentinelLen
 }
 
-// encodedMVCCTimestampLength returns the encoded length of the given MVCC
-// timestamp, excluding the length suffix and sentinel bytes.
 func encodedMVCCTimestampLength(ts hlc.Timestamp) int {
-	// This is backwards, but encodedMVCCKeyLength() is called in the
-	// EncodeMVCCKey() hot path and an additional function call to this function
-	// shows ~6% overhead in benchmarks. We therefore do the timestamp length
-	// calculation inline in encodedMVCCKeyLength(), and remove the excess here.
+	__antithesis_instrumentation__.Notify(641589)
+
 	tsLen := encodedMVCCKeyLength(MVCCKey{Timestamp: ts}) - mvccEncodedTimeSentinelLen
 	if tsLen > 0 {
+		__antithesis_instrumentation__.Notify(641591)
 		tsLen -= mvccEncodedTimeLengthLen
+	} else {
+		__antithesis_instrumentation__.Notify(641592)
 	}
+	__antithesis_instrumentation__.Notify(641590)
 	return tsLen
 }
 
-// encodedMVCCTimestampSuffixLength returns the encoded length of the
-// given MVCC timestamp, including the length suffix. It returns 0
-// if the timestamp is empty.
 func encodedMVCCTimestampSuffixLength(ts hlc.Timestamp) int {
-	// This is backwards, see comment in encodedMVCCTimestampLength() for why.
+	__antithesis_instrumentation__.Notify(641593)
+
 	return encodedMVCCKeyLength(MVCCKey{Timestamp: ts}) - mvccEncodedTimeSentinelLen
 }
 
-// TODO(erikgrinaker): merge in the enginepb decoding functions once it can
-// avoid the storage package's problematic CGo dependency (via Pebble).
-
-// DecodeMVCCKey decodes an MVCCKey from its Pebble representation.
 func DecodeMVCCKey(encodedKey []byte) (MVCCKey, error) {
+	__antithesis_instrumentation__.Notify(641594)
 	k, ts, err := enginepb.DecodeKey(encodedKey)
 	return MVCCKey{k, ts}, err
 }
 
-// decodeMVCCTimestamp decodes an MVCC timestamp from its Pebble representation,
-// excluding the length suffix.
 func decodeMVCCTimestamp(encodedTS []byte) (hlc.Timestamp, error) {
-	// NB: This logic is duplicated in enginepb.DecodeKey() to avoid the
-	// overhead of an additional function call there (~13%).
+	__antithesis_instrumentation__.Notify(641595)
+
 	var ts hlc.Timestamp
 	switch len(encodedTS) {
 	case 0:
-		// No-op.
+		__antithesis_instrumentation__.Notify(641597)
+
 	case 8:
+		__antithesis_instrumentation__.Notify(641598)
 		ts.WallTime = int64(binary.BigEndian.Uint64(encodedTS[0:8]))
 	case 12:
+		__antithesis_instrumentation__.Notify(641599)
 		ts.WallTime = int64(binary.BigEndian.Uint64(encodedTS[0:8]))
 		ts.Logical = int32(binary.BigEndian.Uint32(encodedTS[8:12]))
 	case 13:
+		__antithesis_instrumentation__.Notify(641600)
 		ts.WallTime = int64(binary.BigEndian.Uint64(encodedTS[0:8]))
 		ts.Logical = int32(binary.BigEndian.Uint32(encodedTS[8:12]))
 		ts.Synthetic = encodedTS[12] != 0
 	default:
+		__antithesis_instrumentation__.Notify(641601)
 		return hlc.Timestamp{}, errors.Errorf("bad timestamp %x", encodedTS)
 	}
+	__antithesis_instrumentation__.Notify(641596)
 	return ts, nil
 }
 
-// decodeMVCCTimestampSuffix decodes an MVCC timestamp from its Pebble representation,
-// including the length suffix.
 func decodeMVCCTimestampSuffix(encodedTS []byte) (hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(641602)
 	if len(encodedTS) == 0 {
+		__antithesis_instrumentation__.Notify(641605)
 		return hlc.Timestamp{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(641606)
 	}
+	__antithesis_instrumentation__.Notify(641603)
 	encodedLen := len(encodedTS)
 	if suffixLen := int(encodedTS[encodedLen-1]); suffixLen != encodedLen {
+		__antithesis_instrumentation__.Notify(641607)
 		return hlc.Timestamp{}, errors.Errorf(
 			"bad timestamp: found length suffix %d, actual length %d", suffixLen, encodedLen)
+	} else {
+		__antithesis_instrumentation__.Notify(641608)
 	}
+	__antithesis_instrumentation__.Notify(641604)
 	return decodeMVCCTimestamp(encodedTS[:encodedLen-1])
 }

@@ -21,6 +21,7 @@ go_library(
         "//pkg/sql/sqlerrors",
         "//pkg/util/hlc",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -57,6 +58,7 @@ go_test(
         "//pkg/util/log",
         "//pkg/util/protoutil",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package dbdesc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -23,8 +15,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 )
 
-// DatabaseDescriptorBuilder is an extension of catalog.DescriptorBuilder
-// for database descriptors.
 type DatabaseDescriptorBuilder interface {
 	catalog.DescriptorBuilder
 	BuildImmutableDatabase() catalog.DatabaseDescriptor
@@ -42,10 +32,9 @@ type databaseDescriptorBuilder struct {
 
 var _ DatabaseDescriptorBuilder = &databaseDescriptorBuilder{}
 
-// NewBuilder creates a new catalog.DescriptorBuilder object for building
-// database descriptors.
 func NewBuilder(desc *descpb.DatabaseDescriptor) DatabaseDescriptorBuilder {
-	return newBuilder(desc, false, /* isUncommittedVersion */
+	__antithesis_instrumentation__.Notify(251405)
+	return newBuilder(desc, false,
 		catalog.PostDeserializationChanges{})
 }
 
@@ -54,6 +43,7 @@ func newBuilder(
 	isUncommittedVersion bool,
 	changes catalog.PostDeserializationChanges,
 ) DatabaseDescriptorBuilder {
+	__antithesis_instrumentation__.Notify(251406)
 	return &databaseDescriptorBuilder{
 		original:             protoutil.Clone(desc).(*descpb.DatabaseDescriptor),
 		isUncommittedVersion: isUncommittedVersion,
@@ -61,32 +51,37 @@ func newBuilder(
 	}
 }
 
-// DescriptorType implements the catalog.DescriptorBuilder interface.
 func (ddb *databaseDescriptorBuilder) DescriptorType() catalog.DescriptorType {
+	__antithesis_instrumentation__.Notify(251407)
 	return catalog.Database
 }
 
-// RunPostDeserializationChanges implements the catalog.DescriptorBuilder
-// interface.
 func (ddb *databaseDescriptorBuilder) RunPostDeserializationChanges() error {
+	__antithesis_instrumentation__.Notify(251408)
 	ddb.maybeModified = protoutil.Clone(ddb.original).(*descpb.DatabaseDescriptor)
 
 	createdDefaultPrivileges := false
 	removedIncompatibleDatabasePrivs := false
-	// Skip converting incompatible privileges to default privileges on the
-	// system database and let MaybeFixPrivileges handle it instead as we do not
-	// want any default privileges on the system database.
+
 	if ddb.original.GetID() != keys.SystemDatabaseID {
+		__antithesis_instrumentation__.Notify(251412)
 		if ddb.maybeModified.DefaultPrivileges == nil {
+			__antithesis_instrumentation__.Notify(251414)
 			ddb.maybeModified.DefaultPrivileges = catprivilege.MakeDefaultPrivilegeDescriptor(
 				catpb.DefaultPrivilegeDescriptor_DATABASE)
 			createdDefaultPrivileges = true
+		} else {
+			__antithesis_instrumentation__.Notify(251415)
 		}
+		__antithesis_instrumentation__.Notify(251413)
 
 		removedIncompatibleDatabasePrivs = maybeConvertIncompatibleDBPrivilegesToDefaultPrivileges(
 			ddb.maybeModified.Privileges, ddb.maybeModified.DefaultPrivileges,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(251416)
 	}
+	__antithesis_instrumentation__.Notify(251409)
 
 	privsChanged := catprivilege.MaybeFixPrivileges(
 		&ddb.maybeModified.Privileges,
@@ -96,50 +91,74 @@ func (ddb *databaseDescriptorBuilder) RunPostDeserializationChanges() error {
 		ddb.maybeModified.GetName())
 	addedGrantOptions := catprivilege.MaybeUpdateGrantOptions(ddb.maybeModified.Privileges)
 
-	if privsChanged || addedGrantOptions || removedIncompatibleDatabasePrivs || createdDefaultPrivileges {
+	if privsChanged || func() bool {
+		__antithesis_instrumentation__.Notify(251417)
+		return addedGrantOptions == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(251418)
+		return removedIncompatibleDatabasePrivs == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(251419)
+		return createdDefaultPrivileges == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(251420)
 		ddb.changes.Add(catalog.UpgradedPrivileges)
+	} else {
+		__antithesis_instrumentation__.Notify(251421)
 	}
+	__antithesis_instrumentation__.Notify(251410)
 	if maybeRemoveDroppedSelfEntryFromSchemas(ddb.maybeModified) {
+		__antithesis_instrumentation__.Notify(251422)
 		ddb.changes.Add(catalog.RemovedSelfEntryInSchemas)
+	} else {
+		__antithesis_instrumentation__.Notify(251423)
 	}
+	__antithesis_instrumentation__.Notify(251411)
 	return nil
 }
 
-// RunRestoreChanges implements the catalog.DescriptorBuilder interface.
 func (ddb *databaseDescriptorBuilder) RunRestoreChanges(
 	_ func(id descpb.ID) catalog.Descriptor,
 ) error {
+	__antithesis_instrumentation__.Notify(251424)
 	return nil
 }
 
 func maybeConvertIncompatibleDBPrivilegesToDefaultPrivileges(
 	privileges *catpb.PrivilegeDescriptor, defaultPrivileges *catpb.DefaultPrivilegeDescriptor,
 ) (hasChanged bool) {
-	// If privileges are nil, there is nothing to convert.
-	// This case can happen during restore where privileges are not yet created.
+	__antithesis_instrumentation__.Notify(251425)
+
 	if privileges == nil {
+		__antithesis_instrumentation__.Notify(251428)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(251429)
 	}
+	__antithesis_instrumentation__.Notify(251426)
 
 	var pgIncompatibleDBPrivileges = privilege.List{
 		privilege.SELECT, privilege.INSERT, privilege.UPDATE, privilege.DELETE,
 	}
 
 	for i, user := range privileges.Users {
+		__antithesis_instrumentation__.Notify(251430)
 		incompatiblePrivileges := user.Privileges & pgIncompatibleDBPrivileges.ToBitField()
 
 		if incompatiblePrivileges == 0 {
+			__antithesis_instrumentation__.Notify(251432)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(251433)
 		}
+		__antithesis_instrumentation__.Notify(251431)
 
 		hasChanged = true
 
-		// XOR to remove incompatible privileges.
 		user.Privileges ^= incompatiblePrivileges
 
 		privileges.Users[i] = user
 
-		// Convert the incompatible privileges to default privileges.
 		role := defaultPrivileges.FindOrCreateUser(catpb.DefaultPrivilegesRole{ForAllRoles: true})
 		tableDefaultPrivilegesForAllRoles := role.DefaultPrivilegesPerObject[tree.Tables]
 
@@ -148,21 +167,26 @@ func maybeConvertIncompatibleDBPrivilegesToDefaultPrivileges(
 
 		role.DefaultPrivilegesPerObject[tree.Tables] = tableDefaultPrivilegesForAllRoles
 	}
+	__antithesis_instrumentation__.Notify(251427)
 
 	return hasChanged
 }
 
-// BuildImmutable implements the catalog.DescriptorBuilder interface.
 func (ddb *databaseDescriptorBuilder) BuildImmutable() catalog.Descriptor {
+	__antithesis_instrumentation__.Notify(251434)
 	return ddb.BuildImmutableDatabase()
 }
 
-// BuildImmutableDatabase returns an immutable database descriptor.
 func (ddb *databaseDescriptorBuilder) BuildImmutableDatabase() catalog.DatabaseDescriptor {
+	__antithesis_instrumentation__.Notify(251435)
 	desc := ddb.maybeModified
 	if desc == nil {
+		__antithesis_instrumentation__.Notify(251437)
 		desc = ddb.original
+	} else {
+		__antithesis_instrumentation__.Notify(251438)
 	}
+	__antithesis_instrumentation__.Notify(251436)
 	return &immutable{
 		DatabaseDescriptor:   *desc,
 		isUncommittedVersion: ddb.isUncommittedVersion,
@@ -170,17 +194,20 @@ func (ddb *databaseDescriptorBuilder) BuildImmutableDatabase() catalog.DatabaseD
 	}
 }
 
-// BuildExistingMutable implements the catalog.DescriptorBuilder interface.
 func (ddb *databaseDescriptorBuilder) BuildExistingMutable() catalog.MutableDescriptor {
+	__antithesis_instrumentation__.Notify(251439)
 	return ddb.BuildExistingMutableDatabase()
 }
 
-// BuildExistingMutableDatabase returns a mutable descriptor for a database
-// which already exists.
 func (ddb *databaseDescriptorBuilder) BuildExistingMutableDatabase() *Mutable {
+	__antithesis_instrumentation__.Notify(251440)
 	if ddb.maybeModified == nil {
+		__antithesis_instrumentation__.Notify(251442)
 		ddb.maybeModified = protoutil.Clone(ddb.original).(*descpb.DatabaseDescriptor)
+	} else {
+		__antithesis_instrumentation__.Notify(251443)
 	}
+	__antithesis_instrumentation__.Notify(251441)
 	return &Mutable{
 		immutable: immutable{
 			DatabaseDescriptor:   *ddb.maybeModified,
@@ -191,18 +218,21 @@ func (ddb *databaseDescriptorBuilder) BuildExistingMutableDatabase() *Mutable {
 	}
 }
 
-// BuildCreatedMutable implements the catalog.DescriptorBuilder interface.
 func (ddb *databaseDescriptorBuilder) BuildCreatedMutable() catalog.MutableDescriptor {
+	__antithesis_instrumentation__.Notify(251444)
 	return ddb.BuildCreatedMutableDatabase()
 }
 
-// BuildCreatedMutableDatabase returns a mutable descriptor for a database
-// which is in the process of being created.
 func (ddb *databaseDescriptorBuilder) BuildCreatedMutableDatabase() *Mutable {
+	__antithesis_instrumentation__.Notify(251445)
 	desc := ddb.maybeModified
 	if desc == nil {
+		__antithesis_instrumentation__.Notify(251447)
 		desc = ddb.original
+	} else {
+		__antithesis_instrumentation__.Notify(251448)
 	}
+	__antithesis_instrumentation__.Notify(251446)
 	return &Mutable{
 		immutable: immutable{
 			DatabaseDescriptor:   *desc,
@@ -212,17 +242,20 @@ func (ddb *databaseDescriptorBuilder) BuildCreatedMutableDatabase() *Mutable {
 	}
 }
 
-// NewInitialOption is an optional argument for NewInitial.
 type NewInitialOption func(*descpb.DatabaseDescriptor)
 
-// MaybeWithDatabaseRegionConfig is an option allowing an optional regional
-// configuration to be set on the database descriptor.
 func MaybeWithDatabaseRegionConfig(regionConfig *multiregion.RegionConfig) NewInitialOption {
+	__antithesis_instrumentation__.Notify(251449)
 	return func(desc *descpb.DatabaseDescriptor) {
-		// Not a multi-region database. Not much to do here.
+		__antithesis_instrumentation__.Notify(251450)
+
 		if regionConfig == nil {
+			__antithesis_instrumentation__.Notify(251452)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(251453)
 		}
+		__antithesis_instrumentation__.Notify(251451)
 		desc.RegionConfig = &descpb.DatabaseDescriptor_RegionConfig{
 			SurvivalGoal:  regionConfig.SurvivalGoal(),
 			PrimaryRegion: regionConfig.PrimaryRegion(),
@@ -232,29 +265,29 @@ func MaybeWithDatabaseRegionConfig(regionConfig *multiregion.RegionConfig) NewIn
 	}
 }
 
-// WithPublicSchemaID is used to create a DatabaseDescriptor with a
-// publicSchemaID.
 func WithPublicSchemaID(publicSchemaID descpb.ID) NewInitialOption {
+	__antithesis_instrumentation__.Notify(251454)
 	return func(desc *descpb.DatabaseDescriptor) {
-		// TODO(richardjcai): Remove this in 22.2. If the public schema id is
-		// keys.PublicSchemaID, we do not add an entry as the public schema does
-		// not have a descriptor.
+		__antithesis_instrumentation__.Notify(251455)
+
 		if publicSchemaID != keys.PublicSchemaID {
+			__antithesis_instrumentation__.Notify(251456)
 			desc.Schemas = map[string]descpb.DatabaseDescriptor_SchemaInfo{
 				tree.PublicSchema: {
 					ID:      publicSchemaID,
 					Dropped: false,
 				},
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(251457)
 		}
 	}
 }
 
-// NewInitial constructs a new Mutable for an initial version from an id and
-// name with default privileges.
 func NewInitial(
 	id descpb.ID, name string, owner security.SQLUsername, options ...NewInitialOption,
 ) *Mutable {
+	__antithesis_instrumentation__.Notify(251458)
 	return newInitialWithPrivileges(
 		id,
 		name,
@@ -264,8 +297,6 @@ func NewInitial(
 	)
 }
 
-// newInitialWithPrivileges constructs a new Mutable for an initial version
-// from an id and name and custom privileges.
 func newInitialWithPrivileges(
 	id descpb.ID,
 	name string,
@@ -273,6 +304,7 @@ func newInitialWithPrivileges(
 	defaultPrivileges *catpb.DefaultPrivilegeDescriptor,
 	options ...NewInitialOption,
 ) *Mutable {
+	__antithesis_instrumentation__.Notify(251459)
 	ret := descpb.DatabaseDescriptor{
 		Name:              name,
 		ID:                id,
@@ -281,7 +313,9 @@ func newInitialWithPrivileges(
 		DefaultPrivileges: defaultPrivileges,
 	}
 	for _, option := range options {
+		__antithesis_instrumentation__.Notify(251461)
 		option(&ret)
 	}
+	__antithesis_instrumentation__.Notify(251460)
 	return NewBuilder(&ret).BuildCreatedMutableDatabase()
 }

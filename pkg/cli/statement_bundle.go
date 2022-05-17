@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -85,48 +77,83 @@ type statementBundle struct {
 }
 
 func loadStatementBundle(zipdir string) (*statementBundle, error) {
+	__antithesis_instrumentation__.Notify(34365)
 	ret := &statementBundle{}
 	var err error
 	ret.env, err = ioutil.ReadFile(filepath.Join(zipdir, "env.sql"))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34369)
 		return ret, err
+	} else {
+		__antithesis_instrumentation__.Notify(34370)
 	}
+	__antithesis_instrumentation__.Notify(34366)
 	ret.schema, err = ioutil.ReadFile(filepath.Join(zipdir, "schema.sql"))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34371)
 		return ret, err
+	} else {
+		__antithesis_instrumentation__.Notify(34372)
 	}
+	__antithesis_instrumentation__.Notify(34367)
 	ret.statement, err = ioutil.ReadFile(filepath.Join(zipdir, "statement.txt"))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34373)
 		return ret, err
+	} else {
+		__antithesis_instrumentation__.Notify(34374)
 	}
+	__antithesis_instrumentation__.Notify(34368)
 
 	return ret, filepath.WalkDir(zipdir, func(path string, d fs.DirEntry, _ error) error {
+		__antithesis_instrumentation__.Notify(34375)
 		if d.IsDir() {
+			__antithesis_instrumentation__.Notify(34379)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(34380)
 		}
+		__antithesis_instrumentation__.Notify(34376)
 		if !strings.HasPrefix(d.Name(), "stats-") {
+			__antithesis_instrumentation__.Notify(34381)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(34382)
 		}
+		__antithesis_instrumentation__.Notify(34377)
 		f, err := ioutil.ReadFile(path)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(34383)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(34384)
 		}
+		__antithesis_instrumentation__.Notify(34378)
 		ret.stats = append(ret.stats, f)
 		return nil
 	})
 }
 
 func runBundleRecreate(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(34385)
 	zipdir := args[0]
 	bundle, err := loadStatementBundle(zipdir)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34395)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(34396)
 	}
+	__antithesis_instrumentation__.Notify(34386)
 
 	closeFn, err := sqlCtx.Open(os.Stdin)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34397)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(34398)
 	}
+	__antithesis_instrumentation__.Notify(34387)
 	defer closeFn()
 	ctx := context.Background()
 	c, err := democluster.NewDemoCluster(ctx, &demoCtx,
@@ -134,45 +161,66 @@ func runBundleRecreate(cmd *cobra.Command, args []string) error {
 		log.Warningf,
 		log.Ops.Shoutf,
 		func(ctx context.Context) (*stop.Stopper, error) {
-			// Override the default server store spec.
-			//
-			// This is needed because the logging setup code peeks into this to
-			// decide how to enable logging.
+			__antithesis_instrumentation__.Notify(34399)
+
 			serverCfg.Stores.Specs = nil
-			return setupAndInitializeLoggingAndProfiling(ctx, cmd, false /* isServerCmd */)
+			return setupAndInitializeLoggingAndProfiling(ctx, cmd, false)
 		},
 		getAdminClient,
 		func(ctx context.Context, ac serverpb.AdminClient) error {
-			return drainAndShutdown(ctx, ac, "local" /* targetNode */)
+			__antithesis_instrumentation__.Notify(34400)
+			return drainAndShutdown(ctx, ac, "local")
 		},
 	)
+	__antithesis_instrumentation__.Notify(34388)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34401)
 		c.Close(ctx)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(34402)
 	}
+	__antithesis_instrumentation__.Notify(34389)
 	defer c.Close(ctx)
 
 	initGEOS(ctx)
 
 	if err := c.Start(ctx, runInitialSQL); err != nil {
+		__antithesis_instrumentation__.Notify(34403)
 		return clierrorplus.CheckAndMaybeShout(err)
+	} else {
+		__antithesis_instrumentation__.Notify(34404)
 	}
+	__antithesis_instrumentation__.Notify(34390)
 	conn, err := sqlCtx.MakeConn(c.GetConnURL())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34405)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(34406)
 	}
-	// Disable autostats collection, which will override the injected stats.
+	__antithesis_instrumentation__.Notify(34391)
+
 	if err := conn.Exec(ctx,
 		`SET CLUSTER SETTING sql.stats.automatic_collection.enabled = false`); err != nil {
+		__antithesis_instrumentation__.Notify(34407)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(34408)
 	}
+	__antithesis_instrumentation__.Notify(34392)
 	var initStmts = [][]byte{bundle.env, bundle.schema}
 	initStmts = append(initStmts, bundle.stats...)
 	for _, a := range initStmts {
+		__antithesis_instrumentation__.Notify(34409)
 		if err := conn.Exec(ctx, string(a)); err != nil {
+			__antithesis_instrumentation__.Notify(34410)
 			return errors.Wrapf(err, "failed to run %s", a)
+		} else {
+			__antithesis_instrumentation__.Notify(34411)
 		}
 	}
+	__antithesis_instrumentation__.Notify(34393)
 
 	cliCtx.PrintfUnlessEmbedded(`#
 # Statement bundle %s loaded.
@@ -184,38 +232,52 @@ func runBundleRecreate(cmd *cobra.Command, args []string) error {
 `, zipdir, bundle.statement)
 
 	if placeholderPairs != nil {
+		__antithesis_instrumentation__.Notify(34412)
 		placeholderToColMap := make(map[int]string)
 		for _, placeholderPairStr := range placeholderPairs {
+			__antithesis_instrumentation__.Notify(34415)
 			pair := strings.Split(placeholderPairStr, "=")
 			if len(pair) != 2 {
+				__antithesis_instrumentation__.Notify(34418)
 				return errors.New("use --placeholder='1=schema.table.col' --placeholder='2=schema.table.col...'")
+			} else {
+				__antithesis_instrumentation__.Notify(34419)
 			}
+			__antithesis_instrumentation__.Notify(34416)
 			n, err := strconv.Atoi(pair[0])
 			if err != nil {
+				__antithesis_instrumentation__.Notify(34420)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(34421)
 			}
+			__antithesis_instrumentation__.Notify(34417)
 			placeholderToColMap[n] = pair[1]
 		}
+		__antithesis_instrumentation__.Notify(34413)
 		inputs, outputs, err := getExplainCombinations(conn, explainPrefix, placeholderToColMap, bundle)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(34422)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(34423)
 		}
+		__antithesis_instrumentation__.Notify(34414)
 
 		cliCtx.PrintfUnlessEmbedded("found %d unique explains:\n\n", len(inputs))
 		for i, inputs := range inputs {
+			__antithesis_instrumentation__.Notify(34424)
 			cliCtx.PrintfUnlessEmbedded("Values %s: \n%s\n----\n\n", inputs, outputs[i])
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(34425)
 	}
+	__antithesis_instrumentation__.Notify(34394)
 
 	sqlCtx.ShellCtx.DemoCluster = c
 	return sqlCtx.Run(conn)
 }
 
-// placeholderRe matches the placeholder format at the bottom of statement.txt
-// in a statement bundle. It looks like this:
-//
-// $1: blah
-// $2: 1
 var placeholderRe = regexp.MustCompile(`\$(\d+): .*`)
 
 var statsRe = regexp.MustCompile(`ALTER TABLE ([\w.]+) INJECT STATISTICS '`)
@@ -226,26 +288,13 @@ type bucketKey struct {
 	DistinctRange float64
 }
 
-// getExplainCombinations finds all unique optimal explain plans for a given statement
-// bundle that are produced by creating all combinations of plans where each
-// placeholder is replaced by every value in the column histogram for a linked
-// column.
-//
-// explainPrefix is the type of EXPLAIN to use for the final output, like
-// EXPLAIN(OPT).
-//
-// A list of unique inputs is returned, which corresponds 1 to 1 with the list
-// of explain outputs: the ith set of inputs is the set of placeholders that
-// produced the ith explain output.
-//
-// Columns are linked to placeholders by the --placeholder=n=schema.table.col
-// commandline flags.
 func getExplainCombinations(
 	conn clisqlclient.Conn,
 	explainPrefix string,
 	placeholderToColMap map[int]string,
 	bundle *statementBundle,
 ) (inputs [][]string, explainOutputs []string, err error) {
+	__antithesis_instrumentation__.Notify(34426)
 
 	stmtComponents := strings.Split(string(bundle.statement), "Arguments:")
 	statement := strings.TrimSpace(stmtComponents[0])
@@ -253,84 +302,124 @@ func getExplainCombinations(
 
 	var stmtPlaceholders []int
 	for _, line := range strings.Split(placeholders, "\n") {
-		// The placeholderRe has 1 matching group, so the length of the matches
-		// list will be 2 if we see a successful match.
+		__antithesis_instrumentation__.Notify(34436)
+
 		if matches := placeholderRe.FindStringSubmatch(line); len(matches) == 2 {
-			// The first matching group is the number of the placeholder. Extract it
-			// into an integer.
+			__antithesis_instrumentation__.Notify(34437)
+
 			n, err := strconv.Atoi(matches[1])
 			if err != nil {
+				__antithesis_instrumentation__.Notify(34439)
 				return nil, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(34440)
 			}
+			__antithesis_instrumentation__.Notify(34438)
 			stmtPlaceholders = append(stmtPlaceholders, n)
+		} else {
+			__antithesis_instrumentation__.Notify(34441)
 		}
 	}
+	__antithesis_instrumentation__.Notify(34427)
 
 	for _, n := range stmtPlaceholders {
+		__antithesis_instrumentation__.Notify(34442)
 		if placeholderToColMap[n] == "" {
+			__antithesis_instrumentation__.Notify(34443)
 			return nil, nil, errors.Errorf("specify --placeholder= for placeholder %d", n)
+		} else {
+			__antithesis_instrumentation__.Notify(34444)
 		}
 	}
+	__antithesis_instrumentation__.Notify(34428)
 	evalCtx := tree.MakeTestingEvalContext(cluster.MakeTestingClusterSettings())
 
 	fmtCtx := tree.FmtBareStrings
 
-	// Map from fully-qualified column name to list of histogram upper_bound
-	// values with unique bucket attributes.
 	statsMap := make(map[string][]string)
 	statsAge := make(map[string]time.Time)
 	for _, statsBytes := range bundle.stats {
+		__antithesis_instrumentation__.Notify(34445)
 		statsStr := string(statsBytes)
 		matches := statsRe.FindStringSubmatch(statsStr)
 		if len(matches) != 2 {
+			__antithesis_instrumentation__.Notify(34448)
 			return nil, nil, errors.Errorf("invalid stats file %s", statsStr)
+		} else {
+			__antithesis_instrumentation__.Notify(34449)
 		}
+		__antithesis_instrumentation__.Notify(34446)
 		tableName := matches[1]
-		// Find the first instance of ', which is the beginning of the JSON payload.
+
 		idx := bytes.IndexByte(statsBytes, '\'')
 		var statsJSON []map[string]interface{}
 
-		// Snip off the last 3 characters, which are ';\n, the end of the JSON payload.
 		data := statsBytes[idx+1 : len(statsBytes)-3]
 		if err := json.Unmarshal(data, &statsJSON); err != nil {
+			__antithesis_instrumentation__.Notify(34450)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(34451)
 		}
+		__antithesis_instrumentation__.Notify(34447)
 
-		// Map a bucket key (a bucket without upper bound) to an upper bound sample
-		// and its Prev value (for non-0 width buckets).
-		// This deduplicates identical buckets.
 		for _, stat := range statsJSON {
+			__antithesis_instrumentation__.Notify(34452)
 			bucketMap := make(map[bucketKey][]string)
 			columns := stat["columns"].([]interface{})
 			if len(columns) > 1 {
-				// Ignore multi-col stats.
+				__antithesis_instrumentation__.Notify(34461)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(34462)
 			}
+			__antithesis_instrumentation__.Notify(34453)
 			col := columns[0]
 			fqColName := fmt.Sprintf("%s.%s", tableName, col)
 			d, _, err := tree.ParseDTimestamp(nil, stat["created_at"].(string), time.Microsecond)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(34463)
 				panic(err)
+			} else {
+				__antithesis_instrumentation__.Notify(34464)
 			}
-			if lastStat, ok := statsAge[fqColName]; ok && d.Before(lastStat) {
-				// Skip stats that are older than the most recent stat.
+			__antithesis_instrumentation__.Notify(34454)
+			if lastStat, ok := statsAge[fqColName]; ok && func() bool {
+				__antithesis_instrumentation__.Notify(34465)
+				return d.Before(lastStat) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(34466)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(34467)
 			}
+			__antithesis_instrumentation__.Notify(34455)
 			statsAge[fqColName] = d.Time
 
 			typ := stat["histo_col_type"].(string)
 			if typ == "" {
+				__antithesis_instrumentation__.Notify(34468)
 				fmt.Println("Ignoring column with empty type ", col)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(34469)
 			}
+			__antithesis_instrumentation__.Notify(34456)
 			colTypeRef, err := parser.GetTypeFromValidSQLSyntax(typ)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(34470)
 				return nil, nil, errors.Wrapf(err, "unable to parse type %s for col %s", typ, col)
+			} else {
+				__antithesis_instrumentation__.Notify(34471)
 			}
+			__antithesis_instrumentation__.Notify(34457)
 			colType := tree.MustBeStaticallyKnownType(colTypeRef)
 			buckets := stat["histo_buckets"].([]interface{})
 			var maxUpperBound tree.Datum
 			for _, b := range buckets {
+				__antithesis_instrumentation__.Notify(34472)
 				bucket := b.(map[string]interface{})
 				numRange := bucket["num_range"].(float64)
 				key := bucketKey{
@@ -342,124 +431,183 @@ func getExplainCombinations(
 				bucketMap[key] = []string{upperBound}
 				datum, err := rowenc.ParseDatumStringAs(colType, upperBound, &evalCtx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(34475)
 					panic("failed parsing datum string as " + datum.String() + " " + err.Error())
+				} else {
+					__antithesis_instrumentation__.Notify(34476)
 				}
-				if maxUpperBound == nil || maxUpperBound.Compare(&evalCtx, datum) < 0 {
+				__antithesis_instrumentation__.Notify(34473)
+				if maxUpperBound == nil || func() bool {
+					__antithesis_instrumentation__.Notify(34477)
+					return maxUpperBound.Compare(&evalCtx, datum) < 0 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(34478)
 					maxUpperBound = datum
+				} else {
+					__antithesis_instrumentation__.Notify(34479)
 				}
+				__antithesis_instrumentation__.Notify(34474)
 				if numRange > 0 {
+					__antithesis_instrumentation__.Notify(34480)
 					if prev, ok := datum.Prev(&evalCtx); ok {
+						__antithesis_instrumentation__.Notify(34481)
 						bucketMap[key] = append(bucketMap[key], tree.AsStringWithFlags(prev, fmtCtx))
+					} else {
+						__antithesis_instrumentation__.Notify(34482)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(34483)
 				}
 			}
+			__antithesis_instrumentation__.Notify(34458)
 			colSamples := make([]string, 0, len(bucketMap))
 			for _, samples := range bucketMap {
+				__antithesis_instrumentation__.Notify(34484)
 				colSamples = append(colSamples, samples...)
 			}
-			// Create a value that's outside of histogram range by incrementing the
-			// max value that we've seen.
+			__antithesis_instrumentation__.Notify(34459)
+
 			if outside, ok := maxUpperBound.Next(&evalCtx); ok {
+				__antithesis_instrumentation__.Notify(34485)
 				colSamples = append(colSamples, tree.AsStringWithFlags(outside, fmtCtx))
+			} else {
+				__antithesis_instrumentation__.Notify(34486)
 			}
+			__antithesis_instrumentation__.Notify(34460)
 			sort.Strings(colSamples)
 			statsMap[fqColName] = colSamples
 		}
 	}
+	__antithesis_instrumentation__.Notify(34429)
 
 	for _, fqColName := range placeholderToColMap {
+		__antithesis_instrumentation__.Notify(34487)
 		if statsMap[fqColName] == nil {
+			__antithesis_instrumentation__.Notify(34488)
 			return nil, nil, errors.Errorf("no stats found for %s", fqColName)
+		} else {
+			__antithesis_instrumentation__.Notify(34489)
 		}
 	}
+	__antithesis_instrumentation__.Notify(34430)
 
 	combinations := getPlaceholderCombinations(stmtPlaceholders, placeholderToColMap, statsMap)
 
 	outputs, err := getExplainOutputs(conn, "EXPLAIN(SHAPE)", statement, combinations)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34490)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(34491)
 	}
-	// uniqueExplains maps explain output to the list of placeholders that
-	// produced it.
+	__antithesis_instrumentation__.Notify(34431)
+
 	uniqueExplains := make(map[string][]string)
 	for i := range combinations {
+		__antithesis_instrumentation__.Notify(34492)
 		uniqueExplains[outputs[i]] = combinations[i]
 	}
+	__antithesis_instrumentation__.Notify(34432)
 
-	// Sort the explain outputs for consistent results.
 	explains := make([]string, 0, len(uniqueExplains))
 	for key := range uniqueExplains {
+		__antithesis_instrumentation__.Notify(34493)
 		explains = append(explains, key)
 	}
+	__antithesis_instrumentation__.Notify(34433)
 	sort.Strings(explains)
 
-	// Now that we've got the unique explain shapes, re-run them with the desired
-	// EXPLAIN style to get sufficient detail.
 	uniqueInputs := make([][]string, 0, len(uniqueExplains))
 	for _, explain := range explains {
+		__antithesis_instrumentation__.Notify(34494)
 		input := uniqueExplains[explain]
 		uniqueInputs = append(uniqueInputs, input)
 	}
+	__antithesis_instrumentation__.Notify(34434)
 	outputs, err = getExplainOutputs(conn, explainPrefix, statement, uniqueInputs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(34495)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(34496)
 	}
+	__antithesis_instrumentation__.Notify(34435)
 
 	return uniqueInputs, outputs, nil
 }
 
-// getExplainOutputs runs the explain style given in explainPrefix on the
-// statement once for every input (an ordered list of placeholder values) in the
-// input list. The result is returned in a list of explain outputs, where the
-// ith explain output was generated from the ith input.
 func getExplainOutputs(
 	conn clisqlclient.Conn, explainPrefix string, statement string, inputs [][]string,
 ) (explainStrings []string, err error) {
+	__antithesis_instrumentation__.Notify(34497)
 	for _, values := range inputs {
-		// Run an explain for each possible input.
+		__antithesis_instrumentation__.Notify(34499)
+
 		query := fmt.Sprintf("%s %s", explainPrefix, statement)
 		args := make([]interface{}, len(values))
 		for i, s := range values {
+			__antithesis_instrumentation__.Notify(34505)
 			args[i] = s
 		}
+		__antithesis_instrumentation__.Notify(34500)
 		rows, err := conn.Query(context.Background(), query, args...)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(34506)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(34507)
 		}
+		__antithesis_instrumentation__.Notify(34501)
 		row := []driver.Value{""}
 		var explainStr = strings.Builder{}
 		for err = rows.Next(row); err == nil; err = rows.Next(row) {
+			__antithesis_instrumentation__.Notify(34508)
 			fmt.Fprintln(&explainStr, row[0])
 		}
+		__antithesis_instrumentation__.Notify(34502)
 		if err != io.EOF {
+			__antithesis_instrumentation__.Notify(34509)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(34510)
 		}
+		__antithesis_instrumentation__.Notify(34503)
 		if err := rows.Close(); err != nil {
+			__antithesis_instrumentation__.Notify(34511)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(34512)
 		}
+		__antithesis_instrumentation__.Notify(34504)
 		explainStrings = append(explainStrings, explainStr.String())
 	}
+	__antithesis_instrumentation__.Notify(34498)
 	return explainStrings, nil
 }
 
-// getPlaceholderCombinations returns a list of lists, which each inner list is
-// a possible set of placeholders that can be inserted into the statement, where
-// each possible value for each placeholder is taken from the input statsMap.
 func getPlaceholderCombinations(
 	remainingPlaceholders []int, placeholderMap map[int]string, statsMap map[string][]string,
 ) [][]string {
+	__antithesis_instrumentation__.Notify(34513)
 	placeholder := remainingPlaceholders[0]
 	fqColName := placeholderMap[placeholder]
 	var rest = [][]string{nil}
 	if len(remainingPlaceholders) > 1 {
-		// Recurse to get the rest of the combinations.
+		__antithesis_instrumentation__.Notify(34516)
+
 		rest = getPlaceholderCombinations(remainingPlaceholders[1:], placeholderMap, statsMap)
+	} else {
+		__antithesis_instrumentation__.Notify(34517)
 	}
+	__antithesis_instrumentation__.Notify(34514)
 	var ret [][]string
 	for _, val := range statsMap[fqColName] {
+		__antithesis_instrumentation__.Notify(34518)
 		for _, inner := range rest {
+			__antithesis_instrumentation__.Notify(34519)
 			ret = append(ret, append([]string{val}, inner...))
 		}
 	}
+	__antithesis_instrumentation__.Notify(34515)
 	return ret
 }

@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,81 +32,94 @@ you would use for the sql command).
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(33193)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Wait for the node to be ready for initialization.
 	conn, finish, err := waitForClientReadinessAndGetClientGRPCConn(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33196)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33197)
 	}
+	__antithesis_instrumentation__.Notify(33194)
 	defer finish()
 
-	// Actually perform cluster initialization.
 	c := serverpb.NewInitClient(conn)
 	if _, err = c.Bootstrap(ctx, &serverpb.BootstrapRequest{}); err != nil {
+		__antithesis_instrumentation__.Notify(33198)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33199)
 	}
+	__antithesis_instrumentation__.Notify(33195)
 
 	fmt.Fprintln(os.Stdout, "Cluster successfully initialized")
 	return nil
 }
 
-// waitForClientReadinessAndGetClientGRPCConn waits for the node to
-// be ready for initialization. This check ensures that the `init`
-// command is less likely to fail because it was issued too
-// early. In general, retrying the `init` command is dangerous [0],
-// so we make a best effort at minimizing chances for users to
-// arrive in an uncomfortable situation.
-//
-// [0]: https://github.com/cockroachdb/cockroach/pull/19753#issuecomment-341561452
 func waitForClientReadinessAndGetClientGRPCConn(
 	ctx context.Context,
 ) (conn *grpc.ClientConn, finish func(), err error) {
+	__antithesis_instrumentation__.Notify(33200)
 	defer func() {
-		// If we're returning with an error, tear down the gRPC connection
-		// that's been established, if any.
-		if finish != nil && err != nil {
+		__antithesis_instrumentation__.Notify(33203)
+
+		if finish != nil && func() bool {
+			__antithesis_instrumentation__.Notify(33204)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(33205)
 			finish()
+		} else {
+			__antithesis_instrumentation__.Notify(33206)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(33201)
 
 	retryOpts := retry.Options{InitialBackoff: time.Second, MaxBackoff: time.Second}
 	for r := retry.StartWithCtx(ctx, retryOpts); r.Next(); {
+		__antithesis_instrumentation__.Notify(33207)
 		if err = contextutil.RunWithTimeout(ctx, "init-open-conn", 5*time.Second,
 			func(ctx context.Context) error {
-				// (Attempt to) establish the gRPC connection. If that fails,
-				// it may be that the server hasn't started to listen yet, in
-				// which case we'll retry.
+				__antithesis_instrumentation__.Notify(33209)
+
 				conn, _, finish, err = getClientGRPCConn(ctx, serverCfg)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(33211)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(33212)
 				}
+				__antithesis_instrumentation__.Notify(33210)
 
-				// Access the /health endpoint. Until/unless this succeeds, the
-				// node is not yet fully initialized and ready to accept
-				// Bootstrap requests.
 				ac := serverpb.NewAdminClient(conn)
 				_, err := ac.Health(ctx, &serverpb.HealthRequest{})
 				return err
 			}); err != nil {
+			__antithesis_instrumentation__.Notify(33213)
 			err = errors.Wrapf(err, "node not ready to perform cluster initialization")
 			fmt.Fprintln(stderr, "warning:", err, "(retrying)")
 
-			// We're going to retry; first cancel the connection that's
-			// been established, if any.
 			if finish != nil {
+				__antithesis_instrumentation__.Notify(33215)
 				finish()
 				finish = nil
+			} else {
+				__antithesis_instrumentation__.Notify(33216)
 			}
-			// Then retry.
-			continue
-		}
+			__antithesis_instrumentation__.Notify(33214)
 
-		// No error - connection was established and health endpoint is
-		// ready.
+			continue
+		} else {
+			__antithesis_instrumentation__.Notify(33217)
+		}
+		__antithesis_instrumentation__.Notify(33208)
+
 		return conn, finish, err
 	}
+	__antithesis_instrumentation__.Notify(33202)
 	err = errors.New("maximum number of retries exceeded")
 	return
 }

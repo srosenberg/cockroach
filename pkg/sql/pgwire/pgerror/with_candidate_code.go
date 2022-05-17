@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgerror
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,32 +21,52 @@ var _ errors.SafeDetailer = (*withCandidateCode)(nil)
 var _ fmt.Formatter = (*withCandidateCode)(nil)
 var _ errors.SafeFormatter = (*withCandidateCode)(nil)
 
-func (w *withCandidateCode) Error() string         { return w.cause.Error() }
-func (w *withCandidateCode) Cause() error          { return w.cause }
-func (w *withCandidateCode) Unwrap() error         { return w.cause }
-func (w *withCandidateCode) SafeDetails() []string { return []string{w.code} }
+func (w *withCandidateCode) Error() string {
+	__antithesis_instrumentation__.Notify(560874)
+	return w.cause.Error()
+}
+func (w *withCandidateCode) Cause() error {
+	__antithesis_instrumentation__.Notify(560875)
+	return w.cause
+}
+func (w *withCandidateCode) Unwrap() error {
+	__antithesis_instrumentation__.Notify(560876)
+	return w.cause
+}
+func (w *withCandidateCode) SafeDetails() []string {
+	__antithesis_instrumentation__.Notify(560877)
+	return []string{w.code}
+}
 
-func (w *withCandidateCode) Format(s fmt.State, verb rune) { errors.FormatError(w, s, verb) }
+func (w *withCandidateCode) Format(s fmt.State, verb rune) {
+	__antithesis_instrumentation__.Notify(560878)
+	errors.FormatError(w, s, verb)
+}
 
 func (w *withCandidateCode) SafeFormatError(p errors.Printer) (next error) {
+	__antithesis_instrumentation__.Notify(560879)
 	if p.Detail() {
+		__antithesis_instrumentation__.Notify(560881)
 		p.Printf("candidate pg code: %s", errors.Safe(w.code))
+	} else {
+		__antithesis_instrumentation__.Notify(560882)
 	}
+	__antithesis_instrumentation__.Notify(560880)
 	return w.cause
 }
 
-// decodeWithCandidateCode is a custom decoder that will be used when decoding
-// withCandidateCode error objects.
-// Note that as the last argument it takes proto.Message (and not
-// protoutil.Message which is required by linter) because the latter brings in
-// additional dependencies into this package and the former is sufficient here.
 func decodeWithCandidateCode(
 	_ context.Context, cause error, _ string, details []string, _ proto.Message,
 ) error {
+	__antithesis_instrumentation__.Notify(560883)
 	code := pgcode.Uncategorized.String()
 	if len(details) > 0 {
+		__antithesis_instrumentation__.Notify(560885)
 		code = details[0]
+	} else {
+		__antithesis_instrumentation__.Notify(560886)
 	}
+	__antithesis_instrumentation__.Notify(560884)
 	return &withCandidateCode{cause: cause, code: code}
 }
 

@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rpc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,23 +20,18 @@ import (
 )
 
 func (r RemoteOffset) measuredAt() time.Time {
+	__antithesis_instrumentation__.Notify(184720)
 	return timeutil.Unix(0, r.MeasuredAt)
 }
 
-// String formats the RemoteOffset for human readability.
 func (r RemoteOffset) String() string {
+	__antithesis_instrumentation__.Notify(184721)
 	return fmt.Sprintf("off=%s, err=%s, at=%s", time.Duration(r.Offset), time.Duration(r.Uncertainty), r.measuredAt())
 }
 
-// A HeartbeatService exposes a method to echo its request params. It doubles
-// as a way to measure the offset of the server from other nodes. It uses the
-// clock to return the server time every heartbeat. It also keeps track of
-// remote clocks sent to it by storing them in the remoteClockMonitor.
 type HeartbeatService struct {
-	// Provides the nanosecond unix epoch timestamp of the processor.
 	clock *hlc.Clock
-	// A pointer to the RemoteClockMonitor configured in the RPC Context,
-	// shared by rpc clients, to keep track of remote clock measurements.
+
 	remoteClockMonitor *RemoteClockMonitor
 
 	clusterID *base.ClusterIDContainer
@@ -54,130 +41,183 @@ type HeartbeatService struct {
 	clusterName                    string
 	disableClusterNameVerification bool
 
-	onHandlePing func(context.Context, *PingRequest) error // see ContextOptions.OnIncomingPing
+	onHandlePing func(context.Context, *PingRequest) error
 
-	// TestingAllowNamedRPCToAnonymousServer, when defined (in tests),
-	// disables errors in case a heartbeat requests a specific node ID but
-	// the remote node doesn't have a node ID yet. This testing knob is
-	// currently used by the multiTestContext which does not suitably
-	// populate separate node IDs for each heartbeat service.
 	testingAllowNamedRPCToAnonymousServer bool
 }
 
 func checkClusterName(clusterName string, peerName string) error {
+	__antithesis_instrumentation__.Notify(184722)
 	if clusterName != peerName {
+		__antithesis_instrumentation__.Notify(184724)
 		var err error
 		if clusterName == "" {
+			__antithesis_instrumentation__.Notify(184726)
 			err = errors.Errorf("peer node expects cluster name %q, use --cluster-name to configure", peerName)
-		} else if peerName == "" {
-			err = errors.New("peer node does not have a cluster name configured, cannot use --cluster-name")
 		} else {
-			err = errors.Errorf(
-				"local cluster name %q does not match peer cluster name %q", clusterName, peerName)
+			__antithesis_instrumentation__.Notify(184727)
+			if peerName == "" {
+				__antithesis_instrumentation__.Notify(184728)
+				err = errors.New("peer node does not have a cluster name configured, cannot use --cluster-name")
+			} else {
+				__antithesis_instrumentation__.Notify(184729)
+				err = errors.Errorf(
+					"local cluster name %q does not match peer cluster name %q", clusterName, peerName)
+			}
 		}
+		__antithesis_instrumentation__.Notify(184725)
 		log.Ops.Shoutf(context.Background(), severity.ERROR, "%v", err)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(184730)
 	}
+	__antithesis_instrumentation__.Notify(184723)
 	return nil
 }
 
 func checkVersion(ctx context.Context, st *cluster.Settings, peerVersion roachpb.Version) error {
+	__antithesis_instrumentation__.Notify(184731)
 	activeVersion := st.Version.ActiveVersionOrEmpty(ctx)
 	if activeVersion == (clusterversion.ClusterVersion{}) {
-		// Cluster version has not yet been determined.
+		__antithesis_instrumentation__.Notify(184736)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(184737)
 	}
+	__antithesis_instrumentation__.Notify(184732)
 	if peerVersion == (roachpb.Version{}) {
+		__antithesis_instrumentation__.Notify(184738)
 		return errors.Errorf(
 			"cluster requires at least version %s, but peer did not provide a version", activeVersion)
+	} else {
+		__antithesis_instrumentation__.Notify(184739)
 	}
+	__antithesis_instrumentation__.Notify(184733)
 
-	// KV nodes which are part of the system tenant *must* carry at least the
-	// version currently active in the cluster. Great care is taken to ensure
-	// that all nodes are broadcasting the new version before updating the active
-	// version. However, secondary tenants are allowed to lag the currently
-	// active cluster version. They are permitted to broadcast any version which
-	// is supported by this binary.
 	minVersion := activeVersion.Version
-	if tenantID, isTenant := roachpb.TenantFromContext(ctx); isTenant &&
-		!roachpb.IsSystemTenantID(tenantID.ToUint64()) {
+	if tenantID, isTenant := roachpb.TenantFromContext(ctx); isTenant && func() bool {
+		__antithesis_instrumentation__.Notify(184740)
+		return !roachpb.IsSystemTenantID(tenantID.ToUint64()) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(184741)
 		minVersion = st.Version.BinaryMinSupportedVersion()
+	} else {
+		__antithesis_instrumentation__.Notify(184742)
 	}
+	__antithesis_instrumentation__.Notify(184734)
 	if peerVersion.Less(minVersion) {
+		__antithesis_instrumentation__.Notify(184743)
 		return errors.Errorf(
 			"cluster requires at least version %s, but peer has version %s",
 			minVersion, peerVersion)
+	} else {
+		__antithesis_instrumentation__.Notify(184744)
 	}
+	__antithesis_instrumentation__.Notify(184735)
 	return nil
 }
 
-// Ping echos the contents of the request to the response, and returns the
-// server's current clock value, allowing the requester to measure its clock.
-// The requester should also estimate its offset from this server along
-// with the requester's address.
 func (hs *HeartbeatService) Ping(ctx context.Context, args *PingRequest) (*PingResponse, error) {
+	__antithesis_instrumentation__.Notify(184745)
 	if log.ExpensiveLogEnabled(ctx, 2) {
+		__antithesis_instrumentation__.Notify(184753)
 		log.Dev.Infof(ctx, "received heartbeat: %+v vs local cluster %+v node %+v", args, hs.clusterID, hs.nodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(184754)
 	}
-	// Check that cluster IDs match.
+	__antithesis_instrumentation__.Notify(184746)
+
 	clusterID := hs.clusterID.Get()
-	if args.ClusterID != nil && *args.ClusterID != uuid.Nil && clusterID != uuid.Nil {
-		// There is a cluster ID on both sides. Use that to verify the connection.
-		//
-		// Note: we could be checking the cluster name here too, however
-		// for UX reason it is better to check it on the other side (the side
-		// initiating the connection), so that the user of a newly started
-		// node gets a chance to see a cluster name mismatch as an error message
-		// on their side.
+	if args.ClusterID != nil && func() bool {
+		__antithesis_instrumentation__.Notify(184755)
+		return *args.ClusterID != uuid.Nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(184756)
+		return clusterID != uuid.Nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(184757)
+
 		if *args.ClusterID != clusterID {
+			__antithesis_instrumentation__.Notify(184758)
 			return nil, errors.Errorf(
 				"client cluster ID %q doesn't match server cluster ID %q", args.ClusterID, clusterID)
+		} else {
+			__antithesis_instrumentation__.Notify(184759)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(184760)
 	}
-	// Check that node IDs match.
+	__antithesis_instrumentation__.Notify(184747)
+
 	var nodeID roachpb.NodeID
 	if hs.nodeID != nil {
+		__antithesis_instrumentation__.Notify(184761)
 		nodeID = hs.nodeID.Get()
+	} else {
+		__antithesis_instrumentation__.Notify(184762)
 	}
-	if args.TargetNodeID != 0 && (!hs.testingAllowNamedRPCToAnonymousServer || nodeID != 0) && args.TargetNodeID != nodeID {
-		// If nodeID != 0, the situation is clear (we are checking that
-		// the other side is talking to the right node).
-		//
-		// If nodeID == 0 this means that this node (serving the
-		// heartbeat) doesn't have a node ID yet. Then we can't serve
-		// connections for other nodes that want a specific node ID,
-		// however we can still serve connections that don't need a node
-		// ID, e.g. during initial gossip.
+	__antithesis_instrumentation__.Notify(184748)
+	if args.TargetNodeID != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(184763)
+		return (!hs.testingAllowNamedRPCToAnonymousServer || func() bool {
+			__antithesis_instrumentation__.Notify(184764)
+			return nodeID != 0 == true
+		}() == true) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(184765)
+		return args.TargetNodeID != nodeID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(184766)
+
 		return nil, errors.Errorf(
 			"client requested node ID %d doesn't match server node ID %d", args.TargetNodeID, nodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(184767)
 	}
+	__antithesis_instrumentation__.Notify(184749)
 
-	// Check version compatibility.
 	if err := checkVersion(ctx, hs.settings, args.ServerVersion); err != nil {
+		__antithesis_instrumentation__.Notify(184768)
 		return nil, errors.Wrap(err, "version compatibility check failed on ping request")
+	} else {
+		__antithesis_instrumentation__.Notify(184769)
 	}
+	__antithesis_instrumentation__.Notify(184750)
 
-	// Enforce that clock max offsets are identical between nodes.
-	// Commit suicide in the event that this is ever untrue.
-	// This check is ignored if either offset is set to 0 (for unittests).
-	// Note that we validated this connection already. Different clusters
-	// could very well have different max offsets.
 	mo, amo := hs.clock.MaxOffset(), time.Duration(args.OriginMaxOffsetNanos)
-	if mo != 0 && amo != 0 && mo != amo {
+	if mo != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(184770)
+		return amo != 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(184771)
+		return mo != amo == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(184772)
 		log.Fatalf(ctx, "locally configured maximum clock offset (%s) "+
 			"does not match that of node %s (%s)", mo, args.OriginAddr, amo)
+	} else {
+		__antithesis_instrumentation__.Notify(184773)
 	}
+	__antithesis_instrumentation__.Notify(184751)
 
 	if fn := hs.onHandlePing; fn != nil {
+		__antithesis_instrumentation__.Notify(184774)
 		if err := fn(ctx, args); err != nil {
+			__antithesis_instrumentation__.Notify(184775)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(184776)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(184777)
 	}
+	__antithesis_instrumentation__.Notify(184752)
 
 	serverOffset := args.Offset
-	// The server offset should be the opposite of the client offset.
+
 	serverOffset.Offset = -serverOffset.Offset
-	hs.remoteClockMonitor.UpdateOffset(ctx, args.OriginAddr, serverOffset, 0 /* roundTripLatency */)
+	hs.remoteClockMonitor.UpdateOffset(ctx, args.OriginAddr, serverOffset, 0)
 	return &PingResponse{
 		Pong:                           args.Ping,
 		ServerTime:                     hs.clock.PhysicalNow(),

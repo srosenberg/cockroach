@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package schemachange
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -34,24 +26,6 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/spf13/pflag"
 )
-
-// This workload executes batches of schema changes asynchronously. Each
-// batch is executed in a separate transaction and transactions run in
-// parallel. Batches are drawn from a pre-defined distribution.
-// Currently all schema change ops are equally likely to be chosen. This
-// includes table creation but note that the tables contain no data.
-//
-// Example usage:
-// `bin/workload run schemachange --init --concurrency=2 --verbose=0 --max-ops-per-worker=1000`
-// will execute up to 1000 schema change operations per txn in two concurrent txns.
-//
-// TODO(peter): This is still work in progress, we need to
-// - support more than 1 database
-// - reference sequences in column defaults
-// - create foreign keys
-// - support `ADD CONSTRAINT`
-//
-//For example, an attempt to do something we don't support should be swallowed (though if we can detect that maybe we should just not do it, e.g). It will be hard to use this test for anything more than liveness detection until we go through the tedious process of classifying errors.:
 
 const (
 	defaultMaxOpsPerWorker    = 5
@@ -87,11 +61,12 @@ var schemaChangeMeta = workload.Meta{
 	Description: `schemachange randomly generates concurrent schema changes`,
 	Version:     `1.0.0`,
 	New: func() workload.Generator {
+		__antithesis_instrumentation__.Notify(697155)
 		s := &schemaChange{}
 		s.flags.FlagSet = pflag.NewFlagSet(`schemachange`, pflag.ContinueOnError)
 		s.flags.StringVar(&s.dbOverride, `db`, ``,
 			`Override for the SQL database to use. If empty, defaults to the generator name`)
-		s.flags.IntVar(&s.concurrency, `concurrency`, 2*runtime.GOMAXPROCS(0), /* TODO(spaskob): sensible default? */
+		s.flags.IntVar(&s.concurrency, `concurrency`, 2*runtime.GOMAXPROCS(0),
 			`Number of concurrent workers`)
 		s.flags.IntVar(&s.maxOpsPerWorker, `max-ops-per-worker`, defaultMaxOpsPerWorker,
 			`Number of operations to execute in a single transaction`)
@@ -119,50 +94,63 @@ func init() {
 	workload.Register(schemaChangeMeta)
 }
 
-// Meta implements the workload.Generator interface.
 func (s *schemaChange) Meta() workload.Meta {
+	__antithesis_instrumentation__.Notify(697156)
 	return schemaChangeMeta
 }
 
-// Flags implements the workload.Flagser interface.
 func (s *schemaChange) Flags() workload.Flags {
+	__antithesis_instrumentation__.Notify(697157)
 	return s.flags
 }
 
-// Tables implements the workload.Generator interface.
 func (s *schemaChange) Tables() []workload.Table {
+	__antithesis_instrumentation__.Notify(697158)
 	return nil
 }
 
-// Hooks implements the workload.Hookser interface.
 func (s *schemaChange) Hooks() workload.Hooks {
+	__antithesis_instrumentation__.Notify(697159)
 	return workload.Hooks{
 		PostRun: func(_ time.Duration) error {
+			__antithesis_instrumentation__.Notify(697160)
 			return s.closeJSONLogFile()
 		},
 	}
 }
 
-// Ops implements the workload.Opser interface.
 func (s *schemaChange) Ops(
 	ctx context.Context, urls []string, reg *histogram.Registry,
 ) (workload.QueryLoad, error) {
+	__antithesis_instrumentation__.Notify(697161)
 	sqlDatabase, err := workload.SanitizeUrls(s, s.dbOverride, urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(697167)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(697168)
 	}
+	__antithesis_instrumentation__.Notify(697162)
 	cfg := workload.MultiConnPoolCfg{
-		MaxTotalConnections: s.concurrency * 2, //TODO(spaskob): pick a sensible default.
+		MaxTotalConnections: s.concurrency * 2,
 	}
 	pool, err := workload.NewMultiConnPool(ctx, cfg, urls...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(697169)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(697170)
 	}
+	__antithesis_instrumentation__.Notify(697163)
 
 	seqNum, err := s.initSeqNum(ctx, pool)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(697171)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(697172)
 	}
+	__antithesis_instrumentation__.Notify(697164)
 
 	ops := newDeck(rand.New(rand.NewSource(timeutil.Now().UnixNano())), opWeights...)
 	ql := workload.QueryLoad{SQLDatabase: sqlDatabase}
@@ -170,16 +158,25 @@ func (s *schemaChange) Ops(
 	stdoutLog := makeAtomicLog(os.Stdout)
 	var artifactsLog *atomicLog
 	if s.logFilePath != "" {
+		__antithesis_instrumentation__.Notify(697173)
 		err := s.initJSONLogFile(s.logFilePath)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(697175)
 			return workload.QueryLoad{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(697176)
 		}
+		__antithesis_instrumentation__.Notify(697174)
 		artifactsLog = makeAtomicLog(s.logFile)
+	} else {
+		__antithesis_instrumentation__.Notify(697177)
 	}
+	__antithesis_instrumentation__.Notify(697165)
 
 	s.dumpLogsOnce = &sync.Once{}
 
 	for i := 0; i < s.concurrency; i++ {
+		__antithesis_instrumentation__.Notify(697178)
 
 		opGeneratorParams := operationGeneratorParams{
 			seqNum:             seqNum,
@@ -219,21 +216,18 @@ func (s *schemaChange) Ops(
 
 		ql.WorkerFns = append(ql.WorkerFns, w.run)
 		ql.Close = func(ctx2 context.Context) {
+			__antithesis_instrumentation__.Notify(697179)
 			pool.Close()
 		}
 	}
+	__antithesis_instrumentation__.Notify(697166)
 	return ql, nil
 }
 
-// initSeqName returns the smallest available sequence number to be
-// used to generate new unique names. Note that this assumes that no
-// other workload is being run at the same time.
-// TODO(spaskob): Do we need to protect from workloads running concurrently.
-// It's not obvious how the workloads will behave when accessing the same
-// cluster.
 func (s *schemaChange) initSeqNum(
 	ctx context.Context, pool *workload.MultiConnPool,
 ) (*int64, error) {
+	__antithesis_instrumentation__.Notify(697180)
 	seqNum := new(int64)
 
 	const q = `
@@ -254,11 +248,19 @@ SELECT max(regexp_extract(name, '[0-9]+$')::INT8)
 `
 	var max gosql.NullInt64
 	if err := pool.Get().QueryRow(ctx, q).Scan(&max); err != nil {
+		__antithesis_instrumentation__.Notify(697183)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(697184)
 	}
+	__antithesis_instrumentation__.Notify(697181)
 	if max.Valid {
+		__antithesis_instrumentation__.Notify(697185)
 		*seqNum = max.Int64 + 1
+	} else {
+		__antithesis_instrumentation__.Notify(697186)
 	}
+	__antithesis_instrumentation__.Notify(697182)
 
 	return seqNum, nil
 }
@@ -280,14 +282,13 @@ var (
 	errRunInTxnRbkSentinel   = errors.New("txn needs to rollback")
 )
 
-// LogEntry and its fields must be public so that the json package can encode this struct.
 type LogEntry struct {
 	WorkerID             int      `json:"workerId"`
 	ClientTimestamp      string   `json:"clientTimestamp"`
 	Ops                  []string `json:"ops"`
 	ExpectedExecErrors   string   `json:"expectedExecErrors"`
 	ExpectedCommitErrors string   `json:"expectedCommitErrors"`
-	// Optional message for errors or if a hook was called.
+
 	Message string `json:"message"`
 }
 
@@ -301,14 +302,17 @@ const (
 )
 
 func (d histBin) String() string {
+	__antithesis_instrumentation__.Notify(697187)
 	return [...]string{"opOk", "txnOk", "txnCmtErr", "txnRbk"}[d]
 }
 
 func (w *schemaChangeWorker) recordInHist(elapsed time.Duration, bin histBin) {
+	__antithesis_instrumentation__.Notify(697188)
 	w.hists.Get(bin.String()).Record(elapsed)
 }
 
 func (w *schemaChangeWorker) getErrorState() string {
+	__antithesis_instrumentation__.Notify(697189)
 	return fmt.Sprintf("Dumping state before death:\n"+
 		"Expected errors: %s"+
 		"==========================="+
@@ -321,136 +325,181 @@ func (w *schemaChangeWorker) getErrorState() string {
 }
 
 func (w *schemaChangeWorker) runInTxn(ctx context.Context, tx pgx.Tx) error {
+	__antithesis_instrumentation__.Notify(697190)
 	w.logger.startLog()
 	w.logger.writeLog("BEGIN")
 	opsNum := 1 + w.opGen.randIntn(w.maxOpsPerWorker)
 
 	for i := 0; i < opsNum; i++ {
-		// Terminating this loop early if there are expected commit errors prevents unexpected commit behavior from being
-		// hidden by subsequent operations. Consider the case where there are expected commit errors.
-		// It is possible that committing the transaction now will fail the workload because the error does not occur
-		// upon committing. If more op functions were to be called, then it is possible that a subsequent op function
-		// adds the same errors to the set. Due to the 2nd op, an expected commit error may occur, so the workload
-		// will not fail. To prevent the covering up of unexpected behavior as outlined above, no further ops
-		// should be generated if there are any errors in the expected commit errors set.
+		__antithesis_instrumentation__.Notify(697192)
+
 		if !w.opGen.expectedCommitErrors.empty() {
+			__antithesis_instrumentation__.Notify(697195)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(697196)
 		}
+		__antithesis_instrumentation__.Notify(697193)
 
 		op, err := w.opGen.randOp(ctx, tx)
 
-		if pgErr := new(pgconn.PgError); errors.As(err, &pgErr) && pgcode.MakeCode(pgErr.Code) == pgcode.SerializationFailure {
+		if pgErr := new(pgconn.PgError); errors.As(err, &pgErr) && func() bool {
+			__antithesis_instrumentation__.Notify(697197)
+			return pgcode.MakeCode(pgErr.Code) == pgcode.SerializationFailure == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(697198)
 			return errors.Mark(err, errRunInTxnRbkSentinel)
-		} else if err != nil {
-			return errors.Mark(
-				errors.Wrapf(err, "***UNEXPECTED ERROR; Failed to generate a random operation\n OpGen log: \n%s",
-					w.opGen.GetOpGenLog(),
-				),
-				errRunInTxnFatalSentinel,
-			)
+		} else {
+			__antithesis_instrumentation__.Notify(697199)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(697200)
+				return errors.Mark(
+					errors.Wrapf(err, "***UNEXPECTED ERROR; Failed to generate a random operation\n OpGen log: \n%s",
+						w.opGen.GetOpGenLog(),
+					),
+					errRunInTxnFatalSentinel,
+				)
+			} else {
+				__antithesis_instrumentation__.Notify(697201)
+			}
 		}
+		__antithesis_instrumentation__.Notify(697194)
 
 		w.logger.addExpectedErrors(w.opGen.expectedExecErrors, w.opGen.expectedCommitErrors)
 		w.logger.writeLog(op)
 		if !w.dryRun {
+			__antithesis_instrumentation__.Notify(697202)
 			start := timeutil.Now()
 
 			if _, err = tx.Exec(ctx, op); err != nil {
-				// If the error not an instance of pgconn.PgError, then it is unexpected.
+				__antithesis_instrumentation__.Notify(697205)
+
 				pgErr := new(pgconn.PgError)
 				if !errors.As(err, &pgErr) {
+					__antithesis_instrumentation__.Notify(697209)
 					return errors.Mark(
 						errors.Wrapf(err, "***UNEXPECTED ERROR; Received a non pg error. %s",
 							w.getErrorState()),
 						errRunInTxnFatalSentinel,
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(697210)
 				}
+				__antithesis_instrumentation__.Notify(697206)
 
-				// Transaction retry errors are acceptable. Allow the transaction
-				// to rollback.
 				if pgcode.MakeCode(pgErr.Code) == pgcode.SerializationFailure {
+					__antithesis_instrumentation__.Notify(697211)
 					w.recordInHist(timeutil.Since(start), txnRollback)
 					return errors.Mark(
 						err,
 						errRunInTxnRbkSentinel,
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(697212)
 				}
+				__antithesis_instrumentation__.Notify(697207)
 
-				// Screen for any unexpected errors.
 				if !w.opGen.expectedExecErrors.contains(pgcode.MakeCode(pgErr.Code)) {
+					__antithesis_instrumentation__.Notify(697213)
 					return errors.Mark(
 						errors.Wrapf(err, "***UNEXPECTED ERROR; Received an unexpected execution error. %s",
 							w.getErrorState()),
 						errRunInTxnFatalSentinel,
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(697214)
 				}
+				__antithesis_instrumentation__.Notify(697208)
 
-				// Rollback because the error was anticipated.
 				w.recordInHist(timeutil.Since(start), txnRollback)
 				return errors.Mark(
 					errors.Wrapf(err, "ROLLBACK; Successfully got expected execution error. %s",
 						w.getErrorState()),
 					errRunInTxnRbkSentinel,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(697215)
 			}
+			__antithesis_instrumentation__.Notify(697203)
 			if !w.opGen.expectedExecErrors.empty() {
+				__antithesis_instrumentation__.Notify(697216)
 				return errors.Mark(
 					errors.Newf("***FAIL; Failed to receive an execution error when errors were expected. %s",
 						w.getErrorState()),
 					errRunInTxnFatalSentinel,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(697217)
 			}
+			__antithesis_instrumentation__.Notify(697204)
 
 			w.recordInHist(timeutil.Since(start), operationOk)
+		} else {
+			__antithesis_instrumentation__.Notify(697218)
 		}
 	}
+	__antithesis_instrumentation__.Notify(697191)
 	return nil
 }
 
 func (w *schemaChangeWorker) run(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(697219)
 	tx, err := w.pool.Get().Begin(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(697224)
 		return errors.Wrap(err, "cannot get a connection and begin a txn")
+	} else {
+		__antithesis_instrumentation__.Notify(697225)
 	}
+	__antithesis_instrumentation__.Notify(697220)
 
-	// Release log entry locks if holding all.
 	defer w.releaseLocksIfHeld()
 
-	// Run between 1 and maxOpsPerWorker schema change operations.
 	start := timeutil.Now()
 	w.opGen.resetTxnState()
 	err = w.runInTxn(ctx, tx)
 
 	if err != nil {
-		// Rollback in all cases to release the txn object and its conn pool. Wrap the original
-		// error with a rollback error if necessary.
+		__antithesis_instrumentation__.Notify(697226)
+
 		if rbkErr := tx.Rollback(ctx); rbkErr != nil {
+			__antithesis_instrumentation__.Notify(697228)
 			err = errors.Mark(
 				errors.Wrap(rbkErr, "***UNEXPECTED ERROR DURING ROLLBACK;"),
 				errRunInTxnFatalSentinel,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(697229)
 		}
+		__antithesis_instrumentation__.Notify(697227)
 
 		w.logger.flushLog(tx, err.Error())
 		switch {
 		case errors.Is(err, errRunInTxnFatalSentinel):
+			__antithesis_instrumentation__.Notify(697230)
 			w.preErrorHook()
 			return err
 		case errors.Is(err, errRunInTxnRbkSentinel):
-			// Rollbacks are acceptable because all unexpected errors will be
-			// of errRunInTxnFatalSentinel.
+			__antithesis_instrumentation__.Notify(697231)
+
 			return nil
 		default:
+			__antithesis_instrumentation__.Notify(697232)
 			w.preErrorHook()
 			return errors.Wrapf(err, "***UNEXPECTED ERROR")
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(697233)
 	}
+	__antithesis_instrumentation__.Notify(697221)
 
 	w.logger.writeLog("COMMIT")
 	if err = tx.Commit(ctx); err != nil {
-		// If the error not an instance of pgconn.PgError, then it is unexpected.
+		__antithesis_instrumentation__.Notify(697234)
+
 		pgErr := new(pgconn.PgError)
 		if !errors.As(err, &pgErr) {
+			__antithesis_instrumentation__.Notify(697239)
 			err = errors.Mark(
 				errors.Wrap(err, "***UNEXPECTED COMMIT ERROR; Received a non pg error"),
 				errRunInTxnFatalSentinel,
@@ -458,28 +507,38 @@ func (w *schemaChangeWorker) run(ctx context.Context) error {
 			w.logger.flushLog(tx, err.Error())
 			w.preErrorHook()
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(697240)
 		}
+		__antithesis_instrumentation__.Notify(697235)
 
-		// Transaction retry errors are acceptable. Allow the transaction
-		// to rollback.
 		if pgcode.MakeCode(pgErr.Code) == pgcode.SerializationFailure {
+			__antithesis_instrumentation__.Notify(697241)
 			w.recordInHist(timeutil.Since(start), txnCommitError)
 			w.logger.flushLog(tx, fmt.Sprintf("TXN RETRY ERROR; %v", pgErr))
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(697242)
 		}
+		__antithesis_instrumentation__.Notify(697236)
 
-		// If the error is an instance of pgcode.TransactionCommittedWithSchemaChangeFailure, then
-		// the underlying pgcode needs to be parsed from it.
 		if pgErr.Code == pgcode.TransactionCommittedWithSchemaChangeFailure.String() {
+			__antithesis_instrumentation__.Notify(697243)
 			re := regexp.MustCompile(`\([A-Z0-9]{5}\)`)
 			underLyingErrorCode := re.FindString(pgErr.Error())
 			if underLyingErrorCode != "" {
+				__antithesis_instrumentation__.Notify(697244)
 				pgErr.Code = underLyingErrorCode[1 : len(underLyingErrorCode)-1]
+			} else {
+				__antithesis_instrumentation__.Notify(697245)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(697246)
 		}
+		__antithesis_instrumentation__.Notify(697237)
 
-		// Check for any expected errors.
 		if !w.opGen.expectedCommitErrors.contains(pgcode.MakeCode(pgErr.Code)) {
+			__antithesis_instrumentation__.Notify(697247)
 			err = errors.Mark(
 				errors.Wrap(err, "***UNEXPECTED COMMIT ERROR; Received an unexpected commit error"),
 				errRunInTxnFatalSentinel,
@@ -487,64 +546,77 @@ func (w *schemaChangeWorker) run(ctx context.Context) error {
 			w.logger.flushLog(tx, err.Error())
 			w.preErrorHook()
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(697248)
 		}
+		__antithesis_instrumentation__.Notify(697238)
 
-		// Error was anticipated, so it is acceptable.
 		w.recordInHist(timeutil.Since(start), txnCommitError)
 		w.logger.flushLog(tx, "COMMIT; Successfully got expected commit error")
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(697249)
 	}
+	__antithesis_instrumentation__.Notify(697222)
 
 	if !w.opGen.expectedCommitErrors.empty() {
+		__antithesis_instrumentation__.Notify(697250)
 		err := errors.New("***FAIL; Failed to receive a commit error when at least one commit error was expected")
 		w.logger.flushLog(tx, err.Error())
 		w.preErrorHook()
 		return errors.Mark(err, errRunInTxnFatalSentinel)
+	} else {
+		__antithesis_instrumentation__.Notify(697251)
 	}
+	__antithesis_instrumentation__.Notify(697223)
 
-	// If there were no errors while committing the txn.
 	w.logger.flushLog(tx, "")
 	w.recordInHist(timeutil.Since(start), txnOk)
 	return nil
 }
 
-// preErrorHook is called by a worker whose run() function is going to return an error
-// to terminate the workload. This function is used to log transactions that were
-// in progress by other workers at the time of the error. It acquires the transaction
-// log entry lock for each worker and flushes its logs. It does not release the
-// locks so that other workers make no progress between the time that this function ends
-// called and the workload terminates.
-//
-// In the case that the tolerate-errors flag is true, the worker calling this function will
-// get restarted. In run(), the worker will release locks if isHoldingEntryLocks is true.
-// If restarted, the log file will be closed and unset, so no new entries will be added. However,
-// transaction logs will continue to be printed to stdout.
 func (w *schemaChangeWorker) preErrorHook() {
+	__antithesis_instrumentation__.Notify(697252)
 	w.workload.dumpLogsOnce.Do(func() {
+		__antithesis_instrumentation__.Notify(697253)
 		for _, worker := range w.workload.workers {
+			__antithesis_instrumentation__.Notify(697255)
 			worker.logger.flushLogAndLock(nil, "Flushed by pre-error hook", false)
 			worker.logger.artifactsLog = nil
 		}
+		__antithesis_instrumentation__.Notify(697254)
 		_ = w.workload.closeJSONLogFile()
 		w.isHoldingEntryLocks = true
 	})
 }
 
 func (w *schemaChangeWorker) releaseLocksIfHeld() {
-	if w.isHoldingEntryLocks && w.logger.verbose >= 1 {
+	__antithesis_instrumentation__.Notify(697256)
+	if w.isHoldingEntryLocks && func() bool {
+		__antithesis_instrumentation__.Notify(697258)
+		return w.logger.verbose >= 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(697259)
 		for _, worker := range w.workload.workers {
+			__antithesis_instrumentation__.Notify(697260)
 			worker.logger.currentLogEntry.mu.Unlock()
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(697261)
 	}
+	__antithesis_instrumentation__.Notify(697257)
 	w.isHoldingEntryLocks = false
 }
 
-// startLog initializes the currentLogEntry of the schemaChangeWorker. It is a noop
-// if l.verbose < 1.
 func (l *logger) startLog() {
+	__antithesis_instrumentation__.Notify(697262)
 	if l.verbose < 1 {
+		__antithesis_instrumentation__.Notify(697264)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(697265)
 	}
+	__antithesis_instrumentation__.Notify(697263)
 	l.currentLogEntry.mu.Lock()
 	defer l.currentLogEntry.mu.Unlock()
 	l.currentLogEntry.mu.entry = &LogEntry{
@@ -552,74 +624,119 @@ func (l *logger) startLog() {
 	}
 }
 
-// writeLog appends an op statement to the currentLogEntry of the schemaChangeWorker.
-// It is a noop if l.verbose < 1.
 func (l *logger) writeLog(op string) {
+	__antithesis_instrumentation__.Notify(697266)
 	if l.verbose < 1 {
+		__antithesis_instrumentation__.Notify(697268)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(697269)
 	}
+	__antithesis_instrumentation__.Notify(697267)
 	l.currentLogEntry.mu.Lock()
 	defer l.currentLogEntry.mu.Unlock()
 	if l.currentLogEntry.mu.entry != nil {
+		__antithesis_instrumentation__.Notify(697270)
 		l.currentLogEntry.mu.entry.Ops = append(l.currentLogEntry.mu.entry.Ops, op)
+	} else {
+		__antithesis_instrumentation__.Notify(697271)
 	}
 }
 
-// addExpectedErrors sets the expected errors in the currentLogEntry of the schemaChangeWorker.
-// It is a noop if l.verbose < 1.
 func (l *logger) addExpectedErrors(execErrors errorCodeSet, commitErrors errorCodeSet) {
+	__antithesis_instrumentation__.Notify(697272)
 	if l.verbose < 1 {
+		__antithesis_instrumentation__.Notify(697274)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(697275)
 	}
+	__antithesis_instrumentation__.Notify(697273)
 	l.currentLogEntry.mu.Lock()
 	defer l.currentLogEntry.mu.Unlock()
 	if l.currentLogEntry.mu.entry != nil {
+		__antithesis_instrumentation__.Notify(697276)
 		l.currentLogEntry.mu.entry.ExpectedExecErrors = execErrors.String()
 		l.currentLogEntry.mu.entry.ExpectedCommitErrors = commitErrors.String()
+	} else {
+		__antithesis_instrumentation__.Notify(697277)
 	}
 }
 
-// flushLog outputs the currentLogEntry of the schemaChangeWorker.
-// It is a noop if l.verbose < 0.
 func (l *logger) flushLog(tx pgx.Tx, message string) {
+	__antithesis_instrumentation__.Notify(697278)
 	if l.verbose < 1 {
+		__antithesis_instrumentation__.Notify(697280)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(697281)
 	}
+	__antithesis_instrumentation__.Notify(697279)
 	l.flushLogAndLock(tx, message, true)
 	l.currentLogEntry.mu.Unlock()
 }
 
-// flushLogAndLock prints the currentLogEntry of the schemaChangeWorker and does not release
-// the lock for w.currentLogEntry upon returning. The lock will not be acquired if l.verbose < 1.
 func (l *logger) flushLogAndLock(_ pgx.Tx, message string, stdout bool) {
+	__antithesis_instrumentation__.Notify(697282)
 	if l.verbose < 1 {
+		__antithesis_instrumentation__.Notify(697289)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(697290)
 	}
+	__antithesis_instrumentation__.Notify(697283)
 
 	l.currentLogEntry.mu.Lock()
 
-	if l.currentLogEntry.mu.entry == nil || len(l.currentLogEntry.mu.entry.Ops) < 2 {
+	if l.currentLogEntry.mu.entry == nil || func() bool {
+		__antithesis_instrumentation__.Notify(697291)
+		return len(l.currentLogEntry.mu.entry.Ops) < 2 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(697292)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(697293)
 	}
+	__antithesis_instrumentation__.Notify(697284)
 
 	if message != "" {
+		__antithesis_instrumentation__.Notify(697294)
 		l.currentLogEntry.mu.entry.Message = message
+	} else {
+		__antithesis_instrumentation__.Notify(697295)
 	}
+	__antithesis_instrumentation__.Notify(697285)
 	jsonBytes, err := json.MarshalIndent(l.currentLogEntry.mu.entry, "", " ")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(697296)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(697297)
 	}
+	__antithesis_instrumentation__.Notify(697286)
 	if stdout {
+		__antithesis_instrumentation__.Notify(697298)
 		l.stdoutLog.printLn(string(jsonBytes))
+	} else {
+		__antithesis_instrumentation__.Notify(697299)
 	}
+	__antithesis_instrumentation__.Notify(697287)
 	if l.artifactsLog != nil {
+		__antithesis_instrumentation__.Notify(697300)
 		var jsonBuf bytes.Buffer
 		err = json.Compact(&jsonBuf, jsonBytes)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(697302)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(697303)
 		}
+		__antithesis_instrumentation__.Notify(697301)
 		l.artifactsLog.printLn(jsonBuf.String())
+	} else {
+		__antithesis_instrumentation__.Notify(697304)
 	}
+	__antithesis_instrumentation__.Notify(697288)
 	l.currentLogEntry.mu.entry = nil
 }
 
@@ -635,7 +752,6 @@ type logger struct {
 	artifactsLog *atomicLog
 }
 
-// atomicLog is used to make synchronized writes to an io.Writer.
 type atomicLog struct {
 	mu struct {
 		syncutil.Mutex
@@ -644,6 +760,7 @@ type atomicLog struct {
 }
 
 func makeAtomicLog(w io.Writer) *atomicLog {
+	__antithesis_instrumentation__.Notify(697305)
 	return &atomicLog{
 		mu: struct {
 			syncutil.Mutex
@@ -653,31 +770,44 @@ func makeAtomicLog(w io.Writer) *atomicLog {
 }
 
 func (l *atomicLog) printLn(message string) {
+	__antithesis_instrumentation__.Notify(697306)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	_, _ = l.mu.log.Write(append([]byte(message), '\n'))
 }
 
-// initJsonLogFile opens the file denoted by filePath and sets s.logFile on success.
 func (s *schemaChange) initJSONLogFile(filePath string) error {
+	__antithesis_instrumentation__.Notify(697307)
 	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0660)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(697309)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(697310)
 	}
+	__antithesis_instrumentation__.Notify(697308)
 	s.logFile = f
 	return nil
 }
 
-// closeJsonLogFile closes s.logFile and is a noop if s.logFile is nil.
 func (s *schemaChange) closeJSONLogFile() error {
+	__antithesis_instrumentation__.Notify(697311)
 	if s.logFile == nil {
+		__antithesis_instrumentation__.Notify(697314)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(697315)
 	}
+	__antithesis_instrumentation__.Notify(697312)
 
 	if err := s.logFile.Sync(); err != nil {
+		__antithesis_instrumentation__.Notify(697316)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(697317)
 	}
+	__antithesis_instrumentation__.Notify(697313)
 	err := s.logFile.Close()
 	s.logFile = nil
 	return err

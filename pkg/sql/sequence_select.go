@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,32 +22,48 @@ type sequenceSelectNode struct {
 var _ planNode = &sequenceSelectNode{}
 
 func (p *planner) SequenceSelectNode(desc catalog.TableDescriptor) (planNode, error) {
+	__antithesis_instrumentation__.Notify(617631)
 	if desc.GetSequenceOpts() == nil {
+		__antithesis_instrumentation__.Notify(617633)
 		return nil, errors.New("descriptor is not a sequence")
+	} else {
+		__antithesis_instrumentation__.Notify(617634)
 	}
+	__antithesis_instrumentation__.Notify(617632)
 	return &sequenceSelectNode{
 		desc: desc,
 	}, nil
 }
 
 func (ss *sequenceSelectNode) startExec(runParams) error {
+	__antithesis_instrumentation__.Notify(617635)
 	return nil
 }
 
 func (ss *sequenceSelectNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(617636)
 	if ss.done {
+		__antithesis_instrumentation__.Notify(617639)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(617640)
 	}
+	__antithesis_instrumentation__.Notify(617637)
 	val, err := params.p.GetSequenceValue(params.ctx, params.ExecCfg().Codec, ss.desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(617641)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(617642)
 	}
+	__antithesis_instrumentation__.Notify(617638)
 	ss.val = val
 	ss.done = true
 	return true, nil
 }
 
 func (ss *sequenceSelectNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(617643)
 	valDatum := tree.DInt(ss.val)
 	cntDatum := tree.DInt(0)
 	calledDatum := tree.DBoolTrue
@@ -66,4 +74,6 @@ func (ss *sequenceSelectNode) Values() tree.Datums {
 	}
 }
 
-func (ss *sequenceSelectNode) Close(ctx context.Context) {}
+func (ss *sequenceSelectNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(617644)
+}

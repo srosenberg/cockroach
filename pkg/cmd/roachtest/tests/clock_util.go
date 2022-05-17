@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,73 +13,104 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 )
 
-// isAlive returns whether the node queried by db is alive.
 func isAlive(db *gosql.DB, l *logger.Logger) bool {
-	// The cluster might have just restarted, in which case the first call to db
-	// might return an error. In fact, the first db.Ping() reliably returns an
-	// error (but a db.Exec() only seldom returns an error). So, we're gonna
-	// Ping() twice to allow connections to be re-established.
+	__antithesis_instrumentation__.Notify(46708)
+
 	_ = db.Ping()
 	if err := db.Ping(); err != nil {
+		__antithesis_instrumentation__.Notify(46710)
 		l.Printf("isAlive returned err=%v (%T)", err, err)
 	} else {
+		__antithesis_instrumentation__.Notify(46711)
 		return true
 	}
+	__antithesis_instrumentation__.Notify(46709)
 	return false
 }
 
-// dbUnixEpoch returns the current time in db.
 func dbUnixEpoch(db *gosql.DB) (float64, error) {
+	__antithesis_instrumentation__.Notify(46712)
 	var epoch float64
 	if err := db.QueryRow("SELECT now()::DECIMAL").Scan(&epoch); err != nil {
+		__antithesis_instrumentation__.Notify(46714)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(46715)
 	}
+	__antithesis_instrumentation__.Notify(46713)
 	return epoch, nil
 }
 
-// offsetInjector is used to inject clock offsets in roachtests.
 type offsetInjector struct {
 	t        test.Test
 	c        cluster.Cluster
 	deployed bool
 }
 
-// deploy installs ntp and downloads / compiles bumptime used to create a clock offset.
 func (oi *offsetInjector) deploy(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(46716)
 	if err := oi.c.RunE(ctx, oi.c.All(), "test -x ./bumptime"); err == nil {
+		__antithesis_instrumentation__.Notify(46723)
 		oi.deployed = true
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(46724)
 	}
+	__antithesis_instrumentation__.Notify(46717)
 
 	if err := oi.c.Install(ctx, oi.t.L(), oi.c.All(), "ntp"); err != nil {
+		__antithesis_instrumentation__.Notify(46725)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(46726)
 	}
+	__antithesis_instrumentation__.Notify(46718)
 	if err := oi.c.Install(ctx, oi.t.L(), oi.c.All(), "gcc"); err != nil {
+		__antithesis_instrumentation__.Notify(46727)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(46728)
 	}
+	__antithesis_instrumentation__.Notify(46719)
 	if err := oi.c.RunE(ctx, oi.c.All(), "sudo", "service", "ntp", "stop"); err != nil {
+		__antithesis_instrumentation__.Notify(46729)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(46730)
 	}
+	__antithesis_instrumentation__.Notify(46720)
 	if err := oi.c.RunE(ctx, oi.c.All(),
 		"curl", "--retry", "3", "--fail", "--show-error", "-kO",
 		"https://raw.githubusercontent.com/cockroachdb/jepsen/master/cockroachdb/resources/bumptime.c",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(46731)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(46732)
 	}
+	__antithesis_instrumentation__.Notify(46721)
 	if err := oi.c.RunE(ctx, oi.c.All(),
 		"gcc", "bumptime.c", "-o", "bumptime", "&&", "rm bumptime.c",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(46733)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(46734)
 	}
+	__antithesis_instrumentation__.Notify(46722)
 	oi.deployed = true
 	return nil
 }
 
-// offset injects a offset of s into the node with the given nodeID.
 func (oi *offsetInjector) offset(ctx context.Context, nodeID int, s time.Duration) {
+	__antithesis_instrumentation__.Notify(46735)
 	if !oi.deployed {
+		__antithesis_instrumentation__.Notify(46737)
 		oi.t.Fatal("Offset injector must be deployed before injecting a clock offset")
+	} else {
+		__antithesis_instrumentation__.Notify(46738)
 	}
+	__antithesis_instrumentation__.Notify(46736)
 
 	oi.c.Run(
 		ctx,
@@ -96,12 +119,15 @@ func (oi *offsetInjector) offset(ctx context.Context, nodeID int, s time.Duratio
 	)
 }
 
-// recover force syncs time on the node with the given nodeID to recover
-// from any offsets.
 func (oi *offsetInjector) recover(ctx context.Context, nodeID int) {
+	__antithesis_instrumentation__.Notify(46739)
 	if !oi.deployed {
+		__antithesis_instrumentation__.Notify(46741)
 		oi.t.Fatal("Offset injector must be deployed before recovering from clock offsets")
+	} else {
+		__antithesis_instrumentation__.Notify(46742)
 	}
+	__antithesis_instrumentation__.Notify(46740)
 
 	syncCmds := [][]string{
 		{"sudo", "service", "ntp", "stop"},
@@ -109,6 +135,7 @@ func (oi *offsetInjector) recover(ctx context.Context, nodeID int) {
 		{"sudo", "service", "ntp", "start"},
 	}
 	for _, cmd := range syncCmds {
+		__antithesis_instrumentation__.Notify(46743)
 		oi.c.Run(
 			ctx,
 			oi.c.Node(nodeID),
@@ -117,8 +144,7 @@ func (oi *offsetInjector) recover(ctx context.Context, nodeID int) {
 	}
 }
 
-// newOffsetInjector creates a offsetInjector which can be used to inject
-// and recover from clock offsets.
 func newOffsetInjector(t test.Test, c cluster.Cluster) *offsetInjector {
+	__antithesis_instrumentation__.Notify(46744)
 	return &offsetInjector{t: t, c: c}
 }

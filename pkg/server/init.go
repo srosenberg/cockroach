@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -36,65 +28,30 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 )
 
-// ErrClusterInitialized is reported when the Bootstrap RPC is run on
-// a node that is already part of an initialized cluster.
 var ErrClusterInitialized = fmt.Errorf("cluster has already been initialized")
 
-// ErrIncompatibleBinaryVersion is returned when a CRDB node with a binary version X
-// attempts to join a cluster with an active version that's higher. This is not
-// allowed.
 var ErrIncompatibleBinaryVersion = fmt.Errorf("binary is incompatible with the cluster attempted to join")
 
-// initServer handles the bootstrapping process. It is instantiated early in the
-// server startup sequence to determine whether a NodeID and ClusterID are
-// available (true if and only if an initialized store is present). If all
-// engines are empty, either a new cluster needs to be started (via incoming
-// Bootstrap RPC) or an existing one joined (via the outgoing Join RPC). Either
-// way, the goal is to learn a ClusterID and NodeID (and initialize at least one
-// store). All of this subtlety is encapsulated by the initServer, which offers
-// a primitive ServeAndWait() after which point the startup code can assume that
-// the Node/ClusterIDs are known.
 type initServer struct {
 	log.AmbientContext
-	// config houses a few configuration options needed by the init server.
+
 	config initServerCfg
 
 	mu struct {
-		// This mutex is used to serialize bootstrap attempts.
 		syncutil.Mutex
 
-		// We use this field to guard against doubly bootstrapping clusters.
 		bootstrapped bool
 
-		// If we encounter an unrecognized error during bootstrap, we use this
-		// field to block out future bootstrap attempts.
 		rejectErr error
 	}
 
-	// inspectedDiskState captures the relevant bits of the on-disk state needed
-	// by the init server. It's through this that the init server knows whether
-	// or not this node needs to be bootstrapped. It does so by checking to see
-	// if any engines were already initialized. If so, there's nothing left for
-	// the init server to, it simply returns the inspected disk state in
-	// ServeAndWait.
-	//
-	// Another function the inspected disk state provides is that it relays the
-	// synthesized cluster version (this binary's minimum supported version if
-	// there are no initialized engines). This is used as the cluster version if
-	// we end up connecting to an existing cluster via gossip.
-	//
-	// TODO(irfansharif): The above function goes away once we remove the use of
-	// gossip to join running clusters in 21.1.
 	inspectedDiskState *initState
 
-	// If this CRDB node was `cockroach init`-ialized, the resulting init state
-	// will be passed through to this channel.
 	bootstrapReqCh chan *initState
 }
 
-// NeedsBootstrap returns true if we haven't already been bootstrapped or
-// haven't yet been able to join a running cluster.
 func (s *initServer) NeedsBootstrap() bool {
+	__antithesis_instrumentation__.Notify(193862)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -104,30 +61,24 @@ func (s *initServer) NeedsBootstrap() bool {
 func newInitServer(
 	actx log.AmbientContext, inspectedDiskState *initState, config initServerCfg,
 ) *initServer {
+	__antithesis_instrumentation__.Notify(193863)
 	initServer := &initServer{
 		AmbientContext:     actx,
 		bootstrapReqCh:     make(chan *initState, 1),
 		config:             config,
 		inspectedDiskState: inspectedDiskState,
 	}
-	// If we were already bootstrapped, we mark ourselves as such to prevent
-	// future bootstrap attempts.
+
 	if inspectedDiskState.bootstrapped() {
+		__antithesis_instrumentation__.Notify(193865)
 		initServer.mu.bootstrapped = true
+	} else {
+		__antithesis_instrumentation__.Notify(193866)
 	}
+	__antithesis_instrumentation__.Notify(193864)
 	return initServer
 }
 
-// initState is the entirety of what the init server is tasked with
-// constructing. It's a view of our on-disk state, instantiated through
-// inspectEngines (and inspectEngines alone).
-//
-// The init server is tasked with durably persisting state on-disk when this
-// node is bootstrapped, or is able to join an already bootstrapped cluster.
-// By state here we mean the cluster ID, node ID, at least one initialized
-// engine, etc. After having persisted the relevant state, the init server
-// constructs an initState with the details needed to fully start up a CRDB
-// server.
 type initState struct {
 	nodeID               roachpb.NodeID
 	clusterID            uuid.UUID
@@ -137,78 +88,61 @@ type initState struct {
 	initialSettingsKVs   []roachpb.KeyValue
 }
 
-// bootstrapped is a shorthand to check if there exists at least one initialized
-// engine.
 func (i *initState) bootstrapped() bool {
+	__antithesis_instrumentation__.Notify(193867)
 	return len(i.initializedEngines) > 0
 }
 
-// validate asserts that the init state is a fully fleshed out one (i.e. with a
-// non-empty cluster ID and node ID).
 func (i *initState) validate() error {
+	__antithesis_instrumentation__.Notify(193868)
 	if (i.clusterID == uuid.UUID{}) {
+		__antithesis_instrumentation__.Notify(193871)
 		return errors.New("missing cluster ID")
+	} else {
+		__antithesis_instrumentation__.Notify(193872)
 	}
+	__antithesis_instrumentation__.Notify(193869)
 	if i.nodeID == 0 {
+		__antithesis_instrumentation__.Notify(193873)
 		return errors.New("missing node ID")
+	} else {
+		__antithesis_instrumentation__.Notify(193874)
 	}
+	__antithesis_instrumentation__.Notify(193870)
 	return nil
 }
 
-// joinResult is used to represent the result of a node attempting to join
-// an already bootstrapped cluster.
 type joinResult struct {
 	state *initState
 	err   error
 }
 
-// ServeAndWait waits until the server is initialized, i.e. has a cluster ID,
-// node ID and has permission to join the cluster. In the common case of
-// restarting an existing node, this immediately returns. When starting with a
-// blank slate (i.e. only empty engines), it waits for incoming Bootstrap
-// request or for a successful outgoing Join RPC, whichever happens earlier.
-//
-// The returned initState reflects a bootstrapped cluster (i.e. it has a cluster
-// ID and a node ID for this server).
-//
-// This method must be called only once.
-//
-// NB: A gotcha that may not immediately be obvious is that we can never hope to
-// have all stores initialized by the time ServeAndWait returns. This is because
-// if this server is already bootstrapped, it might hold a replica of the range
-// backing the StoreID allocating counter, and letting this server start may be
-// necessary to restore quorum to that range. So in general, after this method,
-// we will always leave this method with at least one store initialized, but not
-// necessarily all. This is fine, since initializing additional stores later is
-// easy (see `initializeAdditionalStores`).
-//
-// `initialBoot` is true if this is a new node. This flag should only be used
-// for logging and reporting. A newly bootstrapped single-node cluster is
-// functionally equivalent to one that restarted; any decisions should be made
-// on persisted data instead of this flag.
 func (s *initServer) ServeAndWait(
 	ctx context.Context, stopper *stop.Stopper, sv *settings.Values,
 ) (state *initState, initialBoot bool, err error) {
-	// If we're restarting an already bootstrapped node, return early.
+	__antithesis_instrumentation__.Notify(193875)
+
 	if s.inspectedDiskState.bootstrapped() {
+		__antithesis_instrumentation__.Notify(193879)
 		return s.inspectedDiskState, false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(193880)
 	}
+	__antithesis_instrumentation__.Notify(193876)
 
 	log.Info(ctx, "no stores initialized")
 	log.Info(ctx, "awaiting `cockroach init` or join with an already initialized node")
 
-	// If we end up joining a bootstrapped cluster, the resulting init state
-	// will be passed through this channel.
 	var joinCh chan joinResult
-	var cancelJoin = func() {}
+	var cancelJoin = func() { __antithesis_instrumentation__.Notify(193881) }
+	__antithesis_instrumentation__.Notify(193877)
 	var wg sync.WaitGroup
 
 	if len(s.config.bootstrapAddresses) == 0 {
-		// We're pointing to only ourselves or nothing at all, which (likely)
-		// suggests that we're going to be bootstrapped by the operator. Since
-		// we're not going to be sending out join RPCs, we don't bother spinning
-		// up the join loop.
+		__antithesis_instrumentation__.Notify(193882)
+
 	} else {
+		__antithesis_instrumentation__.Notify(193883)
 		joinCh = make(chan joinResult, 1)
 		wg.Add(1)
 
@@ -218,46 +152,39 @@ func (s *initServer) ServeAndWait(
 
 		err := stopper.RunAsyncTask(joinCtx, "init server: join loop",
 			func(ctx context.Context) {
+				__antithesis_instrumentation__.Notify(193885)
 				defer wg.Done()
 
 				state, err := s.startJoinLoop(ctx, stopper)
 				joinCh <- joinResult{state: state, err: err}
 			})
+		__antithesis_instrumentation__.Notify(193884)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(193886)
 			wg.Done()
 			return nil, false, err
+		} else {
+			__antithesis_instrumentation__.Notify(193887)
 		}
 	}
+	__antithesis_instrumentation__.Notify(193878)
 
 	for {
+		__antithesis_instrumentation__.Notify(193888)
 		select {
 		case state := <-s.bootstrapReqCh:
-			// Ensure we're draining out the join attempt, if any. We're not
-			// going to need it anymore and it had no chance of joining
-			// elsewhere (since we are the ones bootstrapping the new cluster
-			// and have not started serving Join yet).
+			__antithesis_instrumentation__.Notify(193889)
+
 			cancelJoin()
 			wg.Wait()
 
-			// Bootstrap() did its job. At this point, we know that the cluster
-			// version will be the bootstrap version (aka the binary version[1]),
-			// but the version setting does not know yet (it was initialized as
-			// BinaryMinSupportedVersion because the engines were all
-			// uninitialized). Given that the bootstrap version was persisted to
-			// all the engines, it's now safe for us to bump the version setting
-			// itself and start operating at the latest cluster version.
-			//
-			// TODO(irfansharif): We're calling Initialize a second time here.
-			// There's no real reason to anymore, we can use
-			// SetActiveClusterVersion instead. This will let us make
-			// `Initialize` a bit stricter, which is a nice simplification to
-			// have.
-			//
-			// [1]: See the top-level comment in pkg/clusterversion to make
-			// sense of the many versions of ...versions.
 			if err := clusterversion.Initialize(ctx, state.clusterVersion.Version, sv); err != nil {
+				__antithesis_instrumentation__.Notify(193894)
 				return nil, false, err
+			} else {
+				__antithesis_instrumentation__.Notify(193895)
 			}
+			__antithesis_instrumentation__.Notify(193890)
 
 			log.Infof(ctx, "cluster %s has been created", state.clusterID)
 			log.Infof(ctx, "allocated node ID: n%d (for self)", state.nodeID)
@@ -265,20 +192,25 @@ func (s *initServer) ServeAndWait(
 
 			return state, true, nil
 		case result := <-joinCh:
-			// Ensure we're draining out the join attempt.
+			__antithesis_instrumentation__.Notify(193891)
+
 			wg.Wait()
 
 			if err := result.err; err != nil {
+				__antithesis_instrumentation__.Notify(193896)
 				if errors.Is(err, ErrIncompatibleBinaryVersion) {
+					__antithesis_instrumentation__.Notify(193898)
 					return nil, false, err
+				} else {
+					__antithesis_instrumentation__.Notify(193899)
 				}
+				__antithesis_instrumentation__.Notify(193897)
 
-				// We expect the join RPC to blindly retry on all
-				// "connection" errors save for one above. If we're
-				// here, we failed to initialize our first store after a
-				// successful join attempt.
 				return nil, false, errors.NewAssertionErrorWithWrappedErrf(err, "unexpected error")
+			} else {
+				__antithesis_instrumentation__.Notify(193900)
 			}
+			__antithesis_instrumentation__.Notify(193892)
 
 			state := result.state
 
@@ -288,6 +220,7 @@ func (s *initServer) ServeAndWait(
 
 			return state, true, nil
 		case <-stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(193893)
 			return nil, false, stop.ErrUnavailable
 		}
 	}
@@ -295,166 +228,198 @@ func (s *initServer) ServeAndWait(
 
 var errInternalBootstrapError = errors.New("unable to bootstrap due to internal error")
 
-// Bootstrap implements the serverpb.Init service. Users set up a new CRDB
-// cluster by calling this endpoint on exactly one node in the cluster
-// (typically retrying only on that node). This endpoint is what powers
-// `cockroach init`. Attempting to bootstrap a node that was already
-// bootstrapped will result in an `ErrClusterInitialized` error.
-//
-// NB: there is no protection against users erroneously bootstrapping multiple
-// nodes. In that case, they end up with more than one cluster, and nodes
-// panicking or refusing to connect to each other.
 func (s *initServer) Bootstrap(
 	ctx context.Context, _ *serverpb.BootstrapRequest,
 ) (*serverpb.BootstrapResponse, error) {
-	// Bootstrap() only responds once. Everyone else gets an error, either
-	// ErrClusterInitialized (in the success case) or errInternalBootstrapError.
+	__antithesis_instrumentation__.Notify(193901)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.mu.bootstrapped {
+		__antithesis_instrumentation__.Notify(193905)
 		return nil, ErrClusterInitialized
+	} else {
+		__antithesis_instrumentation__.Notify(193906)
 	}
+	__antithesis_instrumentation__.Notify(193902)
 
 	if s.mu.rejectErr != nil {
+		__antithesis_instrumentation__.Notify(193907)
 		return nil, s.mu.rejectErr
+	} else {
+		__antithesis_instrumentation__.Notify(193908)
 	}
+	__antithesis_instrumentation__.Notify(193903)
 
 	state, err := s.tryBootstrap(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193909)
 		log.Errorf(ctx, "bootstrap: %v", err)
 		s.mu.rejectErr = errInternalBootstrapError
 		return nil, s.mu.rejectErr
+	} else {
+		__antithesis_instrumentation__.Notify(193910)
 	}
+	__antithesis_instrumentation__.Notify(193904)
 
-	// We've successfully bootstrapped (we've initialized at least one engine).
-	// We mark ourselves as bootstrapped to prevent future bootstrap attempts.
 	s.mu.bootstrapped = true
 	s.bootstrapReqCh <- state
 
 	return &serverpb.BootstrapResponse{}, nil
 }
 
-// startJoinLoop continuously tries connecting to nodes specified in the join
-// list in order to determine what the cluster ID is, and to be allocated a
-// node+store ID. It can return errJoinRPCUnsupported, in which case the caller
-// is expected to fall back to the gossip-based cluster ID discovery mechanism.
-// It can also fail with ErrIncompatibleBinaryVersion, in which case we know we're
-// running a binary that's too old to join the rest of the cluster.
 func (s *initServer) startJoinLoop(ctx context.Context, stopper *stop.Stopper) (*initState, error) {
+	__antithesis_instrumentation__.Notify(193911)
 	if len(s.config.bootstrapAddresses) == 0 {
+		__antithesis_instrumentation__.Notify(193915)
 		return nil, errors.AssertionFailedf("expected to find at least one bootstrap address, found none")
+	} else {
+		__antithesis_instrumentation__.Notify(193916)
 	}
+	__antithesis_instrumentation__.Notify(193912)
 
-	// Iterate through all the bootstrap addresses at least once to reduce time
-	// taken to cluster convergence. Keep this code block roughly in sync with the
-	// one below.
 	for _, addr := range s.config.bootstrapAddresses {
+		__antithesis_instrumentation__.Notify(193917)
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(193922)
 			return nil, context.Canceled
 		case <-stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(193923)
 			return nil, stop.ErrUnavailable
 		default:
+			__antithesis_instrumentation__.Notify(193924)
 		}
+		__antithesis_instrumentation__.Notify(193918)
 
 		resp, err := s.attemptJoinTo(ctx, addr.String())
 		if errors.Is(err, ErrIncompatibleBinaryVersion) {
-			// Propagate upwards; this is an error condition the caller knows
-			// to expect.
+			__antithesis_instrumentation__.Notify(193925)
+
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(193926)
 		}
+		__antithesis_instrumentation__.Notify(193919)
 		if err != nil {
-			// Try the next node if unsuccessful.
+			__antithesis_instrumentation__.Notify(193927)
 
 			if IsWaitingForInit(err) {
+				__antithesis_instrumentation__.Notify(193929)
 				log.Infof(ctx, "%s is itself waiting for init, will retry", addr)
 			} else {
+				__antithesis_instrumentation__.Notify(193930)
 				log.Warningf(ctx, "outgoing join rpc to %s unsuccessful: %v", addr, err.Error())
 			}
+			__antithesis_instrumentation__.Notify(193928)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(193931)
 		}
+		__antithesis_instrumentation__.Notify(193920)
 
 		state, err := s.initializeFirstStoreAfterJoin(ctx, resp)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(193932)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(193933)
 		}
+		__antithesis_instrumentation__.Notify(193921)
 
-		// We mark ourselves as bootstrapped to prevent future bootstrap attempts.
 		s.mu.Lock()
 		s.mu.bootstrapped = true
 		s.mu.Unlock()
 
 		return state, nil
 	}
+	__antithesis_instrumentation__.Notify(193913)
 
 	const joinRPCBackoff = time.Second
 	var tickChan <-chan time.Time
 	{
+		__antithesis_instrumentation__.Notify(193934)
 		ticker := time.NewTicker(joinRPCBackoff)
 		tickChan = ticker.C
 		defer ticker.Stop()
 	}
+	__antithesis_instrumentation__.Notify(193914)
 
 	for idx := 0; ; idx = (idx + 1) % len(s.config.bootstrapAddresses) {
+		__antithesis_instrumentation__.Notify(193935)
 		addr := s.config.bootstrapAddresses[idx].String()
 		select {
 		case <-tickChan:
+			__antithesis_instrumentation__.Notify(193936)
 			resp, err := s.attemptJoinTo(ctx, addr)
 			if errors.Is(err, ErrIncompatibleBinaryVersion) {
-				// Propagate upwards; this is an error condition the caller
-				// knows to expect.
-				return nil, err
-			}
-			if err != nil {
-				// Blindly retry for all other errors, logging them for visibility.
+				__antithesis_instrumentation__.Notify(193942)
 
-				// TODO(irfansharif): If startup logging gets too spammy, we
-				// could match against connection errors to generate nicer
-				// logging. See grpcutil.connectionRefusedRe.
+				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(193943)
+			}
+			__antithesis_instrumentation__.Notify(193937)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(193944)
 
 				if IsWaitingForInit(err) {
+					__antithesis_instrumentation__.Notify(193946)
 					log.Infof(ctx, "%s is itself waiting for init, will retry", addr)
 				} else {
+					__antithesis_instrumentation__.Notify(193947)
 					log.Warningf(ctx, "outgoing join rpc to %s unsuccessful: %v", addr, err.Error())
 				}
+				__antithesis_instrumentation__.Notify(193945)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(193948)
 			}
+			__antithesis_instrumentation__.Notify(193938)
 
-			// We were able to successfully join an existing cluster. We'll now
-			// initialize our first store, using the store ID handed to us.
 			state, err := s.initializeFirstStoreAfterJoin(ctx, resp)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(193949)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(193950)
 			}
+			__antithesis_instrumentation__.Notify(193939)
 
-			// We mark ourselves as bootstrapped to prevent future bootstrap attempts.
 			s.mu.Lock()
 			s.mu.bootstrapped = true
 			s.mu.Unlock()
 
 			return state, nil
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(193940)
 			return nil, context.Canceled
 		case <-stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(193941)
 			return nil, stop.ErrUnavailable
 		}
 	}
 }
 
-// attemptJoinTo attempts to join to the node running at the given address.
 func (s *initServer) attemptJoinTo(
 	ctx context.Context, addr string,
 ) (*roachpb.JoinNodeResponse, error) {
+	__antithesis_instrumentation__.Notify(193951)
 	conn, err := grpc.DialContext(ctx, addr, s.config.dialOpts...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193955)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193956)
 	}
+	__antithesis_instrumentation__.Notify(193952)
 
 	defer func() {
-		_ = conn.Close() // nolint:grpcconnclose
+		__antithesis_instrumentation__.Notify(193957)
+		_ = conn.Close()
 	}()
+	__antithesis_instrumentation__.Notify(193953)
 
 	binaryVersion := s.config.binaryVersion
 	req := &roachpb.JoinNodeRequest{
@@ -464,89 +429,101 @@ func (s *initServer) attemptJoinTo(
 	initClient := roachpb.NewInternalClient(conn)
 	resp, err := initClient.Join(ctx, req)
 	if err != nil {
-		// If the target node does not implement the Join RPC, or explicitly
-		// returns errJoinRPCUnsupported (because the cluster version
-		// introducing its usage is not yet active), we error out so the init
-		// server knows to fall back on the gossip-based discovery mechanism for
-		// the clusterID.
+		__antithesis_instrumentation__.Notify(193958)
 
 		status, ok := grpcstatus.FromError(errors.UnwrapAll(err))
 		if !ok {
+			__antithesis_instrumentation__.Notify(193961)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(193962)
 		}
-
-		// TODO(irfansharif): Here we're logging the error and also returning
-		// it. We should wrap the logged message with the right error instead.
-		// The caller code, as written, switches on the error type; that'll need
-		// to be changed as well.
+		__antithesis_instrumentation__.Notify(193959)
 
 		if status.Code() == codes.PermissionDenied {
+			__antithesis_instrumentation__.Notify(193963)
 			log.Infof(ctx, "%s is running a version higher than our binary version %s", addr, req.BinaryVersion.String())
 			return nil, ErrIncompatibleBinaryVersion
+		} else {
+			__antithesis_instrumentation__.Notify(193964)
 		}
+		__antithesis_instrumentation__.Notify(193960)
 
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193965)
 	}
+	__antithesis_instrumentation__.Notify(193954)
 
 	return resp, nil
 }
 
 func (s *initServer) tryBootstrap(ctx context.Context) (*initState, error) {
-	// We expect all the stores to be empty at this point, except for
-	// the store cluster version key. Assert so.
-	//
-	// TODO(jackson): Eventually we should be able to avoid opening the
-	// engines altogether until here, but that requires us to move the
-	// store cluster version key outside of the storage engine.
-	if err := assertEnginesEmpty(s.inspectedDiskState.uninitializedEngines); err != nil {
-		return nil, err
-	}
+	__antithesis_instrumentation__.Notify(193966)
 
-	// We use our binary version to bootstrap the cluster.
+	if err := assertEnginesEmpty(s.inspectedDiskState.uninitializedEngines); err != nil {
+		__antithesis_instrumentation__.Notify(193969)
+		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193970)
+	}
+	__antithesis_instrumentation__.Notify(193967)
+
 	cv := clusterversion.ClusterVersion{Version: s.config.binaryVersion}
 	if err := kvserver.WriteClusterVersionToEngines(ctx, s.inspectedDiskState.uninitializedEngines, cv); err != nil {
+		__antithesis_instrumentation__.Notify(193971)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193972)
 	}
+	__antithesis_instrumentation__.Notify(193968)
 
 	return bootstrapCluster(ctx, s.inspectedDiskState.uninitializedEngines, s.config)
 }
 
-// DiskClusterVersion returns the cluster version synthesized from disk. This
-// is always non-zero since it falls back to the BinaryMinSupportedVersion.
 func (s *initServer) DiskClusterVersion() clusterversion.ClusterVersion {
+	__antithesis_instrumentation__.Notify(193973)
 	return s.inspectedDiskState.clusterVersion
 }
 
-// initializeFirstStoreAfterJoin initializes the first store after a successful
-// join attempt. It re-constructs the store identifier from the join response
-// and persists the appropriate cluster version to disk. After having done so,
-// it returns an initState that captures the newly initialized store.
 func (s *initServer) initializeFirstStoreAfterJoin(
 	ctx context.Context, resp *roachpb.JoinNodeResponse,
 ) (*initState, error) {
-	// We expect all the stores to be empty at this point, except for
-	// the store cluster version key. Assert so.
-	//
-	// TODO(jackson): Eventually we should be able to avoid opening the
-	// engines altogether until here, but that requires us to move the
-	// store cluster version key outside of the storage engine.
+	__antithesis_instrumentation__.Notify(193974)
+
 	if err := assertEnginesEmpty(s.inspectedDiskState.uninitializedEngines); err != nil {
+		__antithesis_instrumentation__.Notify(193979)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193980)
 	}
+	__antithesis_instrumentation__.Notify(193975)
 
 	firstEngine := s.inspectedDiskState.uninitializedEngines[0]
 	clusterVersion := clusterversion.ClusterVersion{Version: *resp.ActiveVersion}
 	if err := kvserver.WriteClusterVersion(ctx, firstEngine, clusterVersion); err != nil {
+		__antithesis_instrumentation__.Notify(193981)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193982)
 	}
+	__antithesis_instrumentation__.Notify(193976)
 
 	sIdent, err := resp.CreateStoreIdent()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193983)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193984)
 	}
+	__antithesis_instrumentation__.Notify(193977)
 	if err := kvserver.InitEngine(ctx, firstEngine, sIdent); err != nil {
+		__antithesis_instrumentation__.Notify(193985)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193986)
 	}
+	__antithesis_instrumentation__.Notify(193978)
 
 	return inspectEngines(
 		ctx, s.inspectedDiskState.uninitializedEngines,
@@ -555,81 +532,97 @@ func (s *initServer) initializeFirstStoreAfterJoin(
 }
 
 func assertEnginesEmpty(engines []storage.Engine) error {
+	__antithesis_instrumentation__.Notify(193987)
 	storeClusterVersionKey := keys.StoreClusterVersionKey()
 
 	for _, engine := range engines {
+		__antithesis_instrumentation__.Notify(193989)
 		err := func() error {
+			__antithesis_instrumentation__.Notify(193991)
 			iter := engine.NewEngineIterator(storage.IterOptions{
 				UpperBound: roachpb.KeyMax,
 			})
 			defer iter.Close()
 
 			valid, err := iter.SeekEngineKeyGE(storage.EngineKey{Key: roachpb.KeyMin})
-			for ; valid && err == nil; valid, err = iter.NextEngineKey() {
+			for ; valid && func() bool {
+				__antithesis_instrumentation__.Notify(193993)
+				return err == nil == true
+			}() == true; valid, err = iter.NextEngineKey() {
+				__antithesis_instrumentation__.Notify(193994)
 				k, err := iter.UnsafeEngineKey()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(193997)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(193998)
 				}
+				__antithesis_instrumentation__.Notify(193995)
 
-				// The store cluster version key is written multiple times,
-				// including before bootstrapping or joining a cluster.
-				// Skip it if it exists.
 				if storeClusterVersionKey.Equal(k.Key) {
+					__antithesis_instrumentation__.Notify(193999)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(194000)
 				}
+				__antithesis_instrumentation__.Notify(193996)
 				return errors.New("engine is not empty")
 			}
+			__antithesis_instrumentation__.Notify(193992)
 			return err
 		}()
+		__antithesis_instrumentation__.Notify(193990)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(194001)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(194002)
 		}
 	}
+	__antithesis_instrumentation__.Notify(193988)
 	return nil
 }
 
-// initServerCfg is a thin wrapper around the server Config object, exposing
-// only the fields needed by the init server.
 type initServerCfg struct {
 	advertiseAddr             string
 	binaryMinSupportedVersion roachpb.Version
-	binaryVersion             roachpb.Version // the version used during bootstrap
+	binaryVersion             roachpb.Version
 	defaultSystemZoneConfig   zonepb.ZoneConfig
 	defaultZoneConfig         zonepb.ZoneConfig
 
-	// dialOpts holds onto the dial options used when sending out Join RPCs.
 	dialOpts []grpc.DialOption
 
-	// bootstrapAddresses is a list of node addresses (populated using --join
-	// addresses) that is used to form a connected graph/network of CRDB servers.
-	// Once a strongly connected graph is constructed, it suffices for any node in
-	// the network to be initialized (which would then then propagates the cluster
-	// ID to the rest of the nodes).
-	//
-	// NB: Not that this does not work for weakly connected graphs. Let's
-	// consider a network where n3 points only to n2 (and not vice versa). If
-	// n2 is `cockroach init`-ialized, n3 will learn about it. The reverse will
-	// not be true.
 	bootstrapAddresses []util.UnresolvedAddr
 
-	// testingKnobs is used for internal test controls only.
 	testingKnobs base.TestingKnobs
 }
 
 func newInitServerConfig(
 	ctx context.Context, cfg Config, dialOpts []grpc.DialOption,
 ) initServerCfg {
+	__antithesis_instrumentation__.Notify(194003)
 	binaryVersion := cfg.Settings.Version.BinaryVersion()
 	if knobs := cfg.TestingKnobs.Server; knobs != nil {
+		__antithesis_instrumentation__.Notify(194006)
 		if ov := knobs.(*TestingKnobs).BinaryVersionOverride; ov != (roachpb.Version{}) {
+			__antithesis_instrumentation__.Notify(194007)
 			binaryVersion = ov
+		} else {
+			__antithesis_instrumentation__.Notify(194008)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(194009)
 	}
+	__antithesis_instrumentation__.Notify(194004)
 	binaryMinSupportedVersion := cfg.Settings.Version.BinaryMinSupportedVersion()
 	if binaryVersion.Less(binaryMinSupportedVersion) {
+		__antithesis_instrumentation__.Notify(194010)
 		log.Fatalf(ctx, "binary version (%s) less than min supported version (%s)",
 			binaryVersion, binaryMinSupportedVersion)
+	} else {
+		__antithesis_instrumentation__.Notify(194011)
 	}
+	__antithesis_instrumentation__.Notify(194005)
 
 	bootstrapAddresses := cfg.FilterGossipBootstrapAddresses(context.Background())
 	return initServerCfg{
@@ -644,60 +637,102 @@ func newInitServerConfig(
 	}
 }
 
-// inspectEngines goes through engines and constructs an initState. The
-// initState returned by this method will reflect a zero NodeID if none has
-// been assigned yet (i.e. if none of the engines is initialized). See
-// commentary on initState for the intended usage of inspectEngines.
 func inspectEngines(
 	ctx context.Context,
 	engines []storage.Engine,
 	binaryVersion, binaryMinSupportedVersion roachpb.Version,
 ) (*initState, error) {
+	__antithesis_instrumentation__.Notify(194012)
 	var clusterID uuid.UUID
 	var nodeID roachpb.NodeID
 	var initializedEngines, uninitializedEngines []storage.Engine
 	var initialSettingsKVs []roachpb.KeyValue
 
 	for _, eng := range engines {
-		// Once cached settings are loaded from any engine we can stop.
+		__antithesis_instrumentation__.Notify(194015)
+
 		if len(initialSettingsKVs) == 0 {
+			__antithesis_instrumentation__.Notify(194021)
 			var err error
 			initialSettingsKVs, err = loadCachedSettingsKVs(ctx, eng)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(194022)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(194023)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(194024)
 		}
+		__antithesis_instrumentation__.Notify(194016)
 
 		storeIdent, err := kvserver.ReadStoreIdent(ctx, eng)
 		if errors.HasType(err, (*kvserver.NotBootstrappedError)(nil)) {
+			__antithesis_instrumentation__.Notify(194025)
 			uninitializedEngines = append(uninitializedEngines, eng)
 			continue
-		} else if err != nil {
-			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(194026)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(194027)
+				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(194028)
+			}
 		}
+		__antithesis_instrumentation__.Notify(194017)
 
-		if clusterID != uuid.Nil && clusterID != storeIdent.ClusterID {
+		if clusterID != uuid.Nil && func() bool {
+			__antithesis_instrumentation__.Notify(194029)
+			return clusterID != storeIdent.ClusterID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(194030)
 			return nil, errors.Errorf("conflicting store ClusterIDs: %s, %s", storeIdent.ClusterID, clusterID)
+		} else {
+			__antithesis_instrumentation__.Notify(194031)
 		}
+		__antithesis_instrumentation__.Notify(194018)
 		clusterID = storeIdent.ClusterID
 
-		if storeIdent.StoreID == 0 || storeIdent.NodeID == 0 || storeIdent.ClusterID == uuid.Nil {
+		if storeIdent.StoreID == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(194032)
+			return storeIdent.NodeID == 0 == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(194033)
+			return storeIdent.ClusterID == uuid.Nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(194034)
 			return nil, errors.Errorf("partially initialized store: %+v", storeIdent)
+		} else {
+			__antithesis_instrumentation__.Notify(194035)
 		}
+		__antithesis_instrumentation__.Notify(194019)
 
-		if nodeID != 0 && nodeID != storeIdent.NodeID {
+		if nodeID != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(194036)
+			return nodeID != storeIdent.NodeID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(194037)
 			return nil, errors.Errorf("conflicting store NodeIDs: %s, %s", storeIdent.NodeID, nodeID)
+		} else {
+			__antithesis_instrumentation__.Notify(194038)
 		}
+		__antithesis_instrumentation__.Notify(194020)
 		nodeID = storeIdent.NodeID
 
 		initializedEngines = append(initializedEngines, eng)
 	}
+	__antithesis_instrumentation__.Notify(194013)
 	clusterVersion, err := kvserver.SynthesizeClusterVersionFromEngines(
 		ctx, initializedEngines, binaryVersion, binaryMinSupportedVersion,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(194039)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(194040)
 	}
+	__antithesis_instrumentation__.Notify(194014)
 
 	state := &initState{
 		clusterID:            clusterID,

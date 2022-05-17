@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package importer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -45,6 +37,7 @@ func newMysqloutfileReader(
 	targetCols tree.NameList,
 	evalCtx *tree.EvalContext,
 ) (*mysqloutfileReader, error) {
+	__antithesis_instrumentation__.Notify(495638)
 	return &mysqloutfileReader{
 		importCtx: &parallelImportContext{
 			semaCtx:    semaCtx,
@@ -60,6 +53,7 @@ func newMysqloutfileReader(
 }
 
 func (d *mysqloutfileReader) start(ctx ctxgroup.Group) {
+	__antithesis_instrumentation__.Notify(495639)
 }
 
 func (d *mysqloutfileReader) readFiles(
@@ -70,6 +64,7 @@ func (d *mysqloutfileReader) readFiles(
 	makeExternalStorage cloud.ExternalStorageFactory,
 	user security.SQLUsername,
 ) error {
+	__antithesis_instrumentation__.Notify(495640)
 	return readInputFiles(ctx, dataFiles, resumePos, format, d.readFile, makeExternalStorage, user)
 }
 
@@ -85,8 +80,8 @@ type delimitedProducer struct {
 
 var _ importRowProducer = &delimitedProducer{}
 
-// Scan implements importRowProducer
 func (d *delimitedProducer) Scan() bool {
+	__antithesis_instrumentation__.Notify(495641)
 	d.row = nil
 	var r rune
 	var w int
@@ -94,75 +89,131 @@ func (d *delimitedProducer) Scan() bool {
 	fieldEnclosed := false
 
 	for {
+		__antithesis_instrumentation__.Notify(495642)
 		r, w, d.err = d.reader.ReadRune()
 		if d.err == io.EOF {
+			__antithesis_instrumentation__.Notify(495649)
 			d.eof = true
 			d.err = nil
+		} else {
+			__antithesis_instrumentation__.Notify(495650)
 		}
+		__antithesis_instrumentation__.Notify(495643)
 
 		if d.eof {
+			__antithesis_instrumentation__.Notify(495651)
 			if d.row != nil {
+				__antithesis_instrumentation__.Notify(495654)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(495655)
 			}
+			__antithesis_instrumentation__.Notify(495652)
 			if nextLiteral {
+				__antithesis_instrumentation__.Notify(495656)
 				d.err = io.ErrUnexpectedEOF
+			} else {
+				__antithesis_instrumentation__.Notify(495657)
 			}
+			__antithesis_instrumentation__.Notify(495653)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(495658)
 		}
+		__antithesis_instrumentation__.Notify(495644)
 
 		if d.err != nil {
+			__antithesis_instrumentation__.Notify(495659)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(495660)
 		}
+		__antithesis_instrumentation__.Notify(495645)
 
-		if r == unicode.ReplacementChar && w == 1 {
+		if r == unicode.ReplacementChar && func() bool {
+			__antithesis_instrumentation__.Notify(495661)
+			return w == 1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(495662)
 			if d.err = d.reader.UnreadRune(); d.err != nil {
+				__antithesis_instrumentation__.Notify(495665)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(495666)
 			}
+			__antithesis_instrumentation__.Notify(495663)
 			var raw byte
 			raw, d.err = d.reader.ReadByte()
 			if d.err != nil {
+				__antithesis_instrumentation__.Notify(495667)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(495668)
 			}
+			__antithesis_instrumentation__.Notify(495664)
 			r = rune(raw)
+		} else {
+			__antithesis_instrumentation__.Notify(495669)
 		}
+		__antithesis_instrumentation__.Notify(495646)
 
-		if r == d.opts.RowSeparator && !nextLiteral && !fieldEnclosed {
+		if r == d.opts.RowSeparator && func() bool {
+			__antithesis_instrumentation__.Notify(495670)
+			return !nextLiteral == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(495671)
+			return !fieldEnclosed == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(495672)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(495673)
 		}
+		__antithesis_instrumentation__.Notify(495647)
 
 		d.row = append(d.row, r)
 
 		if d.opts.HasEscape {
-			nextLiteral = !nextLiteral && r == d.opts.Escape
+			__antithesis_instrumentation__.Notify(495674)
+			nextLiteral = !nextLiteral && func() bool {
+				__antithesis_instrumentation__.Notify(495675)
+				return r == d.opts.Escape == true
+			}() == true
+		} else {
+			__antithesis_instrumentation__.Notify(495676)
 		}
+		__antithesis_instrumentation__.Notify(495648)
 
-		if d.opts.Enclose != roachpb.MySQLOutfileOptions_Never && r == d.opts.Encloser {
-			// We only care about well formed, enclosed fields (i.e. ones that start with
-			// enclose rune.  If we see enclose character anywhere else, then we either
-			// close the opened enclosing, or we treat this as an invalid enclosing,
-			// and let FillDatums below take care of reporting and handling any errors.
+		if d.opts.Enclose != roachpb.MySQLOutfileOptions_Never && func() bool {
+			__antithesis_instrumentation__.Notify(495677)
+			return r == d.opts.Encloser == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(495678)
+
 			fieldEnclosed = len(d.row) == 1
+		} else {
+			__antithesis_instrumentation__.Notify(495679)
 		}
 	}
 }
 
-// Err implements importRowProducer
 func (d *delimitedProducer) Err() error {
+	__antithesis_instrumentation__.Notify(495680)
 	return d.err
 }
 
-// Skip implements importRowProducer
 func (d *delimitedProducer) Skip() error {
-	return nil // no-op
+	__antithesis_instrumentation__.Notify(495681)
+	return nil
 }
 
-// Row implements importRowProducer
 func (d *delimitedProducer) Row() (interface{}, error) {
+	__antithesis_instrumentation__.Notify(495682)
 	return d.row, d.err
 }
 
-// Progress implements importRowProducer
 func (d *delimitedProducer) Progress() float32 {
+	__antithesis_instrumentation__.Notify(495683)
 	return d.input.ReadFraction()
 }
 
@@ -172,28 +223,18 @@ type delimitedConsumer struct {
 
 var _ importRowConsumer = &delimitedConsumer{}
 
-// FillDatums implements importRowConsumer
 func (d *delimitedConsumer) FillDatums(
 	input interface{}, rowNum int64, conv *row.DatumRowConverter,
 ) error {
+	__antithesis_instrumentation__.Notify(495684)
 	data := input.([]rune)
 
-	// The current field being read needs to be a list to be able to undo
-	// field enclosures at end of field.
 	var fieldParts []rune
 
-	// If we have an escaping char defined, seeing it means the next char is to be
-	// treated as escaped -- usually that means literal but has some specific
-	// mappings defined as well.
 	var nextLiteral bool
 
-	// If we have an enclosing char defined, seeing it begins reading a field --
-	// which means we do not look for separators until we see the end of the field
-	// as indicated by the matching enclosing char.
 	var readingField bool
 
-	// If we have just encountered a potential encloser symbol.
-	// That means if an end of field or line is next we should honor it.
 	var gotEncloser bool
 
 	var gotNull bool
@@ -201,145 +242,242 @@ func (d *delimitedConsumer) FillDatums(
 	var datumIdx int
 
 	addField := func() error {
+		__antithesis_instrumentation__.Notify(495689)
 		defer func() {
+			__antithesis_instrumentation__.Notify(495695)
 			fieldParts = fieldParts[:0]
 			readingField = false
 			gotEncloser = false
 		}()
+		__antithesis_instrumentation__.Notify(495690)
 		if nextLiteral {
+			__antithesis_instrumentation__.Notify(495696)
 			return newImportRowError(errors.New("unmatched literal"), string(data), rowNum)
+		} else {
+			__antithesis_instrumentation__.Notify(495697)
 		}
+		__antithesis_instrumentation__.Notify(495691)
 
 		var datum tree.Datum
 
-		// If previous symbol was field encloser it should be
-		// dropped as it only marks end of field. Otherwise
-		// throw an error since we don;t expect unmatched encloser.
 		if gotEncloser {
-			// If the encloser marked end of field
-			// drop it.
+			__antithesis_instrumentation__.Notify(495698)
+
 			if readingField {
+				__antithesis_instrumentation__.Notify(495699)
 				fieldParts = fieldParts[:len(fieldParts)-1]
 			} else {
-				// Unexpected since we did not see one at start of field.
+				__antithesis_instrumentation__.Notify(495700)
+
 				gotEncloser = false
 				return newImportRowError(errors.New("unmatched field enclosure at end of field"),
 					string(data), rowNum)
 			}
-		} else if readingField {
-			return newImportRowError(errors.New("unmatched field enclosure at start of field"),
-				string(data), rowNum)
+		} else {
+			__antithesis_instrumentation__.Notify(495701)
+			if readingField {
+				__antithesis_instrumentation__.Notify(495702)
+				return newImportRowError(errors.New("unmatched field enclosure at start of field"),
+					string(data), rowNum)
+			} else {
+				__antithesis_instrumentation__.Notify(495703)
+			}
 		}
+		__antithesis_instrumentation__.Notify(495692)
 		field := string(fieldParts)
 		if datumIdx >= len(conv.VisibleCols) {
+			__antithesis_instrumentation__.Notify(495704)
 			return newImportRowError(
 				fmt.Errorf("too many columns, got %d expected %d", datumIdx+1, len(conv.VisibleCols)),
 				string(data), rowNum)
+		} else {
+			__antithesis_instrumentation__.Notify(495705)
 		}
+		__antithesis_instrumentation__.Notify(495693)
 
 		if gotNull {
+			__antithesis_instrumentation__.Notify(495706)
 			gotNull = false
 			if len(field) != 0 {
+				__antithesis_instrumentation__.Notify(495708)
 				return newImportRowError(fmt.Errorf("unexpected data after null encoding: %q", field),
 					string(data), rowNum)
+			} else {
+				__antithesis_instrumentation__.Notify(495709)
 			}
-			datum = tree.DNull
-		} else if (!d.opts.HasEscape && field == "NULL") || d.opts.NullEncoding != nil && field == *d.opts.NullEncoding {
+			__antithesis_instrumentation__.Notify(495707)
 			datum = tree.DNull
 		} else {
-			// This uses ParseDatumStringAsWithRawBytes instead of ParseDatumStringAs since mysql emits
-			// raw byte strings that do not use the same escaping as our ParseBytes
-			// function expects, and the difference between ParseStringAs and
-			// ParseDatumStringAs is whether or not it attempts to parse bytes.
-			var err error
-			datum, err = rowenc.ParseDatumStringAsWithRawBytes(conv.VisibleColTypes[datumIdx], field, conv.EvalCtx)
-			if err != nil {
-				col := conv.VisibleCols[datumIdx]
-				return newImportRowError(
-					errors.Wrapf(err, "error while parse %q as %s", col.GetName(), col.GetType().SQLString()),
-					string(data), rowNum)
+			__antithesis_instrumentation__.Notify(495710)
+			if (!d.opts.HasEscape && func() bool {
+				__antithesis_instrumentation__.Notify(495711)
+				return field == "NULL" == true
+			}() == true) || func() bool {
+				__antithesis_instrumentation__.Notify(495712)
+				return (d.opts.NullEncoding != nil && func() bool {
+					__antithesis_instrumentation__.Notify(495713)
+					return field == *d.opts.NullEncoding == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(495714)
+				datum = tree.DNull
+			} else {
+				__antithesis_instrumentation__.Notify(495715)
+
+				var err error
+				datum, err = rowenc.ParseDatumStringAsWithRawBytes(conv.VisibleColTypes[datumIdx], field, conv.EvalCtx)
+				if err != nil {
+					__antithesis_instrumentation__.Notify(495716)
+					col := conv.VisibleCols[datumIdx]
+					return newImportRowError(
+						errors.Wrapf(err, "error while parse %q as %s", col.GetName(), col.GetType().SQLString()),
+						string(data), rowNum)
+				} else {
+					__antithesis_instrumentation__.Notify(495717)
+				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(495694)
 		conv.Datums[datumIdx] = datum
 		datumIdx++
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(495685)
 
-	// Main parsing loop body, returns true to indicate unrecoverable error.
-	// We are being conservative and treating most errors as unrecoverable for now.
 	for _, c := range data {
-		// Do we need to check for escaping?
+		__antithesis_instrumentation__.Notify(495718)
+
 		if d.opts.HasEscape {
+			__antithesis_instrumentation__.Notify(495723)
 			if nextLiteral {
+				__antithesis_instrumentation__.Notify(495725)
 				nextLiteral = false
-				// See https://dev.mysql.com/doc/refman/8.0/en/load-data.html.
+
 				switch c {
 				case '0':
+					__antithesis_instrumentation__.Notify(495727)
 					fieldParts = append(fieldParts, rune(0))
 				case 'b':
+					__antithesis_instrumentation__.Notify(495728)
 					fieldParts = append(fieldParts, rune('\b'))
 				case 'n':
+					__antithesis_instrumentation__.Notify(495729)
 					fieldParts = append(fieldParts, rune('\n'))
 				case 'r':
+					__antithesis_instrumentation__.Notify(495730)
 					fieldParts = append(fieldParts, rune('\r'))
 				case 't':
+					__antithesis_instrumentation__.Notify(495731)
 					fieldParts = append(fieldParts, rune('\t'))
 				case 'Z':
+					__antithesis_instrumentation__.Notify(495732)
 					fieldParts = append(fieldParts, rune(byte(26)))
 				case 'N':
+					__antithesis_instrumentation__.Notify(495733)
 					if gotNull {
+						__antithesis_instrumentation__.Notify(495736)
 						return newImportRowError(errors.New("unexpected null encoding"), string(data), rowNum)
+					} else {
+						__antithesis_instrumentation__.Notify(495737)
 					}
+					__antithesis_instrumentation__.Notify(495734)
 					gotNull = true
 				default:
+					__antithesis_instrumentation__.Notify(495735)
 					fieldParts = append(fieldParts, c)
 				}
+				__antithesis_instrumentation__.Notify(495726)
 				gotEncloser = false
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(495738)
 			}
+			__antithesis_instrumentation__.Notify(495724)
 
 			if c == d.opts.Escape {
+				__antithesis_instrumentation__.Notify(495739)
 				nextLiteral = true
 				gotEncloser = false
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(495740)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(495741)
 		}
+		__antithesis_instrumentation__.Notify(495719)
 
-		// Are we done with the field, or even the whole row?
-		if (!readingField || gotEncloser) && c == d.opts.FieldSeparator {
+		if (!readingField || func() bool {
+			__antithesis_instrumentation__.Notify(495742)
+			return gotEncloser == true
+		}() == true) && func() bool {
+			__antithesis_instrumentation__.Notify(495743)
+			return c == d.opts.FieldSeparator == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(495744)
 			if err := addField(); err != nil {
+				__antithesis_instrumentation__.Notify(495746)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(495747)
 			}
+			__antithesis_instrumentation__.Notify(495745)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(495748)
 		}
+		__antithesis_instrumentation__.Notify(495720)
 
 		if gotEncloser {
+			__antithesis_instrumentation__.Notify(495749)
 			gotEncloser = false
+		} else {
+			__antithesis_instrumentation__.Notify(495750)
 		}
+		__antithesis_instrumentation__.Notify(495721)
 
-		// If enclosing is not disabled, check for the encloser.
-		// Technically when it is not optional, we could _require_ it to start and
-		// end fields, but for the purposes of decoding, we don't actually care --
-		// we'll handle it if we see it either way.
-		if d.opts.Enclose != roachpb.MySQLOutfileOptions_Never && c == d.opts.Encloser {
-			if !readingField && len(fieldParts) == 0 {
+		if d.opts.Enclose != roachpb.MySQLOutfileOptions_Never && func() bool {
+			__antithesis_instrumentation__.Notify(495751)
+			return c == d.opts.Encloser == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(495752)
+			if !readingField && func() bool {
+				__antithesis_instrumentation__.Notify(495754)
+				return len(fieldParts) == 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(495755)
 				readingField = true
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(495756)
 			}
+			__antithesis_instrumentation__.Notify(495753)
 			gotEncloser = true
+		} else {
+			__antithesis_instrumentation__.Notify(495757)
 		}
+		__antithesis_instrumentation__.Notify(495722)
 		fieldParts = append(fieldParts, c)
 	}
+	__antithesis_instrumentation__.Notify(495686)
 
 	if err := addField(); err != nil {
+		__antithesis_instrumentation__.Notify(495758)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(495759)
 	}
+	__antithesis_instrumentation__.Notify(495687)
 
 	if datumIdx != len(conv.VisibleCols) {
+		__antithesis_instrumentation__.Notify(495760)
 		return newImportRowError(fmt.Errorf(
 			"unexpected number of columns, expected %d got %d", len(conv.VisibleCols), datumIdx),
 			string(data), rowNum)
+	} else {
+		__antithesis_instrumentation__.Notify(495761)
 	}
+	__antithesis_instrumentation__.Notify(495688)
 
 	return nil
 }
@@ -347,6 +485,7 @@ func (d *delimitedConsumer) FillDatums(
 func (d *mysqloutfileReader) readFile(
 	ctx context.Context, input *fileReader, inputIdx int32, resumePos int64, rejected chan string,
 ) error {
+	__antithesis_instrumentation__.Notify(495762)
 	producer := &delimitedProducer{
 		importCtx: d.importCtx,
 		opts:      &d.opts,
@@ -356,8 +495,12 @@ func (d *mysqloutfileReader) readFile(
 	consumer := &delimitedConsumer{opts: &d.opts}
 
 	if resumePos < int64(d.opts.Skip) {
+		__antithesis_instrumentation__.Notify(495764)
 		resumePos = int64(d.opts.Skip)
+	} else {
+		__antithesis_instrumentation__.Notify(495765)
 	}
+	__antithesis_instrumentation__.Notify(495763)
 
 	fileCtx := &importFileContext{
 		source:   inputIdx,

@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colinfo
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
@@ -18,43 +10,42 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ResultColumn contains the name and type of a SQL "cell".
 type ResultColumn struct {
 	Name string
 	Typ  *types.T
 
-	// If set, this is an implicit column; used internally.
 	Hidden bool
 
-	// TableID/PGAttributeNum identify the source of the column, if it is a simple
-	// reference to a column of a base table (or view). If it is not a simple
-	// reference, these fields are zeroes.
-	TableID        descpb.ID // OID of column's source table (pg_attribute.attrelid).
-	PGAttributeNum uint32    // Column's number in source table (pg_attribute.attnum).
+	TableID        descpb.ID
+	PGAttributeNum uint32
 }
 
-// ResultColumns is the type used throughout the sql module to
-// describe the column types of a table.
 type ResultColumns []ResultColumn
 
-// ResultColumnsFromColumns converts []catalog.Column to []ResultColumn.
 func ResultColumnsFromColumns(tableID descpb.ID, columns []catalog.Column) ResultColumns {
+	__antithesis_instrumentation__.Notify(251176)
 	return ResultColumnsFromColDescs(tableID, len(columns), func(i int) *descpb.ColumnDescriptor {
+		__antithesis_instrumentation__.Notify(251177)
 		return columns[i].ColumnDesc()
 	})
 }
 
-// ResultColumnsFromColDescs is used by ResultColumnsFromColumns and by tests.
 func ResultColumnsFromColDescs(
 	tableID descpb.ID, numCols int, getColDesc func(int) *descpb.ColumnDescriptor,
 ) ResultColumns {
+	__antithesis_instrumentation__.Notify(251178)
 	cols := make(ResultColumns, numCols)
 	for i := range cols {
+		__antithesis_instrumentation__.Notify(251180)
 		colDesc := getColDesc(i)
 		typ := colDesc.Type
 		if typ == nil {
+			__antithesis_instrumentation__.Notify(251182)
 			panic(errors.AssertionFailedf("unsupported column type: %s", colDesc.Type.Family()))
+		} else {
+			__antithesis_instrumentation__.Notify(251183)
 		}
+		__antithesis_instrumentation__.Notify(251181)
 		cols[i] = ResultColumn{
 			Name:           colDesc.Name,
 			Typ:            typ,
@@ -63,89 +54,119 @@ func ResultColumnsFromColDescs(
 			PGAttributeNum: colDesc.GetPGAttributeNum(),
 		}
 	}
+	__antithesis_instrumentation__.Notify(251179)
 	return cols
 }
 
-// GetTypeModifier returns the type modifier for this column. If it is not set,
-// it defaults to returning -1.
 func (r ResultColumn) GetTypeModifier() int32 {
+	__antithesis_instrumentation__.Notify(251184)
 	return r.Typ.TypeModifier()
 }
 
-// TypesEqual returns whether the length and types of r matches other. If
-// a type in other is NULL, it is considered equal.
 func (r ResultColumns) TypesEqual(other ResultColumns) bool {
+	__antithesis_instrumentation__.Notify(251185)
 	if len(r) != len(other) {
+		__antithesis_instrumentation__.Notify(251188)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(251189)
 	}
+	__antithesis_instrumentation__.Notify(251186)
 	for i, c := range r {
-		// NULLs are considered equal because some types of queries (SELECT CASE,
-		// for example) can change their output types between a type and NULL based
-		// on input.
+		__antithesis_instrumentation__.Notify(251190)
+
 		if other[i].Typ.Family() == types.UnknownFamily {
+			__antithesis_instrumentation__.Notify(251192)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(251193)
 		}
+		__antithesis_instrumentation__.Notify(251191)
 		if !c.Typ.Equivalent(other[i].Typ) {
+			__antithesis_instrumentation__.Notify(251194)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(251195)
 		}
 	}
+	__antithesis_instrumentation__.Notify(251187)
 	return true
 }
 
-// NodeFormatter returns a tree.NodeFormatter that, when formatted,
-// represents the column at the input column index.
 func (r ResultColumns) NodeFormatter(colIdx int) tree.NodeFormatter {
+	__antithesis_instrumentation__.Notify(251196)
 	return &varFormatter{ColumnName: tree.Name(r[colIdx].Name)}
 }
 
-// String formats result columns to a string.
-// The column types are printed if printTypes is true.
-// The hidden property is printed if showHidden is true.
 func (r ResultColumns) String(printTypes bool, showHidden bool) string {
+	__antithesis_instrumentation__.Notify(251197)
 	f := tree.NewFmtCtx(tree.FmtSimple)
 	f.WriteByte('(')
 	for i := range r {
+		__antithesis_instrumentation__.Notify(251199)
 		rCol := &r[i]
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(251204)
 			f.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(251205)
 		}
+		__antithesis_instrumentation__.Notify(251200)
 		f.FormatNameP(&rCol.Name)
-		// Output extra properties like [hidden,omitted].
+
 		hasProps := false
 		outputProp := func(prop string) {
+			__antithesis_instrumentation__.Notify(251206)
 			if hasProps {
+				__antithesis_instrumentation__.Notify(251208)
 				f.WriteByte(',')
 			} else {
+				__antithesis_instrumentation__.Notify(251209)
 				f.WriteByte('[')
 			}
+			__antithesis_instrumentation__.Notify(251207)
 			hasProps = true
 			f.WriteString(prop)
 		}
-		if showHidden && rCol.Hidden {
+		__antithesis_instrumentation__.Notify(251201)
+		if showHidden && func() bool {
+			__antithesis_instrumentation__.Notify(251210)
+			return rCol.Hidden == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(251211)
 			outputProp("hidden")
+		} else {
+			__antithesis_instrumentation__.Notify(251212)
 		}
+		__antithesis_instrumentation__.Notify(251202)
 		if hasProps {
+			__antithesis_instrumentation__.Notify(251213)
 			f.WriteByte(']')
+		} else {
+			__antithesis_instrumentation__.Notify(251214)
 		}
+		__antithesis_instrumentation__.Notify(251203)
 
 		if printTypes {
+			__antithesis_instrumentation__.Notify(251215)
 			f.WriteByte(' ')
 			f.WriteString(rCol.Typ.String())
+		} else {
+			__antithesis_instrumentation__.Notify(251216)
 		}
 	}
+	__antithesis_instrumentation__.Notify(251198)
 	f.WriteByte(')')
 	return f.CloseAndGetString()
 }
 
-// ExplainPlanColumns are the result columns of various EXPLAIN variants.
 var ExplainPlanColumns = ResultColumns{
 	{Name: "info", Typ: types.String},
 }
 
-// ShowTraceColumns are the result columns of a SHOW [KV] TRACE statement.
 var ShowTraceColumns = ResultColumns{
 	{Name: "timestamp", Typ: types.TimestampTZ},
-	{Name: "age", Typ: types.Interval}, // Note GetTraceAgeColumnIdx below.
+	{Name: "age", Typ: types.Interval},
 	{Name: "message", Typ: types.String},
 	{Name: "tag", Typ: types.String},
 	{Name: "location", Typ: types.String},
@@ -153,26 +174,25 @@ var ShowTraceColumns = ResultColumns{
 	{Name: "span", Typ: types.Int},
 }
 
-// ShowCompactTraceColumns are the result columns of a
-// SHOW COMPACT [KV] TRACE statement.
 var ShowCompactTraceColumns = ResultColumns{
-	{Name: "age", Typ: types.Interval}, // Note GetTraceAgeColumnIdx below.
+	{Name: "age", Typ: types.Interval},
 	{Name: "message", Typ: types.String},
 	{Name: "tag", Typ: types.String},
 	{Name: "operation", Typ: types.String},
 }
 
-// GetTraceAgeColumnIdx retrieves the index of the age column
-// depending on whether the compact format is used.
 func GetTraceAgeColumnIdx(compact bool) int {
+	__antithesis_instrumentation__.Notify(251217)
 	if compact {
+		__antithesis_instrumentation__.Notify(251219)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(251220)
 	}
+	__antithesis_instrumentation__.Notify(251218)
 	return 1
 }
 
-// ShowReplicaTraceColumns are the result columns of a
-// SHOW EXPERIMENTAL_REPLICA TRACE statement.
 var ShowReplicaTraceColumns = ResultColumns{
 	{Name: "timestamp", Typ: types.TimestampTZ},
 	{Name: "node_id", Typ: types.Int},
@@ -180,57 +200,43 @@ var ShowReplicaTraceColumns = ResultColumns{
 	{Name: "replica_id", Typ: types.Int},
 }
 
-// ShowSyntaxColumns are the columns of a SHOW SYNTAX statement.
 var ShowSyntaxColumns = ResultColumns{
 	{Name: "field", Typ: types.String},
 	{Name: "message", Typ: types.String},
 }
 
-// ShowFingerprintsColumns are the result columns of a
-// SHOW EXPERIMENTAL_FINGERPRINTS statement.
 var ShowFingerprintsColumns = ResultColumns{
 	{Name: "index_name", Typ: types.String},
 	{Name: "fingerprint", Typ: types.String},
 }
 
-// AlterTableSplitColumns are the result columns of an
-// ALTER TABLE/INDEX .. SPLIT AT statement.
 var AlterTableSplitColumns = ResultColumns{
 	{Name: "key", Typ: types.Bytes},
 	{Name: "pretty", Typ: types.String},
 	{Name: "split_enforced_until", Typ: types.Timestamp},
 }
 
-// AlterTableUnsplitColumns are the result columns of an
-// ALTER TABLE/INDEX .. UNSPLIT statement.
 var AlterTableUnsplitColumns = ResultColumns{
 	{Name: "key", Typ: types.Bytes},
 	{Name: "pretty", Typ: types.String},
 }
 
-// AlterTableRelocateColumns are the result columns of an
-// ALTER TABLE/INDEX .. EXPERIMENTAL_RELOCATE statement.
 var AlterTableRelocateColumns = ResultColumns{
 	{Name: "key", Typ: types.Bytes},
 	{Name: "pretty", Typ: types.String},
 }
 
-// AlterTableScatterColumns are the result columns of an
-// ALTER TABLE/INDEX .. SCATTER statement.
 var AlterTableScatterColumns = ResultColumns{
 	{Name: "key", Typ: types.Bytes},
 	{Name: "pretty", Typ: types.String},
 }
 
-// AlterRangeRelocateColumns are the result columns of an
-// ALTER RANGE .. RELOCATE statement.
 var AlterRangeRelocateColumns = ResultColumns{
 	{Name: "range_id", Typ: types.Int},
 	{Name: "pretty", Typ: types.String},
 	{Name: "result", Typ: types.String},
 }
 
-// ScrubColumns are the result columns of a SCRUB statement.
 var ScrubColumns = ResultColumns{
 	{Name: "job_uuid", Typ: types.Uuid},
 	{Name: "error_type", Typ: types.String},
@@ -242,16 +248,12 @@ var ScrubColumns = ResultColumns{
 	{Name: "details", Typ: types.Jsonb},
 }
 
-// SequenceSelectColumns are the result columns of a sequence data source.
 var SequenceSelectColumns = ResultColumns{
 	{Name: `last_value`, Typ: types.Int},
 	{Name: `log_cnt`, Typ: types.Int},
 	{Name: `is_called`, Typ: types.Bool},
 }
 
-// ExportColumns are the result columns of an EXPORT statement (i.e. a user will
-// see a table with these columns in their sql shell after EXPORT returns).
-// These columns differ from the logical columns in the export file.
 var ExportColumns = ResultColumns{
 	{Name: "filename", Typ: types.String},
 	{Name: "rows", Typ: types.Int},

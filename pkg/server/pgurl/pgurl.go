@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgurl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"net/url"
@@ -16,45 +8,33 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Scheme is the URL scheme used in this package.
-// We have observed that all drivers support "postgresql",
-// whereas some drivers do not support "postgres". So we use
-// the longer form here for maximum compatibility.
 const Scheme = "postgresql"
 
-// URL represents a family of postgres connection strings pointing
-// to the same server.
 type URL struct {
 	username string
 	database string
 
-	// Which network protocol to use.
 	net NetProtocol
-	// Which transport to use.
+
 	sec transportType
-	// Which authentication mechanism to use.
+
 	authn authnType
 
-	// Network parameters.
-	// With unix sockets, host is the socket directory.
 	host, port string
 
-	// Transport parameters.
 	caCertPath string
 
-	// Authentication parameters.
 	clientCertPath string
 	clientKeyPath  string
 
 	hasPassword bool
 	password    string
 
-	// Ancillary options.
 	extraOptions url.Values
 }
 
-// New creates a new URL.
 func New() *URL {
+	__antithesis_instrumentation__.Notify(195258)
 	return &URL{
 		net:   ProtoTCP,
 		sec:   tnUnspecified,
@@ -62,109 +42,116 @@ func New() *URL {
 	}
 }
 
-// WithUsername configures which username to use for the client session.
 func (u *URL) WithUsername(s string) *URL {
+	__antithesis_instrumentation__.Notify(195259)
 	u.username = s
 	return u
 }
 
-// WithDefaultUsername inserts a username if not already present in the URL.
 func (u *URL) WithDefaultUsername(user string) *URL {
+	__antithesis_instrumentation__.Notify(195260)
 	if u.username == "" {
+		__antithesis_instrumentation__.Notify(195262)
 		u.username = user
+	} else {
+		__antithesis_instrumentation__.Notify(195263)
 	}
+	__antithesis_instrumentation__.Notify(195261)
 	return u
 }
 
-// GetUsername retrieves the username inside the URL.
 func (u *URL) GetUsername() string {
+	__antithesis_instrumentation__.Notify(195264)
 	return u.username
 }
 
-// WithDatabase configures which database to use in the initial connection.
 func (u *URL) WithDatabase(s string) *URL {
+	__antithesis_instrumentation__.Notify(195265)
 	u.database = s
 	return u
 }
 
-// WithDefaultDatabase inserts a username if not already present in the URL.
 func (u *URL) WithDefaultDatabase(db string) *URL {
+	__antithesis_instrumentation__.Notify(195266)
 	if u.database == "" {
+		__antithesis_instrumentation__.Notify(195268)
 		u.database = db
+	} else {
+		__antithesis_instrumentation__.Notify(195269)
 	}
+	__antithesis_instrumentation__.Notify(195267)
 	return u
 }
 
-// GetDatabase retrieves the database inside the URL.
 func (u *URL) GetDatabase() string {
+	__antithesis_instrumentation__.Notify(195270)
 	return u.database
 }
 
-// AddOptions adds key=value options to the URL.
-// Certain combinations are checked and an error is returned
-// if a combination is found invalid.
 func (u *URL) AddOptions(opts url.Values) error {
+	__antithesis_instrumentation__.Notify(195271)
 	return u.parseOptions(opts)
 }
 
-// SetOption sets one option in the URL.
-// This also ensures that there is only one value for the
-// given option.
-// Certain combinations are checked and an error is returned
-// if a combination is found invalid.
 func (u *URL) SetOption(key, value string) error {
+	__antithesis_instrumentation__.Notify(195272)
 	vals := []string{value}
 	opts := url.Values{key: vals}
 	if err := u.parseOptions(opts); err != nil {
+		__antithesis_instrumentation__.Notify(195275)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(195276)
 	}
+	__antithesis_instrumentation__.Notify(195273)
 	if _, ok := u.extraOptions[key]; ok {
+		__antithesis_instrumentation__.Notify(195277)
 		u.extraOptions[key] = vals
+	} else {
+		__antithesis_instrumentation__.Notify(195278)
 	}
+	__antithesis_instrumentation__.Notify(195274)
 	return nil
 }
 
-// GetOption retrieves the last value for the given extra option.
 func (u *URL) GetOption(opt string) string {
+	__antithesis_instrumentation__.Notify(195279)
 	return getVal(u.extraOptions, opt)
 }
 
-// GetExtraOptions retrieves all of the extra options.
 func (u *URL) GetExtraOptions() url.Values {
+	__antithesis_instrumentation__.Notify(195280)
 	return u.extraOptions
 }
 
-// WithInsecure configures the URL for CockroachDB servers running with
-// all security controls disabled.
 func (u *URL) WithInsecure() *URL {
+	__antithesis_instrumentation__.Notify(195281)
 	return u.
 		WithAuthn(AuthnNone()).
 		WithTransport(TransportNone())
 }
 
-// NetProtocol is the type of networking used in a URL.
 type NetProtocol int
 
 const (
-	// ProtoUndefined is used when the type of networking is not known yet.
 	ProtoUndefined NetProtocol = iota
-	// ProtoUnix indicates the URL uses a unix datagram socket.
+
 	ProtoUnix
-	// ProtoTCP indicates the URL uses TCP/IP.
+
 	ProtoTCP
 )
 
-// NetOption is the type of the valid arguments to WithNet.
 type NetOption func(u *URL) *URL
 
-// WithNet configures which network protocol to use for the URL.
 func (u *URL) WithNet(opt NetOption) *URL {
+	__antithesis_instrumentation__.Notify(195282)
 	return opt(u)
 }
 
-// NetTCP creates an option to use the specified host and port over TCP.
 func NetTCP(host, port string) NetOption {
+	__antithesis_instrumentation__.Notify(195283)
 	return NetOption(func(u *URL) *URL {
+		__antithesis_instrumentation__.Notify(195284)
 		u.net = ProtoTCP
 		u.host = host
 		u.port = port
@@ -172,10 +159,10 @@ func NetTCP(host, port string) NetOption {
 	})
 }
 
-// NetUnix creates an option to use a unix datagram socket in the
-// specified directory.
 func NetUnix(socketDir, port string) NetOption {
+	__antithesis_instrumentation__.Notify(195285)
 	return NetOption(func(u *URL) *URL {
+		__antithesis_instrumentation__.Notify(195286)
 		u.net = ProtoUnix
 		u.host = socketDir
 		u.port = port
@@ -183,27 +170,32 @@ func NetUnix(socketDir, port string) NetOption {
 	})
 }
 
-// WithDefaultHost inserts a host value if not already present in the URL.
 func (u *URL) WithDefaultHost(host string) *URL {
+	__antithesis_instrumentation__.Notify(195287)
 	if u.host == "" {
+		__antithesis_instrumentation__.Notify(195289)
 		u.host = host
+	} else {
+		__antithesis_instrumentation__.Notify(195290)
 	}
+	__antithesis_instrumentation__.Notify(195288)
 	return u
 }
 
-// WithDefaultPort inserts a port value if not already present in the URL.
 func (u *URL) WithDefaultPort(port string) *URL {
+	__antithesis_instrumentation__.Notify(195291)
 	if u.port == "" {
+		__antithesis_instrumentation__.Notify(195293)
 		u.port = port
+	} else {
+		__antithesis_instrumentation__.Notify(195294)
 	}
+	__antithesis_instrumentation__.Notify(195292)
 	return u
 }
 
-// GetNetworking retrieves the network protocol and address details
-// from the URL. For Unix sockets, the 1st returned string value
-// is the path to the socket directory; for TCP connections,
-// it is the hostname / server address.
 func (u *URL) GetNetworking() (NetProtocol, string, string) {
+	__antithesis_instrumentation__.Notify(195295)
 	return u.net, u.host, u.port
 }
 
@@ -217,47 +209,50 @@ const (
 	authnPasswordWithClientCert
 )
 
-// AuthnOption is the type of the valid arguments to WithAuthn.
 type AuthnOption func(u *URL) *URL
 
-// WithAuthn configures which authentication method to use in the URL.
 func (u *URL) WithAuthn(opt AuthnOption) *URL {
+	__antithesis_instrumentation__.Notify(195296)
 	return opt(u)
 }
 
-// GetAuthnOption retrieves the current authentication parameters so
-// they can be applied into a different URL.
 func (u *URL) GetAuthnOption() (AuthnOption, error) {
+	__antithesis_instrumentation__.Notify(195297)
 	switch u.authn {
 	case authnNone:
+		__antithesis_instrumentation__.Notify(195298)
 		return AuthnNone(), nil
 	case authnPassword:
+		__antithesis_instrumentation__.Notify(195299)
 		return AuthnPassword(u.hasPassword, u.password), nil
 	case authnClientCert:
+		__antithesis_instrumentation__.Notify(195300)
 		return AuthnClientCert(u.clientCertPath, u.clientKeyPath), nil
 	case authnPasswordWithClientCert:
+		__antithesis_instrumentation__.Notify(195301)
 		return AuthnPasswordAndCert(
 			u.clientCertPath, u.clientKeyPath,
 			u.hasPassword, u.password), nil
 	default:
+		__antithesis_instrumentation__.Notify(195302)
 		return nil, errors.New("unable to retrieve authentication options")
 	}
 }
 
-// AuthnNone creates an option to not use any client authentication.
 func AuthnNone() AuthnOption {
+	__antithesis_instrumentation__.Notify(195303)
 	return AuthnOption(func(u *URL) *URL {
+		__antithesis_instrumentation__.Notify(195304)
 		u.authn = authnNone
 		return u
 	})
 }
 
-// AuthnPassword creates an option to use password authentication.
-// If setPassword is false, the URL will be populated in a way that
-// makes the client prompt for a password.
 func AuthnPassword(setPassword bool, password string) AuthnOption {
+	__antithesis_instrumentation__.Notify(195305)
 	return AuthnOption(func(u *URL) *URL {
-		// FIXME: balk at gen time if password is empty
+		__antithesis_instrumentation__.Notify(195306)
+
 		u.authn = authnPassword
 		u.hasPassword = setPassword
 		u.password = password
@@ -265,24 +260,26 @@ func AuthnPassword(setPassword bool, password string) AuthnOption {
 	})
 }
 
-// ClearPassword removes the stored password from the URL, without
-// forgetting that the authentication is password-based.
 func (u *URL) ClearPassword() {
+	__antithesis_instrumentation__.Notify(195307)
 	u.hasPassword = false
 	u.password = ""
 }
 
-// GetAuthnPassword returns whether password authentication is in use,
-// and if yes, whether the password is defined and the possible password.
 func (u *URL) GetAuthnPassword() (authnPwdEnabled bool, hasPassword bool, password string) {
-	return u.authn == authnPassword || u.authn == authnPasswordWithClientCert,
+	__antithesis_instrumentation__.Notify(195308)
+	return u.authn == authnPassword || func() bool {
+			__antithesis_instrumentation__.Notify(195309)
+			return u.authn == authnPasswordWithClientCert == true
+		}() == true,
 		u.hasPassword,
 		u.password
 }
 
-// AuthnClientCert creates an option to use TLS client cert authn.
 func AuthnClientCert(clientCertPath, clientKeyPath string) AuthnOption {
+	__antithesis_instrumentation__.Notify(195310)
 	return AuthnOption(func(u *URL) *URL {
+		__antithesis_instrumentation__.Notify(195311)
 		u.authn = authnClientCert
 		u.clientCertPath = clientCertPath
 		u.clientKeyPath = clientKeyPath
@@ -290,24 +287,24 @@ func AuthnClientCert(clientCertPath, clientKeyPath string) AuthnOption {
 	})
 }
 
-// GetAuthnCert returns whether client cert authentication is in use,
-// and if yes, the paths to the client cert details.
 func (u *URL) GetAuthnCert() (authnCertEnabled bool, clientCertPath, clientKeyPath string) {
-	return u.authn == authnClientCert || u.authn == authnPasswordWithClientCert,
+	__antithesis_instrumentation__.Notify(195312)
+	return u.authn == authnClientCert || func() bool {
+			__antithesis_instrumentation__.Notify(195313)
+			return u.authn == authnPasswordWithClientCert == true
+		}() == true,
 		u.clientCertPath,
 		u.clientKeyPath
 }
 
-// AuthnPasswordAndCert creates an option to use both password and TLS
-// client cert authn.
-// (At the time of this writing, this mode is not supported by CockroachDB
-// but it is supported by postgres and may be supported by crdb later.)
 func AuthnPasswordAndCert(
 	clientCertPath, clientKeyPath string, setPassword bool, password string,
 ) AuthnOption {
+	__antithesis_instrumentation__.Notify(195314)
 	p := AuthnPassword(setPassword, password)
 	c := AuthnClientCert(clientCertPath, clientKeyPath)
 	return AuthnOption(func(u *URL) *URL {
+		__antithesis_instrumentation__.Notify(195315)
 		u = c(p(u))
 		u.authn = authnPasswordWithClientCert
 		return u
@@ -326,57 +323,56 @@ const (
 	tnTLSAllow      transportType = "allow"
 )
 
-// TLSMode is the type of arguments to TransportTLS options.
 type TLSMode transportType
 
 const (
-	// TLSVerifyFull checks the server's name against its certificate.
 	TLSVerifyFull TLSMode = TLSMode(tnTLSVerifyFull)
-	// TLSVerifyCA only checks the server cert is signed by the known root CA.
+
 	TLSVerifyCA TLSMode = TLSMode(tnTLSVerifyCA)
-	// TLSRequire requires TLS but does not validate the server sert.
-	// It allows MITM attacks.
+
 	TLSRequire TLSMode = TLSMode(tnTLSRequire)
-	// TLSPrefer uses TLS if available, but does not require it.
+
 	TLSPrefer TLSMode = TLSMode(tnTLSPrefer)
-	// TLSAllow uses TLS if the server requires it.
+
 	TLSAllow TLSMode = TLSMode(tnTLSAllow)
-	// TLSUnspecified lets the client driver decide the TLS options.
+
 	TLSUnspecified TLSMode = TLSMode(tnUnspecified)
 )
 
-// TransportOption is the type of the valid arguments to WithTransport.
 type TransportOption func(u *URL) *URL
 
-// WithTransport configures which transport protocol to use in the URL.
 func (u *URL) WithTransport(opt TransportOption) *URL {
+	__antithesis_instrumentation__.Notify(195316)
 	return opt(u)
 }
 
-// TransportTLS creates an option to use a TLS transport.
-// The second argument is optional and specified the path to the CA certificate.
 func TransportTLS(mode TLSMode, caCertPath string) TransportOption {
+	__antithesis_instrumentation__.Notify(195317)
 	return TransportOption(func(u *URL) *URL {
+		__antithesis_instrumentation__.Notify(195318)
 		u.sec = transportType(mode)
 		u.caCertPath = caCertPath
 		return u
 	})
 }
 
-// TransportNone creates an option to use a pass-through transport.
-// This disables TLS.
 func TransportNone() TransportOption {
+	__antithesis_instrumentation__.Notify(195319)
 	return TransportOption(func(u *URL) *URL {
+		__antithesis_instrumentation__.Notify(195320)
 		u.sec = tnNone
 		return u
 	})
 }
 
-// GetTLSOptions retrieves the transport options, and if TLS is used,
-// the path to the CA certificate if specified inside the URL.
 func (u *URL) GetTLSOptions() (tlsUsed bool, mode TLSMode, caCertPath string) {
+	__antithesis_instrumentation__.Notify(195321)
 	if u.sec == tnNone {
+		__antithesis_instrumentation__.Notify(195323)
 		return false, "", ""
+	} else {
+		__antithesis_instrumentation__.Notify(195324)
 	}
+	__antithesis_instrumentation__.Notify(195322)
 	return true, TLSMode(u.sec), u.caCertPath
 }

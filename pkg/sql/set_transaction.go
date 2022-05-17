@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,24 +10,39 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
-// SetTransaction sets a transaction's isolation level, priority, ro/rw state,
-// and as of timestamp.
 func (p *planner) SetTransaction(ctx context.Context, n *tree.SetTransaction) (planNode, error) {
+	__antithesis_instrumentation__.Notify(622044)
 	var asOfTs hlc.Timestamp
 	if n.Modes.AsOf.Expr != nil {
+		__antithesis_instrumentation__.Notify(622048)
 		asOf, err := p.EvalAsOfTimestamp(ctx, n.Modes.AsOf)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(622050)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(622051)
 		}
+		__antithesis_instrumentation__.Notify(622049)
 		p.extendedEvalCtx.AsOfSystemTime = &asOf
 		asOfTs = asOf.Timestamp
+	} else {
+		__antithesis_instrumentation__.Notify(622052)
 	}
+	__antithesis_instrumentation__.Notify(622045)
 	if n.Modes.Deferrable == tree.Deferrable {
+		__antithesis_instrumentation__.Notify(622053)
 		return nil, unimplemented.NewWithIssue(53432, "DEFERRABLE transactions")
+	} else {
+		__antithesis_instrumentation__.Notify(622054)
 	}
+	__antithesis_instrumentation__.Notify(622046)
 
 	if err := p.extendedEvalCtx.TxnModesSetter.setTransactionModes(ctx, n.Modes, asOfTs); err != nil {
+		__antithesis_instrumentation__.Notify(622055)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(622056)
 	}
-	return newZeroNode(nil /* columns */), nil
+	__antithesis_instrumentation__.Notify(622047)
+	return newZeroNode(nil), nil
 }

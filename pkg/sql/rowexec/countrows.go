@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,8 +12,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 )
 
-// countAggregator is a simple processor that counts the number of rows it
-// receives. It's a specialized aggregator that can be used for COUNT(*).
 type countAggregator struct {
 	execinfra.ProcessorBase
 
@@ -41,13 +31,18 @@ func newCountAggregator(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*countAggregator, error) {
+	__antithesis_instrumentation__.Notify(572087)
 	ag := &countAggregator{}
 	ag.input = input
 
 	if execinfra.ShouldCollectStats(flowCtx.EvalCtx.Ctx(), flowCtx) {
+		__antithesis_instrumentation__.Notify(572090)
 		ag.input = newInputStatCollector(input)
 		ag.ExecStatsForTrace = ag.execStatsForTrace
+	} else {
+		__antithesis_instrumentation__.Notify(572091)
 	}
+	__antithesis_instrumentation__.Notify(572088)
 
 	if err := ag.Init(
 		ag,
@@ -56,56 +51,82 @@ func newCountAggregator(
 		flowCtx,
 		processorID,
 		output,
-		nil, /* memMonitor */
+		nil,
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{ag.input},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(572092)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(572093)
 	}
+	__antithesis_instrumentation__.Notify(572089)
 
 	return ag, nil
 }
 
 func (ag *countAggregator) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(572094)
 	ctx = ag.StartInternal(ctx, countRowsProcName)
 	ag.input.Start(ctx)
 }
 
 func (ag *countAggregator) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(572095)
 	for ag.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(572097)
 		row, meta := ag.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(572100)
 			if meta.Err != nil {
+				__antithesis_instrumentation__.Notify(572102)
 				ag.MoveToDraining(meta.Err)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(572103)
 			}
+			__antithesis_instrumentation__.Notify(572101)
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(572104)
 		}
+		__antithesis_instrumentation__.Notify(572098)
 		if row == nil {
+			__antithesis_instrumentation__.Notify(572105)
 			ret := make(rowenc.EncDatumRow, 1)
 			ret[0] = rowenc.EncDatum{Datum: tree.NewDInt(tree.DInt(ag.count))}
 			rendered, _, err := ag.OutputHelper.ProcessRow(ag.Ctx, ret)
-			// We're done as soon as we process our one output row, so we
-			// transition into draining state. We will, however, return non-nil
-			// error (if such occurs during rendering) separately below.
-			ag.MoveToDraining(nil /* err */)
+
+			ag.MoveToDraining(nil)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(572107)
 				return nil, &execinfrapb.ProducerMetadata{Err: err}
+			} else {
+				__antithesis_instrumentation__.Notify(572108)
 			}
+			__antithesis_instrumentation__.Notify(572106)
 			return rendered, nil
+		} else {
+			__antithesis_instrumentation__.Notify(572109)
 		}
+		__antithesis_instrumentation__.Notify(572099)
 		ag.count++
 	}
+	__antithesis_instrumentation__.Notify(572096)
 	return nil, ag.DrainHelper()
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (ag *countAggregator) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(572110)
 	is, ok := getInputStats(ag.input)
 	if !ok {
+		__antithesis_instrumentation__.Notify(572112)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(572113)
 	}
+	__antithesis_instrumentation__.Notify(572111)
 	return &execinfrapb.ComponentStats{
 		Inputs: []execinfrapb.InputStats{is},
 		Output: ag.OutputHelper.Stats(),

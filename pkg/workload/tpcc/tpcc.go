@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpcc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -45,9 +37,6 @@ type tpcc struct {
 
 	idleConns int
 
-	// Used in non-uniform random data generation. cLoad is the value of C at load
-	// time. cCustomerID is the value of C for the customer id generator. cItemID
-	// is the value of C for the item id generator. See 2.1.6.
 	cLoad, cCustomerID, cItemID int
 
 	mix                    string
@@ -55,13 +44,12 @@ type tpcc struct {
 	workers                int
 	fks                    bool
 	separateColumnFamilies bool
-	// deprecatedFKIndexes adds in foreign key indexes that are no longer needed
-	// due to origin index restrictions being lifted.
+
 	deprecatedFkIndexes bool
 	dbOverride          string
 
 	txInfos []txInfo
-	// deck contains indexes into the txInfos slice.
+
 	deck []int
 
 	auditor *auditor
@@ -80,11 +68,6 @@ type tpcc struct {
 	zoneCfg            zoneConfig
 	multiRegionCfg     multiRegionConfig
 
-	// localWarehouses determines whether or not we should force transactions to
-	// operate on a local warehouse (local to where the given transaction
-	// originated). This is only used for multi-region configurations, and is in
-	// violation of the TPC-C spec, so it should only be used for internal
-	// testing purposes.
 	localWarehouses bool
 
 	usePostgres  bool
@@ -106,37 +89,54 @@ type waitSetter struct {
 	val *float64
 }
 
-// Set implements the pflag.Value interface.
 func (w *waitSetter) Set(val string) error {
+	__antithesis_instrumentation__.Notify(698318)
 	switch strings.ToLower(val) {
 	case "true", "on":
+		__antithesis_instrumentation__.Notify(698320)
 		*w.val = 1.0
 	case "false", "off":
+		__antithesis_instrumentation__.Notify(698321)
 		*w.val = 0.0
 	default:
+		__antithesis_instrumentation__.Notify(698322)
 		f, err := strconv.ParseFloat(val, 64)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(698325)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(698326)
 		}
+		__antithesis_instrumentation__.Notify(698323)
 		if f < 0 {
+			__antithesis_instrumentation__.Notify(698327)
 			return errors.New("cannot set --wait to a negative value")
+		} else {
+			__antithesis_instrumentation__.Notify(698328)
 		}
+		__antithesis_instrumentation__.Notify(698324)
 		*w.val = f
 	}
+	__antithesis_instrumentation__.Notify(698319)
 	return nil
 }
 
-// Type implements the pflag.Value interface
-func (*waitSetter) Type() string { return "0.0/false - 1.0/true" }
+func (*waitSetter) Type() string {
+	__antithesis_instrumentation__.Notify(698329)
+	return "0.0/false - 1.0/true"
+}
 
-// String implements the pflag.Value interface.
 func (w *waitSetter) String() string {
+	__antithesis_instrumentation__.Notify(698330)
 	switch *w.val {
 	case 0:
+		__antithesis_instrumentation__.Notify(698331)
 		return "false"
 	case 1:
+		__antithesis_instrumentation__.Notify(698332)
 		return "true"
 	default:
+		__antithesis_instrumentation__.Notify(698333)
 		return fmt.Sprintf("%f", *w.val)
 	}
 }
@@ -145,9 +145,8 @@ func init() {
 	workload.Register(tpccMeta)
 }
 
-// FromWarehouses returns a tpcc generator pre-configured with the specified
-// number of warehouses.
 func FromWarehouses(warehouses int) workload.Generator {
+	__antithesis_instrumentation__.Notify(698334)
 	return workload.FromFlags(tpccMeta, fmt.Sprintf(`--warehouses=%d`, warehouses))
 }
 
@@ -158,6 +157,7 @@ var tpccMeta = workload.Meta{
 	Version:      `2.2.0`,
 	PublicFacing: true,
 	New: func() workload.Generator {
+		__antithesis_instrumentation__.Notify(698335)
 		g := &tpcc{}
 		g.flags.FlagSet = pflag.NewFlagSet(`tpcc`, pflag.ContinueOnError)
 		g.flags.Meta = map[string]workload.FlagMeta{
@@ -223,216 +223,356 @@ var tpccMeta = workload.Meta{
 		g.flags.BoolVar(&g.localWarehouses, `local-warehouses`, false, `Force transactions to use a local warehouse in all cases (in violation of the TPC-C specification)`)
 		g.connFlags = workload.NewConnFlags(&g.flags)
 
-		// Hardcode this since it doesn't seem like anyone will want to change
-		// it and it's really noisy in the generated fixture paths.
 		g.nowString = []byte(`2006-01-02 15:04:05`)
 		return g
 	},
 }
 
 func queryDatabaseRegions(db *gosql.DB) (map[string]struct{}, error) {
+	__antithesis_instrumentation__.Notify(698336)
 	regions := make(map[string]struct{})
 	rows, err := db.Query(`SELECT region FROM [SHOW REGIONS FROM DATABASE]`)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698341)
 		return regions, err
+	} else {
+		__antithesis_instrumentation__.Notify(698342)
 	}
+	__antithesis_instrumentation__.Notify(698337)
 	defer func() {
+		__antithesis_instrumentation__.Notify(698343)
 		_ = rows.Close()
 	}()
+	__antithesis_instrumentation__.Notify(698338)
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(698344)
 		if rows.Err() != nil {
+			__antithesis_instrumentation__.Notify(698347)
 			return regions, err
+		} else {
+			__antithesis_instrumentation__.Notify(698348)
 		}
+		__antithesis_instrumentation__.Notify(698345)
 		var region string
 		if err := rows.Scan(&region); err != nil {
+			__antithesis_instrumentation__.Notify(698349)
 			return regions, err
+		} else {
+			__antithesis_instrumentation__.Notify(698350)
 		}
+		__antithesis_instrumentation__.Notify(698346)
 		regions[region] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(698339)
 	if rows.Err() != nil {
+		__antithesis_instrumentation__.Notify(698351)
 		return regions, err
+	} else {
+		__antithesis_instrumentation__.Notify(698352)
 	}
+	__antithesis_instrumentation__.Notify(698340)
 	return regions, nil
 }
 
-// Meta implements the Generator interface.
-func (*tpcc) Meta() workload.Meta { return tpccMeta }
+func (*tpcc) Meta() workload.Meta { __antithesis_instrumentation__.Notify(698353); return tpccMeta }
 
-// Flags implements the Flagser interface.
-func (w *tpcc) Flags() workload.Flags { return w.flags }
+func (w *tpcc) Flags() workload.Flags { __antithesis_instrumentation__.Notify(698354); return w.flags }
 
-// Hooks implements the Hookser interface.
 func (w *tpcc) Hooks() workload.Hooks {
+	__antithesis_instrumentation__.Notify(698355)
 	return workload.Hooks{
 		Validate: func() error {
+			__antithesis_instrumentation__.Notify(698356)
 			if w.warehouses < 1 {
+				__antithesis_instrumentation__.Notify(698369)
 				return errors.Errorf(`--warehouses must be positive`)
+			} else {
+				__antithesis_instrumentation__.Notify(698370)
 			}
+			__antithesis_instrumentation__.Notify(698357)
 
 			if w.activeWarehouses > w.warehouses {
+				__antithesis_instrumentation__.Notify(698371)
 				return errors.Errorf(`--active-warehouses needs to be less than or equal to warehouses`)
-			} else if w.activeWarehouses == 0 {
-				w.activeWarehouses = w.warehouses
+			} else {
+				__antithesis_instrumentation__.Notify(698372)
+				if w.activeWarehouses == 0 {
+					__antithesis_instrumentation__.Notify(698373)
+					w.activeWarehouses = w.warehouses
+				} else {
+					__antithesis_instrumentation__.Notify(698374)
+				}
 			}
+			__antithesis_instrumentation__.Notify(698358)
 
 			if w.partitions < 1 {
+				__antithesis_instrumentation__.Notify(698375)
 				return errors.Errorf(`--partitions must be positive`)
+			} else {
+				__antithesis_instrumentation__.Notify(698376)
 			}
+			__antithesis_instrumentation__.Notify(698359)
 
-			if len(w.zoneCfg.zones) > 0 && len(w.multiRegionCfg.regions) > 0 {
+			if len(w.zoneCfg.zones) > 0 && func() bool {
+				__antithesis_instrumentation__.Notify(698377)
+				return len(w.multiRegionCfg.regions) > 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(698378)
 				return errors.Errorf("cannot specify both --regions and --zones")
+			} else {
+				__antithesis_instrumentation__.Notify(698379)
 			}
+			__antithesis_instrumentation__.Notify(698360)
 
 			if w.clientPartitions > 0 {
+				__antithesis_instrumentation__.Notify(698380)
 				if w.partitions > 1 {
+					__antithesis_instrumentation__.Notify(698383)
 					return errors.Errorf(`cannot specify both --partitions and --client-partitions;
 					--partitions actually partitions underlying data.
 					--client-partitions only modifies client behavior to access a subset of warehouses. Must be used with --partition-affinity`)
+				} else {
+					__antithesis_instrumentation__.Notify(698384)
 				}
+				__antithesis_instrumentation__.Notify(698381)
 
 				if len(w.affinityPartitions) == 0 {
+					__antithesis_instrumentation__.Notify(698385)
 					return errors.Errorf(`--client-partitions must be used with --partition-affinity.`)
+				} else {
+					__antithesis_instrumentation__.Notify(698386)
 				}
+				__antithesis_instrumentation__.Notify(698382)
 
 				for _, p := range w.affinityPartitions {
+					__antithesis_instrumentation__.Notify(698387)
 					if p >= w.clientPartitions {
+						__antithesis_instrumentation__.Notify(698388)
 						return errors.Errorf(`--partition-affinity %d in %v out of bounds of --client-partitions`,
 							p, w.affinityPartitions)
+					} else {
+						__antithesis_instrumentation__.Notify(698389)
 					}
 				}
 
 			} else {
+				__antithesis_instrumentation__.Notify(698390)
 				for _, p := range w.affinityPartitions {
-					if p < 0 || p >= w.partitions {
+					__antithesis_instrumentation__.Notify(698394)
+					if p < 0 || func() bool {
+						__antithesis_instrumentation__.Notify(698395)
+						return p >= w.partitions == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(698396)
 						return errors.Errorf(`--partition-affinity out of bounds of --partitions`)
+					} else {
+						__antithesis_instrumentation__.Notify(698397)
 					}
 				}
+				__antithesis_instrumentation__.Notify(698391)
 
-				if len(w.multiRegionCfg.regions) > 0 && (len(w.multiRegionCfg.regions) != w.partitions) {
+				if len(w.multiRegionCfg.regions) > 0 && func() bool {
+					__antithesis_instrumentation__.Notify(698398)
+					return (len(w.multiRegionCfg.regions) != w.partitions) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(698399)
 					return errors.Errorf(`--regions should have the same length as --partitions.`)
+				} else {
+					__antithesis_instrumentation__.Notify(698400)
 				}
+				__antithesis_instrumentation__.Notify(698392)
 
-				if len(w.multiRegionCfg.regions) < 3 && w.multiRegionCfg.survivalGoal == survivalGoalRegion {
+				if len(w.multiRegionCfg.regions) < 3 && func() bool {
+					__antithesis_instrumentation__.Notify(698401)
+					return w.multiRegionCfg.survivalGoal == survivalGoalRegion == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(698402)
 					return errors.Errorf(`REGION survivability needs at least 3 regions.`)
+				} else {
+					__antithesis_instrumentation__.Notify(698403)
 				}
+				__antithesis_instrumentation__.Notify(698393)
 
-				if len(w.zoneCfg.zones) > 0 && (len(w.zoneCfg.zones) != w.partitions) {
+				if len(w.zoneCfg.zones) > 0 && func() bool {
+					__antithesis_instrumentation__.Notify(698404)
+					return (len(w.zoneCfg.zones) != w.partitions) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(698405)
 					return errors.Errorf(`--zones should have the same length as --partitions.`)
+				} else {
+					__antithesis_instrumentation__.Notify(698406)
 				}
 			}
+			__antithesis_instrumentation__.Notify(698361)
 
 			w.initNonUniformRandomConstants()
 
 			if w.workers == 0 {
+				__antithesis_instrumentation__.Notify(698407)
 				w.workers = w.activeWarehouses * NumWorkersPerWarehouse
+			} else {
+				__antithesis_instrumentation__.Notify(698408)
 			}
+			__antithesis_instrumentation__.Notify(698362)
 
 			if w.numConns == 0 {
-				// If we're not waiting, open up a connection for each worker. If we are
-				// waiting, we only use up to a set number of connections per warehouse.
-				// This isn't mandated by the spec, but opening a connection per worker
-				// when they each spend most of their time waiting is wasteful.
+				__antithesis_instrumentation__.Notify(698409)
+
 				if w.waitFraction == 0 {
+					__antithesis_instrumentation__.Notify(698410)
 					w.numConns = w.workers
 				} else {
+					__antithesis_instrumentation__.Notify(698411)
 					w.numConns = w.activeWarehouses * numConnsPerWarehouse
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(698412)
 			}
+			__antithesis_instrumentation__.Notify(698363)
 
-			if w.waitFraction > 0 && w.workers != w.activeWarehouses*NumWorkersPerWarehouse {
+			if w.waitFraction > 0 && func() bool {
+				__antithesis_instrumentation__.Notify(698413)
+				return w.workers != w.activeWarehouses*NumWorkersPerWarehouse == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(698414)
 				return errors.Errorf(`--wait > 0 and --warehouses=%d requires --workers=%d`,
 					w.activeWarehouses, w.warehouses*NumWorkersPerWarehouse)
+			} else {
+				__antithesis_instrumentation__.Notify(698415)
 			}
+			__antithesis_instrumentation__.Notify(698364)
 
 			if w.serializable {
+				__antithesis_instrumentation__.Notify(698416)
 				w.txOpts = pgx.TxOptions{IsoLevel: pgx.Serializable}
+			} else {
+				__antithesis_instrumentation__.Notify(698417)
 			}
+			__antithesis_instrumentation__.Notify(698365)
 
 			w.auditor = newAuditor(w.activeWarehouses)
 
-			// Create a partitioner to help us partition the warehouses. The base-case is
-			// where w.warehouses == w.activeWarehouses and w.partitions == 1.
 			partitions := w.partitions
 			if w.clientPartitions > 0 {
+				__antithesis_instrumentation__.Notify(698418)
 				partitions = w.clientPartitions
+			} else {
+				__antithesis_instrumentation__.Notify(698419)
 			}
+			__antithesis_instrumentation__.Notify(698366)
 			var err error
-			// This partitioner will not actually be used to partition the
-			// data, but instead is only used to limit the warehouses the
-			// client attempts to manipulate.
+
 			w.wPart, err = makePartitioner(w.warehouses, w.activeWarehouses, partitions)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(698420)
 				return errors.Wrap(err, "error creating partitioner")
+			} else {
+				__antithesis_instrumentation__.Notify(698421)
 			}
+			__antithesis_instrumentation__.Notify(698367)
 			if len(w.multiRegionCfg.regions) != 0 {
-				// For multi-region workloads, make a multi-region partitioner.
+				__antithesis_instrumentation__.Notify(698422)
+
 				w.wMRPart, err = makeMRPartitioner(w.warehouses, w.activeWarehouses, partitions)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(698423)
 					return errors.Wrap(err, "error creating multi-region partitioner")
+				} else {
+					__antithesis_instrumentation__.Notify(698424)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(698425)
 			}
+			__antithesis_instrumentation__.Notify(698368)
 			return initializeMix(w)
 		},
 		PreCreate: func(db *gosql.DB) error {
+			__antithesis_instrumentation__.Notify(698426)
 			if len(w.multiRegionCfg.regions) == 0 {
-				// Not a multi-region deployment.
+				__antithesis_instrumentation__.Notify(698433)
+
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(698434)
 			}
+			__antithesis_instrumentation__.Notify(698427)
 
 			regions, err := queryDatabaseRegions(db)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(698435)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(698436)
 			}
+			__antithesis_instrumentation__.Notify(698428)
 
 			var dbName string
 			if err := db.QueryRow(`SHOW DATABASE`).Scan(&dbName); err != nil {
+				__antithesis_instrumentation__.Notify(698437)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(698438)
 			}
+			__antithesis_instrumentation__.Notify(698429)
 
 			var stmts []string
 			for i, region := range w.multiRegionCfg.regions {
+				__antithesis_instrumentation__.Notify(698439)
 				var stmt string
-				// The first region is the PRIMARY region.
+
 				if i == 0 {
+					__antithesis_instrumentation__.Notify(698441)
 					stmt = fmt.Sprintf(`alter database %s set primary region %q`, dbName, region)
 				} else {
-					// Region additions should be idempotent.
+					__antithesis_instrumentation__.Notify(698442)
+
 					if _, ok := regions[region]; ok {
+						__antithesis_instrumentation__.Notify(698444)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(698445)
 					}
+					__antithesis_instrumentation__.Notify(698443)
 					stmt = fmt.Sprintf(`alter database %s add region %q`, dbName, region)
 				}
+				__antithesis_instrumentation__.Notify(698440)
 				stmts = append(stmts, stmt)
 			}
+			__antithesis_instrumentation__.Notify(698430)
 
 			var survivalGoal string
 			switch w.multiRegionCfg.survivalGoal {
 			case survivalGoalZone:
+				__antithesis_instrumentation__.Notify(698446)
 				survivalGoal = `zone failure`
 			case survivalGoalRegion:
+				__antithesis_instrumentation__.Notify(698447)
 				survivalGoal = `region failure`
 			default:
+				__antithesis_instrumentation__.Notify(698448)
 				panic("unexpected")
 			}
+			__antithesis_instrumentation__.Notify(698431)
 			stmts = append(stmts, fmt.Sprintf(`alter database %s survive %s`, dbName, survivalGoal))
 
 			for _, stmt := range stmts {
+				__antithesis_instrumentation__.Notify(698449)
 				if _, err := db.Exec(stmt); err != nil {
+					__antithesis_instrumentation__.Notify(698450)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(698451)
 				}
 			}
+			__antithesis_instrumentation__.Notify(698432)
 
 			return nil
 		},
 		PostLoad: func(db *gosql.DB) error {
+			__antithesis_instrumentation__.Notify(698452)
 			if w.fks {
-				// We avoid validating foreign keys because we just generated
-				// the data set and don't want to scan over the entire thing
-				// again. Unfortunately, this means that we leave the foreign
-				// keys unvalidated for the duration of the test, so the SQL
-				// optimizer can't use them.
-				// TODO(lucy-zhang): expose an internal knob to validate fk
-				// relations without performing full validation. See #38833.
+				__antithesis_instrumentation__.Notify(698455)
+
 				fkStmts := []string{
 					`alter table district add foreign key (d_w_id) references warehouse (w_id) not valid`,
 					`alter table customer add foreign key (c_w_id, c_d_id) references district (d_w_id, d_id) not valid`,
@@ -447,50 +587,66 @@ func (w *tpcc) Hooks() workload.Hooks {
 				}
 
 				for _, fkStmt := range fkStmts {
+					__antithesis_instrumentation__.Notify(698457)
 					if _, err := db.Exec(fkStmt); err != nil {
+						__antithesis_instrumentation__.Notify(698458)
 						const duplFKErr = "columns cannot be used by multiple foreign key constraints"
 						const idxErr = "foreign key requires an existing index on columns"
 						switch {
 						case strings.Contains(err.Error(), idxErr):
+							__antithesis_instrumentation__.Notify(698459)
 							fmt.Println(errors.WithHint(err, "try using the --deprecated-fk-indexes flag"))
-							// If the statement failed because of a missing FK index, suggest
-							// to use the deprecated-fks flag.
+
 							return errors.WithHint(err, "try using the --deprecated-fk-indexes flag")
 						case strings.Contains(err.Error(), duplFKErr):
-							// If the statement failed because the fk already exists,
-							// ignore it. Return the error for any other reason.
+							__antithesis_instrumentation__.Notify(698460)
+
 						default:
+							__antithesis_instrumentation__.Notify(698461)
 							return err
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(698462)
 					}
 				}
-				// Set GLOBAL only after data is loaded to speed up initialization
-				// time. Otherwise, the mass INSERT at workload init time takes
-				// extraordinarily longer. If data is imported with IMPORT, this
-				// statement is idempotent.
-				if len(w.multiRegionCfg.regions) > 0 {
-					if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE item SET %s`, localityGlobalSuffix)); err != nil {
-						return err
-					}
-				}
-			}
+				__antithesis_instrumentation__.Notify(698456)
 
-			// With multi-region enabled, we do not need to partition and scatter
-			// our data anymore as it has already been partitioned by the
-			// computed column on REGIONAL BY ROW tables.
-			if len(w.multiRegionCfg.regions) != 0 {
-				return nil
+				if len(w.multiRegionCfg.regions) > 0 {
+					__antithesis_instrumentation__.Notify(698463)
+					if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE item SET %s`, localityGlobalSuffix)); err != nil {
+						__antithesis_instrumentation__.Notify(698464)
+						return err
+					} else {
+						__antithesis_instrumentation__.Notify(698465)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(698466)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(698467)
 			}
+			__antithesis_instrumentation__.Notify(698453)
+
+			if len(w.multiRegionCfg.regions) != 0 {
+				__antithesis_instrumentation__.Notify(698468)
+				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(698469)
+			}
+			__antithesis_instrumentation__.Notify(698454)
 			return w.partitionAndScatterWithDB(db)
 		},
 		PostRun: func(startElapsed time.Duration) error {
+			__antithesis_instrumentation__.Notify(698470)
 			w.auditor.runChecks(w.localWarehouses)
 			const totalHeader = "\n_elapsed_______tpmC____efc__avg(ms)__p50(ms)__p90(ms)__p95(ms)__p99(ms)_pMax(ms)"
 			fmt.Println(totalHeader)
 
 			const newOrderName = `newOrder`
 			w.reg.Tick(func(t histogram.Tick) {
+				__antithesis_instrumentation__.Notify(698472)
 				if newOrderName == t.Name {
+					__antithesis_instrumentation__.Notify(698473)
 					tpmC := float64(t.Cumulative.TotalCount()) / startElapsed.Seconds() * 60
 					fmt.Printf("%7.1fs %10.1f %5.1f%% %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
 						startElapsed.Seconds(),
@@ -503,41 +659,57 @@ func (w *tpcc) Hooks() workload.Hooks {
 						time.Duration(t.Cumulative.ValueAtQuantile(99)).Seconds()*1000,
 						time.Duration(t.Cumulative.ValueAtQuantile(100)).Seconds()*1000,
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(698474)
 				}
 			})
+			__antithesis_instrumentation__.Notify(698471)
 			return nil
 		},
 		CheckConsistency: func(ctx context.Context, db *gosql.DB) error {
+			__antithesis_instrumentation__.Notify(698475)
 			for _, check := range AllChecks() {
-				if !w.expensiveChecks && check.Expensive {
+				__antithesis_instrumentation__.Notify(698477)
+				if !w.expensiveChecks && func() bool {
+					__antithesis_instrumentation__.Notify(698479)
+					return check.Expensive == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(698480)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(698481)
 				}
+				__antithesis_instrumentation__.Notify(698478)
 				start := timeutil.Now()
-				err := check.Fn(db, "" /* asOfSystemTime */)
+				err := check.Fn(db, "")
 				log.Infof(ctx, `check %s took %s`, check.Name, timeutil.Since(start))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(698482)
 					return errors.Wrapf(err, `check failed: %s`, check.Name)
+				} else {
+					__antithesis_instrumentation__.Notify(698483)
 				}
 			}
+			__antithesis_instrumentation__.Notify(698476)
 			return nil
 		},
 	}
 }
 
-// Tables implements the Generator interface.
 func (w *tpcc) Tables() []workload.Table {
+	__antithesis_instrumentation__.Notify(698484)
 	aCharsInit := workloadimpl.PrecomputedRandInit(rand.New(rand.NewSource(w.seed)), precomputedLength, aCharsAlphabet)
 	lettersInit := workloadimpl.PrecomputedRandInit(rand.New(rand.NewSource(w.seed)), precomputedLength, lettersAlphabet)
 	numbersInit := workloadimpl.PrecomputedRandInit(rand.New(rand.NewSource(w.seed)), precomputedLength, numbersAlphabet)
 	if w.localsPool == nil {
+		__antithesis_instrumentation__.Notify(698492)
 		w.localsPool = &sync.Pool{
 			New: func() interface{} {
+				__antithesis_instrumentation__.Notify(698493)
 				return &generateLocals{
 					rng: tpccRand{
 						Rand: rand.New(rand.NewSource(uint64(timeutil.Now().UnixNano()))),
-						// Intentionally wait until here to initialize the precomputed rands
-						// so a caller of Tables that only wants schema doesn't compute
-						// them.
+
 						aChars:  aCharsInit(),
 						letters: lettersInit(),
 						numbers: numbersInit(),
@@ -545,26 +717,37 @@ func (w *tpcc) Tables() []workload.Table {
 				}
 			},
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(698494)
 	}
+	__antithesis_instrumentation__.Notify(698485)
 
-	// splits is a convenience method for constructing table splits that returns
-	// a zero value if the workload does not have splits enabled.
 	splits := func(t workload.BatchedTuples) workload.BatchedTuples {
+		__antithesis_instrumentation__.Notify(698495)
 		if w.split {
+			__antithesis_instrumentation__.Notify(698497)
 			return t
+		} else {
+			__antithesis_instrumentation__.Notify(698498)
 		}
+		__antithesis_instrumentation__.Notify(698496)
 		return workload.BatchedTuples{}
 	}
+	__antithesis_instrumentation__.Notify(698486)
 
-	// numBatches is a helper to calculate how many split batches exist exist given
-	// the total number of rows and the desired number of rows per split.
 	numBatches := func(total, per int) int {
+		__antithesis_instrumentation__.Notify(698499)
 		batches := total / per
 		if total%per == 0 {
+			__antithesis_instrumentation__.Notify(698501)
 			batches--
+		} else {
+			__antithesis_instrumentation__.Notify(698502)
 		}
+		__antithesis_instrumentation__.Notify(698500)
 		return batches
 	}
+	__antithesis_instrumentation__.Notify(698487)
 	warehouse := workload.Table{
 		Name: `warehouse`,
 		Schema: makeSchema(
@@ -582,11 +765,13 @@ func (w *tpcc) Tables() []workload.Table {
 		Splits: splits(workload.Tuples(
 			numBatches(w.warehouses, numWarehousesPerRange),
 			func(i int) []interface{} {
+				__antithesis_instrumentation__.Notify(698503)
 				return []interface{}{(i + 1) * numWarehousesPerRange}
 			},
 		)),
 		Stats: w.tpccWarehouseStats(),
 	}
+	__antithesis_instrumentation__.Notify(698488)
 	district := workload.Table{
 		Name: `district`,
 		Schema: makeSchema(
@@ -604,11 +789,13 @@ func (w *tpcc) Tables() []workload.Table {
 		Splits: splits(workload.Tuples(
 			numBatches(w.warehouses, numWarehousesPerRange),
 			func(i int) []interface{} {
+				__antithesis_instrumentation__.Notify(698504)
 				return []interface{}{(i + 1) * numWarehousesPerRange, 0}
 			},
 		)),
 		Stats: w.tpccDistrictStats(),
 	}
+	__antithesis_instrumentation__.Notify(698489)
 	customer := workload.Table{
 		Name: `customer`,
 		Schema: makeSchema(
@@ -642,11 +829,13 @@ func (w *tpcc) Tables() []workload.Table {
 		Splits: splits(workload.Tuples(
 			numBatches(w.warehouses, numWarehousesPerRange),
 			func(i int) []interface{} {
+				__antithesis_instrumentation__.Notify(698505)
 				return []interface{}{(i + 1) * numWarehousesPerRange}
 			},
 		)),
 		Stats: w.tpccHistoryStats(),
 	}
+	__antithesis_instrumentation__.Notify(698490)
 	order := workload.Table{
 		Name: `order`,
 		Schema: makeSchema(
@@ -683,11 +872,13 @@ func (w *tpcc) Tables() []workload.Table {
 		Splits: splits(workload.Tuples(
 			numBatches(numItems, numItemsPerRange),
 			func(i int) []interface{} {
+				__antithesis_instrumentation__.Notify(698506)
 				return []interface{}{numItemsPerRange * (i + 1)}
 			},
 		)),
 		Stats: w.tpccItemStats(),
 	}
+	__antithesis_instrumentation__.Notify(698491)
 	stock := workload.Table{
 		Name: `stock`,
 		Schema: makeSchema(
@@ -725,44 +916,55 @@ func (w *tpcc) Tables() []workload.Table {
 	}
 }
 
-// Ops implements the Opser interface.
 func (w *tpcc) Ops(
 	ctx context.Context, urls []string, reg *histogram.Registry,
 ) (workload.QueryLoad, error) {
+	__antithesis_instrumentation__.Notify(698507)
 	if len(w.multiRegionCfg.regions) == 0 {
-		// It would be nice to remove the need for this and to require that
-		// partitioning and scattering occurs only when the PostLoad hook is
-		// run, but to maintain backward compatibility, it's easiest to allow
-		// partitioning and scattering during `workload run`.
-		if err := w.partitionAndScatter(urls); err != nil {
-			return workload.QueryLoad{}, err
-		}
-	}
+		__antithesis_instrumentation__.Notify(698522)
 
-	// Need idempotency - Ops might be invoked multiple times with the same
-	// Registry.
+		if err := w.partitionAndScatter(urls); err != nil {
+			__antithesis_instrumentation__.Notify(698523)
+			return workload.QueryLoad{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(698524)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(698525)
+	}
+	__antithesis_instrumentation__.Notify(698508)
+
 	if w.reg == nil {
+		__antithesis_instrumentation__.Notify(698526)
 		w.reg = reg
 		w.txCounters = setupTPCCMetrics(reg.Registerer())
+	} else {
+		__antithesis_instrumentation__.Notify(698527)
 	}
+	__antithesis_instrumentation__.Notify(698509)
 
 	sqlDatabase, err := workload.SanitizeUrls(w, w.dbOverride, urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698528)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(698529)
 	}
+	__antithesis_instrumentation__.Notify(698510)
 	parsedURL, err := url.Parse(urls[0])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698530)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(698531)
 	}
+	__antithesis_instrumentation__.Notify(698511)
 
 	w.usePostgres = parsedURL.Port() == "5432"
 
-	// We can't use a single MultiConnPool because we want to implement partition
-	// affinity. Instead we have one MultiConnPool per server.
 	cfg := workload.MultiConnPoolCfg{
-		MaxTotalConnections: (w.numConns + len(urls) - 1) / len(urls), // round up
-		// Limit the number of connections per pool (otherwise preparing statements
-		// at startup can be slow).
+		MaxTotalConnections: (w.numConns + len(urls) - 1) / len(urls),
+
 		MaxConnsPerPool: 50,
 	}
 	fmt.Printf("Initializing %d connections...\n", w.numConns)
@@ -770,170 +972,246 @@ func (w *tpcc) Ops(
 	dbs := make([]*workload.MultiConnPool, len(urls))
 	var g errgroup.Group
 	for i := range urls {
+		__antithesis_instrumentation__.Notify(698532)
 		i := i
 		g.Go(func() error {
+			__antithesis_instrumentation__.Notify(698533)
 			var err error
 			dbs[i], err = workload.NewMultiConnPool(ctx, cfg, urls[i])
 			return err
 		})
 	}
+	__antithesis_instrumentation__.Notify(698512)
 	if err := g.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(698534)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(698535)
 	}
+	__antithesis_instrumentation__.Notify(698513)
 	var partitionDBs [][]*workload.MultiConnPool
 	if w.clientPartitions > 0 {
-		// Client partitions simply emulates the behavior of data partitions
-		// w/r/t database connections, though all of the connections will
-		// be for the same partition.
+		__antithesis_instrumentation__.Notify(698536)
+
 		partitionDBs = make([][]*workload.MultiConnPool, w.clientPartitions)
 	} else {
-		// Assign each DB connection pool to a local partition. This assumes that
-		// dbs[i] is a machine that holds partition "i % *partitions". If we have an
-		// affinity partition, all connections will be for the same partition.
+		__antithesis_instrumentation__.Notify(698537)
+
 		partitionDBs = make([][]*workload.MultiConnPool, w.partitions)
 	}
+	__antithesis_instrumentation__.Notify(698514)
 
-	// If there is only one affinityPartition then we assume all of the URLs are
-	// associated with that partition.
 	if len(w.affinityPartitions) == 1 {
-		// All connections are for our local partitions.
+		__antithesis_instrumentation__.Notify(698538)
+
 		partitionDBs[w.affinityPartitions[0]] = dbs
 
 	} else {
-		// This is making some assumptions about how racks are handed out.
-		// If we have more than one affinityPartition then we assume that the
-		// URLs are mapped to partitions in a round-robin fashion.
-		// Imagine there are 5 partitions and 15 urls, this code assumes that urls
-		// 0, 5, and 10 correspond to the 0th partition.
+		__antithesis_instrumentation__.Notify(698539)
+
 		for i, db := range dbs {
+			__antithesis_instrumentation__.Notify(698541)
 			p := i % w.partitions
 			partitionDBs[p] = append(partitionDBs[p], db)
 		}
+		__antithesis_instrumentation__.Notify(698540)
 		for i := range partitionDBs {
-			// Possible if we have more partitions than DB connections.
+			__antithesis_instrumentation__.Notify(698542)
+
 			if partitionDBs[i] == nil {
+				__antithesis_instrumentation__.Notify(698543)
 				partitionDBs[i] = dbs
+			} else {
+				__antithesis_instrumentation__.Notify(698544)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(698515)
 
 	fmt.Printf("Initializing %d idle connections...\n", w.idleConns)
 	var conns []*pgx.Conn
 	for i := 0; i < w.idleConns; i++ {
+		__antithesis_instrumentation__.Notify(698545)
 		for _, url := range urls {
+			__antithesis_instrumentation__.Notify(698546)
 			connConfig, err := pgx.ParseConfig(url)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(698549)
 				return workload.QueryLoad{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(698550)
 			}
+			__antithesis_instrumentation__.Notify(698547)
 			conn, err := pgx.ConnectConfig(ctx, connConfig)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(698551)
 				return workload.QueryLoad{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(698552)
 			}
+			__antithesis_instrumentation__.Notify(698548)
 			conns = append(conns, conn)
 		}
 	}
+	__antithesis_instrumentation__.Notify(698516)
 	fmt.Printf("Initializing %d workers and preparing statements...\n", w.workers)
 	ql := workload.QueryLoad{SQLDatabase: sqlDatabase}
 	ql.WorkerFns = make([]func(context.Context) error, 0, w.workers)
 	var group errgroup.Group
 
-	// Determines whether a partition is in the local workload's set of affinity
-	// partitions.
 	isMyPart := func(p int) bool {
+		__antithesis_instrumentation__.Notify(698553)
 		for _, ap := range w.affinityPartitions {
+			__antithesis_instrumentation__.Notify(698555)
 			if p == ap {
+				__antithesis_instrumentation__.Notify(698556)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(698557)
 			}
 		}
-		// If nothing is mine, then everything is mine.
+		__antithesis_instrumentation__.Notify(698554)
+
 		return len(w.affinityPartitions) == 0
 	}
-	// Limit the amount of workers we initialize in parallel, to avoid running out
-	// of memory (#36897).
+	__antithesis_instrumentation__.Notify(698517)
+
 	sem := make(chan struct{}, 100)
 	for workerIdx := 0; workerIdx < w.workers; workerIdx++ {
+		__antithesis_instrumentation__.Notify(698558)
 		workerIdx := workerIdx
 		var warehouse int
 		var p int
 		if len(w.multiRegionCfg.regions) == 0 {
+			__antithesis_instrumentation__.Notify(698561)
 			warehouse = w.wPart.totalElems[workerIdx%len(w.wPart.totalElems)]
 			p = w.wPart.partElemsMap[warehouse]
 		} else {
-			// For multi-region workloads, use the multi-region partitioning.
+			__antithesis_instrumentation__.Notify(698562)
+
 			warehouse = w.wMRPart.totalElems[workerIdx%len(w.wMRPart.totalElems)]
 			p = w.wMRPart.partElemsMap[warehouse]
 		}
+		__antithesis_instrumentation__.Notify(698559)
 
-		// This isn't part of our local partition.
 		if !isMyPart(p) {
+			__antithesis_instrumentation__.Notify(698563)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(698564)
 		}
+		__antithesis_instrumentation__.Notify(698560)
 		dbs := partitionDBs[p]
 		db := dbs[warehouse%len(dbs)]
 
-		// NB: ql.WorkerFns is sized so this never re-allocs.
 		ql.WorkerFns = append(ql.WorkerFns, nil)
 		idx := len(ql.WorkerFns) - 1
 		sem <- struct{}{}
 		group.Go(func() error {
+			__antithesis_instrumentation__.Notify(698565)
 			worker, err := newWorker(ctx, w, db, reg.GetHandle(), w.txCounters, warehouse)
 			if err == nil {
+				__antithesis_instrumentation__.Notify(698567)
 				ql.WorkerFns[idx] = worker.run
+			} else {
+				__antithesis_instrumentation__.Notify(698568)
 			}
+			__antithesis_instrumentation__.Notify(698566)
 			<-sem
 			return err
 		})
 	}
+	__antithesis_instrumentation__.Notify(698518)
 	if err := group.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(698569)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(698570)
 	}
-	// Preregister all of the histograms so they always print.
+	__antithesis_instrumentation__.Notify(698519)
+
 	for _, tx := range allTxs {
+		__antithesis_instrumentation__.Notify(698571)
 		reg.GetHandle().Get(tx.name)
 	}
+	__antithesis_instrumentation__.Notify(698520)
 
-	// Close idle connections.
 	ql.Close = func(context context.Context) {
+		__antithesis_instrumentation__.Notify(698572)
 		for _, conn := range conns {
+			__antithesis_instrumentation__.Notify(698573)
 			if err := conn.Close(ctx); err != nil {
+				__antithesis_instrumentation__.Notify(698574)
 				log.Warningf(ctx, "%v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(698575)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(698521)
 	return ql, nil
 }
 
 func (w *tpcc) partitionAndScatter(urls []string) error {
+	__antithesis_instrumentation__.Notify(698576)
 	db, err := gosql.Open(`cockroach`, strings.Join(urls, ` `))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698578)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(698579)
 	}
+	__antithesis_instrumentation__.Notify(698577)
 	defer db.Close()
 	return w.partitionAndScatterWithDB(db)
 }
 
 func (w *tpcc) partitionAndScatterWithDB(db *gosql.DB) error {
+	__antithesis_instrumentation__.Notify(698580)
 	if w.partitions > 1 {
-		// Repartitioning can take upwards of 10 minutes, so determine if
-		// the dataset is already partitioned before launching the operation
-		// again.
+		__antithesis_instrumentation__.Notify(698583)
+
 		if parts, err := partitionCount(db); err != nil {
+			__antithesis_instrumentation__.Notify(698584)
 			return errors.Wrapf(err, "could not determine if tables are partitioned")
-		} else if parts == 0 {
-			if err := partitionTables(db, w.zoneCfg, w.wPart, w.replicateStaticColumns); err != nil {
-				return errors.Wrapf(err, "could not partition tables")
+		} else {
+			__antithesis_instrumentation__.Notify(698585)
+			if parts == 0 {
+				__antithesis_instrumentation__.Notify(698586)
+				if err := partitionTables(db, w.zoneCfg, w.wPart, w.replicateStaticColumns); err != nil {
+					__antithesis_instrumentation__.Notify(698587)
+					return errors.Wrapf(err, "could not partition tables")
+				} else {
+					__antithesis_instrumentation__.Notify(698588)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(698589)
+				if parts != w.partitions {
+					__antithesis_instrumentation__.Notify(698590)
+					return errors.Errorf("tables are not partitioned %d way(s). "+
+						"Pass the --partitions flag to 'workload init' or 'workload fixtures'.", w.partitions)
+				} else {
+					__antithesis_instrumentation__.Notify(698591)
+				}
 			}
-		} else if parts != w.partitions {
-			return errors.Errorf("tables are not partitioned %d way(s). "+
-				"Pass the --partitions flag to 'workload init' or 'workload fixtures'.", w.partitions)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(698592)
 	}
+	__antithesis_instrumentation__.Notify(698581)
 
 	if w.scatter {
+		__antithesis_instrumentation__.Notify(698593)
 		if err := scatterRanges(db); err != nil {
+			__antithesis_instrumentation__.Notify(698594)
 			return errors.Wrapf(err, "could not scatter ranges")
+		} else {
+			__antithesis_instrumentation__.Notify(698595)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(698596)
 	}
+	__antithesis_instrumentation__.Notify(698582)
 
 	return nil
 }

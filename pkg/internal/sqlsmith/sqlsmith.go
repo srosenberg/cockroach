@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqlsmith
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	gosql "database/sql"
@@ -23,39 +15,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// sqlsmith-go
-//
-// sqlsmith-go is a random SQL query generator, based off of sqlsmith:
-//
-//   https://github.com/anse1/sqlsmith
-//
-// You can think of it as walking a randomly generated AST and materializing
-// that AST as it goes, which it then feeds into Cockroach with the hopes of
-// finding panics.
-//
-// However, naively generating such an AST will only find certain kinds of
-// panics: they're almost guaranteed not to pass semantic analysis, and so
-// any components of the system beyond that will probably not be tested.
-// To get around this, sqlsmith tracks scopes and types, very similar to
-// how the optbuilder works, to create ASTs which will likely pass
-// semantic analysis.
-//
-// It does this by building the tree top-down. Every level of the tree
-// requests input of a certain form. For instance, a SELECT will request
-// a list of projections which respect the scope that the SELECT introduces,
-// and a function call will request an input value of a particular type,
-// subject to the same scope it has. This raises a question: what if we
-// are unable to construct an expression meeting the restrictions requested
-// by the parent expression? Rather than do some fancy constraint solving
-// (which could be an interesting direction for this tool to go in the
-// future, but I've found to be difficult when I've tried in the past)
-// sqlsmith will simply try randomly to generate an expression, and once
-// it fails a certain number of times, it will retreat up the tree and
-// retry at a higher level.
-
 const retryCount = 20
 
-// Smither is a sqlsmith generator.
 type Smither struct {
 	rnd              *rand.Rand
 	db               *gosql.DB
@@ -102,9 +63,8 @@ type (
 	scalarExpr      func(*Smither, Context, *types.T, colRefs) (expr tree.TypedExpr, ok bool)
 )
 
-// NewSmither creates a new Smither. db is used to populate existing tables
-// for use as column references. It can be nil to skip table population.
 func NewSmither(db *gosql.DB, rnd *rand.Rand, opts ...SmitherOption) (*Smither, error) {
+	__antithesis_instrumentation__.Notify(69889)
 	s := &Smither{
 		rnd:        rnd,
 		db:         db,
@@ -120,8 +80,10 @@ func NewSmither(db *gosql.DB, rnd *rand.Rand, opts ...SmitherOption) (*Smither, 
 		complexity: 0.2,
 	}
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(69892)
 		opt.Apply(s)
 	}
+	__antithesis_instrumentation__.Notify(69890)
 	s.stmtSampler = newWeightedStatementSampler(s.stmtWeights, rnd.Int63())
 	s.alterSampler = newWeightedStatementSampler(s.alterWeights, rnd.Int63())
 	s.tableExprSampler = newWeightedTableExprSampler(s.tableExprWeights, rnd.Int63())
@@ -131,49 +93,66 @@ func NewSmither(db *gosql.DB, rnd *rand.Rand, opts ...SmitherOption) (*Smither, 
 	s.enableBulkIO()
 	row := s.db.QueryRow("SELECT current_database()")
 	if err := row.Scan(&s.dbName); err != nil {
+		__antithesis_instrumentation__.Notify(69893)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(69894)
 	}
+	__antithesis_instrumentation__.Notify(69891)
 	return s, s.ReloadSchemas()
 }
 
-// Close closes resources used by the Smither.
 func (s *Smither) Close() {
+	__antithesis_instrumentation__.Notify(69895)
 	if s.bulkSrv != nil {
+		__antithesis_instrumentation__.Notify(69896)
 		s.bulkSrv.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(69897)
 	}
 }
 
 var prettyCfg = func() tree.PrettyCfg {
+	__antithesis_instrumentation__.Notify(69898)
 	cfg := tree.DefaultPrettyCfg()
 	cfg.LineWidth = 120
 	cfg.Simplify = false
 	return cfg
 }()
 
-// Generate returns a random SQL string.
 func (s *Smither) Generate() string {
+	__antithesis_instrumentation__.Notify(69899)
 	i := 0
 	for {
+		__antithesis_instrumentation__.Notify(69900)
 		stmt, ok := s.makeStmt()
 		if !ok {
+			__antithesis_instrumentation__.Notify(69902)
 			i++
 			if i > 1000 {
+				__antithesis_instrumentation__.Notify(69904)
 				panic("exhausted generation attempts")
+			} else {
+				__antithesis_instrumentation__.Notify(69905)
 			}
+			__antithesis_instrumentation__.Notify(69903)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(69906)
 		}
+		__antithesis_instrumentation__.Notify(69901)
 		i = 0
 		return prettyCfg.Pretty(stmt)
 	}
 }
 
-// GenerateExpr returns a random SQL expression that does not depend on any
-// tables or columns.
 func (s *Smither) GenerateExpr() tree.TypedExpr {
+	__antithesis_instrumentation__.Notify(69907)
 	return makeScalar(s, s.randScalarType(), nil)
 }
 
 func (s *Smither) name(prefix string) tree.Name {
+	__antithesis_instrumentation__.Notify(69908)
 	s.lock.Lock()
 	s.nameCounts[prefix]++
 	count := s.nameCounts[prefix]
@@ -181,14 +160,15 @@ func (s *Smither) name(prefix string) tree.Name {
 	return tree.Name(fmt.Sprintf("%s_%d", prefix, count))
 }
 
-// SmitherOption is an option for the Smither client.
 type SmitherOption interface {
 	Apply(*Smither)
 	String() string
 }
 
 func simpleOption(name string, apply func(s *Smither)) func() SmitherOption {
+	__antithesis_instrumentation__.Notify(69909)
 	return func() SmitherOption {
+		__antithesis_instrumentation__.Notify(69910)
 		return option{
 			name:  name,
 			apply: apply,
@@ -197,21 +177,27 @@ func simpleOption(name string, apply func(s *Smither)) func() SmitherOption {
 }
 
 func multiOption(name string, opts ...SmitherOption) func() SmitherOption {
+	__antithesis_instrumentation__.Notify(69911)
 	var sb strings.Builder
 	sb.WriteString(name)
 	sb.WriteString("(")
 	delim := ""
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(69913)
 		sb.WriteString(delim)
 		delim = ", "
 		sb.WriteString(opt.String())
 	}
+	__antithesis_instrumentation__.Notify(69912)
 	sb.WriteString(")")
 	return func() SmitherOption {
+		__antithesis_instrumentation__.Notify(69914)
 		return option{
 			name: sb.String(),
 			apply: func(s *Smither) {
+				__antithesis_instrumentation__.Notify(69915)
 				for _, opt := range opts {
+					__antithesis_instrumentation__.Notify(69916)
 					opt.Apply(s)
 				}
 			},
@@ -225,29 +211,29 @@ type option struct {
 }
 
 func (o option) String() string {
+	__antithesis_instrumentation__.Notify(69917)
 	return o.name
 }
 
 func (o option) Apply(s *Smither) {
+	__antithesis_instrumentation__.Notify(69918)
 	o.apply(s)
 }
 
-// DisableMutations causes the Smither to not emit statements that could
-// mutate any on-disk data.
 var DisableMutations = simpleOption("disable mutations", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69919)
 	s.stmtWeights = nonMutatingStatements
 	s.tableExprWeights = nonMutatingTableExprs
 })
 
-// DisableDDLs causes the Smither to not emit statements that change table
-// schema (CREATE, DROP, ALTER, etc.)
 var DisableDDLs = simpleOption("disable DDLs", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69920)
 	s.stmtWeights = []statementWeight{
 		{20, makeSelect},
 		{5, makeInsert},
 		{5, makeUpdate},
 		{1, makeDelete},
-		// If we don't have any DDL's, allow for use of savepoints and transactions.
+
 		{2, makeBegin},
 		{2, makeSavepoint},
 		{2, makeReleaseSavepoint},
@@ -257,9 +243,8 @@ var DisableDDLs = simpleOption("disable DDLs", func(s *Smither) {
 	}
 })
 
-// OnlyNoDropDDLs causes the Smither to only emit DDLs, but won't ever drop
-// a table.
 var OnlyNoDropDDLs = simpleOption("only DDLs", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69921)
 	s.stmtWeights = append(append([]statementWeight{
 		{1, makeBegin},
 		{2, makeRollback},
@@ -271,34 +256,33 @@ var OnlyNoDropDDLs = simpleOption("only DDLs", func(s *Smither) {
 	)
 })
 
-// MultiRegionDDLs causes the Smither to enable multiregion features.
 var MultiRegionDDLs = simpleOption("include multiregion DDLs", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69922)
 	s.alterWeights = append(s.alterWeights, alterMultiregion...)
 })
 
-// DisableWith causes the Smither to not emit WITH clauses.
 var DisableWith = simpleOption("disable WITH", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69923)
 	s.disableWith = true
 })
 
-// DisableImpureFns causes the Smither to disable impure functions.
 var DisableImpureFns = simpleOption("disable impure funcs", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69924)
 	s.disableImpureFns = true
 })
 
-// DisableCRDBFns causes the Smither to disable crdb_internal functions.
 func DisableCRDBFns() SmitherOption {
+	__antithesis_instrumentation__.Notify(69925)
 	return IgnoreFNs("^crdb_internal")
 }
 
-// SimpleDatums causes the Smither to emit simpler constant datums.
 var SimpleDatums = simpleOption("simple datums", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69926)
 	s.simpleDatums = true
 })
 
-// MutationsOnly causes the Smither to emit 80% INSERT, 10% UPDATE, and 10%
-// DELETE statements.
 var MutationsOnly = simpleOption("mutations only", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69927)
 	s.stmtWeights = []statementWeight{
 		{8, makeInsert},
 		{1, makeUpdate},
@@ -306,40 +290,38 @@ var MutationsOnly = simpleOption("mutations only", func(s *Smither) {
 	}
 })
 
-// IgnoreFNs causes the Smither to ignore functions that match the regex.
 func IgnoreFNs(regex string) SmitherOption {
+	__antithesis_instrumentation__.Notify(69928)
 	r := regexp.MustCompile(regex)
 	return option{
 		name: fmt.Sprintf("ignore fns: %q", r.String()),
 		apply: func(s *Smither) {
+			__antithesis_instrumentation__.Notify(69929)
 			s.ignoreFNs = append(s.ignoreFNs, r)
 		},
 	}
 }
 
-// DisableLimits causes the Smither to disable LIMIT clauses.
 var DisableLimits = simpleOption("disable LIMIT", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69930)
 	s.disableLimits = true
 })
 
-// AvoidConsts causes the Smither to prefer column references over generating
-// constants.
 var AvoidConsts = simpleOption("avoid consts", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69931)
 	s.avoidConsts = true
 })
 
-// DisableWindowFuncs disables window functions.
 var DisableWindowFuncs = simpleOption("disable window funcs", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69932)
 	s.disableWindowFuncs = true
 })
 
-// OutputSort adds a top-level ORDER BY on all columns.
 var OutputSort = simpleOption("output sort", func(s *Smither) {
+	__antithesis_instrumentation__.Notify(69933)
 	s.outputSort = true
 })
 
-// CompareMode causes the Smither to generate statements that have
-// deterministic output.
 var CompareMode = multiOption(
 	"compare mode",
 	DisableMutations(),
@@ -350,8 +332,6 @@ var CompareMode = multiOption(
 	OutputSort(),
 )
 
-// PostgresMode causes the Smither to generate statements that work identically
-// in Postgres and Cockroach.
 var PostgresMode = multiOption(
 	"postgres mode",
 	CompareMode(),
@@ -359,11 +339,10 @@ var PostgresMode = multiOption(
 	SimpleDatums(),
 	IgnoreFNs("^current_"),
 	simpleOption("postgres", func(s *Smither) {
+		__antithesis_instrumentation__.Notify(69934)
 		s.postgres = true
 	})(),
 
-	// Some func impls differ from postgres, so skip them here.
-	// #41709
 	IgnoreFNs("^sha"),
 	IgnoreFNs("^isnan"),
 	IgnoreFNs("^crc32c"),
@@ -373,13 +352,13 @@ var PostgresMode = multiOption(
 	IgnoreFNs("^concat_agg"),
 	IgnoreFNs("^to_english"),
 	IgnoreFNs("^substr$"),
-	// We use e'XX' instead of E'XX' for hex strings, so ignore these.
+
 	IgnoreFNs("^quote"),
-	// We have some differences here with empty string and "default"; skip until fixed.
+
 	IgnoreFNs("^pg_collation_for"),
-	// Postgres does not have the `.*_escape` functions.
+
 	IgnoreFNs("_escape$"),
-	// Some spatial functions are CockroachDB-specific.
+
 	IgnoreFNs("st_.*withinexclusive$"),
 	IgnoreFNs("^postgis_.*build_date"),
 	IgnoreFNs("^postgis_.*version"),

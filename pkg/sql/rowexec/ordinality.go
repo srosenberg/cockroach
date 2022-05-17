@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,8 +12,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 )
 
-// ordinalityProcessor is the processor of the WITH ORDINALITY operator, which
-// adds an additional ordinal column to the result.
 type ordinalityProcessor struct {
 	execinfra.ProcessorBase
 
@@ -42,6 +32,7 @@ func newOrdinalityProcessor(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (execinfra.RowSourcedProcessor, error) {
+	__antithesis_instrumentation__.Notify(574049)
 	ctx := flowCtx.EvalCtx.Ctx()
 	o := &ordinalityProcessor{input: input, curCnt: 1}
 
@@ -55,61 +46,89 @@ func newOrdinalityProcessor(
 		flowCtx,
 		processorID,
 		output,
-		nil, /* memMonitor */
+		nil,
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{o.input},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(574052)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(574053)
 	}
+	__antithesis_instrumentation__.Notify(574050)
 
 	if execinfra.ShouldCollectStats(ctx, flowCtx) {
+		__antithesis_instrumentation__.Notify(574054)
 		o.input = newInputStatCollector(o.input)
 		o.ExecStatsForTrace = o.execStatsForTrace
+	} else {
+		__antithesis_instrumentation__.Notify(574055)
 	}
+	__antithesis_instrumentation__.Notify(574051)
 
 	return o, nil
 }
 
-// Start is part of the RowSource interface.
 func (o *ordinalityProcessor) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(574056)
 	ctx = o.StartInternal(ctx, ordinalityProcName)
 	o.input.Start(ctx)
 }
 
-// Next is part of the RowSource interface.
 func (o *ordinalityProcessor) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(574057)
 	for o.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(574059)
 		row, meta := o.input.Next()
 
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(574062)
 			if meta.Err != nil {
-				o.MoveToDraining(nil /* err */)
+				__antithesis_instrumentation__.Notify(574064)
+				o.MoveToDraining(nil)
+			} else {
+				__antithesis_instrumentation__.Notify(574065)
 			}
+			__antithesis_instrumentation__.Notify(574063)
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(574066)
 		}
+		__antithesis_instrumentation__.Notify(574060)
 		if row == nil {
-			o.MoveToDraining(nil /* err */)
+			__antithesis_instrumentation__.Notify(574067)
+			o.MoveToDraining(nil)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(574068)
 		}
+		__antithesis_instrumentation__.Notify(574061)
 
-		// The ordinality should increment even if the row gets filtered out.
 		row = append(row, rowenc.DatumToEncDatum(types.Int, tree.NewDInt(tree.DInt(o.curCnt))))
 		o.curCnt++
 		if outRow := o.ProcessRowHelper(row); outRow != nil {
+			__antithesis_instrumentation__.Notify(574069)
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(574070)
 		}
 	}
+	__antithesis_instrumentation__.Notify(574058)
 	return nil, o.DrainHelper()
 
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (o *ordinalityProcessor) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(574071)
 	is, ok := getInputStats(o.input)
 	if !ok {
+		__antithesis_instrumentation__.Notify(574073)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(574074)
 	}
+	__antithesis_instrumentation__.Notify(574072)
 	return &execinfrapb.ComponentStats{
 		Inputs: []execinfrapb.InputStats{is},
 		Output: o.OutputHelper.Stats(),

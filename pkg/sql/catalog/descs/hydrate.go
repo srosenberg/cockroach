@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,34 +16,39 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlerrors"
 )
 
-// hydrateTypesInTableDesc installs user defined type metadata in all types.T
-// present in the input TableDescriptor. It always returns the same type of
-// TableDescriptor that was passed in. It ensures that ImmutableTableDescriptors
-// are not modified during the process of metadata installation. Dropped tables
-// do not get hydrated.
-//
-// TODO(ajwerner): This should accept flags to indicate whether we can resolve
-// offline descriptors.
 func (tc *Collection) hydrateTypesInTableDesc(
 	ctx context.Context, txn *kv.Txn, desc catalog.TableDescriptor,
 ) (catalog.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264504)
 	if desc.Dropped() {
+		__antithesis_instrumentation__.Notify(264506)
 		return desc, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264507)
 	}
+	__antithesis_instrumentation__.Notify(264505)
 	switch t := desc.(type) {
 	case *tabledesc.Mutable:
-		// It is safe to hydrate directly into Mutable since it is
-		// not shared. When hydrating mutable descriptors, use the mutable access
-		// method to access types.
+		__antithesis_instrumentation__.Notify(264508)
+
 		getType := func(ctx context.Context, id descpb.ID) (tree.TypeName, catalog.TypeDescriptor, error) {
+			__antithesis_instrumentation__.Notify(264516)
 			desc, err := tc.GetMutableTypeVersionByID(ctx, txn, id)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264520)
 				return tree.TypeName{}, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264521)
 			}
+			__antithesis_instrumentation__.Notify(264517)
 			dbDesc, err := tc.GetMutableDescriptorByID(ctx, txn, desc.ParentID)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264522)
 				return tree.TypeName{}, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264523)
 			}
+			__antithesis_instrumentation__.Notify(264518)
 			sc, err := tc.getSchemaByID(
 				ctx, txn, desc.ParentSchemaID,
 				tree.SchemaLookupFlags{
@@ -61,142 +58,201 @@ func (tc *Collection) hydrateTypesInTableDesc(
 				},
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264524)
 				return tree.TypeName{}, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264525)
 			}
+			__antithesis_instrumentation__.Notify(264519)
 			name := tree.MakeQualifiedTypeName(dbDesc.GetName(), sc.GetName(), desc.Name)
 			return name, desc, nil
 		}
+		__antithesis_instrumentation__.Notify(264509)
 
 		return desc, typedesc.HydrateTypesInTableDescriptor(ctx, t.TableDesc(), typedesc.TypeLookupFunc(getType))
 	case catalog.TableDescriptor:
-		// ImmutableTableDescriptors need to be copied before hydration, because
-		// they are potentially read by multiple threads. If there aren't any user
-		// defined types in the descriptor, then return early.
+		__antithesis_instrumentation__.Notify(264510)
+
 		if !t.ContainsUserDefinedTypes() {
+			__antithesis_instrumentation__.Notify(264526)
 			return desc, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264527)
 		}
+		__antithesis_instrumentation__.Notify(264511)
 
 		getType := typedesc.TypeLookupFunc(func(
 			ctx context.Context, id descpb.ID,
 		) (tree.TypeName, catalog.TypeDescriptor, error) {
+			__antithesis_instrumentation__.Notify(264528)
 			desc, err := tc.GetImmutableTypeByID(ctx, txn, id, tree.ObjectLookupFlags{})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264532)
 				return tree.TypeName{}, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264533)
 			}
+			__antithesis_instrumentation__.Notify(264529)
 			_, dbDesc, err := tc.GetImmutableDatabaseByID(ctx, txn, desc.GetParentID(),
 				tree.DatabaseLookupFlags{Required: true})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264534)
 				return tree.TypeName{}, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264535)
 			}
+			__antithesis_instrumentation__.Notify(264530)
 			sc, err := tc.GetImmutableSchemaByID(
 				ctx, txn, desc.GetParentSchemaID(), tree.SchemaLookupFlags{Required: true})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264536)
 				return tree.TypeName{}, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264537)
 			}
+			__antithesis_instrumentation__.Notify(264531)
 			name := tree.MakeQualifiedTypeName(dbDesc.GetName(), sc.GetName(), desc.GetName())
 			return name, desc, nil
 		})
+		__antithesis_instrumentation__.Notify(264512)
 
-		// Utilize the cache of hydrated tables if we have one and this descriptor
-		// was leased.
-		// TODO(ajwerner): Consider surfacing the mechanism used to retrieve the
-		// descriptor up to this layer.
-		if tc.hydratedTables != nil &&
-			tc.uncommitted.descs.GetByID(desc.GetID()) == nil &&
-			tc.synthetic.descs.GetByID(desc.GetID()) == nil {
+		if tc.hydratedTables != nil && func() bool {
+			__antithesis_instrumentation__.Notify(264538)
+			return tc.uncommitted.descs.GetByID(desc.GetID()) == nil == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(264539)
+			return tc.synthetic.descs.GetByID(desc.GetID()) == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264540)
 			hydrated, err := tc.hydratedTables.GetHydratedTableDescriptor(ctx, t, getType)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264542)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264543)
 			}
+			__antithesis_instrumentation__.Notify(264541)
 			if hydrated != nil {
+				__antithesis_instrumentation__.Notify(264544)
 				return hydrated, nil
+			} else {
+				__antithesis_instrumentation__.Notify(264545)
 			}
-			// The cache decided not to give back a hydrated descriptor, likely
-			// because either we've modified the table or one of the types or because
-			// this transaction has a stale view of one of the relevant descriptors.
-			// Proceed to hydrating a fresh copy.
-		}
 
-		// Make a copy of the underlying descriptor before hydration.
+		} else {
+			__antithesis_instrumentation__.Notify(264546)
+		}
+		__antithesis_instrumentation__.Notify(264513)
+
 		mut := t.NewBuilder().BuildExistingMutable().(*tabledesc.Mutable)
 		if err := typedesc.HydrateTypesInTableDescriptor(ctx, mut.TableDesc(), getType); err != nil {
+			__antithesis_instrumentation__.Notify(264547)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(264548)
 		}
+		__antithesis_instrumentation__.Notify(264514)
 		return mut.ImmutableCopy().(catalog.TableDescriptor), nil
 	default:
+		__antithesis_instrumentation__.Notify(264515)
 		return desc, nil
 	}
 }
 
-// HydrateGivenDescriptors installs type metadata in the types present for all
-// table descriptors in the slice of descriptors. It is exported so resolution
-// on sets of descriptors can hydrate a set of descriptors (i.e. on BACKUPs).
 func HydrateGivenDescriptors(ctx context.Context, descs []catalog.Descriptor) error {
-	// Collect the needed information to set up metadata in those types.
+	__antithesis_instrumentation__.Notify(264549)
+
 	dbDescs := make(map[descpb.ID]catalog.DatabaseDescriptor)
 	typDescs := make(map[descpb.ID]catalog.TypeDescriptor)
 	schemaDescs := make(map[descpb.ID]catalog.SchemaDescriptor)
 	for _, desc := range descs {
+		__antithesis_instrumentation__.Notify(264552)
 		switch desc := desc.(type) {
 		case catalog.DatabaseDescriptor:
+			__antithesis_instrumentation__.Notify(264553)
 			dbDescs[desc.GetID()] = desc
 		case catalog.TypeDescriptor:
+			__antithesis_instrumentation__.Notify(264554)
 			typDescs[desc.GetID()] = desc
 		case catalog.SchemaDescriptor:
+			__antithesis_instrumentation__.Notify(264555)
 			schemaDescs[desc.GetID()] = desc
 		}
 	}
-	// If we found any type descriptors, that means that some of the tables we
-	// scanned might have types that need hydrating.
+	__antithesis_instrumentation__.Notify(264550)
+
 	if len(typDescs) > 0 {
-		// Since we just scanned all the descriptors, we already have everything
-		// we need to hydrate our types. Set up an accessor for the type hydration
-		// method to look into the scanned set of descriptors.
+		__antithesis_instrumentation__.Notify(264556)
+
 		typeLookup := func(ctx context.Context, id descpb.ID) (tree.TypeName, catalog.TypeDescriptor, error) {
+			__antithesis_instrumentation__.Notify(264558)
 			typDesc, ok := typDescs[id]
 			if !ok {
+				__antithesis_instrumentation__.Notify(264562)
 				n := tree.MakeUnresolvedName(fmt.Sprintf("[%d]", id))
 				return tree.TypeName{}, nil, sqlerrors.NewUndefinedObjectError(&n,
 					tree.TypeObject)
+			} else {
+				__antithesis_instrumentation__.Notify(264563)
 			}
+			__antithesis_instrumentation__.Notify(264559)
 			dbDesc, ok := dbDescs[typDesc.GetParentID()]
 			if !ok {
+				__antithesis_instrumentation__.Notify(264564)
 				n := fmt.Sprintf("[%d]", typDesc.GetParentID())
 				return tree.TypeName{}, nil, sqlerrors.NewUndefinedDatabaseError(n)
+			} else {
+				__antithesis_instrumentation__.Notify(264565)
 			}
-			// We don't use the collection's ResolveSchemaByID method here because
-			// we already have all of the descriptors. User defined types are only
-			// members of the public schema or a user defined schema, so those are
-			// the only cases we have to consider here.
+			__antithesis_instrumentation__.Notify(264560)
+
 			var scName string
 			switch typDesc.GetParentSchemaID() {
-			// TODO(richardjcai): Remove case for keys.PublicSchemaID in 22.2.
+
 			case keys.PublicSchemaID:
+				__antithesis_instrumentation__.Notify(264566)
 				scName = tree.PublicSchema
 			default:
+				__antithesis_instrumentation__.Notify(264567)
 				scName = schemaDescs[typDesc.GetParentSchemaID()].GetName()
 			}
+			__antithesis_instrumentation__.Notify(264561)
 			name := tree.MakeQualifiedTypeName(dbDesc.GetName(), scName, typDesc.GetName())
 			return name, typDesc, nil
 		}
-		// Now hydrate all table descriptors.
+		__antithesis_instrumentation__.Notify(264557)
+
 		for i := range descs {
+			__antithesis_instrumentation__.Notify(264568)
 			desc := descs[i]
-			// Never hydrate dropped descriptors.
+
 			if desc.Dropped() {
+				__antithesis_instrumentation__.Notify(264570)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(264571)
 			}
+			__antithesis_instrumentation__.Notify(264569)
 			tblDesc, ok := desc.(catalog.TableDescriptor)
 			if ok {
+				__antithesis_instrumentation__.Notify(264572)
 				if err := typedesc.HydrateTypesInTableDescriptor(
 					ctx,
 					tblDesc.TableDesc(),
 					typedesc.TypeLookupFunc(typeLookup),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(264573)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(264574)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(264575)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(264576)
 	}
+	__antithesis_instrumentation__.Notify(264551)
 	return nil
 }

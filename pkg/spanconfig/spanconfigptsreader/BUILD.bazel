@@ -12,6 +12,7 @@ go_library(
         "//pkg/spanconfig",
         "//pkg/testutils",
         "//pkg/util/hlc",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",
     ],
@@ -30,6 +31,7 @@ go_test(
         "//pkg/util/leaktest",
         "//pkg/util/stop",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

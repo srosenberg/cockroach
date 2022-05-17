@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,20 +14,16 @@ import (
 )
 
 const (
-	// dateFormatCommandLine is the expected date format for prepDate and publishDate input values.
 	dateFormatCommandLine = "2006-01-02"
-	// dateFormatEmail is the expected date format for prepDate and publishDate input values.
+
 	dateFormatEmail = "Monday, January 2"
 
-	// prepDate is the date when we expect to select the release candidate.
 	prepDate = "prep-date"
-	// publishDate is the date when we expect to publish the release candidate.
+
 	publishDate = "publish-date"
 
-	// nextVersion can be left out for stable/patch releases, but needs to be passed in for pre-releases (alpha/beta/rc).
 	nextVersion = "next-version"
 
-	// NoProjectName is the project value for issues without a project.
 	NoProjectName = "No Project"
 
 	eventRemovedProject = "removed_from_project"
@@ -82,37 +70,68 @@ func init() {
 }
 
 func fetchReleaseSeriesBlockers(_ *cobra.Command, _ []string) error {
+	__antithesis_instrumentation__.Notify(42538)
 	smtpPassword := os.Getenv(envSMTPPassword)
 	if smtpPassword == "" {
+		__antithesis_instrumentation__.Notify(42550)
 		return fmt.Errorf("%s environment variable should be set", envSMTPPassword)
+	} else {
+		__antithesis_instrumentation__.Notify(42551)
 	}
+	__antithesis_instrumentation__.Notify(42539)
 	githubToken := os.Getenv(envGithubToken)
 	if githubToken == "" {
+		__antithesis_instrumentation__.Notify(42552)
 		return fmt.Errorf("%s environment variable should be set", envGithubToken)
+	} else {
+		__antithesis_instrumentation__.Notify(42553)
 	}
+	__antithesis_instrumentation__.Notify(42540)
 	if blockersFlags.smtpUser == "" {
+		__antithesis_instrumentation__.Notify(42554)
 		return fmt.Errorf("either %s environment variable or %s flag should be set", envSMTPUser, smtpUser)
+	} else {
+		__antithesis_instrumentation__.Notify(42555)
 	}
+	__antithesis_instrumentation__.Notify(42541)
 	releasePrepDate, err := time.Parse(dateFormatCommandLine, blockersFlags.prepDate)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42556)
 		return fmt.Errorf("%s is not parseable into %s date layout", blockersFlags.prepDate, dateFormatCommandLine)
+	} else {
+		__antithesis_instrumentation__.Notify(42557)
 	}
+	__antithesis_instrumentation__.Notify(42542)
 	releasePublishDate, err := time.Parse(dateFormatCommandLine, blockersFlags.publishDate)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42558)
 		return fmt.Errorf("%s is not parseable into %s date layout", blockersFlags.publishDate, dateFormatCommandLine)
+	} else {
+		__antithesis_instrumentation__.Notify(42559)
 	}
+	__antithesis_instrumentation__.Notify(42543)
 	if blockersFlags.nextVersion == "" {
+		__antithesis_instrumentation__.Notify(42560)
 		var err error
 		blockersFlags.nextVersion, err = findNextVersion(blockersFlags.releaseSeries)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(42561)
 			return fmt.Errorf("cannot find next release version: %w", err)
+		} else {
+			__antithesis_instrumentation__.Notify(42562)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(42563)
 	}
+	__antithesis_instrumentation__.Notify(42544)
 
-	// simple check to ensure that .releaseSeries matches .nextVersion
 	if !strings.HasPrefix(blockersFlags.nextVersion, fmt.Sprintf("v%s.", blockersFlags.releaseSeries)) {
+		__antithesis_instrumentation__.Notify(42564)
 		return fmt.Errorf("version %s does not match release series %s", blockersFlags.nextVersion, blockersFlags.releaseSeries)
+	} else {
+		__antithesis_instrumentation__.Notify(42565)
 	}
+	__antithesis_instrumentation__.Notify(42545)
 
 	blockersURL := "go.crdb.dev/blockers/" + blockersFlags.releaseSeries
 	releaseBranch := "release-" + blockersFlags.releaseSeries
@@ -121,18 +140,30 @@ func fetchReleaseSeriesBlockers(_ *cobra.Command, _ []string) error {
 	client := newGithubClient(context.Background(), githubToken)
 	branchExists, err := client.branchExists(releaseBranch)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42566)
 		return fmt.Errorf("cannot fetch branches: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42567)
 	}
+	__antithesis_instrumentation__.Notify(42546)
 	if !branchExists {
+		__antithesis_instrumentation__.Notify(42568)
 		blockersURL = "go.crdb.dev/blockers"
 		releaseBranch = "master"
 		releaseBranchLabel = "branch-master"
+	} else {
+		__antithesis_instrumentation__.Notify(42569)
 	}
+	__antithesis_instrumentation__.Notify(42547)
 
 	blockers, err := fetchOpenBlockers(client, releaseBranchLabel)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42570)
 		return fmt.Errorf("cannot fetch blockers: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42571)
 	}
+	__antithesis_instrumentation__.Notify(42548)
 
 	args := messageDataPostBlockers{
 		Version:       blockersFlags.nextVersion,
@@ -155,8 +186,12 @@ func fetchReleaseSeriesBlockers(_ *cobra.Command, _ []string) error {
 
 	fmt.Println("Sending email")
 	if err := sendMailPostBlockers(args, opts); err != nil {
+		__antithesis_instrumentation__.Notify(42572)
 		return fmt.Errorf("cannot send email: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42573)
 	}
+	__antithesis_instrumentation__.Notify(42549)
 	return nil
 }
 
@@ -166,32 +201,49 @@ type openBlockers struct {
 }
 
 func fetchOpenBlockers(client githubClient, releaseBranchLabel string) (*openBlockers, error) {
+	__antithesis_instrumentation__.Notify(42574)
 	issues, err := client.openIssues([]string{
 		"release-blocker",
 		releaseBranchLabel,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42579)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(42580)
 	}
+	__antithesis_instrumentation__.Notify(42575)
 	if len(issues) == 0 {
+		__antithesis_instrumentation__.Notify(42581)
 		return &openBlockers{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(42582)
 	}
+	__antithesis_instrumentation__.Notify(42576)
 	numBlockersByProject := make(map[string]int)
 	for _, issue := range issues {
+		__antithesis_instrumentation__.Notify(42583)
 		if len(issue.ProjectName) == 0 {
+			__antithesis_instrumentation__.Notify(42585)
 			issue.ProjectName = NoProjectName
+		} else {
+			__antithesis_instrumentation__.Notify(42586)
 		}
+		__antithesis_instrumentation__.Notify(42584)
 		total := numBlockersByProject[issue.ProjectName]
 		numBlockersByProject[issue.ProjectName] = total + 1
 	}
+	__antithesis_instrumentation__.Notify(42577)
 	var blockers projectBlockers
 	for projectName, numBlockers := range numBlockersByProject {
+		__antithesis_instrumentation__.Notify(42587)
 		blockers = append(blockers, ProjectBlocker{
 			ProjectName: projectName,
 			NumBlockers: numBlockers,
 		})
 	}
-	// sorting blockers Projects alphabetically, except for "No Project", which always goes last.
+	__antithesis_instrumentation__.Notify(42578)
+
 	sort.Sort(blockers)
 	return &openBlockers{
 		TotalBlockers: len(issues),
@@ -199,87 +251,104 @@ func fetchOpenBlockers(client githubClient, releaseBranchLabel string) (*openBlo
 	}, nil
 }
 
-// mostRecentProjectName returns the most recently added project name, by iterating
-// through issue.Project.Name values found in the issues' timeline.
-// Returns nil if no project name found.
 func mostRecentProjectName(client githubClient, issueNum int) (string, error) {
+	__antithesis_instrumentation__.Notify(42588)
 	removedProjects := make(map[string]bool)
 	events, err := client.issueEvents(issueNum)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42591)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(42592)
 	}
+	__antithesis_instrumentation__.Notify(42589)
 
-	// Ensure that events are sorted in chronological order.
 	sort.Sort(githubEvents(events))
 
-	// Iterate backwards through the events, to find the most recently added project.
 	for i := len(events) - 1; i >= 0; i-- {
+		__antithesis_instrumentation__.Notify(42593)
 		projectName := events[i].ProjectName
 		if len(projectName) == 0 {
+			__antithesis_instrumentation__.Notify(42595)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(42596)
 		}
+		__antithesis_instrumentation__.Notify(42594)
 
-		// A "removed" project event means that this ProjectCard was added
-		// at some earlier point in time, but was subsequently removed.
 		if events[i].Event == eventRemovedProject {
-			// Add ProjectName to a removedProjects "stack", so
-			// that we don't return this Project when we eventually
-			// get to the earlier "added" project event.
-			removedProjects[projectName] = true
-		} else if events[i].Event == eventAddedProject {
+			__antithesis_instrumentation__.Notify(42597)
 
-			if _, exists := removedProjects[projectName]; exists {
-				// This "added" project was subsequently removed from the issue,
-				// so we shouldn't return this Project. Now that we got to the
-				// "added" event, we can pop it from the "stack".
-				delete(removedProjects, projectName)
+			removedProjects[projectName] = true
+		} else {
+			__antithesis_instrumentation__.Notify(42598)
+			if events[i].Event == eventAddedProject {
+				__antithesis_instrumentation__.Notify(42599)
+
+				if _, exists := removedProjects[projectName]; exists {
+					__antithesis_instrumentation__.Notify(42600)
+
+					delete(removedProjects, projectName)
+				} else {
+					__antithesis_instrumentation__.Notify(42601)
+
+					return projectName, err
+				}
 			} else {
-				// This is the most recent project that was added; return this.
-				return projectName, err
+				__antithesis_instrumentation__.Notify(42602)
 			}
 		}
 
 	}
+	__antithesis_instrumentation__.Notify(42590)
 
 	return "", nil
 }
 
-// githubEvents implements the sort.Sort interface, so that we can
-// sort events chronologically by CreatedAt.
 type githubEvents []githubEvent
 
 func (e githubEvents) Len() int {
+	__antithesis_instrumentation__.Notify(42603)
 	return len(e)
 }
 
 func (e githubEvents) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(42604)
 	return e[i].CreatedAt.Before(e[j].CreatedAt)
 }
 
 func (e githubEvents) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(42605)
 	e[i], e[j] = e[j], e[i]
 }
 
-// projectBlockers implements the sort.Sort interface, so that we can
-// sort blockers alphabetically by Project Name,
-// except for "No Project" (blockers without a project), which should always
-// be listed last.
 type projectBlockers []ProjectBlocker
 
 func (p projectBlockers) Len() int {
+	__antithesis_instrumentation__.Notify(42606)
 	return len(p)
 }
 
 func (p projectBlockers) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(42607)
 	if p[i].ProjectName == NoProjectName {
+		__antithesis_instrumentation__.Notify(42610)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(42611)
 	}
+	__antithesis_instrumentation__.Notify(42608)
 	if p[j].ProjectName == NoProjectName {
+		__antithesis_instrumentation__.Notify(42612)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(42613)
 	}
+	__antithesis_instrumentation__.Notify(42609)
 	return p[i].ProjectName < p[j].ProjectName
 }
 
 func (p projectBlockers) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(42614)
 	p[i], p[j] = p[j], p[i]
 }

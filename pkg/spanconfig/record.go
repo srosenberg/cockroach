@@ -1,52 +1,50 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfig
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/errors"
 )
 
-// Record ties a target to its corresponding config.
 type Record struct {
-	// target specifies the target (keyspan(s)) the config applies over.
 	target Target
 
-	// config is the set of attributes that apply over the corresponding target.
 	config roachpb.SpanConfig
 }
 
-// MakeRecord returns a Record with the specified Target and SpanConfig. If the
-// Record targets a SystemTarget, we also validate the SpanConfig.
 func MakeRecord(target Target, cfg roachpb.SpanConfig) (Record, error) {
+	__antithesis_instrumentation__.Notify(240279)
 	if target.IsSystemTarget() {
+		__antithesis_instrumentation__.Notify(240281)
 		if err := cfg.ValidateSystemTargetSpanConfig(); err != nil {
+			__antithesis_instrumentation__.Notify(240282)
 			return Record{},
 				errors.NewAssertionErrorWithWrappedErrf(err, "failed to validate SystemTarget SpanConfig")
+		} else {
+			__antithesis_instrumentation__.Notify(240283)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(240284)
 	}
+	__antithesis_instrumentation__.Notify(240280)
 	return Record{target: target, config: cfg}, nil
 }
 
-// IsEmpty returns true if the receiver is an empty Record.
 func (r *Record) IsEmpty() bool {
-	return r.target.isEmpty() && r.config.IsEmpty()
+	__antithesis_instrumentation__.Notify(240285)
+	return r.target.isEmpty() && func() bool {
+		__antithesis_instrumentation__.Notify(240286)
+		return r.config.IsEmpty() == true
+	}() == true
 }
 
-// GetTarget returns the Record target.
 func (r *Record) GetTarget() Target {
+	__antithesis_instrumentation__.Notify(240287)
 	return r.target
 }
 
-// GetConfig returns the Record config.
 func (r *Record) GetConfig() roachpb.SpanConfig {
+	__antithesis_instrumentation__.Notify(240288)
 	return r.config
 }

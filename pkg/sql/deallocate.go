@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,16 +10,21 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// Deallocate implements the DEALLOCATE statement.
-// See https://www.postgresql.org/docs/current/static/sql-deallocate.html for details.
 func (p *planner) Deallocate(ctx context.Context, s *tree.Deallocate) (planNode, error) {
+	__antithesis_instrumentation__.Notify(465370)
 	if s.Name == "" {
+		__antithesis_instrumentation__.Notify(465372)
 		p.preparedStatements.DeleteAll(ctx)
 	} else {
+		__antithesis_instrumentation__.Notify(465373)
 		if found := p.preparedStatements.Delete(ctx, string(s.Name)); !found {
+			__antithesis_instrumentation__.Notify(465374)
 			return nil, pgerror.Newf(pgcode.InvalidSQLStatementName,
 				"prepared statement %q does not exist", s.Name)
+		} else {
+			__antithesis_instrumentation__.Notify(465375)
 		}
 	}
-	return newZeroNode(nil /* columns */), nil
+	__antithesis_instrumentation__.Notify(465371)
+	return newZeroNode(nil), nil
 }

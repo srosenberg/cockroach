@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sctestdeps
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -21,106 +13,115 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 )
 
-// Option configures the TestState.
 type Option interface {
 	apply(*TestState)
 }
 
 type optionFunc func(*TestState)
 
-func (o optionFunc) apply(state *TestState) { o(state) }
+func (o optionFunc) apply(state *TestState) { __antithesis_instrumentation__.Notify(580777); o(state) }
 
 var _ Option = (optionFunc)(nil)
 
-// WithNamespace sets the TestState namespace to the provided value.
 func WithNamespace(c nstree.Catalog) Option {
+	__antithesis_instrumentation__.Notify(580778)
 	return optionFunc(func(state *TestState) {
+		__antithesis_instrumentation__.Notify(580779)
 		_ = c.ForEachNamespaceEntry(func(e catalog.NameEntry) error {
+			__antithesis_instrumentation__.Notify(580780)
 			state.catalog.UpsertNamespaceEntry(e, e.GetID())
 			return nil
 		})
 	})
 }
 
-// WithDescriptors sets the TestState descriptors to the provided value.
-// This function also scrubs any volatile timestamps from the descriptor.
 func WithDescriptors(c nstree.Catalog) Option {
+	__antithesis_instrumentation__.Notify(580781)
 	return optionFunc(func(state *TestState) {
+		__antithesis_instrumentation__.Notify(580782)
 		_ = c.ForEachDescriptorEntry(func(desc catalog.Descriptor) error {
+			__antithesis_instrumentation__.Notify(580783)
 			if table, isTable := desc.(catalog.TableDescriptor); isTable {
+				__antithesis_instrumentation__.Notify(580785)
 				mut := table.NewBuilder().BuildExistingMutable().(*tabledesc.Mutable)
 				for _, idx := range mut.AllIndexes() {
+					__antithesis_instrumentation__.Notify(580787)
 					if !idx.CreatedAt().IsZero() {
+						__antithesis_instrumentation__.Notify(580788)
 						idx.IndexDesc().CreatedAtNanos = defaultOverriddenCreatedAt.UnixNano()
+					} else {
+						__antithesis_instrumentation__.Notify(580789)
 					}
 				}
+				__antithesis_instrumentation__.Notify(580786)
 				desc = mut.ImmutableCopy()
+			} else {
+				__antithesis_instrumentation__.Notify(580790)
 			}
+			__antithesis_instrumentation__.Notify(580784)
 			state.catalog.UpsertDescriptorEntry(desc)
 			return nil
 		})
 	})
 }
 
-// WithSessionData sets the TestState sessiondata to the provided value.
 func WithSessionData(sessionData sessiondata.SessionData) Option {
+	__antithesis_instrumentation__.Notify(580791)
 	return optionFunc(func(state *TestState) {
+		__antithesis_instrumentation__.Notify(580792)
 		state.sessionData = sessionData
 	})
 }
 
-// WithTestingKnobs sets the TestState testing knobs to the provided value.
 func WithTestingKnobs(testingKnobs *scrun.TestingKnobs) Option {
+	__antithesis_instrumentation__.Notify(580793)
 	return optionFunc(func(state *TestState) {
+		__antithesis_instrumentation__.Notify(580794)
 		state.testingKnobs = testingKnobs
 	})
 }
 
-// WithStatements sets the TestState statement to the provided value.
 func WithStatements(statements ...string) Option {
+	__antithesis_instrumentation__.Notify(580795)
 	return optionFunc(func(state *TestState) {
+		__antithesis_instrumentation__.Notify(580796)
 		state.statements = statements
 	})
 }
 
-// WithCurrentDatabase sets the TestState current database to the provided value.
 func WithCurrentDatabase(db string) Option {
+	__antithesis_instrumentation__.Notify(580797)
 	return optionFunc(func(state *TestState) {
+		__antithesis_instrumentation__.Notify(580798)
 		state.currentDatabase = db
 	})
 }
 
-// WithBackfillTracker injects a BackfillTracker to be provided by the
-// TestState. If this option is not provided, the default tracker will
-// resolve any descriptor referenced and return an empty backfill progress.
-// All writes in the default tracker are ignored.
 func WithBackfillTracker(backfillTracker scexec.BackfillTracker) Option {
+	__antithesis_instrumentation__.Notify(580799)
 	return optionFunc(func(state *TestState) {
+		__antithesis_instrumentation__.Notify(580800)
 		state.backfillTracker = backfillTracker
 	})
 }
 
-// WithBackfiller injects a Backfiller to be provided by the TestState.
-// The default backfiller logs the backfill event into the test state.
 func WithBackfiller(backfiller scexec.Backfiller) Option {
+	__antithesis_instrumentation__.Notify(580801)
 	return optionFunc(func(state *TestState) {
+		__antithesis_instrumentation__.Notify(580802)
 		state.backfiller = backfiller
 	})
 }
 
 var (
-	// defaultOverriddenCreatedAt is used to populate the CreatedAt timestamp for
-	// all descriptors injected into the catalog. We inject this to make the
-	// tests deterministic.
 	defaultOverriddenCreatedAt = time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC)
 
-	// defaultCreatedAt is used to populated the CreatedAt timestamp for all newly
-	// created indexes.
 	defaultCreatedAt = defaultOverriddenCreatedAt.Add(time.Hour)
 )
 
 var defaultOptions = []Option{
 	optionFunc(func(state *TestState) {
+		__antithesis_instrumentation__.Notify(580803)
 		state.backfillTracker = &testBackfillTracker{deps: state}
 		state.backfiller = &testBackfiller{s: state}
 		state.indexSpanSplitter = &indexSpanSplitter{}

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -17,14 +9,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// setBashCompletionFunction sets up a custom bash completion function to
-// autocomplete cluster names in various commands.
 func setBashCompletionFunction() {
-	// Generate a list of commands that DON'T take a cluster argument.
+	__antithesis_instrumentation__.Notify(42921)
+
 	var s []string
 	for _, cmd := range []*cobra.Command{createCmd, listCmd, syncCmd, gcCmd} {
+		__antithesis_instrumentation__.Notify(42923)
 		s = append(s, fmt.Sprintf("%s_%s", rootCmd.Name(), cmd.Name()))
 	}
+	__antithesis_instrumentation__.Notify(42922)
 	excluded := strings.Join(s, " | ")
 
 	rootCmd.BashCompletionFunction = fmt.Sprintf(

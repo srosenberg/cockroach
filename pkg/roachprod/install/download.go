@@ -1,18 +1,10 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package install
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
-	_ "embed" // required for go:embed
+	_ "embed"
 	"fmt"
 	"net/url"
 	"path"
@@ -25,10 +17,8 @@ const (
 	gcsCacheBaseURL = "https://storage.googleapis.com/cockroach-fixtures/tools/"
 )
 
-//go:embed scripts/download.sh
 var downloadScript string
 
-// Download downloads the remote resource, preferring a GCS cache if available.
 func Download(
 	ctx context.Context,
 	l *logger.Logger,
@@ -37,34 +27,46 @@ func Download(
 	sha string,
 	dest string,
 ) error {
-	// https://example.com/foo/bar.txt
+	__antithesis_instrumentation__.Notify(181497)
+
 	sourceURL, err := url.Parse(sourceURLStr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181504)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181505)
 	}
+	__antithesis_instrumentation__.Notify(181498)
 
-	// bar.txt
 	basename := path.Base(sourceURL.Path)
-	// SHA-bar.txt
+
 	cacheBasename := fmt.Sprintf("%s-%s", sha, basename)
-	// https://storage.googleapis.com/SOME_BUCKET/SHA-bar.txt
+
 	gcsCacheURL, err := url.Parse(path.Join(gcsCacheBaseURL, cacheBasename))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181506)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181507)
 	}
+	__antithesis_instrumentation__.Notify(181499)
 
 	if dest == "" {
+		__antithesis_instrumentation__.Notify(181508)
 		dest = path.Join("./", basename)
+	} else {
+		__antithesis_instrumentation__.Notify(181509)
 	}
+	__antithesis_instrumentation__.Notify(181500)
 
-	// We don't want to deal with cross-platform file locking in
-	// shell scripts, so if we are on a local cluster, we download
-	// it on a single node and copy it from the cache on a single
-	// node if we have a non-relative path.
 	downloadNodes := c.Nodes
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(181510)
 		downloadNodes = downloadNodes[:1]
+	} else {
+		__antithesis_instrumentation__.Notify(181511)
 	}
+	__antithesis_instrumentation__.Notify(181501)
 
 	downloadCmd := fmt.Sprintf(downloadScript,
 		sourceURL.String(),
@@ -77,16 +79,25 @@ func Download(
 		fmt.Sprintf("downloading %s", basename),
 		downloadCmd,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(181512)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181513)
 	}
+	__antithesis_instrumentation__.Notify(181502)
 
-	// If we are local and the destination is relative, then copy the file from
-	// the download node to the other nodes.
-	if c.IsLocal() && !filepath.IsAbs(dest) {
+	if c.IsLocal() && func() bool {
+		__antithesis_instrumentation__.Notify(181514)
+		return !filepath.IsAbs(dest) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(181515)
 		src := filepath.Join(c.localVMDir(downloadNodes[0]), dest)
 		cpCmd := fmt.Sprintf(`cp "%s" "%s"`, src, dest)
 		return c.Run(ctx, l, l.Stdout, l.Stderr, c.Nodes[1:], "copying to remaining nodes", cpCmd)
+	} else {
+		__antithesis_instrumentation__.Notify(181516)
 	}
+	__antithesis_instrumentation__.Notify(181503)
 
 	return nil
 }

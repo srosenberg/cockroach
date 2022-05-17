@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,25 +24,29 @@ func declareKeysRangeStats(
 	latchSpans, lockSpans *spanset.SpanSet,
 	maxOffset time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(97244)
 	DefaultDeclareKeys(rs, header, req, latchSpans, lockSpans, maxOffset)
-	// The request will return the descriptor and lease.
+
 	latchSpans.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{Key: keys.RangeDescriptorKey(rs.GetStartKey())})
 	latchSpans.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{Key: keys.RangeLeaseKey(rs.GetRangeID())})
 }
 
-// RangeStats returns the MVCC statistics for a range.
 func RangeStats(
 	ctx context.Context, _ storage.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(97245)
 	reply := resp.(*roachpb.RangeStatsResponse)
 	reply.MVCCStats = cArgs.EvalCtx.GetMVCCStats()
 	reply.DeprecatedLastQueriesPerSecond = cArgs.EvalCtx.GetLastSplitQPS()
 	if qps, ok := cArgs.EvalCtx.GetMaxSplitQPS(); ok {
+		__antithesis_instrumentation__.Notify(97247)
 		reply.MaxQueriesPerSecond = qps
 	} else {
-		// See comment on MaxQueriesPerSecond. -1 means !ok.
+		__antithesis_instrumentation__.Notify(97248)
+
 		reply.MaxQueriesPerSecond = -1
 	}
+	__antithesis_instrumentation__.Notify(97246)
 	reply.MaxQueriesPerSecondSet = true
 	reply.RangeInfo = cArgs.EvalCtx.GetRangeInfo(ctx)
 	return result.Result{}, nil

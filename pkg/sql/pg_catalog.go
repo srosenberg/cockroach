@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -61,58 +53,33 @@ const (
 	indexTypeInvertedIndex = "inverted"
 )
 
-// Bitmasks for pg_index.indoption. Each column in the index has a bitfield
-// indicating how the columns are indexed. The constants below are the same as
-// the ones in Postgres:
-// https://github.com/postgres/postgres/blob/b6423e92abfadaa1ed9642319872aa1654403cd6/src/include/catalog/pg_index.h#L70-L76
 const (
-	// indoptionDesc indicates that the values in the index are in reverse order.
 	indoptionDesc = 0x01
-	// indoptionNullsFirst indicates that NULLs appear first in the index.
+
 	indoptionNullsFirst = 0x02
 )
 
-// RewriteEvTypes could be a enumeration if rewrite rules gets implemented
 type RewriteEvTypes string
 
 const evTypeSelect RewriteEvTypes = "1"
 
-// PGShDependType is an enumeration that lists pg_shdepend deptype column values
 type PGShDependType string
 
 const (
-	// sharedDependencyOwner is a deptype used to reference an object with the
-	// owner of the dependent object.
 	sharedDependencyOwner PGShDependType = "o"
 
-	// sharedDependencyACL in postgres The referenced object is mentioned in the
-	// ACL (access control list, i.e., privileges list) of the dependent object.
-	// (A SHARED_DEPENDENCY_ACL entry is not made for the owner of the object,
-	// since the owner will have a SHARED_DEPENDENCY_OWNER entry anyway.)
-	// For cockroachDB deptype is sharedDependencyACL if the role is not the
-	// owner neither a pinned role.
 	sharedDependencyACL PGShDependType = "a"
 
-	// sharedDependencyPin in postgres for this deptype there is no dependent
-	// object; this type of entry is a signal that the system itself depends on
-	// the referenced object, and so that object must never be deleted. Entries
-	// of this type are created only by initdb.
-	// In cockroachDB the similar roles are root and admin.
 	sharedDependencyPin PGShDependType = "p"
 )
 
 var forwardIndexOid = stringOid(indexTypeForwardIndex)
 var invertedIndexOid = stringOid(indexTypeInvertedIndex)
 
-// pgCatalog contains a set of system tables mirroring PostgreSQL's pg_catalog schema.
-// This code attempts to comply as closely as possible to the system catalogs documented
-// in https://www.postgresql.org/docs/9.6/static/catalogs.html.
 var pgCatalog = virtualSchema{
 	name: pgCatalogName,
 	undefinedTables: buildStringSet(
-		// Generated with:
-		// select distinct '"'||table_name||'",' from information_schema.tables
-		//    where table_schema='pg_catalog' order by table_name;
+
 		"pg_pltemplate",
 	),
 	tableDefs: map[descpb.ID]virtualSchemaDef{
@@ -246,100 +213,101 @@ var pgCatalog = virtualSchema{
 		catconstants.PgCatalogUserTableID:                       pgCatalogUserTable,
 		catconstants.PgCatalogViewsTableID:                      pgCatalogViewsTable,
 	},
-	// Postgres's catalogs are ill-defined when there is no current
-	// database set. Simply reject any attempts to use them in that
-	// case.
+
 	validWithNoDatabaseContext: false,
 	containsTypes:              true,
 }
 
-// The catalog pg_am stores information about relation access methods.
-// It's important to note that this table changed drastically between Postgres
-// versions 9.5 and 9.6. We currently support both versions of this table.
-// See: https://www.postgresql.org/docs/9.5/static/catalog-pg-am.html and
-// https://www.postgresql.org/docs/9.6/static/catalog-pg-am.html.
 var pgCatalogAmTable = virtualSchemaTable{
 	comment: `index access methods (incomplete)
 https://www.postgresql.org/docs/9.5/catalog-pg-am.html`,
 	schema: vtable.PGCatalogAm,
 	populate: func(_ context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// add row for forward indexes
-		if err := addRow(
-			forwardIndexOid,                      // oid - all versions
-			tree.NewDName(indexTypeForwardIndex), // amname - all versions
-			zeroVal,                              // amstrategies - < v9.6
-			zeroVal,                              // amsupport - < v9.6
-			tree.DBoolTrue,                       // amcanorder - < v9.6
-			tree.DBoolFalse,                      // amcanorderbyop - < v9.6
-			tree.DBoolTrue,                       // amcanbackward - < v9.6
-			tree.DBoolTrue,                       // amcanunique - < v9.6
-			tree.DBoolTrue,                       // amcanmulticol - < v9.6
-			tree.DBoolTrue,                       // amoptionalkey - < v9.6
-			tree.DBoolTrue,                       // amsearcharray - < v9.6
-			tree.DBoolTrue,                       // amsearchnulls - < v9.6
-			tree.DBoolFalse,                      // amstorage - < v9.6
-			tree.DBoolFalse,                      // amclusterable - < v9.6
-			tree.DBoolFalse,                      // ampredlocks - < v9.6
-			oidZero,                              // amkeytype - < v9.6
-			tree.DNull,                           // aminsert - < v9.6
-			tree.DNull,                           // ambeginscan - < v9.6
-			oidZero,                              // amgettuple - < v9.6
-			oidZero,                              // amgetbitmap - < v9.6
-			tree.DNull,                           // amrescan - < v9.6
-			tree.DNull,                           // amendscan - < v9.6
-			tree.DNull,                           // ammarkpos - < v9.6
-			tree.DNull,                           // amrestrpos - < v9.6
-			tree.DNull,                           // ambuild - < v9.6
-			tree.DNull,                           // ambuildempty - < v9.6
-			tree.DNull,                           // ambulkdelete - < v9.6
-			tree.DNull,                           // amvacuumcleanup - < v9.6
-			tree.DNull,                           // amcanreturn - < v9.6
-			tree.DNull,                           // amcostestimate - < v9.6
-			tree.DNull,                           // amoptions - < v9.6
-			tree.DNull,                           // amhandler - > v9.6
-			tree.NewDString("i"),                 // amtype - > v9.6
-		); err != nil {
-			return err
-		}
+		__antithesis_instrumentation__.Notify(557742)
 
-		// add row for inverted indexes
 		if err := addRow(
-			invertedIndexOid,                      // oid - all versions
-			tree.NewDName(indexTypeInvertedIndex), // amname - all versions
-			zeroVal,                               // amstrategies - < v9.6
-			zeroVal,                               // amsupport - < v9.6
-			tree.DBoolFalse,                       // amcanorder - < v9.6
-			tree.DBoolFalse,                       // amcanorderbyop - < v9.6
-			tree.DBoolFalse,                       // amcanbackward - < v9.6
-			tree.DBoolFalse,                       // amcanunique - < v9.6
-			tree.DBoolFalse,                       // amcanmulticol - < v9.6
-			tree.DBoolFalse,                       // amoptionalkey - < v9.6
-			tree.DBoolFalse,                       // amsearcharray - < v9.6
-			tree.DBoolTrue,                        // amsearchnulls - < v9.6
-			tree.DBoolFalse,                       // amstorage - < v9.6
-			tree.DBoolFalse,                       // amclusterable - < v9.6
-			tree.DBoolFalse,                       // ampredlocks - < v9.6
-			oidZero,                               // amkeytype - < v9.6
-			tree.DNull,                            // aminsert - < v9.6
-			tree.DNull,                            // ambeginscan - < v9.6
-			oidZero,                               // amgettuple - < v9.6
-			oidZero,                               // amgetbitmap - < v9.6
-			tree.DNull,                            // amrescan - < v9.6
-			tree.DNull,                            // amendscan - < v9.6
-			tree.DNull,                            // ammarkpos - < v9.6
-			tree.DNull,                            // amrestrpos - < v9.6
-			tree.DNull,                            // ambuild - < v9.6
-			tree.DNull,                            // ambuildempty - < v9.6
-			tree.DNull,                            // ambulkdelete - < v9.6
-			tree.DNull,                            // amvacuumcleanup - < v9.6
-			tree.DNull,                            // amcanreturn - < v9.6
-			tree.DNull,                            // amcostestimate - < v9.6
-			tree.DNull,                            // amoptions - < v9.6
-			tree.DNull,                            // amhandler - > v9.6
-			tree.NewDString("i"),                  // amtype - > v9.6
+			forwardIndexOid,
+			tree.NewDName(indexTypeForwardIndex),
+			zeroVal,
+			zeroVal,
+			tree.DBoolTrue,
+			tree.DBoolFalse,
+			tree.DBoolTrue,
+			tree.DBoolTrue,
+			tree.DBoolTrue,
+			tree.DBoolTrue,
+			tree.DBoolTrue,
+			tree.DBoolTrue,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			oidZero,
+			tree.DNull,
+			tree.DNull,
+			oidZero,
+			oidZero,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.NewDString("i"),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(557745)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(557746)
 		}
+		__antithesis_instrumentation__.Notify(557743)
+
+		if err := addRow(
+			invertedIndexOid,
+			tree.NewDName(indexTypeInvertedIndex),
+			zeroVal,
+			zeroVal,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			tree.DBoolTrue,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			oidZero,
+			tree.DNull,
+			tree.DNull,
+			oidZero,
+			oidZero,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.NewDString("i"),
+		); err != nil {
+			__antithesis_instrumentation__.Notify(557747)
+			return err
+		} else {
+			__antithesis_instrumentation__.Notify(557748)
+		}
+		__antithesis_instrumentation__.Notify(557744)
 		return nil
 	},
 }
@@ -348,33 +316,47 @@ var pgCatalogAttrDefTable = makeAllRelationsVirtualTableWithDescriptorIDIndex(
 	`column default values
 https://www.postgresql.org/docs/9.5/catalog-pg-attrdef.html`,
 	vtable.PGCatalogAttrDef,
-	virtualMany, false, /* includesIndexEntries */
+	virtualMany, false,
 	func(ctx context.Context, p *planner, h oidHasher, db catalog.DatabaseDescriptor, scName string,
 		table catalog.TableDescriptor,
 		lookup simpleSchemaResolver,
 		addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(557749)
 		for _, column := range table.PublicColumns() {
+			__antithesis_instrumentation__.Notify(557751)
 			if !column.HasDefault() {
-				// pg_attrdef only expects rows for columns with default values.
+				__antithesis_instrumentation__.Notify(557754)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(557755)
 			}
+			__antithesis_instrumentation__.Notify(557752)
 			displayExpr, err := schemaexpr.FormatExprForDisplay(
 				ctx, table, column.GetDefaultExpr(), &p.semaCtx, p.SessionData(), tree.FmtPGCatalog,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(557756)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557757)
 			}
+			__antithesis_instrumentation__.Notify(557753)
 			defSrc := tree.NewDString(displayExpr)
 			if err := addRow(
-				h.ColumnOid(table.GetID(), column.GetID()),          // oid
-				tableOid(table.GetID()),                             // adrelid
-				tree.NewDInt(tree.DInt(column.GetPGAttributeNum())), // adnum
-				defSrc, // adbin
-				defSrc, // adsrc
+				h.ColumnOid(table.GetID(), column.GetID()),
+				tableOid(table.GetID()),
+				tree.NewDInt(tree.DInt(column.GetPGAttributeNum())),
+				defSrc,
+				defSrc,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(557758)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557759)
 			}
 		}
+		__antithesis_instrumentation__.Notify(557750)
 		return nil
 	})
 
@@ -382,94 +364,121 @@ var pgCatalogAttributeTable = makeAllRelationsVirtualTableWithDescriptorIDIndex(
 	`table columns (incomplete - see also information_schema.columns)
 https://www.postgresql.org/docs/12/catalog-pg-attribute.html`,
 	vtable.PGCatalogAttribute,
-	virtualMany, true, /* includesIndexEntries */
+	virtualMany, true,
 	func(ctx context.Context, p *planner, h oidHasher, db catalog.DatabaseDescriptor, scName string,
 		table catalog.TableDescriptor,
 		lookup simpleSchemaResolver,
 		addRow func(...tree.Datum) error) error {
-		// addColumn adds adds either a table or a index column to the pg_attribute table.
-		addColumn := func(column catalog.Column, attRelID tree.Datum, attNum uint32) error {
-			colTyp := column.GetType()
-			// Sets the attgenerated column to 's' if the column is generated/
-			// computed stored, "v" if virtual, zero byte otherwise.
-			var isColumnComputed string
-			if column.IsComputed() && !column.IsVirtual() {
-				isColumnComputed = "s"
-			} else if column.IsComputed() {
-				isColumnComputed = "v"
-			} else {
-				isColumnComputed = ""
-			}
+		__antithesis_instrumentation__.Notify(557760)
 
-			// Sets the attidentity column to 'a' if the column is generated
-			// always as identity, "b" if generated by default as identity,
-			// zero byte otherwise.
+		addColumn := func(column catalog.Column, attRelID tree.Datum, attNum uint32) error {
+			__antithesis_instrumentation__.Notify(557763)
+			colTyp := column.GetType()
+
+			var isColumnComputed string
+			if column.IsComputed() && func() bool {
+				__antithesis_instrumentation__.Notify(557766)
+				return !column.IsVirtual() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(557767)
+				isColumnComputed = "s"
+			} else {
+				__antithesis_instrumentation__.Notify(557768)
+				if column.IsComputed() {
+					__antithesis_instrumentation__.Notify(557769)
+					isColumnComputed = "v"
+				} else {
+					__antithesis_instrumentation__.Notify(557770)
+					isColumnComputed = ""
+				}
+			}
+			__antithesis_instrumentation__.Notify(557764)
+
 			var generatedAsIdentityType string
 			if column.IsGeneratedAsIdentity() {
+				__antithesis_instrumentation__.Notify(557771)
 				if column.IsGeneratedAlwaysAsIdentity() {
+					__antithesis_instrumentation__.Notify(557772)
 					generatedAsIdentityType = "a"
-				} else if column.IsGeneratedByDefaultAsIdentity() {
-					generatedAsIdentityType = "b"
 				} else {
-					return errors.AssertionFailedf(
-						"column %s is of wrong generated as identity type (neither ALWAYS nor BY DEFAULT)",
-						column.GetName(),
-					)
+					__antithesis_instrumentation__.Notify(557773)
+					if column.IsGeneratedByDefaultAsIdentity() {
+						__antithesis_instrumentation__.Notify(557774)
+						generatedAsIdentityType = "b"
+					} else {
+						__antithesis_instrumentation__.Notify(557775)
+						return errors.AssertionFailedf(
+							"column %s is of wrong generated as identity type (neither ALWAYS nor BY DEFAULT)",
+							column.GetName(),
+						)
+					}
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(557776)
 				generatedAsIdentityType = ""
 			}
+			__antithesis_instrumentation__.Notify(557765)
 
 			return addRow(
-				attRelID,                        // attrelid
-				tree.NewDName(column.GetName()), // attname
-				typOid(colTyp),                  // atttypid
-				zeroVal,                         // attstattarget
-				typLen(colTyp),                  // attlen
-				tree.NewDInt(tree.DInt(attNum)), // attnum
-				zeroVal,                         // attndims
-				negOneVal,                       // attcacheoff
-				tree.NewDInt(tree.DInt(colTyp.TypeModifier())), // atttypmod
-				tree.DNull, // attbyval (see pg_type.typbyval)
-				tree.DNull, // attstorage
-				tree.DNull, // attalign
-				tree.MakeDBool(tree.DBool(!column.IsNullable())), // attnotnull
-				tree.MakeDBool(tree.DBool(column.HasDefault())),  // atthasdef
-				tree.NewDString(generatedAsIdentityType),         // attidentity
-				tree.NewDString(isColumnComputed),                // attgenerated
-				tree.DBoolFalse,                                  // attisdropped
-				tree.DBoolTrue,                                   // attislocal
-				zeroVal,                                          // attinhcount
-				typColl(colTyp, h),                               // attcollation
-				tree.DNull,                                       // attacl
-				tree.DNull,                                       // attoptions
-				tree.DNull,                                       // attfdwoptions
-				// These columns were automatically created by pg_catalog_test's missing column generator.
-				tree.DNull, // atthasmissing
-				// These columns were automatically created by pg_catalog_test's missing column generator.
-				tree.DNull, // attmissingval
+				attRelID,
+				tree.NewDName(column.GetName()),
+				typOid(colTyp),
+				zeroVal,
+				typLen(colTyp),
+				tree.NewDInt(tree.DInt(attNum)),
+				zeroVal,
+				negOneVal,
+				tree.NewDInt(tree.DInt(colTyp.TypeModifier())),
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				tree.MakeDBool(tree.DBool(!column.IsNullable())),
+				tree.MakeDBool(tree.DBool(column.HasDefault())),
+				tree.NewDString(generatedAsIdentityType),
+				tree.NewDString(isColumnComputed),
+				tree.DBoolFalse,
+				tree.DBoolTrue,
+				zeroVal,
+				typColl(colTyp, h),
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+
+				tree.DNull,
+
+				tree.DNull,
 			)
 		}
+		__antithesis_instrumentation__.Notify(557761)
 
-		// Columns for table.
 		for _, column := range table.AccessibleColumns() {
+			__antithesis_instrumentation__.Notify(557777)
 			tableID := tableOid(table.GetID())
 			if err := addColumn(column, tableID, column.GetPGAttributeNum()); err != nil {
+				__antithesis_instrumentation__.Notify(557778)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557779)
 			}
 		}
+		__antithesis_instrumentation__.Notify(557762)
 
-		// Columns for each index.
 		columnIdxMap := catalog.ColumnIDToOrdinalMap(table.PublicColumns())
 		return catalog.ForEachIndex(table, catalog.IndexOpts{}, func(index catalog.Index) error {
+			__antithesis_instrumentation__.Notify(557780)
 			for i := 0; i < index.NumKeyColumns(); i++ {
+				__antithesis_instrumentation__.Notify(557782)
 				colID := index.GetKeyColumnID(i)
 				idxID := h.IndexOid(table.GetID(), index.GetID())
 				column := table.PublicColumns()[columnIdxMap.GetDefault(colID)]
 				if err := addColumn(column, idxID, column.GetPGAttributeNum()); err != nil {
+					__antithesis_instrumentation__.Notify(557783)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(557784)
 				}
 			}
+			__antithesis_instrumentation__.Notify(557781)
 			return nil
 		})
 	})
@@ -479,10 +488,8 @@ var pgCatalogCastTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/catalog-pg-cast.html`,
 	schema: vtable.PGCatalogCast,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// TODO(someone): to populate this, we should split up the big PerformCast
-		// method in tree/eval.go into schemasByName in a list. Then, this virtual table
-		// can simply range over the list. This would probably be better for
-		// maintainability anyway.
+		__antithesis_instrumentation__.Notify(557785)
+
 		return nil
 	},
 	unimplemented: true,
@@ -491,6 +498,7 @@ https://www.postgresql.org/docs/9.6/catalog-pg-cast.html`,
 func userIsSuper(
 	ctx context.Context, p *planner, username security.SQLUsername,
 ) (tree.DBool, error) {
+	__antithesis_instrumentation__.Notify(557786)
 	isSuper, err := p.UserHasAdminRole(ctx, username)
 	return tree.DBool(isSuper), err
 }
@@ -501,48 +509,81 @@ and thus do not require admin privileges for access.
 https://www.postgresql.org/docs/9.5/catalog-pg-authid.html`,
 	schema: vtable.PGCatalogAuthID,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(557787)
 		h := makeOidHasher()
 		return forEachRole(ctx, p, func(username security.SQLUsername, isRole bool, options roleOptions, _ tree.Datum) error {
-			isRoot := tree.DBool(username.IsRootUser() || username.IsAdminRole())
-			// Currently, all users and roles inherit the privileges of roles they are
-			// members of. See https://github.com/cockroachdb/cockroach/issues/69583.
+			__antithesis_instrumentation__.Notify(557788)
+			isRoot := tree.DBool(username.IsRootUser() || func() bool {
+				__antithesis_instrumentation__.Notify(557794)
+				return username.IsAdminRole() == true
+			}() == true)
+
 			roleInherits := tree.DBool(true)
 			noLogin, err := options.noLogin()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(557795)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557796)
 			}
+			__antithesis_instrumentation__.Notify(557789)
 			roleCanLogin := !noLogin
 			createDB, err := options.createDB()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(557797)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557798)
 			}
+			__antithesis_instrumentation__.Notify(557790)
 			rolValidUntil, err := options.validUntil(p)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(557799)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557800)
 			}
+			__antithesis_instrumentation__.Notify(557791)
 			createRole, err := options.createRole()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(557801)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557802)
 			}
+			__antithesis_instrumentation__.Notify(557792)
 
 			isSuper, err := userIsSuper(ctx, p, username)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(557803)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557804)
 			}
+			__antithesis_instrumentation__.Notify(557793)
 
 			return addRow(
-				h.UserOid(username),                  // oid
-				tree.NewDName(username.Normalized()), // rolname
-				tree.MakeDBool(isRoot || isSuper),    // rolsuper
-				tree.MakeDBool(roleInherits),         // rolinherit
-				tree.MakeDBool(isRoot || createRole), // rolcreaterole
-				tree.MakeDBool(isRoot || createDB),   // rolcreatedb
-				tree.MakeDBool(roleCanLogin),         // rolcanlogin.
-				tree.DBoolFalse,                      // rolreplication
-				tree.DBoolFalse,                      // rolbypassrls
-				negOneVal,                            // rolconnlimit
-				passwdStarString,                     // rolpassword
-				rolValidUntil,                        // rolvaliduntil
+				h.UserOid(username),
+				tree.NewDName(username.Normalized()),
+				tree.MakeDBool(isRoot || func() bool {
+					__antithesis_instrumentation__.Notify(557805)
+					return isSuper == true
+				}() == true),
+				tree.MakeDBool(roleInherits),
+				tree.MakeDBool(isRoot || func() bool {
+					__antithesis_instrumentation__.Notify(557806)
+					return createRole == true
+				}() == true),
+				tree.MakeDBool(isRoot || func() bool {
+					__antithesis_instrumentation__.Notify(557807)
+					return createDB == true
+				}() == true),
+				tree.MakeDBool(roleCanLogin),
+				tree.DBoolFalse,
+				tree.DBoolFalse,
+				negOneVal,
+				passwdStarString,
+				rolValidUntil,
 			)
 		})
 	},
@@ -553,14 +594,16 @@ var pgCatalogAuthMembersTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-auth-members.html`,
 	schema: vtable.PGCatalogAuthMembers,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(557808)
 		h := makeOidHasher()
 		return forEachRoleMembership(ctx, p.ExecCfg().InternalExecutor, p.Txn(),
 			func(roleName, memberName security.SQLUsername, isAdmin bool) error {
+				__antithesis_instrumentation__.Notify(557809)
 				return addRow(
-					h.UserOid(roleName),                 // roleid
-					h.UserOid(memberName),               // member
-					tree.DNull,                          // grantor
-					tree.MakeDBool(tree.DBool(isAdmin)), // admin_option
+					h.UserOid(roleName),
+					h.UserOid(memberName),
+					tree.DNull,
+					tree.MakeDBool(tree.DBool(isAdmin)),
 				)
 			})
 	},
@@ -571,19 +614,22 @@ var pgCatalogAvailableExtensionsTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/view-pg-available-extensions.html`,
 	schema: vtable.PGCatalogAvailableExtensions,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// We support no extensions.
+		__antithesis_instrumentation__.Notify(557810)
+
 		return nil
 	},
 	unimplemented: true,
 }
 
 func getOwnerOID(desc catalog.Descriptor) tree.Datum {
+	__antithesis_instrumentation__.Notify(557811)
 	owner := getOwnerOfDesc(desc)
 	h := makeOidHasher()
 	return h.UserOid(owner)
 }
 
 func getOwnerName(desc catalog.Descriptor) tree.Datum {
+	__antithesis_instrumentation__.Notify(557812)
 	owner := getOwnerOfDesc(desc)
 	return tree.NewDName(owner.Normalized())
 }
@@ -603,132 +649,167 @@ var pgCatalogClassTable = makeAllRelationsVirtualTableWithDescriptorIDIndex(
 	`tables and relation-like objects (incomplete - see also information_schema.tables/sequences/views)
 https://www.postgresql.org/docs/9.5/catalog-pg-class.html`,
 	vtable.PGCatalogClass,
-	virtualMany, true, /* includesIndexEntries */
+	virtualMany, true,
 	func(ctx context.Context, p *planner, h oidHasher, db catalog.DatabaseDescriptor, scName string,
 		table catalog.TableDescriptor, _ simpleSchemaResolver, addRow func(...tree.Datum) error) error {
-		// The only difference between tables, views and sequences are the relkind and relam columns.
+		__antithesis_instrumentation__.Notify(557813)
+
 		relKind := relKindTable
 		relAm := forwardIndexOid
 		if table.IsView() {
+			__antithesis_instrumentation__.Notify(557819)
 			relKind = relKindView
 			if table.MaterializedView() {
+				__antithesis_instrumentation__.Notify(557821)
 				relKind = relKindMaterializedView
+			} else {
+				__antithesis_instrumentation__.Notify(557822)
 			}
+			__antithesis_instrumentation__.Notify(557820)
 			relAm = oidZero
-		} else if table.IsSequence() {
-			relKind = relKindSequence
-			relAm = oidZero
+		} else {
+			__antithesis_instrumentation__.Notify(557823)
+			if table.IsSequence() {
+				__antithesis_instrumentation__.Notify(557824)
+				relKind = relKindSequence
+				relAm = oidZero
+			} else {
+				__antithesis_instrumentation__.Notify(557825)
+			}
 		}
+		__antithesis_instrumentation__.Notify(557814)
 		relPersistence := relPersistencePermanent
 		if table.IsTemporary() {
+			__antithesis_instrumentation__.Notify(557826)
 			relPersistence = relPersistenceTemporary
+		} else {
+			__antithesis_instrumentation__.Notify(557827)
 		}
+		__antithesis_instrumentation__.Notify(557815)
 		var relOptions tree.Datum = tree.DNull
-		if storageParams := table.GetStorageParams(false /* spaceBetweenEqual */); len(storageParams) > 0 {
+		if storageParams := table.GetStorageParams(false); len(storageParams) > 0 {
+			__antithesis_instrumentation__.Notify(557828)
 			relOptionsArr := tree.NewDArray(types.String)
 			for _, storageParam := range storageParams {
+				__antithesis_instrumentation__.Notify(557830)
 				if err := relOptionsArr.Append(tree.NewDString(storageParam)); err != nil {
+					__antithesis_instrumentation__.Notify(557831)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(557832)
 				}
 			}
+			__antithesis_instrumentation__.Notify(557829)
 			relOptions = relOptionsArr
+		} else {
+			__antithesis_instrumentation__.Notify(557833)
 		}
+		__antithesis_instrumentation__.Notify(557816)
 		namespaceOid := h.NamespaceOid(db.GetID(), scName)
 		if err := addRow(
-			tableOid(table.GetID()),        // oid
-			tree.NewDName(table.GetName()), // relname
-			namespaceOid,                   // relnamespace
-			tableIDToTypeOID(table),        // reltype (PG creates a composite type in pg_type for each table)
-			oidZero,                        // reloftype (used for type tables, which is unsupported)
-			getOwnerOID(table),             // relowner
-			relAm,                          // relam
-			oidZero,                        // relfilenode
-			oidZero,                        // reltablespace
-			tree.DNull,                     // relpages
-			tree.DNull,                     // reltuples
-			zeroVal,                        // relallvisible
-			oidZero,                        // reltoastrelid
-			tree.MakeDBool(tree.DBool(table.IsPhysicalTable())), // relhasindex
-			tree.DBoolFalse, // relisshared
-			relPersistence,  // relpersistence
-			tree.MakeDBool(tree.DBool(table.IsTemporary())), // relistemp
-			relKind, // relkind
-			tree.NewDInt(tree.DInt(len(table.AccessibleColumns()))), // relnatts
-			tree.NewDInt(tree.DInt(len(table.GetChecks()))),         // relchecks
-			tree.DBoolFalse, // relhasoids
-			tree.MakeDBool(tree.DBool(table.IsPhysicalTable())), // relhaspkey
-			tree.DBoolFalse, // relhasrules
-			tree.DBoolFalse, // relhastriggers
-			tree.DBoolFalse, // relhassubclass
-			zeroVal,         // relfrozenxid
-			tree.DNull,      // relacl
-			relOptions,      // reloptions
-			// These columns were automatically created by pg_catalog_test's missing column generator.
-			tree.DNull, // relforcerowsecurity
-			tree.DNull, // relispartition
-			tree.DNull, // relispopulated
-			tree.DNull, // relreplident
-			tree.DNull, // relrewrite
-			tree.DNull, // relrowsecurity
-			tree.DNull, // relpartbound
-			// These columns were automatically created by pg_catalog_test's missing column generator.
-			tree.DNull, // relminmxid
+			tableOid(table.GetID()),
+			tree.NewDName(table.GetName()),
+			namespaceOid,
+			tableIDToTypeOID(table),
+			oidZero,
+			getOwnerOID(table),
+			relAm,
+			oidZero,
+			oidZero,
+			tree.DNull,
+			tree.DNull,
+			zeroVal,
+			oidZero,
+			tree.MakeDBool(tree.DBool(table.IsPhysicalTable())),
+			tree.DBoolFalse,
+			relPersistence,
+			tree.MakeDBool(tree.DBool(table.IsTemporary())),
+			relKind,
+			tree.NewDInt(tree.DInt(len(table.AccessibleColumns()))),
+			tree.NewDInt(tree.DInt(len(table.GetChecks()))),
+			tree.DBoolFalse,
+			tree.MakeDBool(tree.DBool(table.IsPhysicalTable())),
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			zeroVal,
+			tree.DNull,
+			relOptions,
+
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+
+			tree.DNull,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(557834)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(557835)
 		}
+		__antithesis_instrumentation__.Notify(557817)
 
-		// Skip adding indexes for sequences (their table descriptors have a primary
-		// index to make them comprehensible to backup/restore, but PG doesn't include
-		// an index in pg_class).
 		if table.IsSequence() {
+			__antithesis_instrumentation__.Notify(557836)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(557837)
 		}
+		__antithesis_instrumentation__.Notify(557818)
 
-		// Indexes.
 		return catalog.ForEachIndex(table, catalog.IndexOpts{}, func(index catalog.Index) error {
+			__antithesis_instrumentation__.Notify(557838)
 			indexType := forwardIndexOid
 			if index.GetType() == descpb.IndexDescriptor_INVERTED {
+				__antithesis_instrumentation__.Notify(557840)
 				indexType = invertedIndexOid
+			} else {
+				__antithesis_instrumentation__.Notify(557841)
 			}
+			__antithesis_instrumentation__.Notify(557839)
 			return addRow(
-				h.IndexOid(table.GetID(), index.GetID()), // oid
-				tree.NewDName(index.GetName()),           // relname
-				namespaceOid,                             // relnamespace
-				oidZero,                                  // reltype
-				oidZero,                                  // reloftype
-				getOwnerOID(table),                       // relowner
-				indexType,                                // relam
-				oidZero,                                  // relfilenode
-				oidZero,                                  // reltablespace
-				tree.DNull,                               // relpages
-				tree.DNull,                               // reltuples
-				zeroVal,                                  // relallvisible
-				oidZero,                                  // reltoastrelid
-				tree.DBoolFalse,                          // relhasindex
-				tree.DBoolFalse,                          // relisshared
-				relPersistencePermanent,                  // relPersistence
-				tree.DBoolFalse,                          // relistemp
-				relKindIndex,                             // relkind
-				tree.NewDInt(tree.DInt(index.NumKeyColumns())), // relnatts
-				zeroVal,         // relchecks
-				tree.DBoolFalse, // relhasoids
-				tree.DBoolFalse, // relhaspkey
-				tree.DBoolFalse, // relhasrules
-				tree.DBoolFalse, // relhastriggers
-				tree.DBoolFalse, // relhassubclass
-				zeroVal,         // relfrozenxid
-				tree.DNull,      // relacl
-				tree.DNull,      // reloptions
-				// These columns were automatically created by pg_catalog_test's missing column generator.
-				tree.DNull, // relforcerowsecurity
-				tree.DNull, // relispartition
-				tree.DNull, // relispopulated
-				tree.DNull, // relreplident
-				tree.DNull, // relrewrite
-				tree.DNull, // relrowsecurity
-				tree.DNull, // relpartbound
-				// These columns were automatically created by pg_catalog_test's missing column generator.
-				tree.DNull, // relminmxid
+				h.IndexOid(table.GetID(), index.GetID()),
+				tree.NewDName(index.GetName()),
+				namespaceOid,
+				oidZero,
+				oidZero,
+				getOwnerOID(table),
+				indexType,
+				oidZero,
+				oidZero,
+				tree.DNull,
+				tree.DNull,
+				zeroVal,
+				oidZero,
+				tree.DBoolFalse,
+				tree.DBoolFalse,
+				relPersistencePermanent,
+				tree.DBoolFalse,
+				relKindIndex,
+				tree.NewDInt(tree.DInt(index.NumKeyColumns())),
+				zeroVal,
+				tree.DBoolFalse,
+				tree.DBoolFalse,
+				tree.DBoolFalse,
+				tree.DBoolFalse,
+				tree.DBoolFalse,
+				zeroVal,
+				tree.DNull,
+				tree.DNull,
+
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+
+				tree.DNull,
 			)
 		})
 	})
@@ -738,35 +819,47 @@ var pgCatalogCollationTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-collation.html`,
 	schema: vtable.PGCatalogCollation,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(557842)
 		h := makeOidHasher()
-		return forEachDatabaseDesc(ctx, p, dbContext, false /* requiresPrivileges */, func(db catalog.DatabaseDescriptor) error {
+		return forEachDatabaseDesc(ctx, p, dbContext, false, func(db catalog.DatabaseDescriptor) error {
+			__antithesis_instrumentation__.Notify(557843)
 			namespaceOid := h.NamespaceOid(db.GetID(), pgCatalogName)
 			add := func(collName string) error {
+				__antithesis_instrumentation__.Notify(557847)
 				return addRow(
-					h.CollationOid(collName),  // oid
-					tree.NewDString(collName), // collname
-					namespaceOid,              // collnamespace
-					tree.DNull,                // collowner
-					builtins.DatEncodingUTFId, // collencoding
-					// It's not clear how to translate a Go collation tag into the format
-					// required by LC_COLLATE and LC_CTYPE.
-					tree.DNull, // collcollate
-					tree.DNull, // collctype
-					// These columns were automatically created by pg_catalog_test's missing column generator.
-					tree.DNull, // collprovider
-					tree.DNull, // collversion
-					tree.DNull, // collisdeterministic
+					h.CollationOid(collName),
+					tree.NewDString(collName),
+					namespaceOid,
+					tree.DNull,
+					builtins.DatEncodingUTFId,
+
+					tree.DNull,
+					tree.DNull,
+
+					tree.DNull,
+					tree.DNull,
+					tree.DNull,
 				)
 			}
+			__antithesis_instrumentation__.Notify(557844)
 			if err := add(tree.DefaultCollationTag); err != nil {
+				__antithesis_instrumentation__.Notify(557848)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557849)
 			}
+			__antithesis_instrumentation__.Notify(557845)
 			for _, tag := range collate.Supported() {
+				__antithesis_instrumentation__.Notify(557850)
 				collName := tag.String()
 				if err := add(collName); err != nil {
+					__antithesis_instrumentation__.Notify(557851)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(557852)
 				}
 			}
+			__antithesis_instrumentation__.Notify(557846)
 			return nil
 		})
 	},
@@ -780,7 +873,6 @@ var (
 	conTypeTrigger   = tree.NewDString("t")
 	conTypeExclusion = tree.NewDString("x")
 
-	// Avoid unused warning for constants.
 	_ = conTypeTrigger
 	_ = conTypeExclusion
 
@@ -819,13 +911,19 @@ func populateTableConstraints(
 	tableLookup simpleSchemaResolver,
 	addRow func(...tree.Datum) error,
 ) error {
+	__antithesis_instrumentation__.Notify(557853)
 	conInfo, err := table.GetConstraintInfoWithLookup(tableLookup.getTableByID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(557856)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(557857)
 	}
+	__antithesis_instrumentation__.Notify(557854)
 	namespaceOid := h.NamespaceOid(db.GetID(), scName)
 	tblOid := tableOid(table.GetID())
 	for conName, con := range conInfo {
+		__antithesis_instrumentation__.Notify(557858)
 		oid := tree.DNull
 		contype := tree.DNull
 		conindid := oidZero
@@ -839,54 +937,89 @@ func populateTableConstraints(
 		conbin := tree.DNull
 		condef := tree.DNull
 
-		// Determine constraint kind-specific fields.
 		var err error
 		switch con.Kind {
 		case descpb.ConstraintTypePK:
+			__antithesis_instrumentation__.Notify(557860)
 			oid = h.PrimaryKeyConstraintOid(db.GetID(), scName, table.GetID(), con.Index)
 			contype = conTypePKey
 			conindid = h.IndexOid(table.GetID(), con.Index.ID)
 
 			var err error
 			if conkey, err = colIDArrayToDatum(con.Index.KeyColumnIDs); err != nil {
+				__antithesis_instrumentation__.Notify(557878)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557879)
 			}
+			__antithesis_instrumentation__.Notify(557861)
 			condef = tree.NewDString(tabledesc.PrimaryKeyString(table))
 
 		case descpb.ConstraintTypeFK:
+			__antithesis_instrumentation__.Notify(557862)
 			oid = h.ForeignKeyConstraintOid(db.GetID(), scName, table.GetID(), con.FK)
 			contype = conTypeFK
-			// Foreign keys don't have a single linked index. Pick the first one
-			// that matches on the referenced table.
+
 			referencedTable, err := tableLookup.getTableByID(con.FK.ReferencedTableID)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(557880)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557881)
 			}
+			__antithesis_instrumentation__.Notify(557863)
 			if refConstraint, err := tabledesc.FindFKReferencedUniqueConstraint(
 				referencedTable, con.FK.ReferencedColumnIDs,
 			); err != nil {
-				// We couldn't find a unique constraint that matched. This shouldn't
-				// happen.
+				__antithesis_instrumentation__.Notify(557882)
+
 				log.Warningf(ctx, "broken fk reference: %v", err)
-			} else if idx, ok := refConstraint.(*descpb.IndexDescriptor); ok {
-				conindid = h.IndexOid(con.ReferencedTable.ID, idx.ID)
+			} else {
+				__antithesis_instrumentation__.Notify(557883)
+				if idx, ok := refConstraint.(*descpb.IndexDescriptor); ok {
+					__antithesis_instrumentation__.Notify(557884)
+					conindid = h.IndexOid(con.ReferencedTable.ID, idx.ID)
+				} else {
+					__antithesis_instrumentation__.Notify(557885)
+				}
 			}
+			__antithesis_instrumentation__.Notify(557864)
 			confrelid = tableOid(con.ReferencedTable.ID)
 			if r, ok := fkActionMap[con.FK.OnUpdate]; ok {
+				__antithesis_instrumentation__.Notify(557886)
 				confupdtype = r
+			} else {
+				__antithesis_instrumentation__.Notify(557887)
 			}
+			__antithesis_instrumentation__.Notify(557865)
 			if r, ok := fkActionMap[con.FK.OnDelete]; ok {
+				__antithesis_instrumentation__.Notify(557888)
 				confdeltype = r
+			} else {
+				__antithesis_instrumentation__.Notify(557889)
 			}
+			__antithesis_instrumentation__.Notify(557866)
 			if r, ok := fkMatchMap[con.FK.Match]; ok {
+				__antithesis_instrumentation__.Notify(557890)
 				confmatchtype = r
+			} else {
+				__antithesis_instrumentation__.Notify(557891)
 			}
+			__antithesis_instrumentation__.Notify(557867)
 			if conkey, err = colIDArrayToDatum(con.FK.OriginColumnIDs); err != nil {
+				__antithesis_instrumentation__.Notify(557892)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557893)
 			}
+			__antithesis_instrumentation__.Notify(557868)
 			if confkey, err = colIDArrayToDatum(con.FK.ReferencedColumnIDs); err != nil {
+				__antithesis_instrumentation__.Notify(557894)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557895)
 			}
+			__antithesis_instrumentation__.Notify(557869)
 			var buf bytes.Buffer
 			if err := showForeignKeyConstraint(
 				&buf, db.GetName(),
@@ -894,114 +1027,176 @@ func populateTableConstraints(
 				tableLookup,
 				p.extendedEvalCtx.SessionData().SearchPath,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(557896)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557897)
 			}
+			__antithesis_instrumentation__.Notify(557870)
 			condef = tree.NewDString(buf.String())
 
 		case descpb.ConstraintTypeUnique:
+			__antithesis_instrumentation__.Notify(557871)
 			contype = conTypeUnique
 			f := tree.NewFmtCtx(tree.FmtSimple)
 			if con.Index != nil {
+				__antithesis_instrumentation__.Notify(557898)
 				oid = h.UniqueConstraintOid(db.GetID(), scName, table.GetID(), con.Index.ID)
 				conindid = h.IndexOid(table.GetID(), con.Index.ID)
 				var err error
 				if conkey, err = colIDArrayToDatum(con.Index.KeyColumnIDs); err != nil {
+					__antithesis_instrumentation__.Notify(557901)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(557902)
 				}
+				__antithesis_instrumentation__.Notify(557899)
 				f.WriteString("UNIQUE (")
 				if err := catformat.FormatIndexElements(
 					ctx, table, con.Index, f, p.SemaCtx(), p.SessionData(),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(557903)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(557904)
 				}
+				__antithesis_instrumentation__.Notify(557900)
 				f.WriteByte(')')
 				if con.Index.IsPartial() {
+					__antithesis_instrumentation__.Notify(557905)
 					pred, err := schemaexpr.FormatExprForDisplay(ctx, table, con.Index.Predicate, p.SemaCtx(), p.SessionData(), tree.FmtPGCatalog)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(557907)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(557908)
 					}
+					__antithesis_instrumentation__.Notify(557906)
 					f.WriteString(fmt.Sprintf(" WHERE (%s)", pred))
-				}
-			} else if con.UniqueWithoutIndexConstraint != nil {
-				oid = h.UniqueWithoutIndexConstraintOid(
-					db.GetID(), scName, table.GetID(), con.UniqueWithoutIndexConstraint,
-				)
-				f.WriteString("UNIQUE WITHOUT INDEX (")
-				colNames, err := table.NamesForColumnIDs(con.UniqueWithoutIndexConstraint.ColumnIDs)
-				if err != nil {
-					return err
-				}
-				f.WriteString(strings.Join(colNames, ", "))
-				f.WriteByte(')')
-				if con.UniqueWithoutIndexConstraint.Validity != descpb.ConstraintValidity_Validated {
-					f.WriteString(" NOT VALID")
-				}
-				if con.UniqueWithoutIndexConstraint.Predicate != "" {
-					pred, err := schemaexpr.FormatExprForDisplay(ctx, table, con.UniqueWithoutIndexConstraint.Predicate, p.SemaCtx(), p.SessionData(), tree.FmtPGCatalog)
-					if err != nil {
-						return err
-					}
-					f.WriteString(fmt.Sprintf(" WHERE (%s)", pred))
+				} else {
+					__antithesis_instrumentation__.Notify(557909)
 				}
 			} else {
-				return errors.AssertionFailedf(
-					"Index or UniqueWithoutIndexConstraint must be non-nil for a unique constraint",
-				)
+				__antithesis_instrumentation__.Notify(557910)
+				if con.UniqueWithoutIndexConstraint != nil {
+					__antithesis_instrumentation__.Notify(557911)
+					oid = h.UniqueWithoutIndexConstraintOid(
+						db.GetID(), scName, table.GetID(), con.UniqueWithoutIndexConstraint,
+					)
+					f.WriteString("UNIQUE WITHOUT INDEX (")
+					colNames, err := table.NamesForColumnIDs(con.UniqueWithoutIndexConstraint.ColumnIDs)
+					if err != nil {
+						__antithesis_instrumentation__.Notify(557914)
+						return err
+					} else {
+						__antithesis_instrumentation__.Notify(557915)
+					}
+					__antithesis_instrumentation__.Notify(557912)
+					f.WriteString(strings.Join(colNames, ", "))
+					f.WriteByte(')')
+					if con.UniqueWithoutIndexConstraint.Validity != descpb.ConstraintValidity_Validated {
+						__antithesis_instrumentation__.Notify(557916)
+						f.WriteString(" NOT VALID")
+					} else {
+						__antithesis_instrumentation__.Notify(557917)
+					}
+					__antithesis_instrumentation__.Notify(557913)
+					if con.UniqueWithoutIndexConstraint.Predicate != "" {
+						__antithesis_instrumentation__.Notify(557918)
+						pred, err := schemaexpr.FormatExprForDisplay(ctx, table, con.UniqueWithoutIndexConstraint.Predicate, p.SemaCtx(), p.SessionData(), tree.FmtPGCatalog)
+						if err != nil {
+							__antithesis_instrumentation__.Notify(557920)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(557921)
+						}
+						__antithesis_instrumentation__.Notify(557919)
+						f.WriteString(fmt.Sprintf(" WHERE (%s)", pred))
+					} else {
+						__antithesis_instrumentation__.Notify(557922)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(557923)
+					return errors.AssertionFailedf(
+						"Index or UniqueWithoutIndexConstraint must be non-nil for a unique constraint",
+					)
+				}
 			}
+			__antithesis_instrumentation__.Notify(557872)
 			condef = tree.NewDString(f.CloseAndGetString())
 
 		case descpb.ConstraintTypeCheck:
+			__antithesis_instrumentation__.Notify(557873)
 			oid = h.CheckConstraintOid(db.GetID(), scName, table.GetID(), con.CheckConstraint)
 			contype = conTypeCheck
 			if conkey, err = colIDArrayToDatum(con.CheckConstraint.ColumnIDs); err != nil {
+				__antithesis_instrumentation__.Notify(557924)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557925)
 			}
+			__antithesis_instrumentation__.Notify(557874)
 			displayExpr, err := schemaexpr.FormatExprForDisplay(ctx, table, con.Details, &p.semaCtx, p.SessionData(), tree.FmtPGCatalog)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(557926)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(557927)
 			}
+			__antithesis_instrumentation__.Notify(557875)
 			consrc = tree.NewDString(fmt.Sprintf("(%s)", displayExpr))
 			conbin = consrc
 			validity := ""
 			if con.CheckConstraint.Validity != descpb.ConstraintValidity_Validated {
+				__antithesis_instrumentation__.Notify(557928)
 				validity = " NOT VALID"
+			} else {
+				__antithesis_instrumentation__.Notify(557929)
 			}
+			__antithesis_instrumentation__.Notify(557876)
 			condef = tree.NewDString(fmt.Sprintf("CHECK ((%s))%s", displayExpr, validity))
+		default:
+			__antithesis_instrumentation__.Notify(557877)
 		}
+		__antithesis_instrumentation__.Notify(557859)
 
 		if err := addRow(
-			oid,                  // oid
-			dNameOrNull(conName), // conname
-			namespaceOid,         // connamespace
-			contype,              // contype
-			tree.DBoolFalse,      // condeferrable
-			tree.DBoolFalse,      // condeferred
-			tree.MakeDBool(tree.DBool(!con.Unvalidated)), // convalidated
-			tblOid,         // conrelid
-			oidZero,        // contypid
-			conindid,       // conindid
-			confrelid,      // confrelid
-			confupdtype,    // confupdtype
-			confdeltype,    // confdeltype
-			confmatchtype,  // confmatchtype
-			tree.DBoolTrue, // conislocal
-			zeroVal,        // coninhcount
-			tree.DBoolTrue, // connoinherit
-			conkey,         // conkey
-			confkey,        // confkey
-			tree.DNull,     // conpfeqop
-			tree.DNull,     // conppeqop
-			tree.DNull,     // conffeqop
-			tree.DNull,     // conexclop
-			conbin,         // conbin
-			consrc,         // consrc
-			condef,         // condef
-			// These columns were automatically created by pg_catalog_test's missing column generator.
-			tree.DNull, // conparentid
+			oid,
+			dNameOrNull(conName),
+			namespaceOid,
+			contype,
+			tree.DBoolFalse,
+			tree.DBoolFalse,
+			tree.MakeDBool(tree.DBool(!con.Unvalidated)),
+			tblOid,
+			oidZero,
+			conindid,
+			confrelid,
+			confupdtype,
+			confdeltype,
+			confmatchtype,
+			tree.DBoolTrue,
+			zeroVal,
+			tree.DBoolTrue,
+			conkey,
+			confkey,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			conbin,
+			consrc,
+			condef,
+
+			tree.DNull,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(557930)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(557931)
 		}
 	}
+	__antithesis_instrumentation__.Notify(557855)
 	return nil
 }
 
@@ -1013,6 +1208,7 @@ type oneAtATimeSchemaResolver struct {
 func (r oneAtATimeSchemaResolver) getDatabaseByID(
 	id descpb.ID,
 ) (catalog.DatabaseDescriptor, error) {
+	__antithesis_instrumentation__.Notify(557932)
 	_, desc, err := r.p.Descriptors().GetImmutableDatabaseByID(
 		r.ctx, r.p.txn, id, tree.DatabaseLookupFlags{Required: true},
 	)
@@ -1020,24 +1216,23 @@ func (r oneAtATimeSchemaResolver) getDatabaseByID(
 }
 
 func (r oneAtATimeSchemaResolver) getTableByID(id descpb.ID) (catalog.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(557933)
 	table, err := r.p.LookupTableByID(r.ctx, id)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(557935)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(557936)
 	}
+	__antithesis_instrumentation__.Notify(557934)
 	return table, nil
 }
 
 func (r oneAtATimeSchemaResolver) getSchemaByID(id descpb.ID) (catalog.SchemaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(557937)
 	return r.p.Descriptors().Direct().MustGetSchemaDescByID(r.ctx, r.p.txn, id)
 }
 
-// makeAllRelationsVirtualTableWithDescriptorIDIndex creates a virtual table that searches through
-// all table descriptors in the system. It automatically adds a virtual index implementation to the
-// table id column as well. The input schema must have a single INDEX definition
-// with a single column, which must be the column that contains the table id.
-// includesIndexEntries should be set to true if the indexed column produces
-// index ids as well as just ordinary table descriptor ids. In this case, the
-// caller must pass true for this variable to prevent failed lookups.
 func makeAllRelationsVirtualTableWithDescriptorIDIndex(
 	comment string,
 	schemaDef string,
@@ -1048,13 +1243,17 @@ func makeAllRelationsVirtualTableWithDescriptorIDIndex(
 		addRow func(...tree.Datum) error,
 	) error,
 ) virtualSchemaTable {
+	__antithesis_instrumentation__.Notify(557938)
 	populateAll := func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(557940)
 		h := makeOidHasher()
 		return forEachTableDescWithTableLookup(ctx, p, dbContext, virtualOpts,
 			func(db catalog.DatabaseDescriptor, scName string, table catalog.TableDescriptor, lookup tableLookupFn) error {
+				__antithesis_instrumentation__.Notify(557941)
 				return populateFromTable(ctx, p, h, db, scName, table, lookup, addRow)
 			})
 	}
+	__antithesis_instrumentation__.Notify(557939)
 	return virtualSchemaTable{
 		comment: comment,
 		schema:  schemaDef,
@@ -1063,52 +1262,89 @@ func makeAllRelationsVirtualTableWithDescriptorIDIndex(
 				partial: includesIndexEntries,
 				populate: func(ctx context.Context, constraint tree.Datum, p *planner, db catalog.DatabaseDescriptor,
 					addRow func(...tree.Datum) error) (bool, error) {
+					__antithesis_instrumentation__.Notify(557942)
 					var id descpb.ID
 					d := tree.UnwrapDatum(p.EvalContext(), constraint)
 					if d == tree.DNull {
+						__antithesis_instrumentation__.Notify(557950)
 						return false, nil
+					} else {
+						__antithesis_instrumentation__.Notify(557951)
 					}
+					__antithesis_instrumentation__.Notify(557943)
 					switch t := d.(type) {
 					case *tree.DOid:
+						__antithesis_instrumentation__.Notify(557952)
 						id = descpb.ID(t.DInt)
 					case *tree.DInt:
+						__antithesis_instrumentation__.Notify(557953)
 						id = descpb.ID(*t)
 					default:
+						__antithesis_instrumentation__.Notify(557954)
 						return false, errors.AssertionFailedf("unexpected type %T for table id column in virtual table %s",
 							d, schemaDef)
 					}
+					__antithesis_instrumentation__.Notify(557944)
 					table, err := p.LookupTableByID(ctx, id)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(557955)
 						if sqlerrors.IsUndefinedRelationError(err) {
-							// No table found, so no rows. In this case, we'll fall back to the
-							// full table scan if the index isn't complete - see the
-							// indexContainsNonTableDescriptorIDs parameter.
-							//nolint:returnerrcheck
+							__antithesis_instrumentation__.Notify(557957)
+
 							return false, nil
+						} else {
+							__antithesis_instrumentation__.Notify(557958)
 						}
+						__antithesis_instrumentation__.Notify(557956)
 						return false, err
+					} else {
+						__antithesis_instrumentation__.Notify(557959)
 					}
-					// Don't include tables that aren't in the current database unless
-					// they're virtual, dropped tables, or ones that the user can't see.
-					canSeeDescriptor, err := userCanSeeDescriptor(ctx, p, table, db, true /*allowAdding*/)
+					__antithesis_instrumentation__.Notify(557945)
+
+					canSeeDescriptor, err := userCanSeeDescriptor(ctx, p, table, db, true)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(557960)
 						return false, err
+					} else {
+						__antithesis_instrumentation__.Notify(557961)
 					}
-					if (!table.IsVirtualTable() && table.GetParentID() != db.GetID()) ||
-						table.Dropped() || !canSeeDescriptor {
+					__antithesis_instrumentation__.Notify(557946)
+					if (!table.IsVirtualTable() && func() bool {
+						__antithesis_instrumentation__.Notify(557962)
+						return table.GetParentID() != db.GetID() == true
+					}() == true) || func() bool {
+						__antithesis_instrumentation__.Notify(557963)
+						return table.Dropped() == true
+					}() == true || func() bool {
+						__antithesis_instrumentation__.Notify(557964)
+						return !canSeeDescriptor == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(557965)
 						return false, nil
+					} else {
+						__antithesis_instrumentation__.Notify(557966)
 					}
+					__antithesis_instrumentation__.Notify(557947)
 					h := makeOidHasher()
 					scResolver := oneAtATimeSchemaResolver{p: p, ctx: ctx}
 					sc, err := p.Descriptors().GetImmutableSchemaByID(
 						ctx, p.txn, table.GetParentSchemaID(), tree.SchemaLookupFlags{})
 					if err != nil {
+						__antithesis_instrumentation__.Notify(557967)
 						return false, err
+					} else {
+						__antithesis_instrumentation__.Notify(557968)
 					}
+					__antithesis_instrumentation__.Notify(557948)
 					if err := populateFromTable(ctx, p, h, db, sc.GetName(), table, scResolver,
 						addRow); err != nil {
+						__antithesis_instrumentation__.Notify(557969)
 						return false, err
+					} else {
+						__antithesis_instrumentation__.Notify(557970)
 					}
+					__antithesis_instrumentation__.Notify(557949)
 					return true, nil
 				},
 			},
@@ -1121,35 +1357,50 @@ var pgCatalogConstraintTable = makeAllRelationsVirtualTableWithDescriptorIDIndex
 	`table constraints (incomplete - see also information_schema.table_constraints)
 https://www.postgresql.org/docs/9.5/catalog-pg-constraint.html`,
 	vtable.PGCatalogConstraint,
-	hideVirtual, /* Virtual tables have no constraints */
-	false,       /* includesIndexEntries */
+	hideVirtual,
+	false,
 	populateTableConstraints)
 
-// colIDArrayToDatum returns an int[] containing the ColumnIDs, or NULL if there
-// are no ColumnIDs.
 func colIDArrayToDatum(arr []descpb.ColumnID) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(557971)
 	if len(arr) == 0 {
+		__antithesis_instrumentation__.Notify(557974)
 		return tree.DNull, nil
+	} else {
+		__antithesis_instrumentation__.Notify(557975)
 	}
+	__antithesis_instrumentation__.Notify(557972)
 	d := tree.NewDArray(types.Int2)
 	for _, val := range arr {
+		__antithesis_instrumentation__.Notify(557976)
 		if err := d.Append(tree.NewDInt(tree.DInt(val))); err != nil {
+			__antithesis_instrumentation__.Notify(557977)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(557978)
 		}
 	}
+	__antithesis_instrumentation__.Notify(557973)
 	return d, nil
 }
 
-// colIDArrayToVector returns an INT2VECTOR containing the ColumnIDs, or NULL if
-// there are no ColumnIDs.
 func colIDArrayToVector(arr []descpb.ColumnID) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(557979)
 	dArr, err := colIDArrayToDatum(arr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(557982)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(557983)
 	}
+	__antithesis_instrumentation__.Notify(557980)
 	if dArr == tree.DNull {
+		__antithesis_instrumentation__.Notify(557984)
 		return dArr, nil
+	} else {
+		__antithesis_instrumentation__.Notify(557985)
 	}
+	__antithesis_instrumentation__.Notify(557981)
 	return tree.NewDIntVectorFromDArray(tree.MustBeDArray(dArr)), nil
 }
 
@@ -1158,6 +1409,7 @@ var pgCatalogConversionTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/catalog-pg-conversion.html`,
 	schema: vtable.PGCatalogConversion,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(557986)
 		return nil
 	},
 	unimplemented: true,
@@ -1168,25 +1420,26 @@ var pgCatalogDatabaseTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-database.html`,
 	schema: vtable.PGCatalogDatabase,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		return forEachDatabaseDesc(ctx, p, nil /*all databases*/, false, /* requiresPrivileges */
+		__antithesis_instrumentation__.Notify(557987)
+		return forEachDatabaseDesc(ctx, p, nil, false,
 			func(db catalog.DatabaseDescriptor) error {
+				__antithesis_instrumentation__.Notify(557988)
 				return addRow(
-					dbOid(db.GetID()),           // oid
-					tree.NewDName(db.GetName()), // datname
-					getOwnerOID(db),             // datdba
-					// If there is a change in encoding value for the database we must update
-					// the definitions of getdatabaseencoding within pg_builtin.
-					builtins.DatEncodingUTFId,  // encoding
-					builtins.DatEncodingEnUTF8, // datcollate
-					builtins.DatEncodingEnUTF8, // datctype
-					tree.DBoolFalse,            // datistemplate
-					tree.DBoolTrue,             // datallowconn
-					negOneVal,                  // datconnlimit
-					oidZero,                    // datlastsysoid
-					tree.DNull,                 // datfrozenxid
-					tree.DNull,                 // datminmxid
-					oidZero,                    // dattablespace
-					tree.DNull,                 // datacl
+					dbOid(db.GetID()),
+					tree.NewDName(db.GetName()),
+					getOwnerOID(db),
+
+					builtins.DatEncodingUTFId,
+					builtins.DatEncodingEnUTF8,
+					builtins.DatEncodingEnUTF8,
+					tree.DBoolFalse,
+					tree.DBoolTrue,
+					negOneVal,
+					oidZero,
+					tree.DNull,
+					tree.DNull,
+					oidZero,
+					tree.DNull,
 				)
 			})
 	},
@@ -1197,59 +1450,84 @@ var pgCatalogDefaultACLTable = virtualSchemaTable{
 https://www.postgresql.org/docs/13/catalog-pg-default-acl.html`,
 	schema: vtable.PGCatalogDefaultACL,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(557989)
 		h := makeOidHasher()
 		f := func(defaultPrivilegesForRole catpb.DefaultPrivilegesForRole) error {
+			__antithesis_instrumentation__.Notify(557991)
 			objectTypes := tree.GetAlterDefaultPrivilegesTargetObjects()
 			for _, objectType := range objectTypes {
+				__antithesis_instrumentation__.Notify(557993)
 				privs, ok := defaultPrivilegesForRole.DefaultPrivilegesPerObject[objectType]
-				if !ok || len(privs.Users) == 0 {
-					// If the default privileges default state has been altered,
-					// we use an empty entry to signify that the user has no privileges.
-					// We only omit the row entirely if the default privileges are
-					// in its default state. This is PG's behavior.
-					// Note that if ForAllRoles is true, we can skip adding an entry
-					// since ForAllRoles cannot be a grantee - therefore we can ignore
-					// the RoleHasAllPrivilegesOnX flag and skip. We still have to take
-					// into consideration the PublicHasUsageOnTypes flag.
-					if objectType == tree.Types {
-						// if the objectType is tree.Types, we only omit the entry
-						// if both the role has ALL privileges AND public has USAGE.
-						// This is the "default" state for default privileges on types
-						// in Postgres.
-						if (!defaultPrivilegesForRole.IsExplicitRole() ||
-							catprivilege.GetRoleHasAllPrivilegesOnTargetObject(&defaultPrivilegesForRole, tree.Types)) &&
-							catprivilege.GetPublicHasUsageOnTypes(&defaultPrivilegesForRole) {
-							continue
-						}
-					} else if !defaultPrivilegesForRole.IsExplicitRole() ||
-						catprivilege.GetRoleHasAllPrivilegesOnTargetObject(&defaultPrivilegesForRole, objectType) {
-						continue
-					}
-				}
+				if !ok || func() bool {
+					__antithesis_instrumentation__.Notify(557999)
+					return len(privs.Users) == 0 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(558000)
 
-				// Type of object this entry is for:
-				// r = relation (table, view), S = sequence, f = function, T = type, n = schema.
+					if objectType == tree.Types {
+						__antithesis_instrumentation__.Notify(558001)
+
+						if (!defaultPrivilegesForRole.IsExplicitRole() || func() bool {
+							__antithesis_instrumentation__.Notify(558002)
+							return catprivilege.GetRoleHasAllPrivilegesOnTargetObject(&defaultPrivilegesForRole, tree.Types) == true
+						}() == true) && func() bool {
+							__antithesis_instrumentation__.Notify(558003)
+							return catprivilege.GetPublicHasUsageOnTypes(&defaultPrivilegesForRole) == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(558004)
+							continue
+						} else {
+							__antithesis_instrumentation__.Notify(558005)
+						}
+					} else {
+						__antithesis_instrumentation__.Notify(558006)
+						if !defaultPrivilegesForRole.IsExplicitRole() || func() bool {
+							__antithesis_instrumentation__.Notify(558007)
+							return catprivilege.GetRoleHasAllPrivilegesOnTargetObject(&defaultPrivilegesForRole, objectType) == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(558008)
+							continue
+						} else {
+							__antithesis_instrumentation__.Notify(558009)
+						}
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(558010)
+				}
+				__antithesis_instrumentation__.Notify(557994)
+
 				var c string
 				switch objectType {
 				case tree.Tables:
+					__antithesis_instrumentation__.Notify(558011)
 					c = "r"
 				case tree.Sequences:
+					__antithesis_instrumentation__.Notify(558012)
 					c = "S"
 				case tree.Types:
+					__antithesis_instrumentation__.Notify(558013)
 					c = "T"
 				case tree.Schemas:
+					__antithesis_instrumentation__.Notify(558014)
 					c = "n"
+				default:
+					__antithesis_instrumentation__.Notify(558015)
 				}
+				__antithesis_instrumentation__.Notify(557995)
 				privilegeObjectType := targetObjectToPrivilegeObject[objectType]
 				arr := tree.NewDArray(types.String)
 				for _, userPrivs := range privs.Users {
+					__antithesis_instrumentation__.Notify(558016)
 					var user string
 					if userPrivs.UserProto.Decode().IsPublicRole() {
-						// Postgres represents Public in defacl as an empty string.
+						__antithesis_instrumentation__.Notify(558018)
+
 						user = ""
 					} else {
+						__antithesis_instrumentation__.Notify(558019)
 						user = userPrivs.UserProto.Decode().Normalized()
 					}
+					__antithesis_instrumentation__.Notify(558017)
 
 					privileges := privilege.ListFromBitField(
 						userPrivs.Privileges, privilegeObjectType,
@@ -1260,68 +1538,96 @@ https://www.postgresql.org/docs/13/catalog-pg-default-acl.html`,
 					defaclItem := createDefACLItem(user, privileges, grantOptions, privilegeObjectType)
 					if err := arr.Append(
 						tree.NewDString(defaclItem)); err != nil {
+						__antithesis_instrumentation__.Notify(558020)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(558021)
 					}
 				}
+				__antithesis_instrumentation__.Notify(557996)
 
-				// Special cases to handle for types.
-				// If one of RoleHasAllPrivilegesOnTypes or PublicHasUsageOnTypes is false
-				// and the other is true, we do not omit the entry since the default
-				// state has changed. We have to produce an entry by expanding the
-				// privileges.
 				if defaultPrivilegesForRole.IsExplicitRole() {
+					__antithesis_instrumentation__.Notify(558022)
 					if objectType == tree.Types {
-						if !catprivilege.GetRoleHasAllPrivilegesOnTargetObject(&defaultPrivilegesForRole, tree.Types) &&
-							catprivilege.GetPublicHasUsageOnTypes(&defaultPrivilegesForRole) {
+						__antithesis_instrumentation__.Notify(558023)
+						if !catprivilege.GetRoleHasAllPrivilegesOnTargetObject(&defaultPrivilegesForRole, tree.Types) && func() bool {
+							__antithesis_instrumentation__.Notify(558025)
+							return catprivilege.GetPublicHasUsageOnTypes(&defaultPrivilegesForRole) == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(558026)
 							defaclItem := createDefACLItem(
-								"" /* public role */, privilege.List{privilege.USAGE}, privilege.List{}, privilegeObjectType,
+								"", privilege.List{privilege.USAGE}, privilege.List{}, privilegeObjectType,
 							)
 							if err := arr.Append(tree.NewDString(defaclItem)); err != nil {
+								__antithesis_instrumentation__.Notify(558027)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(558028)
 							}
+						} else {
+							__antithesis_instrumentation__.Notify(558029)
 						}
-						if !catprivilege.GetPublicHasUsageOnTypes(&defaultPrivilegesForRole) &&
-							defaultPrivilegesForRole.GetExplicitRole().RoleHasAllPrivilegesOnTypes {
+						__antithesis_instrumentation__.Notify(558024)
+						if !catprivilege.GetPublicHasUsageOnTypes(&defaultPrivilegesForRole) && func() bool {
+							__antithesis_instrumentation__.Notify(558030)
+							return defaultPrivilegesForRole.GetExplicitRole().RoleHasAllPrivilegesOnTypes == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(558031)
 							defaclItem := createDefACLItem(
 								defaultPrivilegesForRole.GetExplicitRole().UserProto.Decode().Normalized(),
 								privilege.List{privilege.ALL}, privilege.List{}, privilegeObjectType,
 							)
 							if err := arr.Append(tree.NewDString(defaclItem)); err != nil {
+								__antithesis_instrumentation__.Notify(558032)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(558033)
 							}
+						} else {
+							__antithesis_instrumentation__.Notify(558034)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(558035)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(558036)
 				}
+				__antithesis_instrumentation__.Notify(557997)
 
-				// TODO(richardjcai): Update this logic once default privileges on
-				//    schemas are supported.
-				//    See: https://github.com/cockroachdb/cockroach/issues/67376.
 				schemaName := ""
-				// If ForAllRoles is specified, we use an empty string as the normalized
-				// role name to create the row hash.
+
 				normalizedName := ""
 				roleOid := oidZero
 				if defaultPrivilegesForRole.IsExplicitRole() {
+					__antithesis_instrumentation__.Notify(558037)
 					roleOid = h.UserOid(defaultPrivilegesForRole.GetExplicitRole().UserProto.Decode())
 					normalizedName = defaultPrivilegesForRole.GetExplicitRole().UserProto.Decode().Normalized()
+				} else {
+					__antithesis_instrumentation__.Notify(558038)
 				}
+				__antithesis_instrumentation__.Notify(557998)
 				rowOid := h.DBSchemaRoleOid(
 					dbContext.GetID(),
 					schemaName,
 					normalizedName,
 				)
 				if err := addRow(
-					rowOid,             // row identifier oid
-					roleOid,            // defaclrole oid
-					oidZero,            // defaclnamespace oid
-					tree.NewDString(c), // defaclobjtype char
-					arr,                // defaclacl aclitem[]
+					rowOid,
+					roleOid,
+					oidZero,
+					tree.NewDString(c),
+					arr,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(558039)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558040)
 				}
 			}
+			__antithesis_instrumentation__.Notify(557992)
 			return nil
 		}
+		__antithesis_instrumentation__.Notify(557990)
 		return dbContext.GetDefaultPrivilegeDescriptor().ForEachDefaultPrivilegeForRole(f)
 	},
 }
@@ -1332,15 +1638,15 @@ func createDefACLItem(
 	grantOptions privilege.List,
 	privilegeObjectType privilege.ObjectType,
 ) string {
+	__antithesis_instrumentation__.Notify(558041)
 	return fmt.Sprintf(`%s=%s/%s`,
 		user,
 		privileges.ListToACL(
 			grantOptions,
 			privilegeObjectType,
 		),
-		// TODO(richardjcai): CockroachDB currently does not track grantors
-		//    See: https://github.com/cockroachdb/cockroach/issues/67442.
-		"", /* grantor */
+
+		"",
 	)
 }
 
@@ -1352,7 +1658,6 @@ var (
 	depTypeAutoExtension = tree.NewDString("x")
 	depTypePin           = tree.NewDString("p")
 
-	// Avoid unused warning for constants.
 	_ = depTypeAuto
 	_ = depTypeInternal
 	_ = depTypeExtension
@@ -1366,134 +1671,181 @@ var (
 	pgRewriteTableName     = tree.MakeTableNameWithSchema("", tree.Name(pgCatalogName), tree.Name("pg_rewrite"))
 )
 
-// pg_depend is a fairly complex table that details many different kinds of
-// relationships between database objects. We do not implement the vast
-// majority of this table, as it is mainly used by pgjdbc to address a
-// deficiency in pg_constraint that was removed in postgres v9.0 with the
-// addition of the conindid column. To provide backward compatibility with
-// pgjdbc drivers before https://github.com/pgjdbc/pgjdbc/pull/689, we
-// provide those rows in pg_depend that track the dependency of foreign key
-// constraints on their supporting index entries in pg_class.
 var pgCatalogDependTable = virtualSchemaTable{
 	comment: `dependency relationships (incomplete)
 https://www.postgresql.org/docs/9.5/catalog-pg-depend.html`,
 	schema: vtable.PGCatalogDepend,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558042)
 		vt := p.getVirtualTabler()
 		pgConstraintsDesc, err := vt.getVirtualTableDesc(&pgConstraintsTableName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(558046)
 			return errors.New("could not find pg_catalog.pg_constraint")
+		} else {
+			__antithesis_instrumentation__.Notify(558047)
 		}
+		__antithesis_instrumentation__.Notify(558043)
 		pgClassDesc, err := vt.getVirtualTableDesc(&pgClassTableName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(558048)
 			return errors.New("could not find pg_catalog.pg_class")
+		} else {
+			__antithesis_instrumentation__.Notify(558049)
 		}
+		__antithesis_instrumentation__.Notify(558044)
 		pgRewriteDesc, err := vt.getVirtualTableDesc(&pgRewriteTableName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(558050)
 			return errors.New("could not find pg_catalog.pg_rewrite")
+		} else {
+			__antithesis_instrumentation__.Notify(558051)
 		}
+		__antithesis_instrumentation__.Notify(558045)
 		h := makeOidHasher()
-		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual /*virtual tables have no constraints*/, func(
+		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual, func(
 			db catalog.DatabaseDescriptor,
 			scName string,
 			table catalog.TableDescriptor,
 			tableLookup tableLookupFn,
 		) error {
+			__antithesis_instrumentation__.Notify(558052)
 			pgConstraintTableOid := tableOid(pgConstraintsDesc.GetID())
 			pgClassTableOid := tableOid(pgClassDesc.GetID())
 			pgRewriteTableOid := tableOid(pgRewriteDesc.GetID())
-			if table.IsSequence() &&
-				!table.GetSequenceOpts().SequenceOwner.Equal(descpb.TableDescriptor_SequenceOpts_SequenceOwner{}) {
+			if table.IsSequence() && func() bool {
+				__antithesis_instrumentation__.Notify(558058)
+				return !table.GetSequenceOpts().SequenceOwner.Equal(descpb.TableDescriptor_SequenceOpts_SequenceOwner{}) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(558059)
 				refObjID := tableOid(table.GetSequenceOpts().SequenceOwner.OwnerTableID)
 				refObjSubID := tree.NewDInt(tree.DInt(table.GetSequenceOpts().SequenceOwner.OwnerColumnID))
 				objID := tableOid(table.GetID())
 				return addRow(
-					pgConstraintTableOid, // classid
-					objID,                // objid
-					zeroVal,              // objsubid
-					pgClassTableOid,      // refclassid
-					refObjID,             // refobjid
-					refObjSubID,          // refobjsubid
-					depTypeAuto,          // deptype
+					pgConstraintTableOid,
+					objID,
+					zeroVal,
+					pgClassTableOid,
+					refObjID,
+					refObjSubID,
+					depTypeAuto,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(558060)
 			}
+			__antithesis_instrumentation__.Notify(558053)
 
-			// In the case of table/view relationship, In PostgreSQL pg_depend.objid refers to
-			// pg_rewrite.oid, then pg_rewrite ev_class refers to the dependent object.
 			reportViewDependency := func(dep *descpb.TableDescriptor_Reference) error {
+				__antithesis_instrumentation__.Notify(558061)
 				refObjOid := tableOid(table.GetID())
 				objID := h.rewriteOid(table.GetID(), dep.ID)
 				for _, colID := range dep.ColumnIDs {
+					__antithesis_instrumentation__.Notify(558063)
 					if err := addRow(
-						pgRewriteTableOid,              // classid
-						objID,                          // objid
-						zeroVal,                        // objsubid
-						pgClassTableOid,                // refclassid
-						refObjOid,                      // refobjid
-						tree.NewDInt(tree.DInt(colID)), // refobjsubid
-						depTypeNormal,                  // deptype
+						pgRewriteTableOid,
+						objID,
+						zeroVal,
+						pgClassTableOid,
+						refObjOid,
+						tree.NewDInt(tree.DInt(colID)),
+						depTypeNormal,
 					); err != nil {
+						__antithesis_instrumentation__.Notify(558064)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(558065)
 					}
 				}
+				__antithesis_instrumentation__.Notify(558062)
 
 				return nil
 			}
+			__antithesis_instrumentation__.Notify(558054)
 
-			if table.IsTable() || table.IsView() {
+			if table.IsTable() || func() bool {
+				__antithesis_instrumentation__.Notify(558066)
+				return table.IsView() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(558067)
 				if err := table.ForeachDependedOnBy(reportViewDependency); err != nil {
+					__antithesis_instrumentation__.Notify(558068)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558069)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(558070)
 			}
+			__antithesis_instrumentation__.Notify(558055)
 
 			conInfo, err := table.GetConstraintInfoWithLookup(tableLookup.getTableByID)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(558071)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558072)
 			}
+			__antithesis_instrumentation__.Notify(558056)
 			for _, con := range conInfo {
+				__antithesis_instrumentation__.Notify(558073)
 				if con.Kind != descpb.ConstraintTypeFK {
+					__antithesis_instrumentation__.Notify(558077)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(558078)
 				}
+				__antithesis_instrumentation__.Notify(558074)
 
-				// Foreign keys don't have a single linked index. Pick the first one
-				// that matches on the referenced table.
 				referencedTable, err := tableLookup.getTableByID(con.FK.ReferencedTableID)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558079)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558080)
 				}
+				__antithesis_instrumentation__.Notify(558075)
 				refObjID := oidZero
 				if refConstraint, err := tabledesc.FindFKReferencedUniqueConstraint(
 					referencedTable, con.FK.ReferencedColumnIDs,
 				); err != nil {
-					// We couldn't find a unique constraint that matched. This shouldn't
-					// happen.
+					__antithesis_instrumentation__.Notify(558081)
+
 					log.Warningf(ctx, "broken fk reference: %v", err)
-				} else if idx, ok := refConstraint.(*descpb.IndexDescriptor); ok {
-					refObjID = h.IndexOid(con.ReferencedTable.ID, idx.ID)
+				} else {
+					__antithesis_instrumentation__.Notify(558082)
+					if idx, ok := refConstraint.(*descpb.IndexDescriptor); ok {
+						__antithesis_instrumentation__.Notify(558083)
+						refObjID = h.IndexOid(con.ReferencedTable.ID, idx.ID)
+					} else {
+						__antithesis_instrumentation__.Notify(558084)
+					}
 				}
+				__antithesis_instrumentation__.Notify(558076)
 				constraintOid := h.ForeignKeyConstraintOid(db.GetID(), scName, table.GetID(), con.FK)
 
 				if err := addRow(
-					pgConstraintTableOid, // classid
-					constraintOid,        // objid
-					zeroVal,              // objsubid
-					pgClassTableOid,      // refclassid
-					refObjID,             // refobjid
-					zeroVal,              // refobjsubid
-					depTypeNormal,        // deptype
+					pgConstraintTableOid,
+					constraintOid,
+					zeroVal,
+					pgClassTableOid,
+					refObjID,
+					zeroVal,
+					depTypeNormal,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(558085)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558086)
 				}
 			}
+			__antithesis_instrumentation__.Notify(558057)
 			return nil
 		})
 	},
 }
 
-// getComments returns all comments in the database. A comment is represented
-// as a datum row, containing object id, sub id (column id in the case of
-// columns), comment text, and comment type (keys.FooCommentType).
 func getComments(ctx context.Context, p *planner) ([]tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(558087)
 	return p.extendedEvalCtx.ExecCfg.InternalExecutor.QueryBuffered(
 		ctx,
 		"select-comments",
@@ -1516,15 +1868,18 @@ https://www.postgresql.org/docs/9.5/catalog-pg-description.html`,
 		p *planner,
 		dbContext catalog.DatabaseDescriptor,
 		addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558088)
 
-		// This is less efficient than it has to be - if we see performance problems
-		// here, we can push the filter into the query that getComments runs,
-		// instead of filtering client-side below.
 		comments, err := getComments(ctx, p)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(558091)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(558092)
 		}
+		__antithesis_instrumentation__.Notify(558089)
 		for _, comment := range comments {
+			__antithesis_instrumentation__.Notify(558093)
 			objID := comment[0]
 			objSubID := comment[1]
 			description := comment[2]
@@ -1534,23 +1889,31 @@ https://www.postgresql.org/docs/9.5/catalog-pg-description.html`,
 
 			switch commentType {
 			case keys.DatabaseCommentType:
-				// Database comments are exported in pg_shdescription.
+				__antithesis_instrumentation__.Notify(558095)
+
 				continue
 			case keys.SchemaCommentType:
+				__antithesis_instrumentation__.Notify(558096)
 				objID = tree.NewDOid(tree.MustBeDInt(objID))
 				classOid = tree.NewDOid(catconstants.PgCatalogNamespaceTableID)
 			case keys.ColumnCommentType, keys.TableCommentType:
+				__antithesis_instrumentation__.Notify(558097)
 				objID = tree.NewDOid(tree.MustBeDInt(objID))
 				classOid = tree.NewDOid(catconstants.PgCatalogClassTableID)
 			case keys.ConstraintCommentType:
+				__antithesis_instrumentation__.Notify(558098)
 				tableDesc, err := p.Descriptors().GetImmutableTableByID(
 					ctx,
 					p.txn,
 					descpb.ID(tree.MustBeDInt(objID)),
 					tree.ObjectLookupFlagsWithRequiredTableKind(tree.ResolveRequireTableDesc))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558105)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558106)
 				}
+				__antithesis_instrumentation__.Notify(558099)
 				schema, err := p.Descriptors().GetImmutableSchemaByID(
 					ctx,
 					p.txn,
@@ -1559,37 +1922,58 @@ https://www.postgresql.org/docs/9.5/catalog-pg-description.html`,
 						Required: true,
 					})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558107)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558108)
 				}
+				__antithesis_instrumentation__.Notify(558100)
 				constraints, err := tableDesc.GetConstraintInfo()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558109)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558110)
 				}
+				__antithesis_instrumentation__.Notify(558101)
 				var constraint descpb.ConstraintDetail
 				for _, constraintToCheck := range constraints {
+					__antithesis_instrumentation__.Notify(558111)
 					if constraintToCheck.ConstraintID == descpb.ConstraintID(tree.MustBeDInt(objSubID)) {
+						__antithesis_instrumentation__.Notify(558112)
 						constraint = constraintToCheck
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(558113)
 					}
 				}
+				__antithesis_instrumentation__.Notify(558102)
 				objID = getOIDFromConstraint(constraint, dbContext.GetID(), schema.GetName(), tableDesc)
 				objSubID = tree.DZero
 				classOid = tree.NewDOid(catconstants.PgCatalogConstraintTableID)
 			case keys.IndexCommentType:
+				__antithesis_instrumentation__.Notify(558103)
 				objID = makeOidHasher().IndexOid(
 					descpb.ID(tree.MustBeDInt(objID)),
 					descpb.IndexID(tree.MustBeDInt(objSubID)))
 				objSubID = tree.DZero
 				classOid = tree.NewDOid(catconstants.PgCatalogClassTableID)
+			default:
+				__antithesis_instrumentation__.Notify(558104)
 			}
+			__antithesis_instrumentation__.Notify(558094)
 			if err := addRow(
 				objID,
 				classOid,
 				objSubID,
 				description); err != nil {
+				__antithesis_instrumentation__.Notify(558114)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558115)
 			}
 		}
+		__antithesis_instrumentation__.Notify(558090)
 		return nil
 	},
 }
@@ -1600,46 +1984,65 @@ func getOIDFromConstraint(
 	schemaName string,
 	tableDesc catalog.TableDescriptor,
 ) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558116)
 	hasher := makeOidHasher()
 	tableID := tableDesc.GetID()
 	var oid *tree.DOid
 	if constraint.CheckConstraint != nil {
+		__antithesis_instrumentation__.Notify(558118)
 		oid = hasher.CheckConstraintOid(
 			dbID,
 			schemaName,
 			tableID,
 			constraint.CheckConstraint)
-	} else if constraint.FK != nil {
-		oid = hasher.ForeignKeyConstraintOid(
-			dbID,
-			schemaName,
-			tableID,
-			constraint.FK,
-		)
-	} else if constraint.UniqueWithoutIndexConstraint != nil {
-		oid = hasher.UniqueWithoutIndexConstraintOid(
-			dbID,
-			schemaName,
-			tableID,
-			constraint.UniqueWithoutIndexConstraint,
-		)
-	} else if constraint.Index != nil {
-		if constraint.Index.ID == tableDesc.GetPrimaryIndexID() {
-			oid = hasher.PrimaryKeyConstraintOid(
+	} else {
+		__antithesis_instrumentation__.Notify(558119)
+		if constraint.FK != nil {
+			__antithesis_instrumentation__.Notify(558120)
+			oid = hasher.ForeignKeyConstraintOid(
 				dbID,
 				schemaName,
 				tableID,
-				constraint.Index,
+				constraint.FK,
 			)
 		} else {
-			oid = hasher.UniqueConstraintOid(
-				dbID,
-				schemaName,
-				tableID,
-				constraint.Index.ID,
-			)
+			__antithesis_instrumentation__.Notify(558121)
+			if constraint.UniqueWithoutIndexConstraint != nil {
+				__antithesis_instrumentation__.Notify(558122)
+				oid = hasher.UniqueWithoutIndexConstraintOid(
+					dbID,
+					schemaName,
+					tableID,
+					constraint.UniqueWithoutIndexConstraint,
+				)
+			} else {
+				__antithesis_instrumentation__.Notify(558123)
+				if constraint.Index != nil {
+					__antithesis_instrumentation__.Notify(558124)
+					if constraint.Index.ID == tableDesc.GetPrimaryIndexID() {
+						__antithesis_instrumentation__.Notify(558125)
+						oid = hasher.PrimaryKeyConstraintOid(
+							dbID,
+							schemaName,
+							tableID,
+							constraint.Index,
+						)
+					} else {
+						__antithesis_instrumentation__.Notify(558126)
+						oid = hasher.UniqueConstraintOid(
+							dbID,
+							schemaName,
+							tableID,
+							constraint.Index.ID,
+						)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(558127)
+				}
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(558117)
 	return oid
 }
 
@@ -1648,26 +2051,40 @@ var pgCatalogSharedDescriptionTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-shdescription.html`,
 	schema: vtable.PGCatalogSharedDescription,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// See comment above - could make this more efficient if necessary.
+		__antithesis_instrumentation__.Notify(558128)
+
 		comments, err := getComments(ctx, p)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(558131)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(558132)
 		}
+		__antithesis_instrumentation__.Notify(558129)
 		for _, comment := range comments {
+			__antithesis_instrumentation__.Notify(558133)
 			commentType := keys.CommentType(tree.MustBeDInt(comment[3]))
 			if commentType != keys.DatabaseCommentType {
-				// Only database comments are exported in this table.
+				__antithesis_instrumentation__.Notify(558135)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(558136)
 			}
+			__antithesis_instrumentation__.Notify(558134)
 			classOid := tree.NewDOid(catconstants.PgCatalogDatabaseTableID)
 			objID := descpb.ID(tree.MustBeDInt(comment[0]))
 			if err := addRow(
 				tableOid(objID),
 				classOid,
 				comment[2]); err != nil {
+				__antithesis_instrumentation__.Notify(558137)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558138)
 			}
 		}
+		__antithesis_instrumentation__.Notify(558130)
 		return nil
 	},
 }
@@ -1677,29 +2094,37 @@ var pgCatalogEnumTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-enum.html`,
 	schema: vtable.PGCatalogEnum,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558139)
 		h := makeOidHasher()
 
 		return forEachTypeDesc(ctx, p, dbContext, func(_ catalog.DatabaseDescriptor, _ string, typDesc catalog.TypeDescriptor) error {
+			__antithesis_instrumentation__.Notify(558140)
 			switch typDesc.GetKind() {
 			case descpb.TypeDescriptor_ENUM, descpb.TypeDescriptor_MULTIREGION_ENUM:
-			// We only want to iterate over ENUM types and multi-region enums.
+				__antithesis_instrumentation__.Notify(558143)
+
 			default:
+				__antithesis_instrumentation__.Notify(558144)
 				return nil
 			}
-			// Generate a row for each member of the enum. We don't represent enums
-			// internally using floats for ordering like Postgres, so just pick a
-			// float entry for the rows.
+			__antithesis_instrumentation__.Notify(558141)
+
 			typOID := tree.NewDOid(tree.DInt(typedesc.TypeIDToOID(typDesc.GetID())))
 			for i := 0; i < typDesc.NumEnumMembers(); i++ {
+				__antithesis_instrumentation__.Notify(558145)
 				if err := addRow(
 					h.EnumEntryOid(typOID, typDesc.GetMemberPhysicalRepresentation(i)),
 					typOID,
 					tree.NewDFloat(tree.DFloat(float64(i))),
 					tree.NewDString(typDesc.GetMemberLogicalRepresentation(i)),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(558146)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558147)
 				}
 			}
+			__antithesis_instrumentation__.Notify(558142)
 			return nil
 		})
 	},
@@ -1710,7 +2135,8 @@ var pgCatalogEventTriggerTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/catalog-pg-event-trigger.html`,
 	schema: vtable.PGCatalogEventTrigger,
 	populate: func(_ context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// Event triggers are not currently supported.
+		__antithesis_instrumentation__.Notify(558148)
+
 		return nil
 	},
 	unimplemented: true,
@@ -1721,7 +2147,8 @@ var pgCatalogExtensionTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-extension.html`,
 	schema: vtable.PGCatalogExtension,
 	populate: func(_ context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// Extensions are not supported.
+		__antithesis_instrumentation__.Notify(558149)
+
 		return nil
 	},
 	unimplemented: true,
@@ -1732,7 +2159,8 @@ var pgCatalogForeignDataWrapperTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-foreign-data-wrapper.html`,
 	schema: vtable.PGCatalogForeignDataWrapper,
 	populate: func(_ context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// Foreign data wrappers are not supported.
+		__antithesis_instrumentation__.Notify(558150)
+
 		return nil
 	},
 	unimplemented: true,
@@ -1743,7 +2171,8 @@ var pgCatalogForeignServerTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-foreign-server.html`,
 	schema: vtable.PGCatalogForeignServer,
 	populate: func(_ context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// Foreign servers are not supported.
+		__antithesis_instrumentation__.Notify(558151)
+
 		return nil
 	},
 	unimplemented: true,
@@ -1754,19 +2183,26 @@ var pgCatalogForeignTableTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-foreign-table.html`,
 	schema: vtable.PGCatalogForeignTable,
 	populate: func(_ context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// Foreign tables are not supported.
+		__antithesis_instrumentation__.Notify(558152)
+
 		return nil
 	},
 	unimplemented: true,
 }
 
 func makeZeroedOidVector(size int) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(558153)
 	oidArray := tree.NewDArray(types.Oid)
 	for i := 0; i < size; i++ {
+		__antithesis_instrumentation__.Notify(558155)
 		if err := oidArray.Append(oidZero); err != nil {
+			__antithesis_instrumentation__.Notify(558156)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(558157)
 		}
 	}
+	__antithesis_instrumentation__.Notify(558154)
 	return tree.NewDOidVectorFromDArray(oidArray), nil
 }
 
@@ -1775,113 +2211,157 @@ var pgCatalogIndexTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-index.html`,
 	schema: vtable.PGCatalogIndex,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558158)
 		h := makeOidHasher()
-		return forEachTableDesc(ctx, p, dbContext, hideVirtual, /* virtual tables do not have indexes */
+		return forEachTableDesc(ctx, p, dbContext, hideVirtual,
 			func(db catalog.DatabaseDescriptor, scName string, table catalog.TableDescriptor) error {
+				__antithesis_instrumentation__.Notify(558159)
 				tableOid := tableOid(table.GetID())
 				return catalog.ForEachIndex(table, catalog.IndexOpts{}, func(index catalog.Index) error {
+					__antithesis_instrumentation__.Notify(558160)
 					isMutation, isWriteOnly :=
 						table.GetIndexMutationCapabilities(index.GetID())
-					isReady := isMutation && isWriteOnly
+					isReady := isMutation && func() bool {
+						__antithesis_instrumentation__.Notify(558167)
+						return isWriteOnly == true
+					}() == true
 
-					// Get the collations for all of the columns. To do this we require
-					// the type of the column.
-					// Also fill in indoption for each column to indicate if the index
-					// is ASC/DESC and if nulls appear first/last.
 					collationOids := tree.NewDArray(types.Oid)
 					indoption := tree.NewDArray(types.Int)
 
 					colIDs := make([]descpb.ColumnID, 0, index.NumKeyColumns())
 					exprs := make([]string, 0, index.NumKeyColumns())
 					for i := index.IndexDesc().ExplicitColumnStartIdx(); i < index.NumKeyColumns(); i++ {
+						__antithesis_instrumentation__.Notify(558168)
 						columnID := index.GetKeyColumnID(i)
 						col, err := table.FindColumnWithID(columnID)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(558173)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(558174)
 						}
-						// The indkey for an expression element in an index
-						// should be 0.
+						__antithesis_instrumentation__.Notify(558169)
+
 						if col.IsExpressionIndexColumn() {
+							__antithesis_instrumentation__.Notify(558175)
 							colIDs = append(colIDs, 0)
 							formattedExpr, err := schemaexpr.FormatExprForDisplay(
 								ctx, table, col.GetComputeExpr(), p.SemaCtx(), p.SessionData(), tree.FmtPGCatalog,
 							)
 							if err != nil {
+								__antithesis_instrumentation__.Notify(558177)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(558178)
 							}
+							__antithesis_instrumentation__.Notify(558176)
 							exprs = append(exprs, fmt.Sprintf("(%s)", formattedExpr))
 						} else {
+							__antithesis_instrumentation__.Notify(558179)
 							colIDs = append(colIDs, columnID)
 						}
+						__antithesis_instrumentation__.Notify(558170)
 						if err := collationOids.Append(typColl(col.GetType(), h)); err != nil {
+							__antithesis_instrumentation__.Notify(558180)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(558181)
 						}
-						// Currently, nulls always appear first if the order is ascending,
-						// and always appear last if the order is descending.
+						__antithesis_instrumentation__.Notify(558171)
+
 						var thisIndOption tree.DInt
 						if index.GetKeyColumnDirection(i) == descpb.IndexDescriptor_ASC {
+							__antithesis_instrumentation__.Notify(558182)
 							thisIndOption = indoptionNullsFirst
 						} else {
+							__antithesis_instrumentation__.Notify(558183)
 							thisIndOption = indoptionDesc
 						}
+						__antithesis_instrumentation__.Notify(558172)
 						if err := indoption.Append(tree.NewDInt(thisIndOption)); err != nil {
+							__antithesis_instrumentation__.Notify(558184)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(558185)
 						}
 					}
-					// indnkeyatts is the number of attributes without INCLUDED columns.
+					__antithesis_instrumentation__.Notify(558161)
+
 					indnkeyatts := len(colIDs)
 					for i := 0; i < index.NumSecondaryStoredColumns(); i++ {
+						__antithesis_instrumentation__.Notify(558186)
 						colIDs = append(colIDs, index.GetStoredColumnID(i))
 					}
-					// indnatts is the number of attributes with INCLUDED columns.
+					__antithesis_instrumentation__.Notify(558162)
+
 					indnatts := len(colIDs)
 					indkey, err := colIDArrayToVector(colIDs)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(558187)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(558188)
 					}
+					__antithesis_instrumentation__.Notify(558163)
 					collationOidVector := tree.NewDOidVectorFromDArray(collationOids)
 					indoptionIntVector := tree.NewDIntVectorFromDArray(indoption)
-					// TODO(bram): #27763 indclass still needs to be populated but it
-					// requires pg_catalog.pg_opclass first.
+
 					indclass, err := makeZeroedOidVector(indnkeyatts)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(558189)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(558190)
 					}
+					__antithesis_instrumentation__.Notify(558164)
 					indpred := tree.DNull
 					if index.IsPartial() {
+						__antithesis_instrumentation__.Notify(558191)
 						formattedPred, err := schemaexpr.FormatExprForDisplay(
 							ctx, table, index.GetPredicate(), p.SemaCtx(), p.SessionData(), tree.FmtPGCatalog,
 						)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(558193)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(558194)
 						}
+						__antithesis_instrumentation__.Notify(558192)
 						indpred = tree.NewDString(formattedPred)
+					} else {
+						__antithesis_instrumentation__.Notify(558195)
 					}
+					__antithesis_instrumentation__.Notify(558165)
 					indexprs := tree.DNull
 					if len(exprs) > 0 {
+						__antithesis_instrumentation__.Notify(558196)
 						indexprs = tree.NewDString(strings.Join(exprs, " "))
+					} else {
+						__antithesis_instrumentation__.Notify(558197)
 					}
+					__antithesis_instrumentation__.Notify(558166)
 					return addRow(
-						h.IndexOid(table.GetID(), index.GetID()),     // indexrelid
-						tableOid,                                     // indrelid
-						tree.NewDInt(tree.DInt(indnatts)),            // indnatts
-						tree.MakeDBool(tree.DBool(index.IsUnique())), // indisunique
-						tree.MakeDBool(tree.DBool(index.Primary())),  // indisprimary
-						tree.DBoolFalse,                              // indisexclusion
-						tree.MakeDBool(tree.DBool(index.IsUnique())), // indimmediate
-						tree.DBoolFalse,                              // indisclustered
-						tree.MakeDBool(tree.DBool(!isMutation)),      // indisvalid
-						tree.DBoolFalse,                              // indcheckxmin
-						tree.MakeDBool(tree.DBool(isReady)),          // indisready
-						tree.DBoolTrue,                               // indislive
-						tree.DBoolFalse,                              // indisreplident
-						indkey,                                       // indkey
-						collationOidVector,                           // indcollation
-						indclass,                                     // indclass
-						indoptionIntVector,                           // indoption
-						indexprs,                                     // indexprs
-						indpred,                                      // indpred
-						tree.NewDInt(tree.DInt(indnkeyatts)),         // indnkeyatts
+						h.IndexOid(table.GetID(), index.GetID()),
+						tableOid,
+						tree.NewDInt(tree.DInt(indnatts)),
+						tree.MakeDBool(tree.DBool(index.IsUnique())),
+						tree.MakeDBool(tree.DBool(index.Primary())),
+						tree.DBoolFalse,
+						tree.MakeDBool(tree.DBool(index.IsUnique())),
+						tree.DBoolFalse,
+						tree.MakeDBool(tree.DBool(!isMutation)),
+						tree.DBoolFalse,
+						tree.MakeDBool(tree.DBool(isReady)),
+						tree.DBoolTrue,
+						tree.DBoolFalse,
+						indkey,
+						collationOidVector,
+						indclass,
+						indoptionIntVector,
+						indexprs,
+						indpred,
+						tree.NewDInt(tree.DInt(indnkeyatts)),
 					)
 				})
 			})
@@ -1893,32 +2373,36 @@ var pgCatalogIndexesTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/view-pg-indexes.html`,
 	schema: vtable.PGCatalogIndexes,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558198)
 		h := makeOidHasher()
-		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual, /* virtual tables do not have indexes */
+		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual,
 			func(db catalog.DatabaseDescriptor, scName string, table catalog.TableDescriptor, _ tableLookupFn) error {
+				__antithesis_instrumentation__.Notify(558199)
 				scNameName := tree.NewDName(scName)
 				tblName := tree.NewDName(table.GetName())
 				return catalog.ForEachIndex(table, catalog.IndexOpts{}, func(index catalog.Index) error {
+					__antithesis_instrumentation__.Notify(558200)
 					def, err := indexDefFromDescriptor(ctx, p, db, scName, table, index)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(558202)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(558203)
 					}
+					__antithesis_instrumentation__.Notify(558201)
 					return addRow(
-						h.IndexOid(table.GetID(), index.GetID()), // oid
-						scNameName,                               // schemaname
-						tblName,                                  // tablename
-						tree.NewDName(index.GetName()),           // indexname
-						tree.DNull,                               // tablespace
-						tree.NewDString(def),                     // indexdef
+						h.IndexOid(table.GetID(), index.GetID()),
+						scNameName,
+						tblName,
+						tree.NewDName(index.GetName()),
+						tree.DNull,
+						tree.NewDString(def),
 					)
 				})
 			})
 	},
 }
 
-// indexDefFromDescriptor creates an index definition (`CREATE INDEX ... ON (...)`) from
-// and index descriptor by reconstructing a CreateIndex parser node and calling its
-// String method.
 func indexDefFromDescriptor(
 	ctx context.Context,
 	p *planner,
@@ -1927,6 +2411,7 @@ func indexDefFromDescriptor(
 	table catalog.TableDescriptor,
 	index catalog.Index,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(558204)
 	tableName := tree.MakeTableNameWithSchema(tree.Name(db.GetName()), tree.Name(schemaName), tree.Name(table.GetName()))
 	partitionStr := ""
 	fmtStr, err := catformat.IndexForDisplay(
@@ -1941,8 +2426,12 @@ func indexDefFromDescriptor(
 		catformat.IndexDisplayShowCreate,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(558206)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(558207)
 	}
+	__antithesis_instrumentation__.Notify(558205)
 	return fmtStr, nil
 }
 
@@ -1951,7 +2440,8 @@ var pgCatalogInheritsTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-inherits.html`,
 	schema: vtable.PGCatalogInherits,
 	populate: func(_ context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// Table inheritance is not supported.
+		__antithesis_instrumentation__.Notify(558208)
+
 		return nil
 	},
 	unimplemented: true,
@@ -1962,7 +2452,8 @@ var pgCatalogLanguageTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-language.html`,
 	schema: vtable.PGCatalogLanguage,
 	populate: func(_ context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// Languages to write functions and stored procedures are not supported.
+		__antithesis_instrumentation__.Notify(558209)
+
 		return nil
 	},
 	unimplemented: true,
@@ -1973,6 +2464,7 @@ var pgCatalogLocksTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/view-pg-locks.html`,
 	schema: vtable.PGCatalogLocks,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558210)
 		return nil
 	},
 	unimplemented: true,
@@ -1983,27 +2475,26 @@ var pgCatalogMatViewsTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/view-pg-matviews.html`,
 	schema: vtable.PGCatalogMatViews,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558211)
 		return forEachTableDesc(ctx, p, dbContext, hideVirtual,
 			func(db catalog.DatabaseDescriptor, scName string, desc catalog.TableDescriptor) error {
+				__antithesis_instrumentation__.Notify(558212)
 				if !desc.MaterializedView() {
+					__antithesis_instrumentation__.Notify(558214)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(558215)
 				}
-				// Note that the view query printed will not include any column aliases
-				// specified outside the initial view query into the definition
-				// returned, unlike postgres. For example, for the view created via
-				//  `CREATE VIEW (a) AS SELECT b FROM foo`
-				// we'll only print `SELECT b FROM foo` as the view definition here,
-				// while postgres would more accurately print `SELECT b AS a FROM foo`.
-				// TODO(SQL Features): Insert column aliases into view query once we
-				// have a semantic query representation to work with (#10083).
+				__antithesis_instrumentation__.Notify(558213)
+
 				return addRow(
-					tree.NewDName(scName),         // schemaname
-					tree.NewDName(desc.GetName()), // matviewname
-					getOwnerName(desc),            // matviewowner
-					tree.DNull,                    // tablespace
-					tree.MakeDBool(len(desc.PublicNonPrimaryIndexes()) > 0), // hasindexes
-					tree.DBoolTrue,                       // ispopulated,
-					tree.NewDString(desc.GetViewQuery()), // definition
+					tree.NewDName(scName),
+					tree.NewDName(desc.GetName()),
+					getOwnerName(desc),
+					tree.DNull,
+					tree.MakeDBool(len(desc.PublicNonPrimaryIndexes()) > 0),
+					tree.DBoolTrue,
+					tree.NewDString(desc.GetViewQuery()),
 				)
 			})
 	},
@@ -2014,25 +2505,33 @@ var pgCatalogNamespaceTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-namespace.html`,
 	schema: vtable.PGCatalogNamespace,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558216)
 		h := makeOidHasher()
-		return forEachDatabaseDesc(ctx, p, dbContext, true, /* requiresPrivileges */
+		return forEachDatabaseDesc(ctx, p, dbContext, true,
 			func(db catalog.DatabaseDescriptor) error {
+				__antithesis_instrumentation__.Notify(558217)
 				return forEachSchema(ctx, p, db, func(sc catalog.SchemaDescriptor) error {
+					__antithesis_instrumentation__.Notify(558218)
 					ownerOID := tree.DNull
 					if sc.SchemaKind() == catalog.SchemaUserDefined {
+						__antithesis_instrumentation__.Notify(558220)
 						ownerOID = getOwnerOID(sc)
-					} else if sc.SchemaKind() == catalog.SchemaPublic {
-						// admin is the owner of the public schema.
-						//
-						// TODO(ajwerner): The public schema effectively carries the privileges
-						// of the database so consider using the database's owner for public.
-						ownerOID = h.UserOid(security.MakeSQLUsernameFromPreNormalizedString("admin"))
+					} else {
+						__antithesis_instrumentation__.Notify(558221)
+						if sc.SchemaKind() == catalog.SchemaPublic {
+							__antithesis_instrumentation__.Notify(558222)
+
+							ownerOID = h.UserOid(security.MakeSQLUsernameFromPreNormalizedString("admin"))
+						} else {
+							__antithesis_instrumentation__.Notify(558223)
+						}
 					}
+					__antithesis_instrumentation__.Notify(558219)
 					return addRow(
-						h.NamespaceOid(db.GetID(), sc.GetName()), // oid
-						tree.NewDString(sc.GetName()),            // nspname
-						ownerOID,                                 // nspowner
-						tree.DNull,                               // nspacl
+						h.NamespaceOid(db.GetID(), sc.GetName()),
+						tree.NewDString(sc.GetName()),
+						ownerOID,
+						tree.DNull,
 					)
 				})
 			})
@@ -2044,7 +2543,6 @@ var (
 	prefixKind  = tree.NewDString("l")
 	postfixKind = tree.NewDString("r")
 
-	// Avoid unused warning for constants.
 	_ = postfixKind
 )
 
@@ -2053,6 +2551,7 @@ var pgCatalogOpclassTable = virtualSchemaTable{
 https://www.postgresql.org/docs/12/catalog-pg-opclass.html`,
 	schema: vtable.PGCatalogOpclass,
 	populate: func(ctx context.Context, p *planner, db catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558224)
 		return nil
 	},
 	unimplemented: true,
@@ -2063,82 +2562,117 @@ var pgCatalogOperatorTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-operator.html`,
 	schema: vtable.PGCatalogOperator,
 	populate: func(ctx context.Context, p *planner, db catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558225)
 		h := makeOidHasher()
 		nspOid := h.NamespaceOid(db.GetID(), pgCatalogName)
 		addOp := func(opName string, kind tree.Datum, params tree.TypeList, returnTyper tree.ReturnTyper) error {
+			__antithesis_instrumentation__.Notify(558230)
 			var leftType, rightType *tree.DOid
 			switch params.Length() {
 			case 1:
+				__antithesis_instrumentation__.Notify(558232)
 				leftType = oidZero
 				rightType = tree.NewDOid(tree.DInt(params.Types()[0].Oid()))
 			case 2:
+				__antithesis_instrumentation__.Notify(558233)
 				leftType = tree.NewDOid(tree.DInt(params.Types()[0].Oid()))
 				rightType = tree.NewDOid(tree.DInt(params.Types()[1].Oid()))
 			default:
+				__antithesis_instrumentation__.Notify(558234)
 				panic(errors.AssertionFailedf("unexpected operator %s with %d params",
 					opName, params.Length()))
 			}
+			__antithesis_instrumentation__.Notify(558231)
 			returnType := tree.NewDOid(tree.DInt(returnTyper(nil).Oid()))
 			err := addRow(
-				h.OperatorOid(opName, leftType, rightType, returnType), // oid
+				h.OperatorOid(opName, leftType, rightType, returnType),
 
-				tree.NewDString(opName), // oprname
-				nspOid,                  // oprnamespace
-				tree.DNull,              // oprowner
-				kind,                    // oprkind
-				tree.DBoolFalse,         // oprcanmerge
-				tree.DBoolFalse,         // oprcanhash
-				leftType,                // oprleft
-				rightType,               // oprright
-				returnType,              // oprresult
-				tree.DNull,              // oprcom
-				tree.DNull,              // oprnegate
-				tree.DNull,              // oprcode
-				tree.DNull,              // oprrest
-				tree.DNull,              // oprjoin
+				tree.NewDString(opName),
+				nspOid,
+				tree.DNull,
+				kind,
+				tree.DBoolFalse,
+				tree.DBoolFalse,
+				leftType,
+				rightType,
+				returnType,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
 			)
 			return err
 		}
+		__antithesis_instrumentation__.Notify(558226)
 		for cmpOp, overloads := range tree.CmpOps {
-			// n.b. the In operator cannot be included in this list because it isn't
-			// a generalized operator. It is a special syntax form, because it only
-			// permits parenthesized subqueries or row expressions on the RHS.
+			__antithesis_instrumentation__.Notify(558235)
+
 			if cmpOp == treecmp.In {
+				__antithesis_instrumentation__.Notify(558237)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(558238)
 			}
+			__antithesis_instrumentation__.Notify(558236)
 			for _, overload := range overloads {
+				__antithesis_instrumentation__.Notify(558239)
 				params, returnType := tree.GetParamsAndReturnType(overload)
 				if err := addOp(cmpOp.String(), infixKind, params, returnType); err != nil {
+					__antithesis_instrumentation__.Notify(558241)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558242)
 				}
+				__antithesis_instrumentation__.Notify(558240)
 				if inverse, ok := tree.CmpOpInverse(cmpOp); ok {
+					__antithesis_instrumentation__.Notify(558243)
 					if err := addOp(inverse.String(), infixKind, params, returnType); err != nil {
+						__antithesis_instrumentation__.Notify(558244)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(558245)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(558246)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(558227)
 		for binOp, overloads := range tree.BinOps {
+			__antithesis_instrumentation__.Notify(558247)
 			for _, overload := range overloads {
+				__antithesis_instrumentation__.Notify(558248)
 				params, returnType := tree.GetParamsAndReturnType(overload)
 				if err := addOp(binOp.String(), infixKind, params, returnType); err != nil {
+					__antithesis_instrumentation__.Notify(558249)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558250)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(558228)
 		for unaryOp, overloads := range tree.UnaryOps {
+			__antithesis_instrumentation__.Notify(558251)
 			for _, overload := range overloads {
+				__antithesis_instrumentation__.Notify(558252)
 				params, returnType := tree.GetParamsAndReturnType(overload)
 				if err := addOp(unaryOp.String(), prefixKind, params, returnType); err != nil {
+					__antithesis_instrumentation__.Notify(558253)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558254)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(558229)
 		return nil
 	},
 }
 
 func newSingletonStringArray(s string) tree.Datum {
+	__antithesis_instrumentation__.Notify(558255)
 	return &tree.DArray{ParamTyp: types.String, Array: tree.Datums{tree.NewDString(s)}}
 }
 
@@ -2149,7 +2683,6 @@ var (
 	proArgModeTable    = newSingletonStringArray("t")
 	proArgModeVariadic = newSingletonStringArray("v")
 
-	// Avoid unused warning for constants.
 	_ = proArgModeInOut
 	_ = proArgModeIn
 	_ = proArgModeOut
@@ -2161,28 +2694,27 @@ var pgCatalogPreparedXactsTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/view-pg-prepared-xacts.html`,
 	schema: vtable.PGCatalogPreparedXacts,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558256)
 		return nil
 	},
 	unimplemented: true,
 }
 
-// pgCatalogPreparedStatementsTable implements the pg_prepared_statements table.
-// The statement field differs in that it uses the parsed version
-// of the PREPARE statement.
-// The parameter_types field differs from postgres as the type names in
-// cockroach are slightly different.
 var pgCatalogPreparedStatementsTable = virtualSchemaTable{
 	comment: `prepared statements
 https://www.postgresql.org/docs/9.6/view-pg-prepared-statements.html`,
 	schema: vtable.PGCatalogPreparedStatements,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558257)
 		for name, stmt := range p.preparedStatements.List() {
+			__antithesis_instrumentation__.Notify(558259)
 			placeholderTypes := stmt.PrepareMetadata.PlaceholderTypesInfo.Types
 			paramTypes := tree.NewDArray(types.RegType)
 			paramTypes.Array = make(tree.Datums, len(placeholderTypes))
 			paramNames := make([]string, len(placeholderTypes))
 
 			for i, placeholderType := range placeholderTypes {
+				__antithesis_instrumentation__.Notify(558264)
 				paramTypes.Array[i] = tree.NewDOidWithName(
 					tree.DInt(placeholderType.Oid()),
 					placeholderType,
@@ -2190,22 +2722,34 @@ https://www.postgresql.org/docs/9.6/view-pg-prepared-statements.html`,
 				)
 				paramNames[i] = placeholderType.Name()
 			}
+			__antithesis_instrumentation__.Notify(558260)
 
-			// Only append arguments to string if required.
 			argumentsStr := ""
 			if len(paramNames) > 0 {
+				__antithesis_instrumentation__.Notify(558265)
 				argumentsStr = fmt.Sprintf(" (%s)", strings.Join(paramNames, ", "))
+			} else {
+				__antithesis_instrumentation__.Notify(558266)
 			}
+			__antithesis_instrumentation__.Notify(558261)
 
 			fromSQL := tree.DBoolFalse
 			if stmt.origin == PreparedStatementOriginSQL {
+				__antithesis_instrumentation__.Notify(558267)
 				fromSQL = tree.DBoolTrue
+			} else {
+				__antithesis_instrumentation__.Notify(558268)
 			}
+			__antithesis_instrumentation__.Notify(558262)
 
 			ts, err := tree.MakeDTimestampTZ(stmt.createdAt, time.Microsecond)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(558269)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558270)
 			}
+			__antithesis_instrumentation__.Notify(558263)
 			if err := addRow(
 				tree.NewDString(name),
 				tree.NewDString(fmt.Sprintf("PREPARE %s%s AS %s", name, argumentsStr, stmt.SQL)),
@@ -2213,9 +2757,13 @@ https://www.postgresql.org/docs/9.6/view-pg-prepared-statements.html`,
 				paramTypes,
 				fromSQL,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(558271)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558272)
 			}
 		}
+		__antithesis_instrumentation__.Notify(558258)
 		return nil
 	},
 }
@@ -2225,128 +2773,171 @@ var pgCatalogProcTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-proc.html`,
 	schema: vtable.PGCatalogProc,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558273)
 		h := makeOidHasher()
-		return forEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
+		return forEachDatabaseDesc(ctx, p, dbContext, false,
 			func(db catalog.DatabaseDescriptor) error {
+				__antithesis_instrumentation__.Notify(558274)
 				nspOid := h.NamespaceOid(db.GetID(), pgCatalogName)
 				for _, name := range builtins.AllBuiltinNames {
-					// parser.Builtins contains duplicate uppercase and lowercase keys.
-					// Only return the lowercase ones for compatibility with postgres.
+					__antithesis_instrumentation__.Notify(558276)
+
 					var first rune
 					for _, c := range name {
+						__antithesis_instrumentation__.Notify(558279)
 						first = c
 						break
 					}
+					__antithesis_instrumentation__.Notify(558277)
 					if unicode.IsUpper(first) {
+						__antithesis_instrumentation__.Notify(558280)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(558281)
 					}
+					__antithesis_instrumentation__.Notify(558278)
 					props, overloads := builtins.GetBuiltinProperties(name)
 					isAggregate := props.Class == tree.AggregateClass
 					isWindow := props.Class == tree.WindowClass
 					for _, builtin := range overloads {
+						__antithesis_instrumentation__.Notify(558282)
 						dName := tree.NewDName(name)
 						dSrc := tree.NewDString(name)
 
 						var retType tree.Datum
 						isRetSet := false
 						if fixedRetType := builtin.FixedReturnType(); fixedRetType != nil {
+							__antithesis_instrumentation__.Notify(558286)
 							var retOid oid.Oid
-							if fixedRetType.Family() == types.TupleFamily && builtin.IsGenerator() {
+							if fixedRetType.Family() == types.TupleFamily && func() bool {
+								__antithesis_instrumentation__.Notify(558288)
+								return builtin.IsGenerator() == true
+							}() == true {
+								__antithesis_instrumentation__.Notify(558289)
 								isRetSet = true
-								// Functions returning tables with zero, or more than one
-								// columns are marked to return "anyelement"
-								// (e.g. `unnest`)
+
 								retOid = oid.T_anyelement
 								if len(fixedRetType.TupleContents()) == 1 {
-									// Functions returning tables with exactly one column
-									// are marked to return the type of that column
-									// (e.g. `generate_series`).
+									__antithesis_instrumentation__.Notify(558290)
+
 									retOid = fixedRetType.TupleContents()[0].Oid()
+								} else {
+									__antithesis_instrumentation__.Notify(558291)
 								}
 							} else {
+								__antithesis_instrumentation__.Notify(558292)
 								retOid = fixedRetType.Oid()
 							}
+							__antithesis_instrumentation__.Notify(558287)
 							retType = tree.NewDOid(tree.DInt(retOid))
+						} else {
+							__antithesis_instrumentation__.Notify(558293)
 						}
+						__antithesis_instrumentation__.Notify(558283)
 
 						argTypes := builtin.Types
 						dArgTypes := tree.NewDArray(types.Oid)
 						for _, argType := range argTypes.Types() {
+							__antithesis_instrumentation__.Notify(558294)
 							if err := dArgTypes.Append(tree.NewDOid(tree.DInt(argType.Oid()))); err != nil {
+								__antithesis_instrumentation__.Notify(558295)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(558296)
 							}
 						}
+						__antithesis_instrumentation__.Notify(558284)
 
 						var argmodes tree.Datum
 						var variadicType tree.Datum
 						switch v := argTypes.(type) {
 						case tree.VariadicType:
+							__antithesis_instrumentation__.Notify(558297)
 							if len(v.FixedTypes) == 0 {
+								__antithesis_instrumentation__.Notify(558301)
 								argmodes = proArgModeVariadic
 							} else {
+								__antithesis_instrumentation__.Notify(558302)
 								ary := tree.NewDArray(types.String)
 								for range v.FixedTypes {
+									__antithesis_instrumentation__.Notify(558305)
 									if err := ary.Append(tree.NewDString("i")); err != nil {
+										__antithesis_instrumentation__.Notify(558306)
 										return err
+									} else {
+										__antithesis_instrumentation__.Notify(558307)
 									}
 								}
+								__antithesis_instrumentation__.Notify(558303)
 								if err := ary.Append(tree.NewDString("v")); err != nil {
+									__antithesis_instrumentation__.Notify(558308)
 									return err
+								} else {
+									__antithesis_instrumentation__.Notify(558309)
 								}
+								__antithesis_instrumentation__.Notify(558304)
 								argmodes = ary
 							}
+							__antithesis_instrumentation__.Notify(558298)
 							variadicType = tree.NewDOid(tree.DInt(v.VarType.Oid()))
 						case tree.HomogeneousType:
+							__antithesis_instrumentation__.Notify(558299)
 							argmodes = proArgModeVariadic
 							argType := types.Any
 							oid := argType.Oid()
 							variadicType = tree.NewDOid(tree.DInt(oid))
 						default:
+							__antithesis_instrumentation__.Notify(558300)
 							argmodes = tree.DNull
 							variadicType = oidZero
 						}
+						__antithesis_instrumentation__.Notify(558285)
 						provolatile, proleakproof := builtin.Volatility.ToPostgres()
 
 						err := addRow(
-							h.BuiltinOid(name, &builtin),             // oid
-							dName,                                    // proname
-							nspOid,                                   // pronamespace
-							tree.DNull,                               // proowner
-							oidZero,                                  // prolang
-							tree.DNull,                               // procost
-							tree.DNull,                               // prorows
-							variadicType,                             // provariadic
-							tree.DNull,                               // protransform
-							tree.MakeDBool(tree.DBool(isAggregate)),  // proisagg
-							tree.MakeDBool(tree.DBool(isWindow)),     // proiswindow
-							tree.DBoolFalse,                          // prosecdef
-							tree.MakeDBool(tree.DBool(proleakproof)), // proleakproof
-							tree.DBoolFalse,                          // proisstrict
-							tree.MakeDBool(tree.DBool(isRetSet)),     // proretset
-							tree.NewDString(provolatile),             // provolatile
-							tree.DNull,                               // proparallel
-							tree.NewDInt(tree.DInt(builtin.Types.Length())), // pronargs
-							tree.NewDInt(tree.DInt(0)),                      // pronargdefaults
-							retType,                                         // prorettype
-							tree.NewDOidVectorFromDArray(dArgTypes),         // proargtypes
-							tree.DNull,                                      // proallargtypes
-							argmodes,                                        // proargmodes
-							tree.DNull,                                      // proargnames
-							tree.DNull,                                      // proargdefaults
-							tree.DNull,                                      // protrftypes
-							dSrc,                                            // prosrc
-							tree.DNull,                                      // probin
-							tree.DNull,                                      // proconfig
-							tree.DNull,                                      // proacl
-							// These columns were automatically created by pg_catalog_test's missing column generator.
-							tree.DNull, // prokind
-							tree.DNull, // prosupport
+							h.BuiltinOid(name, &builtin),
+							dName,
+							nspOid,
+							tree.DNull,
+							oidZero,
+							tree.DNull,
+							tree.DNull,
+							variadicType,
+							tree.DNull,
+							tree.MakeDBool(tree.DBool(isAggregate)),
+							tree.MakeDBool(tree.DBool(isWindow)),
+							tree.DBoolFalse,
+							tree.MakeDBool(tree.DBool(proleakproof)),
+							tree.DBoolFalse,
+							tree.MakeDBool(tree.DBool(isRetSet)),
+							tree.NewDString(provolatile),
+							tree.DNull,
+							tree.NewDInt(tree.DInt(builtin.Types.Length())),
+							tree.NewDInt(tree.DInt(0)),
+							retType,
+							tree.NewDOidVectorFromDArray(dArgTypes),
+							tree.DNull,
+							argmodes,
+							tree.DNull,
+							tree.DNull,
+							tree.DNull,
+							dSrc,
+							tree.DNull,
+							tree.DNull,
+							tree.DNull,
+
+							tree.DNull,
+							tree.DNull,
 						)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(558310)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(558311)
 						}
 					}
 				}
+				__antithesis_instrumentation__.Notify(558275)
 				return nil
 			})
 	},
@@ -2357,9 +2948,8 @@ var pgCatalogRangeTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-range.html`,
 	schema: vtable.PGCatalogRange,
 	populate: func(_ context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// We currently do not support any range types, so this table is empty.
-		// This table should be populated when any range types are added to
-		// oidToDatum (and therefore pg_type).
+		__antithesis_instrumentation__.Notify(558312)
+
 		return nil
 	},
 	unimplemented: true,
@@ -2370,31 +2960,41 @@ var pgCatalogRewriteTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-rewrite.html`,
 	schema: vtable.PGCatalogRewrite,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558313)
 		h := makeOidHasher()
 		ruleName := tree.NewDString("_RETURN")
 		evType := tree.NewDString(string(evTypeSelect))
-		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual /*virtual tables have no constraints*/, func(
+		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual, func(
 			db catalog.DatabaseDescriptor,
 			scName string,
 			table catalog.TableDescriptor,
 			tableLookup tableLookupFn,
 		) error {
-			if !table.IsTable() && !table.IsView() {
+			__antithesis_instrumentation__.Notify(558314)
+			if !table.IsTable() && func() bool {
+				__antithesis_instrumentation__.Notify(558316)
+				return !table.IsView() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(558317)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(558318)
 			}
+			__antithesis_instrumentation__.Notify(558315)
 
 			return table.ForeachDependedOnBy(func(dep *descpb.TableDescriptor_Reference) error {
+				__antithesis_instrumentation__.Notify(558319)
 				rewriteOid := h.rewriteOid(table.GetID(), dep.ID)
 				evClass := tableOid(dep.ID)
 				return addRow(
-					rewriteOid,     // oid
-					ruleName,       // rulename
-					evClass,        // ev_class
-					evType,         // ev_type
-					tree.DNull,     // ev_enabled
-					tree.DBoolTrue, // is_instead
-					tree.DNull,     // ev_qual
-					tree.DNull,     // ev_action
+					rewriteOid,
+					ruleName,
+					evClass,
+					evType,
+					tree.DNull,
+					tree.DBoolTrue,
+					tree.DNull,
+					tree.DNull,
 				)
 			})
 		})
@@ -2406,54 +3006,87 @@ var pgCatalogRolesTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/view-pg-roles.html`,
 	schema: vtable.PGCatalogRoles,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// We intentionally do not check if the user has access to system.user.
-		// Because Postgres allows access to pg_roles by non-privileged users, we
-		// need to do the same. This shouldn't be an issue, because pg_roles doesn't
-		// include sensitive information such as password hashes.
+		__antithesis_instrumentation__.Notify(558320)
+
 		h := makeOidHasher()
 		return forEachRole(ctx, p,
 			func(username security.SQLUsername, isRole bool, options roleOptions, settings tree.Datum) error {
-				isRoot := tree.DBool(username.IsRootUser() || username.IsAdminRole())
-				// Currently, all users and roles inherit the privileges of roles they are
-				// members of. See https://github.com/cockroachdb/cockroach/issues/69583.
+				__antithesis_instrumentation__.Notify(558321)
+				isRoot := tree.DBool(username.IsRootUser() || func() bool {
+					__antithesis_instrumentation__.Notify(558327)
+					return username.IsAdminRole() == true
+				}() == true)
+
 				roleInherits := tree.DBool(true)
 				noLogin, err := options.noLogin()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558328)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558329)
 				}
-				roleCanLogin := isRoot || !noLogin
+				__antithesis_instrumentation__.Notify(558322)
+				roleCanLogin := isRoot || func() bool {
+					__antithesis_instrumentation__.Notify(558330)
+					return !noLogin == true
+				}() == true
 				createDB, err := options.createDB()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558331)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558332)
 				}
+				__antithesis_instrumentation__.Notify(558323)
 				rolValidUntil, err := options.validUntil(p)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558333)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558334)
 				}
+				__antithesis_instrumentation__.Notify(558324)
 				createRole, err := options.createRole()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558335)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558336)
 				}
+				__antithesis_instrumentation__.Notify(558325)
 				isSuper, err := userIsSuper(ctx, p, username)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558337)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558338)
 				}
+				__antithesis_instrumentation__.Notify(558326)
 
 				return addRow(
-					h.UserOid(username),                  // oid
-					tree.NewDName(username.Normalized()), // rolname
-					tree.MakeDBool(isRoot || isSuper),    // rolsuper
-					tree.MakeDBool(roleInherits),         // rolinherit
-					tree.MakeDBool(isRoot || createRole), // rolcreaterole
-					tree.MakeDBool(isRoot || createDB),   // rolcreatedb
-					tree.DBoolFalse,                      // rolcatupdate
-					tree.MakeDBool(roleCanLogin),         // rolcanlogin.
-					tree.DBoolFalse,                      // rolreplication
-					negOneVal,                            // rolconnlimit
-					passwdStarString,                     // rolpassword
-					rolValidUntil,                        // rolvaliduntil
-					tree.DBoolFalse,                      // rolbypassrls
-					settings,                             // rolconfig
+					h.UserOid(username),
+					tree.NewDName(username.Normalized()),
+					tree.MakeDBool(isRoot || func() bool {
+						__antithesis_instrumentation__.Notify(558339)
+						return isSuper == true
+					}() == true),
+					tree.MakeDBool(roleInherits),
+					tree.MakeDBool(isRoot || func() bool {
+						__antithesis_instrumentation__.Notify(558340)
+						return createRole == true
+					}() == true),
+					tree.MakeDBool(isRoot || func() bool {
+						__antithesis_instrumentation__.Notify(558341)
+						return createDB == true
+					}() == true),
+					tree.DBoolFalse,
+					tree.MakeDBool(roleCanLogin),
+					tree.DBoolFalse,
+					negOneVal,
+					passwdStarString,
+					rolValidUntil,
+					tree.DBoolFalse,
+					settings,
 				)
 			})
 	},
@@ -2464,6 +3097,7 @@ var pgCatalogSecLabelsTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/view-pg-seclabels.html`,
 	schema: vtable.PGCatalogSecLabels,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558342)
 		return nil
 	},
 	unimplemented: true,
@@ -2474,21 +3108,27 @@ var pgCatalogSequenceTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-sequence.html`,
 	schema: vtable.PGCatalogSequence,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		return forEachTableDesc(ctx, p, dbContext, hideVirtual, /* virtual schemas do not have indexes */
+		__antithesis_instrumentation__.Notify(558343)
+		return forEachTableDesc(ctx, p, dbContext, hideVirtual,
 			func(db catalog.DatabaseDescriptor, scName string, table catalog.TableDescriptor) error {
+				__antithesis_instrumentation__.Notify(558344)
 				if !table.IsSequence() {
+					__antithesis_instrumentation__.Notify(558346)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(558347)
 				}
+				__antithesis_instrumentation__.Notify(558345)
 				opts := table.GetSequenceOpts()
 				return addRow(
-					tableOid(table.GetID()),                 // seqrelid
-					tree.NewDOid(tree.DInt(oid.T_int8)),     // seqtypid
-					tree.NewDInt(tree.DInt(opts.Start)),     // seqstart
-					tree.NewDInt(tree.DInt(opts.Increment)), // seqincrement
-					tree.NewDInt(tree.DInt(opts.MaxValue)),  // seqmax
-					tree.NewDInt(tree.DInt(opts.MinValue)),  // seqmin
-					tree.NewDInt(1),                         // seqcache
-					tree.DBoolFalse,                         // seqcycle
+					tableOid(table.GetID()),
+					tree.NewDOid(tree.DInt(oid.T_int8)),
+					tree.NewDInt(tree.DInt(opts.Start)),
+					tree.NewDInt(tree.DInt(opts.Increment)),
+					tree.NewDInt(tree.DInt(opts.MaxValue)),
+					tree.NewDInt(tree.DInt(opts.MinValue)),
+					tree.NewDInt(1),
+					tree.DBoolFalse,
 				)
 			})
 	},
@@ -2504,58 +3144,84 @@ var pgCatalogSettingsTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-settings.html`,
 	schema: vtable.PGCatalogSettings,
 	populate: func(_ context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558348)
 		for _, vName := range varNames {
+			__antithesis_instrumentation__.Notify(558350)
 			gen := varGen[vName]
 			if gen.Hidden {
+				__antithesis_instrumentation__.Notify(558354)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(558355)
 			}
+			__antithesis_instrumentation__.Notify(558351)
 			value, err := gen.Get(&p.extendedEvalCtx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(558356)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558357)
 			}
+			__antithesis_instrumentation__.Notify(558352)
 			valueDatum := tree.NewDString(value)
 			var bootDatum tree.Datum = tree.DNull
 			var resetDatum tree.Datum = tree.DNull
-			if gen.Set == nil && gen.RuntimeSet == nil {
-				// RESET/SET will leave the variable unchanged. Announce the
-				// current value as boot/reset value.
+			if gen.Set == nil && func() bool {
+				__antithesis_instrumentation__.Notify(558358)
+				return gen.RuntimeSet == nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(558359)
+
 				bootDatum = valueDatum
 				resetDatum = bootDatum
 			} else {
+				__antithesis_instrumentation__.Notify(558360)
 				if gen.GlobalDefault != nil {
+					__antithesis_instrumentation__.Notify(558362)
 					globalDefVal := gen.GlobalDefault(&p.EvalContext().Settings.SV)
 					bootDatum = tree.NewDString(globalDefVal)
+				} else {
+					__antithesis_instrumentation__.Notify(558363)
 				}
+				__antithesis_instrumentation__.Notify(558361)
 				if hasDefault, defVal := getSessionVarDefaultString(
 					vName,
 					gen,
 					p.sessionDataMutatorIterator.sessionDataMutatorBase,
 				); hasDefault {
+					__antithesis_instrumentation__.Notify(558364)
 					resetDatum = tree.NewDString(defVal)
+				} else {
+					__antithesis_instrumentation__.Notify(558365)
 				}
 			}
+			__antithesis_instrumentation__.Notify(558353)
 			if err := addRow(
-				tree.NewDString(strings.ToLower(vName)), // name
-				valueDatum,                              // setting
-				tree.DNull,                              // unit
-				tree.DNull,                              // category
-				tree.DNull,                              // short_desc
-				tree.DNull,                              // extra_desc
-				settingsCtxUser,                         // context
-				varTypeString,                           // vartype
-				tree.DNull,                              // source
-				tree.DNull,                              // min_val
-				tree.DNull,                              // max_val
-				tree.DNull,                              // enumvals
-				bootDatum,                               // boot_val
-				resetDatum,                              // reset_val
-				tree.DNull,                              // sourcefile
-				tree.DNull,                              // sourceline
-				tree.DBoolFalse,                         // pending_restart
+				tree.NewDString(strings.ToLower(vName)),
+				valueDatum,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				settingsCtxUser,
+				varTypeString,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				bootDatum,
+				resetDatum,
+				tree.DNull,
+				tree.DNull,
+				tree.DBoolFalse,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(558366)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558367)
 			}
 		}
+		__antithesis_instrumentation__.Notify(558349)
 		return nil
 	},
 }
@@ -2565,120 +3231,159 @@ var pgCatalogShdependTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/catalog-pg-shdepend.html`,
 	schema: vtable.PGCatalogShdepend,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558368)
 		vt := p.getVirtualTabler()
 		h := makeOidHasher()
 
 		pgClassDesc, err := vt.getVirtualTableDesc(&pgClassTableName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(558376)
 			return errors.New("could not find pg_catalog.pg_class")
+		} else {
+			__antithesis_instrumentation__.Notify(558377)
 		}
+		__antithesis_instrumentation__.Notify(558369)
 		pgClassOid := tableOid(pgClassDesc.GetID())
 
 		pgAuthIDDesc, err := vt.getVirtualTableDesc(&pgAuthIDTableName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(558378)
 			return errors.New("could not find pg_catalog.pg_authid")
+		} else {
+			__antithesis_instrumentation__.Notify(558379)
 		}
+		__antithesis_instrumentation__.Notify(558370)
 		pgAuthIDOid := tableOid(pgAuthIDDesc.GetID())
 
 		pgDatabaseDesc, err := vt.getVirtualTableDesc(&pgDatabaseTableName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(558380)
 			return errors.New("could not find pg_catalog.pg_database")
+		} else {
+			__antithesis_instrumentation__.Notify(558381)
 		}
+		__antithesis_instrumentation__.Notify(558371)
 		pgDatabaseOid := tableOid(pgDatabaseDesc.GetID())
 
-		// There is no dependent object for pinned roles; In postgres this type of
-		// entry is a signal that the system itself depends on the referenced
-		// object, and so that object must never be deleted. The columns for the
-		// dependent object contain zeroes.
 		pinnedRoles := map[string]security.SQLUsername{
 			security.RootUser:  security.RootUserName(),
 			security.AdminRole: security.AdminRoleName(),
 		}
 
-		// Function commonly used to add table and database dependencies.
 		addSharedDependency := func(
 			dbID *tree.DOid, classID *tree.DOid, objID *tree.DOid, refClassID *tree.DOid, user, owner security.SQLUsername,
 		) error {
-			// As stated above, where pinned roles is declared: pinned roles
-			// does not have dependent objects.
+			__antithesis_instrumentation__.Notify(558382)
+
 			if _, ok := pinnedRoles[user.Normalized()]; ok {
+				__antithesis_instrumentation__.Notify(558385)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(558386)
 			}
+			__antithesis_instrumentation__.Notify(558383)
 
 			depType := sharedDependencyACL
 			if owner.Normalized() == user.Normalized() {
+				__antithesis_instrumentation__.Notify(558387)
 				depType = sharedDependencyOwner
+			} else {
+				__antithesis_instrumentation__.Notify(558388)
 			}
+			__antithesis_instrumentation__.Notify(558384)
 
 			return addRow(
-				dbID,                             // dbid
-				classID,                          // classid
-				objID,                            // objid
-				zeroVal,                          // objsubid
-				refClassID,                       // refclassid
-				h.UserOid(user),                  // refobjid
-				tree.NewDString(string(depType)), // deptype
+				dbID,
+				classID,
+				objID,
+				zeroVal,
+				refClassID,
+				h.UserOid(user),
+				tree.NewDString(string(depType)),
 			)
 		}
+		__antithesis_instrumentation__.Notify(558372)
 
-		// Populating table descriptor dependencies with roles
 		if err = forEachTableDesc(ctx, p, dbContext, virtualMany,
 			func(db catalog.DatabaseDescriptor, scName string, table catalog.TableDescriptor) error {
+				__antithesis_instrumentation__.Notify(558389)
 				owner := table.GetPrivileges().Owner()
 				for _, u := range table.GetPrivileges().Show(privilege.Table) {
+					__antithesis_instrumentation__.Notify(558391)
 					if err := addSharedDependency(
-						dbOid(db.GetID()),       // dbid
-						pgClassOid,              // classid
-						tableOid(table.GetID()), // objid
-						pgAuthIDOid,             // refclassid
-						u.User,                  // refobjid
+						dbOid(db.GetID()),
+						pgClassOid,
+						tableOid(table.GetID()),
+						pgAuthIDOid,
+						u.User,
 						owner,
 					); err != nil {
+						__antithesis_instrumentation__.Notify(558392)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(558393)
 					}
 				}
+				__antithesis_instrumentation__.Notify(558390)
 				return nil
 			},
 		); err != nil {
+			__antithesis_instrumentation__.Notify(558394)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(558395)
 		}
+		__antithesis_instrumentation__.Notify(558373)
 
-		// Databases dependencies with roles
-		if err = forEachDatabaseDesc(ctx, p, nil /*all databases*/, false, /* requiresPrivileges */
+		if err = forEachDatabaseDesc(ctx, p, nil, false,
 			func(db catalog.DatabaseDescriptor) error {
+				__antithesis_instrumentation__.Notify(558396)
 				owner := db.GetPrivileges().Owner()
 				for _, u := range db.GetPrivileges().Show(privilege.Database) {
+					__antithesis_instrumentation__.Notify(558398)
 					if err := addSharedDependency(
-						tree.NewDOid(0),   // dbid
-						pgDatabaseOid,     // classid
-						dbOid(db.GetID()), // objid
-						pgAuthIDOid,       // refclassid
-						u.User,            // refobjid
+						tree.NewDOid(0),
+						pgDatabaseOid,
+						dbOid(db.GetID()),
+						pgAuthIDOid,
+						u.User,
 						owner,
 					); err != nil {
+						__antithesis_instrumentation__.Notify(558399)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(558400)
 					}
 				}
+				__antithesis_instrumentation__.Notify(558397)
 				return nil
 			},
 		); err != nil {
+			__antithesis_instrumentation__.Notify(558401)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(558402)
 		}
+		__antithesis_instrumentation__.Notify(558374)
 
-		// Pinned roles, as stated above, pinned roles only have rows with zeros.
 		for _, role := range pinnedRoles {
+			__antithesis_instrumentation__.Notify(558403)
 			if err := addRow(
-				tree.NewDOid(0), // dbid
-				tree.NewDOid(0), // classid
-				tree.NewDOid(0), // objid
-				zeroVal,         // objsubid
-				pgAuthIDOid,     // refclassid
-				h.UserOid(role), // refobjid
-				tree.NewDString(string(sharedDependencyPin)), // deptype
+				tree.NewDOid(0),
+				tree.NewDOid(0),
+				tree.NewDOid(0),
+				zeroVal,
+				pgAuthIDOid,
+				h.UserOid(role),
+				tree.NewDString(string(sharedDependencyPin)),
 			); err != nil {
+				__antithesis_instrumentation__.Notify(558404)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558405)
 			}
 		}
+		__antithesis_instrumentation__.Notify(558375)
 
 		return nil
 	},
@@ -2689,23 +3394,27 @@ var pgCatalogTablesTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/view-pg-tables.html`,
 	schema: vtable.PGCatalogTables,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// Note: pg_catalog.pg_tables is not well-defined if the dbContext is
-		// empty -- listing tables across databases can yield duplicate
-		// schema/table names.
+		__antithesis_instrumentation__.Notify(558406)
+
 		return forEachTableDesc(ctx, p, dbContext, virtualMany,
 			func(db catalog.DatabaseDescriptor, scName string, table catalog.TableDescriptor) error {
+				__antithesis_instrumentation__.Notify(558407)
 				if !table.IsTable() {
+					__antithesis_instrumentation__.Notify(558409)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(558410)
 				}
+				__antithesis_instrumentation__.Notify(558408)
 				return addRow(
-					tree.NewDName(scName),          // schemaname
-					tree.NewDName(table.GetName()), // tablename
-					getOwnerName(table),            // tableowner
-					tree.DNull,                     // tablespace
-					tree.MakeDBool(tree.DBool(table.IsPhysicalTable())), // hasindexes
-					tree.DBoolFalse, // hasrules
-					tree.DBoolFalse, // hastriggers
-					tree.DBoolFalse, // rowsecurity
+					tree.NewDName(scName),
+					tree.NewDName(table.GetName()),
+					getOwnerName(table),
+					tree.DNull,
+					tree.MakeDBool(tree.DBool(table.IsPhysicalTable())),
+					tree.DBoolFalse,
+					tree.DBoolFalse,
+					tree.DBoolFalse,
 				)
 			})
 	},
@@ -2716,13 +3425,14 @@ var pgCatalogTablespaceTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-tablespace.html`,
 	schema: vtable.PGCatalogTablespace,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558411)
 		return addRow(
-			oidZero,                       // oid
-			tree.NewDString("pg_default"), // spcname
-			tree.DNull,                    // spcowner
-			tree.DNull,                    // spclocation
-			tree.DNull,                    // spcacl
-			tree.DNull,                    // spcoptions
+			oidZero,
+			tree.NewDString("pg_default"),
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
+			tree.DNull,
 		)
 	},
 }
@@ -2732,7 +3442,8 @@ var pgCatalogTriggerTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-trigger.html`,
 	schema: vtable.PGCatalogTrigger,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// Triggers are unsupported.
+		__antithesis_instrumentation__.Notify(558412)
+
 		return nil
 	},
 	unimplemented: true,
@@ -2746,12 +3457,10 @@ var (
 	typTypePseudo    = tree.NewDString("p")
 	typTypeRange     = tree.NewDString("r")
 
-	// Avoid unused warning for constants.
 	_ = typTypeDomain
 	_ = typTypePseudo
 	_ = typTypeRange
 
-	// See https://www.postgresql.org/docs/9.6/static/catalog-pg-type.html#CATALOG-TYPCATEGORY-TABLE.
 	typCategoryArray       = tree.NewDString("A")
 	typCategoryBoolean     = tree.NewDString("B")
 	typCategoryComposite   = tree.NewDString("C")
@@ -2768,7 +3477,6 @@ var (
 	typCategoryBitString   = tree.NewDString("V")
 	typCategoryUnknown     = tree.NewDString("X")
 
-	// Avoid unused warning for constants.
 	_ = typCategoryEnum
 	_ = typCategoryGeometric
 	_ = typCategoryRange
@@ -2778,13 +3486,16 @@ var (
 )
 
 func tableIDToTypeOID(table catalog.TableDescriptor) tree.Datum {
-	// We re-use the type ID to OID logic, as type IDs and table IDs share the
-	// same ID space.
+	__antithesis_instrumentation__.Notify(558413)
+
 	if !table.IsVirtualTable() {
+		__antithesis_instrumentation__.Notify(558415)
 		return tree.NewDOid(tree.DInt(typedesc.TypeIDToOID(table.GetID())))
+	} else {
+		__antithesis_instrumentation__.Notify(558416)
 	}
-	// Virtual table OIDs start at max UInt32, so doing OID math would overflow.
-	// As such, just use the virtual table ID.
+	__antithesis_instrumentation__.Notify(558414)
+
 	return tree.NewDOid(tree.DInt(table.GetID()))
 }
 
@@ -2795,50 +3506,50 @@ func addPGTypeRowForTable(
 	table catalog.TableDescriptor,
 	addRow func(...tree.Datum) error,
 ) error {
+	__antithesis_instrumentation__.Notify(558417)
 	nspOid := h.NamespaceOid(db.GetID(), scName)
 	return addRow(
-		tableIDToTypeOID(table),        // oid
-		tree.NewDName(table.GetName()), // typname
-		nspOid,                         // typnamespace
-		getOwnerOID(table),             // typowner
-		negOneVal,                      // typlen
-		tree.DBoolFalse,                // typbyval (is it fixedlen or not)
-		typTypeComposite,               // typtype
-		typCategoryComposite,           // typcategory
-		tree.DBoolFalse,                // typispreferred
-		tree.DBoolTrue,                 // typisdefined
-		typDelim,                       // typdelim
-		tableOid(table.GetID()),        // typrelid
-		oidZero,                        // typelem
-		// NOTE: we do not add the array type or OID here.
-		// We unfortunately do not reserve a descriptor ID for an array of the given class,
-		// and there is no safe "range" to reserve for arrays left.
-		oidZero, // typarray
+		tableIDToTypeOID(table),
+		tree.NewDName(table.GetName()),
+		nspOid,
+		getOwnerOID(table),
+		negOneVal,
+		tree.DBoolFalse,
+		typTypeComposite,
+		typCategoryComposite,
+		tree.DBoolFalse,
+		tree.DBoolTrue,
+		typDelim,
+		tableOid(table.GetID()),
+		oidZero,
 
-		h.RegProc("record_in"),   // typinput
-		h.RegProc("record_out"),  // typoutput
-		h.RegProc("record_recv"), // typreceive
-		h.RegProc("record_send"), // typsend
-		oidZero,                  // typmodin
-		oidZero,                  // typmodout
-		oidZero,                  // typanalyze
+		oidZero,
 
-		tree.DNull,      // typalign
-		tree.DNull,      // typstorage
-		tree.DBoolFalse, // typnotnull
-		oidZero,         // typbasetype
-		negOneVal,       // typtypmod
-		zeroVal,         // typndims
-		oidZero,         // typcollation
-		tree.DNull,      // typdefaultbin
-		tree.DNull,      // typdefault
-		tree.DNull,      // typacl
+		h.RegProc("record_in"),
+		h.RegProc("record_out"),
+		h.RegProc("record_recv"),
+		h.RegProc("record_send"),
+		oidZero,
+		oidZero,
+		oidZero,
+
+		tree.DNull,
+		tree.DNull,
+		tree.DBoolFalse,
+		oidZero,
+		negOneVal,
+		zeroVal,
+		oidZero,
+		tree.DNull,
+		tree.DNull,
+		tree.DNull,
 	)
 }
 
 func addPGTypeRow(
 	h oidHasher, nspOid tree.Datum, owner tree.Datum, typ *types.T, addRow func(...tree.Datum) error,
 ) error {
+	__antithesis_instrumentation__.Notify(558418)
 	cat := typCategory(typ)
 	typType := typTypeBase
 	typElem := oidZero
@@ -2846,86 +3557,111 @@ func addPGTypeRow(
 	builtinPrefix := builtins.PGIOBuiltinPrefix(typ)
 	switch typ.Family() {
 	case types.ArrayFamily:
+		__antithesis_instrumentation__.Notify(558422)
 		switch typ.Oid() {
 		case oid.T_int2vector:
-			// IntVector needs a special case because it's a special snowflake
-			// type that behaves in some ways like a scalar type and in others
-			// like an array type.
+			__antithesis_instrumentation__.Notify(558425)
+
 			typElem = tree.NewDOid(tree.DInt(oid.T_int2))
 			typArray = tree.NewDOid(tree.DInt(oid.T__int2vector))
 		case oid.T_oidvector:
-			// Same story as above for OidVector.
+			__antithesis_instrumentation__.Notify(558426)
+
 			typElem = tree.NewDOid(tree.DInt(oid.T_oid))
 			typArray = tree.NewDOid(tree.DInt(oid.T__oidvector))
 		case oid.T_anyarray:
-			// AnyArray does not use a prefix or element type.
+			__antithesis_instrumentation__.Notify(558427)
+
 		default:
+			__antithesis_instrumentation__.Notify(558428)
 			builtinPrefix = "array_"
 			typElem = tree.NewDOid(tree.DInt(typ.ArrayContents().Oid()))
 		}
 	case types.VoidFamily:
-		// void does not have an array type.
+		__antithesis_instrumentation__.Notify(558423)
+
 	default:
+		__antithesis_instrumentation__.Notify(558424)
 		typArray = tree.NewDOid(tree.DInt(types.CalcArrayOid(typ)))
 	}
+	__antithesis_instrumentation__.Notify(558419)
 	if typ.Family() == types.EnumFamily {
+		__antithesis_instrumentation__.Notify(558429)
 		builtinPrefix = "enum_"
 		typType = typTypeEnum
+	} else {
+		__antithesis_instrumentation__.Notify(558430)
 	}
+	__antithesis_instrumentation__.Notify(558420)
 	if cat == typCategoryPseudo {
+		__antithesis_instrumentation__.Notify(558431)
 		typType = typTypePseudo
+	} else {
+		__antithesis_instrumentation__.Notify(558432)
 	}
+	__antithesis_instrumentation__.Notify(558421)
 	typname := typ.PGName()
 
 	return addRow(
-		tree.NewDOid(tree.DInt(typ.Oid())), // oid
-		tree.NewDName(typname),             // typname
-		nspOid,                             // typnamespace
-		owner,                              // typowner
-		typLen(typ),                        // typlen
-		typByVal(typ),                      // typbyval (is it fixedlen or not)
-		typType,                            // typtype
-		cat,                                // typcategory
-		tree.DBoolFalse,                    // typispreferred
-		tree.DBoolTrue,                     // typisdefined
-		typDelim,                           // typdelim
-		oidZero,                            // typrelid
-		typElem,                            // typelem
-		typArray,                           // typarray
+		tree.NewDOid(tree.DInt(typ.Oid())),
+		tree.NewDName(typname),
+		nspOid,
+		owner,
+		typLen(typ),
+		typByVal(typ),
+		typType,
+		cat,
+		tree.DBoolFalse,
+		tree.DBoolTrue,
+		typDelim,
+		oidZero,
+		typElem,
+		typArray,
 
-		// regproc references
-		h.RegProc(builtinPrefix+"in"),   // typinput
-		h.RegProc(builtinPrefix+"out"),  // typoutput
-		h.RegProc(builtinPrefix+"recv"), // typreceive
-		h.RegProc(builtinPrefix+"send"), // typsend
-		oidZero,                         // typmodin
-		oidZero,                         // typmodout
-		oidZero,                         // typanalyze
+		h.RegProc(builtinPrefix+"in"),
+		h.RegProc(builtinPrefix+"out"),
+		h.RegProc(builtinPrefix+"recv"),
+		h.RegProc(builtinPrefix+"send"),
+		oidZero,
+		oidZero,
+		oidZero,
 
-		tree.DNull,      // typalign
-		tree.DNull,      // typstorage
-		tree.DBoolFalse, // typnotnull
-		oidZero,         // typbasetype
-		negOneVal,       // typtypmod
-		zeroVal,         // typndims
-		typColl(typ, h), // typcollation
-		tree.DNull,      // typdefaultbin
-		tree.DNull,      // typdefault
-		tree.DNull,      // typacl
+		tree.DNull,
+		tree.DNull,
+		tree.DBoolFalse,
+		oidZero,
+		negOneVal,
+		zeroVal,
+		typColl(typ, h),
+		tree.DNull,
+		tree.DNull,
+		tree.DNull,
 	)
 }
 
 func getSchemaAndTypeByTypeID(
 	ctx context.Context, p *planner, id descpb.ID,
 ) (string, catalog.TypeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(558433)
 	typDesc, err := p.Descriptors().GetImmutableTypeByID(ctx, p.txn, id, tree.ObjectLookupFlags{})
 	if err != nil {
-		// If the type was not found, it may be a table.
-		if !(errors.Is(err, catalog.ErrDescriptorNotFound) || pgerror.GetPGCode(err) == pgcode.UndefinedObject) {
+		__antithesis_instrumentation__.Notify(558436)
+
+		if !(errors.Is(err, catalog.ErrDescriptorNotFound) || func() bool {
+			__antithesis_instrumentation__.Notify(558438)
+			return pgerror.GetPGCode(err) == pgcode.UndefinedObject == true
+		}() == true) {
+			__antithesis_instrumentation__.Notify(558439)
 			return "", nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(558440)
 		}
+		__antithesis_instrumentation__.Notify(558437)
 		return "", nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(558441)
 	}
+	__antithesis_instrumentation__.Notify(558434)
 
 	sc, err := p.Descriptors().GetImmutableSchemaByID(
 		ctx,
@@ -2934,8 +3670,12 @@ func getSchemaAndTypeByTypeID(
 		tree.SchemaLookupFlags{Required: true},
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(558442)
 		return "", nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(558443)
 	}
+	__antithesis_instrumentation__.Notify(558435)
 	return sc.GetName(), typDesc, nil
 }
 
@@ -2944,42 +3684,56 @@ var pgCatalogTypeTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-type.html`,
 	schema: vtable.PGCatalogType,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558444)
 		h := makeOidHasher()
-		return forEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
+		return forEachDatabaseDesc(ctx, p, dbContext, false,
 			func(db catalog.DatabaseDescriptor) error {
+				__antithesis_instrumentation__.Notify(558445)
 				nspOid := h.NamespaceOid(db.GetID(), pgCatalogName)
 
-				// Generate rows for all predefined types.
 				for _, typ := range types.OidToType {
-					if err := addPGTypeRow(h, nspOid, tree.DNull /* owner */, typ, addRow); err != nil {
+					__antithesis_instrumentation__.Notify(558448)
+					if err := addPGTypeRow(h, nspOid, tree.DNull, typ, addRow); err != nil {
+						__antithesis_instrumentation__.Notify(558449)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(558450)
 					}
 				}
+				__antithesis_instrumentation__.Notify(558446)
 
-				// Each table has a corresponding pg_type row.
 				if err := forEachTableDescWithTableLookup(
 					ctx,
 					p,
 					dbContext,
 					virtualCurrentDB,
 					func(db catalog.DatabaseDescriptor, scName string, table catalog.TableDescriptor, lookup tableLookupFn) error {
+						__antithesis_instrumentation__.Notify(558451)
 						return addPGTypeRowForTable(h, db, scName, table, addRow)
 					},
 				); err != nil {
+					__antithesis_instrumentation__.Notify(558452)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558453)
 				}
+				__antithesis_instrumentation__.Notify(558447)
 
-				// Now generate rows for user defined types in this database.
 				return forEachTypeDesc(
 					ctx,
 					p,
 					db,
 					func(_ catalog.DatabaseDescriptor, scName string, typDesc catalog.TypeDescriptor) error {
+						__antithesis_instrumentation__.Notify(558454)
 						nspOid := h.NamespaceOid(db.GetID(), scName)
 						typ, err := typDesc.MakeTypesT(ctx, tree.NewQualifiedTypeName(db.GetName(), scName, typDesc.GetName()), p)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(558456)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(558457)
 						}
+						__antithesis_instrumentation__.Notify(558455)
 						return addPGTypeRow(h, nspOid, getOwnerOID(typDesc), typ, addRow)
 					},
 				)
@@ -2991,53 +3745,82 @@ https://www.postgresql.org/docs/9.5/catalog-pg-type.html`,
 			partial: false,
 			populate: func(ctx context.Context, constraint tree.Datum, p *planner, db catalog.DatabaseDescriptor,
 				addRow func(...tree.Datum) error) (bool, error) {
+				__antithesis_instrumentation__.Notify(558458)
 
 				h := makeOidHasher()
 				nspOid := h.NamespaceOid(db.GetID(), pgCatalogName)
 				coid := tree.MustBeDOid(constraint)
 				ooid := oid.Oid(int(coid.DInt))
 
-				// Check if it is a predefined type.
 				typ, ok := types.OidToType[ooid]
 				if ok {
-					if err := addPGTypeRow(h, nspOid, tree.DNull /* owner */, typ, addRow); err != nil {
+					__antithesis_instrumentation__.Notify(558466)
+					if err := addPGTypeRow(h, nspOid, tree.DNull, typ, addRow); err != nil {
+						__antithesis_instrumentation__.Notify(558468)
 						return false, err
+					} else {
+						__antithesis_instrumentation__.Notify(558469)
 					}
+					__antithesis_instrumentation__.Notify(558467)
 					return true, nil
+				} else {
+					__antithesis_instrumentation__.Notify(558470)
 				}
+				__antithesis_instrumentation__.Notify(558459)
 
-				// Check if it is a user defined type.
 				if !types.IsOIDUserDefinedType(ooid) {
-					// This oid is not a user-defined type and we didn't find it in the
-					// map of predefined types, return false. Note that in common usage we
-					// only really expect the value 0 here (which cockroach uses internally
-					// in the typelem field amongst others). Users, however, may join on
-					// this index with any value.
+					__antithesis_instrumentation__.Notify(558471)
+
 					return false, nil
+				} else {
+					__antithesis_instrumentation__.Notify(558472)
 				}
+				__antithesis_instrumentation__.Notify(558460)
 
 				id, err := typedesc.UserDefinedTypeOIDToID(ooid)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558473)
 					return false, err
+				} else {
+					__antithesis_instrumentation__.Notify(558474)
 				}
+				__antithesis_instrumentation__.Notify(558461)
 
 				scName, typDesc, err := getSchemaAndTypeByTypeID(ctx, p, id)
-				if err != nil || typDesc == nil {
+				if err != nil || func() bool {
+					__antithesis_instrumentation__.Notify(558475)
+					return typDesc == nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(558476)
 					return false, err
+				} else {
+					__antithesis_instrumentation__.Notify(558477)
 				}
+				__antithesis_instrumentation__.Notify(558462)
 
-				// It's an entry for the implicit record type created on behalf of each
-				// table. We have special logic for this case.
 				if typDesc.GetKind() == descpb.TypeDescriptor_TABLE_IMPLICIT_RECORD_TYPE {
+					__antithesis_instrumentation__.Notify(558478)
 					table, err := p.Descriptors().GetImmutableTableByID(ctx, p.txn, id, tree.ObjectLookupFlags{})
 					if err != nil {
-						if errors.Is(err, catalog.ErrDescriptorNotFound) ||
-							pgerror.GetPGCode(err) == pgcode.UndefinedObject ||
-							pgerror.GetPGCode(err) == pgcode.UndefinedTable {
+						__antithesis_instrumentation__.Notify(558482)
+						if errors.Is(err, catalog.ErrDescriptorNotFound) || func() bool {
+							__antithesis_instrumentation__.Notify(558484)
+							return pgerror.GetPGCode(err) == pgcode.UndefinedObject == true
+						}() == true || func() bool {
+							__antithesis_instrumentation__.Notify(558485)
+							return pgerror.GetPGCode(err) == pgcode.UndefinedTable == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(558486)
 							return false, nil
+						} else {
+							__antithesis_instrumentation__.Notify(558487)
 						}
+						__antithesis_instrumentation__.Notify(558483)
 						return false, err
+					} else {
+						__antithesis_instrumentation__.Notify(558488)
 					}
+					__antithesis_instrumentation__.Notify(558479)
 					sc, err := p.Descriptors().GetImmutableSchemaByID(
 						ctx,
 						p.txn,
@@ -3045,8 +3828,12 @@ https://www.postgresql.org/docs/9.5/catalog-pg-type.html`,
 						tree.SchemaLookupFlags{Required: true},
 					)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(558489)
 						return false, err
+					} else {
+						__antithesis_instrumentation__.Notify(558490)
 					}
+					__antithesis_instrumentation__.Notify(558480)
 					if err := addPGTypeRowForTable(
 						h,
 						db,
@@ -3054,19 +3841,34 @@ https://www.postgresql.org/docs/9.5/catalog-pg-type.html`,
 						table,
 						addRow,
 					); err != nil {
+						__antithesis_instrumentation__.Notify(558491)
 						return false, err
+					} else {
+						__antithesis_instrumentation__.Notify(558492)
 					}
+					__antithesis_instrumentation__.Notify(558481)
 					return true, nil
+				} else {
+					__antithesis_instrumentation__.Notify(558493)
 				}
+				__antithesis_instrumentation__.Notify(558463)
 
 				nspOid = h.NamespaceOid(db.GetID(), scName)
 				typ, err = typDesc.MakeTypesT(ctx, tree.NewUnqualifiedTypeName(typDesc.GetName()), p)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558494)
 					return false, err
+				} else {
+					__antithesis_instrumentation__.Notify(558495)
 				}
+				__antithesis_instrumentation__.Notify(558464)
 				if err := addPGTypeRow(h, nspOid, getOwnerOID(typDesc), typ, addRow); err != nil {
+					__antithesis_instrumentation__.Notify(558496)
 					return false, err
+				} else {
+					__antithesis_instrumentation__.Notify(558497)
 				}
+				__antithesis_instrumentation__.Notify(558465)
 
 				return true, nil
 			},
@@ -3079,36 +3881,60 @@ var pgCatalogUserTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/view-pg-user.html`,
 	schema: vtable.PGCatalogUser,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558498)
 		h := makeOidHasher()
 		return forEachRole(ctx, p,
 			func(username security.SQLUsername, isRole bool, options roleOptions, settings tree.Datum) error {
+				__antithesis_instrumentation__.Notify(558499)
 				if isRole {
+					__antithesis_instrumentation__.Notify(558504)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(558505)
 				}
+				__antithesis_instrumentation__.Notify(558500)
 				isRoot := tree.DBool(username.IsRootUser())
 				createDB, err := options.createDB()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558506)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558507)
 				}
+				__antithesis_instrumentation__.Notify(558501)
 				validUntil, err := options.validUntil(p)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558508)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558509)
 				}
+				__antithesis_instrumentation__.Notify(558502)
 				isSuper, err := userIsSuper(ctx, p, username)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558510)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558511)
 				}
+				__antithesis_instrumentation__.Notify(558503)
 
 				return addRow(
-					tree.NewDName(username.Normalized()), // usename
-					h.UserOid(username),                  // usesysid
-					tree.MakeDBool(isRoot || createDB),   // usecreatedb
-					tree.MakeDBool(isRoot || isSuper),    // usesuper
-					tree.DBoolFalse,                      // userepl
-					tree.DBoolFalse,                      // usebypassrls
-					passwdStarString,                     // passwd
-					validUntil,                           // valuntil
-					settings,                             // useconfig
+					tree.NewDName(username.Normalized()),
+					h.UserOid(username),
+					tree.MakeDBool(isRoot || func() bool {
+						__antithesis_instrumentation__.Notify(558512)
+						return createDB == true
+					}() == true),
+					tree.MakeDBool(isRoot || func() bool {
+						__antithesis_instrumentation__.Notify(558513)
+						return isSuper == true
+					}() == true),
+					tree.DBoolFalse,
+					tree.DBoolFalse,
+					passwdStarString,
+					validUntil,
+					settings,
 				)
 			})
 	},
@@ -3119,8 +3945,8 @@ var pgCatalogUserMappingTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-user-mapping.html`,
 	schema: vtable.PGCatalogUserMapping,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// This table stores the mapping to foreign server users.
-		// Foreign servers are not supported.
+		__antithesis_instrumentation__.Notify(558514)
+
 		return nil
 	},
 	unimplemented: true,
@@ -3131,6 +3957,7 @@ var pgCatalogStatActivityTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/monitoring-stats.html#PG-STAT-ACTIVITY-VIEW`,
 	schema: vtable.PGCatalogStatActivity,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558515)
 		return nil
 	},
 	unimplemented: true,
@@ -3141,6 +3968,7 @@ var pgCatalogSecurityLabelTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-seclabel.html`,
 	schema: vtable.PGCatalogSecurityLabel,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558516)
 		return nil
 	},
 	unimplemented: true,
@@ -3151,6 +3979,7 @@ var pgCatalogSharedSecurityLabelTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/catalog-pg-shseclabel.html`,
 	schema: vtable.PGCatalogSharedSecurityLabel,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558517)
 		return nil
 	},
 	unimplemented: true,
@@ -3161,6 +3990,7 @@ var pgCatalogDbRoleSettingTable = virtualSchemaTable{
 https://www.postgresql.org/docs/13/catalog-pg-db-role-setting.html`,
 	schema: vtable.PgCatalogDbRoleSetting,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558518)
 		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.QueryBufferedEx(
 			ctx,
 			"select-db-role-settings",
@@ -3169,25 +3999,38 @@ https://www.postgresql.org/docs/13/catalog-pg-db-role-setting.html`,
 			`SELECT database_id, role_name, settings FROM system.public.database_role_settings`,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(558521)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(558522)
 		}
+		__antithesis_instrumentation__.Notify(558519)
 		h := makeOidHasher()
 		for _, row := range rows {
+			__antithesis_instrumentation__.Notify(558523)
 			databaseID := tree.MustBeDOid(row[0])
 			roleName := tree.MustBeDString(row[1])
 			roleID := oidZero
 			if roleName != "" {
+				__antithesis_instrumentation__.Notify(558525)
 				roleID = h.UserOid(security.MakeSQLUsernameFromPreNormalizedString(string(roleName)))
+			} else {
+				__antithesis_instrumentation__.Notify(558526)
 			}
+			__antithesis_instrumentation__.Notify(558524)
 			settings := tree.MustBeDArray(row[2])
 			if err := addRow(
 				settings,
 				databaseID,
 				roleID,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(558527)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558528)
 			}
 		}
+		__antithesis_instrumentation__.Notify(558520)
 		return nil
 	},
 }
@@ -3197,40 +4040,71 @@ var pgCatalogShadowTable = virtualSchemaTable{
 https://www.postgresql.org/docs/13/view-pg-shadow.html`,
 	schema: vtable.PgCatalogShadow,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558529)
 		h := makeOidHasher()
 		return forEachRole(ctx, p, func(username security.SQLUsername, isRole bool, options roleOptions, settings tree.Datum) error {
+			__antithesis_instrumentation__.Notify(558530)
 			noLogin, err := options.noLogin()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(558536)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558537)
 			}
+			__antithesis_instrumentation__.Notify(558531)
 			if noLogin {
+				__antithesis_instrumentation__.Notify(558538)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(558539)
 			}
+			__antithesis_instrumentation__.Notify(558532)
 
-			isRoot := tree.DBool(username.IsRootUser() || username.IsAdminRole())
+			isRoot := tree.DBool(username.IsRootUser() || func() bool {
+				__antithesis_instrumentation__.Notify(558540)
+				return username.IsAdminRole() == true
+			}() == true)
 			createDB, err := options.createDB()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(558541)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558542)
 			}
+			__antithesis_instrumentation__.Notify(558533)
 			rolValidUntil, err := options.validUntil(p)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(558543)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558544)
 			}
+			__antithesis_instrumentation__.Notify(558534)
 			isSuper, err := userIsSuper(ctx, p, username)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(558545)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558546)
 			}
+			__antithesis_instrumentation__.Notify(558535)
 
 			return addRow(
-				tree.NewDName(username.Normalized()), // usename
-				h.UserOid(username),                  // usesysid
-				tree.MakeDBool(isRoot || createDB),   // usecreatedb
-				tree.MakeDBool(isRoot || isSuper),    // usesuper
-				tree.DBoolFalse,                      // userepl
-				tree.DBoolFalse,                      // usebypassrls
-				passwdStarString,                     // passwd
-				rolValidUntil,                        // valuntil
-				settings,                             // useconfig
+				tree.NewDName(username.Normalized()),
+				h.UserOid(username),
+				tree.MakeDBool(isRoot || func() bool {
+					__antithesis_instrumentation__.Notify(558547)
+					return createDB == true
+				}() == true),
+				tree.MakeDBool(isRoot || func() bool {
+					__antithesis_instrumentation__.Notify(558548)
+					return isSuper == true
+				}() == true),
+				tree.DBoolFalse,
+				tree.DBoolFalse,
+				passwdStarString,
+				rolValidUntil,
+				settings,
 			)
 		})
 	},
@@ -3241,33 +4115,43 @@ var pgCatalogStatisticExtTable = virtualSchemaTable{
 https://www.postgresql.org/docs/13/catalog-pg-statistic-ext.html`,
 	schema: vtable.PgCatalogStatisticExt,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558549)
 		query := `SELECT "statisticID", name, "tableID", "columnIDs" FROM system.table_statistics;`
 		rows, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.QueryBuffered(
 			ctx, "read-statistics-objects", p.txn, query,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(558552)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(558553)
 		}
+		__antithesis_instrumentation__.Notify(558550)
 
 		for _, row := range rows {
+			__antithesis_instrumentation__.Notify(558554)
 			statisticsID := tree.MustBeDInt(row[0])
 			name := tree.MustBeDString(row[1])
 			tableID := tree.MustBeDInt(row[2])
 			columnIDs := tree.MustBeDArray(row[3])
 
 			if err := addRow(
-				tree.NewDOid(statisticsID), // oid
-				tree.NewDOid(tableID),      // stxrelid
-				&name,                      // stxname
-				tree.DNull,                 // stxnamespace
-				tree.DNull,                 // stxowner
-				tree.DNull,                 // stxstattarget
-				columnIDs,                  // stxkeys
-				tree.DNull,                 // stxkind
+				tree.NewDOid(statisticsID),
+				tree.NewDOid(tableID),
+				&name,
+				tree.DNull,
+				tree.DNull,
+				tree.DNull,
+				columnIDs,
+				tree.DNull,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(558555)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558556)
 			}
 		}
+		__antithesis_instrumentation__.Notify(558551)
 		return nil
 	},
 }
@@ -3278,42 +4162,48 @@ https://www.postgresql.org/docs/13/view-pg-sequences.html
 `,
 	schema: vtable.PgCatalogSequences,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		return forEachTableDesc(ctx, p, dbContext, hideVirtual, /* virtual schemas do not have indexes */
+		__antithesis_instrumentation__.Notify(558557)
+		return forEachTableDesc(ctx, p, dbContext, hideVirtual,
 			func(db catalog.DatabaseDescriptor, scName string, table catalog.TableDescriptor) error {
+				__antithesis_instrumentation__.Notify(558558)
 				if !table.IsSequence() {
+					__antithesis_instrumentation__.Notify(558562)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(558563)
 				}
+				__antithesis_instrumentation__.Notify(558559)
 				opts := table.GetSequenceOpts()
 				lastValue := tree.DNull
 				sequenceValue, err := p.GetSequenceValue(ctx, p.execCfg.Codec, table)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(558564)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(558565)
 				}
+				__antithesis_instrumentation__.Notify(558560)
 
-				// Before using for the first time, sequenceValue will be:
-				// opts.Start - opts.Increment.
 				if sequenceValue != opts.Start-opts.Increment {
+					__antithesis_instrumentation__.Notify(558566)
 					lastValue = tree.NewDInt(tree.DInt(sequenceValue))
+				} else {
+					__antithesis_instrumentation__.Notify(558567)
 				}
+				__antithesis_instrumentation__.Notify(558561)
 
-				// sequenceowner refers to the username that owns the sequence which is
-				// available in the table descriptor that can be changed by ALTER
-				// SEQUENCE sequencename OWNER TO username. Sequence opts have a
-				// table.column owner which is the value that can be modifyied by ALTER
-				// SEQUENE sequencename OWNED BY table.column, This is not the expected
-				// value on sequenceowner.
 				return addRow(
-					tree.NewDString(scName),                 // schemaname
-					tree.NewDString(table.GetName()),        // sequencename
-					getOwnerName(table),                     // sequenceowner
-					tree.NewDOid(tree.DInt(oid.T_int8)),     // data_type
-					tree.NewDInt(tree.DInt(opts.Start)),     // start_value
-					tree.NewDInt(tree.DInt(opts.MinValue)),  // min_value
-					tree.NewDInt(tree.DInt(opts.MaxValue)),  // max_value
-					tree.NewDInt(tree.DInt(opts.Increment)), // increment_by
-					tree.DBoolFalse,                         // cycle
-					tree.NewDInt(tree.DInt(opts.CacheSize)), // cache_size
-					lastValue,                               // last_value
+					tree.NewDString(scName),
+					tree.NewDString(table.GetName()),
+					getOwnerName(table),
+					tree.NewDOid(tree.DInt(oid.T_int8)),
+					tree.NewDInt(tree.DInt(opts.Start)),
+					tree.NewDInt(tree.DInt(opts.MinValue)),
+					tree.NewDInt(tree.DInt(opts.MaxValue)),
+					tree.NewDInt(tree.DInt(opts.Increment)),
+					tree.DBoolFalse,
+					tree.NewDInt(tree.DInt(opts.CacheSize)),
+					lastValue,
 				)
 			},
 		)
@@ -3324,6 +4214,7 @@ var pgCatalogInitPrivsTable = virtualSchemaTable{
 	comment: "pg_init_privs was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogInitPrivs,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558568)
 		return nil
 	},
 	unimplemented: true,
@@ -3333,6 +4224,7 @@ var pgCatalogStatProgressCreateIndexTable = virtualSchemaTable{
 	comment: "pg_stat_progress_create_index was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatProgressCreateIndex,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558569)
 		return nil
 	},
 	unimplemented: true,
@@ -3342,6 +4234,7 @@ var pgCatalogOpfamilyTable = virtualSchemaTable{
 	comment: "pg_opfamily was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogOpfamily,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558570)
 		return nil
 	},
 	unimplemented: true,
@@ -3351,6 +4244,7 @@ var pgCatalogStatioAllSequencesTable = virtualSchemaTable{
 	comment: "pg_statio_all_sequences was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatioAllSequences,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558571)
 		return nil
 	},
 	unimplemented: true,
@@ -3360,6 +4254,7 @@ var pgCatalogPoliciesTable = virtualSchemaTable{
 	comment: "pg_policies was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogPolicies,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558572)
 		return nil
 	},
 	unimplemented: true,
@@ -3369,6 +4264,7 @@ var pgCatalogStatsExtTable = virtualSchemaTable{
 	comment: "pg_stats_ext was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatsExt,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558573)
 		return nil
 	},
 	unimplemented: true,
@@ -3378,6 +4274,7 @@ var pgCatalogUserMappingsTable = virtualSchemaTable{
 	comment: "pg_user_mappings was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogUserMappings,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558574)
 		return nil
 	},
 	unimplemented: true,
@@ -3387,6 +4284,7 @@ var pgCatalogStatGssapiTable = virtualSchemaTable{
 	comment: "pg_stat_gssapi was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatGssapi,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558575)
 		return nil
 	},
 	unimplemented: true,
@@ -3396,6 +4294,7 @@ var pgCatalogStatDatabaseTable = virtualSchemaTable{
 	comment: "pg_stat_database was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatDatabase,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558576)
 		return nil
 	},
 	unimplemented: true,
@@ -3405,6 +4304,7 @@ var pgCatalogStatioUserIndexesTable = virtualSchemaTable{
 	comment: "pg_statio_user_indexes was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatioUserIndexes,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558577)
 		return nil
 	},
 	unimplemented: true,
@@ -3414,6 +4314,7 @@ var pgCatalogStatSslTable = virtualSchemaTable{
 	comment: "pg_stat_ssl was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatSsl,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558578)
 		return nil
 	},
 	unimplemented: true,
@@ -3423,6 +4324,7 @@ var pgCatalogStatioAllIndexesTable = virtualSchemaTable{
 	comment: "pg_statio_all_indexes was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatioAllIndexes,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558579)
 		return nil
 	},
 	unimplemented: true,
@@ -3432,6 +4334,7 @@ var pgCatalogTimezoneAbbrevsTable = virtualSchemaTable{
 	comment: "pg_timezone_abbrevs was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogTimezoneAbbrevs,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558580)
 		return nil
 	},
 	unimplemented: true,
@@ -3441,6 +4344,7 @@ var pgCatalogStatSysTablesTable = virtualSchemaTable{
 	comment: "pg_stat_sys_tables was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatSysTables,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558581)
 		return nil
 	},
 	unimplemented: true,
@@ -3450,6 +4354,7 @@ var pgCatalogStatioSysSequencesTable = virtualSchemaTable{
 	comment: "pg_statio_sys_sequences was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatioSysSequences,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558582)
 		return nil
 	},
 	unimplemented: true,
@@ -3459,6 +4364,7 @@ var pgCatalogStatAllTablesTable = virtualSchemaTable{
 	comment: "pg_stat_all_tables was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatAllTables,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558583)
 		return nil
 	},
 	unimplemented: true,
@@ -3468,6 +4374,7 @@ var pgCatalogStatioSysTablesTable = virtualSchemaTable{
 	comment: "pg_statio_sys_tables was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatioSysTables,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558584)
 		return nil
 	},
 	unimplemented: true,
@@ -3477,6 +4384,7 @@ var pgCatalogTsConfigTable = virtualSchemaTable{
 	comment: "pg_ts_config was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogTsConfig,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558585)
 		return nil
 	},
 	unimplemented: true,
@@ -3486,6 +4394,7 @@ var pgCatalogStatsTable = virtualSchemaTable{
 	comment: "pg_stats was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStats,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558586)
 		return nil
 	},
 	unimplemented: true,
@@ -3495,6 +4404,7 @@ var pgCatalogStatProgressBasebackupTable = virtualSchemaTable{
 	comment: "pg_stat_progress_basebackup was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatProgressBasebackup,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558587)
 		return nil
 	},
 	unimplemented: true,
@@ -3504,6 +4414,7 @@ var pgCatalogPolicyTable = virtualSchemaTable{
 	comment: "pg_policy was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogPolicy,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558588)
 		return nil
 	},
 	unimplemented: true,
@@ -3513,6 +4424,7 @@ var pgCatalogStatArchiverTable = virtualSchemaTable{
 	comment: "pg_stat_archiver was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatArchiver,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558589)
 		return nil
 	},
 	unimplemented: true,
@@ -3522,6 +4434,7 @@ var pgCatalogStatXactUserFunctionsTable = virtualSchemaTable{
 	comment: "pg_stat_xact_user_functions was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatXactUserFunctions,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558590)
 		return nil
 	},
 	unimplemented: true,
@@ -3531,6 +4444,7 @@ var pgCatalogStatUserFunctionsTable = virtualSchemaTable{
 	comment: "pg_stat_user_functions was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatUserFunctions,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558591)
 		return nil
 	},
 	unimplemented: true,
@@ -3540,6 +4454,7 @@ var pgCatalogPublicationTable = virtualSchemaTable{
 	comment: "pg_publication was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogPublication,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558592)
 		return nil
 	},
 	unimplemented: true,
@@ -3549,6 +4464,7 @@ var pgCatalogAmprocTable = virtualSchemaTable{
 	comment: "pg_amproc was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogAmproc,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558593)
 		return nil
 	},
 	unimplemented: true,
@@ -3558,6 +4474,7 @@ var pgCatalogStatProgressAnalyzeTable = virtualSchemaTable{
 	comment: "pg_stat_progress_analyze was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatProgressAnalyze,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558594)
 		return nil
 	},
 	unimplemented: true,
@@ -3567,6 +4484,7 @@ var pgCatalogStatXactAllTablesTable = virtualSchemaTable{
 	comment: "pg_stat_xact_all_tables was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatXactAllTables,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558595)
 		return nil
 	},
 	unimplemented: true,
@@ -3576,6 +4494,7 @@ var pgCatalogHbaFileRulesTable = virtualSchemaTable{
 	comment: "pg_hba_file_rules was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogHbaFileRules,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558596)
 		return nil
 	},
 	unimplemented: true,
@@ -3586,22 +4505,32 @@ var pgCatalogCursorsTable = virtualSchemaTable{
 https://www.postgresql.org/docs/14/view-pg-cursors.html`,
 	schema: vtable.PgCatalogCursors,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558597)
 		for name, c := range p.sqlCursors.list() {
+			__antithesis_instrumentation__.Notify(558599)
 			tz, err := tree.MakeDTimestampTZ(c.created, time.Microsecond)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(558601)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558602)
 			}
+			__antithesis_instrumentation__.Notify(558600)
 			if err := addRow(
-				tree.NewDString(name),        /* name */
-				tree.NewDString(c.statement), /* statement */
-				tree.DBoolFalse,              /* is_holdable */
-				tree.DBoolFalse,              /* is_binary */
-				tree.DBoolFalse,              /* is_scrollable */
-				tz,                           /* creation_date */
+				tree.NewDString(name),
+				tree.NewDString(c.statement),
+				tree.DBoolFalse,
+				tree.DBoolFalse,
+				tree.DBoolFalse,
+				tz,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(558603)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(558604)
 			}
 		}
+		__antithesis_instrumentation__.Notify(558598)
 		return nil
 	},
 }
@@ -3610,6 +4539,7 @@ var pgCatalogStatSlruTable = virtualSchemaTable{
 	comment: "pg_stat_slru was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatSlru,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558605)
 		return nil
 	},
 	unimplemented: true,
@@ -3619,6 +4549,7 @@ var pgCatalogFileSettingsTable = virtualSchemaTable{
 	comment: "pg_file_settings was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogFileSettings,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558606)
 		return nil
 	},
 	unimplemented: true,
@@ -3628,6 +4559,7 @@ var pgCatalogStatUserIndexesTable = virtualSchemaTable{
 	comment: "pg_stat_user_indexes was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatUserIndexes,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558607)
 		return nil
 	},
 	unimplemented: true,
@@ -3637,6 +4569,7 @@ var pgCatalogRulesTable = virtualSchemaTable{
 	comment: "pg_rules was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogRules,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558608)
 		return nil
 	},
 	unimplemented: true,
@@ -3646,6 +4579,7 @@ var pgCatalogStatioUserSequencesTable = virtualSchemaTable{
 	comment: "pg_statio_user_sequences was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatioUserSequences,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558609)
 		return nil
 	},
 	unimplemented: true,
@@ -3655,6 +4589,7 @@ var pgCatalogStatAllIndexesTable = virtualSchemaTable{
 	comment: "pg_stat_all_indexes was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatAllIndexes,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558610)
 		return nil
 	},
 	unimplemented: true,
@@ -3664,6 +4599,7 @@ var pgCatalogTsConfigMapTable = virtualSchemaTable{
 	comment: "pg_ts_config_map was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogTsConfigMap,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558611)
 		return nil
 	},
 	unimplemented: true,
@@ -3673,6 +4609,7 @@ var pgCatalogStatBgwriterTable = virtualSchemaTable{
 	comment: "pg_stat_bgwriter was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatBgwriter,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558612)
 		return nil
 	},
 	unimplemented: true,
@@ -3682,6 +4619,7 @@ var pgCatalogTransformTable = virtualSchemaTable{
 	comment: "pg_transform was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogTransform,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558613)
 		return nil
 	},
 	unimplemented: true,
@@ -3691,6 +4629,7 @@ var pgCatalogStatXactUserTablesTable = virtualSchemaTable{
 	comment: "pg_stat_xact_user_tables was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatXactUserTables,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558614)
 		return nil
 	},
 	unimplemented: true,
@@ -3700,6 +4639,7 @@ var pgCatalogPublicationTablesTable = virtualSchemaTable{
 	comment: "pg_publication_tables was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogPublicationTables,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558615)
 		return nil
 	},
 	unimplemented: true,
@@ -3709,6 +4649,7 @@ var pgCatalogStatProgressClusterTable = virtualSchemaTable{
 	comment: "pg_stat_progress_cluster was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatProgressCluster,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558616)
 		return nil
 	},
 	unimplemented: true,
@@ -3718,6 +4659,7 @@ var pgCatalogGroupTable = virtualSchemaTable{
 	comment: "pg_group was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogGroup,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558617)
 		return nil
 	},
 	unimplemented: true,
@@ -3727,6 +4669,7 @@ var pgCatalogLargeobjectMetadataTable = virtualSchemaTable{
 	comment: "pg_largeobject_metadata was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogLargeobjectMetadata,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558618)
 		return nil
 	},
 	unimplemented: true,
@@ -3736,6 +4679,7 @@ var pgCatalogReplicationSlotsTable = virtualSchemaTable{
 	comment: "pg_replication_slots was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogReplicationSlots,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558619)
 		return nil
 	},
 	unimplemented: true,
@@ -3745,6 +4689,7 @@ var pgCatalogSubscriptionRelTable = virtualSchemaTable{
 	comment: "pg_subscription_rel was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogSubscriptionRel,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558620)
 		return nil
 	},
 	unimplemented: true,
@@ -3754,6 +4699,7 @@ var pgCatalogTsParserTable = virtualSchemaTable{
 	comment: "pg_ts_parser was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogTsParser,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558621)
 		return nil
 	},
 	unimplemented: true,
@@ -3763,6 +4709,7 @@ var pgCatalogStatisticExtDataTable = virtualSchemaTable{
 	comment: "pg_statistic_ext_data was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatisticExtData,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558622)
 		return nil
 	},
 	unimplemented: true,
@@ -3772,6 +4719,7 @@ var pgCatalogPartitionedTableTable = virtualSchemaTable{
 	comment: "pg_partitioned_table was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogPartitionedTable,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558623)
 		return nil
 	},
 	unimplemented: true,
@@ -3781,6 +4729,7 @@ var pgCatalogStatioSysIndexesTable = virtualSchemaTable{
 	comment: "pg_statio_sys_indexes was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatioSysIndexes,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558624)
 		return nil
 	},
 	unimplemented: true,
@@ -3790,6 +4739,7 @@ var pgCatalogConfigTable = virtualSchemaTable{
 	comment: "pg_config was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogConfig,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558625)
 		return nil
 	},
 	unimplemented: true,
@@ -3799,6 +4749,7 @@ var pgCatalogStatioUserTablesTable = virtualSchemaTable{
 	comment: "pg_statio_user_tables was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatioUserTables,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558626)
 		return nil
 	},
 	unimplemented: true,
@@ -3808,6 +4759,7 @@ var pgCatalogTimezoneNamesTable = virtualSchemaTable{
 	comment: "pg_timezone_names was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogTimezoneNames,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558627)
 		return nil
 	},
 	unimplemented: true,
@@ -3817,6 +4769,7 @@ var pgCatalogTsDictTable = virtualSchemaTable{
 	comment: "pg_ts_dict was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogTsDict,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558628)
 		return nil
 	},
 	unimplemented: true,
@@ -3826,6 +4779,7 @@ var pgCatalogStatUserTablesTable = virtualSchemaTable{
 	comment: "pg_stat_user_tables was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatUserTables,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558629)
 		return nil
 	},
 	unimplemented: true,
@@ -3835,6 +4789,7 @@ var pgCatalogSubscriptionTable = virtualSchemaTable{
 	comment: "pg_subscription was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogSubscription,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558630)
 		return nil
 	},
 	unimplemented: true,
@@ -3844,6 +4799,7 @@ var pgCatalogShmemAllocationsTable = virtualSchemaTable{
 	comment: "pg_shmem_allocations was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogShmemAllocations,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558631)
 		return nil
 	},
 	unimplemented: true,
@@ -3853,6 +4809,7 @@ var pgCatalogStatWalReceiverTable = virtualSchemaTable{
 	comment: "pg_stat_wal_receiver was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatWalReceiver,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558632)
 		return nil
 	},
 	unimplemented: true,
@@ -3862,6 +4819,7 @@ var pgCatalogStatSubscriptionTable = virtualSchemaTable{
 	comment: "pg_stat_subscription was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatSubscription,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558633)
 		return nil
 	},
 	unimplemented: true,
@@ -3871,6 +4829,7 @@ var pgCatalogLargeobjectTable = virtualSchemaTable{
 	comment: "pg_largeobject was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogLargeobject,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558634)
 		return nil
 	},
 	unimplemented: true,
@@ -3880,6 +4839,7 @@ var pgCatalogReplicationOriginStatusTable = virtualSchemaTable{
 	comment: "pg_replication_origin_status was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogReplicationOriginStatus,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558635)
 		return nil
 	},
 	unimplemented: true,
@@ -3889,6 +4849,7 @@ var pgCatalogAmopTable = virtualSchemaTable{
 	comment: "pg_amop was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogAmop,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558636)
 		return nil
 	},
 	unimplemented: true,
@@ -3898,6 +4859,7 @@ var pgCatalogStatProgressVacuumTable = virtualSchemaTable{
 	comment: "pg_stat_progress_vacuum was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatProgressVacuum,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558637)
 		return nil
 	},
 	unimplemented: true,
@@ -3907,6 +4869,7 @@ var pgCatalogStatSysIndexesTable = virtualSchemaTable{
 	comment: "pg_stat_sys_indexes was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatSysIndexes,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558638)
 		return nil
 	},
 	unimplemented: true,
@@ -3916,6 +4879,7 @@ var pgCatalogStatioAllTablesTable = virtualSchemaTable{
 	comment: "pg_statio_all_tables was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatioAllTables,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558639)
 		return nil
 	},
 	unimplemented: true,
@@ -3925,6 +4889,7 @@ var pgCatalogStatDatabaseConflictsTable = virtualSchemaTable{
 	comment: "pg_stat_database_conflicts was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatDatabaseConflicts,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558640)
 		return nil
 	},
 	unimplemented: true,
@@ -3934,6 +4899,7 @@ var pgCatalogReplicationOriginTable = virtualSchemaTable{
 	comment: "pg_replication_origin was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogReplicationOrigin,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558641)
 		return nil
 	},
 	unimplemented: true,
@@ -3943,6 +4909,7 @@ var pgCatalogStatisticTable = virtualSchemaTable{
 	comment: "pg_statistic was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatistic,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558642)
 		return nil
 	},
 	unimplemented: true,
@@ -3952,6 +4919,7 @@ var pgCatalogStatXactSysTablesTable = virtualSchemaTable{
 	comment: "pg_stat_xact_sys_tables was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatXactSysTables,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558643)
 		return nil
 	},
 	unimplemented: true,
@@ -3961,6 +4929,7 @@ var pgCatalogTsTemplateTable = virtualSchemaTable{
 	comment: "pg_ts_template was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogTsTemplate,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558644)
 		return nil
 	},
 	unimplemented: true,
@@ -3970,6 +4939,7 @@ var pgCatalogStatReplicationTable = virtualSchemaTable{
 	comment: "pg_stat_replication was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogStatReplication,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558645)
 		return nil
 	},
 	unimplemented: true,
@@ -3979,6 +4949,7 @@ var pgCatalogPublicationRelTable = virtualSchemaTable{
 	comment: "pg_publication_rel was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogPublicationRel,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558646)
 		return nil
 	},
 	unimplemented: true,
@@ -3988,50 +4959,62 @@ var pgCatalogAvailableExtensionVersionsTable = virtualSchemaTable{
 	comment: "pg_available_extension_versions was created for compatibility and is currently unimplemented",
 	schema:  vtable.PgCatalogAvailableExtensionVersions,
 	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558647)
 		return nil
 	},
 	unimplemented: true,
 }
 
-// typOid is the only OID generation approach that does not use oidHasher, because
-// object identifiers for types are not arbitrary, but instead need to be kept in
-// sync with Postgres.
 func typOid(typ *types.T) tree.Datum {
+	__antithesis_instrumentation__.Notify(558648)
 	return tree.NewDOid(tree.DInt(typ.Oid()))
 }
 
 func typLen(typ *types.T) *tree.DInt {
+	__antithesis_instrumentation__.Notify(558649)
 	if sz, variable := tree.DatumTypeSize(typ); !variable {
+		__antithesis_instrumentation__.Notify(558651)
 		return tree.NewDInt(tree.DInt(sz))
+	} else {
+		__antithesis_instrumentation__.Notify(558652)
 	}
+	__antithesis_instrumentation__.Notify(558650)
 	return negOneVal
 }
 
 func typByVal(typ *types.T) tree.Datum {
+	__antithesis_instrumentation__.Notify(558653)
 	_, variable := tree.DatumTypeSize(typ)
 	return tree.MakeDBool(tree.DBool(!variable))
 }
 
-// typColl returns the collation OID for a given type.
-// The default collation is en-US, which is equivalent to but spelled
-// differently than the default database collation, en_US.utf8.
 func typColl(typ *types.T, h oidHasher) tree.Datum {
+	__antithesis_instrumentation__.Notify(558654)
 	switch typ.Family() {
 	case types.AnyFamily:
+		__antithesis_instrumentation__.Notify(558657)
 		return oidZero
 	case types.StringFamily:
+		__antithesis_instrumentation__.Notify(558658)
 		return h.CollationOid(tree.DefaultCollationTag)
 	case types.CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(558659)
 		return h.CollationOid(typ.Locale())
+	default:
+		__antithesis_instrumentation__.Notify(558660)
 	}
+	__antithesis_instrumentation__.Notify(558655)
 
 	if typ.Equivalent(types.StringArray) {
+		__antithesis_instrumentation__.Notify(558661)
 		return h.CollationOid(tree.DefaultCollationTag)
+	} else {
+		__antithesis_instrumentation__.Notify(558662)
 	}
+	__antithesis_instrumentation__.Notify(558656)
 	return oidZero
 }
 
-// This mapping should be kept sync with PG's categorization.
 var datumToTypeCategory = map[types.Family]*tree.DString{
 	types.AnyFamily:         typCategoryPseudo,
 	types.BitFamily:         typCategoryBitString,
@@ -4062,10 +5045,18 @@ var datumToTypeCategory = map[types.Family]*tree.DString{
 }
 
 func typCategory(typ *types.T) tree.Datum {
-	// Special case ARRAY of ANY.
-	if typ.Family() == types.ArrayFamily && typ.ArrayContents().Family() == types.AnyFamily {
+	__antithesis_instrumentation__.Notify(558663)
+
+	if typ.Family() == types.ArrayFamily && func() bool {
+		__antithesis_instrumentation__.Notify(558665)
+		return typ.ArrayContents().Family() == types.AnyFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(558666)
 		return typCategoryPseudo
+	} else {
+		__antithesis_instrumentation__.Notify(558667)
 	}
+	__antithesis_instrumentation__.Notify(558664)
 	return datumToTypeCategory[typ.Family()]
 }
 
@@ -4074,26 +5065,27 @@ var pgCatalogViewsTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.5/view-pg-views.html`,
 	schema: vtable.PGCatalogViews,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		// Note: pg_views is not well defined if the dbContext is empty,
-		// because it does not distinguish views in separate databases.
-		return forEachTableDesc(ctx, p, dbContext, hideVirtual, /*virtual schemas do not have views*/
+		__antithesis_instrumentation__.Notify(558668)
+
+		return forEachTableDesc(ctx, p, dbContext, hideVirtual,
 			func(db catalog.DatabaseDescriptor, scName string, desc catalog.TableDescriptor) error {
-				if !desc.IsView() || desc.MaterializedView() {
+				__antithesis_instrumentation__.Notify(558669)
+				if !desc.IsView() || func() bool {
+					__antithesis_instrumentation__.Notify(558671)
+					return desc.MaterializedView() == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(558672)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(558673)
 				}
-				// Note that the view query printed will not include any column aliases
-				// specified outside the initial view query into the definition
-				// returned, unlike postgres. For example, for the view created via
-				//  `CREATE VIEW (a) AS SELECT b FROM foo`
-				// we'll only print `SELECT b FROM foo` as the view definition here,
-				// while postgres would more accurately print `SELECT b AS a FROM foo`.
-				// TODO(SQL Features): Insert column aliases into view query once we
-				// have a semantic query representation to work with (#10083).
+				__antithesis_instrumentation__.Notify(558670)
+
 				return addRow(
-					tree.NewDName(scName),                // schemaname
-					tree.NewDName(desc.GetName()),        // viewname
-					getOwnerName(desc),                   // viewowner
-					tree.NewDString(desc.GetViewQuery()), // definition
+					tree.NewDName(scName),
+					tree.NewDName(desc.GetName()),
+					getOwnerName(desc),
+					tree.NewDString(desc.GetViewQuery()),
 				)
 			})
 	},
@@ -4104,82 +5096,102 @@ var pgCatalogAggregateTable = virtualSchemaTable{
 https://www.postgresql.org/docs/9.6/catalog-pg-aggregate.html`,
 	schema: vtable.PGCatalogAggregate,
 	populate: func(ctx context.Context, p *planner, dbContext catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		__antithesis_instrumentation__.Notify(558674)
 		h := makeOidHasher()
-		return forEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
+		return forEachDatabaseDesc(ctx, p, dbContext, false,
 			func(db catalog.DatabaseDescriptor) error {
+				__antithesis_instrumentation__.Notify(558675)
 				for _, name := range builtins.AllAggregateBuiltinNames {
+					__antithesis_instrumentation__.Notify(558677)
 					if name == builtins.AnyNotNull {
-						// any_not_null is treated as a special case.
+						__antithesis_instrumentation__.Notify(558679)
+
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(558680)
 					}
+					__antithesis_instrumentation__.Notify(558678)
 					_, overloads := builtins.GetBuiltinProperties(name)
 					for _, overload := range overloads {
+						__antithesis_instrumentation__.Notify(558681)
 						params, _ := tree.GetParamsAndReturnType(overload)
 						sortOperatorOid := oidZero
 						aggregateKind := tree.NewDString("n")
 						aggNumDirectArgs := zeroVal
 						if params.Length() != 0 {
+							__antithesis_instrumentation__.Notify(558683)
 							argType := tree.NewDOid(tree.DInt(params.Types()[0].Oid()))
 							returnType := tree.NewDOid(tree.DInt(oid.T_bool))
 							switch name {
-							// Cases to determine sort operator.
+
 							case "max", "bool_or":
+								__antithesis_instrumentation__.Notify(558684)
 								sortOperatorOid = h.OperatorOid(">", argType, argType, returnType)
 							case "min", "bool_and", "every":
+								__antithesis_instrumentation__.Notify(558685)
 								sortOperatorOid = h.OperatorOid("<", argType, argType, returnType)
 
-							// Cases to determine aggregate kind.
 							case "rank", "percent_rank", "cume_dist", "dense_rank":
+								__antithesis_instrumentation__.Notify(558686)
 								aggregateKind = tree.NewDString("h")
 								aggNumDirectArgs = tree.NewDInt(1)
 							case "mode":
+								__antithesis_instrumentation__.Notify(558687)
 								aggregateKind = tree.NewDString("o")
 							default:
+								__antithesis_instrumentation__.Notify(558688)
 								if strings.HasPrefix(name, "percentile_") {
+									__antithesis_instrumentation__.Notify(558689)
 									aggregateKind = tree.NewDString("o")
 									aggNumDirectArgs = tree.NewDInt(1)
+								} else {
+									__antithesis_instrumentation__.Notify(558690)
 								}
 							}
+						} else {
+							__antithesis_instrumentation__.Notify(558691)
 						}
+						__antithesis_instrumentation__.Notify(558682)
 						regprocForZeroOid := tree.NewDOidWithName(tree.DInt(0), types.RegProc, "-")
 						err := addRow(
-							h.BuiltinOid(name, &overload).AsRegProc(name), // aggfnoid
-							aggregateKind,     // aggkind
-							aggNumDirectArgs,  // aggnumdirectargs
-							regprocForZeroOid, // aggtransfn
-							regprocForZeroOid, // aggfinalfn
-							regprocForZeroOid, // aggcombinefn
-							regprocForZeroOid, // aggserialfn
-							regprocForZeroOid, // aggdeserialfn
-							regprocForZeroOid, // aggmtransfn
-							regprocForZeroOid, // aggminvtransfn
-							regprocForZeroOid, // aggmfinalfn
-							tree.DBoolFalse,   // aggfinalextra
-							tree.DBoolFalse,   // aggmfinalextra
-							sortOperatorOid,   // aggsortop
-							tree.DNull,        // aggtranstype
-							tree.DNull,        // aggtransspace
-							tree.DNull,        // aggmtranstype
-							tree.DNull,        // aggmtransspace
-							tree.DNull,        // agginitval
-							tree.DNull,        // aggminitval
-							// These columns were automatically created by pg_catalog_test's missing column generator.
-							tree.DNull, // aggfinalmodify
-							tree.DNull, // aggmfinalmodify
+							h.BuiltinOid(name, &overload).AsRegProc(name),
+							aggregateKind,
+							aggNumDirectArgs,
+							regprocForZeroOid,
+							regprocForZeroOid,
+							regprocForZeroOid,
+							regprocForZeroOid,
+							regprocForZeroOid,
+							regprocForZeroOid,
+							regprocForZeroOid,
+							regprocForZeroOid,
+							tree.DBoolFalse,
+							tree.DBoolFalse,
+							sortOperatorOid,
+							tree.DNull,
+							tree.DNull,
+							tree.DNull,
+							tree.DNull,
+							tree.DNull,
+							tree.DNull,
+
+							tree.DNull,
+							tree.DNull,
 						)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(558692)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(558693)
 						}
 					}
 				}
+				__antithesis_instrumentation__.Notify(558676)
 				return nil
 			})
 	},
 }
 
-// Populate the oid-to-builtin-function map. We have to do this operation here,
-// rather than in the SQL builtins package, because the oidHasher can't live
-// there.
 func init() {
 	h := makeOidHasher()
 	tree.OidToBuiltinName = make(map[oid.Oid]string, len(tree.FunDefs))
@@ -4195,68 +5207,67 @@ func init() {
 	}
 }
 
-// oidHasher provides a consistent hashing mechanism for object identifiers in
-// pg_catalog tables, allowing for reliable joins across tables.
-//
-// In Postgres, oids are physical properties of database objects which are
-// sequentially generated. Postgres does not guarantee database-wide uniqueness
-// of OIDs, especially in large databases, but they are frequently used as the
-// key of unique indexes for pg_catalog tables.
-// See: https://www.postgresql.org/docs/9.6/static/datatype-oid.html.
-// Because Cockroach does not have an equivalent concept, we generate arbitrary
-// fingerprints for database objects with the only requirements being that they
-// are 32 bits and that they are stable across accesses.
-//
-// The type has a few layers of methods:
-// - write<go_type> methods write concrete types to the underlying running hash.
-// - write<db_object> methods account for single database objects like TableDescriptors
-//   or IndexDescriptors in the running hash. These methods aim to write information
-//   that would uniquely fingerprint the object to the hash using the first layer of
-//   methods.
-// - <DB_Object>Oid methods use the second layer of methods to construct a unique
-//   object identifier for the provided database object. This object identifier will
-//   be returned as a *tree.DInt, and the running hash will be reset. These are the
-//   only methods that are part of the oidHasher's external facing interface.
-//
 type oidHasher struct {
 	h hash.Hash32
 }
 
 func makeOidHasher() oidHasher {
+	__antithesis_instrumentation__.Notify(558694)
 	return oidHasher{h: fnv.New32()}
 }
 
 func (h oidHasher) writeStr(s string) {
+	__antithesis_instrumentation__.Notify(558695)
 	if _, err := h.h.Write([]byte(s)); err != nil {
+		__antithesis_instrumentation__.Notify(558696)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(558697)
 	}
 }
 
 func (h oidHasher) writeBytes(b []byte) {
+	__antithesis_instrumentation__.Notify(558698)
 	if _, err := h.h.Write(b); err != nil {
+		__antithesis_instrumentation__.Notify(558699)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(558700)
 	}
 }
 
 func (h oidHasher) writeUInt8(i uint8) {
+	__antithesis_instrumentation__.Notify(558701)
 	if err := binary.Write(h.h, binary.BigEndian, i); err != nil {
+		__antithesis_instrumentation__.Notify(558702)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(558703)
 	}
 }
 
 func (h oidHasher) writeUInt32(i uint32) {
+	__antithesis_instrumentation__.Notify(558704)
 	if err := binary.Write(h.h, binary.BigEndian, i); err != nil {
+		__antithesis_instrumentation__.Notify(558705)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(558706)
 	}
 }
 
 func (h oidHasher) writeUInt64(i uint64) {
+	__antithesis_instrumentation__.Notify(558707)
 	if err := binary.Write(h.h, binary.BigEndian, i); err != nil {
+		__antithesis_instrumentation__.Notify(558708)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(558709)
 	}
 }
 
 func (h oidHasher) writeOID(oid *tree.DOid) {
+	__antithesis_instrumentation__.Notify(558710)
 	h.writeUInt64(uint64(oid.DInt))
 }
 
@@ -4281,47 +5292,57 @@ const (
 )
 
 func (h oidHasher) writeTypeTag(tag oidTypeTag) {
+	__antithesis_instrumentation__.Notify(558711)
 	h.writeUInt8(uint8(tag))
 }
 
 func (h oidHasher) getOid() *tree.DOid {
+	__antithesis_instrumentation__.Notify(558712)
 	i := h.h.Sum32()
 	h.h.Reset()
 	return tree.NewDOid(tree.DInt(i))
 }
 
 func (h oidHasher) writeDB(dbID descpb.ID) {
+	__antithesis_instrumentation__.Notify(558713)
 	h.writeUInt32(uint32(dbID))
 }
 
 func (h oidHasher) writeSchema(scName string) {
+	__antithesis_instrumentation__.Notify(558714)
 	h.writeStr(scName)
 }
 
 func (h oidHasher) writeTable(tableID descpb.ID) {
+	__antithesis_instrumentation__.Notify(558715)
 	h.writeUInt32(uint32(tableID))
 }
 
 func (h oidHasher) writeIndex(indexID descpb.IndexID) {
+	__antithesis_instrumentation__.Notify(558716)
 	h.writeUInt32(uint32(indexID))
 }
 
 func (h oidHasher) writeUniqueConstraint(uc *descpb.UniqueWithoutIndexConstraint) {
+	__antithesis_instrumentation__.Notify(558717)
 	h.writeUInt32(uint32(uc.TableID))
 	h.writeStr(uc.Name)
 }
 
 func (h oidHasher) writeCheckConstraint(check *descpb.TableDescriptor_CheckConstraint) {
+	__antithesis_instrumentation__.Notify(558718)
 	h.writeStr(check.Name)
 	h.writeStr(check.Expr)
 }
 
 func (h oidHasher) writeForeignKeyConstraint(fk *descpb.ForeignKeyConstraint) {
+	__antithesis_instrumentation__.Notify(558719)
 	h.writeUInt32(uint32(fk.ReferencedTableID))
 	h.writeStr(fk.Name)
 }
 
 func (h oidHasher) NamespaceOid(dbID descpb.ID, scName string) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558720)
 	h.writeTypeTag(namespaceTypeTag)
 	h.writeDB(dbID)
 	h.writeSchema(scName)
@@ -4329,6 +5350,7 @@ func (h oidHasher) NamespaceOid(dbID descpb.ID, scName string) *tree.DOid {
 }
 
 func (h oidHasher) IndexOid(tableID descpb.ID, indexID descpb.IndexID) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558721)
 	h.writeTypeTag(indexTypeTag)
 	h.writeTable(tableID)
 	h.writeIndex(indexID)
@@ -4336,6 +5358,7 @@ func (h oidHasher) IndexOid(tableID descpb.ID, indexID descpb.IndexID) *tree.DOi
 }
 
 func (h oidHasher) ColumnOid(tableID descpb.ID, columnID descpb.ColumnID) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558722)
 	h.writeTypeTag(columnTypeTag)
 	h.writeUInt32(uint32(tableID))
 	h.writeUInt32(uint32(columnID))
@@ -4345,6 +5368,7 @@ func (h oidHasher) ColumnOid(tableID descpb.ID, columnID descpb.ColumnID) *tree.
 func (h oidHasher) CheckConstraintOid(
 	dbID descpb.ID, scName string, tableID descpb.ID, check *descpb.TableDescriptor_CheckConstraint,
 ) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558723)
 	h.writeTypeTag(checkConstraintTypeTag)
 	h.writeDB(dbID)
 	h.writeSchema(scName)
@@ -4356,6 +5380,7 @@ func (h oidHasher) CheckConstraintOid(
 func (h oidHasher) PrimaryKeyConstraintOid(
 	dbID descpb.ID, scName string, tableID descpb.ID, pkey *descpb.IndexDescriptor,
 ) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558724)
 	h.writeTypeTag(pKeyConstraintTypeTag)
 	h.writeDB(dbID)
 	h.writeSchema(scName)
@@ -4367,6 +5392,7 @@ func (h oidHasher) PrimaryKeyConstraintOid(
 func (h oidHasher) ForeignKeyConstraintOid(
 	dbID descpb.ID, scName string, tableID descpb.ID, fk *descpb.ForeignKeyConstraint,
 ) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558725)
 	h.writeTypeTag(fkConstraintTypeTag)
 	h.writeDB(dbID)
 	h.writeSchema(scName)
@@ -4378,6 +5404,7 @@ func (h oidHasher) ForeignKeyConstraintOid(
 func (h oidHasher) UniqueWithoutIndexConstraintOid(
 	dbID descpb.ID, scName string, tableID descpb.ID, uc *descpb.UniqueWithoutIndexConstraint,
 ) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558726)
 	h.writeTypeTag(uniqueConstraintTypeTag)
 	h.writeDB(dbID)
 	h.writeSchema(scName)
@@ -4389,6 +5416,7 @@ func (h oidHasher) UniqueWithoutIndexConstraintOid(
 func (h oidHasher) UniqueConstraintOid(
 	dbID descpb.ID, scName string, tableID descpb.ID, indexID descpb.IndexID,
 ) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558727)
 	h.writeTypeTag(uniqueConstraintTypeTag)
 	h.writeDB(dbID)
 	h.writeSchema(scName)
@@ -4398,6 +5426,7 @@ func (h oidHasher) UniqueConstraintOid(
 }
 
 func (h oidHasher) BuiltinOid(name string, builtin *tree.Overload) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558728)
 	h.writeTypeTag(functionTypeTag)
 	h.writeStr(name)
 	h.writeStr(builtin.Types.String())
@@ -4406,26 +5435,34 @@ func (h oidHasher) BuiltinOid(name string, builtin *tree.Overload) *tree.DOid {
 }
 
 func (h oidHasher) RegProc(name string) tree.Datum {
+	__antithesis_instrumentation__.Notify(558729)
 	_, overloads := builtins.GetBuiltinProperties(name)
 	if len(overloads) == 0 {
+		__antithesis_instrumentation__.Notify(558731)
 		return tree.DNull
+	} else {
+		__antithesis_instrumentation__.Notify(558732)
 	}
+	__antithesis_instrumentation__.Notify(558730)
 	return h.BuiltinOid(name, &overloads[0]).AsRegProc(name)
 }
 
 func (h oidHasher) UserOid(username security.SQLUsername) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558733)
 	h.writeTypeTag(userTypeTag)
 	h.writeStr(username.Normalized())
 	return h.getOid()
 }
 
 func (h oidHasher) CollationOid(collation string) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558734)
 	h.writeTypeTag(collationTypeTag)
 	h.writeStr(collation)
 	return h.getOid()
 }
 
 func (h oidHasher) OperatorOid(name string, leftType, rightType, returnType *tree.DOid) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558735)
 	h.writeTypeTag(operatorTypeTag)
 	h.writeStr(name)
 	h.writeOID(leftType)
@@ -4435,6 +5472,7 @@ func (h oidHasher) OperatorOid(name string, leftType, rightType, returnType *tre
 }
 
 func (h oidHasher) EnumEntryOid(typOID *tree.DOid, physicalRep []byte) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558736)
 	h.writeTypeTag(enumEntryTypeTag)
 	h.writeOID(typOID)
 	h.writeBytes(physicalRep)
@@ -4442,17 +5480,17 @@ func (h oidHasher) EnumEntryOid(typOID *tree.DOid, physicalRep []byte) *tree.DOi
 }
 
 func (h oidHasher) rewriteOid(source descpb.ID, depended descpb.ID) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558737)
 	h.writeTypeTag(rewriteTypeTag)
 	h.writeUInt32(uint32(source))
 	h.writeUInt32(uint32(depended))
 	return h.getOid()
 }
 
-// DBSchemaRoleOid creates an OID based on the combination of a db/schema/role.
-// This is used to generate a unique row identifier for pg_default_acl.
 func (h oidHasher) DBSchemaRoleOid(
 	dbID descpb.ID, scName string, normalizedRole string,
 ) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558738)
 	h.writeTypeTag(dbSchemaRoleTypeTag)
 	h.writeDB(dbID)
 	h.writeSchema(scName)
@@ -4461,14 +5499,17 @@ func (h oidHasher) DBSchemaRoleOid(
 }
 
 func tableOid(id descpb.ID) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558739)
 	return tree.NewDOid(tree.DInt(id))
 }
 
 func dbOid(id descpb.ID) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558740)
 	return tree.NewDOid(tree.DInt(id))
 }
 
 func stringOid(s string) *tree.DOid {
+	__antithesis_instrumentation__.Notify(558741)
 	h := makeOidHasher()
 	h.writeStr(s)
 	return h.getOid()

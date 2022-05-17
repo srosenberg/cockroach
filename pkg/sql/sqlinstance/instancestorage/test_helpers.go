@@ -1,16 +1,8 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package instancestorage provides a mock implementation
 // of instance storage for testing purposes.
 package instancestorage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,7 +14,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// FakeStorage implements the instanceprovider.storage interface.
 type FakeStorage struct {
 	mu struct {
 		syncutil.Mutex
@@ -32,18 +23,18 @@ type FakeStorage struct {
 	}
 }
 
-// NewFakeStorage creates a new FakeStorage.
 func NewFakeStorage() *FakeStorage {
+	__antithesis_instrumentation__.Notify(624155)
 	f := &FakeStorage{}
 	f.mu.instances = make(map[base.SQLInstanceID]sqlinstance.InstanceInfo)
 	f.mu.instanceIDCtr = base.SQLInstanceID(1)
 	return f
 }
 
-// CreateInstance implements the instanceprovider.writer interface.
 func (f *FakeStorage) CreateInstance(
 	_ context.Context, sessionID sqlliveness.SessionID, _ hlc.Timestamp, addr string,
 ) (base.SQLInstanceID, error) {
+	__antithesis_instrumentation__.Notify(624156)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	i := sqlinstance.InstanceInfo{
@@ -56,23 +47,26 @@ func (f *FakeStorage) CreateInstance(
 	return i.InstanceID, nil
 }
 
-// ReleaseInstanceID implements the instanceprovider.writer interface.
 func (f *FakeStorage) ReleaseInstanceID(_ context.Context, id base.SQLInstanceID) error {
+	__antithesis_instrumentation__.Notify(624157)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.mu.instances, id)
 	return nil
 }
 
-// GetInstanceDataForTest returns instance data directly from raw storage
-// for testing purposes.
 func (s *Storage) GetInstanceDataForTest(
 	ctx context.Context, instanceID base.SQLInstanceID,
 ) (sqlinstance.InstanceInfo, error) {
+	__antithesis_instrumentation__.Notify(624158)
 	i, err := s.getInstanceData(ctx, instanceID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(624160)
 		return sqlinstance.InstanceInfo{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(624161)
 	}
+	__antithesis_instrumentation__.Notify(624159)
 	instanceInfo := sqlinstance.InstanceInfo{
 		InstanceID:   i.instanceID,
 		InstanceAddr: i.addr,
@@ -81,16 +75,20 @@ func (s *Storage) GetInstanceDataForTest(
 	return instanceInfo, nil
 }
 
-// GetAllInstancesDataForTest returns all instance data from raw storage
-// for testing purposes.
 func (s *Storage) GetAllInstancesDataForTest(
 	ctx context.Context,
 ) (instances []sqlinstance.InstanceInfo, _ error) {
+	__antithesis_instrumentation__.Notify(624162)
 	rows, err := s.getAllInstancesData(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(624165)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(624166)
 	}
+	__antithesis_instrumentation__.Notify(624163)
 	for _, instance := range rows {
+		__antithesis_instrumentation__.Notify(624167)
 		instanceInfo := sqlinstance.InstanceInfo{
 			InstanceID:   instance.instanceID,
 			InstanceAddr: instance.addr,
@@ -98,5 +96,6 @@ func (s *Storage) GetAllInstancesDataForTest(
 		}
 		instances = append(instances, instanceInfo)
 	}
+	__antithesis_instrumentation__.Notify(624164)
 	return instances, nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,21 +16,33 @@ import (
 )
 
 func runClockJump(ctx context.Context, t test.Test, c cluster.Cluster, tc clockJumpTestCase) {
-	// Test with a single node so that the node does not crash due to MaxOffset
-	// violation when injecting offset
+	__antithesis_instrumentation__.Notify(46640)
+
 	if c.Spec().NodeCount != 1 {
+		__antithesis_instrumentation__.Notify(46647)
 		t.Fatalf("Expected num nodes to be 1, got: %d", c.Spec().NodeCount)
+	} else {
+		__antithesis_instrumentation__.Notify(46648)
 	}
+	__antithesis_instrumentation__.Notify(46641)
 
 	t.Status("deploying offset injector")
 	offsetInjector := newOffsetInjector(t, c)
 	if err := offsetInjector.deploy(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(46649)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46650)
 	}
+	__antithesis_instrumentation__.Notify(46642)
 
 	if err := c.RunE(ctx, c.Node(1), "test -x ./cockroach"); err != nil {
+		__antithesis_instrumentation__.Notify(46651)
 		c.Put(ctx, t.Cockroach(), "./cockroach", c.All())
+	} else {
+		__antithesis_instrumentation__.Notify(46652)
 	}
+	__antithesis_instrumentation__.Notify(46643)
 	c.Wipe(ctx)
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings())
 
@@ -48,42 +52,51 @@ func runClockJump(ctx context.Context, t test.Test, c cluster.Cluster, tc clockJ
 		fmt.Sprintf(
 			`SET CLUSTER SETTING server.clock.forward_jump_check_enabled= %v`,
 			tc.jumpCheckEnabled)); err != nil {
+		__antithesis_instrumentation__.Notify(46653)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46654)
 	}
+	__antithesis_instrumentation__.Notify(46644)
 
-	// Wait for Cockroach to process the above cluster setting
 	time.Sleep(10 * time.Second)
 
 	if !isAlive(db, t.L()) {
+		__antithesis_instrumentation__.Notify(46655)
 		t.Fatal("Node unexpectedly crashed")
+	} else {
+		__antithesis_instrumentation__.Notify(46656)
 	}
+	__antithesis_instrumentation__.Notify(46645)
 
 	t.Status("injecting offset")
-	// If we expect the node to crash, make sure it's restarted after the
-	// test is done to pacify the dead node detector. Do this after the
-	// clock offset is reset or the node will crash again.
+
 	var aliveAfterOffset bool
 	defer func() {
+		__antithesis_instrumentation__.Notify(46657)
 		offsetInjector.recover(ctx, c.Spec().NodeCount)
-		// Resetting the clock is a jump in the opposite direction which
-		// can cause a crash even if the original jump didn't. Wait a few
-		// seconds before checking whether the node is alive and
-		// restarting it if not.
+
 		time.Sleep(3 * time.Second)
 		if !isAlive(db, t.L()) {
+			__antithesis_instrumentation__.Notify(46658)
 			c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.Node(1))
+		} else {
+			__antithesis_instrumentation__.Notify(46659)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(46646)
 	defer offsetInjector.recover(ctx, c.Spec().NodeCount)
 	offsetInjector.offset(ctx, c.Spec().NodeCount, tc.offset)
 
-	// Wait a few seconds to let it crash if it's going to crash.
 	time.Sleep(3 * time.Second)
 
 	t.Status("validating health")
 	aliveAfterOffset = isAlive(db, t.L())
 	if aliveAfterOffset != tc.aliveAfterOffset {
+		__antithesis_instrumentation__.Notify(46660)
 		t.Fatalf("Expected node health %v, got %v", tc.aliveAfterOffset, aliveAfterOffset)
+	} else {
+		__antithesis_instrumentation__.Notify(46661)
 	}
 }
 
@@ -95,6 +108,7 @@ type clockJumpTestCase struct {
 }
 
 func registerClockJumpTests(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(46662)
 	testCases := []clockJumpTestCase{
 		{
 			name:             "large_forward_enabled",
@@ -104,9 +118,7 @@ func registerClockJumpTests(r registry.Registry) {
 		},
 		{
 			name: "small_forward_enabled",
-			// NB: The offset here needs to be small enough such that this jump plus
-			// the forward jump check interval (125ms) is less than the tolerated
-			// forward clock jump (250ms).
+
 			offset:           100 * time.Millisecond,
 			jumpCheckEnabled: true,
 			aliveAfterOffset: true,
@@ -132,17 +144,19 @@ func registerClockJumpTests(r registry.Registry) {
 	}
 
 	for i := range testCases {
+		__antithesis_instrumentation__.Notify(46663)
 		tc := testCases[i]
 		s := registry.TestSpec{
 			Name:  "clock/jump/" + tc.name,
 			Owner: registry.OwnerKV,
-			// These tests muck with NTP, therefore we don't want the cluster reused
-			// by others.
+
 			Cluster: r.MakeClusterSpec(1, spec.ReuseTagged("offset-injector")),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(46665)
 				runClockJump(ctx, t, c, tc)
 			},
 		}
+		__antithesis_instrumentation__.Notify(46664)
 		r.Add(s)
 	}
 }

@@ -8,10 +8,12 @@ go_library(
     ],
     importpath = "github.com/cockroachdb/cockroach/pkg/roachprod/ssh",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
     name = "ssh_test",
     srcs = ["io_test.go"],
     embed = [":ssh"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvcoord
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,8 +13,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 )
 
-// lockSpansOverBudgetError signals that a txn is being rejected because lock
-// spans do not fit in their memory budget.
 type lockSpansOverBudgetError struct {
 	lockSpansBytes int64
 	limitBytes     int64
@@ -33,6 +23,7 @@ type lockSpansOverBudgetError struct {
 func newLockSpansOverBudgetError(
 	lockSpansBytes, limitBytes int64, ba roachpb.BatchRequest,
 ) lockSpansOverBudgetError {
+	__antithesis_instrumentation__.Notify(87811)
 	return lockSpansOverBudgetError{
 		lockSpansBytes: lockSpansBytes,
 		limitBytes:     limitBytes,
@@ -42,6 +33,7 @@ func newLockSpansOverBudgetError(
 }
 
 func (l lockSpansOverBudgetError) Error() string {
+	__antithesis_instrumentation__.Notify(87812)
 	return fmt.Sprintf("the transaction is locking too many rows and exceeded its lock-tracking memory budget; "+
 		"lock spans: %d bytes > budget: %d bytes. Request pushing transaction over the edge: %s. "+
 		"Transaction details: %s.", l.lockSpansBytes, l.limitBytes, l.baSummary, l.txnDetails)
@@ -50,6 +42,7 @@ func (l lockSpansOverBudgetError) Error() string {
 func encodeLockSpansOverBudgetError(
 	_ context.Context, err error,
 ) (msgPrefix string, safe []string, details proto.Message) {
+	__antithesis_instrumentation__.Notify(87813)
 	t := err.(lockSpansOverBudgetError)
 	details = &errorspb.StringsPayload{
 		Details: []string{
@@ -64,22 +57,35 @@ func encodeLockSpansOverBudgetError(
 func decodeLockSpansOverBudgetError(
 	_ context.Context, msgPrefix string, safeDetails []string, payload proto.Message,
 ) error {
+	__antithesis_instrumentation__.Notify(87814)
 	m, ok := payload.(*errorspb.StringsPayload)
-	if !ok || len(m.Details) < 4 {
-		// If this ever happens, this means some version of the library
-		// (presumably future) changed the payload type, and we're
-		// receiving this here. In this case, give up and let
-		// DecodeError use the opaque type.
+	if !ok || func() bool {
+		__antithesis_instrumentation__.Notify(87818)
+		return len(m.Details) < 4 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87819)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(87820)
 	}
+	__antithesis_instrumentation__.Notify(87815)
 	lockBytes, decodeErr := strconv.ParseInt(m.Details[0], 10, 64)
 	if decodeErr != nil {
-		return nil //nolint:returnerrcheck
+		__antithesis_instrumentation__.Notify(87821)
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(87822)
 	}
+	__antithesis_instrumentation__.Notify(87816)
 	limitBytes, decodeErr := strconv.ParseInt(m.Details[1], 10, 64)
 	if decodeErr != nil {
-		return nil //nolint:returnerrcheck
+		__antithesis_instrumentation__.Notify(87823)
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(87824)
 	}
+	__antithesis_instrumentation__.Notify(87817)
 	return lockSpansOverBudgetError{
 		lockSpansBytes: lockBytes,
 		limitBytes:     limitBytes,

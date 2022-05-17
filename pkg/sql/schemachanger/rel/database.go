@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rel
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"reflect"
@@ -18,120 +10,143 @@ import (
 	"github.com/google/btree"
 )
 
-// Database is a data structure for indexing entities.
 type Database struct {
 	schema *Schema
 
-	// indexes store the entities, ordered by a specified set of attributes.
-	// When an entity is inserted, it is inserted into each of the indexes. The
-	// first entry in the list is the "primary index" which compares entities
-	// based on all attributes.
-	//
-	// Note that the use of btree-tree backed indexes is far from fundamental.
-	// One could easily envision a map-backed indexing structure which may well
-	// perform much better.
 	indexes []index
-	// entities stores all the entities keyed on its pointer value.
+
 	entities map[interface{}]*entity
 }
 
-// Schema returns the schema associated with the tree.
 func (t *Database) Schema() *Schema {
+	__antithesis_instrumentation__.Notify(578369)
 	return t.schema
 }
 
-// NewDatabase constructs a new Database with the specified indexes.
-// Note that the schema must not contain more than 64 attributes.
 func NewDatabase(sc *Schema, indexes [][]Attr) (*Database, error) {
+	__antithesis_instrumentation__.Notify(578370)
 	t := &Database{
 		schema:   sc,
 		indexes:  make([]index, len(indexes)+1),
 		entities: make(map[interface{}]*entity),
 	}
-	// Index everything by all the attributes. This serves as the "primary"
-	// index.
+
 	const degree = 8
 	fl := btree.NewFreeList(len(indexes) + 1)
 	{
+		__antithesis_instrumentation__.Notify(578373)
 		var primaryIndex index
 		primaryIndex.s = sc
 		primaryIndex.tree = btree.NewWithFreeList(degree, fl)
 		t.indexes[0] = primaryIndex
 	}
+	__antithesis_instrumentation__.Notify(578371)
 	secondaryIndexes := t.indexes[1:]
 	for i, attrs := range indexes {
+		__antithesis_instrumentation__.Notify(578374)
 		var set ordinalSet
 		ords := make([]ordinal, len(attrs))
 		for i, a := range attrs {
+			__antithesis_instrumentation__.Notify(578376)
 			ord, err := sc.getOrdinal(a)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(578378)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(578379)
 			}
+			__antithesis_instrumentation__.Notify(578377)
 			set = set.add(ord)
 			ords[i] = ord
 		}
+		__antithesis_instrumentation__.Notify(578375)
 		spec := indexSpec{mask: set, attrs: ords, s: sc}
 		secondaryIndexes[i] = index{
 			indexSpec: spec,
 			tree:      btree.NewWithFreeList(degree, fl),
 		}
 	}
+	__antithesis_instrumentation__.Notify(578372)
 	return t, nil
 }
 
-// Insert inserts an entity. Note that entities are defined
-// by their pointer value. If you want to avoid inserting an
-// entity because a different entity exists with some of the
-// same attribute values, this must be done above this call.
-// Note also that entities may point to other entities. This
-// call will recursively insert all entities referenced by the
-// passed entity which do not already exist in the database.
-//
-// It is a no-op and not an error to insert an entity which
-// already exists.
 func (t *Database) Insert(v interface{}) error {
+	__antithesis_instrumentation__.Notify(578380)
 	e, err := toEntity(t.schema, v)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(578384)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(578385)
 	}
+	__antithesis_instrumentation__.Notify(578381)
 	if err := t.insert(e); err != nil {
+		__antithesis_instrumentation__.Notify(578386)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(578387)
 	}
+	__antithesis_instrumentation__.Notify(578382)
 	for _, v := range e.m {
+		__antithesis_instrumentation__.Notify(578388)
 		_, isEntity := t.schema.entityTypeSchemas[reflect.TypeOf(v)]
 		_, alreadyDefined := t.entities[v]
-		if isEntity && !alreadyDefined {
+		if isEntity && func() bool {
+			__antithesis_instrumentation__.Notify(578389)
+			return !alreadyDefined == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(578390)
 			if err := t.Insert(v); err != nil {
+				__antithesis_instrumentation__.Notify(578391)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(578392)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(578393)
 		}
 	}
+	__antithesis_instrumentation__.Notify(578383)
 	return nil
 }
 
 func (t *Database) insert(e *entity) error {
+	__antithesis_instrumentation__.Notify(578394)
 	self := e.getComparableValue(t.schema, Self)
 	if existing, exists := t.entities[self]; exists {
-		// Sanity check that the entities really are equal.
+		__antithesis_instrumentation__.Notify(578397)
+
 		if _, eq := compareEntities(e, existing); !eq {
+			__antithesis_instrumentation__.Notify(578399)
 			return errors.AssertionFailedf(
 				"expected entity %v to equal its already inserted value", self,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(578400)
 		}
+		__antithesis_instrumentation__.Notify(578398)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(578401)
 	}
+	__antithesis_instrumentation__.Notify(578395)
 	t.entities[self] = e
 	for i := range t.indexes {
+		__antithesis_instrumentation__.Notify(578402)
 		idx := &t.indexes[i]
 		if g := idx.tree.ReplaceOrInsert(&containerItem{
 			entity:    e,
 			indexSpec: &idx.indexSpec,
 		}); g != nil {
+			__antithesis_instrumentation__.Notify(578403)
 			return errors.AssertionFailedf(
 				"expected entity %T(%v) to not exist", self, self,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(578404)
 		}
 	}
+	__antithesis_instrumentation__.Notify(578396)
 	return nil
 }
 
@@ -146,71 +161,85 @@ type indexSpec struct {
 	attrs []ordinal
 }
 
-// entityIterator is used to iterate Entities.
 type entityIterator interface {
-	// Visit visits an entity. If iterutil.StopIteration
-	// is returned, iteration will stop but no error is returned.
 	visit(*entity) error
 }
 
-// Iterate will iterate the containers which match the specified valuesMap.
 func (t *Database) iterate(where *valuesMap, f entityIterator) (err error) {
+	__antithesis_instrumentation__.Notify(578405)
 	idx, toCheck := t.chooseIndex(where.attrs)
 	from, to := getValuesItems(&idx.indexSpec, where, where.attrs)
 	defer putValuesItems(from, to)
 	idx.tree.AscendRange(from, to, func(i btree.Item) (wantMore bool) {
+		__antithesis_instrumentation__.Notify(578408)
 		c := i.(*containerItem)
-		// We want to skip items which do not have values set for
-		// all members of the where clause.
+
 		if where.attrs.without(c.entity.attrs) != 0 {
+			__antithesis_instrumentation__.Notify(578412)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(578413)
 		}
+		__antithesis_instrumentation__.Notify(578409)
 		var failed bool
 		toCheck.forEach(func(a ordinal) (wantMore bool) {
+			__antithesis_instrumentation__.Notify(578414)
 			_, eq := compareOn(a, (*valuesMap)(c.entity), where)
 			failed = !eq
 			return !failed
 		})
+		__antithesis_instrumentation__.Notify(578410)
 		if !failed {
+			__antithesis_instrumentation__.Notify(578415)
 			err = f.visit(c.entity)
+		} else {
+			__antithesis_instrumentation__.Notify(578416)
 		}
+		__antithesis_instrumentation__.Notify(578411)
 		return err == nil
 	})
+	__antithesis_instrumentation__.Notify(578406)
 	if iterutil.Done(err) {
+		__antithesis_instrumentation__.Notify(578417)
 		err = nil
+	} else {
+		__antithesis_instrumentation__.Notify(578418)
 	}
+	__antithesis_instrumentation__.Notify(578407)
 	return err
 }
 
-// chooseIndex chooses an index which has A prefix with the highest number of
-// attributes which overlap with m. It also returns the ordinals of the
-// attributes which are not covered by the index prefix.
-//
-// TODO(ajwerner): Consider something about selectivity by tracking the number
-// of entries under each index (i.variable. which have non-NULL valuesMap)
-// for the given dimension.
 func (t *Database) chooseIndex(m ordinalSet) (_ *index, toCheck ordinalSet) {
-	// Default to the "primary" index.
+	__antithesis_instrumentation__.Notify(578419)
+
 	best, bestOverlap := 0, ordinalSet(0)
 	dims := t.indexes[1:]
 	for i := range dims {
+		__antithesis_instrumentation__.Notify(578421)
 		if overlap := dims[i].overlap(m); overlap.len() > bestOverlap.len() {
+			__antithesis_instrumentation__.Notify(578422)
 			best, bestOverlap = i+1, overlap
+		} else {
+			__antithesis_instrumentation__.Notify(578423)
 		}
 	}
+	__antithesis_instrumentation__.Notify(578420)
 	return &t.indexes[best], m.without(bestOverlap)
 }
 
-// overlap returns the ordinals from m which overlap with a prefix of
-// attributes in s.
 func (s *indexSpec) overlap(m ordinalSet) ordinalSet {
+	__antithesis_instrumentation__.Notify(578424)
 	var overlap ordinalSet
 	for _, a := range s.attrs {
+		__antithesis_instrumentation__.Notify(578426)
 		if m.contains(a) {
+			__antithesis_instrumentation__.Notify(578427)
 			overlap = overlap.add(a)
 		} else {
+			__antithesis_instrumentation__.Notify(578428)
 			break
 		}
 	}
+	__antithesis_instrumentation__.Notify(578425)
 	return overlap
 }

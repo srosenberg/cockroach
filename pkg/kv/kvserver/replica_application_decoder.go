@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,179 +14,177 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
-// replica_application_*.go files provide concrete implementations of
-// the interfaces defined in the storage/apply package:
-//
-// replica_application_state_machine.go  ->  apply.StateMachine
-// replica_application_decoder.go        ->  apply.Decoder
-// replica_application_cmd.go            ->  apply.Command         (and variants)
-// replica_application_cmd_buf.go        ->  apply.CommandIterator (and variants)
-// replica_application_cmd_buf.go        ->  apply.CommandList     (and variants)
-//
-// These allow Replica to interface with the storage/apply package.
-
-// replicaDecoder implements the apply.Decoder interface.
-//
-// The object is capable of decoding committed raft entries into a list of
-// replicatedCmd objects (which implement all variants of apply.Command), binding
-// these commands to their local proposals, and providing an iterator over these
-// commands.
 type replicaDecoder struct {
 	r      *Replica
 	cmdBuf replicatedCmdBuf
 }
 
-// getDecoder returns the Replica's apply.Decoder. The Replica's raftMu
-// is held for the entire lifetime of the replicaDecoder.
 func (r *Replica) getDecoder() *replicaDecoder {
+	__antithesis_instrumentation__.Notify(115049)
 	d := &r.raftMu.decoder
 	d.r = r
 	return d
 }
 
-// DecodeAndBind implements the apply.Decoder interface.
 func (d *replicaDecoder) DecodeAndBind(ctx context.Context, ents []raftpb.Entry) (bool, error) {
+	__antithesis_instrumentation__.Notify(115050)
 	if err := d.decode(ctx, ents); err != nil {
+		__antithesis_instrumentation__.Notify(115052)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(115053)
 	}
+	__antithesis_instrumentation__.Notify(115051)
 	anyLocal := d.retrieveLocalProposals(ctx)
 	d.createTracingSpans(ctx)
 	return anyLocal, nil
 }
 
-// decode decodes the provided entries into the decoder.
 func (d *replicaDecoder) decode(ctx context.Context, ents []raftpb.Entry) error {
+	__antithesis_instrumentation__.Notify(115054)
 	for i := range ents {
+		__antithesis_instrumentation__.Notify(115056)
 		ent := &ents[i]
 		if err := d.cmdBuf.allocate().decode(ctx, ent); err != nil {
+			__antithesis_instrumentation__.Notify(115057)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(115058)
 		}
 	}
+	__antithesis_instrumentation__.Notify(115055)
 	return nil
 }
 
-// retrieveLocalProposals binds each of the decoder's commands to their local
-// proposals if they were proposed locally. The method also sets the ctx fields
-// on all commands.
 func (d *replicaDecoder) retrieveLocalProposals(ctx context.Context) (anyLocal bool) {
+	__antithesis_instrumentation__.Notify(115059)
 	d.r.mu.Lock()
 	defer d.r.mu.Unlock()
-	// Assign all the local proposals first then delete all of them from the map
-	// in a second pass. This ensures that we retrieve all proposals correctly
-	// even if the applier has multiple entries for the same proposal, in which
-	// case the proposal was reproposed (either under its original or a new
-	// MaxLeaseIndex) which we handle in a second pass below.
+
 	var it replicatedCmdBufSlice
 	for it.init(&d.cmdBuf); it.Valid(); it.Next() {
+		__antithesis_instrumentation__.Notify(115063)
 		cmd := it.cur()
 		cmd.proposal = d.r.mu.proposals[cmd.idKey]
-		anyLocal = anyLocal || cmd.IsLocal()
+		anyLocal = anyLocal || func() bool {
+			__antithesis_instrumentation__.Notify(115064)
+			return cmd.IsLocal() == true
+		}() == true
 	}
-	if !anyLocal && d.r.mu.proposalQuota == nil {
-		// Fast-path.
+	__antithesis_instrumentation__.Notify(115060)
+	if !anyLocal && func() bool {
+		__antithesis_instrumentation__.Notify(115065)
+		return d.r.mu.proposalQuota == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(115066)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(115067)
 	}
+	__antithesis_instrumentation__.Notify(115061)
 	for it.init(&d.cmdBuf); it.Valid(); it.Next() {
+		__antithesis_instrumentation__.Notify(115068)
 		cmd := it.cur()
 		var toRelease *quotapool.IntAlloc
-		shouldRemove := cmd.IsLocal() &&
-			// If this entry does not have the most up-to-date view of the
-			// corresponding proposal's maximum lease index then the proposal
-			// must have been reproposed with a higher lease index. (see
-			// tryReproposeWithNewLeaseIndex). In that case, there's a newer
-			// version of the proposal in the pipeline, so don't remove the
-			// proposal from the map. We expect this entry to be rejected by
-			// checkForcedErr.
-			//
-			// Note that lease proposals always use a MaxLeaseIndex of zero (since
-			// they have their own replay protection), so they always meet this
-			// criterion. While such proposals can be reproposed, only the first
-			// instance that gets applied matters and so removing the command is
-			// always what we want to happen.
-			cmd.raftCmd.MaxLeaseIndex == cmd.proposal.command.MaxLeaseIndex
+		shouldRemove := cmd.IsLocal() && func() bool {
+			__antithesis_instrumentation__.Notify(115070)
+			return cmd.raftCmd.MaxLeaseIndex == cmd.proposal.command.MaxLeaseIndex == true
+		}() == true
 		if shouldRemove {
-			// Delete the proposal from the proposals map. There may be reproposals
-			// of the proposal in the pipeline, but those will all have the same max
-			// lease index, meaning that they will all be rejected after this entry
-			// applies (successfully or otherwise). If tryReproposeWithNewLeaseIndex
-			// picks up the proposal on failure, it will re-add the proposal to the
-			// proposal map, but this won't affect this replicaApplier.
-			//
-			// While here, add the proposal's quota size to the quota release queue.
-			// We check the proposal map again first to avoid double free-ing quota
-			// when reproposals from the same proposal end up in the same entry
-			// application batch.
+			__antithesis_instrumentation__.Notify(115071)
+
 			delete(d.r.mu.proposals, cmd.idKey)
 			toRelease = cmd.proposal.quotaAlloc
 			cmd.proposal.quotaAlloc = nil
+		} else {
+			__antithesis_instrumentation__.Notify(115072)
 		}
-		// At this point we're not guaranteed to have proposalQuota initialized,
-		// the same is true for quotaReleaseQueues. Only queue the proposal's
-		// quota for release if the proposalQuota is initialized.
+		__antithesis_instrumentation__.Notify(115069)
+
 		if d.r.mu.proposalQuota != nil {
+			__antithesis_instrumentation__.Notify(115073)
 			d.r.mu.quotaReleaseQueue = append(d.r.mu.quotaReleaseQueue, toRelease)
+		} else {
+			__antithesis_instrumentation__.Notify(115074)
 		}
 	}
+	__antithesis_instrumentation__.Notify(115062)
 	return anyLocal
 }
 
-// createTracingSpans creates and assigns a new tracing span for each decoded
-// command. If a command was proposed locally, it will be given a tracing span
-// that follows from its proposal's span.
 func (d *replicaDecoder) createTracingSpans(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(115075)
 	const opName = "raft application"
 	var it replicatedCmdBufSlice
 	for it.init(&d.cmdBuf); it.Valid(); it.Next() {
+		__antithesis_instrumentation__.Notify(115076)
 		cmd := it.cur()
 
 		if cmd.IsLocal() {
-			// We intentionally don't propagate the client's cancellation policy (in
-			// cmd.ctx) onto the request. See #75656.
-			propCtx := ctx // raft scheduler's ctx
+			__antithesis_instrumentation__.Notify(115078)
+
+			propCtx := ctx
 			var propSp *tracing.Span
-			// If the client has a trace, put a child into propCtx.
+
 			if sp := tracing.SpanFromContext(cmd.proposal.ctx); sp != nil {
+				__antithesis_instrumentation__.Notify(115080)
 				propCtx, propSp = sp.Tracer().StartSpanCtx(
 					propCtx, "local proposal", tracing.WithParent(sp),
 				)
-			}
-			cmd.ctx, cmd.sp = propCtx, propSp
-		} else if cmd.raftCmd.TraceData != nil {
-			// The proposal isn't local, and trace data is available. Extract
-			// the remote span and start a server-side span that follows from it.
-			spanMeta, err := d.r.AmbientContext.Tracer.ExtractMetaFrom(tracing.MapCarrier{
-				Map: cmd.raftCmd.TraceData,
-			})
-			if err != nil {
-				log.Errorf(ctx, "unable to extract trace data from raft command: %s", err)
 			} else {
-				cmd.ctx, cmd.sp = d.r.AmbientContext.Tracer.StartSpanCtx(
-					ctx,
-					opName,
-					// NB: Nobody is collecting the recording of this span; we have no
-					// mechanism for it.
-					tracing.WithRemoteParentFromSpanMeta(spanMeta),
-					tracing.WithFollowsFrom(),
-				)
+				__antithesis_instrumentation__.Notify(115081)
 			}
+			__antithesis_instrumentation__.Notify(115079)
+			cmd.ctx, cmd.sp = propCtx, propSp
 		} else {
-			cmd.ctx, cmd.sp = tracing.ChildSpan(ctx, opName)
-		}
+			__antithesis_instrumentation__.Notify(115082)
+			if cmd.raftCmd.TraceData != nil {
+				__antithesis_instrumentation__.Notify(115083)
 
-		if util.RaceEnabled && cmd.ctx.Done() != nil {
+				spanMeta, err := d.r.AmbientContext.Tracer.ExtractMetaFrom(tracing.MapCarrier{
+					Map: cmd.raftCmd.TraceData,
+				})
+				if err != nil {
+					__antithesis_instrumentation__.Notify(115084)
+					log.Errorf(ctx, "unable to extract trace data from raft command: %s", err)
+				} else {
+					__antithesis_instrumentation__.Notify(115085)
+					cmd.ctx, cmd.sp = d.r.AmbientContext.Tracer.StartSpanCtx(
+						ctx,
+						opName,
+
+						tracing.WithRemoteParentFromSpanMeta(spanMeta),
+						tracing.WithFollowsFrom(),
+					)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(115086)
+				cmd.ctx, cmd.sp = tracing.ChildSpan(ctx, opName)
+			}
+		}
+		__antithesis_instrumentation__.Notify(115077)
+
+		if util.RaceEnabled && func() bool {
+			__antithesis_instrumentation__.Notify(115087)
+			return cmd.ctx.Done() != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(115088)
 			panic(fmt.Sprintf("cancelable context observed during raft application: %+v", cmd))
+		} else {
+			__antithesis_instrumentation__.Notify(115089)
 		}
 	}
 }
 
-// NewCommandIter implements the apply.Decoder interface.
 func (d *replicaDecoder) NewCommandIter() apply.CommandIterator {
+	__antithesis_instrumentation__.Notify(115090)
 	it := d.cmdBuf.newIter()
 	it.init(&d.cmdBuf)
 	return it
 }
 
-// Reset implements the apply.Decoder interface.
 func (d *replicaDecoder) Reset() {
+	__antithesis_instrumentation__.Notify(115091)
 	d.cmdBuf.clear()
 }

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package execinfra
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,123 +16,129 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 )
 
-// StaticSQLInstanceID is the default Node ID to be used in tests.
 const StaticSQLInstanceID = base.SQLInstanceID(3)
 
-// RepeatableRowSource is a RowSource used in benchmarks to avoid having to
-// reinitialize a new RowSource every time during multiple passes of the input.
-// It is intended to be initialized with all rows.
 type RepeatableRowSource struct {
-	// The index of the next row to emit.
 	nextRowIdx int
 	rows       rowenc.EncDatumRows
-	// Schema of rows.
+
 	types []*types.T
 }
 
 var _ RowSource = &RepeatableRowSource{}
 
-// NewRepeatableRowSource creates a RepeatableRowSource with the given schema
-// and rows. types is optional if at least one row is provided.
 func NewRepeatableRowSource(types []*types.T, rows rowenc.EncDatumRows) *RepeatableRowSource {
+	__antithesis_instrumentation__.Notify(471488)
 	if types == nil {
+		__antithesis_instrumentation__.Notify(471490)
 		panic("types required")
+	} else {
+		__antithesis_instrumentation__.Notify(471491)
 	}
+	__antithesis_instrumentation__.Notify(471489)
 	return &RepeatableRowSource{rows: rows, types: types}
 }
 
-// OutputTypes is part of the RowSource interface.
 func (r *RepeatableRowSource) OutputTypes() []*types.T {
+	__antithesis_instrumentation__.Notify(471492)
 	return r.types
 }
 
-// Start is part of the RowSource interface.
-func (r *RepeatableRowSource) Start(ctx context.Context) {}
+func (r *RepeatableRowSource) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(471493)
+}
 
-// Next is part of the RowSource interface.
 func (r *RepeatableRowSource) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
-	// If we've emitted all rows, signal that we have reached the end.
+	__antithesis_instrumentation__.Notify(471494)
+
 	if r.nextRowIdx >= len(r.rows) {
+		__antithesis_instrumentation__.Notify(471496)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(471497)
 	}
+	__antithesis_instrumentation__.Notify(471495)
 	nextRow := r.rows[r.nextRowIdx]
 	r.nextRowIdx++
 	return nextRow, nil
 }
 
-// Reset resets the RepeatableRowSource such that a subsequent call to Next()
-// returns the first row.
 func (r *RepeatableRowSource) Reset() {
+	__antithesis_instrumentation__.Notify(471498)
 	r.nextRowIdx = 0
 }
 
-// ConsumerDone is part of the RowSource interface.
-func (r *RepeatableRowSource) ConsumerDone() {}
+func (r *RepeatableRowSource) ConsumerDone() { __antithesis_instrumentation__.Notify(471499) }
 
-// ConsumerClosed is part of the RowSource interface.
-func (r *RepeatableRowSource) ConsumerClosed() {}
+func (r *RepeatableRowSource) ConsumerClosed() { __antithesis_instrumentation__.Notify(471500) }
 
-// NewTestMemMonitor creates and starts a new memory monitor to be used in
-// tests.
-// TODO(yuzefovich): consider reusing this in tree.MakeTestingEvalContext
-// (currently it would create an import cycle, so this code will need to be
-// moved).
 func NewTestMemMonitor(ctx context.Context, st *cluster.Settings) *mon.BytesMonitor {
+	__antithesis_instrumentation__.Notify(471501)
 	memMonitor := mon.NewMonitor(
 		"test-mem",
 		mon.MemoryResource,
-		nil,           /* curCount */
-		nil,           /* maxHist */
-		-1,            /* increment */
-		math.MaxInt64, /* noteworthy */
+		nil,
+		nil,
+		-1,
+		math.MaxInt64,
 		st,
 	)
 	memMonitor.Start(ctx, nil, mon.MakeStandaloneBudget(math.MaxInt64))
 	return memMonitor
 }
 
-// NewTestDiskMonitor creates and starts a new disk monitor to be used in
-// tests.
 func NewTestDiskMonitor(ctx context.Context, st *cluster.Settings) *mon.BytesMonitor {
+	__antithesis_instrumentation__.Notify(471502)
 	diskMonitor := mon.NewMonitor(
 		"test-disk",
 		mon.DiskResource,
-		nil, /* curCount */
-		nil, /* maxHist */
-		-1,  /* increment: use default block size */
+		nil,
+		nil,
+		-1,
 		math.MaxInt64,
 		st,
 	)
-	diskMonitor.Start(ctx, nil /* pool */, mon.MakeStandaloneBudget(math.MaxInt64))
+	diskMonitor.Start(ctx, nil, mon.MakeStandaloneBudget(math.MaxInt64))
 	return diskMonitor
 }
 
-// GenerateValuesSpec generates a ValuesCoreSpec that encodes the given rows.
-// We pass the types as well because zero rows are allowed.
 func GenerateValuesSpec(
 	colTypes []*types.T, rows rowenc.EncDatumRows,
 ) (execinfrapb.ValuesCoreSpec, error) {
+	__antithesis_instrumentation__.Notify(471503)
 	var spec execinfrapb.ValuesCoreSpec
 	spec.Columns = make([]execinfrapb.DatumInfo, len(colTypes))
 	for i := range spec.Columns {
+		__antithesis_instrumentation__.Notify(471506)
 		spec.Columns[i].Type = colTypes[i]
 		spec.Columns[i].Encoding = descpb.DatumEncoding_VALUE
 	}
+	__antithesis_instrumentation__.Notify(471504)
 
 	spec.NumRows = uint64(len(rows))
 	if len(colTypes) != 0 {
+		__antithesis_instrumentation__.Notify(471507)
 		var a tree.DatumAlloc
 		for i := 0; i < len(rows); i++ {
+			__antithesis_instrumentation__.Notify(471508)
 			var buf []byte
 			for j, info := range spec.Columns {
+				__antithesis_instrumentation__.Notify(471510)
 				var err error
 				buf, err = rows[i][j].Encode(colTypes[j], &a, info.Encoding, buf)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(471511)
 					return execinfrapb.ValuesCoreSpec{}, err
+				} else {
+					__antithesis_instrumentation__.Notify(471512)
 				}
 			}
+			__antithesis_instrumentation__.Notify(471509)
 			spec.RawBytes = append(spec.RawBytes, buf)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(471513)
 	}
+	__antithesis_instrumentation__.Notify(471505)
 	return spec, nil
 }

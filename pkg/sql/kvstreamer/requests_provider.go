@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvstreamer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"container/heap"
@@ -21,133 +13,81 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// singleRangeBatch contains parts of the originally enqueued requests that have
-// been truncated to be within a single range. All requests within the
-// singleRangeBatch will be issued as a single BatchRequest.
 type singleRangeBatch struct {
 	reqs []roachpb.RequestUnion
-	// positions is a 1-to-1 mapping with reqs to indicate which ordinal among
-	// the originally enqueued requests a particular reqs[i] corresponds to. In
-	// other words, if reqs[i] is (or a part of) enqueuedReqs[j], then
-	// positions[i] = j.
-	// TODO(yuzefovich): this might need to be [][]int when non-unique requests
-	// are supported.
+
 	positions []int
-	// reqsReservedBytes tracks the memory reservation against the budget for
-	// the memory usage of reqs.
+
 	reqsReservedBytes int64
-	// minTargetBytes, if positive, indicates the minimum TargetBytes limit that
-	// this singleRangeBatch should be sent with in order for the response to
-	// not be empty. Note that TargetBytes of at least minTargetBytes is
-	// necessary but might not be sufficient for the response to be non-empty.
+
 	minTargetBytes int64
-	// priority is the smallest number in positions. It is the priority of this
-	// singleRangeBatch where the smaller the value is, the sooner the Result
-	// will be needed, so batches with the smallest priority value has the
-	// highest "urgency".
-	// TODO(yuzefovich): once lookup joins are supported, we'll need a way to
-	// order singleRangeBatches that contain parts of a single ScanRequest
-	// spanning multiple ranges.
+
 	priority int
 }
 
 var _ sort.Interface = &singleRangeBatch{}
 
 func (r *singleRangeBatch) Len() int {
+	__antithesis_instrumentation__.Notify(498877)
 	return len(r.reqs)
 }
 
 func (r *singleRangeBatch) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(498878)
 	r.reqs[i], r.reqs[j] = r.reqs[j], r.reqs[i]
 	r.positions[i], r.positions[j] = r.positions[j], r.positions[i]
 }
 
-// Less returns true if r.reqs[i]'s key comes before r.reqs[j]'s key.
 func (r *singleRangeBatch) Less(i, j int) bool {
-	// TODO(yuzefovich): figure out whether it's worth extracting the keys when
-	// constructing singleRangeBatch object.
+	__antithesis_instrumentation__.Notify(498879)
+
 	return r.reqs[i].GetInner().Header().Key.Compare(r.reqs[j].GetInner().Header().Key) < 0
 }
 
 func reqsToString(reqs []singleRangeBatch) string {
+	__antithesis_instrumentation__.Notify(498880)
 	result := "requests for positions "
 	for i, r := range reqs {
+		__antithesis_instrumentation__.Notify(498882)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(498884)
 			result += ", "
+		} else {
+			__antithesis_instrumentation__.Notify(498885)
 		}
+		__antithesis_instrumentation__.Notify(498883)
 		result += fmt.Sprintf("%v", r.positions)
 	}
+	__antithesis_instrumentation__.Notify(498881)
 	return result
 }
 
-// requestsProvider encapsulates the logic of supplying the requests to serve in
-// the Streamer. The implementations are concurrency safe and have its own
-// mutex, separate from the Streamer's and the budget's ones, so the ordering of
-// locking is totally independent.
 type requestsProvider interface {
-	///////////////////////////////////////////////////////////////////////////
-	//                                                                       //
-	//    Methods that should be called by the Streamer's user goroutine.    //
-	//                                                                       //
-	///////////////////////////////////////////////////////////////////////////
-
-	// enqueue adds many requests into the provider. The lock of the provider
-	// must not be already held. If there is a goroutine blocked in
-	// waitLocked(), it is woken up. enqueue panics if the provider already
-	// contains some requests.
 	enqueue([]singleRangeBatch)
-	// close closes the requests provider. If there is a goroutine blocked in
-	// waitLocked(), it is woken up.
+
 	close()
 
-	///////////////////////////////////////////////////////////////////////////
-	//                                                                       //
-	//            Methods that should be called by the goroutines            //
-	//            evaluating the requests asynchronously.                    //
-	//                                                                       //
-	///////////////////////////////////////////////////////////////////////////
-
-	// add adds a single request into the provider. The lock of the provider
-	// must not be already held. If there is a goroutine blocked in
-	// waitLocked(), it is woken up.
 	add(singleRangeBatch)
-
-	///////////////////////////////////////////////////////////////////////////
-	//                                                                       //
-	//   Methods that should be called by the worker coordinator goroutine.  //
-	//                                                                       //
-	///////////////////////////////////////////////////////////////////////////
 
 	Lock()
 	Unlock()
-	// waitLocked blocks until there is at least one request to serve or the
-	// provider is closed. The lock of the provider must be already held, will
-	// be unlocked atomically before blocking and will be re-locked once a
-	// request is added (i.e. the behavior similar to sync.Cond.Wait).
+
 	waitLocked()
-	// emptyLocked returns true if there are no requests to serve at the moment.
-	// The lock of the provider must be already held.
+
 	emptyLocked() bool
-	// firstLocked returns the next request to serve. In OutOfOrder mode, the
-	// request is arbitrary, in InOrder mode, the request is the current
-	// head-of-the-line. The lock of the provider must be already held. Panics
-	// if there are no requests.
+
 	firstLocked() singleRangeBatch
-	// removeFirstLocked removes the next request to serve (returned by
-	// firstLocked) from the provider. The lock of the provider must be already
-	// held. Panics if there are no requests.
+
 	removeFirstLocked()
 }
 
 type requestsProviderBase struct {
 	syncutil.Mutex
-	// hasWork is used by the requestsProvider to block until some requests are
-	// added to be served.
+
 	hasWork *sync.Cond
-	// requests contains all single-range sub-requests that have yet to be
-	// served.
+
 	requests []singleRangeBatch
-	// done is set to true once the Streamer is Close()'d.
+
 	done bool
 }
 
@@ -156,29 +96,33 @@ func (b *requestsProviderBase) init() {
 }
 
 func (b *requestsProviderBase) waitLocked() {
+	__antithesis_instrumentation__.Notify(498886)
 	b.Mutex.AssertHeld()
 	if b.done {
-		// Don't wait if we're done.
+		__antithesis_instrumentation__.Notify(498888)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(498889)
 	}
+	__antithesis_instrumentation__.Notify(498887)
 	b.hasWork.Wait()
 }
 
 func (b *requestsProviderBase) emptyLocked() bool {
+	__antithesis_instrumentation__.Notify(498890)
 	b.Mutex.AssertHeld()
 	return len(b.requests) == 0
 }
 
 func (b *requestsProviderBase) close() {
+	__antithesis_instrumentation__.Notify(498891)
 	b.Lock()
 	defer b.Unlock()
 	b.done = true
 	b.hasWork.Signal()
 }
 
-// outOfOrderRequestsProvider is a requestProvider that returns requests in an
-// arbitrary order (namely in the same order as the requests are enqueued and
-// added).
 type outOfOrderRequestsProvider struct {
 	*requestsProviderBase
 }
@@ -186,22 +130,29 @@ type outOfOrderRequestsProvider struct {
 var _ requestsProvider = &outOfOrderRequestsProvider{}
 
 func newOutOfOrderRequestsProvider() requestsProvider {
+	__antithesis_instrumentation__.Notify(498892)
 	p := outOfOrderRequestsProvider{requestsProviderBase: &requestsProviderBase{}}
 	p.init()
 	return &p
 }
 
 func (p *outOfOrderRequestsProvider) enqueue(requests []singleRangeBatch) {
+	__antithesis_instrumentation__.Notify(498893)
 	p.Lock()
 	defer p.Unlock()
 	if len(p.requests) > 0 {
+		__antithesis_instrumentation__.Notify(498895)
 		panic(errors.AssertionFailedf("outOfOrderRequestsProvider has old requests in enqueue"))
+	} else {
+		__antithesis_instrumentation__.Notify(498896)
 	}
+	__antithesis_instrumentation__.Notify(498894)
 	p.requests = requests
 	p.hasWork.Signal()
 }
 
 func (p *outOfOrderRequestsProvider) add(request singleRangeBatch) {
+	__antithesis_instrumentation__.Notify(498897)
 	p.Lock()
 	defer p.Unlock()
 	p.requests = append(p.requests, request)
@@ -209,24 +160,31 @@ func (p *outOfOrderRequestsProvider) add(request singleRangeBatch) {
 }
 
 func (p *outOfOrderRequestsProvider) firstLocked() singleRangeBatch {
+	__antithesis_instrumentation__.Notify(498898)
 	p.Mutex.AssertHeld()
 	if len(p.requests) == 0 {
+		__antithesis_instrumentation__.Notify(498900)
 		panic(errors.AssertionFailedf("firstLocked called when requestsProvider is empty"))
+	} else {
+		__antithesis_instrumentation__.Notify(498901)
 	}
+	__antithesis_instrumentation__.Notify(498899)
 	return p.requests[0]
 }
 
 func (p *outOfOrderRequestsProvider) removeFirstLocked() {
+	__antithesis_instrumentation__.Notify(498902)
 	p.Mutex.AssertHeld()
 	if len(p.requests) == 0 {
+		__antithesis_instrumentation__.Notify(498904)
 		panic(errors.AssertionFailedf("removeFirstLocked called when requestsProvider is empty"))
+	} else {
+		__antithesis_instrumentation__.Notify(498905)
 	}
+	__antithesis_instrumentation__.Notify(498903)
 	p.requests = p.requests[1:]
 }
 
-// inOrderRequestsProvider is a requestProvider that maintains a min heap of all
-// requests according to the priority values (the smaller the priority value is,
-// the higher actual priority of fulfilling the corresponding request).
 type inOrderRequestsProvider struct {
 	*requestsProviderBase
 }
@@ -235,66 +193,92 @@ var _ requestsProvider = &inOrderRequestsProvider{}
 var _ heap.Interface = &inOrderRequestsProvider{}
 
 func newInOrderRequestsProvider() requestsProvider {
+	__antithesis_instrumentation__.Notify(498906)
 	p := inOrderRequestsProvider{requestsProviderBase: &requestsProviderBase{}}
 	p.init()
 	return &p
 }
 
 func (p *inOrderRequestsProvider) Len() int {
+	__antithesis_instrumentation__.Notify(498907)
 	return len(p.requests)
 }
 
 func (p *inOrderRequestsProvider) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(498908)
 	return p.requests[i].priority < p.requests[j].priority
 }
 
 func (p *inOrderRequestsProvider) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(498909)
 	p.requests[i], p.requests[j] = p.requests[j], p.requests[i]
 }
 
 func (p *inOrderRequestsProvider) Push(x interface{}) {
+	__antithesis_instrumentation__.Notify(498910)
 	p.requests = append(p.requests, x.(singleRangeBatch))
 }
 
 func (p *inOrderRequestsProvider) Pop() interface{} {
+	__antithesis_instrumentation__.Notify(498911)
 	x := p.requests[len(p.requests)-1]
 	p.requests = p.requests[:len(p.requests)-1]
 	return x
 }
 
 func (p *inOrderRequestsProvider) enqueue(requests []singleRangeBatch) {
+	__antithesis_instrumentation__.Notify(498912)
 	p.Lock()
 	defer p.Unlock()
 	if len(p.requests) > 0 {
+		__antithesis_instrumentation__.Notify(498914)
 		panic(errors.AssertionFailedf("inOrderRequestsProvider has old requests in enqueue"))
+	} else {
+		__antithesis_instrumentation__.Notify(498915)
 	}
+	__antithesis_instrumentation__.Notify(498913)
 	p.requests = requests
 	heap.Init(p)
 	p.hasWork.Signal()
 }
 
 func (p *inOrderRequestsProvider) add(request singleRangeBatch) {
+	__antithesis_instrumentation__.Notify(498916)
 	p.Lock()
 	defer p.Unlock()
 	if debug {
+		__antithesis_instrumentation__.Notify(498918)
 		fmt.Printf("adding a request for positions %v to be served, minTargetBytes=%d\n", request.positions, request.minTargetBytes)
+	} else {
+		__antithesis_instrumentation__.Notify(498919)
 	}
+	__antithesis_instrumentation__.Notify(498917)
 	heap.Push(p, request)
 	p.hasWork.Signal()
 }
 
 func (p *inOrderRequestsProvider) firstLocked() singleRangeBatch {
+	__antithesis_instrumentation__.Notify(498920)
 	p.Mutex.AssertHeld()
 	if len(p.requests) == 0 {
+		__antithesis_instrumentation__.Notify(498922)
 		panic(errors.AssertionFailedf("firstLocked called when requestsProvider is empty"))
+	} else {
+		__antithesis_instrumentation__.Notify(498923)
 	}
+	__antithesis_instrumentation__.Notify(498921)
 	return p.requests[0]
 }
 
 func (p *inOrderRequestsProvider) removeFirstLocked() {
+	__antithesis_instrumentation__.Notify(498924)
 	p.Mutex.AssertHeld()
 	if len(p.requests) == 0 {
+		__antithesis_instrumentation__.Notify(498926)
 		panic(errors.AssertionFailedf("removeFirstLocked called when requestsProvider is empty"))
+	} else {
+		__antithesis_instrumentation__.Notify(498927)
 	}
+	__antithesis_instrumentation__.Notify(498925)
 	heap.Remove(p, 0)
 }

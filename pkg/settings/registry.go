@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package settings
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -17,57 +9,47 @@ import (
 	"unicode/utf8"
 )
 
-// registry contains all defined settings, their types and default values.
-//
-// The registry does not store the current values of the settings; those are
-// stored separately in Values, allowing multiple independent instances
-// of each setting in the registry.
-//
-// registry should never be mutated after creation (except in tests), as it is
-// read concurrently by different callers.
 var registry = make(map[string]internalSetting)
 
-// slotTable stores the same settings as the registry, but accessible by the
-// slot index.
 var slotTable [MaxSettings]internalSetting
 
-// TestingSaveRegistry can be used in tests to save/restore the current
-// contents of the registry.
 func TestingSaveRegistry() func() {
+	__antithesis_instrumentation__.Notify(240045)
 	var origRegistry = make(map[string]internalSetting)
 	for k, v := range registry {
+		__antithesis_instrumentation__.Notify(240047)
 		origRegistry[k] = v
 	}
+	__antithesis_instrumentation__.Notify(240046)
 	return func() {
+		__antithesis_instrumentation__.Notify(240048)
 		registry = origRegistry
 	}
 }
 
-// When a setting is removed, it should be added to this list so that we cannot
-// accidentally reuse its name, potentially mis-handling older values.
 var retiredSettings = map[string]struct{}{
-	// removed as of 2.0.
+
 	"kv.gc.batch_size":                     {},
 	"kv.transaction.max_intents":           {},
 	"diagnostics.reporting.report_metrics": {},
-	// removed as of 2.1.
+
 	"kv.allocator.stat_based_rebalancing.enabled": {},
 	"kv.allocator.stat_rebalance_threshold":       {},
-	// removed as of 19.1.
+
 	"kv.raft_log.synchronize": {},
-	// removed as of 19.2.
+
 	"schemachanger.bulk_index_backfill.enabled":            {},
-	"rocksdb.ingest_backpressure.delay_l0_file":            {}, // never used
+	"rocksdb.ingest_backpressure.delay_l0_file":            {},
 	"server.heap_profile.system_memory_threshold_fraction": {},
 	"timeseries.storage.10s_resolution_ttl":                {},
 	"changefeed.push.enabled":                              {},
 	"sql.defaults.optimizer":                               {},
 	"kv.bulk_io_write.addsstable_max_rate":                 {},
-	// removed as of 20.1.
+
 	"schemachanger.lease.duration":           {},
 	"schemachanger.lease.renew_fraction":     {},
 	"diagnostics.forced_stat_reset.interval": {},
-	// removed as of 20.2.
+
 	"rocksdb.ingest_backpressure.pending_compaction_threshold":         {},
 	"sql.distsql.temp_storage.joins":                                   {},
 	"sql.distsql.temp_storage.sorts":                                   {},
@@ -77,13 +59,13 @@ var retiredSettings = map[string]struct{}{
 	"sql.defaults.experimental_optimizer_foreign_key_cascades.enabled": {},
 	"sql.parallel_scans.enabled":                                       {},
 	"backup.table_statistics.enabled":                                  {},
-	// removed as of 21.1.
+
 	"sql.distsql.interleaved_joins.enabled": {},
 	"sql.testing.vectorize.batch_size":      {},
 	"sql.testing.mutations.max_batch_size":  {},
 	"sql.testing.mock_contention.enabled":   {},
 	"kv.atomic_replication_changes.enabled": {},
-	// removed as of 21.1.2.
+
 	"kv.tenant_rate_limiter.read_requests.rate_limit":   {},
 	"kv.tenant_rate_limiter.read_requests.burst_limit":  {},
 	"kv.tenant_rate_limiter.write_requests.rate_limit":  {},
@@ -93,7 +75,6 @@ var retiredSettings = map[string]struct{}{
 	"kv.tenant_rate_limiter.write_bytes.rate_limit":     {},
 	"kv.tenant_rate_limiter.write_bytes.burst_limit":    {},
 
-	// removed as of 21.2.
 	"sql.defaults.vectorize_row_count_threshold":                     {},
 	"cloudstorage.gs.default.key":                                    {},
 	"storage.sst_export.max_intents_per_error":                       {},
@@ -111,7 +92,6 @@ var retiredSettings = map[string]struct{}{
 	"changefeed.mem.pushback_enabled":                                {},
 	"sql.distsql.index_join_limit_hint.enabled":                      {},
 
-	// removed as of 22.1.
 	"sql.defaults.drop_enum_value.enabled":                             {},
 	"trace.lightstep.token":                                            {},
 	"trace.datadog.agent":                                              {},
@@ -126,92 +106,137 @@ var retiredSettings = map[string]struct{}{
 	"schemachanger.backfiller.buffer_increment":                        {},
 }
 
-// register adds a setting to the registry.
 func register(class Class, key, desc string, s internalSetting) {
+	__antithesis_instrumentation__.Notify(240049)
 	if _, ok := retiredSettings[key]; ok {
+		__antithesis_instrumentation__.Notify(240055)
 		panic(fmt.Sprintf("cannot reuse previously defined setting name: %s", key))
+	} else {
+		__antithesis_instrumentation__.Notify(240056)
 	}
+	__antithesis_instrumentation__.Notify(240050)
 	if _, ok := registry[key]; ok {
+		__antithesis_instrumentation__.Notify(240057)
 		panic(fmt.Sprintf("setting already defined: %s", key))
+	} else {
+		__antithesis_instrumentation__.Notify(240058)
 	}
+	__antithesis_instrumentation__.Notify(240051)
 	if len(desc) == 0 {
+		__antithesis_instrumentation__.Notify(240059)
 		panic(fmt.Sprintf("setting missing description: %s", key))
+	} else {
+		__antithesis_instrumentation__.Notify(240060)
 	}
+	__antithesis_instrumentation__.Notify(240052)
 	if r, _ := utf8.DecodeRuneInString(desc); unicode.IsUpper(r) {
+		__antithesis_instrumentation__.Notify(240061)
 		panic(fmt.Sprintf(
 			"setting descriptions should start with a lowercase letter: %q, %q", key, desc,
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(240062)
 	}
+	__antithesis_instrumentation__.Notify(240053)
 	for _, c := range desc {
+		__antithesis_instrumentation__.Notify(240063)
 		if c == unicode.ReplacementChar {
+			__antithesis_instrumentation__.Notify(240065)
 			panic(fmt.Sprintf("setting descriptions must be valid UTF-8: %q, %q", key, desc))
+		} else {
+			__antithesis_instrumentation__.Notify(240066)
 		}
+		__antithesis_instrumentation__.Notify(240064)
 		if unicode.IsControl(c) {
+			__antithesis_instrumentation__.Notify(240067)
 			panic(fmt.Sprintf(
 				"setting descriptions cannot contain control character %q: %q, %q", c, key, desc,
 			))
+		} else {
+			__antithesis_instrumentation__.Notify(240068)
 		}
 	}
+	__antithesis_instrumentation__.Notify(240054)
 	slot := slotIdx(len(registry))
 	s.init(class, key, desc, slot)
 	registry[key] = s
 	slotTable[slot] = s
 }
 
-// NumRegisteredSettings returns the number of registered settings.
-func NumRegisteredSettings() int { return len(registry) }
+func NumRegisteredSettings() int { __antithesis_instrumentation__.Notify(240069); return len(registry) }
 
-// Keys returns a sorted string array with all the known keys.
 func Keys(forSystemTenant bool) (res []string) {
+	__antithesis_instrumentation__.Notify(240070)
 	res = make([]string, 0, len(registry))
 	for k, v := range registry {
+		__antithesis_instrumentation__.Notify(240072)
 		if v.isRetired() {
+			__antithesis_instrumentation__.Notify(240075)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(240076)
 		}
-		if !forSystemTenant && v.Class() == SystemOnly {
+		__antithesis_instrumentation__.Notify(240073)
+		if !forSystemTenant && func() bool {
+			__antithesis_instrumentation__.Notify(240077)
+			return v.Class() == SystemOnly == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(240078)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(240079)
 		}
+		__antithesis_instrumentation__.Notify(240074)
 		res = append(res, k)
 	}
+	__antithesis_instrumentation__.Notify(240071)
 	sort.Strings(res)
 	return res
 }
 
-// Lookup returns a Setting by name along with its description.
-// For non-reportable setting, it instantiates a MaskedSetting
-// to masquerade for the underlying setting.
 func Lookup(name string, purpose LookupPurpose, forSystemTenant bool) (Setting, bool) {
+	__antithesis_instrumentation__.Notify(240080)
 	s, ok := registry[name]
 	if !ok {
+		__antithesis_instrumentation__.Notify(240084)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(240085)
 	}
-	if !forSystemTenant && s.Class() == SystemOnly {
+	__antithesis_instrumentation__.Notify(240081)
+	if !forSystemTenant && func() bool {
+		__antithesis_instrumentation__.Notify(240086)
+		return s.Class() == SystemOnly == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(240087)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(240088)
 	}
-	if purpose == LookupForReporting && !s.isReportable() {
+	__antithesis_instrumentation__.Notify(240082)
+	if purpose == LookupForReporting && func() bool {
+		__antithesis_instrumentation__.Notify(240089)
+		return !s.isReportable() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(240090)
 		return &MaskedSetting{setting: s}, true
+	} else {
+		__antithesis_instrumentation__.Notify(240091)
 	}
+	__antithesis_instrumentation__.Notify(240083)
 	return s, true
 }
 
-// LookupPurpose indicates what is being done with the setting.
 type LookupPurpose int
 
 const (
-	// LookupForReporting indicates that a setting is being retrieved
-	// for reporting and sensitive values should be scrubbed.
 	LookupForReporting LookupPurpose = iota
-	// LookupForLocalAccess indicates that a setting is being
-	// retrieved for local processing within the cluster and
-	// all values should be accessible
+
 	LookupForLocalAccess
 )
 
-// ForSystemTenant can be passed to Lookup for code that runs only on the system
-// tenant.
 const ForSystemTenant = true
 
-// ReadableTypes maps our short type identifiers to friendlier names.
 var ReadableTypes = map[string]string{
 	"s": "string",
 	"i": "integer",
@@ -220,16 +245,18 @@ var ReadableTypes = map[string]string{
 	"z": "byte size",
 	"d": "duration",
 	"e": "enumeration",
-	// This is named "m" (instead of "v") for backwards compatibility reasons.
+
 	"m": "version",
 }
 
-// RedactedValue returns a string representation of the value for settings
-// types the are not considered sensitive (numbers, bools, etc) or
-// <redacted> for those with values could store sensitive things (i.e. strings).
 func RedactedValue(name string, values *Values, forSystemTenant bool) string {
+	__antithesis_instrumentation__.Notify(240092)
 	if setting, ok := Lookup(name, LookupForReporting, forSystemTenant); ok {
+		__antithesis_instrumentation__.Notify(240094)
 		return setting.String(values)
+	} else {
+		__antithesis_instrumentation__.Notify(240095)
 	}
+	__antithesis_instrumentation__.Notify(240093)
 	return "<unknown>"
 }

@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package tenantdirsvr
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,53 +14,64 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-// ListenAndServeInMemGRPC is similar to netutil.ListenAndServeGRPC, but uses
-// an in-memory listener instead.
 func ListenAndServeInMemGRPC(
 	ctx context.Context, stopper *stop.Stopper, server *grpc.Server,
 ) (*bufconn.Listener, error) {
-	// defaultListenerBufSize corresponds to the listener's in-memory buffer
-	// size. Since this is meant to be used within a test environment, 1 MiB
-	// should be sufficient.
-	const defaultListenerBufSize = 1 << 20 // 1 MiB
+	__antithesis_instrumentation__.Notify(23142)
 
-	// Use bufconn to create an in-memory listener.
+	const defaultListenerBufSize = 1 << 20
+
 	ln := bufconn.Listen(defaultListenerBufSize)
 
 	stopper.AddCloser(stop.CloserFn(server.GracefulStop))
 	waitQuiesce := func(context.Context) {
+		__antithesis_instrumentation__.Notify(23146)
 		<-stopper.ShouldQuiesce()
 		fatalIfUnexpected(ln.Close())
 	}
+	__antithesis_instrumentation__.Notify(23143)
 	if err := stopper.RunAsyncTask(ctx, "listen-quiesce", waitQuiesce); err != nil {
+		__antithesis_instrumentation__.Notify(23147)
 		waitQuiesce(ctx)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(23148)
 	}
+	__antithesis_instrumentation__.Notify(23144)
 
 	if err := stopper.RunAsyncTask(ctx, "serve", func(context.Context) {
+		__antithesis_instrumentation__.Notify(23149)
 		fatalIfUnexpected(server.Serve(ln))
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(23150)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(23151)
 	}
+	__antithesis_instrumentation__.Notify(23145)
 	return ln, nil
 }
 
-// fatalIfUnexpected calls Log.Fatal(err) unless err is nil, or an error that
-// comes from the net package indicating that the listener was closed or from
-// the Stopper indicating quiescence.
-//
-// NOTE: This is the same as netutil.FatalIfUnexpected, but calls our custom
-// isClosedConnection instead.
 func fatalIfUnexpected(err error) {
-	if err != nil && !isClosedConnection(err) && !errors.Is(err, stop.ErrUnavailable) {
+	__antithesis_instrumentation__.Notify(23152)
+	if err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(23153)
+		return !isClosedConnection(err) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(23154)
+		return !errors.Is(err, stop.ErrUnavailable) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(23155)
 		log.Fatalf(context.TODO(), "%+v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(23156)
 	}
 }
 
-// isClosedConnection returns true if err's Cause is an error produced by gRPC
-// on closed connections. This wraps grpcutil.IsClosedConnection, and includes
-// a custom test for a "closed" error, which is returned by the bufconn listener
-// in https://github.com/grpc/grpc-go/blob/a82cc96f/test/bufconn/bufconn.go#L49.
 func isClosedConnection(err error) bool {
-	return grpcutil.IsClosedConnection(err) || strings.Contains(err.Error(), "closed")
+	__antithesis_instrumentation__.Notify(23157)
+	return grpcutil.IsClosedConnection(err) || func() bool {
+		__antithesis_instrumentation__.Notify(23158)
+		return strings.Contains(err.Error(), "closed") == true
+	}() == true
 }

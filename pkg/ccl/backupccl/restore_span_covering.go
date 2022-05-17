@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package backupccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sort"
@@ -20,104 +14,125 @@ type intervalSpan roachpb.Span
 
 var _ interval.Interface = intervalSpan{}
 
-// ID is part of `interval.Interface` but seemed unused by backupccl usage.
-func (ie intervalSpan) ID() uintptr { return 0 }
+func (ie intervalSpan) ID() uintptr { __antithesis_instrumentation__.Notify(12526); return 0 }
 
-// Range is part of `interval.Interface`.
 func (ie intervalSpan) Range() interval.Range {
+	__antithesis_instrumentation__.Notify(12527)
 	return interval.Range{Start: []byte(ie.Key), End: []byte(ie.EndKey)}
 }
 
-// makeSimpleImportSpans partitions the spans of requiredSpans into a covering
-// of RestoreSpanEntry's which each have all overlapping files from the passed
-// backups assigned to them. The spans of requiredSpans are trimmed/removed
-// based on the lowWaterMark before the covering for them is generated. Consider
-// a chain of backups with files f1, f2… which cover spans as follows:
-//
-//  backup
-//  0|     a___1___c c__2__e          h__3__i
-//  1|         b___4___d           g____5___i
-//  2|     a___________6______________h         j_7_k
-//  3|                                  h_8_i              l_9_m
-//   keys--a---b---c---d---e---f---g---h----i---j---k---l----m------p---->
-// spans: |-------span1-------||---span2---|           |---span3---|
-//
-// The cover for those spans would look like:
-//  [a, c): 1, 4, 6
-//  [c, e): 2, 4, 6
-//  [e, f): 6
-//  [f, i): 3, 5, 6, 8
-//  [l, m): 9
-// This example is tested in TestRestoreEntryCoverExample.
 func makeSimpleImportSpans(
 	requiredSpans []roachpb.Span,
 	backups []BackupManifest,
 	backupLocalityMap map[int]storeByLocalityKV,
 	lowWaterMark roachpb.Key,
 ) []execinfrapb.RestoreSpanEntry {
+	__antithesis_instrumentation__.Notify(12528)
 	if len(backups) < 1 {
+		__antithesis_instrumentation__.Notify(12532)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(12533)
 	}
+	__antithesis_instrumentation__.Notify(12529)
 
 	for i := range backups {
+		__antithesis_instrumentation__.Notify(12534)
 		sort.Sort(BackupFileDescriptors(backups[i].Files))
 	}
+	__antithesis_instrumentation__.Notify(12530)
 
 	var cover []execinfrapb.RestoreSpanEntry
 	for _, span := range requiredSpans {
+		__antithesis_instrumentation__.Notify(12535)
 		if span.EndKey.Compare(lowWaterMark) < 0 {
+			__antithesis_instrumentation__.Notify(12538)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(12539)
 		}
+		__antithesis_instrumentation__.Notify(12536)
 		if span.Key.Compare(lowWaterMark) < 0 {
+			__antithesis_instrumentation__.Notify(12540)
 			span.Key = lowWaterMark
+		} else {
+			__antithesis_instrumentation__.Notify(12541)
 		}
+		__antithesis_instrumentation__.Notify(12537)
 
 		spanCoverStart := len(cover)
 
 		for layer := range backups {
+			__antithesis_instrumentation__.Notify(12542)
 			covPos := spanCoverStart
-			// TODO(dt): binary search to the first file in required span?
+
 			for _, f := range backups[layer].Files {
+				__antithesis_instrumentation__.Notify(12543)
 				if sp := span.Intersect(f.Span); sp.Valid() {
+					__antithesis_instrumentation__.Notify(12544)
 					fileSpec := execinfrapb.RestoreFileSpec{Path: f.Path, Dir: backups[layer].Dir}
 					if dir, ok := backupLocalityMap[layer][f.LocalityKV]; ok {
+						__antithesis_instrumentation__.Notify(12546)
 						fileSpec = execinfrapb.RestoreFileSpec{Path: f.Path, Dir: dir}
+					} else {
+						__antithesis_instrumentation__.Notify(12547)
 					}
+					__antithesis_instrumentation__.Notify(12545)
 					if len(cover) == spanCoverStart {
+						__antithesis_instrumentation__.Notify(12548)
 						cover = append(cover, makeEntry(span.Key, sp.EndKey, fileSpec))
 					} else {
-						// Add each file to every matching partition in the cover.
-						for i := covPos; i < len(cover) && cover[i].Span.Key.Compare(sp.EndKey) < 0; i++ {
+						__antithesis_instrumentation__.Notify(12549)
+
+						for i := covPos; i < len(cover) && func() bool {
+							__antithesis_instrumentation__.Notify(12551)
+							return cover[i].Span.Key.Compare(sp.EndKey) < 0 == true
+						}() == true; i++ {
+							__antithesis_instrumentation__.Notify(12552)
 							if cover[i].Span.Overlaps(sp) {
+								__antithesis_instrumentation__.Notify(12554)
 								cover[i].Files = append(cover[i].Files, fileSpec)
+							} else {
+								__antithesis_instrumentation__.Notify(12555)
 							}
-							// If partition i of the cover ends before this file starts, we
-							// know it also ends before any remaining files start too, as the
-							// files are sorted above by start key, so remaining files can
-							// start their search after this partition.
+							__antithesis_instrumentation__.Notify(12553)
+
 							if cover[i].Span.EndKey.Compare(sp.Key) <= 0 {
+								__antithesis_instrumentation__.Notify(12556)
 								covPos = i + 1
+							} else {
+								__antithesis_instrumentation__.Notify(12557)
 							}
 						}
-						// If this file extends beyond the end of the last partition of the
-						// cover, append a new partition for the uncovered span.
+						__antithesis_instrumentation__.Notify(12550)
+
 						if covEnd := cover[len(cover)-1].Span.EndKey; sp.EndKey.Compare(covEnd) > 0 {
+							__antithesis_instrumentation__.Notify(12558)
 							cover = append(cover, makeEntry(covEnd, sp.EndKey, fileSpec))
+						} else {
+							__antithesis_instrumentation__.Notify(12559)
 						}
 					}
-				} else if span.EndKey.Compare(f.Span.Key) <= 0 {
-					// If this file starts after the needed span ends, then all the files
-					// remaining do too so we're done checking files for this span.
-					break
+				} else {
+					__antithesis_instrumentation__.Notify(12560)
+					if span.EndKey.Compare(f.Span.Key) <= 0 {
+						__antithesis_instrumentation__.Notify(12561)
+
+						break
+					} else {
+						__antithesis_instrumentation__.Notify(12562)
+					}
 				}
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(12531)
 
 	return cover
 }
 
 func makeEntry(start, end roachpb.Key, f execinfrapb.RestoreFileSpec) execinfrapb.RestoreSpanEntry {
+	__antithesis_instrumentation__.Notify(12563)
 	return execinfrapb.RestoreSpanEntry{
 		Span: roachpb.Span{Key: start, EndKey: end}, Files: []execinfrapb.RestoreFileSpec{f},
 	}

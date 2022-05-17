@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/migration"
@@ -20,21 +12,17 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondatapb"
 )
 
-// plannerJobExecContext is a wrapper to implement JobExecContext with a planner
-// without allowing casting directly to a planner. Eventually it would be nice
-// if we could implement the API entirely without a planner however the only
-// implementation of extendedEvalContext is very tied to a planner.
 type plannerJobExecContext struct {
 	p *planner
 }
 
-// MakeJobExecContext makes a JobExecContext.
 func MakeJobExecContext(
 	opName string, user security.SQLUsername, memMetrics *MemoryMetrics, execCfg *ExecutorConfig,
 ) (JobExecContext, func()) {
+	__antithesis_instrumentation__.Notify(498787)
 	plannerInterface, close := NewInternalPlanner(
 		opName,
-		nil, /*txn*/
+		nil,
 		user,
 		memMetrics,
 		execCfg,
@@ -44,36 +32,47 @@ func MakeJobExecContext(
 	return &plannerJobExecContext{p: p}, close
 }
 
-func (e *plannerJobExecContext) SemaCtx() *tree.SemaContext { return e.p.SemaCtx() }
+func (e *plannerJobExecContext) SemaCtx() *tree.SemaContext {
+	__antithesis_instrumentation__.Notify(498788)
+	return e.p.SemaCtx()
+}
 func (e *plannerJobExecContext) ExtendedEvalContext() *extendedEvalContext {
+	__antithesis_instrumentation__.Notify(498789)
 	return e.p.ExtendedEvalContext()
 }
 func (e *plannerJobExecContext) SessionData() *sessiondata.SessionData {
+	__antithesis_instrumentation__.Notify(498790)
 	return e.p.SessionData()
 }
 func (e *plannerJobExecContext) SessionDataMutatorIterator() *sessionDataMutatorIterator {
+	__antithesis_instrumentation__.Notify(498791)
 	return e.p.SessionDataMutatorIterator()
 }
-func (e *plannerJobExecContext) ExecCfg() *ExecutorConfig        { return e.p.ExecCfg() }
-func (e *plannerJobExecContext) DistSQLPlanner() *DistSQLPlanner { return e.p.DistSQLPlanner() }
-func (e *plannerJobExecContext) LeaseMgr() *lease.Manager        { return e.p.LeaseMgr() }
-func (e *plannerJobExecContext) User() security.SQLUsername      { return e.p.User() }
+func (e *plannerJobExecContext) ExecCfg() *ExecutorConfig {
+	__antithesis_instrumentation__.Notify(498792)
+	return e.p.ExecCfg()
+}
+func (e *plannerJobExecContext) DistSQLPlanner() *DistSQLPlanner {
+	__antithesis_instrumentation__.Notify(498793)
+	return e.p.DistSQLPlanner()
+}
+func (e *plannerJobExecContext) LeaseMgr() *lease.Manager {
+	__antithesis_instrumentation__.Notify(498794)
+	return e.p.LeaseMgr()
+}
+func (e *plannerJobExecContext) User() security.SQLUsername {
+	__antithesis_instrumentation__.Notify(498795)
+	return e.p.User()
+}
 func (e *plannerJobExecContext) MigrationJobDeps() migration.JobDeps {
+	__antithesis_instrumentation__.Notify(498796)
 	return e.p.MigrationJobDeps()
 }
 func (e *plannerJobExecContext) SpanConfigReconciler() spanconfig.Reconciler {
+	__antithesis_instrumentation__.Notify(498797)
 	return e.p.SpanConfigReconciler()
 }
 
-// JobExecContext provides the execution environment for a job. It is what is
-// passed to the Resume/OnFailOrCancel/OnPauseRequested methods of a jobs's
-// Resumer to give that resumer access to things like ExecutorCfg, LeaseMgr,
-// etc -- the kinds of things that would usually be on planner or similar during
-// a non-job SQL statement's execution. Unlike a planner however, or planner-ish
-// interfaces like PlanHookState, JobExecContext does not include a txn or the
-// methods that defined in terms of "the" txn, such as privilege/name accessors.
-// (though note that ExtendedEvalContext may transitively include methods that
-// close over/expect a txn so use it with caution).
 type JobExecContext interface {
 	SemaCtx() *tree.SemaContext
 	ExtendedEvalContext() *extendedEvalContext

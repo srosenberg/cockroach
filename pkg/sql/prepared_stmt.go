@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,120 +15,93 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 )
 
-// PreparedStatementOrigin is an enum representing the source of where
-// the prepare statement was made.
 type PreparedStatementOrigin int
 
 const (
-	// PreparedStatementOriginWire signifies the prepared statement was made
-	// over the wire.
 	PreparedStatementOriginWire PreparedStatementOrigin = iota + 1
-	// PreparedStatementOriginSQL signifies the prepared statement was made
-	// over a parsed SQL query.
+
 	PreparedStatementOriginSQL
-	// PreparedStatementOriginSessionMigration signifies that the prepared
-	// statement came from a call to crdb_internal.deserialize_session.
+
 	PreparedStatementOriginSessionMigration
 )
 
-// PreparedStatement is a SQL statement that has been parsed and the types
-// of arguments and results have been determined.
-//
-// Note that PreparedStatements maintain a reference counter internally.
-// References need to be registered with incRef() and de-registered with
-// decRef().
 type PreparedStatement struct {
 	querycache.PrepareMetadata
 
-	// Memo is the memoized data structure constructed by the cost-based optimizer
-	// during prepare of a SQL statement. It can significantly speed up execution
-	// if it is used by the optimizer as a starting point.
 	Memo *memo.Memo
 
-	// refCount keeps track of the number of references to this PreparedStatement.
-	// New references are registered through incRef().
-	// Once refCount hits 0 (through calls to decRef()), the following memAcc is
-	// closed.
-	// Most references are being held by portals created from this prepared
-	// statement.
 	refCount int
 	memAcc   mon.BoundAccount
 
-	// createdAt is the timestamp this prepare statement was made at.
-	// Used for reporting on `pg_prepared_statements`.
 	createdAt time.Time
-	// origin is the protocol in which this prepare statement was created.
-	// Used for reporting on `pg_prepared_statements`.
+
 	origin           PreparedStatementOrigin
 	StatementSummary string
 }
 
-// MemoryEstimate returns a rough estimate of the PreparedStatement's memory
-// usage, in bytes.
 func (p *PreparedStatement) MemoryEstimate() int64 {
-	// Account for the memory used by this prepared statement:
-	//   1. Size of the prepare metadata.
-	//   2. Size of the prepared memo, if using the cost-based optimizer.
+	__antithesis_instrumentation__.Notify(563231)
+
 	size := p.PrepareMetadata.MemoryEstimate()
 	if p.Memo != nil {
+		__antithesis_instrumentation__.Notify(563233)
 		size += p.Memo.MemoryEstimate()
+	} else {
+		__antithesis_instrumentation__.Notify(563234)
 	}
+	__antithesis_instrumentation__.Notify(563232)
 	return size
 }
 
 func (p *PreparedStatement) decRef(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(563235)
 	if p.refCount <= 0 {
+		__antithesis_instrumentation__.Notify(563237)
 		log.Fatal(ctx, "corrupt PreparedStatement refcount")
+	} else {
+		__antithesis_instrumentation__.Notify(563238)
 	}
+	__antithesis_instrumentation__.Notify(563236)
 	p.refCount--
 	if p.refCount == 0 {
+		__antithesis_instrumentation__.Notify(563239)
 		p.memAcc.Close(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(563240)
 	}
 }
 
 func (p *PreparedStatement) incRef(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(563241)
 	if p.refCount <= 0 {
+		__antithesis_instrumentation__.Notify(563243)
 		log.Fatal(ctx, "corrupt PreparedStatement refcount")
+	} else {
+		__antithesis_instrumentation__.Notify(563244)
 	}
+	__antithesis_instrumentation__.Notify(563242)
 	p.refCount++
 }
 
-// preparedStatementsAccessor gives a planner access to a session's collection
-// of prepared statements.
 type preparedStatementsAccessor interface {
-	// List returns all prepared statements as a map keyed by name.
-	// The map itself is a copy of the prepared statements.
 	List() map[string]*PreparedStatement
-	// Get returns the prepared statement with the given name. The returned bool
-	// is false if a statement with the given name doesn't exist.
+
 	Get(name string) (*PreparedStatement, bool)
-	// Delete removes the PreparedStatement with the provided name from the
-	// collection. If a portal exists for that statement, it is also removed.
-	// The method returns true if statement with that name was found and removed,
-	// false otherwise.
+
 	Delete(ctx context.Context, name string) bool
-	// DeleteAll removes all prepared statements and portals from the collection.
+
 	DeleteAll(ctx context.Context)
 }
 
-// PreparedPortal is a PreparedStatement that has been bound with query
-// arguments.
 type PreparedPortal struct {
 	Stmt  *PreparedStatement
 	Qargs tree.QueryArguments
 
-	// OutFormats contains the requested formats for the output columns.
 	OutFormats []pgwirebase.FormatCode
 
-	// exhausted tracks whether this portal has already been fully exhausted,
-	// meaning that any additional attempts to execute it should return no
-	// rows.
 	exhausted bool
 }
 
-// makePreparedPortal creates a new PreparedPortal.
-//
-// accountForCopy() doesn't need to be called on the prepared statement.
 func (ex *connExecutor) makePreparedPortal(
 	ctx context.Context,
 	name string,
@@ -144,6 +109,7 @@ func (ex *connExecutor) makePreparedPortal(
 	qargs tree.QueryArguments,
 	outFormats []pgwirebase.FormatCode,
 ) (PreparedPortal, error) {
+	__antithesis_instrumentation__.Notify(563245)
 	portal := PreparedPortal{
 		Stmt:       stmt,
 		Qargs:      qargs,
@@ -152,23 +118,23 @@ func (ex *connExecutor) makePreparedPortal(
 	return portal, portal.accountForCopy(ctx, &ex.extraTxnState.prepStmtsNamespaceMemAcc, name)
 }
 
-// accountForCopy updates the state to account for the copy of the
-// PreparedPortal (p is the copy).
 func (p PreparedPortal) accountForCopy(
 	ctx context.Context, prepStmtsNamespaceMemAcc *mon.BoundAccount, portalName string,
 ) error {
+	__antithesis_instrumentation__.Notify(563246)
 	p.Stmt.incRef(ctx)
 	return prepStmtsNamespaceMemAcc.Grow(ctx, p.size(portalName))
 }
 
-// close closes this portal.
 func (p PreparedPortal) close(
 	ctx context.Context, prepStmtsNamespaceMemAcc *mon.BoundAccount, portalName string,
 ) {
+	__antithesis_instrumentation__.Notify(563247)
 	prepStmtsNamespaceMemAcc.Shrink(ctx, p.size(portalName))
 	p.Stmt.decRef(ctx)
 }
 
 func (p PreparedPortal) size(portalName string) int64 {
+	__antithesis_instrumentation__.Notify(563248)
 	return int64(uintptr(len(portalName)) + unsafe.Sizeof(p))
 }

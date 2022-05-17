@@ -13,6 +13,7 @@ go_library(
     deps = [
         "//pkg/sql/schemachanger/rel",
         "//pkg/sql/schemachanger/rel/reltest",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 

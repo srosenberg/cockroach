@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfigkvaccessor
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -33,9 +25,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// batchSizeSetting is a hidden cluster setting to control how many span config
-// records we access in a single batch, beyond which we start paginating.
-// No limit enforced if set to zero (or something negative).
 var batchSizeSetting = settings.RegisterIntSetting(
 	settings.SystemOnly,
 	"spanconfig.kvaccessor.batch_size",
@@ -43,21 +32,14 @@ var batchSizeSetting = settings.RegisterIntSetting(
 	10000,
 )
 
-// KVAccessor provides read/write access to all the span configurations for a
-// CRDB cluster. It's a concrete implementation of the KVAccessor interface.
 type KVAccessor struct {
 	db *kv.DB
 	ie sqlutil.InternalExecutor
-	// optionalTxn captures the transaction we're scoped to; it's allowed to be
-	// nil. If nil, it's unsafe to use multiple times as part of the same
-	// request with any expectation of transactionality -- we're responsible for
-	// opening a fresh txn.
+
 	optionalTxn *kv.Txn
 	settings    *cluster.Settings
 	clock       *hlc.Clock
 
-	// configurationsTableFQN is typically 'system.public.span_configurations',
-	// but left configurable for ease-of-testing.
 	configurationsTableFQN string
 
 	knobs *spanconfig.TestingKnobs
@@ -65,7 +47,6 @@ type KVAccessor struct {
 
 var _ spanconfig.KVAccessor = &KVAccessor{}
 
-// New constructs a new KVAccessor.
 func New(
 	db *kv.DB,
 	ie sqlutil.InternalExecutor,
@@ -74,108 +55,146 @@ func New(
 	configurationsTableFQN string,
 	knobs *spanconfig.TestingKnobs,
 ) *KVAccessor {
+	__antithesis_instrumentation__.Notify(240386)
 	if _, err := parser.ParseQualifiedTableName(configurationsTableFQN); err != nil {
+		__antithesis_instrumentation__.Notify(240388)
 		panic(fmt.Sprintf("unabled to parse configurations table FQN: %s", configurationsTableFQN))
+	} else {
+		__antithesis_instrumentation__.Notify(240389)
 	}
+	__antithesis_instrumentation__.Notify(240387)
 
-	return newKVAccessor(db, ie, settings, clock, configurationsTableFQN, knobs, nil /* optionalTxn */)
+	return newKVAccessor(db, ie, settings, clock, configurationsTableFQN, knobs, nil)
 }
 
-// WithTxn is part of the KVAccessor interface.
 func (k *KVAccessor) WithTxn(ctx context.Context, txn *kv.Txn) spanconfig.KVAccessor {
+	__antithesis_instrumentation__.Notify(240390)
 	if k.optionalTxn != nil {
+		__antithesis_instrumentation__.Notify(240392)
 		log.Fatalf(ctx, "KVAccessor already scoped to txn (was .WithTxn(...) chained multiple times?)")
+	} else {
+		__antithesis_instrumentation__.Notify(240393)
 	}
+	__antithesis_instrumentation__.Notify(240391)
 	return newKVAccessor(k.db, k.ie, k.settings, k.clock, k.configurationsTableFQN, k.knobs, txn)
 }
 
-// GetAllSystemSpanConfigsThatApply is part of the spanconfig.KVAccessor
-// interface.
 func (k *KVAccessor) GetAllSystemSpanConfigsThatApply(
 	ctx context.Context, id roachpb.TenantID,
 ) (spanConfigs []roachpb.SpanConfig, _ error) {
+	__antithesis_instrumentation__.Notify(240394)
 	hostSetOnTenant, err := spanconfig.MakeTenantKeyspaceTarget(
 		roachpb.SystemTenantID, id,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(240399)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(240400)
 	}
+	__antithesis_instrumentation__.Notify(240395)
 
-	// Construct a list of system targets whose corresponding system span configs
-	// apply to ranges of the given tenant ID. These are:
-	// 1. The system span config that applies over the entire keyspace. (set by
-	// the host).
-	// 2. The system span config set by the host over just the tenant's keyspace.
-	// 3. The system span config set by the tenant over its own keyspace.
 	targets := []spanconfig.Target{
 		spanconfig.MakeTargetFromSystemTarget(spanconfig.MakeEntireKeyspaceTarget()),
 		spanconfig.MakeTargetFromSystemTarget(hostSetOnTenant),
 	}
 
-	// We only need to do this for secondary tenants; we've already added this
-	// target if tenID == system tenant.
 	if id != roachpb.SystemTenantID {
+		__antithesis_instrumentation__.Notify(240401)
 		target, err := spanconfig.MakeTenantKeyspaceTarget(id, id)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240403)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(240404)
 		}
+		__antithesis_instrumentation__.Notify(240402)
 		targets = append(targets, spanconfig.MakeTargetFromSystemTarget(target))
+	} else {
+		__antithesis_instrumentation__.Notify(240405)
 	}
+	__antithesis_instrumentation__.Notify(240396)
 
 	records, err := k.GetSpanConfigRecords(ctx, targets)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(240406)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(240407)
 	}
+	__antithesis_instrumentation__.Notify(240397)
 
 	for _, record := range records {
+		__antithesis_instrumentation__.Notify(240408)
 		spanConfigs = append(spanConfigs, record.GetConfig())
 	}
+	__antithesis_instrumentation__.Notify(240398)
 
 	return spanConfigs, nil
 }
 
-// GetSpanConfigRecords is part of the KVAccessor interface.
 func (k *KVAccessor) GetSpanConfigRecords(
 	ctx context.Context, targets []spanconfig.Target,
 ) ([]spanconfig.Record, error) {
+	__antithesis_instrumentation__.Notify(240409)
 	if k.optionalTxn != nil {
+		__antithesis_instrumentation__.Notify(240412)
 		return k.getSpanConfigRecordsWithTxn(ctx, targets, k.optionalTxn)
+	} else {
+		__antithesis_instrumentation__.Notify(240413)
 	}
+	__antithesis_instrumentation__.Notify(240410)
 
 	var records []spanconfig.Record
 	if err := k.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(240414)
 		var err error
 		records, err = k.getSpanConfigRecordsWithTxn(ctx, targets, txn)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(240415)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(240416)
 	}
+	__antithesis_instrumentation__.Notify(240411)
 
 	return records, nil
 }
 
-// UpdateSpanConfigRecords is part of the KVAccessor interface.
 func (k *KVAccessor) UpdateSpanConfigRecords(
 	ctx context.Context,
 	toDelete []spanconfig.Target,
 	toUpsert []spanconfig.Record,
 	minCommitTS, maxCommitTS hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(240417)
 	if k.optionalTxn != nil {
+		__antithesis_instrumentation__.Notify(240421)
 		return k.updateSpanConfigRecordsWithTxn(ctx, toDelete, toUpsert, k.optionalTxn, minCommitTS, maxCommitTS)
+	} else {
+		__antithesis_instrumentation__.Notify(240422)
 	}
+	__antithesis_instrumentation__.Notify(240418)
 
 	if fn := k.knobs.KVAccessorPreCommitMinTSWaitInterceptor; fn != nil {
+		__antithesis_instrumentation__.Notify(240423)
 		fn()
+	} else {
+		__antithesis_instrumentation__.Notify(240424)
 	}
+	__antithesis_instrumentation__.Notify(240419)
 	if err := k.clock.SleepUntil(ctx, minCommitTS); err != nil {
+		__antithesis_instrumentation__.Notify(240425)
 		return errors.Wrapf(err, "waiting for clock to be in advance of minimum commit timestamp (%s)",
 			minCommitTS)
+	} else {
+		__antithesis_instrumentation__.Notify(240426)
 	}
-	// Given that our clock reading is past the supplied minCommitTS now,
-	// we can go ahead and create a transaction and proceed to perform the
-	// update.
+	__antithesis_instrumentation__.Notify(240420)
+
 	return k.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(240427)
 		return k.updateSpanConfigRecordsWithTxn(ctx, toDelete, toUpsert, txn, minCommitTS, maxCommitTS)
 	})
 }
@@ -189,9 +208,14 @@ func newKVAccessor(
 	knobs *spanconfig.TestingKnobs,
 	optionalTxn *kv.Txn,
 ) *KVAccessor {
+	__antithesis_instrumentation__.Notify(240428)
 	if knobs == nil {
+		__antithesis_instrumentation__.Notify(240430)
 		knobs = &spanconfig.TestingKnobs{}
+	} else {
+		__antithesis_instrumentation__.Notify(240431)
 	}
+	__antithesis_instrumentation__.Notify(240429)
 
 	return &KVAccessor{
 		db:                     db,
@@ -207,19 +231,33 @@ func newKVAccessor(
 func (k *KVAccessor) getSpanConfigRecordsWithTxn(
 	ctx context.Context, targets []spanconfig.Target, txn *kv.Txn,
 ) ([]spanconfig.Record, error) {
+	__antithesis_instrumentation__.Notify(240432)
 	if txn == nil {
+		__antithesis_instrumentation__.Notify(240437)
 		log.Fatalf(ctx, "expected non-nil txn")
+	} else {
+		__antithesis_instrumentation__.Notify(240438)
 	}
+	__antithesis_instrumentation__.Notify(240433)
 
 	if len(targets) == 0 {
+		__antithesis_instrumentation__.Notify(240439)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(240440)
 	}
+	__antithesis_instrumentation__.Notify(240434)
 	if err := validateSpanTargets(targets); err != nil {
+		__antithesis_instrumentation__.Notify(240441)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(240442)
 	}
+	__antithesis_instrumentation__.Notify(240435)
 
 	var records []spanconfig.Record
 	if err := k.paginate(len(targets), func(startIdx, endIdx int) (retErr error) {
+		__antithesis_instrumentation__.Notify(240443)
 		targetsBatch := targets[startIdx:endIdx]
 		getStmt, getQueryArgs := k.constructGetStmtAndArgs(targetsBatch)
 		it, err := k.ie.QueryIteratorEx(ctx, "get-span-cfgs", txn,
@@ -227,16 +265,26 @@ func (k *KVAccessor) getSpanConfigRecordsWithTxn(
 			getStmt, getQueryArgs...,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240448)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240449)
 		}
+		__antithesis_instrumentation__.Notify(240444)
 		defer func() {
+			__antithesis_instrumentation__.Notify(240450)
 			if closeErr := it.Close(); closeErr != nil {
+				__antithesis_instrumentation__.Notify(240451)
 				records, retErr = nil, errors.CombineErrors(retErr, closeErr)
+			} else {
+				__antithesis_instrumentation__.Notify(240452)
 			}
 		}()
+		__antithesis_instrumentation__.Notify(240445)
 
 		var ok bool
 		for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+			__antithesis_instrumentation__.Notify(240453)
 			row := it.Cur()
 			span := roachpb.Span{
 				Key:    []byte(*row[0].(*tree.DBytes)),
@@ -244,22 +292,39 @@ func (k *KVAccessor) getSpanConfigRecordsWithTxn(
 			}
 			var conf roachpb.SpanConfig
 			if err := protoutil.Unmarshal(([]byte)(*row[2].(*tree.DBytes)), &conf); err != nil {
+				__antithesis_instrumentation__.Notify(240456)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(240457)
 			}
+			__antithesis_instrumentation__.Notify(240454)
 
 			record, err := spanconfig.MakeRecord(spanconfig.DecodeTarget(span), conf)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(240458)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(240459)
 			}
+			__antithesis_instrumentation__.Notify(240455)
 			records = append(records, record)
 		}
+		__antithesis_instrumentation__.Notify(240446)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240460)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240461)
 		}
+		__antithesis_instrumentation__.Notify(240447)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(240462)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(240463)
 	}
+	__antithesis_instrumentation__.Notify(240436)
 
 	return records, nil
 }
@@ -271,41 +336,70 @@ func (k *KVAccessor) updateSpanConfigRecordsWithTxn(
 	txn *kv.Txn,
 	minCommitTS, maxCommitTS hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(240464)
 	if txn == nil {
+		__antithesis_instrumentation__.Notify(240474)
 		log.Fatalf(ctx, "expected non-nil txn")
+	} else {
+		__antithesis_instrumentation__.Notify(240475)
 	}
+	__antithesis_instrumentation__.Notify(240465)
 
 	if !minCommitTS.Less(maxCommitTS) {
+		__antithesis_instrumentation__.Notify(240476)
 		return errors.AssertionFailedf("invalid commit interval [%s, %s)", minCommitTS, maxCommitTS)
+	} else {
+		__antithesis_instrumentation__.Notify(240477)
 	}
+	__antithesis_instrumentation__.Notify(240466)
 
 	if txn.ReadTimestamp().Less(minCommitTS) {
+		__antithesis_instrumentation__.Notify(240478)
 		return errors.AssertionFailedf(
 			"transaction's read timestamp (%s) below the minimum commit timestamp (%s)",
 			txn.ReadTimestamp(), minCommitTS,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(240479)
 	}
+	__antithesis_instrumentation__.Notify(240467)
 
 	if maxCommitTS.Less(txn.ReadTimestamp()) {
+		__antithesis_instrumentation__.Notify(240480)
 		return spanconfig.NewCommitTimestampOutOfBoundsError()
+	} else {
+		__antithesis_instrumentation__.Notify(240481)
 	}
+	__antithesis_instrumentation__.Notify(240468)
 
-	// Set the deadline of the transaction so that it commits before the maximum
-	// commit timestamp.
 	if err := txn.UpdateDeadline(ctx, maxCommitTS); err != nil {
+		__antithesis_instrumentation__.Notify(240482)
 		return errors.Wrapf(err, "transaction deadline could not be updated")
+	} else {
+		__antithesis_instrumentation__.Notify(240483)
 	}
+	__antithesis_instrumentation__.Notify(240469)
 
 	if fn := k.knobs.KVAccessorPostCommitDeadlineSetInterceptor; fn != nil {
+		__antithesis_instrumentation__.Notify(240484)
 		fn(txn)
+	} else {
+		__antithesis_instrumentation__.Notify(240485)
 	}
+	__antithesis_instrumentation__.Notify(240470)
 
 	if err := validateUpdateArgs(toDelete, toUpsert); err != nil {
+		__antithesis_instrumentation__.Notify(240486)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(240487)
 	}
+	__antithesis_instrumentation__.Notify(240471)
 
 	if len(toDelete) > 0 {
+		__antithesis_instrumentation__.Notify(240488)
 		if err := k.paginate(len(toDelete), func(startIdx, endIdx int) error {
+			__antithesis_instrumentation__.Notify(240489)
 			toDeleteBatch := toDelete[startIdx:endIdx]
 			deleteStmt, deleteQueryArgs := k.constructDeleteStmtAndArgs(toDeleteBatch)
 			n, err := k.ie.ExecEx(ctx, "delete-span-cfgs", txn,
@@ -313,95 +407,102 @@ func (k *KVAccessor) updateSpanConfigRecordsWithTxn(
 				deleteStmt, deleteQueryArgs...,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(240492)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(240493)
 			}
+			__antithesis_instrumentation__.Notify(240490)
 			if n != len(toDeleteBatch) {
+				__antithesis_instrumentation__.Notify(240494)
 				return errors.AssertionFailedf("expected to delete %d row(s), deleted %d", len(toDeleteBatch), n)
+			} else {
+				__antithesis_instrumentation__.Notify(240495)
 			}
+			__antithesis_instrumentation__.Notify(240491)
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(240496)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240497)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(240498)
 	}
+	__antithesis_instrumentation__.Notify(240472)
 
 	if len(toUpsert) == 0 {
-		return nil // nothing left to do
+		__antithesis_instrumentation__.Notify(240499)
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(240500)
 	}
+	__antithesis_instrumentation__.Notify(240473)
 
 	return k.paginate(len(toUpsert), func(startIdx, endIdx int) error {
+		__antithesis_instrumentation__.Notify(240501)
 		toUpsertBatch := toUpsert[startIdx:endIdx]
 		upsertStmt, upsertQueryArgs, err := k.constructUpsertStmtAndArgs(toUpsertBatch)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240505)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240506)
 		}
+		__antithesis_instrumentation__.Notify(240502)
 		if n, err := k.ie.ExecEx(ctx, "upsert-span-cfgs", txn,
 			sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 			upsertStmt, upsertQueryArgs...,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(240507)
 			return err
-		} else if n != len(toUpsertBatch) {
-			return errors.AssertionFailedf("expected to upsert %d row(s), upserted %d", len(toUpsertBatch), n)
+		} else {
+			__antithesis_instrumentation__.Notify(240508)
+			if n != len(toUpsertBatch) {
+				__antithesis_instrumentation__.Notify(240509)
+				return errors.AssertionFailedf("expected to upsert %d row(s), upserted %d", len(toUpsertBatch), n)
+			} else {
+				__antithesis_instrumentation__.Notify(240510)
+			}
 		}
+		__antithesis_instrumentation__.Notify(240503)
 
 		validationStmt, validationQueryArgs := k.constructValidationStmtAndArgs(toUpsertBatch)
 		if datums, err := k.ie.QueryRowEx(ctx, "validate-span-cfgs", txn,
 			sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 			validationStmt, validationQueryArgs...,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(240511)
 			return err
-		} else if valid := bool(tree.MustBeDBool(datums[0])); !valid {
-			return errors.AssertionFailedf("expected to find single row containing upserted spans")
+		} else {
+			__antithesis_instrumentation__.Notify(240512)
+			if valid := bool(tree.MustBeDBool(datums[0])); !valid {
+				__antithesis_instrumentation__.Notify(240513)
+				return errors.AssertionFailedf("expected to find single row containing upserted spans")
+			} else {
+				__antithesis_instrumentation__.Notify(240514)
+			}
 		}
+		__antithesis_instrumentation__.Notify(240504)
 		return nil
 	})
 }
 
-// constructGetStmtAndArgs constructs the statement and query arguments needed
-// to fetch span configs for the given spans.
 func (k *KVAccessor) constructGetStmtAndArgs(targets []spanconfig.Target) (string, []interface{}) {
-	// We want to fetch the overlapping span configs for each requested span in
-	// a single round trip and using only constrained index scans. For a single
-	// requested span, we effectively want to query the following:
-	//
-	//   -- to find spans overlapping with [$start, $end)
-	//   SELECT * FROM system.span_configurations
-	//    WHERE start_key < $end AND end_key > $start
-	//
-	// With the naive form above that translates to an unbounded index scan on
-	// followed by a filter. We can do better by observing that start_key <
-	// end_key, and that spans are non-overlapping.
-	//
-	//   SELECT * FROM span_configurations
-	//    WHERE start_key >= $start AND start_key < $end
-	//   UNION ALL
-	//   SELECT * FROM (
-	//     SELECT * FROM span_configurations
-	//     WHERE start_key < $start ORDER BY start_key DESC LIMIT 1
-	//   ) WHERE end_key > $start;
-	//
-	// The idea is to first find all spans that start within the query span, and
-	// then to include the span with the start key immediately preceding the
-	// query start if it also overlaps with the query span (achieved by
-	// the outer filter). We're intentional about not pushing the filter down into
-	// the query -- we want to select using only the start_key index. Doing so
-	// results in an unbounded index scan [ - $start) with the filter and limit
-	// applied after.
-	//
-	// To batch multiple query spans into the same statement, we make use of
-	// UNION ALL.
-	//
-	//   ( ... statement above for 1st query span ...)
-	//   UNION ALL
-	//   ( ... statement above for 2nd query span ...)
-	//   UNION ALL
-	//   ...
-	//
+	__antithesis_instrumentation__.Notify(240515)
+
 	var getStmtBuilder strings.Builder
 	queryArgs := make([]interface{}, len(targets)*2)
 	for i, target := range targets {
+		__antithesis_instrumentation__.Notify(240517)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(240519)
 			getStmtBuilder.WriteString(`UNION ALL`)
+		} else {
+			__antithesis_instrumentation__.Notify(240520)
 		}
+		__antithesis_instrumentation__.Notify(240518)
 
 		startKeyIdx, endKeyIdx := i*2, (i*2)+1
 		encodedSp := target.Encode()
@@ -417,127 +518,80 @@ SELECT start_key, end_key, config FROM (
   WHERE start_key < $%[2]d ORDER BY start_key DESC LIMIT 1
 ) WHERE end_key > $%[2]d
 `,
-			k.configurationsTableFQN, // [1]
-			startKeyIdx+1,            // [2] -- prepared statement placeholder (1-indexed)
-			endKeyIdx+1,              // [3] -- prepared statement placeholder (1-indexed)
+			k.configurationsTableFQN,
+			startKeyIdx+1,
+			endKeyIdx+1,
 		)
 	}
+	__antithesis_instrumentation__.Notify(240516)
 	return getStmtBuilder.String(), queryArgs
 }
 
-// constructDeleteStmtAndArgs constructs the statement and query arguments
-// needed to delete span configs for the given spans.
 func (k *KVAccessor) constructDeleteStmtAndArgs(
 	toDelete []spanconfig.Target,
 ) (string, []interface{}) {
-	// We're constructing a single delete statement to delete all requested
-	// spans. It's of the form:
-	//
-	//   DELETE FROM span_configurations WHERE (start_key, end_key) IN
-	//   (VALUES ( ... 1st span ... ), ( ... 2nd span ...), ... );
-	//
+	__antithesis_instrumentation__.Notify(240521)
+
 	values := make([]string, len(toDelete))
 	deleteQueryArgs := make([]interface{}, len(toDelete)*2)
 	for i, toDel := range toDelete {
+		__antithesis_instrumentation__.Notify(240523)
 		startKeyIdx, endKeyIdx := i*2, (i*2)+1
 		encodedSp := toDel.Encode()
 		deleteQueryArgs[startKeyIdx] = encodedSp.Key
 		deleteQueryArgs[endKeyIdx] = encodedSp.EndKey
 		values[i] = fmt.Sprintf("($%d::BYTES, $%d::BYTES)",
-			startKeyIdx+1, endKeyIdx+1) // prepared statement placeholders (1-indexed)
+			startKeyIdx+1, endKeyIdx+1)
 	}
+	__antithesis_instrumentation__.Notify(240522)
 	deleteStmt := fmt.Sprintf(`DELETE FROM %[1]s WHERE (start_key, end_key) IN (VALUES %[2]s)`,
 		k.configurationsTableFQN, strings.Join(values, ", "))
 	return deleteStmt, deleteQueryArgs
 }
 
-// constructUpsertStmtAndArgs constructs the statement and query arguments
-// needed to upsert the given span config records.
 func (k *KVAccessor) constructUpsertStmtAndArgs(
 	toUpsert []spanconfig.Record,
 ) (string, []interface{}, error) {
-	// We're constructing a single upsert statement to upsert all requested
-	// spans. It's of the form:
-	//
-	//   UPSERT INTO span_configurations (start_key, end_key, config)
-	//   VALUES ( ... 1st span ... ), ( ... 2nd span ...), ... ;
-	//
+	__antithesis_instrumentation__.Notify(240524)
+
 	upsertValues := make([]string, len(toUpsert))
 	upsertQueryArgs := make([]interface{}, len(toUpsert)*3)
 	for i, record := range toUpsert {
+		__antithesis_instrumentation__.Notify(240526)
 		cfg := record.GetConfig()
 		marshaled, err := protoutil.Marshal(&cfg)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240528)
 			return "", nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(240529)
 		}
+		__antithesis_instrumentation__.Notify(240527)
 
 		startKeyIdx, endKeyIdx, configIdx := i*3, (i*3)+1, (i*3)+2
 		upsertQueryArgs[startKeyIdx] = record.GetTarget().Encode().Key
 		upsertQueryArgs[endKeyIdx] = record.GetTarget().Encode().EndKey
 		upsertQueryArgs[configIdx] = marshaled
 		upsertValues[i] = fmt.Sprintf("($%d::BYTES, $%d::BYTES, $%d::BYTES)",
-			startKeyIdx+1, endKeyIdx+1, configIdx+1) // prepared statement placeholders (1-indexed)
+			startKeyIdx+1, endKeyIdx+1, configIdx+1)
 	}
+	__antithesis_instrumentation__.Notify(240525)
 	upsertStmt := fmt.Sprintf(`UPSERT INTO %[1]s (start_key, end_key, config) VALUES %[2]s`,
 		k.configurationsTableFQN, strings.Join(upsertValues, ", "))
 	return upsertStmt, upsertQueryArgs, nil
 }
 
-// constructValidationStmtAndArgs constructs the statement and query arguments
-// needed to validate that the spans being upserted don't violate table
-// invariants (spans are non overlapping).
 func (k *KVAccessor) constructValidationStmtAndArgs(
 	toUpsert []spanconfig.Record,
 ) (string, []interface{}) {
-	// We want to validate that upserting spans does not break the invariant
-	// that spans in the table are non-overlapping. We only need to validate
-	// the spans that are being upserted, and can use a query similar to
-	// what we do in GetSpanConfigRecords. For a single upserted span, we
-	// want effectively validate using:
-	//
-	//   -- verify only a single span overlaps with [$start, $end)
-	//   SELECT count(*) = 1 FROM system.span_configurations
-	//    WHERE start_key < $end AND end_key > $start
-	//
-	// With the naive form above that translates to an unbounded index scan on
-	// followed by a filter. Since start_key < end_key, and that spans are
-	// non-overlapping, we can instead do the following:
-	//
-	//   SELECT bool_and(valid) FROM (
-	//    SELECT bool_and(prev_end_key IS NULL OR start_key >= prev_end_key) AS valid FROM (
-	//     SELECT start_key, lag(end_key, 1) OVER (ORDER BY start_key) AS prev_end_key FROM span_configurations
-	//     WHERE start_key >= $start AND start_key < $end
-	//    )
-	//    UNION ALL
-	//    SELECT * FROM (
-	//     SELECT $start >= end_key FROM span_configurations
-	//     WHERE start_key < $start ORDER BY start_key DESC LIMIT 1
-	//    )
-	//   )
-	//
-	// The idea is to first find all spans that start within the span being
-	// upserted[1], compare each start key to the preceding end key[2] (if any)
-	// and ensure that they're non-overlapping[3]. We also verify the span with
-	// the start key immediately preceding the span being upserted[4]; ensuring
-	// that our upserted span does not overlap with it[5].
-	//
-	// When multiple spans are being upserted, we validate instead the span
-	// straddling all the individual spans being upserted, i.e.
-	// [$smallest-start-key, $largest-end-key).
-	//
-	// [1]: WHERE start_key >= $start AND start_key < $end
-	// [2]: lag(end_key, 1) OVER (ORDER BY start_key) AS prev_end_key
-	// [3]: start_key >= prev_end_key
-	// [4]: WHERE start_key < $start ORDER BY start_key DESC LIMIT 1
-	// [5]: $start >= end_key
-	//
+	__antithesis_instrumentation__.Notify(240530)
+
 	targetsToUpsert := spanconfig.TargetsFromRecords(toUpsert)
 	sort.Sort(spanconfig.Targets(targetsToUpsert))
 
 	validationQueryArgs := make([]interface{}, 2)
 	validationQueryArgs[0] = targetsToUpsert[0].Encode().Key
-	// NB: This is the largest key due to sort above + validation at the caller
-	// than ensures non-overlapping upsert spans.
+
 	validationQueryArgs[1] = targetsToUpsert[len(targetsToUpsert)-1].Encode().EndKey
 
 	validationStmt := fmt.Sprintf(`
@@ -556,105 +610,171 @@ SELECT bool_and(valid) FROM (
 	return validationStmt, validationQueryArgs
 }
 
-// validateUpdateArgs returns an error the arguments to UpdateSpanConfigRecords
-// are malformed. All spans included in the toDelete and toUpsert list are
-// expected to be valid and to have non-empty end keys. Spans are also expected
-// to be non-overlapping with other spans in the same list.
 func validateUpdateArgs(toDelete []spanconfig.Target, toUpsert []spanconfig.Record) error {
+	__antithesis_instrumentation__.Notify(240531)
 	targetsToUpdate := spanconfig.TargetsFromRecords(toUpsert)
 	for _, list := range [][]spanconfig.Target{toDelete, targetsToUpdate} {
+		__antithesis_instrumentation__.Notify(240533)
 		if err := validateSpanTargets(list); err != nil {
+			__antithesis_instrumentation__.Notify(240535)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240536)
 		}
+		__antithesis_instrumentation__.Notify(240534)
 
 		targets := make([]spanconfig.Target, len(list))
 		copy(targets, list)
 		sort.Sort(spanconfig.Targets(targets))
 		for i := range targets {
-			if targets[i].IsSystemTarget() && targets[i].GetSystemTarget().IsReadOnly() {
+			__antithesis_instrumentation__.Notify(240537)
+			if targets[i].IsSystemTarget() && func() bool {
+				__antithesis_instrumentation__.Notify(240541)
+				return targets[i].GetSystemTarget().IsReadOnly() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(240542)
 				return errors.AssertionFailedf(
 					"cannot use read only system target %s as an update argument", targets[i],
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(240543)
 			}
+			__antithesis_instrumentation__.Notify(240538)
 
 			if i == 0 {
+				__antithesis_instrumentation__.Notify(240544)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(240545)
 			}
+			__antithesis_instrumentation__.Notify(240539)
 
 			curTarget := targets[i]
 			prevTarget := targets[i-1]
-			if curTarget.IsSpanTarget() && prevTarget.IsSpanTarget() {
+			if curTarget.IsSpanTarget() && func() bool {
+				__antithesis_instrumentation__.Notify(240546)
+				return prevTarget.IsSpanTarget() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(240547)
 				if curTarget.GetSpan().Overlaps(prevTarget.GetSpan()) {
+					__antithesis_instrumentation__.Notify(240548)
 					return errors.AssertionFailedf("overlapping spans %s and %s in same list",
 						prevTarget.GetSpan(), curTarget.GetSpan())
+				} else {
+					__antithesis_instrumentation__.Notify(240549)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(240550)
 			}
+			__antithesis_instrumentation__.Notify(240540)
 
-			if curTarget.IsSystemTarget() && prevTarget.IsSystemTarget() && curTarget.Equal(prevTarget) {
+			if curTarget.IsSystemTarget() && func() bool {
+				__antithesis_instrumentation__.Notify(240551)
+				return prevTarget.IsSystemTarget() == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(240552)
+				return curTarget.Equal(prevTarget) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(240553)
 				return errors.AssertionFailedf("duplicate system targets %s in the same list",
 					prevTarget.GetSystemTarget())
+			} else {
+				__antithesis_instrumentation__.Notify(240554)
 			}
 
-			// We're dealing with different types of target; no
-			// duplication/overlapping is possible.
 		}
 	}
+	__antithesis_instrumentation__.Notify(240532)
 
 	return nil
 }
 
-// validateSpanTargets returns an error if any spans in the supplied targets
-// are invalid or have an empty end key.
 func validateSpanTargets(targets []spanconfig.Target) error {
+	__antithesis_instrumentation__.Notify(240555)
 	for _, target := range targets {
+		__antithesis_instrumentation__.Notify(240557)
 		if !target.IsSpanTarget() {
-			// Nothing to do.
+			__antithesis_instrumentation__.Notify(240559)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(240560)
 		}
+		__antithesis_instrumentation__.Notify(240558)
 		if err := validateSpans(target.GetSpan()); err != nil {
+			__antithesis_instrumentation__.Notify(240561)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240562)
 		}
 	}
+	__antithesis_instrumentation__.Notify(240556)
 	return nil
 }
 
-// validateSpans returns an error if any of the spans are invalid or have an
-// empty end key.
 func validateSpans(spans ...roachpb.Span) error {
+	__antithesis_instrumentation__.Notify(240563)
 	for _, span := range spans {
-		if !span.Valid() || len(span.EndKey) == 0 {
+		__antithesis_instrumentation__.Notify(240565)
+		if !span.Valid() || func() bool {
+			__antithesis_instrumentation__.Notify(240566)
+			return len(span.EndKey) == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(240567)
 			return errors.AssertionFailedf("invalid span: %s", span)
+		} else {
+			__antithesis_instrumentation__.Notify(240568)
 		}
 	}
+	__antithesis_instrumentation__.Notify(240564)
 	return nil
 }
 
-// paginate is a helper method to paginate through a list with the batch size
-// controlled by the spanconfig.kvaccessor.batch_size setting. It invokes the
-// provided callback with the [start,end) indexes over the original list.
 func (k *KVAccessor) paginate(totalLen int, f func(startIdx, endIdx int) error) error {
+	__antithesis_instrumentation__.Notify(240569)
 	batchSize := math.MaxInt32
 	if b := batchSizeSetting.Get(&k.settings.SV); int(b) > 0 {
-		batchSize = int(b) // check for overflow, negative or 0 value
+		__antithesis_instrumentation__.Notify(240573)
+		batchSize = int(b)
+	} else {
+		__antithesis_instrumentation__.Notify(240574)
 	}
+	__antithesis_instrumentation__.Notify(240570)
 
 	if fn := k.knobs.KVAccessorBatchSizeOverrideFn; fn != nil {
+		__antithesis_instrumentation__.Notify(240575)
 		batchSize = fn()
+	} else {
+		__antithesis_instrumentation__.Notify(240576)
 	}
+	__antithesis_instrumentation__.Notify(240571)
 
 	for i := 0; i < totalLen; i += batchSize {
+		__antithesis_instrumentation__.Notify(240577)
 		j := i + batchSize
 		if j > totalLen {
+			__antithesis_instrumentation__.Notify(240580)
 			j = totalLen
+		} else {
+			__antithesis_instrumentation__.Notify(240581)
 		}
+		__antithesis_instrumentation__.Notify(240578)
 
 		if fn := k.knobs.KVAccessorPaginationInterceptor; fn != nil {
+			__antithesis_instrumentation__.Notify(240582)
 			fn()
+		} else {
+			__antithesis_instrumentation__.Notify(240583)
 		}
+		__antithesis_instrumentation__.Notify(240579)
 
 		if err := f(i, j); err != nil {
+			__antithesis_instrumentation__.Notify(240584)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240585)
 		}
 	}
+	__antithesis_instrumentation__.Notify(240572)
 	return nil
 }

@@ -1,17 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// Package sqlstats is a subsystem that is responsible for tracking the
-// statistics of statements and transactions.
-
 package ssmemstorage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -35,17 +24,12 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// TODO(arul): The fields on stmtKey should really be immutable fields on
-// stmtStats which are set once (on first addition to the map). Instead, we
-// should use stmtFingerprintID (which is a hashed string of the fields below) as the
-// stmtKey.
 type stmtKey struct {
 	sampledPlanKey
 	planHash                 uint64
 	transactionFingerprintID roachpb.TransactionFingerprintID
 }
 
-// sampledPlanKey is used by the Optimizer to determine if we should build a full EXPLAIN plan.
 type sampledPlanKey struct {
 	anonymizedStmt string
 	failed         bool
@@ -54,64 +38,51 @@ type sampledPlanKey struct {
 }
 
 func (p sampledPlanKey) size() int64 {
+	__antithesis_instrumentation__.Notify(625515)
 	return int64(unsafe.Sizeof(p)) + int64(len(p.anonymizedStmt)) + int64(len(p.database))
 }
 
 func (s stmtKey) String() string {
+	__antithesis_instrumentation__.Notify(625516)
 	if s.failed {
+		__antithesis_instrumentation__.Notify(625518)
 		return "!" + s.anonymizedStmt
+	} else {
+		__antithesis_instrumentation__.Notify(625519)
 	}
+	__antithesis_instrumentation__.Notify(625517)
 	return s.anonymizedStmt
 }
 
 func (s stmtKey) size() int64 {
+	__antithesis_instrumentation__.Notify(625520)
 	return s.sampledPlanKey.size() + int64(unsafe.Sizeof(invalidStmtFingerprintID))
 }
 
 const invalidStmtFingerprintID = 0
 
-// Container holds per-application statement and transaction statistics.
 type Container struct {
 	st      *cluster.Settings
 	appName string
 
-	// uniqueStmtFingerprintLimit is the limit on number of unique statement
-	// fingerprints we can store in memory.
 	uniqueStmtFingerprintLimit *settings.IntSetting
 
-	// uniqueTxnFingerprintLimit is the limit on number of unique transaction
-	// fingerprints we can store in memory.
 	uniqueTxnFingerprintLimit *settings.IntSetting
 
 	atomic struct {
-		// uniqueStmtFingerprintCount is the number of unique statement fingerprints
-		// we are storing in memory.
 		uniqueStmtFingerprintCount *int64
 
-		// uniqueTxnFingerprintCount is the number of unique transaction fingerprints
-		// we are storing in memory.
 		uniqueTxnFingerprintCount *int64
 	}
 
 	mu struct {
-		// TODO(arul): This can be refactored to have a RWLock instead, and have all
-		// usages acquire a read lock whenever appropriate. See #55285.
 		syncutil.Mutex
 
-		// acc is the memory account that tracks memory allocations related to stmts
-		// and txns within this Container struct.
-		// Since currently we do not destroy the Container struct when we perform
-		// reset, we never close this account.
 		acc mon.BoundAccount
 
 		stmts map[stmtKey]*stmtStats
 		txns  map[roachpb.TransactionFingerprintID]*txnStats
 
-		// sampledPlanMetadataCache records when was the last time the plan was
-		// sampled. This data structure uses a subset of stmtKey as the key into
-		// in-memory dictionary in order to allow lookup for whether a plan has been
-		// sampled for a statement without needing to know the statement's
-		// transaction fingerprintID.
 		sampledPlanMetadataCache map[sampledPlanKey]time.Time
 	}
 
@@ -123,7 +94,6 @@ type Container struct {
 
 var _ sqlstats.ApplicationStats = &Container{}
 
-// New returns a new instance of Container.
 func New(
 	st *cluster.Settings,
 	uniqueStmtFingerprintLimit *settings.IntSetting,
@@ -134,6 +104,7 @@ func New(
 	appName string,
 	knobs *sqlstats.TestingKnobs,
 ) *Container {
+	__antithesis_instrumentation__.Notify(625521)
 	s := &Container{
 		st:                         st,
 		appName:                    appName,
@@ -144,8 +115,12 @@ func New(
 	}
 
 	if mon != nil {
+		__antithesis_instrumentation__.Notify(625523)
 		s.mu.acc = mon.MakeBoundAccount()
+	} else {
+		__antithesis_instrumentation__.Notify(625524)
 	}
+	__antithesis_instrumentation__.Notify(625522)
 
 	s.mu.stmts = make(map[stmtKey]*stmtStats)
 	s.mu.txns = make(map[roachpb.TransactionFingerprintID]*txnStats)
@@ -157,11 +132,10 @@ func New(
 	return s
 }
 
-// IterateAggregatedTransactionStats implements sqlstats.ApplicationStats
-// interface.
 func (s *Container) IterateAggregatedTransactionStats(
 	_ context.Context, _ *sqlstats.IteratorOptions, visitor sqlstats.AggregatedTransactionVisitor,
 ) error {
+	__antithesis_instrumentation__.Notify(625525)
 	var txnStat roachpb.TxnStats
 	s.txnCounts.mu.Lock()
 	txnStat = s.txnCounts.mu.TxnStats
@@ -169,60 +143,67 @@ func (s *Container) IterateAggregatedTransactionStats(
 
 	err := visitor(s.appName, &txnStat)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(625527)
 		return errors.Wrap(err, "sql stats iteration abort")
+	} else {
+		__antithesis_instrumentation__.Notify(625528)
 	}
+	__antithesis_instrumentation__.Notify(625526)
 
 	return nil
 }
 
-// StmtStatsIterator returns an instance of StmtStatsIterator.
 func (s *Container) StmtStatsIterator(options *sqlstats.IteratorOptions) *StmtStatsIterator {
+	__antithesis_instrumentation__.Notify(625529)
 	return NewStmtStatsIterator(s, options)
 }
 
-// TxnStatsIterator returns an instance of TxnStatsIterator.
 func (s *Container) TxnStatsIterator(options *sqlstats.IteratorOptions) *TxnStatsIterator {
+	__antithesis_instrumentation__.Notify(625530)
 	return NewTxnStatsIterator(s, options)
 }
 
-// IterateStatementStats implements sqlstats.Provider interface.
 func (s *Container) IterateStatementStats(
 	ctx context.Context, options *sqlstats.IteratorOptions, visitor sqlstats.StatementVisitor,
 ) error {
+	__antithesis_instrumentation__.Notify(625531)
 	iter := s.StmtStatsIterator(options)
 
 	for iter.Next() {
+		__antithesis_instrumentation__.Notify(625533)
 		if err := visitor(ctx, iter.Cur()); err != nil {
+			__antithesis_instrumentation__.Notify(625534)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(625535)
 		}
 	}
+	__antithesis_instrumentation__.Notify(625532)
 
 	return nil
 }
 
-// IterateTransactionStats implements sqlstats.Provider interface.
 func (s *Container) IterateTransactionStats(
 	ctx context.Context, options *sqlstats.IteratorOptions, visitor sqlstats.TransactionVisitor,
 ) error {
+	__antithesis_instrumentation__.Notify(625536)
 	iter := s.TxnStatsIterator(options)
 
 	for iter.Next() {
+		__antithesis_instrumentation__.Notify(625538)
 		stats := iter.Cur()
 		if err := visitor(ctx, stats); err != nil {
+			__antithesis_instrumentation__.Notify(625539)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(625540)
 		}
 	}
+	__antithesis_instrumentation__.Notify(625537)
 
 	return nil
 }
 
-// NewTempContainerFromExistingStmtStats creates a new Container by ingesting a slice
-// of serverpb.StatementsResponse_CollectedStatementStatistics sorted by
-// Key.KeyData.App field.
-// It consumes the first chunk of the slice where
-// all entries in the chunk contains the identical appName. The remaining
-// slice is returned as the result.
-// It returns a nil slice once all entries in statistics are consumed.
 func NewTempContainerFromExistingStmtStats(
 	statistics []serverpb.StatementsResponse_CollectedStatementStatistics,
 ) (
@@ -230,27 +211,37 @@ func NewTempContainerFromExistingStmtStats(
 	remaining []serverpb.StatementsResponse_CollectedStatementStatistics,
 	err error,
 ) {
+	__antithesis_instrumentation__.Notify(625541)
 	if len(statistics) == 0 {
+		__antithesis_instrumentation__.Notify(625544)
 		return nil, statistics, nil
+	} else {
+		__antithesis_instrumentation__.Notify(625545)
 	}
+	__antithesis_instrumentation__.Notify(625542)
 
 	appName := statistics[0].Key.KeyData.App
 
 	container = New(
-		nil, /* st */
-		nil, /* uniqueStmtFingerprintLimit */
-		nil, /* uniqueTxnFingerprintLimit */
-		nil, /* uniqueStmtFingerprintCount */
-		nil, /* uniqueTxnFingerprintCount */
-		nil, /* mon */
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 		appName,
-		nil, /* knobs */
+		nil,
 	)
 
 	for i := range statistics {
+		__antithesis_instrumentation__.Notify(625546)
 		if currentAppName := statistics[i].Key.KeyData.App; currentAppName != appName {
+			__antithesis_instrumentation__.Notify(625551)
 			return container, statistics[i:], nil
+		} else {
+			__antithesis_instrumentation__.Notify(625552)
 		}
+		__antithesis_instrumentation__.Notify(625547)
 		key := stmtKey{
 			sampledPlanKey: sampledPlanKey{
 				anonymizedStmt: statistics[i].Key.KeyData.Query,
@@ -262,23 +253,36 @@ func NewTempContainerFromExistingStmtStats(
 			transactionFingerprintID: statistics[i].Key.KeyData.TransactionFingerprintID,
 		}
 		stmtStats, _, throttled :=
-			container.getStatsForStmtWithKeyLocked(key, statistics[i].ID, true /* createIfNonexistent */)
+			container.getStatsForStmtWithKeyLocked(key, statistics[i].ID, true)
 		if throttled {
-			return nil /* container */, nil /* remaining */, ErrFingerprintLimitReached
+			__antithesis_instrumentation__.Notify(625553)
+			return nil, nil, ErrFingerprintLimitReached
+		} else {
+			__antithesis_instrumentation__.Notify(625554)
 		}
+		__antithesis_instrumentation__.Notify(625548)
 
-		// This handles all the statistics fields.
 		stmtStats.mu.data.Add(&statistics[i].Stats)
 
-		// Setting all metadata fields.
-		if stmtStats.mu.data.SensitiveInfo.LastErr == "" && key.failed {
+		if stmtStats.mu.data.SensitiveInfo.LastErr == "" && func() bool {
+			__antithesis_instrumentation__.Notify(625555)
+			return key.failed == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(625556)
 			stmtStats.mu.data.SensitiveInfo.LastErr = statistics[i].Stats.SensitiveInfo.LastErr
+		} else {
+			__antithesis_instrumentation__.Notify(625557)
 		}
+		__antithesis_instrumentation__.Notify(625549)
 
 		if stmtStats.mu.data.SensitiveInfo.MostRecentPlanTimestamp.Before(statistics[i].Stats.SensitiveInfo.MostRecentPlanTimestamp) {
+			__antithesis_instrumentation__.Notify(625558)
 			stmtStats.mu.data.SensitiveInfo.MostRecentPlanDescription = statistics[i].Stats.SensitiveInfo.MostRecentPlanDescription
 			stmtStats.mu.data.SensitiveInfo.MostRecentPlanTimestamp = statistics[i].Stats.SensitiveInfo.MostRecentPlanTimestamp
+		} else {
+			__antithesis_instrumentation__.Notify(625559)
 		}
+		__antithesis_instrumentation__.Notify(625550)
 
 		stmtStats.mu.vectorized = statistics[i].Key.KeyData.Vec
 		stmtStats.mu.distSQLUsed = statistics[i].Key.KeyData.DistSQL
@@ -286,15 +290,11 @@ func NewTempContainerFromExistingStmtStats(
 		stmtStats.mu.database = statistics[i].Key.KeyData.Database
 		stmtStats.mu.querySummary = statistics[i].Key.KeyData.QuerySummary
 	}
+	__antithesis_instrumentation__.Notify(625543)
 
-	return container, nil /* remaining */, nil /* err */
+	return container, nil, nil
 }
 
-// NewTempContainerFromExistingTxnStats creates a new Container by ingesting a slice
-// of CollectedTransactionStatistics sorted by .StatsData.App field.
-// It consumes the first chunk of the slice where all entries in the chunk
-// contains the identical appName. The remaining slice is returned as the result.
-// It returns a nil slice once all entries in statistics are consumed.
 func NewTempContainerFromExistingTxnStats(
 	statistics []serverpb.StatementsResponse_ExtendedCollectedTransactionStatistics,
 ) (
@@ -302,44 +302,58 @@ func NewTempContainerFromExistingTxnStats(
 	remaining []serverpb.StatementsResponse_ExtendedCollectedTransactionStatistics,
 	err error,
 ) {
+	__antithesis_instrumentation__.Notify(625560)
 	if len(statistics) == 0 {
+		__antithesis_instrumentation__.Notify(625563)
 		return nil, statistics, nil
+	} else {
+		__antithesis_instrumentation__.Notify(625564)
 	}
+	__antithesis_instrumentation__.Notify(625561)
 
 	appName := statistics[0].StatsData.App
 
 	container = New(
-		nil, /* st */
-		nil, /* uniqueStmtFingerprintLimit */
-		nil, /* uniqueTxnFingerprintLimit */
-		nil, /* uniqueStmtFingerprintCount */
-		nil, /* uniqueTxnFingerprintCount */
-		nil, /* mon */
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 		appName,
-		nil, /* knobs */
+		nil,
 	)
 
 	for i := range statistics {
+		__antithesis_instrumentation__.Notify(625565)
 		if currentAppName := statistics[i].StatsData.App; currentAppName != appName {
+			__antithesis_instrumentation__.Notify(625568)
 			return container, statistics[i:], nil
+		} else {
+			__antithesis_instrumentation__.Notify(625569)
 		}
+		__antithesis_instrumentation__.Notify(625566)
 		txnStats, _, throttled :=
 			container.getStatsForTxnWithKeyLocked(
 				statistics[i].StatsData.TransactionFingerprintID,
 				statistics[i].StatsData.StatementFingerprintIDs,
-				true /* createIfNonexistent */)
+				true)
 		if throttled {
-			return nil /* container */, nil /* remaining */, ErrFingerprintLimitReached
+			__antithesis_instrumentation__.Notify(625570)
+			return nil, nil, ErrFingerprintLimitReached
+		} else {
+			__antithesis_instrumentation__.Notify(625571)
 		}
+		__antithesis_instrumentation__.Notify(625567)
 		txnStats.mu.data.Add(&statistics[i].StatsData.Stats)
 	}
+	__antithesis_instrumentation__.Notify(625562)
 
-	return container, nil /* remaining */, nil /* err */
+	return container, nil, nil
 }
 
-// NewApplicationStatsWithInheritedOptions implements the
-// sqlstats.ApplicationStats interface.
 func (s *Container) NewApplicationStatsWithInheritedOptions() sqlstats.ApplicationStats {
+	__antithesis_instrumentation__.Notify(625572)
 	var (
 		uniqueStmtFingerprintCount int64
 		uniqueTxnFingerprintCount  int64
@@ -349,9 +363,8 @@ func (s *Container) NewApplicationStatsWithInheritedOptions() sqlstats.Applicati
 	return New(
 		s.st,
 		sqlstats.MaxSQLStatsStmtFingerprintsPerExplicitTxn,
-		// There is no need to constraint txn fingerprint limit since in temporary
-		// container, there will never be more than one transaction fingerprint.
-		nil, // uniqueTxnFingerprintLimit,
+
+		nil,
 		&uniqueStmtFingerprintCount,
 		&uniqueTxnFingerprintCount,
 		s.mon,
@@ -371,12 +384,11 @@ type txnStats struct {
 }
 
 func (t *txnStats) sizeUnsafe() int64 {
+	__antithesis_instrumentation__.Notify(625573)
 	const txnStatsShallowSize = int64(unsafe.Sizeof(txnStats{}))
 	stmtFingerprintIDsSize := int64(cap(t.statementFingerprintIDs)) *
 		int64(unsafe.Sizeof(roachpb.StmtFingerprintID(0)))
 
-	// t.mu.data might contain pointer types, so we subtract its shallow size
-	// and include the actual size.
 	dataSize := -int64(unsafe.Sizeof(roachpb.TransactionStatistics{})) +
 		int64(t.mu.data.Size())
 
@@ -384,38 +396,26 @@ func (t *txnStats) sizeUnsafe() int64 {
 }
 
 func (t *txnStats) mergeStats(stats *roachpb.TransactionStatistics) {
+	__antithesis_instrumentation__.Notify(625574)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.mu.data.Add(stats)
 }
 
-// stmtStats holds per-statement statistics.
 type stmtStats struct {
-	// ID is the statementFingerprintID constructed using the stmtKey fields.
 	ID roachpb.StmtFingerprintID
 
-	// data contains all fields that are modified when new statements matching
-	// the stmtKey are executed, and therefore must be protected by a mutex.
 	mu struct {
 		syncutil.Mutex
 
-		// distSQLUsed records whether the last instance of this statement used
-		// distribution.
 		distSQLUsed bool
 
-		// vectorized records whether the last instance of this statement used
-		// vectorization.
 		vectorized bool
 
-		// fullScan records whether the last instance of this statement used a
-		// full table index scan.
 		fullScan bool
 
-		// database records the database from the session the statement
-		// was executed from.
 		database string
 
-		// querySummary records a summarized format of the query statement.
 		querySummary string
 
 		data roachpb.StatementStatistics
@@ -423,11 +423,10 @@ type stmtStats struct {
 }
 
 func (s *stmtStats) sizeUnsafe() int64 {
+	__antithesis_instrumentation__.Notify(625575)
 	const stmtStatsShallowSize = int64(unsafe.Sizeof(stmtStats{}))
 	databaseNameSize := int64(len(s.mu.database))
 
-	// s.mu.data might contain pointer tyeps, so we subtract its shallow size and
-	// include the actual size.
 	dataSize := -int64(unsafe.Sizeof(roachpb.StatementStatistics{})) +
 		int64(s.mu.data.Size())
 
@@ -435,6 +434,7 @@ func (s *stmtStats) sizeUnsafe() int64 {
 }
 
 func (s *stmtStats) recordExecStats(stats execstats.QueryLevelStats) {
+	__antithesis_instrumentation__.Notify(625576)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -448,18 +448,29 @@ func (s *stmtStats) recordExecStats(stats execstats.QueryLevelStats) {
 }
 
 func (s *stmtStats) mergeStatsLocked(statistics *roachpb.CollectedStatementStatistics) {
-	// This handles all the statistics fields.
+	__antithesis_instrumentation__.Notify(625577)
+
 	s.mu.data.Add(&statistics.Stats)
 
-	// Setting all metadata fields.
-	if s.mu.data.SensitiveInfo.LastErr == "" && statistics.Key.Failed {
+	if s.mu.data.SensitiveInfo.LastErr == "" && func() bool {
+		__antithesis_instrumentation__.Notify(625580)
+		return statistics.Key.Failed == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(625581)
 		s.mu.data.SensitiveInfo.LastErr = statistics.Stats.SensitiveInfo.LastErr
+	} else {
+		__antithesis_instrumentation__.Notify(625582)
 	}
+	__antithesis_instrumentation__.Notify(625578)
 
 	if s.mu.data.SensitiveInfo.MostRecentPlanTimestamp.Before(statistics.Stats.SensitiveInfo.MostRecentPlanTimestamp) {
+		__antithesis_instrumentation__.Notify(625583)
 		s.mu.data.SensitiveInfo.MostRecentPlanDescription = statistics.Stats.SensitiveInfo.MostRecentPlanDescription
 		s.mu.data.SensitiveInfo.MostRecentPlanTimestamp = statistics.Stats.SensitiveInfo.MostRecentPlanTimestamp
+	} else {
+		__antithesis_instrumentation__.Notify(625584)
 	}
+	__antithesis_instrumentation__.Notify(625579)
 
 	s.mu.vectorized = statistics.Key.Vec
 	s.mu.distSQLUsed = statistics.Key.DistSQL
@@ -467,9 +478,6 @@ func (s *stmtStats) mergeStatsLocked(statistics *roachpb.CollectedStatementStati
 	s.mu.database = statistics.Key.Database
 }
 
-// getStatsForStmt retrieves the per-stmt stat object. Regardless of if a valid
-// stat object is returned or not, we always return the correct stmtFingerprintID
-// for the given stmt.
 func (s *Container) getStatsForStmt(
 	anonymizedStmt string,
 	implicitTxn bool,
@@ -485,8 +493,8 @@ func (s *Container) getStatsForStmt(
 	created bool,
 	throttled bool,
 ) {
-	// Extend the statement key with various characteristics, so
-	// that we use separate buckets for the different situations.
+	__antithesis_instrumentation__.Notify(625585)
+
 	key = stmtKey{
 		sampledPlanKey: sampledPlanKey{
 			anonymizedStmt: anonymizedStmt,
@@ -498,24 +506,23 @@ func (s *Container) getStatsForStmt(
 		transactionFingerprintID: transactionFingerprintID,
 	}
 
-	// We first try and see if we can get by without creating a new entry for this
-	// key, as this allows us to not construct the statementFingerprintID from scratch (which
-	// is an expensive operation)
-	stats, _, _ = s.getStatsForStmtWithKey(key, invalidStmtFingerprintID, false /* createIfNonexistent */)
+	stats, _, _ = s.getStatsForStmtWithKey(key, invalidStmtFingerprintID, false)
 	if stats == nil {
+		__antithesis_instrumentation__.Notify(625587)
 		stmtFingerprintID = constructStatementFingerprintIDFromStmtKey(key)
 		stats, created, throttled = s.getStatsForStmtWithKey(key, stmtFingerprintID, createIfNonexistent)
 		return stats, key, stmtFingerprintID, created, throttled
+	} else {
+		__antithesis_instrumentation__.Notify(625588)
 	}
-	return stats, key, stats.ID, false /* created */, false /* throttled */
+	__antithesis_instrumentation__.Notify(625586)
+	return stats, key, stats.ID, false, false
 }
 
-// getStatsForStmtWithKey returns an instance of stmtStats.
-// If createIfNonexistent flag is set to true, then a new entry is created in
-// the Container if it does not yet exist.
 func (s *Container) getStatsForStmtWithKey(
 	key stmtKey, stmtFingerprintID roachpb.StmtFingerprintID, createIfNonexistent bool,
 ) (stats *stmtStats, created, throttled bool) {
+	__antithesis_instrumentation__.Notify(625589)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.getStatsForStmtWithKeyLocked(key, stmtFingerprintID, createIfNonexistent)
@@ -524,33 +531,44 @@ func (s *Container) getStatsForStmtWithKey(
 func (s *Container) getStatsForStmtWithKeyLocked(
 	key stmtKey, stmtFingerprintID roachpb.StmtFingerprintID, createIfNonexistent bool,
 ) (stats *stmtStats, created, throttled bool) {
-	// Retrieve the per-statement statistic object, and create it if it
-	// doesn't exist yet.
+	__antithesis_instrumentation__.Notify(625590)
+
 	stats, ok := s.mu.stmts[key]
-	if !ok && createIfNonexistent {
-		// If the uniqueStmtFingerprintCount is nil, then we don't check for
-		// fingerprint limit.
+	if !ok && func() bool {
+		__antithesis_instrumentation__.Notify(625592)
+		return createIfNonexistent == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(625593)
+
 		if s.atomic.uniqueStmtFingerprintCount != nil {
-			// We check if we have reached the limit of unique fingerprints we can
-			// store.
+			__antithesis_instrumentation__.Notify(625595)
+
 			limit := s.uniqueStmtFingerprintLimit.Get(&s.st.SV)
 			incrementedFingerprintCount :=
-				atomic.AddInt64(s.atomic.uniqueStmtFingerprintCount, int64(1) /* delts */)
+				atomic.AddInt64(s.atomic.uniqueStmtFingerprintCount, int64(1))
 
-			// Abort if we have exceeded limit of unique statement fingerprints.
 			if incrementedFingerprintCount > limit {
-				atomic.AddInt64(s.atomic.uniqueStmtFingerprintCount, -int64(1) /* delts */)
-				return stats, false /* created */, true /* throttled */
+				__antithesis_instrumentation__.Notify(625596)
+				atomic.AddInt64(s.atomic.uniqueStmtFingerprintCount, -int64(1))
+				return stats, false, true
+			} else {
+				__antithesis_instrumentation__.Notify(625597)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(625598)
 		}
+		__antithesis_instrumentation__.Notify(625594)
 		stats = &stmtStats{}
 		stats.ID = stmtFingerprintID
 		s.mu.stmts[key] = stats
 		s.mu.sampledPlanMetadataCache[key.sampledPlanKey] = s.getTimeNow()
 
-		return stats, true /* created */, false /* throttled */
+		return stats, true, false
+	} else {
+		__antithesis_instrumentation__.Notify(625599)
 	}
-	return stats, false /* created */, false /* throttled */
+	__antithesis_instrumentation__.Notify(625591)
+	return stats, false, false
 }
 
 func (s *Container) getStatsForTxnWithKey(
@@ -558,6 +576,7 @@ func (s *Container) getStatsForTxnWithKey(
 	stmtFingerprintIDs []roachpb.StmtFingerprintID,
 	createIfNonexistent bool,
 ) (stats *txnStats, created, throttled bool) {
+	__antithesis_instrumentation__.Notify(625600)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -569,72 +588,88 @@ func (s *Container) getStatsForTxnWithKeyLocked(
 	stmtFingerprintIDs []roachpb.StmtFingerprintID,
 	createIfNonexistent bool,
 ) (stats *txnStats, created, throttled bool) {
-	// Retrieve the per-transaction statistic object, and create it if it doesn't
-	// exist yet.
+	__antithesis_instrumentation__.Notify(625601)
+
 	stats, ok := s.mu.txns[key]
-	if !ok && createIfNonexistent {
-		// If the uniqueTxnFingerprintCount is nil, then we don't check for
-		// fingerprint limit.
+	if !ok && func() bool {
+		__antithesis_instrumentation__.Notify(625603)
+		return createIfNonexistent == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(625604)
+
 		if s.atomic.uniqueTxnFingerprintCount != nil {
+			__antithesis_instrumentation__.Notify(625606)
 			limit := s.uniqueTxnFingerprintLimit.Get(&s.st.SV)
 			incrementedFingerprintCount :=
-				atomic.AddInt64(s.atomic.uniqueTxnFingerprintCount, int64(1) /* delts */)
+				atomic.AddInt64(s.atomic.uniqueTxnFingerprintCount, int64(1))
 
-			// If we have exceeded limit of fingerprint count, decrement the counter
-			// and abort.
 			if incrementedFingerprintCount > limit {
-				atomic.AddInt64(s.atomic.uniqueTxnFingerprintCount, -int64(1) /* delts */)
-				return nil /* stats */, false /* created */, true /* throttled */
+				__antithesis_instrumentation__.Notify(625607)
+				atomic.AddInt64(s.atomic.uniqueTxnFingerprintCount, -int64(1))
+				return nil, false, true
+			} else {
+				__antithesis_instrumentation__.Notify(625608)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(625609)
 		}
+		__antithesis_instrumentation__.Notify(625605)
 		stats = &txnStats{}
 		stats.statementFingerprintIDs = stmtFingerprintIDs
 		s.mu.txns[key] = stats
-		return stats, true /* created */, false /* throttled */
+		return stats, true, false
+	} else {
+		__antithesis_instrumentation__.Notify(625610)
 	}
-	return stats, false /* created */, false /* throttled */
+	__antithesis_instrumentation__.Notify(625602)
+	return stats, false, false
 }
 
-// SaveToLog saves the existing statement stats into the info log.
 func (s *Container) SaveToLog(ctx context.Context, appName string) {
+	__antithesis_instrumentation__.Notify(625611)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.mu.stmts) == 0 {
+		__antithesis_instrumentation__.Notify(625614)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(625615)
 	}
+	__antithesis_instrumentation__.Notify(625612)
 	var buf bytes.Buffer
 	for key, stats := range s.mu.stmts {
+		__antithesis_instrumentation__.Notify(625616)
 		stats.mu.Lock()
 		json, err := json.Marshal(stats.mu.data)
 		s.mu.Unlock()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(625618)
 			log.Errorf(ctx, "error while marshaling stats for %q // %q: %v", appName, key.String(), err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(625619)
 		}
+		__antithesis_instrumentation__.Notify(625617)
 		fmt.Fprintf(&buf, "%q: %s\n", key.String(), json)
 	}
+	__antithesis_instrumentation__.Notify(625613)
 	log.Infof(ctx, "statistics for %q:\n%s", appName, buf.String())
 }
 
-// Clear clears the data stored in this Container and prepare the Container
-// for reuse.
 func (s *Container) Clear(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(625620)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.freeLocked(ctx)
 
-	// Clear the map, to release the memory; make the new map somewhat already
-	// large for the likely future workload.
 	s.mu.stmts = make(map[stmtKey]*stmtStats, len(s.mu.stmts)/2)
 	s.mu.txns = make(map[roachpb.TransactionFingerprintID]*txnStats, len(s.mu.txns)/2)
 	s.mu.sampledPlanMetadataCache = make(map[sampledPlanKey]time.Time, len(s.mu.sampledPlanMetadataCache)/2)
 }
 
-// Free frees the accounted resources from the Container. The Container is
-// presumed to be no longer in use and its actual allocated memory will
-// eventually be GC'd.
 func (s *Container) Free(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(625621)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -642,25 +677,31 @@ func (s *Container) Free(ctx context.Context) {
 }
 
 func (s *Container) freeLocked(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(625622)
 	atomic.AddInt64(s.atomic.uniqueStmtFingerprintCount, int64(-len(s.mu.stmts)))
 	atomic.AddInt64(s.atomic.uniqueTxnFingerprintCount, int64(-len(s.mu.txns)))
 
 	s.mu.acc.Clear(ctx)
 }
 
-// MergeApplicationStatementStats implements the sqlstats.ApplicationStats interface.
 func (s *Container) MergeApplicationStatementStats(
 	ctx context.Context,
 	other sqlstats.ApplicationStats,
 	transformer func(*roachpb.CollectedStatementStatistics),
 ) (discardedStats uint64) {
+	__antithesis_instrumentation__.Notify(625623)
 	if err := other.IterateStatementStats(
 		ctx,
 		&sqlstats.IteratorOptions{},
 		func(ctx context.Context, statistics *roachpb.CollectedStatementStatistics) error {
+			__antithesis_instrumentation__.Notify(625625)
 			if transformer != nil {
+				__antithesis_instrumentation__.Notify(625629)
 				transformer(statistics)
+			} else {
+				__antithesis_instrumentation__.Notify(625630)
 			}
+			__antithesis_instrumentation__.Notify(625626)
 			key := stmtKey{
 				sampledPlanKey: sampledPlanKey{
 					anonymizedStmt: statistics.Key.Query,
@@ -673,11 +714,15 @@ func (s *Container) MergeApplicationStatementStats(
 			}
 
 			stmtStats, _, throttled :=
-				s.getStatsForStmtWithKey(key, statistics.ID, true /* createIfNoneExistent */)
+				s.getStatsForStmtWithKey(key, statistics.ID, true)
 			if throttled {
+				__antithesis_instrumentation__.Notify(625631)
 				discardedStats++
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(625632)
 			}
+			__antithesis_instrumentation__.Notify(625627)
 
 			stmtStats.mu.Lock()
 			defer stmtStats.mu.Unlock()
@@ -685,67 +730,83 @@ func (s *Container) MergeApplicationStatementStats(
 			stmtStats.mergeStatsLocked(statistics)
 			planLastSampled := s.getLogicalPlanLastSampled(key.sampledPlanKey)
 			if planLastSampled.Before(stmtStats.mu.data.SensitiveInfo.MostRecentPlanTimestamp) {
+				__antithesis_instrumentation__.Notify(625633)
 				s.setLogicalPlanLastSampled(key.sampledPlanKey, stmtStats.mu.data.SensitiveInfo.MostRecentPlanTimestamp)
+			} else {
+				__antithesis_instrumentation__.Notify(625634)
 			}
+			__antithesis_instrumentation__.Notify(625628)
 
 			return nil
 		},
 	); err != nil {
-		// Calling Iterate.*Stats() function with a visitor function that does not
-		// return error should not cause any error.
+		__antithesis_instrumentation__.Notify(625635)
+
 		panic(
 			errors.NewAssertionErrorWithWrappedErrf(err, "unexpected error returned when iterating through application stats"),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(625636)
 	}
+	__antithesis_instrumentation__.Notify(625624)
 
 	return discardedStats
 }
 
-// MergeApplicationTransactionStats implements the sqlstats.ApplicationStats interface.
 func (s *Container) MergeApplicationTransactionStats(
 	ctx context.Context, other sqlstats.ApplicationStats,
 ) (discardedStats uint64) {
+	__antithesis_instrumentation__.Notify(625637)
 	if err := other.IterateTransactionStats(
 		ctx,
 		&sqlstats.IteratorOptions{},
 		func(ctx context.Context, statistics *roachpb.CollectedTransactionStatistics) error {
+			__antithesis_instrumentation__.Notify(625639)
 			txnStats, _, throttled :=
 				s.getStatsForTxnWithKey(
 					statistics.TransactionFingerprintID,
 					statistics.StatementFingerprintIDs,
-					true, /* createIfNonexistent */
+					true,
 				)
 
 			if throttled {
+				__antithesis_instrumentation__.Notify(625641)
 				discardedStats++
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(625642)
 			}
+			__antithesis_instrumentation__.Notify(625640)
 
 			txnStats.mergeStats(&statistics.Stats)
 			return nil
 		}); err != nil {
-		// Calling Iterate.*Stats() function with a visitor function that does not
-		// return error should not cause any error.
+		__antithesis_instrumentation__.Notify(625643)
+
 		panic(
 			errors.NewAssertionErrorWithWrappedErrf(err, "unexpected error returned when iterating through application stats"),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(625644)
 	}
+	__antithesis_instrumentation__.Notify(625638)
 
 	return discardedStats
 }
 
-// Add combines one Container into another. Add manages locks on a, so taking
-// a lock on a will cause a deadlock.
 func (s *Container) Add(ctx context.Context, other *Container) (err error) {
+	__antithesis_instrumentation__.Notify(625645)
 	other.mu.Lock()
 	statMap := make(map[stmtKey]*stmtStats)
 	for k, v := range other.mu.stmts {
+		__antithesis_instrumentation__.Notify(625652)
 		statMap[k] = v
 	}
+	__antithesis_instrumentation__.Notify(625646)
 	other.mu.Unlock()
 
-	// Copy the statement stats for each statement key.
 	for k, v := range statMap {
+		__antithesis_instrumentation__.Notify(625653)
 		v.mu.Lock()
 		statCopy := &stmtStats{}
 		statCopy.mu.data = v.mu.data
@@ -753,57 +814,61 @@ func (s *Container) Add(ctx context.Context, other *Container) (err error) {
 		statCopy.ID = v.ID
 		statMap[k] = statCopy
 	}
+	__antithesis_instrumentation__.Notify(625647)
 
-	// Merge the statement stats.
 	for k, v := range statMap {
-		stats, created, throttled := s.getStatsForStmtWithKey(k, v.ID, true /* createIfNonexistent */)
+		__antithesis_instrumentation__.Notify(625654)
+		stats, created, throttled := s.getStatsForStmtWithKey(k, v.ID, true)
 
-		// If we have reached the limit of fingerprints, we skip this fingerprint.
-		// No cleanup necessary.
 		if throttled {
+			__antithesis_instrumentation__.Notify(625657)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(625658)
 		}
+		__antithesis_instrumentation__.Notify(625655)
 
 		stats.mu.Lock()
 
-		// If we created a new entry for the fingerprint, we check if we have
-		// exceeded our memory budget.
 		if created {
-			estimatedAllocBytes := stats.sizeUnsafe() + k.size() + 8 /* stmtKey hash */
-			// We still want to continue this loop to merge stats that are already
-			// present in our map that do not require allocation.
+			__antithesis_instrumentation__.Notify(625659)
+			estimatedAllocBytes := stats.sizeUnsafe() + k.size() + 8
+
 			s.mu.Lock()
 			if latestErr := s.mu.acc.Grow(ctx, estimatedAllocBytes); latestErr != nil {
+				__antithesis_instrumentation__.Notify(625661)
 				stats.mu.Unlock()
-				// Instead of combining errors, we track the latest error occurred
-				// in this method. This is because currently the only type of error we
-				// can generate in this function is out of memory errors. Also since we
-				// do not abort after encountering such errors, combining many same
-				// errors is not helpful.
+
 				err = latestErr
 				delete(s.mu.stmts, k)
 				s.mu.Unlock()
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(625662)
 			}
+			__antithesis_instrumentation__.Notify(625660)
 			s.mu.Unlock()
+		} else {
+			__antithesis_instrumentation__.Notify(625663)
 		}
+		__antithesis_instrumentation__.Notify(625656)
 
-		// Note that we don't need to take a lock on v because
-		// no other thread knows about v yet.
 		stats.mu.data.Add(&v.mu.data)
 		stats.mu.Unlock()
 	}
+	__antithesis_instrumentation__.Notify(625648)
 
-	// Do what we did above for the statMap for the txn Map now.
 	other.mu.Lock()
 	txnMap := make(map[roachpb.TransactionFingerprintID]*txnStats)
 	for k, v := range other.mu.txns {
+		__antithesis_instrumentation__.Notify(625664)
 		txnMap[k] = v
 	}
+	__antithesis_instrumentation__.Notify(625649)
 	other.mu.Unlock()
 
-	// Copy the transaction stats for each txn key
 	for k, v := range txnMap {
+		__antithesis_instrumentation__.Notify(625665)
 		v.mu.Lock()
 		txnCopy := &txnStats{}
 		txnCopy.mu.data = v.mu.data
@@ -811,47 +876,54 @@ func (s *Container) Add(ctx context.Context, other *Container) (err error) {
 		txnCopy.statementFingerprintIDs = v.statementFingerprintIDs
 		txnMap[k] = txnCopy
 	}
+	__antithesis_instrumentation__.Notify(625650)
 
-	// Merge the txn stats
 	for k, v := range txnMap {
-		// We don't check if we have created a new entry here because we have
-		// already accounted for all the memory that we will be allocating in this
-		// function.
-		t, created, throttled := s.getStatsForTxnWithKey(k, v.statementFingerprintIDs, true /* createIfNonExistent */)
+		__antithesis_instrumentation__.Notify(625666)
 
-		// If we have reached the unique fingerprint limit, we skip adding the
-		// current fingerprint. No cleanup is necessary.
+		t, created, throttled := s.getStatsForTxnWithKey(k, v.statementFingerprintIDs, true)
+
 		if throttled {
+			__antithesis_instrumentation__.Notify(625669)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(625670)
 		}
+		__antithesis_instrumentation__.Notify(625667)
 
 		t.mu.Lock()
 		if created {
-			estimatedAllocBytes := t.sizeUnsafe() + k.Size() + 8 /* TransactionFingerprintID hash */
-			// We still want to continue this loop to merge stats that are already
-			// present in our map that do not require allocation.
+			__antithesis_instrumentation__.Notify(625671)
+			estimatedAllocBytes := t.sizeUnsafe() + k.Size() + 8
+
 			s.mu.Lock()
 			if latestErr := s.mu.acc.Grow(ctx, estimatedAllocBytes); latestErr != nil {
+				__antithesis_instrumentation__.Notify(625673)
 				t.mu.Unlock()
-				// We only track the latest error. See comment above for explanation.
+
 				err = latestErr
 				delete(s.mu.txns, k)
 				s.mu.Unlock()
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(625674)
 			}
+			__antithesis_instrumentation__.Notify(625672)
 			s.mu.Unlock()
+		} else {
+			__antithesis_instrumentation__.Notify(625675)
 		}
+		__antithesis_instrumentation__.Notify(625668)
 
 		t.mu.data.Add(&v.mu.data)
 		t.mu.Unlock()
 	}
+	__antithesis_instrumentation__.Notify(625651)
 
-	// Create a copy of the other's transactions statistics.
 	other.txnCounts.mu.Lock()
 	txnStats := other.txnCounts.mu.TxnStats
 	other.txnCounts.mu.Unlock()
 
-	// Merge the transaction stats.
 	s.txnCounts.mu.Lock()
 	s.txnCounts.mu.TxnStats.Add(txnStats)
 	s.txnCounts.mu.Unlock()
@@ -860,9 +932,17 @@ func (s *Container) Add(ctx context.Context, other *Container) (err error) {
 }
 
 func (s *Container) getTimeNow() time.Time {
-	if s.knobs != nil && s.knobs.StubTimeNow != nil {
+	__antithesis_instrumentation__.Notify(625676)
+	if s.knobs != nil && func() bool {
+		__antithesis_instrumentation__.Notify(625678)
+		return s.knobs.StubTimeNow != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(625679)
 		return s.knobs.StubTimeNow()
+	} else {
+		__antithesis_instrumentation__.Notify(625680)
 	}
+	__antithesis_instrumentation__.Notify(625677)
 
 	return timeutil.Now()
 }
@@ -870,43 +950,59 @@ func (s *Container) getTimeNow() time.Time {
 func (s *transactionCounts) recordTransactionCounts(
 	txnTimeSec float64, commit bool, implicit bool,
 ) {
+	__antithesis_instrumentation__.Notify(625681)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mu.TxnCount++
 	s.mu.TxnTimeSec.Record(s.mu.TxnCount, txnTimeSec)
 	if commit {
+		__antithesis_instrumentation__.Notify(625683)
 		s.mu.CommittedCount++
+	} else {
+		__antithesis_instrumentation__.Notify(625684)
 	}
+	__antithesis_instrumentation__.Notify(625682)
 	if implicit {
+		__antithesis_instrumentation__.Notify(625685)
 		s.mu.ImplicitCount++
+	} else {
+		__antithesis_instrumentation__.Notify(625686)
 	}
 }
 
 func (s *Container) getLogicalPlanLastSampled(key sampledPlanKey) time.Time {
+	__antithesis_instrumentation__.Notify(625687)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	lastSampled, found := s.mu.sampledPlanMetadataCache[key]
 	if !found {
+		__antithesis_instrumentation__.Notify(625689)
 		return time.Time{}
+	} else {
+		__antithesis_instrumentation__.Notify(625690)
 	}
+	__antithesis_instrumentation__.Notify(625688)
 
 	return lastSampled
 }
 
 func (s *Container) setLogicalPlanLastSampled(key sampledPlanKey, time time.Time) {
+	__antithesis_instrumentation__.Notify(625691)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mu.sampledPlanMetadataCache[key] = time
 }
 
-// shouldSaveLogicalPlanDescription returns whether we should save the sample
-// logical plan based on the time it was last sampled. We use
-// `logicalPlanCollectionPeriod` to assess how frequently to sample logical plans.
 func (s *Container) shouldSaveLogicalPlanDescription(lastSampled time.Time) bool {
+	__antithesis_instrumentation__.Notify(625692)
 	if !sqlstats.SampleLogicalPlans.Get(&s.st.SV) {
+		__antithesis_instrumentation__.Notify(625694)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(625695)
 	}
+	__antithesis_instrumentation__.Notify(625693)
 	now := s.getTimeNow()
 	period := sqlstats.LogicalPlanCollectionPeriod.Get(&s.st.SV)
 	return now.Sub(lastSampled) >= period
@@ -915,12 +1011,13 @@ func (s *Container) shouldSaveLogicalPlanDescription(lastSampled time.Time) bool
 type transactionCounts struct {
 	mu struct {
 		syncutil.Mutex
-		// TODO(arul): Can we rename this without breaking stuff?
+
 		roachpb.TxnStats
 	}
 }
 
 func constructStatementFingerprintIDFromStmtKey(key stmtKey) roachpb.StmtFingerprintID {
+	__antithesis_instrumentation__.Notify(625696)
 	return roachpb.ConstructStatementFingerprintID(
 		key.anonymizedStmt, key.failed, key.implicitTxn, key.database,
 	)

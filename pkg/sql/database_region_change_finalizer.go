@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,10 +17,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 )
 
-// databaseRegionChangeFinalizer encapsulates the logic and state for finalizing
-// a region metadata operation on a multi-region database. This includes methods
-// to update partitions and zone configurations as well as leases on REGIONAL BY
-// ROW tables.
 type databaseRegionChangeFinalizer struct {
 	dbID   descpb.ID
 	typeID descpb.ID
@@ -38,8 +26,6 @@ type databaseRegionChangeFinalizer struct {
 	regionalByRowTables []*tabledesc.Mutable
 }
 
-// newDatabaseRegionChangeFinalizer returns a databaseRegionChangeFinalizer.
-// It pre-fetches all REGIONAL BY ROW tables from the database.
 func newDatabaseRegionChangeFinalizer(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -48,6 +34,7 @@ func newDatabaseRegionChangeFinalizer(
 	dbID descpb.ID,
 	typeID descpb.ID,
 ) (*databaseRegionChangeFinalizer, error) {
+	__antithesis_instrumentation__.Notify(465279)
 	p, cleanup := NewInternalPlanner(
 		"repartition-regional-by-row-tables",
 		txn,
@@ -61,6 +48,7 @@ func newDatabaseRegionChangeFinalizer(
 
 	var regionalByRowTables []*tabledesc.Mutable
 	if err := func() error {
+		__antithesis_instrumentation__.Notify(465281)
 		_, dbDesc, err := descsCol.GetImmutableDatabaseByID(
 			ctx,
 			txn,
@@ -71,27 +59,41 @@ func newDatabaseRegionChangeFinalizer(
 			},
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(465283)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(465284)
 		}
+		__antithesis_instrumentation__.Notify(465282)
 
 		return localPlanner.forEachMutableTableInDatabase(
 			ctx,
 			dbDesc,
 			func(ctx context.Context, scName string, tableDesc *tabledesc.Mutable) error {
-				if !tableDesc.IsLocalityRegionalByRow() || tableDesc.Dropped() {
-					// We only need to re-partition REGIONAL BY ROW tables. Even then, we
-					// don't need to (can't) repartition a REGIONAL BY ROW table if it has
-					// been dropped.
+				__antithesis_instrumentation__.Notify(465285)
+				if !tableDesc.IsLocalityRegionalByRow() || func() bool {
+					__antithesis_instrumentation__.Notify(465287)
+					return tableDesc.Dropped() == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(465288)
+
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(465289)
 				}
+				__antithesis_instrumentation__.Notify(465286)
 				regionalByRowTables = append(regionalByRowTables, tableDesc)
 				return nil
 			},
 		)
 	}(); err != nil {
+		__antithesis_instrumentation__.Notify(465290)
 		cleanup()
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465291)
 	}
+	__antithesis_instrumentation__.Notify(465280)
 
 	return &databaseRegionChangeFinalizer{
 		dbID:                dbID,
@@ -102,74 +104,95 @@ func newDatabaseRegionChangeFinalizer(
 	}, nil
 }
 
-// cleanup cleans up remaining objects on the databaseRegionChangeFinalizer.
 func (r *databaseRegionChangeFinalizer) cleanup() {
+	__antithesis_instrumentation__.Notify(465292)
 	if r.cleanupFunc != nil {
+		__antithesis_instrumentation__.Notify(465293)
 		r.cleanupFunc()
 		r.cleanupFunc = nil
+	} else {
+		__antithesis_instrumentation__.Notify(465294)
 	}
 }
 
-// finalize updates the zone configurations of the database and all enclosed
-// REGIONAL BY ROW tables once the region promotion/demotion is complete.
 func (r *databaseRegionChangeFinalizer) finalize(ctx context.Context, txn *kv.Txn) error {
+	__antithesis_instrumentation__.Notify(465295)
 	if err := r.updateDatabaseZoneConfig(ctx, txn); err != nil {
+		__antithesis_instrumentation__.Notify(465298)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465299)
 	}
+	__antithesis_instrumentation__.Notify(465296)
 	if err := r.preDrop(ctx, txn); err != nil {
+		__antithesis_instrumentation__.Notify(465300)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465301)
 	}
+	__antithesis_instrumentation__.Notify(465297)
 	return r.updateGlobalTablesZoneConfig(ctx, txn)
 }
 
-// preDrop is called in advance of dropping regions from a multi-region
-// database. This function just re-partitions the REGIONAL BY ROW tables in
-// advance of the type descriptor change, to ensure that the table and type
-// descriptors never become incorrect (from a query perspective). For more info,
-// see the callers.
 func (r *databaseRegionChangeFinalizer) preDrop(ctx context.Context, txn *kv.Txn) error {
+	__antithesis_instrumentation__.Notify(465302)
 	repartitioned, zoneConfigUpdates, err := r.repartitionRegionalByRowTables(ctx, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465306)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465307)
 	}
+	__antithesis_instrumentation__.Notify(465303)
 	for _, update := range zoneConfigUpdates {
+		__antithesis_instrumentation__.Notify(465308)
 		if _, err := writeZoneConfigUpdate(
 			ctx, txn, r.localPlanner.ExecCfg(), update,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(465309)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(465310)
 		}
 	}
+	__antithesis_instrumentation__.Notify(465304)
 	b := txn.NewBatch()
 	for _, t := range repartitioned {
+		__antithesis_instrumentation__.Notify(465311)
 		const kvTrace = false
 		if err := r.localPlanner.Descriptors().WriteDescToBatch(
 			ctx, kvTrace, t, b,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(465312)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(465313)
 		}
 	}
+	__antithesis_instrumentation__.Notify(465305)
 	return txn.Run(ctx, b)
 }
 
-// updateGlobalTablesZoneConfig refreshes all global tables' zone configs so
-// that their zone configs are refreshes after a newly-added region goes out of
-// being a transitioning region. This function only applies if the database is
-// in PLACEMENT RESTRICTED because if the database is in PLACEMENT DEFAULT, it
-// will inherit the database's constraints. In the RESTRICTED case, however,
-// constraints must be explicitly refreshed when new regions are added/removed.
 func (r *databaseRegionChangeFinalizer) updateGlobalTablesZoneConfig(
 	ctx context.Context, txn *kv.Txn,
 ) error {
+	__antithesis_instrumentation__.Notify(465314)
 	regionConfig, err := SynthesizeRegionConfig(ctx, txn, r.dbID, r.localPlanner.Descriptors())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465319)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465320)
 	}
-	// If we're not in PLACEMENT RESTRICTED, GLOBAL tables will inherit the
-	// database zone config. Therefore, their constraints do not have to be
-	// refreshed.
+	__antithesis_instrumentation__.Notify(465315)
+
 	if !regionConfig.IsPlacementRestricted() {
+		__antithesis_instrumentation__.Notify(465321)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(465322)
 	}
+	__antithesis_instrumentation__.Notify(465316)
 
 	descsCol := r.localPlanner.Descriptors()
 
@@ -183,27 +206,37 @@ func (r *databaseRegionChangeFinalizer) updateGlobalTablesZoneConfig(
 		},
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465323)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465324)
 	}
+	__antithesis_instrumentation__.Notify(465317)
 
 	err = r.localPlanner.updateZoneConfigsForTables(ctx, dbDesc, WithOnlyGlobalTables)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465325)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465326)
 	}
+	__antithesis_instrumentation__.Notify(465318)
 
 	return nil
 }
 
-// updateDatabaseZoneConfig updates the zone config of the database that
-// encloses the multi-region enum such that there is an entry for all PUBLIC
-// region values.
 func (r *databaseRegionChangeFinalizer) updateDatabaseZoneConfig(
 	ctx context.Context, txn *kv.Txn,
 ) error {
+	__antithesis_instrumentation__.Notify(465327)
 	regionConfig, err := SynthesizeRegionConfig(ctx, txn, r.dbID, r.localPlanner.Descriptors())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465329)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465330)
 	}
+	__antithesis_instrumentation__.Notify(465328)
 	return ApplyZoneConfigFromDatabaseRegionConfig(
 		ctx,
 		r.dbID,
@@ -213,71 +246,72 @@ func (r *databaseRegionChangeFinalizer) updateDatabaseZoneConfig(
 	)
 }
 
-// repartitionRegionalByRowTables re-partitions all REGIONAL BY ROW tables
-// contained in the database. repartitionRegionalByRowTables adds a partition
-// and corresponding zone configuration for all PUBLIC enum members (regions)
-// on the multi-region enum.
-//
-// Note that even if the caller does not write the returned descriptors, the
-// mutable copies of the descriptor in the collection has been modified and is
-// being returned. This allows callers to inject the descriptors into a
-// collection in order to observe the side- effects of such a change. The caller
-// is responsible for actually writing the repartitioned tables. To re-iterate,
-// when a mutable descriptor is resolved from a collection subsequently, the
-// exact same descriptor object is returned. All of the objects descriptors
-// mutated here are from the underlying collection. However, these descriptors
-// have not been added back to the collection using AddUncommittedDescriptor
-// (or its friends WriteDesc.*), so immutable resolution of the descriptors
-// will still yield the original, unmodified version. If users want these
-// modified versions to be visible for immutable resolution, they must either
-// write the descriptors through the collection or inject them as synthetic
-// descriptors.
 func (r *databaseRegionChangeFinalizer) repartitionRegionalByRowTables(
 	ctx context.Context, txn *kv.Txn,
 ) (repartitioned []*tabledesc.Mutable, zoneConfigUpdates []*zoneConfigUpdate, _ error) {
+	__antithesis_instrumentation__.Notify(465331)
 	regionConfig, err := SynthesizeRegionConfig(ctx, txn, r.dbID, r.localPlanner.Descriptors())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465334)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465335)
 	}
+	__antithesis_instrumentation__.Notify(465332)
 
 	for _, tableDesc := range r.regionalByRowTables {
-		// Since we hydrated the columns with the old enum, and now that the enum
-		// has transitioned the read-only members to public, we have to re-hydrate
-		// the table descriptor with the new type metadata.
+		__antithesis_instrumentation__.Notify(465336)
+
 		for i := range tableDesc.Columns {
+			__antithesis_instrumentation__.Notify(465344)
 			col := &tableDesc.Columns[i]
 			if col.Type.UserDefined() {
+				__antithesis_instrumentation__.Notify(465345)
 				tid, err := typedesc.UserDefinedTypeOIDToID(col.Type.Oid())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(465347)
 					return nil, nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(465348)
 				}
+				__antithesis_instrumentation__.Notify(465346)
 				if tid == r.typeID {
+					__antithesis_instrumentation__.Notify(465349)
 					col.Type.TypeMeta = types.UserDefinedTypeMetadata{}
+				} else {
+					__antithesis_instrumentation__.Notify(465350)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(465351)
 			}
 		}
+		__antithesis_instrumentation__.Notify(465337)
 		if err := typedesc.HydrateTypesInTableDescriptor(
 			ctx,
 			tableDesc.TableDesc(),
 			r.localPlanner,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(465352)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(465353)
 		}
+		__antithesis_instrumentation__.Notify(465338)
 
 		colName, err := tableDesc.GetRegionalByRowTableRegionColumnName()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(465354)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(465355)
 		}
+		__antithesis_instrumentation__.Notify(465339)
 		partitionAllBy := partitionByForRegionalByRow(regionConfig, colName)
 
-		// oldPartitionings saves the old partitionings for each
-		// index that is repartitioned. This is later used to remove zone
-		// configurations from any partitions that are removed.
 		oldPartitionings := make(map[descpb.IndexID]catalog.Partitioning)
 
-		// Update the partitioning on all indexes of the table that aren't being
-		// dropped.
 		for _, index := range tableDesc.NonDropIndexes() {
+			__antithesis_instrumentation__.Notify(465356)
 			oldPartitionings[index.GetID()] = index.GetPartitioning().DeepCopy()
 			newImplicitCols, newPartitioning, err := CreatePartitioning(
 				ctx,
@@ -286,27 +320,23 @@ func (r *databaseRegionChangeFinalizer) repartitionRegionalByRowTables(
 				tableDesc,
 				*index.IndexDesc(),
 				partitionAllBy,
-				nil,  /* allowedNewColumnName*/
-				true, /* allowImplicitPartitioning */
+				nil,
+				true,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(465358)
 				return nil, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(465359)
 			}
+			__antithesis_instrumentation__.Notify(465357)
 			tabledesc.UpdateIndexPartitioning(index.IndexDesc(), index.Primary(), newImplicitCols, newPartitioning)
 		}
+		__antithesis_instrumentation__.Notify(465340)
 
-		// Remove zone configurations that applied to partitions that were removed
-		// in the previous step. This requires all indexes to have been
-		// repartitioned such that there is no partitioning on the removed enum
-		// value. This is because `deleteRemovedPartitionZoneConfigs` generates
-		// subzone spans for the entire table (all indexes) downstream for each
-		// index. Spans can only be generated if partitioning values are present on
-		// the type descriptor (removed enum values obviously aren't), so we must
-		// remove the partition from all indexes before trying to delete zone
-		// configurations.
 		for _, index := range tableDesc.NonDropIndexes() {
-			// Remove zone configurations that reference partition values we removed
-			// in the previous step.
+			__antithesis_instrumentation__.Notify(465360)
+
 			update, err := prepareRemovedPartitionZoneConfigs(
 				ctx,
 				txn,
@@ -317,14 +347,21 @@ func (r *databaseRegionChangeFinalizer) repartitionRegionalByRowTables(
 				r.localPlanner.ExecCfg(),
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(465362)
 				return nil, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(465363)
 			}
+			__antithesis_instrumentation__.Notify(465361)
 			if update != nil {
+				__antithesis_instrumentation__.Notify(465364)
 				zoneConfigUpdates = append(zoneConfigUpdates, update)
+			} else {
+				__antithesis_instrumentation__.Notify(465365)
 			}
 		}
+		__antithesis_instrumentation__.Notify(465341)
 
-		// Update the zone configurations now that the partition's been added.
 		update, err := prepareZoneConfigForMultiRegionTable(
 			ctx,
 			txn,
@@ -334,13 +371,22 @@ func (r *databaseRegionChangeFinalizer) repartitionRegionalByRowTables(
 			ApplyZoneConfigForMultiRegionTableOptionTableAndIndexes,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(465366)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(465367)
 		}
+		__antithesis_instrumentation__.Notify(465342)
 		if update != nil {
+			__antithesis_instrumentation__.Notify(465368)
 			zoneConfigUpdates = append(zoneConfigUpdates, update)
+		} else {
+			__antithesis_instrumentation__.Notify(465369)
 		}
+		__antithesis_instrumentation__.Notify(465343)
 		repartitioned = append(repartitioned, tableDesc)
 	}
+	__antithesis_instrumentation__.Notify(465333)
 
 	return repartitioned, zoneConfigUpdates, nil
 }

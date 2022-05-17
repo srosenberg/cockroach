@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,85 +19,104 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// IndexBackfillPlanner holds dependencies for an index backfiller
-// for use in the declarative schema changer.
 type IndexBackfillPlanner struct {
 	execCfg   *ExecutorConfig
 	ieFactory sqlutil.SessionBoundInternalExecutorFactory
 }
 
-// NewIndexBackfiller creates a new IndexBackfillPlanner.
 func NewIndexBackfiller(
 	execCfg *ExecutorConfig, ieFactory sqlutil.SessionBoundInternalExecutorFactory,
 ) *IndexBackfillPlanner {
+	__antithesis_instrumentation__.Notify(496658)
 	return &IndexBackfillPlanner{execCfg: execCfg, ieFactory: ieFactory}
 }
 
-// MaybePrepareDestIndexesForBackfill is part of the scexec.Backfiller interface.
 func (ib *IndexBackfillPlanner) MaybePrepareDestIndexesForBackfill(
 	ctx context.Context, current scexec.BackfillProgress, td catalog.TableDescriptor,
 ) (scexec.BackfillProgress, error) {
+	__antithesis_instrumentation__.Notify(496659)
 	if !current.MinimumWriteTimestamp.IsEmpty() {
+		__antithesis_instrumentation__.Notify(496663)
 		return current, nil
+	} else {
+		__antithesis_instrumentation__.Notify(496664)
 	}
-	// Pick an arbitrary read timestamp for the reads of the backfill.
-	// It's safe to use any timestamp to read even if we've partially backfilled
-	// at an earlier timestamp because other writing transactions have been
-	// writing at the appropriate timestamps in-between.
+	__antithesis_instrumentation__.Notify(496660)
+
 	backfillReadTimestamp := ib.execCfg.Clock.Now()
 	targetSpans := make([]roachpb.Span, len(current.DestIndexIDs))
 	for i, idxID := range current.DestIndexIDs {
+		__antithesis_instrumentation__.Notify(496665)
 		targetSpans[i] = td.IndexSpan(ib.execCfg.Codec, idxID)
 	}
+	__antithesis_instrumentation__.Notify(496661)
 	if err := scanTargetSpansToPushTimestampCache(
 		ctx, ib.execCfg.DB, backfillReadTimestamp, targetSpans,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(496666)
 		return scexec.BackfillProgress{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(496667)
 	}
+	__antithesis_instrumentation__.Notify(496662)
 	return scexec.BackfillProgress{
 		Backfill:              current.Backfill,
 		MinimumWriteTimestamp: backfillReadTimestamp,
 	}, nil
 }
 
-// BackfillIndex is part of the scexec.Backfiller interface.
 func (ib *IndexBackfillPlanner) BackfillIndex(
 	ctx context.Context,
 	progress scexec.BackfillProgress,
 	tracker scexec.BackfillProgressWriter,
 	descriptor catalog.TableDescriptor,
 ) error {
+	__antithesis_instrumentation__.Notify(496668)
 	var completed = struct {
 		syncutil.Mutex
 		g roachpb.SpanGroup
 	}{}
 	addCompleted := func(c ...roachpb.Span) []roachpb.Span {
+		__antithesis_instrumentation__.Notify(496674)
 		completed.Lock()
 		defer completed.Unlock()
 		completed.g.Add(c...)
 		return completed.g.Slice()
 	}
+	__antithesis_instrumentation__.Notify(496669)
 	updateFunc := func(
 		ctx context.Context, meta *execinfrapb.ProducerMetadata,
 	) error {
+		__antithesis_instrumentation__.Notify(496675)
 		if meta.BulkProcessorProgress == nil {
+			__antithesis_instrumentation__.Notify(496677)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(496678)
 		}
+		__antithesis_instrumentation__.Notify(496676)
 		progress.CompletedSpans = addCompleted(
 			meta.BulkProcessorProgress.CompletedSpans...)
 		return tracker.SetBackfillProgress(ctx, progress)
 	}
+	__antithesis_instrumentation__.Notify(496670)
 	var spansToDo []roachpb.Span
 	{
+		__antithesis_instrumentation__.Notify(496679)
 		sourceIndexSpan := descriptor.IndexSpan(ib.execCfg.Codec, progress.SourceIndexID)
 		var g roachpb.SpanGroup
 		g.Add(sourceIndexSpan)
 		g.Sub(progress.CompletedSpans...)
 		spansToDo = g.Slice()
 	}
-	if len(spansToDo) == 0 { // already done
+	__antithesis_instrumentation__.Notify(496671)
+	if len(spansToDo) == 0 {
+		__antithesis_instrumentation__.Notify(496680)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(496681)
 	}
+	__antithesis_instrumentation__.Notify(496672)
 	now := ib.execCfg.DB.Clock().Now()
 	run, err := ib.plan(
 		ctx,
@@ -118,39 +129,45 @@ func (ib *IndexBackfillPlanner) BackfillIndex(
 		updateFunc,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(496682)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(496683)
 	}
+	__antithesis_instrumentation__.Notify(496673)
 	return run(ctx)
 }
 
-// Index backfilling ingests SSTs that don't play nicely with running txns
-// since they just add their keys blindly. Running a Scan of the target
-// spans at the time the SSTs' keys will be written will calcify history up
-// to then since the scan will resolve intents and populate tscache to keep
-// anything else from sneaking under us. Since these are new indexes, these
-// spans should be essentially empty, so this should be a pretty quick and
-// cheap scan.
 func scanTargetSpansToPushTimestampCache(
 	ctx context.Context, db *kv.DB, backfillTimestamp hlc.Timestamp, targetSpans []roachpb.Span,
 ) error {
+	__antithesis_instrumentation__.Notify(496684)
 	const pageSize = 10000
 	return db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(496685)
 		if err := txn.SetFixedTimestamp(ctx, backfillTimestamp); err != nil {
+			__antithesis_instrumentation__.Notify(496688)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(496689)
 		}
+		__antithesis_instrumentation__.Notify(496686)
 		for _, span := range targetSpans {
-			// TODO(dt): a Count() request would be nice here if the target isn't
-			// empty, since we don't need to drag all the results back just to
-			// then ignore them -- we just need the iteration on the far end.
+			__antithesis_instrumentation__.Notify(496690)
+
 			if err := txn.Iterate(ctx, span.Key, span.EndKey, pageSize, iterateNoop); err != nil {
+				__antithesis_instrumentation__.Notify(496691)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(496692)
 			}
 		}
+		__antithesis_instrumentation__.Notify(496687)
 		return nil
 	})
 }
 
-func iterateNoop(_ []kv.KeyValue) error { return nil }
+func iterateNoop(_ []kv.KeyValue) error { __antithesis_instrumentation__.Notify(496693); return nil }
 
 var _ scexec.Backfiller = (*IndexBackfillPlanner)(nil)
 
@@ -162,6 +179,7 @@ func (ib *IndexBackfillPlanner) plan(
 	indexesToBackfill []descpb.IndexID,
 	callback func(_ context.Context, meta *execinfrapb.ProducerMetadata) error,
 ) (runFunc func(context.Context) error, _ error) {
+	__antithesis_instrumentation__.Notify(496694)
 
 	var p *PhysicalPlan
 	var evalCtx extendedEvalContext
@@ -170,34 +188,43 @@ func (ib *IndexBackfillPlanner) plan(
 	if err := DescsTxn(ctx, ib.execCfg, func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(496696)
 		evalCtx = createSchemaChangeEvalCtx(ctx, ib.execCfg, nowTimestamp, descriptors)
 		planCtx = ib.execCfg.DistSQLPlanner.NewPlanningCtx(ctx, &evalCtx,
-			nil /* planner */, txn, DistributionTypeSystemTenantOnly)
-		// TODO(ajwerner): Adopt util.ConstantWithMetamorphicTestRange for the
-		// batch size. Also plumb in a testing knob.
+			nil, txn, DistributionTypeSystemTenantOnly)
+
 		chunkSize := indexBackfillBatchSize.Get(&ib.execCfg.Settings.SV)
-		spec, err := initIndexBackfillerSpec(*td.TableDesc(), writeAsOf, readAsOf, false /* writeAtRequestTimestamp */, chunkSize, indexesToBackfill)
+		spec, err := initIndexBackfillerSpec(*td.TableDesc(), writeAsOf, readAsOf, false, chunkSize, indexesToBackfill)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(496698)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(496699)
 		}
+		__antithesis_instrumentation__.Notify(496697)
 		p, err = ib.execCfg.DistSQLPlanner.createBackfillerPhysicalPlan(ctx, planCtx, spec, sourceSpans)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(496700)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(496701)
 	}
+	__antithesis_instrumentation__.Notify(496695)
 
 	return func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(496702)
 		cbw := MetadataCallbackWriter{rowResultWriter: &errOnlyResultWriter{}, fn: callback}
 		recv := MakeDistSQLReceiver(
 			ctx,
 			&cbw,
-			tree.Rows, /* stmtType - doesn't matter here since no result are produced */
+			tree.Rows,
 			ib.execCfg.RangeDescriptorCache,
-			nil, /* txn - the flow does not run wholly in a txn */
+			nil,
 			ib.execCfg.Clock,
 			evalCtx.Tracing,
 			ib.execCfg.ContentionRegistry,
-			nil, /* testingPushCallback */
+			nil,
 		)
 		defer recv.Release()
 		evalCtxCopy := evalCtx

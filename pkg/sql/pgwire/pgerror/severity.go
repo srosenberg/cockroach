@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgerror
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,27 +10,33 @@ import (
 	"github.com/gogo/protobuf/proto"
 )
 
-// DefaultSeverity is the default severity for decoding severity of errors.
 const DefaultSeverity = "ERROR"
 
-// WithSeverity decorates the error with a severity.
 func WithSeverity(err error, severity string) error {
+	__antithesis_instrumentation__.Notify(560853)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(560855)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(560856)
 	}
+	__antithesis_instrumentation__.Notify(560854)
 
 	return &withSeverity{cause: err, severity: severity}
 }
 
-// GetSeverity attempts to unwrap and find a Severity.
 func GetSeverity(err error) string {
+	__antithesis_instrumentation__.Notify(560857)
 	if c := (*withSeverity)(nil); errors.As(err, &c) {
+		__antithesis_instrumentation__.Notify(560859)
 		return c.severity
+	} else {
+		__antithesis_instrumentation__.Notify(560860)
 	}
+	__antithesis_instrumentation__.Notify(560858)
 	return DefaultSeverity
 }
 
-// withSeverity decorates an error with a given severity.
 type withSeverity struct {
 	cause    error
 	severity string
@@ -49,32 +47,46 @@ var _ errors.SafeDetailer = (*withSeverity)(nil)
 var _ fmt.Formatter = (*withSeverity)(nil)
 var _ errors.Formatter = (*withSeverity)(nil)
 
-func (w *withSeverity) Error() string         { return w.cause.Error() }
-func (w *withSeverity) Cause() error          { return w.cause }
-func (w *withSeverity) Unwrap() error         { return w.cause }
-func (w *withSeverity) SafeDetails() []string { return []string{w.severity} }
+func (w *withSeverity) Error() string {
+	__antithesis_instrumentation__.Notify(560861)
+	return w.cause.Error()
+}
+func (w *withSeverity) Cause() error  { __antithesis_instrumentation__.Notify(560862); return w.cause }
+func (w *withSeverity) Unwrap() error { __antithesis_instrumentation__.Notify(560863); return w.cause }
+func (w *withSeverity) SafeDetails() []string {
+	__antithesis_instrumentation__.Notify(560864)
+	return []string{w.severity}
+}
 
-func (w *withSeverity) Format(s fmt.State, verb rune) { errors.FormatError(w, s, verb) }
+func (w *withSeverity) Format(s fmt.State, verb rune) {
+	__antithesis_instrumentation__.Notify(560865)
+	errors.FormatError(w, s, verb)
+}
 
 func (w *withSeverity) FormatError(p errors.Printer) (next error) {
+	__antithesis_instrumentation__.Notify(560866)
 	if p.Detail() {
+		__antithesis_instrumentation__.Notify(560868)
 		p.Printf("severity: %s", w.severity)
+	} else {
+		__antithesis_instrumentation__.Notify(560869)
 	}
+	__antithesis_instrumentation__.Notify(560867)
 	return w.cause
 }
 
-// decodeWithSeverity is a custom decoder that will be used when decoding
-// withSeverity error objects.
-// Note that as the last argument it takes proto.Message (and not
-// protoutil.Message which is required by linter) because the latter brings in
-// additional dependencies into this package and the former is sufficient here.
 func decodeWithSeverity(
 	_ context.Context, cause error, _ string, details []string, _ proto.Message,
 ) error {
+	__antithesis_instrumentation__.Notify(560870)
 	severity := DefaultSeverity
 	if len(details) > 0 {
+		__antithesis_instrumentation__.Notify(560872)
 		severity = details[0]
+	} else {
+		__antithesis_instrumentation__.Notify(560873)
 	}
+	__antithesis_instrumentation__.Notify(560871)
 	return &withSeverity{cause: cause, severity: severity}
 }
 

@@ -1,38 +1,43 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package backupccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	descpb "github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/protoreflect"
 )
 
-// GetTenants retrieves the tenant information from the manifest. It should be
-// used instead of Tenants to support older versions of the manifest which used
-// the deprecated field.
 func (m *BackupManifest) GetTenants() []descpb.TenantInfoWithUsage {
+	__antithesis_instrumentation__.Notify(4132)
 	if len(m.Tenants) > 0 {
+		__antithesis_instrumentation__.Notify(4135)
 		return m.Tenants
+	} else {
+		__antithesis_instrumentation__.Notify(4136)
 	}
+	__antithesis_instrumentation__.Notify(4133)
 	if len(m.TenantsDeprecated) > 0 {
+		__antithesis_instrumentation__.Notify(4137)
 		res := make([]descpb.TenantInfoWithUsage, len(m.TenantsDeprecated))
 		for i := range res {
+			__antithesis_instrumentation__.Notify(4139)
 			res[i].TenantInfo = m.TenantsDeprecated[i]
 		}
+		__antithesis_instrumentation__.Notify(4138)
 		return res
+	} else {
+		__antithesis_instrumentation__.Notify(4140)
 	}
+	__antithesis_instrumentation__.Notify(4134)
 	return nil
 }
 
-// HasTenants returns true if the manifest contains (non-system) tenant data.
 func (m *BackupManifest) HasTenants() bool {
-	return len(m.Tenants) > 0 || len(m.TenantsDeprecated) > 0
+	__antithesis_instrumentation__.Notify(4141)
+	return len(m.Tenants) > 0 || func() bool {
+		__antithesis_instrumentation__.Notify(4142)
+		return len(m.TenantsDeprecated) > 0 == true
+	}() == true
 }
 
 func init() {

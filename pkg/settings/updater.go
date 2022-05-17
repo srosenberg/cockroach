@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package settings
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,23 +10,23 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// EncodeDuration encodes a duration in the format of EncodedValue.Value.
 func EncodeDuration(d time.Duration) string {
+	__antithesis_instrumentation__.Notify(240132)
 	return d.String()
 }
 
-// EncodeBool encodes a bool in the format of EncodedValue.Value.
 func EncodeBool(b bool) string {
+	__antithesis_instrumentation__.Notify(240133)
 	return strconv.FormatBool(b)
 }
 
-// EncodeInt encodes an int in the format of EncodedValue.Value.
 func EncodeInt(i int64) string {
+	__antithesis_instrumentation__.Notify(240134)
 	return strconv.FormatInt(i, 10)
 }
 
-// EncodeFloat encodes a float in the format of EncodedValue.Value.
 func EncodeFloat(f float64) string {
+	__antithesis_instrumentation__.Notify(240135)
 	return strconv.FormatFloat(f, 'G', -1, 64)
 }
 
@@ -43,105 +35,146 @@ type updater struct {
 	m  map[string]struct{}
 }
 
-// Updater is a helper for updating the in-memory settings.
-//
-// RefreshSettings passes the serialized representations of all individual
-// settings -- e.g. the rows read from the system.settings table. We update the
-// wrapped atomic settings values as we go and note which settings were updated,
-// then set the rest to default in ResetRemaining().
 type Updater interface {
 	Set(ctx context.Context, key string, value EncodedValue) error
 	ResetRemaining(ctx context.Context)
 }
 
-// A NoopUpdater ignores all updates.
 type NoopUpdater struct{}
 
-// Set implements Updater. It is a no-op.
-func (u NoopUpdater) Set(ctx context.Context, key string, value EncodedValue) error { return nil }
+func (u NoopUpdater) Set(ctx context.Context, key string, value EncodedValue) error {
+	__antithesis_instrumentation__.Notify(240136)
+	return nil
+}
 
-// ResetRemaining implements Updater. It is a no-op.
-func (u NoopUpdater) ResetRemaining(context.Context) {}
+func (u NoopUpdater) ResetRemaining(context.Context) { __antithesis_instrumentation__.Notify(240137) }
 
-// NewUpdater makes an Updater.
 func NewUpdater(sv *Values) Updater {
+	__antithesis_instrumentation__.Notify(240138)
 	return updater{
 		m:  make(map[string]struct{}, len(registry)),
 		sv: sv,
 	}
 }
 
-// Set attempts to parse and update a setting and notes that it was updated.
 func (u updater) Set(ctx context.Context, key string, value EncodedValue) error {
+	__antithesis_instrumentation__.Notify(240139)
 	d, ok := registry[key]
 	if !ok {
+		__antithesis_instrumentation__.Notify(240143)
 		if _, ok := retiredSettings[key]; ok {
+			__antithesis_instrumentation__.Notify(240145)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(240146)
 		}
-		// Likely a new setting this old node doesn't know about.
+		__antithesis_instrumentation__.Notify(240144)
+
 		return errors.Errorf("unknown setting '%s'", key)
+	} else {
+		__antithesis_instrumentation__.Notify(240147)
 	}
+	__antithesis_instrumentation__.Notify(240140)
 
 	u.m[key] = struct{}{}
 
 	if expected := d.Typ(); value.Type != expected {
+		__antithesis_instrumentation__.Notify(240148)
 		return errors.Errorf("setting '%s' defined as type %s, not %s", key, expected, value.Type)
+	} else {
+		__antithesis_instrumentation__.Notify(240149)
 	}
+	__antithesis_instrumentation__.Notify(240141)
 
 	switch setting := d.(type) {
 	case *StringSetting:
+		__antithesis_instrumentation__.Notify(240150)
 		return setting.set(ctx, u.sv, value.Value)
 	case *BoolSetting:
+		__antithesis_instrumentation__.Notify(240151)
 		b, err := setting.DecodeValue(value.Value)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240162)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240163)
 		}
+		__antithesis_instrumentation__.Notify(240152)
 		setting.set(ctx, u.sv, b)
 		return nil
 	case numericSetting:
+		__antithesis_instrumentation__.Notify(240153)
 		i, err := setting.DecodeValue(value.Value)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240164)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240165)
 		}
+		__antithesis_instrumentation__.Notify(240154)
 		return setting.set(ctx, u.sv, i)
 	case *FloatSetting:
+		__antithesis_instrumentation__.Notify(240155)
 		f, err := setting.DecodeValue(value.Value)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240166)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240167)
 		}
+		__antithesis_instrumentation__.Notify(240156)
 		return setting.set(ctx, u.sv, f)
 	case *DurationSetting:
+		__antithesis_instrumentation__.Notify(240157)
 		d, err := setting.DecodeValue(value.Value)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240168)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240169)
 		}
+		__antithesis_instrumentation__.Notify(240158)
 		return setting.set(ctx, u.sv, d)
 	case *DurationSettingWithExplicitUnit:
+		__antithesis_instrumentation__.Notify(240159)
 		d, err := setting.DecodeValue(value.Value)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240170)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240171)
 		}
+		__antithesis_instrumentation__.Notify(240160)
 		return setting.set(ctx, u.sv, d)
 	case *VersionSetting:
-		// We intentionally avoid updating the setting through this code path.
-		// The specific setting backed by VersionSetting is the cluster version
-		// setting, changes to which are propagated through direct RPCs to each
-		// node in the cluster instead of gossip. This is done using the
-		// BumpClusterVersion RPC.
+		__antithesis_instrumentation__.Notify(240161)
+
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(240142)
 	return nil
 }
 
-// ResetRemaining sets all settings not updated by the updater to their default values.
 func (u updater) ResetRemaining(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(240172)
 	for k, v := range registry {
-		if u.sv.NonSystemTenant() && v.Class() == SystemOnly {
-			// Don't try to reset system settings on a non-system tenant.
+		__antithesis_instrumentation__.Notify(240173)
+		if u.sv.NonSystemTenant() && func() bool {
+			__antithesis_instrumentation__.Notify(240175)
+			return v.Class() == SystemOnly == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(240176)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(240177)
 		}
+		__antithesis_instrumentation__.Notify(240174)
 		if _, ok := u.m[k]; !ok {
+			__antithesis_instrumentation__.Notify(240178)
 			v.setToDefault(ctx, u.sv)
+		} else {
+			__antithesis_instrumentation__.Notify(240179)
 		}
 	}
 }

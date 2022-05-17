@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scbuildstmt
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"reflect"
@@ -22,15 +14,12 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// supportedAlterTableStatements tracks alter table operations fully supported by
-// declarative schema  changer. Operations marked as non-fully supported can
-// only be with the use_declarative_schema_changer session variable.
 var supportedAlterTableStatements = map[reflect.Type]supportedStatement{
 	reflect.TypeOf((*tree.AlterTableAddColumn)(nil)): {alterTableAddColumn, false},
 }
 
 func init() {
-	// Check function signatures inside the supportedAlterTableStatements map.
+
 	for statementType, statementEntry := range supportedAlterTableStatements {
 		callBackType := reflect.TypeOf(statementEntry.fn)
 		if callBackType.Kind() != reflect.Func {
@@ -48,27 +37,30 @@ func init() {
 	}
 }
 
-// AlterTable implements ALTER TABLE.
 func AlterTable(b BuildCtx, n *tree.AlterTable) {
-	// Hoist the constraints to separate clauses because other code assumes that
-	// that is how the commands will look.
+	__antithesis_instrumentation__.Notify(579723)
+
 	n.HoistAddColumnConstraints()
-	// Check if an entry exists for the statement type, in which
-	// case. It's either fully or partially supported. Check the commands
-	// first, since we don't want to do extra work in this transaction
-	// only to bail out later.
+
 	for _, cmd := range n.Cmds {
+		__antithesis_instrumentation__.Notify(579727)
 		info, ok := supportedAlterTableStatements[reflect.TypeOf(cmd)]
 		if !ok {
+			__antithesis_instrumentation__.Notify(579729)
 			panic(scerrors.NotImplementedError(cmd))
+		} else {
+			__antithesis_instrumentation__.Notify(579730)
 		}
-		// Check if partially supported operations are allowed next. If an
-		// operation is not fully supported will not allow it to be run in
-		// the declarative schema changer until its fully supported.
+		__antithesis_instrumentation__.Notify(579728)
+
 		if !info.IsFullySupported(b.EvalCtx().SessionData().NewSchemaChangerMode) {
+			__antithesis_instrumentation__.Notify(579731)
 			panic(scerrors.NotImplementedError(cmd))
+		} else {
+			__antithesis_instrumentation__.Notify(579732)
 		}
 	}
+	__antithesis_instrumentation__.Notify(579724)
 	tn := n.Table.ToTableName()
 	elts := b.ResolveTable(n.Table, ResolveParams{
 		IsExistenceOptional: n.IfExists,
@@ -76,19 +68,28 @@ func AlterTable(b BuildCtx, n *tree.AlterTable) {
 	})
 	_, target, tbl := scpb.FindTable(elts)
 	if tbl == nil {
+		__antithesis_instrumentation__.Notify(579733)
 		b.MarkNameAsNonExistent(&tn)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(579734)
 	}
+	__antithesis_instrumentation__.Notify(579725)
 	if target != scpb.ToPublic {
+		__antithesis_instrumentation__.Notify(579735)
 		panic(pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 			"table %q is being dropped, try again later", n.Table.Object()))
+	} else {
+		__antithesis_instrumentation__.Notify(579736)
 	}
+	__antithesis_instrumentation__.Notify(579726)
 	tn.ObjectNamePrefix = b.NamePrefix(tbl)
 	b.SetUnresolvedNameAnnotation(n.Table, &tn)
 	b.IncrementSchemaChangeAlterCounter("table")
 	for _, cmd := range n.Cmds {
+		__antithesis_instrumentation__.Notify(579737)
 		info := supportedAlterTableStatements[reflect.TypeOf(cmd)]
-		// Invoke the callback function, with the concrete types.
+
 		fn := reflect.ValueOf(info.fn)
 		fn.Call([]reflect.Value{
 			reflect.ValueOf(b),

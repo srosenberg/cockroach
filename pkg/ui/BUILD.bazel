@@ -23,6 +23,7 @@ go_library(
         "//pkg/util/httputil",
         "//pkg/util/log",
         "@com_github_cockroachdb_errors//:errors",
+	"@com_antithesis_instrumentation//wrappers",
     ],
 )
 

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgwire
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,53 +11,54 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// RoleMapper defines a mechanism by which an AuthMethod associated
-// with an incoming connection may replace the caller-provided system
-// identity (e.g.: GSSAPI or X.509 principal, LDAP DN, etc.) with zero
-// or more SQLUsernames that will be subsequently validated against the
-// SQL roles defined within the database. The mapping from system
-// identity to database roles may be derived from the host-based
-// authentication mechanism built into CockroachDB, or it could
-// conceivably be implemented by an external directory service which
-// maps groups of users onto database roles.
 type RoleMapper = func(
 	ctx context.Context,
 	systemIdentity security.SQLUsername,
 ) ([]security.SQLUsername, error)
 
-// UseProvidedIdentity is a trivial implementation of RoleMapper which always
-// returns its input.
 func UseProvidedIdentity(
 	_ context.Context, id security.SQLUsername,
 ) ([]security.SQLUsername, error) {
+	__antithesis_instrumentation__.Notify(561455)
 	return []security.SQLUsername{id}, nil
 }
 
 var _ RoleMapper = UseProvidedIdentity
 
-// HbaMapper implements the "map" option that may be defined in a
-// host-based authentication rule. If the HBA entry does not define a
-// "map" option, this function will return UseProvidedIdentity.
-//
-// This mapper will return an error if an applied mapping rule results
-// in the root user or a reserved user, which includes the node,
-// "public", and various other magic prefixes.
 func HbaMapper(hbaEntry *hba.Entry, identMap *identmap.Conf) RoleMapper {
+	__antithesis_instrumentation__.Notify(561456)
 	mapName := hbaEntry.GetOption("map")
 	if mapName == "" {
+		__antithesis_instrumentation__.Notify(561458)
 		return UseProvidedIdentity
+	} else {
+		__antithesis_instrumentation__.Notify(561459)
 	}
+	__antithesis_instrumentation__.Notify(561457)
 	return func(_ context.Context, id security.SQLUsername) ([]security.SQLUsername, error) {
+		__antithesis_instrumentation__.Notify(561460)
 		users, err := identMap.Map(mapName, id.Normalized())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(561463)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(561464)
 		}
+		__antithesis_instrumentation__.Notify(561461)
 		for _, user := range users {
-			if user.IsRootUser() || user.IsReserved() {
+			__antithesis_instrumentation__.Notify(561465)
+			if user.IsRootUser() || func() bool {
+				__antithesis_instrumentation__.Notify(561466)
+				return user.IsReserved() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(561467)
 				return nil, errors.Newf("system identity %q mapped to reserved database role %q",
 					id.Normalized(), user.Normalized())
+			} else {
+				__antithesis_instrumentation__.Notify(561468)
 			}
 		}
+		__antithesis_instrumentation__.Notify(561462)
 		return users, nil
 	}
 }

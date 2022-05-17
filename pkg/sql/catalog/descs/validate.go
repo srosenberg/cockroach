@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,9 +15,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/internal/validate"
 )
 
-// Validate returns any descriptor validation errors after validating using the
-// descriptor collection for retrieving referenced descriptors and namespace
-// entries, if applicable.
 func (tc *Collection) Validate(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -33,6 +22,7 @@ func (tc *Collection) Validate(
 	targetLevel catalog.ValidationLevel,
 	descriptors ...catalog.Descriptor,
 ) (err error) {
+	__antithesis_instrumentation__.Notify(265239)
 	vd := tc.newValidationDereferencer(txn)
 	version := tc.settings.Version.ActiveVersion(ctx)
 	return validate.Validate(
@@ -44,29 +34,34 @@ func (tc *Collection) Validate(
 		descriptors...).CombinedError()
 }
 
-// ValidateUncommittedDescriptors validates all uncommitted descriptors.
-// Validation includes cross-reference checks. Referenced descriptors are
-// read from the store unless they happen to also be part of the uncommitted
-// descriptor set. We purposefully avoid using leased descriptors as those may
-// be one version behind, in which case it's possible (and legitimate) that
-// those are missing back-references which would cause validation to fail.
 func (tc *Collection) ValidateUncommittedDescriptors(ctx context.Context, txn *kv.Txn) (err error) {
-	if tc.skipValidationOnWrite || !ValidateOnWriteEnabled.Get(&tc.settings.SV) {
+	__antithesis_instrumentation__.Notify(265240)
+	if tc.skipValidationOnWrite || func() bool {
+		__antithesis_instrumentation__.Notify(265243)
+		return !ValidateOnWriteEnabled.Get(&tc.settings.SV) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(265244)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(265245)
 	}
+	__antithesis_instrumentation__.Notify(265241)
 	descs := tc.uncommitted.getUncommittedDescriptorsForValidation()
 	if len(descs) == 0 {
+		__antithesis_instrumentation__.Notify(265246)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(265247)
 	}
+	__antithesis_instrumentation__.Notify(265242)
 	return tc.Validate(ctx, txn, catalog.ValidationWriteTelemetry, catalog.ValidationLevelAllPreTxnCommit, descs...)
 }
 
 func (tc *Collection) newValidationDereferencer(txn *kv.Txn) validate.ValidationDereferencer {
+	__antithesis_instrumentation__.Notify(265248)
 	return &collectionBackedDereferencer{tc: tc, txn: txn}
 }
 
-// collectionBackedDereferencer wraps a Collection to implement the
-// validate.ValidationDereferencer interface for validation.
 type collectionBackedDereferencer struct {
 	tc  *Collection
 	txn *kv.Txn
@@ -74,27 +69,35 @@ type collectionBackedDereferencer struct {
 
 var _ validate.ValidationDereferencer = &collectionBackedDereferencer{}
 
-// DereferenceDescriptors implements the validate.ValidationDereferencer
-// interface by leveraging the collection's uncommitted descriptors.
 func (c collectionBackedDereferencer) DereferenceDescriptors(
 	ctx context.Context, version clusterversion.ClusterVersion, reqs []descpb.ID,
 ) (ret []catalog.Descriptor, _ error) {
+	__antithesis_instrumentation__.Notify(265249)
 	ret = make([]catalog.Descriptor, len(reqs))
 	fallbackReqs := make([]descpb.ID, 0, len(reqs))
 	fallbackRetIndexes := make([]int, 0, len(reqs))
 	for i, id := range reqs {
+		__antithesis_instrumentation__.Notify(265252)
 		desc, err := c.fastDescLookup(ctx, id)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265254)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(265255)
 		}
+		__antithesis_instrumentation__.Notify(265253)
 		if desc == nil {
+			__antithesis_instrumentation__.Notify(265256)
 			fallbackReqs = append(fallbackReqs, id)
 			fallbackRetIndexes = append(fallbackRetIndexes, i)
 		} else {
+			__antithesis_instrumentation__.Notify(265257)
 			ret[i] = desc
 		}
 	}
+	__antithesis_instrumentation__.Notify(265250)
 	if len(fallbackReqs) > 0 {
+		__antithesis_instrumentation__.Notify(265258)
 		fallbackRet, err := catkv.GetCrossReferencedDescriptorsForValidation(
 			ctx,
 			version,
@@ -103,83 +106,132 @@ func (c collectionBackedDereferencer) DereferenceDescriptors(
 			fallbackReqs,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265260)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(265261)
 		}
+		__antithesis_instrumentation__.Notify(265259)
 		for j, desc := range fallbackRet {
+			__antithesis_instrumentation__.Notify(265262)
 			if desc == nil {
+				__antithesis_instrumentation__.Notify(265265)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(265266)
 			}
+			__antithesis_instrumentation__.Notify(265263)
 			if uc, _ := c.tc.uncommitted.getImmutableByID(desc.GetID()); uc == nil {
+				__antithesis_instrumentation__.Notify(265267)
 				desc, err = c.tc.uncommitted.add(desc.NewBuilder().BuildExistingMutable(), notValidatedYet)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(265268)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(265269)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(265270)
 			}
+			__antithesis_instrumentation__.Notify(265264)
 			ret[fallbackRetIndexes[j]] = desc
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(265271)
 	}
+	__antithesis_instrumentation__.Notify(265251)
 	return ret, nil
 }
 
 func (c collectionBackedDereferencer) fastDescLookup(
 	ctx context.Context, id descpb.ID,
 ) (catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(265272)
 	if uc, _ := c.tc.uncommitted.getImmutableByID(id); uc != nil {
+		__antithesis_instrumentation__.Notify(265274)
 		return uc, nil
+	} else {
+		__antithesis_instrumentation__.Notify(265275)
 	}
+	__antithesis_instrumentation__.Notify(265273)
 	return nil, nil
 }
 
-// DereferenceDescriptorIDs implements the validate.ValidationDereferencer
-// interface.
 func (c collectionBackedDereferencer) DereferenceDescriptorIDs(
 	ctx context.Context, reqs []descpb.NameInfo,
 ) (ret []descpb.ID, _ error) {
+	__antithesis_instrumentation__.Notify(265276)
 	ret = make([]descpb.ID, len(reqs))
 	fallbackReqs := make([]descpb.NameInfo, 0, len(reqs))
 	fallbackRetIndexes := make([]int, 0, len(reqs))
 	for i, req := range reqs {
+		__antithesis_instrumentation__.Notify(265279)
 		found, id, err := c.fastNamespaceLookup(ctx, req)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265281)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(265282)
 		}
+		__antithesis_instrumentation__.Notify(265280)
 		if found {
+			__antithesis_instrumentation__.Notify(265283)
 			ret[i] = id
 		} else {
+			__antithesis_instrumentation__.Notify(265284)
 			fallbackReqs = append(fallbackReqs, req)
 			fallbackRetIndexes = append(fallbackRetIndexes, i)
 		}
 	}
+	__antithesis_instrumentation__.Notify(265277)
 	if len(fallbackReqs) > 0 {
-		// TODO(postamar): actually use the Collection here instead,
-		// either by calling the Collection's methods or by caching the results
-		// of this call in the Collection.
+		__antithesis_instrumentation__.Notify(265285)
+
 		fallbackRet, err := catkv.LookupIDs(ctx, c.txn, c.tc.codec(), fallbackReqs)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265287)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(265288)
 		}
+		__antithesis_instrumentation__.Notify(265286)
 		for j, id := range fallbackRet {
+			__antithesis_instrumentation__.Notify(265289)
 			ret[fallbackRetIndexes[j]] = id
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(265290)
 	}
+	__antithesis_instrumentation__.Notify(265278)
 	return ret, nil
 }
 
 func (c collectionBackedDereferencer) fastNamespaceLookup(
 	ctx context.Context, req descpb.NameInfo,
 ) (found bool, id descpb.ID, err error) {
-	// Handle special cases.
-	// TODO(postamar): namespace lookups should go through Collection
+	__antithesis_instrumentation__.Notify(265291)
+
 	switch req.ParentID {
 	case descpb.InvalidID:
-		if req.ParentSchemaID == descpb.InvalidID && req.Name == catconstants.SystemDatabaseName {
-			// Looking up system database ID, which is hard-coded.
+		__antithesis_instrumentation__.Notify(265293)
+		if req.ParentSchemaID == descpb.InvalidID && func() bool {
+			__antithesis_instrumentation__.Notify(265296)
+			return req.Name == catconstants.SystemDatabaseName == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(265297)
+
 			return true, keys.SystemDatabaseID, nil
+		} else {
+			__antithesis_instrumentation__.Notify(265298)
 		}
 	case keys.SystemDatabaseID:
-		// Looking up system database objects, which are cached.
+		__antithesis_instrumentation__.Notify(265294)
+
 		id = c.tc.kv.systemNamespace.lookup(req.ParentSchemaID, req.Name)
 		return id != descpb.InvalidID, id, nil
+	default:
+		__antithesis_instrumentation__.Notify(265295)
 	}
+	__antithesis_instrumentation__.Notify(265292)
 	return false, descpb.InvalidID, nil
 }

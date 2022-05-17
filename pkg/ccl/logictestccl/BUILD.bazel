@@ -5,6 +5,7 @@ go_library(
     srcs = ["doc.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/ccl/logictestccl",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -32,5 +33,6 @@ go_test(
         "//pkg/testutils/testcluster",
         "//pkg/util/leaktest",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

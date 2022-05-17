@@ -13,6 +13,7 @@ go_library(
         "//pkg/server/telemetry",
         "//pkg/settings/cluster",
         "//pkg/util/ioctx",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_errors//oserror",
         "@org_golang_google_grpc//codes",
@@ -30,5 +31,6 @@ go_test(
         "//pkg/settings/cluster",
         "//pkg/testutils",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -23,22 +15,29 @@ import (
 )
 
 func (d *delegator) delegateShowPartitions(n *tree.ShowPartitions) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465659)
 	sqltelemetry.IncrementShowCounter(sqltelemetry.Partitions)
 	if n.IsTable {
+		__antithesis_instrumentation__.Notify(465665)
 		flags := cat.Flags{AvoidDescriptorCaches: true, NoTableStats: true}
 		tn := n.Table.ToTableName()
 
 		dataSource, resName, err := d.catalog.ResolveDataSource(d.ctx, flags, &tn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(465668)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(465669)
 		}
+		__antithesis_instrumentation__.Notify(465666)
 		if err := d.catalog.CheckAnyPrivilege(d.ctx, dataSource); err != nil {
+			__antithesis_instrumentation__.Notify(465670)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(465671)
 		}
+		__antithesis_instrumentation__.Notify(465667)
 
-		// We use the raw_config_sql from the partition_lookup result to get the
-		// official zone config for the partition, and use the full_config_sql from the zones table
-		// which is the result of looking up the partition's inherited zone configuration.
 		const showTablePartitionsQuery = `
 		SELECT
 			tables.database_name,
@@ -73,8 +72,11 @@ func (d *delegator) delegateShowPartitions(n *tree.ShowPartitions) (tree.Stateme
 			lexbase.EscapeSQLString(resName.Table()),
 			lexbase.EscapeSQLString(resName.Catalog()),
 			resName.CatalogName.String()))
-	} else if n.IsDB {
-		const showDatabasePartitionsQuery = `
+	} else {
+		__antithesis_instrumentation__.Notify(465672)
+		if n.IsDB {
+			__antithesis_instrumentation__.Notify(465673)
+			const showDatabasePartitionsQuery = `
 		SELECT
 			tables.database_name,
 			tables.name AS table_name,
@@ -104,35 +106,53 @@ func (d *delegator) delegateShowPartitions(n *tree.ShowPartitions) (tree.Stateme
 		ORDER BY
 			tables.name, partitions.name, 1, 4, 5, 6, 7, 8, 9;
 		`
-		// Note: n.Database.String() != string(n.Database)
-		return parse(fmt.Sprintf(showDatabasePartitionsQuery, n.Database.String(), lexbase.EscapeSQLString(string(n.Database))))
+
+			return parse(fmt.Sprintf(showDatabasePartitionsQuery, n.Database.String(), lexbase.EscapeSQLString(string(n.Database))))
+		} else {
+			__antithesis_instrumentation__.Notify(465674)
+		}
 	}
+	__antithesis_instrumentation__.Notify(465660)
 
 	flags := cat.Flags{AvoidDescriptorCaches: true, NoTableStats: true}
 	tn := n.Index.Table
 
-	// Throw a more descriptive error if the user did not use the index hint syntax.
 	if tn.ObjectName == "" {
+		__antithesis_instrumentation__.Notify(465675)
 		err := errors.New("no table specified")
 		err = pgerror.WithCandidateCode(err, pgcode.InvalidParameterValue)
 		err = errors.WithHint(err, "Specify a table using the hint syntax of table@index.")
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465676)
 	}
+	__antithesis_instrumentation__.Notify(465661)
 
 	dataSource, resName, err := d.catalog.ResolveDataSource(d.ctx, flags, &tn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465677)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465678)
 	}
+	__antithesis_instrumentation__.Notify(465662)
 
 	if err := d.catalog.CheckAnyPrivilege(d.ctx, dataSource); err != nil {
+		__antithesis_instrumentation__.Notify(465679)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465680)
 	}
+	__antithesis_instrumentation__.Notify(465663)
 
-	// Force resolution of the index.
 	_, _, err = cat.ResolveTableIndex(d.ctx, d.catalog, flags, &n.Index)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465681)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465682)
 	}
+	__antithesis_instrumentation__.Notify(465664)
 
 	const showIndexPartitionsQuery = `
 	SELECT
@@ -169,6 +189,6 @@ func (d *delegator) delegateShowPartitions(n *tree.ShowPartitions) (tree.Stateme
 		lexbase.EscapeSQLString(resName.Table()),
 		resName.Table(),
 		n.Index.Index.String(),
-		// note: CatalogName.String() != Catalog()
+
 		resName.CatalogName.String()))
 }

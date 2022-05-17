@@ -1,23 +1,6 @@
-// Copyright 2011 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in licenses/BSD-golang.txt.
-
-// Portions of this file are additionally subject to the following
-// license and copyright.
-//
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// Copied from Go's text/template/parse package and modified for yacc.
-
 package yacc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -26,30 +9,35 @@ import (
 	"unicode/utf8"
 )
 
-// item represents a token or text string returned from the scanner.
 type item struct {
-	typ itemType // The type of this item.
-	pos Pos      // The starting position, in bytes, of this item in the input string.
-	val string   // The value of this item.
+	typ itemType
+	pos Pos
+	val string
 }
 
 func (i item) String() string {
+	__antithesis_instrumentation__.Notify(68584)
 	switch {
 	case i.typ == itemEOF:
+		__antithesis_instrumentation__.Notify(68586)
 		return "EOF"
 	case i.typ == itemError:
+		__antithesis_instrumentation__.Notify(68587)
 		return i.val
 	case len(i.val) > 10:
+		__antithesis_instrumentation__.Notify(68588)
 		return fmt.Sprintf("%.10q...", i.val)
+	default:
+		__antithesis_instrumentation__.Notify(68589)
 	}
+	__antithesis_instrumentation__.Notify(68585)
 	return fmt.Sprintf("%q", i.val)
 }
 
-// itemType identifies the type of lex items.
 type itemType int
 
 const (
-	itemError itemType = iota // error occurred; value is text of error
+	itemError itemType = iota
 	itemEOF
 	itemComment
 	itemPct
@@ -64,79 +52,78 @@ const (
 
 const eof = -1
 
-// stateFn represents the state of the scanner as a function that returns the next state.
 type stateFn func(*lexer) stateFn
 
-// lexer holds the state of the scanner.
 type lexer struct {
-	name    string    // the name of the input; used only for error reports
-	input   string    // the string being scanned
-	state   stateFn   // the next lexing function to enter
-	pos     Pos       // current position in the input
-	start   Pos       // start position of this item
-	width   Pos       // width of last rune read from input
-	lastPos Pos       // position of most recent item returned by nextItem
-	items   chan item // channel of scanned items
+	name    string
+	input   string
+	state   stateFn
+	pos     Pos
+	start   Pos
+	width   Pos
+	lastPos Pos
+	items   chan item
 }
 
-// next returns the next rune in the input.
 func (l *lexer) next() rune {
+	__antithesis_instrumentation__.Notify(68590)
 	if int(l.pos) >= len(l.input) {
+		__antithesis_instrumentation__.Notify(68592)
 		l.width = 0
 		return eof
+	} else {
+		__antithesis_instrumentation__.Notify(68593)
 	}
+	__antithesis_instrumentation__.Notify(68591)
 	r, w := utf8.DecodeRuneInString(l.input[l.pos:])
 	l.width = Pos(w)
 	l.pos += l.width
 	return r
 }
 
-// peek returns but does not consume the next rune in the input.
 func (l *lexer) peek() rune {
+	__antithesis_instrumentation__.Notify(68594)
 	r := l.next()
 	l.backup()
 	return r
 }
 
-// backup steps back one rune. Can only be called once per call of next.
 func (l *lexer) backup() {
+	__antithesis_instrumentation__.Notify(68595)
 	l.pos -= l.width
 }
 
-// emit passes an item back to the client.
 func (l *lexer) emit(t itemType) {
+	__antithesis_instrumentation__.Notify(68596)
 	l.items <- item{t, l.start, l.input[l.start:l.pos]}
 	l.start = l.pos
 }
 
-// ignore skips over the pending input before this point.
 func (l *lexer) ignore() {
+	__antithesis_instrumentation__.Notify(68597)
 	l.start = l.pos
 }
 
-// lineNumber reports which line we're on, based on the position of
-// the previous item returned by nextItem. Doing it this way
-// means we don't have to worry about peek double counting.
 func (l *lexer) lineNumber() int {
+	__antithesis_instrumentation__.Notify(68598)
 	return 1 + strings.Count(l.input[:l.lastPos], "\n")
 }
 
-// errorf returns an error token and terminates the scan by passing
-// back a nil pointer that will be the next state, terminating l.nextItem.
 func (l *lexer) errorf(format string, args ...interface{}) stateFn {
+	__antithesis_instrumentation__.Notify(68599)
 	l.items <- item{itemError, l.start, fmt.Sprintf(format, args...)}
 	return nil
 }
 
-// nextItem returns the next item from the input.
 func (l *lexer) nextItem() item {
+	__antithesis_instrumentation__.Notify(68600)
 	i := <-l.items
 	l.lastPos = i.pos
 	return i
 }
 
-// lex creates a new scanner for the input string.
 func lex(name, input string) *lexer {
+	__antithesis_instrumentation__.Notify(68601)
 	l := &lexer{
 		name:  name,
 		input: input,
@@ -146,160 +133,247 @@ func lex(name, input string) *lexer {
 	return l
 }
 
-// run runs the state machine for the lexer.
 func (l *lexer) run() {
+	__antithesis_instrumentation__.Notify(68602)
 	for l.state = lexStart; l.state != nil; {
+		__antithesis_instrumentation__.Notify(68603)
 		l.state = l.state(l)
 	}
 }
 
-// state functions
-
 func lexStart(l *lexer) stateFn {
+	__antithesis_instrumentation__.Notify(68604)
 Loop:
 	for {
+		__antithesis_instrumentation__.Notify(68606)
 		switch r := l.next(); {
 		case r == '/':
+			__antithesis_instrumentation__.Notify(68607)
 			return lexComment
 		case r == '%':
+			__antithesis_instrumentation__.Notify(68608)
 			return lexPct
 		case r == '\n':
+			__antithesis_instrumentation__.Notify(68609)
 			l.emit(itemNL)
 		case r == ':':
+			__antithesis_instrumentation__.Notify(68610)
 			l.emit(itemColon)
 		case r == '|':
+			__antithesis_instrumentation__.Notify(68611)
 			l.emit(itemPipe)
 		case r == '{':
+			__antithesis_instrumentation__.Notify(68612)
 			return lexExpr
 		case isSpace(r):
+			__antithesis_instrumentation__.Notify(68613)
 			l.ignore()
 		case isIdent(r):
+			__antithesis_instrumentation__.Notify(68614)
 			return lexIdent
 		case r == '\'':
+			__antithesis_instrumentation__.Notify(68615)
 			return lexLiteral
 		case r == eof:
+			__antithesis_instrumentation__.Notify(68616)
 			l.emit(itemEOF)
 			break Loop
 		default:
+			__antithesis_instrumentation__.Notify(68617)
 			return l.errorf("invalid character: %v", string(r))
 		}
 	}
+	__antithesis_instrumentation__.Notify(68605)
 	return nil
 }
 
 func lexLiteral(l *lexer) stateFn {
+	__antithesis_instrumentation__.Notify(68618)
 	for {
+		__antithesis_instrumentation__.Notify(68619)
 		switch l.next() {
 		case '\'':
+			__antithesis_instrumentation__.Notify(68620)
 			l.emit(itemLiteral)
 			return lexStart
+		default:
+			__antithesis_instrumentation__.Notify(68621)
 		}
 	}
 }
 
 func lexExpr(l *lexer) stateFn {
+	__antithesis_instrumentation__.Notify(68622)
 	ct := 1
 	for {
+		__antithesis_instrumentation__.Notify(68623)
 		switch l.next() {
 		case '{':
+			__antithesis_instrumentation__.Notify(68624)
 			ct++
 		case '}':
+			__antithesis_instrumentation__.Notify(68625)
 			ct--
 			if ct == 0 {
+				__antithesis_instrumentation__.Notify(68627)
 				l.emit(itemExpr)
 				return lexStart
+			} else {
+				__antithesis_instrumentation__.Notify(68628)
 			}
+		default:
+			__antithesis_instrumentation__.Notify(68626)
 		}
 	}
 }
 
 func lexComment(l *lexer) stateFn {
+	__antithesis_instrumentation__.Notify(68629)
 	switch r := l.next(); r {
 	case '/':
+		__antithesis_instrumentation__.Notify(68630)
 		for {
+			__antithesis_instrumentation__.Notify(68633)
 			switch l.next() {
 			case '\n':
+				__antithesis_instrumentation__.Notify(68634)
 				l.backup()
 				l.emit(itemComment)
 				return lexStart
+			default:
+				__antithesis_instrumentation__.Notify(68635)
 			}
 		}
 	case '*':
+		__antithesis_instrumentation__.Notify(68631)
 		for {
+			__antithesis_instrumentation__.Notify(68636)
 			switch l.next() {
 			case '*':
+				__antithesis_instrumentation__.Notify(68637)
 				if l.peek() == '/' {
+					__antithesis_instrumentation__.Notify(68639)
 					l.next()
 					l.emit(itemComment)
 					return lexStart
+				} else {
+					__antithesis_instrumentation__.Notify(68640)
 				}
+			default:
+				__antithesis_instrumentation__.Notify(68638)
 			}
 		}
 	default:
+		__antithesis_instrumentation__.Notify(68632)
 		return l.errorf("expected comment: %c", r)
 	}
 }
 
 func lexPct(l *lexer) stateFn {
+	__antithesis_instrumentation__.Notify(68641)
 	switch l.next() {
 	case '%':
+		__antithesis_instrumentation__.Notify(68642)
 		l.emit(itemDoublePct)
 		return lexStart
 	case '{':
+		__antithesis_instrumentation__.Notify(68643)
 		for {
+			__antithesis_instrumentation__.Notify(68647)
 			switch l.next() {
 			case '%':
+				__antithesis_instrumentation__.Notify(68648)
 				if l.peek() == '}' {
+					__antithesis_instrumentation__.Notify(68650)
 					l.next()
 					l.emit(itemPct)
 					return lexStart
+				} else {
+					__antithesis_instrumentation__.Notify(68651)
 				}
+			default:
+				__antithesis_instrumentation__.Notify(68649)
 			}
 		}
 	case 'p':
-		if l.next() != 'r' || l.next() != 'e' || l.next() != 'c' || l.next() != ' ' {
+		__antithesis_instrumentation__.Notify(68644)
+		if l.next() != 'r' || func() bool {
+			__antithesis_instrumentation__.Notify(68652)
+			return l.next() != 'e' == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(68653)
+			return l.next() != 'c' == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(68654)
+			return l.next() != ' ' == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(68655)
 			l.errorf("expected %%prec")
+		} else {
+			__antithesis_instrumentation__.Notify(68656)
 		}
+		__antithesis_instrumentation__.Notify(68645)
 		for {
+			__antithesis_instrumentation__.Notify(68657)
 			switch r := l.next(); {
 			case isIdent(r):
-				// absorb
+				__antithesis_instrumentation__.Notify(68658)
+
 			default:
+				__antithesis_instrumentation__.Notify(68659)
 				l.backup()
 				l.emit(itemPct)
 				return lexStart
 			}
 		}
 	default:
+		__antithesis_instrumentation__.Notify(68646)
 		ct := 0
 		for {
+			__antithesis_instrumentation__.Notify(68660)
 			switch l.next() {
 			case ' ':
+				__antithesis_instrumentation__.Notify(68661)
 			case '{':
+				__antithesis_instrumentation__.Notify(68662)
 				ct++
 			case '}':
+				__antithesis_instrumentation__.Notify(68663)
 				ct--
 				if ct == 0 {
+					__antithesis_instrumentation__.Notify(68666)
 					l.emit(itemPct)
 					return lexStart
+				} else {
+					__antithesis_instrumentation__.Notify(68667)
 				}
 			case '\n':
+				__antithesis_instrumentation__.Notify(68664)
 				if ct == 0 {
+					__antithesis_instrumentation__.Notify(68668)
 					l.backup()
 					l.emit(itemPct)
 					return lexStart
+				} else {
+					__antithesis_instrumentation__.Notify(68669)
 				}
+			default:
+				__antithesis_instrumentation__.Notify(68665)
 			}
 		}
 	}
 }
 
 func lexIdent(l *lexer) stateFn {
+	__antithesis_instrumentation__.Notify(68670)
 	for {
+		__antithesis_instrumentation__.Notify(68671)
 		switch r := l.next(); {
 		case isIdent(r):
-			// absorb
+			__antithesis_instrumentation__.Notify(68672)
+
 		default:
+			__antithesis_instrumentation__.Notify(68673)
 			l.backup()
 			l.emit(itemIdent)
 			return lexStart
@@ -308,9 +382,20 @@ func lexIdent(l *lexer) stateFn {
 }
 
 func isSpace(r rune) bool {
-	return r == ' ' || r == '\t'
+	__antithesis_instrumentation__.Notify(68674)
+	return r == ' ' || func() bool {
+		__antithesis_instrumentation__.Notify(68675)
+		return r == '\t' == true
+	}() == true
 }
 
 func isIdent(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+	__antithesis_instrumentation__.Notify(68676)
+	return r == '_' || func() bool {
+		__antithesis_instrumentation__.Notify(68677)
+		return unicode.IsLetter(r) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(68678)
+		return unicode.IsDigit(r) == true
+	}() == true
 }

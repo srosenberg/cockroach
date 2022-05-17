@@ -12,6 +12,7 @@ go_library(
         "//pkg/base",
         "//pkg/ccl/cliccl/cliflagsccl",
         "//pkg/util/protoutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_spf13_pflag//:pflag",
     ],
@@ -22,7 +23,10 @@ go_test(
     size = "small",
     srcs = ["encryption_spec_test.go"],
     embed = [":baseccl"],
-    deps = ["//pkg/util/leaktest"],
+    deps = [
+        "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
+    ],
 )
 
 proto_library(
@@ -30,7 +34,9 @@ proto_library(
     srcs = ["encryption_options.proto"],
     strip_import_prefix = "/pkg",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto:gogo_proto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto:gogo_proto",
+    ],
 )
 
 go_proto_library(
@@ -39,5 +45,7 @@ go_proto_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/ccl/baseccl",
     proto = ":baseccl_proto",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto",
+    ],
 )

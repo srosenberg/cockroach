@@ -1,12 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,25 +23,28 @@ const (
 	jsonMetaSentinel = `__crdb__`
 )
 
-// emitResolvedTimestamp emits a changefeed-level resolved timestamp to the
-// sink.
 func emitResolvedTimestamp(
 	ctx context.Context, encoder Encoder, sink Sink, resolved hlc.Timestamp,
 ) error {
-	// TODO(dan): Emit more fine-grained (table level) resolved
-	// timestamps.
+	__antithesis_instrumentation__.Notify(15352)
+
 	if err := sink.EmitResolvedTimestamp(ctx, encoder, resolved); err != nil {
+		__antithesis_instrumentation__.Notify(15355)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(15356)
 	}
+	__antithesis_instrumentation__.Notify(15353)
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(15357)
 		log.Infof(ctx, `resolved %s`, resolved)
+	} else {
+		__antithesis_instrumentation__.Notify(15358)
 	}
+	__antithesis_instrumentation__.Notify(15354)
 	return nil
 }
 
-// createProtectedTimestampRecord will create a record to protect the spans for
-// this changefeed at the resolved timestamp. The progress struct will be
-// updated to refer to this new protected timestamp record.
 func createProtectedTimestampRecord(
 	ctx context.Context,
 	codec keys.SQLCodec,
@@ -56,6 +53,7 @@ func createProtectedTimestampRecord(
 	resolved hlc.Timestamp,
 	progress *jobspb.ChangefeedProgress,
 ) *ptpb.Record {
+	__antithesis_instrumentation__.Notify(15359)
 	progress.ProtectedTimestampRecord = uuid.MakeV4()
 	deprecatedSpansToProtect := makeSpansToProtect(codec, targets)
 	targetToProtect := makeTargetToProtect(targets)
@@ -67,13 +65,14 @@ func createProtectedTimestampRecord(
 }
 
 func makeTargetToProtect(targets []jobspb.ChangefeedTargetSpecification) *ptpb.Target {
-	// NB: We add 1 because we're also going to protect system.descriptors.
-	// We protect system.descriptors because a changefeed needs all of the history
-	// of table descriptors to version data.
+	__antithesis_instrumentation__.Notify(15360)
+
 	tablesToProtect := make(descpb.IDs, 0, len(targets)+1)
 	for _, t := range targets {
+		__antithesis_instrumentation__.Notify(15362)
 		tablesToProtect = append(tablesToProtect, t.TableID)
 	}
+	__antithesis_instrumentation__.Notify(15361)
 	tablesToProtect = append(tablesToProtect, keys.DescriptorTableID)
 	return ptpb.MakeSchemaObjectsTarget(tablesToProtect)
 }
@@ -81,79 +80,119 @@ func makeTargetToProtect(targets []jobspb.ChangefeedTargetSpecification) *ptpb.T
 func makeSpansToProtect(
 	codec keys.SQLCodec, targets []jobspb.ChangefeedTargetSpecification,
 ) []roachpb.Span {
-	// NB: We add 1 because we're also going to protect system.descriptors.
-	// We protect system.descriptors because a changefeed needs all of the history
-	// of table descriptors to version data.
+	__antithesis_instrumentation__.Notify(15363)
+
 	spansToProtect := make([]roachpb.Span, 0, len(targets)+1)
 	addTablePrefix := func(id uint32) {
+		__antithesis_instrumentation__.Notify(15366)
 		tablePrefix := codec.TablePrefix(id)
 		spansToProtect = append(spansToProtect, roachpb.Span{
 			Key:    tablePrefix,
 			EndKey: tablePrefix.PrefixEnd(),
 		})
 	}
+	__antithesis_instrumentation__.Notify(15364)
 	for _, t := range targets {
+		__antithesis_instrumentation__.Notify(15367)
 		addTablePrefix(uint32(t.TableID))
 	}
+	__antithesis_instrumentation__.Notify(15365)
 	addTablePrefix(keys.DescriptorTableID)
 	return spansToProtect
 }
 
-// initialScanTypeFromOpts determines the type of initial scan the changefeed
-// should perform on the first run given the options provided from the user
 func initialScanTypeFromOpts(opts map[string]string) (changefeedbase.InitialScanType, error) {
+	__antithesis_instrumentation__.Notify(15368)
 	_, cursor := opts[changefeedbase.OptCursor]
 	initialScanType, initialScanSet := opts[changefeedbase.OptInitialScan]
 	_, initialScanOnlySet := opts[changefeedbase.OptInitialScanOnly]
 	_, noInitialScanSet := opts[changefeedbase.OptNoInitialScan]
 
-	if initialScanSet && noInitialScanSet {
+	if initialScanSet && func() bool {
+		__antithesis_instrumentation__.Notify(15376)
+		return noInitialScanSet == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(15377)
 		return changefeedbase.InitialScan, errors.Errorf(
 			`cannot specify both %s and %s`, changefeedbase.OptInitialScan,
 			changefeedbase.OptNoInitialScan)
+	} else {
+		__antithesis_instrumentation__.Notify(15378)
 	}
+	__antithesis_instrumentation__.Notify(15369)
 
-	if initialScanSet && initialScanOnlySet {
+	if initialScanSet && func() bool {
+		__antithesis_instrumentation__.Notify(15379)
+		return initialScanOnlySet == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(15380)
 		return changefeedbase.InitialScan, errors.Errorf(
 			`cannot specify both %s and %s`, changefeedbase.OptInitialScan,
 			changefeedbase.OptInitialScanOnly)
+	} else {
+		__antithesis_instrumentation__.Notify(15381)
 	}
+	__antithesis_instrumentation__.Notify(15370)
 
-	if noInitialScanSet && initialScanOnlySet {
+	if noInitialScanSet && func() bool {
+		__antithesis_instrumentation__.Notify(15382)
+		return initialScanOnlySet == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(15383)
 		return changefeedbase.InitialScan, errors.Errorf(
 			`cannot specify both %s and %s`, changefeedbase.OptInitialScanOnly,
 			changefeedbase.OptNoInitialScan)
+	} else {
+		__antithesis_instrumentation__.Notify(15384)
 	}
+	__antithesis_instrumentation__.Notify(15371)
 
 	if initialScanSet {
+		__antithesis_instrumentation__.Notify(15385)
 		const opt = changefeedbase.OptInitialScan
 		switch strings.ToLower(initialScanType) {
 		case ``, `yes`:
+			__antithesis_instrumentation__.Notify(15386)
 			return changefeedbase.InitialScan, nil
 		case `no`:
+			__antithesis_instrumentation__.Notify(15387)
 			return changefeedbase.NoInitialScan, nil
 		case `only`:
+			__antithesis_instrumentation__.Notify(15388)
 			return changefeedbase.OnlyInitialScan, nil
 		default:
+			__antithesis_instrumentation__.Notify(15389)
 			return changefeedbase.InitialScan, errors.Errorf(
 				`unknown %s: %s`, opt, initialScanType)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(15390)
 	}
+	__antithesis_instrumentation__.Notify(15372)
 
 	if initialScanOnlySet {
+		__antithesis_instrumentation__.Notify(15391)
 		return changefeedbase.OnlyInitialScan, nil
+	} else {
+		__antithesis_instrumentation__.Notify(15392)
 	}
+	__antithesis_instrumentation__.Notify(15373)
 
 	if noInitialScanSet {
+		__antithesis_instrumentation__.Notify(15393)
 		return changefeedbase.NoInitialScan, nil
+	} else {
+		__antithesis_instrumentation__.Notify(15394)
 	}
+	__antithesis_instrumentation__.Notify(15374)
 
-	// If we reach this point, this implies that the user did not specify any initial scan
-	// options. In this case the default behaviour is to perform an initial scan if the
-	// cursor is not specified.
 	if !cursor {
+		__antithesis_instrumentation__.Notify(15395)
 		return changefeedbase.InitialScan, nil
+	} else {
+		__antithesis_instrumentation__.Notify(15396)
 	}
+	__antithesis_instrumentation__.Notify(15375)
 
 	return changefeedbase.NoInitialScan, nil
 }

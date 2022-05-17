@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,27 +26,12 @@ import (
 )
 
 func init() {
-	// TODO(marc): we use a hook to avoid a dependency on the sql package. We
-	// should probably move keys/protos elsewhere.
+
 	config.ZoneConfigHook = zoneConfigHook
 }
 
 var errNoZoneConfigApplies = errors.New("no zone config applies")
 
-// getZoneConfig recursively looks up entries in system.zones until an
-// entry that applies to the object with the specified id is
-// found. Returns the ID of the matching zone, its zone config, and an
-// optional placeholder ID and config if the looked-for ID was a table
-// with a zone config specifying only indexes and/or partitions.
-//
-// This function must be kept in sync with ascendZoneSpecifier.
-//
-// If getInheritedDefault is true, the direct zone configuration, if it exists, is
-// ignored, and the default that would apply if it did not exist is returned instead.
-//
-// If mayBeTable is true then we will attempt to decode the id into a table
-// descriptor in order to find its parent. If false, we'll assume that this
-// already is a parent and we'll not decode a descriptor.
 func getZoneConfig(
 	codec keys.SQLCodec,
 	id descpb.ID,
@@ -62,155 +39,225 @@ func getZoneConfig(
 	getInheritedDefault bool,
 	mayBeTable bool,
 ) (descpb.ID, *zonepb.ZoneConfig, descpb.ID, *zonepb.ZoneConfig, error) {
+	__antithesis_instrumentation__.Notify(632869)
 	var placeholder *zonepb.ZoneConfig
 	var placeholderID descpb.ID
 	if !getInheritedDefault {
-		// Look in the zones table.
+		__antithesis_instrumentation__.Notify(632873)
+
 		if zoneVal, err := getKey(config.MakeZoneKey(codec, id)); err != nil {
+			__antithesis_instrumentation__.Notify(632874)
 			return 0, nil, 0, nil, err
-		} else if zoneVal != nil {
-			// We found a matching entry.
-			var zone zonepb.ZoneConfig
-			if err := zoneVal.GetProto(&zone); err != nil {
-				return 0, nil, 0, nil, err
-			}
-			// If the zone isn't a subzone placeholder, we're done.
-			if !zone.IsSubzonePlaceholder() {
-				return id, &zone, 0, nil, nil
-			}
-			// If the zone is just a placeholder for subzones, keep recursing
-			// up the hierarchy.
-			placeholder = &zone
-			placeholderID = id
-		}
-	}
+		} else {
+			__antithesis_instrumentation__.Notify(632875)
+			if zoneVal != nil {
+				__antithesis_instrumentation__.Notify(632876)
 
-	// No zone config for this ID. We need to figure out if it's a table, so we
-	// look up its descriptor.
-	if mayBeTable {
-		if descVal, err := getKey(catalogkeys.MakeDescMetadataKey(codec, id)); err != nil {
-			return 0, nil, 0, nil, err
-		} else if descVal != nil {
-			var desc descpb.Descriptor
-			if err := descVal.GetProto(&desc); err != nil {
-				return 0, nil, 0, nil, err
-			}
-			tableDesc, _, _, _ := descpb.FromDescriptorWithMVCCTimestamp(&desc, descVal.Timestamp)
-			if tableDesc != nil {
-				// This is a table descriptor. Look up its parent database zone config.
-				dbID, zone, _, _, err := getZoneConfig(
-					codec,
-					tableDesc.ParentID,
-					getKey,
-					false, /* getInheritedDefault */
-					false /* mayBeTable */)
-				if err != nil {
+				var zone zonepb.ZoneConfig
+				if err := zoneVal.GetProto(&zone); err != nil {
+					__antithesis_instrumentation__.Notify(632879)
 					return 0, nil, 0, nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(632880)
 				}
-				return dbID, zone, placeholderID, placeholder, nil
+				__antithesis_instrumentation__.Notify(632877)
+
+				if !zone.IsSubzonePlaceholder() {
+					__antithesis_instrumentation__.Notify(632881)
+					return id, &zone, 0, nil, nil
+				} else {
+					__antithesis_instrumentation__.Notify(632882)
+				}
+				__antithesis_instrumentation__.Notify(632878)
+
+				placeholder = &zone
+				placeholderID = id
+			} else {
+				__antithesis_instrumentation__.Notify(632883)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(632884)
 	}
+	__antithesis_instrumentation__.Notify(632870)
 
-	// Retrieve the default zone config, but only as long as that wasn't the ID
-	// we were trying to retrieve (avoid infinite recursion).
+	if mayBeTable {
+		__antithesis_instrumentation__.Notify(632885)
+		if descVal, err := getKey(catalogkeys.MakeDescMetadataKey(codec, id)); err != nil {
+			__antithesis_instrumentation__.Notify(632886)
+			return 0, nil, 0, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(632887)
+			if descVal != nil {
+				__antithesis_instrumentation__.Notify(632888)
+				var desc descpb.Descriptor
+				if err := descVal.GetProto(&desc); err != nil {
+					__antithesis_instrumentation__.Notify(632890)
+					return 0, nil, 0, nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(632891)
+				}
+				__antithesis_instrumentation__.Notify(632889)
+				tableDesc, _, _, _ := descpb.FromDescriptorWithMVCCTimestamp(&desc, descVal.Timestamp)
+				if tableDesc != nil {
+					__antithesis_instrumentation__.Notify(632892)
+
+					dbID, zone, _, _, err := getZoneConfig(
+						codec,
+						tableDesc.ParentID,
+						getKey,
+						false,
+						false)
+					if err != nil {
+						__antithesis_instrumentation__.Notify(632894)
+						return 0, nil, 0, nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(632895)
+					}
+					__antithesis_instrumentation__.Notify(632893)
+					return dbID, zone, placeholderID, placeholder, nil
+				} else {
+					__antithesis_instrumentation__.Notify(632896)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(632897)
+			}
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(632898)
+	}
+	__antithesis_instrumentation__.Notify(632871)
+
 	if id != keys.RootNamespaceID {
+		__antithesis_instrumentation__.Notify(632899)
 		rootID, zone, _, _, err := getZoneConfig(
 			codec,
 			keys.RootNamespaceID,
 			getKey,
-			false, /* getInheritedDefault */
-			false /* mayBeTable */)
+			false,
+			false)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(632901)
 			return 0, nil, 0, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(632902)
 		}
+		__antithesis_instrumentation__.Notify(632900)
 		return rootID, zone, placeholderID, placeholder, nil
+	} else {
+		__antithesis_instrumentation__.Notify(632903)
 	}
+	__antithesis_instrumentation__.Notify(632872)
 
-	// No descriptor or not a table.
 	return 0, nil, 0, nil, errNoZoneConfigApplies
 }
 
-// completeZoneConfig takes a zone config pointer and fills in the
-// missing fields by following the chain of inheritance.
-// In the worst case, will have to inherit from the default zone config.
-// NOTE: This will not work for subzones. To complete subzones, find a complete
-// parent zone (index or table) and apply InheritFromParent to it.
 func completeZoneConfig(
 	cfg *zonepb.ZoneConfig,
 	codec keys.SQLCodec,
 	id descpb.ID,
 	getKey func(roachpb.Key) (*roachpb.Value, error),
 ) error {
+	__antithesis_instrumentation__.Notify(632904)
 	if cfg.IsComplete() {
+		__antithesis_instrumentation__.Notify(632909)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(632910)
 	}
-	// Check to see if its a table. If so, inherit from the database.
-	// For all other cases, inherit from the default.
-	if descVal, err := getKey(catalogkeys.MakeDescMetadataKey(codec, id)); err != nil {
-		return err
-	} else if descVal != nil {
-		var desc descpb.Descriptor
-		if err := descVal.GetProto(&desc); err != nil {
-			return err
-		}
-		tableDesc, _, _, _ := descpb.FromDescriptorWithMVCCTimestamp(&desc, descVal.Timestamp)
-		if tableDesc != nil {
-			_, dbzone, _, _, err := getZoneConfig(
-				codec, tableDesc.ParentID, getKey, false /* getInheritedDefault */, false /* mayBeTable */)
-			if err != nil {
-				return err
-			}
-			cfg.InheritFromParent(dbzone)
-		}
-	}
+	__antithesis_instrumentation__.Notify(632905)
 
-	// Check if zone is complete. If not, inherit from the default zone config
-	if cfg.IsComplete() {
-		return nil
-	}
-	_, defaultZone, _, _, err := getZoneConfig(codec, keys.RootNamespaceID, getKey, false /* getInheritedDefault */, false /* mayBeTable */)
-	if err != nil {
+	if descVal, err := getKey(catalogkeys.MakeDescMetadataKey(codec, id)); err != nil {
+		__antithesis_instrumentation__.Notify(632911)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(632912)
+		if descVal != nil {
+			__antithesis_instrumentation__.Notify(632913)
+			var desc descpb.Descriptor
+			if err := descVal.GetProto(&desc); err != nil {
+				__antithesis_instrumentation__.Notify(632915)
+				return err
+			} else {
+				__antithesis_instrumentation__.Notify(632916)
+			}
+			__antithesis_instrumentation__.Notify(632914)
+			tableDesc, _, _, _ := descpb.FromDescriptorWithMVCCTimestamp(&desc, descVal.Timestamp)
+			if tableDesc != nil {
+				__antithesis_instrumentation__.Notify(632917)
+				_, dbzone, _, _, err := getZoneConfig(
+					codec, tableDesc.ParentID, getKey, false, false)
+				if err != nil {
+					__antithesis_instrumentation__.Notify(632919)
+					return err
+				} else {
+					__antithesis_instrumentation__.Notify(632920)
+				}
+				__antithesis_instrumentation__.Notify(632918)
+				cfg.InheritFromParent(dbzone)
+			} else {
+				__antithesis_instrumentation__.Notify(632921)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(632922)
+		}
 	}
+	__antithesis_instrumentation__.Notify(632906)
+
+	if cfg.IsComplete() {
+		__antithesis_instrumentation__.Notify(632923)
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(632924)
+	}
+	__antithesis_instrumentation__.Notify(632907)
+	_, defaultZone, _, _, err := getZoneConfig(codec, keys.RootNamespaceID, getKey, false, false)
+	if err != nil {
+		__antithesis_instrumentation__.Notify(632925)
+		return err
+	} else {
+		__antithesis_instrumentation__.Notify(632926)
+	}
+	__antithesis_instrumentation__.Notify(632908)
 	cfg.InheritFromParent(defaultZone)
 	return nil
 }
 
-// zoneConfigHook returns the zone config and optional placeholder config for
-// the object with id using the cached system config. The returned boolean is
-// set to true when the zone config returned can be cached.
-//
-// zoneConfigHook is a pure function whose only inputs are a system config and
-// an object ID. It does not make any external KV calls to look up additional
-// state.
 func zoneConfigHook(
 	cfg *config.SystemConfig, codec keys.SQLCodec, id config.ObjectID,
 ) (*zonepb.ZoneConfig, *zonepb.ZoneConfig, bool, error) {
+	__antithesis_instrumentation__.Notify(632927)
 	getKey := func(key roachpb.Key) (*roachpb.Value, error) {
+		__antithesis_instrumentation__.Notify(632931)
 		return cfg.GetValue(key), nil
 	}
+	__antithesis_instrumentation__.Notify(632928)
 	const mayBeTable = true
 	zoneID, zone, _, placeholder, err := getZoneConfig(
-		codec, descpb.ID(id), getKey, false /* getInheritedDefault */, mayBeTable)
+		codec, descpb.ID(id), getKey, false, mayBeTable)
 	if errors.Is(err, errNoZoneConfigApplies) {
+		__antithesis_instrumentation__.Notify(632932)
 		return nil, nil, true, nil
-	} else if err != nil {
-		return nil, nil, false, err
+	} else {
+		__antithesis_instrumentation__.Notify(632933)
+		if err != nil {
+			__antithesis_instrumentation__.Notify(632934)
+			return nil, nil, false, err
+		} else {
+			__antithesis_instrumentation__.Notify(632935)
+		}
 	}
+	__antithesis_instrumentation__.Notify(632929)
 	if err = completeZoneConfig(zone, codec, zoneID, getKey); err != nil {
+		__antithesis_instrumentation__.Notify(632936)
 		return nil, nil, false, err
+	} else {
+		__antithesis_instrumentation__.Notify(632937)
 	}
+	__antithesis_instrumentation__.Notify(632930)
 	return zone, placeholder, true, nil
 }
 
-// GetZoneConfigInTxn looks up the zone and subzone for the specified object ID,
-// index, and partition. See the documentation on getZoneConfig for information
-// about the getInheritedDefault parameter.
-//
-// Unlike ZoneConfigHook, GetZoneConfigInTxn does not used a cached system
-// config. Instead, it uses the provided txn to make transactionally consistent
-// KV lookups.
 func GetZoneConfigInTxn(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -220,207 +267,299 @@ func GetZoneConfigInTxn(
 	partition string,
 	getInheritedDefault bool,
 ) (descpb.ID, *zonepb.ZoneConfig, *zonepb.Subzone, error) {
+	__antithesis_instrumentation__.Notify(632938)
 	getKey := func(key roachpb.Key) (*roachpb.Value, error) {
+		__antithesis_instrumentation__.Notify(632943)
 		kv, err := txn.Get(ctx, key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(632945)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(632946)
 		}
+		__antithesis_instrumentation__.Notify(632944)
 		return kv.Value, nil
 	}
+	__antithesis_instrumentation__.Notify(632939)
 	zoneID, zone, placeholderID, placeholder, err := getZoneConfig(
-		codec, id, getKey, getInheritedDefault, true /* mayBeTable */)
+		codec, id, getKey, getInheritedDefault, true)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(632947)
 		return 0, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(632948)
 	}
+	__antithesis_instrumentation__.Notify(632940)
 	if err = completeZoneConfig(zone, codec, zoneID, getKey); err != nil {
+		__antithesis_instrumentation__.Notify(632949)
 		return 0, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(632950)
 	}
+	__antithesis_instrumentation__.Notify(632941)
 	var subzone *zonepb.Subzone
 	if index != nil {
+		__antithesis_instrumentation__.Notify(632951)
 		indexID := uint32(index.GetID())
 		if placeholder != nil {
+			__antithesis_instrumentation__.Notify(632952)
 			if subzone = placeholder.GetSubzone(indexID, partition); subzone != nil {
+				__antithesis_instrumentation__.Notify(632953)
 				if indexSubzone := placeholder.GetSubzone(indexID, ""); indexSubzone != nil {
+					__antithesis_instrumentation__.Notify(632955)
 					subzone.Config.InheritFromParent(&indexSubzone.Config)
+				} else {
+					__antithesis_instrumentation__.Notify(632956)
 				}
+				__antithesis_instrumentation__.Notify(632954)
 				subzone.Config.InheritFromParent(zone)
 				return placeholderID, placeholder, subzone, nil
+			} else {
+				__antithesis_instrumentation__.Notify(632957)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(632958)
 			if subzone = zone.GetSubzone(indexID, partition); subzone != nil {
+				__antithesis_instrumentation__.Notify(632959)
 				if indexSubzone := zone.GetSubzone(indexID, ""); indexSubzone != nil {
+					__antithesis_instrumentation__.Notify(632961)
 					subzone.Config.InheritFromParent(&indexSubzone.Config)
+				} else {
+					__antithesis_instrumentation__.Notify(632962)
 				}
+				__antithesis_instrumentation__.Notify(632960)
 				subzone.Config.InheritFromParent(zone)
+			} else {
+				__antithesis_instrumentation__.Notify(632963)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(632964)
 	}
+	__antithesis_instrumentation__.Notify(632942)
 	return zoneID, zone, subzone, nil
 }
 
-// GetHydratedZoneConfigForNamedZone returns a zone config for the given named
-// zone. Any missing fields are filled through the RANGE DEFAULT zone config.
 func GetHydratedZoneConfigForNamedZone(
 	ctx context.Context, txn *kv.Txn, codec keys.SQLCodec, zoneName zonepb.NamedZone,
 ) (*zonepb.ZoneConfig, error) {
+	__antithesis_instrumentation__.Notify(632965)
 	getKey := func(key roachpb.Key) (*roachpb.Value, error) {
+		__antithesis_instrumentation__.Notify(632970)
 		kv, err := txn.Get(ctx, key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(632972)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(632973)
 		}
+		__antithesis_instrumentation__.Notify(632971)
 		return kv.Value, nil
 	}
+	__antithesis_instrumentation__.Notify(632966)
 	id, found := zonepb.NamedZones[zoneName]
 	if !found {
+		__antithesis_instrumentation__.Notify(632974)
 		return nil, errors.AssertionFailedf("id %d does not belong to a named zone", id)
+	} else {
+		__antithesis_instrumentation__.Notify(632975)
 	}
+	__antithesis_instrumentation__.Notify(632967)
 	zoneID, zone, _, _, err := getZoneConfig(
-		codec, descpb.ID(id), getKey, false /* getInheritedDefault */, false, /* mayBeTable */
+		codec, descpb.ID(id), getKey, false, false,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(632976)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(632977)
 	}
+	__antithesis_instrumentation__.Notify(632968)
 	if err := completeZoneConfig(zone, codec, zoneID, getKey); err != nil {
+		__antithesis_instrumentation__.Notify(632978)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(632979)
 	}
+	__antithesis_instrumentation__.Notify(632969)
 	return zone, nil
 }
 
-// GetHydratedZoneConfigForTable returns a fully hydrated zone config for a
-// given table ID.
 func GetHydratedZoneConfigForTable(
 	ctx context.Context, txn *kv.Txn, codec keys.SQLCodec, id descpb.ID,
 ) (*zonepb.ZoneConfig, error) {
+	__antithesis_instrumentation__.Notify(632980)
 	getKey := func(key roachpb.Key) (*roachpb.Value, error) {
+		__antithesis_instrumentation__.Notify(632986)
 		kv, err := txn.Get(ctx, key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(632988)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(632989)
 		}
+		__antithesis_instrumentation__.Notify(632987)
 		return kv.Value, nil
 	}
-	// TODO(arul): Teach `getZoneConfig` to use a descriptor collection instead of
-	// using this getKey function above to do descriptor lookups.
+	__antithesis_instrumentation__.Notify(632981)
+
 	zoneID, zone, _, placeholder, err := getZoneConfig(
-		codec, id, getKey, false /* getInheritedDefault */, true, /* mayBeTable */
+		codec, id, getKey, false, true,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(632990)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(632991)
 	}
+	__antithesis_instrumentation__.Notify(632982)
 	if err := completeZoneConfig(zone, codec, zoneID, getKey); err != nil {
+		__antithesis_instrumentation__.Notify(632992)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(632993)
 	}
+	__antithesis_instrumentation__.Notify(632983)
 
-	// We've completely hydrated the zone config now. The only thing left to do
-	// is to do is hydrate the subzones, if applicable.
-
-	// A placeholder config exists only to store subzones, so we copy over that
-	// information on the zone config.
 	if placeholder != nil {
-		// A placeholder config only exists for tables. Furthermore, if it exists,
-		// then the zone config (`zone`) above must belong to an object further up
-		// in the inheritance chain (such as the database or DEFAULT RANGE). As the
-		// subzones field is only defined if the zone config applies to a table, it
-		// follows that `zone` must not have any Subzones set on it.
+		__antithesis_instrumentation__.Notify(632994)
+
 		if len(zone.Subzones) != 0 {
+			__antithesis_instrumentation__.Notify(632996)
 			return nil, errors.AssertionFailedf("placeholder %v exists in conjunction with subzones on zone config %v", *zone, *placeholder)
+		} else {
+			__antithesis_instrumentation__.Notify(632997)
 		}
+		__antithesis_instrumentation__.Notify(632995)
 		zone.Subzones = placeholder.Subzones
 		zone.SubzoneSpans = placeholder.SubzoneSpans
+	} else {
+		__antithesis_instrumentation__.Notify(632998)
 	}
+	__antithesis_instrumentation__.Notify(632984)
 
 	for i, subzone := range zone.Subzones {
-		// Check if a zone configuration exists for the index this subzone applies
-		// to by passing in a an empty partition below.
-		indexSubzone := zone.GetSubzone(subzone.IndexID, "" /* partition  */)
-		// Partitions, in terms of the inheritance hierarchy, first inherit from the
-		// zone configuration fields on their parent index (if such a zone
-		// configuration exists).
-		// NB: If the subzone we're dealing with belongs to an index and not a
-		// partition, then the call below is a no-op.
+		__antithesis_instrumentation__.Notify(632999)
+
+		indexSubzone := zone.GetSubzone(subzone.IndexID, "")
+
 		if indexSubzone != nil {
+			__antithesis_instrumentation__.Notify(633001)
 			zone.Subzones[i].Config.InheritFromParent(&indexSubzone.Config)
+		} else {
+			__antithesis_instrumentation__.Notify(633002)
 		}
-		// After inheriting from the index's zone configuration, any fields that are
-		// left empty must be filled in from the table's zone configuration. Note
-		// that the table's zone configuration was fully hydrated above and
-		// inheriting from it will result in the subzone config being fully hydrated
-		// as well.
+		__antithesis_instrumentation__.Notify(633000)
+
 		zone.Subzones[i].Config.InheritFromParent(zone)
 	}
+	__antithesis_instrumentation__.Notify(632985)
 
 	return zone, nil
 }
 
-// GetHydratedZoneConfigForDatabase returns a fully hydrated zone config for a
-// given database ID.
 func GetHydratedZoneConfigForDatabase(
 	ctx context.Context, txn *kv.Txn, codec keys.SQLCodec, id descpb.ID,
 ) (*zonepb.ZoneConfig, error) {
+	__antithesis_instrumentation__.Notify(633003)
 	getKey := func(key roachpb.Key) (*roachpb.Value, error) {
+		__antithesis_instrumentation__.Notify(633007)
 		kv, err := txn.Get(ctx, key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(633009)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(633010)
 		}
+		__antithesis_instrumentation__.Notify(633008)
 		return kv.Value, nil
 	}
+	__antithesis_instrumentation__.Notify(633004)
 	zoneID, zone, _, _, err := getZoneConfig(
-		codec, id, getKey, false /* getInheritedDefault */, false, /* mayBeTable */
+		codec, id, getKey, false, false,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(633011)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(633012)
 	}
+	__antithesis_instrumentation__.Notify(633005)
 	if err := completeZoneConfig(zone, codec, zoneID, getKey); err != nil {
+		__antithesis_instrumentation__.Notify(633013)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(633014)
 	}
+	__antithesis_instrumentation__.Notify(633006)
 
 	return zone, nil
 }
 
 func zoneSpecifierNotFoundError(zs tree.ZoneSpecifier) error {
+	__antithesis_instrumentation__.Notify(633015)
 	if zs.NamedZone != "" {
+		__antithesis_instrumentation__.Notify(633016)
 		return pgerror.Newf(
 			pgcode.InvalidCatalogName, "zone %q does not exist", zs.NamedZone)
-	} else if zs.Database != "" {
-		return sqlerrors.NewUndefinedDatabaseError(string(zs.Database))
 	} else {
-		return sqlerrors.NewUndefinedRelationError(&zs.TableOrIndex)
+		__antithesis_instrumentation__.Notify(633017)
+		if zs.Database != "" {
+			__antithesis_instrumentation__.Notify(633018)
+			return sqlerrors.NewUndefinedDatabaseError(string(zs.Database))
+		} else {
+			__antithesis_instrumentation__.Notify(633019)
+			return sqlerrors.NewUndefinedRelationError(&zs.TableOrIndex)
+		}
 	}
 }
 
-// resolveTableForZone ensures that the table part of the zone
-// specifier is resolved (or resolvable) and, if the zone specifier
-// points to an index, that the index name is expanded to a valid
-// table.
-// Returns res = nil if the zone specifier is not for a table or index.
 func (p *planner) resolveTableForZone(
 	ctx context.Context, zs *tree.ZoneSpecifier,
 ) (res catalog.TableDescriptor, err error) {
+	__antithesis_instrumentation__.Notify(633020)
 	if zs.TargetsIndex() {
+		__antithesis_instrumentation__.Notify(633022)
 		var mutRes *tabledesc.Mutable
-		_, mutRes, err = expandMutableIndexName(ctx, p, &zs.TableOrIndex, true /* requireTable */)
+		_, mutRes, err = expandMutableIndexName(ctx, p, &zs.TableOrIndex, true)
 		if mutRes != nil {
+			__antithesis_instrumentation__.Notify(633023)
 			res = mutRes
+		} else {
+			__antithesis_instrumentation__.Notify(633024)
 		}
-	} else if zs.TargetsTable() {
-		var immutRes catalog.TableDescriptor
-		p.runWithOptions(resolveFlags{skipCache: true}, func() {
-			flags := tree.ObjectLookupFlagsWithRequiredTableKind(tree.ResolveAnyTableKind)
-			flags.IncludeOffline = true
-			_, immutRes, err = resolver.ResolveExistingTableObject(ctx, p, &zs.TableOrIndex.Table, flags)
-		})
-		if err != nil {
-			return nil, err
-		} else if immutRes != nil {
-			res = immutRes
+	} else {
+		__antithesis_instrumentation__.Notify(633025)
+		if zs.TargetsTable() {
+			__antithesis_instrumentation__.Notify(633026)
+			var immutRes catalog.TableDescriptor
+			p.runWithOptions(resolveFlags{skipCache: true}, func() {
+				__antithesis_instrumentation__.Notify(633028)
+				flags := tree.ObjectLookupFlagsWithRequiredTableKind(tree.ResolveAnyTableKind)
+				flags.IncludeOffline = true
+				_, immutRes, err = resolver.ResolveExistingTableObject(ctx, p, &zs.TableOrIndex.Table, flags)
+			})
+			__antithesis_instrumentation__.Notify(633027)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(633029)
+				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(633030)
+				if immutRes != nil {
+					__antithesis_instrumentation__.Notify(633031)
+					res = immutRes
+				} else {
+					__antithesis_instrumentation__.Notify(633032)
+				}
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(633033)
 		}
 	}
+	__antithesis_instrumentation__.Notify(633021)
 	return res, err
 }
 
-// resolveZone resolves a zone specifier to a zone ID.  If the zone
-// specifier points to a table, index or partition, the table part
-// must be properly normalized already. It is the caller's
-// responsibility to do this using e.g .resolveTableForZone().
 func resolveZone(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -428,55 +567,98 @@ func resolveZone(
 	zs *tree.ZoneSpecifier,
 	version clusterversion.Handle,
 ) (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(633034)
 	errMissingKey := errors.New("missing key")
 	id, err := zonepb.ResolveZoneSpecifier(ctx, zs,
 		func(parentID uint32, schemaID uint32, name string) (uint32, error) {
+			__antithesis_instrumentation__.Notify(633037)
 			id, err := col.Direct().LookupObjectID(ctx, txn, descpb.ID(parentID), descpb.ID(schemaID), name)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(633040)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(633041)
 			}
+			__antithesis_instrumentation__.Notify(633038)
 			if id == descpb.InvalidID {
+				__antithesis_instrumentation__.Notify(633042)
 				return 0, errMissingKey
+			} else {
+				__antithesis_instrumentation__.Notify(633043)
 			}
+			__antithesis_instrumentation__.Notify(633039)
 			return uint32(id), nil
 		},
 		version,
 	)
+	__antithesis_instrumentation__.Notify(633035)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(633044)
 		if errors.Is(err, errMissingKey) {
+			__antithesis_instrumentation__.Notify(633046)
 			return 0, zoneSpecifierNotFoundError(*zs)
+		} else {
+			__antithesis_instrumentation__.Notify(633047)
 		}
+		__antithesis_instrumentation__.Notify(633045)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(633048)
 	}
+	__antithesis_instrumentation__.Notify(633036)
 	return descpb.ID(id), nil
 }
 
 func resolveSubzone(
 	zs *tree.ZoneSpecifier, table catalog.TableDescriptor,
 ) (catalog.Index, string, error) {
-	if !zs.TargetsTable() || zs.TableOrIndex.Index == "" && zs.Partition == "" {
+	__antithesis_instrumentation__.Notify(633049)
+	if !zs.TargetsTable() || func() bool {
+		__antithesis_instrumentation__.Notify(633053)
+		return (zs.TableOrIndex.Index == "" && func() bool {
+			__antithesis_instrumentation__.Notify(633054)
+			return zs.Partition == "" == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(633055)
 		return nil, "", nil
+	} else {
+		__antithesis_instrumentation__.Notify(633056)
 	}
+	__antithesis_instrumentation__.Notify(633050)
 
 	indexName := string(zs.TableOrIndex.Index)
 	var index catalog.Index
 	if indexName == "" {
+		__antithesis_instrumentation__.Notify(633057)
 		index = table.GetPrimaryIndex()
 		indexName = index.GetName()
 	} else {
+		__antithesis_instrumentation__.Notify(633058)
 		var err error
 		index, err = table.FindIndexWithName(indexName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(633059)
 			return nil, "", err
+		} else {
+			__antithesis_instrumentation__.Notify(633060)
 		}
 	}
+	__antithesis_instrumentation__.Notify(633051)
 
 	partitionName := string(zs.Partition)
 	if partitionName != "" {
+		__antithesis_instrumentation__.Notify(633061)
 		if index.GetPartitioning().FindPartitionByName(partitionName) == nil {
+			__antithesis_instrumentation__.Notify(633062)
 			return nil, "", fmt.Errorf("partition %q does not exist on index %q", partitionName, indexName)
+		} else {
+			__antithesis_instrumentation__.Notify(633063)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(633064)
 	}
+	__antithesis_instrumentation__.Notify(633052)
 
 	return index, partitionName, nil
 }
@@ -490,32 +672,55 @@ func prepareRemovedPartitionZoneConfigs(
 	newPart catalog.Partitioning,
 	execCfg *ExecutorConfig,
 ) (*zoneConfigUpdate, error) {
+	__antithesis_instrumentation__.Notify(633065)
 	newNames := map[string]struct{}{}
 	_ = newPart.ForEachPartitionName(func(newName string) error {
+		__antithesis_instrumentation__.Notify(633071)
 		newNames[newName] = struct{}{}
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(633066)
 	removedNames := make([]string, 0, len(newNames))
 	_ = oldPart.ForEachPartitionName(func(oldName string) error {
+		__antithesis_instrumentation__.Notify(633072)
 		if _, exists := newNames[oldName]; !exists {
+			__antithesis_instrumentation__.Notify(633074)
 			removedNames = append(removedNames, oldName)
+		} else {
+			__antithesis_instrumentation__.Notify(633075)
 		}
+		__antithesis_instrumentation__.Notify(633073)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(633067)
 	if len(removedNames) == 0 {
+		__antithesis_instrumentation__.Notify(633076)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(633077)
 	}
+	__antithesis_instrumentation__.Notify(633068)
 	zone, err := getZoneConfigRaw(ctx, txn, execCfg.Codec, execCfg.Settings, tableDesc.GetID())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(633078)
 		return nil, err
-	} else if zone == nil {
-		zone = zonepb.NewZoneConfig()
+	} else {
+		__antithesis_instrumentation__.Notify(633079)
+		if zone == nil {
+			__antithesis_instrumentation__.Notify(633080)
+			zone = zonepb.NewZoneConfig()
+		} else {
+			__antithesis_instrumentation__.Notify(633081)
+		}
 	}
+	__antithesis_instrumentation__.Notify(633069)
 	for _, n := range removedNames {
+		__antithesis_instrumentation__.Notify(633082)
 		zone.DeleteSubzone(uint32(indexID), n)
 	}
+	__antithesis_instrumentation__.Notify(633070)
 	return prepareZoneConfigWrites(
-		ctx, execCfg, tableDesc.GetID(), tableDesc, zone, false, /* hasNewSubzones */
+		ctx, execCfg, tableDesc.GetID(), tableDesc, zone, false,
 	)
 }
 
@@ -528,12 +733,20 @@ func deleteRemovedPartitionZoneConfigs(
 	newPart catalog.Partitioning,
 	execCfg *ExecutorConfig,
 ) error {
+	__antithesis_instrumentation__.Notify(633083)
 	update, err := prepareRemovedPartitionZoneConfigs(
 		ctx, txn, tableDesc, indexID, oldPart, newPart, execCfg,
 	)
-	if update == nil || err != nil {
+	if update == nil || func() bool {
+		__antithesis_instrumentation__.Notify(633085)
+		return err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(633086)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(633087)
 	}
+	__antithesis_instrumentation__.Notify(633084)
 	_, err = writeZoneConfigUpdate(ctx, txn, execCfg, update)
 	return err
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package stats
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,8 +15,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 )
 
-// InsertNewStats inserts a slice of statistics at the current time into the
-// system table.
 func InsertNewStats(
 	ctx context.Context,
 	settings *cluster.Settings,
@@ -32,8 +22,10 @@ func InsertNewStats(
 	txn *kv.Txn,
 	tableStats []*TableStatisticProto,
 ) error {
+	__antithesis_instrumentation__.Notify(626713)
 	var err error
 	for _, statistic := range tableStats {
+		__antithesis_instrumentation__.Notify(626715)
 		err = InsertNewStat(
 			ctx,
 			settings,
@@ -49,16 +41,16 @@ func InsertNewStats(
 			statistic.HistogramData,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(626716)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(626717)
 		}
 	}
+	__antithesis_instrumentation__.Notify(626714)
 	return nil
 }
 
-// InsertNewStat inserts a new statistic in the system table.
-//
-// The stats cache will automatically update asynchronously (as well as the
-// stats caches on all other nodes).
 func InsertNewStat(
 	ctx context.Context,
 	settings *cluster.Settings,
@@ -70,26 +62,44 @@ func InsertNewStat(
 	rowCount, distinctCount, nullCount, avgSize int64,
 	h *HistogramData,
 ) error {
-	// We must pass a nil interface{} if we want to insert a NULL.
+	__antithesis_instrumentation__.Notify(626718)
+
 	var nameVal, histogramVal interface{}
 	if name != "" {
+		__antithesis_instrumentation__.Notify(626723)
 		nameVal = name
+	} else {
+		__antithesis_instrumentation__.Notify(626724)
 	}
+	__antithesis_instrumentation__.Notify(626719)
 	if h != nil {
+		__antithesis_instrumentation__.Notify(626725)
 		var err error
 		histogramVal, err = protoutil.Marshal(h)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(626726)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(626727)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(626728)
 	}
+	__antithesis_instrumentation__.Notify(626720)
 
 	columnIDsVal := tree.NewDArray(types.Int)
 	for _, c := range columnIDs {
+		__antithesis_instrumentation__.Notify(626729)
 		if err := columnIDsVal.Append(tree.NewDInt(tree.DInt(int(c)))); err != nil {
+			__antithesis_instrumentation__.Notify(626730)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(626731)
 		}
 	}
+	__antithesis_instrumentation__.Notify(626721)
 	if !settings.Version.IsActive(ctx, clusterversion.AlterSystemTableStatisticsAddAvgSizeCol) {
+		__antithesis_instrumentation__.Notify(626732)
 		_, err := executor.Exec(
 			ctx, "insert-statistic", txn,
 			`INSERT INTO system.table_statistics (
@@ -110,7 +120,10 @@ func InsertNewStat(
 			histogramVal,
 		)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(626733)
 	}
+	__antithesis_instrumentation__.Notify(626722)
 	_, err := executor.Exec(
 		ctx, "insert-statistic", txn,
 		`INSERT INTO system.table_statistics (

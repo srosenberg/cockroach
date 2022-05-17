@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfigtestcluster
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,8 +31,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Tenant captures per-tenant span config state and encapsulates convenient
-// span config testing primitives. It's safe for concurrent use.
 type Tenant struct {
 	serverutils.TestTenantInterface
 
@@ -56,54 +46,50 @@ type Tenant struct {
 	}
 }
 
-// ExecCfg returns a handle to the tenant's ExecutorConfig.
 func (s *Tenant) ExecCfg() sql.ExecutorConfig {
+	__antithesis_instrumentation__.Notify(241762)
 	return s.ExecutorConfig().(sql.ExecutorConfig)
 }
 
-// ProtectedTimestampProvider returns a handle to the tenant's protected
-// timestamp provider.
 func (s *Tenant) ProtectedTimestampProvider() protectedts.Provider {
+	__antithesis_instrumentation__.Notify(241763)
 	return s.DistSQLServer().(*distsql.ServerImpl).ServerConfig.ProtectedTimestampProvider
 }
 
-// JobsRegistry returns a handle to the tenant's job registry.
 func (s *Tenant) JobsRegistry() *jobs.Registry {
+	__antithesis_instrumentation__.Notify(241764)
 	return s.JobRegistry().(*jobs.Registry)
 }
 
 func (s *Tenant) updateTimestampAfterLastSQLChange() {
+	__antithesis_instrumentation__.Notify(241765)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mu.tsAfterLastSQLChange = s.Clock().Now()
 }
 
-// Exec is a wrapper around gosql.Exec that kills the test on error. It records
-// the execution timestamp for subsequent use.
 func (s *Tenant) Exec(query string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(241766)
 	s.db.Exec(s.t, query, args...)
 	s.updateTimestampAfterLastSQLChange()
 }
 
-// ExecWithErr is like Exec but returns the error, if any. It records the
-// execution timestamp for subsequent use.
 func (s *Tenant) ExecWithErr(query string, args ...interface{}) error {
+	__antithesis_instrumentation__.Notify(241767)
 	_, err := s.db.DB.ExecContext(context.Background(), query, args...)
 	s.updateTimestampAfterLastSQLChange()
 	return err
 }
 
-// TimestampAfterLastSQLChange returns a timestamp after the last time Exec was
-// invoked. It can be used for transactional ordering guarantees.
 func (s *Tenant) TimestampAfterLastSQLChange() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(241768)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.mu.tsAfterLastSQLChange
 }
 
-// RecordCheckpoint is used to record the reconciliation checkpoint, retrievable
-// via LastCheckpoint.
 func (s *Tenant) RecordCheckpoint() {
+	__antithesis_instrumentation__.Notify(241769)
 	ts := s.Reconciler().Checkpoint()
 
 	s.mu.Lock()
@@ -111,44 +97,42 @@ func (s *Tenant) RecordCheckpoint() {
 	s.mu.lastCheckpoint = ts
 }
 
-// LastCheckpoint returns the last recorded checkpoint timestamp.
 func (s *Tenant) LastCheckpoint() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(241770)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.mu.lastCheckpoint
 }
 
-// Query is a wrapper around gosql.Query that kills the test on error.
 func (s *Tenant) Query(query string, args ...interface{}) *gosql.Rows {
+	__antithesis_instrumentation__.Notify(241771)
 	return s.db.Query(s.t, query, args...)
 }
 
-// QueryRow is a wrapper around gosql.QueryRow that kills the test on error.
 func (s *Tenant) QueryRow(query string, args ...interface{}) *sqlutils.Row {
+	__antithesis_instrumentation__.Notify(241772)
 	return s.db.QueryRow(s.t, query, args...)
 }
 
-// Reconciler returns the reconciler associated with the given tenant.
 func (s *Tenant) Reconciler() spanconfig.Reconciler {
+	__antithesis_instrumentation__.Notify(241773)
 	return s.reconciler
 }
 
-// KVAccessorRecorder returns the underlying recorder capturing KVAccessor
-// mutations made by the tenant.
 func (s *Tenant) KVAccessorRecorder() *spanconfigtestutils.KVAccessorRecorder {
+	__antithesis_instrumentation__.Notify(241774)
 	return s.recorder
 }
 
-// WithMutableTableDescriptor invokes the provided callback with a mutable table
-// descriptor, changes to which are then committed back to the system. The
-// callback needs to be idempotent.
 func (s *Tenant) WithMutableTableDescriptor(
 	ctx context.Context, dbName string, tbName string, f func(*tabledesc.Mutable),
 ) {
+	__antithesis_instrumentation__.Notify(241775)
 	execCfg := s.ExecutorConfig().(sql.ExecutorConfig)
 	require.NoError(s.t, sql.DescsTxn(ctx, &execCfg, func(
 		ctx context.Context, txn *kv.Txn, descsCol *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(241776)
 		_, desc, err := descsCol.GetMutableTableByName(
 			ctx,
 			txn,
@@ -161,28 +145,32 @@ func (s *Tenant) WithMutableTableDescriptor(
 			},
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241778)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(241779)
 		}
+		__antithesis_instrumentation__.Notify(241777)
 		f(desc)
 		return descsCol.WriteDesc(ctx, false, desc, txn)
 	}))
 }
 
-// descLookupFlags is the set of look up flags used when fetching descriptors.
 var descLookupFlags = tree.CommonLookupFlags{
 	IncludeDropped: true,
 	IncludeOffline: true,
-	AvoidLeased:    true, // we want consistent reads
+	AvoidLeased:    true,
 }
 
-// LookupTableDescriptorByID returns the table identified by the given ID.
 func (s *Tenant) LookupTableDescriptorByID(
 	ctx context.Context, id descpb.ID,
 ) (desc catalog.TableDescriptor) {
+	__antithesis_instrumentation__.Notify(241780)
 	execCfg := s.ExecutorConfig().(sql.ExecutorConfig)
 	require.NoError(s.t, sql.DescsTxn(ctx, &execCfg, func(
 		ctx context.Context, txn *kv.Txn, descsCol *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(241782)
 		var err error
 		desc, err = descsCol.GetImmutableTableByID(ctx, txn, id,
 			tree.ObjectLookupFlags{
@@ -191,17 +179,19 @@ func (s *Tenant) LookupTableDescriptorByID(
 		)
 		return err
 	}))
+	__antithesis_instrumentation__.Notify(241781)
 	return desc
 }
 
-// LookupTableByName returns the table descriptor identified by the given name.
 func (s *Tenant) LookupTableByName(
 	ctx context.Context, dbName string, tbName string,
 ) (desc catalog.TableDescriptor) {
+	__antithesis_instrumentation__.Notify(241783)
 	execCfg := s.ExecutorConfig().(sql.ExecutorConfig)
 	require.NoError(s.t, sql.DescsTxn(ctx, &execCfg, func(
 		ctx context.Context, txn *kv.Txn, descsCol *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(241785)
 		var err error
 		_, desc, err = descsCol.GetImmutableTableByName(ctx, txn,
 			tree.NewTableNameWithSchema(tree.Name(dbName), "public", tree.Name(tbName)),
@@ -211,17 +201,18 @@ func (s *Tenant) LookupTableByName(
 		)
 		return err
 	}))
+	__antithesis_instrumentation__.Notify(241784)
 	return desc
 }
 
-// LookupDatabaseByName returns the database descriptor identified by the given
-// name.
 func (s *Tenant) LookupDatabaseByName(
 	ctx context.Context, dbName string,
 ) (desc catalog.DatabaseDescriptor) {
+	__antithesis_instrumentation__.Notify(241786)
 	execCfg := s.ExecutorConfig().(sql.ExecutorConfig)
 	require.NoError(s.t, sql.DescsTxn(ctx, &execCfg,
 		func(ctx context.Context, txn *kv.Txn, descsCol *descs.Collection) error {
+			__antithesis_instrumentation__.Notify(241788)
 			var err error
 			desc, err = descsCol.GetImmutableDatabaseByName(ctx, txn, dbName,
 				tree.DatabaseLookupFlags{
@@ -232,38 +223,42 @@ func (s *Tenant) LookupDatabaseByName(
 			)
 			return err
 		}))
+	__antithesis_instrumentation__.Notify(241787)
 	return desc
 }
 
-// MakeProtectedTimestampRecordAndProtect will construct a ptpb.Record, and
-// persist it in the protected timestamp system table of the tenant.
 func (s *Tenant) MakeProtectedTimestampRecordAndProtect(
 	ctx context.Context, recordID string, protectTS int, target *ptpb.Target,
 ) {
+	__antithesis_instrumentation__.Notify(241789)
 	jobID := s.JobsRegistry().MakeJobID()
 	require.NoError(s.t, s.ExecCfg().DB.Txn(ctx,
 		func(ctx context.Context, txn *kv.Txn) (err error) {
+			__antithesis_instrumentation__.Notify(241791)
 			require.Len(s.t, recordID, 1,
 				"datadriven test only supports single character record IDs")
 			recID, err := uuid.FromBytes([]byte(strings.Repeat(recordID, 16)))
 			require.NoError(s.t, err)
 			rec := jobsprotectedts.MakeRecord(recID, int64(jobID),
-				hlc.Timestamp{WallTime: int64(protectTS)}, nil, /* deprecatedSpans */
+				hlc.Timestamp{WallTime: int64(protectTS)}, nil,
 				jobsprotectedts.Jobs, target)
 			return s.ProtectedTimestampProvider().Protect(ctx, txn, rec)
 		}))
+	__antithesis_instrumentation__.Notify(241790)
 	s.updateTimestampAfterLastSQLChange()
 }
 
-// ReleaseProtectedTimestampRecord will release a ptpb.Record.
 func (s *Tenant) ReleaseProtectedTimestampRecord(ctx context.Context, recordID string) {
+	__antithesis_instrumentation__.Notify(241792)
 	require.NoError(s.t, s.ExecCfg().DB.Txn(ctx,
 		func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(241794)
 			require.Len(s.t, recordID, 1,
 				"datadriven test only supports single character record IDs")
 			recID, err := uuid.FromBytes([]byte(strings.Repeat(recordID, 16)))
 			require.NoError(s.t, err)
 			return s.ProtectedTimestampProvider().Release(ctx, txn, recID)
 		}))
+	__antithesis_instrumentation__.Notify(241793)
 	s.updateTimestampAfterLastSQLChange()
 }

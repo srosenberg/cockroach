@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package poison
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -18,25 +10,26 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// NewPoisonedError instantiates a *PoisonedError referencing a poisoned latch
-// (as identified by span and timestamp).
 func NewPoisonedError(span roachpb.Span, ts hlc.Timestamp) *PoisonedError {
+	__antithesis_instrumentation__.Notify(100821)
 	return &PoisonedError{Span: span, Timestamp: ts}
 }
 
 var _ errors.SafeFormatter = (*PoisonedError)(nil)
 var _ fmt.Formatter = (*PoisonedError)(nil)
 
-// SafeFormatError implements errors.SafeFormatter.
 func (e *PoisonedError) SafeFormatError(p errors.Printer) error {
+	__antithesis_instrumentation__.Notify(100822)
 	p.Printf("encountered poisoned latch %s@%s", e.Span, e.Timestamp)
 	return nil
 }
 
-// Format implements fmt.Formatter.
-func (e *PoisonedError) Format(s fmt.State, verb rune) { errors.FormatError(e, s, verb) }
+func (e *PoisonedError) Format(s fmt.State, verb rune) {
+	__antithesis_instrumentation__.Notify(100823)
+	errors.FormatError(e, s, verb)
+}
 
-// Error implements error.
 func (e *PoisonedError) Error() string {
+	__antithesis_instrumentation__.Notify(100824)
 	return fmt.Sprint(e)
 }

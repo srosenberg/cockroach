@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -36,7 +28,6 @@ import (
 	"github.com/cockroachdb/logtags"
 )
 
-// indexBackfiller is a processor that backfills new indexes.
 type indexBackfiller struct {
 	backfill.IndexBackfiller
 
@@ -75,6 +66,7 @@ func newIndexBackfiller(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*indexBackfiller, error) {
+	__antithesis_instrumentation__.Notify(572488)
 	indexBackfillerMon := execinfra.NewMonitor(ctx, flowCtx.Cfg.BackfillerMonitor,
 		"index-backfill-mon")
 	ib := &indexBackfiller{
@@ -87,99 +79,119 @@ func newIndexBackfiller(
 
 	if err := ib.IndexBackfiller.InitForDistributedUse(ctx, flowCtx, ib.desc,
 		indexBackfillerMon); err != nil {
+		__antithesis_instrumentation__.Notify(572490)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(572491)
 	}
+	__antithesis_instrumentation__.Notify(572489)
 
 	return ib, nil
 }
 
 func (ib *indexBackfiller) OutputTypes() []*types.T {
-	// No output types.
+	__antithesis_instrumentation__.Notify(572492)
+
 	return nil
 }
 
 func (ib *indexBackfiller) MustBeStreaming() bool {
+	__antithesis_instrumentation__.Notify(572493)
 	return false
 }
 
-// indexEntryBatch represents a "batch" of index entries which are constructed
-// and sent for ingestion. Breaking up the index entries into these batches
-// serves for better progress reporting as explained in the ingestIndexEntries
-// method.
 type indexEntryBatch struct {
 	indexEntries         []rowenc.IndexEntry
 	completedSpan        roachpb.Span
 	memUsedBuildingBatch int64
 }
 
-// constructIndexEntries is responsible for constructing the index entries of
-// all the spans assigned to the processor. It streams batches of constructed
-// index entries over the indexEntriesCh.
 func (ib *indexBackfiller) constructIndexEntries(
 	ctx context.Context, indexEntriesCh chan indexEntryBatch,
 ) error {
+	__antithesis_instrumentation__.Notify(572494)
 	var memUsedBuildingBatch int64
 	var err error
 	var entries []rowenc.IndexEntry
 	for i := range ib.spec.Spans {
+		__antithesis_instrumentation__.Notify(572496)
 		log.VEventf(ctx, 2, "index backfiller starting span %d of %d: %s",
 			i+1, len(ib.spec.Spans), ib.spec.Spans[i])
 		todo := ib.spec.Spans[i]
 		for todo.Key != nil {
+			__antithesis_instrumentation__.Notify(572497)
 			startKey := todo.Key
 			readAsOf := ib.spec.ReadAsOf
-			if readAsOf.IsEmpty() { // old gateway
+			if readAsOf.IsEmpty() {
+				__antithesis_instrumentation__.Notify(572502)
 				readAsOf = ib.spec.WriteAsOf
+			} else {
+				__antithesis_instrumentation__.Notify(572503)
 			}
+			__antithesis_instrumentation__.Notify(572498)
 			todo.Key, entries, memUsedBuildingBatch, err = ib.buildIndexEntryBatch(ctx, todo,
 				readAsOf)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(572504)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(572505)
 			}
+			__antithesis_instrumentation__.Notify(572499)
 
-			// Identify the Span for which we have constructed index entries. This is
-			// used for reporting progress and updating the job details.
 			completedSpan := ib.spec.Spans[i]
 			if todo.Key != nil {
+				__antithesis_instrumentation__.Notify(572506)
 				completedSpan.Key = startKey
 				completedSpan.EndKey = todo.Key
+			} else {
+				__antithesis_instrumentation__.Notify(572507)
 			}
+			__antithesis_instrumentation__.Notify(572500)
 
 			log.VEventf(ctx, 2, "index entries built for span %s", completedSpan)
 			indexBatch := indexEntryBatch{completedSpan: completedSpan, indexEntries: entries,
 				memUsedBuildingBatch: memUsedBuildingBatch}
-			// Send index entries to be ingested into storage.
+
 			select {
 			case indexEntriesCh <- indexBatch:
+				__antithesis_instrumentation__.Notify(572508)
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(572509)
 				return ctx.Err()
 			}
+			__antithesis_instrumentation__.Notify(572501)
 
 			knobs := ib.flowCtx.Cfg.TestingKnobs
-			// Block until the current index entry batch has been ingested. Ingested
-			// does not mean written to storage, unless we force a flush after every
-			// batch.
+
 			if knobs.SerializeIndexBackfillCreationAndIngestion != nil {
+				__antithesis_instrumentation__.Notify(572510)
 				<-knobs.SerializeIndexBackfillCreationAndIngestion
+			} else {
+				__antithesis_instrumentation__.Notify(572511)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(572495)
 
 	return nil
 }
 
-// ingestIndexEntries adds the batches of built index entries to the buffering
-// adder and reports progress back to the coordinator node.
 func (ib *indexBackfiller) ingestIndexEntries(
 	ctx context.Context,
 	indexEntryCh <-chan indexEntryBatch,
 	progCh chan execinfrapb.RemoteProducerMetadata_BulkProcessorProgress,
 ) error {
+	__antithesis_instrumentation__.Notify(572512)
 	ctx, span := tracing.ChildSpan(ctx, "ingestIndexEntries")
 	defer span.Finish()
 
 	minBufferSize := backfillerBufferSize.Get(&ib.flowCtx.Cfg.Settings.SV)
-	maxBufferSize := func() int64 { return backfillerMaxBufferSize.Get(&ib.flowCtx.Cfg.Settings.SV) }
+	maxBufferSize := func() int64 {
+		__antithesis_instrumentation__.Notify(572521)
+		return backfillerMaxBufferSize.Get(&ib.flowCtx.Cfg.Settings.SV)
+	}
+	__antithesis_instrumentation__.Notify(572513)
 	opts := kvserverbase.BulkAdderOptions{
 		Name:                     ib.desc.GetName() + " backfill",
 		MinBufferSize:            minBufferSize,
@@ -191,31 +203,32 @@ func (ib *indexBackfiller) ingestIndexEntries(
 	}
 	adder, err := ib.flowCtx.Cfg.BulkAdder(ctx, ib.flowCtx.Cfg.DB, ib.spec.WriteAsOf, opts)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(572522)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(572523)
 	}
+	__antithesis_instrumentation__.Notify(572514)
 	ib.adder = adder
 	defer ib.adder.Close(ctx)
 
-	// Synchronizes read and write access on completedSpans which is updated on a
-	// BulkAdder flush, but is read when progress is being sent back to the
-	// coordinator.
 	mu := struct {
 		syncutil.Mutex
 		completedSpans []roachpb.Span
 		addedSpans     []roachpb.Span
 	}{}
 
-	// When the bulk adder flushes, the spans which were previously marked as
-	// "added" can now be considered "completed", and be sent back to the
-	// coordinator node as part of the next progress report.
 	adder.SetOnFlush(func(_ roachpb.BulkOpSummary) {
+		__antithesis_instrumentation__.Notify(572524)
 		mu.Lock()
 		defer mu.Unlock()
 		mu.completedSpans = append(mu.completedSpans, mu.addedSpans...)
 		mu.addedSpans = nil
 	})
+	__antithesis_instrumentation__.Notify(572515)
 
 	pushProgress := func() {
+		__antithesis_instrumentation__.Notify(572525)
 		mu.Lock()
 		var prog execinfrapb.RemoteProducerMetadata_BulkProcessorProgress
 		prog.CompletedSpans = append(prog.CompletedSpans, mu.completedSpans...)
@@ -224,78 +237,108 @@ func (ib *indexBackfiller) ingestIndexEntries(
 
 		progCh <- prog
 	}
+	__antithesis_instrumentation__.Notify(572516)
 
-	// stopProgress will be closed when there is no more progress to report.
 	stopProgress := make(chan struct{})
 	g := ctxgroup.WithContext(ctx)
 	g.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(572526)
 		tick := time.NewTicker(ib.getProgressReportInterval())
 		defer tick.Stop()
 		done := ctx.Done()
 		for {
+			__antithesis_instrumentation__.Notify(572527)
 			select {
 			case <-done:
+				__antithesis_instrumentation__.Notify(572528)
 				return ctx.Err()
 			case <-stopProgress:
+				__antithesis_instrumentation__.Notify(572529)
 				return nil
 			case <-tick.C:
+				__antithesis_instrumentation__.Notify(572530)
 				pushProgress()
 			}
 		}
 	})
+	__antithesis_instrumentation__.Notify(572517)
 
 	g.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(572531)
 		defer close(stopProgress)
 
 		for indexBatch := range indexEntryCh {
+			__antithesis_instrumentation__.Notify(572533)
 			for _, indexEntry := range indexBatch.indexEntries {
+				__antithesis_instrumentation__.Notify(572537)
 				if err := ib.adder.Add(ctx, indexEntry.Key, indexEntry.Value.RawBytes); err != nil {
+					__antithesis_instrumentation__.Notify(572538)
 					return ib.wrapDupError(ctx, err)
+				} else {
+					__antithesis_instrumentation__.Notify(572539)
 				}
 			}
+			__antithesis_instrumentation__.Notify(572534)
 
-			// Once ALL the KVs for an indexBatch have been added, we can consider the
-			// span representing this indexBatch as "added". This span will be part of
-			// the set of completed spans on the next bulk adder flush.
 			mu.Lock()
 			mu.addedSpans = append(mu.addedSpans, indexBatch.completedSpan)
 			mu.Unlock()
 
-			// After the index KVs have been copied to the underlying BulkAdder, we can
-			// free the memory which was accounted when building the index entries of the
-			// current chunk.
 			indexBatch.indexEntries = nil
 			ib.ShrinkBoundAccount(ctx, indexBatch.memUsedBuildingBatch)
 
 			knobs := &ib.flowCtx.Cfg.TestingKnobs
 			if knobs.BulkAdderFlushesEveryBatch {
+				__antithesis_instrumentation__.Notify(572540)
 				if err := ib.adder.Flush(ctx); err != nil {
+					__antithesis_instrumentation__.Notify(572542)
 					return ib.wrapDupError(ctx, err)
+				} else {
+					__antithesis_instrumentation__.Notify(572543)
 				}
+				__antithesis_instrumentation__.Notify(572541)
 				pushProgress()
+			} else {
+				__antithesis_instrumentation__.Notify(572544)
 			}
+			__antithesis_instrumentation__.Notify(572535)
 
 			if knobs.RunAfterBackfillChunk != nil {
+				__antithesis_instrumentation__.Notify(572545)
 				knobs.RunAfterBackfillChunk()
+			} else {
+				__antithesis_instrumentation__.Notify(572546)
 			}
+			__antithesis_instrumentation__.Notify(572536)
 
-			// Unblock the index creation of the next batch once it has been ingested.
 			if knobs.SerializeIndexBackfillCreationAndIngestion != nil {
+				__antithesis_instrumentation__.Notify(572547)
 				knobs.SerializeIndexBackfillCreationAndIngestion <- struct{}{}
+			} else {
+				__antithesis_instrumentation__.Notify(572548)
 			}
 		}
+		__antithesis_instrumentation__.Notify(572532)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(572518)
 
 	if err := g.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(572549)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(572550)
 	}
+	__antithesis_instrumentation__.Notify(572519)
 
 	if err := ib.adder.Flush(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(572551)
 		return ib.wrapDupError(ctx, err)
+	} else {
+		__antithesis_instrumentation__.Notify(572552)
 	}
+	__antithesis_instrumentation__.Notify(572520)
 
-	// Push the final set of completed spans as progress.
 	pushProgress()
 
 	return nil
@@ -304,42 +347,56 @@ func (ib *indexBackfiller) ingestIndexEntries(
 func (ib *indexBackfiller) runBackfill(
 	ctx context.Context, progCh chan execinfrapb.RemoteProducerMetadata_BulkProcessorProgress,
 ) error {
-	// Used to send index entries to the KV layer.
+	__antithesis_instrumentation__.Notify(572553)
+
 	indexEntriesCh := make(chan indexEntryBatch, 10)
 
-	// This group holds the go routines that are responsible for producing index
-	// entries and ingesting the KVs into storage.
 	group := ctxgroup.WithContext(ctx)
 
-	// Construct index entries for the spans.
 	group.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(572557)
 		defer close(indexEntriesCh)
 		ctx, span := tracing.ChildSpan(ctx, "buildIndexEntries")
 		defer span.Finish()
 		err := ib.constructIndexEntries(ctx, indexEntriesCh)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(572559)
 			return errors.Wrap(err, "failed to construct index entries during backfill")
+		} else {
+			__antithesis_instrumentation__.Notify(572560)
 		}
+		__antithesis_instrumentation__.Notify(572558)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(572554)
 
-	// Ingest the index entries that are emitted to the chan.
 	group.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(572561)
 		err := ib.ingestIndexEntries(ctx, indexEntriesCh, progCh)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(572563)
 			return errors.Wrap(err, "failed to ingest index entries during backfill")
+		} else {
+			__antithesis_instrumentation__.Notify(572564)
 		}
+		__antithesis_instrumentation__.Notify(572562)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(572555)
 
 	if err := group.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(572565)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(572566)
 	}
+	__antithesis_instrumentation__.Notify(572556)
 
 	return nil
 }
 
 func (ib *indexBackfiller) Run(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(572567)
 	opName := "indexBackfillerProcessor"
 	ctx = logtags.AddTag(ctx, "job", ib.spec.JobID)
 	ctx = logtags.AddTag(ctx, opName, int(ib.spec.Table.ID))
@@ -353,46 +410,73 @@ func (ib *indexBackfiller) Run(ctx context.Context) {
 
 	semaCtx := tree.MakeSemaContext()
 	if err := ib.out.Init(&execinfrapb.PostProcessSpec{}, nil, &semaCtx, ib.flowCtx.NewEvalCtx()); err != nil {
+		__antithesis_instrumentation__.Notify(572571)
 		ib.output.Push(nil, &execinfrapb.ProducerMetadata{Err: err})
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(572572)
 	}
+	__antithesis_instrumentation__.Notify(572568)
 
 	var err error
-	// We don't have to worry about this go routine leaking because next we loop
-	// over progCh which is closed only after the go routine returns.
+
 	go func() {
+		__antithesis_instrumentation__.Notify(572573)
 		defer close(progCh)
 		err = ib.runBackfill(ctx, progCh)
 	}()
+	__antithesis_instrumentation__.Notify(572569)
 
 	for prog := range progCh {
-		// Take a copy so that we can send the progress address to the output processor.
+		__antithesis_instrumentation__.Notify(572574)
+
 		p := prog
 		if p.CompletedSpans != nil {
+			__antithesis_instrumentation__.Notify(572576)
 			log.VEventf(ctx, 2, "sending coordinator completed spans: %+v", p.CompletedSpans)
+		} else {
+			__antithesis_instrumentation__.Notify(572577)
 		}
+		__antithesis_instrumentation__.Notify(572575)
 		ib.output.Push(nil, &execinfrapb.ProducerMetadata{BulkProcessorProgress: &p})
 	}
+	__antithesis_instrumentation__.Notify(572570)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(572578)
 		ib.output.Push(nil, &execinfrapb.ProducerMetadata{Err: err})
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(572579)
 	}
 }
 
 func (ib *indexBackfiller) wrapDupError(ctx context.Context, orig error) error {
+	__antithesis_instrumentation__.Notify(572580)
 	if orig == nil {
+		__antithesis_instrumentation__.Notify(572584)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(572585)
 	}
+	__antithesis_instrumentation__.Notify(572581)
 	var typed *kvserverbase.DuplicateKeyError
 	if !errors.As(orig, &typed) {
+		__antithesis_instrumentation__.Notify(572586)
 		return orig
+	} else {
+		__antithesis_instrumentation__.Notify(572587)
 	}
+	__antithesis_instrumentation__.Notify(572582)
 
 	desc, err := ib.desc.MakeFirstMutationPublic(catalog.IncludeConstraints)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(572588)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(572589)
 	}
+	__antithesis_instrumentation__.Notify(572583)
 	v := &roachpb.Value{RawBytes: typed.Value}
 	return row.NewUniquenessConstraintViolationError(ctx, desc, typed.Key, v)
 }
@@ -400,25 +484,37 @@ func (ib *indexBackfiller) wrapDupError(ctx context.Context, orig error) error {
 const indexBackfillProgressReportInterval = 10 * time.Second
 
 func (ib *indexBackfiller) getProgressReportInterval() time.Duration {
+	__antithesis_instrumentation__.Notify(572590)
 	knobs := &ib.flowCtx.Cfg.TestingKnobs
 	if knobs.IndexBackfillProgressReportInterval > 0 {
+		__antithesis_instrumentation__.Notify(572592)
 		return knobs.IndexBackfillProgressReportInterval
+	} else {
+		__antithesis_instrumentation__.Notify(572593)
 	}
+	__antithesis_instrumentation__.Notify(572591)
 
 	return indexBackfillProgressReportInterval
 }
 
-// buildIndexEntryBatch constructs the index entries for a single indexBatch.
 func (ib *indexBackfiller) buildIndexEntryBatch(
 	tctx context.Context, sp roachpb.Span, readAsOf hlc.Timestamp,
 ) (roachpb.Key, []rowenc.IndexEntry, int64, error) {
+	__antithesis_instrumentation__.Notify(572594)
 	knobs := &ib.flowCtx.Cfg.TestingKnobs
 	var memUsedBuildingBatch int64
 	if knobs.RunBeforeBackfillChunk != nil {
+		__antithesis_instrumentation__.Notify(572597)
 		if err := knobs.RunBeforeBackfillChunk(sp); err != nil {
+			__antithesis_instrumentation__.Notify(572598)
 			return nil, nil, 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(572599)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(572600)
 	}
+	__antithesis_instrumentation__.Notify(572595)
 	var key roachpb.Key
 
 	ctx, traceSpan := tracing.ChildSpan(tctx, "indexBatch")
@@ -426,18 +522,26 @@ func (ib *indexBackfiller) buildIndexEntryBatch(
 	start := timeutil.Now()
 	var entries []rowenc.IndexEntry
 	if err := ib.flowCtx.Cfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(572601)
 		if err := txn.SetFixedTimestamp(ctx, readAsOf); err != nil {
+			__antithesis_instrumentation__.Notify(572603)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(572604)
 		}
+		__antithesis_instrumentation__.Notify(572602)
 
-		// TODO(knz): do KV tracing in DistSQL processors.
 		var err error
 		entries, key, memUsedBuildingBatch, err = ib.BuildIndexEntriesChunk(ctx, txn, ib.desc, sp,
-			ib.spec.ChunkSize, false /*traceKV*/)
+			ib.spec.ChunkSize, false)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(572605)
 		return nil, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(572606)
 	}
+	__antithesis_instrumentation__.Notify(572596)
 	prepTime := timeutil.Since(start)
 	log.VEventf(ctx, 3, "index backfill stats: entries %d, prepare %+v",
 		len(entries), prepTime)

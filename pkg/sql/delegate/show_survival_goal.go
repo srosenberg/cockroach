@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -18,13 +10,17 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
 )
 
-// delegateShowRanges implements the SHOW REGIONS statement.
 func (d *delegator) delegateShowSurvivalGoal(n *tree.ShowSurvivalGoal) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465799)
 	sqltelemetry.IncrementShowCounter(sqltelemetry.SurvivalGoal)
 	dbName := string(n.DatabaseName)
 	if dbName == "" {
+		__antithesis_instrumentation__.Notify(465801)
 		dbName = d.evalCtx.SessionData().Database
+	} else {
+		__antithesis_instrumentation__.Notify(465802)
 	}
+	__antithesis_instrumentation__.Notify(465800)
 	query := fmt.Sprintf(
 		`SELECT
 	name AS "database",

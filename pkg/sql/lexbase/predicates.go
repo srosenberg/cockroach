@@ -1,44 +1,55 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package lexbase
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"unicode"
 	"unicode/utf8"
 )
 
-// isASCII returns true if all the characters in s are ASCII.
 func isASCII(s string) bool {
+	__antithesis_instrumentation__.Notify(500176)
 	for _, c := range s {
+		__antithesis_instrumentation__.Notify(500178)
 		if c > unicode.MaxASCII {
+			__antithesis_instrumentation__.Notify(500179)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(500180)
 		}
 	}
+	__antithesis_instrumentation__.Notify(500177)
 	return true
 }
 
-// IsDigit returns true if the character is between 0 and 9.
 func IsDigit(ch int) bool {
-	return ch >= '0' && ch <= '9'
+	__antithesis_instrumentation__.Notify(500181)
+	return ch >= '0' && func() bool {
+		__antithesis_instrumentation__.Notify(500182)
+		return ch <= '9' == true
+	}() == true
 }
 
-// IsHexDigit returns true if the character is a valid hexadecimal digit.
 func IsHexDigit(ch int) bool {
-	return (ch >= '0' && ch <= '9') ||
-		(ch >= 'a' && ch <= 'f') ||
-		(ch >= 'A' && ch <= 'F')
+	__antithesis_instrumentation__.Notify(500183)
+	return (ch >= '0' && func() bool {
+		__antithesis_instrumentation__.Notify(500184)
+		return ch <= '9' == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(500185)
+		return (ch >= 'a' && func() bool {
+			__antithesis_instrumentation__.Notify(500186)
+			return ch <= 'f' == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(500187)
+		return (ch >= 'A' && func() bool {
+			__antithesis_instrumentation__.Notify(500188)
+			return ch <= 'F' == true
+		}() == true) == true
+	}() == true
 }
 
-// reservedOrLookaheadKeywords are the reserved keywords plus those keywords for
-// which we need one token of lookahead extra to determine their token type.
 var reservedOrLookaheadKeywords = make(map[string]struct{})
 
 func init() {
@@ -64,47 +75,96 @@ func init() {
 	}
 }
 
-// isReservedKeyword returns true if the keyword is reserved, or needs
-// one extra token of lookahead.
 func isReservedKeyword(s string) bool {
+	__antithesis_instrumentation__.Notify(500189)
 	_, ok := reservedOrLookaheadKeywords[s]
 	return ok
 }
 
-// IsBareIdentifier returns true if the input string is a permissible bare SQL
-// identifier.
 func IsBareIdentifier(s string) bool {
-	if len(s) == 0 || !IsIdentStart(int(s[0])) || (s[0] >= 'A' && s[0] <= 'Z') {
+	__antithesis_instrumentation__.Notify(500190)
+	if len(s) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(500193)
+		return !IsIdentStart(int(s[0])) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(500194)
+		return (s[0] >= 'A' && func() bool {
+			__antithesis_instrumentation__.Notify(500195)
+			return s[0] <= 'Z' == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(500196)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(500197)
 	}
-	// Keep track of whether the input string is all ASCII. If it is, we don't
-	// have to bother running the full Normalize() function at the end, which is
-	// quite expensive.
+	__antithesis_instrumentation__.Notify(500191)
+
 	isASCII := s[0] < utf8.RuneSelf
 	for i := 1; i < len(s); i++ {
+		__antithesis_instrumentation__.Notify(500198)
 		if !IsIdentMiddle(int(s[i])) {
+			__antithesis_instrumentation__.Notify(500201)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(500202)
 		}
-		if s[i] >= 'A' && s[i] <= 'Z' {
-			// Non-lowercase identifiers aren't permissible.
+		__antithesis_instrumentation__.Notify(500199)
+		if s[i] >= 'A' && func() bool {
+			__antithesis_instrumentation__.Notify(500203)
+			return s[i] <= 'Z' == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(500204)
+
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(500205)
 		}
+		__antithesis_instrumentation__.Notify(500200)
 		if s[i] >= utf8.RuneSelf {
+			__antithesis_instrumentation__.Notify(500206)
 			isASCII = false
+		} else {
+			__antithesis_instrumentation__.Notify(500207)
 		}
 	}
-	return isASCII || NormalizeName(s) == s
+	__antithesis_instrumentation__.Notify(500192)
+	return isASCII || func() bool {
+		__antithesis_instrumentation__.Notify(500208)
+		return NormalizeName(s) == s == true
+	}() == true
 }
 
-// IsIdentStart returns true if the character is valid at the start of an identifier.
 func IsIdentStart(ch int) bool {
-	return (ch >= 'A' && ch <= 'Z') ||
-		(ch >= 'a' && ch <= 'z') ||
-		(ch >= 128 && ch <= 255) ||
-		(ch == '_')
+	__antithesis_instrumentation__.Notify(500209)
+	return (ch >= 'A' && func() bool {
+		__antithesis_instrumentation__.Notify(500210)
+		return ch <= 'Z' == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(500211)
+		return (ch >= 'a' && func() bool {
+			__antithesis_instrumentation__.Notify(500212)
+			return ch <= 'z' == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(500213)
+		return (ch >= 128 && func() bool {
+			__antithesis_instrumentation__.Notify(500214)
+			return ch <= 255 == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(500215)
+		return (ch == '_') == true
+	}() == true
 }
 
-// IsIdentMiddle returns true if the character is valid inside an identifier.
 func IsIdentMiddle(ch int) bool {
-	return IsIdentStart(ch) || IsDigit(ch) || ch == '$'
+	__antithesis_instrumentation__.Notify(500216)
+	return IsIdentStart(ch) || func() bool {
+		__antithesis_instrumentation__.Notify(500217)
+		return IsDigit(ch) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(500218)
+		return ch == '$' == true
+	}() == true
 }

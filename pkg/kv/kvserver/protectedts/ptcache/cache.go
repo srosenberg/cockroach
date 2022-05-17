@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ptcache
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,7 +21,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Cache implements protectedts.Cache.
 type Cache struct {
 	db       *kv.DB
 	storage  protectedts.Storage
@@ -41,28 +32,21 @@ type Cache struct {
 
 		started bool
 
-		// Updated in doUpdate().
 		lastUpdate hlc.Timestamp
 		state      ptpb.State
 
-		// Updated in doUpdate but mutable. The records in the map are not mutated
-		// and should not be modified by any client.
 		recordsByID map[uuid.UUID]*ptpb.Record
-
-		// TODO(ajwerner): add a more efficient lookup structure such as an
-		// interval.Tree for Iterate.
 	}
 }
 
-// Config configures a Cache.
 type Config struct {
 	DB       *kv.DB
 	Storage  protectedts.Storage
 	Settings *cluster.Settings
 }
 
-// New returns a new cache.
 func New(config Config) *Cache {
+	__antithesis_instrumentation__.Notify(110406)
 	c := &Cache{
 		db:       config.DB,
 		storage:  config.Storage,
@@ -74,10 +58,10 @@ func New(config Config) *Cache {
 
 var _ protectedts.Cache = (*Cache)(nil)
 
-// Iterate is part of the protectedts.Cache interface.
 func (c *Cache) Iterate(
 	_ context.Context, from, to roachpb.Key, it protectedts.Iterator,
 ) (asOf hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(110407)
 	c.mu.RLock()
 	state, lastUpdate := c.mu.state, c.mu.lastUpdate
 	c.mu.RUnlock()
@@ -87,19 +71,28 @@ func (c *Cache) Iterate(
 		EndKey: to,
 	}
 	for i := range state.Records {
+		__antithesis_instrumentation__.Notify(110409)
 		r := &state.Records[i]
 		if !overlaps(r, sp) {
+			__antithesis_instrumentation__.Notify(110411)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(110412)
 		}
+		__antithesis_instrumentation__.Notify(110410)
 		if wantMore := it(r); !wantMore {
+			__antithesis_instrumentation__.Notify(110413)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(110414)
 		}
 	}
+	__antithesis_instrumentation__.Notify(110408)
 	return lastUpdate
 }
 
-// QueryRecord is part of the protectedts.Cache interface.
 func (c *Cache) QueryRecord(_ context.Context, id uuid.UUID) (exists bool, asOf hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(110415)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -107,49 +100,58 @@ func (c *Cache) QueryRecord(_ context.Context, id uuid.UUID) (exists bool, asOf 
 	return exists, c.mu.lastUpdate
 }
 
-// refreshKey is used for the singleflight.
 const refreshKey = ""
 
-// Refresh is part of the protectedts.Cache interface.
 func (c *Cache) Refresh(ctx context.Context, asOf hlc.Timestamp) error {
+	__antithesis_instrumentation__.Notify(110416)
 	for !c.upToDate(asOf) {
+		__antithesis_instrumentation__.Notify(110418)
 		ch, _ := c.sf.DoChan(refreshKey, c.doSingleFlightUpdate)
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(110419)
 			return ctx.Err()
 		case res := <-ch:
+			__antithesis_instrumentation__.Notify(110420)
 			if res.Err != nil {
+				__antithesis_instrumentation__.Notify(110421)
 				return res.Err
+			} else {
+				__antithesis_instrumentation__.Notify(110422)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(110417)
 	return nil
 }
 
-// GetProtectionTimestamps is part of the spanconfig.ProtectedTSReader
-// interface.
 func (c *Cache) GetProtectionTimestamps(
 	ctx context.Context, sp roachpb.Span,
 ) (protectionTimestamps []hlc.Timestamp, asOf hlc.Timestamp, err error) {
+	__antithesis_instrumentation__.Notify(110423)
 	readAt := c.Iterate(ctx,
 		sp.Key,
 		sp.EndKey,
 		func(rec *ptpb.Record) (wantMore bool) {
+			__antithesis_instrumentation__.Notify(110425)
 			protectionTimestamps = append(protectionTimestamps, rec.Timestamp)
 			return true
 		})
+	__antithesis_instrumentation__.Notify(110424)
 	return protectionTimestamps, readAt, nil
 }
 
-// Start starts the periodic fetching of the Cache. A Cache must not be used
-// until after it has been started. An error will be returned if it has
-// already been started.
 func (c *Cache) Start(ctx context.Context, stopper *stop.Stopper) error {
+	__antithesis_instrumentation__.Notify(110426)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.mu.started {
+		__antithesis_instrumentation__.Notify(110428)
 		return errors.New("cannot start a Cache more than once")
+	} else {
+		__antithesis_instrumentation__.Notify(110429)
 	}
+	__antithesis_instrumentation__.Notify(110427)
 	c.mu.started = true
 	c.stopper = stopper
 	return c.stopper.RunAsyncTask(ctx, "periodically-refresh-protectedts-cache",
@@ -157,52 +159,72 @@ func (c *Cache) Start(ctx context.Context, stopper *stop.Stopper) error {
 }
 
 func (c *Cache) periodicallyRefreshProtectedtsCache(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(110430)
 	settingChanged := make(chan struct{}, 1)
 	protectedts.PollInterval.SetOnChange(&c.settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(110432)
 		select {
 		case settingChanged <- struct{}{}:
+			__antithesis_instrumentation__.Notify(110433)
 		default:
+			__antithesis_instrumentation__.Notify(110434)
 		}
 	})
+	__antithesis_instrumentation__.Notify(110431)
 	timer := timeutil.NewTimer()
 	defer timer.Stop()
-	timer.Reset(0) // Read immediately upon startup
+	timer.Reset(0)
 	var lastReset time.Time
 	var doneCh <-chan singleflight.Result
-	// TODO(ajwerner): consider resetting the timer when the state is updated
-	// due to a call to Refresh.
+
 	for {
+		__antithesis_instrumentation__.Notify(110435)
 		select {
 		case <-timer.C:
-			// Let's not reset the timer until we get our response.
+			__antithesis_instrumentation__.Notify(110436)
+
 			timer.Read = true
 			doneCh, _ = c.sf.DoChan(refreshKey, c.doSingleFlightUpdate)
 		case <-settingChanged:
-			if timer.Read { // we're currently fetching
+			__antithesis_instrumentation__.Notify(110437)
+			if timer.Read {
+				__antithesis_instrumentation__.Notify(110442)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(110443)
 			}
+			__antithesis_instrumentation__.Notify(110438)
 			interval := protectedts.PollInterval.Get(&c.settings.SV)
-			// NB: It's okay if nextUpdate is a negative duration; timer.Reset will
-			// treat a negative duration as zero and send a notification immediately.
+
 			nextUpdate := interval - timeutil.Since(lastReset)
 			timer.Reset(nextUpdate)
 			lastReset = timeutil.Now()
 		case res := <-doneCh:
+			__antithesis_instrumentation__.Notify(110439)
 			if res.Err != nil {
+				__antithesis_instrumentation__.Notify(110444)
 				if ctx.Err() == nil {
+					__antithesis_instrumentation__.Notify(110445)
 					log.Errorf(ctx, "failed to refresh protected timestamps: %v", res.Err)
+				} else {
+					__antithesis_instrumentation__.Notify(110446)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(110447)
 			}
+			__antithesis_instrumentation__.Notify(110440)
 			timer.Reset(protectedts.PollInterval.Get(&c.settings.SV))
 			lastReset = timeutil.Now()
 		case <-c.stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(110441)
 			return
 		}
 	}
 }
 
 func (c *Cache) doSingleFlightUpdate() (interface{}, error) {
-	// TODO(ajwerner): add log tags to the context.
+	__antithesis_instrumentation__.Notify(110448)
+
 	ctx, cancel := c.stopper.WithCancelOnQuiesce(context.Background())
 	defer cancel()
 	return nil, c.stopper.RunTaskWithErr(ctx,
@@ -210,16 +232,15 @@ func (c *Cache) doSingleFlightUpdate() (interface{}, error) {
 }
 
 func (c *Cache) getMetadata() ptpb.Metadata {
+	__antithesis_instrumentation__.Notify(110449)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.mu.state.Metadata
 }
 
 func (c *Cache) doUpdate(ctx context.Context) error {
-	// NB: doUpdate is only ever called underneath c.singleFlight and thus is
-	// never called concurrently. Due to the lack of concurrency there are no
-	// concerns about races as this is the only method which writes to the Cache's
-	// state.
+	__antithesis_instrumentation__.Notify(110450)
+
 	prev := c.getMetadata()
 	var (
 		versionChanged bool
@@ -227,57 +248,91 @@ func (c *Cache) doUpdate(ctx context.Context) error {
 		ts             hlc.Timestamp
 	)
 	err := c.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
-		// NB: because this is a read-only transaction, the commit will be a no-op;
-		// returning nil here means the transaction will commit and will never need
-		// to change its read timestamp.
+		__antithesis_instrumentation__.Notify(110454)
+
 		defer func() {
+			__antithesis_instrumentation__.Notify(110459)
 			if err == nil {
+				__antithesis_instrumentation__.Notify(110460)
 				ts = txn.ReadTimestamp()
+			} else {
+				__antithesis_instrumentation__.Notify(110461)
 			}
 		}()
+		__antithesis_instrumentation__.Notify(110455)
 		md, err := c.storage.GetMetadata(ctx, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(110462)
 			return errors.Wrap(err, "failed to fetch protectedts metadata")
+		} else {
+			__antithesis_instrumentation__.Notify(110463)
 		}
+		__antithesis_instrumentation__.Notify(110456)
 		if versionChanged = md.Version != prev.Version; !versionChanged {
+			__antithesis_instrumentation__.Notify(110464)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(110465)
 		}
+		__antithesis_instrumentation__.Notify(110457)
 		if state, err = c.storage.GetState(ctx, txn); err != nil {
+			__antithesis_instrumentation__.Notify(110466)
 			return errors.Wrap(err, "failed to fetch protectedts state")
+		} else {
+			__antithesis_instrumentation__.Notify(110467)
 		}
+		__antithesis_instrumentation__.Notify(110458)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(110451)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(110468)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(110469)
 	}
+	__antithesis_instrumentation__.Notify(110452)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.mu.lastUpdate = ts
 	if versionChanged {
+		__antithesis_instrumentation__.Notify(110470)
 		c.mu.state = state
 		for id := range c.mu.recordsByID {
+			__antithesis_instrumentation__.Notify(110472)
 			delete(c.mu.recordsByID, id)
 		}
+		__antithesis_instrumentation__.Notify(110471)
 		for i := range state.Records {
+			__antithesis_instrumentation__.Notify(110473)
 			r := &state.Records[i]
 			c.mu.recordsByID[r.ID.GetUUID()] = r
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(110474)
 	}
+	__antithesis_instrumentation__.Notify(110453)
 	return nil
 }
 
-// upToDate returns true if the lastUpdate for the cache is at least asOf.
 func (c *Cache) upToDate(asOf hlc.Timestamp) bool {
+	__antithesis_instrumentation__.Notify(110475)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return asOf.LessEq(c.mu.lastUpdate)
 }
 
 func overlaps(r *ptpb.Record, sp roachpb.Span) bool {
+	__antithesis_instrumentation__.Notify(110476)
 	for i := range r.DeprecatedSpans {
+		__antithesis_instrumentation__.Notify(110478)
 		if r.DeprecatedSpans[i].Overlaps(sp) {
+			__antithesis_instrumentation__.Notify(110479)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(110480)
 		}
 	}
+	__antithesis_instrumentation__.Notify(110477)
 	return false
 }

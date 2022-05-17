@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -78,8 +70,6 @@ type cdcTestArgs struct {
 	whichSink          sinkType
 	sinkURI            string
 
-	// preStartStatements are executed after the workload is initialized but before the
-	// changefeed is created.
 	preStartStatements []string
 
 	targetInitialScanLatency time.Duration
@@ -88,7 +78,8 @@ type cdcTestArgs struct {
 }
 
 func cdcClusterSettings(t test.Test, db *sqlutils.SQLRunner) {
-	// kv.rangefeed.enabled is required for changefeeds to run
+	__antithesis_instrumentation__.Notify(46047)
+
 	db.Exec(t, "SET CLUSTER SETTING kv.rangefeed.enabled = true")
 	randomlyRun(t, db, "SET CLUSTER SETTING kv.rangefeed.catchup_scan_iterator_optimization.enabled = false")
 }
@@ -98,14 +89,19 @@ const randomSettingPercent = 0.50
 var rng, _ = randutil.NewTestRand()
 
 func randomlyRun(t test.Test, db *sqlutils.SQLRunner, query string) {
+	__antithesis_instrumentation__.Notify(46048)
 	if rng.Float64() < randomSettingPercent {
+		__antithesis_instrumentation__.Notify(46049)
 		db.Exec(t, query)
 		t.L().Printf("setting non-default cluster setting: %s", query)
+	} else {
+		__antithesis_instrumentation__.Notify(46050)
 	}
 
 }
 
 func cdcBasicTest(ctx context.Context, t test.Test, c cluster.Cluster, args cdcTestArgs) {
+	__antithesis_instrumentation__.Notify(46051)
 	crdbNodes := c.Range(1, c.Spec().NodeCount-1)
 	workloadNode := c.Node(c.Spec().NodeCount)
 	kafkaNode := c.Node(c.Spec().NodeCount)
@@ -125,68 +121,96 @@ func cdcBasicTest(ctx context.Context, t test.Test, c cluster.Cluster, args cdcT
 
 	var sinkURI string
 	if args.sinkURI != "" {
+		__antithesis_instrumentation__.Notify(46058)
 		sinkURI = args.sinkURI
-	} else if args.whichSink == cloudStorageSink {
-		ts := timeutil.Now().Format(`20060102150405`)
-		// cockroach-tmp is a multi-region bucket with a TTL to clean up old
-		// data.
-		sinkURI = `experimental-gs://cockroach-tmp/roachtest/` + ts + "?AUTH=implicit"
-	} else if args.whichSink == webhookSink {
-		// setup a sample cert for use by the mock sink
-		cert, certEncoded, err := cdctest.NewCACertBase64Encoded()
-		if err != nil {
-			t.Fatal(err)
-		}
-		sinkDest, err := cdctest.StartMockWebhookSink(cert)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		sinkDestHost, err := url.Parse(sinkDest.URL())
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		params := sinkDestHost.Query()
-		params.Set(changefeedbase.SinkParamCACert, certEncoded)
-		sinkDestHost.RawQuery = params.Encode()
-
-		sinkURI = fmt.Sprintf("webhook-%s", sinkDestHost.String())
-	} else if args.whichSink == pubsubSink {
-		sinkURI = changefeedccl.GcpScheme + `://cockroach-ephemeral` + "?AUTH=implicit&topic_name=pubsubSink-roachtest&region=us-east1"
 	} else {
-		t.Status("installing kafka")
-		kafka.install(ctx)
-		kafka.start(ctx)
-		sinkURI = kafka.sinkURL(ctx)
+		__antithesis_instrumentation__.Notify(46059)
+		if args.whichSink == cloudStorageSink {
+			__antithesis_instrumentation__.Notify(46060)
+			ts := timeutil.Now().Format(`20060102150405`)
+
+			sinkURI = `experimental-gs://cockroach-tmp/roachtest/` + ts + "?AUTH=implicit"
+		} else {
+			__antithesis_instrumentation__.Notify(46061)
+			if args.whichSink == webhookSink {
+				__antithesis_instrumentation__.Notify(46062)
+
+				cert, certEncoded, err := cdctest.NewCACertBase64Encoded()
+				if err != nil {
+					__antithesis_instrumentation__.Notify(46066)
+					t.Fatal(err)
+				} else {
+					__antithesis_instrumentation__.Notify(46067)
+				}
+				__antithesis_instrumentation__.Notify(46063)
+				sinkDest, err := cdctest.StartMockWebhookSink(cert)
+				if err != nil {
+					__antithesis_instrumentation__.Notify(46068)
+					t.Fatal(err)
+				} else {
+					__antithesis_instrumentation__.Notify(46069)
+				}
+				__antithesis_instrumentation__.Notify(46064)
+
+				sinkDestHost, err := url.Parse(sinkDest.URL())
+				if err != nil {
+					__antithesis_instrumentation__.Notify(46070)
+					t.Fatal(err)
+				} else {
+					__antithesis_instrumentation__.Notify(46071)
+				}
+				__antithesis_instrumentation__.Notify(46065)
+
+				params := sinkDestHost.Query()
+				params.Set(changefeedbase.SinkParamCACert, certEncoded)
+				sinkDestHost.RawQuery = params.Encode()
+
+				sinkURI = fmt.Sprintf("webhook-%s", sinkDestHost.String())
+			} else {
+				__antithesis_instrumentation__.Notify(46072)
+				if args.whichSink == pubsubSink {
+					__antithesis_instrumentation__.Notify(46073)
+					sinkURI = changefeedccl.GcpScheme + `://cockroach-ephemeral` + "?AUTH=implicit&topic_name=pubsubSink-roachtest&region=us-east1"
+				} else {
+					__antithesis_instrumentation__.Notify(46074)
+					t.Status("installing kafka")
+					kafka.install(ctx)
+					kafka.start(ctx)
+					sinkURI = kafka.sinkURL(ctx)
+				}
+			}
+		}
 	}
+	__antithesis_instrumentation__.Notify(46052)
 
 	m := c.NewMonitor(ctx, crdbNodes)
 	workloadCompleteCh := make(chan struct{}, 1)
 
 	workloadStart := timeutil.Now()
 	if args.workloadType == tpccWorkloadType {
+		__antithesis_instrumentation__.Notify(46075)
 		t.Status("installing TPCC")
 		tpcc := tpccWorkload{
 			sqlNodes:           crdbNodes,
 			workloadNodes:      workloadNode,
 			tpccWarehouseCount: args.tpccWarehouseCount,
-			// TolerateErrors if crdbChaos is true; otherwise, the workload will fail
-			// if it attempts to use the node which was brought down by chaos.
+
 			tolerateErrors: args.crdbChaos,
 		}
 
 		tpcc.install(ctx, c)
-		// TODO(dan,ajwerner): sleeping momentarily before running the workload
-		// mitigates errors like "error in newOrder: missing stock row" from tpcc.
+
 		time.Sleep(2 * time.Second)
 		t.Status("initiating workload")
 		m.Go(func(ctx context.Context) error {
-			defer func() { close(workloadCompleteCh) }()
+			__antithesis_instrumentation__.Notify(46076)
+			defer func() { __antithesis_instrumentation__.Notify(46078); close(workloadCompleteCh) }()
+			__antithesis_instrumentation__.Notify(46077)
 			tpcc.run(ctx, c, args.workloadDuration)
 			return nil
 		})
 	} else {
+		__antithesis_instrumentation__.Notify(46079)
 		t.Status("installing Ledger Workload")
 		lw := ledgerWorkload{
 			sqlNodes:      crdbNodes,
@@ -196,16 +220,23 @@ func cdcBasicTest(ctx context.Context, t test.Test, c cluster.Cluster, args cdcT
 
 		t.Status("initiating workload")
 		m.Go(func(ctx context.Context) error {
-			defer func() { close(workloadCompleteCh) }()
+			__antithesis_instrumentation__.Notify(46080)
+			defer func() { __antithesis_instrumentation__.Notify(46082); close(workloadCompleteCh) }()
+			__antithesis_instrumentation__.Notify(46081)
 			lw.run(ctx, c, args.workloadDuration)
 			return nil
 		})
 	}
+	__antithesis_instrumentation__.Notify(46053)
 
 	changefeedLogger, err := t.L().ChildLogger("changefeed")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46083)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46084)
 	}
+	__antithesis_instrumentation__.Notify(46054)
 	defer changefeedLogger.Close()
 	verifier := makeLatencyVerifier(
 		args.targetInitialScanLatency,
@@ -217,97 +248,127 @@ func cdcBasicTest(ctx context.Context, t test.Test, c cluster.Cluster, args cdcT
 	defer verifier.maybeLogLatencyHist()
 
 	m.Go(func(ctx context.Context) error {
-		// Some of the tests have a tight enough bound on targetSteadyLatency
-		// that the default for kv.closed_timestamp.target_duration means the
-		// changefeed is never considered sufficiently caught up. We could
-		// instead make targetSteadyLatency less aggressive, but it'd be nice to
-		// keep it where it is.
-		//
-		// TODO(ssd): As of 797819b35f5 this is actually increasing rather than decreasing
-		// the closed_timestamp.target_duration. We can probably remove this. However,
-		// as of 2021-04-20, we want to understand why this test has started failing more often
-		// before changing this.
+		__antithesis_instrumentation__.Notify(46085)
+
 		if _, err := db.Exec(
 			`SET CLUSTER SETTING kv.closed_timestamp.target_duration='10s'`,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(46092)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(46093)
 		}
+		__antithesis_instrumentation__.Notify(46086)
 
-		// With a target_duration of 10s, we won't see slow span logs from changefeeds untils we are > 100s
-		// behind, which is well above the 60s targetSteadyLatency we have in some tests.
 		if _, err := db.Exec(
 			`SET CLUSTER SETTING changefeed.slow_span_log_threshold='30s'`,
 		); err != nil {
-			// We don't hard fail here because, not all versions support this setting
+			__antithesis_instrumentation__.Notify(46094)
+
 			t.L().Printf("failed to set cluster setting: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(46095)
 		}
+		__antithesis_instrumentation__.Notify(46087)
 
 		for _, stmt := range args.preStartStatements {
+			__antithesis_instrumentation__.Notify(46096)
 			_, err := db.ExecContext(ctx, stmt)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(46097)
 				t.Fatalf("failed pre-start statement %q: %s", stmt, err.Error())
+			} else {
+				__antithesis_instrumentation__.Notify(46098)
 			}
 		}
+		__antithesis_instrumentation__.Notify(46088)
 
 		var targets string
 		if args.workloadType == tpccWorkloadType {
+			__antithesis_instrumentation__.Notify(46099)
 			targets = `tpcc.warehouse, tpcc.district, tpcc.customer, tpcc.history,
 			tpcc.order, tpcc.new_order, tpcc.item, tpcc.stock,
 			tpcc.order_line`
 		} else {
+			__antithesis_instrumentation__.Notify(46100)
 			targets = `ledger.customer, ledger.transaction, ledger.entry, ledger.session`
 		}
+		__antithesis_instrumentation__.Notify(46089)
 
 		jobID, err := createChangefeed(db, targets, sinkURI, args)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(46101)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(46102)
 		}
+		__antithesis_instrumentation__.Notify(46090)
 
 		info, err := getChangefeedInfo(db, jobID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(46103)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(46104)
 		}
+		__antithesis_instrumentation__.Notify(46091)
 		verifier.statementTime = info.statementTime
 		changefeedLogger.Printf("started changefeed at (%d) %s\n",
 			verifier.statementTime.UnixNano(), verifier.statementTime)
 		t.Status("watching changefeed")
 		return verifier.pollLatency(ctx, db, jobID, time.Second, workloadCompleteCh)
 	})
+	__antithesis_instrumentation__.Notify(46055)
 
 	if args.kafkaChaos {
+		__antithesis_instrumentation__.Notify(46105)
 		m.Go(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(46106)
 			period, downTime := 2*time.Minute, 20*time.Second
 			return kafka.chaosLoop(ctx, period, downTime, workloadCompleteCh)
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(46107)
 	}
+	__antithesis_instrumentation__.Notify(46056)
 
 	if args.crdbChaos {
+		__antithesis_instrumentation__.Notify(46108)
 		chaosDuration, err := time.ParseDuration(args.workloadDuration)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(46110)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(46111)
 		}
+		__antithesis_instrumentation__.Notify(46109)
 		ch := Chaos{
 			Timer:   Periodic{Period: 2 * time.Minute, DownTime: 20 * time.Second},
 			Target:  crdbNodes.RandNode,
 			Stopper: time.After(chaosDuration),
 		}
 		m.Go(ch.Runner(c, t, m))
+	} else {
+		__antithesis_instrumentation__.Notify(46112)
 	}
+	__antithesis_instrumentation__.Notify(46057)
 	m.Wait()
 
 	verifier.assertValid(t)
 	workloadEnd := timeutil.Now()
 	if args.targetTxnPerSecond > 0.0 {
+		__antithesis_instrumentation__.Notify(46113)
 		verifyTxnPerSecond(
 			ctx, c, t, crdbNodes.RandNode(), workloadStart, workloadEnd, args.targetTxnPerSecond, 0.05,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(46114)
 	}
 }
 
 func runCDCBank(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(46115)
 
-	// Make the logs dir on every node to work around the `roachprod get logs`
-	// spam.
 	c.Run(ctx, c.All(), `mkdir -p logs`)
 
 	crdbNodes, workloadNode, kafkaNode := c.Range(1, c.Spec().NodeCount-1), c.Node(c.Spec().NodeCount), c.Node(c.Spec().NodeCount)
@@ -321,19 +382,25 @@ func runCDCBank(ctx context.Context, t test.Test, c cluster.Cluster) {
 	}
 	kafka.install(ctx)
 	if !c.IsLocal() {
-		// TODO(dan): This test currently connects to kafka from the test
-		// runner, so kafka needs to advertise the external address. Better
-		// would be a binary we could run on one of the roachprod machines.
+		__antithesis_instrumentation__.Notify(46125)
+
 		c.Run(ctx, kafka.nodes, `echo "advertised.listeners=PLAINTEXT://`+kafka.consumerURL(ctx)+`" >> `+
 			filepath.Join(kafka.configDir(), "server.properties"))
+	} else {
+		__antithesis_instrumentation__.Notify(46126)
 	}
+	__antithesis_instrumentation__.Notify(46116)
 	kafka.start(ctx, "kafka")
 	defer kafka.stop(ctx)
 
 	t.Status("creating kafka topic")
 	if err := kafka.createTopic(ctx, "bank"); err != nil {
+		__antithesis_instrumentation__.Notify(46127)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46128)
 	}
+	__antithesis_instrumentation__.Notify(46117)
 
 	c.Run(ctx, workloadNode, `./workload init bank {pgurl:1}`)
 	db := c.Conn(ctx, t.L(), 1)
@@ -344,29 +411,44 @@ func runCDCBank(ctx context.Context, t test.Test, c cluster.Cluster) {
 	tdb.Exec(t, `SET CLUSTER SETTING changefeed.experimental_poll_interval = '10ms'`)
 	tdb.Exec(t, `SET CLUSTER SETTING kv.closed_timestamp.target_duration = '1s'`)
 
-	// NB: the WITH diff option was not supported until v20.1.
 	withDiff := t.IsBuildVersion("v20.1.0")
 	var opts = []string{`updated`, `resolved`}
 	if withDiff {
+		__antithesis_instrumentation__.Notify(46129)
 		opts = append(opts, `diff`)
+	} else {
+		__antithesis_instrumentation__.Notify(46130)
 	}
+	__antithesis_instrumentation__.Notify(46118)
 	var jobID string
 	if err := db.QueryRow(
 		`CREATE CHANGEFEED FOR bank.bank INTO $1 WITH `+strings.Join(opts, `, `), kafka.sinkURL(ctx),
 	).Scan(&jobID); err != nil {
+		__antithesis_instrumentation__.Notify(46131)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46132)
 	}
+	__antithesis_instrumentation__.Notify(46119)
 
 	tc, err := kafka.consumer(ctx, "bank")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46133)
 		t.Fatal(errors.Wrap(err, "could not create kafka consumer"))
+	} else {
+		__antithesis_instrumentation__.Notify(46134)
 	}
+	__antithesis_instrumentation__.Notify(46120)
 	defer tc.Close()
 
 	l, err := t.L().ChildLogger(`changefeed`)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46135)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46136)
 	}
+	__antithesis_instrumentation__.Notify(46121)
 	defer l.Close()
 
 	t.Status("running workload")
@@ -379,105 +461,175 @@ func runCDCBank(ctx context.Context, t test.Test, c cluster.Cluster) {
 	const requestedResolved = 100
 
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(46137)
 		err := c.RunE(ctx, workloadNode, `./workload run bank {pgurl:1} --max-rate=10`)
 		if atomic.LoadInt64(&doneAtomic) > 0 {
+			__antithesis_instrumentation__.Notify(46139)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(46140)
 		}
+		__antithesis_instrumentation__.Notify(46138)
 		return errors.Wrap(err, "workload failed")
 	})
+	__antithesis_instrumentation__.Notify(46122)
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(46141)
 		defer workloadCancel()
-		defer func() { close(messageBuf) }()
+		defer func() { __antithesis_instrumentation__.Notify(46144); close(messageBuf) }()
+		__antithesis_instrumentation__.Notify(46142)
 		v := cdctest.MakeCountValidator(cdctest.NoOpValidator)
 		for {
+			__antithesis_instrumentation__.Notify(46145)
 			m := tc.Next(ctx)
 			if m == nil {
+				__antithesis_instrumentation__.Notify(46148)
 				return fmt.Errorf("unexpected end of changefeed")
+			} else {
+				__antithesis_instrumentation__.Notify(46149)
 			}
+			__antithesis_instrumentation__.Notify(46146)
 			messageBuf <- m
 			updated, resolved, err := cdctest.ParseJSONValueTimestamps(m.Value)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(46150)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(46151)
 			}
+			__antithesis_instrumentation__.Notify(46147)
 
 			partitionStr := strconv.Itoa(int(m.Partition))
 			if len(m.Key) > 0 {
+				__antithesis_instrumentation__.Notify(46152)
 				if err := v.NoteRow(partitionStr, string(m.Key), string(m.Value), updated); err != nil {
+					__antithesis_instrumentation__.Notify(46153)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(46154)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(46155)
 				if err := v.NoteResolved(partitionStr, resolved); err != nil {
+					__antithesis_instrumentation__.Notify(46157)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(46158)
 				}
+				__antithesis_instrumentation__.Notify(46156)
 				l.Printf("%d of %d resolved timestamps received from kafka, latest is %s behind realtime, %s beind realtime when sent to kafka",
 					v.NumResolvedWithRows, requestedResolved, timeutil.Since(resolved.GoTime()), m.Timestamp.Sub(resolved.GoTime()))
 				if v.NumResolvedWithRows >= requestedResolved {
+					__antithesis_instrumentation__.Notify(46159)
 					atomic.StoreInt64(&doneAtomic, 1)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(46160)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(46143)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(46123)
 	m.Go(func(context.Context) error {
+		__antithesis_instrumentation__.Notify(46161)
 		if _, err := db.Exec(
 			`CREATE TABLE fprint (id INT PRIMARY KEY, balance INT, payload STRING)`,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(46167)
 			return errors.Wrap(err, "CREATE TABLE failed")
+		} else {
+			__antithesis_instrumentation__.Notify(46168)
 		}
+		__antithesis_instrumentation__.Notify(46162)
 
 		fprintV, err := cdctest.NewFingerprintValidator(db, `bank.bank`, `fprint`, tc.partitions, 0)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(46169)
 			return errors.Wrap(err, "error creating validator")
+		} else {
+			__antithesis_instrumentation__.Notify(46170)
 		}
+		__antithesis_instrumentation__.Notify(46163)
 		validators := cdctest.Validators{
 			cdctest.NewOrderValidator(`bank`),
 			fprintV,
 		}
 		if withDiff {
+			__antithesis_instrumentation__.Notify(46171)
 			baV, err := cdctest.NewBeforeAfterValidator(db, `bank.bank`)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(46173)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(46174)
 			}
+			__antithesis_instrumentation__.Notify(46172)
 			validators = append(validators, baV)
+		} else {
+			__antithesis_instrumentation__.Notify(46175)
 		}
+		__antithesis_instrumentation__.Notify(46164)
 		v := cdctest.MakeCountValidator(validators)
 		for {
+			__antithesis_instrumentation__.Notify(46176)
 			m, ok := <-messageBuf
 			if !ok {
+				__antithesis_instrumentation__.Notify(46179)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(46180)
 			}
+			__antithesis_instrumentation__.Notify(46177)
 			updated, resolved, err := cdctest.ParseJSONValueTimestamps(m.Value)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(46181)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(46182)
 			}
+			__antithesis_instrumentation__.Notify(46178)
 
 			partitionStr := strconv.Itoa(int(m.Partition))
 			if len(m.Key) > 0 {
+				__antithesis_instrumentation__.Notify(46183)
 				if err := v.NoteRow(partitionStr, string(m.Key), string(m.Value), updated); err != nil {
+					__antithesis_instrumentation__.Notify(46184)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(46185)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(46186)
 				if err := v.NoteResolved(partitionStr, resolved); err != nil {
+					__antithesis_instrumentation__.Notify(46188)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(46189)
 				}
+				__antithesis_instrumentation__.Notify(46187)
 				l.Printf("%d of %d resolved timestamps validated, latest is %s behind realtime",
 					v.NumResolvedWithRows, requestedResolved, timeutil.Since(resolved.GoTime()))
 
 			}
 		}
+		__antithesis_instrumentation__.Notify(46165)
 		if failures := v.Failures(); len(failures) > 0 {
+			__antithesis_instrumentation__.Notify(46190)
 			return errors.Newf("validator failures:\n%s", strings.Join(failures, "\n"))
+		} else {
+			__antithesis_instrumentation__.Notify(46191)
 		}
+		__antithesis_instrumentation__.Notify(46166)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(46124)
 	m.Wait()
 }
 
-// This test verifies that the changefeed avro + confluent schema registry works
-// end-to-end (including the schema registry default of requiring backward
-// compatibility within a topic).
 func runCDCSchemaRegistry(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(46192)
 
 	crdbNodes, kafkaNode := c.Node(1), c.Node(1)
 	c.Put(ctx, t.Cockroach(), "./cockroach", crdbNodes)
@@ -497,57 +649,95 @@ func runCDCSchemaRegistry(ctx context.Context, t test.Test, c cluster.Cluster) {
 	cdcClusterSettings(t, sqlutils.MakeSQLRunner(db))
 
 	if _, err := db.Exec(`CREATE TABLE foo (a INT PRIMARY KEY)`); err != nil {
+		__antithesis_instrumentation__.Notify(46207)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46208)
 	}
+	__antithesis_instrumentation__.Notify(46193)
 
-	// NB: the WITH diff option was not supported until v20.1.
 	withDiff := t.IsBuildVersion("v20.1.0")
 	var opts = []string{`updated`, `resolved`, `format=experimental_avro`, `confluent_schema_registry=$2`}
 	if withDiff {
+		__antithesis_instrumentation__.Notify(46209)
 		opts = append(opts, `diff`)
+	} else {
+		__antithesis_instrumentation__.Notify(46210)
 	}
+	__antithesis_instrumentation__.Notify(46194)
 	var jobID string
 	if err := db.QueryRow(
 		`CREATE CHANGEFEED FOR foo INTO $1 WITH `+strings.Join(opts, `, `),
 		kafka.sinkURL(ctx), kafka.schemaRegistryURL(ctx),
 	).Scan(&jobID); err != nil {
+		__antithesis_instrumentation__.Notify(46211)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46212)
 	}
+	__antithesis_instrumentation__.Notify(46195)
 
 	if _, err := db.Exec(`INSERT INTO foo VALUES (1)`); err != nil {
+		__antithesis_instrumentation__.Notify(46213)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46214)
 	}
+	__antithesis_instrumentation__.Notify(46196)
 	if _, err := db.Exec(`ALTER TABLE foo ADD COLUMN b STRING`); err != nil {
+		__antithesis_instrumentation__.Notify(46215)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46216)
 	}
+	__antithesis_instrumentation__.Notify(46197)
 	if _, err := db.Exec(`INSERT INTO foo VALUES (2, '2')`); err != nil {
+		__antithesis_instrumentation__.Notify(46217)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46218)
 	}
+	__antithesis_instrumentation__.Notify(46198)
 	if _, err := db.Exec(`ALTER TABLE foo ADD COLUMN c INT`); err != nil {
+		__antithesis_instrumentation__.Notify(46219)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46220)
 	}
+	__antithesis_instrumentation__.Notify(46199)
 	if _, err := db.Exec(`INSERT INTO foo VALUES (3, '3', 3)`); err != nil {
+		__antithesis_instrumentation__.Notify(46221)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46222)
 	}
+	__antithesis_instrumentation__.Notify(46200)
 	if _, err := db.Exec(`ALTER TABLE foo DROP COLUMN b`); err != nil {
+		__antithesis_instrumentation__.Notify(46223)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46224)
 	}
+	__antithesis_instrumentation__.Notify(46201)
 	if _, err := db.Exec(`INSERT INTO foo VALUES (4, 4)`); err != nil {
+		__antithesis_instrumentation__.Notify(46225)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46226)
 	}
+	__antithesis_instrumentation__.Notify(46202)
 
-	// There are various internal races and retries in changefeeds that can
-	// produce duplicates. This test is really only to verify that the confluent
-	// schema registry works end-to-end, so do the simplest thing and sort +
-	// unique the output, pulling more messages if we get a lot of duplicates
-	// or resolved messages.
 	updatedRE := regexp.MustCompile(`"updated":\{"string":"[^"]+"\}`)
 	updatedMap := make(map[string]struct{})
 	var resolved []string
 	pagesFetched := 0
 	pageSize := 14
 
-	for len(updatedMap) < 10 && pagesFetched < 5 {
+	for len(updatedMap) < 10 && func() bool {
+		__antithesis_instrumentation__.Notify(46227)
+		return pagesFetched < 5 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(46228)
 		result, err := c.RunWithDetailsSingleNode(ctx, t.L(), kafkaNode,
 			kafka.makeCommand("kafka-avro-console-consumer",
 				fmt.Sprintf("--offset=%d", pagesFetched*pageSize),
@@ -557,28 +747,44 @@ func runCDCSchemaRegistry(ctx context.Context, t test.Test, c cluster.Cluster) {
 				"--bootstrap-server=localhost:9092"))
 		t.L().Printf("\n%s\n", result.Stdout+result.Stderr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(46230)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(46231)
 		}
+		__antithesis_instrumentation__.Notify(46229)
 		pagesFetched++
 
 		for _, line := range strings.Split(result.Stdout, "\n") {
+			__antithesis_instrumentation__.Notify(46232)
 			if strings.Contains(line, `"updated"`) {
+				__antithesis_instrumentation__.Notify(46233)
 				line = updatedRE.ReplaceAllString(line, `"updated":{"string":""}`)
 				updatedMap[line] = struct{}{}
-			} else if strings.Contains(line, `"resolved"`) {
-				resolved = append(resolved, line)
+			} else {
+				__antithesis_instrumentation__.Notify(46234)
+				if strings.Contains(line, `"resolved"`) {
+					__antithesis_instrumentation__.Notify(46235)
+					resolved = append(resolved, line)
+				} else {
+					__antithesis_instrumentation__.Notify(46236)
+				}
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(46203)
 
 	updated := make([]string, 0, len(updatedMap))
 	for u := range updatedMap {
+		__antithesis_instrumentation__.Notify(46237)
 		updated = append(updated, u)
 	}
+	__antithesis_instrumentation__.Notify(46204)
 	sort.Strings(updated)
 
 	var expected []string
 	if withDiff {
+		__antithesis_instrumentation__.Notify(46238)
 		expected = []string{
 			`{"before":null,"after":{"foo":{"a":{"long":1}}},"updated":{"string":""}}`,
 			`{"before":null,"after":{"foo":{"a":{"long":2},"b":{"string":"2"}}},"updated":{"string":""}}`,
@@ -592,6 +798,7 @@ func runCDCSchemaRegistry(ctx context.Context, t test.Test, c cluster.Cluster) {
 			`{"before":{"foo_before":{"a":{"long":3},"c":{"long":3}}},"after":{"foo":{"a":{"long":3},"c":{"long":3}}},"updated":{"string":""}}`,
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(46239)
 		expected = []string{
 			`{"updated":{"string":""},"after":{"foo":{"a":{"long":1},"c":null}}}`,
 			`{"updated":{"string":""},"after":{"foo":{"a":{"long":1}}}}`,
@@ -602,21 +809,34 @@ func runCDCSchemaRegistry(ctx context.Context, t test.Test, c cluster.Cluster) {
 			`{"updated":{"string":""},"after":{"foo":{"a":{"long":4},"c":{"long":4}}}}`,
 		}
 	}
+	__antithesis_instrumentation__.Notify(46205)
 	if strings.Join(expected, "\n") != strings.Join(updated, "\n") {
+		__antithesis_instrumentation__.Notify(46240)
 		t.Fatalf("expected\n%s\n\ngot\n%s\n\n",
 			strings.Join(expected, "\n"), strings.Join(updated, "\n"))
+	} else {
+		__antithesis_instrumentation__.Notify(46241)
 	}
+	__antithesis_instrumentation__.Notify(46206)
 
 	if len(resolved) == 0 {
+		__antithesis_instrumentation__.Notify(46242)
 		t.Fatal(`expected at least 1 resolved timestamp`)
+	} else {
+		__antithesis_instrumentation__.Notify(46243)
 	}
 }
 
 func runCDCKafkaAuth(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(46244)
 	lastCrdbNode := c.Spec().NodeCount - 1
 	if lastCrdbNode == 0 {
+		__antithesis_instrumentation__.Notify(46246)
 		lastCrdbNode = 1
+	} else {
+		__antithesis_instrumentation__.Notify(46247)
 	}
+	__antithesis_instrumentation__.Notify(46245)
 
 	crdbNodes, kafkaNode := c.Range(1, lastCrdbNode), c.Node(c.Spec().NodeCount)
 	c.Put(ctx, t.Cockroach(), "./cockroach", crdbNodes)
@@ -677,21 +897,27 @@ func runCDCKafkaAuth(ctx context.Context, t test.Test, c cluster.Cluster) {
 
 	var jobID int
 	for _, f := range feeds {
+		__antithesis_instrumentation__.Notify(46248)
 		t.Status(f.desc)
 		row := db.QueryRow(`CREATE CHANGEFEED FOR auth_test_table INTO $1`, f.queryArg)
 		if err := row.Scan(&jobID); err != nil {
+			__antithesis_instrumentation__.Notify(46249)
 			t.Fatalf("%s: %s", f.desc, err.Error())
+		} else {
+			__antithesis_instrumentation__.Notify(46250)
 		}
 	}
 }
 
 func registerCDC(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(46251)
 	r.Add(registry.TestSpec{
 		Name:            "cdc/tpcc-1000",
 		Owner:           registry.OwnerCDC,
 		Cluster:         r.MakeClusterSpec(4, spec.CPU(16)),
 		RequiresLicense: true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(46261)
 			cdcBasicTest(ctx, t, c, cdcTestArgs{
 				workloadType:             tpccWorkloadType,
 				tpccWarehouseCount:       1000,
@@ -701,6 +927,7 @@ func registerCDC(r registry.Registry) {
 			})
 		},
 	})
+	__antithesis_instrumentation__.Notify(46252)
 	r.Add(registry.TestSpec{
 		Name:            "cdc/tpcc-1000/sink=null",
 		Owner:           registry.OwnerCDC,
@@ -708,6 +935,7 @@ func registerCDC(r registry.Registry) {
 		Tags:            []string{"manual"},
 		RequiresLicense: true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(46262)
 			cdcBasicTest(ctx, t, c, cdcTestArgs{
 				workloadType:             tpccWorkloadType,
 				tpccWarehouseCount:       1000,
@@ -718,12 +946,14 @@ func registerCDC(r registry.Registry) {
 			})
 		},
 	})
+	__antithesis_instrumentation__.Notify(46253)
 	r.Add(registry.TestSpec{
 		Name:            "cdc/initial-scan",
 		Owner:           registry.OwnerCDC,
 		Cluster:         r.MakeClusterSpec(4, spec.CPU(16)),
 		RequiresLicense: true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(46263)
 			cdcBasicTest(ctx, t, c, cdcTestArgs{
 				workloadType:             tpccWorkloadType,
 				tpccWarehouseCount:       100,
@@ -734,12 +964,14 @@ func registerCDC(r registry.Registry) {
 			})
 		},
 	})
+	__antithesis_instrumentation__.Notify(46254)
 	r.Add(registry.TestSpec{
 		Name:            "cdc/sink-chaos",
 		Owner:           `cdc`,
 		Cluster:         r.MakeClusterSpec(4, spec.CPU(16)),
 		RequiresLicense: true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(46264)
 			cdcBasicTest(ctx, t, c, cdcTestArgs{
 				workloadType:             tpccWorkloadType,
 				tpccWarehouseCount:       100,
@@ -750,39 +982,37 @@ func registerCDC(r registry.Registry) {
 			})
 		},
 	})
+	__antithesis_instrumentation__.Notify(46255)
 	r.Add(registry.TestSpec{
 		Name:            "cdc/crdb-chaos",
 		Owner:           `cdc`,
 		Cluster:         r.MakeClusterSpec(4, spec.CPU(16)),
 		RequiresLicense: true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(46265)
 			cdcBasicTest(ctx, t, c, cdcTestArgs{
 				workloadType:             tpccWorkloadType,
 				tpccWarehouseCount:       100,
 				workloadDuration:         "30m",
 				crdbChaos:                true,
 				targetInitialScanLatency: 3 * time.Minute,
-				// TODO(aayush): It should be okay to drop this as low as 2 to 3 minutes. See
-				// #36879 for some discussion.
+
 				targetSteadyLatency: 5 * time.Minute,
 			})
 		},
 	})
+	__antithesis_instrumentation__.Notify(46256)
 	r.Add(registry.TestSpec{
 		Name:  "cdc/ledger",
 		Owner: `cdc`,
-		// TODO(mrtracy): This workload is designed to be running on a 20CPU nodes,
-		// but this cannot be allocated without some sort of configuration outside
-		// of this test. Look into it.
+
 		Cluster:         r.MakeClusterSpec(4, spec.CPU(16)),
 		RequiresLicense: true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(46266)
 			cdcBasicTest(ctx, t, c, cdcTestArgs{
 				workloadType: ledgerWorkloadType,
-				// TODO(ssd): Range splits cause changefeed latencies to balloon
-				// because of catchup-scan performance. Reducing the test time and
-				// bumping the range_max_bytes avoids the split until we can improve
-				// catchup scan performance.
+
 				workloadDuration:         "28m",
 				initialScan:              true,
 				targetInitialScanLatency: 10 * time.Minute,
@@ -792,18 +1022,17 @@ func registerCDC(r registry.Registry) {
 			})
 		},
 	})
+	__antithesis_instrumentation__.Notify(46257)
 	r.Add(registry.TestSpec{
 		Name:            "cdc/cloud-sink-gcs/rangefeed=true",
 		Owner:           `cdc`,
 		Cluster:         r.MakeClusterSpec(4, spec.CPU(16)),
 		RequiresLicense: true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(46267)
 			cdcBasicTest(ctx, t, c, cdcTestArgs{
 				workloadType: tpccWorkloadType,
-				// Sending data to Google Cloud Storage is a bit slower than sending to
-				// Kafka on an adjacent machine, so use half the data of the
-				// initial-scan test. Consider adding a test that writes to nodelocal,
-				// which should be much faster, with a larger warehouse count.
+
 				tpccWarehouseCount:       50,
 				workloadDuration:         "30m",
 				initialScan:              true,
@@ -813,56 +1042,19 @@ func registerCDC(r registry.Registry) {
 			})
 		},
 	})
-	// TODO(zinger): uncomment once manual acceptance testing passes
-	// and whatever connectivity/provisioning issue happening here is fixed.
-	/* r.Add(registry.TestSpec{
-		Name:            "cdc/pubsub-sink",
-		Owner:           `cdc`,
-		Cluster:         r.MakeClusterSpec(4, spec.CPU(16)),
-		RequiresLicense: true,
-		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
-			cdcBasicTest(ctx, t, c, cdcTestArgs{
-				workloadType:             tpccWorkloadType,
-				tpccWarehouseCount:       1,
-				workloadDuration:         "30m",
-				initialScan:              true,
-				whichSink:                pubsubSink,
-				targetInitialScanLatency: 30 * time.Minute,
-				targetSteadyLatency:      time.Minute,
-			})
-		},
-	}) */
-	// TODO(zinger): uncomment once connectivity issue is fixed,
-	// currently fails with "initial scan did not complete" because sink
-	// URI is set as localhost, need to expose it to the other nodes via IP
-	/*
-		r.Add(testSpec{
-			Name:            "cdc/webhook-sink",
-			Owner:           OwnerCDC,
-			Cluster:         r.MakeClusterSpec(4, spec.CPU(16)),
-			RequiresLicense: true,
-			Run: func(ctx context.Context, t *test, c Cluster) {
-				cdcBasicTest(ctx, t, c, cdcTestArgs{
-					workloadType:             tpccWorkloadType,
-					tpccWarehouseCount:       100,
-					workloadDuration:         "30m",
-					initialScan:              true,
-					whichSink:                webhookSink,
-					targetInitialScanLatency: 30 * time.Minute,
-					targetSteadyLatency:      time.Minute,
-				})
-			},
-		})
-	*/
+	__antithesis_instrumentation__.Notify(46258)
+
 	r.Add(registry.TestSpec{
 		Name:            "cdc/kafka-auth",
 		Owner:           `cdc`,
 		Cluster:         r.MakeClusterSpec(1),
 		RequiresLicense: true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(46268)
 			runCDCKafkaAuth(ctx, t, c)
 		},
 	})
+	__antithesis_instrumentation__.Notify(46259)
 	r.Add(registry.TestSpec{
 		Name:            "cdc/bank",
 		Skip:            "#72904",
@@ -871,15 +1063,18 @@ func registerCDC(r registry.Registry) {
 		RequiresLicense: true,
 		Timeout:         30 * time.Minute,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(46269)
 			runCDCBank(ctx, t, c)
 		},
 	})
+	__antithesis_instrumentation__.Notify(46260)
 	r.Add(registry.TestSpec{
 		Name:            "cdc/schemareg",
 		Owner:           `cdc`,
 		Cluster:         r.MakeClusterSpec(1),
 		RequiresLicense: true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(46270)
 			runCDCSchemaRegistry(ctx, t, c)
 		},
 	})
@@ -889,10 +1084,6 @@ const (
 	certLifetime = 30 * 24 * time.Hour
 	keyLength    = 2048
 
-	// keystorePassword is the password for any Java KeyStore
-	// files we create. The tooling around keystores does not play
-	// nicely with passwordless keystores, so we use a wellknown
-	// password for testing.
 	keystorePassword = "storepassword"
 )
 
@@ -904,49 +1095,83 @@ type testCerts struct {
 }
 
 func (t *testCerts) CACertBase64() string {
+	__antithesis_instrumentation__.Notify(46271)
 	return base64.StdEncoding.EncodeToString([]byte(t.CACert))
 }
 
 func makeTestCerts(kafkaNodeIP string) (*testCerts, error) {
+	__antithesis_instrumentation__.Notify(46272)
 	CAKey, err := rsa.GenerateKey(rand.Reader, keyLength)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46281)
 		return nil, errors.Wrap(err, "CA private key")
+	} else {
+		__antithesis_instrumentation__.Notify(46282)
 	}
+	__antithesis_instrumentation__.Notify(46273)
 
 	KafkaKey, err := rsa.GenerateKey(rand.Reader, keyLength)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46283)
 		return nil, errors.Wrap(err, "kafka private key")
+	} else {
+		__antithesis_instrumentation__.Notify(46284)
 	}
+	__antithesis_instrumentation__.Notify(46274)
 
 	CACert, CACertSpec, err := generateCACert(CAKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46285)
 		return nil, errors.Wrap(err, "CA cert gen")
+	} else {
+		__antithesis_instrumentation__.Notify(46286)
 	}
+	__antithesis_instrumentation__.Notify(46275)
 
 	KafkaCert, err := generateKafkaCert(kafkaNodeIP, KafkaKey, CACertSpec, CAKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46287)
 		return nil, errors.Wrap(err, "kafka cert gen")
+	} else {
+		__antithesis_instrumentation__.Notify(46288)
 	}
+	__antithesis_instrumentation__.Notify(46276)
 
 	CAKeyPEM, err := pemEncodePrivateKey(CAKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46289)
 		return nil, errors.Wrap(err, "pem encode CA key")
+	} else {
+		__antithesis_instrumentation__.Notify(46290)
 	}
+	__antithesis_instrumentation__.Notify(46277)
 
 	CACertPEM, err := pemEncodeCert(CACert)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46291)
 		return nil, errors.Wrap(err, "pem encode CA cert")
+	} else {
+		__antithesis_instrumentation__.Notify(46292)
 	}
+	__antithesis_instrumentation__.Notify(46278)
 
 	KafkaKeyPEM, err := pemEncodePrivateKey(KafkaKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46293)
 		return nil, errors.Wrap(err, "pem encode kafka key")
+	} else {
+		__antithesis_instrumentation__.Notify(46294)
 	}
+	__antithesis_instrumentation__.Notify(46279)
 
 	KafkaCertPEM, err := pemEncodeCert(KafkaCert)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46295)
 		return nil, errors.Wrap(err, "pem encode kafka cert")
+	} else {
+		__antithesis_instrumentation__.Notify(46296)
 	}
+	__antithesis_instrumentation__.Notify(46280)
 
 	return &testCerts{
 		CACert:    CACertPEM,
@@ -959,15 +1184,24 @@ func makeTestCerts(kafkaNodeIP string) (*testCerts, error) {
 func generateKafkaCert(
 	kafkaIP string, priv *rsa.PrivateKey, CACert *x509.Certificate, CAKey *rsa.PrivateKey,
 ) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(46297)
 	ip := net.ParseIP(kafkaIP)
 	if ip == nil {
+		__antithesis_instrumentation__.Notify(46300)
 		return nil, fmt.Errorf("invalid IP address: %s", kafkaIP)
+	} else {
+		__antithesis_instrumentation__.Notify(46301)
 	}
+	__antithesis_instrumentation__.Notify(46298)
 
 	serial, err := randomSerial()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46302)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(46303)
 	}
+	__antithesis_instrumentation__.Notify(46299)
 
 	certSpec := &x509.Certificate{
 		SerialNumber: serial,
@@ -989,10 +1223,15 @@ func generateKafkaCert(
 }
 
 func generateCACert(priv *rsa.PrivateKey) ([]byte, *x509.Certificate, error) {
+	__antithesis_instrumentation__.Notify(46304)
 	serial, err := randomSerial()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46306)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(46307)
 	}
+	__antithesis_instrumentation__.Notify(46305)
 
 	certSpec := &x509.Certificate{
 		SerialNumber: serial,
@@ -1014,29 +1253,41 @@ func generateCACert(priv *rsa.PrivateKey) ([]byte, *x509.Certificate, error) {
 }
 
 func pemEncode(dataType string, data []byte) (string, error) {
+	__antithesis_instrumentation__.Notify(46308)
 	ret := new(strings.Builder)
 	err := pem.Encode(ret, &pem.Block{Type: dataType, Bytes: data})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46310)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(46311)
 	}
+	__antithesis_instrumentation__.Notify(46309)
 
 	return ret.String(), nil
 }
 
 func pemEncodePrivateKey(key *rsa.PrivateKey) (string, error) {
+	__antithesis_instrumentation__.Notify(46312)
 	return pemEncode("RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(key))
 }
 
 func pemEncodeCert(cert []byte) (string, error) {
+	__antithesis_instrumentation__.Notify(46313)
 	return pemEncode("CERTIFICATE", cert)
 }
 
 func randomSerial() (*big.Int, error) {
+	__antithesis_instrumentation__.Notify(46314)
 	limit := new(big.Int).Lsh(big.NewInt(1), 128)
 	ret, err := rand.Int(rand.Reader, limit)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46316)
 		return nil, errors.Wrap(err, "generate random serial")
+	} else {
+		__antithesis_instrumentation__.Notify(46317)
 	}
+	__antithesis_instrumentation__.Notify(46315)
 	return ret, nil
 }
 
@@ -1049,7 +1300,6 @@ const (
 	confluentCLIDownloadURLBase = "https://s3-us-west-2.amazonaws.com/confluent.cloud/confluent-cli/archives"
 )
 
-// TODO(ssd): Perhaps something like this could be a roachprod command?
 var confluentDownloadScript = fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
 
@@ -1144,20 +1394,6 @@ fi
 `, confluentDownloadURL, confluentSHA256, confluentInstallBase, confluentCLIVersion, confluentCLIDownloadURLBase)
 
 const (
-	// kafkaJAASConfig is a JAAS configuration file that creates a
-	// user called "plain" with password "plain-secret" that can
-	// authenticate via SASL/PLAIN.
-	//
-	// Users to test SCRAM authentication are added via
-	// kafka-config commands as their credentials are stored in
-	// zookeeper.
-	//
-	// Newer versions of confluent configure this directly in
-	// server.properties.
-	//
-	// This configuration file is used by the kafka-auth tests to
-	// enable TLS and SASL. Other tests use an empty file as they
-	// require no authentication.
 	kafkaJAASConfig = `
 KafkaServer {
    org.apache.kafka.common.security.plain.PlainLoginModule required
@@ -1172,11 +1408,6 @@ KafkaServer {
 };
 `
 
-	// kafkaConfigTmpl is a template for Kafka's server.properties
-	// configuration file. This template is used by the kafka-auth
-	// tests to enable TLS and SASL. Other tests uses the default
-	// configuration contained in the confluent archive we
-	// install.
 	kafkaConfigTmpl = `
 ssl.truststore.location=%s
 ssl.truststore.password=%s
@@ -1220,33 +1451,44 @@ type kafkaManager struct {
 }
 
 func (k kafkaManager) basePath() string {
+	__antithesis_instrumentation__.Notify(46318)
 	if k.c.IsLocal() {
+		__antithesis_instrumentation__.Notify(46320)
 		return `/tmp/confluent`
+	} else {
+		__antithesis_instrumentation__.Notify(46321)
 	}
+	__antithesis_instrumentation__.Notify(46319)
 	return `/mnt/data1/confluent`
 }
 
 func (k kafkaManager) confluentHome() string {
+	__antithesis_instrumentation__.Notify(46322)
 	return filepath.Join(k.basePath(), confluentInstallBase)
 }
 
 func (k kafkaManager) configDir() string {
+	__antithesis_instrumentation__.Notify(46323)
 	return filepath.Join(k.basePath(), confluentInstallBase, "etc/kafka")
 }
 
 func (k kafkaManager) binDir() string {
+	__antithesis_instrumentation__.Notify(46324)
 	return filepath.Join(k.basePath(), confluentInstallBase, "bin")
 }
 
 func (k kafkaManager) confluentBin() string {
+	__antithesis_instrumentation__.Notify(46325)
 	return filepath.Join(k.binDir(), "confluent")
 }
 
 func (k kafkaManager) serverJAASConfig() string {
+	__antithesis_instrumentation__.Notify(46326)
 	return filepath.Join(k.configDir(), "server_jaas.conf")
 }
 
 func (k kafkaManager) install(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(46327)
 	k.t.Status("installing kafka")
 	folder := k.basePath()
 
@@ -1255,52 +1497,73 @@ func (k kafkaManager) install(ctx context.Context) {
 	downloadScriptPath := filepath.Join(folder, "install.sh")
 	err := k.c.PutString(ctx, confluentDownloadScript, downloadScriptPath, 0700, k.nodes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46329)
 		k.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46330)
 	}
+	__antithesis_instrumentation__.Notify(46328)
 	k.c.Run(ctx, k.nodes, downloadScriptPath, folder)
 	if !k.c.IsLocal() {
+		__antithesis_instrumentation__.Notify(46331)
 		k.c.Run(ctx, k.nodes, `mkdir -p logs`)
 		if err := k.installJRE(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(46332)
 			k.t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(46333)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(46334)
 	}
 }
 
 func (k kafkaManager) installJRE(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(46335)
 	retryOpts := retry.Options{
 		InitialBackoff: 1 * time.Minute,
 		MaxBackoff:     5 * time.Minute,
 	}
 	return retry.WithMaxAttempts(ctx, retryOpts, 3, func() error {
+		__antithesis_instrumentation__.Notify(46336)
 		err := k.c.RunE(ctx, k.nodes, `sudo apt-get -q update 2>&1 > logs/apt-get-update.log`)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(46338)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(46339)
 		}
+		__antithesis_instrumentation__.Notify(46337)
 		return k.c.RunE(ctx, k.nodes, `sudo DEBIAN_FRONTEND=noninteractive apt-get -yq --no-install-recommends install openssl default-jre 2>&1 > logs/apt-get-install.log`)
 	})
 }
 
 func (k kafkaManager) configureAuth(ctx context.Context) *testCerts {
+	__antithesis_instrumentation__.Notify(46340)
 	k.t.Status("generating TLS certificates")
 	ips, err := k.c.InternalIP(ctx, k.t.L(), k.nodes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46343)
 		k.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46344)
 	}
+	__antithesis_instrumentation__.Notify(46341)
 	kafkaIP := ips[0]
 
 	testCerts, err := makeTestCerts(kafkaIP)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46345)
 		k.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46346)
 	}
+	__antithesis_instrumentation__.Notify(46342)
 
 	configDir := k.configDir()
-	// truststorePath is the path to our "truststore", a Java
-	// KeyStore that contains any CA certificates we want to
-	// trust.
+
 	truststorePath := filepath.Join(configDir, "kafka.truststore.jks")
-	// keyStorePath is the path to our "keystore", a Java KeyStore
-	// that contains the certificates and private keys that we
-	// will use to establish TLS connections.
+
 	keystorePath := filepath.Join(configDir, "kafka.keystore.jks")
 
 	caKeyPath := filepath.Join(configDir, "ca.key")
@@ -1329,7 +1592,7 @@ func (k kafkaManager) configureAuth(ctx context.Context) *testCerts {
 	k.PutConfigContent(ctx, kafkaJAASConfig, kafkaJAASPath)
 
 	k.t.Status("constructing java keystores")
-	// Convert PEM cert and key into pkcs12 bundle so that it can be imported into a java keystore.
+
 	k.c.Run(ctx, k.nodes,
 		fmt.Sprintf("openssl pkcs12 -export -in %s -inkey %s -name kafka -out %s -password pass:%s",
 			kafkaCertPath,
@@ -1361,13 +1624,18 @@ func (k kafkaManager) configureAuth(ctx context.Context) *testCerts {
 }
 
 func (k kafkaManager) PutConfigContent(ctx context.Context, data string, path string) {
+	__antithesis_instrumentation__.Notify(46347)
 	err := k.c.PutString(ctx, data, path, 0600, k.nodes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46348)
 		k.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46349)
 	}
 }
 
 func (k kafkaManager) addSCRAMUsers(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(46350)
 	k.t.Status("adding entries for SASL/SCRAM users")
 	k.c.Run(ctx, k.nodes, filepath.Join(k.binDir(), "kafka-configs"),
 		"--zookeeper", "localhost:2181",
@@ -1385,7 +1653,8 @@ func (k kafkaManager) addSCRAMUsers(ctx context.Context) {
 }
 
 func (k kafkaManager) start(ctx context.Context, services ...string) {
-	// This isn't necessary for the nightly tests, but it's nice for iteration.
+	__antithesis_instrumentation__.Notify(46351)
+
 	k.c.Run(ctx, k.nodes, k.makeCommand("confluent", "local destroy || true"))
 	k.restart(ctx, services...)
 }
@@ -1397,30 +1666,38 @@ var kafkaServices = map[string][]string{
 }
 
 func (k kafkaManager) kafkaServicesForTargets(targets []string) []string {
+	__antithesis_instrumentation__.Notify(46352)
 	var services []string
 	for _, tgt := range targets {
+		__antithesis_instrumentation__.Notify(46354)
 		if s, ok := kafkaServices[tgt]; ok {
+			__antithesis_instrumentation__.Notify(46355)
 			services = append(services, s...)
 		} else {
+			__antithesis_instrumentation__.Notify(46356)
 			k.t.Fatalf("unknown kafka start target %q", tgt)
 		}
 	}
+	__antithesis_instrumentation__.Notify(46353)
 	return services
 }
 
 func (k kafkaManager) restart(ctx context.Context, targetServices ...string) {
+	__antithesis_instrumentation__.Notify(46357)
 	var services []string
 	if len(targetServices) == 0 {
+		__antithesis_instrumentation__.Notify(46359)
 		services = kafkaServices["schema-registry"]
 	} else {
+		__antithesis_instrumentation__.Notify(46360)
 		services = k.kafkaServicesForTargets(targetServices)
 	}
+	__antithesis_instrumentation__.Notify(46358)
 
 	k.c.Run(ctx, k.nodes, "touch", k.serverJAASConfig())
 	for _, svcName := range services {
-		// The confluent tool applies the KAFKA_OPTS to all
-		// services. Also, the kafka.logs.dir is used by each
-		// service, despite the name.
+		__antithesis_instrumentation__.Notify(46361)
+
 		opts := fmt.Sprintf("-Djava.security.auth.login.config=%s -Dkafka.logs.dir=%s",
 			k.serverJAASConfig(),
 			fmt.Sprintf("logs/%s", svcName),
@@ -1438,6 +1715,7 @@ func (k kafkaManager) restart(ctx context.Context, targetServices ...string) {
 }
 
 func (k kafkaManager) makeCommand(exe string, args ...string) string {
+	__antithesis_instrumentation__.Notify(46362)
 	cmdPath := filepath.Join(k.binDir(), exe)
 	return fmt.Sprintf("CONFLUENT_CURRENT=%s CONFLUENT_HOME=%s %s %s",
 		k.basePath(),
@@ -1446,6 +1724,7 @@ func (k kafkaManager) makeCommand(exe string, args ...string) string {
 }
 
 func (k kafkaManager) stop(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(46363)
 	k.c.Run(ctx, k.nodes, fmt.Sprintf("rm -f %s", k.serverJAASConfig()))
 	k.c.Run(ctx, k.nodes, k.makeCommand("confluent", "local services stop"))
 }
@@ -1453,77 +1732,117 @@ func (k kafkaManager) stop(ctx context.Context) {
 func (k kafkaManager) chaosLoop(
 	ctx context.Context, period, downTime time.Duration, stopper chan struct{},
 ) error {
+	__antithesis_instrumentation__.Notify(46364)
 	t := time.NewTicker(period)
 	for {
+		__antithesis_instrumentation__.Notify(46365)
 		select {
 		case <-stopper:
+			__antithesis_instrumentation__.Notify(46368)
 			return nil
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(46369)
 			return ctx.Err()
 		case <-t.C:
+			__antithesis_instrumentation__.Notify(46370)
 		}
+		__antithesis_instrumentation__.Notify(46366)
 
 		k.stop(ctx)
 
 		select {
 		case <-stopper:
+			__antithesis_instrumentation__.Notify(46371)
 			return nil
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(46372)
 			return ctx.Err()
 		case <-time.After(downTime):
+			__antithesis_instrumentation__.Notify(46373)
 		}
+		__antithesis_instrumentation__.Notify(46367)
 
 		k.restart(ctx)
 	}
 }
 
 func (k kafkaManager) sinkURL(ctx context.Context) string {
+	__antithesis_instrumentation__.Notify(46374)
 	ips, err := k.c.InternalIP(ctx, k.t.L(), k.nodes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46376)
 		k.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46377)
 	}
+	__antithesis_instrumentation__.Notify(46375)
 	return `kafka://` + ips[0] + `:9092`
 }
 
 func (k kafkaManager) sinkURLTLS(ctx context.Context) string {
+	__antithesis_instrumentation__.Notify(46378)
 	ips, err := k.c.InternalIP(ctx, k.t.L(), k.nodes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46380)
 		k.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46381)
 	}
+	__antithesis_instrumentation__.Notify(46379)
 	return `kafka://` + ips[0] + `:9093`
 }
 
 func (k kafkaManager) sinkURLSASL(ctx context.Context) string {
+	__antithesis_instrumentation__.Notify(46382)
 	ips, err := k.c.InternalIP(ctx, k.t.L(), k.nodes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46384)
 		k.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46385)
 	}
+	__antithesis_instrumentation__.Notify(46383)
 	return `kafka://` + ips[0] + `:9094`
 }
 
 func (k kafkaManager) consumerURL(ctx context.Context) string {
+	__antithesis_instrumentation__.Notify(46386)
 	ips, err := k.c.ExternalIP(ctx, k.t.L(), k.nodes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46388)
 		k.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46389)
 	}
+	__antithesis_instrumentation__.Notify(46387)
 	return ips[0] + `:9092`
 }
 
 func (k kafkaManager) schemaRegistryURL(ctx context.Context) string {
+	__antithesis_instrumentation__.Notify(46390)
 	ips, err := k.c.InternalIP(ctx, k.t.L(), k.nodes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46392)
 		k.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(46393)
 	}
+	__antithesis_instrumentation__.Notify(46391)
 	return `http://` + ips[0] + `:8081`
 }
 
 func (k kafkaManager) createTopic(ctx context.Context, topic string) error {
+	__antithesis_instrumentation__.Notify(46394)
 	kafkaAddrs := []string{k.consumerURL(ctx)}
 	config := sarama.NewConfig()
 	admin, err := sarama.NewClusterAdmin(kafkaAddrs, config)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46396)
 		return errors.Wrap(err, "admin client")
+	} else {
+		__antithesis_instrumentation__.Notify(46397)
 	}
+	__antithesis_instrumentation__.Notify(46395)
 	return admin.CreateTopic(topic, &sarama.TopicDetail{
 		NumPartitions:     1,
 		ReplicationFactor: 1,
@@ -1531,24 +1850,28 @@ func (k kafkaManager) createTopic(ctx context.Context, topic string) error {
 }
 
 func (k kafkaManager) consumer(ctx context.Context, topic string) (*topicConsumer, error) {
+	__antithesis_instrumentation__.Notify(46398)
 	kafkaAddrs := []string{k.consumerURL(ctx)}
 	config := sarama.NewConfig()
-	// I was seeing "error processing FetchRequest: kafka: error decoding
-	// packet: unknown magic byte (2)" errors which
-	// https://github.com/Shopify/sarama/issues/962 identifies as the
-	// consumer's fetch size being less than the "max.message.bytes" that
-	// kafka is configured with. Kafka notes that this is required in
-	// https://kafka.apache.org/documentation.html#upgrade_11_message_format
+
 	config.Consumer.Fetch.Default = 1000012
 	consumer, err := sarama.NewConsumer(kafkaAddrs, config)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46401)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(46402)
 	}
+	__antithesis_instrumentation__.Notify(46399)
 	tc, err := makeTopicConsumer(consumer, topic)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46403)
 		_ = consumer.Close()
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(46404)
 	}
+	__antithesis_instrumentation__.Notify(46400)
 	return tc, nil
 }
 
@@ -1560,8 +1883,8 @@ type tpccWorkload struct {
 }
 
 func (tw *tpccWorkload) install(ctx context.Context, c cluster.Cluster) {
-	// For fixtures import, use the version built into the cockroach binary so
-	// the tpcc workload-versions match on release branches.
+	__antithesis_instrumentation__.Notify(46405)
+
 	c.Run(ctx, tw.workloadNodes, fmt.Sprintf(
 		`./cockroach workload fixtures import tpcc --warehouses=%d --checks=false {pgurl%s}`,
 		tw.tpccWarehouseCount,
@@ -1570,10 +1893,15 @@ func (tw *tpccWorkload) install(ctx context.Context, c cluster.Cluster) {
 }
 
 func (tw *tpccWorkload) run(ctx context.Context, c cluster.Cluster, workloadDuration string) {
+	__antithesis_instrumentation__.Notify(46406)
 	tolerateErrors := ""
 	if tw.tolerateErrors {
+		__antithesis_instrumentation__.Notify(46408)
 		tolerateErrors = "--tolerate-errors"
+	} else {
+		__antithesis_instrumentation__.Notify(46409)
 	}
+	__antithesis_instrumentation__.Notify(46407)
 	c.Run(ctx, tw.workloadNodes, fmt.Sprintf(
 		`./workload run tpcc --warehouses=%d --duration=%s %s {pgurl%s} `,
 		tw.tpccWarehouseCount, workloadDuration, tolerateErrors, tw.sqlNodes,
@@ -1586,6 +1914,7 @@ type ledgerWorkload struct {
 }
 
 func (lw *ledgerWorkload) install(ctx context.Context, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(46410)
 	c.Run(ctx, lw.workloadNodes.RandNode(), fmt.Sprintf(
 		`./workload init ledger {pgurl%s}`,
 		lw.sqlNodes.RandNode(),
@@ -1593,6 +1922,7 @@ func (lw *ledgerWorkload) install(ctx context.Context, c cluster.Cluster) {
 }
 
 func (lw *ledgerWorkload) run(ctx context.Context, c cluster.Cluster, workloadDuration string) {
+	__antithesis_instrumentation__.Notify(46411)
 	c.Run(ctx, lw.workloadNodes, fmt.Sprintf(
 		`./workload run ledger --mix=balance=0,withdrawal=50,deposit=50,reversal=0 {pgurl%s} --duration=%s`,
 		lw.sqlNodes,
@@ -1623,6 +1953,7 @@ func makeLatencyVerifier(
 	setTestStatus func(...interface{}),
 	tolerateErrors bool,
 ) *latencyVerifier {
+	__antithesis_instrumentation__.Notify(46412)
 	const sigFigs, minLatency, maxLatency = 1, 100 * time.Microsecond, 100 * time.Second
 	hist := hdrhistogram.New(minLatency.Nanoseconds(), maxLatency.Nanoseconds(), sigFigs)
 	return &latencyVerifier{
@@ -1637,94 +1968,161 @@ func makeLatencyVerifier(
 }
 
 func (lv *latencyVerifier) noteHighwater(highwaterTime time.Time) {
+	__antithesis_instrumentation__.Notify(46413)
 	if highwaterTime.Before(lv.statementTime) {
+		__antithesis_instrumentation__.Notify(46420)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(46421)
 	}
+	__antithesis_instrumentation__.Notify(46414)
 	if lv.initialScanLatency == 0 {
+		__antithesis_instrumentation__.Notify(46422)
 		lv.initialScanLatency = timeutil.Since(lv.statementTime)
 		lv.logger.Printf("initial scan completed: latency %s\n", lv.initialScanLatency)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(46423)
 	}
+	__antithesis_instrumentation__.Notify(46415)
 
 	latency := timeutil.Since(highwaterTime)
 	if latency < lv.targetSteadyLatency/2 {
+		__antithesis_instrumentation__.Notify(46424)
 		lv.latencyBecameSteady = true
+	} else {
+		__antithesis_instrumentation__.Notify(46425)
 	}
+	__antithesis_instrumentation__.Notify(46416)
 	if !lv.latencyBecameSteady {
-		// Before we have RangeFeed, the polls just get
-		// progressively smaller after the initial one. Start
-		// tracking the max latency once we seen a latency
-		// that's less than the max allowed. Verify at the end
-		// of the test that this happens at some point.
+		__antithesis_instrumentation__.Notify(46426)
+
 		if lv.maxSeenSteadyEveryN.ShouldLog() {
+			__antithesis_instrumentation__.Notify(46428)
 			lv.setTestStatus(fmt.Sprintf(
 				"watching changefeed: end-to-end latency %s not yet below target steady latency %s",
 				latency.Truncate(time.Millisecond), lv.targetSteadyLatency.Truncate(time.Millisecond)))
+		} else {
+			__antithesis_instrumentation__.Notify(46429)
 		}
+		__antithesis_instrumentation__.Notify(46427)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(46430)
 	}
+	__antithesis_instrumentation__.Notify(46417)
 	if err := lv.latencyHist.RecordValue(latency.Nanoseconds()); err != nil {
+		__antithesis_instrumentation__.Notify(46431)
 		lv.logger.Printf("could not record value %s: %s\n", latency, err)
+	} else {
+		__antithesis_instrumentation__.Notify(46432)
 	}
+	__antithesis_instrumentation__.Notify(46418)
 	if latency > lv.maxSeenSteadyLatency {
+		__antithesis_instrumentation__.Notify(46433)
 		lv.maxSeenSteadyLatency = latency
+	} else {
+		__antithesis_instrumentation__.Notify(46434)
 	}
+	__antithesis_instrumentation__.Notify(46419)
 	if lv.maxSeenSteadyEveryN.ShouldLog() {
+		__antithesis_instrumentation__.Notify(46435)
 		lv.setTestStatus(fmt.Sprintf(
 			"watching changefeed: end-to-end steady latency %s; max steady latency so far %s",
 			latency.Truncate(time.Millisecond), lv.maxSeenSteadyLatency.Truncate(time.Millisecond)))
+	} else {
+		__antithesis_instrumentation__.Notify(46436)
 	}
 }
 
 func (lv *latencyVerifier) pollLatency(
 	ctx context.Context, db *gosql.DB, jobID int, interval time.Duration, stopper chan struct{},
 ) error {
+	__antithesis_instrumentation__.Notify(46437)
 	for {
+		__antithesis_instrumentation__.Notify(46438)
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(46442)
 			return ctx.Err()
 		case <-stopper:
+			__antithesis_instrumentation__.Notify(46443)
 			return nil
 		case <-time.After(time.Second):
+			__antithesis_instrumentation__.Notify(46444)
 		}
+		__antithesis_instrumentation__.Notify(46439)
 
 		info, err := getChangefeedInfo(db, jobID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(46445)
 			if lv.tolerateErrors {
+				__antithesis_instrumentation__.Notify(46447)
 				lv.logger.Printf("error getting changefeed info: %s", err)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(46448)
 			}
+			__antithesis_instrumentation__.Notify(46446)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(46449)
 		}
+		__antithesis_instrumentation__.Notify(46440)
 		if info.status != `running` {
+			__antithesis_instrumentation__.Notify(46450)
 			lv.logger.Printf("unexpected status: %s, error: %s", info.status, info.errMsg)
 			return errors.Errorf(`unexpected status: %s`, info.status)
+		} else {
+			__antithesis_instrumentation__.Notify(46451)
 		}
+		__antithesis_instrumentation__.Notify(46441)
 		lv.noteHighwater(info.highwaterTime)
 	}
 }
 
 func (lv *latencyVerifier) assertValid(t test.Test) {
+	__antithesis_instrumentation__.Notify(46452)
 	if lv.initialScanLatency == 0 {
+		__antithesis_instrumentation__.Notify(46456)
 		t.Fatalf("initial scan did not complete")
+	} else {
+		__antithesis_instrumentation__.Notify(46457)
 	}
+	__antithesis_instrumentation__.Notify(46453)
 	if lv.initialScanLatency > lv.targetInitialScanLatency {
+		__antithesis_instrumentation__.Notify(46458)
 		t.Fatalf("initial scan latency was more than target: %s vs %s",
 			lv.initialScanLatency, lv.targetInitialScanLatency)
+	} else {
+		__antithesis_instrumentation__.Notify(46459)
 	}
+	__antithesis_instrumentation__.Notify(46454)
 	if !lv.latencyBecameSteady {
+		__antithesis_instrumentation__.Notify(46460)
 		t.Fatalf("latency never dropped to acceptable steady level: %s", lv.targetSteadyLatency)
+	} else {
+		__antithesis_instrumentation__.Notify(46461)
 	}
+	__antithesis_instrumentation__.Notify(46455)
 	if lv.maxSeenSteadyLatency > lv.targetSteadyLatency {
+		__antithesis_instrumentation__.Notify(46462)
 		t.Fatalf("max latency was more than allowed: %s vs %s",
 			lv.maxSeenSteadyLatency, lv.targetSteadyLatency)
+	} else {
+		__antithesis_instrumentation__.Notify(46463)
 	}
 }
 
 func (lv *latencyVerifier) maybeLogLatencyHist() {
+	__antithesis_instrumentation__.Notify(46464)
 	if lv.latencyHist == nil {
+		__antithesis_instrumentation__.Notify(46466)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(46467)
 	}
+	__antithesis_instrumentation__.Notify(46465)
 	lv.logger.Printf(
 		"changefeed end-to-end __avg(ms)__p50(ms)__p75(ms)__p90(ms)__p95(ms)__p99(ms)_pMax(ms)\n")
 	lv.logger.Printf("changefeed end-to-end  %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
@@ -1739,20 +2137,35 @@ func (lv *latencyVerifier) maybeLogLatencyHist() {
 }
 
 func createChangefeed(db *gosql.DB, targets, sinkURL string, args cdcTestArgs) (int, error) {
+	__antithesis_instrumentation__.Notify(46468)
 	var jobID int
 	createStmt := fmt.Sprintf(`CREATE CHANGEFEED FOR %s INTO $1`, targets)
 	extraArgs := []interface{}{sinkURL}
-	if args.whichSink == cloudStorageSink || args.whichSink == webhookSink {
+	if args.whichSink == cloudStorageSink || func() bool {
+		__antithesis_instrumentation__.Notify(46472)
+		return args.whichSink == webhookSink == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(46473)
 		createStmt += ` WITH resolved='10s', envelope=wrapped, min_checkpoint_frequency='10s'`
 	} else {
+		__antithesis_instrumentation__.Notify(46474)
 		createStmt += ` WITH resolved,  min_checkpoint_frequency='10s'`
 	}
+	__antithesis_instrumentation__.Notify(46469)
 	if !args.initialScan {
+		__antithesis_instrumentation__.Notify(46475)
 		createStmt += `, cursor='-1s'`
+	} else {
+		__antithesis_instrumentation__.Notify(46476)
 	}
+	__antithesis_instrumentation__.Notify(46470)
 	if err := db.QueryRow(createStmt, extraArgs...).Scan(&jobID); err != nil {
+		__antithesis_instrumentation__.Notify(46477)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(46478)
 	}
+	__antithesis_instrumentation__.Notify(46471)
 	return jobID, nil
 }
 
@@ -1764,27 +2177,44 @@ type changefeedInfo struct {
 }
 
 func getChangefeedInfo(db *gosql.DB, jobID int) (changefeedInfo, error) {
+	__antithesis_instrumentation__.Notify(46479)
 	var status string
 	var payloadBytes []byte
 	var progressBytes []byte
 	if err := db.QueryRow(
 		`SELECT status, payload, progress FROM system.jobs WHERE id = $1`, jobID,
 	).Scan(&status, &payloadBytes, &progressBytes); err != nil {
+		__antithesis_instrumentation__.Notify(46484)
 		return changefeedInfo{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(46485)
 	}
+	__antithesis_instrumentation__.Notify(46480)
 	var payload jobspb.Payload
 	if err := protoutil.Unmarshal(payloadBytes, &payload); err != nil {
+		__antithesis_instrumentation__.Notify(46486)
 		return changefeedInfo{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(46487)
 	}
+	__antithesis_instrumentation__.Notify(46481)
 	var progress jobspb.Progress
 	if err := protoutil.Unmarshal(progressBytes, &progress); err != nil {
+		__antithesis_instrumentation__.Notify(46488)
 		return changefeedInfo{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(46489)
 	}
+	__antithesis_instrumentation__.Notify(46482)
 	var highwaterTime time.Time
 	highwater := progress.GetHighWater()
 	if highwater != nil {
+		__antithesis_instrumentation__.Notify(46490)
 		highwaterTime = highwater.GoTime()
+	} else {
+		__antithesis_instrumentation__.Notify(46491)
 	}
+	__antithesis_instrumentation__.Notify(46483)
 	return changefeedInfo{
 		status:        status,
 		errMsg:        payload.Error,
@@ -1793,9 +2223,8 @@ func getChangefeedInfo(db *gosql.DB, jobID int) (changefeedInfo, error) {
 	}, nil
 }
 
-// stopFeeds cancels any running feeds on the cluster. Not necessary for the
-// nightly, but nice for development.
 func stopFeeds(db *gosql.DB) {
+	__antithesis_instrumentation__.Notify(46492)
 	_, _ = db.Exec(`CANCEL JOBS (
 			SELECT job_id FROM [SHOW JOBS] WHERE status = 'running'
 		)`)
@@ -1810,53 +2239,82 @@ type topicConsumer struct {
 }
 
 func makeTopicConsumer(c sarama.Consumer, topic string) (*topicConsumer, error) {
+	__antithesis_instrumentation__.Notify(46493)
 	t := &topicConsumer{Consumer: c, topic: topic}
 	partitions, err := t.Partitions(t.topic)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(46496)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(46497)
 	}
+	__antithesis_instrumentation__.Notify(46494)
 	for _, partition := range partitions {
+		__antithesis_instrumentation__.Notify(46498)
 		t.partitions = append(t.partitions, strconv.Itoa(int(partition)))
 		pc, err := t.ConsumePartition(topic, partition, sarama.OffsetOldest)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(46500)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(46501)
 		}
+		__antithesis_instrumentation__.Notify(46499)
 		t.partitionConsumers = append(t.partitionConsumers, pc)
 	}
+	__antithesis_instrumentation__.Notify(46495)
 	return t, nil
 }
 
 func (c *topicConsumer) tryNextMessage(ctx context.Context) *sarama.ConsumerMessage {
+	__antithesis_instrumentation__.Notify(46502)
 	for _, pc := range c.partitionConsumers {
+		__antithesis_instrumentation__.Notify(46504)
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(46505)
 			return nil
 		case m := <-pc.Messages():
+			__antithesis_instrumentation__.Notify(46506)
 			return m
 		default:
+			__antithesis_instrumentation__.Notify(46507)
 		}
 	}
+	__antithesis_instrumentation__.Notify(46503)
 	return nil
 }
 
 func (c *topicConsumer) Next(ctx context.Context) *sarama.ConsumerMessage {
+	__antithesis_instrumentation__.Notify(46508)
 	m := c.tryNextMessage(ctx)
 	for ; m == nil; m = c.tryNextMessage(ctx) {
+		__antithesis_instrumentation__.Notify(46510)
 		if ctx.Err() != nil {
+			__antithesis_instrumentation__.Notify(46511)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(46512)
 		}
 	}
+	__antithesis_instrumentation__.Notify(46509)
 	return m
 }
 
 func (c *topicConsumer) Close() {
+	__antithesis_instrumentation__.Notify(46513)
 	for _, pc := range c.partitionConsumers {
+		__antithesis_instrumentation__.Notify(46515)
 		pc.AsyncClose()
-		// Drain the messages and errors as required by AsyncClose.
+
 		for range pc.Messages() {
+			__antithesis_instrumentation__.Notify(46517)
 		}
+		__antithesis_instrumentation__.Notify(46516)
 		for range pc.Errors() {
+			__antithesis_instrumentation__.Notify(46518)
 		}
 	}
+	__antithesis_instrumentation__.Notify(46514)
 	_ = c.Consumer.Close()
 }

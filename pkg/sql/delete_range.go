@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -25,31 +17,15 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// deleteRangeNode implements DELETE on a primary index satisfying certain
-// conditions that permit the direct use of the DeleteRange kv operation,
-// instead of many point deletes.
-//
-// Note: deleteRangeNode can't autocommit in the general case, because it has to
-// delete in batches, and it won't know whether or not there is more work to do
-// until after a batch is returned. This property precludes using auto commit.
-// However, if the optimizer can prove that only a small number of rows will
-// be deleted, it'll enable autoCommit for delete range.
 type deleteRangeNode struct {
-	// spans are the spans to delete.
 	spans roachpb.Spans
-	// desc is the table descriptor the delete is operating on.
+
 	desc catalog.TableDescriptor
-	// fetcher is around to decode the returned keys from the DeleteRange, so that
-	// we can count the number of rows deleted.
+
 	fetcher row.Fetcher
 
-	// autoCommitEnabled is set to true if the optimizer proved that we can safely
-	// use autocommit - so that the number of possible returned keys from this
-	// operation is low. If this is true, we won't attempt to run the delete in
-	// batches and will just send one big delete with a commit statement attached.
 	autoCommitEnabled bool
 
-	// rowCount will be set to the count of rows deleted.
 	rowCount int
 }
 
@@ -58,164 +34,212 @@ var _ planNodeFastPath = &deleteRangeNode{}
 var _ batchedPlanNode = &deleteRangeNode{}
 var _ mutationPlanNode = &deleteRangeNode{}
 
-// BatchedNext implements the batchedPlanNode interface.
 func (d *deleteRangeNode) BatchedNext(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(465956)
 	return false, nil
 }
 
-// BatchedCount implements the batchedPlanNode interface.
 func (d *deleteRangeNode) BatchedCount() int {
+	__antithesis_instrumentation__.Notify(465957)
 	return d.rowCount
 }
 
-// BatchedValues implements the batchedPlanNode interface.
 func (d *deleteRangeNode) BatchedValues(rowIdx int) tree.Datums {
+	__antithesis_instrumentation__.Notify(465958)
 	panic("invalid")
 }
 
-// FastPathResults implements the planNodeFastPath interface.
 func (d *deleteRangeNode) FastPathResults() (int, bool) {
+	__antithesis_instrumentation__.Notify(465959)
 	return d.rowCount, true
 }
 
 func (d *deleteRangeNode) rowsWritten() int64 {
+	__antithesis_instrumentation__.Notify(465960)
 	return int64(d.rowCount)
 }
 
-// startExec implements the planNode interface.
 func (d *deleteRangeNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(465961)
 	if err := params.p.cancelChecker.Check(); err != nil {
+		__antithesis_instrumentation__.Notify(465966)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465967)
 	}
+	__antithesis_instrumentation__.Notify(465962)
 
-	// Configure the fetcher, which is only used to decode the returned keys from
-	// the DeleteRange, and is never used to actually fetch kvs.
 	var spec descpb.IndexFetchSpec
 	if err := rowenc.InitIndexFetchSpec(
-		&spec, params.ExecCfg().Codec, d.desc, d.desc.GetPrimaryIndex(), nil, /* columnIDs */
+		&spec, params.ExecCfg().Codec, d.desc, d.desc.GetPrimaryIndex(), nil,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(465968)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465969)
 	}
+	__antithesis_instrumentation__.Notify(465963)
 	if err := d.fetcher.Init(
 		params.ctx,
-		false, /* reverse */
+		false,
 		descpb.ScanLockingStrength_FOR_NONE,
 		descpb.ScanLockingWaitPolicy_BLOCK,
-		0, /* lockTimeout */
+		0,
 		params.p.alloc,
-		nil, /* memMonitor */
+		nil,
 		&spec,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(465970)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(465971)
 	}
+	__antithesis_instrumentation__.Notify(465964)
 
 	ctx := params.ctx
 	log.VEvent(ctx, 2, "fast delete: skipping scan")
 	spans := make([]roachpb.Span, len(d.spans))
 	copy(spans, d.spans)
 	if !d.autoCommitEnabled {
-		// Without autocommit, we're going to run each batch one by one, respecting
-		// a max span request keys size. We use spans as a queue of spans to delete.
-		// It'll be edited if there are any resume spans encountered (if any request
-		// hits the key limit).
+		__antithesis_instrumentation__.Notify(465972)
+
 		for len(spans) != 0 {
+			__antithesis_instrumentation__.Notify(465973)
 			b := params.p.txn.NewBatch()
 			b.Header.MaxSpanRequestKeys = row.TableTruncateChunkSize
 			b.Header.LockTimeout = params.SessionData().LockTimeout
 			d.deleteSpans(params, b, spans)
 			if err := params.p.txn.Run(ctx, b); err != nil {
+				__antithesis_instrumentation__.Notify(465975)
 				return row.ConvertBatchError(ctx, d.desc, b)
+			} else {
+				__antithesis_instrumentation__.Notify(465976)
 			}
+			__antithesis_instrumentation__.Notify(465974)
 
 			spans = spans[:0]
 			var err error
 			if spans, err = d.processResults(b.Results, spans); err != nil {
+				__antithesis_instrumentation__.Notify(465977)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(465978)
 			}
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(465979)
 		log.Event(ctx, "autocommit enabled")
-		// With autocommit, we're going to run the deleteRange in a single batch
-		// without a limit, since limits and deleteRange aren't compatible with 1pc
-		// transactions / autocommit. This isn't inherently safe, because without a
-		// limit, this command could technically use up unlimited memory. However,
-		// the optimizer only enables autoCommit if the maximum possible number of
-		// keys to delete in this command are low, so we're made safe.
+
 		b := params.p.txn.NewBatch()
 		b.Header.LockTimeout = params.SessionData().LockTimeout
 		d.deleteSpans(params, b, spans)
 		if err := params.p.txn.CommitInBatch(ctx, b); err != nil {
+			__antithesis_instrumentation__.Notify(465981)
 			return row.ConvertBatchError(ctx, d.desc, b)
+		} else {
+			__antithesis_instrumentation__.Notify(465982)
 		}
-		if resumeSpans, err := d.processResults(b.Results, nil /* resumeSpans */); err != nil {
+		__antithesis_instrumentation__.Notify(465980)
+		if resumeSpans, err := d.processResults(b.Results, nil); err != nil {
+			__antithesis_instrumentation__.Notify(465983)
 			return err
-		} else if len(resumeSpans) != 0 {
-			// This shouldn't ever happen - we didn't pass a limit into the batch.
-			return errors.AssertionFailedf("deleteRange without a limit unexpectedly returned resumeSpans")
+		} else {
+			__antithesis_instrumentation__.Notify(465984)
+			if len(resumeSpans) != 0 {
+				__antithesis_instrumentation__.Notify(465985)
+
+				return errors.AssertionFailedf("deleteRange without a limit unexpectedly returned resumeSpans")
+			} else {
+				__antithesis_instrumentation__.Notify(465986)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(465965)
 
-	// Possibly initiate a run of CREATE STATISTICS.
 	params.ExecCfg().StatsRefresher.NotifyMutation(d.desc, d.rowCount)
 
 	return nil
 }
 
-// deleteSpans adds each input span to a DelRange command in the given batch.
 func (d *deleteRangeNode) deleteSpans(params runParams, b *kv.Batch, spans roachpb.Spans) {
+	__antithesis_instrumentation__.Notify(465987)
 	ctx := params.ctx
 	traceKV := params.p.ExtendedEvalContext().Tracing.KVTracingEnabled()
 	for _, span := range spans {
+		__antithesis_instrumentation__.Notify(465988)
 		if traceKV {
+			__antithesis_instrumentation__.Notify(465990)
 			log.VEventf(ctx, 2, "DelRange %s - %s", span.Key, span.EndKey)
+		} else {
+			__antithesis_instrumentation__.Notify(465991)
 		}
-		b.DelRange(span.Key, span.EndKey, true /* returnKeys */)
+		__antithesis_instrumentation__.Notify(465989)
+		b.DelRange(span.Key, span.EndKey, true)
 	}
 }
 
-// processResults parses the results of a DelRangeResponse, incrementing the
-// rowCount we're going to return for each row. If any resume spans are
-// encountered during result processing, they're appended to the resumeSpans
-// input parameter.
 func (d *deleteRangeNode) processResults(
 	results []kv.Result, resumeSpans []roachpb.Span,
 ) (roachpb.Spans, error) {
+	__antithesis_instrumentation__.Notify(465992)
 	for _, r := range results {
+		__antithesis_instrumentation__.Notify(465994)
 		var prev []byte
 		for _, keyBytes := range r.Keys {
-			// If prefix is same, don't bother decoding key.
-			if len(prev) > 0 && bytes.HasPrefix(keyBytes, prev) {
+			__antithesis_instrumentation__.Notify(465996)
+
+			if len(prev) > 0 && func() bool {
+				__antithesis_instrumentation__.Notify(465999)
+				return bytes.HasPrefix(keyBytes, prev) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(466000)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(466001)
 			}
+			__antithesis_instrumentation__.Notify(465997)
 
 			after, _, err := d.fetcher.DecodeIndexKey(keyBytes)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(466002)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(466003)
 			}
+			__antithesis_instrumentation__.Notify(465998)
 			k := keyBytes[:len(keyBytes)-len(after)]
 			if !bytes.Equal(k, prev) {
+				__antithesis_instrumentation__.Notify(466004)
 				prev = k
 				d.rowCount++
+			} else {
+				__antithesis_instrumentation__.Notify(466005)
 			}
 		}
-		if r.ResumeSpan != nil && r.ResumeSpan.Valid() {
+		__antithesis_instrumentation__.Notify(465995)
+		if r.ResumeSpan != nil && func() bool {
+			__antithesis_instrumentation__.Notify(466006)
+			return r.ResumeSpan.Valid() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(466007)
 			resumeSpans = append(resumeSpans, *r.ResumeSpan)
+		} else {
+			__antithesis_instrumentation__.Notify(466008)
 		}
 	}
+	__antithesis_instrumentation__.Notify(465993)
 	return resumeSpans, nil
 }
 
-// Next implements the planNode interface.
 func (*deleteRangeNode) Next(params runParams) (bool, error) {
-	// TODO(radu): this shouldn't be used, but it gets called when a cascade uses
-	// delete-range. Investigate this.
+	__antithesis_instrumentation__.Notify(466009)
+
 	return false, nil
 }
 
-// Values implements the planNode interface.
 func (*deleteRangeNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(466010)
 	panic("invalid")
 }
 
-// Close implements the planNode interface.
-func (*deleteRangeNode) Close(ctx context.Context) {}
+func (*deleteRangeNode) Close(ctx context.Context) { __antithesis_instrumentation__.Notify(466011) }

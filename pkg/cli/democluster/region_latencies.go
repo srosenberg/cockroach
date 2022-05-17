@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package democluster
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 type regionPair struct {
 	regionA string
@@ -18,15 +10,19 @@ type regionPair struct {
 var regionToRegionToLatency map[string]map[string]int
 
 func insertPair(pair regionPair, latency int) {
+	__antithesis_instrumentation__.Notify(32468)
 	regionToLatency, ok := regionToRegionToLatency[pair.regionA]
 	if !ok {
+		__antithesis_instrumentation__.Notify(32470)
 		regionToLatency = make(map[string]int)
 		regionToRegionToLatency[pair.regionA] = regionToLatency
+	} else {
+		__antithesis_instrumentation__.Notify(32471)
 	}
+	__antithesis_instrumentation__.Notify(32469)
 	regionToLatency[pair.regionB] = latency
 }
 
-// Round-trip latencies collected from http://cloudping.co on 2019-09-11.
 var regionRoundTripLatencies = map[regionPair]int{
 	{regionA: "us-east1", regionB: "us-west1"}:     66,
 	{regionA: "us-east1", regionB: "europe-west1"}: 64,
@@ -36,8 +32,7 @@ var regionRoundTripLatencies = map[regionPair]int{
 var regionOneWayLatencies = make(map[regionPair]int)
 
 func init() {
-	// We record one-way latencies next, because the logic in our delayingConn
-	// and delayingListener is in terms of one-way network delays.
+
 	for pair, latency := range regionRoundTripLatencies {
 		regionOneWayLatencies[pair] = latency / 2
 	}

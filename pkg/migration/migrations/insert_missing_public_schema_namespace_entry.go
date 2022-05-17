@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package migrations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,15 +16,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// insertMissingPublicSchemaNamespaceEntry creates a system.namespace entries
-// for public schemas that are missing a system.namespace entry.
-// This arises from restore where we mistakenly did not create system.namespace
-// entries for public schemas when restoring databases.
 func insertMissingPublicSchemaNamespaceEntry(
 	ctx context.Context, _ clusterversion.ClusterVersion, d migration.TenantDeps, _ *jobs.Job,
 ) error {
-	// Get the ID of all databases where we're missing a public schema namespace
-	// entry for.
+	__antithesis_instrumentation__.Notify(128456)
+
 	query := `
   SELECT id
     FROM system.namespace
@@ -55,28 +43,41 @@ func insertMissingPublicSchemaNamespaceEntry(
 ORDER BY id ASC;
 `
 	rows, err := d.InternalExecutor.QueryIterator(
-		ctx, "get_databases_without_public_schema_namespace_entry", nil /* txn */, query,
+		ctx, "get_databases_without_public_schema_namespace_entry", nil, query,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128459)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128460)
 	}
+	__antithesis_instrumentation__.Notify(128457)
 	var databaseIDs []descpb.ID
 	for ok, err := rows.Next(ctx); ok; ok, err = rows.Next(ctx) {
+		__antithesis_instrumentation__.Notify(128461)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(128463)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128464)
 		}
+		__antithesis_instrumentation__.Notify(128462)
 		id := descpb.ID(tree.MustBeDInt(rows.Cur()[0]))
 		databaseIDs = append(databaseIDs, id)
 	}
+	__antithesis_instrumentation__.Notify(128458)
 
 	return d.CollectionFactory.Txn(ctx, d.InternalExecutor, d.DB, func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(128465)
 		b := txn.NewBatch()
 		for _, dbID := range databaseIDs {
+			__antithesis_instrumentation__.Notify(128467)
 			publicSchemaKey := catalogkeys.MakeSchemaNameKey(d.Codec, dbID, tree.PublicSchema)
 			b.Put(publicSchemaKey, keys.PublicSchemaID)
 		}
+		__antithesis_instrumentation__.Notify(128466)
 		return txn.Run(ctx, b)
 	})
 }

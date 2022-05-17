@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package sqlproxyccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"crypto/tls"
@@ -15,7 +9,6 @@ import (
 	"github.com/jackc/pgproto3/v2"
 )
 
-// FrontendAdmitInfo contains the result of FrontendAdmit call.
 type FrontendAdmitInfo struct {
 	conn          net.Conn
 	msg           *pgproto3.StartupMessage
@@ -23,74 +16,84 @@ type FrontendAdmitInfo struct {
 	sniServerName string
 }
 
-// FrontendAdmit is the default implementation of a frontend admitter. It can
-// upgrade to an optional SSL connection, and will handle and verify the startup
-// message received from the PG SQL client. The connection returned should never
-// be nil in case of error. Depending on whether the error happened before the
-// connection was upgraded to TLS or not it will either be the original or the
-// TLS connection.
 var FrontendAdmit = func(
 	conn net.Conn, incomingTLSConfig *tls.Config,
 ) *FrontendAdmitInfo {
-	// `conn` could be replaced by `conn` embedded in a `tls.Conn` connection,
-	// hence it's important to close `conn` rather than `proxyConn` since closing
-	// the latter will not call `Close` method of `tls.Conn`.
+	__antithesis_instrumentation__.Notify(21614)
 
-	// Read first message from client.
 	m, err := pgproto3.NewBackend(pgproto3.NewChunkReader(conn), conn).ReceiveStartupMessage()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21619)
 		return &FrontendAdmitInfo{
 			conn: conn, err: newErrorf(codeClientReadFailed, "while receiving startup message"),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(21620)
 	}
+	__antithesis_instrumentation__.Notify(21615)
 
-	// CancelRequest is unencrypted and unauthenticated, regardless of whether
-	// the server requires TLS connections. For now, ignore the request to cancel,
-	// and send back a nil StartupMessage, which will cause the proxy to just
-	// close the connection in response.
 	if _, ok := m.(*pgproto3.CancelRequest); ok {
+		__antithesis_instrumentation__.Notify(21621)
 		return &FrontendAdmitInfo{conn: conn}
+	} else {
+		__antithesis_instrumentation__.Notify(21622)
 	}
+	__antithesis_instrumentation__.Notify(21616)
 
 	var sniServerName string
 
-	// If we have an incoming TLS Config, require that the client initiates with
-	// an SSLRequest message.
 	if incomingTLSConfig != nil {
+		__antithesis_instrumentation__.Notify(21623)
 		if _, ok := m.(*pgproto3.SSLRequest); !ok {
+			__antithesis_instrumentation__.Notify(21627)
 			code := codeUnexpectedInsecureStartupMessage
 			return &FrontendAdmitInfo{conn: conn, err: newErrorf(code, "unsupported startup message: %T", m)}
+		} else {
+			__antithesis_instrumentation__.Notify(21628)
 		}
+		__antithesis_instrumentation__.Notify(21624)
 
 		_, err = conn.Write([]byte{pgAcceptSSLRequest})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(21629)
 			return &FrontendAdmitInfo{conn: conn, err: newErrorf(codeClientWriteFailed, "acking SSLRequest: %v", err)}
+		} else {
+			__antithesis_instrumentation__.Notify(21630)
 		}
+		__antithesis_instrumentation__.Notify(21625)
 
 		cfg := incomingTLSConfig.Clone()
 
 		cfg.GetConfigForClient = func(h *tls.ClientHelloInfo) (*tls.Config, error) {
+			__antithesis_instrumentation__.Notify(21631)
 			sniServerName = h.ServerName
 			return nil, nil
 		}
+		__antithesis_instrumentation__.Notify(21626)
 		conn = tls.Server(conn, cfg)
 
-		// Now that SSL is established, read the encrypted startup message.
 		m, err = pgproto3.NewBackend(pgproto3.NewChunkReader(conn), conn).ReceiveStartupMessage()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(21632)
 			return &FrontendAdmitInfo{
 				conn: conn,
 				err:  newErrorf(codeClientReadFailed, "receiving post-TLS startup message: %v", err),
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(21633)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(21634)
 	}
+	__antithesis_instrumentation__.Notify(21617)
 
 	if startup, ok := m.(*pgproto3.StartupMessage); ok {
-		// This forwards the remote addr to the backend.
+		__antithesis_instrumentation__.Notify(21635)
+
 		startup.Parameters[remoteAddrStartupParam] = conn.RemoteAddr().String()
-		// The client is blocked from using session revival tokens; only the proxy
-		// itself can.
+
 		if _, ok := startup.Parameters[sessionRevivalTokenStartupParam]; ok {
+			__antithesis_instrumentation__.Notify(21637)
 			return &FrontendAdmitInfo{
 				conn: conn,
 				err: newErrorf(
@@ -99,9 +102,15 @@ var FrontendAdmit = func(
 					sessionRevivalTokenStartupParam,
 				),
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(21638)
 		}
+		__antithesis_instrumentation__.Notify(21636)
 		return &FrontendAdmitInfo{conn: conn, msg: startup, sniServerName: sniServerName}
+	} else {
+		__antithesis_instrumentation__.Notify(21639)
 	}
+	__antithesis_instrumentation__.Notify(21618)
 
 	code := codeUnexpectedStartupMessage
 	return &FrontendAdmitInfo{

@@ -1,50 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-/*
-Each node attempts to contact peer nodes to gather all Infos in
-the system with minimal total hops. The algorithm is as follows:
-
- 0 Node starts up gossip server to accept incoming gossip requests.
-   Continue to step #1 to join the gossip network.
-
- 1 Node selects random peer from bootstrap list, excluding its own
-   address for its first outgoing connection. Node starts client and
-   continues to step #2.
-
- 2 Node requests gossip from peer. Gossip requests (and responses)
-   contain a map from node ID to info about other nodes in the
-   network. Each node maintains its own map as well as the maps of
-   each of its peers. The info for each node includes the most recent
-   timestamp of any Info originating at that node, as well as the min
-   number of hops to reach that node. Requesting node times out at
-   checkInterval. On timeout, client is closed and GC'd. If node has
-   no outgoing connections, goto #1.
-
-   a. When gossip is received, infostore is augmented. If new Info was
-      received, the client in question is credited. If node has no
-      outgoing connections, goto #1.
-
-   b. If any gossip was received at > maxHops and num connected peers
-      < maxPeers(), choose random peer from those originating Info >
-      maxHops, start it, and goto #2.
-
-   c. If sentinel gossip keyed by KeySentinel is missing or expired,
-      node is considered partitioned; goto #1.
-
- 3 On connect, if node has too many connected clients, gossip requests
-   are returned immediately with an alternate address set to a random
-   selection from amongst already-connected clients.
-*/
-
 package gossip
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -82,56 +38,29 @@ import (
 )
 
 const (
-	// maxHops is the maximum number of hops which any gossip info
-	// should require to transit between any two nodes in a gossip
-	// network.
 	maxHops = 5
 
-	// minPeers is the minimum number of peers which the maxPeers()
-	// function will return. This is set higher than one to prevent
-	// excessive tightening of the network.
 	minPeers = 3
 
-	// defaultStallInterval is the default interval for checking whether
-	// the incoming and outgoing connections to the gossip network are
-	// insufficient to keep the network connected.
 	defaultStallInterval = 2 * time.Second
 
-	// defaultBootstrapInterval is the minimum time between successive
-	// bootstrapping attempts to avoid busy-looping trying to find the
-	// sentinel gossip info.
 	defaultBootstrapInterval = 1 * time.Second
 
-	// defaultCullInterval is the default interval for culling the least
-	// "useful" outgoing gossip connection to free up space for a more
-	// efficiently targeted connection to the most distant node.
 	defaultCullInterval = 60 * time.Second
 
-	// defaultClientsInterval is the default interval for updating the gossip
-	// clients key which allows every node in the cluster to create a map of
-	// gossip connectivity. This value is intentionally small as we want to
-	// detect gossip partitions faster that the node liveness timeout (9s).
 	defaultClientsInterval = 2 * time.Second
 
-	// NodeDescriptorInterval is the interval for gossiping the node descriptor.
-	// Note that increasing this duration may increase the likelihood of gossip
-	// thrashing, since node descriptors are used to determine the number of gossip
-	// hops between nodes (see #9819 for context).
 	NodeDescriptorInterval = 1 * time.Hour
 
-	// NodeDescriptorTTL is time-to-live for node ID -> descriptor.
 	NodeDescriptorTTL = 2 * NodeDescriptorInterval
 
-	// StoresInterval is the default interval for gossiping store descriptors.
 	StoresInterval = 60 * time.Second
 
-	// StoreTTL is time-to-live for store-related info.
 	StoreTTL = 2 * StoresInterval
 
 	unknownNodeID roachpb.NodeID = 0
 )
 
-// Gossip metrics counter names.
 var (
 	MetaConnectionsIncomingGauge = metric.Metadata{
 		Name:        "gossip.connections.incoming",
@@ -177,98 +106,74 @@ var (
 	}
 )
 
-// KeyNotPresentError is returned by gossip when queried for a key that doesn't
-// exist or has expired.
 type KeyNotPresentError struct {
 	key string
 }
 
-// Error implements the error interface.
 func (err KeyNotPresentError) Error() string {
+	__antithesis_instrumentation__.Notify(65198)
 	return fmt.Sprintf("KeyNotPresentError: gossip key %q does not exist or has expired", err.key)
 }
 
-// NewKeyNotPresentError creates a new KeyNotPresentError.
 func NewKeyNotPresentError(key string) error {
+	__antithesis_instrumentation__.Notify(65199)
 	return KeyNotPresentError{key: key}
 }
 
-// AddressResolver is a thin wrapper around gossip's GetNodeIDAddress
-// that allows it to be used as a nodedialer.AddressResolver.
 func AddressResolver(gossip *Gossip) nodedialer.AddressResolver {
+	__antithesis_instrumentation__.Notify(65200)
 	return func(nodeID roachpb.NodeID) (net.Addr, error) {
+		__antithesis_instrumentation__.Notify(65201)
 		return gossip.GetNodeIDAddress(nodeID)
 	}
 }
 
-// Storage is an interface which allows the gossip instance
-// to read and write bootstrapping data to persistent storage
-// between instantiations.
 type Storage interface {
-	// ReadBootstrapInfo fetches the bootstrap data from the persistent
-	// store into the provided bootstrap protobuf. Returns nil or an
-	// error on failure.
 	ReadBootstrapInfo(*BootstrapInfo) error
-	// WriteBootstrapInfo stores the provided bootstrap data to the
-	// persistent store. Returns nil or an error on failure.
+
 	WriteBootstrapInfo(*BootstrapInfo) error
 }
 
-// Gossip is an instance of a gossip node. It embeds a gossip server.
-// During bootstrapping, the bootstrap list contains candidates for
-// entry to the gossip network.
 type Gossip struct {
-	started bool // for assertions
+	started bool
 
-	*server // Embedded gossip RPC server
+	*server
 
-	Connected     chan struct{}       // Closed upon initial connection
-	hasConnected  bool                // Set first time network is connected
-	rpcContext    *rpc.Context        // The context required for RPC
-	outgoing      nodeSet             // Set of outgoing client node IDs
-	storage       Storage             // Persistent storage interface
-	bootstrapInfo BootstrapInfo       // BootstrapInfo proto for persistent storage
-	bootstrapping map[string]struct{} // Set of active bootstrap clients
+	Connected     chan struct{}
+	hasConnected  bool
+	rpcContext    *rpc.Context
+	outgoing      nodeSet
+	storage       Storage
+	bootstrapInfo BootstrapInfo
+	bootstrapping map[string]struct{}
 	hasCleanedBS  bool
 
-	// Note that access to each client's internal state is serialized by the
-	// embedded server's mutex. This is surprising!
 	clientsMu struct {
 		syncutil.Mutex
 		clients []*client
-		// One breaker per client for the life of the process.
+
 		breakers map[string]*circuit.Breaker
 	}
 
-	disconnected chan *client  // Channel of disconnected clients
-	stalled      bool          // True if gossip is stalled (i.e. host doesn't have sentinel)
-	stalledCh    chan struct{} // Channel to wake up stalled bootstrap
+	disconnected chan *client
+	stalled      bool
+	stalledCh    chan struct{}
 
 	stallInterval     time.Duration
 	bootstrapInterval time.Duration
 	cullInterval      time.Duration
 
-	// The system config is treated unlike other info objects.
-	// It is used so often that we keep an unmarshaled version of it
-	// here and its own set of callbacks.
-	// We do not use the infostore to avoid unmarshalling under the
-	// main gossip lock.
 	systemConfig         *config.SystemConfig
 	systemConfigMu       syncutil.RWMutex
 	systemConfigChannels []chan<- struct{}
 
-	// addresses is a list of bootstrap host addresses for
-	// connecting to the gossip network.
 	addressIdx     int
 	addresses      []util.UnresolvedAddr
-	addressesTried map[int]struct{} // Set of attempted address indexes
+	addressesTried map[int]struct{}
 	nodeDescs      map[roachpb.NodeID]*roachpb.NodeDescriptor
-	// storeMap maps store IDs to node IDs.
+
 	storeMap map[roachpb.StoreID]roachpb.NodeID
 
-	// Membership sets for bootstrap addresses. bootstrapAddrs also tracks which
-	// address is associated with which node ID to enable faster node lookup by
-	// address.
 	addressExists  map[util.UnresolvedAddr]bool
 	bootstrapAddrs map[util.UnresolvedAddr]roachpb.NodeID
 
@@ -279,17 +184,6 @@ type Gossip struct {
 	defaultZoneConfig *zonepb.ZoneConfig
 }
 
-// New creates an instance of a gossip node.
-// The higher level manages the ClusterIDContainer and NodeIDContainer instances
-// (which can be shared by various server components). The ambient context is
-// expected to already contain the node ID.
-//
-// grpcServer: The server on which the new Gossip instance will register its RPC
-//   service. Can be nil, in which case the Gossip will not register the
-//   service.
-// rpcContext: The context used to connect to other nodes. Can be nil for tests
-//   that also specify a nil grpcServer and that plan on using the Gossip in a
-//   restricted way by populating it with data manually.
 func New(
 	ambient log.AmbientContext,
 	clusterID *base.ClusterIDContainer,
@@ -301,6 +195,7 @@ func New(
 	locality roachpb.Locality,
 	defaultZoneConfig *zonepb.ZoneConfig,
 ) *Gossip {
+	__antithesis_instrumentation__.Notify(65202)
 	ambient.SetEventLog("gossip", "gossip")
 	g := &Gossip{
 		server:            newServer(ambient, clusterID, nodeID, stopper, registry),
@@ -328,29 +223,24 @@ func New(
 	g.clientsMu.breakers = map[string]*circuit.Breaker{}
 
 	g.mu.Lock()
-	// Add ourselves as a SystemConfig watcher.
+
 	g.mu.is.registerCallback(KeyDeprecatedSystemConfig, g.updateSystemConfig)
-	// Add ourselves as a node descriptor watcher.
+
 	g.mu.is.registerCallback(MakePrefixPattern(KeyNodeIDPrefix), g.updateNodeAddress)
 	g.mu.is.registerCallback(MakePrefixPattern(KeyStorePrefix), g.updateStoreMap)
-	// Log gossip connectivity whenever we receive an update.
+
 	g.mu.Unlock()
 
 	if grpcServer != nil {
+		__antithesis_instrumentation__.Notify(65204)
 		RegisterGossipServer(grpcServer, g.server)
+	} else {
+		__antithesis_instrumentation__.Notify(65205)
 	}
+	__antithesis_instrumentation__.Notify(65203)
 	return g
 }
 
-// NewTest is a simplified wrapper around New that creates the
-// ClusterIDContainer and NodeIDContainer internally. Used for testing.
-//
-// grpcServer: The server on which the new Gossip instance will register its RPC
-//   service. Can be nil, in which case the Gossip will not register the
-//   service.
-// rpcContext: The context used to connect to other nodes. Can be nil for tests
-//   that also specify a nil grpcServer and that plan on using the Gossip in a
-//   restricted way by populating it with data manually.
 func NewTest(
 	nodeID roachpb.NodeID,
 	rpcContext *rpc.Context,
@@ -359,10 +249,10 @@ func NewTest(
 	registry *metric.Registry,
 	defaultZoneConfig *zonepb.ZoneConfig,
 ) *Gossip {
+	__antithesis_instrumentation__.Notify(65206)
 	return NewTestWithLocality(nodeID, rpcContext, grpcServer, stopper, registry, roachpb.Locality{}, defaultZoneConfig)
 }
 
-// NewTestWithLocality calls NewTest with an explicit locality value.
 func NewTestWithLocality(
 	nodeID roachpb.NodeID,
 	rpcContext *rpc.Context,
@@ -372,202 +262,252 @@ func NewTestWithLocality(
 	locality roachpb.Locality,
 	defaultZoneConfig *zonepb.ZoneConfig,
 ) *Gossip {
+	__antithesis_instrumentation__.Notify(65207)
 	c := &base.ClusterIDContainer{}
 	n := &base.NodeIDContainer{}
 	var ac log.AmbientContext
 	ac.AddLogTag("n", n)
 	gossip := New(ac, c, n, rpcContext, grpcServer, stopper, registry, locality, defaultZoneConfig)
 	if nodeID != 0 {
+		__antithesis_instrumentation__.Notify(65209)
 		n.Set(context.TODO(), nodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(65210)
 	}
+	__antithesis_instrumentation__.Notify(65208)
 	return gossip
 }
 
-// AssertNotStarted fatals if the Gossip instance was already started.
 func (g *Gossip) AssertNotStarted(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(65211)
 	if g.started {
+		__antithesis_instrumentation__.Notify(65212)
 		log.Fatalf(ctx, "gossip instance was already started")
+	} else {
+		__antithesis_instrumentation__.Notify(65213)
 	}
 }
 
-// GetNodeMetrics returns the gossip node metrics.
 func (g *Gossip) GetNodeMetrics() *Metrics {
+	__antithesis_instrumentation__.Notify(65214)
 	return g.server.GetNodeMetrics()
 }
 
-// SetNodeDescriptor adds the node descriptor to the gossip network.
 func (g *Gossip) SetNodeDescriptor(desc *roachpb.NodeDescriptor) error {
+	__antithesis_instrumentation__.Notify(65215)
 	ctx := g.AnnotateCtx(context.TODO())
 	log.Infof(ctx, "NodeDescriptor set to %+v", desc)
 	if desc.Address.IsEmpty() {
+		__antithesis_instrumentation__.Notify(65218)
 		log.Fatalf(ctx, "n%d address is empty", desc.NodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(65219)
 	}
+	__antithesis_instrumentation__.Notify(65216)
 	if err := g.AddInfoProto(MakeNodeIDKey(desc.NodeID), desc, NodeDescriptorTTL); err != nil {
+		__antithesis_instrumentation__.Notify(65220)
 		return errors.Wrapf(err, "n%d: couldn't gossip descriptor", desc.NodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(65221)
 	}
+	__antithesis_instrumentation__.Notify(65217)
 	g.updateClients()
 	return nil
 }
 
-// SetStallInterval sets the interval between successive checks
-// to determine whether this host is not connected to the gossip
-// network, or else is connected to a partition which doesn't
-// include the host which gossips the sentinel info.
 func (g *Gossip) SetStallInterval(interval time.Duration) {
+	__antithesis_instrumentation__.Notify(65222)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.stallInterval = interval
 }
 
-// SetBootstrapInterval sets a minimum interval between successive
-// attempts to connect to new hosts in order to join the gossip
-// network.
 func (g *Gossip) SetBootstrapInterval(interval time.Duration) {
+	__antithesis_instrumentation__.Notify(65223)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.bootstrapInterval = interval
 }
 
-// SetCullInterval sets the interval between periodic shutdown of
-// outgoing gossip client connections in an effort to improve the
-// fitness of the network.
 func (g *Gossip) SetCullInterval(interval time.Duration) {
+	__antithesis_instrumentation__.Notify(65224)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.cullInterval = interval
 }
 
-// SetStorage provides an instance of the Storage interface
-// for reading and writing gossip bootstrap data from persistent
-// storage. This should be invoked as early in the lifecycle of a
-// gossip instance as possible, but can be called at any time.
 func (g *Gossip) SetStorage(storage Storage) error {
+	__antithesis_instrumentation__.Notify(65225)
 	ctx := g.AnnotateCtx(context.TODO())
-	// Maintain lock ordering.
+
 	var storedBI BootstrapInfo
 	if err := storage.ReadBootstrapInfo(&storedBI); err != nil {
+		__antithesis_instrumentation__.Notify(65233)
 		log.Ops.Warningf(ctx, "failed to read gossip bootstrap info: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(65234)
 	}
+	__antithesis_instrumentation__.Notify(65226)
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.storage = storage
 
-	// Merge the stored bootstrap info addresses with any we've become
-	// aware of through gossip.
 	existing := map[string]struct{}{}
-	makeKey := func(a util.UnresolvedAddr) string { return fmt.Sprintf("%s,%s", a.Network(), a.String()) }
+	makeKey := func(a util.UnresolvedAddr) string {
+		__antithesis_instrumentation__.Notify(65235)
+		return fmt.Sprintf("%s,%s", a.Network(), a.String())
+	}
+	__antithesis_instrumentation__.Notify(65227)
 	for _, addr := range g.bootstrapInfo.Addresses {
+		__antithesis_instrumentation__.Notify(65236)
 		existing[makeKey(addr)] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(65228)
 	for _, addr := range storedBI.Addresses {
-		// If the address is new, and isn't our own address, add it.
-		if _, ok := existing[makeKey(addr)]; !ok && addr != g.mu.is.NodeAddr {
-			g.maybeAddBootstrapAddressLocked(addr, unknownNodeID)
-		}
-	}
-	// Persist merged addresses.
-	if numAddrs := len(g.bootstrapInfo.Addresses); numAddrs > len(storedBI.Addresses) {
-		if err := g.storage.WriteBootstrapInfo(&g.bootstrapInfo); err != nil {
-			log.Errorf(ctx, "%v", err)
-		}
-	}
+		__antithesis_instrumentation__.Notify(65237)
 
-	// Cycle through all persisted bootstrap hosts and add addresses that
-	// don't already exist.
+		if _, ok := existing[makeKey(addr)]; !ok && func() bool {
+			__antithesis_instrumentation__.Notify(65238)
+			return addr != g.mu.is.NodeAddr == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(65239)
+			g.maybeAddBootstrapAddressLocked(addr, unknownNodeID)
+		} else {
+			__antithesis_instrumentation__.Notify(65240)
+		}
+	}
+	__antithesis_instrumentation__.Notify(65229)
+
+	if numAddrs := len(g.bootstrapInfo.Addresses); numAddrs > len(storedBI.Addresses) {
+		__antithesis_instrumentation__.Notify(65241)
+		if err := g.storage.WriteBootstrapInfo(&g.bootstrapInfo); err != nil {
+			__antithesis_instrumentation__.Notify(65242)
+			log.Errorf(ctx, "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(65243)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(65244)
+	}
+	__antithesis_instrumentation__.Notify(65230)
+
 	newAddressFound := false
 	for _, addr := range g.bootstrapInfo.Addresses {
+		__antithesis_instrumentation__.Notify(65245)
 		if !g.maybeAddAddressLocked(addr) {
+			__antithesis_instrumentation__.Notify(65247)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(65248)
 		}
-		// If we find a new address, reset the address index so that the
-		// next address we try is the first of the new addresses.
+		__antithesis_instrumentation__.Notify(65246)
+
 		if !newAddressFound {
+			__antithesis_instrumentation__.Notify(65249)
 			newAddressFound = true
 			g.addressIdx = len(g.addresses) - 1
+		} else {
+			__antithesis_instrumentation__.Notify(65250)
 		}
 	}
+	__antithesis_instrumentation__.Notify(65231)
 
-	// If a new address was found, immediately signal bootstrap.
 	if newAddressFound {
+		__antithesis_instrumentation__.Notify(65251)
 		if log.V(1) {
+			__antithesis_instrumentation__.Notify(65253)
 			log.Ops.Infof(ctx, "found new addresses from storage; signaling bootstrap")
+		} else {
+			__antithesis_instrumentation__.Notify(65254)
 		}
+		__antithesis_instrumentation__.Notify(65252)
 		g.signalStalledLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(65255)
 	}
+	__antithesis_instrumentation__.Notify(65232)
 	return nil
 }
 
-// setAddresses initializes the set of gossip addresses used to find
-// nodes to bootstrap the gossip network.
 func (g *Gossip) setAddresses(addresses []util.UnresolvedAddr) {
+	__antithesis_instrumentation__.Notify(65256)
 	if addresses == nil {
+		__antithesis_instrumentation__.Notify(65258)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(65259)
 	}
+	__antithesis_instrumentation__.Notify(65257)
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// Start index at end because get next address loop logic increments as first step.
 	g.addressIdx = len(addresses) - 1
 	g.addresses = addresses
 	g.addressesTried = map[int]struct{}{}
 
-	// Start new bootstrapping immediately instead of waiting for next bootstrap interval.
 	g.maybeSignalStatusChangeLocked()
 }
 
-// GetAddresses returns a copy of the addresses slice.
 func (g *Gossip) GetAddresses() []util.UnresolvedAddr {
+	__antithesis_instrumentation__.Notify(65260)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return append([]util.UnresolvedAddr(nil), g.addresses...)
 }
 
-// GetNodeIDAddress looks up the RPC address of the node by ID.
 func (g *Gossip) GetNodeIDAddress(nodeID roachpb.NodeID) (*util.UnresolvedAddr, error) {
+	__antithesis_instrumentation__.Notify(65261)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.getNodeIDAddressLocked(nodeID)
 }
 
-// GetNodeIDSQLAddress looks up the SQL address of the node by ID.
 func (g *Gossip) GetNodeIDSQLAddress(nodeID roachpb.NodeID) (*util.UnresolvedAddr, error) {
+	__antithesis_instrumentation__.Notify(65262)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.getNodeIDSQLAddressLocked(nodeID)
 }
 
-// GetNodeIDHTTPAddress looks up the HTTP address of the node by ID.
 func (g *Gossip) GetNodeIDHTTPAddress(nodeID roachpb.NodeID) (*util.UnresolvedAddr, error) {
+	__antithesis_instrumentation__.Notify(65263)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.getNodeIDHTTPAddressLocked(nodeID)
 }
 
-// GetNodeDescriptor looks up the descriptor of the node by ID.
 func (g *Gossip) GetNodeDescriptor(nodeID roachpb.NodeID) (*roachpb.NodeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(65264)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.getNodeDescriptorLocked(nodeID)
 }
 
-// LogStatus logs the current status of gossip such as the incoming and
-// outgoing connections.
 func (g *Gossip) LogStatus() {
+	__antithesis_instrumentation__.Notify(65265)
 	g.mu.RLock()
 	n := len(g.nodeDescs)
 	status := redact.SafeString("ok")
 	if g.mu.is.getInfo(KeySentinel) == nil {
+		__antithesis_instrumentation__.Notify(65268)
 		status = redact.SafeString("stalled")
+	} else {
+		__antithesis_instrumentation__.Notify(65269)
 	}
+	__antithesis_instrumentation__.Notify(65266)
 	g.mu.RUnlock()
 
 	var connectivity redact.RedactableString
 	if s := redact.Sprint(g.Connectivity()); s != g.lastConnectivity {
+		__antithesis_instrumentation__.Notify(65270)
 		g.lastConnectivity = s
 		connectivity = s
+	} else {
+		__antithesis_instrumentation__.Notify(65271)
 	}
+	__antithesis_instrumentation__.Notify(65267)
 
 	ctx := g.AnnotateCtx(context.TODO())
 	log.Health.Infof(ctx, "gossip status (%s, %d node%s)\n%s%s%s",
@@ -577,6 +517,7 @@ func (g *Gossip) LogStatus() {
 }
 
 func (g *Gossip) clientStatus() ClientStatus {
+	__antithesis_instrumentation__.Notify(65272)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	g.clientsMu.Lock()
@@ -587,6 +528,7 @@ func (g *Gossip) clientStatus() ClientStatus {
 	status.MaxConns = int32(g.outgoing.maxSize)
 	status.ConnStatus = make([]OutgoingConnStatus, 0, len(g.clientsMu.clients))
 	for _, c := range g.clientsMu.clients {
+		__antithesis_instrumentation__.Notify(65274)
 		status.ConnStatus = append(status.ConnStatus, OutgoingConnStatus{
 			ConnStatus: ConnStatus{
 				NodeID:   c.peerID,
@@ -596,124 +538,175 @@ func (g *Gossip) clientStatus() ClientStatus {
 			MetricSnap: c.clientMetrics.Snapshot(),
 		})
 	}
+	__antithesis_instrumentation__.Notify(65273)
 	return status
 }
 
-// Connectivity returns the current view of the gossip network as seen by this
-// node.
 func (g *Gossip) Connectivity() Connectivity {
+	__antithesis_instrumentation__.Notify(65275)
 	ctx := g.AnnotateCtx(context.TODO())
 	var c Connectivity
 
 	g.mu.RLock()
 
 	if i := g.mu.is.getInfo(KeySentinel); i != nil {
+		__antithesis_instrumentation__.Notify(65279)
 		c.SentinelNodeID = i.NodeID
+	} else {
+		__antithesis_instrumentation__.Notify(65280)
 	}
+	__antithesis_instrumentation__.Notify(65276)
 
 	for nodeID := range g.nodeDescs {
+		__antithesis_instrumentation__.Notify(65281)
 		i := g.mu.is.getInfo(MakeGossipClientsKey(nodeID))
 		if i == nil {
+			__antithesis_instrumentation__.Notify(65285)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(65286)
 		}
+		__antithesis_instrumentation__.Notify(65282)
 
 		v, err := i.Value.GetBytes()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(65287)
 			log.Errorf(ctx, "unable to retrieve gossip value for %s: %v",
 				MakeGossipClientsKey(nodeID), err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(65288)
 		}
+		__antithesis_instrumentation__.Notify(65283)
 		if len(v) == 0 {
+			__antithesis_instrumentation__.Notify(65289)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(65290)
 		}
+		__antithesis_instrumentation__.Notify(65284)
 
 		for _, part := range strings.Split(string(v), ",") {
-			id, err := strconv.ParseInt(part, 10 /* base */, 64 /* bitSize */)
+			__antithesis_instrumentation__.Notify(65291)
+			id, err := strconv.ParseInt(part, 10, 64)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(65293)
 				log.Errorf(ctx, "unable to parse node ID: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(65294)
 			}
+			__antithesis_instrumentation__.Notify(65292)
 			c.ClientConns = append(c.ClientConns, Connectivity_Conn{
 				SourceID: nodeID,
 				TargetID: roachpb.NodeID(id),
 			})
 		}
 	}
+	__antithesis_instrumentation__.Notify(65277)
 
 	g.mu.RUnlock()
 
 	sort.Slice(c.ClientConns, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(65295)
 		a, b := &c.ClientConns[i], &c.ClientConns[j]
 		if a.SourceID < b.SourceID {
+			__antithesis_instrumentation__.Notify(65298)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(65299)
 		}
+		__antithesis_instrumentation__.Notify(65296)
 		if a.SourceID > b.SourceID {
+			__antithesis_instrumentation__.Notify(65300)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(65301)
 		}
+		__antithesis_instrumentation__.Notify(65297)
 		return a.TargetID < b.TargetID
 	})
+	__antithesis_instrumentation__.Notify(65278)
 
 	return c
 }
 
-// EnableSimulationCycler is for TESTING PURPOSES ONLY. It sets a
-// condition variable which is signaled at each cycle of the
-// simulation via SimulationCycle(). The gossip server makes each
-// connecting client wait for the cycler to signal before responding.
 func (g *Gossip) EnableSimulationCycler(enable bool) {
+	__antithesis_instrumentation__.Notify(65302)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if enable {
+		__antithesis_instrumentation__.Notify(65303)
 		g.simulationCycler = sync.NewCond(&g.mu)
 	} else {
-		// TODO(spencer): remove this nil check when gossip/simulation is no
-		// longer used in kv tests.
+		__antithesis_instrumentation__.Notify(65304)
+
 		if g.simulationCycler != nil {
+			__antithesis_instrumentation__.Notify(65305)
 			g.simulationCycler.Broadcast()
 			g.simulationCycler = nil
+		} else {
+			__antithesis_instrumentation__.Notify(65306)
 		}
 	}
 }
 
-// SimulationCycle cycles this gossip node's server by allowing all
-// connected clients to proceed one step.
 func (g *Gossip) SimulationCycle() {
+	__antithesis_instrumentation__.Notify(65307)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.simulationCycler != nil {
+		__antithesis_instrumentation__.Notify(65308)
 		g.simulationCycler.Broadcast()
+	} else {
+		__antithesis_instrumentation__.Notify(65309)
 	}
 }
 
-// maybeAddAddressLocked validates and adds the given address unless it already
-// exists. Returns true if the address was new. The caller must hold the gossip
-// mutex.
 func (g *Gossip) maybeAddAddressLocked(addr util.UnresolvedAddr) bool {
+	__antithesis_instrumentation__.Notify(65310)
 	if g.addressExists[addr] {
+		__antithesis_instrumentation__.Notify(65313)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(65314)
 	}
+	__antithesis_instrumentation__.Notify(65311)
 	ctx := g.AnnotateCtx(context.TODO())
 	if addr.Network() != "tcp" {
+		__antithesis_instrumentation__.Notify(65315)
 		log.Ops.Warningf(ctx, "unknown address network %q for %v", addr.Network(), addr)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(65316)
 	}
+	__antithesis_instrumentation__.Notify(65312)
 	g.addresses = append(g.addresses, addr)
 	g.addressExists[addr] = true
 	log.Eventf(ctx, "add address %s", addr)
 	return true
 }
 
-// maybeAddBootstrapAddressLocked adds the specified address to the list
-// of bootstrap addresses if not already present. Returns whether a new
-// bootstrap address was added. The caller must hold the gossip mutex.
 func (g *Gossip) maybeAddBootstrapAddressLocked(
 	addr util.UnresolvedAddr, nodeID roachpb.NodeID,
 ) bool {
+	__antithesis_instrumentation__.Notify(65317)
 	if existingNodeID, ok := g.bootstrapAddrs[addr]; ok {
-		if existingNodeID == unknownNodeID || existingNodeID != nodeID {
+		__antithesis_instrumentation__.Notify(65319)
+		if existingNodeID == unknownNodeID || func() bool {
+			__antithesis_instrumentation__.Notify(65321)
+			return existingNodeID != nodeID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(65322)
 			g.bootstrapAddrs[addr] = nodeID
+		} else {
+			__antithesis_instrumentation__.Notify(65323)
 		}
+		__antithesis_instrumentation__.Notify(65320)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(65324)
 	}
+	__antithesis_instrumentation__.Notify(65318)
 	g.bootstrapInfo.Addresses = append(g.bootstrapInfo.Addresses, addr)
 	g.bootstrapAddrs[addr] = nodeID
 	ctx := g.AnnotateCtx(context.TODO())
@@ -721,14 +714,20 @@ func (g *Gossip) maybeAddBootstrapAddressLocked(
 	return true
 }
 
-// maybeCleanupBootstrapAddresses cleans up the stored bootstrap addresses to
-// include only those currently available via gossip. The gossip mutex must
-// be held by the caller.
 func (g *Gossip) maybeCleanupBootstrapAddressesLocked() {
-	if g.storage == nil || g.hasCleanedBS {
+	__antithesis_instrumentation__.Notify(65325)
+	if g.storage == nil || func() bool {
+		__antithesis_instrumentation__.Notify(65329)
+		return g.hasCleanedBS == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(65330)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(65331)
 	}
-	defer func() { g.hasCleanedBS = true }()
+	__antithesis_instrumentation__.Notify(65326)
+	defer func() { __antithesis_instrumentation__.Notify(65332); g.hasCleanedBS = true }()
+	__antithesis_instrumentation__.Notify(65327)
 	ctx := g.AnnotateCtx(context.TODO())
 	log.Event(ctx, "cleaning up bootstrap addresses")
 
@@ -741,140 +740,186 @@ func (g *Gossip) maybeCleanupBootstrapAddressesLocked() {
 
 	var desc roachpb.NodeDescriptor
 	if err := g.mu.is.visitInfos(func(key string, i *Info) error {
+		__antithesis_instrumentation__.Notify(65333)
 		if strings.HasPrefix(key, KeyNodeIDPrefix) {
+			__antithesis_instrumentation__.Notify(65335)
 			if err := i.Value.GetProto(&desc); err != nil {
+				__antithesis_instrumentation__.Notify(65338)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(65339)
 			}
-			if desc.Address.IsEmpty() || desc.Address == g.mu.is.NodeAddr {
+			__antithesis_instrumentation__.Notify(65336)
+			if desc.Address.IsEmpty() || func() bool {
+				__antithesis_instrumentation__.Notify(65340)
+				return desc.Address == g.mu.is.NodeAddr == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(65341)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(65342)
 			}
+			__antithesis_instrumentation__.Notify(65337)
 			g.maybeAddAddressLocked(desc.Address)
 			g.maybeAddBootstrapAddressLocked(desc.Address, desc.NodeID)
+		} else {
+			__antithesis_instrumentation__.Notify(65343)
 		}
+		__antithesis_instrumentation__.Notify(65334)
 		return nil
-	}, true /* deleteExpired */); err != nil {
+	}, true); err != nil {
+		__antithesis_instrumentation__.Notify(65344)
 		log.Errorf(ctx, "%v", err)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(65345)
 	}
+	__antithesis_instrumentation__.Notify(65328)
 
 	if err := g.storage.WriteBootstrapInfo(&g.bootstrapInfo); err != nil {
+		__antithesis_instrumentation__.Notify(65346)
 		log.Errorf(ctx, "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(65347)
 	}
 }
 
-// maxPeers returns the maximum number of peers each gossip node
-// may connect to. This is based on maxHops, which is a preset
-// maximum for number of hops allowed before the gossip network
-// will seek to "tighten" by creating new connections to distant
-// nodes.
 func maxPeers(nodeCount int) int {
-	// This formula uses maxHops-2, instead of maxHops, to provide a
-	// "fudge" factor for max connected peers, to account for the
-	// arbitrary, decentralized way in which gossip networks are created.
-	// This will return the following maxPeers for the given number of nodes:
-	//	 <= 27 nodes -> 3 peers
-	//   <= 64 nodes -> 4 peers
-	//   <= 125 nodes -> 5 peers
-	//   <= n^3 nodes -> n peers
-	//
-	// Quick derivation of the formula for posterity (without the fudge factor):
-	// maxPeers^maxHops > nodeCount
-	// maxHops * log(maxPeers) > log(nodeCount)
-	// log(maxPeers) > log(nodeCount) / maxHops
-	// maxPeers > e^(log(nodeCount) / maxHops)
-	// hence maxPeers = ceil(e^(log(nodeCount) / maxHops)) should work
+	__antithesis_instrumentation__.Notify(65348)
+
 	maxPeers := int(math.Ceil(math.Exp(math.Log(float64(nodeCount)) / float64(maxHops-2))))
 	if maxPeers < minPeers {
+		__antithesis_instrumentation__.Notify(65350)
 		return minPeers
+	} else {
+		__antithesis_instrumentation__.Notify(65351)
 	}
+	__antithesis_instrumentation__.Notify(65349)
 	return maxPeers
 }
 
-// updateNodeAddress is a gossip callback which fires with each
-// update to a node descriptor. This allows us to compute the
-// total size of the gossip network (for determining max peers
-// each gossip node is allowed to have), as well as to create
-// new addresses for each encountered host and to write the
-// set of gossip node addresses to persistent storage when it
-// changes.
 func (g *Gossip) updateNodeAddress(key string, content roachpb.Value) {
+	__antithesis_instrumentation__.Notify(65352)
 	ctx := g.AnnotateCtx(context.TODO())
 	var desc roachpb.NodeDescriptor
 	if err := content.GetProto(&desc); err != nil {
+		__antithesis_instrumentation__.Notify(65359)
 		log.Errorf(ctx, "%v", err)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(65360)
 	}
+	__antithesis_instrumentation__.Notify(65353)
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(65361)
 		log.Infof(ctx, "updateNodeAddress called on %q with desc %+v", key, desc)
+	} else {
+		__antithesis_instrumentation__.Notify(65362)
 	}
+	__antithesis_instrumentation__.Notify(65354)
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// If desc is the empty descriptor, that indicates that the node has been
-	// removed from the cluster. If that's the case, remove it from our map of
-	// nodes to prevent other parts of the system from trying to talk to it.
-	// We can't directly compare the node against the empty descriptor because
-	// the proto has a repeated field and thus isn't comparable.
-	if desc.NodeID == 0 || desc.Address.IsEmpty() {
+	if desc.NodeID == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(65363)
+		return desc.Address.IsEmpty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(65364)
 		nodeID, err := NodeIDFromKey(key, KeyNodeIDPrefix)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(65366)
 			log.Health.Errorf(ctx, "unable to update node address for removed node: %s", err)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(65367)
 		}
+		__antithesis_instrumentation__.Notify(65365)
 		log.Health.Infof(ctx, "removed n%d from gossip", nodeID)
 		g.removeNodeDescriptorLocked(nodeID)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(65368)
 	}
+	__antithesis_instrumentation__.Notify(65355)
 
 	existingDesc, ok := g.nodeDescs[desc.NodeID]
-	if !ok || !existingDesc.Equal(&desc) {
+	if !ok || func() bool {
+		__antithesis_instrumentation__.Notify(65369)
+		return !existingDesc.Equal(&desc) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(65370)
 		g.nodeDescs[desc.NodeID] = &desc
+	} else {
+		__antithesis_instrumentation__.Notify(65371)
 	}
-	// Skip all remaining logic if the address hasn't changed, since that's all
-	// the logic cares about.
-	if ok && existingDesc.Address == desc.Address {
+	__antithesis_instrumentation__.Notify(65356)
+
+	if ok && func() bool {
+		__antithesis_instrumentation__.Notify(65372)
+		return existingDesc.Address == desc.Address == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(65373)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(65374)
 	}
+	__antithesis_instrumentation__.Notify(65357)
 	g.recomputeMaxPeersLocked()
 
-	// Skip if it's our own address.
 	if desc.Address == g.mu.is.NodeAddr {
+		__antithesis_instrumentation__.Notify(65375)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(65376)
 	}
+	__antithesis_instrumentation__.Notify(65358)
 
-	// Add this new node address (if it's not already there) to our list
-	// of addresses so we can keep connecting to gossip if the original
-	// addresses go offline.
 	g.maybeAddAddressLocked(desc.Address)
 
-	// Add new address (if it's not already there) to bootstrap info and
-	// persist if possible.
 	added := g.maybeAddBootstrapAddressLocked(desc.Address, desc.NodeID)
-	if added && g.storage != nil {
+	if added && func() bool {
+		__antithesis_instrumentation__.Notify(65377)
+		return g.storage != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(65378)
 		if err := g.storage.WriteBootstrapInfo(&g.bootstrapInfo); err != nil {
+			__antithesis_instrumentation__.Notify(65379)
 			log.Errorf(ctx, "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(65380)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(65381)
 	}
 }
 
 func (g *Gossip) removeNodeDescriptorLocked(nodeID roachpb.NodeID) {
+	__antithesis_instrumentation__.Notify(65382)
 	delete(g.nodeDescs, nodeID)
 	g.recomputeMaxPeersLocked()
 }
 
-// updateStoreMaps is a gossip callback which is used to update storeMap.
 func (g *Gossip) updateStoreMap(key string, content roachpb.Value) {
+	__antithesis_instrumentation__.Notify(65383)
 	ctx := g.AnnotateCtx(context.TODO())
 	var desc roachpb.StoreDescriptor
 	if err := content.GetProto(&desc); err != nil {
+		__antithesis_instrumentation__.Notify(65386)
 		log.Errorf(ctx, "%v", err)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(65387)
 	}
+	__antithesis_instrumentation__.Notify(65384)
 
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(65388)
 		log.Infof(ctx, "updateStoreMap called on %q with desc %+v", key, desc)
+	} else {
+		__antithesis_instrumentation__.Notify(65389)
 	}
+	__antithesis_instrumentation__.Notify(65385)
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -882,10 +927,15 @@ func (g *Gossip) updateStoreMap(key string, content roachpb.Value) {
 }
 
 func (g *Gossip) updateClients() {
+	__antithesis_instrumentation__.Notify(65390)
 	nodeID := g.NodeID.Get()
 	if nodeID == 0 {
+		__antithesis_instrumentation__.Notify(65393)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(65394)
 	}
+	__antithesis_instrumentation__.Notify(65391)
 
 	var buf bytes.Buffer
 	var sep string
@@ -893,191 +943,238 @@ func (g *Gossip) updateClients() {
 	g.mu.RLock()
 	g.clientsMu.Lock()
 	for _, c := range g.clientsMu.clients {
+		__antithesis_instrumentation__.Notify(65395)
 		if c.peerID != 0 {
+			__antithesis_instrumentation__.Notify(65396)
 			fmt.Fprintf(&buf, "%s%d", sep, c.peerID)
 			sep = ","
+		} else {
+			__antithesis_instrumentation__.Notify(65397)
 		}
 	}
+	__antithesis_instrumentation__.Notify(65392)
 	g.clientsMu.Unlock()
 	g.mu.RUnlock()
 
 	if err := g.AddInfo(MakeGossipClientsKey(nodeID), buf.Bytes(), 2*defaultClientsInterval); err != nil {
+		__antithesis_instrumentation__.Notify(65398)
 		log.Errorf(g.AnnotateCtx(context.Background()), "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(65399)
 	}
 }
 
-// recomputeMaxPeersLocked recomputes max peers based on size of
-// network and set the max sizes for incoming and outgoing node sets.
-//
-// Note: if we notice issues with never-ending connection refused errors
-// in real deployments, consider allowing more incoming connections than
-// outgoing connections. As of now, the cluster's steady state is to have
-// all nodes fill up, which can make rebalancing of connections tough.
-// I'm not making this change now since it tends to lead to less balanced
-// networks and I'm not sure what all the consequences of that might be.
 func (g *Gossip) recomputeMaxPeersLocked() {
+	__antithesis_instrumentation__.Notify(65400)
 	maxPeers := maxPeers(len(g.nodeDescs))
 	g.mu.incoming.setMaxSize(maxPeers)
 	g.outgoing.setMaxSize(maxPeers)
 }
 
-// getNodeDescriptorLocked looks up the descriptor of the node by ID. The mutex
-// is assumed held by the caller. This method is called externally via
-// GetNodeDescriptor and internally by getNodeIDAddressLocked.
 func (g *Gossip) getNodeDescriptorLocked(nodeID roachpb.NodeID) (*roachpb.NodeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(65401)
 	if desc, ok := g.nodeDescs[nodeID]; ok {
+		__antithesis_instrumentation__.Notify(65404)
 		if desc.Address.IsEmpty() {
+			__antithesis_instrumentation__.Notify(65406)
 			log.Fatalf(g.AnnotateCtx(context.Background()), "n%d has an empty address", nodeID)
+		} else {
+			__antithesis_instrumentation__.Notify(65407)
 		}
+		__antithesis_instrumentation__.Notify(65405)
 		return desc, nil
+	} else {
+		__antithesis_instrumentation__.Notify(65408)
 	}
+	__antithesis_instrumentation__.Notify(65402)
 
-	// Fallback to retrieving the node info and unmarshalling the node
-	// descriptor. This path occurs in tests which add a node descriptor to
-	// gossip and then immediately try retrieve it.
 	nodeIDKey := MakeNodeIDKey(nodeID)
 
-	// We can't use GetInfoProto here because that method grabs the lock.
 	if i := g.mu.is.getInfo(nodeIDKey); i != nil {
+		__antithesis_instrumentation__.Notify(65409)
 		if err := i.Value.Verify([]byte(nodeIDKey)); err != nil {
+			__antithesis_instrumentation__.Notify(65413)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(65414)
 		}
+		__antithesis_instrumentation__.Notify(65410)
 		nodeDescriptor := &roachpb.NodeDescriptor{}
 		if err := i.Value.GetProto(nodeDescriptor); err != nil {
+			__antithesis_instrumentation__.Notify(65415)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(65416)
 		}
-		// Don't return node descriptors that are empty, because that's meant to
-		// indicate that the node has been removed from the cluster.
-		if nodeDescriptor.NodeID == 0 || nodeDescriptor.Address.IsEmpty() {
+		__antithesis_instrumentation__.Notify(65411)
+
+		if nodeDescriptor.NodeID == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(65417)
+			return nodeDescriptor.Address.IsEmpty() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(65418)
 			return nil, errors.Errorf("n%d has been removed from the cluster", nodeID)
+		} else {
+			__antithesis_instrumentation__.Notify(65419)
 		}
+		__antithesis_instrumentation__.Notify(65412)
 
 		return nodeDescriptor, nil
+	} else {
+		__antithesis_instrumentation__.Notify(65420)
 	}
+	__antithesis_instrumentation__.Notify(65403)
 
 	return nil, errors.Errorf("unable to look up descriptor for n%d", nodeID)
 }
 
-// getNodeIDAddressLocked looks up the address of the node by ID. The mutex is
-// assumed held by the caller. This method is called externally via
-// GetNodeIDAddress or internally when looking up a "distant" node address to
-// connect directly to.
 func (g *Gossip) getNodeIDAddressLocked(nodeID roachpb.NodeID) (*util.UnresolvedAddr, error) {
+	__antithesis_instrumentation__.Notify(65421)
 	nd, err := g.getNodeDescriptorLocked(nodeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(65423)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(65424)
 	}
+	__antithesis_instrumentation__.Notify(65422)
 	return nd.AddressForLocality(g.locality), nil
 }
 
-// getNodeIDAddressLocked looks up the SQL address of the node by ID. The mutex
-// is assumed held by the caller. This method is called externally via
-// GetNodeIDSQLAddress.
 func (g *Gossip) getNodeIDSQLAddressLocked(nodeID roachpb.NodeID) (*util.UnresolvedAddr, error) {
+	__antithesis_instrumentation__.Notify(65425)
 	nd, err := g.getNodeDescriptorLocked(nodeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(65427)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(65428)
 	}
+	__antithesis_instrumentation__.Notify(65426)
 	return &nd.SQLAddress, nil
 }
 
-// getNodeIDHTTPAddressLocked looks up the HTTP address of the node by
-// ID. The mutex is assumed held by the caller. This method is called
-// externally via GetNodeIDHTTPAddress.
 func (g *Gossip) getNodeIDHTTPAddressLocked(nodeID roachpb.NodeID) (*util.UnresolvedAddr, error) {
+	__antithesis_instrumentation__.Notify(65429)
 	nd, err := g.getNodeDescriptorLocked(nodeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(65431)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(65432)
 	}
+	__antithesis_instrumentation__.Notify(65430)
 	return &nd.HTTPAddress, nil
 }
 
-// AddInfo adds or updates an info object. Returns an error if info
-// couldn't be added.
 func (g *Gossip) AddInfo(key string, val []byte, ttl time.Duration) error {
+	__antithesis_instrumentation__.Notify(65433)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.addInfoLocked(key, val, ttl)
 }
 
-// addInfoLocked adds or updates an info object. The mutex is assumed held by
-// the caller. Returns an error if info couldn't be added.
 func (g *Gossip) addInfoLocked(key string, val []byte, ttl time.Duration) error {
+	__antithesis_instrumentation__.Notify(65434)
 	err := g.mu.is.addInfo(key, g.mu.is.newInfo(val, ttl))
 	if err == nil {
+		__antithesis_instrumentation__.Notify(65436)
 		g.signalConnectedLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(65437)
 	}
+	__antithesis_instrumentation__.Notify(65435)
 	return err
 }
 
-// AddInfoProto adds or updates an info object. Returns an error if info
-// couldn't be added.
 func (g *Gossip) AddInfoProto(key string, msg protoutil.Message, ttl time.Duration) error {
+	__antithesis_instrumentation__.Notify(65438)
 	bytes, err := protoutil.Marshal(msg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(65440)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(65441)
 	}
+	__antithesis_instrumentation__.Notify(65439)
 	return g.AddInfo(key, bytes, ttl)
 }
 
-// AddClusterID is a convenience method for gossipping the cluster ID. There's
-// no TTL - the record lives forever.
 func (g *Gossip) AddClusterID(val uuid.UUID) error {
-	return g.AddInfo(KeyClusterID, val.GetBytes(), 0 /* ttl */)
+	__antithesis_instrumentation__.Notify(65442)
+	return g.AddInfo(KeyClusterID, val.GetBytes(), 0)
 }
 
-// GetClusterID returns the cluster ID if it has been gossipped. If it hasn't,
-// (so if this gossip instance is not "connected"), an error is returned.
 func (g *Gossip) GetClusterID() (uuid.UUID, error) {
+	__antithesis_instrumentation__.Notify(65443)
 	uuidBytes, err := g.GetInfo(KeyClusterID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(65446)
 		return uuid.Nil, errors.Wrap(err, "unable to ascertain cluster ID from gossip network")
+	} else {
+		__antithesis_instrumentation__.Notify(65447)
 	}
+	__antithesis_instrumentation__.Notify(65444)
 	clusterID, err := uuid.FromBytes(uuidBytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(65448)
 		return uuid.Nil, errors.Wrap(err, "unable to parse cluster ID from gossip network")
+	} else {
+		__antithesis_instrumentation__.Notify(65449)
 	}
+	__antithesis_instrumentation__.Notify(65445)
 	return clusterID, nil
 }
 
-// GetInfo returns an info value by key or an KeyNotPresentError if specified
-// key does not exist or has expired.
 func (g *Gossip) GetInfo(key string) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(65450)
 	g.mu.RLock()
 	i := g.mu.is.getInfo(key)
 	g.mu.RUnlock()
 
 	if i != nil {
+		__antithesis_instrumentation__.Notify(65452)
 		if err := i.Value.Verify([]byte(key)); err != nil {
+			__antithesis_instrumentation__.Notify(65454)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(65455)
 		}
+		__antithesis_instrumentation__.Notify(65453)
 		return i.Value.GetBytes()
+	} else {
+		__antithesis_instrumentation__.Notify(65456)
 	}
+	__antithesis_instrumentation__.Notify(65451)
 	return nil, NewKeyNotPresentError(key)
 }
 
-// GetInfoProto returns an info value by key or KeyNotPresentError if specified
-// key does not exist or has expired.
 func (g *Gossip) GetInfoProto(key string, msg protoutil.Message) error {
+	__antithesis_instrumentation__.Notify(65457)
 	bytes, err := g.GetInfo(key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(65459)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(65460)
 	}
+	__antithesis_instrumentation__.Notify(65458)
 	return protoutil.Unmarshal(bytes, msg)
 }
 
-// InfoOriginatedHere returns true iff the latest info for the provided key
-// originated on this node. This is useful for ensuring that the system config
-// is regossiped as soon as possible when its lease changes hands.
 func (g *Gossip) InfoOriginatedHere(key string) bool {
+	__antithesis_instrumentation__.Notify(65461)
 	g.mu.RLock()
 	info := g.mu.is.getInfo(key)
 	g.mu.RUnlock()
-	return info != nil && info.NodeID == g.NodeID.Get()
+	return info != nil && func() bool {
+		__antithesis_instrumentation__.Notify(65462)
+		return info.NodeID == g.NodeID.Get() == true
+	}() == true
 }
 
-// GetInfoStatus returns the a copy of the contents of the infostore.
 func (g *Gossip) GetInfoStatus() InfoStatus {
+	__antithesis_instrumentation__.Notify(65463)
 	clientStatus := g.clientStatus()
 	serverStatus := g.server.status()
 	connectivity := g.Connectivity()
@@ -1091,30 +1188,37 @@ func (g *Gossip) GetInfoStatus() InfoStatus {
 		Connectivity: connectivity,
 	}
 	for k, v := range g.mu.is.Infos {
+		__antithesis_instrumentation__.Notify(65465)
 		is.Infos[k] = *protoutil.Clone(v).(*Info)
 	}
+	__antithesis_instrumentation__.Notify(65464)
 	return is
 }
 
-// IterateInfos visits all infos matching the given prefix.
 func (g *Gossip) IterateInfos(prefix string, visit func(k string, info Info) error) error {
+	__antithesis_instrumentation__.Notify(65466)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	for k, v := range g.mu.is.Infos {
+		__antithesis_instrumentation__.Notify(65468)
 		if strings.HasPrefix(k, prefix+separator) {
+			__antithesis_instrumentation__.Notify(65469)
 			if err := visit(k, *(protoutil.Clone(v).(*Info))); err != nil {
+				__antithesis_instrumentation__.Notify(65470)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(65471)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(65472)
 		}
 	}
+	__antithesis_instrumentation__.Notify(65467)
 	return nil
 }
 
-// Callback is a callback method to be invoked on gossip update
-// of info denoted by key.
 type Callback func(string, roachpb.Value)
 
-// CallbackOption is a marker interface that callback options must implement.
 type CallbackOption interface {
 	apply(cb *callback)
 }
@@ -1123,252 +1227,244 @@ type redundantCallbacks struct {
 }
 
 func (redundantCallbacks) apply(cb *callback) {
+	__antithesis_instrumentation__.Notify(65473)
 	cb.redundant = true
 }
 
-// Redundant is a callback option that specifies that the callback should be
-// invoked even if the gossip value has not changed.
 var Redundant redundantCallbacks
 
-// RegisterCallback registers a callback for a key pattern to be
-// invoked whenever new info for a gossip key matching pattern is
-// received. The callback method is invoked with the info key which
-// matched pattern. Returns a function to unregister the callback.
 func (g *Gossip) RegisterCallback(pattern string, method Callback, opts ...CallbackOption) func() {
+	__antithesis_instrumentation__.Notify(65474)
 	g.mu.Lock()
 	unregister := g.mu.is.registerCallback(pattern, method, opts...)
 	g.mu.Unlock()
 	return func() {
+		__antithesis_instrumentation__.Notify(65475)
 		g.mu.Lock()
 		unregister()
 		g.mu.Unlock()
 	}
 }
 
-// DeprecatedGetSystemConfig returns the local unmarshaled version of the system config.
-// Returns nil if the system config hasn't been set yet.
-//
-// TODO(ajwerner): Remove this in 22.2.
 func (g *Gossip) DeprecatedGetSystemConfig() *config.SystemConfig {
+	__antithesis_instrumentation__.Notify(65476)
 	g.systemConfigMu.RLock()
 	defer g.systemConfigMu.RUnlock()
 	return g.systemConfig
 }
 
-// DeprecatedRegisterSystemConfigChannel registers a channel to signify updates for the
-// system config. It is notified after registration (if a system config is
-// already set), and whenever a new system config is successfully unmarshaled.
-//
-// TODO(ajwerner): Remove this in 22.2.
 func (g *Gossip) DeprecatedRegisterSystemConfigChannel() <-chan struct{} {
-	// Create channel that receives new system config notifications.
-	// The channel has a size of 1 to prevent gossip from having to block on it.
+	__antithesis_instrumentation__.Notify(65477)
+
 	c := make(chan struct{}, 1)
 
 	g.systemConfigMu.Lock()
 	defer g.systemConfigMu.Unlock()
 	g.systemConfigChannels = append(g.systemConfigChannels, c)
 
-	// Notify the channel right away if we have a config.
 	if g.systemConfig != nil {
+		__antithesis_instrumentation__.Notify(65479)
 		c <- struct{}{}
+	} else {
+		__antithesis_instrumentation__.Notify(65480)
 	}
+	__antithesis_instrumentation__.Notify(65478)
 	return c
 }
 
-// updateSystemConfig is the raw gossip info callback. Unmarshal the
-// system config, and if successful, send on each system config
-// channel.
 func (g *Gossip) updateSystemConfig(key string, content roachpb.Value) {
+	__antithesis_instrumentation__.Notify(65481)
 	ctx := g.AnnotateCtx(context.TODO())
 	if key != KeyDeprecatedSystemConfig {
+		__antithesis_instrumentation__.Notify(65484)
 		log.Fatalf(ctx, "wrong key received on SystemConfig callback: %s", key)
+	} else {
+		__antithesis_instrumentation__.Notify(65485)
 	}
+	__antithesis_instrumentation__.Notify(65482)
 	cfg := config.NewSystemConfig(g.defaultZoneConfig)
 	if err := content.GetProto(&cfg.SystemConfigEntries); err != nil {
+		__antithesis_instrumentation__.Notify(65486)
 		log.Errorf(ctx, "could not unmarshal system config on callback: %s", err)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(65487)
 	}
+	__antithesis_instrumentation__.Notify(65483)
 
 	g.systemConfigMu.Lock()
 	defer g.systemConfigMu.Unlock()
 	g.systemConfig = cfg
 	for _, c := range g.systemConfigChannels {
+		__antithesis_instrumentation__.Notify(65488)
 		select {
 		case c <- struct{}{}:
+			__antithesis_instrumentation__.Notify(65489)
 		default:
+			__antithesis_instrumentation__.Notify(65490)
 		}
 	}
 }
 
-// Incoming returns a slice of incoming gossip client connection
-// node IDs.
 func (g *Gossip) Incoming() []roachpb.NodeID {
+	__antithesis_instrumentation__.Notify(65491)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.mu.incoming.asSlice()
 }
 
-// Outgoing returns a slice of outgoing gossip client connection
-// node IDs. Note that these outgoing client connections may not
-// actually be legitimately connected. They may be in the process
-// of trying, or may already have failed, but haven't yet been
-// processed by the gossip instance.
 func (g *Gossip) Outgoing() []roachpb.NodeID {
+	__antithesis_instrumentation__.Notify(65492)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.outgoing.asSlice()
 }
 
-// MaxHops returns the maximum number of hops to reach any other
-// node in the system, according to the infos which have reached
-// this node via gossip network.
 func (g *Gossip) MaxHops() uint32 {
+	__antithesis_instrumentation__.Notify(65493)
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	_, maxHops := g.mu.is.mostDistant(func(_ roachpb.NodeID) bool { return false })
+	_, maxHops := g.mu.is.mostDistant(func(_ roachpb.NodeID) bool { __antithesis_instrumentation__.Notify(65495); return false })
+	__antithesis_instrumentation__.Notify(65494)
 	return maxHops
 }
 
-// Start launches the gossip instance, which commences joining the
-// gossip network using the supplied rpc server and previously known
-// peer addresses in addition to any bootstrap addresses specified via
-// --join and passed to this method via the addresses parameter.
-//
-// The supplied advertised address is used to identify the gossip
-// instance in the gossip network; it will be used by other instances
-// to connect to this instance.
-//
-// This method starts bootstrap loop, gossip server, and client
-// management in separate goroutines and returns.
 func (g *Gossip) Start(advertAddr net.Addr, addresses []util.UnresolvedAddr) {
+	__antithesis_instrumentation__.Notify(65496)
 	g.AssertNotStarted(context.Background())
 	g.started = true
 	g.setAddresses(addresses)
-	g.server.start(advertAddr) // serve gossip protocol
-	g.bootstrap()              // bootstrap gossip client
-	g.manage()                 // manage gossip clients
+	g.server.start(advertAddr)
+	g.bootstrap()
+	g.manage()
 }
 
-// hasIncomingLocked returns whether the server has an incoming gossip
-// client matching the provided node ID. Mutex should be held by
-// caller.
 func (g *Gossip) hasIncomingLocked(nodeID roachpb.NodeID) bool {
+	__antithesis_instrumentation__.Notify(65497)
 	return g.mu.incoming.hasNode(nodeID)
 }
 
-// hasOutgoingLocked returns whether the server has an outgoing gossip
-// client matching the provided node ID. Mutex should be held by
-// caller.
 func (g *Gossip) hasOutgoingLocked(nodeID roachpb.NodeID) bool {
-	// We have to use findClient and compare node addresses rather than using the
-	// outgoing nodeSet due to the way that outgoing clients' node IDs are only
-	// resolved once the connection has been established (rather than as soon as
-	// we've created it).
+	__antithesis_instrumentation__.Notify(65498)
+
 	nodeAddr, err := g.getNodeIDAddressLocked(nodeID)
 	if err != nil {
-		// If we don't have the address, fall back to using the outgoing nodeSet
-		// since at least it's better than nothing.
+		__antithesis_instrumentation__.Notify(65501)
+
 		ctx := g.AnnotateCtx(context.TODO())
 		log.Errorf(ctx, "unable to get address for n%d: %s", nodeID, err)
 		return g.outgoing.hasNode(nodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(65502)
 	}
+	__antithesis_instrumentation__.Notify(65499)
 	c := g.findClient(func(c *client) bool {
+		__antithesis_instrumentation__.Notify(65503)
 		return c.addr.String() == nodeAddr.String()
 	})
+	__antithesis_instrumentation__.Notify(65500)
 	return c != nil
 }
 
-// getNextBootstrapAddress returns the next available bootstrap
-// address. The caller must hold the lock.
 func (g *Gossip) getNextBootstrapAddressLocked() util.UnresolvedAddr {
-	// Run through addresses round robin starting at last address index.
+	__antithesis_instrumentation__.Notify(65504)
+
 	for range g.addresses {
+		__antithesis_instrumentation__.Notify(65506)
 		g.addressIdx++
 		g.addressIdx %= len(g.addresses)
-		defer func(idx int) { g.addressesTried[idx] = struct{}{} }(g.addressIdx)
+		defer func(idx int) { __antithesis_instrumentation__.Notify(65508); g.addressesTried[idx] = struct{}{} }(g.addressIdx)
+		__antithesis_instrumentation__.Notify(65507)
 		addr := g.addresses[g.addressIdx]
 		addrStr := addr.String()
 		if _, addrActive := g.bootstrapping[addrStr]; !addrActive {
+			__antithesis_instrumentation__.Notify(65509)
 			g.bootstrapping[addrStr] = struct{}{}
 			return addr
+		} else {
+			__antithesis_instrumentation__.Notify(65510)
 		}
 	}
+	__antithesis_instrumentation__.Notify(65505)
 	return util.UnresolvedAddr{}
 }
 
-// bootstrap connects the node to the gossip network. Bootstrapping
-// commences in the event there are no connected clients or the
-// sentinel gossip info is not available. After a successful bootstrap
-// connection, this method will block on the stalled condvar, which
-// receives notifications that gossip network connectivity has been
-// lost and requires re-bootstrapping.
 func (g *Gossip) bootstrap() {
+	__antithesis_instrumentation__.Notify(65511)
 	ctx := g.AnnotateCtx(context.Background())
 	_ = g.server.stopper.RunAsyncTask(ctx, "gossip-bootstrap", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(65512)
 		ctx = logtags.AddTag(ctx, "bootstrap", nil)
 		var bootstrapTimer timeutil.Timer
 		defer bootstrapTimer.Stop()
 		for {
+			__antithesis_instrumentation__.Notify(65513)
 			func(ctx context.Context) {
+				__antithesis_instrumentation__.Notify(65516)
 				g.mu.Lock()
 				defer g.mu.Unlock()
 				haveClients := g.outgoing.len() > 0
 				haveSentinel := g.mu.is.getInfo(KeySentinel) != nil
 				log.Eventf(ctx, "have clients: %t, have sentinel: %t", haveClients, haveSentinel)
-				if !haveClients || !haveSentinel {
-					// Try to get another bootstrap address.
+				if !haveClients || func() bool {
+					__antithesis_instrumentation__.Notify(65517)
+					return !haveSentinel == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(65518)
+
 					if addr := g.getNextBootstrapAddressLocked(); !addr.IsEmpty() {
+						__antithesis_instrumentation__.Notify(65519)
 						g.startClientLocked(addr)
 					} else {
+						__antithesis_instrumentation__.Notify(65520)
 						bootstrapAddrs := make([]string, 0, len(g.bootstrapping))
 						for addr := range g.bootstrapping {
+							__antithesis_instrumentation__.Notify(65522)
 							bootstrapAddrs = append(bootstrapAddrs, addr)
 						}
+						__antithesis_instrumentation__.Notify(65521)
 						log.Eventf(ctx, "no next bootstrap address; currently bootstrapping: %v", bootstrapAddrs)
-						// We couldn't start a client, signal that we're stalled so that
-						// we'll retry.
+
 						g.maybeSignalStatusChangeLocked()
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(65523)
 				}
 			}(ctx)
+			__antithesis_instrumentation__.Notify(65514)
 
-			// Pause an interval before next possible bootstrap.
 			bootstrapTimer.Reset(g.bootstrapInterval)
 			log.Eventf(ctx, "sleeping %s until bootstrap", g.bootstrapInterval)
 			select {
 			case <-bootstrapTimer.C:
+				__antithesis_instrumentation__.Notify(65524)
 				bootstrapTimer.Read = true
-				// continue
+
 			case <-g.server.stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(65525)
 				return
 			}
+			__antithesis_instrumentation__.Notify(65515)
 			log.Eventf(ctx, "idling until bootstrap required")
-			// Block until we need bootstrapping again.
+
 			select {
 			case <-g.stalledCh:
+				__antithesis_instrumentation__.Notify(65526)
 				log.Eventf(ctx, "detected stall; commencing bootstrap")
-				// continue
+
 			case <-g.server.stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(65527)
 				return
 			}
 		}
 	})
 }
 
-// manage manages outgoing clients. Periodically, the infostore is
-// scanned for infos with hop count exceeding the maxHops
-// threshold. If the number of outgoing clients doesn't exceed
-// maxPeers(), a new gossip client is connected to a randomly selected
-// peer beyond maxHops threshold. Otherwise, the least useful peer
-// node is cut off to make room for a replacement. Disconnected
-// clients are processed via the disconnected channel and taken out of
-// the outgoing address set. If there are no longer any outgoing
-// connections or the sentinel gossip is unavailable, the bootstrapper
-// is notified via the stalled conditional variable.
 func (g *Gossip) manage() {
+	__antithesis_instrumentation__.Notify(65528)
 	ctx := g.AnnotateCtx(context.Background())
 	_ = g.server.stopper.RunAsyncTask(ctx, "gossip-manage", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(65529)
 		clientsTimer := timeutil.NewTimer()
 		cullTimer := timeutil.NewTimer()
 		stallTimer := timeutil.NewTimer()
@@ -1380,47 +1476,65 @@ func (g *Gossip) manage() {
 		cullTimer.Reset(jitteredInterval(g.cullInterval))
 		stallTimer.Reset(jitteredInterval(g.stallInterval))
 		for {
+			__antithesis_instrumentation__.Notify(65530)
 			select {
 			case <-g.server.stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(65531)
 				return
 			case c := <-g.disconnected:
+				__antithesis_instrumentation__.Notify(65532)
 				g.doDisconnected(c)
 			case <-g.tighten:
+				__antithesis_instrumentation__.Notify(65533)
 				g.tightenNetwork(ctx)
 			case <-clientsTimer.C:
+				__antithesis_instrumentation__.Notify(65534)
 				clientsTimer.Read = true
 				g.updateClients()
 				clientsTimer.Reset(defaultClientsInterval)
 			case <-cullTimer.C:
+				__antithesis_instrumentation__.Notify(65535)
 				cullTimer.Read = true
 				cullTimer.Reset(jitteredInterval(g.cullInterval))
 				func() {
+					__antithesis_instrumentation__.Notify(65537)
 					g.mu.Lock()
 					if !g.outgoing.hasSpace() {
+						__antithesis_instrumentation__.Notify(65539)
 						leastUsefulID := g.mu.is.leastUseful(g.outgoing)
 
 						if c := g.findClient(func(c *client) bool {
+							__antithesis_instrumentation__.Notify(65540)
 							return c.peerID == leastUsefulID
 						}); c != nil {
+							__antithesis_instrumentation__.Notify(65541)
 							log.VEventf(ctx, 1, "closing least useful client %+v to tighten network graph", c)
 							log.Health.Infof(ctx, "closing gossip client n%d %s", c.peerID, c.addr)
 							c.close()
 
-							// After releasing the lock, block until the client disconnects.
 							defer func() {
+								__antithesis_instrumentation__.Notify(65542)
 								g.doDisconnected(<-g.disconnected)
 							}()
 						} else {
+							__antithesis_instrumentation__.Notify(65543)
 							if log.V(1) {
+								__antithesis_instrumentation__.Notify(65544)
 								g.clientsMu.Lock()
 								log.Dev.Infof(ctx, "couldn't find least useful client among %+v", g.clientsMu.clients)
 								g.clientsMu.Unlock()
+							} else {
+								__antithesis_instrumentation__.Notify(65545)
 							}
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(65546)
 					}
+					__antithesis_instrumentation__.Notify(65538)
 					g.mu.Unlock()
 				}()
 			case <-stallTimer.C:
+				__antithesis_instrumentation__.Notify(65536)
 				stallTimer.Read = true
 				stallTimer.Reset(jitteredInterval(g.stallInterval))
 
@@ -1432,126 +1546,166 @@ func (g *Gossip) manage() {
 	})
 }
 
-// jitteredInterval returns a randomly jittered (+/-25%) duration
-// from checkInterval.
 func jitteredInterval(interval time.Duration) time.Duration {
+	__antithesis_instrumentation__.Notify(65547)
 	return time.Duration(float64(interval) * (0.75 + 0.5*rand.Float64()))
 }
 
-// tightenNetwork "tightens" the network by starting a new gossip client to the
-// client to the most distant node to which we don't already have an outgoing
-// connection. Does nothing if we don't have room for any more outgoing
-// connections.
 func (g *Gossip) tightenNetwork(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(65548)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.outgoing.hasSpace() {
+		__antithesis_instrumentation__.Notify(65549)
 		distantNodeID, distantHops := g.mu.is.mostDistant(g.hasOutgoingLocked)
 		log.VEventf(ctx, 2, "distantHops: %d from %d", distantHops, distantNodeID)
 		if distantHops <= maxHops {
+			__antithesis_instrumentation__.Notify(65551)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(65552)
 		}
-		if nodeAddr, err := g.getNodeIDAddressLocked(distantNodeID); err != nil || nodeAddr == nil {
+		__antithesis_instrumentation__.Notify(65550)
+		if nodeAddr, err := g.getNodeIDAddressLocked(distantNodeID); err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(65553)
+			return nodeAddr == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(65554)
 			log.Health.Errorf(ctx, "unable to get address for n%d: %s", distantNodeID, err)
 		} else {
+			__antithesis_instrumentation__.Notify(65555)
 			log.Health.Infof(ctx, "starting client to n%d (%d > %d) to tighten network graph",
 				distantNodeID, distantHops, maxHops)
 			log.Eventf(ctx, "tightening network with new client to %s", nodeAddr)
 			g.startClientLocked(*nodeAddr)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(65556)
 	}
 }
 
 func (g *Gossip) doDisconnected(c *client) {
+	__antithesis_instrumentation__.Notify(65557)
 	defer g.updateClients()
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.removeClientLocked(c)
 
-	// If the client was disconnected with a forwarding address, connect now.
 	if c.forwardAddr != nil {
+		__antithesis_instrumentation__.Notify(65559)
 		g.startClientLocked(*c.forwardAddr)
+	} else {
+		__antithesis_instrumentation__.Notify(65560)
 	}
+	__antithesis_instrumentation__.Notify(65558)
 	g.maybeSignalStatusChangeLocked()
 }
 
-// maybeSignalStatusChangeLocked checks whether gossip should transition its
-// internal state from connected to stalled or vice versa.
 func (g *Gossip) maybeSignalStatusChangeLocked() {
+	__antithesis_instrumentation__.Notify(65561)
 	ctx := g.AnnotateCtx(context.TODO())
 	orphaned := g.outgoing.len()+g.mu.incoming.len() == 0
 	multiNode := len(g.bootstrapInfo.Addresses) > 0
-	// We're stalled if we don't have the sentinel key, or if we're a multi node
-	// cluster and have no gossip connections.
-	stalled := (orphaned && multiNode) || g.mu.is.getInfo(KeySentinel) == nil
+
+	stalled := (orphaned && func() bool {
+		__antithesis_instrumentation__.Notify(65563)
+		return multiNode == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(65564)
+		return g.mu.is.getInfo(KeySentinel) == nil == true
+	}() == true
 	if stalled {
-		// We employ the stalled boolean to avoid filling logs with warnings.
+		__antithesis_instrumentation__.Notify(65565)
+
 		if !g.stalled {
+			__antithesis_instrumentation__.Notify(65567)
 			log.Eventf(ctx, "now stalled")
 			if orphaned {
+				__antithesis_instrumentation__.Notify(65568)
 				if len(g.addresses) == 0 {
+					__antithesis_instrumentation__.Notify(65569)
 					log.Ops.Warningf(ctx, "no addresses found; use --join to specify a connected node")
 				} else {
+					__antithesis_instrumentation__.Notify(65570)
 					log.Health.Warningf(ctx, "no incoming or outgoing connections")
 				}
-			} else if len(g.addressesTried) == len(g.addresses) {
-				log.Health.Warningf(ctx, "first range unavailable; addresses exhausted")
 			} else {
-				log.Health.Warningf(ctx, "first range unavailable; trying remaining addresses")
+				__antithesis_instrumentation__.Notify(65571)
+				if len(g.addressesTried) == len(g.addresses) {
+					__antithesis_instrumentation__.Notify(65572)
+					log.Health.Warningf(ctx, "first range unavailable; addresses exhausted")
+				} else {
+					__antithesis_instrumentation__.Notify(65573)
+					log.Health.Warningf(ctx, "first range unavailable; trying remaining addresses")
+				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(65574)
 		}
+		__antithesis_instrumentation__.Notify(65566)
 		if len(g.addresses) > 0 {
+			__antithesis_instrumentation__.Notify(65575)
 			g.signalStalledLocked()
+		} else {
+			__antithesis_instrumentation__.Notify(65576)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(65577)
 		if g.stalled {
+			__antithesis_instrumentation__.Notify(65579)
 			log.Eventf(ctx, "connected")
 			log.Ops.Infof(ctx, "node has connected to cluster via gossip")
 			g.signalConnectedLocked()
+		} else {
+			__antithesis_instrumentation__.Notify(65580)
 		}
+		__antithesis_instrumentation__.Notify(65578)
 		g.maybeCleanupBootstrapAddressesLocked()
 	}
+	__antithesis_instrumentation__.Notify(65562)
 	g.stalled = stalled
 }
 
 func (g *Gossip) signalStalledLocked() {
+	__antithesis_instrumentation__.Notify(65581)
 	select {
 	case g.stalledCh <- struct{}{}:
+		__antithesis_instrumentation__.Notify(65582)
 	default:
+		__antithesis_instrumentation__.Notify(65583)
 	}
 }
 
-// signalConnectedLocked checks whether this gossip instance is connected to
-// enough of the gossip network that it has received the cluster ID gossip
-// info. Once connected, the "Connected" channel is closed to signal to any
-// waiters that the gossip instance is ready. The gossip mutex should be held
-// by caller.
-//
-// TODO(tschottdorf): this is called from various locations which seem ad-hoc
-// (with the exception of the call bootstrap loop) yet necessary. Consolidate
-// and add commentary at each callsite.
 func (g *Gossip) signalConnectedLocked() {
-	// Check if we have the cluster ID gossip to start.
-	// If so, then mark ourselves as trivially connected to the gossip network.
-	if !g.hasConnected && g.mu.is.getInfo(KeyClusterID) != nil {
+	__antithesis_instrumentation__.Notify(65584)
+
+	if !g.hasConnected && func() bool {
+		__antithesis_instrumentation__.Notify(65585)
+		return g.mu.is.getInfo(KeyClusterID) != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(65586)
 		g.hasConnected = true
 		close(g.Connected)
+	} else {
+		__antithesis_instrumentation__.Notify(65587)
 	}
 }
 
-// startClientLocked launches a new client connected to remote address.
-// The client is added to the outgoing address set and launched in
-// a goroutine.
 func (g *Gossip) startClientLocked(addr util.UnresolvedAddr) {
+	__antithesis_instrumentation__.Notify(65588)
 	g.clientsMu.Lock()
 	defer g.clientsMu.Unlock()
 	breaker, ok := g.clientsMu.breakers[addr.String()]
 	if !ok {
+		__antithesis_instrumentation__.Notify(65590)
 		name := fmt.Sprintf("gossip %v->%v", g.rpcContext.Config.Addr, addr)
 		breaker = g.rpcContext.NewBreaker(name)
 		g.clientsMu.breakers[addr.String()] = breaker
+	} else {
+		__antithesis_instrumentation__.Notify(65591)
 	}
+	__antithesis_instrumentation__.Notify(65589)
 	ctx := g.AnnotateCtx(context.TODO())
 	log.VEventf(ctx, 1, "starting new client to %s", addr)
 	c := newClient(g.server.AmbientContext, &addr, g.serverMetrics)
@@ -1559,115 +1713,116 @@ func (g *Gossip) startClientLocked(addr util.UnresolvedAddr) {
 	c.startLocked(g, g.disconnected, g.rpcContext, g.server.stopper, breaker)
 }
 
-// removeClientLocked removes the specified client. Called when a client
-// disconnects.
 func (g *Gossip) removeClientLocked(target *client) {
+	__antithesis_instrumentation__.Notify(65592)
 	g.clientsMu.Lock()
 	defer g.clientsMu.Unlock()
 	for i, candidate := range g.clientsMu.clients {
+		__antithesis_instrumentation__.Notify(65593)
 		if candidate == target {
+			__antithesis_instrumentation__.Notify(65594)
 			ctx := g.AnnotateCtx(context.TODO())
 			log.VEventf(ctx, 1, "client %s disconnected", candidate.addr)
 			g.clientsMu.clients = append(g.clientsMu.clients[:i], g.clientsMu.clients[i+1:]...)
 			delete(g.bootstrapping, candidate.addr.String())
 			g.outgoing.removeNode(candidate.peerID)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(65595)
 		}
 	}
 }
 
 func (g *Gossip) findClient(match func(*client) bool) *client {
+	__antithesis_instrumentation__.Notify(65596)
 	g.clientsMu.Lock()
 	defer g.clientsMu.Unlock()
 	for _, c := range g.clientsMu.clients {
+		__antithesis_instrumentation__.Notify(65598)
 		if match(c) {
+			__antithesis_instrumentation__.Notify(65599)
 			return c
+		} else {
+			__antithesis_instrumentation__.Notify(65600)
 		}
 	}
+	__antithesis_instrumentation__.Notify(65597)
 	return nil
 }
 
-// A firstRangeMissingError indicates that the first range has not yet
-// been gossiped. This will be the case for a node which hasn't yet
-// joined the gossip network.
 type firstRangeMissingError struct{}
 
-// Error is part of the error interface.
 func (f firstRangeMissingError) Error() string {
+	__antithesis_instrumentation__.Notify(65601)
 	return "the descriptor for the first range is not available via gossip"
 }
 
-// GetFirstRangeDescriptor implements kvcoord.FirstRangeProvider.
 func (g *Gossip) GetFirstRangeDescriptor() (*roachpb.RangeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(65602)
 	desc := &roachpb.RangeDescriptor{}
 	if err := g.GetInfoProto(KeyFirstRangeDescriptor, desc); err != nil {
+		__antithesis_instrumentation__.Notify(65604)
 		return nil, firstRangeMissingError{}
+	} else {
+		__antithesis_instrumentation__.Notify(65605)
 	}
+	__antithesis_instrumentation__.Notify(65603)
 	return desc, nil
 }
 
-// OnFirstRangeChanged implements kvcoord.FirstRangeProvider.
 func (g *Gossip) OnFirstRangeChanged(cb func(*roachpb.RangeDescriptor)) {
+	__antithesis_instrumentation__.Notify(65606)
 	g.RegisterCallback(KeyFirstRangeDescriptor, func(_ string, value roachpb.Value) {
+		__antithesis_instrumentation__.Notify(65607)
 		ctx := context.Background()
 		desc := &roachpb.RangeDescriptor{}
 		if err := value.GetProto(desc); err != nil {
+			__antithesis_instrumentation__.Notify(65608)
 			log.Errorf(ctx, "unable to parse gossiped first range descriptor: %s", err)
 		} else {
+			__antithesis_instrumentation__.Notify(65609)
 			cb(desc)
 		}
 	})
 }
 
-// MakeOptionalGossip initializes an OptionalGossip instance wrapping a
-// (possibly nil) *Gossip.
-//
-// Use of Gossip from within the SQL layer is **deprecated**. Please do not
-// introduce new uses of it.
-//
-// See TenantSQLDeprecatedWrapper for details.
 func MakeOptionalGossip(g *Gossip) OptionalGossip {
+	__antithesis_instrumentation__.Notify(65610)
 	return OptionalGossip{
 		w: errorutil.MakeTenantSQLDeprecatedWrapper(g, g != nil),
 	}
 }
 
-// OptionalGossip is a Gossip instance in a SQL tenant server.
-//
-// Use of Gossip from within the SQL layer is **deprecated**. Please do not
-// introduce new uses of it.
-//
-// See TenantSQLDeprecatedWrapper for details.
 type OptionalGossip struct {
 	w errorutil.TenantSQLDeprecatedWrapper
 }
 
-// OptionalErr returns the Gossip instance if the wrapper was set up to allow
-// it. Otherwise, it returns an error referring to the optionally passed in
-// issues.
-//
-// Use of Gossip from within the SQL layer is **deprecated**. Please do not
-// introduce new uses of it.
 func (og OptionalGossip) OptionalErr(issue int) (*Gossip, error) {
+	__antithesis_instrumentation__.Notify(65611)
 	v, err := og.w.OptionalErr(issue)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(65613)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(65614)
 	}
-	// NB: some tests use a nil Gossip.
+	__antithesis_instrumentation__.Notify(65612)
+
 	g, _ := v.(*Gossip)
 	return g, nil
 }
 
-// Optional is like OptionalErr, but returns false if Gossip is not exposed.
-//
-// Use of Gossip from within the SQL layer is **deprecated**. Please do not
-// introduce new uses of it.
 func (og OptionalGossip) Optional(issue int) (*Gossip, bool) {
+	__antithesis_instrumentation__.Notify(65615)
 	v, ok := og.w.Optional()
 	if !ok {
+		__antithesis_instrumentation__.Notify(65617)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(65618)
 	}
-	// NB: some tests use a nil Gossip.
+	__antithesis_instrumentation__.Notify(65616)
+
 	g, _ := v.(*Gossip)
 	return g, true
 }

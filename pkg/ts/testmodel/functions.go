@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package testmodel
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -20,113 +12,141 @@ import (
 type aggFunc func(DataSeries) float64
 type fillFunc func(DataSeries, DataSeries, int64) DataSeries
 
-// AggregateSum returns the sum value of all points in the provided data series.
 func AggregateSum(data DataSeries) float64 {
+	__antithesis_instrumentation__.Notify(648832)
 	total := 0.0
 	for _, dp := range data {
+		__antithesis_instrumentation__.Notify(648834)
 		total += dp.Value
 	}
+	__antithesis_instrumentation__.Notify(648833)
 	return total
 }
 
-// AggregateAverage returns the average value of the points in the provided data
-// series.
 func AggregateAverage(data DataSeries) float64 {
+	__antithesis_instrumentation__.Notify(648835)
 	if len(data) == 0 {
+		__antithesis_instrumentation__.Notify(648837)
 		return 0.0
+	} else {
+		__antithesis_instrumentation__.Notify(648838)
 	}
+	__antithesis_instrumentation__.Notify(648836)
 	return AggregateSum(data) / float64(len(data))
 }
 
-// AggregateMax returns the maximum value of any point in the provided data
-// series.
 func AggregateMax(data DataSeries) float64 {
+	__antithesis_instrumentation__.Notify(648839)
 	max := -math.MaxFloat64
 	for _, dp := range data {
+		__antithesis_instrumentation__.Notify(648841)
 		if dp.Value > max {
+			__antithesis_instrumentation__.Notify(648842)
 			max = dp.Value
+		} else {
+			__antithesis_instrumentation__.Notify(648843)
 		}
 	}
+	__antithesis_instrumentation__.Notify(648840)
 	return max
 }
 
-// AggregateMin returns the minimum value of any point in the provided data
-// series.
 func AggregateMin(data DataSeries) float64 {
+	__antithesis_instrumentation__.Notify(648844)
 	min := math.MaxFloat64
 	for _, dp := range data {
+		__antithesis_instrumentation__.Notify(648846)
 		if dp.Value < min {
+			__antithesis_instrumentation__.Notify(648847)
 			min = dp.Value
+		} else {
+			__antithesis_instrumentation__.Notify(648848)
 		}
 	}
+	__antithesis_instrumentation__.Notify(648845)
 	return min
 }
 
-// AggregateFirst returns the first value in the provided data series.
 func AggregateFirst(data DataSeries) float64 {
+	__antithesis_instrumentation__.Notify(648849)
 	return data[0].Value
 }
 
-// AggregateLast returns the last value in the provided data series.
 func AggregateLast(data DataSeries) float64 {
+	__antithesis_instrumentation__.Notify(648850)
 	return data[len(data)-1].Value
 }
 
-// AggregateVariance returns the variance of the provided data series. The returned
-// variance is the sample variance, not the population variance.
 func AggregateVariance(data DataSeries) float64 {
+	__antithesis_instrumentation__.Notify(648851)
 	mean := 0.0
 	meanSquaredDist := 0.0
 	if len(data) < 2 {
+		__antithesis_instrumentation__.Notify(648854)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(648855)
 	}
+	__antithesis_instrumentation__.Notify(648852)
 	for i, dp := range data {
-		// Welford's algorithm for computing variance.
+		__antithesis_instrumentation__.Notify(648856)
+
 		delta := dp.Value - mean
 		mean += delta / float64(i+1)
 		delta2 := dp.Value - mean
 		meanSquaredDist += delta * delta2
 	}
+	__antithesis_instrumentation__.Notify(648853)
 	return meanSquaredDist / float64(len(data))
 }
 
-// getAggFunction is a convenience method used to process an aggregator option
-// from our time series query protobuffer format.
 func getAggFunction(agg tspb.TimeSeriesQueryAggregator) aggFunc {
+	__antithesis_instrumentation__.Notify(648857)
 	switch agg {
 	case tspb.TimeSeriesQueryAggregator_AVG:
+		__antithesis_instrumentation__.Notify(648859)
 		return AggregateAverage
 	case tspb.TimeSeriesQueryAggregator_SUM:
+		__antithesis_instrumentation__.Notify(648860)
 		return AggregateSum
 	case tspb.TimeSeriesQueryAggregator_MAX:
+		__antithesis_instrumentation__.Notify(648861)
 		return AggregateMax
 	case tspb.TimeSeriesQueryAggregator_MIN:
+		__antithesis_instrumentation__.Notify(648862)
 		return AggregateMin
 	case tspb.TimeSeriesQueryAggregator_FIRST:
+		__antithesis_instrumentation__.Notify(648863)
 		return AggregateFirst
 	case tspb.TimeSeriesQueryAggregator_LAST:
+		__antithesis_instrumentation__.Notify(648864)
 		return AggregateLast
 	case tspb.TimeSeriesQueryAggregator_VARIANCE:
+		__antithesis_instrumentation__.Notify(648865)
 		return AggregateVariance
+	default:
+		__antithesis_instrumentation__.Notify(648866)
 	}
+	__antithesis_instrumentation__.Notify(648858)
 
-	// The model should not be called with an invalid aggregator option.
 	panic(fmt.Sprintf("unknown aggregator option specified: %v", agg))
 }
 
 func fillFuncLinearInterpolate(before DataSeries, after DataSeries, resolution int64) DataSeries {
+	__antithesis_instrumentation__.Notify(648867)
 	start := before[len(before)-1]
 	end := after[0]
 
-	// compute interpolation step
 	step := (end.Value - start.Value) / float64(end.TimestampNanos-start.TimestampNanos)
 
 	result := make(DataSeries, (end.TimestampNanos-start.TimestampNanos)/resolution-1)
 	for i := range result {
+		__antithesis_instrumentation__.Notify(648869)
 		result[i] = dp(
 			start.TimestampNanos+(resolution*int64(i+1)),
 			start.Value+(step*float64(i+1)*float64(resolution)),
 		)
 	}
+	__antithesis_instrumentation__.Notify(648868)
 	return result
 }

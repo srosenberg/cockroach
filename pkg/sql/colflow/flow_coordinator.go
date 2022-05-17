@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colflow
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,33 +18,25 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// FlowCoordinator is the execinfra.Processor that is responsible for shutting
-// down the vectorized flow on the gateway node.
 type FlowCoordinator struct {
 	execinfra.ProcessorBaseNoHelper
 	colexecop.NonExplainable
 
 	input execinfra.RowSource
 
-	// row and meta are the results produced by calling input.Next stored here
-	// in order for that call to be wrapped in the panic-catcher.
 	row  rowenc.EncDatumRow
 	meta *execinfrapb.ProducerMetadata
 
-	// cancelFlow cancels the context of the flow.
 	cancelFlow context.CancelFunc
 }
 
 var flowCoordinatorPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(456077)
 		return &FlowCoordinator{}
 	},
 }
 
-// NewFlowCoordinator creates a new FlowCoordinator processor that is the root
-// of the vectorized flow.
-// - cancelFlow is the cancellation function of the flow's context (i.e. it is
-// Flow.ctxCancel).
 func NewFlowCoordinator(
 	flowCtx *execinfra.FlowCtx,
 	processorID int32,
@@ -60,29 +44,28 @@ func NewFlowCoordinator(
 	output execinfra.RowReceiver,
 	cancelFlow context.CancelFunc,
 ) *FlowCoordinator {
+	__antithesis_instrumentation__.Notify(456078)
 	f := flowCoordinatorPool.Get().(*FlowCoordinator)
 	f.input = input
 	f.cancelFlow = cancelFlow
 	f.Init(
 		f,
 		flowCtx,
-		// FlowCoordinator doesn't modify the eval context, so it is safe to
-		// reuse the one from the flow context.
+
 		flowCtx.EvalCtx,
 		processorID,
 		output,
 		execinfra.ProcStateOpts{
-			// We append input to inputs to drain below in order to reuse
-			// the same underlying slice from the pooled FlowCoordinator.
+
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
-				// Note that the input must have been drained by the
-				// ProcessorBaseNoHelper by this point, so we can just close the
-				// FlowCoordinator.
+				__antithesis_instrumentation__.Notify(456080)
+
 				f.close()
 				return nil
 			},
 		},
 	)
+	__antithesis_instrumentation__.Notify(456079)
 	f.AddInputToDrain(input)
 	return f
 }
@@ -91,96 +74,123 @@ var _ execinfra.OpNode = &FlowCoordinator{}
 var _ execinfra.Processor = &FlowCoordinator{}
 var _ execinfra.Releasable = &FlowCoordinator{}
 
-// ChildCount is part of the execinfra.OpNode interface.
 func (f *FlowCoordinator) ChildCount(verbose bool) int {
+	__antithesis_instrumentation__.Notify(456081)
 	return 1
 }
 
-// Child is part of the execinfra.OpNode interface.
 func (f *FlowCoordinator) Child(nth int, verbose bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(456082)
 	if nth == 0 {
-		// The input must be the execinfra.OpNode (it's either a materializer or
-		// a wrapped row-execution processor).
+		__antithesis_instrumentation__.Notify(456084)
+
 		return f.input.(execinfra.OpNode)
+	} else {
+		__antithesis_instrumentation__.Notify(456085)
 	}
+	__antithesis_instrumentation__.Notify(456083)
 	colexecerror.InternalError(errors.AssertionFailedf("invalid index %d", nth))
-	// This code is unreachable, but the compiler cannot infer that.
+
 	return nil
 }
 
-// OutputTypes is part of the execinfra.Processor interface.
 func (f *FlowCoordinator) OutputTypes() []*types.T {
+	__antithesis_instrumentation__.Notify(456086)
 	return f.input.OutputTypes()
 }
 
-// Start is part of the execinfra.RowSource interface.
 func (f *FlowCoordinator) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(456087)
 	ctx = f.StartInternalNoSpan(ctx)
 	if err := colexecerror.CatchVectorizedRuntimeError(func() {
+		__antithesis_instrumentation__.Notify(456088)
 		f.input.Start(ctx)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(456089)
 		f.MoveToDraining(err)
+	} else {
+		__antithesis_instrumentation__.Notify(456090)
 	}
 }
 
 func (f *FlowCoordinator) next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(456091)
 	if f.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(456093)
 		row, meta := f.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(456096)
 			if meta.Err != nil {
-				f.MoveToDraining(nil /* err */)
+				__antithesis_instrumentation__.Notify(456098)
+				f.MoveToDraining(nil)
+			} else {
+				__antithesis_instrumentation__.Notify(456099)
 			}
+			__antithesis_instrumentation__.Notify(456097)
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(456100)
 		}
+		__antithesis_instrumentation__.Notify(456094)
 		if row != nil {
+			__antithesis_instrumentation__.Notify(456101)
 			return row, nil
+		} else {
+			__antithesis_instrumentation__.Notify(456102)
 		}
-		// Both row and meta are nil, so we transition to draining.
-		f.MoveToDraining(nil /* err */)
+		__antithesis_instrumentation__.Notify(456095)
+
+		f.MoveToDraining(nil)
+	} else {
+		__antithesis_instrumentation__.Notify(456103)
 	}
+	__antithesis_instrumentation__.Notify(456092)
 	return nil, f.DrainHelper()
 }
 
 func (f *FlowCoordinator) nextAdapter() {
+	__antithesis_instrumentation__.Notify(456104)
 	f.row, f.meta = f.next()
 }
 
-// Next is part of the execinfra.RowSource interface.
 func (f *FlowCoordinator) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(456105)
 	if err := colexecerror.CatchVectorizedRuntimeError(f.nextAdapter); err != nil {
+		__antithesis_instrumentation__.Notify(456107)
 		f.MoveToDraining(err)
 		return nil, f.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(456108)
 	}
+	__antithesis_instrumentation__.Notify(456106)
 	return f.row, f.meta
 }
 
 func (f *FlowCoordinator) close() {
+	__antithesis_instrumentation__.Notify(456109)
 	if f.InternalClose() {
+		__antithesis_instrumentation__.Notify(456110)
 		f.cancelFlow()
+	} else {
+		__antithesis_instrumentation__.Notify(456111)
 	}
 }
 
-// ConsumerClosed is part of the execinfra.RowSource interface.
 func (f *FlowCoordinator) ConsumerClosed() {
+	__antithesis_instrumentation__.Notify(456112)
 	f.close()
 }
 
-// Release implements the execinfra.Releasable interface.
 func (f *FlowCoordinator) Release() {
+	__antithesis_instrumentation__.Notify(456113)
 	f.ProcessorBaseNoHelper.Reset()
 	*f = FlowCoordinator{
-		// We're keeping the reference to the same ProcessorBaseNoHelper since
-		// it allows us to reuse some of the slices.
+
 		ProcessorBaseNoHelper: f.ProcessorBaseNoHelper,
 	}
 	flowCoordinatorPool.Put(f)
 }
 
-// BatchFlowCoordinator is a component that is responsible for running the
-// vectorized flow (by receiving the batches from the root operator and pushing
-// them to the batch receiver) and shutting down the whole flow when done. It
-// can only be planned on the gateway node when colexecop.Operator is the root
-// of the tree and the consumer is an execinfra.BatchReceiver.
 type BatchFlowCoordinator struct {
 	colexecop.OneInputNode
 	colexecop.NonExplainable
@@ -190,24 +200,18 @@ type BatchFlowCoordinator struct {
 	input  colexecargs.OpWithMetaInfo
 	output execinfra.BatchReceiver
 
-	// batch is the result produced by calling input.Next stored here in order
-	// for that call to be wrapped in the panic-catcher.
 	batch coldata.Batch
 
-	// cancelFlow cancels the context of the flow.
 	cancelFlow context.CancelFunc
 }
 
 var batchFlowCoordinatorPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(456114)
 		return &BatchFlowCoordinator{}
 	},
 }
 
-// NewBatchFlowCoordinator creates a new BatchFlowCoordinator operator that is
-// the root of the vectorized flow.
-// - cancelFlow is the cancellation function of the flow's context (i.e. it is
-// Flow.ctxCancel).
 func NewBatchFlowCoordinator(
 	flowCtx *execinfra.FlowCtx,
 	processorID int32,
@@ -215,6 +219,7 @@ func NewBatchFlowCoordinator(
 	output execinfra.BatchReceiver,
 	cancelFlow context.CancelFunc,
 ) *BatchFlowCoordinator {
+	__antithesis_instrumentation__.Notify(456115)
 	f := batchFlowCoordinatorPool.Get().(*BatchFlowCoordinator)
 	*f = BatchFlowCoordinator{
 		OneInputNode: colexecop.NewOneInputNode(input.Root),
@@ -237,114 +242,169 @@ func (f *BatchFlowCoordinator) init(ctx context.Context) error {
 }
 
 func (f *BatchFlowCoordinator) nextAdapter() {
+	__antithesis_instrumentation__.Notify(456116)
 	f.batch = f.input.Root.Next()
 }
 
 func (f *BatchFlowCoordinator) next() error {
+	__antithesis_instrumentation__.Notify(456117)
 	return colexecerror.CatchVectorizedRuntimeError(f.nextAdapter)
 }
 
 func (f *BatchFlowCoordinator) pushError(err error) execinfra.ConsumerStatus {
+	__antithesis_instrumentation__.Notify(456118)
 	meta := execinfrapb.GetProducerMeta()
 	meta.Err = err
-	return f.output.PushBatch(nil /* batch */, meta)
+	return f.output.PushBatch(nil, meta)
 }
 
-// Run is the main loop of the coordinator. It runs the flow to completion and
-// then shuts it down.
 func (f *BatchFlowCoordinator) Run(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(456119)
 	status := execinfra.NeedMoreRows
 
 	ctx, span := execinfra.ProcessorSpan(ctx, "batch flow coordinator")
 	if span != nil {
+		__antithesis_instrumentation__.Notify(456125)
 		if span.IsVerbose() {
+			__antithesis_instrumentation__.Notify(456126)
 			span.SetTag(execinfrapb.FlowIDTagKey, attribute.StringValue(f.flowCtx.ID.String()))
 			span.SetTag(execinfrapb.ProcessorIDTagKey, attribute.IntValue(int(f.processorID)))
+		} else {
+			__antithesis_instrumentation__.Notify(456127)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(456128)
 	}
+	__antithesis_instrumentation__.Notify(456120)
 
-	// Make sure that we close the coordinator and notify the batch receiver in
-	// all cases.
 	defer func() {
-		if err := f.close(ctx); err != nil && status != execinfra.ConsumerClosed {
+		__antithesis_instrumentation__.Notify(456129)
+		if err := f.close(ctx); err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(456131)
+			return status != execinfra.ConsumerClosed == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(456132)
 			f.pushError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(456133)
 		}
+		__antithesis_instrumentation__.Notify(456130)
 		f.output.ProducerDone()
-		// Note that f.close is only safe to call before finishing the tracing
-		// span because some components might still use the span when they are
-		// being closed.
+
 		span.Finish()
 	}()
+	__antithesis_instrumentation__.Notify(456121)
 
 	if err := f.init(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(456134)
 		f.pushError(err)
-		// If initialization is not successful, we just exit since the operator
-		// tree might not be setup properly.
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(456135)
 	}
+	__antithesis_instrumentation__.Notify(456122)
 
 	for status == execinfra.NeedMoreRows {
+		__antithesis_instrumentation__.Notify(456136)
 		err := f.next()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(456139)
 			switch status = f.pushError(err); status {
 			case execinfra.ConsumerClosed:
+				__antithesis_instrumentation__.Notify(456141)
 				return
+			default:
+				__antithesis_instrumentation__.Notify(456142)
 			}
+			__antithesis_instrumentation__.Notify(456140)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(456143)
 		}
+		__antithesis_instrumentation__.Notify(456137)
 		if f.batch.Length() == 0 {
-			// All rows have been exhausted, so we transition to draining.
+			__antithesis_instrumentation__.Notify(456144)
+
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(456145)
 		}
-		switch status = f.output.PushBatch(f.batch, nil /* meta */); status {
+		__antithesis_instrumentation__.Notify(456138)
+		switch status = f.output.PushBatch(f.batch, nil); status {
 		case execinfra.ConsumerClosed:
+			__antithesis_instrumentation__.Notify(456146)
 			return
+		default:
+			__antithesis_instrumentation__.Notify(456147)
 		}
 	}
+	__antithesis_instrumentation__.Notify(456123)
 
-	// Collect the stats and get the trace if necessary.
 	if span != nil {
+		__antithesis_instrumentation__.Notify(456148)
 		for _, s := range f.input.StatsCollectors {
+			__antithesis_instrumentation__.Notify(456150)
 			span.RecordStructured(s.GetStats())
 		}
+		__antithesis_instrumentation__.Notify(456149)
 		if meta := execinfra.GetTraceDataAsMetadata(span); meta != nil {
-			status = f.output.PushBatch(nil /* batch */, meta)
+			__antithesis_instrumentation__.Notify(456151)
+			status = f.output.PushBatch(nil, meta)
 			if status == execinfra.ConsumerClosed {
+				__antithesis_instrumentation__.Notify(456152)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(456153)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(456154)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(456155)
 	}
+	__antithesis_instrumentation__.Notify(456124)
 
-	// Drain all metadata sources.
 	drainedMeta := f.input.MetadataSources.DrainMeta()
 	for i := range drainedMeta {
+		__antithesis_instrumentation__.Notify(456156)
 		if execinfra.ShouldSwallowReadWithinUncertaintyIntervalError(&drainedMeta[i]) {
-			// This metadata object contained an error that was swallowed per
-			// the contract of execinfra.StateDraining.
+			__antithesis_instrumentation__.Notify(456158)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(456159)
 		}
-		status = f.output.PushBatch(nil /* batch */, &drainedMeta[i])
+		__antithesis_instrumentation__.Notify(456157)
+		status = f.output.PushBatch(nil, &drainedMeta[i])
 		if status == execinfra.ConsumerClosed {
+			__antithesis_instrumentation__.Notify(456160)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(456161)
 		}
 	}
 }
 
-// close cancels the flow and closes all colexecop.Closers the coordinator is
-// responsible for.
 func (f *BatchFlowCoordinator) close(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(456162)
 	f.cancelFlow()
 	var lastErr error
 	for _, toClose := range f.input.ToClose {
+		__antithesis_instrumentation__.Notify(456164)
 		if err := toClose.Close(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(456165)
 			lastErr = err
+		} else {
+			__antithesis_instrumentation__.Notify(456166)
 		}
 	}
+	__antithesis_instrumentation__.Notify(456163)
 	return lastErr
 }
 
-// Release implements the execinfra.Releasable interface.
 func (f *BatchFlowCoordinator) Release() {
+	__antithesis_instrumentation__.Notify(456167)
 	*f = BatchFlowCoordinator{}
 	batchFlowCoordinatorPool.Put(f)
 }

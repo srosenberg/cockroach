@@ -9,6 +9,7 @@ go_library(
         "@co_honnef_go_tools//analysis/facts",
         "@co_honnef_go_tools//analysis/lint",
         "@co_honnef_go_tools//analysis/report",
+        "@com_antithesis_instrumentation//wrappers",
         "@org_golang_x_tools//go/analysis",
     ],
 )

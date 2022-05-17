@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -18,45 +10,42 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/workload/histogram"
 )
 
-// outputFormat is the interface used to output results incrementally
-// during a workload run.
 type outputFormat interface {
-	// rampDone is called once when the ramp-up period completes, if
-	// configured.
 	rampDone()
-	// outputError is called when an error is encountered.
+
 	outputError(err error)
-	// outputTick is called when the main loop considers it useful
-	// to emit one row of results.
+
 	outputTick(startElapsed time.Duration, t histogram.Tick)
-	// outputTotal is called at the end, using the main histogram
-	// collector.
+
 	outputTotal(startElapsed time.Duration, t histogram.Tick)
-	// outputResult is called at the end, using the result histogram
-	// collector.
+
 	outputResult(startElapsed time.Duration, t histogram.Tick)
 }
 
-// textFormatter produces output meant for quick parsing by humans. The
-// data is printed as fixed-width columns. Summary rows
-// are printed at the end.
 type textFormatter struct {
 	i      int
 	numErr int
 }
 
 func (f *textFormatter) rampDone() {
+	__antithesis_instrumentation__.Notify(693670)
 	f.i = 0
 }
 
 func (f *textFormatter) outputError(_ error) {
+	__antithesis_instrumentation__.Notify(693671)
 	f.numErr++
 }
 
 func (f *textFormatter) outputTick(startElapsed time.Duration, t histogram.Tick) {
+	__antithesis_instrumentation__.Notify(693672)
 	if f.i%20 == 0 {
+		__antithesis_instrumentation__.Notify(693674)
 		fmt.Println("_elapsed___errors__ops/sec(inst)___ops/sec(cum)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
+	} else {
+		__antithesis_instrumentation__.Notify(693675)
 	}
+	__antithesis_instrumentation__.Notify(693673)
 	f.i++
 	fmt.Printf("%7.1fs %8d %14.1f %14.1f %8.1f %8.1f %8.1f %8.1f %s\n",
 		startElapsed.Seconds(),
@@ -74,23 +63,34 @@ func (f *textFormatter) outputTick(startElapsed time.Duration, t histogram.Tick)
 const totalHeader = "\n_elapsed___errors_____ops(total)___ops/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)"
 
 func (f *textFormatter) outputTotal(startElapsed time.Duration, t histogram.Tick) {
+	__antithesis_instrumentation__.Notify(693676)
 	f.outputFinal(startElapsed, t, "__total")
 }
 
 func (f *textFormatter) outputResult(startElapsed time.Duration, t histogram.Tick) {
+	__antithesis_instrumentation__.Notify(693677)
 	f.outputFinal(startElapsed, t, "__result")
 }
 
 func (f *textFormatter) outputFinal(
 	startElapsed time.Duration, t histogram.Tick, titleSuffix string,
 ) {
+	__antithesis_instrumentation__.Notify(693678)
 	fmt.Println(totalHeader + titleSuffix)
 	if t.Cumulative == nil {
+		__antithesis_instrumentation__.Notify(693681)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(693682)
 	}
+	__antithesis_instrumentation__.Notify(693679)
 	if t.Cumulative.TotalCount() == 0 {
+		__antithesis_instrumentation__.Notify(693683)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(693684)
 	}
+	__antithesis_instrumentation__.Notify(693680)
 	fmt.Printf("%7.1fs %8d %14d %14.1f %8.1f %8.1f %8.1f %8.1f %8.1f  %s\n",
 		startElapsed.Seconds(),
 		f.numErr,
@@ -105,24 +105,21 @@ func (f *textFormatter) outputFinal(
 	)
 }
 
-// jsonFormatter produces output that is machine-readable. The time is
-// printed using absolute timestamps. No summary row is printed at the
-// end.
 type jsonFormatter struct {
 	w      io.Writer
 	numErr int
 }
 
-func (f *jsonFormatter) rampDone() {}
+func (f *jsonFormatter) rampDone() { __antithesis_instrumentation__.Notify(693685) }
 
 func (f *jsonFormatter) outputError(_ error) {
+	__antithesis_instrumentation__.Notify(693686)
 	f.numErr++
 }
 
 func (f *jsonFormatter) outputTick(startElapsed time.Duration, t histogram.Tick) {
-	// Note: we use fmt.Printf here instead of json.Marshal to ensure
-	// that float values do not get printed with a uselessly large
-	// number of decimals.
+	__antithesis_instrumentation__.Notify(693687)
+
 	fmt.Fprintf(f.w, `{"time":"%s",`+
 		`"errs":%d,`+
 		`"avgt":%.1f,`+
@@ -145,6 +142,10 @@ func (f *jsonFormatter) outputTick(startElapsed time.Duration, t histogram.Tick)
 	)
 }
 
-func (f *jsonFormatter) outputTotal(startElapsed time.Duration, t histogram.Tick) {}
+func (f *jsonFormatter) outputTotal(startElapsed time.Duration, t histogram.Tick) {
+	__antithesis_instrumentation__.Notify(693688)
+}
 
-func (f *jsonFormatter) outputResult(startElapsed time.Duration, t histogram.Tick) {}
+func (f *jsonFormatter) outputResult(startElapsed time.Duration, t histogram.Tick) {
+	__antithesis_instrumentation__.Notify(693689)
+}

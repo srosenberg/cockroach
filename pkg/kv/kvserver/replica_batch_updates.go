@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,224 +13,246 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ----------------------------------------------------------------------------
-// This files contains functions performing updates to a BatchRequest performed
-// on the server-side, specifically after the request has been routed to a
-// replica (and thus the request has been split based on range boundaries).
-// As per the client.Sender contract, these function need to consider the input
-// batches as copy-on-write.
-// ----------------------------------------------------------------------------
-
-// maybeStripInFlightWrites attempts to remove all point writes and query
-// intents that ended up in the same batch as an EndTxn request from that EndTxn
-// request's "in-flight" write set. The entire batch will commit atomically, so
-// there is no need to consider the writes in the same batch concurrent.
-//
-// The transformation can lead to bypassing the STAGING state for a transaction
-// entirely. This is possible if the function removes all of the in-flight
-// writes from an EndTxn request that was committing in parallel with writes
-// which all happened to be on the same range as the transaction record.
 func maybeStripInFlightWrites(ba *roachpb.BatchRequest) (*roachpb.BatchRequest, error) {
+	__antithesis_instrumentation__.Notify(115627)
 	args, hasET := ba.GetArg(roachpb.EndTxn)
 	if !hasET {
+		__antithesis_instrumentation__.Notify(115633)
 		return ba, nil
+	} else {
+		__antithesis_instrumentation__.Notify(115634)
 	}
+	__antithesis_instrumentation__.Notify(115628)
 
 	et := args.(*roachpb.EndTxnRequest)
 	otherReqs := ba.Requests[:len(ba.Requests)-1]
-	if !et.IsParallelCommit() || len(otherReqs) == 0 {
+	if !et.IsParallelCommit() || func() bool {
+		__antithesis_instrumentation__.Notify(115635)
+		return len(otherReqs) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(115636)
 		return ba, nil
+	} else {
+		__antithesis_instrumentation__.Notify(115637)
 	}
+	__antithesis_instrumentation__.Notify(115629)
 
-	// Clone the BatchRequest and the EndTxn request before modifying it. We nil
-	// out the request's in-flight writes and make the lock spans immutable on
-	// append. Code below can use origET to recreate the in-flight write set if
-	// any elements remain in it.
 	origET := et
 	etAlloc := new(struct {
 		et    roachpb.EndTxnRequest
 		union roachpb.RequestUnion_EndTxn
 	})
-	etAlloc.et = *origET // shallow copy
+	etAlloc.et = *origET
 	etAlloc.union.EndTxn = &etAlloc.et
 	et = &etAlloc.et
 	et.InFlightWrites = nil
-	et.LockSpans = et.LockSpans[:len(et.LockSpans):len(et.LockSpans)] // immutable
+	et.LockSpans = et.LockSpans[:len(et.LockSpans):len(et.LockSpans)]
 	ba.Requests = append([]roachpb.RequestUnion(nil), ba.Requests...)
 	ba.Requests[len(ba.Requests)-1].Value = &etAlloc.union
 
-	// Fast-path: If we know that this batch contains all of the transaction's
-	// in-flight writes, then we can avoid searching in the in-flight writes set
-	// for each request. Instead, we can blindly merge all in-flight writes into
-	// the lock spans and clear out the in-flight writes set.
 	if len(otherReqs) >= len(origET.InFlightWrites) {
+		__antithesis_instrumentation__.Notify(115638)
 		writes := 0
 		for _, ru := range otherReqs {
+			__antithesis_instrumentation__.Notify(115640)
 			req := ru.GetInner()
 			switch {
-			case roachpb.IsIntentWrite(req) && !roachpb.IsRange(req):
-				// Concurrent point write.
+			case roachpb.IsIntentWrite(req) && func() bool {
+				__antithesis_instrumentation__.Notify(115644)
+				return !roachpb.IsRange(req) == true
+			}() == true:
+				__antithesis_instrumentation__.Notify(115641)
+
 				writes++
 			case req.Method() == roachpb.QueryIntent:
-				// Earlier pipelined point write that hasn't been proven yet.
+				__antithesis_instrumentation__.Notify(115642)
+
 				writes++
 			default:
-				// Ranged write or read. See below.
-			}
-		}
-		if len(origET.InFlightWrites) < writes {
-			return ba, errors.New("more write in batch with EndTxn than listed in in-flight writes")
-		} else if len(origET.InFlightWrites) == writes {
-			et.LockSpans = make([]roachpb.Span, len(origET.LockSpans)+len(origET.InFlightWrites))
-			copy(et.LockSpans, origET.LockSpans)
-			for i, w := range origET.InFlightWrites {
-				et.LockSpans[len(origET.LockSpans)+i] = roachpb.Span{Key: w.Key}
-			}
-			// See below for why we set Header.DistinctSpans here.
-			et.LockSpans, ba.Header.DistinctSpans = roachpb.MergeSpans(&et.LockSpans)
-			return ba, nil
-		}
-	}
+				__antithesis_instrumentation__.Notify(115643)
 
-	// Slow-path: If not then we remove each transaction write in the batch from
-	// the in-flight write set and merge it into the lock spans.
+			}
+		}
+		__antithesis_instrumentation__.Notify(115639)
+		if len(origET.InFlightWrites) < writes {
+			__antithesis_instrumentation__.Notify(115645)
+			return ba, errors.New("more write in batch with EndTxn than listed in in-flight writes")
+		} else {
+			__antithesis_instrumentation__.Notify(115646)
+			if len(origET.InFlightWrites) == writes {
+				__antithesis_instrumentation__.Notify(115647)
+				et.LockSpans = make([]roachpb.Span, len(origET.LockSpans)+len(origET.InFlightWrites))
+				copy(et.LockSpans, origET.LockSpans)
+				for i, w := range origET.InFlightWrites {
+					__antithesis_instrumentation__.Notify(115649)
+					et.LockSpans[len(origET.LockSpans)+i] = roachpb.Span{Key: w.Key}
+				}
+				__antithesis_instrumentation__.Notify(115648)
+
+				et.LockSpans, ba.Header.DistinctSpans = roachpb.MergeSpans(&et.LockSpans)
+				return ba, nil
+			} else {
+				__antithesis_instrumentation__.Notify(115650)
+			}
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(115651)
+	}
+	__antithesis_instrumentation__.Notify(115630)
+
 	copiedTo := 0
 	for _, ru := range otherReqs {
+		__antithesis_instrumentation__.Notify(115652)
 		req := ru.GetInner()
 		seq := req.Header().Sequence
 		switch {
-		case roachpb.IsIntentWrite(req) && !roachpb.IsRange(req):
-			// Concurrent point write.
+		case roachpb.IsIntentWrite(req) && func() bool {
+			__antithesis_instrumentation__.Notify(115659)
+			return !roachpb.IsRange(req) == true
+		}() == true:
+			__antithesis_instrumentation__.Notify(115656)
+
 		case req.Method() == roachpb.QueryIntent:
-			// Earlier pipelined point write that hasn't been proven yet. We
-			// could remove from the in-flight writes set when we see these,
-			// but doing so would prevent us from using the optimization we
-			// have below where we rely on increasing sequence numbers for
-			// each subsequent request.
-			//
-			// We already don't intend on sending QueryIntent requests in the
-			// same batch as EndTxn requests because doing so causes a pipeline
-			// stall, so this doesn't seem worthwhile to support.
+			__antithesis_instrumentation__.Notify(115657)
+
 			continue
 		default:
-			// Ranged write or read. These can make it into the final batch with
-			// a parallel committing EndTxn request if the entire batch issued
-			// by DistSender lands on the same range. Skip.
+			__antithesis_instrumentation__.Notify(115658)
+
 			continue
 		}
+		__antithesis_instrumentation__.Notify(115653)
 
-		// Remove the write from the in-flight writes set. We only need to
-		// search from after the previously removed sequence number forward
-		// because both the InFlightWrites and the Requests in the batch are
-		// stored in increasing sequence order.
-		//
-		// Maintaining an iterator into the in-flight writes slice and scanning
-		// instead of performing a binary search on each request changes the
-		// complexity of this loop from O(n*log(m)) to O(m) where n is the
-		// number of point writes in the batch and m is the number of in-flight
-		// writes. These complexities aren't directly comparable, but copying
-		// all unstripped writes back into et.InFlightWrites is already O(m),
-		// so the approach here was preferred over repeat binary searches.
 		match := -1
 		for i, w := range origET.InFlightWrites[copiedTo:] {
+			__antithesis_instrumentation__.Notify(115660)
 			if w.Sequence == seq {
+				__antithesis_instrumentation__.Notify(115661)
 				match = i + copiedTo
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(115662)
 			}
 		}
+		__antithesis_instrumentation__.Notify(115654)
 		if match == -1 {
+			__antithesis_instrumentation__.Notify(115663)
 			return ba, errors.New("write in batch with EndTxn missing from in-flight writes")
+		} else {
+			__antithesis_instrumentation__.Notify(115664)
 		}
+		__antithesis_instrumentation__.Notify(115655)
 		w := origET.InFlightWrites[match]
 		notInBa := origET.InFlightWrites[copiedTo:match]
 		et.InFlightWrites = append(et.InFlightWrites, notInBa...)
 		copiedTo = match + 1
 
-		// Move the write to the lock spans set since it's no
-		// longer being tracked in the in-flight write set.
 		et.LockSpans = append(et.LockSpans, roachpb.Span{Key: w.Key})
 	}
+	__antithesis_instrumentation__.Notify(115631)
 	if et != origET {
-		// Finish building up the remaining in-flight writes.
+		__antithesis_instrumentation__.Notify(115665)
+
 		notInBa := origET.InFlightWrites[copiedTo:]
 		et.InFlightWrites = append(et.InFlightWrites, notInBa...)
-		// Re-sort and merge the lock spans. We can set the batch request's
-		// DistinctSpans flag based on whether any of in-flight writes in this
-		// batch overlap with each other. This will have (rare) false negatives
-		// when the in-flight writes overlap with existing lock spans, but never
-		// false positives.
+
 		et.LockSpans, ba.Header.DistinctSpans = roachpb.MergeSpans(&et.LockSpans)
+	} else {
+		__antithesis_instrumentation__.Notify(115666)
 	}
+	__antithesis_instrumentation__.Notify(115632)
 	return ba, nil
 }
 
-// maybeBumpReadTimestampToWriteTimestamp bumps the batch's read timestamp to
-// the write timestamp for transactional batches where these timestamp have
-// diverged and where bumping is possible. When possible, this allows the
-// transaction to commit without having to retry.
-//
-// Returns true if the timestamp was bumped.
-//
-// Note that this, like all the server-side bumping of the read timestamp, only
-// works for batches that exclusively contain writes; reads cannot be bumped
-// like this because they've already acquired timestamp-aware latches.
 func maybeBumpReadTimestampToWriteTimestamp(
 	ctx context.Context, ba *roachpb.BatchRequest, g *concurrency.Guard,
 ) bool {
+	__antithesis_instrumentation__.Notify(115667)
 	if ba.Txn == nil {
+		__antithesis_instrumentation__.Notify(115673)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(115674)
 	}
+	__antithesis_instrumentation__.Notify(115668)
 	if !ba.CanForwardReadTimestamp {
+		__antithesis_instrumentation__.Notify(115675)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(115676)
 	}
+	__antithesis_instrumentation__.Notify(115669)
 	if ba.Txn.ReadTimestamp == ba.Txn.WriteTimestamp {
+		__antithesis_instrumentation__.Notify(115677)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(115678)
 	}
+	__antithesis_instrumentation__.Notify(115670)
 	arg, ok := ba.GetArg(roachpb.EndTxn)
 	if !ok {
+		__antithesis_instrumentation__.Notify(115679)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(115680)
 	}
+	__antithesis_instrumentation__.Notify(115671)
 	et := arg.(*roachpb.EndTxnRequest)
 	if batcheval.IsEndTxnExceedingDeadline(ba.Txn.WriteTimestamp, et.Deadline) {
+		__antithesis_instrumentation__.Notify(115681)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(115682)
 	}
+	__antithesis_instrumentation__.Notify(115672)
 	return tryBumpBatchTimestamp(ctx, ba, g, ba.Txn.WriteTimestamp)
 }
 
-// tryBumpBatchTimestamp attempts to bump ba's read and write timestamps to ts.
-//
-// This function is called both below and above latching, which is indicated by
-// the concurrency guard argument. The concurrency guard, if not nil, indicates
-// that the caller is holding latches and cannot adjust its timestamp beyond the
-// limits of what is protected by those latches. If the concurrency guard is
-// nil, the caller indicates that it is not holding latches and can therefore
-// more freely adjust its timestamp because it will re-acquire latches at
-// whatever timestamp the batch is bumped to.
-//
-// Returns true if the timestamp was bumped. Returns false if the timestamp could
-// not be bumped.
 func tryBumpBatchTimestamp(
 	ctx context.Context, ba *roachpb.BatchRequest, g *concurrency.Guard, ts hlc.Timestamp,
 ) bool {
-	if g != nil && !g.IsolatedAtLaterTimestamps() {
+	__antithesis_instrumentation__.Notify(115683)
+	if g != nil && func() bool {
+		__antithesis_instrumentation__.Notify(115688)
+		return !g.IsolatedAtLaterTimestamps() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(115689)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(115690)
 	}
+	__antithesis_instrumentation__.Notify(115684)
 	if ts.Less(ba.Timestamp) {
+		__antithesis_instrumentation__.Notify(115691)
 		log.Fatalf(ctx, "trying to bump to %s <= ba.Timestamp: %s", ts, ba.Timestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(115692)
 	}
+	__antithesis_instrumentation__.Notify(115685)
 	if ba.Txn == nil {
+		__antithesis_instrumentation__.Notify(115693)
 		log.VEventf(ctx, 2, "bumping batch timestamp to %s from %s", ts, ba.Timestamp)
 		ba.Timestamp = ts
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(115694)
 	}
-	if ts.Less(ba.Txn.ReadTimestamp) || ts.Less(ba.Txn.WriteTimestamp) {
+	__antithesis_instrumentation__.Notify(115686)
+	if ts.Less(ba.Txn.ReadTimestamp) || func() bool {
+		__antithesis_instrumentation__.Notify(115695)
+		return ts.Less(ba.Txn.WriteTimestamp) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(115696)
 		log.Fatalf(ctx, "trying to bump to %s inconsistent with ba.Txn.ReadTimestamp: %s, "+
 			"ba.Txn.WriteTimestamp: %s", ts, ba.Txn.ReadTimestamp, ba.Txn.WriteTimestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(115697)
 	}
+	__antithesis_instrumentation__.Notify(115687)
 	log.VEventf(ctx, 2, "bumping batch timestamp to: %s from read: %s, write: %s",
 		ts, ba.Txn.ReadTimestamp, ba.Txn.WriteTimestamp)
 	ba.Txn = ba.Txn.Clone()
 	ba.Txn.Refresh(ts)
-	ba.Timestamp = ba.Txn.ReadTimestamp // Refresh just updated ReadTimestamp
+	ba.Timestamp = ba.Txn.ReadTimestamp
 	return true
 }

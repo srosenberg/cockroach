@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -20,26 +12,34 @@ import (
 )
 
 func (d *delegator) delegateShowEnums(n *tree.ShowEnums) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465554)
 	flags := cat.Flags{AvoidDescriptorCaches: true}
 	_, name, err := d.catalog.ResolveSchema(d.ctx, flags, &n.ObjectNamePrefix)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465557)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465558)
 	}
+	__antithesis_instrumentation__.Notify(465555)
 
 	schemaClause := ""
 	if n.ExplicitSchema {
+		__antithesis_instrumentation__.Notify(465559)
 		schema := lexbase.EscapeSQLString(name.Schema())
 		if name.Schema() == catconstants.PgTempSchemaName {
+			__antithesis_instrumentation__.Notify(465561)
 			schema = lexbase.EscapeSQLString(d.evalCtx.SessionData().SearchPath.GetTemporarySchemaName())
+		} else {
+			__antithesis_instrumentation__.Notify(465562)
 		}
+		__antithesis_instrumentation__.Notify(465560)
 		schemaClause = fmt.Sprintf("AND nsp.nspname = %s", schema)
+	} else {
+		__antithesis_instrumentation__.Notify(465563)
 	}
+	__antithesis_instrumentation__.Notify(465556)
 
-	// We can't query pg_enum directly as there are no rows in
-	// pg_enum if we create an empty enum (e.g. CREATE TYPE x AS ENUM()).
-	// Instead, use a CTE to aggregate enums, and use pg_type with an
-	// enum filter to LEFT JOIN against the aggregated enums to ensure
-	// we include these rows.
 	query := fmt.Sprintf(`
 WITH enums(enumtypid, values) AS (
 	SELECT

@@ -12,6 +12,7 @@ go_library(
         "//pkg/sql/sem/tree",
         "//pkg/sql/sessiondata",
         "//pkg/sql/types",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -23,5 +24,6 @@ go_test(
         "//pkg/sql/parser",
         "//pkg/sql/sem/tree",
         "//pkg/sql/types",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package builtins
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,29 +16,14 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// mapEntryOverhead is a guess on how much space (in bytes)
-// each item added to a map takes.
-// More explanation in cockroach/pkg/sql/rowexec/aggregator.go variable
-// hashAggregatorSizeOfBucketsItem
 const mapEntryOverhead = 64
 
-// alterAddFKStatements represents the column name for alter_statements in
-// crdb_internal.create_statements.
 const alterAddFKStatements = "alter_statements"
 
-// alterValidateFKStatements represents the column name for validate_statements in
-// crdb_internal.create_statements.
 const alterValidateFKStatements = "validate_statements"
 
-// foreignKeyValidationWarning is a warning letting the user know that
-// the validate foreign key constraints may fail.
 const foreignKeyValidationWarning = "-- Validate foreign key constraints. These can fail if there was unvalidated data during the SHOW CREATE ALL TABLES"
 
-// getTopologicallySortedTableIDs returns the set of table ids sorted
-// first by table id, then topologically ordered such that dependencies are
-// ordered before tables that depend on them. (ie, sequences will appear before
-// the table that uses the sequence).
-// The tables are sorted by table id first to guarantee stable ordering.
 func getTopologicallySortedTableIDs(
 	ctx context.Context,
 	evalPlanner tree.EvalPlanner,
@@ -54,21 +31,29 @@ func getTopologicallySortedTableIDs(
 	dbName string,
 	acc *mon.BoundAccount,
 ) ([]int64, error) {
+	__antithesis_instrumentation__.Notify(602373)
 	ids, err := getTableIDs(ctx, evalPlanner, txn, dbName, acc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602381)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(602382)
 	}
+	__antithesis_instrumentation__.Notify(602374)
 
 	if len(ids) == 0 {
+		__antithesis_instrumentation__.Notify(602383)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(602384)
 	}
+	__antithesis_instrumentation__.Notify(602375)
 
 	sizeOfMap := int64(0)
-	// dependsOnIDs maps an id of a table to the ids it depends on.
-	// We perform the topological sort on dependsOnIDs instead of on the
-	// byID map to reduce memory usage.
+
 	dependsOnIDs := make(map[int64][]int64)
 	for _, tid := range ids {
+		__antithesis_instrumentation__.Notify(602385)
 		query := fmt.Sprintf(`
 		SELECT dependson_id
 		FROM %s.crdb_internal.backward_dependencies
@@ -83,74 +68,91 @@ func getTopologicallySortedTableIDs(
 			tid,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(602390)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(602391)
 		}
+		__antithesis_instrumentation__.Notify(602386)
 
 		var refs []int64
 		var ok bool
 		for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+			__antithesis_instrumentation__.Notify(602392)
 			id := tree.MustBeDInt(it.Cur()[0])
 			refs = append(refs, int64(id))
 		}
+		__antithesis_instrumentation__.Notify(602387)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(602393)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(602394)
 		}
+		__antithesis_instrumentation__.Notify(602388)
 
-		// Account for memory of map.
 		sizeOfKeyValue := int64(unsafe.Sizeof(tid)) + int64(len(refs))*memsize.Int64
 		sizeOfMap += sizeOfKeyValue + mapEntryOverhead
 		if err = acc.Grow(ctx, sizeOfKeyValue+mapEntryOverhead); err != nil {
+			__antithesis_instrumentation__.Notify(602395)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(602396)
 		}
+		__antithesis_instrumentation__.Notify(602389)
 
 		dependsOnIDs[tid] = refs
 	}
+	__antithesis_instrumentation__.Notify(602376)
 
-	// First sort by ids to guarantee stable output.
 	sort.Slice(ids, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(602397)
 		return ids[i] < ids[j]
 	})
+	__antithesis_instrumentation__.Notify(602377)
 
-	// Collect transitive dependencies in topological order into collected.
-	// The topological order is essential here since it captures dependencies
-	// for views and sequences creation, hence simple alphabetical sort won't
-	// be enough.
 	var topologicallyOrderedIDs []int64
 
-	// The sort relies on creating a new array for the ids.
 	if err = acc.Grow(ctx, int64(len(ids))*memsize.Int64); err != nil {
+		__antithesis_instrumentation__.Notify(602398)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(602399)
 	}
+	__antithesis_instrumentation__.Notify(602378)
 	seen := make(map[int64]struct{})
 	for _, id := range ids {
+		__antithesis_instrumentation__.Notify(602400)
 		if err := topologicalSort(
 			ctx, id, dependsOnIDs, seen, &topologicallyOrderedIDs, acc,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(602401)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(602402)
 		}
 	}
+	__antithesis_instrumentation__.Notify(602379)
 
-	// Clear memory used by the seen map.
 	sizeOfSeen := len(seen)
 	seen = nil
 	acc.Shrink(ctx, int64(sizeOfSeen)*(memsize.Int64+mapEntryOverhead))
 
-	// The lengths should match. This is also important for memory accounting,
-	// the two arrays should have the same length.
 	if len(ids) != len(topologicallyOrderedIDs) {
+		__antithesis_instrumentation__.Notify(602403)
 		return nil, errors.AssertionFailedf("show_create_all_tables_builtin failed. "+
 			"len(ids):% d not equal to len(topologicallySortedIDs): %d",
 			len(ids), len(topologicallyOrderedIDs))
+	} else {
+		__antithesis_instrumentation__.Notify(602404)
 	}
+	__antithesis_instrumentation__.Notify(602380)
 
-	// Shrink the memory we used for the original ids array.
 	acc.Shrink(ctx, int64(len(ids))*memsize.Int64)
 	acc.Shrink(ctx, sizeOfMap)
 	return topologicallyOrderedIDs, nil
 }
 
-// getTableIDs returns the set of table ids from
-// crdb_internal.show_create_all_tables for a specified database.
 func getTableIDs(
 	ctx context.Context,
 	evalPlanner tree.EvalPlanner,
@@ -158,6 +160,7 @@ func getTableIDs(
 	dbName string,
 	acc *mon.BoundAccount,
 ) ([]int64, error) {
+	__antithesis_instrumentation__.Notify(602405)
 	query := fmt.Sprintf(`
 		SELECT descriptor_id
 		FROM %s.crdb_internal.create_statements
@@ -174,32 +177,40 @@ func getTableIDs(
 		dbName,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602409)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(602410)
 	}
+	__antithesis_instrumentation__.Notify(602406)
 
 	var tableIDs []int64
 
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(602411)
 		tid := tree.MustBeDInt(it.Cur()[0])
 
 		tableIDs = append(tableIDs, int64(tid))
 		if err = acc.Grow(ctx, int64(unsafe.Sizeof(tid))); err != nil {
+			__antithesis_instrumentation__.Notify(602412)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(602413)
 		}
 	}
+	__antithesis_instrumentation__.Notify(602407)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602414)
 		return tableIDs, err
+	} else {
+		__antithesis_instrumentation__.Notify(602415)
 	}
+	__antithesis_instrumentation__.Notify(602408)
 
 	return tableIDs, nil
 }
 
-// topologicalSort sorts transitive dependencies in topological order into
-// collected.
-// The topological order is essential here since it captures dependencies
-// for views and sequences creation, hence simple alphabetical sort won't
-// be enough.
 func topologicalSort(
 	ctx context.Context,
 	tid int64,
@@ -208,46 +219,59 @@ func topologicalSort(
 	collected *[]int64,
 	acc *mon.BoundAccount,
 ) error {
-	// has this table already been collected previously?
-	// We need this check because a table could be traversed to multiple times
-	// if it is referenced.
-	// For example, if a table references itself, without this check
-	// collect would infinitely recurse.
+	__antithesis_instrumentation__.Notify(602416)
+
 	if _, isPresent := seen[tid]; isPresent {
+		__antithesis_instrumentation__.Notify(602422)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(602423)
 	}
+	__antithesis_instrumentation__.Notify(602417)
 
-	// Skip IDs that are not in the dependsOn set.
 	if _, exists := dependsOnIDs[tid]; !exists {
+		__antithesis_instrumentation__.Notify(602424)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(602425)
 	}
+	__antithesis_instrumentation__.Notify(602418)
 
-	// Account for memory of map.
-	// The key value entry into the map is only the memory of an int64 since
-	// the value stuct{}{} uses no memory.
 	if err := acc.Grow(ctx, memsize.Int64+mapEntryOverhead); err != nil {
+		__antithesis_instrumentation__.Notify(602426)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(602427)
 	}
+	__antithesis_instrumentation__.Notify(602419)
 	seen[tid] = struct{}{}
 	for _, dep := range dependsOnIDs[tid] {
+		__antithesis_instrumentation__.Notify(602428)
 		if err := topologicalSort(ctx, dep, dependsOnIDs, seen, collected, acc); err != nil {
+			__antithesis_instrumentation__.Notify(602429)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(602430)
 		}
 	}
+	__antithesis_instrumentation__.Notify(602420)
 
 	if err := acc.Grow(ctx, int64(unsafe.Sizeof(tid))); err != nil {
+		__antithesis_instrumentation__.Notify(602431)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(602432)
 	}
+	__antithesis_instrumentation__.Notify(602421)
 	*collected = append(*collected, tid)
 
 	return nil
 }
 
-// getCreateStatement gets the create statement to recreate a table (ignoring fks)
-// for a given table id in a database.
 func getCreateStatement(
 	ctx context.Context, evalPlanner tree.EvalPlanner, txn *kv.Txn, id int64, dbName string,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(602433)
 	query := fmt.Sprintf(`
 		SELECT
 			create_nofks
@@ -264,13 +288,15 @@ func getCreateStatement(
 	)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602435)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(602436)
 	}
+	__antithesis_instrumentation__.Notify(602434)
 	return row[0], nil
 }
 
-// getAlterStatements gets the set of alter statements that add and validate
-// foreign keys for a given table id in a database.
 func getAlterStatements(
 	ctx context.Context,
 	evalPlanner tree.EvalPlanner,
@@ -279,6 +305,7 @@ func getAlterStatements(
 	dbName string,
 	statementType string,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(602437)
 	query := fmt.Sprintf(`
 		SELECT
 			%s
@@ -295,8 +322,12 @@ func getAlterStatements(
 	)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(602439)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(602440)
 	}
+	__antithesis_instrumentation__.Notify(602438)
 
 	return row[0], nil
 }

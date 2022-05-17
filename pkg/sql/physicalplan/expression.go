@@ -1,17 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// This file contains helper code to populate execinfrapb.Expressions during
-// planning.
-
 package physicalplan
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
@@ -20,77 +9,85 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// ExprContext is an interface containing objects necessary for creating
-// execinfrapb.Expressions.
 type ExprContext interface {
-	// EvalContext returns the tree.EvalContext for planning.
 	EvalContext() *tree.EvalContext
 
-	// IsLocal returns true if the current plan is local.
 	IsLocal() bool
 }
 
-// fakeExprContext is a fake implementation of ExprContext that always behaves
-// as if it were part of a non-local query.
 type fakeExprContext struct{}
 
 var _ ExprContext = fakeExprContext{}
 
 func (fakeExprContext) EvalContext() *tree.EvalContext {
+	__antithesis_instrumentation__.Notify(562082)
 	return &tree.EvalContext{}
 }
 
 func (fakeExprContext) IsLocal() bool {
+	__antithesis_instrumentation__.Notify(562083)
 	return false
 }
 
-// MakeExpression creates a execinfrapb.Expression.
-//
-// The execinfrapb.Expression uses the placeholder syntax (@1, @2, @3..) to
-// refer to columns.
-//
-// The expr uses IndexedVars to refer to columns. The caller can optionally
-// remap these columns by passing an indexVarMap: an IndexedVar with index i
-// becomes column indexVarMap[i].
-//
-// ctx can be nil in which case a fakeExprCtx will be used.
 func MakeExpression(
 	expr tree.TypedExpr, ctx ExprContext, indexVarMap []int,
 ) (execinfrapb.Expression, error) {
+	__antithesis_instrumentation__.Notify(562084)
 	if expr == nil {
+		__antithesis_instrumentation__.Notify(562091)
 		return execinfrapb.Expression{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(562092)
 	}
+	__antithesis_instrumentation__.Notify(562085)
 	if ctx == nil {
+		__antithesis_instrumentation__.Notify(562093)
 		ctx = &fakeExprContext{}
+	} else {
+		__antithesis_instrumentation__.Notify(562094)
 	}
+	__antithesis_instrumentation__.Notify(562086)
 
-	// Always replace the subqueries with their results (they must have been
-	// executed before the main query).
 	evalCtx := ctx.EvalContext()
 	subqueryVisitor := &evalAndReplaceSubqueryVisitor{
 		evalCtx: evalCtx,
 	}
 	outExpr, _ := tree.WalkExpr(subqueryVisitor, expr)
 	if subqueryVisitor.err != nil {
+		__antithesis_instrumentation__.Notify(562095)
 		return execinfrapb.Expression{}, subqueryVisitor.err
+	} else {
+		__antithesis_instrumentation__.Notify(562096)
 	}
+	__antithesis_instrumentation__.Notify(562087)
 	expr = outExpr.(tree.TypedExpr)
 
 	if indexVarMap != nil {
-		// Remap our indexed vars.
+		__antithesis_instrumentation__.Notify(562097)
+
 		expr = RemapIVarsInTypedExpr(expr, indexVarMap)
+	} else {
+		__antithesis_instrumentation__.Notify(562098)
 	}
+	__antithesis_instrumentation__.Notify(562088)
 	expression := execinfrapb.Expression{LocalExpr: expr}
 	if ctx.IsLocal() {
+		__antithesis_instrumentation__.Notify(562099)
 		return expression, nil
+	} else {
+		__antithesis_instrumentation__.Notify(562100)
 	}
+	__antithesis_instrumentation__.Notify(562089)
 
-	// Since the plan is not fully local, serialize the expression.
 	fmtCtx := execinfrapb.ExprFmtCtxBase(evalCtx)
 	fmtCtx.FormatNode(expr)
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(562101)
 		log.Infof(evalCtx.Ctx(), "Expr %s:\n%s", fmtCtx.String(), tree.ExprDebugString(expr))
+	} else {
+		__antithesis_instrumentation__.Notify(562102)
 	}
+	__antithesis_instrumentation__.Notify(562090)
 	expression.Expr = fmtCtx.CloseAndGetString()
 	return expression, nil
 }
@@ -103,29 +100,48 @@ type evalAndReplaceSubqueryVisitor struct {
 var _ tree.Visitor = &evalAndReplaceSubqueryVisitor{}
 
 func (e *evalAndReplaceSubqueryVisitor) VisitPre(expr tree.Expr) (bool, tree.Expr) {
+	__antithesis_instrumentation__.Notify(562103)
 	switch expr := expr.(type) {
 	case *tree.Subquery:
+		__antithesis_instrumentation__.Notify(562104)
 		val, err := e.evalCtx.Planner.EvalSubquery(expr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(562108)
 			e.err = err
 			return false, expr
+		} else {
+			__antithesis_instrumentation__.Notify(562109)
 		}
+		__antithesis_instrumentation__.Notify(562105)
 		newExpr := tree.Expr(val)
 		typ := expr.ResolvedType()
-		if _, isTuple := val.(*tree.DTuple); !isTuple && typ.Family() != types.UnknownFamily && typ.Family() != types.TupleFamily {
+		if _, isTuple := val.(*tree.DTuple); !isTuple && func() bool {
+			__antithesis_instrumentation__.Notify(562110)
+			return typ.Family() != types.UnknownFamily == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(562111)
+			return typ.Family() != types.TupleFamily == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(562112)
 			newExpr = tree.NewTypedCastExpr(val, typ)
+		} else {
+			__antithesis_instrumentation__.Notify(562113)
 		}
+		__antithesis_instrumentation__.Notify(562106)
 		return false, newExpr
 	default:
+		__antithesis_instrumentation__.Notify(562107)
 		return true, expr
 	}
 }
 
-func (evalAndReplaceSubqueryVisitor) VisitPost(expr tree.Expr) tree.Expr { return expr }
+func (evalAndReplaceSubqueryVisitor) VisitPost(expr tree.Expr) tree.Expr {
+	__antithesis_instrumentation__.Notify(562114)
+	return expr
+}
 
-// RemapIVarsInTypedExpr remaps tree.IndexedVars in expr using indexVarMap.
-// Note that a new expression is returned.
 func RemapIVarsInTypedExpr(expr tree.TypedExpr, indexVarMap []int) tree.TypedExpr {
+	__antithesis_instrumentation__.Notify(562115)
 	v := &ivarRemapper{indexVarMap: indexVarMap}
 	newExpr, _ := tree.WalkExpr(v, expr)
 	return newExpr.(tree.TypedExpr)
@@ -138,12 +154,20 @@ type ivarRemapper struct {
 var _ tree.Visitor = &ivarRemapper{}
 
 func (v *ivarRemapper) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
+	__antithesis_instrumentation__.Notify(562116)
 	if ivar, ok := expr.(*tree.IndexedVar); ok {
+		__antithesis_instrumentation__.Notify(562118)
 		newIvar := *ivar
 		newIvar.Idx = v.indexVarMap[ivar.Idx]
 		return false, &newIvar
+	} else {
+		__antithesis_instrumentation__.Notify(562119)
 	}
+	__antithesis_instrumentation__.Notify(562117)
 	return true, expr
 }
 
-func (*ivarRemapper) VisitPost(expr tree.Expr) tree.Expr { return expr }
+func (*ivarRemapper) VisitPost(expr tree.Expr) tree.Expr {
+	__antithesis_instrumentation__.Notify(562120)
+	return expr
+}

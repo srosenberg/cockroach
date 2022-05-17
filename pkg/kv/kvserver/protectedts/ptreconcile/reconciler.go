@@ -1,16 +1,8 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package ptreconcile provides logic to reconcile protected timestamp records
 // with state associated with their metadata.
 package ptreconcile
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,8 +20,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ReconcileInterval is the interval between two reconciliations of protected
-// timestamp records.
 var ReconcileInterval = settings.RegisterDurationSetting(
 	settings.TenantReadOnly,
 	"kv.protectedts.reconciliation.interval",
@@ -38,18 +28,12 @@ var ReconcileInterval = settings.RegisterDurationSetting(
 	settings.NonNegativeDuration,
 ).WithPublic()
 
-// StatusFunc is used to check on the status of a Record based on its Meta
-// field.
 type StatusFunc func(
 	ctx context.Context, txn *kv.Txn, meta []byte,
 ) (shouldRemove bool, _ error)
 
-// StatusFuncs maps from MetaType to a StatusFunc.
 type StatusFuncs map[string]StatusFunc
 
-// Reconciler runs a loop to reconcile the protected timestamps with external
-// state. Each record's status is determined using the record's meta type and
-// meta in conjunction with the configured StatusFunc.
 type Reconciler struct {
 	settings    *cluster.Settings
 	db          *kv.DB
@@ -58,10 +42,10 @@ type Reconciler struct {
 	statusFuncs StatusFuncs
 }
 
-// New constructs a Reconciler.
 func New(
 	st *cluster.Settings, db *kv.DB, storage protectedts.Storage, statusFuncs StatusFuncs,
 ) *Reconciler {
+	__antithesis_instrumentation__.Notify(111750)
 	return &Reconciler{
 		settings:    st,
 		db:          db,
@@ -71,94 +55,140 @@ func New(
 	}
 }
 
-// StartReconciler implements the protectedts.Reconciler interface.
 func (r *Reconciler) StartReconciler(ctx context.Context, stopper *stop.Stopper) error {
+	__antithesis_instrumentation__.Notify(111751)
 	return stopper.RunAsyncTask(ctx, "protectedts-reconciliation", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(111752)
 		r.run(ctx, stopper)
 	})
 }
 
-// Metrics returns the reconciler's metrics.
 func (r *Reconciler) Metrics() *Metrics {
+	__antithesis_instrumentation__.Notify(111753)
 	return &r.metrics
 }
 
 func (r *Reconciler) run(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(111754)
 	reconcileIntervalChanged := make(chan struct{}, 1)
 	ReconcileInterval.SetOnChange(&r.settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(111757)
 		select {
 		case reconcileIntervalChanged <- struct{}{}:
+			__antithesis_instrumentation__.Notify(111758)
 		default:
+			__antithesis_instrumentation__.Notify(111759)
 		}
 	})
+	__antithesis_instrumentation__.Notify(111755)
 	lastReconciled := time.Time{}
 	getInterval := func() time.Duration {
+		__antithesis_instrumentation__.Notify(111760)
 		interval := ReconcileInterval.Get(&r.settings.SV)
 		const jitterFrac = .1
 		return time.Duration(float64(interval) * (1 + (rand.Float64()-.5)*jitterFrac))
 	}
+	__antithesis_instrumentation__.Notify(111756)
 	timer := timeutil.NewTimer()
 	for {
+		__antithesis_instrumentation__.Notify(111761)
 		timer.Reset(timeutil.Until(lastReconciled.Add(getInterval())))
 		select {
 		case <-timer.C:
+			__antithesis_instrumentation__.Notify(111762)
 			timer.Read = true
 			r.reconcile(ctx)
 			lastReconciled = timeutil.Now()
 		case <-reconcileIntervalChanged:
-			// Go back around again.
+			__antithesis_instrumentation__.Notify(111763)
+
 		case <-stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(111764)
 			return
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(111765)
 			return
 		}
 	}
 }
 
 func (r *Reconciler) reconcile(ctx context.Context) {
-	// Load protected timestamp records.
+	__antithesis_instrumentation__.Notify(111766)
+
 	var state ptpb.State
 	if err := r.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(111769)
 		var err error
 		state, err = r.pts.GetState(ctx, txn)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(111770)
 		r.metrics.ReconciliationErrors.Inc(1)
 		log.Errorf(ctx, "failed to load protected timestamp records: %+v", err)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(111771)
 	}
+	__antithesis_instrumentation__.Notify(111767)
 	for _, rec := range state.Records {
+		__antithesis_instrumentation__.Notify(111772)
 		task, ok := r.statusFuncs[rec.MetaType]
 		if !ok {
-			// NB: We don't expect to ever hit this case outside of testing.
+			__antithesis_instrumentation__.Notify(111774)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(111775)
 		}
+		__antithesis_instrumentation__.Notify(111773)
 		var didRemove bool
 		if err := r.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
-			didRemove = false // reset for retries
+			__antithesis_instrumentation__.Notify(111776)
+			didRemove = false
 			shouldRemove, err := task(ctx, txn, rec.Meta)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(111780)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(111781)
 			}
+			__antithesis_instrumentation__.Notify(111777)
 			if !shouldRemove {
+				__antithesis_instrumentation__.Notify(111782)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(111783)
 			}
+			__antithesis_instrumentation__.Notify(111778)
 			err = r.pts.Release(ctx, txn, rec.ID.GetUUID())
-			if err != nil && !errors.Is(err, protectedts.ErrNotExists) {
+			if err != nil && func() bool {
+				__antithesis_instrumentation__.Notify(111784)
+				return !errors.Is(err, protectedts.ErrNotExists) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(111785)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(111786)
 			}
+			__antithesis_instrumentation__.Notify(111779)
 			didRemove = true
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(111787)
 			r.metrics.ReconciliationErrors.Inc(1)
 			log.Errorf(ctx, "failed to reconcile protected timestamp with id %s: %v",
 				rec.ID.String(), err)
 		} else {
+			__antithesis_instrumentation__.Notify(111788)
 			r.metrics.RecordsProcessed.Inc(1)
 			if didRemove {
+				__antithesis_instrumentation__.Notify(111789)
 				r.metrics.RecordsRemoved.Inc(1)
+			} else {
+				__antithesis_instrumentation__.Notify(111790)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(111768)
 	r.metrics.ReconcilationRuns.Inc(1)
 }

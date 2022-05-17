@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package nstree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,116 +14,155 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Catalog is used to store an in-memory copy of the whole catalog, or a portion
-// thereof.
 type Catalog struct {
 	underlying Map
 }
 
-// ForEachDescriptorEntry iterates over all descriptor table entries in an
-// ordered fashion.
 func (c Catalog) ForEachDescriptorEntry(fn func(desc catalog.Descriptor) error) error {
+	__antithesis_instrumentation__.Notify(266971)
 	if !c.IsInitialized() {
+		__antithesis_instrumentation__.Notify(266973)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266974)
 	}
+	__antithesis_instrumentation__.Notify(266972)
 	return c.underlying.byID.ascend(func(e catalog.NameEntry) error {
+		__antithesis_instrumentation__.Notify(266975)
 		return fn(e.(catalog.Descriptor))
 	})
 }
 
-// ForEachNamespaceEntry iterates over all namespace table entries in an ordered
-// fashion.
 func (c Catalog) ForEachNamespaceEntry(fn func(e catalog.NameEntry) error) error {
+	__antithesis_instrumentation__.Notify(266976)
 	if !c.IsInitialized() {
+		__antithesis_instrumentation__.Notify(266978)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266979)
 	}
+	__antithesis_instrumentation__.Notify(266977)
 	return c.underlying.byName.ascend(fn)
 }
 
-// LookupDescriptorEntry looks up a descriptor by ID.
 func (c Catalog) LookupDescriptorEntry(id descpb.ID) catalog.Descriptor {
-	if !c.IsInitialized() || id == descpb.InvalidID {
+	__antithesis_instrumentation__.Notify(266980)
+	if !c.IsInitialized() || func() bool {
+		__antithesis_instrumentation__.Notify(266983)
+		return id == descpb.InvalidID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(266984)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266985)
 	}
+	__antithesis_instrumentation__.Notify(266981)
 	e := c.underlying.byID.get(id)
 	if e == nil {
+		__antithesis_instrumentation__.Notify(266986)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266987)
 	}
+	__antithesis_instrumentation__.Notify(266982)
 	return e.(catalog.Descriptor)
 }
 
-// LookupNamespaceEntry looks up a descriptor ID by name.
 func (c Catalog) LookupNamespaceEntry(key catalog.NameKey) catalog.NameEntry {
-	if !c.IsInitialized() || key == nil {
+	__antithesis_instrumentation__.Notify(266988)
+	if !c.IsInitialized() || func() bool {
+		__antithesis_instrumentation__.Notify(266990)
+		return key == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(266991)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266992)
 	}
+	__antithesis_instrumentation__.Notify(266989)
 	return c.underlying.byName.getByName(key.GetParentID(), key.GetParentSchemaID(), key.GetName())
 }
 
-// OrderedDescriptors returns the descriptors in an ordered fashion.
 func (c Catalog) OrderedDescriptors() []catalog.Descriptor {
+	__antithesis_instrumentation__.Notify(266993)
 	if !c.IsInitialized() {
+		__antithesis_instrumentation__.Notify(266996)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266997)
 	}
+	__antithesis_instrumentation__.Notify(266994)
 	ret := make([]catalog.Descriptor, 0, c.underlying.byID.t.Len())
 	_ = c.ForEachDescriptorEntry(func(desc catalog.Descriptor) error {
+		__antithesis_instrumentation__.Notify(266998)
 		ret = append(ret, desc)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(266995)
 	return ret
 }
 
-// OrderedDescriptorIDs returns the descriptor IDs in an ordered fashion.
 func (c Catalog) OrderedDescriptorIDs() []descpb.ID {
+	__antithesis_instrumentation__.Notify(266999)
 	if !c.IsInitialized() {
+		__antithesis_instrumentation__.Notify(267002)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(267003)
 	}
+	__antithesis_instrumentation__.Notify(267000)
 	ret := make([]descpb.ID, 0, c.underlying.byName.t.Len())
 	_ = c.ForEachNamespaceEntry(func(e catalog.NameEntry) error {
+		__antithesis_instrumentation__.Notify(267004)
 		ret = append(ret, e.GetID())
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(267001)
 	return ret
 }
 
-// IsInitialized returns false if the underlying map has not yet been
-// initialized. Initialization is done lazily when
 func (c Catalog) IsInitialized() bool {
+	__antithesis_instrumentation__.Notify(267005)
 	return c.underlying.initialized()
 }
 
 var _ validate.ValidationDereferencer = Catalog{}
 var _ validate.ValidationDereferencer = MutableCatalog{}
 
-// DereferenceDescriptors implements the validate.ValidationDereferencer
-// interface.
 func (c Catalog) DereferenceDescriptors(
 	ctx context.Context, version clusterversion.ClusterVersion, reqs []descpb.ID,
 ) ([]catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(267006)
 	ret := make([]catalog.Descriptor, len(reqs))
 	for i, id := range reqs {
+		__antithesis_instrumentation__.Notify(267008)
 		ret[i] = c.LookupDescriptorEntry(id)
 	}
+	__antithesis_instrumentation__.Notify(267007)
 	return ret, nil
 }
 
-// DereferenceDescriptorIDs implements the validate.ValidationDereferencer
-// interface.
 func (c Catalog) DereferenceDescriptorIDs(
 	_ context.Context, reqs []descpb.NameInfo,
 ) ([]descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(267009)
 	ret := make([]descpb.ID, len(reqs))
 	for i, req := range reqs {
+		__antithesis_instrumentation__.Notify(267011)
 		ne := c.LookupNamespaceEntry(req)
 		if ne == nil {
+			__antithesis_instrumentation__.Notify(267013)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(267014)
 		}
+		__antithesis_instrumentation__.Notify(267012)
 		ret[i] = ne.GetID()
 	}
+	__antithesis_instrumentation__.Notify(267010)
 	return ret, nil
 }
 
-// Validate delegates to validate.Validate.
 func (c Catalog) Validate(
 	ctx context.Context,
 	version clusterversion.ClusterVersion,
@@ -139,103 +170,172 @@ func (c Catalog) Validate(
 	targetLevel catalog.ValidationLevel,
 	descriptors ...catalog.Descriptor,
 ) (ve catalog.ValidationErrors) {
+	__antithesis_instrumentation__.Notify(267015)
 	return validate.Validate(ctx, version, c, telemetry, targetLevel, descriptors...)
 }
 
-// ValidateNamespaceEntry returns an error if the specified namespace entry
-// is invalid.
 func (c Catalog) ValidateNamespaceEntry(key catalog.NameKey) error {
+	__antithesis_instrumentation__.Notify(267016)
 	ne := c.LookupNamespaceEntry(key)
 	if ne == nil {
+		__antithesis_instrumentation__.Notify(267023)
 		return errors.New("invalid descriptor ID")
+	} else {
+		__antithesis_instrumentation__.Notify(267024)
 	}
-	// Handle special cases.
+	__antithesis_instrumentation__.Notify(267017)
+
 	switch ne.GetID() {
 	case descpb.InvalidID:
+		__antithesis_instrumentation__.Notify(267025)
 		return errors.New("invalid descriptor ID")
 	case keys.PublicSchemaID:
-		// The public schema doesn't have a descriptor.
+		__antithesis_instrumentation__.Notify(267026)
+
 		return nil
 	default:
-		isSchema := ne.GetParentID() != keys.RootNamespaceID && ne.GetParentSchemaID() == keys.RootNamespaceID
-		if isSchema && strings.HasPrefix(ne.GetName(), "pg_temp_") {
-			// Temporary schemas have namespace entries but not descriptors.
+		__antithesis_instrumentation__.Notify(267027)
+		isSchema := ne.GetParentID() != keys.RootNamespaceID && func() bool {
+			__antithesis_instrumentation__.Notify(267028)
+			return ne.GetParentSchemaID() == keys.RootNamespaceID == true
+		}() == true
+		if isSchema && func() bool {
+			__antithesis_instrumentation__.Notify(267029)
+			return strings.HasPrefix(ne.GetName(), "pg_temp_") == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(267030)
+
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(267031)
 		}
 	}
-	// Compare the namespace entry with the referenced descriptor.
+	__antithesis_instrumentation__.Notify(267018)
+
 	desc := c.LookupDescriptorEntry(ne.GetID())
 	if desc == nil {
+		__antithesis_instrumentation__.Notify(267032)
 		return catalog.ErrDescriptorNotFound
+	} else {
+		__antithesis_instrumentation__.Notify(267033)
 	}
-	// TODO(postamar): remove draining name checks in 22.2
+	__antithesis_instrumentation__.Notify(267019)
+
 	for _, dn := range desc.GetDrainingNames() {
-		if ne.GetParentID() == dn.GetParentID() &&
-			ne.GetParentSchemaID() == dn.GetParentSchemaID() &&
-			ne.GetName() == dn.GetName() {
+		__antithesis_instrumentation__.Notify(267034)
+		if ne.GetParentID() == dn.GetParentID() && func() bool {
+			__antithesis_instrumentation__.Notify(267035)
+			return ne.GetParentSchemaID() == dn.GetParentSchemaID() == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(267036)
+			return ne.GetName() == dn.GetName() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(267037)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(267038)
 		}
 	}
+	__antithesis_instrumentation__.Notify(267020)
 	if desc.Dropped() {
+		__antithesis_instrumentation__.Notify(267039)
 		return errors.Newf("no matching name info in draining names of dropped %s",
 			desc.DescriptorType())
+	} else {
+		__antithesis_instrumentation__.Notify(267040)
 	}
-	if ne.GetParentID() == desc.GetParentID() &&
-		ne.GetParentSchemaID() == desc.GetParentSchemaID() &&
-		ne.GetName() == desc.GetName() {
+	__antithesis_instrumentation__.Notify(267021)
+	if ne.GetParentID() == desc.GetParentID() && func() bool {
+		__antithesis_instrumentation__.Notify(267041)
+		return ne.GetParentSchemaID() == desc.GetParentSchemaID() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(267042)
+		return ne.GetName() == desc.GetName() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(267043)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(267044)
 	}
+	__antithesis_instrumentation__.Notify(267022)
 	return errors.Newf("no matching name info found in non-dropped %s %q",
 		desc.DescriptorType(), desc.GetName())
 }
 
-// ValidateWithRecover is like Validate but which recovers from panics.
-// This is useful when we're validating many descriptors separately and we don't
-// want a corrupt descriptor to prevent validating the others.
 func (c Catalog) ValidateWithRecover(
 	ctx context.Context, version clusterversion.ClusterVersion, desc catalog.Descriptor,
 ) (ve catalog.ValidationErrors) {
+	__antithesis_instrumentation__.Notify(267045)
 	defer func() {
+		__antithesis_instrumentation__.Notify(267047)
 		if r := recover(); r != nil {
+			__antithesis_instrumentation__.Notify(267048)
 			err, ok := r.(error)
 			if !ok {
+				__antithesis_instrumentation__.Notify(267050)
 				err = errors.Newf("%v", r)
+			} else {
+				__antithesis_instrumentation__.Notify(267051)
 			}
+			__antithesis_instrumentation__.Notify(267049)
 			err = errors.WithAssertionFailure(errors.Wrap(err, "validation"))
 			ve = append(ve, err)
+		} else {
+			__antithesis_instrumentation__.Notify(267052)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(267046)
 	return c.Validate(ctx, version, catalog.NoValidationTelemetry, catalog.ValidationLevelAllPreTxnCommit, desc)
 }
 
-// MutableCatalog is like Catalog but mutable.
 type MutableCatalog struct {
 	Catalog
 }
 
-// UpsertDescriptorEntry adds a descriptor to the MutableCatalog.
 func (mc *MutableCatalog) UpsertDescriptorEntry(desc catalog.Descriptor) {
-	if desc == nil || desc.GetID() == descpb.InvalidID {
+	__antithesis_instrumentation__.Notify(267053)
+	if desc == nil || func() bool {
+		__antithesis_instrumentation__.Notify(267055)
+		return desc.GetID() == descpb.InvalidID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(267056)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(267057)
 	}
+	__antithesis_instrumentation__.Notify(267054)
 	mc.underlying.maybeInitialize()
 	mc.underlying.byID.upsert(desc)
 }
 
-// DeleteDescriptorEntry removes a descriptor from the MutableCatalog.
 func (mc *MutableCatalog) DeleteDescriptorEntry(id descpb.ID) {
-	if id == descpb.InvalidID || !mc.IsInitialized() {
+	__antithesis_instrumentation__.Notify(267058)
+	if id == descpb.InvalidID || func() bool {
+		__antithesis_instrumentation__.Notify(267060)
+		return !mc.IsInitialized() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(267061)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(267062)
 	}
+	__antithesis_instrumentation__.Notify(267059)
 	mc.underlying.maybeInitialize()
 	mc.underlying.byID.delete(id)
 }
 
-// UpsertNamespaceEntry adds a name -> id mapping to the MutableCatalog.
 func (mc *MutableCatalog) UpsertNamespaceEntry(key catalog.NameKey, id descpb.ID) {
-	if key == nil || id == descpb.InvalidID {
+	__antithesis_instrumentation__.Notify(267063)
+	if key == nil || func() bool {
+		__antithesis_instrumentation__.Notify(267065)
+		return id == descpb.InvalidID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(267066)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(267067)
 	}
+	__antithesis_instrumentation__.Notify(267064)
 	mc.underlying.maybeInitialize()
 	mc.underlying.byName.upsert(&namespaceEntry{
 		NameInfo: descpb.NameInfo{
@@ -247,17 +347,24 @@ func (mc *MutableCatalog) UpsertNamespaceEntry(key catalog.NameKey, id descpb.ID
 	})
 }
 
-// DeleteNamespaceEntry removes a name -> id mapping from the MutableCatalog.
 func (mc *MutableCatalog) DeleteNamespaceEntry(key catalog.NameKey) {
-	if key == nil || !mc.IsInitialized() {
+	__antithesis_instrumentation__.Notify(267068)
+	if key == nil || func() bool {
+		__antithesis_instrumentation__.Notify(267070)
+		return !mc.IsInitialized() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(267071)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(267072)
 	}
+	__antithesis_instrumentation__.Notify(267069)
 	mc.underlying.maybeInitialize()
 	mc.underlying.byName.delete(key)
 }
 
-// Clear empties the MutableCatalog.
 func (mc *MutableCatalog) Clear() {
+	__antithesis_instrumentation__.Notify(267073)
 	mc.underlying.Clear()
 }
 
@@ -268,7 +375,7 @@ type namespaceEntry struct {
 
 var _ catalog.NameEntry = namespaceEntry{}
 
-// GetID implements the catalog.NameEntry interface.
 func (e namespaceEntry) GetID() descpb.ID {
+	__antithesis_instrumentation__.Notify(267074)
 	return e.ID
 }

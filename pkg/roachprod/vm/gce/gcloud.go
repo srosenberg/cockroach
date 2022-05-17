@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gce
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -33,66 +25,83 @@ import (
 
 const (
 	defaultProject = "cockroach-ephemeral"
-	// ProviderName is gce.
+
 	ProviderName = "gce"
 )
 
-// providerInstance is the instance to be registered into vm.Providers by Init.
 var providerInstance = &Provider{}
 
-// DefaultProject returns the default GCE project.
 func DefaultProject() string {
+	__antithesis_instrumentation__.Notify(183575)
 	return defaultProject
 }
 
-// projects for which a cron GC job exists.
 var projectsWithGC = []string{defaultProject, "andrei-jepsen"}
 
-// Init registers the GCE provider into vm.Providers.
-//
-// If the gcloud tool is not available on the local path, the provider is a
-// stub.
 func Init() error {
+	__antithesis_instrumentation__.Notify(183576)
 	providerInstance.Projects = []string{defaultProject}
 	projectFromEnv := os.Getenv("GCE_PROJECT")
 	if projectFromEnv != "" {
+		__antithesis_instrumentation__.Notify(183579)
 		providerInstance.Projects = []string{projectFromEnv}
+	} else {
+		__antithesis_instrumentation__.Notify(183580)
 	}
+	__antithesis_instrumentation__.Notify(183577)
 	providerInstance.ServiceAccount = os.Getenv("GCE_SERVICE_ACCOUNT")
 	if _, err := exec.LookPath("gcloud"); err != nil {
+		__antithesis_instrumentation__.Notify(183581)
 		vm.Providers[ProviderName] = flagstub.New(&Provider{}, "please install the gcloud CLI utilities "+
 			"(https://cloud.google.com/sdk/downloads)")
 		return errors.New("gcloud not found")
+	} else {
+		__antithesis_instrumentation__.Notify(183582)
 	}
+	__antithesis_instrumentation__.Notify(183578)
 	vm.Providers[ProviderName] = providerInstance
 	return nil
 }
 
 func runJSONCommand(args []string, parsed interface{}) error {
+	__antithesis_instrumentation__.Notify(183583)
 	cmd := exec.Command("gcloud", args...)
 
 	rawJSON, err := cmd.Output()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183586)
 		var stderr []byte
 		if exitErr := (*exec.ExitError)(nil); errors.As(err, &exitErr) {
+			__antithesis_instrumentation__.Notify(183588)
 			stderr = exitErr.Stderr
+		} else {
+			__antithesis_instrumentation__.Notify(183589)
 		}
-		// TODO(peter,ajwerner): Remove this hack once gcloud behaves when adding
-		// new zones.
+		__antithesis_instrumentation__.Notify(183587)
+
 		if matched, _ := regexp.Match(`.*Unknown zone`, stderr); !matched {
+			__antithesis_instrumentation__.Notify(183590)
 			return errors.Wrapf(err, "failed to run: gcloud %s\nstdout: %s\nstderr: %s\n",
 				strings.Join(args, " "), bytes.TrimSpace(rawJSON), bytes.TrimSpace(stderr))
+		} else {
+			__antithesis_instrumentation__.Notify(183591)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(183592)
 	}
+	__antithesis_instrumentation__.Notify(183584)
 
 	if err := json.Unmarshal(rawJSON, &parsed); err != nil {
+		__antithesis_instrumentation__.Notify(183593)
 		return errors.Wrapf(err, "failed to parse json %s", rawJSON)
+	} else {
+		__antithesis_instrumentation__.Notify(183594)
 	}
+	__antithesis_instrumentation__.Notify(183585)
 
 	return nil
 }
 
-// Used to parse the gcloud responses
 type jsonVM struct {
 	Name              string
 	Labels            map[string]string
@@ -109,56 +118,63 @@ type jsonVM struct {
 	Zone        string
 }
 
-// Convert the JSON VM data into our common VM type
 func (jsonVM *jsonVM) toVM(project string, opts *ProviderOpts) (ret *vm.VM) {
+	__antithesis_instrumentation__.Notify(183595)
 	var vmErrors []error
 	var err error
 
-	// Check "lifetime" label.
 	var lifetime time.Duration
 	if lifetimeStr, ok := jsonVM.Labels["lifetime"]; ok {
+		__antithesis_instrumentation__.Notify(183600)
 		if lifetime, err = time.ParseDuration(lifetimeStr); err != nil {
+			__antithesis_instrumentation__.Notify(183601)
 			vmErrors = append(vmErrors, vm.ErrNoExpiration)
+		} else {
+			__antithesis_instrumentation__.Notify(183602)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(183603)
 		vmErrors = append(vmErrors, vm.ErrNoExpiration)
 	}
+	__antithesis_instrumentation__.Notify(183596)
 
-	// lastComponent splits a url path and returns only the last part. This is
-	// used because some of the fields in jsonVM are defined using URLs like:
-	//  "https://www.googleapis.com/compute/v1/projects/cockroach-shared/zones/us-east1-b/machineTypes/n1-standard-16"
-	// We want to strip this down to "n1-standard-16", so we only want the last
-	// component.
 	lastComponent := func(url string) string {
+		__antithesis_instrumentation__.Notify(183604)
 		s := strings.Split(url, "/")
 		return s[len(s)-1]
 	}
+	__antithesis_instrumentation__.Notify(183597)
 
-	// Extract network information
 	var publicIP, privateIP, vpc string
 	if len(jsonVM.NetworkInterfaces) == 0 {
+		__antithesis_instrumentation__.Notify(183605)
 		vmErrors = append(vmErrors, vm.ErrBadNetwork)
 	} else {
+		__antithesis_instrumentation__.Notify(183606)
 		privateIP = jsonVM.NetworkInterfaces[0].NetworkIP
 		if len(jsonVM.NetworkInterfaces[0].AccessConfigs) == 0 {
+			__antithesis_instrumentation__.Notify(183607)
 			vmErrors = append(vmErrors, vm.ErrBadNetwork)
 		} else {
-			_ = jsonVM.NetworkInterfaces[0].AccessConfigs[0].Name // silence unused warning
+			__antithesis_instrumentation__.Notify(183608)
+			_ = jsonVM.NetworkInterfaces[0].AccessConfigs[0].Name
 			publicIP = jsonVM.NetworkInterfaces[0].AccessConfigs[0].NatIP
 			vpc = lastComponent(jsonVM.NetworkInterfaces[0].Network)
 		}
 	}
+	__antithesis_instrumentation__.Notify(183598)
 
 	machineType := lastComponent(jsonVM.MachineType)
 	zone := lastComponent(jsonVM.Zone)
 	remoteUser := config.SharedUser
 	if !opts.useSharedUser {
-		// N.B. gcloud uses the local username to log into instances rather
-		// than the username on the authenticated Google account but we set
-		// up the shared user at cluster creation time. Allow use of the
-		// local username if requested.
+		__antithesis_instrumentation__.Notify(183609)
+
 		remoteUser = config.OSUser.Username
+	} else {
+		__antithesis_instrumentation__.Notify(183610)
 	}
+	__antithesis_instrumentation__.Notify(183599)
 	return &vm.VM{
 		Name:        jsonVM.Name,
 		CreatedAt:   jsonVM.CreationTimestamp,
@@ -185,11 +201,10 @@ type jsonAuth struct {
 	Status  string
 }
 
-// DefaultProviderOpts returns a new gce.ProviderOpts with default values set.
 func DefaultProviderOpts() *ProviderOpts {
+	__antithesis_instrumentation__.Notify(183611)
 	return &ProviderOpts{
-		// projects needs space for one project, which is set by the flags for
-		// commands that accept a single project.
+
 		MachineType:    "n1-standard-4",
 		MinCPUPlatform: "",
 		Zones:          nil,
@@ -202,16 +217,12 @@ func DefaultProviderOpts() *ProviderOpts {
 	}
 }
 
-// CreateProviderOpts returns a new gce.ProviderOpts with default values set.
 func (p *Provider) CreateProviderOpts() vm.ProviderOpts {
+	__antithesis_instrumentation__.Notify(183612)
 	return DefaultProviderOpts()
 }
 
-// ProviderOpts provides user-configurable, gce-specific create options.
 type ProviderOpts struct {
-	// projects represent the GCE projects to operate on. Accessed through
-	// GetProject() or GetProjects() depending on whether the command accepts
-	// multiple projects or a single one.
 	MachineType      string
 	MinCPUPlatform   string
 	Zones            []string
@@ -221,77 +232,87 @@ type ProviderOpts struct {
 	PDVolumeSize     int
 	UseMultipleDisks bool
 
-	// useSharedUser indicates that the shared user rather than the personal
-	// user should be used to ssh into the remote machines.
 	useSharedUser bool
-	// use preemptible instances
+
 	preemptible bool
 }
 
-// Provider is the GCE implementation of the vm.Provider interface.
 type Provider struct {
 	Projects       []string
 	ServiceAccount string
 }
 
-// ProjectsVal is the implementation for the --gce-projects flag. It populates
-// (Provider.Projects).
 type ProjectsVal struct {
 	AcceptMultipleProjects bool
 }
 
-// defaultZones is the list of  zones used by default for cluster creation.
-// If the geo flag is specified, nodes are distributed between zones.
 var defaultZones = []string{
 	"us-east1-b",
 	"us-west1-b",
 	"europe-west2-b",
 }
 
-// Set is part of the pflag.Value interface.
 func (v ProjectsVal) Set(projects string) error {
+	__antithesis_instrumentation__.Notify(183613)
 	if projects == "" {
+		__antithesis_instrumentation__.Notify(183616)
 		return fmt.Errorf("empty GCE project")
+	} else {
+		__antithesis_instrumentation__.Notify(183617)
 	}
+	__antithesis_instrumentation__.Notify(183614)
 	prj := strings.Split(projects, ",")
-	if !v.AcceptMultipleProjects && len(prj) > 1 {
+	if !v.AcceptMultipleProjects && func() bool {
+		__antithesis_instrumentation__.Notify(183618)
+		return len(prj) > 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(183619)
 		return fmt.Errorf("multiple GCE projects not supported for command")
+	} else {
+		__antithesis_instrumentation__.Notify(183620)
 	}
+	__antithesis_instrumentation__.Notify(183615)
 	providerInstance.Projects = prj
 	return nil
 }
 
-// Type is part of the pflag.Value interface.
 func (v ProjectsVal) Type() string {
+	__antithesis_instrumentation__.Notify(183621)
 	if v.AcceptMultipleProjects {
+		__antithesis_instrumentation__.Notify(183623)
 		return "comma-separated list of GCE projects"
+	} else {
+		__antithesis_instrumentation__.Notify(183624)
 	}
+	__antithesis_instrumentation__.Notify(183622)
 	return "GCE project name"
 }
 
-// String is part of the pflag.Value interface.
 func (v ProjectsVal) String() string {
+	__antithesis_instrumentation__.Notify(183625)
 	return strings.Join(providerInstance.Projects, ",")
 }
 
-// GetProject returns the GCE project on which we're configured to operate.
-// If multiple projects were configured, this panics.
 func (p *Provider) GetProject() string {
+	__antithesis_instrumentation__.Notify(183626)
 	if len(p.Projects) > 1 {
+		__antithesis_instrumentation__.Notify(183628)
 		panic(fmt.Sprintf(
 			"multiple projects not supported (%d specified)", len(p.Projects)))
+	} else {
+		__antithesis_instrumentation__.Notify(183629)
 	}
+	__antithesis_instrumentation__.Notify(183627)
 	return p.Projects[0]
 }
 
-// GetProjects returns the list of GCE projects on which we're configured to
-// operate.
 func (p *Provider) GetProjects() []string {
+	__antithesis_instrumentation__.Notify(183630)
 	return p.Projects
 }
 
-// ConfigureCreateFlags implements vm.ProviderOptions.
 func (o *ProviderOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
+	__antithesis_instrumentation__.Notify(183631)
 	flags.StringVar(&o.MachineType, "machine-type", "n1-standard-4", "DEPRECATED")
 	_ = flags.MarkDeprecated("machine-type", "use "+ProviderName+"-machine-type instead")
 	flags.StringSliceVar(&o.Zones, "zones", nil, "DEPRECATED")
@@ -326,20 +347,23 @@ func (o *ProviderOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.preemptible, ProviderName+"-preemptible", false, "use preemptible GCE instances")
 }
 
-// ConfigureClusterFlags implements vm.ProviderFlags.
 func (o *ProviderOpts) ConfigureClusterFlags(flags *pflag.FlagSet, opt vm.MultipleProjectsOption) {
+	__antithesis_instrumentation__.Notify(183632)
 	var usage string
 	if opt == vm.SingleProject {
+		__antithesis_instrumentation__.Notify(183634)
 		usage = "GCE project to manage"
 	} else {
+		__antithesis_instrumentation__.Notify(183635)
 		usage = "List of GCE projects to manage"
 	}
+	__antithesis_instrumentation__.Notify(183633)
 
 	flags.Var(
 		ProjectsVal{
 			AcceptMultipleProjects: opt == vm.AcceptMultipleProjects,
 		},
-		ProviderName+"-project", /* name */
+		ProviderName+"-project",
 		usage)
 
 	flags.BoolVar(&o.useSharedUser,
@@ -348,66 +372,94 @@ func (o *ProviderOpts) ConfigureClusterFlags(flags *pflag.FlagSet, opt vm.Multip
 			config.SharedUser, config.OSUser.Username))
 }
 
-// CleanSSH TODO(peter): document
 func (p *Provider) CleanSSH() error {
+	__antithesis_instrumentation__.Notify(183636)
 	for _, prj := range p.GetProjects() {
+		__antithesis_instrumentation__.Notify(183638)
 		args := []string{"compute", "config-ssh", "--project", prj, "--quiet", "--remove"}
 		cmd := exec.Command("gcloud", args...)
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(183639)
 			return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+		} else {
+			__antithesis_instrumentation__.Notify(183640)
 		}
 	}
+	__antithesis_instrumentation__.Notify(183637)
 	return nil
 }
 
-// ConfigSSH is part of the vm.Provider interface
 func (p *Provider) ConfigSSH(zones []string) error {
-	// Populate SSH config files with Host entries from each instance in active projects.
+	__antithesis_instrumentation__.Notify(183641)
+
 	for _, prj := range p.GetProjects() {
+		__antithesis_instrumentation__.Notify(183643)
 		args := []string{"compute", "config-ssh", "--project", prj, "--quiet"}
 		cmd := exec.Command("gcloud", args...)
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(183644)
 			return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+		} else {
+			__antithesis_instrumentation__.Notify(183645)
 		}
 	}
+	__antithesis_instrumentation__.Notify(183642)
 	return nil
 }
 
-// Create TODO(peter): document
 func (p *Provider) Create(
 	l *logger.Logger, names []string, opts vm.CreateOpts, vmProviderOpts vm.ProviderOpts,
 ) error {
+	__antithesis_instrumentation__.Notify(183646)
 	providerOpts := vmProviderOpts.(*ProviderOpts)
 	project := p.GetProject()
 	var gcJob bool
 	for _, prj := range projectsWithGC {
+		__antithesis_instrumentation__.Notify(183662)
 		if prj == p.GetProject() {
+			__antithesis_instrumentation__.Notify(183663)
 			gcJob = true
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(183664)
 		}
 	}
+	__antithesis_instrumentation__.Notify(183647)
 	if !gcJob {
+		__antithesis_instrumentation__.Notify(183665)
 		l.Printf("WARNING: --lifetime functionality requires "+
 			"`roachprod gc --gce-project=%s` cronjob", project)
+	} else {
+		__antithesis_instrumentation__.Notify(183666)
 	}
+	__antithesis_instrumentation__.Notify(183648)
 
 	zones, err := vm.ExpandZonesFlag(providerOpts.Zones)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183667)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(183668)
 	}
+	__antithesis_instrumentation__.Notify(183649)
 	if len(zones) == 0 {
+		__antithesis_instrumentation__.Notify(183669)
 		if opts.GeoDistributed {
+			__antithesis_instrumentation__.Notify(183670)
 			zones = defaultZones
 		} else {
+			__antithesis_instrumentation__.Notify(183671)
 			zones = []string{defaultZones[0]}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(183672)
 	}
+	__antithesis_instrumentation__.Notify(183650)
 
-	// Fixed args.
 	args := []string{
 		"compute", "instances", "create",
 		"--subnet", "default",
@@ -418,87 +470,133 @@ func (p *Provider) Create(
 		"--boot-disk-type", "pd-ssd",
 	}
 
-	if project == defaultProject && p.ServiceAccount == "" {
+	if project == defaultProject && func() bool {
+		__antithesis_instrumentation__.Notify(183673)
+		return p.ServiceAccount == "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(183674)
 		p.ServiceAccount = "21965078311-compute@developer.gserviceaccount.com"
 
+	} else {
+		__antithesis_instrumentation__.Notify(183675)
 	}
+	__antithesis_instrumentation__.Notify(183651)
 	if p.ServiceAccount != "" {
+		__antithesis_instrumentation__.Notify(183676)
 		args = append(args, "--service-account", p.ServiceAccount)
+	} else {
+		__antithesis_instrumentation__.Notify(183677)
 	}
+	__antithesis_instrumentation__.Notify(183652)
 
 	if providerOpts.preemptible {
-		// Make sure the lifetime is no longer than 24h
+		__antithesis_instrumentation__.Notify(183678)
+
 		if opts.Lifetime > time.Hour*24 {
+			__antithesis_instrumentation__.Notify(183680)
 			return errors.New("lifetime cannot be longer than 24 hours for preemptible instances")
+		} else {
+			__antithesis_instrumentation__.Notify(183681)
 		}
+		__antithesis_instrumentation__.Notify(183679)
 		args = append(args, "--preemptible")
-		// Preemptible instances require the following arguments set explicitly
+
 		args = append(args, "--maintenance-policy=terminate")
 		args = append(args, "--no-restart-on-failure")
+	} else {
+		__antithesis_instrumentation__.Notify(183682)
 	}
+	__antithesis_instrumentation__.Notify(183653)
 
 	extraMountOpts := ""
-	// Dynamic args.
+
 	if opts.SSDOpts.UseLocalSSD {
-		// n2-class and c2-class GCP machines cannot be requested with only 1
-		// SSD; minimum number of actual SSDs is 2.
-		// TODO(pbardea): This is more general for machine types that
-		// come in different sizes.
-		// See: https://cloud.google.com/compute/docs/disks/
+		__antithesis_instrumentation__.Notify(183683)
+
 		n2MachineTypes := regexp.MustCompile("^[cn]2-.+-16")
-		if n2MachineTypes.MatchString(providerOpts.MachineType) && providerOpts.SSDCount == 1 {
+		if n2MachineTypes.MatchString(providerOpts.MachineType) && func() bool {
+			__antithesis_instrumentation__.Notify(183686)
+			return providerOpts.SSDCount == 1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(183687)
 			fmt.Fprint(os.Stderr, "WARNING: SSD count must be at least 2 for n2 and c2 machine types with 16vCPU. Setting --gce-local-ssd-count to 2.\n")
 			providerOpts.SSDCount = 2
+		} else {
+			__antithesis_instrumentation__.Notify(183688)
 		}
+		__antithesis_instrumentation__.Notify(183684)
 		for i := 0; i < providerOpts.SSDCount; i++ {
+			__antithesis_instrumentation__.Notify(183689)
 			args = append(args, "--local-ssd", "interface=NVME")
 		}
+		__antithesis_instrumentation__.Notify(183685)
 		if opts.SSDOpts.NoExt4Barrier {
+			__antithesis_instrumentation__.Notify(183690)
 			extraMountOpts = "nobarrier"
+		} else {
+			__antithesis_instrumentation__.Notify(183691)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(183692)
 		pdProps := []string{
 			fmt.Sprintf("type=%s", providerOpts.PDVolumeType),
 			fmt.Sprintf("size=%dGB", providerOpts.PDVolumeSize),
 			"auto-delete=yes",
 		}
 		args = append(args, "--create-disk", strings.Join(pdProps, ","))
-		// Enable DISCARD commands for persistent disks, as is advised in:
-		// https://cloud.google.com/compute/docs/disks/optimizing-pd-performance#formatting_parameters.
+
 		extraMountOpts = "discard"
 	}
+	__antithesis_instrumentation__.Notify(183654)
 
-	// Create GCE startup script file.
 	filename, err := writeStartupScript(extraMountOpts, opts.SSDOpts.FileSystem, providerOpts.UseMultipleDisks)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183693)
 		return errors.Wrapf(err, "could not write GCE startup script to temp file")
+	} else {
+		__antithesis_instrumentation__.Notify(183694)
 	}
+	__antithesis_instrumentation__.Notify(183655)
 	defer func() {
+		__antithesis_instrumentation__.Notify(183695)
 		_ = os.Remove(filename)
 	}()
+	__antithesis_instrumentation__.Notify(183656)
 
 	args = append(args, "--machine-type", providerOpts.MachineType)
 	if providerOpts.MinCPUPlatform != "" {
+		__antithesis_instrumentation__.Notify(183696)
 		args = append(args, "--min-cpu-platform", providerOpts.MinCPUPlatform)
+	} else {
+		__antithesis_instrumentation__.Notify(183697)
 	}
+	__antithesis_instrumentation__.Notify(183657)
 
 	m := vm.GetDefaultLabelMap(opts)
-	// Format according to gce label naming convention requirement.
+
 	time := timeutil.Now().Format(time.RFC3339)
 	time = strings.ToLower(strings.ReplaceAll(time, ":", "_"))
 	m[vm.TagCreated] = time
 
 	var sb strings.Builder
 	for key, value := range opts.CustomLabels {
+		__antithesis_instrumentation__.Notify(183698)
 		_, ok := m[key]
 		if ok {
+			__antithesis_instrumentation__.Notify(183700)
 			return fmt.Errorf("duplicate label name defined: %s", key)
+		} else {
+			__antithesis_instrumentation__.Notify(183701)
 		}
+		__antithesis_instrumentation__.Notify(183699)
 		fmt.Fprintf(&sb, "%s=%s,", key, value)
 	}
+	__antithesis_instrumentation__.Notify(183658)
 	for key, value := range m {
+		__antithesis_instrumentation__.Notify(183702)
 		fmt.Fprintf(&sb, "%s=%s,", key, value)
 	}
+	__antithesis_instrumentation__.Notify(183659)
 	s := sb.String()
 	args = append(args, "--labels", s[:len(s)-1])
 
@@ -510,46 +608,67 @@ func (p *Provider) Create(
 	nodeZones := vm.ZonePlacement(len(zones), len(names))
 	zoneHostNames := make([][]string, len(zones))
 	for i, name := range names {
+		__antithesis_instrumentation__.Notify(183703)
 		zone := nodeZones[i]
 		zoneHostNames[zone] = append(zoneHostNames[zone], name)
 	}
+	__antithesis_instrumentation__.Notify(183660)
 	for i, zoneHosts := range zoneHostNames {
+		__antithesis_instrumentation__.Notify(183704)
 		argsWithZone := append(args[:len(args):len(args)], "--zone", zones[i])
 		argsWithZone = append(argsWithZone, zoneHosts...)
 		g.Go(func() error {
+			__antithesis_instrumentation__.Notify(183705)
 			cmd := exec.Command("gcloud", argsWithZone...)
 
 			output, err := cmd.CombinedOutput()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(183707)
 				return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+			} else {
+				__antithesis_instrumentation__.Notify(183708)
 			}
+			__antithesis_instrumentation__.Notify(183706)
 			return nil
 		})
 
 	}
+	__antithesis_instrumentation__.Notify(183661)
 	return g.Wait()
 }
 
-// Delete TODO(peter): document
 func (p *Provider) Delete(vms vm.List) error {
-	// Map from project to map of zone to list of machines in that project/zone.
+	__antithesis_instrumentation__.Notify(183709)
+
 	projectZoneMap := make(map[string]map[string][]string)
 	for _, v := range vms {
+		__antithesis_instrumentation__.Notify(183712)
 		if v.Provider != ProviderName {
+			__antithesis_instrumentation__.Notify(183715)
 			return errors.Errorf("%s received VM instance from %s", ProviderName, v.Provider)
+		} else {
+			__antithesis_instrumentation__.Notify(183716)
 		}
+		__antithesis_instrumentation__.Notify(183713)
 		if projectZoneMap[v.Project] == nil {
+			__antithesis_instrumentation__.Notify(183717)
 			projectZoneMap[v.Project] = make(map[string][]string)
+		} else {
+			__antithesis_instrumentation__.Notify(183718)
 		}
+		__antithesis_instrumentation__.Notify(183714)
 
 		projectZoneMap[v.Project][v.Zone] = append(projectZoneMap[v.Project][v.Zone], v.Name)
 	}
+	__antithesis_instrumentation__.Notify(183710)
 
 	var g errgroup.Group
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	for project, zoneMap := range projectZoneMap {
+		__antithesis_instrumentation__.Notify(183719)
 		for zone, names := range zoneMap {
+			__antithesis_instrumentation__.Notify(183720)
 			args := []string{
 				"compute", "instances", "delete",
 				"--delete-disks", "all",
@@ -560,40 +679,58 @@ func (p *Provider) Delete(vms vm.List) error {
 			args = append(args, names...)
 
 			g.Go(func() error {
+				__antithesis_instrumentation__.Notify(183721)
 				cmd := exec.CommandContext(ctx, "gcloud", args...)
 
 				output, err := cmd.CombinedOutput()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(183723)
 					return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+				} else {
+					__antithesis_instrumentation__.Notify(183724)
 				}
+				__antithesis_instrumentation__.Notify(183722)
 				return nil
 			})
 		}
 	}
+	__antithesis_instrumentation__.Notify(183711)
 
 	return g.Wait()
 }
 
-// Reset implements the vm.Provider interface.
 func (p *Provider) Reset(vms vm.List) error {
-	// Map from project to map of zone to list of machines in that project/zone.
+	__antithesis_instrumentation__.Notify(183725)
+
 	projectZoneMap := make(map[string]map[string][]string)
 	for _, v := range vms {
+		__antithesis_instrumentation__.Notify(183728)
 		if v.Provider != ProviderName {
+			__antithesis_instrumentation__.Notify(183731)
 			return errors.Errorf("%s received VM instance from %s", ProviderName, v.Provider)
+		} else {
+			__antithesis_instrumentation__.Notify(183732)
 		}
+		__antithesis_instrumentation__.Notify(183729)
 		if projectZoneMap[v.Project] == nil {
+			__antithesis_instrumentation__.Notify(183733)
 			projectZoneMap[v.Project] = make(map[string][]string)
+		} else {
+			__antithesis_instrumentation__.Notify(183734)
 		}
+		__antithesis_instrumentation__.Notify(183730)
 
 		projectZoneMap[v.Project][v.Zone] = append(projectZoneMap[v.Project][v.Zone], v.Name)
 	}
+	__antithesis_instrumentation__.Notify(183726)
 
 	var g errgroup.Group
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	for project, zoneMap := range projectZoneMap {
+		__antithesis_instrumentation__.Notify(183735)
 		for zone, names := range zoneMap {
+			__antithesis_instrumentation__.Notify(183736)
 			args := []string{
 				"compute", "instances", "reset",
 			}
@@ -603,25 +740,31 @@ func (p *Provider) Reset(vms vm.List) error {
 			args = append(args, names...)
 
 			g.Go(func() error {
+				__antithesis_instrumentation__.Notify(183737)
 				cmd := exec.CommandContext(ctx, "gcloud", args...)
 
 				output, err := cmd.CombinedOutput()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(183739)
 					return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+				} else {
+					__antithesis_instrumentation__.Notify(183740)
 				}
+				__antithesis_instrumentation__.Notify(183738)
 				return nil
 			})
 		}
 	}
+	__antithesis_instrumentation__.Notify(183727)
 
 	return g.Wait()
 }
 
-// Extend TODO(peter): document
 func (p *Provider) Extend(vms vm.List, lifetime time.Duration) error {
-	// The gcloud command only takes a single instance.  Unlike Delete() above, we have to
-	// perform the iteration here.
+	__antithesis_instrumentation__.Notify(183741)
+
 	for _, v := range vms {
+		__antithesis_instrumentation__.Notify(183743)
 		args := []string{"compute", "instances", "add-labels"}
 
 		args = append(args, "--project", v.Project)
@@ -633,73 +776,99 @@ func (p *Provider) Extend(vms vm.List, lifetime time.Duration) error {
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(183744)
 			return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+		} else {
+			__antithesis_instrumentation__.Notify(183745)
 		}
 	}
+	__antithesis_instrumentation__.Notify(183742)
 	return nil
 }
 
-// FindActiveAccount TODO(peter): document
 func (p *Provider) FindActiveAccount() (string, error) {
+	__antithesis_instrumentation__.Notify(183746)
 	args := []string{"auth", "list", "--format", "json", "--filter", "status~ACTIVE"}
 
 	accounts := make([]jsonAuth, 0)
 	if err := runJSONCommand(args, &accounts); err != nil {
+		__antithesis_instrumentation__.Notify(183750)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183751)
 	}
+	__antithesis_instrumentation__.Notify(183747)
 
 	if len(accounts) != 1 {
+		__antithesis_instrumentation__.Notify(183752)
 		return "", fmt.Errorf("no active accounts found, please configure gcloud")
+	} else {
+		__antithesis_instrumentation__.Notify(183753)
 	}
+	__antithesis_instrumentation__.Notify(183748)
 
 	if !strings.HasSuffix(accounts[0].Account, config.EmailDomain) {
+		__antithesis_instrumentation__.Notify(183754)
 		return "", fmt.Errorf("active account %q does not belong to domain %s",
 			accounts[0].Account, config.EmailDomain)
+	} else {
+		__antithesis_instrumentation__.Notify(183755)
 	}
-	_ = accounts[0].Status // silence unused warning
+	__antithesis_instrumentation__.Notify(183749)
+	_ = accounts[0].Status
 
 	username := strings.Split(accounts[0].Account, "@")[0]
 	return username, nil
 }
 
-// List queries gcloud to produce a list of VM info objects.
 func (p *Provider) List(l *logger.Logger) (vm.List, error) {
+	__antithesis_instrumentation__.Notify(183756)
 	var vms vm.List
 	for _, prj := range p.GetProjects() {
+		__antithesis_instrumentation__.Notify(183758)
 		args := []string{"compute", "instances", "list", "--project", prj, "--format", "json"}
 
-		// Run the command, extracting the JSON payload
 		jsonVMS := make([]jsonVM, 0)
 		if err := runJSONCommand(args, &jsonVMS); err != nil {
+			__antithesis_instrumentation__.Notify(183760)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(183761)
 		}
+		__antithesis_instrumentation__.Notify(183759)
 
-		// Now, convert the json payload into our common VM type
 		for _, jsonVM := range jsonVMS {
+			__antithesis_instrumentation__.Notify(183762)
 			defaultOpts := p.CreateProviderOpts().(*ProviderOpts)
 			vms = append(vms, *jsonVM.toVM(prj, defaultOpts))
 		}
 	}
+	__antithesis_instrumentation__.Notify(183757)
 
 	return vms, nil
 }
 
-// Name TODO(peter): document
 func (p *Provider) Name() string {
+	__antithesis_instrumentation__.Notify(183763)
 	return ProviderName
 }
 
-// Active is part of the vm.Provider interface.
 func (p *Provider) Active() bool {
+	__antithesis_instrumentation__.Notify(183764)
 	return true
 }
 
-// ProjectActive is part of the vm.Provider interface.
 func (p *Provider) ProjectActive(project string) bool {
+	__antithesis_instrumentation__.Notify(183765)
 	for _, p := range p.GetProjects() {
+		__antithesis_instrumentation__.Notify(183767)
 		if p == project {
+			__antithesis_instrumentation__.Notify(183768)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(183769)
 		}
 	}
+	__antithesis_instrumentation__.Notify(183766)
 	return false
 }

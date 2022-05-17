@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ts
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,10 +19,7 @@ import (
 
 var (
 	resolution1nsDefaultRollupThreshold = time.Second
-	// The deprecated prune threshold for the 10s resolution was created before
-	// time series rollups were enabled. It is still used in the transition period
-	// during an upgrade before the cluster version is finalized. After the
-	// version upgrade, the rollup threshold is used instead.
+
 	deprecatedResolution10sDefaultPruneThreshold = 30 * 24 * time.Hour
 	resolution10sDefaultRollupThreshold          = 10 * 24 * time.Hour
 	resolution30mDefaultPruneThreshold           = 90 * 24 * time.Hour
@@ -38,7 +27,6 @@ var (
 	storeDataTimeout                             = 1 * time.Minute
 )
 
-// TimeseriesStorageEnabled controls whether to store timeseries data to disk.
 var TimeseriesStorageEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"timeseries.storage.enabled",
@@ -47,9 +35,6 @@ var TimeseriesStorageEnabled = settings.RegisterBoolSetting(
 	true,
 ).WithPublic()
 
-// Resolution10sStorageTTL defines the maximum age of data that will be retained
-// at he 10 second resolution. Data older than this is subject to being "rolled
-// up" into the 30 minute resolution and then deleted.
 var Resolution10sStorageTTL = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"timeseries.storage.resolution_10s.ttl",
@@ -58,8 +43,8 @@ var Resolution10sStorageTTL = settings.RegisterDurationSetting(
 	resolution10sDefaultRollupThreshold,
 ).WithPublic()
 
-// deprecatedResolution30StoreDuration is retained for backward compatibility during a version upgrade.
 var deprecatedResolution30StoreDuration = func() *settings.DurationSetting {
+	__antithesis_instrumentation__.Notify(647953)
 	s := settings.RegisterDurationSetting(
 		settings.TenantWritable,
 		"timeseries.storage.30m_resolution_ttl", "replaced by timeseries.storage.resolution_30m.ttl",
@@ -70,15 +55,10 @@ var deprecatedResolution30StoreDuration = func() *settings.DurationSetting {
 }()
 
 func init() {
-	// The setting is not used any more, but we need to keep its
-	// definition for backward compatibility until the next release
-	// cycle.
+
 	_ = deprecatedResolution30StoreDuration
 }
 
-// Resolution30mStorageTTL defines the maximum age of data that will be
-// retained at he 30 minute resolution. Data older than this is subject to
-// deletion.
 var Resolution30mStorageTTL = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"timeseries.storage.resolution_30m.ttl",
@@ -87,33 +67,37 @@ var Resolution30mStorageTTL = settings.RegisterDurationSetting(
 	resolution30mDefaultPruneThreshold,
 ).WithPublic()
 
-// DB provides Cockroach's Time Series API.
 type DB struct {
 	db      *kv.DB
 	st      *cluster.Settings
 	metrics *TimeSeriesMetrics
 
-	// pruneAgeByResolution maintains a suggested maximum age per resolution; data
-	// which is older than the given threshold for a resolution is considered
-	// eligible for deletion. Thresholds are specified in nanoseconds.
 	pruneThresholdByResolution map[Resolution]func() int64
 
-	// forceRowFormat is set to true if the database should write in the old row
-	// format, regardless of the current cluster setting. Currently only set to
-	// true in tests to verify backwards compatibility.
 	forceRowFormat bool
 }
 
-// NewDB creates a new DB instance.
 func NewDB(db *kv.DB, settings *cluster.Settings) *DB {
+	__antithesis_instrumentation__.Notify(647954)
 	pruneThresholdByResolution := map[Resolution]func() int64{
 		Resolution10s: func() int64 {
+			__antithesis_instrumentation__.Notify(647956)
 			return Resolution10sStorageTTL.Get(&settings.SV).Nanoseconds()
 		},
-		Resolution30m:  func() int64 { return Resolution30mStorageTTL.Get(&settings.SV).Nanoseconds() },
-		resolution1ns:  func() int64 { return resolution1nsDefaultRollupThreshold.Nanoseconds() },
-		resolution50ns: func() int64 { return resolution50nsDefaultPruneThreshold.Nanoseconds() },
+		Resolution30m: func() int64 {
+			__antithesis_instrumentation__.Notify(647957)
+			return Resolution30mStorageTTL.Get(&settings.SV).Nanoseconds()
+		},
+		resolution1ns: func() int64 {
+			__antithesis_instrumentation__.Notify(647958)
+			return resolution1nsDefaultRollupThreshold.Nanoseconds()
+		},
+		resolution50ns: func() int64 {
+			__antithesis_instrumentation__.Notify(647959)
+			return resolution50nsDefaultPruneThreshold.Nanoseconds()
+		},
 	}
+	__antithesis_instrumentation__.Notify(647955)
 	return &DB{
 		db:                         db,
 		st:                         settings,
@@ -122,12 +106,10 @@ func NewDB(db *kv.DB, settings *cluster.Settings) *DB {
 	}
 }
 
-// A DataSource can be queried for a slice of time series data.
 type DataSource interface {
 	GetTimeSeriesData() []tspb.TimeSeriesData
 }
 
-// poller maintains information for a polling process started by PollSource().
 type poller struct {
 	log.AmbientContext
 	db        *DB
@@ -137,10 +119,6 @@ type poller struct {
 	stopper   *stop.Stopper
 }
 
-// PollSource begins a Goroutine which periodically queries the supplied
-// DataSource for time series data, storing the returned data in the server.
-// Stored data will be sampled using the provided Resolution. The polling
-// process will continue until the provided stop.Stopper is stopped.
 func (db *DB) PollSource(
 	ambient log.AmbientContext,
 	source DataSource,
@@ -148,6 +126,7 @@ func (db *DB) PollSource(
 	r Resolution,
 	stopper *stop.Stopper,
 ) {
+	__antithesis_instrumentation__.Notify(647960)
 	ambient.AddLogTag("ts-poll", nil)
 	p := &poller{
 		AmbientContext: ambient,
@@ -160,89 +139,126 @@ func (db *DB) PollSource(
 	p.start()
 }
 
-// start begins the goroutine for this poller, which will periodically request
-// time series data from the DataSource and store it.
 func (p *poller) start() {
-	// Poll once immediately and synchronously.
+	__antithesis_instrumentation__.Notify(647961)
+
 	p.poll()
 	bgCtx := p.AnnotateCtx(context.Background())
 	_ = p.stopper.RunAsyncTask(bgCtx, "ts-poller", func(context.Context) {
+		__antithesis_instrumentation__.Notify(647962)
 		ticker := time.NewTicker(p.frequency)
 		defer ticker.Stop()
 		for {
+			__antithesis_instrumentation__.Notify(647963)
 			select {
 			case <-ticker.C:
+				__antithesis_instrumentation__.Notify(647964)
 				p.poll()
 			case <-p.stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(647965)
 				return
 			}
 		}
 	})
 }
 
-// poll retrieves data from the underlying DataSource a single time, storing any
-// returned time series data on the server.
 func (p *poller) poll() {
+	__antithesis_instrumentation__.Notify(647966)
 	if !TimeseriesStorageEnabled.Get(&p.db.st.SV) {
+		__antithesis_instrumentation__.Notify(647968)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(647969)
 	}
+	__antithesis_instrumentation__.Notify(647967)
 
 	ctx := p.AnnotateCtx(context.Background())
 	if err := p.stopper.RunTask(ctx, "ts.poller: poll", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(647970)
 		data := p.source.GetTimeSeriesData()
 		if len(data) == 0 {
+			__antithesis_instrumentation__.Notify(647972)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(647973)
 		}
+		__antithesis_instrumentation__.Notify(647971)
 
 		const opName = "ts-poll"
 		ctx, span := p.AnnotateCtxWithSpan(ctx, opName)
 		defer span.Finish()
 		if err := contextutil.RunWithTimeout(ctx, opName, storeDataTimeout,
 			func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(647974)
 				return p.db.StoreData(ctx, p.r, data)
 			},
 		); err != nil {
+			__antithesis_instrumentation__.Notify(647975)
 			log.Warningf(ctx, "error writing time series data: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(647976)
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(647977)
 		log.Warningf(ctx, "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(647978)
 	}
 }
 
-// StoreData writes the supplied time series data to the cockroach server.
-// Stored data will be sampled at the supplied resolution.
 func (db *DB) StoreData(ctx context.Context, r Resolution, data []tspb.TimeSeriesData) error {
+	__antithesis_instrumentation__.Notify(647979)
 	if r.IsRollup() {
+		__antithesis_instrumentation__.Notify(647982)
 		return fmt.Errorf(
 			"invalid attempt to store time series data in rollup resolution %s", r.String(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(647983)
 	}
+	__antithesis_instrumentation__.Notify(647980)
 	if TimeseriesStorageEnabled.Get(&db.st.SV) {
+		__antithesis_instrumentation__.Notify(647984)
 		if err := db.tryStoreData(ctx, r, data); err != nil {
+			__antithesis_instrumentation__.Notify(647985)
 			db.metrics.WriteErrors.Inc(1)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(647986)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(647987)
 	}
+	__antithesis_instrumentation__.Notify(647981)
 	return nil
 }
 
 func (db *DB) tryStoreData(ctx context.Context, r Resolution, data []tspb.TimeSeriesData) error {
+	__antithesis_instrumentation__.Notify(647988)
 	var kvs []roachpb.KeyValue
 	var totalSizeOfKvs int64
 	var totalSamples int64
 
-	// Process data collection: data is converted to internal format, and a key
-	// is generated for each internal message.
 	for _, d := range data {
+		__antithesis_instrumentation__.Notify(647991)
 		idatas, err := d.ToInternal(r.SlabDuration(), r.SampleDuration(), db.WriteColumnar())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(647993)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(647994)
 		}
+		__antithesis_instrumentation__.Notify(647992)
 		for _, idata := range idatas {
+			__antithesis_instrumentation__.Notify(647995)
 			var value roachpb.Value
 			if err := value.SetProto(&idata); err != nil {
+				__antithesis_instrumentation__.Notify(647997)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(647998)
 			}
+			__antithesis_instrumentation__.Notify(647996)
 			key := MakeDataKey(d.Name, d.Source, r, idata.StartTimestampNanos)
 			kvs = append(kvs, roachpb.KeyValue{
 				Key:   key,
@@ -252,46 +268,72 @@ func (db *DB) tryStoreData(ctx context.Context, r Resolution, data []tspb.TimeSe
 			totalSizeOfKvs += int64(len(value.RawBytes)+len(key)) + sizeOfTimestamp
 		}
 	}
+	__antithesis_instrumentation__.Notify(647989)
 
 	if err := db.storeKvs(ctx, kvs); err != nil {
+		__antithesis_instrumentation__.Notify(647999)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(648000)
 	}
+	__antithesis_instrumentation__.Notify(647990)
 
 	db.metrics.WriteSamples.Inc(totalSamples)
 	db.metrics.WriteBytes.Inc(totalSizeOfKvs)
 	return nil
 }
 
-// storeRollup writes the supplied time series rollup data to the cockroach
-// server.
 func (db *DB) storeRollup(ctx context.Context, r Resolution, data []rollupData) error {
+	__antithesis_instrumentation__.Notify(648001)
 	if !r.IsRollup() {
+		__antithesis_instrumentation__.Notify(648004)
 		return fmt.Errorf(
 			"invalid attempt to store rollup data in non-rollup resolution %s", r.String(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(648005)
 	}
+	__antithesis_instrumentation__.Notify(648002)
 	if TimeseriesStorageEnabled.Get(&db.st.SV) {
+		__antithesis_instrumentation__.Notify(648006)
 		if err := db.tryStoreRollup(ctx, r, data); err != nil {
+			__antithesis_instrumentation__.Notify(648007)
 			db.metrics.WriteErrors.Inc(1)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(648008)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(648009)
 	}
+	__antithesis_instrumentation__.Notify(648003)
 	return nil
 }
 
 func (db *DB) tryStoreRollup(ctx context.Context, r Resolution, data []rollupData) error {
+	__antithesis_instrumentation__.Notify(648010)
 	var kvs []roachpb.KeyValue
 
 	for _, d := range data {
+		__antithesis_instrumentation__.Notify(648012)
 		idatas, err := d.toInternal(r.SlabDuration(), r.SampleDuration())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(648014)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(648015)
 		}
+		__antithesis_instrumentation__.Notify(648013)
 		for _, idata := range idatas {
+			__antithesis_instrumentation__.Notify(648016)
 			var value roachpb.Value
 			if err := value.SetProto(&idata); err != nil {
+				__antithesis_instrumentation__.Notify(648018)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(648019)
 			}
+			__antithesis_instrumentation__.Notify(648017)
 			key := MakeDataKey(d.name, d.source, r, idata.StartTimestampNanos)
 			kvs = append(kvs, roachpb.KeyValue{
 				Key:   key,
@@ -299,14 +341,17 @@ func (db *DB) tryStoreRollup(ctx context.Context, r Resolution, data []rollupDat
 			})
 		}
 	}
+	__antithesis_instrumentation__.Notify(648011)
 
 	return db.storeKvs(ctx, kvs)
-	// TODO(mrtracy): metrics for rollups stored
+
 }
 
 func (db *DB) storeKvs(ctx context.Context, kvs []roachpb.KeyValue) error {
+	__antithesis_instrumentation__.Notify(648020)
 	b := &kv.Batch{}
 	for _, kv := range kvs {
+		__antithesis_instrumentation__.Notify(648022)
 		b.AddRawRequest(&roachpb.MergeRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key: kv.Key,
@@ -314,45 +359,46 @@ func (db *DB) storeKvs(ctx context.Context, kvs []roachpb.KeyValue) error {
 			Value: kv.Value,
 		})
 	}
+	__antithesis_instrumentation__.Notify(648021)
 
 	return db.db.Run(ctx, b)
 }
 
-// computeThresholds returns a map of timestamps for each resolution supported
-// by the system. Data at a resolution which is older than the threshold
-// timestamp for that resolution is considered eligible for deletion.
 func (db *DB) computeThresholds(timestamp int64) map[Resolution]int64 {
+	__antithesis_instrumentation__.Notify(648023)
 	result := make(map[Resolution]int64, len(db.pruneThresholdByResolution))
 	for k, v := range db.pruneThresholdByResolution {
+		__antithesis_instrumentation__.Notify(648025)
 		result[k] = timestamp - v()
 	}
+	__antithesis_instrumentation__.Notify(648024)
 	return result
 }
 
-// PruneThreshold returns the pruning threshold duration for this resolution,
-// expressed in nanoseconds. This duration determines how old time series data
-// must be before it is eligible for pruning.
 func (db *DB) PruneThreshold(r Resolution) int64 {
+	__antithesis_instrumentation__.Notify(648026)
 	threshold, ok := db.pruneThresholdByResolution[r]
 	if !ok {
+		__antithesis_instrumentation__.Notify(648028)
 		panic(fmt.Sprintf("no prune threshold found for resolution value %v", r))
+	} else {
+		__antithesis_instrumentation__.Notify(648029)
 	}
+	__antithesis_instrumentation__.Notify(648027)
 	return threshold()
 }
 
-// Metrics gets the TimeSeriesMetrics structure used by this DB instance.
 func (db *DB) Metrics() *TimeSeriesMetrics {
+	__antithesis_instrumentation__.Notify(648030)
 	return db.metrics
 }
 
-// WriteColumnar returns true if this DB should write data in the newer columnar
-// format.
 func (db *DB) WriteColumnar() bool {
+	__antithesis_instrumentation__.Notify(648031)
 	return !db.forceRowFormat
 }
 
-// WriteRollups returns true if this DB should write rollups for resolutions
-// targeted for a rollup resolution.
 func (db *DB) WriteRollups() bool {
+	__antithesis_instrumentation__.Notify(648032)
 	return !db.forceRowFormat
 }

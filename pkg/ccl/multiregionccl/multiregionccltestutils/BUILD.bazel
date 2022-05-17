@@ -9,6 +9,7 @@ go_library(
         "//pkg/base",
         "//pkg/roachpb",
         "//pkg/testutils/testcluster",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package roachprod
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,12 +12,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// StartTenant starts nodes on a cluster in "tenant" mode (each node is a SQL
-// instance). A tenant cluster needs an existing, running host cluster. The
-// tenant metadata is created on the host cluster if it doesn't exist already.
-//
-// The host and tenant can use the same underlying cluster, as long as different
-// subsets of nodes are selected (e.g. "local:1,2" and "local:3,4").
 func StartTenant(
 	ctx context.Context,
 	l *logger.Logger,
@@ -34,40 +20,63 @@ func StartTenant(
 	startOpts install.StartOpts,
 	clusterSettingsOpts ...install.ClusterSettingOption,
 ) error {
+	__antithesis_instrumentation__.Notify(181881)
 	tc, err := newCluster(l, tenantCluster, clusterSettingsOpts...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181889)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181890)
 	}
+	__antithesis_instrumentation__.Notify(181882)
 
-	// TODO(radu): do we need separate clusterSettingsOpts for the host cluster?
 	hc, err := newCluster(l, hostCluster, clusterSettingsOpts...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181891)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181892)
 	}
+	__antithesis_instrumentation__.Notify(181883)
 
 	if tc.Name == hc.Name {
-		// We allow using the same cluster, but the node sets must be disjoint.
+		__antithesis_instrumentation__.Notify(181893)
+
 		for _, n1 := range tc.Nodes {
+			__antithesis_instrumentation__.Notify(181894)
 			for _, n2 := range hc.Nodes {
+				__antithesis_instrumentation__.Notify(181895)
 				if n1 == n2 {
+					__antithesis_instrumentation__.Notify(181896)
 					return errors.Errorf("host and tenant nodes must be disjoint")
+				} else {
+					__antithesis_instrumentation__.Notify(181897)
 				}
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(181898)
 	}
+	__antithesis_instrumentation__.Notify(181884)
 
 	if tc.Secure {
-		// TODO(radu): implement secure mode.
+		__antithesis_instrumentation__.Notify(181899)
+
 		return errors.Errorf("secure mode not implemented for tenants yet")
+	} else {
+		__antithesis_instrumentation__.Notify(181900)
 	}
+	__antithesis_instrumentation__.Notify(181885)
 
 	startOpts.Target = install.StartTenantSQL
 	if startOpts.TenantID < 2 {
+		__antithesis_instrumentation__.Notify(181901)
 		return errors.Errorf("invalid tenant ID %d (must be 2 or higher)", startOpts.TenantID)
+	} else {
+		__antithesis_instrumentation__.Notify(181902)
 	}
+	__antithesis_instrumentation__.Notify(181886)
 
-	// Create tenant, if necessary. We need to run this SQL against a single host,
-	// so temporarily restrict the target nodes to 1.
 	saveNodes := hc.Nodes
 	hc.Nodes = hc.Nodes[:1]
 	l.Printf("Creating tenant metadata")
@@ -75,21 +84,24 @@ func StartTenant(
 		`-e`,
 		fmt.Sprintf(createTenantIfNotExistsQuery, startOpts.TenantID),
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(181903)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(181904)
 	}
+	__antithesis_instrumentation__.Notify(181887)
 	hc.Nodes = saveNodes
 
 	var kvAddrs []string
 	for _, node := range hc.Nodes {
+		__antithesis_instrumentation__.Notify(181905)
 		kvAddrs = append(kvAddrs, fmt.Sprintf("%s:%d", hc.Host(node), hc.NodePort(node)))
 	}
+	__antithesis_instrumentation__.Notify(181888)
 	startOpts.KVAddrs = strings.Join(kvAddrs, ",")
 	return tc.Start(ctx, l, startOpts)
 }
 
-// createTenantIfNotExistsQuery is used to initialize the tenant metadata, if
-// it's not initialized already. We set up the tenant with a lot of initial RUs
-// so that we don't encounter throttling by default.
 const createTenantIfNotExistsQuery = `
 SELECT
   CASE (SELECT 1 FROM system.tenants WHERE id = %[1]d) IS NULL

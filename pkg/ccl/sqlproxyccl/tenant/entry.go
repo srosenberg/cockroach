@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package tenant
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,86 +14,64 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 )
 
-// tenantEntry is an entry in the tenant directory that records information
-// about a single tenant, including its ID, cluster name, and the IP addresses
-// for available pods.
 type tenantEntry struct {
-	// These fields can be read by callers without synchronization, since
-	// they're written once during initialization, and are immutable thereafter.
-
-	// TenantID is the identifier for this tenant which is unique within a CRDB
-	// cluster.
 	TenantID roachpb.TenantID
 
-	// Full name of the tenant's cluster i.e. dim-dog.
 	ClusterName string
 
-	// RefreshDelay is the minimum amount of time that must elapse between
-	// attempts to refresh pods for this tenant after ReportFailure is
-	// called.
 	RefreshDelay time.Duration
 
-	// initialized is set to true once Initialized has been successfully called
-	// (i.e. with no resulting error). Access is synchronized via atomics.
 	initialized sync.Once
 
-	// initError is set to any error that occurs in Initialized (or nil if no
-	// error occurred).
 	initError error
 
-	// pods synchronizes access to information about the tenant's SQL pods.
-	// These fields can be updated over time, so a lock must be obtained before
-	// accessing them.
 	pods struct {
 		syncutil.Mutex
 		pods []*Pod
 	}
 
-	// calls synchronizes calls to the Directory service for this tenant (e.g.
-	// calls to GetTenant or ListPods). Synchronization is needed to ensure that
-	// only one thread at a time is calling on behalf of a tenant, and that
-	// calls are rate limited to prevent storms.
 	calls struct {
 		syncutil.Mutex
 
-		// lastRefresh is the last time the list of pods for the tenant have been
-		// fetched from the server. It's used to rate limit refreshes.
 		lastRefresh time.Time
 	}
 }
 
-// Initialize fetches metadata about a tenant, such as its cluster name, and
-// stores that in the entry. After this is called once, all future calls return
-// the same result (and do nothing).
 func (e *tenantEntry) Initialize(ctx context.Context, client DirectoryClient) error {
-	// If Initialize has already been successfully called, nothing to do.
+	__antithesis_instrumentation__.Notify(23084)
+
 	e.initialized.Do(func() {
+		__antithesis_instrumentation__.Notify(23086)
 		tenantResp, err := client.GetTenant(ctx, &GetTenantRequest{TenantID: e.TenantID.ToUint64()})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(23088)
 			e.initError = err
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(23089)
 		}
+		__antithesis_instrumentation__.Notify(23087)
 
 		e.ClusterName = tenantResp.ClusterName
 	})
+	__antithesis_instrumentation__.Notify(23085)
 
-	// If Initialize has already been called, return any error that occurred.
 	return e.initError
 }
 
-// RefreshPods makes a synchronous directory server call to fetch the latest
-// information about the tenant's available pods, such as their IP addresses.
 func (e *tenantEntry) RefreshPods(ctx context.Context, client DirectoryClient) error {
-	// Lock so that only one thread at a time will refresh, since there's no
-	// point in multiple threads doing it within a short span of time - it's
-	// likely nothing has changed.
+	__antithesis_instrumentation__.Notify(23090)
+
 	e.calls.Lock()
 	defer e.calls.Unlock()
 
-	// If refreshed recently, no-op.
 	if !e.canRefreshLocked() {
+		__antithesis_instrumentation__.Notify(23092)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(23093)
 	}
+	__antithesis_instrumentation__.Notify(23091)
 
 	log.Infof(ctx, "refreshing tenant %d pods", e.TenantID)
 
@@ -107,169 +79,190 @@ func (e *tenantEntry) RefreshPods(ctx context.Context, client DirectoryClient) e
 	return err
 }
 
-// AddPod inserts the given pod into the tenant's list of pods. If it is
-// already present, then AddPod updates the pod entry and returns false.
 func (e *tenantEntry) AddPod(pod *Pod) bool {
+	__antithesis_instrumentation__.Notify(23094)
 	e.pods.Lock()
 	defer e.pods.Unlock()
 
 	for i, existing := range e.pods.pods {
+		__antithesis_instrumentation__.Notify(23096)
 		if existing.Addr == pod.Addr {
-			// e.pods.pods is copy on write. Whenever modifications are made,
-			// we must make a copy to avoid accidentally mutating the slice
-			// retrieved by GetPods.
+			__antithesis_instrumentation__.Notify(23097)
+
 			pods := e.pods.pods
 			e.pods.pods = make([]*Pod, len(pods))
 			copy(e.pods.pods, pods)
 			e.pods.pods[i] = pod
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(23098)
 		}
 	}
+	__antithesis_instrumentation__.Notify(23095)
 
 	e.pods.pods = append(e.pods.pods, pod)
 	return true
 }
 
-// UpdatePod updates the given pod in the tenant's list of pods. If an entry
-// with a match Addr is not present, UpdatePod returns false.
 func (e *tenantEntry) UpdatePod(pod *Pod) bool {
+	__antithesis_instrumentation__.Notify(23099)
 	e.pods.Lock()
 	defer e.pods.Unlock()
 
 	for i, existing := range e.pods.pods {
+		__antithesis_instrumentation__.Notify(23101)
 		if existing.Addr == pod.Addr {
-			// e.pods.pods is copy on write. Whenever modifications are made,
-			// we must make a copy to avoid accidentally mutating the slice
-			// retrieved by GetPods.
+			__antithesis_instrumentation__.Notify(23102)
+
 			pods := e.pods.pods
 			e.pods.pods = make([]*Pod, len(pods))
 			copy(e.pods.pods, pods)
 			e.pods.pods[i] = pod
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(23103)
 		}
 	}
+	__antithesis_instrumentation__.Notify(23100)
 
 	return false
 }
 
-// RemovePodByAddr removes the pod with the given IP address from the tenant's
-// list of pod addresses. If it was not present, RemovePodByAddr returns false.
 func (e *tenantEntry) RemovePodByAddr(addr string) bool {
+	__antithesis_instrumentation__.Notify(23104)
 	e.pods.Lock()
 	defer e.pods.Unlock()
 
 	for i, existing := range e.pods.pods {
+		__antithesis_instrumentation__.Notify(23106)
 		if existing.Addr == addr {
+			__antithesis_instrumentation__.Notify(23107)
 			copy(e.pods.pods[i:], e.pods.pods[i+1:])
 			e.pods.pods = e.pods.pods[:len(e.pods.pods)-1]
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(23108)
 		}
 	}
+	__antithesis_instrumentation__.Notify(23105)
 	return false
 }
 
-// GetPods gets the current list of pods within scope of lock and returns them.
 func (e *tenantEntry) GetPods() []*Pod {
+	__antithesis_instrumentation__.Notify(23109)
 	e.pods.Lock()
 	defer e.pods.Unlock()
 	return e.pods.pods
 }
 
-// EnsureTenantPod ensures that at least one SQL process exists for this tenant,
-// and is ready for connection attempts to its IP address. If errorIfNoPods is
-// true, then EnsureTenantPod returns an error if there are no pods available
-// rather than blocking.
 func (e *tenantEntry) EnsureTenantPod(
 	ctx context.Context, client DirectoryClient, errorIfNoPods bool,
 ) (pods []*Pod, err error) {
+	__antithesis_instrumentation__.Notify(23110)
 	const retryDelay = 100 * time.Millisecond
 
 	e.calls.Lock()
 	defer e.calls.Unlock()
 
-	// If an IP address is already available, nothing more to do. Check this
-	// immediately after obtaining the lock so that only the first thread does
-	// the work to get information about the tenant.
 	pods = e.GetPods()
 	if len(pods) != 0 {
+		__antithesis_instrumentation__.Notify(23113)
 		return pods, nil
+	} else {
+		__antithesis_instrumentation__.Notify(23114)
 	}
+	__antithesis_instrumentation__.Notify(23111)
 
 	for {
-		// Check for context cancellation or timeout.
-		if err = ctx.Err(); err != nil {
-			return nil, err
-		}
+		__antithesis_instrumentation__.Notify(23115)
 
-		// Try to resume the tenant if not yet resumed.
+		if err = ctx.Err(); err != nil {
+			__antithesis_instrumentation__.Notify(23121)
+			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(23122)
+		}
+		__antithesis_instrumentation__.Notify(23116)
+
 		_, err = client.EnsurePod(ctx, &EnsurePodRequest{e.TenantID.ToUint64()})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(23123)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(23124)
 		}
+		__antithesis_instrumentation__.Notify(23117)
 
-		// Get pod information for the newly resumed tenant. Except in rare
-		// race conditions, this is expected to immediately find an IP address,
-		// since the above call started a tenant process that already has an IP
-		// address.
 		pods, err = e.fetchPodsLocked(ctx, client)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(23125)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(23126)
 		}
+		__antithesis_instrumentation__.Notify(23118)
 		if len(pods) != 0 {
+			__antithesis_instrumentation__.Notify(23127)
 			log.Infof(ctx, "resumed tenant %d", e.TenantID)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(23128)
 		}
+		__antithesis_instrumentation__.Notify(23119)
 
-		// In rare case where no IP address is ready, wait for a bit before
-		// retrying.
 		if errorIfNoPods {
+			__antithesis_instrumentation__.Notify(23129)
 			return nil, fmt.Errorf("no pods available for tenant %s", e.TenantID)
+		} else {
+			__antithesis_instrumentation__.Notify(23130)
 		}
+		__antithesis_instrumentation__.Notify(23120)
 		sleepContext(ctx, retryDelay)
 	}
+	__antithesis_instrumentation__.Notify(23112)
 
 	return pods, nil
 }
 
-// fetchPodsLocked makes a synchronous directory server call to get the latest
-// information about the tenant's available pods, such as their IP addresses.
-//
-// NOTE: Caller must lock the "calls" mutex before calling fetchPodsLocked.
 func (e *tenantEntry) fetchPodsLocked(
 	ctx context.Context, client DirectoryClient,
 ) (tenantPods []*Pod, err error) {
-	// List the pods for the given tenant.
-	// TODO(andyk): This races with the pod watcher, which may receive updates
-	// that are newer than what ListPods returns. This could be fixed by adding
-	// version values to the pods in order to detect races.
+	__antithesis_instrumentation__.Notify(23131)
+
 	list, err := client.ListPods(ctx, &ListPodsRequest{e.TenantID.ToUint64()})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(23134)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(23135)
 	}
+	__antithesis_instrumentation__.Notify(23132)
 
-	// Need to lock in case another thread is reading the IP addresses (e.g. in
-	// ChoosePodAddr).
 	e.pods.Lock()
 	defer e.pods.Unlock()
 	e.pods.pods = list.Pods
 
 	if len(e.pods.pods) != 0 {
+		__antithesis_instrumentation__.Notify(23136)
 		log.Infof(ctx, "fetched IP addresses: %v", e.pods.pods)
+	} else {
+		__antithesis_instrumentation__.Notify(23137)
 	}
+	__antithesis_instrumentation__.Notify(23133)
 
 	return e.pods.pods, nil
 }
 
-// canRefreshLocked returns true if it's been at least X milliseconds since the
-// last time the tenant pod information was refreshed. This has the effect of
-// rate limiting RefreshPods calls.
-//
-// NOTE: Caller must lock the "calls" mutex before calling canRefreshLocked.
 func (e *tenantEntry) canRefreshLocked() bool {
+	__antithesis_instrumentation__.Notify(23138)
 	now := timeutil.Now()
 	if now.Sub(e.calls.lastRefresh) < e.RefreshDelay {
+		__antithesis_instrumentation__.Notify(23140)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(23141)
 	}
+	__antithesis_instrumentation__.Notify(23139)
 	e.calls.lastRefresh = now
 	return true
 }

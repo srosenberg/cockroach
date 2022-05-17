@@ -1,15 +1,7 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package reporoot contains utilities to determine the repository root.
 package reporoot
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"os"
@@ -18,37 +10,48 @@ import (
 	"github.com/cockroachdb/errors/oserror"
 )
 
-// Get returns the repository root, relative to the
-// current working directory.
-//
-// This is a replacement for running `git rev-parse
-// --show-toplevel`.
 func Get() string {
+	__antithesis_instrumentation__.Notify(68502)
 	return GetFor(".", ".git")
 }
 
-// GetFor starts at path and checks if the supplied
-// relative directory is present, ascending on path
-// until a hit is found (in which case the absolute
-// path is returned). Returns an empty string on
-// errors or no match.
 func GetFor(path string, checkFor string) string {
+	__antithesis_instrumentation__.Notify(68503)
 	path, err := filepath.Abs(path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(68505)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(68506)
 	}
+	__antithesis_instrumentation__.Notify(68504)
 	for {
+		__antithesis_instrumentation__.Notify(68507)
 		s, err := os.Stat(filepath.Join(path, checkFor))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(68509)
 			if !oserror.IsNotExist(err) {
+				__antithesis_instrumentation__.Notify(68510)
 				return ""
+			} else {
+				__antithesis_instrumentation__.Notify(68511)
 			}
-		} else if s != nil {
-			return path
+		} else {
+			__antithesis_instrumentation__.Notify(68512)
+			if s != nil {
+				__antithesis_instrumentation__.Notify(68513)
+				return path
+			} else {
+				__antithesis_instrumentation__.Notify(68514)
+			}
 		}
+		__antithesis_instrumentation__.Notify(68508)
 		path = filepath.Dir(path)
 		if path == "/" {
+			__antithesis_instrumentation__.Notify(68515)
 			return ""
+		} else {
+			__antithesis_instrumentation__.Notify(68516)
 		}
 	}
 }

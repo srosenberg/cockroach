@@ -1,23 +1,6 @@
-// Copyright 2012, Google Inc. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in licenses/BSD-vitess.txt.
-
-// Portions of this file are additionally subject to the following
-// license and copyright.
-//
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// This code was derived from https://github.com/youtube/vitess.
-
 package lex
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -33,201 +16,295 @@ import (
 	"golang.org/x/text/language"
 )
 
-// NormalizeLocaleName returns a normalized locale identifier based on s. The
-// case of the locale is normalized and any dash characters are mapped to
-// underscore characters.
 func NormalizeLocaleName(s string) string {
+	__antithesis_instrumentation__.Notify(499444)
 	b := bytes.NewBuffer(make([]byte, 0, len(s)))
 	EncodeLocaleName(b, s)
 	return b.String()
 }
 
-// EncodeLocaleName writes the locale identifier in s to buf. Any dash
-// characters are mapped to underscore characters. Underscore characters do not
-// need to be quoted, and they are considered equivalent to dash characters by
-// the CLDR standard: http://cldr.unicode.org/.
 func EncodeLocaleName(buf *bytes.Buffer, s string) {
-	// If possible, try to normalize the case of the locale name.
+	__antithesis_instrumentation__.Notify(499445)
+
 	if normalized, err := language.Parse(s); err == nil {
+		__antithesis_instrumentation__.Notify(499447)
 		s = normalized.String()
+	} else {
+		__antithesis_instrumentation__.Notify(499448)
 	}
+	__antithesis_instrumentation__.Notify(499446)
 	for i, n := 0, len(s); i < n; i++ {
+		__antithesis_instrumentation__.Notify(499449)
 		ch := s[i]
 		if ch == '-' {
+			__antithesis_instrumentation__.Notify(499450)
 			buf.WriteByte('_')
 		} else {
+			__antithesis_instrumentation__.Notify(499451)
 			buf.WriteByte(ch)
 		}
 	}
 }
 
-// LocaleNamesAreEqual checks for equality of two locale names. The comparison
-// is case-insensitive and treats '-' and '_' as the same.
 func LocaleNamesAreEqual(a, b string) bool {
+	__antithesis_instrumentation__.Notify(499452)
 	if a == b {
+		__antithesis_instrumentation__.Notify(499456)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(499457)
 	}
+	__antithesis_instrumentation__.Notify(499453)
 	if len(a) != len(b) {
+		__antithesis_instrumentation__.Notify(499458)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(499459)
 	}
+	__antithesis_instrumentation__.Notify(499454)
 	for i, n := 0, len(a); i < n; i++ {
+		__antithesis_instrumentation__.Notify(499460)
 		ai, bi := a[i], b[i]
 		if ai == bi {
+			__antithesis_instrumentation__.Notify(499464)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(499465)
 		}
-		if ai == '-' && bi == '_' {
+		__antithesis_instrumentation__.Notify(499461)
+		if ai == '-' && func() bool {
+			__antithesis_instrumentation__.Notify(499466)
+			return bi == '_' == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(499467)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(499468)
 		}
-		if ai == '_' && bi == '-' {
+		__antithesis_instrumentation__.Notify(499462)
+		if ai == '_' && func() bool {
+			__antithesis_instrumentation__.Notify(499469)
+			return bi == '-' == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(499470)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(499471)
 		}
+		__antithesis_instrumentation__.Notify(499463)
 		if unicode.ToLower(rune(ai)) != unicode.ToLower(rune(bi)) {
+			__antithesis_instrumentation__.Notify(499472)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(499473)
 		}
 	}
+	__antithesis_instrumentation__.Notify(499455)
 	return true
 }
 
-// EncodeByteArrayToRawBytes converts a SQL-level byte array into raw
-// bytes according to the encoding specification in "be".
-// If the skipHexPrefix argument is set, the hexadecimal encoding does not
-// prefix the output with "\x". This is suitable e.g. for the encode()
-// built-in.
 func EncodeByteArrayToRawBytes(data string, be BytesEncodeFormat, skipHexPrefix bool) string {
+	__antithesis_instrumentation__.Notify(499474)
 	switch be {
 	case BytesEncodeHex:
+		__antithesis_instrumentation__.Notify(499475)
 		head := 2
 		if skipHexPrefix {
+			__antithesis_instrumentation__.Notify(499482)
 			head = 0
+		} else {
+			__antithesis_instrumentation__.Notify(499483)
 		}
+		__antithesis_instrumentation__.Notify(499476)
 		res := make([]byte, head+hex.EncodedLen(len(data)))
 		if !skipHexPrefix {
+			__antithesis_instrumentation__.Notify(499484)
 			res[0] = '\\'
 			res[1] = 'x'
+		} else {
+			__antithesis_instrumentation__.Notify(499485)
 		}
+		__antithesis_instrumentation__.Notify(499477)
 		hex.Encode(res[head:], []byte(data))
 		return string(res)
 
 	case BytesEncodeEscape:
-		// PostgreSQL does not allow all the escapes formats recognized by
-		// CockroachDB's scanner. It only recognizes octal and \\ for the
-		// backslash itself.
-		// See https://www.postgresql.org/docs/current/static/datatype-binary.html#AEN5667
+		__antithesis_instrumentation__.Notify(499478)
+
 		res := make([]byte, 0, len(data))
 		for _, c := range []byte(data) {
+			__antithesis_instrumentation__.Notify(499486)
 			if c == '\\' {
+				__antithesis_instrumentation__.Notify(499487)
 				res = append(res, '\\', '\\')
-			} else if c < 32 || c >= 127 {
-				// Escape the character in octal.
-				//
-				// Note: CockroachDB only supports UTF-8 for which all values
-				// below 128 are ASCII. There is no locale-dependent escaping
-				// in that case.
-				res = append(res, '\\', '0'+(c>>6), '0'+((c>>3)&7), '0'+(c&7))
 			} else {
-				res = append(res, c)
+				__antithesis_instrumentation__.Notify(499488)
+				if c < 32 || func() bool {
+					__antithesis_instrumentation__.Notify(499489)
+					return c >= 127 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(499490)
+
+					res = append(res, '\\', '0'+(c>>6), '0'+((c>>3)&7), '0'+(c&7))
+				} else {
+					__antithesis_instrumentation__.Notify(499491)
+					res = append(res, c)
+				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(499479)
 		return string(res)
 
 	case BytesEncodeBase64:
+		__antithesis_instrumentation__.Notify(499480)
 		return base64.StdEncoding.EncodeToString([]byte(data))
 
 	default:
+		__antithesis_instrumentation__.Notify(499481)
 		panic(errors.AssertionFailedf("unhandled format: %s", be))
 	}
 }
 
-// DecodeRawBytesToByteArray converts raw bytes to a SQL-level byte array
-// according to the encoding specification in "be".
-// When using the Hex format, the caller is responsible for skipping the
-// "\x" prefix, if any. See DecodeRawBytesToByteArrayAuto() below for
-// an alternative.
 func DecodeRawBytesToByteArray(data string, be BytesEncodeFormat) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(499492)
 	switch be {
 	case BytesEncodeHex:
+		__antithesis_instrumentation__.Notify(499493)
 		return hex.DecodeString(data)
 
 	case BytesEncodeEscape:
-		// PostgreSQL does not allow all the escapes formats recognized by
-		// CockroachDB's scanner. It only recognizes octal and \\ for the
-		// backslash itself.
-		// See https://www.postgresql.org/docs/current/static/datatype-binary.html#AEN5667
+		__antithesis_instrumentation__.Notify(499494)
+
 		res := make([]byte, 0, len(data))
 		for i := 0; i < len(data); i++ {
+			__antithesis_instrumentation__.Notify(499498)
 			ch := data[i]
 			if ch != '\\' {
+				__antithesis_instrumentation__.Notify(499504)
 				res = append(res, ch)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(499505)
 			}
+			__antithesis_instrumentation__.Notify(499499)
 			if i >= len(data)-1 {
+				__antithesis_instrumentation__.Notify(499506)
 				return nil, pgerror.New(pgcode.InvalidEscapeSequence,
 					"bytea encoded value ends with escape character")
+			} else {
+				__antithesis_instrumentation__.Notify(499507)
 			}
+			__antithesis_instrumentation__.Notify(499500)
 			if data[i+1] == '\\' {
+				__antithesis_instrumentation__.Notify(499508)
 				res = append(res, '\\')
 				i++
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(499509)
 			}
+			__antithesis_instrumentation__.Notify(499501)
 			if i+3 >= len(data) {
+				__antithesis_instrumentation__.Notify(499510)
 				return nil, pgerror.New(pgcode.InvalidEscapeSequence,
 					"bytea encoded value ends with incomplete escape sequence")
+			} else {
+				__antithesis_instrumentation__.Notify(499511)
 			}
+			__antithesis_instrumentation__.Notify(499502)
 			b := byte(0)
 			for j := 1; j <= 3; j++ {
+				__antithesis_instrumentation__.Notify(499512)
 				octDigit := data[i+j]
-				if octDigit < '0' || octDigit > '7' || (j == 1 && octDigit > '3') {
+				if octDigit < '0' || func() bool {
+					__antithesis_instrumentation__.Notify(499514)
+					return octDigit > '7' == true
+				}() == true || func() bool {
+					__antithesis_instrumentation__.Notify(499515)
+					return (j == 1 && func() bool {
+						__antithesis_instrumentation__.Notify(499516)
+						return octDigit > '3' == true
+					}() == true) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(499517)
 					return nil, pgerror.New(pgcode.InvalidEscapeSequence,
 						"invalid bytea escape sequence")
+				} else {
+					__antithesis_instrumentation__.Notify(499518)
 				}
+				__antithesis_instrumentation__.Notify(499513)
 				b = (b << 3) | (octDigit - '0')
 			}
+			__antithesis_instrumentation__.Notify(499503)
 			res = append(res, b)
 			i += 3
 		}
+		__antithesis_instrumentation__.Notify(499495)
 		return res, nil
 
 	case BytesEncodeBase64:
+		__antithesis_instrumentation__.Notify(499496)
 		return base64.StdEncoding.DecodeString(data)
 
 	default:
+		__antithesis_instrumentation__.Notify(499497)
 		return nil, errors.AssertionFailedf("unhandled format: %s", be)
 	}
 }
 
-// DecodeRawBytesToByteArrayAuto detects which format to use with
-// DecodeRawBytesToByteArray(). It only supports hex ("\x" prefix)
-// and escape.
 func DecodeRawBytesToByteArrayAuto(data []byte) ([]byte, error) {
-	if len(data) >= 2 && data[0] == '\\' && (data[1] == 'x' || data[1] == 'X') {
+	__antithesis_instrumentation__.Notify(499519)
+	if len(data) >= 2 && func() bool {
+		__antithesis_instrumentation__.Notify(499521)
+		return data[0] == '\\' == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(499522)
+		return (data[1] == 'x' || func() bool {
+			__antithesis_instrumentation__.Notify(499523)
+			return data[1] == 'X' == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(499524)
 		return DecodeRawBytesToByteArray(string(data[2:]), BytesEncodeHex)
+	} else {
+		__antithesis_instrumentation__.Notify(499525)
 	}
+	__antithesis_instrumentation__.Notify(499520)
 	return DecodeRawBytesToByteArray(string(data), BytesEncodeEscape)
 }
 
 func (f BytesEncodeFormat) String() string {
+	__antithesis_instrumentation__.Notify(499526)
 	switch f {
 	case BytesEncodeHex:
+		__antithesis_instrumentation__.Notify(499527)
 		return "hex"
 	case BytesEncodeEscape:
+		__antithesis_instrumentation__.Notify(499528)
 		return "escape"
 	case BytesEncodeBase64:
+		__antithesis_instrumentation__.Notify(499529)
 		return "base64"
 	default:
+		__antithesis_instrumentation__.Notify(499530)
 		return fmt.Sprintf("invalid (%d)", f)
 	}
 }
 
-// BytesEncodeFormatFromString converts a string into a BytesEncodeFormat.
 func BytesEncodeFormatFromString(val string) (_ BytesEncodeFormat, ok bool) {
+	__antithesis_instrumentation__.Notify(499531)
 	switch strings.ToUpper(val) {
 	case "HEX":
+		__antithesis_instrumentation__.Notify(499532)
 		return BytesEncodeHex, true
 	case "ESCAPE":
+		__antithesis_instrumentation__.Notify(499533)
 		return BytesEncodeEscape, true
 	case "BASE64":
+		__antithesis_instrumentation__.Notify(499534)
 		return BytesEncodeBase64, true
 	default:
+		__antithesis_instrumentation__.Notify(499535)
 		return -1, false
 	}
 }

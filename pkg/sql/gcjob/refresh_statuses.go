@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gcjob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -36,10 +28,6 @@ import (
 
 var maxDeadline = timeutil.Unix(0, math.MaxInt64)
 
-// refreshTables updates the status of tables/indexes that are waiting to be
-// GC'd.
-// It returns whether or not any index/table has expired and the duration until
-// the next index/table expires.
 func refreshTables(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
@@ -49,9 +37,11 @@ func refreshTables(
 	jobID jobspb.JobID,
 	progress *jobspb.SchemaChangeGCProgress,
 ) (expired bool, earliestDeadline time.Time) {
+	__antithesis_instrumentation__.Notify(492503)
 	earliestDeadline = maxDeadline
 	var haveAnyMissing bool
 	for _, tableID := range tableIDs {
+		__antithesis_instrumentation__.Notify(492506)
 		tableHasExpiredElem, tableIsMissing, deadline := updateStatusForGCElements(
 			ctx,
 			execCfg,
@@ -60,27 +50,37 @@ func refreshTables(
 			tableDropTimes, indexDropTimes,
 			progress,
 		)
-		expired = expired || tableHasExpiredElem
-		haveAnyMissing = haveAnyMissing || tableIsMissing
+		expired = expired || func() bool {
+			__antithesis_instrumentation__.Notify(492507)
+			return tableHasExpiredElem == true
+		}() == true
+		haveAnyMissing = haveAnyMissing || func() bool {
+			__antithesis_instrumentation__.Notify(492508)
+			return tableIsMissing == true
+		}() == true
 		if deadline.Before(earliestDeadline) {
+			__antithesis_instrumentation__.Notify(492509)
 			earliestDeadline = deadline
+		} else {
+			__antithesis_instrumentation__.Notify(492510)
 		}
 	}
+	__antithesis_instrumentation__.Notify(492504)
 
-	if expired || haveAnyMissing {
+	if expired || func() bool {
+		__antithesis_instrumentation__.Notify(492511)
+		return haveAnyMissing == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(492512)
 		persistProgress(ctx, execCfg, jobID, progress, sql.RunningStatusWaitingGC)
+	} else {
+		__antithesis_instrumentation__.Notify(492513)
 	}
+	__antithesis_instrumentation__.Notify(492505)
 
 	return expired, earliestDeadline
 }
 
-// updateStatusForGCElements updates the status for indexes on this table if any
-// are waiting for GC. If the table is waiting for GC then the status of the table
-// will be updated.
-// It returns whether any indexes or the table have expired as well as the time
-// until the next index expires if there are any more to drop. It also returns
-// whether the table descriptor is missing indicating that it was gc'd by
-// another job, in which case the progress will have been updated.
 func updateStatusForGCElements(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
@@ -90,6 +90,7 @@ func updateStatusForGCElements(
 	indexDropTimes map[descpb.IndexID]int64,
 	progress *jobspb.SchemaChangeGCProgress,
 ) (expired, missing bool, timeToNextTrigger time.Time) {
+	__antithesis_instrumentation__.Notify(492514)
 	defTTL := execCfg.DefaultZoneConfig.GC.TTLSeconds
 	cfg := execCfg.SystemConfig.GetSystemConfig()
 	protectedtsCache := execCfg.ProtectedTimestampProvider
@@ -97,55 +98,87 @@ func updateStatusForGCElements(
 	earliestDeadline := timeutil.Unix(0, int64(math.MaxInt64))
 
 	if err := sql.DescsTxn(ctx, execCfg, func(ctx context.Context, txn *kv.Txn, col *descs.Collection) error {
+		__antithesis_instrumentation__.Notify(492516)
 		table, err := col.Direct().MustGetTableDescByID(ctx, txn, tableID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492522)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(492523)
 		}
+		__antithesis_instrumentation__.Notify(492517)
 		v := execCfg.Settings.Version.ActiveVersionOrEmpty(ctx)
 		zoneCfg, err := cfg.GetZoneConfigForObject(execCfg.Codec, v, config.ObjectID(tableID))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492524)
 			log.Errorf(ctx, "zone config for desc: %d, err = %+v", tableID, err)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(492525)
 		}
+		__antithesis_instrumentation__.Notify(492518)
 		tableTTL := getTableTTL(defTTL, zoneCfg)
 
-		// Update the status of the table if the table was dropped.
 		if table.Dropped() {
+			__antithesis_instrumentation__.Notify(492526)
 			deadline := updateTableStatus(ctx, execCfg, jobID, int64(tableTTL), table, tableDropTimes, progress)
 			if timeutil.Until(deadline) < 0 {
+				__antithesis_instrumentation__.Notify(492527)
 				expired = true
-			} else if deadline.Before(earliestDeadline) {
-				earliestDeadline = deadline
+			} else {
+				__antithesis_instrumentation__.Notify(492528)
+				if deadline.Before(earliestDeadline) {
+					__antithesis_instrumentation__.Notify(492529)
+					earliestDeadline = deadline
+				} else {
+					__antithesis_instrumentation__.Notify(492530)
+				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(492531)
 		}
+		__antithesis_instrumentation__.Notify(492519)
 
-		// Update the status of any indexes waiting for GC.
 		indexesExpired, deadline := updateIndexesStatus(
 			ctx, execCfg, jobID, tableTTL, table, protectedtsCache, zoneCfg, indexDropTimes, progress,
 		)
 		if indexesExpired {
+			__antithesis_instrumentation__.Notify(492532)
 			expired = true
+		} else {
+			__antithesis_instrumentation__.Notify(492533)
 		}
+		__antithesis_instrumentation__.Notify(492520)
 		if deadline.Before(earliestDeadline) {
+			__antithesis_instrumentation__.Notify(492534)
 			earliestDeadline = deadline
+		} else {
+			__antithesis_instrumentation__.Notify(492535)
 		}
+		__antithesis_instrumentation__.Notify(492521)
 
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(492536)
 		if errors.Is(err, catalog.ErrDescriptorNotFound) {
+			__antithesis_instrumentation__.Notify(492538)
 			log.Warningf(ctx, "table %d not found, marking as GC'd", tableID)
 			markTableGCed(ctx, tableID, progress)
 			return false, true, maxDeadline
+		} else {
+			__antithesis_instrumentation__.Notify(492539)
 		}
+		__antithesis_instrumentation__.Notify(492537)
 		log.Warningf(ctx, "error while calculating GC time for table %d, err: %+v", tableID, err)
 		return false, false, maxDeadline
+	} else {
+		__antithesis_instrumentation__.Notify(492540)
 	}
+	__antithesis_instrumentation__.Notify(492515)
 
 	return expired, false, earliestDeadline
 }
 
-// updateTableStatus sets the status the table to DELETING if the GC TTL has
-// expired.
 func updateTableStatus(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
@@ -155,14 +188,23 @@ func updateTableStatus(
 	tableDropTimes map[descpb.ID]int64,
 	progress *jobspb.SchemaChangeGCProgress,
 ) time.Time {
+	__antithesis_instrumentation__.Notify(492541)
 	deadline := timeutil.Unix(0, int64(math.MaxInt64))
 	sp := table.TableSpan(execCfg.Codec)
 
 	for i, t := range progress.Tables {
+		__antithesis_instrumentation__.Notify(492543)
 		droppedTable := &progress.Tables[i]
-		if droppedTable.ID != table.GetID() || droppedTable.Status == jobspb.SchemaChangeGCProgress_DELETED {
+		if droppedTable.ID != table.GetID() || func() bool {
+			__antithesis_instrumentation__.Notify(492548)
+			return droppedTable.Status == jobspb.SchemaChangeGCProgress_DELETED == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(492549)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(492550)
 		}
+		__antithesis_instrumentation__.Notify(492544)
 
 		deadlineNanos := tableDropTimes[t.ID] + ttlSeconds*time.Second.Nanoseconds()
 		deadline = timeutil.Unix(0, deadlineNanos)
@@ -176,39 +218,51 @@ func updateTableStatus(
 			sp,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492551)
 			log.Errorf(ctx, "error checking protection status %v", err)
-			// We don't want to make GC decisions if we can't validate the protection
-			// status of a table. We don't change the status of the table to DELETING
-			// and simply return a high deadline value; The GC job will be retried
-			// automatically up the stack.
+
 			return maxDeadline
+		} else {
+			__antithesis_instrumentation__.Notify(492552)
 		}
+		__antithesis_instrumentation__.Notify(492545)
 		if isProtected {
+			__antithesis_instrumentation__.Notify(492553)
 			log.Infof(ctx, "a timestamp protection delayed GC of table %d", t.ID)
 			return maxDeadline
+		} else {
+			__antithesis_instrumentation__.Notify(492554)
 		}
+		__antithesis_instrumentation__.Notify(492546)
 
 		lifetime := timeutil.Until(deadline)
 		if lifetime < 0 {
+			__antithesis_instrumentation__.Notify(492555)
 			if log.V(2) {
+				__antithesis_instrumentation__.Notify(492557)
 				log.Infof(ctx, "detected expired table %d", t.ID)
+			} else {
+				__antithesis_instrumentation__.Notify(492558)
 			}
+			__antithesis_instrumentation__.Notify(492556)
 			droppedTable.Status = jobspb.SchemaChangeGCProgress_DELETING
 		} else {
+			__antithesis_instrumentation__.Notify(492559)
 			if log.V(2) {
+				__antithesis_instrumentation__.Notify(492560)
 				log.Infof(ctx, "table %d still has %+v until GC", t.ID, lifetime)
+			} else {
+				__antithesis_instrumentation__.Notify(492561)
 			}
 		}
+		__antithesis_instrumentation__.Notify(492547)
 		break
 	}
+	__antithesis_instrumentation__.Notify(492542)
 
 	return deadline
 }
 
-// updateIndexesStatus updates the status on every index that is waiting for GC
-// TTL in this table.
-// It returns whether any indexes have expired and the timestamp of when another
-// index should be GC'd, if any, otherwise MaxInt.
 func updateIndexesStatus(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
@@ -220,13 +274,19 @@ func updateIndexesStatus(
 	indexDropTimes map[descpb.IndexID]int64,
 	progress *jobspb.SchemaChangeGCProgress,
 ) (expired bool, soonestDeadline time.Time) {
-	// Update the deadline for indexes that are being dropped, if any.
+	__antithesis_instrumentation__.Notify(492562)
+
 	soonestDeadline = timeutil.Unix(0, int64(math.MaxInt64))
 	for i := 0; i < len(progress.Indexes); i++ {
+		__antithesis_instrumentation__.Notify(492564)
 		idxProgress := &progress.Indexes[i]
 		if idxProgress.Status == jobspb.SchemaChangeGCProgress_DELETED {
+			__antithesis_instrumentation__.Notify(492569)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(492570)
 		}
+		__antithesis_instrumentation__.Notify(492565)
 
 		sp := table.IndexSpan(execCfg.Codec, idxProgress.IndexID)
 
@@ -244,58 +304,94 @@ func updateIndexesStatus(
 			sp,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492571)
 			log.Errorf(ctx, "error checking protection status %v", err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(492572)
 		}
+		__antithesis_instrumentation__.Notify(492566)
 		if isProtected {
+			__antithesis_instrumentation__.Notify(492573)
 			log.Infof(ctx, "a timestamp protection delayed GC of index %d from table %d", idxProgress.IndexID, table.GetID())
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(492574)
 		}
+		__antithesis_instrumentation__.Notify(492567)
 		lifetime := time.Until(deadline)
 		if lifetime > 0 {
+			__antithesis_instrumentation__.Notify(492575)
 			if log.V(2) {
+				__antithesis_instrumentation__.Notify(492576)
 				log.Infof(ctx, "index %d from table %d still has %+v until GC", idxProgress.IndexID, table.GetID(), lifetime)
+			} else {
+				__antithesis_instrumentation__.Notify(492577)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(492578)
 		}
+		__antithesis_instrumentation__.Notify(492568)
 		if lifetime < 0 {
+			__antithesis_instrumentation__.Notify(492579)
 			expired = true
 			if log.V(2) {
+				__antithesis_instrumentation__.Notify(492581)
 				log.Infof(ctx, "detected expired index %d from table %d", idxProgress.IndexID, table.GetID())
+			} else {
+				__antithesis_instrumentation__.Notify(492582)
 			}
+			__antithesis_instrumentation__.Notify(492580)
 			idxProgress.Status = jobspb.SchemaChangeGCProgress_DELETING
-		} else if deadline.Before(soonestDeadline) {
-			soonestDeadline = deadline
+		} else {
+			__antithesis_instrumentation__.Notify(492583)
+			if deadline.Before(soonestDeadline) {
+				__antithesis_instrumentation__.Notify(492584)
+				soonestDeadline = deadline
+			} else {
+				__antithesis_instrumentation__.Notify(492585)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(492563)
 	return expired, soonestDeadline
 }
 
-// Helpers.
-
 func getIndexTTL(tableTTL int32, placeholder *zonepb.ZoneConfig, indexID descpb.IndexID) int32 {
+	__antithesis_instrumentation__.Notify(492586)
 	ttlSeconds := tableTTL
 	if placeholder != nil {
+		__antithesis_instrumentation__.Notify(492588)
 		if subzone := placeholder.GetSubzone(
-			uint32(indexID), ""); subzone != nil && subzone.Config.GC != nil {
+			uint32(indexID), ""); subzone != nil && func() bool {
+			__antithesis_instrumentation__.Notify(492589)
+			return subzone.Config.GC != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(492590)
 			ttlSeconds = subzone.Config.GC.TTLSeconds
+		} else {
+			__antithesis_instrumentation__.Notify(492591)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(492592)
 	}
+	__antithesis_instrumentation__.Notify(492587)
 	return ttlSeconds
 }
 
 func getTableTTL(defTTL int32, zoneCfg *zonepb.ZoneConfig) int32 {
+	__antithesis_instrumentation__.Notify(492593)
 	ttlSeconds := defTTL
 	if zoneCfg != nil {
+		__antithesis_instrumentation__.Notify(492595)
 		ttlSeconds = zoneCfg.GC.TTLSeconds
+	} else {
+		__antithesis_instrumentation__.Notify(492596)
 	}
+	__antithesis_instrumentation__.Notify(492594)
 	return ttlSeconds
 }
 
-// isProtected returns true if the supplied span is considered protected, and
-// thus exempt from GC-ing, given the wall time at which it was dropped.
-//
-// This function is intended for table/index spans -- for spans that cover a
-// secondary tenant's keyspace, checkout `isTenantProtected` instead.
 func isProtected(
 	ctx context.Context,
 	jobID jobspb.JobID,
@@ -305,141 +401,200 @@ func isProtected(
 	ptsCache protectedts.Cache,
 	sp roachpb.Span,
 ) (bool, error) {
-	// Wrap this in a closure sp we can pass the protection status to the testing
-	// knob.
+	__antithesis_instrumentation__.Notify(492597)
+
 	isProtected, err := func() (bool, error) {
-		// We check the old protected timestamp subsystem for protected timestamps
-		// if this is the GC job of the system tenant.
-		if execCfg.Codec.ForSystemTenant() &&
-			deprecatedIsProtected(ctx, ptsCache, droppedAtTime, sp) {
+		__antithesis_instrumentation__.Notify(492601)
+
+		if execCfg.Codec.ForSystemTenant() && func() bool {
+			__antithesis_instrumentation__.Notify(492609)
+			return deprecatedIsProtected(ctx, ptsCache, droppedAtTime, sp) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(492610)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(492611)
 		}
+		__antithesis_instrumentation__.Notify(492602)
 
 		spanConfigRecords, err := kvAccessor.GetSpanConfigRecords(ctx, spanconfig.Targets{
 			spanconfig.MakeTargetFromSpan(sp),
 		})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492612)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(492613)
 		}
+		__antithesis_instrumentation__.Notify(492603)
 
 		_, tenID, err := keys.DecodeTenantPrefix(execCfg.Codec.TenantPrefix())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492614)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(492615)
 		}
+		__antithesis_instrumentation__.Notify(492604)
 		systemSpanConfigs, err := kvAccessor.GetAllSystemSpanConfigsThatApply(ctx, tenID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492616)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(492617)
 		}
+		__antithesis_instrumentation__.Notify(492605)
 
-		// Collect all protected timestamps that apply to the given span; both by
-		// virtue of span configs and system span configs.
 		var protectedTimestamps []hlc.Timestamp
 		collectProtectedTimestamps := func(configs ...roachpb.SpanConfig) {
+			__antithesis_instrumentation__.Notify(492618)
 			for _, config := range configs {
+				__antithesis_instrumentation__.Notify(492619)
 				for _, protectionPolicy := range config.GCPolicy.ProtectionPolicies {
-					// We don't consider protected timestamps written by backups if the span
-					// is indicated as "excluded from backup". Checkout the field
-					// descriptions for more details about this coupling.
-					if config.ExcludeDataFromBackup && protectionPolicy.IgnoreIfExcludedFromBackup {
+					__antithesis_instrumentation__.Notify(492620)
+
+					if config.ExcludeDataFromBackup && func() bool {
+						__antithesis_instrumentation__.Notify(492622)
+						return protectionPolicy.IgnoreIfExcludedFromBackup == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(492623)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(492624)
 					}
+					__antithesis_instrumentation__.Notify(492621)
 					protectedTimestamps = append(protectedTimestamps, protectionPolicy.ProtectedTimestamp)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(492606)
 		for _, record := range spanConfigRecords {
+			__antithesis_instrumentation__.Notify(492625)
 			collectProtectedTimestamps(record.GetConfig())
 		}
+		__antithesis_instrumentation__.Notify(492607)
 		collectProtectedTimestamps(systemSpanConfigs...)
 
 		for _, protectedTimestamp := range protectedTimestamps {
+			__antithesis_instrumentation__.Notify(492626)
 			if protectedTimestamp.WallTime < droppedAtTime {
+				__antithesis_instrumentation__.Notify(492627)
 				return true, nil
+			} else {
+				__antithesis_instrumentation__.Notify(492628)
 			}
 		}
+		__antithesis_instrumentation__.Notify(492608)
 
 		return false, nil
 	}()
+	__antithesis_instrumentation__.Notify(492598)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(492629)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(492630)
 	}
+	__antithesis_instrumentation__.Notify(492599)
 
 	if fn := execCfg.GCJobTestingKnobs.RunAfterIsProtectedCheck; fn != nil {
+		__antithesis_instrumentation__.Notify(492631)
 		fn(jobID, isProtected)
+	} else {
+		__antithesis_instrumentation__.Notify(492632)
 	}
+	__antithesis_instrumentation__.Notify(492600)
 
 	return isProtected, nil
 }
 
-// Returns whether or not a key in the given spans is protected.
-// TODO(pbardea): If the TTL for this index/table expired and we're only blocked
-// on a protected timestamp, this may be useful information to surface to the
-// user.
 func deprecatedIsProtected(
 	ctx context.Context, protectedtsCache protectedts.Cache, atTime int64, sp roachpb.Span,
 ) bool {
+	__antithesis_instrumentation__.Notify(492633)
 	protected := false
 	protectedtsCache.Iterate(ctx,
 		sp.Key, sp.EndKey,
 		func(r *ptpb.Record) (wantMore bool) {
-			// If we encounter any protected timestamp records in this span, we
-			// can't GC.
+			__antithesis_instrumentation__.Notify(492635)
+
 			if r.Timestamp.WallTime < atTime {
+				__antithesis_instrumentation__.Notify(492637)
 				protected = true
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(492638)
 			}
+			__antithesis_instrumentation__.Notify(492636)
 			return true
 		})
+	__antithesis_instrumentation__.Notify(492634)
 	return protected
 }
 
-// isTenantProtected returns true if there exist any protected timestamp records
-// written by the system tenant, that targets the tenant with tenantID.
 func isTenantProtected(
 	ctx context.Context, atTime hlc.Timestamp, tenantID roachpb.TenantID, execCfg *sql.ExecutorConfig,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(492639)
 	if !execCfg.Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(492642)
 		return false, errors.AssertionFailedf("isTenantProtected incorrectly invoked by secondary tenant")
+	} else {
+		__antithesis_instrumentation__.Notify(492643)
 	}
+	__antithesis_instrumentation__.Notify(492640)
 
 	isProtected := false
 	ptsProvider := execCfg.ProtectedTimestampProvider
 	if err := execCfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(492644)
 		ptsState, err := ptsProvider.GetState(ctx, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492648)
 			return errors.Wrap(err, "failed to get protectedts State")
+		} else {
+			__antithesis_instrumentation__.Notify(492649)
 		}
+		__antithesis_instrumentation__.Notify(492645)
 		ptsStateReader := spanconfig.NewProtectedTimestampStateReader(ctx, ptsState)
 
-		// First check if the system tenant has any cluster level protections that protect
-		// all secondary tenants.
 		clusterProtections := ptsStateReader.GetProtectionPoliciesForCluster()
 		for _, p := range clusterProtections {
+			__antithesis_instrumentation__.Notify(492650)
 			if p.ProtectedTimestamp.Less(atTime) {
+				__antithesis_instrumentation__.Notify(492651)
 				isProtected = true
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(492652)
 			}
 		}
+		__antithesis_instrumentation__.Notify(492646)
 
-		// Now check if the system tenant has any protections that target the
-		// tenantID's keyspace.
 		protectionsOnTenant := ptsStateReader.GetProtectionsForTenant(tenantID)
 		for _, p := range protectionsOnTenant {
+			__antithesis_instrumentation__.Notify(492653)
 			if p.ProtectedTimestamp.Less(atTime) {
+				__antithesis_instrumentation__.Notify(492654)
 				isProtected = true
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(492655)
 			}
 		}
+		__antithesis_instrumentation__.Notify(492647)
 
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(492656)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(492657)
 	}
+	__antithesis_instrumentation__.Notify(492641)
 	return isProtected, nil
 }
 
-// refreshTenant updates the status of tenant that is waiting to be GC'd. It
-// returns whether or the tenant has expired or the duration until it expires.
 func refreshTenant(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
@@ -447,42 +602,59 @@ func refreshTenant(
 	details *jobspb.SchemaChangeGCDetails,
 	progress *jobspb.SchemaChangeGCProgress,
 ) (expired bool, _ time.Time, _ error) {
+	__antithesis_instrumentation__.Notify(492658)
 	if progress.Tenant.Status != jobspb.SchemaChangeGCProgress_WAITING_FOR_GC {
+		__antithesis_instrumentation__.Notify(492662)
 		return true, time.Time{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(492663)
 	}
+	__antithesis_instrumentation__.Notify(492659)
 
-	// Read the tenant's GC TTL to check if the tenant's data has expired.
 	tenID := details.Tenant.ID
 	cfg := execCfg.SystemConfig.GetSystemConfig()
 	tenantTTLSeconds := execCfg.DefaultZoneConfig.GC.TTLSeconds
 	v := execCfg.Settings.Version.ActiveVersionOrEmpty(ctx)
 	zoneCfg, err := cfg.GetZoneConfigForObject(keys.SystemSQLCodec, v, keys.TenantsRangesID)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(492664)
 		tenantTTLSeconds = zoneCfg.GC.TTLSeconds
 	} else {
+		__antithesis_instrumentation__.Notify(492665)
 		log.Errorf(ctx, "zone config for tenants range: err = %+v", err)
 	}
+	__antithesis_instrumentation__.Notify(492660)
 
 	deadlineNanos := dropTime + int64(tenantTTLSeconds)*time.Second.Nanoseconds()
 	deadlineUnix := timeutil.Unix(0, deadlineNanos)
 	if timeutil.Now().UnixNano() >= deadlineNanos {
-		// If the tenant's GC TTL has elapsed, check if there are any protected timestamp records
-		// that apply to the tenant keyspace.
+		__antithesis_instrumentation__.Notify(492666)
+
 		atTime := hlc.Timestamp{WallTime: dropTime}
 		isProtected, err := isTenantProtected(ctx, atTime, roachpb.MakeTenantID(tenID), execCfg)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492669)
 			return false, time.Time{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(492670)
 		}
+		__antithesis_instrumentation__.Notify(492667)
 
 		if isProtected {
+			__antithesis_instrumentation__.Notify(492671)
 			log.Infof(ctx, "GC TTL for dropped tenant %d has expired, but protected timestamp "+
 				"record(s) on the tenant keyspace are preventing GC", tenID)
 			return false, deadlineUnix, nil
+		} else {
+			__antithesis_instrumentation__.Notify(492672)
 		}
+		__antithesis_instrumentation__.Notify(492668)
 
-		// At this point, the tenant's keyspace is ready for GC.
 		progress.Tenant.Status = jobspb.SchemaChangeGCProgress_DELETING
 		return true, deadlineUnix, nil
+	} else {
+		__antithesis_instrumentation__.Notify(492673)
 	}
+	__antithesis_instrumentation__.Notify(492661)
 	return false, deadlineUnix, nil
 }

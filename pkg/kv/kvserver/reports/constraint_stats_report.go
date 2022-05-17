@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package reports
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,65 +20,48 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// replicationConstraintsReportID is the id of the row in the system.
-// reports_meta table corresponding to the constraints conformance report (i.e.
-// the system.replicationConstraintsReportID table).
 const replicationConstraintsReportID reportID = 1
 
-// ConstraintReport contains information about the constraint conformance for
-// the cluster's data.
 type ConstraintReport map[ConstraintStatusKey]ConstraintStatus
 
-// replicationConstraintStatsReportSaver deals with saving a ConstrainReport to
-// the database. The idea is for it to be used to save new version of the report
-// over and over. It maintains the previously-saved version of the report in
-// order to speed-up the saving of the next one.
 type replicationConstraintStatsReportSaver struct {
 	previousVersion     ConstraintReport
 	lastGenerated       time.Time
 	lastUpdatedRowCount int
 }
 
-// makeReplicationConstraintStatusReportSaver creates a new report saver.
 func makeReplicationConstraintStatusReportSaver() replicationConstraintStatsReportSaver {
+	__antithesis_instrumentation__.Notify(121534)
 	return replicationConstraintStatsReportSaver{}
 }
 
-// LastUpdatedRowCount is the count of the rows that were touched during the last save.
 func (r *replicationConstraintStatsReportSaver) LastUpdatedRowCount() int {
+	__antithesis_instrumentation__.Notify(121535)
 	return r.lastUpdatedRowCount
 }
 
-// ConstraintStatus is the leaf in the constraintReport.
 type ConstraintStatus struct {
 	FailRangeCount int
 }
 
-// ConstraintType indicates what type of constraint is an entry in the
-// constraint conformance report talking about.
 type ConstraintType string
 
 const (
-	// Constraint means that the entry refers to a constraint (i.e. a member of
-	// the constraints field in a zone config).
 	Constraint ConstraintType = "constraint"
-	// TODO(andrei): add leaseholder preference
 )
 
-// Less compares two ConstraintTypes.
 func (t ConstraintType) Less(other ConstraintType) bool {
+	__antithesis_instrumentation__.Notify(121536)
 	return -1 == strings.Compare(string(t), string(other))
 }
 
-// ConstraintRepr is a string representation of a constraint.
 type ConstraintRepr string
 
-// Less compares two ConstraintReprs.
 func (c ConstraintRepr) Less(other ConstraintRepr) bool {
+	__antithesis_instrumentation__.Notify(121537)
 	return -1 == strings.Compare(string(c), string(other))
 }
 
-// ConstraintStatusKey represents the key in the ConstraintReport.
 type ConstraintStatusKey struct {
 	ZoneKey
 	ViolationType ConstraintType
@@ -94,59 +69,86 @@ type ConstraintStatusKey struct {
 }
 
 func (k ConstraintStatusKey) String() string {
+	__antithesis_instrumentation__.Notify(121538)
 	return fmt.Sprintf("zone:%s type:%s constraint:%s", k.ZoneKey, k.ViolationType, k.Constraint)
 }
 
-// Less compares two ConstraintStatusKeys.
 func (k ConstraintStatusKey) Less(other ConstraintStatusKey) bool {
+	__antithesis_instrumentation__.Notify(121539)
 	if k.ZoneKey.Less(other.ZoneKey) {
+		__antithesis_instrumentation__.Notify(121544)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(121545)
 	}
+	__antithesis_instrumentation__.Notify(121540)
 	if other.ZoneKey.Less(k.ZoneKey) {
+		__antithesis_instrumentation__.Notify(121546)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(121547)
 	}
+	__antithesis_instrumentation__.Notify(121541)
 	if k.ViolationType.Less(other.ViolationType) {
+		__antithesis_instrumentation__.Notify(121548)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(121549)
 	}
+	__antithesis_instrumentation__.Notify(121542)
 	if other.ViolationType.Less(k.ViolationType) {
+		__antithesis_instrumentation__.Notify(121550)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(121551)
 	}
+	__antithesis_instrumentation__.Notify(121543)
 	return k.Constraint.Less(other.Constraint)
 }
 
-// AddViolation add a constraint that is being violated for a given range. Each call
-// will increase the number of ranges that failed.
 func (r ConstraintReport) AddViolation(z ZoneKey, t ConstraintType, c ConstraintRepr) {
+	__antithesis_instrumentation__.Notify(121552)
 	k := ConstraintStatusKey{
 		ZoneKey:       z,
 		ViolationType: t,
 		Constraint:    c,
 	}
 	if _, ok := r[k]; !ok {
+		__antithesis_instrumentation__.Notify(121554)
 		r[k] = ConstraintStatus{}
+	} else {
+		__antithesis_instrumentation__.Notify(121555)
 	}
+	__antithesis_instrumentation__.Notify(121553)
 	cRep := r[k]
 	cRep.FailRangeCount++
 	r[k] = cRep
 }
 
-// ensureEntry us used to add an entry to the report even if there is no violation.
 func (r ConstraintReport) ensureEntry(z ZoneKey, t ConstraintType, c ConstraintRepr) {
+	__antithesis_instrumentation__.Notify(121556)
 	k := ConstraintStatusKey{
 		ZoneKey:       z,
 		ViolationType: t,
 		Constraint:    c,
 	}
 	if _, ok := r[k]; !ok {
+		__antithesis_instrumentation__.Notify(121557)
 		r[k] = ConstraintStatus{}
+	} else {
+		__antithesis_instrumentation__.Notify(121558)
 	}
 }
 
 func (r ConstraintReport) ensureEntries(key ZoneKey, zone *zonepb.ZoneConfig) {
+	__antithesis_instrumentation__.Notify(121559)
 	for _, conjunction := range zone.Constraints {
+		__antithesis_instrumentation__.Notify(121561)
 		r.ensureEntry(key, Constraint, ConstraintRepr(conjunction.String()))
 	}
+	__antithesis_instrumentation__.Notify(121560)
 	for i, sz := range zone.Subzones {
+		__antithesis_instrumentation__.Notify(121562)
 		szKey := ZoneKey{ZoneID: key.ZoneID, SubzoneID: base.SubzoneIDFromIndex(i)}
 		r.ensureEntries(szKey, &sz.Config)
 	}
@@ -155,34 +157,47 @@ func (r ConstraintReport) ensureEntries(key ZoneKey, zone *zonepb.ZoneConfig) {
 func (r *replicationConstraintStatsReportSaver) loadPreviousVersion(
 	ctx context.Context, ex sqlutil.InternalExecutor, txn *kv.Txn,
 ) error {
-	// The data for the previous save needs to be loaded if:
-	// - this is the first time that we call this method and lastUpdatedAt has never been set
-	// - in case that the lastUpdatedAt is set but is different than the timestamp in reports_meta
-	//   this indicates that some other worker wrote after we did the write.
+	__antithesis_instrumentation__.Notify(121563)
+
 	if !r.lastGenerated.IsZero() {
+		__antithesis_instrumentation__.Notify(121567)
 		generated, err := getReportGenerationTime(ctx, replicationConstraintsReportID, ex, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(121569)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(121570)
 		}
-		// If the report is missing, this is the first time we are running and the
-		// reload is needed. In that case, generated will be the zero value.
+		__antithesis_instrumentation__.Notify(121568)
+
 		if generated == r.lastGenerated {
-			// We have the latest report; reload not needed.
+			__antithesis_instrumentation__.Notify(121571)
+
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(121572)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(121573)
 	}
+	__antithesis_instrumentation__.Notify(121564)
 	const prevViolations = "select zone_id, subzone_id, type, config, " +
 		"violating_ranges from system.replication_constraint_stats"
 	it, err := ex.QueryIterator(
 		ctx, "get-previous-replication-constraint-stats", txn, prevViolations,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121574)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(121575)
 	}
+	__antithesis_instrumentation__.Notify(121565)
 
 	r.previousVersion = make(ConstraintReport)
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(121576)
 		row := it.Cur()
 		key := ConstraintStatusKey{}
 		key.ZoneID = (config.ObjectID)(*row[0].(*tree.DInt))
@@ -191,19 +206,28 @@ func (r *replicationConstraintStatsReportSaver) loadPreviousVersion(
 		key.Constraint = (ConstraintRepr)(*row[3].(*tree.DString))
 		r.previousVersion[key] = ConstraintStatus{(int)(*row[4].(*tree.DInt))}
 	}
+	__antithesis_instrumentation__.Notify(121566)
 	return err
 }
 
 func (r *replicationConstraintStatsReportSaver) updateTimestamp(
 	ctx context.Context, ex sqlutil.InternalExecutor, txn *kv.Txn, reportTS time.Time,
 ) error {
-	if !r.lastGenerated.IsZero() && reportTS == r.lastGenerated {
+	__antithesis_instrumentation__.Notify(121577)
+	if !r.lastGenerated.IsZero() && func() bool {
+		__antithesis_instrumentation__.Notify(121579)
+		return reportTS == r.lastGenerated == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(121580)
 		return errors.Errorf(
 			"The new time %s is the same as the time of the last update %s",
 			reportTS.String(),
 			r.lastGenerated.String(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(121581)
 	}
+	__antithesis_instrumentation__.Notify(121578)
 
 	_, err := ex.Exec(
 		ctx,
@@ -216,11 +240,6 @@ func (r *replicationConstraintStatsReportSaver) updateTimestamp(
 	return err
 }
 
-// Save the report in the database.
-//
-// report should not be used by the caller any more after this call; the callee
-// takes ownership.
-// reportTS is the time that will be set in the updated_at column for every row.
 func (r *replicationConstraintStatsReportSaver) Save(
 	ctx context.Context,
 	report ConstraintReport,
@@ -228,28 +247,45 @@ func (r *replicationConstraintStatsReportSaver) Save(
 	db *kv.DB,
 	ex sqlutil.InternalExecutor,
 ) error {
+	__antithesis_instrumentation__.Notify(121582)
 	r.lastUpdatedRowCount = 0
 	if err := db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(121584)
 		err := r.loadPreviousVersion(ctx, ex, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(121589)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(121590)
 		}
+		__antithesis_instrumentation__.Notify(121585)
 
 		err = r.updateTimestamp(ctx, ex, txn, reportTS)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(121591)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(121592)
 		}
+		__antithesis_instrumentation__.Notify(121586)
 
 		for k, zoneCons := range report {
+			__antithesis_instrumentation__.Notify(121593)
 			if err := r.upsertConstraintStatus(
 				ctx, reportTS, txn, k, zoneCons.FailRangeCount, db, ex,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(121594)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(121595)
 			}
 		}
+		__antithesis_instrumentation__.Notify(121587)
 
 		for key := range r.previousVersion {
+			__antithesis_instrumentation__.Notify(121596)
 			if _, ok := report[key]; !ok {
+				__antithesis_instrumentation__.Notify(121597)
 				_, err := ex.Exec(
 					ctx,
 					"delete-old-replication-constraint-stats",
@@ -263,16 +299,27 @@ func (r *replicationConstraintStatsReportSaver) Save(
 				)
 
 				if err != nil {
+					__antithesis_instrumentation__.Notify(121599)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(121600)
 				}
+				__antithesis_instrumentation__.Notify(121598)
 				r.lastUpdatedRowCount++
+			} else {
+				__antithesis_instrumentation__.Notify(121601)
 			}
 		}
+		__antithesis_instrumentation__.Notify(121588)
 
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(121602)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(121603)
 	}
+	__antithesis_instrumentation__.Notify(121583)
 
 	r.lastGenerated = reportTS
 	r.previousVersion = report
@@ -280,9 +327,6 @@ func (r *replicationConstraintStatsReportSaver) Save(
 	return nil
 }
 
-// upsertConstraintStatus upserts a row into system.replication_constraint_stats.
-//
-// existing is used to decide is this is a new violation.
 func (r *replicationConstraintStatsReportSaver) upsertConstraintStatus(
 	ctx context.Context,
 	reportTS time.Time,
@@ -292,65 +336,79 @@ func (r *replicationConstraintStatsReportSaver) upsertConstraintStatus(
 	db *kv.DB,
 	ex sqlutil.InternalExecutor,
 ) error {
+	__antithesis_instrumentation__.Notify(121604)
 	var err error
 	previousStatus, hasOldVersion := r.previousVersion[key]
-	if hasOldVersion && previousStatus.FailRangeCount == violationCount {
-		// No change in the status so no update.
+	if hasOldVersion && func() bool {
+		__antithesis_instrumentation__.Notify(121607)
+		return previousStatus.FailRangeCount == violationCount == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(121608)
+
 		return nil
-	} else if violationCount != 0 {
-		if previousStatus.FailRangeCount != 0 {
-			// Updating an old violation. No need to update the start timestamp.
+	} else {
+		__antithesis_instrumentation__.Notify(121609)
+		if violationCount != 0 {
+			__antithesis_instrumentation__.Notify(121610)
+			if previousStatus.FailRangeCount != 0 {
+				__antithesis_instrumentation__.Notify(121611)
+
+				_, err = ex.Exec(
+					ctx, "upsert-replication-constraint-stat", txn,
+					"upsert into system.replication_constraint_stats(report_id, zone_id, subzone_id, type, "+
+						"config, violating_ranges) values($1, $2, $3, $4, $5, $6)",
+					replicationConstraintsReportID,
+					key.ZoneID, key.SubzoneID, key.ViolationType, key.Constraint, violationCount,
+				)
+			} else {
+				__antithesis_instrumentation__.Notify(121612)
+				if previousStatus.FailRangeCount == 0 {
+					__antithesis_instrumentation__.Notify(121613)
+
+					_, err = ex.Exec(
+						ctx, "upsert-replication-constraint-stat", txn,
+						"upsert into system.replication_constraint_stats(report_id, zone_id, subzone_id, type, "+
+							"config, violating_ranges, violation_start) values($1, $2, $3, $4, $5, $6, $7)",
+						replicationConstraintsReportID,
+						key.ZoneID, key.SubzoneID, key.ViolationType, key.Constraint, violationCount, reportTS,
+					)
+				} else {
+					__antithesis_instrumentation__.Notify(121614)
+				}
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(121615)
+
 			_, err = ex.Exec(
 				ctx, "upsert-replication-constraint-stat", txn,
-				"upsert into system.replication_constraint_stats(report_id, zone_id, subzone_id, type, "+
-					"config, violating_ranges) values($1, $2, $3, $4, $5, $6)",
+				"upsert into system.replication_constraint_stats(report_id, zone_id, subzone_id, type, config, "+
+					"violating_ranges, violation_start) values($1, $2, $3, $4, $5, $6, null)",
 				replicationConstraintsReportID,
 				key.ZoneID, key.SubzoneID, key.ViolationType, key.Constraint, violationCount,
 			)
-		} else if previousStatus.FailRangeCount == 0 {
-			// New violation detected. Need to update the start timestamp.
-			_, err = ex.Exec(
-				ctx, "upsert-replication-constraint-stat", txn,
-				"upsert into system.replication_constraint_stats(report_id, zone_id, subzone_id, type, "+
-					"config, violating_ranges, violation_start) values($1, $2, $3, $4, $5, $6, $7)",
-				replicationConstraintsReportID,
-				key.ZoneID, key.SubzoneID, key.ViolationType, key.Constraint, violationCount, reportTS,
-			)
 		}
-	} else {
-		// Need to set the violation start to null as there was an violation that doesn't exist anymore.
-		_, err = ex.Exec(
-			ctx, "upsert-replication-constraint-stat", txn,
-			"upsert into system.replication_constraint_stats(report_id, zone_id, subzone_id, type, config, "+
-				"violating_ranges, violation_start) values($1, $2, $3, $4, $5, $6, null)",
-			replicationConstraintsReportID,
-			key.ZoneID, key.SubzoneID, key.ViolationType, key.Constraint, violationCount,
-		)
 	}
+	__antithesis_instrumentation__.Notify(121605)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121616)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(121617)
 	}
+	__antithesis_instrumentation__.Notify(121606)
 
 	r.lastUpdatedRowCount++
 	return nil
 }
 
-// constraintConformanceVisitor is a visitor that, when passed to visitRanges(),
-// computes the constraint conformance report (i.e. the
-// system.replication_constraint_stats table).
 type constraintConformanceVisitor struct {
 	cfg           *config.SystemConfig
 	storeResolver StoreResolver
 
-	// report is the output of the visitor. visit*() methods populate it.
-	// After visiting all the ranges, it can be retrieved with Report().
 	report   ConstraintReport
 	visitErr bool
 
-	// prevZoneKey and prevConstraints maintain state from one range to the next.
-	// This state can be reused when a range is covered by the same zone config as
-	// the previous one. Reusing it speeds up the report generation.
 	prevZoneKey     ZoneKey
 	prevConstraints []zonepb.ConstraintsConjunction
 }
@@ -360,6 +418,7 @@ var _ rangeVisitor = &constraintConformanceVisitor{}
 func makeConstraintConformanceVisitor(
 	ctx context.Context, cfg *config.SystemConfig, storeResolver StoreResolver,
 ) constraintConformanceVisitor {
+	__antithesis_instrumentation__.Notify(121618)
 	v := constraintConformanceVisitor{
 		cfg:           cfg,
 		storeResolver: storeResolver,
@@ -368,80 +427,99 @@ func makeConstraintConformanceVisitor(
 	return v
 }
 
-// failed is part of the rangeVisitor interface.
 func (v *constraintConformanceVisitor) failed() bool {
+	__antithesis_instrumentation__.Notify(121619)
 	return v.visitErr
 }
 
-// Report returns the ConstraintReport that was populated by previous visit*()
-// calls.
 func (v *constraintConformanceVisitor) Report() ConstraintReport {
+	__antithesis_instrumentation__.Notify(121620)
 	return v.report
 }
 
-// reset is part of the rangeVisitor interface.
 func (v *constraintConformanceVisitor) reset(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(121621)
 	*v = constraintConformanceVisitor{
 		cfg:           v.cfg,
 		storeResolver: v.storeResolver,
 		report:        make(ConstraintReport, len(v.report)),
 	}
 
-	// Iterate through all the zone configs to create report entries for all the
-	// zones that have constraints. Otherwise, just iterating through the ranges
-	// wouldn't create entries for constraints that aren't violated, and
-	// definitely not for zones that don't apply to any ranges.
 	maxObjectID, err := v.cfg.GetLargestObjectID(
-		0 /* maxReservedDescID - return the largest ID in the config */, keys.PseudoTableIDs)
+		0, keys.PseudoTableIDs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121623)
 		log.Fatalf(ctx, "unexpected failure to compute max object id: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(121624)
 	}
+	__antithesis_instrumentation__.Notify(121622)
 	for i := config.ObjectID(1); i <= maxObjectID; i++ {
+		__antithesis_instrumentation__.Notify(121625)
 		zone, err := getZoneByID(i, v.cfg)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(121628)
 			log.Fatalf(ctx, "unexpected failure to compute max object id: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(121629)
 		}
+		__antithesis_instrumentation__.Notify(121626)
 		if zone == nil {
+			__antithesis_instrumentation__.Notify(121630)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(121631)
 		}
+		__antithesis_instrumentation__.Notify(121627)
 		v.report.ensureEntries(MakeZoneKey(i, NoSubzone), zone)
 	}
 }
 
-// visitNewZone is part of the rangeVisitor interface.
 func (v *constraintConformanceVisitor) visitNewZone(
 	ctx context.Context, r *roachpb.RangeDescriptor,
 ) (retErr error) {
+	__antithesis_instrumentation__.Notify(121632)
 
 	defer func() {
+		__antithesis_instrumentation__.Notify(121636)
 		v.visitErr = retErr != nil
 	}()
+	__antithesis_instrumentation__.Notify(121633)
 
-	// Find the applicable constraints, which may be inherited.
 	var constraints []zonepb.ConstraintsConjunction
 	var zKey ZoneKey
 	_, err := visitZones(ctx, r, v.cfg, ignoreSubzonePlaceholders,
 		func(_ context.Context, zone *zonepb.ZoneConfig, key ZoneKey) bool {
+			__antithesis_instrumentation__.Notify(121637)
 			if zone.Constraints == nil {
+				__antithesis_instrumentation__.Notify(121639)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(121640)
 			}
+			__antithesis_instrumentation__.Notify(121638)
 			constraints = zone.Constraints
 			zKey = key
 			return true
 		})
+	__antithesis_instrumentation__.Notify(121634)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121641)
 		return errors.Wrap(err, "unexpected error visiting zones")
+	} else {
+		__antithesis_instrumentation__.Notify(121642)
 	}
+	__antithesis_instrumentation__.Notify(121635)
 	v.prevZoneKey = zKey
 	v.prevConstraints = constraints
 	v.countRange(ctx, r, zKey, constraints)
 	return nil
 }
 
-// visitSameZone is part of the rangeVisitor interface.
 func (v *constraintConformanceVisitor) visitSameZone(
 	ctx context.Context, r *roachpb.RangeDescriptor,
 ) {
+	__antithesis_instrumentation__.Notify(121643)
 	v.countRange(ctx, r, v.prevZoneKey, v.prevConstraints)
 }
 
@@ -451,52 +529,71 @@ func (v *constraintConformanceVisitor) countRange(
 	key ZoneKey,
 	constraints []zonepb.ConstraintsConjunction,
 ) {
+	__antithesis_instrumentation__.Notify(121644)
 	storeDescs := v.storeResolver(r)
 	violated := getViolations(ctx, storeDescs, constraints)
 	for _, c := range violated {
+		__antithesis_instrumentation__.Notify(121645)
 		v.report.AddViolation(key, Constraint, c)
 	}
 }
 
-// getViolations returns the list of constraints violated by a range. The range
-// is represented by the descriptors of the replicas' stores.
 func getViolations(
 	ctx context.Context,
 	storeDescs []roachpb.StoreDescriptor,
 	constraintConjunctions []zonepb.ConstraintsConjunction,
 ) []ConstraintRepr {
+	__antithesis_instrumentation__.Notify(121646)
 	var res []ConstraintRepr
-	// Evaluate all zone constraints for the stores (i.e. replicas) of the given range.
+
 	for _, conjunction := range constraintConjunctions {
+		__antithesis_instrumentation__.Notify(121648)
 		replicasRequiredToMatch := int(conjunction.NumReplicas)
 		if replicasRequiredToMatch == 0 {
+			__antithesis_instrumentation__.Notify(121650)
 			replicasRequiredToMatch = len(storeDescs)
+		} else {
+			__antithesis_instrumentation__.Notify(121651)
 		}
+		__antithesis_instrumentation__.Notify(121649)
 		for _, c := range conjunction.Constraints {
+			__antithesis_instrumentation__.Notify(121652)
 			if !constraintSatisfied(c, replicasRequiredToMatch, storeDescs) {
+				__antithesis_instrumentation__.Notify(121653)
 				res = append(res, ConstraintRepr(conjunction.String()))
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(121654)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(121647)
 	return res
 }
 
-// constraintSatisfied checks that a range (represented by its replicas' stores)
-// satisfies a constraint.
 func constraintSatisfied(
 	c zonepb.Constraint, replicasRequiredToMatch int, storeDescs []roachpb.StoreDescriptor,
 ) bool {
+	__antithesis_instrumentation__.Notify(121655)
 	passCount := 0
 	for _, storeDesc := range storeDescs {
-		// Consider stores for which we have no information to pass everything.
+		__antithesis_instrumentation__.Notify(121657)
+
 		if storeDesc.StoreID == 0 {
+			__antithesis_instrumentation__.Notify(121659)
 			passCount++
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(121660)
 		}
+		__antithesis_instrumentation__.Notify(121658)
 		if zonepb.StoreSatisfiesConstraint(storeDesc, c) {
+			__antithesis_instrumentation__.Notify(121661)
 			passCount++
+		} else {
+			__antithesis_instrumentation__.Notify(121662)
 		}
 	}
+	__antithesis_instrumentation__.Notify(121656)
 	return replicasRequiredToMatch <= passCount
 }

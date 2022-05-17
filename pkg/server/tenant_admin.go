@@ -1,19 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// TODO(azhng): The implementation for tenantAdminServer here will need to be updated
-//  once we have pod-to-pod communication implemented. After all dependencies that are
-//  unavailable to tenants have been removed, we can likely remove tenant admin server
-//  entirely and use the normal admin server.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -35,24 +22,20 @@ type tenantAdminServer struct {
 	sqlServer *SQLServer
 	drain     *drainServer
 
-	// TODO(knz): find a way to avoid using status here,
-	// for example by lifting the services used from admin into
-	// a separate object.
 	status *tenantStatusServer
 }
 
-// We require that `tenantAdminServer` implement
-// `serverpb.AdminServer` even though we only have partial
-// implementation, in order to serve some endpoints on tenants.
 var _ serverpb.AdminServer = &tenantAdminServer{}
 
 func (t *tenantAdminServer) RegisterService(g *grpc.Server) {
+	__antithesis_instrumentation__.Notify(238389)
 	serverpb.RegisterAdminServer(g, t)
 }
 
 func (t *tenantAdminServer) RegisterGateway(
 	ctx context.Context, mux *gwruntime.ServeMux, conn *grpc.ClientConn,
 ) error {
+	__antithesis_instrumentation__.Notify(238390)
 	ctx = t.AnnotateCtx(ctx)
 	return serverpb.RegisterAdminHandler(ctx, mux, conn)
 }
@@ -65,6 +48,7 @@ func newTenantAdminServer(
 	status *tenantStatusServer,
 	drain *drainServer,
 ) *tenantAdminServer {
+	__antithesis_instrumentation__.Notify(238391)
 	return &tenantAdminServer{
 		AmbientContext: ambientCtx,
 		sqlServer:      sqlServer,
@@ -73,28 +57,29 @@ func newTenantAdminServer(
 	}
 }
 
-// Health returns liveness for the node target of the request.
-//
-// See the docstring for HealthRequest for more details about
-// what this function precisely reports.
-//
-// Note: Health is non-privileged and non-authenticated and thus
-// must not report privileged information.
 func (t *tenantAdminServer) Health(
 	ctx context.Context, req *serverpb.HealthRequest,
 ) (*serverpb.HealthResponse, error) {
+	__antithesis_instrumentation__.Notify(238392)
 	telemetry.Inc(telemetryHealthCheck)
 
 	resp := &serverpb.HealthResponse{}
-	// If Ready is not set, the client doesn't want to know whether this node is
-	// ready to receive client traffic.
+
 	if !req.Ready {
+		__antithesis_instrumentation__.Notify(238395)
 		return resp, nil
+	} else {
+		__antithesis_instrumentation__.Notify(238396)
 	}
+	__antithesis_instrumentation__.Notify(238393)
 
 	if !t.sqlServer.isReady.Get() {
+		__antithesis_instrumentation__.Notify(238397)
 		return nil, status.Errorf(codes.Unavailable, "node is not accepting SQL clients")
+	} else {
+		__antithesis_instrumentation__.Notify(238398)
 	}
+	__antithesis_instrumentation__.Notify(238394)
 
 	return resp, nil
 }
@@ -102,49 +87,58 @@ func (t *tenantAdminServer) Health(
 func (t *tenantAdminServer) dialPod(
 	ctx context.Context, instanceID base.SQLInstanceID, addr string,
 ) (serverpb.AdminClient, error) {
+	__antithesis_instrumentation__.Notify(238399)
 	conn, err := t.sqlServer.execCfg.RPCContext.GRPCDialPod(addr, instanceID, rpc.DefaultClass).Connect(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238401)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(238402)
 	}
+	__antithesis_instrumentation__.Notify(238400)
 
-	// nb: The server on the pods doesn't implement all the methods of the
-	// `AdminService`. It is up to the caller of `dialPod` to only call
-	// methods that are implemented on the tenant server.
 	return serverpb.NewAdminClient(conn), nil
 }
 
-// Drain puts the node into the specified drain mode(s) and optionally
-// instructs the process to terminate.
-// This method is part of the serverpb.AdminClient interface.
 func (t *tenantAdminServer) Drain(
 	req *serverpb.DrainRequest, stream serverpb.Admin_DrainServer,
 ) error {
+	__antithesis_instrumentation__.Notify(238403)
 	ctx := stream.Context()
 	ctx = t.AnnotateCtx(ctx)
 
-	// Which node is this request for?
 	parsedInstanceID, local, err := t.status.parseInstanceID(req.NodeId)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(238406)
 		return status.Errorf(codes.InvalidArgument, err.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(238407)
 	}
+	__antithesis_instrumentation__.Notify(238404)
 	if !local {
+		__antithesis_instrumentation__.Notify(238408)
 		instance, err := t.sqlServer.sqlInstanceProvider.GetInstance(ctx, parsedInstanceID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(238411)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(238412)
 		}
-		// This request is for another node. Forward it.
-		// In contrast to many RPC calls we implement around
-		// the server package, the Drain RPC is a *streaming*
-		// RPC. This means that it may have more than one
-		// response. We must forward all of them.
+		__antithesis_instrumentation__.Notify(238409)
 
-		// Connect to the target node.
 		client, err := t.dialPod(ctx, parsedInstanceID, instance.InstanceAddr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(238413)
 			return serverError(ctx, err)
+		} else {
+			__antithesis_instrumentation__.Notify(238414)
 		}
+		__antithesis_instrumentation__.Notify(238410)
 		return delegateDrain(ctx, req, client, stream)
+	} else {
+		__antithesis_instrumentation__.Notify(238415)
 	}
+	__antithesis_instrumentation__.Notify(238405)
 
 	return t.drain.handleDrain(ctx, req, stream)
 }

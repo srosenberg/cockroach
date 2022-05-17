@@ -1,17 +1,9 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // reduce reduces SQL passed from the input file using cockroach demo. The input
 // file is simplified such that -contains argument is present as an error during
 // SQL execution. Run `make bin/reduce` to compile the reduce program.
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,20 +23,17 @@ import (
 )
 
 var (
-	// Some quick benchmarks show that somewhere around 1/3 of NumCPUs
-	// performs best. This can probably be tweaked with benchmarks from
-	// other machines, but is probably a good place to start.
 	goroutines = func() int {
-		// Round up by adding 2.
-		// Num CPUs -> n:
-		// 1-3: 1
-		// 4-6: 2
-		// 7-9: 3
-		// etc.
+		__antithesis_instrumentation__.Notify(41742)
+
 		n := (runtime.GOMAXPROCS(0) + 2) / 3
 		if n < 1 {
+			__antithesis_instrumentation__.Notify(41744)
 			n = 1
+		} else {
+			__antithesis_instrumentation__.Notify(41745)
 		}
+		__antithesis_instrumentation__.Notify(41743)
 		return n
 	}()
 	flags           = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -73,6 +62,7 @@ The following options are available:
 `
 
 func usage() {
+	__antithesis_instrumentation__.Notify(41746)
 	fmt.Fprintf(flags.Output(), "Usage of %s:\n", os.Args[0])
 	fmt.Fprint(flags.Output(), description)
 	flags.PrintDefaults()
@@ -80,80 +70,108 @@ func usage() {
 }
 
 func main() {
+	__antithesis_instrumentation__.Notify(41747)
 	flags.Usage = usage
 	if err := flags.Parse(os.Args[1:]); err != nil {
+		__antithesis_instrumentation__.Notify(41752)
 		usage()
+	} else {
+		__antithesis_instrumentation__.Notify(41753)
 	}
+	__antithesis_instrumentation__.Notify(41748)
 	if *file == "" {
+		__antithesis_instrumentation__.Notify(41754)
 		fmt.Printf("%s: -file must be provided\n\n", os.Args[0])
 		usage()
+	} else {
+		__antithesis_instrumentation__.Notify(41755)
 	}
-	if *contains == "" && !*tlp {
+	__antithesis_instrumentation__.Notify(41749)
+	if *contains == "" && func() bool {
+		__antithesis_instrumentation__.Notify(41756)
+		return !*tlp == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(41757)
 		fmt.Printf("%s: either -contains must be provided or -tlp flag specified\n\n", os.Args[0])
 		usage()
+	} else {
+		__antithesis_instrumentation__.Notify(41758)
 	}
+	__antithesis_instrumentation__.Notify(41750)
 	reducesql.LogUnknown = *unknown
 	out, err := reduceSQL(*binary, *contains, file, *workers, *verbose, *chunkReductions, *tlp)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41759)
 		log.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(41760)
 	}
+	__antithesis_instrumentation__.Notify(41751)
 	fmt.Println(out)
 }
 
 func reduceSQL(
 	binary, contains string, file *string, workers int, verbose bool, chunkReductions int, tlp bool,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(41761)
 	const tlpFailureError = "TLP_FAILURE"
 	if tlp {
+		__antithesis_instrumentation__.Notify(41770)
 		contains = tlpFailureError
+	} else {
+		__antithesis_instrumentation__.Notify(41771)
 	}
+	__antithesis_instrumentation__.Notify(41762)
 	containsRE, err := regexp.Compile(contains)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41772)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(41773)
 	}
+	__antithesis_instrumentation__.Notify(41763)
 	input, err := ioutil.ReadFile(*file)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41774)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(41775)
 	}
+	__antithesis_instrumentation__.Notify(41764)
 
 	inputString := string(input)
 	var tlpCheck string
 
-	// If TLP check is requested, then we remove the last two queries from the
-	// input (each query is expected to be delimited by empty lines) which we
-	// use then to construct a special TLP check query that results in an error
-	// if two removed queries return different results.
-	//
-	// We do not just include the TLP check query into the input string because
-	// the reducer would then reduce the check query itself, making the
-	// reduction meaningless.
 	if tlp {
+		__antithesis_instrumentation__.Notify(41776)
 		lines := strings.Split(string(input), "\n")
 		lineIdx := len(lines) - 1
-		// findPreviousQuery return the query preceding lineIdx without a
-		// semicolon. Queries are expected to be delimited with empty lines.
+
 		findPreviousQuery := func() string {
-			// Skip empty lines.
+			__antithesis_instrumentation__.Notify(41778)
+
 			for lines[lineIdx] == "" {
+				__antithesis_instrumentation__.Notify(41781)
 				lineIdx--
 			}
+			__antithesis_instrumentation__.Notify(41779)
 			lastQueryLineIdx := lineIdx
-			// Now skip over all lines comprising the query.
+
 			for lines[lineIdx] != "" {
+				__antithesis_instrumentation__.Notify(41782)
 				lineIdx--
 			}
-			// lineIdx right now points at an empty line before the query.
+			__antithesis_instrumentation__.Notify(41780)
+
 			query := strings.Join(lines[lineIdx+1:lastQueryLineIdx+1], " ")
-			// Remove the semicolon.
+
 			return query[:len(query)-1]
 		}
+		__antithesis_instrumentation__.Notify(41777)
 		partitioned := findPreviousQuery()
 		unpartitioned := findPreviousQuery()
 		inputString = strings.Join(lines[:lineIdx], "\n")
-		// tlpCheck is a query that will result in an error with tlpFailureError
-		// error message when unpartitioned and partitioned queries return
-		// different results (which is the case when there are rows in one
-		// result set that are not present in the other).
+
 		tlpCheck = fmt.Sprintf(`
 SELECT CASE
   WHEN
@@ -163,35 +181,56 @@ SELECT CASE
   THEN
     crdb_internal.force_error('', '%[3]s')
   END;`, unpartitioned, partitioned, tlpFailureError)
+	} else {
+		__antithesis_instrumentation__.Notify(41783)
 	}
+	__antithesis_instrumentation__.Notify(41765)
 
-	// Pretty print the input so the file size comparison is useful.
 	inputSQL, err := reducesql.Pretty(inputString)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41784)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(41785)
 	}
+	__antithesis_instrumentation__.Notify(41766)
 
 	var logger *log.Logger
 	if verbose {
+		__antithesis_instrumentation__.Notify(41786)
 		logger = log.New(os.Stderr, "", 0)
 		logger.Printf("input SQL pretty printed, %d bytes -> %d bytes\n", len(input), len(inputSQL))
 		if tlp {
+			__antithesis_instrumentation__.Notify(41787)
 			prettyTLPCheck, err := reducesql.Pretty(tlpCheck)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(41789)
 				return "", err
+			} else {
+				__antithesis_instrumentation__.Notify(41790)
 			}
+			__antithesis_instrumentation__.Notify(41788)
 			logger.Printf("\nTLP check query:\n%s\n\n", prettyTLPCheck)
+		} else {
+			__antithesis_instrumentation__.Notify(41791)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(41792)
 	}
+	__antithesis_instrumentation__.Notify(41767)
 
 	var chunkReducer reduce.ChunkReducer
 	if chunkReductions > 0 {
+		__antithesis_instrumentation__.Notify(41793)
 		chunkReducer = reducesql.NewSQLChunkReducer(chunkReductions)
+	} else {
+		__antithesis_instrumentation__.Notify(41794)
 	}
+	__antithesis_instrumentation__.Notify(41768)
 
 	isInteresting := func(ctx context.Context, sql string) (interesting bool, logOriginalHint func()) {
-		// Disable telemetry and license generation. Do not exit on errors so
-		// the entirety of the input SQL is processed.
+		__antithesis_instrumentation__.Notify(41795)
+
 		cmd := exec.CommandContext(ctx, binary,
 			"demo",
 			"--empty",
@@ -200,28 +239,45 @@ SELECT CASE
 		)
 		cmd.Env = []string{"COCKROACH_SKIP_ENABLING_DIAGNOSTIC_REPORTING", "true"}
 		if !strings.HasSuffix(sql, ";") {
+			__antithesis_instrumentation__.Notify(41799)
 			sql += ";"
+		} else {
+			__antithesis_instrumentation__.Notify(41800)
 		}
-		// If -tlp was not specified, this is a noop, if it was specified, then
-		// we append the special TLP check query.
+		__antithesis_instrumentation__.Notify(41796)
+
 		sql += tlpCheck
 		cmd.Stdin = strings.NewReader(sql)
 		out, err := cmd.CombinedOutput()
 		switch {
 		case errors.HasType(err, (*exec.Error)(nil)):
+			__antithesis_instrumentation__.Notify(41801)
 			if errors.Is(err, exec.ErrNotFound) {
+				__antithesis_instrumentation__.Notify(41804)
 				log.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(41805)
 			}
 		case errors.HasType(err, (*os.PathError)(nil)):
+			__antithesis_instrumentation__.Notify(41802)
 			log.Fatal(err)
+		default:
+			__antithesis_instrumentation__.Notify(41803)
 		}
+		__antithesis_instrumentation__.Notify(41797)
 		if verbose {
+			__antithesis_instrumentation__.Notify(41806)
 			logOriginalHint = func() {
+				__antithesis_instrumentation__.Notify(41807)
 				logger.Printf("output did not match regex %s:\n\n%s", contains, string(out))
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(41808)
 		}
+		__antithesis_instrumentation__.Notify(41798)
 		return containsRE.Match(out), logOriginalHint
 	}
+	__antithesis_instrumentation__.Notify(41769)
 
 	out, err := reduce.Reduce(
 		logger,

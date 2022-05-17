@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colflow
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,41 +20,25 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// childStatsCollector gives access to the stopwatches of a
-// colexecop.VectorizedStatsCollector's childStatsCollectors.
 type childStatsCollector interface {
 	getElapsedTime() time.Duration
 }
 
-// batchInfoCollector is a helper used by collector implementations.
-//
-// It wraps an Operator and keeps track of how much time was spent while calling
-// Next on the underlying Operator and how many batches and tuples were
-// returned.
 type batchInfoCollector struct {
 	colexecop.Operator
 	colexecop.NonExplainable
 	componentID execinfrapb.ComponentID
 
 	mu struct {
-		// We need a mutex because finishAndGetStats() and Next() might be
-		// called from different goroutines.
 		syncutil.Mutex
 		initialized           bool
 		numBatches, numTuples uint64
 	}
 
-	// batch is the last batch returned by the wrapped operator.
 	batch coldata.Batch
 
-	// stopwatch keeps track of the amount of time the wrapped operator spent
-	// doing work. Note that this will include all of the time that the operator's
-	// inputs spent doing work - this will be corrected when stats are reported
-	// in finishAndGetStats().
 	stopwatch *timeutil.StopWatch
 
-	// childStatsCollectors contains the stats collectors for all of the inputs
-	// to the wrapped operator.
 	childStatsCollectors []childStatsCollector
 }
 
@@ -74,9 +50,14 @@ func makeBatchInfoCollector(
 	inputWatch *timeutil.StopWatch,
 	childStatsCollectors []childStatsCollector,
 ) batchInfoCollector {
+	__antithesis_instrumentation__.Notify(456335)
 	if inputWatch == nil {
+		__antithesis_instrumentation__.Notify(456337)
 		colexecerror.InternalError(errors.AssertionFailedf("input watch is nil"))
+	} else {
+		__antithesis_instrumentation__.Notify(456338)
 	}
+	__antithesis_instrumentation__.Notify(456336)
 	return batchInfoCollector{
 		Operator:             op,
 		componentID:          id,
@@ -85,68 +66,69 @@ func makeBatchInfoCollector(
 	}
 }
 
-// Init is part of the colexecop.Operator interface.
 func (bic *batchInfoCollector) Init(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(456339)
 	bic.Operator.Init(ctx)
 	bic.mu.Lock()
-	// If we got here, then Init above succeeded, so the wrapped operator has
-	// been properly initialized.
+
 	bic.mu.initialized = true
 	bic.mu.Unlock()
 }
 
 func (bic *batchInfoCollector) next() {
+	__antithesis_instrumentation__.Notify(456340)
 	bic.batch = bic.Operator.Next()
 }
 
-// Next is part of the colexecop.Operator interface.
 func (bic *batchInfoCollector) Next() coldata.Batch {
+	__antithesis_instrumentation__.Notify(456341)
 	bic.stopwatch.Start()
-	// Wrap the call to Next() with a panic catcher in order to get the correct
-	// execution time (e.g. in the statement bundle).
+
 	err := colexecerror.CatchVectorizedRuntimeError(bic.next)
 	bic.stopwatch.Stop()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(456344)
 		colexecerror.InternalError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(456345)
 	}
+	__antithesis_instrumentation__.Notify(456342)
 	if bic.batch.Length() > 0 {
+		__antithesis_instrumentation__.Notify(456346)
 		bic.mu.Lock()
 		bic.mu.numBatches++
 		bic.mu.numTuples += uint64(bic.batch.Length())
 		bic.mu.Unlock()
+	} else {
+		__antithesis_instrumentation__.Notify(456347)
 	}
+	__antithesis_instrumentation__.Notify(456343)
 	return bic.batch
 }
 
-// finishAndGetStats calculates the final execution statistics for the wrapped
-// operator. ok indicates whether the stats collection was successful.
 func (bic *batchInfoCollector) finishAndGetStats() (
 	numBatches, numTuples uint64,
 	time time.Duration,
 	ok bool,
 ) {
+	__antithesis_instrumentation__.Notify(456348)
 	tm := bic.stopwatch.Elapsed()
-	// Subtract the time spent in each of the child stats collectors, to produce
-	// the amount of time that the wrapped operator spent doing work itself, not
-	// including time spent waiting on its inputs.
+
 	for _, statsCollectors := range bic.childStatsCollectors {
+		__antithesis_instrumentation__.Notify(456350)
 		tm -= statsCollectors.getElapsedTime()
 	}
+	__antithesis_instrumentation__.Notify(456349)
 	bic.mu.Lock()
 	defer bic.mu.Unlock()
 	return bic.mu.numBatches, bic.mu.numTuples, tm, bic.mu.initialized
 }
 
-// getElapsedTime implements the childStatsCollector interface.
 func (bic *batchInfoCollector) getElapsedTime() time.Duration {
+	__antithesis_instrumentation__.Notify(456351)
 	return bic.stopwatch.Elapsed()
 }
 
-// newVectorizedStatsCollector creates a colexecop.VectorizedStatsCollector
-// which wraps 'op' that corresponds to a component with either ProcessorID or
-// StreamID 'id' (with 'idTagKey' distinguishing between the two). 'kvReader' is
-// a component (either an operator or a wrapped processor) that performs KV
-// reads that is present in the chain of operators rooted at 'op'.
 func newVectorizedStatsCollector(
 	op colexecop.Operator,
 	kvReader colexecop.KVReader,
@@ -157,8 +139,8 @@ func newVectorizedStatsCollector(
 	diskMonitors []*mon.BytesMonitor,
 	inputStatsCollectors []childStatsCollector,
 ) colexecop.VectorizedStatsCollector {
-	// TODO(cathymw): Refactor to have specialized stats collectors for
-	// memory/disk stats and IO operators.
+	__antithesis_instrumentation__.Notify(456352)
+
 	return &vectorizedStatsCollectorImpl{
 		batchInfoCollector: makeBatchInfoCollector(op, id, inputWatch, inputStatsCollectors),
 		kvReader:           kvReader,
@@ -168,8 +150,6 @@ func newVectorizedStatsCollector(
 	}
 }
 
-// vectorizedStatsCollectorImpl is the implementation behind
-// newVectorizedStatsCollector.
 type vectorizedStatsCollectorImpl struct {
 	batchInfoCollector
 
@@ -179,47 +159,43 @@ type vectorizedStatsCollectorImpl struct {
 	diskMonitors []*mon.BytesMonitor
 }
 
-// GetStats is part of the colexecop.VectorizedStatsCollector interface.
 func (vsc *vectorizedStatsCollectorImpl) GetStats() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(456353)
 	numBatches, numTuples, time, ok := vsc.batchInfoCollector.finishAndGetStats()
 	if !ok {
-		// The stats collection wasn't successful for some reason, so we will
-		// return an empty object (since nil is not allowed by the contract of
-		// GetStats).
-		//
-		// Such scenario can occur, for example, if the operator wrapped by the
-		// batchInfoCollector wasn't properly initialized, yet the stats
-		// retrieval is attempted. In many places we assume that if an operator
-		// is interacted with in any way, it must have been successfully
-		// initialized. Having such a check in the vectorizedStatsCollectorImpl
-		// makes sure that we never violate those assumptions.
+		__antithesis_instrumentation__.Notify(456359)
+
 		return &execinfrapb.ComponentStats{}
+	} else {
+		__antithesis_instrumentation__.Notify(456360)
 	}
+	__antithesis_instrumentation__.Notify(456354)
 
 	var s *execinfrapb.ComponentStats
 	if vsc.columnarizer != nil {
+		__antithesis_instrumentation__.Notify(456361)
 		s = vsc.columnarizer.GetStats()
 	} else {
-		// There was no root columnarizer, so create a new stats object.
+		__antithesis_instrumentation__.Notify(456362)
+
 		s = &execinfrapb.ComponentStats{Component: vsc.componentID}
 	}
+	__antithesis_instrumentation__.Notify(456355)
 
 	for _, memMon := range vsc.memMonitors {
+		__antithesis_instrumentation__.Notify(456363)
 		s.Exec.MaxAllocatedMem.Add(memMon.MaximumBytes())
 	}
+	__antithesis_instrumentation__.Notify(456356)
 	for _, diskMon := range vsc.diskMonitors {
+		__antithesis_instrumentation__.Notify(456364)
 		s.Exec.MaxAllocatedDisk.Add(diskMon.MaximumBytes())
 	}
+	__antithesis_instrumentation__.Notify(456357)
 
 	if vsc.kvReader != nil {
-		// Note that kvReader is non-nil only for ColBatchScans, and this is the
-		// only case when we want to add the number of rows read, bytes read,
-		// and the contention time (because the wrapped row-execution KV reading
-		// processors - joinReaders, tableReaders, zigzagJoiners, and
-		// invertedJoiners - will add these statistics themselves). Similarly,
-		// for those wrapped processors it is ok to show the time as "execution
-		// time" since "KV time" would only make sense for tableReaders, and
-		// they are less likely to be wrapped than others.
+		__antithesis_instrumentation__.Notify(456365)
+
 		s.KV.KVTime.Set(time)
 		s.KV.TuplesRead.Set(uint64(vsc.kvReader.GetRowsRead()))
 		s.KV.BytesRead.Set(uint64(vsc.kvReader.GetBytesRead()))
@@ -227,17 +203,16 @@ func (vsc *vectorizedStatsCollectorImpl) GetStats() *execinfrapb.ComponentStats 
 		scanStats := vsc.kvReader.GetScanStats()
 		execinfra.PopulateKVMVCCStats(&s.KV, &scanStats)
 	} else {
+		__antithesis_instrumentation__.Notify(456366)
 		s.Exec.ExecTime.Set(time)
 	}
+	__antithesis_instrumentation__.Notify(456358)
 
 	s.Output.NumBatches.Set(numBatches)
 	s.Output.NumTuples.Set(numTuples)
 	return s
 }
 
-// newNetworkVectorizedStatsCollector creates a new
-// colexecop.VectorizedStatsCollector for streams. In addition to the base stats,
-// newNetworkVectorizedStatsCollector collects the network latency for a stream.
 func newNetworkVectorizedStatsCollector(
 	op colexecop.Operator,
 	id execinfrapb.ComponentID,
@@ -245,15 +220,14 @@ func newNetworkVectorizedStatsCollector(
 	inbox *colrpc.Inbox,
 	latency time.Duration,
 ) colexecop.VectorizedStatsCollector {
+	__antithesis_instrumentation__.Notify(456367)
 	return &networkVectorizedStatsCollectorImpl{
-		batchInfoCollector: makeBatchInfoCollector(op, id, inputWatch, nil /* childStatsCollectors */),
+		batchInfoCollector: makeBatchInfoCollector(op, id, inputWatch, nil),
 		inbox:              inbox,
 		latency:            latency,
 	}
 }
 
-// networkVectorizedStatsCollectorImpl is the implementation behind
-// newNetworkVectorizedStatsCollector.
 type networkVectorizedStatsCollectorImpl struct {
 	batchInfoCollector
 
@@ -261,22 +235,17 @@ type networkVectorizedStatsCollectorImpl struct {
 	latency time.Duration
 }
 
-// GetStats is part of the colexecop.VectorizedStatsCollector interface.
 func (nvsc *networkVectorizedStatsCollectorImpl) GetStats() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(456368)
 	numBatches, numTuples, time, ok := nvsc.batchInfoCollector.finishAndGetStats()
 	if !ok {
-		// The stats collection wasn't successful for some reason, so we will
-		// return an empty object (since nil is not allowed by the contract of
-		// GetStats).
-		//
-		// Such scenario can occur, for example, if the operator wrapped by the
-		// batchInfoCollector wasn't properly initialized, yet the stats
-		// retrieval is attempted. In many places we assume that if an operator
-		// is interacted with in any way, it must have been successfully
-		// initialized. Having such a check in the vectorizedStatsCollectorImpl
-		// makes sure that we never violate those assumptions.
+		__antithesis_instrumentation__.Notify(456370)
+
 		return &execinfrapb.ComponentStats{}
+	} else {
+		__antithesis_instrumentation__.Notify(456371)
 	}
+	__antithesis_instrumentation__.Notify(456369)
 
 	s := &execinfrapb.ComponentStats{Component: nvsc.componentID}
 
@@ -293,21 +262,18 @@ func (nvsc *networkVectorizedStatsCollectorImpl) GetStats() *execinfrapb.Compone
 	return s
 }
 
-// maybeAddStatsInvariantChecker will add a statsInvariantChecker to both
-// StatsCollectors and MetadataSources of op if crdb_test build tag is
-// specified. See comment on statsInvariantChecker for the kind of invariants
-// checked.
 func maybeAddStatsInvariantChecker(op *colexecargs.OpWithMetaInfo) {
+	__antithesis_instrumentation__.Notify(456372)
 	if buildutil.CrdbTestBuild {
+		__antithesis_instrumentation__.Notify(456373)
 		c := &statsInvariantChecker{}
 		op.StatsCollectors = append(op.StatsCollectors, c)
 		op.MetadataSources = append(op.MetadataSources, c)
+	} else {
+		__antithesis_instrumentation__.Notify(456374)
 	}
 }
 
-// statsInvariantChecker is a dummy colexecop.VectorizedStatsCollector as well
-// as colexecop.MetadataSource which asserts that GetStats is called before
-// DrainMeta. It should only be used in the test environment.
 type statsInvariantChecker struct {
 	colexecop.ZeroInputNode
 
@@ -317,20 +283,27 @@ type statsInvariantChecker struct {
 var _ colexecop.VectorizedStatsCollector = &statsInvariantChecker{}
 var _ colexecop.MetadataSource = &statsInvariantChecker{}
 
-func (i *statsInvariantChecker) Init(context.Context) {}
+func (i *statsInvariantChecker) Init(context.Context) { __antithesis_instrumentation__.Notify(456375) }
 
 func (i *statsInvariantChecker) Next() coldata.Batch {
+	__antithesis_instrumentation__.Notify(456376)
 	return coldata.ZeroBatch
 }
 
 func (i *statsInvariantChecker) GetStats() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(456377)
 	i.statsRetrieved = true
 	return &execinfrapb.ComponentStats{}
 }
 
 func (i *statsInvariantChecker) DrainMeta() []execinfrapb.ProducerMetadata {
+	__antithesis_instrumentation__.Notify(456378)
 	if !i.statsRetrieved {
+		__antithesis_instrumentation__.Notify(456380)
 		return []execinfrapb.ProducerMetadata{{Err: errors.New("GetStats wasn't called before DrainMeta")}}
+	} else {
+		__antithesis_instrumentation__.Notify(456381)
 	}
+	__antithesis_instrumentation__.Notify(456379)
 	return nil
 }

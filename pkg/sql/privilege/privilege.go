@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package privilege
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -20,16 +12,8 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-//go:generate stringer -type=Kind
-
-// Kind defines a privilege. This is output by the parser,
-// and used to generate the privilege bitfields in the PrivilegeDescriptor.
 type Kind uint32
 
-// List of privileges. ALL is specifically encoded so that it will automatically
-// pick up new privileges.
-// Do not change values of privileges. These correspond to the position
-// of the privilege in a bit field and are expected to stay constant.
 const (
 	ALL        Kind = 1
 	CREATE     Kind = 2
@@ -45,34 +29,26 @@ const (
 	RULE       Kind = 12
 )
 
-// Privilege represents a privilege parsed from an Access Privilege Inquiry
-// Function's privilege string argument.
 type Privilege struct {
 	Kind Kind
-	// Each privilege Kind has an optional "grant option" flag associated with
-	// it. A role can only grant a privilege on an object to others if it is the
-	// owner of the object or if it itself holds that privilege WITH GRANT OPTION
-	// on the object. This replaces the CockroachDB-specific GRANT privilege.
+
 	GrantOption bool
 }
 
-// ObjectType represents objects that can have privileges.
 type ObjectType string
 
 const (
-	// Any represents any object type.
 	Any ObjectType = "any"
-	// Database represents a database object.
+
 	Database ObjectType = "database"
-	// Schema represents a schema object.
+
 	Schema ObjectType = "schema"
-	// Table represents a table object.
+
 	Table ObjectType = "table"
-	// Type represents a type object.
+
 	Type ObjectType = "type"
 )
 
-// Predefined sets of privileges.
 var (
 	AllPrivileges    = List{ALL, CONNECT, CREATE, DROP, GRANT, SELECT, INSERT, DELETE, UPDATE, USAGE, ZONECONFIG}
 	ReadData         = List{GRANT, SELECT}
@@ -83,22 +59,20 @@ var (
 	TypePrivileges   = List{ALL, GRANT, USAGE}
 )
 
-// Mask returns the bitmask for a given privilege.
 func (k Kind) Mask() uint32 {
+	__antithesis_instrumentation__.Notify(563254)
 	return 1 << k
 }
 
-// IsSetIn returns true if this privilege kind is set in the supplied bitfield.
 func (k Kind) IsSetIn(bits uint32) bool {
+	__antithesis_instrumentation__.Notify(563255)
 	return bits&k.Mask() != 0
 }
 
-// ByValue is just an array of privilege kinds sorted by value.
 var ByValue = [...]Kind{
 	ALL, CREATE, DROP, GRANT, SELECT, INSERT, DELETE, UPDATE, USAGE, ZONECONFIG, CONNECT, RULE,
 }
 
-// ByName is a map of string -> kind value.
 var ByName = map[string]Kind{
 	"ALL":        ALL,
 	"CONNECT":    CONNECT,
@@ -114,168 +88,197 @@ var ByName = map[string]Kind{
 	"RULE":       RULE,
 }
 
-// List is a list of privileges.
 type List []Kind
 
-// Len, Swap, and Less implement the Sort interface.
 func (pl List) Len() int {
+	__antithesis_instrumentation__.Notify(563256)
 	return len(pl)
 }
 
 func (pl List) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(563257)
 	pl[i], pl[j] = pl[j], pl[i]
 }
 
 func (pl List) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(563258)
 	return pl[i] < pl[j]
 }
 
-// names returns a list of privilege names in the same
-// order as "pl".
 func (pl List) names() []string {
+	__antithesis_instrumentation__.Notify(563259)
 	ret := make([]string, len(pl))
 	for i, p := range pl {
+		__antithesis_instrumentation__.Notify(563261)
 		ret[i] = p.String()
 	}
+	__antithesis_instrumentation__.Notify(563260)
 	return ret
 }
 
-// Format prints out the list in a buffer.
-// This keeps the existing order and uses ", " as separator.
 func (pl List) Format(buf *bytes.Buffer) {
+	__antithesis_instrumentation__.Notify(563262)
 	for i, p := range pl {
+		__antithesis_instrumentation__.Notify(563263)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(563265)
 			buf.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(563266)
 		}
+		__antithesis_instrumentation__.Notify(563264)
 		buf.WriteString(p.String())
 	}
 }
 
-// String implements the Stringer interface.
-// This keeps the existing order and uses ", " as separator.
 func (pl List) String() string {
+	__antithesis_instrumentation__.Notify(563267)
 	return strings.Join(pl.names(), ", ")
 }
 
-// SortedString is similar to String() but returns
-// privileges sorted by name and uses "," as separator.
 func (pl List) SortedString() string {
+	__antithesis_instrumentation__.Notify(563268)
 	names := pl.SortedNames()
 	return strings.Join(names, ",")
 }
 
-// SortedNames returns a list of privilege names
-// in sorted order.
 func (pl List) SortedNames() []string {
+	__antithesis_instrumentation__.Notify(563269)
 	names := pl.names()
 	sort.Strings(names)
 	return names
 }
 
-// ToBitField returns the bitfield representation of
-// a list of privileges.
 func (pl List) ToBitField() uint32 {
+	__antithesis_instrumentation__.Notify(563270)
 	var ret uint32
 	for _, p := range pl {
+		__antithesis_instrumentation__.Notify(563272)
 		ret |= p.Mask()
 	}
+	__antithesis_instrumentation__.Notify(563271)
 	return ret
 }
 
-// Contains returns true iff the list contains the given privilege kind.
 func (pl List) Contains(k Kind) bool {
+	__antithesis_instrumentation__.Notify(563273)
 	for _, p := range pl {
+		__antithesis_instrumentation__.Notify(563275)
 		if p == k {
+			__antithesis_instrumentation__.Notify(563276)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(563277)
 		}
 	}
+	__antithesis_instrumentation__.Notify(563274)
 	return false
 }
 
-// ListFromBitField takes a bitfield of privileges and a ObjectType
-// returns a List. It is ordered in increasing value of privilege.Kind.
 func ListFromBitField(m uint32, objectType ObjectType) List {
+	__antithesis_instrumentation__.Notify(563278)
 	ret := List{}
 
 	privileges := GetValidPrivilegesForObject(objectType)
 
 	for _, p := range privileges {
+		__antithesis_instrumentation__.Notify(563280)
 		if m&p.Mask() != 0 {
+			__antithesis_instrumentation__.Notify(563281)
 			ret = append(ret, p)
+		} else {
+			__antithesis_instrumentation__.Notify(563282)
 		}
 	}
+	__antithesis_instrumentation__.Notify(563279)
 	return ret
 }
 
-// PrivilegesFromBitFields takes a bitfield of privilege kinds, a bitfield of grant options, and an ObjectType
-// returns a List. It is ordered in increasing value of privilege.Kind.
 func PrivilegesFromBitFields(
 	kindBits uint32, grantOptionBits uint32, objectType ObjectType,
 ) []Privilege {
+	__antithesis_instrumentation__.Notify(563283)
 	var ret []Privilege
 
 	kinds := GetValidPrivilegesForObject(objectType)
 
 	for _, kind := range kinds {
+		__antithesis_instrumentation__.Notify(563285)
 		if mask := kind.Mask(); kindBits&mask != 0 {
+			__antithesis_instrumentation__.Notify(563286)
 			ret = append(ret, Privilege{
 				Kind:        kind,
 				GrantOption: grantOptionBits&mask != 0,
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(563287)
 		}
 	}
+	__antithesis_instrumentation__.Notify(563284)
 	return ret
 }
 
-// ListFromStrings takes a list of strings and attempts to build a list of Kind.
-// We convert each string to uppercase and search for it in the ByName map.
-// If an entry is not found in ByName, an error is returned.
 func ListFromStrings(strs []string) (List, error) {
+	__antithesis_instrumentation__.Notify(563288)
 	ret := make(List, len(strs))
 	for i, s := range strs {
+		__antithesis_instrumentation__.Notify(563290)
 		k, ok := ByName[strings.ToUpper(s)]
 		if !ok {
+			__antithesis_instrumentation__.Notify(563292)
 			return nil, errors.Errorf("not a valid privilege: %q", s)
+		} else {
+			__antithesis_instrumentation__.Notify(563293)
 		}
+		__antithesis_instrumentation__.Notify(563291)
 		ret[i] = k
 	}
+	__antithesis_instrumentation__.Notify(563289)
 	return ret, nil
 }
 
-// ValidatePrivileges returns an error if any privilege in
-// privileges cannot be granted on the given objectType.
 func ValidatePrivileges(privileges List, objectType ObjectType) error {
+	__antithesis_instrumentation__.Notify(563294)
 	validPrivs := GetValidPrivilegesForObject(objectType)
 	for _, priv := range privileges {
+		__antithesis_instrumentation__.Notify(563296)
 		if validPrivs.ToBitField()&priv.Mask() == 0 {
+			__antithesis_instrumentation__.Notify(563297)
 			return pgerror.Newf(pgcode.InvalidGrantOperation,
 				"invalid privilege type %s for %s", priv.String(), objectType)
+		} else {
+			__antithesis_instrumentation__.Notify(563298)
 		}
 	}
+	__antithesis_instrumentation__.Notify(563295)
 
 	return nil
 }
 
-// GetValidPrivilegesForObject returns the list of valid privileges for the
-// specified object type.
 func GetValidPrivilegesForObject(objectType ObjectType) List {
+	__antithesis_instrumentation__.Notify(563299)
 	switch objectType {
 	case Table:
+		__antithesis_instrumentation__.Notify(563300)
 		return TablePrivileges
 	case Schema:
+		__antithesis_instrumentation__.Notify(563301)
 		return SchemaPrivileges
 	case Database:
+		__antithesis_instrumentation__.Notify(563302)
 		return DBPrivileges
 	case Type:
+		__antithesis_instrumentation__.Notify(563303)
 		return TypePrivileges
 	case Any:
+		__antithesis_instrumentation__.Notify(563304)
 		return AllPrivileges
 	default:
+		__antithesis_instrumentation__.Notify(563305)
 		panic(errors.AssertionFailedf("unknown object type %s", objectType))
 	}
 }
 
-// privToACL is a map of privilege -> ACL character
 var privToACL = map[Kind]string{
 	CREATE:  "C",
 	SELECT:  "r",
@@ -286,34 +289,50 @@ var privToACL = map[Kind]string{
 	CONNECT: "c",
 }
 
-// orderedPrivs is the list of privileges sorted in alphanumeric order based on the ACL character -> CUacdrw
 var orderedPrivs = List{CREATE, USAGE, INSERT, CONNECT, DELETE, SELECT, UPDATE}
 
-// ListToACL converts a list of privileges to a list of Postgres
-// ACL items.
-// See: https://www.postgresql.org/docs/13/ddl-priv.html#PRIVILEGE-ABBREVS-TABLE
-//     for privileges and their ACL abbreviations.
 func (pl List) ListToACL(grantOptions List, objectType ObjectType) string {
+	__antithesis_instrumentation__.Notify(563306)
 	privileges := pl
-	// If ALL is present, explode ALL into the underlying privileges.
+
 	if pl.Contains(ALL) {
+		__antithesis_instrumentation__.Notify(563309)
 		privileges = GetValidPrivilegesForObject(objectType)
 		if grantOptions.Contains(ALL) {
+			__antithesis_instrumentation__.Notify(563310)
 			grantOptions = GetValidPrivilegesForObject(objectType)
+		} else {
+			__antithesis_instrumentation__.Notify(563311)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(563312)
 	}
+	__antithesis_instrumentation__.Notify(563307)
 	chars := make([]string, len(privileges))
 	for _, privilege := range orderedPrivs {
+		__antithesis_instrumentation__.Notify(563313)
 		if _, ok := privToACL[privilege]; !ok {
+			__antithesis_instrumentation__.Notify(563316)
 			panic(errors.AssertionFailedf("unknown privilege type %s", privilege.String()))
+		} else {
+			__antithesis_instrumentation__.Notify(563317)
 		}
+		__antithesis_instrumentation__.Notify(563314)
 		if privileges.Contains(privilege) {
+			__antithesis_instrumentation__.Notify(563318)
 			chars = append(chars, privToACL[privilege])
+		} else {
+			__antithesis_instrumentation__.Notify(563319)
 		}
+		__antithesis_instrumentation__.Notify(563315)
 		if grantOptions.Contains(privilege) {
+			__antithesis_instrumentation__.Notify(563320)
 			chars = append(chars, "*")
+		} else {
+			__antithesis_instrumentation__.Notify(563321)
 		}
 	}
+	__antithesis_instrumentation__.Notify(563308)
 
 	return strings.Join(chars, "")
 

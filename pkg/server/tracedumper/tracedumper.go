@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tracedumper
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,47 +31,48 @@ var (
 		"total size of job trace dumps to be kept. "+
 			"Dumps are GC'ed in the order of creation time. The latest dump is "+
 			"always kept even if its size exceeds the limit.",
-		500<<20, // 500MiB
+		500<<20,
 	)
 )
 
-// TraceDumper can be used to dump a zip file containing cluster wide inflight
-// trace spans for a particular trace, to a configured dir.
 type TraceDumper struct {
 	currentTime func() time.Time
 	store       *dumpstore.DumpStore
 }
 
-// PreFilter is part of the dumpstore.Dumper interface.
 func (t *TraceDumper) PreFilter(
 	ctx context.Context, files []os.FileInfo, _ func(fileName string) error,
 ) (preserved map[int]bool, err error) {
+	__antithesis_instrumentation__.Notify(239504)
 	preserved = make(map[int]bool)
 	for i := len(files) - 1; i >= 0; i-- {
-		// Always preserve the last dump in chronological order.
+		__antithesis_instrumentation__.Notify(239506)
+
 		if t.CheckOwnsFile(ctx, files[i]) {
+			__antithesis_instrumentation__.Notify(239507)
 			preserved[i] = true
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(239508)
 		}
 	}
+	__antithesis_instrumentation__.Notify(239505)
 	return
 }
 
-// CheckOwnsFile is part of the dumpstore.Dumper interface.
 func (t *TraceDumper) CheckOwnsFile(ctx context.Context, fi os.FileInfo) bool {
+	__antithesis_instrumentation__.Notify(239509)
 	return strings.HasPrefix(fi.Name(), jobTraceDumpPrefix)
 }
 
 var _ dumpstore.Dumper = &TraceDumper{}
 
-// Dump attempts to dump a trace zip of cluster wide inflight trace spans
-// with traceID, to the configured dir.
-// The file names are prefixed with the timestamp of when it was written, to
-// facilitate GC of older trace zips.
 func (t *TraceDumper) Dump(
 	ctx context.Context, name string, traceID int64, ie sqlutil.InternalExecutor,
 ) {
+	__antithesis_instrumentation__.Notify(239510)
 	err := func() error {
+		__antithesis_instrumentation__.Notify(239512)
 		now := t.currentTime()
 		traceZipFile := fmt.Sprintf(
 			"%s.%s.%s.zip",
@@ -90,32 +83,50 @@ func (t *TraceDumper) Dump(
 		z := zipper.MakeInternalExecutorInflightTraceZipper(ie)
 		zipBytes, err := z.Zip(ctx, traceID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(239516)
 			return errors.Wrap(err, "failed to collect inflight trace zip")
+		} else {
+			__antithesis_instrumentation__.Notify(239517)
 		}
+		__antithesis_instrumentation__.Notify(239513)
 		path := t.store.GetFullPath(traceZipFile)
 		f, err := os.Create(path)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(239518)
 			return errors.Wrapf(err, "error creating file %q for trace dump", path)
+		} else {
+			__antithesis_instrumentation__.Notify(239519)
 		}
+		__antithesis_instrumentation__.Notify(239514)
 		defer f.Close()
 		_, err = f.Write(zipBytes)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(239520)
 			return errors.Newf("error writing zip file %q for trace dump", path)
+		} else {
+			__antithesis_instrumentation__.Notify(239521)
 		}
+		__antithesis_instrumentation__.Notify(239515)
 		return nil
 	}()
+	__antithesis_instrumentation__.Notify(239511)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(239522)
 		log.Errorf(ctx, "failed to dump trace %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(239523)
 	}
 }
 
-// NewTraceDumper returns a TraceDumper.
-//
-// dir is the directory in which dumps are stored.
 func NewTraceDumper(ctx context.Context, dir string, st *cluster.Settings) *TraceDumper {
+	__antithesis_instrumentation__.Notify(239524)
 	if dir == "" {
+		__antithesis_instrumentation__.Notify(239526)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(239527)
 	}
+	__antithesis_instrumentation__.Notify(239525)
 
 	log.Infof(ctx, "writing job trace dumps to %s", dir)
 

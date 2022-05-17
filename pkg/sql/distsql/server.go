@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package distsql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -43,21 +35,12 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// minFlowDrainWait is the minimum amount of time a draining server allows for
-// any incoming flows to be registered. It acts as a grace period in which the
-// draining server waits for its gossiped draining state to be received by other
-// nodes.
 const minFlowDrainWait = 1 * time.Second
 
-// MultiTenancyIssueNo is the issue tracking DistSQL's Gossip and
-// NodeID dependencies.
-//
-// See https://github.com/cockroachdb/cockroach/issues/47900.
 const MultiTenancyIssueNo = 47900
 
-var noteworthyMemoryUsageBytes = envutil.EnvOrDefaultInt64("COCKROACH_NOTEWORTHY_DISTSQL_MEMORY_USAGE", 1024*1024 /* 1MB */)
+var noteworthyMemoryUsageBytes = envutil.EnvOrDefaultInt64("COCKROACH_NOTEWORTHY_DISTSQL_MEMORY_USAGE", 1024*1024)
 
-// ServerImpl implements the server for the distributed SQL APIs.
 type ServerImpl struct {
 	execinfra.ServerConfig
 	flowRegistry  *flowinfra.FlowRegistry
@@ -68,10 +51,10 @@ type ServerImpl struct {
 
 var _ execinfrapb.DistSQLServer = &ServerImpl{}
 
-// NewServer instantiates a DistSQLServer.
 func NewServer(
 	ctx context.Context, cfg execinfra.ServerConfig, flowScheduler *flowinfra.FlowScheduler,
 ) *ServerImpl {
+	__antithesis_instrumentation__.Notify(466211)
 	ds := &ServerImpl{
 		ServerConfig:  cfg,
 		regexpCache:   tree.NewRegexpCache(512),
@@ -82,132 +65,145 @@ func NewServer(
 			mon.MemoryResource,
 			cfg.Metrics.CurBytesCount,
 			cfg.Metrics.MaxBytesHist,
-			-1, /* increment: use default block size */
+			-1,
 			noteworthyMemoryUsageBytes,
 			cfg.Settings,
 		),
 	}
 	ds.memMonitor.Start(ctx, cfg.ParentMemoryMonitor, mon.BoundAccount{})
-	// We have to initialize the flow scheduler at the same time we're creating
-	// the DistSQLServer because the latter will be registered as a gRPC service
-	// right away, so the RPCs might start coming in pretty much right after the
-	// current method returns. See #66330.
+
 	ds.flowScheduler.Init(ds.Metrics)
 
 	return ds
 }
 
-// Start launches workers for the server.
-//
-// Note that the initialization of the server required for performing the
-// incoming RPCs needs to go into NewServer above because once that method
-// returns, the server is registered as a gRPC service and needs to be fully
-// initialized. For example, the initialization of the flow scheduler has to
-// happen in NewServer.
 func (ds *ServerImpl) Start() {
-	// Gossip the version info so that other nodes don't plan incompatible flows
-	// for us.
+	__antithesis_instrumentation__.Notify(466212)
+
 	if g, ok := ds.ServerConfig.Gossip.Optional(MultiTenancyIssueNo); ok {
+		__antithesis_instrumentation__.Notify(466215)
 		if nodeID, ok := ds.ServerConfig.NodeID.OptionalNodeID(); ok {
+			__antithesis_instrumentation__.Notify(466216)
 			if err := g.AddInfoProto(
 				gossip.MakeDistSQLNodeVersionKey(base.SQLInstanceID(nodeID)),
 				&execinfrapb.DistSQLVersionGossipInfo{
 					Version:            execinfra.Version,
 					MinAcceptedVersion: execinfra.MinAcceptedVersion,
 				},
-				0, // ttl - no expiration
+				0,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(466217)
 				panic(err)
+			} else {
+				__antithesis_instrumentation__.Notify(466218)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(466219)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(466220)
 	}
+	__antithesis_instrumentation__.Notify(466213)
 
 	if err := ds.setDraining(false); err != nil {
+		__antithesis_instrumentation__.Notify(466221)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(466222)
 	}
+	__antithesis_instrumentation__.Notify(466214)
 
 	ds.flowScheduler.Start()
 }
 
-// NumRemoteFlowsInQueue returns the number of remote flows scheduled to run on
-// this server which are currently in the queue of the flow scheduler.
 func (ds *ServerImpl) NumRemoteFlowsInQueue() int {
+	__antithesis_instrumentation__.Notify(466223)
 	return ds.flowScheduler.NumFlowsInQueue()
 }
 
-// NumRemoteRunningFlows returns the number of remote flows currently running on
-// this server.
 func (ds *ServerImpl) NumRemoteRunningFlows() int {
+	__antithesis_instrumentation__.Notify(466224)
 	return ds.flowScheduler.NumRunningFlows()
 }
 
-// SetCancelDeadFlowsCallback sets a testing callback that will be executed by
-// the flow scheduler at the end of CancelDeadFlows call. The callback must be
-// concurrency-safe.
 func (ds *ServerImpl) SetCancelDeadFlowsCallback(cb func(int)) {
+	__antithesis_instrumentation__.Notify(466225)
 	ds.flowScheduler.TestingKnobs.CancelDeadFlowsCallback = cb
 }
 
-// Drain changes the node's draining state through gossip and drains the
-// server's flowRegistry. See flowRegistry.Drain for more details.
 func (ds *ServerImpl) Drain(
 	ctx context.Context, flowDrainWait time.Duration, reporter func(int, redact.SafeString),
 ) {
+	__antithesis_instrumentation__.Notify(466226)
 	if err := ds.setDraining(true); err != nil {
+		__antithesis_instrumentation__.Notify(466229)
 		log.Warningf(ctx, "unable to gossip distsql draining state: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(466230)
 	}
+	__antithesis_instrumentation__.Notify(466227)
 
 	flowWait := flowDrainWait
 	minWait := minFlowDrainWait
 	if ds.ServerConfig.TestingKnobs.DrainFast {
+		__antithesis_instrumentation__.Notify(466231)
 		flowWait = 0
 		minWait = 0
-	} else if g, ok := ds.Gossip.Optional(MultiTenancyIssueNo); !ok || len(g.Outgoing()) == 0 {
-		// If there is only one node in the cluster (us), there's no need to
-		// wait a minimum time for the draining state to be gossiped.
-		minWait = 0
+	} else {
+		__antithesis_instrumentation__.Notify(466232)
+		if g, ok := ds.Gossip.Optional(MultiTenancyIssueNo); !ok || func() bool {
+			__antithesis_instrumentation__.Notify(466233)
+			return len(g.Outgoing()) == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(466234)
+
+			minWait = 0
+		} else {
+			__antithesis_instrumentation__.Notify(466235)
+		}
 	}
+	__antithesis_instrumentation__.Notify(466228)
 	ds.flowRegistry.Drain(flowWait, minWait, reporter)
 }
 
-// setDraining changes the node's draining state through gossip to the provided
-// state.
 func (ds *ServerImpl) setDraining(drain bool) error {
+	__antithesis_instrumentation__.Notify(466236)
 	nodeID, ok := ds.ServerConfig.NodeID.OptionalNodeID()
 	if !ok {
-		// Ignore draining requests when running on behalf of a tenant.
-		// NB: intentionally swallow the error or the server will fatal.
-		_ = MultiTenancyIssueNo // related issue
+		__antithesis_instrumentation__.Notify(466239)
+
+		_ = MultiTenancyIssueNo
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(466240)
 	}
+	__antithesis_instrumentation__.Notify(466237)
 	if g, ok := ds.ServerConfig.Gossip.Optional(MultiTenancyIssueNo); ok {
+		__antithesis_instrumentation__.Notify(466241)
 		return g.AddInfoProto(
 			gossip.MakeDistSQLDrainingKey(base.SQLInstanceID(nodeID)),
 			&execinfrapb.DistSQLDrainingInfo{
 				Draining: drain,
 			},
-			0, // ttl - no expiration
+			0,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(466242)
 	}
+	__antithesis_instrumentation__.Notify(466238)
 	return nil
 }
 
-// FlowVerIsCompatible checks a flow's version is compatible with this node's
-// DistSQL version.
 func FlowVerIsCompatible(
 	flowVer, minAcceptedVersion, serverVersion execinfrapb.DistSQLVersion,
 ) bool {
-	return flowVer >= minAcceptedVersion && flowVer <= serverVersion
+	__antithesis_instrumentation__.Notify(466243)
+	return flowVer >= minAcceptedVersion && func() bool {
+		__antithesis_instrumentation__.Notify(466244)
+		return flowVer <= serverVersion == true
+	}() == true
 }
 
-// setupFlow creates a Flow.
-//
-// Args:
-// localState: Specifies if the flow runs entirely on this node and, if it does,
-//   specifies the txn and other attributes.
-//
-// Note: unless an error is returned, the returned context contains a span that
-// must be finished through Flow.Cleanup.
 func (ds *ServerImpl) setupFlow(
 	ctx context.Context,
 	parentSpan *tracing.Span,
@@ -217,125 +213,173 @@ func (ds *ServerImpl) setupFlow(
 	batchSyncFlowConsumer execinfra.BatchReceiver,
 	localState LocalState,
 ) (retCtx context.Context, _ flowinfra.Flow, _ execinfra.OpChains, retErr error) {
+	__antithesis_instrumentation__.Notify(466245)
 	if !FlowVerIsCompatible(req.Version, execinfra.MinAcceptedVersion, execinfra.Version) {
+		__antithesis_instrumentation__.Notify(466257)
 		err := errors.Errorf(
 			"version mismatch in flow request: %d; this node accepts %d through %d",
 			req.Version, execinfra.MinAcceptedVersion, execinfra.Version,
 		)
 		log.Warningf(ctx, "%v", err)
 		return ctx, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(466258)
 	}
+	__antithesis_instrumentation__.Notify(466246)
 
-	var sp *tracing.Span          // will be Finish()ed by Flow.Cleanup()
-	var monitor *mon.BytesMonitor // will be closed in Flow.Cleanup()
+	var sp *tracing.Span
+	var monitor *mon.BytesMonitor
 	var onFlowCleanup func()
-	// Make sure that we clean up all resources (which in the happy case are
-	// cleaned up in Flow.Cleanup()) if an error is encountered.
+
 	defer func() {
+		__antithesis_instrumentation__.Notify(466259)
 		if retErr != nil {
+			__antithesis_instrumentation__.Notify(466260)
 			if sp != nil {
+				__antithesis_instrumentation__.Notify(466264)
 				sp.Finish()
+			} else {
+				__antithesis_instrumentation__.Notify(466265)
 			}
+			__antithesis_instrumentation__.Notify(466261)
 			if monitor != nil {
+				__antithesis_instrumentation__.Notify(466266)
 				monitor.Stop(ctx)
+			} else {
+				__antithesis_instrumentation__.Notify(466267)
 			}
+			__antithesis_instrumentation__.Notify(466262)
 			if onFlowCleanup != nil {
+				__antithesis_instrumentation__.Notify(466268)
 				onFlowCleanup()
+			} else {
+				__antithesis_instrumentation__.Notify(466269)
 			}
+			__antithesis_instrumentation__.Notify(466263)
 			retCtx = tracing.ContextWithSpan(ctx, nil)
+		} else {
+			__antithesis_instrumentation__.Notify(466270)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(466247)
 
 	const opName = "flow"
 	if parentSpan == nil {
+		__antithesis_instrumentation__.Notify(466271)
 		ctx, sp = ds.Tracer.StartSpanCtx(ctx, opName)
-	} else if localState.IsLocal {
-		// If we're a local flow, we don't need a "follows from" relationship: we're
-		// going to run this flow synchronously.
-		// TODO(andrei): localState.IsLocal is not quite the right thing to use.
-		//  If that field is unset, we might still want to create a child span if
-		//  this flow is run synchronously.
-		ctx, sp = ds.Tracer.StartSpanCtx(ctx, opName, tracing.WithParent(parentSpan))
 	} else {
-		// We use FollowsFrom because the flow's span outlives the SetupFlow request.
-		ctx, sp = ds.Tracer.StartSpanCtx(
-			ctx,
-			opName,
-			tracing.WithParent(parentSpan),
-			tracing.WithFollowsFrom(),
-		)
+		__antithesis_instrumentation__.Notify(466272)
+		if localState.IsLocal {
+			__antithesis_instrumentation__.Notify(466273)
+
+			ctx, sp = ds.Tracer.StartSpanCtx(ctx, opName, tracing.WithParent(parentSpan))
+		} else {
+			__antithesis_instrumentation__.Notify(466274)
+
+			ctx, sp = ds.Tracer.StartSpanCtx(
+				ctx,
+				opName,
+				tracing.WithParent(parentSpan),
+				tracing.WithFollowsFrom(),
+			)
+		}
 	}
+	__antithesis_instrumentation__.Notify(466248)
 
 	monitor = mon.NewMonitor(
 		"flow",
 		mon.MemoryResource,
 		ds.Metrics.CurBytesCount,
 		ds.Metrics.MaxBytesHist,
-		-1, /* use default block size */
+		-1,
 		noteworthyMemoryUsageBytes,
 		ds.Settings,
 	)
 	monitor.Start(ctx, parentMonitor, mon.BoundAccount{})
 
 	makeLeaf := func(req *execinfrapb.SetupFlowRequest) (*kv.Txn, error) {
+		__antithesis_instrumentation__.Notify(466275)
 		tis := req.LeafTxnInputState
 		if tis == nil {
-			// This must be a flow running for some bulk-io operation that doesn't use
-			// a txn.
+			__antithesis_instrumentation__.Notify(466278)
+
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(466279)
 		}
+		__antithesis_instrumentation__.Notify(466276)
 		if tis.Txn.Status != roachpb.PENDING {
+			__antithesis_instrumentation__.Notify(466280)
 			return nil, errors.AssertionFailedf("cannot create flow in non-PENDING txn: %s",
 				tis.Txn)
+		} else {
+			__antithesis_instrumentation__.Notify(466281)
 		}
-		// The flow will run in a LeafTxn because we do not want each distributed
-		// Txn to heartbeat the transaction.
+		__antithesis_instrumentation__.Notify(466277)
+
 		return kv.NewLeafTxn(ctx, ds.DB, roachpb.NodeID(req.Flow.Gateway), tis), nil
 	}
+	__antithesis_instrumentation__.Notify(466249)
 
 	var evalCtx *tree.EvalContext
 	var leafTxn *kv.Txn
 	if localState.EvalContext != nil {
+		__antithesis_instrumentation__.Notify(466282)
 		evalCtx = localState.EvalContext
-		// We're about to mutate the evalCtx and we want to restore its original
-		// state once the flow cleans up. Note that we could have made a copy of
-		// the whole evalContext, but that isn't free, so we choose to restore
-		// the original state in order to avoid performance regressions.
+
 		origMon := evalCtx.Mon
 		origTxn := evalCtx.Txn
 		onFlowCleanup = func() {
+			__antithesis_instrumentation__.Notify(466284)
 			evalCtx.Mon = origMon
 			evalCtx.Txn = origTxn
 		}
+		__antithesis_instrumentation__.Notify(466283)
 		evalCtx.Mon = monitor
 		if localState.HasConcurrency {
+			__antithesis_instrumentation__.Notify(466285)
 			var err error
 			leafTxn, err = makeLeaf(req)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(466287)
 				return nil, nil, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(466288)
 			}
-			// Update the Txn field early (before f.SetTxn() below) since some
-			// processors capture the field in their constructor (see #41992).
+			__antithesis_instrumentation__.Notify(466286)
+
 			evalCtx.Txn = leafTxn
+		} else {
+			__antithesis_instrumentation__.Notify(466289)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(466290)
 		if localState.IsLocal {
+			__antithesis_instrumentation__.Notify(466294)
 			return nil, nil, nil, errors.AssertionFailedf(
 				"EvalContext expected to be populated when IsLocal is set")
+		} else {
+			__antithesis_instrumentation__.Notify(466295)
 		}
+		__antithesis_instrumentation__.Notify(466291)
 
 		sd, err := sessiondata.UnmarshalNonLocal(req.EvalContext.SessionData)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(466296)
 			return ctx, nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(466297)
 		}
+		__antithesis_instrumentation__.Notify(466292)
 
-		// It's important to populate evalCtx.Txn early. We'll write it again in the
-		// f.SetTxn() call below, but by then it will already have been captured by
-		// processors.
 		leafTxn, err = makeLeaf(req)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(466298)
 			return nil, nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(466299)
 		}
+		__antithesis_instrumentation__.Notify(466293)
 		evalCtx = &tree.EvalContext{
 			Settings:         ds.ServerConfig.Settings,
 			SessionDataStack: sessiondata.NewStack(sd),
@@ -347,8 +391,7 @@ func (ds *ServerImpl) setupFlow(
 			Mon:              monitor,
 			Locality:         ds.ServerConfig.Locality,
 			Tracer:           ds.ServerConfig.Tracer,
-			// Most processors will override this Context with their own context in
-			// ProcessorBase. StartInternal().
+
 			Context:                   ctx,
 			Planner:                   &faketreeeval.DummyEvalPlanner{},
 			PrivilegedAccessor:        &faketreeeval.DummyPrivilegedAccessor{},
@@ -362,19 +405,15 @@ func (ds *ServerImpl) setupFlow(
 			SQLStatsController:        ds.ServerConfig.SQLStatsController,
 			IndexUsageStatsController: ds.ServerConfig.IndexUsageStatsController,
 		}
-		evalCtx.SetStmtTimestamp(timeutil.Unix(0 /* sec */, req.EvalContext.StmtTimestampNanos))
-		evalCtx.SetTxnTimestamp(timeutil.Unix(0 /* sec */, req.EvalContext.TxnTimestampNanos))
+		evalCtx.SetStmtTimestamp(timeutil.Unix(0, req.EvalContext.StmtTimestampNanos))
+		evalCtx.SetTxnTimestamp(timeutil.Unix(0, req.EvalContext.TxnTimestampNanos))
 	}
+	__antithesis_instrumentation__.Notify(466250)
 
-	// Create the FlowCtx for the flow.
 	flowCtx := ds.newFlowContext(
 		ctx, req.Flow.FlowID, evalCtx, req.TraceKV, req.CollectStats, localState, req.Flow.Gateway == ds.NodeID.SQLInstanceID(),
 	)
 
-	// req always contains the desired vectorize mode, regardless of whether we
-	// have non-nil localState.EvalContext. We don't want to update EvalContext
-	// itself when the vectorize mode needs to be changed because we would need
-	// to restore the original value which can have data races under stress.
 	isVectorized := req.EvalContext.SessionData.VectorizeMode != sessiondatapb.VectorizeOff
 	f := newFlow(
 		flowCtx, sp, ds.flowRegistry, rowSyncFlowConsumer, batchSyncFlowConsumer,
@@ -382,74 +421,103 @@ func (ds *ServerImpl) setupFlow(
 	)
 	opt := flowinfra.FuseNormally
 	if !localState.MustUseLeafTxn() {
-		// If there are no remote flows and the local flow doesn't have any
-		// concurrency, fuse everything. This is needed in order for us to be
-		// able to use the RootTxn for the flow 's execution; the RootTxn
-		// doesn't allow for concurrent operations. Local flows with mutations
-		// need to use the RootTxn.
+		__antithesis_instrumentation__.Notify(466300)
+
 		opt = flowinfra.FuseAggressively
+	} else {
+		__antithesis_instrumentation__.Notify(466301)
 	}
+	__antithesis_instrumentation__.Notify(466251)
 
 	var opChains execinfra.OpChains
 	var err error
 	ctx, opChains, err = f.Setup(ctx, &req.Flow, opt)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(466302)
 		log.Errorf(ctx, "error setting up flow: %s", err)
 		return ctx, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(466303)
 	}
+	__antithesis_instrumentation__.Notify(466252)
 	if !f.IsLocal() {
+		__antithesis_instrumentation__.Notify(466304)
 		flowCtx.AmbientContext.AddLogTag("f", f.GetFlowCtx().ID.Short())
 		ctx = flowCtx.AmbientContext.AnnotateCtx(ctx)
 		telemetry.Inc(sqltelemetry.DistSQLExecCounter)
+	} else {
+		__antithesis_instrumentation__.Notify(466305)
 	}
+	__antithesis_instrumentation__.Notify(466253)
 	if f.IsVectorized() {
+		__antithesis_instrumentation__.Notify(466306)
 		telemetry.Inc(sqltelemetry.VecExecCounter)
+	} else {
+		__antithesis_instrumentation__.Notify(466307)
 	}
+	__antithesis_instrumentation__.Notify(466254)
 
-	// Figure out what txn the flow needs to run in, if any. For gateway flows
-	// that have no remote flows and also no concurrency, the txn comes from
-	// localState.Txn. Otherwise, we create a txn based on the request's
-	// LeafTxnInputState.
 	useLeaf := false
-	if req.LeafTxnInputState != nil && row.CanUseStreamer(ctx, ds.Settings) {
+	if req.LeafTxnInputState != nil && func() bool {
+		__antithesis_instrumentation__.Notify(466308)
+		return row.CanUseStreamer(ctx, ds.Settings) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(466309)
 		for _, proc := range req.Flow.Processors {
+			__antithesis_instrumentation__.Notify(466310)
 			if jr := proc.Core.JoinReader; jr != nil {
+				__antithesis_instrumentation__.Notify(466311)
 				if jr.IsIndexJoin() {
-					// Index joins are executed via the Streamer API that has
-					// concurrency.
+					__antithesis_instrumentation__.Notify(466312)
+
 					useLeaf = true
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(466313)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(466314)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(466315)
 	}
+	__antithesis_instrumentation__.Notify(466255)
 	var txn *kv.Txn
-	if localState.IsLocal && !f.ConcurrentTxnUse() && !useLeaf {
+	if localState.IsLocal && func() bool {
+		__antithesis_instrumentation__.Notify(466316)
+		return !f.ConcurrentTxnUse() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(466317)
+		return !useLeaf == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(466318)
 		txn = localState.Txn
 	} else {
-		// If I haven't created the leaf already, do it now.
+		__antithesis_instrumentation__.Notify(466319)
+
 		if leafTxn == nil {
+			__antithesis_instrumentation__.Notify(466321)
 			leafTxn, err = makeLeaf(req)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(466322)
 				return nil, nil, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(466323)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(466324)
 		}
+		__antithesis_instrumentation__.Notify(466320)
 		txn = leafTxn
 	}
-	// TODO(andrei): We're about to overwrite f.EvalCtx.Txn, but the existing
-	// field has already been captured by various processors and operators that
-	// have already made a copy of the EvalCtx. In case this is not the gateway,
-	// we had already set the LeafTxn on the EvalCtx above, so it's OK. In case
-	// this is the gateway, if we're running with the RootTxn, then again it was
-	// set above so it's fine. If we're using a LeafTxn on the gateway, though,
-	// then the processors have erroneously captured the Root. See #41992.
+	__antithesis_instrumentation__.Notify(466256)
+
 	f.SetTxn(txn)
 
 	return ctx, f, opChains, nil
 }
 
-// newFlowContext creates a new FlowCtx that can be used during execution of
-// a flow.
 func (ds *ServerImpl) newFlowContext(
 	ctx context.Context,
 	id execinfrapb.FlowID,
@@ -459,7 +527,8 @@ func (ds *ServerImpl) newFlowContext(
 	localState LocalState,
 	isGatewayNode bool,
 ) execinfra.FlowCtx {
-	// TODO(radu): we should sanity check some of these fields.
+	__antithesis_instrumentation__.Notify(466325)
+
 	flowCtx := execinfra.FlowCtx{
 		AmbientContext: ds.AmbientContext,
 		Cfg:            &ds.ServerConfig,
@@ -471,26 +540,27 @@ func (ds *ServerImpl) newFlowContext(
 		CollectStats:   collectStats,
 		Local:          localState.IsLocal,
 		Gateway:        isGatewayNode,
-		// The flow disk monitor is a child of the server's and is closed on
-		// Cleanup.
+
 		DiskMonitor: execinfra.NewMonitor(
 			ctx, ds.ParentDiskMonitor, "flow-disk-monitor",
 		),
 		PreserveFlowSpecs: localState.PreserveFlowSpecs,
 	}
 
-	if localState.IsLocal && localState.Collection != nil {
-		// If we were passed a descs.Collection to use, then take it. In this case,
-		// the caller will handle releasing the used descriptors, so we don't need
-		// to cleanup the descriptors when cleaning up the flow.
+	if localState.IsLocal && func() bool {
+		__antithesis_instrumentation__.Notify(466327)
+		return localState.Collection != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(466328)
+
 		flowCtx.Descriptors = localState.Collection
 	} else {
-		// If we weren't passed a descs.Collection, then make a new one. We are
-		// responsible for cleaning it up and releasing any accessed descriptors
-		// on flow cleanup.
+		__antithesis_instrumentation__.Notify(466329)
+
 		flowCtx.Descriptors = ds.CollectionFactory.NewCollection(ctx, descs.NewTemporarySchemaProvider(evalCtx.SessionDataStack))
 		flowCtx.IsDescriptorsCleanupRequired = true
 	}
+	__antithesis_instrumentation__.Notify(466326)
 	return flowCtx
 }
 
@@ -505,56 +575,42 @@ func newFlow(
 	onFlowCleanup func(),
 	statementSQL string,
 ) flowinfra.Flow {
+	__antithesis_instrumentation__.Notify(466330)
 	base := flowinfra.NewFlowBase(flowCtx, sp, flowReg, rowSyncFlowConsumer, batchSyncFlowConsumer, localProcessors, onFlowCleanup, statementSQL)
 	if isVectorized {
+		__antithesis_instrumentation__.Notify(466332)
 		return colflow.NewVectorizedFlow(base)
+	} else {
+		__antithesis_instrumentation__.Notify(466333)
 	}
+	__antithesis_instrumentation__.Notify(466331)
 	return rowflow.NewRowBasedFlow(base)
 }
 
-// LocalState carries information that is required to set up a flow with wrapped
-// planNodes.
 type LocalState struct {
 	EvalContext *tree.EvalContext
 
-	// Collection is set if this flow is running on the gateway as part of user
-	// SQL session. It is the current descs.Collection of the planner executing
-	// the flow.
 	Collection *descs.Collection
 
-	// IsLocal is set if the flow is running on the gateway and there are no
-	// remote flows.
 	IsLocal bool
 
-	// HasConcurrency indicates whether the local flow uses multiple goroutines.
 	HasConcurrency bool
 
-	// Txn is filled in on the gateway only. It is the RootTxn that the query is running in.
-	// This will be used directly by the flow if the flow has no concurrency and IsLocal is set.
-	// If there is concurrency, a LeafTxn will be created.
 	Txn *kv.Txn
 
-	// LocalProcs is an array of planNodeToRowSource processors. It's in order and
-	// will be indexed into by the RowSourceIdx field in LocalPlanNodeSpec.
 	LocalProcs []execinfra.LocalProcessor
 
-	// PreserveFlowSpecs is true when the flow setup code needs to be careful
-	// when modifying the specifications of processors.
 	PreserveFlowSpecs bool
 }
 
-// MustUseLeafTxn returns true if a LeafTxn must be used. It is valid to call
-// this method only after IsLocal and HasConcurrency have been set correctly.
 func (l LocalState) MustUseLeafTxn() bool {
-	return !l.IsLocal || l.HasConcurrency
+	__antithesis_instrumentation__.Notify(466334)
+	return !l.IsLocal || func() bool {
+		__antithesis_instrumentation__.Notify(466335)
+		return l.HasConcurrency == true
+	}() == true
 }
 
-// SetupLocalSyncFlow sets up a synchronous flow on the current (planning) node,
-// connecting the sync response output stream to the given RowReceiver. It's
-// used by the gateway node to set up the flows local to it. The flow is not
-// started. The flow will be associated with the given context.
-// Note: the returned context contains a span that must be finished through
-// Flow.Cleanup.
 func (ds *ServerImpl) SetupLocalSyncFlow(
 	ctx context.Context,
 	parentMonitor *mon.BytesMonitor,
@@ -563,83 +619,95 @@ func (ds *ServerImpl) SetupLocalSyncFlow(
 	batchOutput execinfra.BatchReceiver,
 	localState LocalState,
 ) (context.Context, flowinfra.Flow, execinfra.OpChains, error) {
+	__antithesis_instrumentation__.Notify(466336)
 	ctx, f, opChains, err := ds.setupFlow(
 		ctx, tracing.SpanFromContext(ctx), parentMonitor, req, output, batchOutput, localState,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(466338)
 		return nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(466339)
 	}
+	__antithesis_instrumentation__.Notify(466337)
 	return ctx, f, opChains, err
 }
 
-// setupSpanForIncomingRPC creates a span for a SetupFlow RPC. The caller must
-// finish the returned span.
-//
-// For most other RPCs, there's a gRPC server interceptor that opens spans based
-// on trace info passed as gRPC metadata. But the SetupFlow RPC is common and so
-// we have a more efficient implementation based on tracing information being
-// passed in the request proto.
 func (ds *ServerImpl) setupSpanForIncomingRPC(
 	ctx context.Context, req *execinfrapb.SetupFlowRequest,
 ) (context.Context, *tracing.Span) {
+	__antithesis_instrumentation__.Notify(466340)
 	tr := ds.ServerConfig.AmbientContext.Tracer
 	parentSpan := tracing.SpanFromContext(ctx)
 	if parentSpan != nil {
-		// It's not expected to have a span in the context since the gRPC server
-		// interceptor that generally opens spans exempts this particular RPC. Note
-		// that this method is not called for flows local to the gateway.
+		__antithesis_instrumentation__.Notify(466344)
+
 		return tr.StartSpanCtx(ctx, tracing.SetupFlowMethodName,
 			tracing.WithParent(parentSpan),
 			tracing.WithServerSpanKind)
+	} else {
+		__antithesis_instrumentation__.Notify(466345)
 	}
+	__antithesis_instrumentation__.Notify(466341)
 
 	if !req.TraceInfo.Empty() {
+		__antithesis_instrumentation__.Notify(466346)
 		return tr.StartSpanCtx(ctx, tracing.SetupFlowMethodName,
 			tracing.WithRemoteParentFromTraceInfo(&req.TraceInfo),
 			tracing.WithServerSpanKind)
+	} else {
+		__antithesis_instrumentation__.Notify(466347)
 	}
-	// For backwards compatibility with 21.2, if tracing info was passed as
-	// gRPC metadata, we use it.
+	__antithesis_instrumentation__.Notify(466342)
+
 	remoteParent, err := tracing.ExtractSpanMetaFromGRPCCtx(ctx, tr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(466348)
 		log.Warningf(ctx, "error extracting tracing info from gRPC: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(466349)
 	}
+	__antithesis_instrumentation__.Notify(466343)
 	return tr.StartSpanCtx(ctx, tracing.SetupFlowMethodName,
 		tracing.WithRemoteParentFromSpanMeta(remoteParent),
 		tracing.WithServerSpanKind)
 }
 
-// SetupFlow is part of the execinfrapb.DistSQLServer interface.
 func (ds *ServerImpl) SetupFlow(
 	ctx context.Context, req *execinfrapb.SetupFlowRequest,
 ) (*execinfrapb.SimpleResponse, error) {
+	__antithesis_instrumentation__.Notify(466350)
 	log.VEventf(ctx, 1, "received SetupFlow request from n%v for flow %v", req.Flow.Gateway, req.Flow.FlowID)
 	_, rpcSpan := ds.setupSpanForIncomingRPC(ctx, req)
 	defer rpcSpan.Finish()
 
-	// Note: the passed context will be canceled when this RPC completes, so we
-	// can't associate it with the flow.
 	ctx = ds.AnnotateCtx(context.Background())
 	ctx, f, _, err := ds.setupFlow(
-		ctx, rpcSpan, ds.memMonitor, req, nil, /* rowSyncFlowConsumer */
-		nil /* batchSyncFlowConsumer */, LocalState{},
+		ctx, rpcSpan, ds.memMonitor, req, nil,
+		nil, LocalState{},
 	)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(466353)
 		err = ds.flowScheduler.ScheduleFlow(ctx, f)
+	} else {
+		__antithesis_instrumentation__.Notify(466354)
 	}
+	__antithesis_instrumentation__.Notify(466351)
 	if err != nil {
-		// We return flow deployment errors in the response so that they are
-		// packaged correctly over the wire. If we return them directly to this
-		// function, they become part of an rpc error.
+		__antithesis_instrumentation__.Notify(466355)
+
 		return &execinfrapb.SimpleResponse{Error: execinfrapb.NewError(ctx, err)}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(466356)
 	}
+	__antithesis_instrumentation__.Notify(466352)
 	return &execinfrapb.SimpleResponse{}, nil
 }
 
-// CancelDeadFlows is part of the execinfrapb.DistSQLServer interface.
 func (ds *ServerImpl) CancelDeadFlows(
 	_ context.Context, req *execinfrapb.CancelDeadFlowsRequest,
 ) (*execinfrapb.SimpleResponse, error) {
+	__antithesis_instrumentation__.Notify(466357)
 	ds.flowScheduler.CancelDeadFlows(req)
 	return &execinfrapb.SimpleResponse{}, nil
 }
@@ -647,57 +715,77 @@ func (ds *ServerImpl) CancelDeadFlows(
 func (ds *ServerImpl) flowStreamInt(
 	ctx context.Context, stream execinfrapb.DistSQL_FlowStreamServer,
 ) error {
-	// Receive the first message.
+	__antithesis_instrumentation__.Notify(466358)
+
 	msg, err := stream.Recv()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(466363)
 		if err == io.EOF {
+			__antithesis_instrumentation__.Notify(466365)
 			return errors.AssertionFailedf("missing header message")
+		} else {
+			__antithesis_instrumentation__.Notify(466366)
 		}
+		__antithesis_instrumentation__.Notify(466364)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(466367)
 	}
+	__antithesis_instrumentation__.Notify(466359)
 	if msg.Header == nil {
+		__antithesis_instrumentation__.Notify(466368)
 		return errors.AssertionFailedf("no header in first message")
+	} else {
+		__antithesis_instrumentation__.Notify(466369)
 	}
+	__antithesis_instrumentation__.Notify(466360)
 	flowID := msg.Header.FlowID
 	streamID := msg.Header.StreamID
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(466370)
 		log.Infof(ctx, "connecting inbound stream %s/%d", flowID.Short(), streamID)
+	} else {
+		__antithesis_instrumentation__.Notify(466371)
 	}
+	__antithesis_instrumentation__.Notify(466361)
 	f, streamStrategy, cleanup, err := ds.flowRegistry.ConnectInboundStream(
 		ctx, flowID, streamID, stream, flowinfra.SettingFlowStreamTimeout.Get(&ds.Settings.SV),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(466372)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(466373)
 	}
+	__antithesis_instrumentation__.Notify(466362)
 	defer cleanup()
 	log.VEventf(ctx, 1, "connected inbound stream %s/%d", flowID.Short(), streamID)
 	return streamStrategy.Run(f.AmbientContext.AnnotateCtx(ctx), stream, msg, f)
 }
 
-// FlowStream is part of the execinfrapb.DistSQLServer interface.
 func (ds *ServerImpl) FlowStream(stream execinfrapb.DistSQL_FlowStreamServer) error {
+	__antithesis_instrumentation__.Notify(466374)
 	ctx := ds.AnnotateCtx(stream.Context())
 	err := ds.flowStreamInt(ctx, stream)
-	if err != nil && log.V(2) {
-		// flowStreamInt may return an error during normal operation (e.g. a flow
-		// was canceled as part of a graceful teardown). Log this error at the INFO
-		// level behind a verbose flag for visibility.
+	if err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(466376)
+		return log.V(2) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(466377)
+
 		log.Infof(ctx, "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(466378)
 	}
+	__antithesis_instrumentation__.Notify(466375)
 	return err
 }
 
-// lazyInternalExecutor is a tree.InternalExecutor that initializes
-// itself only on the first call to QueryRow.
 type lazyInternalExecutor struct {
-	// Set when an internal executor has been initialized.
 	sqlutil.InternalExecutor
 
-	// Used for initializing the internal executor exactly once.
 	once sync.Once
 
-	// newInternalExecutor must be set when instantiating a lazyInternalExecutor,
-	// it provides an internal executor to use when necessary.
 	newInternalExecutor func() sqlutil.InternalExecutor
 }
 
@@ -711,17 +799,23 @@ func (ie *lazyInternalExecutor) QueryRowEx(
 	stmt string,
 	qargs ...interface{},
 ) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(466379)
 	ie.once.Do(func() {
+		__antithesis_instrumentation__.Notify(466381)
 		ie.InternalExecutor = ie.newInternalExecutor()
 	})
+	__antithesis_instrumentation__.Notify(466380)
 	return ie.InternalExecutor.QueryRowEx(ctx, opName, txn, opts, stmt, qargs...)
 }
 
 func (ie *lazyInternalExecutor) QueryRow(
 	ctx context.Context, opName string, txn *kv.Txn, stmt string, qargs ...interface{},
 ) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(466382)
 	ie.once.Do(func() {
+		__antithesis_instrumentation__.Notify(466384)
 		ie.InternalExecutor = ie.newInternalExecutor()
 	})
+	__antithesis_instrumentation__.Notify(466383)
 	return ie.InternalExecutor.QueryRow(ctx, opName, txn, stmt, qargs...)
 }

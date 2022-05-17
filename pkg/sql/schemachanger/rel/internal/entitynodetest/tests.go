@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package entitynodetest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"reflect"
@@ -20,7 +12,6 @@ import (
 type v = rel.Var
 
 var (
-	// Suite defines the entitynode test suite.
 	Suite = reltest.Suite{
 		Name:           "entitynode",
 		Schema:         schema,
@@ -114,7 +105,7 @@ var (
 					Name: "nodes with elements where i8=2",
 					Query: rel.Clauses{
 						v("i8").Eq(int8(2)),
-						v("i8").Entities(i8, "value"), // using this notation just to exercise it
+						v("i8").Entities(i8, "value"),
 						v("n").AttrEqVar(value, "value"),
 					},
 					Entities: []v{"value", "n"},
@@ -131,8 +122,7 @@ var (
 					},
 					Entities: []v{"value"},
 					ResVars:  []v{"i8"},
-					// Note that you get the value for all the entities
-					// which can offer it. That's maybe surprising.
+
 					Results: [][]interface{}{
 						{int8(1)},
 						{int8(2)},
@@ -144,6 +134,7 @@ var (
 					Query: rel.Clauses{
 						v("value").AttrEqVar(rel.Self, "_"),
 						rel.Filter("i8eq1", "value")(func(entity *entity) bool {
+							__antithesis_instrumentation__.Notify(578579)
 							return entity.I8 == 1
 						}),
 					},
@@ -236,7 +227,7 @@ var (
 				{
 					Name: "self eq self",
 					Query: rel.Clauses{
-						v("entity").AttrEqVar(rel.Self, "entity"), // all entities
+						v("entity").AttrEqVar(rel.Self, "entity"),
 					},
 					Entities: []v{"entity"},
 					ResVars:  []v{"entity"},
@@ -252,9 +243,7 @@ var (
 					ErrorRE: `failed to construct query: failed to process invalid clause \$entity\[pi8\] = 0: int64 is not int8`,
 				},
 				{
-					// Note here that the value for e1 is implied by the binding of
-					// n1 which allows the query engine to avoid making another join
-					// against the database.
+
 					Name: "entity bound via variable",
 					Query: rel.Clauses{
 						v("n1").AttrEqVar(value, "e1"),
@@ -279,6 +268,7 @@ var (
 						rel.Filter("neq", "e1", "e2")(func(
 							a, b interface{},
 						) bool {
+							__antithesis_instrumentation__.Notify(578580)
 							return a != b
 						}),
 					},
@@ -295,8 +285,7 @@ var (
 					},
 					ErrorRE: `failed to process invalid clause \$value\[i8\] IN \[1, 2, 1\]: int16 is not int8`,
 				},
-				// TODO(ajwerner): This points at a real wart: we should detect the
-				// type mismatch by propagating the type constraint on i8.
+
 				{
 					Name: "any clause no match on variable eq with type mismatch",
 					Query: rel.Clauses{
@@ -411,15 +400,18 @@ var (
 	}
 )
 
-func newInt8(i int8) *int8 { return &i }
+func newInt8(i int8) *int8 { __antithesis_instrumentation__.Notify(578581); return &i }
 
 func addToEmptyEntityMap(m map[rel.Attr]interface{}) map[rel.Attr]interface{} {
+	__antithesis_instrumentation__.Notify(578582)
 	base := map[rel.Attr]interface{}{
 		i8:  int8(0),
 		i16: int16(0),
 	}
 	for k, v := range m {
+		__antithesis_instrumentation__.Notify(578584)
 		base[k] = v
 	}
+	__antithesis_instrumentation__.Notify(578583)
 	return base
 }

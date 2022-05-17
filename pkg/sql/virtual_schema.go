@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -43,29 +35,17 @@ import (
 
 const virtualSchemaNotImplementedMessage = "virtual schema table not implemented: %s.%s"
 
-//
-// Programmer interface to define virtual schemas.
-//
-
-// virtualSchema represents a database with a set of virtual tables. Virtual
-// tables differ from standard tables in that they are not persisted to storage,
-// and instead their contents are populated whenever they are queried.
-//
-// The virtual database and its virtual tables also differ from standard databases
-// and tables in that their descriptors are not distributed, but instead live statically
-// in code. This means that they are accessed separately from standard descriptors.
 type virtualSchema struct {
 	name            string
 	undefinedTables map[string]struct{}
 	tableDefs       map[descpb.ID]virtualSchemaDef
-	tableValidator  func(*descpb.TableDescriptor) error // optional
-	// Some virtual tables can be used if there is no current database set; others can't.
+	tableValidator  func(*descpb.TableDescriptor) error
+
 	validWithNoDatabaseContext bool
-	// Some virtual schemas (like pg_catalog) contain types that we can resolve.
+
 	containsTypes bool
 }
 
-// virtualSchemaDef represents the interface of a table definition within a virtualSchema.
 type virtualSchemaDef interface {
 	getSchema() string
 	initVirtualTableDesc(
@@ -76,177 +56,198 @@ type virtualSchemaDef interface {
 }
 
 type virtualIndex struct {
-	// populate populates the table given the constraint. matched is true if any
-	// rows were generated.
 	populate func(ctx context.Context, constraint tree.Datum, p *planner, db catalog.DatabaseDescriptor,
 		addRow func(...tree.Datum) error,
 	) (matched bool, err error)
 
-	// partial is true if the virtual index isn't able to satisfy all constraints.
-	// For example, the pg_class table contains both indexes and tables. Tables
-	// can be looked up via a virtual index, since we can look up their descriptor
-	// by their ID directly. But indexes can't - they're hashed identifiers with
-	// no actual index. So we mark this index as partial, and if we get no match
-	// during populate, we'll fall back on populating the entire table.
 	partial bool
 }
 
-// virtualSchemaTable represents a table within a virtualSchema.
 type virtualSchemaTable struct {
-	// Exactly one of the populate and generator fields should be defined for
-	// each virtualSchemaTable.
 	schema string
 
-	// comment represents comment of virtual schema table.
 	comment string
 
-	// populate, if non-nil, is a function that is used when creating a
-	// valuesNode. This function eagerly loads every row of the virtual table
-	// during initialization of the valuesNode.
 	populate func(ctx context.Context, p *planner, db catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error
 
-	// indexes, if non empty, is a slice of populate methods that also take a
-	// constraint, only generating rows that match the constraint. The order of
-	// indexes must match the order of the index definitions in the virtual table's
-	// schema.
 	indexes []virtualIndex
 
-	// generator, if non-nil, is a function that is used when creating a
-	// virtualTableNode. This function returns a virtualTableGenerator function
-	// which generates the next row of the virtual table when called.
 	generator func(ctx context.Context, p *planner, db catalog.DatabaseDescriptor, stopper *stop.Stopper) (virtualTableGenerator, cleanupFunc, error)
 
-	// unimplemented indicates that we do not yet implement the contents of this
-	// table. If the stub_catalog_tables session variable is enabled, the table
-	// will be queryable but return no rows. Otherwise querying the table will
-	// return an unimplemented error.
 	unimplemented bool
 }
 
-// virtualSchemaView represents a view within a virtualSchema
 type virtualSchemaView struct {
 	schema        string
 	resultColumns colinfo.ResultColumns
 }
 
-// getSchema is part of the virtualSchemaDef interface.
 func (t virtualSchemaTable) getSchema() string {
+	__antithesis_instrumentation__.Notify(632422)
 	return t.schema
 }
 
-// initVirtualTableDesc is part of the virtualSchemaDef interface.
 func (t virtualSchemaTable) initVirtualTableDesc(
 	ctx context.Context, st *cluster.Settings, sc catalog.SchemaDescriptor, id descpb.ID,
 ) (descpb.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(632423)
 	stmt, err := parser.ParseOne(t.schema)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(632429)
 		return descpb.TableDescriptor{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(632430)
 	}
+	__antithesis_instrumentation__.Notify(632424)
 
 	create := stmt.AST.(*tree.CreateTable)
 	var firstColDef *tree.ColumnTableDef
 	for _, def := range create.Defs {
+		__antithesis_instrumentation__.Notify(632431)
 		if d, ok := def.(*tree.ColumnTableDef); ok {
+			__antithesis_instrumentation__.Notify(632433)
 			if d.HasDefaultExpr() {
+				__antithesis_instrumentation__.Notify(632435)
 				return descpb.TableDescriptor{},
 					errors.Errorf("virtual tables are not allowed to use default exprs "+
 						"because bootstrapping: %s:%s", &create.Table, d.Name)
+			} else {
+				__antithesis_instrumentation__.Notify(632436)
 			}
+			__antithesis_instrumentation__.Notify(632434)
 			if firstColDef == nil {
+				__antithesis_instrumentation__.Notify(632437)
 				firstColDef = d
+			} else {
+				__antithesis_instrumentation__.Notify(632438)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(632439)
 		}
+		__antithesis_instrumentation__.Notify(632432)
 		if _, ok := def.(*tree.UniqueConstraintTableDef); ok {
+			__antithesis_instrumentation__.Notify(632440)
 			return descpb.TableDescriptor{},
 				errors.Errorf("virtual tables are not allowed to have unique constraints")
+		} else {
+			__antithesis_instrumentation__.Notify(632441)
 		}
 	}
+	__antithesis_instrumentation__.Notify(632425)
 	if firstColDef == nil {
+		__antithesis_instrumentation__.Notify(632442)
 		return descpb.TableDescriptor{},
 			errors.Errorf("can't have empty virtual tables")
+	} else {
+		__antithesis_instrumentation__.Notify(632443)
 	}
+	__antithesis_instrumentation__.Notify(632426)
 
-	// Virtual tables never use SERIAL so we need not process SERIAL
-	// types here.
 	mutDesc, err := NewTableDesc(
 		ctx,
-		nil, /* txn */
-		nil, /* vs */
+		nil,
+		nil,
 		st,
 		create,
 		nil,
 		sc,
 		id,
-		nil,       /* regionConfig */
-		startTime, /* creationTime */
+		nil,
+		startTime,
 		catpb.NewVirtualTablePrivilegeDescriptor(),
-		nil,                        /* affected */
-		nil,                        /* semaCtx */
-		nil,                        /* evalCtx */
-		&sessiondata.SessionData{}, /* sessionData */
+		nil,
+		nil,
+		nil,
+		&sessiondata.SessionData{},
 		tree.PersistencePermanent,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(632444)
 		err = errors.Wrapf(err, "initVirtualDesc problem with schema: \n%s", t.schema)
 		return descpb.TableDescriptor{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(632445)
 	}
+	__antithesis_instrumentation__.Notify(632427)
 	for _, index := range mutDesc.PublicNonPrimaryIndexes() {
+		__antithesis_instrumentation__.Notify(632446)
 		if index.NumKeyColumns() > 1 {
+			__antithesis_instrumentation__.Notify(632449)
 			panic("we don't know how to deal with virtual composite indexes yet")
+		} else {
+			__antithesis_instrumentation__.Notify(632450)
 		}
+		__antithesis_instrumentation__.Notify(632447)
 		idx := index.IndexDescDeepCopy()
 		idx.StoreColumnNames, idx.StoreColumnIDs = nil, nil
 		publicColumns := mutDesc.PublicColumns()
 		presentInIndex := catalog.MakeTableColSet(idx.KeyColumnIDs...)
 		for _, col := range publicColumns {
-			if col.IsVirtual() || presentInIndex.Contains(col.GetID()) {
+			__antithesis_instrumentation__.Notify(632451)
+			if col.IsVirtual() || func() bool {
+				__antithesis_instrumentation__.Notify(632453)
+				return presentInIndex.Contains(col.GetID()) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(632454)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(632455)
 			}
+			__antithesis_instrumentation__.Notify(632452)
 			idx.StoreColumnIDs = append(idx.StoreColumnIDs, col.GetID())
 			idx.StoreColumnNames = append(idx.StoreColumnNames, col.GetName())
 		}
+		__antithesis_instrumentation__.Notify(632448)
 		mutDesc.SetPublicNonPrimaryIndex(index.Ordinal(), idx)
 	}
+	__antithesis_instrumentation__.Notify(632428)
 	return mutDesc.TableDescriptor, nil
 }
 
-// getComment is part of the virtualSchemaDef interface.
 func (t virtualSchemaTable) getComment() string {
+	__antithesis_instrumentation__.Notify(632456)
 	return t.comment
 }
 
-// getIndex returns the virtual index with the input ID.
 func (t virtualSchemaTable) getIndex(id descpb.IndexID) *virtualIndex {
-	// Subtract 2 from the index id to get the ordinal in def.indexes, since
-	// the index with ID 1 is the "primary" index defined by def.populate.
+	__antithesis_instrumentation__.Notify(632457)
+
 	return &t.indexes[id-2]
 }
 
-// unimplemented retrieves whether the virtualSchemaDef is implemented or not.
 func (t virtualSchemaTable) isUnimplemented() bool {
+	__antithesis_instrumentation__.Notify(632458)
 	return t.unimplemented
 }
 
-// getSchema is part of the virtualSchemaDef interface.
 func (v virtualSchemaView) getSchema() string {
+	__antithesis_instrumentation__.Notify(632459)
 	return v.schema
 }
 
-// initVirtualTableDesc is part of the virtualSchemaDef interface.
 func (v virtualSchemaView) initVirtualTableDesc(
 	ctx context.Context, st *cluster.Settings, sc catalog.SchemaDescriptor, id descpb.ID,
 ) (descpb.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(632460)
 	stmt, err := parser.ParseOne(v.schema)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(632463)
 		return descpb.TableDescriptor{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(632464)
 	}
+	__antithesis_instrumentation__.Notify(632461)
 
 	create := stmt.AST.(*tree.CreateView)
 
 	columns := v.resultColumns
 	if len(create.ColumnNames) != 0 {
+		__antithesis_instrumentation__.Notify(632465)
 		columns = overrideColumnNames(columns, create.ColumnNames)
+	} else {
+		__antithesis_instrumentation__.Notify(632466)
 	}
+	__antithesis_instrumentation__.Notify(632462)
 	mutDesc, err := makeViewTableDesc(
 		ctx,
 		create.Name.Table(),
@@ -257,30 +258,26 @@ func (v virtualSchemaView) initVirtualTableDesc(
 		columns,
 		startTime,
 		catpb.NewVirtualTablePrivilegeDescriptor(),
-		nil, // semaCtx
-		nil, // evalCtx
+		nil,
+		nil,
 		st,
 		tree.PersistencePermanent,
-		false, // isMultiRegion
-		nil,   // sc
+		false,
+		nil,
 	)
 	return mutDesc.TableDescriptor, err
 }
 
-// getComment is part of the virtualSchemaDef interface.
 func (v virtualSchemaView) getComment() string {
+	__antithesis_instrumentation__.Notify(632467)
 	return ""
 }
 
-// isUnimplemented is part of the virtualSchemaDef interface.
 func (v virtualSchemaView) isUnimplemented() bool {
+	__antithesis_instrumentation__.Notify(632468)
 	return false
 }
 
-// virtualSchemas holds a slice of statically registered virtualSchema objects.
-//
-// When adding a new virtualSchema, define a virtualSchema in a separate file, and
-// add that object to this slice.
 var virtualSchemas = map[descpb.ID]virtualSchema{
 	catconstants.InformationSchemaID: informationSchema,
 	catconstants.PgCatalogID:         pgCatalog,
@@ -292,16 +289,6 @@ var startTime = hlc.Timestamp{
 	WallTime: time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
 }
 
-//
-// SQL-layer interface to work with virtual schemas.
-//
-
-// VirtualSchemaHolder is a type used to provide convenient access to virtual
-// database and table descriptors. VirtualSchemaHolder, virtualSchemaEntry,
-// and virtualDefEntry make up the generated data structure which the
-// virtualSchemas slice is mapped to. Because of this, they should not be
-// created directly, but instead will be populated in a post-startup hook
-// on an Executor.
 type VirtualSchemaHolder struct {
 	schemasByName map[string]*virtualSchemaEntry
 	schemasByID   map[descpb.ID]*virtualSchemaEntry
@@ -311,24 +298,28 @@ type VirtualSchemaHolder struct {
 
 var _ VirtualTabler = (*VirtualSchemaHolder)(nil)
 
-// GetVirtualSchema makes VirtualSchemaHolder implement catalog.VirtualSchemas.
 func (vs *VirtualSchemaHolder) GetVirtualSchema(schemaName string) (catalog.VirtualSchema, bool) {
+	__antithesis_instrumentation__.Notify(632469)
 	sc, ok := vs.schemasByName[schemaName]
 	return sc, ok
 }
 
-// GetVirtualSchemaByID makes VirtualSchemaHolder implement catalog.VirtualSchemas.
 func (vs *VirtualSchemaHolder) GetVirtualSchemaByID(id descpb.ID) (catalog.VirtualSchema, bool) {
+	__antithesis_instrumentation__.Notify(632470)
 	sc, ok := vs.schemasByID[id]
 	return sc, ok
 }
 
-// GetVirtualObjectByID makes VirtualSchemaHolder implement catalog.VirtualSchemas.
 func (vs *VirtualSchemaHolder) GetVirtualObjectByID(id descpb.ID) (catalog.VirtualObject, bool) {
+	__antithesis_instrumentation__.Notify(632471)
 	entry, ok := vs.defsByID[id]
 	if !ok {
+		__antithesis_instrumentation__.Notify(632473)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(632474)
 	}
+	__antithesis_instrumentation__.Notify(632472)
 	return entry, true
 }
 
@@ -343,15 +334,19 @@ type virtualSchemaEntry struct {
 }
 
 func (v *virtualSchemaEntry) Desc() catalog.SchemaDescriptor {
+	__antithesis_instrumentation__.Notify(632475)
 	return v.desc
 }
 
 func (v *virtualSchemaEntry) NumTables() int {
+	__antithesis_instrumentation__.Notify(632476)
 	return len(v.defs)
 }
 
 func (v *virtualSchemaEntry) VisitTables(f func(object catalog.VirtualObject)) {
+	__antithesis_instrumentation__.Notify(632477)
 	for _, name := range v.orderedDefNames {
+		__antithesis_instrumentation__.Notify(632478)
 		f(v.defs[name])
 	}
 }
@@ -359,48 +354,68 @@ func (v *virtualSchemaEntry) VisitTables(f func(object catalog.VirtualObject)) {
 func (v *virtualSchemaEntry) GetObjectByName(
 	name string, flags tree.ObjectLookupFlags,
 ) (catalog.VirtualObject, error) {
+	__antithesis_instrumentation__.Notify(632479)
 	switch flags.DesiredObjectKind {
 	case tree.TableObject:
+		__antithesis_instrumentation__.Notify(632480)
 		if def, ok := v.defs[name]; ok {
+			__antithesis_instrumentation__.Notify(632488)
 			if flags.RequireMutable {
+				__antithesis_instrumentation__.Notify(632490)
 				return &mutableVirtualDefEntry{
 					desc: tabledesc.NewBuilder(def.desc.TableDesc()).BuildExistingMutableTable(),
 				}, nil
+			} else {
+				__antithesis_instrumentation__.Notify(632491)
 			}
+			__antithesis_instrumentation__.Notify(632489)
 			return def, nil
+		} else {
+			__antithesis_instrumentation__.Notify(632492)
 		}
+		__antithesis_instrumentation__.Notify(632481)
 		if _, ok := v.undefinedTables[name]; ok {
+			__antithesis_instrumentation__.Notify(632493)
 			return nil, newUnimplementedVirtualTableError(v.desc.GetName(), name)
+		} else {
+			__antithesis_instrumentation__.Notify(632494)
 		}
+		__antithesis_instrumentation__.Notify(632482)
 		return nil, nil
 	case tree.TypeObject:
+		__antithesis_instrumentation__.Notify(632483)
 		if !v.containsTypes {
+			__antithesis_instrumentation__.Notify(632495)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(632496)
 		}
-		// Currently, we don't allow creation of types in virtual schemas, so
-		// the only types present in the virtual schemas that have types (i.e.
-		// pg_catalog) are types that are known at parse time. So, attempt to
-		// parse the input object as a statically known type. Note that an
-		// invalid input type like "notatype" will be parsed successfully as
-		// a ResolvableTypeReference, so the error here does not need to be
-		// intercepted and inspected.
+		__antithesis_instrumentation__.Notify(632484)
+
 		typRef, err := parser.GetTypeReferenceFromName(tree.Name(name))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(632497)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(632498)
 		}
-		// If the parsed reference is actually a statically known type, then
-		// we can return it. We return a simple wrapping of this type as
-		// TypeDescriptor that represents an alias of the result type.
+		__antithesis_instrumentation__.Notify(632485)
+
 		typ, ok := tree.GetStaticallyKnownType(typRef)
 		if !ok {
+			__antithesis_instrumentation__.Notify(632499)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(632500)
 		}
+		__antithesis_instrumentation__.Notify(632486)
 
 		return &virtualTypeEntry{
 			desc:    typedesc.MakeSimpleAlias(typ, catconstants.PgCatalogID),
 			mutable: flags.RequireMutable,
 		}, nil
 	default:
+		__antithesis_instrumentation__.Notify(632487)
 		return nil, errors.AssertionFailedf("unknown desired object kind %d", flags.DesiredObjectKind)
 	}
 }
@@ -414,14 +429,22 @@ type virtualDefEntry struct {
 }
 
 func (e *virtualDefEntry) Desc() catalog.Descriptor {
+	__antithesis_instrumentation__.Notify(632501)
 	return e.desc
 }
 
 func canQueryVirtualTable(evalCtx *tree.EvalContext, e *virtualDefEntry) bool {
-	return !e.unimplemented ||
-		evalCtx == nil ||
-		evalCtx.SessionData() == nil ||
-		evalCtx.SessionData().StubCatalogTablesEnabled
+	__antithesis_instrumentation__.Notify(632502)
+	return !e.unimplemented || func() bool {
+		__antithesis_instrumentation__.Notify(632503)
+		return evalCtx == nil == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(632504)
+		return evalCtx.SessionData() == nil == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(632505)
+		return evalCtx.SessionData().StubCatalogTablesEnabled == true
+	}() == true
 }
 
 type mutableVirtualDefEntry struct {
@@ -429,6 +452,7 @@ type mutableVirtualDefEntry struct {
 }
 
 func (e *mutableVirtualDefEntry) Desc() catalog.Descriptor {
+	__antithesis_instrumentation__.Notify(632506)
 	return e.desc
 }
 
@@ -438,8 +462,8 @@ type virtualTypeEntry struct {
 }
 
 func (e *virtualTypeEntry) Desc() catalog.Descriptor {
-	// TODO(ajwerner): Should this be allowed? I think no. Let's just store an
-	// ImmutableTypeDesc off of this thing.
+	__antithesis_instrumentation__.Notify(632507)
+
 	return e.desc
 }
 
@@ -451,45 +475,62 @@ var errInvalidDbPrefix = errors.WithHint(
 	"verify that the current database is set")
 
 func newInvalidVirtualSchemaError() error {
+	__antithesis_instrumentation__.Notify(632508)
 	return errors.AssertionFailedf("virtualSchema cannot have both the populate and generator functions defined")
 }
 
 func newInvalidVirtualDefEntryError() error {
+	__antithesis_instrumentation__.Notify(632509)
 	return errors.AssertionFailedf("virtualDefEntry.virtualDef must be a virtualSchemaTable")
 }
 
 func (e *virtualDefEntry) validateRow(datums tree.Datums, columns colinfo.ResultColumns) error {
+	__antithesis_instrumentation__.Notify(632510)
 	if r, c := len(datums), len(columns); r != c {
+		__antithesis_instrumentation__.Notify(632513)
 		return errors.AssertionFailedf("datum row count and column count differ: %d vs %d", r, c)
+	} else {
+		__antithesis_instrumentation__.Notify(632514)
 	}
+	__antithesis_instrumentation__.Notify(632511)
 	for i := range columns {
+		__antithesis_instrumentation__.Notify(632515)
 		col := &columns[i]
 		datum := datums[i]
 		if datum == tree.DNull {
+			__antithesis_instrumentation__.Notify(632516)
 			if !e.desc.PublicColumns()[i].IsNullable() {
+				__antithesis_instrumentation__.Notify(632517)
 				return errors.AssertionFailedf("column %s.%s not nullable, but found NULL value",
 					e.desc.GetName(), col.Name)
+			} else {
+				__antithesis_instrumentation__.Notify(632518)
 			}
-		} else if !datum.ResolvedType().Equivalent(col.Typ) {
-			return errors.AssertionFailedf("datum column %q expected to be type %s; found type %s",
-				col.Name, col.Typ, datum.ResolvedType())
+		} else {
+			__antithesis_instrumentation__.Notify(632519)
+			if !datum.ResolvedType().Equivalent(col.Typ) {
+				__antithesis_instrumentation__.Notify(632520)
+				return errors.AssertionFailedf("datum column %q expected to be type %s; found type %s",
+					col.Name, col.Typ, datum.ResolvedType())
+			} else {
+				__antithesis_instrumentation__.Notify(632521)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(632512)
 	return nil
 }
 
-// getPlanInfo returns the column metadata and a constructor for a new
-// valuesNode for the virtual table. We use deferred construction here
-// so as to avoid populating a RowContainer during query preparation,
-// where we can't guarantee it will be Close()d in case of error.
 func (e *virtualDefEntry) getPlanInfo(
 	table catalog.TableDescriptor,
 	index catalog.Index,
 	idxConstraint *constraint.Constraint,
 	stopper *stop.Stopper,
 ) (colinfo.ResultColumns, virtualTableConstructor) {
+	__antithesis_instrumentation__.Notify(632522)
 	var columns colinfo.ResultColumns
 	for _, col := range e.desc.PublicColumns() {
+		__antithesis_instrumentation__.Notify(632525)
 		columns = append(columns, colinfo.ResultColumn{
 			Name:           col.GetName(),
 			Typ:            col.GetType(),
@@ -497,83 +538,132 @@ func (e *virtualDefEntry) getPlanInfo(
 			PGAttributeNum: col.GetPGAttributeNum(),
 		})
 	}
+	__antithesis_instrumentation__.Notify(632523)
 
 	constructor := func(ctx context.Context, p *planner, dbName string) (planNode, error) {
+		__antithesis_instrumentation__.Notify(632526)
 		var dbDesc catalog.DatabaseDescriptor
 		var err error
 		if dbName != "" {
+			__antithesis_instrumentation__.Notify(632528)
 			dbDesc, err = p.Descriptors().GetImmutableDatabaseByName(ctx, p.txn,
 				dbName, tree.DatabaseLookupFlags{
 					Required: true, AvoidLeased: p.avoidLeasedDescriptors,
 				})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(632529)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(632530)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(632531)
 			if !e.validWithNoDatabaseContext {
+				__antithesis_instrumentation__.Notify(632532)
 				return nil, errInvalidDbPrefix
+			} else {
+				__antithesis_instrumentation__.Notify(632533)
 			}
 		}
+		__antithesis_instrumentation__.Notify(632527)
 
 		switch def := e.virtualDef.(type) {
 		case virtualSchemaTable:
-			if def.generator != nil && def.populate != nil {
+			__antithesis_instrumentation__.Notify(632534)
+			if def.generator != nil && func() bool {
+				__antithesis_instrumentation__.Notify(632541)
+				return def.populate != nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(632542)
 				return nil, newInvalidVirtualSchemaError()
+			} else {
+				__antithesis_instrumentation__.Notify(632543)
 			}
+			__antithesis_instrumentation__.Notify(632535)
 
 			if def.generator != nil {
+				__antithesis_instrumentation__.Notify(632544)
 				next, cleanup, err := def.generator(ctx, p, dbDesc, stopper)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(632546)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(632547)
 				}
+				__antithesis_instrumentation__.Notify(632545)
 				return p.newVirtualTableNode(columns, next, cleanup), nil
+			} else {
+				__antithesis_instrumentation__.Notify(632548)
 			}
+			__antithesis_instrumentation__.Notify(632536)
 
-			constrainedScan := idxConstraint != nil && !idxConstraint.IsUnconstrained()
+			constrainedScan := idxConstraint != nil && func() bool {
+				__antithesis_instrumentation__.Notify(632549)
+				return !idxConstraint.IsUnconstrained() == true
+			}() == true
 			if !constrainedScan {
+				__antithesis_instrumentation__.Notify(632550)
 				generator, cleanup, setupError := setupGenerator(ctx, func(ctx context.Context, pusher rowPusher) error {
+					__antithesis_instrumentation__.Notify(632553)
 					return def.populate(ctx, p, dbDesc, func(row ...tree.Datum) error {
+						__antithesis_instrumentation__.Notify(632554)
 						if err := e.validateRow(row, columns); err != nil {
+							__antithesis_instrumentation__.Notify(632556)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(632557)
 						}
+						__antithesis_instrumentation__.Notify(632555)
 						return pusher.pushRow(row...)
 					})
 				}, stopper)
+				__antithesis_instrumentation__.Notify(632551)
 				if setupError != nil {
+					__antithesis_instrumentation__.Notify(632558)
 					return nil, setupError
+				} else {
+					__antithesis_instrumentation__.Notify(632559)
 				}
+				__antithesis_instrumentation__.Notify(632552)
 				return p.newVirtualTableNode(columns, generator, cleanup), nil
+			} else {
+				__antithesis_instrumentation__.Notify(632560)
 			}
-
-			// We are now dealing with a constrained virtual index scan.
+			__antithesis_instrumentation__.Notify(632537)
 
 			if index.GetID() == 1 {
+				__antithesis_instrumentation__.Notify(632561)
 				return nil, errors.AssertionFailedf(
 					"programming error: can't constrain scan on primary virtual index of table %s", e.desc.GetName())
+			} else {
+				__antithesis_instrumentation__.Notify(632562)
 			}
+			__antithesis_instrumentation__.Notify(632538)
 
-			// Figure out the ordinal position of the column that we're filtering on.
 			columnIdxMap := catalog.ColumnIDToOrdinalMap(table.PublicColumns())
 			indexKeyDatums := make([]tree.Datum, index.NumKeyColumns())
 
 			generator, cleanup, setupError := setupGenerator(ctx, e.makeConstrainedRowsGenerator(
 				p, dbDesc, index, indexKeyDatums, columnIdxMap, idxConstraint, columns), stopper)
 			if setupError != nil {
+				__antithesis_instrumentation__.Notify(632563)
 				return nil, setupError
+			} else {
+				__antithesis_instrumentation__.Notify(632564)
 			}
+			__antithesis_instrumentation__.Notify(632539)
 			return p.newVirtualTableNode(columns, generator, cleanup), nil
 
 		default:
+			__antithesis_instrumentation__.Notify(632540)
 			return nil, newInvalidVirtualDefEntryError()
 		}
 	}
+	__antithesis_instrumentation__.Notify(632524)
 
 	return columns, constructor
 }
 
-// makeConstrainedRowsGenerator returns a generator function that can be invoked
-// to push all rows from this virtual table that satisfy the input index
-// constraint to a row pusher that's supplied to the generator function.
 func (e *virtualDefEntry) makeConstrainedRowsGenerator(
 	p *planner,
 	dbDesc catalog.DatabaseDescriptor,
@@ -583,86 +673,114 @@ func (e *virtualDefEntry) makeConstrainedRowsGenerator(
 	idxConstraint *constraint.Constraint,
 	columns colinfo.ResultColumns,
 ) func(ctx context.Context, pusher rowPusher) error {
+	__antithesis_instrumentation__.Notify(632565)
 	def := e.virtualDef.(virtualSchemaTable)
 	return func(ctx context.Context, pusher rowPusher) error {
+		__antithesis_instrumentation__.Notify(632566)
 		var span constraint.Span
 		addRowIfPassesFilter := func(idxConstraint *constraint.Constraint) func(datums ...tree.Datum) error {
+			__antithesis_instrumentation__.Notify(632571)
 			return func(datums ...tree.Datum) error {
+				__antithesis_instrumentation__.Notify(632572)
 				for i := 0; i < index.NumKeyColumns(); i++ {
+					__antithesis_instrumentation__.Notify(632575)
 					id := index.GetKeyColumnID(i)
 					indexKeyDatums[i] = datums[columnIdxMap.GetDefault(id)]
 				}
-				// Construct a single key span out of the current row, so that
-				// we can test it for containment within the constraint span of the
-				// filter that we're applying. The results of this containment check
-				// will tell us whether or not to let the current row pass the filter.
+				__antithesis_instrumentation__.Notify(632573)
+
 				key := constraint.MakeCompositeKey(indexKeyDatums...)
 				span.Init(key, constraint.IncludeBoundary, key, constraint.IncludeBoundary)
 				var err error
 				if idxConstraint.ContainsSpan(p.EvalContext(), &span) {
+					__antithesis_instrumentation__.Notify(632576)
 					if err := e.validateRow(datums, columns); err != nil {
+						__antithesis_instrumentation__.Notify(632578)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(632579)
 					}
+					__antithesis_instrumentation__.Notify(632577)
 					return pusher.pushRow(datums...)
+				} else {
+					__antithesis_instrumentation__.Notify(632580)
 				}
+				__antithesis_instrumentation__.Notify(632574)
 				return err
 			}
 		}
+		__antithesis_instrumentation__.Notify(632567)
 
-		// We have a virtual index with a constraint. Run the constrained
-		// populate routine for every span. If for some reason we can't use the
-		// index for a given span, we exit the loop early and run a "full scan"
-		// over the virtual table, filtering the output using the remaining
-		// spans.
 		var currentSpan int
 		for ; currentSpan < idxConstraint.Spans.Count(); currentSpan++ {
+			__antithesis_instrumentation__.Notify(632581)
 			span := idxConstraint.Spans.Get(currentSpan)
 			if span.StartKey().Length() > 1 {
+				__antithesis_instrumentation__.Notify(632585)
 				return errors.AssertionFailedf(
 					"programming error: can't push down composite constraints into vtables")
+			} else {
+				__antithesis_instrumentation__.Notify(632586)
 			}
+			__antithesis_instrumentation__.Notify(632582)
 			if !span.HasSingleKey(p.EvalContext()) {
-				// No hope - we can't deal with range scans on virtual indexes.
+				__antithesis_instrumentation__.Notify(632587)
+
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(632588)
 			}
+			__antithesis_instrumentation__.Notify(632583)
 			constraintDatum := span.StartKey().Value(0)
 			virtualIndex := def.getIndex(index.GetID())
 
-			// For each span, run the index's populate method, constrained to the
-			// constraint span's value.
 			found, err := virtualIndex.populate(ctx, constraintDatum, p, dbDesc,
 				addRowIfPassesFilter(idxConstraint))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(632589)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(632590)
 			}
-			if !found && virtualIndex.partial {
-				// If we found nothing, and the index was partial, we have no choice
-				// but to populate the entire table and search through it.
-				break
-			}
-		}
-		if currentSpan == idxConstraint.Spans.Count() {
-			// We successfully processed all constraints, so we can leave now.
-			return nil
-		}
+			__antithesis_instrumentation__.Notify(632584)
+			if !found && func() bool {
+				__antithesis_instrumentation__.Notify(632591)
+				return virtualIndex.partial == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(632592)
 
-		// Fall back to a full scan of the table, using the remaining filters
-		// that weren't able to be used as constraints.
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(632593)
+			}
+		}
+		__antithesis_instrumentation__.Notify(632568)
+		if currentSpan == idxConstraint.Spans.Count() {
+			__antithesis_instrumentation__.Notify(632594)
+
+			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(632595)
+		}
+		__antithesis_instrumentation__.Notify(632569)
+
 		newConstraint := *idxConstraint
 		newConstraint.Spans = constraint.Spans{}
 		nSpans := idxConstraint.Spans.Count() - currentSpan
 		newConstraint.Spans.Alloc(nSpans)
 		for ; currentSpan < idxConstraint.Spans.Count(); currentSpan++ {
+			__antithesis_instrumentation__.Notify(632596)
 			newConstraint.Spans.Append(idxConstraint.Spans.Get(currentSpan))
 		}
+		__antithesis_instrumentation__.Notify(632570)
 		return def.populate(ctx, p, dbDesc, addRowIfPassesFilter(&newConstraint))
 	}
 }
 
-// NewVirtualSchemaHolder creates a new VirtualSchemaHolder.
 func NewVirtualSchemaHolder(
 	ctx context.Context, st *cluster.Settings,
 ) (*VirtualSchemaHolder, error) {
+	__antithesis_instrumentation__.Notify(632597)
 	vs := &VirtualSchemaHolder{
 		schemasByName: make(map[string]*virtualSchemaEntry, len(virtualSchemas)),
 		schemasByID:   make(map[descpb.ID]*virtualSchemaEntry, len(virtualSchemas)),
@@ -672,36 +790,61 @@ func NewVirtualSchemaHolder(
 
 	order := 0
 	for schemaID, schema := range virtualSchemas {
+		__antithesis_instrumentation__.Notify(632599)
 		scDesc, ok := schemadesc.GetVirtualSchemaByID(schemaID)
 		if !ok {
+			__antithesis_instrumentation__.Notify(632603)
 			return nil, errors.AssertionFailedf("failed to find virtual schema %d (%s)", schemaID, schema.name)
+		} else {
+			__antithesis_instrumentation__.Notify(632604)
 		}
+		__antithesis_instrumentation__.Notify(632600)
 		if scDesc.GetName() != schema.name {
+			__antithesis_instrumentation__.Notify(632605)
 			return nil, errors.AssertionFailedf("schema name mismatch for virtual schema %d: expected %s, found %s",
 				schemaID, schema.name, scDesc.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(632606)
 		}
+		__antithesis_instrumentation__.Notify(632601)
 		defs := make(map[string]*virtualDefEntry, len(schema.tableDefs))
 		orderedDefNames := make([]string, 0, len(schema.tableDefs))
 
 		for id, def := range schema.tableDefs {
+			__antithesis_instrumentation__.Notify(632607)
 			tableDesc, err := def.initVirtualTableDesc(ctx, st, scDesc, id)
 
 			if err != nil {
+				__antithesis_instrumentation__.Notify(632611)
 				return nil, errors.NewAssertionErrorWithWrappedErrf(err,
 					"failed to initialize %s", errors.Safe(def.getSchema()))
+			} else {
+				__antithesis_instrumentation__.Notify(632612)
 			}
+			__antithesis_instrumentation__.Notify(632608)
 
 			if schema.tableValidator != nil {
+				__antithesis_instrumentation__.Notify(632613)
 				if err := schema.tableValidator(&tableDesc); err != nil {
+					__antithesis_instrumentation__.Notify(632614)
 					return nil, errors.NewAssertionErrorWithWrappedErrf(err, "programmer error")
+				} else {
+					__antithesis_instrumentation__.Notify(632615)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(632616)
 			}
+			__antithesis_instrumentation__.Notify(632609)
 			td := tabledesc.NewBuilder(&tableDesc).BuildImmutableTable()
 			version := st.Version.ActiveVersionOrEmpty(ctx)
 			if err := descbuilder.ValidateSelf(td, version); err != nil {
+				__antithesis_instrumentation__.Notify(632617)
 				return nil, errors.NewAssertionErrorWithWrappedErrf(err,
 					"failed to validate virtual table %s: programmer error", errors.Safe(td.GetName()))
+			} else {
+				__antithesis_instrumentation__.Notify(632618)
 			}
+			__antithesis_instrumentation__.Notify(632610)
 
 			entry := &virtualDefEntry{
 				virtualDef:                 def,
@@ -714,6 +857,7 @@ func NewVirtualSchemaHolder(
 			vs.defsByID[tableDesc.ID] = entry
 			orderedDefNames = append(orderedDefNames, tableDesc.Name)
 		}
+		__antithesis_instrumentation__.Notify(632602)
 
 		sort.Strings(orderedDefNames)
 
@@ -729,11 +873,13 @@ func NewVirtualSchemaHolder(
 		vs.orderedNames[order] = scDesc.GetName()
 		order++
 	}
+	__antithesis_instrumentation__.Notify(632598)
 	sort.Strings(vs.orderedNames)
 	return vs, nil
 }
 
 func newUnimplementedVirtualTableError(schema, tableName string) error {
+	__antithesis_instrumentation__.Notify(632619)
 	return unimplemented.Newf(
 		fmt.Sprintf("%s.%s", schema, tableName),
 		virtualSchemaNotImplementedMessage,
@@ -742,36 +888,37 @@ func newUnimplementedVirtualTableError(schema, tableName string) error {
 	)
 }
 
-// getEntries is part of the VirtualTabler interface.
 func (vs *VirtualSchemaHolder) getSchemas() map[string]*virtualSchemaEntry {
+	__antithesis_instrumentation__.Notify(632620)
 	return vs.schemasByName
 }
 
-// getSchemaNames is part of the VirtualTabler interface.
 func (vs *VirtualSchemaHolder) getSchemaNames() []string {
+	__antithesis_instrumentation__.Notify(632621)
 	return vs.orderedNames
 }
 
-// getVirtualSchemaEntry retrieves a virtual schema entry given a database name.
-// getVirtualSchemaEntry is part of the VirtualTabler interface.
 func (vs *VirtualSchemaHolder) getVirtualSchemaEntry(name string) (*virtualSchemaEntry, bool) {
+	__antithesis_instrumentation__.Notify(632622)
 	e, ok := vs.schemasByName[name]
 	return e, ok
 }
 
-// getVirtualTableEntry checks if the provided name matches a virtual database/table
-// pair. The function will return the table's virtual table entry if the name matches
-// a specific table. It will return an error if the name references a virtual database
-// but the table is non-existent.
-// getVirtualTableEntry is part of the VirtualTabler interface.
 func (vs *VirtualSchemaHolder) getVirtualTableEntry(tn *tree.TableName) (*virtualDefEntry, error) {
+	__antithesis_instrumentation__.Notify(632623)
 	if db, ok := vs.getVirtualSchemaEntry(tn.Schema()); ok {
+		__antithesis_instrumentation__.Notify(632625)
 		tableName := tn.Table()
 		if t, ok := db.defs[tableName]; ok {
+			__antithesis_instrumentation__.Notify(632628)
 			sqltelemetry.IncrementGetVirtualTableEntry(tn.Schema(), tableName)
 			return t, nil
+		} else {
+			__antithesis_instrumentation__.Notify(632629)
 		}
+		__antithesis_instrumentation__.Notify(632626)
 		if _, ok := db.undefinedTables[tableName]; ok {
+			__antithesis_instrumentation__.Notify(632630)
 			return nil, unimplemented.NewWithIssueDetailf(
 				8675,
 				fmt.Sprintf("%s.%s", tn.Schema(), tableName),
@@ -779,13 +926,18 @@ func (vs *VirtualSchemaHolder) getVirtualTableEntry(tn *tree.TableName) (*virtua
 				tn.Schema(),
 				tableName,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(632631)
 		}
+		__antithesis_instrumentation__.Notify(632627)
 		return nil, sqlerrors.NewUndefinedRelationError(tn)
+	} else {
+		__antithesis_instrumentation__.Notify(632632)
 	}
+	__antithesis_instrumentation__.Notify(632624)
 	return nil, nil
 }
 
-// VirtualTabler is used to fetch descriptors for virtual tables and databases.
 type VirtualTabler interface {
 	getVirtualTableDesc(tn *tree.TableName) (catalog.TableDescriptor, error)
 	getVirtualTableEntry(tn *tree.TableName) (*virtualDefEntry, error)
@@ -793,15 +945,20 @@ type VirtualTabler interface {
 	getSchemaNames() []string
 }
 
-// getVirtualTableDesc checks if the provided name matches a virtual database/table
-// pair, and returns its descriptor if it does.
-// getVirtualTableDesc is part of the VirtualTabler interface.
 func (vs *VirtualSchemaHolder) getVirtualTableDesc(
 	tn *tree.TableName,
 ) (catalog.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(632633)
 	t, err := vs.getVirtualTableEntry(tn)
-	if err != nil || t == nil {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(632635)
+		return t == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(632636)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(632637)
 	}
+	__antithesis_instrumentation__.Notify(632634)
 	return t.desc, nil
 }

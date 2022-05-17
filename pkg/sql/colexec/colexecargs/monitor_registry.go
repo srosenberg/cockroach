@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colexecargs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,43 +12,34 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// MonitorRegistry instantiates and keeps track of the memory monitoring
-// infrastructure in the vectorized engine.
 type MonitorRegistry struct {
 	accounts []*mon.BoundAccount
 	monitors []*mon.BytesMonitor
 }
 
-// GetMonitors returns all the monitors from the registry.
 func (r MonitorRegistry) GetMonitors() []*mon.BytesMonitor {
+	__antithesis_instrumentation__.Notify(286141)
 	return r.monitors
 }
 
-// NewStreamingMemAccount creates a new memory account bound to the monitor in
-// flowCtx.
 func (r *MonitorRegistry) NewStreamingMemAccount(flowCtx *execinfra.FlowCtx) *mon.BoundAccount {
+	__antithesis_instrumentation__.Notify(286142)
 	streamingMemAccount := flowCtx.EvalCtx.Mon.MakeBoundAccount()
 	r.accounts = append(r.accounts, &streamingMemAccount)
 	return &streamingMemAccount
 }
 
-// getMemMonitorName returns a unique (for this MonitorRegistry) memory monitor
-// name.
 func (r MonitorRegistry) getMemMonitorName(opName string, processorID int32, suffix string) string {
-	// This way of constructing a string is more efficient than using
-	// fmt.Sprintf.
+	__antithesis_instrumentation__.Notify(286143)
+
 	return opName + "-" + strconv.Itoa(int(processorID)) + "-" + suffix + "-" + strconv.Itoa(len(r.monitors))
 }
 
-// CreateMemAccountForSpillStrategy instantiates a memory monitor and a memory
-// account to be used with a buffering colexecop.Operator that can fall back to
-// disk. The default memory limit is used, if flowCtx.Cfg.ForceDiskSpill is
-// used, this will be 1. The receiver is updated to have references to both
-// objects. Memory monitor name is also returned.
 func (r *MonitorRegistry) CreateMemAccountForSpillStrategy(
 	ctx context.Context, flowCtx *execinfra.FlowCtx, opName string, processorID int32,
 ) (*mon.BoundAccount, string) {
-	monitorName := r.getMemMonitorName(opName, processorID, "limited" /* suffix */)
+	__antithesis_instrumentation__.Notify(286144)
+	monitorName := r.getMemMonitorName(opName, processorID, "limited")
 	bufferingOpMemMonitor := execinfra.NewLimitedMonitor(
 		ctx, flowCtx.EvalCtx.Mon, flowCtx, monitorName,
 	)
@@ -66,21 +49,25 @@ func (r *MonitorRegistry) CreateMemAccountForSpillStrategy(
 	return &bufferingMemAccount, monitorName
 }
 
-// CreateMemAccountForSpillStrategyWithLimit is the same as
-// CreateMemAccountForSpillStrategy except that it takes in a custom limit
-// instead of using the number obtained via execinfra.GetWorkMemLimit. Memory
-// monitor name is also returned.
 func (r *MonitorRegistry) CreateMemAccountForSpillStrategyWithLimit(
 	ctx context.Context, flowCtx *execinfra.FlowCtx, limit int64, opName string, processorID int32,
 ) (*mon.BoundAccount, string) {
+	__antithesis_instrumentation__.Notify(286145)
 	if flowCtx.Cfg.TestingKnobs.ForceDiskSpill {
+		__antithesis_instrumentation__.Notify(286147)
 		if limit != 1 {
+			__antithesis_instrumentation__.Notify(286148)
 			colexecerror.InternalError(errors.AssertionFailedf(
 				"expected limit of 1 when forcing disk spilling, got %d", limit,
 			))
+		} else {
+			__antithesis_instrumentation__.Notify(286149)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(286150)
 	}
-	monitorName := r.getMemMonitorName(opName, processorID, "limited" /* suffix */)
+	__antithesis_instrumentation__.Notify(286146)
+	monitorName := r.getMemMonitorName(opName, processorID, "limited")
 	bufferingOpMemMonitor := mon.NewMonitorInheritWithLimit(monitorName, limit, flowCtx.EvalCtx.Mon)
 	bufferingOpMemMonitor.Start(ctx, flowCtx.EvalCtx.Mon, mon.BoundAccount{})
 	r.monitors = append(r.monitors, bufferingOpMemMonitor)
@@ -89,20 +76,11 @@ func (r *MonitorRegistry) CreateMemAccountForSpillStrategyWithLimit(
 	return &bufferingMemAccount, monitorName
 }
 
-// CreateUnlimitedMemAccount instantiates an unlimited memory monitor and a
-// memory account to be used with a buffering disk-backed colexecop.Operator (or
-// in special circumstances in place of a streaming account when the precise
-// memory usage is needed by an operator). The receiver is updated to have
-// references to both objects. Note that the returned account is only
-// "unlimited" in that it does not have a hard limit that it enforces, but a
-// limit might be enforced by a root monitor.
-//
-// Note that the memory monitor name is not returned (unlike above) because no
-// caller actually needs it.
 func (r *MonitorRegistry) CreateUnlimitedMemAccount(
 	ctx context.Context, flowCtx *execinfra.FlowCtx, opName string, processorID int32,
 ) *mon.BoundAccount {
-	monitorName := r.getMemMonitorName(opName, processorID, "unlimited" /* suffix */)
+	__antithesis_instrumentation__.Notify(286151)
+	monitorName := r.getMemMonitorName(opName, processorID, "unlimited")
 	bufferingOpUnlimitedMemMonitor := execinfra.NewMonitor(
 		ctx, flowCtx.EvalCtx.Mon, monitorName,
 	)
@@ -112,94 +90,93 @@ func (r *MonitorRegistry) CreateUnlimitedMemAccount(
 	return &bufferingMemAccount
 }
 
-// CreateUnlimitedMemAccounts instantiates an unlimited memory monitor and
-// numAccounts memory accounts. It should only be used when the component
-// supports spilling to disk and is made aware of a memory usage limit
-// separately. The receiver is updated to have a reference to all created
-// components.
 func (r *MonitorRegistry) CreateUnlimitedMemAccounts(
 	ctx context.Context, flowCtx *execinfra.FlowCtx, name string, numAccounts int,
 ) (*mon.BytesMonitor, []*mon.BoundAccount) {
+	__antithesis_instrumentation__.Notify(286152)
 	bufferingOpUnlimitedMemMonitor := execinfra.NewMonitor(
 		ctx, flowCtx.EvalCtx.Mon, name+"-unlimited",
 	)
 	r.monitors = append(r.monitors, bufferingOpUnlimitedMemMonitor)
 	oldLen := len(r.accounts)
 	for i := 0; i < numAccounts; i++ {
+		__antithesis_instrumentation__.Notify(286154)
 		acc := bufferingOpUnlimitedMemMonitor.MakeBoundAccount()
 		r.accounts = append(r.accounts, &acc)
 	}
+	__antithesis_instrumentation__.Notify(286153)
 	return bufferingOpUnlimitedMemMonitor, r.accounts[oldLen:len(r.accounts)]
 }
 
-// CreateDiskMonitor instantiates an unlimited disk monitor.
 func (r *MonitorRegistry) CreateDiskMonitor(
 	ctx context.Context, flowCtx *execinfra.FlowCtx, opName string, processorID int32,
 ) *mon.BytesMonitor {
-	monitorName := r.getMemMonitorName(opName, processorID, "disk" /* suffix */)
+	__antithesis_instrumentation__.Notify(286155)
+	monitorName := r.getMemMonitorName(opName, processorID, "disk")
 	opDiskMonitor := execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, monitorName)
 	r.monitors = append(r.monitors, opDiskMonitor)
 	return opDiskMonitor
 }
 
-// CreateDiskAccount instantiates an unlimited disk monitor and a disk account
-// to be used for disk spilling infrastructure in vectorized engine.
-//
-// Note that the memory monitor name is not returned (unlike above) because no
-// caller actually needs it.
 func (r *MonitorRegistry) CreateDiskAccount(
 	ctx context.Context, flowCtx *execinfra.FlowCtx, opName string, processorID int32,
 ) *mon.BoundAccount {
+	__antithesis_instrumentation__.Notify(286156)
 	opDiskMonitor := r.CreateDiskMonitor(ctx, flowCtx, opName, processorID)
 	opDiskAccount := opDiskMonitor.MakeBoundAccount()
 	r.accounts = append(r.accounts, &opDiskAccount)
 	return &opDiskAccount
 }
 
-// CreateDiskAccounts instantiates an unlimited disk monitor and disk accounts
-// to be used for disk spilling infrastructure in vectorized engine.
 func (r *MonitorRegistry) CreateDiskAccounts(
 	ctx context.Context, flowCtx *execinfra.FlowCtx, name string, numAccounts int,
 ) (*mon.BytesMonitor, []*mon.BoundAccount) {
+	__antithesis_instrumentation__.Notify(286157)
 	diskMonitor := execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, name)
 	r.monitors = append(r.monitors, diskMonitor)
 	oldLen := len(r.accounts)
 	for i := 0; i < numAccounts; i++ {
+		__antithesis_instrumentation__.Notify(286159)
 		diskAcc := diskMonitor.MakeBoundAccount()
 		r.accounts = append(r.accounts, &diskAcc)
 	}
+	__antithesis_instrumentation__.Notify(286158)
 	return diskMonitor, r.accounts[oldLen:len(r.accounts)]
 }
 
-// AssertInvariants confirms that all invariants are maintained by
-// MonitorRegistry.
 func (r *MonitorRegistry) AssertInvariants() {
-	// Check that all memory monitor names are unique (colexec.diskSpillerBase
-	// relies on this in order to catch "memory budget exceeded" errors only
-	// from "its own" component).
+	__antithesis_instrumentation__.Notify(286160)
+
 	names := make(map[string]struct{}, len(r.monitors))
 	for _, m := range r.monitors {
+		__antithesis_instrumentation__.Notify(286161)
 		if _, seen := names[m.Name()]; seen {
+			__antithesis_instrumentation__.Notify(286163)
 			colexecerror.InternalError(errors.AssertionFailedf("monitor named %q encountered twice", m.Name()))
+		} else {
+			__antithesis_instrumentation__.Notify(286164)
 		}
+		__antithesis_instrumentation__.Notify(286162)
 		names[m.Name()] = struct{}{}
 	}
 }
 
-// Close closes all components in the registry.
 func (r *MonitorRegistry) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(286165)
 	for i := range r.accounts {
+		__antithesis_instrumentation__.Notify(286167)
 		r.accounts[i].Close(ctx)
 	}
+	__antithesis_instrumentation__.Notify(286166)
 	for i := range r.monitors {
+		__antithesis_instrumentation__.Notify(286168)
 		r.monitors[i].Stop(ctx)
 	}
 }
 
-// Reset prepares the registry for reuse.
 func (r *MonitorRegistry) Reset() {
-	// There is no need to deeply reset the memory monitoring infra slices
-	// because these objects are very tiny in the grand scheme of things.
+	__antithesis_instrumentation__.Notify(286169)
+
 	r.accounts = r.accounts[:0]
 	r.monitors = r.monitors[:0]
 }

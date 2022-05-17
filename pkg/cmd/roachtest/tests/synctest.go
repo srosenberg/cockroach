@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,6 +15,7 @@ import (
 )
 
 func registerSyncTest(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(51241)
 	const nemesisScript = `#!/usr/bin/env bash
 
 if [[ $1 == "on" ]]; then
@@ -36,22 +29,33 @@ fi
 		Skip:  "#48603: broken on Pebble",
 		Name:  "synctest",
 		Owner: registry.OwnerStorage,
-		// This test sets up a custom file system; we don't want the cluster reused.
+
 		Cluster: r.MakeClusterSpec(1, spec.ReuseNone()),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(51242)
 			n := c.Node(1)
 			tmpDir, err := ioutil.TempDir("", "synctest")
 			if err != nil {
+				__antithesis_instrumentation__.Notify(51247)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(51248)
 			}
+			__antithesis_instrumentation__.Notify(51243)
 			defer func() {
+				__antithesis_instrumentation__.Notify(51249)
 				_ = os.RemoveAll(tmpDir)
 			}()
+			__antithesis_instrumentation__.Notify(51244)
 			nemesis := filepath.Join(tmpDir, "nemesis")
 
 			if err := ioutil.WriteFile(nemesis, []byte(nemesisScript), 0755); err != nil {
+				__antithesis_instrumentation__.Notify(51250)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(51251)
 			}
+			__antithesis_instrumentation__.Notify(51245)
 
 			c.Put(ctx, t.Cockroach(), "./cockroach")
 			c.Put(ctx, nemesis, "./nemesis")
@@ -61,8 +65,12 @@ fi
 			t.Status("setting up charybdefs")
 
 			if err := c.Install(ctx, t.L(), n, "charybdefs"); err != nil {
+				__antithesis_instrumentation__.Notify(51252)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(51253)
 			}
+			__antithesis_instrumentation__.Notify(51246)
 			c.Run(ctx, n, "sudo charybdefs {store-dir}/faulty -oallow_other,modules=subdir,subdir={store-dir}/real && chmod 777 {store-dir}/{real,faulty}")
 
 			t.Status("running synctest")

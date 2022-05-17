@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rpc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,59 +14,38 @@ import (
 	"google.golang.org/grpc"
 )
 
-// ContextTestingKnobs provides hooks to aid in testing the system. The testing
-// knob functions are called at various points in the Context life cycle if they
-// are non-nil.
 type ContextTestingKnobs struct {
-
-	// UnaryClientInterceptor if non-nil will be called at dial time to provide
-	// the base unary interceptor for client connections.
-	// This function may return a nil interceptor to avoid injecting behavior
-	// for a given target and class.
 	UnaryClientInterceptor func(target string, class ConnectionClass) grpc.UnaryClientInterceptor
 
-	// StreamClient if non-nil will be called at dial time to provide
-	// the base stream interceptor for client connections.
-	// This function may return a nil interceptor to avoid injecting behavior
-	// for a given target and class.
 	StreamClientInterceptor func(target string, class ConnectionClass) grpc.StreamClientInterceptor
 
-	// ArtificialLatencyMap if non-nil contains a map from target address
-	// (server.RPCServingAddr() of a remote node) to artificial latency in
-	// milliseconds to inject. Setting this will cause the server to pause for
-	// the given amount of milliseconds on every network write.
 	ArtificialLatencyMap map[string]int
 
-	// StorageClusterID initializes the Context's StorageClusterID container to
-	// this value if non-nil at construction time.
 	StorageClusterID *uuid.UUID
 }
 
-// NewInsecureTestingContext creates an insecure rpc Context suitable for tests.
 func NewInsecureTestingContext(
 	ctx context.Context, clock *hlc.Clock, stopper *stop.Stopper,
 ) *Context {
+	__antithesis_instrumentation__.Notify(184717)
 	clusterID := uuid.MakeV4()
 	return NewInsecureTestingContextWithClusterID(ctx, clock, stopper, clusterID)
 }
 
-// NewInsecureTestingContextWithClusterID creates an insecure rpc Context
-// suitable for tests. The context is given the provided storage cluster ID and
-// will derive a logical cluster ID from it automatically.
 func NewInsecureTestingContextWithClusterID(
 	ctx context.Context, clock *hlc.Clock, stopper *stop.Stopper, storageClusterID uuid.UUID,
 ) *Context {
+	__antithesis_instrumentation__.Notify(184718)
 	return NewInsecureTestingContextWithKnobs(ctx,
 		clock, stopper, ContextTestingKnobs{
 			StorageClusterID: &storageClusterID,
 		})
 }
 
-// NewInsecureTestingContextWithKnobs creates an insecure rpc Context
-// suitable for tests configured with the provided knobs.
 func NewInsecureTestingContextWithKnobs(
 	ctx context.Context, clock *hlc.Clock, stopper *stop.Stopper, knobs ContextTestingKnobs,
 ) *Context {
+	__antithesis_instrumentation__.Notify(184719)
 	return NewContext(ctx,
 		ContextOptions{
 			TenantID: roachpb.SystemTenantID,

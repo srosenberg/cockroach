@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,10 +26,7 @@ import (
 )
 
 func init() {
-	// Taking out latches/locks across the entire SST span is very coarse, and we
-	// could instead iterate over the SST and take out point latches/locks, but
-	// the cost is likely not worth it since AddSSTable is often used with
-	// unpopulated spans.
+
 	RegisterReadWriteCommand(roachpb.AddSSTable, declareKeysAddSSTable, EvalAddSSTable)
 }
 
@@ -48,12 +37,12 @@ func declareKeysAddSSTable(
 	latchSpans, lockSpans *spanset.SpanSet,
 	maxOffset time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(96311)
 	DefaultDeclareIsolatedKeys(rs, header, req, latchSpans, lockSpans, maxOffset)
-	// We look up the range descriptor key to return its span.
+
 	latchSpans.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{Key: keys.RangeDescriptorKey(rs.GetStartKey())})
 }
 
-// AddSSTableRewriteConcurrency sets the concurrency of a single SST rewrite.
 var AddSSTableRewriteConcurrency = settings.RegisterIntSetting(
 	settings.SystemOnly,
 	"kv.bulk_io_write.sst_rewrite_concurrency.per_call",
@@ -62,9 +51,6 @@ var AddSSTableRewriteConcurrency = settings.RegisterIntSetting(
 	settings.NonNegativeInt,
 )
 
-// AddSSTableRequireAtRequestTimestamp will reject any AddSSTable requests that
-// aren't sent with SSTTimestampToRequestTimestamp. This can be used to verify
-// that all callers have been migrated to use SSTTimestampToRequestTimestamp.
 var AddSSTableRequireAtRequestTimestamp = settings.RegisterBoolSetting(
 	settings.SystemOnly,
 	"kv.bulk_io_write.sst_require_at_request_timestamp.enabled",
@@ -72,8 +58,6 @@ var AddSSTableRequireAtRequestTimestamp = settings.RegisterBoolSetting(
 	false,
 )
 
-// addSSTableCapacityRemainingLimit is the fraction of remaining store capacity
-// under which addsstable requests are rejected.
 var addSSTableCapacityRemainingLimit = settings.RegisterFloatSetting(
 	settings.SystemOnly,
 	"kv.bulk_io_write.min_capacity_remaining_fraction",
@@ -83,11 +67,10 @@ var addSSTableCapacityRemainingLimit = settings.RegisterFloatSetting(
 
 var forceRewrite = util.ConstantWithMetamorphicTestBool("addsst-rewrite-forced", false)
 
-// EvalAddSSTable evaluates an AddSSTable command. For details, see doc comment
-// on AddSSTableRequest.
 func EvalAddSSTable(
 	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(96312)
 	args := cArgs.Args.(*roachpb.AddSSTableRequest)
 	h := cArgs.Header
 	ms := cArgs.Stats
@@ -102,11 +85,17 @@ func EvalAddSSTable(
 	log.Eventf(ctx, "evaluating AddSSTable [%s,%s)", start.Key, end.Key)
 
 	if min := addSSTableCapacityRemainingLimit.Get(&cArgs.EvalCtx.ClusterSettings().SV); min > 0 {
+		__antithesis_instrumentation__.Notify(96326)
 		cap, err := cArgs.EvalCtx.GetEngineCapacity()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(96328)
 			return result.Result{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(96329)
 		}
+		__antithesis_instrumentation__.Notify(96327)
 		if remaining := float64(cap.Available) / float64(cap.Capacity); remaining < min {
+			__antithesis_instrumentation__.Notify(96330)
 			return result.Result{}, &roachpb.InsufficientSpaceError{
 				StoreID:   cArgs.EvalCtx.StoreID(),
 				Op:        "ingest data",
@@ -114,244 +103,279 @@ func EvalAddSSTable(
 				Capacity:  cap.Capacity,
 				Required:  min,
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(96331)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(96332)
 	}
+	__antithesis_instrumentation__.Notify(96313)
 
-	// Reject AddSSTable requests not writing at the request timestamp if requested.
-	if cArgs.EvalCtx.ClusterSettings().Version.IsActive(ctx, clusterversion.MVCCAddSSTable) &&
-		AddSSTableRequireAtRequestTimestamp.Get(&cArgs.EvalCtx.ClusterSettings().SV) &&
-		sstToReqTS.IsEmpty() {
+	if cArgs.EvalCtx.ClusterSettings().Version.IsActive(ctx, clusterversion.MVCCAddSSTable) && func() bool {
+		__antithesis_instrumentation__.Notify(96333)
+		return AddSSTableRequireAtRequestTimestamp.Get(&cArgs.EvalCtx.ClusterSettings().SV) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(96334)
+		return sstToReqTS.IsEmpty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(96335)
 		return result.Result{}, errors.AssertionFailedf(
 			"AddSSTable requests must set SSTTimestampToRequestTimestamp")
+	} else {
+		__antithesis_instrumentation__.Notify(96336)
 	}
+	__antithesis_instrumentation__.Notify(96314)
 
-	// Under the race detector, check that the SST contents satisfy AddSSTable
-	// requirements. We don't always do this otherwise, due to the cost.
 	if util.RaceEnabled {
+		__antithesis_instrumentation__.Notify(96337)
 		if err := assertSSTContents(sst, sstToReqTS, args.MVCCStats); err != nil {
+			__antithesis_instrumentation__.Notify(96338)
 			return result.Result{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(96339)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(96340)
 	}
+	__antithesis_instrumentation__.Notify(96315)
 
-	// If requested and necessary, rewrite the SST's MVCC timestamps to the
-	// request timestamp. This ensures the writes comply with the timestamp cache
-	// and closed timestamp, i.e. by not writing to timestamps that have already
-	// been observed or closed.
-	if sstToReqTS.IsSet() && (h.Timestamp != sstToReqTS || forceRewrite) {
+	if sstToReqTS.IsSet() && func() bool {
+		__antithesis_instrumentation__.Notify(96341)
+		return (h.Timestamp != sstToReqTS || func() bool {
+			__antithesis_instrumentation__.Notify(96342)
+			return forceRewrite == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(96343)
 		st := cArgs.EvalCtx.ClusterSettings()
-		// TODO(dt): use a quotapool.
+
 		conc := int(AddSSTableRewriteConcurrency.Get(&cArgs.EvalCtx.ClusterSettings().SV))
 		sst, err = storage.UpdateSSTTimestamps(ctx, st, sst, sstToReqTS, h.Timestamp, conc)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(96344)
 			return result.Result{}, errors.Wrap(err, "updating SST timestamps")
+		} else {
+			__antithesis_instrumentation__.Notify(96345)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(96346)
 	}
+	__antithesis_instrumentation__.Notify(96316)
 
 	var statsDelta enginepb.MVCCStats
 	maxIntents := storage.MaxIntentsPerWriteIntentError.Get(&cArgs.EvalCtx.ClusterSettings().SV)
-	checkConflicts := args.DisallowConflicts || args.DisallowShadowing ||
-		!args.DisallowShadowingBelow.IsEmpty()
+	checkConflicts := args.DisallowConflicts || func() bool {
+		__antithesis_instrumentation__.Notify(96347)
+		return args.DisallowShadowing == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(96348)
+		return !args.DisallowShadowingBelow.IsEmpty() == true
+	}() == true
 	if checkConflicts {
-		// If requested, check for MVCC conflicts with existing keys. This enforces
-		// all MVCC invariants by returning WriteTooOldError for any existing
-		// values at or above the SST timestamp, returning WriteIntentError to
-		// resolve any encountered intents, and accurately updating MVCC stats.
-		//
-		// Additionally, if DisallowShadowing or DisallowShadowingBelow is set, it
-		// will not write above existing/visible values (but will write above
-		// tombstones).
+		__antithesis_instrumentation__.Notify(96349)
+
 		statsDelta, err = storage.CheckSSTConflicts(ctx, sst, readWriter, start, end,
 			args.DisallowShadowing, args.DisallowShadowingBelow, maxIntents)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(96350)
 			return result.Result{}, errors.Wrap(err, "checking for key collisions")
+		} else {
+			__antithesis_instrumentation__.Notify(96351)
 		}
 
 	} else {
-		// If not checking for MVCC conflicts, at least check for separated intents.
-		// The caller is expected to make sure there are no writers across the span,
-		// and thus no or few intents, so this is cheap in the common case.
+		__antithesis_instrumentation__.Notify(96352)
+
 		intents, err := storage.ScanIntents(ctx, readWriter, start.Key, end.Key, maxIntents, 0)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(96353)
 			return result.Result{}, errors.Wrap(err, "scanning intents")
-		} else if len(intents) > 0 {
-			return result.Result{}, &roachpb.WriteIntentError{Intents: intents}
+		} else {
+			__antithesis_instrumentation__.Notify(96354)
+			if len(intents) > 0 {
+				__antithesis_instrumentation__.Notify(96355)
+				return result.Result{}, &roachpb.WriteIntentError{Intents: intents}
+			} else {
+				__antithesis_instrumentation__.Notify(96356)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(96317)
 
-	// Verify that the keys in the sstable are within the range specified by the
-	// request header, and if the request did not include pre-computed stats,
-	// compute the expected MVCC stats delta of ingesting the SST.
 	sstIter, err := storage.NewMemSSTIterator(sst, true)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(96357)
 		return result.Result{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(96358)
 	}
+	__antithesis_instrumentation__.Notify(96318)
 	defer sstIter.Close()
 
-	// Check that the first key is in the expected range.
 	sstIter.SeekGE(storage.MVCCKey{Key: keys.MinKey})
 	ok, err := sstIter.Valid()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(96359)
 		return result.Result{}, err
-	} else if ok {
-		if unsafeKey := sstIter.UnsafeKey(); unsafeKey.Less(start) {
-			return result.Result{}, errors.Errorf("first key %s not in request range [%s,%s)",
-				unsafeKey.Key, start.Key, end.Key)
+	} else {
+		__antithesis_instrumentation__.Notify(96360)
+		if ok {
+			__antithesis_instrumentation__.Notify(96361)
+			if unsafeKey := sstIter.UnsafeKey(); unsafeKey.Less(start) {
+				__antithesis_instrumentation__.Notify(96362)
+				return result.Result{}, errors.Errorf("first key %s not in request range [%s,%s)",
+					unsafeKey.Key, start.Key, end.Key)
+			} else {
+				__antithesis_instrumentation__.Notify(96363)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(96364)
 		}
 	}
+	__antithesis_instrumentation__.Notify(96319)
 
-	// Get the MVCCStats for the SST being ingested.
 	var stats enginepb.MVCCStats
 	if args.MVCCStats != nil {
+		__antithesis_instrumentation__.Notify(96365)
 		stats = *args.MVCCStats
 	} else {
+		__antithesis_instrumentation__.Notify(96366)
 		log.VEventf(ctx, 2, "computing MVCCStats for SSTable [%s,%s)", start.Key, end.Key)
 		stats, err = storage.ComputeStatsForRange(sstIter, start.Key, end.Key, h.Timestamp.WallTime)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(96367)
 			return result.Result{}, errors.Wrap(err, "computing SSTable MVCC stats")
+		} else {
+			__antithesis_instrumentation__.Notify(96368)
 		}
 	}
+	__antithesis_instrumentation__.Notify(96320)
 
 	sstIter.SeekGE(end)
 	ok, err = sstIter.Valid()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(96369)
 		return result.Result{}, err
-	} else if ok {
-		return result.Result{}, errors.Errorf("last key %s not in request range [%s,%s)",
-			sstIter.UnsafeKey(), start.Key, end.Key)
+	} else {
+		__antithesis_instrumentation__.Notify(96370)
+		if ok {
+			__antithesis_instrumentation__.Notify(96371)
+			return result.Result{}, errors.Errorf("last key %s not in request range [%s,%s)",
+				sstIter.UnsafeKey(), start.Key, end.Key)
+		} else {
+			__antithesis_instrumentation__.Notify(96372)
+		}
 	}
+	__antithesis_instrumentation__.Notify(96321)
 
-	// The above MVCCStats represents what is in this new SST.
-	//
-	// *If* the keys in the SST do not conflict with keys currently in this range,
-	// then adding the stats for this SST to the range stats should yield the
-	// correct overall stats.
-	//
-	// *However*, if the keys in this range *do* overlap with keys already in this
-	// range, then adding the SST semantically *replaces*, rather than adds, those
-	// keys, and the net effect on the stats is not so simple.
-	//
-	// To perfectly compute the correct net stats, you could a) determine the
-	// stats for the span of the existing range that this SST covers and subtract
-	// it from the range's stats, then b) use a merging iterator that reads from
-	// the SST and then underlying range and compute the stats of that merged
-	// span, and then add those stats back in. That would result in correct stats
-	// that reflect the merging semantics when the SST "shadows" an existing key.
-	//
-	// If the underlying range is mostly empty, this isn't terribly expensive --
-	// computing the existing stats to subtract is cheap, as there is little or no
-	// existing data to traverse and b) is also pretty cheap -- the merging
-	// iterator can quickly iterate the in-memory SST.
-	//
-	// However, if the underlying range is _not_ empty, then this is not cheap:
-	// recomputing its stats involves traversing lots of data, and iterating the
-	// merged iterator has to constantly go back and forth to the iterator.
-	//
-	// If we assume that most SSTs don't shadow too many keys, then the error of
-	// simply adding the SST stats directly to the range stats is minimal. In the
-	// worst-case, when we retry a whole SST, then it could be overcounting the
-	// entire file, but we can hope that that is rare. In the worst case, it may
-	// cause splitting an under-filled range that would later merge when the
-	// over-count is fixed.
-	//
-	// We can indicate that these stats contain this estimation using the flag in
-	// the MVCC stats so that later re-computations will not be surprised to find
-	// any discrepancies.
-	//
-	// Callers can trigger such a re-computation to fixup any discrepancies (and
-	// remove the ContainsEstimates flag) after they are done ingesting files by
-	// sending an explicit recompute.
-	//
-	// There is a significant performance win to be achieved by ensuring that the
-	// stats computed are not estimates as it prevents recomputation on splits.
-	// Running AddSSTable with disallowShadowing=true gets us close to this as we
-	// do not allow colliding keys to be ingested. However, in the situation that
-	// two SSTs have KV(s) which "perfectly" shadow an existing key (equal ts and
-	// value), we do not consider this a collision. While the KV would just
-	// overwrite the existing data, the stats would be added to the cumulative
-	// stats of the AddSSTable command, causing a double count for such KVs.
-	// Therefore, we compute the stats for these "skipped" KVs on-the-fly while
-	// checking for the collision condition in C++ and subtract them from the
-	// stats of the SST being ingested before adding them to the running
-	// cumulative for this command. These stats can then be marked as accurate.
 	if checkConflicts {
+		__antithesis_instrumentation__.Notify(96373)
 		stats.Add(statsDelta)
 		stats.ContainsEstimates = 0
 	} else {
+		__antithesis_instrumentation__.Notify(96374)
 		stats.ContainsEstimates++
 	}
+	__antithesis_instrumentation__.Notify(96322)
 
 	ms.Add(stats)
 
 	var mvccHistoryMutation *kvserverpb.ReplicatedEvalResult_MVCCHistoryMutation
 	if sstToReqTS.IsEmpty() {
+		__antithesis_instrumentation__.Notify(96375)
 		mvccHistoryMutation = &kvserverpb.ReplicatedEvalResult_MVCCHistoryMutation{
 			Spans: []roachpb.Span{{Key: start.Key, EndKey: end.Key}},
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(96376)
 	}
+	__antithesis_instrumentation__.Notify(96323)
 
 	reply := resp.(*roachpb.AddSSTableResponse)
 	reply.RangeSpan = cArgs.EvalCtx.Desc().KeySpan().AsRawSpanWithNoLocals()
 	reply.AvailableBytes = cArgs.EvalCtx.GetMaxBytes() - cArgs.EvalCtx.GetMVCCStats().Total() - stats.Total()
 
-	// If requested, locate and return the start of the span following the file
-	// span which may be non-empty, that is, the first key after the file's end
-	// at which there may be existing data in the range. "May" is operative here:
-	// it allows us to avoid consistency/isolation promises and thus avoid needing
-	// to latch the entire remainder of the range and/or look through intents in
-	// addition, and instead just use this key-only iterator. If a caller actually
-	// needs to know what data is there, it must issue its own real Scan.
 	if args.ReturnFollowingLikelyNonEmptySpanStart {
+		__antithesis_instrumentation__.Notify(96377)
 		existingIter := spanset.DisableReaderAssertions(readWriter).NewMVCCIterator(
-			storage.MVCCKeyIterKind, // don't care if it is committed or not, just that it isn't empty.
+			storage.MVCCKeyIterKind,
 			storage.IterOptions{UpperBound: reply.RangeSpan.EndKey},
 		)
 		defer existingIter.Close()
 		existingIter.SeekGE(end)
 		ok, err = existingIter.Valid()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(96378)
 			return result.Result{}, errors.Wrap(err, "error while searching for non-empty span start")
-		} else if ok {
-			reply.FollowingLikelyNonEmptySpanStart = existingIter.Key().Key
+		} else {
+			__antithesis_instrumentation__.Notify(96379)
+			if ok {
+				__antithesis_instrumentation__.Notify(96380)
+				reply.FollowingLikelyNonEmptySpanStart = existingIter.Key().Key
+			} else {
+				__antithesis_instrumentation__.Notify(96381)
+			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(96382)
 	}
+	__antithesis_instrumentation__.Notify(96324)
 
 	if args.IngestAsWrites {
+		__antithesis_instrumentation__.Notify(96383)
 		span.RecordStructured(&types.StringValue{Value: fmt.Sprintf("ingesting SST (%d keys/%d bytes) via regular write batch", stats.KeyCount, len(sst))})
 		log.VEventf(ctx, 2, "ingesting SST (%d keys/%d bytes) via regular write batch", stats.KeyCount, len(sst))
 		sstIter.SeekGE(storage.MVCCKey{Key: keys.MinKey})
 		for {
+			__antithesis_instrumentation__.Notify(96385)
 			ok, err := sstIter.Valid()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(96389)
 				return result.Result{}, err
-			} else if !ok {
-				break
+			} else {
+				__antithesis_instrumentation__.Notify(96390)
+				if !ok {
+					__antithesis_instrumentation__.Notify(96391)
+					break
+				} else {
+					__antithesis_instrumentation__.Notify(96392)
+				}
 			}
-			// NB: This is *not* a general transformation of any arbitrary SST to a
-			// WriteBatch: it assumes every key in the SST is a simple Set. This is
-			// already assumed elsewhere in this RPC though, so that's OK here.
+			__antithesis_instrumentation__.Notify(96386)
+
 			k := sstIter.UnsafeKey()
 			if k.Timestamp.IsEmpty() {
+				__antithesis_instrumentation__.Notify(96393)
 				if err := readWriter.PutUnversioned(k.Key, sstIter.UnsafeValue()); err != nil {
+					__antithesis_instrumentation__.Notify(96394)
 					return result.Result{}, err
+				} else {
+					__antithesis_instrumentation__.Notify(96395)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(96396)
 				if err := readWriter.PutMVCC(k, sstIter.UnsafeValue()); err != nil {
+					__antithesis_instrumentation__.Notify(96397)
 					return result.Result{}, err
+				} else {
+					__antithesis_instrumentation__.Notify(96398)
 				}
 			}
-			// The above MVCC functions do not record logical operations, but we must
-			// use them because e.g. storage.MVCCPut() changes the semantics of the
-			// write by not allowing writing below existing keys, and we want to
-			// retain parity with regular SST ingestion which does allow this. We
-			// therefore record these operations ourselves.
+			__antithesis_instrumentation__.Notify(96387)
+
 			if sstToReqTS.IsSet() {
+				__antithesis_instrumentation__.Notify(96399)
 				readWriter.LogLogicalOp(storage.MVCCWriteValueOpType, storage.MVCCLogicalOpDetails{
 					Key:       k.Key,
 					Timestamp: k.Timestamp,
 				})
+			} else {
+				__antithesis_instrumentation__.Notify(96400)
 			}
+			__antithesis_instrumentation__.Notify(96388)
 			sstIter.Next()
 		}
+		__antithesis_instrumentation__.Notify(96384)
 		return result.Result{
 			Replicated: kvserverpb.ReplicatedEvalResult{
 				MVCCHistoryMutation: mvccHistoryMutation,
@@ -362,7 +386,10 @@ func EvalAddSSTable(
 				},
 			},
 		}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(96401)
 	}
+	__antithesis_instrumentation__.Notify(96325)
 
 	return result.Result{
 		Replicated: kvserverpb.ReplicatedEvalResult{
@@ -377,59 +404,90 @@ func EvalAddSSTable(
 	}, nil
 }
 
-// assertSSTContents checks that the SST contains expected inputs:
-//
-// * Only SST set operations (not explicitly verified).
-// * No intents, tombstones, or unversioned values.
-// * If sstTimestamp is set, all MVCC timestamps equal it.
-// * Given MVCC stats match the SST contents.
 func assertSSTContents(sst []byte, sstTimestamp hlc.Timestamp, stats *enginepb.MVCCStats) error {
+	__antithesis_instrumentation__.Notify(96402)
 	iter, err := storage.NewMemSSTIterator(sst, true)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(96406)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(96407)
 	}
+	__antithesis_instrumentation__.Notify(96403)
 	defer iter.Close()
 
-	// Check SST KV pairs.
 	iter.SeekGE(storage.MVCCKey{Key: keys.MinKey})
 	for {
+		__antithesis_instrumentation__.Notify(96408)
 		ok, err := iter.Valid()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(96414)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(96415)
 		}
+		__antithesis_instrumentation__.Notify(96409)
 		if !ok {
+			__antithesis_instrumentation__.Notify(96416)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(96417)
 		}
+		__antithesis_instrumentation__.Notify(96410)
 
 		key, value := iter.UnsafeKey(), iter.UnsafeValue()
 		if key.Timestamp.IsEmpty() {
+			__antithesis_instrumentation__.Notify(96418)
 			return errors.AssertionFailedf("SST contains inline value or intent for key %s", key)
+		} else {
+			__antithesis_instrumentation__.Notify(96419)
 		}
+		__antithesis_instrumentation__.Notify(96411)
 		if len(value) == 0 {
+			__antithesis_instrumentation__.Notify(96420)
 			return errors.AssertionFailedf("SST contains tombstone for key %s", key)
+		} else {
+			__antithesis_instrumentation__.Notify(96421)
 		}
-		if sstTimestamp.IsSet() && key.Timestamp != sstTimestamp {
+		__antithesis_instrumentation__.Notify(96412)
+		if sstTimestamp.IsSet() && func() bool {
+			__antithesis_instrumentation__.Notify(96422)
+			return key.Timestamp != sstTimestamp == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(96423)
 			return errors.AssertionFailedf("SST has unexpected timestamp %s (expected %s) for key %s",
 				key.Timestamp, sstTimestamp, key.Key)
+		} else {
+			__antithesis_instrumentation__.Notify(96424)
 		}
+		__antithesis_instrumentation__.Notify(96413)
 		iter.Next()
 	}
+	__antithesis_instrumentation__.Notify(96404)
 
-	// Compare statistics with those passed by client. We calculate them at the
-	// same timestamp as the given statistics, since they may contain
-	// timing-dependent values (typically MVCC garbage, i.e. multiple versions).
 	if stats != nil {
+		__antithesis_instrumentation__.Notify(96425)
 		given := *stats
 		actual, err := storage.ComputeStatsForRange(
 			iter, keys.MinKey, keys.MaxKey, given.LastUpdateNanos)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(96427)
 			return errors.Wrap(err, "failed to compare stats: %w")
+		} else {
+			__antithesis_instrumentation__.Notify(96428)
 		}
+		__antithesis_instrumentation__.Notify(96426)
 		if !given.Equal(actual) {
+			__antithesis_instrumentation__.Notify(96429)
 			return errors.AssertionFailedf("SST stats are incorrect: diff(given, actual) = %s",
 				pretty.Diff(given, actual))
+		} else {
+			__antithesis_instrumentation__.Notify(96430)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(96431)
 	}
+	__antithesis_instrumentation__.Notify(96405)
 
 	return nil
 }

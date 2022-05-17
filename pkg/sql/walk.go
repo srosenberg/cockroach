@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -17,322 +9,429 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// planObserver is the interface to implement by components that need
-// to visit a planNode tree.
-// Used mainly by EXPLAIN, but also for the collector of back-references
-// for view definitions.
 type planObserver struct {
-	// replaceNode is invoked upon entering a tree node. It can replace the
-	// current planNode in the tree by returning a non-nil planNode. Returning
-	// nil will continue the recursion and not modify the current node.
 	replaceNode func(ctx context.Context, nodeName string, plan planNode) (planNode, error)
 
-	// enterNode is invoked upon entering a tree node. It can return false to
-	// stop the recursion at this node.
 	enterNode func(ctx context.Context, nodeName string, plan planNode) (bool, error)
 
-	// leaveNode is invoked upon leaving a tree node.
 	leaveNode func(nodeName string, plan planNode) error
 }
 
-// walkPlan performs a depth-first traversal of the plan given as
-// argument, informing the planObserver of the node details at each
-// level.
 func walkPlan(ctx context.Context, plan planNode, observer planObserver) error {
+	__antithesis_instrumentation__.Notify(632709)
 	v := makePlanVisitor(ctx, observer)
 	v.visit(plan)
 	return v.err
 }
 
-// planVisitor is the support structure for walkPlan().
 type planVisitor struct {
 	observer planObserver
 	ctx      context.Context
 	err      error
 }
 
-// makePlanVisitor creates a planVisitor instance.
-// ctx will be stored in the planVisitor and used when visiting planNode's and
-// expressions..
 func makePlanVisitor(ctx context.Context, observer planObserver) planVisitor {
+	__antithesis_instrumentation__.Notify(632710)
 	return planVisitor{observer: observer, ctx: ctx}
 }
 
-// visit is the recursive function that supports walkPlan().
 func (v *planVisitor) visit(plan planNode) planNode {
+	__antithesis_instrumentation__.Notify(632711)
 	if v.err != nil {
+		__antithesis_instrumentation__.Notify(632714)
 		return plan
+	} else {
+		__antithesis_instrumentation__.Notify(632715)
 	}
+	__antithesis_instrumentation__.Notify(632712)
 
 	name := nodeName(plan)
 
 	if v.observer.replaceNode != nil {
+		__antithesis_instrumentation__.Notify(632716)
 		newNode, err := v.observer.replaceNode(v.ctx, name, plan)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(632718)
 			v.err = err
 			return plan
+		} else {
+			__antithesis_instrumentation__.Notify(632719)
 		}
+		__antithesis_instrumentation__.Notify(632717)
 		if newNode != nil {
+			__antithesis_instrumentation__.Notify(632720)
 			return newNode
+		} else {
+			__antithesis_instrumentation__.Notify(632721)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(632722)
 	}
+	__antithesis_instrumentation__.Notify(632713)
 	v.visitInternal(plan, name)
 	return plan
 }
 
-// visitConcrete is like visit, but provided for the case where a planNode is
-// trying to recurse into a concrete planNode type, and not a planNode
-// interface.
 func (v *planVisitor) visitConcrete(plan planNode) {
+	__antithesis_instrumentation__.Notify(632723)
 	if v.err != nil {
+		__antithesis_instrumentation__.Notify(632725)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(632726)
 	}
+	__antithesis_instrumentation__.Notify(632724)
 
 	name := nodeName(plan)
 	v.visitInternal(plan, name)
 }
 
 func (v *planVisitor) visitInternal(plan planNode, name string) {
+	__antithesis_instrumentation__.Notify(632727)
 	if v.err != nil {
+		__antithesis_instrumentation__.Notify(632732)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(632733)
 	}
+	__antithesis_instrumentation__.Notify(632728)
 	recurse := true
 
 	if v.observer.enterNode != nil {
+		__antithesis_instrumentation__.Notify(632734)
 		recurse, v.err = v.observer.enterNode(v.ctx, name, plan)
 		if v.err != nil {
+			__antithesis_instrumentation__.Notify(632735)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(632736)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(632737)
 	}
+	__antithesis_instrumentation__.Notify(632729)
 	if v.observer.leaveNode != nil {
+		__antithesis_instrumentation__.Notify(632738)
 		defer func() {
+			__antithesis_instrumentation__.Notify(632739)
 			if v.err != nil {
+				__antithesis_instrumentation__.Notify(632741)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(632742)
 			}
+			__antithesis_instrumentation__.Notify(632740)
 			v.err = v.observer.leaveNode(name, plan)
 		}()
+	} else {
+		__antithesis_instrumentation__.Notify(632743)
 	}
+	__antithesis_instrumentation__.Notify(632730)
 
 	if !recurse {
+		__antithesis_instrumentation__.Notify(632744)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(632745)
 	}
+	__antithesis_instrumentation__.Notify(632731)
 
 	switch n := plan.(type) {
 	case *valuesNode:
+		__antithesis_instrumentation__.Notify(632746)
 	case *scanNode:
+		__antithesis_instrumentation__.Notify(632747)
 
 	case *filterNode:
+		__antithesis_instrumentation__.Notify(632748)
 		n.source.plan = v.visit(n.source.plan)
 
 	case *renderNode:
+		__antithesis_instrumentation__.Notify(632749)
 		n.source.plan = v.visit(n.source.plan)
 
 	case *indexJoinNode:
+		__antithesis_instrumentation__.Notify(632750)
 		n.input = v.visit(n.input)
 
 	case *lookupJoinNode:
+		__antithesis_instrumentation__.Notify(632751)
 		n.input = v.visit(n.input)
 
 	case *vTableLookupJoinNode:
+		__antithesis_instrumentation__.Notify(632752)
 		n.input = v.visit(n.input)
 
 	case *zigzagJoinNode:
+		__antithesis_instrumentation__.Notify(632753)
 
 	case *applyJoinNode:
+		__antithesis_instrumentation__.Notify(632754)
 		n.input.plan = v.visit(n.input.plan)
 
 	case *joinNode:
+		__antithesis_instrumentation__.Notify(632755)
 		n.left.plan = v.visit(n.left.plan)
 		n.right.plan = v.visit(n.right.plan)
 
 	case *invertedFilterNode:
+		__antithesis_instrumentation__.Notify(632756)
 		n.input = v.visit(n.input)
 
 	case *invertedJoinNode:
+		__antithesis_instrumentation__.Notify(632757)
 		n.input = v.visit(n.input)
 
 	case *limitNode:
+		__antithesis_instrumentation__.Notify(632758)
 		n.plan = v.visit(n.plan)
 
 	case *max1RowNode:
+		__antithesis_instrumentation__.Notify(632759)
 		n.plan = v.visit(n.plan)
 
 	case *distinctNode:
+		__antithesis_instrumentation__.Notify(632760)
 		n.plan = v.visit(n.plan)
 
 	case *sortNode:
+		__antithesis_instrumentation__.Notify(632761)
 		n.plan = v.visit(n.plan)
 
 	case *topKNode:
+		__antithesis_instrumentation__.Notify(632762)
 		n.plan = v.visit(n.plan)
 
 	case *groupNode:
+		__antithesis_instrumentation__.Notify(632763)
 		n.plan = v.visit(n.plan)
 
 	case *windowNode:
+		__antithesis_instrumentation__.Notify(632764)
 		n.plan = v.visit(n.plan)
 
 	case *unionNode:
+		__antithesis_instrumentation__.Notify(632765)
 		n.left = v.visit(n.left)
 		n.right = v.visit(n.right)
 
 	case *splitNode:
+		__antithesis_instrumentation__.Notify(632766)
 		n.rows = v.visit(n.rows)
 
 	case *unsplitNode:
+		__antithesis_instrumentation__.Notify(632767)
 		n.rows = v.visit(n.rows)
 
 	case *relocateNode:
+		__antithesis_instrumentation__.Notify(632768)
 		n.rows = v.visit(n.rows)
 
 	case *relocateRange:
+		__antithesis_instrumentation__.Notify(632769)
 		n.rows = v.visit(n.rows)
 
 	case *insertNode, *insertFastPathNode:
+		__antithesis_instrumentation__.Notify(632770)
 		if ins, ok := n.(*insertNode); ok {
+			__antithesis_instrumentation__.Notify(632804)
 			ins.source = v.visit(ins.source)
+		} else {
+			__antithesis_instrumentation__.Notify(632805)
 		}
 
 	case *upsertNode:
+		__antithesis_instrumentation__.Notify(632771)
 		n.source = v.visit(n.source)
 
 	case *updateNode:
+		__antithesis_instrumentation__.Notify(632772)
 		n.source = v.visit(n.source)
 
 	case *deleteNode:
+		__antithesis_instrumentation__.Notify(632773)
 		n.source = v.visit(n.source)
 
 	case *deleteRangeNode:
+		__antithesis_instrumentation__.Notify(632774)
 
 	case *serializeNode:
+		__antithesis_instrumentation__.Notify(632775)
 		v.visitConcrete(n.source)
 
 	case *rowCountNode:
+		__antithesis_instrumentation__.Notify(632776)
 		v.visitConcrete(n.source)
 
 	case *createTableNode:
+		__antithesis_instrumentation__.Notify(632777)
 		if n.n.As() {
+			__antithesis_instrumentation__.Notify(632806)
 			n.sourcePlan = v.visit(n.sourcePlan)
+		} else {
+			__antithesis_instrumentation__.Notify(632807)
 		}
 
 	case *alterTenantSetClusterSettingNode:
+		__antithesis_instrumentation__.Notify(632778)
 	case *createViewNode:
+		__antithesis_instrumentation__.Notify(632779)
 	case *setVarNode:
+		__antithesis_instrumentation__.Notify(632780)
 	case *setClusterSettingNode:
+		__antithesis_instrumentation__.Notify(632781)
 	case *resetAllNode:
+		__antithesis_instrumentation__.Notify(632782)
 
 	case *delayedNode:
+		__antithesis_instrumentation__.Notify(632783)
 		if n.plan != nil {
+			__antithesis_instrumentation__.Notify(632808)
 			n.plan = v.visit(n.plan)
+		} else {
+			__antithesis_instrumentation__.Notify(632809)
 		}
 
 	case *explainVecNode:
-		// We check whether planNode is nil because the plan might be
-		// represented physically. We don't yet have a walker over such
-		// representation, so we simply short-circuit.
-		// TODO(yuzefovich): implement that walker and use it here.
+		__antithesis_instrumentation__.Notify(632784)
+
 		if n.plan.main.planNode == nil {
+			__antithesis_instrumentation__.Notify(632810)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(632811)
 		}
+		__antithesis_instrumentation__.Notify(632785)
 		n.plan.main.planNode = v.visit(n.plan.main.planNode)
 
 	case *explainDDLNode:
-		// We check whether planNode is nil because the plan might be
-		// represented physically. We don't yet have a walker over such
-		// representation, so we simply short-circuit.
-		// TODO(yuzefovich): implement that walker and use it here.
+		__antithesis_instrumentation__.Notify(632786)
+
 		if n.plan.main.planNode == nil {
+			__antithesis_instrumentation__.Notify(632812)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(632813)
 		}
+		__antithesis_instrumentation__.Notify(632787)
 		n.plan.main.planNode = v.visit(n.plan.main.planNode)
 
 	case *ordinalityNode:
+		__antithesis_instrumentation__.Notify(632788)
 		n.source = v.visit(n.source)
 
 	case *spoolNode:
+		__antithesis_instrumentation__.Notify(632789)
 		n.source = v.visit(n.source)
 
 	case *saveTableNode:
+		__antithesis_instrumentation__.Notify(632790)
 		n.source = v.visit(n.source)
 
 	case *showTraceReplicaNode:
+		__antithesis_instrumentation__.Notify(632791)
 		n.plan = v.visit(n.plan)
 
 	case *cancelQueriesNode:
+		__antithesis_instrumentation__.Notify(632792)
 		n.rows = v.visit(n.rows)
 
 	case *cancelSessionsNode:
+		__antithesis_instrumentation__.Notify(632793)
 		n.rows = v.visit(n.rows)
 
 	case *controlJobsNode:
+		__antithesis_instrumentation__.Notify(632794)
 		n.rows = v.visit(n.rows)
 
 	case *controlSchedulesNode:
+		__antithesis_instrumentation__.Notify(632795)
 		n.rows = v.visit(n.rows)
 
 	case *setZoneConfigNode:
+		__antithesis_instrumentation__.Notify(632796)
 
 	case *projectSetNode:
+		__antithesis_instrumentation__.Notify(632797)
 		n.source = v.visit(n.source)
 
 	case *rowSourceToPlanNode:
-		// No need to recurse into the original planNode since
-		// planNodeToRowSource on the other end of the adapter will take care of
-		// propagating signals via its own walker.
+		__antithesis_instrumentation__.Notify(632798)
 
 	case *errorIfRowsNode:
+		__antithesis_instrumentation__.Notify(632799)
 		n.plan = v.visit(n.plan)
 
 	case *scanBufferNode:
+		__antithesis_instrumentation__.Notify(632800)
 
 	case *bufferNode:
+		__antithesis_instrumentation__.Notify(632801)
 		n.plan = v.visit(n.plan)
 
 	case *recursiveCTENode:
+		__antithesis_instrumentation__.Notify(632802)
 		n.initial = v.visit(n.initial)
 
 	case *exportNode:
+		__antithesis_instrumentation__.Notify(632803)
 		n.source = v.visit(n.source)
 	}
 }
 
-// nodeName returns the name of the given planNode as string.  The
-// node's current state is taken into account, e.g. sortNode has
-// either name "sort" or "nosort" depending on whether sorting is
-// needed.
 func nodeName(plan planNode) string {
-	// Some nodes have custom names depending on attributes.
+	__antithesis_instrumentation__.Notify(632814)
+
 	switch n := plan.(type) {
 	case *scanNode:
+		__antithesis_instrumentation__.Notify(632817)
 		if n.reverse {
+			__antithesis_instrumentation__.Notify(632822)
 			return "revscan"
+		} else {
+			__antithesis_instrumentation__.Notify(632823)
 		}
 	case *unionNode:
+		__antithesis_instrumentation__.Notify(632818)
 		if n.emitAll {
+			__antithesis_instrumentation__.Notify(632824)
 			return "append"
+		} else {
+			__antithesis_instrumentation__.Notify(632825)
 		}
 
 	case *joinNode:
+		__antithesis_instrumentation__.Notify(632819)
 		if len(n.mergeJoinOrdering) > 0 {
+			__antithesis_instrumentation__.Notify(632826)
 			return "merge join"
+		} else {
+			__antithesis_instrumentation__.Notify(632827)
 		}
+		__antithesis_instrumentation__.Notify(632820)
 		if len(n.pred.leftEqualityIndices) == 0 {
+			__antithesis_instrumentation__.Notify(632828)
 			return "cross join"
+		} else {
+			__antithesis_instrumentation__.Notify(632829)
 		}
+		__antithesis_instrumentation__.Notify(632821)
 		return "hash join"
 	}
+	__antithesis_instrumentation__.Notify(632815)
 
 	name, ok := planNodeNames[reflect.TypeOf(plan)]
 	if !ok {
+		__antithesis_instrumentation__.Notify(632830)
 		panic(errors.AssertionFailedf("name missing for type %T", plan))
+	} else {
+		__antithesis_instrumentation__.Notify(632831)
 	}
+	__antithesis_instrumentation__.Notify(632816)
 
 	return name
 }
 
-// planNodeNames is the mapping from node type to strings.  The
-// strings are constant and not precomputed so that the type names can
-// be changed without changing the output of "EXPLAIN".
 var planNodeNames = map[reflect.Type]string{
 	reflect.TypeOf(&alterDatabaseOwnerNode{}):           "alter database owner",
 	reflect.TypeOf(&alterDatabaseAddRegionNode{}):       "alter database add region",

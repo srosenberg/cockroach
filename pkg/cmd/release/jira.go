@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -20,10 +12,8 @@ import (
 const jiraBaseURL = "https://cockroachlabs.atlassian.net/"
 const dryRunProject = "RE"
 
-// for DeployToClusterIssue
 const customFieldHasSLAKey = "customfield_10073"
 
-// Jira uses Wiki syntax, see https://jira.atlassian.com/secure/WikiRendererHelpAction.jspa?section=all
 const trackingIssueTemplate = `
 * Version: *{{ .Version }}*
 * SHA: [{{ .SHA }}|https://github.com/cockroachlabs/release-staging/commit/{{ .SHA }}]
@@ -95,32 +85,43 @@ type jiraIssue struct {
 	CustomFields jira.CustomFields
 }
 
-// newJiraClient returns jira.Client for username and password (API token).
-// To generate an API token, go to https://id.atlassian.com/manage-profile/security/api-tokens.
 func newJiraClient(baseURL string, username string, password string) (*jiraClient, error) {
+	__antithesis_instrumentation__.Notify(42738)
 	tp := jira.BasicAuthTransport{
 		Username: username,
 		Password: password,
 	}
 	client, err := jira.NewClient(tp.Client(), baseURL)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42740)
 		return nil, fmt.Errorf("cannot create Jira client: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42741)
 	}
+	__antithesis_instrumentation__.Notify(42739)
 	return &jiraClient{
 		client: client,
 	}, nil
 }
 
-// getIssueDetails stores a subset of details from jira.Issue into jiraIssue.
 func (j *jiraClient) getIssueDetails(issueID string) (jiraIssue, error) {
+	__antithesis_instrumentation__.Notify(42742)
 	issue, _, err := j.client.Issue.Get(issueID, nil)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42745)
 		return jiraIssue{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(42746)
 	}
+	__antithesis_instrumentation__.Notify(42743)
 	customFields, _, err := j.client.Issue.GetCustomFields(issueID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42747)
 		return jiraIssue{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(42748)
 	}
+	__antithesis_instrumentation__.Notify(42744)
 	return jiraIssue{
 		ID:           issue.ID,
 		Key:          issue.Key,
@@ -133,6 +134,7 @@ func (j *jiraClient) getIssueDetails(issueID string) (jiraIssue, error) {
 }
 
 func newIssue(details *jiraIssue) *jira.Issue {
+	__antithesis_instrumentation__.Notify(42749)
 	var issue jira.Issue
 	issue.Fields = &jira.IssueFields{}
 	issue.Fields.Project = jira.Project{
@@ -145,38 +147,49 @@ func newIssue(details *jiraIssue) *jira.Issue {
 	issue.Fields.Description = details.Description
 
 	if details.CustomFields != nil {
+		__antithesis_instrumentation__.Notify(42751)
 		issue.Fields.Unknowns = make(map[string]interface{})
 		for key, value := range details.CustomFields {
+			__antithesis_instrumentation__.Notify(42752)
 			issue.Fields.Unknowns[key] = map[string]string{"value": value}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(42753)
 	}
+	__antithesis_instrumentation__.Notify(42750)
 	return &issue
 }
 
 func (d jiraIssue) url() string {
+	__antithesis_instrumentation__.Notify(42754)
 	return fmt.Sprintf("%s/browse/%s", strings.TrimSuffix(jiraBaseURL, "/"), d.Key)
 }
 
-// createJiraIssue creates a **real** JIRA issue.
 func createJiraIssue(client *jiraClient, issue *jira.Issue) (jiraIssue, error) {
+	__antithesis_instrumentation__.Notify(42755)
 	newIssue, _, err := client.client.Issue.Create(issue)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42758)
 		return jiraIssue{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(42759)
 	}
+	__antithesis_instrumentation__.Notify(42756)
 	details, err := client.getIssueDetails(newIssue.ID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42760)
 		return jiraIssue{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(42761)
 	}
+	__antithesis_instrumentation__.Notify(42757)
 	return details, nil
 }
 
-// createTrackingIssue creates a release tracking issue.
-// See example ticket:
-// - https://cockroachlabs.atlassian.net/browse/REL-3
-// - https://cockroachlabs.atlassian.net/rest/api/2/issue/REL-3
 func createTrackingIssue(
 	client *jiraClient, release releaseInfo, sreIssue jiraIssue, dryRun bool,
 ) (jiraIssue, error) {
+	__antithesis_instrumentation__.Notify(42762)
 	templateArgs := trackingIssueTemplateArgs{
 		Version:  release.nextReleaseVersion,
 		Tag:      release.buildInfo.Tag,
@@ -185,19 +198,25 @@ func createTrackingIssue(
 	}
 	description, err := templateToText(trackingIssueTemplate, templateArgs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42765)
 		return jiraIssue{}, fmt.Errorf("cannot parse tracking issue template: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42766)
 	}
+	__antithesis_instrumentation__.Notify(42763)
 	summary := fmt.Sprintf("Release: %s", release.nextReleaseVersion)
 	projectKey := "RE"
 	if dryRun {
+		__antithesis_instrumentation__.Notify(42767)
 		projectKey = dryRunProject
+	} else {
+		__antithesis_instrumentation__.Notify(42768)
 	}
+	__antithesis_instrumentation__.Notify(42764)
 	issue := newIssue(&jiraIssue{
-		// TODO: remove the following when ready
-		// Before sending the post request, let's override
-		// the `REL` project with our test `RE` project.
+
 		ProjectKey: projectKey,
-		// TODO: switch to TypeName: "CRDB Release", which requires some fields to be set
+
 		TypeName:    "Task",
 		Summary:     summary,
 		Description: description,
@@ -205,34 +224,32 @@ func createTrackingIssue(
 	return createJiraIssue(client, issue)
 }
 
-// createSREIssue creates an SREOPS ticket to request release candidate qualification.
-// See example ticket:
-// - https://cockroachlabs.atlassian.net/browse/SREOPS-4037
-// - https://cockroachlabs.atlassian.net/rest/api/2/issue/SREOPS-4037
-// TODO(celia): [Future "week 0" work] We'll eventually want the ability to specify
-//  a qualification partition & friendly ID:
-// During the stability period, release managers may be qualifying multiple candidates
-// at the same time. If that's the case, release managers will want the ability to
-// explicitly specify which partition to use, so that we don't "overwrite" the
-// qualification of one release candidate by pushing a second release candidate
-// to the same cluster. Tracked in: https://cockroachlabs.atlassian.net/browse/RE-83
 func createSREIssue(client *jiraClient, release releaseInfo, dryRun bool) (jiraIssue, error) {
+	__antithesis_instrumentation__.Notify(42769)
 	templateArgs := sreIssueTemplateArgs{
 		Version: release.nextReleaseVersion,
 		Tag:     release.buildInfo.Tag,
 	}
 	description, err := templateToHTML(sreIssueTemplate, templateArgs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42772)
 		return jiraIssue{}, fmt.Errorf("cannot parse SRE issue template: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42773)
 	}
+	__antithesis_instrumentation__.Notify(42770)
 	projectKey := "SREOPS"
 	summary := fmt.Sprintf("Deploy %s to release qualification cluster", release.nextReleaseVersion)
 	customFields := make(jira.CustomFields)
 	customFields[customFieldHasSLAKey] = "Yes"
 	if dryRun {
+		__antithesis_instrumentation__.Notify(42774)
 		projectKey = dryRunProject
 		customFields = nil
+	} else {
+		__antithesis_instrumentation__.Notify(42775)
 	}
+	__antithesis_instrumentation__.Notify(42771)
 	issue := newIssue(&jiraIssue{
 		ProjectKey:   projectKey,
 		TypeName:     "Task",

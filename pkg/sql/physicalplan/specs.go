@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package physicalplan
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sync"
@@ -19,27 +11,31 @@ import (
 
 var flowSpecPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(562534)
 		return &execinfrapb.FlowSpec{}
 	},
 }
 
-// NewFlowSpec returns a new FlowSpec, which may have non-zero capacity in its
-// slice fields.
 func NewFlowSpec(flowID execinfrapb.FlowID, gateway base.SQLInstanceID) *execinfrapb.FlowSpec {
+	__antithesis_instrumentation__.Notify(562535)
 	spec := flowSpecPool.Get().(*execinfrapb.FlowSpec)
 	spec.FlowID = flowID
 	spec.Gateway = gateway
 	return spec
 }
 
-// ReleaseFlowSpec returns this FlowSpec back to the pool of FlowSpecs. It may
-// not be used again after this call.
 func ReleaseFlowSpec(spec *execinfrapb.FlowSpec) {
+	__antithesis_instrumentation__.Notify(562536)
 	for i := range spec.Processors {
+		__antithesis_instrumentation__.Notify(562538)
 		if tr := spec.Processors[i].Core.TableReader; tr != nil {
+			__antithesis_instrumentation__.Notify(562539)
 			releaseTableReaderSpec(tr)
+		} else {
+			__antithesis_instrumentation__.Notify(562540)
 		}
 	}
+	__antithesis_instrumentation__.Notify(562537)
 	*spec = execinfrapb.FlowSpec{
 		Processors: spec.Processors[:0],
 	}
@@ -48,18 +44,18 @@ func ReleaseFlowSpec(spec *execinfrapb.FlowSpec) {
 
 var trSpecPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(562541)
 		return &execinfrapb.TableReaderSpec{}
 	},
 }
 
-// NewTableReaderSpec returns a new TableReaderSpec.
 func NewTableReaderSpec() *execinfrapb.TableReaderSpec {
+	__antithesis_instrumentation__.Notify(562542)
 	return trSpecPool.Get().(*execinfrapb.TableReaderSpec)
 }
 
-// releaseTableReaderSpec puts this TableReaderSpec back into its sync pool. It
-// may not be used again after Release returns.
 func releaseTableReaderSpec(s *execinfrapb.TableReaderSpec) {
+	__antithesis_instrumentation__.Notify(562543)
 	*s = execinfrapb.TableReaderSpec{}
 	trSpecPool.Put(s)
 }

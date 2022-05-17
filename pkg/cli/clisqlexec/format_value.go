@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package clisqlexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -29,97 +21,179 @@ import (
 	"github.com/lib/pq"
 )
 
-func isNotPrintableASCII(r rune) bool { return r < 0x20 || r > 0x7e || r == '"' || r == '\\' }
-func isNotGraphicUnicode(r rune) bool { return !unicode.IsGraphic(r) }
+func isNotPrintableASCII(r rune) bool {
+	__antithesis_instrumentation__.Notify(29206)
+	return r < 0x20 || func() bool {
+		__antithesis_instrumentation__.Notify(29207)
+		return r > 0x7e == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(29208)
+		return r == '"' == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(29209)
+		return r == '\\' == true
+	}() == true
+}
+func isNotGraphicUnicode(r rune) bool {
+	__antithesis_instrumentation__.Notify(29210)
+	return !unicode.IsGraphic(r)
+}
 func isNotGraphicUnicodeOrTabOrNewline(r rune) bool {
-	return r != '\t' && r != '\n' && !unicode.IsGraphic(r)
+	__antithesis_instrumentation__.Notify(29211)
+	return r != '\t' && func() bool {
+		__antithesis_instrumentation__.Notify(29212)
+		return r != '\n' == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(29213)
+		return !unicode.IsGraphic(r) == true
+	}() == true
 }
 
-// FormatVal formats a value retrieved by a SQL driver into a string
-// suitable for displaying to the user.
 func FormatVal(
 	val driver.Value, colType string, showPrintableUnicode bool, showNewLinesAndTabs bool,
 ) string {
+	__antithesis_instrumentation__.Notify(29214)
 	if b, ok := val.([]byte); ok {
-		if strings.HasPrefix(colType, "_") && len(b) > 0 && b[0] == '{' {
+		__antithesis_instrumentation__.Notify(29217)
+		if strings.HasPrefix(colType, "_") && func() bool {
+			__antithesis_instrumentation__.Notify(29219)
+			return len(b) > 0 == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(29220)
+			return b[0] == '{' == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(29221)
 			return formatArray(b, colType[1:], showPrintableUnicode, showNewLinesAndTabs)
+		} else {
+			__antithesis_instrumentation__.Notify(29222)
 		}
+		__antithesis_instrumentation__.Notify(29218)
 
-		// Names, records, and user-defined types should all be displayed as strings.
-		if colType == "NAME" || colType == "RECORD" || colType == "" {
+		if colType == "NAME" || func() bool {
+			__antithesis_instrumentation__.Notify(29223)
+			return colType == "RECORD" == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(29224)
+			return colType == "" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(29225)
 			val = string(b)
 			colType = "VARCHAR"
+		} else {
+			__antithesis_instrumentation__.Notify(29226)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(29227)
 	}
+	__antithesis_instrumentation__.Notify(29215)
 
 	switch t := val.(type) {
 	case nil:
+		__antithesis_instrumentation__.Notify(29228)
 		return "NULL"
 
 	case float64:
+		__antithesis_instrumentation__.Notify(29229)
 		width := 64
 		if colType == "FLOAT4" {
+			__antithesis_instrumentation__.Notify(29238)
 			width = 32
+		} else {
+			__antithesis_instrumentation__.Notify(29239)
 		}
+		__antithesis_instrumentation__.Notify(29230)
 		if math.IsInf(t, 1) {
+			__antithesis_instrumentation__.Notify(29240)
 			return "Infinity"
-		} else if math.IsInf(t, -1) {
-			return "-Infinity"
+		} else {
+			__antithesis_instrumentation__.Notify(29241)
+			if math.IsInf(t, -1) {
+				__antithesis_instrumentation__.Notify(29242)
+				return "-Infinity"
+			} else {
+				__antithesis_instrumentation__.Notify(29243)
+			}
 		}
+		__antithesis_instrumentation__.Notify(29231)
 		return strconv.FormatFloat(t, 'g', -1, width)
 
 	case string:
+		__antithesis_instrumentation__.Notify(29232)
 		if showPrintableUnicode {
+			__antithesis_instrumentation__.Notify(29244)
 			pred := isNotGraphicUnicode
 			if showNewLinesAndTabs {
+				__antithesis_instrumentation__.Notify(29246)
 				pred = isNotGraphicUnicodeOrTabOrNewline
+			} else {
+				__antithesis_instrumentation__.Notify(29247)
 			}
-			if utf8.ValidString(t) && strings.IndexFunc(t, pred) == -1 {
+			__antithesis_instrumentation__.Notify(29245)
+			if utf8.ValidString(t) && func() bool {
+				__antithesis_instrumentation__.Notify(29248)
+				return strings.IndexFunc(t, pred) == -1 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(29249)
 				return t
+			} else {
+				__antithesis_instrumentation__.Notify(29250)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(29251)
 			if strings.IndexFunc(t, isNotPrintableASCII) == -1 {
+				__antithesis_instrumentation__.Notify(29252)
 				return t
+			} else {
+				__antithesis_instrumentation__.Notify(29253)
 			}
 		}
+		__antithesis_instrumentation__.Notify(29233)
 		s := fmt.Sprintf("%+q", t)
-		// Strip the start and final quotes. The surrounding display
-		// format (e.g. CSV/TSV) will add its own quotes.
+
 		return s[1 : len(s)-1]
 
 	case []byte:
-		// Format the bytes as per bytea_output = escape.
-		//
-		// We use the "escape" format here because it enables printing
-		// readable strings as-is -- the default hex format would always
-		// render as hexadecimal digits. The escape format is also more
-		// compact.
-		//
-		// TODO(knz): this formatting is unfortunate/incorrect, and exists
-		// only because lib/pq incorrectly interprets the bytes received
-		// from the server. The proper behavior would be for the driver to
-		// not interpret the bytes and for us here to print that as-is, so
-		// that we can let the user see and control the result using
-		// `bytea_output`.
+		__antithesis_instrumentation__.Notify(29234)
+
 		var buf bytes.Buffer
 		lexbase.EncodeSQLBytesInner(&buf, string(t))
 		return buf.String()
 
 	case time.Time:
+		__antithesis_instrumentation__.Notify(29235)
 		tfmt, ok := timeOutputFormats[colType]
 		if !ok {
-			// Some unknown/new time-like format.
+			__antithesis_instrumentation__.Notify(29254)
+
 			tfmt = timeutil.FullTimeFormat
+		} else {
+			__antithesis_instrumentation__.Notify(29255)
 		}
-		if tfmt == timeutil.TimestampWithTZFormat || tfmt == timeutil.TimeWithTZFormat {
+		__antithesis_instrumentation__.Notify(29236)
+		if tfmt == timeutil.TimestampWithTZFormat || func() bool {
+			__antithesis_instrumentation__.Notify(29256)
+			return tfmt == timeutil.TimeWithTZFormat == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(29257)
 			if _, offsetSeconds := t.Zone(); offsetSeconds%60 != 0 {
+				__antithesis_instrumentation__.Notify(29258)
 				tfmt += ":00:00"
-			} else if offsetSeconds%3600 != 0 {
-				tfmt += ":00"
+			} else {
+				__antithesis_instrumentation__.Notify(29259)
+				if offsetSeconds%3600 != 0 {
+					__antithesis_instrumentation__.Notify(29260)
+					tfmt += ":00"
+				} else {
+					__antithesis_instrumentation__.Notify(29261)
+				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(29262)
 		}
+		__antithesis_instrumentation__.Notify(29237)
 		return t.Format(tfmt)
 	}
+	__antithesis_instrumentation__.Notify(29216)
 
 	return fmt.Sprint(val)
 }
@@ -127,72 +201,77 @@ func FormatVal(
 func formatArray(
 	b []byte, colType string, showPrintableUnicode bool, showNewLinesAndTabs bool,
 ) string {
-	// backingArray is the array we're going to parse the server data
-	// into.
+	__antithesis_instrumentation__.Notify(29263)
+
 	var backingArray interface{}
-	// parsingArray is a helper structure provided by lib/pq to parse
-	// arrays.
+
 	var parsingArray gosql.Scanner
 
-	// lib.pq has different array parsers for special value types.
-	//
-	// TODO(knz): This would better use a general-purpose parser
-	// using the OID to look up an array parser in crdb's sql package.
-	// However, unfortunately the OID is hidden from us.
 	switch colType {
 	case "BOOL":
+		__antithesis_instrumentation__.Notify(29267)
 		boolArray := []bool{}
 		backingArray = &boolArray
 		parsingArray = (*pq.BoolArray)(&boolArray)
 	case "FLOAT4", "FLOAT8":
+		__antithesis_instrumentation__.Notify(29268)
 		floatArray := []float64{}
 		backingArray = &floatArray
 		parsingArray = (*pq.Float64Array)(&floatArray)
 	case "INT2", "INT4", "INT8", "OID":
+		__antithesis_instrumentation__.Notify(29269)
 		intArray := []int64{}
 		backingArray = &intArray
 		parsingArray = (*pq.Int64Array)(&intArray)
 	case "TEXT", "VARCHAR", "NAME", "CHAR", "BPCHAR", "RECORD":
+		__antithesis_instrumentation__.Notify(29270)
 		stringArray := []string{}
 		backingArray = &stringArray
 		parsingArray = (*pq.StringArray)(&stringArray)
 	default:
+		__antithesis_instrumentation__.Notify(29271)
 		genArray := [][]byte{}
 		backingArray = &genArray
 		parsingArray = &pq.GenericArray{A: &genArray}
 	}
+	__antithesis_instrumentation__.Notify(29264)
 
-	// Now ask the pq array parser to convert the byte slice
-	// from the server into a Go array.
 	if err := parsingArray.Scan(b); err != nil {
-		// A parsing failure is not a catastrophe; we can still print out
-		// the array as a byte slice. This will do in many cases.
-		return FormatVal(b, "BYTEA", showPrintableUnicode, showNewLinesAndTabs)
-	}
+		__antithesis_instrumentation__.Notify(29272)
 
-	// We have a go array in "backingArray". Now print it out.
+		return FormatVal(b, "BYTEA", showPrintableUnicode, showNewLinesAndTabs)
+	} else {
+		__antithesis_instrumentation__.Notify(29273)
+	}
+	__antithesis_instrumentation__.Notify(29265)
+
 	var buf strings.Builder
 	buf.WriteByte('{')
-	comma := "" // delimiter
+	comma := ""
 	v := reflect.ValueOf(backingArray).Elem()
 	for i := 0; i < v.Len(); i++ {
+		__antithesis_instrumentation__.Notify(29274)
 		buf.WriteString(comma)
 
-		// Access the i-th element in the backingArray.
 		arrayVal := driver.Value(v.Index(i).Interface())
-		// Format the value recursively into a string.
+
 		vs := FormatVal(arrayVal, colType, showPrintableUnicode, showNewLinesAndTabs)
 
-		// If the value contains special characters or a comma, enclose in double quotes.
-		// Also escape the special characters.
-		if strings.IndexByte(vs, ',') >= 0 || reArrayStringEscape.MatchString(vs) {
+		if strings.IndexByte(vs, ',') >= 0 || func() bool {
+			__antithesis_instrumentation__.Notify(29276)
+			return reArrayStringEscape.MatchString(vs) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(29277)
 			vs = "\"" + reArrayStringEscape.ReplaceAllString(vs, "\\$1") + "\""
+		} else {
+			__antithesis_instrumentation__.Notify(29278)
 		}
+		__antithesis_instrumentation__.Notify(29275)
 
-		// Add the string for that one value to the output array representation.
 		buf.WriteString(vs)
 		comma = ","
 	}
+	__antithesis_instrumentation__.Notify(29266)
 	buf.WriteByte('}')
 	return buf.String()
 }

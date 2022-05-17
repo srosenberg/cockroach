@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descmetadata
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,8 +19,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlutil"
 )
 
-// metadataUpdater which implements scexec.MetaDataUpdater that is used to update
-// comments on different schema objects.
 type metadataUpdater struct {
 	txn               *kv.Txn
 	ie                sqlutil.InternalExecutor
@@ -36,10 +26,10 @@ type metadataUpdater struct {
 	cacheEnabled      bool
 }
 
-// UpsertDescriptorComment implements scexec.DescriptorMetadataUpdater.
 func (mu metadataUpdater) UpsertDescriptorComment(
 	id int64, subID int64, commentType keys.CommentType, comment string,
 ) error {
+	__antithesis_instrumentation__.Notify(466012)
 	_, err := mu.ie.ExecEx(context.Background(),
 		fmt.Sprintf("upsert-%s-comment", commentType),
 		mu.txn,
@@ -53,10 +43,10 @@ func (mu metadataUpdater) UpsertDescriptorComment(
 	return err
 }
 
-// DeleteDescriptorComment implements scexec.DescriptorMetadataUpdater.
 func (mu metadataUpdater) DeleteDescriptorComment(
 	id int64, subID int64, commentType keys.CommentType,
 ) error {
+	__antithesis_instrumentation__.Notify(466013)
 	_, err := mu.ie.ExecEx(context.Background(),
 		fmt.Sprintf("delete-%s-comment", commentType),
 		mu.txn,
@@ -70,11 +60,15 @@ func (mu metadataUpdater) DeleteDescriptorComment(
 	return err
 }
 
-// DeleteAllCommentsForTables implements scexec.DescriptorMetadataUpdater.
 func (mu metadataUpdater) DeleteAllCommentsForTables(idSet catalog.DescriptorIDSet) error {
+	__antithesis_instrumentation__.Notify(466014)
 	if idSet.Empty() {
+		__antithesis_instrumentation__.Notify(466017)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(466018)
 	}
+	__antithesis_instrumentation__.Notify(466015)
 	var buf strings.Builder
 	ids := idSet.Ordered()
 	_, _ = fmt.Fprintf(&buf, `
@@ -85,8 +79,10 @@ DELETE FROM system.comments
 		keys.IndexCommentType, ids[0],
 	)
 	for _, id := range ids[1:] {
+		__antithesis_instrumentation__.Notify(466019)
 		_, _ = fmt.Fprintf(&buf, ", %d", id)
 	}
+	__antithesis_instrumentation__.Notify(466016)
 	buf.WriteString(")")
 	_, err := mu.ie.ExecEx(context.Background(),
 		"delete-all-comments-for-tables",
@@ -97,22 +93,22 @@ DELETE FROM system.comments
 	return err
 }
 
-// UpsertConstraintComment implements scexec.CommentUpdater.
 func (mu metadataUpdater) UpsertConstraintComment(
 	tableID descpb.ID, constraintID descpb.ConstraintID, comment string,
 ) error {
+	__antithesis_instrumentation__.Notify(466020)
 	return mu.UpsertDescriptorComment(int64(tableID), int64(constraintID), keys.ConstraintCommentType, comment)
 }
 
-// DeleteConstraintComment implements scexec.DescriptorMetadataUpdater.
 func (mu metadataUpdater) DeleteConstraintComment(
 	tableID descpb.ID, constraintID descpb.ConstraintID,
 ) error {
+	__antithesis_instrumentation__.Notify(466021)
 	return mu.DeleteDescriptorComment(int64(tableID), int64(constraintID), keys.ConstraintCommentType)
 }
 
-// DeleteDatabaseRoleSettings implement scexec.DescriptorMetaDataUpdater.
 func (mu metadataUpdater) DeleteDatabaseRoleSettings(ctx context.Context, dbID descpb.ID) error {
+	__antithesis_instrumentation__.Notify(466022)
 	rowsDeleted, err := mu.ie.ExecEx(ctx,
 		"delete-db-role-setting",
 		mu.txn,
@@ -124,18 +120,29 @@ func (mu metadataUpdater) DeleteDatabaseRoleSettings(ctx context.Context, dbID d
 		dbID,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(466025)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(466026)
 	}
-	// If the cache is off or if no rows changed, there's no need to bump the
-	// table version.
-	if !mu.cacheEnabled || rowsDeleted == 0 {
+	__antithesis_instrumentation__.Notify(466023)
+
+	if !mu.cacheEnabled || func() bool {
+		__antithesis_instrumentation__.Notify(466027)
+		return rowsDeleted == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(466028)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(466029)
 	}
-	// Bump the table version for the role settings table when we modify it.
+	__antithesis_instrumentation__.Notify(466024)
+
 	return mu.collectionFactory.Txn(ctx,
 		mu.ie,
 		mu.txn.DB(),
 		func(ctx context.Context, txn *kv.Txn, descriptors *descs.Collection) error {
+			__antithesis_instrumentation__.Notify(466030)
 			desc, err := descriptors.GetMutableTableByID(
 				ctx,
 				txn,
@@ -147,17 +154,21 @@ func (mu metadataUpdater) DeleteDatabaseRoleSettings(ctx context.Context, dbID d
 					},
 				})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(466032)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(466033)
 			}
+			__antithesis_instrumentation__.Notify(466031)
 			desc.MaybeIncrementVersion()
-			return descriptors.WriteDesc(ctx, false /*kvTrace*/, desc, txn)
+			return descriptors.WriteDesc(ctx, false, desc, txn)
 		})
 }
 
-// SwapDescriptorSubComment implements scexec.DescriptorMetadataUpdater.
 func (mu metadataUpdater) SwapDescriptorSubComment(
 	id int64, oldSubID int64, newSubID int64, commentType keys.CommentType,
 ) error {
+	__antithesis_instrumentation__.Notify(466034)
 	_, err := mu.ie.ExecEx(context.Background(),
 		fmt.Sprintf("upsert-%s-comment", commentType),
 		mu.txn,
@@ -172,8 +183,8 @@ func (mu metadataUpdater) SwapDescriptorSubComment(
 	return err
 }
 
-// DeleteSchedule implement scexec.DescriptorMetadataUpdater.
 func (mu metadataUpdater) DeleteSchedule(ctx context.Context, scheduleID int64) error {
+	__antithesis_instrumentation__.Notify(466035)
 	_, err := mu.ie.ExecEx(
 		ctx,
 		"delete-schedule",

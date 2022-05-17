@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package settings
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,14 +11,8 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// MaxSettings is the maximum number of settings that the system supports.
-// Exported for tests.
 const MaxSettings = 511
 
-// Values is a container that stores values for all registered settings.
-// Each setting is assigned a unique slot (up to MaxSettings).
-// Note that slot indices are 1-based (this is to trigger panics if an
-// uninitialized slot index is used).
 type Values struct {
 	container valuesContainer
 
@@ -35,19 +21,15 @@ type Values struct {
 	defaultOverridesMu struct {
 		syncutil.Mutex
 
-		// defaultOverrides maintains the set of overridden default values (see
-		// Override()).
 		defaultOverrides map[slotIdx]interface{}
 	}
 
 	changeMu struct {
 		syncutil.Mutex
-		// NB: any in place modification to individual slices must also hold the
-		// lock, e.g. if we ever add RemoveOnChange or something.
+
 		onChange [MaxSettings][]func(ctx context.Context)
 	}
-	// opaque is an arbitrary object that can be set by a higher layer to make it
-	// accessible from certain callbacks (like state machine transformers).
+
 	opaque interface{}
 }
 
@@ -57,139 +39,164 @@ type valuesContainer struct {
 	intVals     [numSlots]int64
 	genericVals [numSlots]atomic.Value
 
-	// If forbidden[slot] is true, that setting is not allowed to be used from the
-	// current context (i.e. it is a SystemOnly setting and the container is for a
-	// tenant). Reading or writing such a setting causes panics in test builds.
 	forbidden [numSlots]bool
 }
 
 func (c *valuesContainer) setGenericVal(slot slotIdx, newVal interface{}) {
+	__antithesis_instrumentation__.Notify(240180)
 	if !c.checkForbidden(slot) {
+		__antithesis_instrumentation__.Notify(240182)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(240183)
 	}
+	__antithesis_instrumentation__.Notify(240181)
 	c.genericVals[slot].Store(newVal)
 }
 
 func (c *valuesContainer) setInt64Val(slot slotIdx, newVal int64) (changed bool) {
+	__antithesis_instrumentation__.Notify(240184)
 	if !c.checkForbidden(slot) {
+		__antithesis_instrumentation__.Notify(240186)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(240187)
 	}
+	__antithesis_instrumentation__.Notify(240185)
 	return atomic.SwapInt64(&c.intVals[slot], newVal) != newVal
 }
 
 func (c *valuesContainer) getInt64(slot slotIdx) int64 {
+	__antithesis_instrumentation__.Notify(240188)
 	c.checkForbidden(slot)
 	return atomic.LoadInt64(&c.intVals[slot])
 }
 
 func (c *valuesContainer) getGeneric(slot slotIdx) interface{} {
+	__antithesis_instrumentation__.Notify(240189)
 	c.checkForbidden(slot)
 	return c.genericVals[slot].Load()
 }
 
-// checkForbidden checks if the setting in the given slot is allowed to be used
-// from the current context. If not, it panics in test builds and returns false
-// in non-test builds.
 func (c *valuesContainer) checkForbidden(slot slotIdx) bool {
+	__antithesis_instrumentation__.Notify(240190)
 	if c.forbidden[slot] {
+		__antithesis_instrumentation__.Notify(240192)
 		if buildutil.CrdbTestBuild {
+			__antithesis_instrumentation__.Notify(240194)
 			panic(errors.AssertionFailedf("attempted to set forbidden setting %s", slotTable[slot].Key()))
+		} else {
+			__antithesis_instrumentation__.Notify(240195)
 		}
+		__antithesis_instrumentation__.Notify(240193)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(240196)
 	}
+	__antithesis_instrumentation__.Notify(240191)
 	return true
 }
 
 type testOpaqueType struct{}
 
-// TestOpaque can be passed to Values.Init when we are testing the settings
-// infrastructure.
 var TestOpaque interface{} = testOpaqueType{}
 
-// Init must be called before using a Values instance; it initializes all
-// variables to their defaults.
-//
-// The opaque argument can be retrieved later via Opaque().
 func (sv *Values) Init(ctx context.Context, opaque interface{}) {
+	__antithesis_instrumentation__.Notify(240197)
 	sv.opaque = opaque
 	for _, s := range registry {
+		__antithesis_instrumentation__.Notify(240198)
 		s.setToDefault(ctx, sv)
 	}
 }
 
-// SetNonSystemTenant marks this container as pertaining to a non-system tenant,
-// after which use of SystemOnly values is disallowed.
 func (sv *Values) SetNonSystemTenant() {
+	__antithesis_instrumentation__.Notify(240199)
 	sv.nonSystemTenant = true
 	for slot, setting := range slotTable {
-		if setting != nil && setting.Class() == SystemOnly {
+		__antithesis_instrumentation__.Notify(240200)
+		if setting != nil && func() bool {
+			__antithesis_instrumentation__.Notify(240201)
+			return setting.Class() == SystemOnly == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(240202)
 			sv.container.forbidden[slot] = true
+		} else {
+			__antithesis_instrumentation__.Notify(240203)
 		}
 	}
 }
 
-// NonSystemTenant returns true if this container is for a non-system tenant
-// (i.e. SetNonSystemTenant() was called).
 func (sv *Values) NonSystemTenant() bool {
+	__antithesis_instrumentation__.Notify(240204)
 	return sv.nonSystemTenant
 }
 
-// Opaque returns the argument passed to Init.
 func (sv *Values) Opaque() interface{} {
+	__antithesis_instrumentation__.Notify(240205)
 	return sv.opaque
 }
 
 func (sv *Values) settingChanged(ctx context.Context, slot slotIdx) {
+	__antithesis_instrumentation__.Notify(240206)
 	sv.changeMu.Lock()
 	funcs := sv.changeMu.onChange[slot]
 	sv.changeMu.Unlock()
 	for _, fn := range funcs {
+		__antithesis_instrumentation__.Notify(240207)
 		fn(ctx)
 	}
 }
 
 func (sv *Values) setInt64(ctx context.Context, slot slotIdx, newVal int64) {
+	__antithesis_instrumentation__.Notify(240208)
 	if sv.container.setInt64Val(slot, newVal) {
+		__antithesis_instrumentation__.Notify(240209)
 		sv.settingChanged(ctx, slot)
+	} else {
+		__antithesis_instrumentation__.Notify(240210)
 	}
 }
 
-// setDefaultOverride overrides the default value for the respective setting to
-// newVal.
 func (sv *Values) setDefaultOverride(slot slotIdx, newVal interface{}) {
+	__antithesis_instrumentation__.Notify(240211)
 	sv.defaultOverridesMu.Lock()
 	defer sv.defaultOverridesMu.Unlock()
 	if sv.defaultOverridesMu.defaultOverrides == nil {
+		__antithesis_instrumentation__.Notify(240213)
 		sv.defaultOverridesMu.defaultOverrides = make(map[slotIdx]interface{})
+	} else {
+		__antithesis_instrumentation__.Notify(240214)
 	}
+	__antithesis_instrumentation__.Notify(240212)
 	sv.defaultOverridesMu.defaultOverrides[slot] = newVal
 }
 
-// getDefaultOverrides checks whether there's a default override for slotIdx-1
-// and returns it (or nil if there is no override).
 func (sv *Values) getDefaultOverride(slot slotIdx) interface{} {
+	__antithesis_instrumentation__.Notify(240215)
 	sv.defaultOverridesMu.Lock()
 	defer sv.defaultOverridesMu.Unlock()
 	return sv.defaultOverridesMu.defaultOverrides[slot]
 }
 
 func (sv *Values) setGeneric(ctx context.Context, slot slotIdx, newVal interface{}) {
+	__antithesis_instrumentation__.Notify(240216)
 	sv.container.setGenericVal(slot, newVal)
 	sv.settingChanged(ctx, slot)
 }
 
 func (sv *Values) getInt64(slot slotIdx) int64 {
+	__antithesis_instrumentation__.Notify(240217)
 	return sv.container.getInt64(slot)
 }
 
 func (sv *Values) getGeneric(slot slotIdx) interface{} {
+	__antithesis_instrumentation__.Notify(240218)
 	return sv.container.getGeneric(slot)
 }
 
-// setOnChange installs a callback to be called when a setting's value changes.
-// `fn` should avoid doing long-running or blocking work as it is called on the
-// goroutine which handles all settings updates.
 func (sv *Values) setOnChange(slot slotIdx, fn func(ctx context.Context)) {
+	__antithesis_instrumentation__.Notify(240219)
 	sv.changeMu.Lock()
 	sv.changeMu.onChange[slot] = append(sv.changeMu.onChange[slot], fn)
 	sv.changeMu.Unlock()

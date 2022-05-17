@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package blobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,25 +10,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/ioctx"
 )
 
-// Within the blob service, streaming is used in two functions:
-//   - GetStream, streaming from server to client
-//   - PutStream, streaming from client to server
-// These functions are used to read or write files on a remote node.
-// The io.ReadCloser we implement here are used on the _receiver's_
-// side, to read from either Blob_GetStreamClient or Blob_PutStreamServer.
-// The function streamContent() is used on the _sender's_ side to split
-// the content and send it using Blob_GetStreamServer or Blob_PutStreamClient.
-
-// chunkSize was decided to be 128K after running an experiment benchmarking
-// ReadFile and WriteFile. It seems like the benefits of streaming do not appear
-// until files of 1 MB or larger, and for those files, 128K chunks are optimal.
-// For ReadFile, larger chunks are more efficient but the gains are not as significant
-// past 128K. For WriteFile, 128K chunks perform best, and past that, performance
-// starts decreasing.
 var chunkSize = 128 * 1 << 10
 
-// blobStreamReader implements a ReadCloser which receives
-// gRPC streaming messages.
 var _ ioctx.ReadCloserCtx = &blobStreamReader{}
 
 type streamReceiver interface {
@@ -44,28 +19,24 @@ type streamReceiver interface {
 	Recv() (*blobspb.StreamChunk, error)
 }
 
-// nopSendAndClose creates a GetStreamClient that has a nop SendAndClose function.
-// This is needed as Blob_GetStreamClient does not have a Close() function, whereas
-// the other sender, Blob_PutStreamServer, does.
 type nopSendAndClose struct {
 	blobspb.Blob_GetStreamClient
 }
 
 func (*nopSendAndClose) SendAndClose(*blobspb.StreamResponse) error {
+	__antithesis_instrumentation__.Notify(3385)
 	return nil
 }
 
-// newGetStreamReader creates an io.ReadCloser that uses gRPC's streaming API
-// to read chunks of data.
 func newGetStreamReader(client blobspb.Blob_GetStreamClient) ioctx.ReadCloserCtx {
+	__antithesis_instrumentation__.Notify(3386)
 	return &blobStreamReader{
 		stream: &nopSendAndClose{client},
 	}
 }
 
-// newPutStreamReader creates an io.ReadCloser that uses gRPC's streaming API
-// to read chunks of data.
 func newPutStreamReader(client blobspb.Blob_PutStreamServer) ioctx.ReadCloserCtx {
+	__antithesis_instrumentation__.Notify(3387)
 	return &blobStreamReader{stream: client}
 }
 
@@ -77,47 +48,74 @@ type blobStreamReader struct {
 }
 
 func (r *blobStreamReader) Read(ctx context.Context, out []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(3388)
 	if r.EOFReached {
+		__antithesis_instrumentation__.Notify(3392)
 		return 0, io.EOF
+	} else {
+		__antithesis_instrumentation__.Notify(3393)
 	}
+	__antithesis_instrumentation__.Notify(3389)
 
 	offset := 0
-	// Use the last payload.
+
 	if r.lastPayload != nil {
+		__antithesis_instrumentation__.Notify(3394)
 		offset = len(r.lastPayload) - r.lastOffset
 		if len(out) < offset {
+			__antithesis_instrumentation__.Notify(3396)
 			copy(out, r.lastPayload[r.lastOffset:])
 			r.lastOffset += len(out)
 			return len(out), nil
+		} else {
+			__antithesis_instrumentation__.Notify(3397)
 		}
+		__antithesis_instrumentation__.Notify(3395)
 		copy(out[:offset], r.lastPayload[r.lastOffset:])
 		r.lastPayload = nil
+	} else {
+		__antithesis_instrumentation__.Notify(3398)
 	}
+	__antithesis_instrumentation__.Notify(3390)
 	for offset < len(out) {
+		__antithesis_instrumentation__.Notify(3399)
 		chunk, err := r.stream.Recv()
 		if err == io.EOF {
+			__antithesis_instrumentation__.Notify(3403)
 			r.EOFReached = true
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(3404)
 		}
+		__antithesis_instrumentation__.Notify(3400)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(3405)
 			return offset, err
+		} else {
+			__antithesis_instrumentation__.Notify(3406)
 		}
+		__antithesis_instrumentation__.Notify(3401)
 		var lenToWrite int
 		if len(out)-offset >= len(chunk.Payload) {
+			__antithesis_instrumentation__.Notify(3407)
 			lenToWrite = len(chunk.Payload)
 		} else {
+			__antithesis_instrumentation__.Notify(3408)
 			lenToWrite = len(out) - offset
-			// Need to cache payload.
+
 			r.lastPayload = chunk.Payload
 			r.lastOffset = lenToWrite
 		}
+		__antithesis_instrumentation__.Notify(3402)
 		copy(out[offset:offset+lenToWrite], chunk.Payload[:lenToWrite])
 		offset += lenToWrite
 	}
+	__antithesis_instrumentation__.Notify(3391)
 	return offset, nil
 }
 
 func (r *blobStreamReader) Close(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(3409)
 	return r.stream.SendAndClose(&blobspb.StreamResponse{})
 }
 
@@ -125,23 +123,33 @@ type streamSender interface {
 	Send(*blobspb.StreamChunk) error
 }
 
-// streamContent splits the content into chunks, of size `chunkSize`,
-// and streams those chunks to sender.
-// Note: This does not close the stream.
 func streamContent(ctx context.Context, sender streamSender, content ioctx.ReaderCtx) error {
+	__antithesis_instrumentation__.Notify(3410)
 	payload := make([]byte, chunkSize)
 	var chunk blobspb.StreamChunk
 	for {
+		__antithesis_instrumentation__.Notify(3411)
 		n, err := content.Read(ctx, payload)
 		if n > 0 {
+			__antithesis_instrumentation__.Notify(3414)
 			chunk.Payload = payload[:n]
 			err = sender.Send(&chunk)
+		} else {
+			__antithesis_instrumentation__.Notify(3415)
 		}
+		__antithesis_instrumentation__.Notify(3412)
 		if err == io.EOF {
+			__antithesis_instrumentation__.Notify(3416)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(3417)
 		}
+		__antithesis_instrumentation__.Notify(3413)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(3418)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(3419)
 		}
 	}
 }

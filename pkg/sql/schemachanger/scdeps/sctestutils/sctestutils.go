@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sctestutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -39,12 +31,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// WithBuilderDependenciesFromTestServer sets up and tears down an
-// scbuild.Dependencies object built using the test server interface and which
-// it passes to the callback.
 func WithBuilderDependenciesFromTestServer(
 	s serverutils.TestServerInterface, fn func(scbuild.Dependencies),
 ) {
+	__antithesis_instrumentation__.Notify(581256)
 	execCfg := s.ExecutorConfig().(sql.ExecutorConfig)
 	ip, cleanup := sql.NewInternalPlanner(
 		"test",
@@ -52,8 +42,7 @@ func WithBuilderDependenciesFromTestServer(
 		security.RootUserName(),
 		&sql.MemoryMetrics{},
 		&execCfg,
-		// Setting the database on the session data to "defaultdb" in the obvious
-		// way doesn't seem to do what we want.
+
 		sessiondatapb.SessionData{},
 	)
 	defer cleanup()
@@ -66,8 +55,7 @@ func WithBuilderDependenciesFromTestServer(
 		scbuild.AstFormatter
 		scbuild.FeatureChecker
 	})
-	// For setting up a builder inside tests we will ensure that the new schema
-	// changer will allow non-fully implemented operations.
+
 	planner.SessionData().NewSchemaChangerMode = sessiondatapb.UseNewSchemaChangerUnsafe
 	fn(scdeps.NewBuilderDependencies(
 		execCfg.LogicalClusterID(),
@@ -80,109 +68,161 @@ func WithBuilderDependenciesFromTestServer(
 		planner,
 		planner.SessionData(),
 		execCfg.Settings,
-		nil, /* statements */
+		nil,
 	))
 }
 
-// ProtoToYAML marshals a protobuf to YAML in a roundabout way.
 func ProtoToYAML(m protoutil.Message) (string, error) {
+	__antithesis_instrumentation__.Notify(581257)
 	js, err := protoreflect.MessageToJSON(m, protoreflect.FmtFlags{})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(581262)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(581263)
 	}
+	__antithesis_instrumentation__.Notify(581258)
 	str, err := jsonb.Pretty(js)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(581264)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(581265)
 	}
+	__antithesis_instrumentation__.Notify(581259)
 	var buf bytes.Buffer
 	buf.WriteString(str)
 	target := make(map[string]interface{})
 	err = gojson.Unmarshal(buf.Bytes(), &target)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(581266)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(581267)
 	}
+	__antithesis_instrumentation__.Notify(581260)
 	out, err := yaml.Marshal(target)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(581268)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(581269)
 	}
+	__antithesis_instrumentation__.Notify(581261)
 	return string(out), nil
 }
 
-// DiffArgs defines arguments for the Diff function.
 type DiffArgs struct {
 	Indent       string
 	CompactLevel uint
 }
 
-// Diff returns an edit diff by calling diff.Diff and reformatting the results.
 func Diff(a, b string, args DiffArgs) string {
+	__antithesis_instrumentation__.Notify(581270)
 	d := diff.Diff(a, b)
 	lines := strings.Split(d, "\n")
 
 	visible := make(map[int]struct{})
 	if args.CompactLevel > 0 {
+		__antithesis_instrumentation__.Notify(581273)
 		n := int(args.CompactLevel) - 1
 		for lineno, line := range lines {
-			if strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-") {
+			__antithesis_instrumentation__.Notify(581274)
+			if strings.HasPrefix(line, "+") || func() bool {
+				__antithesis_instrumentation__.Notify(581275)
+				return strings.HasPrefix(line, "-") == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(581276)
 				for i := lineno - n; i <= lineno+n; i++ {
+					__antithesis_instrumentation__.Notify(581277)
 					visible[i] = struct{}{}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(581278)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(581279)
 	}
+	__antithesis_instrumentation__.Notify(581271)
 
 	result := make([]string, 0, len(lines))
 	skipping := false
 	for lineno, line := range lines {
-		if _, found := visible[lineno]; found || args.CompactLevel == 0 {
+		__antithesis_instrumentation__.Notify(581280)
+		if _, found := visible[lineno]; found || func() bool {
+			__antithesis_instrumentation__.Notify(581281)
+			return args.CompactLevel == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(581282)
 			skipping = false
 			result = append(result, args.Indent+line)
-		} else if !skipping {
-			skipping = true
-			result = append(result, args.Indent+"...")
+		} else {
+			__antithesis_instrumentation__.Notify(581283)
+			if !skipping {
+				__antithesis_instrumentation__.Notify(581284)
+				skipping = true
+				result = append(result, args.Indent+"...")
+			} else {
+				__antithesis_instrumentation__.Notify(581285)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(581272)
 	return strings.Join(result, "\n")
 }
 
-// ProtoDiff generates an indented summary of the diff between two protos'
-// YAML representations.
 func ProtoDiff(a, b protoutil.Message, args DiffArgs) string {
+	__antithesis_instrumentation__.Notify(581286)
 	toYAML := func(m protoutil.Message) string {
+		__antithesis_instrumentation__.Notify(581288)
 		if m == nil {
+			__antithesis_instrumentation__.Notify(581291)
 			return ""
+		} else {
+			__antithesis_instrumentation__.Notify(581292)
 		}
+		__antithesis_instrumentation__.Notify(581289)
 		str, err := ProtoToYAML(m)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(581293)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(581294)
 		}
+		__antithesis_instrumentation__.Notify(581290)
 		return strings.TrimSpace(str)
 	}
+	__antithesis_instrumentation__.Notify(581287)
 
 	return Diff(toYAML(a), toYAML(b), args)
 }
 
-// MakePlan is a convenient alternative to calling scplan.MakePlan in tests.
 func MakePlan(t *testing.T, state scpb.CurrentState, phase scop.Phase) scplan.Plan {
+	__antithesis_instrumentation__.Notify(581295)
 	plan, err := scplan.MakePlan(state, scplan.Params{
 		ExecutionPhase:             phase,
-		SchemaChangerJobIDSupplier: func() jobspb.JobID { return 1 },
+		SchemaChangerJobIDSupplier: func() jobspb.JobID { __antithesis_instrumentation__.Notify(581297); return 1 },
 	})
+	__antithesis_instrumentation__.Notify(581296)
 	require.NoError(t, err)
 	return plan
 }
 
-// TruncateJobOps truncates really long or unstable ops details which otherwise
-// get in the way of testing.
 func TruncateJobOps(plan *scplan.Plan) {
+	__antithesis_instrumentation__.Notify(581298)
 	for _, s := range plan.Stages {
+		__antithesis_instrumentation__.Notify(581299)
 		for _, o := range s.ExtraOps {
+			__antithesis_instrumentation__.Notify(581300)
 			switch op := o.(type) {
 			case *scop.SetJobStateOnDescriptor:
+				__antithesis_instrumentation__.Notify(581301)
 				op.State = scpb.DescriptorState{
 					JobID: op.State.JobID,
 				}
 			case *scop.UpdateSchemaChangerJob:
+				__antithesis_instrumentation__.Notify(581302)
 				op.RunningStatus = ""
 			}
 		}

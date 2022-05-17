@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package streamingest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -42,7 +36,6 @@ var (
 	}
 )
 
-// Metrics are for production monitoring of stream ingestion jobs.
 type Metrics struct {
 	IngestedEvents *metric.Counter
 	IngestedBytes  *metric.Counter
@@ -50,11 +43,10 @@ type Metrics struct {
 	ResolvedEvents *metric.Counter
 }
 
-// MetricStruct implements the metric.Struct interface.
-func (*Metrics) MetricStruct() {}
+func (*Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(25182) }
 
-// MakeMetrics makes the metrics for stream ingestion job monitoring.
 func MakeMetrics(histogramWindow time.Duration) metric.Struct {
+	__antithesis_instrumentation__.Notify(25183)
 	m := &Metrics{
 		IngestedEvents: metric.NewCounter(metaStreamingEventsIngested),
 		IngestedBytes:  metric.NewCounter(metaStreamingIngestedBytes),

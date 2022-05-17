@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgwire
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,37 +12,40 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// serverIdentityMapSetting is the name of the cluster setting that
-// holds the pg_ident configuration.
 const serverIdentityMapSetting = "server.identity_map.configuration"
 
 var connIdentityMapConf = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(560189)
 	s := settings.RegisterValidatedStringSetting(
 		settings.TenantWritable,
 		serverIdentityMapSetting,
 		"system-identity to database-username mappings",
 		"",
 		func(values *settings.Values, s string) error {
+			__antithesis_instrumentation__.Notify(560191)
 			_, err := identmap.From(strings.NewReader(s))
 			return err
 		},
 	)
+	__antithesis_instrumentation__.Notify(560190)
 	s.SetVisibility(settings.Public)
 	return s
 }()
 
-// loadLocalIdentityMapUponRemoteSettingChange initializes the local
-// node's cache of the identity map configuration each time the cluster
-// setting is updated.
 func loadLocalIdentityMapUponRemoteSettingChange(
 	ctx context.Context, server *Server, st *cluster.Settings,
 ) {
+	__antithesis_instrumentation__.Notify(560192)
 	val := connIdentityMapConf.Get(&st.SV)
 	idMap, err := identmap.From(strings.NewReader(val))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(560194)
 		log.Ops.Warningf(ctx, "invalid %s: %v", serverIdentityMapSetting, err)
 		idMap = identmap.Empty()
+	} else {
+		__antithesis_instrumentation__.Notify(560195)
 	}
+	__antithesis_instrumentation__.Notify(560193)
 
 	server.auth.Lock()
 	defer server.auth.Unlock()

@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -70,232 +62,37 @@ import (
 	"golang.org/x/net/trace"
 )
 
-// noteworthyMemoryUsageBytes is the minimum size tracked by a
-// transaction or session monitor before the monitor starts explicitly
-// logging overall usage growth in the log.
 var noteworthyMemoryUsageBytes = envutil.EnvOrDefaultInt64("COCKROACH_NOTEWORTHY_SESSION_MEMORY_USAGE", 1024*1024)
 
-// A connExecutor is in charge of executing queries received on a given client
-// connection. The connExecutor implements a state machine (dictated by the
-// Postgres/pgwire session semantics). The state machine is supposed to run
-// asynchronously wrt the client connection: it receives input statements
-// through a stmtBuf and produces results through a clientComm interface. The
-// connExecutor maintains a cursor over the statementBuffer and executes
-// statements / produces results for one statement at a time. The cursor points
-// at all times to the statement that the connExecutor is currently executing.
-// Results for statements before the cursor have already been produced (but not
-// necessarily delivered to the client). Statements after the cursor are queued
-// for future execution. Keeping already executed statements in the buffer is
-// useful in case of automatic retries (in which case statements from the
-// retried transaction have to be executed again); the connExecutor is in charge
-// of removing old statements that are no longer needed for retries from the
-// (head of the) buffer. Separately, the implementer of the clientComm interface
-// (e.g. the pgwire module) is in charge of keeping track of what results have
-// been delivered to the client and what results haven't (yet).
-//
-// The connExecutor has two main responsibilities: to dispatch queries to the
-// execution engine(s) and relay their results to the clientComm, and to
-// implement the state machine maintaining the various aspects of a connection's
-// state. The state machine implementation is further divided into two aspects:
-// maintaining the transaction status of the connection (outside of a txn,
-// inside a txn, in an aborted txn, in a txn awaiting client restart, etc.) and
-// maintaining the cursor position (i.e. correctly jumping to whatever the
-// "next" statement to execute is in various situations).
-//
-// The cursor normally advances one statement at a time, but it can also skip
-// some statements (remaining statements in a query string are skipped once an
-// error is encountered) and it can sometimes be rewound when performing
-// automatic retries. Rewinding can only be done if results for the rewound
-// statements have not actually been delivered to the client; see below.
-//
-//                                                   +---------------------+
-//                                                   |connExecutor         |
-//                                                   |                     |
-//                                                   +->execution+--------------+
-//                                                   ||  +                 |    |
-//                                                   ||  |fsm.Event        |    |
-//                                                   ||  |                 |    |
-//                                                   ||  v                 |    |
-//                                                   ||  fsm.Machine(TxnStateTransitions)
-//                                                   ||  +  +--------+     |    |
-//      +--------------------+                       ||  |  |txnState|     |    |
-//      |stmtBuf             |                       ||  |  +--------+     |    |
-//      |                    | statements are read   ||  |                 |    |
-//      | +-+-+ +-+-+ +-+-+  +------------------------+  |                 |    |
-//      | | | | | | | | | |  |                       |   |   +-------------+    |
-//  +---> +-+-+ +++-+ +-+-+  |                       |   |   |session data |    |
-//  |   |        ^           |                       |   |   +-------------+    |
-//  |   |        |   +-----------------------------------+                 |    |
-//  |   |        +   v       | cursor is advanced    |  advanceInfo        |    |
-//  |   |       cursor       |                       |                     |    |
-//  |   +--------------------+                       +---------------------+    |
-//  |                                                                           |
-//  |                                                                           |
-//  +-------------+                                                             |
-//                +--------+                                                    |
-//                | parser |                                                    |
-//                +--------+                                                    |
-//                |                                                             |
-//                |                                                             |
-//                |                                   +----------------+        |
-//        +-------+------+                            |execution engine<--------+
-//        | pgwire conn  |               +------------+(local/DistSQL) |
-//        |              |               |            +----------------+
-//        |   +----------+               |
-//        |   |clientComm<---------------+
-//        |   +----------+           results are produced
-//        |              |
-//        +-------^------+
-//                |
-//                |
-//        +-------+------+
-//        | SQL client   |
-//        +--------------+
-//
-// The connExecutor is disconnected from client communication (i.e. generally
-// network communication - i.e. pgwire.conn); the module doing client
-// communication is responsible for pushing statements into the buffer and for
-// providing an implementation of the clientConn interface (and thus sending
-// results to the client). The connExecutor does not control when
-// results are delivered to the client, but still it does have some influence
-// over that; this is because of the fact that the possibility of doing
-// automatic retries goes away the moment results for the transaction in
-// question are delivered to the client. The communication module has full
-// freedom in sending results whenever it sees fit; however the connExecutor
-// influences communication in the following ways:
-//
-// a) When deciding whether an automatic retry can be performed for a
-// transaction, the connExecutor needs to:
-//
-//   1) query the communication status to check that no results for the txn have
-//   been delivered to the client and, if this check passes:
-//   2) lock the communication so that no further results are delivered to the
-//   client, and, eventually:
-//   3) rewind the clientComm to a certain position corresponding to the start
-//   of the transaction, thereby discarding all the results that had been
-//   accumulated for the previous attempt to run the transaction in question.
-//
-// These steps are all orchestrated through clientComm.lockCommunication() and
-// rewindCapability{}.
-//
-// b) The connExecutor sometimes ask the clientComm to deliver everything
-// (most commonly in response to a Sync command).
-//
-// As of Feb 2018, the pgwire.conn delivers results synchronously to the client
-// when its internal buffer overflows. In principle, delivery of result could be
-// done asynchronously wrt the processing of commands (e.g. we could have a
-// timing policy in addition to the buffer size). The first implementation of
-// that showed a performance impact of involving a channel communication in the
-// Sync processing path.
-//
-//
-// Implementation notes:
-//
-// --- Error handling ---
-//
-// The key to understanding how the connExecutor handles errors is understanding
-// the fact that there's two distinct categories of errors to speak of. There
-// are "query execution errors" and there are the rest. Most things fall in the
-// former category: invalid queries, queries that fail constraints at runtime,
-// data unavailability errors, retriable errors (i.e. serializability
-// violations) "internal errors" (e.g. connection problems in the cluster). This
-// category of errors doesn't represent dramatic events as far as the connExecutor
-// is concerned: they produce "results" for the query to be passed to the client
-// just like more successful queries do and they produce Events for the
-// state machine just like the successful queries (the events in question
-// are generally event{non}RetriableErr and they generally cause the
-// state machine to move to the Aborted state, but the connExecutor doesn't
-// concern itself with this). The way the connExecutor reacts to these errors is
-// the same as how it reacts to a successful query completing: it moves the
-// cursor over the incoming statements as instructed by the state machine and
-// continues running statements.
-//
-// And then there's other errors that don't have anything to do with a
-// particular query, but with the connExecutor itself. In other languages, these
-// would perhaps be modeled as Exceptions: we want them to unwind the stack
-// significantly. These errors cause the connExecutor.run() to break out of its
-// loop and return an error. Example of such errors include errors in
-// communication with the client (e.g. the network connection is broken) or the
-// connection's context being canceled.
-//
-// All of connExecutor's methods only return errors for the 2nd category. Query
-// execution errors are written to a CommandResult. Low-level methods don't
-// operate on a CommandResult directly; instead they operate on a wrapper
-// (resultWithStoredErr), which provides access to the query error for purposes
-// of building the correct state machine event.
-//
-// --- Context management ---
-//
-// At the highest level, there's connExecutor.run() that takes a context. That
-// context is supposed to represent "the connection's context": its lifetime is
-// the client connection's lifetime and it is assigned to
-// connEx.ctxHolder.connCtx. Below that, every SQL transaction has its own
-// derived context because that's the level at which we trace operations. The
-// lifetime of SQL transactions is determined by the txnState: the state machine
-// decides when transactions start and end in txnState.performStateTransition().
-// When we're inside a SQL transaction, most operations are considered to happen
-// in the context of that txn. When there's no SQL transaction (i.e.
-// stateNoTxn), everything happens in the connection's context.
-//
-// High-level code in connExecutor is agnostic of whether it currently is inside
-// a txn or not. To deal with both cases, such methods don't explicitly take a
-// context; instead they use connEx.Ctx(), which returns the appropriate ctx
-// based on the current state.
-// Lower-level code (everything from connEx.execStmt() and below which runs in
-// between state transitions) knows what state its running in, and so the usual
-// pattern of explicitly taking a context as an argument is used.
-
-// Server is the top level singleton for handling SQL connections. It creates
-// connExecutors to server every incoming connection.
 type Server struct {
 	_ util.NoCopy
 
 	cfg *ExecutorConfig
 
-	// sqlStats tracks per-application statistics for all applications on each
-	// node. Newly collected statistics flow into sqlStats.
 	sqlStats *persistedsqlstats.PersistedSQLStats
 
-	// sqlStatsController is the control-plane interface for sqlStats.
 	sqlStatsController *persistedsqlstats.Controller
 
-	// indexUsageStatsController is the control-plane interface for
-	// indexUsageStats.
 	indexUsageStatsController *idxusage.Controller
 
-	// reportedStats is a pool of stats that is held for reporting, and is
-	// cleared on a lower interval than sqlStats. Stats from sqlStats flow
-	// into reported stats when sqlStats is cleared.
 	reportedStats sqlstats.Provider
 
-	// reportedStatsController is the control-plane interface for
-	// reportedStatsController.
 	reportedStatsController *sslocal.Controller
 
 	reCache *tree.RegexpCache
 
-	// pool is the parent monitor for all session monitors.
 	pool *mon.BytesMonitor
 
-	// indexUsageStats tracks the index usage statistics queries that use current
-	// node as gateway node.
 	indexUsageStats *idxusage.LocalIndexUsageStats
 
-	// txnIDCache stores the mapping from transaction ID to transaction
-	// fingerprint IDs for all recently executed transactions.
 	txnIDCache *txnidcache.Cache
 
-	// Metrics is used to account normal queries.
 	Metrics Metrics
 
-	// InternalMetrics is used to account internal queries.
 	InternalMetrics Metrics
 
-	// ServerMetrics is used to account for Server activities that are unrelated to
-	// query planning and execution.
 	ServerMetrics ServerMetrics
 
-	// TelemetryLoggingMetrics is used to track metrics for logging to the telemetry channel.
 	TelemetryLoggingMetrics *TelemetryLoggingMetrics
 
 	mu struct {
@@ -304,42 +101,25 @@ type Server struct {
 	}
 }
 
-// Metrics collects timeseries data about SQL activity.
 type Metrics struct {
-	// EngineMetrics is exported as required by the metrics.Struct magic we use
-	// for metrics registration.
 	EngineMetrics EngineMetrics
 
-	// StartedStatementCounters contains metrics for statements initiated by
-	// users. These metrics count user-initiated operations, regardless of
-	// success (in particular, TxnCommitCount is the number of COMMIT statements
-	// attempted, not the number of transactions that successfully commit).
 	StartedStatementCounters StatementCounters
 
-	// ExecutedStatementCounters contains metrics for successfully executed
-	// statements.
 	ExecutedStatementCounters StatementCounters
 
-	// GuardrailMetrics contains metrics related to different guardrails in the
-	// SQL layer.
 	GuardrailMetrics GuardrailMetrics
 }
 
-// ServerMetrics collects timeseries data about Server activities that are
-// unrelated to SQL planning and execution.
 type ServerMetrics struct {
-	// StatsMetrics contains metrics for SQL statistics collection.
 	StatsMetrics StatsMetrics
 
-	// ContentionSubsystemMetrics contains metrics related to contention
-	// subsystem.
 	ContentionSubsystemMetrics txnidcache.Metrics
 }
 
-// NewServer creates a new Server. Start() needs to be called before the Server
-// is used.
 func NewServer(cfg *ExecutorConfig, pool *mon.BytesMonitor) *Server {
-	metrics := makeMetrics(false /* internal */)
+	__antithesis_instrumentation__.Notify(457140)
+	metrics := makeMetrics(false)
 	serverMetrics := makeServerMetrics(cfg)
 	reportedSQLStats := sslocal.New(
 		cfg.Settings,
@@ -348,7 +128,7 @@ func NewServer(cfg *ExecutorConfig, pool *mon.BytesMonitor) *Server {
 		serverMetrics.StatsMetrics.ReportedSQLStatsMemoryCurBytesCount,
 		serverMetrics.StatsMetrics.ReportedSQLStatsMemoryMaxBytesHist,
 		pool,
-		nil, /* reportedProvider */
+		nil,
 		cfg.SQLStatsTestingKnobs,
 	)
 	reportedSQLStatsController :=
@@ -366,7 +146,7 @@ func NewServer(cfg *ExecutorConfig, pool *mon.BytesMonitor) *Server {
 	s := &Server{
 		cfg:                     cfg,
 		Metrics:                 metrics,
-		InternalMetrics:         makeMetrics(true /* internal */),
+		InternalMetrics:         makeMetrics(true),
 		ServerMetrics:           serverMetrics,
 		pool:                    pool,
 		reportedStats:           reportedSQLStats,
@@ -406,13 +186,14 @@ func NewServer(cfg *ExecutorConfig, pool *mon.BytesMonitor) *Server {
 }
 
 func makeMetrics(internal bool) Metrics {
+	__antithesis_instrumentation__.Notify(457141)
 	return Metrics{
 		EngineMetrics: EngineMetrics{
 			DistSQLSelectCount:    metric.NewCounter(getMetricMeta(MetaDistSQLSelect, internal)),
 			SQLOptFallbackCount:   metric.NewCounter(getMetricMeta(MetaSQLOptFallback, internal)),
 			SQLOptPlanCacheHits:   metric.NewCounter(getMetricMeta(MetaSQLOptPlanCacheHits, internal)),
 			SQLOptPlanCacheMisses: metric.NewCounter(getMetricMeta(MetaSQLOptPlanCacheMisses, internal)),
-			// TODO(mrtracy): See HistogramWindowInterval in server/config.go for the 6x factor.
+
 			DistSQLExecLatency: metric.NewLatency(getMetricMeta(MetaDistSQLExecLatency, internal),
 				6*metricsSampleInterval),
 			SQLExecLatency: metric.NewLatency(getMetricMeta(MetaSQLExecLatency, internal),
@@ -443,20 +224,21 @@ func makeMetrics(internal bool) Metrics {
 }
 
 func makeServerMetrics(cfg *ExecutorConfig) ServerMetrics {
+	__antithesis_instrumentation__.Notify(457142)
 	return ServerMetrics{
 		StatsMetrics: StatsMetrics{
 			SQLStatsMemoryMaxBytesHist: metric.NewHistogram(
 				MetaSQLStatsMemMaxBytes,
 				cfg.HistogramWindowInterval,
 				log10int64times1000,
-				3, /* sigFigs */
+				3,
 			),
 			SQLStatsMemoryCurBytesCount: metric.NewGauge(MetaSQLStatsMemCurBytes),
 			ReportedSQLStatsMemoryMaxBytesHist: metric.NewHistogram(
 				MetaReportedSQLStatsMemMaxBytes,
 				cfg.HistogramWindowInterval,
 				log10int64times1000,
-				3, /* sigFigs */
+				3,
 			),
 			ReportedSQLStatsMemoryCurBytesCount: metric.NewGauge(MetaReportedSQLStatsMemCurBytes),
 			DiscardedStatsCount:                 metric.NewCounter(MetaDiscardedSQLStats),
@@ -474,172 +256,168 @@ func makeServerMetrics(cfg *ExecutorConfig) ServerMetrics {
 	}
 }
 
-// Start starts the Server's background processing.
 func (s *Server) Start(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(457143)
 	s.sqlStats.Start(ctx, stopper)
 
-	// reportedStats is periodically cleared to prevent too many SQL Stats
-	// accumulated in the reporter when the telemetry server fails.
-	// Usually it is telemetry's reporter's job to clear the reporting SQL Stats.
 	s.reportedStats.Start(ctx, stopper)
 
 	s.txnIDCache.Start(ctx, stopper)
 }
 
-// GetSQLStatsController returns the persistedsqlstats.Controller for current
-// sql.Server's SQL Stats.
 func (s *Server) GetSQLStatsController() *persistedsqlstats.Controller {
+	__antithesis_instrumentation__.Notify(457144)
 	return s.sqlStatsController
 }
 
-// GetIndexUsageStatsController returns the idxusage.Controller for current
-// sql.Server's index usage stats.
 func (s *Server) GetIndexUsageStatsController() *idxusage.Controller {
+	__antithesis_instrumentation__.Notify(457145)
 	return s.indexUsageStatsController
 }
 
-// GetSQLStatsProvider returns the provider for the sqlstats subsystem.
 func (s *Server) GetSQLStatsProvider() sqlstats.Provider {
+	__antithesis_instrumentation__.Notify(457146)
 	return s.sqlStats
 }
 
-// GetReportedSQLStatsController returns the sqlstats.Controller for the current
-// sql.Server's reported SQL Stats.
 func (s *Server) GetReportedSQLStatsController() *sslocal.Controller {
+	__antithesis_instrumentation__.Notify(457147)
 	return s.reportedStatsController
 }
 
-// GetTxnIDCache returns the txnidcache.Cache for the current sql.Server.
 func (s *Server) GetTxnIDCache() *txnidcache.Cache {
+	__antithesis_instrumentation__.Notify(457148)
 	return s.txnIDCache
 }
 
-// GetScrubbedStmtStats returns the statement statistics by app, with the
-// queries scrubbed of their identifiers. Any statements which cannot be
-// scrubbed will be omitted from the returned map.
 func (s *Server) GetScrubbedStmtStats(
 	ctx context.Context,
 ) ([]roachpb.CollectedStatementStatistics, error) {
+	__antithesis_instrumentation__.Notify(457149)
 	return s.getScrubbedStmtStats(ctx, s.sqlStats.GetLocalMemProvider())
 }
 
-// Avoid lint errors.
 var _ = (*Server).GetScrubbedStmtStats
 
-// GetUnscrubbedStmtStats returns the same thing as GetScrubbedStmtStats, except
-// identifiers (e.g. table and column names) aren't scrubbed from the statements.
 func (s *Server) GetUnscrubbedStmtStats(
 	ctx context.Context,
 ) ([]roachpb.CollectedStatementStatistics, error) {
+	__antithesis_instrumentation__.Notify(457150)
 	var stmtStats []roachpb.CollectedStatementStatistics
 	stmtStatsVisitor := func(_ context.Context, stat *roachpb.CollectedStatementStatistics) error {
+		__antithesis_instrumentation__.Notify(457153)
 		stmtStats = append(stmtStats, *stat)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(457151)
 	err :=
 		s.sqlStats.GetLocalMemProvider().IterateStatementStats(ctx, &sqlstats.IteratorOptions{}, stmtStatsVisitor)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(457154)
 		return nil, errors.Wrap(err, "failed to fetch statement stats")
+	} else {
+		__antithesis_instrumentation__.Notify(457155)
 	}
+	__antithesis_instrumentation__.Notify(457152)
 
 	return stmtStats, nil
 }
 
-// GetUnscrubbedTxnStats returns the same transaction statistics by app.
-// Identifiers (e.g. table and column names) aren't scrubbed from the statements.
 func (s *Server) GetUnscrubbedTxnStats(
 	ctx context.Context,
 ) ([]roachpb.CollectedTransactionStatistics, error) {
+	__antithesis_instrumentation__.Notify(457156)
 	var txnStats []roachpb.CollectedTransactionStatistics
 	txnStatsVisitor := func(_ context.Context, stat *roachpb.CollectedTransactionStatistics) error {
+		__antithesis_instrumentation__.Notify(457159)
 		txnStats = append(txnStats, *stat)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(457157)
 	err :=
 		s.sqlStats.GetLocalMemProvider().IterateTransactionStats(ctx, &sqlstats.IteratorOptions{}, txnStatsVisitor)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(457160)
 		return nil, errors.Wrap(err, "failed to fetch statement stats")
+	} else {
+		__antithesis_instrumentation__.Notify(457161)
 	}
+	__antithesis_instrumentation__.Notify(457158)
 
 	return txnStats, nil
 }
 
-// GetScrubbedReportingStats does the same thing as GetScrubbedStmtStats but
-// returns statistics from the reported stats pool.
 func (s *Server) GetScrubbedReportingStats(
 	ctx context.Context,
 ) ([]roachpb.CollectedStatementStatistics, error) {
+	__antithesis_instrumentation__.Notify(457162)
 	return s.getScrubbedStmtStats(ctx, s.reportedStats)
 }
 
 func (s *Server) getScrubbedStmtStats(
 	ctx context.Context, statsProvider sqlstats.Provider,
 ) ([]roachpb.CollectedStatementStatistics, error) {
+	__antithesis_instrumentation__.Notify(457163)
 	salt := ClusterSecret.Get(&s.cfg.Settings.SV)
 
 	var scrubbedStats []roachpb.CollectedStatementStatistics
 	stmtStatsVisitor := func(_ context.Context, stat *roachpb.CollectedStatementStatistics) error {
-		// Scrub the statement itself.
+		__antithesis_instrumentation__.Notify(457166)
+
 		scrubbedQueryStr, ok := scrubStmtStatKey(s.cfg.VirtualSchemas, stat.Key.Query)
 
-		// We don't want to report this stats if scrubbing has failed. We also don't
-		// wish to abort here because we want to try our best to report all the
-		// stats.
 		if !ok {
+			__antithesis_instrumentation__.Notify(457169)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(457170)
 		}
+		__antithesis_instrumentation__.Notify(457167)
 
 		stat.Key.Query = scrubbedQueryStr
 
-		// Possibly scrub the app name.
 		if !strings.HasPrefix(stat.Key.App, catconstants.ReportableAppNamePrefix) {
+			__antithesis_instrumentation__.Notify(457171)
 			stat.Key.App = HashForReporting(salt, stat.Key.App)
+		} else {
+			__antithesis_instrumentation__.Notify(457172)
 		}
+		__antithesis_instrumentation__.Notify(457168)
 
-		// Quantize the counts to avoid leaking information that way.
 		quantizeCounts(&stat.Stats)
 		stat.Stats.SensitiveInfo = stat.Stats.SensitiveInfo.GetScrubbedCopy()
 
 		scrubbedStats = append(scrubbedStats, *stat)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(457164)
 
 	err :=
 		statsProvider.IterateStatementStats(ctx, &sqlstats.IteratorOptions{}, stmtStatsVisitor)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(457173)
 		return nil, errors.Wrap(err, "failed to fetch scrubbed statement stats")
+	} else {
+		__antithesis_instrumentation__.Notify(457174)
 	}
+	__antithesis_instrumentation__.Notify(457165)
 
 	return scrubbedStats, nil
 }
 
-// GetStmtStatsLastReset returns the time at which the statement statistics were
-// last cleared.
 func (s *Server) GetStmtStatsLastReset() time.Time {
+	__antithesis_instrumentation__.Notify(457175)
 	return s.sqlStats.GetLastReset()
 }
 
-// GetExecutorConfig returns this server's executor config.
 func (s *Server) GetExecutorConfig() *ExecutorConfig {
+	__antithesis_instrumentation__.Notify(457176)
 	return s.cfg
 }
 
-// SetupConn creates a connExecutor for the client connection.
-//
-// When this method returns there are no resources allocated yet that
-// need to be close()d.
-//
-// Args:
-// args: The initial session parameters. They are validated by SetupConn
-//   and an error is returned if this validation fails.
-// stmtBuf: The incoming statement for the new connExecutor.
-// clientComm: The interface through which the new connExecutor is going to
-//   produce results for the client.
-// memMetrics: The metrics that statements executed on this connection will
-//   contribute to.
 func (s *Server) SetupConn(
 	ctx context.Context,
 	args SessionArgs,
@@ -648,18 +426,23 @@ func (s *Server) SetupConn(
 	memMetrics MemoryMetrics,
 	onDefaultIntSizeChange func(newSize int32),
 ) (ConnectionHandler, error) {
+	__antithesis_instrumentation__.Notify(457177)
 	sd := s.newSessionData(args)
 	sds := sessiondata.NewStack(sd)
-	// Set the SessionData from args.SessionDefaults. This also validates the
-	// respective values.
+
 	sdMutIterator := s.makeSessionDataMutatorIterator(sds, args.SessionDefaults)
 	sdMutIterator.onDefaultIntSizeChange = onDefaultIntSizeChange
 	if err := sdMutIterator.applyOnEachMutatorError(func(m sessionDataMutator) error {
+		__antithesis_instrumentation__.Notify(457179)
 		return resetSessionVars(ctx, m)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(457180)
 		log.Errorf(ctx, "error setting up client session: %s", err)
 		return ConnectionHandler{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(457181)
 	}
+	__antithesis_instrumentation__.Notify(457178)
 
 	ex := s.newConnExecutor(
 		ctx, sdMutIterator, stmtBuf, clientComm, memMetrics, &s.Metrics,
@@ -668,92 +451,95 @@ func (s *Server) SetupConn(
 	return ConnectionHandler{ex}, nil
 }
 
-// IncrementConnectionCount increases connectionCount by 1.
 func (s *Server) IncrementConnectionCount() {
+	__antithesis_instrumentation__.Notify(457182)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mu.connectionCount++
 }
 
-// DecrementConnectionCount decreases connectionCount by 1.
 func (s *Server) DecrementConnectionCount() {
+	__antithesis_instrumentation__.Notify(457183)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mu.connectionCount--
 }
 
-// IncrementConnectionCountIfLessThan increases connectionCount by and returns true if allowedConnectionCount < max,
-// otherwise it does nothing and returns false.
 func (s *Server) IncrementConnectionCountIfLessThan(max int64) bool {
+	__antithesis_instrumentation__.Notify(457184)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	lt := s.mu.connectionCount < max
 	if lt {
+		__antithesis_instrumentation__.Notify(457186)
 		s.mu.connectionCount++
+	} else {
+		__antithesis_instrumentation__.Notify(457187)
 	}
+	__antithesis_instrumentation__.Notify(457185)
 	return lt
 }
 
-// GetConnectionCount returns the current number of connections.
 func (s *Server) GetConnectionCount() int64 {
+	__antithesis_instrumentation__.Notify(457188)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.mu.connectionCount
 }
 
-// ConnectionHandler is the interface between the result of SetupConn
-// and the ServeConn below. It encapsulates the connExecutor and hides
-// it away from other packages.
 type ConnectionHandler struct {
 	ex *connExecutor
 }
 
-// GetParamStatus retrieves the configured value of the session
-// variable identified by varName. This is used for the initial
-// message sent to a client during a session set-up.
 func (h ConnectionHandler) GetParamStatus(ctx context.Context, varName string) string {
+	__antithesis_instrumentation__.Notify(457189)
 	name := strings.ToLower(varName)
 	v, ok := varGen[name]
 	if !ok {
+		__antithesis_instrumentation__.Notify(457192)
 		log.Fatalf(ctx, "programming error: status param %q must be defined session var", varName)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(457193)
 	}
+	__antithesis_instrumentation__.Notify(457190)
 	hasDefault, defVal := getSessionVarDefaultString(name, v, h.ex.dataMutatorIterator.sessionDataMutatorBase)
 	if !hasDefault {
+		__antithesis_instrumentation__.Notify(457194)
 		log.Fatalf(ctx, "programming error: status param %q must have a default value", varName)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(457195)
 	}
+	__antithesis_instrumentation__.Notify(457191)
 	return defVal
 }
 
-// GetQueryCancelKey returns the per-session identifier that can be used to
-// cancel a query using the pgwire cancel protocol.
 func (h ConnectionHandler) GetQueryCancelKey() pgwirecancel.BackendKeyData {
+	__antithesis_instrumentation__.Notify(457196)
 	return h.ex.queryCancelKey
 }
 
-// ServeConn serves a client connection by reading commands from the stmtBuf
-// embedded in the ConnHandler.
-//
-// If not nil, reserved represents memory reserved for the connection. The
-// connExecutor takes ownership of this memory.
 func (s *Server) ServeConn(
 	ctx context.Context, h ConnectionHandler, reserved mon.BoundAccount, cancel context.CancelFunc,
 ) error {
+	__antithesis_instrumentation__.Notify(457197)
 	defer func() {
+		__antithesis_instrumentation__.Notify(457199)
 		r := recover()
 		h.ex.closeWrapper(ctx, r)
 	}()
+	__antithesis_instrumentation__.Notify(457198)
 	return h.ex.run(ctx, s.pool, reserved, cancel)
 }
 
-// GetLocalIndexStatistics returns a idxusage.LocalIndexUsageStats.
 func (s *Server) GetLocalIndexStatistics() *idxusage.LocalIndexUsageStats {
+	__antithesis_instrumentation__.Notify(457200)
 	return s.indexUsageStats
 }
 
-// newSessionData a SessionData that can be passed to newConnExecutor.
 func (s *Server) newSessionData(args SessionArgs) *sessiondata.SessionData {
+	__antithesis_instrumentation__.Notify(457201)
 	sd := &sessiondata.SessionData{
 		SessionData: sessiondatapb.SessionData{
 			UserProto: args.User.EncodeProto(),
@@ -767,11 +553,16 @@ func (s *Server) newSessionData(args SessionArgs) *sessiondata.SessionData {
 		},
 	}
 	if len(args.CustomOptionSessionDefaults) > 0 {
+		__antithesis_instrumentation__.Notify(457203)
 		sd.CustomOptions = make(map[string]string)
 		for k, v := range args.CustomOptionSessionDefaults {
+			__antithesis_instrumentation__.Notify(457204)
 			sd.CustomOptions[k] = v
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(457205)
 	}
+	__antithesis_instrumentation__.Notify(457202)
 	s.populateMinimalSessionData(sd)
 	return sd
 }
@@ -779,6 +570,7 @@ func (s *Server) newSessionData(args SessionArgs) *sessiondata.SessionData {
 func (s *Server) makeSessionDataMutatorIterator(
 	sds *sessiondata.Stack, defaults SessionDefaults,
 ) *sessionDataMutatorIterator {
+	__antithesis_instrumentation__.Notify(457206)
 	return &sessionDataMutatorIterator{
 		sds: sds,
 		sessionDataMutatorBase: sessionDataMutatorBase{
@@ -789,26 +581,30 @@ func (s *Server) makeSessionDataMutatorIterator(
 	}
 }
 
-// populateMinimalSessionData populates sd with some minimal values needed for
-// not crashing. Fields of sd that are already set are not overwritten.
 func (s *Server) populateMinimalSessionData(sd *sessiondata.SessionData) {
+	__antithesis_instrumentation__.Notify(457207)
 	if sd.SequenceState == nil {
+		__antithesis_instrumentation__.Notify(457210)
 		sd.SequenceState = sessiondata.NewSequenceState()
+	} else {
+		__antithesis_instrumentation__.Notify(457211)
 	}
+	__antithesis_instrumentation__.Notify(457208)
 	if sd.Location == nil {
+		__antithesis_instrumentation__.Notify(457212)
 		sd.Location = time.UTC
+	} else {
+		__antithesis_instrumentation__.Notify(457213)
 	}
+	__antithesis_instrumentation__.Notify(457209)
 	if len(sd.SearchPath.GetPathArray()) == 0 {
+		__antithesis_instrumentation__.Notify(457214)
 		sd.SearchPath = sessiondata.DefaultSearchPathForUser(sd.User())
+	} else {
+		__antithesis_instrumentation__.Notify(457215)
 	}
 }
 
-// newConnExecutor creates a new connExecutor.
-//
-// sd is expected to be fully initialized with the values of all the session
-// vars.
-// sdDefaults controls what the session vars will be reset to through
-// RESET statements.
 func (s *Server) newConnExecutor(
 	ctx context.Context,
 	sdMutIterator *sessionDataMutatorIterator,
@@ -818,29 +614,29 @@ func (s *Server) newConnExecutor(
 	srvMetrics *Metrics,
 	applicationStats sqlstats.ApplicationStats,
 ) *connExecutor {
-	// Create the various monitors.
-	// The session monitors are started in activate().
+	__antithesis_instrumentation__.Notify(457216)
+
 	sessionRootMon := mon.NewMonitor(
 		"session root",
 		mon.MemoryResource,
 		memMetrics.CurBytesCount,
 		memMetrics.MaxBytesHist,
-		-1 /* increment */, math.MaxInt64, s.cfg.Settings,
+		-1, math.MaxInt64, s.cfg.Settings,
 	)
 	sessionMon := mon.NewMonitor(
 		"session",
 		mon.MemoryResource,
 		memMetrics.SessionCurBytesCount,
 		memMetrics.SessionMaxBytesHist,
-		-1 /* increment */, noteworthyMemoryUsageBytes, s.cfg.Settings,
+		-1, noteworthyMemoryUsageBytes, s.cfg.Settings,
 	)
-	// The txn monitor is started in txnState.resetForNewSQLTxn().
+
 	txnMon := mon.NewMonitor(
 		"txn",
 		mon.MemoryResource,
 		memMetrics.TxnCurBytesCount,
 		memMetrics.TxnMaxBytesHist,
-		-1 /* increment */, noteworthyMemoryUsageBytes, s.cfg.Settings,
+		-1, noteworthyMemoryUsageBytes, s.cfg.Settings,
 	)
 
 	nodeIDOrZero, _ := s.cfg.NodeID.OptionalNodeID()
@@ -862,7 +658,7 @@ func (s *Server) newConnExecutor(
 			db:           s.cfg.DB,
 			nodeIDOrZero: nodeIDOrZero,
 			clock:        s.cfg.Clock,
-			// Future transaction's monitors will inherits from sessionRootMon.
+
 			connMon:          sessionRootMon,
 			tracer:           s.cfg.AmbientCtx.Tracer,
 			settings:         s.cfg.Settings,
@@ -871,8 +667,6 @@ func (s *Server) newConnExecutor(
 		memMetrics: memMetrics,
 		planner:    planner{execCfg: s.cfg, alloc: &tree.DatumAlloc{}},
 
-		// ctxHolder will be reset at the start of run(). We only define
-		// it here so that an early call to close() doesn't panic.
 		ctxHolder:                 ctxHolder{connCtx: ctx},
 		phaseTimes:                sessionphase.NewTimes(),
 		rng:                       rand.New(rand.NewSource(timeutil.Now().UnixNano())),
@@ -885,14 +679,16 @@ func (s *Server) newConnExecutor(
 
 	ex.state.txnAbortCount = ex.metrics.EngineMetrics.TxnAbortCount
 
-	// The transaction_read_only variable is special; its updates need to be
-	// hooked-up to the executor.
 	ex.dataMutatorIterator.setCurTxnReadOnly = func(val bool) {
+		__antithesis_instrumentation__.Notify(457220)
 		ex.state.readOnly = val
 	}
+	__antithesis_instrumentation__.Notify(457217)
 	ex.dataMutatorIterator.onTempSchemaCreation = func() {
+		__antithesis_instrumentation__.Notify(457221)
 		ex.hasCreatedTemporarySchema = true
 	}
+	__antithesis_instrumentation__.Notify(457218)
 
 	ex.applicationName.Store(ex.sessionData().ApplicationName)
 	ex.applicationStats = applicationStats
@@ -903,9 +699,11 @@ func (s *Server) newConnExecutor(
 		s.cfg.SQLStatsTestingKnobs,
 	)
 	ex.dataMutatorIterator.onApplicationNameChange = func(newName string) {
+		__antithesis_instrumentation__.Notify(457222)
 		ex.applicationName.Store(newName)
 		ex.applicationStats = ex.server.sqlStats.GetApplicationStats(newName)
 	}
+	__antithesis_instrumentation__.Notify(457219)
 
 	ex.phaseTimes.SetSessionPhaseTime(sessionphase.SessionInit, timeutil.Now())
 
@@ -939,16 +737,6 @@ func (s *Server) newConnExecutor(
 	return ex
 }
 
-// newConnExecutorWithTxn creates a connExecutor that will execute statements
-// under a higher-level txn. This connExecutor runs with a different state
-// machine, much reduced from the regular one. It cannot initiate or end
-// transactions (so, no BEGIN, COMMIT, ROLLBACK, no auto-commit, no automatic
-// retries).
-//
-// If there is no error, this function also activate()s the returned
-// executor, so the caller does not need to run the
-// activation. However this means that run() or close() must be called
-// to release resources.
 func (s *Server) newConnExecutorWithTxn(
 	ctx context.Context,
 	sdMutIterator *sessionDataMutatorIterator,
@@ -961,6 +749,7 @@ func (s *Server) newConnExecutorWithTxn(
 	syntheticDescs []catalog.Descriptor,
 	applicationStats sqlstats.ApplicationStats,
 ) *connExecutor {
+	__antithesis_instrumentation__.Notify(457223)
 	ex := s.newConnExecutor(
 		ctx,
 		sdMutIterator,
@@ -971,19 +760,19 @@ func (s *Server) newConnExecutorWithTxn(
 		applicationStats,
 	)
 	if txn.Type() == kv.LeafTxn {
-		// If the txn is a leaf txn it is not allowed to perform mutations. For
-		// sanity, set read only on the session.
+		__antithesis_instrumentation__.Notify(457225)
+
 		ex.dataMutatorIterator.applyOnEachMutator(func(m sessionDataMutator) {
+			__antithesis_instrumentation__.Notify(457226)
 			m.SetReadOnly(true)
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(457227)
 	}
+	__antithesis_instrumentation__.Notify(457224)
 
-	// The new transaction stuff below requires active monitors and traces, so
-	// we need to activate the executor now.
 	ex.activate(ctx, parentMon, mon.BoundAccount{})
 
-	// Perform some surgery on the executor - replace its state machine and
-	// initialize the state.
 	ex.machine = fsm.MakeMachine(
 		BoundTxnStateTransitions,
 		stateOpen{ImplicitTxn: fsm.False},
@@ -993,16 +782,13 @@ func (s *Server) newConnExecutorWithTxn(
 		ctx,
 		explicitTxn,
 		txn.ReadTimestamp().GoTime(),
-		nil, /* historicalTimestamp */
+		nil,
 		roachpb.UnspecifiedUserPriority,
 		tree.ReadWrite,
 		txn,
 		ex.transitionCtx,
 		ex.QualityOfService())
 
-	// Modify the Collection to match the parent executor's Collection.
-	// This allows the InternalExecutor to see schema changes made by the
-	// parent executor.
 	ex.extraTxnState.descCollection.SetSyntheticDescriptors(syntheticDescs)
 	return ex
 }
@@ -1012,89 +798,126 @@ type closeType int
 const (
 	normalClose closeType = iota
 	panicClose
-	// externalTxnClose means that the connExecutor has been used within a
-	// higher-level txn (through the InternalExecutor).
+
 	externalTxnClose
 )
 
 func (ex *connExecutor) closeWrapper(ctx context.Context, recovered interface{}) {
+	__antithesis_instrumentation__.Notify(457228)
 	if recovered != nil {
+		__antithesis_instrumentation__.Notify(457230)
 		panicErr := logcrash.PanicAsError(1, recovered)
 
-		// If there's a statement currently being executed, we'll report
-		// on it.
 		if ex.curStmtAST != nil {
-			// A warning header guaranteed to go to stderr.
+			__antithesis_instrumentation__.Notify(457232)
+
 			log.SqlExec.Shoutf(ctx, severity.ERROR,
 				"a SQL panic has occurred while executing the following statement:\n%s",
-				// For the log message, the statement is not anonymized.
+
 				truncateStatementStringForTelemetry(ex.curStmtAST.String()))
 
-			// Embed the statement in the error object for the telemetry
-			// report below. The statement gets anonymized.
 			vt := ex.planner.extendedEvalCtx.VirtualSchemas
 			panicErr = WithAnonymizedStatement(panicErr, ex.curStmtAST, vt)
+		} else {
+			__antithesis_instrumentation__.Notify(457233)
 		}
+		__antithesis_instrumentation__.Notify(457231)
 
-		// Report the panic to telemetry in any case.
-		logcrash.ReportPanic(ctx, &ex.server.cfg.Settings.SV, panicErr, 1 /* depth */)
+		logcrash.ReportPanic(ctx, &ex.server.cfg.Settings.SV, panicErr, 1)
 
-		// Close the executor before propagating the panic further.
 		ex.close(ctx, panicClose)
 
-		// Propagate - this may be meant to stop the process.
 		panic(panicErr)
+	} else {
+		__antithesis_instrumentation__.Notify(457234)
 	}
-	// Closing is not cancelable.
+	__antithesis_instrumentation__.Notify(457229)
+
 	closeCtx := ex.server.cfg.AmbientCtx.AnnotateCtx(context.Background())
-	// AddTags and not WithTags, so that we combine the tags with those
-	// filled by AnnotateCtx.
+
 	closeCtx = logtags.AddTags(closeCtx, logtags.FromContext(ctx))
 	ex.close(closeCtx, normalClose)
 }
 
 func (ex *connExecutor) close(ctx context.Context, closeType closeType) {
+	__antithesis_instrumentation__.Notify(457235)
 	ex.sessionEventf(ctx, "finishing connExecutor")
 
 	txnEvType := noEvent
 	if _, noTxn := ex.machine.CurState().(stateNoTxn); !noTxn {
+		__antithesis_instrumentation__.Notify(457243)
 		txnEvType = txnRollback
+	} else {
+		__antithesis_instrumentation__.Notify(457244)
 	}
+	__antithesis_instrumentation__.Notify(457236)
 
 	if closeType == normalClose {
-		// We'll cleanup the SQL txn by creating a non-retriable (commit:true) event.
-		// This event is guaranteed to be accepted in every state.
+		__antithesis_instrumentation__.Notify(457245)
+
 		ev := eventNonRetriableErr{IsCommit: fsm.True}
 		payload := eventNonRetriableErrPayload{err: pgerror.Newf(pgcode.AdminShutdown,
 			"connExecutor closing")}
 		if err := ex.machine.ApplyWithPayload(ctx, ev, payload); err != nil {
+			__antithesis_instrumentation__.Notify(457248)
 			log.Warningf(ctx, "error while cleaning up connExecutor: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(457249)
 		}
+		__antithesis_instrumentation__.Notify(457246)
 		switch t := ex.machine.CurState().(type) {
 		case stateNoTxn:
-			// No txn to finish.
+			__antithesis_instrumentation__.Notify(457250)
+
 		case stateAborted:
-			// A non-retriable error with IsCommit set to true causes the transaction
-			// to be cleaned up.
+			__antithesis_instrumentation__.Notify(457251)
+
 		case stateCommitWait:
+			__antithesis_instrumentation__.Notify(457252)
 			ex.state.finishSQLTxn()
 		default:
+			__antithesis_instrumentation__.Notify(457253)
 			if buildutil.CrdbTestBuild {
+				__antithesis_instrumentation__.Notify(457254)
 				panic(errors.AssertionFailedf("unexpected state in conn executor after ApplyWithPayload %T", t))
+			} else {
+				__antithesis_instrumentation__.Notify(457255)
 			}
 		}
-		if buildutil.CrdbTestBuild && ex.state.Ctx != nil {
+		__antithesis_instrumentation__.Notify(457247)
+		if buildutil.CrdbTestBuild && func() bool {
+			__antithesis_instrumentation__.Notify(457256)
+			return ex.state.Ctx != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(457257)
 			panic(errors.AssertionFailedf("txn span not closed in state %s", ex.machine.CurState()))
+		} else {
+			__antithesis_instrumentation__.Notify(457258)
 		}
-	} else if closeType == externalTxnClose {
-		ex.state.finishExternalTxn()
+	} else {
+		__antithesis_instrumentation__.Notify(457259)
+		if closeType == externalTxnClose {
+			__antithesis_instrumentation__.Notify(457260)
+			ex.state.finishExternalTxn()
+		} else {
+			__antithesis_instrumentation__.Notify(457261)
+		}
 	}
+	__antithesis_instrumentation__.Notify(457237)
 
 	if err := ex.resetExtraTxnState(ctx, txnEvent{eventType: txnEvType}); err != nil {
+		__antithesis_instrumentation__.Notify(457262)
 		log.Warningf(ctx, "error while cleaning up connExecutor: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(457263)
 	}
+	__antithesis_instrumentation__.Notify(457238)
 
-	if ex.hasCreatedTemporarySchema && !ex.server.cfg.TestingKnobs.DisableTempObjectsCleanupOnSessionExit {
+	if ex.hasCreatedTemporarySchema && func() bool {
+		__antithesis_instrumentation__.Notify(457264)
+		return !ex.server.cfg.TestingKnobs.DisableTempObjectsCleanupOnSessionExit == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(457265)
 		ie := MakeInternalExecutor(ctx, ex.server, MemoryMetrics{}, ex.server.cfg.Settings)
 		err := cleanupSessionTempObjects(
 			ctx,
@@ -1106,17 +929,24 @@ func (ex *connExecutor) close(ctx context.Context, closeType closeType) {
 			ex.sessionID,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(457266)
 			log.Errorf(
 				ctx,
 				"error deleting temporary objects at session close, "+
 					"the temp tables deletion job will retry periodically: %s",
 				err,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(457267)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(457268)
 	}
+	__antithesis_instrumentation__.Notify(457239)
 
 	if closeType != panicClose {
-		// Close all statements, prepared portals, and cursors.
+		__antithesis_instrumentation__.Notify(457269)
+
 		ex.extraTxnState.prepStmtsNamespace.resetToEmpty(
 			ctx, &ex.extraTxnState.prepStmtsNamespaceMemAcc,
 		)
@@ -1125,446 +955,278 @@ func (ex *connExecutor) close(ctx context.Context, closeType closeType) {
 		)
 		ex.extraTxnState.prepStmtsNamespaceMemAcc.Close(ctx)
 		ex.extraTxnState.sqlCursors.closeAll()
+	} else {
+		__antithesis_instrumentation__.Notify(457270)
 	}
+	__antithesis_instrumentation__.Notify(457240)
 
 	if ex.sessionTracing.Enabled() {
+		__antithesis_instrumentation__.Notify(457271)
 		if err := ex.sessionTracing.StopTracing(); err != nil {
+			__antithesis_instrumentation__.Notify(457272)
 			log.Warningf(ctx, "error stopping tracing: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(457273)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(457274)
 	}
+	__antithesis_instrumentation__.Notify(457241)
 
 	if ex.eventLog != nil {
+		__antithesis_instrumentation__.Notify(457275)
 		ex.eventLog.Finish()
 		ex.eventLog = nil
+	} else {
+		__antithesis_instrumentation__.Notify(457276)
 	}
+	__antithesis_instrumentation__.Notify(457242)
 
-	// Stop idle timer if the connExecutor is closed to ensure cancel session
-	// is not called.
 	ex.mu.IdleInSessionTimeout.Stop()
 	ex.mu.IdleInTransactionSessionTimeout.Stop()
 
 	if closeType != panicClose {
+		__antithesis_instrumentation__.Notify(457277)
 		ex.state.mon.Stop(ctx)
 		ex.sessionMon.Stop(ctx)
 		ex.mon.Stop(ctx)
 	} else {
+		__antithesis_instrumentation__.Notify(457278)
 		ex.state.mon.EmergencyStop(ctx)
 		ex.sessionMon.EmergencyStop(ctx)
 		ex.mon.EmergencyStop(ctx)
 	}
 }
 
-// HasAdminRoleCache is stored in extraTxnState and used to cache if the
-// user has admin role throughout a transaction.
-// This is used for admin audit logging to check if a transaction is being
-// executed with admin privileges.
-// HasAdminRoleCache does not have to be reset when a transaction restarts
-// or roles back as the user's admin status will not change throughout the
-// lifecycle of a single transaction.
 type HasAdminRoleCache struct {
 	HasAdminRole bool
 
-	// IsSet is used to determine if the value for caching is set or not.
 	IsSet bool
 }
 
 type connExecutor struct {
 	_ util.NoCopy
 
-	// The server to which this connExecutor is attached. The reference is used
-	// for getting access to configuration settings.
-	// Note: do not use server.Metrics directly. Use metrics below instead.
 	server *Server
 
-	// The metrics to which the statement metrics should be accounted.
-	// This is different whether the executor is for regular client
-	// queries or for "internal" queries.
 	metrics *Metrics
 
-	// mon tracks memory usage for SQL activity within this session. It
-	// is not directly used, but rather indirectly used via sessionMon
-	// and state.mon. sessionMon tracks session-bound objects like prepared
-	// statements and result sets.
-	//
-	// The reason why state.mon and mon are split is to enable
-	// separate reporting of statistics per transaction and per
-	// session. This is because the "interesting" behavior w.r.t memory
-	// is typically caused by transactions, not sessions. The reason why
-	// sessionMon and mon are split is to enable separate reporting of
-	// statistics for result sets (which escape transactions).
 	mon        *mon.BytesMonitor
 	sessionMon *mon.BytesMonitor
-	// memMetrics contains the metrics that statements executed on this connection
-	// will contribute to.
+
 	memMetrics MemoryMetrics
 
-	// The buffer with incoming statements to execute.
 	stmtBuf *StmtBuf
-	// The interface for communicating statement results to the client.
+
 	clientComm ClientComm
-	// Finity "the machine" Automaton is the state machine controlling the state
-	// below.
+
 	machine fsm.Machine
-	// state encapsulates fields related to the ongoing SQL txn. It is mutated as
-	// the machine's ExtendedState.
+
 	state          txnState
 	transitionCtx  transitionCtx
 	sessionTracing SessionTracing
 
-	// eventLog for SQL statements and other important session events. Will be set
-	// if traceSessionEventLogEnabled; it is used by ex.sessionEventf()
 	eventLog trace.EventLog
 
-	// extraTxnState groups fields scoped to a SQL txn that are not handled by
-	// ex.state, above. The rule of thumb is that, if the state influences state
-	// transitions, it should live in state, otherwise it can live here.
-	// This is only used in the Open state. extraTxnState is reset whenever a
-	// transaction finishes or gets retried.
 	extraTxnState struct {
-		// descCollection collects descriptors used by the current transaction.
 		descCollection descs.Collection
 
-		// jobs accumulates jobs staged for execution inside the transaction.
-		// Staging happens when executing statements that are implemented with a
-		// job. The jobs are staged via the function QueueJob in
-		// pkg/sql/planner.go. The staged jobs are executed once the transaction
-		// that staged them commits.
 		jobs jobsCollection
 
-		// schemaChangeJobRecords is a map of descriptor IDs to job Records.
-		// Used in createOrUpdateSchemaChangeJob so we can check if a job has been
-		// queued up for the given ID. The cache remains valid only for the current
-		// transaction and it is cleared after the transaction is committed.
 		schemaChangeJobRecords map[descpb.ID]*jobs.Record
 
-		// atomicAutoRetryCounter keeps track of the which iteration of a transaction
-		// auto-retry we're currently in. It's 0 whenever the transaction state is not
-		// stateOpen.
 		atomicAutoRetryCounter *int32
 
-		// autoRetryReason records the error causing an auto-retryable error event if
-		// the current transaction is being automatically retried. This is used in
-		// statement traces to give more information in statement diagnostic bundles.
 		autoRetryReason error
 
-		// firstStmtExecuted indicates that the first statement inside this
-		// transaction has been executed.
 		firstStmtExecuted bool
 
-		// numDDL keeps track of how many DDL statements have been
-		// executed so far.
 		numDDL int
 
-		// numRows keeps track of the number of rows that have been observed by this
-		// transaction. This is simply the summation of number of rows observed by
-		// comprising statements.
 		numRows int
 
-		// txnCounter keeps track of how many SQL txns have been open since
-		// the start of the session. This is used for logging, to
-		// distinguish statements that belong to separate SQL transactions.
-		// A txn unique key can be obtained by grouping this counter with
-		// the session ID.
-		//
-		// Note that a single SQL txn can use multiple KV txns under the
-		// hood with multiple KV txn UUIDs, so the KV UUID is not a good
-		// txn identifier for SQL logging.
 		txnCounter int
 
-		// txnRewindPos is the position within stmtBuf to which we'll rewind when
-		// performing automatic retries. This is more or less the position where the
-		// current transaction started.
-		// This field is only defined while in stateOpen.
-		//
-		// Set via setTxnRewindPos().
 		txnRewindPos CmdPos
 
-		// prepStmtNamespace contains the prepared statements and portals that the
-		// session currently has access to.
-		// Portals are bound to a transaction and they're all destroyed once the
-		// transaction finishes.
-		// Prepared statements are not transactional and so it's a bit weird that
-		// they're part of extraTxnState, but it's convenient to put them here
-		// because they need the same kind of "snapshoting" as the portals (see
-		// prepStmtsNamespaceAtTxnRewindPos).
 		prepStmtsNamespace prepStmtNamespace
 
-		// prepStmtsNamespaceAtTxnRewindPos is a snapshot of the prep stmts/portals
-		// (ex.prepStmtsNamespace) before processing the command at position
-		// txnRewindPos.
-		// Here's the deal: prepared statements are not transactional, but they do
-		// need to interact properly with automatic retries (i.e. rewinding the
-		// command buffer). When doing a rewind, we need to be able to restore the
-		// prep stmts as they were. We do this by taking a snapshot every time
-		// txnRewindPos is advanced. Prepared statements are shared between the two
-		// collections, but these collections are periodically reconciled.
 		prepStmtsNamespaceAtTxnRewindPos prepStmtNamespace
 
-		// prepStmtsNamespaceMemAcc is the memory account that is shared
-		// between prepStmtsNamespace and prepStmtsNamespaceAtTxnRewindPos. It
-		// tracks the memory usage of portals and should be closed upon
-		// connExecutor's closure.
 		prepStmtsNamespaceMemAcc mon.BoundAccount
 
-		// sqlCursors contains the list of SQL CURSORs the session currently has
-		// access to.
-		// Cursors are bound to an explicit transaction and they're all destroyed
-		// once the transaction finishes.
 		sqlCursors cursorMap
 
-		// shouldExecuteOnTxnFinish indicates that ex.onTxnFinish will be called
-		// when txn is finished (either committed or aborted). It is true when
-		// txn is started but can remain false when txn is executed within
-		// another higher-level txn.
 		shouldExecuteOnTxnFinish bool
 
-		// txnFinishClosure contains fields that ex.onTxnFinish uses to execute.
 		txnFinishClosure struct {
-			// txnStartTime is the time that the transaction started.
 			txnStartTime time.Time
-			// implicit is whether or not the transaction was implicit.
+
 			implicit bool
 		}
 
-		// shouldExecuteOnTxnRestart indicates that ex.onTxnRestart will be
-		// called when txn is being retried. It is true when txn is started but
-		// can remain false when txn is executed within another higher-level
-		// txn.
 		shouldExecuteOnTxnRestart bool
 
-		// savepoints maintains the stack of savepoints currently open.
 		savepoints savepointStack
-		// rewindPosSnapshot is a snapshot of the savepoints and sessionData stack
-		// before processing the command at position txnRewindPos. When rewinding,
-		// we're going to restore this snapshot.
+
 		rewindPosSnapshot struct {
 			savepoints       savepointStack
 			sessionDataStack *sessiondata.Stack
 		}
 
-		// transactionStatementFingerprintIDs tracks all statement IDs that make up the current
-		// transaction. It's length is bound by the TxnStatsNumStmtFingerprintIDsToRecord
-		// cluster setting.
 		transactionStatementFingerprintIDs []roachpb.StmtFingerprintID
 
-		// transactionStatementsHash is the hashed accumulation of all statementFingerprintIDs
-		// that comprise the transaction. It is used to construct the key when
-		// recording transaction statistics. It's important to accumulate this hash
-		// as we go along in addition to the transactionStatementFingerprintIDs as
-		// transactionStatementFingerprintIDs are capped to prevent unbound expansion, but we
-		// still need the statementFingerprintID hash to disambiguate beyond the capped
-		// statements.
 		transactionStatementsHash util.FNV64
 
 		schemaChangerState SchemaChangerState
 
-		// shouldCollectTxnExecutionStats specifies whether the statements in
-		// this transaction should collect execution stats.
 		shouldCollectTxnExecutionStats bool
-		// accumulatedStats are the accumulated stats of all statements.
+
 		accumulatedStats execstats.QueryLevelStats
-		// rowsRead and bytesRead are separate from QueryLevelStats because they are
-		// accumulated independently since they are always collected, as opposed to
-		// QueryLevelStats which are sampled.
+
 		rowsRead  int64
 		bytesRead int64
 
-		// rowsWritten tracks the number of rows written (modified) by all
-		// statements in this txn so far.
 		rowsWritten int64
 
-		// rowsWrittenLogged and rowsReadLogged indicates whether we have
-		// already logged an event about reaching written/read rows setting,
-		// respectively.
 		rowsWrittenLogged bool
 		rowsReadLogged    bool
 
-		// hasAdminRole is used to cache if the user running the transaction
-		// has admin privilege. hasAdminRoleCache is set for the first statement
-		// in a transaction.
 		hasAdminRoleCache HasAdminRoleCache
 
-		// createdSequences keeps track of sequences created in the current transaction.
-		// The map key is the sequence descpb.ID.
 		createdSequences map[descpb.ID]struct{}
 	}
 
-	// sessionDataStack contains the user-configurable connection variables.
 	sessionDataStack *sessiondata.Stack
-	// dataMutatorIterator is nil for session-bound internal executors; we
-	// shouldn't issue statements that manipulate session state to an internal
-	// executor.
+
 	dataMutatorIterator *sessionDataMutatorIterator
 
-	// applicationStats records per-application SQL usage statistics. It is
-	// maintained to represent statistics for the application currently identified
-	// by sessiondata.ApplicationName.
 	applicationStats sqlstats.ApplicationStats
 
-	// statsCollector is used to collect statistics about SQL statements and
-	// transactions.
 	statsCollector sqlstats.StatsCollector
 
-	// applicationName is the same as sessionData.ApplicationName. It's copied
-	// here as an atomic so that it can be read concurrently by serialize().
 	applicationName atomic.Value
 
-	// ctxHolder contains the connection's context in which all command executed
-	// on the connection are running. This generally should not be used directly,
-	// but through the Ctx() method; if we're inside a transaction, Ctx() is going
-	// to return a derived context. See the Context Management comments at the top
-	// of the file.
 	ctxHolder ctxHolder
 
-	// onCancelSession is called when the SessionRegistry is cancels this session.
-	// For pgwire connections, this is hooked up to canceling the connection's
-	// context.
-	// If nil, canceling this session will be a no-op.
 	onCancelSession context.CancelFunc
 
-	// planner is the "default planner" on a session, to save planner allocations
-	// during serial execution. Since planners are not threadsafe, this is only
-	// safe to use when a statement is not being parallelized. It must be reset
-	// before using.
 	planner planner
 
-	// phaseTimes tracks session- and transaction-level phase times. It is
-	// copied-by-value when resetting statsCollector before executing each
-	// statement.
 	phaseTimes *sessionphase.Times
 
-	// rng is used to generate random numbers. An example usage is to determine
-	// whether to sample execution stats.
 	rng *rand.Rand
 
-	// mu contains of all elements of the struct that can be changed
-	// after initialization, and may be accessed from another thread.
 	mu struct {
 		syncutil.RWMutex
 
-		// ActiveQueries contains all queries in flight.
 		ActiveQueries map[ClusterWideID]*queryMeta
 
-		// LastActiveQuery contains a reference to the AST of the last
-		// query that ran on this session.
 		LastActiveQuery tree.Statement
 
-		// IdleInSessionTimeout is returned by the AfterFunc call that cancels the
-		// session if the idle time exceeds the idle_in_session_timeout.
 		IdleInSessionTimeout timeout
 
-		// IdleInTransactionSessionTimeout is returned by the AfterFunc call that
-		// cancels the session if the idle time in a transaction exceeds the
-		// idle_in_transaction_session_timeout.
 		IdleInTransactionSessionTimeout timeout
 	}
 
-	// curStmtAST is the statement that's currently being prepared or executed, if
-	// any. This is printed by high-level panic recovery.
 	curStmtAST tree.Statement
 
-	// queryCancelKey is a 64-bit identifier for the session used by the
-	// pgwire cancellation protocol.
 	queryCancelKey pgwirecancel.BackendKeyData
 
 	sessionID ClusterWideID
 
-	// activated determines whether activate() was called already.
-	// When this is set, close() must be called to release resources.
 	activated bool
 
-	// draining is set if we've received a DrainRequest. Once this is set, we're
-	// going to find a suitable time to close the connection.
 	draining bool
 
-	// executorType is set to whether this executor is an ordinary executor which
-	// responds to user queries or an internal one.
 	executorType executorType
 
-	// hasCreatedTemporarySchema is set if the executor has created a
-	// temporary schema, which requires special cleanup on close.
 	hasCreatedTemporarySchema bool
 
-	// stmtDiagnosticsRecorder is used to track which queries need to have
-	// information collected.
 	stmtDiagnosticsRecorder *stmtdiagnostics.Registry
 
-	// indexUsageStats is used to track index usage stats.
 	indexUsageStats *idxusage.LocalIndexUsageStats
 
-	// txnIDCacheWriter is used to write txnidcache.ResolvedTxnID to the
-	// Transaction ID Cache.
 	txnIDCacheWriter txnidcache.Writer
 }
 
-// ctxHolder contains a connection's context and, while session tracing is
-// enabled, a derived context with a recording span. The connExecutor should use
-// the latter while session tracing is active, or the former otherwise; that's
-// what the ctx() method returns.
 type ctxHolder struct {
 	connCtx           context.Context
 	sessionTracingCtx context.Context
 }
 
-// timeout wraps a Timer returned by time.AfterFunc. This interface
-// allows us to call Stop() on the Timer without having to check if
-// the timer is nil.
 type timeout struct {
 	timeout *time.Timer
 }
 
 func (t timeout) Stop() {
+	__antithesis_instrumentation__.Notify(457279)
 	if t.timeout != nil {
+		__antithesis_instrumentation__.Notify(457280)
 		t.timeout.Stop()
+	} else {
+		__antithesis_instrumentation__.Notify(457281)
 	}
 }
 
 func (ch *ctxHolder) ctx() context.Context {
+	__antithesis_instrumentation__.Notify(457282)
 	if ch.sessionTracingCtx != nil {
+		__antithesis_instrumentation__.Notify(457284)
 		return ch.sessionTracingCtx
+	} else {
+		__antithesis_instrumentation__.Notify(457285)
 	}
+	__antithesis_instrumentation__.Notify(457283)
 	return ch.connCtx
 }
 
 func (ch *ctxHolder) hijack(sessionTracingCtx context.Context) {
+	__antithesis_instrumentation__.Notify(457286)
 	if ch.sessionTracingCtx != nil {
+		__antithesis_instrumentation__.Notify(457288)
 		panic("hijack already in effect")
+	} else {
+		__antithesis_instrumentation__.Notify(457289)
 	}
+	__antithesis_instrumentation__.Notify(457287)
 	ch.sessionTracingCtx = sessionTracingCtx
 }
 
 func (ch *ctxHolder) unhijack() {
+	__antithesis_instrumentation__.Notify(457290)
 	if ch.sessionTracingCtx == nil {
+		__antithesis_instrumentation__.Notify(457292)
 		panic("hijack not in effect")
+	} else {
+		__antithesis_instrumentation__.Notify(457293)
 	}
+	__antithesis_instrumentation__.Notify(457291)
 	ch.sessionTracingCtx = nil
 }
 
 type prepStmtNamespace struct {
-	// prepStmts contains the prepared statements currently available on the
-	// session.
 	prepStmts map[string]*PreparedStatement
-	// portals contains the portals currently available on the session. Note
-	// that PreparedPortal.accountForCopy needs to be called if a copy of a
-	// PreparedPortal is retained.
+
 	portals map[string]PreparedPortal
 }
 
-// HasActivePortals returns true if there are portals in the session.
 func (ns prepStmtNamespace) HasActivePortals() bool {
+	__antithesis_instrumentation__.Notify(457294)
 	return len(ns.portals) > 0
 }
 
-// HasPortal returns true if there exists a given named portal in the session.
 func (ns prepStmtNamespace) HasPortal(s string) bool {
+	__antithesis_instrumentation__.Notify(457295)
 	_, ok := ns.portals[s]
 	return ok
 }
 
-// MigratablePreparedStatements returns a mapping of all prepared statements.
 func (ns prepStmtNamespace) MigratablePreparedStatements() []sessiondatapb.MigratableSession_PreparedStatement {
+	__antithesis_instrumentation__.Notify(457296)
 	ret := make([]sessiondatapb.MigratableSession_PreparedStatement, 0, len(ns.prepStmts))
 	for name, stmt := range ns.prepStmts {
+		__antithesis_instrumentation__.Notify(457298)
 		ret = append(
 			ret,
 			sessiondatapb.MigratableSession_PreparedStatement{
@@ -1574,67 +1236,76 @@ func (ns prepStmtNamespace) MigratablePreparedStatements() []sessiondatapb.Migra
 			},
 		)
 	}
+	__antithesis_instrumentation__.Notify(457297)
 	return ret
 }
 
 func (ns prepStmtNamespace) String() string {
+	__antithesis_instrumentation__.Notify(457299)
 	var sb strings.Builder
 	sb.WriteString("Prep stmts: ")
 	for name := range ns.prepStmts {
+		__antithesis_instrumentation__.Notify(457302)
 		sb.WriteString(name + " ")
 	}
+	__antithesis_instrumentation__.Notify(457300)
 	sb.WriteString("Portals: ")
 	for name := range ns.portals {
+		__antithesis_instrumentation__.Notify(457303)
 		sb.WriteString(name + " ")
 	}
+	__antithesis_instrumentation__.Notify(457301)
 	return sb.String()
 }
 
-// resetToEmpty deallocates the prepStmtNamespace.
 func (ns *prepStmtNamespace) resetToEmpty(
 	ctx context.Context, prepStmtsNamespaceMemAcc *mon.BoundAccount,
 ) {
-	// No errors could occur since we're releasing the resources.
+	__antithesis_instrumentation__.Notify(457304)
+
 	_ = ns.resetTo(ctx, prepStmtNamespace{}, prepStmtsNamespaceMemAcc)
 }
 
-// resetTo resets a namespace to equate another one (`to`). All the receiver's
-// references are released and all the to's references are duplicated.
-//
-// An empty `to` can be passed in to deallocate everything.
-//
-// It can only return an error if we've reached the memory limit and had to make
-// a copy of portals.
 func (ns *prepStmtNamespace) resetTo(
 	ctx context.Context, to prepStmtNamespace, prepStmtsNamespaceMemAcc *mon.BoundAccount,
 ) error {
+	__antithesis_instrumentation__.Notify(457305)
 	for name, p := range ns.prepStmts {
+		__antithesis_instrumentation__.Notify(457310)
 		p.decRef(ctx)
 		delete(ns.prepStmts, name)
 	}
+	__antithesis_instrumentation__.Notify(457306)
 	for name, p := range ns.portals {
+		__antithesis_instrumentation__.Notify(457311)
 		p.close(ctx, prepStmtsNamespaceMemAcc, name)
 		delete(ns.portals, name)
 	}
+	__antithesis_instrumentation__.Notify(457307)
 
 	for name, ps := range to.prepStmts {
+		__antithesis_instrumentation__.Notify(457312)
 		ps.incRef(ctx)
 		ns.prepStmts[name] = ps
 	}
+	__antithesis_instrumentation__.Notify(457308)
 	for name, p := range to.portals {
+		__antithesis_instrumentation__.Notify(457313)
 		if err := p.accountForCopy(ctx, prepStmtsNamespaceMemAcc, name); err != nil {
+			__antithesis_instrumentation__.Notify(457315)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457316)
 		}
+		__antithesis_instrumentation__.Notify(457314)
 		ns.portals[name] = p
 	}
+	__antithesis_instrumentation__.Notify(457309)
 	return nil
 }
 
-// resetExtraTxnState resets the fields of ex.extraTxnState when a transaction
-// finishes execution (either commits, rollbacks or restarts). Based on the
-// transaction event, resetExtraTxnState invokes corresponding callbacks
-// (e.g. onTxnFinish() and onTxnRestart()).
 func (ex *connExecutor) resetExtraTxnState(ctx context.Context, ev txnEvent) error {
+	__antithesis_instrumentation__.Notify(457317)
 	ex.extraTxnState.jobs = nil
 	ex.extraTxnState.firstStmtExecuted = false
 	ex.extraTxnState.hasAdminRoleCache = HasAdminRoleCache{}
@@ -1643,145 +1314,124 @@ func (ex *connExecutor) resetExtraTxnState(ctx context.Context, ev txnEvent) err
 	}
 
 	for k := range ex.extraTxnState.schemaChangeJobRecords {
+		__antithesis_instrumentation__.Notify(457321)
 		delete(ex.extraTxnState.schemaChangeJobRecords, k)
 	}
+	__antithesis_instrumentation__.Notify(457318)
 
 	ex.extraTxnState.descCollection.ReleaseAll(ctx)
 
-	// Close all portals.
 	for name, p := range ex.extraTxnState.prepStmtsNamespace.portals {
+		__antithesis_instrumentation__.Notify(457322)
 		p.close(ctx, &ex.extraTxnState.prepStmtsNamespaceMemAcc, name)
 		delete(ex.extraTxnState.prepStmtsNamespace.portals, name)
 	}
+	__antithesis_instrumentation__.Notify(457319)
 
-	// Close all cursors.
 	ex.extraTxnState.sqlCursors.closeAll()
 
 	ex.extraTxnState.createdSequences = make(map[descpb.ID]struct{})
 
 	switch ev.eventType {
 	case txnCommit, txnRollback:
+		__antithesis_instrumentation__.Notify(457323)
 		for name, p := range ex.extraTxnState.prepStmtsNamespaceAtTxnRewindPos.portals {
+			__antithesis_instrumentation__.Notify(457327)
 			p.close(ctx, &ex.extraTxnState.prepStmtsNamespaceMemAcc, name)
 			delete(ex.extraTxnState.prepStmtsNamespaceAtTxnRewindPos.portals, name)
 		}
+		__antithesis_instrumentation__.Notify(457324)
 		ex.extraTxnState.savepoints.clear()
 		ex.onTxnFinish(ctx, ev)
 	case txnRestart:
+		__antithesis_instrumentation__.Notify(457325)
 		ex.onTxnRestart(ctx)
 		ex.state.mu.Lock()
 		defer ex.state.mu.Unlock()
 		ex.state.mu.stmtCount = 0
+	default:
+		__antithesis_instrumentation__.Notify(457326)
 	}
-	// NOTE: on txnRestart we don't need to muck with the savepoints stack. It's either a
-	// a ROLLBACK TO SAVEPOINT that generated the event, and that statement deals with the
-	// savepoints, or it's a rewind which also deals with them.
+	__antithesis_instrumentation__.Notify(457320)
 
 	return nil
 }
 
-// Ctx returns the transaction's ctx, if we're inside a transaction, or the
-// session's context otherwise.
 func (ex *connExecutor) Ctx() context.Context {
+	__antithesis_instrumentation__.Notify(457328)
 	ctx := ex.state.Ctx
 	if _, ok := ex.machine.CurState().(stateNoTxn); ok {
+		__antithesis_instrumentation__.Notify(457331)
 		ctx = ex.ctxHolder.ctx()
+	} else {
+		__antithesis_instrumentation__.Notify(457332)
 	}
-	// stateInternalError is used by the InternalExecutor.
+	__antithesis_instrumentation__.Notify(457329)
+
 	if _, ok := ex.machine.CurState().(stateInternalError); ok {
+		__antithesis_instrumentation__.Notify(457333)
 		ctx = ex.ctxHolder.ctx()
+	} else {
+		__antithesis_instrumentation__.Notify(457334)
 	}
+	__antithesis_instrumentation__.Notify(457330)
 	return ctx
 }
 
-// sessionData returns the top SessionData in the executor's sessionDataStack.
-// This should be how callers should reference SessionData objects, as it
-// will always contain the "latest" SessionData object in the transaction.
 func (ex *connExecutor) sessionData() *sessiondata.SessionData {
+	__antithesis_instrumentation__.Notify(457335)
 	if ex.sessionDataStack == nil {
+		__antithesis_instrumentation__.Notify(457337)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(457338)
 	}
+	__antithesis_instrumentation__.Notify(457336)
 	return ex.sessionDataStack.Top()
 }
 
-// activate engages the use of resources that must be cleaned up
-// afterwards. after activate() completes, the close() method must be
-// called.
-//
-// Args:
-// parentMon: The root monitor.
-// reserved: Memory reserved for the connection. The connExecutor takes
-//   ownership of this memory.
 func (ex *connExecutor) activate(
 	ctx context.Context, parentMon *mon.BytesMonitor, reserved mon.BoundAccount,
 ) {
-	// Note: we pass `reserved` to sessionRootMon where it causes it to act as a
-	// buffer. This is not done for sessionMon nor state.mon: these monitors don't
-	// start with any buffer, so they'll need to ask their "parent" for memory as
-	// soon as the first allocation. This is acceptable because the session is
-	// single threaded, and the point of buffering is just to avoid contention.
+	__antithesis_instrumentation__.Notify(457339)
+
 	ex.mon.Start(ctx, parentMon, reserved)
 	ex.sessionMon.Start(ctx, ex.mon, mon.BoundAccount{})
 
-	// Enable the trace if configured.
 	if traceSessionEventLogEnabled.Get(&ex.server.cfg.Settings.SV) {
+		__antithesis_instrumentation__.Notify(457341)
 		remoteStr := "<admin>"
 		if ex.sessionData().RemoteAddr != nil {
+			__antithesis_instrumentation__.Notify(457343)
 			remoteStr = ex.sessionData().RemoteAddr.String()
+		} else {
+			__antithesis_instrumentation__.Notify(457344)
 		}
+		__antithesis_instrumentation__.Notify(457342)
 		ex.eventLog = trace.NewEventLog(
 			fmt.Sprintf("sql session [%s]", ex.sessionData().User()), remoteStr)
+	} else {
+		__antithesis_instrumentation__.Notify(457345)
 	}
+	__antithesis_instrumentation__.Notify(457340)
 
 	ex.activated = true
 }
 
-// run implements the run loop for a connExecutor. Commands are read one by one
-// from the input buffer; they are executed and the resulting state transitions
-// are performed.
-//
-// run returns when either the stmtBuf is closed by someone else or when an
-// error is propagated from query execution. Note that query errors are not
-// propagated as errors to this layer; only things that are supposed to
-// terminate the session are (e.g. client communication errors and ctx
-// cancelations).
-// run() is expected to react on ctx cancelation, but the caller needs to also
-// close the stmtBuf at the same time as canceling the ctx. If cancelation
-// happens in the middle of a query execution, that's expected to interrupt the
-// execution and generate an error. run() is then supposed to return because the
-// buffer is closed and no further commands can be read.
-//
-// When this returns, ex.close() needs to be called and  the connection to the
-// client needs to be terminated. If it returns with an error, that error may
-// represent a communication error (in which case the connection might already
-// also have an error from the reading side), or some other unexpected failure.
-// Returned errors have not been communicated to the client: it's up to the
-// caller to do that if it wants.
-//
-// If not nil, reserved represents Memory reserved for the connection. The
-// connExecutor takes ownership of this memory.
-//
-// onCancel, if not nil, will be called when the SessionRegistry cancels the
-// session. TODO(andrei): This is hooked up to canceling the pgwire connection's
-// context (of which ctx is also a child). It seems uncouth for the connExecutor
-// to cancel a higher-level task. A better design would probably be for pgwire
-// to own the SessionRegistry, instead of it being owned by the sql.Server -
-// then pgwire would directly cancel its own tasks; the sessions also more
-// naturally belong there. There is a problem, however, as query cancelation (as
-// opposed to session cancelation) is done through the SessionRegistry and that
-// does belong with the connExecutor. Introducing a query registry, separate
-// from the session registry, might be too costly - the way query cancelation
-// works is that every session is asked to cancel a given query until the right
-// one is found. That seems like a good performance trade-off.
 func (ex *connExecutor) run(
 	ctx context.Context,
 	parentMon *mon.BytesMonitor,
 	reserved mon.BoundAccount,
 	onCancel context.CancelFunc,
 ) error {
+	__antithesis_instrumentation__.Notify(457346)
 	if !ex.activated {
+		__antithesis_instrumentation__.Notify(457348)
 		ex.activate(ctx, parentMon, reserved)
+	} else {
+		__antithesis_instrumentation__.Notify(457349)
 	}
+	__antithesis_instrumentation__.Notify(457347)
 	ex.ctxHolder.connCtx = ctx
 	ex.onCancelSession = onCancel
 
@@ -1790,133 +1440,157 @@ func (ex *connExecutor) run(
 	ex.planner.extendedEvalCtx.setSessionID(ex.sessionID)
 	defer ex.server.cfg.SessionRegistry.deregister(ex.sessionID, ex.queryCancelKey)
 	for {
+		__antithesis_instrumentation__.Notify(457350)
 		ex.curStmtAST = nil
 		if err := ctx.Err(); err != nil {
+			__antithesis_instrumentation__.Notify(457352)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457353)
 		}
+		__antithesis_instrumentation__.Notify(457351)
 
 		var err error
 		if err = ex.execCmd(); err != nil {
+			__antithesis_instrumentation__.Notify(457354)
 			if errors.IsAny(err, io.EOF, errDrainingComplete) {
+				__antithesis_instrumentation__.Notify(457356)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(457357)
 			}
+			__antithesis_instrumentation__.Notify(457355)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457358)
 		}
 	}
 }
 
-// errDrainingComplete is returned by execCmd when the connExecutor previously got
-// a DrainRequest and the time is ripe to finish this session (i.e. we're no
-// longer in a transaction).
 var errDrainingComplete = fmt.Errorf("draining done. this is a good time to finish this session")
 
-// execCmd reads the current command from the stmtBuf and executes it. The
-// transaction state is modified accordingly, and the stmtBuf is advanced or
-// rewinded accordingly.
-//
-// Returns an error if communication of results to the client has failed and the
-// session should be terminated. Returns io.EOF if the stmtBuf has been closed.
-// Returns drainingComplete if the session should finish because draining is
-// complete (i.e. we received a DrainRequest - possibly previously - and the
-// connection is found to be idle).
 func (ex *connExecutor) execCmd() error {
+	__antithesis_instrumentation__.Notify(457359)
 	ctx := ex.Ctx()
 	cmd, pos, err := ex.stmtBuf.CurCmd()
 	if err != nil {
-		return err // err could be io.EOF
+		__antithesis_instrumentation__.Notify(457369)
+		return err
+	} else {
+		__antithesis_instrumentation__.Notify(457370)
 	}
+	__antithesis_instrumentation__.Notify(457360)
 
-	if log.ExpensiveLogEnabled(ctx, 2) || ex.eventLog != nil {
+	if log.ExpensiveLogEnabled(ctx, 2) || func() bool {
+		__antithesis_instrumentation__.Notify(457371)
+		return ex.eventLog != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(457372)
 		ex.sessionEventf(ctx, "[%s pos:%d] executing %s",
 			ex.machine.CurState(), pos, cmd)
+	} else {
+		__antithesis_instrumentation__.Notify(457373)
 	}
+	__antithesis_instrumentation__.Notify(457361)
 
 	var ev fsm.Event
 	var payload fsm.EventPayload
 	var res ResultBase
 	switch tcmd := cmd.(type) {
 	case ExecStmt:
+		__antithesis_instrumentation__.Notify(457374)
 		ex.phaseTimes.SetSessionPhaseTime(sessionphase.SessionQueryReceived, tcmd.TimeReceived)
 		ex.phaseTimes.SetSessionPhaseTime(sessionphase.SessionStartParse, tcmd.ParseStart)
 		ex.phaseTimes.SetSessionPhaseTime(sessionphase.SessionEndParse, tcmd.ParseEnd)
 
-		// We use a closure for the body of the execution so as to
-		// guarantee that the full service time is captured below.
 		err := func() error {
+			__antithesis_instrumentation__.Notify(457390)
 			if tcmd.AST == nil {
+				__antithesis_instrumentation__.Notify(457392)
 				res = ex.clientComm.CreateEmptyQueryResult(pos)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(457393)
 			}
+			__antithesis_instrumentation__.Notify(457391)
 			ex.curStmtAST = tcmd.AST
 
 			stmtRes := ex.clientComm.CreateStatementResult(
 				tcmd.AST,
 				NeedRowDesc,
 				pos,
-				nil, /* formatCodes */
+				nil,
 				ex.sessionData().DataConversionConfig,
 				ex.sessionData().GetLocation(),
-				0,  /* limit */
-				"", /* portalName */
+				0,
+				"",
 				ex.implicitTxn(),
 			)
 			res = stmtRes
 
-			// In the simple protocol, autocommit only when this is the last statement
-			// in the batch. This matches the Postgres behavior. See
-			// "Multiple Statements in a Single Query" at
-			// https://www.postgresql.org/docs/14/protocol-flow.html.
-			// The behavior is configurable, in case users want to preserve the
-			// behavior from v21.2 and earlier.
 			implicitTxnForBatch := ex.sessionData().EnableImplicitTransactionForBatchStatements
-			canAutoCommit := ex.implicitTxn() && (tcmd.LastInBatch || !implicitTxnForBatch)
+			canAutoCommit := ex.implicitTxn() && func() bool {
+				__antithesis_instrumentation__.Notify(457394)
+				return (tcmd.LastInBatch || func() bool {
+					__antithesis_instrumentation__.Notify(457395)
+					return !implicitTxnForBatch == true
+				}() == true) == true
+			}() == true
 			ev, payload, err = ex.execStmt(
-				ctx, tcmd.Statement, nil /* prepared */, nil /* pinfo */, stmtRes, canAutoCommit,
+				ctx, tcmd.Statement, nil, nil, stmtRes, canAutoCommit,
 			)
 			return err
 		}()
-		// Note: we write to ex.statsCollector.PhaseTimes, instead of ex.phaseTimes,
-		// because:
-		// - stats use ex.statsCollector, not ex.phaseTimes.
-		// - ex.statsCollector merely contains a copy of the times, that
-		//   was created when the statement started executing (via the
-		//   Reset() method).
+		__antithesis_instrumentation__.Notify(457375)
+
 		ex.statsCollector.PhaseTimes().SetSessionPhaseTime(sessionphase.SessionQueryServiced, timeutil.Now())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(457396)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457397)
 		}
 
 	case ExecPortal:
-		// ExecPortal is handled like ExecStmt, except that the placeholder info
-		// is taken from the portal.
+		__antithesis_instrumentation__.Notify(457376)
+
 		ex.phaseTimes.SetSessionPhaseTime(sessionphase.SessionQueryReceived, tcmd.TimeReceived)
-		// When parsing has been done earlier, via a separate parse
-		// message, it is not any more part of the statistics collected
-		// for this execution. In that case, we simply report that
-		// parsing took no time.
+
 		ex.phaseTimes.SetSessionPhaseTime(sessionphase.SessionStartParse, time.Time{})
 		ex.phaseTimes.SetSessionPhaseTime(sessionphase.SessionEndParse, time.Time{})
-		// We use a closure for the body of the execution so as to
-		// guarantee that the full service time is captured below.
+
 		err := func() error {
+			__antithesis_instrumentation__.Notify(457398)
 			portalName := tcmd.Name
 			portal, ok := ex.extraTxnState.prepStmtsNamespace.portals[portalName]
 			if !ok {
+				__antithesis_instrumentation__.Notify(457402)
 				err := pgerror.Newf(
 					pgcode.InvalidCursorName, "unknown portal %q", portalName)
 				ev = eventNonRetriableErr{IsCommit: fsm.False}
 				payload = eventNonRetriableErrPayload{err: err}
 				res = ex.clientComm.CreateErrorResult(pos)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(457403)
 			}
+			__antithesis_instrumentation__.Notify(457399)
 			if portal.Stmt.AST == nil {
+				__antithesis_instrumentation__.Notify(457404)
 				res = ex.clientComm.CreateEmptyQueryResult(pos)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(457405)
 			}
+			__antithesis_instrumentation__.Notify(457400)
 
 			if log.ExpensiveLogEnabled(ctx, 2) {
+				__antithesis_instrumentation__.Notify(457406)
 				log.VEventf(ctx, 2, "portal resolved to: %s", portal.Stmt.AST.String())
+			} else {
+				__antithesis_instrumentation__.Notify(457407)
 			}
+			__antithesis_instrumentation__.Notify(457401)
 			ex.curStmtAST = portal.Stmt.AST
 
 			pinfo := &tree.PlaceholderInfo{
@@ -1929,8 +1603,7 @@ func (ex *connExecutor) execCmd() error {
 
 			stmtRes := ex.clientComm.CreateStatementResult(
 				portal.Stmt.AST,
-				// The client is using the extended protocol, so no row description is
-				// needed.
+
 				DontNeedRowDesc,
 				pos, portal.OutFormats,
 				ex.sessionData().DataConversionConfig,
@@ -1941,335 +1614,421 @@ func (ex *connExecutor) execCmd() error {
 			)
 			res = stmtRes
 
-			// In the extended protocol, autocommit is not always allowed. The postgres
-			// docs say that commands in the extended protocol are all treated as an
-			// implicit transaction that does not get committed until a Sync message is
-			// received. However, if we are executing a statement that is immediately
-			// followed by Sync (which is the common case), then we still can auto-commit,
-			// which allows the 1PC txn fast path to be used.
-			canAutoCommit := ex.implicitTxn() && tcmd.FollowedBySync
+			canAutoCommit := ex.implicitTxn() && func() bool {
+				__antithesis_instrumentation__.Notify(457408)
+				return tcmd.FollowedBySync == true
+			}() == true
 			ev, payload, err = ex.execPortal(ctx, portal, portalName, stmtRes, pinfo, canAutoCommit)
 			return err
 		}()
-		// Note: we write to ex.statsCollector.phaseTimes, instead of ex.phaseTimes,
-		// because:
-		// - stats use ex.statsCollector, not ex.phasetimes.
-		// - ex.statsCollector merely contains a copy of the times, that
-		//   was created when the statement started executing (via the
-		//   reset() method).
+		__antithesis_instrumentation__.Notify(457377)
+
 		ex.statsCollector.PhaseTimes().SetSessionPhaseTime(sessionphase.SessionQueryServiced, timeutil.Now())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(457409)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457410)
 		}
-		// Update the cmd and pos in the stmtBuf as limitedCommandResult will have
-		// advanced the position if the the portal is repeatedly executed with a limit
+		__antithesis_instrumentation__.Notify(457378)
+
 		cmd, pos, err = ex.stmtBuf.CurCmd()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(457411)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457412)
 		}
 
 	case PrepareStmt:
+		__antithesis_instrumentation__.Notify(457379)
 		ex.curStmtAST = tcmd.AST
 		res = ex.clientComm.CreatePrepareResult(pos)
 		stmtCtx := withStatement(ctx, ex.curStmtAST)
 		ev, payload = ex.execPrepare(stmtCtx, tcmd)
 	case DescribeStmt:
+		__antithesis_instrumentation__.Notify(457380)
 		descRes := ex.clientComm.CreateDescribeResult(pos)
 		res = descRes
 		ev, payload = ex.execDescribe(ctx, tcmd, descRes)
 	case BindStmt:
+		__antithesis_instrumentation__.Notify(457381)
 		res = ex.clientComm.CreateBindResult(pos)
 		ev, payload = ex.execBind(ctx, tcmd)
 	case DeletePreparedStmt:
+		__antithesis_instrumentation__.Notify(457382)
 		res = ex.clientComm.CreateDeleteResult(pos)
 		ev, payload = ex.execDelPrepStmt(ctx, tcmd)
 	case SendError:
+		__antithesis_instrumentation__.Notify(457383)
 		res = ex.clientComm.CreateErrorResult(pos)
 		ev = eventNonRetriableErr{IsCommit: fsm.False}
 		payload = eventNonRetriableErrPayload{err: tcmd.Err}
 	case Sync:
-		// The Postgres docs say: "At completion of each series of extended-query
-		// messages, the frontend should issue a Sync message. This parameterless
-		// message causes the backend to close the current transaction if it's not
-		// inside a BEGIN/COMMIT transaction block (“close” meaning to commit if no
-		// error, or roll back if error)."
-		// In other words, Sync is treated as commit for implicit transactions.
+		__antithesis_instrumentation__.Notify(457384)
+
 		if ex.implicitTxn() {
-			// Note that the handling of ev in the case of Sync is massaged a bit
-			// later - Sync is special in that, if it encounters an error, that does
-			// *not *cause the session to ignore all commands until the next Sync.
+			__antithesis_instrumentation__.Notify(457413)
+
 			ev, payload = ex.handleAutoCommit(ctx, &tree.CommitTransaction{})
+		} else {
+			__antithesis_instrumentation__.Notify(457414)
 		}
-		// Note that the Sync result will flush results to the network connection.
+		__antithesis_instrumentation__.Notify(457385)
+
 		res = ex.clientComm.CreateSyncResult(pos)
 		if ex.draining {
-			// If we're draining, check whether this is a good time to finish the
-			// connection. If we're not inside a transaction, we stop processing
-			// now. If we are inside a transaction, we'll check again the next time
-			// a Sync is processed.
+			__antithesis_instrumentation__.Notify(457415)
+
 			if ex.idleConn() {
-				// If we're about to close the connection, close res in order to flush
-				// now, as we won't have an opportunity to do it later.
+				__antithesis_instrumentation__.Notify(457416)
+
 				res.Close(ctx, stateToTxnStatusIndicator(ex.machine.CurState()))
 				return errDrainingComplete
+			} else {
+				__antithesis_instrumentation__.Notify(457417)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(457418)
 		}
 	case CopyIn:
+		__antithesis_instrumentation__.Notify(457386)
 		res = ex.clientComm.CreateCopyInResult(pos)
 		var err error
 		ev, payload, err = ex.execCopyIn(ctx, tcmd)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(457419)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457420)
 		}
 	case DrainRequest:
-		// We received a drain request. We terminate immediately if we're not in a
-		// transaction. If we are in a transaction, we'll finish as soon as a Sync
-		// command (i.e. the end of a batch) is processed outside of a
-		// transaction.
+		__antithesis_instrumentation__.Notify(457387)
+
 		ex.draining = true
 		res = ex.clientComm.CreateDrainResult(pos)
 		if ex.idleConn() {
+			__antithesis_instrumentation__.Notify(457421)
 			return errDrainingComplete
+		} else {
+			__antithesis_instrumentation__.Notify(457422)
 		}
 	case Flush:
-		// Closing the res will flush the connection's buffer.
+		__antithesis_instrumentation__.Notify(457388)
+
 		res = ex.clientComm.CreateFlushResult(pos)
 	default:
+		__antithesis_instrumentation__.Notify(457389)
 		panic(errors.AssertionFailedf("unsupported command type: %T", cmd))
 	}
+	__antithesis_instrumentation__.Notify(457362)
 
 	var advInfo advanceInfo
 
-	// If an event was generated, feed it to the state machine.
 	if ev != nil {
+		__antithesis_instrumentation__.Notify(457423)
 		var err error
 		advInfo, err = ex.txnStateTransitionsApplyWrapper(ev, payload, res, pos)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(457426)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457427)
 		}
+		__antithesis_instrumentation__.Notify(457424)
 
-		// Massage the advancing for Sync, which is special.
 		if _, ok := cmd.(Sync); ok {
+			__antithesis_instrumentation__.Notify(457428)
 			switch advInfo.code {
 			case skipBatch:
-				// An error on Sync doesn't cause us to skip commands (and errors are
-				// possible because Sync can trigger a commit). We generate the
-				// ErrorResponse and the ReadyForQuery responses, and we continue with
-				// the next command. From the Postgres docs:
-				// """
-				// Note that no skipping occurs if an error is detected while processing
-				// Sync — this ensures that there is one and only one ReadyForQuery sent for
-				// each Sync.
-				// """
+				__antithesis_instrumentation__.Notify(457429)
+
 				advInfo = advanceInfo{code: advanceOne}
 			case advanceOne:
+				__antithesis_instrumentation__.Notify(457430)
 			case rewind:
+				__antithesis_instrumentation__.Notify(457431)
 			case stayInPlace:
+				__antithesis_instrumentation__.Notify(457432)
 				return errors.AssertionFailedf("unexpected advance code stayInPlace when processing Sync")
+			default:
+				__antithesis_instrumentation__.Notify(457433)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(457434)
 		}
+		__antithesis_instrumentation__.Notify(457425)
 
-		// If a txn just started, we henceforth want to run in the context of the
-		// transaction. Similarly, if a txn just ended, we don't want to run in its
-		// context any more.
 		ctx = ex.Ctx()
 	} else {
-		// If no event was generated synthesize an advance code.
+		__antithesis_instrumentation__.Notify(457435)
+
 		advInfo = advanceInfo{code: advanceOne}
 	}
+	__antithesis_instrumentation__.Notify(457363)
 
-	// Decide if we need to close the result or not. We don't need to do it if
-	// we're staying in place or rewinding - the statement will be executed
-	// again.
-	if advInfo.code != stayInPlace && advInfo.code != rewind {
-		// Close the result. In case of an execution error, the result might have
-		// its error set already or it might not.
+	if advInfo.code != stayInPlace && func() bool {
+		__antithesis_instrumentation__.Notify(457436)
+		return advInfo.code != rewind == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(457437)
+
 		resErr := res.Err()
 
 		pe, ok := payload.(payloadWithError)
 		if ok {
+			__antithesis_instrumentation__.Notify(457439)
 			ex.sessionEventf(ctx, "execution error: %s", pe.errorCause())
 			if resErr == nil {
+				__antithesis_instrumentation__.Notify(457440)
 				res.SetError(pe.errorCause())
+			} else {
+				__antithesis_instrumentation__.Notify(457441)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(457442)
 		}
+		__antithesis_instrumentation__.Notify(457438)
 		res.Close(ctx, stateToTxnStatusIndicator(ex.machine.CurState()))
 	} else {
+		__antithesis_instrumentation__.Notify(457443)
 		res.Discard()
 	}
+	__antithesis_instrumentation__.Notify(457364)
 
-	// Move the cursor according to what the state transition told us to do.
 	switch advInfo.code {
 	case advanceOne:
+		__antithesis_instrumentation__.Notify(457444)
 		ex.stmtBuf.AdvanceOne()
 	case skipBatch:
-		// We'll flush whatever results we have to the network. The last one must
-		// be an error. This flush may seem unnecessary, as we generally only
-		// flush when the client requests it through a Sync or a Flush but without
-		// it the Node.js driver isn't happy. That driver likes to send "flush"
-		// command and only sends Syncs once it received some data. But we ignore
-		// flush commands (just like we ignore any other commands) when skipping
-		// to the next batch.
+		__antithesis_instrumentation__.Notify(457445)
+
 		if err := ex.clientComm.Flush(pos); err != nil {
+			__antithesis_instrumentation__.Notify(457451)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457452)
 		}
+		__antithesis_instrumentation__.Notify(457446)
 		if err := ex.stmtBuf.seekToNextBatch(); err != nil {
+			__antithesis_instrumentation__.Notify(457453)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457454)
 		}
 	case rewind:
+		__antithesis_instrumentation__.Notify(457447)
 		if err := ex.rewindPrepStmtNamespace(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(457455)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457456)
 		}
+		__antithesis_instrumentation__.Notify(457448)
 		ex.extraTxnState.savepoints = ex.extraTxnState.rewindPosSnapshot.savepoints
-		// Note we use the Replace function instead of reassigning, as there are
-		// copies of the ex.sessionDataStack in the iterators and extendedEvalContext.
+
 		ex.sessionDataStack.Replace(ex.extraTxnState.rewindPosSnapshot.sessionDataStack)
 		advInfo.rewCap.rewindAndUnlock(ctx)
 	case stayInPlace:
-		// Nothing to do. The same statement will be executed again.
+		__antithesis_instrumentation__.Notify(457449)
+
 	default:
+		__antithesis_instrumentation__.Notify(457450)
 		panic(errors.AssertionFailedf("unexpected advance code: %s", advInfo.code))
 	}
+	__antithesis_instrumentation__.Notify(457365)
 
 	if err := ex.updateTxnRewindPosMaybe(ctx, cmd, pos, advInfo); err != nil {
+		__antithesis_instrumentation__.Notify(457457)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(457458)
 	}
+	__antithesis_instrumentation__.Notify(457366)
 
 	if rewindCapability, canRewind := ex.getRewindTxnCapability(); !canRewind {
-		// Trim statements that cannot be retried to reclaim memory.
+		__antithesis_instrumentation__.Notify(457459)
+
 		ex.stmtBuf.Ltrim(ctx, pos)
 	} else {
+		__antithesis_instrumentation__.Notify(457460)
 		rewindCapability.close()
 	}
+	__antithesis_instrumentation__.Notify(457367)
 
 	if ex.server.cfg.TestingKnobs.AfterExecCmd != nil {
+		__antithesis_instrumentation__.Notify(457461)
 		ex.server.cfg.TestingKnobs.AfterExecCmd(ctx, cmd, ex.stmtBuf)
+	} else {
+		__antithesis_instrumentation__.Notify(457462)
 	}
+	__antithesis_instrumentation__.Notify(457368)
 
 	return nil
 }
 
 func (ex *connExecutor) idleConn() bool {
+	__antithesis_instrumentation__.Notify(457463)
 	switch ex.machine.CurState().(type) {
 	case stateNoTxn:
+		__antithesis_instrumentation__.Notify(457464)
 		return true
 	case stateInternalError:
+		__antithesis_instrumentation__.Notify(457465)
 		return true
 	default:
+		__antithesis_instrumentation__.Notify(457466)
 		return false
 	}
 }
 
-// updateTxnRewindPosMaybe checks whether the ex.extraTxnState.txnRewindPos
-// should be advanced, based on the advInfo produced by running cmd at position
-// pos.
 func (ex *connExecutor) updateTxnRewindPosMaybe(
 	ctx context.Context, cmd Command, pos CmdPos, advInfo advanceInfo,
 ) error {
-	// txnRewindPos is only maintained while in stateOpen.
+	__antithesis_instrumentation__.Notify(457467)
+
 	if _, ok := ex.machine.CurState().(stateOpen); !ok {
+		__antithesis_instrumentation__.Notify(457470)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(457471)
 	}
-	if advInfo.txnEvent.eventType == txnStart || advInfo.txnEvent.eventType == txnRestart {
+	__antithesis_instrumentation__.Notify(457468)
+	if advInfo.txnEvent.eventType == txnStart || func() bool {
+		__antithesis_instrumentation__.Notify(457472)
+		return advInfo.txnEvent.eventType == txnRestart == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(457473)
 		var nextPos CmdPos
 		switch advInfo.code {
 		case stayInPlace:
+			__antithesis_instrumentation__.Notify(457475)
 			nextPos = pos
 		case advanceOne:
-			// Future rewinds will refer to the next position; the statement that
-			// started the transaction (i.e. BEGIN) will not be itself be executed
-			// again.
+			__antithesis_instrumentation__.Notify(457476)
+
 			nextPos = pos + 1
 		case rewind:
+			__antithesis_instrumentation__.Notify(457477)
 			if advInfo.rewCap.rewindPos != ex.extraTxnState.txnRewindPos {
+				__antithesis_instrumentation__.Notify(457480)
 				return errors.AssertionFailedf(
 					"unexpected rewind position: %d when txn start is: %d",
 					errors.Safe(advInfo.rewCap.rewindPos),
 					errors.Safe(ex.extraTxnState.txnRewindPos))
+			} else {
+				__antithesis_instrumentation__.Notify(457481)
 			}
-			// txnRewindPos stays unchanged.
+			__antithesis_instrumentation__.Notify(457478)
+
 			return nil
 		default:
+			__antithesis_instrumentation__.Notify(457479)
 			return errors.AssertionFailedf(
 				"unexpected advance code when starting a txn: %s",
 				errors.Safe(advInfo.code))
 		}
+		__antithesis_instrumentation__.Notify(457474)
 		if err := ex.setTxnRewindPos(ctx, nextPos); err != nil {
+			__antithesis_instrumentation__.Notify(457482)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457483)
 		}
 	} else {
-		// See if we can advance the rewind point even if this is not the point
-		// where the transaction started. We can do that after running a special
-		// statement (e.g. SET TRANSACTION or SAVEPOINT) or after most commands that
-		// don't execute statements.
-		// The idea is that, for example, we don't want the following sequence to
-		// disable retries for what comes after the sequence:
-		// 1: PrepareStmt BEGIN
-		// 2: BindStmt
-		// 3: ExecutePortal
-		// 4: Sync
-
-		// Note that the current command cannot influence the rewind point if
-		// if the rewind point is not current set to the command's position
-		// (i.e. we don't do anything if txnRewindPos != pos).
+		__antithesis_instrumentation__.Notify(457484)
 
 		if advInfo.code != advanceOne {
+			__antithesis_instrumentation__.Notify(457486)
 			panic(errors.AssertionFailedf("unexpected advanceCode: %s", advInfo.code))
+		} else {
+			__antithesis_instrumentation__.Notify(457487)
 		}
+		__antithesis_instrumentation__.Notify(457485)
 
 		var canAdvance bool
 		_, inOpen := ex.machine.CurState().(stateOpen)
-		if inOpen && (ex.extraTxnState.txnRewindPos == pos) {
+		if inOpen && func() bool {
+			__antithesis_instrumentation__.Notify(457488)
+			return (ex.extraTxnState.txnRewindPos == pos) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(457489)
 			switch tcmd := cmd.(type) {
 			case ExecStmt:
+				__antithesis_instrumentation__.Notify(457491)
 				canAdvance = ex.stmtDoesntNeedRetry(tcmd.AST)
 			case ExecPortal:
+				__antithesis_instrumentation__.Notify(457492)
 				canAdvance = true
-				// The portal might have been deleted if DEALLOCATE was executed.
+
 				portal, ok := ex.extraTxnState.prepStmtsNamespace.portals[tcmd.Name]
 				if ok {
+					__antithesis_instrumentation__.Notify(457503)
 					canAdvance = ex.stmtDoesntNeedRetry(portal.Stmt.AST)
+				} else {
+					__antithesis_instrumentation__.Notify(457504)
 				}
 			case PrepareStmt:
+				__antithesis_instrumentation__.Notify(457493)
 				canAdvance = true
 			case DescribeStmt:
+				__antithesis_instrumentation__.Notify(457494)
 				canAdvance = true
 			case BindStmt:
+				__antithesis_instrumentation__.Notify(457495)
 				canAdvance = true
 			case DeletePreparedStmt:
+				__antithesis_instrumentation__.Notify(457496)
 				canAdvance = true
 			case SendError:
+				__antithesis_instrumentation__.Notify(457497)
 				canAdvance = true
 			case Sync:
+				__antithesis_instrumentation__.Notify(457498)
 				canAdvance = true
 			case CopyIn:
-				// Can't advance.
+				__antithesis_instrumentation__.Notify(457499)
+
 			case DrainRequest:
+				__antithesis_instrumentation__.Notify(457500)
 				canAdvance = true
 			case Flush:
+				__antithesis_instrumentation__.Notify(457501)
 				canAdvance = true
 			default:
+				__antithesis_instrumentation__.Notify(457502)
 				panic(errors.AssertionFailedf("unsupported cmd: %T", cmd))
 			}
+			__antithesis_instrumentation__.Notify(457490)
 			if canAdvance {
+				__antithesis_instrumentation__.Notify(457505)
 				if err := ex.setTxnRewindPos(ctx, pos+1); err != nil {
+					__antithesis_instrumentation__.Notify(457506)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(457507)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(457508)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(457509)
 		}
 	}
+	__antithesis_instrumentation__.Notify(457469)
 	return nil
 }
 
-// setTxnRewindPos updates the position to which future rewinds will refer.
-//
-// All statements with lower position in stmtBuf (if any) are removed, as we
-// won't ever need them again.
 func (ex *connExecutor) setTxnRewindPos(ctx context.Context, pos CmdPos) error {
+	__antithesis_instrumentation__.Notify(457510)
 	if pos <= ex.extraTxnState.txnRewindPos {
+		__antithesis_instrumentation__.Notify(457512)
 		panic(errors.AssertionFailedf("can only move the  txnRewindPos forward. "+
 			"Was: %d; new value: %d", ex.extraTxnState.txnRewindPos, pos))
+	} else {
+		__antithesis_instrumentation__.Notify(457513)
 	}
+	__antithesis_instrumentation__.Notify(457511)
 	ex.extraTxnState.txnRewindPos = pos
 	ex.stmtBuf.Ltrim(ctx, pos)
 	ex.extraTxnState.rewindPosSnapshot.savepoints = ex.extraTxnState.savepoints.clone()
@@ -2277,195 +2036,232 @@ func (ex *connExecutor) setTxnRewindPos(ctx context.Context, pos CmdPos) error {
 	return ex.commitPrepStmtNamespace(ctx)
 }
 
-// stmtDoesntNeedRetry returns true if the given statement does not need to be
-// retried when performing automatic retries. This means that the results of the
-// statement do not change with retries.
 func (ex *connExecutor) stmtDoesntNeedRetry(ast tree.Statement) bool {
-	return isSavepoint(ast) || isSetTransaction(ast)
+	__antithesis_instrumentation__.Notify(457514)
+	return isSavepoint(ast) || func() bool {
+		__antithesis_instrumentation__.Notify(457515)
+		return isSetTransaction(ast) == true
+	}() == true
 }
 
 func stateToTxnStatusIndicator(s fsm.State) TransactionStatusIndicator {
+	__antithesis_instrumentation__.Notify(457516)
 	switch s.(type) {
 	case stateOpen:
+		__antithesis_instrumentation__.Notify(457517)
 		return InTxnBlock
 	case stateAborted:
+		__antithesis_instrumentation__.Notify(457518)
 		return InFailedTxnBlock
 	case stateNoTxn:
+		__antithesis_instrumentation__.Notify(457519)
 		return IdleTxnBlock
 	case stateCommitWait:
+		__antithesis_instrumentation__.Notify(457520)
 		return InTxnBlock
 	case stateInternalError:
+		__antithesis_instrumentation__.Notify(457521)
 		return InTxnBlock
 	default:
+		__antithesis_instrumentation__.Notify(457522)
 		panic(errors.AssertionFailedf("unknown state: %T", s))
 	}
 }
 
-// isCopyToExternalStorage returns true if the CopyIn command is writing to an
-// ExternalStorage such as nodelocal or userfile. It does so by checking the
-// target table/schema names against the sentinel, internal table/schema names
-// used by these commands.
 func isCopyToExternalStorage(cmd CopyIn) bool {
+	__antithesis_instrumentation__.Notify(457523)
 	stmt := cmd.Stmt
-	return (stmt.Table.Table() == NodelocalFileUploadTable ||
-		stmt.Table.Table() == UserFileUploadTable) && stmt.Table.SchemaName == CrdbInternalName
+	return (stmt.Table.Table() == NodelocalFileUploadTable || func() bool {
+		__antithesis_instrumentation__.Notify(457524)
+		return stmt.Table.Table() == UserFileUploadTable == true
+	}() == true) && func() bool {
+		__antithesis_instrumentation__.Notify(457525)
+		return stmt.Table.SchemaName == CrdbInternalName == true
+	}() == true
 }
 
-// We handle the CopyFrom statement by creating a copyMachine and handing it
-// control over the connection until the copying is done. The contract is that,
-// when this is called, the pgwire.conn is not reading from the network
-// connection any more until this returns. The copyMachine will to the reading
-// and writing up to the CommandComplete message.
 func (ex *connExecutor) execCopyIn(
 	ctx context.Context, cmd CopyIn,
 ) (_ fsm.Event, retPayload fsm.EventPayload, retErr error) {
+	__antithesis_instrumentation__.Notify(457526)
 	logStatements := logStatementsExecuteEnabled.Get(ex.planner.execCfg.SV())
 
 	ex.incrementStartedStmtCounter(cmd.Stmt)
 	defer func() {
-		if retErr == nil && !payloadHasError(retPayload) {
+		__antithesis_instrumentation__.Notify(457537)
+		if retErr == nil && func() bool {
+			__antithesis_instrumentation__.Notify(457539)
+			return !payloadHasError(retPayload) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(457540)
 			ex.incrementExecutedStmtCounter(cmd.Stmt)
+		} else {
+			__antithesis_instrumentation__.Notify(457541)
 		}
+		__antithesis_instrumentation__.Notify(457538)
 		if retErr != nil {
+			__antithesis_instrumentation__.Notify(457542)
 			log.SqlExec.Errorf(ctx, "error executing %s: %+v", cmd, retErr)
+		} else {
+			__antithesis_instrumentation__.Notify(457543)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(457527)
 
 	if logStatements {
+		__antithesis_instrumentation__.Notify(457544)
 		log.SqlExec.Infof(ctx, "executing %s", cmd)
+	} else {
+		__antithesis_instrumentation__.Notify(457545)
 	}
+	__antithesis_instrumentation__.Notify(457528)
 
-	// When we're done, unblock the network connection.
 	defer cmd.CopyDone.Done()
 
 	state := ex.machine.CurState()
 	_, isNoTxn := state.(stateNoTxn)
 	_, isOpen := state.(stateOpen)
-	if !isNoTxn && !isOpen {
+	if !isNoTxn && func() bool {
+		__antithesis_instrumentation__.Notify(457546)
+		return !isOpen == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(457547)
 		ev := eventNonRetriableErr{IsCommit: fsm.False}
 		payload := eventNonRetriableErrPayload{
-			err: sqlerrors.NewTransactionAbortedError("" /* customMsg */)}
+			err: sqlerrors.NewTransactionAbortedError("")}
 		return ev, payload, nil
+	} else {
+		__antithesis_instrumentation__.Notify(457548)
 	}
+	__antithesis_instrumentation__.Notify(457529)
 
-	// If we're in an explicit txn, then the copying will be done within that
-	// txn. Otherwise, we tell the copyMachine to manage its own transactions
-	// and give it a closure to reset the accumulated extraTxnState.
 	var txnOpt copyTxnOpt
 	if isOpen {
+		__antithesis_instrumentation__.Notify(457549)
 		txnOpt = copyTxnOpt{
 			txn:           ex.state.mu.txn,
 			txnTimestamp:  ex.state.sqlTimestamp,
 			stmtTimestamp: ex.server.cfg.Clock.PhysicalTime(),
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(457550)
 		txnOpt = copyTxnOpt{
 			resetExtraTxnState: func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(457551)
 				return ex.resetExtraTxnState(ctx, txnEvent{eventType: noEvent})
 			},
 		}
 	}
+	__antithesis_instrumentation__.Notify(457530)
 
 	var monToStop *mon.BytesMonitor
 	defer func() {
+		__antithesis_instrumentation__.Notify(457552)
 		if monToStop != nil {
+			__antithesis_instrumentation__.Notify(457553)
 			monToStop.Stop(ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(457554)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(457531)
 	if isNoTxn {
-		// HACK: We're reaching inside ex.state and starting the monitor. Normally
-		// that's driven by the state machine, but we're bypassing the state machine
-		// here.
-		ex.state.mon.Start(ctx, ex.sessionMon, mon.BoundAccount{} /* reserved */)
+		__antithesis_instrumentation__.Notify(457555)
+
+		ex.state.mon.Start(ctx, ex.sessionMon, mon.BoundAccount{})
 		monToStop = ex.state.mon
+	} else {
+		__antithesis_instrumentation__.Notify(457556)
 	}
+	__antithesis_instrumentation__.Notify(457532)
 	txnOpt.resetPlanner = func(ctx context.Context, p *planner, txn *kv.Txn, txnTS time.Time, stmtTS time.Time) {
-		// HACK: We're reaching inside ex.state and changing sqlTimestamp by hand.
-		// It is used by resetPlanner. Normally sqlTimestamp is updated by the
-		// state machine, but the copyMachine manages its own transactions without
-		// going through the state machine.
+		__antithesis_instrumentation__.Notify(457557)
+
 		ex.state.sqlTimestamp = txnTS
 		ex.statsCollector.Reset(ex.applicationStats, ex.phaseTimes)
 		ex.initPlanner(ctx, p)
 		ex.resetPlanner(ctx, p, txn, stmtTS)
 	}
+	__antithesis_instrumentation__.Notify(457533)
 	var cm copyMachineInterface
 	var err error
 	if isCopyToExternalStorage(cmd) {
+		__antithesis_instrumentation__.Notify(457558)
 		cm, err = newFileUploadMachine(ctx, cmd.Conn, cmd.Stmt, txnOpt, ex.server.cfg)
 	} else {
+		__antithesis_instrumentation__.Notify(457559)
 		cm, err = newCopyMachine(
 			ctx, cmd.Conn, cmd.Stmt, txnOpt, ex.server.cfg,
-			// execInsertPlan
+
 			func(ctx context.Context, p *planner, res RestrictedCommandResult) error {
-				_, err := ex.execWithDistSQLEngine(ctx, p, tree.RowsAffected, res, DistributionTypeNone, nil /* progressAtomic */)
+				__antithesis_instrumentation__.Notify(457560)
+				_, err := ex.execWithDistSQLEngine(ctx, p, tree.RowsAffected, res, DistributionTypeNone, nil)
 				return err
 			},
 		)
 	}
+	__antithesis_instrumentation__.Notify(457534)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(457561)
 		ev := eventNonRetriableErr{IsCommit: fsm.False}
 		payload := eventNonRetriableErrPayload{err: err}
 		return ev, payload, nil
+	} else {
+		__antithesis_instrumentation__.Notify(457562)
 	}
+	__antithesis_instrumentation__.Notify(457535)
 	if err := cm.run(ctx); err != nil {
-		// TODO(andrei): We don't have a retriable error story for the copy machine.
-		// When running outside of a txn, the copyMachine should probably do retries
-		// internally. When not, it's unclear what we should do. For now, we abort
-		// the txn (if any).
-		// We also don't have a story for distinguishing communication errors (which
-		// should terminate the connection) from query errors. For now, we treat all
-		// errors as query errors.
+		__antithesis_instrumentation__.Notify(457563)
+
 		ev := eventNonRetriableErr{IsCommit: fsm.False}
 		payload := eventNonRetriableErrPayload{err: err}
 		return ev, payload, nil
+	} else {
+		__antithesis_instrumentation__.Notify(457564)
 	}
+	__antithesis_instrumentation__.Notify(457536)
 	return nil, nil, nil
 }
 
-// stmtHasNoData returns true if describing a result of the input statement
-// type should return NoData.
 func stmtHasNoData(stmt tree.Statement) bool {
-	return stmt == nil || stmt.StatementReturnType() != tree.Rows
+	__antithesis_instrumentation__.Notify(457565)
+	return stmt == nil || func() bool {
+		__antithesis_instrumentation__.Notify(457566)
+		return stmt.StatementReturnType() != tree.Rows == true
+	}() == true
 }
 
-// generateID generates a unique ID based on the SQL instance ID and its current
-// HLC timestamp. These IDs are either scoped at the query level or at the
-// session level.
 func (ex *connExecutor) generateID() ClusterWideID {
+	__antithesis_instrumentation__.Notify(457567)
 	return GenerateClusterWideID(ex.server.cfg.Clock.Now(), ex.server.cfg.NodeID.SQLInstanceID())
 }
 
-// commitPrepStmtNamespace deallocates everything in
-// prepStmtsNamespaceAtTxnRewindPos that's not part of prepStmtsNamespace.
 func (ex *connExecutor) commitPrepStmtNamespace(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(457568)
 	return ex.extraTxnState.prepStmtsNamespaceAtTxnRewindPos.resetTo(
 		ctx, ex.extraTxnState.prepStmtsNamespace, &ex.extraTxnState.prepStmtsNamespaceMemAcc,
 	)
 }
 
-// commitPrepStmtNamespace deallocates everything in prepStmtsNamespace that's
-// not part of prepStmtsNamespaceAtTxnRewindPos.
 func (ex *connExecutor) rewindPrepStmtNamespace(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(457569)
 	return ex.extraTxnState.prepStmtsNamespace.resetTo(
 		ctx, ex.extraTxnState.prepStmtsNamespaceAtTxnRewindPos, &ex.extraTxnState.prepStmtsNamespaceMemAcc,
 	)
 }
 
-// getRewindTxnCapability checks whether rewinding to the position previously
-// set through setTxnRewindPos() is possible and, if it is, returns a
-// rewindCapability bound to that position. The returned bool is true if the
-// rewind is possible. If it is, client communication is blocked until the
-// rewindCapability is exercised.
 func (ex *connExecutor) getRewindTxnCapability() (rewindCapability, bool) {
+	__antithesis_instrumentation__.Notify(457570)
 	cl := ex.clientComm.LockCommunication()
 
-	// If we already delivered results at or past the start position, we can't
-	// rewind.
 	if cl.ClientPos() >= ex.extraTxnState.txnRewindPos {
+		__antithesis_instrumentation__.Notify(457572)
 		cl.Close()
 		return rewindCapability{}, false
+	} else {
+		__antithesis_instrumentation__.Notify(457573)
 	}
+	__antithesis_instrumentation__.Notify(457571)
 	return rewindCapability{
 		cl:        cl,
 		buf:       ex.stmtBuf,
@@ -2473,8 +2269,8 @@ func (ex *connExecutor) getRewindTxnCapability() (rewindCapability, bool) {
 	}, true
 }
 
-// isCommit returns true if stmt is a "COMMIT" statement.
 func isCommit(stmt tree.Statement) bool {
+	__antithesis_instrumentation__.Notify(457574)
 	_, ok := stmt.(*tree.CommitTransaction)
 	return ok
 }
@@ -2484,26 +2280,33 @@ var retriableMinTimestampBoundUnsatisfiableError = errors.Newf(
 )
 
 func errIsRetriable(err error) bool {
-	return errors.HasType(err, (*roachpb.TransactionRetryWithProtoRefreshError)(nil)) ||
-		scerrors.ConcurrentSchemaChangeDescID(err) != descpb.InvalidID ||
-		errors.Is(err, retriableMinTimestampBoundUnsatisfiableError)
+	__antithesis_instrumentation__.Notify(457575)
+	return errors.HasType(err, (*roachpb.TransactionRetryWithProtoRefreshError)(nil)) || func() bool {
+		__antithesis_instrumentation__.Notify(457576)
+		return scerrors.ConcurrentSchemaChangeDescID(err) != descpb.InvalidID == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(457577)
+		return errors.Is(err, retriableMinTimestampBoundUnsatisfiableError) == true
+	}() == true
 }
 
-// makeErrEvent takes an error and returns either an eventRetriableErr or an
-// eventNonRetriableErr, depending on the error type.
 func (ex *connExecutor) makeErrEvent(err error, stmt tree.Statement) (fsm.Event, fsm.EventPayload) {
-	// Check for MinTimestampBoundUnsatisfiableError errors.
-	// If this is detected, it means we are potentially able to retry with a lower
-	// MaxTimestampBound set if our MinTimestampBound was bumped up from the
-	// original AS OF SYSTEM TIME timestamp set due to a schema bumping the
-	// timestamp to a higher value.
+	__antithesis_instrumentation__.Notify(457578)
+
 	if minTSErr := (*roachpb.MinTimestampBoundUnsatisfiableError)(nil); errors.As(err, &minTSErr) {
+		__antithesis_instrumentation__.Notify(457581)
 		aost := ex.planner.EvalContext().AsOfSystemTime
-		if aost != nil && aost.BoundedStaleness {
-			if !aost.MaxTimestampBound.IsEmpty() && aost.MaxTimestampBound.LessEq(minTSErr.MinTimestampBound) {
-				// If this occurs, we have a strange logic bug where we resolved
-				// a minimum timestamp during a bounded staleness read to be greater
-				// than or equal to the maximum staleness bound we put up.
+		if aost != nil && func() bool {
+			__antithesis_instrumentation__.Notify(457582)
+			return aost.BoundedStaleness == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(457583)
+			if !aost.MaxTimestampBound.IsEmpty() && func() bool {
+				__antithesis_instrumentation__.Notify(457585)
+				return aost.MaxTimestampBound.LessEq(minTSErr.MinTimestampBound) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(457586)
+
 				err = errors.CombineErrors(
 					errors.AssertionFailedf(
 						"unexpected MaxTimestampBound >= txn MinTimestampBound: %s >= %s",
@@ -2512,23 +2315,46 @@ func (ex *connExecutor) makeErrEvent(err error, stmt tree.Statement) (fsm.Event,
 					),
 					err,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(457587)
 			}
+			__antithesis_instrumentation__.Notify(457584)
 			if aost.Timestamp.Less(minTSErr.MinTimestampBound) {
+				__antithesis_instrumentation__.Notify(457588)
 				err = errors.Mark(err, retriableMinTimestampBoundUnsatisfiableError)
+			} else {
+				__antithesis_instrumentation__.Notify(457589)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(457590)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(457591)
 	}
+	__antithesis_instrumentation__.Notify(457579)
 
 	retriable := errIsRetriable(err)
 	if retriable {
+		__antithesis_instrumentation__.Notify(457592)
 		var rc rewindCapability
 		var canAutoRetry bool
-		if ex.implicitTxn() || !ex.sessionData().InjectRetryErrorsEnabled {
+		if ex.implicitTxn() || func() bool {
+			__antithesis_instrumentation__.Notify(457595)
+			return !ex.sessionData().InjectRetryErrorsEnabled == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(457596)
 			rc, canAutoRetry = ex.getRewindTxnCapability()
+		} else {
+			__antithesis_instrumentation__.Notify(457597)
 		}
+		__antithesis_instrumentation__.Notify(457593)
 		if canAutoRetry {
+			__antithesis_instrumentation__.Notify(457598)
 			ex.extraTxnState.autoRetryReason = err
+		} else {
+			__antithesis_instrumentation__.Notify(457599)
 		}
+		__antithesis_instrumentation__.Notify(457594)
 
 		ev := eventRetriableErr{
 			IsCommit:     fsm.FromBool(isCommit(stmt)),
@@ -2539,7 +2365,10 @@ func (ex *connExecutor) makeErrEvent(err error, stmt tree.Statement) (fsm.Event,
 			rewCap: rc,
 		}
 		return ev, payload
+	} else {
+		__antithesis_instrumentation__.Notify(457600)
 	}
+	__antithesis_instrumentation__.Notify(457580)
 	ev := eventNonRetriableErr{
 		IsCommit: fsm.FromBool(isCommit(stmt)),
 	}
@@ -2547,109 +2376,162 @@ func (ex *connExecutor) makeErrEvent(err error, stmt tree.Statement) (fsm.Event,
 	return ev, payload
 }
 
-// setTransactionModes implements the txnModesSetter interface.
 func (ex *connExecutor) setTransactionModes(
 	ctx context.Context, modes tree.TransactionModes, asOfTs hlc.Timestamp,
 ) error {
-	// This method cheats and manipulates ex.state directly, not through an event.
-	// The alternative would be to create a special event, but it's unclear how
-	// that'd work given that this method is called while executing a statement.
+	__antithesis_instrumentation__.Notify(457601)
 
-	// Transform the transaction options into the types needed by the state
-	// machine.
 	if modes.UserPriority != tree.UnspecifiedUserPriority {
+		__antithesis_instrumentation__.Notify(457606)
 		pri := txnPriorityToProto(modes.UserPriority)
 		if err := ex.state.setPriority(pri); err != nil {
+			__antithesis_instrumentation__.Notify(457607)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457608)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(457609)
 	}
-	if modes.Isolation != tree.UnspecifiedIsolation && modes.Isolation != tree.SerializableIsolation {
+	__antithesis_instrumentation__.Notify(457602)
+	if modes.Isolation != tree.UnspecifiedIsolation && func() bool {
+		__antithesis_instrumentation__.Notify(457610)
+		return modes.Isolation != tree.SerializableIsolation == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(457611)
 		return errors.AssertionFailedf(
 			"unknown isolation level: %s", errors.Safe(modes.Isolation))
+	} else {
+		__antithesis_instrumentation__.Notify(457612)
 	}
+	__antithesis_instrumentation__.Notify(457603)
 	rwMode := modes.ReadWriteMode
-	if modes.AsOf.Expr != nil && asOfTs.IsEmpty() {
+	if modes.AsOf.Expr != nil && func() bool {
+		__antithesis_instrumentation__.Notify(457613)
+		return asOfTs.IsEmpty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(457614)
 		return errors.AssertionFailedf("expected an evaluated AS OF timestamp")
+	} else {
+		__antithesis_instrumentation__.Notify(457615)
 	}
+	__antithesis_instrumentation__.Notify(457604)
 	if !asOfTs.IsEmpty() {
+		__antithesis_instrumentation__.Notify(457616)
 		if err := ex.state.setHistoricalTimestamp(ctx, asOfTs); err != nil {
+			__antithesis_instrumentation__.Notify(457618)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457619)
 		}
+		__antithesis_instrumentation__.Notify(457617)
 		if rwMode == tree.UnspecifiedReadWriteMode {
+			__antithesis_instrumentation__.Notify(457620)
 			rwMode = tree.ReadOnly
+		} else {
+			__antithesis_instrumentation__.Notify(457621)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(457622)
 	}
+	__antithesis_instrumentation__.Notify(457605)
 	return ex.state.setReadOnlyMode(rwMode)
 }
 
 func txnPriorityToProto(mode tree.UserPriority) roachpb.UserPriority {
+	__antithesis_instrumentation__.Notify(457623)
 	var pri roachpb.UserPriority
 	switch mode {
 	case tree.UnspecifiedUserPriority:
+		__antithesis_instrumentation__.Notify(457625)
 		pri = roachpb.NormalUserPriority
 	case tree.Low:
+		__antithesis_instrumentation__.Notify(457626)
 		pri = roachpb.MinUserPriority
 	case tree.Normal:
+		__antithesis_instrumentation__.Notify(457627)
 		pri = roachpb.NormalUserPriority
 	case tree.High:
+		__antithesis_instrumentation__.Notify(457628)
 		pri = roachpb.MaxUserPriority
 	default:
+		__antithesis_instrumentation__.Notify(457629)
 		log.Fatalf(context.Background(), "unknown user priority: %s", mode)
 	}
+	__antithesis_instrumentation__.Notify(457624)
 	return pri
 }
 
 func (ex *connExecutor) txnPriorityWithSessionDefault(mode tree.UserPriority) roachpb.UserPriority {
+	__antithesis_instrumentation__.Notify(457630)
 	if mode == tree.UnspecifiedUserPriority {
+		__antithesis_instrumentation__.Notify(457632)
 		mode = tree.UserPriority(ex.sessionData().DefaultTxnPriority)
+	} else {
+		__antithesis_instrumentation__.Notify(457633)
 	}
+	__antithesis_instrumentation__.Notify(457631)
 	return txnPriorityToProto(mode)
 }
 
-// QualityOfService returns the QoSLevel session setting if the session
-// settings are populated, otherwise the default QoSLevel.
 func (ex *connExecutor) QualityOfService() sessiondatapb.QoSLevel {
+	__antithesis_instrumentation__.Notify(457634)
 	if ex.sessionData() == nil {
+		__antithesis_instrumentation__.Notify(457636)
 		return sessiondatapb.Normal
+	} else {
+		__antithesis_instrumentation__.Notify(457637)
 	}
+	__antithesis_instrumentation__.Notify(457635)
 	return ex.sessionData().DefaultTxnQualityOfService
 }
 
 func (ex *connExecutor) readWriteModeWithSessionDefault(
 	mode tree.ReadWriteMode,
 ) tree.ReadWriteMode {
+	__antithesis_instrumentation__.Notify(457638)
 	if mode == tree.UnspecifiedReadWriteMode {
+		__antithesis_instrumentation__.Notify(457640)
 		if ex.sessionData().DefaultTxnReadOnly {
+			__antithesis_instrumentation__.Notify(457642)
 			return tree.ReadOnly
+		} else {
+			__antithesis_instrumentation__.Notify(457643)
 		}
+		__antithesis_instrumentation__.Notify(457641)
 		return tree.ReadWrite
+	} else {
+		__antithesis_instrumentation__.Notify(457644)
 	}
+	__antithesis_instrumentation__.Notify(457639)
 	return mode
 }
 
-// followerReadTimestampExpr is the function which can be used with AOST clauses
-// to generate a timestamp likely to be safe for follower reads.
-//
-// NOTE: this cannot live in pkg/sql/sem/tree due to the call to WrapFunction,
-// which fails before the pkg/sql/sem/builtins package has been initialized.
 var followerReadTimestampExpr = &tree.FuncExpr{
 	Func: tree.WrapFunction(tree.FollowerReadTimestampFunctionName),
 }
 
 func (ex *connExecutor) asOfClauseWithSessionDefault(expr tree.AsOfClause) tree.AsOfClause {
+	__antithesis_instrumentation__.Notify(457645)
 	if expr.Expr == nil {
+		__antithesis_instrumentation__.Notify(457647)
 		if ex.sessionData().DefaultTxnUseFollowerReads {
+			__antithesis_instrumentation__.Notify(457649)
 			return tree.AsOfClause{Expr: followerReadTimestampExpr}
+		} else {
+			__antithesis_instrumentation__.Notify(457650)
 		}
+		__antithesis_instrumentation__.Notify(457648)
 		return tree.AsOfClause{}
+	} else {
+		__antithesis_instrumentation__.Notify(457651)
 	}
+	__antithesis_instrumentation__.Notify(457646)
 	return expr
 }
 
-// initEvalCtx initializes the fields of an extendedEvalContext that stay the
-// same across multiple statements. resetEvalCtx must also be called before each
-// statement, to reinitialize other fields.
 func (ex *connExecutor) initEvalCtx(ctx context.Context, evalCtx *extendedEvalContext, p *planner) {
+	__antithesis_instrumentation__.Notify(457652)
 	*evalCtx = extendedEvalContext{
 		EvalContext: tree.EvalContext{
 			Planner:                   p,
@@ -2680,25 +2562,27 @@ func (ex *connExecutor) initEvalCtx(ctx context.Context, evalCtx *extendedEvalCo
 	evalCtx.copyFromExecCfg(ex.server.cfg)
 }
 
-// resetEvalCtx initializes the fields of evalCtx that can change
-// during a session (i.e. the fields not set by initEvalCtx).
-//
-// stmtTS is the timestamp that the statement_timestamp() SQL builtin will
-// return for statements executed with this evalCtx. Since generally each
-// statement is supposed to have a different timestamp, the evalCtx generally
-// shouldn't be reused across statements.
 func (ex *connExecutor) resetEvalCtx(evalCtx *extendedEvalContext, txn *kv.Txn, stmtTS time.Time) {
-	newTxn := txn == nil || evalCtx.Txn != txn
+	__antithesis_instrumentation__.Notify(457653)
+	newTxn := txn == nil || func() bool {
+		__antithesis_instrumentation__.Notify(457655)
+		return evalCtx.Txn != txn == true
+	}() == true
 	evalCtx.TxnState = ex.getTransactionState()
 	evalCtx.TxnReadOnly = ex.state.readOnly
 	evalCtx.TxnImplicit = ex.implicitTxn()
 	evalCtx.TxnIsSingleStmt = false
-	if newTxn || !ex.implicitTxn() {
-		// Only update the stmt timestamp if in a new txn or an explicit txn. This is because this gets
-		// called multiple times during an extended protocol implicit txn, but we
-		// want all those stages to share the same stmtTS.
+	if newTxn || func() bool {
+		__antithesis_instrumentation__.Notify(457656)
+		return !ex.implicitTxn() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(457657)
+
 		evalCtx.StmtTimestamp = stmtTS
+	} else {
+		__antithesis_instrumentation__.Notify(457658)
 	}
+	__antithesis_instrumentation__.Notify(457654)
 	evalCtx.TxnTimestamp = ex.state.sqlTimestamp
 	evalCtx.Placeholders = nil
 	evalCtx.Annotations = nil
@@ -2710,46 +2594,54 @@ func (ex *connExecutor) resetEvalCtx(evalCtx *extendedEvalContext, txn *kv.Txn, 
 	evalCtx.SkipNormalize = false
 	evalCtx.SchemaChangerState = &ex.extraTxnState.schemaChangerState
 
-	// If we are retrying due to an unsatisfiable timestamp bound which is
-	// retriable, it means we were unable to serve the previous minimum timestamp
-	// as there was a schema update in between. When retrying, we want to keep the
-	// same minimum timestamp for the AOST read, but set the maximum timestamp
-	// to the point just before our failed read to ensure we don't try to read
-	// data which may be after the schema change when we retry.
 	var minTSErr *roachpb.MinTimestampBoundUnsatisfiableError
-	if err := ex.extraTxnState.autoRetryReason; err != nil && errors.As(err, &minTSErr) {
+	if err := ex.extraTxnState.autoRetryReason; err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(457659)
+		return errors.As(err, &minTSErr) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(457660)
 		nextMax := minTSErr.MinTimestampBound
 		ex.extraTxnState.descCollection.SetMaxTimestampBound(nextMax)
 		evalCtx.AsOfSystemTime.MaxTimestampBound = nextMax
-	} else if newTxn {
-		// Otherwise, only change the historical timestamps if this is a new txn.
-		// This is because resetPlanner can be called multiple times for the same
-		// txn during the extended protocol.
-		ex.extraTxnState.descCollection.ResetMaxTimestampBound()
-		evalCtx.AsOfSystemTime = nil
+	} else {
+		__antithesis_instrumentation__.Notify(457661)
+		if newTxn {
+			__antithesis_instrumentation__.Notify(457662)
+
+			ex.extraTxnState.descCollection.ResetMaxTimestampBound()
+			evalCtx.AsOfSystemTime = nil
+		} else {
+			__antithesis_instrumentation__.Notify(457663)
+		}
 	}
 }
 
-// getTransactionState retrieves a text representation of the given state.
 func (ex *connExecutor) getTransactionState() string {
+	__antithesis_instrumentation__.Notify(457664)
 	state := ex.machine.CurState()
 	if ex.implicitTxn() {
-		// If the statement reading the state is in an implicit transaction, then we
-		// want to tell NoTxn to the client.
+		__antithesis_instrumentation__.Notify(457666)
+
 		state = stateNoTxn{}
+	} else {
+		__antithesis_instrumentation__.Notify(457667)
 	}
+	__antithesis_instrumentation__.Notify(457665)
 	return state.(fmt.Stringer).String()
 }
 
 func (ex *connExecutor) implicitTxn() bool {
+	__antithesis_instrumentation__.Notify(457668)
 	state := ex.machine.CurState()
 	os, ok := state.(stateOpen)
-	return ok && os.ImplicitTxn.Get()
+	return ok && func() bool {
+		__antithesis_instrumentation__.Notify(457669)
+		return os.ImplicitTxn.Get() == true
+	}() == true
 }
 
-// initPlanner initializes a planner so it can can be used for planning a
-// query in the context of this session.
 func (ex *connExecutor) initPlanner(ctx context.Context, p *planner) {
+	__antithesis_instrumentation__.Notify(457670)
 	p.cancelChecker.Reset(ctx)
 
 	ex.initEvalCtx(ctx, &p.extendedEvalCtx, p)
@@ -2767,6 +2659,7 @@ func (ex *connExecutor) initPlanner(ctx context.Context, p *planner) {
 func (ex *connExecutor) resetPlanner(
 	ctx context.Context, p *planner, txn *kv.Txn, stmtTS time.Time,
 ) {
+	__antithesis_instrumentation__.Notify(457671)
 	p.txn = txn
 	p.stmt = Statement{}
 	p.instrumentation = instrumentationHelper{}
@@ -2775,12 +2668,15 @@ func (ex *connExecutor) resetPlanner(
 
 	p.semaCtx = tree.MakeSemaContext()
 	if p.execCfg.Settings.Version.IsActive(ctx, clusterversion.DateStyleIntervalStyleCastRewrite) {
+		__antithesis_instrumentation__.Notify(457673)
 		p.semaCtx.IntervalStyleEnabled = true
 		p.semaCtx.DateStyleEnabled = true
 	} else {
+		__antithesis_instrumentation__.Notify(457674)
 		p.semaCtx.IntervalStyleEnabled = ex.sessionData().IntervalStyleEnabled
 		p.semaCtx.DateStyleEnabled = ex.sessionData().DateStyleEnabled
 	}
+	__antithesis_instrumentation__.Notify(457672)
 	p.semaCtx.SearchPath = ex.sessionData().SearchPath
 	p.semaCtx.Annotations = nil
 	p.semaCtx.TypeResolver = p
@@ -2795,88 +2691,115 @@ func (ex *connExecutor) resetPlanner(
 	p.avoidLeasedDescriptors = false
 }
 
-// txnStateTransitionsApplyWrapper is a wrapper on top of Machine built with the
-// TxnStateTransitions above. Its point is to detect when we go in and out of
-// transactions and update some state.
-//
-// Any returned error indicates an unrecoverable error for the session;
-// execution on this connection should be interrupted.
 func (ex *connExecutor) txnStateTransitionsApplyWrapper(
 	ev fsm.Event, payload fsm.EventPayload, res ResultBase, pos CmdPos,
 ) (advanceInfo, error) {
+	__antithesis_instrumentation__.Notify(457675)
 
 	var implicitTxn bool
 	txnIsOpen := false
 	if os, ok := ex.machine.CurState().(stateOpen); ok {
+		__antithesis_instrumentation__.Notify(457681)
 		implicitTxn = os.ImplicitTxn.Get()
 		txnIsOpen = true
+	} else {
+		__antithesis_instrumentation__.Notify(457682)
 	}
+	__antithesis_instrumentation__.Notify(457676)
 
 	ex.mu.Lock()
 	err := ex.machine.ApplyWithPayload(withStatement(ex.Ctx(), ex.curStmtAST), ev, payload)
 	ex.mu.Unlock()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(457683)
 		if errors.HasType(err, (*fsm.TransitionNotFoundError)(nil)) {
+			__antithesis_instrumentation__.Notify(457685)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(457686)
 		}
+		__antithesis_instrumentation__.Notify(457684)
 		return advanceInfo{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(457687)
 	}
+	__antithesis_instrumentation__.Notify(457677)
 
 	advInfo := ex.state.consumeAdvanceInfo()
 	if advInfo.code == rewind {
+		__antithesis_instrumentation__.Notify(457688)
 		atomic.AddInt32(ex.extraTxnState.atomicAutoRetryCounter, 1)
+	} else {
+		__antithesis_instrumentation__.Notify(457689)
 	}
+	__antithesis_instrumentation__.Notify(457678)
 
-	// If we had an error from DDL statement execution due to the presence of
-	// other concurrent schema changes when attempting a schema change, wait for
-	// the completion of those schema changes first.
 	if p, ok := payload.(payloadWithError); ok {
+		__antithesis_instrumentation__.Notify(457690)
 		if descID := scerrors.ConcurrentSchemaChangeDescID(p.errorCause()); descID != descpb.InvalidID {
+			__antithesis_instrumentation__.Notify(457691)
 			if err := ex.handleWaitingForConcurrentSchemaChanges(ex.Ctx(), descID); err != nil {
+				__antithesis_instrumentation__.Notify(457692)
 				return advanceInfo{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(457693)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(457694)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(457695)
 	}
+	__antithesis_instrumentation__.Notify(457679)
 
-	// Handle transaction events which cause updates to txnState.
 	switch advInfo.txnEvent.eventType {
 	case noEvent:
+		__antithesis_instrumentation__.Notify(457696)
 		_, nextStateIsAborted := ex.machine.CurState().(stateAborted)
-		// Update the deadline on the transaction based on the collections,
-		// if the transaction is currently open. If the next state is aborted
-		// then the collection will get reset once we retry or rollback the
-		// transaction, and no deadline needs to be picked up here.
-		if txnIsOpen && !nextStateIsAborted {
+
+		if txnIsOpen && func() bool {
+			__antithesis_instrumentation__.Notify(457704)
+			return !nextStateIsAborted == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(457705)
 			err := ex.extraTxnState.descCollection.MaybeUpdateDeadline(ex.Ctx(), ex.state.mu.txn)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(457706)
 				return advanceInfo{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(457707)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(457708)
 		}
 	case txnStart:
+		__antithesis_instrumentation__.Notify(457697)
 		atomic.StoreInt32(ex.extraTxnState.atomicAutoRetryCounter, 0)
 		ex.extraTxnState.autoRetryReason = nil
 		ex.extraTxnState.firstStmtExecuted = false
 		ex.recordTransactionStart(advInfo.txnEvent.txnID)
-		// Start of the transaction, so no statements were executed earlier.
-		// Bump the txn counter for logging.
+
 		ex.extraTxnState.txnCounter++
 		if !ex.server.cfg.Codec.ForSystemTenant() {
-			// Update the leased descriptor collection with the current sqlliveness.Session.
-			// This is required in the multi-tenant environment to update the transaction
-			// deadline to either the session expiry or the leased descriptor deadline,
-			// whichever is sooner. We need this to ensure that transactions initiated
-			// by ephemeral SQL pods in multi-tenant environments are committed before the
-			// session expires.
+			__antithesis_instrumentation__.Notify(457709)
+
 			session, err := ex.server.cfg.SQLLiveness.Session(ex.Ctx())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(457711)
 				return advanceInfo{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(457712)
 			}
+			__antithesis_instrumentation__.Notify(457710)
 			ex.extraTxnState.descCollection.SetSession(session)
+		} else {
+			__antithesis_instrumentation__.Notify(457713)
 		}
 	case txnCommit:
+		__antithesis_instrumentation__.Notify(457698)
 		if res.Err() != nil {
-			// See https://github.com/cockroachdb/errors/issues/86.
-			// nolint:errwrap
+			__antithesis_instrumentation__.Notify(457714)
+
 			err := errorutil.UnexpectedWithIssueErrorf(
 				26687,
 				"programming error: non-error event %s generated even though res.Err() has been set to: %s",
@@ -2885,31 +2808,20 @@ func (ex *connExecutor) txnStateTransitionsApplyWrapper(
 			log.Errorf(ex.Ctx(), "%v", err)
 			errorutil.SendReport(ex.Ctx(), &ex.server.cfg.Settings.SV, err)
 			return advanceInfo{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(457715)
 		}
+		__antithesis_instrumentation__.Notify(457699)
 
 		handleErr := func(err error) {
+			__antithesis_instrumentation__.Notify(457716)
 			if implicitTxn {
-				// The schema change/job failed but it was also the only
-				// operation in the transaction. In this case, the transaction's
-				// error is the schema change error.
-				// TODO (lucy): I'm not sure the above is true. What about DROP TABLE
-				// with multiple tables?
+				__antithesis_instrumentation__.Notify(457717)
+
 				res.SetError(err)
 			} else {
-				// The schema change/job failed but everything else in the
-				// transaction was actually committed successfully already. At
-				// this point, it is too late to cancel the transaction. In
-				// effect, we have violated the "A" of ACID.
-				//
-				// This situation is sufficiently serious that we cannot let the
-				// error that caused the schema change to fail flow back to the
-				// client as-is. We replace it by a custom code dedicated to
-				// this situation. Replacement occurs because this error code is
-				// a "serious error" and the code computation logic will give it
-				// a higher priority.
-				//
-				// We also print out the original error code as prefix of the
-				// error message, in case it was a serious error.
+				__antithesis_instrumentation__.Notify(457718)
+
 				newErr := pgerror.Wrapf(err,
 					pgcode.TransactionCommittedWithSchemaChangeFailure,
 					"transaction committed but schema change aborted with error: (%s)",
@@ -2923,6 +2835,7 @@ func (ex *connExecutor) txnStateTransitionsApplyWrapper(
 				res.SetError(newErr)
 			}
 		}
+		__antithesis_instrumentation__.Notify(457700)
 		ex.notifyStatsRefresherOfNewTables(ex.Ctx())
 
 		ex.statsCollector.PhaseTimes().SetSessionPhaseTime(sessionphase.SessionStartPostCommitJob, timeutil.Now())
@@ -2931,93 +2844,122 @@ func (ex *connExecutor) txnStateTransitionsApplyWrapper(
 			ex.server.cfg.InternalExecutor,
 			ex.extraTxnState.jobs,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(457719)
 			handleErr(err)
+		} else {
+			__antithesis_instrumentation__.Notify(457720)
 		}
+		__antithesis_instrumentation__.Notify(457701)
 		ex.statsCollector.PhaseTimes().SetSessionPhaseTime(sessionphase.SessionEndPostCommitJob, timeutil.Now())
 
 		fallthrough
 	case txnRestart, txnRollback:
+		__antithesis_instrumentation__.Notify(457702)
 		if err := ex.resetExtraTxnState(ex.Ctx(), advInfo.txnEvent); err != nil {
+			__antithesis_instrumentation__.Notify(457721)
 			return advanceInfo{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(457722)
 		}
 	default:
+		__antithesis_instrumentation__.Notify(457703)
 		return advanceInfo{}, errors.AssertionFailedf(
 			"unexpected event: %v", errors.Safe(advInfo.txnEvent))
 	}
+	__antithesis_instrumentation__.Notify(457680)
 	return advInfo, nil
 }
 
 func (ex *connExecutor) handleWaitingForConcurrentSchemaChanges(
 	ctx context.Context, descID descpb.ID,
 ) error {
+	__antithesis_instrumentation__.Notify(457723)
 	if err := ex.planner.waitForDescriptorSchemaChanges(
 		ctx, descID, ex.extraTxnState.schemaChangerState,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(457725)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(457726)
 	}
+	__antithesis_instrumentation__.Notify(457724)
 	return ex.resetTransactionOnSchemaChangeRetry(ctx)
 }
 
-// initStatementResult initializes res according to a query.
-//
-// cols represents the columns of the result rows. Should be nil if
-// stmt.AST.StatementReturnType() != tree.Rows.
-//
-// If an error is returned, it is to be considered a query execution error.
 func (ex *connExecutor) initStatementResult(
 	ctx context.Context, res RestrictedCommandResult, ast tree.Statement, cols colinfo.ResultColumns,
 ) error {
+	__antithesis_instrumentation__.Notify(457727)
 	for _, c := range cols {
+		__antithesis_instrumentation__.Notify(457730)
 		if err := checkResultType(c.Typ); err != nil {
+			__antithesis_instrumentation__.Notify(457731)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(457732)
 		}
 	}
+	__antithesis_instrumentation__.Notify(457728)
 	if ast.StatementReturnType() == tree.Rows {
-		// Note that this call is necessary even if cols is nil.
+		__antithesis_instrumentation__.Notify(457733)
+
 		res.SetColumns(ctx, cols)
+	} else {
+		__antithesis_instrumentation__.Notify(457734)
 	}
+	__antithesis_instrumentation__.Notify(457729)
 	return nil
 }
 
-// cancelQuery is part of the registrySession interface.
 func (ex *connExecutor) cancelQuery(queryID ClusterWideID) bool {
+	__antithesis_instrumentation__.Notify(457735)
 	ex.mu.Lock()
 	defer ex.mu.Unlock()
 	if queryMeta, exists := ex.mu.ActiveQueries[queryID]; exists {
+		__antithesis_instrumentation__.Notify(457737)
 		queryMeta.cancel()
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(457738)
 	}
+	__antithesis_instrumentation__.Notify(457736)
 	return false
 }
 
-// cancelCurrentQueries is part of the registrySession interface.
 func (ex *connExecutor) cancelCurrentQueries() bool {
+	__antithesis_instrumentation__.Notify(457739)
 	ex.mu.Lock()
 	defer ex.mu.Unlock()
 	canceled := false
 	for _, queryMeta := range ex.mu.ActiveQueries {
+		__antithesis_instrumentation__.Notify(457741)
 		queryMeta.cancel()
 		canceled = true
 	}
+	__antithesis_instrumentation__.Notify(457740)
 	return canceled
 }
 
-// cancelSession is part of the registrySession interface.
 func (ex *connExecutor) cancelSession() {
+	__antithesis_instrumentation__.Notify(457742)
 	if ex.onCancelSession == nil {
+		__antithesis_instrumentation__.Notify(457744)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(457745)
 	}
-	// TODO(abhimadan): figure out how to send a nice error message to the client.
+	__antithesis_instrumentation__.Notify(457743)
+
 	ex.onCancelSession()
 }
 
-// user is part of the registrySession interface.
 func (ex *connExecutor) user() security.SQLUsername {
+	__antithesis_instrumentation__.Notify(457746)
 	return ex.sessionData().User()
 }
 
-// serialize is part of the registrySession interface.
 func (ex *connExecutor) serialize() serverpb.Session {
+	__antithesis_instrumentation__.Notify(457747)
 	ex.mu.RLock()
 	defer ex.mu.RUnlock()
 	ex.state.mu.RLock()
@@ -3026,6 +2968,7 @@ func (ex *connExecutor) serialize() serverpb.Session {
 	var activeTxnInfo *serverpb.TxnInfo
 	txn := ex.state.mu.txn
 	if txn != nil {
+		__antithesis_instrumentation__.Notify(457753)
 		id := txn.ID()
 		activeTxnInfo = &serverpb.TxnInfo{
 			ID:                    id,
@@ -3042,32 +2985,56 @@ func (ex *connExecutor) serialize() serverpb.Session {
 			Priority:              ex.state.priority.String(),
 			QualityOfService:      sessiondatapb.ToQoSLevelString(txn.AdmissionHeader().Priority),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(457754)
 	}
+	__antithesis_instrumentation__.Notify(457748)
 
 	activeQueries := make([]serverpb.ActiveQuery, 0, len(ex.mu.ActiveQueries))
 	truncateSQL := func(sql string) string {
+		__antithesis_instrumentation__.Notify(457755)
 		if len(sql) > MaxSQLBytes {
+			__antithesis_instrumentation__.Notify(457757)
 			sql = sql[:MaxSQLBytes-utf8.RuneLen('…')]
-			// Ensure the resulting string is valid utf8.
+
 			for {
+				__antithesis_instrumentation__.Notify(457759)
 				if r, _ := utf8.DecodeLastRuneInString(sql); r != utf8.RuneError {
+					__antithesis_instrumentation__.Notify(457761)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(457762)
 				}
+				__antithesis_instrumentation__.Notify(457760)
 				sql = sql[:len(sql)-1]
 			}
+			__antithesis_instrumentation__.Notify(457758)
 			sql += "…"
+		} else {
+			__antithesis_instrumentation__.Notify(457763)
 		}
+		__antithesis_instrumentation__.Notify(457756)
 		return sql
 	}
+	__antithesis_instrumentation__.Notify(457749)
 
 	for id, query := range ex.mu.ActiveQueries {
+		__antithesis_instrumentation__.Notify(457764)
 		if query.hidden {
+			__antithesis_instrumentation__.Notify(457767)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(457768)
 		}
+		__antithesis_instrumentation__.Notify(457765)
 		ast, err := query.getStatement()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(457769)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(457770)
 		}
+		__antithesis_instrumentation__.Notify(457766)
 		sqlNoConstants := truncateSQL(formatStatementHideConstants(ast))
 		sql := truncateSQL(ast.String())
 		progress := math.Float64frombits(atomic.LoadUint64(&query.progressAtomic))
@@ -3083,21 +3050,28 @@ func (ex *connExecutor) serialize() serverpb.Session {
 			Progress:       float32(progress),
 		})
 	}
+	__antithesis_instrumentation__.Notify(457750)
 	lastActiveQuery := ""
 	lastActiveQueryNoConstants := ""
 	if ex.mu.LastActiveQuery != nil {
+		__antithesis_instrumentation__.Notify(457771)
 		lastActiveQuery = truncateSQL(ex.mu.LastActiveQuery.String())
 		lastActiveQueryNoConstants = truncateSQL(formatStatementHideConstants(ex.mu.LastActiveQuery))
+	} else {
+		__antithesis_instrumentation__.Notify(457772)
 	}
+	__antithesis_instrumentation__.Notify(457751)
 
-	// We always use base here as the fields from the SessionData should always
-	// be that of the root session.
 	sd := ex.sessionDataStack.Base()
 
 	remoteStr := "<admin>"
 	if sd.RemoteAddr != nil {
+		__antithesis_instrumentation__.Notify(457773)
 		remoteStr = sd.RemoteAddr.String()
+	} else {
+		__antithesis_instrumentation__.Notify(457774)
 	}
+	__antithesis_instrumentation__.Notify(457752)
 
 	return serverpb.Session{
 		Username:                   sd.SessionUser().Normalized(),
@@ -3115,52 +3089,66 @@ func (ex *connExecutor) serialize() serverpb.Session {
 }
 
 func (ex *connExecutor) getPrepStmtsAccessor() preparedStatementsAccessor {
+	__antithesis_instrumentation__.Notify(457775)
 	return connExPrepStmtsAccessor{
 		ex: ex,
 	}
 }
 
 func (ex *connExecutor) getCursorAccessor() sqlCursors {
+	__antithesis_instrumentation__.Notify(457776)
 	return connExCursorAccessor{
 		ex: ex,
 	}
 }
 
 func (ex *connExecutor) getCreatedSequencesAccessor() createdSequences {
+	__antithesis_instrumentation__.Notify(457777)
 	return connExCreatedSequencesAccessor{
 		ex: ex,
 	}
 }
 
-// sessionEventf logs a message to the session event log (if any).
 func (ex *connExecutor) sessionEventf(ctx context.Context, format string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(457778)
 	if log.ExpensiveLogEnabled(ctx, 2) {
-		log.VEventfDepth(ctx, 1 /* depth */, 2 /* level */, format, args...)
+		__antithesis_instrumentation__.Notify(457780)
+		log.VEventfDepth(ctx, 1, 2, format, args...)
+	} else {
+		__antithesis_instrumentation__.Notify(457781)
 	}
+	__antithesis_instrumentation__.Notify(457779)
 	if ex.eventLog != nil {
+		__antithesis_instrumentation__.Notify(457782)
 		ex.eventLog.Printf(format, args...)
+	} else {
+		__antithesis_instrumentation__.Notify(457783)
 	}
 }
 
-// notifyStatsRefresherOfNewTables is called on txn commit to inform
-// the stats refresher that new tables exist and should have their stats
-// collected now.
 func (ex *connExecutor) notifyStatsRefresherOfNewTables(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(457784)
 	for _, desc := range ex.extraTxnState.descCollection.GetUncommittedTables() {
-		// The CREATE STATISTICS run for an async CTAS query is initiated by the
-		// SchemaChanger, so we don't do it here.
-		if desc.IsTable() && !desc.IsAs() && desc.GetVersion() == 1 {
-			// Initiate a run of CREATE STATISTICS. We use a large number
-			// for rowsAffected because we want to make sure that stats always get
-			// created/refreshed here.
-			ex.planner.execCfg.StatsRefresher.NotifyMutation(desc, math.MaxInt32 /* rowsAffected */)
+		__antithesis_instrumentation__.Notify(457785)
+
+		if desc.IsTable() && func() bool {
+			__antithesis_instrumentation__.Notify(457786)
+			return !desc.IsAs() == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(457787)
+			return desc.GetVersion() == 1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(457788)
+
+			ex.planner.execCfg.StatsRefresher.NotifyMutation(desc, math.MaxInt32)
+		} else {
+			__antithesis_instrumentation__.Notify(457789)
 		}
 	}
 }
 
-// runPreCommitStages is part of the new schema changer infrastructure to
-// mutate descriptors prior to committing a SQL transaction.
 func (ex *connExecutor) runPreCommitStages(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(457790)
 	scs := &ex.extraTxnState.schemaChangerState
 	deps := newSchemaChangerTxnRunDependencies(
 		ex.planner.SessionData(),
@@ -3178,38 +3166,37 @@ func (ex *connExecutor) runPreCommitStages(ctx context.Context) error {
 		ctx, ex.server.cfg.DeclarativeSchemaChangerTestingKnobs, deps, scs.state,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(457793)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(457794)
 	}
+	__antithesis_instrumentation__.Notify(457791)
 	scs.state = after
 	scs.jobID = jobID
 	if jobID != jobspb.InvalidJobID {
+		__antithesis_instrumentation__.Notify(457795)
 		ex.extraTxnState.jobs.add(jobID)
 		log.Infof(ctx, "queued new schema change job %d using the new schema changer", jobID)
+	} else {
+		__antithesis_instrumentation__.Notify(457796)
 	}
+	__antithesis_instrumentation__.Notify(457792)
 	return nil
 }
 
-// StatementCounters groups metrics for counting different types of
-// statements.
 type StatementCounters struct {
-	// QueryCount includes all statements and it is therefore the sum of
-	// all the below metrics.
 	QueryCount telemetry.CounterWithMetric
 
-	// Basic CRUD statements.
 	SelectCount telemetry.CounterWithMetric
 	UpdateCount telemetry.CounterWithMetric
 	InsertCount telemetry.CounterWithMetric
 	DeleteCount telemetry.CounterWithMetric
 
-	// Transaction operations.
 	TxnBeginCount    telemetry.CounterWithMetric
 	TxnCommitCount   telemetry.CounterWithMetric
 	TxnRollbackCount telemetry.CounterWithMetric
 
-	// Savepoint operations. SavepointCount is for real SQL savepoints;
-	// the RestartSavepoint variants are for the
-	// cockroach-specific client-side retry protocol.
 	SavepointCount                  telemetry.CounterWithMetric
 	ReleaseSavepointCount           telemetry.CounterWithMetric
 	RollbackToSavepointCount        telemetry.CounterWithMetric
@@ -3217,17 +3204,15 @@ type StatementCounters struct {
 	ReleaseRestartSavepointCount    telemetry.CounterWithMetric
 	RollbackToRestartSavepointCount telemetry.CounterWithMetric
 
-	// CopyCount counts all COPY statements.
 	CopyCount telemetry.CounterWithMetric
 
-	// DdlCount counts all statements whose StatementReturnType is DDL.
 	DdlCount telemetry.CounterWithMetric
 
-	// MiscCount counts all statements not covered by a more specific stat above.
 	MiscCount telemetry.CounterWithMetric
 }
 
 func makeStartedStatementCounters(internal bool) StatementCounters {
+	__antithesis_instrumentation__.Notify(457797)
 	return StatementCounters{
 		TxnBeginCount: telemetry.NewCounterWithMetric(
 			getMetricMeta(MetaTxnBeginStarted, internal)),
@@ -3267,6 +3252,7 @@ func makeStartedStatementCounters(internal bool) StatementCounters {
 }
 
 func makeExecutedStatementCounters(internal bool) StatementCounters {
+	__antithesis_instrumentation__.Notify(457798)
 	return StatementCounters{
 		TxnBeginCount: telemetry.NewCounterWithMetric(
 			getMetricMeta(MetaTxnBeginExecuted, internal)),
@@ -3306,126 +3292,153 @@ func makeExecutedStatementCounters(internal bool) StatementCounters {
 }
 
 func (sc *StatementCounters) incrementCount(ex *connExecutor, stmt tree.Statement) {
+	__antithesis_instrumentation__.Notify(457799)
 	sc.QueryCount.Inc()
 	switch t := stmt.(type) {
 	case *tree.BeginTransaction:
+		__antithesis_instrumentation__.Notify(457800)
 		sc.TxnBeginCount.Inc()
 	case *tree.Select:
+		__antithesis_instrumentation__.Notify(457801)
 		sc.SelectCount.Inc()
 	case *tree.Update:
+		__antithesis_instrumentation__.Notify(457802)
 		sc.UpdateCount.Inc()
 	case *tree.Insert:
+		__antithesis_instrumentation__.Notify(457803)
 		sc.InsertCount.Inc()
 	case *tree.Delete:
+		__antithesis_instrumentation__.Notify(457804)
 		sc.DeleteCount.Inc()
 	case *tree.CommitTransaction:
+		__antithesis_instrumentation__.Notify(457805)
 		sc.TxnCommitCount.Inc()
 	case *tree.RollbackTransaction:
-		// The CommitWait state means that the transaction has already committed
-		// after a specially handled `RELEASE SAVEPOINT cockroach_restart` command.
+		__antithesis_instrumentation__.Notify(457806)
+
 		if ex.getTransactionState() == CommitWaitStateStr {
+			__antithesis_instrumentation__.Notify(457812)
 			sc.TxnCommitCount.Inc()
 		} else {
+			__antithesis_instrumentation__.Notify(457813)
 			sc.TxnRollbackCount.Inc()
 		}
 	case *tree.Savepoint:
+		__antithesis_instrumentation__.Notify(457807)
 		if ex.isCommitOnReleaseSavepoint(t.Name) {
+			__antithesis_instrumentation__.Notify(457814)
 			sc.RestartSavepointCount.Inc()
 		} else {
+			__antithesis_instrumentation__.Notify(457815)
 			sc.SavepointCount.Inc()
 		}
 	case *tree.ReleaseSavepoint:
+		__antithesis_instrumentation__.Notify(457808)
 		if ex.isCommitOnReleaseSavepoint(t.Savepoint) {
+			__antithesis_instrumentation__.Notify(457816)
 			sc.ReleaseRestartSavepointCount.Inc()
 		} else {
+			__antithesis_instrumentation__.Notify(457817)
 			sc.ReleaseSavepointCount.Inc()
 		}
 	case *tree.RollbackToSavepoint:
+		__antithesis_instrumentation__.Notify(457809)
 		if ex.isCommitOnReleaseSavepoint(t.Savepoint) {
+			__antithesis_instrumentation__.Notify(457818)
 			sc.RollbackToRestartSavepointCount.Inc()
 		} else {
+			__antithesis_instrumentation__.Notify(457819)
 			sc.RollbackToSavepointCount.Inc()
 		}
 	case *tree.CopyFrom:
+		__antithesis_instrumentation__.Notify(457810)
 		sc.CopyCount.Inc()
 	default:
+		__antithesis_instrumentation__.Notify(457811)
 		if tree.CanModifySchema(stmt) {
+			__antithesis_instrumentation__.Notify(457820)
 			sc.DdlCount.Inc()
 		} else {
+			__antithesis_instrumentation__.Notify(457821)
 			sc.MiscCount.Inc()
 		}
 	}
 }
 
-// connExPrepStmtsAccessor is an implementation of preparedStatementsAccessor
-// that gives access to a connExecutor's prepared statements.
 type connExPrepStmtsAccessor struct {
 	ex *connExecutor
 }
 
 var _ preparedStatementsAccessor = connExPrepStmtsAccessor{}
 
-// List is part of the preparedStatementsAccessor interface.
 func (ps connExPrepStmtsAccessor) List() map[string]*PreparedStatement {
-	// Return a copy of the data, to prevent modification of the map.
+	__antithesis_instrumentation__.Notify(457822)
+
 	stmts := ps.ex.extraTxnState.prepStmtsNamespace.prepStmts
 	ret := make(map[string]*PreparedStatement, len(stmts))
 	for key, stmt := range stmts {
+		__antithesis_instrumentation__.Notify(457824)
 		ret[key] = stmt
 	}
+	__antithesis_instrumentation__.Notify(457823)
 	return ret
 }
 
-// Get is part of the preparedStatementsAccessor interface.
 func (ps connExPrepStmtsAccessor) Get(name string) (*PreparedStatement, bool) {
+	__antithesis_instrumentation__.Notify(457825)
 	s, ok := ps.ex.extraTxnState.prepStmtsNamespace.prepStmts[name]
 	return s, ok
 }
 
-// Delete is part of the preparedStatementsAccessor interface.
 func (ps connExPrepStmtsAccessor) Delete(ctx context.Context, name string) bool {
+	__antithesis_instrumentation__.Notify(457826)
 	_, ok := ps.Get(name)
 	if !ok {
+		__antithesis_instrumentation__.Notify(457828)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(457829)
 	}
+	__antithesis_instrumentation__.Notify(457827)
 	ps.ex.deletePreparedStmt(ctx, name)
 	return true
 }
 
-// DeleteAll is part of the preparedStatementsAccessor interface.
 func (ps connExPrepStmtsAccessor) DeleteAll(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(457830)
 	ps.ex.extraTxnState.prepStmtsNamespace.resetToEmpty(
 		ctx, &ps.ex.extraTxnState.prepStmtsNamespaceMemAcc,
 	)
 }
 
-// contextStatementKey is an empty type for the handle associated with the
-// statement value (see context.Value).
 type contextStatementKey struct{}
 
-// withStatement adds a SQL statement to the provided context. The statement
-// will then be included in crash reports which use that context.
 func withStatement(ctx context.Context, stmt tree.Statement) context.Context {
+	__antithesis_instrumentation__.Notify(457831)
 	return context.WithValue(ctx, contextStatementKey{}, stmt)
 }
 
-// statementFromCtx returns the statement value from a context, or nil if unset.
 func statementFromCtx(ctx context.Context) tree.Statement {
+	__antithesis_instrumentation__.Notify(457832)
 	stmt := ctx.Value(contextStatementKey{})
 	if stmt == nil {
+		__antithesis_instrumentation__.Notify(457834)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(457835)
 	}
+	__antithesis_instrumentation__.Notify(457833)
 	return stmt.(tree.Statement)
 }
 
 func init() {
-	// Register a function to include the anonymized statement in crash reports.
+
 	logcrash.RegisterTagFn("statement", func(ctx context.Context) string {
 		stmt := statementFromCtx(ctx)
 		if stmt == nil {
 			return ""
 		}
-		// Anonymize the statement for reporting.
-		return anonymizeStmtAndConstants(stmt, nil /* VirtualTabler */)
+
+		return anonymizeStmtAndConstants(stmt, nil)
 	})
 }

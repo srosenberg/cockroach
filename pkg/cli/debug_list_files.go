@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -38,79 +30,102 @@ var debugListFilesCmd = &cobra.Command{
 }
 
 func runDebugListFiles(cmd *cobra.Command, _ []string) error {
+	__antithesis_instrumentation__.Notify(31141)
 	if err := zipCtx.files.validate(); err != nil {
+		__antithesis_instrumentation__.Notify(31152)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31153)
 	}
+	__antithesis_instrumentation__.Notify(31142)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Connect to the node pointed to in the command line.
 	conn, _, finish, err := getClientGRPCConn(ctx, serverCfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31154)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31155)
 	}
+	__antithesis_instrumentation__.Notify(31143)
 	defer finish()
 
 	status := serverpb.NewStatusClient(conn)
 
-	// Retrieve the details for the head node.
 	firstNodeDetails, err := status.Details(ctx, &serverpb.DetailsRequest{NodeId: "local"})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31156)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31157)
 	}
+	__antithesis_instrumentation__.Notify(31144)
 
-	// Retrieve the list of all nodes.
 	nodes, err := status.Nodes(ctx, &serverpb.NodesRequest{})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31158)
 		log.Warningf(ctx, "cannot retrieve node list: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(31159)
 	}
-	// In case nodes came up back empty (the Nodes() RPC failed), we
-	// still want to inspect the per-node endpoints on the head
-	// node. As per the above, we were able to connect at least to
-	// that.
+	__antithesis_instrumentation__.Notify(31145)
+
 	inputNodeList := []statuspb.NodeStatus{{Desc: roachpb.NodeDescriptor{
 		NodeID:     firstNodeDetails.NodeID,
 		Address:    firstNodeDetails.Address,
 		SQLAddress: firstNodeDetails.SQLAddress,
 	}}}
 	if nodes != nil {
-		// If the nodes were found, use that instead.
-		inputNodeList = nodes.Nodes
-	}
+		__antithesis_instrumentation__.Notify(31160)
 
-	// Filter the list of nodes according to configuration.
+		inputNodeList = nodes.Nodes
+	} else {
+		__antithesis_instrumentation__.Notify(31161)
+	}
+	__antithesis_instrumentation__.Notify(31146)
+
 	var nodeList []roachpb.NodeID
 	for _, n := range inputNodeList {
+		__antithesis_instrumentation__.Notify(31162)
 		if zipCtx.nodes.isIncluded(n.Desc.NodeID) {
+			__antithesis_instrumentation__.Notify(31163)
 			nodeList = append(nodeList, n.Desc.NodeID)
+		} else {
+			__antithesis_instrumentation__.Notify(31164)
 		}
 	}
+	__antithesis_instrumentation__.Notify(31147)
 
-	// Determine the list of non-log file types.
 	fileTypes := make([]int, 0, len(serverpb.FileType_value))
 	for _, v := range serverpb.FileType_value {
+		__antithesis_instrumentation__.Notify(31165)
 		fileTypes = append(fileTypes, int(v))
 	}
+	__antithesis_instrumentation__.Notify(31148)
 	sort.Ints(fileTypes)
 
-	// The log files for each node.
 	logFiles := make(map[roachpb.NodeID][]logpb.FileInfo)
-	// The non-log files on each node. The int32 is the file type.
+
 	otherFiles := make(map[roachpb.NodeID]map[int32][]*serverpb.File)
 
-	// Retrieve the files.
 	for _, nodeID := range nodeList {
+		__antithesis_instrumentation__.Notify(31166)
 		nodeIDs := fmt.Sprintf("%d", nodeID)
 		nodeLogs, err := status.LogFilesList(ctx, &serverpb.LogFilesListRequest{NodeId: nodeIDs})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(31168)
 			log.Warningf(ctx, "cannot retrieve log file list from node %d: %v", nodeID, err)
 		} else {
+			__antithesis_instrumentation__.Notify(31169)
 			logFiles[nodeID] = nodeLogs.Files
 		}
+		__antithesis_instrumentation__.Notify(31167)
 
 		otherFiles[nodeID] = make(map[int32][]*serverpb.File)
 		for _, fileTypeI := range fileTypes {
+			__antithesis_instrumentation__.Notify(31170)
 			fileType := int32(fileTypeI)
 			nodeFiles, err := status.GetFiles(ctx, &serverpb.GetFilesRequest{
 				NodeId:   nodeIDs,
@@ -119,76 +134,98 @@ func runDebugListFiles(cmd *cobra.Command, _ []string) error {
 				Patterns: zipCtx.files.retrievalPatterns(),
 			})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(31171)
 				log.Warningf(ctx, "cannot retrieve %s file list from node %d: %v", serverpb.FileType_name[fileType], nodeID, err)
 			} else {
+				__antithesis_instrumentation__.Notify(31172)
 				otherFiles[nodeID][fileType] = nodeFiles.Files
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(31149)
 
-	// Format the entries and compute the total size.
 	fileTypeNames := map[int32]string{}
 	for t, n := range serverpb.FileType_name {
+		__antithesis_instrumentation__.Notify(31173)
 		fileTypeNames[t] = strings.ToLower(n)
 	}
+	__antithesis_instrumentation__.Notify(31150)
 	var totalSize int64
 	fileTableHeaders := []string{"node_id", "type", "file_name", "ctime_utc", "mtime_utc", "size"}
 	alignment := "lllr"
 	var rows [][]string
 	for _, nodeID := range nodeList {
+		__antithesis_instrumentation__.Notify(31174)
 		nodeIDs := fmt.Sprintf("%d", nodeID)
 		for _, logFile := range logFiles[nodeID] {
+			__antithesis_instrumentation__.Notify(31176)
 			ctime := extractTimeFromFileName(logFile.Name)
 			mtime := timeutil.Unix(0, logFile.ModTimeNanos)
 			if !zipCtx.files.isIncluded(logFile.Name, ctime, mtime) {
+				__antithesis_instrumentation__.Notify(31178)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(31179)
 			}
+			__antithesis_instrumentation__.Notify(31177)
 			totalSize += logFile.SizeBytes
 			ctimes := formatTimeSimple(ctime)
 			mtimes := formatTimeSimple(mtime)
 			rows = append(rows, []string{nodeIDs, "log", logFile.Name, ctimes, mtimes, fmt.Sprintf("%d", logFile.SizeBytes)})
 		}
+		__antithesis_instrumentation__.Notify(31175)
 		for _, ft := range fileTypes {
+			__antithesis_instrumentation__.Notify(31180)
 			fileType := int32(ft)
 			for _, other := range otherFiles[nodeID][fileType] {
+				__antithesis_instrumentation__.Notify(31181)
 				ctime := extractTimeFromFileName(other.Name)
 				if !zipCtx.files.isIncluded(other.Name, ctime, ctime) {
+					__antithesis_instrumentation__.Notify(31183)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(31184)
 				}
+				__antithesis_instrumentation__.Notify(31182)
 				totalSize += other.FileSize
 				ctimes := formatTimeSimple(ctime)
 				rows = append(rows, []string{nodeIDs, fileTypeNames[fileType], other.Name, ctimes, ctimes, fmt.Sprintf("%d", other.FileSize)})
 			}
 		}
 	}
-	// Append the total size.
+	__antithesis_instrumentation__.Notify(31151)
+
 	rows = append(rows, []string{"", "total", fmt.Sprintf("(%s)", humanizeutil.IBytes(totalSize)), "", "", fmt.Sprintf("%d", totalSize)})
 
-	// Display the file listing.
 	return sqlExecCtx.PrintQueryOutput(os.Stdout, stderr, fileTableHeaders, clisqlexec.NewRowSliceIter(rows, alignment))
 }
 
 var tzRe = regexp.MustCompile(`\d\d\d\d-\d\d-\d\dT\d\d_\d\d_\d\d`)
 
-// formatTimeSimple formats a timestamp for use in file lists.
-// It simplifies the display to just a date and time.
 func formatTimeSimple(t time.Time) string {
+	__antithesis_instrumentation__.Notify(31185)
 	return t.Format("2006-01-02 15:04")
 }
 
-// extractTimeFromFileName extracts a timestamp from the name of one of the
-// artifacts produced server-side. We use the knowledge that the server
-// always embeds the creation timestamp with format YYYY-MM-DDTHH_MM_SS.
 func extractTimeFromFileName(f string) time.Time {
+	__antithesis_instrumentation__.Notify(31186)
 	ts := tzRe.FindString(f)
 	if ts == "" {
-		// No match.
+		__antithesis_instrumentation__.Notify(31189)
+
 		return time.Time{}
+	} else {
+		__antithesis_instrumentation__.Notify(31190)
 	}
+	__antithesis_instrumentation__.Notify(31187)
 	tm, err := time.ParseInLocation("2006-01-02T15_04_05", ts, time.UTC)
 	if err != nil {
-		// No match.
+		__antithesis_instrumentation__.Notify(31191)
+
 		return time.Time{}
+	} else {
+		__antithesis_instrumentation__.Notify(31192)
 	}
+	__antithesis_instrumentation__.Notify(31188)
 	return tm
 }

@@ -27,6 +27,7 @@ go_library(
         "//pkg/util/duration",
         "//pkg/util/json",  # keep
         "//pkg/util/mon",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_apd_v3//:apd",
         "@com_github_cockroachdb_errors//:errors",
     ],
@@ -37,7 +38,10 @@ go_test(
     srcs = ["dep_test.go"],
     embed = [":colexecagg"],
     tags = ["no-remote"],
-    deps = ["//pkg/testutils/buildutil"],
+    deps = [
+        "//pkg/testutils/buildutil",
+        "@com_antithesis_instrumentation//wrappers",
+    ],
 )
 
 # Map between target name and relevant template.
@@ -76,4 +80,6 @@ eg_go_filegroup(
 )
 
 # Define gen rules for individual eg.go files.
-gen_eg_go_rules(targets)
+gen_eg_go_rules(
+    targets,
+)

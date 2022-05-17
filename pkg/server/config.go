@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -47,30 +39,19 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// Context defaults.
 const (
-	// DefaultCacheSize is the default size of the RocksDB and Pebble caches. We
-	// default the cache size and SQL memory pool size to 128 MiB. Larger values
-	// might provide significantly better performance, but we're not sure what
-	// type of system we're running on (development or production or some shared
-	// environment). Production users should almost certainly override these
-	// settings and we'll warn in the logs about doing so.
-	DefaultCacheSize         = 128 << 20 // 128 MB
-	defaultSQLMemoryPoolSize = 128 << 20 // 128 MB
+	DefaultCacheSize         = 128 << 20
+	defaultSQLMemoryPoolSize = 128 << 20
 	defaultScanInterval      = 10 * time.Minute
 	defaultScanMinIdleTime   = 10 * time.Millisecond
 	defaultScanMaxIdleTime   = 1 * time.Second
 
 	DefaultStorePath = "cockroach-data"
-	// DefaultSQLNodeStorePathPrefix is path prefix that is used by default
-	// on tenant sql nodes to separate from server node if running on the
-	// same server without explicit --store location.
+
 	DefaultSQLNodeStorePathPrefix = "cockroach-data-tenant-"
-	// TempDirPrefix is the filename prefix of any temporary subdirectory
-	// created.
+
 	TempDirPrefix = "cockroach-temp"
-	// TempDirsRecordFilename is the filename for the record file
-	// that keeps track of the paths of the temporary directories created.
+
 	TempDirsRecordFilename = "temp-dirs-record.txt"
 	defaultEventLogEnabled = true
 
@@ -81,7 +62,6 @@ const (
 
 	defaultSQLTableStatCacheSize = 256
 
-	// This comes out to 1024 cache entries.
 	defaultSQLQueryCacheSize = 8 * 1024 * 1024
 )
 
@@ -90,112 +70,87 @@ var productionSettingsWebpage = fmt.Sprintf(
 	docs.URL("recommended-production-settings.html"),
 )
 
-// MaxOffsetType stores the configured MaxOffset.
 type MaxOffsetType time.Duration
 
-// Type implements the pflag.Value interface.
 func (mo *MaxOffsetType) Type() string {
+	__antithesis_instrumentation__.Notify(189952)
 	return "MaxOffset"
 }
 
-// Set implements the pflag.Value interface.
 func (mo *MaxOffsetType) Set(v string) error {
+	__antithesis_instrumentation__.Notify(189953)
 	nanos, err := time.ParseDuration(v)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(189956)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(189957)
 	}
+	__antithesis_instrumentation__.Notify(189954)
 	if nanos > maximumMaxClockOffset {
+		__antithesis_instrumentation__.Notify(189958)
 		return errors.Errorf("%s is not a valid max offset, must be less than %v.", v, maximumMaxClockOffset)
+	} else {
+		__antithesis_instrumentation__.Notify(189959)
 	}
+	__antithesis_instrumentation__.Notify(189955)
 	*mo = MaxOffsetType(nanos)
 	return nil
 }
 
-// String implements the pflag.Value interface.
 func (mo *MaxOffsetType) String() string {
+	__antithesis_instrumentation__.Notify(189960)
 	return time.Duration(*mo).String()
 }
 
-// BaseConfig holds parameters that are needed to setup either a KV or a SQL
-// server.
 type BaseConfig struct {
 	Settings *cluster.Settings
 	*base.Config
 
 	Tracer *tracing.Tracer
 
-	// idProvider is an interface that makes the logging package
-	// able to peek into the server IDs defined by this configuration.
 	idProvider *idProvider
 
-	// IDContainer is the Node ID / SQL Instance ID container
-	// that will contain the ID for the server to instantiate.
 	IDContainer *base.NodeIDContainer
 
-	// ClusterIDContainer is the Cluster ID container for the server to
-	// instantiate.
 	ClusterIDContainer *base.ClusterIDContainer
 
-	// AmbientCtx is used to annotate contexts used inside the server.
 	AmbientCtx log.AmbientContext
 
-	// Maximum allowed clock offset for the cluster. If observed clock
-	// offsets exceed this limit, inconsistency may result, and servers
-	// will panic to minimize the likelihood of inconsistent data.
-	// Increasing this value will increase time to recovery after
-	// failures, and increase the frequency and impact of
-	// ReadWithinUncertaintyIntervalError.
 	MaxOffset MaxOffsetType
 
-	// GoroutineDumpDirName is the directory name for goroutine dumps using
-	// goroutinedumper.
 	GoroutineDumpDirName string
 
-	// HeapProfileDirName is the directory name for heap profiles using
-	// heapprofiler. If empty, no heap profiles will be collected.
 	HeapProfileDirName string
 
-	// CPUProfileDirName is the directory name for CPU profile dumps.
 	CPUProfileDirName string
 
-	// InflightTraceDirName is the directory name for job traces.
 	InflightTraceDirName string
 
-	// DefaultZoneConfig is used to set the default zone config inside the server.
-	// It can be overridden during tests by setting the DefaultZoneConfigOverride
-	// server testing knob. Whatever is installed here is in turn used to
-	// initialize stores, which need a default span config.
 	DefaultZoneConfig zonepb.ZoneConfig
 
-	// Locality is a description of the topography of the server.
 	Locality roachpb.Locality
 
-	// StorageEngine specifies the engine type (eg. rocksdb, pebble) to use to
-	// instantiate stores.
 	StorageEngine enginepb.EngineType
 
-	// SpanConfigsDisabled disables the use of the span configs infrastructure.
-	//
-	// Environment Variable: COCKROACH_DISABLE_SPAN_CONFIGS
 	SpanConfigsDisabled bool
 
-	// TestingKnobs is used for internal test controls only.
 	TestingKnobs base.TestingKnobs
 
-	// EnableWebSessionAuthentication enables session-based authentication for
-	// the Admin API's HTTP endpoints.
 	EnableWebSessionAuthentication bool
 
-	// EnableDemoLoginEndpoint enables the HTTP GET endpoint for user logins,
-	// which a feature unique to the demo shell.
 	EnableDemoLoginEndpoint bool
 }
 
-// MakeBaseConfig returns a BaseConfig with default values.
 func MakeBaseConfig(st *cluster.Settings, tr *tracing.Tracer) BaseConfig {
+	__antithesis_instrumentation__.Notify(189961)
 	if tr == nil {
+		__antithesis_instrumentation__.Notify(189963)
 		panic("nil Tracer")
+	} else {
+		__antithesis_instrumentation__.Notify(189964)
 	}
+	__antithesis_instrumentation__.Notify(189962)
 	idsProvider := &idProvider{
 		clusterID: &base.ClusterIDContainer{},
 		serverID:  &base.NodeIDContainer{},
@@ -214,128 +169,62 @@ func MakeBaseConfig(st *cluster.Settings, tr *tracing.Tracer) BaseConfig {
 		StorageEngine:                  storage.DefaultStorageEngine,
 		EnableWebSessionAuthentication: !disableWebLogin,
 	}
-	// We use the tag "n" here for both KV nodes and SQL instances,
-	// using the knowledge that the value part of a SQL instance ID
-	// container will prefix the value with the string "sql", resulting
-	// in a tag that is prefixed with "nsql".
+
 	baseCfg.AmbientCtx.AddLogTag("n", baseCfg.IDContainer)
 	baseCfg.InitDefaults()
 	return baseCfg
 }
 
-// Config holds the parameters needed to set up a combined KV and SQL server.
 type Config struct {
 	BaseConfig
 	KVConfig
 	SQLConfig
 }
 
-// KVConfig holds the parameters that (together with a BaseConfig) allow setting
-// up a KV server.
 type KVConfig struct {
 	base.RaftConfig
 
-	// Stores is specified to enable durable key-value storage.
 	Stores base.StoreSpecList
 
-	// Attrs specifies a colon-separated list of node topography or machine
-	// capabilities, used to match capabilities or location preferences specified
-	// in zone configs.
 	Attrs string
 
-	// JoinList is a list of node addresses that is used to form a network of KV
-	// servers. Assuming a connected graph, it suffices to initialize any server
-	// in the network.
 	JoinList base.JoinListType
 
-	// JoinPreferSRVRecords, if set, causes the lookup logic for the
-	// names in JoinList to prefer SRV records from DNS, if available,
-	// to A/AAAA records.
 	JoinPreferSRVRecords bool
 
-	// RetryOptions controls the retry behavior of the server.
-	//
-	// TODO(tbg): this is only ever used in one test. Make it a testing knob.
 	RetryOptions retry.Options
 
-	// CacheSize is the amount of memory in bytes to use for caching data.
-	// The value is split evenly between the stores if there are more than one.
 	CacheSize int64
 
-	// TimeSeriesServerConfig contains configuration specific to the time series
-	// server.
 	TimeSeriesServerConfig ts.ServerConfig
 
-	// Parsed values.
-
-	// NodeAttributes is the parsed representation of Attrs.
 	NodeAttributes roachpb.Attributes
 
-	// GossipBootstrapAddresses is a list of gossip addresses used
-	// to find bootstrap nodes for connecting to the gossip network.
 	GossipBootstrapAddresses []util.UnresolvedAddr
 
-	// The following values can only be set via environment variables and are
-	// for testing only. They are not meant to be set by the end user.
-
-	// Enables linearizable behavior of operations on this node by making sure
-	// that no commit timestamp is reported back to the client until all other
-	// node clocks have necessarily passed it.
-	// Environment Variable: COCKROACH_EXPERIMENTAL_LINEARIZABLE
 	Linearizable bool
 
-	// ScanInterval determines a duration during which each range should be
-	// visited approximately once by the range scanner. Set to 0 to disable.
-	// Environment Variable: COCKROACH_SCAN_INTERVAL
 	ScanInterval time.Duration
 
-	// ScanMinIdleTime is the minimum time the scanner will be idle between ranges.
-	// If enabled (> 0), the scanner may complete in more than ScanInterval for large
-	// stores.
-	// Environment Variable: COCKROACH_SCAN_MIN_IDLE_TIME
 	ScanMinIdleTime time.Duration
 
-	// ScanMaxIdleTime is the maximum time the scanner will be idle between ranges.
-	// If enabled (> 0), the scanner may complete in less than ScanInterval for small
-	// stores.
-	// Environment Variable: COCKROACH_SCAN_MAX_IDLE_TIME
 	ScanMaxIdleTime time.Duration
 
-	// DefaultSystemZoneConfig is used to set the default system zone config
-	// inside the server. It can be overridden during tests by setting the
-	// DefaultSystemZoneConfigOverride server testing knob.
 	DefaultSystemZoneConfig zonepb.ZoneConfig
 
-	// LocalityAddresses contains private IP addresses the can only be accessed
-	// in the corresponding locality.
 	LocalityAddresses []roachpb.LocalityAddress
 
-	// EventLogEnabled is a switch which enables recording into cockroach's SQL
-	// event log tables. These tables record transactional events about changes
-	// to cluster metadata, such as DDL statements and range rebalancing
-	// actions.
 	EventLogEnabled bool
 
-	// ReadyFn is called when the server has started listening on its
-	// sockets.
-	//
-	// The bool parameter is true if the server is not bootstrapped yet, will not
-	// bootstrap itself and will be waiting for an `init` command or accept
-	// bootstrapping from a joined node.
-	//
-	// This method is invoked from the main start goroutine, so it should not
-	// do nontrivial work.
 	ReadyFn func(waitForInit bool)
 
-	// DelayedBootstrapFn is called if the bootstrap process does not complete
-	// in a timely fashion, typically 30s after the server starts listening.
 	DelayedBootstrapFn func()
 
 	enginesCreated bool
 }
 
-// MakeKVConfig returns a KVConfig with default values.
 func MakeKVConfig(storeSpec base.StoreSpec) KVConfig {
+	__antithesis_instrumentation__.Notify(189965)
 	kvCfg := KVConfig{
 		DefaultSystemZoneConfig: zonepb.DefaultSystemZoneConfig(),
 		CacheSize:               DefaultCacheSize,
@@ -351,43 +240,26 @@ func MakeKVConfig(storeSpec base.StoreSpec) KVConfig {
 	return kvCfg
 }
 
-// SQLConfig holds the parameters that (together with a BaseConfig) allow
-// setting up a SQL server.
 type SQLConfig struct {
-	// The tenant that the SQL server runs on the behalf of.
 	TenantID roachpb.TenantID
 
-	// SocketFile, if non-empty, sets up a TLS-free local listener using
-	// a unix datagram socket at the specified path.
 	SocketFile string
 
-	// TempStorageConfig is used to configure temp storage, which stores
-	// ephemeral data when processing large queries.
 	TempStorageConfig base.TempStorageConfig
 
-	// ExternalIODirConfig is used to configure external storage
-	// access (http://, nodelocal://, etc)
 	ExternalIODirConfig base.ExternalIODirConfig
 
-	// MemoryPoolSize is the amount of memory in bytes that can be
-	// used by SQL clients to store row data in server RAM.
 	MemoryPoolSize int64
 
-	// TableStatCacheSize is the size (number of tables) of the table
-	// statistics cache.
 	TableStatCacheSize int
 
-	// QueryCacheSize is the memory size (in bytes) of the query plan cache.
 	QueryCacheSize int64
 
-	// TenantKVAddrs are the entry points to the KV layer.
-	//
-	// Only applies when the SQL server is deployed individually.
 	TenantKVAddrs []string
 }
 
-// MakeSQLConfig returns a SQLConfig with default values.
 func MakeSQLConfig(tenID roachpb.TenantID, tempStorageCfg base.TempStorageConfig) SQLConfig {
+	__antithesis_instrumentation__.Notify(189966)
 	sqlCfg := SQLConfig{
 		TenantID:           tenID,
 		MemoryPoolSize:     defaultSQLMemoryPoolSize,
@@ -398,50 +270,37 @@ func MakeSQLConfig(tenID roachpb.TenantID, tempStorageCfg base.TempStorageConfig
 	return sqlCfg
 }
 
-// setOpenFileLimit sets the soft limit for open file descriptors to the hard
-// limit if needed. Returns an error if the hard limit is too low. Returns the
-// value to set maxOpenFiles to for each store.
-//
-// Minimum - 1700 per store, 256 saved for networking
-//
-// Constrained - 256 saved for networking, rest divided evenly per store
-//
-// Constrained (network only) - 10000 per store, rest saved for networking
-//
-// Recommended - 10000 per store, 5000 for network
-//
-// Please note that current and max limits are commonly referred to as the soft
-// and hard limits respectively.
-//
-// On Windows there is no need to change the file descriptor, known as handles,
-// limit. This limit cannot be changed and is approximately 16,711,680. See
-// https://blogs.technet.microsoft.com/markrussinovich/2009/09/29/pushing-the-limits-of-windows-handles/
 func setOpenFileLimit(physicalStoreCount int) (uint64, error) {
+	__antithesis_instrumentation__.Notify(189967)
 	return setOpenFileLimitInner(physicalStoreCount)
 }
 
-// SetOpenFileLimitForOneStore sets the soft limit for open file descriptors
-// when there is only one store.
 func SetOpenFileLimitForOneStore() (uint64, error) {
+	__antithesis_instrumentation__.Notify(189968)
 	return setOpenFileLimit(1)
 }
 
-// MakeConfig returns a Config for the system tenant with default values.
 func MakeConfig(ctx context.Context, st *cluster.Settings) Config {
+	__antithesis_instrumentation__.Notify(189969)
 	storeSpec, err := base.NewStoreSpec(DefaultStorePath)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(189972)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(189973)
 	}
+	__antithesis_instrumentation__.Notify(189970)
 	tempStorageCfg := base.TempStorageConfigFromEnv(
-		ctx, st, storeSpec, "" /* parentDir */, base.DefaultTempStorageMaxSizeBytes)
+		ctx, st, storeSpec, "", base.DefaultTempStorageMaxSizeBytes)
 
 	sqlCfg := MakeSQLConfig(roachpb.SystemTenantID, tempStorageCfg)
 	tr := tracing.NewTracerWithOpt(ctx, tracing.WithClusterSettings(&st.SV))
-	// NB: The OnChange callback will be called on server startup when the version
-	// is initialized.
+
 	st.Version.SetOnChange(func(ctx context.Context, newVersion clusterversion.ClusterVersion) {
+		__antithesis_instrumentation__.Notify(189974)
 		tr.SetBackwardsCompatibilityWith211(!newVersion.IsActive(clusterversion.TraceIDDoesntImplyStructuredRecording))
 	})
+	__antithesis_instrumentation__.Notify(189971)
 	baseCfg := MakeBaseConfig(st, tr)
 	kvCfg := MakeKVConfig(storeSpec)
 
@@ -454,8 +313,8 @@ func MakeConfig(ctx context.Context, st *cluster.Settings) Config {
 	return cfg
 }
 
-// String implements the fmt.Stringer interface.
 func (cfg *Config) String() string {
+	__antithesis_instrumentation__.Notify(189975)
 	var buf bytes.Buffer
 
 	w := tabwriter.NewWriter(&buf, 2, 1, 2, ' ', 0)
@@ -467,54 +326,61 @@ func (cfg *Config) String() string {
 	fmt.Fprintln(w, "scan max idle time\t", cfg.ScanMaxIdleTime)
 	fmt.Fprintln(w, "event log enabled\t", cfg.EventLogEnabled)
 	if cfg.Linearizable {
+		__antithesis_instrumentation__.Notify(189978)
 		fmt.Fprintln(w, "linearizable\t", cfg.Linearizable)
+	} else {
+		__antithesis_instrumentation__.Notify(189979)
 	}
+	__antithesis_instrumentation__.Notify(189976)
 	if !cfg.SpanConfigsDisabled {
+		__antithesis_instrumentation__.Notify(189980)
 		fmt.Fprintln(w, "span configs enabled\t", !cfg.SpanConfigsDisabled)
+	} else {
+		__antithesis_instrumentation__.Notify(189981)
 	}
+	__antithesis_instrumentation__.Notify(189977)
 	_ = w.Flush()
 
 	return buf.String()
 }
 
-// Report logs an overview of the server configuration parameters via
-// the given context.
 func (cfg *Config) Report(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(189982)
 	if memSize, err := status.GetTotalMemory(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(189984)
 		log.Infof(ctx, "unable to retrieve system total memory: %v", err)
 	} else {
+		__antithesis_instrumentation__.Notify(189985)
 		log.Infof(ctx, "system total memory: %s", humanizeutil.IBytes(memSize))
 	}
+	__antithesis_instrumentation__.Notify(189983)
 	log.Infof(ctx, "server configuration:\n%s", cfg)
 }
 
-// Engines is a container of engines, allowing convenient closing.
 type Engines []storage.Engine
 
-// Close closes all the Engines.
-// This method has a pointer receiver so that the following pattern works:
-//	func f() {
-//		engines := Engines(engineSlice)
-//		defer engines.Close()  // make sure the engines are Closed if this
-//		                       // function returns early.
-//		... do something with engines, pass ownership away...
-//		engines = nil  // neutralize the preceding defer
-//	}
 func (e *Engines) Close() {
+	__antithesis_instrumentation__.Notify(189986)
 	for _, eng := range *e {
+		__antithesis_instrumentation__.Notify(189988)
 		eng.Close()
 	}
+	__antithesis_instrumentation__.Notify(189987)
 	*e = nil
 }
 
-// CreateEngines creates Engines based on the specs in cfg.Stores.
 func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
+	__antithesis_instrumentation__.Notify(189989)
 	engines := Engines(nil)
 	defer engines.Close()
 
 	if cfg.enginesCreated {
+		__antithesis_instrumentation__.Notify(189997)
 		return Engines{}, errors.Errorf("engines already created")
+	} else {
+		__antithesis_instrumentation__.Notify(189998)
 	}
+	__antithesis_instrumentation__.Notify(189990)
 	cfg.enginesCreated = true
 	details := []redact.RedactableString{redact.Sprintf("Pebble cache size: %s", humanizeutil.IBytes(cfg.CacheSize))}
 	pebbleCache := pebble.NewCache(cfg.CacheSize)
@@ -522,62 +388,111 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 
 	var physicalStores int
 	for _, spec := range cfg.Stores.Specs {
+		__antithesis_instrumentation__.Notify(189999)
 		if !spec.InMemory {
+			__antithesis_instrumentation__.Notify(190000)
 			physicalStores++
+		} else {
+			__antithesis_instrumentation__.Notify(190001)
 		}
 	}
+	__antithesis_instrumentation__.Notify(189991)
 	openFileLimitPerStore, err := setOpenFileLimit(physicalStores)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(190002)
 		return Engines{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(190003)
 	}
+	__antithesis_instrumentation__.Notify(189992)
 
 	log.Event(ctx, "initializing engines")
 
 	var tableCache *pebble.TableCache
 	if physicalStores > 0 {
+		__antithesis_instrumentation__.Notify(190004)
 		perStoreLimit := pebble.TableCacheSize(int(openFileLimitPerStore))
 		totalFileLimit := perStoreLimit * physicalStores
 		tableCache = pebble.NewTableCache(pebbleCache, runtime.GOMAXPROCS(0), totalFileLimit)
+	} else {
+		__antithesis_instrumentation__.Notify(190005)
 	}
+	__antithesis_instrumentation__.Notify(189993)
 
-	skipSizeCheck := cfg.TestingKnobs.Store != nil &&
-		cfg.TestingKnobs.Store.(*kvserver.StoreTestingKnobs).SkipMinSizeCheck
+	skipSizeCheck := cfg.TestingKnobs.Store != nil && func() bool {
+		__antithesis_instrumentation__.Notify(190006)
+		return cfg.TestingKnobs.Store.(*kvserver.StoreTestingKnobs).SkipMinSizeCheck == true
+	}() == true
 	for i, spec := range cfg.Stores.Specs {
+		__antithesis_instrumentation__.Notify(190007)
 		log.Eventf(ctx, "initializing %+v", spec)
 		var sizeInBytes = spec.Size.InBytes
 		if spec.InMemory {
+			__antithesis_instrumentation__.Notify(190008)
 			if spec.Size.Percent > 0 {
+				__antithesis_instrumentation__.Notify(190011)
 				sysMem, err := status.GetTotalMemory(ctx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(190013)
 					return Engines{}, errors.Errorf("could not retrieve system memory")
+				} else {
+					__antithesis_instrumentation__.Notify(190014)
 				}
+				__antithesis_instrumentation__.Notify(190012)
 				sizeInBytes = int64(float64(sysMem) * spec.Size.Percent / 100)
+			} else {
+				__antithesis_instrumentation__.Notify(190015)
 			}
-			if sizeInBytes != 0 && !skipSizeCheck && sizeInBytes < base.MinimumStoreSize {
+			__antithesis_instrumentation__.Notify(190009)
+			if sizeInBytes != 0 && func() bool {
+				__antithesis_instrumentation__.Notify(190016)
+				return !skipSizeCheck == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(190017)
+				return sizeInBytes < base.MinimumStoreSize == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(190018)
 				return Engines{}, errors.Errorf("%f%% of memory is only %s bytes, which is below the minimum requirement of %s",
 					spec.Size.Percent, humanizeutil.IBytes(sizeInBytes), humanizeutil.IBytes(base.MinimumStoreSize))
+			} else {
+				__antithesis_instrumentation__.Notify(190019)
 			}
+			__antithesis_instrumentation__.Notify(190010)
 			details = append(details, redact.Sprintf("store %d: in-memory, size %s",
 				i, humanizeutil.IBytes(sizeInBytes)))
 			if spec.StickyInMemoryEngineID != "" {
+				__antithesis_instrumentation__.Notify(190020)
 				if cfg.TestingKnobs.Server == nil {
+					__antithesis_instrumentation__.Notify(190024)
 					return Engines{}, errors.AssertionFailedf("Could not create a sticky " +
 						"engine no server knobs available to get a registry. " +
 						"Please use Knobs.Server.StickyEngineRegistry to provide one.")
+				} else {
+					__antithesis_instrumentation__.Notify(190025)
 				}
+				__antithesis_instrumentation__.Notify(190021)
 				knobs := cfg.TestingKnobs.Server.(*TestingKnobs)
 				if knobs.StickyEngineRegistry == nil {
+					__antithesis_instrumentation__.Notify(190026)
 					return Engines{}, errors.Errorf("Could not create a sticky " +
 						"engine no registry available. Please use " +
 						"Knobs.Server.StickyEngineRegistry to provide one.")
+				} else {
+					__antithesis_instrumentation__.Notify(190027)
 				}
+				__antithesis_instrumentation__.Notify(190022)
 				e, err := knobs.StickyEngineRegistry.GetOrCreateStickyInMemEngine(ctx, cfg, spec)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(190028)
 					return Engines{}, err
+				} else {
+					__antithesis_instrumentation__.Notify(190029)
 				}
+				__antithesis_instrumentation__.Notify(190023)
 				details = append(details, redact.Sprintf("store %d: %+v", i, e.Properties()))
 				engines = append(engines, e)
 			} else {
+				__antithesis_instrumentation__.Notify(190030)
 				e, err := storage.Open(ctx,
 					storage.InMemory(),
 					storage.Attributes(spec.Attributes),
@@ -586,25 +501,52 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 					storage.EncryptionAtRest(spec.EncryptionOptions),
 					storage.Settings(cfg.Settings))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(190032)
 					return Engines{}, err
+				} else {
+					__antithesis_instrumentation__.Notify(190033)
 				}
+				__antithesis_instrumentation__.Notify(190031)
 				engines = append(engines, e)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(190034)
 			if err := vfs.Default.MkdirAll(spec.Path, 0755); err != nil {
+				__antithesis_instrumentation__.Notify(190042)
 				return Engines{}, errors.Wrap(err, "creating store directory")
+			} else {
+				__antithesis_instrumentation__.Notify(190043)
 			}
+			__antithesis_instrumentation__.Notify(190035)
 			du, err := vfs.Default.GetDiskUsage(spec.Path)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(190044)
 				return Engines{}, errors.Wrap(err, "retrieving disk usage")
+			} else {
+				__antithesis_instrumentation__.Notify(190045)
 			}
+			__antithesis_instrumentation__.Notify(190036)
 			if spec.Size.Percent > 0 {
+				__antithesis_instrumentation__.Notify(190046)
 				sizeInBytes = int64(float64(du.TotalBytes) * spec.Size.Percent / 100)
+			} else {
+				__antithesis_instrumentation__.Notify(190047)
 			}
-			if sizeInBytes != 0 && !skipSizeCheck && sizeInBytes < base.MinimumStoreSize {
+			__antithesis_instrumentation__.Notify(190037)
+			if sizeInBytes != 0 && func() bool {
+				__antithesis_instrumentation__.Notify(190048)
+				return !skipSizeCheck == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(190049)
+				return sizeInBytes < base.MinimumStoreSize == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(190050)
 				return Engines{}, errors.Errorf("%f%% of %s's total free space is only %s bytes, which is below the minimum requirement of %s",
 					spec.Size.Percent, spec.Path, humanizeutil.IBytes(sizeInBytes), humanizeutil.IBytes(base.MinimumStoreSize))
+			} else {
+				__antithesis_instrumentation__.Notify(190051)
 			}
+			__antithesis_instrumentation__.Notify(190038)
 
 			details = append(details, redact.Sprintf("store %d: max size %s, max open file limit %d",
 				i, humanizeutil.IBytes(sizeInBytes), openFileLimitPerStore))
@@ -625,64 +567,94 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 			pebbleConfig.Opts.Cache = pebbleCache
 			pebbleConfig.Opts.TableCache = tableCache
 			pebbleConfig.Opts.MaxOpenFiles = int(openFileLimitPerStore)
-			// If the spec contains Pebble options, set those too.
+
 			if len(spec.PebbleOptions) > 0 {
+				__antithesis_instrumentation__.Notify(190052)
 				err := pebbleConfig.Opts.Parse(spec.PebbleOptions, &pebble.ParseHooks{})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(190053)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(190054)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(190055)
 			}
+			__antithesis_instrumentation__.Notify(190039)
 			if len(spec.RocksDBOptions) > 0 {
+				__antithesis_instrumentation__.Notify(190056)
 				return nil, errors.Errorf("store %d: using Pebble storage engine but StoreSpec provides RocksDB options", i)
+			} else {
+				__antithesis_instrumentation__.Notify(190057)
 			}
+			__antithesis_instrumentation__.Notify(190040)
 			eng, err := storage.NewPebble(ctx, pebbleConfig)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(190058)
 				return Engines{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(190059)
 			}
+			__antithesis_instrumentation__.Notify(190041)
 			details = append(details, redact.Sprintf("store %d: %+v", i, eng.Properties()))
 			engines = append(engines, eng)
 		}
 	}
+	__antithesis_instrumentation__.Notify(189994)
 
 	if tableCache != nil {
-		// Unref the table cache now that the engines hold references to it.
+		__antithesis_instrumentation__.Notify(190060)
+
 		if err := tableCache.Unref(); err != nil {
+			__antithesis_instrumentation__.Notify(190061)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(190062)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(190063)
 	}
+	__antithesis_instrumentation__.Notify(189995)
 
 	log.Infof(ctx, "%d storage engine%s initialized",
 		len(engines), util.Pluralize(int64(len(engines))))
 	for _, s := range details {
+		__antithesis_instrumentation__.Notify(190064)
 		log.Infof(ctx, "%v", s)
 	}
+	__antithesis_instrumentation__.Notify(189996)
 	enginesCopy := engines
 	engines = nil
 	return enginesCopy, nil
 }
 
-// InitNode parses node attributes and bootstrap addresses.
 func (cfg *Config) InitNode(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(190065)
 	cfg.readEnvironmentVariables()
 
-	// Initialize attributes.
 	cfg.NodeAttributes = parseAttributes(cfg.Attrs)
 
-	// Get the gossip bootstrap addresses.
 	addresses, err := cfg.parseGossipBootstrapAddresses(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(190068)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(190069)
 	}
+	__antithesis_instrumentation__.Notify(190066)
 	if len(addresses) > 0 {
+		__antithesis_instrumentation__.Notify(190070)
 		cfg.GossipBootstrapAddresses = addresses
+	} else {
+		__antithesis_instrumentation__.Notify(190071)
 	}
+	__antithesis_instrumentation__.Notify(190067)
 
 	return nil
 }
 
-// FilterGossipBootstrapAddresses removes any gossip bootstrap addresses which
-// match either this node's listen address or its advertised host address.
 func (cfg *Config) FilterGossipBootstrapAddresses(ctx context.Context) []util.UnresolvedAddr {
+	__antithesis_instrumentation__.Notify(190072)
 	var listen, advert net.Addr
 	listen = util.NewUnresolvedAddr("tcp", cfg.Addr)
 	advert = util.NewUnresolvedAddr("tcp", cfg.AdvertiseAddr)
@@ -690,31 +662,45 @@ func (cfg *Config) FilterGossipBootstrapAddresses(ctx context.Context) []util.Un
 	addrs := make([]string, 0, len(cfg.GossipBootstrapAddresses))
 
 	for _, addr := range cfg.GossipBootstrapAddresses {
-		if addr.String() == advert.String() || addr.String() == listen.String() {
+		__antithesis_instrumentation__.Notify(190075)
+		if addr.String() == advert.String() || func() bool {
+			__antithesis_instrumentation__.Notify(190076)
+			return addr.String() == listen.String() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(190077)
 			if log.V(1) {
+				__antithesis_instrumentation__.Notify(190078)
 				log.Infof(ctx, "skipping -join address %q, because a node cannot join itself", addr)
+			} else {
+				__antithesis_instrumentation__.Notify(190079)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(190080)
 			filtered = append(filtered, addr)
 			addrs = append(addrs, addr.String())
 		}
 	}
+	__antithesis_instrumentation__.Notify(190073)
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(190081)
 		log.Infof(ctx, "initial addresses: %v", addrs)
+	} else {
+		__antithesis_instrumentation__.Notify(190082)
 	}
+	__antithesis_instrumentation__.Notify(190074)
 	return filtered
 }
 
-// RequireWebSession indicates whether the server should require authentication
-// sessions when serving admin API requests.
 func (cfg *BaseConfig) RequireWebSession() bool {
-	return !cfg.Insecure && cfg.EnableWebSessionAuthentication
+	__antithesis_instrumentation__.Notify(190083)
+	return !cfg.Insecure && func() bool {
+		__antithesis_instrumentation__.Notify(190084)
+		return cfg.EnableWebSessionAuthentication == true
+	}() == true
 }
 
-// readEnvironmentVariables populates all context values that are environment
-// variable based. Note that this only happens when initializing a node and not
-// when NewContext is called.
 func (cfg *Config) readEnvironmentVariables() {
+	__antithesis_instrumentation__.Notify(190085)
 	cfg.SpanConfigsDisabled = envutil.EnvOrDefaultBool("COCKROACH_DISABLE_SPAN_CONFIGS", cfg.SpanConfigsDisabled)
 	cfg.Linearizable = envutil.EnvOrDefaultBool("COCKROACH_EXPERIMENTAL_LINEARIZABLE", cfg.Linearizable)
 	cfg.ScanInterval = envutil.EnvOrDefaultDuration("COCKROACH_SCAN_INTERVAL", cfg.ScanInterval)
@@ -722,163 +708,200 @@ func (cfg *Config) readEnvironmentVariables() {
 	cfg.ScanMaxIdleTime = envutil.EnvOrDefaultDuration("COCKROACH_SCAN_MAX_IDLE_TIME", cfg.ScanMaxIdleTime)
 }
 
-// parseGossipBootstrapAddresses parses list of gossip bootstrap addresses.
 func (cfg *Config) parseGossipBootstrapAddresses(
 	ctx context.Context,
 ) ([]util.UnresolvedAddr, error) {
+	__antithesis_instrumentation__.Notify(190086)
 	var bootstrapAddresses []util.UnresolvedAddr
 	for _, address := range cfg.JoinList {
+		__antithesis_instrumentation__.Notify(190088)
 		if address == "" {
+			__antithesis_instrumentation__.Notify(190091)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(190092)
 		}
+		__antithesis_instrumentation__.Notify(190089)
 
 		if cfg.JoinPreferSRVRecords {
-			// The following code substitutes the entry in --join by the
-			// result of SRV resolution, if suitable SRV records are found
-			// for that name.
-			//
-			// TODO(knz): Delay this lookup. The logic for "regular" addresses
-			// is delayed until the point the connection is attempted, so that
-			// fresh DNS records are used for a new connection. This makes
-			// it possible to update DNS records without restarting the node.
-			// The SRV logic here does not have this property (yet).
+			__antithesis_instrumentation__.Notify(190093)
+
 			srvAddrs, err := netutil.SRV(ctx, address)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(190095)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(190096)
 			}
+			__antithesis_instrumentation__.Notify(190094)
 
 			if len(srvAddrs) > 0 {
+				__antithesis_instrumentation__.Notify(190097)
 				for _, sa := range srvAddrs {
+					__antithesis_instrumentation__.Notify(190099)
 					bootstrapAddresses = append(bootstrapAddresses,
 						util.MakeUnresolvedAddrWithDefaults("tcp", sa, base.DefaultPort))
 				}
+				__antithesis_instrumentation__.Notify(190098)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(190100)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(190101)
 		}
+		__antithesis_instrumentation__.Notify(190090)
 
-		// Otherwise, use the address.
 		bootstrapAddresses = append(bootstrapAddresses,
 			util.MakeUnresolvedAddrWithDefaults("tcp", address, base.DefaultPort))
 	}
+	__antithesis_instrumentation__.Notify(190087)
 
 	return bootstrapAddresses, nil
 }
 
-// parseAttributes parses a colon-separated list of strings,
-// filtering empty strings (i.e. "::" will yield no attributes.
-// Returns the list of strings as Attributes.
 func parseAttributes(attrsStr string) roachpb.Attributes {
+	__antithesis_instrumentation__.Notify(190102)
 	var filtered []string
 	for _, attr := range strings.Split(attrsStr, ":") {
+		__antithesis_instrumentation__.Notify(190104)
 		if len(attr) != 0 {
+			__antithesis_instrumentation__.Notify(190105)
 			filtered = append(filtered, attr)
+		} else {
+			__antithesis_instrumentation__.Notify(190106)
 		}
 	}
+	__antithesis_instrumentation__.Notify(190103)
 	return roachpb.Attributes{Attrs: filtered}
 }
 
-// idProvider connects the server ID containers in this
-// package to the logging package.
-//
-// For each of the "main" data items, it also memoizes its
-// representation as a string (the one needed by the
-// log.ServerIdentificationPayload interface) as soon as the value is
-// initialized. This saves on conversion costs.
 type idProvider struct {
-	// clusterID contains the cluster ID (initialized late).
 	clusterID *base.ClusterIDContainer
-	// clusterStr is the memoized representation of clusterID, once known.
+
 	clusterStr atomic.Value
 
-	// tenantID is the tenant ID for this server.
 	tenantID roachpb.TenantID
-	// tenantStr is the memoized representation of tenantID.
+
 	tenantStr atomic.Value
 
-	// serverID contains the node ID for KV nodes (when tenantID.IsSet() ==
-	// false), or the SQL instance ID for SQL-only servers (when
-	// tenantID.IsSet() == true).
 	serverID *base.NodeIDContainer
-	// serverStr is the memoized representation of serverID.
+
 	serverStr atomic.Value
 }
 
 var _ log.ServerIdentificationPayload = (*idProvider)(nil)
 
-// ServerIdentityString implements the log.ServerIdentificationPayload interface.
 func (s *idProvider) ServerIdentityString(key log.ServerIdentificationKey) string {
+	__antithesis_instrumentation__.Notify(190107)
 	switch key {
 	case log.IdentifyClusterID:
+		__antithesis_instrumentation__.Notify(190109)
 		c := s.clusterStr.Load()
 		cs, ok := c.(string)
 		if !ok {
+			__antithesis_instrumentation__.Notify(190118)
 			cid := s.clusterID.Get()
 			if cid != uuid.Nil {
+				__antithesis_instrumentation__.Notify(190119)
 				cs = cid.String()
 				s.clusterStr.Store(cs)
+			} else {
+				__antithesis_instrumentation__.Notify(190120)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(190121)
 		}
+		__antithesis_instrumentation__.Notify(190110)
 		return cs
 
 	case log.IdentifyTenantID:
+		__antithesis_instrumentation__.Notify(190111)
 		t := s.tenantStr.Load()
 		ts, ok := t.(string)
 		if !ok {
+			__antithesis_instrumentation__.Notify(190122)
 			tid := s.tenantID
 			if tid.IsSet() {
+				__antithesis_instrumentation__.Notify(190123)
 				ts = strconv.FormatUint(tid.ToUint64(), 10)
 				s.tenantStr.Store(ts)
+			} else {
+				__antithesis_instrumentation__.Notify(190124)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(190125)
 		}
+		__antithesis_instrumentation__.Notify(190112)
 		return ts
 
 	case log.IdentifyInstanceID:
-		// If tenantID is not set, this is a KV node and it has no SQL
-		// instance ID.
+		__antithesis_instrumentation__.Notify(190113)
+
 		if !s.tenantID.IsSet() {
+			__antithesis_instrumentation__.Notify(190126)
 			return ""
+		} else {
+			__antithesis_instrumentation__.Notify(190127)
 		}
+		__antithesis_instrumentation__.Notify(190114)
 		return s.maybeMemoizeServerID()
 
 	case log.IdentifyKVNodeID:
-		// If tenantID is set, this is a SQL-only server and it has no
-		// node ID.
+		__antithesis_instrumentation__.Notify(190115)
+
 		if s.tenantID.IsSet() {
+			__antithesis_instrumentation__.Notify(190128)
 			return ""
+		} else {
+			__antithesis_instrumentation__.Notify(190129)
 		}
+		__antithesis_instrumentation__.Notify(190116)
 		return s.maybeMemoizeServerID()
+	default:
+		__antithesis_instrumentation__.Notify(190117)
 	}
+	__antithesis_instrumentation__.Notify(190108)
 
 	return ""
 }
 
-// SetTenant informs the provider that it provides data for
-// a SQL server.
-//
-// Note: this should not be called concurrently with logging which may
-// invoke the method from the log.ServerIdentificationPayload
-// interface.
 func (s *idProvider) SetTenant(tenantID roachpb.TenantID) {
+	__antithesis_instrumentation__.Notify(190130)
 	if !tenantID.IsSet() {
+		__antithesis_instrumentation__.Notify(190133)
 		panic("programming error: invalid tenant ID")
+	} else {
+		__antithesis_instrumentation__.Notify(190134)
 	}
+	__antithesis_instrumentation__.Notify(190131)
 	if s.tenantID.IsSet() {
+		__antithesis_instrumentation__.Notify(190135)
 		panic("programming error: provider already set for tenant server")
+	} else {
+		__antithesis_instrumentation__.Notify(190136)
 	}
+	__antithesis_instrumentation__.Notify(190132)
 	s.tenantID = tenantID
 }
 
-// maybeMemoizeServerID saves the representation of serverID to
-// serverStr if the former is initialized.
 func (s *idProvider) maybeMemoizeServerID() string {
+	__antithesis_instrumentation__.Notify(190137)
 	si := s.serverStr.Load()
 	sis, ok := si.(string)
 	if !ok {
+		__antithesis_instrumentation__.Notify(190139)
 		sid := s.serverID.Get()
 		if sid != 0 {
+			__antithesis_instrumentation__.Notify(190140)
 			sis = strconv.FormatUint(uint64(sid), 10)
 			s.serverStr.Store(sis)
+		} else {
+			__antithesis_instrumentation__.Notify(190141)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(190142)
 	}
+	__antithesis_instrumentation__.Notify(190138)
 	return sis
 }

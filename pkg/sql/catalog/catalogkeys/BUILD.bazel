@@ -12,6 +12,7 @@ go_library(
         "//pkg/sql/catalog/catconstants",
         "//pkg/sql/catalog/descpb",
         "//pkg/util/encoding",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -25,5 +26,6 @@ go_test(
         "//pkg/keys",
         "//pkg/roachpb",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

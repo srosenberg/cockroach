@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,127 +17,119 @@ import (
 
 var errSideloadedFileNotFound = errors.New("sideloaded file not found")
 
-// SideloadStorage is the interface used for Raft SSTable sideloading.
-// Implementations do not need to be thread safe.
 type SideloadStorage interface {
-	// The directory in which the sideloaded files are stored. May or may not
-	// exist.
 	Dir() string
-	// Writes the given contents to the file specified by the given index and
-	// term. Overwrites the file if it already exists.
+
 	Put(_ context.Context, index, term uint64, contents []byte) error
-	// Load the file at the given index and term. Return errSideloadedFileNotFound when no
-	// such file is present.
+
 	Get(_ context.Context, index, term uint64) ([]byte, error)
-	// Purge removes the file at the given index and term. It may also
-	// remove any leftover files at the same index and earlier terms, but
-	// is not required to do so. When no file at the given index and term
-	// exists, returns errSideloadedFileNotFound.
-	//
-	// Returns the total size of the purged payloads.
+
 	Purge(_ context.Context, index, term uint64) (int64, error)
-	// Clear files that may have been written by this SideloadStorage.
+
 	Clear(context.Context) error
-	// TruncateTo removes all files belonging to an index strictly smaller than
-	// the given one. Returns the number of bytes freed, the number of bytes in
-	// files that remain, or an error.
+
 	TruncateTo(_ context.Context, index uint64) (freed, retained int64, _ error)
-	// BytesIfTruncatedFromTo returns the number of bytes that would be freed,
-	// if one were to truncate [from, to). Additionally, it returns the the
-	// number of bytes that would be retained >= to.
+
 	BytesIfTruncatedFromTo(_ context.Context, from, to uint64) (freed, retained int64, _ error)
-	// Returns an absolute path to the file that Get() would return the contents
-	// of. Does not check whether the file actually exists.
+
 	Filename(_ context.Context, index, term uint64) (string, error)
 }
 
-// maybeSideloadEntriesRaftMuLocked should be called with a slice of "fat"
-// entries before appending them to the Raft log. For those entries which are
-// sideloadable, this is where the actual sideloading happens: in come fat
-// proposals, out go thin proposals. Note that this method is to be called
-// before modifications are persisted to the log. The other way around is
-// incorrect since an ill-timed crash gives you thin proposals and no files.
-//
-// The passed-in slice is not mutated.
 func (r *Replica) maybeSideloadEntriesRaftMuLocked(
 	ctx context.Context, entriesToAppend []raftpb.Entry,
 ) (_ []raftpb.Entry, sideloadedEntriesSize int64, _ error) {
+	__antithesis_instrumentation__.Notify(120531)
 	return maybeSideloadEntriesImpl(ctx, entriesToAppend, r.raftMu.sideloaded)
 }
 
-// maybeSideloadEntriesImpl iterates through the provided slice of entries. If
-// no sideloadable entries are found, it returns the same slice. Otherwise, it
-// returns a new slice in which all applicable entries have been sideloaded to
-// the specified SideloadStorage.
 func maybeSideloadEntriesImpl(
 	ctx context.Context, entriesToAppend []raftpb.Entry, sideloaded SideloadStorage,
 ) (_ []raftpb.Entry, sideloadedEntriesSize int64, _ error) {
+	__antithesis_instrumentation__.Notify(120532)
 
 	cow := false
 	for i := range entriesToAppend {
+		__antithesis_instrumentation__.Notify(120534)
 		if sniffSideloadedRaftCommand(entriesToAppend[i].Data) {
+			__antithesis_instrumentation__.Notify(120535)
 			log.Event(ctx, "sideloading command in append")
 			if !cow {
-				// Avoid mutating the passed-in entries directly. The caller
-				// wants them to remain "fat".
+				__antithesis_instrumentation__.Notify(120541)
+
 				log.Eventf(ctx, "copying entries slice of length %d", len(entriesToAppend))
 				cow = true
 				entriesToAppend = append([]raftpb.Entry(nil), entriesToAppend...)
+			} else {
+				__antithesis_instrumentation__.Notify(120542)
 			}
+			__antithesis_instrumentation__.Notify(120536)
 
 			ent := &entriesToAppend[i]
-			cmdID, data := kvserverbase.DecodeRaftCommand(ent.Data) // cheap
+			cmdID, data := kvserverbase.DecodeRaftCommand(ent.Data)
 
-			// Unmarshal the command into an object that we can mutate.
 			var strippedCmd kvserverpb.RaftCommand
 			if err := protoutil.Unmarshal(data, &strippedCmd); err != nil {
+				__antithesis_instrumentation__.Notify(120543)
 				return nil, 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(120544)
 			}
+			__antithesis_instrumentation__.Notify(120537)
 
 			if strippedCmd.ReplicatedEvalResult.AddSSTable == nil {
-				// Still no AddSSTable; someone must've proposed a v2 command
-				// but not because it contains an inlined SSTable. Strange, but
-				// let's be future proof.
+				__antithesis_instrumentation__.Notify(120545)
+
 				log.Warning(ctx, "encountered sideloaded Raft command without inlined payload")
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(120546)
 			}
+			__antithesis_instrumentation__.Notify(120538)
 
-			// Actually strip the command.
 			dataToSideload := strippedCmd.ReplicatedEvalResult.AddSSTable.Data
 			strippedCmd.ReplicatedEvalResult.AddSSTable.Data = nil
 
-			// Marshal the command and attach to the Raft entry.
 			{
+				__antithesis_instrumentation__.Notify(120547)
 				data := make([]byte, kvserverbase.RaftCommandPrefixLen+strippedCmd.Size())
 				kvserverbase.EncodeRaftCommandPrefix(data[:kvserverbase.RaftCommandPrefixLen], kvserverbase.RaftVersionSideloaded, cmdID)
 				_, err := protoutil.MarshalTo(&strippedCmd, data[kvserverbase.RaftCommandPrefixLen:])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(120549)
 					return nil, 0, errors.Wrap(err, "while marshaling stripped sideloaded command")
+				} else {
+					__antithesis_instrumentation__.Notify(120550)
 				}
+				__antithesis_instrumentation__.Notify(120548)
 				ent.Data = data
 			}
+			__antithesis_instrumentation__.Notify(120539)
 
 			log.Eventf(ctx, "writing payload at index=%d term=%d", ent.Index, ent.Term)
 			if err := sideloaded.Put(ctx, ent.Index, ent.Term, dataToSideload); err != nil {
+				__antithesis_instrumentation__.Notify(120551)
 				return nil, 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(120552)
 			}
+			__antithesis_instrumentation__.Notify(120540)
 			sideloadedEntriesSize += int64(len(dataToSideload))
+		} else {
+			__antithesis_instrumentation__.Notify(120553)
 		}
 	}
+	__antithesis_instrumentation__.Notify(120533)
 	return entriesToAppend, sideloadedEntriesSize, nil
 }
 
 func sniffSideloadedRaftCommand(data []byte) (sideloaded bool) {
-	return len(data) > 0 && data[0] == byte(kvserverbase.RaftVersionSideloaded)
+	__antithesis_instrumentation__.Notify(120554)
+	return len(data) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(120555)
+		return data[0] == byte(kvserverbase.RaftVersionSideloaded) == true
+	}() == true
 }
 
-// maybeInlineSideloadedRaftCommand takes an entry and inspects it. If its
-// command encoding version indicates a sideloaded entry, it uses the entryCache
-// or SideloadStorage to inline the payload, returning a new entry (which must
-// be treated as immutable by the caller) or nil (if inlining does not apply)
-//
-// If a payload is missing, returns an error whose Cause() is
-// errSideloadedFileNotFound.
 func maybeInlineSideloadedRaftCommand(
 	ctx context.Context,
 	rangeID roachpb.RangeID,
@@ -153,98 +137,131 @@ func maybeInlineSideloadedRaftCommand(
 	sideloaded SideloadStorage,
 	entryCache *raftentry.Cache,
 ) (*raftpb.Entry, error) {
+	__antithesis_instrumentation__.Notify(120556)
 	if !sniffSideloadedRaftCommand(ent.Data) {
+		__antithesis_instrumentation__.Notify(120563)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(120564)
 	}
+	__antithesis_instrumentation__.Notify(120557)
 	log.Event(ctx, "inlining sideloaded SSTable")
-	// We could unmarshal this yet again, but if it's committed we
-	// are very likely to have appended it recently, in which case
-	// we can save work.
+
 	cachedSingleton, _, _, _ := entryCache.Scan(
 		nil, rangeID, ent.Index, ent.Index+1, 1<<20,
 	)
 
 	if len(cachedSingleton) > 0 {
+		__antithesis_instrumentation__.Notify(120565)
 		log.Event(ctx, "using cache hit")
 		return &cachedSingleton[0], nil
+	} else {
+		__antithesis_instrumentation__.Notify(120566)
 	}
+	__antithesis_instrumentation__.Notify(120558)
 
-	// Make a shallow copy.
 	entCpy := ent
 	ent = entCpy
 
 	log.Event(ctx, "inlined entry not cached")
-	// Out of luck, for whatever reason the inlined proposal isn't in the cache.
+
 	cmdID, data := kvserverbase.DecodeRaftCommand(ent.Data)
 
 	var command kvserverpb.RaftCommand
 	if err := protoutil.Unmarshal(data, &command); err != nil {
+		__antithesis_instrumentation__.Notify(120567)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(120568)
 	}
+	__antithesis_instrumentation__.Notify(120559)
 
 	if len(command.ReplicatedEvalResult.AddSSTable.Data) > 0 {
-		// The entry we started out with was already "fat". This should never
-		// occur since it would imply that a) the entry was not properly
-		// sideloaded during append or b) the entry reached us through a
-		// snapshot, but as of #70464, snapshots are guaranteed to not
-		// contain any log entries. (So if we hit this, it is going to
-		// be as a result of log entries that are very old, written
-		// when sending the log with snapshots was still possible).
+		__antithesis_instrumentation__.Notify(120569)
+
 		log.Event(ctx, "entry already inlined")
 		return &ent, nil
+	} else {
+		__antithesis_instrumentation__.Notify(120570)
 	}
+	__antithesis_instrumentation__.Notify(120560)
 
 	sideloadedData, err := sideloaded.Get(ctx, ent.Index, ent.Term)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(120571)
 		return nil, errors.Wrap(err, "loading sideloaded data")
+	} else {
+		__antithesis_instrumentation__.Notify(120572)
 	}
+	__antithesis_instrumentation__.Notify(120561)
 	command.ReplicatedEvalResult.AddSSTable.Data = sideloadedData
 	{
+		__antithesis_instrumentation__.Notify(120573)
 		data := make([]byte, kvserverbase.RaftCommandPrefixLen+command.Size())
 		kvserverbase.EncodeRaftCommandPrefix(data[:kvserverbase.RaftCommandPrefixLen], kvserverbase.RaftVersionSideloaded, cmdID)
 		_, err := protoutil.MarshalTo(&command, data[kvserverbase.RaftCommandPrefixLen:])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(120575)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(120576)
 		}
+		__antithesis_instrumentation__.Notify(120574)
 		ent.Data = data
 	}
+	__antithesis_instrumentation__.Notify(120562)
 	return &ent, nil
 }
 
-// assertSideloadedRaftCommandInlined asserts that if the provided entry is a
-// sideloaded entry, then its payload has already been inlined. Doing so
-// requires unmarshalling the raft command, so this assertion should be kept out
-// of performance critical paths.
 func assertSideloadedRaftCommandInlined(ctx context.Context, ent *raftpb.Entry) {
+	__antithesis_instrumentation__.Notify(120577)
 	if !sniffSideloadedRaftCommand(ent.Data) {
+		__antithesis_instrumentation__.Notify(120580)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(120581)
 	}
+	__antithesis_instrumentation__.Notify(120578)
 
 	var command kvserverpb.RaftCommand
 	_, data := kvserverbase.DecodeRaftCommand(ent.Data)
 	if err := protoutil.Unmarshal(data, &command); err != nil {
+		__antithesis_instrumentation__.Notify(120582)
 		log.Fatalf(ctx, "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(120583)
 	}
+	__antithesis_instrumentation__.Notify(120579)
 
 	if len(command.ReplicatedEvalResult.AddSSTable.Data) == 0 {
-		// The entry is "thin", which is what this assertion is checking for.
+		__antithesis_instrumentation__.Notify(120584)
+
 		log.Fatalf(ctx, "found thin sideloaded raft command: %+v", command)
+	} else {
+		__antithesis_instrumentation__.Notify(120585)
 	}
 }
 
-// maybePurgeSideloaded removes [firstIndex, ..., lastIndex] at the given term
-// and returns the total number of bytes removed. Nonexistent entries are
-// silently skipped over.
 func maybePurgeSideloaded(
 	ctx context.Context, ss SideloadStorage, firstIndex, lastIndex uint64, term uint64,
 ) (int64, error) {
+	__antithesis_instrumentation__.Notify(120586)
 	var totalSize int64
 	for i := firstIndex; i <= lastIndex; i++ {
+		__antithesis_instrumentation__.Notify(120588)
 		size, err := ss.Purge(ctx, i, term)
-		if err != nil && !errors.Is(err, errSideloadedFileNotFound) {
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(120590)
+			return !errors.Is(err, errSideloadedFileNotFound) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(120591)
 			return totalSize, err
+		} else {
+			__antithesis_instrumentation__.Notify(120592)
 		}
+		__antithesis_instrumentation__.Notify(120589)
 		totalSize += size
 	}
+	__antithesis_instrumentation__.Notify(120587)
 	return totalSize, nil
 }

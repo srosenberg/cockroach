@@ -1,66 +1,60 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package kvevent
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "context"
 
-// chanBuffer mediates between the changed data KVFeed and the rest of the
-// changefeed pipeline (which is backpressured all the way to the sink).
 type chanBuffer struct {
 	entriesCh    chan Event
 	closedReason error
 }
 
-// MakeChanBuffer returns an Buffer backed by an unbuffered channel.
-//
-// TODO(ajwerner): Consider adding a buffer here. We know performance of the
-// backfill is terrible. Probably some of that is due to every KV being sent
-// on a channel. This should all get benchmarked and tuned.
 func MakeChanBuffer() Buffer {
+	__antithesis_instrumentation__.Notify(17094)
 	return &chanBuffer{entriesCh: make(chan Event)}
 }
 
-// Add implements Writer interface.
 func (b *chanBuffer) Add(ctx context.Context, event Event) error {
+	__antithesis_instrumentation__.Notify(17095)
 	select {
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(17096)
 		return ctx.Err()
 	case b.entriesCh <- event:
+		__antithesis_instrumentation__.Notify(17097)
 		return nil
 	}
 }
 
-// Drain implements Writer interface.
 func (b *chanBuffer) Drain(ctx context.Context) error {
-	// channel buffer is unbuffered.
+	__antithesis_instrumentation__.Notify(17098)
+
 	return nil
 }
 
-// CloseWithReason implements Writer interface.
 func (b *chanBuffer) CloseWithReason(_ context.Context, reason error) error {
+	__antithesis_instrumentation__.Notify(17099)
 	b.closedReason = reason
 	close(b.entriesCh)
 	return nil
 }
 
-// Get returns an entry from the buffer. They are handed out in an order that
-// (if it is maintained all the way to the sink) meets our external guarantees.
 func (b *chanBuffer) Get(ctx context.Context) (Event, error) {
+	__antithesis_instrumentation__.Notify(17100)
 	select {
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(17101)
 		return Event{}, ctx.Err()
 	case e, ok := <-b.entriesCh:
+		__antithesis_instrumentation__.Notify(17102)
 		if !ok {
-			// Our channel has been closed by the
-			// Writer. No more events will be returned.
+			__antithesis_instrumentation__.Notify(17104)
+
 			return e, ErrBufferClosed{reason: b.closedReason}
+		} else {
+			__antithesis_instrumentation__.Notify(17105)
 		}
+		__antithesis_instrumentation__.Notify(17103)
 		return e, nil
 	}
 }

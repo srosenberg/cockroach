@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package migrations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -33,31 +25,15 @@ import (
 )
 
 type operation struct {
-	// Operation name.
 	name redact.RedactableString
-	// List of schema names, e.g., column names, which are modified in the query.
+
 	schemaList []string
-	// Schema change query.
+
 	query string
-	// Function to check existing schema.
+
 	schemaExistsFn func(catalog.TableDescriptor, catalog.TableDescriptor, string) (bool, error)
 }
 
-// migrateTable is run during a migration to a new version and changes an existing
-// table's schema based on schemaChangeQuery. The schema-change is ignored if the
-// table already has the required changes.
-//
-// This function reads the existing table descriptor from storage and passes it
-// to schemaExists function to verify whether the schema-change already exists or
-// not. If the change is already done, the function does not perform the change
-// again, which makes migrateTable idempotent.
-//
-// schemaExists function should be customized based on the table being modified,
-// ignoring the fields that do not matter while comparing with an existing descriptor.
-//
-// If multiple changes are done in the same query, e.g., if multiple columns are
-// added, the function should check all changes to exist or absent, returning
-// an error if changes exist partially.
 func migrateTable(
 	ctx context.Context,
 	_ clusterversion.ClusterVersion,
@@ -66,69 +42,89 @@ func migrateTable(
 	storedTableID descpb.ID,
 	expectedTable catalog.TableDescriptor,
 ) error {
+	__antithesis_instrumentation__.Notify(128581)
 	for {
-		// - Fetch the table, reading its descriptor from storage.
-		// - Check if any mutation jobs exist for the table. These mutations can
-		//   belong to a previous migration attempt that failed.
-		// - If any mutation job exists:
-		//   - Wait for the ongoing mutations to complete.
-		// 	 - Continue to the beginning of the loop to cater for the mutations
-		//	   that may have started while waiting for existing mutations to complete.
-		// - Check if the intended schema-changes already exist.
-		//   - If the changes already exist, skip the schema-change and return as
-		//     the changes are already done in a previous migration attempt.
-		//   - Otherwise, perform the schema-change and return.
+		__antithesis_instrumentation__.Notify(128582)
 
 		log.Infof(ctx, "performing table migration operation %v", op.name)
 
-		// Retrieve the table.
 		storedTable, err := readTableDescriptor(ctx, d, storedTableID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(128588)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128589)
 		}
+		__antithesis_instrumentation__.Notify(128583)
 
-		// Wait for any in-flight schema changes to complete.
 		if mutations := storedTable.GetMutationJobs(); len(mutations) > 0 {
+			__antithesis_instrumentation__.Notify(128590)
 			for _, mutation := range mutations {
+				__antithesis_instrumentation__.Notify(128592)
 				log.Infof(ctx, "waiting for the mutation job %v to complete", mutation.JobID)
 				if _, err := d.InternalExecutor.Exec(ctx, "migration-mutations-wait",
 					nil, "SHOW JOB WHEN COMPLETE $1", mutation.JobID); err != nil {
+					__antithesis_instrumentation__.Notify(128593)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(128594)
 				}
 			}
+			__antithesis_instrumentation__.Notify(128591)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(128595)
 		}
+		__antithesis_instrumentation__.Notify(128584)
 
-		// Ignore the schema change if the table already has the required schema.
-		// Expect all or none.
 		var exists bool
 		for i, schemaName := range op.schemaList {
+			__antithesis_instrumentation__.Notify(128596)
 			hasSchema, err := op.schemaExistsFn(storedTable, expectedTable, schemaName)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(128599)
 				return errors.Wrapf(err, "error while validating descriptors during"+
 					" operation %s", op.name)
+			} else {
+				__antithesis_instrumentation__.Notify(128600)
 			}
-			if i > 0 && exists != hasSchema {
+			__antithesis_instrumentation__.Notify(128597)
+			if i > 0 && func() bool {
+				__antithesis_instrumentation__.Notify(128601)
+				return exists != hasSchema == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(128602)
 				return errors.Errorf("error while validating descriptors. observed"+
 					" partial schema exists while performing %v", op.name)
+			} else {
+				__antithesis_instrumentation__.Notify(128603)
 			}
+			__antithesis_instrumentation__.Notify(128598)
 			exists = hasSchema
 		}
+		__antithesis_instrumentation__.Notify(128585)
 		if exists {
+			__antithesis_instrumentation__.Notify(128604)
 			log.Infof(ctx, "skipping %s operation as the schema change already exists.", op.name)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(128605)
 		}
+		__antithesis_instrumentation__.Notify(128586)
 
-		// Modify the table.
 		log.Infof(ctx, "performing operation: %s", op.name)
 		if _, err := d.InternalExecutor.ExecEx(
 			ctx,
 			fmt.Sprintf("migration-alter-table-%d", storedTableID),
-			nil, /* txn */
+			nil,
 			sessiondata.InternalExecutorOverride{User: security.NodeUserName()},
 			op.query); err != nil {
+			__antithesis_instrumentation__.Notify(128606)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128607)
 		}
+		__antithesis_instrumentation__.Notify(128587)
 		return nil
 	}
 }
@@ -136,11 +132,13 @@ func migrateTable(
 func readTableDescriptor(
 	ctx context.Context, d migration.TenantDeps, tableID descpb.ID,
 ) (catalog.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(128608)
 	var t catalog.TableDescriptor
 
 	if err := d.CollectionFactory.Txn(ctx, d.InternalExecutor, d.DB, func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) (err error) {
+		__antithesis_instrumentation__.Notify(128610)
 		t, err = descriptors.GetImmutableTableByID(ctx, txn, tableID, tree.ObjectLookupFlags{
 			CommonLookupFlags: tree.CommonLookupFlags{
 				AvoidLeased: true,
@@ -149,50 +147,70 @@ func readTableDescriptor(
 		})
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(128611)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(128612)
 	}
+	__antithesis_instrumentation__.Notify(128609)
 	return t, nil
 }
 
-// ensureProtoMessagesAreEqual verifies whether the given protobufs are equal or
-// not, returning an error if they are not equal.
 func ensureProtoMessagesAreEqual(expected, found protoutil.Message) error {
+	__antithesis_instrumentation__.Notify(128613)
 	expectedBytes, err := protoutil.Marshal(expected)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128617)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128618)
 	}
+	__antithesis_instrumentation__.Notify(128614)
 	foundBytes, err := protoutil.Marshal(found)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128619)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128620)
 	}
+	__antithesis_instrumentation__.Notify(128615)
 	if bytes.Equal(expectedBytes, foundBytes) {
+		__antithesis_instrumentation__.Notify(128621)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(128622)
 	}
+	__antithesis_instrumentation__.Notify(128616)
 	return errors.Errorf("expected descriptor doesn't match "+
 		"with found descriptor: %s", strings.Join(pretty.Diff(expected, found), "\n"))
 }
 
-// hasColumn returns true if storedTable already has the given column, comparing
-// with expectedTable.
-// storedTable descriptor must be read from system storage as compared to reading
-// from the systemschema package. On the contrary, expectedTable must be accessed
-// directly from systemschema package.
-// This function returns an error if the column exists but doesn't match with the
-// expectedTable descriptor. The comparison is not strict as several descriptor
-// fields are ignored.
 func hasColumn(storedTable, expectedTable catalog.TableDescriptor, colName string) (bool, error) {
+	__antithesis_instrumentation__.Notify(128623)
 	storedCol, err := storedTable.FindColumnWithName(tree.Name(colName))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128627)
 		if strings.Contains(err.Error(), "does not exist") {
+			__antithesis_instrumentation__.Notify(128629)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(128630)
 		}
+		__antithesis_instrumentation__.Notify(128628)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(128631)
 	}
+	__antithesis_instrumentation__.Notify(128624)
 
 	expectedCol, err := expectedTable.FindColumnWithName(tree.Name(colName))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128632)
 		return false, errors.Wrapf(err, "columns name %s is invalid.", colName)
+	} else {
+		__antithesis_instrumentation__.Notify(128633)
 	}
+	__antithesis_instrumentation__.Notify(128625)
 
 	expectedCopy := expectedCol.ColumnDescDeepCopy()
 	storedCopy := storedCol.ColumnDescDeepCopy()
@@ -201,41 +219,48 @@ func hasColumn(storedTable, expectedTable catalog.TableDescriptor, colName strin
 	expectedCopy.ID = 0
 
 	if err = ensureProtoMessagesAreEqual(&expectedCopy, &storedCopy); err != nil {
+		__antithesis_instrumentation__.Notify(128634)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(128635)
 	}
+	__antithesis_instrumentation__.Notify(128626)
 	return true, nil
 }
 
-// hasIndex returns true if storedTable already has the given index, comparing
-// with expectedTable.
-// storedTable descriptor must be read from system storage as compared to reading
-// from the systemschema package. On the contrary, expectedTable must be accessed
-// directly from systemschema package.
-// This function returns an error if the index exists but doesn't match with the
-// expectedTable descriptor. The comparison is not strict as several descriptor
-// fields are ignored.
 func hasIndex(storedTable, expectedTable catalog.TableDescriptor, indexName string) (bool, error) {
+	__antithesis_instrumentation__.Notify(128636)
 	storedIdx, err := storedTable.FindIndexWithName(indexName)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128640)
 		if strings.Contains(err.Error(), "does not exist") {
+			__antithesis_instrumentation__.Notify(128642)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(128643)
 		}
+		__antithesis_instrumentation__.Notify(128641)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(128644)
 	}
+	__antithesis_instrumentation__.Notify(128637)
 	expectedIdx, err := expectedTable.FindIndexWithName(indexName)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128645)
 		return false, errors.Wrapf(err, "index name %s is invalid", indexName)
+	} else {
+		__antithesis_instrumentation__.Notify(128646)
 	}
+	__antithesis_instrumentation__.Notify(128638)
 	storedCopy := storedIdx.IndexDescDeepCopy()
 	expectedCopy := expectedIdx.IndexDescDeepCopy()
-	// Ignore the fields that don't matter in the comparison.
+
 	storedCopy.ID = 0
 	expectedCopy.ID = 0
 	storedCopy.Version = 0
 	expectedCopy.Version = 0
-	// CreatedExplicitly is an ignored field because there exists an inconsistency
-	// between CREATE TABLE (... INDEX) and CREATE INDEX.
-	// See https://github.com/cockroachdb/cockroach/issues/65929.
+
 	storedCopy.CreatedExplicitly = false
 	expectedCopy.CreatedExplicitly = false
 	storedCopy.StoreColumnNames = []string{}
@@ -244,51 +269,76 @@ func hasIndex(storedTable, expectedTable catalog.TableDescriptor, indexName stri
 	expectedCopy.StoreColumnIDs = []descpb.ColumnID{0, 0, 0}
 
 	if err = ensureProtoMessagesAreEqual(&expectedCopy, &storedCopy); err != nil {
+		__antithesis_instrumentation__.Notify(128647)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(128648)
 	}
+	__antithesis_instrumentation__.Notify(128639)
 	return true, nil
 }
 
-// hasColumnFamily returns true if storedTable already has the given column
-// family, comparing with expectedTable. storedTable descriptor must be read
-// from system storage as compared to reading from the systemschema package. On
-// the contrary, expectedTable must be accessed directly from systemschema
-// package. This function returns an error if the column doesn't exist in the
-// expectedTable descriptor.
 func hasColumnFamily(
 	storedTable, expectedTable catalog.TableDescriptor, colFamily string,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(128649)
 	var storedFamily, expectedFamily *descpb.ColumnFamilyDescriptor
 	for _, fam := range storedTable.GetFamilies() {
+		__antithesis_instrumentation__.Notify(128656)
 		if fam.Name == colFamily {
+			__antithesis_instrumentation__.Notify(128657)
 			storedFamily = &fam
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(128658)
 		}
 	}
+	__antithesis_instrumentation__.Notify(128650)
 	if storedFamily == nil {
+		__antithesis_instrumentation__.Notify(128659)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(128660)
 	}
+	__antithesis_instrumentation__.Notify(128651)
 
 	for _, fam := range expectedTable.GetFamilies() {
+		__antithesis_instrumentation__.Notify(128661)
 		if fam.Name == colFamily {
+			__antithesis_instrumentation__.Notify(128662)
 			expectedFamily = &fam
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(128663)
 		}
 	}
+	__antithesis_instrumentation__.Notify(128652)
 	if expectedFamily == nil {
+		__antithesis_instrumentation__.Notify(128664)
 		return false, errors.Errorf("column family %s does not exist", colFamily)
+	} else {
+		__antithesis_instrumentation__.Notify(128665)
 	}
+	__antithesis_instrumentation__.Notify(128653)
 
-	// Check that columns match.
 	storedFamilyCols := storedFamily.ColumnNames
 	expectedFamilyCols := expectedFamily.ColumnNames
 	if len(storedFamilyCols) != len(expectedFamilyCols) {
+		__antithesis_instrumentation__.Notify(128666)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(128667)
 	}
+	__antithesis_instrumentation__.Notify(128654)
 	for i, storedCol := range storedFamilyCols {
+		__antithesis_instrumentation__.Notify(128668)
 		if storedCol != expectedFamilyCols[i] {
+			__antithesis_instrumentation__.Notify(128669)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(128670)
 		}
 	}
+	__antithesis_instrumentation__.Notify(128655)
 	return true, nil
 }

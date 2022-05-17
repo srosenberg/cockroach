@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowenc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -19,13 +11,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// InitIndexFetchSpec fills in an IndexFetchSpec for the given index and
-// provided fetch columns. All the fields are reinitialized; the slices are
-// reused if they have enough capacity.
-//
-// The fetch columns are assumed to be available in the index. If the index is
-// inverted and we fetch the inverted key, the corresponding Column contains the
-// inverted column type.
 func InitIndexFetchSpec(
 	s *descpb.IndexFetchSpec,
 	codec keys.SQLCodec,
@@ -33,6 +18,7 @@ func InitIndexFetchSpec(
 	index catalog.Index,
 	fetchColumnIDs []descpb.ColumnID,
 ) error {
+	__antithesis_instrumentation__.Notify(570617)
 	oldFetchedCols := s.FetchedColumns
 	*s = descpb.IndexFetchSpec{
 		Version:             descpb.IndexFetchSpecVersionInitial,
@@ -56,52 +42,86 @@ func InitIndexFetchSpec(
 
 	families := table.GetFamilies()
 	for i := range families {
+		__antithesis_instrumentation__.Notify(570623)
 		if id := families[i].ID; id > s.MaxFamilyID {
+			__antithesis_instrumentation__.Notify(570624)
 			s.MaxFamilyID = id
+		} else {
+			__antithesis_instrumentation__.Notify(570625)
 		}
 	}
+	__antithesis_instrumentation__.Notify(570618)
 
 	s.KeyAndSuffixColumns = table.IndexFetchSpecKeyAndSuffixColumns(index)
 
 	var invertedColumnID descpb.ColumnID
 	if index.GetType() == descpb.IndexDescriptor_INVERTED {
+		__antithesis_instrumentation__.Notify(570626)
 		invertedColumnID = index.InvertedColumnID()
+	} else {
+		__antithesis_instrumentation__.Notify(570627)
 	}
+	__antithesis_instrumentation__.Notify(570619)
 
 	if cap(oldFetchedCols) >= len(fetchColumnIDs) {
+		__antithesis_instrumentation__.Notify(570628)
 		s.FetchedColumns = oldFetchedCols[:len(fetchColumnIDs)]
 	} else {
+		__antithesis_instrumentation__.Notify(570629)
 		s.FetchedColumns = make([]descpb.IndexFetchSpec_Column, len(fetchColumnIDs))
 	}
+	__antithesis_instrumentation__.Notify(570620)
 	for i, colID := range fetchColumnIDs {
+		__antithesis_instrumentation__.Notify(570630)
 		col, err := table.FindColumnWithID(colID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(570633)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(570634)
 		}
+		__antithesis_instrumentation__.Notify(570631)
 		typ := col.GetType()
 		if colID == invertedColumnID {
+			__antithesis_instrumentation__.Notify(570635)
 			typ = index.InvertedColumnKeyType()
+		} else {
+			__antithesis_instrumentation__.Notify(570636)
 		}
+		__antithesis_instrumentation__.Notify(570632)
 		s.FetchedColumns[i] = descpb.IndexFetchSpec_Column{
-			Name:          col.GetName(),
-			ColumnID:      colID,
-			Type:          typ,
-			IsNonNullable: !col.IsNullable() && col.Public(),
+			Name:     col.GetName(),
+			ColumnID: colID,
+			Type:     typ,
+			IsNonNullable: !col.IsNullable() && func() bool {
+				__antithesis_instrumentation__.Notify(570637)
+				return col.Public() == true
+			}() == true,
 		}
 	}
+	__antithesis_instrumentation__.Notify(570621)
 
-	// In test builds, verify that we aren't trying to fetch columns that are not
-	// available in the index.
-	if buildutil.CrdbTestBuild && s.IsSecondaryIndex {
+	if buildutil.CrdbTestBuild && func() bool {
+		__antithesis_instrumentation__.Notify(570638)
+		return s.IsSecondaryIndex == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(570639)
 		colIDs := index.CollectKeyColumnIDs()
 		colIDs.UnionWith(index.CollectSecondaryStoredColumnIDs())
 		colIDs.UnionWith(index.CollectKeySuffixColumnIDs())
 		for i := range s.FetchedColumns {
+			__antithesis_instrumentation__.Notify(570640)
 			if !colIDs.Contains(s.FetchedColumns[i].ColumnID) {
+				__antithesis_instrumentation__.Notify(570641)
 				return errors.AssertionFailedf("requested column %s not in index", s.FetchedColumns[i].Name)
+			} else {
+				__antithesis_instrumentation__.Notify(570642)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(570643)
 	}
+	__antithesis_instrumentation__.Notify(570622)
 
 	return nil
 }

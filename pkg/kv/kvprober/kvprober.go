@@ -1,13 +1,3 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package kvprober sends queries to KV in a loop, with configurable sleep
 // times, in order to generate data about the healthiness or unhealthiness of
 // kvclient & below.
@@ -16,6 +6,8 @@
 // signals. It also writes to logs to help narrow down the problem (e.g. which
 // range(s) are acting up).
 package kvprober
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -38,30 +30,22 @@ import (
 
 const putValue = "thekvproberwrotethis"
 
-// Prober sends queries to KV in a loop. See package docstring for more.
 type Prober struct {
 	db       *kv.DB
 	settings *cluster.Settings
-	// planner is an interface for selecting a range to probe. There are
-	// separate planners for the read & write probe loops, so as to achieve
-	// a balanced probing of the keyspace, regardless of differences in the rate
-	// at which Prober sends different probes. Also note that planner is
-	// NOT thread-safe.
+
 	readPlanner  planner
 	writePlanner planner
-	// metrics wraps up the set of prometheus metrics that the prober sets; the
-	// goal of the prober IS to populate these metrics.
+
 	metrics Metrics
 	tracer  *tracing.Tracer
 }
 
-// Opts provides knobs to control kvprober.Prober.
 type Opts struct {
 	DB       *kv.DB
 	Settings *cluster.Settings
 	Tracer   *tracing.Tracer
-	// The windowed portion of the latency histogram retains values for
-	// approximately histogramWindow. See metrics library for more.
+
 	HistogramWindowInterval time.Duration
 }
 
@@ -120,12 +104,8 @@ var (
 		Measurement: "Runs",
 		Unit:        metric.Unit_COUNT,
 	}
-	// TODO(josh): Add a histogram that captures where in the "rangespace" errors
-	// are occurring. This will allow operators to see at a glance what percentage
-	// of ranges are affected.
 )
 
-// Metrics groups together the metrics that kvprober exports.
 type Metrics struct {
 	ReadProbeAttempts  *metric.Counter
 	ReadProbeFailures  *metric.Counter
@@ -137,77 +117,74 @@ type Metrics struct {
 	ProbePlanFailures  *metric.Counter
 }
 
-// proberOps is an interface that the prober will use to run ops against some
-// system. This interface exists so that ops can be mocked for tests.
 type proberOps interface {
 	Read(key interface{}) func(context.Context, *kv.Txn) error
 	Write(key interface{}) func(context.Context, *kv.Txn) error
 }
 
-// proberTxn is an interface that the prober will use to run txns. This
-// interface exists so that txn can be mocked for tests.
 type proberTxn interface {
-	// Txn runs the given function with a transaction having the admission
-	// source in the header set to OTHER. Transaction work submitted from this
-	// source currently bypassess admission control.
 	Txn(context.Context, func(context.Context, *kv.Txn) error) error
-	// TxnRootKV runs the given function with a transaction having the admission
-	// source in the header set to ROOT KV. Transaction work submitted from this
-	// source should not bypass admission control.
+
 	TxnRootKV(context.Context, func(context.Context, *kv.Txn) error) error
 }
 
-// proberOpsImpl is used to probe the kv layer.
 type proberOpsImpl struct {
 }
 
-// We attempt to commit a txn that reads some data at the key.
 func (p *proberOpsImpl) Read(key interface{}) func(context.Context, *kv.Txn) error {
+	__antithesis_instrumentation__.Notify(93940)
 	return func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(93941)
 		_, err := txn.Get(ctx, key)
 		return err
 	}
 }
 
-// We attempt to commit a txn that puts some data at the key then deletes
-// it. The test of the write code paths is good: We get a raft command that
-// goes thru consensus and is written to the pebble log. Importantly, no
-// *live* data is left at the key, which simplifies the kvprober, as then
-// there is no need to clean up data at the key post range split / merge.
-// Note that MVCC tombstones may be left by the probe, but this is okay, as
-// GC will clean it up.
 func (p *proberOpsImpl) Write(key interface{}) func(context.Context, *kv.Txn) error {
+	__antithesis_instrumentation__.Notify(93942)
 	return func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(93943)
 		if err := txn.Put(ctx, key, putValue); err != nil {
+			__antithesis_instrumentation__.Notify(93945)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(93946)
 		}
+		__antithesis_instrumentation__.Notify(93944)
 		return txn.Del(ctx, key)
 	}
 }
 
-// proberTxnImpl is used to run transactions.
 type proberTxnImpl struct {
 	db *kv.DB
 }
 
 func (p *proberTxnImpl) Txn(ctx context.Context, f func(context.Context, *kv.Txn) error) error {
+	__antithesis_instrumentation__.Notify(93947)
 	return p.db.Txn(ctx, f)
 }
 
 func (p *proberTxnImpl) TxnRootKV(
 	ctx context.Context, f func(context.Context, *kv.Txn) error,
 ) error {
+	__antithesis_instrumentation__.Notify(93948)
 	return p.db.TxnRootKV(ctx, f)
 }
 
-// NewProber creates a Prober from Opts.
 func NewProber(opts Opts) *Prober {
+	__antithesis_instrumentation__.Notify(93949)
 	return &Prober{
 		db:       opts.DB,
 		settings: opts.Settings,
 
-		readPlanner:  newMeta2Planner(opts.DB, opts.Settings, func() time.Duration { return readInterval.Get(&opts.Settings.SV) }),
-		writePlanner: newMeta2Planner(opts.DB, opts.Settings, func() time.Duration { return writeInterval.Get(&opts.Settings.SV) }),
+		readPlanner: newMeta2Planner(opts.DB, opts.Settings, func() time.Duration {
+			__antithesis_instrumentation__.Notify(93950)
+			return readInterval.Get(&opts.Settings.SV)
+		}),
+		writePlanner: newMeta2Planner(opts.DB, opts.Settings, func() time.Duration {
+			__antithesis_instrumentation__.Notify(93951)
+			return writeInterval.Get(&opts.Settings.SV)
+		}),
 
 		metrics: Metrics{
 			ReadProbeAttempts:  metric.NewCounter(metaReadProbeAttempts),
@@ -223,23 +200,26 @@ func NewProber(opts Opts) *Prober {
 	}
 }
 
-// Metrics returns a struct which contains the kvprober metrics.
 func (p *Prober) Metrics() Metrics {
+	__antithesis_instrumentation__.Notify(93952)
 	return p.metrics
 }
 
-// Start causes kvprober to start probing KV. Start returns immediately. Start
-// returns an error only if stopper.RunAsyncTask returns an error.
 func (p *Prober) Start(ctx context.Context, stopper *stop.Stopper) error {
-	ctx = logtags.AddTag(ctx, "kvprober", nil /* value */)
+	__antithesis_instrumentation__.Notify(93953)
+	ctx = logtags.AddTag(ctx, "kvprober", nil)
 	startLoop := func(ctx context.Context, opName string, probe func(context.Context, *kv.DB, planner), pl planner, interval *settings.DurationSetting) error {
+		__antithesis_instrumentation__.Notify(93956)
 		return stopper.RunAsyncTaskEx(ctx, stop.TaskOpts{TaskName: opName, SpanOpt: stop.SterileRootSpan}, func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(93957)
 			defer logcrash.RecoverAndReportNonfatalPanic(ctx, &p.settings.SV)
 
-			rnd, _ /* seed */ := randutil.NewPseudoRand()
+			rnd, _ := randutil.NewPseudoRand()
 			d := func() time.Duration {
+				__antithesis_instrumentation__.Notify(93959)
 				return withJitter(interval.Get(&p.settings.SV), rnd)
 			}
+			__antithesis_instrumentation__.Notify(93958)
 			t := timeutil.NewTimer()
 			defer t.Stop()
 			t.Reset(d())
@@ -248,14 +228,18 @@ func (p *Prober) Start(ctx context.Context, stopper *stop.Stopper) error {
 			defer cancel()
 
 			for {
+				__antithesis_instrumentation__.Notify(93960)
 				select {
 				case <-t.C:
+					__antithesis_instrumentation__.Notify(93962)
 					t.Read = true
-					// Jitter added to de-synchronize different nodes' probe loops.
+
 					t.Reset(d())
 				case <-stopper.ShouldQuiesce():
+					__antithesis_instrumentation__.Notify(93963)
 					return
 				}
+				__antithesis_instrumentation__.Notify(93961)
 
 				probeCtx, sp := tracing.EnsureChildSpan(ctx, p.tracer, opName+" - probe")
 				probe(probeCtx, p.db, pl)
@@ -263,120 +247,146 @@ func (p *Prober) Start(ctx context.Context, stopper *stop.Stopper) error {
 			}
 		})
 	}
+	__antithesis_instrumentation__.Notify(93954)
 
 	if err := startLoop(ctx, "read probe loop", p.readProbe, p.readPlanner, readInterval); err != nil {
+		__antithesis_instrumentation__.Notify(93964)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(93965)
 	}
+	__antithesis_instrumentation__.Notify(93955)
 	return startLoop(ctx, "write probe loop", p.writeProbe, p.writePlanner, writeInterval)
 }
 
-// Doesn't return an error. Instead increments error type specific metrics.
 func (p *Prober) readProbe(ctx context.Context, db *kv.DB, pl planner) {
+	__antithesis_instrumentation__.Notify(93966)
 	p.readProbeImpl(ctx, &proberOpsImpl{}, &proberTxnImpl{db: p.db}, pl)
 }
 
 func (p *Prober) readProbeImpl(ctx context.Context, ops proberOps, txns proberTxn, pl planner) {
+	__antithesis_instrumentation__.Notify(93967)
 	if !readEnabled.Get(&p.settings.SV) {
+		__antithesis_instrumentation__.Notify(93972)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(93973)
 	}
+	__antithesis_instrumentation__.Notify(93968)
 
 	p.metrics.ProbePlanAttempts.Inc(1)
 
 	step, err := pl.next(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(93974)
 		log.Health.Errorf(ctx, "can't make a plan: %v", err)
 		p.metrics.ProbePlanFailures.Inc(1)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(93975)
 	}
+	__antithesis_instrumentation__.Notify(93969)
 
-	// If errors above the KV scan, then this counter won't be incremented.
-	// This means that ReadProbeErrors / ReadProbeAttempts captures the KV
-	// error rate only as desired. It also means that operators can alert on
-	// an unexpectedly low rate of ReadProbeAttempts or else a high rate of
-	// ProbePlanFailures. This would probably be a ticket alerting as
-	// the impact is more low visibility into possible failures than a high
-	// impact production issue.
 	p.metrics.ReadProbeAttempts.Inc(1)
 
 	start := timeutil.Now()
 
-	// Slow enough response times are not different than errors from the
-	// perspective of the user.
 	timeout := readTimeout.Get(&p.settings.SV)
 	err = contextutil.RunWithTimeout(ctx, "read probe", timeout, func(ctx context.Context) error {
-		// We read a "range-local" key dedicated to probing. See pkg/keys for more.
-		// There is no data at the key, but that is okay. Even tho there is no data
-		// at the key, the prober still executes a read operation on the range.
-		// TODO(josh): Trace the probes.
+		__antithesis_instrumentation__.Notify(93976)
+
 		f := ops.Read(step.Key)
 		if bypassAdmissionControl.Get(&p.settings.SV) {
+			__antithesis_instrumentation__.Notify(93978)
 			return txns.Txn(ctx, f)
+		} else {
+			__antithesis_instrumentation__.Notify(93979)
 		}
+		__antithesis_instrumentation__.Notify(93977)
 		return txns.TxnRootKV(ctx, f)
 	})
+	__antithesis_instrumentation__.Notify(93970)
 	if err != nil {
-		// TODO(josh): Write structured events with log.Structured.
+		__antithesis_instrumentation__.Notify(93980)
+
 		log.Health.Errorf(ctx, "kv.Get(%s), r=%v failed with: %v", step.Key, step.RangeID, err)
 		p.metrics.ReadProbeFailures.Inc(1)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(93981)
 	}
+	__antithesis_instrumentation__.Notify(93971)
 
 	d := timeutil.Since(start)
 	log.Health.Infof(ctx, "kv.Get(%s), r=%v returned success in %v", step.Key, step.RangeID, d)
 
-	// Latency of failures is not recorded. They are counted as failures tho.
 	p.metrics.ReadProbeLatency.RecordValue(d.Nanoseconds())
 }
 
-// Doesn't return an error. Instead increments error type specific metrics.
 func (p *Prober) writeProbe(ctx context.Context, db *kv.DB, pl planner) {
+	__antithesis_instrumentation__.Notify(93982)
 	p.writeProbeImpl(ctx, &proberOpsImpl{}, &proberTxnImpl{db: p.db}, pl)
 }
 
 func (p *Prober) writeProbeImpl(ctx context.Context, ops proberOps, txns proberTxn, pl planner) {
+	__antithesis_instrumentation__.Notify(93983)
 	if !writeEnabled.Get(&p.settings.SV) {
+		__antithesis_instrumentation__.Notify(93988)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(93989)
 	}
+	__antithesis_instrumentation__.Notify(93984)
 
 	p.metrics.ProbePlanAttempts.Inc(1)
 
 	step, err := pl.next(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(93990)
 		log.Health.Errorf(ctx, "can't make a plan: %v", err)
 		p.metrics.ProbePlanFailures.Inc(1)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(93991)
 	}
+	__antithesis_instrumentation__.Notify(93985)
 
 	p.metrics.WriteProbeAttempts.Inc(1)
 
 	start := timeutil.Now()
 
-	// Slow enough response times are not different than errors from the
-	// perspective of the user.
 	timeout := writeTimeout.Get(&p.settings.SV)
 	err = contextutil.RunWithTimeout(ctx, "write probe", timeout, func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(93992)
 		f := ops.Write(step.Key)
 		if bypassAdmissionControl.Get(&p.settings.SV) {
+			__antithesis_instrumentation__.Notify(93994)
 			return txns.Txn(ctx, f)
+		} else {
+			__antithesis_instrumentation__.Notify(93995)
 		}
+		__antithesis_instrumentation__.Notify(93993)
 		return txns.TxnRootKV(ctx, f)
 	})
+	__antithesis_instrumentation__.Notify(93986)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(93996)
 		log.Health.Errorf(ctx, "kv.Txn(Put(%s); Del(-)), r=%v failed with: %v", step.Key, step.RangeID, err)
 		p.metrics.WriteProbeFailures.Inc(1)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(93997)
 	}
+	__antithesis_instrumentation__.Notify(93987)
 
 	d := timeutil.Since(start)
 	log.Health.Infof(ctx, "kv.Txn(Put(%s); Del(-)), r=%v returned success in %v", step.Key, step.RangeID, d)
 
-	// Latency of failures is not recorded. They are counted as failures tho.
 	p.metrics.WriteProbeLatency.RecordValue(d.Nanoseconds())
 }
 
-// Returns a random duration pulled from the uniform distribution given below:
-// [d - 0.25*d, d + 0.25*d).
 func withJitter(d time.Duration, rnd *rand.Rand) time.Duration {
+	__antithesis_instrumentation__.Notify(93998)
 	amplitudeNanos := d.Nanoseconds() / 4
 	return d + time.Duration(randutil.RandInt63InRange(rnd, -amplitudeNanos, amplitudeNanos))
 }

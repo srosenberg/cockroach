@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -21,33 +13,47 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
 )
 
-// ValidVars contains the set of variable names; initialized from the SQL
-// package.
 var ValidVars = make(map[string]struct{})
 
-// Show a session-local variable name.
 func (d *delegator) delegateShowVar(n *tree.ShowVar) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465874)
 	origName := n.Name
 	name := strings.ToLower(n.Name)
 
 	if name == "locality" {
+		__antithesis_instrumentation__.Notify(465878)
 		sqltelemetry.IncrementShowCounter(sqltelemetry.Locality)
+	} else {
+		__antithesis_instrumentation__.Notify(465879)
 	}
+	__antithesis_instrumentation__.Notify(465875)
 
 	if name == "all" {
+		__antithesis_instrumentation__.Notify(465880)
 		return parse(
 			"SELECT variable, value FROM crdb_internal.session_variables WHERE hidden = FALSE",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(465881)
 	}
+	__antithesis_instrumentation__.Notify(465876)
 
 	if _, ok := ValidVars[name]; !ok {
-		// Custom options go to planNode.
+		__antithesis_instrumentation__.Notify(465882)
+
 		if strings.Contains(name, ".") {
+			__antithesis_instrumentation__.Notify(465884)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(465885)
 		}
+		__antithesis_instrumentation__.Notify(465883)
 		return nil, pgerror.Newf(pgcode.UndefinedObject,
 			"unrecognized configuration parameter %q", origName)
+	} else {
+		__antithesis_instrumentation__.Notify(465886)
 	}
+	__antithesis_instrumentation__.Notify(465877)
 
 	varName := lexbase.EscapeSQLString(name)
 	nm := tree.Name(name)

@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,40 +16,39 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/build"
 	"github.com/cockroachdb/cockroach/pkg/cli/clierror"
 	"github.com/cockroachdb/cockroach/pkg/cli/exit"
-	_ "github.com/cockroachdb/cockroach/pkg/cloud/impl" // register cloud storage providers
+	_ "github.com/cockroachdb/cockroach/pkg/cloud/impl"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logcrash"
 	"github.com/cockroachdb/cockroach/pkg/util/log/severity"
 	"github.com/cockroachdb/cockroach/pkg/util/randutil"
-	// intentionally not all the workloads in pkg/ccl/workloadccl/allccl
-	_ "github.com/cockroachdb/cockroach/pkg/workload/bank"       // registers workloads
-	_ "github.com/cockroachdb/cockroach/pkg/workload/bulkingest" // registers workloads
+
+	_ "github.com/cockroachdb/cockroach/pkg/workload/bank"
+	_ "github.com/cockroachdb/cockroach/pkg/workload/bulkingest"
 	workloadcli "github.com/cockroachdb/cockroach/pkg/workload/cli"
-	_ "github.com/cockroachdb/cockroach/pkg/workload/examples"  // registers workloads
-	_ "github.com/cockroachdb/cockroach/pkg/workload/kv"        // registers workloads
-	_ "github.com/cockroachdb/cockroach/pkg/workload/movr"      // registers workloads
-	_ "github.com/cockroachdb/cockroach/pkg/workload/tpcc"      // registers workloads
-	_ "github.com/cockroachdb/cockroach/pkg/workload/tpch"      // registers workloads
-	_ "github.com/cockroachdb/cockroach/pkg/workload/ttllogger" // registers workloads
-	_ "github.com/cockroachdb/cockroach/pkg/workload/ycsb"      // registers workloads
+	_ "github.com/cockroachdb/cockroach/pkg/workload/examples"
+	_ "github.com/cockroachdb/cockroach/pkg/workload/kv"
+	_ "github.com/cockroachdb/cockroach/pkg/workload/movr"
+	_ "github.com/cockroachdb/cockroach/pkg/workload/tpcc"
+	_ "github.com/cockroachdb/cockroach/pkg/workload/tpch"
+	_ "github.com/cockroachdb/cockroach/pkg/workload/ttllogger"
+	_ "github.com/cockroachdb/cockroach/pkg/workload/ycsb"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 )
 
-// Main is the entry point for the cli, with a single line calling it intended
-// to be the body of an action package main `main` func elsewhere. It is
-// abstracted for reuse by duplicated `main` funcs in different distributions.
 func Main() {
-	// Seed the math/rand RNG from crypto/rand.
+	__antithesis_instrumentation__.Notify(28060)
+
 	rand.Seed(randutil.NewPseudoSeed())
 
 	if len(os.Args) == 1 {
+		__antithesis_instrumentation__.Notify(28063)
 		os.Args = append(os.Args, "help")
+	} else {
+		__antithesis_instrumentation__.Notify(28064)
 	}
+	__antithesis_instrumentation__.Notify(28061)
 
-	// We ignore the error in this lookup, because
-	// we want cobra to handle lookup errors with a verbose
-	// help message in Run() below.
 	cmd, _, _ := cockroachCmd.Find(os.Args[1:])
 
 	cmdName := commandName(cmd)
@@ -65,68 +56,82 @@ func Main() {
 	err := doMain(cmd, cmdName)
 	errCode := exit.Success()
 	if err != nil {
-		// Display the error and its details/hints.
-		clierror.OutputError(stderr, err, true /*showSeverity*/, false /*verbose*/)
+		__antithesis_instrumentation__.Notify(28065)
 
-		// Remind the user of which command was being run.
+		clierror.OutputError(stderr, err, true, false)
+
 		fmt.Fprintf(stderr, "Failed running %q\n", cmdName)
 
-		// Finally, extract the error code, as optionally specified
-		// by the sub-command.
 		errCode = getExitCode(err)
+	} else {
+		__antithesis_instrumentation__.Notify(28066)
 	}
+	__antithesis_instrumentation__.Notify(28062)
 
 	exit.WithCode(errCode)
 }
 
 func getExitCode(err error) (errCode exit.Code) {
+	__antithesis_instrumentation__.Notify(28067)
 	errCode = exit.UnspecifiedError()
 	var cliErr *clierror.Error
 	if errors.As(err, &cliErr) {
+		__antithesis_instrumentation__.Notify(28069)
 		errCode = cliErr.GetExitCode()
+	} else {
+		__antithesis_instrumentation__.Notify(28070)
 	}
+	__antithesis_instrumentation__.Notify(28068)
 	return errCode
 }
 
 func doMain(cmd *cobra.Command, cmdName string) error {
+	__antithesis_instrumentation__.Notify(28071)
 	defer debugSignalSetup()()
 
 	if cmd != nil {
-		// Apply the configuration defaults from environment variables.
-		// This must occur before the parameters are parsed by cobra, so
-		// that the command-line flags can override the defaults in
-		// environment variables.
+		__antithesis_instrumentation__.Notify(28073)
+
 		if err := processEnvVarDefaults(cmd); err != nil {
+			__antithesis_instrumentation__.Notify(28075)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(28076)
 		}
+		__antithesis_instrumentation__.Notify(28074)
 
 		if !cmdHasCustomLoggingSetup(cmd) {
-			// the customLoggingSetupCmds do their own calls to setupLogging().
-			//
-			// We use a PreRun function, to ensure setupLogging() is only
-			// called after the command line flags have been parsed.
-			//
-			// NB: we cannot use PersistentPreRunE,like in flags.go, because
-			// overriding that here will prevent the persistent pre-run from
-			// running on parent commands. (See the difference between PreRun
-			// and PersistentPreRun in `(*cobra.Command) execute()`.)
+			__antithesis_instrumentation__.Notify(28077)
+
 			wrapped := cmd.PreRunE
 			cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-				// We call setupLogging before the PreRunE function since
-				// that function may perform logging.
+				__antithesis_instrumentation__.Notify(28078)
+
 				err := setupLogging(context.Background(), cmd,
-					false /* isServerCmd */, true /* applyConfig */)
+					false, true)
 
 				if wrapped != nil {
+					__antithesis_instrumentation__.Notify(28080)
 					if err := wrapped(cmd, args); err != nil {
+						__antithesis_instrumentation__.Notify(28081)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(28082)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(28083)
 				}
+				__antithesis_instrumentation__.Notify(28079)
 
 				return err
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(28084)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(28085)
 	}
+	__antithesis_instrumentation__.Notify(28072)
 
 	logcrash.SetupCrashReporter(
 		context.Background(),
@@ -139,39 +144,54 @@ func doMain(cmd *cobra.Command, cmdName string) error {
 }
 
 func cmdHasCustomLoggingSetup(thisCmd *cobra.Command) bool {
+	__antithesis_instrumentation__.Notify(28086)
 	if thisCmd == nil {
+		__antithesis_instrumentation__.Notify(28090)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(28091)
 	}
+	__antithesis_instrumentation__.Notify(28087)
 	for _, cmd := range customLoggingSetupCmds {
+		__antithesis_instrumentation__.Notify(28092)
 		if cmd == thisCmd {
+			__antithesis_instrumentation__.Notify(28093)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(28094)
 		}
 	}
+	__antithesis_instrumentation__.Notify(28088)
 	hasCustomLogging := false
 	thisCmd.VisitParents(func(parent *cobra.Command) {
+		__antithesis_instrumentation__.Notify(28095)
 		for _, cmd := range customLoggingSetupCmds {
+			__antithesis_instrumentation__.Notify(28096)
 			if cmd == parent {
+				__antithesis_instrumentation__.Notify(28097)
 				hasCustomLogging = true
+			} else {
+				__antithesis_instrumentation__.Notify(28098)
 			}
 		}
 	})
+	__antithesis_instrumentation__.Notify(28089)
 	return hasCustomLogging
 }
 
-// commandName computes the name of the command that args would invoke. For
-// example, the full name of "cockroach debug zip" is "debug zip". If args
-// specify a nonexistent command, commandName returns "cockroach".
 func commandName(cmd *cobra.Command) string {
+	__antithesis_instrumentation__.Notify(28099)
 	rootName := cockroachCmd.CommandPath()
 	if cmd != nil {
+		__antithesis_instrumentation__.Notify(28101)
 		return strings.TrimPrefix(cmd.CommandPath(), rootName+" ")
+	} else {
+		__antithesis_instrumentation__.Notify(28102)
 	}
+	__antithesis_instrumentation__.Notify(28100)
 	return rootName
 }
 
-// stderr aliases log.OrigStderr; we use an alias here so that tests
-// in this package can redirect the output of CLI commands to stdout
-// to be captured.
 var stderr = log.OrigStderr
 
 var versionCmd = &cobra.Command{
@@ -182,17 +202,22 @@ Output build version information.
 `,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(28103)
 		if cliCtx.showVersionUsingOnlyBuildTag {
+			__antithesis_instrumentation__.Notify(28105)
 			info := build.GetInfo()
 			fmt.Println(info.Tag)
 		} else {
+			__antithesis_instrumentation__.Notify(28106)
 			fmt.Println(fullVersionString())
 		}
+		__antithesis_instrumentation__.Notify(28104)
 		return nil
 	},
 }
 
 func fullVersionString() string {
+	__antithesis_instrumentation__.Notify(28107)
 	info := build.GetInfo()
 	return info.Long()
 }
@@ -200,41 +225,31 @@ func fullVersionString() string {
 var cockroachCmd = &cobra.Command{
 	Use:   "cockroach [command] (flags)",
 	Short: "CockroachDB command-line interface and server",
-	// TODO(cdo): Add a pointer to the docs in Long.
+
 	Long: `CockroachDB command-line interface and server.`,
-	// Disable automatic printing of usage information whenever an error
-	// occurs. Many errors are not the result of a bad command invocation,
-	// e.g. attempting to start a node on an in-use port, and printing the
-	// usage information in these cases obscures the cause of the error.
-	// Commands should manually print usage information when the error is,
-	// in fact, a result of a bad invocation, e.g. too many arguments.
+
 	SilenceUsage: true,
-	// Disable automatic printing of the error. We want to also print
-	// details and hints, which cobra does not do for us. Instead
-	// we do the printing in Main().
+
 	SilenceErrors: true,
-	// Version causes cobra to automatically support a --version flag
-	// that reports this string.
+
 	Version: "details:\n" + fullVersionString() +
 		"\n(use '" + os.Args[0] + " version --build-tag' to display only the build tag)",
-	// Prevent cobra from auto-generating a completions command,
-	// since we provide our own.
+
 	CompletionOptions: cobra.CompletionOptions{
 		DisableDefaultCmd: true,
 	},
 }
 
-var workloadCmd = workloadcli.WorkloadCmd(true /* userFacing */)
+var workloadCmd = workloadcli.WorkloadCmd(true)
 
 func init() {
 	cobra.EnableCommandSorting = false
 
-	// Set an error function for flag parsing which prints the usage message.
 	cockroachCmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
 		if err := c.Usage(); err != nil {
 			return err
 		}
-		fmt.Fprintln(c.OutOrStderr()) // provide a line break between usage and error
+		fmt.Fprintln(c.OutOrStderr())
 		return clierror.NewError(err, exit.CommandLineFlagError())
 	})
 
@@ -254,8 +269,6 @@ func init() {
 		userFileCmd,
 		importCmd,
 
-		// Miscellaneous commands.
-		// TODO(pmattis): stats
 		demoCmd,
 		convertURLCmd,
 		genCmd,
@@ -266,91 +279,102 @@ func init() {
 	)
 }
 
-// isWorkloadCmd returns true iff cmd is a sub-command of 'workload'.
 func isWorkloadCmd(cmd *cobra.Command) bool {
+	__antithesis_instrumentation__.Notify(28108)
 	return hasParentCmd(cmd, workloadCmd)
 }
 
-// isDemoCmd returns true iff cmd is a sub-command of `demo`.
 func isDemoCmd(cmd *cobra.Command) bool {
-	return hasParentCmd(cmd, demoCmd) || hasParentCmd(cmd, debugStatementBundleCmd)
+	__antithesis_instrumentation__.Notify(28109)
+	return hasParentCmd(cmd, demoCmd) || func() bool {
+		__antithesis_instrumentation__.Notify(28110)
+		return hasParentCmd(cmd, debugStatementBundleCmd) == true
+	}() == true
 }
 
-// hasParentCmd returns true iff cmd is a sub-command of refParent.
 func hasParentCmd(cmd, refParent *cobra.Command) bool {
+	__antithesis_instrumentation__.Notify(28111)
 	if cmd == refParent {
+		__antithesis_instrumentation__.Notify(28114)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(28115)
 	}
+	__antithesis_instrumentation__.Notify(28112)
 	hasParent := false
 	cmd.VisitParents(func(thisParent *cobra.Command) {
+		__antithesis_instrumentation__.Notify(28116)
 		if thisParent == refParent {
+			__antithesis_instrumentation__.Notify(28117)
 			hasParent = true
+		} else {
+			__antithesis_instrumentation__.Notify(28118)
 		}
 	})
+	__antithesis_instrumentation__.Notify(28113)
 	return hasParent
 }
 
-// Run ...
 func Run(args []string) error {
+	__antithesis_instrumentation__.Notify(28119)
 	cockroachCmd.SetArgs(args)
 	return cockroachCmd.Execute()
 }
 
-// UsageAndErr informs the user about the usage of the command
-// and returns an error. This ensures that the top-level command
-// has a suitable exit status.
 func UsageAndErr(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(28120)
 	if err := cmd.Usage(); err != nil {
+		__antithesis_instrumentation__.Notify(28122)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(28123)
 	}
+	__antithesis_instrumentation__.Notify(28121)
 	return fmt.Errorf("unknown sub-command: %q", strings.Join(args, " "))
 }
 
-// debugSignalSetup sets up signal handlers for SIGQUIT and SIGUSR2 to enable
-// debugging a stuck or misbehaving process, with the former logging all stacks
-// (but not killing the process, unlike its default go handler) and the latter
-// opening an http server that exposes the pprof endpoints on localhost. The
-// resturned shutdown function should be called at process exit to stop any
-// associated goroutines.
 func debugSignalSetup() func() {
+	__antithesis_instrumentation__.Notify(28124)
 	exit := make(chan struct{})
 	ctx := context.Background()
 
-	// For SIGQUIT we spawn a goroutine and we always handle it, no matter at
-	// which point during execution we are. This makes it possible to use SIGQUIT
-	// to inspect a running process and determine what it is currently doing, even
-	// if it gets stuck somewhere.
 	if quitSignal != nil {
+		__antithesis_instrumentation__.Notify(28127)
 		quitSignalCh := make(chan os.Signal, 1)
 		signal.Notify(quitSignalCh, quitSignal)
 		go func() {
+			__antithesis_instrumentation__.Notify(28128)
 			for {
+				__antithesis_instrumentation__.Notify(28129)
 				select {
 				case <-exit:
+					__antithesis_instrumentation__.Notify(28130)
 					return
 				case <-quitSignalCh:
+					__antithesis_instrumentation__.Notify(28131)
 					log.DumpStacks(ctx, "SIGQUIT received")
 				}
 			}
 		}()
+	} else {
+		__antithesis_instrumentation__.Notify(28132)
 	}
+	__antithesis_instrumentation__.Notify(28125)
 
-	// For SIGUSR, we spawn a goroutine that when signaled will then start an http
-	// server, bound to localhost, which serves the go pprof endpoints. While a
-	// cockroach server process already serves theese on its HTTP port, other CLI
-	// commands, particularly short-lived client commands, do not open HTTP ports
-	// by default. The pprof endpoints however can be invaluable when inspecting
-	// a process that is behaving unexpectedly, thus this mechanism to request any
-	// cockroach process begin serving them when needed.
 	if debugSignal != nil {
+		__antithesis_instrumentation__.Notify(28133)
 		debugSignalCh := make(chan os.Signal, 1)
 		signal.Notify(debugSignalCh, debugSignal)
 		go func() {
+			__antithesis_instrumentation__.Notify(28134)
 			for {
+				__antithesis_instrumentation__.Notify(28135)
 				select {
 				case <-exit:
+					__antithesis_instrumentation__.Notify(28136)
 					return
 				case <-debugSignalCh:
+					__antithesis_instrumentation__.Notify(28137)
 					log.Shout(ctx, severity.INFO, "setting up localhost debugging endpoint...")
 					mux := http.NewServeMux()
 					mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -362,26 +386,42 @@ func debugSignalSetup() func() {
 					listenAddr := "localhost:0"
 					listener, err := net.Listen("tcp", listenAddr)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(28140)
 						log.Shoutf(ctx, severity.WARNING, "debug server could not start listening on %s: %v", listenAddr, err)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(28141)
 					}
+					__antithesis_instrumentation__.Notify(28138)
 
 					server := http.Server{Handler: mux}
 					go func() {
+						__antithesis_instrumentation__.Notify(28142)
 						if err := server.Serve(listener); err != nil {
+							__antithesis_instrumentation__.Notify(28143)
 							log.Warningf(ctx, "debug server: %v", err)
+						} else {
+							__antithesis_instrumentation__.Notify(28144)
 						}
 					}()
+					__antithesis_instrumentation__.Notify(28139)
 					log.Shoutf(ctx, severity.INFO, "debug server listening on %s", listener.Addr())
 					<-exit
 					if err := server.Shutdown(ctx); err != nil {
+						__antithesis_instrumentation__.Notify(28145)
 						log.Warningf(ctx, "error shutting down debug server: %s", err)
+					} else {
+						__antithesis_instrumentation__.Notify(28146)
 					}
 				}
 			}
 		}()
+	} else {
+		__antithesis_instrumentation__.Notify(28147)
 	}
+	__antithesis_instrumentation__.Notify(28126)
 	return func() {
+		__antithesis_instrumentation__.Notify(28148)
 		close(exit)
 	}
 }

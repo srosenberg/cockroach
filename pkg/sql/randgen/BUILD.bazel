@@ -44,6 +44,7 @@ go_library(
         "//pkg/util/timeutil/pgdate",
         "//pkg/util/uint128",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_lib_pq//oid",
     ],
@@ -68,6 +69,7 @@ go_test(
         "//pkg/testutils/testcluster",
         "//pkg/util/leaktest",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

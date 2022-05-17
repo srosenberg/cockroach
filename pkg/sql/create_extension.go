@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,12 +18,14 @@ type createExtensionNode struct {
 }
 
 func (p *planner) CreateExtension(ctx context.Context, n *tree.CreateExtension) (planNode, error) {
+	__antithesis_instrumentation__.Notify(462915)
 	return &createExtensionNode{
 		CreateExtension: *n,
 	}, nil
 }
 
 func (n *createExtensionNode) unimplementedExtensionError(issue int) error {
+	__antithesis_instrumentation__.Notify(462916)
 	name := n.CreateExtension.Name
 	return unimplemented.NewWithIssueDetailf(
 		issue,
@@ -42,8 +36,10 @@ func (n *createExtensionNode) unimplementedExtensionError(issue int) error {
 }
 
 func (n *createExtensionNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(462917)
 	switch n.CreateExtension.Name {
 	case "postgis":
+		__antithesis_instrumentation__.Notify(462919)
 		telemetry.Inc(sqltelemetry.CreateExtensionCounter(n.CreateExtension.Name))
 		return nil
 	case "postgis_raster",
@@ -53,17 +49,23 @@ func (n *createExtensionNode) startExec(params runParams) error {
 		"address_standardizer",
 		"address_standardizer_data_us",
 		"postgis_tiger_geocoder":
-		// PostGIS specific extensions.
+		__antithesis_instrumentation__.Notify(462920)
+
 		return n.unimplementedExtensionError(54514)
 	case "btree_gin":
+		__antithesis_instrumentation__.Notify(462921)
 		return n.unimplementedExtensionError(51992)
 	case "btree_gist":
+		__antithesis_instrumentation__.Notify(462922)
 		return n.unimplementedExtensionError(51993)
 	case "citext":
+		__antithesis_instrumentation__.Notify(462923)
 		return n.unimplementedExtensionError(41276)
 	case "postgres_fdw":
+		__antithesis_instrumentation__.Notify(462924)
 		return n.unimplementedExtensionError(20249)
 	case "pg_trgm":
+		__antithesis_instrumentation__.Notify(462925)
 		return n.unimplementedExtensionError(51137)
 	case "adminpack",
 		"amcheck",
@@ -104,11 +106,23 @@ func (n *createExtensionNode) startExec(params runParams) error {
 		"unaccent",
 		"uuid-ossp",
 		"xml2":
+		__antithesis_instrumentation__.Notify(462926)
 		return n.unimplementedExtensionError(54516)
+	default:
+		__antithesis_instrumentation__.Notify(462927)
 	}
+	__antithesis_instrumentation__.Notify(462918)
 	return pgerror.Newf(pgcode.UndefinedParameter, "unknown extension: %q", n.CreateExtension.Name)
 }
 
-func (n *createExtensionNode) Next(params runParams) (bool, error) { return false, nil }
-func (n *createExtensionNode) Values() tree.Datums                 { return tree.Datums{} }
-func (n *createExtensionNode) Close(ctx context.Context)           {}
+func (n *createExtensionNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(462928)
+	return false, nil
+}
+func (n *createExtensionNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(462929)
+	return tree.Datums{}
+}
+func (n *createExtensionNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(462930)
+}

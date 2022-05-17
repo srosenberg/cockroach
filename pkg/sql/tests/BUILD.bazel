@@ -21,6 +21,7 @@ go_library(
         "//pkg/sql/sqlstats",
         "//pkg/testutils/storageutils",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -104,6 +105,7 @@ go_test(
         "//pkg/util/timeutil",
         "//pkg/util/tracing",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_cockroach_go_v2//crdb",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@com_github_cockroachdb_errors//:errors",

@@ -15,6 +15,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/util/stringencoding",
+        "@com_antithesis_instrumentation//wrappers",
         "@org_golang_x_text//unicode/norm",
     ],
 )
@@ -26,6 +27,7 @@ go_test(
     deps = [
         ":lexbase",
         "//pkg/sql/parser",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 

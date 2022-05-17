@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scdeps
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,7 +15,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlutil"
 )
 
-// ValidateForwardIndexesFn callback function for validating forward indexes.
 type ValidateForwardIndexesFn func(
 	ctx context.Context,
 	tbl catalog.TableDescriptor,
@@ -34,7 +25,6 @@ type ValidateForwardIndexesFn func(
 	execOverride sessiondata.InternalExecutorOverride,
 ) error
 
-// ValidateInvertedIndexesFn callback function for validating inverted indexes.
 type ValidateInvertedIndexesFn func(
 	ctx context.Context,
 	codec keys.SQLCodec,
@@ -46,8 +36,6 @@ type ValidateInvertedIndexesFn func(
 	execOverride sessiondata.InternalExecutorOverride,
 ) error
 
-// NewFakeSessionDataFn callback function used to create session data
-// for the internal executor.
 type NewFakeSessionDataFn func(sv *settings.Values) *sessiondata.SessionData
 
 type indexValidator struct {
@@ -60,50 +48,60 @@ type indexValidator struct {
 	newFakeSessionData      NewFakeSessionDataFn
 }
 
-// ValidateForwardIndexes checks that the indexes have entries for all the rows.
 func (iv indexValidator) ValidateForwardIndexes(
 	ctx context.Context,
 	tbl catalog.TableDescriptor,
 	indexes []catalog.Index,
 	override sessiondata.InternalExecutorOverride,
 ) error {
-	// Set up a new transaction with the current timestamp.
+	__antithesis_instrumentation__.Notify(580719)
+
 	txnRunner := func(ctx context.Context, fn sqlutil.InternalExecFn) error {
+		__antithesis_instrumentation__.Notify(580721)
 		validationTxn := iv.db.NewTxn(ctx, "validation")
 		err := validationTxn.SetFixedTimestamp(ctx, iv.db.Clock().Now())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(580723)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(580724)
 		}
+		__antithesis_instrumentation__.Notify(580722)
 		return fn(ctx, validationTxn, iv.ieFactory(ctx, iv.newFakeSessionData(&iv.settings.SV)))
 	}
+	__antithesis_instrumentation__.Notify(580720)
 	const withFirstMutationPublic = true
 	const gatherAllInvalid = false
 	return iv.validateForwardIndexes(ctx, tbl, indexes, txnRunner, withFirstMutationPublic, gatherAllInvalid, override)
 }
 
-// ValidateInvertedIndexes checks that the indexes have entries for all the rows.
 func (iv indexValidator) ValidateInvertedIndexes(
 	ctx context.Context,
 	tbl catalog.TableDescriptor,
 	indexes []catalog.Index,
 	override sessiondata.InternalExecutorOverride,
 ) error {
-	// Set up a new transaction with the current timestamp.
+	__antithesis_instrumentation__.Notify(580725)
+
 	txnRunner := func(ctx context.Context, fn sqlutil.InternalExecFn) error {
+		__antithesis_instrumentation__.Notify(580727)
 		validationTxn := iv.db.NewTxn(ctx, "validation")
 		err := validationTxn.SetFixedTimestamp(ctx, iv.db.Clock().Now())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(580729)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(580730)
 		}
+		__antithesis_instrumentation__.Notify(580728)
 		return fn(ctx, validationTxn, iv.ieFactory(ctx, iv.newFakeSessionData(&iv.settings.SV)))
 	}
+	__antithesis_instrumentation__.Notify(580726)
 	const withFirstMutationPublic = true
 	const gatherAllInvalid = false
 	return iv.validateInvertedIndexes(ctx, iv.codec, tbl, indexes, txnRunner, withFirstMutationPublic, gatherAllInvalid, override)
 }
 
-// NewIndexValidator creates a IndexValidator interface
-// for the new schema changer.
 func NewIndexValidator(
 	db *kv.DB,
 	codec keys.SQLCodec,
@@ -113,6 +111,7 @@ func NewIndexValidator(
 	validateInvertedIndexes ValidateInvertedIndexesFn,
 	newFakeSessionData NewFakeSessionDataFn,
 ) scexec.IndexValidator {
+	__antithesis_instrumentation__.Notify(580731)
 	return indexValidator{
 		db:                      db,
 		codec:                   codec,

@@ -53,7 +53,9 @@ go_binary(
     name = "element-generator",
     srcs = ["element_generator.go"],
     gotags = ["generator"],
-    deps = ["//pkg/cli/exit"],
+    deps = [
+        "//pkg/cli/exit",
+    ],
 )
 
 genrule(

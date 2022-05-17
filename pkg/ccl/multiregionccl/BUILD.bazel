@@ -16,6 +16,7 @@ go_library(
         "//pkg/sql/pgwire/pgcode",
         "//pkg/sql/pgwire/pgerror",
         "//pkg/sql/sem/tree",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -75,6 +76,7 @@ go_test(
         "//pkg/util/randutil",
         "//pkg/util/syncutil",
         "//pkg/util/tracing",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",

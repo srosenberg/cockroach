@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rpc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,58 +15,50 @@ import (
 
 const maxBackoff = time.Second
 
-// breakerClock is an implementation of clock.Clock that internally uses an
-// hlc.Clock. It is used to bridge the hlc clock to the circuit breaker
-// clocks. Note that it only implements the After() and Now() methods needed by
-// circuit breakers and backoffs.
 type breakerClock struct {
 	clock *hlc.Clock
 }
 
 func (c *breakerClock) After(d time.Duration) <-chan time.Time {
+	__antithesis_instrumentation__.Notify(184181)
 	return time.After(d)
 }
 
 func (c *breakerClock) AfterFunc(d time.Duration, f func()) *clock.Timer {
+	__antithesis_instrumentation__.Notify(184182)
 	panic("unimplemented")
 }
 
 func (c *breakerClock) Now() time.Time {
+	__antithesis_instrumentation__.Notify(184183)
 	return c.clock.PhysicalTime()
 }
 
 func (c *breakerClock) Sleep(d time.Duration) {
+	__antithesis_instrumentation__.Notify(184184)
 	panic("unimplemented")
 }
 
 func (c *breakerClock) Tick(d time.Duration) <-chan time.Time {
+	__antithesis_instrumentation__.Notify(184185)
 	panic("unimplemented")
 }
 
 func (c *breakerClock) Ticker(d time.Duration) *clock.Ticker {
+	__antithesis_instrumentation__.Notify(184186)
 	panic("unimplemented")
 }
 
 func (c *breakerClock) Timer(d time.Duration) *clock.Timer {
+	__antithesis_instrumentation__.Notify(184187)
 	panic("unimplemented")
 }
 
 var _ clock.Clock = &breakerClock{}
 
-// newBackOff creates a new exponential backoff properly configured for RPC
-// connection backoff.
 func newBackOff(clock backoff.Clock) backoff.BackOff {
-	// This exponential backoff limits the circuit breaker to 1 second
-	// intervals between successive attempts to resolve a node address
-	// and connect via GRPC.
-	//
-	// NB (nota Ben): MaxInterval should be less than the Raft election timeout
-	// (1.5s) to avoid disruptions. A newly restarted node will be in follower
-	// mode with no knowledge of the Raft leader. If it doesn't hear from a
-	// leader before the election timeout expires, it will start to campaign,
-	// which can be disruptive. Therefore the leader needs to get in touch (via
-	// Raft heartbeats) with such nodes within one election timeout of their
-	// restart, which won't happen if their backoff is too high.
+	__antithesis_instrumentation__.Notify(184188)
+
 	b := &backoff.ExponentialBackOff{
 		InitialInterval:     500 * time.Millisecond,
 		RandomizationFactor: 0.5,
@@ -88,6 +72,7 @@ func newBackOff(clock backoff.Clock) backoff.BackOff {
 }
 
 func newBreaker(ctx context.Context, name string, clock clock.Clock) *circuit.Breaker {
+	__antithesis_instrumentation__.Notify(184189)
 	return circuit.NewBreakerWithOptions(&circuit.Options{
 		Name:       name,
 		BackOff:    newBackOff(clock),
@@ -97,19 +82,21 @@ func newBreaker(ctx context.Context, name string, clock clock.Clock) *circuit.Br
 	})
 }
 
-// breakerLogger implements circuit.Logger to expose logging from the
-// circuitbreaker package. Debugf is logged with a vmodule level of 2 so to see
-// the circuitbreaker debug messages set --vmodule=breaker=2
 type breakerLogger struct {
 	ctx context.Context
 }
 
 func (r breakerLogger) Debugf(format string, v ...interface{}) {
+	__antithesis_instrumentation__.Notify(184190)
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(184191)
 		log.Dev.InfofDepth(r.ctx, 1, format, v...)
+	} else {
+		__antithesis_instrumentation__.Notify(184192)
 	}
 }
 
 func (r breakerLogger) Infof(format string, v ...interface{}) {
+	__antithesis_instrumentation__.Notify(184193)
 	log.Ops.InfofDepth(r.ctx, 1, format, v...)
 }

@@ -1,19 +1,11 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/cmd/roachtest/registry"
 
-// RegisterTests registers all tests to the Registry. This powers `roachtest run`.
 func RegisterTests(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(50156)
 	registerAcceptance(r)
 	registerActiveRecord(r)
 	registerAllocator(r)
@@ -127,11 +119,8 @@ func RegisterTests(r registry.Registry) {
 	registerRemoveInvalidDatabasePrivileges(r)
 }
 
-// RegisterBenchmarks registers all benchmarks to the registry. This powers `roachtest bench`.
-//
-// TODO(tbg): it's unclear that `roachtest bench` is that useful, perhaps we make everything
-// a roachtest but use a `bench` tag to determine what tests to understand as benchmarks.
 func RegisterBenchmarks(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(50157)
 	registerIndexesBench(r)
 	registerTPCCBench(r)
 	registerKVBench(r)

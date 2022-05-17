@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -22,68 +14,81 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// planDependencyInfo collects the dependencies related to a single
-// table -- which index and columns are being depended upon.
 type planDependencyInfo struct {
-	// desc is a reference to the descriptor for the table being
-	// depended on.
 	desc catalog.TableDescriptor
-	// deps is the list of ways in which the current plan depends on
-	// that table. There can be more than one entries when the same
-	// table is used in different places. The entries can also be
-	// different because some may reference an index and others may
-	// reference only a subset of the table's columns.
-	// Note: the "ID" field of TableDescriptor_Reference is not
-	// (and cannot be) filled during plan construction / dependency
-	// analysis because the descriptor that is using this dependency
-	// has not been constructed yet.
+
 	deps []descpb.TableDescriptor_Reference
 }
 
-// planDependencies maps the ID of a table depended upon to a list of
-// detailed dependencies on that table.
 type planDependencies map[descpb.ID]planDependencyInfo
 
-// String implements the fmt.Stringer interface.
 func (d planDependencies) String() string {
+	__antithesis_instrumentation__.Notify(632399)
 	var buf bytes.Buffer
 	for id, deps := range d {
+		__antithesis_instrumentation__.Notify(632401)
 		name := deps.desc.GetName()
 		fmt.Fprintf(&buf, "%d (%q):", id, tree.ErrNameStringP(&name))
 		for _, dep := range deps.deps {
+			__antithesis_instrumentation__.Notify(632403)
 			buf.WriteString(" [")
 			if dep.IndexID != 0 {
+				__antithesis_instrumentation__.Notify(632405)
 				fmt.Fprintf(&buf, "idx: %d ", dep.IndexID)
+			} else {
+				__antithesis_instrumentation__.Notify(632406)
 			}
+			__antithesis_instrumentation__.Notify(632404)
 			fmt.Fprintf(&buf, "cols: %v]", dep.ColumnIDs)
 		}
+		__antithesis_instrumentation__.Notify(632402)
 		buf.WriteByte('\n')
 	}
+	__antithesis_instrumentation__.Notify(632400)
 	return buf.String()
 }
 
-// typeDependencies contains a set of the IDs of types that
-// this view depends on.
 type typeDependencies map[descpb.ID]struct{}
 
-// checkViewMatchesMaterialized ensures that if a view is required, then the view
-// is materialized or not as desired.
 func checkViewMatchesMaterialized(
 	desc catalog.TableDescriptor, requireView, wantMaterialized bool,
 ) error {
+	__antithesis_instrumentation__.Notify(632407)
 	if !requireView {
+		__antithesis_instrumentation__.Notify(632412)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(632413)
 	}
+	__antithesis_instrumentation__.Notify(632408)
 	if !desc.IsView() {
+		__antithesis_instrumentation__.Notify(632414)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(632415)
 	}
+	__antithesis_instrumentation__.Notify(632409)
 	isMaterialized := desc.MaterializedView()
-	if isMaterialized && !wantMaterialized {
+	if isMaterialized && func() bool {
+		__antithesis_instrumentation__.Notify(632416)
+		return !wantMaterialized == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(632417)
 		err := pgerror.Newf(pgcode.WrongObjectType, "%q is a materialized view", desc.GetName())
 		return errors.WithHint(err, "use the corresponding MATERIALIZED VIEW command")
+	} else {
+		__antithesis_instrumentation__.Notify(632418)
 	}
-	if !isMaterialized && wantMaterialized {
+	__antithesis_instrumentation__.Notify(632410)
+	if !isMaterialized && func() bool {
+		__antithesis_instrumentation__.Notify(632419)
+		return wantMaterialized == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(632420)
 		return pgerror.Newf(pgcode.WrongObjectType, "%q is not a materialized view", desc.GetName())
+	} else {
+		__antithesis_instrumentation__.Notify(632421)
 	}
+	__antithesis_instrumentation__.Notify(632411)
 	return nil
 }

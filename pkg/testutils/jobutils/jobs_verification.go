@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,20 +24,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// WaitForJobToSucceed waits for the specified job ID to succeed.
 func WaitForJobToSucceed(t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID) {
+	__antithesis_instrumentation__.Notify(644325)
 	t.Helper()
 	waitForJobToHaveStatus(t, db, jobID, jobs.StatusSucceeded)
 }
 
-// WaitForJobToPause waits for the specified job ID to be paused.
 func WaitForJobToPause(t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID) {
+	__antithesis_instrumentation__.Notify(644326)
 	t.Helper()
 	waitForJobToHaveStatus(t, db, jobID, jobs.StatusPaused)
 }
 
-// WaitForJobToCancel waits for the specified job ID to be cancelled.
 func WaitForJobToCancel(t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID) {
+	__antithesis_instrumentation__.Notify(644327)
 	t.Helper()
 	waitForJobToHaveStatus(t, db, jobID, jobs.StatusCanceled)
 }
@@ -53,41 +45,46 @@ func WaitForJobToCancel(t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID
 func waitForJobToHaveStatus(
 	t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID, expectedStatus jobs.Status,
 ) {
+	__antithesis_instrumentation__.Notify(644328)
 	t.Helper()
 	if err := retry.ForDuration(time.Minute*2, func() error {
+		__antithesis_instrumentation__.Notify(644329)
 		var status string
 		var payloadBytes []byte
 		db.QueryRow(
 			t, `SELECT status, payload FROM system.jobs WHERE id = $1`, jobID,
 		).Scan(&status, &payloadBytes)
 		if jobs.Status(status) == jobs.StatusFailed {
+			__antithesis_instrumentation__.Notify(644332)
 			payload := &jobspb.Payload{}
 			if err := protoutil.Unmarshal(payloadBytes, payload); err == nil {
+				__antithesis_instrumentation__.Notify(644334)
 				t.Fatalf("job failed: %s", payload.Error)
+			} else {
+				__antithesis_instrumentation__.Notify(644335)
 			}
+			__antithesis_instrumentation__.Notify(644333)
 			t.Fatalf("job failed")
+		} else {
+			__antithesis_instrumentation__.Notify(644336)
 		}
+		__antithesis_instrumentation__.Notify(644330)
 		if e, a := expectedStatus, jobs.Status(status); e != a {
+			__antithesis_instrumentation__.Notify(644337)
 			return errors.Errorf("expected job status %s, but got %s", e, a)
+		} else {
+			__antithesis_instrumentation__.Notify(644338)
 		}
+		__antithesis_instrumentation__.Notify(644331)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(644339)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(644340)
 	}
 }
 
-// RunJob runs the provided job control statement, initializing, notifying and
-// closing the chan at the passed pointer (see below for why) and returning the
-// jobID and error result. PAUSE JOB and CANCEL JOB are racy in that it's hard
-// to guarantee that the job is still running when executing a PAUSE or
-// CANCEL--or that the job has even started running. To synchronize, we can
-// install a store response filter which does a blocking receive for one of the
-// responses used by our job (for example, Export for a BACKUP). Later, when we
-// want to guarantee the job is in progress, we do exactly one blocking send.
-// When this send completes, we know the job has started, as we've seen one
-// expected response. We also know the job has not finished, because we're
-// blocking all future responses until we close the channel, and our operation
-// is large enough that it will generate more than one of the expected response.
 func RunJob(
 	t *testing.T,
 	db *sqlutils.SQLRunner,
@@ -96,46 +93,59 @@ func RunJob(
 	query string,
 	args ...interface{},
 ) (jobspb.JobID, error) {
+	__antithesis_instrumentation__.Notify(644341)
 	*allowProgressIota = make(chan struct{})
 	errCh := make(chan error)
 	go func() {
+		__antithesis_instrumentation__.Notify(644345)
 		_, err := db.DB.ExecContext(context.TODO(), query, args...)
 		errCh <- err
 	}()
+	__antithesis_instrumentation__.Notify(644342)
 	select {
 	case *allowProgressIota <- struct{}{}:
+		__antithesis_instrumentation__.Notify(644346)
 	case err := <-errCh:
+		__antithesis_instrumentation__.Notify(644347)
 		return 0, errors.Wrapf(err, "query returned before expected: %s", query)
 	}
+	__antithesis_instrumentation__.Notify(644343)
 	var jobID jobspb.JobID
 	db.QueryRow(t, `SELECT id FROM system.jobs ORDER BY created DESC LIMIT 1`).Scan(&jobID)
 	for _, op := range ops {
+		__antithesis_instrumentation__.Notify(644348)
 		db.Exec(t, fmt.Sprintf("%s JOB %d", op, jobID))
 		*allowProgressIota <- struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(644344)
 	close(*allowProgressIota)
 	return jobID, <-errCh
 }
 
-// BulkOpResponseFilter creates a blocking response filter for the responses
-// related to bulk IO/backup/restore/import: Export, Import and AddSSTable. See
-// discussion on RunJob for where this might be useful.
 func BulkOpResponseFilter(allowProgressIota *chan struct{}) kvserverbase.ReplicaResponseFilter {
+	__antithesis_instrumentation__.Notify(644349)
 	return func(_ context.Context, ba roachpb.BatchRequest, br *roachpb.BatchResponse) *roachpb.Error {
+		__antithesis_instrumentation__.Notify(644350)
 		for _, ru := range br.Responses {
+			__antithesis_instrumentation__.Notify(644352)
 			switch ru.GetInner().(type) {
 			case *roachpb.ExportResponse, *roachpb.AddSSTableResponse:
+				__antithesis_instrumentation__.Notify(644353)
 				<-*allowProgressIota
 			}
 		}
+		__antithesis_instrumentation__.Notify(644351)
 		return nil
 	}
 }
 
 type logT struct{ testing.TB }
 
-func (n logT) Errorf(format string, args ...interface{}) { n.Logf(format, args...) }
-func (n logT) FailNow()                                  {}
+func (n logT) Errorf(format string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(644354)
+	n.Logf(format, args...)
+}
+func (n logT) FailNow() { __antithesis_instrumentation__.Notify(644355) }
 
 func verifySystemJob(
 	t testing.TB,
@@ -146,15 +156,14 @@ func verifySystemJob(
 	expectedRunningStatus string,
 	expected jobs.Record,
 ) error {
+	__antithesis_instrumentation__.Notify(644356)
 	var actual jobs.Record
 	var rawDescriptorIDs pq.Int64Array
 	var statusString string
 	var runningStatus gosql.NullString
 	var runningStatusString string
 	var usernameString string
-	// We have to query for the nth job created rather than filtering by ID,
-	// because job-generating SQL queries (e.g. BACKUP) do not currently return
-	// the job ID.
+
 	db.QueryRow(t, `
 		SELECT description, user_name, descriptor_ids, status, running_status
 		FROM crdb_internal.jobs WHERE job_type = $1 ORDER BY created LIMIT 1 OFFSET $2`,
@@ -166,32 +175,51 @@ func verifySystemJob(
 	)
 	actual.Username = security.MakeSQLUsernameFromPreNormalizedString(usernameString)
 	if runningStatus.Valid {
+		__antithesis_instrumentation__.Notify(644362)
 		runningStatusString = runningStatus.String
+	} else {
+		__antithesis_instrumentation__.Notify(644363)
 	}
+	__antithesis_instrumentation__.Notify(644357)
 
 	for _, id := range rawDescriptorIDs {
+		__antithesis_instrumentation__.Notify(644364)
 		actual.DescriptorIDs = append(actual.DescriptorIDs, descpb.ID(id))
 	}
+	__antithesis_instrumentation__.Notify(644358)
 	sort.Sort(actual.DescriptorIDs)
 	sort.Sort(expected.DescriptorIDs)
 	expected.Details = nil
 	if e, a := expected, actual; !assert.Equal(logT{t}, e, a) {
+		__antithesis_instrumentation__.Notify(644365)
 		return errors.Errorf("job %d did not match:\n%s",
 			offset, sqlutils.MatrixToStr(db.QueryStr(t, "SELECT * FROM crdb_internal.jobs")))
+	} else {
+		__antithesis_instrumentation__.Notify(644366)
 	}
+	__antithesis_instrumentation__.Notify(644359)
 	if expectedStatus != statusString {
+		__antithesis_instrumentation__.Notify(644367)
 		return errors.Errorf("job %d: expected status %v, got %v", offset, expectedStatus, statusString)
+	} else {
+		__antithesis_instrumentation__.Notify(644368)
 	}
-	if expectedRunningStatus != "" && expectedRunningStatus != runningStatusString {
+	__antithesis_instrumentation__.Notify(644360)
+	if expectedRunningStatus != "" && func() bool {
+		__antithesis_instrumentation__.Notify(644369)
+		return expectedRunningStatus != runningStatusString == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(644370)
 		return errors.Errorf("job %d: expected running status %v, got %v",
 			offset, expectedRunningStatus, runningStatusString)
+	} else {
+		__antithesis_instrumentation__.Notify(644371)
 	}
+	__antithesis_instrumentation__.Notify(644361)
 
 	return nil
 }
 
-// VerifyRunningSystemJob checks that job records are created as expected
-// and is marked as running.
 func VerifyRunningSystemJob(
 	t testing.TB,
 	db *sqlutils.SQLRunner,
@@ -200,10 +228,10 @@ func VerifyRunningSystemJob(
 	expectedRunningStatus jobs.RunningStatus,
 	expected jobs.Record,
 ) error {
+	__antithesis_instrumentation__.Notify(644372)
 	return verifySystemJob(t, db, offset, filterType, "running", string(expectedRunningStatus), expected)
 }
 
-// VerifySystemJob checks that job records are created as expected.
 func VerifySystemJob(
 	t testing.TB,
 	db *sqlutils.SQLRunner,
@@ -212,11 +240,12 @@ func VerifySystemJob(
 	expectedStatus jobs.Status,
 	expected jobs.Record,
 ) error {
+	__antithesis_instrumentation__.Notify(644373)
 	return verifySystemJob(t, db, offset, filterType, string(expectedStatus), "", expected)
 }
 
-// GetJobID gets a particular job's ID.
 func GetJobID(t testing.TB, db *sqlutils.SQLRunner, offset int) jobspb.JobID {
+	__antithesis_instrumentation__.Notify(644374)
 	var jobID jobspb.JobID
 	db.QueryRow(t, `
 	SELECT job_id FROM crdb_internal.jobs ORDER BY created LIMIT 1 OFFSET $1`, offset,
@@ -224,8 +253,8 @@ func GetJobID(t testing.TB, db *sqlutils.SQLRunner, offset int) jobspb.JobID {
 	return jobID
 }
 
-// GetLastJobID gets the most recent job's ID.
 func GetLastJobID(t testing.TB, db *sqlutils.SQLRunner) jobspb.JobID {
+	__antithesis_instrumentation__.Notify(644375)
 	var jobID jobspb.JobID
 	db.QueryRow(
 		t, `SELECT id FROM system.jobs ORDER BY created DESC LIMIT 1`,
@@ -233,13 +262,17 @@ func GetLastJobID(t testing.TB, db *sqlutils.SQLRunner) jobspb.JobID {
 	return jobID
 }
 
-// GetJobProgress loads the Progress message associated with the job.
 func GetJobProgress(t *testing.T, db *sqlutils.SQLRunner, jobID jobspb.JobID) *jobspb.Progress {
+	__antithesis_instrumentation__.Notify(644376)
 	ret := &jobspb.Progress{}
 	var buf []byte
 	db.QueryRow(t, `SELECT progress FROM system.jobs WHERE id = $1`, jobID).Scan(&buf)
 	if err := protoutil.Unmarshal(buf, ret); err != nil {
+		__antithesis_instrumentation__.Notify(644378)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(644379)
 	}
+	__antithesis_instrumentation__.Notify(644377)
 	return ret
 }

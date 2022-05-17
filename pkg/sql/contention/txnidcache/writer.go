@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package txnidcache
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
@@ -17,8 +9,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 )
 
-// There is no strong reason why shardCount is 16 beyond that Java's
-// ConcurrentHashMap also uses 16 shards and has reasonably good performance.
 const shardCount = 16
 
 type writer struct {
@@ -32,50 +22,61 @@ type writer struct {
 var _ Writer = &writer{}
 
 func newWriter(st *cluster.Settings, sink blockSink) *writer {
+	__antithesis_instrumentation__.Notify(459402)
 	w := &writer{
 		st:   st,
 		sink: sink,
 	}
 
 	for shardIdx := 0; shardIdx < shardCount; shardIdx++ {
+		__antithesis_instrumentation__.Notify(459404)
 		w.shards[shardIdx] = newConcurrentWriteBuffer(sink)
 	}
+	__antithesis_instrumentation__.Notify(459403)
 
 	return w
 }
 
-// Record implements the Writer interface.
 func (w *writer) Record(resolvedTxnID contentionpb.ResolvedTxnID) {
+	__antithesis_instrumentation__.Notify(459405)
 	if MaxSize.Get(&w.st.SV) == 0 {
+		__antithesis_instrumentation__.Notify(459408)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(459409)
 	}
+	__antithesis_instrumentation__.Notify(459406)
 
-	// There are edge cases where the txnID in the resolvedTxnID will be nil,
-	// (e.g. when the connExecutor closes while a transaction is still active).
-	// This causes that, occasionally, connExecutor will emit resolvedTxnIDs with
-	// invalid txnID but valid txnFingerprintID. Writing invalid txnID into the
-	// writer can potentially cause data loss. (Since the TxnID cache stops
-	// processing the input batch when it encounters the first invalid txnID).
 	if resolvedTxnID.TxnID.Equal(uuid.Nil) {
+		__antithesis_instrumentation__.Notify(459410)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(459411)
 	}
+	__antithesis_instrumentation__.Notify(459407)
 	shardIdx := hashTxnID(resolvedTxnID.TxnID)
 	buffer := w.shards[shardIdx]
 	buffer.Record(resolvedTxnID)
 }
 
-// DrainWriteBuffer implements the Writer interface.
 func (w *writer) DrainWriteBuffer() {
+	__antithesis_instrumentation__.Notify(459412)
 	for shardIdx := 0; shardIdx < shardCount; shardIdx++ {
+		__antithesis_instrumentation__.Notify(459413)
 		w.shards[shardIdx].DrainWriteBuffer()
 	}
 }
 
 func hashTxnID(txnID uuid.UUID) int {
+	__antithesis_instrumentation__.Notify(459414)
 	b := txnID.GetBytes()
 	_, val, err := encoding.DecodeUint64Descending(b)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(459416)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(459417)
 	}
+	__antithesis_instrumentation__.Notify(459415)
 	return int(val % shardCount)
 }

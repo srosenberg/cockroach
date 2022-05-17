@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,19 +17,10 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// GetObjectDesc looks up an object by name and returns both its
-// descriptor and that of its parent database. If the object is not
-// found and flags.required is true, an error is returned, otherwise
-// a nil reference is returned.
-//
-// TODO(ajwerner): clarify the purpose of the transaction here. It's used in
-// some cases for some lookups but not in others. For example, if a mutable
-// descriptor is requested, it will be utilized however if an immutable
-// descriptor is requested then it will only be used for its timestamp and to
-// set the deadline.
 func (tc *Collection) GetObjectDesc(
 	ctx context.Context, txn *kv.Txn, db, schema, object string, flags tree.ObjectLookupFlags,
 ) (prefix catalog.ResolvedObjectPrefix, desc catalog.Descriptor, err error) {
+	__antithesis_instrumentation__.Notify(264745)
 	return tc.getObjectByName(ctx, txn, db, schema, object, flags)
 }
 
@@ -47,91 +30,146 @@ func (tc *Collection) getObjectByName(
 	catalogName, schemaName, objectName string,
 	flags tree.ObjectLookupFlags,
 ) (prefix catalog.ResolvedObjectPrefix, desc catalog.Descriptor, err error) {
+	__antithesis_instrumentation__.Notify(264746)
 	defer func() {
-		if err != nil || desc != nil || !flags.Required {
+		__antithesis_instrumentation__.Notify(264752)
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(264754)
+			return desc != nil == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(264755)
+			return !flags.Required == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264756)
 			return
-		}
-		if catalogName != "" && prefix.Database == nil {
-			err = sqlerrors.NewUndefinedDatabaseError(catalogName)
-		} else if prefix.Schema == nil {
-			err = sqlerrors.NewUndefinedSchemaError(schemaName)
 		} else {
-			tn := tree.MakeTableNameWithSchema(
-				tree.Name(catalogName),
-				tree.Name(schemaName),
-				tree.Name(objectName))
-			err = sqlerrors.NewUndefinedRelationError(&tn)
+			__antithesis_instrumentation__.Notify(264757)
+		}
+		__antithesis_instrumentation__.Notify(264753)
+		if catalogName != "" && func() bool {
+			__antithesis_instrumentation__.Notify(264758)
+			return prefix.Database == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264759)
+			err = sqlerrors.NewUndefinedDatabaseError(catalogName)
+		} else {
+			__antithesis_instrumentation__.Notify(264760)
+			if prefix.Schema == nil {
+				__antithesis_instrumentation__.Notify(264761)
+				err = sqlerrors.NewUndefinedSchemaError(schemaName)
+			} else {
+				__antithesis_instrumentation__.Notify(264762)
+				tn := tree.MakeTableNameWithSchema(
+					tree.Name(catalogName),
+					tree.Name(schemaName),
+					tree.Name(objectName))
+				err = sqlerrors.NewUndefinedRelationError(&tn)
+			}
 		}
 	}()
+	__antithesis_instrumentation__.Notify(264747)
 	const alwaysLookupLeasedPublicSchema = false
 	prefix, desc, err = tc.getObjectByNameIgnoringRequiredAndType(
 		ctx, txn, catalogName, schemaName, objectName, flags,
 		alwaysLookupLeasedPublicSchema,
 	)
-	if err != nil || desc == nil {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(264763)
+		return desc == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264764)
 		return prefix, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264765)
 	}
-	if desc.Adding() && desc.IsUncommittedVersion() &&
-		(flags.RequireMutable || flags.CommonLookupFlags.AvoidLeased) {
-		// Special case: We always return tables in the adding state if they were
-		// created in the same transaction and a descriptor (effectively) read in
-		// the same transaction is requested. What this basically amounts to is
-		// resolving adding descriptors only for DDLs (etc.).
-		// TODO (lucy): I'm not sure where this logic should live. We could add an
-		// IncludeAdding flag and pull the special case handling up into the
-		// callers. Figure that out after we clean up the name resolution layers
-		// and it becomes more Clear what the callers should be.
-		// TODO(ajwerner): What's weird about returning here is that we have
-		// not hydrated the descriptor. I guess the assumption is that it is
-		// already hydrated.
+	__antithesis_instrumentation__.Notify(264748)
+	if desc.Adding() && func() bool {
+		__antithesis_instrumentation__.Notify(264766)
+		return desc.IsUncommittedVersion() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(264767)
+		return (flags.RequireMutable || func() bool {
+			__antithesis_instrumentation__.Notify(264768)
+			return flags.CommonLookupFlags.AvoidLeased == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264769)
+
 		return prefix, desc, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264770)
 	}
+	__antithesis_instrumentation__.Notify(264749)
 	if dropped, err := filterDescriptorState(
 		desc, flags.Required, flags.CommonLookupFlags,
-	); err != nil || dropped {
+	); err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(264771)
+		return dropped == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264772)
 		return prefix, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264773)
 	}
+	__antithesis_instrumentation__.Notify(264750)
 	switch t := desc.(type) {
 	case catalog.TableDescriptor:
-		// A given table name can resolve to either a type descriptor or a table
-		// descriptor, because every table descriptor also defines an implicit
-		// record type with the same name as the table. Thus, depending on the
-		// requested descriptor type, we return either the table descriptor itself,
-		// or the table descriptor's implicit record type.
+		__antithesis_instrumentation__.Notify(264774)
+
 		switch flags.DesiredObjectKind {
 		case tree.TableObject, tree.TypeObject:
+			__antithesis_instrumentation__.Notify(264779)
 		default:
+			__antithesis_instrumentation__.Notify(264780)
 			return prefix, nil, nil
 		}
+		__antithesis_instrumentation__.Notify(264775)
 		tableDesc, err := tc.hydrateTypesInTableDesc(ctx, txn, t)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(264781)
 			return prefix, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(264782)
 		}
+		__antithesis_instrumentation__.Notify(264776)
 		desc = tableDesc
 		if flags.DesiredObjectKind == tree.TypeObject {
-			// Since a type descriptor was requested, we need to return the implicitly
-			// created record type for the table that we found.
+			__antithesis_instrumentation__.Notify(264783)
+
 			if flags.RequireMutable {
-				// ... but, we can't do it if we need a mutable descriptor - we don't
-				// have the capability of returning a mutable type descriptor for a
-				// table's implicit record type.
+				__antithesis_instrumentation__.Notify(264785)
+
 				return prefix, nil, pgerror.Newf(pgcode.InsufficientPrivilege,
 					"cannot modify table record type %q", objectName)
+			} else {
+				__antithesis_instrumentation__.Notify(264786)
 			}
+			__antithesis_instrumentation__.Notify(264784)
 			desc, err = typedesc.CreateImplicitRecordTypeFromTableDesc(tableDesc)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(264787)
 				return prefix, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(264788)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(264789)
 		}
 	case catalog.TypeDescriptor:
+		__antithesis_instrumentation__.Notify(264777)
 		if flags.DesiredObjectKind != tree.TypeObject {
+			__antithesis_instrumentation__.Notify(264790)
 			return prefix, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264791)
 		}
 	default:
+		__antithesis_instrumentation__.Notify(264778)
 		return prefix, nil, errors.AssertionFailedf(
 			"unexpected object of type %T", t,
 		)
 	}
+	__antithesis_instrumentation__.Notify(264751)
 	return prefix, desc, nil
 }
 
@@ -142,14 +180,15 @@ func (tc *Collection) getObjectByNameIgnoringRequiredAndType(
 	flags tree.ObjectLookupFlags,
 	alwaysLookupLeasedPublicSchema bool,
 ) (prefix catalog.ResolvedObjectPrefix, _ catalog.Descriptor, err error) {
+	__antithesis_instrumentation__.Notify(264792)
 
 	flags.Required = false
-	// If we're reading the object descriptor from the store,
-	// we should read its parents from the store too to ensure
-	// that subsequent name resolution finds the latest name
-	// in the face of a concurrent rename.
-	avoidLeasedForParent := flags.AvoidLeased || flags.RequireMutable
-	// Resolve the database.
+
+	avoidLeasedForParent := flags.AvoidLeased || func() bool {
+		__antithesis_instrumentation__.Notify(264798)
+		return flags.RequireMutable == true
+	}() == true
+
 	parentFlags := tree.DatabaseLookupFlags{
 		Required:       flags.Required,
 		AvoidLeased:    avoidLeasedForParent,
@@ -159,73 +198,106 @@ func (tc *Collection) getObjectByNameIgnoringRequiredAndType(
 
 	var db catalog.DatabaseDescriptor
 	if catalogName != "" {
+		__antithesis_instrumentation__.Notify(264799)
 		db, err = tc.GetImmutableDatabaseByName(ctx, txn, catalogName, parentFlags)
-		if err != nil || db == nil {
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(264800)
+			return db == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264801)
 			return catalog.ResolvedObjectPrefix{}, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(264802)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(264803)
 	}
+	__antithesis_instrumentation__.Notify(264793)
 
 	prefix.Database = db
 
 	{
+		__antithesis_instrumentation__.Notify(264804)
 		isVirtual, virtualObject, err := tc.virtual.getObjectByName(
 			schemaName, objectName, flags, catalogName,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(264806)
 			return prefix, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(264807)
 		}
+		__antithesis_instrumentation__.Notify(264805)
 		if isVirtual {
+			__antithesis_instrumentation__.Notify(264808)
 			sc := tc.virtual.getSchemaByName(schemaName)
 			return catalog.ResolvedObjectPrefix{
 				Database: db,
 				Schema:   sc,
 			}, virtualObject, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264809)
 		}
 	}
+	__antithesis_instrumentation__.Notify(264794)
 
 	if catalogName == "" {
+		__antithesis_instrumentation__.Notify(264810)
 		return catalog.ResolvedObjectPrefix{}, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264811)
 	}
+	__antithesis_instrumentation__.Notify(264795)
 
-	// Read the ID of the schema out of the database descriptor
-	// to avoid the need to go look up the schema.
 	sc, err := tc.getSchemaByNameMaybeLookingUpPublicSchema(
 		ctx, txn, db, schemaName, parentFlags, alwaysLookupLeasedPublicSchema,
 	)
-	if err != nil || sc == nil {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(264812)
+		return sc == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264813)
 		return prefix, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264814)
 	}
+	__antithesis_instrumentation__.Notify(264796)
 
 	prefix.Schema = sc
 	found, obj, err := tc.getByName(
 		ctx, txn, db, sc, objectName, flags.AvoidLeased, flags.RequireMutable, flags.AvoidSynthetic,
-		false, // alwaysLookupLeasedPublicSchema
+		false,
 	)
-	if !found || err != nil {
-		// We add a special case to deal with the public schema migration. During
-		// that migration, we create a real descriptor for the public schema and we
-		// re-parent the members of the descriptor-less public schema into this new
-		// schema. The hazard is that we have a lease on the database descriptor
-		// which does not know about the new public schema, but the table we're
-		// going to lease does. When we fail to find the descriptor we're looking
-		// for and notice that we're using the old public schema ID, and that we're
-		// in the midst of the relevant migration, then we go back around through
-		// the same logic but with a flag (alwaysLookupLeasedPublicSchema) which will
-		// suppress the assumption that a missing public schema implies a public
-		// synthetic ID=29 public schema, and force resolution of the correct
-		// schema ID.
-		//
-		// TODO(ajwerner): Remove this for 22.2.
-		if !alwaysLookupLeasedPublicSchema && sc.GetID() == keys.PublicSchemaID &&
-			!tc.settings.Version.IsActive(ctx, clusterversion.PublicSchemasWithDescriptors) &&
-			tc.settings.Version.IsActive(ctx, clusterversion.PublicSchemasWithDescriptors-1) {
+	if !found || func() bool {
+		__antithesis_instrumentation__.Notify(264815)
+		return err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264816)
+
+		if !alwaysLookupLeasedPublicSchema && func() bool {
+			__antithesis_instrumentation__.Notify(264818)
+			return sc.GetID() == keys.PublicSchemaID == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(264819)
+			return !tc.settings.Version.IsActive(ctx, clusterversion.PublicSchemasWithDescriptors) == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(264820)
+			return tc.settings.Version.IsActive(ctx, clusterversion.PublicSchemasWithDescriptors-1) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264821)
 			const alwaysLookupLeasedPublicSchema = true
 			return tc.getObjectByNameIgnoringRequiredAndType(
 				ctx, txn, catalogName, schemaName, objectName, flags,
 				alwaysLookupLeasedPublicSchema,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(264822)
 		}
+		__antithesis_instrumentation__.Notify(264817)
 		return prefix, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264823)
 	}
+	__antithesis_instrumentation__.Notify(264797)
 	return prefix, obj, nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/security"
@@ -17,215 +9,225 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 )
 
-// A Name is an SQL identifier.
-//
-// In general, a Name is the result of parsing a name nonterminal, which is used
-// in the grammar where reserved keywords cannot be distinguished from
-// identifiers. A Name that matches a reserved keyword must thus be quoted when
-// formatted. (Names also need quoting for a variety of other reasons; see
-// isBareIdentifier.)
-//
-// For historical reasons, some Names are instead the result of parsing
-// `unrestricted_name` nonterminals. See UnrestrictedName for details.
 type Name string
 
-// Format implements the NodeFormatter interface.
 func (n *Name) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(610391)
 	f := ctx.flags
-	if f.HasFlags(FmtAnonymize) && !isArityIndicatorString(string(*n)) {
+	if f.HasFlags(FmtAnonymize) && func() bool {
+		__antithesis_instrumentation__.Notify(610392)
+		return !isArityIndicatorString(string(*n)) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610393)
 		ctx.WriteByte('_')
 	} else {
+		__antithesis_instrumentation__.Notify(610394)
 		lexbase.EncodeRestrictedSQLIdent(&ctx.Buffer, string(*n), f.EncodeFlags())
 	}
 }
 
-// NameStringP escapes an identifier stored in a heap string to a SQL
-// identifier, avoiding a heap allocation.
 func NameStringP(s *string) string {
+	__antithesis_instrumentation__.Notify(610395)
 	return ((*Name)(s)).String()
 }
 
-// NameString escapes an identifier stored in a string to a SQL
-// identifier.
 func NameString(s string) string {
+	__antithesis_instrumentation__.Notify(610396)
 	return ((*Name)(&s)).String()
 }
 
-// ErrNameStringP escapes an identifier stored a string to a SQL
-// identifier suitable for printing in error messages, avoiding a heap
-// allocation.
 func ErrNameStringP(s *string) string {
+	__antithesis_instrumentation__.Notify(610397)
 	return ErrString(((*Name)(s)))
 }
 
-// ErrNameString escapes an identifier stored a string to a SQL
-// identifier suitable for printing in error messages.
 func ErrNameString(s string) string {
+	__antithesis_instrumentation__.Notify(610398)
 	return ErrString(((*Name)(&s)))
 }
 
-// Normalize normalizes to lowercase and Unicode Normalization Form C
-// (NFC).
 func (n Name) Normalize() string {
+	__antithesis_instrumentation__.Notify(610399)
 	return lexbase.NormalizeName(string(n))
 }
 
-// An UnrestrictedName is a Name that does not need to be escaped when it
-// matches a reserved keyword.
-//
-// In general, an UnrestrictedName is the result of parsing an unrestricted_name
-// nonterminal, which is used in the grammar where reserved keywords can be
-// unambiguously interpreted as identifiers. When formatted, an UnrestrictedName
-// that matches a reserved keyword thus does not need to be quoted.
-//
-// For historical reasons, some unrestricted_name nonterminals are instead
-// parsed as Names. The only user-visible impact of this is that we are too
-// aggressive about quoting names in certain positions. New grammar rules should
-// prefer to parse unrestricted_name nonterminals into UnrestrictedNames.
 type UnrestrictedName string
 
-// Format implements the NodeFormatter interface.
 func (u *UnrestrictedName) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(610400)
 	f := ctx.flags
 	if f.HasFlags(FmtAnonymize) {
+		__antithesis_instrumentation__.Notify(610401)
 		ctx.WriteByte('_')
 	} else {
+		__antithesis_instrumentation__.Notify(610402)
 		lexbase.EncodeUnrestrictedSQLIdent(&ctx.Buffer, string(*u), f.EncodeFlags())
 	}
 }
 
-// ToStrings converts the name list to an array of regular strings.
 func (l NameList) ToStrings() []string {
+	__antithesis_instrumentation__.Notify(610403)
 	if l == nil {
+		__antithesis_instrumentation__.Notify(610406)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(610407)
 	}
+	__antithesis_instrumentation__.Notify(610404)
 	names := make([]string, len(l))
 	for i, n := range l {
+		__antithesis_instrumentation__.Notify(610408)
 		names[i] = string(n)
 	}
+	__antithesis_instrumentation__.Notify(610405)
 	return names
 }
 
-// ToSQLUsernames converts a NameList containing SQL input of usernames,
-// normalizes the names and returns them as a list of SQLUsernames.
 func (l NameList) ToSQLUsernames() ([]security.SQLUsername, error) {
+	__antithesis_instrumentation__.Notify(610409)
 	targetRoles := make([]security.SQLUsername, len(l))
 	for i, role := range l {
+		__antithesis_instrumentation__.Notify(610411)
 		user, err := security.MakeSQLUsernameFromUserInput(string(role), security.UsernameValidation)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(610413)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(610414)
 		}
+		__antithesis_instrumentation__.Notify(610412)
 		targetRoles[i] = user
 	}
+	__antithesis_instrumentation__.Notify(610410)
 	return targetRoles, nil
 }
 
-// A NameList is a list of identifiers.
 type NameList []Name
 
-// Format implements the NodeFormatter interface.
 func (l *NameList) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(610415)
 	for i := range *l {
+		__antithesis_instrumentation__.Notify(610416)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(610418)
 			ctx.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(610419)
 		}
+		__antithesis_instrumentation__.Notify(610417)
 		ctx.FormatNode(&(*l)[i])
 	}
 }
 
-// ArraySubscript corresponds to the syntax `<name>[ ... ]`.
 type ArraySubscript struct {
 	Begin Expr
 	End   Expr
 	Slice bool
 }
 
-// Format implements the NodeFormatter interface.
 func (a *ArraySubscript) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(610420)
 	ctx.WriteByte('[')
 	if a.Begin != nil {
+		__antithesis_instrumentation__.Notify(610423)
 		ctx.FormatNode(a.Begin)
+	} else {
+		__antithesis_instrumentation__.Notify(610424)
 	}
+	__antithesis_instrumentation__.Notify(610421)
 	if a.Slice {
+		__antithesis_instrumentation__.Notify(610425)
 		ctx.WriteByte(':')
 		if a.End != nil {
+			__antithesis_instrumentation__.Notify(610426)
 			ctx.FormatNode(a.End)
+		} else {
+			__antithesis_instrumentation__.Notify(610427)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(610428)
 	}
+	__antithesis_instrumentation__.Notify(610422)
 	ctx.WriteByte(']')
 }
 
-// UnresolvedName corresponds to an unresolved qualified name.
 type UnresolvedName struct {
-	// NumParts indicates the number of name parts specified, including
-	// the star. Always 1 or greater.
 	NumParts int
 
-	// Star indicates the name ends with a star.
-	// In that case, Parts below is empty in the first position.
 	Star bool
 
-	// Parts are the name components, in reverse order.
-	// There are at most 4: column, table, schema, catalog/db.
-	//
-	// Note: NameParts has a fixed size so that we avoid a heap
-	// allocation for the slice every time we construct an
-	// UnresolvedName. It does imply however that Parts does not have
-	// a meaningful "length"; its actual length (the number of parts
-	// specified) is populated in NumParts above.
 	Parts NameParts
 }
 
-// NameParts is the array of strings that composes the path in an
-// UnresolvedName.
 type NameParts = [4]string
 
-// Format implements the NodeFormatter interface.
 func (u *UnresolvedName) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(610429)
 	stopAt := 1
 	if u.Star {
+		__antithesis_instrumentation__.Notify(610432)
 		stopAt = 2
+	} else {
+		__antithesis_instrumentation__.Notify(610433)
 	}
+	__antithesis_instrumentation__.Notify(610430)
 	for i := u.NumParts; i >= stopAt; i-- {
-		// The first part to print is the last item in u.Parts.  It is also
-		// a potentially restricted name to disambiguate from keywords in
-		// the grammar, so print it out as a "Name". Every part after that is
-		// necessarily an unrestricted name.
+		__antithesis_instrumentation__.Notify(610434)
+
 		if i == u.NumParts {
+			__antithesis_instrumentation__.Notify(610436)
 			ctx.FormatNode((*Name)(&u.Parts[i-1]))
 		} else {
+			__antithesis_instrumentation__.Notify(610437)
 			ctx.FormatNode((*UnrestrictedName)(&u.Parts[i-1]))
 		}
+		__antithesis_instrumentation__.Notify(610435)
 		if i > 1 {
+			__antithesis_instrumentation__.Notify(610438)
 			ctx.WriteByte('.')
+		} else {
+			__antithesis_instrumentation__.Notify(610439)
 		}
 	}
+	__antithesis_instrumentation__.Notify(610431)
 	if u.Star {
+		__antithesis_instrumentation__.Notify(610440)
 		ctx.WriteByte('*')
+	} else {
+		__antithesis_instrumentation__.Notify(610441)
 	}
 }
-func (u *UnresolvedName) String() string { return AsString(u) }
+func (u *UnresolvedName) String() string {
+	__antithesis_instrumentation__.Notify(610442)
+	return AsString(u)
+}
 
-// NewUnresolvedName constructs an UnresolvedName from some strings.
 func NewUnresolvedName(args ...string) *UnresolvedName {
+	__antithesis_instrumentation__.Notify(610443)
 	n := MakeUnresolvedName(args...)
 	return &n
 }
 
-// MakeUnresolvedName constructs an UnresolvedName from some strings.
 func MakeUnresolvedName(args ...string) UnresolvedName {
+	__antithesis_instrumentation__.Notify(610444)
 	n := UnresolvedName{NumParts: len(args)}
 	for i := 0; i < len(args); i++ {
+		__antithesis_instrumentation__.Notify(610446)
 		n.Parts[i] = args[len(args)-1-i]
 	}
+	__antithesis_instrumentation__.Notify(610445)
 	return n
 }
 
-// ToUnresolvedObjectName converts an UnresolvedName to an UnresolvedObjectName.
 func (u *UnresolvedName) ToUnresolvedObjectName(idx AnnotationIdx) (*UnresolvedObjectName, error) {
+	__antithesis_instrumentation__.Notify(610447)
 	if u.NumParts == 4 {
+		__antithesis_instrumentation__.Notify(610449)
 		return nil, pgerror.Newf(pgcode.Syntax, "improper qualified name (too many dotted names): %s", u)
+	} else {
+		__antithesis_instrumentation__.Notify(610450)
 	}
+	__antithesis_instrumentation__.Notify(610448)
 	return NewUnresolvedObjectName(
 		u.NumParts,
 		[3]string{u.Parts[0], u.Parts[1], u.Parts[2]},

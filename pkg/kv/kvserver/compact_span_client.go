@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,25 +11,27 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// CompactEngineSpanClient is used to request compaction for a span
-// of data on a store.
 type CompactEngineSpanClient struct {
 	nd *nodedialer.Dialer
 }
 
-// NewCompactEngineSpanClient constructs a new CompactEngineSpanClient.
 func NewCompactEngineSpanClient(nd *nodedialer.Dialer) *CompactEngineSpanClient {
+	__antithesis_instrumentation__.Notify(98941)
 	return &CompactEngineSpanClient{nd: nd}
 }
 
-// CompactEngineSpan is a tree.CompactEngineSpanFunc.
 func (c *CompactEngineSpanClient) CompactEngineSpan(
 	ctx context.Context, nodeID, storeID int32, startKey, endKey []byte,
 ) error {
+	__antithesis_instrumentation__.Notify(98942)
 	conn, err := c.nd.Dial(ctx, roachpb.NodeID(nodeID), rpc.DefaultClass)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(98944)
 		return errors.Wrapf(err, "could not dial node ID %d", nodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(98945)
 	}
+	__antithesis_instrumentation__.Notify(98943)
 	client := NewPerStoreClient(conn)
 	req := &CompactEngineSpanRequest{
 		StoreRequestHeader: StoreRequestHeader{

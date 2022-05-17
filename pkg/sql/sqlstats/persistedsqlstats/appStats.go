@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package persistedsqlstats
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,64 +11,66 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ApplicationStats is a sqlstats.ApplicationStats that wraps an in-memory
-// node-local ApplicationStats. ApplicationStats signals the subsystem when it
-// encounters memory pressure which will triggers the flush operation.
 type ApplicationStats struct {
-	// local in-memory storage.
 	sqlstats.ApplicationStats
 
-	// Use to signal the stats writer is experiencing memory pressure.
 	memoryPressureSignal chan struct{}
 }
 
 var _ sqlstats.ApplicationStats = &ApplicationStats{}
 
-// RecordStatement implements sqlstats.ApplicationStats interface.
 func (s *ApplicationStats) RecordStatement(
 	ctx context.Context, key roachpb.StatementStatisticsKey, value sqlstats.RecordedStmtStats,
 ) (roachpb.StmtFingerprintID, error) {
+	__antithesis_instrumentation__.Notify(624418)
 	var fingerprintID roachpb.StmtFingerprintID
 	err := s.recordStatsOrSendMemoryPressureSignal(func() (err error) {
+		__antithesis_instrumentation__.Notify(624420)
 		fingerprintID, err = s.ApplicationStats.RecordStatement(ctx, key, value)
 		return err
 	})
+	__antithesis_instrumentation__.Notify(624419)
 	return fingerprintID, err
 }
 
-// ShouldSaveLogicalPlanDesc implements sqlstats.ApplicationStats interface.
 func (s *ApplicationStats) ShouldSaveLogicalPlanDesc(
 	fingerprint string, implicitTxn bool, database string,
 ) bool {
+	__antithesis_instrumentation__.Notify(624421)
 	return s.ApplicationStats.ShouldSaveLogicalPlanDesc(fingerprint, implicitTxn, database)
 }
 
-// RecordTransaction implements sqlstats.ApplicationStats interface and saves
-// per-transaction statistics.
 func (s *ApplicationStats) RecordTransaction(
 	ctx context.Context, key roachpb.TransactionFingerprintID, value sqlstats.RecordedTxnStats,
 ) error {
+	__antithesis_instrumentation__.Notify(624422)
 	return s.recordStatsOrSendMemoryPressureSignal(func() error {
+		__antithesis_instrumentation__.Notify(624423)
 		return s.ApplicationStats.RecordTransaction(ctx, key, value)
 	})
 }
 
 func (s *ApplicationStats) recordStatsOrSendMemoryPressureSignal(fn func() error) error {
+	__antithesis_instrumentation__.Notify(624424)
 	err := fn()
-	if errors.Is(err, ssmemstorage.ErrFingerprintLimitReached) || errors.Is(err, ssmemstorage.ErrMemoryPressure) {
+	if errors.Is(err, ssmemstorage.ErrFingerprintLimitReached) || func() bool {
+		__antithesis_instrumentation__.Notify(624426)
+		return errors.Is(err, ssmemstorage.ErrMemoryPressure) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(624427)
 		select {
 		case s.memoryPressureSignal <- struct{}{}:
-			// If we successfully signaled that we are experiencing memory pressure,
-			// then our job is done. However, if we fail to send the signal, that
-			// means we are already experiencing memory pressure and the
-			// stats-flush-worker has already started to handle the flushing. We
-			// don't need to do anything here at this point. The default case of the
-			// select allows this operation to be non-blocking.
+			__antithesis_instrumentation__.Notify(624429)
+
 		default:
+			__antithesis_instrumentation__.Notify(624430)
 		}
-		// We have already handled the memory pressure error. We don't have to
-		// bubble up the error any further.
+		__antithesis_instrumentation__.Notify(624428)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(624431)
 	}
+	__antithesis_instrumentation__.Notify(624425)
 	return err
 }

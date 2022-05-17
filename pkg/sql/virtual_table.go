@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,32 +18,18 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// virtualTableGenerator is the function signature for the virtualTableNode
-// `next` property. Each time the virtualTableGenerator function is called, it
-// returns a tree.Datums corresponding to the next row of the virtual schema
-// table. If there is no next row (end of table is reached), then return (nil,
-// nil). If there is an error, then return (nil, error).
 type virtualTableGenerator func() (tree.Datums, error)
 
-// cleanupFunc is a function to cleanup resources created by the generator.
 type cleanupFunc func(ctx context.Context)
 
-// rowPusher is an interface for lazy generators to push rows into
-// and then suspend until the next row has been requested.
 type rowPusher interface {
-	// pushRow pushes the input row to the receiver of the generator. It doesn't
-	// mutate the input row. It will block until the data has been received
-	// and more data has been requested. Once pushRow returns, the caller is free
-	// to mutate the slice passed as input. The caller is not allowed to perform
-	// operations on a transaction while blocked on a call to pushRow.
-	// If pushRow returns an error, the caller must immediately return the error.
 	pushRow(...tree.Datum) error
 }
 
-// funcRowPusher implements rowPusher on functions.
 type funcRowPusher func(...tree.Datum) error
 
 func (f funcRowPusher) pushRow(datums ...tree.Datum) error {
+	__antithesis_instrumentation__.Notify(632638)
 	return f(datums...)
 }
 
@@ -60,51 +38,45 @@ type virtualTableGeneratorResponse struct {
 	err    error
 }
 
-// setupGenerator takes in a worker that generates rows eagerly and transforms
-// it into a lazy row generator. It returns two functions:
-// * next: A handle that can be called to generate a row from the worker. Next
-//   cannot be called once cleanup has been called.
-// * cleanup: Performs all cleanup. This function must be called exactly once
-//   to ensure that resources are cleaned up.
 func setupGenerator(
 	ctx context.Context,
 	worker func(ctx context.Context, pusher rowPusher) error,
 	stopper *stop.Stopper,
 ) (next virtualTableGenerator, cleanup cleanupFunc, setupError error) {
+	__antithesis_instrumentation__.Notify(632639)
 	var cancel func()
 	ctx, cancel = context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	cleanup = func(context.Context) {
+		__antithesis_instrumentation__.Notify(632644)
 		cancel()
 		wg.Wait()
 	}
+	__antithesis_instrumentation__.Notify(632640)
 
-	// comm is the channel to manage communication between the row receiver
-	// and the generator. The row receiver notifies the worker to begin
-	// computation through comm, and the generator places rows to consume
-	// back into comm.
 	comm := make(chan virtualTableGeneratorResponse)
 	addRow := func(datums ...tree.Datum) error {
+		__antithesis_instrumentation__.Notify(632645)
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(632648)
 			return cancelchecker.QueryCanceledError
 		case comm <- virtualTableGeneratorResponse{datums: datums}:
+			__antithesis_instrumentation__.Notify(632649)
 		}
-		// Block until the next call to cleanup() or next(). This allows us to
-		// avoid issues with concurrent transaction usage if the worker is using
-		// a transaction. Otherwise, worker could proceed running operations after
-		// a call to next() has returned. That could result in the main operator
-		// chain using the transaction while the worker is also running. This
-		// makes it so that the worker can only run while next() is being called,
-		// which effectively gives ownership of the transaction usage over to the
-		// worker, and then back to the next() caller after it is done.
+		__antithesis_instrumentation__.Notify(632646)
+
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(632650)
 			return cancelchecker.QueryCanceledError
 		case <-comm:
+			__antithesis_instrumentation__.Notify(632651)
 		}
+		__antithesis_instrumentation__.Notify(632647)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(632641)
 
 	wg.Add(1)
 	if setupError = stopper.RunAsyncTaskEx(ctx,
@@ -113,57 +85,68 @@ func setupGenerator(
 			SpanOpt:  stop.ChildSpan,
 		},
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(632652)
 			defer wg.Done()
-			// We wait until a call to next before starting the worker. This prevents
-			// concurrent transaction usage during the startup phase. We also have to
-			// wait on done here if cleanup is called before any calls to next() to
-			// avoid leaking this goroutine. Lastly, we check if the context has
-			// been canceled before any rows are even requested.
+
 			select {
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(632655)
 				return
 			case <-comm:
+				__antithesis_instrumentation__.Notify(632656)
 			}
+			__antithesis_instrumentation__.Notify(632653)
 			err := worker(ctx, funcRowPusher(addRow))
-			// If the query was canceled, next() will already return a
-			// QueryCanceledError, so just exit here.
+
 			if errors.Is(err, cancelchecker.QueryCanceledError) {
+				__antithesis_instrumentation__.Notify(632657)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(632658)
 			}
-			// Notify that we are done sending rows.
+			__antithesis_instrumentation__.Notify(632654)
+
 			select {
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(632659)
 				return
 			case comm <- virtualTableGeneratorResponse{err: err}:
+				__antithesis_instrumentation__.Notify(632660)
 			}
 		}); setupError != nil {
-		// The presence of an error means the goroutine never started,
-		// thus wg.Done() is never called, which can result in
-		// cleanup() being blocked indefinitely on wg.Wait(). We call
-		// wg.Done() manually here to account for this case.
+		__antithesis_instrumentation__.Notify(632661)
+
 		wg.Done()
+	} else {
+		__antithesis_instrumentation__.Notify(632662)
 	}
+	__antithesis_instrumentation__.Notify(632642)
 
 	next = func() (tree.Datums, error) {
-		// Notify the worker to begin computing a row.
+		__antithesis_instrumentation__.Notify(632663)
+
 		select {
 		case comm <- virtualTableGeneratorResponse{}:
+			__antithesis_instrumentation__.Notify(632665)
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(632666)
 			return nil, cancelchecker.QueryCanceledError
 		}
-		// Wait for the row to be sent.
+		__antithesis_instrumentation__.Notify(632664)
+
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(632667)
 			return nil, cancelchecker.QueryCanceledError
 		case resp := <-comm:
+			__antithesis_instrumentation__.Notify(632668)
 			return resp.datums, resp.err
 		}
 	}
+	__antithesis_instrumentation__.Notify(632643)
 	return next, cleanup, setupError
 }
 
-// virtualTableNode is a planNode that constructs its rows by repeatedly
-// invoking a virtualTableGenerator function.
 type virtualTableNode struct {
 	columns    colinfo.ResultColumns
 	next       virtualTableGenerator
@@ -174,6 +157,7 @@ type virtualTableNode struct {
 func (p *planner) newVirtualTableNode(
 	columns colinfo.ResultColumns, next virtualTableGenerator, cleanup func(ctx context.Context),
 ) *virtualTableNode {
+	__antithesis_instrumentation__.Notify(632669)
 	return &virtualTableNode{
 		columns: columns,
 		next:    next,
@@ -182,31 +166,39 @@ func (p *planner) newVirtualTableNode(
 }
 
 func (n *virtualTableNode) startExec(runParams) error {
+	__antithesis_instrumentation__.Notify(632670)
 	return nil
 }
 
 func (n *virtualTableNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(632671)
 	row, err := n.next()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(632673)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(632674)
 	}
+	__antithesis_instrumentation__.Notify(632672)
 	n.currentRow = row
 	return row != nil, nil
 }
 
 func (n *virtualTableNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(632675)
 	return n.currentRow
 }
 
 func (n *virtualTableNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(632676)
 	if n.cleanup != nil {
+		__antithesis_instrumentation__.Notify(632677)
 		n.cleanup(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(632678)
 	}
 }
 
-// vTableLookupJoinNode implements lookup join into a virtual table that has a
-// virtual index on the equality columns. For each row of the input, a virtual
-// table index lookup is performed, and the rows are joined together.
 type vTableLookupJoinNode struct {
 	input planNode
 
@@ -214,39 +206,30 @@ type vTableLookupJoinNode struct {
 	db     catalog.DatabaseDescriptor
 	table  catalog.TableDescriptor
 	index  catalog.Index
-	// eqCol is the single equality column ordinal into the lookup table. Virtual
-	// indexes only support a single indexed column currently.
+
 	eqCol             int
 	virtualTableEntry *virtualDefEntry
 
 	joinType descpb.JoinType
 
-	// columns is the join's output schema.
 	columns colinfo.ResultColumns
-	// pred contains the join's on condition, if any.
+
 	pred *joinPredicate
-	// inputCols is the schema of the input to this lookup join.
+
 	inputCols colinfo.ResultColumns
-	// vtableCols is the schema of the virtual table we're looking up rows from,
-	// before any projection.
+
 	vtableCols colinfo.ResultColumns
-	// lookupCols is the projection on vtableCols to apply.
+
 	lookupCols exec.TableColumnOrdinalSet
 
-	// run contains the runtime state of this planNode.
 	run struct {
-		// row contains the next row to output.
 		row tree.Datums
-		// rows contains the next rows to output, except for row.
+
 		rows   *rowcontainer.RowContainer
 		keyCtx constraint.KeyContext
 
-		// indexKeyDatums is scratch space used to construct the index key to
-		// look up in the vtable.
 		indexKeyDatums []tree.Datum
-		// params is set to the current value of runParams on each call to Next.
-		// We need to save this in this awkward way because of constraints on the
-		// interfaces used in virtual table row generation.
+
 		params *runParams
 	}
 }
@@ -254,8 +237,8 @@ type vTableLookupJoinNode struct {
 var _ planNode = &vTableLookupJoinNode{}
 var _ rowPusher = &vTableLookupJoinNode{}
 
-// startExec implements the planNode interface.
 func (v *vTableLookupJoinNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(632679)
 	v.run.keyCtx = constraint.KeyContext{EvalCtx: params.EvalContext()}
 	v.run.rows = rowcontainer.NewRowContainer(
 		params.EvalContext().Mon.MakeBoundAccount(),
@@ -272,40 +255,53 @@ func (v *vTableLookupJoinNode) startExec(params runParams) error {
 		},
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(632681)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(632682)
 	}
+	__antithesis_instrumentation__.Notify(632680)
 	v.db = db
 	return err
 }
 
-// Next implements the planNode interface.
 func (v *vTableLookupJoinNode) Next(params runParams) (bool, error) {
-	// Keep a pointer to runParams around so we can reference it later from
-	// pushRow, which can't take any extra arguments.
+	__antithesis_instrumentation__.Notify(632683)
+
 	v.run.params = &params
 	for {
-		// Check if there are any rows left to emit from the last input row.
+		__antithesis_instrumentation__.Notify(632684)
+
 		if v.run.rows.Len() > 0 {
+			__antithesis_instrumentation__.Notify(632688)
 			copy(v.run.row, v.run.rows.At(0))
 			v.run.rows.PopFirst(params.ctx)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(632689)
 		}
+		__antithesis_instrumentation__.Notify(632685)
 
-		// Lookup more rows from the virtual table.
 		ok, err := v.input.Next(params)
-		if !ok || err != nil {
+		if !ok || func() bool {
+			__antithesis_instrumentation__.Notify(632690)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(632691)
 			return ok, err
+		} else {
+			__antithesis_instrumentation__.Notify(632692)
 		}
+		__antithesis_instrumentation__.Notify(632686)
 		inputRow := v.input.Values()
 		var span constraint.Span
 		datum := inputRow[v.eqCol]
-		// Generate an index constraint from the equality column of the input.
+
 		key := constraint.MakeKey(datum)
 		span.Init(key, constraint.IncludeBoundary, key, constraint.IncludeBoundary)
 		var idxConstraint constraint.Constraint
 		idxConstraint.InitSingleSpan(&v.run.keyCtx, &span)
 
-		// Create the generation function for the index constraint.
 		genFunc := v.virtualTableEntry.makeConstrainedRowsGenerator(
 			params.p, v.db, v.index,
 			v.run.indexKeyDatums,
@@ -313,51 +309,70 @@ func (v *vTableLookupJoinNode) Next(params runParams) (bool, error) {
 			&idxConstraint,
 			v.vtableCols,
 		)
-		// Add the input row to the left of the scratch row.
+
 		v.run.row = append(v.run.row[:0], inputRow...)
-		// Finally, we're ready to do the lookup. This invocation will push all of
-		// the looked-up rows into v.run.rows.
+
 		if err := genFunc(params.ctx, v); err != nil {
+			__antithesis_instrumentation__.Notify(632693)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(632694)
 		}
-		if v.run.rows.Len() == 0 && v.joinType == descpb.LeftOuterJoin {
-			// No matches - construct an outer match.
+		__antithesis_instrumentation__.Notify(632687)
+		if v.run.rows.Len() == 0 && func() bool {
+			__antithesis_instrumentation__.Notify(632695)
+			return v.joinType == descpb.LeftOuterJoin == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(632696)
+
 			v.run.row = v.run.row[:len(v.inputCols)]
 			for i := len(inputRow); i < len(v.columns); i++ {
+				__antithesis_instrumentation__.Notify(632698)
 				v.run.row = append(v.run.row, tree.DNull)
 			}
+			__antithesis_instrumentation__.Notify(632697)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(632699)
 		}
 	}
 }
 
-// pushRow implements the rowPusher interface.
 func (v *vTableLookupJoinNode) pushRow(lookedUpRow ...tree.Datum) error {
-	// Reset our output row to just the contents of the input row.
+	__antithesis_instrumentation__.Notify(632700)
+
 	v.run.row = v.run.row[:len(v.inputCols)]
-	// Append the looked up row to the right of the input row.
+
 	for i, ok := v.lookupCols.Next(0); ok; i, ok = v.lookupCols.Next(i + 1) {
-		// Subtract 1 from the requested column position, to avoid the virtual
-		// table's fake primary key which won't be present in the row.
+		__antithesis_instrumentation__.Notify(632703)
+
 		v.run.row = append(v.run.row, lookedUpRow[i-1])
 	}
-	// Run the predicate and exit if we don't match, or if there was an error.
+	__antithesis_instrumentation__.Notify(632701)
+
 	if ok, err := v.pred.eval(v.run.params.EvalContext(),
 		v.run.row[:len(v.inputCols)],
-		v.run.row[len(v.inputCols):]); !ok || err != nil {
+		v.run.row[len(v.inputCols):]); !ok || func() bool {
+		__antithesis_instrumentation__.Notify(632704)
+		return err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(632705)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(632706)
 	}
+	__antithesis_instrumentation__.Notify(632702)
 	_, err := v.run.rows.AddRow(v.run.params.ctx, v.run.row)
 	return err
 }
 
-// Values implements the planNode interface.
 func (v *vTableLookupJoinNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(632707)
 	return v.run.row
 }
 
-// Close implements the planNode interface.
 func (v *vTableLookupJoinNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(632708)
 	v.input.Close(ctx)
 	v.run.rows.Close(ctx)
 }

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package protoreflecttest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"encoding/json"
@@ -17,16 +9,21 @@ import (
 	"github.com/gogo/protobuf/jsonpb"
 )
 
-// SecretMessage is a message which should be redacted.
 const SecretMessage = "secret message"
 
-// RedactedMessage is the string the SecretMessage should be redacted to.
 const RedactedMessage = "nothing to see here"
 
-// MarshalJSONPB implements jsonpb.JSONPBMarshaler interface.
 func (m Inner) MarshalJSONPB(marshaller *jsonpb.Marshaler) ([]byte, error) {
-	if protoreflect.ShouldRedact(marshaller) && m.Value == SecretMessage {
+	__antithesis_instrumentation__.Notify(563639)
+	if protoreflect.ShouldRedact(marshaller) && func() bool {
+		__antithesis_instrumentation__.Notify(563641)
+		return m.Value == SecretMessage == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(563642)
 		m.Value = RedactedMessage
+	} else {
+		__antithesis_instrumentation__.Notify(563643)
 	}
+	__antithesis_instrumentation__.Notify(563640)
 	return json.Marshal(m)
 }

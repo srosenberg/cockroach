@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package testutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -18,18 +10,26 @@ import (
 	"path/filepath"
 )
 
-// ReadAllFiles reads all of the files matching pattern, thus ensuring they are
-// in the OS buffer cache.
 func ReadAllFiles(pattern string) {
+	__antithesis_instrumentation__.Notify(644225)
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(644227)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(644228)
 	}
+	__antithesis_instrumentation__.Notify(644226)
 	for _, m := range matches {
+		__antithesis_instrumentation__.Notify(644229)
 		f, err := os.Open(m)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(644231)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(644232)
 		}
+		__antithesis_instrumentation__.Notify(644230)
 		_, _ = io.Copy(ioutil.Discard, bufio.NewReader(f))
 		f.Close()
 	}

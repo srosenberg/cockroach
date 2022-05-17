@@ -21,6 +21,7 @@ go_library(
         "//pkg/util/log",
         "//pkg/util/stop",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -50,6 +51,7 @@ go_test(
         "//pkg/util/protoutil",
         "//pkg/util/retry",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",
         "@org_golang_x_sync//errgroup",

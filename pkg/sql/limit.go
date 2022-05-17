@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,8 +10,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// limitNode represents a node that limits the number of rows
-// returned or only return them past a given number (offset).
 type limitNode struct {
 	plan       planNode
 	countExpr  tree.TypedExpr
@@ -27,26 +17,29 @@ type limitNode struct {
 }
 
 func (n *limitNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(500219)
 	panic("limitNode cannot be run in local mode")
 }
 
 func (n *limitNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(500220)
 	panic("limitNode cannot be run in local mode")
 }
 
 func (n *limitNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(500221)
 	panic("limitNode cannot be run in local mode")
 }
 
 func (n *limitNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(500222)
 	n.plan.Close(ctx)
 }
 
-// evalLimit evaluates the Count and Offset fields. If Count is missing, the
-// value is MaxInt64. If Offset is missing, the value is 0
 func evalLimit(
 	evalCtx *tree.EvalContext, countExpr, offsetExpr tree.TypedExpr,
 ) (count, offset int64, err error) {
+	__antithesis_instrumentation__.Notify(500223)
 	count = math.MaxInt64
 	offset = 0
 
@@ -60,24 +53,41 @@ func evalLimit(
 	}
 
 	for _, datum := range data {
+		__antithesis_instrumentation__.Notify(500225)
 		if datum.src != nil {
+			__antithesis_instrumentation__.Notify(500226)
 			dstDatum, err := datum.src.Eval(evalCtx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(500230)
 				return count, offset, err
+			} else {
+				__antithesis_instrumentation__.Notify(500231)
 			}
+			__antithesis_instrumentation__.Notify(500227)
 
 			if dstDatum == tree.DNull {
-				// Use the default value.
+				__antithesis_instrumentation__.Notify(500232)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(500233)
 			}
+			__antithesis_instrumentation__.Notify(500228)
 
 			dstDInt := tree.MustBeDInt(dstDatum)
 			val := int64(dstDInt)
 			if val < 0 {
+				__antithesis_instrumentation__.Notify(500234)
 				return count, offset, fmt.Errorf("negative value for %s", datum.name)
+			} else {
+				__antithesis_instrumentation__.Notify(500235)
 			}
+			__antithesis_instrumentation__.Notify(500229)
 			*datum.dst = val
+		} else {
+			__antithesis_instrumentation__.Notify(500236)
 		}
 	}
+	__antithesis_instrumentation__.Notify(500224)
 	return count, offset, nil
 }

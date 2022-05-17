@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package status
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -151,10 +143,6 @@ var (
 		Unit:        metric.Unit_SECONDS,
 	}
 
-	// These disk and network stats are counters of the number of operations, packets, bytes, and
-	// cumulative time of the disk and net IO that has been done across the whole host *since this
-	// Cockroach process started up*. By taking the derivatives of these metrics, we can see the
-	// IO throughput.
 	metaHostDiskReadCount = metric.Metadata{
 		Name:        "sys.host.disk.read.count",
 		Unit:        metric.Unit_COUNT,
@@ -235,24 +223,13 @@ var (
 	}
 )
 
-// getCgoMemStats is a function that fetches stats for the C++ portion of the code.
-// We will not necessarily have implementations for all builds, so check for nil first.
-// Returns the following:
-// allocated uint: bytes allocated by application
-// total     uint: total bytes requested from system
-// error           : any issues fetching stats. This should be a warning only.
 var getCgoMemStats func(context.Context) (uint, uint, error)
 
-// RuntimeStatSampler is used to periodically sample the runtime environment
-// for useful statistics, performing some rudimentary calculations and storing
-// the resulting information in a format that can be easily consumed by status
-// logging systems.
 type RuntimeStatSampler struct {
 	clock *hlc.Clock
 
 	startTimeNanos int64
-	// The last sampled values of some statistics are kept only to compute
-	// derivative statistics.
+
 	last struct {
 		now         int64
 		utime       int64
@@ -268,11 +245,8 @@ type RuntimeStatSampler struct {
 	initialDiskCounters diskStats
 	initialNetCounters  net.IOCountersStat
 
-	// Only show "not implemented" errors once, we don't need the log spam.
 	fdUsageNotImplemented bool
 
-	// Metric gauges maintained by the sampler.
-	// Go runtime stats.
 	CgoCalls                 *metric.Gauge
 	Goroutines               *metric.Gauge
 	RunnableGoroutinesPerCPU *metric.GaugeFloat64
@@ -283,19 +257,19 @@ type RuntimeStatSampler struct {
 	GcCount                  *metric.Gauge
 	GcPauseNS                *metric.Gauge
 	GcPausePercent           *metric.GaugeFloat64
-	// CPU stats.
+
 	CPUUserNS              *metric.Gauge
 	CPUUserPercent         *metric.GaugeFloat64
 	CPUSysNS               *metric.Gauge
 	CPUSysPercent          *metric.GaugeFloat64
 	CPUCombinedPercentNorm *metric.GaugeFloat64
 	CPUNowNS               *metric.Gauge
-	// Memory stats.
+
 	RSSBytes *metric.Gauge
-	// File descriptor stats.
+
 	FDOpen      *metric.Gauge
 	FDSoftLimit *metric.Gauge
-	// Disk and network stats.
+
 	HostDiskReadBytes      *metric.Gauge
 	HostDiskReadCount      *metric.Gauge
 	HostDiskReadTime       *metric.Gauge
@@ -309,23 +283,25 @@ type RuntimeStatSampler struct {
 	HostNetRecvPackets     *metric.Gauge
 	HostNetSendBytes       *metric.Gauge
 	HostNetSendPackets     *metric.Gauge
-	// Uptime and build.
-	Uptime         *metric.Gauge // We use a gauge to be able to call Update.
+
+	Uptime         *metric.Gauge
 	BuildTimestamp *metric.Gauge
 }
 
-// NewRuntimeStatSampler constructs a new RuntimeStatSampler object.
 func NewRuntimeStatSampler(ctx context.Context, clock *hlc.Clock) *RuntimeStatSampler {
-	// Construct the build info metric. It is constant.
-	// We first build set the labels on the metadata.
+	__antithesis_instrumentation__.Notify(235629)
+
 	info := build.GetInfo()
 	timestamp, err := info.Timestamp()
 	if err != nil {
-		// We can't panic here, tests don't have a build timestamp.
-		log.Warningf(ctx, "could not parse build timestamp: %v", err)
-	}
+		__antithesis_instrumentation__.Notify(235633)
 
-	// Build information.
+		log.Warningf(ctx, "could not parse build timestamp: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(235634)
+	}
+	__antithesis_instrumentation__.Notify(235630)
+
 	metaBuildTimestamp := metric.Metadata{
 		Name:        "build.timestamp",
 		Help:        "Build information",
@@ -340,12 +316,20 @@ func NewRuntimeStatSampler(ctx context.Context, clock *hlc.Clock) *RuntimeStatSa
 
 	diskCounters, err := getSummedDiskCounters(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235635)
 		log.Ops.Errorf(ctx, "could not get initial disk IO counters: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(235636)
 	}
+	__antithesis_instrumentation__.Notify(235631)
 	netCounters, err := getSummedNetStats(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235637)
 		log.Ops.Errorf(ctx, "could not get initial disk IO counters: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(235638)
 	}
+	__antithesis_instrumentation__.Notify(235632)
 
 	rsr := &RuntimeStatSampler{
 		clock:                    clock,
@@ -392,91 +376,100 @@ func NewRuntimeStatSampler(ctx context.Context, clock *hlc.Clock) *RuntimeStatSa
 	return rsr
 }
 
-// GoMemStats groups a runtime.MemStats structure with the timestamp when it
-// was collected.
 type GoMemStats struct {
 	runtime.MemStats
-	// Collected is the timestamp at which these values were collected.
+
 	Collected time.Time
 }
 
-// CGoMemStats reports what has been allocated outside of Go.
 type CGoMemStats struct {
-	// CGoAllocated represents allocated bytes.
 	CGoAllocatedBytes uint64
-	// CGoTotal represents total bytes (allocated + metadata etc).
+
 	CGoTotalBytes uint64
 }
 
-// GetCGoMemStats collects non-Go memory statistics.
 func GetCGoMemStats(ctx context.Context) *CGoMemStats {
+	__antithesis_instrumentation__.Notify(235639)
 	var cgoAllocated, cgoTotal uint
 	if getCgoMemStats != nil {
+		__antithesis_instrumentation__.Notify(235641)
 		var err error
 		cgoAllocated, cgoTotal, err = getCgoMemStats(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(235642)
 			log.Warningf(ctx, "problem fetching CGO memory stats: %s; CGO stats will be empty.", err)
+		} else {
+			__antithesis_instrumentation__.Notify(235643)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(235644)
 	}
+	__antithesis_instrumentation__.Notify(235640)
 	return &CGoMemStats{
 		CGoAllocatedBytes: uint64(cgoAllocated),
 		CGoTotalBytes:     uint64(cgoTotal),
 	}
 }
 
-// SampleEnvironment queries the runtime system for various interesting metrics,
-// storing the resulting values in the set of metric gauges maintained by
-// RuntimeStatSampler. This makes runtime statistics more convenient for
-// consumption by the time series and status systems.
-//
-// This method should be called periodically by a higher level system in order
-// to keep runtime statistics current.
-//
-// SampleEnvironment takes GoMemStats as input because that is collected
-// separately, on a different schedule.
-// The CGoMemStats should be provided via GetCGoMemStats().
 func (rsr *RuntimeStatSampler) SampleEnvironment(
 	ctx context.Context, ms *GoMemStats, cs *CGoMemStats,
 ) {
-	// Note that debug.ReadGCStats() does not suffer the same problem as
-	// runtime.ReadMemStats(). The only way you can know that is by reading the
-	// source.
+	__antithesis_instrumentation__.Notify(235645)
+
 	gc := &debug.GCStats{}
 	debug.ReadGCStats(gc)
 
 	numCgoCall := runtime.NumCgoCall()
 	numGoroutine := runtime.NumGoroutine()
 
-	// Retrieve Mem and CPU statistics.
 	pid := os.Getpid()
 	mem := gosigar.ProcMem{}
 	if err := mem.Get(pid); err != nil {
+		__antithesis_instrumentation__.Notify(235651)
 		log.Ops.Errorf(ctx, "unable to get mem usage: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(235652)
 	}
+	__antithesis_instrumentation__.Notify(235646)
 	userTimeMillis, sysTimeMillis, err := GetCPUTime(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235653)
 		log.Ops.Errorf(ctx, "unable to get cpu usage: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(235654)
 	}
+	__antithesis_instrumentation__.Notify(235647)
 	cgroupCPU, _ := cgroups.GetCgroupCPU()
 	cpuShare := cgroupCPU.CPUShares()
 
 	fds := gosigar.ProcFDUsage{}
 	if err := fds.Get(pid); err != nil {
+		__antithesis_instrumentation__.Notify(235655)
 		if gosigar.IsNotImplemented(err) {
+			__antithesis_instrumentation__.Notify(235656)
 			if !rsr.fdUsageNotImplemented {
+				__antithesis_instrumentation__.Notify(235657)
 				rsr.fdUsageNotImplemented = true
 				log.Ops.Warningf(ctx, "unable to get file descriptor usage (will not try again): %s", err)
+			} else {
+				__antithesis_instrumentation__.Notify(235658)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(235659)
 			log.Ops.Errorf(ctx, "unable to get file descriptor usage: %s", err)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(235660)
 	}
+	__antithesis_instrumentation__.Notify(235648)
 
 	var deltaDisk diskStats
 	diskCounters, err := getSummedDiskCounters(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235661)
 		log.Ops.Warningf(ctx, "problem fetching disk stats: %s; disk stats will be empty.", err)
 	} else {
+		__antithesis_instrumentation__.Notify(235662)
 		deltaDisk = diskCounters
 		subtractDiskCounters(&deltaDisk, rsr.last.disk)
 		rsr.last.disk = diskCounters
@@ -492,12 +485,15 @@ func (rsr *RuntimeStatSampler) SampleEnvironment(
 		rsr.HostDiskWeightedIOTime.Update(int64(diskCounters.weightedIOTime))
 		rsr.IopsInProgress.Update(diskCounters.iopsInProgress)
 	}
+	__antithesis_instrumentation__.Notify(235649)
 
 	var deltaNet net.IOCountersStat
 	netCounters, err := getSummedNetStats(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235663)
 		log.Ops.Warningf(ctx, "problem fetching net stats: %s; net stats will be empty.", err)
 	} else {
+		__antithesis_instrumentation__.Notify(235664)
 		deltaNet = netCounters
 		subtractNetworkCounters(&deltaNet, rsr.last.net)
 		rsr.last.net = netCounters
@@ -508,13 +504,11 @@ func (rsr *RuntimeStatSampler) SampleEnvironment(
 		rsr.HostNetRecvBytes.Update(int64(netCounters.BytesRecv))
 		rsr.HostNetRecvPackets.Update(int64(netCounters.PacketsRecv))
 	}
+	__antithesis_instrumentation__.Notify(235650)
 
-	// Time statistics can be compared to the total elapsed time to create a
-	// useful percentage of total CPU usage, which would be somewhat less accurate
-	// if calculated later using downsampled time series data.
 	now := rsr.clock.PhysicalNow()
 	dur := float64(now - rsr.last.now)
-	// cpuTime.{User,Sys} are in milliseconds, convert to nanoseconds.
+
 	utime := userTimeMillis * 1e6
 	stime := sysTimeMillis * 1e6
 	urate := float64(utime-rsr.last.utime) / dur
@@ -522,9 +516,7 @@ func (rsr *RuntimeStatSampler) SampleEnvironment(
 	combinedNormalizedPerc := (srate + urate) / cpuShare
 	gcPauseRatio := float64(uint64(gc.PauseTotal)-rsr.last.gcPauseTime) / dur
 	runnableSum := goschedstats.CumulativeNormalizedRunnableGoroutines()
-	// The number of runnable goroutines per CPU is a count, but it can vary
-	// quickly. We don't just want to get a current snapshot of it, we want the
-	// average value since the last sampling.
+
 	runnableAvg := (runnableSum - rsr.last.runnableSum) * 1e9 / dur
 	rsr.last.now = now
 	rsr.last.utime = utime
@@ -532,7 +524,6 @@ func (rsr *RuntimeStatSampler) SampleEnvironment(
 	rsr.last.gcPauseTime = uint64(gc.PauseTotal)
 	rsr.last.runnableSum = runnableSum
 
-	// Log summary of statistics to console.
 	cgoRate := float64((numCgoCall-rsr.last.cgoCall)*int64(time.Second)) / dur
 	goStatsStaleness := float32(timeutil.Since(ms.Collected)) / float32(time.Second)
 	goTotal := ms.Sys - ms.HeapReleased
@@ -585,67 +576,61 @@ func (rsr *RuntimeStatSampler) SampleEnvironment(
 	rsr.Uptime.Update((now - rsr.startTimeNanos) / 1e9)
 }
 
-// GetCPUCombinedPercentNorm is part of the rowexec.RuntimeStats interface.
 func (rsr *RuntimeStatSampler) GetCPUCombinedPercentNorm() float64 {
+	__antithesis_instrumentation__.Notify(235665)
 	return rsr.CPUCombinedPercentNorm.Value()
 }
 
-// diskStats contains the disk statistics returned by the operating
-// system. Interpretation of some of these stats varies by platform,
-// although as much as possible they are normalized to the semantics
-// used by linux's diskstats interface.
-//
-// Except for iopsInProgress, these metrics act like counters (always
-// increasing, and best interpreted as a rate).
 type diskStats struct {
 	readBytes int64
 	readCount int64
 
-	// readTime (and writeTime) may increase more than 1s per second if
-	// access to storage is parallelized.
 	readTime time.Duration
 
 	writeBytes int64
 	writeCount int64
 	writeTime  time.Duration
 
-	// ioTime is the amount of time that iopsInProgress is non-zero (so
-	// its increase is capped at 1s/s). Only available on linux.
 	ioTime time.Duration
 
-	// weightedIOTime is a linux-specific metric that attempts to
-	// represent "an easy measure of both I/O completion time and the
-	// backlog that may be accumulating."
 	weightedIOTime time.Duration
 
-	// iopsInProgress is a gauge of the number of pending IO operations.
-	// Not available on macOS.
 	iopsInProgress int64
 }
 
 func getSummedDiskCounters(ctx context.Context) (diskStats, error) {
+	__antithesis_instrumentation__.Notify(235666)
 	diskCounters, err := getDiskCounters(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235668)
 		return diskStats{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(235669)
 	}
+	__antithesis_instrumentation__.Notify(235667)
 
 	return sumDiskCounters(diskCounters), nil
 }
 
 func getSummedNetStats(ctx context.Context) (net.IOCountersStat, error) {
-	netCounters, err := net.IOCountersWithContext(ctx, true /* per NIC */)
+	__antithesis_instrumentation__.Notify(235670)
+	netCounters, err := net.IOCountersWithContext(ctx, true)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235672)
 		return net.IOCountersStat{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(235673)
 	}
+	__antithesis_instrumentation__.Notify(235671)
 
 	return sumNetworkCounters(netCounters), nil
 }
 
-// sumDiskCounters returns a new disk.IOCountersStat whose values are the sum of the
-// values in the slice of disk.IOCountersStats passed in.
 func sumDiskCounters(disksStats []diskStats) diskStats {
+	__antithesis_instrumentation__.Notify(235674)
 	output := diskStats{}
 	for _, stats := range disksStats {
+		__antithesis_instrumentation__.Notify(235676)
 		output.readBytes += stats.readBytes
 		output.readCount += stats.readCount
 		output.readTime += stats.readTime
@@ -659,12 +644,12 @@ func sumDiskCounters(disksStats []diskStats) diskStats {
 
 		output.iopsInProgress += stats.iopsInProgress
 	}
+	__antithesis_instrumentation__.Notify(235675)
 	return output
 }
 
-// subtractDiskCounters subtracts the counters in `sub` from the counters in `from`,
-// saving the results in `from`.
 func subtractDiskCounters(from *diskStats, sub diskStats) {
+	__antithesis_instrumentation__.Notify(235677)
 	from.writeCount -= sub.writeCount
 	from.writeBytes -= sub.writeBytes
 	from.writeTime -= sub.writeTime
@@ -677,34 +662,38 @@ func subtractDiskCounters(from *diskStats, sub diskStats) {
 	from.weightedIOTime -= sub.weightedIOTime
 }
 
-// sumNetworkCounters returns a new net.IOCountersStat whose values are the sum of the
-// values in the slice of net.IOCountersStats passed in.
 func sumNetworkCounters(netCounters []net.IOCountersStat) net.IOCountersStat {
+	__antithesis_instrumentation__.Notify(235678)
 	output := net.IOCountersStat{}
 	for _, counter := range netCounters {
+		__antithesis_instrumentation__.Notify(235680)
 		output.BytesRecv += counter.BytesRecv
 		output.BytesSent += counter.BytesSent
 		output.PacketsRecv += counter.PacketsRecv
 		output.PacketsSent += counter.PacketsSent
 	}
+	__antithesis_instrumentation__.Notify(235679)
 	return output
 }
 
-// subtractNetworkCounters subtracts the counters in `sub` from the counters in `from`,
-// saving the results in `from`.
 func subtractNetworkCounters(from *net.IOCountersStat, sub net.IOCountersStat) {
+	__antithesis_instrumentation__.Notify(235681)
 	from.BytesRecv -= sub.BytesRecv
 	from.BytesSent -= sub.BytesSent
 	from.PacketsRecv -= sub.PacketsRecv
 	from.PacketsSent -= sub.PacketsSent
 }
 
-// GetCPUTime returns the cumulative user/system time (in ms) since the process start.
 func GetCPUTime(ctx context.Context) (userTimeMillis, sysTimeMillis int64, err error) {
+	__antithesis_instrumentation__.Notify(235682)
 	pid := os.Getpid()
 	cpuTime := gosigar.ProcTime{}
 	if err := cpuTime.Get(pid); err != nil {
+		__antithesis_instrumentation__.Notify(235684)
 		return 0, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(235685)
 	}
+	__antithesis_instrumentation__.Notify(235683)
 	return int64(cpuTime.User), int64(cpuTime.Sys), nil
 }

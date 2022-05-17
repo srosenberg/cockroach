@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strings"
@@ -16,50 +10,34 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// TopicDescriptor describes topic emitted by the sink.
 type TopicDescriptor interface {
-	// GetNameComponents returns the names that should go into any string-based topic identifier.
-	// If the topic is a table, this will be the statement time name of the table, fully-qualified
-	// if that option was set when creating the changefeed.
 	GetNameComponents() []string
-	// GetTopicIdentifier returns a struct suitable for use as a unique key in a map containing
-	// all topics in a feed.
+
 	GetTopicIdentifier() TopicIdentifier
-	// GetVersion returns topic version.
-	// For example, the underlying data source (e.g. table) may change, in which case
-	// we may want to emit same Name/ID, but a different version number.
+
 	GetVersion() descpb.DescriptorVersion
-	// GetTargetSpecification() returns the target specification for this topic.
-	// Currently this is assumed to be 1:1, or to be many: 1 for EachColumnFamily topics.
+
 	GetTargetSpecification() jobspb.ChangefeedTargetSpecification
 }
 
-// TopicIdentifier is a minimal set of fields that
-// uniquely identifies a topic.
 type TopicIdentifier struct {
 	TableID  descpb.ID
 	FamilyID descpb.FamilyID
 }
 
-// TopicNamer generates and caches the strings used as topic keys by sinks,
-// using target specifications, options, and sink-specific string manipulation.
 type TopicNamer struct {
 	join       byte
 	prefix     string
 	singleName string
 	sanitize   func(string) string
 
-	// DisplayNames are initialized once from specs and may contain placeholder strings.
 	DisplayNames map[jobspb.ChangefeedTargetSpecification]string
 
-	// FullNames are generated whenever Name() is actually called (usually during sink.EmitRow).
-	// They do not contain placeholder strings.
 	FullNames map[TopicIdentifier]string
 
 	sliceCache []string
 }
 
-// TopicNameOption is an optional argument to MakeTopicNamer.
 type TopicNameOption interface {
 	set(*TopicNamer)
 }
@@ -67,69 +45,78 @@ type TopicNameOption interface {
 type optJoinByte byte
 
 func (o optJoinByte) set(tn *TopicNamer) {
+	__antithesis_instrumentation__.Notify(19016)
 	tn.join = byte(o)
 }
 
-// WithJoinByte overrides the default '.' separator between a table and family name.
 func WithJoinByte(b byte) TopicNameOption {
+	__antithesis_instrumentation__.Notify(19017)
 	return optJoinByte(b)
 }
 
 type optPrefix string
 
 func (o optPrefix) set(tn *TopicNamer) {
+	__antithesis_instrumentation__.Notify(19018)
 	tn.prefix = string(o)
 }
 
-// WithPrefix defines a prefix string for all topics named by this TopicNamer.
 func WithPrefix(s string) TopicNameOption {
+	__antithesis_instrumentation__.Notify(19019)
 	return optPrefix(s)
 }
 
 type optSingleName string
 
 func (o optSingleName) set(tn *TopicNamer) {
+	__antithesis_instrumentation__.Notify(19020)
 	tn.singleName = string(o)
 }
 
-// WithSingleName causes all topics named by this TopicNamer to be the same,
-// overriding things like the table name but not options like WithPrefix.
 func WithSingleName(s string) TopicNameOption {
+	__antithesis_instrumentation__.Notify(19021)
 	return optSingleName(s)
 }
 
 type optSanitize func(string) string
 
 func (o optSanitize) set(tn *TopicNamer) {
+	__antithesis_instrumentation__.Notify(19022)
 	tn.sanitize = o
 }
 
-// WithSanitizeFn defines a post-processor for all topic names.
 func WithSanitizeFn(fn func(string) string) TopicNameOption {
+	__antithesis_instrumentation__.Notify(19023)
 	return optSanitize(fn)
 }
 
-// MakeTopicNamer creates a TopicNamer.
-// specs are used to populate DisplayNames and the values iterated over in Each.
-// Add options using WithJoinByte, WithPrefix, WithSingleName, and/or WithSanitizeFn.
 func MakeTopicNamer(
 	specs []jobspb.ChangefeedTargetSpecification, opts ...TopicNameOption,
 ) (*TopicNamer, error) {
+	__antithesis_instrumentation__.Notify(19024)
 	tn := &TopicNamer{
 		join:         '.',
 		DisplayNames: make(map[jobspb.ChangefeedTargetSpecification]string, len(specs)),
 		FullNames:    make(map[TopicIdentifier]string),
 	}
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(19027)
 		opt.set(tn)
 	}
+	__antithesis_instrumentation__.Notify(19025)
 	for _, s := range specs {
+		__antithesis_instrumentation__.Notify(19028)
 		name, err := tn.makeDisplayName(s)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19030)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(19031)
 		}
+		__antithesis_instrumentation__.Notify(19029)
 		tn.DisplayNames[s] = name
 	}
+	__antithesis_instrumentation__.Notify(19026)
 
 	return tn, nil
 
@@ -137,88 +124,126 @@ func MakeTopicNamer(
 
 const familyPlaceholder = "{family}"
 
-// Name generates (with caching) a sink's topic identifier string.
 func (tn *TopicNamer) Name(td TopicDescriptor) (string, error) {
+	__antithesis_instrumentation__.Notify(19032)
 	if name, ok := tn.FullNames[td.GetTopicIdentifier()]; ok {
+		__antithesis_instrumentation__.Notify(19034)
 		return name, nil
+	} else {
+		__antithesis_instrumentation__.Notify(19035)
 	}
+	__antithesis_instrumentation__.Notify(19033)
 	name, err := tn.makeName(td.GetTargetSpecification(), td)
 	tn.FullNames[td.GetTopicIdentifier()] = name
 	return name, err
 }
 
-// DisplayNamesSlice gives all topics that are going to be emitted to,
-// suitable for displaying to the user on feed creation.
 func (tn *TopicNamer) DisplayNamesSlice() []string {
+	__antithesis_instrumentation__.Notify(19036)
 	if len(tn.sliceCache) > 0 {
+		__antithesis_instrumentation__.Notify(19039)
 		return tn.sliceCache
+	} else {
+		__antithesis_instrumentation__.Notify(19040)
 	}
+	__antithesis_instrumentation__.Notify(19037)
 	for _, n := range tn.DisplayNames {
+		__antithesis_instrumentation__.Notify(19041)
 		tn.sliceCache = append(tn.sliceCache, n)
 		if tn.singleName != "" {
+			__antithesis_instrumentation__.Notify(19042)
 			return tn.sliceCache
+		} else {
+			__antithesis_instrumentation__.Notify(19043)
 		}
 	}
+	__antithesis_instrumentation__.Notify(19038)
 	return tn.sliceCache
 }
 
-// Each is a convenience method that iterates a function over DisplayNamesSlice.
 func (tn *TopicNamer) Each(fn func(string) error) error {
+	__antithesis_instrumentation__.Notify(19044)
 	for _, name := range tn.DisplayNames {
+		__antithesis_instrumentation__.Notify(19046)
 		err := fn(name)
-		if tn.singleName != "" || err != nil {
+		if tn.singleName != "" || func() bool {
+			__antithesis_instrumentation__.Notify(19047)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(19048)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(19049)
 		}
 	}
+	__antithesis_instrumentation__.Notify(19045)
 	return nil
 }
 
-// A nil topic descriptor means we're building solely from the spec
-// and should use placeholders if necessary. Only necessary in the
-// EACH_FAMILY case as in the COLUMN_FAMILY case we know the name from
-// the spec.
 func (tn *TopicNamer) makeName(
 	s jobspb.ChangefeedTargetSpecification, td TopicDescriptor,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(19050)
 	switch s.Type {
 	case jobspb.ChangefeedTargetSpecification_PRIMARY_FAMILY_ONLY:
+		__antithesis_instrumentation__.Notify(19051)
 		return tn.nameFromComponents(s.StatementTimeName), nil
 	case jobspb.ChangefeedTargetSpecification_COLUMN_FAMILY:
+		__antithesis_instrumentation__.Notify(19052)
 		return tn.nameFromComponents(s.StatementTimeName, s.FamilyName), nil
 	case jobspb.ChangefeedTargetSpecification_EACH_FAMILY:
+		__antithesis_instrumentation__.Notify(19053)
 		if td == nil {
+			__antithesis_instrumentation__.Notify(19056)
 			return tn.nameFromComponents(s.StatementTimeName, familyPlaceholder), nil
+		} else {
+			__antithesis_instrumentation__.Notify(19057)
 		}
+		__antithesis_instrumentation__.Notify(19054)
 		return tn.nameFromComponents(td.GetNameComponents()...), nil
 	default:
+		__antithesis_instrumentation__.Notify(19055)
 		return "", errors.AssertionFailedf("unrecognized type %s", s.Type)
 	}
 }
 
 func (tn *TopicNamer) makeDisplayName(s jobspb.ChangefeedTargetSpecification) (string, error) {
-	return tn.makeName(s, nil /* no topic descriptor yet, use placeholders if needed */)
+	__antithesis_instrumentation__.Notify(19058)
+	return tn.makeName(s, nil)
 }
 
 func (tn *TopicNamer) nameFromComponents(components ...string) string {
-	// Use strings.Builder rather than strings.Join because the join
-	// character isn't used with the prefix, so we save a string copy this way.
+	__antithesis_instrumentation__.Notify(19059)
+
 	var b strings.Builder
 	b.WriteString(tn.prefix)
 	if tn.singleName != "" {
+		__antithesis_instrumentation__.Notify(19062)
 		b.WriteString(tn.singleName)
 	} else {
+		__antithesis_instrumentation__.Notify(19063)
 		for i, c := range components {
+			__antithesis_instrumentation__.Notify(19064)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(19066)
 				b.WriteByte(tn.join)
+			} else {
+				__antithesis_instrumentation__.Notify(19067)
 			}
+			__antithesis_instrumentation__.Notify(19065)
 			b.WriteString(c)
 		}
 	}
+	__antithesis_instrumentation__.Notify(19060)
 	str := b.String()
 
 	if tn.sanitize != nil {
+		__antithesis_instrumentation__.Notify(19068)
 		return tn.sanitize(str)
+	} else {
+		__antithesis_instrumentation__.Notify(19069)
 	}
+	__antithesis_instrumentation__.Notify(19061)
 
 	return str
 }

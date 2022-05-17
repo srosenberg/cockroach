@@ -1,51 +1,42 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pprofui
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/google/pprof/driver"
 	"github.com/spf13/pflag"
 )
 
-// pprofFlags is a wrapper to satisfy pprof's client flag interface.
-// That interface is satisfied by what the standard flag package
-// offers, with some tweaks. In this package, we just want to specify
-// the command line args directly; pprofFlags lets us do that
-// essentially by mocking out `os.Args`. `pprof` will register all of
-// its flags via this struct, and then they get populated from `args`
-// below.
 type pprofFlags struct {
-	args []string // passed to Parse()
+	args []string
 	*pflag.FlagSet
 }
 
 var _ driver.FlagSet = &pprofFlags{}
 
-// ExtraUsage is part of the driver.FlagSet interface.
 func (pprofFlags) ExtraUsage() string {
+	__antithesis_instrumentation__.Notify(190323)
 	return ""
 }
 
-// AddExtraUsage is part of the driver.FlagSet interface.
 func (pprofFlags) AddExtraUsage(eu string) {
+	__antithesis_instrumentation__.Notify(190324)
 }
 
 func (f pprofFlags) StringList(o, d, c string) *[]*string {
+	__antithesis_instrumentation__.Notify(190325)
 	return &[]*string{f.String(o, d, c)}
 }
 
 func (f pprofFlags) Parse(usage func()) []string {
+	__antithesis_instrumentation__.Notify(190326)
 	f.FlagSet.Usage = usage
 	if err := f.FlagSet.Parse(f.args); err != nil {
+		__antithesis_instrumentation__.Notify(190328)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(190329)
 	}
+	__antithesis_instrumentation__.Notify(190327)
 	return f.FlagSet.Args()
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgerror
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,20 +11,28 @@ import (
 	"github.com/gogo/protobuf/proto"
 )
 
-// WithConstraintName decorates the error with a severity.
 func WithConstraintName(err error, constraint string) error {
+	__antithesis_instrumentation__.Notify(560261)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(560263)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(560264)
 	}
+	__antithesis_instrumentation__.Notify(560262)
 
 	return &withConstraintName{cause: err, constraint: constraint}
 }
 
-// GetConstraintName attempts to unwrap and find a Severity.
 func GetConstraintName(err error) string {
+	__antithesis_instrumentation__.Notify(560265)
 	if c := (*withConstraintName)(nil); errors.As(err, &c) {
+		__antithesis_instrumentation__.Notify(560267)
 		return c.constraint
+	} else {
+		__antithesis_instrumentation__.Notify(560268)
 	}
+	__antithesis_instrumentation__.Notify(560266)
 	return ""
 }
 
@@ -46,44 +46,60 @@ var _ errors.SafeDetailer = (*withConstraintName)(nil)
 var _ fmt.Formatter = (*withConstraintName)(nil)
 var _ errors.SafeFormatter = (*withConstraintName)(nil)
 
-func (w *withConstraintName) Error() string { return w.cause.Error() }
-func (w *withConstraintName) Cause() error  { return w.cause }
-func (w *withConstraintName) Unwrap() error { return w.cause }
+func (w *withConstraintName) Error() string {
+	__antithesis_instrumentation__.Notify(560269)
+	return w.cause.Error()
+}
+func (w *withConstraintName) Cause() error {
+	__antithesis_instrumentation__.Notify(560270)
+	return w.cause
+}
+func (w *withConstraintName) Unwrap() error {
+	__antithesis_instrumentation__.Notify(560271)
+	return w.cause
+}
 func (w *withConstraintName) SafeDetails() []string {
-	// The constraint name is considered PII.
+	__antithesis_instrumentation__.Notify(560272)
+
 	return nil
 }
 
-func (w *withConstraintName) Format(s fmt.State, verb rune) { errors.FormatError(w, s, verb) }
+func (w *withConstraintName) Format(s fmt.State, verb rune) {
+	__antithesis_instrumentation__.Notify(560273)
+	errors.FormatError(w, s, verb)
+}
 
 func (w *withConstraintName) SafeFormatError(p errors.Printer) (next error) {
+	__antithesis_instrumentation__.Notify(560274)
 	if p.Detail() {
+		__antithesis_instrumentation__.Notify(560276)
 		p.Printf("constraint name: %s", w.constraint)
+	} else {
+		__antithesis_instrumentation__.Notify(560277)
 	}
+	__antithesis_instrumentation__.Notify(560275)
 	return w.cause
 }
 
 func encodeWithConstraintName(_ context.Context, err error) (string, []string, proto.Message) {
+	__antithesis_instrumentation__.Notify(560278)
 	w := err.(*withConstraintName)
 	return "", nil, &errorspb.StringPayload{Msg: w.constraint}
 }
 
-// decodeWithConstraintName is a custom decoder that will be used when decoding
-// withConstraintName error objects.
-// Note that as the last argument it takes proto.Message (and not
-// protoutil.Message which is required by linter) because the latter brings in
-// additional dependencies into this package and the former is sufficient here.
 func decodeWithConstraintName(
 	_ context.Context, cause error, _ string, _ []string, payload proto.Message,
 ) error {
+	__antithesis_instrumentation__.Notify(560279)
 	m, ok := payload.(*errorspb.StringPayload)
 	if !ok {
-		// If this ever happens, this means some version of the library
-		// (presumably future) changed the payload type, and we're
-		// receiving this here. In this case, give up and let
-		// DecodeError use the opaque type.
+		__antithesis_instrumentation__.Notify(560281)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(560282)
 	}
+	__antithesis_instrumentation__.Notify(560280)
 	return &withConstraintName{cause: cause, constraint: m.Msg}
 }
 

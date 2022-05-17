@@ -15,6 +15,7 @@ go_library(
         "//pkg/cli/clisqlexec",
         "//pkg/cli/clisqlshell",
         "//pkg/server/pgurl",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_mattn_go_isatty//:go-isatty",
     ],

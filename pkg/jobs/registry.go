@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -43,17 +35,13 @@ import (
 	"github.com/cockroachdb/logtags"
 )
 
-// adoptedJobs represents a the epoch and cancelation of a job id being run
-// by the registry.
 type adoptedJob struct {
 	session sqlliveness.Session
 	isIdle  bool
-	// Calling the func will cancel the context the job was resumed with.
+
 	cancel context.CancelFunc
 }
 
-// adoptionNotice is used by Run to notify the registry to resumeClaimedJobs
-// and by TestingNudgeAdoptionQueue to claimAndResumeClaimedJobs.
 type adoptionNotice bool
 
 const (
@@ -61,31 +49,6 @@ const (
 	claimAndResumeClaimedJobs adoptionNotice = true
 )
 
-// Registry creates Jobs and manages their leases and cancelation.
-//
-// Job information is stored in the `system.jobs` table.  Each node will
-// poll this table and establish a lease on any claimed job. Registry
-// calculates its own liveness for a node based on the expiration time
-// of the underlying node-liveness lease.  This is because we want to
-// allow jobs assigned to temporarily non-live (i.e. saturated) nodes to
-// continue without being canceled.
-//
-// When a lease has been determined to be stale, a node may attempt to
-// claim the relevant job. Thus, a Registry must occasionally
-// re-validate its own leases to ensure that another node has not stolen
-// the work and cancel the local job if so.
-//
-// Prior versions of Registry used the node's epoch value to determine
-// whether or not a job should be stolen.  The current implementation
-// uses a time-based approach, where a node's last reported expiration
-// timestamp is used to calculate a liveness value for the purpose
-// of job scheduling.
-//
-// Mixed-version operation between epoch- and time-based nodes works
-// since we still publish epoch information in the leases for time-based
-// nodes.  From the perspective of a time-based node, an epoch-based
-// node simply behaves as though its leniency period is 0. Epoch-based
-// nodes will see time-based nodes delay the act of stealing a job.
 type Registry struct {
 	serverCtx context.Context
 
@@ -102,80 +65,30 @@ type Registry struct {
 	td        *tracedumper.TraceDumper
 	knobs     TestingKnobs
 
-	// adoptionChan is used to nudge the registry to resume claimed jobs and
-	// potentially attempt to claim jobs.
 	adoptionCh  chan adoptionNotice
 	sqlInstance sqlliveness.Instance
 
-	// sessionBoundInternalExecutorFactory provides a way for jobs to create
-	// internal executors. This is rarely needed, and usually job resumers should
-	// use the internal executor from the JobExecCtx. The intended user of this
-	// interface is the schema change job resumer, which needs to set the
-	// tableCollectionModifier on the internal executor to different values in
-	// multiple concurrent queries. This situation is an exception to the internal
-	// executor generally being a stateless wrapper, and makes it impossible to
-	// reuse the same internal executor across all the queries (without
-	// refactoring to get rid of the tableCollectionModifier field, which we
-	// should do eventually).
-	//
-	// Note that, while this API is not ideal, internal executors are basically
-	// lightweight wrappers requiring no additional teardown. There's not much
-	// cost incurred in creating these.
-	//
-	// TODO (lucy): We should refactor and get rid of the tableCollectionModifier
-	// field. Modifying the TableCollection is basically a per-query operation
-	// and should be a per-query setting. #34304 is the issue for creating/
-	// improving this API.
 	sessionBoundInternalExecutorFactory sqlutil.SessionBoundInternalExecutorFactory
 
-	// if non-empty, indicates path to file that prevents any job adoptions.
 	preventAdoptionFile string
 
 	mu struct {
 		syncutil.Mutex
 
-		// adoptedJobs holds a map from job id to its context cancel func and epoch.
-		// It contains the jobs that are adopted and probably being run. One exception is
-		// jobs scheduled inside a transaction, they will show in this map but will
-		// only be run when the transaction commits.
 		adoptedJobs map[jobspb.JobID]*adoptedJob
 
-		// waiting is a set of jobs for which we're waiting to complete. In general,
-		// we expect these jobs to have been started with a claim by this instance.
-		// That may not have lasted to completion. Separately a goroutine will be
-		// passively polling for these jobs to complete. If they complete locally,
-		// the waitingSet will be updated appropriately.
 		waiting jobWaitingSets
 	}
 
-	// withSessionEvery ensures that logging when failing to get a live session
-	// is not too loud.
 	withSessionEvery log.EveryN
 
 	TestingResumerCreationKnobs map[jobspb.Type]func(Resumer) Resumer
 }
 
-// jobExecCtxMaker is a wrapper around sql.NewInternalPlanner. It returns an
-// *sql.planner as an interface{} due to package dependency cycles. It should
-// be cast to that type in the sql package when it is used. Returns a cleanup
-// function that must be called once the caller is done with the planner.
-//
-// TODO(mjibson): Can we do something to avoid passing an interface{} here
-// that must be cast in a Resumer? It cannot be done here because
-// JobExecContext lives in the sql package, which would create a dependency
-// cycle if listed here. Furthermore, moving JobExecContext into a common
-// subpackage like sqlbase is difficult because of the amount of sql-only
-// stuff that JobExecContext exports. One other choice is to merge this package
-// back into the sql package. There's maybe a better way that I'm unaware of.
 type jobExecCtxMaker func(opName string, user security.SQLUsername) (interface{}, func())
 
-// PreventAdoptionFile is the name of the file which, if present in the first
-// on-disk store, will prevent the adoption of background jobs by that node.
 const PreventAdoptionFile = "DISABLE_STARTING_BACKGROUND_JOBS"
 
-// MakeRegistry creates a new Registry. planFn is a wrapper around
-// sql.newInternalPlanner. It returns a sql.JobExecCtx, but must be
-// coerced into that in the Resumer functions.
 func MakeRegistry(
 	ctx context.Context,
 	ac log.AmbientContext,
@@ -193,6 +106,7 @@ func MakeRegistry(
 	td *tracedumper.TraceDumper,
 	knobs *TestingKnobs,
 ) *Registry {
+	__antithesis_instrumentation__.Notify(84254)
 	r := &Registry{
 		serverCtx:           ctx,
 		ac:                  ac,
@@ -207,78 +121,74 @@ func MakeRegistry(
 		execCtx:             execCtxFn,
 		preventAdoptionFile: preventAdoptionFile,
 		td:                  td,
-		// Use a non-zero buffer to allow queueing of notifications.
-		// The writing method will use a default case to avoid blocking
-		// if a notification is already queued.
+
 		adoptionCh:       make(chan adoptionNotice, 1),
 		withSessionEvery: log.Every(time.Second),
 	}
 	if knobs != nil {
+		__antithesis_instrumentation__.Notify(84256)
 		r.knobs = *knobs
 		if knobs.TimeSource != nil {
+			__antithesis_instrumentation__.Notify(84257)
 			r.clock = knobs.TimeSource
+		} else {
+			__antithesis_instrumentation__.Notify(84258)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(84259)
 	}
+	__antithesis_instrumentation__.Notify(84255)
 	r.mu.adoptedJobs = make(map[jobspb.JobID]*adoptedJob)
 	r.mu.waiting = make(map[jobspb.JobID]map[*waitingSet]struct{})
 	r.metrics.init(histogramWindowInterval)
 	return r
 }
 
-// SetSessionBoundInternalExecutorFactory sets the
-// SessionBoundInternalExecutorFactory that will be used by the job registry
-// executor. We expose this separately from the constructor to avoid a circular
-// dependency.
 func (r *Registry) SetSessionBoundInternalExecutorFactory(
 	factory sqlutil.SessionBoundInternalExecutorFactory,
 ) {
+	__antithesis_instrumentation__.Notify(84260)
 	r.sessionBoundInternalExecutorFactory = factory
 }
 
-// MetricsStruct returns the metrics for production monitoring of each job type.
-// They're all stored as the `metric.Struct` interface because of dependency
-// cycles.
 func (r *Registry) MetricsStruct() *Metrics {
+	__antithesis_instrumentation__.Notify(84261)
 	return &r.metrics
 }
 
-// CurrentlyRunningJobs returns a slice of the ids of all jobs running on this node.
 func (r *Registry) CurrentlyRunningJobs() []jobspb.JobID {
+	__antithesis_instrumentation__.Notify(84262)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	jobs := make([]jobspb.JobID, 0, len(r.mu.adoptedJobs))
 	for jID := range r.mu.adoptedJobs {
+		__antithesis_instrumentation__.Notify(84264)
 		jobs = append(jobs, jID)
 	}
+	__antithesis_instrumentation__.Notify(84263)
 	return jobs
 }
 
-// ID returns a unique during the lifetime of the registry id that is
-// used for keying sqlliveness claims held by the registry.
 func (r *Registry) ID() base.SQLInstanceID {
+	__antithesis_instrumentation__.Notify(84265)
 	return r.nodeID.SQLInstanceID()
 }
 
-// makeCtx returns a new context from r's ambient context and an associated
-// cancel func.
 func (r *Registry) makeCtx() (context.Context, func()) {
+	__antithesis_instrumentation__.Notify(84266)
 	ctx := r.ac.AnnotateCtx(context.Background())
-	// AddTags and not WithTags, so that we combine the tags with those
-	// filled by AnnotateCtx.
-	// TODO(knz): This may not be necessary if the AmbientContext had
-	// all the tags already.
-	// See: https://github.com/cockroachdb/cockroach/issues/72815
+
 	ctx = logtags.AddTags(ctx, logtags.FromContext(r.serverCtx))
 	return context.WithCancel(ctx)
 }
 
-// MakeJobID generates a new job ID.
 func (r *Registry) MakeJobID() jobspb.JobID {
+	__antithesis_instrumentation__.Notify(84267)
 	return jobspb.JobID(builtins.GenerateUniqueInt(r.nodeID.SQLInstanceID()))
 }
 
-// newJob creates a new Job.
 func (r *Registry) newJob(ctx context.Context, record Record) *Job {
+	__antithesis_instrumentation__.Notify(84268)
 	job := &Job{
 		id:        record.JobID,
 		registry:  r,
@@ -290,8 +200,8 @@ func (r *Registry) newJob(ctx context.Context, record Record) *Job {
 	return job
 }
 
-// makePayload creates a Payload structure based on the given Record.
 func (r *Registry) makePayload(ctx context.Context, record *Record) jobspb.Payload {
+	__antithesis_instrumentation__.Notify(84269)
 	return jobspb.Payload{
 		Description:            record.Description,
 		Statement:              record.Statements,
@@ -304,108 +214,151 @@ func (r *Registry) makePayload(ctx context.Context, record *Record) jobspb.Paylo
 	}
 }
 
-// makeProgress creates a Progress structure based on the given Record.
 func (r *Registry) makeProgress(record *Record) jobspb.Progress {
+	__antithesis_instrumentation__.Notify(84270)
 	return jobspb.Progress{
 		Details:       jobspb.WrapProgressDetails(record.Progress),
 		RunningStatus: string(record.RunningStatus),
 	}
 }
 
-// CreateJobsWithTxn creates jobs in fixed-size batches. There must be at least
-// one job to create, otherwise the function returns an error. The function
-// returns the IDs of the jobs created.
 func (r *Registry) CreateJobsWithTxn(
 	ctx context.Context, txn *kv.Txn, records []*Record,
 ) ([]jobspb.JobID, error) {
+	__antithesis_instrumentation__.Notify(84271)
 	created := make([]jobspb.JobID, 0, len(records))
 	for toCreate := records; len(toCreate) > 0; {
+		__antithesis_instrumentation__.Notify(84273)
 		const maxBatchSize = 100
 		batchSize := len(toCreate)
 		if batchSize > maxBatchSize {
+			__antithesis_instrumentation__.Notify(84276)
 			batchSize = maxBatchSize
+		} else {
+			__antithesis_instrumentation__.Notify(84277)
 		}
+		__antithesis_instrumentation__.Notify(84274)
 		createdInBatch, err := r.createJobsInBatchWithTxn(ctx, txn, toCreate[:batchSize])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(84278)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(84279)
 		}
+		__antithesis_instrumentation__.Notify(84275)
 		created = append(created, createdInBatch...)
 		toCreate = toCreate[batchSize:]
 	}
+	__antithesis_instrumentation__.Notify(84272)
 	return created, nil
 }
 
-// createJobsInBatchWithTxn creates a batch of jobs from given records in a
-// transaction.
 func (r *Registry) createJobsInBatchWithTxn(
 	ctx context.Context, txn *kv.Txn, records []*Record,
 ) ([]jobspb.JobID, error) {
+	__antithesis_instrumentation__.Notify(84280)
 	s, err := r.sqlInstance.Session(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84285)
 		return nil, errors.Wrap(err, "error getting live session")
+	} else {
+		__antithesis_instrumentation__.Notify(84286)
 	}
+	__antithesis_instrumentation__.Notify(84281)
 	start := timeutil.Now()
 	if txn != nil {
+		__antithesis_instrumentation__.Notify(84287)
 		start = txn.ReadTimestamp().GoTime()
+	} else {
+		__antithesis_instrumentation__.Notify(84288)
 	}
+	__antithesis_instrumentation__.Notify(84282)
 	modifiedMicros := timeutil.ToUnixMicros(start)
 	stmt, args, jobIDs, err := r.batchJobInsertStmt(ctx, s.ID(), records, modifiedMicros)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84289)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84290)
 	}
+	__antithesis_instrumentation__.Notify(84283)
 	if _, err = r.ex.Exec(
 		ctx, "job-rows-batch-insert", txn, stmt, args...,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(84291)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84292)
 	}
+	__antithesis_instrumentation__.Notify(84284)
 	return jobIDs, nil
 }
 
-// batchJobInsertStmt creates an INSERT statement and its corresponding arguments
-// for batched jobs creation.
 func (r *Registry) batchJobInsertStmt(
 	ctx context.Context, sessionID sqlliveness.SessionID, records []*Record, modifiedMicros int64,
 ) (string, []interface{}, []jobspb.JobID, error) {
+	__antithesis_instrumentation__.Notify(84293)
 	instanceID := r.ID()
 	const numColumns = 6
 	columns := [numColumns]string{`id`, `status`, `payload`, `progress`, `claim_session_id`, `claim_instance_id`}
 	marshalPanic := func(m protoutil.Message) []byte {
+		__antithesis_instrumentation__.Notify(84298)
 		data, err := protoutil.Marshal(m)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(84300)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(84301)
 		}
+		__antithesis_instrumentation__.Notify(84299)
 		return data
 	}
+	__antithesis_instrumentation__.Notify(84294)
 	valueFns := map[string]func(*Record) interface{}{
-		`id`:                func(rec *Record) interface{} { return rec.JobID },
-		`status`:            func(rec *Record) interface{} { return StatusRunning },
-		`claim_session_id`:  func(rec *Record) interface{} { return sessionID.UnsafeBytes() },
-		`claim_instance_id`: func(rec *Record) interface{} { return instanceID },
+		`id`:     func(rec *Record) interface{} { __antithesis_instrumentation__.Notify(84302); return rec.JobID },
+		`status`: func(rec *Record) interface{} { __antithesis_instrumentation__.Notify(84303); return StatusRunning },
+		`claim_session_id`: func(rec *Record) interface{} {
+			__antithesis_instrumentation__.Notify(84304)
+			return sessionID.UnsafeBytes()
+		},
+		`claim_instance_id`: func(rec *Record) interface{} { __antithesis_instrumentation__.Notify(84305); return instanceID },
 		`payload`: func(rec *Record) interface{} {
+			__antithesis_instrumentation__.Notify(84306)
 			payload := r.makePayload(ctx, rec)
 			return marshalPanic(&payload)
 		},
 		`progress`: func(rec *Record) interface{} {
+			__antithesis_instrumentation__.Notify(84307)
 			progress := r.makeProgress(rec)
 			progress.ModifiedMicros = modifiedMicros
 			return marshalPanic(&progress)
 		},
 	}
+	__antithesis_instrumentation__.Notify(84295)
 	appendValues := func(rec *Record, vals *[]interface{}) (err error) {
+		__antithesis_instrumentation__.Notify(84308)
 		defer func() {
+			__antithesis_instrumentation__.Notify(84311)
 			switch r := recover(); r.(type) {
 			case nil:
+				__antithesis_instrumentation__.Notify(84312)
 			case error:
+				__antithesis_instrumentation__.Notify(84313)
 				err = errors.CombineErrors(err, errors.Wrapf(r.(error), "encoding job %d", rec.JobID))
 			default:
+				__antithesis_instrumentation__.Notify(84314)
 				panic(r)
 			}
 		}()
+		__antithesis_instrumentation__.Notify(84309)
 		for _, c := range columns {
+			__antithesis_instrumentation__.Notify(84315)
 			*vals = append(*vals, valueFns[c](rec))
 		}
+		__antithesis_instrumentation__.Notify(84310)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(84296)
 	args := make([]interface{}, 0, len(records)*numColumns)
 	jobIDs := make([]jobspb.JobID, 0, len(records))
 	var buf strings.Builder
@@ -414,100 +367,136 @@ func (r *Registry) batchJobInsertStmt(
 	buf.WriteString(`) VALUES `)
 	argIdx := 1
 	for i, rec := range records {
+		__antithesis_instrumentation__.Notify(84316)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(84320)
 			buf.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(84321)
 		}
+		__antithesis_instrumentation__.Notify(84317)
 		buf.WriteString("(")
 		for j := range columns {
+			__antithesis_instrumentation__.Notify(84322)
 			if j > 0 {
+				__antithesis_instrumentation__.Notify(84324)
 				buf.WriteString(", ")
+			} else {
+				__antithesis_instrumentation__.Notify(84325)
 			}
+			__antithesis_instrumentation__.Notify(84323)
 			buf.WriteString("$")
 			buf.WriteString(strconv.Itoa(argIdx))
 			argIdx++
 		}
+		__antithesis_instrumentation__.Notify(84318)
 		buf.WriteString(")")
 		if err := appendValues(rec, &args); err != nil {
+			__antithesis_instrumentation__.Notify(84326)
 			return "", nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(84327)
 		}
+		__antithesis_instrumentation__.Notify(84319)
 		jobIDs = append(jobIDs, rec.JobID)
 	}
+	__antithesis_instrumentation__.Notify(84297)
 	return buf.String(), args, jobIDs, nil
 }
 
-// CreateJobWithTxn creates a job to be started later with StartJob. It stores
-// the job in the jobs table, marks it pending and gives the current node a
-// lease.
 func (r *Registry) CreateJobWithTxn(
 	ctx context.Context, record Record, jobID jobspb.JobID, txn *kv.Txn,
 ) (*Job, error) {
-	// TODO(sajjad): Clean up the interface - remove jobID from the params as
-	// Record now has JobID field.
+	__antithesis_instrumentation__.Notify(84328)
+
 	record.JobID = jobID
 	j := r.newJob(ctx, record)
 
 	s, err := r.sqlInstance.Session(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84334)
 		return nil, errors.Wrap(err, "error getting live session")
+	} else {
+		__antithesis_instrumentation__.Notify(84335)
 	}
+	__antithesis_instrumentation__.Notify(84329)
 	j.session = s
 	start := timeutil.Now()
 	if txn != nil {
+		__antithesis_instrumentation__.Notify(84336)
 		start = txn.ReadTimestamp().GoTime()
+	} else {
+		__antithesis_instrumentation__.Notify(84337)
 	}
+	__antithesis_instrumentation__.Notify(84330)
 	j.mu.progress.ModifiedMicros = timeutil.ToUnixMicros(start)
 	payloadBytes, err := protoutil.Marshal(&j.mu.payload)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84338)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84339)
 	}
+	__antithesis_instrumentation__.Notify(84331)
 	progressBytes, err := protoutil.Marshal(&j.mu.progress)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84340)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84341)
 	}
+	__antithesis_instrumentation__.Notify(84332)
 	if _, err = j.registry.ex.Exec(ctx, "job-row-insert", txn, `
 INSERT INTO system.jobs (id, status, payload, progress, claim_session_id, claim_instance_id)
 VALUES ($1, $2, $3, $4, $5, $6)`, jobID, StatusRunning, payloadBytes, progressBytes, s.ID().UnsafeBytes(), r.ID(),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(84342)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84343)
 	}
+	__antithesis_instrumentation__.Notify(84333)
 	return j, nil
 }
 
-// CreateAdoptableJobWithTxn creates a job which will be adopted for execution
-// at a later time by some node in the cluster.
 func (r *Registry) CreateAdoptableJobWithTxn(
 	ctx context.Context, record Record, jobID jobspb.JobID, txn *kv.Txn,
 ) (*Job, error) {
-	// TODO(sajjad): Clean up the interface - remove jobID from the params as
-	// Record now has JobID field.
+	__antithesis_instrumentation__.Notify(84344)
+
 	record.JobID = jobID
 	j := r.newJob(ctx, record)
 	if err := j.runInTxn(ctx, txn, func(ctx context.Context, txn *kv.Txn) error {
-		// Note: although the following uses ReadTimestamp and
-		// ReadTimestamp can diverge from the value of now() throughout a
-		// transaction, this may be OK -- we merely required ModifiedMicro
-		// to be equal *or greater* than previously inserted timestamps
-		// computed by now(). For now ReadTimestamp can only move forward
-		// and the assertion ReadTimestamp >= now() holds at all times.
+		__antithesis_instrumentation__.Notify(84346)
+
 		j.mu.progress.ModifiedMicros = timeutil.ToUnixMicros(txn.ReadTimestamp().GoTime())
 		payloadBytes, err := protoutil.Marshal(&j.mu.payload)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(84350)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(84351)
 		}
+		__antithesis_instrumentation__.Notify(84347)
 		progressBytes, err := protoutil.Marshal(&j.mu.progress)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(84352)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(84353)
 		}
-		// Set createdByType and createdByID to NULL if we don't know them.
+		__antithesis_instrumentation__.Notify(84348)
+
 		var createdByType, createdByID interface{}
 		if j.createdBy != nil {
+			__antithesis_instrumentation__.Notify(84354)
 			createdByType = j.createdBy.Name
 			createdByID = j.createdBy.ID
+		} else {
+			__antithesis_instrumentation__.Notify(84355)
 		}
+		__antithesis_instrumentation__.Notify(84349)
 
-		// Insert the job row, but do not set a `claim_session_id`. By not
-		// setting the claim, the job can be adopted by any node and will
-		// be adopted by the node which next runs the adoption loop.
 		const stmt = `INSERT
   INTO system.jobs (
                     id,
@@ -522,138 +511,141 @@ VALUES ($1, $2, $3, $4, $5, $6);`
 			jobID, StatusRunning, payloadBytes, progressBytes, createdByType, createdByID)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(84356)
 		return nil, errors.Wrap(err, "CreateAdoptableJobInTxn")
+	} else {
+		__antithesis_instrumentation__.Notify(84357)
 	}
+	__antithesis_instrumentation__.Notify(84345)
 	return j, nil
 }
 
-// CreateStartableJobWithTxn creates a job to be started later, after the
-// creating txn commits. The method uses the passed txn to write the job in the
-// jobs table, marks it pending and gives the current node a lease. It
-// additionally registers the job with the Registry which will prevent the
-// Registry from adopting the job after the transaction commits. The resultsCh
-// will be connected to the output of the job and written to after the returned
-// StartableJob is started.
-//
-// The returned job is not associated with the user transaction. The intention
-// is that the job will not be modified again in txn. If the transaction is
-// committed, the caller must explicitly Start it. If the transaction is rolled
-// back then the caller must call CleanupOnRollback to unregister the job from
-// the Registry.
-//
-// When used in a closure that is retryable in the presence of transaction
-// restarts, the job ID must be stable across retries to avoid leaking tracing
-// spans and registry entries. The intended usage is to define the ID and
-// *StartableJob outside the closure. The StartableJob referred to will remain
-// the same if the method is called with the same job ID and has already been
-// initialized with a tracing span and registered; otherwise, a new one will be
-// allocated, and sj will point to it. The point is to ensure that the tracing
-// span is created and the job registered exactly once, if and only if the
-// transaction commits. This is a fragile API.
 func (r *Registry) CreateStartableJobWithTxn(
 	ctx context.Context, sj **StartableJob, jobID jobspb.JobID, txn *kv.Txn, record Record,
 ) error {
+	__antithesis_instrumentation__.Notify(84358)
 	alreadyInitialized := *sj != nil
 	if alreadyInitialized {
+		__antithesis_instrumentation__.Notify(84364)
 		if jobID != (*sj).Job.ID() {
+			__antithesis_instrumentation__.Notify(84365)
 			log.Fatalf(ctx,
 				"attempted to rewrite startable job for ID %d with unexpected ID %d",
 				(*sj).Job.ID(), jobID,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(84366)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(84367)
 	}
+	__antithesis_instrumentation__.Notify(84359)
 
 	j, err := r.CreateJobWithTxn(ctx, record, jobID, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84368)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84369)
 	}
+	__antithesis_instrumentation__.Notify(84360)
 	resumer, err := r.createResumer(j, r.settings)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84370)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84371)
 	}
+	__antithesis_instrumentation__.Notify(84361)
 
 	var resumerCtx context.Context
 	var cancel func()
 	var execDone chan struct{}
 	if !alreadyInitialized {
-		// Using a new context allows for independent lifetimes and cancellation.
+		__antithesis_instrumentation__.Notify(84372)
+
 		resumerCtx, cancel = r.makeCtx()
 
 		if alreadyAdopted := r.addAdoptedJob(jobID, j.session, cancel); alreadyAdopted {
+			__antithesis_instrumentation__.Notify(84374)
 			log.Fatalf(
 				ctx,
 				"job %d: was just created but found in registered adopted jobs",
 				jobID,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(84375)
 		}
+		__antithesis_instrumentation__.Notify(84373)
 		execDone = make(chan struct{})
+	} else {
+		__antithesis_instrumentation__.Notify(84376)
 	}
+	__antithesis_instrumentation__.Notify(84362)
 
 	if !alreadyInitialized {
+		__antithesis_instrumentation__.Notify(84377)
 		*sj = &StartableJob{}
 		(*sj).resumerCtx = resumerCtx
 		(*sj).cancel = cancel
 		(*sj).execDone = execDone
+	} else {
+		__antithesis_instrumentation__.Notify(84378)
 	}
+	__antithesis_instrumentation__.Notify(84363)
 	(*sj).Job = j
 	(*sj).resumer = resumer
 	(*sj).txn = txn
 	return nil
 }
 
-// LoadJob loads an existing job with the given jobID from the system.jobs
-// table.
-//
-// WARNING: Avoid new uses of this function. The returned Job allows
-// for mutation even if the instance no longer holds a valid claim on
-// the job.
-//
-// TODO(ssd): Remove this API and replace it with a safer API.
 func (r *Registry) LoadJob(ctx context.Context, jobID jobspb.JobID) (*Job, error) {
+	__antithesis_instrumentation__.Notify(84379)
 	return r.LoadJobWithTxn(ctx, jobID, nil)
 }
 
-// LoadClaimedJob loads an existing job with the given jobID from the
-// system.jobs table. The job must have already been claimed by this
-// Registry.
 func (r *Registry) LoadClaimedJob(ctx context.Context, jobID jobspb.JobID) (*Job, error) {
+	__antithesis_instrumentation__.Notify(84380)
 	j, err := r.getClaimedJob(jobID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84383)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84384)
 	}
+	__antithesis_instrumentation__.Notify(84381)
 	if err := j.load(ctx, nil); err != nil {
+		__antithesis_instrumentation__.Notify(84385)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84386)
 	}
+	__antithesis_instrumentation__.Notify(84382)
 	return j, nil
 }
 
-// LoadJobWithTxn does the same as above, but using the transaction passed in
-// the txn argument. Passing a nil transaction is equivalent to calling LoadJob
-// in that a transaction will be automatically created.
 func (r *Registry) LoadJobWithTxn(
 	ctx context.Context, jobID jobspb.JobID, txn *kv.Txn,
 ) (*Job, error) {
+	__antithesis_instrumentation__.Notify(84387)
 	j := &Job{
 		id:       jobID,
 		registry: r,
 	}
 	if err := j.load(ctx, txn); err != nil {
+		__antithesis_instrumentation__.Notify(84389)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84390)
 	}
+	__antithesis_instrumentation__.Notify(84388)
 	return j, nil
 }
 
-// UpdateJobWithTxn calls the Update method on an existing job with jobID, using
-// a transaction passed in the txn argument. Passing a nil transaction means
-// that a txn will be automatically created. The useReadLock parameter will
-// have the update acquire an exclusive lock on the job row when reading. This
-// can help eliminate restarts in the face of concurrent updates at the cost of
-// locking the row from readers. Most updates of a job do not expect contention
-// and may do extra work and thus should not do locking. Cases where the job
-// is used to coordinate resources from multiple nodes may benefit from locking.
 func (r *Registry) UpdateJobWithTxn(
 	ctx context.Context, jobID jobspb.JobID, txn *kv.Txn, useReadLock bool, updateFunc UpdateFn,
 ) error {
+	__antithesis_instrumentation__.Notify(84391)
 	j := &Job{
 		id:       jobID,
 		registry: r,
@@ -661,7 +653,6 @@ func (r *Registry) UpdateJobWithTxn(
 	return j.update(ctx, txn, useReadLock, updateFunc)
 }
 
-// TODO (sajjad): make maxAdoptionsPerLoop a cluster setting.
 var maxAdoptionsPerLoop = envutil.EnvOrDefaultInt(`COCKROACH_JOB_ADOPTIONS_PER_PERIOD`, 10)
 
 const removeClaimsForDeadSessionsQuery = `
@@ -686,37 +677,53 @@ SELECT claim_session_id
 type withSessionFunc func(ctx context.Context, s sqlliveness.Session)
 
 func (r *Registry) withSession(ctx context.Context, f withSessionFunc) {
+	__antithesis_instrumentation__.Notify(84392)
 	s, err := r.sqlInstance.Session(ctx)
 	if err != nil {
-		if log.ExpensiveLogEnabled(ctx, 2) ||
-			(ctx.Err() == nil && r.withSessionEvery.ShouldLog()) {
+		__antithesis_instrumentation__.Notify(84394)
+		if log.ExpensiveLogEnabled(ctx, 2) || func() bool {
+			__antithesis_instrumentation__.Notify(84396)
+			return (ctx.Err() == nil && func() bool {
+				__antithesis_instrumentation__.Notify(84397)
+				return r.withSessionEvery.ShouldLog() == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(84398)
 			log.Errorf(ctx, "error getting live session: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(84399)
 		}
+		__antithesis_instrumentation__.Notify(84395)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(84400)
 	}
+	__antithesis_instrumentation__.Notify(84393)
 
 	log.VEventf(ctx, 1, "registry live claim (instance_id: %s, sid: %s)", r.ID(), s.ID())
 	f(ctx, s)
 }
 
-// Start polls the current node for liveness failures and cancels all registered
-// jobs if it observes a failure. Otherwise it starts all the main daemons of
-// registry that poll the jobs table and start/cancel/gc jobs.
 func (r *Registry) Start(ctx context.Context, stopper *stop.Stopper) error {
+	__antithesis_instrumentation__.Notify(84401)
 	wrapWithSession := func(f withSessionFunc) func(ctx context.Context) {
-		return func(ctx context.Context) { r.withSession(ctx, f) }
+		__antithesis_instrumentation__.Notify(84411)
+		return func(ctx context.Context) { __antithesis_instrumentation__.Notify(84412); r.withSession(ctx, f) }
 	}
+	__antithesis_instrumentation__.Notify(84402)
 
-	// removeClaimsFromDeadSessions queries the jobs table for non-terminal
-	// jobs and nullifies their claims if the claims are owned by known dead sessions.
 	removeClaimsFromDeadSessions := func(ctx context.Context, s sqlliveness.Session) {
+		__antithesis_instrumentation__.Notify(84413)
 		if err := r.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-			// Run the expiration transaction at low priority to ensure that it does
-			// not contend with foreground reads. Note that the adoption and cancellation
-			// queries also use low priority so they will interact nicely.
+			__antithesis_instrumentation__.Notify(84414)
+
 			if err := txn.SetUserPriority(roachpb.MinUserPriority); err != nil {
+				__antithesis_instrumentation__.Notify(84416)
 				return errors.WithAssertionFailure(err)
+			} else {
+				__antithesis_instrumentation__.Notify(84417)
 			}
+			__antithesis_instrumentation__.Notify(84415)
 			_, err := r.ex.ExecEx(
 				ctx, "expire-sessions", nil,
 				sessiondata.InternalExecutorOverride{User: security.RootUserName()},
@@ -726,44 +733,64 @@ func (r *Registry) Start(ctx context.Context, stopper *stop.Stopper) error {
 			)
 			return err
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(84418)
 			log.Errorf(ctx, "error expiring job sessions: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(84419)
 		}
 	}
-	// servePauseAndCancelRequests queries tho pause-requested and cancel-requested
-	// jobs that this node has claimed and sets their states to paused or cancel
-	// respectively, and then stops the execution of those jobs.
+	__antithesis_instrumentation__.Notify(84403)
+
 	servePauseAndCancelRequests := func(ctx context.Context, s sqlliveness.Session) {
+		__antithesis_instrumentation__.Notify(84420)
 		if err := r.servePauseAndCancelRequests(ctx, s); err != nil {
+			__antithesis_instrumentation__.Notify(84421)
 			log.Errorf(ctx, "failed to serve pause and cancel requests: %v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(84422)
 		}
 	}
+	__antithesis_instrumentation__.Notify(84404)
 	cancelLoopTask := wrapWithSession(func(ctx context.Context, s sqlliveness.Session) {
+		__antithesis_instrumentation__.Notify(84423)
 		removeClaimsFromDeadSessions(ctx, s)
 		r.maybeCancelJobs(ctx, s)
 		servePauseAndCancelRequests(ctx, s)
 	})
-	// claimJobs iterates the set of jobs which are not currently claimed and
-	// claims jobs up to maxAdoptionsPerLoop.
+	__antithesis_instrumentation__.Notify(84405)
+
 	claimJobs := wrapWithSession(func(ctx context.Context, s sqlliveness.Session) {
+		__antithesis_instrumentation__.Notify(84424)
 		if r.adoptionDisabled(ctx) {
+			__antithesis_instrumentation__.Notify(84426)
 			log.Warningf(ctx, "job adoption is disabled, registry will not claim any jobs")
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(84427)
 		}
+		__antithesis_instrumentation__.Notify(84425)
 		r.metrics.AdoptIterations.Inc(1)
 		if err := r.claimJobs(ctx, s); err != nil {
+			__antithesis_instrumentation__.Notify(84428)
 			log.Errorf(ctx, "error claiming jobs: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(84429)
 		}
 	})
-	// removeClaimsFromJobs queries the jobs table for non-terminal jobs and
-	// nullifies their claims if the claims are owned by the current session.
+	__antithesis_instrumentation__.Notify(84406)
+
 	removeClaimsFromSession := func(ctx context.Context, s sqlliveness.Session) {
+		__antithesis_instrumentation__.Notify(84430)
 		if err := r.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-			// Run the expiration transaction at low priority to ensure that it does
-			// not contend with foreground reads. Note that the adoption and cancellation
-			// queries also use low priority so they will interact nicely.
+			__antithesis_instrumentation__.Notify(84431)
+
 			if err := txn.SetUserPriority(roachpb.MinUserPriority); err != nil {
+				__antithesis_instrumentation__.Notify(84433)
 				return errors.WithAssertionFailure(err)
+			} else {
+				__antithesis_instrumentation__.Notify(84434)
 			}
+			__antithesis_instrumentation__.Notify(84432)
 			_, err := r.ex.ExecEx(
 				ctx, "remove-claims-for-session", nil,
 				sessiondata.InternalExecutorOverride{User: security.RootUserName()},
@@ -771,27 +798,38 @@ func (r *Registry) Start(ctx context.Context, stopper *stop.Stopper) error {
 			)
 			return err
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(84435)
 			log.Errorf(ctx, "error expiring job sessions: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(84436)
 		}
 	}
-	// processClaimedJobs iterates the jobs claimed by the current node that
-	// are in the running or reverting state, and then it starts those jobs if
-	// they are not already running.
+	__antithesis_instrumentation__.Notify(84407)
+
 	processClaimedJobs := wrapWithSession(func(ctx context.Context, s sqlliveness.Session) {
-		// If job adoption is disabled for the registry then we remove our claim on
-		// all adopted job, and cancel them.
+		__antithesis_instrumentation__.Notify(84437)
+
 		if r.adoptionDisabled(ctx) {
+			__antithesis_instrumentation__.Notify(84439)
 			log.Warningf(ctx, "job adoptions is disabled, canceling all adopted jobs due to liveness failure")
 			removeClaimsFromSession(ctx, s)
 			r.cancelAllAdoptedJobs()
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(84440)
 		}
+		__antithesis_instrumentation__.Notify(84438)
 		if err := r.processClaimedJobs(ctx, s); err != nil {
+			__antithesis_instrumentation__.Notify(84441)
 			log.Errorf(ctx, "error processing claimed jobs: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(84442)
 		}
 	})
+	__antithesis_instrumentation__.Notify(84408)
 
 	if err := stopper.RunAsyncTask(ctx, "jobs/cancel", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(84443)
 		ctx, cancel := stopper.WithCancelOnQuiesce(ctx)
 		defer cancel()
 
@@ -799,73 +837,109 @@ func (r *Registry) Start(ctx context.Context, stopper *stop.Stopper) error {
 		lc, cleanup := makeLoopController(r.settings, cancelIntervalSetting, r.knobs.IntervalOverrides.Cancel)
 		defer cleanup()
 		for {
+			__antithesis_instrumentation__.Notify(84444)
 			select {
 			case <-lc.updated:
+				__antithesis_instrumentation__.Notify(84445)
 				lc.onUpdate()
 			case <-r.stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(84446)
 				log.Warningf(ctx, "canceling all adopted jobs due to stopper quiescing")
 				r.cancelAllAdoptedJobs()
 				return
 			case <-lc.timer.C:
+				__antithesis_instrumentation__.Notify(84447)
 				lc.timer.Read = true
 				cancelLoopTask(ctx)
 				lc.onExecute()
 			}
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(84448)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84449)
 	}
+	__antithesis_instrumentation__.Notify(84409)
 	if err := stopper.RunAsyncTask(ctx, "jobs/gc", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(84450)
 		ctx, cancel := stopper.WithCancelOnQuiesce(ctx)
 		defer cancel()
 
 		lc, cleanup := makeLoopController(r.settings, gcIntervalSetting, r.knobs.IntervalOverrides.Gc)
 		defer cleanup()
 
-		// Retention duration of terminal job records.
 		retentionDuration := func() time.Duration {
+			__antithesis_instrumentation__.Notify(84452)
 			if r.knobs.IntervalOverrides.RetentionTime != nil {
+				__antithesis_instrumentation__.Notify(84454)
 				return *r.knobs.IntervalOverrides.RetentionTime
+			} else {
+				__antithesis_instrumentation__.Notify(84455)
 			}
+			__antithesis_instrumentation__.Notify(84453)
 			return retentionTimeSetting.Get(&r.settings.SV)
 		}
+		__antithesis_instrumentation__.Notify(84451)
 
 		for {
+			__antithesis_instrumentation__.Notify(84456)
 			select {
 			case <-lc.updated:
+				__antithesis_instrumentation__.Notify(84457)
 				lc.onUpdate()
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(84458)
 				return
 			case <-lc.timer.C:
+				__antithesis_instrumentation__.Notify(84459)
 				lc.timer.Read = true
 				old := timeutil.Now().Add(-1 * retentionDuration())
 				if err := r.cleanupOldJobs(ctx, old); err != nil {
+					__antithesis_instrumentation__.Notify(84461)
 					log.Warningf(ctx, "error cleaning up old job records: %v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(84462)
 				}
+				__antithesis_instrumentation__.Notify(84460)
 				lc.onExecute()
 			}
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(84463)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84464)
 	}
+	__antithesis_instrumentation__.Notify(84410)
 	return stopper.RunAsyncTask(ctx, "jobs/adopt", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(84465)
 		ctx, cancel := stopper.WithCancelOnQuiesce(ctx)
 		defer cancel()
 		lc, cleanup := makeLoopController(r.settings, adoptIntervalSetting, r.knobs.IntervalOverrides.Adopt)
 		defer cleanup()
 		for {
+			__antithesis_instrumentation__.Notify(84466)
 			select {
 			case <-lc.updated:
+				__antithesis_instrumentation__.Notify(84467)
 				lc.onUpdate()
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(84468)
 				return
 			case shouldClaim := <-r.adoptionCh:
-				// Try to adopt the most recently created job.
+				__antithesis_instrumentation__.Notify(84469)
+
 				if shouldClaim {
+					__antithesis_instrumentation__.Notify(84472)
 					claimJobs(ctx)
+				} else {
+					__antithesis_instrumentation__.Notify(84473)
 				}
+				__antithesis_instrumentation__.Notify(84470)
 				processClaimedJobs(ctx)
 			case <-lc.timer.C:
+				__antithesis_instrumentation__.Notify(84471)
 				lc.timer.Read = true
 				claimJobs(ctx)
 				processClaimedJobs(ctx)
@@ -876,13 +950,18 @@ func (r *Registry) Start(ctx context.Context, stopper *stop.Stopper) error {
 }
 
 func (r *Registry) maybeCancelJobs(ctx context.Context, s sqlliveness.Session) {
+	__antithesis_instrumentation__.Notify(84474)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for id, aj := range r.mu.adoptedJobs {
+		__antithesis_instrumentation__.Notify(84475)
 		if aj.session.ID() != s.ID() {
+			__antithesis_instrumentation__.Notify(84476)
 			log.Warningf(ctx, "job %d: running without having a live claim; killed.", id)
 			aj.cancel()
 			delete(r.mu.adoptedJobs, id)
+		} else {
+			__antithesis_instrumentation__.Notify(84477)
 		}
 	}
 }
@@ -890,250 +969,299 @@ func (r *Registry) maybeCancelJobs(ctx context.Context, s sqlliveness.Session) {
 const cleanupPageSize = 100
 
 func (r *Registry) cleanupOldJobs(ctx context.Context, olderThan time.Time) error {
+	__antithesis_instrumentation__.Notify(84478)
 	var maxID jobspb.JobID
 	for {
+		__antithesis_instrumentation__.Notify(84479)
 		var done bool
 		var err error
 		done, maxID, err = r.cleanupOldJobsPage(ctx, olderThan, maxID, cleanupPageSize)
-		if err != nil || done {
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(84480)
+			return done == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(84481)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(84482)
 		}
 	}
 }
 
-// TODO (sajjad): Why are we returning column 'created' in this query? It's not
-// being used.
 const expiredJobsQuery = "SELECT id, payload, status, created FROM system.jobs " +
 	"WHERE (created < $1) AND (id > $2) " +
-	"ORDER BY id " + // the ordering is important as we keep track of the maximum ID we've seen
+	"ORDER BY id " +
 	"LIMIT $3"
 
-// cleanupOldJobsPage deletes up to cleanupPageSize job rows with ID > minID.
-// minID is supposed to be the maximum ID returned by the previous page (0 if no
-// previous page).
 func (r *Registry) cleanupOldJobsPage(
 	ctx context.Context, olderThan time.Time, minID jobspb.JobID, pageSize int,
 ) (done bool, maxID jobspb.JobID, retErr error) {
-	it, err := r.ex.QueryIterator(ctx, "gc-jobs", nil /* txn */, expiredJobsQuery, olderThan, minID, pageSize)
+	__antithesis_instrumentation__.Notify(84483)
+	it, err := r.ex.QueryIterator(ctx, "gc-jobs", nil, expiredJobsQuery, olderThan, minID, pageSize)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84490)
 		return false, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(84491)
 	}
-	// We have to make sure to close the iterator since we might return from the
-	// for loop early (before Next() returns false).
-	defer func() { retErr = errors.CombineErrors(retErr, it.Close()) }()
+	__antithesis_instrumentation__.Notify(84484)
+
+	defer func() {
+		__antithesis_instrumentation__.Notify(84492)
+		retErr = errors.CombineErrors(retErr, it.Close())
+	}()
+	__antithesis_instrumentation__.Notify(84485)
 	toDelete := tree.NewDArray(types.Int)
 	oldMicros := timeutil.ToUnixMicros(olderThan)
 
 	var ok bool
 	var numRows int
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(84493)
 		numRows++
 		row := it.Cur()
 		payload, err := UnmarshalPayload(row[1])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(84496)
 			return false, 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(84497)
 		}
+		__antithesis_instrumentation__.Notify(84494)
 		remove := false
 		switch Status(*row[2].(*tree.DString)) {
 		case StatusSucceeded, StatusCanceled, StatusFailed:
+			__antithesis_instrumentation__.Notify(84498)
 			remove = payload.FinishedMicros < oldMicros
+		default:
+			__antithesis_instrumentation__.Notify(84499)
 		}
+		__antithesis_instrumentation__.Notify(84495)
 		if remove {
+			__antithesis_instrumentation__.Notify(84500)
 			toDelete.Array = append(toDelete.Array, row[0])
+		} else {
+			__antithesis_instrumentation__.Notify(84501)
 		}
 	}
+	__antithesis_instrumentation__.Notify(84486)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84502)
 		return false, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(84503)
 	}
+	__antithesis_instrumentation__.Notify(84487)
 	if numRows == 0 {
+		__antithesis_instrumentation__.Notify(84504)
 		return true, 0, nil
+	} else {
+		__antithesis_instrumentation__.Notify(84505)
 	}
+	__antithesis_instrumentation__.Notify(84488)
 
 	log.VEventf(ctx, 2, "read potentially expired jobs: %d", numRows)
 	if len(toDelete.Array) > 0 {
+		__antithesis_instrumentation__.Notify(84506)
 		log.Infof(ctx, "attempting to clean up %d expired job records", len(toDelete.Array))
 		const stmt = `DELETE FROM system.jobs WHERE id = ANY($1)`
 		var nDeleted int
 		if nDeleted, err = r.ex.Exec(
-			ctx, "gc-jobs", nil /* txn */, stmt, toDelete,
+			ctx, "gc-jobs", nil, stmt, toDelete,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(84508)
 			return false, 0, errors.Wrap(err, "deleting old jobs")
+		} else {
+			__antithesis_instrumentation__.Notify(84509)
 		}
+		__antithesis_instrumentation__.Notify(84507)
 		log.Infof(ctx, "cleaned up %d expired job records", nDeleted)
+	} else {
+		__antithesis_instrumentation__.Notify(84510)
 	}
-	// If we got as many rows as we asked for, there might be more.
+	__antithesis_instrumentation__.Notify(84489)
+
 	morePages := numRows == pageSize
-	// Track the highest ID we encounter, so it can serve as the bottom of the
-	// next page.
+
 	lastRow := it.Cur()
 	maxID = jobspb.JobID(*(lastRow[0].(*tree.DInt)))
 	return !morePages, maxID, nil
 }
 
-// getJobFn attempts to get a resumer from the given job id. If the job id
-// does not have a resumer then it returns an error message suitable for users.
 func (r *Registry) getJobFn(
 	ctx context.Context, txn *kv.Txn, id jobspb.JobID,
 ) (*Job, Resumer, error) {
+	__antithesis_instrumentation__.Notify(84511)
 	job, err := r.LoadJobWithTxn(ctx, id, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84514)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84515)
 	}
+	__antithesis_instrumentation__.Notify(84512)
 	resumer, err := r.createResumer(job, r.settings)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84516)
 		return job, nil, errors.Errorf("job %d is not controllable", id)
+	} else {
+		__antithesis_instrumentation__.Notify(84517)
 	}
+	__antithesis_instrumentation__.Notify(84513)
 	return job, resumer, nil
 }
 
-// CancelRequested marks the job as cancel-requested using the specified txn (may be nil).
 func (r *Registry) CancelRequested(ctx context.Context, txn *kv.Txn, id jobspb.JobID) error {
+	__antithesis_instrumentation__.Notify(84518)
 	job, _, err := r.getJobFn(ctx, txn, id)
 	if err != nil {
-		// Special case schema change jobs to mark the job as canceled.
+		__antithesis_instrumentation__.Notify(84520)
+
 		if job != nil {
+			__antithesis_instrumentation__.Notify(84522)
 			payload := job.Payload()
-			// TODO(mjibson): Use an unfortunate workaround to enable canceling of
-			// schema change jobs by comparing the string description. When a schema
-			// change job fails or is canceled, a new job is created with the ROLL BACK
-			// prefix. These rollback jobs cannot be canceled. We could add a field to
-			// the payload proto to indicate if this job is cancelable or not, but in
-			// a split version cluster an older node could pick up the schema change
-			// and fail to clear/set that field appropriately. Thus it seems that the
-			// safest way for now (i.e., without a larger jobs/schema change refactor)
-			// is to hack this up with a string comparison.
-			if payload.Type() == jobspb.TypeSchemaChange && !strings.HasPrefix(payload.Description, "ROLL BACK") {
+
+			if payload.Type() == jobspb.TypeSchemaChange && func() bool {
+				__antithesis_instrumentation__.Notify(84523)
+				return !strings.HasPrefix(payload.Description, "ROLL BACK") == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(84524)
 				return job.cancelRequested(ctx, txn, nil)
+			} else {
+				__antithesis_instrumentation__.Notify(84525)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(84526)
 		}
+		__antithesis_instrumentation__.Notify(84521)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84527)
 	}
+	__antithesis_instrumentation__.Notify(84519)
 	return job.cancelRequested(ctx, txn, nil)
 }
 
-// PauseRequested marks the job with id as paused-requested using the specified txn (may be nil).
 func (r *Registry) PauseRequested(
 	ctx context.Context, txn *kv.Txn, id jobspb.JobID, reason string,
 ) error {
+	__antithesis_instrumentation__.Notify(84528)
 	job, resumer, err := r.getJobFn(ctx, txn, id)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84531)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84532)
 	}
+	__antithesis_instrumentation__.Notify(84529)
 	var onPauseRequested onPauseRequestFunc
 	if pr, ok := resumer.(PauseRequester); ok {
+		__antithesis_instrumentation__.Notify(84533)
 		onPauseRequested = pr.OnPauseRequest
+	} else {
+		__antithesis_instrumentation__.Notify(84534)
 	}
+	__antithesis_instrumentation__.Notify(84530)
 	return job.PauseRequested(ctx, txn, onPauseRequested, reason)
 }
 
-// Succeeded marks the job with id as succeeded.
 func (r *Registry) Succeeded(ctx context.Context, txn *kv.Txn, id jobspb.JobID) error {
+	__antithesis_instrumentation__.Notify(84535)
 	job, _, err := r.getJobFn(ctx, txn, id)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84537)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84538)
 	}
+	__antithesis_instrumentation__.Notify(84536)
 	return job.succeeded(ctx, txn, nil)
 }
 
-// Failed marks the job with id as failed.
 func (r *Registry) Failed(
 	ctx context.Context, txn *kv.Txn, id jobspb.JobID, causingError error,
 ) error {
+	__antithesis_instrumentation__.Notify(84539)
 	job, _, err := r.getJobFn(ctx, txn, id)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84541)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84542)
 	}
+	__antithesis_instrumentation__.Notify(84540)
 	return job.failed(ctx, txn, causingError, nil)
 }
 
-// Unpause changes the paused job with id to running or reverting using the
-// specified txn (may be nil).
 func (r *Registry) Unpause(ctx context.Context, txn *kv.Txn, id jobspb.JobID) error {
+	__antithesis_instrumentation__.Notify(84543)
 	job, _, err := r.getJobFn(ctx, txn, id)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84545)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84546)
 	}
+	__antithesis_instrumentation__.Notify(84544)
 	return job.unpaused(ctx, txn)
 }
 
-// Resumer is a resumable job, and is associated with a Job object. Jobs can be
-// paused or canceled at any time. Jobs should call their CheckStatus() or
-// Progressed() method, which will return an error if the job has been paused or
-// canceled.
-//
-// Resumers are created through registered Constructor functions.
-//
 type Resumer interface {
-	// Resume is called when a job is started or resumed. execCtx is a sql.JobExecCtx.
 	Resume(ctx context.Context, execCtx interface{}) error
 
-	// OnFailOrCancel is called when a job fails or is cancel-requested.
-	//
-	// This method will be called when a registry notices the cancel request,
-	// which is not guaranteed to run on the node where the job is running. So it
-	// cannot assume that any other methods have been called on this Resumer
-	// object.
 	OnFailOrCancel(ctx context.Context, execCtx interface{}) error
 }
 
-// PauseRequester is an extension of Resumer which allows job implementers to inject
-// logic during the transaction which moves a job to PauseRequested.
 type PauseRequester interface {
 	Resumer
 
-	// OnPauseRequest is called in the transaction that moves a job to PauseRequested.
-	// If an error is returned, the pause request will fail. execCtx is a
-	// sql.JobExecCtx.
 	OnPauseRequest(ctx context.Context, execCtx interface{}, txn *kv.Txn, details *jobspb.Progress) error
 }
 
-// JobResultsReporter is an interface for reporting the results of the job execution.
-// Resumer implementations may also implement this interface if they wish to return
-// data to the user upon successful completion.
 type JobResultsReporter interface {
-	// ReportResults sends job results on the specified channel.
-	// This method will only be called if Resume() ran successfully to completion.
 	ReportResults(ctx context.Context, resultsCh chan<- tree.Datums) error
 }
 
-// Constructor creates a resumable job of a certain type. The Resumer is
-// created on the coordinator each time the job is started/resumed, so it can
-// hold state. The Resume method is always ran, and can set state on the Resumer
-// that can be used by the other methods.
 type Constructor func(job *Job, settings *cluster.Settings) Resumer
 
 var constructors = make(map[jobspb.Type]Constructor)
 
-// RegisterConstructor registers a Resumer constructor for a certain job type.
 func RegisterConstructor(typ jobspb.Type, fn Constructor) {
+	__antithesis_instrumentation__.Notify(84547)
 	constructors[typ] = fn
 }
 
 func (r *Registry) createResumer(job *Job, settings *cluster.Settings) (Resumer, error) {
+	__antithesis_instrumentation__.Notify(84548)
 	payload := job.Payload()
 	fn := constructors[payload.Type()]
 	if fn == nil {
+		__antithesis_instrumentation__.Notify(84551)
 		return nil, errors.Errorf("no resumer is available for %s", payload.Type())
+	} else {
+		__antithesis_instrumentation__.Notify(84552)
 	}
+	__antithesis_instrumentation__.Notify(84549)
 	if wrapper := r.TestingResumerCreationKnobs[payload.Type()]; wrapper != nil {
+		__antithesis_instrumentation__.Notify(84553)
 		return wrapper(fn(job, settings)), nil
+	} else {
+		__antithesis_instrumentation__.Notify(84554)
 	}
+	__antithesis_instrumentation__.Notify(84550)
 	return fn(job, settings), nil
 }
 
-// stepThroughStateMachine implements the state machine of the job lifecycle.
-// The job is executed with the ctx, so ctx must only be canceled if the job
-// should also be canceled. resultsCh is passed to the resumable func and should
-// be closed by the caller after errCh sends a value. errCh returns an error if
-// the job was not completed with success. status is the current job status.
 func (r *Registry) stepThroughStateMachine(
 	ctx context.Context, execCtx interface{}, resumer Resumer, job *Job, status Status, jobErr error,
 ) error {
+	__antithesis_instrumentation__.Notify(84555)
 	payload := job.Payload()
 	jobType := payload.Type()
 	log.Infof(ctx, "%s job %d: stepping through state %s with error: %+v", jobType, job.ID(), status, jobErr)
 	jm := r.metrics.JobMetrics[jobType]
 	onExecutionFailed := func(cause error) error {
+		__antithesis_instrumentation__.Notify(84557)
 		log.InfofDepth(
 			ctx, 1,
 			"job %d: %s execution encountered retriable error: %+v",
@@ -1145,256 +1273,392 @@ func (r *Registry) stepThroughStateMachine(
 			r.nodeID.SQLInstanceID(), status, start, end, cause,
 		)
 	}
+	__antithesis_instrumentation__.Notify(84556)
 	switch status {
 	case StatusRunning:
+		__antithesis_instrumentation__.Notify(84558)
 		if jobErr != nil {
+			__antithesis_instrumentation__.Notify(84587)
 			return errors.NewAssertionErrorWithWrappedErrf(jobErr,
 				"job %d: resuming with non-nil error", job.ID())
+		} else {
+			__antithesis_instrumentation__.Notify(84588)
 		}
+		__antithesis_instrumentation__.Notify(84559)
 		resumeCtx := logtags.AddTag(ctx, "job", job.ID())
 
-		if err := job.started(ctx, nil /* txn */); err != nil {
+		if err := job.started(ctx, nil); err != nil {
+			__antithesis_instrumentation__.Notify(84589)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(84590)
 		}
+		__antithesis_instrumentation__.Notify(84560)
 
 		var err error
 		func() {
+			__antithesis_instrumentation__.Notify(84591)
 			jm.CurrentlyRunning.Inc(1)
 			r.metrics.RunningNonIdleJobs.Inc(1)
 			defer func() {
+				__antithesis_instrumentation__.Notify(84593)
 				jm.CurrentlyRunning.Dec(1)
 				r.metrics.RunningNonIdleJobs.Dec(1)
 			}()
+			__antithesis_instrumentation__.Notify(84592)
 			err = resumer.Resume(resumeCtx, execCtx)
 		}()
+		__antithesis_instrumentation__.Notify(84561)
 
 		r.MarkIdle(job, false)
 
 		if err == nil {
+			__antithesis_instrumentation__.Notify(84594)
 			jm.ResumeCompleted.Inc(1)
 			return r.stepThroughStateMachine(ctx, execCtx, resumer, job, StatusSucceeded, nil)
+		} else {
+			__antithesis_instrumentation__.Notify(84595)
 		}
+		__antithesis_instrumentation__.Notify(84562)
 		if resumeCtx.Err() != nil {
-			// The context was canceled. Tell the user, but don't attempt to
-			// mark the job as failed because it can be resumed by another node.
-			//
-			// TODO(ajwerner): We'll also end up here if the job was canceled or
-			// paused. We should make this error clearer.
+			__antithesis_instrumentation__.Notify(84596)
+
 			jm.ResumeRetryError.Inc(1)
 			return errors.Errorf("job %d: node liveness error: restarting in background", job.ID())
+		} else {
+			__antithesis_instrumentation__.Notify(84597)
 		}
+		__antithesis_instrumentation__.Notify(84563)
 
 		if errors.Is(err, errPauseSelfSentinel) {
+			__antithesis_instrumentation__.Notify(84598)
 			if err := r.PauseRequested(ctx, nil, job.ID(), err.Error()); err != nil {
+				__antithesis_instrumentation__.Notify(84600)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(84601)
 			}
+			__antithesis_instrumentation__.Notify(84599)
 			return errors.Wrap(err, PauseRequestExplained)
+		} else {
+			__antithesis_instrumentation__.Notify(84602)
 		}
-		// TODO(spaskob): enforce a limit on retries.
+		__antithesis_instrumentation__.Notify(84564)
 
-		if nonCancelableRetry := job.Payload().Noncancelable && !IsPermanentJobError(err); nonCancelableRetry ||
-			errors.Is(err, errRetryJobSentinel) {
+		if nonCancelableRetry := job.Payload().Noncancelable && func() bool {
+			__antithesis_instrumentation__.Notify(84603)
+			return !IsPermanentJobError(err) == true
+		}() == true; nonCancelableRetry || func() bool {
+			__antithesis_instrumentation__.Notify(84604)
+			return errors.Is(err, errRetryJobSentinel) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(84605)
 			jm.ResumeRetryError.Inc(1)
 			if nonCancelableRetry {
+				__antithesis_instrumentation__.Notify(84607)
 				err = errors.Wrapf(err, "non-cancelable")
+			} else {
+				__antithesis_instrumentation__.Notify(84608)
 			}
+			__antithesis_instrumentation__.Notify(84606)
 			return onExecutionFailed(err)
+		} else {
+			__antithesis_instrumentation__.Notify(84609)
 		}
+		__antithesis_instrumentation__.Notify(84565)
 
 		jm.ResumeFailed.Inc(1)
 		if sErr := (*InvalidStatusError)(nil); errors.As(err, &sErr) {
-			if sErr.status != StatusCancelRequested && sErr.status != StatusPauseRequested {
+			__antithesis_instrumentation__.Notify(84610)
+			if sErr.status != StatusCancelRequested && func() bool {
+				__antithesis_instrumentation__.Notify(84612)
+				return sErr.status != StatusPauseRequested == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(84613)
 				return errors.NewAssertionErrorWithWrappedErrf(sErr,
 					"job %d: unexpected status %s provided for a running job", job.ID(), sErr.status)
+			} else {
+				__antithesis_instrumentation__.Notify(84614)
 			}
+			__antithesis_instrumentation__.Notify(84611)
 			return sErr
+		} else {
+			__antithesis_instrumentation__.Notify(84615)
 		}
+		__antithesis_instrumentation__.Notify(84566)
 		return r.stepThroughStateMachine(ctx, execCtx, resumer, job, StatusReverting, err)
 	case StatusPauseRequested:
+		__antithesis_instrumentation__.Notify(84567)
 		return errors.Errorf("job %s", status)
 	case StatusCancelRequested:
+		__antithesis_instrumentation__.Notify(84568)
 		return errors.Errorf("job %s", status)
 	case StatusPaused:
+		__antithesis_instrumentation__.Notify(84569)
 		return errors.NewAssertionErrorWithWrappedErrf(jobErr,
 			"job %d: unexpected status %s provided to state machine", job.ID(), status)
 	case StatusCanceled:
-		if err := job.canceled(ctx, nil /* txn */, nil /* fn */); err != nil {
-			// If we can't transactionally mark the job as canceled then it will be
-			// restarted during the next adopt loop and reverting will be retried.
+		__antithesis_instrumentation__.Notify(84570)
+		if err := job.canceled(ctx, nil, nil); err != nil {
+			__antithesis_instrumentation__.Notify(84616)
+
 			return errors.WithSecondaryError(
 				errors.Wrapf(err, "job %d: could not mark as canceled", job.ID()),
 				jobErr,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(84617)
 		}
+		__antithesis_instrumentation__.Notify(84571)
 		telemetry.Inc(TelemetryMetrics[jobType].Canceled)
 		r.removeFromWaitingSets(job.ID())
 		return errors.WithSecondaryError(errors.Errorf("job %s", status), jobErr)
 	case StatusSucceeded:
+		__antithesis_instrumentation__.Notify(84572)
 		if jobErr != nil {
+			__antithesis_instrumentation__.Notify(84618)
 			return errors.NewAssertionErrorWithWrappedErrf(jobErr,
 				"job %d: successful but unexpected error provided", job.ID())
+		} else {
+			__antithesis_instrumentation__.Notify(84619)
 		}
-		err := job.succeeded(ctx, nil /* txn */, nil /* fn */)
+		__antithesis_instrumentation__.Notify(84573)
+		err := job.succeeded(ctx, nil, nil)
 		switch {
 		case err == nil:
+			__antithesis_instrumentation__.Notify(84620)
 			telemetry.Inc(TelemetryMetrics[jobType].Successful)
 			r.removeFromWaitingSets(job.ID())
 		default:
-			// If we can't transactionally mark the job as succeeded then it will be
-			// restarted during the next adopt loop and it will be retried.
+			__antithesis_instrumentation__.Notify(84621)
+
 			err = errors.Wrapf(err, "job %d: could not mark as succeeded", job.ID())
 		}
+		__antithesis_instrumentation__.Notify(84574)
 		return err
 	case StatusReverting:
-		if err := job.reverted(ctx, nil /* txn */, jobErr, nil /* fn */); err != nil {
-			// If we can't transactionally mark the job as reverting then it will be
-			// restarted during the next adopt loop and it will be retried.
+		__antithesis_instrumentation__.Notify(84575)
+		if err := job.reverted(ctx, nil, jobErr, nil); err != nil {
+			__antithesis_instrumentation__.Notify(84622)
+
 			return errors.WithSecondaryError(
 				errors.Wrapf(err, "job %d: could not mark as reverting", job.ID()),
 				jobErr,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(84623)
 		}
+		__antithesis_instrumentation__.Notify(84576)
 		onFailOrCancelCtx := logtags.AddTag(ctx, "job", job.ID())
 		var err error
 		func() {
+			__antithesis_instrumentation__.Notify(84624)
 			jm.CurrentlyRunning.Inc(1)
 			r.metrics.RunningNonIdleJobs.Inc(1)
 			defer func() {
+				__antithesis_instrumentation__.Notify(84626)
 				jm.CurrentlyRunning.Dec(1)
 				r.metrics.RunningNonIdleJobs.Dec(1)
 			}()
+			__antithesis_instrumentation__.Notify(84625)
 			err = resumer.OnFailOrCancel(onFailOrCancelCtx, execCtx)
 		}()
+		__antithesis_instrumentation__.Notify(84577)
 		if successOnFailOrCancel := err == nil; successOnFailOrCancel {
+			__antithesis_instrumentation__.Notify(84627)
 			jm.FailOrCancelCompleted.Inc(1)
-			// If the job has failed with any error different than canceled we
-			// mark it as Failed.
+
 			nextStatus := StatusFailed
 			if HasErrJobCanceled(jobErr) {
+				__antithesis_instrumentation__.Notify(84629)
 				nextStatus = StatusCanceled
+			} else {
+				__antithesis_instrumentation__.Notify(84630)
 			}
+			__antithesis_instrumentation__.Notify(84628)
 			return r.stepThroughStateMachine(ctx, execCtx, resumer, job, nextStatus, jobErr)
+		} else {
+			__antithesis_instrumentation__.Notify(84631)
 		}
+		__antithesis_instrumentation__.Notify(84578)
 		jm.FailOrCancelRetryError.Inc(1)
 		if onFailOrCancelCtx.Err() != nil {
-			// The context was canceled. Tell the user, but don't attempt to
-			// mark the job as failed because it can be resumed by another node.
+			__antithesis_instrumentation__.Notify(84632)
+
 			return errors.Errorf("job %d: node liveness error: restarting in background", job.ID())
+		} else {
+			__antithesis_instrumentation__.Notify(84633)
 		}
+		__antithesis_instrumentation__.Notify(84579)
 		return onExecutionFailed(err)
 	case StatusFailed:
+		__antithesis_instrumentation__.Notify(84580)
 		if jobErr == nil {
+			__antithesis_instrumentation__.Notify(84634)
 			return errors.AssertionFailedf("job %d: has StatusFailed but no error was provided", job.ID())
+		} else {
+			__antithesis_instrumentation__.Notify(84635)
 		}
-		if err := job.failed(ctx, nil /* txn */, jobErr, nil /* fn */); err != nil {
-			// If we can't transactionally mark the job as failed then it will be
-			// restarted during the next adopt loop and reverting will be retried.
+		__antithesis_instrumentation__.Notify(84581)
+		if err := job.failed(ctx, nil, jobErr, nil); err != nil {
+			__antithesis_instrumentation__.Notify(84636)
+
 			return errors.WithSecondaryError(
 				errors.Wrapf(err, "job %d: could not mark as failed", job.ID()),
 				jobErr,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(84637)
 		}
+		__antithesis_instrumentation__.Notify(84582)
 		telemetry.Inc(TelemetryMetrics[jobType].Failed)
 		r.removeFromWaitingSets(job.ID())
 		return jobErr
 	case StatusRevertFailed:
-		// TODO(sajjad): Remove StatusRevertFailed and related code in other places in v22.1.
-		// v21.2 modified all reverting jobs to retry instead of go to revert-failed. Therefore,
-		// revert-failed state is not reachable after 21.2.
+		__antithesis_instrumentation__.Notify(84583)
+
 		if jobErr == nil {
+			__antithesis_instrumentation__.Notify(84638)
 			return errors.AssertionFailedf("job %d: has StatusRevertFailed but no error was provided",
 				job.ID())
+		} else {
+			__antithesis_instrumentation__.Notify(84639)
 		}
-		if err := job.revertFailed(ctx, nil /* txn */, jobErr, nil /* fn */); err != nil {
-			// If we can't transactionally mark the job as failed then it will be
-			// restarted during the next adopt loop and reverting will be retried.
+		__antithesis_instrumentation__.Notify(84584)
+		if err := job.revertFailed(ctx, nil, jobErr, nil); err != nil {
+			__antithesis_instrumentation__.Notify(84640)
+
 			return errors.WithSecondaryError(
 				errors.Wrapf(err, "job %d: could not mark as revert field", job.ID()),
 				jobErr,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(84641)
 		}
+		__antithesis_instrumentation__.Notify(84585)
 		return jobErr
 	default:
+		__antithesis_instrumentation__.Notify(84586)
 		return errors.NewAssertionErrorWithWrappedErrf(jobErr,
 			"job %d: has unsupported status %s", job.ID(), status)
 	}
 }
 
 func (r *Registry) adoptionDisabled(ctx context.Context) bool {
+	__antithesis_instrumentation__.Notify(84642)
 	if r.knobs.DisableAdoptions {
+		__antithesis_instrumentation__.Notify(84645)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(84646)
 	}
+	__antithesis_instrumentation__.Notify(84643)
 	if r.preventAdoptionFile != "" {
+		__antithesis_instrumentation__.Notify(84647)
 		if _, err := os.Stat(r.preventAdoptionFile); err != nil {
+			__antithesis_instrumentation__.Notify(84649)
 			if !oserror.IsNotExist(err) {
+				__antithesis_instrumentation__.Notify(84651)
 				log.Warningf(ctx, "error checking if job adoption is currently disabled: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(84652)
 			}
+			__antithesis_instrumentation__.Notify(84650)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(84653)
 		}
+		__antithesis_instrumentation__.Notify(84648)
 		log.Warningf(ctx, "job adoption is currently disabled by existence of %s", r.preventAdoptionFile)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(84654)
 	}
+	__antithesis_instrumentation__.Notify(84644)
 	return false
 }
 
-// MarkIdle marks a currently adopted job as Idle.
-// A single job should not toggle its idleness more than twice per-minute as it
-// is logged and may write to persisted job state in the future.
 func (r *Registry) MarkIdle(job *Job, isIdle bool) {
+	__antithesis_instrumentation__.Notify(84655)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if aj, ok := r.mu.adoptedJobs[job.ID()]; ok {
+		__antithesis_instrumentation__.Notify(84656)
 		payload := job.Payload()
 		jobType := payload.Type()
 		jm := r.metrics.JobMetrics[jobType]
 		if aj.isIdle != isIdle {
+			__antithesis_instrumentation__.Notify(84657)
 			log.Infof(r.serverCtx, "%s job %d: toggling idleness to %+v", jobType, job.ID(), isIdle)
 			if isIdle {
+				__antithesis_instrumentation__.Notify(84659)
 				r.metrics.RunningNonIdleJobs.Dec(1)
 				jm.CurrentlyIdle.Inc(1)
 			} else {
+				__antithesis_instrumentation__.Notify(84660)
 				r.metrics.RunningNonIdleJobs.Inc(1)
 				jm.CurrentlyIdle.Dec(1)
 			}
+			__antithesis_instrumentation__.Notify(84658)
 			aj.isIdle = isIdle
+		} else {
+			__antithesis_instrumentation__.Notify(84661)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(84662)
 	}
 }
 
 func (r *Registry) cancelAllAdoptedJobs() {
+	__antithesis_instrumentation__.Notify(84663)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, aj := range r.mu.adoptedJobs {
+		__antithesis_instrumentation__.Notify(84665)
 		aj.cancel()
 	}
+	__antithesis_instrumentation__.Notify(84664)
 	r.mu.adoptedJobs = make(map[jobspb.JobID]*adoptedJob)
 }
 
 func (r *Registry) unregister(jobID jobspb.JobID) {
+	__antithesis_instrumentation__.Notify(84666)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if aj, ok := r.mu.adoptedJobs[jobID]; ok {
+		__antithesis_instrumentation__.Notify(84667)
 		aj.cancel()
 		delete(r.mu.adoptedJobs, jobID)
+	} else {
+		__antithesis_instrumentation__.Notify(84668)
 	}
 }
 
 func (r *Registry) cancelRegisteredJobContext(jobID jobspb.JobID) {
+	__antithesis_instrumentation__.Notify(84669)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if aj, ok := r.mu.adoptedJobs[jobID]; ok {
+		__antithesis_instrumentation__.Notify(84670)
 		aj.cancel()
+	} else {
+		__antithesis_instrumentation__.Notify(84671)
 	}
 }
 
 func (r *Registry) getClaimedJob(jobID jobspb.JobID) (*Job, error) {
+	__antithesis_instrumentation__.Notify(84672)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	aj, ok := r.mu.adoptedJobs[jobID]
 	if !ok {
+		__antithesis_instrumentation__.Notify(84674)
 		return nil, &JobNotFoundError{jobID: jobID}
+	} else {
+		__antithesis_instrumentation__.Notify(84675)
 	}
+	__antithesis_instrumentation__.Notify(84673)
 	return &Job{
 		id:       jobID,
 		session:  aj.session,
@@ -1402,84 +1666,113 @@ func (r *Registry) getClaimedJob(jobID jobspb.JobID) (*Job, error) {
 	}, nil
 }
 
-// RetryInitialDelay returns the value of retryInitialDelaySetting cluster setting,
-// in seconds, which is the initial delay in exponential-backoff delay calculation.
 func (r *Registry) RetryInitialDelay() float64 {
+	__antithesis_instrumentation__.Notify(84676)
 	if r.knobs.IntervalOverrides.RetryInitialDelay != nil {
+		__antithesis_instrumentation__.Notify(84678)
 		return r.knobs.IntervalOverrides.RetryInitialDelay.Seconds()
+	} else {
+		__antithesis_instrumentation__.Notify(84679)
 	}
+	__antithesis_instrumentation__.Notify(84677)
 	return retryInitialDelaySetting.Get(&r.settings.SV).Seconds()
 }
 
-// RetryMaxDelay returns the value of retryMaxDelaySetting cluster setting,
-// in seconds, which is the maximum delay between retries of a job.
 func (r *Registry) RetryMaxDelay() float64 {
+	__antithesis_instrumentation__.Notify(84680)
 	if r.knobs.IntervalOverrides.RetryMaxDelay != nil {
+		__antithesis_instrumentation__.Notify(84682)
 		return r.knobs.IntervalOverrides.RetryMaxDelay.Seconds()
+	} else {
+		__antithesis_instrumentation__.Notify(84683)
 	}
+	__antithesis_instrumentation__.Notify(84681)
 	return retryMaxDelaySetting.Get(&r.settings.SV).Seconds()
 }
 
-// maybeRecordExecutionFailure will record a
-// RetriableExecutionFailureError into the job payload.
 func (r *Registry) maybeRecordExecutionFailure(ctx context.Context, err error, j *Job) {
+	__antithesis_instrumentation__.Notify(84684)
 	var efe *retriableExecutionError
 	if !errors.As(err, &efe) {
+		__antithesis_instrumentation__.Notify(84688)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(84689)
 	}
+	__antithesis_instrumentation__.Notify(84685)
 
 	updateErr := j.Update(ctx, nil, func(
 		txn *kv.Txn, md JobMetadata, ju *JobUpdater,
 	) error {
+		__antithesis_instrumentation__.Notify(84690)
 		pl := md.Payload
-		{ // Append the entry to the log
+		{
+			__antithesis_instrumentation__.Notify(84692)
 			maxSize := int(executionErrorsMaxEntrySize.Get(&r.settings.SV))
 			pl.RetriableExecutionFailureLog = append(pl.RetriableExecutionFailureLog,
 				efe.toRetriableExecutionFailure(ctx, maxSize))
 		}
-		{ // Maybe truncate the log.
+		{
+			__antithesis_instrumentation__.Notify(84693)
 			maxEntries := int(executionErrorsMaxEntriesSetting.Get(&r.settings.SV))
 			log := &pl.RetriableExecutionFailureLog
 			if len(*log) > maxEntries {
+				__antithesis_instrumentation__.Notify(84694)
 				*log = (*log)[len(*log)-maxEntries:]
+			} else {
+				__antithesis_instrumentation__.Notify(84695)
 			}
 		}
+		__antithesis_instrumentation__.Notify(84691)
 		ju.UpdatePayload(pl)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(84686)
 	if ctx.Err() != nil {
+		__antithesis_instrumentation__.Notify(84696)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(84697)
 	}
+	__antithesis_instrumentation__.Notify(84687)
 	if updateErr != nil {
+		__antithesis_instrumentation__.Notify(84698)
 		log.Warningf(ctx, "failed to record error for job %d: %v: %v", j.ID(), err, err)
+	} else {
+		__antithesis_instrumentation__.Notify(84699)
 	}
 }
 
-// CheckPausepoint returns a PauseRequestError if the named pause-point is
-// set.
-//
-// This can be called in the middle of some job implementation to effectively
-// define a 'breakpoint' which, when reached, will cause the job to pause. This
-// can be very useful in allowing inspection of the persisted job state at that
-// point, without worrying about catching it before the job progresses further
-// or completes. These pause points can be set or removed at runtime.
 func (r *Registry) CheckPausepoint(name string) error {
+	__antithesis_instrumentation__.Notify(84700)
 	s := debugPausepoints.Get(&r.settings.SV)
 	if s == "" {
+		__antithesis_instrumentation__.Notify(84703)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(84704)
 	}
+	__antithesis_instrumentation__.Notify(84701)
 	for _, point := range strings.Split(s, ",") {
+		__antithesis_instrumentation__.Notify(84705)
 		if name == point {
+			__antithesis_instrumentation__.Notify(84706)
 			return MarkPauseRequestError(errors.Newf("pause point %q hit", name))
+		} else {
+			__antithesis_instrumentation__.Notify(84707)
 		}
 	}
+	__antithesis_instrumentation__.Notify(84702)
 	return nil
 }
 
-// TestingIsJobIdle returns true if the job is adopted and currently idle.
 func (r *Registry) TestingIsJobIdle(jobID jobspb.JobID) bool {
+	__antithesis_instrumentation__.Notify(84708)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	adoptedJob := r.mu.adoptedJobs[jobID]
-	return adoptedJob != nil && adoptedJob.isIdle
+	return adoptedJob != nil && func() bool {
+		__antithesis_instrumentation__.Notify(84709)
+		return adoptedJob.isIdle == true
+	}() == true
 }

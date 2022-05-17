@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"os"
@@ -18,9 +10,13 @@ import (
 )
 
 func main() {
+	__antithesis_instrumentation__.Notify(42918)
 	targetPkg := "github.com/cockroachdb/cockroach/pkg/roachpb"
 	targetTypeName := "Error"
 	if err := returncheck.Run(gotool.ImportPaths(os.Args[1:]), targetPkg, targetTypeName); err != nil {
+		__antithesis_instrumentation__.Notify(42919)
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(42920)
 	}
 }

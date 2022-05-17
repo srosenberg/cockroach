@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -43,13 +35,13 @@ var pickSHAFlags = struct {
 var pickSHACmd = &cobra.Command{
 	Use:   "pick-sha",
 	Short: "Pick release git SHA for a particular version and communicate the choice via Jira and email",
-	// TODO: improve Long description
+
 	Long: "Pick release git SHA for a particular version and communicate the choice via Jira and email",
 	RunE: pickSHA,
 }
 
 func init() {
-	// TODO: improve flag usage comments
+
 	pickSHACmd.Flags().StringVar(&pickSHAFlags.qualifyBucket, qualifyBucket, "", "release qualification metadata GCS bucket")
 	pickSHACmd.Flags().StringVar(&pickSHAFlags.qualifyObjectPrefix, qualifyObjectPrefix, "",
 		"release qualification object prefix")
@@ -82,50 +74,82 @@ func init() {
 }
 
 func pickSHA(_ *cobra.Command, _ []string) error {
+	__antithesis_instrumentation__.Notify(42837)
 	smtpPassword := os.Getenv("SMTP_PASSWORD")
 	if smtpPassword == "" {
+		__antithesis_instrumentation__.Notify(42847)
 		return fmt.Errorf("SMTP_PASSWORD environment variable should be set")
+	} else {
+		__antithesis_instrumentation__.Notify(42848)
 	}
+	__antithesis_instrumentation__.Notify(42838)
 	jiraUsername := os.Getenv("JIRA_USERNAME")
 	if jiraUsername == "" {
+		__antithesis_instrumentation__.Notify(42849)
 		return fmt.Errorf("JIRA_USERNAME environment variable should be set")
+	} else {
+		__antithesis_instrumentation__.Notify(42850)
 	}
+	__antithesis_instrumentation__.Notify(42839)
 	jiraToken := os.Getenv("JIRA_TOKEN")
 	if jiraToken == "" {
+		__antithesis_instrumentation__.Notify(42851)
 		return fmt.Errorf("JIRA_TOKEN environment variable should be set")
+	} else {
+		__antithesis_instrumentation__.Notify(42852)
 	}
+	__antithesis_instrumentation__.Notify(42840)
 
 	nextRelease, err := findNextRelease(pickSHAFlags.releaseSeries)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42853)
 		return fmt.Errorf("cannot find next release: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42854)
 	}
-	// TODO: improve stdout message
+	__antithesis_instrumentation__.Notify(42841)
+
 	fmt.Println("Previous version:", nextRelease.prevReleaseVersion)
 	fmt.Println("Next version:", nextRelease.nextReleaseVersion)
 	fmt.Println("Release SHA:", nextRelease.buildInfo.SHA)
 
-	// TODO: before copying check if it's already there and bail if exists, can be forced by -f
 	releaseInfoPath := fmt.Sprintf("%s/%s.json", pickSHAFlags.releaseObjectPrefix, nextRelease.nextReleaseVersion)
 	fmt.Println("Publishing release candidate metadata")
 	if err := publishReleaseCandidateInfo(context.Background(), nextRelease, pickSHAFlags.releaseBucket, releaseInfoPath); err != nil {
+		__antithesis_instrumentation__.Notify(42855)
 		return fmt.Errorf("cannot publish release metadata: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42856)
 	}
+	__antithesis_instrumentation__.Notify(42842)
 
 	fmt.Println("Creating SRE issue")
 	jiraClient, err := newJiraClient(jiraBaseURL, jiraUsername, jiraToken)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42857)
 		return fmt.Errorf("cannot create Jira client: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42858)
 	}
+	__antithesis_instrumentation__.Notify(42843)
 	sreIssue, err := createSREIssue(jiraClient, nextRelease, pickSHAFlags.dryRun)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42859)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(42860)
 	}
+	__antithesis_instrumentation__.Notify(42844)
 
 	fmt.Println("Creating tracking issue")
 	trackingIssue, err := createTrackingIssue(jiraClient, nextRelease, sreIssue, pickSHAFlags.dryRun)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42861)
 		return fmt.Errorf("cannot create tracking issue: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42862)
 	}
+	__antithesis_instrumentation__.Notify(42845)
 	diffURL := template.URL(
 		fmt.Sprintf("https://github.com/cockroachdb/cockroach/compare/%s...%s",
 			nextRelease.prevReleaseVersion,
@@ -148,7 +172,11 @@ func pickSHA(_ *cobra.Command, _ []string) error {
 	}
 	fmt.Println("Sending email")
 	if err := sendMailPickSHA(args, opts); err != nil {
+		__antithesis_instrumentation__.Notify(42863)
 		return fmt.Errorf("cannot send email: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42864)
 	}
+	__antithesis_instrumentation__.Notify(42846)
 	return nil
 }

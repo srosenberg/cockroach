@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catalog
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "sort"
 
@@ -18,22 +10,11 @@ func init() {
 	internalTSMetricsNames = allInternalTSMetricsNames()
 }
 
-// AllInternalTimeseriesMetricNames returns a slice that returns all of the
-// metric names used by CockroachDB's internal timeseries database. This is
-// *not* the list of names as it appears on prometheus. In particular, since
-// the internal TS DB does not support histograms, it instead records timeseries
-// for a number of quantiles.
-//
-// For technical reasons, the returned set will contain metrics names that do
-// not exist. This is because a running server is required to determine the
-// proper prefix for each metric (per-node or per-store); we don't have one
-// here, so we return both possible prefixes.
 func AllInternalTimeseriesMetricNames() []string {
+	__antithesis_instrumentation__.Notify(647941)
 	return internalTSMetricsNames
 }
 
-// The histogramMetricsNames variable below was originally seeded using the invocation
-// below. It's kept up to date via `server.TestChartCatalogMetrics`.
 var _ = `
 ./cockroach demo --empty -e \
     "select name from crdb_internal.node_metrics where name like '%-p50'" | \
@@ -94,18 +75,24 @@ var histogramMetricsNames = map[string]struct{}{
 }
 
 func allInternalTSMetricsNames() []string {
+	__antithesis_instrumentation__.Notify(647942)
 	m := map[string]struct{}{}
 	for _, section := range charts {
+		__antithesis_instrumentation__.Notify(647945)
 		for _, chart := range section.Charts {
+			__antithesis_instrumentation__.Notify(647946)
 			for _, metric := range chart.Metrics {
-				// Jump through hoops to create the correct internal timeseries metrics names.
-				// See:
-				// https://github.com/cockroachdb/cockroach/issues/64373
+				__antithesis_instrumentation__.Notify(647947)
+
 				_, isHist := histogramMetricsNames[metric]
 				if !isHist {
+					__antithesis_instrumentation__.Notify(647949)
 					m[metric] = struct{}{}
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(647950)
 				}
+				__antithesis_instrumentation__.Notify(647948)
 				for _, p := range []string{
 					"p50",
 					"p75",
@@ -115,18 +102,20 @@ func allInternalTSMetricsNames() []string {
 					"p99.99",
 					"p99.999",
 				} {
+					__antithesis_instrumentation__.Notify(647951)
 					m[metric+"-"+p] = struct{}{}
 				}
 			}
 		}
 	}
-	// TODO(tbg): these prefixes come from pkg/server/status/recorder.go.
-	// Unfortunately, the chart catalog does not tell us which ones are per-node
-	// or per-store, so we simply tag both (one of them will be empty).
+	__antithesis_instrumentation__.Notify(647943)
+
 	names := make([]string, 0, 2*len(m))
 	for name := range m {
+		__antithesis_instrumentation__.Notify(647952)
 		names = append(names, "cr.store."+name, "cr.node."+name)
 	}
+	__antithesis_instrumentation__.Notify(647944)
 	sort.Strings(names)
 	return names
 }

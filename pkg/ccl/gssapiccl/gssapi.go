@@ -1,19 +1,9 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
-// We use a non-standard build tag here because we want to only build on
-// linux-gnu targets (i.e., not musl). Since go doesn't have a builtin way
-// to do that, we have to set this in the top-level Makefile.
-
 //go:build gss
 // +build gss
 
 package gssapiccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -35,8 +25,6 @@ const (
 	authTypeGSSContinue int32 = 8
 )
 
-// authGSS performs GSS authentication. See:
-// https://github.com/postgres/postgres/blob/0f9cdd7dca694d487ab663d463b308919f591c02/src/backend/libpq/auth.c#L1090
 func authGSS(
 	_ context.Context,
 	c pgwire.AuthConn,
@@ -45,127 +33,171 @@ func authGSS(
 	entry *hba.Entry,
 	identMap *identmap.Conf,
 ) (*pgwire.AuthBehaviors, error) {
+	__antithesis_instrumentation__.Notify(19544)
 	behaviors := &pgwire.AuthBehaviors{}
 
 	connClose, gssUser, err := getGssUser(c)
 	behaviors.SetConnClose(connClose)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19549)
 		return behaviors, err
+	} else {
+		__antithesis_instrumentation__.Notify(19550)
 	}
+	__antithesis_instrumentation__.Notify(19545)
 
-	// Update the incoming connection with the GSS username. We'll expect
-	// to see this value come back to the mapper function below.
 	if u, err := security.MakeSQLUsernameFromUserInput(gssUser, security.UsernameValidation); err != nil {
+		__antithesis_instrumentation__.Notify(19551)
 		return nil, err
 	} else {
+		__antithesis_instrumentation__.Notify(19552)
 		behaviors.SetReplacementIdentity(u)
 	}
+	__antithesis_instrumentation__.Notify(19546)
 
-	// We enforce that the "map" and/or "include_realm=0" options are set
-	// in the HBA validation function below.
 	include0 := entry.GetOption("include_realm") == "0"
 	if entry.GetOption("map") != "" {
+		__antithesis_instrumentation__.Notify(19553)
 		mapper := pgwire.HbaMapper(entry, identMap)
-		// Per behavior in PostgreSQL, combining both map and
-		// include_realm=0 means that the incoming principal is stripped,
-		// then the map is applied. See also:
-		// https://github.com/postgres/postgres/blob/4ac0f450b698442c3273ddfe8eed0e1a7e56645f/src/backend/libpq/auth.c#L1474
+
 		if include0 {
+			__antithesis_instrumentation__.Notify(19555)
 			mapper = stripAndDelegateMapper(mapper)
+		} else {
+			__antithesis_instrumentation__.Notify(19556)
 		}
+		__antithesis_instrumentation__.Notify(19554)
 		behaviors.SetRoleMapper(mapper)
-	} else if include0 {
-		// Strip the trailing realm information, if any, from the gssapi username.
-		behaviors.SetRoleMapper(stripRealmMapper)
 	} else {
-		return nil, errors.New("unsupported HBA entry configuration")
+		__antithesis_instrumentation__.Notify(19557)
+		if include0 {
+			__antithesis_instrumentation__.Notify(19558)
+
+			behaviors.SetRoleMapper(stripRealmMapper)
+		} else {
+			__antithesis_instrumentation__.Notify(19559)
+			return nil, errors.New("unsupported HBA entry configuration")
+		}
 	}
+	__antithesis_instrumentation__.Notify(19547)
 
 	behaviors.SetAuthenticator(func(
 		_ context.Context, _ security.SQLUsername, _ bool, _ pgwire.PasswordRetrievalFn,
 	) error {
-		// Enforce krb_realm option, if any.
+		__antithesis_instrumentation__.Notify(19560)
+
 		if realms := entry.GetOptions("krb_realm"); len(realms) > 0 {
+			__antithesis_instrumentation__.Notify(19562)
 			if idx := strings.IndexByte(gssUser, '@'); idx >= 0 {
+				__antithesis_instrumentation__.Notify(19563)
 				realm := gssUser[idx+1:]
 				matched := false
 				for _, krbRealm := range realms {
+					__antithesis_instrumentation__.Notify(19565)
 					if realm == krbRealm {
+						__antithesis_instrumentation__.Notify(19566)
 						matched = true
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(19567)
 					}
 				}
+				__antithesis_instrumentation__.Notify(19564)
 				if !matched {
+					__antithesis_instrumentation__.Notify(19568)
 					return errors.Errorf("GSSAPI realm (%s) didn't match any configured realm", realm)
+				} else {
+					__antithesis_instrumentation__.Notify(19569)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(19570)
 				return errors.New("GSSAPI did not return realm but realm matching was requested")
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(19571)
 		}
+		__antithesis_instrumentation__.Notify(19561)
 
-		// Do the license check last so that administrators are able to test whether
-		// their GSS configuration is correct. That is, the presence of this error
-		// message means they have a correctly functioning GSS/Kerberos setup,
-		// but now need to enable enterprise features.
 		return utilccl.CheckEnterpriseEnabled(execCfg.Settings, execCfg.LogicalClusterID(), execCfg.Organization(), "GSS authentication")
 	})
+	__antithesis_instrumentation__.Notify(19548)
 	return behaviors, nil
 }
 
-// checkEntry validates that the HBA entry contains exactly one of the
-// include_realm=0 directive or an identity-mapping configuration.
 func checkEntry(_ *settings.Values, entry hba.Entry) error {
+	__antithesis_instrumentation__.Notify(19572)
 	hasInclude0 := false
 	hasMap := false
 	for _, op := range entry.Options {
+		__antithesis_instrumentation__.Notify(19575)
 		switch op[0] {
 		case "include_realm":
+			__antithesis_instrumentation__.Notify(19576)
 			if op[1] == "0" {
+				__antithesis_instrumentation__.Notify(19580)
 				hasInclude0 = true
 			} else {
+				__antithesis_instrumentation__.Notify(19581)
 				return errors.Errorf("include_realm must be set to 0: %s", op[1])
 			}
 		case "krb_realm":
-		// OK.
+			__antithesis_instrumentation__.Notify(19577)
+
 		case "map":
+			__antithesis_instrumentation__.Notify(19578)
 			hasMap = true
 		default:
+			__antithesis_instrumentation__.Notify(19579)
 			return errors.Errorf("unsupported option %s", op[0])
 		}
 	}
-	if !hasMap && !hasInclude0 {
+	__antithesis_instrumentation__.Notify(19573)
+	if !hasMap && func() bool {
+		__antithesis_instrumentation__.Notify(19582)
+		return !hasInclude0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(19583)
 		return errors.New(`at least one of "include_realm=0" or "map" options required`)
+	} else {
+		__antithesis_instrumentation__.Notify(19584)
 	}
+	__antithesis_instrumentation__.Notify(19574)
 	return nil
 }
 
-// stripRealm removes the realm data, if any, from the provided username.
 func stripRealm(u security.SQLUsername) (security.SQLUsername, error) {
+	__antithesis_instrumentation__.Notify(19585)
 	norm := u.Normalized()
 	if idx := strings.Index(norm, "@"); idx != -1 {
+		__antithesis_instrumentation__.Notify(19587)
 		norm = norm[:idx]
+	} else {
+		__antithesis_instrumentation__.Notify(19588)
 	}
+	__antithesis_instrumentation__.Notify(19586)
 	return security.MakeSQLUsernameFromUserInput(norm, security.UsernameValidation)
 }
 
-// stripRealmMapper is a pgwire.RoleMapper that just strips the trailing
-// realm information, if any, from the gssapi username.
 func stripRealmMapper(
 	_ context.Context, systemIdentity security.SQLUsername,
 ) ([]security.SQLUsername, error) {
+	__antithesis_instrumentation__.Notify(19589)
 	ret, err := stripRealm(systemIdentity)
 	return []security.SQLUsername{ret}, err
 }
 
-// stripAndDelegateMapper wraps a delegate pgwire.RoleMapper such that
-// the incoming identity has its realm information stripped before the
-// next mapping is applied.
 func stripAndDelegateMapper(delegate pgwire.RoleMapper) pgwire.RoleMapper {
+	__antithesis_instrumentation__.Notify(19590)
 	return func(ctx context.Context, systemIdentity security.SQLUsername) ([]security.SQLUsername, error) {
+		__antithesis_instrumentation__.Notify(19591)
 		next, err := stripRealm(systemIdentity)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(19593)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(19594)
 		}
+		__antithesis_instrumentation__.Notify(19592)
 		return delegate(ctx, next)
 	}
 }

@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cliflags
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -20,85 +12,78 @@ import (
 	"github.com/kr/text"
 )
 
-// FlagInfo contains the static information for a CLI flag and helper
-// to format the description.
 type FlagInfo struct {
-	// Name of the flag as used on the command line.
 	Name string
 
-	// Shorthand is the short form of the flag (optional).
 	Shorthand string
 
-	// EnvVar is the name of the environment variable through which the flag value
-	// can be controlled (optional).
 	EnvVar string
 
-	// Description of the flag.
-	//
-	// The text will be automatically re-wrapped. The wrapping can be stopped by
-	// embedding the tag "<PRE>": this tag is removed from the text and
-	// signals that everything that follows should not be re-wrapped. To start
-	// wrapping again, use "</PRE>".
 	Description string
 }
 
 const usageIndentation = 1
 const wrapWidth = 79 - usageIndentation
 
-// wrapDescription wraps the text in a FlagInfo.Description.
 func wrapDescription(s string) string {
+	__antithesis_instrumentation__.Notify(28432)
 	var result bytes.Buffer
 
-	// split returns the parts of the string before and after the first occurrence
-	// of the tag.
 	split := func(str, tag string) (before, after string) {
+		__antithesis_instrumentation__.Notify(28435)
 		pieces := strings.SplitN(str, tag, 2)
 		switch len(pieces) {
 		case 0:
+			__antithesis_instrumentation__.Notify(28436)
 			return "", ""
 		case 1:
+			__antithesis_instrumentation__.Notify(28437)
 			return pieces[0], ""
 		default:
+			__antithesis_instrumentation__.Notify(28438)
 			return pieces[0], pieces[1]
 		}
 	}
+	__antithesis_instrumentation__.Notify(28433)
 
 	for len(s) > 0 {
+		__antithesis_instrumentation__.Notify(28439)
 		var toWrap, dontWrap string
-		// Wrap everything up to the next stop wrap tag.
+
 		toWrap, s = split(s, "<PRE>")
 		result.WriteString(text.Wrap(toWrap, wrapWidth))
-		// Copy everything up to the next start wrap tag.
+
 		dontWrap, s = split(s, "</PRE>")
 		result.WriteString(dontWrap)
 	}
+	__antithesis_instrumentation__.Notify(28434)
 	return result.String()
 }
 
-// Usage returns a formatted usage string for the flag, including:
-// * line wrapping
-// * indentation
-// * env variable name (if set)
 func (f FlagInfo) Usage() string {
+	__antithesis_instrumentation__.Notify(28440)
 	s := "\n" + wrapDescription(f.Description)
 	if f.EnvVar != "" {
-		// Check that the environment variable name matches the flag name. Note: we
-		// don't want to automatically generate the name so that grepping for a flag
-		// name in the code yields the flag definition.
+		__antithesis_instrumentation__.Notify(28442)
+
 		correctName := "COCKROACH_" + strings.ToUpper(strings.Replace(f.Name, "-", "_", -1))
 		if f.EnvVar != correctName {
+			__antithesis_instrumentation__.Notify(28444)
 			panic(fmt.Sprintf("incorrect EnvVar %s for flag %s (should be %s)",
 				f.EnvVar, f.Name, correctName))
+		} else {
+			__antithesis_instrumentation__.Notify(28445)
 		}
+		__antithesis_instrumentation__.Notify(28443)
 		s = s + "\nEnvironment variable: " + f.EnvVar
+	} else {
+		__antithesis_instrumentation__.Notify(28446)
 	}
-	// github.com/spf13/pflag appends the default value after the usage text. Add
-	// an additional indentation so the default is well-aligned with the
-	// rest of the text. This is admittedly fragile.
+	__antithesis_instrumentation__.Notify(28441)
+
 	return text.Indent(s, strings.Repeat(" ", usageIndentation)) + "\n"
 }
 
-// Attrs and others store the static information for CLI flags.
 var (
 	Attrs = FlagInfo{
 		Name: "attrs",
@@ -712,8 +697,6 @@ implicit credentials (machine account/role providers) when running operations li
 Note: that --external-io-disable-http or --external-io-disable-implicit-credentials still apply, this only removes the admin-user requirement.`,
 	}
 
-	// KeySize, CertificateLifetime, AllowKeyReuse, and OverwriteFiles are used for
-	// certificate generation functions.
 	KeySize = FlagInfo{
 		Name:        "key-size",
 		Description: `Key size in bits for CA/Node/Client certificates.`,
@@ -780,7 +763,6 @@ flags.`,
 		Description: `Path to the directory containing SSL certificates and keys.`,
 	}
 
-	// Server version of the certs directory flag, cannot be set through environment.
 	ServerCertsDir = FlagInfo{
 		Name:        "certs-dir",
 		Description: CertsDir.Description,

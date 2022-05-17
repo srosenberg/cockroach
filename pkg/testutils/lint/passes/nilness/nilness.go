@@ -1,24 +1,9 @@
-// Copyright 2018 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// Portions of this file are additionally subject to the following
-// license and copyright.
-//
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package nilness inspects the control-flow graph of an SSA function
 // and reports errors such as nil pointer dereferences and degenerate
 // nil pointer comparisons.
 package nilness
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -69,16 +54,8 @@ and:
 type argExtractor func(c *ssa.CallCommon) ssa.Value
 
 type analyzerConfig struct {
-	// reportDegenerateConditions controls the reporting of "impossible"
-	// and "tautological" comparisons. While many of these are in error,
-	// it also catches nil checks where the current control flow graph
-	// can't produce nil but where we might want to guard against changes
-	// in the future. It also catches a number of compound conditionals
-	// where the "tautological" check produces more readable code.
 	reportDegenerateIfConditions bool
-	// argExtractors is a map from the full name of a function to
-	// a func that returns the argument from a Call that should
-	// not be passed provably nil values.
+
 	argExtractors map[string]argExtractor
 }
 
@@ -109,9 +86,6 @@ var defaultConfig = analyzerConfig{
 	reportDegenerateIfConditions: true,
 }
 
-// Analyzer defines a pass that checks for uses of provably nil
-// values that were likely in error with custom configuration
-// suitable for the CRDB codebase.
 var Analyzer = &analysis.Analyzer{
 	Name:     "nilness",
 	Doc:      doc,
@@ -119,8 +93,6 @@ var Analyzer = &analysis.Analyzer{
 	Requires: []*analysis.Analyzer{buildssa.Analyzer},
 }
 
-// TestAnalyzer defines a pass that checks for uses of provably nil values
-// that were likely in error.
 var TestAnalyzer = &analysis.Analyzer{
 	Name:     "nilness",
 	Doc:      doc,
@@ -129,191 +101,281 @@ var TestAnalyzer = &analysis.Analyzer{
 }
 
 func (a *analyzerConfig) run(pass *analysis.Pass) (interface{}, error) {
+	__antithesis_instrumentation__.Notify(644870)
 	ssainput := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
 	for _, fn := range ssainput.SrcFuncs {
+		__antithesis_instrumentation__.Notify(644872)
 		a.runFunc(pass, fn)
 	}
+	__antithesis_instrumentation__.Notify(644871)
 	return nil, nil
 }
 
 func (a *analyzerConfig) runFunc(pass *analysis.Pass, fn *ssa.Function) {
+	__antithesis_instrumentation__.Notify(644873)
 	reportf := func(category string, pos token.Pos, format string, args ...interface{}) {
+		__antithesis_instrumentation__.Notify(644878)
 		pass.Report(analysis.Diagnostic{
 			Pos:      pos,
 			Category: category,
 			Message:  fmt.Sprintf(format, args...),
 		})
 	}
+	__antithesis_instrumentation__.Notify(644874)
 
-	// notNil reports an error if v is provably nil.
 	notNil := func(stack []fact, instr ssa.Instruction, v ssa.Value, descr string) {
+		__antithesis_instrumentation__.Notify(644879)
 		if nilnessOf(stack, v) == isnil {
+			__antithesis_instrumentation__.Notify(644880)
 			reportf("nilderef", instr.Pos(), "nil dereference in "+descr)
+		} else {
+			__antithesis_instrumentation__.Notify(644881)
 		}
 	}
+	__antithesis_instrumentation__.Notify(644875)
 
-	// notNilArg reports an error if v is provably nil.
 	notNilArg := func(stack []fact, instr ssa.Instruction, v ssa.Value, descr string) {
+		__antithesis_instrumentation__.Notify(644882)
 		if nilnessOf(stack, v) == isnil {
+			__antithesis_instrumentation__.Notify(644883)
 			reportf("nilarg", instr.Pos(), "nil argument to "+descr)
+		} else {
+			__antithesis_instrumentation__.Notify(644884)
 		}
 	}
+	__antithesis_instrumentation__.Notify(644876)
 
-	// visit visits reachable blocks of the CFG in dominance order,
-	// maintaining a stack of dominating nilness facts.
-	//
-	// By traversing the dom tree, we can pop facts off the stack as
-	// soon as we've visited a subtree.  Had we traversed the CFG,
-	// we would need to retain the set of facts for each block.
-	seen := make([]bool, len(fn.Blocks)) // seen[i] means visit should ignore block i
+	seen := make([]bool, len(fn.Blocks))
 	var visit func(b *ssa.BasicBlock, stack []fact)
 	visit = func(b *ssa.BasicBlock, stack []fact) {
+		__antithesis_instrumentation__.Notify(644885)
 		if seen[b.Index] {
+			__antithesis_instrumentation__.Notify(644890)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(644891)
 		}
+		__antithesis_instrumentation__.Notify(644886)
 		seen[b.Index] = true
 
-		// Report nil dereferences.
 		for _, instr := range b.Instrs {
+			__antithesis_instrumentation__.Notify(644892)
 			switch instr := instr.(type) {
 			case ssa.CallInstruction:
+				__antithesis_instrumentation__.Notify(644893)
 				call := instr.Common()
 				notNil(stack, instr, call.Value, call.Description())
 
 				switch f := call.Value.(type) {
 				case *ssa.Function:
+					__antithesis_instrumentation__.Notify(644901)
 					if tf, ok := f.Object().(*types.Func); ok {
+						__antithesis_instrumentation__.Notify(644902)
 						if extract, ok := a.argExtractors[tf.FullName()]; ok {
+							__antithesis_instrumentation__.Notify(644903)
 							notNilArg(stack, instr, extract(call), tf.FullName())
+						} else {
+							__antithesis_instrumentation__.Notify(644904)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(644905)
 					}
 				}
 			case *ssa.FieldAddr:
+				__antithesis_instrumentation__.Notify(644894)
 				notNil(stack, instr, instr.X, "field selection")
 			case *ssa.IndexAddr:
+				__antithesis_instrumentation__.Notify(644895)
 				notNil(stack, instr, instr.X, "index operation")
 			case *ssa.MapUpdate:
+				__antithesis_instrumentation__.Notify(644896)
 				notNil(stack, instr, instr.Map, "map update")
 			case *ssa.Slice:
-				// A nilcheck occurs in ptr[:] iff ptr is a pointer to an array.
+				__antithesis_instrumentation__.Notify(644897)
+
 				if _, ok := instr.X.Type().Underlying().(*types.Pointer); ok {
+					__antithesis_instrumentation__.Notify(644906)
 					notNil(stack, instr, instr.X, "slice operation")
+				} else {
+					__antithesis_instrumentation__.Notify(644907)
 				}
 			case *ssa.Store:
+				__antithesis_instrumentation__.Notify(644898)
 				notNil(stack, instr, instr.Addr, "store")
 			case *ssa.TypeAssert:
+				__antithesis_instrumentation__.Notify(644899)
 				if !instr.CommaOk {
+					__antithesis_instrumentation__.Notify(644908)
 					notNil(stack, instr, instr.X, "type assertion")
+				} else {
+					__antithesis_instrumentation__.Notify(644909)
 				}
 			case *ssa.UnOp:
-				if instr.Op == token.MUL { // *X
+				__antithesis_instrumentation__.Notify(644900)
+				if instr.Op == token.MUL {
+					__antithesis_instrumentation__.Notify(644910)
 					notNil(stack, instr, instr.X, "load")
+				} else {
+					__antithesis_instrumentation__.Notify(644911)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(644887)
 
-		// Look for panics with nil value
 		for _, instr := range b.Instrs {
+			__antithesis_instrumentation__.Notify(644912)
 			switch instr := instr.(type) {
 			case *ssa.Panic:
+				__antithesis_instrumentation__.Notify(644913)
 				if nilnessOf(stack, instr.X) == isnil {
+					__antithesis_instrumentation__.Notify(644914)
 					reportf("nilpanic", instr.Pos(), "panic with nil value")
+				} else {
+					__antithesis_instrumentation__.Notify(644915)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(644888)
 
-		// For nil comparison blocks, report an error if the condition
-		// is degenerate, and push a nilness fact on the stack when
-		// visiting its true and false successor blocks.
 		if binop, tsucc, fsucc := eq(b); binop != nil {
+			__antithesis_instrumentation__.Notify(644916)
 			xnil := nilnessOf(stack, binop.X)
 			ynil := nilnessOf(stack, binop.Y)
 
-			if ynil != unknown && xnil != unknown && (xnil == isnil || ynil == isnil) {
-				// Degenerate condition:
-				// the nilness of both operands is known,
-				// and at least one of them is nil.
+			if ynil != unknown && func() bool {
+				__antithesis_instrumentation__.Notify(644918)
+				return xnil != unknown == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(644919)
+				return (xnil == isnil || func() bool {
+					__antithesis_instrumentation__.Notify(644920)
+					return ynil == isnil == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(644921)
+
 				if a.reportDegenerateIfConditions {
+					__antithesis_instrumentation__.Notify(644925)
 					var adj string
 					if (xnil == ynil) == (binop.Op == token.EQL) {
+						__antithesis_instrumentation__.Notify(644927)
 						adj = "tautological"
 					} else {
+						__antithesis_instrumentation__.Notify(644928)
 						adj = "impossible"
 					}
+					__antithesis_instrumentation__.Notify(644926)
 					reportf("cond", binop.Pos(), "%s condition: %s %s %s", adj, xnil, binop.Op, ynil)
+				} else {
+					__antithesis_instrumentation__.Notify(644929)
 				}
+				__antithesis_instrumentation__.Notify(644922)
 
-				// If tsucc's or fsucc's sole incoming edge is impossible,
-				// it is unreachable.  Prune traversal of it and
-				// all the blocks it dominates.
-				// (We could be more precise with full dataflow
-				// analysis of control-flow joins.)
 				var skip *ssa.BasicBlock
 				if xnil == ynil {
+					__antithesis_instrumentation__.Notify(644930)
 					skip = fsucc
 				} else {
+					__antithesis_instrumentation__.Notify(644931)
 					skip = tsucc
 				}
+				__antithesis_instrumentation__.Notify(644923)
 				for _, d := range b.Dominees() {
-					if d == skip && len(d.Preds) == 1 {
+					__antithesis_instrumentation__.Notify(644932)
+					if d == skip && func() bool {
+						__antithesis_instrumentation__.Notify(644934)
+						return len(d.Preds) == 1 == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(644935)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(644936)
 					}
+					__antithesis_instrumentation__.Notify(644933)
 					visit(d, stack)
 				}
+				__antithesis_instrumentation__.Notify(644924)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(644937)
 			}
+			__antithesis_instrumentation__.Notify(644917)
 
-			// "if x == nil" or "if nil == y" condition; x, y are unknown.
-			if xnil == isnil || ynil == isnil {
+			if xnil == isnil || func() bool {
+				__antithesis_instrumentation__.Notify(644938)
+				return ynil == isnil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(644939)
 				var newFacts facts
 				if xnil == isnil {
-					// x is nil, y is unknown:
-					// t successor learns y is nil.
+					__antithesis_instrumentation__.Notify(644942)
+
 					newFacts = expandFacts(fact{binop.Y, isnil})
 				} else {
-					// x is nil, y is unknown:
-					// t successor learns x is nil.
+					__antithesis_instrumentation__.Notify(644943)
+
 					newFacts = expandFacts(fact{binop.X, isnil})
 				}
+				__antithesis_instrumentation__.Notify(644940)
 
 				for _, d := range b.Dominees() {
-					// Successor blocks learn a fact
-					// only at non-critical edges.
-					// (We could do be more precise with full dataflow
-					// analysis of control-flow joins.)
+					__antithesis_instrumentation__.Notify(644944)
+
 					s := stack
 					if len(d.Preds) == 1 {
+						__antithesis_instrumentation__.Notify(644946)
 						if d == tsucc {
+							__antithesis_instrumentation__.Notify(644947)
 							s = append(s, newFacts...)
-						} else if d == fsucc {
-							s = append(s, newFacts.negate()...)
+						} else {
+							__antithesis_instrumentation__.Notify(644948)
+							if d == fsucc {
+								__antithesis_instrumentation__.Notify(644949)
+								s = append(s, newFacts.negate()...)
+							} else {
+								__antithesis_instrumentation__.Notify(644950)
+							}
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(644951)
 					}
+					__antithesis_instrumentation__.Notify(644945)
 					visit(d, s)
 				}
+				__antithesis_instrumentation__.Notify(644941)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(644952)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(644953)
 		}
+		__antithesis_instrumentation__.Notify(644889)
 
 		for _, d := range b.Dominees() {
+			__antithesis_instrumentation__.Notify(644954)
 			visit(d, stack)
 		}
 	}
+	__antithesis_instrumentation__.Notify(644877)
 
-	// Visit the entry block.  No need to visit fn.Recover.
 	if fn.Blocks != nil {
-		visit(fn.Blocks[0], make([]fact, 0, 20)) // 20 is plenty
+		__antithesis_instrumentation__.Notify(644955)
+		visit(fn.Blocks[0], make([]fact, 0, 20))
+	} else {
+		__antithesis_instrumentation__.Notify(644956)
 	}
 }
 
-// A fact records that a block is dominated
-// by the condition v == nil or v != nil.
 type fact struct {
 	value   ssa.Value
 	nilness nilness
 }
 
-func (f fact) negate() fact { return fact{f.value, -f.nilness} }
+func (f fact) negate() fact {
+	__antithesis_instrumentation__.Notify(644957)
+	return fact{f.value, -f.nilness}
+}
 
 type nilness int
 
@@ -325,29 +387,26 @@ const (
 
 var nilnessStrings = []string{"non-nil", "unknown", "nil"}
 
-func (n nilness) String() string { return nilnessStrings[n+1] }
+func (n nilness) String() string {
+	__antithesis_instrumentation__.Notify(644958)
+	return nilnessStrings[n+1]
+}
 
-// nilnessOf reports whether v is definitely nil, definitely not nil,
-// or unknown given the dominating stack of facts.
 func nilnessOf(stack []fact, v ssa.Value) nilness {
+	__antithesis_instrumentation__.Notify(644959)
 	switch v := v.(type) {
-	// unwrap ChangeInterface values recursively, to detect if underlying
-	// values have any facts recorded or are otherwise known with regard to nilness.
-	//
-	// This work must be in addition to expanding facts about
-	// ChangeInterfaces during inference/fact gathering because this covers
-	// cases where the nilness of a value is intrinsic, rather than based
-	// on inferred facts, such as a zero value interface variable. That
-	// said, this work alone would only inform us when facts are about
-	// underlying values, rather than outer values, when the analysis is
-	// transitive in both directions.
+
 	case *ssa.ChangeInterface:
+		__antithesis_instrumentation__.Notify(644963)
 		if underlying := nilnessOf(stack, v.X); underlying != unknown {
+			__antithesis_instrumentation__.Notify(644964)
 			return underlying
+		} else {
+			__antithesis_instrumentation__.Notify(644965)
 		}
 	}
+	__antithesis_instrumentation__.Notify(644960)
 
-	// Is value intrinsically nil or non-nil?
 	switch v := v.(type) {
 	case *ssa.Alloc,
 		*ssa.FieldAddr,
@@ -360,70 +419,78 @@ func nilnessOf(stack []fact, v ssa.Value) nilness {
 		*ssa.MakeInterface,
 		*ssa.MakeMap,
 		*ssa.MakeSlice:
+		__antithesis_instrumentation__.Notify(644966)
 		return isnonnil
 	case *ssa.Const:
+		__antithesis_instrumentation__.Notify(644967)
 		if v.IsNil() {
+			__antithesis_instrumentation__.Notify(644969)
 			return isnil
+		} else {
+			__antithesis_instrumentation__.Notify(644970)
 		}
+		__antithesis_instrumentation__.Notify(644968)
 		return isnonnil
 	}
+	__antithesis_instrumentation__.Notify(644961)
 
-	// Search dominating control-flow facts.
 	for _, f := range stack {
+		__antithesis_instrumentation__.Notify(644971)
 		if f.value == v {
+			__antithesis_instrumentation__.Notify(644972)
 			return f.nilness
+		} else {
+			__antithesis_instrumentation__.Notify(644973)
 		}
 	}
+	__antithesis_instrumentation__.Notify(644962)
 	return unknown
 }
 
-// If b ends with an equality comparison, eq returns the operation and
-// its true (equal) and false (not equal) successors.
 func eq(b *ssa.BasicBlock) (op *ssa.BinOp, tsucc, fsucc *ssa.BasicBlock) {
+	__antithesis_instrumentation__.Notify(644974)
 	if If, ok := b.Instrs[len(b.Instrs)-1].(*ssa.If); ok {
+		__antithesis_instrumentation__.Notify(644976)
 		if binop, ok := If.Cond.(*ssa.BinOp); ok {
+			__antithesis_instrumentation__.Notify(644977)
 			switch binop.Op {
 			case token.EQL:
+				__antithesis_instrumentation__.Notify(644978)
 				return binop, b.Succs[0], b.Succs[1]
 			case token.NEQ:
+				__antithesis_instrumentation__.Notify(644979)
 				return binop, b.Succs[1], b.Succs[0]
+			default:
+				__antithesis_instrumentation__.Notify(644980)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(644981)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(644982)
 	}
+	__antithesis_instrumentation__.Notify(644975)
 	return nil, nil, nil
 }
 
-// expandFacts takes a single fact and returns the set of facts that can be
-// known about it or any of its related values. Some operations, like
-// ChangeInterface, have transitive nilness, such that if you know the
-// underlying value is nil, you also know the value itself is nil, and vice
-// versa. This operation allows callers to match on any of the related values
-// in analyzes, rather than just the one form of the value that happened to
-// appear in a comparison.
-//
-// This work must be in addition to unwrapping values within nilnessOf because
-// while this work helps give facts about transitively known values based on
-// inferred facts, the recursive check within nilnessOf covers cases where
-// nilness facts are intrinsic to the underlying value, such as a zero value
-// interface variables.
-//
-// ChangeInterface is the only expansion currently supported, but others, like
-// Slice, could be added. At this time, this tool does not check slice
-// operations in a way this expansion could help. See
-// https://play.golang.org/p/mGqXEp7w4fR for an example.
 func expandFacts(f fact) []fact {
+	__antithesis_instrumentation__.Notify(644983)
 	ff := []fact{f}
 
 Loop:
 	for {
+		__antithesis_instrumentation__.Notify(644985)
 		switch v := f.value.(type) {
 		case *ssa.ChangeInterface:
+			__antithesis_instrumentation__.Notify(644986)
 			f = fact{v.X, f.nilness}
 			ff = append(ff, f)
 		default:
+			__antithesis_instrumentation__.Notify(644987)
 			break Loop
 		}
 	}
+	__antithesis_instrumentation__.Notify(644984)
 
 	return ff
 }
@@ -431,11 +498,14 @@ Loop:
 type facts []fact
 
 func (ff facts) negate() facts {
+	__antithesis_instrumentation__.Notify(644988)
 	nn := make([]fact, len(ff))
 	for i, f := range ff {
+		__antithesis_instrumentation__.Notify(644990)
 		nn[i] = f.negate()
 	}
+	__antithesis_instrumentation__.Notify(644989)
 	return nn
 }
 
-var firstArg = func(c *ssa.CallCommon) ssa.Value { return c.Args[0] }
+var firstArg = func(c *ssa.CallCommon) ssa.Value { __antithesis_instrumentation__.Notify(644991); return c.Args[0] }

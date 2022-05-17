@@ -1,15 +1,7 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package lease provides functionality to create and manage sql schema leases.
 package lease
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -54,7 +46,6 @@ import (
 var errRenewLease = errors.New("renew lease on id")
 var errReadOlderVersion = errors.New("read older descriptor version from store")
 
-// LeaseDuration controls the duration of sql descriptor leases.
 var LeaseDuration = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"sql.catalog.descriptor_lease_duration",
@@ -62,13 +53,20 @@ var LeaseDuration = settings.RegisterDurationSetting(
 	base.DefaultDescriptorLeaseDuration)
 
 func between0and1inclusive(f float64) error {
-	if f < 0 || f > 1 {
+	__antithesis_instrumentation__.Notify(266192)
+	if f < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(266194)
+		return f > 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(266195)
 		return errors.Errorf("value %f must be between 0 and 1", f)
+	} else {
+		__antithesis_instrumentation__.Notify(266196)
 	}
+	__antithesis_instrumentation__.Notify(266193)
 	return nil
 }
 
-// LeaseJitterFraction controls the percent jitter around sql lease durations
 var LeaseJitterFraction = settings.RegisterFloatSetting(
 	settings.TenantWritable,
 	"sql.catalog.descriptor_lease_jitter_fraction",
@@ -76,134 +74,156 @@ var LeaseJitterFraction = settings.RegisterFloatSetting(
 	base.DefaultDescriptorLeaseJitterFraction,
 	between0and1inclusive)
 
-// WaitForNoVersion returns once there are no unexpired leases left
-// for any version of the descriptor.
 func (m *Manager) WaitForNoVersion(
 	ctx context.Context, id descpb.ID, retryOpts retry.Options,
 ) error {
+	__antithesis_instrumentation__.Notify(266197)
 	for lastCount, r := 0, retry.Start(retryOpts); r.Next(); {
-		// Check to see if there are any leases that still exist on the previous
-		// version of the descriptor.
+		__antithesis_instrumentation__.Notify(266199)
+
 		now := m.storage.clock.Now()
 		stmt := fmt.Sprintf(`SELECT count(1) FROM system.public.lease AS OF SYSTEM TIME '%s' WHERE ("descID" = %d AND expiration > $1)`,
 			now.AsOfSystemTime(),
 			id)
 		values, err := m.storage.internalExecutor.QueryRowEx(
-			ctx, "count-leases", nil, /* txn */
+			ctx, "count-leases", nil,
 			sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 			stmt, now.GoTime(),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(266203)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(266204)
 		}
+		__antithesis_instrumentation__.Notify(266200)
 		if values == nil {
+			__antithesis_instrumentation__.Notify(266205)
 			return errors.New("failed to count leases")
+		} else {
+			__antithesis_instrumentation__.Notify(266206)
 		}
+		__antithesis_instrumentation__.Notify(266201)
 		count := int(tree.MustBeDInt(values[0]))
 		if count == 0 {
+			__antithesis_instrumentation__.Notify(266207)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(266208)
 		}
+		__antithesis_instrumentation__.Notify(266202)
 		if count != lastCount {
+			__antithesis_instrumentation__.Notify(266209)
 			lastCount = count
 			log.Infof(ctx, "waiting for %d leases to expire: desc=%d", count, id)
+		} else {
+			__antithesis_instrumentation__.Notify(266210)
 		}
 	}
+	__antithesis_instrumentation__.Notify(266198)
 	return nil
 }
 
-// WaitForOneVersion returns once there are no unexpired leases on the
-// previous version of the descriptor. It returns the descriptor with the
-// current version.
-// After returning there can only be versions of the descriptor >= to the
-// returned version. Lease acquisition (see acquire()) maintains the
-// invariant that no new leases for desc.Version-1 will be granted once
-// desc.Version exists.
 func (m *Manager) WaitForOneVersion(
 	ctx context.Context, id descpb.ID, retryOpts retry.Options,
 ) (desc catalog.Descriptor, _ error) {
+	__antithesis_instrumentation__.Notify(266211)
 	for lastCount, r := 0, retry.Start(retryOpts); r.Next(); {
+		__antithesis_instrumentation__.Notify(266213)
 		if err := m.DB().Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
+			__antithesis_instrumentation__.Notify(266217)
 			version := m.storage.settings.Version.ActiveVersion(ctx)
-			desc, err = catkv.MustGetDescriptorByID(ctx, version, m.Codec(), txn, nil /* vd */, id, catalog.Any)
+			desc, err = catkv.MustGetDescriptorByID(ctx, version, m.Codec(), txn, nil, id, catalog.Any)
 			return err
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(266218)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(266219)
 		}
+		__antithesis_instrumentation__.Notify(266214)
 
-		// Check to see if there are any leases that still exist on the previous
-		// version of the descriptor.
 		now := m.storage.clock.Now()
 		descs := []IDVersion{NewIDVersionPrev(desc.GetName(), desc.GetID(), desc.GetVersion())}
 		count, err := CountLeases(ctx, m.storage.internalExecutor, descs, now)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(266220)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(266221)
 		}
+		__antithesis_instrumentation__.Notify(266215)
 		if count == 0 {
+			__antithesis_instrumentation__.Notify(266222)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(266223)
 		}
+		__antithesis_instrumentation__.Notify(266216)
 		if count != lastCount {
+			__antithesis_instrumentation__.Notify(266224)
 			lastCount = count
 			log.Infof(ctx, "waiting for %d leases to expire: desc=%v", count, descs)
+		} else {
+			__antithesis_instrumentation__.Notify(266225)
 		}
 	}
+	__antithesis_instrumentation__.Notify(266212)
 	return desc, nil
 }
 
-// IDVersion represents a descriptor ID, version pair that are
-// meant to map to a single immutable descriptor.
 type IDVersion struct {
-	// Name is only provided for pretty printing.
 	Name    string
 	ID      descpb.ID
 	Version descpb.DescriptorVersion
 }
 
-// NewIDVersionPrev returns an initialized IDVersion with the
-// previous version of the descriptor.
 func NewIDVersionPrev(name string, id descpb.ID, currVersion descpb.DescriptorVersion) IDVersion {
+	__antithesis_instrumentation__.Notify(266226)
 	return IDVersion{Name: name, ID: id, Version: currVersion - 1}
 }
 
-// ensureVersion ensures that the latest version >= minVersion. It will
-// check if the latest known version meets the criterion, or attempt to
-// acquire a lease at the latest version with the hope that it meets
-// the criterion.
 func ensureVersion(
 	ctx context.Context, id descpb.ID, minVersion descpb.DescriptorVersion, m *Manager,
 ) error {
-	if s := m.findNewest(id); s != nil && minVersion <= s.GetVersion() {
+	__antithesis_instrumentation__.Notify(266227)
+	if s := m.findNewest(id); s != nil && func() bool {
+		__antithesis_instrumentation__.Notify(266231)
+		return minVersion <= s.GetVersion() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(266232)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266233)
 	}
+	__antithesis_instrumentation__.Notify(266228)
 
 	if err := m.AcquireFreshestFromStore(ctx, id); err != nil {
+		__antithesis_instrumentation__.Notify(266234)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(266235)
 	}
+	__antithesis_instrumentation__.Notify(266229)
 
-	if s := m.findNewest(id); s != nil && s.GetVersion() < minVersion {
+	if s := m.findNewest(id); s != nil && func() bool {
+		__antithesis_instrumentation__.Notify(266236)
+		return s.GetVersion() < minVersion == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(266237)
 		return errors.Errorf("version %d for descriptor %s does not exist yet", minVersion, s.GetName())
+	} else {
+		__antithesis_instrumentation__.Notify(266238)
 	}
+	__antithesis_instrumentation__.Notify(266230)
 	return nil
 }
 
 type historicalDescriptor struct {
 	desc       catalog.Descriptor
-	expiration hlc.Timestamp // ModificationTime of the next descriptor
+	expiration hlc.Timestamp
 }
 
-// Retrieves historical descriptors of given id within the lower and upper bound
-// timestamp from the MVCC key range in decreasing modification time order. Any
-// descriptor versions that were modified in the range [lower, upper) will be
-// retrieved through an export request. A lower bound of an empty timestamp
-// hlc.Timestamp{} will result in an error.
-//
-// In the following scenario v4 is our oldest active lease
-// [v1@t1			][v2@t3			][v3@t5				][v4@t7
-// 		 [start												end]
-// getDescriptorsFromStoreForInterval(..., start, end) will get back:
-// [v3, v2] (reverse order)
-//
-// Note that this does not necessarily retrieve a descriptor version that was
-// alive at the lower bound timestamp.
 func getDescriptorsFromStoreForInterval(
 	ctx context.Context,
 	db *kv.DB,
@@ -211,22 +231,26 @@ func getDescriptorsFromStoreForInterval(
 	id descpb.ID,
 	lowerBound, upperBound hlc.Timestamp,
 ) ([]historicalDescriptor, error) {
-	// Ensure lower bound is not an empty timestamp (now).
+	__antithesis_instrumentation__.Notify(266239)
+
 	if lowerBound.IsEmpty() {
+		__antithesis_instrumentation__.Notify(266244)
 		return nil, errors.AssertionFailedf(
 			"getDescriptorsFromStoreForInterval: lower bound cannot be empty")
+	} else {
+		__antithesis_instrumentation__.Notify(266245)
 	}
-	// TODO(ajwerner): We'll want to lift this limitation in order to allow this
-	// function to find descriptors which could not be found by leasing. This
-	// will also require some careful managing of expiration timestamps for the
-	// final descriptor.
+	__antithesis_instrumentation__.Notify(266240)
+
 	if upperBound.IsEmpty() {
+		__antithesis_instrumentation__.Notify(266246)
 		return nil, errors.AssertionFailedf(
 			"getDescriptorsFromStoreForInterval: upper bound cannot be empty")
+	} else {
+		__antithesis_instrumentation__.Notify(266247)
 	}
+	__antithesis_instrumentation__.Notify(266241)
 
-	// Create an export request (1 kv call) for all descriptors for given
-	// descriptor ID written during the interval [timestamp, endTimestamp).
 	batchRequestHeader := roachpb.Header{
 		Timestamp: upperBound.Prev(),
 	}
@@ -242,312 +266,362 @@ func getDescriptorsFromStoreForInterval(
 		ReturnSST:     true,
 	}
 
-	// Export request returns descriptors in decreasing modification time.
 	res, pErr := kv.SendWrappedWith(ctx, db.NonTransactionalSender(), batchRequestHeader, req)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(266248)
 		return nil, errors.Wrapf(pErr.GoError(), "error in retrieving descs between %s, %s",
 			lowerBound, upperBound)
+	} else {
+		__antithesis_instrumentation__.Notify(266249)
 	}
+	__antithesis_instrumentation__.Notify(266242)
 
-	// Unmarshal key span retrieved from export request to construct historical descs.
 	var descriptorsRead []historicalDescriptor
-	// Keep track of the most recently processed descriptor's modification time to
-	// set as the expiration for the next descriptor to process. Recall we process
-	// descriptors in decreasing modification time.
+
 	subsequentModificationTime := upperBound
 	for _, file := range res.(*roachpb.ExportResponse).Files {
+		__antithesis_instrumentation__.Notify(266250)
 		if err := func() error {
-			it, err := kvstorage.NewMemSSTIterator(file.SST, false /* verify */)
+			__antithesis_instrumentation__.Notify(266251)
+			it, err := kvstorage.NewMemSSTIterator(file.SST, false)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(266253)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(266254)
 			}
+			__antithesis_instrumentation__.Notify(266252)
 			defer it.Close()
 
-			// Convert each MVCC key value pair corresponding to the specified
-			// descriptor ID.
 			for it.SeekGE(kvstorage.NilKey); ; it.Next() {
+				__antithesis_instrumentation__.Notify(266255)
 				if ok, err := it.Valid(); err != nil {
+					__antithesis_instrumentation__.Notify(266259)
 					return err
-				} else if !ok {
-					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(266260)
+					if !ok {
+						__antithesis_instrumentation__.Notify(266261)
+						return nil
+					} else {
+						__antithesis_instrumentation__.Notify(266262)
+					}
 				}
+				__antithesis_instrumentation__.Notify(266256)
 
-				// Decode key and value of descriptor.
 				k := it.UnsafeKey()
 				descContent := it.UnsafeValue()
 				if descContent == nil {
+					__antithesis_instrumentation__.Notify(266263)
 					return errors.Wrapf(errors.New("unsafe value error"), "error "+
 						"extracting raw bytes of descriptor with key %s modified between "+
 						"%s, %s", k.String(), k.Timestamp, subsequentModificationTime)
+				} else {
+					__antithesis_instrumentation__.Notify(266264)
 				}
+				__antithesis_instrumentation__.Notify(266257)
 
-				// Construct a plain descriptor.
 				value := roachpb.Value{RawBytes: descContent}
 				var desc descpb.Descriptor
 				if err := value.GetProto(&desc); err != nil {
+					__antithesis_instrumentation__.Notify(266265)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(266266)
 				}
+				__antithesis_instrumentation__.Notify(266258)
 				descBuilder := descbuilder.NewBuilderWithMVCCTimestamp(&desc, k.Timestamp)
 
-				// Construct a historical descriptor with expiration.
 				histDesc := historicalDescriptor{
 					desc:       descBuilder.BuildImmutable(),
 					expiration: subsequentModificationTime,
 				}
 				descriptorsRead = append(descriptorsRead, histDesc)
 
-				// Update the expiration time for next descriptor.
 				subsequentModificationTime = k.Timestamp
 			}
 		}(); err != nil {
+			__antithesis_instrumentation__.Notify(266267)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(266268)
 		}
 	}
+	__antithesis_instrumentation__.Notify(266243)
 	return descriptorsRead, nil
 }
 
-// Read older descriptor versions for the particular timestamp from store
-// through an ExportRequest. The ExportRequest queries the key span for versions
-// in range [timestamp, earliest modification time in memory) or [timestamp:] if
-// there are no active leases in memory. This is followed by a call to
-// getForExpiration in case the ExportRequest doesn't grab the earliest
-// descriptor version we are interested in, resulting at most 2 KV calls.
-//
-// TODO(vivek, james): Future work:
-// 1. Translate multiple simultaneous calls to this method into a single call
-//    as is done for acquireNodeLease().
-// 2. Figure out a sane policy on when these descriptors should be purged.
-//    They are currently purged in PurgeOldVersions.
 func (m *Manager) readOlderVersionForTimestamp(
 	ctx context.Context, id descpb.ID, timestamp hlc.Timestamp,
 ) ([]historicalDescriptor, error) {
-	// Retrieve the endTimestamp for our query, which will be the first
-	// modification timestamp above our query timestamp.
-	t := m.findDescriptorState(id, false /*create*/)
-	// A missing descriptor state indicates that this descriptor has been
-	// purged in the meantime. We should go back around in the acquisition
-	// loop to make the appropriate error appear.
+	__antithesis_instrumentation__.Notify(266269)
+
+	t := m.findDescriptorState(id, false)
+
 	if t == nil {
+		__antithesis_instrumentation__.Notify(266276)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(266277)
 	}
+	__antithesis_instrumentation__.Notify(266270)
 	endTimestamp, done := func() (hlc.Timestamp, bool) {
+		__antithesis_instrumentation__.Notify(266278)
 		t.mu.Lock()
 		defer t.mu.Unlock()
 
-		// If there are no descriptors, then we won't have a valid end timestamp.
 		if len(t.mu.active.data) == 0 {
+			__antithesis_instrumentation__.Notify(266282)
 			return hlc.Timestamp{}, true
+		} else {
+			__antithesis_instrumentation__.Notify(266283)
 		}
-		// We permit gaps in historical versions. We want to find the timestamp
-		// that represents the start of the validity interval for the known version
-		// which immediately follows the timestamps we're searching for.
+		__antithesis_instrumentation__.Notify(266279)
+
 		i := sort.Search(len(t.mu.active.data), func(i int) bool {
+			__antithesis_instrumentation__.Notify(266284)
 			return timestamp.Less(t.mu.active.data[i].GetModificationTime())
 		})
+		__antithesis_instrumentation__.Notify(266280)
 
-		// If the timestamp we're searching for is somehow after the last descriptor
-		// we have in play, then either we have the right descriptor, or some other
-		// shenanigans where we've evicted the descriptor has occurred.
-		//
-		// TODO(ajwerner): When we come to modify this code to allow us to find
-		// historical descriptors which have been dropped, we'll need to rework
-		// this case and support providing no upperBound to
-		// getDescriptorFromStoreForInterval.
-		if i == len(t.mu.active.data) ||
-			// If we found a descriptor that isn't the first descriptor, go and check
-			// whether the descriptor for which we're searching actually exists. This
-			// will deal with cases where a concurrent fetch filled it in for us.
-			i > 0 && timestamp.Less(t.mu.active.data[i-1].getExpiration()) {
+		if i == len(t.mu.active.data) || func() bool {
+			__antithesis_instrumentation__.Notify(266285)
+			return (i > 0 && func() bool {
+				__antithesis_instrumentation__.Notify(266286)
+				return timestamp.Less(t.mu.active.data[i-1].getExpiration()) == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(266287)
 			return hlc.Timestamp{}, true
+		} else {
+			__antithesis_instrumentation__.Notify(266288)
 		}
+		__antithesis_instrumentation__.Notify(266281)
 		return t.mu.active.data[i].GetModificationTime(), false
 	}()
+	__antithesis_instrumentation__.Notify(266271)
 	if done {
+		__antithesis_instrumentation__.Notify(266289)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(266290)
 	}
+	__antithesis_instrumentation__.Notify(266272)
 
-	// Retrieve descriptors in range [timestamp, endTimestamp) in decreasing
-	// modification time order.
 	descs, err := getDescriptorsFromStoreForInterval(ctx, m.DB(), m.Codec(), id, timestamp, endTimestamp)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(266291)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(266292)
 	}
+	__antithesis_instrumentation__.Notify(266273)
 
-	// In the case where the descriptor we're looking for is modified before the
-	// input timestamp, we get the descriptor before the earliest descriptor we
-	// have from either in memory or from the call to
-	// getDescriptorsFromStoreForInterval.
 	var earliestModificationTime hlc.Timestamp
 	if len(descs) == 0 {
+		__antithesis_instrumentation__.Notify(266293)
 		earliestModificationTime = endTimestamp
 	} else {
+		__antithesis_instrumentation__.Notify(266294)
 		earliestModificationTime = descs[len(descs)-1].desc.GetModificationTime()
 	}
+	__antithesis_instrumentation__.Notify(266274)
 
-	// Unless the timestamp is exactly at the earliest modification time from
-	// ExportRequest, we'll invoke another call to retrieve the descriptor with
-	// modification time prior to the timestamp.
 	if timestamp.Less(earliestModificationTime) {
+		__antithesis_instrumentation__.Notify(266295)
 		desc, err := m.storage.getForExpiration(ctx, earliestModificationTime, id)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(266297)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(266298)
 		}
+		__antithesis_instrumentation__.Notify(266296)
 		descs = append(descs, historicalDescriptor{
 			desc:       desc,
 			expiration: earliestModificationTime,
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(266299)
 	}
+	__antithesis_instrumentation__.Notify(266275)
 
 	return descs, nil
 }
 
-// Insert descriptor versions. The versions provided are not in
-// any particular order.
 func (m *Manager) insertDescriptorVersions(id descpb.ID, versions []historicalDescriptor) {
-	t := m.findDescriptorState(id, false /* create */)
+	__antithesis_instrumentation__.Notify(266300)
+	t := m.findDescriptorState(id, false)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for i := range versions {
-		// Since we gave up the lock while reading the versions from
-		// the store we have to ensure that no one else inserted the
-		// same version.
+		__antithesis_instrumentation__.Notify(266301)
+
 		existingVersion := t.mu.active.findVersion(versions[i].desc.GetVersion())
 		if existingVersion == nil {
+			__antithesis_instrumentation__.Notify(266302)
 			t.mu.active.insert(
 				newDescriptorVersionState(t, versions[i].desc, versions[i].expiration, false))
+		} else {
+			__antithesis_instrumentation__.Notify(266303)
 		}
 	}
 }
 
-// AcquireFreshestFromStore acquires a new lease from the store and
-// inserts it into the active set. It guarantees that the lease returned is
-// the one acquired after the call is made. Use this if the lease we want to
-// get needs to see some descriptor updates that we know happened recently.
 func (m *Manager) AcquireFreshestFromStore(ctx context.Context, id descpb.ID) error {
-	// Create descriptorState if needed.
-	_ = m.findDescriptorState(id, true /* create */)
-	// We need to acquire a lease on a "fresh" descriptor, meaning that joining
-	// a potential in-progress lease acquisition is generally not good enough.
-	// If we are to join an in-progress acquisition, it needs to be an acquisition
-	// initiated after this point.
-	// So, we handle two cases:
-	// 1. The first DoChan() call tells us that we didn't join an in-progress
-	//     acquisition. Great, the lease that's being acquired is good.
-	// 2. The first DoChan() call tells us that we did join an in-progress acq.
-	//     We have to wait this acquisition out; it's not good for us. But any
-	//     future acquisition is good, so the next time around the loop it doesn't
-	//     matter if we initiate a request or join an in-progress one.
-	// In both cases, we need to check if the lease we want is still valid because
-	// lease acquisition is done without holding the descriptorState lock, so anything
-	// can happen in between lease acquisition and us getting control again.
+	__antithesis_instrumentation__.Notify(266304)
+
+	_ = m.findDescriptorState(id, true)
+
 	attemptsMade := 0
 	for {
-		// Acquire a fresh lease.
+		__antithesis_instrumentation__.Notify(266306)
+
 		didAcquire, err := acquireNodeLease(ctx, m, id)
 		if m.testingKnobs.LeaseStoreTestingKnobs.LeaseAcquireResultBlockEvent != nil {
+			__antithesis_instrumentation__.Notify(266310)
 			m.testingKnobs.LeaseStoreTestingKnobs.LeaseAcquireResultBlockEvent(AcquireFreshestBlock, id)
+		} else {
+			__antithesis_instrumentation__.Notify(266311)
 		}
+		__antithesis_instrumentation__.Notify(266307)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(266312)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(266313)
 		}
+		__antithesis_instrumentation__.Notify(266308)
 
 		if didAcquire {
-			// Case 1: we didn't join an in-progress call and the lease is still
-			// valid.
+			__antithesis_instrumentation__.Notify(266314)
+
 			break
-		} else if attemptsMade > 1 {
-			// Case 2: more than one acquisition has happened and the lease is still
-			// valid.
-			break
+		} else {
+			__antithesis_instrumentation__.Notify(266315)
+			if attemptsMade > 1 {
+				__antithesis_instrumentation__.Notify(266316)
+
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(266317)
+			}
 		}
+		__antithesis_instrumentation__.Notify(266309)
 		attemptsMade++
 	}
+	__antithesis_instrumentation__.Notify(266305)
 	return nil
 }
 
-// If the lease cannot be obtained because the descriptor is in the process of
-// being dropped or offline, the error will be of type inactiveTableError.
-// The boolean returned is true if this call was actually responsible for the
-// lease acquisition.
 func acquireNodeLease(ctx context.Context, m *Manager, id descpb.ID) (bool, error) {
+	__antithesis_instrumentation__.Notify(266318)
 	var toRelease *storedLease
 	resultChan, didAcquire := m.storage.group.DoChan(fmt.Sprintf("acquire%d", id), func() (interface{}, error) {
-		// Note that we use a new `context` here to avoid a situation where a cancellation
-		// of the first context cancels other callers to the `acquireNodeLease()` method,
-		// because of its use of `singleflight.Group`. See issue #41780 for how this has
-		// happened.
+		__antithesis_instrumentation__.Notify(266321)
+
 		lt := logtags.FromContext(ctx)
 		ctx, cancel := m.stopper.WithCancelOnQuiesce(logtags.AddTags(m.ambientCtx.AnnotateCtx(context.Background()), lt))
 		defer cancel()
 		if m.isDraining() {
+			__antithesis_instrumentation__.Notify(266328)
 			return nil, errors.New("cannot acquire lease when draining")
+		} else {
+			__antithesis_instrumentation__.Notify(266329)
 		}
+		__antithesis_instrumentation__.Notify(266322)
 		newest := m.findNewest(id)
 		var minExpiration hlc.Timestamp
 		if newest != nil {
+			__antithesis_instrumentation__.Notify(266330)
 			minExpiration = newest.getExpiration()
+		} else {
+			__antithesis_instrumentation__.Notify(266331)
 		}
+		__antithesis_instrumentation__.Notify(266323)
 		desc, expiration, err := m.storage.acquire(ctx, minExpiration, id)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(266332)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(266333)
 		}
-		t := m.findDescriptorState(id, false /* create */)
+		__antithesis_instrumentation__.Notify(266324)
+		t := m.findDescriptorState(id, false)
 		t.mu.Lock()
 		t.mu.takenOffline = false
 		defer t.mu.Unlock()
 		var newDescVersionState *descriptorVersionState
 		newDescVersionState, toRelease, err = t.upsertLeaseLocked(ctx, desc, expiration)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(266334)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(266335)
 		}
+		__antithesis_instrumentation__.Notify(266325)
 		if newDescVersionState != nil {
+			__antithesis_instrumentation__.Notify(266336)
 			m.names.insert(newDescVersionState)
+		} else {
+			__antithesis_instrumentation__.Notify(266337)
 		}
+		__antithesis_instrumentation__.Notify(266326)
 		if toRelease != nil {
+			__antithesis_instrumentation__.Notify(266338)
 			releaseLease(ctx, toRelease, m)
+		} else {
+			__antithesis_instrumentation__.Notify(266339)
 		}
+		__antithesis_instrumentation__.Notify(266327)
 		return true, nil
 	})
+	__antithesis_instrumentation__.Notify(266319)
 	select {
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(266340)
 		return false, ctx.Err()
 	case result := <-resultChan:
+		__antithesis_instrumentation__.Notify(266341)
 		if result.Err != nil {
+			__antithesis_instrumentation__.Notify(266342)
 			return false, result.Err
+		} else {
+			__antithesis_instrumentation__.Notify(266343)
 		}
 	}
+	__antithesis_instrumentation__.Notify(266320)
 	return didAcquire, nil
 }
 
-// releaseLease from store.
 func releaseLease(ctx context.Context, lease *storedLease, m *Manager) {
+	__antithesis_instrumentation__.Notify(266344)
 	if m.isDraining() {
-		// Release synchronously to guarantee release before exiting.
+		__antithesis_instrumentation__.Notify(266346)
+
 		m.storage.release(ctx, m.stopper, lease)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(266347)
 	}
+	__antithesis_instrumentation__.Notify(266345)
 
-	// Release to the store asynchronously, without the descriptorState lock.
 	newCtx := m.ambientCtx.AnnotateCtx(context.Background())
-	// AddTags and not WithTags, so that we combine the tags with those
-	// filled by AnnotateCtx.
+
 	newCtx = logtags.AddTags(newCtx, logtags.FromContext(ctx))
 	if err := m.stopper.RunAsyncTask(
 		newCtx, "sql.descriptorState: releasing descriptor lease",
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(266348)
 			m.storage.release(ctx, m.stopper, lease)
 		}); err != nil {
+		__antithesis_instrumentation__.Notify(266349)
 		log.Warningf(ctx, "error: %s, not releasing lease: %q", err, lease)
+	} else {
+		__antithesis_instrumentation__.Notify(266350)
 	}
 }
 
-// purgeOldVersions removes old unused descriptor versions older than
-// minVersion and releases any associated leases.
-// If dropped is set, minVersion is ignored; no lease is acquired and all
-// existing unused versions are removed. The descriptor is further marked dropped,
-// which will cause existing in-use leases to be eagerly released once
-// they're not in use any more.
-// If t has no active leases, nothing is done.
 func purgeOldVersions(
 	ctx context.Context,
 	db *kv.DB,
@@ -556,100 +630,114 @@ func purgeOldVersions(
 	minVersion descpb.DescriptorVersion,
 	m *Manager,
 ) error {
-	t := m.findDescriptorState(id, false /*create*/)
+	__antithesis_instrumentation__.Notify(266351)
+	t := m.findDescriptorState(id, false)
 	if t == nil {
+		__antithesis_instrumentation__.Notify(266359)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266360)
 	}
+	__antithesis_instrumentation__.Notify(266352)
 	t.mu.Lock()
 	if t.mu.maxVersionSeen < minVersion {
+		__antithesis_instrumentation__.Notify(266361)
 		t.mu.maxVersionSeen = minVersion
+	} else {
+		__antithesis_instrumentation__.Notify(266362)
 	}
-	empty := len(t.mu.active.data) == 0 && t.mu.acquisitionsInProgress == 0
+	__antithesis_instrumentation__.Notify(266353)
+	empty := len(t.mu.active.data) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(266363)
+		return t.mu.acquisitionsInProgress == 0 == true
+	}() == true
 	t.mu.Unlock()
-	if empty && !dropped {
-		// We don't currently have a version on this descriptor, so no need to refresh
-		// anything.
+	if empty && func() bool {
+		__antithesis_instrumentation__.Notify(266364)
+		return !dropped == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(266365)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266366)
 	}
+	__antithesis_instrumentation__.Notify(266354)
 
 	removeInactives := func(dropped bool) {
+		__antithesis_instrumentation__.Notify(266367)
 		t.mu.Lock()
 		t.mu.takenOffline = dropped
 		leases := t.removeInactiveVersions()
 		t.mu.Unlock()
 		for _, l := range leases {
+			__antithesis_instrumentation__.Notify(266368)
 			releaseLease(ctx, l, m)
 		}
 	}
+	__antithesis_instrumentation__.Notify(266355)
 
 	if dropped {
-		removeInactives(true /* dropped */)
+		__antithesis_instrumentation__.Notify(266369)
+		removeInactives(true)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266370)
 	}
+	__antithesis_instrumentation__.Notify(266356)
 
 	if err := ensureVersion(ctx, id, minVersion, m); err != nil {
+		__antithesis_instrumentation__.Notify(266371)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(266372)
 	}
+	__antithesis_instrumentation__.Notify(266357)
 
-	// Acquire a refcount on the descriptor on the latest version to maintain an
-	// active lease, so that it doesn't get released when removeInactives()
-	// is called below. Release this lease after calling removeInactives().
 	desc, _, err := t.findForTimestamp(ctx, m.storage.clock.Now())
-	if isInactive := catalog.HasInactiveDescriptorError(err); err == nil || isInactive {
+	if isInactive := catalog.HasInactiveDescriptorError(err); err == nil || func() bool {
+		__antithesis_instrumentation__.Notify(266373)
+		return isInactive == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(266374)
 		removeInactives(isInactive)
 		if desc != nil {
+			__antithesis_instrumentation__.Notify(266376)
 			t.release(ctx, desc)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(266377)
 		}
+		__antithesis_instrumentation__.Notify(266375)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266378)
 	}
+	__antithesis_instrumentation__.Notify(266358)
 	return err
 }
 
-// AcquireBlockType is the type of blocking result event when
-// calling LeaseAcquireResultBlockEvent.
 type AcquireBlockType int
 
 const (
-	// AcquireBlock denotes the LeaseAcquireResultBlockEvent is
-	// coming from descriptorState.acquire().
 	AcquireBlock AcquireBlockType = iota
-	// AcquireFreshestBlock denotes the LeaseAcquireResultBlockEvent is
-	// from descriptorState.acquireFreshestFromStore().
+
 	AcquireFreshestBlock
 )
 
-// Manager manages acquiring and releasing per-descriptor leases. It also
-// handles resolving descriptor names to descriptor IDs. The leases are managed
-// internally with a descriptor and expiration time exported by the
-// API. The descriptor acquired needs to be released. A transaction
-// can use a descriptor as long as its timestamp is within the
-// validity window for the descriptor:
-// descriptor.ModificationTime <= txn.ReadTimestamp < expirationTime
-//
-// Exported only for testing.
-//
-// The locking order is:
-// Manager.mu > descriptorState.mu > nameCache.mu > descriptorVersionState.mu
 type Manager struct {
 	rangeFeedFactory *rangefeed.Factory
 	storage          storage
 	mu               struct {
 		syncutil.Mutex
-		// TODO(james): Track size of leased descriptors in memory.
+
 		descriptors map[descpb.ID]*descriptorState
 
-		// updatesResolvedTimestamp keeps track of a timestamp before which all
-		// descriptor updates have already been seen.
 		updatesResolvedTimestamp hlc.Timestamp
 	}
 
 	draining atomic.Value
 
-	// names is a cache for name -> id mappings. A mapping for the cache
-	// should only be used if we currently have an active lease on the respective
-	// id; otherwise, the mapping may well be stale.
-	// Not protected by mu.
 	names        nameCache
 	testingKnobs ManagerTestingKnobs
 	ambientCtx   log.AmbientContext
@@ -659,12 +747,6 @@ type Manager struct {
 
 const leaseConcurrencyLimit = 5
 
-// NewLeaseManager creates a new Manager.
-//
-// internalExecutor can be nil to help bootstrapping, but then it needs to be set via
-// SetInternalExecutor before the Manager is used.
-//
-// stopper is used to run async tasks. Can be nil in tests.
 func NewLeaseManager(
 	ambientCtx log.AmbientContext,
 	nodeIDContainer *base.SQLIDContainer,
@@ -677,6 +759,7 @@ func NewLeaseManager(
 	stopper *stop.Stopper,
 	rangeFeedFactory *rangefeed.Factory,
 ) *Manager {
+	__antithesis_instrumentation__.Notify(266379)
 	lm := &Manager{
 		storage: storage{
 			nodeIDContainer:  nodeIDContainer,
@@ -709,42 +792,27 @@ func NewLeaseManager(
 	return lm
 }
 
-// NameMatchesDescriptor returns true if the provided name and IDs match this
-// descriptor.
 func NameMatchesDescriptor(
 	desc catalog.Descriptor, parentID descpb.ID, parentSchemaID descpb.ID, name string,
 ) bool {
-	return desc.GetName() == name &&
-		desc.GetParentID() == parentID &&
-		desc.GetParentSchemaID() == parentSchemaID
+	__antithesis_instrumentation__.Notify(266380)
+	return desc.GetName() == name && func() bool {
+		__antithesis_instrumentation__.Notify(266381)
+		return desc.GetParentID() == parentID == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(266382)
+		return desc.GetParentSchemaID() == parentSchemaID == true
+	}() == true
 }
 
-// findNewest returns the newest descriptor version state for the ID.
 func (m *Manager) findNewest(id descpb.ID) *descriptorVersionState {
-	t := m.findDescriptorState(id, false /* create */)
+	__antithesis_instrumentation__.Notify(266383)
+	t := m.findDescriptorState(id, false)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.mu.active.findNewest()
 }
 
-// AcquireByName returns a version for the specified descriptor valid for
-// the timestamp. It returns the descriptor and a expiration time.
-// A transaction using this descriptor must ensure that its
-// commit-timestamp < expiration-time. Care must be taken to not modify
-// the returned descriptor. Renewal of a lease may begin in the
-// background. Renewal is done in order to prevent blocking on future
-// acquisitions.
-//
-// Known limitation: AcquireByName() calls Acquire() and therefore suffers
-// from the same limitation as Acquire (See Acquire). AcquireByName() is
-// unable to function correctly on a timestamp less than the timestamp
-// of a transaction with a DROP/TRUNCATE on the descriptor. The limitation in
-// the face of a DROP follows directly from the limitation on Acquire().
-// A TRUNCATE is implemented by changing the name -> id mapping
-// and by dropping the descriptor with the old id. While AcquireByName
-// can use the timestamp and get the correct name->id  mapping at a
-// timestamp, it uses Acquire() to get a descriptor with the corresponding
-// id and fails because the id has been dropped by the TRUNCATE.
 func (m *Manager) AcquireByName(
 	ctx context.Context,
 	timestamp hlc.Timestamp,
@@ -752,119 +820,128 @@ func (m *Manager) AcquireByName(
 	parentSchemaID descpb.ID,
 	name string,
 ) (LeasedDescriptor, error) {
-	// When offline descriptor leases were not allowed to be cached,
-	// attempt to acquire a lease on them would generate a descriptor
-	// offline error. Recent changes allow offline descriptor leases
-	// to be cached, but callers still need the offline error generated.
-	// This logic will release the lease (the lease manager will still
-	// cache it), and generate the offline descriptor error.
+	__antithesis_instrumentation__.Notify(266384)
+
 	validateDescriptorForReturn := func(desc LeasedDescriptor) (LeasedDescriptor, error) {
+		__antithesis_instrumentation__.Notify(266390)
 		if desc.Underlying().Offline() {
+			__antithesis_instrumentation__.Notify(266392)
 			if err := catalog.FilterDescriptorState(
 				desc.Underlying(), tree.CommonLookupFlags{},
 			); err != nil {
+				__antithesis_instrumentation__.Notify(266393)
 				desc.Release(ctx)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(266394)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(266395)
 		}
+		__antithesis_instrumentation__.Notify(266391)
 		return desc, nil
 	}
-	// Check if we have cached an ID for this name.
+	__antithesis_instrumentation__.Notify(266385)
+
 	descVersion := m.names.get(ctx, parentID, parentSchemaID, name, timestamp)
 	if descVersion != nil {
+		__antithesis_instrumentation__.Notify(266396)
 		if descVersion.GetModificationTime().LessEq(timestamp) {
+			__antithesis_instrumentation__.Notify(266399)
 			expiration := descVersion.getExpiration()
-			// If this lease is nearly expired, ensure a renewal is queued.
+
 			durationUntilExpiry := time.Duration(expiration.WallTime - timestamp.WallTime)
 			if durationUntilExpiry < m.storage.leaseRenewalTimeout() {
-				if t := m.findDescriptorState(descVersion.GetID(), false /* create */); t != nil {
+				__antithesis_instrumentation__.Notify(266401)
+				if t := m.findDescriptorState(descVersion.GetID(), false); t != nil {
+					__antithesis_instrumentation__.Notify(266402)
 					if err := t.maybeQueueLeaseRenewal(
 						ctx, m, descVersion.GetID(), name); err != nil {
+						__antithesis_instrumentation__.Notify(266403)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(266404)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(266405)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(266406)
 			}
+			__antithesis_instrumentation__.Notify(266400)
 			return validateDescriptorForReturn(descVersion)
+		} else {
+			__antithesis_instrumentation__.Notify(266407)
 		}
-		// m.names.get() incremented the refcount, we decrement it to get a new
-		// version.
+		__antithesis_instrumentation__.Notify(266397)
+
 		descVersion.Release(ctx)
-		// Return a valid descriptor for the timestamp.
+
 		leasedDesc, err := m.Acquire(ctx, timestamp, descVersion.GetID())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(266408)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(266409)
 		}
+		__antithesis_instrumentation__.Notify(266398)
 		return validateDescriptorForReturn(leasedDesc)
+	} else {
+		__antithesis_instrumentation__.Notify(266410)
 	}
+	__antithesis_instrumentation__.Notify(266386)
 
-	// We failed to find something in the cache, or what we found is not
-	// guaranteed to be valid by the time we use it because we don't have a
-	// lease with at least a bit of lifetime left in it. So, we do it the hard
-	// way: look in the database to resolve the name, then acquire a new lease.
 	var err error
 	id, err := m.resolveName(ctx, timestamp, parentID, parentSchemaID, name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(266411)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(266412)
 	}
+	__antithesis_instrumentation__.Notify(266387)
 	desc, err := m.Acquire(ctx, timestamp, id)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(266413)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(266414)
 	}
+	__antithesis_instrumentation__.Notify(266388)
 	if !NameMatchesDescriptor(desc.Underlying(), parentID, parentSchemaID, name) {
-		// We resolved name `name`, but the lease has a different name in it.
-		// That can mean two things. Assume the descriptor is being renamed from A to B.
-		// a) `name` is A. The transaction doing the RENAME committed (so the
-		// descriptor has been updated to B), but its schema changer has not
-		// finished yet. B is the new name of the descriptor, queries should use that. If
-		// we already had a lease with name A, we would've allowed to use it (but we
-		// don't, otherwise the cache lookup above would've given it to us).  Since
-		// we don't, let's not allow A to be used, given that the lease now has name
-		// B in it. It'd be sketchy to allow A to be used with an inconsistent name
-		// in the descriptor.
-		//
-		// b) `name` is B. Like in a), the transaction doing the RENAME
-		// committed (so the descriptor has been updated to B), but its schema
-		// change has not finished yet. We still had a valid lease with name A in
-		// it. What to do, what to do? We could allow name B to be used, but who
-		// knows what consequences that would have, since its not consistent with
-		// the descriptor. We could say "descriptor B not found", but that means that, until
-		// the next gossip update, this node would not service queries for this
-		// descriptor under the name B. That's no bueno, as B should be available to be
-		// used immediately after the RENAME transaction has committed.
-		// The problem is that we have a lease that we know is stale (the descriptor
-		// in the DB doesn't necessarily have a new version yet, but it definitely
-		// has a new name). So, lets force getting a fresh descriptor.
-		// This case (modulo the "committed" part) also applies when the txn doing a
-		// RENAME had a lease on the old name, and then tries to use the new name
-		// after the RENAME statement.
-		//
-		// How do we disambiguate between the a) and b)? We get a fresh lease on
-		// the descriptor, as required by b), and then we'll know if we're trying to
-		// resolve the current or the old name.
-		//
-		// TODO(vivek): check if the entire above comment is indeed true. Review the
-		// use of NameMatchesDescriptor() throughout this function.
+		__antithesis_instrumentation__.Notify(266415)
+
 		desc.Release(ctx)
 		if err := m.AcquireFreshestFromStore(ctx, id); err != nil {
+			__antithesis_instrumentation__.Notify(266418)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(266419)
 		}
+		__antithesis_instrumentation__.Notify(266416)
 		desc, err = m.Acquire(ctx, timestamp, id)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(266420)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(266421)
 		}
+		__antithesis_instrumentation__.Notify(266417)
 		if !NameMatchesDescriptor(desc.Underlying(), parentID, parentSchemaID, name) {
-			// If the name we had doesn't match the newest descriptor in the DB, then
-			// we're trying to use an old name.
+			__antithesis_instrumentation__.Notify(266422)
+
 			desc.Release(ctx)
 			return nil, catalog.ErrDescriptorNotFound
+		} else {
+			__antithesis_instrumentation__.Notify(266423)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(266424)
 	}
+	__antithesis_instrumentation__.Notify(266389)
 	return validateDescriptorForReturn(desc)
 }
 
-// resolveName resolves a descriptor name to a descriptor ID at a particular
-// timestamp by looking in the database. If the mapping is not found,
-// catalog.ErrDescriptorNotFound is returned.
 func (m *Manager) resolveName(
 	ctx context.Context,
 	timestamp hlc.Timestamp,
@@ -872,218 +949,280 @@ func (m *Manager) resolveName(
 	parentSchemaID descpb.ID,
 	name string,
 ) (id descpb.ID, _ error) {
+	__antithesis_instrumentation__.Notify(266425)
 	if err := m.storage.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-		// Run the name lookup as high-priority, thereby pushing any intents out of
-		// its way. We don't want schema changes to prevent name resolution/lease
-		// acquisitions; we'd rather force them to refresh. Also this prevents
-		// deadlocks in cases where the name resolution is triggered by the
-		// transaction doing the schema change itself.
+		__antithesis_instrumentation__.Notify(266428)
+
 		if err := txn.SetUserPriority(roachpb.MaxUserPriority); err != nil {
+			__antithesis_instrumentation__.Notify(266431)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(266432)
 		}
+		__antithesis_instrumentation__.Notify(266429)
 		if err := txn.SetFixedTimestamp(ctx, timestamp); err != nil {
+			__antithesis_instrumentation__.Notify(266433)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(266434)
 		}
+		__antithesis_instrumentation__.Notify(266430)
 		var err error
 		id, err = catkv.LookupID(ctx, txn, m.storage.codec, parentID, parentSchemaID, name)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(266435)
 		return id, err
+	} else {
+		__antithesis_instrumentation__.Notify(266436)
 	}
+	__antithesis_instrumentation__.Notify(266426)
 	if id == descpb.InvalidID {
+		__antithesis_instrumentation__.Notify(266437)
 		return id, catalog.ErrDescriptorNotFound
+	} else {
+		__antithesis_instrumentation__.Notify(266438)
 	}
+	__antithesis_instrumentation__.Notify(266427)
 	return id, nil
 }
 
-// LeasedDescriptor tracks and manages leasing related
-// information for a descriptor.
 type LeasedDescriptor interface {
 	catalog.NameEntry
 
-	// Underlying returns the underlying descriptor which has been leased.
-	// The implementation of the methods on this object delegate to
-	// that object.
 	Underlying() catalog.Descriptor
 
-	// Expiration returns the current expiration. Subsequent calls may return a
-	// later timestamp but will never return an earlier one.
 	Expiration() hlc.Timestamp
 
-	// Release releases the reference to this leased descriptor. The descriptor
-	// should not be used after the lease has been released.
 	Release(ctx context.Context)
 }
 
-// Acquire acquires a read lease for the specified descriptor ID valid for
-// the timestamp. It returns the descriptor and an expiration time.
-// A transaction using this descriptor must ensure that its
-// commit-timestamp < expiration-time. Care must be taken to not modify
-// the returned descriptor.
-//
-// Known limitation: Acquire() can return an error after the descriptor with
-// the ID has been dropped. This is true even when using a timestamp
-// less than the timestamp of the DROP command. This is because Acquire
-// can only return an older version of a descriptor if the latest version
-// can be leased; as it stands a dropped descriptor cannot be leased.
 func (m *Manager) Acquire(
 	ctx context.Context, timestamp hlc.Timestamp, id descpb.ID,
 ) (LeasedDescriptor, error) {
+	__antithesis_instrumentation__.Notify(266439)
 	for {
-		t := m.findDescriptorState(id, true /*create*/)
+		__antithesis_instrumentation__.Notify(266440)
+		t := m.findDescriptorState(id, true)
 		desc, latest, err := t.findForTimestamp(ctx, timestamp)
 		if err == nil {
-			// If the latest lease is nearly expired, ensure a renewal is queued.
+			__antithesis_instrumentation__.Notify(266442)
+
 			if latest {
+				__antithesis_instrumentation__.Notify(266444)
 				durationUntilExpiry := time.Duration(desc.getExpiration().WallTime - timestamp.WallTime)
 				if durationUntilExpiry < m.storage.leaseRenewalTimeout() {
+					__antithesis_instrumentation__.Notify(266445)
 					if err := t.maybeQueueLeaseRenewal(ctx, m, id, desc.GetName()); err != nil {
+						__antithesis_instrumentation__.Notify(266446)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(266447)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(266448)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(266449)
 			}
+			__antithesis_instrumentation__.Notify(266443)
 			return desc, nil
+		} else {
+			__antithesis_instrumentation__.Notify(266450)
 		}
+		__antithesis_instrumentation__.Notify(266441)
 		switch {
 		case errors.Is(err, errRenewLease):
+			__antithesis_instrumentation__.Notify(266451)
 			if err := func() error {
+				__antithesis_instrumentation__.Notify(266456)
 				t.markAcquisitionStart(ctx)
 				defer t.markAcquisitionDone(ctx)
-				// Renew lease and retry. This will block until the lease is acquired.
+
 				_, errLease := acquireNodeLease(ctx, m, id)
 				return errLease
 			}(); err != nil {
+				__antithesis_instrumentation__.Notify(266457)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(266458)
 			}
+			__antithesis_instrumentation__.Notify(266452)
 
 			if m.testingKnobs.LeaseStoreTestingKnobs.LeaseAcquireResultBlockEvent != nil {
+				__antithesis_instrumentation__.Notify(266459)
 				m.testingKnobs.LeaseStoreTestingKnobs.LeaseAcquireResultBlockEvent(AcquireBlock, id)
+			} else {
+				__antithesis_instrumentation__.Notify(266460)
 			}
 
 		case errors.Is(err, errReadOlderVersion):
-			// Read old versions from the store. This can block while reading.
+			__antithesis_instrumentation__.Notify(266453)
+
 			versions, errRead := m.readOlderVersionForTimestamp(ctx, id, timestamp)
 			if errRead != nil {
+				__antithesis_instrumentation__.Notify(266461)
 				return nil, errRead
+			} else {
+				__antithesis_instrumentation__.Notify(266462)
 			}
+			__antithesis_instrumentation__.Notify(266454)
 			m.insertDescriptorVersions(id, versions)
 
 		default:
+			__antithesis_instrumentation__.Notify(266455)
 			return nil, err
 		}
 	}
 }
 
-// removeOnceDereferenced returns true if the Manager thinks
-// a descriptorVersionState can be removed after its refcount goes to 0.
 func (m *Manager) removeOnceDereferenced() bool {
-	return m.storage.testingKnobs.RemoveOnceDereferenced ||
-		// Release from the store if the Manager is draining.
-		m.isDraining()
+	__antithesis_instrumentation__.Notify(266463)
+	return m.storage.testingKnobs.RemoveOnceDereferenced || func() bool {
+		__antithesis_instrumentation__.Notify(266464)
+		return m.isDraining() == true
+	}() == true
 }
 
 func (m *Manager) isDraining() bool {
+	__antithesis_instrumentation__.Notify(266465)
 	return m.draining.Load().(bool)
 }
 
-// SetDraining (when called with 'true') removes all inactive leases. Any leases
-// that are active will be removed once the lease's reference count drops to 0.
-//
-// The reporter callback, if non-nil, is called on a best effort basis
-// to report work that needed to be done and which may or may not have
-// been done by the time this call returns. See the explanation in
-// pkg/server/drain.go for details.
 func (m *Manager) SetDraining(
 	ctx context.Context, drain bool, reporter func(int, redact.SafeString),
 ) {
+	__antithesis_instrumentation__.Notify(266466)
 	m.draining.Store(drain)
 	if !drain {
+		__antithesis_instrumentation__.Notify(266468)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(266469)
 	}
+	__antithesis_instrumentation__.Notify(266467)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.mu.descriptors {
+		__antithesis_instrumentation__.Notify(266470)
 		t.mu.Lock()
 		leases := t.removeInactiveVersions()
 		t.mu.Unlock()
 		for _, l := range leases {
+			__antithesis_instrumentation__.Notify(266472)
 			releaseLease(ctx, l, m)
 		}
+		__antithesis_instrumentation__.Notify(266471)
 		if reporter != nil {
-			// Report progress through the Drain RPC.
+			__antithesis_instrumentation__.Notify(266473)
+
 			reporter(len(leases), "descriptor leases")
+		} else {
+			__antithesis_instrumentation__.Notify(266474)
 		}
 	}
 }
 
-// If create is set, cache and stopper need to be set as well.
 func (m *Manager) findDescriptorState(id descpb.ID, create bool) *descriptorState {
+	__antithesis_instrumentation__.Notify(266475)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	t := m.mu.descriptors[id]
-	if t == nil && create {
+	if t == nil && func() bool {
+		__antithesis_instrumentation__.Notify(266477)
+		return create == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(266478)
 		t = &descriptorState{m: m, id: id, stopper: m.stopper}
 		m.mu.descriptors[id] = t
+	} else {
+		__antithesis_instrumentation__.Notify(266479)
 	}
+	__antithesis_instrumentation__.Notify(266476)
 	return t
 }
 
-// RefreshLeases starts a goroutine that refreshes the lease manager
-// leases for descriptors received in the latest system configuration via gossip or
-// rangefeeds. This function must be passed a non-nil gossip if
-// RangefeedLeases is not active.
 func (m *Manager) RefreshLeases(ctx context.Context, s *stop.Stopper, db *kv.DB) {
+	__antithesis_instrumentation__.Notify(266480)
 	descUpdateCh := make(chan *descpb.Descriptor)
 	m.watchForUpdates(ctx, descUpdateCh)
 	_ = s.RunAsyncTask(ctx, "refresh-leases", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(266481)
 		for {
+			__antithesis_instrumentation__.Notify(266482)
 			select {
 			case desc := <-descUpdateCh:
-				// NB: We allow nil descriptors to be sent to synchronize the updating of
-				// descriptors.
+				__antithesis_instrumentation__.Notify(266483)
+
 				if desc == nil {
+					__antithesis_instrumentation__.Notify(266489)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(266490)
 				}
+				__antithesis_instrumentation__.Notify(266484)
 
 				if evFunc := m.testingKnobs.TestingDescriptorUpdateEvent; evFunc != nil {
+					__antithesis_instrumentation__.Notify(266491)
 					if err := evFunc(desc); err != nil {
+						__antithesis_instrumentation__.Notify(266492)
 						log.Infof(ctx, "skipping update of %v due to knob: %v",
 							desc, err)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(266493)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(266494)
 				}
+				__antithesis_instrumentation__.Notify(266485)
 
 				id, version, name, state, _, err := descpb.GetDescriptorMetadata(desc)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(266495)
 					log.Fatalf(ctx, "invalid descriptor %v: %v", desc, err)
+				} else {
+					__antithesis_instrumentation__.Notify(266496)
 				}
+				__antithesis_instrumentation__.Notify(266486)
 				dropped := state == descpb.DescriptorState_DROP
-				// Try to refresh the lease to one >= this version.
+
 				log.VEventf(ctx, 2, "purging old version of descriptor %d@%d (dropped %v)",
 					id, version, dropped)
 				if err := purgeOldVersions(ctx, db, id, dropped, version, m); err != nil {
+					__antithesis_instrumentation__.Notify(266497)
 					log.Warningf(ctx, "error purging leases for descriptor %d(%s): %s",
 						id, name, err)
+				} else {
+					__antithesis_instrumentation__.Notify(266498)
 				}
+				__antithesis_instrumentation__.Notify(266487)
 
 				if evFunc := m.testingKnobs.TestingDescriptorRefreshedEvent; evFunc != nil {
+					__antithesis_instrumentation__.Notify(266499)
 					evFunc(desc)
+				} else {
+					__antithesis_instrumentation__.Notify(266500)
 				}
 
 			case <-s.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(266488)
 				return
 			}
 		}
 	})
 }
 
-// watchForUpdates will watch a rangefeed on the system.descriptor table for
-// updates.
 func (m *Manager) watchForUpdates(ctx context.Context, descUpdateCh chan<- *descpb.Descriptor) {
+	__antithesis_instrumentation__.Notify(266501)
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(266504)
 		log.Infof(ctx, "using rangefeeds for lease manager updates")
+	} else {
+		__antithesis_instrumentation__.Notify(266505)
 	}
+	__antithesis_instrumentation__.Notify(266502)
 	descriptorTableStart := m.Codec().TablePrefix(keys.DescriptorTableID)
 	descriptorTableSpan := roachpb.Span{
 		Key:    descriptorTableStart,
@@ -1092,42 +1231,62 @@ func (m *Manager) watchForUpdates(ctx context.Context, descUpdateCh chan<- *desc
 	handleEvent := func(
 		ctx context.Context, ev *roachpb.RangeFeedValue,
 	) {
+		__antithesis_instrumentation__.Notify(266506)
 		if len(ev.Value.RawBytes) == 0 {
+			__antithesis_instrumentation__.Notify(266512)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(266513)
 		}
+		__antithesis_instrumentation__.Notify(266507)
 		var descriptor descpb.Descriptor
 		if err := ev.Value.GetProto(&descriptor); err != nil {
+			__antithesis_instrumentation__.Notify(266514)
 			logcrash.ReportOrPanic(ctx, &m.storage.settings.SV,
 				"%s: unable to unmarshal descriptor %v", ev.Key, ev.Value)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(266515)
 		}
+		__antithesis_instrumentation__.Notify(266508)
 		if descriptor.Union == nil {
+			__antithesis_instrumentation__.Notify(266516)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(266517)
 		}
+		__antithesis_instrumentation__.Notify(266509)
 		descpb.MaybeSetDescriptorModificationTimeFromMVCCTimestamp(&descriptor, ev.Value.Timestamp)
 		id, version, name, _, _, err := descpb.GetDescriptorMetadata(&descriptor)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(266518)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(266519)
 		}
+		__antithesis_instrumentation__.Notify(266510)
 		if log.V(2) {
+			__antithesis_instrumentation__.Notify(266520)
 			log.Infof(ctx, "%s: refreshing lease on descriptor: %d (%s), version: %d",
 				ev.Key, id, name, version)
+		} else {
+			__antithesis_instrumentation__.Notify(266521)
 		}
+		__antithesis_instrumentation__.Notify(266511)
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(266522)
 		case descUpdateCh <- &descriptor:
+			__antithesis_instrumentation__.Notify(266523)
 		}
 	}
-	// Ignore errors here because they indicate that the server is shutting down.
-	// Also note that the range feed automatically shuts down when the server
-	// shuts down, so we don't need to call Close() ourselves.
+	__antithesis_instrumentation__.Notify(266503)
+
 	_, _ = m.rangeFeedFactory.RangeFeed(
 		ctx, "lease", []roachpb.Span{descriptorTableSpan}, hlc.Timestamp{}, handleEvent,
 	)
 }
 
-// leaseRefreshLimit is the upper-limit on the number of descriptor leases
-// that will continuously have their lease refreshed.
 var leaseRefreshLimit = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"sql.tablecache.lease.refresh_limit",
@@ -1135,24 +1294,30 @@ var leaseRefreshLimit = settings.RegisterIntSetting(
 	500,
 )
 
-// PeriodicallyRefreshSomeLeases so that leases are fresh and can serve
-// traffic immediately.
-// TODO(vivek): Remove once epoch based table leases are implemented.
 func (m *Manager) PeriodicallyRefreshSomeLeases(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(266524)
 	_ = m.stopper.RunAsyncTask(ctx, "lease-refresher", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(266525)
 		leaseDuration := LeaseDuration.Get(&m.storage.settings.SV)
 		if leaseDuration <= 0 {
+			__antithesis_instrumentation__.Notify(266527)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(266528)
 		}
+		__antithesis_instrumentation__.Notify(266526)
 		refreshTimer := timeutil.NewTimer()
 		defer refreshTimer.Stop()
 		refreshTimer.Reset(m.storage.jitteredLeaseDuration() / 2)
 		for {
+			__antithesis_instrumentation__.Notify(266529)
 			select {
 			case <-m.stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(266530)
 				return
 
 			case <-refreshTimer.C:
+				__antithesis_instrumentation__.Notify(266531)
 				refreshTimer.Read = true
 				refreshTimer.Reset(m.storage.jitteredLeaseDuration() / 2)
 
@@ -1162,31 +1327,45 @@ func (m *Manager) PeriodicallyRefreshSomeLeases(ctx context.Context) {
 	})
 }
 
-// Refresh some of the current leases.
 func (m *Manager) refreshSomeLeases(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(266532)
 	limit := leaseRefreshLimit.Get(&m.storage.settings.SV)
 	if limit <= 0 {
+		__antithesis_instrumentation__.Notify(266536)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(266537)
 	}
-	// Construct a list of descriptors needing their leases to be reacquired.
+	__antithesis_instrumentation__.Notify(266533)
+
 	m.mu.Lock()
 	ids := make([]descpb.ID, 0, len(m.mu.descriptors))
 	var i int64
 	for k, desc := range m.mu.descriptors {
+		__antithesis_instrumentation__.Notify(266538)
 		if i++; i > limit {
+			__antithesis_instrumentation__.Notify(266540)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(266541)
 		}
+		__antithesis_instrumentation__.Notify(266539)
 		desc.mu.Lock()
 		takenOffline := desc.mu.takenOffline
 		desc.mu.Unlock()
 		if !takenOffline {
+			__antithesis_instrumentation__.Notify(266542)
 			ids = append(ids, k)
+		} else {
+			__antithesis_instrumentation__.Notify(266543)
 		}
 	}
+	__antithesis_instrumentation__.Notify(266534)
 	m.mu.Unlock()
-	// Limit the number of concurrent lease refreshes.
+
 	var wg sync.WaitGroup
 	for i := range ids {
+		__antithesis_instrumentation__.Notify(266544)
 		id := ids[i]
 		wg.Add(1)
 		if err := m.stopper.RunAsyncTaskEx(
@@ -1197,65 +1376,79 @@ func (m *Manager) refreshSomeLeases(ctx context.Context) {
 				WaitForSem: true,
 			},
 			func(ctx context.Context) {
+				__antithesis_instrumentation__.Notify(266545)
 				defer wg.Done()
 				if _, err := acquireNodeLease(ctx, m, id); err != nil {
+					__antithesis_instrumentation__.Notify(266546)
 					log.Infof(ctx, "refreshing descriptor: %d lease failed: %s", id, err)
+				} else {
+					__antithesis_instrumentation__.Notify(266547)
 				}
 			}); err != nil {
+			__antithesis_instrumentation__.Notify(266548)
 			log.Infof(ctx, "didnt refresh descriptor: %d lease: %s", id, err)
 			wg.Done()
+		} else {
+			__antithesis_instrumentation__.Notify(266549)
 		}
 	}
+	__antithesis_instrumentation__.Notify(266535)
 	wg.Wait()
 }
 
-// DeleteOrphanedLeases releases all orphaned leases created by a prior
-// instance of this node. timeThreshold is a walltime lower than the
-// lowest hlc timestamp that the current instance of the node can use.
 func (m *Manager) DeleteOrphanedLeases(ctx context.Context, timeThreshold int64) {
+	__antithesis_instrumentation__.Notify(266550)
 	if m.testingKnobs.DisableDeleteOrphanedLeases {
+		__antithesis_instrumentation__.Notify(266553)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(266554)
 	}
-	// TODO(asubiotto): clear up the nodeID naming here and in the table below,
-	// tracked as https://github.com/cockroachdb/cockroach/issues/48271.
+	__antithesis_instrumentation__.Notify(266551)
+
 	nodeID := m.storage.nodeIDContainer.SQLInstanceID()
 	if nodeID == 0 {
+		__antithesis_instrumentation__.Notify(266555)
 		panic("zero nodeID")
+	} else {
+		__antithesis_instrumentation__.Notify(266556)
 	}
+	__antithesis_instrumentation__.Notify(266552)
 
-	// Run as async worker to prevent blocking the main server Start method.
-	// Exit after releasing all the orphaned leases.
 	newCtx := m.ambientCtx.AnnotateCtx(context.Background())
-	// AddTags and not WithTags, so that we combine the tags with those
-	// filled by AnnotateCtx.
+
 	newCtx = logtags.AddTags(newCtx, logtags.FromContext(ctx))
 	_ = m.stopper.RunAsyncTask(newCtx, "del-orphaned-leases", func(ctx context.Context) {
-		// This could have been implemented using DELETE WHERE, but DELETE WHERE
-		// doesn't implement AS OF SYSTEM TIME.
+		__antithesis_instrumentation__.Notify(266557)
 
-		// Read orphaned leases.
 		sqlQuery := fmt.Sprintf(`
 SELECT "descID", version, expiration FROM system.public.lease AS OF SYSTEM TIME %d WHERE "nodeID" = %d
 `, timeThreshold, nodeID)
 		var rows []tree.Datums
 		retryOptions := base.DefaultRetryOptions()
 		retryOptions.Closer = m.stopper.ShouldQuiesce()
-		// The retry is required because of errors caused by node restarts. Retry 30 times.
+
 		if err := retry.WithMaxAttempts(ctx, retryOptions, 30, func() error {
+			__antithesis_instrumentation__.Notify(266559)
 			var err error
 			rows, err = m.storage.internalExecutor.QueryBuffered(
-				ctx, "read orphaned leases", nil /*txn*/, sqlQuery,
+				ctx, "read orphaned leases", nil, sqlQuery,
 			)
 			return err
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(266560)
 			log.Warningf(ctx, "unable to read orphaned leases: %+v", err)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(266561)
 		}
+		__antithesis_instrumentation__.Notify(266558)
 
 		var wg sync.WaitGroup
 		defer wg.Wait()
 		for i := range rows {
-			// Early exit?
+			__antithesis_instrumentation__.Notify(266562)
+
 			row := rows[i]
 			wg.Add(1)
 			lease := storedLease{
@@ -1271,73 +1464,87 @@ SELECT "descID", version, expiration FROM system.public.lease AS OF SYSTEM TIME 
 					WaitForSem: true,
 				},
 				func(ctx context.Context) {
+					__antithesis_instrumentation__.Notify(266563)
 					m.storage.release(ctx, m.stopper, &lease)
 					log.Infof(ctx, "released orphaned lease: %+v", lease)
 					wg.Done()
 				}); err != nil {
+				__antithesis_instrumentation__.Notify(266564)
 				wg.Done()
+			} else {
+				__antithesis_instrumentation__.Notify(266565)
 			}
 		}
 	})
 }
 
-// DB returns the Manager's handle to a kv.DB.
 func (m *Manager) DB() *kv.DB {
+	__antithesis_instrumentation__.Notify(266566)
 	return m.storage.db
 }
 
-// Codec return the Manager's SQLCodec.
 func (m *Manager) Codec() keys.SQLCodec {
+	__antithesis_instrumentation__.Notify(266567)
 	return m.storage.codec
 }
 
-// Metrics contains a pointer to all relevant lease.Manager metrics, for
-// registration.
 type Metrics struct {
 	OutstandingLeases *metric.Gauge
 }
 
-// MetricsStruct returns a struct containing all of this Manager's metrics.
 func (m *Manager) MetricsStruct() Metrics {
+	__antithesis_instrumentation__.Notify(266568)
 	return Metrics{
 		OutstandingLeases: m.storage.outstandingLeases,
 	}
 }
 
-// VisitLeases introspects the state of leases managed by the Manager.
-//
-// TODO(ajwerner): consider refactoring the function to take a struct, maybe
-// called LeaseInfo.
 func (m *Manager) VisitLeases(
 	f func(desc catalog.Descriptor, takenOffline bool, refCount int, expiration tree.DTimestamp) (wantMore bool),
 ) {
+	__antithesis_instrumentation__.Notify(266569)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, ts := range m.mu.descriptors {
+		__antithesis_instrumentation__.Notify(266570)
 		visitor := func() (wantMore bool) {
+			__antithesis_instrumentation__.Notify(266572)
 			ts.mu.Lock()
 			defer ts.mu.Unlock()
 
 			takenOffline := ts.mu.takenOffline
 
 			for _, state := range ts.mu.active.data {
+				__antithesis_instrumentation__.Notify(266574)
 				state.mu.Lock()
 				lease := state.mu.lease
 				refCount := state.mu.refcount
 				state.mu.Unlock()
 
 				if lease == nil {
+					__antithesis_instrumentation__.Notify(266576)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(266577)
 				}
+				__antithesis_instrumentation__.Notify(266575)
 
 				if !f(state.Descriptor, takenOffline, refCount, lease.expiration) {
+					__antithesis_instrumentation__.Notify(266578)
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(266579)
 				}
 			}
+			__antithesis_instrumentation__.Notify(266573)
 			return true
 		}
+		__antithesis_instrumentation__.Notify(266571)
 		if !visitor() {
+			__antithesis_instrumentation__.Notify(266580)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(266581)
 		}
 	}
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpcc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	gosql "database/sql"
@@ -20,7 +12,6 @@ import (
 )
 
 const (
-	// WAREHOUSE table.
 	tpccWarehouseSchema = `(
 		w_id        integer       not null primary key,
 		w_name      varchar(10)   not null,
@@ -35,7 +26,6 @@ const (
 		family      f1 (w_id, w_name, w_street_1, w_street_2, w_city, w_state, w_zip, w_ytd),
 		family      f2 (w_tax)`
 
-	// DISTRICT table.
 	tpccDistrictSchemaBase = `(
 		d_id         integer       not null,
 		d_w_id       integer       not null,
@@ -54,7 +44,6 @@ const (
 		family       dynamic_1 (d_ytd),
 		family       dynamic_2 (d_next_o_id, d_tax)`
 
-	// CUSTOMER table.
 	tpccCustomerSchemaBase = `(
 		c_id           integer       not null,
 		c_d_id         integer       not null,
@@ -86,7 +75,6 @@ const (
 		),
 		family dynamic (c_balance, c_ytd_payment, c_payment_cnt, c_data, c_delivery_cnt)`
 
-	// HISTORY table.
 	tpccHistorySchemaBase = `(
 		rowid    uuid    not null default gen_random_uuid(),
 		h_c_id   integer not null,
@@ -102,7 +90,6 @@ const (
 		index history_customer_fk_idx (h_c_w_id, h_c_d_id, h_c_id),
 		index history_district_fk_idx (h_w_id, h_d_id)`
 
-	// ORDER table.
 	tpccOrderSchemaBase = `(
 		o_id         integer      not null,
 		o_d_id       integer      not null,
@@ -116,7 +103,6 @@ const (
 		unique index order_idx (o_w_id, o_d_id, o_c_id, o_id DESC) storing (o_entry_d, o_carrier_id)
 	`
 
-	// NEW-ORDER table.
 	tpccNewOrderSchema = `(
 		no_o_id  integer   not null,
 		no_d_id  integer   not null,
@@ -124,7 +110,6 @@ const (
 		primary key (no_w_id, no_d_id, no_o_id)
 	`
 
-	// ITEM table.
 	tpccItemSchema = `(
 		i_id     integer      not null,
 		i_im_id  integer,
@@ -134,7 +119,6 @@ const (
 		primary key (i_id)
 	`
 
-	// STOCK table.
 	tpccStockSchemaBase = `(
 		s_i_id       integer       not null,
 		s_w_id       integer       not null,
@@ -157,7 +141,6 @@ const (
 	deprecatedTpccStockSchemaFkSuffix = `
 		index stock_item_fk_idx (s_i_id)`
 
-	// ORDER-LINE table.
 	tpccOrderLineSchemaBase = `(
 		ol_o_id         integer   not null,
 		ol_d_id         integer   not null,
@@ -191,17 +174,27 @@ type schemaOptions struct {
 type makeSchemaOption func(o *schemaOptions)
 
 func maybeAddFkSuffix(fks bool, suffix string) makeSchemaOption {
+	__antithesis_instrumentation__.Notify(697718)
 	return func(o *schemaOptions) {
+		__antithesis_instrumentation__.Notify(697719)
 		if fks {
+			__antithesis_instrumentation__.Notify(697720)
 			o.fkClause = suffix
+		} else {
+			__antithesis_instrumentation__.Notify(697721)
 		}
 	}
 }
 
 func maybeAddColumnFamiliesSuffix(separateColumnFamilies bool, suffix string) makeSchemaOption {
+	__antithesis_instrumentation__.Notify(697722)
 	return func(o *schemaOptions) {
+		__antithesis_instrumentation__.Notify(697723)
 		if separateColumnFamilies {
+			__antithesis_instrumentation__.Notify(697724)
 			o.familyClause = suffix
+		} else {
+			__antithesis_instrumentation__.Notify(697725)
 		}
 	}
 }
@@ -209,52 +202,76 @@ func maybeAddColumnFamiliesSuffix(separateColumnFamilies bool, suffix string) ma
 func maybeAddLocalityRegionalByRow(
 	multiRegionCfg multiRegionConfig, partColName string,
 ) makeSchemaOption {
+	__antithesis_instrumentation__.Notify(697726)
 	return func(o *schemaOptions) {
+		__antithesis_instrumentation__.Notify(697727)
 		if len(multiRegionCfg.regions) > 0 {
-			// We mod the ID by the number of partitions.
-			// This gives an even distribution of rows in each region.
-			// Note new regions being added after initialization time
-			// will not automatically have any data in its partitions.
+			__antithesis_instrumentation__.Notify(697728)
+
 			var b strings.Builder
 			fmt.Fprintf(&b, `
                crdb_region crdb_internal_region NOT VISIBLE NOT NULL AS (
                        CASE %s %% %d`, partColName, len(multiRegionCfg.regions))
 			for i, region := range multiRegionCfg.regions {
+				__antithesis_instrumentation__.Notify(697730)
 				fmt.Fprintf(&b, `
                        WHEN %d THEN '%s'`, i, region)
 			}
+			__antithesis_instrumentation__.Notify(697729)
 			b.WriteString(`
                        END
                ) STORED`)
 			o.columnClause = b.String()
 			o.localityClause = localityRegionalByRowSuffix
+		} else {
+			__antithesis_instrumentation__.Notify(697731)
 		}
 	}
 }
 
 func makeSchema(base string, opts ...makeSchemaOption) string {
+	__antithesis_instrumentation__.Notify(697732)
 	var o schemaOptions
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(697738)
 		opt(&o)
 	}
+	__antithesis_instrumentation__.Notify(697733)
 	ret := base
 	if o.fkClause != "" {
+		__antithesis_instrumentation__.Notify(697739)
 		ret += "," + o.fkClause
+	} else {
+		__antithesis_instrumentation__.Notify(697740)
 	}
+	__antithesis_instrumentation__.Notify(697734)
 	if o.familyClause != "" {
+		__antithesis_instrumentation__.Notify(697741)
 		ret += "," + o.familyClause
+	} else {
+		__antithesis_instrumentation__.Notify(697742)
 	}
+	__antithesis_instrumentation__.Notify(697735)
 	if o.columnClause != "" {
+		__antithesis_instrumentation__.Notify(697743)
 		ret += "," + o.columnClause
+	} else {
+		__antithesis_instrumentation__.Notify(697744)
 	}
+	__antithesis_instrumentation__.Notify(697736)
 	ret += endSchema
 	if o.localityClause != "" {
+		__antithesis_instrumentation__.Notify(697745)
 		ret += o.localityClause
+	} else {
+		__antithesis_instrumentation__.Notify(697746)
 	}
+	__antithesis_instrumentation__.Notify(697737)
 	return ret
 }
 
 func scatterRanges(db *gosql.DB) error {
+	__antithesis_instrumentation__.Notify(697747)
 	tables := []string{
 		`customer`,
 		`district`,
@@ -269,13 +286,20 @@ func scatterRanges(db *gosql.DB) error {
 
 	var g errgroup.Group
 	for _, table := range tables {
+		__antithesis_instrumentation__.Notify(697749)
 		sql := fmt.Sprintf(`ALTER TABLE %s SCATTER`, table)
 		g.Go(func() error {
+			__antithesis_instrumentation__.Notify(697750)
 			if _, err := db.Exec(sql); err != nil {
+				__antithesis_instrumentation__.Notify(697752)
 				return errors.Wrapf(err, "Couldn't exec %q", sql)
+			} else {
+				__antithesis_instrumentation__.Notify(697753)
 			}
+			__antithesis_instrumentation__.Notify(697751)
 			return nil
 		})
 	}
+	__antithesis_instrumentation__.Notify(697748)
 	return g.Wait()
 }

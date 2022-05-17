@@ -11,6 +11,7 @@ go_library(
     deps = [
         "//pkg/keysbase",
         "//pkg/util/treeprinter",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -30,6 +31,7 @@ go_test(
         "//pkg/util/encoding",
         "//pkg/util/leaktest",
         "//pkg/util/treeprinter",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@com_github_gogo_protobuf//proto",
         "@com_github_stretchr_testify//require",
@@ -41,7 +43,9 @@ proto_library(
     srcs = ["span_expression.proto"],
     strip_import_prefix = "/pkg",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto:gogo_proto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto:gogo_proto",
+    ],
 )
 
 go_proto_library(
@@ -50,5 +54,7 @@ go_proto_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/inverted",
     proto = ":inverted_proto",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto",
+    ],
 )

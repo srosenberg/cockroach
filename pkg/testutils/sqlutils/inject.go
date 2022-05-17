@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqlutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,128 +14,193 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// InjectDescriptors attempts to inject the provided descriptors into the
-// database.
-// If force is true, we can inject descriptors that are invalid.
 func InjectDescriptors(
 	ctx context.Context, db *gosql.DB, input []*descpb.Descriptor, force bool,
 ) error {
+	__antithesis_instrumentation__.Notify(646085)
 	cloneInput := func() []*descpb.Descriptor {
+		__antithesis_instrumentation__.Notify(646090)
 		cloned := make([]*descpb.Descriptor, 0, len(input))
 		for _, d := range input {
+			__antithesis_instrumentation__.Notify(646092)
 			cloned = append(cloned, protoutil.Clone(d).(*descpb.Descriptor))
 		}
+		__antithesis_instrumentation__.Notify(646091)
 		return cloned
 	}
+	__antithesis_instrumentation__.Notify(646086)
 	findDatabases := func(descs []*descpb.Descriptor) (dbs, others []*descpb.Descriptor) {
+		__antithesis_instrumentation__.Notify(646093)
 		for _, d := range descs {
+			__antithesis_instrumentation__.Notify(646095)
 			if _, ok := d.Union.(*descpb.Descriptor_Database); ok {
+				__antithesis_instrumentation__.Notify(646096)
 				dbs = append(dbs, d)
 			} else {
+				__antithesis_instrumentation__.Notify(646097)
 				others = append(others, d)
 			}
 		}
+		__antithesis_instrumentation__.Notify(646094)
 		return dbs, others
 	}
+	__antithesis_instrumentation__.Notify(646087)
 	injectDescriptor := func(tx *gosql.Tx, id descpb.ID, desc *descpb.Descriptor) error {
+		__antithesis_instrumentation__.Notify(646098)
 		resetVersionAndModificationTime(desc)
 		encoded, err := protoutil.Marshal(desc)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(646100)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(646101)
 		}
+		__antithesis_instrumentation__.Notify(646099)
 		_, err = tx.Exec(
 			"SELECT crdb_internal.unsafe_upsert_descriptor($1, $2, $3)",
 			id, encoded, force,
 		)
 		return err
 	}
+	__antithesis_instrumentation__.Notify(646088)
 	injectNamespaceEntry := func(
 		tx *gosql.Tx, parent, schema descpb.ID, name string, id descpb.ID,
 	) error {
+		__antithesis_instrumentation__.Notify(646102)
 		_, err := tx.Exec(
 			"SELECT crdb_internal.unsafe_upsert_namespace_entry($1, $2, $3, $4)",
 			parent, schema, name, id,
 		)
 		return err
 	}
+	__antithesis_instrumentation__.Notify(646089)
 	return crdb.ExecuteTx(ctx, db, nil, func(tx *gosql.Tx) error {
+		__antithesis_instrumentation__.Notify(646103)
 		descriptors := cloneInput()
 
-		// Pick out the databases and inject them.
 		databases, others := findDatabases(descriptors)
 		for _, db := range databases {
+			__antithesis_instrumentation__.Notify(646107)
 			id, _, name, _, _, err := descpb.GetDescriptorMetadata(db)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(646111)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(646112)
 			}
+			__antithesis_instrumentation__.Notify(646108)
 			if err := injectDescriptor(tx, id, db); err != nil {
+				__antithesis_instrumentation__.Notify(646113)
 				return errors.Wrapf(err, "failed to inject database descriptor %d", id)
+			} else {
+				__antithesis_instrumentation__.Notify(646114)
 			}
+			__antithesis_instrumentation__.Notify(646109)
 			if err := injectNamespaceEntry(tx, 0, 0, name, id); err != nil {
+				__antithesis_instrumentation__.Notify(646115)
 				return errors.Wrapf(err, "failed to inject namespace entry for database %d", id)
+			} else {
+				__antithesis_instrumentation__.Notify(646116)
 			}
+			__antithesis_instrumentation__.Notify(646110)
 			if err := injectNamespaceEntry(
 				tx, id, 0, tree.PublicSchema, keys.PublicSchemaID,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(646117)
 				return errors.Wrapf(err, "failed to inject namespace entry for public schema in %d", id)
+			} else {
+				__antithesis_instrumentation__.Notify(646118)
 			}
 		}
-		// Inject the other descriptors - this won't do much in the way of
-		// validation.
+		__antithesis_instrumentation__.Notify(646104)
+
 		for _, d := range others {
+			__antithesis_instrumentation__.Notify(646119)
 			id, _, _, _, _, err := descpb.GetDescriptorMetadata(d)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(646121)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(646122)
 			}
+			__antithesis_instrumentation__.Notify(646120)
 			if err := injectDescriptor(tx, id, d); err != nil {
+				__antithesis_instrumentation__.Notify(646123)
 				return errors.Wrapf(err, "failed to inject descriptor %d", id)
+			} else {
+				__antithesis_instrumentation__.Notify(646124)
 			}
 		}
-		// Inject the namespace entries.
+		__antithesis_instrumentation__.Notify(646105)
+
 		for _, d := range others {
+			__antithesis_instrumentation__.Notify(646125)
 			id, _, name, _, _, err := descpb.GetDescriptorMetadata(d)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(646127)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(646128)
 			}
+			__antithesis_instrumentation__.Notify(646126)
 			parent, schema := getDescriptorParentAndSchema(d)
 			if err := injectNamespaceEntry(tx, parent, schema, name, id); err != nil {
+				__antithesis_instrumentation__.Notify(646129)
 				return errors.Wrapf(err, "failed to inject namespace entry (%d, %d, %s) %d",
 					parent, schema, name, id)
+			} else {
+				__antithesis_instrumentation__.Notify(646130)
 			}
 		}
+		__antithesis_instrumentation__.Notify(646106)
 		return nil
 	})
 }
 
 func getDescriptorParentAndSchema(d *descpb.Descriptor) (parent, schema descpb.ID) {
+	__antithesis_instrumentation__.Notify(646131)
 	switch d := d.Union.(type) {
 	case *descpb.Descriptor_Database:
+		__antithesis_instrumentation__.Notify(646132)
 		return 0, 0
 	case *descpb.Descriptor_Schema:
+		__antithesis_instrumentation__.Notify(646133)
 		return d.Schema.ParentID, 0
 	case *descpb.Descriptor_Type:
+		__antithesis_instrumentation__.Notify(646134)
 		return d.Type.ParentID, d.Type.ParentSchemaID
 	case *descpb.Descriptor_Table:
+		__antithesis_instrumentation__.Notify(646135)
 		schema := d.Table.UnexposedParentSchemaID
-		// Descriptors from prior to 20.1 carry a 0 schema ID.
+
 		if schema == 0 {
+			__antithesis_instrumentation__.Notify(646138)
 			schema = keys.PublicSchemaID
+		} else {
+			__antithesis_instrumentation__.Notify(646139)
 		}
+		__antithesis_instrumentation__.Notify(646136)
 		return d.Table.ParentID, schema
 	default:
+		__antithesis_instrumentation__.Notify(646137)
 		panic(errors.Errorf("unknown descriptor type %T", d))
 	}
 }
 
 func resetVersionAndModificationTime(d *descpb.Descriptor) {
+	__antithesis_instrumentation__.Notify(646140)
 	switch d := d.Union.(type) {
 	case *descpb.Descriptor_Database:
+		__antithesis_instrumentation__.Notify(646141)
 		d.Database.Version = 1
 	case *descpb.Descriptor_Schema:
+		__antithesis_instrumentation__.Notify(646142)
 		d.Schema.Version = 1
 	case *descpb.Descriptor_Type:
+		__antithesis_instrumentation__.Notify(646143)
 		d.Type.Version = 1
 	case *descpb.Descriptor_Table:
+		__antithesis_instrumentation__.Notify(646144)
 		d.Table.Version = 1
 	}
 }

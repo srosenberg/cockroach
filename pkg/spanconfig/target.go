@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfig
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"testing"
@@ -19,169 +11,228 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Target specifies the target of an associated span configuration.
 type Target struct {
 	span roachpb.Span
 
 	systemTarget SystemTarget
 }
 
-// MakeTarget returns a new Target.
 func MakeTarget(t roachpb.SpanConfigTarget) (Target, error) {
+	__antithesis_instrumentation__.Notify(242083)
 	switch t.Union.(type) {
 	case *roachpb.SpanConfigTarget_Span:
+		__antithesis_instrumentation__.Notify(242084)
 		return MakeSpanTargetFromProto(t)
 	case *roachpb.SpanConfigTarget_SystemSpanConfigTarget:
+		__antithesis_instrumentation__.Notify(242085)
 		systemTarget, err := makeSystemTargetFromProto(t.GetSystemSpanConfigTarget())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(242088)
 			return Target{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(242089)
 		}
+		__antithesis_instrumentation__.Notify(242086)
 		return MakeTargetFromSystemTarget(systemTarget), nil
 	default:
+		__antithesis_instrumentation__.Notify(242087)
 		return Target{}, errors.AssertionFailedf("unknown type of system target %v", t)
 	}
 }
 
-// MakeSpanTargetFromProto returns a new Target backed by an underlying span.
-// An error is returned if the proto does not contain a span or if the span
-// overlaps with the reserved system span config keyspace.
 func MakeSpanTargetFromProto(spanTarget roachpb.SpanConfigTarget) (Target, error) {
+	__antithesis_instrumentation__.Notify(242090)
 	if spanTarget.GetSpan() == nil {
+		__antithesis_instrumentation__.Notify(242093)
 		return Target{}, errors.AssertionFailedf("span config target did not contain a span")
+	} else {
+		__antithesis_instrumentation__.Notify(242094)
 	}
+	__antithesis_instrumentation__.Notify(242091)
 	if keys.SystemSpanConfigSpan.Overlaps(*spanTarget.GetSpan()) {
+		__antithesis_instrumentation__.Notify(242095)
 		return Target{}, errors.AssertionFailedf(
 			"cannot target spans in reserved system span config keyspace",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(242096)
 	}
+	__antithesis_instrumentation__.Notify(242092)
 	return MakeTargetFromSpan(*spanTarget.GetSpan()), nil
 }
 
-// MakeTargetFromSpan constructs and returns a span target. Callers are not
-// allowed to target the reserved system span config keyspace (or part of it)
-// directly; system targets should be used instead.
 func MakeTargetFromSpan(span roachpb.Span) Target {
+	__antithesis_instrumentation__.Notify(242097)
 	if keys.SystemSpanConfigSpan.Overlaps(span) {
+		__antithesis_instrumentation__.Notify(242099)
 		panic("cannot target spans in reserved system span config keyspace")
+	} else {
+		__antithesis_instrumentation__.Notify(242100)
 	}
+	__antithesis_instrumentation__.Notify(242098)
 	return Target{span: span}
 }
 
-// MakeTargetFromSystemTarget returns a Target which wraps a system target.
 func MakeTargetFromSystemTarget(systemTarget SystemTarget) Target {
+	__antithesis_instrumentation__.Notify(242101)
 	return Target{systemTarget: systemTarget}
 }
 
-// IsSpanTarget returns true if the target is a span target.
 func (t Target) IsSpanTarget() bool {
+	__antithesis_instrumentation__.Notify(242102)
 	return !t.span.Equal(roachpb.Span{})
 }
 
-// GetSpan returns the underlying roachpb.Span if the target is a span
-// target; panics if that isn't he case.
 func (t Target) GetSpan() roachpb.Span {
+	__antithesis_instrumentation__.Notify(242103)
 	if !t.IsSpanTarget() {
+		__antithesis_instrumentation__.Notify(242105)
 		panic("target is not a span target")
+	} else {
+		__antithesis_instrumentation__.Notify(242106)
 	}
+	__antithesis_instrumentation__.Notify(242104)
 	return t.span
 }
 
-// IsSystemTarget returns true if the underlying target is a system target.
 func (t Target) IsSystemTarget() bool {
+	__antithesis_instrumentation__.Notify(242107)
 	return !t.systemTarget.IsEmpty()
 }
 
-// GetSystemTarget returns the underlying SystemTarget; it panics if that is not
-// the case.
 func (t Target) GetSystemTarget() SystemTarget {
+	__antithesis_instrumentation__.Notify(242108)
 	if !t.IsSystemTarget() {
+		__antithesis_instrumentation__.Notify(242110)
 		panic("target is not a system target")
+	} else {
+		__antithesis_instrumentation__.Notify(242111)
 	}
+	__antithesis_instrumentation__.Notify(242109)
 	return t.systemTarget
 }
 
-// Encode returns an encoded span suitable for interaction with the
-// system.span_configurations table.
 func (t Target) Encode() roachpb.Span {
+	__antithesis_instrumentation__.Notify(242112)
 	switch {
 	case t.IsSpanTarget():
+		__antithesis_instrumentation__.Notify(242113)
 		return t.span
 	case t.IsSystemTarget():
+		__antithesis_instrumentation__.Notify(242114)
 		return t.systemTarget.encode()
 	default:
+		__antithesis_instrumentation__.Notify(242115)
 		panic("cannot handle any other type of target")
 	}
 }
 
-// KeyspaceTargeted returns the keyspan the target applies to.
 func (t Target) KeyspaceTargeted() roachpb.Span {
+	__antithesis_instrumentation__.Notify(242116)
 	switch {
 	case t.IsSpanTarget():
+		__antithesis_instrumentation__.Notify(242117)
 		return t.span
 	case t.IsSystemTarget():
+		__antithesis_instrumentation__.Notify(242118)
 		return t.systemTarget.keyspaceTargeted()
 	default:
+		__antithesis_instrumentation__.Notify(242119)
 		panic("cannot handle any other type of target")
 	}
 }
 
-// Less returns true if the receiver is considered less than the supplied
-// target.
 func (t Target) Less(o Target) bool {
-	// We consider system targets to be less than span targets.
+	__antithesis_instrumentation__.Notify(242120)
 
-	// If both targets are system targets delegate to the base type.
-	if t.IsSystemTarget() && o.IsSystemTarget() {
+	if t.IsSystemTarget() && func() bool {
+		__antithesis_instrumentation__.Notify(242124)
+		return o.IsSystemTarget() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(242125)
 		return t.GetSystemTarget().less(o.GetSystemTarget())
+	} else {
+		__antithesis_instrumentation__.Notify(242126)
 	}
+	__antithesis_instrumentation__.Notify(242121)
 
-	// Check if one of the targets is a system target and return accordingly.
 	if t.IsSystemTarget() {
+		__antithesis_instrumentation__.Notify(242127)
 		return true
-	} else if o.IsSystemTarget() {
-		return false
+	} else {
+		__antithesis_instrumentation__.Notify(242128)
+		if o.IsSystemTarget() {
+			__antithesis_instrumentation__.Notify(242129)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(242130)
+		}
 	}
+	__antithesis_instrumentation__.Notify(242122)
 
-	// We're dealing with 2 span targets; compare their start keys.
 	if !t.GetSpan().Key.Equal(o.GetSpan().Key) {
+		__antithesis_instrumentation__.Notify(242131)
 		return t.GetSpan().Key.Compare(o.GetSpan().Key) < 0
+	} else {
+		__antithesis_instrumentation__.Notify(242132)
 	}
-	// If the start keys are equal, compare their end keys.
+	__antithesis_instrumentation__.Notify(242123)
+
 	return t.GetSpan().EndKey.Compare(o.GetSpan().EndKey) < 0
 }
 
-// Equal returns true iff the receiver is equal to the supplied target.
 func (t Target) Equal(o Target) bool {
-	if t.IsSpanTarget() && o.IsSpanTarget() {
+	__antithesis_instrumentation__.Notify(242133)
+	if t.IsSpanTarget() && func() bool {
+		__antithesis_instrumentation__.Notify(242136)
+		return o.IsSpanTarget() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(242137)
 		return t.GetSpan().Equal(o.GetSpan())
+	} else {
+		__antithesis_instrumentation__.Notify(242138)
 	}
+	__antithesis_instrumentation__.Notify(242134)
 
-	if t.IsSystemTarget() && o.IsSystemTarget() {
+	if t.IsSystemTarget() && func() bool {
+		__antithesis_instrumentation__.Notify(242139)
+		return o.IsSystemTarget() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(242140)
 		return t.GetSystemTarget().equal(o.GetSystemTarget())
+	} else {
+		__antithesis_instrumentation__.Notify(242141)
 	}
+	__antithesis_instrumentation__.Notify(242135)
 
-	// We're dealing with one span target and one system target, so they're not
-	// equal.
 	return false
 }
 
-// String returns a formatted version of the traget suitable for printing.
 func (t Target) String() string {
+	__antithesis_instrumentation__.Notify(242142)
 	if t.IsSpanTarget() {
+		__antithesis_instrumentation__.Notify(242144)
 		return t.GetSpan().String()
+	} else {
+		__antithesis_instrumentation__.Notify(242145)
 	}
+	__antithesis_instrumentation__.Notify(242143)
 	return t.GetSystemTarget().String()
 }
 
-// isEmpty returns true if the receiver is an empty target.
 func (t Target) isEmpty() bool {
-	return t.systemTarget.IsEmpty() && t.span.Equal(roachpb.Span{})
+	__antithesis_instrumentation__.Notify(242146)
+	return t.systemTarget.IsEmpty() && func() bool {
+		__antithesis_instrumentation__.Notify(242147)
+		return t.span.Equal(roachpb.Span{}) == true
+	}() == true
 }
 
-// ToProto returns a roachpb.SpanConfigTarget equivalent to the receiver.
 func (t Target) ToProto() roachpb.SpanConfigTarget {
+	__antithesis_instrumentation__.Notify(242148)
 	switch {
 	case t.IsSpanTarget():
+		__antithesis_instrumentation__.Notify(242149)
 		sp := t.GetSpan()
 		return roachpb.SpanConfigTarget{
 			Union: &roachpb.SpanConfigTarget_Span{
@@ -189,115 +240,136 @@ func (t Target) ToProto() roachpb.SpanConfigTarget {
 			},
 		}
 	case t.IsSystemTarget():
+		__antithesis_instrumentation__.Notify(242150)
 		return roachpb.SpanConfigTarget{
 			Union: &roachpb.SpanConfigTarget_SystemSpanConfigTarget{
 				SystemSpanConfigTarget: t.GetSystemTarget().toProto(),
 			},
 		}
 	default:
+		__antithesis_instrumentation__.Notify(242151)
 		panic("cannot handle any other type of target")
 	}
 }
 
-// DecodeTarget takes a raw span and decodes it into a Target given its
-// encoding. It is the inverse of Encode.
 func DecodeTarget(span roachpb.Span) Target {
+	__antithesis_instrumentation__.Notify(242152)
 	if spanStartKeyConformsToSystemTargetEncoding(span) {
+		__antithesis_instrumentation__.Notify(242154)
 		systemTarget, err := decodeSystemTarget(span)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(242156)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(242157)
 		}
+		__antithesis_instrumentation__.Notify(242155)
 		return Target{systemTarget: systemTarget}
+	} else {
+		__antithesis_instrumentation__.Notify(242158)
 	}
+	__antithesis_instrumentation__.Notify(242153)
 	return Target{span: span}
 }
 
-// Targets is  a slice of span config targets.
 type Targets []Target
 
-// Len implement sort.Interface.
-func (t Targets) Len() int { return len(t) }
+func (t Targets) Len() int { __antithesis_instrumentation__.Notify(242159); return len(t) }
 
-// Swap implements sort.Interface.
 func (t Targets) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(242160)
 	t[i], t[j] = t[j], t[i]
 }
 
-// Less implements Sort.Interface.
 func (t Targets) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(242161)
 	return t[i].Less(t[j])
 }
 
-// RecordsToEntries converts a list of records to a list roachpb.SpanConfigEntry
-// protos suitable for sending over the wire.
 func RecordsToEntries(records []Record) []roachpb.SpanConfigEntry {
+	__antithesis_instrumentation__.Notify(242162)
 	entries := make([]roachpb.SpanConfigEntry, 0, len(records))
 	for _, rec := range records {
+		__antithesis_instrumentation__.Notify(242164)
 		entries = append(entries, roachpb.SpanConfigEntry{
 			Target: rec.GetTarget().ToProto(),
 			Config: rec.GetConfig(),
 		})
 	}
+	__antithesis_instrumentation__.Notify(242163)
 	return entries
 }
 
-// EntriesToRecords converts a list of roachpb.SpanConfigEntries
-// (received over the wire) to a list of Records.
 func EntriesToRecords(entries []roachpb.SpanConfigEntry) ([]Record, error) {
+	__antithesis_instrumentation__.Notify(242165)
 	records := make([]Record, 0, len(entries))
 	for _, entry := range entries {
+		__antithesis_instrumentation__.Notify(242167)
 		target, err := MakeTarget(entry.Target)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(242170)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(242171)
 		}
+		__antithesis_instrumentation__.Notify(242168)
 		record, err := MakeRecord(target, entry.Config)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(242172)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(242173)
 		}
+		__antithesis_instrumentation__.Notify(242169)
 		records = append(records, record)
 	}
+	__antithesis_instrumentation__.Notify(242166)
 	return records, nil
 }
 
-// TargetsToProtos converts a list of targets to a list of
-// roachpb.SpanConfigTarget protos suitable for sending over the wire.
 func TargetsToProtos(targets []Target) []roachpb.SpanConfigTarget {
+	__antithesis_instrumentation__.Notify(242174)
 	targetProtos := make([]roachpb.SpanConfigTarget, 0, len(targets))
 	for _, target := range targets {
+		__antithesis_instrumentation__.Notify(242176)
 		targetProtos = append(targetProtos, target.ToProto())
 	}
+	__antithesis_instrumentation__.Notify(242175)
 	return targetProtos
 }
 
-// TargetsFromProtos converts a list of roachpb.SpanConfigTargets
-// (received over the wire) to a list of Targets.
 func TargetsFromProtos(protoTargets []roachpb.SpanConfigTarget) ([]Target, error) {
+	__antithesis_instrumentation__.Notify(242177)
 	targets := make([]Target, 0, len(protoTargets))
 	for _, t := range protoTargets {
+		__antithesis_instrumentation__.Notify(242179)
 		target, err := MakeTarget(t)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(242181)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(242182)
 		}
+		__antithesis_instrumentation__.Notify(242180)
 		targets = append(targets, target)
 	}
+	__antithesis_instrumentation__.Notify(242178)
 	return targets, nil
 }
 
-// TargetsFromRecords extracts the list of underlying targets from the given
-// list of Records.
 func TargetsFromRecords(records []Record) []Target {
+	__antithesis_instrumentation__.Notify(242183)
 	targets := make([]Target, len(records))
 	for i, rec := range records {
+		__antithesis_instrumentation__.Notify(242185)
 		targets[i] = rec.GetTarget()
 	}
+	__antithesis_instrumentation__.Notify(242184)
 	return targets
 }
 
-// TestingEntireSpanConfigurationStateTargets returns a list of targets which
-// can be used to read the entire span configuration state. This includes all
-// span configurations installed by all tenants and all system span
-// configurations, including those installed by secondary tenants.
 func TestingEntireSpanConfigurationStateTargets() []Target {
+	__antithesis_instrumentation__.Notify(242186)
 	return Targets{
 		Target{
 			span: keys.EverythingSpan,
@@ -305,11 +377,10 @@ func TestingEntireSpanConfigurationStateTargets() []Target {
 	}
 }
 
-// TestingMakeTenantKeyspaceTargetOrFatal is like MakeTenantKeyspaceTarget
-// except it fatals on error.
 func TestingMakeTenantKeyspaceTargetOrFatal(
 	t *testing.T, sourceID roachpb.TenantID, targetID roachpb.TenantID,
 ) SystemTarget {
+	__antithesis_instrumentation__.Notify(242187)
 	target, err := MakeTenantKeyspaceTarget(sourceID, targetID)
 	require.NoError(t, err)
 	return target

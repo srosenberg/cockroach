@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,84 +14,65 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 )
 
-// A replicaQueue is a prioritized queue of replicas for which work is
-// scheduled. For example, there's a GC queue for replicas which are due
-// for garbage collection, a rebalance queue to move replicas from full
-// or busy stores, a recovery queue for replicas of ranges with dead replicas,
-// etc.
 type replicaQueue interface {
-	// Start launches a goroutine to process the contents of the queue.
-	// The provided stopper is used to signal that the goroutine should exit.
 	Start(*stop.Stopper)
-	// MaybeAdd adds the replica to the queue if the replica meets
-	// the queue's inclusion criteria and the queue is not already
-	// too full, etc.
+
 	MaybeAddAsync(context.Context, replicaInQueue, hlc.ClockTimestamp)
-	// MaybeRemove removes the replica from the queue if it is present.
+
 	MaybeRemove(roachpb.RangeID)
-	// Name returns the name of the queue.
+
 	Name() string
-	// NeedsLease returns whether the queue requires a replica to be leaseholder.
+
 	NeedsLease() bool
-	// SetDisabled turns queue processing off or on as directed.
+
 	SetDisabled(disabled bool)
 }
 
-// A replicaSet provides access to a sequence of replicas to consider
-// for inclusion in replica queues. There are no requirements for the
-// ordering of the iteration.
 type replicaSet interface {
-	// Visit calls the given function for every replica in the set btree
-	// until the function returns false.
 	Visit(func(*Replica) bool)
-	// EstimatedCount returns the number of replicas estimated to remain
-	// in the iteration. This value does not need to be exact.
+
 	EstimatedCount() int
 }
 
-// A replicaScanner iterates over replicas at a measured pace in order to
-// complete approximately one full scan per target interval in a large
-// store (in small stores it may complete faster than the target
-// interval).  Each replica is tested for inclusion in a sequence of
-// prioritized replica queues.
 type replicaScanner struct {
 	log.AmbientContext
 	clock   *hlc.Clock
 	stopper *stop.Stopper
 
-	targetInterval time.Duration  // Target duration interval for scan loop
-	minIdleTime    time.Duration  // Min idle time for scan loop
-	maxIdleTime    time.Duration  // Max idle time for scan loop
-	waitTimer      timeutil.Timer // Shared timer to avoid allocations
-	replicas       replicaSet     // Replicas to be scanned
-	queues         []replicaQueue // Replica queues managed by this scanner
-	removed        chan *Replica  // Replicas to remove from queues
-	// Count of times and total duration through the scanning loop.
+	targetInterval time.Duration
+	minIdleTime    time.Duration
+	maxIdleTime    time.Duration
+	waitTimer      timeutil.Timer
+	replicas       replicaSet
+	queues         []replicaQueue
+	removed        chan *Replica
+
 	mu struct {
 		syncutil.Mutex
 		scanCount        int64
 		waitEnabledCount int64
 		total            time.Duration
-		// Some tests in this package disable scanning.
+
 		disabled bool
 	}
-	// Used to notify processing loop if the disabled state changes.
+
 	setDisabledCh chan struct{}
 }
 
-// newReplicaScanner creates a new replica scanner with the provided
-// loop intervals, replica set, and replica queues.  If scanFn is not
-// nil, after a complete loop that function will be called. If the
-// targetInterval is 0, the scanner is disabled.
 func newReplicaScanner(
 	ambient log.AmbientContext,
 	clock *hlc.Clock,
 	targetInterval, minIdleTime, maxIdleTime time.Duration,
 	replicas replicaSet,
 ) *replicaScanner {
+	__antithesis_instrumentation__.Notify(122144)
 	if targetInterval < 0 {
+		__antithesis_instrumentation__.Notify(122147)
 		panic("scanner interval must be greater than or equal to zero")
+	} else {
+		__antithesis_instrumentation__.Notify(122148)
 	}
+	__antithesis_instrumentation__.Notify(122145)
 	rs := &replicaScanner{
 		AmbientContext: ambient,
 		clock:          clock,
@@ -111,224 +84,304 @@ func newReplicaScanner(
 		setDisabledCh:  make(chan struct{}, 1),
 	}
 	if targetInterval == 0 {
+		__antithesis_instrumentation__.Notify(122149)
 		rs.SetDisabled(true)
+	} else {
+		__antithesis_instrumentation__.Notify(122150)
 	}
+	__antithesis_instrumentation__.Notify(122146)
 	return rs
 }
 
-// AddQueues adds a variable arg list of queues to the replica scanner.
-// This method may only be called before Start().
 func (rs *replicaScanner) AddQueues(queues ...replicaQueue) {
+	__antithesis_instrumentation__.Notify(122151)
 	rs.queues = append(rs.queues, queues...)
 }
 
-// Start spins up the scanning loop.
 func (rs *replicaScanner) Start() {
+	__antithesis_instrumentation__.Notify(122152)
 	for _, queue := range rs.queues {
+		__antithesis_instrumentation__.Notify(122154)
 		queue.Start(rs.stopper)
 	}
+	__antithesis_instrumentation__.Notify(122153)
 	rs.scanLoop()
 }
 
-// scanCount returns the number of times the scanner has cycled through
-// all replicas.
 func (rs *replicaScanner) scanCount() int64 {
+	__antithesis_instrumentation__.Notify(122155)
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	return rs.mu.scanCount
 }
 
-// waitEnabledCount returns the number of times the scanner went in the mode of
-// waiting to be reenabled.
 func (rs *replicaScanner) waitEnabledCount() int64 {
+	__antithesis_instrumentation__.Notify(122156)
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	return rs.mu.waitEnabledCount
 }
 
-// SetDisabled turns replica scanning off or on as directed. Note that while
-// disabled, removals are still processed.
 func (rs *replicaScanner) SetDisabled(disabled bool) {
+	__antithesis_instrumentation__.Notify(122157)
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	rs.mu.disabled = disabled
-	// The select prevents blocking on the channel.
+
 	select {
 	case rs.setDisabledCh <- struct{}{}:
+		__antithesis_instrumentation__.Notify(122158)
 	default:
+		__antithesis_instrumentation__.Notify(122159)
 	}
 }
 
 func (rs *replicaScanner) GetDisabled() bool {
+	__antithesis_instrumentation__.Notify(122160)
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	return rs.mu.disabled
 }
 
-// avgScan returns the average scan time of each scan cycle. Used in unittests.
 func (rs *replicaScanner) avgScan() time.Duration {
+	__antithesis_instrumentation__.Notify(122161)
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	if rs.mu.scanCount == 0 {
+		__antithesis_instrumentation__.Notify(122163)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(122164)
 	}
+	__antithesis_instrumentation__.Notify(122162)
 	return time.Duration(rs.mu.total.Nanoseconds() / rs.mu.scanCount)
 }
 
-// RemoveReplica removes a replica from any replica queues the scanner may
-// have placed it in. This method should be called by the Store
-// when a replica is removed (e.g. rebalanced or merged).
 func (rs *replicaScanner) RemoveReplica(repl *Replica) {
+	__antithesis_instrumentation__.Notify(122165)
 	select {
 	case rs.removed <- repl:
+		__antithesis_instrumentation__.Notify(122166)
 	case <-rs.stopper.ShouldQuiesce():
+		__antithesis_instrumentation__.Notify(122167)
 	}
 }
 
-// paceInterval returns a duration between iterations to allow us to pace
-// the scan.
 func (rs *replicaScanner) paceInterval(start, now time.Time) time.Duration {
+	__antithesis_instrumentation__.Notify(122168)
 	elapsed := now.Sub(start)
 	remainingNanos := rs.targetInterval.Nanoseconds() - elapsed.Nanoseconds()
 	if remainingNanos < 0 {
+		__antithesis_instrumentation__.Notify(122173)
 		remainingNanos = 0
+	} else {
+		__antithesis_instrumentation__.Notify(122174)
 	}
+	__antithesis_instrumentation__.Notify(122169)
 	count := rs.replicas.EstimatedCount()
 	if count < 1 {
+		__antithesis_instrumentation__.Notify(122175)
 		count = 1
+	} else {
+		__antithesis_instrumentation__.Notify(122176)
 	}
+	__antithesis_instrumentation__.Notify(122170)
 	interval := time.Duration(remainingNanos / int64(count))
-	if rs.minIdleTime > 0 && interval < rs.minIdleTime {
+	if rs.minIdleTime > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(122177)
+		return interval < rs.minIdleTime == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(122178)
 		interval = rs.minIdleTime
+	} else {
+		__antithesis_instrumentation__.Notify(122179)
 	}
-	if rs.maxIdleTime > 0 && interval > rs.maxIdleTime {
+	__antithesis_instrumentation__.Notify(122171)
+	if rs.maxIdleTime > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(122180)
+		return interval > rs.maxIdleTime == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(122181)
 		interval = rs.maxIdleTime
+	} else {
+		__antithesis_instrumentation__.Notify(122182)
 	}
+	__antithesis_instrumentation__.Notify(122172)
 	return interval
 }
 
-// waitAndProcess waits for the pace interval and processes the replica
-// if repl is not nil. The method returns true when the scanner needs
-// to be stopped. The method also removes a replica from queues when it
-// is signaled via the removed channel.
 func (rs *replicaScanner) waitAndProcess(ctx context.Context, start time.Time, repl *Replica) bool {
+	__antithesis_instrumentation__.Notify(122183)
 	waitInterval := rs.paceInterval(start, timeutil.Now())
 	rs.waitTimer.Reset(waitInterval)
 	if log.V(6) {
+		__antithesis_instrumentation__.Notify(122185)
 		log.Infof(ctx, "wait timer interval set to %s", waitInterval)
+	} else {
+		__antithesis_instrumentation__.Notify(122186)
 	}
+	__antithesis_instrumentation__.Notify(122184)
 	for {
+		__antithesis_instrumentation__.Notify(122187)
 		select {
 		case <-rs.waitTimer.C:
+			__antithesis_instrumentation__.Notify(122188)
 			if log.V(6) {
+				__antithesis_instrumentation__.Notify(122195)
 				log.Infof(ctx, "wait timer fired")
+			} else {
+				__antithesis_instrumentation__.Notify(122196)
 			}
+			__antithesis_instrumentation__.Notify(122189)
 			rs.waitTimer.Read = true
 			if repl == nil {
+				__antithesis_instrumentation__.Notify(122197)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(122198)
 			}
+			__antithesis_instrumentation__.Notify(122190)
 
 			if log.V(2) {
+				__antithesis_instrumentation__.Notify(122199)
 				log.Infof(ctx, "replica scanner processing %s", repl)
+			} else {
+				__antithesis_instrumentation__.Notify(122200)
 			}
+			__antithesis_instrumentation__.Notify(122191)
 			for _, q := range rs.queues {
+				__antithesis_instrumentation__.Notify(122201)
 				q.MaybeAddAsync(ctx, repl, rs.clock.NowAsClockTimestamp())
 			}
+			__antithesis_instrumentation__.Notify(122192)
 			return false
 
 		case repl := <-rs.removed:
+			__antithesis_instrumentation__.Notify(122193)
 			rs.removeReplica(repl)
 
 		case <-rs.stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(122194)
 			return true
 		}
 	}
 }
 
 func (rs *replicaScanner) removeReplica(repl *Replica) {
-	// Remove replica from all queues as applicable. Note that we still
-	// process removals while disabled.
+	__antithesis_instrumentation__.Notify(122202)
+
 	rangeID := repl.RangeID
 	for _, q := range rs.queues {
+		__antithesis_instrumentation__.Notify(122204)
 		q.MaybeRemove(rangeID)
 	}
+	__antithesis_instrumentation__.Notify(122203)
 	if log.V(6) {
+		__antithesis_instrumentation__.Notify(122205)
 		ctx := rs.AnnotateCtx(context.TODO())
 		log.Infof(ctx, "removed replica %s", repl)
+	} else {
+		__antithesis_instrumentation__.Notify(122206)
 	}
 }
 
-// scanLoop loops endlessly, scanning through replicas available via
-// the replica set, or until the scanner is stopped. The iteration
-// is paced to complete a full scan in approximately the scan interval.
 func (rs *replicaScanner) scanLoop() {
+	__antithesis_instrumentation__.Notify(122207)
 	ctx := rs.AnnotateCtx(context.Background())
 	_ = rs.stopper.RunAsyncTask(ctx, "scan-loop", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(122208)
 		start := timeutil.Now()
 
-		// waitTimer is reset in each call to waitAndProcess.
 		defer rs.waitTimer.Stop()
 
 		for {
+			__antithesis_instrumentation__.Notify(122209)
 			if rs.GetDisabled() {
+				__antithesis_instrumentation__.Notify(122216)
 				if done := rs.waitEnabled(); done {
+					__antithesis_instrumentation__.Notify(122218)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(122219)
 				}
+				__antithesis_instrumentation__.Notify(122217)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(122220)
 			}
+			__antithesis_instrumentation__.Notify(122210)
 			var shouldStop bool
 			count := 0
 			rs.replicas.Visit(func(repl *Replica) bool {
+				__antithesis_instrumentation__.Notify(122221)
 				count++
 				shouldStop = rs.waitAndProcess(ctx, start, repl)
 				return !shouldStop
 			})
+			__antithesis_instrumentation__.Notify(122211)
 			if count == 0 {
-				// No replicas processed, just wait.
+				__antithesis_instrumentation__.Notify(122222)
+
 				shouldStop = rs.waitAndProcess(ctx, start, nil)
+			} else {
+				__antithesis_instrumentation__.Notify(122223)
 			}
+			__antithesis_instrumentation__.Notify(122212)
 
-			// waitAndProcess returns true when the system is stopping. Note that this
-			// means we don't have to check the stopper as well.
 			if shouldStop {
+				__antithesis_instrumentation__.Notify(122224)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(122225)
 			}
+			__antithesis_instrumentation__.Notify(122213)
 
-			// Increment iteration count.
 			func() {
+				__antithesis_instrumentation__.Notify(122226)
 				rs.mu.Lock()
 				defer rs.mu.Unlock()
 				rs.mu.scanCount++
 				rs.mu.total += timeutil.Since(start)
 			}()
+			__antithesis_instrumentation__.Notify(122214)
 			if log.V(6) {
+				__antithesis_instrumentation__.Notify(122227)
 				log.Infof(ctx, "reset replica scan iteration")
+			} else {
+				__antithesis_instrumentation__.Notify(122228)
 			}
+			__antithesis_instrumentation__.Notify(122215)
 
-			// Reset iteration and start time.
 			start = timeutil.Now()
 		}
 	})
 }
 
-// waitEnabled loops, removing replicas from the scanner's queues,
-// until scanning is enabled or the stopper signals shutdown,
 func (rs *replicaScanner) waitEnabled() bool {
+	__antithesis_instrumentation__.Notify(122229)
 	rs.mu.Lock()
 	rs.mu.waitEnabledCount++
 	rs.mu.Unlock()
 	for {
+		__antithesis_instrumentation__.Notify(122230)
 		if !rs.GetDisabled() {
+			__antithesis_instrumentation__.Notify(122232)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(122233)
 		}
+		__antithesis_instrumentation__.Notify(122231)
 		select {
 		case <-rs.setDisabledCh:
+			__antithesis_instrumentation__.Notify(122234)
 			continue
 
 		case repl := <-rs.removed:
+			__antithesis_instrumentation__.Notify(122235)
 			rs.removeReplica(repl)
 
 		case <-rs.stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(122236)
 			return true
 		}
 	}

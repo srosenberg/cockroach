@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package row
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,62 +22,34 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// KVInserter implements the putter interface.
 type KVInserter func(roachpb.KeyValue)
 
-// CPut is not implmented.
 func (i KVInserter) CPut(key, value interface{}, expValue []byte) {
+	__antithesis_instrumentation__.Notify(568502)
 	panic("unimplemented")
 }
 
-// Del is not implemented.
 func (i KVInserter) Del(key ...interface{}) {
-	// This is called when there are multiple column families to ensure that
-	// existing data is cleared. With the exception of IMPORT INTO, the entire
-	// existing keyspace in any IMPORT is guaranteed to be empty, so we don't have
-	// to worry about it.
-	//
-	// IMPORT INTO disallows overwriting an existing row, so we're also okay here.
-	// The reason this works is that row existence is precisely defined as whether
-	// column family 0 exists, meaning that we write column family 0 even if all
-	// the non-pk columns in it are NULL. It follows that either the row does
-	// exist and the imported column family 0 will conflict (and the IMPORT INTO
-	// will fail) or the row does not exist (and thus the column families are all
-	// empty).
+	__antithesis_instrumentation__.Notify(568503)
+
 }
 
-// Put method of the putter interface.
 func (i KVInserter) Put(key, value interface{}) {
+	__antithesis_instrumentation__.Notify(568504)
 	i(roachpb.KeyValue{
 		Key:   *key.(*roachpb.Key),
 		Value: *value.(*roachpb.Value),
 	})
 }
 
-// InitPut method of the putter interface.
 func (i KVInserter) InitPut(key, value interface{}, failOnTombstones bool) {
+	__antithesis_instrumentation__.Notify(568505)
 	i(roachpb.KeyValue{
 		Key:   *key.(*roachpb.Key),
 		Value: *value.(*roachpb.Value),
 	})
 }
 
-// GenerateInsertRow prepares a row tuple for insertion. It fills in default
-// expressions, verifies non-nullable columns, and checks column widths.
-//
-// The result is a row tuple providing values for every column in insertCols.
-// This results contains:
-//
-// - the values provided by rowVals, the tuple of source values. The
-//   caller ensures this provides values 1-to-1 to the prefix of
-//   insertCols that was specified explicitly in the INSERT statement.
-// - the default values for any additional columns in insertCols that
-//   have default values in defaultExprs.
-// - the computed values for any additional columns in insertCols
-//   that are computed. The mapping in rowContainerForComputedCols
-//   maps the indexes of the comptuedCols/computeExpr slices
-//   back into indexes in the result row tuple.
-//
 func GenerateInsertRow(
 	defaultExprs []tree.TypedExpr,
 	computeExprs []tree.TypedExpr,
@@ -96,115 +60,134 @@ func GenerateInsertRow(
 	rowVals tree.Datums,
 	rowContainerForComputedVals *schemaexpr.RowIndexedVarContainer,
 ) (tree.Datums, error) {
-	// The values for the row may be shorter than the number of columns being
-	// inserted into. Generate default values for those columns using the
-	// default expressions. This will not happen if the row tuple was produced
-	// by a ValuesClause, because all default expressions will have been populated
-	// already by fillDefaults.
+	__antithesis_instrumentation__.Notify(568506)
+
 	if len(rowVals) < len(insertCols) {
-		// It's not cool to append to the slice returned by a node; make a copy.
+		__antithesis_instrumentation__.Notify(568511)
+
 		oldVals := rowVals
 		rowVals = make(tree.Datums, len(insertCols))
 		copy(rowVals, oldVals)
 
 		for i := len(oldVals); i < len(insertCols); i++ {
+			__antithesis_instrumentation__.Notify(568512)
 			if defaultExprs == nil {
+				__antithesis_instrumentation__.Notify(568515)
 				rowVals[i] = tree.DNull
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(568516)
 			}
+			__antithesis_instrumentation__.Notify(568513)
 			d, err := defaultExprs[i].Eval(evalCtx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(568517)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(568518)
 			}
+			__antithesis_instrumentation__.Notify(568514)
 			rowVals[i] = d
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(568519)
 	}
+	__antithesis_instrumentation__.Notify(568507)
 
-	// Generate the computed values, if needed.
 	if len(computeExprs) > 0 {
+		__antithesis_instrumentation__.Notify(568520)
 		rowContainerForComputedVals.CurSourceRow = rowVals
 		evalCtx.PushIVarContainer(rowContainerForComputedVals)
 		for i := range computedColsLookup {
-			// Note that even though the row is not fully constructed at this point,
-			// since we disallow computed columns from referencing other computed
-			// columns, all the columns which could possibly be referenced *are*
-			// available.
+			__antithesis_instrumentation__.Notify(568522)
+
 			col := computedColsLookup[i]
 			computeIdx := rowContainerForComputedVals.Mapping.GetDefault(col.GetID())
 			if !col.IsComputed() {
+				__antithesis_instrumentation__.Notify(568525)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(568526)
 			}
+			__antithesis_instrumentation__.Notify(568523)
 			d, err := computeExprs[computeIdx].Eval(evalCtx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(568527)
 				name := col.GetName()
 				return nil, errors.Wrapf(err,
 					"computed column %s",
 					tree.ErrString((*tree.Name)(&name)))
+			} else {
+				__antithesis_instrumentation__.Notify(568528)
 			}
+			__antithesis_instrumentation__.Notify(568524)
 			rowVals[computeIdx] = d
 		}
+		__antithesis_instrumentation__.Notify(568521)
 		evalCtx.PopIVarContainer()
+	} else {
+		__antithesis_instrumentation__.Notify(568529)
 	}
+	__antithesis_instrumentation__.Notify(568508)
 
-	// Verify the column constraints.
-	//
-	// During mutations (INSERT, UPDATE, UPSERT), this is checked by
-	// sql.enforceLocalColumnConstraints. These checks are required for IMPORT
-	// statements.
-
-	// Check to see if NULL is being inserted into any non-nullable column.
 	for _, col := range tableDesc.WritableColumns() {
+		__antithesis_instrumentation__.Notify(568530)
 		if !col.IsNullable() {
-			if i, ok := rowContainerForComputedVals.Mapping.Get(col.GetID()); !ok || rowVals[i] == tree.DNull {
+			__antithesis_instrumentation__.Notify(568531)
+			if i, ok := rowContainerForComputedVals.Mapping.Get(col.GetID()); !ok || func() bool {
+				__antithesis_instrumentation__.Notify(568532)
+				return rowVals[i] == tree.DNull == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(568533)
 				return nil, sqlerrors.NewNonNullViolationError(col.GetName())
+			} else {
+				__antithesis_instrumentation__.Notify(568534)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(568535)
 		}
 	}
+	__antithesis_instrumentation__.Notify(568509)
 
-	// Ensure that the values honor the specified column widths.
 	for i := 0; i < len(insertCols); i++ {
+		__antithesis_instrumentation__.Notify(568536)
 		outVal, err := tree.AdjustValueToType(insertCols[i].GetType(), rowVals[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(568538)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568539)
 		}
+		__antithesis_instrumentation__.Notify(568537)
 		rowVals[i] = outVal
 	}
+	__antithesis_instrumentation__.Notify(568510)
 
 	return rowVals, nil
 }
 
-// KVBatch represents a batch of KVs generated from converted rows.
 type KVBatch struct {
-	// Source is where the row data in the batch came from.
 	Source int32
-	// LastRow is the index of the last converted row in source in this batch.
+
 	LastRow int64
-	// Progress represents the fraction of the input that generated this row.
+
 	Progress float32
-	// KVs is the actual converted KV data.
+
 	KVs     []roachpb.KeyValue
 	MemSize int64
 }
 
-// DatumRowConverter converts Datums into kvs and streams it to the destination
-// channel.
 type DatumRowConverter struct {
-	// current row buf
 	Datums []tree.Datum
 
-	// kv destination and current batch
 	KvCh     chan<- KVBatch
 	KvBatch  KVBatch
 	BatchCap int
 
 	tableDesc catalog.TableDescriptor
 
-	// Tracks which column indices in the set of visible columns are part of the
-	// user specified target columns. This can be used before populating Datums
-	// to filter out unwanted column data.
 	TargetColOrds util.FastIntSet
 
-	// The rest of these are derived from tableDesc, just cached here.
 	ri                    Inserter
 	EvalCtx               *tree.EvalContext
 	cols                  []catalog.Column
@@ -214,78 +197,96 @@ type DatumRowConverter struct {
 	defaultCache          []tree.TypedExpr
 	computedIVarContainer schemaexpr.RowIndexedVarContainer
 
-	// FractionFn is used to set the progress header in KVBatches.
 	CompletedRowFn func() int64
 	FractionFn     func() float32
 }
 
 var kvDatumRowConverterBatchSize = util.ConstantWithMetamorphicTestValue(
 	"datum-row-converter-batch-size",
-	5000, /* defaultValue */
-	1,    /* metamorphicValue */
+	5000,
+	1,
 )
 
 const kvDatumRowConverterBatchMemSize = 4 << 20
 
-// TestingSetDatumRowConverterBatchSize sets kvDatumRowConverterBatchSize and
-// returns function to reset this setting back to its old value.
 func TestingSetDatumRowConverterBatchSize(newSize int) func() {
+	__antithesis_instrumentation__.Notify(568540)
 	oldSize := kvDatumRowConverterBatchSize
 	kvDatumRowConverterBatchSize = newSize
 	return func() {
+		__antithesis_instrumentation__.Notify(568541)
 		kvDatumRowConverterBatchSize = oldSize
 	}
 }
 
-// getSequenceAnnotation returns a mapping from sequence name to metadata
-// related to the sequence which will be used when evaluating the default
-// expression using the sequence.
 func (c *DatumRowConverter) getSequenceAnnotation(
 	evalCtx *tree.EvalContext, cols []catalog.Column,
 ) (map[string]*SequenceMetadata, map[descpb.ID]*SequenceMetadata, error) {
-	// Identify the sequences used in all the columns.
+	__antithesis_instrumentation__.Notify(568542)
+
 	sequenceIDs := make(map[descpb.ID]struct{})
 	for _, col := range cols {
+		__antithesis_instrumentation__.Notify(568546)
 		for i := 0; i < col.NumUsesSequences(); i++ {
+			__antithesis_instrumentation__.Notify(568547)
 			id := col.GetUsesSequenceID(i)
 			sequenceIDs[id] = struct{}{}
 		}
 	}
+	__antithesis_instrumentation__.Notify(568543)
 
 	if len(sequenceIDs) == 0 {
+		__antithesis_instrumentation__.Notify(568548)
 		return nil, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(568549)
 	}
+	__antithesis_instrumentation__.Notify(568544)
 
 	var seqNameToMetadata map[string]*SequenceMetadata
 	var seqIDToMetadata map[descpb.ID]*SequenceMetadata
-	// TODO(postamar): give the tree.EvalContext a useful interface
-	// instead of cobbling a descs.Collection in this way.
+
 	cf := descs.NewBareBonesCollectionFactory(evalCtx.Settings, evalCtx.Codec)
 	descsCol := cf.MakeCollection(evalCtx.Context, descs.NewTemporarySchemaProvider(evalCtx.SessionDataStack))
 	err := evalCtx.DB.Txn(evalCtx.Context, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(568550)
 		seqNameToMetadata = make(map[string]*SequenceMetadata)
 		seqIDToMetadata = make(map[descpb.ID]*SequenceMetadata)
 		if err := txn.SetFixedTimestamp(ctx, hlc.Timestamp{WallTime: evalCtx.TxnTimestamp.UnixNano()}); err != nil {
+			__antithesis_instrumentation__.Notify(568553)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(568554)
 		}
+		__antithesis_instrumentation__.Notify(568551)
 		for seqID := range sequenceIDs {
+			__antithesis_instrumentation__.Notify(568555)
 			seqDesc, err := descsCol.Direct().MustGetTableDescByID(ctx, txn, seqID)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(568558)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(568559)
 			}
+			__antithesis_instrumentation__.Notify(568556)
 			if seqDesc.GetSequenceOpts() == nil {
+				__antithesis_instrumentation__.Notify(568560)
 				return errors.Errorf("relation %q (%d) is not a sequence", seqDesc.GetName(), seqDesc.GetID())
+			} else {
+				__antithesis_instrumentation__.Notify(568561)
 			}
+			__antithesis_instrumentation__.Notify(568557)
 			seqMetadata := &SequenceMetadata{seqDesc: seqDesc}
 			seqNameToMetadata[seqDesc.GetName()] = seqMetadata
 			seqIDToMetadata[seqID] = seqMetadata
 		}
+		__antithesis_instrumentation__.Notify(568552)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(568545)
 	return seqNameToMetadata, seqIDToMetadata, err
 }
 
-// NewDatumRowConverter returns an instance of a DatumRowConverter.
 func NewDatumRowConverter(
 	ctx context.Context,
 	baseSemaCtx *tree.SemaContext,
@@ -296,6 +297,7 @@ func NewDatumRowConverter(
 	seqChunkProvider *SeqChunkProvider,
 	metrics *Metrics,
 ) (*DatumRowConverter, error) {
+	__antithesis_instrumentation__.Notify(568562)
 	c := &DatumRowConverter{
 		tableDesc: tableDesc,
 		KvCh:      kvCh,
@@ -304,41 +306,54 @@ func NewDatumRowConverter(
 
 	var targetCols []catalog.Column
 	var err error
-	// IMPORT INTO allows specifying target columns which could be a subset of
-	// immutDesc.VisibleColumns. If no target columns are specified we assume all
-	// columns of the table descriptor are to be inserted into.
+
 	if len(targetColNames) != 0 {
+		__antithesis_instrumentation__.Notify(568574)
 		if targetCols, err = colinfo.ProcessTargetColumns(tableDesc, targetColNames,
-			true /* ensureColumns */, false /* allowMutations */); err != nil {
+			true, false); err != nil {
+			__antithesis_instrumentation__.Notify(568575)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568576)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(568577)
 		targetCols = tableDesc.VisibleColumns()
 	}
+	__antithesis_instrumentation__.Notify(568563)
 
 	var targetColIDs catalog.TableColSet
 	for i, col := range targetCols {
+		__antithesis_instrumentation__.Notify(568578)
 		c.TargetColOrds.Add(i)
 		targetColIDs.Add(col.GetID())
 	}
+	__antithesis_instrumentation__.Notify(568564)
 
 	var txCtx transform.ExprTransformContext
 	relevantColumns := func(col catalog.Column) bool {
-		return col.HasDefault() || col.IsComputed()
+		__antithesis_instrumentation__.Notify(568579)
+		return col.HasDefault() || func() bool {
+			__antithesis_instrumentation__.Notify(568580)
+			return col.IsComputed() == true
+		}() == true
 	}
+	__antithesis_instrumentation__.Notify(568565)
 
-	// We take a copy of the baseSemaCtx since this method is called by the parallel
-	// import workers.
 	semaCtxCopy := *baseSemaCtx
 	cols := schemaexpr.ProcessColumnSet(targetCols, tableDesc, relevantColumns)
 	defaultExprs, err := schemaexpr.MakeDefaultExprs(ctx, cols, &txCtx, c.EvalCtx, &semaCtxCopy)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(568581)
 		return nil, errors.Wrap(err, "process default and computed columns")
+	} else {
+		__antithesis_instrumentation__.Notify(568582)
 	}
+	__antithesis_instrumentation__.Notify(568566)
 
 	ri, err := MakeInserter(
 		ctx,
-		nil, /* txn */
+		nil,
 		evalCtx.Codec,
 		tableDesc,
 		cols,
@@ -348,8 +363,12 @@ func NewDatumRowConverter(
 		metrics,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(568583)
 		return nil, errors.Wrap(err, "make row inserter")
+	} else {
+		__antithesis_instrumentation__.Notify(568584)
 	}
+	__antithesis_instrumentation__.Notify(568567)
 
 	c.ri = ri
 	c.cols = cols
@@ -357,68 +376,96 @@ func NewDatumRowConverter(
 	c.VisibleCols = targetCols
 	c.VisibleColTypes = make([]*types.T, len(c.VisibleCols))
 	for i := range c.VisibleCols {
+		__antithesis_instrumentation__.Notify(568585)
 		c.VisibleColTypes[i] = c.VisibleCols[i].GetType()
 	}
+	__antithesis_instrumentation__.Notify(568568)
 
 	c.Datums = make([]tree.Datum, len(targetCols), len(cols))
 	c.defaultCache = make([]tree.TypedExpr, len(cols))
 
 	annot := make(tree.Annotations, 1)
 	var cellInfoAnnot CellInfoAnnotation
-	// Currently, this is only true for an IMPORT INTO CSV.
+
 	if seqChunkProvider != nil {
+		__antithesis_instrumentation__.Notify(568586)
 		seqNameToMetadata, seqIDToMetadata, err := c.getSequenceAnnotation(evalCtx, c.cols)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(568588)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568589)
 		}
+		__antithesis_instrumentation__.Notify(568587)
 		cellInfoAnnot.seqNameToMetadata = seqNameToMetadata
 		cellInfoAnnot.seqIDToMetadata = seqIDToMetadata
 		cellInfoAnnot.seqChunkProvider = seqChunkProvider
+	} else {
+		__antithesis_instrumentation__.Notify(568590)
 	}
+	__antithesis_instrumentation__.Notify(568569)
 	cellInfoAnnot.uniqueRowIDInstance = 0
 	annot.Set(cellInfoAddr, &cellInfoAnnot)
 	c.EvalCtx.Annotations = &annot
 
-	// Check for a hidden column. This should be the unique_rowid PK if present.
-	// In addition, check for non-targeted columns with non-null DEFAULT expressions.
-	// If the DEFAULT expression is immutable, we can store it in the cache so that it
-	// doesn't have to be reevaluated for every row.
 	for i, col := range cols {
+		__antithesis_instrumentation__.Notify(568591)
 		if col.HasDefault() {
-			// Placeholder for columns with default values that will be evaluated when
-			// each import row is being created.
+			__antithesis_instrumentation__.Notify(568593)
+
 			typedExpr, volatile, err := sanitizeExprsForImport(ctx, c.EvalCtx, defaultExprs[i], col.GetType())
 			if err != nil {
-				// This expression may not be safe for import but we don't want to
-				// call the user out at this stage: targeted columns may not have
-				// been identified now (e.g. "IMPORT PGDUMP...") and we want to
-				// throw an error only at the "Row" stage when the targeted columns
-				// have been identified.
+				__antithesis_instrumentation__.Notify(568595)
+
 				c.defaultCache[i] = &unsafeErrExpr{
 					err: errors.Wrapf(err, "default expression %s unsafe for import", defaultExprs[i].String()),
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(568596)
 				c.defaultCache[i] = typedExpr
 				if volatile == overrideImmutable {
-					// This default expression isn't volatile, so we can evaluate once
-					// here and memoize it.
+					__antithesis_instrumentation__.Notify(568597)
+
 					c.defaultCache[i], err = c.defaultCache[i].Eval(c.EvalCtx)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(568598)
 						return nil, errors.Wrapf(err, "error evaluating default expression")
+					} else {
+						__antithesis_instrumentation__.Notify(568599)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(568600)
 				}
 			}
+			__antithesis_instrumentation__.Notify(568594)
 			if !targetColIDs.Contains(col.GetID()) {
+				__antithesis_instrumentation__.Notify(568601)
 				c.Datums = append(c.Datums, nil)
+			} else {
+				__antithesis_instrumentation__.Notify(568602)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(568603)
 		}
-		if col.IsComputed() && !targetColIDs.Contains(col.GetID()) {
+		__antithesis_instrumentation__.Notify(568592)
+		if col.IsComputed() && func() bool {
+			__antithesis_instrumentation__.Notify(568604)
+			return !targetColIDs.Contains(col.GetID()) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(568605)
 			c.Datums = append(c.Datums, nil)
+		} else {
+			__antithesis_instrumentation__.Notify(568606)
 		}
 	}
+	__antithesis_instrumentation__.Notify(568570)
 	if len(c.Datums) != len(cols) {
+		__antithesis_instrumentation__.Notify(568607)
 		return nil, errors.New("unexpected hidden column")
+	} else {
+		__antithesis_instrumentation__.Notify(568608)
 	}
+	__antithesis_instrumentation__.Notify(568571)
 
 	padding := 2 * (len(tableDesc.PublicNonPrimaryIndexes()) + len(tableDesc.GetFamilies()))
 	c.BatchCap = kvDatumRowConverterBatchSize + padding
@@ -427,13 +474,12 @@ func NewDatumRowConverter(
 
 	colsOrdered := make([]catalog.Column, len(cols))
 	for _, col := range c.tableDesc.PublicColumns() {
-		// We prefer to have the order of columns that will be sent into
-		// MakeComputedExprs to map that of Datums.
+		__antithesis_instrumentation__.Notify(568609)
+
 		colsOrdered[ri.InsertColIDtoRowIndex.GetDefault(col.GetID())] = col
 	}
-	// Here, computeExprs will be nil if there's no computed column, or
-	// the list of computed expressions (including nil, for those columns
-	// that are not computed) otherwise, according to colsOrdered.
+	__antithesis_instrumentation__.Notify(568572)
+
 	c.computedExprs, _, err = schemaexpr.MakeComputedExprs(
 		ctx,
 		colsOrdered,
@@ -443,8 +489,12 @@ func NewDatumRowConverter(
 		c.EvalCtx,
 		&semaCtxCopy)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(568610)
 		return nil, errors.Wrapf(err, "error evaluating computed expression for IMPORT INTO")
+	} else {
+		__antithesis_instrumentation__.Notify(568611)
 	}
+	__antithesis_instrumentation__.Notify(568573)
 
 	c.computedIVarContainer = schemaexpr.RowIndexedVarContainer{
 		Mapping: ri.InsertColIDtoRowIndex,
@@ -455,83 +505,125 @@ func NewDatumRowConverter(
 
 const rowIDBits = 64 - builtins.NodeIDBits
 
-// Row inserts kv operations into the current kv batch, and triggers a SendBatch
-// if necessary.
 func (c *DatumRowConverter) Row(ctx context.Context, sourceID int32, rowIndex int64) error {
+	__antithesis_instrumentation__.Notify(568612)
 	getCellInfoAnnotation(c.EvalCtx.Annotations).reset(sourceID, rowIndex)
 	for i, col := range c.cols {
+		__antithesis_instrumentation__.Notify(568618)
 		if col.HasDefault() {
-			// If this column is targeted, then the evaluation is a no-op except to
-			// make one evaluation just in case we have random() default expression
-			// to ensure that the positions we advance in a row is the same as the
-			// number of instances the function random() appears in a row.
-			// TODO (anzoteh96): Optimize this part of code when there's no expression
-			// involving random(), gen_random_uuid(), or anything like that.
+			__antithesis_instrumentation__.Notify(568619)
+
 			datum, err := c.defaultCache[i].Eval(c.EvalCtx)
 			if !c.TargetColOrds.Contains(i) {
+				__antithesis_instrumentation__.Notify(568620)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(568622)
 					return errors.Wrapf(
 						err, "error evaluating default expression %q", col.GetDefaultExpr())
+				} else {
+					__antithesis_instrumentation__.Notify(568623)
 				}
+				__antithesis_instrumentation__.Notify(568621)
 				c.Datums[i] = datum
+			} else {
+				__antithesis_instrumentation__.Notify(568624)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(568625)
 		}
 	}
+	__antithesis_instrumentation__.Notify(568613)
 
 	var computedColsLookup []catalog.Column
 	if len(c.computedExprs) > 0 {
+		__antithesis_instrumentation__.Notify(568626)
 		computedColsLookup = c.tableDesc.PublicColumns()
+	} else {
+		__antithesis_instrumentation__.Notify(568627)
 	}
+	__antithesis_instrumentation__.Notify(568614)
 
 	insertRow, err := GenerateInsertRow(
 		c.defaultCache, c.computedExprs, c.cols, computedColsLookup, c.EvalCtx,
 		c.tableDesc, c.Datums, &c.computedIVarContainer)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(568628)
 		return errors.Wrap(err, "generate insert row")
+	} else {
+		__antithesis_instrumentation__.Notify(568629)
 	}
-	// TODO(mgartner): Add partial index IDs to ignoreIndexes that we should
-	// not delete entries from.
+	__antithesis_instrumentation__.Notify(568615)
+
 	var pm PartialIndexUpdateHelper
 	if err := c.ri.InsertRow(
 		ctx,
 		KVInserter(func(kv roachpb.KeyValue) {
+			__antithesis_instrumentation__.Notify(568630)
 			kv.Value.InitChecksum(kv.Key)
 			c.KvBatch.KVs = append(c.KvBatch.KVs, kv)
 			c.KvBatch.MemSize += int64(cap(kv.Key) + cap(kv.Value.RawBytes))
 		}),
 		insertRow,
 		pm,
-		true,  /* ignoreConflicts */
-		false, /* traceKV */
+		true,
+		false,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(568631)
 		return errors.Wrap(err, "insert row")
+	} else {
+		__antithesis_instrumentation__.Notify(568632)
 	}
-	// If our batch is full, flush it and start a new one.
-	if len(c.KvBatch.KVs) >= kvDatumRowConverterBatchSize || c.KvBatch.MemSize > kvDatumRowConverterBatchMemSize {
+	__antithesis_instrumentation__.Notify(568616)
+
+	if len(c.KvBatch.KVs) >= kvDatumRowConverterBatchSize || func() bool {
+		__antithesis_instrumentation__.Notify(568633)
+		return c.KvBatch.MemSize > kvDatumRowConverterBatchMemSize == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(568634)
 		if err := c.SendBatch(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(568635)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(568636)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(568637)
 	}
+	__antithesis_instrumentation__.Notify(568617)
 	return nil
 }
 
-// SendBatch streams kv operations from the current KvBatch to the destination
-// channel, and resets the KvBatch to empty.
 func (c *DatumRowConverter) SendBatch(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(568638)
 	if len(c.KvBatch.KVs) == 0 {
+		__antithesis_instrumentation__.Notify(568643)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(568644)
 	}
+	__antithesis_instrumentation__.Notify(568639)
 	if c.FractionFn != nil {
+		__antithesis_instrumentation__.Notify(568645)
 		c.KvBatch.Progress = c.FractionFn()
+	} else {
+		__antithesis_instrumentation__.Notify(568646)
 	}
+	__antithesis_instrumentation__.Notify(568640)
 	if c.CompletedRowFn != nil {
+		__antithesis_instrumentation__.Notify(568647)
 		c.KvBatch.LastRow = c.CompletedRowFn()
+	} else {
+		__antithesis_instrumentation__.Notify(568648)
 	}
+	__antithesis_instrumentation__.Notify(568641)
 	select {
 	case c.KvCh <- c.KvBatch:
+		__antithesis_instrumentation__.Notify(568649)
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(568650)
 		return ctx.Err()
 	}
+	__antithesis_instrumentation__.Notify(568642)
 	c.KvBatch.KVs = make([]roachpb.KeyValue, 0, c.BatchCap)
 	c.KvBatch.MemSize = 0
 	return nil

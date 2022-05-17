@@ -1,45 +1,26 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package catid is a low-level package exporting ID types.
 package catid
 
-// DescID is a custom type for {Database,Table}Descriptor IDs.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type DescID uint32
 
-// InvalidDescID is the uninitialised descriptor id.
 const InvalidDescID DescID = 0
 
-// SafeValue implements the redact.SafeValue interface.
-func (DescID) SafeValue() {}
+func (DescID) SafeValue() { __antithesis_instrumentation__.Notify(602892) }
 
-// ColumnID is a custom type for Column IDs.
 type ColumnID uint32
 
-// SafeValue implements the redact.SafeValue interface.
-func (ColumnID) SafeValue() {}
+func (ColumnID) SafeValue() { __antithesis_instrumentation__.Notify(602893) }
 
-// FamilyID is a custom type for ColumnFamilyDescriptor IDs.
 type FamilyID uint32
 
-// SafeValue implements the redact.SafeValue interface.
-func (FamilyID) SafeValue() {}
+func (FamilyID) SafeValue() { __antithesis_instrumentation__.Notify(602894) }
 
-// IndexID is a custom type for IndexDescriptor IDs.
 type IndexID uint32
 
-// SafeValue implements the redact.SafeValue interface.
-func (IndexID) SafeValue() {}
+func (IndexID) SafeValue() { __antithesis_instrumentation__.Notify(602895) }
 
-// ConstraintID is a custom type for TableDeascriptor constraint IDs.
 type ConstraintID uint32
 
-// SafeValue implements the redact.SafeValue interface.
-func (ConstraintID) SafeValue() {}
+func (ConstraintID) SafeValue() { __antithesis_instrumentation__.Notify(602896) }

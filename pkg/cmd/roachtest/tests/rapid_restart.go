@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,35 +17,40 @@ import (
 )
 
 func runRapidRestart(ctx context.Context, t test.Test, c cluster.Cluster) {
-	// Use a single-node cluster which speeds the stop/start cycle.
+	__antithesis_instrumentation__.Notify(50060)
+
 	node := c.Node(1)
 	c.Put(ctx, t.Cockroach(), "./cockroach", node)
 
-	// In a loop, bootstrap a new single-node cluster and immediately kill
-	// it. This is more effective at finding problems than restarting an existing
-	// node since there are more moving parts the first time around. Since there
-	// could be future issues that only occur on a restart, each invocation of
-	// the test also restart-kills the existing node twice.
 	deadline := timeutil.Now().Add(time.Minute)
 	done := func() bool {
+		__antithesis_instrumentation__.Notify(50063)
 		return timeutil.Now().After(deadline)
 	}
+	__antithesis_instrumentation__.Notify(50061)
 	for j := 1; !done(); j++ {
+		__antithesis_instrumentation__.Notify(50064)
 		c.Wipe(ctx, node)
 
-		// The first 2 iterations we start the cockroach node and kill it right
-		// away. The 3rd iteration we let cockroach run so that we can check after
-		// the loop that everything is ok.
 		for i := 0; i < 3; i++ {
+			__antithesis_instrumentation__.Notify(50067)
 			startOpts := option.DefaultStartOpts()
 			startOpts.RoachprodOpts.SkipInit = true
 			if err := c.StartE(ctx, t.L(), startOpts, install.MakeClusterSettings(), node); err != nil {
+				__antithesis_instrumentation__.Notify(50070)
 				t.Fatalf("error during start: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(50071)
 			}
+			__antithesis_instrumentation__.Notify(50068)
 
 			if i == 2 {
+				__antithesis_instrumentation__.Notify(50072)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(50073)
 			}
+			__antithesis_instrumentation__.Notify(50069)
 
 			waitTime := time.Duration(rand.Int63n(int64(time.Second)))
 			time.Sleep(waitTime)
@@ -62,40 +59,54 @@ func runRapidRestart(ctx context.Context, t test.Test, c cluster.Cluster) {
 			stopOpts := option.DefaultStopOpts()
 			stopOpts.RoachprodOpts.Sig = sig
 			if err := c.StopE(ctx, t.L(), stopOpts, node); err != nil {
+				__antithesis_instrumentation__.Notify(50074)
 				t.Fatalf("error during stop: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(50075)
 			}
 		}
+		__antithesis_instrumentation__.Notify(50065)
 
-		// The var dump below may take a while to generate, maybe more
-		// than the 3 second timeout of the default http client.
 		httpClient := httputil.NewClientWithTimeout(15 * time.Second)
 
-		// Verify the cluster is ok by torturing the prometheus endpoint until it
-		// returns success. A side-effect is to prevent regression of #19559.
 		for !done() {
+			__antithesis_instrumentation__.Notify(50076)
 			adminUIAddrs, err := c.ExternalAdminUIAddr(ctx, t.L(), node)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(50078)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(50079)
 			}
+			__antithesis_instrumentation__.Notify(50077)
 			base := `http://` + adminUIAddrs[0]
-			// Torture the prometheus endpoint to prevent regression of #19559.
+
 			url := base + `/_status/vars`
 			resp, err := httpClient.Get(ctx, url)
 			if err == nil {
+				__antithesis_instrumentation__.Notify(50080)
 				resp.Body.Close()
-				if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusOK {
+				if resp.StatusCode != http.StatusNotFound && func() bool {
+					__antithesis_instrumentation__.Notify(50082)
+					return resp.StatusCode != http.StatusOK == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(50083)
 					t.Fatalf("unexpected status code from %s: %d", url, resp.StatusCode)
+				} else {
+					__antithesis_instrumentation__.Notify(50084)
 				}
+				__antithesis_instrumentation__.Notify(50081)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(50085)
 			}
 		}
+		__antithesis_instrumentation__.Notify(50066)
 
 		t.L().Printf("%d OK\n", j)
 	}
+	__antithesis_instrumentation__.Notify(50062)
 
-	// Clean up for the test harness. Usually we want to leave nodes running so
-	// that consistency checks can be run, but in this case there's not much
-	// there in the first place anyway.
 	c.Stop(ctx, t.L(), option.DefaultStopOpts(), node)
 	c.Wipe(ctx, node)
 }

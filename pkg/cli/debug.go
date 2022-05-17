@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -94,42 +86,61 @@ Create a ballast file to fill the store directory up to a given amount
 	RunE: runDebugBallast,
 }
 
-// PopulateStorageConfigHook is a callback set by CCL code.
-// It populates any needed fields in the StorageConfig.
-// It must do nothing in OSS code.
 var PopulateStorageConfigHook func(*base.StorageConfig) error
 
 func parsePositiveInt(arg string) (int64, error) {
+	__antithesis_instrumentation__.Notify(30422)
 	i, err := strconv.ParseInt(arg, 10, 64)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30425)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(30426)
 	}
+	__antithesis_instrumentation__.Notify(30423)
 	if i < 1 {
+		__antithesis_instrumentation__.Notify(30427)
 		return 0, fmt.Errorf("illegal val: %d < 1", i)
+	} else {
+		__antithesis_instrumentation__.Notify(30428)
 	}
+	__antithesis_instrumentation__.Notify(30424)
 	return i, nil
 }
 
 func parseRangeID(arg string) (roachpb.RangeID, error) {
+	__antithesis_instrumentation__.Notify(30429)
 	rangeIDInt, err := parsePositiveInt(arg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30431)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(30432)
 	}
+	__antithesis_instrumentation__.Notify(30430)
 	return roachpb.RangeID(rangeIDInt), nil
 }
 
 func parsePositiveDuration(arg string) (time.Duration, error) {
+	__antithesis_instrumentation__.Notify(30433)
 	duration, err := time.ParseDuration(arg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30436)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(30437)
 	}
+	__antithesis_instrumentation__.Notify(30434)
 	if duration <= 0 {
+		__antithesis_instrumentation__.Notify(30438)
 		return 0, fmt.Errorf("illegal val: %v <= 0", duration)
+	} else {
+		__antithesis_instrumentation__.Notify(30439)
 	}
+	__antithesis_instrumentation__.Notify(30435)
 	return duration, nil
 }
 
-// OpenEngineOptions tunes the behavior of OpenEngine.
 type OpenEngineOptions struct {
 	ReadOnly                    bool
 	MustExist                   bool
@@ -137,38 +148,51 @@ type OpenEngineOptions struct {
 }
 
 func (opts OpenEngineOptions) configOptions() []storage.ConfigOption {
+	__antithesis_instrumentation__.Notify(30440)
 	var cfgOpts []storage.ConfigOption
 	if opts.ReadOnly {
+		__antithesis_instrumentation__.Notify(30444)
 		cfgOpts = append(cfgOpts, storage.ReadOnly)
+	} else {
+		__antithesis_instrumentation__.Notify(30445)
 	}
+	__antithesis_instrumentation__.Notify(30441)
 	if opts.MustExist {
+		__antithesis_instrumentation__.Notify(30446)
 		cfgOpts = append(cfgOpts, storage.MustExist)
+	} else {
+		__antithesis_instrumentation__.Notify(30447)
 	}
+	__antithesis_instrumentation__.Notify(30442)
 	if opts.DisableAutomaticCompactions {
+		__antithesis_instrumentation__.Notify(30448)
 		cfgOpts = append(cfgOpts, storage.DisableAutomaticCompactions)
+	} else {
+		__antithesis_instrumentation__.Notify(30449)
 	}
+	__antithesis_instrumentation__.Notify(30443)
 	return cfgOpts
 }
 
-// OpenExistingStore opens the Pebble engine rooted at 'dir'. If 'readOnly' is
-// true, opens the store in read-only mode. If 'disableAutomaticCompactions' is
-// true, disables automatic/background compactions (only used for manual
-// compactions).
 func OpenExistingStore(
 	dir string, stopper *stop.Stopper, readOnly, disableAutomaticCompactions bool,
 ) (storage.Engine, error) {
+	__antithesis_instrumentation__.Notify(30450)
 	return OpenEngine(dir, stopper, OpenEngineOptions{
 		ReadOnly: readOnly, MustExist: true, DisableAutomaticCompactions: disableAutomaticCompactions,
 	})
 }
 
-// OpenEngine opens the engine at 'dir'. Depending on the supplied options,
-// an empty engine might be initialized.
 func OpenEngine(dir string, stopper *stop.Stopper, opts OpenEngineOptions) (storage.Engine, error) {
+	__antithesis_instrumentation__.Notify(30451)
 	maxOpenFiles, err := server.SetOpenFileLimitForOneStore()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30454)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(30455)
 	}
+	__antithesis_instrumentation__.Notify(30452)
 	db, err := storage.Open(context.Background(),
 		storage.Filesystem(dir),
 		storage.MaxOpenFiles(int(maxOpenFiles)),
@@ -177,41 +201,68 @@ func OpenEngine(dir string, stopper *stop.Stopper, opts OpenEngineOptions) (stor
 		storage.Hook(PopulateStorageConfigHook),
 		storage.CombineOptions(opts.configOptions()...))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30456)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(30457)
 	}
+	__antithesis_instrumentation__.Notify(30453)
 
 	stopper.AddCloser(db)
 	return db, nil
 }
 
 func printKey(kv storage.MVCCKeyValue) (bool, error) {
+	__antithesis_instrumentation__.Notify(30458)
 	fmt.Printf("%s %s: ", kv.Key.Timestamp, kv.Key.Key)
 	if debugCtx.sizes {
+		__antithesis_instrumentation__.Notify(30460)
 		fmt.Printf(" %d %d", len(kv.Key.Key), len(kv.Value))
+	} else {
+		__antithesis_instrumentation__.Notify(30461)
 	}
+	__antithesis_instrumentation__.Notify(30459)
 	fmt.Printf("\n")
 	return false, nil
 }
 
 func transactionPredicate(kv storage.MVCCKeyValue) bool {
+	__antithesis_instrumentation__.Notify(30462)
 	if kv.Key.IsValue() {
+		__antithesis_instrumentation__.Notify(30465)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(30466)
 	}
+	__antithesis_instrumentation__.Notify(30463)
 	_, suffix, _, err := keys.DecodeRangeKey(kv.Key.Key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30467)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(30468)
 	}
+	__antithesis_instrumentation__.Notify(30464)
 	return keys.LocalTransactionSuffix.Equal(suffix)
 }
 
 func intentPredicate(kv storage.MVCCKeyValue) bool {
+	__antithesis_instrumentation__.Notify(30469)
 	if kv.Key.IsValue() {
+		__antithesis_instrumentation__.Notify(30472)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(30473)
 	}
+	__antithesis_instrumentation__.Notify(30470)
 	var meta enginepb.MVCCMetadata
 	if err := protoutil.Unmarshal(kv.Value, &meta); err != nil {
+		__antithesis_instrumentation__.Notify(30474)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(30475)
 	}
+	__antithesis_instrumentation__.Notify(30471)
 	return meta.Txn != nil
 }
 
@@ -220,7 +271,7 @@ var keyTypeParams = map[keyTypeFilter]struct {
 	minKey, maxKey storage.MVCCKey
 }{
 	showAll: {
-		predicate: func(kv storage.MVCCKeyValue) bool { return true },
+		predicate: func(kv storage.MVCCKeyValue) bool { __antithesis_instrumentation__.Notify(30476); return true },
 		minKey:    storage.NilKey,
 		maxKey:    storage.MVCCKeyMax,
 	},
@@ -231,6 +282,7 @@ var keyTypeParams = map[keyTypeFilter]struct {
 	},
 	showValues: {
 		predicate: func(kv storage.MVCCKeyValue) bool {
+			__antithesis_instrumentation__.Notify(30477)
 			return kv.Key.IsValue()
 		},
 		minKey: storage.NilKey,
@@ -244,163 +296,284 @@ var keyTypeParams = map[keyTypeFilter]struct {
 }
 
 func runDebugKeys(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30478)
 	stopper := stop.NewStopper()
 	defer stopper.Stop(context.Background())
 
-	db, err := OpenExistingStore(args[0], stopper, true /* readOnly */, false /* disableAutomaticCompactions */)
+	db, err := OpenExistingStore(args[0], stopper, true, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30488)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30489)
 	}
+	__antithesis_instrumentation__.Notify(30479)
 
 	if debugCtx.decodeAsTableDesc != "" {
+		__antithesis_instrumentation__.Notify(30490)
 		bytes, err := base64.StdEncoding.DecodeString(debugCtx.decodeAsTableDesc)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30495)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30496)
 		}
+		__antithesis_instrumentation__.Notify(30491)
 		var desc descpb.Descriptor
 		if err := protoutil.Unmarshal(bytes, &desc); err != nil {
+			__antithesis_instrumentation__.Notify(30497)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30498)
 		}
+		__antithesis_instrumentation__.Notify(30492)
 		b := descbuilder.NewBuilder(&desc)
-		if b == nil || b.DescriptorType() != catalog.Table {
+		if b == nil || func() bool {
+			__antithesis_instrumentation__.Notify(30499)
+			return b.DescriptorType() != catalog.Table == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(30500)
 			return errors.Newf("expected a table descriptor")
+		} else {
+			__antithesis_instrumentation__.Notify(30501)
 		}
+		__antithesis_instrumentation__.Notify(30493)
 		table := b.BuildImmutable().(catalog.TableDescriptor)
 
 		fn := func(kv storage.MVCCKeyValue) (string, error) {
+			__antithesis_instrumentation__.Notify(30502)
 			var v roachpb.Value
 			v.RawBytes = kv.Value
 			_, names, values, err := row.DecodeRowInfo(context.Background(), table, kv.Key.Key, &v, true)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(30505)
 				return "", err
+			} else {
+				__antithesis_instrumentation__.Notify(30506)
 			}
+			__antithesis_instrumentation__.Notify(30503)
 			pairs := make([]string, len(names))
 			for i := range pairs {
+				__antithesis_instrumentation__.Notify(30507)
 				pairs[i] = fmt.Sprintf("%s=%s", names[i], values[i])
 			}
+			__antithesis_instrumentation__.Notify(30504)
 			return strings.Join(pairs, ", "), nil
 		}
+		__antithesis_instrumentation__.Notify(30494)
 		kvserver.DebugSprintMVCCKeyValueDecoders = append(kvserver.DebugSprintMVCCKeyValueDecoders, fn)
+	} else {
+		__antithesis_instrumentation__.Notify(30508)
 	}
+	__antithesis_instrumentation__.Notify(30480)
 	printer := printKey
 	if debugCtx.values {
+		__antithesis_instrumentation__.Notify(30509)
 		printer = func(kv storage.MVCCKeyValue) (bool, error) {
+			__antithesis_instrumentation__.Notify(30510)
 			kvserver.PrintMVCCKeyValue(kv)
 			return false, nil
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(30511)
 	}
+	__antithesis_instrumentation__.Notify(30481)
 
 	keyTypeOptions := keyTypeParams[debugCtx.keyTypes]
 	if debugCtx.startKey.Equal(storage.NilKey) {
+		__antithesis_instrumentation__.Notify(30512)
 		debugCtx.startKey = keyTypeOptions.minKey
+	} else {
+		__antithesis_instrumentation__.Notify(30513)
 	}
+	__antithesis_instrumentation__.Notify(30482)
 	if debugCtx.endKey.Equal(storage.NilKey) {
+		__antithesis_instrumentation__.Notify(30514)
 		debugCtx.endKey = keyTypeOptions.maxKey
+	} else {
+		__antithesis_instrumentation__.Notify(30515)
 	}
+	__antithesis_instrumentation__.Notify(30483)
 
 	results := 0
 	iterFunc := func(kv storage.MVCCKeyValue) error {
+		__antithesis_instrumentation__.Notify(30516)
 		if !keyTypeOptions.predicate(kv) {
+			__antithesis_instrumentation__.Notify(30521)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(30522)
 		}
+		__antithesis_instrumentation__.Notify(30517)
 		done, err := printer(kv)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30523)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30524)
 		}
+		__antithesis_instrumentation__.Notify(30518)
 		if done {
+			__antithesis_instrumentation__.Notify(30525)
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(30526)
 		}
+		__antithesis_instrumentation__.Notify(30519)
 		results++
 		if results == debugCtx.maxResults {
+			__antithesis_instrumentation__.Notify(30527)
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(30528)
 		}
+		__antithesis_instrumentation__.Notify(30520)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(30484)
 	endKey := debugCtx.endKey.Key
 	splitScan := false
-	// If the startKey is local and the endKey is global, split into two parts
-	// to do the scan. This is because MVCCKeyAndIntentsIterKind cannot span
-	// across the two key kinds.
-	if (len(debugCtx.startKey.Key) == 0 || keys.IsLocal(debugCtx.startKey.Key)) && !(keys.IsLocal(endKey) || bytes.Equal(endKey, keys.LocalMax)) {
+
+	if (len(debugCtx.startKey.Key) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(30529)
+		return keys.IsLocal(debugCtx.startKey.Key) == true
+	}() == true) && func() bool {
+		__antithesis_instrumentation__.Notify(30530)
+		return !(keys.IsLocal(endKey) || func() bool {
+			__antithesis_instrumentation__.Notify(30531)
+			return bytes.Equal(endKey, keys.LocalMax) == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(30532)
 		splitScan = true
 		endKey = keys.LocalMax
+	} else {
+		__antithesis_instrumentation__.Notify(30533)
 	}
+	__antithesis_instrumentation__.Notify(30485)
 	if err := db.MVCCIterate(
 		debugCtx.startKey.Key, endKey, storage.MVCCKeyAndIntentsIterKind, iterFunc); err != nil {
+		__antithesis_instrumentation__.Notify(30534)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30535)
 	}
+	__antithesis_instrumentation__.Notify(30486)
 	if splitScan {
+		__antithesis_instrumentation__.Notify(30536)
 		if err := db.MVCCIterate(keys.LocalMax, debugCtx.endKey.Key, storage.MVCCKeyAndIntentsIterKind,
 			iterFunc); err != nil {
+			__antithesis_instrumentation__.Notify(30537)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30538)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(30539)
 	}
+	__antithesis_instrumentation__.Notify(30487)
 	return nil
 }
 
 func runDebugBallast(cmd *cobra.Command, args []string) error {
-	ballastFile := args[0] // we use cobra.ExactArgs(1)
+	__antithesis_instrumentation__.Notify(30540)
+	ballastFile := args[0]
 	dataDirectory := filepath.Dir(ballastFile)
 
 	du, err := vfs.Default.GetDiskUsage(dataDirectory)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30549)
 		return errors.Wrapf(err, "failed to stat filesystem %s", dataDirectory)
+	} else {
+		__antithesis_instrumentation__.Notify(30550)
 	}
+	__antithesis_instrumentation__.Notify(30541)
 
-	// Use a 'usedBytes' calculation that counts disk space reserved for the
-	// root user as used. The UsedBytes value returned by GetDiskUsage is
-	// the true count of currently allocated bytes.
 	usedBytes := du.TotalBytes - du.AvailBytes
 
 	var targetUsage uint64
 	p := debugCtx.ballastSize.Percent
 	if math.Abs(p) > 100 {
+		__antithesis_instrumentation__.Notify(30551)
 		return errors.Errorf("absolute percentage value %f greater than 100", p)
+	} else {
+		__antithesis_instrumentation__.Notify(30552)
 	}
+	__antithesis_instrumentation__.Notify(30542)
 	b := debugCtx.ballastSize.InBytes
-	if p != 0 && b != 0 {
+	if p != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(30553)
+		return b != 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(30554)
 		return errors.New("expected exactly one of percentage or bytes non-zero, found both")
+	} else {
+		__antithesis_instrumentation__.Notify(30555)
 	}
+	__antithesis_instrumentation__.Notify(30543)
 	switch {
 	case p > 0:
+		__antithesis_instrumentation__.Notify(30556)
 		fillRatio := p / float64(100)
 		targetUsage = usedBytes + uint64((fillRatio)*float64(du.TotalBytes))
 	case p < 0:
-		// Negative means leave the absolute %age of disk space.
+		__antithesis_instrumentation__.Notify(30557)
+
 		fillRatio := 1.0 + (p / float64(100))
 		targetUsage = uint64((fillRatio) * float64(du.TotalBytes))
 	case b > 0:
+		__antithesis_instrumentation__.Notify(30558)
 		targetUsage = usedBytes + uint64(b)
 	case b < 0:
-		// Negative means leave that many bytes of disk space.
+		__antithesis_instrumentation__.Notify(30559)
+
 		targetUsage = du.TotalBytes - uint64(-b)
 	default:
+		__antithesis_instrumentation__.Notify(30560)
 		return errors.New("expected exactly one of percentage or bytes non-zero, found none")
 	}
+	__antithesis_instrumentation__.Notify(30544)
 	if usedBytes > targetUsage {
+		__antithesis_instrumentation__.Notify(30561)
 		return errors.Errorf(
 			"Used space %s already more than needed to be filled %s\n",
 			humanize.IBytes(usedBytes),
 			humanize.IBytes(targetUsage),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(30562)
 	}
+	__antithesis_instrumentation__.Notify(30545)
 	if usedBytes == targetUsage {
+		__antithesis_instrumentation__.Notify(30563)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(30564)
 	}
+	__antithesis_instrumentation__.Notify(30546)
 	ballastSize := targetUsage - usedBytes
 
-	// Note: We intentionally fail if the target file already exists. This is
-	// a feature; we have seen users mistakenly applying the `ballast` command
-	// directly to block devices, thereby trashing their filesystem.
 	if _, err := os.Stat(ballastFile); err == nil {
+		__antithesis_instrumentation__.Notify(30565)
 		return os.ErrExist
-	} else if !oserror.IsNotExist(err) {
-		return errors.Wrap(err, "stating ballast file")
+	} else {
+		__antithesis_instrumentation__.Notify(30566)
+		if !oserror.IsNotExist(err) {
+			__antithesis_instrumentation__.Notify(30567)
+			return errors.Wrap(err, "stating ballast file")
+		} else {
+			__antithesis_instrumentation__.Notify(30568)
+		}
 	}
+	__antithesis_instrumentation__.Notify(30547)
 
 	if err := sysutil.ResizeLargeFile(ballastFile, int64(ballastSize)); err != nil {
+		__antithesis_instrumentation__.Notify(30569)
 		return errors.Wrap(err, "error allocating ballast file")
+	} else {
+		__antithesis_instrumentation__.Notify(30570)
 	}
+	__antithesis_instrumentation__.Notify(30548)
 	return nil
 }
 
@@ -417,39 +590,65 @@ state like the raft HardState. With --replicated, only includes data covered by
 }
 
 func runDebugRangeData(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30571)
 	stopper := stop.NewStopper()
 	defer stopper.Stop(context.Background())
 
-	db, err := OpenExistingStore(args[0], stopper, true /* readOnly */, false /* disableAutomaticCompactions */)
+	db, err := OpenExistingStore(args[0], stopper, true, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30576)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30577)
 	}
+	__antithesis_instrumentation__.Notify(30572)
 
 	rangeID, err := parseRangeID(args[1])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30578)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30579)
 	}
+	__antithesis_instrumentation__.Notify(30573)
 
 	desc, err := loadRangeDescriptor(db, rangeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30580)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30581)
 	}
+	__antithesis_instrumentation__.Notify(30574)
 
 	iter := rditer.NewReplicaEngineDataIterator(&desc, db, debugCtx.replicated)
 	defer iter.Close()
 	results := 0
 	for ; ; iter.Next() {
+		__antithesis_instrumentation__.Notify(30582)
 		if ok, err := iter.Valid(); err != nil {
+			__antithesis_instrumentation__.Notify(30584)
 			return err
-		} else if !ok {
-			break
+		} else {
+			__antithesis_instrumentation__.Notify(30585)
+			if !ok {
+				__antithesis_instrumentation__.Notify(30586)
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(30587)
+			}
 		}
+		__antithesis_instrumentation__.Notify(30583)
 		kvserver.PrintEngineKeyValue(iter.UnsafeKey(), iter.UnsafeValue())
 		results++
 		if results == debugCtx.maxResults {
+			__antithesis_instrumentation__.Notify(30588)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(30589)
 		}
 	}
+	__antithesis_instrumentation__.Notify(30575)
 	return nil
 }
 
@@ -466,63 +665,99 @@ Prints all range descriptors in a store with a history of changes.
 func loadRangeDescriptor(
 	db storage.Engine, rangeID roachpb.RangeID,
 ) (roachpb.RangeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(30590)
 	var desc roachpb.RangeDescriptor
 	handleKV := func(kv storage.MVCCKeyValue) error {
+		__antithesis_instrumentation__.Notify(30594)
 		if kv.Key.Timestamp.IsEmpty() {
-			// We only want values, not MVCCMetadata.
+			__antithesis_instrumentation__.Notify(30600)
+
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(30601)
 		}
+		__antithesis_instrumentation__.Notify(30595)
 		if err := kvserver.IsRangeDescriptorKey(kv.Key); err != nil {
-			// Range descriptor keys are interleaved with others, so if it
-			// doesn't parse as a range descriptor just skip it.
-			return nil //nolint:returnerrcheck
-		}
-		if len(kv.Value) == 0 {
-			// RangeDescriptor was deleted (range merged away).
+			__antithesis_instrumentation__.Notify(30602)
+
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(30603)
 		}
+		__antithesis_instrumentation__.Notify(30596)
+		if len(kv.Value) == 0 {
+			__antithesis_instrumentation__.Notify(30604)
+
+			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(30605)
+		}
+		__antithesis_instrumentation__.Notify(30597)
 		if err := (roachpb.Value{RawBytes: kv.Value}).GetProto(&desc); err != nil {
+			__antithesis_instrumentation__.Notify(30606)
 			log.Warningf(context.Background(), "ignoring range descriptor due to error %s: %+v", err, kv)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(30607)
 		}
+		__antithesis_instrumentation__.Notify(30598)
 		if desc.RangeID == rangeID {
+			__antithesis_instrumentation__.Notify(30608)
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(30609)
 		}
+		__antithesis_instrumentation__.Notify(30599)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(30591)
 
-	// Range descriptors are stored by key, so we have to scan over the
-	// range-local data to find the one for this RangeID.
 	start := keys.LocalRangePrefix
 	end := keys.LocalRangeMax
 
-	// NB: Range descriptor keys can have intents.
 	if err := db.MVCCIterate(start, end, storage.MVCCKeyAndIntentsIterKind, handleKV); err != nil {
+		__antithesis_instrumentation__.Notify(30610)
 		return roachpb.RangeDescriptor{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(30611)
 	}
+	__antithesis_instrumentation__.Notify(30592)
 	if desc.RangeID == rangeID {
+		__antithesis_instrumentation__.Notify(30612)
 		return desc, nil
+	} else {
+		__antithesis_instrumentation__.Notify(30613)
 	}
+	__antithesis_instrumentation__.Notify(30593)
 	return roachpb.RangeDescriptor{}, fmt.Errorf("range descriptor %d not found", rangeID)
 }
 
 func runDebugRangeDescriptors(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30614)
 	stopper := stop.NewStopper()
 	defer stopper.Stop(context.Background())
 
-	db, err := OpenExistingStore(args[0], stopper, true /* readOnly */, false /* disableAutomaticCompactions */)
+	db, err := OpenExistingStore(args[0], stopper, true, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30616)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30617)
 	}
+	__antithesis_instrumentation__.Notify(30615)
 
 	start := keys.LocalRangePrefix
 	end := keys.LocalRangeMax
 
-	// NB: Range descriptor keys can have intents.
 	return db.MVCCIterate(start, end, storage.MVCCKeyAndIntentsIterKind, func(kv storage.MVCCKeyValue) error {
+		__antithesis_instrumentation__.Notify(30618)
 		if kvserver.IsRangeDescriptorKey(kv.Key) != nil {
+			__antithesis_instrumentation__.Notify(30620)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(30621)
 		}
+		__antithesis_instrumentation__.Notify(30619)
 		kvserver.PrintMVCCKeyValue(kv)
 		return nil
 	})
@@ -539,17 +774,28 @@ Decode a hexadecimal-encoded key and pretty-print it. For example:
 `,
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(30622)
 		for _, arg := range args {
+			__antithesis_instrumentation__.Notify(30624)
 			b, err := gohex.DecodeString(arg)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(30627)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(30628)
 			}
+			__antithesis_instrumentation__.Notify(30625)
 			k, err := storage.DecodeMVCCKey(b)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(30629)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(30630)
 			}
+			__antithesis_instrumentation__.Notify(30626)
 			fmt.Println(k)
 		}
+		__antithesis_instrumentation__.Notify(30623)
 		return nil
 	},
 }
@@ -565,34 +811,51 @@ Decode and print a hexadecimal-encoded key-value pair.
 `,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(30631)
 		var bs [][]byte
 		for _, arg := range args {
+			__antithesis_instrumentation__.Notify(30634)
 			b, err := gohex.DecodeString(arg)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(30636)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(30637)
 			}
+			__antithesis_instrumentation__.Notify(30635)
 			bs = append(bs, b)
 		}
+		__antithesis_instrumentation__.Notify(30632)
 
 		isTS := bytes.HasPrefix(bs[0], keys.TimeseriesPrefix)
 		k, err := storage.DecodeMVCCKey(bs[0])
 		if err != nil {
-			// - Could be an EngineKey.
-			// - Older versions of the consistency checker give you diffs with a raw_key that
-			//   is already a roachpb.Key, so make a half-assed attempt to support both.
+			__antithesis_instrumentation__.Notify(30638)
+
 			if !isTS {
+				__antithesis_instrumentation__.Notify(30640)
 				if k, ok := storage.DecodeEngineKey(bs[0]); ok {
+					__antithesis_instrumentation__.Notify(30642)
 					kvserver.PrintEngineKeyValue(k, bs[1])
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(30643)
 				}
+				__antithesis_instrumentation__.Notify(30641)
 				fmt.Printf("unable to decode key: %v, assuming it's a roachpb.Key with fake timestamp;\n"+
 					"if the result below looks like garbage, then it likely is:\n\n", err)
+			} else {
+				__antithesis_instrumentation__.Notify(30644)
 			}
+			__antithesis_instrumentation__.Notify(30639)
 			k = storage.MVCCKey{
 				Key:       bs[0],
 				Timestamp: hlc.Timestamp{WallTime: 987654321},
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(30645)
 		}
+		__antithesis_instrumentation__.Notify(30633)
 
 		kvserver.PrintMVCCKeyValue(storage.MVCCKeyValue{
 			Key:   k,
@@ -635,18 +898,27 @@ Prints all log entries in a store for the given range.
 }
 
 func runDebugRaftLog(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30646)
 	stopper := stop.NewStopper()
 	defer stopper.Stop(context.Background())
 
-	db, err := OpenExistingStore(args[0], stopper, true /* readOnly */, false /* disableAutomaticCompactions */)
+	db, err := OpenExistingStore(args[0], stopper, true, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30649)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30650)
 	}
+	__antithesis_instrumentation__.Notify(30647)
 
 	rangeID, err := parseRangeID(args[1])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30651)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30652)
 	}
+	__antithesis_instrumentation__.Notify(30648)
 
 	start := keys.RaftLogPrefix(rangeID)
 	end := keys.RaftLogPrefix(rangeID).PrefixEnd()
@@ -655,8 +927,8 @@ func runDebugRaftLog(cmd *cobra.Command, args []string) error {
 		string(storage.EncodeMVCCKey(storage.MakeMVCCMetadataKey(start))),
 		string(storage.EncodeMVCCKey(storage.MakeMVCCMetadataKey(end))))
 
-	// NB: raft log does not have intents.
 	return db.MVCCIterate(start, end, storage.MVCCKeyIterKind, func(kv storage.MVCCKeyValue) error {
+		__antithesis_instrumentation__.Notify(30653)
 		kvserver.PrintMVCCKeyValue(kv)
 		return nil
 	})
@@ -680,6 +952,7 @@ Uses a configurable GC policy, with a default 24 hour TTL, for old versions and
 }
 
 func runDebugGCCmd(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30654)
 	stopper := stop.NewStopper()
 	defer stopper.Stop(context.Background())
 
@@ -689,29 +962,55 @@ func runDebugGCCmd(cmd *cobra.Command, args []string) error {
 	intentBatchSize := gc.MaxIntentsPerCleanupBatch.Default()
 
 	if len(args) > 3 {
+		__antithesis_instrumentation__.Notify(30662)
 		var err error
 		if intentAgeThreshold, err = parsePositiveDuration(args[3]); err != nil {
+			__antithesis_instrumentation__.Notify(30663)
 			return errors.Wrapf(err, "unable to parse %v as intent age threshold", args[3])
+		} else {
+			__antithesis_instrumentation__.Notify(30664)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(30665)
 	}
+	__antithesis_instrumentation__.Notify(30655)
 	if len(args) > 2 {
+		__antithesis_instrumentation__.Notify(30666)
 		gcTTLInSeconds, err := parsePositiveInt(args[2])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30668)
 			return errors.Wrapf(err, "unable to parse %v as TTL", args[2])
+		} else {
+			__antithesis_instrumentation__.Notify(30669)
 		}
+		__antithesis_instrumentation__.Notify(30667)
 		gcTTL = time.Duration(gcTTLInSeconds) * time.Second
+	} else {
+		__antithesis_instrumentation__.Notify(30670)
 	}
+	__antithesis_instrumentation__.Notify(30656)
 	if len(args) > 1 {
+		__antithesis_instrumentation__.Notify(30671)
 		var err error
 		if rangeID, err = parseRangeID(args[1]); err != nil {
+			__antithesis_instrumentation__.Notify(30672)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30673)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(30674)
 	}
+	__antithesis_instrumentation__.Notify(30657)
 
-	db, err := OpenExistingStore(args[0], stopper, true /* readOnly */, false /* disableAutomaticCompactions */)
+	db, err := OpenExistingStore(args[0], stopper, true, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30675)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30676)
 	}
+	__antithesis_instrumentation__.Notify(30658)
 
 	start := keys.RangeDescriptorKey(roachpb.RKeyMin)
 	end := keys.RangeDescriptorKey(roachpb.RKeyMax)
@@ -720,33 +1019,66 @@ func runDebugGCCmd(cmd *cobra.Command, args []string) error {
 
 	if _, err := storage.MVCCIterate(context.Background(), db, start, end, hlc.MaxTimestamp,
 		storage.MVCCScanOptions{Inconsistent: true}, func(kv roachpb.KeyValue) error {
+			__antithesis_instrumentation__.Notify(30677)
 			var desc roachpb.RangeDescriptor
 			_, suffix, _, err := keys.DecodeRangeKey(kv.Key)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(30683)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(30684)
 			}
+			__antithesis_instrumentation__.Notify(30678)
 			if !bytes.Equal(suffix, keys.LocalRangeDescriptorSuffix) {
+				__antithesis_instrumentation__.Notify(30685)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(30686)
 			}
+			__antithesis_instrumentation__.Notify(30679)
 			if err := kv.Value.GetProto(&desc); err != nil {
+				__antithesis_instrumentation__.Notify(30687)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(30688)
 			}
-			if desc.RangeID == rangeID || rangeID == 0 {
+			__antithesis_instrumentation__.Notify(30680)
+			if desc.RangeID == rangeID || func() bool {
+				__antithesis_instrumentation__.Notify(30689)
+				return rangeID == 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(30690)
 				descs = append(descs, desc)
+			} else {
+				__antithesis_instrumentation__.Notify(30691)
 			}
+			__antithesis_instrumentation__.Notify(30681)
 			if desc.RangeID == rangeID {
+				__antithesis_instrumentation__.Notify(30692)
 				return iterutil.StopIteration()
+			} else {
+				__antithesis_instrumentation__.Notify(30693)
 			}
+			__antithesis_instrumentation__.Notify(30682)
 			return nil
 		}); err != nil {
+		__antithesis_instrumentation__.Notify(30694)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30695)
 	}
+	__antithesis_instrumentation__.Notify(30659)
 
 	if len(descs) == 0 {
+		__antithesis_instrumentation__.Notify(30696)
 		return fmt.Errorf("no range matching the criteria found")
+	} else {
+		__antithesis_instrumentation__.Notify(30697)
 	}
+	__antithesis_instrumentation__.Notify(30660)
 
 	for _, desc := range descs {
+		__antithesis_instrumentation__.Notify(30698)
 		snap := db.NewSnapshot()
 		defer snap.Close()
 		now := hlc.Timestamp{WallTime: timeutil.Now().UnixNano()}
@@ -757,20 +1089,30 @@ func runDebugGCCmd(cmd *cobra.Command, args []string) error {
 			now, thresh,
 			gc.RunOptions{IntentAgeThreshold: intentAgeThreshold, MaxIntentsPerIntentCleanupBatch: intentBatchSize},
 			gcTTL, gc.NoopGCer{},
-			func(_ context.Context, _ []roachpb.Intent) error { return nil },
-			func(_ context.Context, _ *roachpb.Transaction) error { return nil },
+			func(_ context.Context, _ []roachpb.Intent) error {
+				__antithesis_instrumentation__.Notify(30701)
+				return nil
+			},
+			func(_ context.Context, _ *roachpb.Transaction) error {
+				__antithesis_instrumentation__.Notify(30702)
+				return nil
+			},
 		)
+		__antithesis_instrumentation__.Notify(30699)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30703)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30704)
 		}
+		__antithesis_instrumentation__.Notify(30700)
 		fmt.Printf("RangeID: %d [%s, %s):\n", desc.RangeID, desc.StartKey, desc.EndKey)
 		_, _ = pretty.Println(info)
 	}
+	__antithesis_instrumentation__.Notify(30661)
 	return nil
 }
 
-// DebugPebbleCmd is the root of all debug pebble commands.
-// Exported to allow modification by CCL code.
 var DebugPebbleCmd = &cobra.Command{
 	Use:   "pebble [command]",
 	Short: "run a Pebble introspection tool command",
@@ -787,6 +1129,7 @@ Output environment variables that influence configuration.
 `,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
+		__antithesis_instrumentation__.Notify(30705)
 		env := envutil.GetEnvReport()
 		fmt.Print(env)
 	},
@@ -803,51 +1146,75 @@ Compact the sstables in a store.
 }
 
 func runDebugCompact(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30706)
 	stopper := stop.NewStopper()
 	defer stopper.Stop(context.Background())
 
-	db, err := OpenExistingStore(args[0], stopper, false /* readOnly */, true /* disableAutomaticCompactions */)
+	db, err := OpenExistingStore(args[0], stopper, false, true)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30711)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30712)
 	}
 
 	{
+		__antithesis_instrumentation__.Notify(30713)
 		approxBytesBefore, err := db.ApproximateDiskBytes(roachpb.KeyMin, roachpb.KeyMax)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30715)
 			return errors.Wrap(err, "while computing approximate size before compaction")
+		} else {
+			__antithesis_instrumentation__.Notify(30716)
 		}
+		__antithesis_instrumentation__.Notify(30714)
 		fmt.Printf("approximate reported database size before compaction: %s\n", humanizeutil.IBytes(int64(approxBytesBefore)))
 	}
+	__antithesis_instrumentation__.Notify(30707)
 
-	// Begin compacting the store in a separate goroutine.
 	errCh := make(chan error, 1)
 	go func() {
+		__antithesis_instrumentation__.Notify(30717)
 		errCh <- errors.Wrap(db.Compact(), "while compacting")
 	}()
+	__antithesis_instrumentation__.Notify(30708)
 
-	// Print the current LSM every minute.
 	ticker := time.NewTicker(time.Minute)
 	for done := false; !done; {
+		__antithesis_instrumentation__.Notify(30718)
 		select {
 		case <-ticker.C:
+			__antithesis_instrumentation__.Notify(30719)
 			fmt.Printf("%s\n", db.GetMetrics())
 		case err := <-errCh:
+			__antithesis_instrumentation__.Notify(30720)
 			ticker.Stop()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(30722)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(30723)
 			}
+			__antithesis_instrumentation__.Notify(30721)
 			done = true
 		}
 	}
+	__antithesis_instrumentation__.Notify(30709)
 	fmt.Printf("%s\n", db.GetMetrics())
 
 	{
+		__antithesis_instrumentation__.Notify(30724)
 		approxBytesAfter, err := db.ApproximateDiskBytes(roachpb.KeyMin, roachpb.KeyMax)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30726)
 			return errors.Wrap(err, "while computing approximate size after compaction")
+		} else {
+			__antithesis_instrumentation__.Notify(30727)
 		}
+		__antithesis_instrumentation__.Notify(30725)
 		fmt.Printf("approximate reported database size after compaction: %s\n", humanizeutil.IBytes(int64(approxBytesAfter)))
 	}
+	__antithesis_instrumentation__.Notify(30710)
 	return nil
 }
 
@@ -865,111 +1232,220 @@ a JSON file captured from a node's /_status/gossip/ debug endpoint.
 }
 
 func runDebugGossipValues(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30728)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	// If a file is provided, use it. Otherwise, try talking to the running node.
+
 	var gossipInfo *gossip.InfoStatus
 	if debugCtx.inputFile != "" {
+		__antithesis_instrumentation__.Notify(30731)
 		file, err := os.Open(debugCtx.inputFile)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30733)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30734)
 		}
+		__antithesis_instrumentation__.Notify(30732)
 		defer file.Close()
 		gossipInfo = new(gossip.InfoStatus)
 		if err := jsonpb.Unmarshal(file, gossipInfo); err != nil {
+			__antithesis_instrumentation__.Notify(30735)
 			return errors.Wrap(err, "failed to parse provided file as gossip.InfoStatus")
+		} else {
+			__antithesis_instrumentation__.Notify(30736)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(30737)
 		conn, _, finish, err := getClientGRPCConn(ctx, serverCfg)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30739)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30740)
 		}
+		__antithesis_instrumentation__.Notify(30738)
 		defer finish()
 
 		status := serverpb.NewStatusClient(conn)
 		gossipInfo, err = status.Gossip(ctx, &serverpb.GossipRequest{})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30741)
 			return errors.Wrap(err, "failed to retrieve gossip from server")
+		} else {
+			__antithesis_instrumentation__.Notify(30742)
 		}
 	}
+	__antithesis_instrumentation__.Notify(30729)
 
 	output, err := parseGossipValues(gossipInfo)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30743)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30744)
 	}
+	__antithesis_instrumentation__.Notify(30730)
 	fmt.Println(output)
 	return nil
 }
 
 func parseGossipValues(gossipInfo *gossip.InfoStatus) (string, error) {
+	__antithesis_instrumentation__.Notify(30745)
 	var output []string
 	for key, info := range gossipInfo.Infos {
+		__antithesis_instrumentation__.Notify(30747)
 		bytes, err := info.Value.GetBytes()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30749)
 			return "", errors.Wrapf(err, "failed to extract bytes for key %q", key)
+		} else {
+			__antithesis_instrumentation__.Notify(30750)
 		}
-		if key == gossip.KeyClusterID || key == gossip.KeySentinel {
+		__antithesis_instrumentation__.Notify(30748)
+		if key == gossip.KeyClusterID || func() bool {
+			__antithesis_instrumentation__.Notify(30751)
+			return key == gossip.KeySentinel == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(30752)
 			clusterID, err := uuid.FromBytes(bytes)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(30754)
 				return "", errors.Wrapf(err, "failed to parse value for key %q", key)
-			}
-			output = append(output, fmt.Sprintf("%q: %v", key, clusterID))
-		} else if key == gossip.KeyDeprecatedSystemConfig {
-			if debugCtx.printSystemConfig {
-				var config config.SystemConfigEntries
-				if err := protoutil.Unmarshal(bytes, &config); err != nil {
-					return "", errors.Wrapf(err, "failed to parse value for key %q", key)
-				}
-				output = append(output, fmt.Sprintf("%q: %+v", key, config))
 			} else {
-				output = append(output, fmt.Sprintf("%q: omitted", key))
+				__antithesis_instrumentation__.Notify(30755)
 			}
-		} else if key == gossip.KeyFirstRangeDescriptor {
-			var desc roachpb.RangeDescriptor
-			if err := protoutil.Unmarshal(bytes, &desc); err != nil {
-				return "", errors.Wrapf(err, "failed to parse value for key %q", key)
+			__antithesis_instrumentation__.Notify(30753)
+			output = append(output, fmt.Sprintf("%q: %v", key, clusterID))
+		} else {
+			__antithesis_instrumentation__.Notify(30756)
+			if key == gossip.KeyDeprecatedSystemConfig {
+				__antithesis_instrumentation__.Notify(30757)
+				if debugCtx.printSystemConfig {
+					__antithesis_instrumentation__.Notify(30758)
+					var config config.SystemConfigEntries
+					if err := protoutil.Unmarshal(bytes, &config); err != nil {
+						__antithesis_instrumentation__.Notify(30760)
+						return "", errors.Wrapf(err, "failed to parse value for key %q", key)
+					} else {
+						__antithesis_instrumentation__.Notify(30761)
+					}
+					__antithesis_instrumentation__.Notify(30759)
+					output = append(output, fmt.Sprintf("%q: %+v", key, config))
+				} else {
+					__antithesis_instrumentation__.Notify(30762)
+					output = append(output, fmt.Sprintf("%q: omitted", key))
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(30763)
+				if key == gossip.KeyFirstRangeDescriptor {
+					__antithesis_instrumentation__.Notify(30764)
+					var desc roachpb.RangeDescriptor
+					if err := protoutil.Unmarshal(bytes, &desc); err != nil {
+						__antithesis_instrumentation__.Notify(30766)
+						return "", errors.Wrapf(err, "failed to parse value for key %q", key)
+					} else {
+						__antithesis_instrumentation__.Notify(30767)
+					}
+					__antithesis_instrumentation__.Notify(30765)
+					output = append(output, fmt.Sprintf("%q: %v", key, desc))
+				} else {
+					__antithesis_instrumentation__.Notify(30768)
+					if gossip.IsNodeIDKey(key) {
+						__antithesis_instrumentation__.Notify(30769)
+						var desc roachpb.NodeDescriptor
+						if err := protoutil.Unmarshal(bytes, &desc); err != nil {
+							__antithesis_instrumentation__.Notify(30771)
+							return "", errors.Wrapf(err, "failed to parse value for key %q", key)
+						} else {
+							__antithesis_instrumentation__.Notify(30772)
+						}
+						__antithesis_instrumentation__.Notify(30770)
+						output = append(output, fmt.Sprintf("%q: %+v", key, desc))
+					} else {
+						__antithesis_instrumentation__.Notify(30773)
+						if strings.HasPrefix(key, gossip.KeyStorePrefix) {
+							__antithesis_instrumentation__.Notify(30774)
+							var desc roachpb.StoreDescriptor
+							if err := protoutil.Unmarshal(bytes, &desc); err != nil {
+								__antithesis_instrumentation__.Notify(30776)
+								return "", errors.Wrapf(err, "failed to parse value for key %q", key)
+							} else {
+								__antithesis_instrumentation__.Notify(30777)
+							}
+							__antithesis_instrumentation__.Notify(30775)
+							output = append(output, fmt.Sprintf("%q: %+v", key, desc))
+						} else {
+							__antithesis_instrumentation__.Notify(30778)
+							if strings.HasPrefix(key, gossip.KeyNodeLivenessPrefix) {
+								__antithesis_instrumentation__.Notify(30779)
+								var liveness livenesspb.Liveness
+								if err := protoutil.Unmarshal(bytes, &liveness); err != nil {
+									__antithesis_instrumentation__.Notify(30781)
+									return "", errors.Wrapf(err, "failed to parse value for key %q", key)
+								} else {
+									__antithesis_instrumentation__.Notify(30782)
+								}
+								__antithesis_instrumentation__.Notify(30780)
+								output = append(output, fmt.Sprintf("%q: %+v", key, liveness))
+							} else {
+								__antithesis_instrumentation__.Notify(30783)
+								if strings.HasPrefix(key, gossip.KeyNodeHealthAlertPrefix) {
+									__antithesis_instrumentation__.Notify(30784)
+									var healthAlert statuspb.HealthCheckResult
+									if err := protoutil.Unmarshal(bytes, &healthAlert); err != nil {
+										__antithesis_instrumentation__.Notify(30786)
+										return "", errors.Wrapf(err, "failed to parse value for key %q", key)
+									} else {
+										__antithesis_instrumentation__.Notify(30787)
+									}
+									__antithesis_instrumentation__.Notify(30785)
+									output = append(output, fmt.Sprintf("%q: %+v", key, healthAlert))
+								} else {
+									__antithesis_instrumentation__.Notify(30788)
+									if strings.HasPrefix(key, gossip.KeyDistSQLNodeVersionKeyPrefix) {
+										__antithesis_instrumentation__.Notify(30789)
+										var version execinfrapb.DistSQLVersionGossipInfo
+										if err := protoutil.Unmarshal(bytes, &version); err != nil {
+											__antithesis_instrumentation__.Notify(30791)
+											return "", errors.Wrapf(err, "failed to parse value for key %q", key)
+										} else {
+											__antithesis_instrumentation__.Notify(30792)
+										}
+										__antithesis_instrumentation__.Notify(30790)
+										output = append(output, fmt.Sprintf("%q: %+v", key, version))
+									} else {
+										__antithesis_instrumentation__.Notify(30793)
+										if strings.HasPrefix(key, gossip.KeyDistSQLDrainingPrefix) {
+											__antithesis_instrumentation__.Notify(30794)
+											var drainingInfo execinfrapb.DistSQLDrainingInfo
+											if err := protoutil.Unmarshal(bytes, &drainingInfo); err != nil {
+												__antithesis_instrumentation__.Notify(30796)
+												return "", errors.Wrapf(err, "failed to parse value for key %q", key)
+											} else {
+												__antithesis_instrumentation__.Notify(30797)
+											}
+											__antithesis_instrumentation__.Notify(30795)
+											output = append(output, fmt.Sprintf("%q: %+v", key, drainingInfo))
+										} else {
+											__antithesis_instrumentation__.Notify(30798)
+											if strings.HasPrefix(key, gossip.KeyGossipClientsPrefix) {
+												__antithesis_instrumentation__.Notify(30799)
+												output = append(output, fmt.Sprintf("%q: %v", key, string(bytes)))
+											} else {
+												__antithesis_instrumentation__.Notify(30800)
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
 			}
-			output = append(output, fmt.Sprintf("%q: %v", key, desc))
-		} else if gossip.IsNodeIDKey(key) {
-			var desc roachpb.NodeDescriptor
-			if err := protoutil.Unmarshal(bytes, &desc); err != nil {
-				return "", errors.Wrapf(err, "failed to parse value for key %q", key)
-			}
-			output = append(output, fmt.Sprintf("%q: %+v", key, desc))
-		} else if strings.HasPrefix(key, gossip.KeyStorePrefix) {
-			var desc roachpb.StoreDescriptor
-			if err := protoutil.Unmarshal(bytes, &desc); err != nil {
-				return "", errors.Wrapf(err, "failed to parse value for key %q", key)
-			}
-			output = append(output, fmt.Sprintf("%q: %+v", key, desc))
-		} else if strings.HasPrefix(key, gossip.KeyNodeLivenessPrefix) {
-			var liveness livenesspb.Liveness
-			if err := protoutil.Unmarshal(bytes, &liveness); err != nil {
-				return "", errors.Wrapf(err, "failed to parse value for key %q", key)
-			}
-			output = append(output, fmt.Sprintf("%q: %+v", key, liveness))
-		} else if strings.HasPrefix(key, gossip.KeyNodeHealthAlertPrefix) {
-			var healthAlert statuspb.HealthCheckResult
-			if err := protoutil.Unmarshal(bytes, &healthAlert); err != nil {
-				return "", errors.Wrapf(err, "failed to parse value for key %q", key)
-			}
-			output = append(output, fmt.Sprintf("%q: %+v", key, healthAlert))
-		} else if strings.HasPrefix(key, gossip.KeyDistSQLNodeVersionKeyPrefix) {
-			var version execinfrapb.DistSQLVersionGossipInfo
-			if err := protoutil.Unmarshal(bytes, &version); err != nil {
-				return "", errors.Wrapf(err, "failed to parse value for key %q", key)
-			}
-			output = append(output, fmt.Sprintf("%q: %+v", key, version))
-		} else if strings.HasPrefix(key, gossip.KeyDistSQLDrainingPrefix) {
-			var drainingInfo execinfrapb.DistSQLDrainingInfo
-			if err := protoutil.Unmarshal(bytes, &drainingInfo); err != nil {
-				return "", errors.Wrapf(err, "failed to parse value for key %q", key)
-			}
-			output = append(output, fmt.Sprintf("%q: %+v", key, drainingInfo))
-		} else if strings.HasPrefix(key, gossip.KeyGossipClientsPrefix) {
-			output = append(output, fmt.Sprintf("%q: %v", key, string(bytes)))
 		}
 	}
+	__antithesis_instrumentation__.Notify(30746)
 
 	sort.Strings(output)
 	return strings.Join(output, "\n"), nil
@@ -992,10 +1468,15 @@ var syncBenchOpts = syncbench.Options{
 }
 
 func runDebugSyncBench(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30801)
 	syncBenchOpts.Dir = "./testdb"
 	if len(args) == 1 {
+		__antithesis_instrumentation__.Notify(30803)
 		syncBenchOpts.Dir = args[0]
+	} else {
+		__antithesis_instrumentation__.Notify(30804)
 	}
+	__antithesis_instrumentation__.Notify(30802)
 	return syncbench.Run(syncBenchOpts)
 }
 
@@ -1071,25 +1552,40 @@ var removeDeadReplicasOpts struct {
 }
 
 func runDebugUnsafeRemoveDeadReplicas(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30805)
 	stopper := stop.NewStopper()
 	defer stopper.Stop(context.Background())
 
-	db, err := OpenExistingStore(args[0], stopper, false /* readOnly */, false /* disableAutomaticCompactions */)
+	db, err := OpenExistingStore(args[0], stopper, false, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30811)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30812)
 	}
+	__antithesis_instrumentation__.Notify(30806)
 
 	deadStoreIDs := map[roachpb.StoreID]struct{}{}
 	for _, id := range removeDeadReplicasOpts.deadStoreIDs {
+		__antithesis_instrumentation__.Notify(30813)
 		deadStoreIDs[roachpb.StoreID(id)] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(30807)
 	batch, err := removeDeadReplicas(db, deadStoreIDs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30814)
 		return err
-	} else if batch == nil {
-		fmt.Printf("Nothing to do\n")
-		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(30815)
+		if batch == nil {
+			__antithesis_instrumentation__.Notify(30816)
+			fmt.Printf("Nothing to do\n")
+			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(30817)
+		}
 	}
+	__antithesis_instrumentation__.Notify(30808)
 	defer batch.Close()
 
 	fmt.Printf("Proceed with the above rewrites? [y/N] ")
@@ -1097,105 +1593,121 @@ func runDebugUnsafeRemoveDeadReplicas(cmd *cobra.Command, args []string) error {
 	reader := bufio.NewReader(os.Stdin)
 	line, err := reader.ReadString('\n')
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30818)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30819)
 	}
+	__antithesis_instrumentation__.Notify(30809)
 	fmt.Printf("\n")
-	if line[0] == 'y' || line[0] == 'Y' {
+	if line[0] == 'y' || func() bool {
+		__antithesis_instrumentation__.Notify(30820)
+		return line[0] == 'Y' == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(30821)
 		fmt.Printf("Committing\n")
 		if err := batch.Commit(true); err != nil {
+			__antithesis_instrumentation__.Notify(30822)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30823)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(30824)
 		fmt.Printf("Aborting\n")
 	}
+	__antithesis_instrumentation__.Notify(30810)
 	return nil
 }
 
 func removeDeadReplicas(
 	db storage.Engine, deadStoreIDs map[roachpb.StoreID]struct{},
 ) (storage.Batch, error) {
+	__antithesis_instrumentation__.Notify(30825)
 	clock := hlc.NewClock(hlc.UnixNano, 0)
 
 	ctx := context.Background()
 
 	storeIdent, err := kvserver.ReadStoreIdent(ctx, db)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30832)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(30833)
 	}
+	__antithesis_instrumentation__.Notify(30826)
 	fmt.Printf("Scanning replicas on store %s for dead peers %v\n", storeIdent.String(),
 		removeDeadReplicasOpts.deadStoreIDs)
 
 	if _, ok := deadStoreIDs[storeIdent.StoreID]; ok {
+		__antithesis_instrumentation__.Notify(30834)
 		return nil, errors.Errorf("this store's ID (%s) marked as dead, aborting", storeIdent.StoreID)
+	} else {
+		__antithesis_instrumentation__.Notify(30835)
 	}
+	__antithesis_instrumentation__.Notify(30827)
 
 	var newDescs []roachpb.RangeDescriptor
 
 	err = kvserver.IterateRangeDescriptorsFromDisk(ctx, db, func(desc roachpb.RangeDescriptor) error {
+		__antithesis_instrumentation__.Notify(30836)
 		numDeadPeers := 0
 		allReplicas := desc.Replicas().Descriptors()
 		maxLiveVoter := roachpb.StoreID(-1)
 		for _, rep := range allReplicas {
+			__antithesis_instrumentation__.Notify(30841)
 			if _, ok := deadStoreIDs[rep.StoreID]; ok {
+				__antithesis_instrumentation__.Notify(30843)
 				numDeadPeers++
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(30844)
 			}
-			// The designated survivor will be the voter with the highest storeID.
-			// Note that an outgoing voter cannot be designated, as the only
-			// replication change it could make is to turn itself into a learner, at
-			// which point the range is completely messed up.
-			//
-			// Note: a better heuristic might be to choose the leaseholder store, not
-			// the largest store, as this avoids the problem of requests still hanging
-			// after running the tool in a rolling-restart fashion (when the lease-
-			// holder is under a valid epoch and was ont chosen as designated
-			// survivor). However, this choice is less deterministic, as leaseholders
-			// are more likely to change than replication configs. The hanging would
-			// independently be fixed by the below issue, so staying with largest store
-			// is likely the right choice. See:
-			//
-			// https://github.com/cockroachdb/cockroach/issues/33007
-			if rep.IsVoterNewConfig() && rep.StoreID > maxLiveVoter {
-				maxLiveVoter = rep.StoreID
-			}
-		}
+			__antithesis_instrumentation__.Notify(30842)
 
-		// If there's no dead peer in this group (so can't hope to fix
-		// anything by rewriting the descriptor) or the current store is not the
-		// one we want to turn into the sole voter, don't do anything.
-		if numDeadPeers == 0 {
-			return nil
+			if rep.IsVoterNewConfig() && func() bool {
+				__antithesis_instrumentation__.Notify(30845)
+				return rep.StoreID > maxLiveVoter == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(30846)
+				maxLiveVoter = rep.StoreID
+			} else {
+				__antithesis_instrumentation__.Notify(30847)
+			}
 		}
+		__antithesis_instrumentation__.Notify(30837)
+
+		if numDeadPeers == 0 {
+			__antithesis_instrumentation__.Notify(30848)
+			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(30849)
+		}
+		__antithesis_instrumentation__.Notify(30838)
 		if storeIdent.StoreID != maxLiveVoter {
+			__antithesis_instrumentation__.Notify(30850)
 			fmt.Printf("not designated survivor, skipping: %s\n", &desc)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(30851)
 		}
+		__antithesis_instrumentation__.Notify(30839)
 
-		// The replica thinks it can make progress anyway, so we leave it alone.
 		if desc.Replicas().CanMakeProgress(func(rep roachpb.ReplicaDescriptor) bool {
+			__antithesis_instrumentation__.Notify(30852)
 			_, ok := deadStoreIDs[rep.StoreID]
 			return !ok
 		}) {
+			__antithesis_instrumentation__.Notify(30853)
 			fmt.Printf("replica has not lost quorum, skipping: %s\n", &desc)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(30854)
 		}
+		__antithesis_instrumentation__.Notify(30840)
 
-		// We're the designated survivor and the range does not to be recovered.
-		//
-		// Rewrite the range as having a single replica. The winning replica is
-		// picked arbitrarily: the one with the highest store ID. This is not always
-		// the best option: it may lose writes that were committed on another
-		// surviving replica that had applied more of the raft log. However, in
-		// practice when we have multiple surviving replicas but still need this
-		// tool (because the replication factor was 4 or higher), we see that the
-		// logs are nearly always in sync and the choice doesn't matter. Correctly
-		// picking the replica with the longer log would complicate the use of this
-		// tool.
 		newDesc := desc
-		// Rewrite the replicas list. Bump the replica ID so that in case there are
-		// other surviving nodes that were members of the old incarnation of the
-		// range, they no longer recognize this revived replica (because they are
-		// not in sync with it).
+
 		replicas := []roachpb.ReplicaDescriptor{{
 			NodeID:    storeIdent.NodeID,
 			StoreID:   storeIdent.StoreID,
@@ -1207,134 +1719,115 @@ func removeDeadReplicas(
 		newDescs = append(newDescs, newDesc)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(30828)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30855)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(30856)
 	}
+	__antithesis_instrumentation__.Notify(30829)
 
 	if len(newDescs) == 0 {
+		__antithesis_instrumentation__.Notify(30857)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(30858)
 	}
+	__antithesis_instrumentation__.Notify(30830)
 
 	batch := db.NewBatch()
 	for _, desc := range newDescs {
-		// Write the rewritten descriptor to the range-local descriptor
-		// key. We do not update the meta copies of the descriptor.
-		// Instead, we leave them in a temporarily inconsistent state and
-		// they will be overwritten when the cluster recovers and
-		// up-replicates this range from its single copy to multiple
-		// copies. We rely on the fact that all range descriptor updates
-		// start with a CPut on the range-local copy followed by a blind
-		// Put to the meta copy.
-		//
-		// For example, if we have replicas on s1-s4 but s3 and s4 are
-		// dead, we will rewrite the replica on s2 to have s2 as its only
-		// member only. When the cluster is restarted (and the dead nodes
-		// remain dead), the rewritten replica will be the only one able
-		// to make progress. It will elect itself leader and upreplicate.
-		//
-		// The old replica on s1 is untouched by this process. It will
-		// eventually either be overwritten by a new replica when s2
-		// upreplicates, or it will be destroyed by the replica GC queue
-		// after upreplication has happened and s1 is no longer a member.
-		// (Note that in the latter case, consistency between s1 and s2 no
-		// longer matters; the consistency checker will only run on nodes
-		// that the new leader believes are members of the range).
-		//
-		// Note that this tool does not guarantee fully consistent
-		// results; the most recent writes to the raft log may have been
-		// lost. In the most unfortunate cases, this means that we would
-		// be "winding back" a split or a merge, which is almost certainly
-		// to result in irrecoverable corruption (for example, not only
-		// will individual values stored in the meta ranges diverge, but
-		// there will be keys not represented by any ranges or vice
-		// versa).
+		__antithesis_instrumentation__.Notify(30859)
+
 		key := keys.RangeDescriptorKey(desc.StartKey)
 		sl := stateloader.Make(desc.RangeID)
 		ms, err := sl.LoadMVCCStats(ctx, batch)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30864)
 			return nil, errors.Wrap(err, "loading MVCCStats")
+		} else {
+			__antithesis_instrumentation__.Notify(30865)
 		}
-		err = storage.MVCCPutProto(ctx, batch, &ms, key, clock.Now(), nil /* txn */, &desc)
+		__antithesis_instrumentation__.Notify(30860)
+		err = storage.MVCCPutProto(ctx, batch, &ms, key, clock.Now(), nil, &desc)
 		if wiErr := (*roachpb.WriteIntentError)(nil); errors.As(err, &wiErr) {
+			__antithesis_instrumentation__.Notify(30866)
 			if len(wiErr.Intents) != 1 {
+				__antithesis_instrumentation__.Notify(30870)
 				return nil, errors.Errorf("expected 1 intent, found %d: %s", len(wiErr.Intents), wiErr)
+			} else {
+				__antithesis_instrumentation__.Notify(30871)
 			}
+			__antithesis_instrumentation__.Notify(30867)
 			intent := wiErr.Intents[0]
-			// We rely on the property that transactions involving the range
-			// descriptor always start on the range-local descriptor's key. When there
-			// is an intent, this means that it is likely that the transaction did not
-			// commit, so we abort the intent.
-			//
-			// However, this is not guaranteed. For one, applying a command is not
-			// synced to disk, so in theory whichever store becomes the designated
-			// survivor may temporarily have "forgotten" that the transaction
-			// committed in its applied state (it would still have the committed log
-			// entry, as this is durable state, so it would come back once the node
-			// was running, but we don't see that materialized state in
-			// unsafe-remove-dead-replicas). This is unlikely to be a problem in
-			// practice, since we assume that the store was shut down gracefully and
-			// besides, the write likely had plenty of time to make it to durable
-			// storage. More troubling is the fact that the designated survivor may
-			// simply not yet have learned that the transaction committed; it may not
-			// have been in the quorum and could've been slow to catch up on the log.
-			// It may not even have the intent; in theory the remaining replica could
-			// have missed any number of transactions on the range descriptor (even if
-			// they are in the log, they may not yet be applied, and the replica may
-			// not yet have learned that they are committed). This is particularly
-			// troubling when we miss a split, as the right-hand side of the split
-			// will exist in the meta ranges and could even be able to make progress.
-			// For yet another thing to worry about, note that the determinism (across
-			// different nodes) assumed in this tool can easily break down in similar
-			// ways (not all stores are going to have the same view of what the
-			// descriptors are), and so multiple replicas of a range may declare
-			// themselves the designated survivor. Long story short, use of this tool
-			// with or without the presence of an intent can - in theory - really
-			// tear the cluster apart.
-			//
-			// A solution to this would require a global view, where in a first step
-			// we collect from each store in the cluster the replicas present and
-			// compute from that a "recovery plan", i.e. set of replicas that will
-			// form the recovered keyspace. We may then find that no such recovery
-			// plan is trivially achievable, due to any of the above problems. But
-			// in the common case, we do expect one to exist.
+
 			fmt.Printf("aborting intent: %s (txn %s)\n", key, intent.Txn.ID)
 
-			// A crude form of the intent resolution process: abort the
-			// transaction by deleting its record.
 			txnKey := keys.TransactionKey(intent.Txn.Key, intent.Txn.ID)
 			if err := storage.MVCCDelete(ctx, batch, &ms, txnKey, hlc.Timestamp{}, nil); err != nil {
+				__antithesis_instrumentation__.Notify(30872)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(30873)
 			}
+			__antithesis_instrumentation__.Notify(30868)
 			update := roachpb.LockUpdate{
 				Span:   roachpb.Span{Key: intent.Key},
 				Txn:    intent.Txn,
 				Status: roachpb.ABORTED,
 			}
 			if _, err := storage.MVCCResolveWriteIntent(ctx, batch, &ms, update); err != nil {
+				__antithesis_instrumentation__.Notify(30874)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(30875)
 			}
-			// With the intent resolved, we can try again.
+			__antithesis_instrumentation__.Notify(30869)
+
 			if err := storage.MVCCPutProto(ctx, batch, &ms, key, clock.Now(),
-				nil /* txn */, &desc); err != nil {
+				nil, &desc); err != nil {
+				__antithesis_instrumentation__.Notify(30876)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(30877)
 			}
-		} else if err != nil {
-			batch.Close()
-			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(30878)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(30879)
+				batch.Close()
+				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(30880)
+			}
 		}
-		// Write the new replica ID to RaftReplicaIDKey.
+		__antithesis_instrumentation__.Notify(30861)
+
 		replicas := desc.Replicas().Descriptors()
 		if len(replicas) != 1 {
+			__antithesis_instrumentation__.Notify(30881)
 			return nil, errors.Errorf("expected 1 replica, got %v", replicas)
+		} else {
+			__antithesis_instrumentation__.Notify(30882)
 		}
+		__antithesis_instrumentation__.Notify(30862)
 		if err := sl.SetRaftReplicaID(ctx, batch, replicas[0].ReplicaID); err != nil {
+			__antithesis_instrumentation__.Notify(30883)
 			return nil, errors.Wrapf(err, "failed to write new replica ID for range %d", desc.RangeID)
+		} else {
+			__antithesis_instrumentation__.Notify(30884)
 		}
-		// Update MVCC stats.
+		__antithesis_instrumentation__.Notify(30863)
+
 		if err := sl.SetMVCCStats(ctx, batch, &ms); err != nil {
+			__antithesis_instrumentation__.Notify(30885)
 			return nil, errors.Wrap(err, "updating MVCCStats")
+		} else {
+			__antithesis_instrumentation__.Notify(30886)
 		}
 	}
+	__antithesis_instrumentation__.Notify(30831)
 
 	return batch, nil
 }
@@ -1356,12 +1849,8 @@ matching via flags. If the filter regexp contains captures, such as
 	RunE: runDebugMergeLogs,
 }
 
-// filePattern matches log file paths. Redeclared here from the log package
-// due to significant test breakage when adding the fpath named capture group.
 const logFilePattern = "^(?:(?P<fpath>.*)/)?" + log.FileNamePattern + "$"
 
-// TODO(knz): this struct belongs elsewhere.
-// See: https://github.com/cockroachdb/cockroach/issues/49509
 var debugMergeLogsOpts = struct {
 	from           time.Time
 	to             time.Time
@@ -1374,13 +1863,14 @@ var debugMergeLogsOpts = struct {
 	format         string
 	useColor       forceColor
 }{
-	program:        nil, // match everything
+	program:        nil,
 	file:           regexp.MustCompile(logFilePattern),
 	keepRedactable: true,
 	redactInput:    false,
 }
 
 func runDebugMergeLogs(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30887)
 	o := debugMergeLogsOpts
 	p := newFilePrefixer(withTemplate(o.prefix))
 
@@ -1389,41 +1879,62 @@ func runDebugMergeLogs(cmd *cobra.Command, args []string) error {
 	s, err := newMergedStreamFromPatterns(context.Background(),
 		args, o.file, o.program, o.from, o.to, inputEditMode, o.format, p)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30891)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30892)
 	}
+	__antithesis_instrumentation__.Notify(30888)
 
-	// Only auto-detect if auto-detection is needed, as it may fail with an error.
 	autoDetect := func(outStream io.Writer) (ttycolor.Profile, error) {
+		__antithesis_instrumentation__.Notify(30893)
 		if f, ok := outStream.(*os.File); ok {
-			// If the output is a terminal, auto-detect the color scheme based
-			// on that.
+			__antithesis_instrumentation__.Notify(30895)
+
 			return ttycolor.DetectProfile(f)
+		} else {
+			__antithesis_instrumentation__.Notify(30896)
 		}
+		__antithesis_instrumentation__.Notify(30894)
 		return nil, nil
 	}
+	__antithesis_instrumentation__.Notify(30889)
 	outStream := cmd.OutOrStdout()
 	var cp ttycolor.Profile
-	// Now choose the color profile depending on the user option.
+
 	switch o.useColor {
 	case forceColorOff:
-		// Nothing to do, cp stays nil.
+		__antithesis_instrumentation__.Notify(30897)
+
 	case forceColorOn:
-		// If there was a color profile auto-detected, we want
-		// to use that as it will be tailored to the output terminal.
+		__antithesis_instrumentation__.Notify(30898)
+
 		var err error
 		cp, err = autoDetect(outStream)
-		if err != nil || cp == nil {
-			// The user requested "forcing" the color mode but
-			// auto-detection failed. Ignore the error and use a best guess.
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(30901)
+			return cp == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(30902)
+
 			cp = ttycolor.Profile8
+		} else {
+			__antithesis_instrumentation__.Notify(30903)
 		}
 	case forceColorAuto:
+		__antithesis_instrumentation__.Notify(30899)
 		var err error
 		cp, err = autoDetect(outStream)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30904)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30905)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(30900)
 	}
+	__antithesis_instrumentation__.Notify(30890)
 
 	return writeLogStream(s, outStream, o.filter, o.keepRedactable, cp)
 }
@@ -1441,14 +1952,19 @@ if the migration away from interleaved intents was successful.
 }
 
 func runDebugIntentCount(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(30906)
 	stopper := stop.NewStopper()
 	ctx := context.Background()
 	defer stopper.Stop(ctx)
 
-	db, err := OpenExistingStore(args[0], stopper, true /* readOnly */, false /* disableAutomaticCompactions */)
+	db, err := OpenExistingStore(args[0], stopper, true, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30911)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30912)
 	}
+	__antithesis_instrumentation__.Notify(30907)
 	defer db.Close()
 
 	var interleavedIntentCount, separatedIntentCount int
@@ -1458,6 +1974,7 @@ func runDebugIntentCount(cmd *cobra.Command, args []string) error {
 
 	wg.Add(1)
 	_ = stopper.RunAsyncTask(ctx, "intent-count-progress-indicator", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(30913)
 		defer wg.Done()
 		ctx, cancel := stopper.WithCancelOnQuiesce(ctx)
 		defer cancel()
@@ -1467,13 +1984,17 @@ func runDebugIntentCount(cmd *cobra.Command, args []string) error {
 
 		select {
 		case <-ticker.C:
+			__antithesis_instrumentation__.Notify(30914)
 			fmt.Printf("scanned %d keys\n", atomic.LoadUint64(&keysCount))
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(30915)
 			return
 		case <-closer:
+			__antithesis_instrumentation__.Notify(30916)
 			return
 		}
 	})
+	__antithesis_instrumentation__.Notify(30908)
 
 	iter := db.NewEngineIterator(storage.IterOptions{
 		LowerBound: roachpb.KeyMin,
@@ -1482,38 +2003,75 @@ func runDebugIntentCount(cmd *cobra.Command, args []string) error {
 	defer iter.Close()
 	valid, err := iter.SeekEngineKeyGE(storage.EngineKey{Key: roachpb.KeyMin})
 	var meta enginepb.MVCCMetadata
-	for ; valid && err == nil; valid, err = iter.NextEngineKey() {
+	for ; valid && func() bool {
+		__antithesis_instrumentation__.Notify(30917)
+		return err == nil == true
+	}() == true; valid, err = iter.NextEngineKey() {
+		__antithesis_instrumentation__.Notify(30918)
 		key, err := iter.EngineKey()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30926)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30927)
 		}
+		__antithesis_instrumentation__.Notify(30919)
 		atomic.AddUint64(&keysCount, 1)
 		if key.IsLockTableKey() {
+			__antithesis_instrumentation__.Notify(30928)
 			separatedIntentCount++
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(30929)
 		}
+		__antithesis_instrumentation__.Notify(30920)
 		if !key.IsMVCCKey() {
+			__antithesis_instrumentation__.Notify(30930)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(30931)
 		}
+		__antithesis_instrumentation__.Notify(30921)
 		mvccKey, err := key.ToMVCCKey()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(30932)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30933)
 		}
+		__antithesis_instrumentation__.Notify(30922)
 		if !mvccKey.Timestamp.IsEmpty() {
+			__antithesis_instrumentation__.Notify(30934)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(30935)
 		}
+		__antithesis_instrumentation__.Notify(30923)
 		val := iter.UnsafeValue()
 		if err := protoutil.Unmarshal(val, &meta); err != nil {
+			__antithesis_instrumentation__.Notify(30936)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30937)
 		}
+		__antithesis_instrumentation__.Notify(30924)
 		if meta.IsInline() {
+			__antithesis_instrumentation__.Notify(30938)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(30939)
 		}
+		__antithesis_instrumentation__.Notify(30925)
 		interleavedIntentCount++
 	}
+	__antithesis_instrumentation__.Notify(30909)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30940)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30941)
 	}
+	__antithesis_instrumentation__.Notify(30910)
 	close(closer)
 	wg.Wait()
 	fmt.Printf("interleaved intents: %d\nseparated intents: %d\n",
@@ -1521,9 +2079,6 @@ func runDebugIntentCount(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// DebugCommandsRequiringEncryption lists debug commands that access Pebble through the engine
-// and need encryption flags (injected by CCL code).
-// Note: do NOT include commands that just call Pebble code without setting up an engine.
 var DebugCommandsRequiringEncryption = []*cobra.Command{
 	debugCheckStoreCmd,
 	debugCompactCmd,
@@ -1538,7 +2093,6 @@ var DebugCommandsRequiringEncryption = []*cobra.Command{
 	debugRecoverExecuteCmd,
 }
 
-// Debug commands. All commands in this list to be added to root debug command.
 var debugCmds = []*cobra.Command{
 	debugCheckStoreCmd,
 	debugCompactCmd,
@@ -1567,7 +2121,6 @@ var debugCmds = []*cobra.Command{
 	debugRecoverCmd,
 }
 
-// DebugCmd is the root of all debug commands. Exported to allow modification by CCL code.
 var DebugCmd = &cobra.Command{
 	Use:   "debug [command]",
 	Short: "debugging commands",
@@ -1579,42 +2132,38 @@ process that has failed and cannot restart.
 	RunE: UsageAndErr,
 }
 
-// mvccValueFormatter is a fmt.Formatter for MVCC values.
 type mvccValueFormatter struct {
 	kv  storage.MVCCKeyValue
 	err error
 }
 
-// Format implements the fmt.Formatter interface.
 func (m mvccValueFormatter) Format(f fmt.State, c rune) {
+	__antithesis_instrumentation__.Notify(30942)
 	if m.err != nil {
+		__antithesis_instrumentation__.Notify(30944)
 		errors.FormatError(m.err, f, c)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(30945)
 	}
-	fmt.Fprint(f, kvserver.SprintMVCCKeyValue(m.kv, false /* printKey */))
+	__antithesis_instrumentation__.Notify(30943)
+	fmt.Fprint(f, kvserver.SprintMVCCKeyValue(m.kv, false))
 }
 
-// lockValueFormatter is a fmt.Formatter for lock values.
 type lockValueFormatter struct {
 	value []byte
 }
 
-// Format implements the fmt.Formatter interface.
 func (m lockValueFormatter) Format(f fmt.State, c rune) {
+	__antithesis_instrumentation__.Notify(30946)
 	fmt.Fprint(f, kvserver.SprintIntent(m.value))
 }
 
-// pebbleToolFS is the vfs.FS that the pebble tool should use.
-// It is necessary because an FS must be passed to tool.New before
-// the command line flags are parsed (i.e. before we can determine
-// if we have an encrypted FS).
 var pebbleToolFS = &swappableFS{vfs.Default}
 
 func init() {
 	DebugCmd.AddCommand(debugCmds...)
 
-	// Note: we hook up FormatValue here in order to avoid a circular dependency
-	// between kvserver and storage.
 	storage.EngineComparer.FormatValue = func(key, value []byte) fmt.Formatter {
 		decoded, ok := storage.DecodeEngineKey(key)
 		if !ok {
@@ -1630,9 +2179,6 @@ func init() {
 		return lockValueFormatter{value: value}
 	}
 
-	// To be able to read Cockroach-written Pebble manifests/SSTables, comparator
-	// and merger functions must be specified to pebble that match the ones used
-	// to write those files.
 	pebbleTool := tool.New(tool.Mergers(storage.MVCCMerger),
 		tool.DefaultComparer(storage.EngineComparer),
 		tool.FS(&absoluteFS{pebbleToolFS}),
@@ -1685,7 +2231,7 @@ func init() {
 	f = debugMergeLogsCmd.Flags()
 	f.Var(flagutil.Time(&debugMergeLogsOpts.from), "from",
 		"time before which messages should be filtered")
-	// TODO(knz): the "to" should be named "until" - it's a time boundary, not a space boundary.
+
 	f.Var(flagutil.Time(&debugMergeLogsOpts.to), "to",
 		"time after which messages should be filtered")
 	f.Var(flagutil.Regexp(&debugMergeLogsOpts.filter), "filter",
@@ -1730,42 +2276,64 @@ func init() {
 }
 
 func initPebbleCmds(cmd *cobra.Command) {
+	__antithesis_instrumentation__.Notify(30947)
 	for _, c := range cmd.Commands() {
+		__antithesis_instrumentation__.Notify(30948)
 		wrapped := c.PreRunE
 		c.PreRunE = func(cmd *cobra.Command, args []string) error {
+			__antithesis_instrumentation__.Notify(30950)
 			if wrapped != nil {
+				__antithesis_instrumentation__.Notify(30952)
 				if err := wrapped(cmd, args); err != nil {
+					__antithesis_instrumentation__.Notify(30953)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(30954)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(30955)
 			}
+			__antithesis_instrumentation__.Notify(30951)
 			return pebbleCryptoInitializer()
 		}
+		__antithesis_instrumentation__.Notify(30949)
 		initPebbleCmds(c)
 	}
 }
 
 func pebbleCryptoInitializer() error {
+	__antithesis_instrumentation__.Notify(30956)
 	storageConfig := base.StorageConfig{
 		Settings: serverCfg.Settings,
 		Dir:      serverCfg.Stores.Specs[0].Path,
 	}
 
 	if PopulateStorageConfigHook != nil {
+		__antithesis_instrumentation__.Notify(30959)
 		if err := PopulateStorageConfigHook(&storageConfig); err != nil {
+			__antithesis_instrumentation__.Notify(30960)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(30961)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(30962)
 	}
+	__antithesis_instrumentation__.Notify(30957)
 
 	cfg := storage.PebbleConfig{
 		StorageConfig: storageConfig,
 		Opts:          storage.DefaultPebbleOptions(),
 	}
 
-	// This has the side effect of storing the encrypted FS into cfg.Opts.FS.
 	_, _, err := storage.ResolveEncryptedEnvOptions(&cfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30963)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30964)
 	}
+	__antithesis_instrumentation__.Notify(30958)
 
 	pebbleToolFS.set(cfg.Opts.FS)
 	return nil

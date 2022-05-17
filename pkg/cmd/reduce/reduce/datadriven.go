@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package reduce
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"log"
@@ -18,7 +10,6 @@ import (
 	"github.com/cockroachdb/datadriven"
 )
 
-// Walk walks path for datadriven files and calls RunTest on them.
 func Walk(
 	t *testing.T,
 	path string,
@@ -28,21 +19,13 @@ func Walk(
 	cr ChunkReducer,
 	passes []Pass,
 ) {
+	__antithesis_instrumentation__.Notify(41809)
 	datadriven.Walk(t, path, func(t *testing.T, path string) {
+		__antithesis_instrumentation__.Notify(41810)
 		RunTest(t, path, filter, interesting, mode, cr, passes)
 	})
 }
 
-// RunTest executes reducer commands. If the optional filter func is not nil,
-// it is invoked on all "reduce" commands before the reduction algorithm is
-// started. In verbose mode, output is written to stderr. Supported commands:
-//
-// "contains": Sets the substring that must be contained by an error message
-// for a test case to be marked as interesting. This variable is passed to the
-// `interesting` func.
-//
-// "reduce": Creates an InterestingFn based on the current value of contains
-// and executes the reducer. Outputs the reduced case.
 func RunTest(
 	t *testing.T,
 	path string,
@@ -52,31 +35,51 @@ func RunTest(
 	cr ChunkReducer,
 	passes []Pass,
 ) {
+	__antithesis_instrumentation__.Notify(41811)
 	var contains string
 	var logger *log.Logger
 	if testing.Verbose() {
+		__antithesis_instrumentation__.Notify(41813)
 		logger = log.New(os.Stderr, "", 0)
+	} else {
+		__antithesis_instrumentation__.Notify(41814)
 	}
+	__antithesis_instrumentation__.Notify(41812)
 	datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
+		__antithesis_instrumentation__.Notify(41815)
 		switch d.Cmd {
 		case "contains":
+			__antithesis_instrumentation__.Notify(41816)
 			contains = d.Input
 			return ""
 		case "reduce":
+			__antithesis_instrumentation__.Notify(41817)
 			input := d.Input
 			if filter != nil {
+				__antithesis_instrumentation__.Notify(41821)
 				var err error
 				input, err = filter(input)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(41822)
 					t.Fatal(err)
+				} else {
+					__antithesis_instrumentation__.Notify(41823)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(41824)
 			}
+			__antithesis_instrumentation__.Notify(41818)
 			output, err := Reduce(logger, input, interesting(contains), 0, mode, cr, passes...)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(41825)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(41826)
 			}
+			__antithesis_instrumentation__.Notify(41819)
 			return output + "\n"
 		default:
+			__antithesis_instrumentation__.Notify(41820)
 			t.Fatalf("unknown command: %s", d.Cmd)
 			return ""
 		}

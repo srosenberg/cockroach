@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvcoord
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -165,10 +157,6 @@ This counts the number of ranges with an active rangefeed that are performing ca
 	}
 )
 
-// CanSendToFollower is used by the DistSender to determine if it needs to look
-// up the current lease holder for a request. It is used by the
-// followerreadsccl code to inject logic to check if follower reads are enabled.
-// By default, without CCL code, this function returns false.
 var CanSendToFollower = func(
 	_ uuid.UUID,
 	_ *cluster.Settings,
@@ -176,16 +164,15 @@ var CanSendToFollower = func(
 	_ roachpb.RangeClosedTimestampPolicy,
 	_ roachpb.BatchRequest,
 ) bool {
+	__antithesis_instrumentation__.Notify(87037)
 	return false
 }
 
 const (
-	// The default limit for asynchronous senders.
 	defaultSenderConcurrency = 1024
-	// The maximum number of range descriptors to prefetch during range lookups.
+
 	rangeLookupPrefetchCount = 8
-	// The maximum number of times a replica is retried when it repeatedly returns
-	// stale lease info.
+
 	sameReplicaRetryLimit = 10
 )
 
@@ -196,8 +183,6 @@ var rangeDescriptorCacheSize = settings.RegisterIntSetting(
 	1e6,
 )
 
-// senderConcurrencyLimit controls the maximum number of asynchronous send
-// requests.
 var senderConcurrencyLimit = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"kv.dist_sender.concurrency_limit",
@@ -207,13 +192,17 @@ var senderConcurrencyLimit = settings.RegisterIntSetting(
 )
 
 func max(a, b int64) int64 {
+	__antithesis_instrumentation__.Notify(87038)
 	if a > b {
+		__antithesis_instrumentation__.Notify(87040)
 		return a
+	} else {
+		__antithesis_instrumentation__.Notify(87041)
 	}
+	__antithesis_instrumentation__.Notify(87039)
 	return b
 }
 
-// DistSenderMetrics is the set of metrics for a given distributed sender.
 type DistSenderMetrics struct {
 	BatchCount              *metric.Counter
 	PartialBatchCount       *metric.Counter
@@ -234,6 +223,7 @@ type DistSenderMetrics struct {
 }
 
 func makeDistSenderMetrics() DistSenderMetrics {
+	__antithesis_instrumentation__.Notify(87042)
 	m := DistSenderMetrics{
 		BatchCount:              metric.NewCounter(metaDistSenderBatchCount),
 		PartialBatchCount:       metric.NewCounter(metaDistSenderPartialBatchCount),
@@ -251,153 +241,97 @@ func makeDistSenderMetrics() DistSenderMetrics {
 		RangefeedErrorCatchup:   metric.NewCounter(metaDistSenderRangefeedErrorCatchupRanges),
 	}
 	for i := range m.MethodCounts {
+		__antithesis_instrumentation__.Notify(87045)
 		method := roachpb.Method(i).String()
 		meta := metaDistSenderMethodCountTmpl
 		meta.Name = fmt.Sprintf(meta.Name, strings.ToLower(method))
 		meta.Help = fmt.Sprintf(meta.Help, method)
 		m.MethodCounts[i] = metric.NewCounter(meta)
 	}
+	__antithesis_instrumentation__.Notify(87043)
 	for i := range m.ErrCounts {
+		__antithesis_instrumentation__.Notify(87046)
 		errType := roachpb.ErrorDetailType(i).String()
 		meta := metaDistSenderErrCountTmpl
 		meta.Name = fmt.Sprintf(meta.Name, strings.ToLower(errType))
 		meta.Help = fmt.Sprintf(meta.Help, errType)
 		m.ErrCounts[i] = metric.NewCounter(meta)
 	}
+	__antithesis_instrumentation__.Notify(87044)
 	return m
 }
 
-// FirstRangeProvider is capable of providing DistSender with the descriptor of
-// the first range in the cluster and notifying the DistSender when the first
-// range in the cluster has changed.
 type FirstRangeProvider interface {
-	// GetFirstRangeDescriptor returns the RangeDescriptor for the first range
-	// in the cluster.
 	GetFirstRangeDescriptor() (*roachpb.RangeDescriptor, error)
 
-	// OnFirstRangeChanged calls the provided callback when the RangeDescriptor
-	// for the first range has changed.
 	OnFirstRangeChanged(func(*roachpb.RangeDescriptor))
 }
 
-// A DistSender provides methods to access Cockroach's monolithic,
-// distributed key value store. Each method invocation triggers a
-// lookup or lookups to find replica metadata for implicated key
-// ranges. RPCs are sent to one or more of the replicas to satisfy
-// the method invocation.
 type DistSender struct {
 	log.AmbientContext
 
 	st *cluster.Settings
-	// nodeDescriptor, if set, holds the descriptor of the node the
-	// DistSender lives on. It should be accessed via getNodeDescriptor(),
-	// which tries to obtain the value from the Gossip network if the
-	// descriptor is unknown.
+
 	nodeDescriptor unsafe.Pointer
-	// clock is used to set time for some calls. E.g. read-only ops
-	// which span ranges and don't require read consistency.
+
 	clock *hlc.Clock
-	// nodeDescs provides information on the KV nodes that DistSender may
-	// consider routing requests to.
+
 	nodeDescs NodeDescStore
-	// metrics stored DistSender-related metrics.
+
 	metrics DistSenderMetrics
-	// rangeCache caches replica metadata for key ranges.
+
 	rangeCache *rangecache.RangeCache
-	// firstRangeProvider provides the range descriptor for range one.
-	// This is not required if a RangeDescriptorDB is supplied.
+
 	firstRangeProvider FirstRangeProvider
 	transportFactory   TransportFactory
 	rpcContext         *rpc.Context
-	// nodeDialer allows RPC calls from the SQL layer to the KV layer.
+
 	nodeDialer      *nodedialer.Dialer
 	rpcRetryOptions retry.Options
 	asyncSenderSem  *quotapool.IntPool
-	// clusterID is the logical cluster ID used to verify access to enterprise features.
-	// It is copied out of the rpcContext at construction time and used in
-	// testing.
+
 	logicalClusterID *base.ClusterIDContainer
 
-	// batchInterceptor is set for tenants; when set, information about all
-	// BatchRequests and BatchResponses are passed through this interceptor, which
-	// can potentially throttle requests.
 	kvInterceptor multitenant.TenantSideKVInterceptor
 
-	// disableFirstRangeUpdates disables updates of the first range via
-	// gossip. Used by tests which want finer control of the contents of the
-	// range cache.
 	disableFirstRangeUpdates int32
 
-	// disableParallelBatches instructs DistSender to never parallelize
-	// the transmission of partial batch requests across ranges.
 	disableParallelBatches bool
 
-	// LatencyFunc is used to estimate the latency to other nodes.
 	latencyFunc LatencyFunc
 
-	// If set, the DistSender will try the replicas in the order they appear in
-	// the descriptor, instead of trying to reorder them by latency. The knob
-	// only applies to requests sent with the LEASEHOLDER routing policy.
 	dontReorderReplicas bool
-	// dontConsiderConnHealth, if set, makes the GRPCTransport not take into
-	// consideration the connection health when deciding the ordering for
-	// replicas. When not set, replicas on nodes with unhealthy connections are
-	// deprioritized.
+
 	dontConsiderConnHealth bool
 
-	// Currently executing range feeds.
-	activeRangeFeeds sync.Map // // map[*rangeFeedRegistry]nil
+	activeRangeFeeds sync.Map
 }
 
 var _ kv.Sender = &DistSender{}
 
-// DistSenderConfig holds configuration and auxiliary objects that can be passed
-// to NewDistSender.
 type DistSenderConfig struct {
 	AmbientCtx log.AmbientContext
 
 	Settings  *cluster.Settings
 	Clock     *hlc.Clock
 	NodeDescs NodeDescStore
-	// nodeDescriptor, if provided, is used to describe which node the
-	// DistSender lives on, for instance when deciding where to send RPCs.
-	// Usually it is filled in from the Gossip network on demand.
+
 	nodeDescriptor  *roachpb.NodeDescriptor
 	RPCRetryOptions *retry.Options
 	RPCContext      *rpc.Context
-	// NodeDialer is the dialer from the SQL layer to the KV layer.
+
 	NodeDialer *nodedialer.Dialer
 
-	// One of the following two must be provided, but not both.
-	//
-	// If only FirstRangeProvider is supplied, DistSender will use itself as a
-	// RangeDescriptorDB and scan the meta ranges directly to satisfy range
-	// lookups, using the FirstRangeProvider to bootstrap the location of the
-	// meta1 range. Additionally, it will proactively update its range
-	// descriptor cache with any meta1 updates from the provider.
-	//
-	// If only RangeDescriptorDB is provided, all range lookups will be
-	// delegated to it.
-	//
-	// If both are provided (not required, but allowed for tests) range lookups
-	// will be delegated to the RangeDescriptorDB but FirstRangeProvider will
-	// still be used to listen for updates to the first range's descriptor.
 	FirstRangeProvider FirstRangeProvider
 	RangeDescriptorDB  rangecache.RangeDescriptorDB
 
-	// KVInterceptor is set for tenants; when set, information about all
-	// BatchRequests and BatchResponses are passed through this interceptor, which
-	// can potentially throttle requests.
 	KVInterceptor multitenant.TenantSideKVInterceptor
 
 	TestingKnobs ClientTestingKnobs
 }
 
-// NewDistSender returns a batch.Sender instance which connects to the
-// Cockroach cluster via the supplied gossip instance. Supplying a
-// DistSenderContext or the fields within is optional. For omitted values, sane
-// defaults will be used.
 func NewDistSender(cfg DistSenderConfig) *DistSender {
+	__antithesis_instrumentation__.Notify(87047)
 	ds := &DistSender{
 		st:            cfg.Settings,
 		clock:         cfg.Clock,
@@ -406,365 +340,425 @@ func NewDistSender(cfg DistSenderConfig) *DistSender {
 		kvInterceptor: cfg.KVInterceptor,
 	}
 	if ds.st == nil {
+		__antithesis_instrumentation__.Notify(87062)
 		ds.st = cluster.MakeTestingClusterSettings()
+	} else {
+		__antithesis_instrumentation__.Notify(87063)
 	}
+	__antithesis_instrumentation__.Notify(87048)
 
 	ds.AmbientContext = cfg.AmbientCtx
 	if ds.AmbientContext.Tracer == nil {
+		__antithesis_instrumentation__.Notify(87064)
 		panic("no tracer set in AmbientCtx")
+	} else {
+		__antithesis_instrumentation__.Notify(87065)
 	}
+	__antithesis_instrumentation__.Notify(87049)
 
 	if cfg.nodeDescriptor != nil {
+		__antithesis_instrumentation__.Notify(87066)
 		atomic.StorePointer(&ds.nodeDescriptor, unsafe.Pointer(cfg.nodeDescriptor))
+	} else {
+		__antithesis_instrumentation__.Notify(87067)
 	}
+	__antithesis_instrumentation__.Notify(87050)
 	var rdb rangecache.RangeDescriptorDB
 	if cfg.FirstRangeProvider != nil {
+		__antithesis_instrumentation__.Notify(87068)
 		ds.firstRangeProvider = cfg.FirstRangeProvider
 		rdb = ds
+	} else {
+		__antithesis_instrumentation__.Notify(87069)
 	}
+	__antithesis_instrumentation__.Notify(87051)
 	if cfg.RangeDescriptorDB != nil {
+		__antithesis_instrumentation__.Notify(87070)
 		rdb = cfg.RangeDescriptorDB
+	} else {
+		__antithesis_instrumentation__.Notify(87071)
 	}
+	__antithesis_instrumentation__.Notify(87052)
 	if rdb == nil {
+		__antithesis_instrumentation__.Notify(87072)
 		panic("DistSenderConfig must contain either FirstRangeProvider or RangeDescriptorDB")
+	} else {
+		__antithesis_instrumentation__.Notify(87073)
 	}
+	__antithesis_instrumentation__.Notify(87053)
 	getRangeDescCacheSize := func() int64 {
+		__antithesis_instrumentation__.Notify(87074)
 		return rangeDescriptorCacheSize.Get(&ds.st.SV)
 	}
+	__antithesis_instrumentation__.Notify(87054)
 	ds.rangeCache = rangecache.NewRangeCache(ds.st, rdb, getRangeDescCacheSize,
 		cfg.RPCContext.Stopper, cfg.AmbientCtx.Tracer)
 	if tf := cfg.TestingKnobs.TransportFactory; tf != nil {
+		__antithesis_instrumentation__.Notify(87075)
 		ds.transportFactory = tf
 	} else {
+		__antithesis_instrumentation__.Notify(87076)
 		ds.transportFactory = GRPCTransportFactory
 	}
+	__antithesis_instrumentation__.Notify(87055)
 	ds.dontReorderReplicas = cfg.TestingKnobs.DontReorderReplicas
 	ds.dontConsiderConnHealth = cfg.TestingKnobs.DontConsiderConnHealth
 	ds.rpcRetryOptions = base.DefaultRetryOptions()
 	if cfg.RPCRetryOptions != nil {
+		__antithesis_instrumentation__.Notify(87077)
 		ds.rpcRetryOptions = *cfg.RPCRetryOptions
+	} else {
+		__antithesis_instrumentation__.Notify(87078)
 	}
+	__antithesis_instrumentation__.Notify(87056)
 	if cfg.RPCContext == nil {
+		__antithesis_instrumentation__.Notify(87079)
 		panic("no RPCContext set in DistSenderConfig")
+	} else {
+		__antithesis_instrumentation__.Notify(87080)
 	}
+	__antithesis_instrumentation__.Notify(87057)
 	ds.rpcContext = cfg.RPCContext
 	ds.nodeDialer = cfg.NodeDialer
 	if ds.rpcRetryOptions.Closer == nil {
+		__antithesis_instrumentation__.Notify(87081)
 		ds.rpcRetryOptions.Closer = ds.rpcContext.Stopper.ShouldQuiesce()
+	} else {
+		__antithesis_instrumentation__.Notify(87082)
 	}
+	__antithesis_instrumentation__.Notify(87058)
 	ds.logicalClusterID = cfg.RPCContext.LogicalClusterID
 	ds.asyncSenderSem = quotapool.NewIntPool("DistSender async concurrency",
 		uint64(senderConcurrencyLimit.Get(&cfg.Settings.SV)))
 	senderConcurrencyLimit.SetOnChange(&cfg.Settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(87083)
 		ds.asyncSenderSem.UpdateCapacity(uint64(senderConcurrencyLimit.Get(&cfg.Settings.SV)))
 	})
+	__antithesis_instrumentation__.Notify(87059)
 	ds.rpcContext.Stopper.AddCloser(ds.asyncSenderSem.Closer("stopper"))
 
 	if ds.firstRangeProvider != nil {
+		__antithesis_instrumentation__.Notify(87084)
 		ctx := ds.AnnotateCtx(context.Background())
 		ds.firstRangeProvider.OnFirstRangeChanged(func(desc *roachpb.RangeDescriptor) {
+			__antithesis_instrumentation__.Notify(87085)
 			if atomic.LoadInt32(&ds.disableFirstRangeUpdates) == 1 {
+				__antithesis_instrumentation__.Notify(87087)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(87088)
 			}
+			__antithesis_instrumentation__.Notify(87086)
 			log.VEventf(ctx, 1, "gossiped first range descriptor: %+v", desc.Replicas())
 			ds.rangeCache.EvictByKey(ctx, roachpb.RKeyMin)
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(87089)
 	}
+	__antithesis_instrumentation__.Notify(87060)
 
 	if cfg.TestingKnobs.LatencyFunc != nil {
+		__antithesis_instrumentation__.Notify(87090)
 		ds.latencyFunc = cfg.TestingKnobs.LatencyFunc
 	} else {
+		__antithesis_instrumentation__.Notify(87091)
 		ds.latencyFunc = ds.rpcContext.RemoteClocks.Latency
 	}
+	__antithesis_instrumentation__.Notify(87061)
 	return ds
 }
 
-// DisableFirstRangeUpdates disables updates of the first range via
-// gossip. Used by tests which want finer control of the contents of the range
-// cache.
 func (ds *DistSender) DisableFirstRangeUpdates() {
+	__antithesis_instrumentation__.Notify(87092)
 	atomic.StoreInt32(&ds.disableFirstRangeUpdates, 1)
 }
 
-// DisableParallelBatches instructs DistSender to never parallelize the
-// transmission of partial batch requests across ranges.
 func (ds *DistSender) DisableParallelBatches() {
+	__antithesis_instrumentation__.Notify(87093)
 	ds.disableParallelBatches = true
 }
 
-// Metrics returns a struct which contains metrics related to the distributed
-// sender's activity.
 func (ds *DistSender) Metrics() DistSenderMetrics {
+	__antithesis_instrumentation__.Notify(87094)
 	return ds.metrics
 }
 
-// RangeDescriptorCache gives access to the DistSender's range cache.
 func (ds *DistSender) RangeDescriptorCache() *rangecache.RangeCache {
+	__antithesis_instrumentation__.Notify(87095)
 	return ds.rangeCache
 }
 
-// RangeLookup implements the RangeDescriptorDB interface.
-//
-// It uses LookupRange to perform a lookup scan for the provided key, using
-// DistSender itself as the client.Sender. This means that the scan will recurse
-// into DistSender, which will in turn use the RangeDescriptorCache again to
-// lookup the RangeDescriptor necessary to perform the scan.
 func (ds *DistSender) RangeLookup(
 	ctx context.Context, key roachpb.RKey, useReverseScan bool,
 ) ([]roachpb.RangeDescriptor, []roachpb.RangeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(87096)
 	ds.metrics.RangeLookups.Inc(1)
-	// We perform the range lookup scan with a READ_UNCOMMITTED consistency
-	// level because we want the scan to return intents as well as committed
-	// values. The reason for this is because it's not clear whether the intent
-	// or the previous value points to the correct location of the Range. It
-	// gets even more complicated when there are split-related intents or a txn
-	// record co-located with a replica involved in the split. Since we cannot
-	// know the correct answer, we lookup both the pre- and post- transaction
-	// values.
+
 	rc := roachpb.READ_UNCOMMITTED
-	// By using DistSender as the sender, we guarantee that even if the desired
-	// RangeDescriptor is not on the first range we send the lookup too, we'll
-	// still find it when we scan to the next range. This addresses the issue
-	// described in #18032 and #16266, allowing us to support meta2 splits.
+
 	return kv.RangeLookup(ctx, ds, key.AsRawKey(), rc, rangeLookupPrefetchCount, useReverseScan)
 }
 
-// FirstRange implements the RangeDescriptorDB interface.
-//
-// It returns the RangeDescriptor for the first range in the cluster using the
-// FirstRangeProvider, which is typically implemented using the gossip protocol
-// instead of the datastore.
 func (ds *DistSender) FirstRange() (*roachpb.RangeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(87097)
 	if ds.firstRangeProvider == nil {
+		__antithesis_instrumentation__.Notify(87099)
 		panic("with `nil` firstRangeProvider, DistSender must not use itself as RangeDescriptorDB")
+	} else {
+		__antithesis_instrumentation__.Notify(87100)
 	}
+	__antithesis_instrumentation__.Notify(87098)
 	return ds.firstRangeProvider.GetFirstRangeDescriptor()
 }
 
-// getNodeID attempts to return the local node ID. It returns 0 if the DistSender
-// does not have access to the Gossip network.
 func (ds *DistSender) getNodeID() roachpb.NodeID {
-	// TODO(nvanbenschoten): open an issue about the effect of this.
+	__antithesis_instrumentation__.Notify(87101)
+
 	g, ok := ds.nodeDescs.(*gossip.Gossip)
 	if !ok {
+		__antithesis_instrumentation__.Notify(87103)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(87104)
 	}
+	__antithesis_instrumentation__.Notify(87102)
 	return g.NodeID.Get()
 }
 
-// getNodeDescriptor returns ds.nodeDescriptor, but makes an attempt to load
-// it from the Gossip network if a nil value is found.
-// We must jump through hoops here to get the node descriptor because it's not available
-// until after the node has joined the gossip network and been allowed to initialize
-// its stores.
 func (ds *DistSender) getNodeDescriptor() *roachpb.NodeDescriptor {
+	__antithesis_instrumentation__.Notify(87105)
 	if desc := atomic.LoadPointer(&ds.nodeDescriptor); desc != nil {
+		__antithesis_instrumentation__.Notify(87110)
 		return (*roachpb.NodeDescriptor)(desc)
+	} else {
+		__antithesis_instrumentation__.Notify(87111)
 	}
-	// TODO(nvanbenschoten): open an issue about the effect of this.
+	__antithesis_instrumentation__.Notify(87106)
+
 	g, ok := ds.nodeDescs.(*gossip.Gossip)
 	if !ok {
+		__antithesis_instrumentation__.Notify(87112)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(87113)
 	}
+	__antithesis_instrumentation__.Notify(87107)
 
 	ownNodeID := g.NodeID.Get()
 	if ownNodeID > 0 {
-		// TODO(tschottdorf): Consider instead adding the NodeID of the
-		// coordinator to the header, so we can get this from incoming
-		// requests. Just in case we want to mostly eliminate gossip here.
+		__antithesis_instrumentation__.Notify(87114)
+
 		nodeDesc := &roachpb.NodeDescriptor{}
 		if err := g.GetInfoProto(gossip.MakeNodeIDKey(ownNodeID), nodeDesc); err == nil {
+			__antithesis_instrumentation__.Notify(87115)
 			atomic.StorePointer(&ds.nodeDescriptor, unsafe.Pointer(nodeDesc))
 			return nodeDesc
+		} else {
+			__antithesis_instrumentation__.Notify(87116)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(87117)
 	}
+	__antithesis_instrumentation__.Notify(87108)
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(87118)
 		ctx := ds.AnnotateCtx(context.TODO())
 		log.Infof(ctx, "unable to determine this node's attributes for replica "+
 			"selection; node is most likely bootstrapping")
+	} else {
+		__antithesis_instrumentation__.Notify(87119)
 	}
+	__antithesis_instrumentation__.Notify(87109)
 	return nil
 }
 
-// CountRanges returns the number of ranges that encompass the given key span.
 func (ds *DistSender) CountRanges(ctx context.Context, rs roachpb.RSpan) (int64, error) {
+	__antithesis_instrumentation__.Notify(87120)
 	var count int64
 	ri := MakeRangeIterator(ds)
 	for ri.Seek(ctx, rs.Key, Ascending); ri.Valid(); ri.Next(ctx) {
+		__antithesis_instrumentation__.Notify(87122)
 		count++
 		if !ri.NeedAnother(rs) {
+			__antithesis_instrumentation__.Notify(87123)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(87124)
 		}
 	}
+	__antithesis_instrumentation__.Notify(87121)
 	return count, ri.Error()
 }
 
-// getRoutingInfo looks up the range information (descriptor, lease) to use for a
-// query of the key descKey with the given options. The lookup takes into
-// consideration the last range descriptor that the caller had used for this key
-// span, if any, and if the last range descriptor has been evicted because it
-// was found to be stale, which is all managed through the EvictionToken. The
-// function should be provided with an EvictionToken if one was acquired from
-// this function on a previous call. If not, an empty EvictionToken can be
-// provided.
-//
-// If useReverseScan is set and descKey is the boundary between the two ranges,
-// the left range will be returned (even though descKey is actually contained on
-// the right range). This is useful for ReverseScans, which call this method
-// with their exclusive EndKey.
-//
-// The returned EvictionToken reflects the close integration between the
-// DistSender and the RangeDescriptorCache; the DistSender concerns itself not
-// only with consuming cached information (the descriptor and lease info come
-// from the cache), but also with updating the cache.
 func (ds *DistSender) getRoutingInfo(
 	ctx context.Context,
 	descKey roachpb.RKey,
 	evictToken rangecache.EvictionToken,
 	useReverseScan bool,
 ) (rangecache.EvictionToken, error) {
+	__antithesis_instrumentation__.Notify(87125)
 	returnToken, err := ds.rangeCache.LookupWithEvictionToken(
 		ctx, descKey, evictToken, useReverseScan,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(87127)
 		return rangecache.EvictionToken{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(87128)
 	}
 
-	// Sanity check: the descriptor we're about to return must include the key
-	// we're interested in.
 	{
+		__antithesis_instrumentation__.Notify(87129)
 		containsFn := (*roachpb.RangeDescriptor).ContainsKey
 		if useReverseScan {
+			__antithesis_instrumentation__.Notify(87131)
 			containsFn = (*roachpb.RangeDescriptor).ContainsKeyInverted
+		} else {
+			__antithesis_instrumentation__.Notify(87132)
 		}
+		__antithesis_instrumentation__.Notify(87130)
 		if !containsFn(returnToken.Desc(), descKey) {
+			__antithesis_instrumentation__.Notify(87133)
 			log.Fatalf(ctx, "programming error: range resolution returning non-matching descriptor: "+
 				"desc: %s, key: %s, reverse: %t", returnToken.Desc(), descKey, redact.Safe(useReverseScan))
+		} else {
+			__antithesis_instrumentation__.Notify(87134)
 		}
 	}
+	__antithesis_instrumentation__.Notify(87126)
 
 	return returnToken, nil
 }
 
-// initAndVerifyBatch initializes timestamp-related information and
-// verifies batch constraints before splitting.
 func (ds *DistSender) initAndVerifyBatch(
 	ctx context.Context, ba *roachpb.BatchRequest,
 ) *roachpb.Error {
-	// Attach the local node ID to each request.
-	if ba.Header.GatewayNodeID == 0 {
-		ba.Header.GatewayNodeID = ds.getNodeID()
-	}
+	__antithesis_instrumentation__.Notify(87135)
 
-	// In the event that timestamp isn't set and read consistency isn't
-	// required, set the timestamp using the local clock.
-	if ba.ReadConsistency != roachpb.CONSISTENT && ba.Timestamp.IsEmpty() {
-		ba.Timestamp = ds.clock.Now()
+	if ba.Header.GatewayNodeID == 0 {
+		__antithesis_instrumentation__.Notify(87140)
+		ba.Header.GatewayNodeID = ds.getNodeID()
+	} else {
+		__antithesis_instrumentation__.Notify(87141)
 	}
+	__antithesis_instrumentation__.Notify(87136)
+
+	if ba.ReadConsistency != roachpb.CONSISTENT && func() bool {
+		__antithesis_instrumentation__.Notify(87142)
+		return ba.Timestamp.IsEmpty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87143)
+		ba.Timestamp = ds.clock.Now()
+	} else {
+		__antithesis_instrumentation__.Notify(87144)
+	}
+	__antithesis_instrumentation__.Notify(87137)
 
 	if len(ba.Requests) < 1 {
+		__antithesis_instrumentation__.Notify(87145)
 		return roachpb.NewErrorf("empty batch")
+	} else {
+		__antithesis_instrumentation__.Notify(87146)
 	}
+	__antithesis_instrumentation__.Notify(87138)
 
-	if ba.MaxSpanRequestKeys != 0 || ba.TargetBytes != 0 {
-		// Verify that the batch contains only specific range requests or the
-		// EndTxnRequest. Verify that a batch with a ReverseScan only contains
-		// ReverseScan range requests.
+	if ba.MaxSpanRequestKeys != 0 || func() bool {
+		__antithesis_instrumentation__.Notify(87147)
+		return ba.TargetBytes != 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87148)
+
 		isReverse := ba.IsReverse()
 		for _, req := range ba.Requests {
+			__antithesis_instrumentation__.Notify(87149)
 			inner := req.GetInner()
 			switch inner.(type) {
 			case *roachpb.ScanRequest, *roachpb.ResolveIntentRangeRequest,
 				*roachpb.DeleteRangeRequest, *roachpb.RevertRangeRequest,
 				*roachpb.ExportRequest, *roachpb.QueryLocksRequest:
-				// Accepted forward range requests.
+				__antithesis_instrumentation__.Notify(87150)
+
 				if isReverse {
+					__antithesis_instrumentation__.Notify(87154)
 					return roachpb.NewErrorf("batch with limit contains both forward and reverse scans")
+				} else {
+					__antithesis_instrumentation__.Notify(87155)
 				}
 
 			case *roachpb.ReverseScanRequest:
-				// Accepted reverse range requests.
+				__antithesis_instrumentation__.Notify(87151)
 
 			case *roachpb.QueryIntentRequest, *roachpb.EndTxnRequest, *roachpb.GetRequest:
-				// Accepted point requests that can be in batches with limit.
+				__antithesis_instrumentation__.Notify(87152)
 
 			default:
+				__antithesis_instrumentation__.Notify(87153)
 				return roachpb.NewErrorf("batch with limit contains %T request", inner)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(87156)
 	}
+	__antithesis_instrumentation__.Notify(87139)
 
 	return nil
 }
 
-// errNo1PCTxn indicates that a batch cannot be sent as a 1 phase
-// commit because it spans multiple ranges and must be split into at
-// least two parts, with the final part containing the EndTxn
-// request.
 var errNo1PCTxn = roachpb.NewErrorf("cannot send 1PC txn to multiple ranges")
 
-// splitBatchAndCheckForRefreshSpans splits the batch according to the
-// canSplitET parameter and checks whether the batch can forward its
-// read timestamp. If the batch has its CanForwardReadTimestamp flag
-// set but is being split across multiple sub-batches then the flag in
-// the batch header is unset.
 func splitBatchAndCheckForRefreshSpans(
 	ba *roachpb.BatchRequest, canSplitET bool,
 ) [][]roachpb.RequestUnion {
+	__antithesis_instrumentation__.Notify(87157)
 	parts := ba.Split(canSplitET)
 
-	// If the batch is split and the header has its CanForwardReadTimestamp flag
-	// set then we much check whether any request would need to be refreshed in
-	// the event that the one of the partial batches was to forward its read
-	// timestamp during a server-side refresh. If any such request exists then
-	// we unset the CanForwardReadTimestamp flag.
 	if len(parts) > 1 {
+		__antithesis_instrumentation__.Notify(87159)
 		unsetCanForwardReadTimestampFlag(ba)
+	} else {
+		__antithesis_instrumentation__.Notify(87160)
 	}
+	__antithesis_instrumentation__.Notify(87158)
 
 	return parts
 }
 
-// unsetCanForwardReadTimestampFlag ensures that if a batch is going to
-// be split across ranges and any of its requests would need to refresh
-// on read timestamp bumps, it does not have its CanForwardReadTimestamp
-// flag set. It would be incorrect to allow part of a batch to perform a
-// server-side refresh if another part of the batch that was sent to a
-// different range would also need to refresh. Such behavior could cause
-// a transaction to observe an inconsistent snapshot and violate
-// serializability.
 func unsetCanForwardReadTimestampFlag(ba *roachpb.BatchRequest) {
+	__antithesis_instrumentation__.Notify(87161)
 	if !ba.CanForwardReadTimestamp {
-		// Already unset.
+		__antithesis_instrumentation__.Notify(87163)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(87164)
 	}
+	__antithesis_instrumentation__.Notify(87162)
 	for _, req := range ba.Requests {
+		__antithesis_instrumentation__.Notify(87165)
 		if roachpb.NeedsRefresh(req.GetInner()) {
-			// Unset the flag.
+			__antithesis_instrumentation__.Notify(87166)
+
 			ba.CanForwardReadTimestamp = false
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(87167)
 		}
 	}
 }
 
-// Send implements the batch.Sender interface. It subdivides the Batch
-// into batches admissible for sending (preventing certain illegal
-// mixtures of requests), executes each individual part (which may
-// span multiple ranges), and recombines the response.
-//
-// When the request spans ranges, it is split by range and a partial
-// subset of the batch request is sent to affected ranges in parallel.
 func (ds *DistSender) Send(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(87168)
 	ds.incrementBatchCounters(&ba)
 
-	// TODO(nvanbenschoten): This causes ba to escape to the heap. Either
-	// commit to passing BatchRequests by reference or return an updated
-	// value from this method instead.
 	if pErr := ds.initAndVerifyBatch(ctx, &ba); pErr != nil {
+		__antithesis_instrumentation__.Notify(87176)
 		return nil, pErr
+	} else {
+		__antithesis_instrumentation__.Notify(87177)
 	}
+	__antithesis_instrumentation__.Notify(87169)
 
 	ctx = ds.AnnotateCtx(ctx)
 	ctx, sp := tracing.EnsureChildSpan(ctx, ds.AmbientContext.Tracer, "dist sender send")
@@ -772,119 +766,186 @@ func (ds *DistSender) Send(
 
 	var reqInfo tenantcostmodel.RequestInfo
 	if ds.kvInterceptor != nil {
+		__antithesis_instrumentation__.Notify(87178)
 		reqInfo = tenantcostmodel.MakeRequestInfo(&ba)
 		if err := ds.kvInterceptor.OnRequestWait(ctx, reqInfo); err != nil {
+			__antithesis_instrumentation__.Notify(87179)
 			return nil, roachpb.NewError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(87180)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(87181)
 	}
+	__antithesis_instrumentation__.Notify(87170)
 
 	splitET := false
 	var require1PC bool
 	lastReq := ba.Requests[len(ba.Requests)-1].GetInner()
-	if et, ok := lastReq.(*roachpb.EndTxnRequest); ok && et.Require1PC {
+	if et, ok := lastReq.(*roachpb.EndTxnRequest); ok && func() bool {
+		__antithesis_instrumentation__.Notify(87182)
+		return et.Require1PC == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87183)
 		require1PC = true
+	} else {
+		__antithesis_instrumentation__.Notify(87184)
 	}
-	// To ensure that we lay down intents to prevent starvation, always
-	// split the end transaction request into its own batch on retries.
-	// Txns requiring 1PC are an exception and should never be split.
-	if ba.Txn != nil && ba.Txn.Epoch > 0 && !require1PC {
+	__antithesis_instrumentation__.Notify(87171)
+
+	if ba.Txn != nil && func() bool {
+		__antithesis_instrumentation__.Notify(87185)
+		return ba.Txn.Epoch > 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(87186)
+		return !require1PC == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87187)
 		splitET = true
+	} else {
+		__antithesis_instrumentation__.Notify(87188)
 	}
+	__antithesis_instrumentation__.Notify(87172)
 	parts := splitBatchAndCheckForRefreshSpans(&ba, splitET)
-	if len(parts) > 1 && (ba.MaxSpanRequestKeys != 0 || ba.TargetBytes != 0) {
-		// We already verified above that the batch contains only scan requests of the same type.
-		// Such a batch should never need splitting.
+	if len(parts) > 1 && func() bool {
+		__antithesis_instrumentation__.Notify(87189)
+		return (ba.MaxSpanRequestKeys != 0 || func() bool {
+			__antithesis_instrumentation__.Notify(87190)
+			return ba.TargetBytes != 0 == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87191)
+
 		log.Fatalf(ctx, "batch with MaxSpanRequestKeys=%d, TargetBytes=%d needs splitting",
 			redact.Safe(ba.MaxSpanRequestKeys), redact.Safe(ba.TargetBytes))
+	} else {
+		__antithesis_instrumentation__.Notify(87192)
 	}
+	__antithesis_instrumentation__.Notify(87173)
 	var singleRplChunk [1]*roachpb.BatchResponse
 	rplChunks := singleRplChunk[:0:1]
 
 	errIdxOffset := 0
 	for len(parts) > 0 {
+		__antithesis_instrumentation__.Notify(87193)
 		part := parts[0]
 		ba.Requests = part
-		// The minimal key range encompassing all requests contained within.
-		// Local addressing has already been resolved.
-		// TODO(tschottdorf): consider rudimentary validation of the batch here
-		// (for example, non-range requests with EndKey, or empty key ranges).
+
 		rs, err := keys.Range(ba.Requests)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(87199)
 			return nil, roachpb.NewError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(87200)
 		}
+		__antithesis_instrumentation__.Notify(87194)
 		isReverse := ba.IsReverse()
 
-		// Determine whether this part of the BatchRequest contains a committing
-		// EndTxn request.
 		var withCommit, withParallelCommit bool
 		if etArg, ok := ba.GetArg(roachpb.EndTxn); ok {
+			__antithesis_instrumentation__.Notify(87201)
 			et := etArg.(*roachpb.EndTxnRequest)
 			withCommit = et.Commit
 			withParallelCommit = et.IsParallelCommit()
+		} else {
+			__antithesis_instrumentation__.Notify(87202)
 		}
+		__antithesis_instrumentation__.Notify(87195)
 
 		var rpl *roachpb.BatchResponse
 		var pErr *roachpb.Error
 		if withParallelCommit {
-			rpl, pErr = ds.divideAndSendParallelCommit(ctx, ba, rs, isReverse, 0 /* batchIdx */)
+			__antithesis_instrumentation__.Notify(87203)
+			rpl, pErr = ds.divideAndSendParallelCommit(ctx, ba, rs, isReverse, 0)
 		} else {
-			rpl, pErr = ds.divideAndSendBatchToRanges(ctx, ba, rs, isReverse, withCommit, 0 /* batchIdx */)
+			__antithesis_instrumentation__.Notify(87204)
+			rpl, pErr = ds.divideAndSendBatchToRanges(ctx, ba, rs, isReverse, withCommit, 0)
 		}
+		__antithesis_instrumentation__.Notify(87196)
 
 		if pErr == errNo1PCTxn {
-			// If we tried to send a single round-trip EndTxn but it looks like
-			// it's going to hit multiple ranges, split it here and try again.
+			__antithesis_instrumentation__.Notify(87205)
+
 			if len(parts) != 1 {
+				__antithesis_instrumentation__.Notify(87207)
 				panic("EndTxn not in last chunk of batch")
-			} else if require1PC {
-				log.Fatalf(ctx, "required 1PC transaction cannot be split: %s", ba)
+			} else {
+				__antithesis_instrumentation__.Notify(87208)
+				if require1PC {
+					__antithesis_instrumentation__.Notify(87209)
+					log.Fatalf(ctx, "required 1PC transaction cannot be split: %s", ba)
+				} else {
+					__antithesis_instrumentation__.Notify(87210)
+				}
 			}
-			parts = splitBatchAndCheckForRefreshSpans(&ba, true /* split ET */)
-			// Restart transaction of the last chunk as multiple parts with
-			// EndTxn in the last part.
+			__antithesis_instrumentation__.Notify(87206)
+			parts = splitBatchAndCheckForRefreshSpans(&ba, true)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(87211)
 		}
+		__antithesis_instrumentation__.Notify(87197)
 		if pErr != nil {
-			if pErr.Index != nil && pErr.Index.Index != -1 {
+			__antithesis_instrumentation__.Notify(87212)
+			if pErr.Index != nil && func() bool {
+				__antithesis_instrumentation__.Notify(87214)
+				return pErr.Index.Index != -1 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(87215)
 				pErr.Index.Index += int32(errIdxOffset)
+			} else {
+				__antithesis_instrumentation__.Notify(87216)
 			}
+			__antithesis_instrumentation__.Notify(87213)
 			return nil, pErr
+		} else {
+			__antithesis_instrumentation__.Notify(87217)
 		}
+		__antithesis_instrumentation__.Notify(87198)
 
 		errIdxOffset += len(ba.Requests)
 
-		// Propagate transaction from last reply to next request. The final
-		// update is taken and put into the response's main header.
 		ba.UpdateTxn(rpl.Txn)
 		rplChunks = append(rplChunks, rpl)
 		parts = parts[1:]
 	}
+	__antithesis_instrumentation__.Notify(87174)
 
 	var reply *roachpb.BatchResponse
 	if len(rplChunks) > 0 {
+		__antithesis_instrumentation__.Notify(87218)
 		reply = rplChunks[0]
 		for _, rpl := range rplChunks[1:] {
+			__antithesis_instrumentation__.Notify(87220)
 			reply.Responses = append(reply.Responses, rpl.Responses...)
 			reply.CollectedSpans = append(reply.CollectedSpans, rpl.CollectedSpans...)
 		}
+		__antithesis_instrumentation__.Notify(87219)
 		lastHeader := rplChunks[len(rplChunks)-1].BatchResponse_Header
 		lastHeader.CollectedSpans = reply.CollectedSpans
 		reply.BatchResponse_Header = lastHeader
 
 		if ds.kvInterceptor != nil {
+			__antithesis_instrumentation__.Notify(87221)
 			respInfo := tenantcostmodel.MakeResponseInfo(reply)
 			ds.kvInterceptor.OnResponse(ctx, reqInfo, respInfo)
+		} else {
+			__antithesis_instrumentation__.Notify(87222)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(87223)
 	}
+	__antithesis_instrumentation__.Notify(87175)
 
 	return reply, nil
 }
 
-// incrementBatchCounters increments the appropriate counters to track the
-// batch and its composite request methods.
 func (ds *DistSender) incrementBatchCounters(ba *roachpb.BatchRequest) {
+	__antithesis_instrumentation__.Notify(87224)
 	ds.metrics.BatchCount.Inc(1)
 	for _, ru := range ba.Requests {
+		__antithesis_instrumentation__.Notify(87225)
 		m := ru.GetInner().Method()
 		ds.metrics.MethodCounts[m].Inc(1)
 	}
@@ -896,193 +957,167 @@ type response struct {
 	pErr      *roachpb.Error
 }
 
-// divideAndSendParallelCommit divides a parallel-committing batch into
-// sub-batches that can be evaluated in parallel but should not be evaluated
-// on a Store together.
-//
-// The case where this comes up is if the batch is performing a parallel commit
-// and the transaction has previously pipelined writes that have yet to be
-// proven successful. In this scenario, the EndTxn request will be preceded by a
-// series of QueryIntent requests (see txn_pipeliner.go). Before evaluating,
-// each of these QueryIntent requests will grab latches and wait for their
-// corresponding write to finish. This is how the QueryIntent requests
-// synchronize with the write they are trying to verify.
-//
-// If these QueryIntents remained in the same batch as the EndTxn request then
-// they would force the EndTxn request to wait for the previous write before
-// evaluating itself. This "pipeline stall" would effectively negate the benefit
-// of the parallel commit. To avoid this, we make sure that these "pre-commit"
-// QueryIntent requests are split from and issued concurrently with the rest of
-// the parallel commit batch.
-//
-// batchIdx indicates which partial fragment of the larger batch is being
-// processed by this method. Currently it is always set to zero because this
-// method is never invoked recursively, but it is exposed to maintain symmetry
-// with divideAndSendBatchToRanges.
 func (ds *DistSender) divideAndSendParallelCommit(
 	ctx context.Context, ba roachpb.BatchRequest, rs roachpb.RSpan, isReverse bool, batchIdx int,
 ) (br *roachpb.BatchResponse, pErr *roachpb.Error) {
-	// Search backwards, looking for the first pre-commit QueryIntent.
+	__antithesis_instrumentation__.Notify(87226)
+
 	swapIdx := -1
 	lastIdx := len(ba.Requests) - 1
 	for i := lastIdx - 1; i >= 0; i-- {
+		__antithesis_instrumentation__.Notify(87236)
 		req := ba.Requests[i].GetInner()
 		if req.Method() == roachpb.QueryIntent {
+			__antithesis_instrumentation__.Notify(87237)
 			swapIdx = i
 		} else {
+			__antithesis_instrumentation__.Notify(87238)
 			break
 		}
 	}
+	__antithesis_instrumentation__.Notify(87227)
 	if swapIdx == -1 {
-		// No pre-commit QueryIntents. Nothing to split.
-		return ds.divideAndSendBatchToRanges(ctx, ba, rs, isReverse, true /* withCommit */, batchIdx)
-	}
+		__antithesis_instrumentation__.Notify(87239)
 
-	// Swap the EndTxn request and the first pre-commit QueryIntent. This
-	// effectively creates a split point between the two groups of requests.
-	//
-	//  Before:    [put qi(1) put del qi(2) qi(3) qi(4) et]
-	//  After:     [put qi(1) put del et qi(3) qi(4) qi(2)]
-	//  Separated: [put qi(1) put del et] [qi(3) qi(4) qi(2)]
-	//
-	// NOTE: the non-pre-commit QueryIntent's must remain where they are in the
-	// batch. These ensure that the transaction always reads its writes (see
-	// txnPipeliner.chainToInFlightWrites). These will introduce pipeline stalls
-	// and undo most of the benefit of this method, but luckily they are rare in
-	// practice.
+		return ds.divideAndSendBatchToRanges(ctx, ba, rs, isReverse, true, batchIdx)
+	} else {
+		__antithesis_instrumentation__.Notify(87240)
+	}
+	__antithesis_instrumentation__.Notify(87228)
+
 	swappedReqs := append([]roachpb.RequestUnion(nil), ba.Requests...)
 	swappedReqs[swapIdx], swappedReqs[lastIdx] = swappedReqs[lastIdx], swappedReqs[swapIdx]
 
-	// Create a new pre-commit QueryIntent-only batch and issue it
-	// in a non-limited async task. This batch may need to be split
-	// over multiple ranges, so call into divideAndSendBatchToRanges.
 	qiBa := ba
 	qiBa.Requests = swappedReqs[swapIdx+1:]
 	qiRS, err := keys.Range(qiBa.Requests)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(87241)
 		return br, roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(87242)
 	}
+	__antithesis_instrumentation__.Notify(87229)
 	qiIsReverse := qiBa.IsReverse()
 	qiBatchIdx := batchIdx + 1
 	qiResponseCh := make(chan response, 1)
-	qiBaCopy := qiBa // avoids escape to heap
+	qiBaCopy := qiBa
 
 	runTask := ds.rpcContext.Stopper.RunAsyncTask
 	if ds.disableParallelBatches {
+		__antithesis_instrumentation__.Notify(87243)
 		runTask = ds.rpcContext.Stopper.RunTask
+	} else {
+		__antithesis_instrumentation__.Notify(87244)
 	}
+	__antithesis_instrumentation__.Notify(87230)
 	if err := runTask(ctx, "kv.DistSender: sending pre-commit query intents", func(ctx context.Context) {
-		// Map response index to the original un-swapped batch index.
-		// Remember that we moved the last QueryIntent in this batch
-		// from swapIdx to the end.
-		//
-		// From the example above:
-		//  Before:    [put qi(1) put del qi(2) qi(3) qi(4) et]
-		//  Separated: [put qi(1) put del et] [qi(3) qi(4) qi(2)]
-		//
-		//  qiBa.Requests = [qi(3) qi(4) qi(2)]
-		//  swapIdx       = 4
-		//  positions     = [5 6 4]
-		//
+		__antithesis_instrumentation__.Notify(87245)
+
 		positions := make([]int, len(qiBa.Requests))
 		positions[len(positions)-1] = swapIdx
 		for i := range positions[:len(positions)-1] {
+			__antithesis_instrumentation__.Notify(87247)
 			positions[i] = swapIdx + 1 + i
 		}
+		__antithesis_instrumentation__.Notify(87246)
 
-		// Send the batch with withCommit=true since it will be inflight
-		// concurrently with the EndTxn batch below.
-		reply, pErr := ds.divideAndSendBatchToRanges(ctx, qiBa, qiRS, qiIsReverse, true /* withCommit */, qiBatchIdx)
+		reply, pErr := ds.divideAndSendBatchToRanges(ctx, qiBa, qiRS, qiIsReverse, true, qiBatchIdx)
 		qiResponseCh <- response{reply: reply, positions: positions, pErr: pErr}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(87248)
 		return nil, roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(87249)
 	}
+	__antithesis_instrumentation__.Notify(87231)
 
-	// Adjust the original batch request to ignore the pre-commit
-	// QueryIntent requests. Make sure to determine the request's
-	// new key span.
 	ba.Requests = swappedReqs[:swapIdx+1]
 	rs, err = keys.Range(ba.Requests)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(87250)
 		return nil, roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(87251)
 	}
+	__antithesis_instrumentation__.Notify(87232)
 	isReverse = ba.IsReverse()
-	br, pErr = ds.divideAndSendBatchToRanges(ctx, ba, rs, isReverse, true /* withCommit */, batchIdx)
+	br, pErr = ds.divideAndSendBatchToRanges(ctx, ba, rs, isReverse, true, batchIdx)
 
-	// Wait for the QueryIntent-only batch to complete and stitch
-	// the responses together.
 	qiReply := <-qiResponseCh
 
-	// Handle error conditions.
 	if pErr != nil {
-		// The batch with the EndTxn returned an error. Ignore errors from the
-		// pre-commit QueryIntent requests because that request is read-only and
-		// will produce the same errors next time, if applicable.
+		__antithesis_instrumentation__.Notify(87252)
+
 		if qiReply.reply != nil {
+			__antithesis_instrumentation__.Notify(87254)
 			pErr.UpdateTxn(qiReply.reply.Txn)
+		} else {
+			__antithesis_instrumentation__.Notify(87255)
 		}
+		__antithesis_instrumentation__.Notify(87253)
 		maybeSwapErrorIndex(pErr, swapIdx, lastIdx)
 		return nil, pErr
+	} else {
+		__antithesis_instrumentation__.Notify(87256)
 	}
+	__antithesis_instrumentation__.Notify(87233)
 	if qiPErr := qiReply.pErr; qiPErr != nil {
-		// The batch with the pre-commit QueryIntent requests returned an error.
+		__antithesis_instrumentation__.Notify(87257)
+
 		ignoreMissing := false
 		if _, ok := qiPErr.GetDetail().(*roachpb.IntentMissingError); ok {
-			// If the error is an IntentMissingError, detect whether this is due
-			// to intent resolution and can be safely ignored.
+			__antithesis_instrumentation__.Notify(87260)
+
 			ignoreMissing, err = ds.detectIntentMissingDueToIntentResolution(ctx, br.Txn)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(87261)
 				return nil, roachpb.NewErrorWithTxn(err, br.Txn)
+			} else {
+				__antithesis_instrumentation__.Notify(87262)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(87263)
 		}
+		__antithesis_instrumentation__.Notify(87258)
 		if !ignoreMissing {
+			__antithesis_instrumentation__.Notify(87264)
 			qiPErr.UpdateTxn(br.Txn)
 			maybeSwapErrorIndex(qiPErr, swapIdx, lastIdx)
 			return nil, qiPErr
+		} else {
+			__antithesis_instrumentation__.Notify(87265)
 		}
-		// Populate the pre-commit QueryIntent batch response. If we made it
-		// here then we know we can ignore intent missing errors.
+		__antithesis_instrumentation__.Notify(87259)
+
 		qiReply.reply = qiBaCopy.CreateReply()
 		for _, ru := range qiReply.reply.Responses {
+			__antithesis_instrumentation__.Notify(87266)
 			ru.GetQueryIntent().FoundIntent = true
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(87267)
 	}
+	__antithesis_instrumentation__.Notify(87234)
 
-	// Both halves of the split batch succeeded. Piece them back together.
 	resps := make([]roachpb.ResponseUnion, len(swappedReqs))
 	copy(resps, br.Responses)
 	resps[swapIdx], resps[lastIdx] = resps[lastIdx], resps[swapIdx]
 	br.Responses = resps
 	if err := br.Combine(qiReply.reply, qiReply.positions); err != nil {
+		__antithesis_instrumentation__.Notify(87268)
 		return nil, roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(87269)
 	}
+	__antithesis_instrumentation__.Notify(87235)
 	return br, nil
 }
 
-// detectIntentMissingDueToIntentResolution attempts to detect whether a missing
-// intent error thrown by a pre-commit QueryIntent request was due to intent
-// resolution after the transaction was already finalized instead of due to a
-// failure of the corresponding pipelined write. It is possible for these two
-// situations to be confused because the pre-commit QueryIntent requests are
-// issued in parallel with the staging EndTxn request and may evaluate after the
-// transaction becomes implicitly committed. If this happens and a concurrent
-// transaction observes the implicit commit and makes the commit explicit, it is
-// allowed to begin resolving the transactions intents.
-//
-// MVCC values don't remember their transaction once they have been resolved.
-// This loss of information means that QueryIntent returns an intent missing
-// error if it finds the resolved value that correspond to its desired intent.
-// Because of this, the race discussed above can result in intent missing errors
-// during a parallel commit even when the transaction successfully committed.
-//
-// This method queries the transaction record to determine whether an intent
-// missing error was caused by this race or whether the intent missing error
-// is real and guarantees that the transaction is not implicitly committed.
-//
-// See #37866 (issue) and #37900 (corresponding tla+ update).
 func (ds *DistSender) detectIntentMissingDueToIntentResolution(
 	ctx context.Context, txn *roachpb.Transaction,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(87270)
 	ba := roachpb.BatchRequest{}
 	ba.Timestamp = ds.clock.Now()
 	ba.Add(&roachpb.QueryTxnRequest{
@@ -1094,89 +1129,75 @@ func (ds *DistSender) detectIntentMissingDueToIntentResolution(
 	log.VEvent(ctx, 1, "detecting whether missing intent is due to intent resolution")
 	br, pErr := ds.Send(ctx, ba)
 	if pErr != nil {
-		// We weren't able to determine whether the intent missing error is
-		// due to intent resolution or not, so it is still ambiguous whether
-		// the commit succeeded.
+		__antithesis_instrumentation__.Notify(87272)
+
 		return false, roachpb.NewAmbiguousResultErrorf("error=%s [intent missing]", pErr)
+	} else {
+		__antithesis_instrumentation__.Notify(87273)
 	}
+	__antithesis_instrumentation__.Notify(87271)
 	resp := br.Responses[0].GetQueryTxn()
 	respTxn := &resp.QueriedTxn
 	switch respTxn.Status {
 	case roachpb.COMMITTED:
-		// The transaction has already been finalized as committed. The missing
-		// intent error must have been a result of a concurrent transaction
-		// recovery finding the transaction in the implicit commit state and
-		// resolving one of its intents before the pre-commit QueryIntent
-		// queried that intent. We know that the transaction was committed
-		// successfully, so ignore the error.
+		__antithesis_instrumentation__.Notify(87274)
+
 		return true, nil
 	case roachpb.ABORTED:
-		// The transaction has either already been finalized as aborted or has been
-		// finalized as committed and already had its transaction record GCed. Both
-		// these cases return an ABORTED txn; in the GC case the record has been
-		// synthesized.
-		// If the record has been GC'ed, then we can't distinguish between the
-		// two cases, and so we're forced to return an ambiguous error. On the other
-		// hand, if the record exists, then we know that the transaction did not
-		// commit because a committed record cannot be GC'ed and the recreated as
-		// ABORTED.
+		__antithesis_instrumentation__.Notify(87275)
+
 		if resp.TxnRecordExists {
+			__antithesis_instrumentation__.Notify(87278)
 			return false, roachpb.NewTransactionAbortedError(roachpb.ABORT_REASON_ABORTED_RECORD_FOUND)
+		} else {
+			__antithesis_instrumentation__.Notify(87279)
 		}
+		__antithesis_instrumentation__.Notify(87276)
 		return false, roachpb.NewAmbiguousResultErrorf("intent missing and record aborted")
 	default:
-		// The transaction has not been finalized yet, so the missing intent
-		// error must have been caused by a real missing intent. Propagate the
-		// missing intent error.
-		// NB: we don't expect the record to be PENDING at this point, but it's
-		// not worth making any hard assertions about what we get back here.
+		__antithesis_instrumentation__.Notify(87277)
+
 		return false, nil
 	}
 }
 
-// maybeSwapErrorIndex swaps the error index from a to b or b to a if the
-// error's index is set and is equal to one of these to values.
 func maybeSwapErrorIndex(pErr *roachpb.Error, a, b int) {
+	__antithesis_instrumentation__.Notify(87280)
 	if pErr.Index == nil {
+		__antithesis_instrumentation__.Notify(87282)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(87283)
 	}
+	__antithesis_instrumentation__.Notify(87281)
 	if pErr.Index.Index == int32(a) {
+		__antithesis_instrumentation__.Notify(87284)
 		pErr.Index.Index = int32(b)
-	} else if pErr.Index.Index == int32(b) {
-		pErr.Index.Index = int32(a)
+	} else {
+		__antithesis_instrumentation__.Notify(87285)
+		if pErr.Index.Index == int32(b) {
+			__antithesis_instrumentation__.Notify(87286)
+			pErr.Index.Index = int32(a)
+		} else {
+			__antithesis_instrumentation__.Notify(87287)
+		}
 	}
 }
 
-// mergeErrors merges the two errors, combining their transaction state and
-// returning the error with the highest priority.
 func mergeErrors(pErr1, pErr2 *roachpb.Error) *roachpb.Error {
+	__antithesis_instrumentation__.Notify(87288)
 	ret, drop := pErr1, pErr2
 	if roachpb.ErrPriority(drop.GoError()) > roachpb.ErrPriority(ret.GoError()) {
+		__antithesis_instrumentation__.Notify(87290)
 		ret, drop = drop, ret
+	} else {
+		__antithesis_instrumentation__.Notify(87291)
 	}
+	__antithesis_instrumentation__.Notify(87289)
 	ret.UpdateTxn(drop.GetTxn())
 	return ret
 }
 
-// divideAndSendBatchToRanges sends the supplied batch to all of the
-// ranges which comprise the span specified by rs. The batch request
-// is trimmed against each range which is part of the span and sent
-// either serially or in parallel, if possible.
-//
-// isReverse indicates the direction that the provided span should be
-// iterated over while sending requests. It is passed in by callers
-// instead of being recomputed based on the requests in the batch to
-// prevent the iteration direction from switching midway through a
-// batch, in cases where partial batches recurse into this function.
-//
-// withCommit indicates that the batch contains a transaction commit
-// or that a transaction commit is being run concurrently with this
-// batch. Either way, if this is true then sendToReplicas will need
-// to handle errors differently.
-//
-// batchIdx indicates which partial fragment of the larger batch is
-// being processed by this method. It's specified as non-zero when
-// this method is invoked recursively.
 func (ds *DistSender) divideAndSendBatchToRanges(
 	ctx context.Context,
 	ba roachpb.BatchRequest,
@@ -1185,279 +1206,351 @@ func (ds *DistSender) divideAndSendBatchToRanges(
 	withCommit bool,
 	batchIdx int,
 ) (br *roachpb.BatchResponse, pErr *roachpb.Error) {
-	// Clone the BatchRequest's transaction so that future mutations to the
-	// proto don't affect the proto in this batch.
+	__antithesis_instrumentation__.Notify(87292)
+
 	if ba.Txn != nil {
+		__antithesis_instrumentation__.Notify(87303)
 		ba.Txn = ba.Txn.Clone()
+	} else {
+		__antithesis_instrumentation__.Notify(87304)
 	}
-	// Get initial seek key depending on direction of iteration.
+	__antithesis_instrumentation__.Notify(87293)
+
 	var scanDir ScanDirection
 	var seekKey roachpb.RKey
 	if !isReverse {
+		__antithesis_instrumentation__.Notify(87305)
 		scanDir = Ascending
 		seekKey = rs.Key
 	} else {
+		__antithesis_instrumentation__.Notify(87306)
 		scanDir = Descending
 		seekKey = rs.EndKey
 	}
+	__antithesis_instrumentation__.Notify(87294)
 	ri := MakeRangeIterator(ds)
 	ri.Seek(ctx, seekKey, scanDir)
 	if !ri.Valid() {
+		__antithesis_instrumentation__.Notify(87307)
 		return nil, roachpb.NewError(ri.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(87308)
 	}
-	// Take the fast path if this batch fits within a single range.
+	__antithesis_instrumentation__.Notify(87295)
+
 	if !ri.NeedAnother(rs) {
+		__antithesis_instrumentation__.Notify(87309)
 		resp := ds.sendPartialBatch(
-			ctx, ba, rs, isReverse, withCommit, batchIdx, ri.Token(), false, /* needsTruncate */
+			ctx, ba, rs, isReverse, withCommit, batchIdx, ri.Token(), false,
 		)
 		return resp.reply, resp.pErr
+	} else {
+		__antithesis_instrumentation__.Notify(87310)
 	}
+	__antithesis_instrumentation__.Notify(87296)
 
-	// The batch spans ranges (according to our cached range descriptors).
-	// Verify that this is ok.
-	// TODO(tschottdorf): we should have a mechanism for discovering range
-	// merges (descriptor staleness will mostly go unnoticed), or we'll be
-	// turning single-range queries into multi-range queries for no good
-	// reason.
 	if ba.IsUnsplittable() {
+		__antithesis_instrumentation__.Notify(87311)
 		mismatch := roachpb.NewRangeKeyMismatchErrorWithCTPolicy(ctx,
 			rs.Key.AsRawKey(),
 			rs.EndKey.AsRawKey(),
 			ri.Desc(),
-			nil, /* lease */
+			nil,
 			ri.ClosedTimestampPolicy(),
 		)
 		return nil, roachpb.NewError(mismatch)
+	} else {
+		__antithesis_instrumentation__.Notify(87312)
 	}
-	// If there's no transaction and ba spans ranges, possibly re-run as part of
-	// a transaction for consistency. The case where we don't need to re-run is
-	// if the read consistency is not required.
-	if ba.Txn == nil && ba.IsTransactional() && ba.ReadConsistency == roachpb.CONSISTENT {
+	__antithesis_instrumentation__.Notify(87297)
+
+	if ba.Txn == nil && func() bool {
+		__antithesis_instrumentation__.Notify(87313)
+		return ba.IsTransactional() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(87314)
+		return ba.ReadConsistency == roachpb.CONSISTENT == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87315)
 		return nil, roachpb.NewError(&roachpb.OpRequiresTxnError{})
+	} else {
+		__antithesis_instrumentation__.Notify(87316)
 	}
-	// If the batch contains a non-parallel commit EndTxn and spans ranges then
-	// we want the caller to come again with the EndTxn in a separate
-	// (non-concurrent) batch.
-	//
-	// NB: withCommit allows us to short-circuit the check in the common case,
-	// but even when that's true, we still need to search for the EndTxn in the
-	// batch.
+	__antithesis_instrumentation__.Notify(87298)
+
 	if withCommit {
+		__antithesis_instrumentation__.Notify(87317)
 		etArg, ok := ba.GetArg(roachpb.EndTxn)
-		if ok && !etArg.(*roachpb.EndTxnRequest).IsParallelCommit() {
+		if ok && func() bool {
+			__antithesis_instrumentation__.Notify(87318)
+			return !etArg.(*roachpb.EndTxnRequest).IsParallelCommit() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(87319)
 			return nil, errNo1PCTxn
+		} else {
+			__antithesis_instrumentation__.Notify(87320)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(87321)
 	}
-	// Make sure the CanForwardReadTimestamp flag is set to false, if necessary.
+	__antithesis_instrumentation__.Notify(87299)
+
 	unsetCanForwardReadTimestampFlag(&ba)
 
-	// Make an empty slice of responses which will be populated with responses
-	// as they come in via Combine().
 	br = &roachpb.BatchResponse{
 		Responses: make([]roachpb.ResponseUnion, len(ba.Requests)),
 	}
-	// This function builds a channel of responses for each range
-	// implicated in the span (rs) and combines them into a single
-	// BatchResponse when finished.
+
 	var responseChs []chan response
-	// couldHaveSkippedResponses is set if a ResumeSpan needs to be sent back.
+
 	var couldHaveSkippedResponses bool
-	// If couldHaveSkippedResponses is set, resumeReason indicates the reason why
-	// the ResumeSpan is necessary. This reason is common to all individual
-	// responses that carry a ResumeSpan.
+
 	var resumeReason roachpb.ResumeReason
 	defer func() {
+		__antithesis_instrumentation__.Notify(87322)
 		if r := recover(); r != nil {
-			// If we're in the middle of a panic, don't wait on responseChs.
+			__antithesis_instrumentation__.Notify(87325)
+
 			panic(r)
+		} else {
+			__antithesis_instrumentation__.Notify(87326)
 		}
-		// Combine all the responses.
-		// It's important that we wait for all of them even if an error is caught
-		// because the client.Sender() contract mandates that we don't "hold on" to
-		// any part of a request after DistSender.Send() returns.
+		__antithesis_instrumentation__.Notify(87323)
+
 		for _, responseCh := range responseChs {
+			__antithesis_instrumentation__.Notify(87327)
 			resp := <-responseCh
 			if resp.pErr != nil {
+				__antithesis_instrumentation__.Notify(87329)
 				if pErr == nil {
+					__antithesis_instrumentation__.Notify(87331)
 					pErr = resp.pErr
-					// Update the error's transaction with any new information from
-					// the batch response. This may contain interesting updates if
-					// the batch was parallelized and part of it succeeded.
+
 					pErr.UpdateTxn(br.Txn)
 				} else {
-					// The batch was split and saw (at least) two different errors.
-					// Merge their transaction state and determine which to return
-					// based on their priorities.
+					__antithesis_instrumentation__.Notify(87332)
+
 					pErr = mergeErrors(pErr, resp.pErr)
 				}
+				__antithesis_instrumentation__.Notify(87330)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(87333)
 			}
+			__antithesis_instrumentation__.Notify(87328)
 
-			// Combine the new response with the existing one (including updating
-			// the headers) if we haven't yet seen an error.
 			if pErr == nil {
+				__antithesis_instrumentation__.Notify(87334)
 				if err := br.Combine(resp.reply, resp.positions); err != nil {
+					__antithesis_instrumentation__.Notify(87335)
 					pErr = roachpb.NewError(err)
+				} else {
+					__antithesis_instrumentation__.Notify(87336)
 				}
 			} else {
-				// Update the error's transaction with any new information from
-				// the batch response. This may contain interesting updates if
-				// the batch was parallelized and part of it succeeded.
+				__antithesis_instrumentation__.Notify(87337)
+
 				pErr.UpdateTxn(resp.reply.Txn)
 			}
 		}
+		__antithesis_instrumentation__.Notify(87324)
 
-		if pErr == nil && couldHaveSkippedResponses {
+		if pErr == nil && func() bool {
+			__antithesis_instrumentation__.Notify(87338)
+			return couldHaveSkippedResponses == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(87339)
 			fillSkippedResponses(ba, br, seekKey, resumeReason)
+		} else {
+			__antithesis_instrumentation__.Notify(87340)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(87300)
 
-	canParallelize := ba.Header.MaxSpanRequestKeys == 0 && ba.Header.TargetBytes == 0 &&
-		!ba.Header.ReturnOnRangeBoundary
+	canParallelize := ba.Header.MaxSpanRequestKeys == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(87341)
+		return ba.Header.TargetBytes == 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(87342)
+		return !ba.Header.ReturnOnRangeBoundary == true
+	}() == true
 	if ba.IsSingleCheckConsistencyRequest() {
-		// Don't parallelize full checksum requests as they have to touch the
-		// entirety of each replica of each range they touch.
-		isExpensive := ba.Requests[0].GetCheckConsistency().Mode == roachpb.ChecksumMode_CHECK_FULL
-		canParallelize = canParallelize && !isExpensive
-	}
+		__antithesis_instrumentation__.Notify(87343)
 
-	// Iterate over the ranges that the batch touches. The iteration is done in
-	// key order - the order of requests in the batch is not relevant for the
-	// iteration. Each iteration sends for evaluation one sub-batch to one range.
-	// The sub-batch is the union of requests in the batch overlapping the
-	// current range. The order of requests in a sub-batch is the same as the
-	// relative order of requests in the complete batch. On the server-side,
-	// requests in a sub-batch are executed in order. Depending on whether the
-	// sub-batches can be executed in parallel or not, each iteration either waits
-	// for the sub-batch results (in the no-parallelism case) or defers the
-	// results to a channel that will be processed in the defer above.
-	//
-	// After each sub-batch is executed, if ba has key or memory limits (which
-	// imply no parallelism), ba.MaxSpanRequestKeys and ba.TargetBytes are
-	// adjusted with the responses for the sub-batch. If a limit is exhausted, the
-	// loop breaks.
+		isExpensive := ba.Requests[0].GetCheckConsistency().Mode == roachpb.ChecksumMode_CHECK_FULL
+		canParallelize = canParallelize && func() bool {
+			__antithesis_instrumentation__.Notify(87344)
+			return !isExpensive == true
+		}() == true
+	} else {
+		__antithesis_instrumentation__.Notify(87345)
+	}
+	__antithesis_instrumentation__.Notify(87301)
+
 	for ; ri.Valid(); ri.Seek(ctx, seekKey, scanDir) {
+		__antithesis_instrumentation__.Notify(87346)
 		responseCh := make(chan response, 1)
 		responseChs = append(responseChs, responseCh)
 
-		// Determine next seek key, taking a potentially sparse batch into
-		// consideration.
 		var err error
 		nextRS := rs
 		if scanDir == Descending {
-			// In next iteration, query previous range.
-			// We use the StartKey of the current descriptor as opposed to the
-			// EndKey of the previous one since that doesn't have bugs when
-			// stale descriptors come into play.
+			__antithesis_instrumentation__.Notify(87351)
+
 			seekKey, err = prev(ba.Requests, ri.Desc().StartKey)
 			nextRS.EndKey = seekKey
 		} else {
-			// In next iteration, query next range.
-			// It's important that we use the EndKey of the current descriptor
-			// as opposed to the StartKey of the next one: if the former is stale,
-			// it's possible that the next range has since merged the subsequent
-			// one, and unless both descriptors are stale, the next descriptor's
-			// StartKey would move us to the beginning of the current range,
-			// resulting in a duplicate scan.
+			__antithesis_instrumentation__.Notify(87352)
+
 			seekKey, err = Next(ba.Requests, ri.Desc().EndKey)
 			nextRS.Key = seekKey
 		}
+		__antithesis_instrumentation__.Notify(87347)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(87353)
 			responseCh <- response{pErr: roachpb.NewError(err)}
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(87354)
 		}
+		__antithesis_instrumentation__.Notify(87348)
 
 		lastRange := !ri.NeedAnother(rs)
-		// Send the next partial batch to the first range in the "rs" span.
-		// If we can reserve one of the limited goroutines available for parallel
-		// batch RPCs, send asynchronously.
-		if canParallelize && !lastRange && !ds.disableParallelBatches &&
-			ds.sendPartialBatchAsync(ctx, ba, rs, isReverse, withCommit, batchIdx, ri.Token(), responseCh) {
-			// Sent the batch asynchronously.
+
+		if canParallelize && func() bool {
+			__antithesis_instrumentation__.Notify(87355)
+			return !lastRange == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(87356)
+			return !ds.disableParallelBatches == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(87357)
+			return ds.sendPartialBatchAsync(ctx, ba, rs, isReverse, withCommit, batchIdx, ri.Token(), responseCh) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(87358)
+
 		} else {
+			__antithesis_instrumentation__.Notify(87359)
 			resp := ds.sendPartialBatch(
-				ctx, ba, rs, isReverse, withCommit, batchIdx, ri.Token(), true, /* needsTruncate */
+				ctx, ba, rs, isReverse, withCommit, batchIdx, ri.Token(), true,
 			)
 			responseCh <- resp
 			if resp.pErr != nil {
+				__antithesis_instrumentation__.Notify(87362)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(87363)
 			}
-			// Update the transaction from the response. Note that this wouldn't happen
-			// on the asynchronous path, but if we have newer information it's good to
-			// use it.
-			if !lastRange {
-				ba.UpdateTxn(resp.reply.Txn)
-			}
+			__antithesis_instrumentation__.Notify(87360)
 
-			mightStopEarly := ba.MaxSpanRequestKeys > 0 || ba.TargetBytes > 0 || ba.ReturnOnRangeBoundary
-			// Check whether we've received enough responses to exit query loop.
+			if !lastRange {
+				__antithesis_instrumentation__.Notify(87364)
+				ba.UpdateTxn(resp.reply.Txn)
+			} else {
+				__antithesis_instrumentation__.Notify(87365)
+			}
+			__antithesis_instrumentation__.Notify(87361)
+
+			mightStopEarly := ba.MaxSpanRequestKeys > 0 || func() bool {
+				__antithesis_instrumentation__.Notify(87366)
+				return ba.TargetBytes > 0 == true
+			}() == true || func() bool {
+				__antithesis_instrumentation__.Notify(87367)
+				return ba.ReturnOnRangeBoundary == true
+			}() == true
+
 			if mightStopEarly {
+				__antithesis_instrumentation__.Notify(87368)
 				var replyKeys int64
 				var replyBytes int64
 				for _, r := range resp.reply.Responses {
+					__antithesis_instrumentation__.Notify(87372)
 					h := r.GetInner().Header()
 					replyKeys += h.NumKeys
 					replyBytes += h.NumBytes
 					if h.ResumeSpan != nil {
+						__antithesis_instrumentation__.Notify(87373)
 						couldHaveSkippedResponses = true
 						resumeReason = h.ResumeReason
 						return
+					} else {
+						__antithesis_instrumentation__.Notify(87374)
 					}
 				}
-				// Update MaxSpanRequestKeys and TargetBytes, if applicable, since ba
-				// might be passed recursively to further divideAndSendBatchToRanges()
-				// calls.
+				__antithesis_instrumentation__.Notify(87369)
+
 				if ba.MaxSpanRequestKeys > 0 {
+					__antithesis_instrumentation__.Notify(87375)
 					ba.MaxSpanRequestKeys -= replyKeys
 					if ba.MaxSpanRequestKeys <= 0 {
+						__antithesis_instrumentation__.Notify(87376)
 						couldHaveSkippedResponses = true
 						resumeReason = roachpb.RESUME_KEY_LIMIT
 						return
+					} else {
+						__antithesis_instrumentation__.Notify(87377)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(87378)
 				}
+				__antithesis_instrumentation__.Notify(87370)
 				if ba.TargetBytes > 0 {
+					__antithesis_instrumentation__.Notify(87379)
 					ba.TargetBytes -= replyBytes
 					if ba.TargetBytes <= 0 {
+						__antithesis_instrumentation__.Notify(87380)
 						couldHaveSkippedResponses = true
 						resumeReason = roachpb.RESUME_BYTE_LIMIT
 						return
+					} else {
+						__antithesis_instrumentation__.Notify(87381)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(87382)
 				}
-				// If we hit a range boundary, return a partial result if requested. We
-				// do this after checking the limits, so that they take precedence.
-				if ba.Header.ReturnOnRangeBoundary && replyKeys > 0 && !lastRange {
+				__antithesis_instrumentation__.Notify(87371)
+
+				if ba.Header.ReturnOnRangeBoundary && func() bool {
+					__antithesis_instrumentation__.Notify(87383)
+					return replyKeys > 0 == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(87384)
+					return !lastRange == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(87385)
 					couldHaveSkippedResponses = true
 					resumeReason = roachpb.RESUME_RANGE_BOUNDARY
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(87386)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(87387)
 			}
 		}
+		__antithesis_instrumentation__.Notify(87349)
 
-		// The iteration is complete if the iterator's current range
-		// encompasses the remaining span, OR if the next span has
-		// inverted. This can happen if this method is invoked
-		// re-entrantly due to ranges being split or merged. In that case
-		// the batch request has all the original requests but the span is
-		// a sub-span of the original, causing next() and prev() methods
-		// to potentially return values which invert the span.
-		if lastRange || !nextRS.Key.Less(nextRS.EndKey) {
+		if lastRange || func() bool {
+			__antithesis_instrumentation__.Notify(87388)
+			return !nextRS.Key.Less(nextRS.EndKey) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(87389)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(87390)
 		}
+		__antithesis_instrumentation__.Notify(87350)
 		batchIdx++
 		rs = nextRS
 	}
+	__antithesis_instrumentation__.Notify(87302)
 
-	// We've exited early. Return the range iterator error.
 	responseCh := make(chan response, 1)
 	responseCh <- response{pErr: roachpb.NewError(ri.Error())}
 	responseChs = append(responseChs, responseCh)
 	return
 }
 
-// sendPartialBatchAsync sends the partial batch asynchronously if
-// there aren't currently more than the allowed number of concurrent
-// async requests outstanding. Returns whether the partial batch was
-// sent.
 func (ds *DistSender) sendPartialBatchAsync(
 	ctx context.Context,
 	ba roachpb.BatchRequest,
@@ -1468,6 +1561,7 @@ func (ds *DistSender) sendPartialBatchAsync(
 	routing rangecache.EvictionToken,
 	responseCh chan response,
 ) bool {
+	__antithesis_instrumentation__.Notify(87391)
 	if err := ds.rpcContext.Stopper.RunAsyncTaskEx(
 		ctx,
 		stop.TaskOpts{
@@ -1477,15 +1571,20 @@ func (ds *DistSender) sendPartialBatchAsync(
 			WaitForSem: false,
 		},
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(87393)
 			ds.metrics.AsyncSentCount.Inc(1)
 			responseCh <- ds.sendPartialBatch(
-				ctx, ba, rs, isReverse, withCommit, batchIdx, routing, true, /* needsTruncate */
+				ctx, ba, rs, isReverse, withCommit, batchIdx, routing, true,
 			)
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(87394)
 		ds.metrics.AsyncThrottledCount.Inc(1)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(87395)
 	}
+	__antithesis_instrumentation__.Notify(87392)
 	return true
 }
 
@@ -1498,29 +1597,24 @@ func slowRangeRPCWarningStr(
 	err error,
 	br *roachpb.BatchResponse,
 ) {
+	__antithesis_instrumentation__.Notify(87396)
 	resp := interface{}(err)
 	if resp == nil {
+		__antithesis_instrumentation__.Notify(87398)
 		resp = br
+	} else {
+		__antithesis_instrumentation__.Notify(87399)
 	}
+	__antithesis_instrumentation__.Notify(87397)
 	s.Printf("have been waiting %.2fs (%d attempts) for RPC %s to %s; resp: %s",
 		dur.Seconds(), attempts, ba, desc, resp)
 }
 
 func slowRangeRPCReturnWarningStr(s *redact.StringBuilder, dur time.Duration, attempts int64) {
+	__antithesis_instrumentation__.Notify(87400)
 	s.Printf("slow RPC finished after %.2fs (%d attempts)", dur.Seconds(), attempts)
 }
 
-// sendPartialBatch sends the supplied batch to the range specified by
-// desc. The batch request is first truncated so that it contains only
-// requests which intersect the range descriptor and keys for each
-// request are limited to the range's key span. The send occurs in a
-// retry loop to handle send failures. On failure to send to any
-// replicas, we backoff and retry by refetching the range
-// descriptor. If the underlying range seems to have split, we
-// recursively invoke divideAndSendBatchToRanges to re-enumerate the
-// ranges in the span and resend to each. If needsTruncate is true,
-// the supplied batch and span must be truncated to the supplied range
-// descriptor.
 func (ds *DistSender) sendPartialBatch(
 	ctx context.Context,
 	ba roachpb.BatchRequest,
@@ -1531,452 +1625,519 @@ func (ds *DistSender) sendPartialBatch(
 	routingTok rangecache.EvictionToken,
 	needsTruncate bool,
 ) response {
+	__antithesis_instrumentation__.Notify(87401)
 	if batchIdx == 1 {
-		ds.metrics.PartialBatchCount.Inc(2) // account for first batch
-	} else if batchIdx > 1 {
-		ds.metrics.PartialBatchCount.Inc(1)
+		__antithesis_instrumentation__.Notify(87406)
+		ds.metrics.PartialBatchCount.Inc(2)
+	} else {
+		__antithesis_instrumentation__.Notify(87407)
+		if batchIdx > 1 {
+			__antithesis_instrumentation__.Notify(87408)
+			ds.metrics.PartialBatchCount.Inc(1)
+		} else {
+			__antithesis_instrumentation__.Notify(87409)
+		}
 	}
+	__antithesis_instrumentation__.Notify(87402)
 	var reply *roachpb.BatchResponse
 	var pErr *roachpb.Error
 	var err error
 	var positions []int
 
 	if needsTruncate {
-		// Truncate the request to range descriptor.
+		__antithesis_instrumentation__.Notify(87410)
+
 		rs, err = rs.Intersect(routingTok.Desc())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(87413)
 			return response{pErr: roachpb.NewError(err)}
+		} else {
+			__antithesis_instrumentation__.Notify(87414)
 		}
+		__antithesis_instrumentation__.Notify(87411)
 		ba.Requests, positions, err = Truncate(ba.Requests, rs)
-		if len(positions) == 0 && err == nil {
-			// This shouldn't happen in the wild, but some tests exercise it.
+		if len(positions) == 0 && func() bool {
+			__antithesis_instrumentation__.Notify(87415)
+			return err == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(87416)
+
 			return response{
 				pErr: roachpb.NewErrorf("truncation resulted in empty batch on %s: %s", rs, ba),
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(87417)
 		}
+		__antithesis_instrumentation__.Notify(87412)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(87418)
 			return response{pErr: roachpb.NewError(err)}
+		} else {
+			__antithesis_instrumentation__.Notify(87419)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(87420)
 	}
+	__antithesis_instrumentation__.Notify(87403)
 
-	// Start a retry loop for sending the batch to the range. Each iteration of
-	// this loop uses a new descriptor. Attempts to send to multiple replicas in
-	// this descriptor are done at a lower level.
-	tBegin, attempts := timeutil.Now(), int64(0) // for slow log message
-	// prevTok maintains the EvictionToken used on the previous iteration.
+	tBegin, attempts := timeutil.Now(), int64(0)
+
 	var prevTok rangecache.EvictionToken
 	for r := retry.StartWithCtx(ctx, ds.rpcRetryOptions); r.Next(); {
+		__antithesis_instrumentation__.Notify(87421)
 		attempts++
 		pErr = nil
-		// If we've invalidated the descriptor on a send failure, re-lookup.
+
 		if !routingTok.Valid() {
+			__antithesis_instrumentation__.Notify(87428)
 			var descKey roachpb.RKey
 			if isReverse {
+				__antithesis_instrumentation__.Notify(87432)
 				descKey = rs.EndKey
 			} else {
+				__antithesis_instrumentation__.Notify(87433)
 				descKey = rs.Key
 			}
+			__antithesis_instrumentation__.Notify(87429)
 			routingTok, err = ds.getRoutingInfo(ctx, descKey, prevTok, isReverse)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(87434)
 				log.VErrEventf(ctx, 1, "range descriptor re-lookup failed: %s", err)
-				// We set pErr if we encountered an error getting the descriptor in
-				// order to return the most recent error when we are out of retries.
+
 				pErr = roachpb.NewError(err)
 				if !rangecache.IsRangeLookupErrorRetryable(err) {
+					__antithesis_instrumentation__.Notify(87436)
 					return response{pErr: pErr}
+				} else {
+					__antithesis_instrumentation__.Notify(87437)
 				}
+				__antithesis_instrumentation__.Notify(87435)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(87438)
 			}
+			__antithesis_instrumentation__.Notify(87430)
 
-			// See if the range shrunk. If it has, we need to sub-divide the
-			// request. Note that for the resending, we use the already truncated
-			// batch, so that we know that the response to it matches the positions
-			// into our batch (using the full batch here would give a potentially
-			// larger response slice with unknown mapping to our truncated reply).
 			intersection, err := rs.Intersect(routingTok.Desc())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(87439)
 				return response{pErr: roachpb.NewError(err)}
+			} else {
+				__antithesis_instrumentation__.Notify(87440)
 			}
+			__antithesis_instrumentation__.Notify(87431)
 			if !intersection.Equal(rs) {
+				__antithesis_instrumentation__.Notify(87441)
 				log.Eventf(ctx, "range shrunk; sub-dividing the request")
 				reply, pErr = ds.divideAndSendBatchToRanges(ctx, ba, rs, isReverse, withCommit, batchIdx)
 				return response{reply: reply, positions: positions, pErr: pErr}
+			} else {
+				__antithesis_instrumentation__.Notify(87442)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(87443)
 		}
+		__antithesis_instrumentation__.Notify(87422)
 
 		prevTok = routingTok
 		reply, err = ds.sendToReplicas(ctx, ba, routingTok, withCommit)
 
 		const slowDistSenderThreshold = time.Minute
-		if dur := timeutil.Since(tBegin); dur > slowDistSenderThreshold && !tBegin.IsZero() {
+		if dur := timeutil.Since(tBegin); dur > slowDistSenderThreshold && func() bool {
+			__antithesis_instrumentation__.Notify(87444)
+			return !tBegin.IsZero() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(87445)
 			{
+				__antithesis_instrumentation__.Notify(87448)
 				var s redact.StringBuilder
 				slowRangeRPCWarningStr(&s, ba, dur, attempts, routingTok.Desc(), err, reply)
 				log.Warningf(ctx, "slow range RPC: %v", &s)
 			}
-			// If the RPC wasn't successful, defer the logging of a message once the
-			// RPC is not retried any more.
-			if err != nil || reply.Error != nil {
+			__antithesis_instrumentation__.Notify(87446)
+
+			if err != nil || func() bool {
+				__antithesis_instrumentation__.Notify(87449)
+				return reply.Error != nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(87450)
 				ds.metrics.SlowRPCs.Inc(1)
 				defer func(tBegin time.Time, attempts int64) {
+					__antithesis_instrumentation__.Notify(87451)
 					ds.metrics.SlowRPCs.Dec(1)
 					var s redact.StringBuilder
 					slowRangeRPCReturnWarningStr(&s, timeutil.Since(tBegin), attempts)
 					log.Warningf(ctx, "slow RPC response: %v", &s)
 				}(tBegin, attempts)
+			} else {
+				__antithesis_instrumentation__.Notify(87452)
 			}
-			tBegin = time.Time{} // prevent reentering branch for this RPC
+			__antithesis_instrumentation__.Notify(87447)
+			tBegin = time.Time{}
+		} else {
+			__antithesis_instrumentation__.Notify(87453)
 		}
+		__antithesis_instrumentation__.Notify(87423)
 
 		if err != nil {
-			// Set pErr so that, if we don't perform any more retries, the
-			// deduceRetryEarlyExitError() call below the loop is inhibited.
+			__antithesis_instrumentation__.Notify(87454)
+
 			pErr = roachpb.NewError(err)
 			switch {
 			case errors.HasType(err, sendError{}):
-				// We've tried all the replicas without success. Either they're all
-				// down, or we're using an out-of-date range descriptor. Evict from the
-				// cache and try again with an updated descriptor. Re-sending the
-				// request is ok even though it might have succeeded the first time
-				// around because of idempotency.
-				//
-				// Note that we're evicting the descriptor that sendToReplicas was
-				// called with, not necessarily the current descriptor from the cache.
-				// Even if the routing info used by sendToReplicas was updated, we're
-				// not aware of that update and that's mostly a good thing: consider
-				// calling sendToReplicas with descriptor (r1,r2,r3). Inside, the
-				// routing is updated to (r4,r5,r6) and sendToReplicas bails. At that
-				// point, we don't want to evict (r4,r5,r6) since we haven't actually
-				// used it; we're contempt attempting to evict (r1,r2,r3), failing, and
-				// reloading (r4,r5,r6) from the cache on the next iteration.
+				__antithesis_instrumentation__.Notify(87456)
+
 				log.VEventf(ctx, 1, "evicting range desc %s after %s", routingTok, err)
 				routingTok.Evict(ctx)
 				continue
+			default:
+				__antithesis_instrumentation__.Notify(87457)
 			}
+			__antithesis_instrumentation__.Notify(87455)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(87458)
 		}
+		__antithesis_instrumentation__.Notify(87424)
 
-		// If sending succeeded, return immediately.
 		if reply.Error == nil {
+			__antithesis_instrumentation__.Notify(87459)
 			return response{reply: reply, positions: positions}
+		} else {
+			__antithesis_instrumentation__.Notify(87460)
 		}
+		__antithesis_instrumentation__.Notify(87425)
 
-		// Untangle the error from the received response.
 		pErr = reply.Error
-		reply.Error = nil // scrub the response error
+		reply.Error = nil
 
-		// Re-map the error index within this partial batch back
-		// to its position in the encompassing batch.
-		if pErr.Index != nil && pErr.Index.Index != -1 && positions != nil {
+		if pErr.Index != nil && func() bool {
+			__antithesis_instrumentation__.Notify(87461)
+			return pErr.Index.Index != -1 == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(87462)
+			return positions != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(87463)
 			pErr.Index.Index = int32(positions[pErr.Index.Index])
+		} else {
+			__antithesis_instrumentation__.Notify(87464)
 		}
+		__antithesis_instrumentation__.Notify(87426)
 
 		log.VErrEventf(ctx, 2, "reply error %s: %s", ba, pErr)
 
-		// Error handling: If the error indicates that our range
-		// descriptor is out of date, evict it from the cache and try
-		// again. Errors that apply only to a single replica were
-		// handled in send().
-		//
-		// TODO(bdarnell): Don't retry endlessly. If we fail twice in a
-		// row and the range descriptor hasn't changed, return the error
-		// to our caller.
 		switch tErr := pErr.GetDetail().(type) {
 		case *roachpb.RangeKeyMismatchError:
-			// Range descriptor might be out of date - evict it. This is likely the
-			// result of a range split. If we have new range descriptors, insert them
-			// instead.
+			__antithesis_instrumentation__.Notify(87465)
+
 			for _, ri := range tErr.Ranges {
-				// Sanity check that we got the different descriptors. Getting the same
-				// descriptor and putting it in the cache would be bad, as we'd go through
-				// an infinite loops of retries.
+				__antithesis_instrumentation__.Notify(87467)
+
 				if routingTok.Desc().RSpan().Equal(ri.Desc.RSpan()) {
+					__antithesis_instrumentation__.Notify(87468)
 					return response{pErr: roachpb.NewError(errors.AssertionFailedf(
 						"mismatched range suggestion not different from original desc. desc: %s. suggested: %s. err: %s",
 						routingTok.Desc(), ri.Desc, pErr))}
+				} else {
+					__antithesis_instrumentation__.Notify(87469)
 				}
 			}
+			__antithesis_instrumentation__.Notify(87466)
 			routingTok.EvictAndReplace(ctx, tErr.Ranges...)
-			// On addressing errors (likely a split), we need to re-invoke
-			// the range descriptor lookup machinery, so we recurse by
-			// sending batch to just the partial span this descriptor was
-			// supposed to cover. Note that for the resending, we use the
-			// already truncated batch, so that we know that the response
-			// to it matches the positions into our batch (using the full
-			// batch here would give a potentially larger response slice
-			// with unknown mapping to our truncated reply).
+
 			log.VEventf(ctx, 1, "likely split; will resend. Got new descriptors: %s", tErr.Ranges)
 			reply, pErr = ds.divideAndSendBatchToRanges(ctx, ba, rs, isReverse, withCommit, batchIdx)
 			return response{reply: reply, positions: positions, pErr: pErr}
 		}
+		__antithesis_instrumentation__.Notify(87427)
 		break
 	}
+	__antithesis_instrumentation__.Notify(87404)
 
-	// Propagate error if either the retry closer or context done
-	// channels were closed.
 	if pErr == nil {
+		__antithesis_instrumentation__.Notify(87470)
 		if err := ds.deduceRetryEarlyExitError(ctx); err == nil {
+			__antithesis_instrumentation__.Notify(87471)
 			log.Fatal(ctx, "exited retry loop without an error")
 		} else {
+			__antithesis_instrumentation__.Notify(87472)
 			pErr = roachpb.NewError(err)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(87473)
 	}
+	__antithesis_instrumentation__.Notify(87405)
 
 	return response{pErr: pErr}
 }
 
 func (ds *DistSender) deduceRetryEarlyExitError(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(87474)
 	select {
 	case <-ds.rpcRetryOptions.Closer:
-		// Typically happens during shutdown.
+		__antithesis_instrumentation__.Notify(87476)
+
 		return &roachpb.NodeUnavailableError{}
 	case <-ctx.Done():
-		// Happens when the client request is canceled.
+		__antithesis_instrumentation__.Notify(87477)
+
 		return errors.Wrap(ctx.Err(), "aborted in DistSender")
 	default:
+		__antithesis_instrumentation__.Notify(87478)
 	}
+	__antithesis_instrumentation__.Notify(87475)
 	return nil
 }
 
-// fillSkippedResponses fills in responses and ResumeSpans for requests
-// when a batch finished without fully processing the requested key spans for
-// (some of) the requests in the batch. This can happen when processing has met
-// the batch key max limit for range requests, or some other stop condition
-// based on ScanOptions.
-//
-// nextKey is the first key that was not processed. This will be used when
-// filling up the ResumeSpan's.
 func fillSkippedResponses(
 	ba roachpb.BatchRequest,
 	br *roachpb.BatchResponse,
 	nextKey roachpb.RKey,
 	resumeReason roachpb.ResumeReason,
 ) {
-	// Some requests might have no response at all if we used a batch-wide
-	// limit; simply create trivial responses for those. Note that any type
-	// of request can crop up here - simply take a batch that exceeds the
-	// limit, and add any other requests at higher keys at the end of the
-	// batch -- they'll all come back without any response since they never
-	// execute.
+	__antithesis_instrumentation__.Notify(87479)
+
 	var scratchBA roachpb.BatchRequest
 	for i := range br.Responses {
+		__antithesis_instrumentation__.Notify(87481)
 		if br.Responses[i] != (roachpb.ResponseUnion{}) {
+			__antithesis_instrumentation__.Notify(87484)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(87485)
 		}
+		__antithesis_instrumentation__.Notify(87482)
 		req := ba.Requests[i].GetInner()
-		// We need to summon an empty response. The most convenient (but not
-		// most efficient) way is to use (*BatchRequest).CreateReply.
-		//
-		// TODO(tschottdorf): can autogenerate CreateReply for individual
-		// requests, see roachpb/gen_batch.go.
+
 		if scratchBA.Requests == nil {
+			__antithesis_instrumentation__.Notify(87486)
 			scratchBA.Requests = make([]roachpb.RequestUnion, 1)
+		} else {
+			__antithesis_instrumentation__.Notify(87487)
 		}
+		__antithesis_instrumentation__.Notify(87483)
 		scratchBA.Requests[0].MustSetInner(req)
 		br.Responses[i] = scratchBA.CreateReply().Responses[0]
 	}
+	__antithesis_instrumentation__.Notify(87480)
 
-	// Set or correct the ResumeSpan as necessary.
 	isReverse := ba.IsReverse()
 	for i, resp := range br.Responses {
+		__antithesis_instrumentation__.Notify(87488)
 		req := ba.Requests[i].GetInner()
 		hdr := resp.GetInner().Header()
 		maybeSetResumeSpan(req, &hdr, nextKey, isReverse)
 		if hdr.ResumeSpan != nil {
+			__antithesis_instrumentation__.Notify(87490)
 			hdr.ResumeReason = resumeReason
+		} else {
+			__antithesis_instrumentation__.Notify(87491)
 		}
+		__antithesis_instrumentation__.Notify(87489)
 		br.Responses[i].GetInner().SetHeader(hdr)
 	}
 }
 
-// maybeSetResumeSpan sets or corrects the ResumeSpan in the response header, if
-// necessary.
-//
-// nextKey is the first key that was not processed.
 func maybeSetResumeSpan(
 	req roachpb.Request, hdr *roachpb.ResponseHeader, nextKey roachpb.RKey, isReverse bool,
 ) {
+	__antithesis_instrumentation__.Notify(87492)
 	if _, ok := req.(*roachpb.GetRequest); ok {
-		// This is a Get request. There are three possibilities:
-		//
-		//  1. The request was completed. In this case we don't want a ResumeSpan.
-		//
-		//  2. The request was not completed but it was part of a request that made
-		//     it to a kvserver (i.e. it was part of the last range we operated on).
-		//     In this case the ResumeSpan should be set by the kvserver and we can
-		//     leave it alone.
-		//
-		//  3. The request was not completed and was not sent to a kvserver (it was
-		//     beyond the last range we operated on). In this case we need to set
-		//     the ResumeSpan here.
+		__antithesis_instrumentation__.Notify(87495)
+
 		if hdr.ResumeSpan != nil {
-			// Case 2.
+			__antithesis_instrumentation__.Notify(87498)
+
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(87499)
 		}
+		__antithesis_instrumentation__.Notify(87496)
 		key := req.Header().Span().Key
 		if isReverse {
+			__antithesis_instrumentation__.Notify(87500)
 			if !nextKey.Less(roachpb.RKey(key)) {
-				// key <= nextKey, so this request was not completed (case 3).
+				__antithesis_instrumentation__.Notify(87501)
+
 				hdr.ResumeSpan = &roachpb.Span{Key: key}
+			} else {
+				__antithesis_instrumentation__.Notify(87502)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(87503)
 			if !roachpb.RKey(key).Less(nextKey) {
-				// key >= nextKey, so this request was not completed (case 3).
+				__antithesis_instrumentation__.Notify(87504)
+
 				hdr.ResumeSpan = &roachpb.Span{Key: key}
+			} else {
+				__antithesis_instrumentation__.Notify(87505)
 			}
 		}
+		__antithesis_instrumentation__.Notify(87497)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(87506)
 	}
+	__antithesis_instrumentation__.Notify(87493)
 
 	if !roachpb.IsRange(req) {
+		__antithesis_instrumentation__.Notify(87507)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(87508)
 	}
+	__antithesis_instrumentation__.Notify(87494)
 
 	origSpan := req.Header().Span()
 	if isReverse {
+		__antithesis_instrumentation__.Notify(87509)
 		if hdr.ResumeSpan != nil {
-			// The ResumeSpan.Key might be set to the StartKey of a range;
-			// correctly set it to the Key of the original request span.
+			__antithesis_instrumentation__.Notify(87510)
+
 			hdr.ResumeSpan.Key = origSpan.Key
-		} else if roachpb.RKey(origSpan.Key).Less(nextKey) {
-			// Some keys have yet to be processed.
-			hdr.ResumeSpan = new(roachpb.Span)
-			*hdr.ResumeSpan = origSpan
-			if nextKey.Less(roachpb.RKey(origSpan.EndKey)) {
-				// The original span has been partially processed.
-				hdr.ResumeSpan.EndKey = nextKey.AsRawKey()
+		} else {
+			__antithesis_instrumentation__.Notify(87511)
+			if roachpb.RKey(origSpan.Key).Less(nextKey) {
+				__antithesis_instrumentation__.Notify(87512)
+
+				hdr.ResumeSpan = new(roachpb.Span)
+				*hdr.ResumeSpan = origSpan
+				if nextKey.Less(roachpb.RKey(origSpan.EndKey)) {
+					__antithesis_instrumentation__.Notify(87513)
+
+					hdr.ResumeSpan.EndKey = nextKey.AsRawKey()
+				} else {
+					__antithesis_instrumentation__.Notify(87514)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(87515)
 			}
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(87516)
 		if hdr.ResumeSpan != nil {
-			// The ResumeSpan.EndKey might be set to the EndKey of a range because
-			// that's what a store will set it to when the limit is reached; it
-			// doesn't know any better). In that case, we correct it to the EndKey
-			// of the original request span. Note that this doesn't touch
-			// ResumeSpan.Key, which is really the important part of the ResumeSpan.
+			__antithesis_instrumentation__.Notify(87517)
+
 			hdr.ResumeSpan.EndKey = origSpan.EndKey
 		} else {
-			// The request might have been fully satisfied, in which case it doesn't
-			// need a ResumeSpan, or it might not have. Figure out if we're in the
-			// latter case.
+			__antithesis_instrumentation__.Notify(87518)
+
 			if nextKey.Less(roachpb.RKey(origSpan.EndKey)) {
-				// Some keys have yet to be processed.
+				__antithesis_instrumentation__.Notify(87519)
+
 				hdr.ResumeSpan = new(roachpb.Span)
 				*hdr.ResumeSpan = origSpan
 				if roachpb.RKey(origSpan.Key).Less(nextKey) {
-					// The original span has been partially processed.
+					__antithesis_instrumentation__.Notify(87520)
+
 					hdr.ResumeSpan.Key = nextKey.AsRawKey()
+				} else {
+					__antithesis_instrumentation__.Notify(87521)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(87522)
 			}
 		}
 	}
 }
 
-// noMoreReplicasErr produces the error to be returned from sendToReplicas when
-// the transport is exhausted.
-//
-// ambiguousErr, if not nil, is the error we got from the first attempt when the
-// success of the request cannot be ruled out by the error. lastAttemptErr is
-// the error that the last attempt to execute the request returned.
 func noMoreReplicasErr(ambiguousErr, lastAttemptErr error) error {
+	__antithesis_instrumentation__.Notify(87523)
 	if ambiguousErr != nil {
+		__antithesis_instrumentation__.Notify(87525)
 		return roachpb.NewAmbiguousResultErrorf("error=%s [exhausted]", ambiguousErr)
+	} else {
+		__antithesis_instrumentation__.Notify(87526)
 	}
+	__antithesis_instrumentation__.Notify(87524)
 
-	// TODO(bdarnell): The error from the last attempt is not necessarily the best
-	// one to return; we may want to remember the "best" error we've seen (for
-	// example, a NotLeaseHolderError conveys more information than a
-	// RangeNotFound).
 	return newSendError(fmt.Sprintf("sending to all replicas failed; last error: %s", lastAttemptErr))
 }
 
-// sendToReplicas sends a batch to the replicas of a range. Replicas are tried one
-// at a time (generally the leaseholder first). The result of this call is
-// either a BatchResponse or an error. In the former case, the BatchResponse
-// wraps either a response or a *roachpb.Error; this error will come from a
-// replica authorized to evaluate the request (for example ConditionFailedError)
-// and can be seen as "data" returned from the request. In the latter case,
-// DistSender was unable to get a response from a replica willing to evaluate
-// the request, and the second return value is either a sendError or
-// AmbiguousResultError. Of those two, the latter has to be passed back to the
-// client, while the former should be handled by retrying with an updated range
-// descriptor. This method handles other errors returned from replicas
-// internally by retrying (NotLeaseholderError, RangeNotFoundError), and falls
-// back to a sendError when it runs out of replicas to try.
-//
-// routing dictates what replicas will be tried (but not necessarily their
-// order).
-//
-// withCommit declares whether a transaction commit is either in this batch or
-// in-flight concurrently with this batch. If withCommit is false (i.e. either
-// no EndTxn is in flight, or it is attempting to abort), ambiguous results will
-// never be generated by method (but can still be piped through br if the
-// kvserver returns an AmbiguousResultError). This is because both transactional
-// writes and aborts can be retried (the former due to seqno idempotency, the
-// latter because aborting is idempotent). If withCommit is true, any errors
-// that do not definitively rule out the possibility that the batch could have
-// succeeded are transformed into AmbiguousResultErrors.
 func (ds *DistSender) sendToReplicas(
 	ctx context.Context, ba roachpb.BatchRequest, routing rangecache.EvictionToken, withCommit bool,
 ) (*roachpb.BatchResponse, error) {
+	__antithesis_instrumentation__.Notify(87527)
 	desc := routing.Desc()
 	ba.RangeID = desc.RangeID
 
-	// If this request can be sent to a follower to perform a consistent follower
-	// read under the closed timestamp, promote its routing policy to NEAREST.
-	if ba.RoutingPolicy == roachpb.RoutingPolicy_LEASEHOLDER &&
-		CanSendToFollower(ds.logicalClusterID.Get(), ds.st, ds.clock, routing.ClosedTimestampPolicy(), ba) {
+	if ba.RoutingPolicy == roachpb.RoutingPolicy_LEASEHOLDER && func() bool {
+		__antithesis_instrumentation__.Notify(87533)
+		return CanSendToFollower(ds.logicalClusterID.Get(), ds.st, ds.clock, routing.ClosedTimestampPolicy(), ba) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87534)
 		ba.RoutingPolicy = roachpb.RoutingPolicy_NEAREST
+	} else {
+		__antithesis_instrumentation__.Notify(87535)
 	}
+	__antithesis_instrumentation__.Notify(87528)
 
-	// Filter the replicas to only those that are relevant to the routing policy.
 	var replicaFilter ReplicaSliceFilter
 	switch ba.RoutingPolicy {
 	case roachpb.RoutingPolicy_LEASEHOLDER:
+		__antithesis_instrumentation__.Notify(87536)
 		replicaFilter = OnlyPotentialLeaseholders
 	case roachpb.RoutingPolicy_NEAREST:
+		__antithesis_instrumentation__.Notify(87537)
 		replicaFilter = AllExtantReplicas
 	default:
+		__antithesis_instrumentation__.Notify(87538)
 		log.Fatalf(ctx, "unknown routing policy: %s", ba.RoutingPolicy)
 	}
+	__antithesis_instrumentation__.Notify(87529)
 	leaseholder := routing.Leaseholder()
 	replicas, err := NewReplicaSlice(ctx, ds.nodeDescs, desc, leaseholder, replicaFilter)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(87539)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(87540)
 	}
+	__antithesis_instrumentation__.Notify(87530)
 
-	// Rearrange the replicas so that they're ordered according to the routing
-	// policy.
 	var leaseholderFirst bool
 	switch ba.RoutingPolicy {
 	case roachpb.RoutingPolicy_LEASEHOLDER:
-		// First order by latency, then move the leaseholder to the front of the
-		// list, if it is known.
+		__antithesis_instrumentation__.Notify(87541)
+
 		if !ds.dontReorderReplicas {
+			__antithesis_instrumentation__.Notify(87546)
 			replicas.OptimizeReplicaOrder(ds.getNodeDescriptor(), ds.latencyFunc)
+		} else {
+			__antithesis_instrumentation__.Notify(87547)
 		}
+		__antithesis_instrumentation__.Notify(87542)
 
 		idx := -1
 		if leaseholder != nil {
+			__antithesis_instrumentation__.Notify(87548)
 			idx = replicas.Find(leaseholder.ReplicaID)
+		} else {
+			__antithesis_instrumentation__.Notify(87549)
 		}
+		__antithesis_instrumentation__.Notify(87543)
 		if idx != -1 {
+			__antithesis_instrumentation__.Notify(87550)
 			replicas.MoveToFront(idx)
 			leaseholderFirst = true
 		} else {
-			// The leaseholder node's info must have been missing from gossip when we
-			// created replicas.
+			__antithesis_instrumentation__.Notify(87551)
+
 			log.VEvent(ctx, 2, "routing to nearest replica; leaseholder not known")
 		}
 
 	case roachpb.RoutingPolicy_NEAREST:
-		// Order by latency.
+		__antithesis_instrumentation__.Notify(87544)
+
 		log.VEvent(ctx, 2, "routing to nearest replica; leaseholder not required")
 		replicas.OptimizeReplicaOrder(ds.getNodeDescriptor(), ds.latencyFunc)
 
 	default:
+		__antithesis_instrumentation__.Notify(87545)
 		log.Fatalf(ctx, "unknown routing policy: %s", ba.RoutingPolicy)
 	}
+	__antithesis_instrumentation__.Notify(87531)
 
 	opts := SendOptions{
 		class:                  rpc.ConnectionClassForKey(desc.RSpan().Key),
@@ -1985,76 +2146,79 @@ func (ds *DistSender) sendToReplicas(
 	}
 	transport, err := ds.transportFactory(opts, ds.nodeDialer, replicas)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(87552)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(87553)
 	}
+	__antithesis_instrumentation__.Notify(87532)
 	defer transport.Release()
 
-	// inTransferRetry is used to slow down retries in cases where an ongoing
-	// lease transfer is suspected.
-	// TODO(andrei): now that requests wait on lease transfers to complete on
-	// outgoing leaseholders instead of immediately redirecting, we should
-	// rethink this backoff policy.
 	inTransferRetry := retry.StartWithCtx(ctx, ds.rpcRetryOptions)
-	inTransferRetry.Next() // The first call to Next does not block.
+	inTransferRetry.Next()
 	var sameReplicaRetries int
 	var prevReplica roachpb.ReplicaDescriptor
 
-	// This loop will retry operations that fail with errors that reflect
-	// per-replica state and may succeed on other replicas.
 	var ambiguousError error
 	var br *roachpb.BatchResponse
 	for first := true; ; first = false {
+		__antithesis_instrumentation__.Notify(87554)
 		if !first {
+			__antithesis_instrumentation__.Notify(87560)
 			ds.metrics.NextReplicaErrCount.Inc(1)
+		} else {
+			__antithesis_instrumentation__.Notify(87561)
 		}
+		__antithesis_instrumentation__.Notify(87555)
 
-		// Advance through the transport's replicas until we find one that's still
-		// part of routing.entry.Desc. The transport starts up initialized with
-		// routing's replica info, but routing can be updated as we go through the
-		// replicas, whereas transport isn't.
-		//
-		// TODO(andrei): The structure around here is no good; we're potentially
-		// updating routing with replicas that are not part of transport, and so
-		// those replicas will never be tried. Instead, we'll exhaust the transport
-		// and bubble up a SendError, which will cause a cache eviction and a new
-		// descriptor lookup potentially unnecessarily.
 		lastErr := err
-		if lastErr == nil && br != nil {
+		if lastErr == nil && func() bool {
+			__antithesis_instrumentation__.Notify(87562)
+			return br != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(87563)
 			lastErr = br.Error.GoError()
+		} else {
+			__antithesis_instrumentation__.Notify(87564)
 		}
+		__antithesis_instrumentation__.Notify(87556)
 		err = skipStaleReplicas(transport, routing, ambiguousError, lastErr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(87565)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(87566)
 		}
+		__antithesis_instrumentation__.Notify(87557)
 		curReplica := transport.NextReplica()
 		if first {
+			__antithesis_instrumentation__.Notify(87567)
 			if log.ExpensiveLogEnabled(ctx, 2) {
+				__antithesis_instrumentation__.Notify(87568)
 				log.VEventf(ctx, 2, "r%d: sending batch %s to %s", desc.RangeID, ba.Summary(), curReplica)
+			} else {
+				__antithesis_instrumentation__.Notify(87569)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(87570)
 			log.VEventf(ctx, 2, "trying next peer %s", curReplica.String())
 			if prevReplica == curReplica {
+				__antithesis_instrumentation__.Notify(87571)
 				sameReplicaRetries++
 			} else {
+				__antithesis_instrumentation__.Notify(87572)
 				sameReplicaRetries = 0
 			}
 		}
+		__antithesis_instrumentation__.Notify(87558)
 		prevReplica = curReplica
-		// Communicate to the server the information our cache has about the
-		// range. If it's stale, the serve will return an update.
+
 		ba.ClientRangeInfo = roachpb.ClientRangeInfo{
-			// Note that DescriptorGeneration will be 0 if the cached descriptor
-			// is "speculative" (see DescSpeculative()). Even if the speculation
-			// is correct, we want the serve to return an update, at which point
-			// the cached entry will no longer be "speculative".
+
 			DescriptorGeneration: routing.Desc().Generation,
-			// The LeaseSequence will be 0 if the cache doen't have lease info,
-			// or has a speculative lease. Like above, this asks the server to
-			// return an update.
+
 			LeaseSequence: routing.LeaseSeq(),
-			// The ClosedTimestampPolicy will be the default if the cache
-			// doesn't have info. Like above, this asks the server to return an
-			// update.
+
 			ClosedTimestampPolicy: routing.ClosedTimestampPolicy(),
 
 			ExplicitlyRequested: ba.ClientRangeInfo.ExplicitlyRequested,
@@ -2063,285 +2227,291 @@ func (ds *DistSender) sendToReplicas(
 		ds.maybeIncrementErrCounters(br, err)
 
 		if err != nil {
+			__antithesis_instrumentation__.Notify(87573)
 			if grpcutil.IsAuthError(err) {
-				// Authentication or authorization error. Propagate.
-				if ambiguousError != nil {
-					return nil, roachpb.NewAmbiguousResultErrorf("error=%s [propagate]", ambiguousError)
-				}
-				return nil, err
-			}
+				__antithesis_instrumentation__.Notify(87576)
 
-			// For most connection errors, we cannot tell whether or not the request
-			// may have succeeded on the remote server (exceptions are captured in the
-			// grpcutil.RequestDidNotStart function). We'll retry the request in order
-			// to attempt to eliminate the ambiguity; see below. If there's a commit
-			// in the batch, we track the ambiguity more explicitly by setting
-			// ambiguousError. This serves two purposes:
-			// 1) the higher-level retries in the DistSender will not forget the
-			// ambiguity, like they forget it for non-commit batches. This in turn
-			// will ensure that TxnCoordSender-level retries don't happen across
-			// commits; that'd be bad since requests are not idempotent across
-			// commits.
-			// TODO(andrei): This higher-level does things too bluntly, retrying only
-			// in case of sendError. It should also retry in case of
-			// AmbiguousRetryError as long as it makes sure to not forget about the
-			// ambiguity.
-			// 2) SQL recognizes AmbiguousResultErrors and gives them a special code
-			// (StatementCompletionUnknown).
-			// TODO(andrei): The use of this code is inconsistent because a) the
-			// DistSender tries to only return the code for commits, but it'll happily
-			// forward along AmbiguousResultErrors coming from the replica and b) we
-			// probably should be returning that code for non-commit statements too.
-			//
-			// We retry requests in order to avoid returning errors (in particular,
-			// AmbiguousResultError). Retrying the batch will either:
-			// a) succeed if the request had not been evaluated the first time.
-			// b) succeed if the request also succeeded the first time, but is
-			//    idempotent (i.e. it is internal to a txn, without a commit in the
-			//    batch).
-			// c) fail if it succeeded the first time and the request is not
-			//    idempotent. In the case of EndTxn requests, this is ensured by the
-			//    tombstone keys in the timestamp cache. The retry failing does not
-			//    prove that the request did not succeed the first time around, so we
-			//    can't claim success (and even if we could claim success, we still
-			//    wouldn't have the complete result of the successful evaluation).
-			//
-			// Case a) is great - the retry made the request succeed. Case b) is also
-			// good; due to idempotency we managed to swallow a communication error.
-			// Case c) is not great - we'll end up returning an error even though the
-			// request might have succeeded (an AmbiguousResultError if withCommit is
-			// set).
-			//
-			// TODO(andrei): Case c) is broken for non-transactional requests: nothing
-			// prevents them from double evaluation. This can result in, for example,
-			// an increment applying twice, or more subtle problems like a blind write
-			// evaluating twice, overwriting another unrelated write that fell
-			// in-between.
-			//
-			if withCommit && !grpcutil.RequestDidNotStart(err) {
-				ambiguousError = err
+				if ambiguousError != nil {
+					__antithesis_instrumentation__.Notify(87578)
+					return nil, roachpb.NewAmbiguousResultErrorf("error=%s [propagate]", ambiguousError)
+				} else {
+					__antithesis_instrumentation__.Notify(87579)
+				}
+				__antithesis_instrumentation__.Notify(87577)
+				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(87580)
 			}
+			__antithesis_instrumentation__.Notify(87574)
+
+			if withCommit && func() bool {
+				__antithesis_instrumentation__.Notify(87581)
+				return !grpcutil.RequestDidNotStart(err) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(87582)
+				ambiguousError = err
+			} else {
+				__antithesis_instrumentation__.Notify(87583)
+			}
+			__antithesis_instrumentation__.Notify(87575)
 			log.VErrEventf(ctx, 2, "RPC error: %s", err)
 
-			// If the error wasn't just a context cancellation and the down replica
-			// is cached as the lease holder, evict it. The only other eviction
-			// happens below on NotLeaseHolderError, but if the next replica is the
-			// actual lease holder, we're never going to receive one of those and
-			// will thus pay the price of trying the down node first forever.
-			//
-			// NB: we should consider instead adding a successful reply from the next
-			// replica into the cache, but without a leaseholder (and taking into
-			// account that the local node can't be down) it won't take long until we
-			// talk to a replica that tells us who the leaseholder is.
 			if ctx.Err() == nil {
-				if lh := routing.Leaseholder(); lh != nil && *lh == curReplica {
+				__antithesis_instrumentation__.Notify(87584)
+				if lh := routing.Leaseholder(); lh != nil && func() bool {
+					__antithesis_instrumentation__.Notify(87585)
+					return *lh == curReplica == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(87586)
 					routing.EvictLease(ctx)
+				} else {
+					__antithesis_instrumentation__.Notify(87587)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(87588)
 			}
 		} else {
-			// If the reply contains a timestamp, update the local HLC with it.
+			__antithesis_instrumentation__.Notify(87589)
+
 			if br.Error != nil {
+				__antithesis_instrumentation__.Notify(87593)
 				log.VErrEventf(ctx, 2, "%v", br.Error)
 				if !br.Error.Now.IsEmpty() {
+					__antithesis_instrumentation__.Notify(87594)
 					ds.clock.Update(br.Error.Now)
+				} else {
+					__antithesis_instrumentation__.Notify(87595)
 				}
-			} else if !br.Now.IsEmpty() {
-				ds.clock.Update(br.Now)
+			} else {
+				__antithesis_instrumentation__.Notify(87596)
+				if !br.Now.IsEmpty() {
+					__antithesis_instrumentation__.Notify(87597)
+					ds.clock.Update(br.Now)
+				} else {
+					__antithesis_instrumentation__.Notify(87598)
+				}
 			}
+			__antithesis_instrumentation__.Notify(87590)
 
 			if br.Error == nil {
-				// If the server gave us updated range info, lets update our cache with it.
+				__antithesis_instrumentation__.Notify(87599)
+
 				if len(br.RangeInfos) > 0 {
+					__antithesis_instrumentation__.Notify(87601)
 					log.VEventf(ctx, 2, "received updated range info: %s", br.RangeInfos)
 					routing.EvictAndReplace(ctx, br.RangeInfos...)
 					if !ba.Header.ClientRangeInfo.ExplicitlyRequested {
-						// The field is cleared by the DistSender because it refers
-						// routing information not exposed by the KV API.
-						br.RangeInfos = nil
-					}
-				}
-				return br, nil
-			}
+						__antithesis_instrumentation__.Notify(87602)
 
-			// TODO(andrei): There are errors below that cause us to move to a
-			// different replica without updating our caches. This means that future
-			// requests will attempt the same useless replicas.
+						br.RangeInfos = nil
+					} else {
+						__antithesis_instrumentation__.Notify(87603)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(87604)
+				}
+				__antithesis_instrumentation__.Notify(87600)
+				return br, nil
+			} else {
+				__antithesis_instrumentation__.Notify(87605)
+			}
+			__antithesis_instrumentation__.Notify(87591)
+
 			switch tErr := br.Error.GetDetail().(type) {
 			case *roachpb.StoreNotFoundError, *roachpb.NodeUnavailableError:
-				// These errors are likely to be unique to the replica that reported
-				// them, so no action is required before the next retry.
+				__antithesis_instrumentation__.Notify(87606)
+
 			case *roachpb.RangeNotFoundError:
-				// The store we routed to doesn't have this replica. This can happen when
-				// our descriptor is outright outdated, but it can also be caused by a
-				// replica that has just been added but needs a snapshot to be caught up.
-				//
-				// We'll try other replicas which typically gives us the leaseholder, either
-				// via the NotLeaseHolderError or nil error paths, both of which update the
-				// leaseholder in the range cache.
+				__antithesis_instrumentation__.Notify(87607)
+
 			case *roachpb.NotLeaseHolderError:
+				__antithesis_instrumentation__.Notify(87608)
 				ds.metrics.NotLeaseHolderErrCount.Inc(1)
-				// If we got some lease information, we use it. If not, we loop around
-				// and try the next replica.
-				if tErr.Lease != nil || tErr.LeaseHolder != nil {
-					// Update the leaseholder in the range cache. Naively this would also
-					// happen when the next RPC comes back, but we don't want to wait out
-					// the additional RPC latency.
+
+				if tErr.Lease != nil || func() bool {
+					__antithesis_instrumentation__.Notify(87611)
+					return tErr.LeaseHolder != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(87612)
 
 					var updatedLeaseholder bool
 					if tErr.Lease != nil {
+						__antithesis_instrumentation__.Notify(87616)
 						updatedLeaseholder = routing.UpdateLease(ctx, tErr.Lease, tErr.RangeDesc.Generation)
-					} else if tErr.LeaseHolder != nil {
-						// tErr.LeaseHolder might be set when tErr.Lease isn't.
-						routing.UpdateLeaseholder(ctx, *tErr.LeaseHolder, tErr.RangeDesc.Generation)
-						updatedLeaseholder = true
-					}
-					// Move the new leaseholder to the head of the queue for the next
-					// retry. Note that the leaseholder might not be the one indicated by
-					// the NLHE we just received, in case that error carried stale info.
-					if lh := routing.Leaseholder(); lh != nil {
-						// If the leaseholder is the replica that we've just tried, and
-						// we've tried this replica a bunch of times already, let's move on
-						// and not try it again. This prevents us getting stuck on a replica
-						// that we think has the lease but keeps returning redirects to us
-						// (possibly because it hasn't applied its lease yet). Perhaps that
-						// lease expires and someone else gets a new one, so by moving on we
-						// get out of possibly infinite loops.
-						if *lh != curReplica || sameReplicaRetries < sameReplicaRetryLimit {
-							transport.MoveToFront(*lh)
+					} else {
+						__antithesis_instrumentation__.Notify(87617)
+						if tErr.LeaseHolder != nil {
+							__antithesis_instrumentation__.Notify(87618)
+
+							routing.UpdateLeaseholder(ctx, *tErr.LeaseHolder, tErr.RangeDesc.Generation)
+							updatedLeaseholder = true
+						} else {
+							__antithesis_instrumentation__.Notify(87619)
 						}
 					}
-					// Check whether the request was intentionally sent to a follower
-					// replica to perform a follower read. In such cases, the follower
-					// may reject the request with a NotLeaseHolderError if it does not
-					// have a sufficient closed timestamp. In response, we should
-					// immediately redirect to the leaseholder, without a backoff
-					// period.
-					intentionallySentToFollower := first && !leaseholderFirst
-					// See if we want to backoff a little before the next attempt. If
-					// the lease info we got is stale and we were intending to send to
-					// the leaseholder, we backoff because it might be the case that
-					// there's a lease transfer in progress and the would-be leaseholder
-					// has not yet applied the new lease.
-					shouldBackoff := !updatedLeaseholder && !intentionallySentToFollower
+					__antithesis_instrumentation__.Notify(87613)
+
+					if lh := routing.Leaseholder(); lh != nil {
+						__antithesis_instrumentation__.Notify(87620)
+
+						if *lh != curReplica || func() bool {
+							__antithesis_instrumentation__.Notify(87621)
+							return sameReplicaRetries < sameReplicaRetryLimit == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(87622)
+							transport.MoveToFront(*lh)
+						} else {
+							__antithesis_instrumentation__.Notify(87623)
+						}
+					} else {
+						__antithesis_instrumentation__.Notify(87624)
+					}
+					__antithesis_instrumentation__.Notify(87614)
+
+					intentionallySentToFollower := first && func() bool {
+						__antithesis_instrumentation__.Notify(87625)
+						return !leaseholderFirst == true
+					}() == true
+
+					shouldBackoff := !updatedLeaseholder && func() bool {
+						__antithesis_instrumentation__.Notify(87626)
+						return !intentionallySentToFollower == true
+					}() == true
 					if shouldBackoff {
+						__antithesis_instrumentation__.Notify(87627)
 						ds.metrics.InLeaseTransferBackoffs.Inc(1)
 						log.VErrEventf(ctx, 2, "backing off due to NotLeaseHolderErr with stale info")
 					} else {
-						inTransferRetry.Reset() // The following Next() call will not block.
+						__antithesis_instrumentation__.Notify(87628)
+						inTransferRetry.Reset()
 					}
+					__antithesis_instrumentation__.Notify(87615)
 					inTransferRetry.Next()
+				} else {
+					__antithesis_instrumentation__.Notify(87629)
 				}
 			default:
+				__antithesis_instrumentation__.Notify(87609)
 				if ambiguousError != nil {
+					__antithesis_instrumentation__.Notify(87630)
 					return nil, roachpb.NewAmbiguousResultErrorf("error=%s [propagate]", ambiguousError)
+				} else {
+					__antithesis_instrumentation__.Notify(87631)
 				}
+				__antithesis_instrumentation__.Notify(87610)
 
-				// The error received is likely not specific to this
-				// replica, so we should return it instead of trying other
-				// replicas.
 				return br, nil
 			}
+			__antithesis_instrumentation__.Notify(87592)
 
 			log.VErrEventf(ctx, 1, "application error: %s", br.Error)
 		}
+		__antithesis_instrumentation__.Notify(87559)
 
-		// Has the caller given up?
 		if ctx.Err() != nil {
-			// Don't consider this a sendError, because sendErrors indicate that we
-			// were unable to reach a replica that could serve the request, and they
-			// cause range cache evictions. Context cancellations just mean the
-			// sender changed its mind or the request timed out.
+			__antithesis_instrumentation__.Notify(87632)
 
 			if ambiguousError != nil {
+				__antithesis_instrumentation__.Notify(87634)
 				err = roachpb.NewAmbiguousResultError(errors.Wrapf(ambiguousError, "context done during DistSender.Send"))
 			} else {
+				__antithesis_instrumentation__.Notify(87635)
 				err = errors.Wrap(ctx.Err(), "aborted during DistSender.Send")
 			}
+			__antithesis_instrumentation__.Notify(87633)
 			log.Eventf(ctx, "%v", err)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(87636)
 		}
 	}
 }
 
 func (ds *DistSender) maybeIncrementErrCounters(br *roachpb.BatchResponse, err error) {
-	if err == nil && br.Error == nil {
+	__antithesis_instrumentation__.Notify(87637)
+	if err == nil && func() bool {
+		__antithesis_instrumentation__.Notify(87639)
+		return br.Error == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87640)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(87641)
 	}
+	__antithesis_instrumentation__.Notify(87638)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(87642)
 		ds.metrics.ErrCounts[roachpb.CommunicationErrType].Inc(1)
 	} else {
+		__antithesis_instrumentation__.Notify(87643)
 		typ := roachpb.InternalErrType
 		if detail := br.Error.GetDetail(); detail != nil {
+			__antithesis_instrumentation__.Notify(87645)
 			typ = detail.Type()
+		} else {
+			__antithesis_instrumentation__.Notify(87646)
 		}
+		__antithesis_instrumentation__.Notify(87644)
 		ds.metrics.ErrCounts[typ].Inc(1)
 	}
 }
 
-// skipStaleReplicas advances the transport until it's positioned on a replica
-// that's part of routing. This is called as the DistSender tries replicas one
-// by one, as the routing can be updated in the process and so the transport can
-// get out of date.
-//
-// It's valid to pass in an empty routing, in which case the transport will be
-// considered to be exhausted.
-//
-// Returns an error if the transport is exhausted.
 func skipStaleReplicas(
 	transport Transport, routing rangecache.EvictionToken, ambiguousError error, lastErr error,
 ) error {
-	// Check whether the range cache told us that the routing info we had is
-	// very out-of-date. If so, there's not much point in trying the other
-	// replicas in the transport; they'll likely all return
-	// RangeKeyMismatchError if there's even a replica. We'll bubble up an
-	// error and try with a new descriptor.
+	__antithesis_instrumentation__.Notify(87647)
+
 	if !routing.Valid() {
+		__antithesis_instrumentation__.Notify(87649)
 		return noMoreReplicasErr(
 			ambiguousError,
 			errors.Wrap(lastErr, "routing information detected to be stale"))
+	} else {
+		__antithesis_instrumentation__.Notify(87650)
 	}
+	__antithesis_instrumentation__.Notify(87648)
 
 	for {
+		__antithesis_instrumentation__.Notify(87651)
 		if transport.IsExhausted() {
+			__antithesis_instrumentation__.Notify(87654)
 			return noMoreReplicasErr(ambiguousError, lastErr)
+		} else {
+			__antithesis_instrumentation__.Notify(87655)
 		}
+		__antithesis_instrumentation__.Notify(87652)
 
 		if _, ok := routing.Desc().GetReplicaDescriptorByID(transport.NextReplica().ReplicaID); ok {
+			__antithesis_instrumentation__.Notify(87656)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(87657)
 		}
+		__antithesis_instrumentation__.Notify(87653)
 		transport.SkipReplica()
 	}
 }
 
-// A sendError indicates that there was a problem communicating with a replica
-// that can evaluate the request. It's possible that the request was, in fact,
-// evaluated by a replica successfully but then the server connection dropped.
-//
-// This error is produced by the DistSender. Note that the DistSender generates
-// AmbiguousResultError instead of sendError when there's an EndTxn(commit) in
-// the BatchRequest. But also note that the server can return
-// AmbiguousResultErrors too, in which case the DistSender will pipe it through.
-// TODO(andrei): clean up this stuff and tighten the meaning of the different
-// errors.
 type sendError struct {
 	message string
 }
 
-// newSendError creates a sendError.
 func newSendError(msg string) error {
+	__antithesis_instrumentation__.Notify(87658)
 	return sendError{message: msg}
 }
 
-// TestNewSendError creates a new sendError for the purpose of unit tests
 func TestNewSendError(msg string) error {
+	__antithesis_instrumentation__.Notify(87659)
 	return newSendError(msg)
 }
 
 func (s sendError) Error() string {
+	__antithesis_instrumentation__.Notify(87660)
 	return "failed to send RPC: " + s.message
 }
 
-// IsSendError returns true if err is a sendError.
 func IsSendError(err error) bool {
+	__antithesis_instrumentation__.Notify(87661)
 	return errors.HasType(err, sendError{})
 }

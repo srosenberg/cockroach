@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package idxusage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -22,88 +14,65 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// usageType is the enum specifying the type of usage of an index.
 type usageType int8
 
 const (
-	// readOp indicates that a read operation has occurred for an index.
 	readOp usageType = iota
 
-	// writeOp indicates that a write operation has occurred for an index.
 	writeOp
 )
 
-// indexUse is the payload struct that record a single instance of the index
-// usage.
 type indexUse struct {
-	// key is what specify a particular index. It's a tuple of
-	// (table_id, index_id).
 	key roachpb.IndexUsageKey
 
-	// usageTyp specifies how this index is being used.
 	usageTyp usageType
 }
 
-// LocalIndexUsageStats is a node-local provider of index usage statistics.
-// It implements both the idxusage.Reader and idxusage.Writer interfaces.
 type LocalIndexUsageStats struct {
 	st *cluster.Settings
 
 	mu struct {
 		syncutil.RWMutex
 
-		// usageStats stores index usage statistics per unique roachpb.TableID.
 		usageStats map[roachpb.TableID]*tableIndexStats
 
-		// lastReset is the last time the index usage statistics were reset.
 		lastReset time.Time
 	}
 }
 
-// tableIndexStats tracks index usage statistics per table.
 type tableIndexStats struct {
 	syncutil.RWMutex
 
 	tableID roachpb.TableID
 
-	// stats contains the usage information per unique roachpb.IndexID.
 	stats map[roachpb.IndexID]*indexStats
 }
 
-// indexStats track index usage statistics per index.
 type indexStats struct {
 	syncutil.RWMutex
 	roachpb.IndexUsageStatistics
 }
 
-// Config is the configuration struct used to instantiate the LocalIndexUsageStats.
 type Config struct {
-	// ChannelSize is the size of buffered channel for the statsChan in
-	// LocalIndexUsageStats.
 	ChannelSize uint64
 
-	// Setting is used to read cluster settings.
 	Setting *cluster.Settings
 }
 
-// IteratorOptions provides knobs to change the iterating behavior when
-// calling ForEach.
 type IteratorOptions struct {
 	SortedTableID bool
 	SortedIndexID bool
 	Max           *uint64
 }
 
-// StatsVisitor is the callback invoked when calling ForEach.
 type StatsVisitor func(key *roachpb.IndexUsageKey, value *roachpb.IndexUsageStatistics) error
 
-// DefaultChannelSize is the default size of the statsChan.
 const DefaultChannelSize = uint64(128)
 
 var emptyIndexUsageStats roachpb.IndexUsageStatistics
 
-// NewLocalIndexUsageStats returns a new instance of LocalIndexUsageStats.
 func NewLocalIndexUsageStats(cfg *Config) *LocalIndexUsageStats {
+	__antithesis_instrumentation__.Notify(492999)
 	is := &LocalIndexUsageStats{
 		st: cfg.Setting,
 	}
@@ -112,178 +81,202 @@ func NewLocalIndexUsageStats(cfg *Config) *LocalIndexUsageStats {
 	return is
 }
 
-// NewLocalIndexUsageStatsFromExistingStats returns a new instance of
-// LocalIndexUsageStats that is populated using given
-// []roachpb.CollectedIndexUsageStatistics. This constructor can be used to
-// quickly aggregate the index usage statistics received from the RPC fanout
-// and it is more efficient than the regular insert path because it performs
-// insert without taking the RWMutex lock.
 func NewLocalIndexUsageStatsFromExistingStats(
 	cfg *Config, stats []roachpb.CollectedIndexUsageStatistics,
 ) *LocalIndexUsageStats {
+	__antithesis_instrumentation__.Notify(493000)
 	s := NewLocalIndexUsageStats(cfg)
-	// No need to hold lock here since we are in the constructor.
+
 	s.batchInsertLocked(stats)
 	return s
 }
 
-// RecordRead records a read operation on the specified index.
 func (s *LocalIndexUsageStats) RecordRead(key roachpb.IndexUsageKey) {
+	__antithesis_instrumentation__.Notify(493001)
 	s.insertIndexUsage(key, readOp)
 }
 
-// Get returns the index usage statistics for a given key.
 func (s *LocalIndexUsageStats) Get(
 	tableID roachpb.TableID, indexID roachpb.IndexID,
 ) roachpb.IndexUsageStatistics {
+	__antithesis_instrumentation__.Notify(493002)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	table, ok := s.mu.usageStats[tableID]
 	if !ok {
-		// We return a copy of the empty stats.
+		__antithesis_instrumentation__.Notify(493005)
+
 		emptyStats := emptyIndexUsageStats
 		return emptyStats
+	} else {
+		__antithesis_instrumentation__.Notify(493006)
 	}
+	__antithesis_instrumentation__.Notify(493003)
 
 	table.RLock()
 	defer table.RUnlock()
 
 	indexStats, ok := table.stats[indexID]
 	if !ok {
+		__antithesis_instrumentation__.Notify(493007)
 		emptyStats := emptyIndexUsageStats
 		return emptyStats
+	} else {
+		__antithesis_instrumentation__.Notify(493008)
 	}
+	__antithesis_instrumentation__.Notify(493004)
 
-	// Take the read lock while returning the internal data.
 	indexStats.RLock()
 	defer indexStats.RUnlock()
 	return indexStats.IndexUsageStatistics
 }
 
-// ForEach iterates through all stored index usage statistics
-// based on the options specified in IteratorOptions. If an error is
-// encountered when calling StatsVisitor, the iteration is aborted.
 func (s *LocalIndexUsageStats) ForEach(options IteratorOptions, visitor StatsVisitor) error {
+	__antithesis_instrumentation__.Notify(493009)
 	maxIterationLimit := uint64(math.MaxUint64)
 	if options.Max != nil {
+		__antithesis_instrumentation__.Notify(493014)
 		maxIterationLimit = *options.Max
+	} else {
+		__antithesis_instrumentation__.Notify(493015)
 	}
+	__antithesis_instrumentation__.Notify(493010)
 
 	s.mu.RLock()
 	tableIDLists := make([]roachpb.TableID, 0, len(s.mu.usageStats))
 	for tableID := range s.mu.usageStats {
+		__antithesis_instrumentation__.Notify(493016)
 		tableIDLists = append(tableIDLists, tableID)
 	}
+	__antithesis_instrumentation__.Notify(493011)
 	s.mu.RUnlock()
 
 	if options.SortedTableID {
+		__antithesis_instrumentation__.Notify(493017)
 		sort.Slice(tableIDLists, func(i, j int) bool {
+			__antithesis_instrumentation__.Notify(493018)
 			return tableIDLists[i] < tableIDLists[j]
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(493019)
 	}
+	__antithesis_instrumentation__.Notify(493012)
 
 	for _, tableID := range tableIDLists {
-		tableIdxStats := s.getStatsForTableID(tableID, false /* createIfNotExists */)
+		__antithesis_instrumentation__.Notify(493020)
+		tableIdxStats := s.getStatsForTableID(tableID, false)
 
-		// This means the data s being cleared before we can fetch it. It's not an
-		// error, so we simply just skip over it.
 		if tableIdxStats == nil {
+			__antithesis_instrumentation__.Notify(493023)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(493024)
 		}
+		__antithesis_instrumentation__.Notify(493021)
 
 		var err error
 		maxIterationLimit, err = tableIdxStats.iterateIndexStats(options.SortedIndexID, maxIterationLimit, visitor)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(493025)
 			return errors.Wrap(err, "unexpected error encountered when iterating through index usage stats")
+		} else {
+			__antithesis_instrumentation__.Notify(493026)
 		}
-		// If we have already reached iterating limit, we abort iteration.
+		__antithesis_instrumentation__.Notify(493022)
+
 		if maxIterationLimit == 0 {
+			__antithesis_instrumentation__.Notify(493027)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(493028)
 		}
 	}
+	__antithesis_instrumentation__.Notify(493013)
 
 	return nil
 }
 
-// batchInsertLocked batch inserts otherStats into LocalIndexUsageStats. The
-// responsibility of locking is delegated to the caller.
 func (s *LocalIndexUsageStats) batchInsertLocked(
 	otherStats []roachpb.CollectedIndexUsageStatistics,
 ) {
+	__antithesis_instrumentation__.Notify(493029)
 	for _, newStats := range otherStats {
-		tableIndexStats := s.getStatsForTableIDLocked(newStats.Key.TableID, true /* createIfNotExists */)
-		stats := tableIndexStats.getStatsForIndexIDLocked(newStats.Key.IndexID, true /* createIfNotExists */)
+		__antithesis_instrumentation__.Notify(493030)
+		tableIndexStats := s.getStatsForTableIDLocked(newStats.Key.TableID, true)
+		stats := tableIndexStats.getStatsForIndexIDLocked(newStats.Key.IndexID, true)
 		stats.Add(&newStats.Stats)
 	}
 }
 
 func (s *LocalIndexUsageStats) clear() {
+	__antithesis_instrumentation__.Notify(493031)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, tableStats := range s.mu.usageStats {
+		__antithesis_instrumentation__.Notify(493033)
 		tableStats.clear()
 	}
+	__antithesis_instrumentation__.Notify(493032)
 	s.mu.lastReset = timeutil.Now()
 }
 
-// Reset resets read info for index usage metrics, although leaves the
-// table and index mappings in place.
 func (s *LocalIndexUsageStats) Reset() {
+	__antithesis_instrumentation__.Notify(493034)
 	s.clear()
 }
 
 func (s *LocalIndexUsageStats) insertIndexUsage(key roachpb.IndexUsageKey, usageTyp usageType) {
-	// If the index usage stats collection is disabled, we abort.
-	if !Enable.Get(&s.st.SV) {
-		return
-	}
+	__antithesis_instrumentation__.Notify(493035)
 
-	tableStats := s.getStatsForTableID(key.TableID, true /* createIfNotExists */)
-	indexStats := tableStats.getStatsForIndexID(key.IndexID, true /* createIfNotExists */)
+	if !Enable.Get(&s.st.SV) {
+		__antithesis_instrumentation__.Notify(493037)
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(493038)
+	}
+	__antithesis_instrumentation__.Notify(493036)
+
+	tableStats := s.getStatsForTableID(key.TableID, true)
+	indexStats := tableStats.getStatsForIndexID(key.IndexID, true)
 	indexStats.Lock()
 	defer indexStats.Unlock()
 	switch usageTyp {
-	// TODO(azhng): include TotalRowsRead/TotalRowsWritten field once it s plumbed
-	//  into the SQL engine.
+
 	case readOp:
+		__antithesis_instrumentation__.Notify(493039)
 		indexStats.TotalReadCount++
 		indexStats.LastRead = timeutil.Now()
-		// TODO(azhng): include TotalRowsRead field once it s plumbed into
-		//  the exec engine.
+
 	case writeOp:
+		__antithesis_instrumentation__.Notify(493040)
 		indexStats.TotalWriteCount++
 		indexStats.LastWrite = timeutil.Now()
+	default:
+		__antithesis_instrumentation__.Notify(493041)
 	}
 }
 
-// getStatsForTableID returns the tableIndexStats for the given roachpb.TableID.
-// This method performs optimistic locking, that is: it will assume no write
-// operation will happen and only hold a read lock. If this method realizes
-// later that a write-operation is required, then it will abort and retry
-// with a write-lock. This results in a slow initial write, but a faster
-// subsequent updates.
 func (s *LocalIndexUsageStats) getStatsForTableID(
 	id roachpb.TableID, createIfNotExists bool,
 ) *tableIndexStats {
-	// We take the read lock first, and immediately return the stats object
-	// if we have already created it.
+	__antithesis_instrumentation__.Notify(493042)
+
 	s.mu.RLock()
 
-	// We are handling two cases here:
-	// 1. if we have already created the stats object, we can simply return
-	// 2. if we are only doing a simple lookup, we can return regardless
-	//    the stats object has been found.
-	if tableIndexStats, ok := s.mu.usageStats[id]; ok || !createIfNotExists {
+	if tableIndexStats, ok := s.mu.usageStats[id]; ok || func() bool {
+		__antithesis_instrumentation__.Notify(493044)
+		return !createIfNotExists == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(493045)
 		defer s.mu.RUnlock()
 		return tableIndexStats
+	} else {
+		__antithesis_instrumentation__.Notify(493046)
 	}
+	__antithesis_instrumentation__.Notify(493043)
 
-	// Upgrading the lock from a read-lock to a write-lock. Then subsequently we
-	// call s.getStatsForTableIDLocked(). That function will check again whether
-	// the given roachpb.TableID exists in our map. This is necessary to prevent
-	// race condition.
 	s.mu.RUnlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -294,33 +287,48 @@ func (s *LocalIndexUsageStats) getStatsForTableID(
 func (s *LocalIndexUsageStats) getStatsForTableIDLocked(
 	id roachpb.TableID, createIfNotExists bool,
 ) *tableIndexStats {
+	__antithesis_instrumentation__.Notify(493047)
 	if tableIndexStats, ok := s.mu.usageStats[id]; ok {
+		__antithesis_instrumentation__.Notify(493050)
 		return tableIndexStats
+	} else {
+		__antithesis_instrumentation__.Notify(493051)
 	}
+	__antithesis_instrumentation__.Notify(493048)
 
 	if createIfNotExists {
+		__antithesis_instrumentation__.Notify(493052)
 		newTableIndexStats := &tableIndexStats{
 			tableID: id,
 			stats:   make(map[roachpb.IndexID]*indexStats),
 		}
 		s.mu.usageStats[id] = newTableIndexStats
 		return newTableIndexStats
+	} else {
+		__antithesis_instrumentation__.Notify(493053)
 	}
+	__antithesis_instrumentation__.Notify(493049)
 
 	return nil
 }
 
-// getStatsForIndexID returns the indexStats for the given roachpb.IndexID.
-// This method also performs optimistic locking similar to getStatsForTableID().
 func (t *tableIndexStats) getStatsForIndexID(
 	id roachpb.IndexID, createIfNotExists bool,
 ) *indexStats {
+	__antithesis_instrumentation__.Notify(493054)
 	t.RLock()
 
-	if stats, ok := t.stats[id]; ok || !createIfNotExists {
+	if stats, ok := t.stats[id]; ok || func() bool {
+		__antithesis_instrumentation__.Notify(493056)
+		return !createIfNotExists == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(493057)
 		t.RUnlock()
 		return stats
+	} else {
+		__antithesis_instrumentation__.Notify(493058)
 	}
+	__antithesis_instrumentation__.Notify(493055)
 
 	t.RUnlock()
 	t.Lock()
@@ -332,19 +340,28 @@ func (t *tableIndexStats) getStatsForIndexID(
 func (t *tableIndexStats) getStatsForIndexIDLocked(
 	id roachpb.IndexID, createIfNotExists bool,
 ) *indexStats {
+	__antithesis_instrumentation__.Notify(493059)
 	if stats, ok := t.stats[id]; ok {
+		__antithesis_instrumentation__.Notify(493062)
 		return stats
+	} else {
+		__antithesis_instrumentation__.Notify(493063)
 	}
+	__antithesis_instrumentation__.Notify(493060)
 	if createIfNotExists {
+		__antithesis_instrumentation__.Notify(493064)
 		newUsageEntry := &indexStats{}
 		t.stats[id] = newUsageEntry
 		return newUsageEntry
+	} else {
+		__antithesis_instrumentation__.Notify(493065)
 	}
+	__antithesis_instrumentation__.Notify(493061)
 	return nil
 }
 
-// GetLastReset returns the last time the table was reset.
 func (s *LocalIndexUsageStats) GetLastReset() time.Time {
+	__antithesis_instrumentation__.Notify(493066)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.mu.lastReset
@@ -353,34 +370,49 @@ func (s *LocalIndexUsageStats) GetLastReset() time.Time {
 func (t *tableIndexStats) iterateIndexStats(
 	orderedIndexID bool, iterLimit uint64, visitor StatsVisitor,
 ) (newIterLimit uint64, err error) {
+	__antithesis_instrumentation__.Notify(493067)
 	t.RLock()
 	indexIDs := make([]roachpb.IndexID, 0, len(t.stats))
 	for indexID := range t.stats {
+		__antithesis_instrumentation__.Notify(493071)
 		if iterLimit == 0 {
+			__antithesis_instrumentation__.Notify(493073)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(493074)
 		}
+		__antithesis_instrumentation__.Notify(493072)
 		indexIDs = append(indexIDs, indexID)
 		iterLimit--
 	}
+	__antithesis_instrumentation__.Notify(493068)
 	t.RUnlock()
 
 	if orderedIndexID {
+		__antithesis_instrumentation__.Notify(493075)
 		sort.Slice(indexIDs, func(i, j int) bool {
+			__antithesis_instrumentation__.Notify(493076)
 			return indexIDs[i] < indexIDs[j]
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(493077)
 	}
+	__antithesis_instrumentation__.Notify(493069)
 
 	for _, indexID := range indexIDs {
-		indexStats := t.getStatsForIndexID(indexID, false /* createIfNotExists */)
+		__antithesis_instrumentation__.Notify(493078)
+		indexStats := t.getStatsForIndexID(indexID, false)
 
-		// This means the data is being cleared  before we can fetch it. It's not an
-		// error, so we simply just skip over it.
 		if indexStats == nil {
+			__antithesis_instrumentation__.Notify(493080)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(493081)
 		}
+		__antithesis_instrumentation__.Notify(493079)
 
 		indexStats.RLock()
-		// Copy out the stats while holding read lock.
+
 		statsCopy := indexStats.IndexUsageStatistics
 		indexStats.RUnlock()
 
@@ -388,20 +420,23 @@ func (t *tableIndexStats) iterateIndexStats(
 			TableID: t.tableID,
 			IndexID: indexID,
 		}, &statsCopy); err != nil {
-			return 0 /* newIterLimit */, err
+			__antithesis_instrumentation__.Notify(493082)
+			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(493083)
 		}
 	}
+	__antithesis_instrumentation__.Notify(493070)
 	return iterLimit, nil
 }
 
 func (t *tableIndexStats) clear() {
+	__antithesis_instrumentation__.Notify(493084)
 	t.Lock()
 	defer t.Unlock()
 
-	// Instead of reallocating a new map, range-loop with delete can trigger
-	// golang compiler's optimization to use `memclr`.
-	// See: https://github.com/golang/go/issues/20138.
 	for k := range t.stats {
+		__antithesis_instrumentation__.Notify(493085)
 		delete(t.stats, k)
 	}
 }

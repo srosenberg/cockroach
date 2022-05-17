@@ -1,37 +1,17 @@
-// Copyright 2012, Google Inc. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in licenses/BSD-vitess.txt.
-
-// Portions of this file are additionally subject to the following
-// license and copyright.
-//
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// This code was derived from https://github.com/youtube/vitess.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "fmt"
 
-// UnionClause represents a UNION statement.
 type UnionClause struct {
 	Type        UnionType
 	Left, Right *Select
 	All         bool
 }
 
-// UnionType represents one of the three set operations in sql.
 type UnionType int
 
-// Union.Type
 const (
 	UnionOp UnionType = iota
 	IntersectOp
@@ -45,20 +25,32 @@ var unionTypeName = [...]string{
 }
 
 func (i UnionType) String() string {
-	if i < 0 || i > UnionType(len(unionTypeName)-1) {
+	__antithesis_instrumentation__.Notify(615860)
+	if i < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(615862)
+		return i > UnionType(len(unionTypeName)-1) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(615863)
 		return fmt.Sprintf("UnionType(%d)", i)
+	} else {
+		__antithesis_instrumentation__.Notify(615864)
 	}
+	__antithesis_instrumentation__.Notify(615861)
 	return unionTypeName[i]
 }
 
-// Format implements the NodeFormatter interface.
 func (node *UnionClause) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(615865)
 	ctx.FormatNode(node.Left)
 	ctx.WriteByte(' ')
 	ctx.WriteString(node.Type.String())
 	if node.All {
+		__antithesis_instrumentation__.Notify(615867)
 		ctx.WriteString(" ALL")
+	} else {
+		__antithesis_instrumentation__.Notify(615868)
 	}
+	__antithesis_instrumentation__.Notify(615866)
 	ctx.WriteByte(' ')
 	ctx.FormatNode(node.Right)
 }

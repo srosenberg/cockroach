@@ -34,6 +34,7 @@ go_library(
         "//pkg/util/timeofday",
         "//pkg/util/timeutil/pgdate",
         "//pkg/util/uint128",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_dustin_go_humanize//:go-humanize",
         "@com_github_jackc_pgtype//:pgtype",

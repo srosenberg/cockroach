@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package errors
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -17,163 +9,194 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Error is an interface for error types used by the main.wrap() function
-// to output correctly classified log messages and exit codes.
 type Error interface {
 	error
 
-	// The exit code for the error when exiting roachprod.
 	ExitCode() int
 }
 
-// Exit codes for the errors
 const (
 	cmdExitCode          = 20
 	sshExitCode          = 10
 	unclassifiedExitCode = 1
 )
 
-// Cmd wraps errors that result from a command run against the cluster.
 type Cmd struct {
 	Err error
 }
 
 func (e Cmd) Error() string {
+	__antithesis_instrumentation__.Notify(180406)
 	return fmt.Sprintf("COMMAND_PROBLEM: %s", e.Err.Error())
 }
 
-// ExitCode gives the process exit code to return for non-cockroach command
-// errors.
 func (e Cmd) ExitCode() int {
+	__antithesis_instrumentation__.Notify(180407)
 	return cmdExitCode
 }
 
-// Format passes formatting responsibilities to cockroachdb/errors
 func (e Cmd) Format(s fmt.State, verb rune) {
+	__antithesis_instrumentation__.Notify(180408)
 	errors.FormatError(e, s, verb)
 }
 
-// Unwrap the wrapped the non-cockroach command error.
 func (e Cmd) Unwrap() error {
+	__antithesis_instrumentation__.Notify(180409)
 	return e.Err
 }
 
-// SSH wraps ssh-specific errors from connections to remote hosts.
 type SSH struct {
 	Err error
 }
 
 func (e SSH) Error() string {
+	__antithesis_instrumentation__.Notify(180410)
 	return fmt.Sprintf("SSH_PROBLEM: %s", e.Err.Error())
 }
 
-// ExitCode gives the process exit code to return for SSH errors.
 func (e SSH) ExitCode() int {
+	__antithesis_instrumentation__.Notify(180411)
 	return sshExitCode
 }
 
-// Format passes formatting responsibilities to cockroachdb/errors
 func (e SSH) Format(s fmt.State, verb rune) {
+	__antithesis_instrumentation__.Notify(180412)
 	errors.FormatError(e, s, verb)
 }
 
-// Unwrap the wrapped SSH error.
 func (e SSH) Unwrap() error {
+	__antithesis_instrumentation__.Notify(180413)
 	return e.Err
 }
 
-// Unclassified wraps roachprod and unclassified errors.
 type Unclassified struct {
 	Err error
 }
 
 func (e Unclassified) Error() string {
+	__antithesis_instrumentation__.Notify(180414)
 	return fmt.Sprintf("UNCLASSIFIED_PROBLEM: %s", e.Err.Error())
 }
 
-// ExitCode gives the process exit code to return for unclassified errors.
 func (e Unclassified) ExitCode() int {
+	__antithesis_instrumentation__.Notify(180415)
 	return unclassifiedExitCode
 }
 
-// Format passes formatting responsibilities to cockroachdb/errors
 func (e Unclassified) Format(s fmt.State, verb rune) {
+	__antithesis_instrumentation__.Notify(180416)
 	errors.FormatError(e, s, verb)
 }
 
-// Unwrap the wrapped unclassified error.
 func (e Unclassified) Unwrap() error {
+	__antithesis_instrumentation__.Notify(180417)
 	return e.Err
 }
 
-// ClassifyCmdError classifies an error received while executing a
-// non-cockroach command remotely over an ssh connection to the right Error
-// type.
 func ClassifyCmdError(err error) Error {
+	__antithesis_instrumentation__.Notify(180418)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(180421)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(180422)
 	}
+	__antithesis_instrumentation__.Notify(180419)
 
 	if exitErr, ok := asExitError(err); ok {
+		__antithesis_instrumentation__.Notify(180423)
 		if exitErr.ExitCode() == 255 {
+			__antithesis_instrumentation__.Notify(180425)
 			return SSH{err}
+		} else {
+			__antithesis_instrumentation__.Notify(180426)
 		}
+		__antithesis_instrumentation__.Notify(180424)
 		return Cmd{err}
+	} else {
+		__antithesis_instrumentation__.Notify(180427)
 	}
+	__antithesis_instrumentation__.Notify(180420)
 
 	return Unclassified{err}
 }
 
-// Extract the ExitError from err's error tree or (nil, false) if none exists.
 func asExitError(err error) (*exec.ExitError, bool) {
+	__antithesis_instrumentation__.Notify(180428)
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
+		__antithesis_instrumentation__.Notify(180430)
 		return exitErr, true
+	} else {
+		__antithesis_instrumentation__.Notify(180431)
 	}
+	__antithesis_instrumentation__.Notify(180429)
 	return nil, false
 }
 
-// AsError extracts the Error from err's error tree or (nil, false) if none exists.
 func AsError(err error) (Error, bool) {
+	__antithesis_instrumentation__.Notify(180432)
 	var e Error
 	if errors.As(err, &e) {
+		__antithesis_instrumentation__.Notify(180434)
 		return e, true
+	} else {
+		__antithesis_instrumentation__.Notify(180435)
 	}
+	__antithesis_instrumentation__.Notify(180433)
 	return nil, false
 }
 
-// SelectPriorityError selects an error from the list in this priority order:
-//
-// - the Error with the highest exit code
-// - one of the `error`s
-// - nil
 func SelectPriorityError(errors []error) error {
+	__antithesis_instrumentation__.Notify(180436)
 	var result Error
 	for _, err := range errors {
+		__antithesis_instrumentation__.Notify(180440)
 		if err == nil {
+			__antithesis_instrumentation__.Notify(180443)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(180444)
 		}
+		__antithesis_instrumentation__.Notify(180441)
 
 		rpErr, _ := AsError(err)
 		if result == nil {
+			__antithesis_instrumentation__.Notify(180445)
 			result = rpErr
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(180446)
 		}
+		__antithesis_instrumentation__.Notify(180442)
 
 		if rpErr.ExitCode() > result.ExitCode() {
+			__antithesis_instrumentation__.Notify(180447)
 			result = rpErr
+		} else {
+			__antithesis_instrumentation__.Notify(180448)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180437)
 
 	if result != nil {
+		__antithesis_instrumentation__.Notify(180449)
 		return result
+	} else {
+		__antithesis_instrumentation__.Notify(180450)
 	}
+	__antithesis_instrumentation__.Notify(180438)
 
 	for _, err := range errors {
+		__antithesis_instrumentation__.Notify(180451)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180452)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(180453)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180439)
 	return nil
 }
 

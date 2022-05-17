@@ -23,6 +23,7 @@ go_library(
         "//pkg/testutils/sqlutils",
         "//pkg/util/hlc",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",
     ],

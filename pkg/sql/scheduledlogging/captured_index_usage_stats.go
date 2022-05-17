@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scheduledlogging
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -62,22 +54,16 @@ var telemetryCaptureIndexUsageStatsLoggingDelay = settings.RegisterDurationSetti
 	settings.NonNegativeDuration,
 )
 
-// CaptureIndexUsageStatsTestingKnobs provides hooks and knobs for unit tests.
 type CaptureIndexUsageStatsTestingKnobs struct {
-	// getLoggingDuration allows tests to override the duration of the index
-	// usage stats logging operation.
 	getLoggingDuration func() time.Duration
-	// getOverlapDuration allows tests to override the duration until the next
-	// scheduled interval in the case that the logging duration exceeds the
-	// default scheduled interval duration.
+
 	getOverlapDuration func() time.Duration
 }
 
-// ModuleTestingKnobs implements base.ModuleTestingKnobs interface.
-func (*CaptureIndexUsageStatsTestingKnobs) ModuleTestingKnobs() {}
+func (*CaptureIndexUsageStatsTestingKnobs) ModuleTestingKnobs() {
+	__antithesis_instrumentation__.Notify(576914)
+}
 
-// CaptureIndexUsageStatsLoggingScheduler is responsible for logging index usage stats
-// on a scheduled interval.
 type CaptureIndexUsageStatsLoggingScheduler struct {
 	db                      *kv.DB
 	st                      *cluster.Settings
@@ -87,36 +73,58 @@ type CaptureIndexUsageStatsLoggingScheduler struct {
 }
 
 func (s *CaptureIndexUsageStatsLoggingScheduler) getLoggingDuration() time.Duration {
-	if s.knobs != nil && s.knobs.getLoggingDuration != nil {
+	__antithesis_instrumentation__.Notify(576915)
+	if s.knobs != nil && func() bool {
+		__antithesis_instrumentation__.Notify(576917)
+		return s.knobs.getLoggingDuration != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(576918)
 		return s.knobs.getLoggingDuration()
+	} else {
+		__antithesis_instrumentation__.Notify(576919)
 	}
+	__antithesis_instrumentation__.Notify(576916)
 	return timeutil.Since(s.currentCaptureStartTime)
 }
 
 func (s *CaptureIndexUsageStatsLoggingScheduler) durationOnOverlap() time.Duration {
-	if s.knobs != nil && s.knobs.getOverlapDuration != nil {
+	__antithesis_instrumentation__.Notify(576920)
+	if s.knobs != nil && func() bool {
+		__antithesis_instrumentation__.Notify(576922)
+		return s.knobs.getOverlapDuration != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(576923)
 		return s.knobs.getOverlapDuration()
+	} else {
+		__antithesis_instrumentation__.Notify(576924)
 	}
-	// If the logging duration overlaps into the next scheduled interval, start
-	// the next scheduled interval immediately instead of waiting.
+	__antithesis_instrumentation__.Notify(576921)
+
 	return 0 * time.Second
 }
 
 func (s *CaptureIndexUsageStatsLoggingScheduler) durationUntilNextInterval() time.Duration {
-	// If telemetry is disabled, return the disabled interval duration.
+	__antithesis_instrumentation__.Notify(576925)
+
 	if !telemetryCaptureIndexUsageStatsEnabled.Get(&s.st.SV) {
+		__antithesis_instrumentation__.Notify(576928)
 		return telemetryCaptureIndexUsageStatsStatusCheckEnabledInterval.Get(&s.st.SV)
+	} else {
+		__antithesis_instrumentation__.Notify(576929)
 	}
-	// If the previous logging operation took longer than or equal to the set
-	// schedule interval, schedule the next interval immediately.
+	__antithesis_instrumentation__.Notify(576926)
+
 	if s.getLoggingDuration() >= telemetryCaptureIndexUsageStatsInterval.Get(&s.st.SV) {
+		__antithesis_instrumentation__.Notify(576930)
 		return s.durationOnOverlap()
+	} else {
+		__antithesis_instrumentation__.Notify(576931)
 	}
-	// Otherwise, schedule the next interval normally.
+	__antithesis_instrumentation__.Notify(576927)
+
 	return telemetryCaptureIndexUsageStatsInterval.Get(&s.st.SV)
 }
 
-// Start starts the capture index usage statistics logging scheduler.
 func Start(
 	ctx context.Context,
 	stopper *stop.Stopper,
@@ -125,6 +133,7 @@ func Start(
 	ie sqlutil.InternalExecutor,
 	knobs *CaptureIndexUsageStatsTestingKnobs,
 ) {
+	__antithesis_instrumentation__.Notify(576932)
 	scheduler := CaptureIndexUsageStatsLoggingScheduler{
 		db:    db,
 		st:    cs,
@@ -135,22 +144,34 @@ func Start(
 }
 
 func (s *CaptureIndexUsageStatsLoggingScheduler) start(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(576933)
 	_ = stopper.RunAsyncTask(ctx, "capture-index-usage-stats", func(ctx context.Context) {
-		// Start the scheduler immediately.
+		__antithesis_instrumentation__.Notify(576934)
+
 		for timer := time.NewTimer(0 * time.Second); ; timer.Reset(s.durationUntilNextInterval()) {
+			__antithesis_instrumentation__.Notify(576935)
 			select {
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(576936)
 				timer.Stop()
 				return
 			case <-timer.C:
+				__antithesis_instrumentation__.Notify(576937)
 				s.currentCaptureStartTime = timeutil.Now()
 				if !telemetryCaptureIndexUsageStatsEnabled.Get(&s.st.SV) {
+					__antithesis_instrumentation__.Notify(576939)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(576940)
 				}
+				__antithesis_instrumentation__.Notify(576938)
 
 				err := captureIndexUsageStats(ctx, s.ie, stopper, telemetryCaptureIndexUsageStatsLoggingDelay.Get(&s.st.SV))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(576941)
 					log.Warningf(ctx, "error capturing index usage stats: %+v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(576942)
 				}
 			}
 		}
@@ -163,21 +184,35 @@ func captureIndexUsageStats(
 	stopper *stop.Stopper,
 	loggingDelay time.Duration,
 ) error {
+	__antithesis_instrumentation__.Notify(576943)
 	allDatabaseNames, err := getAllDatabaseNames(ctx, ie)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(576946)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(576947)
 	}
+	__antithesis_instrumentation__.Notify(576944)
 
-	// Capture index usage statistics for each database.
 	var ok bool
 	expectedNumDatums := 9
 	var allCapturedIndexUsageStats []eventpb.EventPayload
 	for _, databaseName := range allDatabaseNames {
-		// Omit index usage statistics on the default databases 'system',
-		// 'defaultdb', and 'postgres'.
-		if databaseName == "system" || databaseName == "defaultdb" || databaseName == "postgres" {
+		__antithesis_instrumentation__.Notify(576948)
+
+		if databaseName == "system" || func() bool {
+			__antithesis_instrumentation__.Notify(576952)
+			return databaseName == "defaultdb" == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(576953)
+			return databaseName == "postgres" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(576954)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(576955)
 		}
+		__antithesis_instrumentation__.Notify(576949)
 		stmt := fmt.Sprintf(`
 		SELECT
 		 ti.descriptor_name as table_name,
@@ -204,21 +239,38 @@ func captureIndexUsageStats(
 			stmt,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(576956)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(576957)
 		}
+		__antithesis_instrumentation__.Notify(576950)
 
 		for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+			__antithesis_instrumentation__.Notify(576958)
 			var row tree.Datums
 			if err != nil {
+				__antithesis_instrumentation__.Notify(576963)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(576964)
 			}
+			__antithesis_instrumentation__.Notify(576959)
 			if row = it.Cur(); row == nil {
+				__antithesis_instrumentation__.Notify(576965)
 				return errors.New("unexpected null row while capturing index usage stats")
+			} else {
+				__antithesis_instrumentation__.Notify(576966)
 			}
+			__antithesis_instrumentation__.Notify(576960)
 
 			if row.Len() != expectedNumDatums {
+				__antithesis_instrumentation__.Notify(576967)
 				return errors.Newf("expected %d columns, received %d while capturing index usage stats", expectedNumDatums, row.Len())
+			} else {
+				__antithesis_instrumentation__.Notify(576968)
 			}
+			__antithesis_instrumentation__.Notify(576961)
 
 			tableName := tree.MustBeDString(row[0])
 			tableID := tree.MustBeDInt(row[1])
@@ -230,8 +282,12 @@ func captureIndexUsageStats(
 			totalReads := tree.MustBeDInt(row[7])
 			lastRead := time.Time{}
 			if row[8] != tree.DNull {
+				__antithesis_instrumentation__.Notify(576969)
 				lastRead = tree.MustBeDTimestampTZ(row[8]).Time
+			} else {
+				__antithesis_instrumentation__.Notify(576970)
 			}
+			__antithesis_instrumentation__.Notify(576962)
 
 			capturedIndexStats := &eventpb.CapturedIndexUsageStats{
 				TableID:        uint32(roachpb.TableID(tableID)),
@@ -248,42 +304,47 @@ func captureIndexUsageStats(
 
 			allCapturedIndexUsageStats = append(allCapturedIndexUsageStats, capturedIndexStats)
 		}
+		__antithesis_instrumentation__.Notify(576951)
 		if err = it.Close(); err != nil {
+			__antithesis_instrumentation__.Notify(576971)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(576972)
 		}
 	}
+	__antithesis_instrumentation__.Notify(576945)
 	logIndexUsageStatsWithDelay(ctx, allCapturedIndexUsageStats, stopper, loggingDelay)
 	return nil
 }
 
-// logIndexUsageStatsWithDelay logs an eventpb.EventPayload at each
-// telemetryCaptureIndexUsageStatsLoggingDelay to avoid exceeding the 10
-// log-line per second limit per node on the telemetry logging pipeline.
-// Currently, this log-line limit is only shared with 1 other telemetry event,
-// SampledQuery, which now has a logging frequency of 8 logs per second.
 func logIndexUsageStatsWithDelay(
 	ctx context.Context, events []eventpb.EventPayload, stopper *stop.Stopper, delay time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(576973)
 
-	// Log the first event immediately.
 	timer := time.NewTimer(0 * time.Second)
 	for len(events) > 0 {
+		__antithesis_instrumentation__.Notify(576975)
 		select {
 		case <-stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(576976)
 			timer.Stop()
 			return
 		case <-timer.C:
+			__antithesis_instrumentation__.Notify(576977)
 			event := events[0]
 			log.StructuredEvent(ctx, event)
 			events = events[1:]
-			// Apply a delay to subsequent events.
+
 			timer.Reset(delay)
 		}
 	}
+	__antithesis_instrumentation__.Notify(576974)
 	timer.Stop()
 }
 
 func getAllDatabaseNames(ctx context.Context, ie sqlutil.InternalExecutor) ([]string, error) {
+	__antithesis_instrumentation__.Notify(576978)
 	var allDatabaseNames []string
 	var ok bool
 	var expectedNumDatums = 1
@@ -296,23 +357,36 @@ func getAllDatabaseNames(ctx context.Context, ie sqlutil.InternalExecutor) ([]st
 		`SELECT database_name FROM [SHOW DATABASES]`,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(576982)
 		return []string{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(576983)
 	}
+	__antithesis_instrumentation__.Notify(576979)
 
-	// We have to make sure to close the iterator since we might return from the
-	// for loop early (before Next() returns false).
-	defer func() { err = errors.CombineErrors(err, it.Close()) }()
+	defer func() { __antithesis_instrumentation__.Notify(576984); err = errors.CombineErrors(err, it.Close()) }()
+	__antithesis_instrumentation__.Notify(576980)
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(576985)
 		var row tree.Datums
 		if row = it.Cur(); row == nil {
+			__antithesis_instrumentation__.Notify(576988)
 			return []string{}, errors.New("unexpected null row while capturing index usage stats")
+		} else {
+			__antithesis_instrumentation__.Notify(576989)
 		}
+		__antithesis_instrumentation__.Notify(576986)
 		if row.Len() != expectedNumDatums {
+			__antithesis_instrumentation__.Notify(576990)
 			return []string{}, errors.Newf("expected %d columns, received %d while capturing index usage stats", expectedNumDatums, row.Len())
+		} else {
+			__antithesis_instrumentation__.Notify(576991)
 		}
+		__antithesis_instrumentation__.Notify(576987)
 
 		databaseName := string(tree.MustBeDString(row[0]))
 		allDatabaseNames = append(allDatabaseNames, databaseName)
 	}
+	__antithesis_instrumentation__.Notify(576981)
 	return allDatabaseNames, nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,10 +17,9 @@ import (
 )
 
 func runResetQuorum(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(50249)
 	skip.WithIssue(t, 58165)
 
-	// n1-n5 will be in locality A, n6-n8 in B. We'll pin a single table to B and
-	// let the the nodes in B fail permanently.
 	c.Put(ctx, t.Cockroach(), "./cockroach")
 
 	settings := install.MakeClusterSettings(install.EnvOption([]string{"COCKROACH_SCAN_MAX_IDLE_TIME=5ms"}))
@@ -41,11 +32,13 @@ func runResetQuorum(ctx context.Context, t test.Test, c cluster.Cluster) {
 	rows, err := db.QueryContext(ctx, `SELECT target FROM crdb_internal.zones`)
 	require.NoError(t, err)
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(50253)
 		var target string
 		require.NoError(t, rows.Scan(&target))
 		_, err = db.ExecContext(ctx, `ALTER `+target+` CONFIGURE ZONE USING constraints = '{"-B"}'`)
 		require.NoError(t, err)
 	}
+	__antithesis_instrumentation__.Notify(50250)
 	require.NoError(t, rows.Err())
 
 	startOpts = option.DefaultStartOpts()
@@ -60,8 +53,9 @@ func runResetQuorum(ctx context.Context, t test.Test, c cluster.Cluster) {
 	_, err = db.Exec(`ALTER TABLE lostrange CONFIGURE ZONE USING constraints = '{"+B"}'`)
 	require.NoError(t, err)
 
-	var lostRangeIDs map[int64]struct{} // in practice there will be just one
+	var lostRangeIDs map[int64]struct{}
 	for i := 0; i < 100; i++ {
+		__antithesis_instrumentation__.Notify(50254)
 		lostRangeIDs = map[int64]struct{}{}
 		rows, err := db.QueryContext(ctx, `
 SELECT
@@ -81,45 +75,54 @@ OR
 		require.NoError(t, err)
 		var buf strings.Builder
 		for rows.Next() {
+			__antithesis_instrumentation__.Notify(50257)
 			var rangeID int64
 			var tableName string
 			var storeID int
 			require.NoError(t, rows.Scan(&rangeID, &tableName, &storeID))
-			if tableName == "lostrange" && storeID >= 6 {
+			if tableName == "lostrange" && func() bool {
+				__antithesis_instrumentation__.Notify(50258)
+				return storeID >= 6 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(50259)
 				lostRangeIDs[rangeID] = struct{}{}
 			} else {
+				__antithesis_instrumentation__.Notify(50260)
 				fmt.Fprintf(&buf, "r%d still has a replica on s%d (table %q)\n", rangeID, storeID, tableName)
 			}
 		}
+		__antithesis_instrumentation__.Notify(50255)
 		require.NoError(t, rows.Err())
 		if buf.Len() == 0 {
+			__antithesis_instrumentation__.Notify(50261)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(50262)
 		}
+		__antithesis_instrumentation__.Notify(50256)
 		t.L().Printf("still waiting:\n" + buf.String())
 		time.Sleep(5 * time.Second)
 	}
+	__antithesis_instrumentation__.Notify(50251)
 
 	require.NotEmpty(t, lostRangeIDs)
 
-	// Now 'lostrange' is on n6-n8 and nothing else is. The nodes go down
-	// permanently (the wiping prevents the test runner from failing the
-	// test after it has passed - we cannot restart those nodes).
 	c.Stop(ctx, t.L(), option.DefaultStopOpts(), c.Range(6, 8))
 	c.Wipe(ctx, c.Range(6, 8))
 
-	// Should not be able to read from it even (generously) after a lease timeout.
 	_, err = db.QueryContext(ctx, `SET statement_timeout = '15s'; SELECT * FROM lostrange;`)
 	require.Error(t, err)
 	t.L().Printf("table is now unavailable, as planned")
 
-	const nodeID = 1 // where to put the replica, matches node number in roachtest
+	const nodeID = 1
 	for rangeID := range lostRangeIDs {
+		__antithesis_instrumentation__.Notify(50263)
 		c.Run(ctx, c.Node(nodeID), "./cockroach", "debug", "reset-quorum",
 			fmt.Sprint(rangeID), "--insecure",
 		)
 	}
+	__antithesis_instrumentation__.Notify(50252)
 
-	// Table should come back to life (though empty).
 	var n int
 	err = db.QueryRowContext(
 		ctx, `SET statement_timeout = '120s'; SELECT count(*) FROM lostrange;`,
@@ -127,10 +130,10 @@ OR
 	require.NoError(t, err)
 	require.Zero(t, n)
 
-	// Replica should be on the right node (according to meta2).
 	for rangeID := range lostRangeIDs {
+		__antithesis_instrumentation__.Notify(50264)
 		var actNodeID int32
-		// NB: this errors if there is more than one row.
+
 		err = db.QueryRowContext(ctx,
 			`
 SELECT

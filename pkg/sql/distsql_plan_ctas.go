@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,7 +12,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// PlanAndRunCTAS plans and runs the CREATE TABLE AS command.
 func PlanAndRunCTAS(
 	ctx context.Context,
 	dsp *DistSQLPlanner,
@@ -31,10 +22,15 @@ func PlanAndRunCTAS(
 	out execinfrapb.ProcessorCoreUnion,
 	recv *DistSQLReceiver,
 ) {
+	__antithesis_instrumentation__.Notify(467664)
 	distribute := DistributionType(DistributionTypeNone)
 	if !isLocal {
+		__antithesis_instrumentation__.Notify(467667)
 		distribute = DistributionTypeSystemTenantOnly
+	} else {
+		__antithesis_instrumentation__.Notify(467668)
 	}
+	__antithesis_instrumentation__.Notify(467665)
 	planCtx := dsp.NewPlanningCtx(ctx, planner.ExtendedEvalContext(), planner,
 		txn, distribute)
 	planCtx.stmtType = tree.Rows
@@ -42,18 +38,20 @@ func PlanAndRunCTAS(
 	physPlan, cleanup, err := dsp.createPhysPlan(ctx, planCtx, in)
 	defer cleanup()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(467669)
 		recv.SetError(errors.Wrapf(err, "constructing distSQL plan"))
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(467670)
 	}
+	__antithesis_instrumentation__.Notify(467666)
 	physPlan.AddNoGroupingStage(
 		out, execinfrapb.PostProcessSpec{}, rowexec.CTASPlanResultTypes, execinfrapb.Ordering{},
 	)
 
-	// The bulk row writers will emit a binary encoded BulkOpSummary.
 	physPlan.PlanToStreamColMap = []int{0}
 
-	// Make copy of evalCtx as Run might modify it.
 	evalCtxCopy := planner.ExtendedEvalContextCopy()
 	dsp.FinalizePlan(planCtx, physPlan)
-	dsp.Run(ctx, planCtx, txn, physPlan, recv, evalCtxCopy, nil /* finishedSetupFn */)()
+	dsp.Run(ctx, planCtx, txn, physPlan, recv, evalCtxCopy, nil)()
 }

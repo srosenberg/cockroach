@@ -1,17 +1,9 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 //go:build gofuzz
 // +build gofuzz
 
 package hba
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -20,13 +12,19 @@ import (
 )
 
 func FuzzParseAndNormalize(data []byte) int {
+	__antithesis_instrumentation__.Notify(559833)
 	conf, err := ParseAndNormalize(string(data))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559837)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(559838)
 	}
+	__antithesis_instrumentation__.Notify(559834)
 	s := conf.String()
 	conf2, err := ParseAndNormalize(s)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559839)
 		panic(fmt.Errorf(`-- original:
 %s
 -- parsed:
@@ -39,9 +37,13 @@ func FuzzParseAndNormalize(data []byte) int {
 			pretty.Formatter(conf),
 			s,
 			err))
+	} else {
+		__antithesis_instrumentation__.Notify(559840)
 	}
+	__antithesis_instrumentation__.Notify(559835)
 	s2 := conf2.String()
 	if s != s2 {
+		__antithesis_instrumentation__.Notify(559841)
 		panic(fmt.Errorf(`reparse mismatch:
 -- original:
 %s
@@ -52,6 +54,9 @@ func FuzzParseAndNormalize(data []byte) int {
 			s,
 			pretty.Formatter(conf2),
 			s2))
+	} else {
+		__antithesis_instrumentation__.Notify(559842)
 	}
+	__antithesis_instrumentation__.Notify(559836)
 	return 1
 }

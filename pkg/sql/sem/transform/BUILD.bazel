@@ -11,5 +11,6 @@ go_library(
     deps = [
         "//pkg/sql/sem/tree",
         "//pkg/sql/sessiondata",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

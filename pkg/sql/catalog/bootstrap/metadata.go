@@ -1,16 +1,8 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package bootstrap contains the metadata required to bootstrap the sql
 // schema for a fresh cockroach cluster.
 package bootstrap
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,10 +23,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// MetadataSchema is used to construct the initial sql schema for a new
-// CockroachDB cluster being bootstrapped. Tables and databases must be
-// installed on the underlying persistent storage before a cockroach store can
-// start running correctly, thus requiring this special initialization.
 type MetadataSchema struct {
 	codec         keys.SQLCodec
 	descs         []catalog.Descriptor
@@ -43,233 +31,235 @@ type MetadataSchema struct {
 	ids           catalog.DescriptorIDSet
 }
 
-// MakeMetadataSchema constructs a new MetadataSchema value which constructs
-// the "system" database.
 func MakeMetadataSchema(
 	codec keys.SQLCodec,
 	defaultZoneConfig *zonepb.ZoneConfig,
 	defaultSystemZoneConfig *zonepb.ZoneConfig,
 ) MetadataSchema {
+	__antithesis_instrumentation__.Notify(247223)
 	ms := MetadataSchema{codec: codec}
 	addSystemDatabaseToSchema(&ms, defaultZoneConfig, defaultSystemZoneConfig)
 	return ms
 }
 
-// firstNonSystemDescriptorID is the initial value of the descriptor ID generator
-// and thus is the value at which we generate the first non-system descriptor
-// ID. In clusters which have been upgraded, there may be non-system
-// descriptors with IDs smaller that this. This is unexported very
-// intentionally; we may change this value and it should not be relied upon.
-// Note that this is in the bootstrap package because it's the value at
-// bootstrap time only.
-//
-// This value is chosen in partly for its aesthetics and partly because it
-// still fits in the smaller varint representation. Nothing should break
-// other than datadriven tests if this number changes. Entropy will surely
-// lead to more tests implicitly relying on this number, but hopefully not
-// many. Even once the number of system tables surpasses this number, things
-// would be okay, but the number of tests that'd need to be rewritten per new
-// system table would go up a bunch.
 const firstNonSystemDescriptorID = 100
 
-// AddDescriptor adds a new non-config descriptor to the system schema.
 func (ms *MetadataSchema) AddDescriptor(desc catalog.Descriptor) {
+	__antithesis_instrumentation__.Notify(247224)
 	switch id := desc.GetID(); id {
 	case descpb.InvalidID:
+		__antithesis_instrumentation__.Notify(247226)
 		if _, isTable := desc.(catalog.TableDescriptor); !isTable {
+			__antithesis_instrumentation__.Notify(247229)
 			log.Fatalf(context.TODO(), "only system tables may have dynamic IDs, got %T for %s",
 				desc, desc.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(247230)
 		}
+		__antithesis_instrumentation__.Notify(247227)
 		mut := desc.NewBuilder().BuildCreatedMutable().(*tabledesc.Mutable)
 		mut.ID = ms.allocateID()
 		desc = mut.ImmutableCopy()
 	default:
+		__antithesis_instrumentation__.Notify(247228)
 		if ms.ids.Contains(id) {
+			__antithesis_instrumentation__.Notify(247231)
 			log.Fatalf(context.TODO(), "adding descriptor with duplicate ID: %v", desc)
+		} else {
+			__antithesis_instrumentation__.Notify(247232)
 		}
 	}
+	__antithesis_instrumentation__.Notify(247225)
 	ms.descs = append(ms.descs, desc)
 }
 
-// AddDescriptorForSystemTenant is like AddDescriptor but only for the system
-// tenant.
 func (ms *MetadataSchema) AddDescriptorForSystemTenant(desc catalog.Descriptor) {
+	__antithesis_instrumentation__.Notify(247233)
 	if !ms.codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(247235)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(247236)
 	}
+	__antithesis_instrumentation__.Notify(247234)
 	ms.AddDescriptor(desc)
 }
 
-// AddDescriptorForNonSystemTenant is like AddDescriptor but only for non-system
-// tenants.
 func (ms *MetadataSchema) AddDescriptorForNonSystemTenant(desc catalog.Descriptor) {
+	__antithesis_instrumentation__.Notify(247237)
 	if ms.codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(247239)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(247240)
 	}
+	__antithesis_instrumentation__.Notify(247238)
 	ms.AddDescriptor(desc)
 }
 
-// ForEachCatalogDescriptor iterates through each catalog.Descriptor object in
-// this schema.
-// iterutil.StopIteration is supported.
 func (ms MetadataSchema) ForEachCatalogDescriptor(fn func(desc catalog.Descriptor) error) error {
+	__antithesis_instrumentation__.Notify(247241)
 	for _, desc := range ms.descs {
+		__antithesis_instrumentation__.Notify(247243)
 		if err := fn(desc); err != nil {
+			__antithesis_instrumentation__.Notify(247244)
 			if iterutil.Done(err) {
+				__antithesis_instrumentation__.Notify(247246)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(247247)
 			}
+			__antithesis_instrumentation__.Notify(247245)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(247248)
 		}
 	}
+	__antithesis_instrumentation__.Notify(247242)
 	return nil
 }
 
-// AddSplitIDs adds some "table ids" to the MetadataSchema such that
-// corresponding keys are returned as split points by GetInitialValues().
-// AddDescriptor() has the same effect for the table descriptors that are passed
-// to it, but we also have a couple of "fake tables" that don't have descriptors
-// but need splits just the same.
 func (ms *MetadataSchema) AddSplitIDs(id ...uint32) {
+	__antithesis_instrumentation__.Notify(247249)
 	ms.otherSplitIDs = append(ms.otherSplitIDs, id...)
 }
 
-// SystemDescriptorCount returns the number of descriptors that will be created by
-// this schema. This value is needed to automate certain tests.
 func (ms MetadataSchema) SystemDescriptorCount() int {
+	__antithesis_instrumentation__.Notify(247250)
 	return len(ms.descs)
 }
 
-// GetInitialValues returns the set of initial K/V values which should be added to
-// a bootstrapping cluster in order to create the tables contained
-// in the schema. Also returns a list of split points (a split for each SQL
-// table descriptor part of the initial values). Both returned sets are sorted.
 func (ms MetadataSchema) GetInitialValues() ([]roachpb.KeyValue, []roachpb.RKey) {
+	__antithesis_instrumentation__.Notify(247251)
 	var ret []roachpb.KeyValue
 	var splits []roachpb.RKey
 	add := func(key roachpb.Key, value roachpb.Value) {
+		__antithesis_instrumentation__.Notify(247256)
 		ret = append(ret, roachpb.KeyValue{Key: key, Value: value})
 	}
 
-	// Save the ID generator value, which will generate descriptor IDs for user
-	// objects.
 	{
+		__antithesis_instrumentation__.Notify(247257)
 		value := roachpb.Value{}
 		value.SetInt(int64(ms.FirstNonSystemDescriptorID()))
 		add(ms.codec.DescIDSequenceKey(), value)
 	}
+	__antithesis_instrumentation__.Notify(247252)
 
-	// Generate initial values for system databases and tables, which have
-	// static descriptors that were generated elsewhere.
 	for _, desc := range ms.descs {
-		// Create name metadata key.
+		__antithesis_instrumentation__.Notify(247258)
+
 		nameValue := roachpb.Value{}
 		nameValue.SetInt(int64(desc.GetID()))
 		if desc.GetParentID() != keys.RootNamespaceID {
+			__antithesis_instrumentation__.Notify(247261)
 			add(catalogkeys.MakePublicObjectNameKey(ms.codec, desc.GetParentID(), desc.GetName()), nameValue)
 		} else {
-			// Initializing a database. Databases must be initialized with
-			// the public schema, as all tables are scoped under the public schema.
+			__antithesis_instrumentation__.Notify(247262)
+
 			add(catalogkeys.MakeDatabaseNameKey(ms.codec, desc.GetName()), nameValue)
 			publicSchemaValue := roachpb.Value{}
 			publicSchemaValue.SetInt(int64(keys.SystemPublicSchemaID))
 			add(catalogkeys.MakeSchemaNameKey(ms.codec, desc.GetID(), tree.PublicSchema), publicSchemaValue)
 		}
+		__antithesis_instrumentation__.Notify(247259)
 
-		// Create descriptor metadata key.
 		descValue := roachpb.Value{}
 		if err := descValue.SetProto(desc.DescriptorProto()); err != nil {
+			__antithesis_instrumentation__.Notify(247263)
 			log.Fatalf(context.TODO(), "could not marshal %v", desc)
+		} else {
+			__antithesis_instrumentation__.Notify(247264)
 		}
+		__antithesis_instrumentation__.Notify(247260)
 		add(catalogkeys.MakeDescMetadataKey(ms.codec, desc.GetID()), descValue)
 		if desc.GetID() > keys.MaxSystemConfigDescID {
+			__antithesis_instrumentation__.Notify(247265)
 			splits = append(splits, roachpb.RKey(ms.codec.TablePrefix(uint32(desc.GetID()))))
+		} else {
+			__antithesis_instrumentation__.Notify(247266)
 		}
 	}
+	__antithesis_instrumentation__.Notify(247253)
 
-	// The splits slice currently has a split point for each of the object
-	// descriptors in ms.descs. If we're fetching the initial values for the
-	// system tenant, add any additional split point, which correspond to
-	// "pseudo" tables that don't have real descriptors.
-	//
-	// If we're fetching the initial values for a secondary tenant, things are
-	// different. Secondary tenants do not enforce split points at table
-	// boundaries. In fact, if we tried to split at table boundaries, those
-	// splits would quickly be merged away. The only enforced split points are
-	// between secondary tenants (e.g. between /tenant/<id> and /tenant/<id+1>).
-	// So we drop all descriptor split points and replace it with a single split
-	// point at the beginning of this tenant's keyspace.
 	if ms.codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(247267)
 		for _, id := range ms.otherSplitIDs {
+			__antithesis_instrumentation__.Notify(247268)
 			splits = append(splits, roachpb.RKey(ms.codec.TablePrefix(id)))
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(247269)
 		splits = []roachpb.RKey{roachpb.RKey(ms.codec.TenantPrefix())}
 	}
+	__antithesis_instrumentation__.Notify(247254)
 
-	// Other key/value generation that doesn't fit into databases and
-	// tables. This can be used to add initial entries to a table.
 	ret = append(ret, ms.otherKV...)
 
-	// Sort returned key values; this is valuable because it matches the way the
-	// objects would be sorted if read from the engine.
 	sort.Sort(roachpb.KeyValueByKey(ret))
 	sort.Slice(splits, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(247270)
 		return splits[i].Less(splits[j])
 	})
+	__antithesis_instrumentation__.Notify(247255)
 
 	return ret, splits
 }
 
-// DescriptorIDs returns the descriptor IDs present in the metadata schema in
-// sorted order.
 func (ms MetadataSchema) DescriptorIDs() descpb.IDs {
+	__antithesis_instrumentation__.Notify(247271)
 	descriptorIDs := descpb.IDs{}
 	for _, d := range ms.descs {
+		__antithesis_instrumentation__.Notify(247273)
 		descriptorIDs = append(descriptorIDs, d.GetID())
 	}
+	__antithesis_instrumentation__.Notify(247272)
 	sort.Sort(descriptorIDs)
 	return descriptorIDs
 }
 
-// FirstNonSystemDescriptorID returns the largest system descriptor ID in this
-// schema.
 func (ms MetadataSchema) FirstNonSystemDescriptorID() descpb.ID {
+	__antithesis_instrumentation__.Notify(247274)
 	if next := ms.allocateID(); next > firstNonSystemDescriptorID {
+		__antithesis_instrumentation__.Notify(247276)
 		return next
+	} else {
+		__antithesis_instrumentation__.Notify(247277)
 	}
+	__antithesis_instrumentation__.Notify(247275)
 	return firstNonSystemDescriptorID
 }
 
 func (ms MetadataSchema) allocateID() (nextID descpb.ID) {
+	__antithesis_instrumentation__.Notify(247278)
 	maxID := descpb.ID(keys.MaxReservedDescID)
 	for _, d := range ms.descs {
+		__antithesis_instrumentation__.Notify(247280)
 		if d.GetID() > maxID {
+			__antithesis_instrumentation__.Notify(247281)
 			maxID = d.GetID()
+		} else {
+			__antithesis_instrumentation__.Notify(247282)
 		}
 	}
+	__antithesis_instrumentation__.Notify(247279)
 	return maxID + 1
 }
 
-// addSystemDescriptorsToSchema populates the supplied MetadataSchema
-// with the system database and table descriptors. The descriptors for
-// these objects exist statically in this file, but a MetadataSchema
-// can be used to persist these descriptors to the cockroach store.
 func addSystemDescriptorsToSchema(target *MetadataSchema) {
-	// Add system database.
+	__antithesis_instrumentation__.Notify(247283)
+
 	target.AddDescriptor(systemschema.SystemDB)
 
-	// Add system config tables.
 	target.AddDescriptor(systemschema.NamespaceTable)
 	target.AddDescriptor(systemschema.DescriptorTable)
 	target.AddDescriptor(systemschema.UsersTable)
 	target.AddDescriptor(systemschema.ZonesTable)
 	target.AddDescriptor(systemschema.SettingsTable)
-	// Only add the descriptor ID sequence if this is a non-system tenant.
-	// System tenants use the global descIDGenerator key. See #48513.
+
 	target.AddDescriptorForNonSystemTenant(systemschema.DescIDSequence)
 	target.AddDescriptorForSystemTenant(systemschema.TenantsTable)
 
-	// Add all the other system tables.
 	target.AddDescriptor(systemschema.LeaseTable)
 	target.AddDescriptor(systemschema.EventLogTable)
 	target.AddDescriptor(systemschema.RangeEventTable)
@@ -278,13 +268,10 @@ func addSystemDescriptorsToSchema(target *MetadataSchema) {
 	target.AddDescriptor(systemschema.WebSessionsTable)
 	target.AddDescriptor(systemschema.RoleOptionsTable)
 
-	// Tables introduced in 2.0, added here for 2.1.
 	target.AddDescriptor(systemschema.TableStatisticsTable)
 	target.AddDescriptor(systemschema.LocationsTable)
 	target.AddDescriptor(systemschema.RoleMembersTable)
 
-	// The CommentsTable has been introduced in 2.2. It was added here since it
-	// was introduced, but it's also created as a migration for older clusters.
 	target.AddDescriptor(systemschema.CommentsTable)
 	target.AddDescriptor(systemschema.ReportsMetaTable)
 	target.AddDescriptor(systemschema.ReplicationConstraintStatsTable)
@@ -293,23 +280,15 @@ func addSystemDescriptorsToSchema(target *MetadataSchema) {
 	target.AddDescriptor(systemschema.ProtectedTimestampsMetaTable)
 	target.AddDescriptor(systemschema.ProtectedTimestampsRecordsTable)
 
-	// Tables introduced in 20.1.
-
 	target.AddDescriptor(systemschema.StatementBundleChunksTable)
 	target.AddDescriptor(systemschema.StatementDiagnosticsRequestsTable)
 	target.AddDescriptor(systemschema.StatementDiagnosticsTable)
-
-	// Tables introduced in 20.2.
 
 	target.AddDescriptor(systemschema.ScheduledJobsTable)
 	target.AddDescriptor(systemschema.SqllivenessTable)
 	target.AddDescriptor(systemschema.MigrationsTable)
 
-	// Tables introduced in 21.1.
-
 	target.AddDescriptor(systemschema.JoinTokensTable)
-
-	// Tables introduced in 21.2.
 
 	target.AddDescriptor(systemschema.StatementStatisticsTable)
 	target.AddDescriptor(systemschema.TransactionStatisticsTable)
@@ -318,65 +297,60 @@ func addSystemDescriptorsToSchema(target *MetadataSchema) {
 	target.AddDescriptor(systemschema.SQLInstancesTable)
 	target.AddDescriptorForSystemTenant(systemschema.SpanConfigurationsTable)
 
-	// Tables introduced in 22.1.
-
 	target.AddDescriptorForSystemTenant(systemschema.TenantSettingsTable)
 	target.AddDescriptorForNonSystemTenant(systemschema.SpanCountTable)
 
-	// Adding a new system table? It should be added here to the metadata schema,
-	// and also created as a migration for older clusters.
 }
 
-// addSplitIDs adds a split point for each of the PseudoTableIDs to the supplied
-// MetadataSchema.
 func addSplitIDs(target *MetadataSchema) {
+	__antithesis_instrumentation__.Notify(247284)
 	target.AddSplitIDs(keys.PseudoTableIDs...)
 }
 
-// createZoneConfigKV creates a kv pair for the zone config for the given key
-// and config value.
 func createZoneConfigKV(
 	keyID int, codec keys.SQLCodec, zoneConfig *zonepb.ZoneConfig,
 ) roachpb.KeyValue {
+	__antithesis_instrumentation__.Notify(247285)
 	value := roachpb.Value{}
 	if err := value.SetProto(zoneConfig); err != nil {
+		__antithesis_instrumentation__.Notify(247287)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "could not marshal ZoneConfig for ID: %d", keyID))
+	} else {
+		__antithesis_instrumentation__.Notify(247288)
 	}
+	__antithesis_instrumentation__.Notify(247286)
 	return roachpb.KeyValue{
 		Key:   codec.ZoneKey(uint32(keyID)),
 		Value: value,
 	}
 }
 
-// InitialZoneConfigKVs returns a list of KV pairs to seed `system.zones`. The
-// list contains extra entries for the system tenant.
 func InitialZoneConfigKVs(
 	codec keys.SQLCodec,
 	defaultZoneConfig *zonepb.ZoneConfig,
 	defaultSystemZoneConfig *zonepb.ZoneConfig,
 ) (ret []roachpb.KeyValue) {
-	// Both the system tenant and secondary tenants get their own RANGE DEFAULT
-	// zone configuration.
+	__antithesis_instrumentation__.Notify(247289)
+
 	ret = append(ret,
 		createZoneConfigKV(keys.RootNamespaceID, codec, defaultZoneConfig))
 
 	if !codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(247291)
 		return ret
+	} else {
+		__antithesis_instrumentation__.Notify(247292)
 	}
+	__antithesis_instrumentation__.Notify(247290)
 
-	// Only the system tenant has zone configs over {META, LIVENESS, SYSTEM}
-	// ranges. Additionally, some reporting tables have custom zone configs set,
-	// but only for the system tenant.
 	systemZoneConf := defaultSystemZoneConfig
 	metaRangeZoneConf := protoutil.Clone(defaultSystemZoneConfig).(*zonepb.ZoneConfig)
 	livenessZoneConf := protoutil.Clone(defaultSystemZoneConfig).(*zonepb.ZoneConfig)
 
-	// .meta zone config entry with a shorter GC time.
-	metaRangeZoneConf.GC.TTLSeconds = 60 * 60 // 1h
+	metaRangeZoneConf.GC.TTLSeconds = 60 * 60
 	ret = append(ret,
 		createZoneConfigKV(keys.MetaRangesID, codec, metaRangeZoneConf))
 
-	// Some reporting tables have shorter GC times.
 	replicationConstraintStatsZoneConf := &zonepb.ZoneConfig{
 		GC: &zonepb.GCPolicy{TTLSeconds: int32(systemschema.ReplicationConstraintStatsTableTTL.Seconds())},
 	}
@@ -387,8 +361,7 @@ func InitialZoneConfigKVs(
 		GC: &zonepb.GCPolicy{TTLSeconds: int32(systemschema.TenantUsageTableTTL.Seconds())},
 	}
 
-	// Liveness zone config entry with a shorter GC time.
-	livenessZoneConf.GC.TTLSeconds = 10 * 60 // 10m
+	livenessZoneConf.GC.TTLSeconds = 10 * 60
 	ret = append(ret,
 		createZoneConfigKV(keys.LivenessRangesID, codec, livenessZoneConf))
 	ret = append(ret,
@@ -405,51 +378,45 @@ func InitialZoneConfigKVs(
 	return ret
 }
 
-// addZoneConfigKVsToSchema adds a kv pair for each of the statically defined
-// zone configurations that should be populated in a newly bootstrapped cluster.
 func addZoneConfigKVsToSchema(
 	target *MetadataSchema,
 	defaultZoneConfig *zonepb.ZoneConfig,
 	defaultSystemZoneConfig *zonepb.ZoneConfig,
 ) {
+	__antithesis_instrumentation__.Notify(247293)
 	kvs := InitialZoneConfigKVs(target.codec, defaultZoneConfig, defaultSystemZoneConfig)
 	target.otherKV = append(target.otherKV, kvs...)
 }
 
-// addSystemDatabaseToSchema populates the supplied MetadataSchema with the
-// System database, its tables and zone configurations.
 func addSystemDatabaseToSchema(
 	target *MetadataSchema,
 	defaultZoneConfig *zonepb.ZoneConfig,
 	defaultSystemZoneConfig *zonepb.ZoneConfig,
 ) {
+	__antithesis_instrumentation__.Notify(247294)
 	addSystemDescriptorsToSchema(target)
 	addSplitIDs(target)
 	addZoneConfigKVsToSchema(target, defaultZoneConfig, defaultSystemZoneConfig)
 }
 
-// TestingMinUserDescID returns the smallest user-created descriptor ID in a
-// bootstrapped cluster.
 func TestingMinUserDescID() uint32 {
+	__antithesis_instrumentation__.Notify(247295)
 	ms := MakeMetadataSchema(keys.SystemSQLCodec, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef())
 	return uint32(ms.FirstNonSystemDescriptorID())
 }
 
-// TestingMinNonDefaultUserDescID returns the smallest user-creatable descriptor
-// ID in a bootstrapped cluster.
 func TestingMinNonDefaultUserDescID() uint32 {
-	// Each default DB comes with a public schema descriptor.
+	__antithesis_instrumentation__.Notify(247296)
+
 	return TestingMinUserDescID() + uint32(len(catalogkeys.DefaultUserDBs))*2
 }
 
-// TestingUserDescID is a convenience function which returns a user ID offset
-// from the minimum value allowed in a simple unit test setting.
 func TestingUserDescID(offset uint32) uint32 {
+	__antithesis_instrumentation__.Notify(247297)
 	return TestingMinUserDescID() + offset
 }
 
-// TestingUserTableDataMin is a convenience function which returns the first
-// user table data key in a simple unit test setting.
 func TestingUserTableDataMin() roachpb.Key {
+	__antithesis_instrumentation__.Notify(247298)
 	return keys.SystemSQLCodec.TablePrefix(TestingUserDescID(0))
 }

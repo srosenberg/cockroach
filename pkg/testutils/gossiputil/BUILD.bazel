@@ -9,5 +9,6 @@ go_library(
         "//pkg/gossip",
         "//pkg/roachpb",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

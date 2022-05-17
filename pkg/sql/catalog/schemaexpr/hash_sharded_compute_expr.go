@@ -1,25 +1,13 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package schemaexpr
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 
-// MakeHashShardComputeExpr creates the serialized computed expression for a hash shard
-// column based on the column names and the number of buckets. The expression will be
-// of the form:
-//
-//    mod(fnv32(crdb_internal.datums_to_bytes(...)),buckets)
-//
 func MakeHashShardComputeExpr(colNames []string, buckets int) *string {
+	__antithesis_instrumentation__.Notify(268240)
 	unresolvedFunc := func(funcName string) tree.ResolvableFunctionReference {
+		__antithesis_instrumentation__.Notify(268245)
 		return tree.ResolvableFunctionReference{
 			FunctionReference: &tree.UnresolvedName{
 				NumParts: 1,
@@ -27,14 +15,20 @@ func MakeHashShardComputeExpr(colNames []string, buckets int) *string {
 			},
 		}
 	}
+	__antithesis_instrumentation__.Notify(268241)
 	columnItems := func() tree.Exprs {
+		__antithesis_instrumentation__.Notify(268246)
 		exprs := make(tree.Exprs, len(colNames))
 		for i := range exprs {
+			__antithesis_instrumentation__.Notify(268248)
 			exprs[i] = &tree.ColumnItem{ColumnName: tree.Name(colNames[i])}
 		}
+		__antithesis_instrumentation__.Notify(268247)
 		return exprs
 	}
+	__antithesis_instrumentation__.Notify(268242)
 	hashedColumnsExpr := func() tree.Expr {
+		__antithesis_instrumentation__.Notify(268249)
 		return &tree.FuncExpr{
 			Func: unresolvedFunc("fnv32"),
 			Exprs: tree.Exprs{
@@ -45,7 +39,9 @@ func MakeHashShardComputeExpr(colNames []string, buckets int) *string {
 			},
 		}
 	}
+	__antithesis_instrumentation__.Notify(268243)
 	modBuckets := func(expr tree.Expr) tree.Expr {
+		__antithesis_instrumentation__.Notify(268250)
 		return &tree.FuncExpr{
 			Func: unresolvedFunc("mod"),
 			Exprs: tree.Exprs{
@@ -54,6 +50,7 @@ func MakeHashShardComputeExpr(colNames []string, buckets int) *string {
 			},
 		}
 	}
+	__antithesis_instrumentation__.Notify(268244)
 	res := tree.Serialize(modBuckets(hashedColumnsExpr()))
 	return &res
 }

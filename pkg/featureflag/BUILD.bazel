@@ -13,5 +13,6 @@ go_library(
         "//pkg/sql/sqltelemetry",
         "//pkg/util/log",
         "//pkg/util/metric",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

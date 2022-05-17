@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colexecutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,10 +18,6 @@ import (
 	"github.com/marusama/semaphore"
 )
 
-// SpillingQueue is a Queue that uses a fixed-size in-memory circular buffer and
-// spills to disk if the allocator reports that more memory than the
-// caller-provided maxMemoryLimit is in use. SpillingQueue.items is growing
-// dynamically.
 type SpillingQueue struct {
 	unlimitedAllocator *colmem.Allocator
 	maxMemoryLimit     int64
@@ -42,9 +30,6 @@ type SpillingQueue struct {
 	numOnDiskItems   int
 	closed           bool
 
-	// nextInMemBatchCapacity indicates the capacity which the new batch that
-	// we'll append to items should be allocated with. It'll increase
-	// dynamically until coldata.BatchSize().
 	nextInMemBatchCapacity int
 
 	diskQueueCfg                colcontainer.DiskQueueCfg
@@ -52,16 +37,7 @@ type SpillingQueue struct {
 	diskQueueDeselectionScratch coldata.Batch
 	fdSemaphore                 semaphore.Semaphore
 	dequeueScratch              coldata.Batch
-	// lastDequeuedBatchMemUsage is the memory footprint of the last batch
-	// returned by Dequeue().
-	//
-	// We track the size instead of the reference to the batch because it is
-	// possible that the caller appends new columns, and the memory footprint of
-	// those columns is registered with the caller's allocator; therefore, if
-	// after the columns have been appended to the last dequeued batch, its
-	// footprint would be higher than what the spilling queue's allocator was
-	// registered with, and we could mistakenly release excessive amount of
-	// memory.
+
 	lastDequeuedBatchMemUsage int64
 
 	rewindable      bool
@@ -70,19 +46,11 @@ type SpillingQueue struct {
 	}
 
 	testingKnobs struct {
-		// numEnqueues tracks the number of times Enqueue() has been called with
-		// non-zero batch.
 		numEnqueues int
-		// maxNumBatchesEnqueuedInMemory, if greater than 0, indicates the
-		// maximum number of batches that are attempted to be enqueued to the
-		// in-memory buffer 'items' (other limiting conditions might occur
-		// earlier). Once numEnqueues reaches this limit, all consequent calls
-		// to Enqueue() will use the disk queue.
+
 		maxNumBatchesEnqueuedInMemory int
 	}
 
-	// testingObservability stores some observability information about the
-	// state of the spilling queue when it was closed.
 	testingObservability struct {
 		spilled     bool
 		memoryUsage int64
@@ -91,14 +59,11 @@ type SpillingQueue struct {
 	diskAcc *mon.BoundAccount
 }
 
-// spillingQueueInitialItemsLen is the initial capacity of the in-memory buffer
-// of the spilling queues (memory limit permitting).
 var spillingQueueInitialItemsLen = int64(util.ConstantWithMetamorphicTestRange(
 	"spilling-queue-initial-len",
-	64 /* defaultValue */, 1 /* min */, 16, /* max */
+	64, 1, 16,
 ))
 
-// NewSpillingQueueArgs encompasses all necessary arguments to NewSpillingQueue.
 type NewSpillingQueueArgs struct {
 	UnlimitedAllocator *colmem.Allocator
 	Types              []*types.T
@@ -108,16 +73,16 @@ type NewSpillingQueueArgs struct {
 	DiskAcc            *mon.BoundAccount
 }
 
-// NewSpillingQueue creates a new SpillingQueue. An unlimited allocator must be
-// passed in. The SpillingQueue will use this allocator to check whether memory
-// usage exceeds the given memory limit and use disk if so.
-// If fdSemaphore is nil, no Acquire or Release calls will happen. The caller
-// may want to do this if requesting FDs up front.
 func NewSpillingQueue(args *NewSpillingQueueArgs) *SpillingQueue {
+	__antithesis_instrumentation__.Notify(431869)
 	var items []coldata.Batch
 	if args.MemoryLimit > 0 {
+		__antithesis_instrumentation__.Notify(431871)
 		items = make([]coldata.Batch, spillingQueueInitialItemsLen)
+	} else {
+		__antithesis_instrumentation__.Notify(431872)
 	}
+	__antithesis_instrumentation__.Notify(431870)
 	return &SpillingQueue{
 		unlimitedAllocator: args.UnlimitedAllocator,
 		maxMemoryLimit:     args.MemoryLimit,
@@ -129,73 +94,84 @@ func NewSpillingQueue(args *NewSpillingQueueArgs) *SpillingQueue {
 	}
 }
 
-// NewRewindableSpillingQueue creates a new SpillingQueue that can be rewinded
-// in order to Dequeue all enqueued batches all over again. An unlimited
-// allocator must be passed in. The queue will use this allocator to check
-// whether memory usage exceeds the given memory limit and use disk if so.
-//
-// WARNING: when using a rewindable queue all Enqueue() operations *must* occur
-// before any Dequeue() calls (it is a limitation of
-// colcontainer.RewindableQueue interface).
 func NewRewindableSpillingQueue(args *NewSpillingQueueArgs) *SpillingQueue {
+	__antithesis_instrumentation__.Notify(431873)
 	q := NewSpillingQueue(args)
 	q.rewindable = true
 	return q
 }
 
-// Enqueue adds the provided batch to the queue. Zero-length batch needs to be
-// added as the last one.
-//
-// Passed-in batch is deeply copied, so it can be safely reused by the caller.
-// The spilling queue coalesces all input tuples into the batches of dynamically
-// increasing capacity when those are kept in-memory. It also performs a
-// deselection step if necessary when adding the batch to the disk queue.
-//
-// The ownership of the batch still lies with the caller, so the caller is
-// responsible for accounting for the memory used by batch (although the
-// spilling queue will account for memory used by the in-memory copies).
 func (q *SpillingQueue) Enqueue(ctx context.Context, batch coldata.Batch) {
-	if q.rewindable && q.rewindableState.numItemsDequeued > 0 {
+	__antithesis_instrumentation__.Notify(431874)
+	if q.rewindable && func() bool {
+		__antithesis_instrumentation__.Notify(431883)
+		return q.rewindableState.numItemsDequeued > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(431884)
 		colexecerror.InternalError(errors.Errorf("attempted to Enqueue to rewindable SpillingQueue after Dequeue has been called"))
+	} else {
+		__antithesis_instrumentation__.Notify(431885)
 	}
+	__antithesis_instrumentation__.Notify(431875)
 
 	n := batch.Length()
 	if n == 0 {
+		__antithesis_instrumentation__.Notify(431886)
 		if q.diskQueue != nil {
+			__antithesis_instrumentation__.Notify(431888)
 			if err := q.diskQueue.Enqueue(ctx, batch); err != nil {
+				__antithesis_instrumentation__.Notify(431889)
 				HandleErrorFromDiskQueue(err)
+			} else {
+				__antithesis_instrumentation__.Notify(431890)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(431891)
 		}
+		__antithesis_instrumentation__.Notify(431887)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(431892)
 	}
+	__antithesis_instrumentation__.Notify(431876)
 	q.testingKnobs.numEnqueues++
 
 	alreadySpilled := q.numOnDiskItems > 0
-	memoryLimitReached := q.unlimitedAllocator.Used() > q.maxMemoryLimit || q.maxMemoryLimit <= 0
-	maxInMemEnqueuesExceeded := q.testingKnobs.maxNumBatchesEnqueuedInMemory != 0 && q.testingKnobs.numEnqueues > q.testingKnobs.maxNumBatchesEnqueuedInMemory
-	if alreadySpilled || memoryLimitReached || maxInMemEnqueuesExceeded {
-		// In this case, one of the following conditions is true:
-		// 1. the tail of the queue might also already be on disk, in which case
-		//    that is where the batch must be enqueued to maintain order
-		// 2. there is not enough memory available to keep this batch in memory
-		// 3. we reached the testing limit on the number of items added to the
-		//    in-memory buffer
-		// so we have to add batch to the disk queue.
+	memoryLimitReached := q.unlimitedAllocator.Used() > q.maxMemoryLimit || func() bool {
+		__antithesis_instrumentation__.Notify(431893)
+		return q.maxMemoryLimit <= 0 == true
+	}() == true
+	maxInMemEnqueuesExceeded := q.testingKnobs.maxNumBatchesEnqueuedInMemory != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(431894)
+		return q.testingKnobs.numEnqueues > q.testingKnobs.maxNumBatchesEnqueuedInMemory == true
+	}() == true
+	if alreadySpilled || func() bool {
+		__antithesis_instrumentation__.Notify(431895)
+		return memoryLimitReached == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(431896)
+		return maxInMemEnqueuesExceeded == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(431897)
+
 		if err := q.maybeSpillToDisk(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(431901)
 			HandleErrorFromDiskQueue(err)
+		} else {
+			__antithesis_instrumentation__.Notify(431902)
 		}
+		__antithesis_instrumentation__.Notify(431898)
 		if sel := batch.Selection(); sel != nil {
-			// We need to perform the deselection since the disk queue
-			// ignores the selection vectors.
-			//
-			// We want to fit all deselected tuples into a single batch, so we
-			// don't enforce footprint based memory limit on a batch size.
+			__antithesis_instrumentation__.Notify(431903)
+
 			const maxBatchMemSize = math.MaxInt64
 			q.diskQueueDeselectionScratch, _ = q.unlimitedAllocator.ResetMaybeReallocate(
 				q.typs, q.diskQueueDeselectionScratch, n, maxBatchMemSize,
 			)
 			q.unlimitedAllocator.PerformOperation(q.diskQueueDeselectionScratch.ColVecs(), func() {
+				__antithesis_instrumentation__.Notify(431905)
 				for i := range q.typs {
+					__antithesis_instrumentation__.Notify(431907)
 					q.diskQueueDeselectionScratch.ColVec(i).Copy(
 						coldata.SliceArgs{
 							Src:       batch.ColVec(i),
@@ -204,51 +180,78 @@ func (q *SpillingQueue) Enqueue(ctx context.Context, batch coldata.Batch) {
 						},
 					)
 				}
+				__antithesis_instrumentation__.Notify(431906)
 				q.diskQueueDeselectionScratch.SetLength(n)
 			})
+			__antithesis_instrumentation__.Notify(431904)
 			batch = q.diskQueueDeselectionScratch
+		} else {
+			__antithesis_instrumentation__.Notify(431908)
 		}
+		__antithesis_instrumentation__.Notify(431899)
 		if err := q.diskQueue.Enqueue(ctx, batch); err != nil {
+			__antithesis_instrumentation__.Notify(431909)
 			HandleErrorFromDiskQueue(err)
+		} else {
+			__antithesis_instrumentation__.Notify(431910)
 		}
+		__antithesis_instrumentation__.Notify(431900)
 		q.numOnDiskItems++
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(431911)
 	}
+	__antithesis_instrumentation__.Notify(431877)
 
 	if q.numInMemoryItems == len(q.items) {
-		// We need to reallocate the items slice. Note that actually we might
-		// reach the memory limit before we fill up the newly allocated slice,
-		// in which case we will start adding incoming batches to the disk queue
-		// (condition 2. from above).
+		__antithesis_instrumentation__.Notify(431912)
+
 		newItems := make([]coldata.Batch, q.numInMemoryItems*2)
 		if q.curHeadIdx < q.curTailIdx {
+			__antithesis_instrumentation__.Notify(431914)
 			copy(newItems, q.items[q.curHeadIdx:q.curTailIdx])
 		} else {
+			__antithesis_instrumentation__.Notify(431915)
 			copy(newItems, q.items[q.curHeadIdx:])
 			offset := q.numInMemoryItems - q.curHeadIdx
 			copy(newItems[offset:], q.items[:q.curTailIdx])
 		}
+		__antithesis_instrumentation__.Notify(431913)
 		q.curHeadIdx = 0
 		q.curTailIdx = q.numInMemoryItems
 		q.items = newItems
+	} else {
+		__antithesis_instrumentation__.Notify(431916)
 	}
+	__antithesis_instrumentation__.Notify(431878)
 
 	alreadyCopied := 0
 	if q.numInMemoryItems > 0 {
-		// If we have already enqueued at least one batch, let's try to copy
-		// as many tuples into it as it has the capacity for.
+		__antithesis_instrumentation__.Notify(431917)
+
 		tailBatchIdx := q.curTailIdx - 1
 		if tailBatchIdx < 0 {
+			__antithesis_instrumentation__.Notify(431919)
 			tailBatchIdx = len(q.items) - 1
+		} else {
+			__antithesis_instrumentation__.Notify(431920)
 		}
+		__antithesis_instrumentation__.Notify(431918)
 		tailBatch := q.items[tailBatchIdx]
 		if l, c := tailBatch.Length(), tailBatch.Capacity(); l < c {
+			__antithesis_instrumentation__.Notify(431921)
 			alreadyCopied = c - l
 			if alreadyCopied > n {
+				__antithesis_instrumentation__.Notify(431924)
 				alreadyCopied = n
+			} else {
+				__antithesis_instrumentation__.Notify(431925)
 			}
+			__antithesis_instrumentation__.Notify(431922)
 			q.unlimitedAllocator.PerformOperation(tailBatch.ColVecs(), func() {
+				__antithesis_instrumentation__.Notify(431926)
 				for i := range q.typs {
+					__antithesis_instrumentation__.Notify(431928)
 					tailBatch.ColVec(i).Copy(
 						coldata.SliceArgs{
 							Src:         batch.ColVec(i),
@@ -259,45 +262,61 @@ func (q *SpillingQueue) Enqueue(ctx context.Context, batch coldata.Batch) {
 						},
 					)
 				}
+				__antithesis_instrumentation__.Notify(431927)
 				tailBatch.SetLength(l + alreadyCopied)
 			})
+			__antithesis_instrumentation__.Notify(431923)
 			if alreadyCopied == n {
-				// We were able to append all of the tuples, so we return early
-				// since we don't need to update any of the state.
+				__antithesis_instrumentation__.Notify(431929)
+
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(431930)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(431931)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(431932)
 	}
+	__antithesis_instrumentation__.Notify(431879)
 
 	var newBatchCapacity int
 	if q.nextInMemBatchCapacity == coldata.BatchSize() {
-		// At this point we only allocate batches with maximum capacity.
+		__antithesis_instrumentation__.Notify(431933)
+
 		newBatchCapacity = coldata.BatchSize()
 	} else {
+		__antithesis_instrumentation__.Notify(431934)
 		newBatchCapacity = n - alreadyCopied
 		if q.nextInMemBatchCapacity > newBatchCapacity {
+			__antithesis_instrumentation__.Notify(431936)
 			newBatchCapacity = q.nextInMemBatchCapacity
+		} else {
+			__antithesis_instrumentation__.Notify(431937)
 		}
+		__antithesis_instrumentation__.Notify(431935)
 		q.nextInMemBatchCapacity = 2 * newBatchCapacity
 		if q.nextInMemBatchCapacity > coldata.BatchSize() {
+			__antithesis_instrumentation__.Notify(431938)
 			q.nextInMemBatchCapacity = coldata.BatchSize()
+		} else {
+			__antithesis_instrumentation__.Notify(431939)
 		}
 	}
+	__antithesis_instrumentation__.Notify(431880)
 
-	// Note: we could have used NewMemBatchWithFixedCapacity here, but we choose
-	// not to in order to indicate that the capacity of the new batches has
-	// dynamic behavior.
 	newBatch, _ := q.unlimitedAllocator.ResetMaybeReallocate(
 		q.typs,
-		nil, /* oldBatch */
+		nil,
 		newBatchCapacity,
-		// No limit on the batch mem size here, however, we will be paying
-		// attention to the memory registered with the unlimited allocator, and
-		// we will stop adding tuples into this batch and spill when needed.
-		math.MaxInt64, /* maxBatchMemSize */
+
+		math.MaxInt64,
 	)
 	q.unlimitedAllocator.PerformOperation(newBatch.ColVecs(), func() {
+		__antithesis_instrumentation__.Notify(431940)
 		for i := range q.typs {
+			__antithesis_instrumentation__.Notify(431942)
 			newBatch.ColVec(i).Copy(
 				coldata.SliceArgs{
 					Src:         batch.ColVec(i),
@@ -307,272 +326,368 @@ func (q *SpillingQueue) Enqueue(ctx context.Context, batch coldata.Batch) {
 				},
 			)
 		}
+		__antithesis_instrumentation__.Notify(431941)
 		newBatch.SetLength(n - alreadyCopied)
 	})
+	__antithesis_instrumentation__.Notify(431881)
 
 	q.items[q.curTailIdx] = newBatch
 	q.curTailIdx++
 	if q.curTailIdx == len(q.items) {
+		__antithesis_instrumentation__.Notify(431943)
 		q.curTailIdx = 0
+	} else {
+		__antithesis_instrumentation__.Notify(431944)
 	}
+	__antithesis_instrumentation__.Notify(431882)
 	q.numInMemoryItems++
 }
 
-// Dequeue returns the next batch from the queue which is valid only until the
-// next call to Dequeue(). The memory usage of the returned batch is still
-// retained by the spilling queue's allocator, so the caller doesn't have to be
-// concerned with memory management.
-//
-// If the spilling queue is rewindable, the batch *cannot* be modified
-// (otherwise, after Rewind(), the queue will contain the corrupted data).
-//
-// If the spilling queue is not rewindable, the caller is free to modify the
-// batch.
 func (q *SpillingQueue) Dequeue(ctx context.Context) (coldata.Batch, error) {
+	__antithesis_instrumentation__.Notify(431945)
 	if q.Empty() {
-		if (!q.rewindable || q.numOnDiskItems != 0) && q.lastDequeuedBatchMemUsage != 0 {
-			// We need to release the memory used by the last dequeued batch in
-			// all cases except for when that batch came from the in-memory
-			// buffer of the rewindable queue.
+		__antithesis_instrumentation__.Notify(431950)
+		if (!q.rewindable || func() bool {
+			__antithesis_instrumentation__.Notify(431952)
+			return q.numOnDiskItems != 0 == true
+		}() == true) && func() bool {
+			__antithesis_instrumentation__.Notify(431953)
+			return q.lastDequeuedBatchMemUsage != 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(431954)
+
 			q.unlimitedAllocator.ReleaseMemory(q.lastDequeuedBatchMemUsage)
 			q.lastDequeuedBatchMemUsage = 0
+		} else {
+			__antithesis_instrumentation__.Notify(431955)
 		}
+		__antithesis_instrumentation__.Notify(431951)
 		return coldata.ZeroBatch, nil
+	} else {
+		__antithesis_instrumentation__.Notify(431956)
 	}
+	__antithesis_instrumentation__.Notify(431946)
 
-	if (q.rewindable && q.numInMemoryItems <= q.rewindableState.numItemsDequeued) ||
-		(!q.rewindable && q.numInMemoryItems == 0) {
-		// No more in-memory items. Fill the circular buffer as much as possible.
-		// Note that there must be at least one element on disk.
-		if !q.rewindable && q.curHeadIdx != q.curTailIdx {
+	if (q.rewindable && func() bool {
+		__antithesis_instrumentation__.Notify(431957)
+		return q.numInMemoryItems <= q.rewindableState.numItemsDequeued == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(431958)
+		return (!q.rewindable && func() bool {
+			__antithesis_instrumentation__.Notify(431959)
+			return q.numInMemoryItems == 0 == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(431960)
+
+		if !q.rewindable && func() bool {
+			__antithesis_instrumentation__.Notify(431966)
+			return q.curHeadIdx != q.curTailIdx == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(431967)
 			colexecerror.InternalError(errors.AssertionFailedf("assertion failed in SpillingQueue: curHeadIdx != curTailIdx, %d != %d", q.curHeadIdx, q.curTailIdx))
+		} else {
+			__antithesis_instrumentation__.Notify(431968)
 		}
-		// NOTE: Only one item is dequeued from disk since a deserialized batch is
-		// only valid until the next call to Dequeue. In practice we could Dequeue
-		// up until a new file region is loaded (which will overwrite the memory of
-		// the previous batches), but Dequeue calls are already amortized, so this
-		// is acceptable.
+		__antithesis_instrumentation__.Notify(431961)
+
 		if q.dequeueScratch == nil {
-			// In order to have precise memory accounting, we use the following
-			// scheme for the newly allocated dequeueScratch.
-			// 1. a new batch is allocated, its estimated memory usage is
-			//    registered with the allocator
-			// 2. we release the batch's memory right away so that the estimate
-			//    is unregistered
-			// 3. once the actual data is dequeued from disk into the batch, we
-			//    update the allocator with the actual memory usage.
+			__antithesis_instrumentation__.Notify(431969)
+
 			q.dequeueScratch = q.unlimitedAllocator.NewMemBatchWithFixedCapacity(q.typs, coldata.BatchSize())
 			q.unlimitedAllocator.ReleaseMemory(colmem.GetBatchMemSize(q.dequeueScratch))
+		} else {
+			__antithesis_instrumentation__.Notify(431970)
 		}
+		__antithesis_instrumentation__.Notify(431962)
 		ok, err := q.diskQueue.Dequeue(ctx, q.dequeueScratch)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(431971)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(431972)
 		}
+		__antithesis_instrumentation__.Notify(431963)
 		if !ok {
-			// There was no batch to Dequeue from disk. This should not really
-			// happen, as it should have been caught by the q.empty() check above.
+			__antithesis_instrumentation__.Notify(431973)
+
 			colexecerror.InternalError(errors.AssertionFailedf("disk queue was not empty but failed to Dequeue element in SpillingQueue"))
+		} else {
+			__antithesis_instrumentation__.Notify(431974)
 		}
-		// Release the memory used by the batch returned on the previous call
-		// to Dequeue() since that batch is no longer valid. Note that it
-		// doesn't matter whether that previous batch came from the in-memory
-		// buffer or from the disk queue since in the former case the reference
-		// to the batch is lost and in the latter case we've just reused the
-		// batch to Dequeue() from disk into it.
+		__antithesis_instrumentation__.Notify(431964)
+
 		q.unlimitedAllocator.ReleaseMemory(q.lastDequeuedBatchMemUsage)
 		q.lastDequeuedBatchMemUsage = colmem.GetBatchMemSize(q.dequeueScratch)
 		q.unlimitedAllocator.AdjustMemoryUsage(q.lastDequeuedBatchMemUsage)
 		if q.rewindable {
+			__antithesis_instrumentation__.Notify(431975)
 			q.rewindableState.numItemsDequeued++
 		} else {
+			__antithesis_instrumentation__.Notify(431976)
 			q.numOnDiskItems--
 		}
+		__antithesis_instrumentation__.Notify(431965)
 		return q.dequeueScratch, nil
+	} else {
+		__antithesis_instrumentation__.Notify(431977)
 	}
+	__antithesis_instrumentation__.Notify(431947)
 
 	res := q.items[q.curHeadIdx]
 	if q.rewindable {
-		// Note that in case of a rewindable queue we do not update the memory
-		// accounting since all of the batches in the in-memory buffer are still
-		// kept.
+		__antithesis_instrumentation__.Notify(431978)
+
 		q.rewindableState.numItemsDequeued++
 	} else {
-		// Release the reference to the batch eagerly.
+		__antithesis_instrumentation__.Notify(431979)
+
 		q.items[q.curHeadIdx] = nil
-		// Release the memory used by the batch returned on the previous call
-		// to Dequeue() since that batch is no longer valid. Since res came from
-		// the in-memory buffer, the previous batch must have come from the
-		// in-memory buffer too and we released the reference to it on the
-		// previous call.
+
 		q.unlimitedAllocator.ReleaseMemory(q.lastDequeuedBatchMemUsage)
 		q.lastDequeuedBatchMemUsage = colmem.GetBatchMemSize(res)
 		q.numInMemoryItems--
 	}
+	__antithesis_instrumentation__.Notify(431948)
 	q.curHeadIdx++
 	if q.curHeadIdx == len(q.items) {
+		__antithesis_instrumentation__.Notify(431980)
 		q.curHeadIdx = 0
+	} else {
+		__antithesis_instrumentation__.Notify(431981)
 	}
+	__antithesis_instrumentation__.Notify(431949)
 	return res, nil
 }
 
 func (q *SpillingQueue) numFDsOpenAtAnyGivenTime() int {
+	__antithesis_instrumentation__.Notify(431982)
 	if q.diskQueueCfg.CacheMode != colcontainer.DiskQueueCacheModeIntertwinedCalls {
-		// The access pattern must be write-everything then read-everything so
-		// either a read FD or a write FD are open at any one point.
+		__antithesis_instrumentation__.Notify(431984)
+
 		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(431985)
 	}
-	// Otherwise, both will be open.
+	__antithesis_instrumentation__.Notify(431983)
+
 	return 2
 }
 
 func (q *SpillingQueue) maybeSpillToDisk(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(431986)
 	if q.diskQueue != nil {
+		__antithesis_instrumentation__.Notify(431993)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(431994)
 	}
+	__antithesis_instrumentation__.Notify(431987)
 	var err error
-	// Acquire two file descriptors for the DiskQueue: one for the write file and
-	// one for the read file.
+
 	if q.fdSemaphore != nil {
+		__antithesis_instrumentation__.Notify(431995)
 		if err = q.fdSemaphore.Acquire(ctx, q.numFDsOpenAtAnyGivenTime()); err != nil {
+			__antithesis_instrumentation__.Notify(431996)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(431997)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(431998)
 	}
+	__antithesis_instrumentation__.Notify(431988)
 	log.VEvent(ctx, 1, "spilled to disk")
 	var diskQueue colcontainer.Queue
 	if q.rewindable {
+		__antithesis_instrumentation__.Notify(431999)
 		diskQueue, err = colcontainer.NewRewindableDiskQueue(ctx, q.typs, q.diskQueueCfg, q.diskAcc)
 	} else {
+		__antithesis_instrumentation__.Notify(432000)
 		diskQueue, err = colcontainer.NewDiskQueue(ctx, q.typs, q.diskQueueCfg, q.diskAcc)
 	}
+	__antithesis_instrumentation__.Notify(431989)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(432001)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(432002)
 	}
-	// Only assign q.diskQueue if there was no error, otherwise the returned value
-	// may be non-nil but invalid.
+	__antithesis_instrumentation__.Notify(431990)
+
 	q.diskQueue = diskQueue
-	// Decrease the memory limit by the amount the disk queue will use to buffer
-	// writes/reads.
+
 	q.maxMemoryLimit -= int64(q.diskQueueCfg.BufferSizeBytes)
-	// We are definitely exceeding the memory limit now, so we will move as many
-	// batches from the tail of the in-memory buffer onto the disk queue as
-	// needed to satisfy the limit again.
-	//
-	// queueTailToMove will contain the batches from the tail of the queue to
-	// move to disk. The batches are in the reversed order (i.e the last, second
-	// to last, third to last, etc).
-	//
-	// Note that if the queue is rewindable, then Dequeue() hasn't been called
-	// yet (otherwise, an assertion in Enqueue() would have fired), so we don't
-	// need to concern ourselves with the rewindable state.
+
 	var queueTailToMove []coldata.Batch
-	for q.numInMemoryItems > 0 && q.unlimitedAllocator.Used() > q.maxMemoryLimit {
+	for q.numInMemoryItems > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(432003)
+		return q.unlimitedAllocator.Used() > q.maxMemoryLimit == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(432004)
 		tailBatchIdx := q.curTailIdx - 1
 		if tailBatchIdx < 0 {
+			__antithesis_instrumentation__.Notify(432006)
 			tailBatchIdx = len(q.items) - 1
+		} else {
+			__antithesis_instrumentation__.Notify(432007)
 		}
+		__antithesis_instrumentation__.Notify(432005)
 		tailBatch := q.items[tailBatchIdx]
 		queueTailToMove = append(queueTailToMove, tailBatch)
 		q.items[tailBatchIdx] = nil
-		// We will release the memory a bit early (before enqueueing to the disk
-		// queue) since it simplifies the calculation of how many batches should
-		// be moved.
+
 		q.unlimitedAllocator.ReleaseMemory(colmem.GetBatchMemSize(tailBatch))
 		q.numInMemoryItems--
 		q.curTailIdx--
 		if q.curTailIdx < 0 {
+			__antithesis_instrumentation__.Notify(432008)
 			q.curTailIdx = len(q.items) - 1
+		} else {
+			__antithesis_instrumentation__.Notify(432009)
 		}
 	}
+	__antithesis_instrumentation__.Notify(431991)
 	for i := len(queueTailToMove) - 1; i >= 0; i-- {
-		// Note that these batches definitely do not have selection vectors
-		// since the deselection is performed during the copying in Enqueue().
+		__antithesis_instrumentation__.Notify(432010)
+
 		if err := q.diskQueue.Enqueue(ctx, queueTailToMove[i]); err != nil {
+			__antithesis_instrumentation__.Notify(432012)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(432013)
 		}
+		__antithesis_instrumentation__.Notify(432011)
 		q.numOnDiskItems++
 	}
+	__antithesis_instrumentation__.Notify(431992)
 	return nil
 }
 
-// Empty returns whether there are currently no items to be dequeued.
 func (q *SpillingQueue) Empty() bool {
+	__antithesis_instrumentation__.Notify(432014)
 	if q.rewindable {
+		__antithesis_instrumentation__.Notify(432016)
 		return q.numInMemoryItems+q.numOnDiskItems == q.rewindableState.numItemsDequeued
+	} else {
+		__antithesis_instrumentation__.Notify(432017)
 	}
-	return q.numInMemoryItems == 0 && q.numOnDiskItems == 0
+	__antithesis_instrumentation__.Notify(432015)
+	return q.numInMemoryItems == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(432018)
+		return q.numOnDiskItems == 0 == true
+	}() == true
 }
 
-// Spilled returns whether the spilling queue has spilled to disk. Note that if
-// the spilling queue has been closed, then it returns whether the queue spilled
-// before being closed.
 func (q *SpillingQueue) Spilled() bool {
+	__antithesis_instrumentation__.Notify(432019)
 	if q.closed {
+		__antithesis_instrumentation__.Notify(432021)
 		return q.testingObservability.spilled
+	} else {
+		__antithesis_instrumentation__.Notify(432022)
 	}
+	__antithesis_instrumentation__.Notify(432020)
 	return q.diskQueue != nil
 }
 
-// MemoryUsage reports the current memory usage of the spilling queue in bytes.
-// Note that if the spilling queue has been closed, then it returns the memory
-// usage of the queue before its closure.
 func (q *SpillingQueue) MemoryUsage() int64 {
+	__antithesis_instrumentation__.Notify(432023)
 	if q.closed {
+		__antithesis_instrumentation__.Notify(432025)
 		return q.testingObservability.memoryUsage
+	} else {
+		__antithesis_instrumentation__.Notify(432026)
 	}
+	__antithesis_instrumentation__.Notify(432024)
 	return q.unlimitedAllocator.Used()
 }
 
-// Close closes the spilling queue.
 func (q *SpillingQueue) Close(ctx context.Context) error {
-	if q == nil || q.closed {
+	__antithesis_instrumentation__.Notify(432027)
+	if q == nil || func() bool {
+		__antithesis_instrumentation__.Notify(432031)
+		return q.closed == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(432032)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(432033)
 	}
+	__antithesis_instrumentation__.Notify(432028)
 	q.closed = true
 	q.testingObservability.spilled = q.diskQueue != nil
 	q.testingObservability.memoryUsage = q.unlimitedAllocator.Used()
 	q.unlimitedAllocator.ReleaseMemory(q.unlimitedAllocator.Used())
-	// Eagerly release references to the in-memory items and scratch batches.
-	// Note that we don't lose the reference to 'items' slice itself so that it
-	// can be reused in case Close() is called by Reset().
+
 	for i := range q.items {
+		__antithesis_instrumentation__.Notify(432034)
 		q.items[i] = nil
 	}
+	__antithesis_instrumentation__.Notify(432029)
 	q.diskQueueDeselectionScratch = nil
 	q.dequeueScratch = nil
 	if q.diskQueue != nil {
+		__antithesis_instrumentation__.Notify(432035)
 		if err := q.diskQueue.Close(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(432038)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(432039)
 		}
+		__antithesis_instrumentation__.Notify(432036)
 		q.diskQueue = nil
 		if q.fdSemaphore != nil {
+			__antithesis_instrumentation__.Notify(432040)
 			q.fdSemaphore.Release(q.numFDsOpenAtAnyGivenTime())
+		} else {
+			__antithesis_instrumentation__.Notify(432041)
 		}
+		__antithesis_instrumentation__.Notify(432037)
 		q.maxMemoryLimit += int64(q.diskQueueCfg.BufferSizeBytes)
+	} else {
+		__antithesis_instrumentation__.Notify(432042)
 	}
+	__antithesis_instrumentation__.Notify(432030)
 	return nil
 }
 
-// Rewind rewinds the spilling queue.
 func (q *SpillingQueue) Rewind() error {
+	__antithesis_instrumentation__.Notify(432043)
 	if !q.rewindable {
+		__antithesis_instrumentation__.Notify(432046)
 		return errors.Newf("unexpectedly Rewind() called when spilling queue is not rewindable")
+	} else {
+		__antithesis_instrumentation__.Notify(432047)
 	}
+	__antithesis_instrumentation__.Notify(432044)
 	if q.diskQueue != nil {
+		__antithesis_instrumentation__.Notify(432048)
 		if err := q.diskQueue.(colcontainer.RewindableQueue).Rewind(); err != nil {
+			__antithesis_instrumentation__.Notify(432049)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(432050)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(432051)
 	}
+	__antithesis_instrumentation__.Notify(432045)
 	q.curHeadIdx = 0
 	q.lastDequeuedBatchMemUsage = 0
 	q.rewindableState.numItemsDequeued = 0
 	return nil
 }
 
-// Reset resets the spilling queue.
 func (q *SpillingQueue) Reset(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(432052)
 	if err := q.Close(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(432054)
 		colexecerror.InternalError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(432055)
 	}
+	__antithesis_instrumentation__.Notify(432053)
 	q.closed = false
 	q.numInMemoryItems = 0
 	q.numOnDiskItems = 0

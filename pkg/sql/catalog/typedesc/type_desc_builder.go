@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package typedesc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
@@ -18,8 +10,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 )
 
-// TypeDescriptorBuilder is an extension of catalog.DescriptorBuilder
-// for type descriptors.
 type TypeDescriptorBuilder interface {
 	catalog.DescriptorBuilder
 	BuildImmutableType() catalog.TypeDescriptor
@@ -37,10 +27,9 @@ type typeDescriptorBuilder struct {
 
 var _ TypeDescriptorBuilder = &typeDescriptorBuilder{}
 
-// NewBuilder creates a new catalog.DescriptorBuilder object for building
-// type descriptors.
 func NewBuilder(desc *descpb.TypeDescriptor) TypeDescriptorBuilder {
-	return newBuilder(desc, false, /* isUncommitedVersion */
+	__antithesis_instrumentation__.Notify(272340)
+	return newBuilder(desc, false,
 		catalog.PostDeserializationChanges{})
 }
 
@@ -49,6 +38,7 @@ func newBuilder(
 	isUncommittedVersion bool,
 	changes catalog.PostDeserializationChanges,
 ) TypeDescriptorBuilder {
+	__antithesis_instrumentation__.Notify(272341)
 	b := &typeDescriptorBuilder{
 		original:             protoutil.Clone(desc).(*descpb.TypeDescriptor),
 		isUncommittedVersion: isUncommittedVersion,
@@ -57,14 +47,13 @@ func newBuilder(
 	return b
 }
 
-// DescriptorType implements the catalog.DescriptorBuilder interface.
 func (tdb *typeDescriptorBuilder) DescriptorType() catalog.DescriptorType {
+	__antithesis_instrumentation__.Notify(272342)
 	return catalog.Type
 }
 
-// RunPostDeserializationChanges implements the catalog.DescriptorBuilder
-// interface.
 func (tdb *typeDescriptorBuilder) RunPostDeserializationChanges() error {
+	__antithesis_instrumentation__.Notify(272343)
 	tdb.maybeModified = protoutil.Clone(tdb.original).(*descpb.TypeDescriptor)
 	fixedPrivileges := catprivilege.MaybeFixPrivileges(
 		&tdb.maybeModified.Privileges,
@@ -74,59 +63,72 @@ func (tdb *typeDescriptorBuilder) RunPostDeserializationChanges() error {
 		tdb.maybeModified.GetName(),
 	)
 	addedGrantOptions := catprivilege.MaybeUpdateGrantOptions(tdb.maybeModified.Privileges)
-	if fixedPrivileges || addedGrantOptions {
+	if fixedPrivileges || func() bool {
+		__antithesis_instrumentation__.Notify(272345)
+		return addedGrantOptions == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(272346)
 		tdb.changes.Add(catalog.UpgradedPrivileges)
+	} else {
+		__antithesis_instrumentation__.Notify(272347)
 	}
+	__antithesis_instrumentation__.Notify(272344)
 	return nil
 }
 
-// RunRestoreChanges implements the catalog.DescriptorBuilder interface.
 func (tdb *typeDescriptorBuilder) RunRestoreChanges(_ func(id descpb.ID) catalog.Descriptor) error {
+	__antithesis_instrumentation__.Notify(272348)
 	return nil
 }
 
-// BuildImmutable implements the catalog.DescriptorBuilder interface.
 func (tdb *typeDescriptorBuilder) BuildImmutable() catalog.Descriptor {
+	__antithesis_instrumentation__.Notify(272349)
 	return tdb.BuildImmutableType()
 }
 
-// BuildImmutableType returns an immutable type descriptor.
 func (tdb *typeDescriptorBuilder) BuildImmutableType() catalog.TypeDescriptor {
+	__antithesis_instrumentation__.Notify(272350)
 	desc := tdb.maybeModified
 	if desc == nil {
+		__antithesis_instrumentation__.Notify(272352)
 		desc = tdb.original
+	} else {
+		__antithesis_instrumentation__.Notify(272353)
 	}
+	__antithesis_instrumentation__.Notify(272351)
 	imm := makeImmutable(desc, tdb.isUncommittedVersion, tdb.changes)
 	return &imm
 }
 
-// BuildExistingMutable implements the catalog.DescriptorBuilder interface.
 func (tdb *typeDescriptorBuilder) BuildExistingMutable() catalog.MutableDescriptor {
+	__antithesis_instrumentation__.Notify(272354)
 	return tdb.BuildExistingMutableType()
 }
 
-// BuildExistingMutableType returns a mutable descriptor for a type
-// which already exists.
 func (tdb *typeDescriptorBuilder) BuildExistingMutableType() *Mutable {
+	__antithesis_instrumentation__.Notify(272355)
 	if tdb.maybeModified == nil {
+		__antithesis_instrumentation__.Notify(272357)
 		tdb.maybeModified = protoutil.Clone(tdb.original).(*descpb.TypeDescriptor)
+	} else {
+		__antithesis_instrumentation__.Notify(272358)
 	}
-	clusterVersion := makeImmutable(tdb.original, false, /* isUncommitedVersion */
+	__antithesis_instrumentation__.Notify(272356)
+	clusterVersion := makeImmutable(tdb.original, false,
 		catalog.PostDeserializationChanges{})
 	return &Mutable{
-		immutable:      makeImmutable(tdb.maybeModified, false /* isUncommitedVersion */, tdb.changes),
+		immutable:      makeImmutable(tdb.maybeModified, false, tdb.changes),
 		ClusterVersion: &clusterVersion,
 	}
 }
 
-// BuildCreatedMutable implements the catalog.DescriptorBuilder interface.
 func (tdb *typeDescriptorBuilder) BuildCreatedMutable() catalog.MutableDescriptor {
+	__antithesis_instrumentation__.Notify(272359)
 	return tdb.BuildCreatedMutableType()
 }
 
-// BuildCreatedMutableType returns a mutable descriptor for a type
-// which is in the process of being created.
 func (tdb *typeDescriptorBuilder) BuildCreatedMutableType() *Mutable {
+	__antithesis_instrumentation__.Notify(272360)
 	return &Mutable{
 		immutable: makeImmutable(tdb.original, tdb.isUncommittedVersion, tdb.changes),
 	}
@@ -137,26 +139,31 @@ func makeImmutable(
 	isUncommittedVersion bool,
 	changes catalog.PostDeserializationChanges,
 ) immutable {
+	__antithesis_instrumentation__.Notify(272361)
 	immutDesc := immutable{
 		TypeDescriptor:       *desc,
 		isUncommittedVersion: isUncommittedVersion,
 		changes:              changes,
 	}
 
-	// Initialize metadata specific to the TypeDescriptor kind.
 	switch immutDesc.Kind {
 	case descpb.TypeDescriptor_ENUM, descpb.TypeDescriptor_MULTIREGION_ENUM:
+		__antithesis_instrumentation__.Notify(272363)
 		immutDesc.logicalReps = make([]string, len(desc.EnumMembers))
 		immutDesc.physicalReps = make([][]byte, len(desc.EnumMembers))
 		immutDesc.readOnlyMembers = make([]bool, len(desc.EnumMembers))
 		for i := range desc.EnumMembers {
+			__antithesis_instrumentation__.Notify(272365)
 			member := &desc.EnumMembers[i]
 			immutDesc.logicalReps[i] = member.LogicalRepresentation
 			immutDesc.physicalReps[i] = member.PhysicalRepresentation
 			immutDesc.readOnlyMembers[i] =
 				member.Capability == descpb.TypeDescriptor_EnumMember_READ_ONLY
 		}
+	default:
+		__antithesis_instrumentation__.Notify(272364)
 	}
+	__antithesis_instrumentation__.Notify(272362)
 
 	return immutDesc
 }

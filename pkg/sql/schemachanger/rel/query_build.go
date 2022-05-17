@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rel
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"reflect"
@@ -26,53 +18,48 @@ type queryBuilder struct {
 	slots         []slot
 	filters       []filter
 
-	// Track whether the slotIdx holds an entity separately. We want to
-	// know this in planning, but it'll be implicit during execution.
-	// This might be badly named. What we really mean here is that the
-	// slotIdx is a join target.
 	slotIsEntity []bool
 }
 
-// newQuery constructs a query. Errors are panicked and caught
-// in the calling NewQuery function.
 func newQuery(sc *Schema, clauses Clauses) *Query {
+	__antithesis_instrumentation__.Notify(578624)
 	p := &queryBuilder{
 		sc:            sc,
 		variableSlots: map[Var]slotIdx{},
 	}
-	// Flatten away nested and clauses. We may need them at some point
-	// if we add something like or-join or not-join. At time of writing,
-	// the and case in processClause is an assertion failure.
+
 	clauses = flattened(clauses)
 	for _, t := range clauses {
+		__antithesis_instrumentation__.Notify(578628)
 		p.processClause(t)
 	}
+	__antithesis_instrumentation__.Notify(578625)
 
-	// Order the facts for unification. The ordering is first by variable
-	// variable and then by attribute.
-	//
-	// TODO(ajwerner): For disjunctions using Any, the code currently uses
-	// the index to constrain the search for each value in the "first"
-	// such fact for the variable. Maybe we should trust the user order of
-	// facts for a given variable rather than sorting by attribute ordinal.
-	// However, we do need all the facts with the same variable and attribute
-	// to be adjacent for the unification fixed point evaluation to work.
 	entities := p.findEntitySlots()
 	sort.SliceStable(p.facts, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(578629)
 		if p.facts[i].variable == p.facts[j].variable {
+			__antithesis_instrumentation__.Notify(578631)
 			return p.facts[i].attr < p.facts[j].attr
+		} else {
+			__antithesis_instrumentation__.Notify(578632)
 		}
+		__antithesis_instrumentation__.Notify(578630)
 		return p.facts[i].variable < p.facts[j].variable
 	})
-	// Ensure that the query does not already contain a contradiction as that
-	// is almost definitely a bug.
+	__antithesis_instrumentation__.Notify(578626)
+
 	if contradictionFound, contradiction := unifyReturningContradiction(
 		p.facts, p.slots, nil,
 	); contradictionFound {
+		__antithesis_instrumentation__.Notify(578633)
 		panic(errors.Errorf(
 			"query contains contradiction on %v", sc.attrs[contradiction.attr],
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(578634)
 	}
+	__antithesis_instrumentation__.Notify(578627)
 	return &Query{
 		schema:        sc,
 		variables:     p.variables,
@@ -86,40 +73,60 @@ func newQuery(sc *Schema, clauses Clauses) *Query {
 }
 
 func (p *queryBuilder) processClause(t Clause) {
+	__antithesis_instrumentation__.Notify(578635)
 	defer func() {
+		__antithesis_instrumentation__.Notify(578637)
 		if r := recover(); r != nil {
+			__antithesis_instrumentation__.Notify(578638)
 			rErr, ok := r.(error)
 			if !ok {
+				__antithesis_instrumentation__.Notify(578641)
 				rErr = errors.AssertionFailedf("processClause: panic: %v", r)
+			} else {
+				__antithesis_instrumentation__.Notify(578642)
 			}
+			__antithesis_instrumentation__.Notify(578639)
 			encoded, err := yaml.Marshal(t)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(578643)
 				panic(errors.CombineErrors(rErr, errors.Wrap(
 					err, "failed to encode clause",
 				)))
+			} else {
+				__antithesis_instrumentation__.Notify(578644)
 			}
+			__antithesis_instrumentation__.Notify(578640)
 			panic(errors.Wrapf(
 				rErr, "failed to process invalid clause %s", encoded,
 			))
+		} else {
+			__antithesis_instrumentation__.Notify(578645)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(578636)
 	switch t := t.(type) {
 	case *tripleDecl:
+		__antithesis_instrumentation__.Notify(578646)
 		p.processTripleDecl(t)
 	case *eqDecl:
+		__antithesis_instrumentation__.Notify(578647)
 		p.processEqDecl(t)
 	case *filterDecl:
+		__antithesis_instrumentation__.Notify(578648)
 		p.processFilterDecl(t)
 	case and:
+		__antithesis_instrumentation__.Notify(578649)
 		panic(errors.AssertionFailedf("and clauses should be flattened away"))
 	default:
+		__antithesis_instrumentation__.Notify(578650)
 		panic(errors.AssertionFailedf("unknown clause type %T", t))
 	}
 }
 
 func (p *queryBuilder) processTripleDecl(fd *tripleDecl) {
+	__antithesis_instrumentation__.Notify(578651)
 	f := fact{
-		variable: p.maybeAddVar(fd.entity, true /* entity */),
+		variable: p.maybeAddVar(fd.entity, true),
 		attr:     p.sc.mustGetOrdinal(fd.attribute),
 	}
 	f.value = p.processValueExpr(fd.value)
@@ -128,15 +135,10 @@ func (p *queryBuilder) processTripleDecl(fd *tripleDecl) {
 }
 
 func (p *queryBuilder) processEqDecl(t *eqDecl) {
+	__antithesis_instrumentation__.Notify(578652)
 	varIdx := p.maybeAddVar(t.v, false)
 	valueIdx := p.processValueExpr(t.expr)
-	// This is somewhat inefficient but what it does is it lets
-	// us state that the variable is equal to itself and that it
-	// is equal to the value. It should be obvious that a variable
-	// is equal to itself, but we want to have the normal contradiction
-	// discovery machinery run.
-	//
-	// Note that there's no need to typeCheck because Self accepts all types.
+
 	p.facts = append(p.facts,
 		fact{
 			variable: varIdx,
@@ -151,44 +153,59 @@ func (p *queryBuilder) processEqDecl(t *eqDecl) {
 }
 
 func (p *queryBuilder) processFilterDecl(t *filterDecl) {
+	__antithesis_instrumentation__.Notify(578653)
 	fv := reflect.ValueOf(t.predicateFunc)
-	// Type check the function.
+
 	if err := checkNotNil(fv); err != nil {
+		__antithesis_instrumentation__.Notify(578659)
 		panic(errors.Wrapf(err, "nil filter function for variables %s", t.vars))
+	} else {
+		__antithesis_instrumentation__.Notify(578660)
 	}
+	__antithesis_instrumentation__.Notify(578654)
 	if fv.Kind() != reflect.Func {
+		__antithesis_instrumentation__.Notify(578661)
 		panic(errors.Errorf(
 			"non-function %T filter function for variables %s",
 			t.predicateFunc, t.vars,
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(578662)
 	}
+	__antithesis_instrumentation__.Notify(578655)
 	ft := fv.Type()
-	if ft.NumOut() != 1 || ft.Out(0) != boolType {
+	if ft.NumOut() != 1 || func() bool {
+		__antithesis_instrumentation__.Notify(578663)
+		return ft.Out(0) != boolType == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(578664)
 		panic(errors.Errorf(
 			"invalid non-bool return from %T filter function for variables %s",
 			t.predicateFunc, t.vars,
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(578665)
 	}
+	__antithesis_instrumentation__.Notify(578656)
 	if ft.NumIn() != len(t.vars) {
+		__antithesis_instrumentation__.Notify(578666)
 		panic(errors.Errorf(
 			"invalid %T filter function for variables %s accepts %d inputs",
 			t.predicateFunc, t.vars, ft.NumIn(),
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(578667)
 	}
+	__antithesis_instrumentation__.Notify(578657)
 
 	slots := make([]slotIdx, len(t.vars))
 	for i, v := range t.vars {
+		__antithesis_instrumentation__.Notify(578668)
 		slots[i] = p.maybeAddVar(v, false)
-		// TODO(ajwerner): This should end up constraining the slot type, but
-		// it currently doesn't. In fact, we have no way of constraining the
-		// type for a non-entity variable. Probably the way this should go is
-		// that the slots should carry constraints like types and any values.
-		// Then, when we go to populate them, we can enforce the constraints.
-		//
-		// Instead, as a hack, we've got a runtime check on the types to fail
-		// out if any of the types are not right.
+
 		checkSlotType(&p.slots[slots[i]], ft.In(i))
 	}
+	__antithesis_instrumentation__.Notify(578658)
 	p.filters = append(p.filters, filter{
 		input:     slots,
 		predicate: fv,
@@ -196,40 +213,67 @@ func (p *queryBuilder) processFilterDecl(t *filterDecl) {
 }
 
 func (p *queryBuilder) processValueExpr(rawValue expr) slotIdx {
+	__antithesis_instrumentation__.Notify(578669)
 	switch v := rawValue.(type) {
 	case Var:
+		__antithesis_instrumentation__.Notify(578670)
 		return p.maybeAddVar(v, false)
 	case anyExpr:
+		__antithesis_instrumentation__.Notify(578671)
 		sd := slot{
 			any: make([]typedValue, len(v)),
 		}
 		for i, vv := range v {
+			__antithesis_instrumentation__.Notify(578676)
 			tv, err := makeComparableValue(vv)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(578678)
 				panic(err)
+			} else {
+				__antithesis_instrumentation__.Notify(578679)
 			}
+			__antithesis_instrumentation__.Notify(578677)
 			sd.any[i] = tv
 		}
+		__antithesis_instrumentation__.Notify(578672)
 		return p.fillSlot(sd, false)
 	case valueExpr:
+		__antithesis_instrumentation__.Notify(578673)
 		tv, err := makeComparableValue(v.value)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(578680)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(578681)
 		}
+		__antithesis_instrumentation__.Notify(578674)
 		return p.fillSlot(slot{typedValue: tv}, false)
 	default:
+		__antithesis_instrumentation__.Notify(578675)
 		panic(errors.AssertionFailedf("unknown expr type %T", rawValue))
 	}
 }
 
 func (p *queryBuilder) maybeAddVar(v Var, entity bool) slotIdx {
+	__antithesis_instrumentation__.Notify(578682)
 	id, exists := p.variableSlots[v]
 	if exists {
-		if entity && !p.slotIsEntity[id] {
+		__antithesis_instrumentation__.Notify(578684)
+		if entity && func() bool {
+			__antithesis_instrumentation__.Notify(578686)
+			return !p.slotIsEntity[id] == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(578687)
 			p.slotIsEntity[id] = entity
+		} else {
+			__antithesis_instrumentation__.Notify(578688)
 		}
+		__antithesis_instrumentation__.Notify(578685)
 		return id
+	} else {
+		__antithesis_instrumentation__.Notify(578689)
 	}
+	__antithesis_instrumentation__.Notify(578683)
 	id = p.fillSlot(slot{}, entity)
 	p.variables = append(p.variables, v)
 	p.variableSlots[v] = id
@@ -237,35 +281,47 @@ func (p *queryBuilder) maybeAddVar(v Var, entity bool) slotIdx {
 }
 
 func (p *queryBuilder) fillSlot(sd slot, isEntity bool) slotIdx {
+	__antithesis_instrumentation__.Notify(578690)
 	s := slotIdx(len(p.slots))
 	p.slots = append(p.slots, sd)
 	p.slotIsEntity = append(p.slotIsEntity, isEntity)
 	return s
 }
 
-// findEntitySlots finds the slots which correspond to entity variableSlots in
-// the order in which they appear. This will imply the user-requested join
-// order.
 func (p *queryBuilder) findEntitySlots() (entitySlots []slotIdx) {
+	__antithesis_instrumentation__.Notify(578691)
 	for i := range p.slots {
+		__antithesis_instrumentation__.Notify(578693)
 		if p.slotIsEntity[i] {
+			__antithesis_instrumentation__.Notify(578694)
 			entitySlots = append(entitySlots, slotIdx(i))
+		} else {
+			__antithesis_instrumentation__.Notify(578695)
 		}
 	}
+	__antithesis_instrumentation__.Notify(578692)
 	return entitySlots
 }
 
-// typeCheck asserts that the value types for the fact are sane given the
-// attribute.
 func (p *queryBuilder) typeCheck(f fact) {
+	__antithesis_instrumentation__.Notify(578696)
 	s := &p.slots[f.value]
-	if s.empty() && s.any == nil {
+	if s.empty() && func() bool {
+		__antithesis_instrumentation__.Notify(578698)
+		return s.any == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(578699)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(578700)
 	}
+	__antithesis_instrumentation__.Notify(578697)
 	switch f.attr {
 	case p.sc.mustGetOrdinal(Type):
+		__antithesis_instrumentation__.Notify(578701)
 		checkSlotType(s, reflectTypeType)
 	default:
+		__antithesis_instrumentation__.Notify(578702)
 		checkSlotType(s, p.sc.attrTypes[f.attr])
 	}
 }
@@ -273,14 +329,26 @@ func (p *queryBuilder) typeCheck(f fact) {
 var boolType = reflect.TypeOf((*bool)(nil)).Elem()
 
 func checkSlotType(s *slot, exp reflect.Type) {
+	__antithesis_instrumentation__.Notify(578703)
 	if !s.empty() {
+		__antithesis_instrumentation__.Notify(578705)
 		if err := checkType(s.typ, exp); err != nil {
+			__antithesis_instrumentation__.Notify(578706)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(578707)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(578708)
 	}
+	__antithesis_instrumentation__.Notify(578704)
 	for i := range s.any {
+		__antithesis_instrumentation__.Notify(578709)
 		if err := checkType(s.any[i].typ, exp); err != nil {
+			__antithesis_instrumentation__.Notify(578710)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(578711)
 		}
 	}
 }

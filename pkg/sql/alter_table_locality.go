@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,33 +32,48 @@ type alterTableSetLocalityNode struct {
 	dbDesc    catalog.DatabaseDescriptor
 }
 
-// AlterTableLocality transforms a tree.AlterTableLocality into a plan node.
 func (p *planner) AlterTableLocality(
 	ctx context.Context, n *tree.AlterTableLocality,
 ) (planNode, error) {
+	__antithesis_instrumentation__.Notify(244738)
 	if err := checkSchemaChangeEnabled(
 		ctx,
 		p.ExecCfg(),
 		"ALTER TABLE",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244745)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244746)
 	}
+	__antithesis_instrumentation__.Notify(244739)
 
 	_, tableDesc, err := p.ResolveMutableTableDescriptorEx(
 		ctx, n.Name, !n.IfExists, tree.ResolveRequireTableDesc,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244747)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244748)
 	}
+	__antithesis_instrumentation__.Notify(244740)
 	if tableDesc == nil {
-		return newZeroNode(nil /* columns */), nil
+		__antithesis_instrumentation__.Notify(244749)
+		return newZeroNode(nil), nil
+	} else {
+		__antithesis_instrumentation__.Notify(244750)
 	}
+	__antithesis_instrumentation__.Notify(244741)
 
 	if err := p.checkPrivilegesForMultiRegionOp(ctx, tableDesc); err != nil {
+		__antithesis_instrumentation__.Notify(244751)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244752)
 	}
+	__antithesis_instrumentation__.Notify(244742)
 
-	// Ensure that the database is multi-region enabled.
 	_, dbDesc, err := p.Descriptors().GetImmutableDatabaseByID(
 		ctx,
 		p.txn,
@@ -77,17 +84,25 @@ func (p *planner) AlterTableLocality(
 		},
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244753)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244754)
 	}
+	__antithesis_instrumentation__.Notify(244743)
 
 	if !dbDesc.IsMultiRegion() {
+		__antithesis_instrumentation__.Notify(244755)
 		return nil, errors.WithHint(pgerror.Newf(
 			pgcode.InvalidTableDefinition,
 			"cannot alter a table's LOCALITY if its database is not multi-region enabled",
 		),
 			"database must first be multi-region enabled using ALTER DATABASE ... SET PRIMARY REGION <region>",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(244756)
 	}
+	__antithesis_instrumentation__.Notify(244744)
 
 	return &alterTableSetLocalityNode{
 		n:         *n,
@@ -96,28 +111,42 @@ func (p *planner) AlterTableLocality(
 	}, nil
 }
 
-func (n *alterTableSetLocalityNode) Next(runParams) (bool, error) { return false, nil }
-func (n *alterTableSetLocalityNode) Values() tree.Datums          { return tree.Datums{} }
-func (n *alterTableSetLocalityNode) Close(context.Context)        {}
+func (n *alterTableSetLocalityNode) Next(runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(244757)
+	return false, nil
+}
+func (n *alterTableSetLocalityNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(244758)
+	return tree.Datums{}
+}
+func (n *alterTableSetLocalityNode) Close(context.Context) {
+	__antithesis_instrumentation__.Notify(244759)
+}
 
 func (n *alterTableSetLocalityNode) alterTableLocalityGlobalToRegionalByTable(
 	params runParams,
 ) error {
+	__antithesis_instrumentation__.Notify(244760)
 	if !n.tableDesc.IsLocalityGlobal() {
+		__antithesis_instrumentation__.Notify(244766)
 		f := params.p.EvalContext().FmtCtx(tree.FmtSimple)
 		if err := multiregion.FormatTableLocalityConfig(n.tableDesc.LocalityConfig, f); err != nil {
-			// While we're in an error path and generally it's bad to return a
-			// different error in an error path, we will only get an error here if the
-			// locality is corrupted, in which case, it's probably the right error
-			// to return.
+			__antithesis_instrumentation__.Notify(244768)
+
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244769)
 		}
+		__antithesis_instrumentation__.Notify(244767)
 		return errors.AssertionFailedf(
 			"invalid call %q on incorrect table locality %s",
 			"alter table locality GLOBAL to REGIONAL BY TABLE",
 			f.String(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(244770)
 	}
+	__antithesis_instrumentation__.Notify(244761)
 
 	_, dbDesc, err := params.p.Descriptors().GetImmutableDatabaseByID(
 		params.ctx, params.p.txn, n.tableDesc.ParentID,
@@ -126,50 +155,75 @@ func (n *alterTableSetLocalityNode) alterTableLocalityGlobalToRegionalByTable(
 			AvoidLeased: true,
 		})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244771)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244772)
 	}
+	__antithesis_instrumentation__.Notify(244762)
 
 	regionEnumID, err := dbDesc.MultiRegionEnumID()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244773)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244774)
 	}
+	__antithesis_instrumentation__.Notify(244763)
 
 	if err := params.p.alterTableDescLocalityToRegionalByTable(
 		params.ctx, n.n.Locality.TableRegion, n.tableDesc, regionEnumID,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244775)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244776)
 	}
+	__antithesis_instrumentation__.Notify(244764)
 
-	// Finalize the alter by writing a new table descriptor and updating the zone
-	// configuration.
 	if err := n.writeNewTableLocalityAndZoneConfig(
 		params,
 		n.dbDesc,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244777)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244778)
 	}
+	__antithesis_instrumentation__.Notify(244765)
 
 	return nil
 }
 
 func (n *alterTableSetLocalityNode) alterTableLocalityToGlobal(params runParams) error {
+	__antithesis_instrumentation__.Notify(244779)
 	regionEnumID, err := n.dbDesc.MultiRegionEnumID()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244783)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244784)
 	}
+	__antithesis_instrumentation__.Notify(244780)
 	err = params.p.alterTableDescLocalityToGlobal(params.ctx, n.tableDesc, regionEnumID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244785)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244786)
 	}
+	__antithesis_instrumentation__.Notify(244781)
 
-	// Finalize the alter by writing a new table descriptor and updating the zone
-	// configuration.
 	if err := n.writeNewTableLocalityAndZoneConfig(
 		params,
 		n.dbDesc,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244787)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244788)
 	}
+	__antithesis_instrumentation__.Notify(244782)
 
 	return nil
 }
@@ -177,14 +231,19 @@ func (n *alterTableSetLocalityNode) alterTableLocalityToGlobal(params runParams)
 func (n *alterTableSetLocalityNode) alterTableLocalityRegionalByTableToRegionalByTable(
 	params runParams,
 ) error {
+	__antithesis_instrumentation__.Notify(244789)
 	const operation string = "alter table locality REGIONAL BY TABLE to REGIONAL BY TABLE"
 	if !n.tableDesc.IsLocalityRegionalByTable() {
+		__antithesis_instrumentation__.Notify(244795)
 		return errors.AssertionFailedf(
 			"invalid call %q on incorrect table locality. %v",
 			operation,
 			n.tableDesc.LocalityConfig,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(244796)
 	}
+	__antithesis_instrumentation__.Notify(244790)
 
 	_, dbDesc, err := params.p.Descriptors().GetImmutableDatabaseByID(
 		params.ctx, params.p.txn, n.tableDesc.ParentID,
@@ -193,27 +252,42 @@ func (n *alterTableSetLocalityNode) alterTableLocalityRegionalByTableToRegionalB
 			AvoidLeased: true,
 		})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244797)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244798)
 	}
+	__antithesis_instrumentation__.Notify(244791)
 
 	regionEnumID, err := dbDesc.MultiRegionEnumID()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244799)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244800)
 	}
+	__antithesis_instrumentation__.Notify(244792)
 
 	if err := params.p.alterTableDescLocalityToRegionalByTable(
 		params.ctx, n.n.Locality.TableRegion, n.tableDesc, regionEnumID,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244801)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244802)
 	}
+	__antithesis_instrumentation__.Notify(244793)
 
-	// Finalize the alter by writing a new table descriptor and updating the zone configuration.
 	if err := n.writeNewTableLocalityAndZoneConfig(
 		params,
 		n.dbDesc,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244803)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244804)
 	}
+	__antithesis_instrumentation__.Notify(244794)
 
 	return nil
 }
@@ -221,80 +295,122 @@ func (n *alterTableSetLocalityNode) alterTableLocalityRegionalByTableToRegionalB
 func (n *alterTableSetLocalityNode) alterTableLocalityToRegionalByRow(
 	params runParams, newLocality *tree.Locality,
 ) error {
+	__antithesis_instrumentation__.Notify(244805)
 	mayNeedImplicitCRDBRegionCol := false
 	var mutationIdxAllowedInSameTxn *int
 	var newColumnName *tree.Name
 
-	// Check if the region column exists already - if so, use it.
-	// Otherwise, if we have no name was specified, implicitly create the
-	// crdb_region column.
 	partColName := newLocality.RegionalByRowColumn
 
 	primaryIndexColIdxStart := 0
 	if n.tableDesc.IsLocalityRegionalByRow() {
+		__antithesis_instrumentation__.Notify(244812)
 		as := n.tableDesc.LocalityConfig.GetRegionalByRow().As
 
-		// If the REGIONAL BY ROW (AS <col>) is exactly the same, do nothing.
-		defaultColumnSpecified := as == nil && partColName == tree.RegionalByRowRegionNotSpecifiedName
-		sameAsColumnSpecified := as != nil && *as == string(partColName)
-		if defaultColumnSpecified || sameAsColumnSpecified {
+		defaultColumnSpecified := as == nil && func() bool {
+			__antithesis_instrumentation__.Notify(244814)
+			return partColName == tree.RegionalByRowRegionNotSpecifiedName == true
+		}() == true
+		sameAsColumnSpecified := as != nil && func() bool {
+			__antithesis_instrumentation__.Notify(244815)
+			return *as == string(partColName) == true
+		}() == true
+		if defaultColumnSpecified || func() bool {
+			__antithesis_instrumentation__.Notify(244816)
+			return sameAsColumnSpecified == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(244817)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(244818)
 		}
+		__antithesis_instrumentation__.Notify(244813)
 
-		// Otherwise, signal that we have to omit the implicit partitioning columns
-		// when modifying the primary key.
 		primaryIndexColIdxStart = int(n.tableDesc.PrimaryIndex.Partitioning.NumImplicitColumns)
+	} else {
+		__antithesis_instrumentation__.Notify(244819)
 	}
+	__antithesis_instrumentation__.Notify(244806)
 
 	for _, idx := range n.tableDesc.AllIndexes() {
+		__antithesis_instrumentation__.Notify(244820)
 		if idx.IsSharded() {
+			__antithesis_instrumentation__.Notify(244821)
 			return pgerror.Newf(
 				pgcode.FeatureNotSupported,
 				"cannot convert %s to REGIONAL BY ROW as the table contains hash sharded indexes",
 				tree.Name(n.tableDesc.GetName()),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(244822)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244807)
 
 	if newLocality.RegionalByRowColumn == tree.RegionalByRowRegionNotSpecifiedName {
+		__antithesis_instrumentation__.Notify(244823)
 		partColName = tree.RegionalByRowRegionDefaultColName
 		mayNeedImplicitCRDBRegionCol = true
+	} else {
+		__antithesis_instrumentation__.Notify(244824)
 	}
+	__antithesis_instrumentation__.Notify(244808)
 
 	partCol, err := n.tableDesc.FindColumnWithName(partColName)
-	createDefaultRegionCol := mayNeedImplicitCRDBRegionCol && sqlerrors.IsUndefinedColumnError(err)
-	if err != nil && !createDefaultRegionCol {
+	createDefaultRegionCol := mayNeedImplicitCRDBRegionCol && func() bool {
+		__antithesis_instrumentation__.Notify(244825)
+		return sqlerrors.IsUndefinedColumnError(err) == true
+	}() == true
+	if err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(244826)
+		return !createDefaultRegionCol == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(244827)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244828)
 	}
+	__antithesis_instrumentation__.Notify(244809)
 
 	enumTypeID, err := n.dbDesc.MultiRegionEnumID()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244829)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244830)
 	}
+	__antithesis_instrumentation__.Notify(244810)
 	enumOID := typedesc.TypeIDToOID(enumTypeID)
 
 	var newColumnID *descpb.ColumnID
 	var newColumnDefaultExpr *string
 
 	if !createDefaultRegionCol {
-		// If the column is not public, we cannot use it yet.
-		if !partCol.Public() {
-			return colinfo.NewUndefinedColumnError(string(partColName))
-		}
+		__antithesis_instrumentation__.Notify(244831)
 
-		// If we already have a column with the given name, check it is compatible to be made
-		// a PRIMARY KEY.
+		if !partCol.Public() {
+			__antithesis_instrumentation__.Notify(244834)
+			return colinfo.NewUndefinedColumnError(string(partColName))
+		} else {
+			__antithesis_instrumentation__.Notify(244835)
+		}
+		__antithesis_instrumentation__.Notify(244832)
+
 		if partCol.GetType().Oid() != typedesc.TypeIDToOID(enumTypeID) {
+			__antithesis_instrumentation__.Notify(244836)
 			return pgerror.Newf(
 				pgcode.InvalidTableDefinition,
 				"cannot use column %s for REGIONAL BY ROW table as it does not have the %s type",
 				partColName,
 				tree.RegionEnum,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(244837)
 		}
+		__antithesis_instrumentation__.Notify(244833)
 
-		// Check whether the given row is NOT NULL.
 		if partCol.IsNullable() {
+			__antithesis_instrumentation__.Notify(244838)
 			return errors.WithHintf(
 				pgerror.Newf(
 					pgcode.InvalidTableDefinition,
@@ -305,21 +421,21 @@ func (n *alterTableSetLocalityNode) alterTableLocalityToRegionalByRow(
 				tree.Name(n.tableDesc.Name),
 				partColName,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(244839)
 		}
 	} else {
-		// No crdb_region column is found so we are implicitly creating it.
-		// We insert the column definition before altering the primary key.
+		__antithesis_instrumentation__.Notify(244840)
 
 		primaryRegion, err := n.dbDesc.PrimaryRegionName()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244846)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244847)
 		}
-		// No crdb_region column is found so we are implicitly creating it.
-		// We insert the column definition before altering the primary key.
-		//
-		// Note we initially set the default expression to be primary_region,
-		// so that it is backfilled this way. When the backfill is complete,
-		// we will change this to use gateway_region.
+		__antithesis_instrumentation__.Notify(244841)
+
 		defaultColDef := &tree.AlterTableAddColumn{
 			ColumnDef: regionalByRowDefaultColDef(
 				enumOID,
@@ -329,8 +445,12 @@ func (n *alterTableSetLocalityNode) alterTableLocalityToRegionalByRow(
 		}
 		tn, err := params.p.getQualifiedTableName(params.ctx, n.tableDesc)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244848)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244849)
 		}
+		__antithesis_instrumentation__.Notify(244842)
 		if err := params.p.addColumnImpl(
 			params,
 			&alterTableNode{
@@ -343,26 +463,26 @@ func (n *alterTableSetLocalityNode) alterTableLocalityToRegionalByRow(
 			n.tableDesc,
 			defaultColDef,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(244850)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244851)
 		}
+		__antithesis_instrumentation__.Notify(244843)
 
-		// Allow add column mutation to be on the same mutation ID in AlterPrimaryKey.
 		mutationIdx := len(n.tableDesc.Mutations) - 1
 		mutationIdxAllowedInSameTxn = &mutationIdx
 		newColumnName = &partColName
 
 		version := params.ExecCfg().Settings.Version.ActiveVersion(params.ctx)
 		if err := n.tableDesc.AllocateIDs(params.ctx, version); err != nil {
+			__antithesis_instrumentation__.Notify(244852)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244853)
 		}
+		__antithesis_instrumentation__.Notify(244844)
 
-		// On the AlterPrimaryKeyMutation, sanitize and form the correct default
-		// expression to replace the crdb_region column with when the mutation
-		// is finalized.
-		// NOTE: this is important, as the schema changer is NOT database aware.
-		// The primary_region default helps us also have a material value.
-		// This can be removed when the default_expr can serialize user defined
-		// functions.
 		col := n.tableDesc.Mutations[mutationIdx].GetColumn()
 		finalDefaultExpr, err := schemaexpr.SanitizeVarFreeExpr(
 			params.ctx,
@@ -373,12 +493,17 @@ func (n *alterTableSetLocalityNode) alterTableLocalityToRegionalByRow(
 			tree.VolatilityVolatile,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244854)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244855)
 		}
+		__antithesis_instrumentation__.Notify(244845)
 		s := tree.Serialize(finalDefaultExpr)
 		newColumnDefaultExpr = &s
 		newColumnID = &col.ID
 	}
+	__antithesis_instrumentation__.Notify(244811)
 	return n.alterTableLocalityFromOrToRegionalByRow(
 		params,
 		tabledesc.LocalityConfigRegionalByRow(newLocality.RegionalByRowColumn),
@@ -391,8 +516,6 @@ func (n *alterTableSetLocalityNode) alterTableLocalityToRegionalByRow(
 	)
 }
 
-// alterTableLocalityFromOrToRegionalByRow processes a change for any ALTER TABLE
-// SET LOCALITY where the before OR after state is REGIONAL BY ROW.
 func (n *alterTableSetLocalityNode) alterTableLocalityFromOrToRegionalByRow(
 	params runParams,
 	newLocalityConfig catpb.LocalityConfig,
@@ -403,30 +526,28 @@ func (n *alterTableSetLocalityNode) alterTableLocalityFromOrToRegionalByRow(
 	pkColumnNames []string,
 	pkColumnDirections []descpb.IndexDescriptor_Direction,
 ) error {
-	// Preserve the same PK columns - implicit partitioning will be added in
-	// AlterPrimaryKey.
+	__antithesis_instrumentation__.Notify(244856)
+
 	cols := make([]tree.IndexElem, len(pkColumnNames))
 	for i, col := range pkColumnNames {
+		__antithesis_instrumentation__.Notify(244859)
 		cols[i] = tree.IndexElem{
 			Column: tree.Name(col),
 		}
 		switch dir := pkColumnDirections[i]; dir {
 		case descpb.IndexDescriptor_ASC:
+			__antithesis_instrumentation__.Notify(244860)
 			cols[i].Direction = tree.Ascending
 		case descpb.IndexDescriptor_DESC:
+			__antithesis_instrumentation__.Notify(244861)
 			cols[i].Direction = tree.Descending
 		default:
+			__antithesis_instrumentation__.Notify(244862)
 			return errors.AssertionFailedf("unknown direction: %v", dir)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244857)
 
-	// We re-use ALTER PRIMARY KEY to do the the work for us.
-	//
-	// Altering to REGIONAL BY ROW is effectively a PRIMARY KEY swap where we
-	// add the implicit partitioning to the PK, with all indexes underneath
-	// being re-written to point to the correct PRIMARY KEY and also being
-	// implicitly partitioned. The AlterPrimaryKey will also set the relevant
-	// zone configurations on the newly re-created indexes and table itself.
 	if err := params.p.AlterPrimaryKey(
 		params.ctx,
 		n.tableDesc,
@@ -445,8 +566,12 @@ func (n *alterTableSetLocalityNode) alterTableLocalityFromOrToRegionalByRow(
 			newColumnName:               newColumnName,
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244863)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244864)
 	}
+	__antithesis_instrumentation__.Notify(244858)
 
 	return params.p.writeSchemaChange(
 		params.ctx,
@@ -457,13 +582,18 @@ func (n *alterTableSetLocalityNode) alterTableLocalityFromOrToRegionalByRow(
 }
 
 func (n *alterTableSetLocalityNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(244865)
 	newLocality := n.n.Locality
 	existingLocality := n.tableDesc.LocalityConfig
 
 	existingLocalityTelemetryName, err := existingLocality.TelemetryName()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244869)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244870)
 	}
+	__antithesis_instrumentation__.Notify(244866)
 	telemetry.Inc(
 		sqltelemetry.AlterTableLocalityCounter(
 			existingLocalityTelemetryName,
@@ -471,100 +601,136 @@ func (n *alterTableSetLocalityNode) startExec(params runParams) error {
 		),
 	)
 
-	// We should check index zone configs if moving to REGIONAL BY ROW.
 	if err := params.p.validateZoneConfigForMultiRegionTableWasNotModifiedByUser(
 		params.ctx,
 		n.dbDesc,
 		n.tableDesc,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244871)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244872)
 	}
+	__antithesis_instrumentation__.Notify(244867)
 
-	// Look at the existing locality, and implement any changes required to move to
-	// the new locality.
 	switch existingLocality.Locality.(type) {
 	case *catpb.LocalityConfig_Global_:
+		__antithesis_instrumentation__.Notify(244873)
 		switch newLocality.LocalityLevel {
 		case tree.LocalityLevelGlobal:
+			__antithesis_instrumentation__.Notify(244877)
 			if err := n.alterTableLocalityToGlobal(params); err != nil {
+				__antithesis_instrumentation__.Notify(244881)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244882)
 			}
 		case tree.LocalityLevelRow:
+			__antithesis_instrumentation__.Notify(244878)
 			if err := n.alterTableLocalityToRegionalByRow(
 				params,
 				newLocality,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244883)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244884)
 			}
 		case tree.LocalityLevelTable:
+			__antithesis_instrumentation__.Notify(244879)
 			if err := n.alterTableLocalityGlobalToRegionalByTable(params); err != nil {
+				__antithesis_instrumentation__.Notify(244885)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244886)
 			}
 		default:
+			__antithesis_instrumentation__.Notify(244880)
 			return errors.AssertionFailedf("unknown table locality: %v", newLocality)
 		}
 	case *catpb.LocalityConfig_RegionalByTable_:
+		__antithesis_instrumentation__.Notify(244874)
 		switch newLocality.LocalityLevel {
 		case tree.LocalityLevelGlobal:
+			__antithesis_instrumentation__.Notify(244887)
 			if err := n.alterTableLocalityToGlobal(params); err != nil {
+				__antithesis_instrumentation__.Notify(244891)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244892)
 			}
 		case tree.LocalityLevelRow:
+			__antithesis_instrumentation__.Notify(244888)
 			if err := n.alterTableLocalityToRegionalByRow(
 				params,
 				newLocality,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244893)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244894)
 			}
 		case tree.LocalityLevelTable:
+			__antithesis_instrumentation__.Notify(244889)
 			if err := n.alterTableLocalityRegionalByTableToRegionalByTable(params); err != nil {
+				__antithesis_instrumentation__.Notify(244895)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244896)
 			}
 		default:
+			__antithesis_instrumentation__.Notify(244890)
 			return errors.AssertionFailedf("unknown table locality: %v", newLocality)
 		}
 	case *catpb.LocalityConfig_RegionalByRow_:
+		__antithesis_instrumentation__.Notify(244875)
 		explicitColStart := n.tableDesc.PrimaryIndex.Partitioning.NumImplicitColumns
 		switch newLocality.LocalityLevel {
 		case tree.LocalityLevelGlobal:
+			__antithesis_instrumentation__.Notify(244897)
 			return n.alterTableLocalityFromOrToRegionalByRow(
 				params,
 				tabledesc.LocalityConfigGlobal(),
-				nil, /* mutationIdxAllowedInSameTxn */
-				nil, /* newColumnName */
-				nil, /*	newColumnID */
-				nil, /*	newColumnDefaultExpr */
+				nil,
+				nil,
+				nil,
+				nil,
 				n.tableDesc.PrimaryIndex.KeyColumnNames[explicitColStart:],
 				n.tableDesc.PrimaryIndex.KeyColumnDirections[explicitColStart:],
 			)
 		case tree.LocalityLevelRow:
+			__antithesis_instrumentation__.Notify(244898)
 			if err := n.alterTableLocalityToRegionalByRow(
 				params,
 				newLocality,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244901)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244902)
 			}
 		case tree.LocalityLevelTable:
+			__antithesis_instrumentation__.Notify(244899)
 			return n.alterTableLocalityFromOrToRegionalByRow(
 				params,
 				tabledesc.LocalityConfigRegionalByTable(n.n.Locality.TableRegion),
-				nil, /* mutationIdxAllowedInSameTxn */
-				nil, /* newColumnName */
-				nil, /*	newColumnID */
-				nil, /*	newColumnDefaultExpr */
+				nil,
+				nil,
+				nil,
+				nil,
 				n.tableDesc.PrimaryIndex.KeyColumnNames[explicitColStart:],
 				n.tableDesc.PrimaryIndex.KeyColumnDirections[explicitColStart:],
 			)
 		default:
+			__antithesis_instrumentation__.Notify(244900)
 			return errors.AssertionFailedf("unknown table locality: %v", newLocality)
 		}
 	default:
+		__antithesis_instrumentation__.Notify(244876)
 		return errors.AssertionFailedf("unknown table locality: %v", existingLocality)
 	}
+	__antithesis_instrumentation__.Notify(244868)
 
-	// Record this table alteration in the event log. This is an auditable log
-	// event and is recorded in the same transaction as the table descriptor
-	// update.
 	return params.p.logEvent(params.ctx,
 		n.tableDesc.ID,
 		&eventpb.AlterTable{
@@ -572,26 +738,33 @@ func (n *alterTableSetLocalityNode) startExec(params runParams) error {
 		})
 }
 
-// writeNewTableLocalityAndZoneConfig writes the table descriptor with the newly
-// updated LocalityConfig and writes a new zone configuration for the table.
 func (n *alterTableSetLocalityNode) writeNewTableLocalityAndZoneConfig(
 	params runParams, dbDesc catalog.DatabaseDescriptor,
 ) error {
-	// Write out the table descriptor update.
+	__antithesis_instrumentation__.Notify(244903)
+
 	if err := params.p.writeSchemaChange(
 		params.ctx,
 		n.tableDesc,
 		descpb.InvalidMutationID,
 		tree.AsStringWithFQNames(&n.n, params.Ann()),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244907)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244908)
 	}
+	__antithesis_instrumentation__.Notify(244904)
 
 	regionConfig, err := SynthesizeRegionConfig(params.ctx, params.p.txn, dbDesc.GetID(), params.p.Descriptors())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244909)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244910)
 	}
-	// Update the zone configuration.
+	__antithesis_instrumentation__.Notify(244905)
+
 	if err := ApplyZoneConfigForMultiRegionTable(
 		params.ctx,
 		params.p.txn,
@@ -600,57 +773,72 @@ func (n *alterTableSetLocalityNode) writeNewTableLocalityAndZoneConfig(
 		n.tableDesc,
 		ApplyZoneConfigForMultiRegionTableOptionTableAndIndexes,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244911)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244912)
 	}
+	__antithesis_instrumentation__.Notify(244906)
 
 	return nil
 }
 
-// alterTableDescLocalityToRegionalByTable changes the locality of the given tableDesc
-// to Regional By Table homed in the specified region. It also handles the
-// dependency with the multi-region enum, if one exists.
 func (p *planner) alterTableDescLocalityToRegionalByTable(
 	ctx context.Context, region tree.Name, tableDesc *tabledesc.Mutable, regionEnumID descpb.ID,
 ) error {
+	__antithesis_instrumentation__.Notify(244913)
 	if tableDesc.GetMultiRegionEnumDependencyIfExists() {
+		__antithesis_instrumentation__.Notify(244916)
 		typesDependedOn := []descpb.ID{regionEnumID}
 		if err := p.removeTypeBackReferences(ctx, typesDependedOn, tableDesc.GetID(),
 			fmt.Sprintf("remove back ref on mr-enum %d for table %d", regionEnumID, tableDesc.GetID()),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(244917)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244918)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(244919)
 	}
+	__antithesis_instrumentation__.Notify(244914)
 	tableDesc.SetTableLocalityRegionalByTable(region)
 	if tableDesc.GetMultiRegionEnumDependencyIfExists() {
+		__antithesis_instrumentation__.Notify(244920)
 		return p.addTypeBackReference(
 			ctx, regionEnumID, tableDesc.ID,
 			fmt.Sprintf("add back ref on mr-enum %d for table %d", regionEnumID, tableDesc.GetID()),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(244921)
 	}
+	__antithesis_instrumentation__.Notify(244915)
 	return nil
 }
 
-// alterTableDescLocalityToGlobal changes the locality of the given tableDesc to
-// global. It also removes the dependency on the multi-region enum, if it
-// existed before the locality switch.
 func (p *planner) alterTableDescLocalityToGlobal(
 	ctx context.Context, tableDesc *tabledesc.Mutable, regionEnumID descpb.ID,
 ) error {
+	__antithesis_instrumentation__.Notify(244922)
 	if tableDesc.GetMultiRegionEnumDependencyIfExists() {
+		__antithesis_instrumentation__.Notify(244924)
 		typesDependedOn := []descpb.ID{regionEnumID}
 		if err := p.removeTypeBackReferences(ctx, typesDependedOn, tableDesc.GetID(),
 			fmt.Sprintf("remove back ref no mr-enum %d for table %d", regionEnumID, tableDesc.GetID()),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(244925)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244926)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(244927)
 	}
+	__antithesis_instrumentation__.Notify(244923)
 	tableDesc.SetTableLocalityGlobal()
 	return nil
 }
 
-// setNewLocalityConfig sets the locality config of the given table descriptor to
-// the provided config. It also removes the dependency on the multi-region enum,
-// if it existed before the locality switch.
 func setNewLocalityConfig(
 	ctx context.Context,
 	desc *tabledesc.Mutable,
@@ -660,45 +848,77 @@ func setNewLocalityConfig(
 	kvTrace bool,
 	descsCol *descs.Collection,
 ) error {
+	__antithesis_instrumentation__.Notify(244928)
 	getMultiRegionTypeDesc := func() (*typedesc.Mutable, error) {
+		__antithesis_instrumentation__.Notify(244932)
 		_, dbDesc, err := descsCol.GetImmutableDatabaseByID(
 			ctx, txn, desc.GetParentID(), tree.DatabaseLookupFlags{
 				Required:    true,
 				AvoidLeased: true,
 			})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244935)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(244936)
 		}
+		__antithesis_instrumentation__.Notify(244933)
 
 		regionEnumID, err := dbDesc.MultiRegionEnumID()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244937)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(244938)
 		}
+		__antithesis_instrumentation__.Notify(244934)
 		return descsCol.GetMutableTypeVersionByID(ctx, txn, regionEnumID)
 	}
-	// If there was a dependency before on the multi-region enum before the
-	// new locality is set, we must unlink the dependency.
+	__antithesis_instrumentation__.Notify(244929)
+
 	if desc.GetMultiRegionEnumDependencyIfExists() {
+		__antithesis_instrumentation__.Notify(244939)
 		typ, err := getMultiRegionTypeDesc()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244941)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244942)
 		}
+		__antithesis_instrumentation__.Notify(244940)
 		typ.RemoveReferencingDescriptorID(desc.GetID())
 		if err := descsCol.WriteDescToBatch(ctx, kvTrace, typ, b); err != nil {
+			__antithesis_instrumentation__.Notify(244943)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244944)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(244945)
 	}
+	__antithesis_instrumentation__.Notify(244930)
 	desc.LocalityConfig = &config
-	// If there is a dependency after the new locality is set, we must add it.
+
 	if desc.GetMultiRegionEnumDependencyIfExists() {
+		__antithesis_instrumentation__.Notify(244946)
 		typ, err := getMultiRegionTypeDesc()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244948)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244949)
 		}
+		__antithesis_instrumentation__.Notify(244947)
 		typ.AddReferencingDescriptorID(desc.GetID())
 		if err := descsCol.WriteDescToBatch(ctx, kvTrace, typ, b); err != nil {
+			__antithesis_instrumentation__.Notify(244950)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244951)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(244952)
 	}
+	__antithesis_instrumentation__.Notify(244931)
 	return nil
 }

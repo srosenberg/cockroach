@@ -17,6 +17,7 @@ go_library(
         "//pkg/sql/rowenc/valueside",
         "//pkg/sql/sem/tree",
         "//pkg/sql/types",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -32,6 +33,7 @@ go_test(
         "//pkg/sql/types",
         "//pkg/util/json",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

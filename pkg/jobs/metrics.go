@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -21,29 +13,22 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
-// Metrics are for production monitoring of each job type.
 type Metrics struct {
 	JobMetrics [jobspb.NumJobTypes]*JobTypeMetrics
-	// RunningNonIdleJobs is the total number of running jobs that are not idle.
+
 	RunningNonIdleJobs *metric.Gauge
 
 	RowLevelTTL  metric.Struct
 	Changefeed   metric.Struct
 	StreamIngest metric.Struct
 
-	// AdoptIterations counts the number of adopt loops executed by Registry.
 	AdoptIterations *metric.Counter
 
-	// ClaimedJobs counts the number of jobs claimed in adopt loops.
 	ClaimedJobs *metric.Counter
 
-	// ResumedJobs counts the number of jobs resumed by Registry. It doesn't
-	// correlate with the ClaimedJobs counter because a job can be resumed
-	// without an adopt loop, e.g., through a StartableJob.
 	ResumedJobs *metric.Counter
 }
 
-// JobTypeMetrics is a metric.Struct containing metrics for each type of job.
 type JobTypeMetrics struct {
 	CurrentlyRunning       *metric.Gauge
 	CurrentlyIdle          *metric.Gauge
@@ -52,15 +37,14 @@ type JobTypeMetrics struct {
 	ResumeFailed           *metric.Counter
 	FailOrCancelCompleted  *metric.Counter
 	FailOrCancelRetryError *metric.Counter
-	// TODO (sajjad): FailOrCancelFailed metric is not updated after the modification
-	// of retrying all reverting jobs. Remove this metric in v22.1.
+
 	FailOrCancelFailed *metric.Counter
 }
 
-// MetricStruct implements the metric.Struct interface.
-func (JobTypeMetrics) MetricStruct() {}
+func (JobTypeMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(84202) }
 
 func makeMetaCurrentlyRunning(typeStr string) metric.Metadata {
+	__antithesis_instrumentation__.Notify(84203)
 	return metric.Metadata{
 		Name: fmt.Sprintf("jobs.%s.currently_running", typeStr),
 		Help: fmt.Sprintf("Number of %s jobs currently running in Resume or OnFailOrCancel state",
@@ -72,6 +56,7 @@ func makeMetaCurrentlyRunning(typeStr string) metric.Metadata {
 }
 
 func makeMetaCurrentlyIdle(typeStr string) metric.Metadata {
+	__antithesis_instrumentation__.Notify(84204)
 	return metric.Metadata{
 		Name: fmt.Sprintf("jobs.%s.currently_idle", typeStr),
 		Help: fmt.Sprintf("Number of %s jobs currently considered Idle and can be freely shut down",
@@ -83,6 +68,7 @@ func makeMetaCurrentlyIdle(typeStr string) metric.Metadata {
 }
 
 func makeMetaResumeCompeted(typeStr string) metric.Metadata {
+	__antithesis_instrumentation__.Notify(84205)
 	return metric.Metadata{
 		Name: fmt.Sprintf("jobs.%s.resume_completed", typeStr),
 		Help: fmt.Sprintf("Number of %s jobs which successfully resumed to completion",
@@ -94,6 +80,7 @@ func makeMetaResumeCompeted(typeStr string) metric.Metadata {
 }
 
 func makeMetaResumeRetryError(typeStr string) metric.Metadata {
+	__antithesis_instrumentation__.Notify(84206)
 	return metric.Metadata{
 		Name: fmt.Sprintf("jobs.%s.resume_retry_error", typeStr),
 		Help: fmt.Sprintf("Number of %s jobs which failed with a retriable error",
@@ -105,6 +92,7 @@ func makeMetaResumeRetryError(typeStr string) metric.Metadata {
 }
 
 func makeMetaResumeFailed(typeStr string) metric.Metadata {
+	__antithesis_instrumentation__.Notify(84207)
 	return metric.Metadata{
 		Name: fmt.Sprintf("jobs.%s.resume_failed", typeStr),
 		Help: fmt.Sprintf("Number of %s jobs which failed with a non-retriable error",
@@ -116,6 +104,7 @@ func makeMetaResumeFailed(typeStr string) metric.Metadata {
 }
 
 func makeMetaFailOrCancelCompeted(typeStr string) metric.Metadata {
+	__antithesis_instrumentation__.Notify(84208)
 	return metric.Metadata{
 		Name: fmt.Sprintf("jobs.%s.fail_or_cancel_completed", typeStr),
 		Help: fmt.Sprintf("Number of %s jobs which successfully completed "+
@@ -128,6 +117,7 @@ func makeMetaFailOrCancelCompeted(typeStr string) metric.Metadata {
 }
 
 func makeMetaFailOrCancelRetryError(typeStr string) metric.Metadata {
+	__antithesis_instrumentation__.Notify(84209)
 	return metric.Metadata{
 		Name: fmt.Sprintf("jobs.%s.fail_or_cancel_retry_error", typeStr),
 		Help: fmt.Sprintf("Number of %s jobs which failed with a retriable "+
@@ -140,6 +130,7 @@ func makeMetaFailOrCancelRetryError(typeStr string) metric.Metadata {
 }
 
 func makeMetaFailOrCancelFailed(typeStr string) metric.Metadata {
+	__antithesis_instrumentation__.Notify(84210)
 	return metric.Metadata{
 		Name: fmt.Sprintf("jobs.%s.fail_or_cancel_failed", typeStr),
 		Help: fmt.Sprintf("Number of %s jobs which failed with a "+
@@ -176,8 +167,6 @@ var (
 		MetricType:  io_prometheus_client.MetricType_GAUGE,
 	}
 
-	// MetaRunningNonIdleJobs is the count of currently running jobs that are not
-	// reporting as being idle.
 	MetaRunningNonIdleJobs = metric.Metadata{
 		Name:        "jobs.running_non_idle",
 		Help:        "number of running jobs that are not idle",
@@ -187,10 +176,8 @@ var (
 	}
 )
 
-// MetricStruct implements the metric.Struct interface.
-func (Metrics) MetricStruct() {}
+func (Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(84211) }
 
-// init initializes the metrics for job monitoring.
 func (m *Metrics) init(histogramWindowInterval time.Duration) {
 	if MakeRowLevelTTLMetricsHook != nil {
 		m.RowLevelTTL = MakeRowLevelTTLMetricsHook(histogramWindowInterval)
@@ -207,7 +194,7 @@ func (m *Metrics) init(histogramWindowInterval time.Duration) {
 	m.RunningNonIdleJobs = metric.NewGauge(MetaRunningNonIdleJobs)
 	for i := 0; i < jobspb.NumJobTypes; i++ {
 		jt := jobspb.Type(i)
-		if jt == jobspb.TypeUnspecified { // do not track TypeUnspecified
+		if jt == jobspb.TypeUnspecified {
 			continue
 		}
 		typeStr := strings.ToLower(strings.Replace(jt.String(), " ", "_", -1))
@@ -224,27 +211,20 @@ func (m *Metrics) init(histogramWindowInterval time.Duration) {
 	}
 }
 
-// MakeChangefeedMetricsHook allows for registration of changefeed metrics from
-// ccl code.
 var MakeChangefeedMetricsHook func(time.Duration) metric.Struct
 
-// MakeStreamIngestMetricsHook allows for registration of streaming metrics from
-// ccl code.
 var MakeStreamIngestMetricsHook func(duration time.Duration) metric.Struct
 
-// MakeRowLevelTTLMetricsHook allows for registration of row-level TTL metrics.
 var MakeRowLevelTTLMetricsHook func(time.Duration) metric.Struct
 
-// JobTelemetryMetrics is a telemetry metrics for individual job types.
 type JobTelemetryMetrics struct {
 	Successful telemetry.Counter
 	Failed     telemetry.Counter
 	Canceled   telemetry.Counter
 }
 
-// newJobTelemetryMetrics creates a new JobTelemetryMetrics object
-// for a given job type name.
 func newJobTelemetryMetrics(jobName string) *JobTelemetryMetrics {
+	__antithesis_instrumentation__.Notify(84212)
 	return &JobTelemetryMetrics{
 		Successful: telemetry.GetCounterOnce(fmt.Sprintf("job.%s.successful", jobName)),
 		Failed:     telemetry.GetCounterOnce(fmt.Sprintf("job.%s.failed", jobName)),
@@ -252,21 +232,24 @@ func newJobTelemetryMetrics(jobName string) *JobTelemetryMetrics {
 	}
 }
 
-// getJobTelemetryMetricsArray initializes an array of job related telemetry
-// metrics
 func getJobTelemetryMetricsArray() [jobspb.NumJobTypes]*JobTelemetryMetrics {
+	__antithesis_instrumentation__.Notify(84213)
 	var metrics [jobspb.NumJobTypes]*JobTelemetryMetrics
 	for i := 0; i < jobspb.NumJobTypes; i++ {
+		__antithesis_instrumentation__.Notify(84215)
 		jt := jobspb.Type(i)
-		if jt == jobspb.TypeUnspecified { // do not track TypeUnspecified
+		if jt == jobspb.TypeUnspecified {
+			__antithesis_instrumentation__.Notify(84217)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(84218)
 		}
+		__antithesis_instrumentation__.Notify(84216)
 		typeStr := strings.ToLower(strings.Replace(jt.String(), " ", "_", -1))
 		metrics[i] = newJobTelemetryMetrics(typeStr)
 	}
+	__antithesis_instrumentation__.Notify(84214)
 	return metrics
 }
 
-// TelemetryMetrics contains telemetry metrics for different
-// job types.
 var TelemetryMetrics = getJobTelemetryMetricsArray()

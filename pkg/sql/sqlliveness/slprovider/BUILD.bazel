@@ -16,5 +16,6 @@ go_library(
         "//pkg/util/log",
         "//pkg/util/metric",
         "//pkg/util/stop",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

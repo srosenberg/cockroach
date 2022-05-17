@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scbuild
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scbuild/internal/scbuildstmt"
@@ -17,19 +9,18 @@ import (
 
 var _ scbuildstmt.EventLogState = (*eventLogState)(nil)
 
-// TargetMetadata implements the scbuildstmt.EventLogState interface.
 func (e *eventLogState) TargetMetadata() scpb.TargetMetadata {
+	__antithesis_instrumentation__.Notify(579720)
 	return e.statementMetaData
 }
 
-// IncrementSubWorkID implements the scbuildstmt.EventLogState interface.
 func (e *eventLogState) IncrementSubWorkID() {
+	__antithesis_instrumentation__.Notify(579721)
 	e.statementMetaData.SubWorkID++
 }
 
-// EventLogStateWithNewSourceElementID implements the scbuildstmt.EventLogState
-// interface.
 func (e *eventLogState) EventLogStateWithNewSourceElementID() scbuildstmt.EventLogState {
+	__antithesis_instrumentation__.Notify(579722)
 	*e.sourceElementID++
 	return &eventLogState{
 		statements:      e.statements,

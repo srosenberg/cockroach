@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package kvevent
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -53,7 +47,6 @@ var (
 	}
 )
 
-// Metrics is a metric.Struct for kvfeed metrics.
 type Metrics struct {
 	BufferEntriesIn          *metric.Counter
 	BufferEntriesOut         *metric.Counter
@@ -63,8 +56,8 @@ type Metrics struct {
 	BufferEntriesMemReleased *metric.Counter
 }
 
-// MakeMetrics constructs a Metrics struct with the provided histogram window.
 func MakeMetrics(histogramWindow time.Duration) Metrics {
+	__antithesis_instrumentation__.Notify(17145)
 	return Metrics{
 		BufferEntriesIn:          metric.NewCounter(metaChangefeedBufferEntriesIn),
 		BufferEntriesOut:         metric.NewCounter(metaChangefeedBufferEntriesOut),
@@ -77,5 +70,4 @@ func MakeMetrics(histogramWindow time.Duration) Metrics {
 
 var _ (metric.Struct) = (*Metrics)(nil)
 
-// MetricStruct makes Metrics a metric.Struct.
-func (m Metrics) MetricStruct() {}
+func (m Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(17146) }

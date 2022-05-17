@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,7 +17,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// sorter sorts the input rows according to the specified ordering.
 type sorterBase struct {
 	execinfra.ProcessorBase
 
@@ -36,7 +27,6 @@ type sorterBase struct {
 	rows rowcontainer.SortableRowContainer
 	i    rowcontainer.RowIterator
 
-	// Only set if the ability to spill to disk is enabled.
 	diskMonitor *mon.BytesMonitor
 }
 
@@ -58,8 +48,6 @@ func (s *sorterBase) init(
 		s.ExecStatsForTrace = s.execStatsForTrace
 	}
 
-	// Limit the memory use by creating a child monitor with a hard limit.
-	// The processor will overflow to disk if this limit is not enough.
 	memMonitor := execinfra.NewLimitedMonitor(ctx, flowCtx.EvalCtx.Mon, flowCtx, fmt.Sprintf("%s-limited", processorName))
 	if err := s.ProcessorBase.Init(
 		self, post, input.OutputTypes(), flowCtx, processorID, output, memMonitor, opts,
@@ -86,50 +74,79 @@ func (s *sorterBase) init(
 	return nil
 }
 
-// Next is part of the RowSource interface. It is extracted into sorterBase
-// because this implementation of next is shared between the sortAllProcessor
-// and the sortTopKProcessor.
 func (s *sorterBase) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(574829)
 	for s.State == execinfra.StateRunning {
-		if ok, err := s.i.Valid(); err != nil || !ok {
+		__antithesis_instrumentation__.Notify(574831)
+		if ok, err := s.i.Valid(); err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(574834)
+			return !ok == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(574835)
 			s.MoveToDraining(err)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(574836)
 		}
+		__antithesis_instrumentation__.Notify(574832)
 
 		row, err := s.i.Row()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(574837)
 			s.MoveToDraining(err)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(574838)
 		}
+		__antithesis_instrumentation__.Notify(574833)
 		s.i.Next()
 
 		if outRow := s.ProcessRowHelper(row); outRow != nil {
+			__antithesis_instrumentation__.Notify(574839)
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(574840)
 		}
 	}
+	__antithesis_instrumentation__.Notify(574830)
 	return nil, s.DrainHelper()
 }
 
 func (s *sorterBase) close() {
-	// We are done sorting rows, close the iterator we have open.
+	__antithesis_instrumentation__.Notify(574841)
+
 	if s.InternalClose() {
+		__antithesis_instrumentation__.Notify(574842)
 		if s.i != nil {
+			__antithesis_instrumentation__.Notify(574844)
 			s.i.Close()
+		} else {
+			__antithesis_instrumentation__.Notify(574845)
 		}
+		__antithesis_instrumentation__.Notify(574843)
 		s.rows.Close(s.Ctx)
 		s.MemMonitor.Stop(s.Ctx)
 		if s.diskMonitor != nil {
+			__antithesis_instrumentation__.Notify(574846)
 			s.diskMonitor.Stop(s.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(574847)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(574848)
 	}
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (s *sorterBase) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(574849)
 	is, ok := getInputStats(s.input)
 	if !ok {
+		__antithesis_instrumentation__.Notify(574851)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(574852)
 	}
+	__antithesis_instrumentation__.Notify(574850)
 	return &execinfrapb.ComponentStats{
 		Inputs: []execinfrapb.InputStats{is},
 		Exec: execinfrapb.ExecStats{
@@ -149,37 +166,28 @@ func newSorter(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (execinfra.Processor, error) {
+	__antithesis_instrumentation__.Notify(574853)
 
-	// Choose the optimal processor.
 	if spec.OrderingMatchLen == 0 {
+		__antithesis_instrumentation__.Notify(574855)
 		if spec.Limit == 0 {
-			// No specified ordering match length and unspecified limit; no
-			// optimizations are possible so we simply load all rows into memory and
-			// sort all values in-place. It has a worst-case time complexity of
-			// O(n*log(n)) and a worst-case space complexity of O(n).
+			__antithesis_instrumentation__.Notify(574857)
+
 			return newSortAllProcessor(ctx, flowCtx, processorID, spec, input, post, output)
+		} else {
+			__antithesis_instrumentation__.Notify(574858)
 		}
-		// No specified ordering match length but specified limit; we can optimize
-		// our sort procedure by maintaining a max-heap populated with only the
-		// smallest k rows seen. It has a worst-case time complexity of
-		// O(n*log(k)) and a worst-case space complexity of O(k).
+		__antithesis_instrumentation__.Notify(574856)
+
 		return newSortTopKProcessor(flowCtx, processorID, spec, input, post, output, uint64(spec.Limit))
+	} else {
+		__antithesis_instrumentation__.Notify(574859)
 	}
-	// Ordering match length is specified. We will be able to use existing
-	// ordering in order to avoid loading all the rows into memory. If we're
-	// scanning an index with a prefix matching an ordering prefix, we can only
-	// accumulate values for equal fields in this prefix, sort the accumulated
-	// chunk and then output.
-	// TODO(irfansharif): Add optimization for case where both ordering match
-	// length and limit is specified.
+	__antithesis_instrumentation__.Notify(574854)
+
 	return newSortChunksProcessor(flowCtx, processorID, spec, input, post, output)
 }
 
-// sortAllProcessor reads in all values into the wrapped rows and
-// uses sort.Sort to sort all values in-place. It has a worst-case time
-// complexity of O(n*log(n)) and a worst-case space complexity of O(n).
-//
-// This processor is intended to be used when all values need to be sorted.
 type sortAllProcessor struct {
 	sorterBase
 }
@@ -198,6 +206,7 @@ func newSortAllProcessor(
 	post *execinfrapb.PostProcessSpec,
 	out execinfra.RowReceiver,
 ) (execinfra.Processor, error) {
+	__antithesis_instrumentation__.Notify(574860)
 	proc := &sortAllProcessor{}
 	if err := proc.sorterBase.init(
 		proc, flowCtx, processorID, sortAllProcName, input, post, out,
@@ -206,55 +215,76 @@ func newSortAllProcessor(
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{input},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				__antithesis_instrumentation__.Notify(574862)
 				proc.close()
 				return nil
 			},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(574863)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(574864)
 	}
+	__antithesis_instrumentation__.Notify(574861)
 	return proc, nil
 }
 
-// Start is part of the RowSource interface.
 func (s *sortAllProcessor) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(574865)
 	ctx = s.StartInternal(ctx, sortAllProcName)
 	s.input.Start(ctx)
 
 	valid, err := s.fill()
-	if !valid || err != nil {
+	if !valid || func() bool {
+		__antithesis_instrumentation__.Notify(574866)
+		return err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(574867)
 		s.MoveToDraining(err)
+	} else {
+		__antithesis_instrumentation__.Notify(574868)
 	}
 }
 
-// fill fills s.rows with the input's rows.
-//
-// Metadata is buffered in s.trailingMeta.
-//
-// The ok retval is false if an error occurred or if the input returned an error
-// metadata record. The caller is expected to inspect the error (if any) and
-// drain if it's not recoverable. It is possible for ok to be false even if no
-// error is returned - in case an error metadata was received.
 func (s *sortAllProcessor) fill() (ok bool, _ error) {
+	__antithesis_instrumentation__.Notify(574869)
 	ctx := s.EvalCtx.Ctx()
 
 	for {
+		__antithesis_instrumentation__.Notify(574871)
 		row, meta := s.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(574874)
 			s.AppendTrailingMeta(*meta)
 			if meta.Err != nil {
-				return false, nil //nolint:returnerrcheck
+				__antithesis_instrumentation__.Notify(574876)
+				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(574877)
 			}
+			__antithesis_instrumentation__.Notify(574875)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(574878)
 		}
+		__antithesis_instrumentation__.Notify(574872)
 		if row == nil {
+			__antithesis_instrumentation__.Notify(574879)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(574880)
 		}
+		__antithesis_instrumentation__.Notify(574873)
 
 		if err := s.rows.AddRow(ctx, row); err != nil {
+			__antithesis_instrumentation__.Notify(574881)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(574882)
 		}
 	}
+	__antithesis_instrumentation__.Notify(574870)
 	s.rows.Sort(ctx)
 
 	s.i = s.rows.NewFinalIterator(ctx)
@@ -262,29 +292,12 @@ func (s *sortAllProcessor) fill() (ok bool, _ error) {
 	return true, nil
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (s *sortAllProcessor) ConsumerClosed() {
-	// The consumer is done, Next() will not be called again.
+	__antithesis_instrumentation__.Notify(574883)
+
 	s.close()
 }
 
-// sortTopKProcessor creates a max-heap in its wrapped rows and keeps
-// this heap populated with only the top k values seen. It accomplishes this
-// by comparing new values (before the deep copy) with the top of the heap.
-// If the new value is less than the current top, the top will be replaced
-// and the heap will be fixed. If not, the new value is dropped. When finished,
-// the max heap is converted to a min-heap effectively sorting the values
-// correctly in-place. It has a worst-case time complexity of O(n*log(k)) and a
-// worst-case space complexity of O(k).
-//
-// This processor is intended to be used when exactly k values need to be sorted,
-// where k is known before sorting begins.
-//
-// TODO(irfansharif): (taken from TODO found in sql/sort.go) There are better
-// algorithms that can achieve a sorted top k in a worst-case time complexity
-// of O(n + k*log(k)) while maintaining a worst-case space complexity of O(k).
-// For instance, the top k can be found in linear time, and then this can be
-// sorted in linearithmic time.
 type sortTopKProcessor struct {
 	sorterBase
 	k uint64
@@ -306,10 +319,15 @@ func newSortTopKProcessor(
 	out execinfra.RowReceiver,
 	k uint64,
 ) (execinfra.Processor, error) {
+	__antithesis_instrumentation__.Notify(574884)
 	if k == 0 {
+		__antithesis_instrumentation__.Notify(574887)
 		return nil, errors.NewAssertionErrorWithWrappedErrf(errSortTopKZeroK,
 			"error creating top k sorter")
+	} else {
+		__antithesis_instrumentation__.Notify(574888)
 	}
+	__antithesis_instrumentation__.Notify(574885)
 	ordering := execinfrapb.ConvertToColumnOrdering(spec.OutputOrdering)
 	proc := &sortTopKProcessor{k: k}
 	if err := proc.sorterBase.init(
@@ -318,79 +336,102 @@ func newSortTopKProcessor(
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{input},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				__antithesis_instrumentation__.Notify(574889)
 				proc.close()
 				return nil
 			},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(574890)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(574891)
 	}
+	__antithesis_instrumentation__.Notify(574886)
 	return proc, nil
 }
 
-// Start is part of the RowSource interface.
 func (s *sortTopKProcessor) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(574892)
 	ctx = s.StartInternal(ctx, sortTopKProcName)
 	s.input.Start(ctx)
 
-	// The execution loop for the SortTopK processor is similar to that of the
-	// SortAll processor; the difference is that we push rows into a max-heap
-	// of size at most K, and only sort those.
 	heapCreated := false
 	for {
+		__antithesis_instrumentation__.Notify(574894)
 		row, meta := s.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(574897)
 			s.AppendTrailingMeta(*meta)
 			if meta.Err != nil {
-				s.MoveToDraining(nil /* err */)
+				__antithesis_instrumentation__.Notify(574899)
+				s.MoveToDraining(nil)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(574900)
 			}
+			__antithesis_instrumentation__.Notify(574898)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(574901)
 		}
+		__antithesis_instrumentation__.Notify(574895)
 		if row == nil {
+			__antithesis_instrumentation__.Notify(574902)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(574903)
 		}
+		__antithesis_instrumentation__.Notify(574896)
 
 		if uint64(s.rows.Len()) < s.k {
-			// Accumulate up to k values.
+			__antithesis_instrumentation__.Notify(574904)
+
 			if err := s.rows.AddRow(ctx, row); err != nil {
+				__antithesis_instrumentation__.Notify(574905)
 				s.MoveToDraining(err)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(574906)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(574907)
 			if !heapCreated {
-				// Arrange the k values into a max-heap.
+				__antithesis_instrumentation__.Notify(574909)
+
 				s.rows.InitTopK()
 				heapCreated = true
+			} else {
+				__antithesis_instrumentation__.Notify(574910)
 			}
-			// Replace the max value if the new row is smaller, maintaining the
-			// max-heap.
+			__antithesis_instrumentation__.Notify(574908)
+
 			if err := s.rows.MaybeReplaceMax(ctx, row); err != nil {
+				__antithesis_instrumentation__.Notify(574911)
 				s.MoveToDraining(err)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(574912)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(574893)
 	s.rows.Sort(ctx)
 	s.i = s.rows.NewFinalIterator(ctx)
 	s.i.Rewind()
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (s *sortTopKProcessor) ConsumerClosed() {
-	// The consumer is done, Next() will not be called again.
+	__antithesis_instrumentation__.Notify(574913)
+
 	s.close()
 }
 
-// If we're scanning an index with a prefix matching an ordering prefix, we only accumulate values
-// for equal fields in this prefix, sort the accumulated chunk and then output.
 type sortChunksProcessor struct {
 	sorterBase
 
 	alloc tree.DatumAlloc
 
-	// sortChunksProcessor accumulates rows that are equal on a prefix, until it
-	// encounters a row that is greater. It stores that greater row in nextChunkRow
 	nextChunkRow rowenc.EncDatumRow
 }
 
@@ -407,6 +448,7 @@ func newSortChunksProcessor(
 	post *execinfrapb.PostProcessSpec,
 	out execinfra.RowReceiver,
 ) (execinfra.Processor, error) {
+	__antithesis_instrumentation__.Notify(574914)
 	ordering := execinfrapb.ConvertToColumnOrdering(spec.OutputOrdering)
 
 	proc := &sortChunksProcessor{}
@@ -415,40 +457,47 @@ func newSortChunksProcessor(
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{input},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				__antithesis_instrumentation__.Notify(574916)
 				proc.close()
 				return nil
 			},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(574917)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(574918)
 	}
+	__antithesis_instrumentation__.Notify(574915)
 	proc.i = proc.rows.NewFinalIterator(proc.Ctx)
 	return proc, nil
 }
 
-// chunkCompleted is a helper function that determines if the given row shares the same
-// values for the first matchLen ordering columns with the given prefix.
 func (s *sortChunksProcessor) chunkCompleted(
 	nextChunkRow, prefix rowenc.EncDatumRow,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(574919)
 	types := s.input.OutputTypes()
 	for _, ord := range s.ordering[:s.matchLen] {
+		__antithesis_instrumentation__.Notify(574921)
 		col := ord.ColIdx
 		cmp, err := nextChunkRow[col].Compare(types[col], &s.alloc, s.EvalCtx, &prefix[col])
-		if cmp != 0 || err != nil {
+		if cmp != 0 || func() bool {
+			__antithesis_instrumentation__.Notify(574922)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(574923)
 			return true, err
+		} else {
+			__antithesis_instrumentation__.Notify(574924)
 		}
 	}
+	__antithesis_instrumentation__.Notify(574920)
 	return false, nil
 }
 
-// fill one chunk of rows from the input and sort them.
-//
-// Metadata is buffered in s.trailingMeta. Returns true if a valid chunk of rows
-// has been read and sorted, false otherwise (if the input had no more rows or
-// if a metadata record was encountered). The caller is expected to drain when
-// this returns false.
 func (s *sortChunksProcessor) fill() (bool, error) {
+	__antithesis_instrumentation__.Notify(574925)
 	ctx := s.Ctx
 
 	var meta *execinfrapb.ProducerMetadata
@@ -456,113 +505,186 @@ func (s *sortChunksProcessor) fill() (bool, error) {
 	nextChunkRow := s.nextChunkRow
 	s.nextChunkRow = nil
 	for nextChunkRow == nil {
+		__antithesis_instrumentation__.Notify(574929)
 		nextChunkRow, meta = s.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(574931)
 			s.AppendTrailingMeta(*meta)
 			if meta.Err != nil {
-				return false, nil //nolint:returnerrcheck
+				__antithesis_instrumentation__.Notify(574933)
+				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(574934)
 			}
+			__antithesis_instrumentation__.Notify(574932)
 			continue
-		} else if nextChunkRow == nil {
-			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(574935)
+			if nextChunkRow == nil {
+				__antithesis_instrumentation__.Notify(574936)
+				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(574937)
+			}
 		}
+		__antithesis_instrumentation__.Notify(574930)
 		break
 	}
+	__antithesis_instrumentation__.Notify(574926)
 	prefix := nextChunkRow
 
-	// Add the chunk
 	if err := s.rows.AddRow(ctx, nextChunkRow); err != nil {
+		__antithesis_instrumentation__.Notify(574938)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(574939)
 	}
+	__antithesis_instrumentation__.Notify(574927)
 
-	// We will accumulate rows to form a chunk such that they all share the same values
-	// as prefix for the first s.matchLen ordering columns.
 	for {
+		__antithesis_instrumentation__.Notify(574940)
 		nextChunkRow, meta = s.input.Next()
 
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(574945)
 			s.AppendTrailingMeta(*meta)
 			if meta.Err != nil {
-				return false, nil //nolint:returnerrcheck
+				__antithesis_instrumentation__.Notify(574947)
+				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(574948)
 			}
+			__antithesis_instrumentation__.Notify(574946)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(574949)
 		}
+		__antithesis_instrumentation__.Notify(574941)
 		if nextChunkRow == nil {
+			__antithesis_instrumentation__.Notify(574950)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(574951)
 		}
+		__antithesis_instrumentation__.Notify(574942)
 
 		chunkCompleted, err := s.chunkCompleted(nextChunkRow, prefix)
 
 		if err != nil {
+			__antithesis_instrumentation__.Notify(574952)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(574953)
 		}
+		__antithesis_instrumentation__.Notify(574943)
 		if chunkCompleted {
+			__antithesis_instrumentation__.Notify(574954)
 			s.nextChunkRow = nextChunkRow
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(574955)
 		}
+		__antithesis_instrumentation__.Notify(574944)
 
 		if err := s.rows.AddRow(ctx, nextChunkRow); err != nil {
+			__antithesis_instrumentation__.Notify(574956)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(574957)
 		}
 	}
+	__antithesis_instrumentation__.Notify(574928)
 
 	s.rows.Sort(ctx)
 
 	return true, nil
 }
 
-// Start is part of the RowSource interface.
 func (s *sortChunksProcessor) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(574958)
 	ctx = s.StartInternal(ctx, sortChunksProcName)
 	s.input.Start(ctx)
 }
 
-// Next is part of the RowSource interface.
 func (s *sortChunksProcessor) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(574959)
 	ctx := s.Ctx
 	for s.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(574961)
 		ok, err := s.i.Valid()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(574965)
 			s.MoveToDraining(err)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(574966)
 		}
-		// If we don't have an active chunk, clear and refill it.
+		__antithesis_instrumentation__.Notify(574962)
+
 		if !ok {
+			__antithesis_instrumentation__.Notify(574967)
 			if err := s.rows.UnsafeReset(ctx); err != nil {
+				__antithesis_instrumentation__.Notify(574970)
 				s.MoveToDraining(err)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(574971)
 			}
+			__antithesis_instrumentation__.Notify(574968)
 			valid, err := s.fill()
-			if !valid || err != nil {
+			if !valid || func() bool {
+				__antithesis_instrumentation__.Notify(574972)
+				return err != nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(574973)
 				s.MoveToDraining(err)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(574974)
 			}
+			__antithesis_instrumentation__.Notify(574969)
 			s.i.Close()
 			s.i = s.rows.NewFinalIterator(ctx)
 			s.i.Rewind()
-			if ok, err := s.i.Valid(); err != nil || !ok {
+			if ok, err := s.i.Valid(); err != nil || func() bool {
+				__antithesis_instrumentation__.Notify(574975)
+				return !ok == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(574976)
 				s.MoveToDraining(err)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(574977)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(574978)
 		}
+		__antithesis_instrumentation__.Notify(574963)
 
-		// If we have an active chunk, get a row from it.
 		row, err := s.i.Row()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(574979)
 			s.MoveToDraining(err)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(574980)
 		}
+		__antithesis_instrumentation__.Notify(574964)
 		s.i.Next()
 
 		if outRow := s.ProcessRowHelper(row); outRow != nil {
+			__antithesis_instrumentation__.Notify(574981)
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(574982)
 		}
 	}
+	__antithesis_instrumentation__.Notify(574960)
 	return nil, s.DrainHelper()
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (s *sortChunksProcessor) ConsumerClosed() {
-	// The consumer is done, Next() will not be called again.
+	__antithesis_instrumentation__.Notify(574983)
+
 	s.close()
 }

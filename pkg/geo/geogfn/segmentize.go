@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package geogfn
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -21,75 +13,92 @@ import (
 	"github.com/twpayne/go-geom"
 )
 
-// Segmentize return modified Geography having no segment longer
-// that given maximum segment length.
-// This works by dividing each segment by a power of 2 to find the
-// smallest power less than or equal to the segmentMaxLength.
 func Segmentize(geography geo.Geography, segmentMaxLength float64) (geo.Geography, error) {
-	if math.IsNaN(segmentMaxLength) || math.IsInf(segmentMaxLength, 1 /* sign */) {
+	__antithesis_instrumentation__.Notify(59771)
+	if math.IsNaN(segmentMaxLength) || func() bool {
+		__antithesis_instrumentation__.Notify(59774)
+		return math.IsInf(segmentMaxLength, 1) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(59775)
 		return geography, nil
+	} else {
+		__antithesis_instrumentation__.Notify(59776)
 	}
+	__antithesis_instrumentation__.Notify(59772)
 	geometry, err := geography.AsGeomT()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(59777)
 		return geo.Geography{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(59778)
 	}
+	__antithesis_instrumentation__.Notify(59773)
 	switch geometry := geometry.(type) {
 	case *geom.Point, *geom.MultiPoint:
+		__antithesis_instrumentation__.Notify(59779)
 		return geography, nil
 	default:
+		__antithesis_instrumentation__.Notify(59780)
 		if segmentMaxLength <= 0 {
+			__antithesis_instrumentation__.Notify(59784)
 			return geo.Geography{}, pgerror.Newf(pgcode.InvalidParameterValue, "maximum segment length must be positive")
+		} else {
+			__antithesis_instrumentation__.Notify(59785)
 		}
+		__antithesis_instrumentation__.Notify(59781)
 		spheroid, err := geography.Spheroid()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(59786)
 			return geo.Geography{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(59787)
 		}
-		// Convert segmentMaxLength to Angle with respect to earth sphere as
-		// further calculation is done considering segmentMaxLength as Angle.
+		__antithesis_instrumentation__.Notify(59782)
+
 		segmentMaxAngle := segmentMaxLength / spheroid.SphereRadius
 		ret, err := geosegmentize.Segmentize(geometry, segmentMaxAngle, segmentizeCoords)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(59788)
 			return geo.Geography{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(59789)
 		}
+		__antithesis_instrumentation__.Notify(59783)
 		return geo.MakeGeographyFromGeomT(ret)
 	}
 }
 
-// segmentizeCoords inserts multiple points between given two coordinates and
-// return resultant point as flat []float64. Such that distance between any two
-// points is less than given maximum segment's length, the total number of
-// segments is the power of 2, and all the segments are of the same length.
-// Note: List of points does not consist of end point.
 func segmentizeCoords(a geom.Coord, b geom.Coord, segmentMaxAngle float64) ([]float64, error) {
+	__antithesis_instrumentation__.Notify(59790)
 	if len(a) != len(b) {
+		__antithesis_instrumentation__.Notify(59795)
 		return nil, pgerror.Newf(pgcode.InvalidParameterValue, "cannot segmentize two coordinates of different dimensions")
+	} else {
+		__antithesis_instrumentation__.Notify(59796)
 	}
+	__antithesis_instrumentation__.Notify(59791)
 	if segmentMaxAngle <= 0 {
+		__antithesis_instrumentation__.Notify(59797)
 		return nil, pgerror.Newf(pgcode.InvalidParameterValue, "maximum segment angle must be positive")
+	} else {
+		__antithesis_instrumentation__.Notify(59798)
 	}
+	__antithesis_instrumentation__.Notify(59792)
 
-	// Converted geom.Coord into s2.Point so we can segmentize the coordinates.
 	pointA := s2.PointFromLatLng(s2.LatLngFromDegrees(a.Y(), a.X()))
 	pointB := s2.PointFromLatLng(s2.LatLngFromDegrees(b.Y(), b.X()))
 
 	chordAngleBetweenPoints := s2.ChordAngleBetweenPoints(pointA, pointB).Angle().Radians()
-	// PostGIS' behavior appears to involve cutting this down into segments divisible
-	// by a power of two. As such, we do not use ceil(chordAngleBetweenPoints/segmentMaxAngle).
-	//
-	// This calculation determines the smallest power of 2 that is greater
-	// than ceil(chordAngleBetweenPoints/segmentMaxAngle).
-	//
-	// We can write that power as 2^n in the following inequality
-	// 2^n >= ceil(chordAngleBetweenPoints/segmentMaxLength) > 2^(n-1).
-	// We can drop the ceil since 2^n must be an int
-	// 2^n >= chordAngleBetweenPoints/segmentMaxLength > 2^(n-1).
-	// Then n = ceil(log2(chordAngleBetweenPoints/segmentMaxLength)).
-	// Hence numberOfSegmentsToCreate = 2^(ceil(log2(chordAngleBetweenPoints/segmentMaxLength))).
+
 	doubleNumberOfSegmentsToCreate := math.Pow(2, math.Ceil(math.Log2(chordAngleBetweenPoints/segmentMaxAngle)))
 	doubleNumPoints := float64(len(a)) * (1 + doubleNumberOfSegmentsToCreate)
 	if err := geosegmentize.CheckSegmentizeValidNumPoints(doubleNumPoints, a, b); err != nil {
+		__antithesis_instrumentation__.Notify(59799)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(59800)
 	}
+	__antithesis_instrumentation__.Notify(59793)
 	numberOfSegmentsToCreate := int(doubleNumberOfSegmentsToCreate)
 	numPoints := int(doubleNumPoints)
 
@@ -97,16 +106,19 @@ func segmentizeCoords(a geom.Coord, b geom.Coord, segmentMaxAngle float64) ([]fl
 	allSegmentizedCoordinates = append(allSegmentizedCoordinates, a.Clone()...)
 	segmentFraction := 1.0 / float64(numberOfSegmentsToCreate)
 	for pointInserted := 1; pointInserted < numberOfSegmentsToCreate; pointInserted++ {
+		__antithesis_instrumentation__.Notify(59801)
 		newPoint := s2.Interpolate(float64(pointInserted)/float64(numberOfSegmentsToCreate), pointA, pointB)
 		latLng := s2.LatLngFromPoint(newPoint)
 		allSegmentizedCoordinates = append(allSegmentizedCoordinates, latLng.Lng.Degrees(), latLng.Lat.Degrees())
-		// Linearly interpolate Z and/or M coordinates.
+
 		for i := 2; i < len(a); i++ {
+			__antithesis_instrumentation__.Notify(59802)
 			allSegmentizedCoordinates = append(
 				allSegmentizedCoordinates,
 				a[i]*(1-float64(pointInserted)*segmentFraction)+b[i]*(float64(pointInserted)*segmentFraction),
 			)
 		}
 	}
+	__antithesis_instrumentation__.Notify(59794)
 	return allSegmentizedCoordinates, nil
 }

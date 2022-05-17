@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -33,6 +25,7 @@ type temporaryDescriptors struct {
 func makeTemporaryDescriptors(
 	settings *cluster.Settings, codec keys.SQLCodec, temporarySchemaProvider TemporarySchemaProvider,
 ) temporaryDescriptors {
+	__antithesis_instrumentation__.Notify(264982)
 	return temporaryDescriptors{
 		settings: settings,
 		codec:    codec,
@@ -40,8 +33,6 @@ func makeTemporaryDescriptors(
 	}
 }
 
-// TemporarySchemaProvider is an interface that provides temporary schema
-// details on the current session.
 type TemporarySchemaProvider interface {
 	GetTemporarySchemaName() string
 	GetTemporarySchemaIDForDB(descpb.ID) (descpb.ID, bool)
@@ -52,83 +43,104 @@ type temporarySchemaProviderImpl sessiondata.Stack
 
 var _ TemporarySchemaProvider = (*temporarySchemaProviderImpl)(nil)
 
-// NewTemporarySchemaProvider creates a TemporarySchemaProvider.
 func NewTemporarySchemaProvider(sds *sessiondata.Stack) TemporarySchemaProvider {
+	__antithesis_instrumentation__.Notify(264983)
 	return (*temporarySchemaProviderImpl)(sds)
 }
 
-// GetTemporarySchemaName implements the TemporarySchemaProvider interface.
 func (impl *temporarySchemaProviderImpl) GetTemporarySchemaName() string {
+	__antithesis_instrumentation__.Notify(264984)
 	return (*sessiondata.Stack)(impl).Top().SearchPath.GetTemporarySchemaName()
 }
 
-// GetTemporarySchemaIDForDB implements the TemporarySchemaProvider interface.
 func (impl *temporarySchemaProviderImpl) GetTemporarySchemaIDForDB(id descpb.ID) (descpb.ID, bool) {
+	__antithesis_instrumentation__.Notify(264985)
 	ret, found := (*sessiondata.Stack)(impl).Top().GetTemporarySchemaIDForDB(uint32(id))
 	return descpb.ID(ret), found
 }
 
-// MaybeGetDatabaseForTemporarySchemaID implements the TemporarySchemaProvider interface.
 func (impl *temporarySchemaProviderImpl) MaybeGetDatabaseForTemporarySchemaID(
 	id descpb.ID,
 ) (descpb.ID, bool) {
+	__antithesis_instrumentation__.Notify(264986)
 	ret, found := (*sessiondata.Stack)(impl).Top().MaybeGetDatabaseForTemporarySchemaID(uint32(id))
 	return descpb.ID(ret), found
 }
 
-// getSchemaByName assumes that the schema name carries the `pg_temp` prefix.
-// It will exhaustively search for the schema, first checking the local session
-// data and then consulting the namespace table to discover if this schema
-// exists as a part of another session.
-// If it did not find a schema, it also returns a boolean flag indicating
-// whether the search is known to have been exhaustive or not.
 func (td *temporaryDescriptors) getSchemaByName(
 	ctx context.Context, dbID descpb.ID, schemaName string,
 ) (avoidFurtherLookups bool, _ catalog.SchemaDescriptor) {
-	// If a temp schema is requested, check if it's for the current session, or
-	// else fall back to reading from the store.
+	__antithesis_instrumentation__.Notify(264987)
+
 	if tsp := td.tsp; tsp != nil {
-		if schemaName == catconstants.PgTempSchemaName || schemaName == tsp.GetTemporarySchemaName() {
+		__antithesis_instrumentation__.Notify(264990)
+		if schemaName == catconstants.PgTempSchemaName || func() bool {
+			__antithesis_instrumentation__.Notify(264991)
+			return schemaName == tsp.GetTemporarySchemaName() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264992)
 			schemaID, found := tsp.GetTemporarySchemaIDForDB(dbID)
 			if !found {
+				__antithesis_instrumentation__.Notify(264994)
 				return true, nil
+			} else {
+				__antithesis_instrumentation__.Notify(264995)
 			}
+			__antithesis_instrumentation__.Notify(264993)
 			return true, schemadesc.NewTemporarySchema(
 				tsp.GetTemporarySchemaName(),
 				schemaID,
 				dbID,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(264996)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(264997)
 	}
+	__antithesis_instrumentation__.Notify(264988)
 	if !td.settings.Version.IsActive(ctx, clusterversion.PublicSchemasWithDescriptors) {
-		// Try to use the system name resolution bypass. Avoids a hotspot by explicitly
-		// checking for public schema.
+		__antithesis_instrumentation__.Notify(264998)
+
 		if schemaName == tree.PublicSchema {
+			__antithesis_instrumentation__.Notify(264999)
 			return true, schemadesc.NewTemporarySchema(
 				schemaName,
 				keys.PublicSchemaID,
 				dbID,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(265000)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(265001)
 	}
+	__antithesis_instrumentation__.Notify(264989)
 	return false, nil
 }
 
-// getSchemaByID returns the schema descriptor if it is temporary and belongs
-// to the current session.
 func (td *temporaryDescriptors) getSchemaByID(
 	ctx context.Context, schemaID descpb.ID,
 ) catalog.SchemaDescriptor {
+	__antithesis_instrumentation__.Notify(265002)
 	tsp := td.tsp
 	if tsp == nil {
+		__antithesis_instrumentation__.Notify(265005)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(265006)
 	}
+	__antithesis_instrumentation__.Notify(265003)
 	if dbID, exists := tsp.MaybeGetDatabaseForTemporarySchemaID(schemaID); exists {
+		__antithesis_instrumentation__.Notify(265007)
 		return schemadesc.NewTemporarySchema(
 			tsp.GetTemporarySchemaName(),
 			schemaID,
 			dbID,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(265008)
 	}
+	__antithesis_instrumentation__.Notify(265004)
 	return nil
 }

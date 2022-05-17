@@ -1,17 +1,9 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Command roachvet is a vettool which includes all of the standard analysis
 // passes included in go vet as well as the `shadow` pass and some first-party
 // passes.
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/testutils/lint/passes/errcmp"
@@ -53,8 +45,9 @@ import (
 )
 
 func main() {
+	__antithesis_instrumentation__.Notify(52661)
 	var as []*analysis.Analyzer
-	// First-party analyzers:
+
 	as = append(as, forbiddenmethod.Analyzers...)
 	as = append(as,
 		hash.Analyzer,
@@ -69,7 +62,6 @@ func main() {
 		errwrap.Analyzer,
 	)
 
-	// Standard go vet analyzers:
 	as = append(as,
 		asmdecl.Analyzer,
 		assign.Analyzer,
@@ -95,7 +87,6 @@ func main() {
 		unusedresult.Analyzer,
 	)
 
-	// Additional analyzers:
 	as = append(as,
 		shadow.Analyzer,
 	)

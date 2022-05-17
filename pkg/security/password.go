@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package security
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -38,14 +30,6 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 )
 
-// BcryptCost is the cost to use when hashing passwords.
-// It is exposed for testing.
-//
-// The default value of BcryptCost should increase along with
-// computation power.
-//
-// For estimates, see:
-// http://security.stackexchange.com/questions/17207/recommended-of-rounds-for-bcrypt
 var BcryptCost = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	BcryptCostSettingName,
@@ -53,23 +37,25 @@ var BcryptCost = settings.RegisterIntSetting(
 		"the hashing cost to use when storing passwords supplied as cleartext by SQL clients "+
 			"with the hashing method crdb-bcrypt (allowed range: %d-%d)",
 		bcrypt.MinCost, bcrypt.MaxCost),
-	// The default value 10 is equal to bcrypt.DefaultCost.
-	// It incurs a password check latency of ~60ms on AMD 3950X 3.7GHz.
-	// For reference, value 11 incurs ~110ms latency on the same hw, value 12 incurs ~390ms.
+
 	10,
 	func(i int64) error {
-		if i < int64(bcrypt.MinCost) || i > int64(bcrypt.MaxCost) {
+		__antithesis_instrumentation__.Notify(186724)
+		if i < int64(bcrypt.MinCost) || func() bool {
+			__antithesis_instrumentation__.Notify(186726)
+			return i > int64(bcrypt.MaxCost) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186727)
 			return bcrypt.InvalidCostError(int(i))
+		} else {
+			__antithesis_instrumentation__.Notify(186728)
 		}
+		__antithesis_instrumentation__.Notify(186725)
 		return nil
 	}).WithPublic()
 
-// BcryptCostSettingName is the name of the cluster setting BcryptCost.
 const BcryptCostSettingName = "server.user_login.password_hashes.default_cost.crdb_bcrypt"
 
-// SCRAMCost is the cost to use in SCRAM exchanges.
-// The value of 4096 is the minimum value recommended by RFC 5802.
-// It should be increased along with computation power.
 var SCRAMCost = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	SCRAMCostSettingName,
@@ -77,89 +63,74 @@ var SCRAMCost = settings.RegisterIntSetting(
 		"the hashing cost to use when storing passwords supplied as cleartext by SQL clients "+
 			"with the hashing method scram-sha-256 (allowed range: %d-%d)",
 		scramMinCost, scramMaxCost),
-	// The minimum value 4096 incurs a password check latency of ~2ms on AMD 3950X 3.7GHz.
-	//
-	// The default value 119680 incurs ~60ms latency on the same hw.
-	// This default was calibrated to incur a similar check latency as the
-	// default value for BCryptCost above.
-	// For further discussion, see the explanation on bcryptCostToSCRAMIterCount
-	// below.
-	//
-	// For reference, value 250000 incurs ~125ms latency on the same hw,
-	// value 1000000 incurs ~500ms.
+
 	119680,
 	func(i int64) error {
-		if i < scramMinCost || i > scramMaxCost {
+		__antithesis_instrumentation__.Notify(186729)
+		if i < scramMinCost || func() bool {
+			__antithesis_instrumentation__.Notify(186731)
+			return i > scramMaxCost == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186732)
 			return errors.Newf("cost not in allowed range (%d,%d)", scramMinCost, scramMaxCost)
+		} else {
+			__antithesis_instrumentation__.Notify(186733)
 		}
+		__antithesis_instrumentation__.Notify(186730)
 		return nil
 	}).WithPublic()
 
-const scramMinCost = 4096         // as per RFC 5802.
-const scramMaxCost = 240000000000 // arbitrary value to prevent unreasonably long logins
+const scramMinCost = 4096
+const scramMaxCost = 240000000000
 
-// SCRAMCostSettingName is the name of the cluster setting SCRAMCost.
 const SCRAMCostSettingName = "server.user_login.password_hashes.default_cost.scram_sha_256"
 
-// ErrEmptyPassword indicates that an empty password was attempted to be set.
 var ErrEmptyPassword = errors.New("empty passwords are not permitted")
 
-// ErrPasswordTooShort indicates that a client provided a password
-// that was too short according to policy.
 var ErrPasswordTooShort = errors.New("password too short")
 
-// ErrUnknownHashMethod is returned by LoadPasswordHash if the hash encoding
-// method is not supported.
 var ErrUnknownHashMethod = errors.New("unknown hash method")
 
-// HashMethod indicates which password hash method to use.
 type HashMethod int8
 
 const (
-	// HashInvalidMethod represents invalid hashes.
-	// This always fails authentication.
 	HashInvalidMethod HashMethod = 0
-	// HashMissingPassword represents a virtual hash when there was
-	// no password.  This too always fails authentication.
-	// We need a different method here than HashInvalidMethod because
-	// the authentication code distinguishes the two cases when reporting
-	// why authentication fails in audit logs.
+
 	HashMissingPassword HashMethod = 1
-	// HashBCrypt indicates CockroachDB's bespoke bcrypt-based method.
-	// NB: Do not renumber this constant; it is used as value
-	// in cluster setting enums.
+
 	HashBCrypt HashMethod = 2
-	// HashSCRAMSHA256 indicates SCRAM-SHA-256.
-	// NB: Do not renumber this constant; it is used as value
-	// in cluster setting enums.
+
 	HashSCRAMSHA256 HashMethod = 3
 )
 
 func (h HashMethod) String() string {
+	__antithesis_instrumentation__.Notify(186734)
 	switch h {
 	case HashInvalidMethod:
+		__antithesis_instrumentation__.Notify(186735)
 		return "<invalid>"
 	case HashMissingPassword:
+		__antithesis_instrumentation__.Notify(186736)
 		return "<missing password>"
 	case HashBCrypt:
+		__antithesis_instrumentation__.Notify(186737)
 		return "crdb-bcrypt"
 	case HashSCRAMSHA256:
+		__antithesis_instrumentation__.Notify(186738)
 		return "scram-sha-256"
 	default:
+		__antithesis_instrumentation__.Notify(186739)
 		panic(errors.AssertionFailedf("programming errof: unknown hash method %d", int(h)))
 	}
 }
 
-// PasswordHash represents the type of a password hash loaded from a credential store.
 type PasswordHash interface {
 	fmt.Stringer
-	// Method report which hashing method was used.
+
 	Method() HashMethod
-	// Size is the size of the in-memory representation of this hash. This
-	// is used for memory accounting.
+
 	Size() int
-	// compareWithCleartextPassword checks a cleartext password against
-	// the hash.
+
 	compareWithCleartextPassword(ctx context.Context, cleartext string) (ok bool, err error)
 }
 
@@ -168,216 +139,210 @@ var _ PasswordHash = invalidHash(nil)
 var _ PasswordHash = bcryptHash(nil)
 var _ PasswordHash = (*scramHash)(nil)
 
-// emptyPassword represents a virtual hash when there was no password
-// to start with.
 type emptyPassword struct{}
 
-// String implements fmt.Stringer.
-func (e emptyPassword) String() string { return "<missing>" }
+func (e emptyPassword) String() string {
+	__antithesis_instrumentation__.Notify(186740)
+	return "<missing>"
+}
 
-// Method is part of the PasswordHash interface.
-func (e emptyPassword) Method() HashMethod { return HashMissingPassword }
+func (e emptyPassword) Method() HashMethod {
+	__antithesis_instrumentation__.Notify(186741)
+	return HashMissingPassword
+}
 
-// Size is part of the PasswordHash interface.
-func (e emptyPassword) Size() int { return 0 }
+func (e emptyPassword) Size() int { __antithesis_instrumentation__.Notify(186742); return 0 }
 
-// compareWithCleartextPassword is part of the PasswordHash interface.
 func (e emptyPassword) compareWithCleartextPassword(
 	ctx context.Context, cleartext string,
 ) (ok bool, err error) {
+	__antithesis_instrumentation__.Notify(186743)
 	return false, nil
 }
 
-// MissingPasswordHash represents the virtual hash when there is no password
-// to start with.
 var MissingPasswordHash PasswordHash = emptyPassword{}
 
-// invalidHash represents a byte slice that's in an unknown hash format.
-// We keep the byte slice around so that it can be passed through
-// and re-stored as-is.
 type invalidHash []byte
 
-// String implements fmt.Stringer.
-func (n invalidHash) String() string { return string(n) }
+func (n invalidHash) String() string { __antithesis_instrumentation__.Notify(186744); return string(n) }
 
-// Method is part of the PasswordHash interface.
-func (n invalidHash) Method() HashMethod { return HashInvalidMethod }
+func (n invalidHash) Method() HashMethod {
+	__antithesis_instrumentation__.Notify(186745)
+	return HashInvalidMethod
+}
 
-// Size is part of the PasswordHash interface.
-func (n invalidHash) Size() int { return len(n) }
+func (n invalidHash) Size() int { __antithesis_instrumentation__.Notify(186746); return len(n) }
 
-// compareWithCleartextPassword is part of the PasswordHash interface.
 func (n invalidHash) compareWithCleartextPassword(
 	ctx context.Context, cleartext string,
 ) (ok bool, err error) {
+	__antithesis_instrumentation__.Notify(186747)
 	return false, nil
 }
 
-// bcryptHash represents a bcrypt-based hashed password.
-// The type is simple since we're offloading the decoding
-// of the parameters to the go standard bcrypt package.
 type bcryptHash []byte
 
-// String implements fmt.Stringer.
-func (b bcryptHash) String() string { return string(b) }
+func (b bcryptHash) String() string { __antithesis_instrumentation__.Notify(186748); return string(b) }
 
-// Method is part of the PasswordHash interface.
-func (b bcryptHash) Method() HashMethod { return HashBCrypt }
+func (b bcryptHash) Method() HashMethod {
+	__antithesis_instrumentation__.Notify(186749)
+	return HashBCrypt
+}
 
-// Size is part of the PasswordHash interface.
-func (b bcryptHash) Size() int { return len(b) }
+func (b bcryptHash) Size() int { __antithesis_instrumentation__.Notify(186750); return len(b) }
 
-// scramHash represents a SCRAM-SHA-256 password hash.
 type scramHash struct {
 	bytes   []byte
 	decoded scram.StoredCredentials
 }
 
-// String implements fmt.Stringer.
-func (s *scramHash) String() string { return string(s.bytes) }
+func (s *scramHash) String() string {
+	__antithesis_instrumentation__.Notify(186751)
+	return string(s.bytes)
+}
 
-// Method is part of the PasswordHash interface.
-func (s *scramHash) Method() HashMethod { return HashSCRAMSHA256 }
+func (s *scramHash) Method() HashMethod {
+	__antithesis_instrumentation__.Notify(186752)
+	return HashSCRAMSHA256
+}
 
-// Size is part of the PasswordHash interface.
 func (s *scramHash) Size() int {
+	__antithesis_instrumentation__.Notify(186753)
 	return int(unsafe.Sizeof(*s)) + len(s.bytes) + len(s.decoded.Salt) + len(s.decoded.StoredKey) + len(s.decoded.ServerKey)
 }
 
-// GetSCRAMStoredCredentials retrieves the SCRAM credential parts.
-// The caller is responsible for ensuring the hash has method SCRAM-SHA-256.
 func GetSCRAMStoredCredentials(hash PasswordHash) (ok bool, creds scram.StoredCredentials) {
+	__antithesis_instrumentation__.Notify(186754)
 	h, ok := hash.(*scramHash)
 	if ok {
+		__antithesis_instrumentation__.Notify(186756)
 		return ok, h.decoded
+	} else {
+		__antithesis_instrumentation__.Notify(186757)
 	}
+	__antithesis_instrumentation__.Notify(186755)
 	return false, creds
 }
 
-// LoadPasswordHash decodes a password hash loaded as bytes from a credential store.
 func LoadPasswordHash(ctx context.Context, storedHash []byte) (res PasswordHash) {
+	__antithesis_instrumentation__.Notify(186758)
 	res = invalidHash(storedHash)
 	if len(storedHash) == 0 {
+		__antithesis_instrumentation__.Notify(186762)
 		return emptyPassword{}
+	} else {
+		__antithesis_instrumentation__.Notify(186763)
 	}
-	if isBcryptHash(storedHash, false /* strict */) {
+	__antithesis_instrumentation__.Notify(186759)
+	if isBcryptHash(storedHash, false) {
+		__antithesis_instrumentation__.Notify(186764)
 		return bcryptHash(storedHash)
+	} else {
+		__antithesis_instrumentation__.Notify(186765)
 	}
+	__antithesis_instrumentation__.Notify(186760)
 	if ok, parts := isSCRAMHash(storedHash); ok {
+		__antithesis_instrumentation__.Notify(186766)
 		return makeSCRAMHash(storedHash, parts, res)
+	} else {
+		__antithesis_instrumentation__.Notify(186767)
 	}
-	// Fallthrough: keep the hash, but mark the method as unknown.
+	__antithesis_instrumentation__.Notify(186761)
+
 	return res
 }
 
 var sha256NewSum = sha256.New().Sum(nil)
 
-// TODO(mjibson): properly apply SHA-256 to the password. The current code
-// erroneously appends the SHA-256 of the empty hash to the unhashed password
-// instead of actually hashing the password. Fixing this requires a somewhat
-// complicated backwards compatibility dance. This is not a security issue
-// because the round of SHA-256 was only intended to achieve a fixed-length
-// input to bcrypt; it is bcrypt that provides the cryptographic security, and
-// bcrypt is correctly applied.
 func appendEmptySha256(password string) []byte {
-	// In the past we incorrectly called the hash.Hash.Sum method. That
-	// method uses its argument as a place to put the current hash:
-	// it does not add its argument to the current hash. Thus, using
-	// h.Sum([]byte(password))) is the equivalent to the below append.
+	__antithesis_instrumentation__.Notify(186768)
+
 	return append([]byte(password), sha256NewSum...)
 }
 
-// CompareHashAndCleartextPassword tests that the provided bytes are equivalent to the
-// hash of the supplied password. If the hash is valid but the password does not match,
-// no error is returned but the ok boolean is false.
-// If an error was detected while using the hash, an error is returned.
 func CompareHashAndCleartextPassword(
 	ctx context.Context, hashedPassword PasswordHash, password string,
 ) (ok bool, err error) {
+	__antithesis_instrumentation__.Notify(186769)
 	return hashedPassword.compareWithCleartextPassword(ctx, password)
 }
 
-// compareWithCleartextPassword is part of the PasswordHash interface.
 func (b bcryptHash) compareWithCleartextPassword(
 	ctx context.Context, cleartext string,
 ) (ok bool, err error) {
+	__antithesis_instrumentation__.Notify(186770)
 	sem := getExpensiveHashComputeSem(ctx)
 	alloc, err := sem.Acquire(ctx, 1)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186773)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(186774)
 	}
+	__antithesis_instrumentation__.Notify(186771)
 	defer alloc.Release()
 
 	err = bcrypt.CompareHashAndPassword([]byte(b), appendEmptySha256(cleartext))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186775)
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+			__antithesis_instrumentation__.Notify(186777)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(186778)
 		}
+		__antithesis_instrumentation__.Notify(186776)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(186779)
 	}
+	__antithesis_instrumentation__.Notify(186772)
 	return true, nil
 }
 
-// compareWithCleartextPassword is part of the PasswordHash interface.
 func (s *scramHash) compareWithCleartextPassword(
 	ctx context.Context, cleartext string,
 ) (ok bool, err error) {
+	__antithesis_instrumentation__.Notify(186780)
 	sem := getExpensiveHashComputeSem(ctx)
 	alloc, err := sem.Acquire(ctx, 1)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186783)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(186784)
 	}
+	__antithesis_instrumentation__.Notify(186781)
 	defer alloc.Release()
 
-	// Server-side verification of a plaintext password
-	// against a pre-computed stored SCRAM server key.
-	//
-	// Code inspired from pg's scram_verify_plain_password(),
-	// src/backend/libpq/auth-scram.c.
-	//
 	prepared, err := stringprep.SASLprep.Prepare(cleartext)
 	if err != nil {
-		// Special PostgreSQL case, quoth comment at the top of
-		// auth-scram.c:
-		//
-		// * - If the password isn't valid UTF-8, or contains characters prohibited
-		// *	 by the SASLprep profile, we skip the SASLprep pre-processing and use
-		// *	 the raw bytes in calculating the hash.
+		__antithesis_instrumentation__.Notify(186785)
+
 		prepared = cleartext
+	} else {
+		__antithesis_instrumentation__.Notify(186786)
 	}
+	__antithesis_instrumentation__.Notify(186782)
 
 	saltedPassword := pbkdf2.Key([]byte(prepared), []byte(s.decoded.Salt), s.decoded.Iters, sha256.Size, sha256.New)
-	// As per xdg-go/scram and pg's scram_ServerKey().
-	// Note: the string "Server Key" is part of the SCRAM algorithm,
-	// see IETF RFC 5802.
+
 	serverKey := computeHMAC(scram.SHA256, saltedPassword, []byte("Server Key"))
 	return bytes.Equal(serverKey, s.decoded.ServerKey), nil
 }
 
-// computeHMAC is taken from xdg-go/scram; sadly it is not exported
-// from that package.
 func computeHMAC(hg scram.HashGeneratorFcn, key, data []byte) []byte {
+	__antithesis_instrumentation__.Notify(186787)
 	mac := hmac.New(hg, key)
 	mac.Write(data)
 	return mac.Sum(nil)
 }
 
-// PasswordHashMethod is the cluster setting that configures which
-// hash method to use when clients request to store a cleartext password.
-//
-// It is exported for use in tests. Do not use this setting directly
-// to read the current hash method. Instead use the
-// GetConfiguredHashMethod() function.
 var PasswordHashMethod = settings.RegisterEnumSetting(
 	settings.TenantWritable,
 	"server.user_login.password_encryption",
 	"which hash method to use to encode cleartext passwords passed via ALTER/CREATE USER/ROLE WITH PASSWORD",
-	// Note: It's possible to set the default to SCRAM, even in mixed-version clusters where
-	// previous-version nodes do not know anything about SCRAM. This is handled
-	// in the GetConfiguredPasswordHashMethod() function.
-	//
-	// We'd like to default this to SCRAM, but is pending the following issue:
-	// https://github.com/cockroachdb/cockroach/issues/80246
+
 	HashBCrypt.String(),
 	map[int64]string{
 		int64(HashBCrypt):      HashBCrypt.String(),
@@ -385,106 +350,125 @@ var PasswordHashMethod = settings.RegisterEnumSetting(
 	},
 ).WithPublic()
 
-// hasClusterVersion verifies that all nodes have been upgraded to
-// support the given target version key.
 func hasClusterVersion(
 	ctx context.Context, values *settings.Values, versionkey clusterversion.Key,
 ) bool {
+	__antithesis_instrumentation__.Notify(186788)
 	var vh clusterversion.Handle
 	if values != nil {
+		__antithesis_instrumentation__.Notify(186790)
 		vh = values.Opaque().(clusterversion.Handle)
+	} else {
+		__antithesis_instrumentation__.Notify(186791)
 	}
-	return vh != nil && vh.IsActive(ctx, versionkey)
+	__antithesis_instrumentation__.Notify(186789)
+	return vh != nil && func() bool {
+		__antithesis_instrumentation__.Notify(186792)
+		return vh.IsActive(ctx, versionkey) == true
+	}() == true
 }
 
-// GetConfiguredPasswordHashMethod returns the configured hash method
-// to use before storing passwords provided in cleartext from clients.
 func GetConfiguredPasswordHashMethod(ctx context.Context, sv *settings.Values) (method HashMethod) {
+	__antithesis_instrumentation__.Notify(186793)
 	method = HashMethod(PasswordHashMethod.Get(sv))
-	if method == HashSCRAMSHA256 && !hasClusterVersion(ctx, sv, clusterversion.SCRAMAuthentication) {
-		// Not all nodes are upgraded to understand SCRAM yet. Force
-		// Bcrypt for now, otherwise previous-version nodes will get confused.
+	if method == HashSCRAMSHA256 && func() bool {
+		__antithesis_instrumentation__.Notify(186795)
+		return !hasClusterVersion(ctx, sv, clusterversion.SCRAMAuthentication) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(186796)
+
 		method = HashBCrypt
+	} else {
+		__antithesis_instrumentation__.Notify(186797)
 	}
+	__antithesis_instrumentation__.Notify(186794)
 	return method
 }
 
-// HashPassword takes a raw password and returns a hashed password, hashed
-// using the currently configured method.
 func HashPassword(ctx context.Context, sv *settings.Values, password string) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(186798)
 	method := GetConfiguredPasswordHashMethod(ctx, sv)
 	switch method {
 	case HashBCrypt:
+		__antithesis_instrumentation__.Notify(186799)
 		sem := getExpensiveHashComputeSem(ctx)
 		alloc, err := sem.Acquire(ctx, 1)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(186803)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(186804)
 		}
+		__antithesis_instrumentation__.Notify(186800)
 		defer alloc.Release()
 		return bcrypt.GenerateFromPassword(appendEmptySha256(password), int(BcryptCost.Get(sv)))
 
 	case HashSCRAMSHA256:
+		__antithesis_instrumentation__.Notify(186801)
 		cost := int(SCRAMCost.Get(sv))
 		return hashPasswordUsingSCRAM(ctx, cost, password)
 
 	default:
+		__antithesis_instrumentation__.Notify(186802)
 		return nil, errors.Newf("unsupported hash method: %v", method)
 	}
 }
 
 func hashPasswordUsingSCRAM(ctx context.Context, cost int, cleartext string) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(186805)
 	prepared, err := stringprep.SASLprep.Prepare(cleartext)
 	if err != nil {
-		// Special PostgreSQL case, quoth comment at the top of
-		// auth-scram.c:
-		//
-		// * - If the password isn't valid UTF-8, or contains characters prohibited
-		// *	 by the SASLprep profile, we skip the SASLprep pre-processing and use
-		// *	 the raw bytes in calculating the hash.
+		__antithesis_instrumentation__.Notify(186810)
+
 		prepared = cleartext
+	} else {
+		__antithesis_instrumentation__.Notify(186811)
 	}
+	__antithesis_instrumentation__.Notify(186806)
 
-	// The computation of ServerKey and StoredKey is conveniently provided
-	// to us by xdg/scram in the Client method GetStoredCredentials().
-	// To use it, we need a client.
-	client, err := scram.SHA256.NewClientUnprepped("" /* username: unused */, prepared, "" /* authzID: unused */)
+	client, err := scram.SHA256.NewClientUnprepped("", prepared, "")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186812)
 		return nil, errors.AssertionFailedf("programming error: client construction should never fail")
+	} else {
+		__antithesis_instrumentation__.Notify(186813)
 	}
+	__antithesis_instrumentation__.Notify(186807)
 
-	// We also need to generate a random salt ourselves.
-	const scramSaltSize = 16 // postgres: SCRAM_DEFAULT_SALT_LEN.
+	const scramSaltSize = 16
 	salt := make([]byte, scramSaltSize)
 	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		__antithesis_instrumentation__.Notify(186814)
 		return nil, errors.Wrap(err, "generating random salt")
+	} else {
+		__antithesis_instrumentation__.Notify(186815)
 	}
+	__antithesis_instrumentation__.Notify(186808)
 
-	// The computation of the SCRAM hash is expensive. Use the shared
-	// semaphore for it. We reuse the same pattern as the bcrypt case above.
 	sem := getExpensiveHashComputeSem(ctx)
 	alloc, err := sem.Acquire(ctx, 1)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186816)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186817)
 	}
+	__antithesis_instrumentation__.Notify(186809)
 	defer alloc.Release()
-	// Compute the credentials.
+
 	creds := client.GetStoredCredentials(scram.KeyFactors{Iters: cost, Salt: string(salt)})
-	// Encode them in our standard hash format.
+
 	return encodeScramHash(salt, creds), nil
 }
 
-// encodeScramHash encodes the provided SCRAM credentials using the
-// standard PostgreSQL / RFC5802 representation.
 func encodeScramHash(saltBytes []byte, sc scram.StoredCredentials) []byte {
+	__antithesis_instrumentation__.Notify(186818)
 	b64enc := base64.StdEncoding
 	saltLen := b64enc.EncodedLen(len(saltBytes))
 	storedKeyLen := b64enc.EncodedLen(len(sc.StoredKey))
 	serverKeyLen := b64enc.EncodedLen(len(sc.ServerKey))
-	// The representation is:
-	//    SCRAM-SHA-256$<iters>:<salt>$<stored key>:<server key>
-	// We use a capacity-based slice extension instead of a size-based fill
-	// so as to automatically support iteration counts with more than 4 digits.
-	res := make([]byte, 0, len(scramPrefix)+1+4 /*iters*/ +1+saltLen+1+storedKeyLen+1+serverKeyLen)
+
+	res := make([]byte, 0, len(scramPrefix)+1+4+1+saltLen+1+storedKeyLen+1+serverKeyLen)
 	res = append(res, scramPrefix...)
 	res = append(res, '$')
 	res = strconv.AppendInt(res, int64(sc.Iters), 10)
@@ -500,8 +484,6 @@ func encodeScramHash(saltBytes []byte, sc scram.StoredCredentials) []byte {
 	return res
 }
 
-// AutoDetectPasswordHashes is the cluster setting that configures whether
-// the server recognizes pre-hashed passwords.
 var AutoDetectPasswordHashes = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"server.user_login.store_client_pre_hashed_passwords.enabled",
@@ -511,118 +493,161 @@ var AutoDetectPasswordHashes = settings.RegisterBoolSetting(
 
 const crdbBcryptPrefix = "CRDB-BCRYPT"
 
-// bcryptHashRe matches the lexical structure of the bcrypt hash
-// format supported by CockroachDB. The base64 encoding of the hash
-// uses the alphabet used by the bcrypt package:
-// "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 var bcryptHashRe = regexp.MustCompile(`^(` + crdbBcryptPrefix + `)?\$\d[a-z]?\$\d\d\$[0-9A-Za-z\./]{22}[0-9A-Za-z\./]+$`)
 
-// isBcryptHash determines whether hashedPassword is in the CockroachDB bcrypt format.
-// If the script parameter is true, then the special "CRDB-BCRYPT" prefix is required.
-// This is used e.g. when accepting password hashes in the SQL ALTER USER statement.
-// When loading a hash from storage, typically we do not enforce this so as to
-// support password hashes stored in earlier versions of CockroachDB.
 func isBcryptHash(inputPassword []byte, strict bool) bool {
+	__antithesis_instrumentation__.Notify(186819)
 	if !bcryptHashRe.Match(inputPassword) {
+		__antithesis_instrumentation__.Notify(186822)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(186823)
 	}
-	if strict && !bytes.HasPrefix(inputPassword, []byte(crdbBcryptPrefix+`$`)) {
+	__antithesis_instrumentation__.Notify(186820)
+	if strict && func() bool {
+		__antithesis_instrumentation__.Notify(186824)
+		return !bytes.HasPrefix(inputPassword, []byte(crdbBcryptPrefix+`$`)) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(186825)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(186826)
 	}
+	__antithesis_instrumentation__.Notify(186821)
 	return true
 }
 
 func checkBcryptHash(inputPassword []byte) (ok bool, hashedPassword []byte, err error) {
-	if !isBcryptHash(inputPassword, true /* strict */) {
+	__antithesis_instrumentation__.Notify(186827)
+	if !isBcryptHash(inputPassword, true) {
+		__antithesis_instrumentation__.Notify(186829)
 		return false, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(186830)
 	}
-	// Trim the "CRDB-BCRYPT" prefix. We trim this because previous version
-	// CockroachDB nodes do not understand the prefix when stored.
+	__antithesis_instrumentation__.Notify(186828)
+
 	hashedPassword = inputPassword[len(crdbBcryptPrefix):]
-	// The bcrypt.Cost() function parses the hash and checks its syntax.
+
 	_, err = bcrypt.Cost(hashedPassword)
 	return true, hashedPassword, err
 }
 
 const scramPrefix = "SCRAM-SHA-256"
 
-// scramHashRe matches the lexical structure of PostgreSQL's
-// pre-computed SCRAM hashes.
-//
-// This structure is inspired from PosgreSQL's parse_scram_secret() function.
-// The base64 encoding uses the alphabet used by pg_b64_encode():
-// "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-// The salt must have size >0; the server key pair is two times 32 bytes,
-// which always encode to 44 base64 characters.
 var scramHashRe = regexp.MustCompile(`^` + scramPrefix + `\$(\d+):([A-Za-z0-9+/]+=*)\$([A-Za-z0-9+/]{43}=):([A-Za-z0-9+/]{43}=)$`)
 
-// scramParts is an intermediate type to connect the output of
-// isSCRAMHash() to makeSCRAMHash(), so that the latter cannot be
-// legitimately used without the former.
 type scramParts [][]byte
 
 func (sp scramParts) getIters() (int, error) {
+	__antithesis_instrumentation__.Notify(186831)
 	return strconv.Atoi(string(sp[1]))
 }
 
 func (sp scramParts) getSalt() ([]byte, error) {
+	__antithesis_instrumentation__.Notify(186832)
 	return base64.StdEncoding.DecodeString(string(sp[2]))
 }
 
 func (sp scramParts) getStoredKey() ([]byte, error) {
+	__antithesis_instrumentation__.Notify(186833)
 	return base64.StdEncoding.DecodeString(string(sp[3]))
 }
 
 func (sp scramParts) getServerKey() ([]byte, error) {
+	__antithesis_instrumentation__.Notify(186834)
 	return base64.StdEncoding.DecodeString(string(sp[4]))
 }
 
 func isSCRAMHash(inputPassword []byte) (bool, scramParts) {
+	__antithesis_instrumentation__.Notify(186835)
 	parts := scramHashRe.FindSubmatch(inputPassword)
 	if parts == nil {
+		__antithesis_instrumentation__.Notify(186838)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(186839)
 	}
+	__antithesis_instrumentation__.Notify(186836)
 	if len(parts) != 5 {
+		__antithesis_instrumentation__.Notify(186840)
 		panic(errors.AssertionFailedf("programming error: scramParts type must have same length as regexp groups"))
+	} else {
+		__antithesis_instrumentation__.Notify(186841)
 	}
+	__antithesis_instrumentation__.Notify(186837)
 	return true, scramParts(parts)
 }
 
 func checkSCRAMHash(inputPassword []byte) (ok bool, hashedPassword []byte, err error) {
+	__antithesis_instrumentation__.Notify(186842)
 	ok, parts := isSCRAMHash(inputPassword)
 	if !ok {
+		__antithesis_instrumentation__.Notify(186846)
 		return false, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(186847)
 	}
+	__antithesis_instrumentation__.Notify(186843)
 	iters, err := strconv.ParseInt(string(parts[1]), 10, 64)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186848)
 		return true, nil, errors.Wrap(err, "invalid scram-sha-256 iteration count")
+	} else {
+		__antithesis_instrumentation__.Notify(186849)
 	}
+	__antithesis_instrumentation__.Notify(186844)
 
-	if iters < scramMinCost || iters > scramMaxCost {
+	if iters < scramMinCost || func() bool {
+		__antithesis_instrumentation__.Notify(186850)
+		return iters > scramMaxCost == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(186851)
 		return true, nil, errors.Newf("scram-sha-256 iteration count not in allowed range (%d,%d)", scramMinCost, scramMaxCost)
+	} else {
+		__antithesis_instrumentation__.Notify(186852)
 	}
+	__antithesis_instrumentation__.Notify(186845)
 	return true, inputPassword, nil
 }
 
-// makeSCRAMHash constructs a PasswordHash using the output of a
-// previous call to isSCRAMHash().
 func makeSCRAMHash(storedHash []byte, parts scramParts, invalidHash PasswordHash) PasswordHash {
+	__antithesis_instrumentation__.Notify(186853)
 	iters, err := parts.getIters()
-	if err != nil || iters < scramMinCost {
-		return invalidHash //nolint:returnerrcheck
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(186858)
+		return iters < scramMinCost == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(186859)
+		return invalidHash
+	} else {
+		__antithesis_instrumentation__.Notify(186860)
 	}
+	__antithesis_instrumentation__.Notify(186854)
 	salt, err := parts.getSalt()
 	if err != nil {
-		return invalidHash //nolint:returnerrcheck
+		__antithesis_instrumentation__.Notify(186861)
+		return invalidHash
+	} else {
+		__antithesis_instrumentation__.Notify(186862)
 	}
+	__antithesis_instrumentation__.Notify(186855)
 	storedKey, err := parts.getStoredKey()
 	if err != nil {
-		return invalidHash //nolint:returnerrcheck
+		__antithesis_instrumentation__.Notify(186863)
+		return invalidHash
+	} else {
+		__antithesis_instrumentation__.Notify(186864)
 	}
+	__antithesis_instrumentation__.Notify(186856)
 	serverKey, err := parts.getServerKey()
 	if err != nil {
-		return invalidHash //nolint:returnerrcheck
+		__antithesis_instrumentation__.Notify(186865)
+		return invalidHash
+	} else {
+		__antithesis_instrumentation__.Notify(186866)
 	}
+	__antithesis_instrumentation__.Notify(186857)
 	return &scramHash{
 		bytes: storedHash,
 		decoded: scram.StoredCredentials{
@@ -637,24 +662,17 @@ func makeSCRAMHash(storedHash []byte, parts scramParts, invalidHash PasswordHash
 }
 
 func isMD5Hash(hashedPassword []byte) bool {
-	// This logic is inspired from PostgreSQL's get_password_type() function.
-	return bytes.HasPrefix(hashedPassword, []byte("md5")) &&
-		len(hashedPassword) == 35 &&
-		len(bytes.Trim(hashedPassword[3:], "0123456789abcdef")) == 0
+	__antithesis_instrumentation__.Notify(186867)
+
+	return bytes.HasPrefix(hashedPassword, []byte("md5")) && func() bool {
+		__antithesis_instrumentation__.Notify(186868)
+		return len(hashedPassword) == 35 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(186869)
+		return len(bytes.Trim(hashedPassword[3:], "0123456789abcdef")) == 0 == true
+	}() == true
 }
 
-// CheckPasswordHashValidity determines whether a (user-provided)
-// password is already hashed, and if already hashed, verifies whether
-// the hash is recognized as a valid hash.
-// Return values:
-// - isPreHashed indicates whether the password is already hashed.
-// - supportedScheme indicates whether the scheme is currently supported
-//   for authentication. If false, issueNum indicates which github
-//   issue to report in the error message.
-// - schemeName is the name of the hashing scheme, for inclusion
-//   in error messages (no guarantee is made of stability of this string).
-// - hashedPassword is a translated version from the input,
-//   suitable for storage in the password database.
 func CheckPasswordHashValidity(
 	ctx context.Context, inputPassword []byte,
 ) (
@@ -664,22 +682,33 @@ func CheckPasswordHashValidity(
 	hashedPassword []byte,
 	err error,
 ) {
+	__antithesis_instrumentation__.Notify(186870)
 	if ok, hashedPassword, err := checkBcryptHash(inputPassword); ok {
+		__antithesis_instrumentation__.Notify(186874)
 		return true, true, 0, "crdb-bcrypt", hashedPassword, err
+	} else {
+		__antithesis_instrumentation__.Notify(186875)
 	}
+	__antithesis_instrumentation__.Notify(186871)
 	if ok, hashedPassword, err := checkSCRAMHash(inputPassword); ok {
+		__antithesis_instrumentation__.Notify(186876)
 		return true, true, 0, "scram-sha-256", hashedPassword, err
+	} else {
+		__antithesis_instrumentation__.Notify(186877)
 	}
+	__antithesis_instrumentation__.Notify(186872)
 	if isMD5Hash(inputPassword) {
-		// See: https://github.com/cockroachdb/cockroach/issues/73337
-		return true, false /* not supported */, 73337 /* issueNum */, "md5", inputPassword, nil
+		__antithesis_instrumentation__.Notify(186878)
+
+		return true, false, 73337, "md5", inputPassword, nil
+	} else {
+		__antithesis_instrumentation__.Notify(186879)
 	}
+	__antithesis_instrumentation__.Notify(186873)
 
 	return false, false, 0, "", inputPassword, nil
 }
 
-// MinPasswordLength is the cluster setting that configures the
-// minimum SQL password length.
 var MinPasswordLength = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"server.user_login.min_password_length",
@@ -689,226 +718,170 @@ var MinPasswordLength = settings.RegisterIntSetting(
 	settings.NonNegativeInt,
 ).WithPublic()
 
-// expensiveHashComputeSemOnce wraps a semaphore that limits the
-// number of concurrent calls to the bcrypt and sha256 hash
-// functions. This is needed to avoid the risk of a DoS attacks by
-// malicious users or broken client apps that would starve the server
-// of CPU resources just by computing hashes.
-//
-// We use a sync.Once to delay the creation of the semaphore to the
-// first time the password functions are used. This gives a chance to
-// the server process to update GOMAXPROCS before we compute the
-// maximum amount of concurrency for the semaphore.
 var expensiveHashComputeSemOnce struct {
 	sem  *quotapool.IntPool
 	once sync.Once
 }
 
-// envMaxHashComputeConcurrency allows a user to override the semaphore
-// configuration using an environment variable.
-// If the env var is set to a value >= 1, that value is used.
-// Otherwise, a default is computed from the configure GOMAXPROCS.
 var envMaxHashComputeConcurrency = envutil.EnvOrDefaultInt("COCKROACH_MAX_PW_HASH_COMPUTE_CONCURRENCY", 0)
 
-// getExpensiveHashComputeSem retrieves the hashing semaphore.
 func getExpensiveHashComputeSem(ctx context.Context) *quotapool.IntPool {
+	__antithesis_instrumentation__.Notify(186880)
 	expensiveHashComputeSemOnce.once.Do(func() {
+		__antithesis_instrumentation__.Notify(186882)
 		var n int
 		if envMaxHashComputeConcurrency >= 1 {
-			// The operator knows better. Use what they tell us to use.
+			__antithesis_instrumentation__.Notify(186885)
+
 			n = envMaxHashComputeConcurrency
 		} else {
-			// We divide by 8 so that the max CPU usage of hash checks
-			// never exceeds ~10% of total CPU resources allocated to this
-			// process.
+			__antithesis_instrumentation__.Notify(186886)
+
 			n = runtime.GOMAXPROCS(-1) / 8
 		}
+		__antithesis_instrumentation__.Notify(186883)
 		if n < 1 {
+			__antithesis_instrumentation__.Notify(186887)
 			n = 1
+		} else {
+			__antithesis_instrumentation__.Notify(186888)
 		}
+		__antithesis_instrumentation__.Notify(186884)
 		log.VInfof(ctx, 1, "configured maximum hashing concurrency: %d", n)
 		expensiveHashComputeSemOnce.sem = quotapool.NewIntPool("password_hashes", uint64(n))
 	})
+	__antithesis_instrumentation__.Notify(186881)
 	return expensiveHashComputeSemOnce.sem
 }
 
-// bcryptCostToSCRAMIterCount maps the bcrypt cost in a pre-hashed
-// password using the crdb-bcrypt method to an “equivalent” cost
-// (iteration count) for the scram-sha-256 method. This is used to
-// automatically upgrade clusters from crdb-bcrypt to scram-sha-256.
-//
-// This mapping was computed so that given a starting bcrypt cost, the
-// latency of authentication using SCRAM-SHA-256 with an iter count
-// computed by this mapping would be comparable to that when using bcrypt.
-//
-// For example, with bcrypt cost 10, if the authn latency is ~60ms
-// (an actual measurement on current hardware as of this writing),
-// the mapping gives SCRAM authn latency of ~60ms too.
-//
-// The actual values were computed as follows:
-// 1. measure the bcrypt authentication cost for costs 1-19.
-// 2. assuming the bcrypt latency is a_bcrypt*2^c + b_bcrypt, where c
-//    is the bcrypt cost, use statistical regression to derive
-//    a_bcrypt and b_bcrypt. (we found b_bcrypt to be negligible.)
-// 3. measure the SCRAM authn cost for iter counts 4096-1000000,
-//    *on the same hardware*.
-// 4. assuming the SCRAM latency is a_scram*c + b_scram,
-//    where c is the SCRAM iter count, use stat regression
-//    to derive a_scram and b_scram. (we found b_scram to be negligible).
-// 5. for each bcrypt cost, compute scram iter count = a_bcrypt * 2^cost_bcrypt / a_scram.
-//
-// The speed of the CPU used for the measurements is equally
-// represented in a_bcrypt and a_scram, so the formula eliminates any
-// CPU-specific factor.
-//
-// An alternative approach would have been to choose a SCRAM-SHA-256
-// mapping that gives equivalent difficulty at bruteforcing passwords
-// given access to the hashes and access to ASICs/GPUs. If that was
-// the goal, we would derive higher iteration counts by a factor of at
-// least 10x.
-// (From bdarnell's analysis: In 1 second, a CPU can do 1M iterations
-// of hmac-sha256 or 16k iterations of bcrypt, a ratio of 60:1. A GPU
-// can do 2G iterations of hmac-sha256 or 3M iterations of 600:1.)
-//
-// However, this would also increase the user login
-// latency by a factor of 10x, which we consider unacceptable from a
-// usability perspective for a *default* mapping.
-// Instead, for CockroachDB we will recommend in docs that
-// users define passwords with a high complexity, so that
-// the entropy of the password itself compounds with the complexity
-// of the SCRAM hash.
-// As of this writing this is already the approach taken in
-// CockroachCloud, where passwords are auto-generated.
-//
-// Meanwhile, we are also announcing this trade-off in release notes:
-// an operator who lets their end-users select their own passwords,
-// and wishes to prioritize bruteforcing hardness at the
-// expense of login latency, will be free to adjust the setting
-// server.user_login.password_hashes.default_cost.scram_sha_256 and
-// re-encode their passwords.
 var bcryptCostToSCRAMIterCount = []int64{
-	0,            // 0-3 are not valid bcrypt costs.
-	0,            // 0-3 are not valid bcrypt costs.
-	0,            // 0-3 are not valid bcrypt costs.
-	0,            // 0-3 are not valid bcrypt costs.
-	4096,         // 4 - special case to select lowest cost possible. Model would predict 7000.
-	9420,         // 5
-	12977,        // 6
-	20090,        // 7
-	34318,        // 8
-	62772,        // 9
-	119680,       // 10 - common default, 50-100ms login latency on 2021 hardware
-	233497,       // 11
-	461131,       // 12
-	916398,       // 13
-	1826932,      // 14
-	3648001,      // 15
-	7290139,      // 16
-	14574415,     // 17
-	29142967,     // 18
-	58280072,     // 19
-	116554280,    // 20
-	233102696,    // 21
-	466199529,    // 22
-	932393195,    // 23
-	1864780528,   // 24
-	3729555192,   // 25
-	7459104520,   // 26
-	14918203177,  // 27
-	29836400491,  // 28
-	59672795119,  // 29
-	119345584374, // 30
-	238691162884, // 31
+	0,
+	0,
+	0,
+	0,
+	4096,
+	9420,
+	12977,
+	20090,
+	34318,
+	62772,
+	119680,
+	233497,
+	461131,
+	916398,
+	1826932,
+	3648001,
+	7290139,
+	14574415,
+	29142967,
+	58280072,
+	116554280,
+	233102696,
+	466199529,
+	932393195,
+	1864780528,
+	3729555192,
+	7459104520,
+	14918203177,
+	29836400491,
+	59672795119,
+	119345584374,
+	238691162884,
 }
 
 var autoUpgradePasswordHashes = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"server.user_login.upgrade_bcrypt_stored_passwords_to_scram.enabled",
 	"whether to automatically re-encode stored passwords using crdb-bcrypt to scram-sha-256",
-	// We'd like to default this to true, but is pending the following issue:
-	// https://github.com/cockroachdb/cockroach/issues/80246
+
 	false,
 ).WithPublic()
 
-// MaybeUpgradePasswordHash looks at the cleartext and the hashed
-// password and determines whether the hash can be upgraded from
-// crdb-bcrypt to scram-sha-256. If it can, it computes an equivalent
-// SCRAM hash and returns it.
-//
-// See the documentation on bcryptCostToSCRAMIterCount[] for details.
 func MaybeUpgradePasswordHash(
 	ctx context.Context, sv *settings.Values, cleartext string, hashed PasswordHash,
 ) (converted bool, prevHashBytes, newHashBytes []byte, newMethod string, err error) {
+	__antithesis_instrumentation__.Notify(186889)
 	bh, isBcrypt := hashed.(bcryptHash)
 
-	// Do we want to perform the conversion?
-	//
-	// We stop here in the following cases:
-	// - password not currently hashed using crdb-bcrypt: we can't convert.
-	// - conversion disabled by cluster setting.
-	// - some nodes don't know about SCRAM just yet during an upgrade.
-	//   (checked in GetConfiguredPasswordHashMethod)
-	// - the configured default method is not scram-sha-256.
-	if !isBcrypt || !autoUpgradePasswordHashes.Get(sv) ||
-		GetConfiguredPasswordHashMethod(ctx, sv) != HashSCRAMSHA256 {
-		// Nothing to do.
+	if !isBcrypt || func() bool {
+		__antithesis_instrumentation__.Notify(186897)
+		return !autoUpgradePasswordHashes.Get(sv) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(186898)
+		return GetConfiguredPasswordHashMethod(ctx, sv) != HashSCRAMSHA256 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(186899)
+
 		return false, nil, nil, "", nil
+	} else {
+		__antithesis_instrumentation__.Notify(186900)
 	}
+	__antithesis_instrumentation__.Notify(186890)
 
 	bcryptCost, err := bcrypt.Cost([]byte(bh))
 	if err != nil {
-		// The caller should only call this function after authentication
-		// has succeeded, so the bcrypt cost should have been validated
-		// already.
+		__antithesis_instrumentation__.Notify(186901)
+
 		return false, nil, nil, "", errors.NewAssertionErrorWithWrappedErrf(err, "programming error: authn succeeded but invalid bcrypt hash")
+	} else {
+		__antithesis_instrumentation__.Notify(186902)
 	}
-	if bcryptCost < 0 || bcryptCost >= len(bcryptCostToSCRAMIterCount) || bcryptCostToSCRAMIterCount[bcryptCost] == 0 {
-		// The bcryptCost was smaller than 4 or greater than 31? That's a violation of a bcrypt invariant.
-		// Or perhaps the bcryptCostToSCRAMIterCount was incorrectly modified and there's a hole with value zero.
+	__antithesis_instrumentation__.Notify(186891)
+	if bcryptCost < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(186903)
+		return bcryptCost >= len(bcryptCostToSCRAMIterCount) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(186904)
+		return bcryptCostToSCRAMIterCount[bcryptCost] == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(186905)
+
 		return false, nil, nil, "", errors.AssertionFailedf("unexpected: bcrypt cost %d is out of bounds or has no mapping", bcryptCost)
+	} else {
+		__antithesis_instrumentation__.Notify(186906)
 	}
+	__antithesis_instrumentation__.Notify(186892)
 
 	scramIterCount := bcryptCostToSCRAMIterCount[bcryptCost]
 	if scramIterCount > math.MaxInt {
-		// scramIterCount is an int64. However, the SCRAM library we're using (xdg/scram) uses
-		// an int for the iteration count. This is not an issue when this code is running
-		// on a 64-bit platform, where sizeof(int) == sizeof(int64). However, when running
-		// on 32-bit, we can't allow a conversion to proceed because it would potentially
-		// truncate the iter count to a low value.
-		// However, this situation is not an error. The hash could still be converted later
-		// when the system is upgraded to 64-bit.
+		__antithesis_instrumentation__.Notify(186907)
+
 		return false, nil, nil, "", nil
+	} else {
+		__antithesis_instrumentation__.Notify(186908)
 	}
+	__antithesis_instrumentation__.Notify(186893)
 
 	if bcryptCost > 10 {
-		// Tell the logs that we're doing a conversion. This is important
-		// if the new cost is high and the operation takes a long time, so
-		// the operator knows what's up.
-		//
-		// Note: this is an informational message for troubleshooting
-		// purposes, and therefore is best sent to the DEV channel. The
-		// structured event that reports that the conversion has completed
-		// (and the new credentials were stored) is sent by the SQL code
-		// that also owns the storing of the new credentials.
+		__antithesis_instrumentation__.Notify(186909)
+
 		log.Infof(ctx, "hash conversion: computing a SCRAM hash with iteration count %d (from bcrypt cost %d)", scramIterCount, bcryptCost)
+	} else {
+		__antithesis_instrumentation__.Notify(186910)
 	}
+	__antithesis_instrumentation__.Notify(186894)
 
 	rawHash, err := hashPasswordUsingSCRAM(ctx, int(scramIterCount), cleartext)
 	if err != nil {
-		// This call only fail with hard errors.
-		return false, nil, nil, "", err
-	}
+		__antithesis_instrumentation__.Notify(186911)
 
-	// Check the raw hash can be decoded using our decoder.
-	// This checks that we're able to re-parse what we just generated,
-	// which is a safety mechanism to ensure the result is valid.
+		return false, nil, nil, "", err
+	} else {
+		__antithesis_instrumentation__.Notify(186912)
+	}
+	__antithesis_instrumentation__.Notify(186895)
+
 	expectedMethod := HashSCRAMSHA256
 	newHash := LoadPasswordHash(ctx, rawHash)
 	if newHash.Method() != expectedMethod {
-		// The conversion failed? That is very strange.
+		__antithesis_instrumentation__.Notify(186913)
+
 		log.Errorf(ctx, "unexpected hash contents during bcrypt->scram conversion: %T %+v -> %T %+v", hashed, hashed, newHash, newHash)
-		// In contrast to logs, we don't want the details of the hash in the error with %+v.
+
 		return false, nil, nil, "", errors.AssertionFailedf("programming error: re-hash failed to produce SCRAM hash, produced %T instead", newHash)
+	} else {
+		__antithesis_instrumentation__.Notify(186914)
 	}
+	__antithesis_instrumentation__.Notify(186896)
 	return true, []byte(bh), rawHash, expectedMethod.String(), nil
 }

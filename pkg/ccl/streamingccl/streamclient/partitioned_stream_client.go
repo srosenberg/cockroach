@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package streamclient
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,7 +19,7 @@ import (
 )
 
 type partitionedStreamClient struct {
-	srcDB          *gosql.DB // DB handle to the source cluster
+	srcDB          *gosql.DB
 	urlPlaceholder url.URL
 
 	mu struct {
@@ -37,10 +31,15 @@ type partitionedStreamClient struct {
 }
 
 func newPartitionedStreamClient(remote *url.URL) (*partitionedStreamClient, error) {
+	__antithesis_instrumentation__.Notify(24963)
 	db, err := gosql.Open("postgres", remote.String())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(24965)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(24966)
 	}
+	__antithesis_instrumentation__.Notify(24964)
 
 	client := &partitionedStreamClient{
 		srcDB:          db,
@@ -52,100 +51,157 @@ func newPartitionedStreamClient(remote *url.URL) (*partitionedStreamClient, erro
 
 var _ Client = &partitionedStreamClient{}
 
-// Create implements Client interface.
 func (p *partitionedStreamClient) Create(
 	ctx context.Context, tenantID roachpb.TenantID,
 ) (streaming.StreamID, error) {
+	__antithesis_instrumentation__.Notify(24967)
 	streamID := streaming.InvalidStreamID
 
 	conn, err := p.srcDB.Conn(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(24970)
 		return streamID, err
+	} else {
+		__antithesis_instrumentation__.Notify(24971)
 	}
+	__antithesis_instrumentation__.Notify(24968)
 
 	row := conn.QueryRowContext(ctx, `SELECT crdb_internal.start_replication_stream($1)`, tenantID.ToUint64())
 	if row.Err() != nil {
+		__antithesis_instrumentation__.Notify(24972)
 		return streamID, errors.Wrapf(row.Err(), "Error in creating replication stream for tenant %s", tenantID.String())
+	} else {
+		__antithesis_instrumentation__.Notify(24973)
 	}
+	__antithesis_instrumentation__.Notify(24969)
 
 	err = row.Scan(&streamID)
 	return streamID, err
 }
 
-// Heartbeat implements Client interface.
 func (p *partitionedStreamClient) Heartbeat(
 	ctx context.Context, streamID streaming.StreamID, consumed hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(24974)
 	conn, err := p.srcDB.Conn(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(24980)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(24981)
 	}
+	__antithesis_instrumentation__.Notify(24975)
 
 	row := conn.QueryRowContext(ctx,
 		`SELECT crdb_internal.replication_stream_progress($1, $2)`, streamID, consumed.String())
 	if row.Err() != nil {
+		__antithesis_instrumentation__.Notify(24982)
 		return errors.Wrapf(row.Err(), "Error in sending heartbeats to replication stream %d", streamID)
+	} else {
+		__antithesis_instrumentation__.Notify(24983)
 	}
+	__antithesis_instrumentation__.Notify(24976)
 
 	var rawStatus []byte
 	if err := row.Scan(&rawStatus); err != nil {
+		__antithesis_instrumentation__.Notify(24984)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(24985)
 	}
+	__antithesis_instrumentation__.Notify(24977)
 	var status streampb.StreamReplicationStatus
 	if err := protoutil.Unmarshal(rawStatus, &status); err != nil {
+		__antithesis_instrumentation__.Notify(24986)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(24987)
 	}
-	// TODO(casper): add observability for stream protected timestamp
+	__antithesis_instrumentation__.Notify(24978)
+
 	if status.StreamStatus != streampb.StreamReplicationStatus_STREAM_ACTIVE {
+		__antithesis_instrumentation__.Notify(24988)
 		return streamingccl.NewStreamStatusErr(streamID, status.StreamStatus)
+	} else {
+		__antithesis_instrumentation__.Notify(24989)
 	}
+	__antithesis_instrumentation__.Notify(24979)
 	return nil
 }
 
-// postgresURL converts an SQL serving address into a postgres URL.
 func (p *partitionedStreamClient) postgresURL(servingAddr string) (url.URL, error) {
+	__antithesis_instrumentation__.Notify(24990)
 	host, port, err := net.SplitHostPort(servingAddr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(24992)
 		return url.URL{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(24993)
 	}
+	__antithesis_instrumentation__.Notify(24991)
 	res := p.urlPlaceholder
 	res.Host = net.JoinHostPort(host, port)
 	return res, nil
 }
 
-// Plan implements Client interface.
 func (p *partitionedStreamClient) Plan(
 	ctx context.Context, streamID streaming.StreamID,
 ) (Topology, error) {
+	__antithesis_instrumentation__.Notify(24994)
 	conn, err := p.srcDB.Conn(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25000)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(25001)
 	}
+	__antithesis_instrumentation__.Notify(24995)
 
 	row := conn.QueryRowContext(ctx, `SELECT crdb_internal.replication_stream_spec($1)`, streamID)
 	if row.Err() != nil {
+		__antithesis_instrumentation__.Notify(25002)
 		return nil, errors.Wrap(row.Err(), "Error in planning a replication stream")
+	} else {
+		__antithesis_instrumentation__.Notify(25003)
 	}
+	__antithesis_instrumentation__.Notify(24996)
 
 	var rawSpec []byte
 	if err := row.Scan(&rawSpec); err != nil {
+		__antithesis_instrumentation__.Notify(25004)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(25005)
 	}
+	__antithesis_instrumentation__.Notify(24997)
 	var spec streampb.ReplicationStreamSpec
 	if err := protoutil.Unmarshal(rawSpec, &spec); err != nil {
+		__antithesis_instrumentation__.Notify(25006)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(25007)
 	}
+	__antithesis_instrumentation__.Notify(24998)
 
 	topology := Topology{}
 	for _, sp := range spec.Partitions {
+		__antithesis_instrumentation__.Notify(25008)
 		pgURL, err := p.postgresURL(sp.SQLAddress.String())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(25011)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(25012)
 		}
+		__antithesis_instrumentation__.Notify(25009)
 		rawSpec, err := protoutil.Marshal(sp.PartitionSpec)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(25013)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(25014)
 		}
+		__antithesis_instrumentation__.Notify(25010)
 		topology = append(topology, PartitionInfo{
 			ID:                sp.NodeID.String(),
 			SubscriptionToken: SubscriptionToken(rawSpec),
@@ -154,40 +210,55 @@ func (p *partitionedStreamClient) Plan(
 			SrcLocality:       sp.Locality,
 		})
 	}
+	__antithesis_instrumentation__.Notify(24999)
 	return topology, nil
 }
 
-// Close implements Client interface.
 func (p *partitionedStreamClient) Close() error {
+	__antithesis_instrumentation__.Notify(25015)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.mu.closed {
+		__antithesis_instrumentation__.Notify(25018)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(25019)
 	}
-	// Close all the active subscriptions and disallow more usage.
+	__antithesis_instrumentation__.Notify(25016)
+
 	p.mu.closed = true
 	for sub := range p.mu.activeSubscriptions {
+		__antithesis_instrumentation__.Notify(25020)
 		close(sub.closeChan)
 		delete(p.mu.activeSubscriptions, sub)
 	}
+	__antithesis_instrumentation__.Notify(25017)
 	return p.srcDB.Close()
 }
 
-// Subscribe implements Client interface.
 func (p *partitionedStreamClient) Subscribe(
 	ctx context.Context, stream streaming.StreamID, spec SubscriptionToken, checkpoint hlc.Timestamp,
 ) (Subscription, error) {
+	__antithesis_instrumentation__.Notify(25021)
 	sps := streampb.StreamPartitionSpec{}
 	if err := protoutil.Unmarshal(spec, &sps); err != nil {
+		__antithesis_instrumentation__.Notify(25024)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(25025)
 	}
+	__antithesis_instrumentation__.Notify(25022)
 	sps.StartFrom = checkpoint
 
 	specBytes, err := protoutil.Marshal(&sps)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25026)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(25027)
 	}
+	__antithesis_instrumentation__.Notify(25023)
 
 	res := &partitionedStreamSubscription{
 		eventsChan: make(chan streamingccl.Event),
@@ -206,7 +277,7 @@ type partitionedStreamSubscription struct {
 	err        error
 	db         *gosql.DB
 	eventsChan chan streamingccl.Event
-	// Channel to send signal to close the subscription.
+
 	closeChan chan struct{}
 
 	streamEvent *streampb.StreamEvent
@@ -216,96 +287,152 @@ type partitionedStreamSubscription struct {
 
 var _ Subscription = (*partitionedStreamSubscription)(nil)
 
-// parseEvent parses next event from the batch of events inside streampb.StreamEvent.
 func parseEvent(streamEvent *streampb.StreamEvent) streamingccl.Event {
+	__antithesis_instrumentation__.Notify(25028)
 	if streamEvent == nil {
+		__antithesis_instrumentation__.Notify(25032)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(25033)
 	}
+	__antithesis_instrumentation__.Notify(25029)
 
 	if streamEvent.Checkpoint != nil {
+		__antithesis_instrumentation__.Notify(25034)
 		event := streamingccl.MakeCheckpointEvent(streamEvent.Checkpoint.Spans[0].Timestamp)
 		streamEvent.Checkpoint = nil
 		return event
+	} else {
+		__antithesis_instrumentation__.Notify(25035)
 	}
+	__antithesis_instrumentation__.Notify(25030)
 	if streamEvent.Batch != nil {
+		__antithesis_instrumentation__.Notify(25036)
 		event := streamingccl.MakeKVEvent(streamEvent.Batch.KeyValues[0])
 		streamEvent.Batch.KeyValues = streamEvent.Batch.KeyValues[1:]
 		if len(streamEvent.Batch.KeyValues) == 0 {
+			__antithesis_instrumentation__.Notify(25038)
 			streamEvent.Batch = nil
+		} else {
+			__antithesis_instrumentation__.Notify(25039)
 		}
+		__antithesis_instrumentation__.Notify(25037)
 		return event
+	} else {
+		__antithesis_instrumentation__.Notify(25040)
 	}
+	__antithesis_instrumentation__.Notify(25031)
 	return nil
 }
 
-// Subscribe implements the Subscription interface.
 func (p *partitionedStreamSubscription) Subscribe(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(25041)
 	defer close(p.eventsChan)
 	conn, err := p.db.Conn(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25046)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(25047)
 	}
+	__antithesis_instrumentation__.Notify(25042)
 
 	_, err = conn.ExecContext(ctx, `SET avoid_buffering = true`)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25048)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(25049)
 	}
+	__antithesis_instrumentation__.Notify(25043)
 	rows, err := conn.QueryContext(ctx, `SELECT * FROM crdb_internal.stream_partition($1, $2)`,
 		p.streamID, p.specBytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25050)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(25051)
 	}
+	__antithesis_instrumentation__.Notify(25044)
 	defer rows.Close()
 
-	// Get the next event from the cursor.
 	getNextEvent := func() (streamingccl.Event, error) {
+		__antithesis_instrumentation__.Notify(25052)
 		if e := parseEvent(p.streamEvent); e != nil {
+			__antithesis_instrumentation__.Notify(25057)
 			return e, nil
+		} else {
+			__antithesis_instrumentation__.Notify(25058)
 		}
+		__antithesis_instrumentation__.Notify(25053)
 
 		if !rows.Next() {
+			__antithesis_instrumentation__.Notify(25059)
 			if err := rows.Err(); err != nil {
+				__antithesis_instrumentation__.Notify(25061)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(25062)
 			}
+			__antithesis_instrumentation__.Notify(25060)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(25063)
 		}
+		__antithesis_instrumentation__.Notify(25054)
 		var data []byte
 		if err := rows.Scan(&data); err != nil {
+			__antithesis_instrumentation__.Notify(25064)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(25065)
 		}
+		__antithesis_instrumentation__.Notify(25055)
 		var streamEvent streampb.StreamEvent
 		if err := protoutil.Unmarshal(data, &streamEvent); err != nil {
+			__antithesis_instrumentation__.Notify(25066)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(25067)
 		}
+		__antithesis_instrumentation__.Notify(25056)
 		p.streamEvent = &streamEvent
 		return parseEvent(p.streamEvent), nil
 	}
+	__antithesis_instrumentation__.Notify(25045)
 
 	for {
+		__antithesis_instrumentation__.Notify(25068)
 		event, err := getNextEvent()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(25070)
 			p.err = err
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(25071)
 		}
+		__antithesis_instrumentation__.Notify(25069)
 		select {
 		case p.eventsChan <- event:
+			__antithesis_instrumentation__.Notify(25072)
 		case <-p.closeChan:
-			// Exit quietly to not cause other subscriptions in the same
-			// ctxgroup.Group to exit.
+			__antithesis_instrumentation__.Notify(25073)
+
 			return nil
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(25074)
 			p.err = ctx.Err()
 			return p.err
 		}
 	}
 }
 
-// Events implements the Subscription interface.
 func (p *partitionedStreamSubscription) Events() <-chan streamingccl.Event {
+	__antithesis_instrumentation__.Notify(25075)
 	return p.eventsChan
 }
 
-// Err implements the Subscription interface.
 func (p *partitionedStreamSubscription) Err() error {
+	__antithesis_instrumentation__.Notify(25076)
 	return p.err
 }

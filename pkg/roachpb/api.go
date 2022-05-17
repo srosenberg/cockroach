@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package roachpb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -23,81 +15,87 @@ import (
 	"github.com/dustin/go-humanize"
 )
 
-//go:generate mockgen -package=roachpbmock -destination=roachpbmock/mocks_generated.go . InternalClient,Internal_RangeFeedClient
-
-// UserPriority is a custom type for transaction's user priority.
 type UserPriority float64
 
 func (up UserPriority) String() string {
+	__antithesis_instrumentation__.Notify(129031)
 	switch up {
 	case MinUserPriority:
+		__antithesis_instrumentation__.Notify(129032)
 		return "low"
 	case UnspecifiedUserPriority, NormalUserPriority:
+		__antithesis_instrumentation__.Notify(129033)
 		return "normal"
 	case MaxUserPriority:
+		__antithesis_instrumentation__.Notify(129034)
 		return "high"
 	default:
+		__antithesis_instrumentation__.Notify(129035)
 		return fmt.Sprintf("%g", float64(up))
 	}
 }
 
 const (
-	// MinUserPriority is the minimum allowed user priority.
 	MinUserPriority UserPriority = 0.001
-	// UnspecifiedUserPriority means NormalUserPriority.
+
 	UnspecifiedUserPriority UserPriority = 0
-	// NormalUserPriority is set to 1, meaning ops run through the database
-	// are all given equal weight when a random priority is chosen. This can
-	// be set specifically via client.NewDBWithPriority().
+
 	NormalUserPriority UserPriority = 1
-	// MaxUserPriority is the maximum allowed user priority.
+
 	MaxUserPriority UserPriority = 1000
 )
 
-// SupportsBatch determines whether the methods in the provided batch
-// are supported by the ReadConsistencyType, returning an error if not.
 func (rc ReadConsistencyType) SupportsBatch(ba BatchRequest) error {
+	__antithesis_instrumentation__.Notify(129036)
 	switch rc {
 	case CONSISTENT:
+		__antithesis_instrumentation__.Notify(129038)
 		return nil
 	case READ_UNCOMMITTED, INCONSISTENT:
+		__antithesis_instrumentation__.Notify(129039)
 		for _, ru := range ba.Requests {
+			__antithesis_instrumentation__.Notify(129042)
 			m := ru.GetInner().Method()
 			switch m {
 			case Get, Scan, ReverseScan, QueryResolvedTimestamp:
+				__antithesis_instrumentation__.Notify(129043)
 			default:
+				__antithesis_instrumentation__.Notify(129044)
 				return errors.Errorf("method %s not allowed with %s batch", m, rc)
 			}
 		}
+		__antithesis_instrumentation__.Notify(129040)
 		return nil
+	default:
+		__antithesis_instrumentation__.Notify(129041)
 	}
+	__antithesis_instrumentation__.Notify(129037)
 	panic("unreachable")
 }
 
 type flag int
 
 const (
-	isAdmin                       flag = 1 << iota // admin cmds don't go through raft, but run on lease holder
-	isRead                                         // read-only cmds don't go through raft, but may run on lease holder
-	isWrite                                        // write cmds go through raft and must be proposed on lease holder
-	isTxn                                          // txn commands may be part of a transaction
-	isLocking                                      // locking cmds acquire locks for their transaction
-	isIntentWrite                                  // intent write cmds leave intents when they succeed
-	isRange                                        // range commands may span multiple keys
-	isReverse                                      // reverse commands traverse ranges in descending direction
-	isAlone                                        // requests which must be alone in a batch
-	isPrefix                                       // requests which, in a batch, must not be split from the following request
-	isUnsplittable                                 // range command that must not be split during sending
-	skipsLeaseCheck                                // commands which skip the check that the evaluating replica has a valid lease
-	appliesTSCache                                 // commands which apply the timestamp cache and closed timestamp
-	updatesTSCache                                 // commands which update the timestamp cache
-	updatesTSCacheOnErr                            // commands which make read data available on errors
-	needsRefresh                                   // commands which require refreshes to avoid serializable retries
-	canBackpressure                                // commands which deserve backpressure when a Range grows too large
-	bypassesReplicaCircuitBreaker                  // commands which bypass the replica circuit breaker, i.e. opt out of fail-fast
+	isAdmin flag = 1 << iota
+	isRead
+	isWrite
+	isTxn
+	isLocking
+	isIntentWrite
+	isRange
+	isReverse
+	isAlone
+	isPrefix
+	isUnsplittable
+	skipsLeaseCheck
+	appliesTSCache
+	updatesTSCache
+	updatesTSCacheOnErr
+	needsRefresh
+	canBackpressure
+	bypassesReplicaCircuitBreaker
 )
 
-// flagDependencies specifies flag dependencies, asserted by TestFlagCombinations.
 var flagDependencies = map[flag][]flag{
 	isAdmin:         {isAlone},
 	isLocking:       {isTxn},
@@ -106,127 +104,103 @@ var flagDependencies = map[flag][]flag{
 	skipsLeaseCheck: {isAlone},
 }
 
-// flagExclusions specifies flag incompatibilities, asserted by TestFlagCombinations.
 var flagExclusions = map[flag][]flag{
 	skipsLeaseCheck: {isIntentWrite},
 }
 
-// IsReadOnly returns true iff the request is read-only. A request is
-// read-only if it does not go through raft, meaning that it cannot
-// change any replicated state. However, read-only requests may still
-// acquire locks with an unreplicated durability level; see IsLocking.
 func IsReadOnly(args Request) bool {
+	__antithesis_instrumentation__.Notify(129045)
 	flags := args.flags()
-	return (flags&isRead) != 0 && (flags&isWrite) == 0
+	return (flags&isRead) != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(129046)
+		return (flags & isWrite) == 0 == true
+	}() == true
 }
 
-// IsBlindWrite returns true iff the request is a blind-write. A request is a
-// blind-write if it is a write that does not observe any key-value state when
-// modifying that state (such as puts and deletes). This is in contrast with
-// read-write requests, which do observe key-value state when modifying the
-// state and may base their modifications off of this existing state (such as
-// conditional puts and increments).
-//
-// As a result of being "blind", blind-writes are allowed to be more freely
-// re-ordered with other writes. In practice, this means that they can be
-// evaluated with a read timestamp below another write and a write timestamp
-// above that write without needing to re-evaluate. This allows the WriteTooOld
-// error that is generated during such an occurrence to be deferred.
 func IsBlindWrite(args Request) bool {
+	__antithesis_instrumentation__.Notify(129047)
 	flags := args.flags()
-	return (flags&isRead) == 0 && (flags&isWrite) != 0
+	return (flags&isRead) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(129048)
+		return (flags & isWrite) != 0 == true
+	}() == true
 }
 
-// IsTransactional returns true if the request may be part of a
-// transaction.
 func IsTransactional(args Request) bool {
+	__antithesis_instrumentation__.Notify(129049)
 	return (args.flags() & isTxn) != 0
 }
 
-// IsLocking returns true if the request acquires locks when used within
-// a transaction.
 func IsLocking(args Request) bool {
+	__antithesis_instrumentation__.Notify(129050)
 	return (args.flags() & isLocking) != 0
 }
 
-// LockingDurability returns the durability of the locks acquired by the
-// request. The function assumes that IsLocking(args).
 func LockingDurability(args Request) lock.Durability {
+	__antithesis_instrumentation__.Notify(129051)
 	if IsReadOnly(args) {
+		__antithesis_instrumentation__.Notify(129053)
 		return lock.Unreplicated
+	} else {
+		__antithesis_instrumentation__.Notify(129054)
 	}
+	__antithesis_instrumentation__.Notify(129052)
 	return lock.Replicated
 }
 
-// IsIntentWrite returns true if the request produces write intents at
-// the request's sequence number when used within a transaction.
 func IsIntentWrite(args Request) bool {
+	__antithesis_instrumentation__.Notify(129055)
 	return (args.flags() & isIntentWrite) != 0
 }
 
-// IsRange returns true if the command is range-based and must include
-// a start and an end key.
 func IsRange(args Request) bool {
+	__antithesis_instrumentation__.Notify(129056)
 	return (args.flags() & isRange) != 0
 }
 
-// AppliesTimestampCache returns whether the command is a write that applies the
-// timestamp cache (and closed timestamp), possibly pushing its write timestamp
-// into the future to avoid re-writing history.
 func AppliesTimestampCache(args Request) bool {
+	__antithesis_instrumentation__.Notify(129057)
 	return (args.flags() & appliesTSCache) != 0
 }
 
-// UpdatesTimestampCache returns whether the command must update
-// the timestamp cache in order to set a low water mark for the
-// timestamp at which mutations to overlapping key(s) can write
-// such that they don't re-write history.
 func UpdatesTimestampCache(args Request) bool {
+	__antithesis_instrumentation__.Notify(129058)
 	return (args.flags() & updatesTSCache) != 0
 }
 
-// UpdatesTimestampCacheOnError returns whether the command must
-// update the timestamp cache even on error, as in some cases the data
-// which was read is returned (e.g. ConditionalPut ConditionFailedError).
 func UpdatesTimestampCacheOnError(args Request) bool {
+	__antithesis_instrumentation__.Notify(129059)
 	return (args.flags() & updatesTSCacheOnErr) != 0
 }
 
-// NeedsRefresh returns whether the command must be refreshed in
-// order to avoid client-side retries on serializable transactions.
 func NeedsRefresh(args Request) bool {
+	__antithesis_instrumentation__.Notify(129060)
 	return (args.flags() & needsRefresh) != 0
 }
 
-// CanBackpressure returns whether the command can be backpressured
-// when waiting for a Range to split after it has grown too large.
 func CanBackpressure(args Request) bool {
+	__antithesis_instrumentation__.Notify(129061)
 	return (args.flags() & canBackpressure) != 0
 }
 
-// BypassesReplicaCircuitBreaker returns whether the command bypasses
-// the per-Replica circuit breakers. These requests will thus hang when
-// addressed to an unavailable range (instead of failing fast).
 func BypassesReplicaCircuitBreaker(args Request) bool {
+	__antithesis_instrumentation__.Notify(129062)
 	return (args.flags() & bypassesReplicaCircuitBreaker) != 0
 }
 
-// Request is an interface for RPC requests.
 type Request interface {
 	protoutil.Message
-	// Header returns the request header.
+
 	Header() RequestHeader
-	// SetHeader sets the request header.
+
 	SetHeader(RequestHeader)
-	// Method returns the request method.
+
 	Method() Method
-	// ShallowCopy returns a shallow copy of the receiver.
+
 	ShallowCopy() Request
 	flags() flag
 }
 
-// SizedWriteRequest is an interface used to expose the number of bytes a
-// request might write.
 type SizedWriteRequest interface {
 	Request
 	WriteBytes() int64
@@ -234,89 +208,102 @@ type SizedWriteRequest interface {
 
 var _ SizedWriteRequest = (*PutRequest)(nil)
 
-// WriteBytes makes PutRequest implement SizedWriteRequest.
 func (pr *PutRequest) WriteBytes() int64 {
+	__antithesis_instrumentation__.Notify(129063)
 	return int64(len(pr.Key)) + int64(pr.Value.Size())
 }
 
 var _ SizedWriteRequest = (*ConditionalPutRequest)(nil)
 
-// WriteBytes makes ConditionalPutRequest implement SizedWriteRequest.
 func (cpr *ConditionalPutRequest) WriteBytes() int64 {
+	__antithesis_instrumentation__.Notify(129064)
 	return int64(len(cpr.Key)) + int64(cpr.Value.Size())
 }
 
 var _ SizedWriteRequest = (*InitPutRequest)(nil)
 
-// WriteBytes makes InitPutRequest implement SizedWriteRequest.
 func (pr *InitPutRequest) WriteBytes() int64 {
+	__antithesis_instrumentation__.Notify(129065)
 	return int64(len(pr.Key)) + int64(pr.Value.Size())
 }
 
 var _ SizedWriteRequest = (*IncrementRequest)(nil)
 
-// WriteBytes makes IncrementRequest implement SizedWriteRequest.
 func (ir *IncrementRequest) WriteBytes() int64 {
-	return int64(len(ir.Key)) + 8 // assume 8 bytes for the int64
+	__antithesis_instrumentation__.Notify(129066)
+	return int64(len(ir.Key)) + 8
 }
 
 var _ SizedWriteRequest = (*DeleteRequest)(nil)
 
-// WriteBytes makes DeleteRequest implement SizedWriteRequest.
 func (dr *DeleteRequest) WriteBytes() int64 {
+	__antithesis_instrumentation__.Notify(129067)
 	return int64(len(dr.Key))
 }
 
 var _ SizedWriteRequest = (*AddSSTableRequest)(nil)
 
-// WriteBytes makes AddSSTableRequest implement SizedWriteRequest.
 func (r *AddSSTableRequest) WriteBytes() int64 {
+	__antithesis_instrumentation__.Notify(129068)
 	return int64(len(r.Data))
 }
 
-// Response is an interface for RPC responses.
 type Response interface {
 	protoutil.Message
-	// Header returns the response header.
+
 	Header() ResponseHeader
-	// SetHeader sets the response header.
+
 	SetHeader(ResponseHeader)
-	// Verify verifies response integrity, as applicable.
+
 	Verify(req Request) error
 }
 
-// combinable is implemented by response types whose corresponding
-// requests may cross range boundaries, such as Scan or DeleteRange.
-// combine() allows responses from individual ranges to be aggregated
-// into a single one.
 type combinable interface {
 	combine(combinable) error
 }
 
-// CombineResponses attempts to combine the two provided responses. If both of
-// the responses are combinable, they will be combined. If neither are
-// combinable, the function is a no-op and returns a nil error. If one of the
-// responses is combinable and the other isn't, the function returns an error.
 func CombineResponses(left, right Response) error {
+	__antithesis_instrumentation__.Notify(129069)
 	cLeft, lOK := left.(combinable)
 	cRight, rOK := right.(combinable)
-	if lOK && rOK {
+	if lOK && func() bool {
+		__antithesis_instrumentation__.Notify(129071)
+		return rOK == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(129072)
 		return cLeft.combine(cRight)
-	} else if lOK != rOK {
-		return errors.Errorf("can not combine %T and %T", left, right)
+	} else {
+		__antithesis_instrumentation__.Notify(129073)
+		if lOK != rOK {
+			__antithesis_instrumentation__.Notify(129074)
+			return errors.Errorf("can not combine %T and %T", left, right)
+		} else {
+			__antithesis_instrumentation__.Notify(129075)
+		}
 	}
+	__antithesis_instrumentation__.Notify(129070)
 	return nil
 }
 
-// combine is used by range-spanning Response types (e.g. Scan or DeleteRange)
-// to merge their headers.
 func (rh *ResponseHeader) combine(otherRH ResponseHeader) error {
-	if rh.Txn != nil && otherRH.Txn == nil {
+	__antithesis_instrumentation__.Notify(129076)
+	if rh.Txn != nil && func() bool {
+		__antithesis_instrumentation__.Notify(129079)
+		return otherRH.Txn == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(129080)
 		rh.Txn = nil
+	} else {
+		__antithesis_instrumentation__.Notify(129081)
 	}
+	__antithesis_instrumentation__.Notify(129077)
 	if rh.ResumeSpan != nil {
+		__antithesis_instrumentation__.Notify(129082)
 		return errors.Errorf("combining %+v with %+v", rh.ResumeSpan, otherRH.ResumeSpan)
+	} else {
+		__antithesis_instrumentation__.Notify(129083)
 	}
+	__antithesis_instrumentation__.Notify(129078)
 	rh.ResumeSpan = otherRH.ResumeSpan
 	rh.ResumeReason = otherRH.ResumeReason
 	rh.NumKeys += otherRH.NumKeys
@@ -324,723 +311,895 @@ func (rh *ResponseHeader) combine(otherRH ResponseHeader) error {
 	return nil
 }
 
-// combine implements the combinable interface.
 func (sr *ScanResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129084)
 	otherSR := c.(*ScanResponse)
 	if sr != nil {
+		__antithesis_instrumentation__.Notify(129086)
 		sr.Rows = append(sr.Rows, otherSR.Rows...)
 		sr.IntentRows = append(sr.IntentRows, otherSR.IntentRows...)
 		sr.BatchResponses = append(sr.BatchResponses, otherSR.BatchResponses...)
 		if err := sr.ResponseHeader.combine(otherSR.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129087)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129088)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(129089)
 	}
+	__antithesis_instrumentation__.Notify(129085)
 	return nil
 }
 
 var _ combinable = &ScanResponse{}
 
-// combine implements the combinable interface.
 func (sr *ReverseScanResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129090)
 	otherSR := c.(*ReverseScanResponse)
 	if sr != nil {
+		__antithesis_instrumentation__.Notify(129092)
 		sr.Rows = append(sr.Rows, otherSR.Rows...)
 		sr.IntentRows = append(sr.IntentRows, otherSR.IntentRows...)
 		sr.BatchResponses = append(sr.BatchResponses, otherSR.BatchResponses...)
 		if err := sr.ResponseHeader.combine(otherSR.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129093)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129094)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(129095)
 	}
+	__antithesis_instrumentation__.Notify(129091)
 	return nil
 }
 
 var _ combinable = &ReverseScanResponse{}
 
-// combine implements the combinable interface.
 func (dr *DeleteRangeResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129096)
 	otherDR := c.(*DeleteRangeResponse)
 	if dr != nil {
+		__antithesis_instrumentation__.Notify(129098)
 		dr.Keys = append(dr.Keys, otherDR.Keys...)
 		if err := dr.ResponseHeader.combine(otherDR.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129099)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129100)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(129101)
 	}
+	__antithesis_instrumentation__.Notify(129097)
 	return nil
 }
 
 var _ combinable = &DeleteRangeResponse{}
 
-// combine implements the combinable interface.
 func (dr *RevertRangeResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129102)
 	otherDR := c.(*RevertRangeResponse)
 	if dr != nil {
+		__antithesis_instrumentation__.Notify(129104)
 		if err := dr.ResponseHeader.combine(otherDR.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129105)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129106)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(129107)
 	}
+	__antithesis_instrumentation__.Notify(129103)
 	return nil
 }
 
 var _ combinable = &RevertRangeResponse{}
 
-// combine implements the combinable interface.
 func (rr *ResolveIntentRangeResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129108)
 	otherRR := c.(*ResolveIntentRangeResponse)
 	if rr != nil {
+		__antithesis_instrumentation__.Notify(129110)
 		if err := rr.ResponseHeader.combine(otherRR.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129111)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129112)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(129113)
 	}
+	__antithesis_instrumentation__.Notify(129109)
 	return nil
 }
 
 var _ combinable = &ResolveIntentRangeResponse{}
 
-// combine implements the combinable interface.
 func (cc *CheckConsistencyResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129114)
 	if cc != nil {
+		__antithesis_instrumentation__.Notify(129116)
 		otherCC := c.(*CheckConsistencyResponse)
 		cc.Result = append(cc.Result, otherCC.Result...)
 		if err := cc.ResponseHeader.combine(otherCC.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129117)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129118)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(129119)
 	}
+	__antithesis_instrumentation__.Notify(129115)
 	return nil
 }
 
 var _ combinable = &CheckConsistencyResponse{}
 
-// combine implements the combinable interface.
 func (er *ExportResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129120)
 	if er != nil {
+		__antithesis_instrumentation__.Notify(129122)
 		otherER := c.(*ExportResponse)
 		if err := er.ResponseHeader.combine(otherER.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129124)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129125)
 		}
+		__antithesis_instrumentation__.Notify(129123)
 		er.Files = append(er.Files, otherER.Files...)
+	} else {
+		__antithesis_instrumentation__.Notify(129126)
 	}
+	__antithesis_instrumentation__.Notify(129121)
 	return nil
 }
 
 var _ combinable = &ExportResponse{}
 
-// combine implements the combinable interface.
 func (r *AdminScatterResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129127)
 	if r != nil {
+		__antithesis_instrumentation__.Notify(129129)
 		otherR := c.(*AdminScatterResponse)
 		if err := r.ResponseHeader.combine(otherR.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129131)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129132)
 		}
+		__antithesis_instrumentation__.Notify(129130)
 
 		r.RangeInfos = append(r.RangeInfos, otherR.RangeInfos...)
+	} else {
+		__antithesis_instrumentation__.Notify(129133)
 	}
+	__antithesis_instrumentation__.Notify(129128)
 	return nil
 }
 
 var _ combinable = &AdminScatterResponse{}
 
 func (avptr *AdminVerifyProtectedTimestampResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129134)
 	other := c.(*AdminVerifyProtectedTimestampResponse)
 	if avptr != nil {
+		__antithesis_instrumentation__.Notify(129136)
 		avptr.DeprecatedFailedRanges = append(avptr.DeprecatedFailedRanges,
 			other.DeprecatedFailedRanges...)
 		avptr.VerificationFailedRanges = append(avptr.VerificationFailedRanges,
 			other.VerificationFailedRanges...)
 		if err := avptr.ResponseHeader.combine(other.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129137)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129138)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(129139)
 	}
+	__antithesis_instrumentation__.Notify(129135)
 	return nil
 }
 
 var _ combinable = &AdminVerifyProtectedTimestampResponse{}
 
-// combine implements the combinable interface.
 func (r *QueryResolvedTimestampResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129140)
 	if r != nil {
+		__antithesis_instrumentation__.Notify(129142)
 		otherR := c.(*QueryResolvedTimestampResponse)
 		if err := r.ResponseHeader.combine(otherR.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129144)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129145)
 		}
+		__antithesis_instrumentation__.Notify(129143)
 
 		r.ResolvedTS.Backward(otherR.ResolvedTS)
+	} else {
+		__antithesis_instrumentation__.Notify(129146)
 	}
+	__antithesis_instrumentation__.Notify(129141)
 	return nil
 }
 
 var _ combinable = &QueryResolvedTimestampResponse{}
 
-// combine implements the combinable interface.
 func (r *BarrierResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129147)
 	otherR := c.(*BarrierResponse)
 	if r != nil {
+		__antithesis_instrumentation__.Notify(129149)
 		if err := r.ResponseHeader.combine(otherR.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129151)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129152)
 		}
+		__antithesis_instrumentation__.Notify(129150)
 		r.Timestamp.Forward(otherR.Timestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(129153)
 	}
+	__antithesis_instrumentation__.Notify(129148)
 	return nil
 }
 
 var _ combinable = &BarrierResponse{}
 
-// combine implements the combinable interface.
 func (r *ScanInterleavedIntentsResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129154)
 	otherR := c.(*ScanInterleavedIntentsResponse)
 	if r != nil {
+		__antithesis_instrumentation__.Notify(129156)
 		if err := r.ResponseHeader.combine(otherR.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129158)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129159)
 		}
+		__antithesis_instrumentation__.Notify(129157)
 		r.Intents = append(r.Intents, otherR.Intents...)
+	} else {
+		__antithesis_instrumentation__.Notify(129160)
 	}
+	__antithesis_instrumentation__.Notify(129155)
 	return nil
 }
 
 var _ combinable = &ScanInterleavedIntentsResponse{}
 
-// combine implements the combinable interface.
 func (r *QueryLocksResponse) combine(c combinable) error {
+	__antithesis_instrumentation__.Notify(129161)
 	otherR := c.(*QueryLocksResponse)
 	if r != nil {
+		__antithesis_instrumentation__.Notify(129163)
 		if err := r.ResponseHeader.combine(otherR.Header()); err != nil {
+			__antithesis_instrumentation__.Notify(129165)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129166)
 		}
+		__antithesis_instrumentation__.Notify(129164)
 		r.Locks = append(r.Locks, otherR.Locks...)
+	} else {
+		__antithesis_instrumentation__.Notify(129167)
 	}
+	__antithesis_instrumentation__.Notify(129162)
 	return nil
 }
 
 var _ combinable = &QueryLocksResponse{}
 
-// Header implements the Request interface.
 func (rh RequestHeader) Header() RequestHeader {
+	__antithesis_instrumentation__.Notify(129168)
 	return rh
 }
 
-// SetHeader implements the Request interface.
 func (rh *RequestHeader) SetHeader(other RequestHeader) {
+	__antithesis_instrumentation__.Notify(129169)
 	*rh = other
 }
 
-// Span returns the key range that the Request operates over.
 func (rh RequestHeader) Span() Span {
+	__antithesis_instrumentation__.Notify(129170)
 	return Span{Key: rh.Key, EndKey: rh.EndKey}
 }
 
-// SetSpan addresses the RequestHeader to the specified key span.
 func (rh *RequestHeader) SetSpan(s Span) {
+	__antithesis_instrumentation__.Notify(129171)
 	rh.Key = s.Key
 	rh.EndKey = s.EndKey
 }
 
-// RequestHeaderFromSpan creates a RequestHeader addressed at the specified key
-// span.
 func RequestHeaderFromSpan(s Span) RequestHeader {
+	__antithesis_instrumentation__.Notify(129172)
 	return RequestHeader{Key: s.Key, EndKey: s.EndKey}
 }
 
 func (h *BatchResponse_Header) combine(o BatchResponse_Header) error {
-	if h.Error != nil || o.Error != nil {
+	__antithesis_instrumentation__.Notify(129173)
+	if h.Error != nil || func() bool {
+		__antithesis_instrumentation__.Notify(129176)
+		return o.Error != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(129177)
 		return errors.Errorf(
 			"can't combine batch responses with errors, have errors %q and %q",
 			h.Error, o.Error,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(129178)
 	}
+	__antithesis_instrumentation__.Notify(129174)
 	h.Timestamp.Forward(o.Timestamp)
 	if txn := o.Txn; txn != nil {
+		__antithesis_instrumentation__.Notify(129179)
 		if h.Txn == nil {
+			__antithesis_instrumentation__.Notify(129180)
 			h.Txn = txn.Clone()
 		} else {
+			__antithesis_instrumentation__.Notify(129181)
 			h.Txn.Update(txn)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(129182)
 	}
+	__antithesis_instrumentation__.Notify(129175)
 	h.Now.Forward(o.Now)
 	h.RangeInfos = append(h.RangeInfos, o.RangeInfos...)
 	h.CollectedSpans = append(h.CollectedSpans, o.CollectedSpans...)
 	return nil
 }
 
-// SetHeader implements the Response interface.
 func (rh *ResponseHeader) SetHeader(other ResponseHeader) {
+	__antithesis_instrumentation__.Notify(129183)
 	*rh = other
 }
 
-// Header implements the Response interface for ResponseHeader.
 func (rh ResponseHeader) Header() ResponseHeader {
+	__antithesis_instrumentation__.Notify(129184)
 	return rh
 }
 
-// Verify implements the Response interface for ResponseHeader with a
-// default noop. Individual response types should override this method
-// if they contain checksummed data which can be verified.
 func (rh *ResponseHeader) Verify(req Request) error {
+	__antithesis_instrumentation__.Notify(129185)
 	return nil
 }
 
-// Verify verifies the integrity of the get response value.
 func (gr *GetResponse) Verify(req Request) error {
+	__antithesis_instrumentation__.Notify(129186)
 	if gr.Value != nil {
+		__antithesis_instrumentation__.Notify(129188)
 		return gr.Value.Verify(req.Header().Key)
+	} else {
+		__antithesis_instrumentation__.Notify(129189)
 	}
+	__antithesis_instrumentation__.Notify(129187)
 	return nil
 }
 
-// Verify verifies the integrity of every value returned in the scan.
 func (sr *ScanResponse) Verify(req Request) error {
+	__antithesis_instrumentation__.Notify(129190)
 	for _, kv := range sr.Rows {
+		__antithesis_instrumentation__.Notify(129192)
 		if err := kv.Value.Verify(kv.Key); err != nil {
+			__antithesis_instrumentation__.Notify(129193)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129194)
 		}
 	}
+	__antithesis_instrumentation__.Notify(129191)
 	return nil
 }
 
-// Verify verifies the integrity of every value returned in the reverse scan.
 func (sr *ReverseScanResponse) Verify(req Request) error {
+	__antithesis_instrumentation__.Notify(129195)
 	for _, kv := range sr.Rows {
+		__antithesis_instrumentation__.Notify(129197)
 		if err := kv.Value.Verify(kv.Key); err != nil {
+			__antithesis_instrumentation__.Notify(129198)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(129199)
 		}
 	}
+	__antithesis_instrumentation__.Notify(129196)
 	return nil
 }
 
-// Method implements the Request interface.
-func (*GetRequest) Method() Method { return Get }
+func (*GetRequest) Method() Method { __antithesis_instrumentation__.Notify(129200); return Get }
 
-// Method implements the Request interface.
-func (*PutRequest) Method() Method { return Put }
+func (*PutRequest) Method() Method { __antithesis_instrumentation__.Notify(129201); return Put }
 
-// Method implements the Request interface.
-func (*ConditionalPutRequest) Method() Method { return ConditionalPut }
+func (*ConditionalPutRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129202)
+	return ConditionalPut
+}
 
-// Method implements the Request interface.
-func (*InitPutRequest) Method() Method { return InitPut }
+func (*InitPutRequest) Method() Method { __antithesis_instrumentation__.Notify(129203); return InitPut }
 
-// Method implements the Request interface.
-func (*IncrementRequest) Method() Method { return Increment }
+func (*IncrementRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129204)
+	return Increment
+}
 
-// Method implements the Request interface.
-func (*DeleteRequest) Method() Method { return Delete }
+func (*DeleteRequest) Method() Method { __antithesis_instrumentation__.Notify(129205); return Delete }
 
-// Method implements the Request interface.
-func (*DeleteRangeRequest) Method() Method { return DeleteRange }
+func (*DeleteRangeRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129206)
+	return DeleteRange
+}
 
-// Method implements the Request interface.
-func (*ClearRangeRequest) Method() Method { return ClearRange }
+func (*ClearRangeRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129207)
+	return ClearRange
+}
 
-// Method implements the Request interface.
-func (*RevertRangeRequest) Method() Method { return RevertRange }
+func (*RevertRangeRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129208)
+	return RevertRange
+}
 
-// Method implements the Request interface.
-func (*ScanRequest) Method() Method { return Scan }
+func (*ScanRequest) Method() Method { __antithesis_instrumentation__.Notify(129209); return Scan }
 
-// Method implements the Request interface.
-func (*ReverseScanRequest) Method() Method { return ReverseScan }
+func (*ReverseScanRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129210)
+	return ReverseScan
+}
 
-// Method implements the Request interface.
-func (*CheckConsistencyRequest) Method() Method { return CheckConsistency }
+func (*CheckConsistencyRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129211)
+	return CheckConsistency
+}
 
-// Method implements the Request interface.
-func (*EndTxnRequest) Method() Method { return EndTxn }
+func (*EndTxnRequest) Method() Method { __antithesis_instrumentation__.Notify(129212); return EndTxn }
 
-// Method implements the Request interface.
-func (*AdminSplitRequest) Method() Method { return AdminSplit }
+func (*AdminSplitRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129213)
+	return AdminSplit
+}
 
-// Method implements the Request interface.
-func (*AdminUnsplitRequest) Method() Method { return AdminUnsplit }
+func (*AdminUnsplitRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129214)
+	return AdminUnsplit
+}
 
-// Method implements the Request interface.
-func (*AdminMergeRequest) Method() Method { return AdminMerge }
+func (*AdminMergeRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129215)
+	return AdminMerge
+}
 
-// Method implements the Request interface.
-func (*AdminTransferLeaseRequest) Method() Method { return AdminTransferLease }
+func (*AdminTransferLeaseRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129216)
+	return AdminTransferLease
+}
 
-// Method implements the Request interface.
-func (*AdminChangeReplicasRequest) Method() Method { return AdminChangeReplicas }
+func (*AdminChangeReplicasRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129217)
+	return AdminChangeReplicas
+}
 
-// Method implements the Request interface.
-func (*AdminRelocateRangeRequest) Method() Method { return AdminRelocateRange }
+func (*AdminRelocateRangeRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129218)
+	return AdminRelocateRange
+}
 
-// Method implements the Request interface.
-func (*HeartbeatTxnRequest) Method() Method { return HeartbeatTxn }
+func (*HeartbeatTxnRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129219)
+	return HeartbeatTxn
+}
 
-// Method implements the Request interface.
-func (*GCRequest) Method() Method { return GC }
+func (*GCRequest) Method() Method { __antithesis_instrumentation__.Notify(129220); return GC }
 
-// Method implements the Request interface.
-func (*PushTxnRequest) Method() Method { return PushTxn }
+func (*PushTxnRequest) Method() Method { __antithesis_instrumentation__.Notify(129221); return PushTxn }
 
-// Method implements the Request interface.
-func (*RecoverTxnRequest) Method() Method { return RecoverTxn }
+func (*RecoverTxnRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129222)
+	return RecoverTxn
+}
 
-// Method implements the Request interface.
-func (*QueryTxnRequest) Method() Method { return QueryTxn }
+func (*QueryTxnRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129223)
+	return QueryTxn
+}
 
-// Method implements the Request interface.
-func (*QueryIntentRequest) Method() Method { return QueryIntent }
+func (*QueryIntentRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129224)
+	return QueryIntent
+}
 
-// Method implements the Request interface.
-func (*QueryLocksRequest) Method() Method { return QueryLocks }
+func (*QueryLocksRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129225)
+	return QueryLocks
+}
 
-// Method implements the Request interface.
-func (*ResolveIntentRequest) Method() Method { return ResolveIntent }
+func (*ResolveIntentRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129226)
+	return ResolveIntent
+}
 
-// Method implements the Request interface.
-func (*ResolveIntentRangeRequest) Method() Method { return ResolveIntentRange }
+func (*ResolveIntentRangeRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129227)
+	return ResolveIntentRange
+}
 
-// Method implements the Request interface.
-func (*MergeRequest) Method() Method { return Merge }
+func (*MergeRequest) Method() Method { __antithesis_instrumentation__.Notify(129228); return Merge }
 
-// Method implements the Request interface.
-func (*TruncateLogRequest) Method() Method { return TruncateLog }
+func (*TruncateLogRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129229)
+	return TruncateLog
+}
 
-// Method implements the Request interface.
-func (*RequestLeaseRequest) Method() Method { return RequestLease }
+func (*RequestLeaseRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129230)
+	return RequestLease
+}
 
-// Method implements the Request interface.
-func (*TransferLeaseRequest) Method() Method { return TransferLease }
+func (*TransferLeaseRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129231)
+	return TransferLease
+}
 
-// Method implements the Request interface.
-func (*ProbeRequest) Method() Method { return Probe }
+func (*ProbeRequest) Method() Method { __antithesis_instrumentation__.Notify(129232); return Probe }
 
-// Method implements the Request interface.
-func (*LeaseInfoRequest) Method() Method { return LeaseInfo }
+func (*LeaseInfoRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129233)
+	return LeaseInfo
+}
 
-// Method implements the Request interface.
-func (*ComputeChecksumRequest) Method() Method { return ComputeChecksum }
+func (*ComputeChecksumRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129234)
+	return ComputeChecksum
+}
 
-// Method implements the Request interface.
-func (*ExportRequest) Method() Method { return Export }
+func (*ExportRequest) Method() Method { __antithesis_instrumentation__.Notify(129235); return Export }
 
-// Method implements the Request interface.
-func (*AdminScatterRequest) Method() Method { return AdminScatter }
+func (*AdminScatterRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129236)
+	return AdminScatter
+}
 
-// Method implements the Request interface.
-func (*AddSSTableRequest) Method() Method { return AddSSTable }
+func (*AddSSTableRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129237)
+	return AddSSTable
+}
 
-// Method implements the Request interface.
-func (*MigrateRequest) Method() Method { return Migrate }
+func (*MigrateRequest) Method() Method { __antithesis_instrumentation__.Notify(129238); return Migrate }
 
-// Method implements the Request interface.
-func (*RecomputeStatsRequest) Method() Method { return RecomputeStats }
+func (*RecomputeStatsRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129239)
+	return RecomputeStats
+}
 
-// Method implements the Request interface.
-func (*RefreshRequest) Method() Method { return Refresh }
+func (*RefreshRequest) Method() Method { __antithesis_instrumentation__.Notify(129240); return Refresh }
 
-// Method implements the Request interface.
-func (*RefreshRangeRequest) Method() Method { return RefreshRange }
+func (*RefreshRangeRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129241)
+	return RefreshRange
+}
 
-// Method implements the Request interface.
-func (*SubsumeRequest) Method() Method { return Subsume }
+func (*SubsumeRequest) Method() Method { __antithesis_instrumentation__.Notify(129242); return Subsume }
 
-// Method implements the Request interface.
-func (*RangeStatsRequest) Method() Method { return RangeStats }
+func (*RangeStatsRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129243)
+	return RangeStats
+}
 
-// Method implements the Request interface.
-func (*AdminVerifyProtectedTimestampRequest) Method() Method { return AdminVerifyProtectedTimestamp }
+func (*AdminVerifyProtectedTimestampRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129244)
+	return AdminVerifyProtectedTimestamp
+}
 
-// Method implements the Request interface.
-func (*QueryResolvedTimestampRequest) Method() Method { return QueryResolvedTimestamp }
+func (*QueryResolvedTimestampRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129245)
+	return QueryResolvedTimestamp
+}
 
-// Method implements the Request interface.
-func (*ScanInterleavedIntentsRequest) Method() Method { return ScanInterleavedIntents }
+func (*ScanInterleavedIntentsRequest) Method() Method {
+	__antithesis_instrumentation__.Notify(129246)
+	return ScanInterleavedIntents
+}
 
-// Method implements the Request interface.
-func (*BarrierRequest) Method() Method { return Barrier }
+func (*BarrierRequest) Method() Method { __antithesis_instrumentation__.Notify(129247); return Barrier }
 
-// ShallowCopy implements the Request interface.
 func (gr *GetRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129248)
 	shallowCopy := *gr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (pr *PutRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129249)
 	shallowCopy := *pr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (cpr *ConditionalPutRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129250)
 	shallowCopy := *cpr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (pr *InitPutRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129251)
 	shallowCopy := *pr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (ir *IncrementRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129252)
 	shallowCopy := *ir
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (dr *DeleteRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129253)
 	shallowCopy := *dr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (drr *DeleteRangeRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129254)
 	shallowCopy := *drr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (crr *ClearRangeRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129255)
 	shallowCopy := *crr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (crr *RevertRangeRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129256)
 	shallowCopy := *crr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (sr *ScanRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129257)
 	shallowCopy := *sr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (rsr *ReverseScanRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129258)
 	shallowCopy := *rsr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (ccr *CheckConsistencyRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129259)
 	shallowCopy := *ccr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (etr *EndTxnRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129260)
 	shallowCopy := *etr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (asr *AdminSplitRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129261)
 	shallowCopy := *asr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (aur *AdminUnsplitRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129262)
 	shallowCopy := *aur
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (amr *AdminMergeRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129263)
 	shallowCopy := *amr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (atlr *AdminTransferLeaseRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129264)
 	shallowCopy := *atlr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (acrr *AdminChangeReplicasRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129265)
 	shallowCopy := *acrr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (acrr *AdminRelocateRangeRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129266)
 	shallowCopy := *acrr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (htr *HeartbeatTxnRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129267)
 	shallowCopy := *htr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (gcr *GCRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129268)
 	shallowCopy := *gcr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (ptr *PushTxnRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129269)
 	shallowCopy := *ptr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (rtr *RecoverTxnRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129270)
 	shallowCopy := *rtr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (qtr *QueryTxnRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129271)
 	shallowCopy := *qtr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (pir *QueryIntentRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129272)
 	shallowCopy := *pir
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (pir *QueryLocksRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129273)
 	shallowCopy := *pir
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (rir *ResolveIntentRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129274)
 	shallowCopy := *rir
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (rirr *ResolveIntentRangeRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129275)
 	shallowCopy := *rirr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (mr *MergeRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129276)
 	shallowCopy := *mr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (tlr *TruncateLogRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129277)
 	shallowCopy := *tlr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (rlr *RequestLeaseRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129278)
 	shallowCopy := *rlr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (tlr *TransferLeaseRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129279)
 	shallowCopy := *tlr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *ProbeRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129280)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (lt *LeaseInfoRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129281)
 	shallowCopy := *lt
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (ccr *ComputeChecksumRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129282)
 	shallowCopy := *ccr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (ekr *ExportRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129283)
 	shallowCopy := *ekr
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *AdminScatterRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129284)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *AddSSTableRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129285)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *MigrateRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129286)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *RecomputeStatsRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129287)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *RefreshRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129288)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *RefreshRangeRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129289)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *SubsumeRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129290)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *RangeStatsRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129291)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *AdminVerifyProtectedTimestampRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129292)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *QueryResolvedTimestampRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129293)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *ScanInterleavedIntentsRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129294)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// ShallowCopy implements the Request interface.
 func (r *BarrierRequest) ShallowCopy() Request {
+	__antithesis_instrumentation__.Notify(129295)
 	shallowCopy := *r
 	return &shallowCopy
 }
 
-// NewGet returns a Request initialized to get the value at key. If
-// forUpdate is true, an unreplicated, exclusive lock is acquired on on
-// the key, if it exists.
 func NewGet(key Key, forUpdate bool) Request {
+	__antithesis_instrumentation__.Notify(129296)
 	return &GetRequest{
 		RequestHeader: RequestHeader{
 			Key: key,
@@ -1049,9 +1208,8 @@ func NewGet(key Key, forUpdate bool) Request {
 	}
 }
 
-// NewIncrement returns a Request initialized to increment the value at
-// key by increment.
 func NewIncrement(key Key, increment int64) Request {
+	__antithesis_instrumentation__.Notify(129297)
 	return &IncrementRequest{
 		RequestHeader: RequestHeader{
 			Key: key,
@@ -1060,8 +1218,8 @@ func NewIncrement(key Key, increment int64) Request {
 	}
 }
 
-// NewPut returns a Request initialized to put the value at key.
 func NewPut(key Key, value Value) Request {
+	__antithesis_instrumentation__.Notify(129298)
 	value.InitChecksum(key)
 	return &PutRequest{
 		RequestHeader: RequestHeader{
@@ -1071,9 +1229,8 @@ func NewPut(key Key, value Value) Request {
 	}
 }
 
-// NewPutInline returns a Request initialized to put the value at key
-// using an inline value.
 func NewPutInline(key Key, value Value) Request {
+	__antithesis_instrumentation__.Notify(129299)
 	value.InitChecksum(key)
 	return &PutRequest{
 		RequestHeader: RequestHeader{
@@ -1084,21 +1241,20 @@ func NewPutInline(key Key, value Value) Request {
 	}
 }
 
-// NewConditionalPut returns a Request initialized to put value at key if the
-// existing value at key equals expValue.
-//
-// The callee takes ownership of value's underlying bytes and it will mutate
-// them. The caller retains ownership of expVal; NewConditionalPut will copy it
-// into the request.
 func NewConditionalPut(key Key, value Value, expValue []byte, allowNotExist bool) Request {
+	__antithesis_instrumentation__.Notify(129300)
 	value.InitChecksum(key)
-	// Compatibility with 20.1 servers.
+
 	var expValueVal *Value
 	if expValue != nil {
+		__antithesis_instrumentation__.Notify(129302)
 		expValueVal = &Value{}
 		expValueVal.SetTagAndData(expValue)
-		// The expected value does not need a checksum, so we don't initialize it.
+
+	} else {
+		__antithesis_instrumentation__.Notify(129303)
 	}
+	__antithesis_instrumentation__.Notify(129301)
 
 	return &ConditionalPutRequest{
 		RequestHeader: RequestHeader{
@@ -1111,21 +1267,20 @@ func NewConditionalPut(key Key, value Value, expValue []byte, allowNotExist bool
 	}
 }
 
-// NewConditionalPutInline returns a Request initialized to put an inline value
-// at key if the existing value at key equals expValue.
-//
-// The callee takes ownership of value's underlying bytes and it will mutate
-// them. The caller retains ownership of expVal; NewConditionalPut will copy it
-// into the request.
 func NewConditionalPutInline(key Key, value Value, expValue []byte, allowNotExist bool) Request {
+	__antithesis_instrumentation__.Notify(129304)
 	value.InitChecksum(key)
-	// Compatibility with 20.1 servers.
+
 	var expValueVal *Value
 	if expValue != nil {
+		__antithesis_instrumentation__.Notify(129306)
 		expValueVal = &Value{}
 		expValueVal.SetTagAndData(expValue)
-		// The expected value does not need a checksum, so we don't initialize it.
+
+	} else {
+		__antithesis_instrumentation__.Notify(129307)
 	}
+	__antithesis_instrumentation__.Notify(129305)
 
 	return &ConditionalPutRequest{
 		RequestHeader: RequestHeader{
@@ -1139,12 +1294,8 @@ func NewConditionalPutInline(key Key, value Value, expValue []byte, allowNotExis
 	}
 }
 
-// NewInitPut returns a Request initialized to put the value at key, as long as
-// the key doesn't exist, returning a ConditionFailedError if the key exists and
-// the existing value is different from value. If failOnTombstones is set to
-// true, tombstones count as mismatched values and will cause a
-// ConditionFailedError.
 func NewInitPut(key Key, value Value, failOnTombstones bool) Request {
+	__antithesis_instrumentation__.Notify(129308)
 	value.InitChecksum(key)
 	return &InitPutRequest{
 		RequestHeader: RequestHeader{
@@ -1155,8 +1306,8 @@ func NewInitPut(key Key, value Value, failOnTombstones bool) Request {
 	}
 }
 
-// NewDelete returns a Request initialized to delete the value at key.
 func NewDelete(key Key) Request {
+	__antithesis_instrumentation__.Notify(129309)
 	return &DeleteRequest{
 		RequestHeader: RequestHeader{
 			Key: key,
@@ -1164,9 +1315,8 @@ func NewDelete(key Key) Request {
 	}
 }
 
-// NewDeleteRange returns a Request initialized to delete the values in
-// the given key range (excluding the endpoint).
 func NewDeleteRange(startKey, endKey Key, returnKeys bool) Request {
+	__antithesis_instrumentation__.Notify(129310)
 	return &DeleteRangeRequest{
 		RequestHeader: RequestHeader{
 			Key:    startKey,
@@ -1176,10 +1326,8 @@ func NewDeleteRange(startKey, endKey Key, returnKeys bool) Request {
 	}
 }
 
-// NewScan returns a Request initialized to scan from start to end keys.
-// If forUpdate is true, unreplicated, exclusive locks are acquired on
-// each of the resulting keys.
 func NewScan(key, endKey Key, forUpdate bool) Request {
+	__antithesis_instrumentation__.Notify(129311)
 	return &ScanRequest{
 		RequestHeader: RequestHeader{
 			Key:    key,
@@ -1189,10 +1337,8 @@ func NewScan(key, endKey Key, forUpdate bool) Request {
 	}
 }
 
-// NewReverseScan returns a Request initialized to reverse scan from end.
-// If forUpdate is true, unreplicated, exclusive locks are acquired on
-// each of the resulting keys.
 func NewReverseScan(key, endKey Key, forUpdate bool) Request {
+	__antithesis_instrumentation__.Notify(129312)
 	return &ReverseScanRequest{
 		RequestHeader: RequestHeader{
 			Key:    key,
@@ -1203,420 +1349,492 @@ func NewReverseScan(key, endKey Key, forUpdate bool) Request {
 }
 
 func scanLockStrength(forUpdate bool) lock.Strength {
+	__antithesis_instrumentation__.Notify(129313)
 	if forUpdate {
+		__antithesis_instrumentation__.Notify(129315)
 		return lock.Exclusive
+	} else {
+		__antithesis_instrumentation__.Notify(129316)
 	}
+	__antithesis_instrumentation__.Notify(129314)
 	return lock.None
 }
 
 func flagForLockStrength(l lock.Strength) flag {
+	__antithesis_instrumentation__.Notify(129317)
 	if l != lock.None {
+		__antithesis_instrumentation__.Notify(129319)
 		return isLocking
+	} else {
+		__antithesis_instrumentation__.Notify(129320)
 	}
+	__antithesis_instrumentation__.Notify(129318)
 	return 0
 }
 
 func (gr *GetRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129321)
 	maybeLocking := flagForLockStrength(gr.KeyLocking)
 	return isRead | isTxn | maybeLocking | updatesTSCache | needsRefresh
 }
 
 func (*PutRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129322)
 	return isWrite | isTxn | isLocking | isIntentWrite | appliesTSCache | canBackpressure
 }
 
-// ConditionalPut effectively reads without writing if it hits a
-// ConditionFailedError, so it must update the timestamp cache in this case.
-// ConditionalPuts do not require a refresh because on write-too-old errors,
-// they return an error immediately instead of continuing a serializable
-// transaction to be retried at end transaction.
 func (*ConditionalPutRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129323)
 	return isRead | isWrite | isTxn | isLocking | isIntentWrite |
 		appliesTSCache | updatesTSCache | updatesTSCacheOnErr | canBackpressure
 }
 
-// InitPut, like ConditionalPut, effectively reads without writing if it hits a
-// ConditionFailedError, so it must update the timestamp cache in this case.
-// InitPuts do not require a refresh because on write-too-old errors, they
-// return an error immediately instead of continuing a serializable transaction
-// to be retried at end transaction.
 func (*InitPutRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129324)
 	return isRead | isWrite | isTxn | isLocking | isIntentWrite |
 		appliesTSCache | updatesTSCache | updatesTSCacheOnErr | canBackpressure
 }
 
-// Increment reads the existing value, but always leaves an intent so
-// it does not need to update the timestamp cache. Increments do not
-// require a refresh because on write-too-old errors, they return an
-// error immediately instead of continuing a serializable transaction
-// to be retried at end transaction.
 func (*IncrementRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129325)
 	return isRead | isWrite | isTxn | isLocking | isIntentWrite | appliesTSCache | canBackpressure
 }
 
 func (*DeleteRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129326)
 	return isWrite | isTxn | isLocking | isIntentWrite | appliesTSCache | canBackpressure
 }
 
 func (drr *DeleteRangeRequest) flags() flag {
-	// DeleteRangeRequest has different properties if the "inline" flag is set.
-	// This flag indicates that the request is deleting inline MVCC values,
-	// which cannot be deleted transactionally - inline DeleteRange will thus
-	// fail if executed as part of a transaction. This alternate flag set
-	// is needed to prevent the command from being automatically wrapped into a
-	// transaction by TxnCoordSender, which can occur if the command spans
-	// multiple ranges.
-	//
-	// TODO(mrtracy): The behavior of DeleteRangeRequest with "inline" set has
-	// likely diverged enough that it should be promoted into its own command.
-	// However, it is complicated to plumb a new command through the system,
-	// while this special case in flags() fixes all current issues succinctly.
-	// This workaround does not preclude us from creating a separate
-	// "DeleteInlineRange" command at a later date.
+	__antithesis_instrumentation__.Notify(129327)
+
 	if drr.Inline {
+		__antithesis_instrumentation__.Notify(129329)
 		return isRead | isWrite | isRange | isAlone
+	} else {
+		__antithesis_instrumentation__.Notify(129330)
 	}
-	// DeleteRange updates the timestamp cache as it doesn't leave intents or
-	// tombstones for keys which don't yet exist or keys that already have
-	// tombstones on them, but still wants to prevent anybody from writing under
-	// it. Note that, even if we didn't update the ts cache, deletes of keys
-	// that exist would not be lost (since the DeleteRange leaves intents on
-	// those keys), but deletes of "empty space" would.
+	__antithesis_instrumentation__.Notify(129328)
+
 	return isRead | isWrite | isTxn | isLocking | isIntentWrite | isRange |
 		appliesTSCache | updatesTSCache | needsRefresh | canBackpressure
 }
 
-// Note that ClearRange commands cannot be part of a transaction as
-// they clear all MVCC versions.
 func (*ClearRangeRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129331)
 	return isWrite | isRange | isAlone | bypassesReplicaCircuitBreaker
 }
 
-// Note that RevertRange commands cannot be part of a transaction as
-// they clear all MVCC versions above their target time.
 func (*RevertRangeRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129332)
 	return isWrite | isRange | isAlone | bypassesReplicaCircuitBreaker
 }
 
 func (sr *ScanRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129333)
 	maybeLocking := flagForLockStrength(sr.KeyLocking)
 	return isRead | isRange | isTxn | maybeLocking | updatesTSCache | needsRefresh
 }
 
 func (rsr *ReverseScanRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129334)
 	maybeLocking := flagForLockStrength(rsr.KeyLocking)
 	return isRead | isRange | isReverse | isTxn | maybeLocking | updatesTSCache | needsRefresh
 }
 
-// EndTxn updates the timestamp cache to prevent replays.
-// Replays for the same transaction key and timestamp will have
-// Txn.WriteTooOld=true and must retry on EndTxn.
-func (*EndTxnRequest) flags() flag              { return isWrite | isTxn | isAlone | updatesTSCache }
-func (*AdminSplitRequest) flags() flag          { return isAdmin | isAlone }
-func (*AdminUnsplitRequest) flags() flag        { return isAdmin | isAlone }
-func (*AdminMergeRequest) flags() flag          { return isAdmin | isAlone }
-func (*AdminTransferLeaseRequest) flags() flag  { return isAdmin | isAlone }
-func (*AdminChangeReplicasRequest) flags() flag { return isAdmin | isAlone }
-func (*AdminRelocateRangeRequest) flags() flag  { return isAdmin | isAlone }
+func (*EndTxnRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129335)
+	return isWrite | isTxn | isAlone | updatesTSCache
+}
+func (*AdminSplitRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129336)
+	return isAdmin | isAlone
+}
+func (*AdminUnsplitRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129337)
+	return isAdmin | isAlone
+}
+func (*AdminMergeRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129338)
+	return isAdmin | isAlone
+}
+func (*AdminTransferLeaseRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129339)
+	return isAdmin | isAlone
+}
+func (*AdminChangeReplicasRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129340)
+	return isAdmin | isAlone
+}
+func (*AdminRelocateRangeRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129341)
+	return isAdmin | isAlone
+}
 
 func (*GCRequest) flags() flag {
-	// We defensively let GCRequest bypass the circuit breaker because otherwise,
-	// the GC queue might busy loop on an unavailable range, doing lots of work
-	// but never making progress.
+	__antithesis_instrumentation__.Notify(129342)
+
 	return isWrite | isRange | bypassesReplicaCircuitBreaker
 }
 
-// HeartbeatTxn updates the timestamp cache with transaction records,
-// to avoid checking for them on disk when considering 1PC evaluation.
-func (*HeartbeatTxnRequest) flags() flag { return isWrite | isTxn | updatesTSCache }
+func (*HeartbeatTxnRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129343)
+	return isWrite | isTxn | updatesTSCache
+}
 
-// PushTxnRequest updates different marker keys in the timestamp cache when
-// pushing a transaction's timestamp and when aborting a transaction.
 func (*PushTxnRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129344)
 	return isWrite | isAlone | updatesTSCache | updatesTSCache
 }
-func (*RecoverTxnRequest) flags() flag { return isWrite | isAlone | updatesTSCache }
-func (*QueryTxnRequest) flags() flag   { return isRead | isAlone }
+func (*RecoverTxnRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129345)
+	return isWrite | isAlone | updatesTSCache
+}
+func (*QueryTxnRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129346)
+	return isRead | isAlone
+}
 
-// QueryIntent only updates the timestamp cache when attempting to prevent an
-// intent that is found missing from ever being written in the future. See
-// QueryIntentRequest_PREVENT.
 func (*QueryIntentRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129347)
 	return isRead | isPrefix | updatesTSCache | updatesTSCacheOnErr
 }
-func (*QueryLocksRequest) flags() flag         { return isRead | isRange }
-func (*ResolveIntentRequest) flags() flag      { return isWrite }
-func (*ResolveIntentRangeRequest) flags() flag { return isWrite | isRange }
-func (*TruncateLogRequest) flags() flag        { return isWrite }
-func (*MergeRequest) flags() flag              { return isWrite | canBackpressure }
+func (*QueryLocksRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129348)
+	return isRead | isRange
+}
+func (*ResolveIntentRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129349)
+	return isWrite
+}
+func (*ResolveIntentRangeRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129350)
+	return isWrite | isRange
+}
+func (*TruncateLogRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129351)
+	return isWrite
+}
+func (*MergeRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129352)
+	return isWrite | canBackpressure
+}
 func (*RequestLeaseRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129353)
 	return isWrite | isAlone | skipsLeaseCheck | bypassesReplicaCircuitBreaker
 }
 
-// LeaseInfoRequest is usually executed in an INCONSISTENT batch, which has the
-// effect of the `skipsLeaseCheck` flag that lease write operations have.
-func (*LeaseInfoRequest) flags() flag { return isRead | isAlone }
+func (*LeaseInfoRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129354)
+	return isRead | isAlone
+}
 func (*TransferLeaseRequest) flags() flag {
-	// TransferLeaseRequest requires the lease, which is checked in
-	// `AdminTransferLease()` before the TransferLeaseRequest is created and sent
-	// for evaluation and in the usual way at application time (i.e.
-	// replica.processRaftCommand() checks that the lease hasn't changed since the
-	// command resulting from the evaluation of TransferLeaseRequest was
-	// proposed).
-	//
-	// But we're marking it with skipsLeaseCheck because `redirectOnOrAcquireLease`
-	// can't be used before evaluation as, by the time that call would be made,
-	// the store has registered that a transfer is in progress and
-	// `redirectOnOrAcquireLease` would already tentatively redirect to the future
-	// lease holder.
-	//
-	// Note that we intentionally don't let TransferLease bypass the Replica
-	// circuit breaker. Transferring a lease while the replication layer is
-	// unavailable results in the "old" leaseholder relinquishing the ability
-	// to serve (strong) reads, without being able to hand over the lease.
+	__antithesis_instrumentation__.Notify(129355)
+
 	return isWrite | isAlone | skipsLeaseCheck
 }
 func (*ProbeRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129356)
 	return isWrite | isAlone | skipsLeaseCheck | bypassesReplicaCircuitBreaker
 }
-func (*RecomputeStatsRequest) flags() flag   { return isWrite | isAlone }
-func (*ComputeChecksumRequest) flags() flag  { return isWrite }
-func (*CheckConsistencyRequest) flags() flag { return isAdmin | isRange | isAlone }
+func (*RecomputeStatsRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129357)
+	return isWrite | isAlone
+}
+func (*ComputeChecksumRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129358)
+	return isWrite
+}
+func (*CheckConsistencyRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129359)
+	return isAdmin | isRange | isAlone
+}
 func (*ExportRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129360)
 	return isRead | isRange | updatesTSCache | bypassesReplicaCircuitBreaker
 }
-func (*AdminScatterRequest) flags() flag                  { return isAdmin | isRange | isAlone }
-func (*AdminVerifyProtectedTimestampRequest) flags() flag { return isAdmin | isRange | isAlone }
+func (*AdminScatterRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129361)
+	return isAdmin | isRange | isAlone
+}
+func (*AdminVerifyProtectedTimestampRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129362)
+	return isAdmin | isRange | isAlone
+}
 func (r *AddSSTableRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129363)
 	flags := isWrite | isRange | isAlone | isUnsplittable | canBackpressure | bypassesReplicaCircuitBreaker
 	if r.SSTTimestampToRequestTimestamp.IsSet() {
+		__antithesis_instrumentation__.Notify(129365)
 		flags |= appliesTSCache
+	} else {
+		__antithesis_instrumentation__.Notify(129366)
 	}
+	__antithesis_instrumentation__.Notify(129364)
 	return flags
 }
-func (*MigrateRequest) flags() flag { return isWrite | isRange | isAlone }
+func (*MigrateRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129367)
+	return isWrite | isRange | isAlone
+}
 
-// RefreshRequest and RefreshRangeRequest both determine which timestamp cache
-// they update based on their Write parameter.
 func (r *RefreshRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129368)
 	return isRead | isTxn | updatesTSCache
 }
 func (r *RefreshRangeRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129369)
 	return isRead | isTxn | isRange | updatesTSCache
 }
 
-func (*SubsumeRequest) flags() flag                { return isRead | isAlone | updatesTSCache }
-func (*RangeStatsRequest) flags() flag             { return isRead }
-func (*QueryResolvedTimestampRequest) flags() flag { return isRead | isRange }
-func (*ScanInterleavedIntentsRequest) flags() flag { return isRead | isRange }
-func (*BarrierRequest) flags() flag                { return isWrite | isRange }
+func (*SubsumeRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129370)
+	return isRead | isAlone | updatesTSCache
+}
+func (*RangeStatsRequest) flags() flag { __antithesis_instrumentation__.Notify(129371); return isRead }
+func (*QueryResolvedTimestampRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129372)
+	return isRead | isRange
+}
+func (*ScanInterleavedIntentsRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129373)
+	return isRead | isRange
+}
+func (*BarrierRequest) flags() flag {
+	__antithesis_instrumentation__.Notify(129374)
+	return isWrite | isRange
+}
 
-// IsParallelCommit returns whether the EndTxn request is attempting to perform
-// a parallel commit. See txn_interceptor_committer.go for a discussion about
-// parallel commits.
 func (etr *EndTxnRequest) IsParallelCommit() bool {
-	return etr.Commit && len(etr.InFlightWrites) > 0
+	__antithesis_instrumentation__.Notify(129375)
+	return etr.Commit && func() bool {
+		__antithesis_instrumentation__.Notify(129376)
+		return len(etr.InFlightWrites) > 0 == true
+	}() == true
 }
 
 const (
-	// ExternalStorageAuthImplicit is used by ExternalStorage instances to
-	// indicate access via a node's "implicit" authorization (e.g. machine acct).
 	ExternalStorageAuthImplicit = "implicit"
 
-	// ExternalStorageAuthSpecified is used by ExternalStorage instances to
-	// indicate access is via explicitly provided credentials.
 	ExternalStorageAuthSpecified = "specified"
 )
 
-// AccessIsWithExplicitAuth returns true if the external storage config carries
-// its own explicit credentials to use for access (or does not require them), as
-// opposed to using something about the node to gain implicit access, such as a
-// VM's machine account, network access, file system, etc.
 func (m *ExternalStorage) AccessIsWithExplicitAuth() bool {
+	__antithesis_instrumentation__.Notify(129377)
 	switch m.Provider {
 	case ExternalStorageProvider_s3:
-		// custom endpoints could be a network resource only accessible via this
-		// node's network context and thus have an element of implicit auth.
+		__antithesis_instrumentation__.Notify(129378)
+
 		if m.S3Config.Endpoint != "" {
+			__antithesis_instrumentation__.Notify(129387)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(129388)
 		}
+		__antithesis_instrumentation__.Notify(129379)
 		return m.S3Config.Auth != ExternalStorageAuthImplicit
 	case ExternalStorageProvider_gs:
+		__antithesis_instrumentation__.Notify(129380)
 		return m.GoogleCloudConfig.Auth == ExternalStorageAuthSpecified
 	case ExternalStorageProvider_azure:
-		// Azure storage only uses explicitly supplied credentials.
+		__antithesis_instrumentation__.Notify(129381)
+
 		return true
 	case ExternalStorageProvider_userfile:
-		// userfile always checks the user performing the action has grants on the
-		// table used.
+		__antithesis_instrumentation__.Notify(129382)
+
 		return true
 	case ExternalStorageProvider_null:
+		__antithesis_instrumentation__.Notify(129383)
 		return true
 	case ExternalStorageProvider_http:
-		// Arbitrary network endpoints may be accessible only via the node and thus
-		// make use of its implicit access to them.
+		__antithesis_instrumentation__.Notify(129384)
+
 		return false
 	case ExternalStorageProvider_nodelocal:
-		// The node's local filesystem is obviously accessed implicitly as the node.
+		__antithesis_instrumentation__.Notify(129385)
+
 		return false
 	default:
+		__antithesis_instrumentation__.Notify(129386)
 		return false
 	}
 }
 
-// BulkOpSummaryID returns the key within a BulkOpSummary's EntryCounts map for
-// the given table and index ID. This logic is mirrored in c++ in rowcounter.cc.
 func BulkOpSummaryID(tableID, indexID uint64) uint64 {
+	__antithesis_instrumentation__.Notify(129389)
 	return (tableID << 32) | indexID
 }
 
-// Add combines the values from other, for use on an accumulator BulkOpSummary.
 func (b *BulkOpSummary) Add(other BulkOpSummary) {
+	__antithesis_instrumentation__.Notify(129390)
 	b.DataSize += other.DataSize
 	b.DeprecatedRows += other.DeprecatedRows
 	b.DeprecatedIndexEntries += other.DeprecatedIndexEntries
 
-	if other.EntryCounts != nil && b.EntryCounts == nil {
+	if other.EntryCounts != nil && func() bool {
+		__antithesis_instrumentation__.Notify(129392)
+		return b.EntryCounts == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(129393)
 		b.EntryCounts = make(map[uint64]int64, len(other.EntryCounts))
+	} else {
+		__antithesis_instrumentation__.Notify(129394)
 	}
+	__antithesis_instrumentation__.Notify(129391)
 	for i := range other.EntryCounts {
+		__antithesis_instrumentation__.Notify(129395)
 		b.EntryCounts[i] += other.EntryCounts[i]
 	}
 }
 
-// MustSetValue is like SetValue, except it resets the enum and panics if the
-// provided value is not a valid variant type.
 func (e *RangeFeedEvent) MustSetValue(value interface{}) {
+	__antithesis_instrumentation__.Notify(129396)
 	e.Reset()
 	if !e.SetValue(value) {
+		__antithesis_instrumentation__.Notify(129397)
 		panic(errors.AssertionFailedf("%T excludes %T", e, value))
+	} else {
+		__antithesis_instrumentation__.Notify(129398)
 	}
 }
 
-// ShallowCopy returns a shallow copy of the receiver and its variant type.
 func (e *RangeFeedEvent) ShallowCopy() *RangeFeedEvent {
+	__antithesis_instrumentation__.Notify(129399)
 	cpy := *e
 	switch t := cpy.GetValue().(type) {
 	case *RangeFeedValue:
+		__antithesis_instrumentation__.Notify(129401)
 		cpyVal := *t
 		cpy.MustSetValue(&cpyVal)
 	case *RangeFeedCheckpoint:
+		__antithesis_instrumentation__.Notify(129402)
 		cpyChk := *t
 		cpy.MustSetValue(&cpyChk)
 	case *RangeFeedSSTable:
+		__antithesis_instrumentation__.Notify(129403)
 		cpySST := *t
 		cpy.MustSetValue(&cpySST)
 	case *RangeFeedError:
+		__antithesis_instrumentation__.Notify(129404)
 		cpyErr := *t
 		cpy.MustSetValue(&cpyErr)
 	default:
+		__antithesis_instrumentation__.Notify(129405)
 		panic(fmt.Sprintf("unexpected RangeFeedEvent variant: %v", t))
 	}
+	__antithesis_instrumentation__.Notify(129400)
 	return &cpy
 }
 
-// Timestamp is part of rangefeedbuffer.Event.
 func (e *RangeFeedValue) Timestamp() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(129406)
 	return e.Value.Timestamp
 }
 
-// MakeReplicationChanges returns a slice of changes of the given type with an
-// item for each target.
 func MakeReplicationChanges(
 	changeType ReplicaChangeType, targets ...ReplicationTarget,
 ) []ReplicationChange {
+	__antithesis_instrumentation__.Notify(129407)
 	chgs := make([]ReplicationChange, 0, len(targets))
 	for _, target := range targets {
+		__antithesis_instrumentation__.Notify(129409)
 		chgs = append(chgs, ReplicationChange{
 			ChangeType: changeType,
 			Target:     target,
 		})
 	}
+	__antithesis_instrumentation__.Notify(129408)
 	return chgs
 }
 
-// ReplicationChangesForPromotion returns the replication changes that
-// correspond to the promotion of a non-voter to a voter.
 func ReplicationChangesForPromotion(target ReplicationTarget) []ReplicationChange {
+	__antithesis_instrumentation__.Notify(129410)
 	return []ReplicationChange{
 		{ChangeType: ADD_VOTER, Target: target}, {ChangeType: REMOVE_NON_VOTER, Target: target},
 	}
 }
 
-// ReplicationChangesForDemotion returns the replication changes that correspond
-// to the demotion of a voter to a non-voter.
 func ReplicationChangesForDemotion(target ReplicationTarget) []ReplicationChange {
+	__antithesis_instrumentation__.Notify(129411)
 	return []ReplicationChange{
 		{ChangeType: ADD_NON_VOTER, Target: target}, {ChangeType: REMOVE_VOTER, Target: target},
 	}
 }
 
-// AddChanges adds a batch of changes to the request in a backwards-compatible
-// way.
 func (acrr *AdminChangeReplicasRequest) AddChanges(chgs ...ReplicationChange) {
+	__antithesis_instrumentation__.Notify(129412)
 	acrr.InternalChanges = append(acrr.InternalChanges, chgs...)
 
 	acrr.DeprecatedChangeType = chgs[0].ChangeType
 	for _, chg := range chgs {
+		__antithesis_instrumentation__.Notify(129413)
 		acrr.DeprecatedTargets = append(acrr.DeprecatedTargets, chg.Target)
 	}
 }
 
-// ReplicationChanges is a slice of ReplicationChange.
 type ReplicationChanges []ReplicationChange
 
 func (rc ReplicationChanges) byType(typ ReplicaChangeType) []ReplicationTarget {
+	__antithesis_instrumentation__.Notify(129414)
 	var sl []ReplicationTarget
 	for _, chg := range rc {
+		__antithesis_instrumentation__.Notify(129416)
 		if chg.ChangeType == typ {
+			__antithesis_instrumentation__.Notify(129417)
 			sl = append(sl, chg.Target)
+		} else {
+			__antithesis_instrumentation__.Notify(129418)
 		}
 	}
+	__antithesis_instrumentation__.Notify(129415)
 	return sl
 }
 
-// VoterAdditions returns a slice of all contained replication changes that add replicas.
 func (rc ReplicationChanges) VoterAdditions() []ReplicationTarget {
+	__antithesis_instrumentation__.Notify(129419)
 	return rc.byType(ADD_VOTER)
 }
 
-// VoterRemovals returns a slice of all contained replication changes that remove replicas.
 func (rc ReplicationChanges) VoterRemovals() []ReplicationTarget {
+	__antithesis_instrumentation__.Notify(129420)
 	return rc.byType(REMOVE_VOTER)
 }
 
-// NonVoterAdditions returns a slice of all contained replication
-// changes that add non-voters.
 func (rc ReplicationChanges) NonVoterAdditions() []ReplicationTarget {
+	__antithesis_instrumentation__.Notify(129421)
 	return rc.byType(ADD_NON_VOTER)
 }
 
-// NonVoterRemovals returns a slice of all contained replication changes
-// that remove non-voters.
 func (rc ReplicationChanges) NonVoterRemovals() []ReplicationTarget {
+	__antithesis_instrumentation__.Notify(129422)
 	return rc.byType(REMOVE_NON_VOTER)
 }
 
-// Changes returns the changes requested by this AdminChangeReplicasRequest, taking
-// the deprecated method of doing so into account.
 func (acrr *AdminChangeReplicasRequest) Changes() []ReplicationChange {
+	__antithesis_instrumentation__.Notify(129423)
 	if len(acrr.InternalChanges) > 0 {
+		__antithesis_instrumentation__.Notify(129426)
 		return acrr.InternalChanges
+	} else {
+		__antithesis_instrumentation__.Notify(129427)
 	}
+	__antithesis_instrumentation__.Notify(129424)
 
 	sl := make([]ReplicationChange, len(acrr.DeprecatedTargets))
 	for _, target := range acrr.DeprecatedTargets {
+		__antithesis_instrumentation__.Notify(129428)
 		sl = append(sl, ReplicationChange{
 			ChangeType: acrr.DeprecatedChangeType,
 			Target:     target,
 		})
 	}
+	__antithesis_instrumentation__.Notify(129425)
 	return sl
 }
 
-// AsLockUpdate creates a lock update message corresponding to the given resolve
-// intent request.
 func (rir *ResolveIntentRequest) AsLockUpdate() LockUpdate {
+	__antithesis_instrumentation__.Notify(129429)
 	return LockUpdate{
 		Span:           rir.Span(),
 		Txn:            rir.IntentTxn,
@@ -1625,9 +1843,8 @@ func (rir *ResolveIntentRequest) AsLockUpdate() LockUpdate {
 	}
 }
 
-// AsLockUpdate creates a lock update message corresponding to the given resolve
-// intent range request.
 func (rirr *ResolveIntentRangeRequest) AsLockUpdate() LockUpdate {
+	__antithesis_instrumentation__.Notify(129430)
 	return LockUpdate{
 		Span:           rirr.Span(),
 		Txn:            rirr.IntentTxn,
@@ -1636,15 +1853,17 @@ func (rirr *ResolveIntentRangeRequest) AsLockUpdate() LockUpdate {
 	}
 }
 
-// CreateStoreIdent creates a store identifier out of the details captured
-// within the join node response (the join node RPC is used to allocate a store
-// ID for the client's first store).
 func (r *JoinNodeResponse) CreateStoreIdent() (StoreIdent, error) {
+	__antithesis_instrumentation__.Notify(129431)
 	nodeID, storeID := NodeID(r.NodeID), StoreID(r.StoreID)
 	clusterID, err := uuid.FromBytes(r.ClusterID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(129433)
 		return StoreIdent{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(129434)
 	}
+	__antithesis_instrumentation__.Notify(129432)
 
 	sIdent := StoreIdent{
 		ClusterID: clusterID,
@@ -1654,28 +1873,25 @@ func (r *JoinNodeResponse) CreateStoreIdent() (StoreIdent, error) {
 	return sIdent, nil
 }
 
-// SafeFormat implements redact.SafeFormatter.
 func (c *ContentionEvent) SafeFormat(w redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(129435)
 	w.Printf("conflicted with %s on %s for %.3fs", c.TxnMeta.ID, c.Key, c.Duration.Seconds())
 }
 
-// String implements fmt.Stringer.
 func (c *ContentionEvent) String() string {
+	__antithesis_instrumentation__.Notify(129436)
 	return redact.StringWithoutMarkers(c)
 }
 
-// Equal returns whether the two structs are identical. Needed for compatibility
-// with proto2.
 func (c *TenantConsumption) Equal(other *TenantConsumption) bool {
+	__antithesis_instrumentation__.Notify(129437)
 	return *c == *other
 }
 
-// Equal is used by generated code when TenantConsumption is embedded in a
-// proto2.
 var _ = (*TenantConsumption).Equal
 
-// Add consumption from the given structure.
 func (c *TenantConsumption) Add(other *TenantConsumption) {
+	__antithesis_instrumentation__.Notify(129438)
 	c.RU += other.RU
 	c.ReadRequests += other.ReadRequests
 	c.ReadBytes += other.ReadBytes
@@ -1685,57 +1901,78 @@ func (c *TenantConsumption) Add(other *TenantConsumption) {
 	c.PGWireEgressBytes += other.PGWireEgressBytes
 }
 
-// Sub subtracts consumption, making sure no fields become negative.
 func (c *TenantConsumption) Sub(other *TenantConsumption) {
+	__antithesis_instrumentation__.Notify(129439)
 	if c.RU < other.RU {
+		__antithesis_instrumentation__.Notify(129446)
 		c.RU = 0
 	} else {
+		__antithesis_instrumentation__.Notify(129447)
 		c.RU -= other.RU
 	}
+	__antithesis_instrumentation__.Notify(129440)
 
 	if c.ReadRequests < other.ReadRequests {
+		__antithesis_instrumentation__.Notify(129448)
 		c.ReadRequests = 0
 	} else {
+		__antithesis_instrumentation__.Notify(129449)
 		c.ReadRequests -= other.ReadRequests
 	}
+	__antithesis_instrumentation__.Notify(129441)
 
 	if c.ReadBytes < other.ReadBytes {
+		__antithesis_instrumentation__.Notify(129450)
 		c.ReadBytes = 0
 	} else {
+		__antithesis_instrumentation__.Notify(129451)
 		c.ReadBytes -= other.ReadBytes
 	}
+	__antithesis_instrumentation__.Notify(129442)
 
 	if c.WriteRequests < other.WriteRequests {
+		__antithesis_instrumentation__.Notify(129452)
 		c.WriteRequests = 0
 	} else {
+		__antithesis_instrumentation__.Notify(129453)
 		c.WriteRequests -= other.WriteRequests
 	}
+	__antithesis_instrumentation__.Notify(129443)
 
 	if c.WriteBytes < other.WriteBytes {
+		__antithesis_instrumentation__.Notify(129454)
 		c.WriteBytes = 0
 	} else {
+		__antithesis_instrumentation__.Notify(129455)
 		c.WriteBytes -= other.WriteBytes
 	}
+	__antithesis_instrumentation__.Notify(129444)
 
 	if c.SQLPodsCPUSeconds < other.SQLPodsCPUSeconds {
+		__antithesis_instrumentation__.Notify(129456)
 		c.SQLPodsCPUSeconds = 0
 	} else {
+		__antithesis_instrumentation__.Notify(129457)
 		c.SQLPodsCPUSeconds -= other.SQLPodsCPUSeconds
 	}
+	__antithesis_instrumentation__.Notify(129445)
 
 	if c.PGWireEgressBytes < other.PGWireEgressBytes {
+		__antithesis_instrumentation__.Notify(129458)
 		c.PGWireEgressBytes = 0
 	} else {
+		__antithesis_instrumentation__.Notify(129459)
 		c.PGWireEgressBytes -= other.PGWireEgressBytes
 	}
 }
 
 func humanizePointCount(n uint64) redact.SafeString {
+	__antithesis_instrumentation__.Notify(129460)
 	return redact.SafeString(humanize.SI(float64(n), ""))
 }
 
-// SafeFormat implements redact.SafeFormatter.
 func (s *ScanStats) SafeFormat(w redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(129461)
 	w.Printf("scan stats: stepped %d times (%d internal); seeked %d times (%d internal); "+
 		"block-bytes: (total %s, cached %s); "+
 		"points: (count %s, key-bytes %s, value-bytes %s, tombstoned: %s)",
@@ -1748,23 +1985,15 @@ func (s *ScanStats) SafeFormat(w redact.SafePrinter, _ rune) {
 		humanizePointCount(s.PointsCoveredByRangeTombstones))
 }
 
-// String implements fmt.Stringer.
 func (s *ScanStats) String() string {
+	__antithesis_instrumentation__.Notify(129462)
 	return redact.StringWithoutMarkers(s)
 }
 
-// TenantSettingsPrecedence identifies the precedence of a set of setting
-// overrides. It is used by the TenantSettings API which supports passing
-// multiple overrides for the same setting.
 type TenantSettingsPrecedence uint32
 
 const (
-	// SpecificTenantOverrides is the high precedence for tenant setting overrides.
-	// These overrides take precedence over AllTenantsOverrides.
 	SpecificTenantOverrides TenantSettingsPrecedence = 1 + iota
 
-	// AllTenantsOverrides is the low precedence for tenant setting overrides.
-	// These overrides are only effectual for a tenant if there is no override
-	// with the SpecificTenantOverrides precedence..
 	AllTenantsOverrides
 )

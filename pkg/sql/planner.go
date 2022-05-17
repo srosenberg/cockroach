@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -47,37 +39,23 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// extendedEvalContext extends tree.EvalContext with fields that are needed for
-// distsql planning.
 type extendedEvalContext struct {
 	tree.EvalContext
 
-	// SessionID for this connection.
 	SessionID ClusterWideID
 
-	// VirtualSchemas can be used to access virtual tables.
 	VirtualSchemas VirtualTabler
 
-	// Tracing provides access to the session's tracing interface. Changes to the
-	// tracing state should be done through the sessionDataMutator.
 	Tracing *SessionTracing
 
-	// NodesStatusServer gives access to the NodesStatus service. Unavailable to
-	// tenants.
 	NodesStatusServer serverpb.OptionalNodesStatusServer
 
-	// RegionsServer gives access to valid regions in the cluster.
 	RegionsServer serverpb.RegionsServer
 
-	// SQLStatusServer gives access to a subset of the serverpb.Status service
-	// that is available to both system and non-system tenants.
 	SQLStatusServer serverpb.SQLStatusServer
 
-	// MemMetrics represent the group of metrics to which execution should
-	// contribute.
 	MemMetrics *MemoryMetrics
 
-	// Tables points to the Session's table collection (& cache).
 	Descs *descs.Collection
 
 	ExecCfg *ExecutorConfig
@@ -86,14 +64,8 @@ type extendedEvalContext struct {
 
 	TxnModesSetter txnModesSetter
 
-	// Jobs refers to jobs in extraTxnState. Jobs is a pointer to a jobsCollection
-	// which is a slice because we need calls to resetExtraTxnState to reset the
-	// jobsCollection.
 	Jobs *jobsCollection
 
-	// SchemaChangeJobRecords refers to schemaChangeJobsCache in extraTxnState of
-	// in sql.connExecutor. sql.connExecutor.createJobs() enqueues jobs with these
-	// records when transaction is committed.
 	SchemaChangeJobRecords map[descpb.ID]*jobs.Record
 
 	statsProvider *persistedsqlstats.PersistedSQLStats
@@ -105,8 +77,8 @@ type extendedEvalContext struct {
 	statementPreparer statementPreparer
 }
 
-// copyFromExecCfg copies relevant fields from an ExecutorConfig.
 func (evalCtx *extendedEvalContext) copyFromExecCfg(execCfg *ExecutorConfig) {
+	__antithesis_instrumentation__.Notify(563062)
 	evalCtx.ExecCfg = execCfg
 	evalCtx.Settings = execCfg.Settings
 	evalCtx.Codec = execCfg.Codec
@@ -127,18 +99,17 @@ func (evalCtx *extendedEvalContext) copyFromExecCfg(execCfg *ExecutorConfig) {
 	evalCtx.KVStoresIterator = execCfg.KVStoresIterator
 }
 
-// copy returns a deep copy of ctx.
 func (evalCtx *extendedEvalContext) copy() *extendedEvalContext {
+	__antithesis_instrumentation__.Notify(563063)
 	cpy := *evalCtx
 	cpy.EvalContext = *evalCtx.EvalContext.Copy()
 	return &cpy
 }
 
-// QueueJob creates a new job from record and queues it for execution after
-// the transaction commits.
 func (evalCtx *extendedEvalContext) QueueJob(
 	ctx context.Context, record jobs.Record,
 ) (*jobs.Job, error) {
+	__antithesis_instrumentation__.Notify(563064)
 	jobID := evalCtx.ExecCfg.JobRegistry.MakeJobID()
 	job, err := evalCtx.ExecCfg.JobRegistry.CreateJobWithTxn(
 		ctx,
@@ -147,41 +118,30 @@ func (evalCtx *extendedEvalContext) QueueJob(
 		evalCtx.Txn,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(563066)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(563067)
 	}
+	__antithesis_instrumentation__.Notify(563065)
 	evalCtx.Jobs.add(jobID)
 	return job, nil
 }
 
-// planner is the centerpiece of SQL statement execution combining session
-// state and database state with the logic for SQL execution. It is logically
-// scoped to the execution of a single statement, and should not be used to
-// execute multiple statements. It is not safe to use the same planner from
-// multiple goroutines concurrently.
-//
-// planners are usually created by using the newPlanner method on a Session.
-// If one needs to be created outside of a Session, use makeInternalPlanner().
 type planner struct {
 	txn *kv.Txn
 
-	// isInternalPlanner is set to true when this planner is not bound to
-	// a SQL session.
 	isInternalPlanner bool
 
-	// Corresponding Statement for this query.
 	stmt Statement
 
 	instrumentation instrumentationHelper
 
-	// Contexts for different stages of planning and execution.
 	semaCtx         tree.SemaContext
 	extendedEvalCtx extendedEvalContext
 
-	// sessionDataMutatorIterator is used to mutate the session variables. Read
-	// access to them is provided through evalCtx.
 	sessionDataMutatorIterator *sessionDataMutatorIterator
 
-	// execCfg is used to access the server configuration for the Executor.
 	execCfg *ExecutorConfig
 
 	preparedStatements preparedStatementsAccessor
@@ -190,95 +150,52 @@ type planner struct {
 
 	createdSequences createdSequences
 
-	// avoidLeasedDescriptors, when true, instructs all code that
-	// accesses table/view descriptors to force reading the descriptors
-	// within the transaction. This is necessary to read descriptors
-	// from the store for:
-	// 1. Descriptors that are part of a schema change but are not
-	// modified by the schema change. (reading a table in CREATE VIEW)
-	// 2. Disable the use of the table cache in tests.
 	avoidLeasedDescriptors bool
 
-	// autoCommit indicates whether the plan is allowed (but not required) to
-	// commit the transaction along with other KV operations. Committing the txn
-	// might be beneficial because it may enable the 1PC optimization. Note that
-	// autocommit may be false for implicit transactions; for example, an implicit
-	// transaction is used for all the statements sent in a batch at the same
-	// time.
-	//
-	// NOTE: plan node must be configured appropriately to actually perform an
-	// auto-commit. This is dependent on information from the optimizer.
 	autoCommit bool
 
-	// cancelChecker is used by planNodes to check for cancellation of the associated
-	// query.
 	cancelChecker cancelchecker.CancelChecker
 
-	// isPreparing is true if this planner is currently preparing.
 	isPreparing bool
 
-	// curPlan collects the properties of the current plan being prepared. This state
-	// is undefined at the beginning of the planning of each new statement, and cannot
-	// be reused for an old prepared statement after a new statement has been prepared.
 	curPlan planTop
 
-	// Avoid allocations by embedding commonly used objects and visitors.
 	txCtx                 transform.ExprTransformContext
 	nameResolutionVisitor schemaexpr.NameResolutionVisitor
 	tableName             tree.TableName
 
-	// Use a common datum allocator across all the plan nodes. This separates the
-	// plan lifetime from the lifetime of returned results allowing plan nodes to
-	// be pool allocated.
 	alloc *tree.DatumAlloc
 
-	// optPlanningCtx stores the optimizer planning context, which contains
-	// data structures that can be reused between queries (for efficiency).
 	optPlanningCtx optPlanningCtx
 
-	// noticeSender allows the sending of notices.
-	// Do not use this object directly; use the BufferClientNotice() method
-	// instead.
 	noticeSender noticeSender
 
 	queryCacheSession querycache.Session
 
-	// contextDatabaseID is the ID of a database. It is set during some name
-	// resolution processes to disallow cross database references. In particular,
-	// the type resolution steps will disallow resolution of types that have a
-	// parentID != contextDatabaseID when it is set.
 	contextDatabaseID descpb.ID
 }
 
 func (evalCtx *extendedEvalContext) setSessionID(sessionID ClusterWideID) {
+	__antithesis_instrumentation__.Notify(563068)
 	evalCtx.SessionID = sessionID
 }
 
-// noteworthyInternalMemoryUsageBytes is the minimum size tracked by each
-// internal SQL pool before the pool starts explicitly logging overall usage
-// growth in the log.
-var noteworthyInternalMemoryUsageBytes = envutil.EnvOrDefaultInt64("COCKROACH_NOTEWORTHY_INTERNAL_MEMORY_USAGE", 1<<20 /* 1 MB */)
+var noteworthyInternalMemoryUsageBytes = envutil.EnvOrDefaultInt64("COCKROACH_NOTEWORTHY_INTERNAL_MEMORY_USAGE", 1<<20)
 
-// internalPlannerParams encapsulates configurable planner fields. The defaults
-// are set in newInternalPlanner.
 type internalPlannerParams struct {
 	collection *descs.Collection
 }
 
-// InternalPlannerParamsOption is an option that can be passed to
-// NewInternalPlanner.
 type InternalPlannerParamsOption func(*internalPlannerParams)
 
-// WithDescCollection configures the planner with the provided collection
-// instead of the default (creating a new one from scratch).
 func WithDescCollection(collection *descs.Collection) InternalPlannerParamsOption {
+	__antithesis_instrumentation__.Notify(563069)
 	return func(params *internalPlannerParams) {
+		__antithesis_instrumentation__.Notify(563070)
 		params.collection = collection
 	}
 }
 
-// NewInternalPlanner is an exported version of newInternalPlanner. It
-// returns an interface{} so it can be used outside of the sql package.
 func NewInternalPlanner(
 	opName string,
 	txn *kv.Txn,
@@ -288,17 +205,10 @@ func NewInternalPlanner(
 	sessionData sessiondatapb.SessionData,
 	opts ...InternalPlannerParamsOption,
 ) (interface{}, func()) {
+	__antithesis_instrumentation__.Notify(563071)
 	return newInternalPlanner(opName, txn, user, memMetrics, execCfg, sessionData, opts...)
 }
 
-// newInternalPlanner creates a new planner instance for internal usage. This
-// planner is not associated with a sql session.
-//
-// Since it can't be reset, the planner can be used only for planning a single
-// statement.
-//
-// Returns a cleanup function that must be called once the caller is done with
-// the planner.
 func newInternalPlanner(
 	opName string,
 	txn *kv.Txn,
@@ -308,20 +218,16 @@ func newInternalPlanner(
 	sessionData sessiondatapb.SessionData,
 	opts ...InternalPlannerParamsOption,
 ) (*planner, func()) {
-	// Default parameters which may be override by the supplied options.
+	__antithesis_instrumentation__.Notify(563072)
+
 	params := &internalPlannerParams{}
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(563077)
 		opt(params)
 	}
+	__antithesis_instrumentation__.Notify(563073)
 	callerSuppliedDescsCollection := params.collection != nil
 
-	// We need a context that outlives all the uses of the planner (since the
-	// planner captures it in the EvalCtx, and so does the cleanup function that
-	// we're going to return. We just create one here instead of asking the caller
-	// for a ctx with this property. This is really ugly, but the alternative of
-	// asking the caller for one is hard to explain. What we need is better and
-	// separate interfaces for planning and running plans, which could take
-	// suitable contexts.
 	ctx := logtags.AddTag(context.Background(), opName, "")
 
 	sd := &sessiondata.SessionData{
@@ -336,17 +242,29 @@ func newInternalPlanner(
 	sds := sessiondata.NewStack(sd)
 
 	if params.collection == nil {
+		__antithesis_instrumentation__.Notify(563078)
 		params.collection = execCfg.CollectionFactory.NewCollection(ctx, descs.NewTemporarySchemaProvider(sds))
+	} else {
+		__antithesis_instrumentation__.Notify(563079)
 	}
+	__antithesis_instrumentation__.Notify(563074)
 
 	var ts time.Time
 	if txn != nil {
+		__antithesis_instrumentation__.Notify(563080)
 		readTimestamp := txn.ReadTimestamp()
 		if readTimestamp.IsEmpty() {
+			__antithesis_instrumentation__.Notify(563082)
 			panic("makeInternalPlanner called with a transaction without timestamps")
+		} else {
+			__antithesis_instrumentation__.Notify(563083)
 		}
+		__antithesis_instrumentation__.Notify(563081)
 		ts = readTimestamp.GoTime()
+	} else {
+		__antithesis_instrumentation__.Notify(563084)
 	}
+	__antithesis_instrumentation__.Notify(563075)
 
 	p := &planner{execCfg: execCfg, alloc: &tree.DatumAlloc{}}
 
@@ -357,12 +275,15 @@ func newInternalPlanner(
 
 	p.semaCtx = tree.MakeSemaContext()
 	if p.execCfg.Settings.Version.IsActive(ctx, clusterversion.DateStyleIntervalStyleCastRewrite) {
+		__antithesis_instrumentation__.Notify(563085)
 		p.semaCtx.IntervalStyleEnabled = true
 		p.semaCtx.DateStyleEnabled = true
 	} else {
+		__antithesis_instrumentation__.Notify(563086)
 		p.semaCtx.IntervalStyleEnabled = sd.IntervalStyleEnabled
 		p.semaCtx.DateStyleEnabled = sd.DateStyleEnabled
 	}
+	__antithesis_instrumentation__.Notify(563076)
 	p.semaCtx.SearchPath = sd.SearchPath
 	p.semaCtx.TypeResolver = p
 	p.semaCtx.DateStyle = sd.GetDateStyle()
@@ -371,7 +292,7 @@ func newInternalPlanner(
 	plannerMon := mon.NewMonitor(fmt.Sprintf("internal-planner.%s.%s", user, opName),
 		mon.MemoryResource,
 		memMetrics.CurBytesCount, memMetrics.MaxBytesHist,
-		-1, /* increment */
+		-1,
 		noteworthyInternalMemoryUsageBytes, execCfg.Settings)
 	plannerMon.Start(ctx, execCfg.RootMemoryMonitor, mon.BoundAccount{})
 
@@ -415,28 +336,21 @@ func newInternalPlanner(
 	p.createdSequences = emptyCreatedSequences{}
 
 	return p, func() {
-		// Note that we capture ctx here. This is only valid as long as we create
-		// the context as explained at the top of the method.
-		if !callerSuppliedDescsCollection {
-			// The collection will accumulate descriptors read during planning as well
-			// as type descriptors read during execution on the local node. Many users
-			// of the internal planner do set the `skipCache` flag on the resolver but
-			// this is not respected by type resolution underneath execution. That
-			// subtle details means that the type descriptor used by execution may be
-			// stale, but that must be okay. Correctness concerns aside, we must release
-			// the leases to ensure that we don't leak a descriptor lease.
-			p.Descriptors().ReleaseAll(ctx)
-		}
+		__antithesis_instrumentation__.Notify(563087)
 
-		// Stop the memory monitor.
+		if !callerSuppliedDescsCollection {
+			__antithesis_instrumentation__.Notify(563089)
+
+			p.Descriptors().ReleaseAll(ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(563090)
+		}
+		__antithesis_instrumentation__.Notify(563088)
+
 		plannerMon.Stop(ctx)
 	}
 }
 
-// internalExtendedEvalCtx creates an evaluation context for an "internal
-// planner". Since the eval context is supposed to be tied to a session and
-// there's no session to speak of here, different fields are filled in here to
-// keep the tests using the internal planner passing.
 func internalExtendedEvalCtx(
 	ctx context.Context,
 	sds *sessiondata.Stack,
@@ -447,27 +361,32 @@ func internalExtendedEvalCtx(
 	execCfg *ExecutorConfig,
 	plannerMon *mon.BytesMonitor,
 ) extendedEvalContext {
+	__antithesis_instrumentation__.Notify(563091)
 	evalContextTestingKnobs := execCfg.EvalContextTestingKnobs
 
 	var indexUsageStats *idxusage.LocalIndexUsageStats
 	var sqlStatsController tree.SQLStatsController
 	var indexUsageStatsController tree.IndexUsageStatsController
 	if execCfg.InternalExecutor != nil {
+		__antithesis_instrumentation__.Notify(563093)
 		if execCfg.InternalExecutor.s != nil {
+			__antithesis_instrumentation__.Notify(563094)
 			indexUsageStats = execCfg.InternalExecutor.s.indexUsageStats
 			sqlStatsController = execCfg.InternalExecutor.s.sqlStatsController
 			indexUsageStatsController = execCfg.InternalExecutor.s.indexUsageStatsController
 		} else {
-			// If the indexUsageStats is nil from the sql.Server, we create a dummy
-			// index usage stats collector. The sql.Server in the ExecutorConfig
-			// is only nil during tests.
+			__antithesis_instrumentation__.Notify(563095)
+
 			indexUsageStats = idxusage.NewLocalIndexUsageStats(&idxusage.Config{
 				Setting: execCfg.Settings,
 			})
 			sqlStatsController = &persistedsqlstats.Controller{}
 			indexUsageStatsController = &idxusage.Controller{}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(563096)
 	}
+	__antithesis_instrumentation__.Notify(563092)
 	ret := extendedEvalContext{
 		EvalContext: tree.EvalContext{
 			Txn:                       txn,
@@ -491,344 +410,455 @@ func internalExtendedEvalCtx(
 	return ret
 }
 
-// LogicalSchemaAccessor is part of the resolver.SchemaResolver interface.
 func (p *planner) Accessor() catalog.Accessor {
+	__antithesis_instrumentation__.Notify(563097)
 	return p.Descriptors()
 }
 
-// SemaCtx provides access to the planner's SemaCtx.
 func (p *planner) SemaCtx() *tree.SemaContext {
+	__antithesis_instrumentation__.Notify(563098)
 	return &p.semaCtx
 }
 
-// Note: if the context will be modified, use ExtendedEvalContextCopy instead.
 func (p *planner) ExtendedEvalContext() *extendedEvalContext {
+	__antithesis_instrumentation__.Notify(563099)
 	return &p.extendedEvalCtx
 }
 
 func (p *planner) ExtendedEvalContextCopy() *extendedEvalContext {
+	__antithesis_instrumentation__.Notify(563100)
 	return p.extendedEvalCtx.copy()
 }
 
-// CurrentDatabase is part of the resolver.SchemaResolver interface.
 func (p *planner) CurrentDatabase() string {
+	__antithesis_instrumentation__.Notify(563101)
 	return p.SessionData().Database
 }
 
-// CurrentSearchPath is part of the resolver.SchemaResolver interface.
 func (p *planner) CurrentSearchPath() sessiondata.SearchPath {
+	__antithesis_instrumentation__.Notify(563102)
 	return p.SessionData().SearchPath
 }
 
-// EvalContext() provides convenient access to the planner's EvalContext().
 func (p *planner) EvalContext() *tree.EvalContext {
+	__antithesis_instrumentation__.Notify(563103)
 	return &p.extendedEvalCtx.EvalContext
 }
 
 func (p *planner) Descriptors() *descs.Collection {
+	__antithesis_instrumentation__.Notify(563104)
 	return p.extendedEvalCtx.Descs
 }
 
-// ExecCfg implements the PlanHookState interface.
 func (p *planner) ExecCfg() *ExecutorConfig {
+	__antithesis_instrumentation__.Notify(563105)
 	return p.extendedEvalCtx.ExecCfg
 }
 
-// GetOrInitSequenceCache returns the sequence cache for the session.
-// If the sequence cache has not been used yet, it initializes the cache
-// inside the session data.
 func (p *planner) GetOrInitSequenceCache() sessiondatapb.SequenceCache {
+	__antithesis_instrumentation__.Notify(563106)
 	if p.SessionData().SequenceCache == nil {
+		__antithesis_instrumentation__.Notify(563108)
 		p.sessionDataMutatorIterator.applyOnEachMutator(
 			func(m sessionDataMutator) {
+				__antithesis_instrumentation__.Notify(563109)
 				m.initSequenceCache()
 			},
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(563110)
 	}
+	__antithesis_instrumentation__.Notify(563107)
 	return p.SessionData().SequenceCache
 }
 
 func (p *planner) LeaseMgr() *lease.Manager {
+	__antithesis_instrumentation__.Notify(563111)
 	return p.execCfg.LeaseManager
 }
 
 func (p *planner) Txn() *kv.Txn {
+	__antithesis_instrumentation__.Notify(563112)
 	return p.txn
 }
 
 func (p *planner) User() security.SQLUsername {
+	__antithesis_instrumentation__.Notify(563113)
 	return p.SessionData().User()
 }
 
 func (p *planner) TemporarySchemaName() string {
+	__antithesis_instrumentation__.Notify(563114)
 	return temporarySchemaName(p.ExtendedEvalContext().SessionID)
 }
 
-// DistSQLPlanner returns the DistSQLPlanner
 func (p *planner) DistSQLPlanner() *DistSQLPlanner {
+	__antithesis_instrumentation__.Notify(563115)
 	return p.extendedEvalCtx.DistSQLPlanner
 }
 
-// MigrationJobDeps returns the migration.JobDeps.
 func (p *planner) MigrationJobDeps() migration.JobDeps {
+	__antithesis_instrumentation__.Notify(563116)
 	return p.execCfg.MigrationJobDeps
 }
 
-// SpanConfigReconciler returns the spanconfig.Reconciler.
 func (p *planner) SpanConfigReconciler() spanconfig.Reconciler {
+	__antithesis_instrumentation__.Notify(563117)
 	return p.execCfg.SpanConfigReconciler
 }
 
-// GetTypeFromValidSQLSyntax implements the tree.EvalPlanner interface.
-// We define this here to break the dependency from eval.go to the parser.
 func (p *planner) GetTypeFromValidSQLSyntax(sql string) (*types.T, error) {
+	__antithesis_instrumentation__.Notify(563118)
 	ref, err := parser.GetTypeFromValidSQLSyntax(sql)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(563120)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(563121)
 	}
+	__antithesis_instrumentation__.Notify(563119)
 	return tree.ResolveType(context.TODO(), ref, p.semaCtx.GetTypeResolver())
 }
 
-// ParseQualifiedTableName implements the tree.EvalDatabase interface.
-// This exists to get around a circular dependency between sql/sem/tree and
-// sql/parser. sql/parser depends on tree to make objects, so tree cannot import
-// ParseQualifiedTableName even though some builtins need that function.
-// TODO(jordan): remove this once builtins can be moved outside of sql/sem/tree.
 func (p *planner) ParseQualifiedTableName(sql string) (*tree.TableName, error) {
+	__antithesis_instrumentation__.Notify(563122)
 	return parser.ParseQualifiedTableName(sql)
 }
 
-// ResolveTableName implements the tree.EvalDatabase interface.
 func (p *planner) ResolveTableName(ctx context.Context, tn *tree.TableName) (tree.ID, error) {
+	__antithesis_instrumentation__.Notify(563123)
 	flags := tree.ObjectLookupFlagsWithRequiredTableKind(tree.ResolveAnyTableKind)
 	_, desc, err := resolver.ResolveExistingTableObject(ctx, p, tn, flags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(563125)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(563126)
 	}
+	__antithesis_instrumentation__.Notify(563124)
 	return tree.ID(desc.GetID()), nil
 }
 
-// LookupTableByID looks up a table, by the given descriptor ID. Based on the
-// CommonLookupFlags, it could use or skip the Collection cache.
 func (p *planner) LookupTableByID(
 	ctx context.Context, tableID descpb.ID,
 ) (catalog.TableDescriptor, error) {
-	const required = true // lookups by ID are always "required"
+	__antithesis_instrumentation__.Notify(563127)
+	const required = true
 	table, err := p.Descriptors().GetImmutableTableByID(ctx, p.txn, tableID, p.ObjectLookupFlags(
-		required, false /* requireMutable */))
+		required, false))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(563129)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(563130)
 	}
+	__antithesis_instrumentation__.Notify(563128)
 	return table, nil
 }
 
-// TypeAsString enforces (not hints) that the given expression typechecks as a
-// string and returns a function that can be called to get the string value
-// during (planNode).Start.
-// To also allow NULLs to be returned, use TypeAsStringOrNull() instead.
 func (p *planner) TypeAsString(
 	ctx context.Context, e tree.Expr, op string,
 ) (func() (string, error), error) {
+	__antithesis_instrumentation__.Notify(563131)
 	typedE, err := tree.TypeCheckAndRequire(ctx, e, &p.semaCtx, types.String, op)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(563133)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(563134)
 	}
+	__antithesis_instrumentation__.Notify(563132)
 	evalFn := p.makeStringEvalFn(typedE)
 	return func() (string, error) {
+		__antithesis_instrumentation__.Notify(563135)
 		isNull, str, err := evalFn()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(563138)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(563139)
 		}
+		__antithesis_instrumentation__.Notify(563136)
 		if isNull {
+			__antithesis_instrumentation__.Notify(563140)
 			return "", errors.Errorf("expected string, got NULL")
+		} else {
+			__antithesis_instrumentation__.Notify(563141)
 		}
+		__antithesis_instrumentation__.Notify(563137)
 		return str, nil
 	}, nil
 }
 
-// TypeAsStringOrNull is like TypeAsString but allows NULLs.
 func (p *planner) TypeAsStringOrNull(
 	ctx context.Context, e tree.Expr, op string,
 ) (func() (bool, string, error), error) {
+	__antithesis_instrumentation__.Notify(563142)
 	typedE, err := tree.TypeCheckAndRequire(ctx, e, &p.semaCtx, types.String, op)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(563144)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(563145)
 	}
+	__antithesis_instrumentation__.Notify(563143)
 	return p.makeStringEvalFn(typedE), nil
 }
 
 func (p *planner) makeStringEvalFn(typedE tree.TypedExpr) func() (bool, string, error) {
+	__antithesis_instrumentation__.Notify(563146)
 	return func() (bool, string, error) {
+		__antithesis_instrumentation__.Notify(563147)
 		d, err := typedE.Eval(p.EvalContext())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(563151)
 			return false, "", err
+		} else {
+			__antithesis_instrumentation__.Notify(563152)
 		}
+		__antithesis_instrumentation__.Notify(563148)
 		if d == tree.DNull {
+			__antithesis_instrumentation__.Notify(563153)
 			return true, "", nil
+		} else {
+			__antithesis_instrumentation__.Notify(563154)
 		}
+		__antithesis_instrumentation__.Notify(563149)
 		str, ok := d.(*tree.DString)
 		if !ok {
+			__antithesis_instrumentation__.Notify(563155)
 			return false, "", errors.Errorf("failed to cast %T to string", d)
+		} else {
+			__antithesis_instrumentation__.Notify(563156)
 		}
+		__antithesis_instrumentation__.Notify(563150)
 		return false, string(*str), nil
 	}
 }
 
-// KVStringOptValidate indicates the requested validation of a TypeAsStringOpts
-// option.
 type KVStringOptValidate string
 
-// KVStringOptValidate values
 const (
 	KVStringOptAny            KVStringOptValidate = `any`
 	KVStringOptRequireNoValue KVStringOptValidate = `no-value`
 	KVStringOptRequireValue   KVStringOptValidate = `value`
 )
 
-// evalStringOptions evaluates the KVOption values as strings and returns them
-// in a map. Options with no value have an empty string.
 func evalStringOptions(
 	evalCtx *tree.EvalContext, opts []exec.KVOption, optValidate map[string]KVStringOptValidate,
 ) (map[string]string, error) {
+	__antithesis_instrumentation__.Notify(563157)
 	res := make(map[string]string, len(opts))
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(563159)
 		k := opt.Key
 		validate, ok := optValidate[k]
 		if !ok {
+			__antithesis_instrumentation__.Notify(563162)
 			return nil, errors.Errorf("invalid option %q", k)
+		} else {
+			__antithesis_instrumentation__.Notify(563163)
 		}
+		__antithesis_instrumentation__.Notify(563160)
 		val, err := opt.Value.Eval(evalCtx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(563164)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(563165)
 		}
+		__antithesis_instrumentation__.Notify(563161)
 		if val == tree.DNull {
+			__antithesis_instrumentation__.Notify(563166)
 			if validate == KVStringOptRequireValue {
+				__antithesis_instrumentation__.Notify(563168)
 				return nil, errors.Errorf("option %q requires a value", k)
+			} else {
+				__antithesis_instrumentation__.Notify(563169)
 			}
+			__antithesis_instrumentation__.Notify(563167)
 			res[k] = ""
 		} else {
+			__antithesis_instrumentation__.Notify(563170)
 			if validate == KVStringOptRequireNoValue {
+				__antithesis_instrumentation__.Notify(563173)
 				return nil, errors.Errorf("option %q does not take a value", k)
+			} else {
+				__antithesis_instrumentation__.Notify(563174)
 			}
+			__antithesis_instrumentation__.Notify(563171)
 			str, ok := val.(*tree.DString)
 			if !ok {
+				__antithesis_instrumentation__.Notify(563175)
 				return nil, errors.Errorf("expected string value, got %T", val)
+			} else {
+				__antithesis_instrumentation__.Notify(563176)
 			}
+			__antithesis_instrumentation__.Notify(563172)
 			res[k] = string(*str)
 		}
 	}
+	__antithesis_instrumentation__.Notify(563158)
 	return res, nil
 }
 
-// TypeAsStringOpts enforces (not hints) that the given expressions
-// typecheck as strings, and returns a function that can be called to
-// get the string value during (planNode).Start.
 func (p *planner) TypeAsStringOpts(
 	ctx context.Context, opts tree.KVOptions, optValidate map[string]KVStringOptValidate,
 ) (func() (map[string]string, error), error) {
+	__antithesis_instrumentation__.Notify(563177)
 	typed := make(map[string]tree.TypedExpr, len(opts))
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(563180)
 		k := string(opt.Key)
 		validate, ok := optValidate[k]
 		if !ok {
+			__antithesis_instrumentation__.Notify(563185)
 			return nil, errors.Errorf("invalid option %q", k)
+		} else {
+			__antithesis_instrumentation__.Notify(563186)
 		}
+		__antithesis_instrumentation__.Notify(563181)
 
 		if opt.Value == nil {
+			__antithesis_instrumentation__.Notify(563187)
 			if validate == KVStringOptRequireValue {
+				__antithesis_instrumentation__.Notify(563189)
 				return nil, errors.Errorf("option %q requires a value", k)
+			} else {
+				__antithesis_instrumentation__.Notify(563190)
 			}
+			__antithesis_instrumentation__.Notify(563188)
 			typed[k] = nil
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(563191)
 		}
+		__antithesis_instrumentation__.Notify(563182)
 		if validate == KVStringOptRequireNoValue {
+			__antithesis_instrumentation__.Notify(563192)
 			return nil, errors.Errorf("option %q does not take a value", k)
+		} else {
+			__antithesis_instrumentation__.Notify(563193)
 		}
+		__antithesis_instrumentation__.Notify(563183)
 		r, err := tree.TypeCheckAndRequire(ctx, opt.Value, &p.semaCtx, types.String, k)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(563194)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(563195)
 		}
+		__antithesis_instrumentation__.Notify(563184)
 		typed[k] = r
 	}
+	__antithesis_instrumentation__.Notify(563178)
 	fn := func() (map[string]string, error) {
+		__antithesis_instrumentation__.Notify(563196)
 		res := make(map[string]string, len(typed))
 		for name, e := range typed {
+			__antithesis_instrumentation__.Notify(563198)
 			if e == nil {
+				__antithesis_instrumentation__.Notify(563202)
 				res[name] = ""
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(563203)
 			}
+			__antithesis_instrumentation__.Notify(563199)
 			d, err := e.Eval(p.EvalContext())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(563204)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(563205)
 			}
+			__antithesis_instrumentation__.Notify(563200)
 			str, ok := d.(*tree.DString)
 			if !ok {
+				__antithesis_instrumentation__.Notify(563206)
 				return res, errors.Errorf("failed to cast %T to string", d)
+			} else {
+				__antithesis_instrumentation__.Notify(563207)
 			}
+			__antithesis_instrumentation__.Notify(563201)
 			res[name] = string(*str)
 		}
+		__antithesis_instrumentation__.Notify(563197)
 		return res, nil
 	}
+	__antithesis_instrumentation__.Notify(563179)
 	return fn, nil
 }
 
-// TypeAsStringArray enforces (not hints) that the given expressions all typecheck as
-// strings and returns a function that can be called to get the string values
-// during (planNode).Start.
 func (p *planner) TypeAsStringArray(
 	ctx context.Context, exprs tree.Exprs, op string,
 ) (func() ([]string, error), error) {
+	__antithesis_instrumentation__.Notify(563208)
 	typedExprs := make([]tree.TypedExpr, len(exprs))
 	for i := range exprs {
+		__antithesis_instrumentation__.Notify(563211)
 		typedE, err := tree.TypeCheckAndRequire(ctx, exprs[i], &p.semaCtx, types.String, op)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(563213)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(563214)
 		}
+		__antithesis_instrumentation__.Notify(563212)
 		typedExprs[i] = typedE
 	}
+	__antithesis_instrumentation__.Notify(563209)
 	fn := func() ([]string, error) {
+		__antithesis_instrumentation__.Notify(563215)
 		strs := make([]string, len(exprs))
 		for i := range exprs {
+			__antithesis_instrumentation__.Notify(563217)
 			d, err := typedExprs[i].Eval(p.EvalContext())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(563220)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(563221)
 			}
+			__antithesis_instrumentation__.Notify(563218)
 			str, ok := d.(*tree.DString)
 			if !ok {
+				__antithesis_instrumentation__.Notify(563222)
 				return strs, errors.Errorf("failed to cast %T to string", d)
+			} else {
+				__antithesis_instrumentation__.Notify(563223)
 			}
+			__antithesis_instrumentation__.Notify(563219)
 			strs[i] = string(*str)
 		}
+		__antithesis_instrumentation__.Notify(563216)
 		return strs, nil
 	}
+	__antithesis_instrumentation__.Notify(563210)
 	return fn, nil
 }
 
-// SessionData is part of the PlanHookState interface.
 func (p *planner) SessionData() *sessiondata.SessionData {
+	__antithesis_instrumentation__.Notify(563224)
 	return p.EvalContext().SessionData()
 }
 
-// SessionDataMutatorIterator is part of the PlanHookState interface.
 func (p *planner) SessionDataMutatorIterator() *sessionDataMutatorIterator {
+	__antithesis_instrumentation__.Notify(563225)
 	return p.sessionDataMutatorIterator
 }
 
-// Ann is a shortcut for the Annotations from the eval context.
 func (p *planner) Ann() *tree.Annotations {
+	__antithesis_instrumentation__.Notify(563226)
 	return p.ExtendedEvalContext().EvalContext.Annotations
 }
 
-// ExecutorConfig implements EvalPlanner interface.
 func (p *planner) ExecutorConfig() interface{} {
+	__antithesis_instrumentation__.Notify(563227)
 	return p.execCfg
 }
 
-// statementPreparer is an interface used when deserializing a session in order
-// to prepare statements.
 type statementPreparer interface {
-	// addPreparedStmt creates a prepared statement with the given name and type
-	// hints, and returns it.
 	addPreparedStmt(
 		ctx context.Context,
 		name string,
@@ -841,18 +871,12 @@ type statementPreparer interface {
 
 var _ statementPreparer = &connExecutor{}
 
-// txnModesSetter is an interface used by SQL execution to influence the current
-// transaction.
 type txnModesSetter interface {
-	// setTransactionModes updates some characteristics of the current
-	// transaction.
-	// asOfTs, if not empty, is the evaluation of modes.AsOf.
 	setTransactionModes(ctx context.Context, modes tree.TransactionModes, asOfTs hlc.Timestamp) error
 }
 
-// validateDescriptor is a convenience function for validating
-// descriptors in the context of a planner.
 func validateDescriptor(ctx context.Context, p *planner, descriptor catalog.Descriptor) error {
+	__antithesis_instrumentation__.Notify(563228)
 	return p.Descriptors().Validate(
 		ctx,
 		p.Txn(),
@@ -862,11 +886,6 @@ func validateDescriptor(ctx context.Context, p *planner, descriptor catalog.Desc
 	)
 }
 
-// QueryRowEx executes the supplied SQL statement and returns a single row, or
-// nil if no row is found, or an error if more that one row is returned.
-//
-// The fields set in session that are set override the respective fields if
-// they have previously been set through SetSessionData().
 func (p *planner) QueryRowEx(
 	ctx context.Context,
 	opName string,
@@ -875,16 +894,11 @@ func (p *planner) QueryRowEx(
 	stmt string,
 	qargs ...interface{},
 ) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(563229)
 	ie := p.ExecCfg().InternalExecutorFactory(ctx, p.SessionData())
 	return ie.QueryRowEx(ctx, opName, txn, override, stmt, qargs...)
 }
 
-// QueryIteratorEx executes the query, returning an iterator that can be used
-// to get the results. If the call is successful, the returned iterator
-// *must* be closed.
-//
-// The fields set in session that are set override the respective fields if they
-// have previously been set through SetSessionData().
 func (p *planner) QueryIteratorEx(
 	ctx context.Context,
 	opName string,
@@ -893,6 +907,7 @@ func (p *planner) QueryIteratorEx(
 	stmt string,
 	qargs ...interface{},
 ) (tree.InternalRows, error) {
+	__antithesis_instrumentation__.Notify(563230)
 	ie := p.ExecCfg().InternalExecutorFactory(ctx, p.SessionData())
 	rows, err := ie.QueryIteratorEx(ctx, opName, txn, override, stmt, qargs...)
 	return rows.(tree.InternalRows), err

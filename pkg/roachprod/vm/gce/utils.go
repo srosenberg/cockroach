@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gce
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -31,11 +23,15 @@ const (
 	dnsZone    = "roachprod"
 )
 
-// Subdomain is the DNS subdomain to in which to maintain cluster node names.
 var Subdomain = func() string {
+	__antithesis_instrumentation__.Notify(183770)
 	if d, ok := os.LookupEnv("ROACHPROD_DNS"); ok {
+		__antithesis_instrumentation__.Notify(183772)
 		return d
+	} else {
+		__antithesis_instrumentation__.Notify(183773)
 	}
+	__antithesis_instrumentation__.Notify(183771)
 	return "roachprod.crdb.io"
 }()
 
@@ -215,15 +211,10 @@ done
 sudo touch /mnt/data1/.roachprod-initialized
 `
 
-// writeStartupScript writes the startup script to a temp file.
-// Returns the path to the file.
-// After use, the caller should delete the temp file.
-//
-// extraMountOpts, if not empty, is appended to the default mount options. It is
-// a comma-separated list of options for the "mount -o" flag.
 func writeStartupScript(
 	extraMountOpts string, fileSystem string, useMultiple bool,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(183774)
 	type tmplParams struct {
 		ExtraMountOpts   string
 		UseMultipleDisks bool
@@ -238,43 +229,70 @@ func writeStartupScript(
 
 	tmpfile, err := ioutil.TempFile("", "gce-startup-script")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183777)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183778)
 	}
+	__antithesis_instrumentation__.Notify(183775)
 	defer tmpfile.Close()
 
 	t := template.Must(template.New("start").Parse(gceDiskStartupScriptTemplate))
 	if err := t.Execute(tmpfile, args); err != nil {
+		__antithesis_instrumentation__.Notify(183779)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183780)
 	}
+	__antithesis_instrumentation__.Notify(183776)
 	return tmpfile.Name(), nil
 }
 
-// SyncDNS replaces the configured DNS zone with the supplied hosts.
 func SyncDNS(l *logger.Logger, vms vm.List) error {
+	__antithesis_instrumentation__.Notify(183781)
 	if Subdomain == "" {
+		__antithesis_instrumentation__.Notify(183786)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(183787)
 	}
+	__antithesis_instrumentation__.Notify(183782)
 
 	f, err := ioutil.TempFile(os.ExpandEnv("$HOME/.roachprod/"), "dns.bind")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183788)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(183789)
 	}
+	__antithesis_instrumentation__.Notify(183783)
 	defer f.Close()
 	defer func() {
+		__antithesis_instrumentation__.Notify(183790)
 		if err := os.Remove(f.Name()); err != nil {
+			__antithesis_instrumentation__.Notify(183791)
 			fmt.Fprintf(l.Stderr, "removing %s failed: %v", f.Name(), err)
+		} else {
+			__antithesis_instrumentation__.Notify(183792)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(183784)
 
 	var zoneBuilder strings.Builder
 	for _, vm := range vms {
+		__antithesis_instrumentation__.Notify(183793)
 		entry, err := vm.ZoneEntry()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(183795)
 			fmt.Fprintf(l.Stderr, "WARN: skipping: %s\n", err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(183796)
 		}
+		__antithesis_instrumentation__.Notify(183794)
 		zoneBuilder.WriteString(entry)
 	}
+	__antithesis_instrumentation__.Notify(183785)
 	fmt.Fprint(f, zoneBuilder.String())
 	f.Close()
 
@@ -286,50 +304,78 @@ func SyncDNS(l *logger.Logger, vms vm.List) error {
 	return errors.Wrapf(err, "Command: %s\nOutput: %s\nZone file contents:\n%s", cmd, output, zoneBuilder.String())
 }
 
-// GetUserAuthorizedKeys retrieves reads a list of user public keys from the
-// gcloud cockroach-ephemeral project and returns them formatted for use in
-// an authorized_keys file.
 func GetUserAuthorizedKeys() (authorizedKeys []byte, err error) {
+	__antithesis_instrumentation__.Notify(183797)
 	var outBuf bytes.Buffer
-	// The below command will return a stream of user:pubkey as text.
+
 	cmd := exec.Command("gcloud", "compute", "project-info", "describe",
 		"--project=cockroach-ephemeral",
 		"--format=value(commonInstanceMetadata.ssh-keys)")
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = &outBuf
 	if err := cmd.Run(); err != nil {
+		__antithesis_instrumentation__.Notify(183800)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(183801)
 	}
-	// Initialize a bufio.Reader with a large enough buffer that we will never
-	// expect a line prefix when processing lines and can return an error if a
-	// call to ReadLine ever returns a prefix.
+	__antithesis_instrumentation__.Notify(183798)
+
 	var pubKeyBuf bytes.Buffer
-	r := bufio.NewReaderSize(&outBuf, 1<<16 /* 64 kB */)
+	r := bufio.NewReaderSize(&outBuf, 1<<16)
 	for {
+		__antithesis_instrumentation__.Notify(183802)
 		line, isPrefix, err := r.ReadLine()
 		if err == io.EOF {
+			__antithesis_instrumentation__.Notify(183809)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(183810)
 		}
+		__antithesis_instrumentation__.Notify(183803)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(183811)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(183812)
 		}
+		__antithesis_instrumentation__.Notify(183804)
 		if isPrefix {
+			__antithesis_instrumentation__.Notify(183813)
 			return nil, fmt.Errorf("unexpectedly failed to read public key line")
+		} else {
+			__antithesis_instrumentation__.Notify(183814)
 		}
+		__antithesis_instrumentation__.Notify(183805)
 		if len(line) == 0 {
+			__antithesis_instrumentation__.Notify(183815)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(183816)
 		}
+		__antithesis_instrumentation__.Notify(183806)
 		colonIdx := bytes.IndexRune(line, ':')
 		if colonIdx == -1 {
+			__antithesis_instrumentation__.Notify(183817)
 			return nil, fmt.Errorf("malformed public key line %q", string(line))
+		} else {
+			__antithesis_instrumentation__.Notify(183818)
 		}
-		// Skip users named "root" or "ubuntu" which don't correspond to humans
-		// and should be removed from the gcloud project.
-		if name := string(line[:colonIdx]); name == "root" || name == "ubuntu" {
+		__antithesis_instrumentation__.Notify(183807)
+
+		if name := string(line[:colonIdx]); name == "root" || func() bool {
+			__antithesis_instrumentation__.Notify(183819)
+			return name == "ubuntu" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(183820)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(183821)
 		}
+		__antithesis_instrumentation__.Notify(183808)
 		pubKeyBuf.Write(line[colonIdx+1:])
 		pubKeyBuf.WriteRune('\n')
 	}
+	__antithesis_instrumentation__.Notify(183799)
 	return pubKeyBuf.Bytes(), nil
 }

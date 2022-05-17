@@ -15,5 +15,6 @@ go_library(
         "//pkg/sql/catalog/tabledesc",
         "//pkg/sql/catalog/typedesc",
         "//pkg/util/hlc",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

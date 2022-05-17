@@ -15,6 +15,7 @@ go_library(
         "//pkg/kv/kvserver/stateloader",
         "//pkg/roachpb",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_kr_pretty//:pretty",
     ],
@@ -28,5 +29,6 @@ go_test(
     deps = [
         "//pkg/kv/kvserver/kvserverpb",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

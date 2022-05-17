@@ -35,6 +35,7 @@ go_library(
         "//pkg/util/errorutil/unimplemented",
         "//pkg/util/hlc",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -44,6 +45,7 @@ go_test(
     size = "small",
     srcs = ["structured_test.go"],
     embed = [":descpb"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 proto_library(

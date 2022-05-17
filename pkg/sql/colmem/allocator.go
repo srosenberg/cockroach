@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colmem
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,14 +16,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// TODO(yuzefovich): audit all Operators to make sure that all static
-// (internal) memory is accounted for.
-
-// Allocator is a memory management tool for vectorized components. It provides
-// new batches (and appends to existing ones) within a fixed memory budget. If
-// the budget is exceeded, it will panic with an error.
-//
-// In the future this can also be used to pool coldata.Vec allocations.
 type Allocator struct {
 	ctx     context.Context
 	acc     *mon.BoundAccount
@@ -39,42 +23,63 @@ type Allocator struct {
 }
 
 func selVectorSize(capacity int) int64 {
+	__antithesis_instrumentation__.Notify(456712)
 	return int64(capacity) * memsize.Int
 }
 
 func getVecMemoryFootprint(vec coldata.Vec) int64 {
+	__antithesis_instrumentation__.Notify(456713)
 	if vec == nil {
+		__antithesis_instrumentation__.Notify(456716)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(456717)
 	}
+	__antithesis_instrumentation__.Notify(456714)
 	switch vec.CanonicalTypeFamily() {
 	case types.BytesFamily:
+		__antithesis_instrumentation__.Notify(456718)
 		return vec.Bytes().Size()
 	case types.DecimalFamily:
-		return sizeOfDecimals(vec.Decimal(), 0 /* startIdx */)
+		__antithesis_instrumentation__.Notify(456719)
+		return sizeOfDecimals(vec.Decimal(), 0)
 	case types.JsonFamily:
+		__antithesis_instrumentation__.Notify(456720)
 		return vec.JSON().Size()
 	case typeconv.DatumVecCanonicalTypeFamily:
-		return vec.Datum().Size(0 /* startIdx */)
+		__antithesis_instrumentation__.Notify(456721)
+		return vec.Datum().Size(0)
+	default:
+		__antithesis_instrumentation__.Notify(456722)
 	}
+	__antithesis_instrumentation__.Notify(456715)
 	return EstimateBatchSizeBytes([]*types.T{vec.Type()}, vec.Capacity())
 }
 
 func getVecsMemoryFootprint(vecs []coldata.Vec) int64 {
+	__antithesis_instrumentation__.Notify(456723)
 	var size int64
 	for _, dest := range vecs {
+		__antithesis_instrumentation__.Notify(456725)
 		size += getVecMemoryFootprint(dest)
 	}
+	__antithesis_instrumentation__.Notify(456724)
 	return size
 }
 
-// GetBatchMemSize returns the total memory footprint of the batch.
 func GetBatchMemSize(b coldata.Batch) int64 {
-	if b == nil || b == coldata.ZeroBatch {
+	__antithesis_instrumentation__.Notify(456726)
+	if b == nil || func() bool {
+		__antithesis_instrumentation__.Notify(456728)
+		return b == coldata.ZeroBatch == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(456729)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(456730)
 	}
-	// We need to get the capacity of the internal selection vector, even if b
-	// currently doesn't use it, so we set selection to true and will reset
-	// below.
+	__antithesis_instrumentation__.Notify(456727)
+
 	usesSel := b.Selection() != nil
 	b.SetSelection(true)
 	memUsage := selVectorSize(cap(b.Selection())) + getVecsMemoryFootprint(b.ColVecs())
@@ -82,36 +87,46 @@ func GetBatchMemSize(b coldata.Batch) int64 {
 	return memUsage
 }
 
-// GetProportionalBatchMemSize returns the memory size of the batch that is
-// proportional to given 'length'. This method returns the estimated memory
-// footprint *only* of the first 'length' tuples in 'b'.
 func GetProportionalBatchMemSize(b coldata.Batch, length int64) int64 {
+	__antithesis_instrumentation__.Notify(456731)
 	if length == 0 {
+		__antithesis_instrumentation__.Notify(456735)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(456736)
 	}
+	__antithesis_instrumentation__.Notify(456732)
 	usesSel := b.Selection() != nil
 	b.SetSelection(true)
 	selCapacity := cap(b.Selection())
 	b.SetSelection(usesSel)
 	proportionalBatchMemSize := int64(0)
 	if selCapacity > 0 {
+		__antithesis_instrumentation__.Notify(456737)
 		proportionalBatchMemSize = selVectorSize(selCapacity) * length / int64(selCapacity)
+	} else {
+		__antithesis_instrumentation__.Notify(456738)
 	}
+	__antithesis_instrumentation__.Notify(456733)
 	for _, vec := range b.ColVecs() {
+		__antithesis_instrumentation__.Notify(456739)
 		switch vec.CanonicalTypeFamily() {
 		case types.BytesFamily, types.JsonFamily:
+			__antithesis_instrumentation__.Notify(456740)
 			proportionalBatchMemSize += coldata.ProportionalSize(vec, length)
 		default:
+			__antithesis_instrumentation__.Notify(456741)
 			proportionalBatchMemSize += getVecMemoryFootprint(vec) * length / int64(vec.Capacity())
 		}
 	}
+	__antithesis_instrumentation__.Notify(456734)
 	return proportionalBatchMemSize
 }
 
-// NewAllocator constructs a new Allocator instance.
 func NewAllocator(
 	ctx context.Context, acc *mon.BoundAccount, factory coldata.ColumnFactory,
 ) *Allocator {
+	__antithesis_instrumentation__.Notify(456742)
 	return &Allocator{
 		ctx:     ctx,
 		acc:     acc,
@@ -119,310 +134,372 @@ func NewAllocator(
 	}
 }
 
-// NewMemBatchWithFixedCapacity allocates a new in-memory coldata.Batch with the
-// given vector capacity.
-// Note: consider whether you want the dynamic batch size behavior (in which
-// case you should be using ResetMaybeReallocate).
 func (a *Allocator) NewMemBatchWithFixedCapacity(typs []*types.T, capacity int) coldata.Batch {
+	__antithesis_instrumentation__.Notify(456743)
 	estimatedMemoryUsage := selVectorSize(capacity) + EstimateBatchSizeBytes(typs, capacity)
 	if err := a.acc.Grow(a.ctx, estimatedMemoryUsage); err != nil {
+		__antithesis_instrumentation__.Notify(456745)
 		colexecerror.InternalError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(456746)
 	}
+	__antithesis_instrumentation__.Notify(456744)
 	return coldata.NewMemBatchWithCapacity(typs, capacity, a.factory)
 }
 
-// NewMemBatchWithMaxCapacity is a convenience shortcut of
-// NewMemBatchWithFixedCapacity with capacity=coldata.BatchSize() and should
-// only be used in tests (this is enforced by a linter).
 func (a *Allocator) NewMemBatchWithMaxCapacity(typs []*types.T) coldata.Batch {
+	__antithesis_instrumentation__.Notify(456747)
 	return a.NewMemBatchWithFixedCapacity(typs, coldata.BatchSize())
 }
 
-// NewMemBatchNoCols creates a "skeleton" of new in-memory coldata.Batch. It
-// allocates memory for the selection vector but does *not* allocate any memory
-// for the column vectors - those will have to be added separately.
 func (a *Allocator) NewMemBatchNoCols(typs []*types.T, capacity int) coldata.Batch {
+	__antithesis_instrumentation__.Notify(456748)
 	estimatedMemoryUsage := selVectorSize(capacity)
 	if err := a.acc.Grow(a.ctx, estimatedMemoryUsage); err != nil {
+		__antithesis_instrumentation__.Notify(456750)
 		colexecerror.InternalError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(456751)
 	}
+	__antithesis_instrumentation__.Notify(456749)
 	return coldata.NewMemBatchNoCols(typs, capacity)
 }
 
-// ResetMaybeReallocate returns a batch that is guaranteed to be in a "reset"
-// state (meaning it is ready to be used) and to have the capacity of at least
-// 1. minDesiredCapacity is a hint about the capacity of the returned batch
-// (subject to the memory limit).
-//
-// The method will grow the allocated capacity of the batch exponentially
-// (possibly incurring a reallocation), until the batch reaches
-// coldata.BatchSize() in capacity or maxBatchMemSize in the memory footprint.
-//
-// NOTE: if the reallocation occurs, then the memory under the old batch is
-// released, so it is expected that the caller will lose the references to the
-// old batch.
-// Note: the method assumes that minDesiredCapacity is at least 0 and will clamp
-// minDesiredCapacity to be between 1 and coldata.BatchSize() inclusive.
 func (a *Allocator) ResetMaybeReallocate(
 	typs []*types.T, oldBatch coldata.Batch, minDesiredCapacity int, maxBatchMemSize int64,
 ) (newBatch coldata.Batch, reallocated bool) {
+	__antithesis_instrumentation__.Notify(456752)
 	if minDesiredCapacity < 0 {
+		__antithesis_instrumentation__.Notify(456755)
 		colexecerror.InternalError(errors.AssertionFailedf("invalid minDesiredCapacity %d", minDesiredCapacity))
-	} else if minDesiredCapacity == 0 {
-		minDesiredCapacity = 1
-	} else if minDesiredCapacity > coldata.BatchSize() {
-		minDesiredCapacity = coldata.BatchSize()
+	} else {
+		__antithesis_instrumentation__.Notify(456756)
+		if minDesiredCapacity == 0 {
+			__antithesis_instrumentation__.Notify(456757)
+			minDesiredCapacity = 1
+		} else {
+			__antithesis_instrumentation__.Notify(456758)
+			if minDesiredCapacity > coldata.BatchSize() {
+				__antithesis_instrumentation__.Notify(456759)
+				minDesiredCapacity = coldata.BatchSize()
+			} else {
+				__antithesis_instrumentation__.Notify(456760)
+			}
+		}
 	}
+	__antithesis_instrumentation__.Notify(456753)
 	reallocated = true
 	if oldBatch == nil {
+		__antithesis_instrumentation__.Notify(456761)
 		newBatch = a.NewMemBatchWithFixedCapacity(typs, minDesiredCapacity)
 	} else {
-		// If old batch is already of the largest capacity, we will reuse it.
+		__antithesis_instrumentation__.Notify(456762)
+
 		useOldBatch := oldBatch.Capacity() == coldata.BatchSize()
-		// Avoid calculating the memory footprint if possible.
+
 		var oldBatchMemSize int64
 		if !useOldBatch {
-			// Check if the old batch already reached the maximum memory size,
-			// and use it if so.
+			__antithesis_instrumentation__.Notify(456764)
+
 			oldBatchMemSize = GetBatchMemSize(oldBatch)
 			useOldBatch = oldBatchMemSize >= maxBatchMemSize
+		} else {
+			__antithesis_instrumentation__.Notify(456765)
 		}
+		__antithesis_instrumentation__.Notify(456763)
 		if useOldBatch {
+			__antithesis_instrumentation__.Notify(456766)
 			reallocated = false
 			a.ReleaseMemory(oldBatch.ResetInternalBatch())
 			newBatch = oldBatch
 		} else {
+			__antithesis_instrumentation__.Notify(456767)
 			a.ReleaseMemory(oldBatchMemSize)
 			newCapacity := oldBatch.Capacity() * 2
 			if newCapacity < minDesiredCapacity {
+				__antithesis_instrumentation__.Notify(456770)
 				newCapacity = minDesiredCapacity
+			} else {
+				__antithesis_instrumentation__.Notify(456771)
 			}
+			__antithesis_instrumentation__.Notify(456768)
 			if newCapacity > coldata.BatchSize() {
+				__antithesis_instrumentation__.Notify(456772)
 				newCapacity = coldata.BatchSize()
+			} else {
+				__antithesis_instrumentation__.Notify(456773)
 			}
+			__antithesis_instrumentation__.Notify(456769)
 			newBatch = a.NewMemBatchWithFixedCapacity(typs, newCapacity)
 		}
 	}
+	__antithesis_instrumentation__.Notify(456754)
 	return newBatch, reallocated
 }
 
-// NewMemColumn returns a new coldata.Vec of the desired capacity.
-// NOTE: consider whether you should be using MaybeAppendColumn,
-// NewMemBatchWith*, or ResetMaybeReallocate methods.
 func (a *Allocator) NewMemColumn(t *types.T, capacity int) coldata.Vec {
+	__antithesis_instrumentation__.Notify(456774)
 	estimatedMemoryUsage := EstimateBatchSizeBytes([]*types.T{t}, capacity)
 	if err := a.acc.Grow(a.ctx, estimatedMemoryUsage); err != nil {
+		__antithesis_instrumentation__.Notify(456776)
 		colexecerror.InternalError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(456777)
 	}
+	__antithesis_instrumentation__.Notify(456775)
 	return coldata.NewMemColumn(t, capacity, a.factory)
 }
 
-// MaybeAppendColumn might append a newly allocated coldata.Vec of the given
-// type to b at position colIdx. Behavior of the function depends on how colIdx
-// compares to the width of b:
-// 1. if colIdx < b.Width(), then we expect that correctly-typed vector is
-// already present in position colIdx. If that's not the case, we will panic.
-// 2. if colIdx == b.Width(), then we will append a newly allocated coldata.Vec
-// of the given type.
-// 3. if colIdx > b.Width(), then we will panic because such condition
-// indicates an error in setting up vector type enforcers during the planning
-// stage.
-// NOTE: b must be non-zero length batch.
 func (a *Allocator) MaybeAppendColumn(b coldata.Batch, t *types.T, colIdx int) {
+	__antithesis_instrumentation__.Notify(456778)
 	if b.Length() == 0 {
+		__antithesis_instrumentation__.Notify(456783)
 		colexecerror.InternalError(errors.AssertionFailedf("trying to add a column to zero length batch"))
+	} else {
+		__antithesis_instrumentation__.Notify(456784)
 	}
+	__antithesis_instrumentation__.Notify(456779)
 	width := b.Width()
 	desiredCapacity := b.Capacity()
 	if desiredCapacity == 0 {
-		// In some cases (like when we have a windowed batch), the capacity
-		// might be set to zero, yet we want to make sure that the vectors have
-		// enough space to accommodate the length of the batch.
+		__antithesis_instrumentation__.Notify(456785)
+
 		desiredCapacity = b.Length()
+	} else {
+		__antithesis_instrumentation__.Notify(456786)
 	}
+	__antithesis_instrumentation__.Notify(456780)
 	if colIdx < width {
+		__antithesis_instrumentation__.Notify(456787)
 		presentVec := b.ColVec(colIdx)
 		presentType := presentVec.Type()
 		if presentType.Family() == types.UnknownFamily {
-			// We already have an unknown vector in place. If this is expected,
-			// then it will not be accessed and we're good; if this is not
-			// expected, then an error will occur later.
+			__antithesis_instrumentation__.Notify(456790)
+
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(456791)
 		}
+		__antithesis_instrumentation__.Notify(456788)
 		if presentType.Identical(t) {
-			// We already have the vector of the desired type in place.
+			__antithesis_instrumentation__.Notify(456792)
+
 			if presentVec.Capacity() < desiredCapacity {
-				// Unfortunately, the present vector is not of sufficient
-				// capacity, so we need to replace it.
+				__antithesis_instrumentation__.Notify(456795)
+
 				oldMemUsage := getVecMemoryFootprint(presentVec)
 				newEstimatedMemoryUsage := EstimateBatchSizeBytes([]*types.T{t}, desiredCapacity)
 				if err := a.acc.Grow(a.ctx, newEstimatedMemoryUsage-oldMemUsage); err != nil {
+					__antithesis_instrumentation__.Notify(456797)
 					colexecerror.InternalError(err)
+				} else {
+					__antithesis_instrumentation__.Notify(456798)
 				}
+				__antithesis_instrumentation__.Notify(456796)
 				b.ReplaceCol(a.NewMemColumn(t, desiredCapacity), colIdx)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(456799)
 			}
+			__antithesis_instrumentation__.Notify(456793)
 			if presentVec.CanonicalTypeFamily() == typeconv.DatumVecCanonicalTypeFamily {
+				__antithesis_instrumentation__.Notify(456800)
 				a.ReleaseMemory(presentVec.Datum().Reset())
 			} else {
+				__antithesis_instrumentation__.Notify(456801)
 				coldata.ResetIfBytesLike(presentVec)
 			}
+			__antithesis_instrumentation__.Notify(456794)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(456802)
 		}
-		// We have a vector with an unexpected type, so we panic.
+		__antithesis_instrumentation__.Notify(456789)
+
 		colexecerror.InternalError(errors.AssertionFailedf(
 			"trying to add a column of %s type at index %d but %s vector already present",
 			t, colIdx, presentType,
 		))
-	} else if colIdx > width {
-		// We have a batch of unexpected width which indicates an error in the
-		// planning stage.
-		colexecerror.InternalError(errors.AssertionFailedf(
-			"trying to add a column of %s type at index %d but batch has width %d",
-			t, colIdx, width,
-		))
+	} else {
+		__antithesis_instrumentation__.Notify(456803)
+		if colIdx > width {
+			__antithesis_instrumentation__.Notify(456804)
+
+			colexecerror.InternalError(errors.AssertionFailedf(
+				"trying to add a column of %s type at index %d but batch has width %d",
+				t, colIdx, width,
+			))
+		} else {
+			__antithesis_instrumentation__.Notify(456805)
+		}
 	}
+	__antithesis_instrumentation__.Notify(456781)
 	estimatedMemoryUsage := EstimateBatchSizeBytes([]*types.T{t}, desiredCapacity)
 	if err := a.acc.Grow(a.ctx, estimatedMemoryUsage); err != nil {
+		__antithesis_instrumentation__.Notify(456806)
 		colexecerror.InternalError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(456807)
 	}
+	__antithesis_instrumentation__.Notify(456782)
 	b.AppendCol(a.NewMemColumn(t, desiredCapacity))
 }
 
-// PerformOperation executes 'operation' (that somehow modifies 'destVecs') and
-// updates the memory account accordingly.
-// NOTE: if some columnar vectors are not modified, they should not be included
-// in 'destVecs' to reduce the performance hit of memory accounting.
 func (a *Allocator) PerformOperation(destVecs []coldata.Vec, operation func()) {
+	__antithesis_instrumentation__.Notify(456808)
 	before := getVecsMemoryFootprint(destVecs)
-	// To simplify the accounting, we perform the operation first and then will
-	// update the memory account. The minor "drift" in accounting that is
-	// caused by this approach is ok.
+
 	operation()
 	after := getVecsMemoryFootprint(destVecs)
 
 	a.AdjustMemoryUsage(after - before)
 }
 
-// PerformAppend is used to account for memory usage during calls to
-// AppendBufferedBatch.AppendTuples. It is more efficient than PerformOperation
-// for appending to Decimal column types since the expensive portion of the cost
-// calculation only needs to be performed for the newly appended elements.
 func (a *Allocator) PerformAppend(batch coldata.Batch, operation func()) {
+	__antithesis_instrumentation__.Notify(456809)
 	prevLength := batch.Length()
 	var before int64
 	for _, dest := range batch.ColVecs() {
+		__antithesis_instrumentation__.Notify(456812)
 		switch dest.CanonicalTypeFamily() {
 		case types.DecimalFamily:
-			// Don't add the size of the existing decimals to the 'before' cost, since
-			// they are guaranteed not to be modified by an append operation.
+			__antithesis_instrumentation__.Notify(456813)
+
 			before += sizeOfDecimals(dest.Decimal(), prevLength)
 		case typeconv.DatumVecCanonicalTypeFamily:
+			__antithesis_instrumentation__.Notify(456814)
 			before += dest.Datum().Size(prevLength)
 		default:
+			__antithesis_instrumentation__.Notify(456815)
 			before += getVecMemoryFootprint(dest)
 		}
 	}
+	__antithesis_instrumentation__.Notify(456810)
 	operation()
 	var after int64
 	for _, dest := range batch.ColVecs() {
+		__antithesis_instrumentation__.Notify(456816)
 		switch dest.CanonicalTypeFamily() {
 		case types.DecimalFamily:
+			__antithesis_instrumentation__.Notify(456817)
 			after += sizeOfDecimals(dest.Decimal(), prevLength)
 		case typeconv.DatumVecCanonicalTypeFamily:
+			__antithesis_instrumentation__.Notify(456818)
 			after += dest.Datum().Size(prevLength)
 		default:
+			__antithesis_instrumentation__.Notify(456819)
 			after += getVecMemoryFootprint(dest)
 		}
 	}
+	__antithesis_instrumentation__.Notify(456811)
 	a.AdjustMemoryUsage(after - before)
 }
 
-// Used returns the number of bytes currently allocated through this allocator.
 func (a *Allocator) Used() int64 {
+	__antithesis_instrumentation__.Notify(456820)
 	return a.acc.Used()
 }
 
-// AdjustMemoryUsage adjusts the number of bytes currently allocated through
-// this allocator by delta bytes (which can be both positive or negative).
 func (a *Allocator) AdjustMemoryUsage(delta int64) {
+	__antithesis_instrumentation__.Notify(456821)
 	if delta > 0 {
+		__antithesis_instrumentation__.Notify(456822)
 		if err := a.acc.Grow(a.ctx, delta); err != nil {
+			__antithesis_instrumentation__.Notify(456823)
 			colexecerror.InternalError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(456824)
 		}
-	} else if delta < 0 {
-		a.ReleaseMemory(-delta)
+	} else {
+		__antithesis_instrumentation__.Notify(456825)
+		if delta < 0 {
+			__antithesis_instrumentation__.Notify(456826)
+			a.ReleaseMemory(-delta)
+		} else {
+			__antithesis_instrumentation__.Notify(456827)
+		}
 	}
 }
 
-// ReleaseMemory reduces the number of bytes currently allocated through this
-// allocator by (at most) size bytes. size must be non-negative.
 func (a *Allocator) ReleaseMemory(size int64) {
+	__antithesis_instrumentation__.Notify(456828)
 	if size < 0 {
+		__antithesis_instrumentation__.Notify(456831)
 		colexecerror.InternalError(errors.AssertionFailedf("unexpectedly negative size in ReleaseMemory: %d", size))
+	} else {
+		__antithesis_instrumentation__.Notify(456832)
 	}
+	__antithesis_instrumentation__.Notify(456829)
 	if size > a.acc.Used() {
+		__antithesis_instrumentation__.Notify(456833)
 		size = a.acc.Used()
+	} else {
+		__antithesis_instrumentation__.Notify(456834)
 	}
+	__antithesis_instrumentation__.Notify(456830)
 	a.acc.Shrink(a.ctx, size)
 }
 
-// sizeOfDecimals returns the size of the given decimals slice. It only accounts
-// for the size of the decimal objects starting from the given index. For that
-// reason, sizeOfDecimals is relatively cheap when startIdx >= length, and
-// expensive when startIdx < length (with a maximum at startIdx = 0).
 func sizeOfDecimals(decimals coldata.Decimals, startIdx int) int64 {
+	__antithesis_instrumentation__.Notify(456835)
 	if startIdx >= cap(decimals) {
+		__antithesis_instrumentation__.Notify(456840)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(456841)
 	}
+	__antithesis_instrumentation__.Notify(456836)
 	if startIdx >= len(decimals) {
+		__antithesis_instrumentation__.Notify(456842)
 		return int64(cap(decimals)-startIdx) * memsize.Decimal
+	} else {
+		__antithesis_instrumentation__.Notify(456843)
 	}
+	__antithesis_instrumentation__.Notify(456837)
 	if startIdx < 0 {
+		__antithesis_instrumentation__.Notify(456844)
 		startIdx = 0
+	} else {
+		__antithesis_instrumentation__.Notify(456845)
 	}
-	// Account for the allocated memory beyond the length of the slice.
+	__antithesis_instrumentation__.Notify(456838)
+
 	size := int64(cap(decimals)-len(decimals)) * memsize.Decimal
 	for i := startIdx; i < decimals.Len(); i++ {
+		__antithesis_instrumentation__.Notify(456846)
 		size += int64(decimals[i].Size())
 	}
+	__antithesis_instrumentation__.Notify(456839)
 	return size
 }
 
-// SizeOfBatchSizeSelVector is the size (in bytes) of a selection vector of
-// coldata.BatchSize() length.
 var SizeOfBatchSizeSelVector = int64(coldata.BatchSize()) * memsize.Int
 
-// EstimateBatchSizeBytes returns an estimated amount of bytes needed to
-// store a batch in memory that has column types vecTypes.
-// WARNING: This only is correct for fixed width types, and returns an
-// estimate for non fixed width types. In future it might be possible to
-// remove the need for estimation by specifying batch sizes in terms of bytes.
 func EstimateBatchSizeBytes(vecTypes []*types.T, batchLength int) int64 {
+	__antithesis_instrumentation__.Notify(456847)
 	if batchLength == 0 {
+		__antithesis_instrumentation__.Notify(456850)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(456851)
 	}
-	// acc represents the number of bytes to represent a row in the batch
-	// (excluding any Bytes vectors, those are tracked separately).
+	__antithesis_instrumentation__.Notify(456848)
+
 	var acc int64
 	numBytesVectors := 0
 	for _, t := range vecTypes {
+		__antithesis_instrumentation__.Notify(456852)
 		switch typeconv.TypeFamilyToCanonicalTypeFamily(t.Family()) {
 		case types.BytesFamily, types.JsonFamily:
+			__antithesis_instrumentation__.Notify(456853)
 			numBytesVectors++
 		case types.DecimalFamily:
-			// Similar to byte arrays, we can't tell how much space is used
-			// to hold the arbitrary precision decimal objects because they
-			// can contain a variable-length portion. However, most values
-			// (those with a coefficient which can fit in a uint128) do not
-			// contain any indirection and are stored entirely inline, so we
-			// use the flat struct size as an estimate.
+			__antithesis_instrumentation__.Notify(456854)
+
 			acc += memsize.Decimal
 		case typeconv.DatumVecCanonicalTypeFamily:
-			// Initially, only []tree.Datum slice is allocated for the
-			// datum-backed vectors right away, so that's what we're including
-			// in the estimate. Later on, once the actual values are set, they
-			// will be accounted for properly.
+			__antithesis_instrumentation__.Notify(456855)
+
 			acc += memsize.DatumOverhead
 		case
 			types.BoolFamily,
@@ -430,228 +507,246 @@ func EstimateBatchSizeBytes(vecTypes []*types.T, batchLength int) int64 {
 			types.FloatFamily,
 			types.TimestampTZFamily,
 			types.IntervalFamily:
-			// Types that have a statically known size.
+			__antithesis_instrumentation__.Notify(456856)
+
 			acc += GetFixedSizeTypeSize(t)
 		default:
+			__antithesis_instrumentation__.Notify(456857)
 			colexecerror.InternalError(errors.AssertionFailedf("unhandled type %s", t))
 		}
 	}
-	// For byte arrays, we initially allocate a constant number of bytes for
-	// each row (namely coldata.ElementSize). However, later, the exact memory
-	// footprint will be used: whenever a modification of Bytes takes place, the
-	// Allocator will measure the old footprint and the updated one and will
-	// update the memory account accordingly.
+	__antithesis_instrumentation__.Notify(456849)
+
 	bytesVectorsSize := int64(numBytesVectors) * (coldata.FlatBytesOverhead + int64(batchLength)*coldata.ElementSize)
 	return acc*int64(batchLength) + bytesVectorsSize
 }
 
-// GetFixedSizeTypeSize returns the size of a type that is not variable in size;
-// e.g. its size is known statically.
 func GetFixedSizeTypeSize(t *types.T) (size int64) {
+	__antithesis_instrumentation__.Notify(456858)
 	switch typeconv.TypeFamilyToCanonicalTypeFamily(t.Family()) {
 	case types.BoolFamily:
+		__antithesis_instrumentation__.Notify(456860)
 		size = memsize.Bool
 	case types.IntFamily:
+		__antithesis_instrumentation__.Notify(456861)
 		switch t.Width() {
 		case 16:
+			__antithesis_instrumentation__.Notify(456866)
 			size = memsize.Int16
 		case 32:
+			__antithesis_instrumentation__.Notify(456867)
 			size = memsize.Int32
 		default:
+			__antithesis_instrumentation__.Notify(456868)
 			size = memsize.Int64
 		}
 	case types.FloatFamily:
+		__antithesis_instrumentation__.Notify(456862)
 		size = memsize.Float64
 	case types.TimestampTZFamily:
-		// time.Time consists of two 64 bit integers and a pointer to
-		// time.Location. We will only account for this 3 bytes without paying
-		// attention to the full time.Location struct. The reason is that it is
-		// likely that time.Location's are cached and are shared among all the
-		// timestamps, so if we were to include that in the estimation, we would
-		// significantly overestimate.
-		// TODO(yuzefovich): figure out whether the caching does take place.
+		__antithesis_instrumentation__.Notify(456863)
+
 		size = memsize.Time
 	case types.IntervalFamily:
+		__antithesis_instrumentation__.Notify(456864)
 		size = memsize.Duration
 	default:
+		__antithesis_instrumentation__.Notify(456865)
 		colexecerror.InternalError(errors.AssertionFailedf("unhandled type %s", t))
 	}
+	__antithesis_instrumentation__.Notify(456859)
 	return size
 }
 
-// SetAccountingHelper is a utility struct that should be used by callers that
-// only perform "set" operations on the coldata.Batch (i.e. neither copies nor
-// appends). It encapsulates the logic for performing the memory accounting for
-// these sets.
-// NOTE: it works under the assumption that only a single coldata.Batch is being
-// used.
 type SetAccountingHelper struct {
 	Allocator *Allocator
 
-	// allFixedLength indicates that we're working with the type schema of only
-	// fixed-length elements.
 	allFixedLength bool
 
-	// bytesLikeVecIdxs stores the indices of all bytes-like vectors.
 	bytesLikeVecIdxs util.FastIntSet
-	// bytesLikeVectors stores all actual bytes-like vectors. It is updated
-	// every time a new batch is allocated.
+
 	bytesLikeVectors []*coldata.Bytes
-	// prevBytesLikeTotalSize tracks the total size of the bytes-like vectors
-	// that we have already accounted for.
+
 	prevBytesLikeTotalSize int64
 
-	// decimalVecIdxs stores the indices of all decimal vectors.
 	decimalVecIdxs util.FastIntSet
-	// decimalVecs stores all decimal vectors. They are updated every time a new
-	// batch is allocated.
+
 	decimalVecs []coldata.Decimals
-	// decimalSizes stores the amount of space we have accounted for for the
-	// corresponding decimal values in the corresponding row of the last batch
-	// that the helper has touched. This is necessary to track because when the
-	// batch is reset, the vectors still have references to the old decimals, so
-	// we need to adjust the accounting only by the delta. Similarly, once a new
-	// batch is allocated, we need to track the estimate that we have already
-	// accounted for.
-	//
-	// Note that because ResetMaybeReallocate caps the capacity of the batch at
-	// coldata.BatchSize(), this slice will never exceed coldata.BatchSize() in
-	// size, and we choose to ignore it for the purposes of memory accounting.
+
 	decimalSizes []int64
 
-	// varLenDatumVecIdxs stores the indices of all datum-backed vectors with
-	// variable-length values.
 	varLenDatumVecIdxs util.FastIntSet
-	// varLenDatumVecs stores all variable-sized datum-backed vectors. They are
-	// updated every time a new batch is allocated.
+
 	varLenDatumVecs []coldata.DatumVec
 }
 
-// Init initializes the helper.
 func (h *SetAccountingHelper) Init(allocator *Allocator, typs []*types.T) {
+	__antithesis_instrumentation__.Notify(456869)
 	h.Allocator = allocator
 
 	for vecIdx, typ := range typs {
+		__antithesis_instrumentation__.Notify(456871)
 		switch typeconv.TypeFamilyToCanonicalTypeFamily(typ.Family()) {
 		case types.BytesFamily, types.JsonFamily:
+			__antithesis_instrumentation__.Notify(456872)
 			h.bytesLikeVecIdxs.Add(vecIdx)
 		case types.DecimalFamily:
+			__antithesis_instrumentation__.Notify(456873)
 			h.decimalVecIdxs.Add(vecIdx)
 		case typeconv.DatumVecCanonicalTypeFamily:
+			__antithesis_instrumentation__.Notify(456874)
 			h.varLenDatumVecIdxs.Add(vecIdx)
+		default:
+			__antithesis_instrumentation__.Notify(456875)
 		}
 	}
+	__antithesis_instrumentation__.Notify(456870)
 
-	h.allFixedLength = h.bytesLikeVecIdxs.Empty() && h.decimalVecIdxs.Empty() && h.varLenDatumVecIdxs.Empty()
+	h.allFixedLength = h.bytesLikeVecIdxs.Empty() && func() bool {
+		__antithesis_instrumentation__.Notify(456876)
+		return h.decimalVecIdxs.Empty() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(456877)
+		return h.varLenDatumVecIdxs.Empty() == true
+	}() == true
 	h.bytesLikeVectors = make([]*coldata.Bytes, h.bytesLikeVecIdxs.Len())
 	h.decimalVecs = make([]coldata.Decimals, h.decimalVecIdxs.Len())
 	h.varLenDatumVecs = make([]coldata.DatumVec, h.varLenDatumVecIdxs.Len())
 }
 
 func (h *SetAccountingHelper) getBytesLikeTotalSize() int64 {
+	__antithesis_instrumentation__.Notify(456878)
 	var bytesLikeTotalSize int64
 	for _, b := range h.bytesLikeVectors {
+		__antithesis_instrumentation__.Notify(456880)
 		bytesLikeTotalSize += b.Size()
 	}
+	__antithesis_instrumentation__.Notify(456879)
 	return bytesLikeTotalSize
 }
 
-// ResetMaybeReallocate is a light wrapper on top of
-// Allocator.ResetMaybeReallocate (and thus has the same contract) with an
-// additional logic for memory tracking purposes.
 func (h *SetAccountingHelper) ResetMaybeReallocate(
 	typs []*types.T, oldBatch coldata.Batch, minCapacity int, maxBatchMemSize int64,
 ) (newBatch coldata.Batch, reallocated bool) {
+	__antithesis_instrumentation__.Notify(456881)
 	newBatch, reallocated = h.Allocator.ResetMaybeReallocate(
 		typs, oldBatch, minCapacity, maxBatchMemSize,
 	)
-	if reallocated && !h.allFixedLength {
-		// Allocator.ResetMaybeReallocate has released the precise memory
-		// footprint of the old batch and has accounted for the estimated
-		// footprint of the new batch. This means that we need to update our
-		// internal memory tracking state to those estimates.
-		//
-		// Note that the loops below have type switches, but that is acceptable
-		// given that a batch is reallocated limited number of times throughout
-		// the lifetime of the helper's user (namely, at most
-		// log2(coldata.BatchSize())+1 (=11 by default) times since we double
-		// the capacity until coldata.BatchSize()).
+	if reallocated && func() bool {
+		__antithesis_instrumentation__.Notify(456883)
+		return !h.allFixedLength == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(456884)
+
 		vecs := newBatch.ColVecs()
 		if !h.bytesLikeVecIdxs.Empty() {
+			__antithesis_instrumentation__.Notify(456887)
 			h.bytesLikeVectors = h.bytesLikeVectors[:0]
 			for vecIdx, ok := h.bytesLikeVecIdxs.Next(0); ok; vecIdx, ok = h.bytesLikeVecIdxs.Next(vecIdx + 1) {
+				__antithesis_instrumentation__.Notify(456889)
 				if vecs[vecIdx].CanonicalTypeFamily() == types.BytesFamily {
+					__antithesis_instrumentation__.Notify(456890)
 					h.bytesLikeVectors = append(h.bytesLikeVectors, vecs[vecIdx].Bytes())
 				} else {
+					__antithesis_instrumentation__.Notify(456891)
 					h.bytesLikeVectors = append(h.bytesLikeVectors, &vecs[vecIdx].JSON().Bytes)
 				}
 			}
+			__antithesis_instrumentation__.Notify(456888)
 			h.prevBytesLikeTotalSize = h.getBytesLikeTotalSize()
+		} else {
+			__antithesis_instrumentation__.Notify(456892)
 		}
+		__antithesis_instrumentation__.Notify(456885)
 		if !h.decimalVecIdxs.Empty() {
+			__antithesis_instrumentation__.Notify(456893)
 			h.decimalVecs = h.decimalVecs[:0]
 			for vecIdx, ok := h.decimalVecIdxs.Next(0); ok; vecIdx, ok = h.decimalVecIdxs.Next(vecIdx + 1) {
+				__antithesis_instrumentation__.Notify(456895)
 				h.decimalVecs = append(h.decimalVecs, vecs[vecIdx].Decimal())
 			}
+			__antithesis_instrumentation__.Notify(456894)
 			h.decimalSizes = make([]int64, newBatch.Capacity())
 			for i := range h.decimalSizes {
-				// In EstimateBatchSizeBytes, memsize.Decimal has already been
-				// accounted for for each decimal value, so we multiple that by
-				// the number of decimal vectors to get already included
-				// footprint of all decimal values in a single row.
+				__antithesis_instrumentation__.Notify(456896)
+
 				h.decimalSizes[i] = int64(len(h.decimalVecs)) * memsize.Decimal
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(456897)
 		}
+		__antithesis_instrumentation__.Notify(456886)
 		if !h.varLenDatumVecIdxs.Empty() {
+			__antithesis_instrumentation__.Notify(456898)
 			h.varLenDatumVecs = h.varLenDatumVecs[:0]
 			for vecIdx, ok := h.varLenDatumVecIdxs.Next(0); ok; vecIdx, ok = h.varLenDatumVecIdxs.Next(vecIdx + 1) {
+				__antithesis_instrumentation__.Notify(456899)
 				h.varLenDatumVecs = append(h.varLenDatumVecs, vecs[vecIdx].Datum())
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(456900)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(456901)
 	}
+	__antithesis_instrumentation__.Notify(456882)
 	return newBatch, reallocated
 }
 
-// AccountForSet updates the Allocator according to the new variable length
-// values in the row rowIdx in the batch that was returned by the last call to
-// ResetMaybeReallocate.
 func (h *SetAccountingHelper) AccountForSet(rowIdx int) {
+	__antithesis_instrumentation__.Notify(456902)
 	if h.allFixedLength {
-		// All vectors are of fixed-length and are already correctly accounted
-		// for.
+		__antithesis_instrumentation__.Notify(456906)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(456907)
 	}
+	__antithesis_instrumentation__.Notify(456903)
 
 	if len(h.bytesLikeVectors) > 0 {
+		__antithesis_instrumentation__.Notify(456908)
 		newBytesLikeTotalSize := h.getBytesLikeTotalSize()
 		h.Allocator.AdjustMemoryUsage(newBytesLikeTotalSize - h.prevBytesLikeTotalSize)
 		h.prevBytesLikeTotalSize = newBytesLikeTotalSize
+	} else {
+		__antithesis_instrumentation__.Notify(456909)
 	}
+	__antithesis_instrumentation__.Notify(456904)
 
 	if !h.decimalVecIdxs.Empty() {
+		__antithesis_instrumentation__.Notify(456910)
 		var newDecimalSizes int64
 		for _, decimalVec := range h.decimalVecs {
+			__antithesis_instrumentation__.Notify(456912)
 			d := decimalVec.Get(rowIdx)
 			newDecimalSizes += int64(d.Size())
 		}
+		__antithesis_instrumentation__.Notify(456911)
 		h.Allocator.AdjustMemoryUsage(newDecimalSizes - h.decimalSizes[rowIdx])
 		h.decimalSizes[rowIdx] = newDecimalSizes
+	} else {
+		__antithesis_instrumentation__.Notify(456913)
 	}
+	__antithesis_instrumentation__.Notify(456905)
 
 	if !h.varLenDatumVecIdxs.Empty() {
+		__antithesis_instrumentation__.Notify(456914)
 		var newVarLengthDatumSize int64
 		for _, datumVec := range h.varLenDatumVecs {
+			__antithesis_instrumentation__.Notify(456916)
 			datumSize := datumVec.Get(rowIdx).(tree.Datum).Size()
-			// Note that we're ignoring the overhead of tree.Datum because it
-			// was already included in EstimateBatchSizeBytes.
+
 			newVarLengthDatumSize += int64(datumSize)
 		}
+		__antithesis_instrumentation__.Notify(456915)
 		h.Allocator.AdjustMemoryUsage(newVarLengthDatumSize)
+	} else {
+		__antithesis_instrumentation__.Notify(456917)
 	}
 }
 
-// Release releases all of the resources so that they can be garbage collected.
-// It should be called once the caller is done with batch manipulation.
 func (h *SetAccountingHelper) Release() {
+	__antithesis_instrumentation__.Notify(456918)
 	*h = SetAccountingHelper{}
 }

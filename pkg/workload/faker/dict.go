@@ -1,20 +1,9 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package faker
 
-// The movr workload uses this library and is built into the cockroach binary.
-// The common case is that someone won't be using movr, so avoid the allocations
-// by using functions instead of static dicts.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 func words() *weightedEntries {
+	__antithesis_instrumentation__.Notify(694082)
 	return makeWeightedEntries(
 		`a`, 1.0,
 		`ability`, 1.0,
@@ -991,6 +980,7 @@ func words() *weightedEntries {
 }
 
 func streetSuffix() *weightedEntries {
+	__antithesis_instrumentation__.Notify(694083)
 	return makeWeightedEntries(
 		`Alley`, 1.0,
 		`Avenue`, 1.0,
@@ -1220,11 +1210,8 @@ func streetSuffix() *weightedEntries {
 	)
 }
 
-// Top 200 names of the decade from the 60's-90's from,
-// https,//www.ssa.gov/OACT/babynames/decades/names1960s.html
-// Weightings derived from total number on each name
-
 func firstNameFemale() *weightedEntries {
+	__antithesis_instrumentation__.Notify(694084)
 	return makeWeightedEntries(
 		`April`, 0.004529083,
 		`Abigail`, 0.002043839,
@@ -1611,6 +1598,7 @@ func firstNameFemale() *weightedEntries {
 }
 
 func firstNameMale() *weightedEntries {
+	__antithesis_instrumentation__.Notify(694085)
 	return makeWeightedEntries(
 		`Aaron`, 0.006741589,
 		`Adam`, 0.007124922,
@@ -1937,11 +1925,8 @@ func firstNameMale() *weightedEntries {
 	)
 }
 
-// Top 1000 US surnames from US Census data
-// Weighted by number of occurrences
-// By way of http,//names.mongabay.com/data/1000.html on 2/10/2016
-
 func lastName() *weightedEntries {
+	__antithesis_instrumentation__.Notify(694086)
 	return makeWeightedEntries(
 		`Smith`, 0.021712045,
 		`Johnson`, 0.01696938,

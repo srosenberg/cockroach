@@ -9,6 +9,8 @@
 // licenses/APL.txt.
 package main
 
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 import (
 	"bytes"
 	"encoding/xml"
@@ -43,6 +45,7 @@ var (
 		Long: `bazci is glue code to make debugging Bazel builds and
 tests in Teamcity as painless as possible.`,
 		Args: func(cmd *cobra.Command, args []string) error {
+			__antithesis_instrumentation__.Notify(37529)
 			_, err := parseArgs(args, cmd.ArgsLenAtDash())
 			return err
 		},
@@ -70,50 +73,61 @@ func init() {
 		"list of build configs to apply to bazel calls")
 }
 
-// parsedArgs looks basically like the `args` slice that Cobra gives us, but
-// a little more tightly structured.
-// e.g. the args ["test", "//pkg:small_tests", "--" "--verbose_failures"]
-// get converted to parsedArgs {
-//   subcmd: "test",
-//   targets: ["//pkg:small_tests"],
-//   additional: ["--verbose_failures"]
-// }
 type parsedArgs struct {
-	// The subcommand: either "build" or "test".
 	subcmd string
-	// The list of targets being built or tested. May include test suites.
+
 	targets []string
-	// Additional arguments to pass along to Bazel.
+
 	additional []string
 }
 
-// Returned by parseArgs on some bad inputs.
 var errUsage = errors.New("At least 2 arguments required (e.g. `bazci build TARGET`)")
 
-// parseArgs converts a raw list of arguments from Cobra to a parsedArgs. The second argument,
-// `argsLenAtDash`, should be the value returned by `cobra.Command.ArgsLenAtDash()`.
 func parseArgs(args []string, argsLenAtDash int) (*parsedArgs, error) {
-	// The minimum number of arguments needed is 2: the first is the
-	// subcommand to run, and the second is the first label (e.g.
-	// `//pkg/cmd/cockroach-short`). An arbitrary number of additional
-	// labels can follow. If the subcommand is munge-test-xml, the list of
-	// labels is instead taken as a a list of XML files to munge.
+	__antithesis_instrumentation__.Notify(37530)
+
 	if len(args) < 2 {
-		return nil, errUsage
-	}
-	if args[0] != buildSubcmd && args[0] != runSubcmd && args[0] != testSubcmd && args[0] != mungeTestXMLSubcmd && args[0] != mergeTestXMLsSubcmd {
-		return nil, errors.Newf("First argument must be `build`, `run`, `test`, `merge-test-xmls`, or `munge-test-xml`; got %v", args[0])
-	}
-	var splitLoc int
-	if argsLenAtDash < 0 {
-		// Cobra sets the value of `ArgsLenAtDash()` to -1 if there's no
-		// dash in the args.
-		splitLoc = len(args)
-	} else if argsLenAtDash < 2 {
+		__antithesis_instrumentation__.Notify(37534)
 		return nil, errUsage
 	} else {
-		splitLoc = argsLenAtDash
+		__antithesis_instrumentation__.Notify(37535)
 	}
+	__antithesis_instrumentation__.Notify(37531)
+	if args[0] != buildSubcmd && func() bool {
+		__antithesis_instrumentation__.Notify(37536)
+		return args[0] != runSubcmd == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(37537)
+		return args[0] != testSubcmd == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(37538)
+		return args[0] != mungeTestXMLSubcmd == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(37539)
+		return args[0] != mergeTestXMLsSubcmd == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(37540)
+		return nil, errors.Newf("First argument must be `build`, `run`, `test`, `merge-test-xmls`, or `munge-test-xml`; got %v", args[0])
+	} else {
+		__antithesis_instrumentation__.Notify(37541)
+	}
+	__antithesis_instrumentation__.Notify(37532)
+	var splitLoc int
+	if argsLenAtDash < 0 {
+		__antithesis_instrumentation__.Notify(37542)
+
+		splitLoc = len(args)
+	} else {
+		__antithesis_instrumentation__.Notify(37543)
+		if argsLenAtDash < 2 {
+			__antithesis_instrumentation__.Notify(37544)
+			return nil, errUsage
+		} else {
+			__antithesis_instrumentation__.Notify(37545)
+			splitLoc = argsLenAtDash
+		}
+	}
+	__antithesis_instrumentation__.Notify(37533)
 	return &parsedArgs{
 		subcmd:     args[0],
 		targets:    args[1:splitLoc],
@@ -121,69 +135,104 @@ func parseArgs(args []string, argsLenAtDash int) (*parsedArgs, error) {
 	}, nil
 }
 
-// buildInfo captures more specific, granular data about the build or test
-// request. We query bazel for this data before running the build and use it to
-// find output artifacts.
 type buildInfo struct {
-	// Location of the bazel-bin directory.
 	binDir string
-	// Location of the bazel-testlogs directory.
+
 	testlogsDir string
-	// Expanded list of Go binary targets to be built.
+
 	goBinaries []string
-	// Expanded list of cmake targets to be built.
+
 	cmakeTargets []string
-	// Expanded list of genrule targets to be built.
+
 	genruleTargets []string
-	// Expanded list of Go test targets to be run. Test suites are split up
-	// into their component tests and all put in this list, so this may be
-	// considerably longer than the argument list.
+
 	tests []string
-	// Expanded set of go_transition_test targets to be run. The map is the full test target
-	// name -> the location of the corresponding `bazel-testlogs` directory for this test.
+
 	transitionTests map[string]string
 }
 
 func runBazelReturningStdout(subcmd string, arg ...string) (string, error) {
+	__antithesis_instrumentation__.Notify(37546)
 	if subcmd != "query" {
+		__antithesis_instrumentation__.Notify(37549)
 		var configArgs []string
-		// The `test` config is implied in this case.
+
 		if subcmd == "cquery" {
+			__antithesis_instrumentation__.Notify(37551)
 			configArgs = configArgList("test")
 		} else {
+			__antithesis_instrumentation__.Notify(37552)
 			configArgs = configArgList()
 		}
+		__antithesis_instrumentation__.Notify(37550)
 		arg = append(configArgs, arg...)
 		arg = append(arg, "-c", compilationMode)
+	} else {
+		__antithesis_instrumentation__.Notify(37553)
 	}
+	__antithesis_instrumentation__.Notify(37547)
 	arg = append([]string{subcmd}, arg...)
 	buf, err := exec.Command("bazel", arg...).Output()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(37554)
 		if len(buf) > 0 {
+			__antithesis_instrumentation__.Notify(37557)
 			fmt.Printf("COMMAND STDOUT:\n%s\n", string(buf))
+		} else {
+			__antithesis_instrumentation__.Notify(37558)
 		}
+		__antithesis_instrumentation__.Notify(37555)
 		var cmderr exec.ExitError
-		if errors.As(err, &cmderr) && len(cmderr.Stderr) > 0 {
+		if errors.As(err, &cmderr) && func() bool {
+			__antithesis_instrumentation__.Notify(37559)
+			return len(cmderr.Stderr) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(37560)
 			fmt.Printf("COMMAND STDERR:\n%s\n", string(cmderr.Stderr))
+		} else {
+			__antithesis_instrumentation__.Notify(37561)
 		}
+		__antithesis_instrumentation__.Notify(37556)
 		fmt.Println("Failed to run Bazel with args: ", arg)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(37562)
 	}
+	__antithesis_instrumentation__.Notify(37548)
 	return strings.TrimSpace(string(buf)), nil
 }
 
 func getBuildInfo(args parsedArgs) (buildInfo, error) {
-	if args.subcmd != buildSubcmd && args.subcmd != runSubcmd && args.subcmd != testSubcmd {
+	__antithesis_instrumentation__.Notify(37563)
+	if args.subcmd != buildSubcmd && func() bool {
+		__antithesis_instrumentation__.Notify(37568)
+		return args.subcmd != runSubcmd == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(37569)
+		return args.subcmd != testSubcmd == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(37570)
 		return buildInfo{}, errors.Newf("Unexpected subcommand %s. This is a bug!", args.subcmd)
+	} else {
+		__antithesis_instrumentation__.Notify(37571)
 	}
+	__antithesis_instrumentation__.Notify(37564)
 	binDir, err := runBazelReturningStdout("info", "bazel-bin")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(37572)
 		return buildInfo{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(37573)
 	}
+	__antithesis_instrumentation__.Notify(37565)
 	testlogsDir, err := runBazelReturningStdout("info", "bazel-testlogs")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(37574)
 		return buildInfo{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(37575)
 	}
+	__antithesis_instrumentation__.Notify(37566)
 
 	ret := buildInfo{
 		binDir:          binDir,
@@ -192,90 +241,132 @@ func getBuildInfo(args parsedArgs) (buildInfo, error) {
 	}
 
 	for _, target := range args.targets {
+		__antithesis_instrumentation__.Notify(37576)
 		output, err := runBazelReturningStdout("query", "--output=label_kind", target)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(37579)
 			return buildInfo{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(37580)
 		}
-		// The format of the output is `[kind] rule [full_target_name].
+		__antithesis_instrumentation__.Notify(37577)
+
 		outputSplit := strings.Fields(output)
 		if len(outputSplit) != 3 {
+			__antithesis_instrumentation__.Notify(37581)
 			return buildInfo{}, errors.Newf("Could not parse bazel query output: %v", output)
+		} else {
+			__antithesis_instrumentation__.Notify(37582)
 		}
+		__antithesis_instrumentation__.Notify(37578)
 		targetKind := outputSplit[0]
 		fullTarget := outputSplit[2]
 
 		switch targetKind {
 		case "cmake":
+			__antithesis_instrumentation__.Notify(37583)
 			ret.cmakeTargets = append(ret.cmakeTargets, fullTarget)
 		case "genrule", "batch_gen":
+			__antithesis_instrumentation__.Notify(37584)
 			ret.genruleTargets = append(ret.genruleTargets, fullTarget)
 		case "go_binary":
+			__antithesis_instrumentation__.Notify(37585)
 			ret.goBinaries = append(ret.goBinaries, fullTarget)
 		case "go_test":
+			__antithesis_instrumentation__.Notify(37586)
 			ret.tests = append(ret.tests, fullTarget)
 		case "go_transition_test":
-			// These tests have their own special testlogs directory.
-			// We can find it by finding the location of the binary
-			// and munging it a bit.
+			__antithesis_instrumentation__.Notify(37587)
+
 			args := []string{fullTarget, "-c", compilationMode, "--run_under=realpath"}
 			runOutput, err := runBazelReturningStdout("run", args...)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(37594)
 				return buildInfo{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(37595)
 			}
+			__antithesis_instrumentation__.Notify(37588)
 			var binLocation string
 			for _, line := range strings.Split(runOutput, "\n") {
+				__antithesis_instrumentation__.Notify(37596)
 				if strings.HasPrefix(line, "/") {
-					// NB: We want the last line in the output that starts with /.
+					__antithesis_instrumentation__.Notify(37597)
+
 					binLocation = strings.TrimSpace(line)
+				} else {
+					__antithesis_instrumentation__.Notify(37598)
 				}
 			}
+			__antithesis_instrumentation__.Notify(37589)
 			componentsBinLocation := strings.Split(binLocation, "/")
 			componentsTestlogs := strings.Split(testlogsDir, "/")
-			// The second to last component will be the one we need
-			// to replace (it's the output directory for the configuration).
+
 			componentsTestlogs[len(componentsTestlogs)-2] = componentsBinLocation[len(componentsTestlogs)-2]
 			ret.transitionTests[fullTarget] = strings.Join(componentsTestlogs, "/")
 		case "nodejs_test":
+			__antithesis_instrumentation__.Notify(37590)
 			ret.tests = append(ret.tests, fullTarget)
 		case "test_suite":
-			// Expand the list of tests from the test suite with another query.
+			__antithesis_instrumentation__.Notify(37591)
+
 			allTests, err := runBazelReturningStdout("query", "tests("+fullTarget+")")
 			if err != nil {
+				__antithesis_instrumentation__.Notify(37599)
 				return buildInfo{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(37600)
 			}
+			__antithesis_instrumentation__.Notify(37592)
 			ret.tests = append(ret.tests, strings.Fields(allTests)...)
 		default:
+			__antithesis_instrumentation__.Notify(37593)
 			return buildInfo{}, errors.Newf("Got unexpected target kind %v", targetKind)
 		}
 	}
+	__antithesis_instrumentation__.Notify(37567)
 
 	return ret, nil
 }
 
 func bazciImpl(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(37601)
 	parsedArgs, err := parseArgs(args, cmd.ArgsLenAtDash())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(37607)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(37608)
 	}
+	__antithesis_instrumentation__.Notify(37602)
 
-	// Special case: munge-test-xml/merge-test-xmls don't require running Bazel at all.
-	// Perform the munge then exit immediately.
 	if parsedArgs.subcmd == mungeTestXMLSubcmd {
+		__antithesis_instrumentation__.Notify(37609)
 		return mungeTestXMLs(*parsedArgs)
+	} else {
+		__antithesis_instrumentation__.Notify(37610)
 	}
+	__antithesis_instrumentation__.Notify(37603)
 	if parsedArgs.subcmd == mergeTestXMLsSubcmd {
+		__antithesis_instrumentation__.Notify(37611)
 		return mergeTestXMLs(*parsedArgs)
+	} else {
+		__antithesis_instrumentation__.Notify(37612)
 	}
+	__antithesis_instrumentation__.Notify(37604)
 
 	info, err := getBuildInfo(*parsedArgs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(37613)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(37614)
 	}
+	__antithesis_instrumentation__.Notify(37605)
 
-	// Run the build in a background thread and ping the `completion`
-	// channel when done.
 	completion := make(chan error)
 	go func() {
+		__antithesis_instrumentation__.Notify(37615)
 		processArgs := []string{parsedArgs.subcmd}
 		processArgs = append(processArgs, parsedArgs.targets...)
 		processArgs = append(processArgs, configArgList()...)
@@ -287,84 +378,135 @@ func bazciImpl(cmd *cobra.Command, args []string) error {
 		cmd.Stderr = os.Stderr
 		err := cmd.Start()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(37617)
 			completion <- err
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(37618)
 		}
+		__antithesis_instrumentation__.Notify(37616)
 		completion <- cmd.Wait()
 	}()
+	__antithesis_instrumentation__.Notify(37606)
 
 	return makeWatcher(completion, info).Watch()
 }
 
 func mungeTestXMLs(args parsedArgs) error {
+	__antithesis_instrumentation__.Notify(37619)
 	for _, file := range args.targets {
+		__antithesis_instrumentation__.Notify(37621)
 		contents, err := ioutil.ReadFile(file)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(37624)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(37625)
 		}
+		__antithesis_instrumentation__.Notify(37622)
 		var buf bytes.Buffer
 		err = bazelutil.MungeTestXML(contents, &buf)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(37626)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(37627)
 		}
+		__antithesis_instrumentation__.Notify(37623)
 		err = ioutil.WriteFile(file, buf.Bytes(), 0666)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(37628)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(37629)
 		}
 	}
+	__antithesis_instrumentation__.Notify(37620)
 	return nil
 }
 
 func mergeTestXMLs(args parsedArgs) error {
+	__antithesis_instrumentation__.Notify(37630)
 	var xmlsToMerge []bazelutil.TestSuites
 	for _, file := range args.targets {
+		__antithesis_instrumentation__.Notify(37632)
 		contents, err := ioutil.ReadFile(file)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(37635)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(37636)
 		}
+		__antithesis_instrumentation__.Notify(37633)
 		var testSuites bazelutil.TestSuites
 		err = xml.Unmarshal(contents, &testSuites)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(37637)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(37638)
 		}
+		__antithesis_instrumentation__.Notify(37634)
 		xmlsToMerge = append(xmlsToMerge, testSuites)
 	}
+	__antithesis_instrumentation__.Notify(37631)
 	return bazelutil.MergeTestXMLs(xmlsToMerge, os.Stdout)
 }
 
-// Return a list of the form --config=$CONFIG for every $CONFIG in configs,
-// with the exception of every config in `exceptions`.
 func configArgList(exceptions ...string) []string {
+	__antithesis_instrumentation__.Notify(37639)
 	ret := []string{}
 	for _, config := range configs {
+		__antithesis_instrumentation__.Notify(37641)
 		keep := true
 		for _, exception := range exceptions {
+			__antithesis_instrumentation__.Notify(37643)
 			if config == exception {
+				__antithesis_instrumentation__.Notify(37644)
 				keep = false
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(37645)
 			}
 		}
+		__antithesis_instrumentation__.Notify(37642)
 		if keep {
+			__antithesis_instrumentation__.Notify(37646)
 			ret = append(ret, "--config="+config)
+		} else {
+			__antithesis_instrumentation__.Notify(37647)
 		}
 	}
+	__antithesis_instrumentation__.Notify(37640)
 	return ret
 }
 
 func usingCrossWindowsConfig() bool {
+	__antithesis_instrumentation__.Notify(37648)
 	for _, config := range configs {
+		__antithesis_instrumentation__.Notify(37650)
 		if config == "crosswindows" {
+			__antithesis_instrumentation__.Notify(37651)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(37652)
 		}
 	}
+	__antithesis_instrumentation__.Notify(37649)
 	return false
 }
 
 func usingCrossDarwinConfig() bool {
+	__antithesis_instrumentation__.Notify(37653)
 	for _, config := range configs {
+		__antithesis_instrumentation__.Notify(37655)
 		if config == "crossmacos" {
+			__antithesis_instrumentation__.Notify(37656)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(37657)
 		}
 	}
+	__antithesis_instrumentation__.Notify(37654)
 	return false
 }

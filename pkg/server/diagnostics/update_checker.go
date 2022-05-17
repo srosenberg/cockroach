@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package diagnostics
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -35,7 +27,7 @@ import (
 
 const (
 	updateCheckFrequency = time.Hour * 24
-	// TODO(dt): switch to settings.
+
 	updateCheckPostStartup    = time.Minute * 5
 	updateCheckRetryFrequency = time.Hour
 	updateMaxVersionsToReport = 3
@@ -46,45 +38,37 @@ type versionInfo struct {
 	Details string `json:"details"`
 }
 
-// UpdateChecker is a helper struct that phones home to check for updates.
 type UpdateChecker struct {
 	StartTime  time.Time
 	AmbientCtx *log.AmbientContext
 	Config     *base.Config
 	Settings   *cluster.Settings
 
-	// StorageClusterID is the cluster ID of the underlying storage
-	// cluster. It is not yet available at the time the updater is
-	// created, so instead initialize with a function to get it.
 	StorageClusterID func() uuid.UUID
-	// LogicalClusterID is the tenant-specific logical cluster ID.
+
 	LogicalClusterID func() uuid.UUID
 
-	// NodeID is not yet available at the time the updater is created, so
-	// instead initialize with a function to get it.
 	NodeID func() roachpb.NodeID
 
-	// SQLInstanceID is not yet available at the time the reporter is created,
-	// so instead initialize with a function that gets it dynamically.
 	SQLInstanceID func() base.SQLInstanceID
 
-	// TestingKnobs is used for internal test controls only.
 	TestingKnobs *TestingKnobs
 }
 
-// PeriodicallyCheckForUpdates starts a background worker that periodically
-// phones home to check for updates.
 func (u *UpdateChecker) PeriodicallyCheckForUpdates(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(193180)
 	_ = stopper.RunAsyncTaskEx(ctx, stop.TaskOpts{
 		TaskName: "update-checker",
 		SpanOpt:  stop.SterileRootSpan,
 	}, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(193181)
 		defer logcrash.RecoverAndReportNonfatalPanic(ctx, &u.Settings.SV)
 		nextUpdateCheck := u.StartTime
 
 		var timer timeutil.Timer
 		defer timer.Stop()
 		for {
+			__antithesis_instrumentation__.Notify(193182)
 			now := timeutil.Now()
 			runningTime := now.Sub(u.StartTime)
 
@@ -93,41 +77,51 @@ func (u *UpdateChecker) PeriodicallyCheckForUpdates(ctx context.Context, stopper
 			timer.Reset(addJitter(nextUpdateCheck.Sub(timeutil.Now())))
 			select {
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(193183)
 				return
 			case <-timer.C:
+				__antithesis_instrumentation__.Notify(193184)
 				timer.Read = true
 			}
 		}
 	})
 }
 
-// CheckForUpdates calls home to check for new versions for the current platform
-// and logs messages if it finds them, as well as if it encounters any errors.
-// The returned boolean indicates if the check succeeded (and thus does not need
-// to be re-attempted by the scheduler after a retry-interval).
 func (u *UpdateChecker) CheckForUpdates(ctx context.Context) bool {
+	__antithesis_instrumentation__.Notify(193185)
 	ctx, span := u.AmbientCtx.AnnotateCtxWithSpan(ctx, "version update check")
 	defer span.Finish()
 
 	url := u.buildUpdatesURL(ctx)
 	if url == nil {
-		return true // don't bother with asking for retry -- we'll never succeed.
+		__antithesis_instrumentation__.Notify(193192)
+		return true
+	} else {
+		__antithesis_instrumentation__.Notify(193193)
 	}
+	__antithesis_instrumentation__.Notify(193186)
 
 	res, err := httputil.Get(ctx, url.String())
 	if err != nil {
-		// This is probably going to be relatively common in production
-		// environments where network access is usually curtailed.
+		__antithesis_instrumentation__.Notify(193194)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193195)
 	}
+	__antithesis_instrumentation__.Notify(193187)
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
+		__antithesis_instrumentation__.Notify(193196)
 		b, err := ioutil.ReadAll(res.Body)
 		log.Infof(ctx, "failed to check for updates: status: %s, body: %s, error: %v",
 			res.Status, b, err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193197)
 	}
+	__antithesis_instrumentation__.Notify(193188)
 
 	decoder := json.NewDecoder(res.Body)
 	r := struct {
@@ -135,58 +129,74 @@ func (u *UpdateChecker) CheckForUpdates(ctx context.Context) bool {
 	}{}
 
 	err = decoder.Decode(&r)
-	if err != nil && err != io.EOF {
+	if err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(193198)
+		return err != io.EOF == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(193199)
 		log.Warningf(ctx, "error decoding updates info: %v", err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193200)
 	}
+	__antithesis_instrumentation__.Notify(193189)
 
-	// Ideally the updates server only returns the most relevant updates for us,
-	// but if it replied with an excessive number of updates, limit log spam by
-	// only printing the last few.
 	if len(r.Details) > updateMaxVersionsToReport {
+		__antithesis_instrumentation__.Notify(193201)
 		r.Details = r.Details[len(r.Details)-updateMaxVersionsToReport:]
+	} else {
+		__antithesis_instrumentation__.Notify(193202)
 	}
+	__antithesis_instrumentation__.Notify(193190)
 	for _, v := range r.Details {
+		__antithesis_instrumentation__.Notify(193203)
 		log.Infof(ctx, "a new version is available: %s, details: %s", v.Version, v.Details)
 	}
+	__antithesis_instrumentation__.Notify(193191)
 	return true
 }
 
-// maybeCheckForUpdates determines if it is time to check for updates and does
-// so if it is, before returning the time at which the next check be done.
 func (u *UpdateChecker) maybeCheckForUpdates(
 	ctx context.Context, now, scheduled time.Time, runningTime time.Duration,
 ) time.Time {
+	__antithesis_instrumentation__.Notify(193204)
 	if scheduled.After(now) {
+		__antithesis_instrumentation__.Notify(193209)
 		return scheduled
+	} else {
+		__antithesis_instrumentation__.Notify(193210)
 	}
+	__antithesis_instrumentation__.Notify(193205)
 
-	// If diagnostics reporting is disabled, we should assume that means that the
-	// user doesn't want us phoning home for new-version checks either.
 	if !logcrash.DiagnosticsReportingEnabled.Get(&u.Settings.SV) {
+		__antithesis_instrumentation__.Notify(193211)
 		return now.Add(updateCheckFrequency)
+	} else {
+		__antithesis_instrumentation__.Notify(193212)
 	}
+	__antithesis_instrumentation__.Notify(193206)
 
-	// checkForUpdates handles its own errors, but it returns a bool indicating if
-	// it succeeded, so we can schedule a re-attempt if it did not.
 	if succeeded := u.CheckForUpdates(ctx); !succeeded {
+		__antithesis_instrumentation__.Notify(193213)
 		return now.Add(updateCheckRetryFrequency)
+	} else {
+		__antithesis_instrumentation__.Notify(193214)
 	}
+	__antithesis_instrumentation__.Notify(193207)
 
-	// If we've just started up, we want to check again shortly after.
-	// During startup is when a message is most likely to be actually seen by a
-	// human operator so we check as early as possible, but this makes it hard to
-	// differentiate real deployments vs short-lived instances for tests.
 	if runningTime < updateCheckPostStartup {
+		__antithesis_instrumentation__.Notify(193215)
 		return now.Add(time.Hour - runningTime)
+	} else {
+		__antithesis_instrumentation__.Notify(193216)
 	}
+	__antithesis_instrumentation__.Notify(193208)
 
 	return now.Add(updateCheckFrequency)
 }
 
-// BuildUpdatesURL creates a URL to check for version updates.
-// If an empty updates URL is set (via empty environment variable), returns nil.
 func (u *UpdateChecker) buildUpdatesURL(ctx context.Context) *url.URL {
+	__antithesis_instrumentation__.Notify(193217)
 	clusterInfo := ClusterInfo{
 		StorageClusterID: u.StorageClusterID(),
 		LogicalClusterID: u.LogicalClusterID(),
@@ -206,8 +216,15 @@ func (u *UpdateChecker) buildUpdatesURL(ctx context.Context) *url.URL {
 	}
 
 	url := updatesURL
-	if u.TestingKnobs != nil && u.TestingKnobs.OverrideUpdatesURL != nil {
+	if u.TestingKnobs != nil && func() bool {
+		__antithesis_instrumentation__.Notify(193219)
+		return u.TestingKnobs.OverrideUpdatesURL != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(193220)
 		url = *u.TestingKnobs.OverrideUpdatesURL
+	} else {
+		__antithesis_instrumentation__.Notify(193221)
 	}
+	__antithesis_instrumentation__.Notify(193218)
 	return addInfoToURL(url, &clusterInfo, &env, u.NodeID(), &sqlInfo)
 }

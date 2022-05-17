@@ -28,6 +28,7 @@ go_library(
         "//pkg/testutils",
         "//pkg/util/fileutil",
         "//pkg/util/protoutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_cockroach_go_v2//crdb",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_jackc_pgx_v4//:pgx",
@@ -57,6 +58,7 @@ go_test(
         "//pkg/util/leaktest",
         "//pkg/util/protoutil",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

@@ -9,6 +9,7 @@ go_library(
         "//pkg/geo",
         "//pkg/sql/pgwire/pgcode",
         "//pkg/sql/pgwire/pgerror",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_twpayne_go_geom//:go-geom",
     ],
 )

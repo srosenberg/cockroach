@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,32 +15,19 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
-// indexCheckOperation implements the checkOperation interface. It is a
-// scrub check for a secondary index's integrity. This operation will
-// detect:
-// 1) Missing index entries. When there is a secondary index entry
-//    expected, but is not found.
-// 2) Dangling index references. When there is a secondary index entry
-//    that refers to a primary index key that cannot be found.
 type indexCheckOperation struct {
 	tableName *tree.TableName
 	tableDesc catalog.TableDescriptor
 	index     catalog.Index
 	asOf      hlc.Timestamp
 
-	// columns is a list of the columns returned by one side of the
-	// queries join. The actual resulting rows from the RowContainer is
-	// twice this.
 	columns []catalog.Column
-	// primaryColIdxs maps PrimaryIndex.Columns to the row
-	// indexes in the query result tree.Datums.
+
 	primaryColIdxs []int
 
 	run indexCheckRun
 }
 
-// indexCheckRun contains the run-time state for indexCheckOperation
-// during local execution.
 type indexCheckRun struct {
 	started  bool
 	rows     []tree.Datums
@@ -61,6 +40,7 @@ func newIndexCheckOperation(
 	index catalog.Index,
 	asOf hlc.Timestamp,
 ) *indexCheckOperation {
+	__antithesis_instrumentation__.Notify(595699)
 	return &indexCheckOperation{
 		tableName: tableName,
 		tableDesc: tableDesc,
@@ -69,48 +49,58 @@ func newIndexCheckOperation(
 	}
 }
 
-// Start will plan and run an index check using the distSQL execution
-// engine.
 func (o *indexCheckOperation) Start(params runParams) error {
+	__antithesis_instrumentation__.Notify(595700)
 	ctx := params.ctx
 
 	var colToIdx catalog.TableColMap
 	for _, c := range o.tableDesc.PublicColumns() {
+		__antithesis_instrumentation__.Notify(595707)
 		colToIdx.Set(c.GetID(), c.Ordinal())
 	}
+	__antithesis_instrumentation__.Notify(595701)
 
 	var pkColumns, otherColumns []catalog.Column
 
 	for i := 0; i < o.tableDesc.GetPrimaryIndex().NumKeyColumns(); i++ {
+		__antithesis_instrumentation__.Notify(595708)
 		colID := o.tableDesc.GetPrimaryIndex().GetKeyColumnID(i)
 		col := o.tableDesc.PublicColumns()[colToIdx.GetDefault(colID)]
 		pkColumns = append(pkColumns, col)
 		colToIdx.Set(colID, -1)
 	}
+	__antithesis_instrumentation__.Notify(595702)
 
-	// Collect all of the columns we are fetching from the index. This
-	// includes the columns involved in the index: columns, extra columns,
-	// and store columns.
 	colIDs := catalog.TableColSet{}
 	colIDs.UnionWith(o.index.CollectKeyColumnIDs())
 	colIDs.UnionWith(o.index.CollectSecondaryStoredColumnIDs())
 	colIDs.UnionWith(o.index.CollectKeySuffixColumnIDs())
 	colIDs.ForEach(func(colID descpb.ColumnID) {
+		__antithesis_instrumentation__.Notify(595709)
 		pos := colToIdx.GetDefault(colID)
 		if pos == -1 {
+			__antithesis_instrumentation__.Notify(595711)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(595712)
 		}
+		__antithesis_instrumentation__.Notify(595710)
 		col := o.tableDesc.PublicColumns()[pos]
 		otherColumns = append(otherColumns, col)
 	})
+	__antithesis_instrumentation__.Notify(595703)
 
 	colNames := func(cols []catalog.Column) []string {
+		__antithesis_instrumentation__.Notify(595713)
 		res := make([]string, len(cols))
 		for i := range cols {
+			__antithesis_instrumentation__.Notify(595715)
 			res[i] = cols[i].GetName()
 		}
+		__antithesis_instrumentation__.Notify(595714)
 		return res
 	}
+	__antithesis_instrumentation__.Notify(595704)
 
 	checkQuery := createIndexCheckQuery(
 		colNames(pkColumns), colNames(otherColumns), o.tableDesc.GetID(), o.index.GetID(), o.tableDesc.GetPrimaryIndexID(),
@@ -120,86 +110,106 @@ func (o *indexCheckOperation) Start(params runParams) error {
 		ctx, "scrub-index", params.p.txn, checkQuery,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595716)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(595717)
 	}
+	__antithesis_instrumentation__.Notify(595705)
 
 	o.run.started = true
 	o.run.rows = rows
 	o.primaryColIdxs = make([]int, len(pkColumns))
 	for i := range o.primaryColIdxs {
+		__antithesis_instrumentation__.Notify(595718)
 		o.primaryColIdxs[i] = i
 	}
+	__antithesis_instrumentation__.Notify(595706)
 	o.columns = append(pkColumns, otherColumns...)
 	return nil
 }
 
-// Next implements the checkOperation interface.
 func (o *indexCheckOperation) Next(params runParams) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(595719)
 	row := o.run.rows[o.run.rowIndex]
 	o.run.rowIndex++
 
-	// Check if this row has results from the left. See the comment above
-	// createIndexCheckQuery indicating why this is true.
 	var isMissingIndexReferenceError bool
 	if row[o.primaryColIdxs[0]] != tree.DNull {
+		__antithesis_instrumentation__.Notify(595725)
 		isMissingIndexReferenceError = true
+	} else {
+		__antithesis_instrumentation__.Notify(595726)
 	}
+	__antithesis_instrumentation__.Notify(595720)
 
 	colLen := len(o.columns)
 	var errorType tree.Datum
 	var primaryKeyDatums tree.Datums
 	if isMissingIndexReferenceError {
+		__antithesis_instrumentation__.Notify(595727)
 		errorType = tree.NewDString(scrub.MissingIndexEntryError)
-		// Fetch the primary index values from the primary index row data.
+
 		for _, rowIdx := range o.primaryColIdxs {
+			__antithesis_instrumentation__.Notify(595728)
 			primaryKeyDatums = append(primaryKeyDatums, row[rowIdx])
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(595729)
 		errorType = tree.NewDString(scrub.DanglingIndexReferenceError)
-		// Fetch the primary index values from the secondary index row
-		// data, because no primary index was found. The secondary index columns
-		// are offset by the length of the distinct columns, as the first
-		// set of columns is for the primary index.
+
 		for _, rowIdx := range o.primaryColIdxs {
+			__antithesis_instrumentation__.Notify(595730)
 			primaryKeyDatums = append(primaryKeyDatums, row[rowIdx+colLen])
 		}
 	}
+	__antithesis_instrumentation__.Notify(595721)
 	primaryKey := tree.NewDString(primaryKeyDatums.String())
 	timestamp, err := tree.MakeDTimestamp(
 		params.extendedEvalCtx.GetStmtTimestamp(), time.Nanosecond)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595731)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(595732)
 	}
+	__antithesis_instrumentation__.Notify(595722)
 
 	details := make(map[string]interface{})
 	rowDetails := make(map[string]interface{})
 	details["row_data"] = rowDetails
 	details["index_name"] = o.index.GetName()
 	if isMissingIndexReferenceError {
-		// Fetch the primary index values from the primary index row data.
+		__antithesis_instrumentation__.Notify(595733)
+
 		for rowIdx, col := range o.columns {
-			// TODO(joey): We should maybe try to get the underlying type.
+			__antithesis_instrumentation__.Notify(595734)
+
 			rowDetails[col.GetName()] = row[rowIdx].String()
 		}
 	} else {
-		// Fetch the primary index values from the secondary index row data,
-		// because no primary index was found. The secondary index columns
-		// are offset by the length of the distinct columns, as the first
-		// set of columns is for the primary index.
+		__antithesis_instrumentation__.Notify(595735)
+
 		for rowIdx, col := range o.columns {
-			// TODO(joey): We should maybe try to get the underlying type.
+			__antithesis_instrumentation__.Notify(595736)
+
 			rowDetails[col.GetName()] = row[rowIdx+colLen].String()
 		}
 	}
+	__antithesis_instrumentation__.Notify(595723)
 
 	detailsJSON, err := tree.MakeDJSON(details)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(595737)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(595738)
 	}
+	__antithesis_instrumentation__.Notify(595724)
 
 	return tree.Datums{
-		// TODO(joey): Add the job UUID once the SCRUB command uses jobs.
-		tree.DNull, /* job_uuid */
+
+		tree.DNull,
 		errorType,
 		tree.NewDString(o.tableName.Catalog()),
 		tree.NewDString(o.tableName.Table()),
@@ -210,73 +220,24 @@ func (o *indexCheckOperation) Next(params runParams) (tree.Datums, error) {
 	}, nil
 }
 
-// Started implements the checkOperation interface.
 func (o *indexCheckOperation) Started() bool {
+	__antithesis_instrumentation__.Notify(595739)
 	return o.run.started
 }
 
-// Done implements the checkOperation interface.
 func (o *indexCheckOperation) Done(ctx context.Context) bool {
-	return o.run.rows == nil || o.run.rowIndex >= len(o.run.rows)
+	__antithesis_instrumentation__.Notify(595740)
+	return o.run.rows == nil || func() bool {
+		__antithesis_instrumentation__.Notify(595741)
+		return o.run.rowIndex >= len(o.run.rows) == true
+	}() == true
 }
 
-// Close4 implements the checkOperation interface.
 func (o *indexCheckOperation) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(595742)
 	o.run.rows = nil
 }
 
-// createIndexCheckQuery will make the index check query for a given
-// table and secondary index.
-//
-// The primary column names and the rest of the index
-// columnsIt will also take into account an AS OF
-// SYSTEM TIME clause.
-//
-// For example, given the following table schema:
-//
-//   CREATE TABLE table (
-//     k INT, l INT, a INT, b INT, c INT,
-//     PRIMARY KEY (k, l),
-//     INDEX idx (a,b),
-//   )
-//
-// The generated query to check the `v_idx` will be:
-//
-//   SELECT pri.k  pri.l, pri.a, pri.b,
-//          sec.k, sec.l, sec.a, sec.b
-//   FROM
-//     (SELECT k, l, a, b FROM [tbl_id AS table_pri]@{FORCE_INDEX=[pri_idx_id]}) AS pri
-//   FULL OUTER JOIN
-//     (SELECT k, l, a, b FROM [tbl_id AS table_sec]@{FORCE_INDEX=[idx_id]} AS sec
-//   ON
-//     pri.k = sec.k AND
-//     pri.l = sec.l AND
-//     pri.a IS NOT DISTINCT FROM sec.a AND
-//     pri.b IS NOT DISTINCT FROM sec.b
-//   WHERE
-//     pri.k IS NULL OR sec.k IS NULL
-//
-// Explanation:
-//   1) We scan both the primary index and the secondary index.
-//
-//   2) We join them on equality on the PK columns and "IS NOT DISTINCT FROM" on
-//      the other index columns. "IS NOT DISTINCT FROM" is like equality except
-//      that NULL equals NULL; it is not needed for the PK columns because those
-//      can't be NULL.
-//
-//      Note: currently, only the PK columns will be used as join equality
-//      columns, but that is sufficient.
-//
-//   3) We select the "outer" rows (those that had no match), effectively
-//      achieving a "double" anti-join. We use the PK columns which cannot be
-//      NULL except on these rows.
-//
-//   4) The results are as follows:
-//       - if a PK column on the left is NULL, that means that the right-hand
-//         side row from the secondary index had no match in the primary index.
-//       - if a PK column on the right is NULL, that means that the left-hand
-//         side row from the primary key had no match in the secondary index.
-//
 func createIndexCheckQuery(
 	pkColumns []string,
 	otherColumns []string,
@@ -284,10 +245,9 @@ func createIndexCheckQuery(
 	indexID descpb.IndexID,
 	primaryIndexID descpb.IndexID,
 ) string {
+	__antithesis_instrumentation__.Notify(595743)
 	allColumns := append(pkColumns, otherColumns...)
-	// We need to make sure we can handle the non-public column `rowid`
-	// that is created for implicit primary keys. In order to do so, the
-	// rendered columns need to explicit in the inner selects.
+
 	const checkIndexQuery = `
     SELECT %[1]s, %[2]s
     FROM
@@ -299,21 +259,14 @@ func createIndexCheckQuery(
 	return fmt.Sprintf(
 		checkIndexQuery,
 
-		// 1: pri.k, pri.l, pri.a, pri.b
 		strings.Join(colRefs("pri", allColumns), ", "),
 
-		// 2: sec.k, sec.l, sec.a, sec.b
 		strings.Join(colRefs("sec", allColumns), ", "),
 
-		// 3
 		tableID,
 
-		// 4
 		indexID,
 
-		// 5: pri.k = sec.k AND pri.l = sec.l AND
-		//    pri.a IS NOT DISTINCT FROM sec.a AND pri.b IS NOT DISTINCT FROM sec.b
-		// Note: otherColumns can be empty.
 		strings.Join(
 			append(
 				pairwiseOp(colRefs("pri", pkColumns), colRefs("sec", pkColumns), "="),
@@ -322,16 +275,12 @@ func createIndexCheckQuery(
 			" AND ",
 		),
 
-		// 6: pri.k
 		colRef("pri", pkColumns[0]),
 
-		// 7: sec.k
 		colRef("sec", pkColumns[0]),
 
-		// 8: k, l, a, b
 		strings.Join(colRefs("", append(pkColumns, otherColumns...)), ", "),
 
-		// 9
 		primaryIndexID,
 	)
 }

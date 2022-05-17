@@ -20,6 +20,7 @@ go_library(
         "//pkg/util/log",
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_azure_azure_sdk_for_go//profiles/latest/compute/mgmt/compute",
         "@com_github_azure_azure_sdk_for_go//profiles/latest/network/mgmt/network",
         "@com_github_azure_azure_sdk_for_go//profiles/latest/resources/mgmt/resources",

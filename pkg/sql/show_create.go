@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -28,41 +20,20 @@ type shouldOmitFKClausesFromCreate int
 
 const (
 	_ shouldOmitFKClausesFromCreate = iota
-	// OmitFKClausesFromCreate will not include any foreign key information in the
-	// create statement.
+
 	OmitFKClausesFromCreate
-	// IncludeFkClausesInCreate will include foreign key information in the create
-	// statement, and error if a FK cannot be resolved.
+
 	IncludeFkClausesInCreate
-	// OmitMissingFKClausesFromCreate will include foreign key information only if they
-	// can be resolved. If not, it will ignore those constraints.
-	// This is used in the case when showing the create statement for
-	// tables stored in backups. Not all relevant tables may have been
-	// included in the back up, so some foreign key information may be
-	// impossible to retrieve.
+
 	OmitMissingFKClausesFromCreate
 )
 
-// ShowCreateDisplayOptions is a container struct holding the options that
-// ShowCreate uses to determine how much information should be included in the
-// CREATE statement.
 type ShowCreateDisplayOptions struct {
 	FKDisplayMode shouldOmitFKClausesFromCreate
-	// Comment resolution requires looking up table data from system.comments
-	// table. This is sometimes not possible. For example, in the context of a
-	// SHOW BACKUP which may resolve the create statement, there is no mechanism
-	// to read any table data from the backup (nor is there a guarantee that the
-	// system.comments table is included in the backup at all).
+
 	IgnoreComments bool
 }
 
-// ShowCreateTable returns a valid SQL representation of the CREATE
-// TABLE statement used to create the given table.
-//
-// The names of the tables referenced by foreign keys are prefixed by their own
-// database name unless it is equal to the given dbPrefix. This allows us to
-// elide the prefix when the given table references other tables in the
-// current database.
 func ShowCreateTable(
 	ctx context.Context,
 	p PlanHookState,
@@ -72,49 +43,66 @@ func ShowCreateTable(
 	lCtx simpleSchemaResolver,
 	displayOptions ShowCreateDisplayOptions,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(622786)
 	a := &tree.DatumAlloc{}
 
 	f := p.ExtendedEvalContext().FmtCtx(tree.FmtSimple)
 	f.WriteString("CREATE ")
 	if desc.IsTemporary() {
+		__antithesis_instrumentation__.Notify(622797)
 		f.WriteString("TEMP ")
+	} else {
+		__antithesis_instrumentation__.Notify(622798)
 	}
+	__antithesis_instrumentation__.Notify(622787)
 	f.WriteString("TABLE ")
 	f.FormatNode(tn)
 	f.WriteString(" (")
-	// Inaccessible columns are not displayed in SHOW CREATE TABLE.
+
 	for i, col := range desc.AccessibleColumns() {
+		__antithesis_instrumentation__.Notify(622799)
 		if i != 0 {
+			__antithesis_instrumentation__.Notify(622802)
 			f.WriteString(",")
+		} else {
+			__antithesis_instrumentation__.Notify(622803)
 		}
+		__antithesis_instrumentation__.Notify(622800)
 		f.WriteString("\n\t")
 		colstr, err := schemaexpr.FormatColumnForDisplay(
 			ctx, desc, col, &p.RunParams(ctx).p.semaCtx, p.RunParams(ctx).p.SessionData(),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(622804)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(622805)
 		}
+		__antithesis_instrumentation__.Notify(622801)
 		f.WriteString(colstr)
 	}
+	__antithesis_instrumentation__.Notify(622788)
 
 	if desc.IsPhysicalTable() {
+		__antithesis_instrumentation__.Notify(622806)
 		f.WriteString(",\n\tCONSTRAINT ")
 		formatQuoteNames(&f.Buffer, desc.GetPrimaryIndex().GetName())
 		f.WriteString(" ")
 		f.WriteString(tabledesc.PrimaryKeyString(desc))
+	} else {
+		__antithesis_instrumentation__.Notify(622807)
 	}
+	__antithesis_instrumentation__.Notify(622789)
 
-	// TODO (lucy): Possibly include FKs in the mutations list here, or else
-	// exclude check mutations below, for consistency.
 	if displayOptions.FKDisplayMode != OmitFKClausesFromCreate {
+		__antithesis_instrumentation__.Notify(622808)
 		if err := desc.ForeachOutboundFK(func(fk *descpb.ForeignKeyConstraint) error {
+			__antithesis_instrumentation__.Notify(622809)
 			fkCtx := tree.NewFmtCtx(tree.FmtSimple)
 			fkCtx.WriteString(",\n\tCONSTRAINT ")
 			fkCtx.FormatNameP(&fk.Name)
 			fkCtx.WriteString(" ")
-			// Passing in EmptySearchPath causes the schema name to show up in the
-			// constraint definition, which we need for `cockroach dump` output to be
-			// usable.
+
 			if err := showForeignKeyConstraint(
 				&fkCtx.Buffer,
 				dbPrefix,
@@ -123,28 +111,45 @@ func ShowCreateTable(
 				lCtx,
 				sessiondata.EmptySearchPath,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(622811)
 				if displayOptions.FKDisplayMode == OmitMissingFKClausesFromCreate {
+					__antithesis_instrumentation__.Notify(622813)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(622814)
 				}
-				// When FKDisplayMode == IncludeFkClausesInCreate.
+				__antithesis_instrumentation__.Notify(622812)
+
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(622815)
 			}
+			__antithesis_instrumentation__.Notify(622810)
 			f.WriteString(fkCtx.String())
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(622816)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(622817)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(622818)
 	}
+	__antithesis_instrumentation__.Notify(622790)
 	for _, idx := range desc.PublicNonPrimaryIndexes() {
-		// Showing the primary index is handled above.
+		__antithesis_instrumentation__.Notify(622819)
 
-		// Build the PARTITION BY clause.
 		var partitionBuf bytes.Buffer
 		if err := ShowCreatePartitioning(
-			a, p.ExecCfg().Codec, desc, idx, idx.GetPartitioning(), &partitionBuf, 1 /* indent */, 0, /* colOffset */
+			a, p.ExecCfg().Codec, desc, idx, idx.GetPartitioning(), &partitionBuf, 1, 0,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(622822)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(622823)
 		}
+		__antithesis_instrumentation__.Notify(622820)
 
 		f.WriteString(",\n\t")
 		idxStr, err := catformat.IndexForDisplay(
@@ -159,61 +164,87 @@ func ShowCreateTable(
 			catformat.IndexDisplayDefOnly,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(622824)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(622825)
 		}
+		__antithesis_instrumentation__.Notify(622821)
 		f.WriteString(idxStr)
 	}
+	__antithesis_instrumentation__.Notify(622791)
 
-	// Create the FAMILY and CONSTRAINTs of the CREATE statement
 	showFamilyClause(desc, f)
 	if err := showConstraintClause(ctx, desc, &p.RunParams(ctx).p.semaCtx, p.RunParams(ctx).p.SessionData(), f); err != nil {
+		__antithesis_instrumentation__.Notify(622826)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(622827)
 	}
+	__antithesis_instrumentation__.Notify(622792)
 
 	if err := ShowCreatePartitioning(
-		a, p.ExecCfg().Codec, desc, desc.GetPrimaryIndex(), desc.GetPrimaryIndex().GetPartitioning(), &f.Buffer, 0 /* indent */, 0, /* colOffset */
+		a, p.ExecCfg().Codec, desc, desc.GetPrimaryIndex(), desc.GetPrimaryIndex().GetPartitioning(), &f.Buffer, 0, 0,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(622828)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(622829)
 	}
+	__antithesis_instrumentation__.Notify(622793)
 
-	if storageParams := desc.GetStorageParams(true /* spaceBetweenEqual */); len(storageParams) > 0 {
+	if storageParams := desc.GetStorageParams(true); len(storageParams) > 0 {
+		__antithesis_instrumentation__.Notify(622830)
 		f.Buffer.WriteString(` WITH (`)
 		f.Buffer.WriteString(strings.Join(storageParams, ", "))
 		f.Buffer.WriteString(`)`)
+	} else {
+		__antithesis_instrumentation__.Notify(622831)
 	}
+	__antithesis_instrumentation__.Notify(622794)
 
 	if err := showCreateLocality(desc, f); err != nil {
+		__antithesis_instrumentation__.Notify(622832)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(622833)
 	}
+	__antithesis_instrumentation__.Notify(622795)
 
 	if !displayOptions.IgnoreComments {
+		__antithesis_instrumentation__.Notify(622834)
 		if err := showComments(tn, desc, selectComment(ctx, p, desc.GetID()), &f.Buffer); err != nil {
+			__antithesis_instrumentation__.Notify(622835)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(622836)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(622837)
 	}
+	__antithesis_instrumentation__.Notify(622796)
 
 	return f.CloseAndGetString(), nil
 }
 
-// formatQuoteNames quotes and adds commas between names.
 func formatQuoteNames(buf *bytes.Buffer, names ...string) {
+	__antithesis_instrumentation__.Notify(622838)
 	f := tree.NewFmtCtx(tree.FmtSimple)
 	for i := range names {
+		__antithesis_instrumentation__.Notify(622840)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(622842)
 			f.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(622843)
 		}
+		__antithesis_instrumentation__.Notify(622841)
 		f.FormatNameP(&names[i])
 	}
+	__antithesis_instrumentation__.Notify(622839)
 	buf.WriteString(f.CloseAndGetString())
 }
 
-// ShowCreate returns a valid SQL representation of the CREATE
-// statement used to create the descriptor passed in.
-//
-// The names of the tables references by foreign keys are prefixed by their own
-// database name unless it is equal to the given dbPrefix. This allows us to
-// elide the prefix when the given table references other tables in the current
-// database.
 func (p *planner) ShowCreate(
 	ctx context.Context,
 	dbPrefix string,
@@ -221,27 +252,43 @@ func (p *planner) ShowCreate(
 	desc catalog.TableDescriptor,
 	displayOptions ShowCreateDisplayOptions,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(622844)
 	var stmt string
 	var err error
 	tn := tree.MakeUnqualifiedTableName(tree.Name(desc.GetName()))
 	if desc.IsView() {
+		__antithesis_instrumentation__.Notify(622846)
 		stmt, err = ShowCreateView(ctx, &p.RunParams(ctx).p.semaCtx, p.RunParams(ctx).p.SessionData(), &tn, desc)
-	} else if desc.IsSequence() {
-		stmt, err = ShowCreateSequence(ctx, &tn, desc)
 	} else {
-		lCtx, lErr := newInternalLookupCtxFromDescriptorProtos(
-			ctx, allDescs, nil, /* want all tables */
-		)
-		if lErr != nil {
-			return "", lErr
+		__antithesis_instrumentation__.Notify(622847)
+		if desc.IsSequence() {
+			__antithesis_instrumentation__.Notify(622848)
+			stmt, err = ShowCreateSequence(ctx, &tn, desc)
+		} else {
+			__antithesis_instrumentation__.Notify(622849)
+			lCtx, lErr := newInternalLookupCtxFromDescriptorProtos(
+				ctx, allDescs, nil,
+			)
+			if lErr != nil {
+				__antithesis_instrumentation__.Notify(622852)
+				return "", lErr
+			} else {
+				__antithesis_instrumentation__.Notify(622853)
+			}
+			__antithesis_instrumentation__.Notify(622850)
+
+			desc, err = lCtx.getTableByID(desc.GetID())
+			if err != nil {
+				__antithesis_instrumentation__.Notify(622854)
+				return "", err
+			} else {
+				__antithesis_instrumentation__.Notify(622855)
+			}
+			__antithesis_instrumentation__.Notify(622851)
+			stmt, err = ShowCreateTable(ctx, p, &tn, dbPrefix, desc, lCtx, displayOptions)
 		}
-		// Overwrite desc with hydrated descriptor.
-		desc, err = lCtx.getTableByID(desc.GetID())
-		if err != nil {
-			return "", err
-		}
-		stmt, err = ShowCreateTable(ctx, p, &tn, dbPrefix, desc, lCtx, displayOptions)
 	}
+	__antithesis_instrumentation__.Notify(622845)
 
 	return stmt, err
 }

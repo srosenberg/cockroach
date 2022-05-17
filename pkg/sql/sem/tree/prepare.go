@@ -1,102 +1,100 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/sql/lexbase"
 
-// Prepare represents a PREPARE statement.
 type Prepare struct {
 	Name      Name
 	Types     []ResolvableTypeReference
 	Statement Statement
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Prepare) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(611832)
 	ctx.WriteString("PREPARE ")
 	ctx.FormatNode(&node.Name)
 	if len(node.Types) > 0 {
+		__antithesis_instrumentation__.Notify(611834)
 		ctx.WriteString(" (")
 		for i, t := range node.Types {
+			__antithesis_instrumentation__.Notify(611836)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(611838)
 				ctx.WriteString(", ")
+			} else {
+				__antithesis_instrumentation__.Notify(611839)
 			}
+			__antithesis_instrumentation__.Notify(611837)
 			ctx.WriteString(t.SQLString())
 		}
+		__antithesis_instrumentation__.Notify(611835)
 		ctx.WriteRune(')')
+	} else {
+		__antithesis_instrumentation__.Notify(611840)
 	}
+	__antithesis_instrumentation__.Notify(611833)
 	ctx.WriteString(" AS ")
 	ctx.FormatNode(node.Statement)
 }
 
-// CannedOptPlan is used as the AST for a PREPARE .. AS OPT PLAN statement.
-// This is a testing facility that allows execution (and benchmarking) of
-// specific plans. See exprgen package for more information on the syntax.
 type CannedOptPlan struct {
 	Plan string
 }
 
-// Format implements the NodeFormatter interface.
 func (node *CannedOptPlan) Format(ctx *FmtCtx) {
-	// This node can only be used as the AST for a Prepare statement of the form:
-	//   PREPARE name AS OPT PLAN '...').
+	__antithesis_instrumentation__.Notify(611841)
+
 	ctx.WriteString("OPT PLAN ")
 	ctx.WriteString(lexbase.EscapeSQLString(node.Plan))
 }
 
-// Execute represents an EXECUTE statement.
 type Execute struct {
 	Name   Name
 	Params Exprs
-	// DiscardRows is set when we want to throw away all the rows rather than
-	// returning for client (used for testing and benchmarking).
+
 	DiscardRows bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Execute) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(611842)
 	ctx.WriteString("EXECUTE ")
 	ctx.FormatNode(&node.Name)
 	if len(node.Params) > 0 {
+		__antithesis_instrumentation__.Notify(611844)
 		ctx.WriteString(" (")
 		ctx.FormatNode(&node.Params)
 		ctx.WriteByte(')')
+	} else {
+		__antithesis_instrumentation__.Notify(611845)
 	}
+	__antithesis_instrumentation__.Notify(611843)
 	if node.DiscardRows {
+		__antithesis_instrumentation__.Notify(611846)
 		ctx.WriteString(" DISCARD ROWS")
+	} else {
+		__antithesis_instrumentation__.Notify(611847)
 	}
 }
 
-// Deallocate represents a DEALLOCATE statement.
 type Deallocate struct {
-	Name Name // empty for ALL
+	Name Name
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Deallocate) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(611848)
 	ctx.WriteString("DEALLOCATE ")
 	if node.Name == "" {
+		__antithesis_instrumentation__.Notify(611849)
 		ctx.WriteString("ALL")
 	} else {
-		// Special case for names in DEALLOCATE: the names are redacted in
-		// FmtHideConstants mode so that DEALLOCATE statements all show up together
-		// in the statement stats UI. The reason is that unlike other statements
-		// where the name being referenced is useful for observability, the name of
-		// a prepared statement doesn't matter that much. Also, it's extremely cheap
-		// to run DEALLOCATE, which can lead to thousands or more DEALLOCATE
-		// statements appearing in the UI; other statements that refer to things by
-		// name are too expensive for that to be a real problem.
+		__antithesis_instrumentation__.Notify(611850)
+
 		if ctx.HasFlags(FmtHideConstants) {
+			__antithesis_instrumentation__.Notify(611851)
 			ctx.WriteByte('_')
 		} else {
+			__antithesis_instrumentation__.Notify(611852)
 			ctx.FormatNode(&node.Name)
 		}
 	}

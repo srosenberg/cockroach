@@ -5,7 +5,10 @@ go_library(
     srcs = ["concurrent_buffer_guard.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/contention/contentionutils",
     visibility = ["//visibility:public"],
-    deps = ["//pkg/util/syncutil"],
+    deps = [
+        "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
+    ],
 )
 
 go_test(
@@ -15,6 +18,7 @@ go_test(
     deps = [
         "//pkg/util/syncutil",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
         "@org_golang_x_exp//rand",
     ],

@@ -1,16 +1,8 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package settingswatcher provides utilities to update cluster settings using
 // a range feed.
 package settingswatcher
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,8 +24,6 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// SettingsWatcher is used to watch for cluster settings changes with a
-// rangefeed.
 type SettingsWatcher struct {
 	clock    *hlc.Clock
 	codec    keys.SQLCodec
@@ -53,25 +43,22 @@ type SettingsWatcher struct {
 		overrides map[string]settings.EncodedValue
 	}
 
-	// testingWatcherKnobs allows the client to inject testing knobs into
-	// the underlying rangefeedcache.Watcher.
 	testingWatcherKnobs *rangefeedcache.TestingKnobs
 }
 
-// Storage is used to write a snapshot of KVs out to disk for use upon restart.
 type Storage interface {
 	SnapshotKVs(ctx context.Context, kvs []roachpb.KeyValue)
 }
 
-// New constructs a new SettingsWatcher.
 func New(
 	clock *hlc.Clock,
 	codec keys.SQLCodec,
 	settingsToUpdate *cluster.Settings,
 	f *rangefeed.Factory,
 	stopper *stop.Stopper,
-	storage Storage, // optional
+	storage Storage,
 ) *SettingsWatcher {
+	__antithesis_instrumentation__.Notify(235124)
 	return &SettingsWatcher{
 		clock:    clock,
 		codec:    codec,
@@ -83,8 +70,6 @@ func New(
 	}
 }
 
-// NewWithOverrides constructs a new SettingsWatcher which allows external
-// overrides, discovered through an OverridesMonitor.
 func NewWithOverrides(
 	clock *hlc.Clock,
 	codec keys.SQLCodec,
@@ -94,16 +79,15 @@ func NewWithOverrides(
 	overridesMonitor OverridesMonitor,
 	storage Storage,
 ) *SettingsWatcher {
+	__antithesis_instrumentation__.Notify(235125)
 	s := New(clock, codec, settingsToUpdate, f, stopper, storage)
 	s.overridesMonitor = overridesMonitor
 	settingsToUpdate.OverridesInformer = s
 	return s
 }
 
-// Start will start the SettingsWatcher. It returns after the initial settings
-// have been retrieved. An error will be returned if the context is canceled or
-// the stopper is stopped prior to the initial data being retrieved.
 func (s *SettingsWatcher) Start(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(235126)
 	settingsTablePrefix := s.codec.TablePrefix(keys.SettingsTableID)
 	settingsTableSpan := roachpb.Span{
 		Key:    settingsTablePrefix,
@@ -118,110 +102,152 @@ func (s *SettingsWatcher) Start(ctx context.Context) error {
 		ch: make(chan struct{}),
 	}
 	noteUpdate := func(update rangefeedcache.Update) {
+		__antithesis_instrumentation__.Notify(235133)
 		if update.Type != rangefeedcache.CompleteUpdate {
+			__antithesis_instrumentation__.Notify(235135)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(235136)
 		}
+		__antithesis_instrumentation__.Notify(235134)
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.mu.updater.ResetRemaining(ctx)
 		if !initialScan.done {
+			__antithesis_instrumentation__.Notify(235137)
 			initialScan.done = true
 			close(initialScan.ch)
+		} else {
+			__antithesis_instrumentation__.Notify(235138)
 		}
 	}
+	__antithesis_instrumentation__.Notify(235127)
 
 	s.mu.values = make(map[string]settings.EncodedValue)
 
 	if s.overridesMonitor != nil {
+		__antithesis_instrumentation__.Notify(235139)
 		s.mu.overrides = make(map[string]settings.EncodedValue)
-		// Initialize the overrides. We want to do this before processing the
-		// settings table, otherwise we could see temporary transitions to the value
-		// in the table.
+
 		s.updateOverrides(ctx)
 
-		// Set up a worker to watch the monitor.
 		if err := s.stopper.RunAsyncTask(ctx, "setting-overrides", func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(235140)
 			overridesCh := s.overridesMonitor.RegisterOverridesChannel()
 			for {
+				__antithesis_instrumentation__.Notify(235141)
 				select {
 				case <-overridesCh:
+					__antithesis_instrumentation__.Notify(235142)
 					s.updateOverrides(ctx)
 
 				case <-s.stopper.ShouldQuiesce():
+					__antithesis_instrumentation__.Notify(235143)
 					return
 				}
 			}
 		}); err != nil {
-			// We are shutting down.
-			return err
-		}
-	}
+			__antithesis_instrumentation__.Notify(235144)
 
-	// bufferSize configures how large of a buffer to permit for accumulated
-	// changes of settings between resolved timestamps. It's an arbitrary
-	// number thought ought to be big enough. Note that if there is no underlying
-	// storage, we'll never produce any events in s.handleKV() so we can use a
-	// bufferSize of 0.
+			return err
+		} else {
+			__antithesis_instrumentation__.Notify(235145)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(235146)
+	}
+	__antithesis_instrumentation__.Notify(235128)
+
 	var bufferSize int
 	if s.storage != nil {
+		__antithesis_instrumentation__.Notify(235147)
 		bufferSize = settings.MaxSettings * 3
+	} else {
+		__antithesis_instrumentation__.Notify(235148)
 	}
-	var snapshot []roachpb.KeyValue // used with storage
+	__antithesis_instrumentation__.Notify(235129)
+	var snapshot []roachpb.KeyValue
 	maybeUpdateSnapshot := func(update rangefeedcache.Update) {
-		// Only record the update to the buffer if we're writing to storage.
-		if s.storage == nil ||
-			// and the update has some new information to write.
-			(update.Type == rangefeedcache.IncrementalUpdate && len(update.Events) == 0) {
+		__antithesis_instrumentation__.Notify(235149)
+
+		if s.storage == nil || func() bool {
+			__antithesis_instrumentation__.Notify(235152)
+			return (update.Type == rangefeedcache.IncrementalUpdate && func() bool {
+				__antithesis_instrumentation__.Notify(235153)
+				return len(update.Events) == 0 == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(235154)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(235155)
 		}
+		__antithesis_instrumentation__.Notify(235150)
 		eventKVs := rangefeedbuffer.EventsToKVs(update.Events,
 			rangefeedbuffer.RangeFeedValueEventToKV)
 		switch update.Type {
 		case rangefeedcache.CompleteUpdate:
+			__antithesis_instrumentation__.Notify(235156)
 			snapshot = eventKVs
 		case rangefeedcache.IncrementalUpdate:
+			__antithesis_instrumentation__.Notify(235157)
 			snapshot = rangefeedbuffer.MergeKVs(snapshot, eventKVs)
+		default:
+			__antithesis_instrumentation__.Notify(235158)
 		}
+		__antithesis_instrumentation__.Notify(235151)
 		s.storage.SnapshotKVs(ctx, snapshot)
 	}
+	__antithesis_instrumentation__.Notify(235130)
 	c := rangefeedcache.NewWatcher(
 		"settings-watcher",
 		s.clock, s.f,
 		bufferSize,
 		[]roachpb.Span{settingsTableSpan},
-		false, // withPrevValue
+		false,
 		func(ctx context.Context, kv *roachpb.RangeFeedValue) rangefeedbuffer.Event {
+			__antithesis_instrumentation__.Notify(235159)
 			return s.handleKV(ctx, kv)
 		},
 		func(ctx context.Context, update rangefeedcache.Update) {
+			__antithesis_instrumentation__.Notify(235160)
 			noteUpdate(update)
 			maybeUpdateSnapshot(update)
 		},
 		s.testingWatcherKnobs,
 	)
+	__antithesis_instrumentation__.Notify(235131)
 
-	// Kick off the rangefeedcache which will retry until the stopper stops.
 	if err := rangefeedcache.Start(ctx, s.stopper, c, func(err error) {
+		__antithesis_instrumentation__.Notify(235161)
 		if !initialScan.done {
+			__antithesis_instrumentation__.Notify(235162)
 			initialScan.err = err
 			initialScan.done = true
 			close(initialScan.ch)
 		} else {
+			__antithesis_instrumentation__.Notify(235163)
 			s.resetUpdater()
 		}
 	}); err != nil {
-		return err // we're shutting down
+		__antithesis_instrumentation__.Notify(235164)
+		return err
+	} else {
+		__antithesis_instrumentation__.Notify(235165)
 	}
+	__antithesis_instrumentation__.Notify(235132)
 
-	// Wait for the initial scan before returning.
 	select {
 	case <-initialScan.ch:
+		__antithesis_instrumentation__.Notify(235166)
 		return initialScan.err
 
 	case <-s.stopper.ShouldQuiesce():
+		__antithesis_instrumentation__.Notify(235167)
 		return errors.Wrap(stop.ErrUnavailable, "failed to retrieve initial cluster settings")
 
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(235168)
 		return errors.Wrap(ctx.Err(), "failed to retrieve initial cluster settings")
 	}
 }
@@ -229,84 +255,135 @@ func (s *SettingsWatcher) Start(ctx context.Context) error {
 func (s *SettingsWatcher) handleKV(
 	ctx context.Context, kv *roachpb.RangeFeedValue,
 ) rangefeedbuffer.Event {
+	__antithesis_instrumentation__.Notify(235169)
 	name, val, tombstone, err := s.dec.DecodeRow(roachpb.KeyValue{
 		Key:   kv.Key,
 		Value: kv.Value,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235174)
 		log.Warningf(ctx, "failed to decode settings row %v: %v", kv.Key, err)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(235175)
 	}
+	__antithesis_instrumentation__.Notify(235170)
 
 	if !s.codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(235176)
 		setting, ok := settings.Lookup(name, settings.LookupForLocalAccess, s.codec.ForSystemTenant())
 		if !ok {
+			__antithesis_instrumentation__.Notify(235178)
 			log.Warningf(ctx, "unknown setting %s, skipping update", redact.Safe(name))
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(235179)
 		}
+		__antithesis_instrumentation__.Notify(235177)
 		if setting.Class() != settings.TenantWritable {
+			__antithesis_instrumentation__.Notify(235180)
 			log.Warningf(ctx, "ignoring read-only setting %s", redact.Safe(name))
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(235181)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(235182)
 	}
+	__antithesis_instrumentation__.Notify(235171)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, hasOverride := s.mu.overrides[name]
 	if tombstone {
-		// This event corresponds to a deletion.
+		__antithesis_instrumentation__.Notify(235183)
+
 		delete(s.mu.values, name)
 		if !hasOverride {
+			__antithesis_instrumentation__.Notify(235184)
 			s.setDefaultLocked(ctx, name)
+		} else {
+			__antithesis_instrumentation__.Notify(235185)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(235186)
 		s.mu.values[name] = val
 		if !hasOverride {
+			__antithesis_instrumentation__.Notify(235187)
 			s.setLocked(ctx, name, val)
+		} else {
+			__antithesis_instrumentation__.Notify(235188)
 		}
 	}
+	__antithesis_instrumentation__.Notify(235172)
 	if s.storage != nil {
+		__antithesis_instrumentation__.Notify(235189)
 		return kv
+	} else {
+		__antithesis_instrumentation__.Notify(235190)
 	}
+	__antithesis_instrumentation__.Notify(235173)
 	return nil
 }
 
 const versionSettingKey = "version"
 
-// set the current value of a setting.
 func (s *SettingsWatcher) setLocked(ctx context.Context, key string, val settings.EncodedValue) {
-	// The system tenant (i.e. the KV layer) does not use the SettingsWatcher
-	// to propagate cluster version changes (it uses the BumpClusterVersion
-	// RPC). However, non-system tenants (i.e. SQL pods) (asynchronously) get
-	// word of the new cluster version below.
-	if key == versionSettingKey && !s.codec.ForSystemTenant() {
+	__antithesis_instrumentation__.Notify(235191)
+
+	if key == versionSettingKey && func() bool {
+		__antithesis_instrumentation__.Notify(235193)
+		return !s.codec.ForSystemTenant() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(235194)
 		var v clusterversion.ClusterVersion
 		if err := protoutil.Unmarshal([]byte(val.Value), &v); err != nil {
-			log.Warningf(ctx, "failed to set cluster version: %v", err)
-		} else if err := s.settings.Version.SetActiveVersion(ctx, v); err != nil {
+			__antithesis_instrumentation__.Notify(235196)
 			log.Warningf(ctx, "failed to set cluster version: %v", err)
 		} else {
-			log.Infof(ctx, "set cluster version to: %v", v)
+			__antithesis_instrumentation__.Notify(235197)
+			if err := s.settings.Version.SetActiveVersion(ctx, v); err != nil {
+				__antithesis_instrumentation__.Notify(235198)
+				log.Warningf(ctx, "failed to set cluster version: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(235199)
+				log.Infof(ctx, "set cluster version to: %v", v)
+			}
 		}
+		__antithesis_instrumentation__.Notify(235195)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(235200)
 	}
+	__antithesis_instrumentation__.Notify(235192)
 
 	if err := s.mu.updater.Set(ctx, key, val); err != nil {
+		__antithesis_instrumentation__.Notify(235201)
 		log.Warningf(ctx, "failed to set setting %s to %s: %v", redact.Safe(key), val.Value, err)
+	} else {
+		__antithesis_instrumentation__.Notify(235202)
 	}
 }
 
-// setDefaultLocked sets a setting to its default value.
 func (s *SettingsWatcher) setDefaultLocked(ctx context.Context, key string) {
+	__antithesis_instrumentation__.Notify(235203)
 	setting, ok := settings.Lookup(key, settings.LookupForLocalAccess, s.codec.ForSystemTenant())
 	if !ok {
+		__antithesis_instrumentation__.Notify(235206)
 		log.Warningf(ctx, "failed to find setting %s, skipping update", redact.Safe(key))
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(235207)
 	}
+	__antithesis_instrumentation__.Notify(235204)
 	ws, ok := setting.(settings.NonMaskedSetting)
 	if !ok {
+		__antithesis_instrumentation__.Notify(235208)
 		log.Fatalf(ctx, "expected non-masked setting, got %T", s)
+	} else {
+		__antithesis_instrumentation__.Notify(235209)
 	}
+	__antithesis_instrumentation__.Notify(235205)
 	val := settings.EncodedValue{
 		Value: ws.EncodedDefault(),
 		Type:  ws.Typ(),
@@ -314,57 +391,73 @@ func (s *SettingsWatcher) setDefaultLocked(ctx context.Context, key string) {
 	s.setLocked(ctx, key, val)
 }
 
-// updateOverrides updates the overrides map and updates any settings
-// accordingly.
 func (s *SettingsWatcher) updateOverrides(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(235210)
 	newOverrides := s.overridesMonitor.Overrides()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for key, val := range newOverrides {
+		__antithesis_instrumentation__.Notify(235212)
 		if key == versionSettingKey {
+			__antithesis_instrumentation__.Notify(235215)
 			log.Warningf(ctx, "ignoring attempt to override %s", key)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(235216)
 		}
-		if oldVal, hasExisting := s.mu.overrides[key]; hasExisting && oldVal == val {
-			// We already have the same override in place; ignore.
+		__antithesis_instrumentation__.Notify(235213)
+		if oldVal, hasExisting := s.mu.overrides[key]; hasExisting && func() bool {
+			__antithesis_instrumentation__.Notify(235217)
+			return oldVal == val == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(235218)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(235219)
 		}
-		// A new override was added or an existing override has changed.
+		__antithesis_instrumentation__.Notify(235214)
+
 		s.mu.overrides[key] = val
 		s.setLocked(ctx, key, val)
 	}
+	__antithesis_instrumentation__.Notify(235211)
 
-	// Clean up any overrides that were removed.
 	for key := range s.mu.overrides {
+		__antithesis_instrumentation__.Notify(235220)
 		if _, ok := newOverrides[key]; !ok {
+			__antithesis_instrumentation__.Notify(235221)
 			delete(s.mu.overrides, key)
 
-			// Reset the setting to the value in the settings table (or the default
-			// value).
 			if val, ok := s.mu.values[key]; ok {
+				__antithesis_instrumentation__.Notify(235222)
 				s.setLocked(ctx, key, val)
 			} else {
+				__antithesis_instrumentation__.Notify(235223)
 				s.setDefaultLocked(ctx, key)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(235224)
 		}
 	}
 }
 
 func (s *SettingsWatcher) resetUpdater() {
+	__antithesis_instrumentation__.Notify(235225)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mu.updater = s.settings.MakeUpdater()
 }
 
-// SetTestingKnobs is used by tests to set testing knobs.
 func (s *SettingsWatcher) SetTestingKnobs(knobs *rangefeedcache.TestingKnobs) {
+	__antithesis_instrumentation__.Notify(235226)
 	s.testingWatcherKnobs = knobs
 }
 
-// IsOverridden implements cluster.OverridesInformer.
 func (s *SettingsWatcher) IsOverridden(settingName string) bool {
+	__antithesis_instrumentation__.Notify(235227)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, exists := s.mu.overrides[settingName]

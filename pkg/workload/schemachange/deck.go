@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package schemachange
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math/rand"
@@ -16,12 +8,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// Deck is a random number generator that generates numbers in the range
-// [0,len(weights)-1] where the probability of i is
-// weights(i)/sum(weights). Unlike Weighted, the weights are specified as
-// integers and used in a deck-of-cards style random number selection which
-// ensures that each element is returned with a desired frequency within the
-// size of the deck.
 type deck struct {
 	rng *rand.Rand
 	mu  struct {
@@ -31,18 +17,23 @@ type deck struct {
 	}
 }
 
-// newDeck returns a new deck random number generator.
 func newDeck(rng *rand.Rand, weights ...int) *deck {
+	__antithesis_instrumentation__.Notify(695724)
 	var sum int
 	for i := range weights {
+		__antithesis_instrumentation__.Notify(695727)
 		sum += weights[i]
 	}
+	__antithesis_instrumentation__.Notify(695725)
 	vals := make([]int, 0, sum)
 	for i := range weights {
+		__antithesis_instrumentation__.Notify(695728)
 		for j := 0; j < weights[i]; j++ {
+			__antithesis_instrumentation__.Notify(695729)
 			vals = append(vals, i)
 		}
 	}
+	__antithesis_instrumentation__.Notify(695726)
 	d := &deck{
 		rng: rng,
 	}
@@ -51,16 +42,21 @@ func newDeck(rng *rand.Rand, weights ...int) *deck {
 	return d
 }
 
-// Int returns a random number in the range [0,len(weights)-1] where the
-// probability of i is weights(i)/sum(weights).
 func (d *deck) Int() int {
+	__antithesis_instrumentation__.Notify(695730)
 	d.mu.Lock()
 	if d.mu.index == len(d.mu.vals) {
+		__antithesis_instrumentation__.Notify(695732)
 		d.rng.Shuffle(len(d.mu.vals), func(i, j int) {
+			__antithesis_instrumentation__.Notify(695734)
 			d.mu.vals[i], d.mu.vals[j] = d.mu.vals[j], d.mu.vals[i]
 		})
+		__antithesis_instrumentation__.Notify(695733)
 		d.mu.index = 0
+	} else {
+		__antithesis_instrumentation__.Notify(695735)
 	}
+	__antithesis_instrumentation__.Notify(695731)
 	result := d.mu.vals[d.mu.index]
 	d.mu.index++
 	d.mu.Unlock()

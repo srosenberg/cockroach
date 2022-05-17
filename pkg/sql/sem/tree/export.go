@@ -1,16 +1,7 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// Export represents a EXPORT statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type Export struct {
 	Query      *Select
 	FileFormat string
@@ -20,16 +11,20 @@ type Export struct {
 
 var _ Statement = &Export{}
 
-// Format implements the NodeFormatter interface.
 func (node *Export) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(609329)
 	ctx.WriteString("EXPORT INTO ")
 	ctx.WriteString(node.FileFormat)
 	ctx.WriteString(" ")
 	ctx.FormatNode(node.File)
 	if node.Options != nil {
+		__antithesis_instrumentation__.Notify(609331)
 		ctx.WriteString(" WITH ")
 		ctx.FormatNode(&node.Options)
+	} else {
+		__antithesis_instrumentation__.Notify(609332)
 	}
+	__antithesis_instrumentation__.Notify(609330)
 	ctx.WriteString(" FROM ")
 	ctx.FormatNode(node.Query)
 }

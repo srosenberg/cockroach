@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package comparetest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/rel"
@@ -16,7 +8,6 @@ import (
 )
 
 var (
-	// Suite defines the comparetest test suite.
 	Suite = reltest.Suite{
 		Name:            "comparetest",
 		Schema:          schema,
@@ -52,7 +43,7 @@ var (
 						{"e1"}, {"e2"}, {"e3"},
 					},
 				},
-				{ // all nil
+				{
 					Attrs: []rel.Attr{pstr},
 					Order: [][]string{
 						{"e1", "e2", "e3"},
@@ -87,7 +78,7 @@ var (
 						{"e1", "e2", "e3", "e4"},
 					},
 				},
-				{ // all nil
+				{
 					Attrs: []rel.Attr{pstr},
 					Order: [][]string{
 						{"e1", "e2", "e3", "e4"},
@@ -117,6 +108,7 @@ var (
 )
 
 func addToEmptyEntityMap(m map[rel.Attr]interface{}) map[rel.Attr]interface{} {
+	__antithesis_instrumentation__.Notify(578531)
 	base := map[rel.Attr]interface{}{
 		i8:       int8(0),
 		i16:      int16(0),
@@ -132,7 +124,9 @@ func addToEmptyEntityMap(m map[rel.Attr]interface{}) map[rel.Attr]interface{} {
 		_uintptr: uintptr(0),
 	}
 	for k, v := range m {
+		__antithesis_instrumentation__.Notify(578533)
 		base[k] = v
 	}
+	__antithesis_instrumentation__.Notify(578532)
 	return base
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,14 +18,10 @@ import (
 )
 
 func registerDrop(r registry.Registry) {
-	// TODO(tschottdorf): rearrange all tests so that their synopses are available
-	// via godoc and (some variation on) `roachtest run <testname> --help`.
+	__antithesis_instrumentation__.Notify(47432)
 
-	// This test imports a TPCC dataset and then issues a manual deletion followed
-	// by a truncation for the `stock` table (which contains warehouses*100k
-	// rows). Next, it issues a `DROP` for the whole database, and sets the GC TTL
-	// to one second.
 	runDrop := func(ctx context.Context, t test.Test, c cluster.Cluster, warehouses, nodes int) {
+		__antithesis_instrumentation__.Notify(47434)
 		c.Put(ctx, t.Cockroach(), "./cockroach", c.Range(1, nodes))
 		c.Put(ctx, t.DeprecatedWorkload(), "./workload", c.Range(1, nodes))
 		settings := install.MakeClusterSettings()
@@ -42,120 +30,166 @@ func registerDrop(r registry.Registry) {
 
 		m := c.NewMonitor(ctx, c.Range(1, nodes))
 		m.Go(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(47436)
 			t.WorkerStatus("importing TPCC fixture")
 			c.Run(ctx, c.Node(1), tpccImportCmd(warehouses))
 
-			// Don't open the DB connection until after the data has been imported.
-			// Otherwise the ALTER TABLE query below might fail to find the
-			// tpcc.order_line table that we just imported (!) due to what seems to
-			// be a problem with table descriptor leases (#24374).
 			db := c.Conn(ctx, t.L(), 1)
 			defer db.Close()
 
 			run := func(maybeExperimental bool, stmtStr string, args ...interface{}) {
+				__antithesis_instrumentation__.Notify(47444)
 				stmt := stmtStr
-				// We are removing the EXPERIMENTAL keyword in 2.1. For compatibility
-				// with 2.0 clusters we still need to try with it if the
-				// syntax without EXPERIMENTAL fails.
-				// TODO(knz): Remove this in 2.2.
+
 				if maybeExperimental {
+					__antithesis_instrumentation__.Notify(47447)
 					stmt = fmt.Sprintf(stmtStr, "", "=")
+				} else {
+					__antithesis_instrumentation__.Notify(47448)
 				}
+				__antithesis_instrumentation__.Notify(47445)
 				t.WorkerStatus(stmt)
 				_, err := db.ExecContext(ctx, stmt, args...)
-				if err != nil && maybeExperimental && strings.Contains(err.Error(), "syntax error") {
+				if err != nil && func() bool {
+					__antithesis_instrumentation__.Notify(47449)
+					return maybeExperimental == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(47450)
+					return strings.Contains(err.Error(), "syntax error") == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(47451)
 					stmt = fmt.Sprintf(stmtStr, "EXPERIMENTAL", "")
 					t.WorkerStatus(stmt)
 					_, err = db.ExecContext(ctx, stmt, args...)
+				} else {
+					__antithesis_instrumentation__.Notify(47452)
 				}
+				__antithesis_instrumentation__.Notify(47446)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(47453)
 					t.Fatal(err)
+				} else {
+					__antithesis_instrumentation__.Notify(47454)
 				}
 			}
+			__antithesis_instrumentation__.Notify(47437)
 
 			run(false, `SET CLUSTER SETTING trace.debug.enable = true`)
 
-			// Drop a constraint that would get in the way of deleting from tpcc.stock.
 			const stmtDropConstraint = "ALTER TABLE tpcc.order_line DROP CONSTRAINT order_line_ol_supply_w_id_ol_i_id_fkey"
 			run(false, stmtDropConstraint)
 
 			var rows, minWarehouse, maxWarehouse int
 			if err := db.QueryRow("select count(*), min(s_w_id), max(s_w_id) from tpcc.stock").Scan(&rows,
 				&minWarehouse, &maxWarehouse); err != nil {
+				__antithesis_instrumentation__.Notify(47455)
 				t.Fatalf("failed to get range count: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(47456)
 			}
+			__antithesis_instrumentation__.Notify(47438)
 
 			for j := 1; j <= nodes; j++ {
+				__antithesis_instrumentation__.Notify(47457)
 				size, err := getDiskUsageInBytes(ctx, c, t.L(), j)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(47459)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(47460)
 				}
+				__antithesis_instrumentation__.Notify(47458)
 
 				t.L().Printf("Node %d space used: %s\n", j, humanizeutil.IBytes(int64(size)))
 			}
+			__antithesis_instrumentation__.Notify(47439)
 
 			for i := minWarehouse; i <= maxWarehouse; i++ {
+				__antithesis_instrumentation__.Notify(47461)
 				t.Progress(float64(i) / float64(maxWarehouse))
 				tBegin := timeutil.Now()
 				run(false, "DELETE FROM tpcc.stock WHERE s_w_id = $1", i)
 				elapsed := timeutil.Since(tBegin)
-				// TODO(tschottdorf): check what's reasonable here and make sure we don't drop below it.
+
 				t.L().Printf("deleted from tpcc.stock for warehouse %d (100k rows) in %s (%.2f rows/sec)\n", i, elapsed, 100000.0/elapsed.Seconds())
 			}
+			__antithesis_instrumentation__.Notify(47440)
 
 			const stmtTruncate = "TRUNCATE TABLE tpcc.stock"
 			run(false, stmtTruncate)
 
 			const stmtDrop = "DROP DATABASE tpcc"
 			run(false, stmtDrop)
-			// The data has already been deleted, but changing the default zone config
-			// should take effect retroactively.
+
 			run(true, "ALTER RANGE default %[1]s CONFIGURE ZONE %[2]s '\ngc:\n  ttlseconds: 1\n'")
 
 			var allNodesSpaceCleared bool
 			var sizeReport string
 			maxSizeBytes := 100 * 1024 * 1024
 			if true {
-				// TODO(tschottdorf): This test should pass without this large fudge factor. This requires manual reproduction
-				// and an investigation of the compactor logs as well as the data directory.
+				__antithesis_instrumentation__.Notify(47462)
+
 				maxSizeBytes *= 100
+			} else {
+				__antithesis_instrumentation__.Notify(47463)
 			}
-			// We're waiting a maximum of 10 minutes to makes sure that the drop operations clear the disk.
+			__antithesis_instrumentation__.Notify(47441)
+
 			for i := 0; i < 10; i++ {
+				__antithesis_instrumentation__.Notify(47464)
 				sizeReport = ""
 				allNodesSpaceCleared = true
 				for j := 1; j <= nodes; j++ {
+					__antithesis_instrumentation__.Notify(47467)
 					size, err := getDiskUsageInBytes(ctx, c, t.L(), j)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(47469)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(47470)
 					}
+					__antithesis_instrumentation__.Notify(47468)
 
 					nodeSpaceUsed := fmt.Sprintf("Node %d space after deletion used: %s\n", j, humanizeutil.IBytes(int64(size)))
 					t.L().Printf(nodeSpaceUsed)
 
-					// Return if the size of the directory is less than 100mb
 					if size > maxSizeBytes {
+						__antithesis_instrumentation__.Notify(47471)
 						allNodesSpaceCleared = false
 						sizeReport += nodeSpaceUsed
+					} else {
+						__antithesis_instrumentation__.Notify(47472)
 					}
 				}
+				__antithesis_instrumentation__.Notify(47465)
 
 				if allNodesSpaceCleared {
+					__antithesis_instrumentation__.Notify(47473)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(47474)
 				}
+				__antithesis_instrumentation__.Notify(47466)
 				time.Sleep(time.Minute)
 			}
+			__antithesis_instrumentation__.Notify(47442)
 
 			if !allNodesSpaceCleared {
+				__antithesis_instrumentation__.Notify(47475)
 				sizeReport += fmt.Sprintf("disk space usage has not dropped below %s on all nodes.",
 					humanizeutil.IBytes(int64(maxSizeBytes)))
 				t.Fatalf(sizeReport)
+			} else {
+				__antithesis_instrumentation__.Notify(47476)
 			}
+			__antithesis_instrumentation__.Notify(47443)
 
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(47435)
 		m.Wait()
 	}
+	__antithesis_instrumentation__.Notify(47433)
 
 	warehouses := 100
 	numNodes := 9
@@ -165,13 +199,17 @@ func registerDrop(r registry.Registry) {
 		Owner:   registry.OwnerKV,
 		Cluster: r.MakeClusterSpec(numNodes),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
-			// NB: this is likely not going to work out in `-local` mode. Edit the
-			// numbers during iteration.
+			__antithesis_instrumentation__.Notify(47477)
+
 			if c.IsLocal() {
+				__antithesis_instrumentation__.Notify(47479)
 				numNodes = 4
 				warehouses = 1
 				fmt.Printf("running with w=%d,nodes=%d in local mode\n", warehouses, numNodes)
+			} else {
+				__antithesis_instrumentation__.Notify(47480)
 			}
+			__antithesis_instrumentation__.Notify(47478)
 			runDrop(ctx, t, c, warehouses, numNodes)
 		},
 	})

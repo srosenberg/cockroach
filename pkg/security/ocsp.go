@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package security
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -26,149 +18,193 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// makeOCSPVerifier returns a function intended for use with
-// tls.Config.VerifyPeerCertificate. If enabled, any certificate
-// containing an OCSP url will be verified.
-//
-// TODO(bdarnell): Use VerifyConnection instead of VerifyPeerCertificate (in Go 1.15)
-// This is necessary to support OCSP stapling.
 func makeOCSPVerifier(settings TLSSettings) func([][]byte, [][]*x509.Certificate) error {
+	__antithesis_instrumentation__.Notify(186666)
 	return func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		__antithesis_instrumentation__.Notify(186667)
 		if !settings.ocspEnabled() {
+			__antithesis_instrumentation__.Notify(186669)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(186670)
 		}
+		__antithesis_instrumentation__.Notify(186668)
 
 		return contextutil.RunWithTimeout(context.Background(), "OCSP verification", settings.ocspTimeout(),
 			func(ctx context.Context) error {
-				// Per-conn telemetry counter.
+				__antithesis_instrumentation__.Notify(186671)
+
 				telemetry.Inc(ocspChecksCounter)
 
 				errG, gCtx := errgroup.WithContext(ctx)
 				for _, chain := range verifiedChains {
-					// Ignore the last cert in the chain; it's the root and if it
-					// has an issuer we don't have it so we can't do an OCSP check
-					// on it.
+					__antithesis_instrumentation__.Notify(186673)
+
 					for i := 0; i < len(chain)-1; i++ {
+						__antithesis_instrumentation__.Notify(186674)
 						cert := chain[i]
 						if len(cert.OCSPServer) > 0 {
+							__antithesis_instrumentation__.Notify(186675)
 							issuer := chain[i+1]
 							errG.Go(func() error {
+								__antithesis_instrumentation__.Notify(186676)
 								return verifyOCSP(gCtx, settings, cert, issuer)
 							})
+						} else {
+							__antithesis_instrumentation__.Notify(186677)
 						}
 					}
 				}
+				__antithesis_instrumentation__.Notify(186672)
 
 				return errG.Wait()
 			})
 	}
 }
 
-// ocspChecksCounter counts the number of connections that are
-// undergoing OCSP validations. This counter exists so that the value
-// of ocspCheckWithOCSPServerInCertCounter can be interpreted as a
-// percentage.
 var ocspChecksCounter = telemetry.GetCounterOnce("server.ocsp.conn-verifications")
 
-// ocspCheckWithOCSPServerInCert counts the number of certificate
-// verifications performed with a populated OCSPServer field in one of
-// the certs in the validation chain.
 var ocspCheckWithOCSPServerInCertCounter = telemetry.GetCounterOnce("server.ocsp.cert-verifications")
 
 func verifyOCSP(ctx context.Context, settings TLSSettings, cert, issuer *x509.Certificate) error {
+	__antithesis_instrumentation__.Notify(186678)
 	if len(cert.OCSPServer) == 0 {
+		__antithesis_instrumentation__.Notify(186682)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(186683)
 	}
+	__antithesis_instrumentation__.Notify(186679)
 
-	// Per-cert telemetry counter. We only count requests when there is
-	// an OCSP server to check in the first place.
 	telemetry.Inc(ocspCheckWithOCSPServerInCertCounter)
 
 	var errs []error
 	for _, url := range cert.OCSPServer {
+		__antithesis_instrumentation__.Notify(186684)
 		ok, err := queryOCSP(ctx, url, cert, issuer)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(186687)
 			errs = append(errs, err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(186688)
 		}
+		__antithesis_instrumentation__.Notify(186685)
 		if !ok {
+			__antithesis_instrumentation__.Notify(186689)
 			return errors.Newf("OCSP server says cert is revoked: %v", cert)
+		} else {
+			__antithesis_instrumentation__.Notify(186690)
 		}
+		__antithesis_instrumentation__.Notify(186686)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(186680)
 
 	if settings.ocspStrict() {
+		__antithesis_instrumentation__.Notify(186691)
 		switch len(errs) {
 		case 0:
+			__antithesis_instrumentation__.Notify(186692)
 			panic("can't happen: OCSP failed but errs is empty")
 		case 1:
+			__antithesis_instrumentation__.Notify(186693)
 			return errors.Wrap(errs[0], "OCSP check failed in strict mode")
 		default:
-			// TODO(bdarnell): If there were more than two servers, this
-			// drops subsequent messages on the floor.
+			__antithesis_instrumentation__.Notify(186694)
+
 			return errors.Wrap(errors.CombineErrors(errs[0], errs[1]), "OCSP check failed in strict mode")
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(186695)
 	}
-	// Non-strict mode: log errors and continue.
+	__antithesis_instrumentation__.Notify(186681)
+
 	log.Warningf(ctx, "OCSP check failed in non-strict mode: %v", errs)
 	return nil
 }
 
-// queryOCSP sends an OCSP request for the given cert to a server. If
-// the server returns a valid OCSP response with status "good",
-// returns (true, nil). If it returns a valid response with status
-// "revoked", returns (false, nil). All other outcomes return a
-// non-nil error.
 func queryOCSP(ctx context.Context, url string, cert, issuer *x509.Certificate) (bool, error) {
+	__antithesis_instrumentation__.Notify(186696)
 	ocspReq, err := ocsp.CreateRequest(cert, issuer, &ocsp.RequestOptions{
-		// OCSP defaults to SHA1, so this option might be incompatible
-		// with older OCSP servers. But it seems unlikely that anyone who
-		// cares enough about security to opt into OCSP would still be
-		// using one.
+
 		Hash: crypto.SHA256,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186705)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(186706)
 	}
-	// TODO(bdarnell): If len(ocspReq) < 255, the RFC says it MAY be
-	// sent as a GET instead of a POST, which permits caching in the
-	// HTTP layer.
+	__antithesis_instrumentation__.Notify(186697)
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(ocspReq))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186707)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(186708)
 	}
+	__antithesis_instrumentation__.Notify(186698)
 	httpReq.Header.Add("Content-Type", "application/ocsp-request")
 	httpResp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186709)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(186710)
 	}
+	__antithesis_instrumentation__.Notify(186699)
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != http.StatusOK {
+		__antithesis_instrumentation__.Notify(186711)
 		return false, errors.Newf("OCSP server returned status code %v", errors.Safe(httpResp.StatusCode))
+	} else {
+		__antithesis_instrumentation__.Notify(186712)
 	}
+	__antithesis_instrumentation__.Notify(186700)
 	if ct := httpResp.Header.Get("Content-Type"); ct != "application/ocsp-response" {
+		__antithesis_instrumentation__.Notify(186713)
 		return false, errors.Newf("OCSP server returned unexpected content-type %q", errors.Safe(ct))
+	} else {
+		__antithesis_instrumentation__.Notify(186714)
 	}
+	__antithesis_instrumentation__.Notify(186701)
 
 	httpBody, err := ioutil.ReadAll(httpResp.Body)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186715)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(186716)
 	}
+	__antithesis_instrumentation__.Notify(186702)
 
 	ocspResp, err := ocsp.ParseResponseForCert(httpBody, cert, issuer)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186717)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(186718)
 	}
+	__antithesis_instrumentation__.Notify(186703)
 	if ocspResp == nil {
+		__antithesis_instrumentation__.Notify(186719)
 		return false, errors.Newf("OCSP response for cert %v not found", cert)
+	} else {
+		__antithesis_instrumentation__.Notify(186720)
 	}
+	__antithesis_instrumentation__.Notify(186704)
 	switch ocspResp.Status {
 	case ocsp.Good:
+		__antithesis_instrumentation__.Notify(186721)
 		return true, nil
 	case ocsp.Revoked:
+		__antithesis_instrumentation__.Notify(186722)
 		return false, nil
 	default:
+		__antithesis_instrumentation__.Notify(186723)
 		return false, errors.Newf("OCSP returned status %v", errors.Safe(ocspResp.Status))
 	}
 }

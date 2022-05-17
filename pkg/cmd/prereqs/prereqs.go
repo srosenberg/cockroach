@@ -1,13 +1,3 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // prereqs generates Make prerequisites for Go binaries. It works much like the
 // traditional makedepend tool for C.
 //
@@ -40,6 +30,8 @@
 // [0]: http://make.mad-scientist.net/papers/advanced-auto-dependency-generation/
 package main
 
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 import (
 	"flag"
 	"fmt"
@@ -53,115 +45,170 @@ import (
 )
 
 func collectFiles(path string, includeTest bool, options testOptions) ([]string, error) {
+	__antithesis_instrumentation__.Notify(41535)
 	cwd, err := os.Getwd()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41543)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(41544)
 	}
+	__antithesis_instrumentation__.Notify(41536)
 
-	// Symlinks in cwd confuse the relative path computation in collectFilesImpl.
 	cwd, err = filepath.EvalSymlinks(cwd)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41545)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(41546)
 	}
+	__antithesis_instrumentation__.Notify(41537)
 
 	seen := make(map[string]struct{})
 
-	// Import the package.
 	config := &packages.Config{
 		Dir:   cwd,
 		Mode:  packages.NeedName | packages.NeedFiles | packages.NeedDeps | packages.NeedImports,
 		Tests: includeTest}
-	// We turn this off because it's hard to set up test data that works with the
-	// module system. Nevertheless, the tests are quite comprehensive.
+
 	config.Env = append(os.Environ(), "GO111MODULE=off")
 	if options.gopath != "" {
+		__antithesis_instrumentation__.Notify(41547)
 		config.Env = append(config.Env, "GOPATH="+options.gopath)
+	} else {
+		__antithesis_instrumentation__.Notify(41548)
 	}
+	__antithesis_instrumentation__.Notify(41538)
 	if options.fsOverlay != nil {
+		__antithesis_instrumentation__.Notify(41549)
 		config.Overlay = options.fsOverlay
+	} else {
+		__antithesis_instrumentation__.Notify(41550)
 	}
+	__antithesis_instrumentation__.Notify(41539)
 	p, err := packages.Load(config, path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41551)
 		return nil, fmt.Errorf("failed to import %s: %w", path, err)
+	} else {
+		__antithesis_instrumentation__.Notify(41552)
 	}
+	__antithesis_instrumentation__.Notify(41540)
 
 	var out []string
 	var process func(pkg *packages.Package) error
 	process = func(pkg *packages.Package) error {
+		__antithesis_instrumentation__.Notify(41553)
 		if len(pkg.Errors) > 0 {
+			__antithesis_instrumentation__.Notify(41560)
 			return fmt.Errorf("failed to import %s: %s", path, pkg.Errors)
+		} else {
+			__antithesis_instrumentation__.Notify(41561)
 		}
-		// Skip packages we've seen before.
+		__antithesis_instrumentation__.Notify(41554)
+
 		if _, ok := seen[pkg.PkgPath]; ok {
+			__antithesis_instrumentation__.Notify(41562)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(41563)
 		}
+		__antithesis_instrumentation__.Notify(41555)
 		seen[pkg.PkgPath] = struct{}{}
 
-		// Skip standard library packages.
 		if isStdlibPackage(pkg.PkgPath) {
+			__antithesis_instrumentation__.Notify(41564)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(41565)
 		}
+		__antithesis_instrumentation__.Notify(41556)
 		sourceFileSets := [][]string{
-			// Include all Go and Cgo source files.
+
 			pkg.GoFiles, pkg.OtherFiles,
 		}
 		if len(pkg.GoFiles) > 0 {
+			__antithesis_instrumentation__.Notify(41566)
 			sourceFileSets = append(sourceFileSets, []string{
-				// Include the package directory itself so that the target is considered
-				// out-of-date if a new file is added to the directory.
+
 				filepath.Dir(pkg.GoFiles[0]),
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(41567)
 		}
+		__antithesis_instrumentation__.Notify(41557)
 
-		// Collect files recursively from the package and its dependencies.
 		for _, sourceFiles := range sourceFileSets {
+			__antithesis_instrumentation__.Notify(41568)
 			for _, sourceFile := range sourceFiles {
-				if isFileAlwaysIgnored(sourceFile) || strings.HasPrefix(sourceFile, "zcgo_flags") {
+				__antithesis_instrumentation__.Notify(41569)
+				if isFileAlwaysIgnored(sourceFile) || func() bool {
+					__antithesis_instrumentation__.Notify(41572)
+					return strings.HasPrefix(sourceFile, "zcgo_flags") == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(41573)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(41574)
 				}
+				__antithesis_instrumentation__.Notify(41570)
 				f, err := filepath.Rel(cwd, sourceFile)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(41575)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(41576)
 				}
+				__antithesis_instrumentation__.Notify(41571)
 				out = append(out, f)
 			}
 		}
+		__antithesis_instrumentation__.Notify(41558)
 		for _, imp := range pkg.Imports {
+			__antithesis_instrumentation__.Notify(41577)
 			if err := process(imp); err != nil {
+				__antithesis_instrumentation__.Notify(41578)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(41579)
 			}
 		}
+		__antithesis_instrumentation__.Notify(41559)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(41541)
 	for _, pkg := range p {
+		__antithesis_instrumentation__.Notify(41580)
 		if err := process(pkg); err != nil {
+			__antithesis_instrumentation__.Notify(41581)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(41582)
 		}
 	}
+	__antithesis_instrumentation__.Notify(41542)
 
 	return out, err
 }
 
 func isStdlibPackage(path string) bool {
-	// Standard library packages never contain a dot; second- and third-party
-	// packages nearly always do. Consider "github.com/cockroachdb/cockroach",
-	// where the domain provides the dot, or "./pkg/sql", where the relative
-	// import provides the dot.
-	//
-	// This logic is not foolproof, but it's the same logic used by goimports.
+	__antithesis_instrumentation__.Notify(41583)
+
 	return !strings.Contains(path, ".")
 }
 
 func isFileAlwaysIgnored(name string) bool {
-	// build.Package.IgnoredGoFiles does not distinguish between Go files that are
-	// always ignored and Go files that are temporarily ignored due to build tags.
-	// Duplicate some logic from go/build [0] here so we can tell the difference.
-	//
-	// [0]: https://github.com/golang/go/blob/9ecf899b2/src/go/build/build.go#L1065-L1068
-	return (strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".")) && filepath.Ext(name) == ".go"
+	__antithesis_instrumentation__.Notify(41584)
+
+	return (strings.HasPrefix(name, "_") || func() bool {
+		__antithesis_instrumentation__.Notify(41585)
+		return strings.HasPrefix(name, ".") == true
+	}() == true) && func() bool {
+		__antithesis_instrumentation__.Notify(41586)
+		return filepath.Ext(name) == ".go" == true
+	}() == true
 }
 
-// See: https://www.cmcrossroads.com/article/gnu-make-escaping-walk-wild-side
 var filenameEscaper = strings.NewReplacer(
 	`[`, `\[`,
 	`]`, `\]`,
@@ -178,22 +225,37 @@ type testOptions struct {
 }
 
 func run(w io.Writer, path string, includeTest bool, binName string, options testOptions) error {
+	__antithesis_instrumentation__.Notify(41587)
 	files, err := collectFiles(path, includeTest, options)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41593)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(41594)
 	}
+	__antithesis_instrumentation__.Notify(41588)
 
 	for i := range files {
+		__antithesis_instrumentation__.Notify(41595)
 		files[i] = filenameEscaper.Replace(files[i])
 	}
+	__antithesis_instrumentation__.Notify(41589)
 
 	absPath, err := filepath.Abs(path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41596)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(41597)
 	}
+	__antithesis_instrumentation__.Notify(41590)
 	if binName == "" {
+		__antithesis_instrumentation__.Notify(41598)
 		binName = filepath.Base(absPath)
+	} else {
+		__antithesis_instrumentation__.Notify(41599)
 	}
+	__antithesis_instrumentation__.Notify(41591)
 
 	sort.Strings(files)
 
@@ -202,24 +264,38 @@ func run(w io.Writer, path string, includeTest bool, binName string, options tes
 	fmt.Fprintf(w, "bin/%s: %s\n", binName, strings.Join(files, " "))
 	fmt.Fprintln(w)
 	for _, f := range files {
+		__antithesis_instrumentation__.Notify(41600)
 		fmt.Fprintf(w, "%s:\n", f)
 	}
+	__antithesis_instrumentation__.Notify(41592)
 
 	return nil
 }
 
 func main() {
+	__antithesis_instrumentation__.Notify(41601)
 	includeTest := flag.Bool("test", false, "include test dependencies")
 	binName := flag.String("bin-name", "", "custom binary name (defaults to bin/<package name>)")
-	flag.Usage = func() { fmt.Fprintf(os.Stderr, "usage: %s [-test] <package>\n", os.Args[0]) }
+	flag.Usage = func() {
+		__antithesis_instrumentation__.Notify(41604)
+		fmt.Fprintf(os.Stderr, "usage: %s [-test] <package>\n", os.Args[0])
+	}
+	__antithesis_instrumentation__.Notify(41602)
 	flag.Parse()
 	if flag.NArg() != 1 {
+		__antithesis_instrumentation__.Notify(41605)
 		flag.Usage()
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(41606)
 	}
+	__antithesis_instrumentation__.Notify(41603)
 
 	if err := run(os.Stdout, flag.Arg(0), *includeTest, *binName, testOptions{}); err != nil {
+		__antithesis_instrumentation__.Notify(41607)
 		fmt.Fprintf(os.Stderr, "%s: %s\n", os.Args[0], err)
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(41608)
 	}
 }

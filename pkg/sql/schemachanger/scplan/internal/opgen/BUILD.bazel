@@ -65,6 +65,7 @@ go_library(
         "//pkg/util/log",
         "//pkg/util/protoutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_redact//:redact",
     ],
@@ -75,5 +76,8 @@ go_test(
     size = "small",
     srcs = ["register_test.go"],
     embed = [":opgen"],
-    deps = ["//pkg/sql/schemachanger/scpb"],
+    deps = [
+        "//pkg/sql/schemachanger/scpb",
+        "@com_antithesis_instrumentation//wrappers",
+    ],
 )

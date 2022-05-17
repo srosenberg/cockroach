@@ -6,6 +6,7 @@ go_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/testutils/lint/passes/passesutil",
     visibility = ["//visibility:public"],
     deps = [
+        "@com_antithesis_instrumentation//wrappers",
         "@org_golang_x_tools//go/analysis",
         "@org_golang_x_tools//go/ast/astutil",
     ],
@@ -25,6 +26,7 @@ go_test(
         "//pkg/testutils/lint/passes/forbiddenmethod",
         "//pkg/testutils/lint/passes/unconvert",
         "//pkg/testutils/skip",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
         "@org_golang_x_tools//go/analysis/analysistest",
     ],

@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package schemafeed
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -56,162 +50,253 @@ var (
 	}
 )
 
-// Contains returns true if the receiver includes the given event
-// types.
 func (e tableEventType) Contains(event tableEventType) bool {
+	__antithesis_instrumentation__.Notify(17966)
 	return e&event == event
 }
 
-// Clear returns a new tableEventType with the given event types
-// cleared.
 func (e tableEventType) Clear(event tableEventType) tableEventType {
+	__antithesis_instrumentation__.Notify(17967)
 	return e & (^event)
 }
 
 func classifyTableEvent(e TableEvent) tableEventType {
+	__antithesis_instrumentation__.Notify(17968)
 	et := tableEventTypeUnknown
 	if primaryKeyChanged(e) {
+		__antithesis_instrumentation__.Notify(17976)
 		et = et | tableEventPrimaryKeyChange
+	} else {
+		__antithesis_instrumentation__.Notify(17977)
 	}
+	__antithesis_instrumentation__.Notify(17969)
 
 	if newVisibleColumnBackfillComplete(e) {
+		__antithesis_instrumentation__.Notify(17978)
 		et = et | tableEventTypeAddColumnWithBackfill
+	} else {
+		__antithesis_instrumentation__.Notify(17979)
 	}
+	__antithesis_instrumentation__.Notify(17970)
 
 	if newHiddenColumnBackfillComplete(e) {
+		__antithesis_instrumentation__.Notify(17980)
 		et = et | tableEventAddHiddenColumn
+	} else {
+		__antithesis_instrumentation__.Notify(17981)
 	}
+	__antithesis_instrumentation__.Notify(17971)
 
 	if newColumnNoBackfill(e) {
+		__antithesis_instrumentation__.Notify(17982)
 		et = et | tableEventTypeAddColumnNoBackfill
+	} else {
+		__antithesis_instrumentation__.Notify(17983)
 	}
+	__antithesis_instrumentation__.Notify(17972)
 
 	if hasNewColumnDropBackfillMutation(e) {
+		__antithesis_instrumentation__.Notify(17984)
 		et = et | tableEventTypeDropColumn
+	} else {
+		__antithesis_instrumentation__.Notify(17985)
 	}
+	__antithesis_instrumentation__.Notify(17973)
 
 	if tableTruncated(e) {
+		__antithesis_instrumentation__.Notify(17986)
 		et = et | tableEventTruncate
+	} else {
+		__antithesis_instrumentation__.Notify(17987)
 	}
+	__antithesis_instrumentation__.Notify(17974)
 
 	if regionalByRowChanged(e) {
+		__antithesis_instrumentation__.Notify(17988)
 		et = et | tableEventLocalityRegionalByRowChange
+	} else {
+		__antithesis_instrumentation__.Notify(17989)
 	}
+	__antithesis_instrumentation__.Notify(17975)
 
 	return et
 }
 
-// typeFilters indicates whether a table event of a given type should be
-// permitted by the filter.
 type tableEventFilter map[tableEventType]bool
 
 func (filter tableEventFilter) shouldFilter(ctx context.Context, e TableEvent) (bool, error) {
+	__antithesis_instrumentation__.Notify(17990)
 	et := classifyTableEvent(e)
 
-	// Truncation events are not ignored and return an error.
 	if et.Contains(tableEventTruncate) {
+		__antithesis_instrumentation__.Notify(17995)
 		return false, errors.Errorf(`"%s" was truncated`, e.Before.GetName())
+	} else {
+		__antithesis_instrumentation__.Notify(17996)
 	}
+	__antithesis_instrumentation__.Notify(17991)
 
 	if et == tableEventTypeUnknown {
+		__antithesis_instrumentation__.Notify(17997)
 		shouldFilter, ok := filter[tableEventTypeUnknown]
 		if !ok {
+			__antithesis_instrumentation__.Notify(17999)
 			return false, errors.AssertionFailedf("policy does not specify how to handle event type %v", et)
+		} else {
+			__antithesis_instrumentation__.Notify(18000)
 		}
+		__antithesis_instrumentation__.Notify(17998)
 		return shouldFilter, nil
+	} else {
+		__antithesis_instrumentation__.Notify(18001)
 	}
+	__antithesis_instrumentation__.Notify(17992)
 
 	shouldFilter := true
 	for filterEvent, filterPolicy := range filter {
-		if et.Contains(filterEvent) && !filterPolicy {
+		__antithesis_instrumentation__.Notify(18002)
+		if et.Contains(filterEvent) && func() bool {
+			__antithesis_instrumentation__.Notify(18004)
+			return !filterPolicy == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(18005)
 			shouldFilter = false
+		} else {
+			__antithesis_instrumentation__.Notify(18006)
 		}
+		__antithesis_instrumentation__.Notify(18003)
 		et = et.Clear(filterEvent)
 	}
+	__antithesis_instrumentation__.Notify(17993)
 	if et > 0 {
+		__antithesis_instrumentation__.Notify(18007)
 		return false, errors.AssertionFailedf("policy does not specify how to handle event (unhandled event types: %v)", et)
+	} else {
+		__antithesis_instrumentation__.Notify(18008)
 	}
+	__antithesis_instrumentation__.Notify(17994)
 	return shouldFilter, nil
 }
 
 func hasNewColumnDropBackfillMutation(e TableEvent) (res bool) {
-	// Make sure that the old descriptor *doesn't* have the same mutation to avoid adding
-	// the same scan boundary more than once.
-	return !dropColumnMutationExists(e.Before) && dropColumnMutationExists(e.After)
+	__antithesis_instrumentation__.Notify(18009)
+
+	return !dropColumnMutationExists(e.Before) && func() bool {
+		__antithesis_instrumentation__.Notify(18010)
+		return dropColumnMutationExists(e.After) == true
+	}() == true
 }
 
 func dropColumnMutationExists(desc catalog.TableDescriptor) bool {
+	__antithesis_instrumentation__.Notify(18011)
 	for _, m := range desc.AllMutations() {
+		__antithesis_instrumentation__.Notify(18013)
 		if m.AsColumn() == nil {
+			__antithesis_instrumentation__.Notify(18015)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(18016)
 		}
-		if m.Dropped() && m.WriteAndDeleteOnly() {
+		__antithesis_instrumentation__.Notify(18014)
+		if m.Dropped() && func() bool {
+			__antithesis_instrumentation__.Notify(18017)
+			return m.WriteAndDeleteOnly() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(18018)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(18019)
 		}
 	}
+	__antithesis_instrumentation__.Notify(18012)
 	return false
 }
 
 func newVisibleColumnBackfillComplete(e TableEvent) (res bool) {
-	// TODO(ajwerner): What is the case where the before has a backfill mutation
-	// and the After doesn't? What about other queued mutations?
-	return len(e.Before.VisibleColumns()) < len(e.After.VisibleColumns()) &&
-		e.Before.HasColumnBackfillMutation() && !e.After.HasColumnBackfillMutation()
+	__antithesis_instrumentation__.Notify(18020)
+
+	return len(e.Before.VisibleColumns()) < len(e.After.VisibleColumns()) && func() bool {
+		__antithesis_instrumentation__.Notify(18021)
+		return e.Before.HasColumnBackfillMutation() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(18022)
+		return !e.After.HasColumnBackfillMutation() == true
+	}() == true
 }
 
 func newHiddenColumnBackfillComplete(e TableEvent) (res bool) {
-	return len(e.Before.VisibleColumns()) == len(e.After.VisibleColumns()) &&
-		e.Before.HasColumnBackfillMutation() && !e.After.HasColumnBackfillMutation()
+	__antithesis_instrumentation__.Notify(18023)
+	return len(e.Before.VisibleColumns()) == len(e.After.VisibleColumns()) && func() bool {
+		__antithesis_instrumentation__.Notify(18024)
+		return e.Before.HasColumnBackfillMutation() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(18025)
+		return !e.After.HasColumnBackfillMutation() == true
+	}() == true
 }
 
 func newColumnNoBackfill(e TableEvent) (res bool) {
-	return len(e.Before.PublicColumns()) < len(e.After.PublicColumns()) &&
-		!e.Before.HasColumnBackfillMutation()
+	__antithesis_instrumentation__.Notify(18026)
+	return len(e.Before.PublicColumns()) < len(e.After.PublicColumns()) && func() bool {
+		__antithesis_instrumentation__.Notify(18027)
+		return !e.Before.HasColumnBackfillMutation() == true
+	}() == true
 }
 
 func pkChangeMutationExists(desc catalog.TableDescriptor) bool {
+	__antithesis_instrumentation__.Notify(18028)
 	for _, m := range desc.AllMutations() {
-		if m.Adding() && m.AsPrimaryKeySwap() != nil {
+		__antithesis_instrumentation__.Notify(18030)
+		if m.Adding() && func() bool {
+			__antithesis_instrumentation__.Notify(18031)
+			return m.AsPrimaryKeySwap() != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(18032)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(18033)
 		}
 	}
+	__antithesis_instrumentation__.Notify(18029)
 	return false
 }
 
 func tableTruncated(e TableEvent) bool {
-	// A table was truncated if the primary index has changed, but an ALTER
-	// PRIMARY KEY statement was not performed. TRUNCATE operates by creating
-	// a new set of indexes for the table, including a new primary index.
-	return e.Before.GetPrimaryIndexID() != e.After.GetPrimaryIndexID() && !pkChangeMutationExists(e.Before)
+	__antithesis_instrumentation__.Notify(18034)
+
+	return e.Before.GetPrimaryIndexID() != e.After.GetPrimaryIndexID() && func() bool {
+		__antithesis_instrumentation__.Notify(18035)
+		return !pkChangeMutationExists(e.Before) == true
+	}() == true
 }
 
 func primaryKeyChanged(e TableEvent) bool {
-	return e.Before.GetPrimaryIndexID() != e.After.GetPrimaryIndexID() &&
-		pkChangeMutationExists(e.Before)
+	__antithesis_instrumentation__.Notify(18036)
+	return e.Before.GetPrimaryIndexID() != e.After.GetPrimaryIndexID() && func() bool {
+		__antithesis_instrumentation__.Notify(18037)
+		return pkChangeMutationExists(e.Before) == true
+	}() == true
 }
 
 func regionalByRowChanged(e TableEvent) bool {
+	__antithesis_instrumentation__.Notify(18038)
 	return e.Before.IsLocalityRegionalByRow() != e.After.IsLocalityRegionalByRow()
 }
 
-// IsPrimaryIndexChange returns true if the event corresponds to a change
-// in the primary index.
 func IsPrimaryIndexChange(e TableEvent) bool {
+	__antithesis_instrumentation__.Notify(18039)
 	et := classifyTableEvent(e)
 	return et.Contains(tableEventPrimaryKeyChange)
 }
 
-// IsOnlyPrimaryIndexChange returns to true if the event corresponds
-// to a change in the primary index and _only_ a change in the primary
-// index.
 func IsOnlyPrimaryIndexChange(e TableEvent) bool {
+	__antithesis_instrumentation__.Notify(18040)
 	et := classifyTableEvent(e)
 	return et == tableEventPrimaryKeyChange
 }
 
-// IsRegionalByRowChange returns true if the event corresponds to a
-// change in the table's locality to or from RegionalByRow.
 func IsRegionalByRowChange(e TableEvent) bool {
+	__antithesis_instrumentation__.Notify(18041)
 	et := classifyTableEvent(e)
 	return et.Contains(tableEventLocalityRegionalByRowChange)
 }

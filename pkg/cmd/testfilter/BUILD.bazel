@@ -5,13 +5,17 @@ go_library(
     srcs = ["main.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/cmd/testfilter",
     visibility = ["//visibility:private"],
-    deps = ["@com_github_cockroachdb_errors//:errors"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@com_github_cockroachdb_errors//:errors",
+    ],
 )
 
 go_binary(
     name = "testfilter",
     embed = [":testfilter_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -23,6 +27,7 @@ go_test(
     deps = [
         "//pkg/testutils",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
     ],
 )

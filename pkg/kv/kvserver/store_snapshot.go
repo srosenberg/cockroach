@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,35 +32,22 @@ import (
 )
 
 const (
-	// Messages that provide detail about why a snapshot was rejected.
 	storeDrainingMsg = "store is draining"
 
-	// IntersectingSnapshotMsg is part of the error message returned from
-	// canAcceptSnapshotLocked and is exposed here so testing can rely on it.
 	IntersectingSnapshotMsg = "snapshot intersects existing range"
 )
 
-// incomingSnapshotStream is the minimal interface on a GRPC stream required
-// to receive a snapshot over the network.
 type incomingSnapshotStream interface {
 	Send(*kvserverpb.SnapshotResponse) error
 	Recv() (*kvserverpb.SnapshotRequest, error)
 }
 
-// outgoingSnapshotStream is the minimal interface on a GRPC stream required
-// to send a snapshot over the network.
 type outgoingSnapshotStream interface {
 	Send(*kvserverpb.SnapshotRequest) error
 	Recv() (*kvserverpb.SnapshotResponse, error)
 }
 
-// snapshotStrategy is an approach to sending and receiving Range snapshots.
-// Each implementation corresponds to a SnapshotRequest_Strategy, and it is
-// expected that the implementation that matches the Strategy specified in the
-// snapshot header will always be used.
 type snapshotStrategy interface {
-	// Receive streams SnapshotRequests in from the provided stream and
-	// constructs an IncomingSnapshot.
 	Receive(
 		context.Context,
 		incomingSnapshotStream,
@@ -76,8 +55,6 @@ type snapshotStrategy interface {
 		*metric.Counter,
 	) (IncomingSnapshot, error)
 
-	// Send streams SnapshotRequests created from the OutgoingSnapshot in to the
-	// provided stream. On nil error, the number of bytes sent is returned.
 	Send(
 		context.Context,
 		outgoingSnapshotStream,
@@ -86,11 +63,8 @@ type snapshotStrategy interface {
 		*metric.Counter,
 	) (int64, error)
 
-	// Status provides a status report on the work performed during the
-	// snapshot. Only valid if the strategy succeeded.
 	Status() redact.RedactableString
 
-	// Close cleans up any resources associated with the snapshot strategy.
 	Close(context.Context)
 }
 
@@ -99,59 +73,39 @@ func assertStrategy(
 	header kvserverpb.SnapshotRequest_Header,
 	expect kvserverpb.SnapshotRequest_Strategy,
 ) {
+	__antithesis_instrumentation__.Notify(126015)
 	if header.Strategy != expect {
+		__antithesis_instrumentation__.Notify(126016)
 		log.Fatalf(ctx, "expected strategy %s, found strategy %s", expect, header.Strategy)
+	} else {
+		__antithesis_instrumentation__.Notify(126017)
 	}
 }
 
-// Separated locks and snapshots send/receive:
-// When running in a mixed version cluster with 21.1 and 20.2, snapshots sent
-// by 21.1 nodes will attempt to read the lock table key space and send any
-// keys in it. But there will be none, so 20.2 nodes receiving such snapshots
-// are fine. A 21.1 node receiving a snapshot will construct SSTs for the lock
-// table key range which will only contain ClearRange for those ranges.
-//
-// When the cluster transitions to clusterversion.SeparatedLocks, the nodes
-// that see that transition can immediately start writing separated
-// intents/locks. Since the 21.1 nodes that have not seen that transition are
-// always ready to handle separated intents, including receiving them in
-// snapshots, the cluster will behave correctly despite nodes seeing this
-// state transition at different times.
-
-// kvBatchSnapshotStrategy is an implementation of snapshotStrategy that streams
-// batches of KV pairs in the BatchRepr format.
 type kvBatchSnapshotStrategy struct {
 	status redact.RedactableString
 
-	// The size of the batches of PUT operations to send to the receiver of the
-	// snapshot. Only used on the sender side.
 	batchSize int64
-	// Limiter for sending KV batches. Only used on the sender side.
+
 	limiter *rate.Limiter
-	// Only used on the sender side.
+
 	newBatch func() storage.Batch
 
-	// The approximate size of the SST chunk to buffer in memory on the receiver
-	// before flushing to disk. Only used on the receiver side.
 	sstChunkSize int64
-	// Only used on the receiver side.
+
 	scratch *SSTSnapshotStorageScratch
 	st      *cluster.Settings
 }
 
-// multiSSTWriter is a wrapper around RocksDBSstFileWriter and
-// SSTSnapshotStorageScratch that handles chunking SSTs and persisting them to
-// disk.
 type multiSSTWriter struct {
 	st        *cluster.Settings
 	scratch   *SSTSnapshotStorageScratch
 	currSST   storage.SSTWriter
 	keyRanges []rditer.KeyRange
 	currRange int
-	// The approximate size of the SST chunk to buffer in memory on the receiver
-	// before flushing to disk.
+
 	sstChunkSize int64
-	// The total size of SST data. Updated on SST finalization.
+
 	dataSize int64
 }
 
@@ -162,6 +116,7 @@ func newMultiSSTWriter(
 	keyRanges []rditer.KeyRange,
 	sstChunkSize int64,
 ) (multiSSTWriter, error) {
+	__antithesis_instrumentation__.Notify(126018)
 	msstw := multiSSTWriter{
 		st:           st,
 		scratch:      scratch,
@@ -169,31 +124,49 @@ func newMultiSSTWriter(
 		sstChunkSize: sstChunkSize,
 	}
 	if err := msstw.initSST(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(126020)
 		return msstw, err
+	} else {
+		__antithesis_instrumentation__.Notify(126021)
 	}
+	__antithesis_instrumentation__.Notify(126019)
 	return msstw, nil
 }
 
 func (msstw *multiSSTWriter) initSST(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(126022)
 	newSSTFile, err := msstw.scratch.NewFile(ctx, msstw.sstChunkSize)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126025)
 		return errors.Wrap(err, "failed to create new sst file")
+	} else {
+		__antithesis_instrumentation__.Notify(126026)
 	}
+	__antithesis_instrumentation__.Notify(126023)
 	newSST := storage.MakeIngestionSSTWriter(ctx, msstw.st, newSSTFile)
 	msstw.currSST = newSST
 	if err := msstw.currSST.ClearRawRange(
 		msstw.keyRanges[msstw.currRange].Start, msstw.keyRanges[msstw.currRange].End); err != nil {
+		__antithesis_instrumentation__.Notify(126027)
 		msstw.currSST.Close()
 		return errors.Wrap(err, "failed to clear range on sst file writer")
+	} else {
+		__antithesis_instrumentation__.Notify(126028)
 	}
+	__antithesis_instrumentation__.Notify(126024)
 	return nil
 }
 
 func (msstw *multiSSTWriter) finalizeSST(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(126029)
 	err := msstw.currSST.Finish()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126031)
 		return errors.Wrap(err, "failed to finish sst")
+	} else {
+		__antithesis_instrumentation__.Notify(126032)
 	}
+	__antithesis_instrumentation__.Notify(126030)
 	msstw.dataSize += msstw.currSST.DataSize
 	msstw.currRange++
 	msstw.currSST.Close()
@@ -201,118 +174,182 @@ func (msstw *multiSSTWriter) finalizeSST(ctx context.Context) error {
 }
 
 func (msstw *multiSSTWriter) Put(ctx context.Context, key storage.EngineKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(126033)
 	for msstw.keyRanges[msstw.currRange].End.Compare(key.Key) <= 0 {
-		// Finish the current SST, write to the file, and move to the next key
-		// range.
+		__antithesis_instrumentation__.Notify(126037)
+
 		if err := msstw.finalizeSST(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(126039)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(126040)
 		}
+		__antithesis_instrumentation__.Notify(126038)
 		if err := msstw.initSST(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(126041)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(126042)
 		}
 	}
+	__antithesis_instrumentation__.Notify(126034)
 	if msstw.keyRanges[msstw.currRange].Start.Compare(key.Key) > 0 {
+		__antithesis_instrumentation__.Notify(126043)
 		return errors.AssertionFailedf("client error: expected %s to fall in one of %s", key.Key, msstw.keyRanges)
+	} else {
+		__antithesis_instrumentation__.Notify(126044)
 	}
+	__antithesis_instrumentation__.Notify(126035)
 	if err := msstw.currSST.PutEngineKey(key, value); err != nil {
+		__antithesis_instrumentation__.Notify(126045)
 		return errors.Wrap(err, "failed to put in sst")
+	} else {
+		__antithesis_instrumentation__.Notify(126046)
 	}
+	__antithesis_instrumentation__.Notify(126036)
 	return nil
 }
 
 func (msstw *multiSSTWriter) Finish(ctx context.Context) (int64, error) {
+	__antithesis_instrumentation__.Notify(126047)
 	if msstw.currRange < len(msstw.keyRanges) {
+		__antithesis_instrumentation__.Notify(126049)
 		for {
+			__antithesis_instrumentation__.Notify(126050)
 			if err := msstw.finalizeSST(ctx); err != nil {
+				__antithesis_instrumentation__.Notify(126053)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(126054)
 			}
+			__antithesis_instrumentation__.Notify(126051)
 			if msstw.currRange >= len(msstw.keyRanges) {
+				__antithesis_instrumentation__.Notify(126055)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(126056)
 			}
+			__antithesis_instrumentation__.Notify(126052)
 			if err := msstw.initSST(ctx); err != nil {
+				__antithesis_instrumentation__.Notify(126057)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(126058)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126059)
 	}
+	__antithesis_instrumentation__.Notify(126048)
 	return msstw.dataSize, nil
 }
 
 func (msstw *multiSSTWriter) Close() {
+	__antithesis_instrumentation__.Notify(126060)
 	msstw.currSST.Close()
 }
 
-// Receive implements the snapshotStrategy interface.
-//
-// NOTE: This function assumes that the key-value pairs are sent in sorted
-// order. The key-value pairs are sent in the following sorted order:
-//
-// 1. Replicated range-id local key range
-// 2. Range-local key range
-// 3. Two lock-table key ranges (optional)
-// 4. User key range
 func (kvSS *kvBatchSnapshotStrategy) Receive(
 	ctx context.Context,
 	stream incomingSnapshotStream,
 	header kvserverpb.SnapshotRequest_Header,
 	bytesRcvdCounter *metric.Counter,
 ) (IncomingSnapshot, error) {
+	__antithesis_instrumentation__.Notify(126061)
 	assertStrategy(ctx, header, kvserverpb.SnapshotRequest_KV_BATCH)
 
-	// At the moment we'll write at most five SSTs.
-	// TODO(jeffreyxiao): Re-evaluate as the default range size grows.
 	keyRanges := rditer.MakeReplicatedKeyRanges(header.State.Desc)
 	msstw, err := newMultiSSTWriter(ctx, kvSS.st, kvSS.scratch, keyRanges, kvSS.sstChunkSize)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126063)
 		return noSnap, err
+	} else {
+		__antithesis_instrumentation__.Notify(126064)
 	}
+	__antithesis_instrumentation__.Notify(126062)
 	defer msstw.Close()
 
 	for {
+		__antithesis_instrumentation__.Notify(126065)
 		req, err := stream.Recv()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(126069)
 			return noSnap, err
+		} else {
+			__antithesis_instrumentation__.Notify(126070)
 		}
+		__antithesis_instrumentation__.Notify(126066)
 		if req.Header != nil {
+			__antithesis_instrumentation__.Notify(126071)
 			err := errors.New("client error: provided a header mid-stream")
 			return noSnap, sendSnapshotError(stream, err)
+		} else {
+			__antithesis_instrumentation__.Notify(126072)
 		}
+		__antithesis_instrumentation__.Notify(126067)
 
 		if req.KVBatch != nil {
+			__antithesis_instrumentation__.Notify(126073)
 			bytesRcvdCounter.Inc(int64(len(req.KVBatch)))
 			batchReader, err := storage.NewRocksDBBatchReader(req.KVBatch)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(126075)
 				return noSnap, errors.Wrap(err, "failed to decode batch")
+			} else {
+				__antithesis_instrumentation__.Notify(126076)
 			}
-			// All operations in the batch are guaranteed to be puts.
+			__antithesis_instrumentation__.Notify(126074)
+
 			for batchReader.Next() {
+				__antithesis_instrumentation__.Notify(126077)
 				if batchReader.BatchType() != storage.BatchTypeValue {
+					__antithesis_instrumentation__.Notify(126080)
 					return noSnap, errors.AssertionFailedf("expected type %d, found type %d", storage.BatchTypeValue, batchReader.BatchType())
+				} else {
+					__antithesis_instrumentation__.Notify(126081)
 				}
+				__antithesis_instrumentation__.Notify(126078)
 				key, err := batchReader.EngineKey()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(126082)
 					return noSnap, errors.Wrap(err, "failed to decode mvcc key")
+				} else {
+					__antithesis_instrumentation__.Notify(126083)
 				}
+				__antithesis_instrumentation__.Notify(126079)
 				if err := msstw.Put(ctx, key, batchReader.Value()); err != nil {
+					__antithesis_instrumentation__.Notify(126084)
 					return noSnap, errors.Wrapf(err, "writing sst for raft snapshot")
+				} else {
+					__antithesis_instrumentation__.Notify(126085)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(126086)
 		}
+		__antithesis_instrumentation__.Notify(126068)
 		if req.Final {
-			// We finished receiving all batches and log entries. It's possible that
-			// we did not receive any key-value pairs for some of the key ranges, but
-			// we must still construct SSTs with range deletion tombstones to remove
-			// the data.
+			__antithesis_instrumentation__.Notify(126087)
+
 			dataSize, err := msstw.Finish(ctx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(126090)
 				return noSnap, errors.Wrapf(err, "finishing sst for raft snapshot")
+			} else {
+				__antithesis_instrumentation__.Notify(126091)
 			}
+			__antithesis_instrumentation__.Notify(126088)
 			msstw.Close()
 
 			snapUUID, err := uuid.FromBytes(header.RaftMessageRequest.Message.Snapshot.Data)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(126092)
 				err = errors.Wrap(err, "client error: invalid snapshot")
 				return noSnap, sendSnapshotError(stream, err)
+			} else {
+				__antithesis_instrumentation__.Notify(126093)
 			}
+			__antithesis_instrumentation__.Notify(126089)
 
 			inSnap := IncomingSnapshot{
 				SnapUUID:          snapUUID,
@@ -326,15 +363,14 @@ func (kvSS *kvBatchSnapshotStrategy) Receive(
 
 			kvSS.status = redact.Sprintf("ssts: %d", len(kvSS.scratch.SSTs()))
 			return inSnap, nil
+		} else {
+			__antithesis_instrumentation__.Notify(126094)
 		}
 	}
 }
 
-// errMalformedSnapshot indicates that the snapshot in question is malformed,
-// for e.g. missing raft log entries.
 var errMalformedSnapshot = errors.New("malformed snapshot generated")
 
-// Send implements the snapshotStrategy interface.
 func (kvSS *kvBatchSnapshotStrategy) Send(
 	ctx context.Context,
 	stream outgoingSnapshotStream,
@@ -342,55 +378,89 @@ func (kvSS *kvBatchSnapshotStrategy) Send(
 	snap *OutgoingSnapshot,
 	bytesSentMetric *metric.Counter,
 ) (int64, error) {
+	__antithesis_instrumentation__.Notify(126095)
 	assertStrategy(ctx, header, kvserverpb.SnapshotRequest_KV_BATCH)
 
-	// bytesSent is updated as key-value batches are sent with sendBatch. It does
-	// not reflect the log entries sent (which are never sent in newer versions of
-	// CRDB, as of VersionUnreplicatedTruncatedState).
 	bytesSent := int64(0)
 
-	// Iterate over all keys using the provided iterator and stream out batches
-	// of key-values.
 	kvs := 0
 	var b storage.Batch
 	defer func() {
+		__antithesis_instrumentation__.Notify(126099)
 		if b != nil {
+			__antithesis_instrumentation__.Notify(126100)
 			b.Close()
+		} else {
+			__antithesis_instrumentation__.Notify(126101)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(126096)
 	for iter := snap.Iter; ; iter.Next() {
+		__antithesis_instrumentation__.Notify(126102)
 		if ok, err := iter.Valid(); err != nil {
+			__antithesis_instrumentation__.Notify(126106)
 			return 0, err
-		} else if !ok {
-			break
+		} else {
+			__antithesis_instrumentation__.Notify(126107)
+			if !ok {
+				__antithesis_instrumentation__.Notify(126108)
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(126109)
+			}
 		}
+		__antithesis_instrumentation__.Notify(126103)
 		kvs++
 		unsafeKey := iter.UnsafeKey()
 		unsafeValue := iter.UnsafeValue()
 		if b == nil {
+			__antithesis_instrumentation__.Notify(126110)
 			b = kvSS.newBatch()
+		} else {
+			__antithesis_instrumentation__.Notify(126111)
 		}
+		__antithesis_instrumentation__.Notify(126104)
 		if err := b.PutEngineKey(unsafeKey, unsafeValue); err != nil {
+			__antithesis_instrumentation__.Notify(126112)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(126113)
 		}
+		__antithesis_instrumentation__.Notify(126105)
 
 		if bLen := int64(b.Len()); bLen >= kvSS.batchSize {
+			__antithesis_instrumentation__.Notify(126114)
 			if err := kvSS.sendBatch(ctx, stream, b); err != nil {
+				__antithesis_instrumentation__.Notify(126116)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(126117)
 			}
+			__antithesis_instrumentation__.Notify(126115)
 			bytesSent += bLen
 			bytesSentMetric.Inc(bLen)
 			b.Close()
 			b = nil
+		} else {
+			__antithesis_instrumentation__.Notify(126118)
 		}
 	}
+	__antithesis_instrumentation__.Notify(126097)
 	if b != nil {
+		__antithesis_instrumentation__.Notify(126119)
 		if err := kvSS.sendBatch(ctx, stream, b); err != nil {
+			__antithesis_instrumentation__.Notify(126121)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(126122)
 		}
+		__antithesis_instrumentation__.Notify(126120)
 		bytesSent += int64(b.Len())
 		bytesSentMetric.Inc(int64(b.Len()))
+	} else {
+		__antithesis_instrumentation__.Notify(126123)
 	}
+	__antithesis_instrumentation__.Notify(126098)
 
 	kvSS.status = redact.Sprintf("kv pairs: %d", kvs)
 	return bytesSent, nil
@@ -399,72 +469,86 @@ func (kvSS *kvBatchSnapshotStrategy) Send(
 func (kvSS *kvBatchSnapshotStrategy) sendBatch(
 	ctx context.Context, stream outgoingSnapshotStream, batch storage.Batch,
 ) error {
+	__antithesis_instrumentation__.Notify(126124)
 	if err := kvSS.limiter.WaitN(ctx, 1); err != nil {
+		__antithesis_instrumentation__.Notify(126126)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126127)
 	}
+	__antithesis_instrumentation__.Notify(126125)
 	return stream.Send(&kvserverpb.SnapshotRequest{KVBatch: batch.Repr()})
 }
 
-// Status implements the snapshotStrategy interface.
 func (kvSS *kvBatchSnapshotStrategy) Status() redact.RedactableString {
+	__antithesis_instrumentation__.Notify(126128)
 	return kvSS.status
 }
 
-// Close implements the snapshotStrategy interface.
 func (kvSS *kvBatchSnapshotStrategy) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(126129)
 	if kvSS.scratch != nil {
-		// A failure to clean up the storage is benign except that it will leak
-		// disk space (which is reclaimed on node restart). It is unexpected
-		// though, so log a warning.
+		__antithesis_instrumentation__.Notify(126130)
+
 		if err := kvSS.scratch.Clear(); err != nil {
+			__antithesis_instrumentation__.Notify(126131)
 			log.Warningf(ctx, "error closing kvBatchSnapshotStrategy: %v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(126132)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126133)
 	}
 }
 
-// reserveSnapshot throttles incoming snapshots. The returned closure is used
-// to cleanup the reservation and release its resources.
 func (s *Store) reserveSnapshot(
 	ctx context.Context, header *kvserverpb.SnapshotRequest_Header,
 ) (_cleanup func(), _err error) {
+	__antithesis_instrumentation__.Notify(126134)
 	tBegin := timeutil.Now()
 
-	// Empty snapshots are exempt from rate limits because they're so cheap to
-	// apply. This vastly speeds up rebalancing any empty ranges created by a
-	// RESTORE or manual SPLIT AT, since it prevents these empty snapshots from
-	// getting stuck behind large snapshots managed by the replicate queue.
 	if header.RangeSize != 0 {
+		__antithesis_instrumentation__.Notify(126137)
 		queueCtx := ctx
 		if deadline, ok := queueCtx.Deadline(); ok {
-			// Enforce a more strict timeout for acquiring the snapshot reservation to
-			// ensure that if the reservation is acquired, the snapshot has sufficient
-			// time to complete. See the comment on snapshotReservationQueueTimeoutFraction
-			// and TestReserveSnapshotQueueTimeout.
+			__antithesis_instrumentation__.Notify(126139)
+
 			timeoutFrac := snapshotReservationQueueTimeoutFraction.Get(&s.ClusterSettings().SV)
 			timeout := time.Duration(timeoutFrac * float64(timeutil.Until(deadline)))
 			var cancel func()
-			queueCtx, cancel = context.WithTimeout(queueCtx, timeout) // nolint:context
+			queueCtx, cancel = context.WithTimeout(queueCtx, timeout)
 			defer cancel()
+		} else {
+			__antithesis_instrumentation__.Notify(126140)
 		}
+		__antithesis_instrumentation__.Notify(126138)
 		select {
 		case s.snapshotApplySem <- struct{}{}:
+			__antithesis_instrumentation__.Notify(126141)
 		case <-queueCtx.Done():
+			__antithesis_instrumentation__.Notify(126142)
 			if err := ctx.Err(); err != nil {
+				__antithesis_instrumentation__.Notify(126145)
 				return nil, errors.Wrap(err, "acquiring snapshot reservation")
+			} else {
+				__antithesis_instrumentation__.Notify(126146)
 			}
+			__antithesis_instrumentation__.Notify(126143)
 			return nil, errors.Wrapf(queueCtx.Err(),
 				"giving up during snapshot reservation due to %q",
 				snapshotReservationQueueTimeoutFraction.Key())
 		case <-s.stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(126144)
 			return nil, errors.Errorf("stopped")
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126147)
 	}
+	__antithesis_instrumentation__.Notify(126135)
 
-	// The choice here is essentially arbitrary, but with a default range size of 128mb-512mb and the
-	// Raft snapshot rate limiting of 32mb/s, we expect to spend less than 16s per snapshot.
-	// which is what we want to log.
 	const snapshotReservationWaitWarnThreshold = 32 * time.Second
 	if elapsed := timeutil.Since(tBegin); elapsed > snapshotReservationWaitWarnThreshold {
+		__antithesis_instrumentation__.Notify(126148)
 		replDesc, _ := header.State.Desc.GetReplicaDescriptor(s.StoreID())
 		log.Infof(
 			ctx,
@@ -473,45 +557,42 @@ func (s *Store) reserveSnapshot(
 			header.State.Desc.RangeID,
 			replDesc.ReplicaID,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(126149)
 	}
+	__antithesis_instrumentation__.Notify(126136)
 
 	s.metrics.ReservedReplicaCount.Inc(1)
 	s.metrics.Reserved.Inc(header.RangeSize)
 	return func() {
+		__antithesis_instrumentation__.Notify(126150)
 		s.metrics.ReservedReplicaCount.Dec(1)
 		s.metrics.Reserved.Dec(header.RangeSize)
 		if header.RangeSize != 0 {
+			__antithesis_instrumentation__.Notify(126151)
 			<-s.snapshotApplySem
+		} else {
+			__antithesis_instrumentation__.Notify(126152)
 		}
 	}, nil
 }
 
-// canAcceptSnapshotLocked returns (_, nil) if the snapshot can be applied to
-// this store's replica (i.e. the snapshot is not from an older incarnation of
-// the replica) and a placeholder that can be (but is not yet) added to the
-// replicasByKey map (if necessary).
-//
-// Both the store mu and the raft mu for the existing replica (which must exist)
-// must be held.
 func (s *Store) canAcceptSnapshotLocked(
 	ctx context.Context, snapHeader *kvserverpb.SnapshotRequest_Header,
 ) (*ReplicaPlaceholder, error) {
-	// TODO(tbg): see the comment on desc.Generation for what seems to be a much
-	// saner way to handle overlap via generational semantics.
+	__antithesis_instrumentation__.Notify(126153)
+
 	desc := *snapHeader.State.Desc
 
-	// First, check for an existing Replica.
 	existingRepl, ok := s.mu.replicasByRangeID.Load(desc.RangeID)
 	if !ok {
+		__antithesis_instrumentation__.Notify(126158)
 		return nil, errors.Errorf("canAcceptSnapshotLocked requires a replica present")
+	} else {
+		__antithesis_instrumentation__.Notify(126159)
 	}
-	// The raftMu is held which allows us to use the existing replica as a
-	// placeholder when we decide that the snapshot can be applied. As long as the
-	// caller releases the raftMu only after feeding the snapshot into the
-	// replica, this is safe. This is true even when the snapshot spans a merge,
-	// because we will be guaranteed to have the subsumed (initialized) Replicas
-	// in place as well. This is because they are present when the merge first
-	// commits, and cannot have been replicaGC'ed yet (see replicaGCQueue.process).
+	__antithesis_instrumentation__.Notify(126154)
+
 	existingRepl.raftMu.AssertHeld()
 
 	existingRepl.mu.RLock()
@@ -521,29 +602,29 @@ func (s *Store) canAcceptSnapshotLocked(
 	existingRepl.mu.RUnlock()
 
 	if existingIsInitialized {
-		// Regular Raft snapshots can't be refused at this point,
-		// even if they widen the existing replica. See the comments
-		// in Replica.maybeAcquireSnapshotMergeLock for how this is
-		// made safe.
-		//
-		// NB: The snapshot must be intended for this replica as
-		// withReplicaForRequest ensures that requests with a non-zero replica
-		// id are passed to a replica with a matching id.
+		__antithesis_instrumentation__.Notify(126160)
+
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(126161)
 	}
+	__antithesis_instrumentation__.Notify(126155)
 
-	// If we are not alive then we should not apply a snapshot as our removal
-	// is imminent.
 	if existingDestroyStatus.Removed() {
+		__antithesis_instrumentation__.Notify(126162)
 		return nil, existingDestroyStatus.err
+	} else {
+		__antithesis_instrumentation__.Notify(126163)
 	}
+	__antithesis_instrumentation__.Notify(126156)
 
-	// We have a key range [desc.StartKey,desc.EndKey) which we want to apply a
-	// snapshot for. Is there a conflicting existing placeholder or an
-	// overlapping range?
 	if err := s.checkSnapshotOverlapLocked(ctx, snapHeader); err != nil {
+		__antithesis_instrumentation__.Notify(126164)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(126165)
 	}
+	__antithesis_instrumentation__.Notify(126157)
 
 	placeholder := &ReplicaPlaceholder{
 		rangeDesc: desc,
@@ -551,159 +632,190 @@ func (s *Store) canAcceptSnapshotLocked(
 	return placeholder, nil
 }
 
-// checkSnapshotOverlapLocked returns an error if the snapshot overlaps an
-// existing replica or placeholder. Any replicas that do overlap have a good
-// chance of being abandoned, so they're proactively handed to the replica GC
-// queue.
 func (s *Store) checkSnapshotOverlapLocked(
 	ctx context.Context, snapHeader *kvserverpb.SnapshotRequest_Header,
 ) error {
+	__antithesis_instrumentation__.Notify(126166)
 	desc := *snapHeader.State.Desc
 
-	// NB: this check seems redundant since placeholders are also represented in
-	// replicasByKey (and thus returned in getOverlappingKeyRangeLocked).
 	if exRng, ok := s.mu.replicaPlaceholders[desc.RangeID]; ok {
+		__antithesis_instrumentation__.Notify(126169)
 		return errors.Errorf("%s: canAcceptSnapshotLocked: cannot add placeholder, have an existing placeholder %s %v", s, exRng, snapHeader.RaftMessageRequest.FromReplica)
+	} else {
+		__antithesis_instrumentation__.Notify(126170)
 	}
+	__antithesis_instrumentation__.Notify(126167)
 
-	// TODO(benesch): consider discovering and GC'ing *all* overlapping ranges,
-	// not just the first one that getOverlappingKeyRangeLocked happens to return.
 	if it := s.getOverlappingKeyRangeLocked(&desc); it.item != nil {
-		// We have a conflicting range, so we must block the snapshot.
-		// When such a conflict exists, it will be resolved by one range
-		// either being split or garbage collected.
+		__antithesis_instrumentation__.Notify(126171)
+
 		exReplica, err := s.GetReplica(it.Desc().RangeID)
 		msg := IntersectingSnapshotMsg
 		if err != nil {
+			__antithesis_instrumentation__.Notify(126173)
 			log.Warningf(ctx, "unable to look up overlapping replica on %s: %v", exReplica, err)
 		} else {
+			__antithesis_instrumentation__.Notify(126174)
 			inactive := func(r *Replica) bool {
+				__antithesis_instrumentation__.Notify(126177)
 				if r.RaftStatus() == nil {
+					__antithesis_instrumentation__.Notify(126179)
 					return true
+				} else {
+					__antithesis_instrumentation__.Notify(126180)
 				}
-				// TODO(benesch): this check does not detect inactivity on
-				// replicas with epoch-based leases. Since the validity of an
-				// epoch-based lease is tied to the owning node's liveness, the
-				// lease can be valid well after the leader of the range has cut
-				// off communication with this replica. Expiration based leases,
-				// by contrast, will expire quickly if the leader of the range
-				// stops sending this replica heartbeats.
+				__antithesis_instrumentation__.Notify(126178)
+
 				return !r.CurrentLeaseStatus(ctx).IsValid()
 			}
-			// We unconditionally send this replica through the replica GC queue. It's
-			// reasonably likely that the replica GC queue will do nothing because the
-			// replica needs to split instead, but better to err on the side of
-			// queueing too frequently. Blocking Raft snapshots for too long can wedge
-			// a cluster, and if the replica does need to be GC'd, this might be the
-			// only code path that notices in a timely fashion.
-			//
-			// We're careful to avoid starving out other replicas in the replica GC
-			// queue by queueing at a low priority unless we can prove that the range
-			// is inactive and thus unlikely to be about to process a split.
+			__antithesis_instrumentation__.Notify(126175)
+
 			gcPriority := replicaGCPriorityDefault
 			if inactive(exReplica) {
+				__antithesis_instrumentation__.Notify(126181)
 				gcPriority = replicaGCPrioritySuspect
+			} else {
+				__antithesis_instrumentation__.Notify(126182)
 			}
+			__antithesis_instrumentation__.Notify(126176)
 
 			msg += "; initiated GC:"
 			s.replicaGCQueue.AddAsync(ctx, exReplica, gcPriority)
 		}
-		return errors.Errorf("%s %v (incoming %v)", msg, exReplica, snapHeader.State.Desc.RSpan()) // exReplica can be nil
+		__antithesis_instrumentation__.Notify(126172)
+		return errors.Errorf("%s %v (incoming %v)", msg, exReplica, snapHeader.State.Desc.RSpan())
+	} else {
+		__antithesis_instrumentation__.Notify(126183)
 	}
+	__antithesis_instrumentation__.Notify(126168)
 	return nil
 }
 
-// receiveSnapshot receives an incoming snapshot via a pre-opened GRPC stream.
 func (s *Store) receiveSnapshot(
 	ctx context.Context, header *kvserverpb.SnapshotRequest_Header, stream incomingSnapshotStream,
 ) error {
-	// Draining nodes will generally not be rebalanced to (see the filtering that
-	// happens in getStoreListFromIDsLocked()), but in case they are, they should
-	// reject the incoming rebalancing snapshots.
+	__antithesis_instrumentation__.Notify(126184)
+
 	if s.IsDraining() {
+		__antithesis_instrumentation__.Notify(126196)
 		switch t := header.Priority; t {
 		case kvserverpb.SnapshotRequest_RECOVERY:
-			// We can not reject Raft snapshots because draining nodes may have
-			// replicas in `StateSnapshot` that need to catch up.
-			//
-			// TODO(aayush): We also do not reject snapshots sent to replace dead
-			// replicas here, but draining stores are still filtered out in
-			// getStoreListFromIDsLocked(). Is that sound? Don't we want to
-			// upreplicate to draining nodes if there are no other candidates?
+			__antithesis_instrumentation__.Notify(126197)
+
 		case kvserverpb.SnapshotRequest_REBALANCE:
+			__antithesis_instrumentation__.Notify(126198)
 			return sendSnapshotError(stream, errors.New(storeDrainingMsg))
 		default:
-			// If this a new snapshot type that this cockroach version does not know
-			// about, we let it through.
+			__antithesis_instrumentation__.Notify(126199)
+
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126200)
 	}
+	__antithesis_instrumentation__.Notify(126185)
 
 	if fn := s.cfg.TestingKnobs.ReceiveSnapshot; fn != nil {
+		__antithesis_instrumentation__.Notify(126201)
 		if err := fn(header); err != nil {
+			__antithesis_instrumentation__.Notify(126202)
 			return sendSnapshotError(stream, err)
+		} else {
+			__antithesis_instrumentation__.Notify(126203)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126204)
 	}
+	__antithesis_instrumentation__.Notify(126186)
 
-	// Defensive check that any snapshot contains this store in the	descriptor.
 	storeID := s.StoreID()
 	if _, ok := header.State.Desc.GetReplicaDescriptor(storeID); !ok {
+		__antithesis_instrumentation__.Notify(126205)
 		return errors.AssertionFailedf(
 			`snapshot of type %s was sent to s%d which did not contain it as a replica: %s`,
 			header.Type, storeID, header.State.Desc.Replicas())
+	} else {
+		__antithesis_instrumentation__.Notify(126206)
 	}
+	__antithesis_instrumentation__.Notify(126187)
 
 	cleanup, err := s.reserveSnapshot(ctx, header)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126207)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126208)
 	}
+	__antithesis_instrumentation__.Notify(126188)
 	defer cleanup()
 
-	// The comment on ReplicaPlaceholder motivates and documents
-	// ReplicaPlaceholder semantics. Please be familiar with them
-	// before making any changes.
 	var placeholder *ReplicaPlaceholder
 	if pErr := s.withReplicaForRequest(
 		ctx, &header.RaftMessageRequest, func(ctx context.Context, r *Replica,
 		) *roachpb.Error {
+			__antithesis_instrumentation__.Notify(126209)
 			var err error
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			placeholder, err = s.canAcceptSnapshotLocked(ctx, header)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(126212)
 				return roachpb.NewError(err)
+			} else {
+				__antithesis_instrumentation__.Notify(126213)
 			}
+			__antithesis_instrumentation__.Notify(126210)
 			if placeholder != nil {
+				__antithesis_instrumentation__.Notify(126214)
 				if err := s.addPlaceholderLocked(placeholder); err != nil {
+					__antithesis_instrumentation__.Notify(126215)
 					return roachpb.NewError(err)
+				} else {
+					__antithesis_instrumentation__.Notify(126216)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(126217)
 			}
+			__antithesis_instrumentation__.Notify(126211)
 			return nil
 		}); pErr != nil {
+		__antithesis_instrumentation__.Notify(126218)
 		log.Infof(ctx, "cannot accept snapshot: %s", pErr)
 		return pErr.GoError()
+	} else {
+		__antithesis_instrumentation__.Notify(126219)
 	}
+	__antithesis_instrumentation__.Notify(126189)
 
 	defer func() {
+		__antithesis_instrumentation__.Notify(126220)
 		if placeholder != nil {
-			// Remove the placeholder, if it's still there. Most of the time it will
-			// have been filled and this is a no-op.
+			__antithesis_instrumentation__.Notify(126221)
+
 			if _, err := s.removePlaceholder(ctx, placeholder, removePlaceholderFailed); err != nil {
+				__antithesis_instrumentation__.Notify(126222)
 				log.Fatalf(ctx, "unable to remove placeholder: %s", err)
+			} else {
+				__antithesis_instrumentation__.Notify(126223)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(126224)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(126190)
 
-	// Determine which snapshot strategy the sender is using to send this
-	// snapshot. If we don't know how to handle the specified strategy, return
-	// an error.
 	var ss snapshotStrategy
 	switch header.Strategy {
 	case kvserverpb.SnapshotRequest_KV_BATCH:
+		__antithesis_instrumentation__.Notify(126225)
 		snapUUID, err := uuid.FromBytes(header.RaftMessageRequest.Message.Snapshot.Data)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(126228)
 			err = errors.Wrap(err, "invalid snapshot")
 			return sendSnapshotError(stream, err)
+		} else {
+			__antithesis_instrumentation__.Notify(126229)
 		}
+		__antithesis_instrumentation__.Notify(126226)
 
 		ss = &kvBatchSnapshotStrategy{
 			scratch:      s.sstSnapshotStorage.NewScratchSpace(header.State.Desc.RangeID, snapUUID),
@@ -712,199 +824,110 @@ func (s *Store) receiveSnapshot(
 		}
 		defer ss.Close(ctx)
 	default:
+		__antithesis_instrumentation__.Notify(126227)
 		return sendSnapshotError(stream,
 			errors.Errorf("%s,r%d: unknown snapshot strategy: %s",
 				s, header.State.Desc.RangeID, header.Strategy),
 		)
 	}
+	__antithesis_instrumentation__.Notify(126191)
 
 	if err := stream.Send(&kvserverpb.SnapshotResponse{Status: kvserverpb.SnapshotResponse_ACCEPTED}); err != nil {
+		__antithesis_instrumentation__.Notify(126230)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126231)
 	}
+	__antithesis_instrumentation__.Notify(126192)
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(126232)
 		log.Infof(ctx, "accepted snapshot reservation for r%d", header.State.Desc.RangeID)
+	} else {
+		__antithesis_instrumentation__.Notify(126233)
 	}
+	__antithesis_instrumentation__.Notify(126193)
 
 	inSnap, err := ss.Receive(ctx, stream, *header, s.metrics.RangeSnapshotRcvdBytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126234)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126235)
 	}
+	__antithesis_instrumentation__.Notify(126194)
 	inSnap.placeholder = placeholder
 
-	// Use a background context for applying the snapshot, as handleRaftReady is
-	// not prepared to deal with arbitrary context cancellation. Also, we've
-	// already received the entire snapshot here, so there's no point in
-	// abandoning application half-way through if the caller goes away.
 	applyCtx := s.AnnotateCtx(context.Background())
 	if err := s.processRaftSnapshotRequest(applyCtx, header, inSnap); err != nil {
+		__antithesis_instrumentation__.Notify(126236)
 		return sendSnapshotError(stream, errors.Wrap(err.GoError(), "failed to apply snapshot"))
+	} else {
+		__antithesis_instrumentation__.Notify(126237)
 	}
+	__antithesis_instrumentation__.Notify(126195)
 	return stream.Send(&kvserverpb.SnapshotResponse{Status: kvserverpb.SnapshotResponse_APPLIED})
 }
 
 func sendSnapshotError(stream incomingSnapshotStream, err error) error {
+	__antithesis_instrumentation__.Notify(126238)
 	return stream.Send(&kvserverpb.SnapshotResponse{
 		Status:  kvserverpb.SnapshotResponse_ERROR,
 		Message: err.Error(),
 	})
 }
 
-// SnapshotStorePool narrows StorePool to make sendSnapshot easier to test.
 type SnapshotStorePool interface {
 	throttle(reason throttleReason, why string, toStoreID roachpb.StoreID)
 }
 
-// minSnapshotRate defines the minimum value that the rate limit for rebalance
-// and recovery snapshots can be configured to. Any value below this lower bound
-// is considered unsafe for use, as it can lead to excessively long-running
-// snapshots. The sender of Raft snapshots holds resources (e.g. LSM snapshots,
-// LSM iterators until #75824 is addressed) and blocks Raft log truncation, so
-// it is not safe to let a single snapshot run for an unlimited period of time.
-//
-// The value was chosen based on a maximum range size of 512mb and a desire to
-// prevent a single snapshot for running for more than 10 minutes. With a rate
-// limit of 1mb/s, a 512mb snapshot will take just under 9 minutes to send.
-const minSnapshotRate = 1 << 20 // 1mb/s
+const minSnapshotRate = 1 << 20
 
-// rebalanceSnapshotRate is the rate at which snapshots can be sent in the
-// context of up-replication or rebalancing (i.e. any snapshot that was not
-// requested by raft itself, to which `kv.snapshot_recovery.max_rate` applies).
 var rebalanceSnapshotRate = settings.RegisterByteSizeSetting(
 	settings.SystemOnly,
 	"kv.snapshot_rebalance.max_rate",
 	"the rate limit (bytes/sec) to use for rebalance and upreplication snapshots",
-	32<<20, // 32mb/s
+	32<<20,
 	func(v int64) error {
+		__antithesis_instrumentation__.Notify(126239)
 		if v < minSnapshotRate {
+			__antithesis_instrumentation__.Notify(126241)
 			return errors.Errorf("snapshot rate cannot be set to a value below %s: %s",
 				humanizeutil.IBytes(minSnapshotRate), humanizeutil.IBytes(v))
+		} else {
+			__antithesis_instrumentation__.Notify(126242)
 		}
+		__antithesis_instrumentation__.Notify(126240)
 		return nil
 	},
 ).WithPublic()
 
-// recoverySnapshotRate is the rate at which Raft-initiated snapshot can be
-// sent. Ideally, one would never see a Raft-initiated snapshot; we'd like all
-// replicas to start out as learners or via splits, and to never be cut off from
-// the log. However, it has proved unfeasible to completely get rid of them.
-//
-// TODO(tbg): The existence of this rate, separate from rebalanceSnapshotRate,
-// does not make a whole lot of sense. Both sources of snapshots compete thanks
-// to a semaphore at the receiver, and so the slower one ultimately determines
-// the pace at which things can move along.
 var recoverySnapshotRate = settings.RegisterByteSizeSetting(
 	settings.SystemOnly,
 	"kv.snapshot_recovery.max_rate",
 	"the rate limit (bytes/sec) to use for recovery snapshots",
-	32<<20, // 32mb/s
+	32<<20,
 	func(v int64) error {
+		__antithesis_instrumentation__.Notify(126243)
 		if v < minSnapshotRate {
+			__antithesis_instrumentation__.Notify(126245)
 			return errors.Errorf("snapshot rate cannot be set to a value below %s: %s",
 				humanizeutil.IBytes(minSnapshotRate), humanizeutil.IBytes(v))
+		} else {
+			__antithesis_instrumentation__.Notify(126246)
 		}
+		__antithesis_instrumentation__.Notify(126244)
 		return nil
 	},
 ).WithPublic()
 
-// snapshotSenderBatchSize is the size that key-value batches are allowed to
-// grow to during Range snapshots before being sent to the receiver. This limit
-// places an upper-bound on the memory footprint of the sender of a Range
-// snapshot. It is also the granularity of rate limiting.
 var snapshotSenderBatchSize = settings.RegisterByteSizeSetting(
 	settings.SystemOnly,
 	"kv.snapshot_sender.batch_size",
 	"size of key-value batches sent over the network during snapshots",
-	256<<10, // 256 KB
+	256<<10,
 	settings.PositiveInt,
 )
 
-// snapshotReservationQueueTimeoutFraction is the maximum fraction of a Range
-// snapshot's total timeout that it is allowed to spend queued on the receiver
-// waiting for a reservation.
-//
-// Enforcement of this snapshotApplySem-scoped timeout is intended to prevent
-// starvation of snapshots in cases where a queue of snapshots waiting for
-// reservations builds and no single snapshot acquires the semaphore with
-// sufficient time to complete, but each holds the semaphore long enough to
-// ensure that later snapshots in the queue encounter this same situation. This
-// is a case of FIFO queuing + timeouts leading to starvation. By rejecting
-// snapshot attempts earlier, we ensure that those that do acquire the semaphore
-// have sufficient time to complete.
-//
-// Consider the following motivating example:
-//
-// With a 60s timeout set by the snapshotQueue/replicateQueue for each snapshot,
-// 45s needed to actually stream the data, and a willingness to wait for as long
-// as it takes to get the reservation (i.e. this fraction = 1.0) there can be
-// starvation. Each snapshot spends so much time waiting for the reservation
-// that it will itself fail during sending, while the next snapshot wastes
-// enough time waiting for us that it will itself fail, ad infinitum:
-//
-//  t   | snap1 snap2 snap3 snap4 snap5 ...
-//  ----+------------------------------------
-//  0   | send
-//  15  |       queue queue
-//  30  |                   queue
-//  45  | ok    send
-//  60  |                         queue
-//  75  |       fail  fail  send
-//  90  |                   fail  send
-//  105 |
-//  120 |                         fail
-//  135 |
-//
-// If we limit the amount of time we are willing to wait for a reservation to
-// something that is small enough to, on success, give us enough time to
-// actually stream the data, no starvation can occur. For example, with a 60s
-// timeout, 45s needed to stream the data, we can wait at most 15s for a
-// reservation and still avoid starvation:
-//
-//  t   | snap1 snap2 snap3 snap4 snap5 ...
-//  ----+------------------------------------
-//  0   | send
-//  15  |       queue queue
-//  30  |       fail  fail  send
-//  45  |
-//  60  | ok                      queue
-//  75  |                   ok    send
-//  90  |
-//  105 |
-//  120 |                         ok
-//  135 |
-//
-// In practice, the snapshot reservation logic (reserveSnapshot) doesn't know
-// how long sending the snapshot will actually take. But it knows the timeout it
-// has been given by the snapshotQueue/replicateQueue, which serves as an upper
-// bound, under the assumption that snapshots can make progress in the absence
-// of starvation.
-//
-// Without the reservation timeout fraction, if the product of the number of
-// concurrent snapshots and the average streaming time exceeded this timeout,
-// the starvation scenario could occur, since the average queuing time would
-// exceed the timeout. With the reservation limit, progress will be made as long
-// as the average streaming time is less than the guaranteed processing time for
-// any snapshot that succeeds in acquiring a reservation:
-//
-//  guaranteed_processing_time = (1 - reservation_queue_timeout_fraction) x timeout
-//
-// The timeout for the snapshot and replicate queues bottoms out at 60s (by
-// default, see kv.queue.process.guaranteed_time_budget). Given a default
-// reservation queue timeout fraction of 0.4, this translates to a guaranteed
-// processing time of 36s for any snapshot attempt that manages to acquire a
-// reservation. This means that a 512MiB snapshot will succeed if sent at a rate
-// of 14MiB/s or above.
-//
-// Lower configured snapshot rate limits quickly lead to a much higher timeout
-// since we apply a liberal multiplier (permittedRangeScanSlowdown). Concretely,
-// we move past the 1-minute timeout once the rate limit is set to anything less
-// than 10*range_size/guaranteed_budget(in MiB/s), which comes out to ~85MiB/s
-// for a 512MiB range and the default 1m budget. In other words, the queue uses
-// sumptuous timeouts, and so we'll also be excessively lenient with how long
-// we're willing to wait for a reservation (but not to the point of allowing the
-// starvation scenario). As long as the nodes between the cluster can transfer
-// at around ~14MiB/s, even a misconfiguration of the rate limit won't cause
-// issues and where it does, the setting can be set to 1.0, effectively
-// reverting to the old behavior.
 var snapshotReservationQueueTimeoutFraction = settings.RegisterFloatSetting(
 	settings.SystemOnly,
 	"kv.snapshot_receiver.reservation_queue_timeout_fraction",
@@ -912,19 +935,25 @@ var snapshotReservationQueueTimeoutFraction = settings.RegisterFloatSetting(
 		"queued on the receiver waiting for a reservation",
 	0.4,
 	func(v float64) error {
+		__antithesis_instrumentation__.Notify(126247)
 		const min, max = 0.25, 1.0
 		if v < min {
+			__antithesis_instrumentation__.Notify(126249)
 			return errors.Errorf("cannot set to a value less than %f: %f", min, v)
-		} else if v > max {
-			return errors.Errorf("cannot set to a value greater than %f: %f", max, v)
+		} else {
+			__antithesis_instrumentation__.Notify(126250)
+			if v > max {
+				__antithesis_instrumentation__.Notify(126251)
+				return errors.Errorf("cannot set to a value greater than %f: %f", max, v)
+			} else {
+				__antithesis_instrumentation__.Notify(126252)
+			}
 		}
+		__antithesis_instrumentation__.Notify(126248)
 		return nil
 	},
 )
 
-// snapshotSSTWriteSyncRate is the size of chunks to write before fsync-ing.
-// The default of 2 MiB was chosen to be in line with the behavior in bulk-io.
-// See sstWriteSyncRate.
 var snapshotSSTWriteSyncRate = settings.RegisterByteSizeSetting(
 	settings.SystemOnly,
 	"kv.snapshot_sst.sync_size",
@@ -936,19 +965,20 @@ var snapshotSSTWriteSyncRate = settings.RegisterByteSizeSetting(
 func snapshotRateLimit(
 	st *cluster.Settings, priority kvserverpb.SnapshotRequest_Priority,
 ) (rate.Limit, error) {
+	__antithesis_instrumentation__.Notify(126253)
 	switch priority {
 	case kvserverpb.SnapshotRequest_RECOVERY:
+		__antithesis_instrumentation__.Notify(126254)
 		return rate.Limit(recoverySnapshotRate.Get(&st.SV)), nil
 	case kvserverpb.SnapshotRequest_REBALANCE:
+		__antithesis_instrumentation__.Notify(126255)
 		return rate.Limit(rebalanceSnapshotRate.Get(&st.SV)), nil
 	default:
+		__antithesis_instrumentation__.Notify(126256)
 		return 0, errors.Errorf("unknown snapshot priority: %s", priority)
 	}
 }
 
-// SendEmptySnapshot creates an OutgoingSnapshot for the input range
-// descriptor and seeds it with an empty range. Then, it sends this
-// snapshot to the replica specified in the input.
 func SendEmptySnapshot(
 	ctx context.Context,
 	st *cluster.Settings,
@@ -957,97 +987,113 @@ func SendEmptySnapshot(
 	desc roachpb.RangeDescriptor,
 	to roachpb.ReplicaDescriptor,
 ) error {
-	// Create an engine to use as a buffer for the empty snapshot.
+	__antithesis_instrumentation__.Notify(126257)
+
 	eng, err := storage.Open(
 		context.Background(),
 		storage.InMemory(),
-		storage.CacheSize(1<<20 /* 1 MiB */),
-		storage.MaxSize(512<<20 /* 512 MiB */))
+		storage.CacheSize(1<<20),
+		storage.MaxSize(512<<20))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126269)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126270)
 	}
+	__antithesis_instrumentation__.Notify(126258)
 	defer eng.Close()
 
 	var ms enginepb.MVCCStats
-	// Seed an empty range into the new engine.
-	if err := storage.MVCCPutProto(
-		ctx, eng, &ms, keys.RangeDescriptorKey(desc.StartKey), now, nil /* txn */, &desc,
-	); err != nil {
-		return err
-	}
 
-	// SendEmptySnapshot is only used by the cockroach debug reset-quorum tool.
-	// It is experimental and unlikely to be used in cluster versions that are
-	// older than AddRaftAppliedIndexTermMigration. We do not want the cluster
-	// version to fully dictate the value of the writeAppliedIndexTerm
-	// parameter, since if this node's view of the version is stale we could
-	// regress to a state before the migration. Instead, we return an error if
-	// the cluster version is old.
+	if err := storage.MVCCPutProto(
+		ctx, eng, &ms, keys.RangeDescriptorKey(desc.StartKey), now, nil, &desc,
+	); err != nil {
+		__antithesis_instrumentation__.Notify(126271)
+		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126272)
+	}
+	__antithesis_instrumentation__.Notify(126259)
+
 	writeAppliedIndexTerm := st.Version.IsActive(ctx, clusterversion.AddRaftAppliedIndexTermMigration)
 	if !writeAppliedIndexTerm {
+		__antithesis_instrumentation__.Notify(126273)
 		return errors.Errorf("cluster version is too old %s",
 			st.Version.ActiveVersionOrEmpty(ctx))
+	} else {
+		__antithesis_instrumentation__.Notify(126274)
 	}
+	__antithesis_instrumentation__.Notify(126260)
 	ms, err = stateloader.WriteInitialReplicaState(
 		ctx,
 		eng,
 		ms,
 		desc,
 		roachpb.Lease{},
-		hlc.Timestamp{}, // gcThreshold
+		hlc.Timestamp{},
 		st.Version.ActiveVersionOrEmpty(ctx).Version,
 		writeAppliedIndexTerm,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126275)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126276)
 	}
+	__antithesis_instrumentation__.Notify(126261)
 
-	// Use stateloader to load state out of memory from the previously created engine.
 	sl := stateloader.Make(desc.RangeID)
 	state, err := sl.Load(ctx, eng, &desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126277)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126278)
 	}
-	// See comment on DeprecatedUsingAppliedStateKey for why we need to set this
-	// explicitly for snapshots going out to followers.
+	__antithesis_instrumentation__.Notify(126262)
+
 	state.DeprecatedUsingAppliedStateKey = true
 
 	hs, err := sl.LoadHardState(ctx, eng)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126279)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126280)
 	}
+	__antithesis_instrumentation__.Notify(126263)
 
 	snapUUID, err := uuid.NewV4()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126281)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126282)
 	}
+	__antithesis_instrumentation__.Notify(126264)
 
-	// Create an OutgoingSnapshot to send.
 	outgoingSnap, err := snapshot(
 		ctx,
 		snapUUID,
 		sl,
-		// TODO(tbg): We may want a separate SnapshotRequest type
-		// for recovery that always goes through by bypassing all throttling
-		// so they cannot be declined. We don't want our operation to be held
-		// up behind a long running snapshot. We want this to go through
-		// quickly.
+
 		kvserverpb.SnapshotRequest_VIA_SNAPSHOT_QUEUE,
 		eng,
 		desc.RangeID,
-		raftentry.NewCache(1), // cache is not used
-		func(func(SideloadStorage) error) error { return nil }, // this is used for sstables, not needed here as there are no logs
+		raftentry.NewCache(1),
+		func(func(SideloadStorage) error) error { __antithesis_instrumentation__.Notify(126283); return nil },
 		desc.StartKey,
 	)
+	__antithesis_instrumentation__.Notify(126265)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126284)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126285)
 	}
+	__antithesis_instrumentation__.Notify(126266)
 	defer outgoingSnap.Close()
 
-	// From and to replica descriptors are the same because we have
-	// to send the snapshot from a member of the range descriptor.
-	// Sending it from the current replica ensures that. Otherwise,
-	// it would be a malformed request if it came from a non-member.
 	from := to
 	req := kvserverpb.RaftMessageRequest{
 		RangeID:     desc.RangeID,
@@ -1074,14 +1120,23 @@ func SendEmptySnapshot(
 
 	stream, err := NewMultiRaftClient(cc).RaftSnapshot(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126286)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126287)
 	}
+	__antithesis_instrumentation__.Notify(126267)
 
 	defer func() {
+		__antithesis_instrumentation__.Notify(126288)
 		if err := stream.CloseSend(); err != nil {
+			__antithesis_instrumentation__.Notify(126289)
 			log.Warningf(ctx, "failed to close snapshot stream: %+v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(126290)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(126268)
 
 	return sendSnapshot(
 		ctx,
@@ -1091,17 +1146,17 @@ func SendEmptySnapshot(
 		header,
 		&outgoingSnap,
 		eng.NewBatch,
-		func() {},
-		nil, /* bytesSentCounter */
+		func() { __antithesis_instrumentation__.Notify(126291) },
+		nil,
 	)
 }
 
-// noopStorePool is a hollowed out StorePool that does not throttle. It's used in recovery scenarios.
 type noopStorePool struct{}
 
-func (n noopStorePool) throttle(throttleReason, string, roachpb.StoreID) {}
+func (n noopStorePool) throttle(throttleReason, string, roachpb.StoreID) {
+	__antithesis_instrumentation__.Notify(126292)
+}
 
-// sendSnapshot sends an outgoing snapshot via a pre-opened GRPC stream.
 func sendSnapshot(
 	ctx context.Context,
 	st *cluster.Settings,
@@ -1113,63 +1168,71 @@ func sendSnapshot(
 	sent func(),
 	bytesSentCounter *metric.Counter,
 ) error {
+	__antithesis_instrumentation__.Notify(126293)
 	if bytesSentCounter == nil {
-		// NB: Some tests and an offline tool (ResetQuorum) call into `sendSnapshot`
-		// with a nil counter. We pass in a fake metrics counter here that isn't
-		// hooked up to anything.
+		__antithesis_instrumentation__.Notify(126304)
+
 		bytesSentCounter = metric.NewCounter(metric.Metadata{Name: "range.snapshots.sent-bytes"})
+	} else {
+		__antithesis_instrumentation__.Notify(126305)
 	}
+	__antithesis_instrumentation__.Notify(126294)
 	start := timeutil.Now()
 	to := header.RaftMessageRequest.ToReplica
 	if err := stream.Send(&kvserverpb.SnapshotRequest{Header: &header}); err != nil {
+		__antithesis_instrumentation__.Notify(126306)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126307)
 	}
-	// Wait until we get a response from the server. The recipient may queue us
-	// (only a limited number of snapshots are allowed concurrently) or flat-out
-	// reject the snapshot. After the initial message exchange, we'll go and send
-	// the actual snapshot (if not rejected).
+	__antithesis_instrumentation__.Notify(126295)
+
 	resp, err := stream.Recv()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126308)
 		storePool.throttle(throttleFailed, err.Error(), to.StoreID)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126309)
 	}
+	__antithesis_instrumentation__.Notify(126296)
 	switch resp.Status {
 	case kvserverpb.SnapshotResponse_ERROR:
+		__antithesis_instrumentation__.Notify(126310)
 		storePool.throttle(throttleFailed, resp.Message, to.StoreID)
 		return errors.Errorf("%s: remote couldn't accept %s with error: %s",
 			to, snap, resp.Message)
 	case kvserverpb.SnapshotResponse_ACCEPTED:
-	// This is the response we're expecting. Continue with snapshot sending.
+		__antithesis_instrumentation__.Notify(126311)
+
 	default:
+		__antithesis_instrumentation__.Notify(126312)
 		err := errors.Errorf("%s: server sent an invalid status while negotiating %s: %s",
 			to, snap, resp.Status)
 		storePool.throttle(throttleFailed, err.Error(), to.StoreID)
 		return err
 	}
+	__antithesis_instrumentation__.Notify(126297)
 
 	durQueued := timeutil.Since(start)
 	start = timeutil.Now()
 
-	// Consult cluster settings to determine rate limits and batch sizes.
 	targetRate, err := snapshotRateLimit(st, header.Priority)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126313)
 		return errors.Wrapf(err, "%s", to)
+	} else {
+		__antithesis_instrumentation__.Notify(126314)
 	}
+	__antithesis_instrumentation__.Notify(126298)
 	batchSize := snapshotSenderBatchSize.Get(&st.SV)
 
-	// Convert the bytes/sec rate limit to batches/sec.
-	//
-	// TODO(peter): Using bytes/sec for rate limiting seems more natural but has
-	// practical difficulties. We either need to use a very large burst size
-	// which seems to disable the rate limiting, or call WaitN in smaller than
-	// burst size chunks which caused excessive slowness in testing. Would be
-	// nice to figure this out, but the batches/sec rate limit works for now.
-	limiter := rate.NewLimiter(targetRate/rate.Limit(batchSize), 1 /* burst size */)
+	limiter := rate.NewLimiter(targetRate/rate.Limit(batchSize), 1)
 
-	// Create a snapshotStrategy based on the desired snapshot strategy.
 	var ss snapshotStrategy
 	switch header.Strategy {
 	case kvserverpb.SnapshotRequest_KV_BATCH:
+		__antithesis_instrumentation__.Notify(126315)
 		ss = &kvBatchSnapshotStrategy{
 			batchSize: batchSize,
 			limiter:   limiter,
@@ -1177,22 +1240,29 @@ func sendSnapshot(
 			st:        st,
 		}
 	default:
+		__antithesis_instrumentation__.Notify(126316)
 		log.Fatalf(ctx, "unknown snapshot strategy: %s", header.Strategy)
 	}
+	__antithesis_instrumentation__.Notify(126299)
 
 	numBytesSent, err := ss.Send(ctx, stream, header, snap, bytesSentCounter)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126317)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126318)
 	}
+	__antithesis_instrumentation__.Notify(126300)
 	durSent := timeutil.Since(start)
 
-	// Notify the sent callback before the final snapshot request is sent so that
-	// the snapshots generated metric gets incremented before the snapshot is
-	// applied.
 	sent()
 	if err := stream.Send(&kvserverpb.SnapshotRequest{Final: true}); err != nil {
+		__antithesis_instrumentation__.Notify(126319)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126320)
 	}
+	__antithesis_instrumentation__.Notify(126301)
 	log.Infof(
 		ctx,
 		"streamed %s to %s with %s in %.2fs @ %s/s: %s, rate-limit: %s/s, queued: %.2fs",
@@ -1208,23 +1278,36 @@ func sendSnapshot(
 
 	resp, err = stream.Recv()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126321)
 		return errors.Wrapf(err, "%s: remote failed to apply snapshot", to)
+	} else {
+		__antithesis_instrumentation__.Notify(126322)
 	}
-	// NB: wait for EOF which ensures that all processing on the server side has
-	// completed (such as defers that might be run after the previous message was
-	// received).
+	__antithesis_instrumentation__.Notify(126302)
+
 	if unexpectedResp, err := stream.Recv(); err != io.EOF {
+		__antithesis_instrumentation__.Notify(126323)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(126325)
 			return errors.Wrapf(err, "%s: expected EOF, got resp=%v with error", to, unexpectedResp)
+		} else {
+			__antithesis_instrumentation__.Notify(126326)
 		}
+		__antithesis_instrumentation__.Notify(126324)
 		return errors.Newf("%s: expected EOF, got resp=%v", to, unexpectedResp)
+	} else {
+		__antithesis_instrumentation__.Notify(126327)
 	}
+	__antithesis_instrumentation__.Notify(126303)
 	switch resp.Status {
 	case kvserverpb.SnapshotResponse_ERROR:
+		__antithesis_instrumentation__.Notify(126328)
 		return errors.Errorf("%s: remote failed to apply snapshot for reason %s", to, resp.Message)
 	case kvserverpb.SnapshotResponse_APPLIED:
+		__antithesis_instrumentation__.Notify(126329)
 		return nil
 	default:
+		__antithesis_instrumentation__.Notify(126330)
 		return errors.Errorf("%s: server sent an invalid status during finalization: %s",
 			to, resp.Status)
 	}

@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,124 +18,57 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 )
 
-// runParams is a struct containing all parameters passed to planNode.Next() and
-// startPlan.
 type runParams struct {
-	// context.Context for this method call.
 	ctx context.Context
 
-	// extendedEvalCtx groups fields useful for this execution.
-	// Used during local execution and distsql physical planning.
 	extendedEvalCtx *extendedEvalContext
 
-	// planner associated with this execution. Only used during local
-	// execution.
 	p *planner
 }
 
-// EvalContext() gives convenient access to the runParam's EvalContext().
 func (r *runParams) EvalContext() *tree.EvalContext {
+	__antithesis_instrumentation__.Notify(562544)
 	return &r.extendedEvalCtx.EvalContext
 }
 
-// SessionData gives convenient access to the runParam's SessionData.
 func (r *runParams) SessionData() *sessiondata.SessionData {
+	__antithesis_instrumentation__.Notify(562545)
 	return r.extendedEvalCtx.SessionData()
 }
 
-// ExecCfg gives convenient access to the runParam's ExecutorConfig.
 func (r *runParams) ExecCfg() *ExecutorConfig {
+	__antithesis_instrumentation__.Notify(562546)
 	return r.extendedEvalCtx.ExecCfg
 }
 
-// Ann is a shortcut for the Annotations from the eval context.
 func (r *runParams) Ann() *tree.Annotations {
+	__antithesis_instrumentation__.Notify(562547)
 	return r.extendedEvalCtx.EvalContext.Annotations
 }
 
-// planNode defines the interface for executing a query or portion of a query.
-//
-// The following methods apply to planNodes and contain special cases
-// for each type; they thus need to be extended when adding/removing
-// planNode instances:
-// - planVisitor.visit()           (walk.go)
-// - planNodeNames                 (walk.go)
-// - setLimitHint()                (limit_hint.go)
-// - planColumns()                 (plan_columns.go)
-//
 type planNode interface {
 	startExec(params runParams) error
 
-	// Next performs one unit of work, returning false if an error is
-	// encountered or if there is no more work to do. For statements
-	// that return a result set, the Values() method will return one row
-	// of results each time that Next() returns true.
-	//
-	// Available after startPlan(). It is illegal to call Next() after it returns
-	// false. It is legal to call Next() even if the node implements
-	// planNodeFastPath and the FastPathResults() method returns true.
 	Next(params runParams) (bool, error)
 
-	// Values returns the values at the current row. The result is only valid
-	// until the next call to Next().
-	//
-	// Available after Next().
 	Values() tree.Datums
 
-	// Close terminates the planNode execution and releases its resources.
-	// This method should be called if the node has been used in any way (any
-	// methods on it have been called) after it was constructed. Note that this
-	// doesn't imply that startExec() has been necessarily called.
-	//
-	// This method must not be called during execution - the planNode
-	// tree must remain "live" and readable via walk() even after
-	// execution completes.
-	//
-	// The node must not be used again after this method is called. Some nodes put
-	// themselves back into memory pools on Close.
 	Close(ctx context.Context)
 }
 
-// mutationPlanNode is a specification of planNode for mutations operations
-// (those that insert/update/detele/etc rows).
 type mutationPlanNode interface {
 	planNode
 
-	// rowsWritten returns the number of rows modified by this planNode. It
-	// should only be called once Next returns false.
 	rowsWritten() int64
 }
 
-// PlanNode is the exported name for planNode. Useful for CCL hooks.
 type PlanNode = planNode
 
-// planNodeFastPath is implemented by nodes that can perform all their
-// work during startPlan(), possibly affecting even multiple rows. For
-// example, DELETE can do this.
 type planNodeFastPath interface {
-	// FastPathResults returns the affected row count and true if the
-	// node has no result set and has already executed when startPlan() completes.
-	// Note that Next() must still be valid even if this method returns
-	// true, although it may have nothing left to do.
 	FastPathResults() (int, bool)
 }
 
-// planNodeReadingOwnWrites can be implemented by planNodes which do
-// not use the standard SQL principle of reading at the snapshot
-// established at the start of the transaction. It requests that
-// the top-level (shared) `startExec` function disable stepping
-// mode for the duration of the node's `startExec()` call.
-//
-// This done e.g. for most DDL statements that perform multiple KV
-// operations on descriptors, expecting to read their own writes.
-//
-// Note that only `startExec()` runs with the modified stepping mode,
-// not the `Next()` methods. This interface (and the idea of
-// temporarily disabling stepping mode) is neither sensical nor
-// applicable to planNodes whose execution is interleaved with
-// that of others.
 type planNodeReadingOwnWrites interface {
-	// ReadingOwnWrites is a marker interface.
 	ReadingOwnWrites()
 }
 
@@ -252,25 +177,12 @@ var _ planNodeReadingOwnWrites = &refreshMaterializedViewNode{}
 var _ planNodeReadingOwnWrites = &reparentDatabaseNode{}
 var _ planNodeReadingOwnWrites = &setZoneConfigNode{}
 
-// planNodeRequireSpool serves as marker for nodes whose parent must
-// ensure that the node is fully run to completion (and the results
-// spooled) during the start phase. This is currently implemented by
-// all mutation statements except for upsert.
 type planNodeRequireSpool interface {
 	requireSpool()
 }
 
 var _ planNodeRequireSpool = &serializeNode{}
 
-// planNodeSpool serves as marker for nodes that can perform all their
-// execution during the start phase. This is different from the "fast
-// path" interface because a node that performs all its execution
-// during the start phase might still have some result rows and thus
-// not implement the fast path.
-//
-// This interface exists for the following optimization: nodes
-// that require spooling but are the children of a spooled node
-// do not require the introduction of an explicit spool.
 type planNodeSpooled interface {
 	spooled()
 }
@@ -280,80 +192,56 @@ var _ planNodeSpooled = &spoolNode{}
 type flowInfo struct {
 	typ     planComponentType
 	diagram execinfrapb.FlowDiagram
-	// explainVec and explainVecVerbose are only populated when collecting a
-	// statement bundle when the plan was vectorized.
+
 	explainVec        []string
 	explainVecVerbose []string
-	// flowsMetadata stores metadata from flows that will be used by
-	// execstats.TraceAnalyzer.
+
 	flowsMetadata *execstats.FlowsMetadata
 }
 
-// planTop is the struct that collects the properties
-// of an entire plan.
-// Note: some additional per-statement state is also stored in
-// semaCtx (placeholders).
-// TODO(jordan): investigate whether/how per-plan state like
-// placeholder data can be concentrated in a single struct.
 type planTop struct {
-	// stmt is a reference to the current statement (AST and other metadata).
 	stmt *Statement
 
 	planComponents
 
-	// mem/catalog retains the memo and catalog that were used to create the
-	// plan. Only set if needed by instrumentation (see ShouldSaveMemo).
 	mem     *memo.Memo
 	catalog *optCatalog
 
-	// auditEvents becomes non-nil if any of the descriptors used by
-	// current statement is causing an auditing event. See exec_log.go.
 	auditEvents []auditEvent
 
-	// flags is populated during planning and execution.
 	flags planFlags
 
-	// avoidBuffering, when set, causes the execution to avoid buffering
-	// results.
 	avoidBuffering bool
 
-	// If we are collecting query diagnostics, flow information, including
-	// diagrams, are saved here.
 	distSQLFlowInfos []flowInfo
 
 	instrumentation *instrumentationHelper
 }
 
-// physicalPlanTop is a utility wrapper around PhysicalPlan that allows for
-// storing planNodes that "power" the processors in the physical plan.
 type physicalPlanTop struct {
-	// PhysicalPlan contains the physical plan that has not yet been finalized.
 	*PhysicalPlan
-	// planNodesToClose contains the planNodes that are a part of the physical
-	// plan (via planNodeToRowSource wrapping). These planNodes need to be
-	// closed explicitly since we don't have a planNode tree that performs the
-	// closure.
+
 	planNodesToClose []planNode
 }
 
 func (p *physicalPlanTop) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(562548)
 	for _, plan := range p.planNodesToClose {
+		__antithesis_instrumentation__.Notify(562550)
 		plan.Close(ctx)
 	}
+	__antithesis_instrumentation__.Notify(562549)
 	p.planNodesToClose = nil
 }
 
-// planMaybePhysical is a utility struct representing a plan. It can currently
-// use either planNode or DistSQL spec representation, but eventually will be
-// replaced by the latter representation directly.
 type planMaybePhysical struct {
 	planNode planNode
-	// physPlan (when non-nil) contains the physical plan that has not yet
-	// been finalized.
+
 	physPlan *physicalPlanTop
 }
 
 func makePlanMaybePhysical(physPlan *PhysicalPlan, planNodesToClose []planNode) planMaybePhysical {
+	__antithesis_instrumentation__.Notify(562551)
 	return planMaybePhysical{
 		physPlan: &physicalPlanTop{
 			PhysicalPlan:     physPlan,
@@ -363,26 +251,38 @@ func makePlanMaybePhysical(physPlan *PhysicalPlan, planNodesToClose []planNode) 
 }
 
 func (p *planMaybePhysical) isPhysicalPlan() bool {
+	__antithesis_instrumentation__.Notify(562552)
 	return p.physPlan != nil
 }
 
 func (p *planMaybePhysical) planColumns() colinfo.ResultColumns {
+	__antithesis_instrumentation__.Notify(562553)
 	if p.isPhysicalPlan() {
+		__antithesis_instrumentation__.Notify(562555)
 		return p.physPlan.ResultColumns
+	} else {
+		__antithesis_instrumentation__.Notify(562556)
 	}
+	__antithesis_instrumentation__.Notify(562554)
 	return planColumns(p.planNode)
 }
 
-// Close closes the pieces of the plan that haven't been yet closed. Note that
-// it also resets the corresponding fields.
 func (p *planMaybePhysical) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(562557)
 	if p.planNode != nil {
+		__antithesis_instrumentation__.Notify(562559)
 		p.planNode.Close(ctx)
 		p.planNode = nil
+	} else {
+		__antithesis_instrumentation__.Notify(562560)
 	}
+	__antithesis_instrumentation__.Notify(562558)
 	if p.physPlan != nil {
+		__antithesis_instrumentation__.Notify(562561)
 		p.physPlan.Close(ctx)
 		p.physPlan = nil
+	} else {
+		__antithesis_instrumentation__.Notify(562562)
 	}
 }
 
@@ -396,68 +296,64 @@ const (
 )
 
 func (t planComponentType) String() string {
+	__antithesis_instrumentation__.Notify(562563)
 	switch t {
 	case planComponentTypeMainQuery:
+		__antithesis_instrumentation__.Notify(562564)
 		return "main-query"
 	case planComponentTypeSubquery:
+		__antithesis_instrumentation__.Notify(562565)
 		return "subquery"
 	case planComponentTypePostquery:
+		__antithesis_instrumentation__.Notify(562566)
 		return "postquery"
 	default:
+		__antithesis_instrumentation__.Notify(562567)
 		return "unknownquerytype"
 	}
 }
 
-// planComponents groups together the various components of the entire query
-// plan.
 type planComponents struct {
-	// subqueryPlans contains all the sub-query plans.
 	subqueryPlans []subquery
 
-	// plan for the main query.
 	main planMaybePhysical
 
-	// mainRowCount is the estimated number of rows that the main query will
-	// return, negative if the stats weren't available to make a good estimate.
 	mainRowCount int64
 
-	// cascades contains metadata for all cascades.
 	cascades []cascadeMetadata
 
-	// checkPlans contains all the plans for queries that are to be executed after
-	// the main query (for example, foreign key checks).
 	checkPlans []checkPlan
 }
 
 type cascadeMetadata struct {
 	exec.Cascade
-	// plan for the cascade. This plan is not populated upfront; it is created
-	// only when it needs to run, after the main query (and previous cascades).
+
 	plan planMaybePhysical
 }
 
-// checkPlan is a query tree that is executed after the main one. It can only
-// return an error (for example, foreign key violation).
 type checkPlan struct {
 	plan planMaybePhysical
 }
 
-// close calls Close on all plan trees.
 func (p *planComponents) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(562568)
 	p.main.Close(ctx)
 	for i := range p.subqueryPlans {
+		__antithesis_instrumentation__.Notify(562571)
 		p.subqueryPlans[i].plan.Close(ctx)
 	}
+	__antithesis_instrumentation__.Notify(562569)
 	for i := range p.cascades {
+		__antithesis_instrumentation__.Notify(562572)
 		p.cascades[i].plan.Close(ctx)
 	}
+	__antithesis_instrumentation__.Notify(562570)
 	for i := range p.checkPlans {
+		__antithesis_instrumentation__.Notify(562573)
 		p.checkPlans[i].plan.Close(ctx)
 	}
 }
 
-// init resets planTop to point to a given statement; used at the start of the
-// planning process.
 func (p *planTop) init(stmt *Statement, instrumentation *instrumentationHelper) {
 	*p = planTop{
 		stmt:            stmt,
@@ -465,171 +361,176 @@ func (p *planTop) init(stmt *Statement, instrumentation *instrumentationHelper) 
 	}
 }
 
-// close ensures that the plan's resources have been deallocated.
 func (p *planTop) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(562574)
 	if p.flags.IsSet(planFlagExecDone) {
+		__antithesis_instrumentation__.Notify(562576)
 		p.savePlanInfo(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(562577)
 	}
+	__antithesis_instrumentation__.Notify(562575)
 	p.planComponents.close(ctx)
 }
 
-// savePlanInfo uses p.explainPlan to populate the plan string and/or tree.
 func (p *planTop) savePlanInfo(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(562578)
 	vectorized := p.flags.IsSet(planFlagVectorized)
 	distribution := physicalplan.LocalPlan
 	if p.flags.IsSet(planFlagFullyDistributed) {
+		__antithesis_instrumentation__.Notify(562580)
 		distribution = physicalplan.FullyDistributedPlan
-	} else if p.flags.IsSet(planFlagPartiallyDistributed) {
-		distribution = physicalplan.PartiallyDistributedPlan
+	} else {
+		__antithesis_instrumentation__.Notify(562581)
+		if p.flags.IsSet(planFlagPartiallyDistributed) {
+			__antithesis_instrumentation__.Notify(562582)
+			distribution = physicalplan.PartiallyDistributedPlan
+		} else {
+			__antithesis_instrumentation__.Notify(562583)
+		}
 	}
+	__antithesis_instrumentation__.Notify(562579)
 	p.instrumentation.RecordPlanInfo(distribution, vectorized)
 }
 
-// startExec calls startExec() on each planNode using a depth-first, post-order
-// traversal.  The subqueries, if any, are also started.
-//
-// If the planNode also implements the nodeReadingOwnWrites interface,
-// the txn is temporarily reconfigured to use read-your-own-writes for
-// the duration of the call to startExec. This is used e.g. by
-// DDL statements.
-//
-// Reminder: walkPlan() ensures that subqueries and sub-plans are
-// started before startExec() is called.
 func startExec(params runParams, plan planNode) error {
+	__antithesis_instrumentation__.Notify(562584)
 	o := planObserver{
 		enterNode: func(ctx context.Context, _ string, p planNode) (bool, error) {
+			__antithesis_instrumentation__.Notify(562586)
 			switch p.(type) {
 			case *explainVecNode, *explainDDLNode:
-				// Do not recurse: we're not starting the plan if we just show its structure with EXPLAIN.
+				__antithesis_instrumentation__.Notify(562588)
+
 				return false, nil
 			case *showTraceNode:
-				// showTrace needs to override the params struct, and does so in its startExec() method.
+				__antithesis_instrumentation__.Notify(562589)
+
 				return false, nil
 			}
+			__antithesis_instrumentation__.Notify(562587)
 			return true, nil
 		},
 		leaveNode: func(_ string, n planNode) (err error) {
+			__antithesis_instrumentation__.Notify(562590)
 			if _, ok := n.(planNodeReadingOwnWrites); ok {
+				__antithesis_instrumentation__.Notify(562592)
 				prevMode := params.p.Txn().ConfigureStepping(params.ctx, kv.SteppingDisabled)
-				defer func() { _ = params.p.Txn().ConfigureStepping(params.ctx, prevMode) }()
+				defer func() {
+					__antithesis_instrumentation__.Notify(562593)
+					_ = params.p.Txn().ConfigureStepping(params.ctx, prevMode)
+				}()
+			} else {
+				__antithesis_instrumentation__.Notify(562594)
 			}
+			__antithesis_instrumentation__.Notify(562591)
 			return n.startExec(params)
 		},
 	}
+	__antithesis_instrumentation__.Notify(562585)
 	return walkPlan(params.ctx, plan, o)
 }
 
 func (p *planner) maybePlanHook(ctx context.Context, stmt tree.Statement) (planNode, error) {
-	// TODO(dan): This iteration makes the plan dispatch no longer constant
-	// time. We could fix that with a map of `reflect.Type` but including
-	// reflection in such a primary codepath is unfortunate. Instead, the
-	// upcoming IR work will provide unique numeric type tags, which will
-	// elegantly solve this.
+	__antithesis_instrumentation__.Notify(562595)
+
 	for _, planHook := range planHooks {
+		__antithesis_instrumentation__.Notify(562597)
 		if fn, header, subplans, avoidBuffering, err := planHook.fn(ctx, stmt, p); err != nil {
+			__antithesis_instrumentation__.Notify(562598)
 			return nil, err
-		} else if fn != nil {
-			if avoidBuffering {
-				p.curPlan.avoidBuffering = true
+		} else {
+			__antithesis_instrumentation__.Notify(562599)
+			if fn != nil {
+				__antithesis_instrumentation__.Notify(562600)
+				if avoidBuffering {
+					__antithesis_instrumentation__.Notify(562602)
+					p.curPlan.avoidBuffering = true
+				} else {
+					__antithesis_instrumentation__.Notify(562603)
+				}
+				__antithesis_instrumentation__.Notify(562601)
+				return newHookFnNode(planHook.name, fn, header, subplans), nil
+			} else {
+				__antithesis_instrumentation__.Notify(562604)
 			}
-			return newHookFnNode(planHook.name, fn, header, subplans), nil
 		}
 	}
+	__antithesis_instrumentation__.Notify(562596)
 	return nil, nil
 }
 
-// Mark transaction as operating on the system DB if the descriptor id
-// is within the SystemConfig range.
 func (p *planner) maybeSetSystemConfig(id descpb.ID) error {
-	if !descpb.IsSystemConfigID(id) || p.execCfg.Settings.Version.IsActive(
-		p.EvalContext().Ctx(), clusterversion.DisableSystemConfigGossipTrigger,
-	) {
+	__antithesis_instrumentation__.Notify(562605)
+	if !descpb.IsSystemConfigID(id) || func() bool {
+		__antithesis_instrumentation__.Notify(562607)
+		return p.execCfg.Settings.Version.IsActive(
+			p.EvalContext().Ctx(), clusterversion.DisableSystemConfigGossipTrigger,
+		) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(562608)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(562609)
 	}
-	// Mark transaction as operating on the system DB.
-	// Only the system tenant marks the SystemConfigTrigger.
+	__antithesis_instrumentation__.Notify(562606)
+
 	return p.txn.DeprecatedSetSystemConfigTrigger(p.execCfg.Codec.ForSystemTenant())
 }
 
-// planFlags is used throughout the planning code to keep track of various
-// events or decisions along the way.
 type planFlags uint32
 
 const (
-	// planFlagOptCacheHit is set if a plan from the query plan cache was used (and
-	// re-optimized).
 	planFlagOptCacheHit = (1 << iota)
 
-	// planFlagOptCacheMiss is set if we looked for a plan in the query plan cache but
-	// did not find one.
 	planFlagOptCacheMiss
 
-	// planFlagFullyDistributed is set if the query execution is is fully
-	// distributed.
 	planFlagFullyDistributed
 
-	// planFlagPartiallyDistributed is set if the query execution is is partially
-	// distributed (see physicalplan.PartiallyDistributedPlan).
 	planFlagPartiallyDistributed
 
-	// planFlagNotDistributed is set if the query execution is not distributed.
 	planFlagNotDistributed
 
-	// planFlagExecDone marks that execution has been completed.
 	planFlagExecDone
 
-	// planFlagImplicitTxn marks that the plan was run inside of an implicit
-	// transaction.
 	planFlagImplicitTxn
 
-	// planFlagIsDDL marks that the plan contains DDL.
 	planFlagIsDDL
 
-	// planFlagVectorized is set if the plan is executed via the vectorized
-	// engine.
 	planFlagVectorized
 
-	// planFlagTenant is set if the plan is executed on behalf of a tenant.
 	planFlagTenant
 
-	// planFlagContainsFullTableScan is set if the plan involves an unconstrained
-	// scan on (the primary key of) a table. This could be an unconstrained scan
-	// of any cardinality.
 	planFlagContainsFullTableScan
 
-	// planFlagContainsFullIndexScan is set if the plan involves an unconstrained
-	// non-partial secondary index scan. This could be an unconstrainted scan of
-	// any cardinality.
 	planFlagContainsFullIndexScan
 
-	// planFlagContainsLargeFullTableScan is set if the plan involves an
-	// unconstrained scan on (the primary key of) a table estimated to read more
-	// than large_full_scan_rows (or without available stats).
 	planFlagContainsLargeFullTableScan
 
-	// planFlagContainsLargeFullIndexScan is set if the plan involves an
-	// unconstrained non-partial secondary index scan estimated to read more than
-	// large_full_scan_rows (or without available stats).
 	planFlagContainsLargeFullIndexScan
 
-	// planFlagContainsMutation is set if the plan has any mutations.
 	planFlagContainsMutation
 )
 
 func (pf planFlags) IsSet(flag planFlags) bool {
+	__antithesis_instrumentation__.Notify(562610)
 	return (pf & flag) != 0
 }
 
 func (pf *planFlags) Set(flag planFlags) {
+	__antithesis_instrumentation__.Notify(562611)
 	*pf |= flag
 }
 
 func (pf *planFlags) Unset(flag planFlags) {
+	__antithesis_instrumentation__.Notify(562612)
 	*pf &= ^flag
 }
 
-// IsDistributed returns true if either the fully or the partially distributed
-// flags is set.
 func (pf planFlags) IsDistributed() bool {
-	return pf.IsSet(planFlagFullyDistributed) || pf.IsSet(planFlagPartiallyDistributed)
+	__antithesis_instrumentation__.Notify(562613)
+	return pf.IsSet(planFlagFullyDistributed) || func() bool {
+		__antithesis_instrumentation__.Notify(562614)
+		return pf.IsSet(planFlagPartiallyDistributed) == true
+	}() == true
 }

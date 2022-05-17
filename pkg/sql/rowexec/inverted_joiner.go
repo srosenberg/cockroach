@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,27 +26,21 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// TODO(sumeer): adjust this batch size dynamically to balance between the
-// higher scan throughput of larger batches and the cost of spilling the
-// scanned rows to disk. The spilling cost will probably be dominated by
-// the de-duping cost, since it incurs a read.
 var invertedJoinerBatchSize = util.ConstantWithMetamorphicTestValue(
 	"inverted-joiner-batch-size",
-	100, /* defaultValue */
-	1,   /* metamorphicValue */
+	100,
+	1,
 )
 
-// invertedJoinerState represents the state of the processor.
 type invertedJoinerState int
 
 const (
 	ijStateUnknown invertedJoinerState = iota
-	// ijReadingInput means that a batch of rows is being read from the input.
+
 	ijReadingInput
-	// ijPerformingIndexScan means it is performing an inverted index scan
-	// for the current input row batch.
+
 	ijPerformingIndexScan
-	// ijEmittingRows means it is emitting the results of the inverted join.
+
 	ijEmittingRows
 )
 
@@ -64,16 +50,12 @@ type invertedJoiner struct {
 	runningState invertedJoinerState
 	diskMonitor  *mon.BytesMonitor
 	desc         catalog.TableDescriptor
-	// The map from ColumnIDs in the table to the column position.
+
 	colIdxMap catalog.TableColMap
 	index     catalog.Index
-	// The ColumnID of the inverted column. Confusingly, this is also the id of
-	// the table column that was indexed.
+
 	invertedColID descpb.ColumnID
-	// prefixEqualityCols are the ordinals of the columns from the join input
-	// that represent join values for the non-inverted prefix columns of
-	// multi-column inverted indexes. The length is equal to the number of
-	// non-inverted prefix columns of the index.
+
 	prefixEqualityCols []uint32
 
 	onExprHelper execinfrapb.ExprHelper
@@ -81,88 +63,42 @@ type invertedJoiner struct {
 
 	joinType descpb.JoinType
 
-	// fetcher wraps the row.Fetcher used to perform scans. This enables the
-	// invertedJoiner to wrap the fetcher with a stat collector when necessary.
 	fetcher rowFetcher
 	row     rowenc.EncDatumRow
 
-	// rowsRead is the total number of rows that the fetcher read from disk.
 	rowsRead int64
 	alloc    tree.DatumAlloc
 	rowAlloc rowenc.EncDatumRowAlloc
 
-	// tableRow represents a row with all the columns of the table, where only
-	// the columns from an index entry are populated. It has the same order and
-	// number of columns as the underlying table descriptor. It includes values
-	// for non-inverted prefix columns and any remaining primary key columns. It
-	// does not include the inverted column because its value can not be
-	// constructed from an inverted index entry. It is reused to reduce
-	// allocations.
 	tableRow rowenc.EncDatumRow
 
-	// indexRow represents an entry retrieved from the index. It includes the
-	// non-inverted prefix columns in the order defined by the index descriptor
-	// and any remaining primary key columns. It does not include the inverted
-	// column because its value cannot be constructed from an inverted index
-	// entry.
-	//
-	// It is used for (1) generating non-inverted prefix lookup and routing
-	// spans for batches, (2) generating non-inverted prefix routing spans
-	// during prefiltering, and (3) adding to the indexRows row container.
-	//
-	// It is reused to reduce allocations.
 	indexRow rowenc.EncDatumRow
 
-	// indexRowTypes is a list of the types of each column in indexRow.
 	indexRowTypes []*types.T
 
-	// indexRowToTableRowMap is used to convert a tableRow to indexRow, and
-	// vice versa. Two-way conversion is possible with a single map because we
-	// iterate over all entries when converting.
 	indexRowToTableRowMap []int
 
-	// The input being joined using the index.
 	input                execinfra.RowSource
 	inputTypes           []*types.T
 	datumsToInvertedExpr invertedexpr.DatumsToInvertedExpr
 	canPreFilter         bool
-	// Batch size for fetches. Not a constant so we can lower for testing.
+
 	batchSize int
 
-	// State variables for each batch of input rows.
 	inputRows       rowenc.EncDatumRows
 	batchedExprEval batchedInvertedExprEvaluator
-	// The row indexes that are the result of the inverted expression evaluation
-	// of the join. These will be further filtered using the onExpr.
+
 	joinedRowIdx [][]KeyIndex
 
-	// The container for the index rows retrieved from the index. For evaluating
-	// each inverted expression, which involved set unions and intersections, it
-	// is necessary to de-duplicate the primary key rows retrieved from the
-	// inverted index. Instead of doing such de-duplication for each expression
-	// in the batch of expressions, it is done once when adding to indexRows --
-	// this is more efficient since multiple expressions may be using the same
-	// spans from the index. Note that De-duplicating by the entire index row,
-	// which includes non-inverted prefix columns for multi-column inverted
-	// indexes, is equivalent to de-duplicating by the PK because the all table
-	// columns are functionally dependent on the PK.
 	indexRows *rowcontainer.DiskBackedNumberedRowContainer
 
-	// indexSpans are the roachpb.Spans generated based on the inverted spans.
-	// The slice is reused between different input batches.
-	// NB: the row fetcher takes ownership of the slice and deeply resets each
-	// element of the slice once the fetcher is done with it, so we don't need
-	// to do ourselves.
 	indexSpans roachpb.Spans
 
-	// emitCursor contains information about where the next row to emit is within
-	// joinedRowIdx.
 	emitCursor struct {
-		// inputRowIdx corresponds to joinedRowIdx[inputRowIdx].
 		inputRowIdx int
-		// outputRowIdx corresponds to joinedRowIdx[inputRowIdx][outputRowIdx].
+
 		outputRowIdx int
-		// seenMatch is true if there was a match at the current inputRowIdx.
+
 		seenMatch bool
 	}
 
@@ -178,9 +114,6 @@ var _ execinfra.OpNode = &invertedJoiner{}
 
 const invertedJoinerProcName = "inverted joiner"
 
-// newInvertedJoiner constructs an invertedJoiner. The datumsToInvertedExpr
-// argument is non-nil only for tests. When nil, the invertedJoiner uses
-// the spec to construct an implementation of DatumsToInvertedExpr.
 func newInvertedJoiner(
 	flowCtx *execinfra.FlowCtx,
 	processorID int32,
@@ -190,11 +123,15 @@ func newInvertedJoiner(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (execinfra.RowSourcedProcessor, error) {
+	__antithesis_instrumentation__.Notify(572856)
 	switch spec.Type {
 	case descpb.InnerJoin, descpb.LeftOuterJoin, descpb.LeftSemiJoin, descpb.LeftAntiJoin:
+		__antithesis_instrumentation__.Notify(572871)
 	default:
+		__antithesis_instrumentation__.Notify(572872)
 		return nil, errors.AssertionFailedf("unexpected inverted join type %s", spec.Type)
 	}
+	__antithesis_instrumentation__.Notify(572857)
 	ij := &invertedJoiner{
 		desc:                 flowCtx.TableDescriptor(&spec.Table),
 		input:                input,
@@ -209,142 +146,203 @@ func newInvertedJoiner(
 	var err error
 	indexIdx := int(spec.IndexIdx)
 	if indexIdx >= len(ij.desc.ActiveIndexes()) {
+		__antithesis_instrumentation__.Notify(572873)
 		return nil, errors.Errorf("invalid indexIdx %d", indexIdx)
+	} else {
+		__antithesis_instrumentation__.Notify(572874)
 	}
+	__antithesis_instrumentation__.Notify(572858)
 	ij.index = ij.desc.ActiveIndexes()[indexIdx]
 	ij.invertedColID = ij.index.InvertedColumnID()
 
-	// Initialize tableRow, indexRow, indexRowTypes, and indexRowToTableRowMap,
-	// a mapping from indexRow column ordinal to tableRow column ordinals.
 	indexColumns := ij.desc.IndexFullColumns(ij.index)
-	// Inverted joins are not used for mutations.
+
 	ij.tableRow = make(rowenc.EncDatumRow, len(ij.desc.PublicColumns()))
 	ij.indexRow = make(rowenc.EncDatumRow, len(indexColumns)-1)
 	ij.indexRowTypes = make([]*types.T, len(ij.indexRow))
 	ij.indexRowToTableRowMap = make([]int, len(ij.indexRow))
 	indexRowIdx := 0
 	for _, col := range indexColumns {
+		__antithesis_instrumentation__.Notify(572875)
 		if col == nil {
+			__antithesis_instrumentation__.Notify(572878)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(572879)
 		}
+		__antithesis_instrumentation__.Notify(572876)
 		colID := col.GetID()
-		// Do not include the inverted column in the map.
+
 		if colID == ij.invertedColID {
+			__antithesis_instrumentation__.Notify(572880)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(572881)
 		}
+		__antithesis_instrumentation__.Notify(572877)
 		tableRowIdx := ij.colIdxMap.GetDefault(colID)
 		ij.indexRowToTableRowMap[indexRowIdx] = tableRowIdx
 		ij.indexRowTypes[indexRowIdx] = ij.desc.PublicColumns()[tableRowIdx].GetType()
 		indexRowIdx++
 	}
+	__antithesis_instrumentation__.Notify(572859)
 
 	outputColCount := len(ij.inputTypes)
-	// Inverted joins are not used for mutations.
+
 	rightColTypes := catalog.ColumnTypes(ij.desc.PublicColumns())
 	var includeRightCols bool
-	if ij.joinType == descpb.InnerJoin || ij.joinType == descpb.LeftOuterJoin {
+	if ij.joinType == descpb.InnerJoin || func() bool {
+		__antithesis_instrumentation__.Notify(572882)
+		return ij.joinType == descpb.LeftOuterJoin == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(572883)
 		outputColCount += len(rightColTypes)
 		includeRightCols = true
 		if spec.OutputGroupContinuationForLeftRow {
+			__antithesis_instrumentation__.Notify(572884)
 			outputColCount++
+		} else {
+			__antithesis_instrumentation__.Notify(572885)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(572886)
 	}
+	__antithesis_instrumentation__.Notify(572860)
 	outputColTypes := make([]*types.T, 0, outputColCount)
 	outputColTypes = append(outputColTypes, ij.inputTypes...)
 	if includeRightCols {
+		__antithesis_instrumentation__.Notify(572887)
 		outputColTypes = append(outputColTypes, rightColTypes...)
+	} else {
+		__antithesis_instrumentation__.Notify(572888)
 	}
+	__antithesis_instrumentation__.Notify(572861)
 	if spec.OutputGroupContinuationForLeftRow {
+		__antithesis_instrumentation__.Notify(572889)
 		outputColTypes = append(outputColTypes, types.Bool)
+	} else {
+		__antithesis_instrumentation__.Notify(572890)
 	}
+	__antithesis_instrumentation__.Notify(572862)
 	if err := ij.ProcessorBase.Init(
-		ij, post, outputColTypes, flowCtx, processorID, output, nil, /* memMonitor */
+		ij, post, outputColTypes, flowCtx, processorID, output, nil,
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{ij.input},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
-				// We need to generate metadata before closing the processor
-				// because InternalClose() updates ij.Ctx to the "original"
-				// context.
+				__antithesis_instrumentation__.Notify(572891)
+
 				trailingMeta := ij.generateMeta()
 				ij.close()
 				return trailingMeta
 			},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(572892)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(572893)
 	}
+	__antithesis_instrumentation__.Notify(572863)
 
 	semaCtx := flowCtx.NewSemaContext(flowCtx.EvalCtx.Txn)
 	onExprColTypes := make([]*types.T, 0, len(ij.inputTypes)+len(rightColTypes))
 	onExprColTypes = append(onExprColTypes, ij.inputTypes...)
 	onExprColTypes = append(onExprColTypes, rightColTypes...)
 	if err := ij.onExprHelper.Init(spec.OnExpr, onExprColTypes, semaCtx, ij.EvalCtx); err != nil {
+		__antithesis_instrumentation__.Notify(572894)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(572895)
 	}
+	__antithesis_instrumentation__.Notify(572864)
 	combinedRowLen := len(onExprColTypes)
 	if spec.OutputGroupContinuationForLeftRow {
+		__antithesis_instrumentation__.Notify(572896)
 		combinedRowLen++
+	} else {
+		__antithesis_instrumentation__.Notify(572897)
 	}
+	__antithesis_instrumentation__.Notify(572865)
 	ij.combinedRow = make(rowenc.EncDatumRow, 0, combinedRowLen)
 
 	if ij.datumsToInvertedExpr == nil {
+		__antithesis_instrumentation__.Notify(572898)
 		var invertedExprHelper execinfrapb.ExprHelper
 		if err := invertedExprHelper.Init(spec.InvertedExpr, onExprColTypes, semaCtx, ij.EvalCtx); err != nil {
+			__antithesis_instrumentation__.Notify(572900)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(572901)
 		}
+		__antithesis_instrumentation__.Notify(572899)
 		ij.datumsToInvertedExpr, err = invertedidx.NewDatumsToInvertedExpr(
 			ij.EvalCtx, onExprColTypes, invertedExprHelper.Expr, ij.index,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(572902)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(572903)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(572904)
 	}
+	__antithesis_instrumentation__.Notify(572866)
 	ij.canPreFilter = ij.datumsToInvertedExpr.CanPreFilter()
 	if ij.canPreFilter {
+		__antithesis_instrumentation__.Notify(572905)
 		ij.batchedExprEval.filterer = ij.datumsToInvertedExpr
+	} else {
+		__antithesis_instrumentation__.Notify(572906)
 	}
+	__antithesis_instrumentation__.Notify(572867)
 
-	// In general we need all the columns in the index to compute the set
-	// expression. There may be InvertedJoinerSpec.InvertedExpr that are known
-	// to generate only set union expressions, which together with LEFT_SEMI and
-	// LEFT_ANTI, and knowledge of the columns needed by
-	// InvertedJoinerSpec.OnExpr, could be used to prune the columns needed
-	// here. For now, we do the simple thing, since we have no idea whether
-	// such workloads actually occur in practice.
 	allIndexCols := util.MakeFastIntSet()
 	for _, col := range indexColumns {
+		__antithesis_instrumentation__.Notify(572907)
 		if col == nil {
+			__antithesis_instrumentation__.Notify(572909)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(572910)
 		}
+		__antithesis_instrumentation__.Notify(572908)
 		allIndexCols.Add(ij.colIdxMap.GetDefault(col.GetID()))
 	}
+	__antithesis_instrumentation__.Notify(572868)
 	fetcher, err := makeRowFetcherLegacy(
-		flowCtx, ij.desc, int(spec.IndexIdx), false, /* reverse */
+		flowCtx, ij.desc, int(spec.IndexIdx), false,
 		allIndexCols, flowCtx.EvalCtx.Mon, &ij.alloc,
 		descpb.ScanLockingStrength_FOR_NONE, descpb.ScanLockingWaitPolicy_BLOCK,
-		false, /* withSystemColumns */
+		false,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(572911)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(572912)
 	}
+	__antithesis_instrumentation__.Notify(572869)
 	ij.row = make(rowenc.EncDatumRow, len(ij.desc.PublicColumns()))
 
 	if execinfra.ShouldCollectStats(flowCtx.EvalCtx.Ctx(), flowCtx) {
+		__antithesis_instrumentation__.Notify(572913)
 		ij.input = newInputStatCollector(ij.input)
 		ij.fetcher = newRowFetcherStatCollector(fetcher)
 		ij.ExecStatsForTrace = ij.execStatsForTrace
 	} else {
+		__antithesis_instrumentation__.Notify(572914)
 		ij.fetcher = fetcher
 	}
+	__antithesis_instrumentation__.Notify(572870)
 
 	ij.spanBuilder.Init(flowCtx.EvalCtx, flowCtx.Codec(), ij.desc, ij.index)
 
-	// Initialize memory monitors and row container for index rows.
 	ctx := flowCtx.EvalCtx.Ctx()
 	ij.MemMonitor = execinfra.NewLimitedMonitor(ctx, flowCtx.EvalCtx.Mon, flowCtx, "invertedjoiner-limited")
 	ij.diskMonitor = execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, "invertedjoiner-disk")
 	ij.indexRows = rowcontainer.NewDiskBackedNumberedRowContainer(
-		true, /* deDup */
+		true,
 		ij.indexRowTypes,
 		ij.EvalCtx,
 		ij.FlowCtx.Cfg.TempStorage,
@@ -357,234 +355,321 @@ func newInvertedJoiner(
 	return ij, nil
 }
 
-// SetBatchSize sets the desired batch size. It should only be used in tests.
 func (ij *invertedJoiner) SetBatchSize(batchSize int) {
+	__antithesis_instrumentation__.Notify(572915)
 	ij.batchSize = batchSize
 }
 
-// Next is part of the RowSource interface.
 func (ij *invertedJoiner) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
-	// The join is implemented as follows:
-	// - Read the input rows in batches.
-	// - For each batch, map the rows to SpanExpressionProtos and initialize
-	//   a batchedInvertedExprEvaluator. Use that evaluator to generate spans
-	//   to read from the inverted index.
-	// - Retrieve the index rows and add the primary keys in these rows to the
-	//   row container, that de-duplicates, and pass the de-duplicated keys to
-	//   the batch evaluator.
-	// - Retrieve the results from the batch evaluator and buffer in joinedRowIdx,
-	//   and use the emitCursor to emit rows.
+	__antithesis_instrumentation__.Notify(572916)
+
 	for ij.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(572918)
 		var row rowenc.EncDatumRow
 		var meta *execinfrapb.ProducerMetadata
 		switch ij.runningState {
 		case ijReadingInput:
+			__antithesis_instrumentation__.Notify(572922)
 			ij.runningState, meta = ij.readInput()
 		case ijPerformingIndexScan:
+			__antithesis_instrumentation__.Notify(572923)
 			ij.runningState, meta = ij.performScan()
 		case ijEmittingRows:
+			__antithesis_instrumentation__.Notify(572924)
 			ij.runningState, row, meta = ij.emitRow()
 		default:
+			__antithesis_instrumentation__.Notify(572925)
 			log.Fatalf(ij.Ctx, "unsupported state: %d", ij.runningState)
 		}
-		if row == nil && meta == nil {
+		__antithesis_instrumentation__.Notify(572919)
+		if row == nil && func() bool {
+			__antithesis_instrumentation__.Notify(572926)
+			return meta == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(572927)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(572928)
 		}
+		__antithesis_instrumentation__.Notify(572920)
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(572929)
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(572930)
 		}
+		__antithesis_instrumentation__.Notify(572921)
 		if outRow := ij.ProcessRowHelper(row); outRow != nil {
+			__antithesis_instrumentation__.Notify(572931)
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(572932)
 		}
 	}
+	__antithesis_instrumentation__.Notify(572917)
 	return nil, ij.DrainHelper()
 }
 
-// readInput reads the next batch of input rows and starts an index scan.
 func (ij *invertedJoiner) readInput() (invertedJoinerState, *execinfrapb.ProducerMetadata) {
-	// Read the next batch of input rows.
+	__antithesis_instrumentation__.Notify(572933)
+
 	for len(ij.inputRows) < ij.batchSize {
+		__antithesis_instrumentation__.Notify(572940)
 		row, meta := ij.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(572946)
 			if meta.Err != nil {
-				ij.MoveToDraining(nil /* err */)
+				__antithesis_instrumentation__.Notify(572948)
+				ij.MoveToDraining(nil)
 				return ijStateUnknown, meta
+			} else {
+				__antithesis_instrumentation__.Notify(572949)
 			}
+			__antithesis_instrumentation__.Notify(572947)
 			return ijReadingInput, meta
+		} else {
+			__antithesis_instrumentation__.Notify(572950)
 		}
+		__antithesis_instrumentation__.Notify(572941)
 		if row == nil {
+			__antithesis_instrumentation__.Notify(572951)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(572952)
 		}
+		__antithesis_instrumentation__.Notify(572942)
 
 		expr, preFilterState, err := ij.datumsToInvertedExpr.Convert(ij.Ctx, row)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(572953)
 			ij.MoveToDraining(err)
 			return ijStateUnknown, ij.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(572954)
 		}
-		if expr == nil &&
-			(ij.joinType != descpb.LeftOuterJoin && ij.joinType != descpb.LeftAntiJoin) {
-			// One of the input columns was NULL, resulting in a nil expression.
-			// The join type will emit no row since the evaluation result will be
-			// an empty set, so don't bother copying the input row.
+		__antithesis_instrumentation__.Notify(572943)
+		if expr == nil && func() bool {
+			__antithesis_instrumentation__.Notify(572955)
+			return (ij.joinType != descpb.LeftOuterJoin && func() bool {
+				__antithesis_instrumentation__.Notify(572956)
+				return ij.joinType != descpb.LeftAntiJoin == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(572957)
+
 			ij.inputRows = append(ij.inputRows, nil)
 		} else {
+			__antithesis_instrumentation__.Notify(572958)
 			ij.inputRows = append(ij.inputRows, ij.rowAlloc.CopyRow(row))
 		}
+		__antithesis_instrumentation__.Notify(572944)
 		if expr == nil {
-			// One of the input columns was NULL, resulting in a nil expression.
-			// The nil serves as a marker that will result in an empty set as the
-			// evaluation result.
+			__antithesis_instrumentation__.Notify(572959)
+
 			ij.batchedExprEval.exprs = append(ij.batchedExprEval.exprs, nil)
 			if ij.canPreFilter {
+				__antithesis_instrumentation__.Notify(572960)
 				ij.batchedExprEval.preFilterState = append(ij.batchedExprEval.preFilterState, nil)
+			} else {
+				__antithesis_instrumentation__.Notify(572961)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(572962)
 			ij.batchedExprEval.exprs = append(ij.batchedExprEval.exprs, expr)
 			if ij.canPreFilter {
+				__antithesis_instrumentation__.Notify(572963)
 				ij.batchedExprEval.preFilterState = append(ij.batchedExprEval.preFilterState, preFilterState)
+			} else {
+				__antithesis_instrumentation__.Notify(572964)
 			}
 		}
+		__antithesis_instrumentation__.Notify(572945)
 		if len(ij.prefixEqualityCols) > 0 {
+			__antithesis_instrumentation__.Notify(572965)
 			if expr == nil {
-				// One of the input columns was NULL, resulting in a nil expression.
-				// The join type will emit no row since the evaluation result will be
-				// an empty set, so don't bother creating a prefix key span.
+				__antithesis_instrumentation__.Notify(572966)
+
 				ij.batchedExprEval.nonInvertedPrefixes = append(ij.batchedExprEval.nonInvertedPrefixes, roachpb.Key{})
 			} else {
+				__antithesis_instrumentation__.Notify(572967)
 				for prefixIdx, colIdx := range ij.prefixEqualityCols {
+					__antithesis_instrumentation__.Notify(572970)
 					ij.indexRow[prefixIdx] = row[colIdx]
 				}
-				// TODO(mgartner): MakeKeyFromEncDatums will allocate and grow a
-				// new roachpb.Key. Many rows will share the same prefix or
-				// encode to the same length roachpb.Key. We can optimize this
-				// by reusing a pre-allocated key.
+				__antithesis_instrumentation__.Notify(572968)
+
 				keyCols := ij.desc.IndexFetchSpecKeyAndSuffixColumns(ij.index)
 				prefixKey, _, err := rowenc.MakeKeyFromEncDatums(
 					ij.indexRow[:len(ij.prefixEqualityCols)],
 					keyCols,
 					&ij.alloc,
-					nil, /* keyPrefix */
+					nil,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(572971)
 					ij.MoveToDraining(err)
 					return ijStateUnknown, ij.DrainHelper()
+				} else {
+					__antithesis_instrumentation__.Notify(572972)
 				}
+				__antithesis_instrumentation__.Notify(572969)
 				ij.batchedExprEval.nonInvertedPrefixes = append(ij.batchedExprEval.nonInvertedPrefixes, prefixKey)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(572973)
 		}
 	}
+	__antithesis_instrumentation__.Notify(572934)
 
 	if len(ij.inputRows) == 0 {
+		__antithesis_instrumentation__.Notify(572974)
 		log.VEventf(ij.Ctx, 1, "no more input rows")
-		// We're done.
+
 		ij.MoveToDraining(nil)
 		return ijStateUnknown, ij.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572975)
 	}
+	__antithesis_instrumentation__.Notify(572935)
 	log.VEventf(ij.Ctx, 1, "read %d input rows", len(ij.inputRows))
 
 	spans, err := ij.batchedExprEval.init()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(572976)
 		ij.MoveToDraining(err)
 		return ijStateUnknown, ij.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572977)
 	}
+	__antithesis_instrumentation__.Notify(572936)
 	if len(spans) == 0 {
-		// Nothing to scan. For each input row, place a nil slice in the joined
-		// rows, for emitRow() to process.
+		__antithesis_instrumentation__.Notify(572978)
+
 		ij.joinedRowIdx = ij.joinedRowIdx[:0]
 		for range ij.inputRows {
+			__antithesis_instrumentation__.Notify(572980)
 			ij.joinedRowIdx = append(ij.joinedRowIdx, nil)
 		}
+		__antithesis_instrumentation__.Notify(572979)
 		return ijEmittingRows, nil
+	} else {
+		__antithesis_instrumentation__.Notify(572981)
 	}
-	// NB: spans is already sorted, and that sorting is preserved when
-	// generating ij.indexSpans.
-	ij.indexSpans, err = ij.spanBuilder.SpansFromInvertedSpans(spans, nil /* constraint */, ij.indexSpans)
+	__antithesis_instrumentation__.Notify(572937)
+
+	ij.indexSpans, err = ij.spanBuilder.SpansFromInvertedSpans(spans, nil, ij.indexSpans)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(572982)
 		ij.MoveToDraining(err)
 		return ijStateUnknown, ij.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572983)
 	}
+	__antithesis_instrumentation__.Notify(572938)
 
 	log.VEventf(ij.Ctx, 1, "scanning %d spans", len(ij.indexSpans))
 	if err = ij.fetcher.StartScan(
 		ij.Ctx, ij.FlowCtx.Txn, ij.indexSpans, rowinfra.NoBytesLimit, rowinfra.NoRowLimit,
 		ij.FlowCtx.TraceKV, ij.EvalCtx.TestingKnobs.ForceProductionBatchSizes,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(572984)
 		ij.MoveToDraining(err)
 		return ijStateUnknown, ij.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572985)
 	}
+	__antithesis_instrumentation__.Notify(572939)
 
 	return ijPerformingIndexScan, nil
 }
 
 func (ij *invertedJoiner) performScan() (invertedJoinerState, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(572986)
 	log.VEventf(ij.Ctx, 1, "joining rows")
-	// Read the entire set of rows that are part of the scan.
+
 	for {
-		// Fetch the next row and copy it into the row container.
+		__antithesis_instrumentation__.Notify(572988)
+
 		ok, err := ij.fetcher.NextRowInto(ij.Ctx, ij.row, ij.colIdxMap)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(572993)
 			ij.MoveToDraining(scrub.UnwrapScrubError(err))
 			return ijStateUnknown, ij.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(572994)
 		}
+		__antithesis_instrumentation__.Notify(572989)
 		if !ok {
-			// Done with this input batch.
+			__antithesis_instrumentation__.Notify(572995)
+
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(572996)
 		}
+		__antithesis_instrumentation__.Notify(572990)
 		scannedRow := ij.row
 		ij.rowsRead++
 
-		// NB: Inverted columns are custom encoded in a manner that does not
-		// correspond to Datum encoding, and in the code here we only want the
-		// encoded bytes. Currently, we assume that the provider of this row has not
-		// decoded the row, and therefore the encoded bytes can be used directly.
-		// This will need to change if the rowFetcher used by the invertedJoiner is
-		// changed to use to a vectorized implementation, however. In this case, the
-		// fetcher will have decoded the row, but special-cased the inverted column
-		// by stuffing the encoded bytes into a "decoded" DBytes. See
-		// invertedFilterer.readInput() for an example.
 		ij.transformToIndexRow(scannedRow)
 		idx := ij.colIdxMap.GetDefault(ij.invertedColID)
 		encInvertedVal := scannedRow[idx].EncodedBytes()
 		var encFullVal []byte
 		if len(ij.prefixEqualityCols) > 0 {
-			// TODO(mgartner): MakeKeyFromEncDatumsDeprecated will allocate and grow a
-			// new roachpb.Key. Many rows will share the same prefix or
-			// encode to the same length roachpb.Key. We can optimize this
-			// by reusing a pre-allocated key.
+			__antithesis_instrumentation__.Notify(572997)
+
 			keyCols := ij.desc.IndexFetchSpecKeyAndSuffixColumns(ij.index)
 			prefixKey, _, err := rowenc.MakeKeyFromEncDatums(
 				ij.indexRow[:len(ij.prefixEqualityCols)],
 				keyCols,
 				&ij.alloc,
-				nil, /* keyPrefix */
+				nil,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(572999)
 				ij.MoveToDraining(err)
 				return ijStateUnknown, ij.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(573000)
 			}
-			// We append an encoded inverted value/datum to the key prefix
-			// representing the non-inverted prefix columns, to generate the key
-			// for the inverted index. This is similar to the internals of
-			// rowenc.appendEncDatumsToKey.
+			__antithesis_instrumentation__.Notify(572998)
+
 			encFullVal = append(prefixKey, encInvertedVal...)
+		} else {
+			__antithesis_instrumentation__.Notify(573001)
 		}
+		__antithesis_instrumentation__.Notify(572991)
 		shouldAdd, err := ij.batchedExprEval.prepareAddIndexRow(encInvertedVal, encFullVal)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573002)
 			ij.MoveToDraining(err)
 			return ijStateUnknown, ij.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(573003)
 		}
+		__antithesis_instrumentation__.Notify(572992)
 		if shouldAdd {
+			__antithesis_instrumentation__.Notify(573004)
 			rowIdx, err := ij.indexRows.AddRow(ij.Ctx, ij.indexRow)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(573006)
 				ij.MoveToDraining(err)
 				return ijStateUnknown, ij.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(573007)
 			}
+			__antithesis_instrumentation__.Notify(573005)
 			if err = ij.batchedExprEval.addIndexRow(rowIdx); err != nil {
+				__antithesis_instrumentation__.Notify(573008)
 				ij.MoveToDraining(err)
 				return ijStateUnknown, ij.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(573009)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(573010)
 		}
 	}
+	__antithesis_instrumentation__.Notify(572987)
 	ij.joinedRowIdx = ij.batchedExprEval.evaluate()
 	ij.indexRows.SetupForRead(ij.Ctx, ij.joinedRowIdx)
 	log.VEventf(ij.Ctx, 1, "done evaluating expressions")
@@ -595,17 +680,17 @@ func (ij *invertedJoiner) performScan() (invertedJoinerState, *execinfrapb.Produ
 var trueEncDatum = rowenc.DatumToEncDatum(types.Bool, tree.DBoolTrue)
 var falseEncDatum = rowenc.DatumToEncDatum(types.Bool, tree.DBoolFalse)
 
-// emitRow returns the next row from ij.emitCursor, if present. Otherwise it
-// prepares for another input batch.
 func (ij *invertedJoiner) emitRow() (
 	invertedJoinerState,
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
-	// Finished processing the batch.
+	__antithesis_instrumentation__.Notify(573011)
+
 	if ij.emitCursor.inputRowIdx >= len(ij.joinedRowIdx) {
+		__antithesis_instrumentation__.Notify(573018)
 		log.VEventf(ij.Ctx, 1, "done emitting rows")
-		// Ready for another input batch. Reset state.
+
 		ij.inputRows = ij.inputRows[:0]
 		ij.batchedExprEval.reset()
 		ij.joinedRowIdx = nil
@@ -613,15 +698,21 @@ func (ij *invertedJoiner) emitRow() (
 		ij.emitCursor.inputRowIdx = 0
 		ij.emitCursor.seenMatch = false
 		if err := ij.indexRows.UnsafeReset(ij.Ctx); err != nil {
+			__antithesis_instrumentation__.Notify(573020)
 			ij.MoveToDraining(err)
 			return ijStateUnknown, nil, ij.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(573021)
 		}
+		__antithesis_instrumentation__.Notify(573019)
 		return ijReadingInput, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(573022)
 	}
+	__antithesis_instrumentation__.Notify(573012)
 
-	// Reached the end of the matches for an input row. May need to emit for
-	// LeftOuterJoin and LeftAntiJoin.
 	if ij.emitCursor.outputRowIdx >= len(ij.joinedRowIdx[ij.emitCursor.inputRowIdx]) {
+		__antithesis_instrumentation__.Notify(573023)
 		inputRowIdx := ij.emitCursor.inputRowIdx
 		seenMatch := ij.emitCursor.seenMatch
 		ij.emitCursor.inputRowIdx++
@@ -629,159 +720,245 @@ func (ij *invertedJoiner) emitRow() (
 		ij.emitCursor.seenMatch = false
 
 		if !seenMatch {
+			__antithesis_instrumentation__.Notify(573025)
 			switch ij.joinType {
 			case descpb.LeftOuterJoin:
+				__antithesis_instrumentation__.Notify(573026)
 				ij.renderUnmatchedRow(ij.inputRows[inputRowIdx])
 				return ijEmittingRows, ij.combinedRow, nil
 			case descpb.LeftAntiJoin:
+				__antithesis_instrumentation__.Notify(573027)
 				return ijEmittingRows, ij.inputRows[inputRowIdx], nil
+			default:
+				__antithesis_instrumentation__.Notify(573028)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(573029)
 		}
+		__antithesis_instrumentation__.Notify(573024)
 		return ijEmittingRows, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(573030)
 	}
+	__antithesis_instrumentation__.Notify(573013)
 
 	inputRow := ij.inputRows[ij.emitCursor.inputRowIdx]
 	joinedRowIdx := ij.joinedRowIdx[ij.emitCursor.inputRowIdx][ij.emitCursor.outputRowIdx]
-	indexedRow, err := ij.indexRows.GetRow(ij.Ctx, joinedRowIdx, false /* skip */)
+	indexedRow, err := ij.indexRows.GetRow(ij.Ctx, joinedRowIdx, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(573031)
 		ij.MoveToDraining(err)
 		return ijStateUnknown, nil, ij.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(573032)
 	}
+	__antithesis_instrumentation__.Notify(573014)
 	ij.emitCursor.outputRowIdx++
 	ij.transformToTableRow(indexedRow)
 	renderedRow, err := ij.render(inputRow, ij.tableRow)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(573033)
 		ij.MoveToDraining(err)
 		return ijStateUnknown, nil, ij.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(573034)
 	}
+	__antithesis_instrumentation__.Notify(573015)
 	skipRemaining := func() error {
+		__antithesis_instrumentation__.Notify(573035)
 		for ; ij.emitCursor.outputRowIdx < len(ij.joinedRowIdx[ij.emitCursor.inputRowIdx]); ij.emitCursor.outputRowIdx++ {
+			__antithesis_instrumentation__.Notify(573037)
 			idx := ij.joinedRowIdx[ij.emitCursor.inputRowIdx][ij.emitCursor.outputRowIdx]
-			if _, err := ij.indexRows.GetRow(ij.Ctx, idx, true /* skip */); err != nil {
+			if _, err := ij.indexRows.GetRow(ij.Ctx, idx, true); err != nil {
+				__antithesis_instrumentation__.Notify(573038)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(573039)
 			}
 		}
+		__antithesis_instrumentation__.Notify(573036)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(573016)
 	if renderedRow != nil {
+		__antithesis_instrumentation__.Notify(573040)
 		seenMatch := ij.emitCursor.seenMatch
 		ij.emitCursor.seenMatch = true
 		switch ij.joinType {
 		case descpb.InnerJoin, descpb.LeftOuterJoin:
+			__antithesis_instrumentation__.Notify(573041)
 			if ij.outputContinuationCol {
+				__antithesis_instrumentation__.Notify(573048)
 				if seenMatch {
-					// This is not the first row output for this left row, so set the
-					// group continuation to true.
+					__antithesis_instrumentation__.Notify(573050)
+
 					ij.combinedRow = append(ij.combinedRow, trueEncDatum)
 				} else {
-					// This is the first row output for this left row, so set the group
-					// continuation to false.
+					__antithesis_instrumentation__.Notify(573051)
+
 					ij.combinedRow = append(ij.combinedRow, falseEncDatum)
 				}
+				__antithesis_instrumentation__.Notify(573049)
 				renderedRow = ij.combinedRow
+			} else {
+				__antithesis_instrumentation__.Notify(573052)
 			}
+			__antithesis_instrumentation__.Notify(573042)
 			return ijEmittingRows, renderedRow, nil
 		case descpb.LeftSemiJoin:
-			// Skip the rest of the joined rows.
+			__antithesis_instrumentation__.Notify(573043)
+
 			if err := skipRemaining(); err != nil {
+				__antithesis_instrumentation__.Notify(573053)
 				ij.MoveToDraining(err)
 				return ijStateUnknown, nil, ij.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(573054)
 			}
+			__antithesis_instrumentation__.Notify(573044)
 			return ijEmittingRows, inputRow, nil
 		case descpb.LeftAntiJoin:
-			// Skip the rest of the joined rows.
+			__antithesis_instrumentation__.Notify(573045)
+
 			if err := skipRemaining(); err != nil {
+				__antithesis_instrumentation__.Notify(573055)
 				ij.MoveToDraining(err)
 				return ijStateUnknown, nil, ij.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(573056)
 			}
+			__antithesis_instrumentation__.Notify(573046)
 			ij.emitCursor.outputRowIdx = len(ij.joinedRowIdx[ij.emitCursor.inputRowIdx])
+		default:
+			__antithesis_instrumentation__.Notify(573047)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573057)
 	}
+	__antithesis_instrumentation__.Notify(573017)
 	return ijEmittingRows, nil, nil
 }
 
-// render constructs a row with columns from both sides. The ON condition is
-// evaluated; if it fails, returns nil. When it returns a non-nil row, it is
-// identical to ij.combinedRow.
 func (ij *invertedJoiner) render(lrow, rrow rowenc.EncDatumRow) (rowenc.EncDatumRow, error) {
+	__antithesis_instrumentation__.Notify(573058)
 	ij.combinedRow = append(ij.combinedRow[:0], lrow...)
 	ij.combinedRow = append(ij.combinedRow, rrow...)
 	if ij.onExprHelper.Expr != nil {
+		__antithesis_instrumentation__.Notify(573060)
 		res, err := ij.onExprHelper.EvalFilter(ij.combinedRow)
-		if !res || err != nil {
+		if !res || func() bool {
+			__antithesis_instrumentation__.Notify(573061)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573062)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(573063)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573064)
 	}
+	__antithesis_instrumentation__.Notify(573059)
 	return ij.combinedRow, nil
 }
 
-// renderUnmatchedRow creates a result row given an unmatched row and
-// stores it in ij.combinedRow.
 func (ij *invertedJoiner) renderUnmatchedRow(row rowenc.EncDatumRow) {
+	__antithesis_instrumentation__.Notify(573065)
 	ij.combinedRow = ij.combinedRow[:cap(ij.combinedRow)]
-	// Copy the left row.
+
 	copy(ij.combinedRow, row)
-	// Set the remaining columns to NULL.
+
 	for i := len(row); i < len(ij.combinedRow); i++ {
+		__antithesis_instrumentation__.Notify(573067)
 		ij.combinedRow[i].Datum = tree.DNull
 	}
+	__antithesis_instrumentation__.Notify(573066)
 	if ij.outputContinuationCol {
-		// The last column is the continuation column, so set it to false since
-		// this is the only output row for this group.
+		__antithesis_instrumentation__.Notify(573068)
+
 		ij.combinedRow[len(ij.combinedRow)-1] = falseEncDatum
+	} else {
+		__antithesis_instrumentation__.Notify(573069)
 	}
 }
 
 func (ij *invertedJoiner) transformToIndexRow(row rowenc.EncDatumRow) {
+	__antithesis_instrumentation__.Notify(573070)
 	for keyIdx, rowIdx := range ij.indexRowToTableRowMap {
+		__antithesis_instrumentation__.Notify(573071)
 		ij.indexRow[keyIdx] = row[rowIdx]
 	}
 }
 
 func (ij *invertedJoiner) transformToTableRow(indexRow rowenc.EncDatumRow) {
+	__antithesis_instrumentation__.Notify(573072)
 	for keyIdx, rowIdx := range ij.indexRowToTableRowMap {
+		__antithesis_instrumentation__.Notify(573073)
 		ij.tableRow[rowIdx] = indexRow[keyIdx]
 	}
 }
 
-// Start is part of the RowSource interface.
 func (ij *invertedJoiner) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573074)
 	ctx = ij.StartInternal(ctx, invertedJoinerProcName)
 	ij.input.Start(ctx)
 	ij.runningState = ijReadingInput
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (ij *invertedJoiner) ConsumerClosed() {
-	// The consumer is done, Next() will not be called again.
+	__antithesis_instrumentation__.Notify(573075)
+
 	ij.close()
 }
 
 func (ij *invertedJoiner) close() {
+	__antithesis_instrumentation__.Notify(573076)
 	if ij.InternalClose() {
+		__antithesis_instrumentation__.Notify(573077)
 		if ij.fetcher != nil {
+			__antithesis_instrumentation__.Notify(573080)
 			ij.fetcher.Close(ij.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(573081)
 		}
+		__antithesis_instrumentation__.Notify(573078)
 		if ij.indexRows != nil {
+			__antithesis_instrumentation__.Notify(573082)
 			ij.indexRows.Close(ij.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(573083)
 		}
+		__antithesis_instrumentation__.Notify(573079)
 		ij.MemMonitor.Stop(ij.Ctx)
 		if ij.diskMonitor != nil {
+			__antithesis_instrumentation__.Notify(573084)
 			ij.diskMonitor.Stop(ij.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(573085)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573086)
 	}
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (ij *invertedJoiner) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(573087)
 	is, ok := getInputStats(ij.input)
 	if !ok {
+		__antithesis_instrumentation__.Notify(573090)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(573091)
 	}
+	__antithesis_instrumentation__.Notify(573088)
 	fis, ok := getFetcherInputStats(ij.fetcher)
 	if !ok {
+		__antithesis_instrumentation__.Notify(573092)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(573093)
 	}
+	__antithesis_instrumentation__.Notify(573089)
 	ij.scanStats = execinfra.GetScanStats(ij.Ctx)
 	ret := execinfrapb.ComponentStats{
 		Inputs: []execinfrapb.InputStats{is},
@@ -802,32 +979,49 @@ func (ij *invertedJoiner) execStatsForTrace() *execinfrapb.ComponentStats {
 }
 
 func (ij *invertedJoiner) generateMeta() []execinfrapb.ProducerMetadata {
+	__antithesis_instrumentation__.Notify(573094)
 	trailingMeta := make([]execinfrapb.ProducerMetadata, 1, 2)
 	meta := &trailingMeta[0]
 	meta.Metrics = execinfrapb.GetMetricsMeta()
 	meta.Metrics.BytesRead = ij.fetcher.GetBytesRead()
 	meta.Metrics.RowsRead = ij.rowsRead
 	if tfs := execinfra.GetLeafTxnFinalState(ij.Ctx, ij.FlowCtx.Txn); tfs != nil {
+		__antithesis_instrumentation__.Notify(573096)
 		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{LeafTxnFinalState: tfs})
+	} else {
+		__antithesis_instrumentation__.Notify(573097)
 	}
+	__antithesis_instrumentation__.Notify(573095)
 	return trailingMeta
 }
 
-// ChildCount is part of the execinfra.OpNode interface.
 func (ij *invertedJoiner) ChildCount(verbose bool) int {
+	__antithesis_instrumentation__.Notify(573098)
 	if _, ok := ij.input.(execinfra.OpNode); ok {
+		__antithesis_instrumentation__.Notify(573100)
 		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(573101)
 	}
+	__antithesis_instrumentation__.Notify(573099)
 	return 0
 }
 
-// Child is part of the execinfra.OpNode interface.
 func (ij *invertedJoiner) Child(nth int, verbose bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(573102)
 	if nth == 0 {
+		__antithesis_instrumentation__.Notify(573104)
 		if n, ok := ij.input.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(573106)
 			return n
+		} else {
+			__antithesis_instrumentation__.Notify(573107)
 		}
+		__antithesis_instrumentation__.Notify(573105)
 		panic("input to invertedJoiner is not an execinfra.OpNode")
+	} else {
+		__antithesis_instrumentation__.Notify(573108)
 	}
+	__antithesis_instrumentation__.Notify(573103)
 	panic(errors.AssertionFailedf("invalid index %d", nth))
 }

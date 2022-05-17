@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package certmgr
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,8 +12,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/sysutil"
 )
 
-// CertManager is a collection of certificates that will be reloaded on
-// SIGHUP signal or explicit Reload call.
 type CertManager struct {
 	syncutil.RWMutex
 	ctx           context.Context
@@ -29,15 +19,8 @@ type CertManager struct {
 	certs         map[string]Cert
 }
 
-// NewCertManager creates a new certificate manager with empty certificate set.
-// The manager has a go routine that waits for SIGHUP to reload the certs.
-// Shutting it down can happen by passing in a cancelable context.
-// The code doesn't use stop.Stopper. There is little benefit here to just add
-// stopper as an extra argument so we can cancel also on stopper.ShouldQuiesce().
-// A client that uses the cert manager and uses the stopper can simply pass the
-// stopper.CancelOnQuiesce() cancelable context and achieve the same thing
-// without having an extra argument nor the dependency on stop.Stopper.
 func NewCertManager(ctx context.Context) *CertManager {
+	__antithesis_instrumentation__.Notify(186344)
 	cm := &CertManager{
 		ctx:   ctx,
 		certs: make(map[string]Cert),
@@ -45,79 +28,97 @@ func NewCertManager(ctx context.Context) *CertManager {
 	return cm
 }
 
-// ManageCert will add the given cert to the certs managed by the manager.
 func (cm *CertManager) ManageCert(id string, cert Cert) {
+	__antithesis_instrumentation__.Notify(186345)
 	cm.Lock()
 	defer cm.Unlock()
 	if len(cm.certs) == 0 {
+		__antithesis_instrumentation__.Notify(186347)
 		cm.startMonitorLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(186348)
 	}
+	__antithesis_instrumentation__.Notify(186346)
 	cm.certs[id] = cert
 }
 
-// RemoveCert will remove the given cert from the certs managed by the manager.
 func (cm *CertManager) RemoveCert(id string) {
+	__antithesis_instrumentation__.Notify(186349)
 	cm.Lock()
 	defer cm.Unlock()
 	delete(cm.certs, id)
 	if len(cm.certs) == 0 {
+		__antithesis_instrumentation__.Notify(186350)
 		cm.stopMonitorLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(186351)
 	}
 }
 
-// Cert will retrieve the managed cert with the give id if it exists.
-// nil otherwise.
 func (cm *CertManager) Cert(id string) Cert {
+	__antithesis_instrumentation__.Notify(186352)
 	cm.RLock()
 	defer cm.RUnlock()
 	return cm.certs[id]
 }
 
-// Registers a signal handler that triggers on SIGHUP and reloads the
-// certificates. The handler will shutdown when the context is done.
 func (cm *CertManager) startMonitorLocked() {
+	__antithesis_instrumentation__.Notify(186353)
 	ctx, cancel := context.WithCancel(cm.ctx)
 	cm.monitorCancel = cancel
 	refresh := sysutil.RefreshSignaledChan()
 
 	go func() {
+		__antithesis_instrumentation__.Notify(186354)
 		for {
+			__antithesis_instrumentation__.Notify(186355)
 			select {
 			case sig := <-refresh:
+				__antithesis_instrumentation__.Notify(186356)
 				log.Ops.Infof(ctx, "received signal %q, triggering certificate reload", sig)
 				cm.Reload(ctx)
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(186357)
 				return
 			}
 		}
 	}()
 }
 
-// Stop the running signal handler.
 func (cm *CertManager) stopMonitorLocked() {
+	__antithesis_instrumentation__.Notify(186358)
 	cm.monitorCancel()
 	cm.monitorCancel = nil
 }
 
-// Reload will verify and load/reload the managed certificates.
 func (cm *CertManager) Reload(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(186359)
 	cm.RLock()
 	defer cm.RUnlock()
 
 	errCount := 0
 	for _, cert := range cm.certs {
+		__antithesis_instrumentation__.Notify(186361)
 		cert.Reload(cm.ctx)
 		if cert.Err() != nil {
+			__antithesis_instrumentation__.Notify(186363)
 			log.Ops.Warningf(ctx, "could not reload cert: %v", cert.Err())
 			errCount++
+		} else {
+			__antithesis_instrumentation__.Notify(186364)
 		}
-		// If the context gets canceled while reloading - no need to continue.
-		// Return right away.
+		__antithesis_instrumentation__.Notify(186362)
+
 		if ctx.Err() != nil {
+			__antithesis_instrumentation__.Notify(186365)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(186366)
 		}
 	}
+	__antithesis_instrumentation__.Notify(186360)
 	if errCount > 0 {
+		__antithesis_instrumentation__.Notify(186367)
 		log.StructuredEvent(cm.ctx, &eventpb.CertsReload{
 			Success: false,
 			ErrorMessage: fmt.Sprintf(
@@ -125,6 +126,7 @@ func (cm *CertManager) Reload(ctx context.Context) {
 			)},
 		)
 	} else {
+		__antithesis_instrumentation__.Notify(186368)
 		log.StructuredEvent(cm.ctx, &eventpb.CertsReload{Success: true})
 	}
 }

@@ -1,16 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// The Column and Index backfill primitives.
-
 package backfill
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,11 +29,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// IndexBackfillCheckpointInterval is the duration between backfill detail updates.
-//
-// Note: it might be surprising to find this defined here given this layer does
-// not actually perform any checkpointing. The reason it has been moved here from
-// sql is to avoid any dependency cycles inside the declarative schema changer.
 var IndexBackfillCheckpointInterval = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"bulkio.index_backfill.checkpoint_interval",
@@ -52,28 +37,35 @@ var IndexBackfillCheckpointInterval = settings.RegisterDurationSetting(
 	settings.NonNegativeDuration,
 )
 
-// MutationFilter is the type of a simple predicate on a mutation.
 type MutationFilter func(catalog.Mutation) bool
 
-// ColumnMutationFilter is a filter that allows mutations that add or drop
-// columns.
 func ColumnMutationFilter(m catalog.Mutation) bool {
-	return m.AsColumn() != nil && (m.Adding() || m.Dropped())
+	__antithesis_instrumentation__.Notify(245618)
+	return m.AsColumn() != nil && func() bool {
+		__antithesis_instrumentation__.Notify(245619)
+		return (m.Adding() || func() bool {
+			__antithesis_instrumentation__.Notify(245620)
+			return m.Dropped() == true
+		}() == true) == true
+	}() == true
 }
 
-// IndexMutationFilter is a filter that allows mutations that add indexes.
 func IndexMutationFilter(m catalog.Mutation) bool {
+	__antithesis_instrumentation__.Notify(245621)
 	idx := m.AsIndex()
-	return idx != nil && !idx.IsTemporaryIndexForBackfill() && m.Adding()
+	return idx != nil && func() bool {
+		__antithesis_instrumentation__.Notify(245622)
+		return !idx.IsTemporaryIndexForBackfill() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(245623)
+		return m.Adding() == true
+	}() == true
 }
 
-// ColumnBackfiller is capable of running a column backfill for all
-// updateCols.
 type ColumnBackfiller struct {
 	added   []catalog.Column
 	dropped []catalog.Column
 
-	// updateCols is a slice of all column descriptors that are being modified.
 	updateCols  []catalog.Column
 	updateExprs []tree.TypedExpr
 	evalCtx     *tree.EvalContext
@@ -83,28 +75,36 @@ type ColumnBackfiller struct {
 	colIdxMap   catalog.TableColMap
 	alloc       tree.DatumAlloc
 
-	// mon is a memory monitor linked with the ColumnBackfiller on creation.
 	mon *mon.BytesMonitor
 
 	rowMetrics *row.Metrics
 }
 
-// initCols is a helper to populate some column metadata on a ColumnBackfiller.
 func (cb *ColumnBackfiller) initCols(desc catalog.TableDescriptor) {
+	__antithesis_instrumentation__.Notify(245624)
 	for _, m := range desc.AllMutations() {
+		__antithesis_instrumentation__.Notify(245625)
 		if ColumnMutationFilter(m) {
+			__antithesis_instrumentation__.Notify(245626)
 			col := m.AsColumn()
 			if m.Adding() {
+				__antithesis_instrumentation__.Notify(245627)
 				cb.added = append(cb.added, col)
-			} else if m.Dropped() {
-				cb.dropped = append(cb.dropped, col)
+			} else {
+				__antithesis_instrumentation__.Notify(245628)
+				if m.Dropped() {
+					__antithesis_instrumentation__.Notify(245629)
+					cb.dropped = append(cb.dropped, col)
+				} else {
+					__antithesis_instrumentation__.Notify(245630)
+				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(245631)
 		}
 	}
 }
 
-// init performs initialization operations that are shared across the local
-// and distributed initialization procedures for the ColumnBackfiller.
 func (cb *ColumnBackfiller) init(
 	evalCtx *tree.EvalContext,
 	defaultExprs []tree.TypedExpr,
@@ -115,7 +115,7 @@ func (cb *ColumnBackfiller) init(
 ) error {
 	cb.evalCtx = evalCtx
 	cb.updateCols = append(cb.added, cb.dropped...)
-	// Populate default or computed values.
+
 	cb.updateExprs = make([]tree.TypedExpr, len(cb.updateCols))
 	for j, col := range cb.added {
 		if col.IsComputed() {
@@ -130,7 +130,6 @@ func (cb *ColumnBackfiller) init(
 		cb.updateExprs[j+len(cb.added)] = tree.DNull
 	}
 
-	// We need all the non-virtual columns.
 	for _, c := range desc.PublicColumns() {
 		if !c.IsVirtual() {
 			cb.fetcherCols = append(cb.fetcherCols, c.GetID())
@@ -143,7 +142,6 @@ func (cb *ColumnBackfiller) init(
 		return err
 	}
 
-	// Create a bound account associated with the column backfiller.
 	if mon == nil {
 		return errors.AssertionFailedf("no memory monitor linked to ColumnBackfiller during init")
 	}
@@ -152,19 +150,16 @@ func (cb *ColumnBackfiller) init(
 
 	return cb.fetcher.Init(
 		evalCtx.Context,
-		false, /* reverse */
+		false,
 		descpb.ScanLockingStrength_FOR_NONE,
 		descpb.ScanLockingWaitPolicy_BLOCK,
-		0, /* lockTimeout */
+		0,
 		&cb.alloc,
 		cb.mon,
 		&spec,
 	)
 }
 
-// InitForLocalUse initializes a ColumnBackfiller for use during local
-// execution within a transaction. In this case, the entire backfill process
-// is occurring on the gateway as part of the user's transaction.
 func (cb *ColumnBackfiller) InitForLocalUse(
 	ctx context.Context,
 	evalCtx *tree.EvalContext,
@@ -173,13 +168,18 @@ func (cb *ColumnBackfiller) InitForLocalUse(
 	mon *mon.BytesMonitor,
 	rowMetrics *row.Metrics,
 ) error {
+	__antithesis_instrumentation__.Notify(245632)
 	cb.initCols(desc)
 	defaultExprs, err := schemaexpr.MakeDefaultExprs(
 		ctx, cb.added, &transform.ExprTransformContext{}, evalCtx, semaCtx,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(245635)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(245636)
 	}
+	__antithesis_instrumentation__.Notify(245633)
 	computedExprs, _, err := schemaexpr.MakeComputedExprs(
 		ctx,
 		cb.added,
@@ -190,34 +190,38 @@ func (cb *ColumnBackfiller) InitForLocalUse(
 		semaCtx,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(245637)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(245638)
 	}
+	__antithesis_instrumentation__.Notify(245634)
 	return cb.init(evalCtx, defaultExprs, computedExprs, desc, mon, rowMetrics)
 }
 
-// InitForDistributedUse initializes a ColumnBackfiller for use as part of a
-// backfill operation executing as part of a distributed flow. In this use,
-// the backfill operation manages its own transactions. This separation is
-// necessary due to the different procedure for accessing user defined type
-// metadata as part of a distributed flow.
 func (cb *ColumnBackfiller) InitForDistributedUse(
 	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
 	desc catalog.TableDescriptor,
 	mon *mon.BytesMonitor,
 ) error {
+	__antithesis_instrumentation__.Notify(245639)
 	cb.initCols(desc)
 	evalCtx := flowCtx.NewEvalCtx()
 	var defaultExprs, computedExprs []tree.TypedExpr
-	// Install type metadata in the target descriptors, as well as resolve any
-	// user defined types in the column expressions.
+
 	if err := flowCtx.Cfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(245641)
 		resolver := flowCtx.NewTypeResolver(txn)
-		// Hydrate all the types present in the table.
+
 		if err := typedesc.HydrateTypesInTableDescriptor(ctx, desc.TableDesc(), &resolver); err != nil {
+			__antithesis_instrumentation__.Notify(245645)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(245646)
 		}
-		// Set up a SemaContext to type check the default and computed expressions.
+		__antithesis_instrumentation__.Notify(245642)
+
 		semaCtx := tree.MakeSemaContext()
 		semaCtx.TypeResolver = &resolver
 		var err error
@@ -225,8 +229,12 @@ func (cb *ColumnBackfiller) InitForDistributedUse(
 			ctx, cb.added, &transform.ExprTransformContext{}, evalCtx, &semaCtx,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(245647)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(245648)
 		}
+		__antithesis_instrumentation__.Notify(245643)
 		computedExprs, _, err = schemaexpr.MakeComputedExprs(
 			ctx,
 			cb.added,
@@ -237,31 +245,38 @@ func (cb *ColumnBackfiller) InitForDistributedUse(
 			&semaCtx,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(245649)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(245650)
 		}
+		__antithesis_instrumentation__.Notify(245644)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(245651)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(245652)
 	}
-	// Release leases on any accessed types now that type metadata is installed.
-	// We do this so that leases on any accessed types are not held for the
-	// entire backfill process.
+	__antithesis_instrumentation__.Notify(245640)
+
 	flowCtx.Descriptors.ReleaseAll(ctx)
 
 	rowMetrics := flowCtx.GetRowMetrics()
 	return cb.init(evalCtx, defaultExprs, computedExprs, desc, mon, rowMetrics)
 }
 
-// Close frees the resources used by the ColumnBackfiller.
 func (cb *ColumnBackfiller) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(245653)
 	cb.fetcher.Close(ctx)
 	if cb.mon != nil {
+		__antithesis_instrumentation__.Notify(245654)
 		cb.mon.Stop(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(245655)
 	}
 }
 
-// RunColumnBackfillChunk runs column backfill over a chunk of the table using
-// the span sp provided, for all updateCols.
 func (cb *ColumnBackfiller) RunColumnBackfillChunk(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -271,8 +286,8 @@ func (cb *ColumnBackfiller) RunColumnBackfillChunk(
 	alsoCommit bool,
 	traceKV bool,
 ) (roachpb.Key, error) {
-	// TODO(dan): Tighten up the bound on the requestedCols parameter to
-	// makeRowUpdater.
+	__antithesis_instrumentation__.Notify(245656)
+
 	requestedCols := make([]catalog.Column, 0, len(tableDesc.PublicColumns())+len(cb.added)+len(cb.dropped))
 	requestedCols = append(requestedCols, tableDesc.PublicColumns()...)
 	requestedCols = append(requestedCols, cb.added...)
@@ -291,31 +306,32 @@ func (cb *ColumnBackfiller) RunColumnBackfillChunk(
 		cb.rowMetrics,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(245664)
 		return roachpb.Key{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(245665)
 	}
+	__antithesis_instrumentation__.Notify(245657)
 
-	// TODO(dan): This check is an unfortunate bleeding of the internals of
-	// rowUpdater. Extract the sql row to k/v mapping logic out into something
-	// usable here.
 	if !ru.IsColumnOnlyUpdate() {
+		__antithesis_instrumentation__.Notify(245666)
 		panic("only column data should be modified, but the rowUpdater is configured otherwise")
+	} else {
+		__antithesis_instrumentation__.Notify(245667)
 	}
+	__antithesis_instrumentation__.Notify(245658)
 
-	// Get the next set of rows.
-	//
-	// Running the scan and applying the changes in many transactions
-	// is fine because the schema change is in the correct state to
-	// handle intermediate OLTP commands which delete and add values
-	// during the scan. Index entries in the new index are being
-	// populated and deleted by the OLTP commands but not otherwise
-	// read or used
 	if err := cb.fetcher.StartScan(
 		ctx, txn, []roachpb.Span{sp}, rowinfra.DefaultBatchBytesLimit, chunkSize,
-		traceKV, false, /* forceProductionKVBatchSize */
+		traceKV, false,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(245668)
 		log.Errorf(ctx, "scan error: %s", err)
 		return roachpb.Key{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(245669)
 	}
+	__antithesis_instrumentation__.Notify(245659)
 
 	updateValues := make(tree.Datums, len(cb.updateExprs))
 	b := txn.NewBatch()
@@ -329,148 +345,166 @@ func (cb *ColumnBackfiller) RunColumnBackfillChunk(
 
 	fetchedValues := make(tree.Datums, cb.colIdxMap.Len())
 	iv.CurSourceRow = make(tree.Datums, len(iv.Cols))
-	// We can have more FetchCols than public columns; fill the rest with NULLs.
+
 	oldValues := make(tree.Datums, len(ru.FetchCols))
 	for i := range oldValues {
+		__antithesis_instrumentation__.Notify(245670)
 		oldValues[i] = tree.DNull
 	}
+	__antithesis_instrumentation__.Notify(245660)
 
 	for i := int64(0); i < int64(chunkSize); i++ {
+		__antithesis_instrumentation__.Notify(245671)
 		ok, err := cb.fetcher.NextRowDecodedInto(ctx, fetchedValues, cb.colIdxMap)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(245675)
 			return roachpb.Key{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(245676)
 		}
+		__antithesis_instrumentation__.Notify(245672)
 		if !ok {
+			__antithesis_instrumentation__.Notify(245677)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(245678)
 		}
+		__antithesis_instrumentation__.Notify(245673)
 
 		iv.CurSourceRow = append(iv.CurSourceRow[:0], fetchedValues...)
 
-		// Evaluate the new values. This must be done separately for
-		// each row so as to handle impure functions correctly.
 		for j, e := range cb.updateExprs {
+			__antithesis_instrumentation__.Notify(245679)
 			val, err := e.Eval(cb.evalCtx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(245683)
 				return roachpb.Key{}, sqlerrors.NewInvalidSchemaDefinitionError(err)
+			} else {
+				__antithesis_instrumentation__.Notify(245684)
 			}
-			if j < len(cb.added) && !cb.added[j].IsNullable() && val == tree.DNull {
+			__antithesis_instrumentation__.Notify(245680)
+			if j < len(cb.added) && func() bool {
+				__antithesis_instrumentation__.Notify(245685)
+				return !cb.added[j].IsNullable() == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(245686)
+				return val == tree.DNull == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(245687)
 				return roachpb.Key{}, sqlerrors.NewNonNullViolationError(cb.added[j].GetName())
+			} else {
+				__antithesis_instrumentation__.Notify(245688)
 			}
+			__antithesis_instrumentation__.Notify(245681)
 
-			// Added computed column values should be usable for the next
-			// added columns being backfilled. They have already been type
-			// checked.
 			if j < len(cb.added) {
+				__antithesis_instrumentation__.Notify(245689)
 				iv.CurSourceRow = append(iv.CurSourceRow, val)
+			} else {
+				__antithesis_instrumentation__.Notify(245690)
 			}
+			__antithesis_instrumentation__.Notify(245682)
 			updateValues[j] = val
 		}
+		__antithesis_instrumentation__.Notify(245674)
 		copy(oldValues, fetchedValues)
 
-		// No existing secondary indexes will be updated by adding or dropping a
-		// column. It is safe to use an empty PartialIndexUpdateHelper in this
-		// case.
 		var pm row.PartialIndexUpdateHelper
 		if _, err := ru.UpdateRow(
 			ctx, b, oldValues, updateValues, pm, traceKV,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(245691)
 			return roachpb.Key{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(245692)
 		}
 	}
-	// Write the new row values.
+	__antithesis_instrumentation__.Notify(245661)
+
 	writeBatch := txn.Run
 	if alsoCommit {
+		__antithesis_instrumentation__.Notify(245693)
 		writeBatch = txn.CommitInBatch
+	} else {
+		__antithesis_instrumentation__.Notify(245694)
 	}
+	__antithesis_instrumentation__.Notify(245662)
 	if err := writeBatch(ctx, b); err != nil {
+		__antithesis_instrumentation__.Notify(245695)
 		return roachpb.Key{}, ConvertBackfillError(ctx, tableDesc, b)
+	} else {
+		__antithesis_instrumentation__.Notify(245696)
 	}
+	__antithesis_instrumentation__.Notify(245663)
 	return cb.fetcher.Key(), nil
 }
 
-// ConvertBackfillError returns a cleaner SQL error for a failed Batch.
 func ConvertBackfillError(
 	ctx context.Context, tableDesc catalog.TableDescriptor, b *kv.Batch,
 ) error {
-	// A backfill on a new schema element has failed and the batch contains
-	// information useful in printing a sensible error. However
-	// ConvertBatchError() will only work correctly if the schema elements
-	// are "live" in the tableDesc.
+	__antithesis_instrumentation__.Notify(245697)
+
 	desc, err := tableDesc.MakeFirstMutationPublic(catalog.IncludeConstraints)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(245699)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(245700)
 	}
+	__antithesis_instrumentation__.Notify(245698)
 	return row.ConvertBatchError(ctx, desc, b)
 }
 
 type muBoundAccount struct {
-	// mu protects the boundAccount which may be updated asynchronously during
-	// ingestion and index creation.
 	syncutil.Mutex
-	// boundAccount is associated with mon and is used to track allocations during
-	// an	index backfill.
+
 	boundAccount mon.BoundAccount
 }
 
-// IndexBackfiller is capable of backfilling all the added index.
 type IndexBackfiller struct {
 	added []catalog.Index
-	// colIdxMap maps ColumnIDs to indices into desc.Columns and desc.Mutations.
+
 	colIdxMap catalog.TableColMap
 
 	types   []*types.T
 	rowVals tree.Datums
 	evalCtx *tree.EvalContext
 
-	// cols are all of the writable (PUBLIC and DELETE_AND_WRITE_ONLY) columns in
-	// the descriptor.
 	cols []catalog.Column
 
-	// addedCols are the columns in DELETE_AND_WRITE_ONLY being added as part of
-	// this index which are not computed.
 	addedCols []catalog.Column
 
-	// computedCols are the columns in this index which are computed and do
-	// not have concrete values in the source index. This is virtual computed
-	// columns and stored computed columns which are non-public.
 	computedCols []catalog.Column
 
-	// Map of columns which need to be evaluated to their expressions.
 	colExprs map[descpb.ColumnID]tree.TypedExpr
 
-	// predicates is a map of indexes to partial index predicate expressions. It
-	// includes entries for partial indexes only.
 	predicates map[descpb.IndexID]tree.TypedExpr
 
-	// indexesToEncode is a list of indexes to encode entries for a given row.
-	// It is a field of IndexBackfiller to avoid allocating a slice for each row
-	// backfilled.
 	indexesToEncode []catalog.Index
 
-	// valNeededForCol contains the indexes (into cols) of all columns that we
-	// need to fetch values for.
 	valNeededForCol util.FastIntSet
 
 	alloc tree.DatumAlloc
 
-	// mon is a memory monitor linked with the IndexBackfiller on creation.
 	mon            *mon.BytesMonitor
 	muBoundAccount muBoundAccount
 }
 
-// ContainsInvertedIndex returns true if backfilling an inverted index.
 func (ib *IndexBackfiller) ContainsInvertedIndex() bool {
+	__antithesis_instrumentation__.Notify(245701)
 	for _, idx := range ib.added {
+		__antithesis_instrumentation__.Notify(245703)
 		if idx.GetType() == descpb.IndexDescriptor_INVERTED {
+			__antithesis_instrumentation__.Notify(245704)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(245705)
 		}
 	}
+	__antithesis_instrumentation__.Notify(245702)
 	return false
 }
 
-// InitForLocalUse initializes an IndexBackfiller for use during local execution
-// within a transaction. In this case, the entire backfill process is occurring
-// on the gateway as part of the user's transaction.
 func (ib *IndexBackfiller) InitForLocalUse(
 	ctx context.Context,
 	evalCtx *tree.EvalContext,
@@ -478,38 +512,32 @@ func (ib *IndexBackfiller) InitForLocalUse(
 	desc catalog.TableDescriptor,
 	mon *mon.BytesMonitor,
 ) error {
-	// Initialize ib.cols and ib.colIdxMap.
+	__antithesis_instrumentation__.Notify(245706)
+
 	ib.initCols(desc)
 
-	// Initialize ib.added.
 	ib.valNeededForCol = ib.initIndexes(desc)
 
 	predicates, colExprs, referencedColumns, err := constructExprs(
 		ctx, desc, ib.added, ib.cols, ib.addedCols, ib.computedCols, evalCtx, semaCtx,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(245709)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(245710)
 	}
+	__antithesis_instrumentation__.Notify(245707)
 
-	// Add the columns referenced in the predicate to valNeededForCol so that
-	// columns necessary to evaluate the predicate expression are fetched.
 	referencedColumns.ForEach(func(col descpb.ColumnID) {
+		__antithesis_instrumentation__.Notify(245711)
 		ib.valNeededForCol.Add(ib.colIdxMap.GetDefault(col))
 	})
+	__antithesis_instrumentation__.Notify(245708)
 
 	return ib.init(evalCtx, predicates, colExprs, mon)
 }
 
-// constructExprs is a helper to construct the index and column expressions
-// required for an index backfill. It also returns the set of non-virtual
-// columns referenced by any of these exprs that should be fetched from the
-// primary index. Virtual columns are not included because they don't exist in
-// the primary index.
-//
-// The cols argument is the full set of cols in the table (including those being
-// added). The addedCols argument is the set of non-public, non-computed
-// columns. The computedCols argument is the set of computed columns in the
-// index.
 func constructExprs(
 	ctx context.Context,
 	desc catalog.TableDescriptor,
@@ -523,7 +551,8 @@ func constructExprs(
 	referencedColumns catalog.TableColSet,
 	_ error,
 ) {
-	// Convert any partial index predicate strings into expressions.
+	__antithesis_instrumentation__.Notify(245712)
+
 	predicates, predicateRefColIDs, err := schemaexpr.MakePartialIndexExprs(
 		ctx,
 		addedIndexes,
@@ -533,18 +562,24 @@ func constructExprs(
 		semaCtx,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(245721)
 		return nil, nil, catalog.TableColSet{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(245722)
 	}
+	__antithesis_instrumentation__.Notify(245713)
 
-	// Determine the exprs for newly added, non-computed columns.
 	defaultExprs, err := schemaexpr.MakeDefaultExprs(
 		ctx, addedCols, &transform.ExprTransformContext{}, evalCtx, semaCtx,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(245723)
 		return nil, nil, catalog.TableColSet{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(245724)
 	}
+	__antithesis_instrumentation__.Notify(245714)
 
-	// TODO(ajwerner): Rethink this table name.
 	tn := tree.NewUnqualifiedTableName(tree.Name(desc.GetName()))
 	computedExprs, computedExprRefColIDs, err := schemaexpr.MakeComputedExprs(
 		ctx,
@@ -556,68 +591,89 @@ func constructExprs(
 		semaCtx,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(245725)
 		return nil, nil, catalog.TableColSet{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(245726)
 	}
+	__antithesis_instrumentation__.Notify(245715)
 
 	numColExprs := len(addedCols) + len(computedCols)
 	colExprs = make(map[descpb.ColumnID]tree.TypedExpr, numColExprs)
 	var addedColSet catalog.TableColSet
 	for i := range defaultExprs {
+		__antithesis_instrumentation__.Notify(245727)
 		id := addedCols[i].GetID()
 		colExprs[id] = defaultExprs[i]
 		addedColSet.Add(id)
 	}
+	__antithesis_instrumentation__.Notify(245716)
 	for i := range computedCols {
+		__antithesis_instrumentation__.Notify(245728)
 		id := computedCols[i].GetID()
 		colExprs[id] = computedExprs[i]
 	}
+	__antithesis_instrumentation__.Notify(245717)
 
-	// Ensure that only existing, non-virtual columns are added to the needed
-	// set. Otherwise the fetcher may complain that the columns don't exist.
-	// There's a somewhat subtle invariant that if any dependencies exist
-	// between computed columns and default values that the computed column be a
-	// later column and thus the default value will have been populated.
-	// Computed columns are not permitted to reference each other.
 	addToReferencedColumns := func(cols catalog.TableColSet) error {
+		__antithesis_instrumentation__.Notify(245729)
 		for colID, ok := cols.Next(0); ok; colID, ok = cols.Next(colID + 1) {
+			__antithesis_instrumentation__.Notify(245731)
 			if addedColSet.Contains(colID) {
+				__antithesis_instrumentation__.Notify(245735)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(245736)
 			}
+			__antithesis_instrumentation__.Notify(245732)
 			col, err := desc.FindColumnWithID(colID)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(245737)
 				return errors.AssertionFailedf("column %d does not exist", colID)
+			} else {
+				__antithesis_instrumentation__.Notify(245738)
 			}
+			__antithesis_instrumentation__.Notify(245733)
 			if col.IsVirtual() {
+				__antithesis_instrumentation__.Notify(245739)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(245740)
 			}
+			__antithesis_instrumentation__.Notify(245734)
 			referencedColumns.Add(colID)
 		}
+		__antithesis_instrumentation__.Notify(245730)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(245718)
 	if err := addToReferencedColumns(predicateRefColIDs); err != nil {
+		__antithesis_instrumentation__.Notify(245741)
 		return nil, nil, catalog.TableColSet{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(245742)
 	}
+	__antithesis_instrumentation__.Notify(245719)
 	if err := addToReferencedColumns(computedExprRefColIDs); err != nil {
+		__antithesis_instrumentation__.Notify(245743)
 		return nil, nil, catalog.TableColSet{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(245744)
 	}
+	__antithesis_instrumentation__.Notify(245720)
 	return predicates, colExprs, referencedColumns, nil
 }
 
-// InitForDistributedUse initializes an IndexBackfiller for use as part of a
-// backfill operation executing as part of a distributed flow. In this use, the
-// backfill operation manages its own transactions. This separation is necessary
-// due to the different procedure for accessing user defined type metadata as
-// part of a distributed flow.
 func (ib *IndexBackfiller) InitForDistributedUse(
 	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
 	desc catalog.TableDescriptor,
 	mon *mon.BytesMonitor,
 ) error {
-	// Initialize ib.cols and ib.colIdxMap.
+	__antithesis_instrumentation__.Notify(245745)
+
 	ib.initCols(desc)
 
-	// Initialize ib.added.
 	ib.valNeededForCol = ib.initIndexes(desc)
 
 	evalCtx := flowCtx.NewEvalCtx()
@@ -625,136 +681,180 @@ func (ib *IndexBackfiller) InitForDistributedUse(
 	var colExprs map[descpb.ColumnID]tree.TypedExpr
 	var referencedColumns catalog.TableColSet
 
-	// Install type metadata in the target descriptors, as well as resolve any
-	// user defined types in partial index predicate expressions.
 	if err := flowCtx.Cfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
+		__antithesis_instrumentation__.Notify(245748)
 		resolver := flowCtx.NewTypeResolver(txn)
-		// Hydrate all the types present in the table.
+
 		if err = typedesc.HydrateTypesInTableDescriptor(
 			ctx, desc.TableDesc(), &resolver,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(245750)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(245751)
 		}
-		// Set up a SemaContext to type check the default and computed expressions.
+		__antithesis_instrumentation__.Notify(245749)
+
 		semaCtx := tree.MakeSemaContext()
 		semaCtx.TypeResolver = &resolver
-		// Convert any partial index predicate strings into expressions.
+
 		predicates, colExprs, referencedColumns, err = constructExprs(
 			ctx, desc, ib.added, ib.cols, ib.addedCols, ib.computedCols, evalCtx, &semaCtx,
 		)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(245752)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(245753)
 	}
-	// Release leases on any accessed types now that type metadata is installed.
-	// We do this so that leases on any accessed types are not held for the
-	// entire backfill process.
+	__antithesis_instrumentation__.Notify(245746)
+
 	flowCtx.Descriptors.ReleaseAll(ctx)
 
-	// Add the columns referenced in the predicate to valNeededForCol so that
-	// columns necessary to evaluate the predicate expression are fetched.
 	referencedColumns.ForEach(func(col descpb.ColumnID) {
+		__antithesis_instrumentation__.Notify(245754)
 		ib.valNeededForCol.Add(ib.colIdxMap.GetDefault(col))
 	})
+	__antithesis_instrumentation__.Notify(245747)
 
 	return ib.init(evalCtx, predicates, colExprs, mon)
 }
 
-// Close releases the resources used by the IndexBackfiller.
 func (ib *IndexBackfiller) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(245755)
 	if ib.mon != nil {
+		__antithesis_instrumentation__.Notify(245756)
 		ib.muBoundAccount.Lock()
 		ib.muBoundAccount.boundAccount.Close(ctx)
 		ib.muBoundAccount.Unlock()
 		ib.mon.Stop(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(245757)
 	}
 }
 
-// GrowBoundAccount grows the mutex protected bound account backing the
-// index backfiller.
 func (ib *IndexBackfiller) GrowBoundAccount(ctx context.Context, growBy int64) error {
+	__antithesis_instrumentation__.Notify(245758)
 	defer ib.muBoundAccount.Unlock()
 	ib.muBoundAccount.Lock()
 	err := ib.muBoundAccount.boundAccount.Grow(ctx, growBy)
 	return err
 }
 
-// ShrinkBoundAccount shrinks the mutex protected bound account backing the
-// index backfiller.
 func (ib *IndexBackfiller) ShrinkBoundAccount(ctx context.Context, shrinkBy int64) {
+	__antithesis_instrumentation__.Notify(245759)
 	defer ib.muBoundAccount.Unlock()
 	ib.muBoundAccount.Lock()
 	ib.muBoundAccount.boundAccount.Shrink(ctx, shrinkBy)
 }
 
-// initCols is a helper to populate column metadata of an IndexBackfiller. It
-// populates the cols and colIdxMap fields.
 func (ib *IndexBackfiller) initCols(desc catalog.TableDescriptor) {
+	__antithesis_instrumentation__.Notify(245760)
 	ib.cols = make([]catalog.Column, 0, len(desc.DeletableColumns()))
 	for _, column := range desc.DeletableColumns() {
+		__antithesis_instrumentation__.Notify(245761)
 		if column.Public() {
-			if column.IsComputed() && column.IsVirtual() {
-				ib.computedCols = append(ib.computedCols, column)
-			}
-		} else if column.Adding() && column.WriteAndDeleteOnly() {
-			// If there are ongoing mutations, add columns that are being added and in
-			// the DELETE_AND_WRITE_ONLY state.
-			if column.IsComputed() {
+			__antithesis_instrumentation__.Notify(245763)
+			if column.IsComputed() && func() bool {
+				__antithesis_instrumentation__.Notify(245764)
+				return column.IsVirtual() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(245765)
 				ib.computedCols = append(ib.computedCols, column)
 			} else {
-				ib.addedCols = append(ib.addedCols, column)
+				__antithesis_instrumentation__.Notify(245766)
 			}
 		} else {
-			continue
+			__antithesis_instrumentation__.Notify(245767)
+			if column.Adding() && func() bool {
+				__antithesis_instrumentation__.Notify(245768)
+				return column.WriteAndDeleteOnly() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(245769)
+
+				if column.IsComputed() {
+					__antithesis_instrumentation__.Notify(245770)
+					ib.computedCols = append(ib.computedCols, column)
+				} else {
+					__antithesis_instrumentation__.Notify(245771)
+					ib.addedCols = append(ib.addedCols, column)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(245772)
+				continue
+			}
 		}
-		// Create a map of each column's ID to its ordinal.
+		__antithesis_instrumentation__.Notify(245762)
+
 		ib.colIdxMap.Set(column.GetID(), len(ib.cols))
 		ib.cols = append(ib.cols, column)
 	}
 }
 
-// initIndexes is a helper to populate index metadata of an IndexBackfiller. It
-// populates the added field. It returns a set of column ordinals that must be
-// fetched in order to backfill the added indexes.
 func (ib *IndexBackfiller) initIndexes(desc catalog.TableDescriptor) util.FastIntSet {
+	__antithesis_instrumentation__.Notify(245773)
 	var valNeededForCol util.FastIntSet
 	mutations := desc.AllMutations()
 	mutationID := mutations[0].MutationID()
 
-	// Mutations in the same transaction have the same ID. Loop through the
-	// mutations and collect all index mutations.
 	for _, m := range mutations {
+		__antithesis_instrumentation__.Notify(245775)
 		if m.MutationID() != mutationID {
+			__antithesis_instrumentation__.Notify(245777)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(245778)
 		}
+		__antithesis_instrumentation__.Notify(245776)
 		if IndexMutationFilter(m) {
+			__antithesis_instrumentation__.Notify(245779)
 			idx := m.AsIndex()
 			colIDs := idx.CollectKeyColumnIDs()
 			if idx.GetEncodingType() == descpb.PrimaryIndexEncoding {
+				__antithesis_instrumentation__.Notify(245781)
 				for _, col := range ib.cols {
+					__antithesis_instrumentation__.Notify(245782)
 					if !col.IsVirtual() {
+						__antithesis_instrumentation__.Notify(245783)
 						colIDs.Add(col.GetID())
+					} else {
+						__antithesis_instrumentation__.Notify(245784)
 					}
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(245785)
 				colIDs.UnionWith(idx.CollectSecondaryStoredColumnIDs())
 				colIDs.UnionWith(idx.CollectKeySuffixColumnIDs())
 			}
+			__antithesis_instrumentation__.Notify(245780)
 
 			ib.added = append(ib.added, idx)
 			for i := range ib.cols {
+				__antithesis_instrumentation__.Notify(245786)
 				id := ib.cols[i].GetID()
-				if colIDs.Contains(id) && i < len(desc.PublicColumns()) && !ib.cols[i].IsVirtual() {
+				if colIDs.Contains(id) && func() bool {
+					__antithesis_instrumentation__.Notify(245787)
+					return i < len(desc.PublicColumns()) == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(245788)
+					return !ib.cols[i].IsVirtual() == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(245789)
 					valNeededForCol.Add(i)
+				} else {
+					__antithesis_instrumentation__.Notify(245790)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(245791)
 		}
 	}
+	__antithesis_instrumentation__.Notify(245774)
 
 	return valNeededForCol
 }
 
-// init completes the initialization of an IndexBackfiller.
 func (ib *IndexBackfiller) init(
 	evalCtx *tree.EvalContext,
 	predicateExprs map[descpb.IndexID]tree.TypedExpr,
@@ -765,10 +865,6 @@ func (ib *IndexBackfiller) init(
 	ib.predicates = predicateExprs
 	ib.colExprs = colExprs
 
-	// Initialize a list of index descriptors to encode entries for. If there
-	// are no partial indexes, the list is equivalent to the list of indexes
-	// being added. If there are partial indexes, allocate a new list that is
-	// reset in BuildIndexEntriesChunk for every row added.
 	ib.indexesToEncode = ib.added
 	if len(ib.predicates) > 0 {
 		ib.indexesToEncode = make([]catalog.Index, 0, len(ib.added))
@@ -779,7 +875,6 @@ func (ib *IndexBackfiller) init(
 		ib.types[i] = ib.cols[i].GetType()
 	}
 
-	// Create a bound account associated with the index backfiller monitor.
 	if mon == nil {
 		return errors.AssertionFailedf("no memory monitor linked to IndexBackfiller during init")
 	}
@@ -788,13 +883,6 @@ func (ib *IndexBackfiller) init(
 	return nil
 }
 
-// BuildIndexEntriesChunk reads a chunk of rows from a table using the span sp
-// provided, and builds all the added indexes.
-// The method accounts for the memory used by the index entries for this chunk
-// using the memory monitor associated with ib and returns the amount of memory
-// that needs to be freed once the returned IndexEntry slice is freed.
-// It is the callers responsibility to clear the associated bound account when
-// appropriate.
 func (ib *IndexBackfiller) BuildIndexEntriesChunk(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -803,8 +891,8 @@ func (ib *IndexBackfiller) BuildIndexEntriesChunk(
 	chunkSize int64,
 	traceKV bool,
 ) ([]rowenc.IndexEntry, roachpb.Key, int64, error) {
-	// This ought to be chunkSize but in most tests we are actually building smaller
-	// indexes so use a smaller value.
+	__antithesis_instrumentation__.Notify(245792)
+
 	const initBufferSize = 1000
 	const sizeOfIndexEntry = int64(unsafe.Sizeof(rowenc.IndexEntry{}))
 	var memUsedPerChunk int64
@@ -812,60 +900,79 @@ func (ib *IndexBackfiller) BuildIndexEntriesChunk(
 	indexEntriesInChunkInitialBufferSize :=
 		sizeOfIndexEntry * initBufferSize * int64(len(ib.added))
 	if err := ib.GrowBoundAccount(ctx, indexEntriesInChunkInitialBufferSize); err != nil {
+		__antithesis_instrumentation__.Notify(245803)
 		return nil, nil, 0, errors.Wrap(err,
 			"failed to initialize empty buffer to store the index entries of all rows in the chunk")
+	} else {
+		__antithesis_instrumentation__.Notify(245804)
 	}
+	__antithesis_instrumentation__.Notify(245793)
 	memUsedPerChunk += indexEntriesInChunkInitialBufferSize
 	entries := make([]rowenc.IndexEntry, 0, initBufferSize*int64(len(ib.added)))
 
 	var fetcherCols []descpb.ColumnID
 	for i, c := range ib.cols {
+		__antithesis_instrumentation__.Notify(245805)
 		if ib.valNeededForCol.Contains(i) {
+			__antithesis_instrumentation__.Notify(245806)
 			fetcherCols = append(fetcherCols, c.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(245807)
 		}
 	}
+	__antithesis_instrumentation__.Notify(245794)
 	if ib.rowVals == nil {
+		__antithesis_instrumentation__.Notify(245808)
 		ib.rowVals = make(tree.Datums, len(ib.cols))
-		// We don't produce values for all columns, so initialize with NULLs.
+
 		for i := range ib.rowVals {
+			__antithesis_instrumentation__.Notify(245809)
 			ib.rowVals[i] = tree.DNull
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(245810)
 	}
-	// Get the next set of rows.
-	//
-	// Running the scan and applying the changes in many transactions
-	// is fine because the schema change is in the correct state to
-	// handle intermediate OLTP commands which delete and add values
-	// during the scan. Index entries in the new index are being
-	// populated and deleted by the OLTP commands but not otherwise
-	// read or used
+	__antithesis_instrumentation__.Notify(245795)
+
 	var spec descpb.IndexFetchSpec
 	if err := rowenc.InitIndexFetchSpec(
 		&spec, ib.evalCtx.Codec, tableDesc, tableDesc.GetPrimaryIndex(), fetcherCols,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(245811)
 		return nil, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(245812)
 	}
+	__antithesis_instrumentation__.Notify(245796)
 	var fetcher row.Fetcher
 	if err := fetcher.Init(
 		ib.evalCtx.Context,
-		false, /* reverse */
+		false,
 		descpb.ScanLockingStrength_FOR_NONE,
 		descpb.ScanLockingWaitPolicy_BLOCK,
-		0, /* lockTimeout */
+		0,
 		&ib.alloc,
 		ib.mon,
 		&spec,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(245813)
 		return nil, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(245814)
 	}
+	__antithesis_instrumentation__.Notify(245797)
 	defer fetcher.Close(ctx)
 	if err := fetcher.StartScan(
 		ctx, txn, []roachpb.Span{sp}, rowinfra.DefaultBatchBytesLimit, initBufferSize,
-		traceKV, false, /* forceProductionKVBatchSize */
+		traceKV, false,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(245815)
 		log.Errorf(ctx, "scan error: %s", err)
 		return nil, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(245816)
 	}
+	__antithesis_instrumentation__.Notify(245798)
 
 	iv := &schemaexpr.RowIndexedVarContainer{
 		Cols:    ib.cols,
@@ -875,89 +982,132 @@ func (ib *IndexBackfiller) BuildIndexEntriesChunk(
 
 	indexEntriesPerRowInitialBufferSize := int64(len(ib.added)) * sizeOfIndexEntry
 	if err := ib.GrowBoundAccount(ctx, indexEntriesPerRowInitialBufferSize); err != nil {
+		__antithesis_instrumentation__.Notify(245817)
 		return nil, nil, 0, errors.Wrap(err,
 			"failed to initialize empty buffer to store the index entries of a single row")
+	} else {
+		__antithesis_instrumentation__.Notify(245818)
 	}
+	__antithesis_instrumentation__.Notify(245799)
 	memUsedPerChunk += indexEntriesPerRowInitialBufferSize
 	buffer := make([]rowenc.IndexEntry, len(ib.added))
 	evaluateExprs := func(cols []catalog.Column) error {
+		__antithesis_instrumentation__.Notify(245819)
 		for i := range cols {
+			__antithesis_instrumentation__.Notify(245821)
 			colID := cols[i].GetID()
 			texpr, ok := ib.colExprs[colID]
 			if !ok {
+				__antithesis_instrumentation__.Notify(245825)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(245826)
 			}
+			__antithesis_instrumentation__.Notify(245822)
 			val, err := texpr.Eval(ib.evalCtx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(245827)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(245828)
 			}
+			__antithesis_instrumentation__.Notify(245823)
 			colIdx, ok := ib.colIdxMap.Get(colID)
 			if !ok {
+				__antithesis_instrumentation__.Notify(245829)
 				return errors.AssertionFailedf(
 					"failed to find index for column %d in %d",
 					colID, tableDesc.GetID(),
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(245830)
 			}
+			__antithesis_instrumentation__.Notify(245824)
 			ib.rowVals[colIdx] = val
 		}
+		__antithesis_instrumentation__.Notify(245820)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(245800)
 	for i := int64(0); i < chunkSize; i++ {
+		__antithesis_instrumentation__.Notify(245831)
 		ok, err := fetcher.NextRowDecodedInto(ctx, ib.rowVals, ib.colIdxMap)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(245838)
 			return nil, nil, 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(245839)
 		}
+		__antithesis_instrumentation__.Notify(245832)
 		if !ok {
+			__antithesis_instrumentation__.Notify(245840)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(245841)
 		}
+		__antithesis_instrumentation__.Notify(245833)
 		iv.CurSourceRow = ib.rowVals
 
-		// First populate default values, then populate computed expressions which
-		// may reference default values.
 		if len(ib.colExprs) > 0 {
+			__antithesis_instrumentation__.Notify(245842)
 			if err := evaluateExprs(ib.addedCols); err != nil {
+				__antithesis_instrumentation__.Notify(245844)
 				return nil, nil, 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(245845)
 			}
+			__antithesis_instrumentation__.Notify(245843)
 			if err := evaluateExprs(ib.computedCols); err != nil {
+				__antithesis_instrumentation__.Notify(245846)
 				return nil, nil, 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(245847)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(245848)
 		}
+		__antithesis_instrumentation__.Notify(245834)
 
-		// If there are any partial indexes being added, make a list of the
-		// indexes that the current row should be added to.
 		if len(ib.predicates) > 0 {
+			__antithesis_instrumentation__.Notify(245849)
 			ib.indexesToEncode = ib.indexesToEncode[:0]
 			for _, idx := range ib.added {
+				__antithesis_instrumentation__.Notify(245850)
 				if !idx.IsPartial() {
-					// If the index is not a partial index, all rows should have
-					// an entry.
+					__antithesis_instrumentation__.Notify(245853)
+
 					ib.indexesToEncode = append(ib.indexesToEncode, idx)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(245854)
 				}
+				__antithesis_instrumentation__.Notify(245851)
 
-				// If the index is a partial index, only include it if the
-				// predicate expression evaluates to true.
 				texpr := ib.predicates[idx.GetID()]
 
 				val, err := texpr.Eval(ib.evalCtx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(245855)
 					return nil, nil, 0, err
+				} else {
+					__antithesis_instrumentation__.Notify(245856)
 				}
+				__antithesis_instrumentation__.Notify(245852)
 
 				if val == tree.DBoolTrue {
+					__antithesis_instrumentation__.Notify(245857)
 					ib.indexesToEncode = append(ib.indexesToEncode, idx)
+				} else {
+					__antithesis_instrumentation__.Notify(245858)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(245859)
 		}
+		__antithesis_instrumentation__.Notify(245835)
 
-		// We're resetting the length of this slice for variable length indexes such as inverted
-		// indexes which can append entries to the end of the slice. If we don't do this, then everything
-		// EncodeSecondaryIndexes appends to secondaryIndexEntries for a row, would stay in the slice for
-		// subsequent rows and we would then have duplicates in entries on output. Additionally, we do
-		// not want to include empty k/v pairs while backfilling.
 		buffer = buffer[:0]
-		// We lock the bound account for the duration of this method as it could
-		// attempt to Grow() it while encoding secondary indexes.
+
 		var memUsedDuringEncoding int64
 		ib.muBoundAccount.Lock()
 		if buffer, memUsedDuringEncoding, err = rowenc.EncodeSecondaryIndexes(
@@ -968,47 +1118,55 @@ func (ib *IndexBackfiller) BuildIndexEntriesChunk(
 			ib.colIdxMap,
 			ib.rowVals,
 			buffer,
-			false, /* includeEmpty */
+			false,
 			&ib.muBoundAccount.boundAccount,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(245860)
 			ib.muBoundAccount.Unlock()
 			return nil, nil, 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(245861)
 		}
+		__antithesis_instrumentation__.Notify(245836)
 		ib.muBoundAccount.Unlock()
 		memUsedPerChunk += memUsedDuringEncoding
 
-		// The memory monitor has already accounted for cap(entries). If the number
-		// of index entries are going to cause the entries buffer to re-slice, then
-		// it will very likely double in capacity. Therefore, we must account for
-		// another cap(entries) in the index memory account.
 		if cap(entries)-len(entries) < len(buffer) {
+			__antithesis_instrumentation__.Notify(245862)
 			resliceSize := sizeOfIndexEntry * int64(cap(entries))
 			if err := ib.GrowBoundAccount(ctx, resliceSize); err != nil {
+				__antithesis_instrumentation__.Notify(245864)
 				return nil, nil, 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(245865)
 			}
+			__antithesis_instrumentation__.Notify(245863)
 			memUsedPerChunk += resliceSize
+		} else {
+			__antithesis_instrumentation__.Notify(245866)
 		}
+		__antithesis_instrumentation__.Notify(245837)
 
 		entries = append(entries, buffer...)
 	}
+	__antithesis_instrumentation__.Notify(245801)
 
-	// We can release the memory which was allocated for `buffer` since all its
-	// contents have been copied to `entries`.
 	shrinkSize := sizeOfIndexEntry * int64(cap(buffer))
 	ib.ShrinkBoundAccount(ctx, shrinkSize)
 	memUsedPerChunk -= shrinkSize
 
 	var resumeKey roachpb.Key
 	if fetcher.Key() != nil {
+		__antithesis_instrumentation__.Notify(245867)
 		resumeKey = make(roachpb.Key, len(fetcher.Key()))
 		copy(resumeKey, fetcher.Key())
+	} else {
+		__antithesis_instrumentation__.Notify(245868)
 	}
+	__antithesis_instrumentation__.Notify(245802)
 	return entries, resumeKey, memUsedPerChunk, nil
 }
 
-// RunIndexBackfillChunk runs an index backfill over a chunk of the table
-// by traversing the span sp provided. The backfill is run for the added
-// indexes.
 func (ib *IndexBackfiller) RunIndexBackfillChunk(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -1018,29 +1176,46 @@ func (ib *IndexBackfiller) RunIndexBackfillChunk(
 	alsoCommit bool,
 	traceKV bool,
 ) (roachpb.Key, error) {
+	__antithesis_instrumentation__.Notify(245869)
 	entries, key, memUsedBuildingChunk, err := ib.BuildIndexEntriesChunk(ctx, txn, tableDesc, sp,
 		chunkSize, traceKV)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(245874)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(245875)
 	}
+	__antithesis_instrumentation__.Notify(245870)
 	batch := txn.NewBatch()
 
 	for _, entry := range entries {
+		__antithesis_instrumentation__.Notify(245876)
 		if traceKV {
+			__antithesis_instrumentation__.Notify(245878)
 			log.VEventf(ctx, 2, "InitPut %s -> %s", entry.Key, entry.Value.PrettyPrint())
+		} else {
+			__antithesis_instrumentation__.Notify(245879)
 		}
-		batch.InitPut(entry.Key, &entry.Value, false /* failOnTombstones */)
+		__antithesis_instrumentation__.Notify(245877)
+		batch.InitPut(entry.Key, &entry.Value, false)
 	}
+	__antithesis_instrumentation__.Notify(245871)
 	writeBatch := txn.Run
 	if alsoCommit {
+		__antithesis_instrumentation__.Notify(245880)
 		writeBatch = txn.CommitInBatch
+	} else {
+		__antithesis_instrumentation__.Notify(245881)
 	}
+	__antithesis_instrumentation__.Notify(245872)
 	if err := writeBatch(ctx, batch); err != nil {
+		__antithesis_instrumentation__.Notify(245882)
 		return nil, ConvertBackfillError(ctx, tableDesc, batch)
+	} else {
+		__antithesis_instrumentation__.Notify(245883)
 	}
+	__antithesis_instrumentation__.Notify(245873)
 
-	// After the chunk entries have been written, we must clear the bound account
-	// tracking the memory usage for the chunk.
 	entries = nil
 	ib.ShrinkBoundAccount(ctx, memUsedBuildingChunk)
 

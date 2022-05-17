@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,122 +16,162 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// nodeTombstoneStorage maintains a local (i.e. unreplicated)
-// registry of which nodes were permanently removed from the cluster.
 type nodeTombstoneStorage struct {
 	engs []storage.Engine
 	mu   struct {
 		syncutil.RWMutex
-		// cache contains both positive and negative hits. Positive hits
-		// unconditionally override negative hits.
+
 		cache map[roachpb.NodeID]time.Time
 	}
 }
 
 func (s *nodeTombstoneStorage) key(nodeID roachpb.NodeID) roachpb.Key {
+	__antithesis_instrumentation__.Notify(194872)
 	return keys.StoreNodeTombstoneKey(nodeID)
 }
 
-// IsDecommissioned returns when (in UTC) a node was decommissioned
-// (i.e. was permanently removed from the cluster). If not removed,
-// returns the zero time.
-//
-// Errors are not returned during normal operation.
 func (s *nodeTombstoneStorage) IsDecommissioned(
 	ctx context.Context, nodeID roachpb.NodeID,
 ) (time.Time, error) {
+	__antithesis_instrumentation__.Notify(194873)
 	s.mu.RLock()
 	ts, ok := s.mu.cache[nodeID]
 	s.mu.RUnlock()
 	if ok {
-		// Cache hit.
-		return ts, nil
-	}
+		__antithesis_instrumentation__.Notify(194876)
 
-	// No cache hit.
+		return ts, nil
+	} else {
+		__antithesis_instrumentation__.Notify(194877)
+	}
+	__antithesis_instrumentation__.Notify(194874)
+
 	k := s.key(nodeID)
 	for _, eng := range s.engs {
+		__antithesis_instrumentation__.Notify(194878)
 		v, _, err := storage.MVCCGet(ctx, eng, k, hlc.Timestamp{}, storage.MVCCGetOptions{})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(194882)
 			return time.Time{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(194883)
 		}
+		__antithesis_instrumentation__.Notify(194879)
 		if v == nil {
-			// Not found.
+			__antithesis_instrumentation__.Notify(194884)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(194885)
 		}
+		__antithesis_instrumentation__.Notify(194880)
 		var tsp hlc.Timestamp
 		if err := v.GetProto(&tsp); err != nil {
+			__antithesis_instrumentation__.Notify(194886)
 			return time.Time{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(194887)
 		}
-		// Found, offer to cache and return.
+		__antithesis_instrumentation__.Notify(194881)
+
 		ts := timeutil.Unix(0, tsp.WallTime).UTC()
 		s.maybeAddCached(nodeID, ts)
 		return ts, nil
 	}
-	// Not found, add a negative cache hit.
+	__antithesis_instrumentation__.Notify(194875)
+
 	s.maybeAddCached(nodeID, time.Time{})
 	return time.Time{}, nil
 }
 
 func (s *nodeTombstoneStorage) maybeAddCached(nodeID roachpb.NodeID, ts time.Time) (updated bool) {
+	__antithesis_instrumentation__.Notify(194888)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if oldTS, ok := s.mu.cache[nodeID]; !ok || oldTS.IsZero() {
+	if oldTS, ok := s.mu.cache[nodeID]; !ok || func() bool {
+		__antithesis_instrumentation__.Notify(194890)
+		return oldTS.IsZero() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(194891)
 		if s.mu.cache == nil {
+			__antithesis_instrumentation__.Notify(194893)
 			s.mu.cache = map[roachpb.NodeID]time.Time{}
+		} else {
+			__antithesis_instrumentation__.Notify(194894)
 		}
+		__antithesis_instrumentation__.Notify(194892)
 		s.mu.cache[nodeID] = ts
-		return true // updated
+		return true
+	} else {
+		__antithesis_instrumentation__.Notify(194895)
 	}
-	return false // not updated
+	__antithesis_instrumentation__.Notify(194889)
+	return false
 }
 
-// SetDecommissioned marks a node as permanently removed
-// from the cluster at the supplied approximate timestamp.
-//
-// Once a node is recorded as permanently removed, future
-// invocations are ignored.
-//
-// Errors are not returned during normal operation.
 func (s *nodeTombstoneStorage) SetDecommissioned(
 	ctx context.Context, nodeID roachpb.NodeID, ts time.Time,
 ) error {
+	__antithesis_instrumentation__.Notify(194896)
 	if len(s.engs) == 0 {
+		__antithesis_instrumentation__.Notify(194901)
 		return errors.New("no engines configured for nodeTombstoneStorage")
+	} else {
+		__antithesis_instrumentation__.Notify(194902)
 	}
+	__antithesis_instrumentation__.Notify(194897)
 	if ts.IsZero() {
+		__antithesis_instrumentation__.Notify(194903)
 		return errors.New("can't mark as decommissioned at timestamp zero")
+	} else {
+		__antithesis_instrumentation__.Notify(194904)
 	}
+	__antithesis_instrumentation__.Notify(194898)
 	if !s.maybeAddCached(nodeID, ts.UTC()) {
-		// The cache already had a positive hit for this node, so don't do anything.
-		return nil
-	}
+		__antithesis_instrumentation__.Notify(194905)
 
-	// We've populated the cache, now write through to disk.
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(194906)
+	}
+	__antithesis_instrumentation__.Notify(194899)
+
 	k := s.key(nodeID)
 	for _, eng := range s.engs {
-		// Read the store ident before trying to write to this
-		// engine. An engine that is not bootstrapped should not be
-		// written to, as we check (in InitEngine) that it is empty.
-		//
-		// One initialized engine is always available when this method
-		// is called, so we're still persisting on at least one engine.
+		__antithesis_instrumentation__.Notify(194907)
+
 		if _, err := kvserver.ReadStoreIdent(ctx, eng); err != nil {
+			__antithesis_instrumentation__.Notify(194910)
 			if errors.Is(err, &kvserver.NotBootstrappedError{}) {
+				__antithesis_instrumentation__.Notify(194912)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(194913)
 			}
+			__antithesis_instrumentation__.Notify(194911)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(194914)
 		}
+		__antithesis_instrumentation__.Notify(194908)
 		var v roachpb.Value
 		if err := v.SetProto(&hlc.Timestamp{WallTime: ts.UnixNano()}); err != nil {
+			__antithesis_instrumentation__.Notify(194915)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(194916)
 		}
+		__antithesis_instrumentation__.Notify(194909)
 
 		if err := storage.MVCCPut(
-			ctx, eng, nil /* MVCCStats */, k, hlc.Timestamp{}, v, nil, /* txn */
+			ctx, eng, nil, k, hlc.Timestamp{}, v, nil,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(194917)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(194918)
 		}
 	}
+	__antithesis_instrumentation__.Notify(194900)
 	return nil
 }

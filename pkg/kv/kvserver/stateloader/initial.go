@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package stateloader
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,31 +15,13 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// raftInitialLog{Index,Term} are the starting points for the raft log. We
-// bootstrap the raft membership by synthesizing a snapshot as if there were
-// some discarded prefix to the log, so we must begin the log at an arbitrary
-// index greater than 1.
 const (
 	raftInitialLogIndex = 10
 	raftInitialLogTerm  = 5
 
-	// RaftLogTermSignalForAddRaftAppliedIndexTermMigration is never persisted
-	// in the state machine or in HardState. It is only used in
-	// AddRaftAppliedIndexTermMigration to signal to the below raft code that
-	// the migration should happen when applying the raft log entry that
-	// contains ReplicatedEvalResult.State.RaftAppliedIndexTerm equal to this
-	// value. It is less than raftInitialLogTerm since that ensures it will
-	// never be used under normal operation.
 	RaftLogTermSignalForAddRaftAppliedIndexTermMigration = 3
 )
 
-// WriteInitialReplicaState sets up a new Range, but without writing an
-// associated Raft state (which must be written separately via
-// SynthesizeRaftState before instantiating a Replica). The main task is to
-// persist a ReplicaState which does not start from zero but presupposes a few
-// entries already having applied. The supplied MVCCStats are used for the Stats
-// field after adjusting for persisting the state itself, and the updated stats
-// are returned.
 func WriteInitialReplicaState(
 	ctx context.Context,
 	readWriter storage.ReadWriter,
@@ -58,6 +32,7 @@ func WriteInitialReplicaState(
 	replicaVersion roachpb.Version,
 	writeRaftAppliedIndexTerm bool,
 ) (enginepb.MVCCStats, error) {
+	__antithesis_instrumentation__.Notify(123576)
 	rsl := Make(desc.RangeID)
 	var s kvserverpb.ReplicaState
 	s.TruncatedState = &roachpb.RaftTruncatedState{
@@ -66,8 +41,12 @@ func WriteInitialReplicaState(
 	}
 	s.RaftAppliedIndex = s.TruncatedState.Index
 	if writeRaftAppliedIndexTerm {
+		__antithesis_instrumentation__.Notify(123583)
 		s.RaftAppliedIndexTerm = s.TruncatedState.Term
+	} else {
+		__antithesis_instrumentation__.Notify(123584)
 	}
+	__antithesis_instrumentation__.Notify(123577)
 	s.Desc = &roachpb.RangeDescriptor{
 		RangeID: desc.RangeID,
 	}
@@ -75,37 +54,67 @@ func WriteInitialReplicaState(
 	s.Lease = &lease
 	s.GCThreshold = &gcThreshold
 	if (replicaVersion != roachpb.Version{}) {
+		__antithesis_instrumentation__.Notify(123585)
 		s.Version = &replicaVersion
+	} else {
+		__antithesis_instrumentation__.Notify(123586)
 	}
+	__antithesis_instrumentation__.Notify(123578)
 
 	if existingLease, err := rsl.LoadLease(ctx, readWriter); err != nil {
+		__antithesis_instrumentation__.Notify(123587)
 		return enginepb.MVCCStats{}, errors.Wrap(err, "error reading lease")
-	} else if (existingLease != roachpb.Lease{}) {
-		log.Fatalf(ctx, "expected trivial lease, but found %+v", existingLease)
+	} else {
+		__antithesis_instrumentation__.Notify(123588)
+		if (existingLease != roachpb.Lease{}) {
+			__antithesis_instrumentation__.Notify(123589)
+			log.Fatalf(ctx, "expected trivial lease, but found %+v", existingLease)
+		} else {
+			__antithesis_instrumentation__.Notify(123590)
+		}
 	}
+	__antithesis_instrumentation__.Notify(123579)
 
 	if existingGCThreshold, err := rsl.LoadGCThreshold(ctx, readWriter); err != nil {
+		__antithesis_instrumentation__.Notify(123591)
 		return enginepb.MVCCStats{}, errors.Wrap(err, "error reading GCThreshold")
-	} else if !existingGCThreshold.IsEmpty() {
-		log.Fatalf(ctx, "expected trivial GCthreshold, but found %+v", existingGCThreshold)
+	} else {
+		__antithesis_instrumentation__.Notify(123592)
+		if !existingGCThreshold.IsEmpty() {
+			__antithesis_instrumentation__.Notify(123593)
+			log.Fatalf(ctx, "expected trivial GCthreshold, but found %+v", existingGCThreshold)
+		} else {
+			__antithesis_instrumentation__.Notify(123594)
+		}
 	}
+	__antithesis_instrumentation__.Notify(123580)
 
 	if existingVersion, err := rsl.LoadVersion(ctx, readWriter); err != nil {
+		__antithesis_instrumentation__.Notify(123595)
 		return enginepb.MVCCStats{}, errors.Wrap(err, "error reading Version")
-	} else if (existingVersion != roachpb.Version{}) {
-		log.Fatalf(ctx, "expected trivial version, but found %+v", existingVersion)
+	} else {
+		__antithesis_instrumentation__.Notify(123596)
+		if (existingVersion != roachpb.Version{}) {
+			__antithesis_instrumentation__.Notify(123597)
+			log.Fatalf(ctx, "expected trivial version, but found %+v", existingVersion)
+		} else {
+			__antithesis_instrumentation__.Notify(123598)
+		}
 	}
+	__antithesis_instrumentation__.Notify(123581)
 
 	newMS, err := rsl.Save(ctx, readWriter, s)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(123599)
 		return enginepb.MVCCStats{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(123600)
 	}
+	__antithesis_instrumentation__.Notify(123582)
 
 	return newMS, nil
 }
 
-// WriteInitialRangeState writes the initial range state. It's called during
-// bootstrap.
 func WriteInitialRangeState(
 	ctx context.Context,
 	readWriter storage.ReadWriter,
@@ -113,6 +122,7 @@ func WriteInitialRangeState(
 	replicaID roachpb.ReplicaID,
 	replicaVersion roachpb.Version,
 ) error {
+	__antithesis_instrumentation__.Notify(123601)
 	initialLease := roachpb.Lease{}
 	initialGCThreshold := hlc.Timestamp{}
 	initialMS := enginepb.MVCCStats{}
@@ -124,16 +134,27 @@ func WriteInitialRangeState(
 		ctx, readWriter, initialMS, desc, initialLease, initialGCThreshold,
 		replicaVersion, writeRaftAppliedIndexTerm,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(123605)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(123606)
 	}
+	__antithesis_instrumentation__.Notify(123602)
 	sl := Make(desc.RangeID)
 	if err := sl.SynthesizeRaftState(ctx, readWriter); err != nil {
+		__antithesis_instrumentation__.Notify(123607)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(123608)
 	}
-	// Maintain the invariant that any replica (uninitialized or initialized),
-	// with persistent state, has a RaftReplicaID.
+	__antithesis_instrumentation__.Notify(123603)
+
 	if err := sl.SetRaftReplicaID(ctx, readWriter, replicaID); err != nil {
+		__antithesis_instrumentation__.Notify(123609)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(123610)
 	}
+	__antithesis_instrumentation__.Notify(123604)
 	return nil
 }

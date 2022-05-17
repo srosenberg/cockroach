@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,74 +12,94 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// StoresIterator is the concrete implementation of
-// kvserverbase.StoresIterator.
 type StoresIterator Stores
 
 var _ kvserverbase.StoresIterator = &StoresIterator{}
 
-// MakeStoresIterator returns a new StoresIterator instance.
 func MakeStoresIterator(stores *Stores) *StoresIterator {
+	__antithesis_instrumentation__.Notify(126536)
 	return (*StoresIterator)(stores)
 }
 
-// ForEachStore is part of kvserverbase.StoresIterator.
 func (s *StoresIterator) ForEachStore(f func(kvserverbase.Store) error) error {
+	__antithesis_instrumentation__.Notify(126537)
 	var err error
 	s.storeMap.Range(func(k int64, v unsafe.Pointer) bool {
+		__antithesis_instrumentation__.Notify(126539)
 		store := (*Store)(v)
 
 		err = f((*baseStore)(store))
 		return err == nil
 	})
+	__antithesis_instrumentation__.Notify(126538)
 	return err
 }
 
-// baseStore is the concrete implementation of kvserverbase.Store.
 type baseStore Store
 
 var _ kvserverbase.Store = &baseStore{}
 
-// StoreID is part of kvserverbase.Store.
 func (s *baseStore) StoreID() roachpb.StoreID {
+	__antithesis_instrumentation__.Notify(126540)
 	store := (*Store)(s)
 	return store.StoreID()
 }
 
-// Enqueue is part of kvserverbase.Store.
 func (s *baseStore) Enqueue(
 	ctx context.Context, queue string, rangeID roachpb.RangeID, skipShouldQueue bool,
 ) error {
+	__antithesis_instrumentation__.Notify(126541)
 	store := (*Store)(s)
 	repl, err := store.GetReplica(rangeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(126545)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(126546)
 	}
+	__antithesis_instrumentation__.Notify(126542)
 
 	_, processErr, enqueueErr := store.ManuallyEnqueue(ctx, queue, repl, skipShouldQueue)
 	if processErr != nil {
+		__antithesis_instrumentation__.Notify(126547)
 		return processErr
+	} else {
+		__antithesis_instrumentation__.Notify(126548)
 	}
+	__antithesis_instrumentation__.Notify(126543)
 	if enqueueErr != nil {
+		__antithesis_instrumentation__.Notify(126549)
 		return enqueueErr
+	} else {
+		__antithesis_instrumentation__.Notify(126550)
 	}
+	__antithesis_instrumentation__.Notify(126544)
 	return nil
 }
 
-// SetQueueActive is part of kvserverbase.Store.
 func (s *baseStore) SetQueueActive(active bool, queue string) error {
+	__antithesis_instrumentation__.Notify(126551)
 	store := (*Store)(s)
 	var kvQueue replicaQueue
 	for _, rq := range store.scanner.queues {
+		__antithesis_instrumentation__.Notify(126554)
 		if strings.EqualFold(rq.Name(), queue) {
+			__antithesis_instrumentation__.Notify(126555)
 			kvQueue = rq
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(126556)
 		}
 	}
+	__antithesis_instrumentation__.Notify(126552)
 
 	if kvQueue == nil {
+		__antithesis_instrumentation__.Notify(126557)
 		return errors.Errorf("unknown queue %q", queue)
+	} else {
+		__antithesis_instrumentation__.Notify(126558)
 	}
+	__antithesis_instrumentation__.Notify(126553)
 
 	kvQueue.SetDisabled(!active)
 	return nil

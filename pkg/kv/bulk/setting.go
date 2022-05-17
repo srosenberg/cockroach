@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package bulk
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
@@ -17,7 +9,6 @@ import (
 )
 
 var (
-	// IngestBatchSize controls the size of ingest ssts.
 	IngestBatchSize = settings.RegisterByteSizeSetting(
 		settings.TenantWritable,
 		"kv.bulk_ingest.batch_size",
@@ -26,13 +17,16 @@ var (
 	)
 )
 
-// ingestFileSize determines the target size files sent via AddSSTable requests.
-// It returns the smaller of the IngestBatchSize and Raft command size settings.
 func ingestFileSize(st *cluster.Settings) int64 {
+	__antithesis_instrumentation__.Notify(86404)
 	desiredSize := IngestBatchSize.Get(&st.SV)
 	maxCommandSize := kvserver.MaxCommandSize.Get(&st.SV)
 	if desiredSize > maxCommandSize {
+		__antithesis_instrumentation__.Notify(86406)
 		return maxCommandSize
+	} else {
+		__antithesis_instrumentation__.Notify(86407)
 	}
+	__antithesis_instrumentation__.Notify(86405)
 	return desiredSize
 }

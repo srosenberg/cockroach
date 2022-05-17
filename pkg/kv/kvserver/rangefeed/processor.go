@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rangefeed
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,28 +17,20 @@ import (
 )
 
 const (
-	// defaultPushTxnsInterval is the default interval at which a Processor will
-	// push all transactions in the unresolvedIntentQueue that are above the age
-	// specified by PushTxnsAge.
 	defaultPushTxnsInterval = 250 * time.Millisecond
-	// defaultPushTxnsAge is the default age at which a Processor will begin to
-	// consider a transaction old enough to push.
+
 	defaultPushTxnsAge = 10 * time.Second
-	// defaultCheckStreamsInterval is the default interval at which a Processor
-	// will check all streams to make sure they have not been canceled.
+
 	defaultCheckStreamsInterval = 1 * time.Second
 )
 
-// newErrBufferCapacityExceeded creates an error that is returned to subscribers
-// if the rangefeed processor is not able to keep up with the flow of incoming
-// events and is forced to drop events in order to not block.
 func newErrBufferCapacityExceeded() *roachpb.Error {
+	__antithesis_instrumentation__.Notify(113627)
 	return roachpb.NewError(
 		roachpb.NewRangeFeedRetryError(roachpb.RangeFeedRetryError_REASON_SLOW_CONSUMER),
 	)
 }
 
-// Config encompasses the configuration required to create a Processor.
 type Config struct {
 	log.AmbientContext
 	Clock   *hlc.Clock
@@ -54,62 +38,64 @@ type Config struct {
 	Span    roachpb.RSpan
 
 	TxnPusher TxnPusher
-	// PushTxnsInterval specifies the interval at which a Processor will push
-	// all transactions in the unresolvedIntentQueue that are above the age
-	// specified by PushTxnsAge.
+
 	PushTxnsInterval time.Duration
-	// PushTxnsAge specifies the age at which a Processor will begin to consider
-	// a transaction old enough to push.
+
 	PushTxnsAge time.Duration
 
-	// EventChanCap specifies the capacity to give to the Processor's input
-	// channel.
 	EventChanCap int
-	// EventChanTimeout specifies the maximum duration that methods will
-	// wait to send on the Processor's input channel before giving up and
-	// shutting down the Processor. 0 for no timeout.
+
 	EventChanTimeout time.Duration
 
-	// CheckStreamsInterval specifies interval at which a Processor will check
-	// all streams to make sure they have not been canceled.
 	CheckStreamsInterval time.Duration
 
-	// Metrics is for production monitoring of RangeFeeds.
 	Metrics *Metrics
 
-	// Optional Processor memory budget.
 	MemBudget *FeedBudget
 }
 
-// SetDefaults initializes unset fields in Config to values
-// suitable for use by a Processor.
 func (sc *Config) SetDefaults() {
+	__antithesis_instrumentation__.Notify(113628)
 	if sc.TxnPusher == nil {
+		__antithesis_instrumentation__.Notify(113630)
 		if sc.PushTxnsInterval != 0 {
+			__antithesis_instrumentation__.Notify(113632)
 			panic("nil TxnPusher with non-zero PushTxnsInterval")
+		} else {
+			__antithesis_instrumentation__.Notify(113633)
 		}
+		__antithesis_instrumentation__.Notify(113631)
 		if sc.PushTxnsAge != 0 {
+			__antithesis_instrumentation__.Notify(113634)
 			panic("nil TxnPusher with non-zero PushTxnsAge")
+		} else {
+			__antithesis_instrumentation__.Notify(113635)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(113636)
 		if sc.PushTxnsInterval == 0 {
+			__antithesis_instrumentation__.Notify(113638)
 			sc.PushTxnsInterval = defaultPushTxnsInterval
+		} else {
+			__antithesis_instrumentation__.Notify(113639)
 		}
+		__antithesis_instrumentation__.Notify(113637)
 		if sc.PushTxnsAge == 0 {
+			__antithesis_instrumentation__.Notify(113640)
 			sc.PushTxnsAge = defaultPushTxnsAge
+		} else {
+			__antithesis_instrumentation__.Notify(113641)
 		}
 	}
+	__antithesis_instrumentation__.Notify(113629)
 	if sc.CheckStreamsInterval == 0 {
+		__antithesis_instrumentation__.Notify(113642)
 		sc.CheckStreamsInterval = defaultCheckStreamsInterval
+	} else {
+		__antithesis_instrumentation__.Notify(113643)
 	}
 }
 
-// Processor manages a set of rangefeed registrations and handles the routing of
-// logical updates to these registrations. While routing logical updates to
-// rangefeed registrations, the processor performs two important tasks:
-// 1. it translates logical updates into rangefeed events.
-// 2. it transforms a range-level closed timestamp to a rangefeed-level resolved
-//    timestamp.
 type Processor struct {
 	Config
 	reg registry
@@ -129,24 +115,24 @@ type Processor struct {
 
 var eventSyncPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(113644)
 		return new(event)
 	},
 }
 
 func getPooledEvent(ev event) *event {
+	__antithesis_instrumentation__.Notify(113645)
 	e := eventSyncPool.Get().(*event)
 	*e = ev
 	return e
 }
 
 func putPooledEvent(ev *event) {
+	__antithesis_instrumentation__.Notify(113646)
 	*ev = event{}
 	eventSyncPool.Put(ev)
 }
 
-// event is a union of different event types that the Processor goroutine needs
-// to be informed of. It is used so that all events can be sent over the same
-// channel, which is necessary to prevent reordering.
 type event struct {
 	ops     []enginepb.MVCCLogicalOp
 	ct      hlc.Timestamp
@@ -155,25 +141,19 @@ type event struct {
 	sstWTS  hlc.Timestamp
 	initRTS bool
 	syncC   chan struct{}
-	// This setting is used in conjunction with syncC in tests in order to ensure
-	// that all registrations have fully finished outputting their buffers. This
-	// has to be done by the processor in order to avoid race conditions with the
-	// registry. Should be used only in tests.
+
 	testRegCatchupSpan roachpb.Span
-	// Budget allocated to process the event
+
 	allocation *SharedBudgetAllocation
 }
 
-// spanErr is an error across a key span that will disconnect overlapping
-// registrations.
 type spanErr struct {
 	span roachpb.Span
 	pErr *roachpb.Error
 }
 
-// NewProcessor creates a new rangefeed Processor. The corresponding goroutine
-// should be launched using the Start method.
 func NewProcessor(cfg Config) *Processor {
+	__antithesis_instrumentation__.Notify(113647)
 	cfg.SetDefaults()
 	cfg.AmbientContext.AddLogTag("rangefeed", nil)
 	p := &Processor{
@@ -195,189 +175,185 @@ func NewProcessor(cfg Config) *Processor {
 	return p
 }
 
-// IntentScannerConstructor is used to construct an IntentScanner. It
-// should be called from underneath a stopper task to ensure that the
-// engine has not been closed.
 type IntentScannerConstructor func() IntentScanner
 
-// CatchUpIteratorConstructor is used to construct an iterator that
-// can be used for catchup-scans. It should be called from underneath
-// a stopper task to ensure that the engine has not been closed.
-//
-// The constructed iterator must have an UpperBound set.
 type CatchUpIteratorConstructor func() *CatchUpIterator
 
-// Start launches a goroutine to process rangefeed events and send them to
-// registrations.
-//
-// The provided iterator is used to initialize the rangefeed's resolved
-// timestamp. It must obey the contract of an iterator used for an
-// initResolvedTSScan. The Processor promises to clean up the iterator by
-// calling its Close method when it is finished. If the iterator is nil then
-// no initialization scan will be performed and the resolved timestamp will
-// immediately be considered initialized.
 func (p *Processor) Start(stopper *stop.Stopper, rtsIterFunc IntentScannerConstructor) error {
+	__antithesis_instrumentation__.Notify(113648)
 	ctx := p.AnnotateCtx(context.Background())
 	if err := stopper.RunAsyncTask(ctx, "rangefeed.Processor", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(113650)
 		p.run(ctx, p.RangeID, rtsIterFunc, stopper)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(113651)
 		p.reg.DisconnectWithErr(all, roachpb.NewError(err))
 		close(p.stoppedC)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(113652)
 	}
+	__antithesis_instrumentation__.Notify(113649)
 	return nil
 }
 
-// run is called from Start and runs the rangefeed.
 func (p *Processor) run(
 	ctx context.Context,
 	_forStacks roachpb.RangeID,
 	rtsIterFunc IntentScannerConstructor,
 	stopper *stop.Stopper,
 ) {
+	__antithesis_instrumentation__.Notify(113653)
 	defer close(p.stoppedC)
 	ctx, cancelOutputLoops := context.WithCancel(ctx)
 	defer cancelOutputLoops()
 	defer p.MemBudget.Close(ctx)
 
-	// Launch an async task to scan over the resolved timestamp iterator and
-	// initialize the unresolvedIntentQueue. Ignore error if quiescing.
 	if rtsIterFunc != nil {
+		__antithesis_instrumentation__.Notify(113656)
 		rtsIter := rtsIterFunc()
 		initScan := newInitResolvedTSScan(p, rtsIter)
 		err := stopper.RunAsyncTask(ctx, "rangefeed: init resolved ts", initScan.Run)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(113657)
 			initScan.Cancel()
+		} else {
+			__antithesis_instrumentation__.Notify(113658)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(113659)
 		p.initResolvedTS(ctx)
 	}
+	__antithesis_instrumentation__.Notify(113654)
 
-	// txnPushTicker periodically pushes the transaction record of all
-	// unresolved intents that are above a certain age, helping to ensure
-	// that the resolved timestamp continues to make progress.
 	var txnPushTicker *time.Ticker
 	var txnPushTickerC <-chan time.Time
 	var txnPushAttemptC chan struct{}
 	if p.PushTxnsInterval > 0 {
+		__antithesis_instrumentation__.Notify(113660)
 		txnPushTicker = time.NewTicker(p.PushTxnsInterval)
 		txnPushTickerC = txnPushTicker.C
 		defer txnPushTicker.Stop()
+	} else {
+		__antithesis_instrumentation__.Notify(113661)
 	}
+	__antithesis_instrumentation__.Notify(113655)
 
 	for {
+		__antithesis_instrumentation__.Notify(113662)
 		select {
 
-		// Handle new registrations.
 		case r := <-p.regC:
+			__antithesis_instrumentation__.Notify(113663)
 			if !p.Span.AsRawSpanWithNoLocals().Contains(r.span) {
+				__antithesis_instrumentation__.Notify(113676)
 				log.Fatalf(ctx, "registration %s not in Processor's key range %v", r, p.Span)
+			} else {
+				__antithesis_instrumentation__.Notify(113677)
 			}
+			__antithesis_instrumentation__.Notify(113664)
 
-			// Construct the catchUpIter before notifying the registration that it
-			// has been registered. Note that if the catchUpScan is never run, then
-			// the iterator constructed here will be closed in disconnect.
 			r.maybeConstructCatchUpIter()
 
-			// Add the new registration to the registry.
 			p.reg.Register(&r)
 
-			// Publish an updated filter that includes the new registration.
 			p.filterResC <- p.reg.NewFilter()
 
-			// Immediately publish a checkpoint event to the registry. This will be the first event
-			// published to this registration after its initial catch-up scan completes. The resolved
-			// timestamp might be empty but the checkpoint event is still useful to indicate that the
-			// catch-up scan has completed. This allows clients to rely on stronger ordering semantics
-			// once they observe the first checkpoint event.
 			r.publish(ctx, p.newCheckpointEvent(), nil)
 
-			// Run an output loop for the registry.
 			runOutputLoop := func(ctx context.Context) {
+				__antithesis_instrumentation__.Notify(113678)
 				r.runOutputLoop(ctx, p.RangeID)
 				select {
 				case p.unregC <- &r:
+					__antithesis_instrumentation__.Notify(113679)
 				case <-p.stoppedC:
+					__antithesis_instrumentation__.Notify(113680)
 				}
 			}
+			__antithesis_instrumentation__.Notify(113665)
 			if err := stopper.RunAsyncTask(ctx, "rangefeed: output loop", runOutputLoop); err != nil {
+				__antithesis_instrumentation__.Notify(113681)
 				r.disconnect(roachpb.NewError(err))
 				p.reg.Unregister(ctx, &r)
+			} else {
+				__antithesis_instrumentation__.Notify(113682)
 			}
 
-		// Respond to unregistration requests; these come from registrations that
-		// encounter an error during their output loop.
 		case r := <-p.unregC:
+			__antithesis_instrumentation__.Notify(113666)
 			p.reg.Unregister(ctx, r)
 
-		// Send errors to registrations overlapping the span and disconnect them.
-		// Requested via DisconnectSpanWithErr().
 		case e := <-p.spanErrC:
+			__antithesis_instrumentation__.Notify(113667)
 			p.reg.DisconnectWithErr(e.span, e.pErr)
 
-		// Respond to answers about the processor goroutine state.
 		case <-p.lenReqC:
+			__antithesis_instrumentation__.Notify(113668)
 			p.lenResC <- p.reg.Len()
 
-		// Respond to answers about which operations can be filtered before
-		// reaching the Processor.
 		case <-p.filterReqC:
+			__antithesis_instrumentation__.Notify(113669)
 			p.filterResC <- p.reg.NewFilter()
 
-		// Transform and route events.
 		case e := <-p.eventC:
+			__antithesis_instrumentation__.Notify(113670)
 			p.consumeEvent(ctx, e)
 			e.allocation.Release(ctx)
 			putPooledEvent(e)
 
-		// Check whether any unresolved intents need a push.
 		case <-txnPushTickerC:
-			// Don't perform transaction push attempts until the resolved
-			// timestamp has been initialized.
+			__antithesis_instrumentation__.Notify(113671)
+
 			if !p.rts.IsInit() {
+				__antithesis_instrumentation__.Notify(113683)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(113684)
 			}
+			__antithesis_instrumentation__.Notify(113672)
 
 			now := p.Clock.Now()
 			before := now.Add(-p.PushTxnsAge.Nanoseconds(), 0)
 			oldTxns := p.rts.intentQ.Before(before)
 
 			if len(oldTxns) > 0 {
+				__antithesis_instrumentation__.Notify(113685)
 				toPush := make([]enginepb.TxnMeta, len(oldTxns))
 				for i, txn := range oldTxns {
+					__antithesis_instrumentation__.Notify(113687)
 					toPush[i] = txn.asTxnMeta()
 				}
+				__antithesis_instrumentation__.Notify(113686)
 
-				// Set the ticker channel to nil so that it can't trigger a
-				// second concurrent push. Create a push attempt response
-				// channel that is closed when the push attempt completes.
 				txnPushTickerC = nil
 				txnPushAttemptC = make(chan struct{})
 
-				// Launch an async transaction push attempt that pushes the
-				// timestamp of all transactions beneath the push offset.
-				// Ignore error if quiescing.
 				pushTxns := newTxnPushAttempt(p, toPush, now, txnPushAttemptC)
 				err := stopper.RunAsyncTask(ctx, "rangefeed: pushing old txns", pushTxns.Run)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(113688)
 					pushTxns.Cancel()
+				} else {
+					__antithesis_instrumentation__.Notify(113689)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(113690)
 			}
 
-		// Update the resolved timestamp based on the push attempt.
 		case <-txnPushAttemptC:
-			// Reset the ticker channel so that it can trigger push attempts
-			// again. Set the push attempt channel back to nil.
+			__antithesis_instrumentation__.Notify(113673)
+
 			txnPushTickerC = txnPushTicker.C
 			txnPushAttemptC = nil
 
-		// Close registrations and exit when signaled.
 		case pErr := <-p.stopC:
+			__antithesis_instrumentation__.Notify(113674)
 			p.reg.DisconnectWithErr(all, pErr)
 			return
 
-		// Exit on stopper.
 		case <-stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(113675)
 			pErr := roachpb.NewError(&roachpb.NodeUnavailableError{})
 			p.reg.DisconnectWithErr(all, pErr)
 			return
@@ -385,65 +361,56 @@ func (p *Processor) run(
 	}
 }
 
-// Stop shuts down the processor and closes all registrations. Safe to call on
-// nil Processor. It is not valid to restart a processor after it has been
-// stopped.
 func (p *Processor) Stop() {
+	__antithesis_instrumentation__.Notify(113691)
 	p.StopWithErr(nil)
 }
 
-// StopWithErr shuts down the processor and closes all registrations with the
-// specified error. Safe to call on nil Processor. It is not valid to restart a
-// processor after it has been stopped.
 func (p *Processor) StopWithErr(pErr *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(113692)
 	if p == nil {
+		__antithesis_instrumentation__.Notify(113694)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(113695)
 	}
-	// Flush any remaining events before stopping.
+	__antithesis_instrumentation__.Notify(113693)
+
 	p.syncEventC()
-	// Send the processor a stop signal.
+
 	p.sendStop(pErr)
 }
 
-// DisconnectSpanWithErr disconnects all rangefeed registrations that overlap
-// the given span with the given error.
 func (p *Processor) DisconnectSpanWithErr(span roachpb.Span, pErr *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(113696)
 	if p == nil {
+		__antithesis_instrumentation__.Notify(113698)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(113699)
 	}
+	__antithesis_instrumentation__.Notify(113697)
 	select {
 	case p.spanErrC <- spanErr{span: span, pErr: pErr}:
+		__antithesis_instrumentation__.Notify(113700)
 	case <-p.stoppedC:
-		// Already stopped. Do nothing.
+		__antithesis_instrumentation__.Notify(113701)
+
 	}
 }
 
 func (p *Processor) sendStop(pErr *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(113702)
 	select {
 	case p.stopC <- pErr:
-		// stopC has non-zero capacity so this should not block unless
-		// multiple callers attempt to stop the Processor concurrently.
+		__antithesis_instrumentation__.Notify(113703)
+
 	case <-p.stoppedC:
-		// Already stopped. Do nothing.
+		__antithesis_instrumentation__.Notify(113704)
+
 	}
 }
 
-// Register registers the stream over the specified span of keys.
-//
-// The registration will not observe any events that were consumed before this
-// method was called. It is undefined whether the registration will observe
-// events that are consumed concurrently with this call. The channel will be
-// provided an error when the registration closes.
-//
-// The optionally provided "catch-up" iterator is used to read changes from the
-// engine which occurred after the provided start timestamp.
-//
-// If the method returns false, the processor will have been stopped, so calling
-// Stop is not necessary. If the method returns true, it will also return an
-// updated operation filter that includes the operations required by the new
-// registration.
-//
-// NOT safe to call on nil Processor.
 func (p *Processor) Register(
 	span roachpb.RSpan,
 	startTS hlc.Timestamp,
@@ -452,9 +419,8 @@ func (p *Processor) Register(
 	stream Stream,
 	errC chan<- *roachpb.Error,
 ) (bool, *Filter) {
-	// Synchronize the event channel so that this registration doesn't see any
-	// events that were consumed before this registration was called. Instead,
-	// it should see these events during its catch up scan.
+	__antithesis_instrumentation__.Notify(113705)
+
 	p.syncEventC()
 
 	r := newRegistration(
@@ -463,228 +429,278 @@ func (p *Processor) Register(
 	)
 	select {
 	case p.regC <- r:
-		// Wait for response.
+		__antithesis_instrumentation__.Notify(113706)
+
 		return true, <-p.filterResC
 	case <-p.stoppedC:
+		__antithesis_instrumentation__.Notify(113707)
 		return false, nil
 	}
 }
 
-// Len returns the number of registrations attached to the processor.
 func (p *Processor) Len() int {
+	__antithesis_instrumentation__.Notify(113708)
 	if p == nil {
+		__antithesis_instrumentation__.Notify(113710)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(113711)
 	}
+	__antithesis_instrumentation__.Notify(113709)
 
-	// Ask the processor goroutine.
 	select {
 	case p.lenReqC <- struct{}{}:
-		// Wait for response.
+		__antithesis_instrumentation__.Notify(113712)
+
 		return <-p.lenResC
 	case <-p.stoppedC:
+		__antithesis_instrumentation__.Notify(113713)
 		return 0
 	}
 }
 
-// Filter returns a new operation filter based on the registrations attached to
-// the processor. Returns nil if the processor has been stopped already.
 func (p *Processor) Filter() *Filter {
+	__antithesis_instrumentation__.Notify(113714)
 	if p == nil {
+		__antithesis_instrumentation__.Notify(113716)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(113717)
 	}
+	__antithesis_instrumentation__.Notify(113715)
 
-	// Ask the processor goroutine.
 	select {
 	case p.filterReqC <- struct{}{}:
-		// Wait for response.
+		__antithesis_instrumentation__.Notify(113718)
+
 		return <-p.filterResC
 	case <-p.stoppedC:
+		__antithesis_instrumentation__.Notify(113719)
 		return nil
 	}
 }
 
-// ConsumeLogicalOps informs the rangefeed processor of the set of logical
-// operations. It returns false if consuming the operations hit a timeout, as
-// specified by the EventChanTimeout configuration. If the method returns false,
-// the processor will have been stopped, so calling Stop is not necessary. Safe
-// to call on nil Processor.
 func (p *Processor) ConsumeLogicalOps(ctx context.Context, ops ...enginepb.MVCCLogicalOp) bool {
+	__antithesis_instrumentation__.Notify(113720)
 	if p == nil {
+		__antithesis_instrumentation__.Notify(113723)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(113724)
 	}
+	__antithesis_instrumentation__.Notify(113721)
 	if len(ops) == 0 {
+		__antithesis_instrumentation__.Notify(113725)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(113726)
 	}
+	__antithesis_instrumentation__.Notify(113722)
 	return p.sendEvent(ctx, event{ops: ops}, p.EventChanTimeout)
 }
 
-// ConsumeSSTable informs the rangefeed processor of an SSTable that was added
-// via AddSSTable. It returns false if consuming the SSTable hit a timeout, as
-// specified by the EventChanTimeout configuration. If the method returns false,
-// the processor will have been stopped, so calling Stop is not necessary. Safe
-// to call on nil Processor.
 func (p *Processor) ConsumeSSTable(
 	ctx context.Context, sst []byte, sstSpan roachpb.Span, writeTS hlc.Timestamp,
 ) bool {
+	__antithesis_instrumentation__.Notify(113727)
 	if p == nil {
+		__antithesis_instrumentation__.Notify(113729)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(113730)
 	}
+	__antithesis_instrumentation__.Notify(113728)
 	return p.sendEvent(ctx, event{sst: sst, sstSpan: sstSpan, sstWTS: writeTS}, p.EventChanTimeout)
 }
 
-// ForwardClosedTS indicates that the closed timestamp that serves as the basis
-// for the rangefeed processor's resolved timestamp has advanced. It returns
-// false if forwarding the closed timestamp hit a timeout, as specified by the
-// EventChanTimeout configuration. If the method returns false, the processor
-// will have been stopped, so calling Stop is not necessary.  Safe to call on
-// nil Processor.
 func (p *Processor) ForwardClosedTS(ctx context.Context, closedTS hlc.Timestamp) bool {
+	__antithesis_instrumentation__.Notify(113731)
 	if p == nil {
+		__antithesis_instrumentation__.Notify(113734)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(113735)
 	}
+	__antithesis_instrumentation__.Notify(113732)
 	if closedTS.IsEmpty() {
+		__antithesis_instrumentation__.Notify(113736)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(113737)
 	}
+	__antithesis_instrumentation__.Notify(113733)
 	return p.sendEvent(ctx, event{ct: closedTS}, p.EventChanTimeout)
 }
 
-// sendEvent informs the Processor of a new event. If a timeout is specified,
-// the method will wait for no longer than that duration before giving up,
-// shutting down the Processor, and returning false. 0 for no timeout.
 func (p *Processor) sendEvent(ctx context.Context, e event, timeout time.Duration) bool {
-	// The code is a bit unwieldy because we try to avoid any allocations on fast
-	// path where we have enough budget and outgoing channel is free. If not, we
-	// try to set up timeout for acquiring budget and then reuse it for inserting
-	// value into channel.
+	__antithesis_instrumentation__.Notify(113738)
+
 	var allocation *SharedBudgetAllocation
 	if p.MemBudget != nil {
+		__antithesis_instrumentation__.Notify(113741)
 		size := calculateDateEventSize(e)
 		if size > 0 {
+			__antithesis_instrumentation__.Notify(113742)
 			var err error
-			// First we will try non-blocking fast path to allocate memory budget.
+
 			allocation, err = p.MemBudget.TryGet(ctx, size)
 			if err != nil {
-				// Since we don't have enough budget, we should try to wait for
-				// allocation returns before failing.
+				__antithesis_instrumentation__.Notify(113745)
+
 				if timeout > 0 {
+					__antithesis_instrumentation__.Notify(113747)
 					var cancel context.CancelFunc
-					ctx, cancel = context.WithTimeout(ctx, timeout) // nolint:context
+					ctx, cancel = context.WithTimeout(ctx, timeout)
 					defer cancel()
-					// We reset timeout here so that subsequent channel write op doesn't
-					// try to wait beyond what is already set up.
+
 					timeout = 0
+				} else {
+					__antithesis_instrumentation__.Notify(113748)
 				}
+				__antithesis_instrumentation__.Notify(113746)
 				p.Metrics.RangeFeedBudgetBlocked.Inc(1)
 				allocation, err = p.MemBudget.WaitAndGet(ctx, size)
+			} else {
+				__antithesis_instrumentation__.Notify(113749)
 			}
+			__antithesis_instrumentation__.Notify(113743)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(113750)
 				p.Metrics.RangeFeedBudgetExhausted.Inc(1)
 				p.sendStop(newErrBufferCapacityExceeded())
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(113751)
 			}
+			__antithesis_instrumentation__.Notify(113744)
 			defer func() {
+				__antithesis_instrumentation__.Notify(113752)
 				allocation.Release(ctx)
 			}()
+		} else {
+			__antithesis_instrumentation__.Notify(113753)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(113754)
 	}
+	__antithesis_instrumentation__.Notify(113739)
 	ev := getPooledEvent(e)
 	ev.allocation = allocation
 	if timeout == 0 {
-		// Timeout is zero if no timeout was requested or timeout is already set on
-		// the context by budget allocation. Just try to write using context as a
-		// timeout.
+		__antithesis_instrumentation__.Notify(113755)
+
 		select {
 		case p.eventC <- ev:
-			// Reset allocation after successful posting to prevent deferred cleanup
-			// from freeing it.
+			__antithesis_instrumentation__.Notify(113756)
+
 			allocation = nil
 		case <-p.stoppedC:
-			// Already stopped. Do nothing.
+			__antithesis_instrumentation__.Notify(113757)
+
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(113758)
 			p.sendStop(newErrBufferCapacityExceeded())
 			return false
 		}
 	} else {
-		// First try fast path operation without blocking and without creating any
-		// contexts in case channel has capacity.
+		__antithesis_instrumentation__.Notify(113759)
+
 		select {
 		case p.eventC <- ev:
-			// Reset allocation after successful posting to prevent deferred cleanup
-			// from freeing it.
+			__antithesis_instrumentation__.Notify(113760)
+
 			allocation = nil
 		case <-p.stoppedC:
-			// Already stopped. Do nothing.
+			__antithesis_instrumentation__.Notify(113761)
+
 		default:
-			// Fast path failed since we don't have capacity in channel. Wait for
-			// slots to clear up using context timeout.
+			__antithesis_instrumentation__.Notify(113762)
+
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, timeout) // nolint:context
+			ctx, cancel = context.WithTimeout(ctx, timeout)
 			defer cancel()
 			select {
 			case p.eventC <- ev:
-				// Reset allocation after successful posting to prevent deferred cleanup
-				// from freeing it.
+				__antithesis_instrumentation__.Notify(113763)
+
 				allocation = nil
 			case <-p.stoppedC:
-				// Already stopped. Do nothing.
+				__antithesis_instrumentation__.Notify(113764)
+
 			case <-ctx.Done():
-				// Sending on the eventC channel would have blocked.
-				// Instead, tear down the processor and return immediately.
+				__antithesis_instrumentation__.Notify(113765)
+
 				p.sendStop(newErrBufferCapacityExceeded())
 				return false
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(113740)
 	return true
 }
 
-// setResolvedTSInitialized informs the Processor that its resolved timestamp has
-// all the information it needs to be considered initialized.
 func (p *Processor) setResolvedTSInitialized(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(113766)
 	p.sendEvent(ctx, event{initRTS: true}, 0)
 }
 
-// syncEventC synchronizes access to the Processor goroutine, allowing the
-// caller to establish causality with actions taken by the Processor goroutine.
-// It does so by flushing the event pipeline.
 func (p *Processor) syncEventC() {
+	__antithesis_instrumentation__.Notify(113767)
 	syncC := make(chan struct{})
 	ev := getPooledEvent(event{syncC: syncC})
 	select {
 	case p.eventC <- ev:
+		__antithesis_instrumentation__.Notify(113768)
 		select {
 		case <-syncC:
-		// Synchronized.
+			__antithesis_instrumentation__.Notify(113770)
+
 		case <-p.stoppedC:
-			// Already stopped. Do nothing.
+			__antithesis_instrumentation__.Notify(113771)
+
 		}
 	case <-p.stoppedC:
-		// Already stopped. Do nothing.
+		__antithesis_instrumentation__.Notify(113769)
+
 	}
 }
 
 func (p *Processor) consumeEvent(ctx context.Context, e *event) {
+	__antithesis_instrumentation__.Notify(113772)
 	switch {
 	case len(e.ops) > 0:
+		__antithesis_instrumentation__.Notify(113773)
 		p.consumeLogicalOps(ctx, e.ops, e.allocation)
 	case len(e.sst) > 0:
+		__antithesis_instrumentation__.Notify(113774)
 		p.consumeSSTable(ctx, e.sst, e.sstSpan, e.sstWTS, e.allocation)
 	case !e.ct.IsEmpty():
+		__antithesis_instrumentation__.Notify(113775)
 		p.forwardClosedTS(ctx, e.ct)
 	case e.initRTS:
+		__antithesis_instrumentation__.Notify(113776)
 		p.initResolvedTS(ctx)
 	case e.syncC != nil:
+		__antithesis_instrumentation__.Notify(113777)
 		if e.testRegCatchupSpan.Valid() {
+			__antithesis_instrumentation__.Notify(113780)
 			if err := p.reg.waitForCaughtUp(e.testRegCatchupSpan); err != nil {
+				__antithesis_instrumentation__.Notify(113781)
 				log.Errorf(
 					ctx,
 					"error waiting for registries to catch up during test, results might be impacted: %s",
 					err,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(113782)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(113783)
 		}
+		__antithesis_instrumentation__.Notify(113778)
 		close(e.syncC)
 	default:
+		__antithesis_instrumentation__.Notify(113779)
 		panic(fmt.Sprintf("missing event variant: %+v", e))
 	}
 }
@@ -692,37 +708,44 @@ func (p *Processor) consumeEvent(ctx context.Context, e *event) {
 func (p *Processor) consumeLogicalOps(
 	ctx context.Context, ops []enginepb.MVCCLogicalOp, allocation *SharedBudgetAllocation,
 ) {
+	__antithesis_instrumentation__.Notify(113784)
 	for _, op := range ops {
-		// Publish RangeFeedValue updates, if necessary.
+		__antithesis_instrumentation__.Notify(113785)
+
 		switch t := op.GetValue().(type) {
 		case *enginepb.MVCCWriteValueOp:
-			// Publish the new value directly.
+			__antithesis_instrumentation__.Notify(113787)
+
 			p.publishValue(ctx, t.Key, t.Timestamp, t.Value, t.PrevValue, allocation)
 
 		case *enginepb.MVCCWriteIntentOp:
-			// No updates to publish.
+			__antithesis_instrumentation__.Notify(113788)
 
 		case *enginepb.MVCCUpdateIntentOp:
-			// No updates to publish.
+			__antithesis_instrumentation__.Notify(113789)
 
 		case *enginepb.MVCCCommitIntentOp:
-			// Publish the newly committed value.
+			__antithesis_instrumentation__.Notify(113790)
+
 			p.publishValue(ctx, t.Key, t.Timestamp, t.Value, t.PrevValue, allocation)
 
 		case *enginepb.MVCCAbortIntentOp:
-			// No updates to publish.
+			__antithesis_instrumentation__.Notify(113791)
 
 		case *enginepb.MVCCAbortTxnOp:
-			// No updates to publish.
+			__antithesis_instrumentation__.Notify(113792)
 
 		default:
+			__antithesis_instrumentation__.Notify(113793)
 			panic(errors.AssertionFailedf("unknown logical op %T", t))
 		}
+		__antithesis_instrumentation__.Notify(113786)
 
-		// Determine whether the operation caused the resolved timestamp to
-		// move forward. If so, publish a RangeFeedCheckpoint notification.
 		if p.rts.ConsumeLogicalOp(op) {
+			__antithesis_instrumentation__.Notify(113794)
 			p.publishCheckpoint(ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(113795)
 		}
 	}
 }
@@ -734,18 +757,27 @@ func (p *Processor) consumeSSTable(
 	sstWTS hlc.Timestamp,
 	allocation *SharedBudgetAllocation,
 ) {
+	__antithesis_instrumentation__.Notify(113796)
 	p.publishSSTable(ctx, sst, sstSpan, sstWTS, allocation)
 }
 
 func (p *Processor) forwardClosedTS(ctx context.Context, newClosedTS hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(113797)
 	if p.rts.ForwardClosedTS(newClosedTS) {
+		__antithesis_instrumentation__.Notify(113798)
 		p.publishCheckpoint(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(113799)
 	}
 }
 
 func (p *Processor) initResolvedTS(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(113800)
 	if p.rts.Init() {
+		__antithesis_instrumentation__.Notify(113801)
 		p.publishCheckpoint(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(113802)
 	}
 }
 
@@ -756,14 +788,23 @@ func (p *Processor) publishValue(
 	value, prevValue []byte,
 	allocation *SharedBudgetAllocation,
 ) {
+	__antithesis_instrumentation__.Notify(113803)
 	if !p.Span.ContainsKey(roachpb.RKey(key)) {
+		__antithesis_instrumentation__.Notify(113806)
 		log.Fatalf(ctx, "key %v not in Processor's key range %v", key, p.Span)
+	} else {
+		__antithesis_instrumentation__.Notify(113807)
 	}
+	__antithesis_instrumentation__.Notify(113804)
 
 	var prevVal roachpb.Value
 	if prevValue != nil {
+		__antithesis_instrumentation__.Notify(113808)
 		prevVal.RawBytes = prevValue
+	} else {
+		__antithesis_instrumentation__.Notify(113809)
 	}
+	__antithesis_instrumentation__.Notify(113805)
 	var event roachpb.RangeFeedEvent
 	event.MustSetValue(&roachpb.RangeFeedValue{
 		Key: key,
@@ -783,12 +824,21 @@ func (p *Processor) publishSSTable(
 	sstWTS hlc.Timestamp,
 	allocation *SharedBudgetAllocation,
 ) {
+	__antithesis_instrumentation__.Notify(113810)
 	if sstSpan.Equal(roachpb.Span{}) {
+		__antithesis_instrumentation__.Notify(113813)
 		panic(errors.AssertionFailedf("received SSTable without span"))
+	} else {
+		__antithesis_instrumentation__.Notify(113814)
 	}
+	__antithesis_instrumentation__.Notify(113811)
 	if sstWTS.IsEmpty() {
+		__antithesis_instrumentation__.Notify(113815)
 		panic(errors.AssertionFailedf("received SSTable without write timestamp"))
+	} else {
+		__antithesis_instrumentation__.Notify(113816)
 	}
+	__antithesis_instrumentation__.Notify(113812)
 	p.reg.PublishToOverlapping(ctx, sstSpan, &roachpb.RangeFeedEvent{
 		SST: &roachpb.RangeFeedSSTable{
 			Data:    sst,
@@ -799,17 +849,15 @@ func (p *Processor) publishSSTable(
 }
 
 func (p *Processor) publishCheckpoint(ctx context.Context) {
-	// TODO(nvanbenschoten): persist resolvedTimestamp. Give Processor a client.DB.
-	// TODO(nvanbenschoten): rate limit these? send them periodically?
+	__antithesis_instrumentation__.Notify(113817)
 
 	event := p.newCheckpointEvent()
 	p.reg.PublishToOverlapping(ctx, all, event, nil)
 }
 
 func (p *Processor) newCheckpointEvent() *roachpb.RangeFeedEvent {
-	// Create a RangeFeedCheckpoint over the Processor's entire span. Each
-	// individual registration will trim this down to just the key span that
-	// it is listening on in registration.maybeStripEvent before publishing.
+	__antithesis_instrumentation__.Notify(113818)
+
 	var event roachpb.RangeFeedEvent
 	event.MustSetValue(&roachpb.RangeFeedCheckpoint{
 		Span:       p.Span.AsRawSpanWithNoLocals(),
@@ -818,16 +866,14 @@ func (p *Processor) newCheckpointEvent() *roachpb.RangeFeedEvent {
 	return &event
 }
 
-// calculateDateEventSize returns estimated size of the event that contain actual
-// data. We only account for logical ops and sst's. Those events come from raft
-// and are budgeted. Other events come from processor jobs and update timestamps
-// we don't take them into account as they are supposed to be small and to avoid
-// complexity of having multiple producers getting from budget.
 func calculateDateEventSize(e event) int64 {
+	__antithesis_instrumentation__.Notify(113819)
 	var size int64
 	for _, op := range e.ops {
+		__antithesis_instrumentation__.Notify(113821)
 		size += int64(op.Size())
 	}
+	__antithesis_instrumentation__.Notify(113820)
 	size += int64(len(e.sst))
 	return size
 }

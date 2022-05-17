@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -83,41 +75,24 @@ import (
 )
 
 const (
-	// rangeIDAllocCount is the number of Range IDs to allocate per allocation.
 	rangeIDAllocCount = 10
 
-	// defaultRaftEntryCacheSize is the default size in bytes for a
-	// store's Raft log entry cache.
-	defaultRaftEntryCacheSize = 1 << 24 // 16M
+	defaultRaftEntryCacheSize = 1 << 24
 
-	// replicaRequestQueueSize specifies the maximum number of requests to queue
-	// for a replica.
 	replicaRequestQueueSize = 100
 
 	defaultGossipWhenCapacityDeltaExceedsFraction = 0.01
 
-	// systemDataGossipInterval is the interval at which range lease
-	// holders verify that the most recent system data is gossiped.
-	// This ensures that system data is always eventually gossiped, even
-	// if a range lease holder experiences a failure causing a missed
-	// gossip update.
 	systemDataGossipInterval = 1 * time.Minute
 )
 
 var storeSchedulerConcurrency = envutil.EnvOrDefaultInt(
-	// For small machines, we scale the scheduler concurrency by the number of
-	// CPUs. 8*NumCPU was determined in 9a68241 (April 2017) as the optimal
-	// concurrency level on 8 CPU machines. For larger machines, we've seen
-	// (#56851) that this scaling curve can be too aggressive and lead to too much
-	// contention in the Raft scheduler, so we cap the concurrency level at 96.
-	//
-	// As of November 2020, this default value could be re-tuned.
+
 	"COCKROACH_SCHEDULER_CONCURRENCY", min(8*runtime.GOMAXPROCS(0), 96))
 
 var logSSTInfoTicks = envutil.EnvOrDefaultInt(
 	"COCKROACH_LOG_SST_INFO_TICKS_INTERVAL", 60)
 
-// bulkIOWriteLimit is defined here because it is used by BulkIOWriteLimiter.
 var bulkIOWriteLimit = settings.RegisterByteSizeSetting(
 	settings.TenantWritable,
 	"kv.bulk_io_write.max_rate",
@@ -125,7 +100,6 @@ var bulkIOWriteLimit = settings.RegisterByteSizeSetting(
 	1<<40,
 ).WithPublic()
 
-// addSSTableRequestLimit limits concurrent AddSSTable requests.
 var addSSTableRequestLimit = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"kv.bulk_io_write.concurrent_addsstable_requests",
@@ -134,11 +108,6 @@ var addSSTableRequestLimit = settings.RegisterIntSetting(
 	settings.PositiveInt,
 )
 
-// addSSTableAsWritesRequestLimit limits concurrent AddSSTable requests with
-// IngestAsWrites set. These are smaller (kv.bulk_io_write.small_write_size),
-// and will end up in the Pebble memtable (default 64 MB) before flushing to
-// disk, so we can allow a greater amount of concurrency than regular AddSSTable
-// requests. Applied independently of concurrent_addsstable_requests.
 var addSSTableAsWritesRequestLimit = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"kv.bulk_io_write.concurrent_addsstable_as_writes_requests",
@@ -147,7 +116,6 @@ var addSSTableAsWritesRequestLimit = settings.RegisterIntSetting(
 	settings.PositiveInt,
 )
 
-// concurrentRangefeedItersLimit limits concurrent rangefeed catchup iterators.
 var concurrentRangefeedItersLimit = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"kv.rangefeed.concurrent_catchup_iterators",
@@ -156,9 +124,6 @@ var concurrentRangefeedItersLimit = settings.RegisterIntSetting(
 	settings.PositiveInt,
 )
 
-// concurrentscanInterleavedIntentsLimit is the number of concurrent
-// ScanInterleavedIntents requests that will be run on a store. Used as part
-// of pre-evaluation throttling.
 var concurrentscanInterleavedIntentsLimit = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"kv.migration.concurrent_scan_interleaved_intents",
@@ -167,8 +132,6 @@ var concurrentscanInterleavedIntentsLimit = settings.RegisterIntSetting(
 	settings.PositiveInt,
 )
 
-// Minimum time interval between system config updates which will lead to
-// enqueuing replicas.
 var queueAdditionOnSystemConfigUpdateRate = settings.RegisterFloatSetting(
 	settings.TenantWritable,
 	"kv.store.system_config_update.queue_add_rate",
@@ -177,9 +140,6 @@ var queueAdditionOnSystemConfigUpdateRate = settings.RegisterFloatSetting(
 	settings.NonNegativeFloat,
 )
 
-// Minimum time interval between system config updates which will lead to
-// enqueuing replicas. The default is relatively high to deal with startup
-// scenarios.
 var queueAdditionOnSystemConfigUpdateBurst = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"kv.store.system_config_update.queue_add_burst",
@@ -188,8 +148,8 @@ var queueAdditionOnSystemConfigUpdateBurst = settings.RegisterIntSetting(
 	settings.NonNegativeInt,
 )
 
-// leaseTransferWait is the timeout for a single iteration of draining range leases.
 var leaseTransferWait = func() *settings.DurationSetting {
+	__antithesis_instrumentation__.Notify(123821)
 	s := settings.RegisterDurationSetting(
 		settings.TenantWritable,
 		leaseTransferWaitSettingName,
@@ -198,26 +158,25 @@ var leaseTransferWait = func() *settings.DurationSetting {
 			"after changing this setting)",
 		5*time.Second,
 		func(v time.Duration) error {
+			__antithesis_instrumentation__.Notify(123823)
 			if v < 0 {
+				__antithesis_instrumentation__.Notify(123825)
 				return errors.Errorf("cannot set %s to a negative duration: %s",
 					leaseTransferWaitSettingName, v)
+			} else {
+				__antithesis_instrumentation__.Notify(123826)
 			}
+			__antithesis_instrumentation__.Notify(123824)
 			return nil
 		},
 	)
+	__antithesis_instrumentation__.Notify(123822)
 	s.SetVisibility(settings.Public)
 	return s
 }()
 
 const leaseTransferWaitSettingName = "server.shutdown.lease_transfer_wait"
 
-// ExportRequestsLimit is the number of Export requests that can run at once.
-// Each extracts data from RocksDB to a temp file and then uploads it to cloud
-// storage. In order to not exhaust the disk or memory, or saturate the network,
-// limit the number of these that can be run in parallel. This number was chosen
-// by a guessing - it could be improved by more measured heuristics. Exported
-// here since we check it in in the caller to limit generated requests as well
-// to prevent excessive queuing.
 var ExportRequestsLimit = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"kv.bulk_io_write.concurrent_export_requests",
@@ -226,15 +185,20 @@ var ExportRequestsLimit = settings.RegisterIntSetting(
 	settings.PositiveInt,
 )
 
-// TestStoreConfig has some fields initialized with values relevant in tests.
 func TestStoreConfig(clock *hlc.Clock) StoreConfig {
+	__antithesis_instrumentation__.Notify(123827)
 	return testStoreConfig(clock, clusterversion.TestingBinaryVersion)
 }
 
 func testStoreConfig(clock *hlc.Clock, version roachpb.Version) StoreConfig {
+	__antithesis_instrumentation__.Notify(123828)
 	if clock == nil {
+		__antithesis_instrumentation__.Notify(123830)
 		clock = hlc.NewClock(hlc.UnixNano, time.Nanosecond)
+	} else {
+		__antithesis_instrumentation__.Notify(123831)
 	}
+	__antithesis_instrumentation__.Notify(123829)
 	st := cluster.MakeTestingClusterSettingsWithVersions(version, version, true)
 	tracer := tracing.NewTracerWithOpt(context.TODO(), tracing.WithClusterSettings(&st.SV))
 	sc := StoreConfig{
@@ -247,15 +211,11 @@ func testStoreConfig(clock *hlc.Clock, version roachpb.Version) StoreConfig {
 		HistogramWindowInterval:     metric.TestSampleInterval,
 		ProtectedTimestampReader:    spanconfig.EmptyProtectedTSReader(clock),
 
-		// Use a constant empty system config, which mirrors the previously
-		// existing logic to install an empty system config in gossip.
 		SystemConfigProvider: config.NewConstantSystemConfigProvider(
 			config.NewSystemConfig(zonepb.DefaultZoneConfigRef()),
 		),
 	}
 
-	// Use shorter Raft tick settings in order to minimize start up and failover
-	// time in tests.
 	sc.RaftHeartbeatIntervalTicks = 1
 	sc.RaftElectionTimeoutTicks = 3
 	sc.RaftTickInterval = 100 * time.Millisecond
@@ -266,6 +226,7 @@ func testStoreConfig(clock *hlc.Clock, version roachpb.Version) StoreConfig {
 func newRaftConfig(
 	strg raft.Storage, id uint64, appliedIndex uint64, storeCfg StoreConfig, logger raft.Logger,
 ) *raft.Config {
+	__antithesis_instrumentation__.Notify(123832)
 	return &raft.Config{
 		ID:                        id,
 		Applied:                   appliedIndex,
@@ -282,449 +243,217 @@ func newRaftConfig(
 	}
 }
 
-// verifyKeys verifies keys. If checkEndKey is true, then the end key
-// is verified to be non-nil and greater than start key. If
-// checkEndKey is false, end key is verified to be nil. Additionally,
-// verifies that start key is less than KeyMax and end key is less
-// than or equal to KeyMax. It also verifies that a key range that
-// contains range-local keys is completely range-local.
 func verifyKeys(start, end roachpb.Key, checkEndKey bool) error {
+	__antithesis_instrumentation__.Notify(123833)
 	if bytes.Compare(start, roachpb.KeyMax) >= 0 {
+		__antithesis_instrumentation__.Notify(123838)
 		return errors.Errorf("start key %q must be less than KeyMax", start)
+	} else {
+		__antithesis_instrumentation__.Notify(123839)
 	}
+	__antithesis_instrumentation__.Notify(123834)
 	if !checkEndKey {
+		__antithesis_instrumentation__.Notify(123840)
 		if len(end) != 0 {
+			__antithesis_instrumentation__.Notify(123842)
 			return errors.Errorf("end key %q should not be specified for this operation", end)
+		} else {
+			__antithesis_instrumentation__.Notify(123843)
 		}
+		__antithesis_instrumentation__.Notify(123841)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(123844)
 	}
+	__antithesis_instrumentation__.Notify(123835)
 	if end == nil {
+		__antithesis_instrumentation__.Notify(123845)
 		return errors.Errorf("end key must be specified")
+	} else {
+		__antithesis_instrumentation__.Notify(123846)
 	}
+	__antithesis_instrumentation__.Notify(123836)
 	if bytes.Compare(roachpb.KeyMax, end) < 0 {
+		__antithesis_instrumentation__.Notify(123847)
 		return errors.Errorf("end key %q must be less than or equal to KeyMax", end)
+	} else {
+		__antithesis_instrumentation__.Notify(123848)
 	}
 	{
+		__antithesis_instrumentation__.Notify(123849)
 		sAddr, err := keys.Addr(start)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(123853)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(123854)
 		}
+		__antithesis_instrumentation__.Notify(123850)
 		eAddr, err := keys.Addr(end)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(123855)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(123856)
 		}
+		__antithesis_instrumentation__.Notify(123851)
 		if !sAddr.Less(eAddr) {
+			__antithesis_instrumentation__.Notify(123857)
 			return errors.Errorf("end key %q must be greater than start %q", end, start)
+		} else {
+			__antithesis_instrumentation__.Notify(123858)
 		}
+		__antithesis_instrumentation__.Notify(123852)
 		if !bytes.Equal(sAddr, start) {
+			__antithesis_instrumentation__.Notify(123859)
 			if bytes.Equal(eAddr, end) {
+				__antithesis_instrumentation__.Notify(123860)
 				return errors.Errorf("start key is range-local, but end key is not")
+			} else {
+				__antithesis_instrumentation__.Notify(123861)
 			}
-		} else if bytes.Compare(start, keys.LocalMax) < 0 {
-			// It's a range op, not local but somehow plows through local data -
-			// not cool.
-			return errors.Errorf("start key in [%q,%q) must be greater than LocalMax", start, end)
+		} else {
+			__antithesis_instrumentation__.Notify(123862)
+			if bytes.Compare(start, keys.LocalMax) < 0 {
+				__antithesis_instrumentation__.Notify(123863)
+
+				return errors.Errorf("start key in [%q,%q) must be greater than LocalMax", start, end)
+			} else {
+				__antithesis_instrumentation__.Notify(123864)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(123837)
 
 	return nil
 }
 
-// A NotBootstrappedError indicates that an engine has not yet been
-// bootstrapped due to a store identifier not being present.
 type NotBootstrappedError struct{}
 
-// Error formats error.
 func (e *NotBootstrappedError) Error() string {
+	__antithesis_instrumentation__.Notify(123865)
 	return "store has not been bootstrapped"
 }
 
-// A storeReplicaVisitor calls a visitor function for each of a store's
-// initialized Replicas (in unspecified order). It provides an option
-// to visit replicas in increasing RangeID order.
 type storeReplicaVisitor struct {
 	store   *Store
-	repls   []*Replica // Replicas to be visited
-	ordered bool       // Option to visit replicas in sorted order
-	visited int        // Number of visited ranges, -1 before first call to Visit()
+	repls   []*Replica
+	ordered bool
+	visited int
 }
 
-// Len implements sort.Interface.
-func (rs storeReplicaVisitor) Len() int { return len(rs.repls) }
+func (rs storeReplicaVisitor) Len() int {
+	__antithesis_instrumentation__.Notify(123866)
+	return len(rs.repls)
+}
 
-// Less implements sort.Interface.
-func (rs storeReplicaVisitor) Less(i, j int) bool { return rs.repls[i].RangeID < rs.repls[j].RangeID }
+func (rs storeReplicaVisitor) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(123867)
+	return rs.repls[i].RangeID < rs.repls[j].RangeID
+}
 
-// Swap implements sort.Interface.
-func (rs storeReplicaVisitor) Swap(i, j int) { rs.repls[i], rs.repls[j] = rs.repls[j], rs.repls[i] }
+func (rs storeReplicaVisitor) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(123868)
+	rs.repls[i], rs.repls[j] = rs.repls[j], rs.repls[i]
+}
 
-// newStoreReplicaVisitor constructs a storeReplicaVisitor.
 func newStoreReplicaVisitor(store *Store) *storeReplicaVisitor {
+	__antithesis_instrumentation__.Notify(123869)
 	return &storeReplicaVisitor{
 		store:   store,
 		visited: -1,
 	}
 }
 
-// InOrder tells the visitor to visit replicas in increasing RangeID order.
 func (rs *storeReplicaVisitor) InOrder() *storeReplicaVisitor {
+	__antithesis_instrumentation__.Notify(123870)
 	rs.ordered = true
 	return rs
 }
 
-// Visit calls the visitor with each Replica until false is returned.
 func (rs *storeReplicaVisitor) Visit(visitor func(*Replica) bool) {
-	// Copy the range IDs to a slice so that we iterate over some (possibly
-	// stale) view of all Replicas without holding the Store lock. In particular,
-	// no locks are acquired during the copy process.
+	__antithesis_instrumentation__.Notify(123871)
+
 	rs.repls = nil
 	rs.store.mu.replicasByRangeID.Range(func(repl *Replica) {
+		__antithesis_instrumentation__.Notify(123875)
 		rs.repls = append(rs.repls, repl)
 	})
+	__antithesis_instrumentation__.Notify(123872)
 
 	if rs.ordered {
-		// If the replicas were requested in sorted order, perform the sort.
+		__antithesis_instrumentation__.Notify(123876)
+
 		sort.Sort(rs)
 	} else {
-		// The Replicas are already in "unspecified order" due to map iteration,
-		// but we want to make sure it's completely random to prevent issues in
-		// tests where stores are scanning replicas in lock-step and one store is
-		// winning the race and getting a first crack at processing the replicas on
-		// its queues.
-		//
-		// TODO(peter): Re-evaluate whether this is necessary after we allow
-		// rebalancing away from the leaseholder. See TestRebalance_3To5Small.
+		__antithesis_instrumentation__.Notify(123877)
+
 		shuffle.Shuffle(rs)
 	}
+	__antithesis_instrumentation__.Notify(123873)
 
 	rs.visited = 0
 	for _, repl := range rs.repls {
-		// TODO(tschottdorf): let the visitor figure out if something's been
-		// destroyed once we return errors from mutexes (#9190). After all, it
-		// can still happen with this code.
+		__antithesis_instrumentation__.Notify(123878)
+
 		rs.visited++
 		repl.mu.RLock()
 		destroyed := repl.mu.destroyStatus
 		initialized := repl.isInitializedRLocked()
 		repl.mu.RUnlock()
-		if initialized && destroyed.IsAlive() && !visitor(repl) {
+		if initialized && func() bool {
+			__antithesis_instrumentation__.Notify(123879)
+			return destroyed.IsAlive() == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(123880)
+			return !visitor(repl) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(123881)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(123882)
 		}
 	}
+	__antithesis_instrumentation__.Notify(123874)
 	rs.visited = 0
 }
 
-// EstimatedCount returns an estimated count of the underlying store's
-// replicas.
-//
-// TODO(tschottdorf): this method has highly doubtful semantics.
 func (rs *storeReplicaVisitor) EstimatedCount() int {
+	__antithesis_instrumentation__.Notify(123883)
 	if rs.visited <= 0 {
+		__antithesis_instrumentation__.Notify(123885)
 		return rs.store.ReplicaCount()
+	} else {
+		__antithesis_instrumentation__.Notify(123886)
 	}
+	__antithesis_instrumentation__.Notify(123884)
 	return len(rs.repls) - rs.visited
 }
 
-/*
-A Store maintains a set of Replicas whose data is stored on a storage.Engine
-usually corresponding to a dedicated storage medium. It also houses a collection
-of subsystems that, in broad terms, perform maintenance of each Replica on the
-Store when required. In particular, this includes various queues such as the
-split, merge, rebalance, GC, and replicaGC queues (to name just a few).
-
-INVARIANT: the set of all Ranges (as determined by, e.g. a transactionally
-consistent scan of the meta index ranges) always exactly covers the addressable
-keyspace roachpb.KeyMin (inclusive) to roachpb.KeyMax (exclusive).
-
-Ranges
-
-Each Replica is part of a Range, i.e. corresponds to what other systems would
-call a shard. A Range is a consensus group backed by Raft, i.e. each Replica is
-a state machine backed by a replicated log of commands. In CockroachDB, Ranges
-own a contiguous chunk of addressable keyspace, where the word "addressable" is
-a fine-print that interested readers can learn about in keys.Addr; in short the
-Replica data is logically contiguous, but not contiguous when viewed as Engine
-kv pairs.
-
-Considerable complexity is incurred by the features of dynamic re-sharding and
-relocation, i.e. range splits, range merges, and range relocation (also called
-replication changes, or, in the case of lateral movement, rebalancing). Each of
-these interact heavily with the Range as a consensus group (of which each
-Replica is a member). All of these intricacies are described at a high level in
-this comment.
-
-RangeDescriptor
-
-A roachpb.RangeDescriptor is the configuration of a Range. It is an
-MVCC-backed key-value pair (where the key is derived from the StartKey via
-keys.RangeDescriptorKey, which in particular resides on the Range itself)
-that is accessible to the transactional KV API much like any other, but is
-for internal use only (and in particular plays no role at the SQL layer).
-
-Splits, Merges, and Rebalances are all carried out as distributed
-transactions. They are all complex in their own right but they share the
-basic approach of transactionally acting on the RangeDescriptor. Each of
-these operations at some point will
-
-- start a transaction
-
-- update the RangeDescriptor (for example, to reflect a split, or a change
-to the Replicas comprising the members of the Range)
-
-- update the meta ranges (which form a search index used for request routing, see
-  kv.RangeLookup and updateRangeAddressing for details)
-
-- commit with a roachpb.InternalCommitTrigger.
-
-In particular, note that the RangeDescriptor is the first write issued in the
-transaction, and so the transaction record will be created on the affected
-range. This allows us to establish a helpful invariant:
-
-INVARIANT: an intent on keys.RangeDescriptorKey is resolved atomically with
-the (application of the) roachpb.EndTxnRequest committing the transaction.
-
-A Replica's active configuration is dictated by its visible version of the
-RangeDescriptor, and the above invariant simplifies this. Without the invariant,
-the new RangeDescriptor would come into effect when the intent is resolved,
-which is a) later (so requests might get routed to this Replica without it being
-ready to handle them appropriately) and b) requires special-casing around
-ResolveIntent acting on the RangeDescriptor.
-
-INVARIANT: A Store never contains two Replicas from the same Range, nor do the
-key ranges for any two of its Replicas overlap. (Note that there is no
-requirement that these Replicas come from a consistent set of Ranges; the
-RangeDescriptor.Generation orders overlapping descriptors).
-
-To illustrate this last invariant, consider a split of a Replica [a-z) into two
-Replicas, [a-c) and [c,z). The Store will never contain both; it has to swap
-directly from [a-z) to [a,c)+[c,z). For a similar example, consider accepting a
-new Replica [b,d) when a Replica [a,c) is already present, which is similarly
-not allowed. To understand how such situations could arise, consider that a
-series of changes to the RangeDescriptor is observed asynchronously by
-followers. This means that a follower may have Replica [a-z) while any number of
-splits and replication changes are already known to the leaseholder, and the new
-Ranges created in the process may be attempting to add a Replica to the slow
-follower.
-
-With the invariant, we effectively allow looking up a unique (if it exists)
-Replica for any given key, and ensure that no two Replicas on a Store operate on
-shared keyspace (as seen by the storage.Engine). Refer to the Replica Lifecycle
-diagram below for details on how this invariant is upheld.
-
-Replica Lifecycle
-
-A Replica should be thought of primarily as a State Machine applying commands
-from a replicated log (the log being replicated across the members of the
-Range). The Store's RaftTransport receives Raft messages from Replicas residing
-on other Stores and routes them to the appropriate Replicas via
-Store.HandleRaftRequest (which is part of the RaftMessageHandler interface),
-ultimately resulting in a call to Replica.handleRaftReadyRaftMuLocked, which
-houses the integration with the etcd/raft library (raft.RawNode). This may
-generate Raft messages to be sent to other Stores; these are handed to
-Replica.sendRaftMessagesRaftMuLocked which ultimately hands them to the Store's
-RaftTransport.SendAsync method. Raft uses message passing (not
-request-response), and outgoing messages will use a gRPC stream that differs
-from that used for incoming messages (which makes asymmetric partitions more
-likely in case of stream-specific problems). The steady state is relatively
-straightforward but when Ranges are being reconfigured, an understanding the
-Replica Lifecycle becomes important and upholding the Store's invariants becomes
-more complex.
-
-A first phenomenon to understand is that of uninitialized Replicas, which is the
-State Machine at applied index zero, i.e. has an empty state. In CockroachDB, an
-uninitialized Replica can only advance to a nonzero log position ("become
-initialized") via a Raft snapshot (this is because we initialize all Ranges in
-the system at log index raftInitialLogIndex which allows us to write arbitrary
-amounts of data into the initial state without having to worry about the size
-of individual log entries; see WriteInitialReplicaState).
-
-An uninitialized Replica has no notion of its active RangeDescriptor yet, has no
-data, and should be thought of as a pure raft peer that can react to incoming
-messages (it can't send messages, as it is unaware of who the other members of
-the group are; its configuration is zero, consistent with the configuration
-represented by "no RangeDescriptor"); in particular it may be asked to cast a
-vote to determine Raft leadership. (This should not be required in CockroachDB
-today since we always add an uninitialized Replica as a roachpb.LEARNER first
-and only promote it after it has successfully received a Raft snapshot; we don't
-rely on this fact today)
-
-Uninitialized Replicas should be viewed as an implementation detail that is (or
-should be!) invisible to most access to a Store in the context of processing
-requests coming from the KV API, as uninitialized Replicas cannot serve such
-requests. At the time of writing, uninitialized Replicas need to be handled
-in many code paths that should never encounter them in the first place. We
-will be addressing this with #72374.
-
-Raft snapshots can also be directed at initialized Replicas. For practical
-reasons, we cannot preserve the entire committed replicated log forever and
-periodically purge a prefix that is known to be durably applied on a quorum of
-peers. Under certain circumstances (see newTruncateDecision) this may cut a
-follower off from the log, and this follower will require a Raft snapshot before
-being able to resume replication. Another (rare) source of snapshots occurs
-around Range splits. During a split, the involved Replicas shrink and
-simultaneously instantiate the right-hand side Replica, but since Replicas carry
-out this operation at different times, a "faster" initialized right-hand side
-might contact a "slow" store on which the right-hand side has not yet been
-instantiated, leading to the creation of an uninitialized Replica that may
-request a snapshot. See maybeDelaySplitToAvoidSnapshot.
-
-The diagram is a lot to take in. The various transitions are discussed in
-prose below, and the source .dot file is in store_doc_replica_lifecycle.dot.
-
-                                +---------------------+
-            +------------------ |       Absent        | ---------------------------------------------------------------------------------------------------+
-            |                   +---------------------+                                                                                                    |
-            |                     |                        Subsume              Crash          applySnapshot                                               |
-            |                     | Store.Start          +---------------+    +---------+    +---------------+                                             |
-            |                     v                      v               |    v         |    v               |                                             |
-            |                   +-----------------------------------------------------------------------------------------------------------------------+  |
-  +---------+------------------ |                                                                                                                       |  |
-  |         |                   |                                                      Initialized                                                      |  |
-  |         |                   |                                                                                                                       |  |
-  |    +----+------------------ |                                                                                                                       | -+----+
-  |    |    |                   +-----------------------------------------------------------------------------------------------------------------------+  |    |
-  |    |    |                     |                      ^                    ^                                   |              |                    |    |    |
-  |    |    | Raft msg            | Crash                | applySnapshot      | post-split                        |              |                    |    |    |
-  |    |    |                     v                      |                    |                                   |              |                    |    |    |
-  |    |    |                   +---------------------------------------------------------+  pre-split            |              |                    |    |    |
-  |    |    +-----------------> |                                                         | <---------------------+--------------+--------------------+----+    |
-  |    |                        |                                                         |                       |              |                    |         |
-  |    |                        |                      Uninitialized                      |   Raft msg            |              |                    |         |
-  |    |                        |                                                         | -----------------+    |              |                    |         |
-  |    |                        |                                                         |                  |    |              |                    |         |
-  |    |                        |                                                         | <----------------+    |              |                    |         |
-  |    |                        +---------------------------------------------------------+                       |              | apply removal      |         |
-  |    |                          |                      |                                                        |              |                    |         |
-  |    |                          | ReplicaTooOldError   | higher ReplicaID                                       | Replica GC   |                    |         |
-  |    |                          v                      v                                                        v              |                    |         |
-  |    |   Merged (snapshot)    +---------------------------------------------------------------------------------------------+  |                    |         |
-  |    +----------------------> |                                                                                             | <+                    |         |
-  |                             |                                                                                             |                       |         |
-  |        apply Merge          |                                                                                             |  ReplicaTooOld        |         |
-  +---------------------------> |                                           Removed                                           | <---------------------+         |
-                                |                                                                                             |                                 |
-                                |                                                                                             |  higher ReplicaID               |
-                                |                                                                                             | <-------------------------------+
-                                +---------------------------------------------------------------------------------------------+
-
-When a Store starts, it iterates through all RangeDescriptors it can find on its
-Engine. Finding a RangeDescriptor by definition implies that the Replica is
-initialized. Raft state (a raftpb.HardState) for uninitialized Replicas may
-exist, however it would be ignored until a message arrives addressing that
-Replica, or a split trigger applies that instantiates and then initializes it.
-
-Uninitialized Replicas principally arise when a replication change occurs and a
-new member is added to a Range. This new member will be contacted by the Raft
-leader, creating an uninitialized Replica on the recipient which will then
-negotiate a snapshot to become initialized and to receive the replicated log. A
-split can be understood as a special case of that, except that all members of
-the Range are created at around the same time (though in practice with arbitrary
-delays due to the usual distributed systems reasons), and the uninitialized
-Replica creation is triggered by the split trigger executing on the left-hand
-side of the split, or a Replica of the right-hand side (already initialized by
-the split trigger on another Store) reaching out, whichever occurs first.
-
-An uninitialized Replica requires a snapshot to become initialized. The case in
-which the Replica is the right-hand side of a split can be understood as the
-application of a snapshot as well (though this is not reflected in code at the
-time of writing) where the left-hand side applies the split by (logically)
-moving any data past the split point to the right-hand side Replica, thus
-initializing it. In principle, since writes to the state machine do not need to
-be made durable, it is conceivable that a split or snapshot could "unapply" due
-to an ill-timed crash (though snapshots currently use SST ingestion, which the
-storage engine performs durably). Similarly, entry application (which only
-occurs on initialized Replicas) is not synced and so a suffix of applied entries
-may need to be re-applied following a crash.
-
-If an uninitialized Replica receives a Raft message from a peer informing it
-that it is no longer part of a more up-to-date Range configuration (via a
-ReplicaTooOldError) or that it has been removed and re-added under a higher
-ReplicaID, the uninitialized Replica is removed. There is currently no
-general-purpose mechanism to determine whether an uninitialized Replica is
-outdated; an uninitialized Replica could in principle leak "forever" if the
-Range quickly changes its members such that the triggers mentioned here don't
-apply. A full scan of meta2 would be required as there is no RangeID-keyed index
-on the RangeDescriptors (the meta ranges are keyed on the EndKey, which allows
-routing requests based on the key ranges they touch). The fact that
-uninitialized Replicas can be removed has to be taken into account by splits as
-well; the split trigger may find that the right-hand side uninitialized Replica
-has already been removed, in which case the right half of the split has to be
-discarded (see acquireSplitLock and splitPostApply).
-
-Initialized Replicas represent the common case. They can apply snapshots
-(required if they get cut off from the raft log via log truncation) which will
-always move the applied log position forward, however this is rare. A Replica
-typically spends most of its life applying log entries and/or serving reads. The
-mechanisms that can lead to removal of uninitialized Replicas apply to
-initialized Replicas in the exact same way, but there are additional ways for an
-initialized Replica to be removed. The most general such mechanism is the
-replica GC queue, which periodically checks the meta2 copy of the Range's
-descriptor (using a consistent read, i.e. reading the latest version). If this
-indicates that the Replica on the local Store should no longer exist, the
-Replica is removed. Additionally, the Replica may directly witness a change that
-indicates a need for a removal. For example, it may apply a change to the range
-descriptor that removes it, or it may be destroyed by the application of a merge
-on its left neighboring Replica, which may also occur through a snapshot. Merges
-are the single most complex reconfiguration operation and can only be touched
-upon here. At their core, they will at some point "freeze" the right-hand side
-Replicas (via roachpb.SubsumeRequest) to prevent additional read or write
-activity, and also ensure that the two sets of Ranges to be merged are
-co-located on the same Stores as well as are all initialized.
-
-INVARIANT: An initialized Replica's RangeDescriptor always includes it as a member.
-
-INVARIANT: RangeDescriptor.StartKey is immutable (splits and merges mutate the
-EndKey only). In particular, an initialized Replica's StartKey is immutable.
-
-INVARIANT: A Replica's ReplicaID is constant.
-NOTE: the way to read this is that a Replica object will not be re-used for
-multiple ReplicaIDs. Instead, the existing Replica will be destroyed and a new
-Replica instantiated.
-
-These invariants significantly reduce complexity since we do not need to handle
-the excluded situations. Particularly a changing replicaID is bug-inducing since
-at the Replication layer a change in replica ID is a complete change of
-identity, and re-use of in-memory structures poses the threat of erroneously
-re-using cached information.
-
-INVARIANT: for each key `k` in the replicated key space, the Generation of the
-RangeDescriptor containing is strictly increasing over time (see
-RangeDescriptor.Generation).
-NOTE: we rely on this invariant for cache coherency in `kvcoord`; it currently
-plays no role in `kvserver` though we could use it to improve the handling of
-snapshot overlaps; see Store.checkSnapshotOverlapLocked.
-NOTE: a key may be owned by different RangeIDs at different points in time due
-to Range splits and merges.
-
-INVARIANT: on each Store and for each RangeID, the ReplicaID is strictly
-increasing over time (see Replica.setTombstoneKey).
-NOTE: to the best of our knowledge, we don't rely on this invariant.
-*/
 type Store struct {
-	Ident           *roachpb.StoreIdent // pointer to catch access before Start() is called
+	Ident           *roachpb.StoreIdent
 	cfg             StoreConfig
 	db              *kv.DB
-	engine          storage.Engine // The underlying key-value store
-	tsCache         tscache.Cache  // Most recent timestamps for keys / key ranges
-	allocator       Allocator      // Makes allocation decisions
+	engine          storage.Engine
+	tsCache         tscache.Cache
+	allocator       Allocator
 	replRankings    *replicaRankings
 	storeRebalancer *StoreRebalancer
-	rangeIDAlloc    *idalloc.Allocator // Range ID allocator
-	mvccGCQueue     *mvccGCQueue       // MVCC GC queue
-	mergeQueue      *mergeQueue        // Range merging queue
-	splitQueue      *splitQueue        // Range splitting queue
-	replicateQueue  *replicateQueue    // Replication queue
-	replicaGCQueue  *replicaGCQueue    // Replica GC queue
-	raftLogQueue    *raftLogQueue      // Raft log truncation queue
-	// Carries out truncations proposed by the raft log queue, and "replicated"
-	// via raft, when they are safe. Created in Store.Start.
+	rangeIDAlloc    *idalloc.Allocator
+	mvccGCQueue     *mvccGCQueue
+	mergeQueue      *mergeQueue
+	splitQueue      *splitQueue
+	replicateQueue  *replicateQueue
+	replicaGCQueue  *replicaGCQueue
+	raftLogQueue    *raftLogQueue
+
 	raftTruncator      *raftLogTruncator
-	raftSnapshotQueue  *raftSnapshotQueue          // Raft repair queue
-	tsMaintenanceQueue *timeSeriesMaintenanceQueue // Time series maintenance queue
-	scanner            *replicaScanner             // Replica scanner
-	consistencyQueue   *consistencyQueue           // Replica consistency check queue
-	consistencyLimiter *quotapool.RateLimiter      // Rate limits consistency checks
-	consistencySem     *quotapool.IntPool          // Limit concurrent consistency checks
+	raftSnapshotQueue  *raftSnapshotQueue
+	tsMaintenanceQueue *timeSeriesMaintenanceQueue
+	scanner            *replicaScanner
+	consistencyQueue   *consistencyQueue
+	consistencyLimiter *quotapool.RateLimiter
+	consistencySem     *quotapool.IntPool
 	metrics            *StoreMetrics
 	intentResolver     *intentresolver.IntentResolver
 	recoveryMgr        txnrecovery.Manager
@@ -735,16 +464,9 @@ type Store struct {
 	protectedtsReader  spanconfig.ProtectedTSReader
 	ctSender           *sidetransport.Sender
 
-	// gossipRangeCountdown and leaseRangeCountdown are countdowns of
-	// changes to range and leaseholder counts, after which the store
-	// descriptor will be re-gossiped earlier than the normal periodic
-	// gossip interval. Updated atomically.
 	gossipRangeCountdown int32
 	gossipLeaseCountdown int32
-	// gossipQueriesPerSecondVal and gossipWritesPerSecond serve similar
-	// purposes, but simply record the most recently gossiped value so that we
-	// can tell if a newly measured value differs by enough to justify
-	// re-gossiping the store.
+
 	gossipQueriesPerSecondVal syncutil.AtomicFloat64
 	gossipWritesPerSecondVal  syncutil.AtomicFloat64
 
@@ -753,197 +475,62 @@ type Store struct {
 		heartbeats         map[roachpb.StoreIdent][]kvserverpb.RaftHeartbeat
 		heartbeatResponses map[roachpb.StoreIdent][]kvserverpb.RaftHeartbeat
 	}
-	// 1 if the store was started, 0 if it wasn't. To be accessed using atomic
-	// ops.
+
 	started int32
 	stopper *stop.Stopper
-	// The time when the store was Start()ed, in nanos.
+
 	startedAt    int64
 	nodeDesc     *roachpb.NodeDescriptor
-	initComplete sync.WaitGroup // Signaled by async init tasks
+	initComplete sync.WaitGroup
 
-	// Semaphore to limit concurrent non-empty snapshot application.
 	snapshotApplySem chan struct{}
 
-	// Track newly-acquired expiration-based leases that we want to proactively
-	// renew. An object is sent on the signal whenever a new entry is added to
-	// the map.
-	renewableLeases       syncutil.IntMap // map[roachpb.RangeID]*Replica
-	renewableLeasesSignal chan struct{}   // 1-buffered
+	renewableLeases       syncutil.IntMap
+	renewableLeasesSignal chan struct{}
 
-	// draining holds a bool which indicates whether this store is draining. See
-	// SetDraining() for a more detailed explanation of behavior changes.
-	//
-	// TODO(bdarnell,tschottdorf): Would look better inside of `mu`, which at
-	// the time of its creation was riddled with deadlock (but that situation
-	// has likely improved).
 	draining atomic.Value
-
-	// Locking notes: To avoid deadlocks, the following lock order must be
-	// obeyed: baseQueue.mu < Replica.raftMu < Replica.readOnlyCmdMu < Store.mu
-	// < Replica.mu < Replica.unreachablesMu < Store.coalescedMu < Store.scheduler.mu.
-	// (It is not required to acquire every lock in sequence, but when multiple
-	// locks are held at the same time, it is incorrect to acquire a lock with
-	// "lesser" value in this sequence after one with "greater" value).
-	//
-	// Methods of Store with a "Locked" suffix require that
-	// Store.mu.Mutex be held. Other locking requirements are indicated
-	// in comments.
-	//
-	// The locking structure here is complex because A) Store is a
-	// container of Replicas, so it must generally be consulted before
-	// doing anything with any Replica, B) some Replica operations
-	// (including splits) modify the Store. Therefore we generally lock
-	// Store.mu to find a Replica, release it, then call a method on the
-	// Replica. These short-lived locks of Store.mu and Replica.mu are
-	// often surrounded by a long-lived lock of Replica.raftMu as
-	// described below.
-	//
-	// There are two major entry points to this stack of locks:
-	// Store.Send (which handles incoming RPCs) and raft-related message
-	// processing (including handleRaftReady on the processRaft
-	// goroutine and HandleRaftRequest on GRPC goroutines). Reads are
-	// processed solely through Store.Send; writes start out on
-	// Store.Send until they propose their raft command and then they
-	// finish on the raft goroutines.
-	//
-	// TODO(bdarnell): a Replica could be destroyed immediately after
-	// Store.Send finds the Replica and releases the lock. We need
-	// another RWMutex to be held by anything using a Replica to ensure
-	// that everything is finished before releasing it. #7169
-	//
-	// Detailed description of the locks:
-	//
-	// * Replica.raftMu: Held while any raft messages are being processed
-	//   (including handleRaftReady and HandleRaftRequest) or while the set of
-	//   Replicas in the Store is being changed (which may happen outside of raft
-	//   via the replica GC queue).
-	//
-	//   If holding raftMus for multiple different replicas simultaneously,
-	//   acquire the locks in the order that the replicas appear in replicasByKey.
-	//
-	// * Replica.readOnlyCmdMu (RWMutex): Held in read mode while any
-	//   read-only command is in progress on the replica; held in write
-	//   mode while executing a commit trigger. This is necessary
-	//   because read-only commands mutate the Replica's timestamp cache
-	//   (while holding Replica.mu in addition to readOnlyCmdMu). The
-	//   RWMutex ensures that no reads are being executed during a split
-	//   (which copies the timestamp cache) while still allowing
-	//   multiple reads in parallel (#3148). TODO(bdarnell): this lock
-	//   only needs to be held during splitTrigger, not all triggers.
-	//
-	// * baseQueue.mu: The mutex contained in each of the store's queues (such
-	//   as the replicate queue, replica GC queue, MVCC GC queue, ...). The mutex is
-	//   typically acquired when deciding whether to add a replica to the respective
-	//   queue.
-	//
-	// * Store.mu: Protects the Store's map of its Replicas. Acquired and
-	//   released briefly at the start of each request; metadata operations like
-	//   splits acquire it again to update the map. Even though these lock
-	//   acquisitions do not make up a single critical section, it is safe thanks
-	//   to Replica.raftMu which prevents any concurrent modifications.
-	//
-	// * Replica.mu: Protects the Replica's in-memory state. Acquired
-	//   and released briefly as needed (note that while the lock is
-	//   held "briefly" in that it is not held for an entire request, we
-	//   do sometimes do I/O while holding the lock, as in
-	//   Replica.Entries). This lock should be held when calling any
-	//   methods on the raft group. Raft may call back into the Replica
-	//   via the methods of the raft.Storage interface, which assume the
-	//   lock is held even though they do not follow our convention of
-	//   the "Locked" suffix.
-	//
-	// * Store.scheduler.mu: Protects the Raft scheduler internal
-	//   state. Callbacks from the scheduler are performed while not holding this
-	//   mutex in order to observe the above ordering constraints.
-	//
-	// Splits and merges deserve special consideration: they operate on two
-	// ranges. For splits, this might seem fine because the right-hand range is
-	// brand new, but an uninitialized version may have been created by a raft
-	// message before we process the split (see commentary on
-	// Replica.splitTrigger). We make this safe, for both splits and merges, by
-	// locking the right-hand range for the duration of the Raft command
-	// containing the split/merge trigger.
-	//
-	// Note that because we acquire and release Store.mu and Replica.mu
-	// repeatedly rather than holding a lock for an entire request, we are
-	// actually relying on higher-level locks to ensure that things don't change
-	// out from under us. In particular, handleRaftReady accesses the replicaID
-	// more than once, and we rely on Replica.raftMu to ensure that this is not
-	// modified by a concurrent HandleRaftRequest. (#4476)
 
 	mu struct {
 		syncutil.RWMutex
-		// Map of replicas by Range ID (map[roachpb.RangeID]*Replica).
-		// May be read without holding Store.mu.
+
 		replicasByRangeID rangeIDReplicaMap
-		// A btree key containing objects of type *Replica or *ReplicaPlaceholder.
-		// Both types have an associated key range; the btree is keyed on their
-		// start keys.
-		//
-		// INVARIANT: Any ReplicaPlaceholder in this map is also in replicaPlaceholders.
-		// INVARIANT: Any Replica with Replica.IsInitialized()==true is also in replicasByRangeID.
+
 		replicasByKey *storeReplicaBTree
-		// All *Replica objects for which Replica.IsInitialized is false.
-		//
-		// INVARIANT: any entry in this map is also in replicasByRangeID.
-		uninitReplicas map[roachpb.RangeID]*Replica // Map of uninitialized replicas by Range ID
-		// replicaPlaceholders is a map to access all placeholders, so they can
-		// be directly accessed and cleared after stepping all raft groups.
-		//
-		// INVARIANT: any entry in this map is also in replicasByKey.
+
+		uninitReplicas map[roachpb.RangeID]*Replica
+
 		replicaPlaceholders map[roachpb.RangeID]*ReplicaPlaceholder
 	}
 
-	// The unquiesced subset of replicas.
 	unquiescedReplicas struct {
 		syncutil.Mutex
 		m map[roachpb.RangeID]struct{}
 	}
 
-	// The subset of replicas with active rangefeeds.
 	rangefeedReplicas struct {
 		syncutil.Mutex
 		m map[roachpb.RangeID]struct{}
 	}
 
-	// replicaQueues is a map of per-Replica incoming request queues. These
-	// queues might more naturally belong in Replica, but are kept separate to
-	// avoid reworking the locking in getOrCreateReplica which requires
-	// Replica.raftMu to be held while a replica is being inserted into
-	// Store.mu.replicas.
-	replicaQueues syncutil.IntMap // map[roachpb.RangeID]*raftRequestQueue
+	replicaQueues syncutil.IntMap
 
 	scheduler *raftScheduler
 
-	// livenessMap is a map from nodeID to a bool indicating
-	// liveness. It is updated periodically in raftTickLoop()
-	// and reactively in nodeIsLiveCallback() on liveness updates.
 	livenessMap atomic.Value
 
-	// cachedCapacity caches information on store capacity to prevent
-	// expensive recomputations in case leases or replicas are rapidly
-	// rebalancing.
 	cachedCapacity struct {
 		syncutil.Mutex
 		roachpb.StoreCapacity
 	}
 
 	counts struct {
-		// Number of placeholders removed due to error. Not a good fit for meaningful
-		// metrics, as snapshots to initialized ranges don't get a placeholder.
 		failedPlaceholders int32
-		// Number of placeholders successfully filled by a snapshot. Not a good fit
-		// for meaningful metrics, as snapshots to initialized ranges don't get a
-		// placeholder.
+
 		filledPlaceholders int32
-		// Number of placeholders removed due to a snapshot that was dropped by
-		// raft. Not a good fit for meaningful metrics, as snapshots to initialized
-		// ranges don't get a placeholder.
+
 		droppedPlaceholders int32
 	}
 
-	// tenantRateLimiters manages tenantrate.Limiters
 	tenantRateLimiters *tenantrate.LimiterFactory
 
 	computeInitialMetrics              sync.Once
@@ -953,10 +540,6 @@ type Store struct {
 
 var _ kv.Sender = &Store{}
 
-// A StoreConfig encompasses the auxiliary objects and configuration
-// required to create a store.
-// All fields holding a pointer or an interface are required to create
-// a store; the rest will have sane defaults set if omitted.
 type StoreConfig struct {
 	AmbientCtx log.AmbientContext
 	base.RaftConfig
@@ -976,182 +559,149 @@ type StoreConfig struct {
 	ClosedTimestampSender   *sidetransport.Sender
 	ClosedTimestampReceiver sidetransportReceiver
 
-	// SQLExecutor is used by the store to execute SQL statements.
 	SQLExecutor sqlutil.InternalExecutor
 
-	// TimeSeriesDataStore is an interface used by the store's time series
-	// maintenance queue to dispatch individual maintenance tasks.
 	TimeSeriesDataStore TimeSeriesDataStore
 
-	// CoalescedHeartbeatsInterval is the interval for which heartbeat messages
-	// are queued and then sent as a single coalesced heartbeat; it is a
-	// fraction of the RaftTickInterval so that heartbeats don't get delayed by
-	// an entire tick. Delaying coalescing heartbeat responses has a bad
-	// interaction with quiescence because the coalesced (delayed) heartbeat
-	// response can unquiesce the leader. Consider:
-	//
-	// T+0: leader queues MsgHeartbeat
-	// T+1: leader sends MsgHeartbeat
-	//                                        follower receives MsgHeartbeat
-	//                                        follower queues MsgHeartbeatResp
-	// T+2: leader queues quiesce message
-	//                                        follower sends MsgHeartbeatResp
-	//      leader receives MsgHeartbeatResp
-	// T+3: leader sends quiesce message
-	//
-	// Thus we want to make sure that heartbeats are responded to faster than
-	// the quiesce cadence.
 	CoalescedHeartbeatsInterval time.Duration
 
-	// ScanInterval is the default value for the scan interval
 	ScanInterval time.Duration
 
-	// ScanMinIdleTime is the minimum time the scanner will be idle between ranges.
-	// If enabled (> 0), the scanner may complete in more than ScanInterval for
-	// stores with many ranges.
 	ScanMinIdleTime time.Duration
 
-	// ScanMaxIdleTime is the maximum time the scanner will be idle between ranges.
-	// If enabled (> 0), the scanner may complete in less than ScanInterval for small
-	// stores.
 	ScanMaxIdleTime time.Duration
 
-	// If LogRangeEvents is true, major changes to ranges will be logged into
-	// the range event log.
 	LogRangeEvents bool
 
-	// RaftEntryCacheSize is the size in bytes of the Raft log entry cache
-	// shared by all Raft groups managed by the store.
 	RaftEntryCacheSize uint64
 
-	// IntentResolverTaskLimit is the maximum number of asynchronous tasks that
-	// may be started by the intent resolver. -1 indicates no asynchronous tasks
-	// are allowed. 0 uses the default value (defaultIntentResolverTaskLimit)
-	// which is non-zero.
 	IntentResolverTaskLimit int
 
 	TestingKnobs StoreTestingKnobs
 
-	// concurrentSnapshotApplyLimit specifies the maximum number of empty
-	// snapshots and the maximum number of non-empty snapshots that are permitted
-	// to be applied concurrently.
 	concurrentSnapshotApplyLimit int
 
-	// HistogramWindowInterval is (server.Config).HistogramWindowInterval
 	HistogramWindowInterval time.Duration
 
-	// ExternalStorage creates ExternalStorage objects which allows access to external files
 	ExternalStorage        cloud.ExternalStorageFactory
 	ExternalStorageFromURI cloud.ExternalStorageFromURIFactory
 
-	// ProtectedTimestampReader provides a read-only view into the protected
-	// timestamp subsystem. It is queried during the GC process.
 	ProtectedTimestampReader spanconfig.ProtectedTSReader
 
-	// KV Memory Monitor. Must be non-nil for production, and can be nil in some
-	// tests.
 	KVMemoryMonitor        *mon.BytesMonitor
 	RangefeedBudgetFactory *rangefeed.BudgetFactory
 
-	// SpanConfigsDisabled determines whether we're able to use the span configs
-	// infrastructure or not.
 	SpanConfigsDisabled bool
-	// Used to subscribe to span configuration changes, keeping up-to-date a
-	// data structure useful for retrieving span configs. Only available if
-	// SpanConfigsDisabled is unset.
+
 	SpanConfigSubscriber spanconfig.KVSubscriber
 
-	// KVAdmissionController is an optional field used for admission control.
 	KVAdmissionController KVAdmissionController
 
-	// SystemConfigProvider is used to drive replication decision-making in the
-	// mixed-version state, before the span configuration infrastructure has been
-	// bootstrapped.
-	//
-	// TODO(ajwerner): Remove in 22.2.
 	SystemConfigProvider config.SystemConfigProvider
 }
 
-// ConsistencyTestingKnobs is a BatchEvalTestingKnobs struct used to control the
-// behavior of the consistency checker for tests.
 type ConsistencyTestingKnobs struct {
-	// If non-nil, OnBadChecksumFatal is called by CheckConsistency() (instead of
-	// calling log.Fatal) on a checksum mismatch.
 	OnBadChecksumFatal func(roachpb.StoreIdent)
-	// If non-nil, BadChecksumReportDiff is called by CheckConsistency() on a
-	// checksum mismatch to report the diff between snapshots.
+
 	BadChecksumReportDiff      func(roachpb.StoreIdent, ReplicaSnapshotDiffSlice)
 	ConsistencyQueueResultHook func(response roachpb.CheckConsistencyResponse)
 }
 
-// Valid returns true if the StoreConfig is populated correctly.
-// We don't check for Gossip and DB since some of our tests pass
-// that as nil.
 func (sc *StoreConfig) Valid() bool {
-	return sc.Clock != nil && sc.Transport != nil &&
-		sc.RaftTickInterval != 0 && sc.RaftHeartbeatIntervalTicks > 0 &&
-		sc.RaftElectionTimeoutTicks > 0 && sc.ScanInterval >= 0 &&
-		sc.AmbientCtx.Tracer != nil
+	__antithesis_instrumentation__.Notify(123887)
+	return sc.Clock != nil && func() bool {
+		__antithesis_instrumentation__.Notify(123888)
+		return sc.Transport != nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(123889)
+		return sc.RaftTickInterval != 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(123890)
+		return sc.RaftHeartbeatIntervalTicks > 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(123891)
+		return sc.RaftElectionTimeoutTicks > 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(123892)
+		return sc.ScanInterval >= 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(123893)
+		return sc.AmbientCtx.Tracer != nil == true
+	}() == true
 }
 
-// SetDefaults initializes unset fields in StoreConfig to values
-// suitable for use on a local network.
-// TODO(tschottdorf): see if this ought to be configurable via flags.
 func (sc *StoreConfig) SetDefaults() {
+	__antithesis_instrumentation__.Notify(123894)
 	sc.RaftConfig.SetDefaults()
 
 	if sc.CoalescedHeartbeatsInterval == 0 {
+		__antithesis_instrumentation__.Notify(123898)
 		sc.CoalescedHeartbeatsInterval = sc.RaftTickInterval / 2
+	} else {
+		__antithesis_instrumentation__.Notify(123899)
 	}
+	__antithesis_instrumentation__.Notify(123895)
 	if sc.RaftEntryCacheSize == 0 {
+		__antithesis_instrumentation__.Notify(123900)
 		sc.RaftEntryCacheSize = defaultRaftEntryCacheSize
+	} else {
+		__antithesis_instrumentation__.Notify(123901)
 	}
+	__antithesis_instrumentation__.Notify(123896)
 	if sc.concurrentSnapshotApplyLimit == 0 {
-		// NB: setting this value higher than 1 is likely to degrade client
-		// throughput.
+		__antithesis_instrumentation__.Notify(123902)
+
 		sc.concurrentSnapshotApplyLimit =
 			envutil.EnvOrDefaultInt("COCKROACH_CONCURRENT_SNAPSHOT_APPLY_LIMIT", 1)
+	} else {
+		__antithesis_instrumentation__.Notify(123903)
 	}
+	__antithesis_instrumentation__.Notify(123897)
 
 	if sc.TestingKnobs.GossipWhenCapacityDeltaExceedsFraction == 0 {
+		__antithesis_instrumentation__.Notify(123904)
 		sc.TestingKnobs.GossipWhenCapacityDeltaExceedsFraction = defaultGossipWhenCapacityDeltaExceedsFraction
+	} else {
+		__antithesis_instrumentation__.Notify(123905)
 	}
 }
 
-// GetStoreConfig exposes the config used for this store.
 func (s *Store) GetStoreConfig() *StoreConfig {
+	__antithesis_instrumentation__.Notify(123906)
 	return &s.cfg
 }
 
-// LeaseExpiration returns an int64 to increment a manual clock with to
-// make sure that all active range leases expire.
 func (sc *StoreConfig) LeaseExpiration() int64 {
-	// Due to lease extensions, the remaining interval can be longer than just
-	// the sum of the offset (=length of stasis period) and the active
-	// duration, but definitely not by 2x.
+	__antithesis_instrumentation__.Notify(123907)
+
 	maxOffset := sc.Clock.MaxOffset()
 	return 2 * (sc.RangeLeaseActiveDuration() + maxOffset).Nanoseconds()
 }
 
-// NewStore returns a new instance of a store.
 func NewStore(
 	ctx context.Context, cfg StoreConfig, eng storage.Engine, nodeDesc *roachpb.NodeDescriptor,
 ) *Store {
-	// TODO(tschottdorf): find better place to set these defaults.
+	__antithesis_instrumentation__.Notify(123908)
+
 	cfg.SetDefaults()
 
 	if !cfg.Valid() {
+		__antithesis_instrumentation__.Notify(123932)
 		log.Fatalf(ctx, "invalid store configuration: %+v", &cfg)
+	} else {
+		__antithesis_instrumentation__.Notify(123933)
 	}
+	__antithesis_instrumentation__.Notify(123909)
 	s := &Store{
 		cfg:      cfg,
-		db:       cfg.DB, // TODO(tschottdorf): remove redundancy.
+		db:       cfg.DB,
 		engine:   eng,
 		nodeDesc: nodeDesc,
 		metrics:  newStoreMetrics(cfg.HistogramWindowInterval),
 		ctSender: cfg.ClosedTimestampSender,
 	}
 	if cfg.RPCContext != nil {
+		__antithesis_instrumentation__.Notify(123934)
 		s.allocator = MakeAllocator(
 			cfg.StorePool,
 			cfg.RPCContext.RemoteClocks.Latency,
@@ -1159,12 +709,15 @@ func NewStore(
 			s.metrics,
 		)
 	} else {
+		__antithesis_instrumentation__.Notify(123935)
 		s.allocator = MakeAllocator(
 			cfg.StorePool, func(string) (time.Duration, bool) {
+				__antithesis_instrumentation__.Notify(123936)
 				return 0, false
 			}, cfg.TestingKnobs.AllocatorKnobs, s.metrics,
 		)
 	}
+	__antithesis_instrumentation__.Notify(123910)
 	s.replRankings = newReplicaRankings()
 
 	s.draining.Store(false)
@@ -1200,68 +753,89 @@ func NewStore(
 	s.snapshotApplySem = make(chan struct{}, cfg.concurrentSnapshotApplyLimit)
 
 	if ch := s.cfg.TestingKnobs.LeaseRenewalSignalChan; ch != nil {
+		__antithesis_instrumentation__.Notify(123937)
 		s.renewableLeasesSignal = ch
 	} else {
+		__antithesis_instrumentation__.Notify(123938)
 		s.renewableLeasesSignal = make(chan struct{}, 1)
 	}
+	__antithesis_instrumentation__.Notify(123911)
 
 	s.limiters.BulkIOWriteRate = rate.NewLimiter(rate.Limit(bulkIOWriteLimit.Get(&cfg.Settings.SV)), bulkIOWriteBurst)
 	bulkIOWriteLimit.SetOnChange(&cfg.Settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(123939)
 		s.limiters.BulkIOWriteRate.SetLimit(rate.Limit(bulkIOWriteLimit.Get(&cfg.Settings.SV)))
 	})
+	__antithesis_instrumentation__.Notify(123912)
 	s.limiters.ConcurrentExportRequests = limit.MakeConcurrentRequestLimiter(
 		"exportRequestLimiter", int(ExportRequestsLimit.Get(&cfg.Settings.SV)),
 	)
 	s.limiters.ConcurrentScanInterleavedIntents = limit.MakeConcurrentRequestLimiter(
 		"scanInterleavedIntentsLimiter", int(concurrentscanInterleavedIntentsLimit.Get(&cfg.Settings.SV)))
 	concurrentscanInterleavedIntentsLimit.SetOnChange(&cfg.Settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(123940)
 		s.limiters.ConcurrentScanInterleavedIntents.SetLimit(int(concurrentscanInterleavedIntentsLimit.Get(&cfg.Settings.SV)))
 	})
+	__antithesis_instrumentation__.Notify(123913)
 
-	// The snapshot storage is usually empty at this point since it is cleared
-	// after each snapshot application, except when the node crashed right before
-	// it can clean it up. If this fails it's not a correctness issue since the
-	// storage is also cleared before receiving a snapshot.
 	s.sstSnapshotStorage = NewSSTSnapshotStorage(s.engine, s.limiters.BulkIOWriteRate)
 	if err := s.sstSnapshotStorage.Clear(); err != nil {
+		__antithesis_instrumentation__.Notify(123941)
 		log.Warningf(ctx, "failed to clear snapshot storage: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(123942)
 	}
+	__antithesis_instrumentation__.Notify(123914)
 	s.protectedtsReader = cfg.ProtectedTimestampReader
 
-	// On low-CPU instances, a default limit value may still allow ExportRequests
-	// to tie up all cores so cap limiter at cores-1 when setting value is higher.
 	exportCores := runtime.GOMAXPROCS(0) - 1
 	if exportCores < 1 {
+		__antithesis_instrumentation__.Notify(123943)
 		exportCores = 1
+	} else {
+		__antithesis_instrumentation__.Notify(123944)
 	}
+	__antithesis_instrumentation__.Notify(123915)
 	ExportRequestsLimit.SetOnChange(&cfg.Settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(123945)
 		limit := int(ExportRequestsLimit.Get(&cfg.Settings.SV))
 		if limit > exportCores {
+			__antithesis_instrumentation__.Notify(123947)
 			limit = exportCores
+		} else {
+			__antithesis_instrumentation__.Notify(123948)
 		}
+		__antithesis_instrumentation__.Notify(123946)
 		s.limiters.ConcurrentExportRequests.SetLimit(limit)
 	})
+	__antithesis_instrumentation__.Notify(123916)
 	s.limiters.ConcurrentAddSSTableRequests = limit.MakeConcurrentRequestLimiter(
 		"addSSTableRequestLimiter", int(addSSTableRequestLimit.Get(&cfg.Settings.SV)),
 	)
 	addSSTableRequestLimit.SetOnChange(&cfg.Settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(123949)
 		s.limiters.ConcurrentAddSSTableRequests.SetLimit(
 			int(addSSTableRequestLimit.Get(&cfg.Settings.SV)))
 	})
+	__antithesis_instrumentation__.Notify(123917)
 	s.limiters.ConcurrentAddSSTableAsWritesRequests = limit.MakeConcurrentRequestLimiter(
 		"addSSTableAsWritesRequestLimiter", int(addSSTableAsWritesRequestLimit.Get(&cfg.Settings.SV)),
 	)
 	addSSTableAsWritesRequestLimit.SetOnChange(&cfg.Settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(123950)
 		s.limiters.ConcurrentAddSSTableAsWritesRequests.SetLimit(
 			int(addSSTableAsWritesRequestLimit.Get(&cfg.Settings.SV)))
 	})
+	__antithesis_instrumentation__.Notify(123918)
 	s.limiters.ConcurrentRangefeedIters = limit.MakeConcurrentRequestLimiter(
 		"rangefeedIterLimiter", int(concurrentRangefeedItersLimit.Get(&cfg.Settings.SV)),
 	)
 	concurrentRangefeedItersLimit.SetOnChange(&cfg.Settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(123951)
 		s.limiters.ConcurrentRangefeedIters.SetLimit(
 			int(concurrentRangefeedItersLimit.Get(&cfg.Settings.SV)))
 	})
+	__antithesis_instrumentation__.Notify(123919)
 
 	s.tenantRateLimiters = tenantrate.NewLimiterFactory(&cfg.Settings.SV, &cfg.TestingKnobs.TenantRateKnobs)
 	s.metrics.registry.AddMetricStruct(s.tenantRateLimiters.Metrics())
@@ -1271,17 +845,20 @@ func NewStore(
 		quotapool.Limit(queueAdditionOnSystemConfigUpdateRate.Get(&cfg.Settings.SV)),
 		queueAdditionOnSystemConfigUpdateBurst.Get(&cfg.Settings.SV))
 	updateSystemConfigUpdateQueueLimits := func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(123952)
 		s.systemConfigUpdateQueueRateLimiter.UpdateLimit(
 			quotapool.Limit(queueAdditionOnSystemConfigUpdateRate.Get(&cfg.Settings.SV)),
 			queueAdditionOnSystemConfigUpdateBurst.Get(&cfg.Settings.SV))
 	}
+	__antithesis_instrumentation__.Notify(123920)
 	queueAdditionOnSystemConfigUpdateRate.SetOnChange(&cfg.Settings.SV,
 		updateSystemConfigUpdateQueueLimits)
 	queueAdditionOnSystemConfigUpdateBurst.SetOnChange(&cfg.Settings.SV,
 		updateSystemConfigUpdateQueueLimits)
 
 	if s.cfg.Gossip != nil {
-		// Add range scanner and configure with queues.
+		__antithesis_instrumentation__.Notify(123953)
+
 		s.scanner = newReplicaScanner(
 			s.cfg.AmbientCtx, s.cfg.Clock, cfg.ScanInterval,
 			cfg.ScanMinIdleTime, cfg.ScanMaxIdleTime, newStoreReplicaVisitor(s),
@@ -1294,141 +871,154 @@ func NewStore(
 		s.raftLogQueue = newRaftLogQueue(s, s.db)
 		s.raftSnapshotQueue = newRaftSnapshotQueue(s)
 		s.consistencyQueue = newConsistencyQueue(s)
-		// NOTE: If more queue types are added, please also add them to the list of
-		// queues on the EnqueueRange debug page as defined in
-		// pkg/ui/src/views/reports/containers/enqueueRange/index.tsx
+
 		s.scanner.AddQueues(
 			s.mvccGCQueue, s.mergeQueue, s.splitQueue, s.replicateQueue, s.replicaGCQueue,
 			s.raftLogQueue, s.raftSnapshotQueue, s.consistencyQueue)
 		tsDS := s.cfg.TimeSeriesDataStore
 		if s.cfg.TestingKnobs.TimeSeriesDataStore != nil {
+			__antithesis_instrumentation__.Notify(123955)
 			tsDS = s.cfg.TestingKnobs.TimeSeriesDataStore
+		} else {
+			__antithesis_instrumentation__.Notify(123956)
 		}
+		__antithesis_instrumentation__.Notify(123954)
 		if tsDS != nil {
+			__antithesis_instrumentation__.Notify(123957)
 			s.tsMaintenanceQueue = newTimeSeriesMaintenanceQueue(
 				s, s.db, tsDS,
 			)
 			s.scanner.AddQueues(s.tsMaintenanceQueue)
+		} else {
+			__antithesis_instrumentation__.Notify(123958)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(123959)
 	}
+	__antithesis_instrumentation__.Notify(123921)
 
 	if cfg.TestingKnobs.DisableGCQueue {
+		__antithesis_instrumentation__.Notify(123960)
 		s.setGCQueueActive(false)
+	} else {
+		__antithesis_instrumentation__.Notify(123961)
 	}
+	__antithesis_instrumentation__.Notify(123922)
 	if cfg.TestingKnobs.DisableMergeQueue {
+		__antithesis_instrumentation__.Notify(123962)
 		s.setMergeQueueActive(false)
+	} else {
+		__antithesis_instrumentation__.Notify(123963)
 	}
+	__antithesis_instrumentation__.Notify(123923)
 	if cfg.TestingKnobs.DisableRaftLogQueue {
+		__antithesis_instrumentation__.Notify(123964)
 		s.setRaftLogQueueActive(false)
+	} else {
+		__antithesis_instrumentation__.Notify(123965)
 	}
+	__antithesis_instrumentation__.Notify(123924)
 	if cfg.TestingKnobs.DisableReplicaGCQueue {
+		__antithesis_instrumentation__.Notify(123966)
 		s.setReplicaGCQueueActive(false)
+	} else {
+		__antithesis_instrumentation__.Notify(123967)
 	}
+	__antithesis_instrumentation__.Notify(123925)
 	if cfg.TestingKnobs.DisableReplicateQueue {
+		__antithesis_instrumentation__.Notify(123968)
 		s.SetReplicateQueueActive(false)
+	} else {
+		__antithesis_instrumentation__.Notify(123969)
 	}
+	__antithesis_instrumentation__.Notify(123926)
 	if cfg.TestingKnobs.DisableSplitQueue {
+		__antithesis_instrumentation__.Notify(123970)
 		s.setSplitQueueActive(false)
+	} else {
+		__antithesis_instrumentation__.Notify(123971)
 	}
+	__antithesis_instrumentation__.Notify(123927)
 	if cfg.TestingKnobs.DisableTimeSeriesMaintenanceQueue {
+		__antithesis_instrumentation__.Notify(123972)
 		s.setTimeSeriesMaintenanceQueueActive(false)
+	} else {
+		__antithesis_instrumentation__.Notify(123973)
 	}
+	__antithesis_instrumentation__.Notify(123928)
 	if cfg.TestingKnobs.DisableRaftSnapshotQueue {
+		__antithesis_instrumentation__.Notify(123974)
 		s.setRaftSnapshotQueueActive(false)
+	} else {
+		__antithesis_instrumentation__.Notify(123975)
 	}
+	__antithesis_instrumentation__.Notify(123929)
 	if cfg.TestingKnobs.DisableConsistencyQueue {
+		__antithesis_instrumentation__.Notify(123976)
 		s.setConsistencyQueueActive(false)
+	} else {
+		__antithesis_instrumentation__.Notify(123977)
 	}
+	__antithesis_instrumentation__.Notify(123930)
 	if cfg.TestingKnobs.DisableScanner {
+		__antithesis_instrumentation__.Notify(123978)
 		s.setScannerActive(false)
+	} else {
+		__antithesis_instrumentation__.Notify(123979)
 	}
+	__antithesis_instrumentation__.Notify(123931)
 
 	return s
 }
 
-// String formats a store for debug output.
 func (s *Store) String() string {
+	__antithesis_instrumentation__.Notify(123980)
 	return redact.StringWithoutMarkers(s)
 }
 
-// SafeFormat implements the redact.SafeFormatter interface.
 func (s *Store) SafeFormat(w redact.SafePrinter, _ rune) {
+	__antithesis_instrumentation__.Notify(123981)
 	w.Printf("[n%d,s%d]", s.Ident.NodeID, s.Ident.StoreID)
 }
 
-// ClusterSettings returns the node's ClusterSettings.
 func (s *Store) ClusterSettings() *cluster.Settings {
+	__antithesis_instrumentation__.Notify(123982)
 	return s.cfg.Settings
 }
 
-// AnnotateCtx is a convenience wrapper; see AmbientContext.
 func (s *Store) AnnotateCtx(ctx context.Context) context.Context {
+	__antithesis_instrumentation__.Notify(123983)
 	return s.cfg.AmbientCtx.AnnotateCtx(ctx)
 }
 
-// SetDraining (when called with 'true') causes incoming lease transfers to be
-// rejected, prevents all of the Store's Replicas from acquiring or extending
-// range leases, and attempts to transfer away any leases owned.
-// When called with 'false', returns to the normal mode of operation.
-//
-// Note: this code represents ONE round of draining. This code is iterated on
-// indefinitely until all leases are transferred away.
-// This iteration can be found here: pkg/cli/start.go, pkg/cli/quit.go.
-//
-// The reporter callback, if non-nil, is called on a best effort basis
-// to report work that needed to be done and which may or may not have
-// been done by the time this call returns. See the explanation in
-// pkg/server/drain.go for details.
 func (s *Store) SetDraining(drain bool, reporter func(int, redact.SafeString), verbose bool) {
+	__antithesis_instrumentation__.Notify(123984)
 	s.draining.Store(drain)
 	if !drain {
+		__antithesis_instrumentation__.Notify(123988)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(123989)
 	}
+	__antithesis_instrumentation__.Notify(123985)
 
 	baseCtx := logtags.AddTag(context.Background(), "drain", nil)
 
-	// In a running server, the code below (transferAllAway and the loop
-	// that calls it) does not need to be conditional on messaging by
-	// the Stopper. This is because the top level Server calls SetDrain
-	// upon a graceful shutdown, and waits until the SetDrain calls
-	// completes, at which point the work has terminated on its own. If
-	// the top-level server is forcefully shut down, it does not matter
-	// if some of the code below is still running.
-	//
-	// However, the situation is different in unit tests where we also
-	// assert there are no leaking goroutines when a test terminates.
-	// If a test terminates with a timed out lease transfer, it's
-	// possible for the transferAllAway() closure to be still running
-	// when the closer shuts down the test server.
-	//
-	// To prevent this, we add this code here which adds the missing
-	// cancel + wait in the particular case where the stopper is
-	// completing a shutdown while a graceful SetDrain is still ongoing.
 	ctx, cancelFn := s.stopper.WithCancelOnQuiesce(baseCtx)
 	defer cancelFn()
 
 	var wg sync.WaitGroup
 
 	transferAllAway := func(transferCtx context.Context) int {
-		// Limit the number of concurrent lease transfers.
+		__antithesis_instrumentation__.Notify(123990)
+
 		const leaseTransferConcurrency = 100
 		sem := quotapool.NewIntPool("Store.SetDraining", leaseTransferConcurrency)
 
-		// Incremented for every lease transfer attempted. We try to send the lease
-		// away, but this may not reliably work. Instead, we run the surrounding
-		// retry loop until there are no leases left (ignoring single-replica
-		// ranges).
 		var numTransfersAttempted int32
 		newStoreReplicaVisitor(s).Visit(func(r *Replica) bool {
-			//
-			// We need to be careful about the case where the ctx has been canceled
-			// prior to the call to (*Stopper).RunAsyncTaskEx(). In that case,
-			// the goroutine is not even spawned. However, we don't want to
-			// mis-count the missing goroutine as the lack of transfer attempted.
-			// So what we do here is immediately increase numTransfersAttempted
-			// to count this replica, and then decrease it when it is known
-			// below that there is nothing to transfer (not lease holder and
-			// not raft leader).
+			__antithesis_instrumentation__.Notify(123992)
+
 			atomic.AddInt32(&numTransfersAttempted, 1)
 			wg.Add(1)
 			if err := s.stopper.RunAsyncTaskEx(
@@ -1439,70 +1029,102 @@ func (s *Store) SetDraining(drain bool, reporter func(int, redact.SafeString), v
 					WaitForSem: true,
 				},
 				func(ctx context.Context) {
+					__antithesis_instrumentation__.Notify(123994)
 					defer wg.Done()
 
 					select {
 					case <-transferCtx.Done():
-						// Context canceled: the timeout loop has decided we've
-						// done enough draining
-						// (server.shutdown.lease_transfer_wait).
-						//
-						// We need this check here because each call of
-						// transferAllAway() traverses all stores/replicas without
-						// checking for the timeout otherwise.
-						if verbose || log.V(1) {
+						__antithesis_instrumentation__.Notify(123999)
+
+						if verbose || func() bool {
+							__antithesis_instrumentation__.Notify(124002)
+							return log.V(1) == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(124003)
 							log.Infof(ctx, "lease transfer aborted due to exceeded timeout")
+						} else {
+							__antithesis_instrumentation__.Notify(124004)
 						}
+						__antithesis_instrumentation__.Notify(124000)
 						return
 					default:
+						__antithesis_instrumentation__.Notify(124001)
 					}
+					__antithesis_instrumentation__.Notify(123995)
 
 					now := s.Clock().NowAsClockTimestamp()
 					var drainingLeaseStatus kvserverpb.LeaseStatus
 					for {
+						__antithesis_instrumentation__.Notify(124005)
 						var llHandle *leaseRequestHandle
 						r.mu.Lock()
 						drainingLeaseStatus = r.leaseStatusAtRLocked(ctx, now)
 						_, nextLease := r.getLeaseRLocked()
-						if nextLease != (roachpb.Lease{}) && nextLease.OwnedBy(s.StoreID()) {
+						if nextLease != (roachpb.Lease{}) && func() bool {
+							__antithesis_instrumentation__.Notify(124008)
+							return nextLease.OwnedBy(s.StoreID()) == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(124009)
 							llHandle = r.mu.pendingLeaseRequest.JoinRequest()
+						} else {
+							__antithesis_instrumentation__.Notify(124010)
 						}
+						__antithesis_instrumentation__.Notify(124006)
 						r.mu.Unlock()
 
 						if llHandle != nil {
+							__antithesis_instrumentation__.Notify(124011)
 							<-llHandle.C()
 							continue
+						} else {
+							__antithesis_instrumentation__.Notify(124012)
 						}
+						__antithesis_instrumentation__.Notify(124007)
 						break
 					}
+					__antithesis_instrumentation__.Notify(123996)
 
-					// Learner replicas aren't allowed to become the leaseholder or raft
-					// leader, so only consider the `Voters` replicas.
-					needsLeaseTransfer := len(r.Desc().Replicas().VoterDescriptors()) > 1 &&
-						drainingLeaseStatus.IsValid() &&
-						drainingLeaseStatus.OwnedBy(s.StoreID())
-
-					// Note that this code doesn't deal with transferring the Raft
-					// leadership. Leadership tries to follow the lease, so when leases
-					// are transferred, leadership will be transferred too. For ranges
-					// without leases we probably should try to move the leadership
-					// manually to a non-draining replica.
+					needsLeaseTransfer := len(r.Desc().Replicas().VoterDescriptors()) > 1 && func() bool {
+						__antithesis_instrumentation__.Notify(124013)
+						return drainingLeaseStatus.IsValid() == true
+					}() == true && func() bool {
+						__antithesis_instrumentation__.Notify(124014)
+						return drainingLeaseStatus.OwnedBy(s.StoreID()) == true
+					}() == true
 
 					if !needsLeaseTransfer {
-						if verbose || log.V(1) {
-							// This logging is useful to troubleshoot incomplete drains.
+						__antithesis_instrumentation__.Notify(124015)
+						if verbose || func() bool {
+							__antithesis_instrumentation__.Notify(124017)
+							return log.V(1) == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(124018)
+
 							log.Info(ctx, "not moving out")
+						} else {
+							__antithesis_instrumentation__.Notify(124019)
 						}
+						__antithesis_instrumentation__.Notify(124016)
 						atomic.AddInt32(&numTransfersAttempted, -1)
 						return
+					} else {
+						__antithesis_instrumentation__.Notify(124020)
 					}
+					__antithesis_instrumentation__.Notify(123997)
 
 					desc, conf := r.DescAndSpanConfig()
 
-					if verbose || log.V(1) {
-						// This logging is useful to troubleshoot incomplete drains.
+					if verbose || func() bool {
+						__antithesis_instrumentation__.Notify(124021)
+						return log.V(1) == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(124022)
+
 						log.Infof(ctx, "attempting to transfer lease %v for range %s", drainingLeaseStatus.Lease, desc)
+					} else {
+						__antithesis_instrumentation__.Notify(124023)
 					}
+					__antithesis_instrumentation__.Notify(123998)
 
 					start := timeutil.Now()
 					transferStatus, err := s.replicateQueue.shedLease(
@@ -1515,6 +1137,7 @@ func (s *Store) SetDraining(drain bool, reporter func(int, redact.SafeString), v
 					duration := timeutil.Since(start).Microseconds()
 
 					if transferStatus != transferOK {
+						__antithesis_instrumentation__.Notify(124024)
 						const failFormat = "failed to transfer lease %s for range %s when draining: %v"
 						const durationFailFormat = "blocked for %d microseconds on transfer attempt"
 
@@ -1523,54 +1146,74 @@ func (s *Store) SetDraining(drain bool, reporter func(int, redact.SafeString), v
 							desc,
 						}
 						if err != nil {
+							__antithesis_instrumentation__.Notify(124026)
 							infoArgs = append(infoArgs, err)
 						} else {
+							__antithesis_instrumentation__.Notify(124027)
 							infoArgs = append(infoArgs, transferStatus)
 						}
+						__antithesis_instrumentation__.Notify(124025)
 
 						if verbose {
+							__antithesis_instrumentation__.Notify(124028)
 							log.Dev.Infof(ctx, failFormat, infoArgs...)
 							log.Dev.Infof(ctx, durationFailFormat, duration)
 						} else {
-							log.VErrEventf(ctx, 1 /* level */, failFormat, infoArgs...)
-							log.VErrEventf(ctx, 1 /* level */, durationFailFormat, duration)
+							__antithesis_instrumentation__.Notify(124029)
+							log.VErrEventf(ctx, 1, failFormat, infoArgs...)
+							log.VErrEventf(ctx, 1, durationFailFormat, duration)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(124030)
 					}
 				}); err != nil {
-				if verbose || log.V(1) {
+				__antithesis_instrumentation__.Notify(124031)
+				if verbose || func() bool {
+					__antithesis_instrumentation__.Notify(124033)
+					return log.V(1) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(124034)
 					log.Errorf(ctx, "error running draining task: %+v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(124035)
 				}
+				__antithesis_instrumentation__.Notify(124032)
 				wg.Done()
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(124036)
 			}
+			__antithesis_instrumentation__.Notify(123993)
 			return true
 		})
+		__antithesis_instrumentation__.Notify(123991)
 		wg.Wait()
 		return int(numTransfersAttempted)
 	}
+	__antithesis_instrumentation__.Notify(123986)
 
-	// Give all replicas at least one chance to transfer.
-	// If we don't do that, then it's possible that a configured
-	// value for raftLeadershipTransferWait is too low to iterate
-	// through all the replicas at least once, and the drain
-	// condition on the remaining value will never be reached.
 	if numRemaining := transferAllAway(ctx); numRemaining > 0 {
-		// Report progress to the Drain RPC.
+		__antithesis_instrumentation__.Notify(124037)
+
 		if reporter != nil {
+			__antithesis_instrumentation__.Notify(124038)
 			reporter(numRemaining, "range lease iterations")
+		} else {
+			__antithesis_instrumentation__.Notify(124039)
 		}
 	} else {
-		// No more work to do.
+		__antithesis_instrumentation__.Notify(124040)
+
 		return
 	}
+	__antithesis_instrumentation__.Notify(123987)
 
-	// We've seen all the replicas once. Now we're going to iterate
-	// until they're all gone, up to the configured timeout.
 	transferTimeout := leaseTransferWait.Get(&s.cfg.Settings.SV)
 
 	drainLeasesOp := "transfer range leases"
 	if err := contextutil.RunWithTimeout(ctx, drainLeasesOp, transferTimeout,
 		func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(124041)
 			opts := retry.Options{
 				InitialBackoff: 10 * time.Millisecond,
 				MaxBackoff:     time.Second,
@@ -1578,53 +1221,67 @@ func (s *Store) SetDraining(drain bool, reporter func(int, redact.SafeString), v
 			}
 			everySecond := log.Every(time.Second)
 			var err error
-			// Avoid retry.ForDuration because of https://github.com/cockroachdb/cockroach/issues/25091.
+
 			for r := retry.StartWithCtx(ctx, opts); r.Next(); {
+				__antithesis_instrumentation__.Notify(124043)
 				err = nil
 				if numRemaining := transferAllAway(ctx); numRemaining > 0 {
-					// Report progress to the Drain RPC.
+					__antithesis_instrumentation__.Notify(124045)
+
 					if reporter != nil {
+						__antithesis_instrumentation__.Notify(124047)
 						reporter(numRemaining, "range lease iterations")
+					} else {
+						__antithesis_instrumentation__.Notify(124048)
 					}
+					__antithesis_instrumentation__.Notify(124046)
 					err = errors.Errorf("waiting for %d replicas to transfer their lease away", numRemaining)
 					if everySecond.ShouldLog() {
+						__antithesis_instrumentation__.Notify(124049)
 						log.Infof(ctx, "%v", err)
+					} else {
+						__antithesis_instrumentation__.Notify(124050)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(124051)
 				}
+				__antithesis_instrumentation__.Notify(124044)
 				if err == nil {
-					// All leases transferred. We can stop retrying.
+					__antithesis_instrumentation__.Notify(124052)
+
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(124053)
 				}
 			}
-			// If there's an error in the context but not yet detected in
-			// err, take it into account here.
+			__antithesis_instrumentation__.Notify(124042)
+
 			return errors.CombineErrors(err, ctx.Err())
 		}); err != nil {
-		if tErr := (*contextutil.TimeoutError)(nil); errors.As(err, &tErr) && tErr.Operation() == drainLeasesOp {
-			// You expect this message when shutting down a server in an unhealthy
-			// cluster, or when draining all nodes with replicas for some range at the
-			// same time. If we see it on healthy ones, there's likely something to fix.
+		__antithesis_instrumentation__.Notify(124054)
+		if tErr := (*contextutil.TimeoutError)(nil); errors.As(err, &tErr) && func() bool {
+			__antithesis_instrumentation__.Notify(124055)
+			return tErr.Operation() == drainLeasesOp == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(124056)
+
 			log.Warningf(ctx, "unable to drain cleanly within %s (cluster setting %s), "+
 				"service might briefly deteriorate if the node is terminated: %s",
 				transferTimeout, leaseTransferWaitSettingName, tErr.Cause())
 		} else {
+			__antithesis_instrumentation__.Notify(124057)
 			log.Warningf(ctx, "drain error: %+v", err)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(124058)
 	}
 }
 
-// IsStarted returns true if the Store has been started.
 func (s *Store) IsStarted() bool {
+	__antithesis_instrumentation__.Notify(124059)
 	return atomic.LoadInt32(&s.started) == 1
 }
 
-// IterateIDPrefixKeys helps visit system keys that use RangeID prefixing (such
-// as RaftHardStateKey, RangeTombstoneKey, and many others). Such keys could in
-// principle exist at any RangeID, and this helper efficiently discovers all the
-// keys of the desired type (as specified by the supplied `keyFn`) and, for each
-// key-value pair discovered, unmarshals it into `msg` and then invokes `f`.
-//
-// Iteration stops on the first error (and will pass through that error).
 func IterateIDPrefixKeys(
 	ctx context.Context,
 	reader storage.Reader,
@@ -1632,80 +1289,123 @@ func IterateIDPrefixKeys(
 	msg protoutil.Message,
 	f func(_ roachpb.RangeID) error,
 ) error {
+	__antithesis_instrumentation__.Notify(124060)
 	rangeID := roachpb.RangeID(1)
-	// NB: Range-ID local keys have no versions and no intents.
+
 	iter := reader.NewMVCCIterator(storage.MVCCKeyIterKind, storage.IterOptions{
 		UpperBound: keys.LocalRangeIDPrefix.PrefixEnd().AsRawKey(),
 	})
 	defer iter.Close()
 
 	for {
+		__antithesis_instrumentation__.Notify(124061)
 		bumped := false
 		mvccKey := storage.MakeMVCCMetadataKey(keyFn(rangeID))
 		iter.SeekGE(mvccKey)
 
 		if ok, err := iter.Valid(); !ok {
+			__antithesis_instrumentation__.Notify(124070)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124071)
 		}
+		__antithesis_instrumentation__.Notify(124062)
 
 		unsafeKey := iter.UnsafeKey()
 
 		if !bytes.HasPrefix(unsafeKey.Key, keys.LocalRangeIDPrefix) {
-			// Left the local keyspace, so we're done.
+			__antithesis_instrumentation__.Notify(124072)
+
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(124073)
 		}
+		__antithesis_instrumentation__.Notify(124063)
 
 		curRangeID, _, _, _, err := keys.DecodeRangeIDKey(unsafeKey.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(124074)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124075)
 		}
+		__antithesis_instrumentation__.Notify(124064)
 
 		if curRangeID > rangeID {
-			// `bumped` is always `false` here, but let's be explicit.
+			__antithesis_instrumentation__.Notify(124076)
+
 			if !bumped {
+				__antithesis_instrumentation__.Notify(124078)
 				rangeID = curRangeID
 				bumped = true
+			} else {
+				__antithesis_instrumentation__.Notify(124079)
 			}
+			__antithesis_instrumentation__.Notify(124077)
 			mvccKey = storage.MakeMVCCMetadataKey(keyFn(rangeID))
+		} else {
+			__antithesis_instrumentation__.Notify(124080)
 		}
+		__antithesis_instrumentation__.Notify(124065)
 
 		if !unsafeKey.Key.Equal(mvccKey.Key) {
+			__antithesis_instrumentation__.Notify(124081)
 			if !bumped {
-				// Don't increment the rangeID if it has already been incremented
-				// above, or we could skip past a value we ought to see.
+				__antithesis_instrumentation__.Notify(124083)
+
 				rangeID++
-				bumped = true // for completeness' sake; continuing below anyway
+				bumped = true
+			} else {
+				__antithesis_instrumentation__.Notify(124084)
 			}
+			__antithesis_instrumentation__.Notify(124082)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(124085)
 		}
+		__antithesis_instrumentation__.Notify(124066)
 
 		ok, err := storage.MVCCGetProto(
 			ctx, reader, unsafeKey.Key, hlc.Timestamp{}, msg, storage.MVCCGetOptions{})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(124086)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124087)
 		}
+		__antithesis_instrumentation__.Notify(124067)
 		if !ok {
+			__antithesis_instrumentation__.Notify(124088)
 			return errors.Errorf("unable to unmarshal %s into %T", unsafeKey.Key, msg)
+		} else {
+			__antithesis_instrumentation__.Notify(124089)
 		}
+		__antithesis_instrumentation__.Notify(124068)
 
 		if err := f(rangeID); err != nil {
+			__antithesis_instrumentation__.Notify(124090)
 			if iterutil.Done(err) {
+				__antithesis_instrumentation__.Notify(124092)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(124093)
 			}
+			__antithesis_instrumentation__.Notify(124091)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124094)
 		}
+		__antithesis_instrumentation__.Notify(124069)
 		rangeID++
 	}
 }
 
-// IterateRangeDescriptorsFromDisk calls the provided function with each
-// descriptor from the provided Engine. The return values of this method and fn
-// have semantics similar to engine.MVCCIterate.
 func IterateRangeDescriptorsFromDisk(
 	ctx context.Context, reader storage.Reader, fn func(desc roachpb.RangeDescriptor) error,
 ) error {
+	__antithesis_instrumentation__.Notify(124095)
 	log.Event(ctx, "beginning range descriptor iteration")
-	// MVCCIterator over all range-local key-based data.
+
 	start := keys.RangeDescriptorKey(roachpb.RKeyMin)
 	end := keys.RangeDescriptorKey(roachpb.RKeyMax)
 
@@ -1713,26 +1413,44 @@ func IterateRangeDescriptorsFromDisk(
 	matchCount := 0
 	bySuffix := make(map[string]int)
 	kvToDesc := func(kv roachpb.KeyValue) error {
+		__antithesis_instrumentation__.Notify(124097)
 		allCount++
-		// Only consider range metadata entries; ignore others.
+
 		_, suffix, _, err := keys.DecodeRangeKey(kv.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(124102)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124103)
 		}
+		__antithesis_instrumentation__.Notify(124098)
 		bySuffix[string(suffix)]++
 		if !bytes.Equal(suffix, keys.LocalRangeDescriptorSuffix) {
+			__antithesis_instrumentation__.Notify(124104)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(124105)
 		}
+		__antithesis_instrumentation__.Notify(124099)
 		var desc roachpb.RangeDescriptor
 		if err := kv.Value.GetProto(&desc); err != nil {
+			__antithesis_instrumentation__.Notify(124106)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124107)
 		}
+		__antithesis_instrumentation__.Notify(124100)
 		matchCount++
 		if err := fn(desc); iterutil.Done(err) {
+			__antithesis_instrumentation__.Notify(124108)
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(124109)
 		}
+		__antithesis_instrumentation__.Notify(124101)
 		return err
 	}
+	__antithesis_instrumentation__.Notify(124096)
 
 	_, err := storage.MVCCIterate(ctx, reader, start, end, hlc.MaxTimestamp,
 		storage.MVCCScanOptions{Inconsistent: true}, kvToDesc)
@@ -1741,68 +1459,82 @@ func IterateRangeDescriptorsFromDisk(
 	return err
 }
 
-// ReadStoreIdent reads the StoreIdent from the store.
-// It returns *NotBootstrappedError if the ident is missing (meaning that the
-// store needs to be bootstrapped).
 func ReadStoreIdent(ctx context.Context, eng storage.Engine) (roachpb.StoreIdent, error) {
+	__antithesis_instrumentation__.Notify(124110)
 	var ident roachpb.StoreIdent
 	ok, err := storage.MVCCGetProto(
 		ctx, eng, keys.StoreIdentKey(), hlc.Timestamp{}, &ident, storage.MVCCGetOptions{})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124112)
 		return roachpb.StoreIdent{}, err
-	} else if !ok {
-		return roachpb.StoreIdent{}, &NotBootstrappedError{}
+	} else {
+		__antithesis_instrumentation__.Notify(124113)
+		if !ok {
+			__antithesis_instrumentation__.Notify(124114)
+			return roachpb.StoreIdent{}, &NotBootstrappedError{}
+		} else {
+			__antithesis_instrumentation__.Notify(124115)
+		}
 	}
+	__antithesis_instrumentation__.Notify(124111)
 	return ident, err
 }
 
-// Start the engine, set the GC and read the StoreIdent.
 func (s *Store) Start(ctx context.Context, stopper *stop.Stopper) error {
+	__antithesis_instrumentation__.Notify(124116)
 	s.stopper = stopper
 
-	// Populate the store ident. If not bootstrapped, ReadStoreIntent will
-	// return an error.
 	ident, err := ReadStoreIdent(ctx, s.engine)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124134)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124135)
 	}
+	__antithesis_instrumentation__.Notify(124117)
 	s.Ident = &ident
 
-	// Set the store ID for logging.
 	s.cfg.AmbientCtx.AddLogTag("s", s.StoreID())
 	ctx = s.AnnotateCtx(ctx)
 	log.Event(ctx, "read store identity")
 
-	// Communicate store ID to engine, if it needs it.
 	if logSetter, ok := s.engine.(storage.StoreIDSetter); ok {
+		__antithesis_instrumentation__.Notify(124136)
 		logSetter.SetStoreID(ctx, int32(s.StoreID()))
+	} else {
+		__antithesis_instrumentation__.Notify(124137)
 	}
+	__antithesis_instrumentation__.Notify(124118)
 
-	// Add the store ID to the scanner's AmbientContext before starting it, since
-	// the AmbientContext provided during construction did not include it.
-	// Note that this is just a hacky way of getting around that without
-	// refactoring the scanner/queue construction/start logic more broadly, and
-	// depends on the scanner not having added its own log tag.
 	if s.scanner != nil {
+		__antithesis_instrumentation__.Notify(124138)
 		s.scanner.AmbientContext.AddLogTag("s", s.StoreID())
 
-		// We have to set the stopper here to avoid races, since scanner.Start() is
-		// called async and the stopper is not available when the scanner is
-		// created. This is a hack, the scanner/queue construction should be
-		// refactored.
 		s.scanner.stopper = s.stopper
+	} else {
+		__antithesis_instrumentation__.Notify(124139)
 	}
+	__antithesis_instrumentation__.Notify(124119)
 
-	// If the nodeID is 0, it has not be assigned yet.
-	if s.nodeDesc.NodeID != 0 && s.Ident.NodeID != s.nodeDesc.NodeID {
+	if s.nodeDesc.NodeID != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(124140)
+		return s.Ident.NodeID != s.nodeDesc.NodeID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(124141)
 		return errors.Errorf("node id:%d does not equal the one in node descriptor:%d", s.Ident.NodeID, s.nodeDesc.NodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(124142)
 	}
-	// Always set gossip NodeID before gossiping any info.
-	if s.cfg.Gossip != nil {
-		s.cfg.Gossip.NodeID.Set(ctx, s.Ident.NodeID)
-	}
+	__antithesis_instrumentation__.Notify(124120)
 
-	// Create ID allocators.
+	if s.cfg.Gossip != nil {
+		__antithesis_instrumentation__.Notify(124143)
+		s.cfg.Gossip.NodeID.Set(ctx, s.Ident.NodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(124144)
+	}
+	__antithesis_instrumentation__.Notify(124121)
+
 	idAlloc, err := idalloc.NewAllocator(idalloc.Options{
 		AmbientCtx:  s.cfg.AmbientCtx,
 		Key:         keys.RangeIDGenerator,
@@ -1811,15 +1543,22 @@ func (s *Store) Start(ctx context.Context, stopper *stop.Stopper) error {
 		Stopper:     s.stopper,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124145)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124146)
 	}
+	__antithesis_instrumentation__.Notify(124122)
 
-	// Create the intent resolver.
 	var intentResolverRangeCache intentresolver.RangeCache
 	rngCache := s.cfg.RangeDescriptorCache
 	if s.cfg.RangeDescriptorCache != nil {
+		__antithesis_instrumentation__.Notify(124147)
 		intentResolverRangeCache = rngCache
+	} else {
+		__antithesis_instrumentation__.Notify(124148)
 	}
+	__antithesis_instrumentation__.Notify(124123)
 
 	s.intentResolver = intentresolver.New(intentresolver.Config{
 		Clock:                s.cfg.Clock,
@@ -1832,16 +1571,17 @@ func (s *Store) Start(ctx context.Context, stopper *stop.Stopper) error {
 	})
 	s.metrics.registry.AddMetricStruct(s.intentResolver.Metrics)
 
-	// Create the raft log truncator and register the callback.
 	s.raftTruncator = makeRaftLogTruncator(s.cfg.AmbientCtx, (*storeForTruncatorImpl)(s), stopper)
 	{
+		__antithesis_instrumentation__.Notify(124149)
 		truncator := s.raftTruncator
 		s.engine.RegisterFlushCompletedCallback(func() {
+			__antithesis_instrumentation__.Notify(124150)
 			truncator.durabilityAdvancedCallback()
 		})
 	}
+	__antithesis_instrumentation__.Notify(124124)
 
-	// Create the recovery manager.
 	s.recoveryMgr = txnrecovery.NewManager(
 		s.cfg.AmbientCtx, s.cfg.Clock, s.db, stopper,
 	)
@@ -1852,169 +1592,194 @@ func (s *Store) Start(ctx context.Context, stopper *stop.Stopper) error {
 	now := s.cfg.Clock.Now()
 	s.startedAt = now.WallTime
 
-	// Iterate over all range descriptors, ignoring uncommitted versions
-	// (consistent=false). Uncommitted intents which have been abandoned
-	// due to a split crashing halfway will simply be resolved on the
-	// next split attempt. They can otherwise be ignored.
-
-	// TODO(peter): While we have to iterate to find the replica descriptors
-	// serially, we can perform the migrations and replica creation
-	// concurrently. Note that while we can perform this initialization
-	// concurrently, all of the initialization must be performed before we start
-	// listening for Raft messages and starting the process Raft loop.
 	err = IterateRangeDescriptorsFromDisk(ctx, s.engine,
 		func(desc roachpb.RangeDescriptor) error {
+			__antithesis_instrumentation__.Notify(124151)
 			if !desc.IsInitialized() {
+				__antithesis_instrumentation__.Notify(124158)
 				return errors.Errorf("found uninitialized RangeDescriptor: %+v", desc)
+			} else {
+				__antithesis_instrumentation__.Notify(124159)
 			}
+			__antithesis_instrumentation__.Notify(124152)
 			replicaDesc, found := desc.GetReplicaDescriptor(s.StoreID())
 			if !found {
-				// This is a pre-emptive snapshot. It's also possible that this is a
-				// range which has processed a raft command to remove itself (which is
-				// possible prior to 19.2 or if the DisableEagerReplicaRemoval is
-				// enabled) and has not yet been removed by the replica gc queue.
-				// We treat both cases the same way. These should no longer exist in
-				// 20.2 or after as there was a migration in 20.1 to remove them and
-				// no pre-emptive snapshot should have been sent since 19.2 was
-				// finalized.
+				__antithesis_instrumentation__.Notify(124160)
+
 				return errors.AssertionFailedf(
 					"found RangeDescriptor for range %d at generation %d which does not"+
 						" contain this store %d",
 					redact.Safe(desc.RangeID),
 					redact.Safe(desc.Generation),
 					redact.Safe(s.StoreID()))
+			} else {
+				__antithesis_instrumentation__.Notify(124161)
 			}
+			__antithesis_instrumentation__.Notify(124153)
 
 			rep, err := newReplica(ctx, &desc, s, replicaDesc.ReplicaID)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(124162)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(124163)
 			}
+			__antithesis_instrumentation__.Notify(124154)
 
-			// We can't lock s.mu across NewReplica due to the lock ordering
-			// constraint (*Replica).raftMu < (*Store).mu. See the comment on
-			// (Store).mu.
 			s.mu.Lock()
 			err = s.addReplicaInternalLocked(rep)
 			s.mu.Unlock()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(124164)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(124165)
 			}
+			__antithesis_instrumentation__.Notify(124155)
 
-			// Add this range and its stats to our counter.
 			s.metrics.ReplicaCount.Inc(1)
 			if _, ok := rep.TenantID(); ok {
-				// TODO(tbg): why the check? We're definitely an initialized range so
-				// we have a tenantID.
+				__antithesis_instrumentation__.Notify(124166)
+
 				s.metrics.addMVCCStats(ctx, rep.tenantMetricsRef, rep.GetMVCCStats())
 			} else {
+				__antithesis_instrumentation__.Notify(124167)
 				return errors.AssertionFailedf("found newly constructed replica"+
 					" for range %d at generation %d with an invalid tenant ID in store %d",
 					redact.Safe(desc.RangeID),
 					redact.Safe(desc.Generation),
 					redact.Safe(s.StoreID()))
 			}
+			__antithesis_instrumentation__.Notify(124156)
 
 			if _, ok := desc.GetReplicaDescriptor(s.StoreID()); !ok {
-				// We are no longer a member of the range, but we didn't GC the replica
-				// before shutting down. Add the replica to the GC queue.
-				s.replicaGCQueue.AddAsync(ctx, rep, replicaGCPriorityRemoved)
-			}
+				__antithesis_instrumentation__.Notify(124168)
 
-			// Note that we do not create raft groups at this time; they will be created
-			// on-demand the first time they are needed. This helps reduce the amount of
-			// election-related traffic in a cold start.
-			// Raft initialization occurs when we propose a command on this range or
-			// receive a raft message addressed to it.
-			// TODO(bdarnell): Also initialize raft groups when read leases are needed.
-			// TODO(bdarnell): Scan all ranges at startup for unapplied log entries
-			// and initialize those groups.
+				s.replicaGCQueue.AddAsync(ctx, rep, replicaGCPriorityRemoved)
+			} else {
+				__antithesis_instrumentation__.Notify(124169)
+			}
+			__antithesis_instrumentation__.Notify(124157)
+
 			return nil
 		})
+	__antithesis_instrumentation__.Notify(124125)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124170)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124171)
 	}
+	__antithesis_instrumentation__.Notify(124126)
 
-	// Start Raft processing goroutines.
 	s.cfg.Transport.Listen(s.StoreID(), s)
 	s.processRaft(ctx)
 
-	// Register a callback to unquiesce any ranges with replicas on a
-	// node transitioning from non-live to live.
 	if s.cfg.NodeLiveness != nil {
+		__antithesis_instrumentation__.Notify(124172)
 		s.cfg.NodeLiveness.RegisterCallback(s.nodeIsLiveCallback)
+	} else {
+		__antithesis_instrumentation__.Notify(124173)
 	}
+	__antithesis_instrumentation__.Notify(124127)
 
-	// SystemConfigProvider can be nil during some tests.
 	if scp := s.cfg.SystemConfigProvider; scp != nil {
+		__antithesis_instrumentation__.Notify(124174)
 		systemCfgUpdateC, _ := scp.RegisterSystemConfigChannel()
 		_ = s.stopper.RunAsyncTask(ctx, "syscfg-listener", func(context.Context) {
+			__antithesis_instrumentation__.Notify(124175)
 			for {
+				__antithesis_instrumentation__.Notify(124176)
 				select {
 				case <-systemCfgUpdateC:
+					__antithesis_instrumentation__.Notify(124177)
 					cfg := scp.GetSystemConfig()
 					s.systemGossipUpdate(cfg)
 				case <-s.stopper.ShouldQuiesce():
+					__antithesis_instrumentation__.Notify(124178)
 					return
 				}
 			}
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(124179)
 	}
+	__antithesis_instrumentation__.Notify(124128)
 
-	// Gossip is only ever nil while bootstrapping a cluster and
-	// in unittests.
 	if s.cfg.Gossip != nil {
+		__antithesis_instrumentation__.Notify(124180)
 
-		// Start a single goroutine in charge of periodically gossiping the
-		// sentinel and first range metadata if we have a first range.
-		// This may wake up ranges and requires everything to be set up and
-		// running.
 		s.startGossip()
 
-		// Start the scanner. The construction here makes sure that the scanner
-		// only starts after Gossip has connected, and that it does not block Start
-		// from returning (as doing so might prevent Gossip from ever connecting).
 		_ = s.stopper.RunAsyncTask(ctx, "scanner", func(context.Context) {
+			__antithesis_instrumentation__.Notify(124181)
 			select {
 			case <-s.cfg.Gossip.Connected:
+				__antithesis_instrumentation__.Notify(124182)
 				s.scanner.Start()
 			case <-s.stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(124183)
 				return
 			}
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(124184)
 	}
+	__antithesis_instrumentation__.Notify(124129)
 
 	if !s.cfg.SpanConfigsDisabled {
+		__antithesis_instrumentation__.Notify(124185)
 		s.cfg.SpanConfigSubscriber.Subscribe(func(ctx context.Context, update roachpb.Span) {
+			__antithesis_instrumentation__.Notify(124187)
 			s.onSpanConfigUpdate(ctx, update)
 		})
+		__antithesis_instrumentation__.Notify(124186)
 
-		// When toggling between the system config span and the span
-		// configs infrastructure, we want to re-apply configs on all
-		// replicas from whatever the new source is.
 		spanconfigstore.EnabledSetting.SetOnChange(&s.ClusterSettings().SV, func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(124188)
 			enabled := spanconfigstore.EnabledSetting.Get(&s.ClusterSettings().SV)
 			if enabled {
+				__antithesis_instrumentation__.Notify(124189)
 				s.applyAllFromSpanConfigStore(ctx)
-			} else if scp := s.cfg.SystemConfigProvider; scp != nil {
-				if sc := scp.GetSystemConfig(); sc != nil {
-					s.systemGossipUpdate(sc)
+			} else {
+				__antithesis_instrumentation__.Notify(124190)
+				if scp := s.cfg.SystemConfigProvider; scp != nil {
+					__antithesis_instrumentation__.Notify(124191)
+					if sc := scp.GetSystemConfig(); sc != nil {
+						__antithesis_instrumentation__.Notify(124192)
+						s.systemGossipUpdate(sc)
+					} else {
+						__antithesis_instrumentation__.Notify(124193)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(124194)
 				}
 			}
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(124195)
 	}
+	__antithesis_instrumentation__.Notify(124130)
 
 	if !s.cfg.TestingKnobs.DisableAutomaticLeaseRenewal {
+		__antithesis_instrumentation__.Notify(124196)
 		s.startLeaseRenewer(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(124197)
 	}
+	__antithesis_instrumentation__.Notify(124131)
 
-	// Connect rangefeeds to closed timestamp updates.
 	s.startRangefeedUpdater(ctx)
 
 	if s.replicateQueue != nil {
+		__antithesis_instrumentation__.Notify(124198)
 		s.storeRebalancer = NewStoreRebalancer(
 			s.cfg.AmbientCtx, s.cfg.Settings, s.replicateQueue, s.replRankings)
 		s.storeRebalancer.Start(ctx, s.stopper)
+	} else {
+		__antithesis_instrumentation__.Notify(124199)
 	}
+	__antithesis_instrumentation__.Notify(124132)
 
 	s.consistencyLimiter = quotapool.NewRateLimiter(
 		"ConsistencyQueue",
@@ -2023,39 +1788,36 @@ func (s *Store) Start(ctx context.Context, stopper *stop.Stopper) error {
 		quotapool.WithMinimumWait(consistencyCheckRateMinWait))
 
 	consistencyCheckRate.SetOnChange(&s.ClusterSettings().SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(124200)
 		rate := consistencyCheckRate.Get(&s.ClusterSettings().SV)
 		s.consistencyLimiter.UpdateLimit(quotapool.Limit(rate), rate*consistencyCheckRateBurstFactor)
 	})
+	__antithesis_instrumentation__.Notify(124133)
 	s.consistencySem = quotapool.NewIntPool("concurrent async consistency checks",
 		consistencyCheckAsyncConcurrency)
 	s.stopper.AddCloser(s.consistencySem.Closer("stopper"))
 
-	// Set the started flag (for unittests).
 	atomic.StoreInt32(&s.started, 1)
 
 	return nil
 }
 
-// WaitForInit waits for any asynchronous processes begun in Start()
-// to complete their initialization. In particular, this includes
-// gossiping. In some cases this may block until the range GC queue
-// has completed its scan. Only for testing.
 func (s *Store) WaitForInit() {
+	__antithesis_instrumentation__.Notify(124201)
 	s.initComplete.Wait()
 }
 
 var errPeriodicGossipsDisabled = errors.New("periodic gossip is disabled")
 
-// startGossip runs an infinite loop in a goroutine which regularly checks
-// whether the store has a first range or config replica and asks those ranges
-// to gossip accordingly.
 func (s *Store) startGossip() {
+	__antithesis_instrumentation__.Notify(124202)
 	wakeReplica := func(ctx context.Context, repl *Replica) error {
-		// Acquire the range lease, which in turn triggers system data gossip
-		// functions (e.g. MaybeGossipSystemConfig or MaybeGossipNodeLiveness).
+		__antithesis_instrumentation__.Notify(124205)
+
 		_, pErr := repl.getLeaseForGossip(ctx)
 		return pErr.GoError()
 	}
+	__antithesis_instrumentation__.Notify(124203)
 	gossipFns := []struct {
 		key         roachpb.Key
 		fn          func(context.Context, *Replica) error
@@ -2065,8 +1827,8 @@ func (s *Store) startGossip() {
 		{
 			key: roachpb.KeyMin,
 			fn: func(ctx context.Context, repl *Replica) error {
-				// The first range is gossiped by all replicas, not just the lease
-				// holder, so wakeReplica is not used here.
+				__antithesis_instrumentation__.Notify(124206)
+
 				return repl.maybeGossipFirstRange(ctx).GoError()
 			},
 			description: "first range descriptor",
@@ -2085,167 +1847,205 @@ func (s *Store) startGossip() {
 			interval:    systemDataGossipInterval,
 		},
 	}
+	__antithesis_instrumentation__.Notify(124204)
 
 	cannotGossipEvery := log.Every(time.Minute)
-	cannotGossipEvery.ShouldLog() // only log next time after waiting out the delay
+	cannotGossipEvery.ShouldLog()
 
-	// Periodic updates run in a goroutine and signal a WaitGroup upon completion
-	// of their first iteration.
 	s.initComplete.Add(len(gossipFns))
 	for _, gossipFn := range gossipFns {
-		gossipFn := gossipFn // per-iteration copy
+		__antithesis_instrumentation__.Notify(124207)
+		gossipFn := gossipFn
 		bgCtx := s.AnnotateCtx(context.Background())
 		if err := s.stopper.RunAsyncTask(bgCtx, "store-gossip", func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(124208)
 			ticker := time.NewTicker(gossipFn.interval)
 			defer ticker.Stop()
 			for first := true; ; {
-				// Retry in a backoff loop until gossipFn succeeds. The gossipFn might
-				// temporarily fail (e.g. because node liveness hasn't initialized yet
-				// making it impossible to get an epoch-based range lease), in which
-				// case we want to retry quickly.
+				__antithesis_instrumentation__.Notify(124209)
+
 				retryOptions := base.DefaultRetryOptions()
 				retryOptions.Closer = s.stopper.ShouldQuiesce()
 				for r := retry.Start(retryOptions); r.Next(); {
+					__antithesis_instrumentation__.Notify(124212)
 					if repl := s.LookupReplica(roachpb.RKey(gossipFn.key)); repl != nil {
+						__antithesis_instrumentation__.Notify(124214)
 						annotatedCtx := repl.AnnotateCtx(ctx)
 						if err := gossipFn.fn(annotatedCtx, repl); err != nil {
+							__antithesis_instrumentation__.Notify(124215)
 							if cannotGossipEvery.ShouldLog() {
+								__antithesis_instrumentation__.Notify(124217)
 								log.Infof(annotatedCtx, "could not gossip %s: %v", gossipFn.description, err)
+							} else {
+								__antithesis_instrumentation__.Notify(124218)
 							}
+							__antithesis_instrumentation__.Notify(124216)
 							if !errors.Is(err, errPeriodicGossipsDisabled) {
+								__antithesis_instrumentation__.Notify(124219)
 								continue
+							} else {
+								__antithesis_instrumentation__.Notify(124220)
 							}
+						} else {
+							__antithesis_instrumentation__.Notify(124221)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(124222)
 					}
+					__antithesis_instrumentation__.Notify(124213)
 					break
 				}
+				__antithesis_instrumentation__.Notify(124210)
 				if first {
+					__antithesis_instrumentation__.Notify(124223)
 					first = false
 					s.initComplete.Done()
+				} else {
+					__antithesis_instrumentation__.Notify(124224)
 				}
+				__antithesis_instrumentation__.Notify(124211)
 				select {
 				case <-ticker.C:
+					__antithesis_instrumentation__.Notify(124225)
 				case <-s.stopper.ShouldQuiesce():
+					__antithesis_instrumentation__.Notify(124226)
 					return
 				}
 			}
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(124227)
 			s.initComplete.Done()
+		} else {
+			__antithesis_instrumentation__.Notify(124228)
 		}
 	}
 }
 
 var errSysCfgUnavailable = errors.New("system config not available in gossip")
 
-// GetConfReader exposes access to a configuration reader.
 func (s *Store) GetConfReader(ctx context.Context) (spanconfig.StoreReader, error) {
+	__antithesis_instrumentation__.Notify(124229)
 	if s.cfg.TestingKnobs.MakeSystemConfigSpanUnavailableToQueues {
+		__antithesis_instrumentation__.Notify(124232)
 		return nil, errSysCfgUnavailable
+	} else {
+		__antithesis_instrumentation__.Notify(124233)
 	}
+	__antithesis_instrumentation__.Notify(124230)
 
-	// We need a version gate here before switching over to the span configs
-	// infrastructure. In a mixed-version cluster we need to wait for
-	// the host tenant to have fully populated `system.span_configurations`
-	// (read: reconciled) at least once before using it as a view for all
-	// split/config decisions.
 	_ = clusterversion.EnsureSpanConfigReconciliation
-	//
-	// We also want to ensure that the KVSubscriber on each store is at least as
-	// up-to-date as some full reconciliation timestamp.
+
 	_ = clusterversion.EnsureSpanConfigSubscription
-	//
-	// Without a version gate, it would be possible for a replica on a
-	// new-binary-server to apply the static fallback config (assuming no
-	// entries in `system.span_configurations`), in violation of explicit
-	// configs directly set by the user. Though unlikely, it's also possible for
-	// us to merge all ranges into a single one -- with no entries in
-	// system.span_configurations, the infrastructure can erroneously conclude
-	// that there are zero split points.
-	//
-	// We achieve all this through a three-step migration process, culminating
-	// in the following cluster version gate:
+
 	_ = clusterversion.EnableSpanConfigStore
 
-	if s.cfg.SpanConfigsDisabled ||
-		!spanconfigstore.EnabledSetting.Get(&s.ClusterSettings().SV) ||
-		!s.cfg.Settings.Version.IsActive(ctx, clusterversion.EnableSpanConfigStore) ||
-		s.TestingKnobs().UseSystemConfigSpanForQueues {
+	if s.cfg.SpanConfigsDisabled || func() bool {
+		__antithesis_instrumentation__.Notify(124234)
+		return !spanconfigstore.EnabledSetting.Get(&s.ClusterSettings().SV) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(124235)
+		return !s.cfg.Settings.Version.IsActive(ctx, clusterversion.EnableSpanConfigStore) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(124236)
+		return s.TestingKnobs().UseSystemConfigSpanForQueues == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(124237)
 
 		sysCfg := s.cfg.SystemConfigProvider.GetSystemConfig()
 		if sysCfg == nil {
+			__antithesis_instrumentation__.Notify(124239)
 			return nil, errSysCfgUnavailable
+		} else {
+			__antithesis_instrumentation__.Notify(124240)
 		}
+		__antithesis_instrumentation__.Notify(124238)
 		return sysCfg, nil
+	} else {
+		__antithesis_instrumentation__.Notify(124241)
 	}
+	__antithesis_instrumentation__.Notify(124231)
 
 	return s.cfg.SpanConfigSubscriber, nil
 }
 
-// startLeaseRenewer runs an infinite loop in a goroutine which regularly
-// checks whether the store has any expiration-based leases that should be
-// proactively renewed and attempts to continue renewing them.
-//
-// This reduces user-visible latency when range lookups are needed to serve a
-// request and reduces ping-ponging of r1's lease to different replicas as
-// maybeGossipFirstRange is called on each (e.g.  #24753).
 func (s *Store) startLeaseRenewer(ctx context.Context) {
-	// Start a goroutine that watches and proactively renews certain
-	// expiration-based leases.
+	__antithesis_instrumentation__.Notify(124242)
+
 	_ = s.stopper.RunAsyncTask(ctx, "lease-renewer", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(124243)
 		timer := timeutil.NewTimer()
 		defer timer.Stop()
 
-		// Determine how frequently to attempt to ensure that we have each lease.
-		// The divisor used here is somewhat arbitrary, but needs to be large
-		// enough to ensure we'll attempt to renew the lease reasonably early
-		// within the RangeLeaseRenewalDuration time window. This means we'll wake
-		// up more often that strictly necessary, but it's more maintainable than
-		// attempting to accurately determine exactly when each iteration of a
-		// lease expires and when we should attempt to renew it as a result.
 		renewalDuration := s.cfg.RangeLeaseActiveDuration() / 5
 		if d := s.cfg.TestingKnobs.LeaseRenewalDurationOverride; d > 0 {
+			__antithesis_instrumentation__.Notify(124245)
 			renewalDuration = d
+		} else {
+			__antithesis_instrumentation__.Notify(124246)
 		}
+		__antithesis_instrumentation__.Notify(124244)
 		for {
+			__antithesis_instrumentation__.Notify(124247)
 			var numRenewableLeases int
 			s.renewableLeases.Range(func(k int64, v unsafe.Pointer) bool {
+				__antithesis_instrumentation__.Notify(124251)
 				numRenewableLeases++
 				repl := (*Replica)(v)
 				annotatedCtx := repl.AnnotateCtx(ctx)
 				if _, pErr := repl.redirectOnOrAcquireLease(annotatedCtx); pErr != nil {
+					__antithesis_instrumentation__.Notify(124253)
 					if _, ok := pErr.GetDetail().(*roachpb.NotLeaseHolderError); !ok {
+						__antithesis_instrumentation__.Notify(124255)
 						log.Warningf(annotatedCtx, "failed to proactively renew lease: %s", pErr)
+					} else {
+						__antithesis_instrumentation__.Notify(124256)
 					}
+					__antithesis_instrumentation__.Notify(124254)
 					s.renewableLeases.Delete(k)
+				} else {
+					__antithesis_instrumentation__.Notify(124257)
 				}
+				__antithesis_instrumentation__.Notify(124252)
 				return true
 			})
+			__antithesis_instrumentation__.Notify(124248)
 
 			if numRenewableLeases > 0 {
+				__antithesis_instrumentation__.Notify(124258)
 				timer.Reset(renewalDuration)
+			} else {
+				__antithesis_instrumentation__.Notify(124259)
 			}
+			__antithesis_instrumentation__.Notify(124249)
 			if fn := s.cfg.TestingKnobs.LeaseRenewalOnPostCycle; fn != nil {
+				__antithesis_instrumentation__.Notify(124260)
 				fn()
+			} else {
+				__antithesis_instrumentation__.Notify(124261)
 			}
+			__antithesis_instrumentation__.Notify(124250)
 			select {
 			case <-s.renewableLeasesSignal:
+				__antithesis_instrumentation__.Notify(124262)
 			case <-timer.C:
+				__antithesis_instrumentation__.Notify(124263)
 				timer.Read = true
 			case <-s.stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(124264)
 				return
 			}
 		}
 	})
 }
 
-// startRangefeedUpdater periodically informs all the replicas with rangefeeds
-// about closed timestamp updates.
 func (s *Store) startRangefeedUpdater(ctx context.Context) {
-	_ /* err */ = s.stopper.RunAsyncTaskEx(ctx,
+	__antithesis_instrumentation__.Notify(124265)
+	_ = s.stopper.RunAsyncTaskEx(ctx,
 		stop.TaskOpts{
 			TaskName: "closedts-rangefeed-updater",
 			SpanOpt:  stop.SterileRootSpan,
 		}, func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(124266)
 			timer := timeutil.NewTimer()
 			defer timer.Stop()
 			var replIDs []roachpb.RangeID
@@ -2253,53 +2053,76 @@ func (s *Store) startRangefeedUpdater(ctx context.Context) {
 
 			confCh := make(chan struct{}, 1)
 			confChanged := func(ctx context.Context) {
+				__antithesis_instrumentation__.Notify(124269)
 				select {
 				case confCh <- struct{}{}:
+					__antithesis_instrumentation__.Notify(124270)
 				default:
+					__antithesis_instrumentation__.Notify(124271)
 				}
 			}
+			__antithesis_instrumentation__.Notify(124267)
 			closedts.SideTransportCloseInterval.SetOnChange(&st.SV, confChanged)
 			RangeFeedRefreshInterval.SetOnChange(&st.SV, confChanged)
 
 			getInterval := func() time.Duration {
+				__antithesis_instrumentation__.Notify(124272)
 				refresh := RangeFeedRefreshInterval.Get(&st.SV)
 				if refresh != 0 {
+					__antithesis_instrumentation__.Notify(124274)
 					return refresh
+				} else {
+					__antithesis_instrumentation__.Notify(124275)
 				}
+				__antithesis_instrumentation__.Notify(124273)
 				return closedts.SideTransportCloseInterval.Get(&st.SV)
 			}
+			__antithesis_instrumentation__.Notify(124268)
 
 			for {
+				__antithesis_instrumentation__.Notify(124276)
 				interval := getInterval()
 				if interval > 0 {
+					__antithesis_instrumentation__.Notify(124278)
 					timer.Reset(interval)
 				} else {
-					// Disable the side-transport.
+					__antithesis_instrumentation__.Notify(124279)
+
 					timer.Stop()
 					timer = timeutil.NewTimer()
 				}
+				__antithesis_instrumentation__.Notify(124277)
 				select {
 				case <-timer.C:
+					__antithesis_instrumentation__.Notify(124280)
 					timer.Read = true
 					s.rangefeedReplicas.Lock()
 					replIDs = replIDs[:0]
 					for replID := range s.rangefeedReplicas.m {
+						__antithesis_instrumentation__.Notify(124284)
 						replIDs = append(replIDs, replID)
 					}
+					__antithesis_instrumentation__.Notify(124281)
 					s.rangefeedReplicas.Unlock()
-					// Notify each replica with an active rangefeed to check for an updated
-					// closed timestamp.
+
 					for _, replID := range replIDs {
+						__antithesis_instrumentation__.Notify(124285)
 						r := s.GetReplicaIfExists(replID)
 						if r == nil {
+							__antithesis_instrumentation__.Notify(124287)
 							continue
+						} else {
+							__antithesis_instrumentation__.Notify(124288)
 						}
+						__antithesis_instrumentation__.Notify(124286)
 						r.handleClosedTimestampUpdate(ctx, r.GetClosedTimestamp(ctx))
 					}
 				case <-confCh:
-					// Loop around to use the updated timer.
+					__antithesis_instrumentation__.Notify(124282)
+
 					continue
 				case <-s.stopper.ShouldQuiesce():
+					__antithesis_instrumentation__.Notify(124283)
 					return
 				}
 
@@ -2308,83 +2131,122 @@ func (s *Store) startRangefeedUpdater(ctx context.Context) {
 }
 
 func (s *Store) addReplicaWithRangefeed(rangeID roachpb.RangeID) {
+	__antithesis_instrumentation__.Notify(124289)
 	s.rangefeedReplicas.Lock()
 	s.rangefeedReplicas.m[rangeID] = struct{}{}
 	s.rangefeedReplicas.Unlock()
 }
 
 func (s *Store) removeReplicaWithRangefeed(rangeID roachpb.RangeID) {
+	__antithesis_instrumentation__.Notify(124290)
 	s.rangefeedReplicas.Lock()
 	delete(s.rangefeedReplicas.m, rangeID)
 	s.rangefeedReplicas.Unlock()
 }
 
-// systemGossipUpdate is a callback for gossip updates to
-// the system config which affect range split boundaries.
 func (s *Store) systemGossipUpdate(sysCfg *config.SystemConfig) {
-	if !s.cfg.SpanConfigsDisabled && spanconfigstore.EnabledSetting.Get(&s.ClusterSettings().SV) {
-		return // nothing to do
+	__antithesis_instrumentation__.Notify(124291)
+	if !s.cfg.SpanConfigsDisabled && func() bool {
+		__antithesis_instrumentation__.Notify(124294)
+		return spanconfigstore.EnabledSetting.Get(&s.ClusterSettings().SV) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(124295)
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(124296)
 	}
+	__antithesis_instrumentation__.Notify(124292)
 
 	ctx := s.AnnotateCtx(context.Background())
 	s.computeInitialMetrics.Do(func() {
-		// Metrics depend in part on the system config. Compute them as soon as we
-		// get the first system config, then periodically in the background
-		// (managed by the Node).
+		__antithesis_instrumentation__.Notify(124297)
+
 		if err := s.ComputeMetrics(ctx, -1); err != nil {
+			__antithesis_instrumentation__.Notify(124299)
 			log.Infof(ctx, "%s: failed initial metrics computation: %s", s, err)
+		} else {
+			__antithesis_instrumentation__.Notify(124300)
 		}
+		__antithesis_instrumentation__.Notify(124298)
 		log.Event(ctx, "computed initial metrics")
 	})
+	__antithesis_instrumentation__.Notify(124293)
 
-	// We'll want to offer all replicas to the split and merge queues. Be a little
-	// careful about not spawning too many individual goroutines.
 	shouldQueue := s.systemConfigUpdateQueueRateLimiter.AdmitN(1)
 
-	// For every range, update its zone config and check if it needs to
-	// be split or merged.
 	now := s.cfg.Clock.NowAsClockTimestamp()
 	newStoreReplicaVisitor(s).Visit(func(repl *Replica) bool {
+		__antithesis_instrumentation__.Notify(124301)
 		key := repl.Desc().StartKey
 		conf, err := sysCfg.GetSpanConfigForKey(ctx, key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(124305)
 			if log.V(1) {
+				__antithesis_instrumentation__.Notify(124307)
 				log.Infof(context.TODO(), "failed to get span config for key %s", key)
+			} else {
+				__antithesis_instrumentation__.Notify(124308)
 			}
+			__antithesis_instrumentation__.Notify(124306)
 			conf = s.cfg.DefaultSpanConfig
+		} else {
+			__antithesis_instrumentation__.Notify(124309)
 		}
+		__antithesis_instrumentation__.Notify(124302)
 
-		if s.cfg.SpanConfigsDisabled ||
-			!spanconfigstore.EnabledSetting.Get(&s.ClusterSettings().SV) ||
-			!s.cfg.Settings.Version.IsActive(ctx, clusterversion.EnableSpanConfigStore) {
+		if s.cfg.SpanConfigsDisabled || func() bool {
+			__antithesis_instrumentation__.Notify(124310)
+			return !spanconfigstore.EnabledSetting.Get(&s.ClusterSettings().SV) == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(124311)
+			return !s.cfg.Settings.Version.IsActive(ctx, clusterversion.EnableSpanConfigStore) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(124312)
 			repl.SetSpanConfig(conf)
+		} else {
+			__antithesis_instrumentation__.Notify(124313)
 		}
+		__antithesis_instrumentation__.Notify(124303)
 
 		if shouldQueue {
-			s.splitQueue.Async(ctx, "gossip update", true /* wait */, func(ctx context.Context, h queueHelper) {
+			__antithesis_instrumentation__.Notify(124314)
+			s.splitQueue.Async(ctx, "gossip update", true, func(ctx context.Context, h queueHelper) {
+				__antithesis_instrumentation__.Notify(124316)
 				h.MaybeAdd(ctx, repl, now)
 			})
-			s.mergeQueue.Async(ctx, "gossip update", true /* wait */, func(ctx context.Context, h queueHelper) {
+			__antithesis_instrumentation__.Notify(124315)
+			s.mergeQueue.Async(ctx, "gossip update", true, func(ctx context.Context, h queueHelper) {
+				__antithesis_instrumentation__.Notify(124317)
 				h.MaybeAdd(ctx, repl, now)
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(124318)
 		}
-		return true // more
+		__antithesis_instrumentation__.Notify(124304)
+		return true
 	})
 }
 
-// onSpanConfigUpdate is the callback invoked whenever this store learns of a
-// span config update.
 func (s *Store) onSpanConfigUpdate(ctx context.Context, updated roachpb.Span) {
+	__antithesis_instrumentation__.Notify(124319)
 	if !spanconfigstore.EnabledSetting.Get(&s.ClusterSettings().SV) {
+		__antithesis_instrumentation__.Notify(124322)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(124323)
 	}
+	__antithesis_instrumentation__.Notify(124320)
 
 	sp, err := keys.SpanAddr(updated)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124324)
 		log.Errorf(ctx, "skipped applying update (%s), unexpected error resolving span address: %v",
 			updated, err)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(124325)
 	}
+	__antithesis_instrumentation__.Notify(124321)
 
 	now := s.cfg.Clock.NowAsClockTimestamp()
 
@@ -2392,119 +2254,124 @@ func (s *Store) onSpanConfigUpdate(ctx context.Context, updated roachpb.Span) {
 	defer s.mu.RUnlock()
 	if err := s.mu.replicasByKey.VisitKeyRange(ctx, sp.Key, sp.EndKey, AscendingKeyOrder,
 		func(ctx context.Context, it replicaOrPlaceholder) error {
+			__antithesis_instrumentation__.Notify(124326)
 			repl := it.repl
 			if repl == nil {
-				return nil // placeholder; ignore
+				__antithesis_instrumentation__.Notify(124331)
+				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(124332)
 			}
+			__antithesis_instrumentation__.Notify(124327)
 
 			replCtx := repl.AnnotateCtx(ctx)
 			startKey := repl.Desc().StartKey
 			if sp.ContainsKey(startKey) {
-				// It's possible that the update we're receiving here implies a split.
-				// If the update corresponds to what would be the config for the
-				// right-hand side after the split, we avoid clobbering the pre-split
-				// range's embedded span config by checking if the start key is part of
-				// the update.
-				//
-				// Even if we're dealing with what would be the right-hand side after
-				// the split is processed, we still want to nudge the split queue
-				// below -- we can't instead rely on there being an update for the
-				// left-hand side of the split. Concretely, consider the case when a
-				// new table is added with a different configuration to its (left)
-				// adjacent table. This results in a single update, corresponding to the
-				// new table's span, which forms the right-hand side post split.
-
-				// TODO(irfansharif): It's possible for a config to be applied over an
-				// entire range when it only pertains to the first half of the range.
-				// This will be corrected shortly -- we enqueue the range for a split
-				// below where we then apply the right config on each half. But still,
-				// it's surprising behavior and gets in the way of a desirable
-				// consistency guarantee: a key's config at any point in time is one
-				// that was explicitly declared over it, or the default config.
-				//
-				// We can do better, we can skip applying the config entirely and
-				// enqueue the split, then relying on the split trigger to install
-				// the right configs on each half. The current structure is as it is
-				// to maintain parity with the system config span variant.
+				__antithesis_instrumentation__.Notify(124333)
 
 				conf, err := s.cfg.SpanConfigSubscriber.GetSpanConfigForKey(replCtx, startKey)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(124335)
 					log.Errorf(ctx, "skipped applying update, unexpected error reading from subscriber: %v", err)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(124336)
 				}
+				__antithesis_instrumentation__.Notify(124334)
 				repl.SetSpanConfig(conf)
+			} else {
+				__antithesis_instrumentation__.Notify(124337)
 			}
+			__antithesis_instrumentation__.Notify(124328)
 
-			// TODO(irfansharif): For symmetry with the system config span variant,
-			// we queue blindly; we could instead only queue it if we knew the
-			// range's keyspans has a split in there somewhere, or was now part of a
-			// larger range and eligible for a merge.
-			s.splitQueue.Async(replCtx, "span config update", true /* wait */, func(ctx context.Context, h queueHelper) {
+			s.splitQueue.Async(replCtx, "span config update", true, func(ctx context.Context, h queueHelper) {
+				__antithesis_instrumentation__.Notify(124338)
 				h.MaybeAdd(ctx, repl, now)
 			})
-			s.mergeQueue.Async(replCtx, "span config update", true /* wait */, func(ctx context.Context, h queueHelper) {
+			__antithesis_instrumentation__.Notify(124329)
+			s.mergeQueue.Async(replCtx, "span config update", true, func(ctx context.Context, h queueHelper) {
+				__antithesis_instrumentation__.Notify(124339)
 				h.MaybeAdd(ctx, repl, now)
 			})
-			return nil // more
+			__antithesis_instrumentation__.Notify(124330)
+			return nil
 		},
 	); err != nil {
-		// Errors here should not be possible, but if there is one, log loudly.
+		__antithesis_instrumentation__.Notify(124340)
+
 		log.Errorf(ctx, "unexpected error visiting replicas: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(124341)
 	}
 }
 
-// applyAllFromSpanConfigStore applies, on each replica, span configs from the
-// embedded span config store.
 func (s *Store) applyAllFromSpanConfigStore(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(124342)
 	now := s.cfg.Clock.NowAsClockTimestamp()
 	newStoreReplicaVisitor(s).Visit(func(repl *Replica) bool {
+		__antithesis_instrumentation__.Notify(124343)
 		replCtx := repl.AnnotateCtx(ctx)
 		key := repl.Desc().StartKey
 		conf, err := s.cfg.SpanConfigSubscriber.GetSpanConfigForKey(replCtx, key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(124347)
 			log.Errorf(ctx, "skipped applying config update, unexpected error reading from subscriber: %v", err)
-			return true // more
+			return true
+		} else {
+			__antithesis_instrumentation__.Notify(124348)
 		}
+		__antithesis_instrumentation__.Notify(124344)
 
 		repl.SetSpanConfig(conf)
-		s.splitQueue.Async(replCtx, "span config update", true /* wait */, func(ctx context.Context, h queueHelper) {
+		s.splitQueue.Async(replCtx, "span config update", true, func(ctx context.Context, h queueHelper) {
+			__antithesis_instrumentation__.Notify(124349)
 			h.MaybeAdd(ctx, repl, now)
 		})
-		s.mergeQueue.Async(replCtx, "span config update", true /* wait */, func(ctx context.Context, h queueHelper) {
+		__antithesis_instrumentation__.Notify(124345)
+		s.mergeQueue.Async(replCtx, "span config update", true, func(ctx context.Context, h queueHelper) {
+			__antithesis_instrumentation__.Notify(124350)
 			h.MaybeAdd(ctx, repl, now)
 		})
-		return true // more
+		__antithesis_instrumentation__.Notify(124346)
+		return true
 	})
 }
 
 func (s *Store) asyncGossipStore(ctx context.Context, reason string, useCached bool) {
+	__antithesis_instrumentation__.Notify(124351)
 	if err := s.stopper.RunAsyncTask(
 		ctx, fmt.Sprintf("storage.Store: gossip on %s", reason),
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(124352)
 			if err := s.GossipStore(ctx, useCached); err != nil {
+				__antithesis_instrumentation__.Notify(124353)
 				log.Warningf(ctx, "error gossiping on %s: %+v", reason, err)
+			} else {
+				__antithesis_instrumentation__.Notify(124354)
 			}
 		}); err != nil {
+		__antithesis_instrumentation__.Notify(124355)
 		log.Warningf(ctx, "unable to gossip on %s: %+v", reason, err)
+	} else {
+		__antithesis_instrumentation__.Notify(124356)
 	}
 }
 
-// GossipStore broadcasts the store on the gossip network.
 func (s *Store) GossipStore(ctx context.Context, useCached bool) error {
-	// Temporarily indicate that we're gossiping the store capacity to avoid
-	// recursively triggering a gossip of the store capacity.
+	__antithesis_instrumentation__.Notify(124357)
+
 	syncutil.StoreFloat64(&s.gossipQueriesPerSecondVal, -1)
 	syncutil.StoreFloat64(&s.gossipWritesPerSecondVal, -1)
 
 	storeDesc, err := s.Descriptor(ctx, useCached)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124359)
 		return errors.Wrapf(err, "problem getting store descriptor for store %+v", s.Ident)
+	} else {
+		__antithesis_instrumentation__.Notify(124360)
 	}
+	__antithesis_instrumentation__.Notify(124358)
 
-	// Set countdown target for re-gossiping capacity earlier than
-	// the usual periodic interval. Re-gossip more rapidly for RangeCount
-	// changes because allocators with stale information are much more
-	// likely to make bad decisions.
 	rangeCountdown := float64(storeDesc.Capacity.RangeCount) * s.cfg.TestingKnobs.GossipWhenCapacityDeltaExceedsFraction
 	atomic.StoreInt32(&s.gossipRangeCountdown, int32(math.Ceil(math.Min(rangeCountdown, 3))))
 	leaseCountdown := float64(storeDesc.Capacity.LeaseCount) * s.cfg.TestingKnobs.GossipWhenCapacityDeltaExceedsFraction
@@ -2512,9 +2379,8 @@ func (s *Store) GossipStore(ctx context.Context, useCached bool) error {
 	syncutil.StoreFloat64(&s.gossipQueriesPerSecondVal, storeDesc.Capacity.QueriesPerSecond)
 	syncutil.StoreFloat64(&s.gossipWritesPerSecondVal, storeDesc.Capacity.WritesPerSecond)
 
-	// Unique gossip key per store.
 	gossipStoreKey := gossip.MakeStoreKey(storeDesc.StoreID)
-	// Gossip store descriptor.
+
 	return s.cfg.Gossip.AddInfoProto(gossipStoreKey, storeDesc, gossip.StoreTTL)
 }
 
@@ -2527,119 +2393,178 @@ const (
 	leaseRemoveEvent
 )
 
-// maybeGossipOnCapacityChange decrements the countdown on range
-// and leaseholder counts. If it reaches 0, then we trigger an
-// immediate gossip of this store's descriptor, to include updated
-// capacity information.
 func (s *Store) maybeGossipOnCapacityChange(ctx context.Context, cce capacityChangeEvent) {
-	if s.cfg.TestingKnobs.DisableLeaseCapacityGossip && (cce == leaseAddEvent || cce == leaseRemoveEvent) {
+	__antithesis_instrumentation__.Notify(124361)
+	if s.cfg.TestingKnobs.DisableLeaseCapacityGossip && func() bool {
+		__antithesis_instrumentation__.Notify(124364)
+		return (cce == leaseAddEvent || func() bool {
+			__antithesis_instrumentation__.Notify(124365)
+			return cce == leaseRemoveEvent == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(124366)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(124367)
 	}
+	__antithesis_instrumentation__.Notify(124362)
 
-	// Incrementally adjust stats to keep them up to date even if the
-	// capacity is gossiped, but isn't due yet to be recomputed from scratch.
 	s.cachedCapacity.Lock()
 	switch cce {
 	case rangeAddEvent:
+		__antithesis_instrumentation__.Notify(124368)
 		s.cachedCapacity.RangeCount++
 	case rangeRemoveEvent:
+		__antithesis_instrumentation__.Notify(124369)
 		s.cachedCapacity.RangeCount--
 	case leaseAddEvent:
+		__antithesis_instrumentation__.Notify(124370)
 		s.cachedCapacity.LeaseCount++
 	case leaseRemoveEvent:
+		__antithesis_instrumentation__.Notify(124371)
 		s.cachedCapacity.LeaseCount--
+	default:
+		__antithesis_instrumentation__.Notify(124372)
 	}
+	__antithesis_instrumentation__.Notify(124363)
 	s.cachedCapacity.Unlock()
 
-	if ((cce == rangeAddEvent || cce == rangeRemoveEvent) && atomic.AddInt32(&s.gossipRangeCountdown, -1) == 0) ||
-		((cce == leaseAddEvent || cce == leaseRemoveEvent) && atomic.AddInt32(&s.gossipLeaseCountdown, -1) == 0) {
-		// Reset countdowns to avoid unnecessary gossiping.
+	if ((cce == rangeAddEvent || func() bool {
+		__antithesis_instrumentation__.Notify(124373)
+		return cce == rangeRemoveEvent == true
+	}() == true) && func() bool {
+		__antithesis_instrumentation__.Notify(124374)
+		return atomic.AddInt32(&s.gossipRangeCountdown, -1) == 0 == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(124375)
+		return ((cce == leaseAddEvent || func() bool {
+			__antithesis_instrumentation__.Notify(124376)
+			return cce == leaseRemoveEvent == true
+		}() == true) && func() bool {
+			__antithesis_instrumentation__.Notify(124377)
+			return atomic.AddInt32(&s.gossipLeaseCountdown, -1) == 0 == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(124378)
+
 		atomic.StoreInt32(&s.gossipRangeCountdown, 0)
 		atomic.StoreInt32(&s.gossipLeaseCountdown, 0)
-		s.asyncGossipStore(ctx, "capacity change", true /* useCached */)
+		s.asyncGossipStore(ctx, "capacity change", true)
+	} else {
+		__antithesis_instrumentation__.Notify(124379)
 	}
 }
 
-// recordNewPerSecondStats takes recently calculated values for the number of
-// queries and key writes the store is handling and decides whether either has
-// changed enough to justify re-gossiping the store's capacity.
 func (s *Store) recordNewPerSecondStats(newQPS, newWPS float64) {
+	__antithesis_instrumentation__.Notify(124380)
 	oldQPS := syncutil.LoadFloat64(&s.gossipQueriesPerSecondVal)
 	oldWPS := syncutil.LoadFloat64(&s.gossipWritesPerSecondVal)
-	if oldQPS == -1 || oldWPS == -1 {
-		// Gossiping of store capacity is already ongoing.
+	if oldQPS == -1 || func() bool {
+		__antithesis_instrumentation__.Notify(124384)
+		return oldWPS == -1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(124385)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(124386)
 	}
+	__antithesis_instrumentation__.Notify(124381)
 
 	const minAbsoluteChange = 100
-	updateForQPS := (newQPS < oldQPS*.5 || newQPS > oldQPS*1.5) && math.Abs(newQPS-oldQPS) > minAbsoluteChange
-	updateForWPS := (newWPS < oldWPS*.5 || newWPS > oldWPS*1.5) && math.Abs(newWPS-oldWPS) > minAbsoluteChange
+	updateForQPS := (newQPS < oldQPS*.5 || func() bool {
+		__antithesis_instrumentation__.Notify(124387)
+		return newQPS > oldQPS*1.5 == true
+	}() == true) && func() bool {
+		__antithesis_instrumentation__.Notify(124388)
+		return math.Abs(newQPS-oldQPS) > minAbsoluteChange == true
+	}() == true
+	updateForWPS := (newWPS < oldWPS*.5 || func() bool {
+		__antithesis_instrumentation__.Notify(124389)
+		return newWPS > oldWPS*1.5 == true
+	}() == true) && func() bool {
+		__antithesis_instrumentation__.Notify(124390)
+		return math.Abs(newWPS-oldWPS) > minAbsoluteChange == true
+	}() == true
 
-	if !updateForQPS && !updateForWPS {
+	if !updateForQPS && func() bool {
+		__antithesis_instrumentation__.Notify(124391)
+		return !updateForWPS == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(124392)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(124393)
 	}
+	__antithesis_instrumentation__.Notify(124382)
 
 	var message string
-	if updateForQPS && updateForWPS {
+	if updateForQPS && func() bool {
+		__antithesis_instrumentation__.Notify(124394)
+		return updateForWPS == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(124395)
 		message = "queries-per-second and writes-per-second change"
-	} else if updateForQPS {
-		message = "queries-per-second change"
 	} else {
-		message = "writes-per-second change"
+		__antithesis_instrumentation__.Notify(124396)
+		if updateForQPS {
+			__antithesis_instrumentation__.Notify(124397)
+			message = "queries-per-second change"
+		} else {
+			__antithesis_instrumentation__.Notify(124398)
+			message = "writes-per-second change"
+		}
 	}
-	// TODO(a-robinson): Use the provided values to avoid having to recalculate
-	// them in GossipStore.
-	s.asyncGossipStore(context.TODO(), message, false /* useCached */)
+	__antithesis_instrumentation__.Notify(124383)
+
+	s.asyncGossipStore(context.TODO(), message, false)
 }
 
-// VisitReplicasOption optionally modifies store.VisitReplicas.
 type VisitReplicasOption func(*storeReplicaVisitor)
 
-// WithReplicasInOrder is a VisitReplicasOption that ensures replicas are
-// visited in increasing RangeID order.
 func WithReplicasInOrder() VisitReplicasOption {
+	__antithesis_instrumentation__.Notify(124399)
 	return func(visitor *storeReplicaVisitor) {
+		__antithesis_instrumentation__.Notify(124400)
 		visitor.InOrder()
 	}
 }
 
-// VisitReplicas invokes the visitor on the Store's Replicas until the visitor returns false.
-// Replicas which are added to the Store after iteration begins may or may not be observed.
 func (s *Store) VisitReplicas(visitor func(*Replica) (wantMore bool), opts ...VisitReplicasOption) {
+	__antithesis_instrumentation__.Notify(124401)
 	v := newStoreReplicaVisitor(s)
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(124403)
 		opt(v)
 	}
+	__antithesis_instrumentation__.Notify(124402)
 	v.Visit(visitor)
 }
 
-// visitReplicasByKey invokes the visitor on all the replicas for ranges that
-// overlap [startKey, endKey), or until the visitor returns false. Replicas are
-// visited in key order, with `s.mu` held. Placeholders are not visited.
-//
-// Visited replicas might be IsDestroyed(); if the visitor cares, it needs to
-// protect against it itself.
 func (s *Store) visitReplicasByKey(
 	ctx context.Context,
 	startKey, endKey roachpb.RKey,
 	order IterationOrder,
-	visitor func(context.Context, *Replica) error, // can return iterutil.StopIteration()
+	visitor func(context.Context, *Replica) error,
 ) error {
+	__antithesis_instrumentation__.Notify(124404)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.mu.replicasByKey.VisitKeyRange(ctx, startKey, endKey, order, func(ctx context.Context, it replicaOrPlaceholder) error {
+		__antithesis_instrumentation__.Notify(124405)
 		if it.repl != nil {
+			__antithesis_instrumentation__.Notify(124407)
 			return visitor(ctx, it.repl)
+		} else {
+			__antithesis_instrumentation__.Notify(124408)
 		}
+		__antithesis_instrumentation__.Notify(124406)
 		return nil
 	})
 }
 
-// WriteLastUpTimestamp records the supplied timestamp into the "last up" key
-// on this store. This value should be refreshed whenever this store's node
-// updates its own liveness record; it is used by a restarting store to
-// determine the approximate time that it stopped.
 func (s *Store) WriteLastUpTimestamp(ctx context.Context, time hlc.Timestamp) error {
+	__antithesis_instrumentation__.Notify(124409)
 	ctx = s.AnnotateCtx(ctx)
 	return storage.MVCCPutProto(
 		ctx,
@@ -2652,29 +2577,33 @@ func (s *Store) WriteLastUpTimestamp(ctx context.Context, time hlc.Timestamp) er
 	)
 }
 
-// ReadLastUpTimestamp returns the "last up" timestamp recorded in this store.
-// This value can be used to approximate the last time the engine was was being
-// served as a store by a running node. If the store does not contain a "last
-// up" timestamp (for example, on a newly bootstrapped store), the zero
-// timestamp is returned instead.
 func (s *Store) ReadLastUpTimestamp(ctx context.Context) (hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(124410)
 	var timestamp hlc.Timestamp
 	ok, err := storage.MVCCGetProto(ctx, s.Engine(), keys.StoreLastUpKey(), hlc.Timestamp{},
 		&timestamp, storage.MVCCGetOptions{})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124412)
 		return hlc.Timestamp{}, err
-	} else if !ok {
-		return hlc.Timestamp{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(124413)
+		if !ok {
+			__antithesis_instrumentation__.Notify(124414)
+			return hlc.Timestamp{}, nil
+		} else {
+			__antithesis_instrumentation__.Notify(124415)
+		}
 	}
+	__antithesis_instrumentation__.Notify(124411)
 	return timestamp, nil
 }
 
-// WriteHLCUpperBound records an upper bound to the wall time of the HLC
 func (s *Store) WriteHLCUpperBound(ctx context.Context, time int64) error {
+	__antithesis_instrumentation__.Notify(124416)
 	ctx = s.AnnotateCtx(ctx)
 	ts := hlc.Timestamp{WallTime: time}
 	batch := s.Engine().NewBatch()
-	// Write has to sync to disk to ensure HLC monotonicity across restarts
+
 	defer batch.Close()
 	if err := storage.MVCCPutProto(
 		ctx,
@@ -2685,243 +2614,329 @@ func (s *Store) WriteHLCUpperBound(ctx context.Context, time int64) error {
 		nil,
 		&ts,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(124419)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124420)
 	}
+	__antithesis_instrumentation__.Notify(124417)
 
-	if err := batch.Commit(true /* sync */); err != nil {
+	if err := batch.Commit(true); err != nil {
+		__antithesis_instrumentation__.Notify(124421)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124422)
 	}
+	__antithesis_instrumentation__.Notify(124418)
 	return nil
 }
 
-// ReadHLCUpperBound returns the upper bound to the wall time of the HLC
-// If this value does not exist 0 is returned
 func ReadHLCUpperBound(ctx context.Context, e storage.Engine) (int64, error) {
+	__antithesis_instrumentation__.Notify(124423)
 	var timestamp hlc.Timestamp
 	ok, err := storage.MVCCGetProto(ctx, e, keys.StoreHLCUpperBoundKey(), hlc.Timestamp{},
 		&timestamp, storage.MVCCGetOptions{})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124425)
 		return 0, err
-	} else if !ok {
-		return 0, nil
+	} else {
+		__antithesis_instrumentation__.Notify(124426)
+		if !ok {
+			__antithesis_instrumentation__.Notify(124427)
+			return 0, nil
+		} else {
+			__antithesis_instrumentation__.Notify(124428)
+		}
 	}
+	__antithesis_instrumentation__.Notify(124424)
 	return timestamp.WallTime, nil
 }
 
-// ReadMaxHLCUpperBound returns the maximum of the stored hlc upper bounds
-// among all the engines. This value is optionally persisted by the server and
-// it is guaranteed to be higher than any wall time used by the HLC. If this
-// value is persisted, HLC wall clock monotonicity is guaranteed across server
-// restarts
 func ReadMaxHLCUpperBound(ctx context.Context, engines []storage.Engine) (int64, error) {
+	__antithesis_instrumentation__.Notify(124429)
 	var hlcUpperBound int64
 	for _, e := range engines {
+		__antithesis_instrumentation__.Notify(124431)
 		engineHLCUpperBound, err := ReadHLCUpperBound(ctx, e)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(124433)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(124434)
 		}
+		__antithesis_instrumentation__.Notify(124432)
 		if engineHLCUpperBound > hlcUpperBound {
+			__antithesis_instrumentation__.Notify(124435)
 			hlcUpperBound = engineHLCUpperBound
+		} else {
+			__antithesis_instrumentation__.Notify(124436)
 		}
 	}
+	__antithesis_instrumentation__.Notify(124430)
 	return hlcUpperBound, nil
 }
 
-// checkCanInitializeEngine ensures that the engine is empty except for a
-// cluster version, which must be present.
 func checkCanInitializeEngine(ctx context.Context, eng storage.Engine) error {
-	// See if this is an already-bootstrapped store.
+	__antithesis_instrumentation__.Notify(124437)
+
 	ident, err := ReadStoreIdent(ctx, eng)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(124444)
 		return errors.Errorf("engine already initialized as %s", ident.String())
-	} else if !errors.HasType(err, (*NotBootstrappedError)(nil)) {
-		return errors.Wrap(err, "unable to read store ident")
+	} else {
+		__antithesis_instrumentation__.Notify(124445)
+		if !errors.HasType(err, (*NotBootstrappedError)(nil)) {
+			__antithesis_instrumentation__.Notify(124446)
+			return errors.Wrap(err, "unable to read store ident")
+		} else {
+			__antithesis_instrumentation__.Notify(124447)
+		}
 	}
-	// Engine is not bootstrapped yet (i.e. no StoreIdent). Does it contain a
-	// cluster version, cached settings and nothing else? Note that there is one
-	// cluster version key and many cached settings key, and the cluster version
-	// key precedes the cached settings.
-	//
-	// We use an EngineIterator to ensure that there are no keys that cannot be
-	// parsed as MVCCKeys (e.g. lock table keys) in the engine.
+	__antithesis_instrumentation__.Notify(124438)
+
 	iter := eng.NewEngineIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
 	defer iter.Close()
 	valid, err := iter.SeekEngineKeyGE(storage.EngineKey{Key: roachpb.KeyMin})
 	if !valid {
+		__antithesis_instrumentation__.Notify(124448)
 		if err == nil {
+			__antithesis_instrumentation__.Notify(124450)
 			return errors.New("no cluster version found on uninitialized engine")
+		} else {
+			__antithesis_instrumentation__.Notify(124451)
 		}
+		__antithesis_instrumentation__.Notify(124449)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124452)
 	}
+	__antithesis_instrumentation__.Notify(124439)
 	getMVCCKey := func() (storage.MVCCKey, error) {
+		__antithesis_instrumentation__.Notify(124453)
 		var k storage.EngineKey
 		k, err = iter.EngineKey()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(124456)
 			return storage.MVCCKey{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(124457)
 		}
+		__antithesis_instrumentation__.Notify(124454)
 		if !k.IsMVCCKey() {
+			__antithesis_instrumentation__.Notify(124458)
 			return storage.MVCCKey{}, errors.Errorf("found non-mvcc key: %s", k)
+		} else {
+			__antithesis_instrumentation__.Notify(124459)
 		}
+		__antithesis_instrumentation__.Notify(124455)
 		return k.ToMVCCKey()
 	}
+	__antithesis_instrumentation__.Notify(124440)
 	var k storage.MVCCKey
 	if k, err = getMVCCKey(); err != nil {
+		__antithesis_instrumentation__.Notify(124460)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124461)
 	}
+	__antithesis_instrumentation__.Notify(124441)
 	if !k.Key.Equal(keys.StoreClusterVersionKey()) {
+		__antithesis_instrumentation__.Notify(124462)
 		return errors.New("no cluster version found on uninitialized engine")
+	} else {
+		__antithesis_instrumentation__.Notify(124463)
 	}
+	__antithesis_instrumentation__.Notify(124442)
 	valid, err = iter.NextEngineKey()
 	for valid {
-		// Only allowed to find cached cluster settings on an uninitialized
-		// engine.
+		__antithesis_instrumentation__.Notify(124464)
+
 		if k, err = getMVCCKey(); err != nil {
+			__antithesis_instrumentation__.Notify(124467)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(124468)
 		}
+		__antithesis_instrumentation__.Notify(124465)
 		if _, err := keys.DecodeStoreCachedSettingsKey(k.Key); err != nil {
+			__antithesis_instrumentation__.Notify(124469)
 			return errors.Errorf("engine cannot be bootstrapped, contains key:\n%s", k.String())
+		} else {
+			__antithesis_instrumentation__.Notify(124470)
 		}
-		// There may be more cached cluster settings, so continue iterating.
+		__antithesis_instrumentation__.Notify(124466)
+
 		valid, err = iter.NextEngineKey()
 	}
+	__antithesis_instrumentation__.Notify(124443)
 	return err
 }
 
-// GetReplica fetches a replica by Range ID. Returns an error if no replica is found.
-//
-// See also GetReplicaIfExists for a more perfomant version.
 func (s *Store) GetReplica(rangeID roachpb.RangeID) (*Replica, error) {
+	__antithesis_instrumentation__.Notify(124471)
 	if r := s.GetReplicaIfExists(rangeID); r != nil {
+		__antithesis_instrumentation__.Notify(124473)
 		return r, nil
+	} else {
+		__antithesis_instrumentation__.Notify(124474)
 	}
+	__antithesis_instrumentation__.Notify(124472)
 	return nil, roachpb.NewRangeNotFoundError(rangeID, s.StoreID())
 }
 
-// GetReplicaIfExists returns the replica with the given RangeID or nil.
 func (s *Store) GetReplicaIfExists(rangeID roachpb.RangeID) *Replica {
+	__antithesis_instrumentation__.Notify(124475)
 	if repl, ok := s.mu.replicasByRangeID.Load(rangeID); ok {
+		__antithesis_instrumentation__.Notify(124477)
 		return repl
+	} else {
+		__antithesis_instrumentation__.Notify(124478)
 	}
+	__antithesis_instrumentation__.Notify(124476)
 	return nil
 }
 
-// LookupReplica looks up the replica that contains the specified key. It
-// returns nil if no such replica exists.
 func (s *Store) LookupReplica(key roachpb.RKey) *Replica {
+	__antithesis_instrumentation__.Notify(124479)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.mu.replicasByKey.LookupReplica(context.Background(), key)
 }
 
-// lookupPrecedingReplica finds the replica in this store that immediately
-// precedes the specified key without containing it. It returns nil if no such
-// replica exists. It ignores replica placeholders.
-//
-// Concretely, when key represents a key within replica R,
-// lookupPrecedingReplica returns the replica that immediately precedes R in
-// replicasByKey.
 func (s *Store) lookupPrecedingReplica(key roachpb.RKey) *Replica {
+	__antithesis_instrumentation__.Notify(124480)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.mu.replicasByKey.LookupPrecedingReplica(context.Background(), key)
 }
 
-// getOverlappingKeyRangeLocked returns an replicaOrPlaceholder from Store.mu.replicasByKey
-// overlapping the given descriptor (or nil if no such replicaOrPlaceholder exists).
 func (s *Store) getOverlappingKeyRangeLocked(
 	rngDesc *roachpb.RangeDescriptor,
 ) replicaOrPlaceholder {
+	__antithesis_instrumentation__.Notify(124481)
 	var it replicaOrPlaceholder
 	if err := s.mu.replicasByKey.VisitKeyRange(
 		context.Background(), rngDesc.StartKey, rngDesc.EndKey, AscendingKeyOrder,
 		func(ctx context.Context, iit replicaOrPlaceholder) error {
+			__antithesis_instrumentation__.Notify(124483)
 			it = iit
 			return iterutil.StopIteration()
 		}); err != nil {
+		__antithesis_instrumentation__.Notify(124484)
 		log.Fatalf(context.Background(), "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(124485)
 	}
+	__antithesis_instrumentation__.Notify(124482)
 
 	return it
 }
 
-// RaftStatus returns the current raft status of the local replica of
-// the given range.
 func (s *Store) RaftStatus(rangeID roachpb.RangeID) *raft.Status {
+	__antithesis_instrumentation__.Notify(124486)
 	if repl, ok := s.mu.replicasByRangeID.Load(rangeID); ok {
+		__antithesis_instrumentation__.Notify(124488)
 		return repl.RaftStatus()
+	} else {
+		__antithesis_instrumentation__.Notify(124489)
 	}
+	__antithesis_instrumentation__.Notify(124487)
 	return nil
 }
 
-// ClusterID accessor.
-func (s *Store) ClusterID() uuid.UUID { return s.Ident.ClusterID }
+func (s *Store) ClusterID() uuid.UUID {
+	__antithesis_instrumentation__.Notify(124490)
+	return s.Ident.ClusterID
+}
 
-// NodeID accessor.
-func (s *Store) NodeID() roachpb.NodeID { return s.Ident.NodeID }
+func (s *Store) NodeID() roachpb.NodeID {
+	__antithesis_instrumentation__.Notify(124491)
+	return s.Ident.NodeID
+}
 
-// StoreID accessor.
-func (s *Store) StoreID() roachpb.StoreID { return s.Ident.StoreID }
+func (s *Store) StoreID() roachpb.StoreID {
+	__antithesis_instrumentation__.Notify(124492)
+	return s.Ident.StoreID
+}
 
-// Clock accessor.
-func (s *Store) Clock() *hlc.Clock { return s.cfg.Clock }
+func (s *Store) Clock() *hlc.Clock { __antithesis_instrumentation__.Notify(124493); return s.cfg.Clock }
 
-// Engine accessor.
-func (s *Store) Engine() storage.Engine { return s.engine }
+func (s *Store) Engine() storage.Engine {
+	__antithesis_instrumentation__.Notify(124494)
+	return s.engine
+}
 
-// DB accessor.
-func (s *Store) DB() *kv.DB { return s.cfg.DB }
+func (s *Store) DB() *kv.DB { __antithesis_instrumentation__.Notify(124495); return s.cfg.DB }
 
-// Gossip accessor.
-func (s *Store) Gossip() *gossip.Gossip { return s.cfg.Gossip }
+func (s *Store) Gossip() *gossip.Gossip {
+	__antithesis_instrumentation__.Notify(124496)
+	return s.cfg.Gossip
+}
 
-// Stopper accessor.
-func (s *Store) Stopper() *stop.Stopper { return s.stopper }
+func (s *Store) Stopper() *stop.Stopper {
+	__antithesis_instrumentation__.Notify(124497)
+	return s.stopper
+}
 
-// TestingKnobs accessor.
-func (s *Store) TestingKnobs() *StoreTestingKnobs { return &s.cfg.TestingKnobs }
+func (s *Store) TestingKnobs() *StoreTestingKnobs {
+	__antithesis_instrumentation__.Notify(124498)
+	return &s.cfg.TestingKnobs
+}
 
-// IsDraining accessor.
 func (s *Store) IsDraining() bool {
+	__antithesis_instrumentation__.Notify(124499)
 	return s.draining.Load().(bool)
 }
 
-// AllocateRangeID allocates a new RangeID from the cluster-wide RangeID allocator.
 func (s *Store) AllocateRangeID(ctx context.Context) (roachpb.RangeID, error) {
+	__antithesis_instrumentation__.Notify(124500)
 	id, err := s.rangeIDAlloc.Allocate(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124502)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(124503)
 	}
+	__antithesis_instrumentation__.Notify(124501)
 	return roachpb.RangeID(id), nil
 }
 
-// Attrs returns the attributes of the underlying store.
 func (s *Store) Attrs() roachpb.Attributes {
+	__antithesis_instrumentation__.Notify(124504)
 	return s.engine.Attrs()
 }
 
-// Properties returns the properties of the underlying store.
 func (s *Store) Properties() roachpb.StoreProperties {
+	__antithesis_instrumentation__.Notify(124505)
 	return s.engine.Properties()
 }
 
-// Capacity returns the capacity of the underlying storage engine. Note that
-// this does not include reservations.
-// Note that Capacity() has the side effect of updating some of the store's
-// internal statistics about its replicas.
 func (s *Store) Capacity(ctx context.Context, useCached bool) (roachpb.StoreCapacity, error) {
+	__antithesis_instrumentation__.Notify(124506)
 	if useCached {
+		__antithesis_instrumentation__.Notify(124510)
 		s.cachedCapacity.Lock()
 		capacity := s.cachedCapacity.StoreCapacity
 		s.cachedCapacity.Unlock()
 		if capacity != (roachpb.StoreCapacity{}) {
+			__antithesis_instrumentation__.Notify(124511)
 			return capacity, nil
+		} else {
+			__antithesis_instrumentation__.Notify(124512)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(124513)
 	}
+	__antithesis_instrumentation__.Notify(124507)
 
 	capacity, err := s.engine.Capacity()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124514)
 		return capacity, err
+	} else {
+		__antithesis_instrumentation__.Notify(124515)
 	}
+	__antithesis_instrumentation__.Notify(124508)
 
 	now := s.cfg.Clock.NowAsClockTimestamp()
 	var leaseCount int32
@@ -2934,33 +2949,44 @@ func (s *Store) Capacity(ctx context.Context, useCached bool) (roachpb.StoreCapa
 	writesPerReplica := make([]float64, 0, replicaCount)
 	rankingsAccumulator := s.replRankings.newAccumulator()
 	newStoreReplicaVisitor(s).Visit(func(r *Replica) bool {
+		__antithesis_instrumentation__.Notify(124516)
 		rangeCount++
 		if r.OwnsValidLease(ctx, now) {
+			__antithesis_instrumentation__.Notify(124520)
 			leaseCount++
+		} else {
+			__antithesis_instrumentation__.Notify(124521)
 		}
+		__antithesis_instrumentation__.Notify(124517)
 		mvccStats := r.GetMVCCStats()
 		logicalBytes += mvccStats.Total()
 		bytesPerReplica = append(bytesPerReplica, float64(mvccStats.Total()))
-		// TODO(a-robinson): How dangerous is it that these numbers will be
-		// incorrectly low the first time or two it gets gossiped when a store
-		// starts? We can't easily have a countdown as its value changes like for
-		// leases/replicas.
+
 		var qps float64
 		if avgQPS, dur := r.leaseholderStats.avgQPS(); dur >= MinStatsDuration {
+			__antithesis_instrumentation__.Notify(124522)
 			qps = avgQPS
 			totalQueriesPerSecond += avgQPS
-			// TODO(a-robinson): Calculate percentiles for qps? Get rid of other percentiles?
+
+		} else {
+			__antithesis_instrumentation__.Notify(124523)
 		}
+		__antithesis_instrumentation__.Notify(124518)
 		if wps, dur := r.writeStats.avgQPS(); dur >= MinStatsDuration {
+			__antithesis_instrumentation__.Notify(124524)
 			totalWritesPerSecond += wps
 			writesPerReplica = append(writesPerReplica, wps)
+		} else {
+			__antithesis_instrumentation__.Notify(124525)
 		}
+		__antithesis_instrumentation__.Notify(124519)
 		rankingsAccumulator.addReplica(replicaWithStats{
 			repl: r,
 			qps:  qps,
 		})
 		return true
 	})
+	__antithesis_instrumentation__.Notify(124509)
 	capacity.RangeCount = rangeCount
 	capacity.LeaseCount = leaseCount
 	capacity.LogicalBytes = logicalBytes
@@ -2979,41 +3005,43 @@ func (s *Store) Capacity(ctx context.Context, useCached bool) (roachpb.StoreCapa
 	return capacity, nil
 }
 
-// ReplicaCount returns the number of replicas contained by this store. This
-// method is O(n) in the number of replicas and should not be called from
-// performance critical code.
 func (s *Store) ReplicaCount() int {
+	__antithesis_instrumentation__.Notify(124526)
 	var count int
 	s.mu.replicasByRangeID.Range(func(*Replica) {
+		__antithesis_instrumentation__.Notify(124528)
 		count++
 	})
+	__antithesis_instrumentation__.Notify(124527)
 	return count
 }
 
-// Registry returns the store registry.
 func (s *Store) Registry() *metric.Registry {
+	__antithesis_instrumentation__.Notify(124529)
 	return s.metrics.registry
 }
 
-// Metrics returns the store's metric struct.
 func (s *Store) Metrics() *StoreMetrics {
+	__antithesis_instrumentation__.Notify(124530)
 	return s.metrics
 }
 
-// ReplicateQueueMetrics returns the store's replicateQueue metric struct.
 func (s *Store) ReplicateQueueMetrics() ReplicateQueueMetrics {
+	__antithesis_instrumentation__.Notify(124531)
 	return s.replicateQueue.metrics
 }
 
-// Descriptor returns a StoreDescriptor including current store
-// capacity information.
 func (s *Store) Descriptor(ctx context.Context, useCached bool) (*roachpb.StoreDescriptor, error) {
+	__antithesis_instrumentation__.Notify(124532)
 	capacity, err := s.Capacity(ctx, useCached)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124534)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(124535)
 	}
+	__antithesis_instrumentation__.Notify(124533)
 
-	// Initialize the store descriptor.
 	return &roachpb.StoreDescriptor{
 		StoreID:    s.Ident.StoreID,
 		Attrs:      s.Attrs(),
@@ -3023,45 +3051,53 @@ func (s *Store) Descriptor(ctx context.Context, useCached bool) (*roachpb.StoreD
 	}, nil
 }
 
-// RangeFeed registers a rangefeed over the specified span. It sends updates to
-// the provided stream and returns with an optional error when the rangefeed is
-// complete.
 func (s *Store) RangeFeed(
 	args *roachpb.RangeFeedRequest, stream roachpb.Internal_RangeFeedServer,
 ) *roachpb.Error {
+	__antithesis_instrumentation__.Notify(124536)
 
 	if filter := s.TestingKnobs().TestingRangefeedFilter; filter != nil {
+		__antithesis_instrumentation__.Notify(124541)
 		if pErr := filter(args, stream); pErr != nil {
+			__antithesis_instrumentation__.Notify(124542)
 			return pErr
+		} else {
+			__antithesis_instrumentation__.Notify(124543)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(124544)
 	}
+	__antithesis_instrumentation__.Notify(124537)
 
 	if err := verifyKeys(args.Span.Key, args.Span.EndKey, true); err != nil {
+		__antithesis_instrumentation__.Notify(124545)
 		return roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(124546)
 	}
+	__antithesis_instrumentation__.Notify(124538)
 
-	// Get range and add command to the range for execution.
 	repl, err := s.GetReplica(args.RangeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124547)
 		return roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(124548)
 	}
+	__antithesis_instrumentation__.Notify(124539)
 	if !repl.IsInitialized() {
-		// (*Store).Send has an optimization for uninitialized replicas to send back
-		// a NotLeaseHolderError with a hint of where an initialized replica might
-		// be found. RangeFeeds can always be served from followers and so don't
-		// otherwise return NotLeaseHolderError. For simplicity we also don't return
-		// one here.
+		__antithesis_instrumentation__.Notify(124549)
+
 		return roachpb.NewError(roachpb.NewRangeNotFoundError(args.RangeID, s.StoreID()))
+	} else {
+		__antithesis_instrumentation__.Notify(124550)
 	}
+	__antithesis_instrumentation__.Notify(124540)
 	return repl.RangeFeed(args, stream)
 }
 
-// updateReplicationGauges counts a number of simple replication statistics for
-// the ranges in this store.
-// TODO(bram): #4564 It may be appropriate to compute these statistics while
-// scanning ranges. An ideal solution would be to create incremental events
-// whenever availability changes.
 func (s *Store) updateReplicationGauges(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(124551)
 	var (
 		raftLeaderCount               int64
 		leaseHolderCount              int64
@@ -3094,8 +3130,12 @@ func (s *Store) updateReplicationGauges(ctx context.Context) error {
 	now := s.cfg.Clock.NowAsClockTimestamp()
 	var livenessMap liveness.IsLiveMap
 	if s.cfg.NodeLiveness != nil {
+		__antithesis_instrumentation__.Notify(124557)
 		livenessMap = s.cfg.NodeLiveness.GetIsLiveMap()
+	} else {
+		__antithesis_instrumentation__.Notify(124558)
 	}
+	__antithesis_instrumentation__.Notify(124552)
 	clusterNodes := s.ClusterNodeCount()
 
 	s.mu.RLock()
@@ -3103,65 +3143,132 @@ func (s *Store) updateReplicationGauges(ctx context.Context) error {
 	s.mu.RUnlock()
 
 	newStoreReplicaVisitor(s).Visit(func(rep *Replica) bool {
+		__antithesis_instrumentation__.Notify(124559)
 		metrics := rep.Metrics(ctx, now, livenessMap, clusterNodes)
 		if metrics.Leader {
+			__antithesis_instrumentation__.Notify(124570)
 			raftLeaderCount++
-			if metrics.LeaseValid && !metrics.Leaseholder {
+			if metrics.LeaseValid && func() bool {
+				__antithesis_instrumentation__.Notify(124571)
+				return !metrics.Leaseholder == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(124572)
 				raftLeaderNotLeaseHolderCount++
+			} else {
+				__antithesis_instrumentation__.Notify(124573)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(124574)
 		}
+		__antithesis_instrumentation__.Notify(124560)
 		if metrics.Leaseholder {
+			__antithesis_instrumentation__.Notify(124575)
 			leaseHolderCount++
 			switch metrics.LeaseType {
 			case roachpb.LeaseNone:
+				__antithesis_instrumentation__.Notify(124576)
 			case roachpb.LeaseExpiration:
+				__antithesis_instrumentation__.Notify(124577)
 				leaseExpirationCount++
 			case roachpb.LeaseEpoch:
+				__antithesis_instrumentation__.Notify(124578)
 				leaseEpochCount++
+			default:
+				__antithesis_instrumentation__.Notify(124579)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(124580)
 		}
+		__antithesis_instrumentation__.Notify(124561)
 		if metrics.Quiescent {
+			__antithesis_instrumentation__.Notify(124581)
 			quiescentCount++
+		} else {
+			__antithesis_instrumentation__.Notify(124582)
 		}
+		__antithesis_instrumentation__.Notify(124562)
 		if metrics.RangeCounter {
+			__antithesis_instrumentation__.Notify(124583)
 			rangeCount++
 			if metrics.Unavailable {
+				__antithesis_instrumentation__.Notify(124586)
 				unavailableRangeCount++
+			} else {
+				__antithesis_instrumentation__.Notify(124587)
 			}
+			__antithesis_instrumentation__.Notify(124584)
 			if metrics.Underreplicated {
+				__antithesis_instrumentation__.Notify(124588)
 				underreplicatedRangeCount++
+			} else {
+				__antithesis_instrumentation__.Notify(124589)
 			}
+			__antithesis_instrumentation__.Notify(124585)
 			if metrics.Overreplicated {
+				__antithesis_instrumentation__.Notify(124590)
 				overreplicatedRangeCount++
+			} else {
+				__antithesis_instrumentation__.Notify(124591)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(124592)
 		}
+		__antithesis_instrumentation__.Notify(124563)
 		behindCount += metrics.BehindCount
 		if qps, dur := rep.leaseholderStats.avgQPS(); dur >= MinStatsDuration {
+			__antithesis_instrumentation__.Notify(124593)
 			averageQueriesPerSecond += qps
+		} else {
+			__antithesis_instrumentation__.Notify(124594)
 		}
+		__antithesis_instrumentation__.Notify(124564)
 		if wps, dur := rep.writeStats.avgQPS(); dur >= MinStatsDuration {
+			__antithesis_instrumentation__.Notify(124595)
 			averageWritesPerSecond += wps
+		} else {
+			__antithesis_instrumentation__.Notify(124596)
 		}
+		__antithesis_instrumentation__.Notify(124565)
 		locks += metrics.LockTableMetrics.Locks
 		totalLockHoldDurationNanos += metrics.LockTableMetrics.TotalLockHoldDurationNanos
 		locksWithWaitQueues += metrics.LockTableMetrics.LocksWithWaitQueues
 		lockWaitQueueWaiters += metrics.LockTableMetrics.Waiters
 		totalLockWaitDurationNanos += metrics.LockTableMetrics.TotalWaitDurationNanos
 		if w := metrics.LockTableMetrics.TopKLocksByWaiters[0].Waiters; w > maxLockWaitQueueWaitersForLock {
+			__antithesis_instrumentation__.Notify(124597)
 			maxLockWaitQueueWaitersForLock = w
+		} else {
+			__antithesis_instrumentation__.Notify(124598)
 		}
+		__antithesis_instrumentation__.Notify(124566)
 		if w := metrics.LockTableMetrics.TopKLocksByHoldDuration[0].HoldDurationNanos; w > maxLockHoldDurationNanos {
+			__antithesis_instrumentation__.Notify(124599)
 			maxLockHoldDurationNanos = w
+		} else {
+			__antithesis_instrumentation__.Notify(124600)
 		}
+		__antithesis_instrumentation__.Notify(124567)
 		if w := metrics.LockTableMetrics.TopKLocksByWaitDuration[0].MaxWaitDurationNanos; w > maxLockWaitDurationNanos {
+			__antithesis_instrumentation__.Notify(124601)
 			maxLockWaitDurationNanos = w
+		} else {
+			__antithesis_instrumentation__.Notify(124602)
 		}
+		__antithesis_instrumentation__.Notify(124568)
 		mc := rep.GetClosedTimestamp(ctx)
-		if minMaxClosedTS.IsEmpty() || mc.Less(minMaxClosedTS) {
+		if minMaxClosedTS.IsEmpty() || func() bool {
+			__antithesis_instrumentation__.Notify(124603)
+			return mc.Less(minMaxClosedTS) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(124604)
 			minMaxClosedTS = mc
+		} else {
+			__antithesis_instrumentation__.Notify(124605)
 		}
-		return true // more
+		__antithesis_instrumentation__.Notify(124569)
+		return true
 	})
+	__antithesis_instrumentation__.Notify(124553)
 
 	s.metrics.RaftLeaderCount.Update(raftLeaderCount)
 	s.metrics.RaftLeaderNotLeaseHolderCount.Update(raftLeaderNotLeaseHolderCount)
@@ -3183,11 +3290,19 @@ func (s *Store) updateReplicationGauges(ctx context.Context) error {
 	var averageLockHoldDurationNanos int64
 	var averageLockWaitDurationNanos int64
 	if locks > 0 {
+		__antithesis_instrumentation__.Notify(124606)
 		averageLockHoldDurationNanos = totalLockHoldDurationNanos / locks
+	} else {
+		__antithesis_instrumentation__.Notify(124607)
 	}
+	__antithesis_instrumentation__.Notify(124554)
 	if lockWaitQueueWaiters > 0 {
+		__antithesis_instrumentation__.Notify(124608)
 		averageLockWaitDurationNanos = totalLockWaitDurationNanos / lockWaitQueueWaiters
+	} else {
+		__antithesis_instrumentation__.Notify(124609)
 	}
+	__antithesis_instrumentation__.Notify(124555)
 
 	s.metrics.Locks.Update(locks)
 	s.metrics.AverageLockHoldDurationNanos.Update(averageLockHoldDurationNanos)
@@ -3199,201 +3314,243 @@ func (s *Store) updateReplicationGauges(ctx context.Context) error {
 	s.metrics.MaxLockWaitQueueWaitersForLock.Update(maxLockWaitQueueWaitersForLock)
 
 	if !minMaxClosedTS.IsEmpty() {
+		__antithesis_instrumentation__.Notify(124610)
 		nanos := timeutil.Since(minMaxClosedTS.GoTime()).Nanoseconds()
 		s.metrics.ClosedTimestampMaxBehindNanos.Update(nanos)
+	} else {
+		__antithesis_instrumentation__.Notify(124611)
 	}
+	__antithesis_instrumentation__.Notify(124556)
 
 	s.metrics.RaftEnqueuedPending.Update(s.cfg.Transport.queuedMessageCount())
 
 	return nil
 }
 
-// checkpoint creates a RocksDB checkpoint in the auxiliary directory with the
-// provided tag used in the filepath. The filepath for the checkpoint directory
-// is returned.
 func (s *Store) checkpoint(ctx context.Context, tag string) (string, error) {
+	__antithesis_instrumentation__.Notify(124612)
 	checkpointBase := filepath.Join(s.engine.GetAuxiliaryDir(), "checkpoints")
 	_ = s.engine.MkdirAll(checkpointBase)
 
 	checkpointDir := filepath.Join(checkpointBase, tag)
 	if err := s.engine.CreateCheckpoint(checkpointDir); err != nil {
+		__antithesis_instrumentation__.Notify(124614)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(124615)
 	}
+	__antithesis_instrumentation__.Notify(124613)
 
 	return checkpointDir, nil
 }
 
-// ComputeMetrics immediately computes the current value of store metrics which
-// cannot be computed incrementally. This method should be invoked periodically
-// by a higher-level system which records store metrics.
-//
-// The tick argument should increment across repeated calls to this
-// method. It is used to compute some metrics less frequently than others.
 func (s *Store) ComputeMetrics(ctx context.Context, tick int) error {
+	__antithesis_instrumentation__.Notify(124616)
 	ctx = s.AnnotateCtx(ctx)
 	if err := s.updateCapacityGauges(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(124621)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124622)
 	}
+	__antithesis_instrumentation__.Notify(124617)
 	if err := s.updateReplicationGauges(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(124623)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124624)
 	}
+	__antithesis_instrumentation__.Notify(124618)
 
-	// Get the latest engine metrics.
 	m := s.engine.GetMetrics()
 	s.metrics.updateEngineMetrics(m)
 
-	// Get engine Env stats.
 	envStats, err := s.engine.GetEnvStats()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124625)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124626)
 	}
+	__antithesis_instrumentation__.Notify(124619)
 	s.metrics.updateEnvStats(*envStats)
 
-	// Log this metric infrequently (with current configurations,
-	// every 10 minutes). Trigger on tick 1 instead of tick 0 so that
-	// non-periodic callers of this method don't trigger expensive
-	// stats.
-	if tick%logSSTInfoTicks == 1 /* every 10m */ {
-		// NB: The initial blank line ensures that compaction stats display
-		// will not contain the log prefix.
+	if tick%logSSTInfoTicks == 1 {
+		__antithesis_instrumentation__.Notify(124627)
+
 		log.Infof(ctx, "\n%s", m.Metrics)
+	} else {
+		__antithesis_instrumentation__.Notify(124628)
 	}
+	__antithesis_instrumentation__.Notify(124620)
 	return nil
 }
 
-// ClusterNodeCount returns this store's view of the number of nodes in the
-// cluster. This is the metric used for adapative zone configs; ranges will not
-// be reported as underreplicated if it is low. Tests that wait for full
-// replication by tracking the underreplicated metric must also check for the
-// expected ClusterNodeCount to avoid catching the cluster while the first node
-// is initialized but the other nodes are not.
 func (s *Store) ClusterNodeCount() int {
+	__antithesis_instrumentation__.Notify(124629)
 	return s.cfg.StorePool.ClusterNodeCount()
 }
 
-// HotReplicaInfo contains a range descriptor and its QPS.
 type HotReplicaInfo struct {
 	Desc *roachpb.RangeDescriptor
 	QPS  float64
 }
 
-// HottestReplicas returns the hottest replicas on a store, sorted by their
-// QPS. Only contains ranges for which this store is the leaseholder.
-//
-// Note that this uses cached information, so it's cheap but may be slightly
-// out of date.
 func (s *Store) HottestReplicas() []HotReplicaInfo {
+	__antithesis_instrumentation__.Notify(124630)
 	topQPS := s.replRankings.topQPS()
 	hotRepls := make([]HotReplicaInfo, len(topQPS))
 	for i := range topQPS {
+		__antithesis_instrumentation__.Notify(124632)
 		hotRepls[i].Desc = topQPS[i].repl.Desc()
 		hotRepls[i].QPS = topQPS[i].qps
 	}
+	__antithesis_instrumentation__.Notify(124631)
 	return hotRepls
 }
 
-// StoreKeySpanStats carries the result of a stats computation over a key range.
 type StoreKeySpanStats struct {
 	ReplicaCount         int
 	MVCC                 enginepb.MVCCStats
 	ApproximateDiskBytes uint64
 }
 
-// ComputeStatsForKeySpan computes the aggregated MVCCStats for all replicas on
-// this store which contain any keys in the supplied range.
 func (s *Store) ComputeStatsForKeySpan(startKey, endKey roachpb.RKey) (StoreKeySpanStats, error) {
+	__antithesis_instrumentation__.Notify(124633)
 	var result StoreKeySpanStats
 
 	newStoreReplicaVisitor(s).Visit(func(repl *Replica) bool {
+		__antithesis_instrumentation__.Notify(124635)
 		desc := repl.Desc()
-		if bytes.Compare(startKey, desc.EndKey) >= 0 || bytes.Compare(desc.StartKey, endKey) >= 0 {
-			return true // continue
+		if bytes.Compare(startKey, desc.EndKey) >= 0 || func() bool {
+			__antithesis_instrumentation__.Notify(124637)
+			return bytes.Compare(desc.StartKey, endKey) >= 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(124638)
+			return true
+		} else {
+			__antithesis_instrumentation__.Notify(124639)
 		}
+		__antithesis_instrumentation__.Notify(124636)
 		result.MVCC.Add(repl.GetMVCCStats())
 		result.ReplicaCount++
 		return true
 	})
+	__antithesis_instrumentation__.Notify(124634)
 
 	var err error
 	result.ApproximateDiskBytes, err = s.engine.ApproximateDiskBytes(startKey.AsRawKey(), endKey.AsRawKey())
 	return result, err
 }
 
-// AllocatorDryRun runs the given replica through the allocator without actually
-// carrying out any changes, returning all trace messages collected along the way.
-// Intended to help power a debug endpoint.
 func (s *Store) AllocatorDryRun(ctx context.Context, repl *Replica) (tracing.Recording, error) {
+	__antithesis_instrumentation__.Notify(124640)
 	ctx, collectAndFinish := tracing.ContextWithRecordingSpan(ctx, s.cfg.AmbientCtx.Tracer, "allocator dry run")
 	defer collectAndFinish()
-	canTransferLease := func(ctx context.Context, repl *Replica) bool { return true }
+	canTransferLease := func(ctx context.Context, repl *Replica) bool {
+		__antithesis_instrumentation__.Notify(124643)
+		return true
+	}
+	__antithesis_instrumentation__.Notify(124641)
 	_, err := s.replicateQueue.processOneChange(
-		ctx, repl, canTransferLease, false /* scatter */, true, /* dryRun */
+		ctx, repl, canTransferLease, false, true,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124644)
 		log.Eventf(ctx, "error simulating allocator on replica %s: %s", repl, err)
+	} else {
+		__antithesis_instrumentation__.Notify(124645)
 	}
+	__antithesis_instrumentation__.Notify(124642)
 	return collectAndFinish(), nil
 }
 
-// ManuallyEnqueue runs the given replica through the requested queue,
-// returning all trace events collected along the way as well as the error
-// message returned from the queue's process method, if any.  Intended to help
-// power an admin debug endpoint.
 func (s *Store) ManuallyEnqueue(
 	ctx context.Context, queueName string, repl *Replica, skipShouldQueue bool,
 ) (recording tracing.Recording, processError error, enqueueError error) {
+	__antithesis_instrumentation__.Notify(124646)
 	ctx = repl.AnnotateCtx(ctx)
 
-	// Do not enqueue uninitialized replicas. The baseQueue ignores these during
-	// normal queue scheduling, but we error here to signal to the user that the
-	// operation was unsuccessful.
 	if !repl.IsInitialized() {
+		__antithesis_instrumentation__.Notify(124653)
 		return nil, nil, errors.Errorf("not enqueueing uninitialized replica %s", repl)
+	} else {
+		__antithesis_instrumentation__.Notify(124654)
 	}
+	__antithesis_instrumentation__.Notify(124647)
 
 	var queue queueImpl
 	var needsLease bool
 	for _, replicaQueue := range s.scanner.queues {
+		__antithesis_instrumentation__.Notify(124655)
 		if strings.EqualFold(replicaQueue.Name(), queueName) {
+			__antithesis_instrumentation__.Notify(124656)
 			queue = replicaQueue.(queueImpl)
 			needsLease = replicaQueue.NeedsLease()
+		} else {
+			__antithesis_instrumentation__.Notify(124657)
 		}
 	}
+	__antithesis_instrumentation__.Notify(124648)
 	if queue == nil {
+		__antithesis_instrumentation__.Notify(124658)
 		return nil, nil, errors.Errorf("unknown queue type %q", queueName)
+	} else {
+		__antithesis_instrumentation__.Notify(124659)
 	}
+	__antithesis_instrumentation__.Notify(124649)
 
 	confReader, err := s.GetConfReader(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124660)
 		return nil, nil, errors.Wrap(err,
 			"unable to retrieve conf reader, cannot run queue; make sure "+
 				"the cluster has been initialized and all nodes connected to it")
+	} else {
+		__antithesis_instrumentation__.Notify(124661)
 	}
+	__antithesis_instrumentation__.Notify(124650)
 
-	// Many queues are only meant to be run on leaseholder replicas, so attempt to
-	// take the lease here or bail out early if a different replica has it.
 	if needsLease {
+		__antithesis_instrumentation__.Notify(124662)
 		hasLease, pErr := repl.getLeaseForGossip(ctx)
 		if pErr != nil {
+			__antithesis_instrumentation__.Notify(124664)
 			return nil, nil, pErr.GoError()
+		} else {
+			__antithesis_instrumentation__.Notify(124665)
 		}
+		__antithesis_instrumentation__.Notify(124663)
 		if !hasLease {
+			__antithesis_instrumentation__.Notify(124666)
 			return nil, errors.Newf("replica %v does not have the range lease", repl), nil
+		} else {
+			__antithesis_instrumentation__.Notify(124667)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(124668)
 	}
+	__antithesis_instrumentation__.Notify(124651)
 
 	ctx, collectAndFinish := tracing.ContextWithRecordingSpan(
 		ctx, s.cfg.AmbientCtx.Tracer, fmt.Sprintf("manual %s queue run", queueName))
 	defer collectAndFinish()
 
 	if !skipShouldQueue {
+		__antithesis_instrumentation__.Notify(124669)
 		log.Eventf(ctx, "running %s.shouldQueue", queueName)
 		shouldQueue, priority := queue.shouldQueue(ctx, s.cfg.Clock.NowAsClockTimestamp(), repl, confReader)
 		log.Eventf(ctx, "shouldQueue=%v, priority=%f", shouldQueue, priority)
 		if !shouldQueue {
+			__antithesis_instrumentation__.Notify(124670)
 			return collectAndFinish(), nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(124671)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(124672)
 	}
+	__antithesis_instrumentation__.Notify(124652)
 
 	log.Eventf(ctx, "running %s.process", queueName)
 	processed, processErr := queue.process(ctx, repl, confReader)
@@ -3401,112 +3558,134 @@ func (s *Store) ManuallyEnqueue(
 	return collectAndFinish(), processErr, nil
 }
 
-// PurgeOutdatedReplicas purges all replicas with a version less than the one
-// specified. This entails clearing out replicas in the replica GC queue that
-// fit the bill.
 func (s *Store) PurgeOutdatedReplicas(ctx context.Context, version roachpb.Version) error {
+	__antithesis_instrumentation__.Notify(124673)
 	if interceptor := s.TestingKnobs().PurgeOutdatedReplicasInterceptor; interceptor != nil {
+		__antithesis_instrumentation__.Notify(124676)
 		interceptor()
+	} else {
+		__antithesis_instrumentation__.Notify(124677)
 	}
+	__antithesis_instrumentation__.Notify(124674)
 
-	// Let's set a reasonable bound on the number of replicas being processed in
-	// parallel.
 	qp := quotapool.NewIntPool("purge-outdated-replicas", 50)
 	g := ctxgroup.WithContext(ctx)
 	s.VisitReplicas(func(repl *Replica) (wantMore bool) {
+		__antithesis_instrumentation__.Notify(124678)
 		if !repl.Version().Less(version) {
-			// Nothing to do here. The less-than check also considers replicas
-			// with unset replica versions, which are only possible if they're
-			// left-over, GC-able replicas from before the first below-raft
-			// migration. We'll want to purge those.
+			__antithesis_instrumentation__.Notify(124682)
+
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(124683)
 		}
+		__antithesis_instrumentation__.Notify(124679)
 
 		alloc, err := qp.Acquire(ctx, 1)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(124684)
 			g.GoCtx(func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(124686)
 				return err
 			})
+			__antithesis_instrumentation__.Notify(124685)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(124687)
 		}
+		__antithesis_instrumentation__.Notify(124680)
 
 		g.GoCtx(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(124688)
 			defer alloc.Release()
 
 			processed, err := s.replicaGCQueue.process(ctx, repl, nil)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(124691)
 				return errors.Wrapf(err, "on %s", repl.Desc())
+			} else {
+				__antithesis_instrumentation__.Notify(124692)
 			}
+			__antithesis_instrumentation__.Notify(124689)
 			if !processed {
-				// We're either still part of the raft group, in which same
-				// something has gone horribly wrong, or more likely (though
-				// still very unlikely in practice): this range has been merged
-				// away, and this store has the replica of the subsuming range
-				// where we're unable to determine if it has applied the merge
-				// trigger. See replicaGCQueue.process for more details. Either
-				// way, we error out.
+				__antithesis_instrumentation__.Notify(124693)
+
 				return errors.Newf("unable to gc %s", repl.Desc())
+			} else {
+				__antithesis_instrumentation__.Notify(124694)
 			}
+			__antithesis_instrumentation__.Notify(124690)
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(124681)
 
 		return true
 	})
+	__antithesis_instrumentation__.Notify(124675)
 
 	return g.Wait()
 }
 
-// WaitForSpanConfigSubscription waits until the store is wholly subscribed to
-// the global span configurations state.
 func (s *Store) WaitForSpanConfigSubscription(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(124695)
 	if s.cfg.SpanConfigsDisabled {
-		return nil // nothing to do here
+		__antithesis_instrumentation__.Notify(124698)
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(124699)
 	}
+	__antithesis_instrumentation__.Notify(124696)
 
 	for r := retry.StartWithCtx(ctx, base.DefaultRetryOptions()); r.Next(); {
+		__antithesis_instrumentation__.Notify(124700)
 		if !s.cfg.SpanConfigSubscriber.LastUpdated().IsEmpty() {
+			__antithesis_instrumentation__.Notify(124702)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(124703)
 		}
+		__antithesis_instrumentation__.Notify(124701)
 
 		log.Warningf(ctx, "waiting for span config subscription...")
 		continue
 	}
+	__antithesis_instrumentation__.Notify(124697)
 
 	return errors.Newf("unable to subscribe to span configs")
 }
 
-// registerLeaseholder registers the provided replica as a leaseholder in the
-// node's closed timestamp side transport.
 func (s *Store) registerLeaseholder(
 	ctx context.Context, r *Replica, leaseSeq roachpb.LeaseSequence,
 ) {
+	__antithesis_instrumentation__.Notify(124704)
 	if s.ctSender != nil {
+		__antithesis_instrumentation__.Notify(124705)
 		s.ctSender.RegisterLeaseholder(ctx, r, leaseSeq)
+	} else {
+		__antithesis_instrumentation__.Notify(124706)
 	}
 }
 
-// unregisterLeaseholder unregisters the provided replica from node's closed
-// timestamp side transport if it had been previously registered as a
-// leaseholder.
 func (s *Store) unregisterLeaseholder(ctx context.Context, r *Replica) {
+	__antithesis_instrumentation__.Notify(124707)
 	s.unregisterLeaseholderByID(ctx, r.RangeID)
 }
 
-// unregisterLeaseholderByID is like unregisterLeaseholder, but it accepts a
-// range ID instead of a replica.
 func (s *Store) unregisterLeaseholderByID(ctx context.Context, rangeID roachpb.RangeID) {
+	__antithesis_instrumentation__.Notify(124708)
 	if s.ctSender != nil {
+		__antithesis_instrumentation__.Notify(124709)
 		s.ctSender.UnregisterLeaseholder(ctx, s.StoreID(), rangeID)
+	} else {
+		__antithesis_instrumentation__.Notify(124710)
 	}
 }
 
-// getRootMemoryMonitorForKV returns a BytesMonitor to use for KV memory
-// tracking.
 func (s *Store) getRootMemoryMonitorForKV() *mon.BytesMonitor {
+	__antithesis_instrumentation__.Notify(124711)
 	return s.cfg.KVMemoryMonitor
 }
 
-// Implementation of the storeForTruncator interface.
 type storeForTruncatorImpl Store
 
 var _ storeForTruncator = &storeForTruncatorImpl{}
@@ -3514,69 +3693,67 @@ var _ storeForTruncator = &storeForTruncatorImpl{}
 func (s *storeForTruncatorImpl) acquireReplicaForTruncator(
 	rangeID roachpb.RangeID,
 ) replicaForTruncator {
+	__antithesis_instrumentation__.Notify(124712)
 	r, err := (*Store)(s).GetReplica(rangeID)
-	if err != nil || r == nil {
-		// The only error we can see here is roachpb.NewRangeNotFoundError, so we
-		// can ignore it.
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(124715)
+		return r == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(124716)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(124717)
 	}
+	__antithesis_instrumentation__.Notify(124713)
 	r.raftMu.Lock()
 	if isAlive := func() bool {
+		__antithesis_instrumentation__.Notify(124718)
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		return r.mu.destroyStatus.IsAlive()
 	}(); !isAlive {
+		__antithesis_instrumentation__.Notify(124719)
 		r.raftMu.Unlock()
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(124720)
 	}
+	__antithesis_instrumentation__.Notify(124714)
 	return (*raftTruncatorReplica)(r)
 }
 
 func (s *storeForTruncatorImpl) releaseReplicaForTruncator(r replicaForTruncator) {
+	__antithesis_instrumentation__.Notify(124721)
 	replica := r.(*raftTruncatorReplica)
 	replica.raftMu.Unlock()
 }
 
 func (s *storeForTruncatorImpl) getEngine() storage.Engine {
+	__antithesis_instrumentation__.Notify(124722)
 	return (*Store)(s).engine
 }
 
-// WriteClusterVersion writes the given cluster version to the store-local
-// cluster version key. We only accept a raw engine to ensure we're persisting
-// the write durably.
 func WriteClusterVersion(
 	ctx context.Context, eng storage.Engine, cv clusterversion.ClusterVersion,
 ) error {
+	__antithesis_instrumentation__.Notify(124723)
 	err := storage.MVCCPutProto(ctx, eng, nil, keys.StoreClusterVersionKey(), hlc.Timestamp{}, nil, &cv)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(124725)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(124726)
 	}
+	__antithesis_instrumentation__.Notify(124724)
 
-	// The storage engine sometimes must make backwards incompatible
-	// changes. However, the store cluster version key is a key stored
-	// within the storage engine, so it's unavailable when the store is
-	// opened.
-	//
-	// The storage engine maintains its own minimum version on disk that
-	// it may consult it before opening the Engine. This version is
-	// stored in a separate file on the filesystem. For now, write to
-	// this file in combination with the store cluster version key.
-	//
-	// This parallel version state is a bit of a wart and an eventual
-	// goal is to replace the store cluster version key with the storage
-	// engine's flat file. This requires that there are no writes to the
-	// engine until either bootstrapping or joining an existing cluster.
-	// Writing the version to this file would happen before opening the
-	// engine for completing the rest of bootstrapping/joining the
-	// cluster.
 	return eng.SetMinVersion(cv.Version)
 }
 
-// ReadClusterVersion reads the cluster version from the store-local version
-// key. Returns an empty version if the key is not found.
 func ReadClusterVersion(
 	ctx context.Context, reader storage.Reader,
 ) (clusterversion.ClusterVersion, error) {
+	__antithesis_instrumentation__.Notify(124727)
 	var cv clusterversion.ClusterVersion
 	_, err := storage.MVCCGetProto(ctx, reader, keys.StoreClusterVersionKey(), hlc.Timestamp{},
 		&cv, storage.MVCCGetOptions{})
@@ -3588,55 +3765,44 @@ func init() {
 }
 
 func min(a, b int) int {
+	__antithesis_instrumentation__.Notify(124728)
 	if a < b {
+		__antithesis_instrumentation__.Notify(124730)
 		return a
+	} else {
+		__antithesis_instrumentation__.Notify(124731)
 	}
+	__antithesis_instrumentation__.Notify(124729)
 	return b
 }
 
-// KVAdmissionController provides admission control for the KV layer.
 type KVAdmissionController interface {
-	// AdmitKVWork must be called before performing KV work.
-	// BatchRequest.AdmissionHeader and BatchRequest.Replica.StoreID must be
-	// populated for admission to work correctly. If err is non-nil, the
-	// returned handle can be ignored. If err is nil, AdmittedKVWorkDone must be
-	// called after the KV work is done executing.
 	AdmitKVWork(
 		ctx context.Context, tenantID roachpb.TenantID, ba *roachpb.BatchRequest,
 	) (handle interface{}, err error)
-	// AdmittedKVWorkDone is called after the admitted KV work is done
-	// executing.
+
 	AdmittedKVWorkDone(handle interface{})
-	// SetTenantWeightProvider is used to set the provider that will be
-	// periodically polled for weights. The stopper should be used to terminate
-	// the periodic polling.
+
 	SetTenantWeightProvider(provider TenantWeightProvider, stopper *stop.Stopper)
 }
 
-// TenantWeightProvider can be periodically asked to provide the tenant
-// weights.
 type TenantWeightProvider interface {
 	GetTenantWeights() TenantWeights
 }
 
-// TenantWeights contains the various tenant weights.
 type TenantWeights struct {
-	// Node is the node level tenant ID => weight.
 	Node map[uint64]uint32
-	// Stores contains the per-store tenant weights.
+
 	Stores []TenantWeightsForStore
 }
 
-// TenantWeightsForStore contains the tenant weights for a store.
 type TenantWeightsForStore struct {
 	roachpb.StoreID
-	// Weights is tenant ID => weight.
+
 	Weights map[uint64]uint32
 }
 
-// KVAdmissionControllerImpl implements KVAdmissionController interface.
 type KVAdmissionControllerImpl struct {
-	// Admission control queues and coordinators. Both should be nil or non-nil.
 	kvAdmissionQ     *admission.WorkQueue
 	storeGrantCoords *admission.StoreGrantCoordinators
 	settings         *cluster.Settings
@@ -3650,13 +3816,12 @@ type admissionHandle struct {
 	storeAdmissionQ                    *admission.WorkQueue
 }
 
-// MakeKVAdmissionController returns a KVAdmissionController. Both parameters
-// must together either be nil or non-nil.
 func MakeKVAdmissionController(
 	kvAdmissionQ *admission.WorkQueue,
 	storeGrantCoords *admission.StoreGrantCoordinators,
 	settings *cluster.Settings,
 ) KVAdmissionController {
+	__antithesis_instrumentation__.Notify(124732)
 	return KVAdmissionControllerImpl{
 		kvAdmissionQ:     kvAdmissionQ,
 		storeGrantCoords: storeGrantCoords,
@@ -3664,28 +3829,43 @@ func MakeKVAdmissionController(
 	}
 }
 
-// AdmitKVWork implements the KVAdmissionController interface.
 func (n KVAdmissionControllerImpl) AdmitKVWork(
 	ctx context.Context, tenantID roachpb.TenantID, ba *roachpb.BatchRequest,
 ) (handle interface{}, err error) {
+	__antithesis_instrumentation__.Notify(124733)
 	ah := admissionHandle{tenantID: tenantID}
 	if n.kvAdmissionQ != nil {
+		__antithesis_instrumentation__.Notify(124735)
 		bypassAdmission := ba.IsAdmin()
 		source := ba.AdmissionHeader.Source
 		if !roachpb.IsSystemTenantID(tenantID.ToUint64()) {
-			// Request is from a SQL node.
+			__antithesis_instrumentation__.Notify(124741)
+
 			bypassAdmission = false
 			source = roachpb.AdmissionHeader_FROM_SQL
+		} else {
+			__antithesis_instrumentation__.Notify(124742)
 		}
+		__antithesis_instrumentation__.Notify(124736)
 		if source == roachpb.AdmissionHeader_OTHER {
+			__antithesis_instrumentation__.Notify(124743)
 			bypassAdmission = true
+		} else {
+			__antithesis_instrumentation__.Notify(124744)
 		}
+		__antithesis_instrumentation__.Notify(124737)
 		createTime := ba.AdmissionHeader.CreateTime
-		if !bypassAdmission && createTime == 0 {
-			// TODO(sumeer): revisit this for multi-tenant. Specifically, the SQL use
-			// of zero CreateTime needs to be revisited. It should use high priority.
+		if !bypassAdmission && func() bool {
+			__antithesis_instrumentation__.Notify(124745)
+			return createTime == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(124746)
+
 			createTime = timeutil.Now().UnixNano()
+		} else {
+			__antithesis_instrumentation__.Notify(124747)
 		}
+		__antithesis_instrumentation__.Notify(124738)
 		admissionInfo := admission.WorkInfo{
 			TenantID:        tenantID,
 			Priority:        admission.WorkPriority(ba.AdmissionHeader.Priority),
@@ -3693,84 +3873,139 @@ func (n KVAdmissionControllerImpl) AdmitKVWork(
 			BypassAdmission: bypassAdmission,
 		}
 		var err error
-		// Don't subject HeartbeatTxnRequest to the storeAdmissionQ. Even though
-		// it would bypass admission, it would consume a slot. When writes are
-		// throttled, we start generating more txn heartbeats, which then consume
-		// all the slots, causing no useful work to happen. We do want useful work
-		// to continue even when throttling since there are often significant
-		// number of tokens available.
-		if ba.IsWrite() && !ba.IsSingleHeartbeatTxnRequest() {
+
+		if ba.IsWrite() && func() bool {
+			__antithesis_instrumentation__.Notify(124748)
+			return !ba.IsSingleHeartbeatTxnRequest() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(124749)
 			ah.storeAdmissionQ = n.storeGrantCoords.TryGetQueueForStore(int32(ba.Replica.StoreID))
+		} else {
+			__antithesis_instrumentation__.Notify(124750)
 		}
+		__antithesis_instrumentation__.Notify(124739)
 		admissionEnabled := true
 		if ah.storeAdmissionQ != nil {
+			__antithesis_instrumentation__.Notify(124751)
 			if admissionEnabled, err = ah.storeAdmissionQ.Admit(ctx, admissionInfo); err != nil {
+				__antithesis_instrumentation__.Notify(124753)
 				return admissionHandle{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(124754)
 			}
+			__antithesis_instrumentation__.Notify(124752)
 			if !admissionEnabled {
-				// Set storeAdmissionQ to nil so that we don't call AdmittedWorkDone
-				// on it. Additionally, the code below will not call
-				// kvAdmissionQ.Admit, and so callAdmittedWorkDoneOnKVAdmissionQ will
-				// stay false.
+				__antithesis_instrumentation__.Notify(124755)
+
 				ah.storeAdmissionQ = nil
+			} else {
+				__antithesis_instrumentation__.Notify(124756)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(124757)
 		}
+		__antithesis_instrumentation__.Notify(124740)
 		if admissionEnabled {
+			__antithesis_instrumentation__.Notify(124758)
 			ah.callAdmittedWorkDoneOnKVAdmissionQ, err = n.kvAdmissionQ.Admit(ctx, admissionInfo)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(124759)
 				return admissionHandle{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(124760)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(124761)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(124762)
 	}
+	__antithesis_instrumentation__.Notify(124734)
 	return ah, nil
 }
 
-// AdmittedKVWorkDone implements the KVAdmissionController interface.
 func (n KVAdmissionControllerImpl) AdmittedKVWorkDone(handle interface{}) {
+	__antithesis_instrumentation__.Notify(124763)
 	ah := handle.(admissionHandle)
 	if ah.callAdmittedWorkDoneOnKVAdmissionQ {
+		__antithesis_instrumentation__.Notify(124765)
 		n.kvAdmissionQ.AdmittedWorkDone(ah.tenantID)
+	} else {
+		__antithesis_instrumentation__.Notify(124766)
 	}
+	__antithesis_instrumentation__.Notify(124764)
 	if ah.storeAdmissionQ != nil {
+		__antithesis_instrumentation__.Notify(124767)
 		ah.storeAdmissionQ.AdmittedWorkDone(ah.tenantID)
+	} else {
+		__antithesis_instrumentation__.Notify(124768)
 	}
 }
 
-// SetTenantWeightProvider implements the KVAdmissionController interface.
 func (n KVAdmissionControllerImpl) SetTenantWeightProvider(
 	provider TenantWeightProvider, stopper *stop.Stopper,
 ) {
+	__antithesis_instrumentation__.Notify(124769)
 	go func() {
+		__antithesis_instrumentation__.Notify(124770)
 		const weightCalculationPeriod = 10 * time.Minute
 		ticker := time.NewTicker(weightCalculationPeriod)
-		// Used for short-circuiting the weights calculation if all weights are
-		// disabled.
+
 		allWeightsDisabled := false
 		for {
+			__antithesis_instrumentation__.Notify(124771)
 			select {
 			case <-ticker.C:
+				__antithesis_instrumentation__.Notify(124772)
 				kvDisabled := !admission.KVTenantWeightsEnabled.Get(&n.settings.SV)
 				kvStoresDisabled := !admission.KVStoresTenantWeightsEnabled.Get(&n.settings.SV)
-				if allWeightsDisabled && kvDisabled && kvStoresDisabled {
-					// Have already transitioned to disabled, so noop.
+				if allWeightsDisabled && func() bool {
+					__antithesis_instrumentation__.Notify(124777)
+					return kvDisabled == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(124778)
+					return kvStoresDisabled == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(124779)
+
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(124780)
 				}
+				__antithesis_instrumentation__.Notify(124773)
 				weights := provider.GetTenantWeights()
 				if kvDisabled {
+					__antithesis_instrumentation__.Notify(124781)
 					weights.Node = nil
+				} else {
+					__antithesis_instrumentation__.Notify(124782)
 				}
+				__antithesis_instrumentation__.Notify(124774)
 				n.kvAdmissionQ.SetTenantWeights(weights.Node)
 				for _, storeWeights := range weights.Stores {
+					__antithesis_instrumentation__.Notify(124783)
 					q := n.storeGrantCoords.TryGetQueueForStore(int32(storeWeights.StoreID))
 					if q != nil {
+						__antithesis_instrumentation__.Notify(124784)
 						if kvStoresDisabled {
+							__antithesis_instrumentation__.Notify(124786)
 							storeWeights.Weights = nil
+						} else {
+							__antithesis_instrumentation__.Notify(124787)
 						}
+						__antithesis_instrumentation__.Notify(124785)
 						q.SetTenantWeights(storeWeights.Weights)
+					} else {
+						__antithesis_instrumentation__.Notify(124788)
 					}
 				}
-				allWeightsDisabled = kvDisabled && kvStoresDisabled
+				__antithesis_instrumentation__.Notify(124775)
+				allWeightsDisabled = kvDisabled && func() bool {
+					__antithesis_instrumentation__.Notify(124789)
+					return kvStoresDisabled == true
+				}() == true
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(124776)
 				ticker.Stop()
 				return
 			}

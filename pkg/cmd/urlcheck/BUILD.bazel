@@ -5,11 +5,15 @@ go_library(
     srcs = ["main.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/cmd/urlcheck",
     visibility = ["//visibility:private"],
-    deps = ["//pkg/cmd/urlcheck/lib/urlcheck"],
+    deps = [
+        "//pkg/cmd/urlcheck/lib/urlcheck",
+        "@com_antithesis_instrumentation//wrappers",
+    ],
 )
 
 go_binary(
     name = "urlcheck",
     embed = [":urlcheck_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

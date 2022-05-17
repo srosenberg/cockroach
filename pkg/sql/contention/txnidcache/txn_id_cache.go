@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package txnidcache
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,86 +12,22 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 )
 
-// Reader is the interface that can be used to query the transaction fingerprint
-// ID of a transaction ID.
 type Reader interface {
-	// Lookup returns the corresponding transaction fingerprint ID for a given txnID,
-	// if the given txnID has no entry in the Cache, the returned "found" boolean
-	// will be false.
 	Lookup(txnID uuid.UUID) (result roachpb.TransactionFingerprintID, found bool)
 }
 
-// Writer is the interface that can be used to write to txnidcache.
 type Writer interface {
-	// Record writes a pair of transactionID and transaction fingerprint ID
-	// into a temporary buffer. This buffer will eventually be flushed into
-	// the transaction ID cache asynchronously.
 	Record(resolvedTxnID contentionpb.ResolvedTxnID)
 
-	// DrainWriteBuffer starts to flush of writer's temporary buffer into the
-	// cache.
 	DrainWriteBuffer()
 }
 
 type blockSink interface {
-	// push allows a block to be pushed into the pusher.
 	push(*block)
 }
 
 const channelSize = 128
 
-// Cache stores the mapping from the Transaction IDs (UUID) of recently
-// executed transactions to their corresponding Transaction Fingerprint ID (uint64).
-// The size of Cache is controlled via sql.contention.txn_id_cache.max_size
-// cluster setting, and it follows FIFO eviction policy once the cache size
-// reaches the limit defined by the cluster setting.
-//
-// Cache's overall architecture is as follows:
-//   +------------------------------------------------------------+
-//   | connExecutor  --------*                                    |
-//   |                       |  writes resolvedTxnID to Writer    |
-//   |                       v                                    |
-//   |      +---------------------------------------------------+ |
-//   |      | Writer                                            | |
-//   |      |                                                   | |
-//   |      |  Writer contains multiple shards of concurrent    | |
-//   |      |  write buffer. Each incoming resolvedTxnID is     | |
-//   |      |  first hashed to a corresponding shard, and then  | |
-//   |      |  is written to the concurrent write buffer        | |
-//   |      |  backing that shard. Once the concurrent write    | |
-//   |      |  buffer is full, a flush is performed and the     | |
-//   |      |  content of the buffer is send into the channel.  | |
-//   |      |                                                   | |
-//   |      | +------------+                                    | |
-//   |      | | shard1     |                                    | |
-//   |      | +------------+                                    | |
-//   |      | | shard2     |                                    | |
-//   |      | +------------+                                    | |
-//   |      | | shard3     |                                    | |
-//   |      | +------------+                                    | |
-//   |      | | .....      |                                    | |
-//   |      | | .....      |                                    | |
-//   |      | +------------+                                    | |
-//   |      | | shard128   |                                    | |
-//   |      | +------------+                                    | |
-//   |      |                                                   | |
-//   |      +-----+---------------------------------------------+ |
-//   +------------|-----------------------------------------------+
-//                |
-//                |
-//                V
-//               channel
-//                ^
-//                |
-//               Cache polls the channel using a goroutine and push the
-//                |   block into its storage.
-//                |
-//   +----------------------------------+
-//   |    Cache:                        |
-//   |     The cache contains a         |
-//   |     FIFO buffer backed by        |
-//   |     fifoCache.                   |
-//   +----------------------------------+
 type Cache struct {
 	st *cluster.Settings
 
@@ -123,8 +51,8 @@ var (
 	_ blockSink = &Cache{}
 )
 
-// NewTxnIDCache creates a new instance of Cache.
 func NewTxnIDCache(st *cluster.Settings, metrics *Metrics) *Cache {
+	__antithesis_instrumentation__.Notify(459381)
 	t := &Cache{
 		st:      st,
 		metrics: metrics,
@@ -132,61 +60,76 @@ func NewTxnIDCache(st *cluster.Settings, metrics *Metrics) *Cache {
 		closeCh: make(chan struct{}),
 	}
 
-	t.store = newFIFOCache(func() int64 { return MaxSize.Get(&st.SV) })
+	t.store = newFIFOCache(func() int64 { __antithesis_instrumentation__.Notify(459383); return MaxSize.Get(&st.SV) })
+	__antithesis_instrumentation__.Notify(459382)
 	t.writer = newWriter(st, t)
 	return t
 }
 
-// Start implements the Provider interface.
 func (t *Cache) Start(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(459384)
 	err := stopper.RunAsyncTask(ctx, "txn-id-cache-ingest", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(459386)
 		for {
+			__antithesis_instrumentation__.Notify(459387)
 			select {
 			case b := <-t.blockCh:
+				__antithesis_instrumentation__.Notify(459388)
 				t.store.add(b)
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(459389)
 				close(t.closeCh)
 				return
 			}
 		}
 	})
+	__antithesis_instrumentation__.Notify(459385)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(459390)
 		close(t.closeCh)
+	} else {
+		__antithesis_instrumentation__.Notify(459391)
 	}
 }
 
-// Lookup implements the Reader interface.
 func (t *Cache) Lookup(txnID uuid.UUID) (result roachpb.TransactionFingerprintID, found bool) {
+	__antithesis_instrumentation__.Notify(459392)
 	t.metrics.CacheReadCounter.Inc(1)
 
 	txnFingerprintID, found := t.store.get(txnID)
 	if !found {
+		__antithesis_instrumentation__.Notify(459394)
 		t.metrics.CacheMissCounter.Inc(1)
 		return roachpb.InvalidTransactionFingerprintID, found
+	} else {
+		__antithesis_instrumentation__.Notify(459395)
 	}
+	__antithesis_instrumentation__.Notify(459393)
 
 	return txnFingerprintID, found
 }
 
-// Record implements the Writer interface.
 func (t *Cache) Record(resolvedTxnID contentionpb.ResolvedTxnID) {
+	__antithesis_instrumentation__.Notify(459396)
 	t.writer.Record(resolvedTxnID)
 }
 
-// push implements the blockSink interface.
 func (t *Cache) push(b *block) {
+	__antithesis_instrumentation__.Notify(459397)
 	select {
 	case t.blockCh <- b:
+		__antithesis_instrumentation__.Notify(459398)
 	case <-t.closeCh:
+		__antithesis_instrumentation__.Notify(459399)
 	}
 }
 
-// DrainWriteBuffer flushes the resolved txn IDs in the Writer into the Cache.
 func (t *Cache) DrainWriteBuffer() {
+	__antithesis_instrumentation__.Notify(459400)
 	t.writer.DrainWriteBuffer()
 }
 
-// Size return the current size of the Cache in bytes.
 func (t *Cache) Size() int64 {
+	__antithesis_instrumentation__.Notify(459401)
 	return t.store.size()
 }

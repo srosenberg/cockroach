@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package flagstub
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -18,12 +10,8 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// New wraps a delegate vm.Provider to only return its name and
-// flags.  This allows roachprod to provide a consistent tooling
-// experience. Operations that can be reasonably stubbed out are
-// implemented as no-op or no-value. All other operations will
-// return the provided error.
 func New(delegate vm.Provider, unimplemented string) vm.Provider {
+	__antithesis_instrumentation__.Notify(183562)
 	return &provider{delegate: delegate, unimplemented: unimplemented}
 }
 
@@ -32,64 +20,64 @@ type provider struct {
 	unimplemented string
 }
 
-// CleanSSH implements vm.Provider and is a no-op.
 func (p *provider) CleanSSH() error {
+	__antithesis_instrumentation__.Notify(183563)
 	return nil
 }
 
-// ConfigSSH implements vm.Provider and is a no-op.
 func (p *provider) ConfigSSH(zones []string) error {
+	__antithesis_instrumentation__.Notify(183564)
 	return nil
 }
 
-// Create implements vm.Provider and returns Unimplemented.
 func (p *provider) Create(
 	l *logger.Logger, names []string, opts vm.CreateOpts, providerOpts vm.ProviderOpts,
 ) error {
+	__antithesis_instrumentation__.Notify(183565)
 	return errors.Newf("%s", p.unimplemented)
 }
 
-// Delete implements vm.Provider and returns Unimplemented.
 func (p *provider) Delete(vms vm.List) error {
+	__antithesis_instrumentation__.Notify(183566)
 	return errors.Newf("%s", p.unimplemented)
 }
 
-// Reset implements vm.Provider and is a no-op.
 func (p *provider) Reset(vms vm.List) error {
+	__antithesis_instrumentation__.Notify(183567)
 	return nil
 }
 
-// Extend implements vm.Provider and returns Unimplemented.
 func (p *provider) Extend(vms vm.List, lifetime time.Duration) error {
+	__antithesis_instrumentation__.Notify(183568)
 	return errors.Newf("%s", p.unimplemented)
 }
 
-// FindActiveAccount implements vm.Provider and returns an empty account.
 func (p *provider) FindActiveAccount() (string, error) {
+	__antithesis_instrumentation__.Notify(183569)
 	return "", nil
 }
 
-// List implements vm.Provider and returns an empty list.
 func (p *provider) List(l *logger.Logger) (vm.List, error) {
+	__antithesis_instrumentation__.Notify(183570)
 	return nil, nil
 }
 
-// Name implements vm.Provider and returns the delegate's name.
 func (p *provider) Name() string {
+	__antithesis_instrumentation__.Notify(183571)
 	return p.delegate.Name()
 }
 
-// Active is part of the vm.Provider interface.
 func (p *provider) Active() bool {
+	__antithesis_instrumentation__.Notify(183572)
 	return false
 }
 
-// ProjectActive is part of the vm.Provider interface.
 func (p *provider) ProjectActive(project string) bool {
+	__antithesis_instrumentation__.Notify(183573)
 	return false
 }
 
-// CreateProviderFlags is part of the vm.Provider interface.
 func (p *provider) CreateProviderOpts() vm.ProviderOpts {
+	__antithesis_instrumentation__.Notify(183574)
 	return nil
 }

@@ -5,5 +5,8 @@ go_library(
     srcs = ["descriptormarshal.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/testutils/lint/passes/descriptormarshal",
     visibility = ["//visibility:public"],
-    deps = ["//pkg/testutils/lint/passes/forbiddenmethod"],
+    deps = [
+        "//pkg/testutils/lint/passes/forbiddenmethod",
+        "@com_antithesis_instrumentation//wrappers",
+    ],
 )

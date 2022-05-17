@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package treebin
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -16,32 +8,33 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// BinaryOperator represents a unary operator used in a BinaryExpr.
 type BinaryOperator struct {
 	Symbol BinaryOperatorSymbol
-	// IsExplicitOperator is true if OPERATOR(symbol) is used.
+
 	IsExplicitOperator bool
 }
 
-// MakeBinaryOperator creates a BinaryOperator given a symbol.
 func MakeBinaryOperator(symbol BinaryOperatorSymbol) BinaryOperator {
+	__antithesis_instrumentation__.Notify(614561)
 	return BinaryOperator{Symbol: symbol}
 }
 
 func (o BinaryOperator) String() string {
+	__antithesis_instrumentation__.Notify(614562)
 	if o.IsExplicitOperator {
+		__antithesis_instrumentation__.Notify(614564)
 		return fmt.Sprintf("OPERATOR(%s)", o.Symbol.String())
+	} else {
+		__antithesis_instrumentation__.Notify(614565)
 	}
+	__antithesis_instrumentation__.Notify(614563)
 	return o.Symbol.String()
 }
 
-// Operator implements tree.Operator.
-func (BinaryOperator) Operator() {}
+func (BinaryOperator) Operator() { __antithesis_instrumentation__.Notify(614566) }
 
-// BinaryOperatorSymbol is a symbol for a binary operator.
 type BinaryOperatorSymbol uint8
 
-// BinaryExpr.Operator
 const (
 	Bitand BinaryOperatorSymbol = iota
 	Bitor
@@ -86,22 +79,43 @@ var binaryOpName = [...]string{
 	JSONFetchTextPath: "#>>",
 }
 
-// IsPadded returns whether the binary operator needs to be padded.
 func (i BinaryOperatorSymbol) IsPadded() bool {
-	return !(i == JSONFetchVal || i == JSONFetchText || i == JSONFetchValPath || i == JSONFetchTextPath)
+	__antithesis_instrumentation__.Notify(614567)
+	return !(i == JSONFetchVal || func() bool {
+		__antithesis_instrumentation__.Notify(614568)
+		return i == JSONFetchText == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(614569)
+		return i == JSONFetchValPath == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(614570)
+		return i == JSONFetchTextPath == true
+	}() == true)
 }
 
 func (i BinaryOperatorSymbol) String() string {
+	__antithesis_instrumentation__.Notify(614571)
 	if i > BinaryOperatorSymbol(len(binaryOpName)-1) {
+		__antithesis_instrumentation__.Notify(614573)
 		return fmt.Sprintf("BinaryOp(%d)", i)
+	} else {
+		__antithesis_instrumentation__.Notify(614574)
 	}
+	__antithesis_instrumentation__.Notify(614572)
 	return binaryOpName[i]
 }
 
-// BinaryOpName returns the name of op.
 func BinaryOpName(op BinaryOperatorSymbol) string {
-	if int(op) >= len(binaryOpName) || binaryOpName[op] == "" {
+	__antithesis_instrumentation__.Notify(614575)
+	if int(op) >= len(binaryOpName) || func() bool {
+		__antithesis_instrumentation__.Notify(614577)
+		return binaryOpName[op] == "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(614578)
 		panic(errors.AssertionFailedf("missing name for operator %q", op.String()))
+	} else {
+		__antithesis_instrumentation__.Notify(614579)
 	}
+	__antithesis_instrumentation__.Notify(614576)
 	return binaryOpName[op]
 }

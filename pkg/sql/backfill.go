@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -52,44 +44,27 @@ import (
 )
 
 const (
-	// indexTruncateChunkSize is the maximum number of index entries truncated
-	// per chunk during an index truncation. This value is larger than the
-	// other chunk constants because the operation involves only running a
-	// DeleteRange().
 	indexTruncateChunkSize = row.TableTruncateChunkSize
 
-	// indexTxnBackfillChunkSize is the maximum number index entries backfilled
-	// per chunk during an index backfill done in a txn. The index backfill
-	// involves a table scan, and a number of individual ops presented in a batch.
-	// This value is smaller than ColumnTruncateAndBackfillChunkSize, because it
-	// involves a number of individual index row updates that can be scattered
-	// over many ranges.
 	indexTxnBackfillChunkSize = 100
 
-	// checkpointInterval is the interval after which a checkpoint of the
-	// schema change is posted.
 	checkpointInterval = 2 * time.Minute
 )
 
-// indexBackfillBatchSize is the maximum number of rows we construct index
-// entries for before we attempt to fill in a single index batch before queueing
-// it up for ingestion and progress reporting in the index backfiller processor.
 var indexBackfillBatchSize = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"bulkio.index_backfill.batch_size",
 	"the number of rows for which we construct index entries in a single batch",
 	50000,
-	settings.NonNegativeInt, /* validateFn */
+	settings.NonNegativeInt,
 )
 
-// columnBackfillBatchSize is the maximum number of rows we update at once when
-// adding or removing columns.
 var columnBackfillBatchSize = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"bulkio.column_backfill.batch_size",
 	"the number of rows updated at a time to add/remove columns",
 	200,
-	settings.NonNegativeInt, /* validateFn */
+	settings.NonNegativeInt,
 )
 
 var _ sort.Interface = columnsByID{}
@@ -98,69 +73,82 @@ var _ sort.Interface = indexesByID{}
 type columnsByID []descpb.ColumnDescriptor
 
 func (cds columnsByID) Len() int {
+	__antithesis_instrumentation__.Notify(246035)
 	return len(cds)
 }
 func (cds columnsByID) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(246036)
 	return cds[i].ID < cds[j].ID
 }
 func (cds columnsByID) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(246037)
 	cds[i], cds[j] = cds[j], cds[i]
 }
 
 type indexesByID []descpb.IndexDescriptor
 
 func (ids indexesByID) Len() int {
+	__antithesis_instrumentation__.Notify(246038)
 	return len(ids)
 }
 func (ids indexesByID) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(246039)
 	return ids[i].ID < ids[j].ID
 }
 func (ids indexesByID) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(246040)
 	ids[i], ids[j] = ids[j], ids[i]
 }
 
 func (sc *SchemaChanger) getChunkSize(chunkSize int64) int64 {
+	__antithesis_instrumentation__.Notify(246041)
 	if sc.testingKnobs.BackfillChunkSize > 0 {
+		__antithesis_instrumentation__.Notify(246043)
 		return sc.testingKnobs.BackfillChunkSize
+	} else {
+		__antithesis_instrumentation__.Notify(246044)
 	}
+	__antithesis_instrumentation__.Notify(246042)
 	return chunkSize
 }
 
-// scTxnFn is the type of functions that operates using transactions in the backfiller.
 type scTxnFn func(ctx context.Context, txn *kv.Txn, evalCtx *extendedEvalContext) error
 
-// historicalTxnRunner is the type of the callback used by the various
-// helper functions to run checks at a fixed timestamp (logically, at
-// the start of the backfill).
 type historicalTxnRunner func(ctx context.Context, fn scTxnFn) error
 
-// makeFixedTimestampRunner creates a historicalTxnRunner suitable for use by the helpers.
 func (sc *SchemaChanger) makeFixedTimestampRunner(readAsOf hlc.Timestamp) historicalTxnRunner {
+	__antithesis_instrumentation__.Notify(246045)
 	runner := func(ctx context.Context, retryable scTxnFn) error {
+		__antithesis_instrumentation__.Notify(246047)
 		return sc.fixedTimestampTxn(ctx, readAsOf, func(
 			ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 		) error {
-			// We need to re-create the evalCtx since the txn may retry.
+			__antithesis_instrumentation__.Notify(246048)
+
 			evalCtx := createSchemaChangeEvalCtx(ctx, sc.execCfg, readAsOf, descriptors)
 			return retryable(ctx, txn, &evalCtx)
 		})
 	}
+	__antithesis_instrumentation__.Notify(246046)
 	return runner
 }
 
-// makeFixedTimestampRunner creates a HistoricalTxnRunner suitable for use by the helpers.
 func (sc *SchemaChanger) makeFixedTimestampInternalExecRunner(
 	readAsOf hlc.Timestamp,
 ) sqlutil.HistoricalInternalExecTxnRunner {
+	__antithesis_instrumentation__.Notify(246049)
 	runner := func(ctx context.Context, retryable sqlutil.InternalExecFn) error {
+		__antithesis_instrumentation__.Notify(246051)
 		return sc.fixedTimestampTxn(ctx, readAsOf, func(
 			ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 		) error {
-			// We need to re-create the evalCtx since the txn may retry.
+			__antithesis_instrumentation__.Notify(246052)
+
 			ie := sc.ieFactory(ctx, NewFakeSessionData(sc.execCfg.SV()))
 			return retryable(ctx, txn, ie)
 		})
 	}
+	__antithesis_instrumentation__.Notify(246050)
 	return runner
 }
 
@@ -169,28 +157,35 @@ func (sc *SchemaChanger) fixedTimestampTxn(
 	readAsOf hlc.Timestamp,
 	retryable func(ctx context.Context, txn *kv.Txn, descriptors *descs.Collection) error,
 ) error {
+	__antithesis_instrumentation__.Notify(246053)
 	return sc.txn(ctx, func(ctx context.Context, txn *kv.Txn, descriptors *descs.Collection) error {
+		__antithesis_instrumentation__.Notify(246054)
 		if err := txn.SetFixedTimestamp(ctx, readAsOf); err != nil {
+			__antithesis_instrumentation__.Notify(246056)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246057)
 		}
+		__antithesis_instrumentation__.Notify(246055)
 		return retryable(ctx, txn, descriptors)
 	})
 }
 
-// runBackfill runs the backfill for the schema changer.
-//
-// This operates over multiple goroutines concurrently and is thus not
-// able to reuse the original kv.Txn safely. The various
-// function that it calls make their own txns.
 func (sc *SchemaChanger) runBackfill(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(246058)
 	if sc.testingKnobs.RunBeforeBackfill != nil {
+		__antithesis_instrumentation__.Notify(246070)
 		if err := sc.testingKnobs.RunBeforeBackfill(); err != nil {
+			__antithesis_instrumentation__.Notify(246071)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246072)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246073)
 	}
+	__antithesis_instrumentation__.Notify(246059)
 
-	// Mutations are applied in a FIFO order. Only apply the first set of
-	// mutations. Collect the elements that are part of the mutation.
 	var addedIndexSpans []roachpb.Span
 	var addedIndexes []descpb.IndexID
 	var temporaryIndexes []descpb.IndexID
@@ -201,483 +196,774 @@ func (sc *SchemaChanger) runBackfill(ctx context.Context) error {
 
 	var viewToRefresh catalog.MaterializedViewRefresh
 
-	// Note that this descriptor is intentionally not leased. If the schema change
-	// held the lease, certain non-mutation related schema changes would not be
-	// able to proceed. That might be okay and even desirable. The bigger reason
-	// to not hold a lease throughout the duration of this schema change stage
-	// is more practical. The lease manager (and associated descriptor
-	// infrastructure) does not provide a mechanism to hold a lease over a long
-	// period of time and update the transaction commit deadline. As such, when
-	// the schema change job attempts to mutate the descriptor later in this
-	// method, the descriptor will need to be re-read and the operation should be
-	// revalidated against the new state of the descriptor. Any work to hold
-	// leases during mutations will need to consider the user experience when the
-	// user would like to issue schema changes to be applied asynchronously.
-	// Perhaps such schema changes could avoid waiting for a single version and
-	// thus avoid blocked. This will get ironed out in the context of
-	// transactional schema changes. In all likelihood, not holding a lease here
-	// is the right thing to do as we would never want this operation to fail
-	// because a new mutation was enqueued.
 	tableDesc, err := sc.updateJobRunningStatus(ctx, RunningStatusBackfill)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(246074)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246075)
 	}
+	__antithesis_instrumentation__.Notify(246060)
 
-	// Short circuit the backfill if the table has been deleted.
 	if tableDesc.Dropped() {
+		__antithesis_instrumentation__.Notify(246076)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(246077)
 	}
+	__antithesis_instrumentation__.Notify(246061)
 	version := tableDesc.GetVersion()
 
 	log.Infof(ctx, "running backfill for %q, v=%d", tableDesc.GetName(), tableDesc.GetVersion())
 
 	needColumnBackfill := false
 	for _, m := range tableDesc.AllMutations() {
+		__antithesis_instrumentation__.Notify(246078)
 		if m.MutationID() != sc.mutationID {
+			__antithesis_instrumentation__.Notify(246081)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(246082)
 		}
-		// If the current mutation is discarded, then
-		// skip over processing.
+		__antithesis_instrumentation__.Notify(246079)
+
 		if discarded, _ := isCurrentMutationDiscarded(tableDesc, m, m.MutationOrdinal()+1); discarded {
+			__antithesis_instrumentation__.Notify(246083)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(246084)
 		}
+		__antithesis_instrumentation__.Notify(246080)
 
 		if m.Adding() {
+			__antithesis_instrumentation__.Notify(246085)
 			if col := m.AsColumn(); col != nil {
-				// Its possible have a mix of columns that need a backfill and others
-				// that don't, so preserve the flag if its already been flipped.
-				needColumnBackfill = needColumnBackfill || catalog.ColumnNeedsBackfill(col)
-			} else if idx := m.AsIndex(); idx != nil {
-				if idx.IsTemporaryIndexForBackfill() {
-					temporaryIndexes = append(temporaryIndexes, idx.GetID())
+				__antithesis_instrumentation__.Notify(246086)
+
+				needColumnBackfill = needColumnBackfill || func() bool {
+					__antithesis_instrumentation__.Notify(246087)
+					return catalog.ColumnNeedsBackfill(col) == true
+				}() == true
+			} else {
+				__antithesis_instrumentation__.Notify(246088)
+				if idx := m.AsIndex(); idx != nil {
+					__antithesis_instrumentation__.Notify(246089)
+					if idx.IsTemporaryIndexForBackfill() {
+						__antithesis_instrumentation__.Notify(246090)
+						temporaryIndexes = append(temporaryIndexes, idx.GetID())
+					} else {
+						__antithesis_instrumentation__.Notify(246091)
+						addedIndexSpans = append(addedIndexSpans, tableDesc.IndexSpan(sc.execCfg.Codec, idx.GetID()))
+						addedIndexes = append(addedIndexes, idx.GetID())
+					}
 				} else {
-					addedIndexSpans = append(addedIndexSpans, tableDesc.IndexSpan(sc.execCfg.Codec, idx.GetID()))
-					addedIndexes = append(addedIndexes, idx.GetID())
+					__antithesis_instrumentation__.Notify(246092)
+					if c := m.AsConstraint(); c != nil {
+						__antithesis_instrumentation__.Notify(246093)
+						isValidating := c.IsCheck() && func() bool {
+							__antithesis_instrumentation__.Notify(246096)
+							return c.Check().Validity == descpb.ConstraintValidity_Validating == true
+						}() == true || func() bool {
+							__antithesis_instrumentation__.Notify(246097)
+							return (c.IsForeignKey() && func() bool {
+								__antithesis_instrumentation__.Notify(246098)
+								return c.ForeignKey().Validity == descpb.ConstraintValidity_Validating == true
+							}() == true) == true
+						}() == true || func() bool {
+							__antithesis_instrumentation__.Notify(246099)
+							return (c.IsUniqueWithoutIndex() && func() bool {
+								__antithesis_instrumentation__.Notify(246100)
+								return c.UniqueWithoutIndex().Validity == descpb.ConstraintValidity_Validating == true
+							}() == true) == true
+						}() == true || func() bool {
+							__antithesis_instrumentation__.Notify(246101)
+							return c.IsNotNull() == true
+						}() == true
+						isSkippingValidation, err := shouldSkipConstraintValidation(tableDesc, c)
+						if err != nil {
+							__antithesis_instrumentation__.Notify(246102)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(246103)
+						}
+						__antithesis_instrumentation__.Notify(246094)
+						if isValidating {
+							__antithesis_instrumentation__.Notify(246104)
+							constraintsToAddBeforeValidation = append(constraintsToAddBeforeValidation, c)
+						} else {
+							__antithesis_instrumentation__.Notify(246105)
+						}
+						__antithesis_instrumentation__.Notify(246095)
+						if isValidating && func() bool {
+							__antithesis_instrumentation__.Notify(246106)
+							return !isSkippingValidation == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(246107)
+							constraintsToValidate = append(constraintsToValidate, c)
+						} else {
+							__antithesis_instrumentation__.Notify(246108)
+						}
+					} else {
+						__antithesis_instrumentation__.Notify(246109)
+						if mvRefresh := m.AsMaterializedViewRefresh(); mvRefresh != nil {
+							__antithesis_instrumentation__.Notify(246110)
+							viewToRefresh = mvRefresh
+						} else {
+							__antithesis_instrumentation__.Notify(246111)
+							if m.AsPrimaryKeySwap() != nil || func() bool {
+								__antithesis_instrumentation__.Notify(246112)
+								return m.AsComputedColumnSwap() != nil == true
+							}() == true || func() bool {
+								__antithesis_instrumentation__.Notify(246113)
+								return m.AsModifyRowLevelTTL() != nil == true
+							}() == true {
+								__antithesis_instrumentation__.Notify(246114)
+
+							} else {
+								__antithesis_instrumentation__.Notify(246115)
+								return errors.AssertionFailedf("unsupported mutation: %+v", m)
+							}
+						}
+					}
 				}
-			} else if c := m.AsConstraint(); c != nil {
-				isValidating := c.IsCheck() && c.Check().Validity == descpb.ConstraintValidity_Validating ||
-					c.IsForeignKey() && c.ForeignKey().Validity == descpb.ConstraintValidity_Validating ||
-					c.IsUniqueWithoutIndex() && c.UniqueWithoutIndex().Validity == descpb.ConstraintValidity_Validating ||
-					c.IsNotNull()
-				isSkippingValidation, err := shouldSkipConstraintValidation(tableDesc, c)
-				if err != nil {
-					return err
-				}
-				if isValidating {
-					constraintsToAddBeforeValidation = append(constraintsToAddBeforeValidation, c)
-				}
-				if isValidating && !isSkippingValidation {
-					constraintsToValidate = append(constraintsToValidate, c)
-				}
-			} else if mvRefresh := m.AsMaterializedViewRefresh(); mvRefresh != nil {
-				viewToRefresh = mvRefresh
-			} else if m.AsPrimaryKeySwap() != nil || m.AsComputedColumnSwap() != nil || m.AsModifyRowLevelTTL() != nil {
-				// The backfiller doesn't need to do anything here.
-			} else {
-				return errors.AssertionFailedf("unsupported mutation: %+v", m)
 			}
-		} else if m.Dropped() {
-			if col := m.AsColumn(); col != nil {
-				// Its possible have a mix of columns that need a backfill and others
-				// that don't, so preserve the flag if its already been flipped.
-				needColumnBackfill = needColumnBackfill || catalog.ColumnNeedsBackfill(col)
-			} else if idx := m.AsIndex(); idx != nil {
-				// no-op. Handled in (*schemaChanger).done by queueing an index gc job.
-			} else if c := m.AsConstraint(); c != nil {
-				constraintsToDrop = append(constraintsToDrop, c)
-			} else if m.AsPrimaryKeySwap() != nil || m.AsComputedColumnSwap() != nil || m.AsMaterializedViewRefresh() != nil || m.AsModifyRowLevelTTL() != nil {
-				// The backfiller doesn't need to do anything here.
+		} else {
+			__antithesis_instrumentation__.Notify(246116)
+			if m.Dropped() {
+				__antithesis_instrumentation__.Notify(246117)
+				if col := m.AsColumn(); col != nil {
+					__antithesis_instrumentation__.Notify(246118)
+
+					needColumnBackfill = needColumnBackfill || func() bool {
+						__antithesis_instrumentation__.Notify(246119)
+						return catalog.ColumnNeedsBackfill(col) == true
+					}() == true
+				} else {
+					__antithesis_instrumentation__.Notify(246120)
+					if idx := m.AsIndex(); idx != nil {
+						__antithesis_instrumentation__.Notify(246121)
+
+					} else {
+						__antithesis_instrumentation__.Notify(246122)
+						if c := m.AsConstraint(); c != nil {
+							__antithesis_instrumentation__.Notify(246123)
+							constraintsToDrop = append(constraintsToDrop, c)
+						} else {
+							__antithesis_instrumentation__.Notify(246124)
+							if m.AsPrimaryKeySwap() != nil || func() bool {
+								__antithesis_instrumentation__.Notify(246125)
+								return m.AsComputedColumnSwap() != nil == true
+							}() == true || func() bool {
+								__antithesis_instrumentation__.Notify(246126)
+								return m.AsMaterializedViewRefresh() != nil == true
+							}() == true || func() bool {
+								__antithesis_instrumentation__.Notify(246127)
+								return m.AsModifyRowLevelTTL() != nil == true
+							}() == true {
+								__antithesis_instrumentation__.Notify(246128)
+
+							} else {
+								__antithesis_instrumentation__.Notify(246129)
+								return errors.AssertionFailedf("unsupported mutation: %+v", m)
+							}
+						}
+					}
+				}
 			} else {
-				return errors.AssertionFailedf("unsupported mutation: %+v", m)
+				__antithesis_instrumentation__.Notify(246130)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(246062)
 
-	// If we were requested to refresh a view, then do so.
 	if viewToRefresh != nil {
+		__antithesis_instrumentation__.Notify(246131)
 		if err := sc.refreshMaterializedView(ctx, tableDesc, viewToRefresh); err != nil {
+			__antithesis_instrumentation__.Notify(246132)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246133)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246134)
 	}
+	__antithesis_instrumentation__.Notify(246063)
 
-	// First drop constraints and indexes, then add/drop columns, and only then
-	// add indexes and constraints.
-
-	// Drop constraints.
 	if len(constraintsToDrop) > 0 {
+		__antithesis_instrumentation__.Notify(246135)
 		descs, err := sc.dropConstraints(ctx, constraintsToDrop)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246137)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246138)
 		}
+		__antithesis_instrumentation__.Notify(246136)
 		version = descs[tableDesc.GetID()].GetVersion()
+	} else {
+		__antithesis_instrumentation__.Notify(246139)
 	}
+	__antithesis_instrumentation__.Notify(246064)
 
-	// Add and drop columns.
 	if needColumnBackfill {
+		__antithesis_instrumentation__.Notify(246140)
 		if err := sc.truncateAndBackfillColumns(ctx, version); err != nil {
+			__antithesis_instrumentation__.Notify(246141)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246142)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246143)
 	}
+	__antithesis_instrumentation__.Notify(246065)
 
-	// Add new indexes.
 	if len(addedIndexSpans) > 0 {
-		// Check if bulk-adding is enabled and supported by indexes (ie non-unique).
+		__antithesis_instrumentation__.Notify(246144)
+
 		if err := sc.backfillIndexes(ctx, version, addedIndexSpans, addedIndexes, temporaryIndexes); err != nil {
+			__antithesis_instrumentation__.Notify(246145)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246146)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246147)
 	}
+	__antithesis_instrumentation__.Notify(246066)
 
-	// Add check and foreign key constraints, publish the new version of the table descriptor,
-	// and wait until the entire cluster is on the new version. This is basically
-	// a state transition for the schema change, which must happen after the
-	// columns are backfilled and before constraint validation begins. This
-	// ensures that 1) all columns are writable and backfilled when the constraint
-	// starts being enforced on insert/update (which is relevant in the case where
-	// a constraint references both public and non-public columns), and 2) the
-	// validation occurs only when the entire cluster is already enforcing the
-	// constraint on insert/update.
 	if len(constraintsToAddBeforeValidation) > 0 {
+		__antithesis_instrumentation__.Notify(246148)
 		if err := sc.addConstraints(ctx, constraintsToAddBeforeValidation); err != nil {
+			__antithesis_instrumentation__.Notify(246149)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246150)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246151)
 	}
+	__antithesis_instrumentation__.Notify(246067)
 
-	// Validate check and foreign key constraints.
 	if len(constraintsToValidate) > 0 {
+		__antithesis_instrumentation__.Notify(246152)
 		if err := sc.validateConstraints(ctx, constraintsToValidate); err != nil {
+			__antithesis_instrumentation__.Notify(246153)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246154)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246155)
 	}
+	__antithesis_instrumentation__.Notify(246068)
 
 	log.Infof(ctx, "completed backfill for %q, v=%d", tableDesc.GetName(), tableDesc.GetVersion())
 
 	if sc.testingKnobs.RunAfterBackfill != nil {
+		__antithesis_instrumentation__.Notify(246156)
 		if err := sc.testingKnobs.RunAfterBackfill(sc.job.ID()); err != nil {
+			__antithesis_instrumentation__.Notify(246157)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246158)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246159)
 	}
+	__antithesis_instrumentation__.Notify(246069)
 
 	return nil
 }
 
-// shouldSkipConstraintValidation checks if a validating constraint should skip
-// validation and be added directly. A Check Constraint can skip validation if it's
-// created for a shard column internally.
 func shouldSkipConstraintValidation(
 	tableDesc catalog.TableDescriptor, c catalog.ConstraintToUpdate,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(246160)
 	if !c.IsCheck() {
+		__antithesis_instrumentation__.Notify(246164)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(246165)
 	}
+	__antithesis_instrumentation__.Notify(246161)
 
 	check := c.Check()
-	// The check constraint on shard column is always on the shard column itself.
+
 	if len(check.ColumnIDs) != 1 {
+		__antithesis_instrumentation__.Notify(246166)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(246167)
 	}
+	__antithesis_instrumentation__.Notify(246162)
 
 	checkCol, err := tableDesc.FindColumnWithID(check.ColumnIDs[0])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(246168)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(246169)
 	}
+	__antithesis_instrumentation__.Notify(246163)
 
-	// We only want to skip validation when the shard column is first added and
-	// the constraint is created internally since the shard column computation is
-	// well defined. Note that we show the shard column in `SHOW CREATE TABLE`,
-	// and we don't prevent users from adding other constraints on it. For those
-	// constraints, we still want to validate.
-	return tableDesc.IsShardColumn(checkCol) && checkCol.Adding(), nil
+	return tableDesc.IsShardColumn(checkCol) && func() bool {
+		__antithesis_instrumentation__.Notify(246170)
+		return checkCol.Adding() == true
+	}() == true, nil
 }
 
-// dropConstraints publishes a new version of the given table descriptor with
-// the given constraint removed from it, and waits until the entire cluster is
-// on the new version of the table descriptor. It returns the new table descs.
 func (sc *SchemaChanger) dropConstraints(
 	ctx context.Context, constraints []catalog.ConstraintToUpdate,
 ) (map[descpb.ID]catalog.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(246171)
 	log.Infof(ctx, "dropping %d constraints", len(constraints))
 
 	fksByBackrefTable := make(map[descpb.ID][]catalog.ConstraintToUpdate)
 	for _, c := range constraints {
+		__antithesis_instrumentation__.Notify(246175)
 		if c.IsForeignKey() {
+			__antithesis_instrumentation__.Notify(246176)
 			id := c.ForeignKey().ReferencedTableID
 			if id != sc.descID {
+				__antithesis_instrumentation__.Notify(246177)
 				fksByBackrefTable[id] = append(fksByBackrefTable[id], c)
+			} else {
+				__antithesis_instrumentation__.Notify(246178)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(246179)
 		}
 	}
+	__antithesis_instrumentation__.Notify(246172)
 
-	// Create update closure for the table and all other tables with backreferences.
 	if err := sc.txn(ctx, func(ctx context.Context, txn *kv.Txn, descsCol *descs.Collection) error {
+		__antithesis_instrumentation__.Notify(246180)
 		scTable, err := descsCol.GetMutableTableVersionByID(ctx, sc.descID, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246184)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246185)
 		}
+		__antithesis_instrumentation__.Notify(246181)
 		b := txn.NewBatch()
 		for _, constraint := range constraints {
-			if constraint.IsCheck() || constraint.IsNotNull() {
+			__antithesis_instrumentation__.Notify(246186)
+			if constraint.IsCheck() || func() bool {
+				__antithesis_instrumentation__.Notify(246187)
+				return constraint.IsNotNull() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(246188)
 				found := false
 				for j, c := range scTable.Checks {
+					__antithesis_instrumentation__.Notify(246190)
 					if c.Name == constraint.GetName() {
+						__antithesis_instrumentation__.Notify(246191)
 						scTable.Checks = append(scTable.Checks[:j], scTable.Checks[j+1:]...)
 						found = true
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(246192)
 					}
 				}
+				__antithesis_instrumentation__.Notify(246189)
 				if !found {
+					__antithesis_instrumentation__.Notify(246193)
 					log.VEventf(
 						ctx, 2,
 						"backfiller tried to drop constraint %+v but it was not found, "+
 							"presumably due to a retry or rollback",
 						constraint.ConstraintToUpdateDesc(),
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(246194)
 				}
-			} else if constraint.IsForeignKey() {
-				var foundExisting bool
-				for j := range scTable.OutboundFKs {
-					def := &scTable.OutboundFKs[j]
-					if def.Name != constraint.GetName() {
-						continue
-					}
-					backrefTable, err := descsCol.GetMutableTableVersionByID(ctx,
-						constraint.ForeignKey().ReferencedTableID, txn)
-					if err != nil {
-						return err
-					}
-					if err := removeFKBackReferenceFromTable(
-						backrefTable, def.Name, scTable,
-					); err != nil {
-						return err
-					}
-					if err := descsCol.WriteDescToBatch(
-						ctx, true /* kvTrace */, backrefTable, b,
-					); err != nil {
-						return err
-					}
-					scTable.OutboundFKs = append(scTable.OutboundFKs[:j], scTable.OutboundFKs[j+1:]...)
-					foundExisting = true
-					break
-				}
-				if !foundExisting {
-					log.VEventf(
-						ctx, 2,
-						"backfiller tried to drop constraint %+v but it was not found, "+
-							"presumably due to a retry or rollback",
-						constraint.ConstraintToUpdateDesc(),
-					)
-				}
-			} else if constraint.IsUniqueWithoutIndex() {
-				found := false
-				for j, c := range scTable.UniqueWithoutIndexConstraints {
-					if c.Name == constraint.GetName() {
-						scTable.UniqueWithoutIndexConstraints = append(
-							scTable.UniqueWithoutIndexConstraints[:j],
-							scTable.UniqueWithoutIndexConstraints[j+1:]...,
-						)
-						found = true
+			} else {
+				__antithesis_instrumentation__.Notify(246195)
+				if constraint.IsForeignKey() {
+					__antithesis_instrumentation__.Notify(246196)
+					var foundExisting bool
+					for j := range scTable.OutboundFKs {
+						__antithesis_instrumentation__.Notify(246198)
+						def := &scTable.OutboundFKs[j]
+						if def.Name != constraint.GetName() {
+							__antithesis_instrumentation__.Notify(246203)
+							continue
+						} else {
+							__antithesis_instrumentation__.Notify(246204)
+						}
+						__antithesis_instrumentation__.Notify(246199)
+						backrefTable, err := descsCol.GetMutableTableVersionByID(ctx,
+							constraint.ForeignKey().ReferencedTableID, txn)
+						if err != nil {
+							__antithesis_instrumentation__.Notify(246205)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(246206)
+						}
+						__antithesis_instrumentation__.Notify(246200)
+						if err := removeFKBackReferenceFromTable(
+							backrefTable, def.Name, scTable,
+						); err != nil {
+							__antithesis_instrumentation__.Notify(246207)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(246208)
+						}
+						__antithesis_instrumentation__.Notify(246201)
+						if err := descsCol.WriteDescToBatch(
+							ctx, true, backrefTable, b,
+						); err != nil {
+							__antithesis_instrumentation__.Notify(246209)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(246210)
+						}
+						__antithesis_instrumentation__.Notify(246202)
+						scTable.OutboundFKs = append(scTable.OutboundFKs[:j], scTable.OutboundFKs[j+1:]...)
+						foundExisting = true
 						break
 					}
-				}
-				if !found {
-					log.VEventf(
-						ctx, 2,
-						"backfiller tried to drop constraint %+v but it was not found, "+
-							"presumably due to a retry or rollback",
-						constraint.ConstraintToUpdateDesc(),
-					)
+					__antithesis_instrumentation__.Notify(246197)
+					if !foundExisting {
+						__antithesis_instrumentation__.Notify(246211)
+						log.VEventf(
+							ctx, 2,
+							"backfiller tried to drop constraint %+v but it was not found, "+
+								"presumably due to a retry or rollback",
+							constraint.ConstraintToUpdateDesc(),
+						)
+					} else {
+						__antithesis_instrumentation__.Notify(246212)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(246213)
+					if constraint.IsUniqueWithoutIndex() {
+						__antithesis_instrumentation__.Notify(246214)
+						found := false
+						for j, c := range scTable.UniqueWithoutIndexConstraints {
+							__antithesis_instrumentation__.Notify(246216)
+							if c.Name == constraint.GetName() {
+								__antithesis_instrumentation__.Notify(246217)
+								scTable.UniqueWithoutIndexConstraints = append(
+									scTable.UniqueWithoutIndexConstraints[:j],
+									scTable.UniqueWithoutIndexConstraints[j+1:]...,
+								)
+								found = true
+								break
+							} else {
+								__antithesis_instrumentation__.Notify(246218)
+							}
+						}
+						__antithesis_instrumentation__.Notify(246215)
+						if !found {
+							__antithesis_instrumentation__.Notify(246219)
+							log.VEventf(
+								ctx, 2,
+								"backfiller tried to drop constraint %+v but it was not found, "+
+									"presumably due to a retry or rollback",
+								constraint.ConstraintToUpdateDesc(),
+							)
+						} else {
+							__antithesis_instrumentation__.Notify(246220)
+						}
+					} else {
+						__antithesis_instrumentation__.Notify(246221)
+					}
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(246182)
 		if err := descsCol.WriteDescToBatch(
-			ctx, true /* kvTrace */, scTable, b,
+			ctx, true, scTable, b,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(246222)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246223)
 		}
+		__antithesis_instrumentation__.Notify(246183)
 		return txn.Run(ctx, b)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246224)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(246225)
 	}
+	__antithesis_instrumentation__.Notify(246173)
 
 	log.Info(ctx, "finished dropping constraints")
 	tableDescs := make(map[descpb.ID]catalog.TableDescriptor, len(fksByBackrefTable)+1)
 	if err := sc.txn(ctx, func(
 		ctx context.Context, txn *kv.Txn, descsCol *descs.Collection,
 	) (err error) {
+		__antithesis_instrumentation__.Notify(246226)
 		if tableDescs[sc.descID], err = descsCol.GetImmutableTableByID(
 			ctx, txn, sc.descID, tree.ObjectLookupFlags{},
 		); err != nil {
+			__antithesis_instrumentation__.Notify(246229)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246230)
 		}
+		__antithesis_instrumentation__.Notify(246227)
 		for id := range fksByBackrefTable {
+			__antithesis_instrumentation__.Notify(246231)
 			if tableDescs[id], err = descsCol.GetImmutableTableByID(
 				ctx, txn, id, tree.ObjectLookupFlags{},
 			); err != nil {
+				__antithesis_instrumentation__.Notify(246232)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246233)
 			}
 		}
+		__antithesis_instrumentation__.Notify(246228)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246234)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(246235)
 	}
+	__antithesis_instrumentation__.Notify(246174)
 	return tableDescs, nil
 }
 
-// addConstraints publishes a new version of the given table descriptor with the
-// given constraint added to it, and waits until the entire cluster is on
-// the new version of the table descriptor.
 func (sc *SchemaChanger) addConstraints(
 	ctx context.Context, constraints []catalog.ConstraintToUpdate,
 ) error {
+	__antithesis_instrumentation__.Notify(246236)
 	log.Infof(ctx, "adding %d constraints", len(constraints))
 
 	fksByBackrefTable := make(map[descpb.ID][]catalog.ConstraintToUpdate)
 	for _, c := range constraints {
+		__antithesis_instrumentation__.Notify(246239)
 		if c.IsForeignKey() {
+			__antithesis_instrumentation__.Notify(246240)
 			id := c.ForeignKey().ReferencedTableID
 			if id != sc.descID {
+				__antithesis_instrumentation__.Notify(246241)
 				fksByBackrefTable[id] = append(fksByBackrefTable[id], c)
+			} else {
+				__antithesis_instrumentation__.Notify(246242)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(246243)
 		}
 	}
+	__antithesis_instrumentation__.Notify(246237)
 
-	// Create update closure for the table and all other tables with backreferences
 	if err := sc.txn(ctx, func(
 		ctx context.Context, txn *kv.Txn, descsCol *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(246244)
 		scTable, err := descsCol.GetMutableTableVersionByID(ctx, sc.descID, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246248)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246249)
 		}
+		__antithesis_instrumentation__.Notify(246245)
 
 		b := txn.NewBatch()
 		for _, constraint := range constraints {
-			if constraint.IsCheck() || constraint.IsNotNull() {
+			__antithesis_instrumentation__.Notify(246250)
+			if constraint.IsCheck() || func() bool {
+				__antithesis_instrumentation__.Notify(246251)
+				return constraint.IsNotNull() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(246252)
 				found := false
 				for _, c := range scTable.Checks {
+					__antithesis_instrumentation__.Notify(246254)
 					if c.Name == constraint.GetName() {
+						__antithesis_instrumentation__.Notify(246255)
 						log.VEventf(
 							ctx, 2,
 							"backfiller tried to add constraint %+v but found existing constraint %+v, "+
 								"presumably due to a retry or rollback",
 							constraint, c,
 						)
-						// Ensure the constraint on the descriptor is set to Validating, in
-						// case we're in the middle of rolling back DROP CONSTRAINT
-						c.Validity = descpb.ConstraintValidity_Validating
-						found = true
-						break
-					}
-				}
-				if !found {
-					scTable.Checks = append(scTable.Checks, &constraint.ConstraintToUpdateDesc().Check)
-				}
-			} else if constraint.IsForeignKey() {
-				var foundExisting bool
-				for j := range scTable.OutboundFKs {
-					def := &scTable.OutboundFKs[j]
-					if def.Name == constraint.GetName() {
-						if log.V(2) {
-							log.VEventf(
-								ctx, 2,
-								"backfiller tried to add constraint %+v but found existing constraint %+v, "+
-									"presumably due to a retry or rollback",
-								constraint.ConstraintToUpdateDesc(), def,
-							)
-						}
-						// Ensure the constraint on the descriptor is set to Validating, in
-						// case we're in the middle of rolling back DROP CONSTRAINT
-						def.Validity = descpb.ConstraintValidity_Validating
-						foundExisting = true
-						break
-					}
-				}
-				if !foundExisting {
-					scTable.OutboundFKs = append(scTable.OutboundFKs, constraint.ForeignKey())
-					backrefTable, err := descsCol.GetMutableTableVersionByID(ctx, constraint.ForeignKey().ReferencedTableID, txn)
-					if err != nil {
-						return err
-					}
-					// Check that a unique constraint for the FK still exists on the
-					// referenced table. It's possible for the unique index found during
-					// planning to have been dropped in the meantime, since only the
-					// presence of the backreference prevents it.
-					_, err = tabledesc.FindFKReferencedUniqueConstraint(backrefTable, constraint.ForeignKey().ReferencedColumnIDs)
-					if err != nil {
-						return err
-					}
-					backrefTable.InboundFKs = append(backrefTable.InboundFKs, constraint.ForeignKey())
 
-					// Note that this code may add the same descriptor to the batch
-					// multiple times if it is referenced multiple times. That's fine as
-					// the last put will win but it's perhaps not ideal. We could add
-					// code to deduplicate but it doesn't seem worth the hassle.
-					if backrefTable != scTable {
-						if err := descsCol.WriteDescToBatch(
-							ctx, true /* kvTrace */, backrefTable, b,
-						); err != nil {
-							return err
-						}
-					}
-				}
-			} else if constraint.IsUniqueWithoutIndex() {
-				found := false
-				for _, c := range scTable.UniqueWithoutIndexConstraints {
-					if c.Name == constraint.GetName() {
-						log.VEventf(
-							ctx, 2,
-							"backfiller tried to add constraint %+v but found existing constraint %+v, "+
-								"presumably due to a retry or rollback",
-							constraint.ConstraintToUpdateDesc(), c,
-						)
-						// Ensure the constraint on the descriptor is set to Validating, in
-						// case we're in the middle of rolling back DROP CONSTRAINT
 						c.Validity = descpb.ConstraintValidity_Validating
 						found = true
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(246256)
 					}
 				}
+				__antithesis_instrumentation__.Notify(246253)
 				if !found {
-					scTable.UniqueWithoutIndexConstraints = append(scTable.UniqueWithoutIndexConstraints,
-						constraint.UniqueWithoutIndex())
+					__antithesis_instrumentation__.Notify(246257)
+					scTable.Checks = append(scTable.Checks, &constraint.ConstraintToUpdateDesc().Check)
+				} else {
+					__antithesis_instrumentation__.Notify(246258)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(246259)
+				if constraint.IsForeignKey() {
+					__antithesis_instrumentation__.Notify(246260)
+					var foundExisting bool
+					for j := range scTable.OutboundFKs {
+						__antithesis_instrumentation__.Notify(246262)
+						def := &scTable.OutboundFKs[j]
+						if def.Name == constraint.GetName() {
+							__antithesis_instrumentation__.Notify(246263)
+							if log.V(2) {
+								__antithesis_instrumentation__.Notify(246265)
+								log.VEventf(
+									ctx, 2,
+									"backfiller tried to add constraint %+v but found existing constraint %+v, "+
+										"presumably due to a retry or rollback",
+									constraint.ConstraintToUpdateDesc(), def,
+								)
+							} else {
+								__antithesis_instrumentation__.Notify(246266)
+							}
+							__antithesis_instrumentation__.Notify(246264)
+
+							def.Validity = descpb.ConstraintValidity_Validating
+							foundExisting = true
+							break
+						} else {
+							__antithesis_instrumentation__.Notify(246267)
+						}
+					}
+					__antithesis_instrumentation__.Notify(246261)
+					if !foundExisting {
+						__antithesis_instrumentation__.Notify(246268)
+						scTable.OutboundFKs = append(scTable.OutboundFKs, constraint.ForeignKey())
+						backrefTable, err := descsCol.GetMutableTableVersionByID(ctx, constraint.ForeignKey().ReferencedTableID, txn)
+						if err != nil {
+							__antithesis_instrumentation__.Notify(246271)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(246272)
+						}
+						__antithesis_instrumentation__.Notify(246269)
+
+						_, err = tabledesc.FindFKReferencedUniqueConstraint(backrefTable, constraint.ForeignKey().ReferencedColumnIDs)
+						if err != nil {
+							__antithesis_instrumentation__.Notify(246273)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(246274)
+						}
+						__antithesis_instrumentation__.Notify(246270)
+						backrefTable.InboundFKs = append(backrefTable.InboundFKs, constraint.ForeignKey())
+
+						if backrefTable != scTable {
+							__antithesis_instrumentation__.Notify(246275)
+							if err := descsCol.WriteDescToBatch(
+								ctx, true, backrefTable, b,
+							); err != nil {
+								__antithesis_instrumentation__.Notify(246276)
+								return err
+							} else {
+								__antithesis_instrumentation__.Notify(246277)
+							}
+						} else {
+							__antithesis_instrumentation__.Notify(246278)
+						}
+					} else {
+						__antithesis_instrumentation__.Notify(246279)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(246280)
+					if constraint.IsUniqueWithoutIndex() {
+						__antithesis_instrumentation__.Notify(246281)
+						found := false
+						for _, c := range scTable.UniqueWithoutIndexConstraints {
+							__antithesis_instrumentation__.Notify(246283)
+							if c.Name == constraint.GetName() {
+								__antithesis_instrumentation__.Notify(246284)
+								log.VEventf(
+									ctx, 2,
+									"backfiller tried to add constraint %+v but found existing constraint %+v, "+
+										"presumably due to a retry or rollback",
+									constraint.ConstraintToUpdateDesc(), c,
+								)
+
+								c.Validity = descpb.ConstraintValidity_Validating
+								found = true
+								break
+							} else {
+								__antithesis_instrumentation__.Notify(246285)
+							}
+						}
+						__antithesis_instrumentation__.Notify(246282)
+						if !found {
+							__antithesis_instrumentation__.Notify(246286)
+							scTable.UniqueWithoutIndexConstraints = append(scTable.UniqueWithoutIndexConstraints,
+								constraint.UniqueWithoutIndex())
+						} else {
+							__antithesis_instrumentation__.Notify(246287)
+						}
+					} else {
+						__antithesis_instrumentation__.Notify(246288)
+					}
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(246246)
 		if err := descsCol.WriteDescToBatch(
-			ctx, true /* kvTrace */, scTable, b,
+			ctx, true, scTable, b,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(246289)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246290)
 		}
+		__antithesis_instrumentation__.Notify(246247)
 		return txn.Run(ctx, b)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246291)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246292)
 	}
+	__antithesis_instrumentation__.Notify(246238)
 	log.Info(ctx, "finished adding constraints")
 	return nil
 }
 
-// validateConstraints checks that the current table data obeys the
-// provided constraints.
-//
-// This operates over multiple goroutines concurrently and is thus not
-// able to reuse the original kv.Txn safely, so it makes its own.
 func (sc *SchemaChanger) validateConstraints(
 	ctx context.Context, constraints []catalog.ConstraintToUpdate,
 ) error {
+	__antithesis_instrumentation__.Notify(246293)
 	if lease.TestingTableLeasesAreDisabled() {
+		__antithesis_instrumentation__.Notify(246300)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(246301)
 	}
+	__antithesis_instrumentation__.Notify(246294)
 	log.Infof(ctx, "validating %d new constraints", len(constraints))
 
 	_, err := sc.updateJobRunningStatus(ctx, RunningStatusValidation)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(246302)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246303)
 	}
+	__antithesis_instrumentation__.Notify(246295)
 
 	if fn := sc.testingKnobs.RunBeforeConstraintValidation; fn != nil {
+		__antithesis_instrumentation__.Notify(246304)
 		if err := fn(constraints); err != nil {
+			__antithesis_instrumentation__.Notify(246305)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246306)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246307)
 	}
+	__antithesis_instrumentation__.Notify(246296)
 
 	readAsOf := sc.clock.Now()
 	var tableDesc catalog.TableDescriptor
@@ -685,157 +971,195 @@ func (sc *SchemaChanger) validateConstraints(
 	if err := sc.fixedTimestampTxn(ctx, readAsOf, func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(246308)
 		flags := tree.ObjectLookupFlagsWithRequired()
 		flags.AvoidLeased = true
 		tableDesc, err = descriptors.GetImmutableTableByID(ctx, txn, sc.descID, flags)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246309)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246310)
 	}
+	__antithesis_instrumentation__.Notify(246297)
 
 	grp := ctxgroup.WithContext(ctx)
-	// The various checks below operate at a fixed timestamp.
+
 	runHistoricalTxn := sc.makeFixedTimestampRunner(readAsOf)
 
 	for i := range constraints {
+		__antithesis_instrumentation__.Notify(246311)
 		c := constraints[i]
 		grp.GoCtx(func(ctx context.Context) error {
-			// Make the mutations public in a private copy of the descriptor
-			// and add it to the Collection, so that we can use SQL below to perform
-			// the validation. We wouldn't have needed to do this if we could have
-			// updated the descriptor and run validation in the same transaction. However,
-			// our current system is incapable of running long running schema changes
-			// (the validation can take many minutes). So we pretend that the schema
-			// has been updated and actually update it in a separate transaction that
-			// follows this one.
+			__antithesis_instrumentation__.Notify(246312)
+
 			descI, err := tableDesc.MakeFirstMutationPublic(catalog.IgnoreConstraints)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(246314)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246315)
 			}
+			__antithesis_instrumentation__.Notify(246313)
 			desc := descI.(*tabledesc.Mutable)
-			// Each check operates at the historical timestamp.
+
 			return runHistoricalTxn(ctx, func(ctx context.Context, txn *kv.Txn, evalCtx *extendedEvalContext) error {
-				// If the constraint is a check constraint that fails validation, we
-				// need a semaContext set up that can resolve types in order to pretty
-				// print the check expression back to the user.
+				__antithesis_instrumentation__.Notify(246316)
+
 				evalCtx.Txn = txn
-				// Use the DistSQLTypeResolver because we need to resolve types by ID.
+
 				collection := evalCtx.Descs
 				resolver := descs.NewDistSQLTypeResolver(collection, txn)
 				semaCtx := tree.MakeSemaContext()
 				semaCtx.TypeResolver = &resolver
-				// TODO (rohany): When to release this? As of now this is only going to get released
-				//  after the check is validated.
-				defer func() { collection.ReleaseAll(ctx) }()
+
+				defer func() { __antithesis_instrumentation__.Notify(246319); collection.ReleaseAll(ctx) }()
+				__antithesis_instrumentation__.Notify(246317)
 				if c.IsCheck() {
+					__antithesis_instrumentation__.Notify(246320)
 					if err := validateCheckInTxn(
 						ctx, &semaCtx, sc.ieFactory, evalCtx.SessionData(), desc, txn, c.Check().Expr,
 					); err != nil {
+						__antithesis_instrumentation__.Notify(246321)
 						return err
-					}
-				} else if c.IsForeignKey() {
-					if err := validateFkInTxn(ctx, sc.ieFactory, evalCtx.SessionData(), desc, txn, collection, c.GetName()); err != nil {
-						return err
-					}
-				} else if c.IsUniqueWithoutIndex() {
-					if err := validateUniqueWithoutIndexConstraintInTxn(ctx, sc.ieFactory(ctx, evalCtx.SessionData()), desc, txn, c.GetName()); err != nil {
-						return err
-					}
-				} else if c.IsNotNull() {
-					if err := validateCheckInTxn(
-						ctx, &semaCtx, sc.ieFactory, evalCtx.SessionData(), desc, txn, c.Check().Expr,
-					); err != nil {
-						// TODO (lucy): This should distinguish between constraint
-						// validation errors and other types of unexpected errors, and
-						// return a different error code in the former case
-						return errors.Wrap(err, "validation of NOT NULL constraint failed")
+					} else {
+						__antithesis_instrumentation__.Notify(246322)
 					}
 				} else {
-					return errors.Errorf("unsupported constraint type: %d", c.ConstraintToUpdateDesc().ConstraintType)
+					__antithesis_instrumentation__.Notify(246323)
+					if c.IsForeignKey() {
+						__antithesis_instrumentation__.Notify(246324)
+						if err := validateFkInTxn(ctx, sc.ieFactory, evalCtx.SessionData(), desc, txn, collection, c.GetName()); err != nil {
+							__antithesis_instrumentation__.Notify(246325)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(246326)
+						}
+					} else {
+						__antithesis_instrumentation__.Notify(246327)
+						if c.IsUniqueWithoutIndex() {
+							__antithesis_instrumentation__.Notify(246328)
+							if err := validateUniqueWithoutIndexConstraintInTxn(ctx, sc.ieFactory(ctx, evalCtx.SessionData()), desc, txn, c.GetName()); err != nil {
+								__antithesis_instrumentation__.Notify(246329)
+								return err
+							} else {
+								__antithesis_instrumentation__.Notify(246330)
+							}
+						} else {
+							__antithesis_instrumentation__.Notify(246331)
+							if c.IsNotNull() {
+								__antithesis_instrumentation__.Notify(246332)
+								if err := validateCheckInTxn(
+									ctx, &semaCtx, sc.ieFactory, evalCtx.SessionData(), desc, txn, c.Check().Expr,
+								); err != nil {
+									__antithesis_instrumentation__.Notify(246333)
+
+									return errors.Wrap(err, "validation of NOT NULL constraint failed")
+								} else {
+									__antithesis_instrumentation__.Notify(246334)
+								}
+							} else {
+								__antithesis_instrumentation__.Notify(246335)
+								return errors.Errorf("unsupported constraint type: %d", c.ConstraintToUpdateDesc().ConstraintType)
+							}
+						}
+					}
 				}
+				__antithesis_instrumentation__.Notify(246318)
 				return nil
 			})
 		})
 	}
+	__antithesis_instrumentation__.Notify(246298)
 	if err := grp.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(246336)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246337)
 	}
+	__antithesis_instrumentation__.Notify(246299)
 	log.Info(ctx, "finished validating new constraints")
 	return nil
 }
 
-// getTableVersion retrieves the descriptor for the table being
-// targeted by the schema changer using the provided txn, and asserts
-// that the retrieved descriptor is at the given version. An error is
-// returned otherwise.
-//
-// It operates entirely on the current goroutine and is thus able to
-// reuse an existing kv.Txn safely.
 func (sc *SchemaChanger) getTableVersion(
 	ctx context.Context, txn *kv.Txn, tc *descs.Collection, version descpb.DescriptorVersion,
 ) (catalog.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(246338)
 	tableDesc, err := tc.GetImmutableTableByID(ctx, txn, sc.descID, tree.ObjectLookupFlags{})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(246341)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(246342)
 	}
+	__antithesis_instrumentation__.Notify(246339)
 	if version != tableDesc.GetVersion() {
+		__antithesis_instrumentation__.Notify(246343)
 		return nil, makeErrTableVersionMismatch(tableDesc.GetVersion(), version)
+	} else {
+		__antithesis_instrumentation__.Notify(246344)
 	}
+	__antithesis_instrumentation__.Notify(246340)
 	return tableDesc, nil
 }
 
-// getJobIDForMutationWithDescriptor returns a job id associated with a mutation given
-// a table descriptor. Unlike getJobIDForMutation this doesn't need transaction.
-// TODO (lucy): This is not a good way to look up all schema change jobs
-// associated with a table. We should get rid of MutationJobs and start looking
-// up the jobs in the jobs table instead.
 func getJobIDForMutationWithDescriptor(
 	ctx context.Context, tableDesc catalog.TableDescriptor, mutationID descpb.MutationID,
 ) (jobspb.JobID, error) {
+	__antithesis_instrumentation__.Notify(246345)
 	for _, job := range tableDesc.GetMutationJobs() {
+		__antithesis_instrumentation__.Notify(246347)
 		if job.MutationID == mutationID {
+			__antithesis_instrumentation__.Notify(246348)
 			return job.JobID, nil
+		} else {
+			__antithesis_instrumentation__.Notify(246349)
 		}
 	}
+	__antithesis_instrumentation__.Notify(246346)
 
 	return jobspb.InvalidJobID, errors.AssertionFailedf(
 		"job not found for table id %d, mutation %d", tableDesc.GetID(), mutationID)
 }
 
-// numRangesInSpans returns the number of ranges that cover a set of spans.
-//
-// It operates entirely on the current goroutine and is thus able to
-// reuse an existing kv.Txn safely.
 func numRangesInSpans(
 	ctx context.Context, db *kv.DB, distSQLPlanner *DistSQLPlanner, spans []roachpb.Span,
 ) (int, error) {
+	__antithesis_instrumentation__.Notify(246350)
 	txn := db.NewTxn(ctx, "num-ranges-in-spans")
 	spanResolver := distSQLPlanner.spanResolver.NewSpanResolverIterator(txn)
 	rangeIds := make(map[int64]struct{})
 	for _, span := range spans {
-		// For each span, iterate the spanResolver until it's exhausted, storing
-		// the found range ids in the map to de-duplicate them.
+		__antithesis_instrumentation__.Notify(246352)
+
 		spanResolver.Seek(ctx, span, kvcoord.Ascending)
 		for {
+			__antithesis_instrumentation__.Notify(246353)
 			if !spanResolver.Valid() {
+				__antithesis_instrumentation__.Notify(246356)
 				return 0, spanResolver.Error()
+			} else {
+				__antithesis_instrumentation__.Notify(246357)
 			}
+			__antithesis_instrumentation__.Notify(246354)
 			rangeIds[int64(spanResolver.Desc().RangeID)] = struct{}{}
 			if !spanResolver.NeedAnother() {
+				__antithesis_instrumentation__.Notify(246358)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(246359)
 			}
+			__antithesis_instrumentation__.Notify(246355)
 			spanResolver.Next(ctx)
 		}
 	}
+	__antithesis_instrumentation__.Notify(246351)
 
 	return len(rangeIds), nil
 }
 
-// NumRangesInSpanContainedBy returns the number of ranges that covers
-// a span and how many of those ranged are wholly contained in containedBy.
-//
-// It operates entirely on the current goroutine and is thus able to
-// reuse an existing kv.Txn safely.
 func NumRangesInSpanContainedBy(
 	ctx context.Context,
 	db *kv.DB,
@@ -843,32 +1167,44 @@ func NumRangesInSpanContainedBy(
 	outerSpan roachpb.Span,
 	containedBy []roachpb.Span,
 ) (total, inContainedBy int, _ error) {
+	__antithesis_instrumentation__.Notify(246360)
 	txn := db.NewTxn(ctx, "num-ranges-in-spans")
 	spanResolver := distSQLPlanner.spanResolver.NewSpanResolverIterator(txn)
-	// For each span, iterate the spanResolver until it's exhausted, storing
-	// the found range ids in the map to de-duplicate them.
+
 	spanResolver.Seek(ctx, outerSpan, kvcoord.Ascending)
 	var g roachpb.SpanGroup
 	g.Add(containedBy...)
 	for {
+		__antithesis_instrumentation__.Notify(246362)
 		if !spanResolver.Valid() {
+			__antithesis_instrumentation__.Notify(246366)
 			return 0, 0, spanResolver.Error()
+		} else {
+			__antithesis_instrumentation__.Notify(246367)
 		}
+		__antithesis_instrumentation__.Notify(246363)
 		total++
 		desc := spanResolver.Desc()
 		if g.Encloses(desc.RSpan().AsRawSpanWithNoLocals().Intersect(outerSpan)) {
+			__antithesis_instrumentation__.Notify(246368)
 			inContainedBy++
+		} else {
+			__antithesis_instrumentation__.Notify(246369)
 		}
+		__antithesis_instrumentation__.Notify(246364)
 		if !spanResolver.NeedAnother() {
+			__antithesis_instrumentation__.Notify(246370)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(246371)
 		}
+		__antithesis_instrumentation__.Notify(246365)
 		spanResolver.Next(ctx)
 	}
+	__antithesis_instrumentation__.Notify(246361)
 	return total, inContainedBy, nil
 }
 
-// TODO(adityamaru): Consider moving this to sql/backfill. It has a lot of
-// schema changer dependencies which will need to be passed around.
 func (sc *SchemaChanger) distIndexBackfill(
 	ctx context.Context,
 	version descpb.DescriptorVersion,
@@ -878,120 +1214,146 @@ func (sc *SchemaChanger) distIndexBackfill(
 	filter backfill.MutationFilter,
 	fractionScaler *multiStageFractionScaler,
 ) error {
-	// Gather the initial resume spans for the table.
+	__antithesis_instrumentation__.Notify(246372)
+
 	var todoSpans []roachpb.Span
 	var mutationIdx int
 
 	if err := DescsTxn(ctx, sc.execCfg, func(ctx context.Context, txn *kv.Txn, col *descs.Collection) (err error) {
+		__antithesis_instrumentation__.Notify(246387)
 		todoSpans, _, mutationIdx, err = rowexec.GetResumeSpans(
 			ctx, sc.jobRegistry, txn, sc.execCfg.Codec, col, sc.descID, sc.mutationID, filter)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246388)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246389)
 	}
+	__antithesis_instrumentation__.Notify(246373)
 
 	log.VEventf(ctx, 2, "indexbackfill: initial resume spans %+v", todoSpans)
 
 	if todoSpans == nil {
+		__antithesis_instrumentation__.Notify(246390)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(246391)
 	}
+	__antithesis_instrumentation__.Notify(246374)
 
 	writeAsOf := sc.job.Details().(jobspb.SchemaChangeDetails).WriteTimestamp
 	if writeAsOf.IsEmpty() {
-		if err := sc.job.RunningStatus(ctx, nil /* txn */, func(_ context.Context, _ jobspb.Details) (jobs.RunningStatus, error) {
+		__antithesis_instrumentation__.Notify(246392)
+		if err := sc.job.RunningStatus(ctx, nil, func(_ context.Context, _ jobspb.Details) (jobs.RunningStatus, error) {
+			__antithesis_instrumentation__.Notify(246397)
 			return jobs.RunningStatus("scanning target index for in-progress transactions"), nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(246398)
 			return errors.Wrapf(err, "failed to update running status of job %d", errors.Safe(sc.job.ID()))
+		} else {
+			__antithesis_instrumentation__.Notify(246399)
 		}
+		__antithesis_instrumentation__.Notify(246393)
 		writeAsOf = sc.clock.Now()
 		log.Infof(ctx, "starting scan of target index as of %v...", writeAsOf)
-		// Index backfilling ingests SSTs that don't play nicely with running txns
-		// since they just add their keys blindly. Running a Scan of the target
-		// spans at the time the SSTs' keys will be written will calcify history up
-		// to then since the scan will resolve intents and populate tscache to keep
-		// anything else from sneaking under us. Since these are new indexes, these
-		// spans should be essentially empty, so this should be a pretty quick and
-		// cheap scan.
+
 		const pageSize = 10000
-		noop := func(_ []kv.KeyValue) error { return nil }
+		noop := func(_ []kv.KeyValue) error { __antithesis_instrumentation__.Notify(246400); return nil }
+		__antithesis_instrumentation__.Notify(246394)
 		if err := sc.fixedTimestampTxn(ctx, writeAsOf, func(
 			ctx context.Context, txn *kv.Txn, _ *descs.Collection,
 		) error {
+			__antithesis_instrumentation__.Notify(246401)
 			for _, span := range targetSpans {
-				// TODO(dt): a Count() request would be nice here if the target isn't
-				// empty, since we don't need to drag all the results back just to
-				// then ignore them -- we just need the iteration on the far end.
+				__antithesis_instrumentation__.Notify(246403)
+
 				if err := txn.Iterate(ctx, span.Key, span.EndKey, pageSize, noop); err != nil {
+					__antithesis_instrumentation__.Notify(246404)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(246405)
 				}
 			}
+			__antithesis_instrumentation__.Notify(246402)
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(246406)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246407)
 		}
+		__antithesis_instrumentation__.Notify(246395)
 		log.Infof(ctx, "persisting target safe write time %v...", writeAsOf)
 		if err := sc.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(246408)
 			details := sc.job.Details().(jobspb.SchemaChangeDetails)
 			details.WriteTimestamp = writeAsOf
 			return sc.job.SetDetails(ctx, txn, details)
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(246409)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246410)
 		}
-		if err := sc.job.RunningStatus(ctx, nil /* txn */, func(_ context.Context, _ jobspb.Details) (jobs.RunningStatus, error) {
+		__antithesis_instrumentation__.Notify(246396)
+		if err := sc.job.RunningStatus(ctx, nil, func(_ context.Context, _ jobspb.Details) (jobs.RunningStatus, error) {
+			__antithesis_instrumentation__.Notify(246411)
 			return RunningStatusBackfill, nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(246412)
 			return errors.Wrapf(err, "failed to update running status of job %d", errors.Safe(sc.job.ID()))
+		} else {
+			__antithesis_instrumentation__.Notify(246413)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(246414)
 		log.Infof(ctx, "writing at persisted safe write time %v...", writeAsOf)
 	}
+	__antithesis_instrumentation__.Notify(246375)
 
 	readAsOf := sc.clock.Now()
 
 	var p *PhysicalPlan
 	var evalCtx extendedEvalContext
 	var planCtx *PlanningCtx
-	// The txn is used to fetch a tableDesc, partition the spans and set the
-	// evalCtx ts all of which is during planning of the DistSQL flow.
+
 	if err := sc.txn(ctx, func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(246415)
 
-		// It is okay to release the lease on the descriptor before running the
-		// index backfill flow because any schema change that would invalidate the
-		// index being backfilled, would be queued behind the backfill in the
-		// mutations slice.
-		// NB: There are tradeoffs to holding the lease throughout the backfill. It
-		// results in disallowing certain kinds of schema changes to complete eg:
-		// changing privileges. There might be a more principled solution in
-		// dropping and acquiring fresh leases at regular checkpoint but it is not
-		// clear what this buys us in terms of checking the descriptors validity.
-		// Thus, in favor of simpler code and no correctness concerns we release
-		// the lease once the flow is planned.
 		tableDesc, err := sc.getTableVersion(ctx, txn, descriptors, version)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246418)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246419)
 		}
+		__antithesis_instrumentation__.Notify(246416)
 		evalCtx = createSchemaChangeEvalCtx(ctx, sc.execCfg, txn.ReadTimestamp(), descriptors)
-		planCtx = sc.distSQLPlanner.NewPlanningCtx(ctx, &evalCtx, nil, /* planner */
+		planCtx = sc.distSQLPlanner.NewPlanningCtx(ctx, &evalCtx, nil,
 			txn, DistributionTypeSystemTenantOnly)
 		indexBatchSize := indexBackfillBatchSize.Get(&sc.execCfg.Settings.SV)
 		chunkSize := sc.getChunkSize(indexBatchSize)
 		spec, err := initIndexBackfillerSpec(*tableDesc.TableDesc(), writeAsOf, readAsOf, writeAtRequestTimestamp, chunkSize, addedIndexes)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246420)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246421)
 		}
+		__antithesis_instrumentation__.Notify(246417)
 		p, err = sc.distSQLPlanner.createBackfillerPhysicalPlan(ctx, planCtx, spec, todoSpans)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246422)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246423)
 	}
+	__antithesis_instrumentation__.Notify(246376)
 
-	// Processors stream back the completed spans via metadata.
-	//
-	// mu synchronizes reads and writes to updatedTodoSpans between the processor
-	// streaming back progress and the updates to the job details/progress
-	// fraction.
 	mu := struct {
 		syncutil.Mutex
 		updatedTodoSpans []roachpb.Span
@@ -999,7 +1361,9 @@ func (sc *SchemaChanger) distIndexBackfill(
 	var updateJobProgress func() error
 	var updateJobDetails func() error
 	metaFn := func(_ context.Context, meta *execinfrapb.ProducerMetadata) error {
+		__antithesis_instrumentation__.Notify(246424)
 		if meta.BulkProcessorProgress != nil {
+			__antithesis_instrumentation__.Notify(246426)
 			todoSpans = roachpb.SubtractSpans(todoSpans,
 				meta.BulkProcessorProgress.CompletedSpans)
 			mu.Lock()
@@ -1008,454 +1372,653 @@ func (sc *SchemaChanger) distIndexBackfill(
 			mu.Unlock()
 
 			if sc.testingKnobs.AlwaysUpdateIndexBackfillDetails {
+				__antithesis_instrumentation__.Notify(246428)
 				if err := updateJobDetails(); err != nil {
+					__antithesis_instrumentation__.Notify(246429)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(246430)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(246431)
 			}
+			__antithesis_instrumentation__.Notify(246427)
 
 			if sc.testingKnobs.AlwaysUpdateIndexBackfillProgress {
+				__antithesis_instrumentation__.Notify(246432)
 				if err := updateJobProgress(); err != nil {
+					__antithesis_instrumentation__.Notify(246433)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(246434)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(246435)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(246436)
 		}
+		__antithesis_instrumentation__.Notify(246425)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(246377)
 	cbw := MetadataCallbackWriter{rowResultWriter: &errOnlyResultWriter{}, fn: metaFn}
 	recv := MakeDistSQLReceiver(
 		ctx,
 		&cbw,
-		tree.Rows, /* stmtType - doesn't matter here since no result are produced */
+		tree.Rows,
 		sc.rangeDescriptorCache,
-		nil, /* txn - the flow does not run wholly in a txn */
+		nil,
 		sc.clock,
 		evalCtx.Tracing,
 		sc.execCfg.ContentionRegistry,
-		nil, /* testingPushCallback */
+		nil,
 	)
 	defer recv.Release()
 
 	getTodoSpansForUpdate := func() []roachpb.Span {
+		__antithesis_instrumentation__.Notify(246437)
 		mu.Lock()
 		defer mu.Unlock()
 		if mu.updatedTodoSpans == nil {
+			__antithesis_instrumentation__.Notify(246439)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(246440)
 		}
+		__antithesis_instrumentation__.Notify(246438)
 		return append(
 			make([]roachpb.Span, 0, len(mu.updatedTodoSpans)),
 			mu.updatedTodoSpans...,
 		)
 	}
+	__antithesis_instrumentation__.Notify(246378)
 
 	origNRanges := -1
 	updateJobProgress = func() error {
-		// Report schema change progress. We define progress at this point as the fraction of
-		// fully-backfilled ranges of the primary index of the table being scanned. We scale that
-		// fraction of ranges completed by the remaining fraction of the job's progress bar allocated to
-		// this phase of the backfill.
+		__antithesis_instrumentation__.Notify(246441)
+
 		updatedTodoSpans := getTodoSpansForUpdate()
 		if updatedTodoSpans == nil {
+			__antithesis_instrumentation__.Notify(246445)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(246446)
 		}
+		__antithesis_instrumentation__.Notify(246442)
 		nRanges, err := numRangesInSpans(ctx, sc.db, sc.distSQLPlanner, updatedTodoSpans)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246447)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246448)
 		}
+		__antithesis_instrumentation__.Notify(246443)
 		if origNRanges == -1 {
+			__antithesis_instrumentation__.Notify(246449)
 			origNRanges = nRanges
+		} else {
+			__antithesis_instrumentation__.Notify(246450)
 		}
+		__antithesis_instrumentation__.Notify(246444)
 		return sc.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-			// No processor has returned completed spans yet.
+			__antithesis_instrumentation__.Notify(246451)
+
 			if nRanges < origNRanges {
+				__antithesis_instrumentation__.Notify(246453)
 				fractionRangesFinished := float32(origNRanges-nRanges) / float32(origNRanges)
 				fractionCompleted, err := fractionScaler.fractionCompleteFromStageFraction(stageBackfill, fractionRangesFinished)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(246455)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(246456)
 				}
+				__antithesis_instrumentation__.Notify(246454)
 				if err := sc.job.FractionProgressed(ctx, txn,
 					jobs.FractionUpdater(fractionCompleted)); err != nil {
+					__antithesis_instrumentation__.Notify(246457)
 					return jobs.SimplifyInvalidStatusError(err)
+				} else {
+					__antithesis_instrumentation__.Notify(246458)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(246459)
 			}
+			__antithesis_instrumentation__.Notify(246452)
 			return nil
 		})
 	}
+	__antithesis_instrumentation__.Notify(246379)
 
-	// updateJobMu ensures only one goroutine is calling
-	// updateJobDetails at a time to avoid a data race in
-	// SetResumeSpansInJob. This mutex should be uncontended when
-	// sc.testingKnobs.AlwaysUpdateIndexBackfillDetails is false.
 	var updateJobMu syncutil.Mutex
 	updateJobDetails = func() error {
+		__antithesis_instrumentation__.Notify(246460)
 		updatedTodoSpans := getTodoSpansForUpdate()
 		return sc.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(246461)
 			updateJobMu.Lock()
 			defer updateJobMu.Unlock()
-			// No processor has returned completed spans yet.
+
 			if updatedTodoSpans == nil {
+				__antithesis_instrumentation__.Notify(246463)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(246464)
 			}
+			__antithesis_instrumentation__.Notify(246462)
 			log.VEventf(ctx, 2, "writing todo spans to job details: %+v", updatedTodoSpans)
 			return rowexec.SetResumeSpansInJob(ctx, updatedTodoSpans, mutationIdx, txn, sc.job)
 		})
 	}
+	__antithesis_instrumentation__.Notify(246380)
 
-	// Setup periodic progress update.
 	stopProgress := make(chan struct{})
 	duration := 10 * time.Second
 	g := ctxgroup.WithContext(ctx)
 	g.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(246465)
 		tick := time.NewTicker(duration)
 		defer tick.Stop()
 		done := ctx.Done()
 		for {
+			__antithesis_instrumentation__.Notify(246466)
 			select {
 			case <-stopProgress:
+				__antithesis_instrumentation__.Notify(246467)
 				return nil
 			case <-done:
+				__antithesis_instrumentation__.Notify(246468)
 				return ctx.Err()
 			case <-tick.C:
+				__antithesis_instrumentation__.Notify(246469)
 				if err := updateJobProgress(); err != nil {
+					__antithesis_instrumentation__.Notify(246470)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(246471)
 				}
 			}
 		}
 	})
+	__antithesis_instrumentation__.Notify(246381)
 
-	// Setup periodic job details update.
 	stopJobDetailsUpdate := make(chan struct{})
 	detailsDuration := backfill.IndexBackfillCheckpointInterval.Get(&sc.settings.SV)
 	g.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(246472)
 		tick := time.NewTicker(detailsDuration)
 		defer tick.Stop()
 		done := ctx.Done()
 		for {
+			__antithesis_instrumentation__.Notify(246473)
 			select {
 			case <-stopJobDetailsUpdate:
+				__antithesis_instrumentation__.Notify(246474)
 				return nil
 			case <-done:
+				__antithesis_instrumentation__.Notify(246475)
 				return ctx.Err()
 			case <-tick.C:
+				__antithesis_instrumentation__.Notify(246476)
 				if err := updateJobDetails(); err != nil {
+					__antithesis_instrumentation__.Notify(246477)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(246478)
 				}
 			}
 		}
 	})
+	__antithesis_instrumentation__.Notify(246382)
 
-	// Run index backfill physical plan.
 	g.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(246479)
 		defer close(stopProgress)
 		defer close(stopJobDetailsUpdate)
 		if err := sc.jobRegistry.CheckPausepoint("indexbackfill.before_flow"); err != nil {
+			__antithesis_instrumentation__.Notify(246481)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246482)
 		}
-		// Copy the evalCtx, as dsp.Run() might change it.
+		__antithesis_instrumentation__.Notify(246480)
+
 		evalCtxCopy := evalCtx
 		sc.distSQLPlanner.Run(
 			ctx,
 			planCtx,
-			nil, /* txn - the processors manage their own transactions */
+			nil,
 			p, recv, &evalCtxCopy,
-			nil, /* finishedSetupFn */
+			nil,
 		)()
 		return cbw.Err()
 	})
+	__antithesis_instrumentation__.Notify(246383)
 
 	if err := g.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(246483)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246484)
 	}
+	__antithesis_instrumentation__.Notify(246384)
 
-	// Update progress and details to mark a completed job.
 	if err := updateJobDetails(); err != nil {
+		__antithesis_instrumentation__.Notify(246485)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246486)
 	}
+	__antithesis_instrumentation__.Notify(246385)
 	if err := updateJobProgress(); err != nil {
+		__antithesis_instrumentation__.Notify(246487)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246488)
 	}
+	__antithesis_instrumentation__.Notify(246386)
 
 	return nil
 }
 
-// distColumnBackfill runs (or continues) a backfill for the first mutation
-// enqueued on the SchemaChanger's table descriptor that passes the input
-// MutationFilter.
-//
-// This operates over multiple goroutines concurrently and is thus not
-// able to reuse the original kv.Txn safely, so it makes its own.
 func (sc *SchemaChanger) distColumnBackfill(
 	ctx context.Context,
 	version descpb.DescriptorVersion,
 	backfillChunkSize int64,
 	filter backfill.MutationFilter,
 ) error {
+	__antithesis_instrumentation__.Notify(246489)
 	duration := checkpointInterval
 	if sc.testingKnobs.WriteCheckpointInterval > 0 {
+		__antithesis_instrumentation__.Notify(246493)
 		duration = sc.testingKnobs.WriteCheckpointInterval
+	} else {
+		__antithesis_instrumentation__.Notify(246494)
 	}
+	__antithesis_instrumentation__.Notify(246490)
 	chunkSize := sc.getChunkSize(backfillChunkSize)
 
 	origNRanges := -1
 	origFractionCompleted := sc.job.FractionCompleted()
 	fractionLeft := 1 - origFractionCompleted
 	readAsOf := sc.clock.Now()
-	// Gather the initial resume spans for the table.
+
 	var todoSpans []roachpb.Span
 	var mutationIdx int
 	if err := DescsTxn(ctx, sc.execCfg, func(ctx context.Context, txn *kv.Txn, col *descs.Collection) (err error) {
+		__antithesis_instrumentation__.Notify(246495)
 		todoSpans, _, mutationIdx, err = rowexec.GetResumeSpans(
 			ctx, sc.jobRegistry, txn, sc.execCfg.Codec, col, sc.descID, sc.mutationID, filter)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246496)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246497)
 	}
+	__antithesis_instrumentation__.Notify(246491)
 
 	for len(todoSpans) > 0 {
+		__antithesis_instrumentation__.Notify(246498)
 		log.VEventf(ctx, 2, "backfill: process %+v spans", todoSpans)
-		// Make sure not to update todoSpans inside the transaction closure as it
-		// may not commit. Instead write the updated value for todoSpans to this
-		// variable and assign to todoSpans after committing.
+
 		var updatedTodoSpans []roachpb.Span
 		if err := sc.txn(ctx, func(
 			ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 		) error {
+			__antithesis_instrumentation__.Notify(246500)
 			updatedTodoSpans = todoSpans
-			// Report schema change progress. We define progress at this point
-			// as the fraction of fully-backfilled ranges of the primary index of
-			// the table being scanned. Since we may have already modified the
-			// fraction completed of our job from the 10% allocated to completing the
-			// schema change state machine or from a previous backfill attempt,
-			// we scale that fraction of ranges completed by the remaining fraction
-			// of the job's progress bar.
+
 			nRanges, err := numRangesInSpans(ctx, sc.db, sc.distSQLPlanner, todoSpans)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(246508)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246509)
 			}
+			__antithesis_instrumentation__.Notify(246501)
 			if origNRanges == -1 {
+				__antithesis_instrumentation__.Notify(246510)
 				origNRanges = nRanges
+			} else {
+				__antithesis_instrumentation__.Notify(246511)
 			}
+			__antithesis_instrumentation__.Notify(246502)
 
 			if nRanges < origNRanges {
+				__antithesis_instrumentation__.Notify(246512)
 				fractionRangesFinished := float32(origNRanges-nRanges) / float32(origNRanges)
 				fractionCompleted := origFractionCompleted + fractionLeft*fractionRangesFinished
 				if err := sc.job.FractionProgressed(ctx, txn, jobs.FractionUpdater(fractionCompleted)); err != nil {
+					__antithesis_instrumentation__.Notify(246513)
 					return jobs.SimplifyInvalidStatusError(err)
+				} else {
+					__antithesis_instrumentation__.Notify(246514)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(246515)
 			}
+			__antithesis_instrumentation__.Notify(246503)
 
 			tableDesc, err := sc.getTableVersion(ctx, txn, descriptors, version)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(246516)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246517)
 			}
+			__antithesis_instrumentation__.Notify(246504)
 			metaFn := func(_ context.Context, meta *execinfrapb.ProducerMetadata) error {
+				__antithesis_instrumentation__.Notify(246518)
 				if meta.BulkProcessorProgress != nil {
+					__antithesis_instrumentation__.Notify(246520)
 					updatedTodoSpans = roachpb.SubtractSpans(updatedTodoSpans,
 						meta.BulkProcessorProgress.CompletedSpans)
+				} else {
+					__antithesis_instrumentation__.Notify(246521)
 				}
+				__antithesis_instrumentation__.Notify(246519)
 				return nil
 			}
+			__antithesis_instrumentation__.Notify(246505)
 			cbw := MetadataCallbackWriter{rowResultWriter: &errOnlyResultWriter{}, fn: metaFn}
 			evalCtx := createSchemaChangeEvalCtx(ctx, sc.execCfg, txn.ReadTimestamp(), descriptors)
 			recv := MakeDistSQLReceiver(
 				ctx,
 				&cbw,
-				tree.Rows, /* stmtType - doesn't matter here since no result are produced */
+				tree.Rows,
 				sc.rangeDescriptorCache,
-				nil, /* txn - the flow does not run wholly in a txn */
+				nil,
 				sc.clock,
 				evalCtx.Tracing,
 				sc.execCfg.ContentionRegistry,
-				nil, /* testingPushCallback */
+				nil,
 			)
 			defer recv.Release()
 
-			planCtx := sc.distSQLPlanner.NewPlanningCtx(ctx, &evalCtx, nil /* planner */, txn,
+			planCtx := sc.distSQLPlanner.NewPlanningCtx(ctx, &evalCtx, nil, txn,
 				DistributionTypeSystemTenantOnly)
 			spec, err := initColumnBackfillerSpec(*tableDesc.TableDesc(), duration, chunkSize, readAsOf)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(246522)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246523)
 			}
+			__antithesis_instrumentation__.Notify(246506)
 			plan, err := sc.distSQLPlanner.createBackfillerPhysicalPlan(ctx, planCtx, spec, todoSpans)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(246524)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246525)
 			}
+			__antithesis_instrumentation__.Notify(246507)
 			sc.distSQLPlanner.Run(
 				ctx,
 				planCtx,
-				nil, /* txn - the processors manage their own transactions */
+				nil,
 				plan, recv, &evalCtx,
-				nil, /* finishedSetupFn */
+				nil,
 			)()
 			return cbw.Err()
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(246526)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246527)
 		}
+		__antithesis_instrumentation__.Notify(246499)
 		todoSpans = updatedTodoSpans
 
-		// Record what is left to do for the job.
-		// TODO(spaskob): Execute this at a regular cadence.
 		if err := sc.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(246528)
 			return rowexec.SetResumeSpansInJob(ctx, todoSpans, mutationIdx, txn, sc.job)
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(246529)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246530)
 		}
 	}
+	__antithesis_instrumentation__.Notify(246492)
 	return nil
 }
 
-// updateJobRunningStatus updates the status field in the job entry
-// with the given value.
-//
-// The update is performed in a separate txn at the current logical
-// timestamp.
-// TODO(ajwerner): Fix the transaction and descriptor lifetimes here.
 func (sc *SchemaChanger) updateJobRunningStatus(
 	ctx context.Context, status jobs.RunningStatus,
 ) (tableDesc catalog.TableDescriptor, err error) {
+	__antithesis_instrumentation__.Notify(246531)
 	err = DescsTxn(ctx, sc.execCfg, func(ctx context.Context, txn *kv.Txn, col *descs.Collection) (err error) {
-		// Read table descriptor without holding a lease.
+		__antithesis_instrumentation__.Notify(246533)
+
 		tableDesc, err = col.Direct().MustGetTableDescByID(ctx, txn, sc.descID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246537)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246538)
 		}
+		__antithesis_instrumentation__.Notify(246534)
 
-		// Update running status of job.
 		updateJobRunningProgress := false
 		for _, mutation := range tableDesc.AllMutations() {
+			__antithesis_instrumentation__.Notify(246539)
 			if mutation.MutationID() != sc.mutationID {
-				// Mutations are applied in a FIFO order. Only apply the first set of
-				// mutations if they have the mutation ID we're looking for.
-				break
-			}
+				__antithesis_instrumentation__.Notify(246541)
 
-			if mutation.Adding() && mutation.WriteAndDeleteOnly() {
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(246542)
+			}
+			__antithesis_instrumentation__.Notify(246540)
+
+			if mutation.Adding() && func() bool {
+				__antithesis_instrumentation__.Notify(246543)
+				return mutation.WriteAndDeleteOnly() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(246544)
 				updateJobRunningProgress = true
-			} else if mutation.Dropped() && mutation.DeleteOnly() {
-				updateJobRunningProgress = true
+			} else {
+				__antithesis_instrumentation__.Notify(246545)
+				if mutation.Dropped() && func() bool {
+					__antithesis_instrumentation__.Notify(246546)
+					return mutation.DeleteOnly() == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(246547)
+					updateJobRunningProgress = true
+				} else {
+					__antithesis_instrumentation__.Notify(246548)
+				}
 			}
 		}
-		if updateJobRunningProgress && !tableDesc.Dropped() {
+		__antithesis_instrumentation__.Notify(246535)
+		if updateJobRunningProgress && func() bool {
+			__antithesis_instrumentation__.Notify(246549)
+			return !tableDesc.Dropped() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(246550)
 			if err := sc.job.RunningStatus(ctx, txn, func(
 				ctx context.Context, details jobspb.Details) (jobs.RunningStatus, error) {
+				__antithesis_instrumentation__.Notify(246551)
 				return status, nil
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(246552)
 				return errors.Wrapf(err, "failed to update running status of job %d", errors.Safe(sc.job.ID()))
+			} else {
+				__antithesis_instrumentation__.Notify(246553)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(246554)
 		}
+		__antithesis_instrumentation__.Notify(246536)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(246532)
 	return tableDesc, err
 }
 
-// validateIndexes checks that the new indexes have entries for all the rows.
-//
-// This operates over multiple goroutines concurrently and is thus not
-// able to reuse the original kv.Txn safely, so it makes its own.
 func (sc *SchemaChanger) validateIndexes(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(246555)
 	if lease.TestingTableLeasesAreDisabled() {
+		__antithesis_instrumentation__.Notify(246565)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(246566)
 	}
+	__antithesis_instrumentation__.Notify(246556)
 	log.Info(ctx, "validating new indexes")
 
 	_, err := sc.updateJobRunningStatus(ctx, RunningStatusValidation)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(246567)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246568)
 	}
+	__antithesis_instrumentation__.Notify(246557)
 
 	if fn := sc.testingKnobs.RunBeforeIndexValidation; fn != nil {
+		__antithesis_instrumentation__.Notify(246569)
 		if err := fn(); err != nil {
+			__antithesis_instrumentation__.Notify(246570)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246571)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246572)
 	}
+	__antithesis_instrumentation__.Notify(246558)
 
 	readAsOf := sc.clock.Now()
 	var tableDesc catalog.TableDescriptor
 	if err := sc.fixedTimestampTxn(ctx, readAsOf, func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) (err error) {
+		__antithesis_instrumentation__.Notify(246573)
 		flags := tree.ObjectLookupFlagsWithRequired()
 		flags.AvoidLeased = true
 		tableDesc, err = descriptors.GetImmutableTableByID(ctx, txn, sc.descID, flags)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246574)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246575)
 	}
+	__antithesis_instrumentation__.Notify(246559)
 
 	var forwardIndexes, invertedIndexes []catalog.Index
 
 	for _, m := range tableDesc.AllMutations() {
+		__antithesis_instrumentation__.Notify(246576)
 		if sc.mutationID != m.MutationID() {
+			__antithesis_instrumentation__.Notify(246579)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(246580)
 		}
+		__antithesis_instrumentation__.Notify(246577)
 		idx := m.AsIndex()
-		// NB: temporary indexes should be Dropped by the point.
-		if idx == nil || idx.Dropped() || idx.IsTemporaryIndexForBackfill() {
+
+		if idx == nil || func() bool {
+			__antithesis_instrumentation__.Notify(246581)
+			return idx.Dropped() == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(246582)
+			return idx.IsTemporaryIndexForBackfill() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(246583)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(246584)
 		}
+		__antithesis_instrumentation__.Notify(246578)
 		switch idx.GetType() {
 		case descpb.IndexDescriptor_FORWARD:
+			__antithesis_instrumentation__.Notify(246585)
 			forwardIndexes = append(forwardIndexes, idx)
 		case descpb.IndexDescriptor_INVERTED:
+			__antithesis_instrumentation__.Notify(246586)
 			invertedIndexes = append(invertedIndexes, idx)
+		default:
+			__antithesis_instrumentation__.Notify(246587)
 		}
 	}
-	if len(forwardIndexes) == 0 && len(invertedIndexes) == 0 {
+	__antithesis_instrumentation__.Notify(246560)
+	if len(forwardIndexes) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(246588)
+		return len(invertedIndexes) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(246589)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(246590)
 	}
+	__antithesis_instrumentation__.Notify(246561)
 
 	grp := ctxgroup.WithContext(ctx)
 	runHistoricalTxn := sc.makeFixedTimestampInternalExecRunner(readAsOf)
 
 	if len(forwardIndexes) > 0 {
+		__antithesis_instrumentation__.Notify(246591)
 		grp.GoCtx(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(246592)
 			return ValidateForwardIndexes(
 				ctx,
 				tableDesc,
 				forwardIndexes,
 				runHistoricalTxn,
-				true,  /* withFirstMutationPubic */
-				false, /* gatherAllInvalid */
+				true,
+				false,
 				sessiondata.InternalExecutorOverride{},
 			)
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(246593)
 	}
+	__antithesis_instrumentation__.Notify(246562)
 	if len(invertedIndexes) > 0 {
+		__antithesis_instrumentation__.Notify(246594)
 		grp.GoCtx(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(246595)
 			return ValidateInvertedIndexes(
 				ctx,
 				sc.execCfg.Codec,
 				tableDesc,
 				invertedIndexes,
 				runHistoricalTxn,
-				true,  /* withFirstMutationPublic */
-				false, /* gatherAllInvalid */
+				true,
+				false,
 				sessiondata.InternalExecutorOverride{},
 			)
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(246596)
 	}
+	__antithesis_instrumentation__.Notify(246563)
 	if err := grp.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(246597)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246598)
 	}
+	__antithesis_instrumentation__.Notify(246564)
 	log.Info(ctx, "finished validating new indexes")
 	return nil
 }
 
-// InvalidIndexesError is used to represent indexes that failed revalidation.
 type InvalidIndexesError struct {
 	Indexes []descpb.IndexID
 }
 
 func (e InvalidIndexesError) Error() string {
+	__antithesis_instrumentation__.Notify(246599)
 	return fmt.Sprintf("found %d invalid indexes", len(e.Indexes))
 }
 
-// ValidateInvertedIndexes checks that the indexes have entries for
-// all the items of data in rows.
-//
-// This operates over multiple goroutines concurrently and is thus not
-// able to reuse the original kv.Txn safely.
-// Instead it uses the provided runHistoricalTxn which can operate
-// at the historical fixed timestamp for checks.
 func ValidateInvertedIndexes(
 	ctx context.Context,
 	codec keys.SQLCodec,
@@ -1466,6 +2029,7 @@ func ValidateInvertedIndexes(
 	gatherAllInvalid bool,
 	execOverride sessiondata.InternalExecutorOverride,
 ) error {
+	__antithesis_instrumentation__.Notify(246600)
 	grp := ctxgroup.WithContext(ctx)
 	invalid := make(chan descpb.IndexID, len(indexes))
 
@@ -1473,80 +2037,119 @@ func ValidateInvertedIndexes(
 	countReady := make([]chan struct{}, len(indexes))
 
 	for i, idx := range indexes {
-		// Shadow i and idx to prevent the values from changing within each
-		// gorountine.
+		__antithesis_instrumentation__.Notify(246605)
+
 		i, idx := i, idx
 		countReady[i] = make(chan struct{})
 
 		grp.GoCtx(func(ctx context.Context) error {
-			// KV scan can be used to get the index length.
-			// TODO (lucy): Switch to using DistSQL to get the count, so that we get
-			// distributed execution and avoid bypassing the SQL decoding
+			__antithesis_instrumentation__.Notify(246607)
+
 			start := timeutil.Now()
 			var idxLen int64
 			span := tableDesc.IndexSpan(codec, idx.GetID())
 			key := span.Key
 			endKey := span.EndKey
 			if err := runHistoricalTxn(ctx, func(ctx context.Context, txn *kv.Txn, _ sqlutil.InternalExecutor) error {
+				__antithesis_instrumentation__.Notify(246610)
 				for {
+					__antithesis_instrumentation__.Notify(246612)
 					kvs, err := txn.Scan(ctx, key, endKey, 1000000)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(246615)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(246616)
 					}
+					__antithesis_instrumentation__.Notify(246613)
 					if len(kvs) == 0 {
+						__antithesis_instrumentation__.Notify(246617)
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(246618)
 					}
+					__antithesis_instrumentation__.Notify(246614)
 					idxLen += int64(len(kvs))
 					key = kvs[len(kvs)-1].Key.PrefixEnd()
 				}
+				__antithesis_instrumentation__.Notify(246611)
 				return nil
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(246619)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246620)
 			}
+			__antithesis_instrumentation__.Notify(246608)
 			log.Infof(ctx, "inverted index %s/%s count = %d, took %s",
 				tableDesc.GetName(), idx.GetName(), idxLen, timeutil.Since(start))
 			select {
 			case <-countReady[i]:
+				__antithesis_instrumentation__.Notify(246621)
 				if idxLen != expectedCount[i] {
+					__antithesis_instrumentation__.Notify(246623)
 					if gatherAllInvalid {
+						__antithesis_instrumentation__.Notify(246625)
 						invalid <- idx.GetID()
 						return nil
+					} else {
+						__antithesis_instrumentation__.Notify(246626)
 					}
-					// JSON columns cannot have unique indexes, so if the expected and
-					// actual counts do not match, it's always a bug rather than a
-					// uniqueness violation.
+					__antithesis_instrumentation__.Notify(246624)
+
 					return errors.AssertionFailedf(
 						"validation of index %s failed: expected %d rows, found %d",
 						idx.GetName(), errors.Safe(expectedCount[i]), errors.Safe(idxLen))
+				} else {
+					__antithesis_instrumentation__.Notify(246627)
 				}
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(246622)
 				return ctx.Err()
 			}
+			__antithesis_instrumentation__.Notify(246609)
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(246606)
 
 		grp.GoCtx(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(246628)
 			c, err := countExpectedRowsForInvertedIndex(ctx, tableDesc, idx, runHistoricalTxn, withFirstMutationPublic, execOverride)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(246630)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246631)
 			}
+			__antithesis_instrumentation__.Notify(246629)
 			expectedCount[i] = c
 			close(countReady[i])
 			return nil
 		})
 	}
+	__antithesis_instrumentation__.Notify(246601)
 
 	if err := grp.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(246632)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246633)
 	}
+	__antithesis_instrumentation__.Notify(246602)
 	close(invalid)
 	invalidErr := InvalidIndexesError{}
 	for i := range invalid {
+		__antithesis_instrumentation__.Notify(246634)
 		invalidErr.Indexes = append(invalidErr.Indexes, i)
 	}
+	__antithesis_instrumentation__.Notify(246603)
 	if len(invalidErr.Indexes) > 0 {
+		__antithesis_instrumentation__.Notify(246635)
 		return invalidErr
+	} else {
+		__antithesis_instrumentation__.Notify(246636)
 	}
+	__antithesis_instrumentation__.Notify(246604)
 	return nil
 }
 
@@ -1558,92 +2161,107 @@ func countExpectedRowsForInvertedIndex(
 	withFirstMutationPublic bool,
 	execOverride sessiondata.InternalExecutorOverride,
 ) (int64, error) {
+	__antithesis_instrumentation__.Notify(246637)
 	desc := tableDesc
 	start := timeutil.Now()
 	if withFirstMutationPublic {
-		// Make the mutations public in an in-memory copy of the descriptor and
-		// add it to the Collection's synthetic descriptors, so that we can use
-		// SQL below to perform the validation.
+		__antithesis_instrumentation__.Notify(246642)
+
 		fakeDesc, err := tableDesc.MakeFirstMutationPublic(catalog.IgnoreConstraints)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246644)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(246645)
 		}
+		__antithesis_instrumentation__.Notify(246643)
 		desc = fakeDesc
+	} else {
+		__antithesis_instrumentation__.Notify(246646)
 	}
+	__antithesis_instrumentation__.Notify(246638)
 
 	colID := idx.InvertedColumnID()
 	col, err := desc.FindColumnWithID(colID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(246647)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(246648)
 	}
+	__antithesis_instrumentation__.Notify(246639)
 
-	// colNameOrExpr is the column or expression indexed by the inverted
-	// index. It is used in the query below that verifies that the
-	// number of entries in the inverted index is correct. If the index
-	// is an expression index, the column name cannot be used because it
-	// is inaccessible; the query would result in a "column does not
-	// exist" error.
 	var colNameOrExpr string
 	if col.IsExpressionIndexColumn() {
+		__antithesis_instrumentation__.Notify(246649)
 		colNameOrExpr = col.GetComputeExpr()
 	} else {
-		// Wrap the column name in double-quotes because it might
-		// contain special characters, like "-".
+		__antithesis_instrumentation__.Notify(246650)
+
 		colNameOrExpr = fmt.Sprintf("%q", col.ColName())
 	}
+	__antithesis_instrumentation__.Notify(246640)
 
 	var expectedCount int64
 	if err := runHistoricalTxn(ctx, func(ctx context.Context, txn *kv.Txn, ie sqlutil.InternalExecutor) error {
+		__antithesis_instrumentation__.Notify(246651)
 		var stmt string
 		geoConfig := idx.GetGeoConfig()
 		if geoindex.IsEmptyConfig(&geoConfig) {
+			__antithesis_instrumentation__.Notify(246654)
 			stmt = fmt.Sprintf(
 				`SELECT coalesce(sum_int(crdb_internal.num_inverted_index_entries(%s, %d)), 0) FROM [%d AS t]`,
 				colNameOrExpr, idx.GetVersion(), desc.GetID(),
 			)
 		} else {
+			__antithesis_instrumentation__.Notify(246655)
 			stmt = fmt.Sprintf(
 				`SELECT coalesce(sum_int(crdb_internal.num_geo_inverted_index_entries(%d, %d, %s)), 0) FROM [%d AS t]`,
 				desc.GetID(), idx.GetID(), colNameOrExpr, desc.GetID(),
 			)
 		}
-		// If the index is a partial index the predicate must be added
-		// as a filter to the query.
+		__antithesis_instrumentation__.Notify(246652)
+
 		if idx.IsPartial() {
+			__antithesis_instrumentation__.Notify(246656)
 			stmt = fmt.Sprintf(`%s WHERE %s`, stmt, idx.GetPredicate())
+		} else {
+			__antithesis_instrumentation__.Notify(246657)
 		}
+		__antithesis_instrumentation__.Notify(246653)
 		return ie.WithSyntheticDescriptors([]catalog.Descriptor{desc}, func() error {
+			__antithesis_instrumentation__.Notify(246658)
 			row, err := ie.QueryRowEx(ctx, "verify-inverted-idx-count", txn, execOverride, stmt)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(246661)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246662)
 			}
+			__antithesis_instrumentation__.Notify(246659)
 			if row == nil {
+				__antithesis_instrumentation__.Notify(246663)
 				return errors.New("failed to verify inverted index count")
+			} else {
+				__antithesis_instrumentation__.Notify(246664)
 			}
+			__antithesis_instrumentation__.Notify(246660)
 			expectedCount = int64(tree.MustBeDInt(row[0]))
 			return nil
 		})
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246665)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(246666)
 	}
+	__antithesis_instrumentation__.Notify(246641)
 	log.Infof(ctx, "%s %s expected inverted index count = %d, took %s",
 		desc.GetName(), colNameOrExpr, expectedCount, timeutil.Since(start))
 	return expectedCount, nil
 
 }
 
-// ValidateForwardIndexes checks that the indexes have entries for all the rows.
-//
-// This operates over multiple goroutines concurrently and is thus not
-// able to reuse the original kv.Txn safely.
-// Instead it uses the provided runHistoricalTxn which can operate
-// at the historical fixed timestamp for checks. Typically it fails as soon as
-// any index fails validation as this usually means the schema change should
-// rollback. However, if gatherAllInvalid is true, it instead accumulates all
-// the indexes which fail and returns them together.
-// withFirstMutationPublic should be set to true if we are validating and assuming
-// the first mutation is made public. This should be used when finalizing a schema
-// change after a backfill.
 func ValidateForwardIndexes(
 	ctx context.Context,
 	tableDesc catalog.TableDescriptor,
@@ -1653,89 +2271,120 @@ func ValidateForwardIndexes(
 	gatherAllInvalid bool,
 	execOverride sessiondata.InternalExecutorOverride,
 ) error {
+	__antithesis_instrumentation__.Notify(246667)
 	grp := ctxgroup.WithContext(ctx)
 
 	invalid := make(chan descpb.IndexID, len(indexes))
 	var tableRowCount int64
 	partialIndexExpectedCounts := make(map[descpb.IndexID]int64, len(indexes))
 
-	// Close when table count is ready.
 	tableCountsReady := make(chan struct{})
 
-	// Compute the size of each index.
 	for _, idx := range indexes {
-		// Shadow idx to prevent its value from changing within each gorountine.
+		__antithesis_instrumentation__.Notify(246673)
+
 		idx := idx
 
 		grp.GoCtx(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(246674)
 			start := timeutil.Now()
 			idxLen, err := countIndexRowsAndMaybeCheckUniqueness(ctx, tableDesc, idx, withFirstMutationPublic, runHistoricalTxn, execOverride)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(246677)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246678)
 			}
+			__antithesis_instrumentation__.Notify(246675)
 			log.Infof(ctx, "validation: index %s/%s row count = %d, time so far %s",
 				tableDesc.GetName(), idx.GetName(), idxLen, timeutil.Since(start))
 
-			// Now compare with the row count in the table.
 			select {
 			case <-tableCountsReady:
+				__antithesis_instrumentation__.Notify(246679)
 				expectedCount := tableRowCount
-				// If the index is a partial index, the expected number of rows
-				// is different than the total number of rows in the table.
+
 				if idx.IsPartial() {
+					__antithesis_instrumentation__.Notify(246682)
 					expectedCount = partialIndexExpectedCounts[idx.GetID()]
+				} else {
+					__antithesis_instrumentation__.Notify(246683)
 				}
+				__antithesis_instrumentation__.Notify(246680)
 
 				if idxLen != expectedCount {
+					__antithesis_instrumentation__.Notify(246684)
 					if gatherAllInvalid {
+						__antithesis_instrumentation__.Notify(246686)
 						invalid <- idx.GetID()
 						return nil
+					} else {
+						__antithesis_instrumentation__.Notify(246687)
 					}
-					// TODO(vivek): find the offending row and include it in the error.
+					__antithesis_instrumentation__.Notify(246685)
+
 					return pgerror.WithConstraintName(pgerror.Newf(pgcode.UniqueViolation,
 						"duplicate key value violates unique constraint %q",
 						idx.GetName()),
 						idx.GetName())
 
+				} else {
+					__antithesis_instrumentation__.Notify(246688)
 				}
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(246681)
 				return ctx.Err()
 			}
+			__antithesis_instrumentation__.Notify(246676)
 
 			return nil
 		})
 	}
+	__antithesis_instrumentation__.Notify(246668)
 
 	grp.GoCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(246689)
 		start := timeutil.Now()
 		c, err := populateExpectedCounts(ctx, tableDesc, indexes, partialIndexExpectedCounts, withFirstMutationPublic, runHistoricalTxn, execOverride)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246691)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246692)
 		}
+		__antithesis_instrumentation__.Notify(246690)
 		log.Infof(ctx, "validation: table %s row count = %d, took %s",
 			tableDesc.GetName(), c, timeutil.Since(start))
 		tableRowCount = c
 		defer close(tableCountsReady)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(246669)
 
 	if err := grp.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(246693)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246694)
 	}
+	__antithesis_instrumentation__.Notify(246670)
 	close(invalid)
 	invalidErr := InvalidIndexesError{}
 	for i := range invalid {
+		__antithesis_instrumentation__.Notify(246695)
 		invalidErr.Indexes = append(invalidErr.Indexes, i)
 	}
+	__antithesis_instrumentation__.Notify(246671)
 	if len(invalidErr.Indexes) > 0 {
+		__antithesis_instrumentation__.Notify(246696)
 		return invalidErr
+	} else {
+		__antithesis_instrumentation__.Notify(246697)
 	}
+	__antithesis_instrumentation__.Notify(246672)
 	return nil
 }
 
-// populateExpectedCounts returns the row count for the primary index
-// of the given table and, for each partial index, populates the given
-// map.
 func populateExpectedCounts(
 	ctx context.Context,
 	tableDesc catalog.TableDescriptor,
@@ -1745,57 +2394,84 @@ func populateExpectedCounts(
 	runHistoricalTxn sqlutil.HistoricalInternalExecTxnRunner,
 	execOverride sessiondata.InternalExecutorOverride,
 ) (int64, error) {
+	__antithesis_instrumentation__.Notify(246698)
 	desc := tableDesc
 	if withFirstMutationPublic {
-		// The query to count the expected number of rows can reference columns
-		// added earlier in the same mutation. Make the mutations public in an
-		// in-memory copy of the descriptor and add it to the Collection's synthetic
-		// descriptors, so that we can use SQL below to perform the validation.
+		__antithesis_instrumentation__.Notify(246701)
+
 		fakeDesc, err := tableDesc.MakeFirstMutationPublic(catalog.IgnoreConstraintsAndPKSwaps)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246703)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(246704)
 		}
+		__antithesis_instrumentation__.Notify(246702)
 		desc = fakeDesc
+	} else {
+		__antithesis_instrumentation__.Notify(246705)
 	}
+	__antithesis_instrumentation__.Notify(246699)
 	var tableRowCount int64
 	if err := runHistoricalTxn(ctx, func(ctx context.Context, txn *kv.Txn, ie sqlutil.InternalExecutor) error {
+		__antithesis_instrumentation__.Notify(246706)
 		var s strings.Builder
 		for _, idx := range indexes {
-			// For partial indexes, count the number of rows in the table
-			// for which the predicate expression evaluates to true.
+			__antithesis_instrumentation__.Notify(246708)
+
 			if idx.IsPartial() {
+				__antithesis_instrumentation__.Notify(246709)
 				s.WriteString(fmt.Sprintf(`, count(1) FILTER (WHERE %s)`, idx.GetPredicate()))
+			} else {
+				__antithesis_instrumentation__.Notify(246710)
 			}
 		}
+		__antithesis_instrumentation__.Notify(246707)
 		partialIndexCounts := s.String()
 
-		// Force the primary index so that the optimizer does not create a
-		// query plan that uses the indexes being backfilled.
 		query := fmt.Sprintf(`SELECT count(1)%s FROM [%d AS t]@[%d]`, partialIndexCounts, desc.GetID(), desc.GetPrimaryIndexID())
 
 		return ie.WithSyntheticDescriptors([]catalog.Descriptor{desc}, func() error {
+			__antithesis_instrumentation__.Notify(246711)
 			cnt, err := ie.QueryRowEx(ctx, "VERIFY INDEX", txn, execOverride, query)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(246715)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246716)
 			}
+			__antithesis_instrumentation__.Notify(246712)
 			if cnt == nil {
+				__antithesis_instrumentation__.Notify(246717)
 				return errors.New("failed to verify index")
+			} else {
+				__antithesis_instrumentation__.Notify(246718)
 			}
+			__antithesis_instrumentation__.Notify(246713)
 
 			tableRowCount = int64(tree.MustBeDInt(cnt[0]))
 			cntIdx := 1
 			for _, idx := range indexes {
+				__antithesis_instrumentation__.Notify(246719)
 				if idx.IsPartial() {
+					__antithesis_instrumentation__.Notify(246720)
 					partialIndexExpectedCounts[idx.GetID()] = int64(tree.MustBeDInt(cnt[cntIdx]))
 					cntIdx++
+				} else {
+					__antithesis_instrumentation__.Notify(246721)
 				}
 			}
+			__antithesis_instrumentation__.Notify(246714)
 
 			return nil
 		})
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246722)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(246723)
 	}
+	__antithesis_instrumentation__.Notify(246700)
 	return tableRowCount, nil
 }
 
@@ -1807,69 +2483,111 @@ func countIndexRowsAndMaybeCheckUniqueness(
 	runHistoricalTxn sqlutil.HistoricalInternalExecTxnRunner,
 	execOverride sessiondata.InternalExecutorOverride,
 ) (int64, error) {
-	// If we are doing a REGIONAL BY ROW locality change, we can
-	// bypass the uniqueness check below as we are only adding or
-	// removing an implicit partitioning column.  Scan the
-	// mutations if we're assuming the first mutation to be public
-	// to see if we have a locality config swap.
+	__antithesis_instrumentation__.Notify(246724)
+
 	skipUniquenessChecks := false
 	if withFirstMutationPublic {
+		__antithesis_instrumentation__.Notify(246728)
 		mutations := tableDesc.AllMutations()
 		if len(mutations) > 0 {
+			__antithesis_instrumentation__.Notify(246729)
 			mutationID := mutations[0].MutationID()
 			for _, mut := range tableDesc.AllMutations() {
-				// We only want to check the first mutation, so break
-				// if we detect a new one.
+				__antithesis_instrumentation__.Notify(246730)
+
 				if mut.MutationID() != mutationID {
+					__antithesis_instrumentation__.Notify(246732)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(246733)
 				}
+				__antithesis_instrumentation__.Notify(246731)
 				if pkSwap := mut.AsPrimaryKeySwap(); pkSwap != nil {
+					__antithesis_instrumentation__.Notify(246734)
 					if lcSwap := pkSwap.PrimaryKeySwapDesc().LocalityConfigSwap; lcSwap != nil {
-						if lcSwap.OldLocalityConfig.GetRegionalByRow() != nil ||
-							lcSwap.NewLocalityConfig.GetRegionalByRow() != nil {
+						__antithesis_instrumentation__.Notify(246735)
+						if lcSwap.OldLocalityConfig.GetRegionalByRow() != nil || func() bool {
+							__antithesis_instrumentation__.Notify(246736)
+							return lcSwap.NewLocalityConfig.GetRegionalByRow() != nil == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(246737)
 							skipUniquenessChecks = true
 							break
+						} else {
+							__antithesis_instrumentation__.Notify(246738)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(246739)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(246740)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(246741)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246742)
 	}
+	__antithesis_instrumentation__.Notify(246725)
 
 	desc := tableDesc
 	if withFirstMutationPublic {
-		// Make the mutations public in an in-memory copy of the descriptor and
-		// add it to the Collection's synthetic descriptors, so that we can use
-		// SQL below to perform the validation.
+		__antithesis_instrumentation__.Notify(246743)
+
 		fakeDesc, err := tableDesc.MakeFirstMutationPublic(catalog.IgnoreConstraints)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246745)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(246746)
 		}
+		__antithesis_instrumentation__.Notify(246744)
 		desc = fakeDesc
+	} else {
+		__antithesis_instrumentation__.Notify(246747)
 	}
+	__antithesis_instrumentation__.Notify(246726)
 
-	// Retrieve the row count in the index.
 	var idxLen int64
 	if err := runHistoricalTxn(ctx, func(ctx context.Context, txn *kv.Txn, ie sqlutil.InternalExecutor) error {
+		__antithesis_instrumentation__.Notify(246748)
 		query := fmt.Sprintf(`SELECT count(1) FROM [%d AS t]@[%d]`, desc.GetID(), idx.GetID())
-		// If the index is a partial index the predicate must be added
-		// as a filter to the query to force scanning the index.
+
 		if idx.IsPartial() {
+			__antithesis_instrumentation__.Notify(246750)
 			query = fmt.Sprintf(`%s WHERE %s`, query, idx.GetPredicate())
+		} else {
+			__antithesis_instrumentation__.Notify(246751)
 		}
+		__antithesis_instrumentation__.Notify(246749)
 		return ie.WithSyntheticDescriptors([]catalog.Descriptor{desc}, func() error {
+			__antithesis_instrumentation__.Notify(246752)
 			row, err := ie.QueryRowEx(ctx, "verify-idx-count", txn, execOverride, query)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(246756)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246757)
 			}
+			__antithesis_instrumentation__.Notify(246753)
 			if row == nil {
+				__antithesis_instrumentation__.Notify(246758)
 				return errors.New("failed to verify index count")
+			} else {
+				__antithesis_instrumentation__.Notify(246759)
 			}
+			__antithesis_instrumentation__.Notify(246754)
 			idxLen = int64(tree.MustBeDInt(row[0]))
 
-			// For implicitly partitioned unique indexes, we need to independently
-			// validate that the non-implicitly partitioned columns are unique.
-			if idx.IsUnique() && idx.GetPartitioning().NumImplicitColumns() > 0 && !skipUniquenessChecks {
+			if idx.IsUnique() && func() bool {
+				__antithesis_instrumentation__.Notify(246760)
+				return idx.GetPartitioning().NumImplicitColumns() > 0 == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(246761)
+				return !skipUniquenessChecks == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(246762)
 				if err := validateUniqueConstraint(
 					ctx,
 					tableDesc,
@@ -1878,97 +2596,29 @@ func countIndexRowsAndMaybeCheckUniqueness(
 					idx.GetPredicate(),
 					ie,
 					txn,
-					false, /* preExisting */
+					false,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(246763)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(246764)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(246765)
 			}
+			__antithesis_instrumentation__.Notify(246755)
 			return nil
 		})
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246766)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(246767)
 	}
+	__antithesis_instrumentation__.Notify(246727)
 	return idxLen, nil
 }
 
-// backfillIndexes fills the missing columns in the indexes of the
-// leased tables.
-//
-//
-// If temporaryIndexes is non-empty, we assume that we are using the
-// MVCC-compatible backfilling process. This mutation has already been
-// checked to ensure all newly added indexes are using one type of
-// index backfill.
-//
-// The MVCC-compatible index backfilling process has a goal of not
-// having to issue AddSStable requests with backdated timestamps.
-//
-// To do this, we backfill new indexes while they are in a BACKFILLING
-// state in which they do not see writes or deletes. While the
-// backfill is running a temporary index captures all inflight rights.
-//
-// When the backfill is completed, the backfilling index is stepped up
-// to MERGING and then writes and deletes missed during
-// the backfill are merged from the temporary index.
-//
-// Finally, the new index is brought into the DELETE_AND_WRITE_ONLY
-// state for validation.
-//
-//           ┌─────────────────┐         ┌─────────────────┐             ┌─────────────────┐
-//           │                 │         │                 │             │                 │
-//           │   PrimaryIndex  │         │     NewIndex    │             │    TempIndex    │
-// t0        │     (PUBLIC)    │         │  (BACKFILLING)  │             │  (DELETE_ONLY)  │
-//           │                 │         │                 │             │                 │
-//           └─────────────────┘         └─────────────────┘             └────────┬────────┘
-//                                                                                │
-//                                                                       ┌────────▼────────┐
-//                                                                       │                 │
-//                                                                       │    TempIndex    │
-// t1                                                                    │(DELETE_AND_WRITE)   │
-//                                                                       │                 │   │
-//                                                                       └────────┬────────┘   │
-//                                                                                │            │
-//           ┌─────────────────┐         ┌─────────────────┐             ┌────────▼────────┐   │ TempIndex receiving writes
-//           │                 │         │                 │             │                 │   │
-//           │  PrimaryIndex   ├────────►│     NewIndex    │             │    TempIndex    │   │
-// t2        │   (PUBLIC)      │ Backfill│  (BACKFILLING)  │             │(DELETE_AND_WRITE│   │
-//           │                 │         │                 │             │                 │   │
-//           └─────────────────┘         └────────┬────────┘             └─────────────────┘   │
-//                                                │                                            │
-//                                       ┌────────▼────────┐                                   │
-//                                       │                 │                                   │
-//                                       │     NewIndex    │                                   │
-// t3                                    │  (DELETE_ONLY)  │                                   │
-//                                       │                 │                                   │
-//                                       └────────┬────────┘                                   │
-//                                                │                                            │
-//                                       ┌────────▼────────┐                                   │
-//                                       │                 │                                   │
-//                                       │     NewIndex    │                                   │   │
-//                                       │    (MERGING)    │                                   │   │
-// t4                                    │                 │                                   │   │ NewIndex receiving writes
-//                                       └─────────────────┘                                   │   │
-//                                                                                             │   │
-//                                       ┌─────────────────┐             ┌─────────────────┐   │   │
-//                                       │                 │             │                 │   │   │
-//                                       │     NewIndex    │◄────────────┤    TempIndex    │   │   │
-// t5                                    │    (MERGING)    │  BatchMerge │(DELETE_AND_WRITE│   │   │
-//                                       │                 │             │                 │   │   │
-//                                       └────────┬────────┘             └───────┬─────────┘   │   │
-//                                                │                              │             │   │
-//                                       ┌────────▼────────┐             ┌───────▼─────────┐   │   │
-//                                       │                 │             │                 │   │   │
-//                                       │     NewIndex    │             │    TempIndex    │       │
-// t6                                    │(DELETE_AND_WRITE)             │  (DELETE_ONLY)  │       │
-//                                       │                 │             │                 │       │
-//                                       └───────┬─────────┘             └───────┬─────────┘       │
-//                                               │                               │
-//                                               │                               │
-//                                               ▼                               ▼
-//                                    [validate and make public]             [ dropped ]
-//
-// This operates over multiple goroutines concurrently and is thus not
-// able to reuse the original kv.Txn safely.
 func (sc *SchemaChanger) backfillIndexes(
 	ctx context.Context,
 	version descpb.DescriptorVersion,
@@ -1976,73 +2626,114 @@ func (sc *SchemaChanger) backfillIndexes(
 	addedIndexes []descpb.IndexID,
 	temporaryIndexes []descpb.IndexID,
 ) error {
-	// If temporary indexes is non-empty, we want a MVCC-compliant
-	// backfill. If it is empty, we assume this is an older schema
-	// change using the non-MVCC-compliant flow.
+	__antithesis_instrumentation__.Notify(246768)
+
 	writeAtRequestTimestamp := len(temporaryIndexes) != 0
 	log.Infof(ctx, "backfilling %d indexes: %v (writeAtRequestTimestamp: %v)", len(addingSpans), addingSpans, writeAtRequestTimestamp)
 
-	// Split off a new range for each new index span. But only do so for the
-	// system tenant. Secondary tenants do not have mandatory split points
-	// between tables or indexes.
 	if sc.execCfg.Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(246775)
 		expirationTime := sc.db.Clock().Now().Add(time.Hour.Nanoseconds(), 0)
 		for _, span := range addingSpans {
+			__antithesis_instrumentation__.Notify(246776)
 			if err := sc.db.AdminSplit(ctx, span.Key, expirationTime); err != nil {
+				__antithesis_instrumentation__.Notify(246777)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246778)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246779)
 	}
+	__antithesis_instrumentation__.Notify(246769)
 
 	if fn := sc.testingKnobs.RunBeforeIndexBackfill; fn != nil {
+		__antithesis_instrumentation__.Notify(246780)
 		fn()
+	} else {
+		__antithesis_instrumentation__.Notify(246781)
 	}
+	__antithesis_instrumentation__.Notify(246770)
 
 	fractionScaler := &multiStageFractionScaler{initial: sc.job.FractionCompleted(), stages: backfillStageFractions}
 	if writeAtRequestTimestamp {
+		__antithesis_instrumentation__.Notify(246782)
 		fractionScaler.stages = mvccCompatibleBackfillStageFractions
+	} else {
+		__antithesis_instrumentation__.Notify(246783)
 	}
+	__antithesis_instrumentation__.Notify(246771)
 
-	// NB: The index backfilling process and index merging process
-	// use different ResumeSpans to track their progress, so it is
-	// safe to pass addedIndexes here even if the merging has
-	// already started.
 	if err := sc.distIndexBackfill(
 		ctx, version, addingSpans, addedIndexes, writeAtRequestTimestamp, backfill.IndexMutationFilter, fractionScaler,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(246784)
 		if errors.HasType(err, &roachpb.InsufficientSpaceError{}) {
+			__antithesis_instrumentation__.Notify(246786)
 			return jobs.MarkPauseRequestError(errors.UnwrapAll(err))
+		} else {
+			__antithesis_instrumentation__.Notify(246787)
 		}
+		__antithesis_instrumentation__.Notify(246785)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246788)
 	}
+	__antithesis_instrumentation__.Notify(246772)
 
 	if writeAtRequestTimestamp {
+		__antithesis_instrumentation__.Notify(246789)
 		if fn := sc.testingKnobs.RunBeforeTempIndexMerge; fn != nil {
+			__antithesis_instrumentation__.Notify(246794)
 			fn()
+		} else {
+			__antithesis_instrumentation__.Notify(246795)
 		}
+		__antithesis_instrumentation__.Notify(246790)
 
-		// Steps backfilled adding indexes from BACKFILLING to
-		// MERGING.
 		if err := sc.RunStateMachineAfterIndexBackfill(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(246796)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246797)
 		}
+		__antithesis_instrumentation__.Notify(246791)
 
 		if err := sc.mergeFromTemporaryIndex(ctx, addedIndexes, temporaryIndexes, fractionScaler); err != nil {
+			__antithesis_instrumentation__.Notify(246798)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246799)
 		}
+		__antithesis_instrumentation__.Notify(246792)
 
 		if fn := sc.testingKnobs.RunAfterTempIndexMerge; fn != nil {
+			__antithesis_instrumentation__.Notify(246800)
 			fn()
+		} else {
+			__antithesis_instrumentation__.Notify(246801)
 		}
+		__antithesis_instrumentation__.Notify(246793)
 
 		if err := sc.runStateMachineAfterTempIndexMerge(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(246802)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246803)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246804)
 	}
+	__antithesis_instrumentation__.Notify(246773)
 
 	if fn := sc.testingKnobs.RunAfterIndexBackfill; fn != nil {
+		__antithesis_instrumentation__.Notify(246805)
 		fn()
+	} else {
+		__antithesis_instrumentation__.Notify(246806)
 	}
+	__antithesis_instrumentation__.Notify(246774)
 
 	log.Info(ctx, "finished backfilling indexes")
 	return sc.validateIndexes(ctx)
@@ -2054,371 +2745,550 @@ func (sc *SchemaChanger) mergeFromTemporaryIndex(
 	temporaryIndexes []descpb.IndexID,
 	fractionScaler *multiStageFractionScaler,
 ) error {
+	__antithesis_instrumentation__.Notify(246807)
 	var tbl *tabledesc.Mutable
 	if err := sc.txn(ctx, func(
 		ctx context.Context, txn *kv.Txn, descsCol *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(246810)
 		var err error
 		tbl, err = descsCol.GetMutableTableVersionByID(ctx, sc.descID, txn)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(246811)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246812)
 	}
+	__antithesis_instrumentation__.Notify(246808)
 	clusterVersion := tbl.ClusterVersion()
 	tableDesc := tabledesc.NewBuilder(&clusterVersion).BuildImmutableTable()
 	if err := sc.distIndexMerge(ctx, tableDesc, addingIndexes, temporaryIndexes, fractionScaler); err != nil {
+		__antithesis_instrumentation__.Notify(246813)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246814)
 	}
+	__antithesis_instrumentation__.Notify(246809)
 	return nil
 }
 
-// runStateMachineAfterTempIndexMerge steps any DELETE_AND_WRITE_ONLY
-// temporary indexes to DELETE_ONLY and changes their direction to
-// DROP and steps any MERGING indexes to DELETE_AND_WRITE_ONLY
 func (sc *SchemaChanger) runStateMachineAfterTempIndexMerge(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(246815)
 	var runStatus jobs.RunningStatus
 	return sc.txn(ctx, func(
 		ctx context.Context, txn *kv.Txn, descsCol *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(246816)
 		tbl, err := descsCol.GetMutableTableVersionByID(ctx, sc.descID, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(246822)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246823)
 		}
+		__antithesis_instrumentation__.Notify(246817)
 		runStatus = ""
-		// Apply mutations belonging to the same version.
+
 		for _, m := range tbl.AllMutations() {
+			__antithesis_instrumentation__.Notify(246824)
 			if m.MutationID() != sc.mutationID {
-				// Mutations are applied in a FIFO order. Only apply the first set of
-				// mutations if they have the mutation ID we're looking for.
+				__antithesis_instrumentation__.Notify(246827)
+
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(246828)
 			}
+			__antithesis_instrumentation__.Notify(246825)
 			idx := m.AsIndex()
 			if idx == nil {
-				// Don't touch anything but indexes.
-				continue
-			}
+				__antithesis_instrumentation__.Notify(246829)
 
-			if idx.IsTemporaryIndexForBackfill() && m.Adding() && m.WriteAndDeleteOnly() {
+				continue
+			} else {
+				__antithesis_instrumentation__.Notify(246830)
+			}
+			__antithesis_instrumentation__.Notify(246826)
+
+			if idx.IsTemporaryIndexForBackfill() && func() bool {
+				__antithesis_instrumentation__.Notify(246831)
+				return m.Adding() == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(246832)
+				return m.WriteAndDeleteOnly() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(246833)
 				log.Infof(ctx, "dropping temporary index: %d", idx.IndexDesc().ID)
 				tbl.Mutations[m.MutationOrdinal()].State = descpb.DescriptorMutation_DELETE_ONLY
 				tbl.Mutations[m.MutationOrdinal()].Direction = descpb.DescriptorMutation_DROP
 				runStatus = RunningStatusDeleteOnly
-			} else if m.Merging() {
-				tbl.Mutations[m.MutationOrdinal()].State = descpb.DescriptorMutation_DELETE_AND_WRITE_ONLY
+			} else {
+				__antithesis_instrumentation__.Notify(246834)
+				if m.Merging() {
+					__antithesis_instrumentation__.Notify(246835)
+					tbl.Mutations[m.MutationOrdinal()].State = descpb.DescriptorMutation_DELETE_AND_WRITE_ONLY
+				} else {
+					__antithesis_instrumentation__.Notify(246836)
+				}
 			}
 		}
-		if runStatus == "" || tbl.Dropped() {
+		__antithesis_instrumentation__.Notify(246818)
+		if runStatus == "" || func() bool {
+			__antithesis_instrumentation__.Notify(246837)
+			return tbl.Dropped() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(246838)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(246839)
 		}
+		__antithesis_instrumentation__.Notify(246819)
 		if err := descsCol.WriteDesc(
-			ctx, true /* kvTrace */, tbl, txn,
+			ctx, true, tbl, txn,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(246840)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246841)
 		}
+		__antithesis_instrumentation__.Notify(246820)
 		if sc.job != nil {
+			__antithesis_instrumentation__.Notify(246842)
 			if err := sc.job.RunningStatus(ctx, txn, func(
 				ctx context.Context, details jobspb.Details,
 			) (jobs.RunningStatus, error) {
+				__antithesis_instrumentation__.Notify(246843)
 				return runStatus, nil
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(246844)
 				return errors.Wrap(err, "failed to update job status")
+			} else {
+				__antithesis_instrumentation__.Notify(246845)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(246846)
 		}
+		__antithesis_instrumentation__.Notify(246821)
 		return nil
 	})
 }
 
-// truncateAndBackfillColumns performs the backfill operation on the given leased
-// table descriptors.
-//
-// This operates over multiple goroutines concurrently and is thus not
-// able to reuse the original kv.Txn safely.
 func (sc *SchemaChanger) truncateAndBackfillColumns(
 	ctx context.Context, version descpb.DescriptorVersion,
 ) error {
+	__antithesis_instrumentation__.Notify(246847)
 	log.Infof(ctx, "clearing and backfilling columns")
 
 	if err := sc.distColumnBackfill(
 		ctx, version, columnBackfillBatchSize.Get(&sc.settings.SV),
 		backfill.ColumnMutationFilter); err != nil {
+		__antithesis_instrumentation__.Notify(246849)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246850)
 	}
+	__antithesis_instrumentation__.Notify(246848)
 	log.Info(ctx, "finished clearing and backfilling columns")
 	return nil
 }
 
-// runSchemaChangesInTxn runs all the schema changes immediately in a
-// transaction. This is called when a CREATE TABLE is followed by
-// schema changes in the same transaction. The CREATE TABLE is
-// invisible to the rest of the cluster, so the schema changes
-// can be executed immediately on the same version of the table.
-//
-// It operates entirely on the current goroutine and is thus able to
-// reuse the planner's kv.Txn safely.
 func runSchemaChangesInTxn(
 	ctx context.Context, planner *planner, tableDesc *tabledesc.Mutable, traceKV bool,
 ) error {
-	// TODO(postamar): remove if-block in 22.2
-	//lint:ignore SA1019 removal of deprecated method call scheduled for 22.2
+	__antithesis_instrumentation__.Notify(246851)
+
 	if len(tableDesc.GetDrainingNames()) > 0 {
-		// Reclaim all the old names. Leave the data and descriptor
-		// cleanup for later.
-		//lint:ignore SA1019 removal of deprecated method call scheduled for 22.2
+		__antithesis_instrumentation__.Notify(246858)
+
 		for _, drain := range tableDesc.GetDrainingNames() {
+			__antithesis_instrumentation__.Notify(246860)
 			key := catalogkeys.EncodeNameKey(planner.ExecCfg().Codec, drain)
 			if err := planner.Txn().Del(ctx, key); err != nil {
+				__antithesis_instrumentation__.Notify(246861)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(246862)
 			}
 		}
-		//lint:ignore SA1019 removal of deprecated method call scheduled for 22.2
+		__antithesis_instrumentation__.Notify(246859)
+
 		tableDesc.SetDrainingNames(nil)
+	} else {
+		__antithesis_instrumentation__.Notify(246863)
 	}
+	__antithesis_instrumentation__.Notify(246852)
 
 	if tableDesc.Dropped() {
+		__antithesis_instrumentation__.Notify(246864)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(246865)
 	}
+	__antithesis_instrumentation__.Notify(246853)
 
-	// Only needed because columnBackfillInTxn() backfills
-	// all column mutations.
 	doneColumnBackfill := false
 
-	// Mutations are processed in multiple steps: First we process all mutations
-	// for schema changes other than adding check or FK constraints, then we
-	// validate those constraints, and only after that do we process the
-	// constraint mutations. We need an in-memory copy of the table descriptor
-	// that contains newly added columns (since constraints being added can
-	// reference them), but that doesn't contain constraints (since otherwise we'd
-	// plan the query assuming the constraint holds). This is a different
-	// procedure than in the schema changer for existing tables, since all the
-	// "steps" in the schema change occur within the same transaction here.
-	//
-	// In the future it would be good to either unify the two implementations more
-	// or make this in-transaction implementation more principled. We expect
-	// constraint validation to be refactored and treated as a first-class concept
-	// in the world of transactional schema changes.
-
-	// Collect constraint mutations to process later.
 	var constraintAdditionMutations []catalog.ConstraintToUpdate
 
-	// We use a range loop here as the processing of some mutations
-	// such as the primary key swap mutations result in queueing more
-	// mutations that need to be processed.
 	for _, m := range tableDesc.AllMutations() {
-		// Skip mutations that get canceled by later operations
-		if discarded, _ := isCurrentMutationDiscarded(tableDesc, m, m.MutationOrdinal()+1); discarded {
-			continue
-		}
+		__antithesis_instrumentation__.Notify(246866)
 
-		// Skip mutations related to temporary mutations since
-		// an index creation inside a transaction doesn't use
-		// the AddSSTable based backfiller.
-		if idx := m.AsIndex(); idx != nil && idx.IsTemporaryIndexForBackfill() {
+		if discarded, _ := isCurrentMutationDiscarded(tableDesc, m, m.MutationOrdinal()+1); discarded {
+			__antithesis_instrumentation__.Notify(246870)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(246871)
 		}
+		__antithesis_instrumentation__.Notify(246867)
+
+		if idx := m.AsIndex(); idx != nil && func() bool {
+			__antithesis_instrumentation__.Notify(246872)
+			return idx.IsTemporaryIndexForBackfill() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(246873)
+			continue
+		} else {
+			__antithesis_instrumentation__.Notify(246874)
+		}
+		__antithesis_instrumentation__.Notify(246868)
 
 		immutDesc := tabledesc.NewBuilder(tableDesc.TableDesc()).BuildImmutableTable()
 
 		if m.Adding() {
-			if m.AsPrimaryKeySwap() != nil || m.AsModifyRowLevelTTL() != nil {
-				// Don't need to do anything here, as the call to MakeMutationComplete
-				// will perform the steps for this operation.
-			} else if m.AsComputedColumnSwap() != nil {
-				return AlterColTypeInTxnNotSupportedErr
-			} else if col := m.AsColumn(); col != nil {
-				if !doneColumnBackfill && catalog.ColumnNeedsBackfill(col) {
-					if err := columnBackfillInTxn(
-						ctx, planner.Txn(), planner.ExecCfg(), planner.EvalContext(), planner.SemaCtx(),
-						immutDesc, traceKV,
-					); err != nil {
-						return err
-					}
-					doneColumnBackfill = true
-				}
-			} else if idx := m.AsIndex(); idx != nil {
-				if err := indexBackfillInTxn(ctx, planner.Txn(), planner.EvalContext(), planner.SemaCtx(), immutDesc, traceKV); err != nil {
-					return err
-				}
-			} else if c := m.AsConstraint(); c != nil {
-				// This is processed later. Do not proceed to MakeMutationComplete.
-				constraintAdditionMutations = append(constraintAdditionMutations, c)
-				continue
+			__antithesis_instrumentation__.Notify(246875)
+			if m.AsPrimaryKeySwap() != nil || func() bool {
+				__antithesis_instrumentation__.Notify(246876)
+				return m.AsModifyRowLevelTTL() != nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(246877)
+
 			} else {
-				return errors.AssertionFailedf("unsupported mutation: %+v", m)
-			}
-		} else if m.Dropped() {
-			// Drop the name and drop the associated data later.
-			if col := m.AsColumn(); col != nil {
-				if !doneColumnBackfill && catalog.ColumnNeedsBackfill(col) {
-					if err := columnBackfillInTxn(
-						ctx, planner.Txn(), planner.ExecCfg(), planner.EvalContext(), planner.SemaCtx(),
-						immutDesc, traceKV,
-					); err != nil {
-						return err
-					}
-					doneColumnBackfill = true
-				}
-			} else if idx := m.AsIndex(); idx != nil {
-				if err := indexTruncateInTxn(
-					ctx, planner.Txn(), planner.ExecCfg(), planner.EvalContext(), immutDesc, idx, traceKV,
-				); err != nil {
-					return err
-				}
-			} else if c := m.AsConstraint(); c != nil {
-				if c.IsCheck() || c.IsNotNull() {
-					for i := range tableDesc.Checks {
-						if tableDesc.Checks[i].Name == c.GetName() {
-							tableDesc.Checks = append(tableDesc.Checks[:i], tableDesc.Checks[i+1:]...)
-							break
-						}
-					}
-				} else if c.IsForeignKey() {
-					for i := range tableDesc.OutboundFKs {
-						fk := &tableDesc.OutboundFKs[i]
-						if fk.Name == c.GetName() {
-							if err := planner.removeFKBackReference(ctx, tableDesc, fk); err != nil {
+				__antithesis_instrumentation__.Notify(246878)
+				if m.AsComputedColumnSwap() != nil {
+					__antithesis_instrumentation__.Notify(246879)
+					return AlterColTypeInTxnNotSupportedErr
+				} else {
+					__antithesis_instrumentation__.Notify(246880)
+					if col := m.AsColumn(); col != nil {
+						__antithesis_instrumentation__.Notify(246881)
+						if !doneColumnBackfill && func() bool {
+							__antithesis_instrumentation__.Notify(246882)
+							return catalog.ColumnNeedsBackfill(col) == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(246883)
+							if err := columnBackfillInTxn(
+								ctx, planner.Txn(), planner.ExecCfg(), planner.EvalContext(), planner.SemaCtx(),
+								immutDesc, traceKV,
+							); err != nil {
+								__antithesis_instrumentation__.Notify(246885)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(246886)
 							}
-							tableDesc.OutboundFKs = append(tableDesc.OutboundFKs[:i], tableDesc.OutboundFKs[i+1:]...)
-							break
+							__antithesis_instrumentation__.Notify(246884)
+							doneColumnBackfill = true
+						} else {
+							__antithesis_instrumentation__.Notify(246887)
+						}
+					} else {
+						__antithesis_instrumentation__.Notify(246888)
+						if idx := m.AsIndex(); idx != nil {
+							__antithesis_instrumentation__.Notify(246889)
+							if err := indexBackfillInTxn(ctx, planner.Txn(), planner.EvalContext(), planner.SemaCtx(), immutDesc, traceKV); err != nil {
+								__antithesis_instrumentation__.Notify(246890)
+								return err
+							} else {
+								__antithesis_instrumentation__.Notify(246891)
+							}
+						} else {
+							__antithesis_instrumentation__.Notify(246892)
+							if c := m.AsConstraint(); c != nil {
+								__antithesis_instrumentation__.Notify(246893)
+
+								constraintAdditionMutations = append(constraintAdditionMutations, c)
+								continue
+							} else {
+								__antithesis_instrumentation__.Notify(246894)
+								return errors.AssertionFailedf("unsupported mutation: %+v", m)
+							}
 						}
 					}
-				} else if c.IsUniqueWithoutIndex() {
-					for i := range tableDesc.UniqueWithoutIndexConstraints {
-						if tableDesc.UniqueWithoutIndexConstraints[i].Name == c.GetName() {
-							tableDesc.UniqueWithoutIndexConstraints = append(
-								tableDesc.UniqueWithoutIndexConstraints[:i],
-								tableDesc.UniqueWithoutIndexConstraints[i+1:]...,
-							)
-							break
+				}
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(246895)
+			if m.Dropped() {
+				__antithesis_instrumentation__.Notify(246896)
+
+				if col := m.AsColumn(); col != nil {
+					__antithesis_instrumentation__.Notify(246897)
+					if !doneColumnBackfill && func() bool {
+						__antithesis_instrumentation__.Notify(246898)
+						return catalog.ColumnNeedsBackfill(col) == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(246899)
+						if err := columnBackfillInTxn(
+							ctx, planner.Txn(), planner.ExecCfg(), planner.EvalContext(), planner.SemaCtx(),
+							immutDesc, traceKV,
+						); err != nil {
+							__antithesis_instrumentation__.Notify(246901)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(246902)
 						}
+						__antithesis_instrumentation__.Notify(246900)
+						doneColumnBackfill = true
+					} else {
+						__antithesis_instrumentation__.Notify(246903)
 					}
 				} else {
-					return errors.AssertionFailedf("unsupported constraint type: %d", c.ConstraintToUpdateDesc().ConstraintType)
+					__antithesis_instrumentation__.Notify(246904)
+					if idx := m.AsIndex(); idx != nil {
+						__antithesis_instrumentation__.Notify(246905)
+						if err := indexTruncateInTxn(
+							ctx, planner.Txn(), planner.ExecCfg(), planner.EvalContext(), immutDesc, idx, traceKV,
+						); err != nil {
+							__antithesis_instrumentation__.Notify(246906)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(246907)
+						}
+					} else {
+						__antithesis_instrumentation__.Notify(246908)
+						if c := m.AsConstraint(); c != nil {
+							__antithesis_instrumentation__.Notify(246909)
+							if c.IsCheck() || func() bool {
+								__antithesis_instrumentation__.Notify(246910)
+								return c.IsNotNull() == true
+							}() == true {
+								__antithesis_instrumentation__.Notify(246911)
+								for i := range tableDesc.Checks {
+									__antithesis_instrumentation__.Notify(246912)
+									if tableDesc.Checks[i].Name == c.GetName() {
+										__antithesis_instrumentation__.Notify(246913)
+										tableDesc.Checks = append(tableDesc.Checks[:i], tableDesc.Checks[i+1:]...)
+										break
+									} else {
+										__antithesis_instrumentation__.Notify(246914)
+									}
+								}
+							} else {
+								__antithesis_instrumentation__.Notify(246915)
+								if c.IsForeignKey() {
+									__antithesis_instrumentation__.Notify(246916)
+									for i := range tableDesc.OutboundFKs {
+										__antithesis_instrumentation__.Notify(246917)
+										fk := &tableDesc.OutboundFKs[i]
+										if fk.Name == c.GetName() {
+											__antithesis_instrumentation__.Notify(246918)
+											if err := planner.removeFKBackReference(ctx, tableDesc, fk); err != nil {
+												__antithesis_instrumentation__.Notify(246920)
+												return err
+											} else {
+												__antithesis_instrumentation__.Notify(246921)
+											}
+											__antithesis_instrumentation__.Notify(246919)
+											tableDesc.OutboundFKs = append(tableDesc.OutboundFKs[:i], tableDesc.OutboundFKs[i+1:]...)
+											break
+										} else {
+											__antithesis_instrumentation__.Notify(246922)
+										}
+									}
+								} else {
+									__antithesis_instrumentation__.Notify(246923)
+									if c.IsUniqueWithoutIndex() {
+										__antithesis_instrumentation__.Notify(246924)
+										for i := range tableDesc.UniqueWithoutIndexConstraints {
+											__antithesis_instrumentation__.Notify(246925)
+											if tableDesc.UniqueWithoutIndexConstraints[i].Name == c.GetName() {
+												__antithesis_instrumentation__.Notify(246926)
+												tableDesc.UniqueWithoutIndexConstraints = append(
+													tableDesc.UniqueWithoutIndexConstraints[:i],
+													tableDesc.UniqueWithoutIndexConstraints[i+1:]...,
+												)
+												break
+											} else {
+												__antithesis_instrumentation__.Notify(246927)
+											}
+										}
+									} else {
+										__antithesis_instrumentation__.Notify(246928)
+										return errors.AssertionFailedf("unsupported constraint type: %d", c.ConstraintToUpdateDesc().ConstraintType)
+									}
+								}
+							}
+						} else {
+							__antithesis_instrumentation__.Notify(246929)
+						}
+					}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(246930)
 			}
 		}
+		__antithesis_instrumentation__.Notify(246869)
 
 		if err := tableDesc.MakeMutationComplete(tableDesc.Mutations[m.MutationOrdinal()]); err != nil {
+			__antithesis_instrumentation__.Notify(246931)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(246932)
 		}
 	}
-	// Clear all the mutations except for adding constraints.
+	__antithesis_instrumentation__.Notify(246854)
+
 	tableDesc.Mutations = make([]descpb.DescriptorMutation, len(constraintAdditionMutations))
 	for i, c := range constraintAdditionMutations {
+		__antithesis_instrumentation__.Notify(246933)
 		tableDesc.Mutations[i] = descpb.DescriptorMutation{
 			Descriptor_: &descpb.DescriptorMutation_Constraint{Constraint: c.ConstraintToUpdateDesc()},
 			Direction:   descpb.DescriptorMutation_ADD,
 			MutationID:  c.MutationID(),
 		}
 		if c.DeleteOnly() {
+			__antithesis_instrumentation__.Notify(246934)
 			tableDesc.Mutations[i].State = descpb.DescriptorMutation_DELETE_ONLY
-		} else if c.WriteAndDeleteOnly() {
-			tableDesc.Mutations[i].State = descpb.DescriptorMutation_DELETE_AND_WRITE_ONLY
+		} else {
+			__antithesis_instrumentation__.Notify(246935)
+			if c.WriteAndDeleteOnly() {
+				__antithesis_instrumentation__.Notify(246936)
+				tableDesc.Mutations[i].State = descpb.DescriptorMutation_DELETE_AND_WRITE_ONLY
+			} else {
+				__antithesis_instrumentation__.Notify(246937)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(246855)
 
-	// Now that the table descriptor is in a valid state with all column and index
-	// mutations applied, it can be used for validating check/FK constraints.
 	for _, c := range constraintAdditionMutations {
-		if c.IsCheck() || c.IsNotNull() {
+		__antithesis_instrumentation__.Notify(246938)
+		if c.IsCheck() || func() bool {
+			__antithesis_instrumentation__.Notify(246939)
+			return c.IsNotNull() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(246940)
 			check := &c.ConstraintToUpdateDesc().Check
 			if check.Validity == descpb.ConstraintValidity_Validating {
+				__antithesis_instrumentation__.Notify(246941)
 				if err := validateCheckInTxn(
 					ctx, &planner.semaCtx, planner.ExecCfg().InternalExecutorFactory,
 					planner.SessionData(), tableDesc, planner.txn, check.Expr,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(246943)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(246944)
 				}
+				__antithesis_instrumentation__.Notify(246942)
 				check.Validity = descpb.ConstraintValidity_Validated
-			}
-		} else if c.IsForeignKey() {
-			// We can't support adding a validated foreign key constraint in the same
-			// transaction as the CREATE TABLE statement. This would require adding
-			// the backreference to the other table and then validating the constraint
-			// for whatever rows were inserted into the referencing table in this
-			// transaction, which requires multiple schema changer states across
-			// multiple transactions.
-			//
-			// We could partially fix this by queuing a validation job to run post-
-			// transaction. Better yet would be to absorb this into the transactional
-			// schema change framework eventually.
-			//
-			// For now, just always add the FK as unvalidated.
-			c.ConstraintToUpdateDesc().ForeignKey.Validity = descpb.ConstraintValidity_Unvalidated
-		} else if c.IsUniqueWithoutIndex() {
-			uwi := &c.ConstraintToUpdateDesc().UniqueWithoutIndexConstraint
-			if uwi.Validity == descpb.ConstraintValidity_Validating {
-				if err := validateUniqueWithoutIndexConstraintInTxn(
-					ctx, planner.ExecCfg().InternalExecutor, tableDesc, planner.txn, c.GetName(),
-				); err != nil {
-					return err
-				}
-				uwi.Validity = descpb.ConstraintValidity_Validated
-			}
-		} else {
-			return errors.AssertionFailedf("unsupported constraint type: %d", c.ConstraintToUpdateDesc().ConstraintType)
-		}
-
-	}
-
-	// Finally, add the constraints. We bypass MakeMutationsComplete (which makes
-	// certain assumptions about the state in the usual schema changer) and just
-	// update the table descriptor directly.
-	for _, c := range constraintAdditionMutations {
-		if c.IsCheck() || c.IsNotNull() {
-			tableDesc.Checks = append(tableDesc.Checks, &c.ConstraintToUpdateDesc().Check)
-		} else if c.IsForeignKey() {
-			fk := c.ConstraintToUpdateDesc().ForeignKey
-			var referencedTableDesc *tabledesc.Mutable
-			// We don't want to lookup/edit a second copy of the same table.
-			selfReference := tableDesc.ID == fk.ReferencedTableID
-			if selfReference {
-				referencedTableDesc = tableDesc
 			} else {
-				lookup, err := planner.Descriptors().GetMutableTableVersionByID(ctx, fk.ReferencedTableID, planner.Txn())
-				if err != nil {
-					return errors.Wrapf(err, "error resolving referenced table ID %d", fk.ReferencedTableID)
-				}
-				referencedTableDesc = lookup
+				__antithesis_instrumentation__.Notify(246945)
 			}
-			referencedTableDesc.InboundFKs = append(referencedTableDesc.InboundFKs, fk)
-			tableDesc.OutboundFKs = append(tableDesc.OutboundFKs, fk)
-
-			// Write the other table descriptor here if it's not the current table
-			// we're already modifying.
-			if !selfReference {
-				if err := planner.writeSchemaChange(
-					ctx, referencedTableDesc, descpb.InvalidMutationID,
-					fmt.Sprintf("updating referenced FK table %s(%d) table %s(%d)",
-						referencedTableDesc.Name, referencedTableDesc.ID, tableDesc.Name, tableDesc.ID),
-				); err != nil {
-					return err
-				}
-			}
-		} else if c.IsUniqueWithoutIndex() {
-			tableDesc.UniqueWithoutIndexConstraints = append(
-				tableDesc.UniqueWithoutIndexConstraints, c.ConstraintToUpdateDesc().UniqueWithoutIndexConstraint,
-			)
 		} else {
-			return errors.AssertionFailedf("unsupported constraint type: %d", c.ConstraintToUpdateDesc().ConstraintType)
+			__antithesis_instrumentation__.Notify(246946)
+			if c.IsForeignKey() {
+				__antithesis_instrumentation__.Notify(246947)
+
+				c.ConstraintToUpdateDesc().ForeignKey.Validity = descpb.ConstraintValidity_Unvalidated
+			} else {
+				__antithesis_instrumentation__.Notify(246948)
+				if c.IsUniqueWithoutIndex() {
+					__antithesis_instrumentation__.Notify(246949)
+					uwi := &c.ConstraintToUpdateDesc().UniqueWithoutIndexConstraint
+					if uwi.Validity == descpb.ConstraintValidity_Validating {
+						__antithesis_instrumentation__.Notify(246950)
+						if err := validateUniqueWithoutIndexConstraintInTxn(
+							ctx, planner.ExecCfg().InternalExecutor, tableDesc, planner.txn, c.GetName(),
+						); err != nil {
+							__antithesis_instrumentation__.Notify(246952)
+							return err
+						} else {
+							__antithesis_instrumentation__.Notify(246953)
+						}
+						__antithesis_instrumentation__.Notify(246951)
+						uwi.Validity = descpb.ConstraintValidity_Validated
+					} else {
+						__antithesis_instrumentation__.Notify(246954)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(246955)
+					return errors.AssertionFailedf("unsupported constraint type: %d", c.ConstraintToUpdateDesc().ConstraintType)
+				}
+			}
+		}
+
+	}
+	__antithesis_instrumentation__.Notify(246856)
+
+	for _, c := range constraintAdditionMutations {
+		__antithesis_instrumentation__.Notify(246956)
+		if c.IsCheck() || func() bool {
+			__antithesis_instrumentation__.Notify(246957)
+			return c.IsNotNull() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(246958)
+			tableDesc.Checks = append(tableDesc.Checks, &c.ConstraintToUpdateDesc().Check)
+		} else {
+			__antithesis_instrumentation__.Notify(246959)
+			if c.IsForeignKey() {
+				__antithesis_instrumentation__.Notify(246960)
+				fk := c.ConstraintToUpdateDesc().ForeignKey
+				var referencedTableDesc *tabledesc.Mutable
+
+				selfReference := tableDesc.ID == fk.ReferencedTableID
+				if selfReference {
+					__antithesis_instrumentation__.Notify(246962)
+					referencedTableDesc = tableDesc
+				} else {
+					__antithesis_instrumentation__.Notify(246963)
+					lookup, err := planner.Descriptors().GetMutableTableVersionByID(ctx, fk.ReferencedTableID, planner.Txn())
+					if err != nil {
+						__antithesis_instrumentation__.Notify(246965)
+						return errors.Wrapf(err, "error resolving referenced table ID %d", fk.ReferencedTableID)
+					} else {
+						__antithesis_instrumentation__.Notify(246966)
+					}
+					__antithesis_instrumentation__.Notify(246964)
+					referencedTableDesc = lookup
+				}
+				__antithesis_instrumentation__.Notify(246961)
+				referencedTableDesc.InboundFKs = append(referencedTableDesc.InboundFKs, fk)
+				tableDesc.OutboundFKs = append(tableDesc.OutboundFKs, fk)
+
+				if !selfReference {
+					__antithesis_instrumentation__.Notify(246967)
+					if err := planner.writeSchemaChange(
+						ctx, referencedTableDesc, descpb.InvalidMutationID,
+						fmt.Sprintf("updating referenced FK table %s(%d) table %s(%d)",
+							referencedTableDesc.Name, referencedTableDesc.ID, tableDesc.Name, tableDesc.ID),
+					); err != nil {
+						__antithesis_instrumentation__.Notify(246968)
+						return err
+					} else {
+						__antithesis_instrumentation__.Notify(246969)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(246970)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(246971)
+				if c.IsUniqueWithoutIndex() {
+					__antithesis_instrumentation__.Notify(246972)
+					tableDesc.UniqueWithoutIndexConstraints = append(
+						tableDesc.UniqueWithoutIndexConstraints, c.ConstraintToUpdateDesc().UniqueWithoutIndexConstraint,
+					)
+				} else {
+					__antithesis_instrumentation__.Notify(246973)
+					return errors.AssertionFailedf("unsupported constraint type: %d", c.ConstraintToUpdateDesc().ConstraintType)
+				}
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(246857)
 	tableDesc.Mutations = nil
 	return nil
 }
 
-// validateCheckInTxn validates check constraints within the provided
-// transaction. If the provided table descriptor version is newer than the
-// cluster version, it will be used in the InternalExecutor that performs the
-// validation query.
-//
-// TODO (lucy): The special case where the table descriptor version is the same
-// as the cluster version only happens because the query in VALIDATE CONSTRAINT
-// still runs in the user transaction instead of a step in the schema changer.
-// When that's no longer true, this function should be updated.
-//
-// It operates entirely on the current goroutine and is thus able to
-// reuse an existing kv.Txn safely.
 func validateCheckInTxn(
 	ctx context.Context,
 	semaCtx *tree.SemaContext,
@@ -2428,28 +3298,22 @@ func validateCheckInTxn(
 	txn *kv.Txn,
 	checkExpr string,
 ) error {
+	__antithesis_instrumentation__.Notify(246974)
 	var syntheticDescs []catalog.Descriptor
 	if tableDesc.Version > tableDesc.ClusterVersion().Version {
+		__antithesis_instrumentation__.Notify(246976)
 		syntheticDescs = append(syntheticDescs, tableDesc)
+	} else {
+		__antithesis_instrumentation__.Notify(246977)
 	}
+	__antithesis_instrumentation__.Notify(246975)
 	ie := ief(ctx, sessionData)
 	return ie.WithSyntheticDescriptors(syntheticDescs, func() error {
+		__antithesis_instrumentation__.Notify(246978)
 		return validateCheckExpr(ctx, semaCtx, sessionData, checkExpr, tableDesc, ie, txn)
 	})
 }
 
-// validateFkInTxn validates foreign key constraints within the provided
-// transaction. If the provided table descriptor version is newer than the
-// cluster version, it will be used in the InternalExecutor that performs the
-// validation query.
-//
-// TODO (lucy): The special case where the table descriptor version is the same
-// as the cluster version only happens because the query in VALIDATE CONSTRAINT
-// still runs in the user transaction instead of a step in the schema changer.
-// When that's no longer true, this function should be updated.
-//
-// It operates entirely on the current goroutine and is thus able to
-// reuse an existing kv.Txn safely.
 func validateFkInTxn(
 	ctx context.Context,
 	ief sqlutil.SessionBoundInternalExecutorFactory,
@@ -2459,50 +3323,64 @@ func validateFkInTxn(
 	descsCol *descs.Collection,
 	fkName string,
 ) error {
+	__antithesis_instrumentation__.Notify(246979)
 	var syntheticTable catalog.TableDescriptor
 	if srcTable.Version > srcTable.ClusterVersion().Version {
+		__antithesis_instrumentation__.Notify(246985)
 		syntheticTable = srcTable
+	} else {
+		__antithesis_instrumentation__.Notify(246986)
 	}
+	__antithesis_instrumentation__.Notify(246980)
 	var fk *descpb.ForeignKeyConstraint
 	for i := range srcTable.OutboundFKs {
+		__antithesis_instrumentation__.Notify(246987)
 		def := &srcTable.OutboundFKs[i]
 		if def.Name == fkName {
+			__antithesis_instrumentation__.Notify(246988)
 			fk = def
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(246989)
 		}
 	}
+	__antithesis_instrumentation__.Notify(246981)
 	if fk == nil {
+		__antithesis_instrumentation__.Notify(246990)
 		return errors.AssertionFailedf("foreign key %s does not exist", fkName)
+	} else {
+		__antithesis_instrumentation__.Notify(246991)
 	}
+	__antithesis_instrumentation__.Notify(246982)
 	targetTable, err := descsCol.Direct().MustGetTableDescByID(ctx, txn, fk.ReferencedTableID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(246992)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(246993)
 	}
+	__antithesis_instrumentation__.Notify(246983)
 	var syntheticDescs []catalog.Descriptor
 	if syntheticTable != nil {
+		__antithesis_instrumentation__.Notify(246994)
 		syntheticDescs = append(syntheticDescs, syntheticTable)
 		if targetTable.GetID() == syntheticTable.GetID() {
+			__antithesis_instrumentation__.Notify(246995)
 			targetTable = syntheticTable
+		} else {
+			__antithesis_instrumentation__.Notify(246996)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(246997)
 	}
+	__antithesis_instrumentation__.Notify(246984)
 	ie := ief(ctx, sd)
 	return ie.WithSyntheticDescriptors(syntheticDescs, func() error {
+		__antithesis_instrumentation__.Notify(246998)
 		return validateForeignKey(ctx, srcTable, targetTable, fk, ie, txn)
 	})
 }
 
-// validateUniqueWithoutIndexConstraintInTxn validates a unique constraint
-// within the provided transaction. If the provided table descriptor version
-// is newer than the cluster version, it will be used in the InternalExecutor
-// that performs the validation query.
-//
-// TODO (lucy): The special case where the table descriptor version is the same
-// as the cluster version only happens because the query in VALIDATE CONSTRAINT
-// still runs in the user transaction instead of a step in the schema changer.
-// When that's no longer true, this function should be updated.
-//
-// It operates entirely on the current goroutine and is thus able to
-// reuse an existing kv.Txn safely.
 func validateUniqueWithoutIndexConstraintInTxn(
 	ctx context.Context,
 	ie sqlutil.InternalExecutor,
@@ -2510,35 +3388,45 @@ func validateUniqueWithoutIndexConstraintInTxn(
 	txn *kv.Txn,
 	constraintName string,
 ) error {
+	__antithesis_instrumentation__.Notify(246999)
 	var syntheticDescs []catalog.Descriptor
 	if tableDesc.Version > tableDesc.ClusterVersion().Version {
+		__antithesis_instrumentation__.Notify(247003)
 		syntheticDescs = append(syntheticDescs, tableDesc)
+	} else {
+		__antithesis_instrumentation__.Notify(247004)
 	}
+	__antithesis_instrumentation__.Notify(247000)
 
 	var uc *descpb.UniqueWithoutIndexConstraint
 	for i := range tableDesc.UniqueWithoutIndexConstraints {
+		__antithesis_instrumentation__.Notify(247005)
 		def := &tableDesc.UniqueWithoutIndexConstraints[i]
 		if def.Name == constraintName {
+			__antithesis_instrumentation__.Notify(247006)
 			uc = def
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(247007)
 		}
 	}
+	__antithesis_instrumentation__.Notify(247001)
 	if uc == nil {
+		__antithesis_instrumentation__.Notify(247008)
 		return errors.AssertionFailedf("unique constraint %s does not exist", constraintName)
+	} else {
+		__antithesis_instrumentation__.Notify(247009)
 	}
+	__antithesis_instrumentation__.Notify(247002)
 
 	return ie.WithSyntheticDescriptors(syntheticDescs, func() error {
+		__antithesis_instrumentation__.Notify(247010)
 		return validateUniqueConstraint(
-			ctx, tableDesc, uc.Name, uc.ColumnIDs, uc.Predicate, ie, txn, false, /* preExisting */
+			ctx, tableDesc, uc.Name, uc.ColumnIDs, uc.Predicate, ie, txn, false,
 		)
 	})
 }
 
-// columnBackfillInTxn backfills columns for all mutation columns in
-// the mutation list.
-//
-// It operates entirely on the current goroutine and is thus able to
-// reuse an existing kv.Txn safely.
 func columnBackfillInTxn(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -2548,43 +3436,56 @@ func columnBackfillInTxn(
 	tableDesc catalog.TableDescriptor,
 	traceKV bool,
 ) error {
-	// A column backfill in the ADD state is a noop.
+	__antithesis_instrumentation__.Notify(247011)
+
 	if tableDesc.Adding() {
+		__antithesis_instrumentation__.Notify(247016)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(247017)
 	}
+	__antithesis_instrumentation__.Notify(247012)
 	var columnBackfillerMon *mon.BytesMonitor
-	// This is the planner's memory monitor.
+
 	if evalCtx.Mon != nil {
+		__antithesis_instrumentation__.Notify(247018)
 		columnBackfillerMon = execinfra.NewMonitor(ctx, evalCtx.Mon, "local-column-backfill-mon")
+	} else {
+		__antithesis_instrumentation__.Notify(247019)
 	}
+	__antithesis_instrumentation__.Notify(247013)
 
 	rowMetrics := execCfg.GetRowMetrics(evalCtx.SessionData().Internal)
 	var backfiller backfill.ColumnBackfiller
 	if err := backfiller.InitForLocalUse(
 		ctx, evalCtx, semaCtx, tableDesc, columnBackfillerMon, rowMetrics,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(247020)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(247021)
 	}
+	__antithesis_instrumentation__.Notify(247014)
 	defer backfiller.Close(ctx)
 	sp := tableDesc.PrimaryIndexSpan(evalCtx.Codec)
 	for sp.Key != nil {
+		__antithesis_instrumentation__.Notify(247022)
 		var err error
 		sp.Key, err = backfiller.RunColumnBackfillChunk(ctx,
 			txn, tableDesc, sp, rowinfra.RowLimit(columnBackfillBatchSize.Get(&evalCtx.Settings.SV)),
-			false /*alsoCommit*/, traceKV)
+			false, traceKV)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(247023)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(247024)
 		}
 	}
+	__antithesis_instrumentation__.Notify(247015)
 
 	return nil
 }
 
-// indexBackfillInTxn runs one chunk of the index backfill on the
-// primary index.
-//
-// It operates entirely on the current goroutine and is thus able to
-// reuse an existing kv.Txn safely.
 func indexBackfillInTxn(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -2593,35 +3494,46 @@ func indexBackfillInTxn(
 	tableDesc catalog.TableDescriptor,
 	traceKV bool,
 ) error {
+	__antithesis_instrumentation__.Notify(247025)
 	var indexBackfillerMon *mon.BytesMonitor
-	// This is the planner's memory monitor.
+
 	if evalCtx.Mon != nil {
+		__antithesis_instrumentation__.Notify(247029)
 		indexBackfillerMon = execinfra.NewMonitor(ctx, evalCtx.Mon, "local-index-backfill-mon")
+	} else {
+		__antithesis_instrumentation__.Notify(247030)
 	}
+	__antithesis_instrumentation__.Notify(247026)
 
 	var backfiller backfill.IndexBackfiller
 	if err := backfiller.InitForLocalUse(
 		ctx, evalCtx, semaCtx, tableDesc, indexBackfillerMon,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(247031)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(247032)
 	}
+	__antithesis_instrumentation__.Notify(247027)
 	defer backfiller.Close(ctx)
 	sp := tableDesc.PrimaryIndexSpan(evalCtx.Codec)
 	for sp.Key != nil {
+		__antithesis_instrumentation__.Notify(247033)
 		var err error
 		sp.Key, err = backfiller.RunIndexBackfillChunk(ctx,
-			txn, tableDesc, sp, indexTxnBackfillChunkSize, false /* alsoCommit */, traceKV)
+			txn, tableDesc, sp, indexTxnBackfillChunkSize, false, traceKV)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(247034)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(247035)
 		}
 	}
+	__antithesis_instrumentation__.Notify(247028)
 
 	return nil
 }
 
-// indexTruncateInTxn deletes an index from a table.
-// It operates entirely on the current goroutine and is thus able to
-// reuse an existing kv.Txn safely.
 func indexTruncateInTxn(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -2631,27 +3543,37 @@ func indexTruncateInTxn(
 	idx catalog.Index,
 	traceKV bool,
 ) error {
+	__antithesis_instrumentation__.Notify(247036)
 	alloc := &tree.DatumAlloc{}
 	var sp roachpb.Span
 	for done := false; !done; done = sp.Key == nil {
+		__antithesis_instrumentation__.Notify(247038)
 		internal := evalCtx.SessionData().Internal
 		rd := row.MakeDeleter(
-			execCfg.Codec, tableDesc, nil /* requestedCols */, &execCfg.Settings.SV, internal,
+			execCfg.Codec, tableDesc, nil, &execCfg.Settings.SV, internal,
 			execCfg.GetRowMetrics(internal),
 		)
 		td := tableDeleter{rd: rd, alloc: alloc}
 		if err := td.init(ctx, txn, evalCtx, &evalCtx.Settings.SV); err != nil {
+			__antithesis_instrumentation__.Notify(247040)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(247041)
 		}
+		__antithesis_instrumentation__.Notify(247039)
 		var err error
 		sp, err = td.deleteIndex(
 			ctx, idx, sp, indexTruncateChunkSize, traceKV,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(247042)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(247043)
 		}
 	}
-	// Remove index zone configs.
+	__antithesis_instrumentation__.Notify(247037)
+
 	return RemoveIndexZoneConfigs(ctx, txn, execCfg, tableDesc, []uint32{uint32(idx.GetID())})
 }
 
@@ -2662,91 +3584,125 @@ func (sc *SchemaChanger) distIndexMerge(
 	temporaryIndexes []descpb.IndexID,
 	fractionScaler *multiStageFractionScaler,
 ) error {
-	// We note the time at the start of the merge in order to limit the set of
-	// keys merged from the temporary index to what's already there as of
-	// mergeTimestamp. To identify the keys that should be merged, we perform a
-	// historical read on the temporary index as of mergeTimestamp. We then
-	// perform an additional read for the latest value for each key in order to
-	// get correct merged value.
-	//
-	// We do this because the temporary index is still accepting writes during the
-	// merge as we rely on it having the latest value or delete for every key. If
-	// we don't limit number of keys merged, then it is possible for the rate of
-	// new keys written to the temporary index to be faster than the rate at which
-	// merge.
-	//
-	// The mergeTimestamp is currently not persisted because if this job is ran as
-	// part of a restore, then timestamp will be too old and the job will fail. On
-	// the next resume, a mergeTimestamp newer than the GC time will be picked and
-	// the job can continue.
+	__antithesis_instrumentation__.Notify(247044)
+
 	mergeTimestamp := sc.clock.Now()
 	log.Infof(ctx, "merging all keys in temporary index before time %v", mergeTimestamp)
 
-	// Gather the initial resume spans for the merge process.
 	progress, err := extractMergeProgress(sc.job, tableDesc, addedIndexes, temporaryIndexes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(247054)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(247055)
 	}
+	__antithesis_instrumentation__.Notify(247045)
 
 	log.VEventf(ctx, 2, "indexbackfill merge: initial resume spans %+v", progress.TodoSpans)
 	if progress.TodoSpans == nil {
+		__antithesis_instrumentation__.Notify(247056)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(247057)
 	}
+	__antithesis_instrumentation__.Notify(247046)
 
-	// TODO(rui): these can be initialized along with other new schema changer dependencies.
 	planner := NewIndexBackfillerMergePlanner(sc.execCfg, sc.execCfg.InternalExecutorFactory)
 	rc := func(ctx context.Context, spans []roachpb.Span) (int, error) {
+		__antithesis_instrumentation__.Notify(247058)
 		return numRangesInSpans(ctx, sc.db, sc.distSQLPlanner, spans)
 	}
+	__antithesis_instrumentation__.Notify(247047)
 	tracker := NewIndexMergeTracker(progress, sc.job, rc, fractionScaler)
 	periodicFlusher := newPeriodicProgressFlusher(sc.settings)
 
 	metaFn := func(ctx context.Context, meta *execinfrapb.ProducerMetadata) error {
+		__antithesis_instrumentation__.Notify(247059)
 		if meta.BulkProcessorProgress != nil {
+			__antithesis_instrumentation__.Notify(247061)
 			idxCompletedSpans := make(map[int32][]roachpb.Span)
 			for i, sp := range meta.BulkProcessorProgress.CompletedSpans {
+				__antithesis_instrumentation__.Notify(247065)
 				spanIdx := meta.BulkProcessorProgress.CompletedSpanIdx[i]
 				idxCompletedSpans[spanIdx] = append(idxCompletedSpans[spanIdx], sp)
 			}
+			__antithesis_instrumentation__.Notify(247062)
 			tracker.UpdateMergeProgress(ctx, func(_ context.Context, currentProgress *MergeProgress) {
+				__antithesis_instrumentation__.Notify(247066)
 				for idx, completedSpans := range idxCompletedSpans {
+					__antithesis_instrumentation__.Notify(247067)
 					currentProgress.TodoSpans[idx] = roachpb.SubtractSpans(currentProgress.TodoSpans[idx], completedSpans)
 				}
 			})
+			__antithesis_instrumentation__.Notify(247063)
 			if sc.testingKnobs.AlwaysUpdateIndexBackfillDetails {
+				__antithesis_instrumentation__.Notify(247068)
 				if err := tracker.FlushCheckpoint(ctx); err != nil {
+					__antithesis_instrumentation__.Notify(247069)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(247070)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(247071)
 			}
+			__antithesis_instrumentation__.Notify(247064)
 			if sc.testingKnobs.AlwaysUpdateIndexBackfillProgress {
+				__antithesis_instrumentation__.Notify(247072)
 				if err := tracker.FlushFractionCompleted(ctx); err != nil {
+					__antithesis_instrumentation__.Notify(247073)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(247074)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(247075)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(247076)
 		}
+		__antithesis_instrumentation__.Notify(247060)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(247048)
 
 	stop := periodicFlusher.StartPeriodicUpdates(ctx, tracker)
-	defer func() { _ = stop() }()
+	defer func() { __antithesis_instrumentation__.Notify(247077); _ = stop() }()
+	__antithesis_instrumentation__.Notify(247049)
 
 	run, err := planner.plan(ctx, tableDesc, progress.TodoSpans, progress.AddedIndexes,
 		progress.TemporaryIndexes, metaFn, mergeTimestamp)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(247078)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(247079)
 	}
+	__antithesis_instrumentation__.Notify(247050)
 
 	if err := run(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(247080)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(247081)
 	}
+	__antithesis_instrumentation__.Notify(247051)
 
 	if err := stop(); err != nil {
+		__antithesis_instrumentation__.Notify(247082)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(247083)
 	}
+	__antithesis_instrumentation__.Notify(247052)
 
 	if err := tracker.FlushCheckpoint(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(247084)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(247085)
 	}
+	__antithesis_instrumentation__.Notify(247053)
 
 	return tracker.FlushFractionCompleted(ctx)
 }
@@ -2754,6 +3710,7 @@ func (sc *SchemaChanger) distIndexMerge(
 func extractMergeProgress(
 	job *jobs.Job, tableDesc catalog.TableDescriptor, addedIndexes, temporaryIndexes []descpb.IndexID,
 ) (*MergeProgress, error) {
+	__antithesis_instrumentation__.Notify(247086)
 	resumeSpanList := job.Details().(jobspb.SchemaChangeDetails).ResumeSpanList
 	progress := MergeProgress{}
 	progress.TemporaryIndexes = temporaryIndexes
@@ -2761,24 +3718,40 @@ func extractMergeProgress(
 
 	const noIdx = -1
 	findMutIdx := func(id descpb.IndexID) int {
+		__antithesis_instrumentation__.Notify(247089)
 		for mutIdx, mut := range tableDesc.AllMutations() {
-			if mut.AsIndex() != nil && mut.AsIndex().GetID() == id {
+			__antithesis_instrumentation__.Notify(247091)
+			if mut.AsIndex() != nil && func() bool {
+				__antithesis_instrumentation__.Notify(247092)
+				return mut.AsIndex().GetID() == id == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(247093)
 				return mutIdx
+			} else {
+				__antithesis_instrumentation__.Notify(247094)
 			}
 		}
+		__antithesis_instrumentation__.Notify(247090)
 
 		return noIdx
 	}
+	__antithesis_instrumentation__.Notify(247087)
 
 	for _, tempIdx := range temporaryIndexes {
+		__antithesis_instrumentation__.Notify(247095)
 		mutIdx := findMutIdx(tempIdx)
 		if mutIdx == noIdx {
+			__antithesis_instrumentation__.Notify(247097)
 			return nil, errors.AssertionFailedf("no corresponding mutation for temporary index %d", tempIdx)
+		} else {
+			__antithesis_instrumentation__.Notify(247098)
 		}
+		__antithesis_instrumentation__.Notify(247096)
 
 		progress.TodoSpans = append(progress.TodoSpans, resumeSpanList[mutIdx].ResumeSpans)
 		progress.MutationIdx = append(progress.MutationIdx, mutIdx)
 	}
+	__antithesis_instrumentation__.Notify(247088)
 
 	return &progress, nil
 }
@@ -2791,9 +3764,6 @@ const (
 )
 
 var (
-	// These fractions were chosen arbitrarily. Since we believe the majority of the index's data will
-	// be populated during the backfill stage and since there is some schema change work before
-	// the merge, we've given the backfill 60%.
 	mvccCompatibleBackfillStageFractions = []float32{
 		.60,
 		1.0,
@@ -2803,8 +3773,6 @@ var (
 	}
 )
 
-// multiStageFractionScales scales a given completion fraction for a single stage of a multi-stage
-// process based on the given boundaries.
 type multiStageFractionScaler struct {
 	initial float32
 	stages  []float32
@@ -2813,27 +3781,51 @@ type multiStageFractionScaler struct {
 func (m *multiStageFractionScaler) fractionCompleteFromStageFraction(
 	stage backfillStage, fraction float32,
 ) (float32, error) {
-	if fraction > 1.0 || fraction < 0.0 {
+	__antithesis_instrumentation__.Notify(247099)
+	if fraction > 1.0 || func() bool {
+		__antithesis_instrumentation__.Notify(247105)
+		return fraction < 0.0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(247106)
 		return 0, errors.AssertionFailedf("fraction %f outside allowed range [0.0, 1.0]", fraction)
+	} else {
+		__antithesis_instrumentation__.Notify(247107)
 	}
+	__antithesis_instrumentation__.Notify(247100)
 
 	if int(stage) >= len(m.stages) {
+		__antithesis_instrumentation__.Notify(247108)
 		return 0, errors.AssertionFailedf("unknown stage %d", stage)
+	} else {
+		__antithesis_instrumentation__.Notify(247109)
 	}
+	__antithesis_instrumentation__.Notify(247101)
 
 	max := m.stages[stage]
 	if max > 1.0 {
+		__antithesis_instrumentation__.Notify(247110)
 		return 0, errors.AssertionFailedf("stage %d max percentage larger than 1: %f", stage, max)
+	} else {
+		__antithesis_instrumentation__.Notify(247111)
 	}
+	__antithesis_instrumentation__.Notify(247102)
 
 	min := m.initial
 	if stage > 0 {
+		__antithesis_instrumentation__.Notify(247112)
 		min = m.stages[stage-1]
+	} else {
+		__antithesis_instrumentation__.Notify(247113)
 	}
+	__antithesis_instrumentation__.Notify(247103)
 
 	v := min + (max-min)*fraction
 	if v < m.initial {
+		__antithesis_instrumentation__.Notify(247114)
 		return m.initial, nil
+	} else {
+		__antithesis_instrumentation__.Notify(247115)
 	}
+	__antithesis_instrumentation__.Notify(247104)
 	return v, nil
 }

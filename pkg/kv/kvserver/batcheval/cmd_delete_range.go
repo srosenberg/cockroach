@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,47 +24,60 @@ func declareKeysDeleteRange(
 	latchSpans, lockSpans *spanset.SpanSet,
 	maxOffset time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(96497)
 	args := req.(*roachpb.DeleteRangeRequest)
 	if args.Inline {
+		__antithesis_instrumentation__.Notify(96498)
 		DefaultDeclareKeys(rs, header, req, latchSpans, lockSpans, maxOffset)
 	} else {
+		__antithesis_instrumentation__.Notify(96499)
 		DefaultDeclareIsolatedKeys(rs, header, req, latchSpans, lockSpans, maxOffset)
 	}
 }
 
-// DeleteRange deletes the range of key/value pairs specified by
-// start and end keys.
 func DeleteRange(
 	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(96500)
 	args := cArgs.Args.(*roachpb.DeleteRangeRequest)
 	h := cArgs.Header
 	reply := resp.(*roachpb.DeleteRangeResponse)
 
 	var timestamp hlc.Timestamp
 	if !args.Inline {
+		__antithesis_instrumentation__.Notify(96504)
 		timestamp = h.Timestamp
+	} else {
+		__antithesis_instrumentation__.Notify(96505)
 	}
-	// NB: Even if args.ReturnKeys is false, we want to know which intents were
-	// written if we're evaluating the DeleteRange for a transaction so that we
-	// can update the Result's AcquiredLocks field.
-	returnKeys := args.ReturnKeys || h.Txn != nil
+	__antithesis_instrumentation__.Notify(96501)
+
+	returnKeys := args.ReturnKeys || func() bool {
+		__antithesis_instrumentation__.Notify(96506)
+		return h.Txn != nil == true
+	}() == true
 	deleted, resumeSpan, num, err := storage.MVCCDeleteRange(
 		ctx, readWriter, cArgs.Stats, args.Key, args.EndKey, h.MaxSpanRequestKeys, timestamp, h.Txn, returnKeys,
 	)
-	if err == nil && args.ReturnKeys {
+	if err == nil && func() bool {
+		__antithesis_instrumentation__.Notify(96507)
+		return args.ReturnKeys == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(96508)
 		reply.Keys = deleted
+	} else {
+		__antithesis_instrumentation__.Notify(96509)
 	}
+	__antithesis_instrumentation__.Notify(96502)
 	reply.NumKeys = num
 	if resumeSpan != nil {
+		__antithesis_instrumentation__.Notify(96510)
 		reply.ResumeSpan = resumeSpan
 		reply.ResumeReason = roachpb.RESUME_KEY_LIMIT
+	} else {
+		__antithesis_instrumentation__.Notify(96511)
 	}
-	// NB: even if MVCC returns an error, it may still have written an intent
-	// into the batch. This allows callers to consume errors like WriteTooOld
-	// without re-evaluating the batch. This behavior isn't particularly
-	// desirable, but while it remains, we need to assume that an intent could
-	// have been written even when an error is returned. This is harmless if the
-	// error is not consumed by the caller because the result will be discarded.
+	__antithesis_instrumentation__.Notify(96503)
+
 	return result.FromAcquiredLocks(h.Txn, deleted...), err
 }

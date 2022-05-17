@@ -1,23 +1,16 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package randgen
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "math/rand"
 
-// RandString generates a random string of the desired length from the
-// input alphabet.
 func RandString(rng *rand.Rand, length int, alphabet string) string {
+	__antithesis_instrumentation__.Notify(564699)
 	buf := make([]byte, length)
 	for i := range buf {
+		__antithesis_instrumentation__.Notify(564701)
 		buf[i] = alphabet[rng.Intn(len(alphabet))]
 	}
+	__antithesis_instrumentation__.Notify(564700)
 	return string(buf)
 }

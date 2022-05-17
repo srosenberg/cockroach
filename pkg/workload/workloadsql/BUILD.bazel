@@ -16,6 +16,7 @@ go_library(
         "//pkg/util/timeutil",
         "//pkg/util/version",
         "//pkg/workload",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@org_golang_x_sync//errgroup",
         "@org_golang_x_time//rate",
@@ -44,5 +45,6 @@ go_test(
         "//pkg/util/uuid",
         "//pkg/workload",
         "//pkg/workload/bank",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

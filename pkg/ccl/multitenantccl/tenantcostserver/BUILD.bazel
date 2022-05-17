@@ -32,6 +32,7 @@ go_library(
         "//pkg/util/protoutil",
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -64,6 +65,7 @@ go_test(
         "//pkg/util/metric",
         "//pkg/util/randutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@com_github_cockroachdb_errors//:errors",
         "@in_gopkg_yaml_v2//:yaml_v2",

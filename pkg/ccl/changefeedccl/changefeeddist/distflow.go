@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeeddist
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,15 +16,13 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
-// ChangefeedResultTypes is the types returned by changefeed stream.
 var ChangefeedResultTypes = []*types.T{
-	types.Bytes,  // aggregator progress update
-	types.String, // topic
-	types.Bytes,  // key
-	types.Bytes,  // value
+	types.Bytes,
+	types.String,
+	types.Bytes,
+	types.Bytes,
 }
 
-// StartDistChangefeed starts distributed changefeed execution.
 func StartDistChangefeed(
 	ctx context.Context,
 	execCtx sql.JobExecContext,
@@ -42,43 +34,50 @@ func StartDistChangefeed(
 	resultsCh chan<- tree.Datums,
 	knobs TestingKnobs,
 ) error {
-	// Changefeed flows handle transactional consistency themselves.
+	__antithesis_instrumentation__.Notify(16686)
+
 	var noTxn *kv.Txn
 
 	dsp := execCtx.DistSQLPlanner()
 	evalCtx := execCtx.ExtendedEvalContext()
-	planCtx := dsp.NewPlanningCtx(ctx, evalCtx, nil /* planner */, noTxn,
+	planCtx := dsp.NewPlanningCtx(ctx, evalCtx, nil, noTxn,
 		sql.DistributionTypeAlways)
 
 	var spanPartitions []sql.SpanPartition
 	if details.SinkURI == `` {
-		// Sinkless feeds get one ChangeAggregator on the gateway.
+		__antithesis_instrumentation__.Notify(16692)
+
 		spanPartitions = []sql.SpanPartition{{SQLInstanceID: dsp.GatewayID(), Spans: trackedSpans}}
 	} else {
-		// All other feeds get a ChangeAggregator local on the leaseholder.
+		__antithesis_instrumentation__.Notify(16693)
+
 		var err error
 		spanPartitions, err = dsp.PartitionSpans(ctx, planCtx, trackedSpans)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(16694)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(16695)
 		}
 	}
+	__antithesis_instrumentation__.Notify(16687)
 
-	// Use the same checkpoint for all aggregators; each aggregator will only look at
-	// spans that are assigned to it.
-	// We could compute per-aggregator checkpoint, but that's probably an overkill.
 	aggregatorCheckpoint := execinfrapb.ChangeAggregatorSpec_Checkpoint{
 		Spans: checkpoint.Spans,
 	}
 
 	aggregatorSpecs := make([]*execinfrapb.ChangeAggregatorSpec, len(spanPartitions))
 	for i, sp := range spanPartitions {
+		__antithesis_instrumentation__.Notify(16696)
 		watches := make([]execinfrapb.ChangeAggregatorSpec_Watch, len(sp.Spans))
 		for watchIdx, nodeSpan := range sp.Spans {
+			__antithesis_instrumentation__.Notify(16698)
 			watches[watchIdx] = execinfrapb.ChangeAggregatorSpec_Watch{
 				Span:            nodeSpan,
 				InitialResolved: initialHighWater,
 			}
 		}
+		__antithesis_instrumentation__.Notify(16697)
 
 		aggregatorSpecs[i] = &execinfrapb.ChangeAggregatorSpec{
 			Watches:    watches,
@@ -88,11 +87,8 @@ func StartDistChangefeed(
 			JobID:      jobID,
 		}
 	}
+	__antithesis_instrumentation__.Notify(16688)
 
-	// NB: This SpanFrontier processor depends on the set of tracked spans being
-	// static. Currently there is no way for them to change after the changefeed
-	// is created, even if it is paused and unpaused, but #28982 describes some
-	// ways that this might happen in the future.
 	changeFrontierSpec := execinfrapb.ChangeFrontierSpec{
 		TrackedSpans: trackedSpans,
 		Feed:         details,
@@ -101,14 +97,20 @@ func StartDistChangefeed(
 	}
 
 	if knobs.OnDistflowSpec != nil {
+		__antithesis_instrumentation__.Notify(16699)
 		knobs.OnDistflowSpec(aggregatorSpecs, &changeFrontierSpec)
+	} else {
+		__antithesis_instrumentation__.Notify(16700)
 	}
+	__antithesis_instrumentation__.Notify(16689)
 
 	aggregatorCorePlacement := make([]physicalplan.ProcessorCorePlacement, len(spanPartitions))
 	for i, sp := range spanPartitions {
+		__antithesis_instrumentation__.Notify(16701)
 		aggregatorCorePlacement[i].SQLInstanceID = sp.SQLInstanceID
 		aggregatorCorePlacement[i].Core.ChangeAggregator = aggregatorSpecs[i]
 	}
+	__antithesis_instrumentation__.Notify(16690)
 
 	p := planCtx.NewPhysicalPlan()
 	p.AddNoInputStage(aggregatorCorePlacement, execinfrapb.PostProcessSpec{}, ChangefeedResultTypes, execinfrapb.Ordering{})
@@ -129,33 +131,28 @@ func StartDistChangefeed(
 		tree.Rows,
 		execCtx.ExecCfg().RangeDescriptorCache,
 		noTxn,
-		nil, /* clockUpdater */
+		nil,
 		evalCtx.Tracing,
 		execCtx.ExecCfg().ContentionRegistry,
-		nil, /* testingPushCallback */
+		nil,
 	)
 	defer recv.Release()
 
 	var finishedSetupFn func()
 	if details.SinkURI != `` {
-		// We abuse the job's results channel to make CREATE CHANGEFEED wait for
-		// this before returning to the user to ensure the setup went okay. Job
-		// resumption doesn't have the same hack, but at the moment ignores
-		// results and so is currently okay. Return nil instead of anything
-		// meaningful so that if we start doing anything with the results
-		// returned by resumed jobs, then it breaks instead of returning
-		// nonsense.
-		finishedSetupFn = func() { resultsCh <- tree.Datums(nil) }
-	}
+		__antithesis_instrumentation__.Notify(16702)
 
-	// Copy the evalCtx, as dsp.Run() might change it.
+		finishedSetupFn = func() { __antithesis_instrumentation__.Notify(16703); resultsCh <- tree.Datums(nil) }
+	} else {
+		__antithesis_instrumentation__.Notify(16704)
+	}
+	__antithesis_instrumentation__.Notify(16691)
+
 	evalCtxCopy := *evalCtx
 	dsp.Run(ctx, planCtx, noTxn, p, recv, &evalCtxCopy, finishedSetupFn)()
 	return resultRows.Err()
 }
 
-// changefeedResultWriter implements the `sql.rowResultWriter` that sends
-// the received rows back over the given channel.
 type changefeedResultWriter struct {
 	rowsCh       chan<- tree.Datums
 	rowsAffected int
@@ -163,27 +160,33 @@ type changefeedResultWriter struct {
 }
 
 func makeChangefeedResultWriter(rowsCh chan<- tree.Datums) *changefeedResultWriter {
+	__antithesis_instrumentation__.Notify(16705)
 	return &changefeedResultWriter{rowsCh: rowsCh}
 }
 
 func (w *changefeedResultWriter) AddRow(ctx context.Context, row tree.Datums) error {
-	// Copy the row because it's not guaranteed to exist after this function
-	// returns.
+	__antithesis_instrumentation__.Notify(16706)
+
 	row = append(tree.Datums(nil), row...)
 
 	select {
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(16707)
 		return ctx.Err()
 	case w.rowsCh <- row:
+		__antithesis_instrumentation__.Notify(16708)
 		return nil
 	}
 }
 func (w *changefeedResultWriter) IncrementRowsAffected(ctx context.Context, n int) {
+	__antithesis_instrumentation__.Notify(16709)
 	w.rowsAffected += n
 }
 func (w *changefeedResultWriter) SetError(err error) {
+	__antithesis_instrumentation__.Notify(16710)
 	w.err = err
 }
 func (w *changefeedResultWriter) Err() error {
+	__antithesis_instrumentation__.Notify(16711)
 	return w.err
 }

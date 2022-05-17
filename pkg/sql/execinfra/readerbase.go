@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package execinfra
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,48 +15,69 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// We ignore any limits that are higher than this value to avoid integer
-// overflows. See limitHint for how this bound is used.
-const readerOverflowProtection = 1000000000000000 /* 10^15 */
+const readerOverflowProtection = 1000000000000000
 
-// LimitHint returns the limit hint to set for a KVFetcher based on
-// the spec's limit hint and the PostProcessSpec.
 func LimitHint(specLimitHint int64, post *execinfrapb.PostProcessSpec) (limitHint int64) {
-	// We prioritize the post process's limit since ProcOutputHelper
-	// will tell us to stop once we emit enough rows.
-	if post.Limit != 0 && post.Limit <= readerOverflowProtection {
+	__antithesis_instrumentation__.Notify(471385)
+
+	if post.Limit != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(471387)
+		return post.Limit <= readerOverflowProtection == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(471388)
 		limitHint = int64(post.Limit)
-	} else if specLimitHint != 0 && specLimitHint <= readerOverflowProtection {
-		limitHint = specLimitHint
+	} else {
+		__antithesis_instrumentation__.Notify(471389)
+		if specLimitHint != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(471390)
+			return specLimitHint <= readerOverflowProtection == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(471391)
+			limitHint = specLimitHint
+		} else {
+			__antithesis_instrumentation__.Notify(471392)
+		}
 	}
+	__antithesis_instrumentation__.Notify(471386)
 
 	return limitHint
 }
 
-// MisplannedRanges queries the range cache for all the passed-in spans and
-// returns the list of ranges whose leaseholder is not on the indicated node.
-// Ranges with unknown leases are not included in the result.
 func MisplannedRanges(
 	ctx context.Context, spans []roachpb.Span, nodeID roachpb.NodeID, rdc *rangecache.RangeCache,
 ) (misplannedRanges []roachpb.RangeInfo) {
+	__antithesis_instrumentation__.Notify(471393)
 	log.VEvent(ctx, 2, "checking range cache to see if range info updates should be communicated to the gateway")
 	var misplanned map[roachpb.RangeID]struct{}
 	for _, sp := range spans {
+		__antithesis_instrumentation__.Notify(471396)
 		rSpan, err := keys.SpanAddr(sp)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(471398)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(471399)
 		}
+		__antithesis_instrumentation__.Notify(471397)
 		overlapping := rdc.GetCachedOverlapping(ctx, rSpan)
 
 		for _, ri := range overlapping {
+			__antithesis_instrumentation__.Notify(471400)
 			if _, ok := misplanned[ri.Desc().RangeID]; ok {
-				// We're already returning info about this range.
+				__antithesis_instrumentation__.Notify(471402)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(471403)
 			}
-			// Ranges with unknown leases are not returned, as the current node might
-			// actually have the lease without the local cache knowing about it.
+			__antithesis_instrumentation__.Notify(471401)
+
 			l := ri.Lease()
-			if l != nil && l.Replica.NodeID != nodeID {
+			if l != nil && func() bool {
+				__antithesis_instrumentation__.Notify(471404)
+				return l.Replica.NodeID != nodeID == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(471405)
 				misplannedRanges = append(misplannedRanges, roachpb.RangeInfo{
 					Desc:                  *ri.Desc(),
 					Lease:                 *l,
@@ -72,62 +85,84 @@ func MisplannedRanges(
 				})
 
 				if misplanned == nil {
+					__antithesis_instrumentation__.Notify(471407)
 					misplanned = make(map[roachpb.RangeID]struct{})
+				} else {
+					__antithesis_instrumentation__.Notify(471408)
 				}
+				__antithesis_instrumentation__.Notify(471406)
 				misplanned[ri.Desc().RangeID] = struct{}{}
+			} else {
+				__antithesis_instrumentation__.Notify(471409)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(471394)
 
-	if len(misplannedRanges) != 0 && log.ExpensiveLogEnabled(ctx, 2) {
+	if len(misplannedRanges) != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(471410)
+		return log.ExpensiveLogEnabled(ctx, 2) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(471411)
 		var b strings.Builder
 		for i := range misplannedRanges {
+			__antithesis_instrumentation__.Notify(471413)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(471416)
 				b.WriteString(", ")
+			} else {
+				__antithesis_instrumentation__.Notify(471417)
 			}
+			__antithesis_instrumentation__.Notify(471414)
 			if i > 3 {
+				__antithesis_instrumentation__.Notify(471418)
 				b.WriteString("...")
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(471419)
 			}
+			__antithesis_instrumentation__.Notify(471415)
 			fmt.Fprintf(&b, "%+v", misplannedRanges[i])
 		}
+		__antithesis_instrumentation__.Notify(471412)
 		log.VEventf(ctx, 2, "misplanned ranges: %s", b.String())
+	} else {
+		__antithesis_instrumentation__.Notify(471420)
 	}
+	__antithesis_instrumentation__.Notify(471395)
 
 	return misplannedRanges
 }
 
-// SpansWithCopy tracks a set of spans (which can be modified) along with the
-// copy of the original one if needed.
-// NB: Spans field is **not** owned by SpansWithCopy (it comes from the
-// TableReader spec).
 type SpansWithCopy struct {
 	Spans     roachpb.Spans
 	SpansCopy roachpb.Spans
 }
 
-// MakeSpansCopy makes a copy of s.Spans (which are assumed to have already been
-// set).
 func (s *SpansWithCopy) MakeSpansCopy() {
+	__antithesis_instrumentation__.Notify(471421)
 	if cap(s.SpansCopy) >= len(s.Spans) {
+		__antithesis_instrumentation__.Notify(471423)
 		s.SpansCopy = s.SpansCopy[:len(s.Spans)]
 	} else {
+		__antithesis_instrumentation__.Notify(471424)
 		s.SpansCopy = make(roachpb.Spans, len(s.Spans))
 	}
+	__antithesis_instrumentation__.Notify(471422)
 	copy(s.SpansCopy, s.Spans)
 }
 
-// Reset deeply resets s.
 func (s *SpansWithCopy) Reset() {
+	__antithesis_instrumentation__.Notify(471425)
 	for i := range s.SpansCopy {
+		__antithesis_instrumentation__.Notify(471427)
 		s.SpansCopy[i] = roachpb.Span{}
 	}
+	__antithesis_instrumentation__.Notify(471426)
 	s.Spans = nil
 	s.SpansCopy = s.SpansCopy[:0]
 }
 
-// limitHintBatchCount tracks how many times the caller has read LimitHint()
-// number of rows.
 type limitHintBatchCount int
 
 const (
@@ -136,22 +171,17 @@ const (
 	limitHintDisabled
 )
 
-// limitHintSecondBatchFactor is a multiple used when determining the limit hint
-// for the second batch of rows. This will be used when the original limit hint
-// turned out to be insufficient to satisfy the query.
 const limitHintSecondBatchFactor = 10
 
-// LimitHintHelper is used for lookup and index joins in order to limit batches
-// of input rows in the presence of hard and soft limits.
 type LimitHintHelper struct {
 	origLimitHint int64
-	// currentLimitHint of zero indicates that the limit hint is disabled.
+
 	currentLimitHint int64
 	limitHintIdx     limitHintBatchCount
 }
 
-// MakeLimitHintHelper creates a new LimitHintHelper.
 func MakeLimitHintHelper(specLimitHint int64, post *execinfrapb.PostProcessSpec) LimitHintHelper {
+	__antithesis_instrumentation__.Notify(471428)
 	limitHint := LimitHint(specLimitHint, post)
 	return LimitHintHelper{
 		origLimitHint:    limitHint,
@@ -160,42 +190,44 @@ func MakeLimitHintHelper(specLimitHint int64, post *execinfrapb.PostProcessSpec)
 	}
 }
 
-// LimitHint returns the current guess on the remaining rows that need to be
-// read. Zero is returned when the limit hint is disabled.
 func (h *LimitHintHelper) LimitHint() int64 {
+	__antithesis_instrumentation__.Notify(471429)
 	return h.currentLimitHint
 }
 
-// ReadSomeRows notifies the helper that its user has fetched the specified
-// number of rows. An error is returned when the user fetched more rows than the
-// current limit hint.
 func (h *LimitHintHelper) ReadSomeRows(rowsRead int64) error {
+	__antithesis_instrumentation__.Notify(471430)
 	if h.currentLimitHint != 0 {
+		__antithesis_instrumentation__.Notify(471432)
 		h.currentLimitHint -= rowsRead
 		if h.currentLimitHint == 0 {
-			// Set up the limit hint for the next batch of input rows if the
-			// current batch turns out to be insufficient.
-			//
-			// If we just finished the first batch of rows, then use the
-			// original limit hint times limitHintSecondBatchFactor. If we
-			// finished the second or any of the following batches, then we keep
-			// the limit hint as zero (i.e. disabled) since it appears that our
-			// original hint was either way off or many input rows result in
-			// lookup misses.
+			__antithesis_instrumentation__.Notify(471433)
+
 			switch h.limitHintIdx {
 			case limitHintFirstBatch:
+				__antithesis_instrumentation__.Notify(471434)
 				h.currentLimitHint = limitHintSecondBatchFactor * h.origLimitHint
 				h.limitHintIdx = limitHintSecondBatch
 			default:
+				__antithesis_instrumentation__.Notify(471435)
 				h.currentLimitHint = 0
 				h.limitHintIdx = limitHintDisabled
 			}
-		} else if h.currentLimitHint < 0 {
-			return errors.AssertionFailedf(
-				"unexpectedly the user of LimitHintHelper read " +
-					"more rows that the current limit hint",
-			)
+		} else {
+			__antithesis_instrumentation__.Notify(471436)
+			if h.currentLimitHint < 0 {
+				__antithesis_instrumentation__.Notify(471437)
+				return errors.AssertionFailedf(
+					"unexpectedly the user of LimitHintHelper read " +
+						"more rows that the current limit hint",
+				)
+			} else {
+				__antithesis_instrumentation__.Notify(471438)
+			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(471439)
 	}
+	__antithesis_instrumentation__.Notify(471431)
 	return nil
 }

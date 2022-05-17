@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,32 +18,13 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// Constant is an constant literal expression which may be resolved to more than one type.
 type Constant interface {
 	Expr
-	// AvailableTypes returns the ordered set of types that the Constant is able to
-	// be resolved into. The order of the type slice provides a notion of precedence,
-	// with the first element in the ordering being the Constant's "natural type".
+
 	AvailableTypes() []*types.T
-	// DesirableTypes returns the ordered set of types that the constant would
-	// prefer to be resolved into. As in AvailableTypes, the order of the returned
-	// type slice provides a notion of precedence, with the first element in the
-	// ordering being the Constant's "natural type." The function is meant to be
-	// differentiated from AvailableTypes in that it will exclude certain types
-	// that are possible, but not desirable.
-	//
-	// An example of this is a floating point numeric constant without a value
-	// past the decimal point. It is possible to resolve this constant as a
-	// decimal, but it is not desirable.
+
 	DesirableTypes() []*types.T
-	// ResolveAsType resolves the Constant as the specified type, or returns an
-	// error if the Constant could not be resolved as that type. The method should
-	// only be passed a type returned from AvailableTypes and should never be
-	// called more than once for a given Constant.
-	//
-	// The returned expression is either a Datum or a CastExpr wrapping a Datum;
-	// the latter is necessary for cases where the result would depend on the
-	// context (like the timezone or the current time).
+
 	ResolveAsType(context.Context, *SemaContext, *types.T) (TypedExpr, error)
 }
 
@@ -59,6 +32,7 @@ var _ Constant = &NumVal{}
 var _ Constant = &StrVal{}
 
 func isConstant(expr Expr) bool {
+	__antithesis_instrumentation__.Notify(604450)
 	_, ok := expr.(Constant)
 	return ok
 }
@@ -66,63 +40,79 @@ func isConstant(expr Expr) bool {
 func typeCheckConstant(
 	ctx context.Context, semaCtx *SemaContext, c Constant, desired *types.T,
 ) (ret TypedExpr, err error) {
+	__antithesis_instrumentation__.Notify(604451)
 	avail := c.AvailableTypes()
 	if !desired.IsAmbiguous() {
+		__antithesis_instrumentation__.Notify(604454)
 		for _, typ := range avail {
+			__antithesis_instrumentation__.Notify(604455)
 			if desired.Equivalent(typ) {
+				__antithesis_instrumentation__.Notify(604456)
 				return c.ResolveAsType(ctx, semaCtx, desired)
+			} else {
+				__antithesis_instrumentation__.Notify(604457)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(604458)
 	}
+	__antithesis_instrumentation__.Notify(604452)
 
-	// If a numeric constant will be promoted to a DECIMAL because it was out
-	// of range of an INT, but an INT is desired, throw an error here so that
-	// the error message specifically mentions the overflow.
 	if desired.Family() == types.IntFamily {
+		__antithesis_instrumentation__.Notify(604459)
 		if n, ok := c.(*NumVal); ok {
+			__antithesis_instrumentation__.Notify(604460)
 			_, err := n.AsInt64()
 			switch {
 			case errors.Is(err, errConstOutOfRange64):
+				__antithesis_instrumentation__.Notify(604461)
 				return nil, err
 			case errors.Is(err, errConstNotInt):
+				__antithesis_instrumentation__.Notify(604462)
 			default:
+				__antithesis_instrumentation__.Notify(604463)
 				return nil, errors.NewAssertionErrorWithWrappedErrf(err, "unexpected error")
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(604464)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(604465)
 	}
+	__antithesis_instrumentation__.Notify(604453)
 
 	natural := avail[0]
 	return c.ResolveAsType(ctx, semaCtx, natural)
 }
 
 func naturalConstantType(c Constant) *types.T {
+	__antithesis_instrumentation__.Notify(604466)
 	return c.AvailableTypes()[0]
 }
 
-// canConstantBecome returns whether the provided Constant can become resolved
-// as a type that is Equivalent to the given type.
 func canConstantBecome(c Constant, typ *types.T) bool {
+	__antithesis_instrumentation__.Notify(604467)
 	avail := c.AvailableTypes()
 	for _, availTyp := range avail {
+		__antithesis_instrumentation__.Notify(604469)
 		if availTyp.Equivalent(typ) {
+			__antithesis_instrumentation__.Notify(604470)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(604471)
 		}
 	}
+	__antithesis_instrumentation__.Notify(604468)
 	return false
 }
 
-// NumVal represents a constant numeric value.
 type NumVal struct {
-	// value is the constant number, without any sign information.
 	value constant.Value
-	// negative is the sign bit to add to any interpretation of the
-	// value or origString fields.
+
 	negative bool
-	// origString is the "original" string representation (before
-	// folding). This should remain sign-less.
+
 	origString string
 
-	// The following fields are used to avoid allocating Datums on type resolution.
 	resInt     DInt
 	resFloat   DFloat
 	resDecimal DDecimal
@@ -130,133 +120,158 @@ type NumVal struct {
 
 var _ Constant = &NumVal{}
 
-// NewNumVal constructs a new NumVal instance. This is used during parsing and
-// in tests.
 func NewNumVal(value constant.Value, origString string, negative bool) *NumVal {
+	__antithesis_instrumentation__.Notify(604472)
 	return &NumVal{value: value, origString: origString, negative: negative}
 }
 
-// Kind implements the constant.Value interface.
 func (expr *NumVal) Kind() constant.Kind {
+	__antithesis_instrumentation__.Notify(604473)
 	return expr.value.Kind()
 }
 
-// ExactString implements the constant.Value interface.
 func (expr *NumVal) ExactString() string {
+	__antithesis_instrumentation__.Notify(604474)
 	return expr.value.ExactString()
 }
 
-// OrigString returns the origString field.
 func (expr *NumVal) OrigString() string {
+	__antithesis_instrumentation__.Notify(604475)
 	return expr.origString
 }
 
-// SetNegative sets the negative field to true. The parser calls this when it
-// identifies a negative constant.
 func (expr *NumVal) SetNegative() {
+	__antithesis_instrumentation__.Notify(604476)
 	expr.negative = true
 }
 
-// Negate sets the negative field to the opposite of its current value. The
-// parser calls this to simplify unary negation expressions.
 func (expr *NumVal) Negate() {
+	__antithesis_instrumentation__.Notify(604477)
 	expr.negative = !expr.negative
 }
 
-// Format implements the NodeFormatter interface.
 func (expr *NumVal) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(604478)
 	s := expr.origString
 	if s == "" {
+		__antithesis_instrumentation__.Notify(604481)
 		s = expr.value.String()
-	} else if strings.EqualFold(s, "NaN") {
-		s = "'NaN'"
+	} else {
+		__antithesis_instrumentation__.Notify(604482)
+		if strings.EqualFold(s, "NaN") {
+			__antithesis_instrumentation__.Notify(604483)
+			s = "'NaN'"
+		} else {
+			__antithesis_instrumentation__.Notify(604484)
+		}
 	}
+	__antithesis_instrumentation__.Notify(604479)
 	if expr.negative {
+		__antithesis_instrumentation__.Notify(604485)
 		ctx.WriteByte('-')
+	} else {
+		__antithesis_instrumentation__.Notify(604486)
 	}
+	__antithesis_instrumentation__.Notify(604480)
 	ctx.WriteString(s)
 }
 
-// canBeInt64 checks if it's possible for the value to become an int64:
-//  1   = yes
-//  1.0 = yes
-//  1.1 = no
-//  123...overflow...456 = no
 func (expr *NumVal) canBeInt64() bool {
+	__antithesis_instrumentation__.Notify(604487)
 	_, err := expr.AsInt64()
 	return err == nil
 }
 
-// ShouldBeInt64 checks if the value naturally is an int64:
-//  1   = yes
-//  1.0 = no
-//  1.1 = no
-//  123...overflow...456 = no
 func (expr *NumVal) ShouldBeInt64() bool {
-	return expr.Kind() == constant.Int && expr.canBeInt64()
+	__antithesis_instrumentation__.Notify(604488)
+	return expr.Kind() == constant.Int && func() bool {
+		__antithesis_instrumentation__.Notify(604489)
+		return expr.canBeInt64() == true
+	}() == true
 }
 
-// These errors are statically allocated, because they are returned in the
-// common path of AsInt64.
 var errConstNotInt = pgerror.New(pgcode.NumericValueOutOfRange, "cannot represent numeric constant as an int")
 var errConstOutOfRange64 = pgerror.New(pgcode.NumericValueOutOfRange, "numeric constant out of int64 range")
 var errConstOutOfRange32 = pgerror.New(pgcode.NumericValueOutOfRange, "numeric constant out of int32 range")
 
-// AsInt64 returns the value as a 64-bit integer if possible, or returns an
-// error if not possible. The method will set expr.resInt to the value of
-// this int64 if it is successful, avoiding the need to call the method again.
 func (expr *NumVal) AsInt64() (int64, error) {
+	__antithesis_instrumentation__.Notify(604490)
 	intVal, ok := expr.AsConstantInt()
 	if !ok {
+		__antithesis_instrumentation__.Notify(604493)
 		return 0, errConstNotInt
+	} else {
+		__antithesis_instrumentation__.Notify(604494)
 	}
+	__antithesis_instrumentation__.Notify(604491)
 	i, exact := constant.Int64Val(intVal)
 	if !exact {
+		__antithesis_instrumentation__.Notify(604495)
 		return 0, errConstOutOfRange64
+	} else {
+		__antithesis_instrumentation__.Notify(604496)
 	}
+	__antithesis_instrumentation__.Notify(604492)
 	expr.resInt = DInt(i)
 	return i, nil
 }
 
-// AsInt32 returns the value as 32-bit integer if possible, or returns
-// an error if not possible. The method will set expr.resInt to the
-// value of this int32 if it is successful, avoiding the need to call
-// the method again.
 func (expr *NumVal) AsInt32() (int32, error) {
+	__antithesis_instrumentation__.Notify(604497)
 	intVal, ok := expr.AsConstantInt()
 	if !ok {
+		__antithesis_instrumentation__.Notify(604501)
 		return 0, errConstNotInt
+	} else {
+		__antithesis_instrumentation__.Notify(604502)
 	}
+	__antithesis_instrumentation__.Notify(604498)
 	i, exact := constant.Int64Val(intVal)
 	if !exact {
+		__antithesis_instrumentation__.Notify(604503)
 		return 0, errConstOutOfRange32
+	} else {
+		__antithesis_instrumentation__.Notify(604504)
 	}
-	if i > math.MaxInt32 || i < math.MinInt32 {
+	__antithesis_instrumentation__.Notify(604499)
+	if i > math.MaxInt32 || func() bool {
+		__antithesis_instrumentation__.Notify(604505)
+		return i < math.MinInt32 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(604506)
 		return 0, errConstOutOfRange32
+	} else {
+		__antithesis_instrumentation__.Notify(604507)
 	}
+	__antithesis_instrumentation__.Notify(604500)
 	expr.resInt = DInt(i)
 	return int32(i), nil
 }
 
-// AsConstantValue returns the value as a constant numerical value, with the proper sign
-// as given by expr.negative.
 func (expr *NumVal) AsConstantValue() constant.Value {
+	__antithesis_instrumentation__.Notify(604508)
 	v := expr.value
 	if expr.negative {
+		__antithesis_instrumentation__.Notify(604510)
 		v = constant.UnaryOp(token.SUB, v, 0)
+	} else {
+		__antithesis_instrumentation__.Notify(604511)
 	}
+	__antithesis_instrumentation__.Notify(604509)
 	return v
 }
 
-// AsConstantInt returns the value as an constant.Int if possible, along
-// with a flag indicating whether the conversion was possible.
-// The result contains the proper sign as per expr.negative.
 func (expr *NumVal) AsConstantInt() (constant.Value, bool) {
+	__antithesis_instrumentation__.Notify(604512)
 	v := expr.AsConstantValue()
 	intVal := constant.ToInt(v)
 	if intVal.Kind() == constant.Int {
+		__antithesis_instrumentation__.Notify(604514)
 		return intVal, true
+	} else {
+		__antithesis_instrumentation__.Notify(604515)
 	}
+	__antithesis_instrumentation__.Notify(604513)
 	return nil, false
 }
 
@@ -264,210 +279,263 @@ var (
 	intLikeTypes     = []*types.T{types.Int, types.Oid}
 	decimalLikeTypes = []*types.T{types.Decimal, types.Float}
 
-	// NumValAvailInteger is the set of available integer types.
 	NumValAvailInteger = append(intLikeTypes, decimalLikeTypes...)
-	// NumValAvailDecimalNoFraction is the set of available integral numeric types.
+
 	NumValAvailDecimalNoFraction = append(decimalLikeTypes, intLikeTypes...)
-	// NumValAvailDecimalWithFraction is the set of available fractional numeric types.
+
 	NumValAvailDecimalWithFraction = decimalLikeTypes
 )
 
-// AvailableTypes implements the Constant interface.
 func (expr *NumVal) AvailableTypes() []*types.T {
+	__antithesis_instrumentation__.Notify(604516)
 	switch {
 	case expr.canBeInt64():
+		__antithesis_instrumentation__.Notify(604517)
 		if expr.Kind() == constant.Int {
+			__antithesis_instrumentation__.Notify(604520)
 			return NumValAvailInteger
+		} else {
+			__antithesis_instrumentation__.Notify(604521)
 		}
+		__antithesis_instrumentation__.Notify(604518)
 		return NumValAvailDecimalNoFraction
 	default:
+		__antithesis_instrumentation__.Notify(604519)
 		return NumValAvailDecimalWithFraction
 	}
 }
 
-// DesirableTypes implements the Constant interface.
 func (expr *NumVal) DesirableTypes() []*types.T {
+	__antithesis_instrumentation__.Notify(604522)
 	if expr.ShouldBeInt64() {
+		__antithesis_instrumentation__.Notify(604524)
 		return NumValAvailInteger
+	} else {
+		__antithesis_instrumentation__.Notify(604525)
 	}
+	__antithesis_instrumentation__.Notify(604523)
 	return NumValAvailDecimalWithFraction
 }
 
-// ResolveAsType implements the Constant interface.
 func (expr *NumVal) ResolveAsType(
 	ctx context.Context, semaCtx *SemaContext, typ *types.T,
 ) (TypedExpr, error) {
+	__antithesis_instrumentation__.Notify(604526)
 	switch typ.Family() {
 	case types.IntFamily:
-		// We may have already set expr.resInt in AsInt64.
+		__antithesis_instrumentation__.Notify(604527)
+
 		if expr.resInt == 0 {
+			__antithesis_instrumentation__.Notify(604538)
 			if _, err := expr.AsInt64(); err != nil {
+				__antithesis_instrumentation__.Notify(604539)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604540)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(604541)
 		}
+		__antithesis_instrumentation__.Notify(604528)
 		return AdjustValueToType(typ, &expr.resInt)
 	case types.FloatFamily:
+		__antithesis_instrumentation__.Notify(604529)
 		if strings.EqualFold(expr.origString, "NaN") {
-			// We need to check NaN separately since expr.value is unknownVal for NaN.
-			// TODO(sql-experience): unknownVal is also used for +Inf and -Inf,
-			// so we may need to handle those in the future too.
+			__antithesis_instrumentation__.Notify(604542)
+
 			expr.resFloat = DFloat(math.NaN())
 		} else {
+			__antithesis_instrumentation__.Notify(604543)
 			f, _ := constant.Float64Val(expr.value)
 			if expr.negative {
+				__antithesis_instrumentation__.Notify(604545)
 				f = -f
+			} else {
+				__antithesis_instrumentation__.Notify(604546)
 			}
+			__antithesis_instrumentation__.Notify(604544)
 			expr.resFloat = DFloat(f)
 		}
+		__antithesis_instrumentation__.Notify(604530)
 		return &expr.resFloat, nil
 	case types.DecimalFamily:
+		__antithesis_instrumentation__.Notify(604531)
 		dd := &expr.resDecimal
 		s := expr.origString
 		if s == "" {
-			// TODO(nvanbenschoten): We should propagate width through constant folding so that we
-			// can control precision on folded values as well.
+			__antithesis_instrumentation__.Notify(604547)
+
 			s = expr.ExactString()
+		} else {
+			__antithesis_instrumentation__.Notify(604548)
 		}
+		__antithesis_instrumentation__.Notify(604532)
 		if idx := strings.IndexRune(s, '/'); idx != -1 {
-			// Handle constant.ratVal, which will return a rational string
-			// like 6/7. If only we could call big.Rat.FloatString() on it...
+			__antithesis_instrumentation__.Notify(604549)
+
 			num, den := s[:idx], s[idx+1:]
 			if err := dd.SetString(num); err != nil {
+				__antithesis_instrumentation__.Notify(604552)
 				return nil, pgerror.Wrapf(err, pgcode.Syntax,
 					"could not evaluate numerator of %v as Datum type DDecimal from string %q",
 					expr, num)
+			} else {
+				__antithesis_instrumentation__.Notify(604553)
 			}
-			// TODO(nvanbenschoten): Should we try to avoid this allocation?
+			__antithesis_instrumentation__.Notify(604550)
+
 			denDec, err := ParseDDecimal(den)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604554)
 				return nil, pgerror.Wrapf(err, pgcode.Syntax,
 					"could not evaluate denominator %v as Datum type DDecimal from string %q",
 					expr, den)
+			} else {
+				__antithesis_instrumentation__.Notify(604555)
 			}
+			__antithesis_instrumentation__.Notify(604551)
 			if cond, err := DecimalCtx.Quo(&dd.Decimal, &dd.Decimal, &denDec.Decimal); err != nil {
+				__antithesis_instrumentation__.Notify(604556)
 				if cond.DivisionByZero() {
+					__antithesis_instrumentation__.Notify(604558)
 					return nil, ErrDivByZero
+				} else {
+					__antithesis_instrumentation__.Notify(604559)
 				}
+				__antithesis_instrumentation__.Notify(604557)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604560)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(604561)
 			if err := dd.SetString(s); err != nil {
+				__antithesis_instrumentation__.Notify(604562)
 				return nil, pgerror.Wrapf(err, pgcode.Syntax,
 					"could not evaluate %v as Datum type DDecimal from string %q", expr, s)
+			} else {
+				__antithesis_instrumentation__.Notify(604563)
 			}
 		}
+		__antithesis_instrumentation__.Notify(604533)
 		if !dd.IsZero() {
-			// Negative zero does not exist for DECIMAL, in that case we ignore the
-			// sign. Otherwise XOR the signs of the expr and the decimal value
-			// contained in the expr, since the negative may have been folded into the
-			// inner decimal.
+			__antithesis_instrumentation__.Notify(604564)
+
 			dd.Negative = dd.Negative != expr.negative
+		} else {
+			__antithesis_instrumentation__.Notify(604565)
 		}
+		__antithesis_instrumentation__.Notify(604534)
 		return dd, nil
 	case types.OidFamily:
+		__antithesis_instrumentation__.Notify(604535)
 		d, err := expr.ResolveAsType(ctx, semaCtx, types.Int)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(604566)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(604567)
 		}
+		__antithesis_instrumentation__.Notify(604536)
 		oid := NewDOid(*d.(*DInt))
 		return oid, nil
 	default:
+		__antithesis_instrumentation__.Notify(604537)
 		return nil, errors.AssertionFailedf("could not resolve %T %v into a %T", expr, expr, typ)
 	}
 }
 
-// intersectTypeSlices returns a slice of all the types that are in both of the
-// input slices that have the same OID.
 func intersectTypeSlices(xs, ys []*types.T) (out []*types.T) {
+	__antithesis_instrumentation__.Notify(604568)
 	seen := make(map[oid.Oid]struct{})
 	for _, x := range xs {
+		__antithesis_instrumentation__.Notify(604570)
 		for _, y := range ys {
+			__antithesis_instrumentation__.Notify(604572)
 			_, ok := seen[x.Oid()]
-			if x.Oid() == y.Oid() && !ok {
+			if x.Oid() == y.Oid() && func() bool {
+				__antithesis_instrumentation__.Notify(604573)
+				return !ok == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(604574)
 				out = append(out, x)
+			} else {
+				__antithesis_instrumentation__.Notify(604575)
 			}
 		}
+		__antithesis_instrumentation__.Notify(604571)
 		seen[x.Oid()] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(604569)
 	return out
 }
 
-// commonConstantType returns the most constrained type which is mutually
-// resolvable between a set of provided constants.
-//
-// The function takes a slice of Exprs and indexes, but expects all the indexed
-// Exprs to wrap a Constant. The reason it does no take a slice of Constants
-// instead is to avoid forcing callers to allocate separate slices of Constant.
 func commonConstantType(vals []Expr, idxs []int) (*types.T, bool) {
+	__antithesis_instrumentation__.Notify(604576)
 	var candidates []*types.T
 
 	for _, i := range idxs {
+		__antithesis_instrumentation__.Notify(604579)
 		availableTypes := vals[i].(Constant).DesirableTypes()
 		if candidates == nil {
+			__antithesis_instrumentation__.Notify(604580)
 			candidates = availableTypes
 		} else {
+			__antithesis_instrumentation__.Notify(604581)
 			candidates = intersectTypeSlices(candidates, availableTypes)
 		}
 	}
+	__antithesis_instrumentation__.Notify(604577)
 
 	if len(candidates) > 0 {
+		__antithesis_instrumentation__.Notify(604582)
 		return candidates[0], true
+	} else {
+		__antithesis_instrumentation__.Notify(604583)
 	}
+	__antithesis_instrumentation__.Notify(604578)
 	return nil, false
 }
 
-// StrVal represents a constant string value.
 type StrVal struct {
-	// We could embed a constant.Value here (like NumVal) and use the stringVal implementation,
-	// but that would have extra overhead without much of a benefit. However, it would make
-	// constant folding (below) a little more straightforward.
 	s string
 
-	// scannedAsBytes is true iff the input syntax was using b'...' or
-	// x'....'. If false, the string is guaranteed to be a valid UTF-8
-	// sequence.
 	scannedAsBytes bool
 
-	// The following fields are used to avoid allocating Datums on type resolution.
 	resString DString
 	resBytes  DBytes
 }
 
-// NewStrVal constructs a StrVal instance. This is used during
-// parsing when interpreting a token of type SCONST, i.e. *not* using
-// the b'...' or x'...' syntax.
 func NewStrVal(s string) *StrVal {
+	__antithesis_instrumentation__.Notify(604584)
 	return &StrVal{s: s}
 }
 
-// NewBytesStrVal constructs a StrVal instance suitable as byte array.
-// This is used during parsing when interpreting a token of type BCONST,
-// i.e. using the b'...' or x'...' syntax.
 func NewBytesStrVal(s string) *StrVal {
+	__antithesis_instrumentation__.Notify(604585)
 	return &StrVal{s: s, scannedAsBytes: true}
 }
 
-// RawString retrieves the underlying string of the StrVal.
 func (expr *StrVal) RawString() string {
+	__antithesis_instrumentation__.Notify(604586)
 	return expr.s
 }
 
-// Format implements the NodeFormatter interface.
 func (expr *StrVal) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(604587)
 	buf, f := &ctx.Buffer, ctx.flags
 	if expr.scannedAsBytes {
+		__antithesis_instrumentation__.Notify(604588)
 		lexbase.EncodeSQLBytes(buf, expr.s)
 	} else {
+		__antithesis_instrumentation__.Notify(604589)
 		lexbase.EncodeSQLStringWithFlags(buf, expr.s, f.EncodeFlags())
 	}
 }
 
 var (
-	// StrValAvailAllParsable is the set of parsable string types.
 	StrValAvailAllParsable = []*types.T{
-		// Note: String is deliberately first, to make sure that "string" is the
-		// default type that raw strings get parsed into, without any casts or type
-		// assertions.
+
 		types.String,
 		types.Bytes,
 		types.Bool,
@@ -507,107 +575,107 @@ var (
 		types.AnyTuple,
 		types.AnyTupleArray,
 	}
-	// StrValAvailBytes is the set of types convertible to byte array.
+
 	StrValAvailBytes = []*types.T{types.Bytes, types.Uuid, types.String, types.AnyEnum}
 )
 
-// AvailableTypes implements the Constant interface.
-//
-// To fully take advantage of literal type inference, this method would
-// determine exactly which types are available for a given string. This would
-// entail attempting to parse the literal string as a date, a timestamp, an
-// interval, etc. and having more fine-grained results than StrValAvailAllParsable.
-// However, this is not feasible in practice because of the associated parsing
-// overhead.
-//
-// Conservative approaches like checking the string's length have been investigated
-// to reduce ambiguity and improve type inference in some cases. When doing so, the
-// length of the string literal was compared against all valid date and timestamp
-// formats to quickly gain limited insight into whether parsing the string as the
-// respective datum types could succeed. The hope was to eliminate impossibilities
-// and constrain the returned type sets as much as possible. Unfortunately, two issues
-// were found with this approach:
-// - date and timestamp formats do not always imply a fixed-length valid input. For
-//   instance, timestamp formats that take fractional seconds can successfully parse
-//   inputs of varied length.
-// - the set of date and timestamp formats are not disjoint, which means that ambiguity
-//   can not be eliminated when inferring the type of string literals that use these
-//   shared formats.
-// While these limitations still permitted improved type inference in many cases, they
-// resulted in behavior that was ultimately incomplete, resulted in unpredictable levels
-// of inference, and occasionally failed to eliminate ambiguity. Further heuristics could
-// have been applied to improve the accuracy of the inference, like checking that all
-// or some characters were digits, but it would not have circumvented the fundamental
-// issues here. Fully parsing the literal into each type would be the only way to
-// concretely avoid the issue of unpredictable inference behavior.
 func (expr *StrVal) AvailableTypes() []*types.T {
+	__antithesis_instrumentation__.Notify(604590)
 	if expr.scannedAsBytes {
+		__antithesis_instrumentation__.Notify(604592)
 		return StrValAvailBytes
+	} else {
+		__antithesis_instrumentation__.Notify(604593)
 	}
+	__antithesis_instrumentation__.Notify(604591)
 	return StrValAvailAllParsable
 }
 
-// DesirableTypes implements the Constant interface.
 func (expr *StrVal) DesirableTypes() []*types.T {
+	__antithesis_instrumentation__.Notify(604594)
 	return expr.AvailableTypes()
 }
 
-// ResolveAsType implements the Constant interface.
 func (expr *StrVal) ResolveAsType(
 	ctx context.Context, semaCtx *SemaContext, typ *types.T,
 ) (TypedExpr, error) {
+	__antithesis_instrumentation__.Notify(604595)
 	if expr.scannedAsBytes {
-		// We're looking at typing a byte literal constant into some value type.
+		__antithesis_instrumentation__.Notify(604597)
+
 		switch typ.Family() {
 		case types.BytesFamily:
+			__antithesis_instrumentation__.Notify(604599)
 			expr.resBytes = DBytes(expr.s)
 			return &expr.resBytes, nil
 		case types.EnumFamily:
+			__antithesis_instrumentation__.Notify(604600)
 			return MakeDEnumFromPhysicalRepresentation(typ, []byte(expr.s))
 		case types.UuidFamily:
+			__antithesis_instrumentation__.Notify(604601)
 			return ParseDUuidFromBytes([]byte(expr.s))
 		case types.StringFamily:
+			__antithesis_instrumentation__.Notify(604602)
 			expr.resString = DString(expr.s)
 			return &expr.resString, nil
+		default:
+			__antithesis_instrumentation__.Notify(604603)
 		}
+		__antithesis_instrumentation__.Notify(604598)
 		return nil, errors.AssertionFailedf("attempt to type byte array literal to %T", typ)
+	} else {
+		__antithesis_instrumentation__.Notify(604604)
 	}
+	__antithesis_instrumentation__.Notify(604596)
 
-	// Typing a string literal constant into some value type.
 	switch typ.Family() {
 	case types.StringFamily:
+		__antithesis_instrumentation__.Notify(604605)
 		if typ.Oid() == oid.T_name {
+			__antithesis_instrumentation__.Notify(604612)
 			expr.resString = DString(expr.s)
 			return NewDNameFromDString(&expr.resString), nil
+		} else {
+			__antithesis_instrumentation__.Notify(604613)
 		}
+		__antithesis_instrumentation__.Notify(604606)
 		expr.resString = DString(expr.s)
 		return &expr.resString, nil
 
 	case types.BytesFamily:
+		__antithesis_instrumentation__.Notify(604607)
 		return ParseDByte(expr.s)
 
 	default:
+		__antithesis_instrumentation__.Notify(604608)
 		ptCtx := simpleParseTimeContext{
-			// We can return any time, but not the zero value - it causes an error when
-			// parsing "yesterday".
+
 			RelativeParseTime: time.Date(2000, time.January, 2, 3, 4, 5, 0, time.UTC),
 		}
 		if semaCtx != nil {
+			__antithesis_instrumentation__.Notify(604614)
 			ptCtx.DateStyle = semaCtx.DateStyle
 			ptCtx.IntervalStyle = semaCtx.IntervalStyle
+		} else {
+			__antithesis_instrumentation__.Notify(604615)
 		}
+		__antithesis_instrumentation__.Notify(604609)
 		val, dependsOnContext, err := ParseAndRequireString(typ, expr.s, ptCtx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(604616)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(604617)
 		}
+		__antithesis_instrumentation__.Notify(604610)
 		if !dependsOnContext {
+			__antithesis_instrumentation__.Notify(604618)
 			return val, nil
+		} else {
+			__antithesis_instrumentation__.Notify(604619)
 		}
-		// Interpreting a string as one of these types may depend on the timezone or
-		// the current time; the value won't be safe to reuse later. So in this case
-		// we return a CastExpr and let the conversion happen at evaluation time. We
-		// still want to error out if the conversion is not possible though (this is
-		// used when resolving overloads).
+		__antithesis_instrumentation__.Notify(604611)
+
 		expr.resString = DString(expr.s)
 		c := NewTypedCastExpr(&expr.resString, typ)
 		return c.TypeCheck(ctx, semaCtx, typ)

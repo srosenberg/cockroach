@@ -10,7 +10,10 @@ go_library(
     embed = [":tspb_go_proto"],
     importpath = "github.com/cockroachdb/cockroach/pkg/ts/tspb",
     visibility = ["//visibility:public"],
-    deps = ["//pkg/roachpb"],
+    deps = [
+        "//pkg/roachpb",
+        "@com_antithesis_instrumentation//wrappers",
+    ],
 )
 
 proto_library(

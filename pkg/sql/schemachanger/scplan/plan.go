@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scplan
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,24 +17,14 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Params holds the arguments for planning.
 type Params struct {
-	// InRollback is used to indicate whether we've already been reverted.
-	// Note that when in rollback, there is no turning back and all work is
-	// non-revertible. Theory dictates that this is fine because of how we
-	// had carefully crafted stages to only allow entering rollback while it
-	// remains safe to do so.
 	InRollback bool
 
-	// ExecutionPhase indicates the phase that the plan should be constructed for.
 	ExecutionPhase scop.Phase
 
-	// SchemaChangerJobIDSupplier is used to return the JobID for a
-	// job if one should exist.
 	SchemaChangerJobIDSupplier func() jobspb.JobID
 }
 
-// Exported internal types
 type (
 	// Graph is an exported alias of scgraph.Graph.
 	Graph = scgraph.Graph
@@ -51,8 +33,6 @@ type (
 	Stage = scstage.Stage
 )
 
-// A Plan is a schema change plan, primarily containing ops to be executed that
-// are partitioned into stages.
 type Plan struct {
 	scpb.CurrentState
 	Params Params
@@ -61,78 +41,124 @@ type Plan struct {
 	Stages []Stage
 }
 
-// StagesForCurrentPhase returns the stages in the execution phase specified in
-// the plan params.
 func (p Plan) StagesForCurrentPhase() []scstage.Stage {
+	__antithesis_instrumentation__.Notify(594780)
 	for i, s := range p.Stages {
+		__antithesis_instrumentation__.Notify(594782)
 		if s.Phase > p.Params.ExecutionPhase {
+			__antithesis_instrumentation__.Notify(594783)
 			return p.Stages[:i]
+		} else {
+			__antithesis_instrumentation__.Notify(594784)
 		}
 	}
+	__antithesis_instrumentation__.Notify(594781)
 	return p.Stages
 }
 
-// MakePlan generates a Plan for a particular phase of a schema change, given
-// the initial state for a set of targets.
-// Returns an error when planning fails. It is up to the caller to wrap this
-// error as an assertion failure and with useful debug information details.
 func MakePlan(initial scpb.CurrentState, params Params) (p Plan, err error) {
+	__antithesis_instrumentation__.Notify(594785)
 	p = Plan{
 		CurrentState: initial,
 		Params:       params,
 	}
 	defer func() {
+		__antithesis_instrumentation__.Notify(594789)
 		if r := recover(); r != nil {
+			__antithesis_instrumentation__.Notify(594790)
 			rAsErr, ok := r.(error)
 			if !ok {
+				__antithesis_instrumentation__.Notify(594792)
 				rAsErr = errors.Errorf("panic during MakePlan: %v", r)
+			} else {
+				__antithesis_instrumentation__.Notify(594793)
 			}
+			__antithesis_instrumentation__.Notify(594791)
 			err = p.DecorateErrorWithPlanDetails(rAsErr)
+		} else {
+			__antithesis_instrumentation__.Notify(594794)
 		}
 	}()
 
 	{
+		__antithesis_instrumentation__.Notify(594795)
 		start := timeutil.Now()
 		p.Graph = buildGraph(p.CurrentState)
 		if log.V(2) {
+			__antithesis_instrumentation__.Notify(594796)
 			log.Infof(context.TODO(), "graph generation took %v", timeutil.Since(start))
+		} else {
+			__antithesis_instrumentation__.Notify(594797)
 		}
 	}
 	{
+		__antithesis_instrumentation__.Notify(594798)
 		start := timeutil.Now()
 		p.Stages = scstage.BuildStages(
 			initial, params.ExecutionPhase, p.Graph, params.SchemaChangerJobIDSupplier,
 		)
 		if log.V(2) {
+			__antithesis_instrumentation__.Notify(594799)
 			log.Infof(context.TODO(), "stage generation took %v", timeutil.Since(start))
+		} else {
+			__antithesis_instrumentation__.Notify(594800)
 		}
 	}
-	if n := len(p.Stages); n > 0 && p.Stages[n-1].Phase > scop.PreCommitPhase {
-		// Only get the job ID if it's actually been assigned already.
+	__antithesis_instrumentation__.Notify(594786)
+	if n := len(p.Stages); n > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(594801)
+		return p.Stages[n-1].Phase > scop.PreCommitPhase == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(594802)
+
 		p.JobID = params.SchemaChangerJobIDSupplier()
+	} else {
+		__antithesis_instrumentation__.Notify(594803)
 	}
+	__antithesis_instrumentation__.Notify(594787)
 	if err := scstage.ValidateStages(p.TargetState, p.Stages, p.Graph); err != nil {
+		__antithesis_instrumentation__.Notify(594804)
 		panic(errors.Wrapf(err, "invalid execution plan"))
+	} else {
+		__antithesis_instrumentation__.Notify(594805)
 	}
+	__antithesis_instrumentation__.Notify(594788)
 	return p, nil
 }
 
 func buildGraph(cs scpb.CurrentState) *scgraph.Graph {
+	__antithesis_instrumentation__.Notify(594806)
 	g, err := opgen.BuildGraph(cs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(594811)
 		panic(errors.Wrapf(err, "build graph op edges"))
+	} else {
+		__antithesis_instrumentation__.Notify(594812)
 	}
+	__antithesis_instrumentation__.Notify(594807)
 	err = rules.ApplyDepRules(g)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(594813)
 		panic(errors.Wrapf(err, "build graph dep edges"))
+	} else {
+		__antithesis_instrumentation__.Notify(594814)
 	}
+	__antithesis_instrumentation__.Notify(594808)
 	err = g.Validate()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(594815)
 		panic(errors.Wrapf(err, "validate graph"))
+	} else {
+		__antithesis_instrumentation__.Notify(594816)
 	}
+	__antithesis_instrumentation__.Notify(594809)
 	g, err = rules.ApplyOpRules(g)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(594817)
 		panic(errors.Wrapf(err, "mark op edges as no-op"))
+	} else {
+		__antithesis_instrumentation__.Notify(594818)
 	}
+	__antithesis_instrumentation__.Notify(594810)
 	return g
 }

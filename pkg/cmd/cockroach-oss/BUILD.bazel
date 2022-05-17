@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//pkg/cli",
         "//pkg/ui/distoss",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -15,6 +16,7 @@ go_binary(
     name = "cockroach-oss",
     embed = [":cockroach-oss_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -26,5 +28,6 @@ go_test(
     deps = [
         "//pkg/testutils/buildutil",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

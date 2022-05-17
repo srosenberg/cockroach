@@ -1,54 +1,45 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// AnnotationIdx is the 1-based index of an annotation. AST nodes that can
-// be annotated store such an index (unique within that AST).
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type AnnotationIdx int32
 
-// NoAnnotation is the uninitialized annotation index.
 const NoAnnotation AnnotationIdx = 0
 
-// AnnotatedNode is embedded in AST nodes that have an annotation.
 type AnnotatedNode struct {
 	AnnIdx AnnotationIdx
 }
 
-// GetAnnotation retrieves the annotation associated with this node.
 func (n AnnotatedNode) GetAnnotation(ann *Annotations) interface{} {
+	__antithesis_instrumentation__.Notify(603251)
 	if n.AnnIdx == NoAnnotation {
+		__antithesis_instrumentation__.Notify(603253)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(603254)
 	}
+	__antithesis_instrumentation__.Notify(603252)
 	return ann.Get(n.AnnIdx)
 }
 
-// SetAnnotation sets the annotation associated with this node.
 func (n AnnotatedNode) SetAnnotation(ann *Annotations, annotation interface{}) {
+	__antithesis_instrumentation__.Notify(603255)
 	ann.Set(n.AnnIdx, annotation)
 }
 
-// Annotations is a container for AST annotations.
 type Annotations []interface{}
 
-// MakeAnnotations allocates an annotations container of the given size.
 func MakeAnnotations(numAnnotations AnnotationIdx) Annotations {
+	__antithesis_instrumentation__.Notify(603256)
 	return make(Annotations, numAnnotations)
 }
 
-// Set an annotation in the container.
 func (a *Annotations) Set(idx AnnotationIdx, annotation interface{}) {
+	__antithesis_instrumentation__.Notify(603257)
 	(*a)[idx-1] = annotation
 }
 
-// Get an annotation from the container.
 func (a *Annotations) Get(idx AnnotationIdx) interface{} {
+	__antithesis_instrumentation__.Notify(603258)
 	return (*a)[idx-1]
 }

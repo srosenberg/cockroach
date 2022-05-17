@@ -1,30 +1,20 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package result
 
-// Metrics tracks various counters related to command applications and
-// their outcomes.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type Metrics struct {
-	LeaseRequestSuccess  int // lease request evaluated successfully
-	LeaseRequestError    int // lease request error at evaluation time
-	LeaseTransferSuccess int // lease transfer evaluated successfully
-	LeaseTransferError   int // lease transfer error at evaluation time
-	ResolveCommit        int // intent commit evaluated successfully
-	ResolveAbort         int // non-poisoning intent abort evaluated successfully
-	ResolvePoison        int // poisoning intent abort evaluated successfully
-	AddSSTableAsWrites   int // AddSSTable requests with IngestAsWrites set
+	LeaseRequestSuccess  int
+	LeaseRequestError    int
+	LeaseTransferSuccess int
+	LeaseTransferError   int
+	ResolveCommit        int
+	ResolveAbort         int
+	ResolvePoison        int
+	AddSSTableAsWrites   int
 }
 
-// Add absorbs the supplied Metrics into the receiver.
 func (mt *Metrics) Add(o Metrics) {
+	__antithesis_instrumentation__.Notify(97670)
 	mt.LeaseRequestSuccess += o.LeaseRequestSuccess
 	mt.LeaseRequestError += o.LeaseRequestError
 	mt.LeaseTransferSuccess += o.LeaseTransferSuccess

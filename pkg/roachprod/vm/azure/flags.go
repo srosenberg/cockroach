@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package azure
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -19,7 +11,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// ProviderOpts provides user-configurable, azure-specific create options.
 type ProviderOpts struct {
 	Locations       []string
 	MachineType     string
@@ -39,8 +30,8 @@ var defaultLocations = []string{
 
 var defaultZone = "1"
 
-// DefaultProviderOpts returns a new azure.ProviderOpts with default values set.
 func DefaultProviderOpts() *ProviderOpts {
+	__antithesis_instrumentation__.Notify(183543)
 	return &ProviderOpts{
 		Locations:       nil,
 		MachineType:     string(compute.VirtualMachineSizeTypesStandardD4V3),
@@ -53,13 +44,13 @@ func DefaultProviderOpts() *ProviderOpts {
 	}
 }
 
-// CreateProviderOpts returns a new azure.ProviderOpts with default values set.
 func (p *Provider) CreateProviderOpts() vm.ProviderOpts {
+	__antithesis_instrumentation__.Notify(183544)
 	return DefaultProviderOpts()
 }
 
-// ConfigureCreateFlags implements vm.ProviderFlags.
 func (o *ProviderOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
+	__antithesis_instrumentation__.Notify(183545)
 	flags.DurationVar(&providerInstance.OperationTimeout, ProviderName+"-timeout", providerInstance.OperationTimeout,
 		"The maximum amount of time for an Azure API operation to take")
 	flags.BoolVar(&providerInstance.SyncDelete, ProviderName+"-sync-delete", providerInstance.SyncDelete,
@@ -83,6 +74,6 @@ func (o *ProviderOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
 		"Disk caching behavior for attached storage.  Valid values are: none, read-only, read-write.  Not applicable to Ultra disks.")
 }
 
-// ConfigureClusterFlags implements vm.ProviderFlags and is a no-op.
 func (o *ProviderOpts) ConfigureClusterFlags(*pflag.FlagSet, vm.MultipleProjectsOption) {
+	__antithesis_instrumentation__.Notify(183546)
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ledger
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -37,7 +29,7 @@ type ledger struct {
 	mix               string
 
 	txs  []tx
-	deck []int // contains indexes into the txs slice
+	deck []int
 
 	reg      *histogram.Registry
 	rngPool  *sync.Pool
@@ -53,6 +45,7 @@ var ledgerMeta = workload.Meta{
 	Description: `Ledger simulates an accounting system using double-entry bookkeeping`,
 	Version:     `1.0.0`,
 	New: func() workload.Generator {
+		__antithesis_instrumentation__.Notify(694617)
 		g := &ledger{}
 		g.flags.FlagSet = pflag.NewFlagSet(`ledger`, pflag.ContinueOnError)
 		g.connFlags = workload.NewConnFlags(&g.flags)
@@ -69,25 +62,29 @@ var ledgerMeta = workload.Meta{
 	},
 }
 
-// FromFlags returns a new ledger Generator configured with the given flags.
 func FromFlags(flags ...string) workload.Generator {
+	__antithesis_instrumentation__.Notify(694618)
 	return workload.FromFlags(ledgerMeta, flags...)
 }
 
-// Meta implements the Generator interface.
-func (*ledger) Meta() workload.Meta { return ledgerMeta }
+func (*ledger) Meta() workload.Meta { __antithesis_instrumentation__.Notify(694619); return ledgerMeta }
 
-// Flags implements the Flagser interface.
-func (w *ledger) Flags() workload.Flags { return w.flags }
+func (w *ledger) Flags() workload.Flags {
+	__antithesis_instrumentation__.Notify(694620)
+	return w.flags
+}
 
-// Hooks implements the Hookser interface.
 func (w *ledger) Hooks() workload.Hooks {
+	__antithesis_instrumentation__.Notify(694621)
 	return workload.Hooks{
 		Validate: func() error {
+			__antithesis_instrumentation__.Notify(694622)
 			return initializeMix(w)
 		},
 		PostLoad: func(sqlDB *gosql.DB) error {
+			__antithesis_instrumentation__.Notify(694623)
 			if w.fks {
+				__antithesis_instrumentation__.Notify(694625)
 				fkStmts := []string{
 					`create index entry_auto_index_fk_customer on entry (customer_id ASC)`,
 					`create index entry_auto_index_fk_transaction on entry (transaction_id ASC)`,
@@ -95,28 +92,46 @@ func (w *ledger) Hooks() workload.Hooks {
 					`alter table entry add foreign key (transaction_id) references transaction (external_id)`,
 				}
 				for _, fkStmt := range fkStmts {
+					__antithesis_instrumentation__.Notify(694626)
 					if _, err := sqlDB.Exec(fkStmt); err != nil {
+						__antithesis_instrumentation__.Notify(694627)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(694628)
 					}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(694629)
 			}
+			__antithesis_instrumentation__.Notify(694624)
 			return nil
 		},
 	}
 }
 
-// Tables implements the Generator interface.
 func (w *ledger) Tables() []workload.Table {
+	__antithesis_instrumentation__.Notify(694630)
 	if w.rngPool == nil {
+		__antithesis_instrumentation__.Notify(694633)
 		w.rngPool = &sync.Pool{
-			New: func() interface{} { return rand.New(rand.NewSource(timeutil.Now().UnixNano())) },
+			New: func() interface{} {
+				__antithesis_instrumentation__.Notify(694634)
+				return rand.New(rand.NewSource(timeutil.Now().UnixNano()))
+			},
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(694635)
 	}
+	__antithesis_instrumentation__.Notify(694631)
 	if w.hashPool == nil {
+		__antithesis_instrumentation__.Notify(694636)
 		w.hashPool = &sync.Pool{
-			New: func() interface{} { return fnv.New64() },
+			New: func() interface{} { __antithesis_instrumentation__.Notify(694637); return fnv.New64() },
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(694638)
 	}
+	__antithesis_instrumentation__.Notify(694632)
 
 	customer := workload.Table{
 		Name:   `customer`,
@@ -173,19 +188,27 @@ func (w *ledger) Tables() []workload.Table {
 	}
 }
 
-// Ops implements the Opser interface.
 func (w *ledger) Ops(
 	ctx context.Context, urls []string, reg *histogram.Registry,
 ) (workload.QueryLoad, error) {
+	__antithesis_instrumentation__.Notify(694639)
 	sqlDatabase, err := workload.SanitizeUrls(w, w.connFlags.DBOverride, urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694643)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(694644)
 	}
+	__antithesis_instrumentation__.Notify(694640)
 	db, err := gosql.Open(`cockroach`, strings.Join(urls, ` `))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694645)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(694646)
 	}
-	// Allow a maximum of concurrency+1 connections to the database.
+	__antithesis_instrumentation__.Notify(694641)
+
 	db.SetMaxOpenConns(w.connFlags.Concurrency + 1)
 	db.SetMaxIdleConns(w.connFlags.Concurrency + 1)
 
@@ -193,6 +216,7 @@ func (w *ledger) Ops(
 	ql := workload.QueryLoad{SQLDatabase: sqlDatabase}
 	now := timeutil.Now().UnixNano()
 	for i := 0; i < w.connFlags.Concurrency; i++ {
+		__antithesis_instrumentation__.Notify(694647)
 		worker := &worker{
 			config:   w,
 			hists:    reg.GetHandle(),
@@ -203,5 +227,6 @@ func (w *ledger) Ops(
 		}
 		ql.WorkerFns = append(ql.WorkerFns, worker.run)
 	}
+	__antithesis_instrumentation__.Notify(694642)
 	return ql, nil
 }

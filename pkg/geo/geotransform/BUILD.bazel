@@ -12,6 +12,7 @@ go_library(
         "//pkg/geo/geoprojbase",
         "//pkg/sql/pgwire/pgcode",
         "//pkg/sql/pgwire/pgerror",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_twpayne_go_geom//:go-geom",
     ],
 )
@@ -24,6 +25,7 @@ go_test(
     deps = [
         "//pkg/geo/geopb",
         "//pkg/geo/geoprojbase",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
         "@com_github_twpayne_go_geom//:go-geom",
     ],

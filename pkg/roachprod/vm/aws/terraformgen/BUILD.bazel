@@ -7,6 +7,7 @@ go_library(
     visibility = ["//visibility:private"],
     deps = [
         "//pkg/cli/exit",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_spf13_cobra//:cobra",
     ],
 )
@@ -15,4 +16,5 @@ go_binary(
     name = "terraformgen",
     embed = [":terraformgen_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

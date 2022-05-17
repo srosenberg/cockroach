@@ -55,6 +55,7 @@ go_library(
         "//pkg/sql/sem/tree",
         "//pkg/sql/sqltelemetry",
         "//pkg/util/errorutil/unimplemented",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -63,4 +64,5 @@ go_test(
     name = "delegate_test",
     srcs = ["show_completions_test.go"],
     embed = [":delegate"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

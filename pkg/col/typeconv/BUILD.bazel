@@ -9,6 +9,7 @@ go_library(
         "//pkg/sql/types",
         "//pkg/util/duration",
         "//pkg/util/json",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_apd_v3//:apd",
     ],
 )

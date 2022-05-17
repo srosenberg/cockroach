@@ -1,12 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strings"
@@ -28,19 +22,13 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// allow creation of per changefeed SLI metrics.
 var enableSLIMetrics = envutil.EnvOrDefaultBool(
 	"COCKROACH_EXPERIMENTAL_ENABLE_PER_CHANGEFEED_METRICS", false)
 
-// max length for the scope name.
 const maxSLIScopeNameLen = 128
 
-// defaultSLIScope is the name of the default SLI scope -- i.e. the set of metrics
-// keeping track of all changefeeds which did not have explicit sli scope specified.
 const defaultSLIScope = "default"
 
-// AggMetrics are aggregated metrics keeping track of aggregated changefeed performance
-// indicators, combined with a limited number of per-changefeed indicators.
 type AggMetrics struct {
 	EmittedMessages       *aggmetric.AggCounter
 	MessageSize           *aggmetric.AggHistogram
@@ -56,17 +44,14 @@ type AggMetrics struct {
 	AdmitLatency          *aggmetric.AggHistogram
 	RunningCount          *aggmetric.AggGauge
 
-	// There is always at least 1 sliMetrics created for defaultSLI scope.
 	mu struct {
 		syncutil.Mutex
 		sliMetrics map[string]*sliMetrics
 	}
 }
 
-// MetricStruct implements metric.Struct interface.
-func (a *AggMetrics) MetricStruct() {}
+func (a *AggMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(17480) }
 
-// sliMetrics holds all SLI related metrics aggregated into AggMetrics.
 type sliMetrics struct {
 	EmittedMessages       *aggmetric.Counter
 	MessageSize           *aggmetric.Histogram
@@ -83,56 +68,82 @@ type sliMetrics struct {
 	RunningCount          *aggmetric.Gauge
 }
 
-// sinkDoesNotCompress is a sentinel value indicating the sink
-// does not compress the data it emits.
 const sinkDoesNotCompress = -1
 
 type recordOneMessageCallback func(mvcc hlc.Timestamp, bytes int, compressedBytes int)
 
 func (m *sliMetrics) recordOneMessage() recordOneMessageCallback {
+	__antithesis_instrumentation__.Notify(17481)
 	if m == nil {
-		return func(mvcc hlc.Timestamp, bytes int, compressedBytes int) {}
+		__antithesis_instrumentation__.Notify(17483)
+		return func(mvcc hlc.Timestamp, bytes int, compressedBytes int) { __antithesis_instrumentation__.Notify(17484) }
+	} else {
+		__antithesis_instrumentation__.Notify(17485)
 	}
+	__antithesis_instrumentation__.Notify(17482)
 
 	start := timeutil.Now()
 	return func(mvcc hlc.Timestamp, bytes int, compressedBytes int) {
+		__antithesis_instrumentation__.Notify(17486)
 		m.MessageSize.RecordValue(int64(bytes))
 		m.recordEmittedBatch(start, 1, mvcc, bytes, compressedBytes)
 	}
 }
 
 func (m *sliMetrics) recordMessageSize(sz int64) {
+	__antithesis_instrumentation__.Notify(17487)
 	if m != nil {
+		__antithesis_instrumentation__.Notify(17488)
 		m.MessageSize.RecordValue(sz)
+	} else {
+		__antithesis_instrumentation__.Notify(17489)
 	}
 }
 
 func (m *sliMetrics) recordEmittedBatch(
 	startTime time.Time, numMessages int, mvcc hlc.Timestamp, bytes int, compressedBytes int,
 ) {
+	__antithesis_instrumentation__.Notify(17490)
 	if m == nil {
+		__antithesis_instrumentation__.Notify(17493)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(17494)
 	}
+	__antithesis_instrumentation__.Notify(17491)
 	emitNanos := timeutil.Since(startTime).Nanoseconds()
 	m.EmittedMessages.Inc(int64(numMessages))
 	m.EmittedBytes.Inc(int64(bytes))
 	if compressedBytes == sinkDoesNotCompress {
+		__antithesis_instrumentation__.Notify(17495)
 		compressedBytes = bytes
+	} else {
+		__antithesis_instrumentation__.Notify(17496)
 	}
+	__antithesis_instrumentation__.Notify(17492)
 	m.FlushedBytes.Inc(int64(compressedBytes))
 	m.BatchHistNanos.RecordValue(emitNanos)
 	if m.BackfillCount.Value() == 0 {
+		__antithesis_instrumentation__.Notify(17497)
 		m.CommitLatency.RecordValue(timeutil.Since(mvcc.GoTime()).Nanoseconds())
+	} else {
+		__antithesis_instrumentation__.Notify(17498)
 	}
 }
 
 func (m *sliMetrics) recordResolvedCallback() func() {
+	__antithesis_instrumentation__.Notify(17499)
 	if m == nil {
-		return func() {}
+		__antithesis_instrumentation__.Notify(17501)
+		return func() { __antithesis_instrumentation__.Notify(17502) }
+	} else {
+		__antithesis_instrumentation__.Notify(17503)
 	}
+	__antithesis_instrumentation__.Notify(17500)
 
 	start := timeutil.Now()
 	return func() {
+		__antithesis_instrumentation__.Notify(17504)
 		emitNanos := timeutil.Since(start).Nanoseconds()
 		m.EmittedMessages.Inc(1)
 		m.BatchHistNanos.RecordValue(emitNanos)
@@ -140,12 +151,18 @@ func (m *sliMetrics) recordResolvedCallback() func() {
 }
 
 func (m *sliMetrics) recordFlushRequestCallback() func() {
+	__antithesis_instrumentation__.Notify(17505)
 	if m == nil {
-		return func() {}
+		__antithesis_instrumentation__.Notify(17507)
+		return func() { __antithesis_instrumentation__.Notify(17508) }
+	} else {
+		__antithesis_instrumentation__.Notify(17509)
 	}
+	__antithesis_instrumentation__.Notify(17506)
 
 	start := timeutil.Now()
 	return func() {
+		__antithesis_instrumentation__.Notify(17510)
 		flushNanos := timeutil.Since(start).Nanoseconds()
 		m.Flushes.Inc(1)
 		m.FlushHistNanos.RecordValue(flushNanos)
@@ -153,32 +170,35 @@ func (m *sliMetrics) recordFlushRequestCallback() func() {
 }
 
 func (m *sliMetrics) getBackfillCallback() func() func() {
+	__antithesis_instrumentation__.Notify(17511)
 	return func() func() {
+		__antithesis_instrumentation__.Notify(17512)
 		m.BackfillCount.Inc(1)
 		return func() {
+			__antithesis_instrumentation__.Notify(17513)
 			m.BackfillCount.Dec(1)
 		}
 	}
 }
 
-// getBackfillRangeCallback returns a backfillRangeCallback that is to be called
-// at the beginning of a backfill with the number of ranges that will be scanned
-// and returns a two callbacks to decrement the value until all ranges have
-// been emitted or clear the number completely if the backfill is cancelled.
-// Note: dec() should only be called as many times as the initial value, and
-// clear() should be called when there will never be another dec() call.
 func (m *sliMetrics) getBackfillRangeCallback() func(int64) (func(), func()) {
+	__antithesis_instrumentation__.Notify(17514)
 	return func(initial int64) (dec func(), clear func()) {
+		__antithesis_instrumentation__.Notify(17515)
 		remaining := initial
 		m.BackfillPendingRanges.Inc(initial)
 		dec = func() {
+			__antithesis_instrumentation__.Notify(17518)
 			m.BackfillPendingRanges.Dec(1)
 			atomic.AddInt64(&remaining, -1)
 		}
+		__antithesis_instrumentation__.Notify(17516)
 		clear = func() {
+			__antithesis_instrumentation__.Notify(17519)
 			m.BackfillPendingRanges.Dec(remaining)
 			atomic.AddInt64(&remaining, -remaining)
 		}
+		__antithesis_instrumentation__.Notify(17517)
 		return
 	}
 }
@@ -225,10 +245,6 @@ var (
 		Unit:        metric.Unit_NANOSECONDS,
 	}
 
-	// TODO(dan): This was intended to be a measure of the minimum distance of
-	// any changefeed ahead of its gc ttl threshold, but keeping that correct in
-	// the face of changing zone configs is much harder, so this will have to do
-	// for now.
 	metaChangefeedMaxBehindNanos = metric.Metadata{
 		Name:        "changefeed.max_behind_nanos",
 		Help:        "Largest commit-to-emit duration of any running feed",
@@ -245,6 +261,7 @@ var (
 )
 
 func newAggregateMetrics(histogramWindow time.Duration) *AggMetrics {
+	__antithesis_instrumentation__.Notify(17520)
 	metaChangefeedEmittedMessages := metric.Metadata{
 		Name:        "changefeed.emitted_messages",
 		Help:        "Messages emitted by all feeds",
@@ -324,14 +341,13 @@ func newAggregateMetrics(histogramWindow time.Duration) *AggMetrics {
 		Measurement: "Bytes",
 		Unit:        metric.Unit_BYTES,
 	}
-	// NB: When adding new histograms, use sigFigs = 1.  Older histograms
-	// retain significant figures of 2.
+
 	b := aggmetric.MakeBuilder("scope")
 	a := &AggMetrics{
 		ErrorRetries:    b.Counter(metaChangefeedErrorRetries),
 		EmittedMessages: b.Counter(metaChangefeedEmittedMessages),
 		MessageSize: b.Histogram(metaMessageSize,
-			histogramWindow, 10<<20 /* 10MB max message size */, 1),
+			histogramWindow, 10<<20, 1),
 		EmittedBytes: b.Counter(metaChangefeedEmittedBytes),
 		FlushedBytes: b.Counter(metaChangefeedFlushedBytes),
 		Flushes:      b.Counter(metaChangefeedFlushes),
@@ -351,44 +367,72 @@ func newAggregateMetrics(histogramWindow time.Duration) *AggMetrics {
 	a.mu.sliMetrics = make(map[string]*sliMetrics)
 	_, err := a.getOrCreateScope(defaultSLIScope)
 	if err != nil {
-		// defaultSLIScope must always exist.
+		__antithesis_instrumentation__.Notify(17522)
+
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(17523)
 	}
+	__antithesis_instrumentation__.Notify(17521)
 	return a
 }
 
 func (a *AggMetrics) getOrCreateScope(scope string) (*sliMetrics, error) {
+	__antithesis_instrumentation__.Notify(17524)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	scope = strings.TrimSpace(strings.ToLower(scope))
 
 	if scope == "" {
+		__antithesis_instrumentation__.Notify(17529)
 		scope = defaultSLIScope
+	} else {
+		__antithesis_instrumentation__.Notify(17530)
 	}
+	__antithesis_instrumentation__.Notify(17525)
 
 	if len(scope) > maxSLIScopeNameLen {
+		__antithesis_instrumentation__.Notify(17531)
 		return nil, pgerror.Newf(pgcode.ConfigurationLimitExceeded,
 			"scope name length must be less than %d bytes", maxSLIScopeNameLen)
+	} else {
+		__antithesis_instrumentation__.Notify(17532)
 	}
+	__antithesis_instrumentation__.Notify(17526)
 
 	if s, ok := a.mu.sliMetrics[scope]; ok {
+		__antithesis_instrumentation__.Notify(17533)
 		return s, nil
+	} else {
+		__antithesis_instrumentation__.Notify(17534)
 	}
+	__antithesis_instrumentation__.Notify(17527)
 
 	if scope != defaultSLIScope {
+		__antithesis_instrumentation__.Notify(17535)
 		if !enableSLIMetrics {
+			__antithesis_instrumentation__.Notify(17537)
 			return nil, errors.WithHint(
 				pgerror.Newf(pgcode.ConfigurationLimitExceeded, "cannot create metrics scope %q", scope),
 				"try restarting with COCKROACH_EXPERIMENTAL_ENABLE_PER_CHANGEFEED_METRICS=true",
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(17538)
 		}
+		__antithesis_instrumentation__.Notify(17536)
 		const failSafeMax = 1024
 		if len(a.mu.sliMetrics) == failSafeMax {
+			__antithesis_instrumentation__.Notify(17539)
 			return nil, pgerror.Newf(pgcode.ConfigurationLimitExceeded,
 				"too many metrics labels; max %d", failSafeMax)
+		} else {
+			__antithesis_instrumentation__.Notify(17540)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(17541)
 	}
+	__antithesis_instrumentation__.Notify(17528)
 
 	sm := &sliMetrics{
 		EmittedMessages:       a.EmittedMessages.AddChild(scope),
@@ -410,7 +454,6 @@ func (a *AggMetrics) getOrCreateScope(scope string) (*sliMetrics, error) {
 	return sm, nil
 }
 
-// Metrics are for production monitoring of changefeeds.
 type Metrics struct {
 	AggMetrics          *AggMetrics
 	KVFeedMetrics       kvevent.Metrics
@@ -430,16 +473,15 @@ type Metrics struct {
 	MaxBehindNanos *metric.Gauge
 }
 
-// MetricStruct implements the metric.Struct interface.
-func (*Metrics) MetricStruct() {}
+func (*Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(17542) }
 
-// getSLIMetrics retursn SLIMeterics associated with the specified scope.
 func (m *Metrics) getSLIMetrics(scope string) (*sliMetrics, error) {
+	__antithesis_instrumentation__.Notify(17543)
 	return m.AggMetrics.getOrCreateScope(scope)
 }
 
-// MakeMetrics makes the metrics for changefeed monitoring.
 func MakeMetrics(histogramWindow time.Duration) metric.Struct {
+	__antithesis_instrumentation__.Notify(17544)
 	m := &Metrics{
 		AggMetrics:        newAggregateMetrics(histogramWindow),
 		KVFeedMetrics:     kvevent.MakeMetrics(histogramWindow),
@@ -454,19 +496,26 @@ func MakeMetrics(histogramWindow time.Duration) metric.Struct {
 	}
 
 	m.mu.resolved = make(map[int]hlc.Timestamp)
-	m.mu.id = 1 // start the first id at 1 so we can detect initialization
+	m.mu.id = 1
 	m.MaxBehindNanos = metric.NewFunctionalGauge(metaChangefeedMaxBehindNanos, func() int64 {
+		__antithesis_instrumentation__.Notify(17546)
 		now := timeutil.Now()
 		var maxBehind time.Duration
 		m.mu.Lock()
 		for _, resolved := range m.mu.resolved {
+			__antithesis_instrumentation__.Notify(17548)
 			if behind := now.Sub(resolved.GoTime()); behind > maxBehind {
+				__antithesis_instrumentation__.Notify(17549)
 				maxBehind = behind
+			} else {
+				__antithesis_instrumentation__.Notify(17550)
 			}
 		}
+		__antithesis_instrumentation__.Notify(17547)
 		m.mu.Unlock()
 		return maxBehind.Nanoseconds()
 	})
+	__antithesis_instrumentation__.Notify(17545)
 	return m
 }
 

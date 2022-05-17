@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -52,71 +44,99 @@ type alterTableNode struct {
 	n         *tree.AlterTable
 	prefix    catalog.ResolvedObjectPrefix
 	tableDesc *tabledesc.Mutable
-	// statsData is populated with data for "alter table inject statistics"
-	// commands - the JSON stats expressions.
-	// It is parallel with n.Cmds (for the inject stats commands).
+
 	statsData map[int]tree.TypedExpr
 }
 
-// AlterTable applies a schema change on a table.
-// Privileges: CREATE on table.
-//   notes: postgres requires CREATE on the table.
-//          mysql requires ALTER, CREATE, INSERT on the table.
 func (p *planner) AlterTable(ctx context.Context, n *tree.AlterTable) (planNode, error) {
+	__antithesis_instrumentation__.Notify(243918)
 	if err := checkSchemaChangeEnabled(
 		ctx,
 		p.ExecCfg(),
 		"ALTER TABLE",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(243925)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(243926)
 	}
+	__antithesis_instrumentation__.Notify(243919)
 
 	prefix, tableDesc, err := p.ResolveMutableTableDescriptorEx(
 		ctx, n.Table, !n.IfExists, tree.ResolveRequireTableDesc,
 	)
 	if errors.Is(err, resolver.ErrNoPrimaryKey) {
-		if len(n.Cmds) > 0 && isAlterCmdValidWithoutPrimaryKey(n.Cmds[0]) {
+		__antithesis_instrumentation__.Notify(243927)
+		if len(n.Cmds) > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(243928)
+			return isAlterCmdValidWithoutPrimaryKey(n.Cmds[0]) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(243929)
 			prefix, tableDesc, err = p.ResolveMutableTableDescriptorExAllowNoPrimaryKey(
 				ctx, n.Table, !n.IfExists, tree.ResolveRequireTableDesc,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(243930)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(243931)
 	}
+	__antithesis_instrumentation__.Notify(243920)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(243932)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(243933)
 	}
+	__antithesis_instrumentation__.Notify(243921)
 
 	if tableDesc == nil {
-		return newZeroNode(nil /* columns */), nil
+		__antithesis_instrumentation__.Notify(243934)
+		return newZeroNode(nil), nil
+	} else {
+		__antithesis_instrumentation__.Notify(243935)
 	}
+	__antithesis_instrumentation__.Notify(243922)
 
-	// This check for CREATE privilege is kept for backwards compatibility.
 	if err := p.CheckPrivilege(ctx, tableDesc, privilege.CREATE); err != nil {
+		__antithesis_instrumentation__.Notify(243936)
 		return nil, pgerror.Newf(pgcode.InsufficientPrivilege,
 			"must be owner of table %s or have CREATE privilege on table %s",
 			tree.Name(tableDesc.GetName()), tree.Name(tableDesc.GetName()))
+	} else {
+		__antithesis_instrumentation__.Notify(243937)
 	}
+	__antithesis_instrumentation__.Notify(243923)
 
 	n.HoistAddColumnConstraints()
 
-	// See if there's any "inject statistics" in the query and type check the
-	// expressions.
 	statsData := make(map[int]tree.TypedExpr)
 	for i, cmd := range n.Cmds {
+		__antithesis_instrumentation__.Notify(243938)
 		injectStats, ok := cmd.(*tree.AlterTableInjectStats)
 		if !ok {
+			__antithesis_instrumentation__.Notify(243941)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(243942)
 		}
+		__antithesis_instrumentation__.Notify(243939)
 		typedExpr, err := p.analyzeExpr(
 			ctx, injectStats.Stats,
-			nil, /* sources - no name resolution */
+			nil,
 			tree.IndexedVarHelper{},
-			types.Jsonb, true, /* requireType */
-			"INJECT STATISTICS" /* typingContext */)
+			types.Jsonb, true,
+			"INJECT STATISTICS")
 		if err != nil {
+			__antithesis_instrumentation__.Notify(243943)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(243944)
 		}
+		__antithesis_instrumentation__.Notify(243940)
 		statsData[i] = typedExpr
 	}
+	__antithesis_instrumentation__.Notify(243924)
 
 	return &alterTableNode{
 		n:         n,
@@ -127,53 +147,72 @@ func (p *planner) AlterTable(ctx context.Context, n *tree.AlterTable) (planNode,
 }
 
 func isAlterCmdValidWithoutPrimaryKey(cmd tree.AlterTableCmd) bool {
+	__antithesis_instrumentation__.Notify(243945)
 	switch t := cmd.(type) {
 	case *tree.AlterTableAlterPrimaryKey:
+		__antithesis_instrumentation__.Notify(243947)
 		return true
 	case *tree.AlterTableAddConstraint:
+		__antithesis_instrumentation__.Notify(243948)
 		cs, ok := t.ConstraintDef.(*tree.UniqueConstraintTableDef)
-		if ok && cs.PrimaryKey {
+		if ok && func() bool {
+			__antithesis_instrumentation__.Notify(243950)
+			return cs.PrimaryKey == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(243951)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(243952)
 		}
 	default:
+		__antithesis_instrumentation__.Notify(243949)
 		return false
 	}
+	__antithesis_instrumentation__.Notify(243946)
 	return false
 }
 
-// ReadingOwnWrites implements the planNodeReadingOwnWrites interface.
-// This is because ALTER TABLE performs multiple KV operations on descriptors
-// and expects to see its own writes.
-func (n *alterTableNode) ReadingOwnWrites() {}
+func (n *alterTableNode) ReadingOwnWrites() { __antithesis_instrumentation__.Notify(243953) }
 
 func (n *alterTableNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(243954)
 	telemetry.Inc(sqltelemetry.SchemaChangeAlterCounter("table"))
 
-	// Commands can either change the descriptor directly (for
-	// alterations that don't require a backfill) or add a mutation to
-	// the list.
 	descriptorChanged := false
 	origNumMutations := len(n.tableDesc.Mutations)
 	var droppedViews []string
 	resolved := params.p.ResolvedName(n.n.Table)
 	tn, ok := resolved.(*tree.TableName)
 	if !ok {
+		__antithesis_instrumentation__.Notify(243961)
 		return errors.AssertionFailedf(
 			"%q was not resolved as a table but is %T", resolved, resolved)
+	} else {
+		__antithesis_instrumentation__.Notify(243962)
 	}
+	__antithesis_instrumentation__.Notify(243955)
 
 	for i, cmd := range n.n.Cmds {
+		__antithesis_instrumentation__.Notify(243963)
 		telemetry.Inc(cmd.TelemetryCounter())
 
-		if !n.tableDesc.HasPrimaryKey() && !isAlterCmdValidWithoutPrimaryKey(cmd) {
+		if !n.tableDesc.HasPrimaryKey() && func() bool {
+			__antithesis_instrumentation__.Notify(243966)
+			return !isAlterCmdValidWithoutPrimaryKey(cmd) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(243967)
 			return errors.Newf("table %q does not have a primary key, cannot perform%s", n.tableDesc.Name, tree.AsString(cmd))
+		} else {
+			__antithesis_instrumentation__.Notify(243968)
 		}
+		__antithesis_instrumentation__.Notify(243964)
 
 		switch t := cmd.(type) {
 		case *tree.AlterTableAddColumn:
+			__antithesis_instrumentation__.Notify(243969)
 			if t.ColumnDef.Unique.WithoutIndex {
-				// TODO(rytaft): add support for this in the future if we want to expose
-				// UNIQUE WITHOUT INDEX to users.
+				__antithesis_instrumentation__.Notify(244024)
+
 				return errors.WithHint(
 					pgerror.New(
 						pgcode.FeatureNotSupported,
@@ -182,23 +221,42 @@ func (n *alterTableNode) startExec(params runParams) error {
 					"add the column first, then run ALTER TABLE ... ADD CONSTRAINT to add a "+
 						"UNIQUE WITHOUT INDEX constraint on the column",
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(244025)
 			}
+			__antithesis_instrumentation__.Notify(243970)
 			var err error
 			params.p.runWithOptions(resolveFlags{contextDatabaseID: n.tableDesc.ParentID}, func() {
+				__antithesis_instrumentation__.Notify(244026)
 				err = params.p.addColumnImpl(params, n, tn, n.tableDesc, t)
 			})
+			__antithesis_instrumentation__.Notify(243971)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244027)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244028)
 			}
 		case *tree.AlterTableAddConstraint:
+			__antithesis_instrumentation__.Notify(243972)
 			if skip, err := validateConstraintNameIsNotUsed(n.tableDesc, t); err != nil {
+				__antithesis_instrumentation__.Notify(244029)
 				return err
-			} else if skip {
-				continue
+			} else {
+				__antithesis_instrumentation__.Notify(244030)
+				if skip {
+					__antithesis_instrumentation__.Notify(244031)
+					continue
+				} else {
+					__antithesis_instrumentation__.Notify(244032)
+				}
 			}
+			__antithesis_instrumentation__.Notify(243973)
 			switch d := t.ConstraintDef.(type) {
 			case *tree.UniqueConstraintTableDef:
+				__antithesis_instrumentation__.Notify(244033)
 				if d.WithoutIndex {
+					__antithesis_instrumentation__.Notify(244054)
 					if err := addUniqueWithoutIndexTableDef(
 						params.ctx,
 						params.EvalContext(),
@@ -210,13 +268,21 @@ func (n *alterTableNode) startExec(params runParams) error {
 						t.ValidationBehavior,
 						params.p.SemaCtx(),
 					); err != nil {
+						__antithesis_instrumentation__.Notify(244056)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(244057)
 					}
+					__antithesis_instrumentation__.Notify(244055)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(244058)
 				}
+				__antithesis_instrumentation__.Notify(244034)
 
 				if d.PrimaryKey {
-					// Translate this operation into an ALTER PRIMARY KEY command.
+					__antithesis_instrumentation__.Notify(244059)
+
 					alterPK := &tree.AlterTableAlterPrimaryKey{
 						Columns:       d.Columns,
 						Sharded:       d.Sharded,
@@ -227,47 +293,74 @@ func (n *alterTableNode) startExec(params runParams) error {
 						params.ctx,
 						n.tableDesc,
 						*alterPK,
-						nil, /* localityConfigSwap */
+						nil,
 					); err != nil {
+						__antithesis_instrumentation__.Notify(244061)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(244062)
 					}
+					__antithesis_instrumentation__.Notify(244060)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(244063)
 				}
+				__antithesis_instrumentation__.Notify(244035)
 
 				if err := validateColumnsAreAccessible(n.tableDesc, d.Columns); err != nil {
+					__antithesis_instrumentation__.Notify(244064)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244065)
 				}
+				__antithesis_instrumentation__.Notify(244036)
 
 				tableName, err := params.p.getQualifiedTableName(params.ctx, n.tableDesc)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(244066)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244067)
 				}
+				__antithesis_instrumentation__.Notify(244037)
 
 				if err := replaceExpressionElemsWithVirtualCols(
 					params.ctx,
 					n.tableDesc,
 					tableName,
 					d.Columns,
-					false, /* isInverted */
-					false, /* isNewTable */
+					false,
+					false,
 					params.p.SemaCtx(),
 				); err != nil {
+					__antithesis_instrumentation__.Notify(244068)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244069)
 				}
+				__antithesis_instrumentation__.Notify(244038)
 
-				// Check if the columns exist on the table.
 				for _, column := range d.Columns {
+					__antithesis_instrumentation__.Notify(244070)
 					if column.Expr != nil {
+						__antithesis_instrumentation__.Notify(244072)
 						return pgerror.New(
 							pgcode.InvalidTableDefinition,
 							"cannot create a unique constraint on an expression, use UNIQUE INDEX instead",
 						)
+					} else {
+						__antithesis_instrumentation__.Notify(244073)
 					}
+					__antithesis_instrumentation__.Notify(244071)
 					_, err := n.tableDesc.FindColumnWithName(column.Column)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(244074)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(244075)
 					}
 				}
+				__antithesis_instrumentation__.Notify(244039)
 				idx := descpb.IndexDescriptor{
 					Name:             string(d.Name),
 					Unique:           true,
@@ -275,18 +368,30 @@ func (n *alterTableNode) startExec(params runParams) error {
 					CreatedAtNanos:   params.EvalContext().GetTxnTimestamp(time.Microsecond).UnixNano(),
 				}
 				if err := idx.FillColumns(d.Columns); err != nil {
+					__antithesis_instrumentation__.Notify(244076)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244077)
 				}
+				__antithesis_instrumentation__.Notify(244040)
 
 				if d.Predicate != nil {
+					__antithesis_instrumentation__.Notify(244078)
 					expr, err := schemaexpr.ValidatePartialIndexPredicate(
 						params.ctx, n.tableDesc, d.Predicate, tableName, params.p.SemaCtx(),
 					)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(244080)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(244081)
 					}
+					__antithesis_instrumentation__.Notify(244079)
 					idx.Predicate = expr
+				} else {
+					__antithesis_instrumentation__.Notify(244082)
 				}
+				__antithesis_instrumentation__.Notify(244041)
 
 				idx, err = params.p.configureIndexDescForNewIndexPartitioning(
 					params.ctx,
@@ -295,111 +400,173 @@ func (n *alterTableNode) startExec(params runParams) error {
 					d.PartitionByIndex,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(244083)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244084)
 				}
+				__antithesis_instrumentation__.Notify(244042)
 				foundIndex, err := n.tableDesc.FindIndexWithName(string(d.Name))
 				if err == nil {
+					__antithesis_instrumentation__.Notify(244085)
 					if foundIndex.Dropped() {
+						__antithesis_instrumentation__.Notify(244086)
 						return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 							"index %q being dropped, try again later", d.Name)
+					} else {
+						__antithesis_instrumentation__.Notify(244087)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(244088)
 				}
+				__antithesis_instrumentation__.Notify(244043)
 				if err := n.tableDesc.AddIndexMutation(params.ctx, &idx, descpb.DescriptorMutation_ADD, params.p.ExecCfg().Settings); err != nil {
+					__antithesis_instrumentation__.Notify(244089)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244090)
 				}
+				__antithesis_instrumentation__.Notify(244044)
 
-				// We need to allocate IDs upfront in the event we need to update the zone config
-				// in the same transaction.
 				version := params.ExecCfg().Settings.Version.ActiveVersion(params.ctx)
 				if err := n.tableDesc.AllocateIDs(params.ctx, version); err != nil {
+					__antithesis_instrumentation__.Notify(244091)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244092)
 				}
+				__antithesis_instrumentation__.Notify(244045)
 				if err := params.p.configureZoneConfigForNewIndexPartitioning(
 					params.ctx,
 					n.tableDesc,
 					idx,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(244093)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244094)
 				}
+				__antithesis_instrumentation__.Notify(244046)
 
 				if n.tableDesc.IsLocalityRegionalByRow() {
+					__antithesis_instrumentation__.Notify(244095)
 					if err := params.p.checkNoRegionChangeUnderway(
 						params.ctx,
 						n.tableDesc.GetParentID(),
 						"create an UNIQUE CONSTRAINT on a REGIONAL BY ROW table",
 					); err != nil {
+						__antithesis_instrumentation__.Notify(244096)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(244097)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(244098)
 				}
 			case *tree.CheckConstraintTableDef:
+				__antithesis_instrumentation__.Notify(244047)
 				var err error
 				params.p.runWithOptions(resolveFlags{contextDatabaseID: n.tableDesc.ParentID}, func() {
+					__antithesis_instrumentation__.Notify(244099)
 					info, infoErr := n.tableDesc.GetConstraintInfo()
 					if infoErr != nil {
+						__antithesis_instrumentation__.Notify(244104)
 						err = infoErr
 						return
+					} else {
+						__antithesis_instrumentation__.Notify(244105)
 					}
+					__antithesis_instrumentation__.Notify(244100)
 					ckBuilder := schemaexpr.MakeCheckConstraintBuilder(params.ctx, *tn, n.tableDesc, &params.p.semaCtx)
 					for k := range info {
+						__antithesis_instrumentation__.Notify(244106)
 						ckBuilder.MarkNameInUse(k)
 					}
+					__antithesis_instrumentation__.Notify(244101)
 					ck, buildErr := ckBuilder.Build(d)
 					if buildErr != nil {
+						__antithesis_instrumentation__.Notify(244107)
 						err = buildErr
 						return
+					} else {
+						__antithesis_instrumentation__.Notify(244108)
 					}
+					__antithesis_instrumentation__.Notify(244102)
 					if t.ValidationBehavior == tree.ValidationDefault {
+						__antithesis_instrumentation__.Notify(244109)
 						ck.Validity = descpb.ConstraintValidity_Validating
 					} else {
+						__antithesis_instrumentation__.Notify(244110)
 						ck.Validity = descpb.ConstraintValidity_Unvalidated
 					}
+					__antithesis_instrumentation__.Notify(244103)
 					n.tableDesc.AddCheckMutation(ck, descpb.DescriptorMutation_ADD)
 				})
+				__antithesis_instrumentation__.Notify(244048)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(244111)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244112)
 				}
 
 			case *tree.ForeignKeyConstraintTableDef:
-				// We want to reject uses of FK ON UPDATE actions where there is already
-				// an ON UPDATE expression for the column.
-				if d.Actions.Update != tree.NoAction && d.Actions.Update != tree.Restrict {
+				__antithesis_instrumentation__.Notify(244049)
+
+				if d.Actions.Update != tree.NoAction && func() bool {
+					__antithesis_instrumentation__.Notify(244113)
+					return d.Actions.Update != tree.Restrict == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(244114)
 					for _, fromCol := range d.FromCols {
+						__antithesis_instrumentation__.Notify(244115)
 						for _, toCheck := range n.tableDesc.Columns {
-							if fromCol == toCheck.ColName() && toCheck.HasOnUpdate() {
+							__antithesis_instrumentation__.Notify(244116)
+							if fromCol == toCheck.ColName() && func() bool {
+								__antithesis_instrumentation__.Notify(244117)
+								return toCheck.HasOnUpdate() == true
+							}() == true {
+								__antithesis_instrumentation__.Notify(244118)
 								return pgerror.Newf(
 									pgcode.InvalidTableDefinition,
 									"cannot specify a foreign key update action and an ON UPDATE"+
 										" expression on the same column",
 								)
+							} else {
+								__antithesis_instrumentation__.Notify(244119)
 							}
 						}
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(244120)
 				}
+				__antithesis_instrumentation__.Notify(244050)
 
 				affected := make(map[descpb.ID]*tabledesc.Mutable)
 
-				// If there are any FKs, we will need to update the table descriptor of the
-				// depended-on table (to register this table against its DependedOnBy field).
-				// This descriptor must be looked up uncached, and we'll allow FK dependencies
-				// on tables that were just added. See the comment at the start of ResolveFK().
-				// TODO(vivek): check if the cache can be used.
 				var err error
 				params.p.runWithOptions(resolveFlags{skipCache: true}, func() {
-					// Check whether the table is empty, and pass the result to ResolveFK(). If
-					// the table is empty, then resolveFK will automatically add the necessary
-					// index for a fk constraint if the index does not exist.
+					__antithesis_instrumentation__.Notify(244121)
+
 					span := n.tableDesc.PrimaryIndexSpan(params.ExecCfg().Codec)
 					kvs, scanErr := params.p.txn.Scan(params.ctx, span.Key, span.EndKey, 1)
 					if scanErr != nil {
+						__antithesis_instrumentation__.Notify(244124)
 						err = scanErr
 						return
+					} else {
+						__antithesis_instrumentation__.Notify(244125)
 					}
+					__antithesis_instrumentation__.Notify(244122)
 					var tableState TableState
 					if len(kvs) == 0 {
+						__antithesis_instrumentation__.Notify(244126)
 						tableState = EmptyTable
 					} else {
+						__antithesis_instrumentation__.Notify(244127)
 						tableState = NonEmptyTable
 					}
+					__antithesis_instrumentation__.Notify(244123)
 					err = ResolveFK(
 						params.ctx,
 						params.p.txn,
@@ -414,61 +581,79 @@ func (n *alterTableNode) startExec(params runParams) error {
 						params.p.EvalContext(),
 					)
 				})
+				__antithesis_instrumentation__.Notify(244051)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(244128)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244129)
 				}
+				__antithesis_instrumentation__.Notify(244052)
 				descriptorChanged = true
 				for _, updated := range affected {
+					__antithesis_instrumentation__.Notify(244130)
 					if err := params.p.writeSchemaChange(
 						params.ctx, updated, descpb.InvalidMutationID, tree.AsStringWithFQNames(n.n, params.Ann()),
 					); err != nil {
+						__antithesis_instrumentation__.Notify(244131)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(244132)
 					}
 				}
-				// TODO(lucy): Validate() can't be called here because it reads the
-				// referenced table descs, which may have to be upgraded to the new FK
-				// representation. That requires reading the original table descriptor
-				// (which the backreference points to) from KV, but we haven't written
-				// the updated table desc yet. We can restore the call to Validate()
-				// after running a migration of all table descriptors, making it
-				// unnecessary to read the original table desc from KV.
-				// if err := n.tableDesc.Validate(params.ctx, params.p.txn); err != nil {
-				// 	return err
-				// }
 
 			default:
+				__antithesis_instrumentation__.Notify(244053)
 				return errors.AssertionFailedf(
 					"unsupported constraint: %T", t.ConstraintDef)
 			}
 
 		case *tree.AlterTableAlterPrimaryKey:
+			__antithesis_instrumentation__.Notify(243974)
 			if err := params.p.AlterPrimaryKey(
 				params.ctx,
 				n.tableDesc,
 				*t,
-				nil, /* localityConfigSwap */
+				nil,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244133)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244134)
 			}
-			// Mark descriptorChanged so that a mutation job is scheduled at the end of startExec.
+			__antithesis_instrumentation__.Notify(243975)
+
 			descriptorChanged = true
 
 		case *tree.AlterTableDropColumn:
+			__antithesis_instrumentation__.Notify(243976)
 			if params.SessionData().SafeUpdates {
+				__antithesis_instrumentation__.Notify(244135)
 				err := pgerror.DangerousStatementf("ALTER TABLE DROP COLUMN will " +
 					"remove all data in that column")
 				if !params.extendedEvalCtx.TxnIsSingleStmt {
+					__antithesis_instrumentation__.Notify(244137)
 					err = errors.WithIssueLink(err, errors.IssueLink{
 						IssueURL: "https://github.com/cockroachdb/cockroach/issues/46541",
 						Detail: "when used in an explicit transaction combined with other " +
 							"schema changes to the same table, DROP COLUMN can result in data " +
 							"loss if one of the other schema change fails or is canceled",
 					})
+				} else {
+					__antithesis_instrumentation__.Notify(244138)
 				}
+				__antithesis_instrumentation__.Notify(244136)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244139)
 			}
+			__antithesis_instrumentation__.Notify(243977)
 
-			if t.Column == colinfo.TTLDefaultExpirationColumnName && n.tableDesc.HasRowLevelTTL() {
+			if t.Column == colinfo.TTLDefaultExpirationColumnName && func() bool {
+				__antithesis_instrumentation__.Notify(244140)
+				return n.tableDesc.HasRowLevelTTL() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(244141)
 				return errors.WithHintf(
 					pgerror.Newf(
 						pgcode.InvalidTableDefinition,
@@ -478,94 +663,163 @@ func (n *alterTableNode) startExec(params runParams) error {
 					"use ALTER TABLE %s RESET (ttl) instead",
 					tree.Name(n.tableDesc.GetName()),
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(244142)
 			}
+			__antithesis_instrumentation__.Notify(243978)
 
 			colDroppedViews, err := dropColumnImpl(params, tn, n.tableDesc, t)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244143)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244144)
 			}
+			__antithesis_instrumentation__.Notify(243979)
 			droppedViews = append(droppedViews, colDroppedViews...)
 		case *tree.AlterTableDropConstraint:
+			__antithesis_instrumentation__.Notify(243980)
 			info, err := n.tableDesc.GetConstraintInfo()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244145)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244146)
 			}
+			__antithesis_instrumentation__.Notify(243981)
 			name := string(t.Constraint)
 			details, ok := info[name]
 			if !ok {
+				__antithesis_instrumentation__.Notify(244147)
 				if t.IfExists {
+					__antithesis_instrumentation__.Notify(244149)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(244150)
 				}
+				__antithesis_instrumentation__.Notify(244148)
 				return pgerror.Newf(pgcode.UndefinedObject,
 					"constraint %q of relation %q does not exist", t.Constraint, n.tableDesc.Name)
+			} else {
+				__antithesis_instrumentation__.Notify(244151)
 			}
+			__antithesis_instrumentation__.Notify(243982)
 			if err := n.tableDesc.DropConstraint(
 				params.ctx,
 				name, details,
 				func(desc *tabledesc.Mutable, ref *descpb.ForeignKeyConstraint) error {
+					__antithesis_instrumentation__.Notify(244152)
 					return params.p.removeFKBackReference(params.ctx, desc, ref)
 				}, params.ExecCfg().Settings); err != nil {
+				__antithesis_instrumentation__.Notify(244153)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244154)
 			}
+			__antithesis_instrumentation__.Notify(243983)
 			descriptorChanged = true
 			if err := validateDescriptor(params.ctx, params.p, n.tableDesc); err != nil {
+				__antithesis_instrumentation__.Notify(244155)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244156)
 			}
 
 		case *tree.AlterTableValidateConstraint:
+			__antithesis_instrumentation__.Notify(243984)
 			info, err := n.tableDesc.GetConstraintInfo()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244157)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244158)
 			}
+			__antithesis_instrumentation__.Notify(243985)
 			name := string(t.Constraint)
 			constraint, ok := info[name]
 			if !ok {
+				__antithesis_instrumentation__.Notify(244159)
 				return pgerror.Newf(pgcode.UndefinedObject,
 					"constraint %q of relation %q does not exist", t.Constraint, n.tableDesc.Name)
+			} else {
+				__antithesis_instrumentation__.Notify(244160)
 			}
+			__antithesis_instrumentation__.Notify(243986)
 			if !constraint.Unvalidated {
+				__antithesis_instrumentation__.Notify(244161)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(244162)
 			}
+			__antithesis_instrumentation__.Notify(243987)
 			switch constraint.Kind {
 			case descpb.ConstraintTypeCheck:
+				__antithesis_instrumentation__.Notify(244163)
 				found := false
 				var ck *descpb.TableDescriptor_CheckConstraint
 				for _, c := range n.tableDesc.Checks {
-					// If the constraint is still being validated, don't allow
-					// VALIDATE CONSTRAINT to run.
-					if c.Name == name && c.Validity != descpb.ConstraintValidity_Validating {
+					__antithesis_instrumentation__.Notify(244174)
+
+					if c.Name == name && func() bool {
+						__antithesis_instrumentation__.Notify(244175)
+						return c.Validity != descpb.ConstraintValidity_Validating == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(244176)
 						found = true
 						ck = c
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(244177)
 					}
 				}
+				__antithesis_instrumentation__.Notify(244164)
 				if !found {
+					__antithesis_instrumentation__.Notify(244178)
 					return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 						"constraint %q in the middle of being added, try again later", t.Constraint)
+				} else {
+					__antithesis_instrumentation__.Notify(244179)
 				}
+				__antithesis_instrumentation__.Notify(244165)
 				if err := validateCheckInTxn(
 					params.ctx, &params.p.semaCtx, params.ExecCfg().InternalExecutorFactory,
 					params.SessionData(), n.tableDesc, params.EvalContext().Txn, ck.Expr,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(244180)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244181)
 				}
+				__antithesis_instrumentation__.Notify(244166)
 				ck.Validity = descpb.ConstraintValidity_Validated
 
 			case descpb.ConstraintTypeFK:
+				__antithesis_instrumentation__.Notify(244167)
 				var foundFk *descpb.ForeignKeyConstraint
 				for i := range n.tableDesc.OutboundFKs {
+					__antithesis_instrumentation__.Notify(244182)
 					fk := &n.tableDesc.OutboundFKs[i]
-					// If the constraint is still being validated, don't allow
-					// VALIDATE CONSTRAINT to run.
-					if fk.Name == name && fk.Validity != descpb.ConstraintValidity_Validating {
+
+					if fk.Name == name && func() bool {
+						__antithesis_instrumentation__.Notify(244183)
+						return fk.Validity != descpb.ConstraintValidity_Validating == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(244184)
 						foundFk = fk
 						break
+					} else {
+						__antithesis_instrumentation__.Notify(244185)
 					}
 				}
+				__antithesis_instrumentation__.Notify(244168)
 				if foundFk == nil {
+					__antithesis_instrumentation__.Notify(244186)
 					return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 						"constraint %q in the middle of being added, try again later", t.Constraint)
+				} else {
+					__antithesis_instrumentation__.Notify(244187)
 				}
+				__antithesis_instrumentation__.Notify(244169)
 				if err := validateFkInTxn(
 					params.ctx,
 					params.ExecCfg().InternalExecutorFactory,
@@ -575,90 +829,148 @@ func (n *alterTableNode) startExec(params runParams) error {
 					params.p.Descriptors(),
 					name,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(244188)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244189)
 				}
+				__antithesis_instrumentation__.Notify(244170)
 				foundFk.Validity = descpb.ConstraintValidity_Validated
 
 			case descpb.ConstraintTypeUnique:
+				__antithesis_instrumentation__.Notify(244171)
 				if constraint.Index == nil {
+					__antithesis_instrumentation__.Notify(244190)
 					var foundUnique *descpb.UniqueWithoutIndexConstraint
 					for i := range n.tableDesc.UniqueWithoutIndexConstraints {
+						__antithesis_instrumentation__.Notify(244194)
 						uc := &n.tableDesc.UniqueWithoutIndexConstraints[i]
-						// If the constraint is still being validated, don't allow
-						// VALIDATE CONSTRAINT to run.
-						if uc.Name == name && uc.Validity != descpb.ConstraintValidity_Validating {
+
+						if uc.Name == name && func() bool {
+							__antithesis_instrumentation__.Notify(244195)
+							return uc.Validity != descpb.ConstraintValidity_Validating == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(244196)
 							foundUnique = uc
 							break
+						} else {
+							__antithesis_instrumentation__.Notify(244197)
 						}
 					}
+					__antithesis_instrumentation__.Notify(244191)
 					if foundUnique == nil {
+						__antithesis_instrumentation__.Notify(244198)
 						return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 							"constraint %q in the middle of being added, try again later", t.Constraint)
+					} else {
+						__antithesis_instrumentation__.Notify(244199)
 					}
+					__antithesis_instrumentation__.Notify(244192)
 					if err := validateUniqueWithoutIndexConstraintInTxn(
 						params.ctx, params.ExecCfg().InternalExecutorFactory(
 							params.ctx, params.SessionData(),
 						), n.tableDesc, params.EvalContext().Txn, name,
 					); err != nil {
+						__antithesis_instrumentation__.Notify(244200)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(244201)
 					}
+					__antithesis_instrumentation__.Notify(244193)
 					foundUnique.Validity = descpb.ConstraintValidity_Validated
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(244202)
 				}
+				__antithesis_instrumentation__.Notify(244172)
 
-				// This unique constraint is enforced by an index, so fall through to
-				// the error below.
 				fallthrough
 
 			default:
+				__antithesis_instrumentation__.Notify(244173)
 				return pgerror.Newf(pgcode.WrongObjectType,
 					"constraint %q of relation %q is not a foreign key, check, or unique without index"+
 						" constraint", tree.ErrString(&t.Constraint), tree.ErrString(n.n.Table))
 			}
+			__antithesis_instrumentation__.Notify(243988)
 			descriptorChanged = true
 
 		case tree.ColumnMutationCmd:
-			// Column mutations
+			__antithesis_instrumentation__.Notify(243989)
+
 			col, err := n.tableDesc.FindColumnWithName(t.GetColumn())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244203)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244204)
 			}
+			__antithesis_instrumentation__.Notify(243990)
 			if col.Dropped() {
+				__antithesis_instrumentation__.Notify(244205)
 				return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 					"column %q in the middle of being dropped", t.GetColumn())
+			} else {
+				__antithesis_instrumentation__.Notify(244206)
 			}
-			// Apply mutations to copy of column descriptor.
+			__antithesis_instrumentation__.Notify(243991)
+
 			if err := applyColumnMutation(params.ctx, n.tableDesc, col, t, params, n.n.Cmds, tn); err != nil {
+				__antithesis_instrumentation__.Notify(244207)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244208)
 			}
+			__antithesis_instrumentation__.Notify(243992)
 			descriptorChanged = true
 
 		case *tree.AlterTablePartitionByTable:
+			__antithesis_instrumentation__.Notify(243993)
 			if t.All {
+				__antithesis_instrumentation__.Notify(244209)
 				return unimplemented.NewWithIssue(58736, "PARTITION ALL BY not yet implemented")
+			} else {
+				__antithesis_instrumentation__.Notify(244210)
 			}
+			__antithesis_instrumentation__.Notify(243994)
 			if n.tableDesc.GetLocalityConfig() != nil {
+				__antithesis_instrumentation__.Notify(244211)
 				return pgerror.Newf(
 					pgcode.FeatureNotSupported,
 					"cannot set PARTITION BY on a table in a multi-region enabled database",
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(244212)
 			}
+			__antithesis_instrumentation__.Notify(243995)
 			if n.tableDesc.IsPartitionAllBy() {
+				__antithesis_instrumentation__.Notify(244213)
 				return unimplemented.NewWithIssue(58736, "changing partition of table with PARTITION ALL BY not yet implemented")
+			} else {
+				__antithesis_instrumentation__.Notify(244214)
 			}
+			__antithesis_instrumentation__.Notify(243996)
 			if n.tableDesc.GetPrimaryIndex().IsSharded() {
+				__antithesis_instrumentation__.Notify(244215)
 				return pgerror.New(
 					pgcode.FeatureNotSupported,
 					"cannot set explicit partitioning with PARTITION BY on hash sharded primary key",
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(244216)
 			}
+			__antithesis_instrumentation__.Notify(243997)
 			oldPartitioning := n.tableDesc.GetPrimaryIndex().GetPartitioning().DeepCopy()
 			if oldPartitioning.NumImplicitColumns() > 0 {
+				__antithesis_instrumentation__.Notify(244217)
 				return unimplemented.NewWithIssue(
 					58731,
 					"cannot ALTER TABLE PARTITION BY on a table which already has implicit column partitioning",
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(244218)
 			}
+			__antithesis_instrumentation__.Notify(243998)
 			newPrimaryIndexDesc := n.tableDesc.GetPrimaryIndex().IndexDescDeepCopy()
 			newImplicitCols, newPartitioning, err := CreatePartitioning(
 				params.ctx, params.p.ExecCfg().Settings,
@@ -666,21 +978,32 @@ func (n *alterTableNode) startExec(params runParams) error {
 				n.tableDesc,
 				newPrimaryIndexDesc,
 				t.PartitionBy,
-				nil, /* allowedNewColumnNames */
-				params.p.EvalContext().SessionData().ImplicitColumnPartitioningEnabled ||
-					n.tableDesc.IsLocalityRegionalByRow(),
+				nil,
+				params.p.EvalContext().SessionData().ImplicitColumnPartitioningEnabled || func() bool {
+					__antithesis_instrumentation__.Notify(244219)
+					return n.tableDesc.IsLocalityRegionalByRow() == true
+				}() == true,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244220)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244221)
 			}
+			__antithesis_instrumentation__.Notify(243999)
 			if newPartitioning.NumImplicitColumns > 0 {
+				__antithesis_instrumentation__.Notify(244222)
 				return unimplemented.NewWithIssue(
 					58731,
 					"cannot ALTER TABLE and change the partitioning to contain implicit columns",
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(244223)
 			}
-			isIndexAltered := tabledesc.UpdateIndexPartitioning(&newPrimaryIndexDesc, true /* isIndexPrimary */, newImplicitCols, newPartitioning)
+			__antithesis_instrumentation__.Notify(244000)
+			isIndexAltered := tabledesc.UpdateIndexPartitioning(&newPrimaryIndexDesc, true, newImplicitCols, newPartitioning)
 			if isIndexAltered {
+				__antithesis_instrumentation__.Notify(244224)
 				n.tableDesc.SetPrimaryIndex(newPrimaryIndexDesc)
 				descriptorChanged = true
 				if err := deleteRemovedPartitionZoneConfigs(
@@ -692,34 +1015,64 @@ func (n *alterTableNode) startExec(params runParams) error {
 					n.tableDesc.GetPrimaryIndex().GetPartitioning(),
 					params.extendedEvalCtx.ExecCfg,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(244225)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(244226)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(244227)
 			}
 
 		case *tree.AlterTableSetAudit:
+			__antithesis_instrumentation__.Notify(244001)
 			changed, err := params.p.setAuditMode(params.ctx, n.tableDesc, t.Mode)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244228)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244229)
 			}
-			descriptorChanged = descriptorChanged || changed
+			__antithesis_instrumentation__.Notify(244002)
+			descriptorChanged = descriptorChanged || func() bool {
+				__antithesis_instrumentation__.Notify(244230)
+				return changed == true
+			}() == true
 
 		case *tree.AlterTableInjectStats:
+			__antithesis_instrumentation__.Notify(244003)
 			sd, ok := n.statsData[i]
 			if !ok {
+				__antithesis_instrumentation__.Notify(244231)
 				return errors.AssertionFailedf("missing stats data")
+			} else {
+				__antithesis_instrumentation__.Notify(244232)
 			}
+			__antithesis_instrumentation__.Notify(244004)
 			if !params.extendedEvalCtx.TxnIsSingleStmt {
+				__antithesis_instrumentation__.Notify(244233)
 				return errors.New("cannot inject statistics in an explicit transaction")
+			} else {
+				__antithesis_instrumentation__.Notify(244234)
 			}
+			__antithesis_instrumentation__.Notify(244005)
 			if err := injectTableStats(params, n.tableDesc, sd); err != nil {
+				__antithesis_instrumentation__.Notify(244235)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244236)
 			}
 
 		case *tree.AlterTableSetStorageParams:
+			__antithesis_instrumentation__.Notify(244006)
 			var ttlBefore *catpb.RowLevelTTL
 			if ttl := n.tableDesc.GetRowLevelTTL(); ttl != nil {
+				__antithesis_instrumentation__.Notify(244237)
 				ttlBefore = protoutil.Clone(ttl).(*catpb.RowLevelTTL)
+			} else {
+				__antithesis_instrumentation__.Notify(244238)
 			}
+			__antithesis_instrumentation__.Notify(244007)
 			if err := paramparse.SetStorageParameters(
 				params.ctx,
 				params.p.SemaCtx(),
@@ -727,8 +1080,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				t.StorageParams,
 				paramparse.NewTableStorageParamObserver(n.tableDesc),
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244239)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244240)
 			}
+			__antithesis_instrumentation__.Notify(244008)
 			descriptorChanged = true
 
 			if err := handleTTLStorageParamChange(
@@ -738,22 +1095,34 @@ func (n *alterTableNode) startExec(params runParams) error {
 				ttlBefore,
 				n.tableDesc.GetRowLevelTTL(),
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244241)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244242)
 			}
 
 		case *tree.AlterTableResetStorageParams:
+			__antithesis_instrumentation__.Notify(244009)
 			var ttlBefore *catpb.RowLevelTTL
 			if ttl := n.tableDesc.GetRowLevelTTL(); ttl != nil {
+				__antithesis_instrumentation__.Notify(244243)
 				ttlBefore = protoutil.Clone(ttl).(*catpb.RowLevelTTL)
+			} else {
+				__antithesis_instrumentation__.Notify(244244)
 			}
+			__antithesis_instrumentation__.Notify(244010)
 			if err := paramparse.ResetStorageParameters(
 				params.ctx,
 				params.EvalContext(),
 				t.Params,
 				paramparse.NewTableStorageParamObserver(n.tableDesc),
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244245)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244246)
 			}
+			__antithesis_instrumentation__.Notify(244011)
 			descriptorChanged = true
 
 			if err := handleTTLStorageParamChange(
@@ -763,106 +1132,165 @@ func (n *alterTableNode) startExec(params runParams) error {
 				ttlBefore,
 				n.tableDesc.GetRowLevelTTL(),
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244247)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244248)
 			}
 
 		case *tree.AlterTableRenameColumn:
+			__antithesis_instrumentation__.Notify(244012)
 			descChanged, err := params.p.renameColumn(params.ctx, n.tableDesc, t.Column, t.NewName)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244249)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244250)
 			}
-			descriptorChanged = descriptorChanged || descChanged
+			__antithesis_instrumentation__.Notify(244013)
+			descriptorChanged = descriptorChanged || func() bool {
+				__antithesis_instrumentation__.Notify(244251)
+				return descChanged == true
+			}() == true
 
 		case *tree.AlterTableRenameConstraint:
+			__antithesis_instrumentation__.Notify(244014)
 			info, err := n.tableDesc.GetConstraintInfo()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244252)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244253)
 			}
+			__antithesis_instrumentation__.Notify(244015)
 			details, ok := info[string(t.Constraint)]
 			if !ok {
+				__antithesis_instrumentation__.Notify(244254)
 				return pgerror.Newf(pgcode.UndefinedObject,
 					"constraint %q of relation %q does not exist", tree.ErrString(&t.Constraint), n.tableDesc.Name)
+			} else {
+				__antithesis_instrumentation__.Notify(244255)
 			}
+			__antithesis_instrumentation__.Notify(244016)
 			if t.Constraint == t.NewName {
-				// Nothing to do.
+				__antithesis_instrumentation__.Notify(244256)
+
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(244257)
 			}
+			__antithesis_instrumentation__.Notify(244017)
 
 			if _, ok := info[string(t.NewName)]; ok {
+				__antithesis_instrumentation__.Notify(244258)
 				return pgerror.Newf(pgcode.DuplicateObject,
 					"duplicate constraint name: %q", tree.ErrString(&t.NewName))
+			} else {
+				__antithesis_instrumentation__.Notify(244259)
 			}
-			// If this is a unique or primary constraint, renames of the constraint
-			// lead to renames of the underlying index. Ensure that no index with this
-			// new name exists. This is what postgres does.
+			__antithesis_instrumentation__.Notify(244018)
+
 			switch details.Kind {
 			case descpb.ConstraintTypeUnique, descpb.ConstraintTypePK:
+				__antithesis_instrumentation__.Notify(244260)
 				if catalog.FindNonDropIndex(n.tableDesc, func(idx catalog.Index) bool {
+					__antithesis_instrumentation__.Notify(244262)
 					return idx.GetName() == string(t.NewName)
 				}) != nil {
+					__antithesis_instrumentation__.Notify(244263)
 					return pgerror.Newf(pgcode.DuplicateRelation,
 						"relation %v already exists", t.NewName)
+				} else {
+					__antithesis_instrumentation__.Notify(244264)
 				}
+			default:
+				__antithesis_instrumentation__.Notify(244261)
 			}
+			__antithesis_instrumentation__.Notify(244019)
 
 			if err := params.p.CheckPrivilege(params.ctx, n.tableDesc, privilege.CREATE); err != nil {
+				__antithesis_instrumentation__.Notify(244265)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244266)
 			}
+			__antithesis_instrumentation__.Notify(244020)
 
 			depViewRenameError := func(objType string, refTableID descpb.ID) error {
+				__antithesis_instrumentation__.Notify(244267)
 				return params.p.dependentViewError(params.ctx,
 					objType, tree.ErrString(&t.NewName), n.tableDesc.ParentID, refTableID, "rename",
 				)
 			}
+			__antithesis_instrumentation__.Notify(244021)
 
 			if err := n.tableDesc.RenameConstraint(
 				details, string(t.Constraint), string(t.NewName), depViewRenameError,
 				func(desc *tabledesc.Mutable, ref *descpb.ForeignKeyConstraint, newName string) error {
+					__antithesis_instrumentation__.Notify(244268)
 					return params.p.updateFKBackReferenceName(params.ctx, desc, ref, newName)
 				}); err != nil {
+				__antithesis_instrumentation__.Notify(244269)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244270)
 			}
+			__antithesis_instrumentation__.Notify(244022)
 			descriptorChanged = true
 		default:
+			__antithesis_instrumentation__.Notify(244023)
 			return errors.AssertionFailedf("unsupported alter command: %T", cmd)
 		}
+		__antithesis_instrumentation__.Notify(243965)
 
-		// Allocate IDs now, so new IDs are available to subsequent commands
 		version := params.ExecCfg().Settings.Version.ActiveVersion(params.ctx)
 		if err := n.tableDesc.AllocateIDs(params.ctx, version); err != nil {
+			__antithesis_instrumentation__.Notify(244271)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244272)
 		}
 	}
-	// Were some changes made?
-	//
-	// This is only really needed for the unittests that add dummy mutations
-	// before calling ALTER TABLE commands. We do not want to apply those
-	// dummy mutations. Most tests trigger errors above
-	// this line, but tests that run redundant operations like dropping
-	// a column when it's already dropped will hit this condition and exit.
+	__antithesis_instrumentation__.Notify(243956)
+
 	addedMutations := len(n.tableDesc.Mutations) > origNumMutations
-	if !addedMutations && !descriptorChanged {
+	if !addedMutations && func() bool {
+		__antithesis_instrumentation__.Notify(244273)
+		return !descriptorChanged == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(244274)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(244275)
 	}
+	__antithesis_instrumentation__.Notify(243957)
 
 	mutationID := descpb.InvalidMutationID
 	if addedMutations {
+		__antithesis_instrumentation__.Notify(244276)
 		mutationID = n.tableDesc.ClusterVersion().NextMutationID
+	} else {
+		__antithesis_instrumentation__.Notify(244277)
 	}
+	__antithesis_instrumentation__.Notify(243958)
 	if err := params.p.writeSchemaChange(
 		params.ctx, n.tableDesc, mutationID, tree.AsStringWithFQNames(n.n, params.Ann()),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244278)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244279)
 	}
+	__antithesis_instrumentation__.Notify(243959)
 
-	// Add all newly created type back references.
 	if err := params.p.addBackRefsFromAllTypesInTable(params.ctx, n.tableDesc); err != nil {
+		__antithesis_instrumentation__.Notify(244280)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244281)
 	}
+	__antithesis_instrumentation__.Notify(243960)
 
-	// Record this table alteration in the event log. This is an auditable log
-	// event and is recorded in the same transaction as the table descriptor
-	// update.
 	return params.p.logEvent(params.ctx,
 		n.tableDesc.ID,
 		&eventpb.AlterTable{
@@ -875,29 +1303,34 @@ func (n *alterTableNode) startExec(params runParams) error {
 func (p *planner) setAuditMode(
 	ctx context.Context, desc *tabledesc.Mutable, auditMode tree.AuditMode,
 ) (bool, error) {
-	// An auditing config change is itself auditable!
-	// We record the event even if the permission check below fails:
-	// auditing wants to know who tried to change the settings.
+	__antithesis_instrumentation__.Notify(244282)
+
 	p.curPlan.auditEvents = append(p.curPlan.auditEvents,
 		auditEvent{desc: desc, writing: true})
 
-	// We require root for now. Later maybe use a different permission?
 	if err := p.RequireAdminRole(ctx, "change auditing settings on a table"); err != nil {
+		__antithesis_instrumentation__.Notify(244284)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(244285)
 	}
+	__antithesis_instrumentation__.Notify(244283)
 
 	telemetry.Inc(sqltelemetry.SchemaSetAuditModeCounter(auditMode.TelemetryName()))
 
 	return desc.SetAuditMode(auditMode)
 }
 
-func (n *alterTableNode) Next(runParams) (bool, error) { return false, nil }
-func (n *alterTableNode) Values() tree.Datums          { return tree.Datums{} }
-func (n *alterTableNode) Close(context.Context)        {}
+func (n *alterTableNode) Next(runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(244286)
+	return false, nil
+}
+func (n *alterTableNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(244287)
+	return tree.Datums{}
+}
+func (n *alterTableNode) Close(context.Context) { __antithesis_instrumentation__.Notify(244288) }
 
-// applyColumnMutation applies the mutation specified in `mut` to the given
-// columnDescriptor, and saves the containing table descriptor. If the column's
-// dependencies on sequences change, it updates them as well.
 func applyColumnMutation(
 	ctx context.Context,
 	tableDesc *tabledesc.Mutable,
@@ -907,11 +1340,14 @@ func applyColumnMutation(
 	cmds tree.AlterTableCmds,
 	tn *tree.TableName,
 ) error {
+	__antithesis_instrumentation__.Notify(244289)
 	switch t := mut.(type) {
 	case *tree.AlterTableAlterColumnType:
+		__antithesis_instrumentation__.Notify(244291)
 		return AlterColumnType(ctx, tableDesc, col, t, params, cmds, tn)
 
 	case *tree.AlterTableSetDefault:
+		__antithesis_instrumentation__.Notify(244292)
 		if err := updateNonComputedColExpr(
 			params,
 			tableDesc,
@@ -920,17 +1356,27 @@ func applyColumnMutation(
 			&col.ColumnDesc().DefaultExpr,
 			"DEFAULT",
 		); err != nil {
+			__antithesis_instrumentation__.Notify(244311)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244312)
 		}
 
 	case *tree.AlterTableSetOnUpdate:
-		// We want to reject uses of ON UPDATE where there is also a foreign key ON
-		// UPDATE.
+		__antithesis_instrumentation__.Notify(244293)
+
 		for _, fk := range tableDesc.OutboundFKs {
+			__antithesis_instrumentation__.Notify(244313)
 			for _, colID := range fk.OriginColumnIDs {
-				if colID == col.GetID() &&
-					fk.OnUpdate != catpb.ForeignKeyAction_NO_ACTION &&
-					fk.OnUpdate != catpb.ForeignKeyAction_RESTRICT {
+				__antithesis_instrumentation__.Notify(244314)
+				if colID == col.GetID() && func() bool {
+					__antithesis_instrumentation__.Notify(244315)
+					return fk.OnUpdate != catpb.ForeignKeyAction_NO_ACTION == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(244316)
+					return fk.OnUpdate != catpb.ForeignKeyAction_RESTRICT == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(244317)
 					return pgerror.Newf(
 						pgcode.InvalidColumnDefinition,
 						"column %s(%d) cannot have both an ON UPDATE expression and a foreign"+
@@ -938,9 +1384,12 @@ func applyColumnMutation(
 						col.GetName(),
 						col.GetID(),
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(244318)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(244294)
 
 		if err := updateNonComputedColExpr(
 			params,
@@ -950,119 +1399,187 @@ func applyColumnMutation(
 			&col.ColumnDesc().OnUpdateExpr,
 			"ON UPDATE",
 		); err != nil {
+			__antithesis_instrumentation__.Notify(244319)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244320)
 		}
 
 	case *tree.AlterTableSetVisible:
+		__antithesis_instrumentation__.Notify(244295)
 		column, err := tableDesc.FindActiveOrNewColumnByName(col.ColName())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244321)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244322)
 		}
+		__antithesis_instrumentation__.Notify(244296)
 		column.ColumnDesc().Hidden = !t.Visible
 
 	case *tree.AlterTableSetNotNull:
+		__antithesis_instrumentation__.Notify(244297)
 		if !col.IsNullable() {
+			__antithesis_instrumentation__.Notify(244323)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(244324)
 		}
-		// See if there's already a mutation to add a not null constraint
+		__antithesis_instrumentation__.Notify(244298)
+
 		for i := range tableDesc.Mutations {
-			if constraint := tableDesc.Mutations[i].GetConstraint(); constraint != nil &&
-				constraint.ConstraintType == descpb.ConstraintToUpdate_NOT_NULL &&
-				constraint.NotNullColumn == col.GetID() {
+			__antithesis_instrumentation__.Notify(244325)
+			if constraint := tableDesc.Mutations[i].GetConstraint(); constraint != nil && func() bool {
+				__antithesis_instrumentation__.Notify(244326)
+				return constraint.ConstraintType == descpb.ConstraintToUpdate_NOT_NULL == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(244327)
+				return constraint.NotNullColumn == col.GetID() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(244328)
 				if tableDesc.Mutations[i].Direction == descpb.DescriptorMutation_ADD {
+					__antithesis_instrumentation__.Notify(244330)
 					return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 						"constraint in the middle of being added")
+				} else {
+					__antithesis_instrumentation__.Notify(244331)
 				}
+				__antithesis_instrumentation__.Notify(244329)
 				return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 					"constraint in the middle of being dropped, try again later")
+			} else {
+				__antithesis_instrumentation__.Notify(244332)
 			}
 		}
+		__antithesis_instrumentation__.Notify(244299)
 
 		info, err := tableDesc.GetConstraintInfo()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244333)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244334)
 		}
+		__antithesis_instrumentation__.Notify(244300)
 		inuseNames := make(map[string]struct{}, len(info))
 		for k := range info {
+			__antithesis_instrumentation__.Notify(244335)
 			inuseNames[k] = struct{}{}
 		}
+		__antithesis_instrumentation__.Notify(244301)
 		check := tabledesc.MakeNotNullCheckConstraint(col.GetName(), col.GetID(), tableDesc.GetNextConstraintID(), inuseNames, descpb.ConstraintValidity_Validating)
 		tableDesc.AddNotNullMutation(check, descpb.DescriptorMutation_ADD)
 		tableDesc.NextConstraintID++
 
 	case *tree.AlterTableDropNotNull:
+		__antithesis_instrumentation__.Notify(244302)
 		if col.IsNullable() {
+			__antithesis_instrumentation__.Notify(244336)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(244337)
 		}
+		__antithesis_instrumentation__.Notify(244303)
 
-		// Prevent a column in a primary key from becoming non-null.
 		if tableDesc.GetPrimaryIndex().CollectKeyColumnIDs().Contains(col.GetID()) {
+			__antithesis_instrumentation__.Notify(244338)
 			return pgerror.Newf(pgcode.InvalidTableDefinition,
 				`column "%s" is in a primary index`, col.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(244339)
 		}
+		__antithesis_instrumentation__.Notify(244304)
 
-		// See if there's already a mutation to add/drop a not null constraint.
 		for i := range tableDesc.Mutations {
-			if constraint := tableDesc.Mutations[i].GetConstraint(); constraint != nil &&
-				constraint.ConstraintType == descpb.ConstraintToUpdate_NOT_NULL &&
-				constraint.NotNullColumn == col.GetID() {
+			__antithesis_instrumentation__.Notify(244340)
+			if constraint := tableDesc.Mutations[i].GetConstraint(); constraint != nil && func() bool {
+				__antithesis_instrumentation__.Notify(244341)
+				return constraint.ConstraintType == descpb.ConstraintToUpdate_NOT_NULL == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(244342)
+				return constraint.NotNullColumn == col.GetID() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(244343)
 				if tableDesc.Mutations[i].Direction == descpb.DescriptorMutation_ADD {
+					__antithesis_instrumentation__.Notify(244345)
 					return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 						"constraint in the middle of being added, try again later")
+				} else {
+					__antithesis_instrumentation__.Notify(244346)
 				}
+				__antithesis_instrumentation__.Notify(244344)
 				return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 					"constraint in the middle of being dropped")
+			} else {
+				__antithesis_instrumentation__.Notify(244347)
 			}
 		}
+		__antithesis_instrumentation__.Notify(244305)
 		info, err := tableDesc.GetConstraintInfo()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244348)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244349)
 		}
+		__antithesis_instrumentation__.Notify(244306)
 		inuseNames := make(map[string]struct{}, len(info))
 		for k := range info {
+			__antithesis_instrumentation__.Notify(244350)
 			inuseNames[k] = struct{}{}
 		}
+		__antithesis_instrumentation__.Notify(244307)
 		col.ColumnDesc().Nullable = true
 
-		// Add a check constraint equivalent to the non-null constraint and drop
-		// it in the schema changer.
 		check := tabledesc.MakeNotNullCheckConstraint(col.GetName(), col.GetID(), tableDesc.GetNextConstraintID(), inuseNames, descpb.ConstraintValidity_Dropping)
 		tableDesc.Checks = append(tableDesc.Checks, check)
 		tableDesc.NextConstraintID++
 		tableDesc.AddNotNullMutation(check, descpb.DescriptorMutation_DROP)
 
 	case *tree.AlterTableDropStored:
+		__antithesis_instrumentation__.Notify(244308)
 		if !col.IsComputed() {
+			__antithesis_instrumentation__.Notify(244351)
 			return pgerror.Newf(pgcode.InvalidColumnDefinition,
 				"column %q is not a computed column", col.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(244352)
 		}
+		__antithesis_instrumentation__.Notify(244309)
 		if col.IsVirtual() {
+			__antithesis_instrumentation__.Notify(244353)
 			return pgerror.Newf(pgcode.InvalidColumnDefinition,
 				"column %q is not a stored computed column", col.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(244354)
 		}
+		__antithesis_instrumentation__.Notify(244310)
 		col.ColumnDesc().ComputeExpr = nil
 	}
+	__antithesis_instrumentation__.Notify(244290)
 	return nil
 }
 
 func labeledRowValues(cols []catalog.Column, values tree.Datums) string {
+	__antithesis_instrumentation__.Notify(244355)
 	var s bytes.Buffer
 	for i := range cols {
+		__antithesis_instrumentation__.Notify(244357)
 		if i != 0 {
+			__antithesis_instrumentation__.Notify(244359)
 			s.WriteString(`, `)
+		} else {
+			__antithesis_instrumentation__.Notify(244360)
 		}
+		__antithesis_instrumentation__.Notify(244358)
 		s.WriteString(cols[i].GetName())
 		s.WriteString(`=`)
 		s.WriteString(values[i].String())
 	}
+	__antithesis_instrumentation__.Notify(244356)
 	return s.String()
 }
 
-// updateNonComputedColExpr updates an ON UPDATE or DEFAULT column expression
-// and recalculates sequence dependencies for the column. `exprField1 is a
-// pointer to the column descriptor field that should be updated with the
-// serialized `newExpr`. For example, for DEFAULT expressions, this is
-// `&column.ColumnDesc().OnUpdateExpr`
 func updateNonComputedColExpr(
 	params runParams,
 	tab *tabledesc.Mutable,
@@ -1071,35 +1588,54 @@ func updateNonComputedColExpr(
 	exprField **string,
 	op string,
 ) error {
-	// If a DEFAULT or ON UPDATE expression starts using a sequence and is then
-	// modified to not use that sequence, we need to drop the dependency from
-	// the sequence to the column. The way this is done is by wiping all
-	// sequence dependencies on the column and then recalculating the
-	// dependencies after the new expression has been parsed.
+	__antithesis_instrumentation__.Notify(244361)
+
 	if col.NumUsesSequences() > 0 {
+		__antithesis_instrumentation__.Notify(244366)
 		if err := params.p.removeSequenceDependencies(params.ctx, tab, col); err != nil {
+			__antithesis_instrumentation__.Notify(244367)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244368)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(244369)
 	}
+	__antithesis_instrumentation__.Notify(244362)
 
 	if col.IsGeneratedAsIdentity() {
+		__antithesis_instrumentation__.Notify(244370)
 		return sqlerrors.NewSyntaxErrorf("column %q is an identity column", col.GetName())
+	} else {
+		__antithesis_instrumentation__.Notify(244371)
 	}
+	__antithesis_instrumentation__.Notify(244363)
 
 	if newExpr == nil {
+		__antithesis_instrumentation__.Notify(244372)
 		*exprField = nil
 	} else {
+		__antithesis_instrumentation__.Notify(244373)
 		_, s, err := sanitizeColumnExpression(params, newExpr, col, op)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244375)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244376)
 		}
+		__antithesis_instrumentation__.Notify(244374)
 
 		*exprField = &s
 	}
+	__antithesis_instrumentation__.Notify(244364)
 
 	if err := updateSequenceDependencies(params, tab, col); err != nil {
+		__antithesis_instrumentation__.Notify(244377)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244378)
 	}
+	__antithesis_instrumentation__.Notify(244365)
 
 	return nil
 }
@@ -1107,38 +1643,54 @@ func updateNonComputedColExpr(
 func sanitizeColumnExpression(
 	p runParams, expr tree.Expr, col catalog.Column, opName string,
 ) (tree.TypedExpr, string, error) {
+	__antithesis_instrumentation__.Notify(244379)
 	colDatumType := col.GetType()
 	typedExpr, err := schemaexpr.SanitizeVarFreeExpr(
 		p.ctx, expr, colDatumType, opName, &p.p.semaCtx, tree.VolatilityVolatile,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244381)
 		return nil, "", pgerror.WithCandidateCode(err, pgcode.DatatypeMismatch)
+	} else {
+		__antithesis_instrumentation__.Notify(244382)
 	}
+	__antithesis_instrumentation__.Notify(244380)
 
 	s := tree.Serialize(typedExpr)
 	return typedExpr, s, nil
 }
 
-// updateSequenceDependencies checks for sequence dependencies on the provided
-// DEFAULT and ON UPDATE expressions and adds any dependencies to the tableDesc.
 func updateSequenceDependencies(
 	params runParams, tableDesc *tabledesc.Mutable, colDesc catalog.Column,
 ) error {
+	__antithesis_instrumentation__.Notify(244383)
 	var seqDescsToUpdate []*tabledesc.Mutable
 	mergeNewSeqDescs := func(toAdd []*tabledesc.Mutable) {
+		__antithesis_instrumentation__.Notify(244387)
 		seqDescsToUpdate = append(seqDescsToUpdate, toAdd...)
 		sort.Slice(seqDescsToUpdate,
 			func(i, j int) bool {
+				__antithesis_instrumentation__.Notify(244390)
 				return seqDescsToUpdate[i].GetID() < seqDescsToUpdate[j].GetID()
 			})
+		__antithesis_instrumentation__.Notify(244388)
 		truncated := make([]*tabledesc.Mutable, 0, len(seqDescsToUpdate))
 		for i, v := range seqDescsToUpdate {
-			if i == 0 || seqDescsToUpdate[i-1].GetID() != v.GetID() {
+			__antithesis_instrumentation__.Notify(244391)
+			if i == 0 || func() bool {
+				__antithesis_instrumentation__.Notify(244392)
+				return seqDescsToUpdate[i-1].GetID() != v.GetID() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(244393)
 				truncated = append(truncated, v)
+			} else {
+				__antithesis_instrumentation__.Notify(244394)
 			}
 		}
+		__antithesis_instrumentation__.Notify(244389)
 		seqDescsToUpdate = truncated
 	}
+	__antithesis_instrumentation__.Notify(244384)
 	for _, colExpr := range []struct {
 		name   string
 		exists func() bool
@@ -1155,13 +1707,22 @@ func updateSequenceDependencies(
 			get:    colDesc.GetOnUpdateExpr,
 		},
 	} {
+		__antithesis_instrumentation__.Notify(244395)
 		if !colExpr.exists() {
+			__antithesis_instrumentation__.Notify(244400)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(244401)
 		}
+		__antithesis_instrumentation__.Notify(244396)
 		untypedExpr, err := parser.ParseExpr(colExpr.get())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244402)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(244403)
 		}
+		__antithesis_instrumentation__.Notify(244397)
 
 		typedExpr, _, err := sanitizeColumnExpression(
 			params,
@@ -1170,8 +1731,12 @@ func updateSequenceDependencies(
 			"DEFAULT",
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244404)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244405)
 		}
+		__antithesis_instrumentation__.Notify(244398)
 
 		newSeqDescs, err := maybeAddSequenceDependencies(
 			params.ctx,
@@ -1180,101 +1745,142 @@ func updateSequenceDependencies(
 			tableDesc,
 			colDesc.ColumnDesc(),
 			typedExpr,
-			nil, /* backrefs */
+			nil,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244406)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244407)
 		}
+		__antithesis_instrumentation__.Notify(244399)
 
 		mergeNewSeqDescs(newSeqDescs)
 	}
+	__antithesis_instrumentation__.Notify(244385)
 
 	for _, changedSeqDesc := range seqDescsToUpdate {
+		__antithesis_instrumentation__.Notify(244408)
 		if err := params.p.writeSchemaChange(
 			params.ctx, changedSeqDesc, descpb.InvalidMutationID,
 			fmt.Sprintf("updating dependent sequence %s(%d) for table %s(%d)",
 				changedSeqDesc.Name, changedSeqDesc.ID, tableDesc.Name, tableDesc.ID,
 			)); err != nil {
+			__antithesis_instrumentation__.Notify(244409)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244410)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244386)
 
 	return nil
 }
 
-// injectTableStats implements the INJECT STATISTICS command, which deletes any
-// existing statistics on the table and replaces them with the statistics in the
-// given json object (in the same format as the result of SHOW STATISTICS USING
-// JSON). This is useful for reproducing planning issues without importing the
-// data.
 func injectTableStats(
 	params runParams, desc catalog.TableDescriptor, statsExpr tree.TypedExpr,
 ) error {
+	__antithesis_instrumentation__.Notify(244411)
 	val, err := statsExpr.Eval(params.EvalContext())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244417)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244418)
 	}
+	__antithesis_instrumentation__.Notify(244412)
 	if val == tree.DNull {
+		__antithesis_instrumentation__.Notify(244419)
 		return pgerror.New(pgcode.Syntax,
 			"statistics cannot be NULL")
+	} else {
+		__antithesis_instrumentation__.Notify(244420)
 	}
+	__antithesis_instrumentation__.Notify(244413)
 	jsonStr := val.(*tree.DJSON).JSON.String()
 	var jsonStats []stats.JSONStatistic
 	if err := gojson.Unmarshal([]byte(jsonStr), &jsonStats); err != nil {
+		__antithesis_instrumentation__.Notify(244421)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244422)
 	}
+	__antithesis_instrumentation__.Notify(244414)
 
-	// First, delete all statistics for the table.
-	if _ /* rows */, err := params.extendedEvalCtx.ExecCfg.InternalExecutor.Exec(
+	if _, err := params.extendedEvalCtx.ExecCfg.InternalExecutor.Exec(
 		params.ctx,
 		"delete-stats",
 		params.EvalContext().Txn,
 		`DELETE FROM system.table_statistics WHERE "tableID" = $1`, desc.GetID(),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244423)
 		return errors.Wrapf(err, "failed to delete old stats")
+	} else {
+		__antithesis_instrumentation__.Notify(244424)
 	}
+	__antithesis_instrumentation__.Notify(244415)
 
-	// Insert each statistic.
 StatsLoop:
 	for i := range jsonStats {
+		__antithesis_instrumentation__.Notify(244425)
 		s := &jsonStats[i]
 		h, err := s.GetHistogram(&params.p.semaCtx, params.EvalContext())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244429)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244430)
 		}
-		// histogram will be passed to the INSERT statement; we want it to be a
-		// nil interface{} if we don't generate a histogram.
+		__antithesis_instrumentation__.Notify(244426)
+
 		var histogram interface{}
 		if h != nil {
+			__antithesis_instrumentation__.Notify(244431)
 			histogram, err = protoutil.Marshal(h)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244432)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244433)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(244434)
 		}
+		__antithesis_instrumentation__.Notify(244427)
 
 		columnIDs := tree.NewDArray(types.Int)
 		for _, colName := range s.Columns {
+			__antithesis_instrumentation__.Notify(244435)
 			col, err := desc.FindColumnWithName(tree.Name(colName))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244437)
 				params.p.BufferClientNotice(
 					params.ctx,
 					pgnotice.Newf("column %q does not exist", colName),
 				)
 				continue StatsLoop
+			} else {
+				__antithesis_instrumentation__.Notify(244438)
 			}
+			__antithesis_instrumentation__.Notify(244436)
 			if err := columnIDs.Append(tree.NewDInt(tree.DInt(col.GetID()))); err != nil {
+				__antithesis_instrumentation__.Notify(244439)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244440)
 			}
 		}
+		__antithesis_instrumentation__.Notify(244428)
 
 		if err := insertJSONStatistic(params, desc.GetID(), columnIDs, s, histogram); err != nil {
+			__antithesis_instrumentation__.Notify(244441)
 			return errors.Wrap(err, "failed to insert stats")
+		} else {
+			__antithesis_instrumentation__.Notify(244442)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244416)
 
-	// Invalidate the local cache synchronously; this guarantees that the next
-	// statement in the same session won't use a stale cache (the cache would
-	// normally be updated asynchronously).
 	params.extendedEvalCtx.ExecCfg.TableStatsCache.InvalidateTableStats(params.ctx, desc.GetID())
 
 	return nil
@@ -1287,6 +1893,7 @@ func insertJSONStatistic(
 	s *stats.JSONStatistic,
 	histogram interface{},
 ) error {
+	__antithesis_instrumentation__.Notify(244443)
 	var (
 		ctx      = params.ctx
 		ie       = params.ExecCfg().InternalExecutor
@@ -1296,11 +1903,16 @@ func insertJSONStatistic(
 
 	var name interface{}
 	if s.Name != "" {
+		__antithesis_instrumentation__.Notify(244446)
 		name = s.Name
+	} else {
+		__antithesis_instrumentation__.Notify(244447)
 	}
+	__antithesis_instrumentation__.Notify(244444)
 
 	if !settings.Version.IsActive(params.ctx, clusterversion.AlterSystemTableStatisticsAddAvgSizeCol) {
-		_ /* rows */, err := ie.Exec(
+		__antithesis_instrumentation__.Notify(244448)
+		_, err := ie.Exec(
 			ctx,
 			"insert-stats",
 			txn,
@@ -1323,8 +1935,11 @@ func insertJSONStatistic(
 			s.NullCount,
 			histogram)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244449)
 	}
-	_ /* rows */, err := ie.Exec(
+	__antithesis_instrumentation__.Notify(244445)
+	_, err := ie.Exec(
 		ctx,
 		"insert-stats",
 		txn,
@@ -1354,6 +1969,7 @@ func insertJSONStatistic(
 func (p *planner) removeColumnComment(
 	ctx context.Context, tableID descpb.ID, columnID descpb.ColumnID,
 ) error {
+	__antithesis_instrumentation__.Notify(244450)
 	_, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.ExecEx(
 		ctx,
 		"delete-column-comment",
@@ -1367,169 +1983,260 @@ func (p *planner) removeColumnComment(
 	return err
 }
 
-// validateConstraintNameIsNotUsed checks that the name of the constraint we're
-// trying to add isn't already used, and, if it is, whether the constraint
-// addition should be skipped:
-// - if the name is free to use, it returns false;
-// - if it's already used but IF NOT EXISTS was specified, it returns true;
-// - otherwise, it returns an error.
 func validateConstraintNameIsNotUsed(
 	tableDesc *tabledesc.Mutable, cmd *tree.AlterTableAddConstraint,
 ) (skipAddConstraint bool, _ error) {
+	__antithesis_instrumentation__.Notify(244451)
 	var name tree.Name
 	var hasIfNotExists bool
 	switch d := cmd.ConstraintDef.(type) {
 	case *tree.CheckConstraintTableDef:
+		__antithesis_instrumentation__.Notify(244458)
 		name = d.Name
 		hasIfNotExists = d.IfNotExists
 	case *tree.ForeignKeyConstraintTableDef:
+		__antithesis_instrumentation__.Notify(244459)
 		name = d.Name
 		hasIfNotExists = d.IfNotExists
 	case *tree.UniqueConstraintTableDef:
+		__antithesis_instrumentation__.Notify(244460)
 		name = d.Name
 		hasIfNotExists = d.IfNotExists
 		if d.WithoutIndex {
+			__antithesis_instrumentation__.Notify(244468)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(244469)
 		}
-		// Handle edge cases specific to unique constraints with indexes.
+		__antithesis_instrumentation__.Notify(244461)
+
 		if d.PrimaryKey {
-			// We only support "adding" a primary key when we are using the
-			// default rowid primary index or if a DROP PRIMARY KEY statement
-			// was processed before this statement. If a DROP PRIMARY KEY
-			// statement was processed, then n.tableDesc.HasPrimaryKey() = false.
-			if tableDesc.HasPrimaryKey() && !tableDesc.IsPrimaryIndexDefaultRowID() {
+			__antithesis_instrumentation__.Notify(244470)
+
+			if tableDesc.HasPrimaryKey() && func() bool {
+				__antithesis_instrumentation__.Notify(244473)
+				return !tableDesc.IsPrimaryIndexDefaultRowID() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(244474)
 				if d.IfNotExists {
+					__antithesis_instrumentation__.Notify(244476)
 					return true, nil
+				} else {
+					__antithesis_instrumentation__.Notify(244477)
 				}
+				__antithesis_instrumentation__.Notify(244475)
 				return false, pgerror.Newf(pgcode.InvalidTableDefinition,
 					"multiple primary keys for table %q are not allowed", tableDesc.Name)
+			} else {
+				__antithesis_instrumentation__.Notify(244478)
 			}
+			__antithesis_instrumentation__.Notify(244471)
 
-			// Allow the PRIMARY KEY to have the same name as the existing PRIMARY KEY
-			// if the existing PRIMARY KEY is the implicit rowid column.
-			// This allows CREATE TABLE without a PRIMARY KEY, then adding a
-			// PRIMARY KEY with the same autogenerated name as postgres does
-			// without erroring if the rowid PRIMARY KEY name conflicts.
-			// The implicit rowid PRIMARY KEY index will be deleted anyway, so we're
-			// ok with the conflict in this case.
 			defaultPKName := tabledesc.PrimaryKeyIndexName(tableDesc.GetName())
-			if tableDesc.HasPrimaryKey() && tableDesc.IsPrimaryIndexDefaultRowID() &&
-				tableDesc.PrimaryIndex.GetName() == defaultPKName &&
-				name == tree.Name(defaultPKName) {
+			if tableDesc.HasPrimaryKey() && func() bool {
+				__antithesis_instrumentation__.Notify(244479)
+				return tableDesc.IsPrimaryIndexDefaultRowID() == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(244480)
+				return tableDesc.PrimaryIndex.GetName() == defaultPKName == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(244481)
+				return name == tree.Name(defaultPKName) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(244482)
 				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(244483)
 			}
-			// If there is no active primary key, then adding one with the exact
-			// same name is allowed.
-			if !tableDesc.HasPrimaryKey() &&
-				tableDesc.PrimaryIndex.Name == name.String() {
+			__antithesis_instrumentation__.Notify(244472)
+
+			if !tableDesc.HasPrimaryKey() && func() bool {
+				__antithesis_instrumentation__.Notify(244484)
+				return tableDesc.PrimaryIndex.Name == name.String() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(244485)
 				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(244486)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(244487)
 		}
+		__antithesis_instrumentation__.Notify(244462)
 		if name == "" {
+			__antithesis_instrumentation__.Notify(244488)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(244489)
 		}
+		__antithesis_instrumentation__.Notify(244463)
 		idx, _ := tableDesc.FindIndexWithName(string(name))
-		// If an index is found and its disabled, then we know it will be dropped
-		// later on.
+
 		if idx == nil {
+			__antithesis_instrumentation__.Notify(244490)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(244491)
 		}
+		__antithesis_instrumentation__.Notify(244464)
 		if d.IfNotExists {
+			__antithesis_instrumentation__.Notify(244492)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(244493)
 		}
+		__antithesis_instrumentation__.Notify(244465)
 		if idx.Dropped() {
+			__antithesis_instrumentation__.Notify(244494)
 			return false, pgerror.Newf(pgcode.DuplicateObject, "constraint with name %q already exists and is being dropped, try again later", name)
+		} else {
+			__antithesis_instrumentation__.Notify(244495)
 		}
+		__antithesis_instrumentation__.Notify(244466)
 		return false, pgerror.Newf(pgcode.DuplicateObject, "constraint with name %q already exists", name)
 
 	default:
+		__antithesis_instrumentation__.Notify(244467)
 		return false, errors.AssertionFailedf(
 			"unsupported constraint: %T", cmd.ConstraintDef)
 	}
+	__antithesis_instrumentation__.Notify(244452)
 
 	if name == "" {
+		__antithesis_instrumentation__.Notify(244496)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(244497)
 	}
+	__antithesis_instrumentation__.Notify(244453)
 	info, err := tableDesc.GetConstraintInfo()
 	if err != nil {
-		// Unexpected error: table descriptor should be valid at this point.
+		__antithesis_instrumentation__.Notify(244498)
+
 		return false, errors.WithAssertionFailure(err)
+	} else {
+		__antithesis_instrumentation__.Notify(244499)
 	}
+	__antithesis_instrumentation__.Notify(244454)
 	constraintInfo, isInUse := info[name.String()]
 	if !isInUse {
+		__antithesis_instrumentation__.Notify(244500)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(244501)
 	}
-	// If the primary index is being replaced, then the name can be reused for
-	// another constraint.
-	if isInUse &&
-		constraintInfo.Index != nil &&
-		constraintInfo.Index.ID == tableDesc.PrimaryIndex.ID {
+	__antithesis_instrumentation__.Notify(244455)
+
+	if isInUse && func() bool {
+		__antithesis_instrumentation__.Notify(244502)
+		return constraintInfo.Index != nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(244503)
+		return constraintInfo.Index.ID == tableDesc.PrimaryIndex.ID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(244504)
 		for _, mut := range tableDesc.GetMutations() {
-			if primaryKeySwap := mut.GetPrimaryKeySwap(); primaryKeySwap != nil &&
-				primaryKeySwap.OldPrimaryIndexId == tableDesc.PrimaryIndex.ID &&
-				primaryKeySwap.NewPrimaryIndexName != name.String() {
+			__antithesis_instrumentation__.Notify(244505)
+			if primaryKeySwap := mut.GetPrimaryKeySwap(); primaryKeySwap != nil && func() bool {
+				__antithesis_instrumentation__.Notify(244506)
+				return primaryKeySwap.OldPrimaryIndexId == tableDesc.PrimaryIndex.ID == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(244507)
+				return primaryKeySwap.NewPrimaryIndexName != name.String() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(244508)
 				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(244509)
 			}
 		}
 
+	} else {
+		__antithesis_instrumentation__.Notify(244510)
 	}
+	__antithesis_instrumentation__.Notify(244456)
 	if hasIfNotExists {
+		__antithesis_instrumentation__.Notify(244511)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(244512)
 	}
+	__antithesis_instrumentation__.Notify(244457)
 	return false, pgerror.Newf(pgcode.DuplicateObject,
 		"duplicate constraint name: %q", name)
 }
 
-// updateFKBackReferenceName updates the name of a foreign key reference on
-// the referenced table descriptor.
-// TODO (lucy): This method is meant to be analogous to removeFKBackReference,
-// in that it only updates the backreference, but we should refactor/unify all
-// the places where we update both FKs and their backreferences, so that callers
-// don't have to manually take care of updating both table descriptors.
 func (p *planner) updateFKBackReferenceName(
 	ctx context.Context,
 	tableDesc *tabledesc.Mutable,
 	ref *descpb.ForeignKeyConstraint,
 	newName string,
 ) error {
+	__antithesis_instrumentation__.Notify(244513)
 	var referencedTableDesc *tabledesc.Mutable
-	// We don't want to lookup/edit a second copy of the same table.
+
 	if tableDesc.ID == ref.ReferencedTableID {
+		__antithesis_instrumentation__.Notify(244517)
 		referencedTableDesc = tableDesc
 	} else {
+		__antithesis_instrumentation__.Notify(244518)
 		lookup, err := p.Descriptors().GetMutableTableVersionByID(ctx, ref.ReferencedTableID, p.txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244520)
 			return errors.Wrapf(err, "error resolving referenced table ID %d", ref.ReferencedTableID)
+		} else {
+			__antithesis_instrumentation__.Notify(244521)
 		}
+		__antithesis_instrumentation__.Notify(244519)
 		referencedTableDesc = lookup
 	}
+	__antithesis_instrumentation__.Notify(244514)
 	if referencedTableDesc.Dropped() {
-		// The referenced table is being dropped. No need to modify it further.
+		__antithesis_instrumentation__.Notify(244522)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(244523)
 	}
+	__antithesis_instrumentation__.Notify(244515)
 	for i := range referencedTableDesc.InboundFKs {
+		__antithesis_instrumentation__.Notify(244524)
 		backref := &referencedTableDesc.InboundFKs[i]
-		if backref.Name == ref.Name && backref.OriginTableID == tableDesc.ID {
+		if backref.Name == ref.Name && func() bool {
+			__antithesis_instrumentation__.Notify(244525)
+			return backref.OriginTableID == tableDesc.ID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(244526)
 			backref.Name = newName
 			return p.writeSchemaChange(
 				ctx, referencedTableDesc, descpb.InvalidMutationID,
 				fmt.Sprintf("updating referenced FK table %s(%d) for table %s(%d)",
 					referencedTableDesc.Name, referencedTableDesc.ID, tableDesc.Name, tableDesc.ID),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(244527)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244516)
 	return errors.Errorf("missing backreference for foreign key %s", ref.Name)
 }
 
 func dropColumnImpl(
 	params runParams, tn *tree.TableName, tableDesc *tabledesc.Mutable, t *tree.AlterTableDropColumn,
 ) (droppedViews []string, err error) {
+	__antithesis_instrumentation__.Notify(244528)
 	if tableDesc.IsLocalityRegionalByRow() {
+		__antithesis_instrumentation__.Notify(244549)
 		rbrColName, err := tableDesc.GetRegionalByRowTableRegionColumnName()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244551)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(244552)
 		}
+		__antithesis_instrumentation__.Notify(244550)
 		if rbrColName == t.Column {
+			__antithesis_instrumentation__.Notify(244553)
 			return nil, errors.WithHintf(
 				pgerror.Newf(
 					pgcode.InvalidColumnReference,
@@ -1538,165 +2245,265 @@ func dropColumnImpl(
 				),
 				"You must change the table locality before dropping this table or alter the table to use a different column to use for the region.",
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(244554)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(244555)
 	}
+	__antithesis_instrumentation__.Notify(244529)
 
 	colToDrop, err := tableDesc.FindColumnWithName(t.Column)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244556)
 		if t.IfExists {
-			// Noop.
+			__antithesis_instrumentation__.Notify(244558)
+
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(244559)
 		}
+		__antithesis_instrumentation__.Notify(244557)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244560)
 	}
+	__antithesis_instrumentation__.Notify(244530)
 	if colToDrop.Dropped() {
+		__antithesis_instrumentation__.Notify(244561)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(244562)
 	}
+	__antithesis_instrumentation__.Notify(244531)
 
 	if colToDrop.IsInaccessible() {
+		__antithesis_instrumentation__.Notify(244563)
 		return nil, pgerror.Newf(
 			pgcode.InvalidColumnReference,
 			"cannot drop inaccessible column %q",
 			t.Column,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(244564)
 	}
+	__antithesis_instrumentation__.Notify(244532)
 
-	// If the dropped column uses a sequence, remove references to it from that sequence.
 	if colToDrop.NumUsesSequences() > 0 {
+		__antithesis_instrumentation__.Notify(244565)
 		if err := params.p.removeSequenceDependencies(params.ctx, tableDesc, colToDrop); err != nil {
+			__antithesis_instrumentation__.Notify(244566)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(244567)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(244568)
 	}
+	__antithesis_instrumentation__.Notify(244533)
 
-	// You can't remove a column that owns a sequence that is depended on
-	// by another column
 	if err := params.p.canRemoveAllColumnOwnedSequences(params.ctx, tableDesc, colToDrop, t.DropBehavior); err != nil {
+		__antithesis_instrumentation__.Notify(244569)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244570)
 	}
+	__antithesis_instrumentation__.Notify(244534)
 
-	if err := params.p.dropSequencesOwnedByCol(params.ctx, colToDrop, true /* queueJob */, t.DropBehavior); err != nil {
+	if err := params.p.dropSequencesOwnedByCol(params.ctx, colToDrop, true, t.DropBehavior); err != nil {
+		__antithesis_instrumentation__.Notify(244571)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244572)
 	}
+	__antithesis_instrumentation__.Notify(244535)
 
-	// You can't drop a column depended on by a view unless CASCADE was
-	// specified.
 	for _, ref := range tableDesc.DependedOnBy {
+		__antithesis_instrumentation__.Notify(244573)
 		found := false
 		for _, colID := range ref.ColumnIDs {
+			__antithesis_instrumentation__.Notify(244580)
 			if colID == colToDrop.GetID() {
+				__antithesis_instrumentation__.Notify(244581)
 				found = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(244582)
 			}
 		}
+		__antithesis_instrumentation__.Notify(244574)
 		if !found {
+			__antithesis_instrumentation__.Notify(244583)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(244584)
 		}
+		__antithesis_instrumentation__.Notify(244575)
 		err := params.p.canRemoveDependentViewGeneric(
 			params.ctx, "column", string(t.Column), tableDesc.ParentID, ref, t.DropBehavior,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244585)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(244586)
 		}
+		__antithesis_instrumentation__.Notify(244576)
 		viewDesc, err := params.p.getViewDescForCascade(
 			params.ctx, "column", string(t.Column), tableDesc.ParentID, ref.ID, t.DropBehavior,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244587)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(244588)
 		}
+		__antithesis_instrumentation__.Notify(244577)
 		jobDesc := fmt.Sprintf("removing view %q dependent on column %q which is being dropped",
 			viewDesc.Name, colToDrop.ColName())
 		cascadedViews, err := params.p.removeDependentView(params.ctx, tableDesc, viewDesc, jobDesc)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244589)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(244590)
 		}
+		__antithesis_instrumentation__.Notify(244578)
 		qualifiedView, err := params.p.getQualifiedTableName(params.ctx, viewDesc)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244591)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(244592)
 		}
+		__antithesis_instrumentation__.Notify(244579)
 
 		droppedViews = append(droppedViews, cascadedViews...)
 		droppedViews = append(droppedViews, qualifiedView.FQString())
 	}
+	__antithesis_instrumentation__.Notify(244536)
 
-	// We cannot remove this column if there are computed columns that use it.
 	if err := schemaexpr.ValidateColumnHasNoDependents(tableDesc, colToDrop); err != nil {
+		__antithesis_instrumentation__.Notify(244593)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244594)
 	}
+	__antithesis_instrumentation__.Notify(244537)
 
 	if tableDesc.GetPrimaryIndex().CollectKeyColumnIDs().Contains(colToDrop.GetID()) {
+		__antithesis_instrumentation__.Notify(244595)
 		return nil, pgerror.Newf(pgcode.InvalidColumnReference,
 			"column %q is referenced by the primary key", colToDrop.GetName())
+	} else {
+		__antithesis_instrumentation__.Notify(244596)
 	}
+	__antithesis_instrumentation__.Notify(244538)
 	var idxNamesToDelete []string
 	for _, idx := range tableDesc.NonDropIndexes() {
-		// We automatically drop indexes that reference the column
-		// being dropped.
+		__antithesis_instrumentation__.Notify(244597)
 
-		// containsThisColumn becomes true if the index is defined
-		// over the column being dropped.
 		containsThisColumn := false
 
-		// Analyze the index.
 		for j := 0; j < idx.NumKeyColumns(); j++ {
+			__antithesis_instrumentation__.Notify(244602)
 			if idx.GetKeyColumnID(j) == colToDrop.GetID() {
+				__antithesis_instrumentation__.Notify(244603)
 				containsThisColumn = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(244604)
 			}
 		}
+		__antithesis_instrumentation__.Notify(244598)
 		if !containsThisColumn {
+			__antithesis_instrumentation__.Notify(244605)
 			for j := 0; j < idx.NumKeySuffixColumns(); j++ {
+				__antithesis_instrumentation__.Notify(244606)
 				id := idx.GetKeySuffixColumnID(j)
 				if tableDesc.GetPrimaryIndex().CollectKeyColumnIDs().Contains(id) {
-					// All secondary indices necessary contain the PK
-					// columns, too. (See the comments on the definition of
-					// IndexDescriptor). The presence of a PK column in the
-					// secondary index should thus not be seen as a
-					// sufficient reason to reject the DROP.
-					continue
-				}
-				if id == colToDrop.GetID() {
-					containsThisColumn = true
-					break
-				}
-			}
-		}
-		if !containsThisColumn {
-			// The loop above this comment is for the old STORING encoding. The
-			// loop below is for the new encoding (where the STORING columns are
-			// always in the value part of a KV).
-			for j := 0; j < idx.NumSecondaryStoredColumns(); j++ {
-				if idx.GetStoredColumnID(j) == colToDrop.GetID() {
-					containsThisColumn = true
-					break
-				}
-			}
-		}
+					__antithesis_instrumentation__.Notify(244608)
 
-		// If the column being dropped is referenced in the partial
-		// index predicate, then the index should be dropped.
-		if !containsThisColumn && idx.IsPartial() {
+					continue
+				} else {
+					__antithesis_instrumentation__.Notify(244609)
+				}
+				__antithesis_instrumentation__.Notify(244607)
+				if id == colToDrop.GetID() {
+					__antithesis_instrumentation__.Notify(244610)
+					containsThisColumn = true
+					break
+				} else {
+					__antithesis_instrumentation__.Notify(244611)
+				}
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(244612)
+		}
+		__antithesis_instrumentation__.Notify(244599)
+		if !containsThisColumn {
+			__antithesis_instrumentation__.Notify(244613)
+
+			for j := 0; j < idx.NumSecondaryStoredColumns(); j++ {
+				__antithesis_instrumentation__.Notify(244614)
+				if idx.GetStoredColumnID(j) == colToDrop.GetID() {
+					__antithesis_instrumentation__.Notify(244615)
+					containsThisColumn = true
+					break
+				} else {
+					__antithesis_instrumentation__.Notify(244616)
+				}
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(244617)
+		}
+		__antithesis_instrumentation__.Notify(244600)
+
+		if !containsThisColumn && func() bool {
+			__antithesis_instrumentation__.Notify(244618)
+			return idx.IsPartial() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(244619)
 			expr, err := parser.ParseExpr(idx.GetPredicate())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244622)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(244623)
 			}
+			__antithesis_instrumentation__.Notify(244620)
 
 			colIDs, err := schemaexpr.ExtractColumnIDs(tableDesc, expr)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244624)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(244625)
 			}
+			__antithesis_instrumentation__.Notify(244621)
 
 			if colIDs.Contains(colToDrop.GetID()) {
+				__antithesis_instrumentation__.Notify(244626)
 				containsThisColumn = true
+			} else {
+				__antithesis_instrumentation__.Notify(244627)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(244628)
 		}
+		__antithesis_instrumentation__.Notify(244601)
 
-		// Perform the DROP.
 		if containsThisColumn {
+			__antithesis_instrumentation__.Notify(244629)
 			idxNamesToDelete = append(idxNamesToDelete, idx.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(244630)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244539)
 
 	for _, idxName := range idxNamesToDelete {
+		__antithesis_instrumentation__.Notify(244631)
 		jobDesc := fmt.Sprintf(
 			"removing index %q dependent on column %q which is being dropped; full details: %s",
 			idxName,
@@ -1707,101 +2514,146 @@ func dropColumnImpl(
 			params.ctx, tn, tree.UnrestrictedName(idxName), tableDesc, false,
 			t.DropBehavior, ignoreIdxConstraint, jobDesc,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(244632)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(244633)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244540)
 
-	// Drop unique constraints that reference the column.
 	sliceIdx := 0
 	for i := range tableDesc.UniqueWithoutIndexConstraints {
+		__antithesis_instrumentation__.Notify(244634)
 		constraint := &tableDesc.UniqueWithoutIndexConstraints[i]
 		tableDesc.UniqueWithoutIndexConstraints[sliceIdx] = *constraint
 		sliceIdx++
 		if descpb.ColumnIDs(constraint.ColumnIDs).Contains(colToDrop.GetID()) {
+			__antithesis_instrumentation__.Notify(244635)
 			sliceIdx--
 
-			// If this unique constraint is used on the referencing side of any FK
-			// constraints, try to remove the references. Don't bother trying to find
-			// an alternate index or constraint, since all possible matches will
-			// be dropped when the column is dropped.
 			if err := params.p.tryRemoveFKBackReferences(
 				params.ctx, tableDesc, constraint, t.DropBehavior, nil,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244636)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(244637)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(244638)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244541)
 	tableDesc.UniqueWithoutIndexConstraints = tableDesc.UniqueWithoutIndexConstraints[:sliceIdx]
 
-	// Drop check constraints which reference the column.
 	constraintsToDrop := make([]string, 0, len(tableDesc.Checks))
 	constraintInfo, err := tableDesc.GetConstraintInfo()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244639)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244640)
 	}
+	__antithesis_instrumentation__.Notify(244542)
 
 	for _, check := range tableDesc.AllActiveAndInactiveChecks() {
+		__antithesis_instrumentation__.Notify(244641)
 		if used, err := tableDesc.CheckConstraintUsesColumn(check, colToDrop.GetID()); err != nil {
+			__antithesis_instrumentation__.Notify(244642)
 			return nil, err
-		} else if used {
-			if check.Validity == descpb.ConstraintValidity_Dropping {
-				// We don't need to drop this constraint, its already
-				// in the process.
-				continue
+		} else {
+			__antithesis_instrumentation__.Notify(244643)
+			if used {
+				__antithesis_instrumentation__.Notify(244644)
+				if check.Validity == descpb.ConstraintValidity_Dropping {
+					__antithesis_instrumentation__.Notify(244646)
+
+					continue
+				} else {
+					__antithesis_instrumentation__.Notify(244647)
+				}
+				__antithesis_instrumentation__.Notify(244645)
+				constraintsToDrop = append(constraintsToDrop, check.Name)
+			} else {
+				__antithesis_instrumentation__.Notify(244648)
 			}
-			constraintsToDrop = append(constraintsToDrop, check.Name)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244543)
 
 	for _, constraintName := range constraintsToDrop {
+		__antithesis_instrumentation__.Notify(244649)
 		err := tableDesc.DropConstraint(params.ctx, constraintName, constraintInfo[constraintName],
 			func(*tabledesc.Mutable, *descpb.ForeignKeyConstraint) error {
+				__antithesis_instrumentation__.Notify(244651)
 				return nil
 			},
 			params.extendedEvalCtx.Settings,
 		)
+		__antithesis_instrumentation__.Notify(244650)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244652)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(244653)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244544)
 
 	if err := params.p.removeColumnComment(params.ctx, tableDesc.ID, colToDrop.GetID()); err != nil {
+		__antithesis_instrumentation__.Notify(244654)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244655)
 	}
+	__antithesis_instrumentation__.Notify(244545)
 
-	// Since we are able to drop indexes used by foreign keys on the origin side,
-	// the drop index codepaths aren't going to remove dependent FKs, so we
-	// need to do that here.
-	// We update the FK's slice in place here.
 	sliceIdx = 0
 	for i := range tableDesc.OutboundFKs {
+		__antithesis_instrumentation__.Notify(244656)
 		tableDesc.OutboundFKs[sliceIdx] = tableDesc.OutboundFKs[i]
 		sliceIdx++
 		fk := &tableDesc.OutboundFKs[i]
 		if descpb.ColumnIDs(fk.OriginColumnIDs).Contains(colToDrop.GetID()) {
+			__antithesis_instrumentation__.Notify(244657)
 			sliceIdx--
 			if err := params.p.removeFKBackReference(params.ctx, tableDesc, fk); err != nil {
+				__antithesis_instrumentation__.Notify(244658)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(244659)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(244660)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244546)
 	tableDesc.OutboundFKs = tableDesc.OutboundFKs[:sliceIdx]
 
 	found := false
 	for i := range tableDesc.Columns {
+		__antithesis_instrumentation__.Notify(244661)
 		if tableDesc.Columns[i].ID == colToDrop.GetID() {
+			__antithesis_instrumentation__.Notify(244662)
 			tableDesc.AddColumnMutation(colToDrop.ColumnDesc(), descpb.DescriptorMutation_DROP)
-			// Use [:i:i] to prevent reuse of existing slice, or outstanding refs
-			// to ColumnDescriptors may unexpectedly change.
+
 			tableDesc.Columns = append(tableDesc.Columns[:i:i], tableDesc.Columns[i+1:]...)
 			found = true
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(244663)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244547)
 	if !found {
+		__antithesis_instrumentation__.Notify(244664)
 		return nil, pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 			"column %q in the middle of being added, try again later", t.Column)
+	} else {
+		__antithesis_instrumentation__.Notify(244665)
 	}
+	__antithesis_instrumentation__.Notify(244548)
 
 	return droppedViews, validateDescriptor(params.ctx, params.p, tableDesc)
 }
@@ -1812,12 +2664,22 @@ func handleTTLStorageParamChange(
 	tableDesc *tabledesc.Mutable,
 	before, after *catpb.RowLevelTTL,
 ) error {
+	__antithesis_instrumentation__.Notify(244666)
 	switch {
-	case before == nil && after == nil:
-		// Do not have to do anything here.
-	case before != nil && after != nil:
-		// Update cron schedule if required.
+	case before == nil && func() bool {
+		__antithesis_instrumentation__.Notify(244680)
+		return after == nil == true
+	}() == true:
+		__antithesis_instrumentation__.Notify(244668)
+
+	case before != nil && func() bool {
+		__antithesis_instrumentation__.Notify(244681)
+		return after != nil == true
+	}() == true:
+		__antithesis_instrumentation__.Notify(244669)
+
 		if before.DeletionCron != after.DeletionCron {
+			__antithesis_instrumentation__.Notify(244682)
 			env := JobSchedulerEnv(params.ExecCfg())
 			s, err := jobs.LoadScheduledJob(
 				params.ctx,
@@ -1827,25 +2689,48 @@ func handleTTLStorageParamChange(
 				params.p.txn,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244685)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244686)
 			}
+			__antithesis_instrumentation__.Notify(244683)
 			if err := s.SetSchedule(after.DeletionCronOrDefault()); err != nil {
+				__antithesis_instrumentation__.Notify(244687)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244688)
 			}
+			__antithesis_instrumentation__.Notify(244684)
 			if err := s.Update(params.ctx, params.ExecCfg().InternalExecutor, params.p.txn); err != nil {
+				__antithesis_instrumentation__.Notify(244689)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244690)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(244691)
 		}
-		// Update default expression on automated column if required.
+		__antithesis_instrumentation__.Notify(244670)
+
 		if before.DurationExpr != after.DurationExpr {
+			__antithesis_instrumentation__.Notify(244692)
 			col, err := tableDesc.FindColumnWithName(colinfo.TTLDefaultExpirationColumnName)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244696)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244697)
 			}
+			__antithesis_instrumentation__.Notify(244693)
 			intervalExpr, err := parser.ParseExpr(string(after.DurationExpr))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(244698)
 				return errors.Wrapf(err, "unexpected expression for TTL duration")
+			} else {
+				__antithesis_instrumentation__.Notify(244699)
 			}
+			__antithesis_instrumentation__.Notify(244694)
 			newExpr := rowLevelTTLAutomaticColumnExpr(intervalExpr)
 
 			if err := updateNonComputedColExpr(
@@ -1856,8 +2741,12 @@ func handleTTLStorageParamChange(
 				&col.ColumnDesc().DefaultExpr,
 				"TTL DEFAULT",
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244700)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244701)
 			}
+			__antithesis_instrumentation__.Notify(244695)
 
 			if err := updateNonComputedColExpr(
 				params,
@@ -1867,28 +2756,47 @@ func handleTTLStorageParamChange(
 				&col.ColumnDesc().OnUpdateExpr,
 				"TTL UPDATE",
 			); err != nil {
+				__antithesis_instrumentation__.Notify(244702)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244703)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(244704)
 		}
-	case before == nil && after != nil:
+	case before == nil && func() bool {
+		__antithesis_instrumentation__.Notify(244705)
+		return after != nil == true
+	}() == true:
+		__antithesis_instrumentation__.Notify(244671)
 		if err := checkTTLEnabledForCluster(params.ctx, params.p.ExecCfg().Settings); err != nil {
+			__antithesis_instrumentation__.Notify(244706)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244707)
 		}
+		__antithesis_instrumentation__.Notify(244672)
 
-		// Adding a TTL requires adding the automatic column and deferring the TTL
-		// addition to after the column is successfully added.
 		tableDesc.RowLevelTTL = nil
 		if _, err := tableDesc.FindColumnWithName(colinfo.TTLDefaultExpirationColumnName); err == nil {
+			__antithesis_instrumentation__.Notify(244708)
 			return pgerror.Newf(
 				pgcode.InvalidTableDefinition,
 				"cannot add TTL to table with the %s column already defined",
 				colinfo.TTLDefaultExpirationColumnName,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(244709)
 		}
+		__antithesis_instrumentation__.Notify(244673)
 		col, err := rowLevelTTLAutomaticColumnDef(after)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244710)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244711)
 		}
+		__antithesis_instrumentation__.Notify(244674)
 		addCol := &tree.AlterTableAddColumn{
 			ColumnDef: col,
 		}
@@ -1904,46 +2812,63 @@ func handleTTLStorageParamChange(
 			tableDesc,
 			addCol,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(244712)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244713)
 		}
+		__antithesis_instrumentation__.Notify(244675)
 		tableDesc.AddModifyRowLevelTTLMutation(
 			&descpb.ModifyRowLevelTTL{RowLevelTTL: after},
 			descpb.DescriptorMutation_ADD,
 		)
 		version := params.ExecCfg().Settings.Version.ActiveVersion(params.ctx)
 		if err := tableDesc.AllocateIDs(params.ctx, version); err != nil {
+			__antithesis_instrumentation__.Notify(244714)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244715)
 		}
-	case before != nil && after == nil:
+	case before != nil && func() bool {
+		__antithesis_instrumentation__.Notify(244716)
+		return after == nil == true
+	}() == true:
+		__antithesis_instrumentation__.Notify(244676)
 		telemetry.Inc(sqltelemetry.RowLevelTTLDropped)
 
-		// Keep the TTL from beforehand, but create the DROP COLUMN job and the
-		// associated mutation.
 		tableDesc.RowLevelTTL = before
 
 		droppedViews, err := dropColumnImpl(params, tn, tableDesc, &tree.AlterTableDropColumn{
 			Column: colinfo.TTLDefaultExpirationColumnName,
 		})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(244717)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(244718)
 		}
-		// This should never happen as we do not CASCADE, but error again just in case.
+		__antithesis_instrumentation__.Notify(244677)
+
 		if len(droppedViews) > 0 {
+			__antithesis_instrumentation__.Notify(244719)
 			return pgerror.Newf(pgcode.InvalidParameterValue, "cannot drop TTL automatic column if it is depended on by a view")
+		} else {
+			__antithesis_instrumentation__.Notify(244720)
 		}
+		__antithesis_instrumentation__.Notify(244678)
 
 		tableDesc.AddModifyRowLevelTTLMutation(
 			&descpb.ModifyRowLevelTTL{RowLevelTTL: before},
 			descpb.DescriptorMutation_DROP,
 		)
+	default:
+		__antithesis_instrumentation__.Notify(244679)
 	}
+	__antithesis_instrumentation__.Notify(244667)
 
 	return nil
 }
 
-// tryRemoveFKBackReferences determines whether the provided unique constraint
-// is used on the referencing side of a FK constraint. If so, it tries to remove
-// the references or find an alternate unique constraint that will suffice.
 func (p *planner) tryRemoveFKBackReferences(
 	ctx context.Context,
 	tableDesc *tabledesc.Mutable,
@@ -1951,41 +2876,58 @@ func (p *planner) tryRemoveFKBackReferences(
 	behavior tree.DropBehavior,
 	candidateConstraints []descpb.UniqueConstraint,
 ) error {
-	// uniqueConstraintHasReplacementCandidate runs
-	// IsValidReferencedUniqueConstraint on the candidateConstraints. Returns true
-	// if at least one constraint satisfies IsValidReferencedUniqueConstraint.
+	__antithesis_instrumentation__.Notify(244721)
+
 	uniqueConstraintHasReplacementCandidate := func(
 		referencedColumnIDs []descpb.ColumnID,
 	) bool {
+		__antithesis_instrumentation__.Notify(244724)
 		for _, uc := range candidateConstraints {
+			__antithesis_instrumentation__.Notify(244726)
 			if uc.IsValidReferencedUniqueConstraint(referencedColumnIDs) {
+				__antithesis_instrumentation__.Notify(244727)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(244728)
 			}
 		}
+		__antithesis_instrumentation__.Notify(244725)
 		return false
 	}
+	__antithesis_instrumentation__.Notify(244722)
 
-	// Index for updating the FK slices in place when removing FKs.
 	sliceIdx := 0
 	for i := range tableDesc.InboundFKs {
+		__antithesis_instrumentation__.Notify(244729)
 		tableDesc.InboundFKs[sliceIdx] = tableDesc.InboundFKs[i]
 		sliceIdx++
 		fk := &tableDesc.InboundFKs[i]
-		// The constraint being deleted could potentially be the referenced unique
-		// constraint for this fk.
-		if constraint.IsValidReferencedUniqueConstraint(fk.ReferencedColumnIDs) &&
-			!uniqueConstraintHasReplacementCandidate(fk.ReferencedColumnIDs) {
-			// If we found haven't found a replacement, then we check that the drop
-			// behavior is cascade.
+
+		if constraint.IsValidReferencedUniqueConstraint(fk.ReferencedColumnIDs) && func() bool {
+			__antithesis_instrumentation__.Notify(244730)
+			return !uniqueConstraintHasReplacementCandidate(fk.ReferencedColumnIDs) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(244731)
+
 			if err := p.canRemoveFKBackreference(ctx, constraint.GetName(), fk, behavior); err != nil {
+				__antithesis_instrumentation__.Notify(244733)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244734)
 			}
+			__antithesis_instrumentation__.Notify(244732)
 			sliceIdx--
 			if err := p.removeFKForBackReference(ctx, tableDesc, fk); err != nil {
+				__antithesis_instrumentation__.Notify(244735)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(244736)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(244737)
 		}
 	}
+	__antithesis_instrumentation__.Notify(244723)
 	tableDesc.InboundFKs = tableDesc.InboundFKs[:sliceIdx]
 	return nil
 }

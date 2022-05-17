@@ -8,5 +8,6 @@ go_library(
     deps = [
         "//pkg/ccl/kvccl/kvfollowerreadsccl",
         "//pkg/ccl/kvccl/kvtenantccl",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

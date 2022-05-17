@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scbuildstmt
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"reflect"
@@ -19,33 +11,29 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// supportedStatement tracks metadata for statements that are
-// implemented by the new schema changer.
 type supportedStatement struct {
 	fn             interface{}
 	fullySupported bool
 }
 
-// IsFullySupported returns if this statement type is supported, where the
-// mode of the new schema changer can force unsupported statements to be
-// supported.
 func (s supportedStatement) IsFullySupported(mode sessiondatapb.NewSchemaChangerMode) bool {
-	// If the unsafe modes of the new schema changer are used then any implemented
-	// operation will be exposed.
-	if mode == sessiondatapb.UseNewSchemaChangerUnsafeAlways ||
-		mode == sessiondatapb.UseNewSchemaChangerUnsafe {
+	__antithesis_instrumentation__.Notify(580239)
+
+	if mode == sessiondatapb.UseNewSchemaChangerUnsafeAlways || func() bool {
+		__antithesis_instrumentation__.Notify(580241)
+		return mode == sessiondatapb.UseNewSchemaChangerUnsafe == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(580242)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(580243)
 	}
+	__antithesis_instrumentation__.Notify(580240)
 	return s.fullySupported
 }
 
-// Tracks operations which are fully supported when the declarative schema
-// changer is enabled. Operations marked as non-fully supported can only be
-// with the use_declarative_schema_changer session variable.
 var supportedStatements = map[reflect.Type]supportedStatement{
-	// Alter table will have commands individually whitelisted via the
-	// supportedAlterTableStatements list, so wwe will consider it fully supported
-	// here.
+
 	reflect.TypeOf((*tree.AlterTable)(nil)):   {AlterTable, true},
 	reflect.TypeOf((*tree.CreateIndex)(nil)):  {CreateIndex, false},
 	reflect.TypeOf((*tree.DropDatabase)(nil)): {DropDatabase, true},
@@ -57,7 +45,7 @@ var supportedStatements = map[reflect.Type]supportedStatement{
 }
 
 func init() {
-	// Check function signatures inside the supportedStatements map.
+
 	for statementType, statementEntry := range supportedStatements {
 		callBackType := reflect.TypeOf(statementEntry.fn)
 		if callBackType.Kind() != reflect.Func {
@@ -73,28 +61,36 @@ func init() {
 	}
 }
 
-// Process dispatches on the statement type to populate the BuilderState
-// embedded in the BuildCtx. Any error will be panicked.
 func Process(b BuildCtx, n tree.Statement) {
-	// Check if an entry exists for the statement type, in which
-	// case it is either fully or partially supported.
+	__antithesis_instrumentation__.Notify(580244)
+
 	info, ok := supportedStatements[reflect.TypeOf(n)]
 	if !ok {
+		__antithesis_instrumentation__.Notify(580248)
 		panic(scerrors.NotImplementedError(n))
+	} else {
+		__antithesis_instrumentation__.Notify(580249)
 	}
-	// Check if partially supported operations are allowed next. If an
-	// operation is not fully supported will not allow it to be run in
-	// the declarative schema changer until its fully supported.
+	__antithesis_instrumentation__.Notify(580245)
+
 	if !info.IsFullySupported(b.EvalCtx().SessionData().NewSchemaChangerMode) {
+		__antithesis_instrumentation__.Notify(580250)
 		panic(scerrors.NotImplementedError(n))
+	} else {
+		__antithesis_instrumentation__.Notify(580251)
 	}
-	// Next invoke the callback function, with the concrete types.
+	__antithesis_instrumentation__.Notify(580246)
+
 	fn := reflect.ValueOf(info.fn)
 	in := []reflect.Value{reflect.ValueOf(b), reflect.ValueOf(n)}
-	// Check if the feature flag for it is enabled.
+
 	err := b.CheckFeature(b, tree.GetSchemaFeatureNameFromStmt(n))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580252)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(580253)
 	}
+	__antithesis_instrumentation__.Notify(580247)
 	fn.Call(in)
 }

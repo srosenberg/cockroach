@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpcc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,22 +12,7 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-// 2.8 The Stock-Level Transaction
-//
-// The Stock-Level business transaction determines the number of recently sold
-// items that have a stock level below a specified threshold. It represents a
-// heavy read-only database transaction with a low frequency of execution, a
-// relaxed response time requirement, and relaxed consistency requirements.
-
-// 2.8.2.3 states:
-// Full serializability and repeatable reads are not required for the
-// Stock-Level business transaction. All data read must be committed and no
-// older than the most recently committed data prior to the time this business
-// transaction was initiated. All other ACID properties must be maintained.
-// TODO(jordan): can we take advantage of this?
-
 type stockLevelData struct {
-	// This data must all be returned by the transaction. See 2.8.3.4.
 	dID       int
 	threshold int
 	lowStock  int
@@ -55,6 +32,7 @@ var _ tpccTx = &stockLevel{}
 func createStockLevel(
 	ctx context.Context, config *tpcc, mcp *workload.MultiConnPool,
 ) (tpccTx, error) {
+	__antithesis_instrumentation__.Notify(698306)
 	s := &stockLevel{
 		config: config,
 		mcp:    mcp,
@@ -66,10 +44,6 @@ func createStockLevel(
 		WHERE d_w_id = $1 AND d_id = $2`,
 	)
 
-	// Count the number of recently sold items that have a stock level below
-	// the threshold.
-	// TODO(radu): we use count(DISTINCT s_i_id) because DISTINCT inside
-	// aggregates was not supported by the optimizer. This can be cleaned up.
 	s.countRecentlySold = s.sr.Define(`
 		SELECT count(*) FROM (
 			SELECT DISTINCT s_i_id
@@ -84,17 +58,20 @@ func createStockLevel(
 	)
 
 	if err := s.sr.Init(ctx, "stock-level", mcp, config.connFlags); err != nil {
+		__antithesis_instrumentation__.Notify(698308)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(698309)
 	}
+	__antithesis_instrumentation__.Notify(698307)
 
 	return s, nil
 }
 
 func (s *stockLevel) run(ctx context.Context, wID int) (interface{}, error) {
+	__antithesis_instrumentation__.Notify(698310)
 	rng := rand.New(rand.NewSource(uint64(timeutil.Now().UnixNano())))
 
-	// 2.8.1.2: The threshold of minimum quantity in stock is selected at random
-	// within [10..20].
 	d := stockLevelData{
 		threshold: int(randInt(rng, 10, 20)),
 		dID:       rng.Intn(10) + 1,
@@ -103,20 +80,27 @@ func (s *stockLevel) run(ctx context.Context, wID int) (interface{}, error) {
 	if err := crdbpgx.ExecuteTx(
 		ctx, s.mcp.Get(), s.config.txOpts,
 		func(tx pgx.Tx) error {
+			__antithesis_instrumentation__.Notify(698312)
 			var dNextOID int
 			if err := s.selectDNextOID.QueryRowTx(
 				ctx, tx, wID, d.dID,
 			).Scan(&dNextOID); err != nil {
+				__antithesis_instrumentation__.Notify(698314)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(698315)
 			}
+			__antithesis_instrumentation__.Notify(698313)
 
-			// Count the number of recently sold items that have a stock level below
-			// the threshold.
 			return s.countRecentlySold.QueryRowTx(
 				ctx, tx, wID, d.dID, dNextOID, d.threshold,
 			).Scan(&d.lowStock)
 		}); err != nil {
+		__antithesis_instrumentation__.Notify(698316)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(698317)
 	}
+	__antithesis_instrumentation__.Notify(698311)
 	return d, nil
 }

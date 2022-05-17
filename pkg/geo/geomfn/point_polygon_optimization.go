@@ -1,77 +1,57 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package geomfn
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/geo"
 	"github.com/cockroachdb/errors"
 )
 
-// PointPolygonControlFlowType signals what control flow to follow.
 type PointPolygonControlFlowType int
 
 const (
-	// PPCFCheckNextPolygon signals that the current point should be checked
-	// against the next polygon.
 	PPCFCheckNextPolygon PointPolygonControlFlowType = iota
-	// PPCFSkipToNextPoint signals that the rest of the checking for the current
-	// point can be skipped.
+
 	PPCFSkipToNextPoint
-	// PPCFReturnTrue signals that the function should exit early and return true.
+
 	PPCFReturnTrue
 )
 
-// PointInPolygonEventListener is an interface implemented for each
-// binary predicate making use of the point in polygon optimization
-// to specify the behavior in pointKindRelatesToPolygonKind.
 type PointInPolygonEventListener interface {
-	// OnPointIntersectsPolygon returns whether the function should exit and
-	// return true, skip to the next point, or check the current point against
-	// the next polygon in the case where a point intersects with a polygon.
-	// The strictlyInside param signifies whether the point is strictly inside
-	// or on the boundary of the polygon.
 	OnPointIntersectsPolygon(strictlyInside bool) PointPolygonControlFlowType
-	// OnPointDoesNotIntersect returns whether the function should early exit and
-	// return false in the case where a point does not intersect any polygon.
+
 	ExitIfPointDoesNotIntersect() bool
-	// AfterPointPolygonLoops returns the bool to return after the point-polygon
-	// loops have finished.
+
 	AfterPointPolygonLoops() bool
 }
 
-// For Intersects, at least one point must intersect with at least one polygon.
 type intersectsPIPEventListener struct{}
 
 func (el *intersectsPIPEventListener) OnPointIntersectsPolygon(
 	strictlyInside bool,
 ) PointPolygonControlFlowType {
-	// A single intersection is sufficient.
+	__antithesis_instrumentation__.Notify(62768)
+
 	return PPCFReturnTrue
 }
 
 func (el *intersectsPIPEventListener) ExitIfPointDoesNotIntersect() bool {
+	__antithesis_instrumentation__.Notify(62769)
 	return false
 }
 
 func (el *intersectsPIPEventListener) AfterPointPolygonLoops() bool {
+	__antithesis_instrumentation__.Notify(62770)
 	return false
 }
 
 var _ PointInPolygonEventListener = (*intersectsPIPEventListener)(nil)
 
 func newIntersectsPIPEventListener() *intersectsPIPEventListener {
+	__antithesis_instrumentation__.Notify(62771)
 	return &intersectsPIPEventListener{}
 }
 
-// For CoveredBy, every point must intersect with at least one polygon.
 type coveredByPIPEventListener struct {
 	intersectsOnce bool
 }
@@ -79,28 +59,30 @@ type coveredByPIPEventListener struct {
 func (el *coveredByPIPEventListener) OnPointIntersectsPolygon(
 	strictlyInside bool,
 ) PointPolygonControlFlowType {
-	// If the current point intersects, check the next point.
+	__antithesis_instrumentation__.Notify(62772)
+
 	el.intersectsOnce = true
 	return PPCFSkipToNextPoint
 }
 
 func (el *coveredByPIPEventListener) ExitIfPointDoesNotIntersect() bool {
-	// Each point in a (multi)point must intersect a polygon in the
-	// (multi)point to be covered by it.
+	__antithesis_instrumentation__.Notify(62773)
+
 	return true
 }
 
 func (el *coveredByPIPEventListener) AfterPointPolygonLoops() bool {
+	__antithesis_instrumentation__.Notify(62774)
 	return el.intersectsOnce
 }
 
 var _ PointInPolygonEventListener = (*coveredByPIPEventListener)(nil)
 
 func newCoveredByPIPEventListener() *coveredByPIPEventListener {
+	__antithesis_instrumentation__.Notify(62775)
 	return &coveredByPIPEventListener{intersectsOnce: false}
 }
 
-// For Within, every point must intersect with at least one polygon.
 type withinPIPEventListener struct {
 	insideOnce bool
 }
@@ -108,119 +90,176 @@ type withinPIPEventListener struct {
 func (el *withinPIPEventListener) OnPointIntersectsPolygon(
 	strictlyInside bool,
 ) PointPolygonControlFlowType {
-	// We can only skip to the next point if we have already seen a point
-	// that is inside the (multi)polygon.
+	__antithesis_instrumentation__.Notify(62776)
+
 	if el.insideOnce {
+		__antithesis_instrumentation__.Notify(62779)
 		return PPCFSkipToNextPoint
+	} else {
+		__antithesis_instrumentation__.Notify(62780)
 	}
+	__antithesis_instrumentation__.Notify(62777)
 	if strictlyInside {
+		__antithesis_instrumentation__.Notify(62781)
 		el.insideOnce = true
 		return PPCFSkipToNextPoint
+	} else {
+		__antithesis_instrumentation__.Notify(62782)
 	}
+	__antithesis_instrumentation__.Notify(62778)
 	return PPCFCheckNextPolygon
 }
 
 func (el *withinPIPEventListener) ExitIfPointDoesNotIntersect() bool {
-	// Each point in a (multi)point must intersect a polygon in the
-	// (multi)polygon to be contained within it.
+	__antithesis_instrumentation__.Notify(62783)
+
 	return true
 }
 
 func (el *withinPIPEventListener) AfterPointPolygonLoops() bool {
+	__antithesis_instrumentation__.Notify(62784)
 	return el.insideOnce
 }
 
 var _ PointInPolygonEventListener = (*withinPIPEventListener)(nil)
 
 func newWithinPIPEventListener() *withinPIPEventListener {
+	__antithesis_instrumentation__.Notify(62785)
 	return &withinPIPEventListener{insideOnce: false}
 }
 
-// PointKindIntersectsPolygonKind returns whether a (multi)point
-// and a (multi)polygon intersect.
 func PointKindIntersectsPolygonKind(
 	pointKind geo.Geometry, polygonKind geo.Geometry,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(62786)
 	return pointKindRelatesToPolygonKind(pointKind, polygonKind, newIntersectsPIPEventListener())
 }
 
-// PointKindCoveredByPolygonKind returns whether a (multi)point
-// is covered by a (multi)polygon.
 func PointKindCoveredByPolygonKind(pointKind geo.Geometry, polygonKind geo.Geometry) (bool, error) {
+	__antithesis_instrumentation__.Notify(62787)
 	return pointKindRelatesToPolygonKind(pointKind, polygonKind, newCoveredByPIPEventListener())
 }
 
-// PointKindWithinPolygonKind returns whether a (multi)point
-// is contained within a (multi)polygon.
 func PointKindWithinPolygonKind(pointKind geo.Geometry, polygonKind geo.Geometry) (bool, error) {
+	__antithesis_instrumentation__.Notify(62788)
 	return pointKindRelatesToPolygonKind(pointKind, polygonKind, newWithinPIPEventListener())
 }
 
-// pointKindRelatesToPolygonKind returns whether a (multi)point
-// and a (multi)polygon have the given relationship.
 func pointKindRelatesToPolygonKind(
 	pointKind geo.Geometry, polygonKind geo.Geometry, eventListener PointInPolygonEventListener,
 ) (bool, error) {
-	// Nothing can relate to a NaN coordinate.
-	if BoundingBoxHasNaNCoordinates(pointKind) || BoundingBoxHasNaNCoordinates(polygonKind) {
+	__antithesis_instrumentation__.Notify(62789)
+
+	if BoundingBoxHasNaNCoordinates(pointKind) || func() bool {
+		__antithesis_instrumentation__.Notify(62794)
+		return BoundingBoxHasNaNCoordinates(polygonKind) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(62795)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(62796)
 	}
+	__antithesis_instrumentation__.Notify(62790)
 	pointKindBaseT, err := pointKind.AsGeomT()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(62797)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(62798)
 	}
+	__antithesis_instrumentation__.Notify(62791)
 	polygonKindBaseT, err := polygonKind.AsGeomT()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(62799)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(62800)
 	}
+	__antithesis_instrumentation__.Notify(62792)
 	pointKindIterator := geo.NewGeomTIterator(pointKindBaseT, geo.EmptyBehaviorOmit)
 	polygonKindIterator := geo.NewGeomTIterator(polygonKindBaseT, geo.EmptyBehaviorOmit)
 
-	// Check whether each point intersects with at least one polygon.
-	// The behavior for each predicate is dictated by eventListener.
 pointOuterLoop:
 	for {
+		__antithesis_instrumentation__.Notify(62801)
 		point, hasPoint, err := pointKindIterator.Next()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(62805)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(62806)
 		}
+		__antithesis_instrumentation__.Notify(62802)
 		if !hasPoint {
+			__antithesis_instrumentation__.Notify(62807)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(62808)
 		}
-		// Reset the polygon iterator on each iteration of the point iterator.
+		__antithesis_instrumentation__.Notify(62803)
+
 		polygonKindIterator.Reset()
 		curIntersects := false
 		for {
+			__antithesis_instrumentation__.Notify(62809)
 			polygon, hasPolygon, err := polygonKindIterator.Next()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(62813)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(62814)
 			}
+			__antithesis_instrumentation__.Notify(62810)
 			if !hasPolygon {
+				__antithesis_instrumentation__.Notify(62815)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(62816)
 			}
+			__antithesis_instrumentation__.Notify(62811)
 			pointSide, err := findPointSideOfPolygon(point, polygon)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(62817)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(62818)
 			}
+			__antithesis_instrumentation__.Notify(62812)
 			switch pointSide {
 			case insideLinearRing, onLinearRing:
+				__antithesis_instrumentation__.Notify(62819)
 				curIntersects = true
 				strictlyInside := pointSide == insideLinearRing
 				switch eventListener.OnPointIntersectsPolygon(strictlyInside) {
 				case PPCFCheckNextPolygon:
+					__antithesis_instrumentation__.Notify(62822)
 				case PPCFSkipToNextPoint:
+					__antithesis_instrumentation__.Notify(62823)
 					continue pointOuterLoop
 				case PPCFReturnTrue:
+					__antithesis_instrumentation__.Notify(62824)
 					return true, nil
+				default:
+					__antithesis_instrumentation__.Notify(62825)
 				}
 			case outsideLinearRing:
+				__antithesis_instrumentation__.Notify(62820)
 			default:
+				__antithesis_instrumentation__.Notify(62821)
 				return false, errors.AssertionFailedf("findPointSideOfPolygon returned unknown linearRingSide %d", pointSide)
 			}
 		}
-		if !curIntersects && eventListener.ExitIfPointDoesNotIntersect() {
+		__antithesis_instrumentation__.Notify(62804)
+		if !curIntersects && func() bool {
+			__antithesis_instrumentation__.Notify(62826)
+			return eventListener.ExitIfPointDoesNotIntersect() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(62827)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(62828)
 		}
 	}
+	__antithesis_instrumentation__.Notify(62793)
 	return eventListener.AfterPointPolygonLoops(), nil
 }

@@ -5,6 +5,7 @@ go_library(
     srcs = ["enum.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/enum",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -15,6 +16,7 @@ go_test(
     deps = [
         "//pkg/util/leaktest",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

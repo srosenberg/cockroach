@@ -23,6 +23,7 @@ go_library(
         "//pkg/sql/catalog/catpb",
         "//pkg/sql/catalog/descpb",
         "//pkg/sql/schemachanger/scpb",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 

@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package security
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"crypto"
@@ -24,33 +16,28 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Utility to generate x509 certificates, both CA and not.
-// This is mostly based on http://golang.org/src/crypto/tls/generate_cert.go
-// Most fields and settings are hard-coded. TODO(marc): allow customization.
-
 const (
-	// Make certs valid a day before to handle clock issues, specifically
-	// boot2docker: https://github.com/boot2docker/boot2docker/issues/69
 	validFrom     = -time.Hour * 24
 	maxPathLength = 1
 	caCommonName  = "Cockroach CA"
 
-	// TenantsOU is the OrganizationalUnit that determines a client certificate should be treated as a tenant client
-	// certificate (as opposed to a KV node client certificate).
 	TenantsOU = "Tenants"
 )
 
-// newTemplate returns a partially-filled template.
-// It should be further populated based on whether the cert is for a CA or node.
 func newTemplate(
 	commonName string, lifetime time.Duration, orgUnits ...string,
 ) (*x509.Certificate, error) {
-	// Generate a random serial number.
+	__antithesis_instrumentation__.Notify(187421)
+
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187423)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187424)
 	}
+	__antithesis_instrumentation__.Notify(187422)
 
 	now := timeutil.Now()
 	notBefore := now.Add(validFrom)
@@ -72,15 +59,17 @@ func newTemplate(
 	return cert, nil
 }
 
-// GenerateCA generates a CA certificate and signs it using the signer (a private key).
-// It returns the DER-encoded certificate.
 func GenerateCA(signer crypto.Signer, lifetime time.Duration) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(187425)
 	template, err := newTemplate(caCommonName, lifetime)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187428)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187429)
 	}
+	__antithesis_instrumentation__.Notify(187426)
 
-	// Set CA-specific fields.
 	template.BasicConstraintsValid = true
 	template.IsCA = true
 	template.MaxPathLen = maxPathLength
@@ -94,19 +83,31 @@ func GenerateCA(signer crypto.Signer, lifetime time.Duration) ([]byte, error) {
 		signer.Public(),
 		signer)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187430)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187431)
 	}
+	__antithesis_instrumentation__.Notify(187427)
 
 	return certBytes, nil
 }
 
 func checkLifetimeAgainstCA(cert, ca *x509.Certificate) error {
-	if ca.NotAfter.After(cert.NotAfter) || ca.NotAfter.Equal(cert.NotAfter) {
+	__antithesis_instrumentation__.Notify(187432)
+	if ca.NotAfter.After(cert.NotAfter) || func() bool {
+		__antithesis_instrumentation__.Notify(187434)
+		return ca.NotAfter.Equal(cert.NotAfter) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(187435)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(187436)
 	}
+	__antithesis_instrumentation__.Notify(187433)
 
 	now := timeutil.Now()
-	// Truncate the lifetime to round hours, the maximum "pretty" duration.
+
 	niceCALifetime := ca.NotAfter.Sub(now).Hours()
 	niceCertLifetime := cert.NotAfter.Sub(now).Hours()
 	return errors.Errorf("CA lifetime is %fh, shorter than the requested %fh. "+
@@ -114,9 +115,6 @@ func checkLifetimeAgainstCA(cert, ca *x509.Certificate) error {
 		niceCALifetime, niceCertLifetime, int64(niceCALifetime))
 }
 
-// GenerateServerCert generates a server certificate and returns the cert bytes.
-// Takes in the CA cert and private key, the node public key, the certificate lifetime,
-// and the list of hosts/ip addresses this certificate applies to.
 func GenerateServerCert(
 	caCert *x509.Certificate,
 	caPrivateKey crypto.PrivateKey,
@@ -125,42 +123,54 @@ func GenerateServerCert(
 	user SQLUsername,
 	hosts []string,
 ) ([]byte, error) {
-	// Create template for user.
+	__antithesis_instrumentation__.Notify(187437)
+
 	template, err := newTemplate(user.Normalized(), lifetime)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187441)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187442)
 	}
+	__antithesis_instrumentation__.Notify(187438)
 
-	// Don't issue certificates that outlast the CA cert.
 	if err := checkLifetimeAgainstCA(template, caCert); err != nil {
+		__antithesis_instrumentation__.Notify(187443)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187444)
 	}
+	__antithesis_instrumentation__.Notify(187439)
 
-	// Both server and client authentication are allowed (for inter-node RPC).
 	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
 	addHostsToTemplate(template, hosts)
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, caCert, nodePublicKey, caPrivateKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187445)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187446)
 	}
+	__antithesis_instrumentation__.Notify(187440)
 
 	return certBytes, nil
 }
 
 func addHostsToTemplate(template *x509.Certificate, hosts []string) {
+	__antithesis_instrumentation__.Notify(187447)
 	for _, h := range hosts {
+		__antithesis_instrumentation__.Notify(187448)
 		if ip := net.ParseIP(h); ip != nil {
+			__antithesis_instrumentation__.Notify(187449)
 			template.IPAddresses = append(template.IPAddresses, ip)
 		} else {
+			__antithesis_instrumentation__.Notify(187450)
 			template.DNSNames = append(template.DNSNames, h)
 		}
 	}
 }
 
-// GenerateUIServerCert generates a server certificate for the Admin UI and returns the cert bytes.
-// Takes in the CA cert and private key, the UI cert public key, the certificate lifetime,
-// and the list of hosts/ip addresses this certificate applies to.
 func GenerateUIServerCert(
 	caCert *x509.Certificate,
 	caPrivateKey crypto.PrivateKey,
@@ -168,35 +178,40 @@ func GenerateUIServerCert(
 	lifetime time.Duration,
 	hosts []string,
 ) ([]byte, error) {
-	// Use the first host as the CN. We still place all in the alternative subject name.
+	__antithesis_instrumentation__.Notify(187451)
+
 	template, err := newTemplate(hosts[0], lifetime)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187455)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187456)
 	}
+	__antithesis_instrumentation__.Notify(187452)
 
-	// Don't issue certificates that outlast the CA cert.
 	if err := checkLifetimeAgainstCA(template, caCert); err != nil {
+		__antithesis_instrumentation__.Notify(187457)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187458)
 	}
+	__antithesis_instrumentation__.Notify(187453)
 
-	// Only server authentication is allowed.
 	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 	addHostsToTemplate(template, hosts)
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, caCert, certPublicKey, caPrivateKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187459)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187460)
 	}
+	__antithesis_instrumentation__.Notify(187454)
 
 	return certBytes, nil
 }
 
-// GenerateTenantCert generates a tenant client certificate and returns the cert bytes.
-// Takes in the CA cert and private key, the tenant client public key, the certificate lifetime,
-// and the tenant id.
-//
-// Tenant client certificates add OU=Tenants in the subject field to prevent
-// using them as user certificates.
 func GenerateTenantCert(
 	caCert *x509.Certificate,
 	caPrivateKey crypto.PrivateKey,
@@ -205,42 +220,48 @@ func GenerateTenantCert(
 	tenantID uint64,
 	hosts []string,
 ) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(187461)
 
 	if tenantID == 0 {
+		__antithesis_instrumentation__.Notify(187466)
 		return nil, errors.Errorf("tenantId %d is invalid (requires != 0)", tenantID)
+	} else {
+		__antithesis_instrumentation__.Notify(187467)
 	}
+	__antithesis_instrumentation__.Notify(187462)
 
-	// Create template for user.
 	template, err := newTemplate(fmt.Sprintf("%d", tenantID), lifetime, TenantsOU)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187468)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187469)
 	}
+	__antithesis_instrumentation__.Notify(187463)
 
-	// Don't issue certificates that outlast the CA cert.
 	if err := checkLifetimeAgainstCA(template, caCert); err != nil {
+		__antithesis_instrumentation__.Notify(187470)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187471)
 	}
+	__antithesis_instrumentation__.Notify(187464)
 
-	// Set client-specific fields.
-	// Client authentication to authenticate to KV nodes.
-	// Server authentication to authenticate to other SQL servers.
 	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 	addHostsToTemplate(template, hosts)
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, caCert, clientPublicKey, caPrivateKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187472)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187473)
 	}
+	__antithesis_instrumentation__.Notify(187465)
 
 	return certBytes, nil
 }
 
-// GenerateClientCert generates a client certificate and returns the cert bytes.
-// Takes in the CA cert and private key, the client public key, the certificate lifetime,
-// and the username.
-//
-// This is used both for vanilla CockroachDB user client certs as well as for the
-// multi-tenancy KV auth broker (in which case the user is a SQL tenant).
 func GenerateClientCert(
 	caCert *x509.Certificate,
 	caPrivateKey crypto.PrivateKey,
@@ -248,52 +269,63 @@ func GenerateClientCert(
 	lifetime time.Duration,
 	user SQLUsername,
 ) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(187474)
 
-	// TODO(marc): should we add extra checks?
 	if user.Undefined() {
+		__antithesis_instrumentation__.Notify(187479)
 		return nil, errors.Errorf("user cannot be empty")
+	} else {
+		__antithesis_instrumentation__.Notify(187480)
 	}
+	__antithesis_instrumentation__.Notify(187475)
 
-	// Create template for user.
 	template, err := newTemplate(user.Normalized(), lifetime)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187481)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187482)
 	}
+	__antithesis_instrumentation__.Notify(187476)
 
-	// Don't issue certificates that outlast the CA cert.
 	if err := checkLifetimeAgainstCA(template, caCert); err != nil {
+		__antithesis_instrumentation__.Notify(187483)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187484)
 	}
+	__antithesis_instrumentation__.Notify(187477)
 
-	// Set client-specific fields.
-	// Client authentication only.
 	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, caCert, clientPublicKey, caPrivateKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187485)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187486)
 	}
+	__antithesis_instrumentation__.Notify(187478)
 
 	return certBytes, nil
 }
 
-// GenerateTenantSigningCert generates a signing certificate and returns the
-// cert bytes. Takes in the signing keypair and the certificate lifetime.
 func GenerateTenantSigningCert(
 	publicKey crypto.PublicKey, privateKey crypto.PrivateKey, lifetime time.Duration, tenantID uint64,
 ) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(187487)
 	now := timeutil.Now()
 	template := &x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: fmt.Sprintf("Tenant %d Token Signing Certificate", tenantID),
 		},
-		SerialNumber:          big.NewInt(1), // The serial number does not matter because we are not using a certificate authority.
+		SerialNumber:          big.NewInt(1),
 		BasicConstraintsValid: true,
-		IsCA:                  false, // This certificate CANNOT sign other certificates.
+		IsCA:                  false,
 		PublicKey:             publicKey,
 		NotBefore:             now.Add(validFrom),
 		NotAfter:              now.Add(lifetime),
-		KeyUsage:              x509.KeyUsageDigitalSignature, // This certificate can ONLY make signatures.
+		KeyUsage:              x509.KeyUsageDigitalSignature,
 	}
 
 	certBytes, err := x509.CreateCertificate(
@@ -303,8 +335,12 @@ func GenerateTenantSigningCert(
 		publicKey,
 		privateKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187489)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187490)
 	}
+	__antithesis_instrumentation__.Notify(187488)
 
 	return certBytes, nil
 }

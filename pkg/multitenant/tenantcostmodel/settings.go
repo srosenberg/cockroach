@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tenantcostmodel
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -16,15 +8,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/settings"
 )
 
-// Settings for the cost model parameters. These determine the values for a
-// Config, though not directly (some settings have user-friendlier units).
-//
-// The KV operation parameters are set based on experiments, where 1000 Request
-// Units correspond to one CPU second of usage on the host cluster.
-//
-// TODO(radu): these settings are not currently used on the tenant side; there,
-// only the defaults are used. Ideally, the tenant would always get the values
-// from the host cluster.
 var (
 	readRequestCost = settings.RegisterFloatSetting(
 		settings.TenantReadOnly,
@@ -74,7 +57,6 @@ var (
 		settings.PositiveFloat,
 	)
 
-	// List of config settings, used by SetOnChange.
 	configSettings = [...]settings.NonMaskedSetting{
 		readRequestCost,
 		readCostPerMB,
@@ -87,8 +69,8 @@ var (
 
 const perMBToPerByte = float64(1) / (1024 * 1024)
 
-// ConfigFromSettings constructs a Config using the cluster setting values.
 func ConfigFromSettings(sv *settings.Values) Config {
+	__antithesis_instrumentation__.Notify(128787)
 	return Config{
 		KVReadRequest:    RU(readRequestCost.Get(sv)),
 		KVReadByte:       RU(readCostPerMB.Get(sv) * perMBToPerByte),
@@ -99,9 +81,8 @@ func ConfigFromSettings(sv *settings.Values) Config {
 	}
 }
 
-// DefaultConfig returns the configuration that corresponds to the default
-// setting values.
 func DefaultConfig() Config {
+	__antithesis_instrumentation__.Notify(128788)
 	return Config{
 		KVReadRequest:    RU(readRequestCost.Default()),
 		KVReadByte:       RU(readCostPerMB.Default() * perMBToPerByte),
@@ -112,12 +93,10 @@ func DefaultConfig() Config {
 	}
 }
 
-// SetOnChange installs a callback that is run whenever a cost model cluster
-// setting changes.
-//
-// It calls SetOnChange on the relevant cluster settings.
 func SetOnChange(sv *settings.Values, fn func(context.Context)) {
+	__antithesis_instrumentation__.Notify(128789)
 	for _, s := range configSettings {
+		__antithesis_instrumentation__.Notify(128790)
 		s.SetOnChange(sv, fn)
 	}
 }

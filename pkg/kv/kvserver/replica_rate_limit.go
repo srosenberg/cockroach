@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -17,25 +9,41 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 )
 
-// maybeRateLimitBatch may block the batch waiting to be rate-limited. Note that
-// the replica must be initialized and thus there is no synchronization issue
-// on the tenantRateLimiter.
 func (r *Replica) maybeRateLimitBatch(ctx context.Context, ba *roachpb.BatchRequest) error {
+	__antithesis_instrumentation__.Notify(120122)
 	if r.tenantLimiter == nil {
+		__antithesis_instrumentation__.Notify(120125)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(120126)
 	}
+	__antithesis_instrumentation__.Notify(120123)
 	tenantID, ok := roachpb.TenantFromContext(ctx)
-	if !ok || tenantID == roachpb.SystemTenantID {
+	if !ok || func() bool {
+		__antithesis_instrumentation__.Notify(120127)
+		return tenantID == roachpb.SystemTenantID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(120128)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(120129)
 	}
+	__antithesis_instrumentation__.Notify(120124)
 	return r.tenantLimiter.Wait(ctx, tenantcostmodel.MakeRequestInfo(ba))
 }
 
-// recordImpactOnRateLimiter is used to record a read against the tenant rate limiter.
 func (r *Replica) recordImpactOnRateLimiter(ctx context.Context, br *roachpb.BatchResponse) {
-	if r.tenantLimiter == nil || br == nil {
+	__antithesis_instrumentation__.Notify(120130)
+	if r.tenantLimiter == nil || func() bool {
+		__antithesis_instrumentation__.Notify(120132)
+		return br == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(120133)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(120134)
 	}
+	__antithesis_instrumentation__.Notify(120131)
 
 	r.tenantLimiter.RecordRead(ctx, tenantcostmodel.MakeResponseInfo(br))
 }

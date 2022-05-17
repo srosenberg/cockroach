@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package examples
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"encoding/hex"
@@ -27,14 +19,13 @@ var introMeta = workload.Meta{
 	Description:  `Intro contains a single table with a hidden message`,
 	Version:      `1.0.0`,
 	PublicFacing: true,
-	New:          func() workload.Generator { return intro{} },
+	New:          func() workload.Generator { __antithesis_instrumentation__.Notify(694052); return intro{} },
 }
 
-// Meta implements the Generator interface.
-func (intro) Meta() workload.Meta { return introMeta }
+func (intro) Meta() workload.Meta { __antithesis_instrumentation__.Notify(694053); return introMeta }
 
-// Tables implements the Generator interface.
 func (intro) Tables() []workload.Table {
+	__antithesis_instrumentation__.Notify(694054)
 	return []workload.Table{
 		{
 			Name:   `mytable`,
@@ -42,13 +33,17 @@ func (intro) Tables() []workload.Table {
 			InitialRows: workload.Tuples(
 				len(mytableRows),
 				func(rowIdx int) []interface{} {
-					// The second datum in mytableRows is a hex encoded string, but
-					// we want to hand it back as bytes.
+					__antithesis_instrumentation__.Notify(694055)
+
 					row := mytableRows[rowIdx]
 					bytes, err := hex.DecodeString(row[1].(string))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(694057)
 						panic(err)
+					} else {
+						__antithesis_instrumentation__.Notify(694058)
 					}
+					__antithesis_instrumentation__.Notify(694056)
 					return []interface{}{row[0], bytes}
 				},
 			),

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvcoord
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,12 +10,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 )
 
-// txnMetricRecorder is a txnInterceptor in charge of updating metrics about
-// the behavior and outcome of a transaction. It records information about the
-// requests that a transaction sends and updates counters and histograms when
-// the transaction completes.
-//
-// TODO(nvanbenschoten): Unit test this file.
 type txnMetricRecorder struct {
 	wrapped lockedSender
 	metrics *TxnMetrics
@@ -35,94 +21,127 @@ type txnMetricRecorder struct {
 	parallelCommit bool
 }
 
-// SendLocked is part of the txnInterceptor interface.
 func (m *txnMetricRecorder) SendLocked(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(88727)
 	if m.txnStartNanos == 0 {
+		__antithesis_instrumentation__.Notify(88731)
 		m.txnStartNanos = timeutil.Now().UnixNano()
+	} else {
+		__antithesis_instrumentation__.Notify(88732)
 	}
+	__antithesis_instrumentation__.Notify(88728)
 
 	br, pErr := m.wrapped.SendLocked(ctx, ba)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(88733)
 		return br, pErr
+	} else {
+		__antithesis_instrumentation__.Notify(88734)
 	}
+	__antithesis_instrumentation__.Notify(88729)
 
 	if length := len(br.Responses); length > 0 {
+		__antithesis_instrumentation__.Notify(88735)
 		if et := br.Responses[length-1].GetEndTxn(); et != nil {
-			// Check for 1-phase commit.
+			__antithesis_instrumentation__.Notify(88736)
+
 			m.onePCCommit = et.OnePhaseCommit
 
-			// Check for parallel commit.
 			m.parallelCommit = !et.StagingTimestamp.IsEmpty()
+		} else {
+			__antithesis_instrumentation__.Notify(88737)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(88738)
 	}
+	__antithesis_instrumentation__.Notify(88730)
 	return br, nil
 }
 
-// setWrapped is part of the txnInterceptor interface.
-func (m *txnMetricRecorder) setWrapped(wrapped lockedSender) { m.wrapped = wrapped }
+func (m *txnMetricRecorder) setWrapped(wrapped lockedSender) {
+	__antithesis_instrumentation__.Notify(88739)
+	m.wrapped = wrapped
+}
 
-// populateLeafInputState is part of the txnInterceptor interface.
-func (*txnMetricRecorder) populateLeafInputState(*roachpb.LeafTxnInputState) {}
+func (*txnMetricRecorder) populateLeafInputState(*roachpb.LeafTxnInputState) {
+	__antithesis_instrumentation__.Notify(88740)
+}
 
-// populateLeafFinalState is part of the txnInterceptor interface.
-func (*txnMetricRecorder) populateLeafFinalState(*roachpb.LeafTxnFinalState) {}
+func (*txnMetricRecorder) populateLeafFinalState(*roachpb.LeafTxnFinalState) {
+	__antithesis_instrumentation__.Notify(88741)
+}
 
-// importLeafFinalState is part of the txnInterceptor interface.
-func (*txnMetricRecorder) importLeafFinalState(context.Context, *roachpb.LeafTxnFinalState) {}
+func (*txnMetricRecorder) importLeafFinalState(context.Context, *roachpb.LeafTxnFinalState) {
+	__antithesis_instrumentation__.Notify(88742)
+}
 
-// epochBumpedLocked is part of the txnInterceptor interface.
-func (*txnMetricRecorder) epochBumpedLocked() {}
+func (*txnMetricRecorder) epochBumpedLocked() { __antithesis_instrumentation__.Notify(88743) }
 
-// createSavepointLocked is part of the txnInterceptor interface.
-func (*txnMetricRecorder) createSavepointLocked(context.Context, *savepoint) {}
+func (*txnMetricRecorder) createSavepointLocked(context.Context, *savepoint) {
+	__antithesis_instrumentation__.Notify(88744)
+}
 
-// rollbackToSavepointLocked is part of the txnInterceptor interface.
-func (*txnMetricRecorder) rollbackToSavepointLocked(context.Context, savepoint) {}
+func (*txnMetricRecorder) rollbackToSavepointLocked(context.Context, savepoint) {
+	__antithesis_instrumentation__.Notify(88745)
+}
 
-// closeLocked is part of the txnInterceptor interface.
 func (m *txnMetricRecorder) closeLocked() {
+	__antithesis_instrumentation__.Notify(88746)
 	if m.onePCCommit {
+		__antithesis_instrumentation__.Notify(88751)
 		m.metrics.Commits1PC.Inc(1)
+	} else {
+		__antithesis_instrumentation__.Notify(88752)
 	}
+	__antithesis_instrumentation__.Notify(88747)
 	if m.parallelCommit {
+		__antithesis_instrumentation__.Notify(88753)
 		m.metrics.ParallelCommits.Inc(1)
+	} else {
+		__antithesis_instrumentation__.Notify(88754)
 	}
+	__antithesis_instrumentation__.Notify(88748)
 
 	if m.txnStartNanos != 0 {
+		__antithesis_instrumentation__.Notify(88755)
 		duration := timeutil.Now().UnixNano() - m.txnStartNanos
 		if duration >= 0 {
+			__antithesis_instrumentation__.Notify(88756)
 			m.metrics.Durations.RecordValue(duration)
+		} else {
+			__antithesis_instrumentation__.Notify(88757)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(88758)
 	}
+	__antithesis_instrumentation__.Notify(88749)
 	restarts := int64(m.txn.Epoch)
 	status := m.txn.Status
 
-	// TODO(andrei): We only record txn that had any restarts, otherwise the
-	// serialization induced by the histogram shows on profiles. Figure something
-	// out to make it cheaper - maybe augment the histogram library with an
-	// "expected value" that is a cheap counter for the common case. See #30644.
-	// Also, the epoch is not currently an accurate count since we sometimes bump
-	// it artificially (in the parallel execution queue).
 	if restarts > 0 {
+		__antithesis_instrumentation__.Notify(88759)
 		m.metrics.Restarts.RecordValue(restarts)
+	} else {
+		__antithesis_instrumentation__.Notify(88760)
 	}
+	__antithesis_instrumentation__.Notify(88750)
 	switch status {
 	case roachpb.ABORTED:
+		__antithesis_instrumentation__.Notify(88761)
 		m.metrics.Aborts.Inc(1)
 	case roachpb.PENDING:
-		// NOTE(andrei): Getting a PENDING status here is possible when this
-		// interceptor is closed without a rollback ever succeeding.
-		// We increment the Aborts metric nevertheless; not sure how these
-		// transactions should be accounted.
+		__antithesis_instrumentation__.Notify(88762)
+
 		m.metrics.Aborts.Inc(1)
-		// Record failed aborts separately as in this case EndTxn never succeeded
-		// which means intents are left for subsequent cleanup by reader.
+
 		m.metrics.RollbacksFailed.Inc(1)
 	case roachpb.COMMITTED:
-		// Note that successful read-only txn are also counted as committed, even
-		// though they never had a txn record.
+		__antithesis_instrumentation__.Notify(88763)
+
 		m.metrics.Commits.Inc(1)
+	default:
+		__antithesis_instrumentation__.Notify(88764)
 	}
 }

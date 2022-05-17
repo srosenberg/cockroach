@@ -1,29 +1,25 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package clicfg
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "fmt"
 
-// PrintlnUnlessEmbedded is like fmt.Println except that nothing is printed if
-// EmbeddedMode is set.
 func (cliCtx *Context) PrintlnUnlessEmbedded(args ...interface{}) {
+	__antithesis_instrumentation__.Notify(28149)
 	if !cliCtx.EmbeddedMode {
+		__antithesis_instrumentation__.Notify(28150)
 		fmt.Println(args...)
+	} else {
+		__antithesis_instrumentation__.Notify(28151)
 	}
 }
 
-// PrintfUnlessEmbedded is like fmt.Printf except that nothing is printed if
-// EmbeddedMode is set.
 func (cliCtx *Context) PrintfUnlessEmbedded(f string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(28152)
 	if !cliCtx.EmbeddedMode {
+		__antithesis_instrumentation__.Notify(28153)
 		fmt.Printf(f, args...)
+	} else {
+		__antithesis_instrumentation__.Notify(28154)
 	}
 }

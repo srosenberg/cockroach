@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,12 +16,16 @@ import (
 )
 
 func registerPebbleWriteThroughput(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(49667)
 	pebble := os.Getenv("PEBBLE_BIN")
 	if pebble == "" {
+		__antithesis_instrumentation__.Notify(49669)
 		pebble = "./pebble.linux"
+	} else {
+		__antithesis_instrumentation__.Notify(49670)
 	}
+	__antithesis_instrumentation__.Notify(49668)
 
-	// Register the Pebble write benchmark. We only run the 1024 variant for now.
 	size := 1024
 	r.Add(registry.TestSpec{
 		Name:    fmt.Sprintf("pebble/write/size=%d", size),
@@ -38,15 +34,16 @@ func registerPebbleWriteThroughput(r registry.Registry) {
 		Cluster: r.MakeClusterSpec(5, spec.CPU(16), spec.SSD(16), spec.RAID0(true)),
 		Tags:    []string{"pebble_nightly_write"},
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(49671)
 			runPebbleWriteBenchmark(ctx, t, c, size, pebble)
 		},
 	})
 }
 
-// runPebbleWriteBenchmark runs the Pebble write benchmark.
 func runPebbleWriteBenchmark(
 	ctx context.Context, t test.Test, c cluster.Cluster, size int, bin string,
 ) {
+	__antithesis_instrumentation__.Notify(49672)
 	c.Put(ctx, bin, "./pebble")
 
 	const (
@@ -72,14 +69,22 @@ func runPebbleWriteBenchmark(
 
 	dest := filepath.Join(t.ArtifactsDir(), "write.log")
 	if err := c.Get(ctx, t.L(), "write.log", dest, c.All()); err != nil {
+		__antithesis_instrumentation__.Notify(49675)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(49676)
 	}
+	__antithesis_instrumentation__.Notify(49673)
 
 	profilesName := "profiles.tar"
 	dest = filepath.Join(t.ArtifactsDir(), profilesName)
 	if err := c.Get(ctx, t.L(), profilesName, dest, c.All()); err != nil {
+		__antithesis_instrumentation__.Notify(49677)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(49678)
 	}
+	__antithesis_instrumentation__.Notify(49674)
 
 	runPebbleCmd(ctx, t, c, "rm -fr *.prof")
 }

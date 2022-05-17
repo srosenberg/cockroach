@@ -9,5 +9,6 @@ go_test(
         "//pkg/server",
         "//pkg/testutils/serverutils",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -25,19 +17,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TODO(knz): this struct belongs elsewhere.
-// See: https://github.com/cockroachdb/cockroach/issues/49509
 var debugSendKVBatchContext = struct {
-	// Whether to request verbose tracing and which
-	// format to use to emit the trace.
 	traceFormat string
-	// The output file to use.
+
 	traceFile string
-	// Whether to preserve the collected spans in the batch response.
+
 	keepCollectedSpans bool
 }{}
 
 func setDebugSendKVBatchContextDefaults() {
+	__antithesis_instrumentation__.Notify(31649)
 	debugSendKVBatchContext.traceFormat = "off"
 	debugSendKVBatchContext.traceFile = ""
 	debugSendKVBatchContext.keepCollectedSpans = false
@@ -102,124 +91,182 @@ func TestSendKVBatchExample(t *testing.T) {
 }
 
 func runSendKVBatch(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(31650)
 	enableTracing := false
 	fmtJaeger := false
 	switch debugSendKVBatchContext.traceFormat {
 	case "on", "text":
-		// NB: even though the canonical value is "text", it's a common
-		// mistake to use "on" instead. Let's be friendly to mistakes.
+		__antithesis_instrumentation__.Notify(31662)
+
 		enableTracing = true
 		fmtJaeger = false
 	case "jaeger":
+		__antithesis_instrumentation__.Notify(31663)
 		enableTracing = true
 		fmtJaeger = true
 	case "off":
+		__antithesis_instrumentation__.Notify(31664)
 	default:
+		__antithesis_instrumentation__.Notify(31665)
 		return errors.New("unknown --trace value")
 	}
+	__antithesis_instrumentation__.Notify(31651)
 	var traceFile *os.File
 	if enableTracing {
+		__antithesis_instrumentation__.Notify(31666)
 		fileName := debugSendKVBatchContext.traceFile
 		if fileName == "" {
-			// We use stderr by default so that the user can redirect the
-			// response (on stdout) from the trace (on stderr) to different
-			// files.
+			__antithesis_instrumentation__.Notify(31667)
+
 			traceFile = stderr
 		} else {
+			__antithesis_instrumentation__.Notify(31668)
 			var err error
 			traceFile, err = os.OpenFile(
 				fileName,
 				os.O_TRUNC|os.O_CREATE|os.O_WRONLY,
-				// Note: traces can contain sensitive information so we ensure
-				// new trace files are created user-readable.
+
 				0600)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(31670)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(31671)
 			}
+			__antithesis_instrumentation__.Notify(31669)
 			defer func() {
+				__antithesis_instrumentation__.Notify(31672)
 				if err := traceFile.Close(); err != nil {
+					__antithesis_instrumentation__.Notify(31673)
 					fmt.Fprintf(stderr, "warning: error while closing trace output: %v\n", err)
+				} else {
+					__antithesis_instrumentation__.Notify(31674)
 				}
 			}()
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(31675)
 	}
+	__antithesis_instrumentation__.Notify(31652)
 
 	jsonpb := protoutil.JSONPb{Indent: "  "}
 
-	// Parse and validate BatchRequest JSON.
 	var baJSON []byte
 	var err error
 	if len(args) > 0 {
+		__antithesis_instrumentation__.Notify(31676)
 		baJSON, err = ioutil.ReadFile(args[0])
 	} else {
+		__antithesis_instrumentation__.Notify(31677)
 		baJSON, err = ioutil.ReadAll(os.Stdin)
 	}
+	__antithesis_instrumentation__.Notify(31653)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31678)
 		return errors.Wrapf(err, "failed to read input")
+	} else {
+		__antithesis_instrumentation__.Notify(31679)
 	}
+	__antithesis_instrumentation__.Notify(31654)
 
 	var ba roachpb.BatchRequest
 	if err := jsonpb.Unmarshal(baJSON, &ba); err != nil {
+		__antithesis_instrumentation__.Notify(31680)
 		return errors.Wrap(err, "invalid JSON")
+	} else {
+		__antithesis_instrumentation__.Notify(31681)
 	}
+	__antithesis_instrumentation__.Notify(31655)
 
 	if len(ba.Requests) == 0 {
+		__antithesis_instrumentation__.Notify(31682)
 		return errors.New("BatchRequest contains no requests")
+	} else {
+		__antithesis_instrumentation__.Notify(31683)
 	}
+	__antithesis_instrumentation__.Notify(31656)
 
-	// Send BatchRequest.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	conn, _, finish, err := getClientGRPCConn(ctx, serverCfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31684)
 		return errors.Wrap(err, "failed to connect to the node")
+	} else {
+		__antithesis_instrumentation__.Notify(31685)
 	}
+	__antithesis_instrumentation__.Notify(31657)
 	defer finish()
 	admin := serverpb.NewAdminClient(conn)
 
 	br, rec, err := sendKVBatchRequestWithTracingOption(ctx, enableTracing, admin, &ba)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31686)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31687)
 	}
+	__antithesis_instrumentation__.Notify(31658)
 
 	if !debugSendKVBatchContext.keepCollectedSpans {
-		// The most common use is with -print-recording, in which case the
-		// collected spans are redundant output.
-		br.CollectedSpans = nil
-	}
+		__antithesis_instrumentation__.Notify(31688)
 
-	// Display BatchResponse.
+		br.CollectedSpans = nil
+	} else {
+		__antithesis_instrumentation__.Notify(31689)
+	}
+	__antithesis_instrumentation__.Notify(31659)
+
 	brJSON, err := jsonpb.Marshal(br)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31690)
 		return errors.Wrap(err, "failed to format BatchResponse as JSON")
+	} else {
+		__antithesis_instrumentation__.Notify(31691)
 	}
+	__antithesis_instrumentation__.Notify(31660)
 	fmt.Println(string(brJSON))
 
 	if enableTracing {
+		__antithesis_instrumentation__.Notify(31692)
 		out := bufio.NewWriter(traceFile)
 		if fmtJaeger {
-			// Note: we cannot fill in the "node ID" string (3rd argument)
-			// here, for example with the string "CLI", because somehow this
-			// causes the Jaeger visualizer to override the node prefix on
-			// all the sub-spans. With an empty string, the node ID of the
-			// node that processes the request is properly annotated in the
-			// Jaeger UI.
+			__antithesis_instrumentation__.Notify(31694)
+
 			j, err := rec.ToJaegerJSON(ba.Summary(), "", "")
 			if err != nil {
+				__antithesis_instrumentation__.Notify(31696)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(31697)
 			}
+			__antithesis_instrumentation__.Notify(31695)
 			if _, err = fmt.Fprintln(out, j); err != nil {
+				__antithesis_instrumentation__.Notify(31698)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(31699)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(31700)
 			if _, err = fmt.Fprintln(out, rec); err != nil {
+				__antithesis_instrumentation__.Notify(31701)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(31702)
 			}
 		}
+		__antithesis_instrumentation__.Notify(31693)
 		if err := out.Flush(); err != nil {
+			__antithesis_instrumentation__.Notify(31703)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(31704)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(31705)
 	}
+	__antithesis_instrumentation__.Notify(31661)
 
 	return nil
 }
@@ -227,33 +274,33 @@ func runSendKVBatch(cmd *cobra.Command, args []string) error {
 func sendKVBatchRequestWithTracingOption(
 	ctx context.Context, verboseTrace bool, admin serverpb.AdminClient, ba *roachpb.BatchRequest,
 ) (br *roachpb.BatchResponse, rec tracing.Recording, err error) {
+	__antithesis_instrumentation__.Notify(31706)
 	var sp *tracing.Span
 	if verboseTrace {
-		// Set up a tracing span and enable verbose tracing if requested by
-		// configuration.
-		//
-		// Note: we define the span conditionally under verboseTrace, instead of
-		// defining a span unconditionally and then conditionally setting the verbose flag,
-		// because otherwise the unit test TestSendKVBatch becomes non-deterministic
-		// on the contents of the traceInfo JSON field in the request.
+		__antithesis_instrumentation__.Notify(31709)
+
 		_, sp = tracing.NewTracer().StartSpanCtx(ctx, "debug-send-kv-batch",
 			tracing.WithRecording(tracing.RecordingVerbose))
 		defer sp.Finish()
 
-		// Inject the span metadata into the KV request.
 		ba.TraceInfo = sp.Meta().ToProto()
+	} else {
+		__antithesis_instrumentation__.Notify(31710)
 	}
+	__antithesis_instrumentation__.Notify(31707)
 
-	// Do the request server-side.
 	br, err = admin.SendKVBatch(ctx, ba)
 
 	if sp != nil {
-		// Import the remotely collected spans, if any.
+		__antithesis_instrumentation__.Notify(31711)
+
 		sp.ImportRemoteSpans(br.CollectedSpans)
 
-		// Extract the recording.
 		rec = sp.GetRecording(tracing.RecordingVerbose)
+	} else {
+		__antithesis_instrumentation__.Notify(31712)
 	}
+	__antithesis_instrumentation__.Notify(31708)
 
 	return br, rec, errors.Wrap(err, "request failed")
 }

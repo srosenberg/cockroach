@@ -27,5 +27,6 @@ go_library(
     deps = [
         "//pkg/ui",
         "//pkg/util/targz",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

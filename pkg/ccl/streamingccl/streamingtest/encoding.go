@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package streamingtest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"testing"
@@ -20,11 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// EncodeKV encodes primary key with the specified "values".  Values must be
-// specified in the same order as the columns in the primary family.
 func EncodeKV(
 	t *testing.T, codec keys.SQLCodec, descr catalog.TableDescriptor, pkeyVals ...interface{},
 ) roachpb.KeyValue {
+	__antithesis_instrumentation__.Notify(25619)
 	require.Equal(t, 1, descr.NumFamilies(), "there can be only one")
 	primary := descr.GetPrimaryIndex()
 	require.LessOrEqual(t, primary.NumKeyColumns(), len(pkeyVals))
@@ -32,11 +25,13 @@ func EncodeKV(
 	var datums tree.Datums
 	var colMap catalog.TableColMap
 	for i, val := range pkeyVals {
+		__antithesis_instrumentation__.Notify(25621)
 		datums = append(datums, nativeToDatum(t, val))
 		col, err := descr.FindColumnWithID(descpb.ColumnID(i + 1))
 		require.NoError(t, err)
 		colMap.Set(col.GetID(), col.Ordinal())
 	}
+	__antithesis_instrumentation__.Notify(25620)
 
 	const includeEmpty = true
 	indexEntries, err := rowenc.EncodePrimaryIndex(codec, descr, primary,
@@ -48,19 +43,26 @@ func EncodeKV(
 }
 
 func nativeToDatum(t *testing.T, native interface{}) tree.Datum {
+	__antithesis_instrumentation__.Notify(25622)
 	t.Helper()
 	switch v := native.(type) {
 	case bool:
+		__antithesis_instrumentation__.Notify(25623)
 		return tree.MakeDBool(tree.DBool(v))
 	case int:
+		__antithesis_instrumentation__.Notify(25624)
 		return tree.NewDInt(tree.DInt(v))
 	case string:
+		__antithesis_instrumentation__.Notify(25625)
 		return tree.NewDString(v)
 	case nil:
+		__antithesis_instrumentation__.Notify(25626)
 		return tree.DNull
 	case tree.Datum:
+		__antithesis_instrumentation__.Notify(25627)
 		return v
 	default:
+		__antithesis_instrumentation__.Notify(25628)
 		t.Fatalf("unexpected value type %T", v)
 		return nil
 	}

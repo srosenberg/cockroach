@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -23,73 +15,70 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 )
 
-// SSTWriter writes SSTables.
 type SSTWriter struct {
 	fw *sstable.Writer
 	f  io.Writer
-	// DataSize tracks the total key and value bytes added so far.
+
 	DataSize int64
 	scratch  []byte
 }
 
 var _ Writer = &SSTWriter{}
 
-// writeCloseSyncer interface copied from pebble.sstable.
 type writeCloseSyncer interface {
 	io.WriteCloser
 	Sync() error
 }
 
-// noopSyncCloser is used to wrap io.Writers for sstable.Writer so that callers
-// can decide when to close/sync.
 type noopSyncCloser struct {
 	io.Writer
 }
 
 func (noopSyncCloser) Sync() error {
+	__antithesis_instrumentation__.Notify(643862)
 	return nil
 }
 
 func (noopSyncCloser) Close() error {
+	__antithesis_instrumentation__.Notify(643863)
 	return nil
 }
 
-// MakeIngestionWriterOptions returns writer options suitable for writing SSTs
-// that will subsequently be ingested (e.g. with AddSSTable).
 func MakeIngestionWriterOptions(ctx context.Context, cs *cluster.Settings) sstable.WriterOptions {
-	// By default, take a conservative approach and assume we don't have newer
-	// table features available. Upgrade to an appropriate version only if the
-	// cluster supports it.
+	__antithesis_instrumentation__.Notify(643864)
+
 	format := sstable.TableFormatRocksDBv2
-	// Cases are ordered from newer to older versions.
+
 	switch {
 	case cs.Version.IsActive(ctx, clusterversion.EnablePebbleFormatVersionBlockProperties):
-		format = sstable.TableFormatPebblev1 // Block properties.
+		__antithesis_instrumentation__.Notify(643867)
+		format = sstable.TableFormatPebblev1
+	default:
+		__antithesis_instrumentation__.Notify(643868)
 	}
+	__antithesis_instrumentation__.Notify(643865)
 	opts := DefaultPebbleOptions().MakeWriterOptions(0, format)
 	if format < sstable.TableFormatPebblev1 {
-		// Block properties aren't available at this version. Disable collection.
+		__antithesis_instrumentation__.Notify(643869)
+
 		opts.BlockPropertyCollectors = nil
+	} else {
+		__antithesis_instrumentation__.Notify(643870)
 	}
+	__antithesis_instrumentation__.Notify(643866)
 	opts.MergerName = "nullptr"
 	return opts
 }
 
-// MakeBackupSSTWriter creates a new SSTWriter tailored for backup SSTs which
-// are typically only ever iterated in their entirety.
 func MakeBackupSSTWriter(_ context.Context, _ *cluster.Settings, f io.Writer) SSTWriter {
-	// By default, take a conservative approach and assume we don't have newer
-	// table features available. Upgrade to an appropriate version only if the
-	// cluster supports it.
+	__antithesis_instrumentation__.Notify(643871)
+
 	opts := DefaultPebbleOptions().MakeWriterOptions(0, sstable.TableFormatRocksDBv2)
-	// Don't need BlockPropertyCollectors for backups.
+
 	opts.BlockPropertyCollectors = nil
 
-	// Disable bloom filters since we only ever iterate backups.
 	opts.FilterPolicy = nil
-	// Bump up block size, since we almost never seek or do point lookups, so more
-	// block checksums and more index entries are just overhead and smaller blocks
-	// reduce compression ratio.
+
 	opts.BlockSize = 128 << 10
 
 	opts.MergerName = "nullptr"
@@ -97,255 +86,257 @@ func MakeBackupSSTWriter(_ context.Context, _ *cluster.Settings, f io.Writer) SS
 	return SSTWriter{fw: sst, f: f}
 }
 
-// MakeIngestionSSTWriter creates a new SSTWriter tailored for ingestion SSTs.
-// These SSTs have bloom filters enabled (as set in DefaultPebbleOptions) and
-// format set to RocksDBv2.
 func MakeIngestionSSTWriter(
 	ctx context.Context, cs *cluster.Settings, f writeCloseSyncer,
 ) SSTWriter {
+	__antithesis_instrumentation__.Notify(643872)
 	return SSTWriter{
 		fw: sstable.NewWriter(f, MakeIngestionWriterOptions(ctx, cs)),
 		f:  f,
 	}
 }
 
-// Finish finalizes the writer and returns the constructed file's contents,
-// since the last call to Truncate (if any). At least one kv entry must have been added.
 func (fw *SSTWriter) Finish() error {
+	__antithesis_instrumentation__.Notify(643873)
 	if fw.fw == nil {
+		__antithesis_instrumentation__.Notify(643876)
 		return errors.New("cannot call Finish on a closed writer")
+	} else {
+		__antithesis_instrumentation__.Notify(643877)
 	}
+	__antithesis_instrumentation__.Notify(643874)
 	if err := fw.fw.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(643878)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(643879)
 	}
+	__antithesis_instrumentation__.Notify(643875)
 	fw.fw = nil
 	return nil
 }
 
-// ClearRawRange implements the Writer interface.
 func (fw *SSTWriter) ClearRawRange(start, end roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(643880)
 	return fw.clearRange(MVCCKey{Key: start}, MVCCKey{Key: end})
 }
 
-// ClearMVCCRangeAndIntents implements the Writer interface.
 func (fw *SSTWriter) ClearMVCCRangeAndIntents(start, end roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(643881)
 	panic("ClearMVCCRangeAndIntents is unsupported")
 }
 
-// ClearMVCCRange implements the Writer interface.
 func (fw *SSTWriter) ClearMVCCRange(start, end MVCCKey) error {
+	__antithesis_instrumentation__.Notify(643882)
 	return fw.clearRange(start, end)
 }
 
 func (fw *SSTWriter) clearRange(start, end MVCCKey) error {
+	__antithesis_instrumentation__.Notify(643883)
 	if fw.fw == nil {
+		__antithesis_instrumentation__.Notify(643885)
 		return errors.New("cannot call ClearRange on a closed writer")
+	} else {
+		__antithesis_instrumentation__.Notify(643886)
 	}
+	__antithesis_instrumentation__.Notify(643884)
 	fw.DataSize += int64(len(start.Key)) + int64(len(end.Key))
 	fw.scratch = EncodeMVCCKeyToBuf(fw.scratch[:0], start)
 	return fw.fw.DeleteRange(fw.scratch, EncodeMVCCKey(end))
 }
 
-// Put puts a kv entry into the sstable being built. An error is returned if it
-// is not greater than any previously added entry (according to the comparator
-// configured during writer creation). `Close` cannot have been called.
-//
-// TODO(sumeer): Put has been removed from the Writer interface, but there
-// are many callers of this SSTWriter method. Fix those callers and remove.
 func (fw *SSTWriter) Put(key MVCCKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(643887)
 	if fw.fw == nil {
+		__antithesis_instrumentation__.Notify(643889)
 		return errors.New("cannot call Put on a closed writer")
+	} else {
+		__antithesis_instrumentation__.Notify(643890)
 	}
+	__antithesis_instrumentation__.Notify(643888)
 	fw.DataSize += int64(len(key.Key)) + int64(len(value))
 	fw.scratch = EncodeMVCCKeyToBuf(fw.scratch[:0], key)
 	return fw.fw.Set(fw.scratch, value)
 }
 
-// PutMVCC implements the Writer interface.
-// An error is returned if it is not greater than any previously added entry
-// (according to the comparator configured during writer creation). `Close`
-// cannot have been called.
 func (fw *SSTWriter) PutMVCC(key MVCCKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(643891)
 	if key.Timestamp.IsEmpty() {
+		__antithesis_instrumentation__.Notify(643893)
 		panic("PutMVCC timestamp is empty")
+	} else {
+		__antithesis_instrumentation__.Notify(643894)
 	}
+	__antithesis_instrumentation__.Notify(643892)
 	return fw.put(key, value)
 }
 
-// PutUnversioned implements the Writer interface.
-// An error is returned if it is not greater than any previously added entry
-// (according to the comparator configured during writer creation). `Close`
-// cannot have been called.
 func (fw *SSTWriter) PutUnversioned(key roachpb.Key, value []byte) error {
+	__antithesis_instrumentation__.Notify(643895)
 	return fw.put(MVCCKey{Key: key}, value)
 }
 
-// PutIntent implements the Writer interface.
-// An error is returned if it is not greater than any previously added entry
-// (according to the comparator configured during writer creation). `Close`
-// cannot have been called.
 func (fw *SSTWriter) PutIntent(
 	ctx context.Context, key roachpb.Key, value []byte, txnUUID uuid.UUID,
 ) error {
+	__antithesis_instrumentation__.Notify(643896)
 	return fw.put(MVCCKey{Key: key}, value)
 }
 
-// PutEngineKey implements the Writer interface.
-// An error is returned if it is not greater than any previously added entry
-// (according to the comparator configured during writer creation). `Close`
-// cannot have been called.
 func (fw *SSTWriter) PutEngineKey(key EngineKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(643897)
 	if fw.fw == nil {
+		__antithesis_instrumentation__.Notify(643899)
 		return errors.New("cannot call Put on a closed writer")
+	} else {
+		__antithesis_instrumentation__.Notify(643900)
 	}
+	__antithesis_instrumentation__.Notify(643898)
 	fw.DataSize += int64(len(key.Key)) + int64(len(value))
 	fw.scratch = key.EncodeToBuf(fw.scratch[:0])
 	return fw.fw.Set(fw.scratch, value)
 }
 
-// put puts a kv entry into the sstable being built. An error is returned if it
-// is not greater than any previously added entry (according to the comparator
-// configured during writer creation). `Close` cannot have been called.
 func (fw *SSTWriter) put(key MVCCKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(643901)
 	if fw.fw == nil {
+		__antithesis_instrumentation__.Notify(643903)
 		return errors.New("cannot call Put on a closed writer")
+	} else {
+		__antithesis_instrumentation__.Notify(643904)
 	}
+	__antithesis_instrumentation__.Notify(643902)
 	fw.DataSize += int64(len(key.Key)) + int64(len(value))
 	fw.scratch = EncodeMVCCKeyToBuf(fw.scratch[:0], key)
 	return fw.fw.Set(fw.scratch, value)
 }
 
-// ApplyBatchRepr implements the Writer interface.
 func (fw *SSTWriter) ApplyBatchRepr(repr []byte, sync bool) error {
+	__antithesis_instrumentation__.Notify(643905)
 	panic("unimplemented")
 }
 
-// ClearMVCC implements the Writer interface. An error is returned if it is
-// not greater than any previous point key passed to this Writer (according to
-// the comparator configured during writer creation). `Close` cannot have been
-// called.
 func (fw *SSTWriter) ClearMVCC(key MVCCKey) error {
+	__antithesis_instrumentation__.Notify(643906)
 	if key.Timestamp.IsEmpty() {
+		__antithesis_instrumentation__.Notify(643908)
 		panic("ClearMVCC timestamp is empty")
+	} else {
+		__antithesis_instrumentation__.Notify(643909)
 	}
+	__antithesis_instrumentation__.Notify(643907)
 	return fw.clear(key)
 }
 
-// ClearUnversioned implements the Writer interface. An error is returned if
-// it is not greater than any previous point key passed to this Writer
-// (according to the comparator configured during writer creation). `Close`
-// cannot have been called.
 func (fw *SSTWriter) ClearUnversioned(key roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(643910)
 	return fw.clear(MVCCKey{Key: key})
 }
 
-// ClearIntent implements the Writer interface. An error is returned if it is
-// not greater than any previous point key passed to this Writer (according to
-// the comparator configured during writer creation). `Close` cannot have been
-// called.
 func (fw *SSTWriter) ClearIntent(
 	key roachpb.Key, txnDidNotUpdateMeta bool, txnUUID uuid.UUID,
 ) error {
+	__antithesis_instrumentation__.Notify(643911)
 	panic("ClearIntent is unsupported")
 }
 
-// ClearEngineKey implements the Writer interface. An error is returned if it is
-// not greater than any previous point key passed to this Writer (according to
-// the comparator configured during writer creation). `Close` cannot have been
-// called.
 func (fw *SSTWriter) ClearEngineKey(key EngineKey) error {
+	__antithesis_instrumentation__.Notify(643912)
 	if fw.fw == nil {
+		__antithesis_instrumentation__.Notify(643914)
 		return errors.New("cannot call Clear on a closed writer")
+	} else {
+		__antithesis_instrumentation__.Notify(643915)
 	}
+	__antithesis_instrumentation__.Notify(643913)
 	fw.scratch = key.EncodeToBuf(fw.scratch[:0])
 	fw.DataSize += int64(len(key.Key))
 	return fw.fw.Delete(fw.scratch)
 }
 
-// An error is returned if it is not greater than any previous point key
-// passed to this Writer (according to the comparator configured during writer
-// creation). `Close` cannot have been called.
 func (fw *SSTWriter) clear(key MVCCKey) error {
+	__antithesis_instrumentation__.Notify(643916)
 	if fw.fw == nil {
+		__antithesis_instrumentation__.Notify(643918)
 		return errors.New("cannot call Clear on a closed writer")
+	} else {
+		__antithesis_instrumentation__.Notify(643919)
 	}
+	__antithesis_instrumentation__.Notify(643917)
 	fw.scratch = EncodeMVCCKeyToBuf(fw.scratch[:0], key)
 	fw.DataSize += int64(len(key.Key))
 	return fw.fw.Delete(fw.scratch)
 }
 
-// SingleClearEngineKey implements the Writer interface.
 func (fw *SSTWriter) SingleClearEngineKey(key EngineKey) error {
+	__antithesis_instrumentation__.Notify(643920)
 	panic("unimplemented")
 }
 
-// ClearIterRange implements the Writer interface.
 func (fw *SSTWriter) ClearIterRange(iter MVCCIterator, start, end roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(643921)
 	panic("ClearIterRange is unsupported")
 }
 
-// Merge implements the Writer interface.
 func (fw *SSTWriter) Merge(key MVCCKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(643922)
 	if fw.fw == nil {
+		__antithesis_instrumentation__.Notify(643924)
 		return errors.New("cannot call Merge on a closed writer")
+	} else {
+		__antithesis_instrumentation__.Notify(643925)
 	}
+	__antithesis_instrumentation__.Notify(643923)
 	fw.DataSize += int64(len(key.Key)) + int64(len(value))
 	fw.scratch = EncodeMVCCKeyToBuf(fw.scratch[:0], key)
 	return fw.fw.Merge(fw.scratch, value)
 }
 
-// LogData implements the Writer interface.
 func (fw *SSTWriter) LogData(data []byte) error {
-	// No-op.
+	__antithesis_instrumentation__.Notify(643926)
+
 	return nil
 }
 
-// LogLogicalOp implements the Writer interface.
 func (fw *SSTWriter) LogLogicalOp(op MVCCLogicalOpType, details MVCCLogicalOpDetails) {
-	// No-op.
+	__antithesis_instrumentation__.Notify(643927)
+
 }
 
-// Close finishes and frees memory and other resources. Close is idempotent.
 func (fw *SSTWriter) Close() {
+	__antithesis_instrumentation__.Notify(643928)
 	if fw.fw == nil {
+		__antithesis_instrumentation__.Notify(643930)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(643931)
 	}
-	// pebble.Writer *does* return interesting errors from Close... but normally
-	// we already called its Close() in Finish() and we no-op here. Thus the only
-	// time we expect to be here is in a deferred Close(), in which case the caller
-	// probably is already returning some other error, so returning one from this
-	// method just makes for messy defers.
+	__antithesis_instrumentation__.Notify(643929)
+
 	_ = fw.fw.Close()
 	fw.fw = nil
 }
 
-// MemFile is a file-like struct that buffers all data written to it in memory.
-// Implements the writeCloseSyncer interface and is intended for use with
-// SSTWriter.
 type MemFile struct {
 	bytes.Buffer
 }
 
-// Close implements the writeCloseSyncer interface.
 func (*MemFile) Close() error {
+	__antithesis_instrumentation__.Notify(643932)
 	return nil
 }
 
-// Flush implements the same interface as the standard library's *bufio.Writer's
-// Flush method. The Pebble sstable Writer tests whether files implement a Flush
-// method. If not, it wraps the file with a bufio.Writer to buffer writes to the
-// underlying file. This buffering is not necessary for an in-memory file. We
-// signal this by implementing Flush as a noop.
 func (*MemFile) Flush() error {
+	__antithesis_instrumentation__.Notify(643933)
 	return nil
 }
 
-// Sync implements the writeCloseSyncer interface.
 func (*MemFile) Sync() error {
+	__antithesis_instrumentation__.Notify(643934)
 	return nil
 }
 
-// Data returns the in-memory buffer behind this MemFile.
 func (f *MemFile) Data() []byte {
+	__antithesis_instrumentation__.Notify(643935)
 	return f.Bytes()
 }

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,8 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// QueryResolvedTimestampIntentCleanupAge configures the minimum intent age that
-// QueryResolvedTimestamp requests will consider for async intent cleanup.
 var QueryResolvedTimestampIntentCleanupAge = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"kv.query_resolved_timestamp.intent_cleanup_age",
@@ -40,33 +30,15 @@ func init() {
 	RegisterReadOnlyCommand(roachpb.QueryResolvedTimestamp, DefaultDeclareKeys, QueryResolvedTimestamp)
 }
 
-// QueryResolvedTimestamp requests a resolved timestamp for the key span it is
-// issued over. A resolved timestamp for a key span is a timestamp at or below
-// which all future reads within the span are guaranteed to produce the same
-// results, i.e. at which MVCC history has become immutable.
 func QueryResolvedTimestamp(
 	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(97193)
 	args := cArgs.Args.(*roachpb.QueryResolvedTimestampRequest)
 	reply := resp.(*roachpb.QueryResolvedTimestampResponse)
 
-	// Grab the closed timestamp from the local replica. We do this before
-	// iterating over intents to ensure that we observe any and all intents
-	// written before the closed timestamp went into effect. This is important
-	// because QueryResolvedTimestamp requests are often run without acquiring
-	// latches (see roachpb.INCONSISTENT) and often also on follower replicas,
-	// so latches won't help them to synchronize with writes.
 	closedTS := cArgs.EvalCtx.GetClosedTimestamp(ctx)
 
-	// Compute the minimum timestamp of any intent in the request's key span,
-	// which may span the entire range, but does not need to.
-	//
-	// While doing so, collect a set of intents that are encountered and that are
-	// sufficiently old, such that it seems valuable to try to clean them up. We
-	// do so to ensure that an abandoned intent that is only being observed by
-	// bounded staleness reads cannot hold up the resolved timestamp indefinitely
-	// (or until the GC runs). We cap the maximum size of this set to limit its
-	// cost, since this is all best-effort anyway.
 	st := cArgs.EvalCtx.ClusterSettings()
 	maxEncounteredIntents := gc.MaxIntentsPerCleanupBatch.Get(&st.SV)
 	maxEncounteredIntentKeyBytes := gc.MaxIntentKeyBytesPerCleanupBatch.Get(&st.SV)
@@ -76,24 +48,27 @@ func QueryResolvedTimestamp(
 		reader, args.Span(), maxEncounteredIntents, maxEncounteredIntentKeyBytes, intentCleanupThresh,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(97196)
 		return result.Result{}, errors.Wrapf(err, "computing minimum intent timestamp")
+	} else {
+		__antithesis_instrumentation__.Notify(97197)
 	}
+	__antithesis_instrumentation__.Notify(97194)
 
-	// Compute the span's resolved timestamp. Start with the range's closed
-	// timestamp and then backdate this to a timestamp before any active intents.
 	reply.ResolvedTS = closedTS
 	if !minIntentTS.IsEmpty() {
+		__antithesis_instrumentation__.Notify(97198)
 		reply.ResolvedTS.Backward(minIntentTS.Prev())
+	} else {
+		__antithesis_instrumentation__.Notify(97199)
 	}
+	__antithesis_instrumentation__.Notify(97195)
 
 	var res result.Result
 	res.Local.EncounteredIntents = encounteredIntents
 	return res, nil
 }
 
-// computeMinIntentTimestamp scans the specified key span and determines the
-// minimum timestamp of any intent. While doing so, it also collects and returns
-// up to maxEncounteredIntents intents that are older than intentCleanupThresh.
 func computeMinIntentTimestamp(
 	reader storage.Reader,
 	span roachpb.Span,
@@ -101,6 +76,7 @@ func computeMinIntentTimestamp(
 	maxEncounteredIntentKeyBytes int64,
 	intentCleanupThresh hlc.Timestamp,
 ) (hlc.Timestamp, []roachpb.Intent, error) {
+	__antithesis_instrumentation__.Notify(97200)
 	ltStart, _ := keys.LockTableSingleKey(span.Key, nil)
 	ltEnd, _ := keys.LockTableSingleKey(span.EndKey, nil)
 	iter := reader.NewEngineIterator(storage.IterOptions{LowerBound: ltStart, UpperBound: ltEnd})
@@ -111,45 +87,80 @@ func computeMinIntentTimestamp(
 	var encountered []roachpb.Intent
 	var encounteredKeyBytes int64
 	for valid, err := iter.SeekEngineKeyGE(storage.EngineKey{Key: ltStart}); ; valid, err = iter.NextEngineKey() {
+		__antithesis_instrumentation__.Notify(97202)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(97209)
 			return hlc.Timestamp{}, nil, err
-		} else if !valid {
-			break
+		} else {
+			__antithesis_instrumentation__.Notify(97210)
+			if !valid {
+				__antithesis_instrumentation__.Notify(97211)
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(97212)
+			}
 		}
+		__antithesis_instrumentation__.Notify(97203)
 		engineKey, err := iter.EngineKey()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(97213)
 			return hlc.Timestamp{}, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(97214)
 		}
+		__antithesis_instrumentation__.Notify(97204)
 		lockedKey, err := keys.DecodeLockTableSingleKey(engineKey.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(97215)
 			return hlc.Timestamp{}, nil, errors.Wrapf(err, "decoding LockTable key: %v", lockedKey)
+		} else {
+			__antithesis_instrumentation__.Notify(97216)
 		}
-		// Unmarshal.
+		__antithesis_instrumentation__.Notify(97205)
+
 		if err := protoutil.Unmarshal(iter.UnsafeValue(), &meta); err != nil {
+			__antithesis_instrumentation__.Notify(97217)
 			return hlc.Timestamp{}, nil, errors.Wrapf(err, "unmarshaling mvcc meta: %v", lockedKey)
+		} else {
+			__antithesis_instrumentation__.Notify(97218)
 		}
+		__antithesis_instrumentation__.Notify(97206)
 		if meta.Txn == nil {
+			__antithesis_instrumentation__.Notify(97219)
 			return hlc.Timestamp{}, nil,
 				errors.AssertionFailedf("nil transaction in LockTable. Key: %v,"+"mvcc meta: %v",
 					lockedKey, meta)
+		} else {
+			__antithesis_instrumentation__.Notify(97220)
 		}
+		__antithesis_instrumentation__.Notify(97207)
 
 		if minTS.IsEmpty() {
+			__antithesis_instrumentation__.Notify(97221)
 			minTS = meta.Txn.WriteTimestamp
 		} else {
+			__antithesis_instrumentation__.Notify(97222)
 			minTS.Backward(meta.Txn.WriteTimestamp)
 		}
+		__antithesis_instrumentation__.Notify(97208)
 
-		// Also, add the intent to the encountered intents set if it is old enough
-		// and we have room, both in terms of the number of intents and the size
-		// of the intent keys.
 		oldEnough := meta.Txn.WriteTimestamp.Less(intentCleanupThresh)
 		intentFitsByCount := int64(len(encountered)) < maxEncounteredIntents
 		intentFitsByBytes := encounteredKeyBytes < maxEncounteredIntentKeyBytes
-		if oldEnough && intentFitsByCount && intentFitsByBytes {
+		if oldEnough && func() bool {
+			__antithesis_instrumentation__.Notify(97223)
+			return intentFitsByCount == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(97224)
+			return intentFitsByBytes == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(97225)
 			encountered = append(encountered, roachpb.MakeIntent(meta.Txn, lockedKey))
 			encounteredKeyBytes += int64(len(lockedKey))
+		} else {
+			__antithesis_instrumentation__.Notify(97226)
 		}
 	}
+	__antithesis_instrumentation__.Notify(97201)
 	return minTS, encountered, nil
 }

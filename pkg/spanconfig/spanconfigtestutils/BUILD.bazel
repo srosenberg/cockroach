@@ -16,6 +16,7 @@ go_library(
         "//pkg/sql/catalog/descpb",
         "//pkg/util/hlc",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@com_github_stretchr_testify//require",
     ],
@@ -25,5 +26,8 @@ go_test(
     name = "spanconfigtestutils_test",
     srcs = ["utils_test.go"],
     embed = [":spanconfigtestutils"],
-    deps = ["@com_github_stretchr_testify//require"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@com_github_stretchr_testify//require",
+    ],
 )

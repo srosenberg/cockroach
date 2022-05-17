@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,37 +31,43 @@ type diskSideloadStorage struct {
 func deprecatedSideloadedPath(
 	baseDir string, rangeID roachpb.RangeID, replicaID roachpb.ReplicaID,
 ) string {
+	__antithesis_instrumentation__.Notify(120593)
 	return filepath.Join(
 		baseDir,
 		"sideloading",
-		fmt.Sprintf("%d", rangeID%1000), // sharding
+		fmt.Sprintf("%d", rangeID%1000),
 		fmt.Sprintf("%d.%d", rangeID, replicaID),
 	)
 }
 
 func sideloadedPath(baseDir string, rangeID roachpb.RangeID) string {
-	// Use one level of sharding to avoid too many items per directory. For
-	// example, ext3 and older ext4 support only 32k and 64k subdirectories
-	// per directory, respectively. Newer FS typically have no such limitation,
-	// but still.
-	//
-	// For example, r1828 will end up in baseDir/r1XXX/r1828.
+	__antithesis_instrumentation__.Notify(120594)
+
 	return filepath.Join(
 		baseDir,
 		"sideloading",
-		fmt.Sprintf("r%dXXXX", rangeID/10000), // sharding
+		fmt.Sprintf("r%dXXXX", rangeID/10000),
 		fmt.Sprintf("r%d", rangeID),
 	)
 }
 
 func exists(eng storage.Engine, path string) (bool, error) {
+	__antithesis_instrumentation__.Notify(120595)
 	_, err := eng.Stat(path)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(120598)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(120599)
 	}
+	__antithesis_instrumentation__.Notify(120596)
 	if oserror.IsNotExist(err) {
+		__antithesis_instrumentation__.Notify(120600)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(120601)
 	}
+	__antithesis_instrumentation__.Notify(120597)
 	return false, err
 }
 
@@ -81,34 +79,37 @@ func newDiskSideloadStorage(
 	limiter *rate.Limiter,
 	eng storage.Engine,
 ) (*diskSideloadStorage, error) {
+	__antithesis_instrumentation__.Notify(120602)
 	path := deprecatedSideloadedPath(baseDir, rangeID, replicaID)
 	newPath := sideloadedPath(baseDir, rangeID)
-	// NB: this call to exists() is in the hot path when the server starts
-	// as it will be called once for each replica. However, during steady
-	// state (i.e. when the version variable hasn't *just* flipped), we're
-	// expecting `path` to not exist (since it refers to the legacy path at
-	// the moment). A stat call for a directory that doesn't exist isn't
-	// very expensive (on the order of 1000s of ns). For example, on a 2017
-	// MacBook Pro, this case averages ~3245ns and on a gceworker it's
-	// ~1200ns. At 50k replicas, that's on the order of a tenth of a second;
-	// not enough to matter.
-	//
-	// On the other hand, successful (i.e. directory found) calls take ~23k
-	// ns on my laptop, but only around 2.2k ns on the gceworker. Still,
-	// even on the laptop, 50k replicas would only add 1.2s which is also
-	// acceptable given that it'll happen only once.
+
 	exists, err := exists(eng, path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(120605)
 		return nil, errors.Wrap(err, "checking pre-migration sideloaded directory")
+	} else {
+		__antithesis_instrumentation__.Notify(120606)
 	}
+	__antithesis_instrumentation__.Notify(120603)
 	if exists {
+		__antithesis_instrumentation__.Notify(120607)
 		if err := eng.MkdirAll(filepath.Dir(newPath)); err != nil {
+			__antithesis_instrumentation__.Notify(120609)
 			return nil, errors.Wrap(err, "creating migrated sideloaded directory")
+		} else {
+			__antithesis_instrumentation__.Notify(120610)
 		}
+		__antithesis_instrumentation__.Notify(120608)
 		if err := eng.Rename(path, newPath); err != nil {
+			__antithesis_instrumentation__.Notify(120611)
 			return nil, errors.Wrap(err, "while migrating sideloaded directory")
+		} else {
+			__antithesis_instrumentation__.Notify(120612)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(120613)
 	}
+	__antithesis_instrumentation__.Notify(120604)
 	path = newPath
 
 	ss := &diskSideloadStorage{
@@ -121,201 +122,309 @@ func newDiskSideloadStorage(
 }
 
 func (ss *diskSideloadStorage) createDir() error {
+	__antithesis_instrumentation__.Notify(120614)
 	err := ss.eng.MkdirAll(ss.dir)
-	ss.dirCreated = ss.dirCreated || err == nil
+	ss.dirCreated = ss.dirCreated || func() bool {
+		__antithesis_instrumentation__.Notify(120615)
+		return err == nil == true
+	}() == true
 	return err
 }
 
-// Dir implements SideloadStorage.
 func (ss *diskSideloadStorage) Dir() string {
+	__antithesis_instrumentation__.Notify(120616)
 	return ss.dir
 }
 
-// Put implements SideloadStorage.
 func (ss *diskSideloadStorage) Put(ctx context.Context, index, term uint64, contents []byte) error {
+	__antithesis_instrumentation__.Notify(120617)
 	filename := ss.filename(ctx, index, term)
-	// There's a chance the whole path is missing (for example after Clear()),
-	// in which case handle that transparently.
+
 	for {
-		// Use 0644 since that's what RocksDB uses:
-		// https://github.com/facebook/rocksdb/blob/56656e12d67d8a63f1e4c4214da9feeec2bd442b/env/env_posix.cc#L171
+		__antithesis_instrumentation__.Notify(120618)
+
 		if err := writeFileSyncing(ctx, filename, contents, ss.eng, 0644, ss.st, ss.limiter); err == nil {
+			__antithesis_instrumentation__.Notify(120621)
 			return nil
-		} else if !oserror.IsNotExist(err) {
-			return err
+		} else {
+			__antithesis_instrumentation__.Notify(120622)
+			if !oserror.IsNotExist(err) {
+				__antithesis_instrumentation__.Notify(120623)
+				return err
+			} else {
+				__antithesis_instrumentation__.Notify(120624)
+			}
 		}
-		// createDir() ensures ss.dir exists but will not create any subdirectories
-		// within ss.dir because filename() does not make subdirectories in ss.dir.
+		__antithesis_instrumentation__.Notify(120619)
+
 		if err := ss.createDir(); err != nil {
+			__antithesis_instrumentation__.Notify(120625)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(120626)
 		}
+		__antithesis_instrumentation__.Notify(120620)
 		continue
 	}
 }
 
-// Get implements SideloadStorage.
 func (ss *diskSideloadStorage) Get(ctx context.Context, index, term uint64) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(120627)
 	filename := ss.filename(ctx, index, term)
 	b, err := ss.eng.ReadFile(filename)
 	if oserror.IsNotExist(err) {
+		__antithesis_instrumentation__.Notify(120629)
 		return nil, errSideloadedFileNotFound
+	} else {
+		__antithesis_instrumentation__.Notify(120630)
 	}
+	__antithesis_instrumentation__.Notify(120628)
 	return b, err
 }
 
-// Filename implements SideloadStorage.
 func (ss *diskSideloadStorage) Filename(ctx context.Context, index, term uint64) (string, error) {
+	__antithesis_instrumentation__.Notify(120631)
 	return ss.filename(ctx, index, term), nil
 }
 
 func (ss *diskSideloadStorage) filename(ctx context.Context, index, term uint64) string {
+	__antithesis_instrumentation__.Notify(120632)
 	return filepath.Join(ss.dir, fmt.Sprintf("i%d.t%d", index, term))
 }
 
-// Purge implements SideloadStorage.
 func (ss *diskSideloadStorage) Purge(ctx context.Context, index, term uint64) (int64, error) {
+	__antithesis_instrumentation__.Notify(120633)
 	return ss.purgeFile(ctx, ss.filename(ctx, index, term))
 }
 
 func (ss *diskSideloadStorage) fileSize(filename string) (int64, error) {
+	__antithesis_instrumentation__.Notify(120634)
 	info, err := ss.eng.Stat(filename)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(120636)
 		if oserror.IsNotExist(err) {
+			__antithesis_instrumentation__.Notify(120638)
 			return 0, errSideloadedFileNotFound
+		} else {
+			__antithesis_instrumentation__.Notify(120639)
 		}
+		__antithesis_instrumentation__.Notify(120637)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(120640)
 	}
+	__antithesis_instrumentation__.Notify(120635)
 	return info.Size(), nil
 }
 
 func (ss *diskSideloadStorage) purgeFile(ctx context.Context, filename string) (int64, error) {
+	__antithesis_instrumentation__.Notify(120641)
 	size, err := ss.fileSize(filename)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(120644)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(120645)
 	}
+	__antithesis_instrumentation__.Notify(120642)
 	if err := ss.eng.Remove(filename); err != nil {
+		__antithesis_instrumentation__.Notify(120646)
 		if oserror.IsNotExist(err) {
+			__antithesis_instrumentation__.Notify(120648)
 			return 0, errSideloadedFileNotFound
+		} else {
+			__antithesis_instrumentation__.Notify(120649)
 		}
+		__antithesis_instrumentation__.Notify(120647)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(120650)
 	}
+	__antithesis_instrumentation__.Notify(120643)
 	return size, nil
 }
 
-// Clear implements SideloadStorage.
 func (ss *diskSideloadStorage) Clear(_ context.Context) error {
+	__antithesis_instrumentation__.Notify(120651)
 	err := ss.eng.RemoveAll(ss.dir)
-	ss.dirCreated = ss.dirCreated && err != nil
+	ss.dirCreated = ss.dirCreated && func() bool {
+		__antithesis_instrumentation__.Notify(120652)
+		return err != nil == true
+	}() == true
 	return err
 }
 
-// TruncateTo implements SideloadStorage.
 func (ss *diskSideloadStorage) TruncateTo(
 	ctx context.Context, firstIndex uint64,
 ) (bytesFreed, bytesRetained int64, _ error) {
-	return ss.possiblyTruncateTo(ctx, 0, firstIndex, true /* doTruncate */)
+	__antithesis_instrumentation__.Notify(120653)
+	return ss.possiblyTruncateTo(ctx, 0, firstIndex, true)
 }
 
-// Helper for truncation or byte calculation for [from, to).
 func (ss *diskSideloadStorage) possiblyTruncateTo(
 	ctx context.Context, from uint64, to uint64, doTruncate bool,
 ) (bytesFreed, bytesRetained int64, _ error) {
+	__antithesis_instrumentation__.Notify(120654)
 	deletedAll := true
 	if err := ss.forEach(ctx, func(index uint64, filename string) error {
+		__antithesis_instrumentation__.Notify(120657)
 		if index >= to {
+			__antithesis_instrumentation__.Notify(120662)
 			size, err := ss.fileSize(filename)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(120664)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(120665)
 			}
+			__antithesis_instrumentation__.Notify(120663)
 			bytesRetained += size
 			deletedAll = false
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(120666)
 		}
+		__antithesis_instrumentation__.Notify(120658)
 		if index < from {
+			__antithesis_instrumentation__.Notify(120667)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(120668)
 		}
-		// index is in [from, to)
+		__antithesis_instrumentation__.Notify(120659)
+
 		var fileSize int64
 		var err error
 		if doTruncate {
+			__antithesis_instrumentation__.Notify(120669)
 			fileSize, err = ss.purgeFile(ctx, filename)
 		} else {
+			__antithesis_instrumentation__.Notify(120670)
 			fileSize, err = ss.fileSize(filename)
 		}
+		__antithesis_instrumentation__.Notify(120660)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(120671)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(120672)
 		}
+		__antithesis_instrumentation__.Notify(120661)
 		bytesFreed += fileSize
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(120673)
 		return 0, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(120674)
 	}
+	__antithesis_instrumentation__.Notify(120655)
 
-	if deletedAll && doTruncate {
-		// The directory may not exist, or it may exist and have been empty.
-		// Not worth trying to figure out which one, just try to delete.
+	if deletedAll && func() bool {
+		__antithesis_instrumentation__.Notify(120675)
+		return doTruncate == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(120676)
+
 		err := ss.eng.Remove(ss.dir)
-		if err != nil && !oserror.IsNotExist(err) {
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(120677)
+			return !oserror.IsNotExist(err) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(120678)
 			log.Infof(ctx, "unable to remove sideloaded dir %s: %v", ss.dir, err)
-			err = nil // handled
+			err = nil
+		} else {
+			__antithesis_instrumentation__.Notify(120679)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(120680)
 	}
+	__antithesis_instrumentation__.Notify(120656)
 	return bytesFreed, bytesRetained, nil
 }
 
-// BytesIfTruncatedFromTo implements SideloadStorage.
 func (ss *diskSideloadStorage) BytesIfTruncatedFromTo(
 	ctx context.Context, from uint64, to uint64,
 ) (freed, retained int64, _ error) {
-	return ss.possiblyTruncateTo(ctx, from, to, false /* doTruncate */)
+	__antithesis_instrumentation__.Notify(120681)
+	return ss.possiblyTruncateTo(ctx, from, to, false)
 }
 
 func (ss *diskSideloadStorage) forEach(
 	ctx context.Context, visit func(index uint64, filename string) error,
 ) error {
+	__antithesis_instrumentation__.Notify(120682)
 	matches, err := ss.eng.List(ss.dir)
 	if oserror.IsNotExist(err) {
-		// Nothing to do.
+		__antithesis_instrumentation__.Notify(120686)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(120687)
 	}
+	__antithesis_instrumentation__.Notify(120683)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(120688)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(120689)
 	}
+	__antithesis_instrumentation__.Notify(120684)
 	for _, match := range matches {
-		// List returns a relative path, but we want to deal in absolute paths
-		// because we may pass this back to `eng.{Delete,Stat}`, etc, and those
-		// expect absolute paths.
+		__antithesis_instrumentation__.Notify(120690)
+
 		match = filepath.Join(ss.dir, match)
 		base := filepath.Base(match)
-		// Extract `i<log-index>` prefix from file.
-		if len(base) < 1 || base[0] != 'i' {
+
+		if len(base) < 1 || func() bool {
+			__antithesis_instrumentation__.Notify(120693)
+			return base[0] != 'i' == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(120694)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(120695)
 		}
+		__antithesis_instrumentation__.Notify(120691)
 		base = base[1:]
 		upToDot := strings.SplitN(base, ".", 2)
 		logIdx, err := strconv.ParseUint(upToDot[0], 10, 64)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(120696)
 			log.Infof(ctx, "unexpected file %s in sideloaded directory %s", match, ss.dir)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(120697)
 		}
+		__antithesis_instrumentation__.Notify(120692)
 		if err := visit(logIdx, match); err != nil {
+			__antithesis_instrumentation__.Notify(120698)
 			return errors.Wrapf(err, "matching pattern %q on dir %s", match, ss.dir)
+		} else {
+			__antithesis_instrumentation__.Notify(120699)
 		}
 	}
+	__antithesis_instrumentation__.Notify(120685)
 	return nil
 }
 
-// String lists the files in the storage without guaranteeing an ordering.
 func (ss *diskSideloadStorage) String() string {
+	__antithesis_instrumentation__.Notify(120700)
 	var buf strings.Builder
 	var count int
 	if err := ss.forEach(context.Background(), func(_ uint64, filename string) error {
+		__antithesis_instrumentation__.Notify(120702)
 		count++
 		_, _ = fmt.Fprintln(&buf, filename)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(120703)
 		return err.Error()
+	} else {
+		__antithesis_instrumentation__.Notify(120704)
 	}
+	__antithesis_instrumentation__.Notify(120701)
 	fmt.Fprintf(&buf, "(%d files)\n", count)
 	return buf.String()
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package raftentry
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/util/metric"
 
@@ -39,10 +31,7 @@ var (
 	}
 )
 
-// Metrics is the set of metrics for the raft entry cache.
 type Metrics struct {
-	// NB: the values in the gauges are updated asynchronously and may hold stale
-	// values in the face of concurrent updates.
 	Size     *metric.Gauge
 	Bytes    *metric.Gauge
 	Accesses *metric.Counter
@@ -50,6 +39,7 @@ type Metrics struct {
 }
 
 func makeMetrics() Metrics {
+	__antithesis_instrumentation__.Notify(113343)
 	return Metrics{
 		Size:     metric.NewGauge(metaEntryCacheSize),
 		Bytes:    metric.NewGauge(metaEntryCacheBytes),

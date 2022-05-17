@@ -5,6 +5,7 @@ go_library(
     srcs = ["empty.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/compose",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -18,5 +19,8 @@ go_test(
     embed = [":compose"],
     gotags = ["compose"],
     tags = ["integration"],
-    deps = ["//pkg/build/bazel"],
+    deps = [
+        "//pkg/build/bazel",
+        "@com_antithesis_instrumentation//wrappers",
+    ],
 )

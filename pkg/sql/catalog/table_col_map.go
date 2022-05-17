@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catalog
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -18,100 +10,113 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util"
 )
 
-// TableColMap is a map from descpb.ColumnID to int. It is typically used to
-// store a mapping from column id to ordinal position within a row, but can be
-// used for any similar purpose.
-//
-// It stores the mapping for ColumnIDs of the system columns separately since
-// those IDs are very large and incur an allocation in util.FastIntMap all the
-// time.
 type TableColMap struct {
 	m util.FastIntMap
-	// systemColMap maps all system columns to their values. Columns here are
-	// in increasing order of their IDs (in other words, since we started giving
-	// out IDs from math.MaxUint32 and are going down, the newer system columns
-	// appear here earlier).
+
 	systemColMap [NumSystemColumns]int
-	// systemColIsSet indicates whether a value has been set for the
-	// corresponding system column in systemColMap (needed in order to
-	// differentiate between unset 0 and set 0).
+
 	systemColIsSet [NumSystemColumns]bool
 }
 
-// Set maps a key to the given value.
 func (s *TableColMap) Set(col descpb.ColumnID, val int) {
+	__antithesis_instrumentation__.Notify(268437)
 	if col < SmallestSystemColumnColumnID {
+		__antithesis_instrumentation__.Notify(268438)
 		s.m.Set(int(col), val)
 	} else {
+		__antithesis_instrumentation__.Notify(268439)
 		pos := col - SmallestSystemColumnColumnID
 		s.systemColMap[pos] = val
 		s.systemColIsSet[pos] = true
 	}
 }
 
-// Get returns the current value mapped to key, or ok=false if the
-// key is unmapped.
 func (s *TableColMap) Get(col descpb.ColumnID) (val int, ok bool) {
+	__antithesis_instrumentation__.Notify(268440)
 	if col < SmallestSystemColumnColumnID {
+		__antithesis_instrumentation__.Notify(268442)
 		return s.m.Get(int(col))
+	} else {
+		__antithesis_instrumentation__.Notify(268443)
 	}
+	__antithesis_instrumentation__.Notify(268441)
 	pos := col - SmallestSystemColumnColumnID
 	return s.systemColMap[pos], s.systemColIsSet[pos]
 }
 
-// GetDefault returns the current value mapped to key, or 0 if the key is
-// unmapped.
 func (s *TableColMap) GetDefault(col descpb.ColumnID) (val int) {
+	__antithesis_instrumentation__.Notify(268444)
 	if col < SmallestSystemColumnColumnID {
+		__antithesis_instrumentation__.Notify(268446)
 		return s.m.GetDefault(int(col))
+	} else {
+		__antithesis_instrumentation__.Notify(268447)
 	}
+	__antithesis_instrumentation__.Notify(268445)
 	pos := col - SmallestSystemColumnColumnID
 	return s.systemColMap[pos]
 }
 
-// Len returns the number of keys in the map.
 func (s *TableColMap) Len() (val int) {
+	__antithesis_instrumentation__.Notify(268448)
 	l := s.m.Len()
 	for _, isSet := range s.systemColIsSet {
+		__antithesis_instrumentation__.Notify(268450)
 		if isSet {
+			__antithesis_instrumentation__.Notify(268451)
 			l++
+		} else {
+			__antithesis_instrumentation__.Notify(268452)
 		}
 	}
+	__antithesis_instrumentation__.Notify(268449)
 	return l
 }
 
-// ForEach calls the given function for each key/value pair in the map (in
-// arbitrary order).
 func (s *TableColMap) ForEach(f func(colID descpb.ColumnID, returnIndex int)) {
+	__antithesis_instrumentation__.Notify(268453)
 	s.m.ForEach(func(k, v int) {
+		__antithesis_instrumentation__.Notify(268455)
 		f(descpb.ColumnID(k), v)
 	})
+	__antithesis_instrumentation__.Notify(268454)
 	for pos, isSet := range s.systemColIsSet {
+		__antithesis_instrumentation__.Notify(268456)
 		if isSet {
+			__antithesis_instrumentation__.Notify(268457)
 			id := SmallestSystemColumnColumnID + pos
 			f(descpb.ColumnID(id), s.systemColMap[pos])
+		} else {
+			__antithesis_instrumentation__.Notify(268458)
 		}
 	}
 }
 
-// String prints out the contents of the map in the following format:
-//   map[key1:val1 key2:val2 ...]
-// The keys are in ascending order.
 func (s *TableColMap) String() string {
+	__antithesis_instrumentation__.Notify(268459)
 	var buf bytes.Buffer
 	buf.WriteString("map[")
 	s.m.ContentsIntoBuffer(&buf)
 	first := buf.Len() == len("map[")
 	for pos, isSet := range s.systemColIsSet {
+		__antithesis_instrumentation__.Notify(268461)
 		if isSet {
+			__antithesis_instrumentation__.Notify(268462)
 			if !first {
+				__antithesis_instrumentation__.Notify(268464)
 				buf.WriteByte(' ')
+			} else {
+				__antithesis_instrumentation__.Notify(268465)
 			}
+			__antithesis_instrumentation__.Notify(268463)
 			first = false
 			id := SmallestSystemColumnColumnID + pos
 			fmt.Fprintf(&buf, "%d:%d", id, s.systemColMap[pos])
+		} else {
+			__antithesis_instrumentation__.Notify(268466)
 		}
 	}
+	__antithesis_instrumentation__.Notify(268460)
 	buf.WriteByte(']')
 	return buf.String()
 }

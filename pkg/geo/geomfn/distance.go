@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package geomfn
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -23,148 +15,199 @@ import (
 	"github.com/twpayne/go-geom/xy/lineintersector"
 )
 
-// geometricalObjectsOrder allows us to preserve the order of geometrical objects to
-// match the start and endpoint in the shortest and longest LineString.
 type geometricalObjectsOrder int
 
 const (
-	// geometricalObjectsFlipped represents that the given order of two geometrical
-	// objects has been flipped.
 	geometricalObjectsFlipped geometricalObjectsOrder = -1
-	// geometricalObjectsNotFlipped represents that the given order of two geometrical
-	// objects has not been flipped.
+
 	geometricalObjectsNotFlipped geometricalObjectsOrder = 1
 )
 
-// MinDistance returns the minimum distance between geometries A and B.
-// This returns a geo.EmptyGeometryError if either A or B is EMPTY.
 func MinDistance(a geo.Geometry, b geo.Geometry) (float64, error) {
+	__antithesis_instrumentation__.Notify(61721)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(61723)
 		return 0, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(61724)
 	}
+	__antithesis_instrumentation__.Notify(61722)
 	return minDistanceInternal(a, b, 0, geo.EmptyBehaviorOmit, geo.FnInclusive)
 }
 
-// MaxDistance returns the maximum distance across every pair of points comprising
-// geometries A and B.
 func MaxDistance(a geo.Geometry, b geo.Geometry) (float64, error) {
+	__antithesis_instrumentation__.Notify(61725)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(61727)
 		return 0, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(61728)
 	}
+	__antithesis_instrumentation__.Notify(61726)
 	return maxDistanceInternal(a, b, math.MaxFloat64, geo.EmptyBehaviorOmit, geo.FnInclusive)
 }
 
-// DWithin determines if any part of geometry A is within D units of geometry B.
-// If exclusive, DWithin is equivalent to Distance(a, b) < d. Otherwise, DWithin
-// is equivalent to Distance(a, b) <= d.
 func DWithin(
 	a geo.Geometry, b geo.Geometry, d float64, exclusivity geo.FnExclusivity,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(61729)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(61735)
 		return false, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(61736)
 	}
+	__antithesis_instrumentation__.Notify(61730)
 	if d < 0 {
+		__antithesis_instrumentation__.Notify(61737)
 		return false, pgerror.Newf(pgcode.InvalidParameterValue, "dwithin distance cannot be less than zero")
+	} else {
+		__antithesis_instrumentation__.Notify(61738)
 	}
+	__antithesis_instrumentation__.Notify(61731)
 	if !a.CartesianBoundingBox().Buffer(d, d).Intersects(b.CartesianBoundingBox()) {
+		__antithesis_instrumentation__.Notify(61739)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(61740)
 	}
+	__antithesis_instrumentation__.Notify(61732)
 	dist, err := minDistanceInternal(a, b, d, geo.EmptyBehaviorError, exclusivity)
 	if err != nil {
-		// In case of any empty geometries return false.
+		__antithesis_instrumentation__.Notify(61741)
+
 		if geo.IsEmptyGeometryError(err) {
+			__antithesis_instrumentation__.Notify(61743)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(61744)
 		}
+		__antithesis_instrumentation__.Notify(61742)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(61745)
 	}
+	__antithesis_instrumentation__.Notify(61733)
 	if exclusivity == geo.FnExclusive {
+		__antithesis_instrumentation__.Notify(61746)
 		return dist < d, nil
+	} else {
+		__antithesis_instrumentation__.Notify(61747)
 	}
+	__antithesis_instrumentation__.Notify(61734)
 	return dist <= d, nil
 }
 
-// DFullyWithin determines whether the maximum distance across every pair of
-// points comprising geometries A and B is within D units. If exclusive,
-// DFullyWithin is equivalent to MaxDistance(a, b) < d. Otherwise, DFullyWithin
-// is equivalent to MaxDistance(a, b) <= d.
 func DFullyWithin(
 	a geo.Geometry, b geo.Geometry, d float64, exclusivity geo.FnExclusivity,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(61748)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(61754)
 		return false, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(61755)
 	}
+	__antithesis_instrumentation__.Notify(61749)
 	if d < 0 {
+		__antithesis_instrumentation__.Notify(61756)
 		return false, pgerror.Newf(pgcode.InvalidParameterValue, "dwithin distance cannot be less than zero")
+	} else {
+		__antithesis_instrumentation__.Notify(61757)
 	}
+	__antithesis_instrumentation__.Notify(61750)
 	if !a.CartesianBoundingBox().Buffer(d, d).Covers(b.CartesianBoundingBox()) {
+		__antithesis_instrumentation__.Notify(61758)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(61759)
 	}
+	__antithesis_instrumentation__.Notify(61751)
 	dist, err := maxDistanceInternal(a, b, d, geo.EmptyBehaviorError, exclusivity)
 	if err != nil {
-		// In case of any empty geometries return false.
+		__antithesis_instrumentation__.Notify(61760)
+
 		if geo.IsEmptyGeometryError(err) {
+			__antithesis_instrumentation__.Notify(61762)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(61763)
 		}
+		__antithesis_instrumentation__.Notify(61761)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(61764)
 	}
+	__antithesis_instrumentation__.Notify(61752)
 	if exclusivity == geo.FnExclusive {
+		__antithesis_instrumentation__.Notify(61765)
 		return dist < d, nil
+	} else {
+		__antithesis_instrumentation__.Notify(61766)
 	}
+	__antithesis_instrumentation__.Notify(61753)
 	return dist <= d, nil
 }
 
-// LongestLineString returns the LineString corresponds to maximum distance across
-// every pair of points comprising geometries A and B.
 func LongestLineString(a geo.Geometry, b geo.Geometry) (geo.Geometry, error) {
+	__antithesis_instrumentation__.Notify(61767)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(61769)
 		return geo.Geometry{}, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(61770)
 	}
+	__antithesis_instrumentation__.Notify(61768)
 	u := newGeomMaxDistanceUpdater(math.MaxFloat64, geo.FnInclusive)
 	return distanceLineStringInternal(a, b, u, geo.EmptyBehaviorOmit)
 }
 
-// ShortestLineString returns the LineString corresponds to minimum distance across
-// every pair of points comprising geometries A and B.
 func ShortestLineString(a geo.Geometry, b geo.Geometry) (geo.Geometry, error) {
+	__antithesis_instrumentation__.Notify(61771)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(61773)
 		return geo.Geometry{}, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(61774)
 	}
-	u := newGeomMinDistanceUpdater(0 /*stopAfter */, geo.FnInclusive)
+	__antithesis_instrumentation__.Notify(61772)
+	u := newGeomMinDistanceUpdater(0, geo.FnInclusive)
 	return distanceLineStringInternal(a, b, u, geo.EmptyBehaviorOmit)
 }
 
-// distanceLineStringInternal calculates the LineString between two geometries using
-// the DistanceCalculator operator.
-// If there are any EMPTY Geometry objects, they will be ignored. It will return an
-// EmptyGeometryError if A or B contains only EMPTY geometries, even if emptyBehavior
-// is set to EmptyBehaviorOmit.
 func distanceLineStringInternal(
 	a geo.Geometry, b geo.Geometry, u geodist.DistanceUpdater, emptyBehavior geo.EmptyBehavior,
 ) (geo.Geometry, error) {
+	__antithesis_instrumentation__.Notify(61775)
 	c := &geomDistanceCalculator{updater: u, boundingBoxIntersects: a.CartesianBoundingBox().Intersects(b.CartesianBoundingBox())}
 	_, err := distanceInternal(a, b, c, emptyBehavior)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61778)
 		return geo.Geometry{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(61779)
 	}
+	__antithesis_instrumentation__.Notify(61776)
 	var coordA, coordB geom.Coord
 	switch u := u.(type) {
 	case *geomMaxDistanceUpdater:
+		__antithesis_instrumentation__.Notify(61780)
 		coordA = u.coordA
 		coordB = u.coordB
 	case *geomMinDistanceUpdater:
+		__antithesis_instrumentation__.Notify(61781)
 		coordA = u.coordA
 		coordB = u.coordB
 	default:
+		__antithesis_instrumentation__.Notify(61782)
 		return geo.Geometry{}, errors.AssertionFailedf("programmer error: unknown behavior")
 	}
+	__antithesis_instrumentation__.Notify(61777)
 	lineCoords := []float64{coordA.X(), coordA.Y(), coordB.X(), coordB.Y()}
 	lineString := geom.NewLineStringFlat(geom.XY, lineCoords).SetSRID(int(a.SRID()))
 	return geo.MakeGeometryFromGeomT(lineString)
 }
 
-// maxDistanceInternal finds the maximum distance between two geometries.
-// We can re-use the same algorithm as min-distance, allowing skips of checks that involve
-// the interiors or intersections as those will always be less then the maximum min-distance.
 func maxDistanceInternal(
 	a geo.Geometry,
 	b geo.Geometry,
@@ -172,13 +215,12 @@ func maxDistanceInternal(
 	emptyBehavior geo.EmptyBehavior,
 	exclusivity geo.FnExclusivity,
 ) (float64, error) {
+	__antithesis_instrumentation__.Notify(61783)
 	u := newGeomMaxDistanceUpdater(stopAfter, exclusivity)
 	c := &geomDistanceCalculator{updater: u, boundingBoxIntersects: a.CartesianBoundingBox().Intersects(b.CartesianBoundingBox())}
 	return distanceInternal(a, b, c, emptyBehavior)
 }
 
-// minDistanceInternal finds the minimum distance between two geometries.
-// This implementation is done in-house, as compared to using GEOS.
 func minDistanceInternal(
 	a geo.Geometry,
 	b geo.Geometry,
@@ -186,194 +228,239 @@ func minDistanceInternal(
 	emptyBehavior geo.EmptyBehavior,
 	exclusivity geo.FnExclusivity,
 ) (float64, error) {
+	__antithesis_instrumentation__.Notify(61784)
 	u := newGeomMinDistanceUpdater(stopAfter, exclusivity)
 	c := &geomDistanceCalculator{updater: u, boundingBoxIntersects: a.CartesianBoundingBox().Intersects(b.CartesianBoundingBox())}
 	return distanceInternal(a, b, c, emptyBehavior)
 }
 
-// distanceInternal calculates the distance between two geometries using
-// the DistanceCalculator operator.
-// If there are any EMPTY Geometry objects, they will be ignored. It will return an
-// EmptyGeometryError if A or B contains only EMPTY geometries, even if emptyBehavior
-// is set to EmptyBehaviorOmit.
 func distanceInternal(
 	a geo.Geometry, b geo.Geometry, c geodist.DistanceCalculator, emptyBehavior geo.EmptyBehavior,
 ) (float64, error) {
-	// If either side has no geoms, then we error out regardless of emptyBehavior.
-	if a.Empty() || b.Empty() {
+	__antithesis_instrumentation__.Notify(61785)
+
+	if a.Empty() || func() bool {
+		__antithesis_instrumentation__.Notify(61792)
+		return b.Empty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(61793)
 		return 0, geo.NewEmptyGeometryError()
+	} else {
+		__antithesis_instrumentation__.Notify(61794)
 	}
+	__antithesis_instrumentation__.Notify(61786)
 
 	aGeomT, err := a.AsGeomT()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61795)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(61796)
 	}
+	__antithesis_instrumentation__.Notify(61787)
 	bGeomT, err := b.AsGeomT()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61797)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(61798)
 	}
+	__antithesis_instrumentation__.Notify(61788)
 
-	// If we early exit, we have to check empty behavior upfront to return
-	// the appropriate error message.
-	// This matches PostGIS's behavior for DWithin, which is always false
-	// if at least one element is empty.
-	if emptyBehavior == geo.EmptyBehaviorError &&
-		(geo.GeomTContainsEmpty(aGeomT) || geo.GeomTContainsEmpty(bGeomT)) {
+	if emptyBehavior == geo.EmptyBehaviorError && func() bool {
+		__antithesis_instrumentation__.Notify(61799)
+		return (geo.GeomTContainsEmpty(aGeomT) || func() bool {
+			__antithesis_instrumentation__.Notify(61800)
+			return geo.GeomTContainsEmpty(bGeomT) == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(61801)
 		return 0, geo.NewEmptyGeometryError()
+	} else {
+		__antithesis_instrumentation__.Notify(61802)
 	}
+	__antithesis_instrumentation__.Notify(61789)
 
 	aIt := geo.NewGeomTIterator(aGeomT, emptyBehavior)
 	aGeom, aNext, aErr := aIt.Next()
 	if aErr != nil {
+		__antithesis_instrumentation__.Notify(61803)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(61804)
 	}
+	__antithesis_instrumentation__.Notify(61790)
 	for aNext {
+		__antithesis_instrumentation__.Notify(61805)
 		aGeodist, err := geomToGeodist(aGeom)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(61809)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(61810)
 		}
+		__antithesis_instrumentation__.Notify(61806)
 
 		bIt := geo.NewGeomTIterator(bGeomT, emptyBehavior)
 		bGeom, bNext, bErr := bIt.Next()
 		if bErr != nil {
+			__antithesis_instrumentation__.Notify(61811)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(61812)
 		}
+		__antithesis_instrumentation__.Notify(61807)
 		for bNext {
+			__antithesis_instrumentation__.Notify(61813)
 			bGeodist, err := geomToGeodist(bGeom)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(61817)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(61818)
 			}
+			__antithesis_instrumentation__.Notify(61814)
 			earlyExit, err := geodist.ShapeDistance(c, aGeodist, bGeodist)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(61819)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(61820)
 			}
+			__antithesis_instrumentation__.Notify(61815)
 			if earlyExit {
+				__antithesis_instrumentation__.Notify(61821)
 				return c.DistanceUpdater().Distance(), nil
+			} else {
+				__antithesis_instrumentation__.Notify(61822)
 			}
+			__antithesis_instrumentation__.Notify(61816)
 
 			bGeom, bNext, bErr = bIt.Next()
 			if bErr != nil {
+				__antithesis_instrumentation__.Notify(61823)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(61824)
 			}
 		}
+		__antithesis_instrumentation__.Notify(61808)
 
 		aGeom, aNext, aErr = aIt.Next()
 		if aErr != nil {
+			__antithesis_instrumentation__.Notify(61825)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(61826)
 		}
 	}
+	__antithesis_instrumentation__.Notify(61791)
 	return c.DistanceUpdater().Distance(), nil
 }
 
-// geomToGeodist converts a given geom object to a geodist shape.
 func geomToGeodist(g geom.T) (geodist.Shape, error) {
+	__antithesis_instrumentation__.Notify(61827)
 	switch g := g.(type) {
 	case *geom.Point:
+		__antithesis_instrumentation__.Notify(61829)
 		return &geodist.Point{GeomPoint: g.Coords()}, nil
 	case *geom.LineString:
+		__antithesis_instrumentation__.Notify(61830)
 		return &geomGeodistLineString{LineString: g}, nil
 	case *geom.Polygon:
+		__antithesis_instrumentation__.Notify(61831)
 		return &geomGeodistPolygon{Polygon: g}, nil
 	}
+	__antithesis_instrumentation__.Notify(61828)
 	return nil, pgerror.Newf(pgcode.InvalidParameterValue, "could not find shape: %T", g)
 }
 
-// geomGeodistLineString implements geodist.LineString.
 type geomGeodistLineString struct {
 	*geom.LineString
 }
 
 var _ geodist.LineString = (*geomGeodistLineString)(nil)
 
-// IsShape implements the geodist.LineString interface.
-func (*geomGeodistLineString) IsShape() {}
+func (*geomGeodistLineString) IsShape() { __antithesis_instrumentation__.Notify(61832) }
 
-// LineString implements the geodist.LineString interface.
-func (*geomGeodistLineString) IsLineString() {}
+func (*geomGeodistLineString) IsLineString() { __antithesis_instrumentation__.Notify(61833) }
 
-// Edge implements the geodist.LineString interface.
 func (g *geomGeodistLineString) Edge(i int) geodist.Edge {
+	__antithesis_instrumentation__.Notify(61834)
 	return geodist.Edge{
 		V0: geodist.Point{GeomPoint: g.LineString.Coord(i)},
 		V1: geodist.Point{GeomPoint: g.LineString.Coord(i + 1)},
 	}
 }
 
-// NumEdges implements the geodist.LineString interface.
 func (g *geomGeodistLineString) NumEdges() int {
+	__antithesis_instrumentation__.Notify(61835)
 	return g.LineString.NumCoords() - 1
 }
 
-// Vertex implements the geodist.LineString interface.
 func (g *geomGeodistLineString) Vertex(i int) geodist.Point {
+	__antithesis_instrumentation__.Notify(61836)
 	return geodist.Point{GeomPoint: g.LineString.Coord(i)}
 }
 
-// NumVertexes implements the geodist.LineString interface.
 func (g *geomGeodistLineString) NumVertexes() int {
+	__antithesis_instrumentation__.Notify(61837)
 	return g.LineString.NumCoords()
 }
 
-// geomGeodistLinearRing implements geodist.LinearRing.
 type geomGeodistLinearRing struct {
 	*geom.LinearRing
 }
 
 var _ geodist.LinearRing = (*geomGeodistLinearRing)(nil)
 
-// IsShape implements the geodist.LinearRing interface.
-func (*geomGeodistLinearRing) IsShape() {}
+func (*geomGeodistLinearRing) IsShape() { __antithesis_instrumentation__.Notify(61838) }
 
-// LinearRing implements the geodist.LinearRing interface.
-func (*geomGeodistLinearRing) IsLinearRing() {}
+func (*geomGeodistLinearRing) IsLinearRing() { __antithesis_instrumentation__.Notify(61839) }
 
-// Edge implements the geodist.LinearRing interface.
 func (g *geomGeodistLinearRing) Edge(i int) geodist.Edge {
+	__antithesis_instrumentation__.Notify(61840)
 	return geodist.Edge{
 		V0: geodist.Point{GeomPoint: g.LinearRing.Coord(i)},
 		V1: geodist.Point{GeomPoint: g.LinearRing.Coord(i + 1)},
 	}
 }
 
-// NumEdges implements the geodist.LinearRing interface.
 func (g *geomGeodistLinearRing) NumEdges() int {
+	__antithesis_instrumentation__.Notify(61841)
 	return g.LinearRing.NumCoords() - 1
 }
 
-// Vertex implements the geodist.LinearRing interface.
 func (g *geomGeodistLinearRing) Vertex(i int) geodist.Point {
+	__antithesis_instrumentation__.Notify(61842)
 	return geodist.Point{GeomPoint: g.LinearRing.Coord(i)}
 }
 
-// NumVertexes implements the geodist.LinearRing interface.
 func (g *geomGeodistLinearRing) NumVertexes() int {
+	__antithesis_instrumentation__.Notify(61843)
 	return g.LinearRing.NumCoords()
 }
 
-// geomGeodistPolygon implements geodist.Polygon.
 type geomGeodistPolygon struct {
 	*geom.Polygon
 }
 
 var _ geodist.Polygon = (*geomGeodistPolygon)(nil)
 
-// IsShape implements the geodist.Polygon interface.
-func (*geomGeodistPolygon) IsShape() {}
+func (*geomGeodistPolygon) IsShape() { __antithesis_instrumentation__.Notify(61844) }
 
-// Polygon implements the geodist.Polygon interface.
-func (*geomGeodistPolygon) IsPolygon() {}
+func (*geomGeodistPolygon) IsPolygon() { __antithesis_instrumentation__.Notify(61845) }
 
-// LinearRing implements the geodist.Polygon interface.
 func (g *geomGeodistPolygon) LinearRing(i int) geodist.LinearRing {
+	__antithesis_instrumentation__.Notify(61846)
 	return &geomGeodistLinearRing{LinearRing: g.Polygon.LinearRing(i)}
 }
 
-// NumLinearRings implements the geodist.Polygon interface.
 func (g *geomGeodistPolygon) NumLinearRings() int {
+	__antithesis_instrumentation__.Notify(61847)
 	return g.Polygon.NumLinearRings()
 }
 
-// geomGeodistEdgeCrosser implements geodist.EdgeCrosser.
 type geomGeodistEdgeCrosser struct {
 	strategy   lineintersector.Strategy
 	edgeV0     geom.Coord
@@ -383,8 +470,8 @@ type geomGeodistEdgeCrosser struct {
 
 var _ geodist.EdgeCrosser = (*geomGeodistEdgeCrosser)(nil)
 
-// ChainCrossing implements geodist.EdgeCrosser.
 func (c *geomGeodistEdgeCrosser) ChainCrossing(p geodist.Point) (bool, geodist.Point) {
+	__antithesis_instrumentation__.Notify(61848)
 	nextEdgeV1 := p.GeomPoint
 	result := lineintersector.LineIntersectsLine(
 		c.strategy,
@@ -395,23 +482,22 @@ func (c *geomGeodistEdgeCrosser) ChainCrossing(p geodist.Point) (bool, geodist.P
 	)
 	c.nextEdgeV0 = nextEdgeV1
 	if result.HasIntersection() {
+		__antithesis_instrumentation__.Notify(61850)
 		return true, geodist.Point{GeomPoint: result.Intersection()[0]}
+	} else {
+		__antithesis_instrumentation__.Notify(61851)
 	}
+	__antithesis_instrumentation__.Notify(61849)
 	return false, geodist.Point{}
 }
 
-// geomMinDistanceUpdater finds the minimum distance using geom calculations.
-// And preserve the line's endpoints as geom.Coord which corresponds to minimum
-// distance. If inclusive, methods will return early if it finds a minimum
-// distance <= stopAfter. Otherwise, methods will return early if it finds a
-// minimum distance < stopAfter.
 type geomMinDistanceUpdater struct {
 	currentValue float64
 	stopAfter    float64
 	exclusivity  geo.FnExclusivity
-	// coordA represents the first vertex of the edge that holds the maximum distance.
+
 	coordA geom.Coord
-	// coordB represents the second vertex of the edge that holds the maximum distance.
+
 	coordB geom.Coord
 
 	geometricalObjOrder geometricalObjectsOrder
@@ -419,11 +505,10 @@ type geomMinDistanceUpdater struct {
 
 var _ geodist.DistanceUpdater = (*geomMinDistanceUpdater)(nil)
 
-// newGeomMinDistanceUpdater returns a new geomMinDistanceUpdater with the
-// correct arguments set up.
 func newGeomMinDistanceUpdater(
 	stopAfter float64, exclusivity geo.FnExclusivity,
 ) *geomMinDistanceUpdater {
+	__antithesis_instrumentation__.Notify(61852)
 	return &geomMinDistanceUpdater{
 		currentValue:        math.MaxFloat64,
 		stopAfter:           stopAfter,
@@ -434,65 +519,73 @@ func newGeomMinDistanceUpdater(
 	}
 }
 
-// Distance implements the geodist.DistanceUpdater interface.
 func (u *geomMinDistanceUpdater) Distance() float64 {
+	__antithesis_instrumentation__.Notify(61853)
 	return u.currentValue
 }
 
-// Update implements the geodist.DistanceUpdater interface.
 func (u *geomMinDistanceUpdater) Update(aPoint geodist.Point, bPoint geodist.Point) bool {
+	__antithesis_instrumentation__.Notify(61854)
 	a := aPoint.GeomPoint
 	b := bPoint.GeomPoint
 
 	dist := coordNorm(coordSub(a, b))
-	if dist < u.currentValue || u.coordA == nil {
+	if dist < u.currentValue || func() bool {
+		__antithesis_instrumentation__.Notify(61856)
+		return u.coordA == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(61857)
 		u.currentValue = dist
 		if u.geometricalObjOrder == geometricalObjectsFlipped {
+			__antithesis_instrumentation__.Notify(61860)
 			u.coordA = b
 			u.coordB = a
 		} else {
+			__antithesis_instrumentation__.Notify(61861)
 			u.coordA = a
 			u.coordB = b
 		}
+		__antithesis_instrumentation__.Notify(61858)
 		if u.exclusivity == geo.FnExclusive {
+			__antithesis_instrumentation__.Notify(61862)
 			return dist < u.stopAfter
+		} else {
+			__antithesis_instrumentation__.Notify(61863)
 		}
+		__antithesis_instrumentation__.Notify(61859)
 		return dist <= u.stopAfter
+	} else {
+		__antithesis_instrumentation__.Notify(61864)
 	}
+	__antithesis_instrumentation__.Notify(61855)
 	return false
 }
 
-// OnIntersects implements the geodist.DistanceUpdater interface.
 func (u *geomMinDistanceUpdater) OnIntersects(p geodist.Point) bool {
+	__antithesis_instrumentation__.Notify(61865)
 	u.coordA = p.GeomPoint
 	u.coordB = p.GeomPoint
 	u.currentValue = 0
 	return true
 }
 
-// IsMaxDistance implements the geodist.DistanceUpdater interface.
 func (u *geomMinDistanceUpdater) IsMaxDistance() bool {
+	__antithesis_instrumentation__.Notify(61866)
 	return false
 }
 
-// FlipGeometries implements the geodist.DistanceUpdater interface.
 func (u *geomMinDistanceUpdater) FlipGeometries() {
+	__antithesis_instrumentation__.Notify(61867)
 	u.geometricalObjOrder = -u.geometricalObjOrder
 }
 
-// geomMaxDistanceUpdater finds the maximum distance using geom calculations.
-// And preserve the line's endpoints as geom.Coord which corresponds to maximum
-// distance. If exclusive, methods will return early if it finds that
-// distance >= stopAfter. Otherwise, methods will return early if distance >
-// stopAfter.
 type geomMaxDistanceUpdater struct {
 	currentValue float64
 	stopAfter    float64
 	exclusivity  geo.FnExclusivity
 
-	// coordA represents the first vertex of the edge that holds the maximum distance.
 	coordA geom.Coord
-	// coordB represents the second vertex of the edge that holds the maximum distance.
+
 	coordB geom.Coord
 
 	geometricalObjOrder geometricalObjectsOrder
@@ -500,13 +593,10 @@ type geomMaxDistanceUpdater struct {
 
 var _ geodist.DistanceUpdater = (*geomMaxDistanceUpdater)(nil)
 
-// newGeomMaxDistanceUpdater returns a new geomMaxDistanceUpdater with the
-// correct arguments set up. currentValue is initially populated with least
-// possible value instead of 0 because there may be the case where maximum
-// distance is 0 and we may require to find the line for 0 maximum distance.
 func newGeomMaxDistanceUpdater(
 	stopAfter float64, exclusivity geo.FnExclusivity,
 ) *geomMaxDistanceUpdater {
+	__antithesis_instrumentation__.Notify(61868)
 	return &geomMaxDistanceUpdater{
 		currentValue:        -math.MaxFloat64,
 		stopAfter:           stopAfter,
@@ -517,50 +607,63 @@ func newGeomMaxDistanceUpdater(
 	}
 }
 
-// Distance implements the geodist.DistanceUpdater interface.
 func (u *geomMaxDistanceUpdater) Distance() float64 {
+	__antithesis_instrumentation__.Notify(61869)
 	return u.currentValue
 }
 
-// Update implements the geodist.DistanceUpdater interface.
 func (u *geomMaxDistanceUpdater) Update(aPoint geodist.Point, bPoint geodist.Point) bool {
+	__antithesis_instrumentation__.Notify(61870)
 	a := aPoint.GeomPoint
 	b := bPoint.GeomPoint
 
 	dist := coordNorm(coordSub(a, b))
-	if dist > u.currentValue || u.coordA == nil {
+	if dist > u.currentValue || func() bool {
+		__antithesis_instrumentation__.Notify(61872)
+		return u.coordA == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(61873)
 		u.currentValue = dist
 		if u.geometricalObjOrder == geometricalObjectsFlipped {
+			__antithesis_instrumentation__.Notify(61876)
 			u.coordA = b
 			u.coordB = a
 		} else {
+			__antithesis_instrumentation__.Notify(61877)
 			u.coordA = a
 			u.coordB = b
 		}
+		__antithesis_instrumentation__.Notify(61874)
 		if u.exclusivity == geo.FnExclusive {
+			__antithesis_instrumentation__.Notify(61878)
 			return dist >= u.stopAfter
+		} else {
+			__antithesis_instrumentation__.Notify(61879)
 		}
+		__antithesis_instrumentation__.Notify(61875)
 		return dist > u.stopAfter
+	} else {
+		__antithesis_instrumentation__.Notify(61880)
 	}
+	__antithesis_instrumentation__.Notify(61871)
 	return false
 }
 
-// OnIntersects implements the geodist.DistanceUpdater interface.
 func (u *geomMaxDistanceUpdater) OnIntersects(p geodist.Point) bool {
+	__antithesis_instrumentation__.Notify(61881)
 	return false
 }
 
-// IsMaxDistance implements the geodist.DistanceUpdater interface.
 func (u *geomMaxDistanceUpdater) IsMaxDistance() bool {
+	__antithesis_instrumentation__.Notify(61882)
 	return true
 }
 
-// FlipGeometries implements the geodist.DistanceUpdater interface.
 func (u *geomMaxDistanceUpdater) FlipGeometries() {
+	__antithesis_instrumentation__.Notify(61883)
 	u.geometricalObjOrder = -u.geometricalObjOrder
 }
 
-// geomDistanceCalculator implements geodist.DistanceCalculator
 type geomDistanceCalculator struct {
 	updater               geodist.DistanceUpdater
 	boundingBoxIntersects bool
@@ -568,20 +671,20 @@ type geomDistanceCalculator struct {
 
 var _ geodist.DistanceCalculator = (*geomDistanceCalculator)(nil)
 
-// DistanceUpdater implements geodist.DistanceCalculator.
 func (c *geomDistanceCalculator) DistanceUpdater() geodist.DistanceUpdater {
+	__antithesis_instrumentation__.Notify(61884)
 	return c.updater
 }
 
-// BoundingBoxIntersects implements geodist.DistanceCalculator.
 func (c *geomDistanceCalculator) BoundingBoxIntersects() bool {
+	__antithesis_instrumentation__.Notify(61885)
 	return c.boundingBoxIntersects
 }
 
-// NewEdgeCrosser implements geodist.DistanceCalculator.
 func (c *geomDistanceCalculator) NewEdgeCrosser(
 	edge geodist.Edge, startPoint geodist.Point,
 ) geodist.EdgeCrosser {
+	__antithesis_instrumentation__.Notify(61886)
 	return &geomGeodistEdgeCrosser{
 		strategy:   &lineintersector.NonRobustLineIntersector{},
 		edgeV0:     edge.V0.GeomPoint,
@@ -590,7 +693,6 @@ func (c *geomDistanceCalculator) NewEdgeCrosser(
 	}
 }
 
-// side corresponds to the side in which a point is relative to a line.
 type pointSide int
 
 const (
@@ -599,21 +701,19 @@ const (
 	pointSideRight pointSide = 1
 )
 
-// findPointSide finds which side a point is relative to the infinite line
-// given by the edge.
-// Note this side is relative to the orientation of the line.
 func findPointSide(p geom.Coord, eV0 geom.Coord, eV1 geom.Coord) pointSide {
-	// This is the equivalent of using the point-gradient formula
-	// and determining the sign, i.e. the sign of
-	// d = (x-x1)(y2-y1) - (y-y1)(x2-x1)
-	// where (x1,y1) and (x2,y2) is the edge and (x,y) is the point
+	__antithesis_instrumentation__.Notify(61887)
+
 	sign := (p.X()-eV0.X())*(eV1.Y()-eV0.Y()) - (eV1.X()-eV0.X())*(p.Y()-eV0.Y())
 	switch {
 	case sign == 0:
+		__antithesis_instrumentation__.Notify(61888)
 		return pointSideOn
 	case sign > 0:
+		__antithesis_instrumentation__.Notify(61889)
 		return pointSideRight
 	default:
+		__antithesis_instrumentation__.Notify(61890)
 		return pointSideLeft
 	}
 }
@@ -626,283 +726,444 @@ const (
 	insideLinearRing  linearRingSide = 1
 )
 
-// findPointSideOfLinearRing returns whether a point is outside, on, or inside a
-// linear ring.
 func findPointSideOfLinearRing(point geodist.Point, linearRing geodist.LinearRing) linearRingSide {
-	// This is done using the winding number algorithm, also known as the
-	// "non-zero rule".
-	// See: https://en.wikipedia.org/wiki/Point_in_polygon for intro.
-	// See: http://geomalgorithms.com/a03-_inclusion.html for algorithm.
-	// See also: https://en.wikipedia.org/wiki/Winding_number
-	// See also: https://en.wikipedia.org/wiki/Nonzero-rule
+	__antithesis_instrumentation__.Notify(61891)
+
 	windingNumber := 0
 	p := point.GeomPoint
 	for edgeIdx, numEdges := 0, linearRing.NumEdges(); edgeIdx < numEdges; edgeIdx++ {
+		__antithesis_instrumentation__.Notify(61894)
 		e := linearRing.Edge(edgeIdx)
 		eV0 := e.V0.GeomPoint
 		eV1 := e.V1.GeomPoint
-		// Same vertex; none of these checks will pass.
+
 		if coordEqual(eV0, eV1) {
+			__antithesis_instrumentation__.Notify(61899)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(61900)
 		}
+		__antithesis_instrumentation__.Notify(61895)
 		yMin := math.Min(eV0.Y(), eV1.Y())
 		yMax := math.Max(eV0.Y(), eV1.Y())
-		// If the edge isn't on the same level as Y, this edge isn't worth considering.
-		if p.Y() > yMax || p.Y() < yMin {
+
+		if p.Y() > yMax || func() bool {
+			__antithesis_instrumentation__.Notify(61901)
+			return p.Y() < yMin == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(61902)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(61903)
 		}
+		__antithesis_instrumentation__.Notify(61896)
 		side := findPointSide(p, eV0, eV1)
-		// If the point is on the line if the edge was infinite, and the point is within the bounds
-		// of the line segment denoted by the edge, there is a covering.
-		if side == pointSideOn && (eV0.X() <= p.X() && p.X() <= eV1.X()) {
+
+		if side == pointSideOn && func() bool {
+			__antithesis_instrumentation__.Notify(61904)
+			return (eV0.X() <= p.X() && func() bool {
+				__antithesis_instrumentation__.Notify(61905)
+				return p.X() <= eV1.X() == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(61906)
 			return onLinearRing
+		} else {
+			__antithesis_instrumentation__.Notify(61907)
 		}
-		// If the point is left of the segment and the line is rising
-		// we have a circle going CCW, so increment.
-		// Note we only compare [start, end) as we do not want to double count points
-		// which are on the same X / Y axis as an edge vertex.
-		if side == pointSideLeft && eV0.Y() <= p.Y() && p.Y() < eV1.Y() {
+		__antithesis_instrumentation__.Notify(61897)
+
+		if side == pointSideLeft && func() bool {
+			__antithesis_instrumentation__.Notify(61908)
+			return eV0.Y() <= p.Y() == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(61909)
+			return p.Y() < eV1.Y() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(61910)
 			windingNumber++
+		} else {
+			__antithesis_instrumentation__.Notify(61911)
 		}
-		// If the line is to the right of the segment and the
-		// line is falling, we a have a circle going CW so decrement.
-		// Note we only compare [start, end) as we do not want to double count points
-		// which are on the same X / Y axis as an edge vertex.
-		if side == pointSideRight && eV1.Y() <= p.Y() && p.Y() < eV0.Y() {
+		__antithesis_instrumentation__.Notify(61898)
+
+		if side == pointSideRight && func() bool {
+			__antithesis_instrumentation__.Notify(61912)
+			return eV1.Y() <= p.Y() == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(61913)
+			return p.Y() < eV0.Y() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(61914)
 			windingNumber--
+		} else {
+			__antithesis_instrumentation__.Notify(61915)
 		}
 	}
+	__antithesis_instrumentation__.Notify(61892)
 	if windingNumber != 0 {
+		__antithesis_instrumentation__.Notify(61916)
 		return insideLinearRing
+	} else {
+		__antithesis_instrumentation__.Notify(61917)
 	}
+	__antithesis_instrumentation__.Notify(61893)
 	return outsideLinearRing
 }
 
-// PointIntersectsLinearRing implements geodist.DistanceCalculator.
 func (c *geomDistanceCalculator) PointIntersectsLinearRing(
 	point geodist.Point, linearRing geodist.LinearRing,
 ) bool {
+	__antithesis_instrumentation__.Notify(61918)
 	switch findPointSideOfLinearRing(point, linearRing) {
 	case insideLinearRing, onLinearRing:
+		__antithesis_instrumentation__.Notify(61919)
 		return true
 	default:
+		__antithesis_instrumentation__.Notify(61920)
 		return false
 	}
 }
 
-// ClosestPointToEdge implements geodist.DistanceCalculator.
 func (c *geomDistanceCalculator) ClosestPointToEdge(
 	e geodist.Edge, p geodist.Point,
 ) (geodist.Point, bool) {
-	// Edge is a single point. Closest point must be any edge vertex.
-	if coordEqual(e.V0.GeomPoint, e.V1.GeomPoint) {
-		return e.V0, coordEqual(e.V0.GeomPoint, p.GeomPoint)
-	}
+	__antithesis_instrumentation__.Notify(61921)
 
-	// From http://www.faqs.org/faqs/graphics/algorithms-faq/, section 1.02
-	//
-	//  Let the point be C (Cx,Cy) and the line be AB (Ax,Ay) to (Bx,By).
-	//  Let P be the point of perpendicular projection of C on AB.  The parameter
-	//  r, which indicates P's position along AB, is computed by the dot product
-	//  of AC and AB divided by the square of the length of AB:
-	//
-	//  (1)     AC dot AB
-	//      r = ---------
-	//          ||AB||^2
-	//
-	//  r has the following meaning:
-	//
-	//      r=0      P = A
-	//      r=1      P = B
-	//      r<0      P is on the backward extension of AB
-	//      r>1      P is on the forward extension of AB
-	//      0<r<1    P is interior to AB
+	if coordEqual(e.V0.GeomPoint, e.V1.GeomPoint) {
+		__antithesis_instrumentation__.Notify(61926)
+		return e.V0, coordEqual(e.V0.GeomPoint, p.GeomPoint)
+	} else {
+		__antithesis_instrumentation__.Notify(61927)
+	}
+	__antithesis_instrumentation__.Notify(61922)
+
 	if coordEqual(p.GeomPoint, e.V0.GeomPoint) {
+		__antithesis_instrumentation__.Notify(61928)
 		return p, true
+	} else {
+		__antithesis_instrumentation__.Notify(61929)
 	}
+	__antithesis_instrumentation__.Notify(61923)
 	if coordEqual(p.GeomPoint, e.V1.GeomPoint) {
+		__antithesis_instrumentation__.Notify(61930)
 		return p, true
+	} else {
+		__antithesis_instrumentation__.Notify(61931)
 	}
+	__antithesis_instrumentation__.Notify(61924)
 
 	ac := coordSub(p.GeomPoint, e.V0.GeomPoint)
 	ab := coordSub(e.V1.GeomPoint, e.V0.GeomPoint)
 
 	r := coordDot(ac, ab) / coordNorm2(ab)
-	if r < 0 || r > 1 {
+	if r < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(61932)
+		return r > 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(61933)
 		return p, false
+	} else {
+		__antithesis_instrumentation__.Notify(61934)
 	}
+	__antithesis_instrumentation__.Notify(61925)
 	return geodist.Point{GeomPoint: coordAdd(e.V0.GeomPoint, coordMul(ab, r))}, true
 }
 
-// FrechetDistance calculates the Frechet distance between two geometries.
 func FrechetDistance(a, b geo.Geometry) (*float64, error) {
-	if a.Empty() || b.Empty() {
+	__antithesis_instrumentation__.Notify(61935)
+	if a.Empty() || func() bool {
+		__antithesis_instrumentation__.Notify(61939)
+		return b.Empty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(61940)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(61941)
 	}
+	__antithesis_instrumentation__.Notify(61936)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(61942)
 		return nil, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(61943)
 	}
+	__antithesis_instrumentation__.Notify(61937)
 	distance, err := geos.FrechetDistance(a.EWKB(), b.EWKB())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61944)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(61945)
 	}
+	__antithesis_instrumentation__.Notify(61938)
 	return &distance, nil
 }
 
-// FrechetDistanceDensify calculates the Frechet distance between two geometries.
 func FrechetDistanceDensify(a, b geo.Geometry, densifyFrac float64) (*float64, error) {
-	// For Frechet distance, we take <= 0 to disable the densifyFrac parameter.
-	// This differs from HausdorffDistance, but follows PostGIS behavior.
+	__antithesis_instrumentation__.Notify(61946)
+
 	if densifyFrac <= 0 {
+		__antithesis_instrumentation__.Notify(61952)
 		return FrechetDistance(a, b)
+	} else {
+		__antithesis_instrumentation__.Notify(61953)
 	}
-	if a.Empty() || b.Empty() {
+	__antithesis_instrumentation__.Notify(61947)
+	if a.Empty() || func() bool {
+		__antithesis_instrumentation__.Notify(61954)
+		return b.Empty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(61955)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(61956)
 	}
+	__antithesis_instrumentation__.Notify(61948)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(61957)
 		return nil, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(61958)
 	}
+	__antithesis_instrumentation__.Notify(61949)
 	if err := verifyDensifyFrac(densifyFrac); err != nil {
+		__antithesis_instrumentation__.Notify(61959)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(61960)
 	}
+	__antithesis_instrumentation__.Notify(61950)
 	distance, err := geos.FrechetDistanceDensify(a.EWKB(), b.EWKB(), densifyFrac)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61961)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(61962)
 	}
+	__antithesis_instrumentation__.Notify(61951)
 	return &distance, nil
 }
 
-// HausdorffDistance calculates the Hausdorff distance between two geometries.
 func HausdorffDistance(a, b geo.Geometry) (*float64, error) {
-	if a.Empty() || b.Empty() {
+	__antithesis_instrumentation__.Notify(61963)
+	if a.Empty() || func() bool {
+		__antithesis_instrumentation__.Notify(61967)
+		return b.Empty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(61968)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(61969)
 	}
+	__antithesis_instrumentation__.Notify(61964)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(61970)
 		return nil, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(61971)
 	}
+	__antithesis_instrumentation__.Notify(61965)
 	distance, err := geos.HausdorffDistance(a.EWKB(), b.EWKB())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61972)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(61973)
 	}
+	__antithesis_instrumentation__.Notify(61966)
 	return &distance, nil
 }
 
-// HausdorffDistanceDensify calculates the Hausdorff distance between two geometries.
 func HausdorffDistanceDensify(a, b geo.Geometry, densifyFrac float64) (*float64, error) {
-	if a.Empty() || b.Empty() {
+	__antithesis_instrumentation__.Notify(61974)
+	if a.Empty() || func() bool {
+		__antithesis_instrumentation__.Notify(61979)
+		return b.Empty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(61980)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(61981)
 	}
+	__antithesis_instrumentation__.Notify(61975)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(61982)
 		return nil, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(61983)
 	}
+	__antithesis_instrumentation__.Notify(61976)
 	if err := verifyDensifyFrac(densifyFrac); err != nil {
+		__antithesis_instrumentation__.Notify(61984)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(61985)
 	}
+	__antithesis_instrumentation__.Notify(61977)
 
 	distance, err := geos.HausdorffDistanceDensify(a.EWKB(), b.EWKB(), densifyFrac)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61986)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(61987)
 	}
+	__antithesis_instrumentation__.Notify(61978)
 	return &distance, nil
 }
 
-// ClosestPoint returns the first point located on geometry A on the shortest line between the geometries.
 func ClosestPoint(a, b geo.Geometry) (geo.Geometry, error) {
+	__antithesis_instrumentation__.Notify(61988)
 	shortestLine, err := ShortestLineString(a, b)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61992)
 		return geo.Geometry{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(61993)
 	}
+	__antithesis_instrumentation__.Notify(61989)
 	shortestLineT, err := shortestLine.AsGeomT()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61994)
 		return geo.Geometry{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(61995)
 	}
+	__antithesis_instrumentation__.Notify(61990)
 	closestPoint, err := geo.MakeGeometryFromPointCoords(
 		shortestLineT.(*geom.LineString).Coord(0).X(),
 		shortestLineT.(*geom.LineString).Coord(0).Y())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(61996)
 		return geo.Geometry{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(61997)
 	}
+	__antithesis_instrumentation__.Notify(61991)
 	return closestPoint, nil
 }
 
 func verifyDensifyFrac(f float64) error {
-	if f < 0 || f > 1 {
+	__antithesis_instrumentation__.Notify(61998)
+	if f < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(62001)
+		return f > 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(62002)
 		return pgerror.Newf(pgcode.InvalidParameterValue, "fraction must be in range [0, 1], got %f", f)
+	} else {
+		__antithesis_instrumentation__.Notify(62003)
 	}
-	// Very small densifyFrac potentially causes a SIGFPE or generate a large
-	// amount of memory. Guard against this.
+	__antithesis_instrumentation__.Notify(61999)
+
 	const fracTooSmall = 1e-6
-	if f > 0 && f < fracTooSmall {
+	if f > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(62004)
+		return f < fracTooSmall == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(62005)
 		return pgerror.Newf(pgcode.InvalidParameterValue, "fraction %f is too small, must be at least %f", f, fracTooSmall)
+	} else {
+		__antithesis_instrumentation__.Notify(62006)
 	}
+	__antithesis_instrumentation__.Notify(62000)
 	return nil
 }
 
-// findPointSideOfPolygon returns whether a point intersects with a polygon.
 func findPointSideOfPolygon(point geom.T, polygon geom.T) (linearRingSide, error) {
-	// Convert point from a geom.T to a *geodist.Point.
+	__antithesis_instrumentation__.Notify(62007)
+
 	_, ok := point.(*geom.Point)
 	if !ok {
+		__antithesis_instrumentation__.Notify(62017)
 		return outsideLinearRing, pgerror.Newf(pgcode.InvalidParameterValue, "first geometry passed to findPointSideOfPolygon must be a point")
+	} else {
+		__antithesis_instrumentation__.Notify(62018)
 	}
+	__antithesis_instrumentation__.Notify(62008)
 	pointGeodistShape, err := geomToGeodist(point)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(62019)
 		return outsideLinearRing, err
+	} else {
+		__antithesis_instrumentation__.Notify(62020)
 	}
+	__antithesis_instrumentation__.Notify(62009)
 	pointGeodistPoint, ok := pointGeodistShape.(*geodist.Point)
 	if !ok {
+		__antithesis_instrumentation__.Notify(62021)
 		return outsideLinearRing, pgerror.Newf(pgcode.InvalidParameterValue, "geomToGeodist failed to convert a *geom.Point to a *geodist.Point")
+	} else {
+		__antithesis_instrumentation__.Notify(62022)
 	}
+	__antithesis_instrumentation__.Notify(62010)
 
-	// Convert polygon from a geom.T to a geodist.Polygon.
 	_, ok = polygon.(*geom.Polygon)
 	if !ok {
+		__antithesis_instrumentation__.Notify(62023)
 		return outsideLinearRing, pgerror.Newf(pgcode.InvalidParameterValue, "second geometry passed to findPointSideOfPolygon must be a polygon")
+	} else {
+		__antithesis_instrumentation__.Notify(62024)
 	}
+	__antithesis_instrumentation__.Notify(62011)
 	polygonGeodistShape, err := geomToGeodist(polygon)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(62025)
 		return outsideLinearRing, err
+	} else {
+		__antithesis_instrumentation__.Notify(62026)
 	}
+	__antithesis_instrumentation__.Notify(62012)
 	polygonGeodistPolygon, ok := polygonGeodistShape.(geodist.Polygon)
 	if !ok {
+		__antithesis_instrumentation__.Notify(62027)
 		return outsideLinearRing, pgerror.Newf(pgcode.InvalidParameterValue, "geomToGeodist failed to convert a *geom.Polygon to a geodist.Polygon")
+	} else {
+		__antithesis_instrumentation__.Notify(62028)
 	}
+	__antithesis_instrumentation__.Notify(62013)
 
-	// Point cannot be inside an empty polygon.
 	if polygonGeodistPolygon.NumLinearRings() == 0 {
+		__antithesis_instrumentation__.Notify(62029)
 		return outsideLinearRing, nil
+	} else {
+		__antithesis_instrumentation__.Notify(62030)
 	}
+	__antithesis_instrumentation__.Notify(62014)
 
-	// Find which side the point is relative to the main outer boundary of
-	// the polygon. If it outside or on the boundary, we can conclude
-	// that the point is on that side of the overall polygon as well.
 	mainRing := polygonGeodistPolygon.LinearRing(0)
 	switch pointSide := findPointSideOfLinearRing(*pointGeodistPoint, mainRing); pointSide {
 	case insideLinearRing:
+		__antithesis_instrumentation__.Notify(62031)
 	case outsideLinearRing, onLinearRing:
+		__antithesis_instrumentation__.Notify(62032)
 		return pointSide, nil
 	default:
+		__antithesis_instrumentation__.Notify(62033)
 		return outsideLinearRing, pgerror.Newf(pgcode.InvalidParameterValue, "unknown linearRingSide %d", pointSide)
 	}
+	__antithesis_instrumentation__.Notify(62015)
 
-	// If the point is inside the main outer boundary of the polygon, we must
-	// determine which side it is relative to every hole in the polygon.
-	// If it is inside any hole, it is outside the polygon. If it is on the
-	// ring of any hole, it is on the boundary of the polygon. Otherwise,
-	// it is inside the polygon.
 	for ringNum := 1; ringNum < polygonGeodistPolygon.NumLinearRings(); ringNum++ {
+		__antithesis_instrumentation__.Notify(62034)
 		polygonHole := polygonGeodistPolygon.LinearRing(ringNum)
 		switch pointSide := findPointSideOfLinearRing(*pointGeodistPoint, polygonHole); pointSide {
 		case insideLinearRing:
+			__antithesis_instrumentation__.Notify(62035)
 			return outsideLinearRing, nil
 		case onLinearRing:
+			__antithesis_instrumentation__.Notify(62036)
 			return onLinearRing, nil
 		case outsideLinearRing:
+			__antithesis_instrumentation__.Notify(62037)
 			continue
 		default:
+			__antithesis_instrumentation__.Notify(62038)
 			return outsideLinearRing, pgerror.Newf(pgcode.InvalidParameterValue, "unknown linearRingSide %d", pointSide)
 		}
 	}
+	__antithesis_instrumentation__.Notify(62016)
 
 	return insideLinearRing, nil
 }

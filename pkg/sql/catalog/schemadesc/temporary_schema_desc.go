@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package schemadesc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
@@ -16,15 +8,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 )
 
-// NewTemporarySchema returns a temporary schema with a given name, id, and
-// parent. Temporary schemas do not have a durable descriptor in the store;
-// they only have a namespace entry to indicate their existence. Given that,
-// a different kind of "synthetic" descriptor is used to indicate temporary
-// schemas.
-//
-// The returned descriptor carries only a basic functionality, requiring the
-// caller to check the SchemaKind to determine how to use the descriptor.
 func NewTemporarySchema(name string, id descpb.ID, parentDB descpb.ID) catalog.SchemaDescriptor {
+	__antithesis_instrumentation__.Notify(267763)
 	return &temporary{
 		synthetic: synthetic{temporaryBase{}},
 		id:        id,
@@ -33,7 +18,6 @@ func NewTemporarySchema(name string, id descpb.ID, parentDB descpb.ID) catalog.S
 	}
 }
 
-// temporary represents the synthetic temporary schema.
 type temporary struct {
 	synthetic
 	id       descpb.ID
@@ -43,16 +27,26 @@ type temporary struct {
 
 var _ catalog.SchemaDescriptor = temporary{}
 
-func (p temporary) GetID() descpb.ID       { return p.id }
-func (p temporary) GetName() string        { return p.name }
-func (p temporary) GetParentID() descpb.ID { return p.parentID }
+func (p temporary) GetID() descpb.ID { __antithesis_instrumentation__.Notify(267764); return p.id }
+func (p temporary) GetName() string  { __antithesis_instrumentation__.Notify(267765); return p.name }
+func (p temporary) GetParentID() descpb.ID {
+	__antithesis_instrumentation__.Notify(267766)
+	return p.parentID
+}
 func (p temporary) GetPrivileges() *catpb.PrivilegeDescriptor {
+	__antithesis_instrumentation__.Notify(267767)
 	return catpb.NewTemporarySchemaPrivilegeDescriptor()
 }
 
 type temporaryBase struct{}
 
-func (t temporaryBase) kindName() string                 { return "temporary" }
-func (t temporaryBase) kind() catalog.ResolvedSchemaKind { return catalog.SchemaTemporary }
+func (t temporaryBase) kindName() string {
+	__antithesis_instrumentation__.Notify(267768)
+	return "temporary"
+}
+func (t temporaryBase) kind() catalog.ResolvedSchemaKind {
+	__antithesis_instrumentation__.Notify(267769)
+	return catalog.SchemaTemporary
+}
 
 var _ syntheticBase = temporaryBase{}

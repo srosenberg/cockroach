@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgerror
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -21,23 +13,15 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Flatten turns any error into a pgerror with fields populated.  As
-// the name implies, the details from the chain of causes is projected
-// into a single struct. This is useful in at least two places:
-//
-// - to generate Error objects suitable for 19.1 nodes, which
-//   only recognize this type of payload.
-// - to generate an error packet on pgwire.
-//
-// Additionally, this can be used in the remainder of the code
-// base when an Error object is expected, until that code
-// is updated to use the errors library directly.
-//
-// Flatten() returns a nil ptr if err was nil to start with.
 func Flatten(err error) *Error {
+	__antithesis_instrumentation__.Notify(560782)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(560787)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(560788)
 	}
+	__antithesis_instrumentation__.Notify(560783)
 	resErr := &Error{
 		Code:           GetPGCode(err).String(),
 		Message:        err.Error(),
@@ -45,97 +29,112 @@ func Flatten(err error) *Error {
 		ConstraintName: GetConstraintName(err),
 	}
 
-	// Populate the source field if available.
 	if file, line, fn, ok := errors.GetOneLineSource(err); ok {
+		__antithesis_instrumentation__.Notify(560789)
 		resErr.Source = &Error_Source{File: file, Line: int32(line), Function: fn}
+	} else {
+		__antithesis_instrumentation__.Notify(560790)
 	}
+	__antithesis_instrumentation__.Notify(560784)
 
-	// Add serialization failure hints if available.
 	if resErr.Code == pgcode.SerializationFailure.String() {
+		__antithesis_instrumentation__.Notify(560791)
 		err = withSerializationFailureHints(err)
+	} else {
+		__antithesis_instrumentation__.Notify(560792)
 	}
+	__antithesis_instrumentation__.Notify(560785)
 
-	// Populate the details and hints.
 	resErr.Hint = errors.FlattenHints(err)
 	resErr.Detail = errors.FlattenDetails(err)
 
-	// Add a useful error prefix if not already there.
 	switch resErr.Code {
 	case pgcode.Internal.String():
-		// The string "internal error" clarifies the nature of the error
-		// to users, and is also introduced for compatibility with
-		// previous CockroachDB versions.
-		if !strings.HasPrefix(resErr.Message, InternalErrorPrefix) {
-			resErr.Message = InternalErrorPrefix + ": " + resErr.Message
-		}
+		__antithesis_instrumentation__.Notify(560793)
 
-		// If the error flows towards a human user and does not get
-		// sent via telemetry, we want to empower the user to
-		// file a moderately useful error report. For this purpose,
-		// append the innermost stack trace.
+		if !strings.HasPrefix(resErr.Message, InternalErrorPrefix) {
+			__antithesis_instrumentation__.Notify(560797)
+			resErr.Message = InternalErrorPrefix + ": " + resErr.Message
+		} else {
+			__antithesis_instrumentation__.Notify(560798)
+		}
+		__antithesis_instrumentation__.Notify(560794)
+
 		resErr.Detail += getInnerMostStackTraceAsDetail(err)
 
 	case pgcode.SerializationFailure.String():
-		// The string "restart transaction" is asserted by test code. This
-		// can be changed if/when test code learns to use the 40001 code
-		// (or the errors library) instead.
-		//
-		// TODO(knz): investigate whether 3rd party frameworks parse this
-		// string instead of using the pg code to determine whether to
-		// retry.
+		__antithesis_instrumentation__.Notify(560795)
+
 		if !strings.HasPrefix(resErr.Message, TxnRetryMsgPrefix) {
+			__antithesis_instrumentation__.Notify(560799)
 			resErr.Message = TxnRetryMsgPrefix + ": " + resErr.Message
+		} else {
+			__antithesis_instrumentation__.Notify(560800)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(560796)
 	}
+	__antithesis_instrumentation__.Notify(560786)
 
 	return resErr
 }
 
-// serializationFailureReasonRegexp captures known failure reasons for
-// the serialization failure error messages.
-// We cannot use roachpb.TransactionRetryReason or roachpb.TransactionAbortedReason
-// as this introduces a circular dependency.
 var serializationFailureReasonRegexp = regexp.MustCompile(
 	`((?:ABORT_|RETRY_)[A-Z_]*|ReadWithinUncertaintyInterval)`,
 )
 
-// withSerializationFailureHints appends a doc URL that contains information for
-// commonly seen error messages.
 func withSerializationFailureHints(err error) error {
+	__antithesis_instrumentation__.Notify(560801)
 	url := docs.URL("transaction-retry-error-reference.html")
 	if match := serializationFailureReasonRegexp.FindStringSubmatch(err.Error()); len(match) >= 2 {
+		__antithesis_instrumentation__.Notify(560803)
 		url += "#" + strings.ToLower(match[1])
+	} else {
+		__antithesis_instrumentation__.Notify(560804)
 	}
+	__antithesis_instrumentation__.Notify(560802)
 	return errors.WithIssueLink(err, errors.IssueLink{IssueURL: url})
 }
 
 func getInnerMostStackTraceAsDetail(err error) string {
+	__antithesis_instrumentation__.Notify(560805)
 	if c := errors.UnwrapOnce(err); c != nil {
+		__antithesis_instrumentation__.Notify(560808)
 		s := getInnerMostStackTraceAsDetail(c)
 		if s != "" {
+			__antithesis_instrumentation__.Notify(560809)
 			return s
+		} else {
+			__antithesis_instrumentation__.Notify(560810)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(560811)
 	}
-	// Fall through: there is no stack trace so far.
+	__antithesis_instrumentation__.Notify(560806)
+
 	if st := errors.GetReportableStackTrace(err); st != nil {
+		__antithesis_instrumentation__.Notify(560812)
 		var t bytes.Buffer
 		t.WriteString("stack trace:\n")
 		for i := len(st.Frames) - 1; i >= 0; i-- {
+			__antithesis_instrumentation__.Notify(560814)
 			f := st.Frames[i]
 			fmt.Fprintf(&t, "%s:%d: %s()\n", f.Filename, f.Lineno, f.Function)
 		}
+		__antithesis_instrumentation__.Notify(560813)
 		return t.String()
+	} else {
+		__antithesis_instrumentation__.Notify(560815)
 	}
+	__antithesis_instrumentation__.Notify(560807)
 	return ""
 }
 
-// InternalErrorPrefix is prepended on internal errors.
 const InternalErrorPrefix = "internal error"
 
-// TxnRetryMsgPrefix is the prefix inserted in an error message when flattened
 const TxnRetryMsgPrefix = "restart transaction"
 
-// GetPGCode retrieves the error code for an error.
 func GetPGCode(err error) pgcode.Code {
+	__antithesis_instrumentation__.Notify(560816)
 	return GetPGCodeInternal(err, ComputeDefaultCode)
 }

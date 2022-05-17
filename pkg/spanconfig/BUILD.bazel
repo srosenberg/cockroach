@@ -27,6 +27,7 @@ go_library(
         "//pkg/util/hlc",
         "//pkg/util/log",
         "//pkg/util/retry",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_gogo_protobuf//proto",
         "@com_github_stretchr_testify//require",
@@ -52,6 +53,7 @@ go_test(
         "//pkg/util/leaktest",
         "//pkg/util/log",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

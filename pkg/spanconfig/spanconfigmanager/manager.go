@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfigmanager
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,11 +20,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 )
 
-// checkReconciliationJobInterval is a cluster setting to control how often we
-// check if the span config reconciliation job exists. If it's not found, it
-// will be started. It has no effect unless
-// spanconfig.reconciliation_job.enabled is configured. For host
-// tenants, COCKROACH_DISABLE_SPAN_CONFIGS must not be set.
 var checkReconciliationJobInterval = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"spanconfig.reconciliation_job.check_interval",
@@ -41,23 +28,11 @@ var checkReconciliationJobInterval = settings.RegisterDurationSetting(
 	settings.NonNegativeDuration,
 )
 
-// jobEnabledSetting gates the activation of the span config reconciliation job.
-// For the host tenant it has no effect if COCKROACH_DISABLE_SPAN_CONFIGS is
-// set.
-//
-// TODO(irfansharif): This should be a tenant read-only setting once the work
-// for #73349 is completed.
 var jobEnabledSetting = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"spanconfig.reconciliation_job.enabled",
 	"enable the use of the kv accessor", true)
 
-// Manager is the coordinator of the span config subsystem. It ensures that
-// there's only one span config reconciliation job[1] for every tenant. It also
-// captures all relevant dependencies for the job.
-//
-// [1]: The reconciliation job is responsible for reconciling a tenant's zone
-//      configurations with the clusters span configurations.
 type Manager struct {
 	db       *kv.DB
 	jr       *jobs.Registry
@@ -69,7 +44,6 @@ type Manager struct {
 	spanconfig.Reconciler
 }
 
-// New constructs a new Manager.
 func New(
 	db *kv.DB,
 	jr *jobs.Registry,
@@ -79,9 +53,14 @@ func New(
 	reconciler spanconfig.Reconciler,
 	knobs *spanconfig.TestingKnobs,
 ) *Manager {
+	__antithesis_instrumentation__.Notify(240707)
 	if knobs == nil {
+		__antithesis_instrumentation__.Notify(240709)
 		knobs = &spanconfig.TestingKnobs{}
+	} else {
+		__antithesis_instrumentation__.Notify(240710)
 	}
+	__antithesis_instrumentation__.Notify(240708)
 	return &Manager{
 		db:         db,
 		jr:         jr,
@@ -93,90 +72,113 @@ func New(
 	}
 }
 
-// Start creates a background task that starts the auto span config
-// reconciliation job. It also periodically ensures that the job exists,
-// recreating it if it doesn't.
 func (m *Manager) Start(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(240711)
 	return m.stopper.RunAsyncTask(ctx, "span-config-mgr", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(240712)
 		m.run(ctx)
 	})
 }
 
 func (m *Manager) run(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(240713)
 	jobCheckCh := make(chan struct{}, 1)
 	triggerJobCheck := func() {
+		__antithesis_instrumentation__.Notify(240719)
 		select {
 		case jobCheckCh <- struct{}{}:
+			__antithesis_instrumentation__.Notify(240720)
 		default:
+			__antithesis_instrumentation__.Notify(240721)
 		}
 	}
+	__antithesis_instrumentation__.Notify(240714)
 
-	// We have a few conditions that should trigger a job check:
-	// - when the setting to enable/disable the reconciliation job is toggled;
-	// - when the setting controlling the reconciliation job check interval is
-	//   changed;
-	// - when the cluster version is changed; if we don't it's possible to have
-	//   started a tenant pod with a conservative view of the cluster version,
-	//   skip starting the reconciliation job, learning about the cluster
-	//   version shortly, and only checking the job after an interval has
-	//   passed.
 	jobEnabledSetting.SetOnChange(&m.settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(240722)
 		triggerJobCheck()
 	})
+	__antithesis_instrumentation__.Notify(240715)
 	checkReconciliationJobInterval.SetOnChange(&m.settings.SV, func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(240723)
 		triggerJobCheck()
 	})
+	__antithesis_instrumentation__.Notify(240716)
 	m.settings.Version.SetOnChange(func(_ context.Context, _ clusterversion.ClusterVersion) {
+		__antithesis_instrumentation__.Notify(240724)
 		triggerJobCheck()
 	})
+	__antithesis_instrumentation__.Notify(240717)
 
 	checkJob := func() {
+		__antithesis_instrumentation__.Notify(240725)
 		if fn := m.knobs.ManagerCheckJobInterceptor; fn != nil {
+			__antithesis_instrumentation__.Notify(240729)
 			fn()
+		} else {
+			__antithesis_instrumentation__.Notify(240730)
 		}
+		__antithesis_instrumentation__.Notify(240726)
 
 		if !jobEnabledSetting.Get(&m.settings.SV) {
+			__antithesis_instrumentation__.Notify(240731)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(240732)
 		}
+		__antithesis_instrumentation__.Notify(240727)
 
 		started, err := m.createAndStartJobIfNoneExists(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240733)
 			log.Errorf(ctx, "error starting auto span config reconciliation job: %v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(240734)
 		}
+		__antithesis_instrumentation__.Notify(240728)
 		if started {
+			__antithesis_instrumentation__.Notify(240735)
 			log.Infof(ctx, "started auto span config reconciliation job")
+		} else {
+			__antithesis_instrumentation__.Notify(240736)
 		}
 	}
+	__antithesis_instrumentation__.Notify(240718)
 
-	// Periodically check if the span config reconciliation job exists and start
-	// it if it doesn't.
 	timer := timeutil.NewTimer()
 	defer timer.Stop()
 
 	triggerJobCheck()
 	for {
+		__antithesis_instrumentation__.Notify(240737)
 		timer.Reset(checkReconciliationJobInterval.Get(&m.settings.SV))
 		select {
 		case <-jobCheckCh:
+			__antithesis_instrumentation__.Notify(240738)
 			checkJob()
 		case <-timer.C:
+			__antithesis_instrumentation__.Notify(240739)
 			timer.Read = true
 			checkJob()
 		case <-m.stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(240740)
 			return
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(240741)
 			return
 		}
 	}
 }
 
-// createAndStartJobIfNoneExists creates span config reconciliation job iff it
-// hasn't been created already and notifies the jobs registry to adopt it.
-// Returns a boolean indicating if the job was created.
 func (m *Manager) createAndStartJobIfNoneExists(ctx context.Context) (bool, error) {
+	__antithesis_instrumentation__.Notify(240742)
 	if m.knobs.ManagerDisableJobCreation {
+		__antithesis_instrumentation__.Notify(240747)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(240748)
 	}
+	__antithesis_instrumentation__.Notify(240743)
 	record := jobs.Record{
 		JobID:         m.jr.MakeJobID(),
 		Description:   "reconciling span configurations",
@@ -188,37 +190,64 @@ func (m *Manager) createAndStartJobIfNoneExists(ctx context.Context) (bool, erro
 
 	var job *jobs.Job
 	if err := m.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(240749)
 		exists, err := jobs.RunningJobExists(ctx, jobspb.InvalidJobID, m.ie, txn,
 			func(payload *jobspb.Payload) bool {
+				__antithesis_instrumentation__.Notify(240754)
 				return payload.Type() == jobspb.TypeAutoSpanConfigReconciliation
 			},
 		)
+		__antithesis_instrumentation__.Notify(240750)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(240755)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240756)
 		}
+		__antithesis_instrumentation__.Notify(240751)
 
 		if fn := m.knobs.ManagerAfterCheckedReconciliationJobExistsInterceptor; fn != nil {
+			__antithesis_instrumentation__.Notify(240757)
 			fn(exists)
+		} else {
+			__antithesis_instrumentation__.Notify(240758)
 		}
+		__antithesis_instrumentation__.Notify(240752)
 
 		if exists {
-			// Nothing to do here.
+			__antithesis_instrumentation__.Notify(240759)
+
 			job = nil
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(240760)
 		}
+		__antithesis_instrumentation__.Notify(240753)
 		job, err = m.jr.CreateJobWithTxn(ctx, record, record.JobID, txn)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(240761)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(240762)
 	}
+	__antithesis_instrumentation__.Notify(240744)
 
 	if job == nil {
+		__antithesis_instrumentation__.Notify(240763)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(240764)
 	}
+	__antithesis_instrumentation__.Notify(240745)
 
 	if fn := m.knobs.ManagerCreatedJobInterceptor; fn != nil {
+		__antithesis_instrumentation__.Notify(240765)
 		fn(job)
+	} else {
+		__antithesis_instrumentation__.Notify(240766)
 	}
+	__antithesis_instrumentation__.Notify(240746)
 	m.jr.NotifyToResume(ctx, job.ID())
 	return true, nil
 }

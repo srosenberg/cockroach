@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//pkg/sql/pgwire/pgcode",
         "//pkg/sql/pgwire/pgerror",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_twpayne_go_geom//:go-geom",
     ],
 )
@@ -17,6 +18,7 @@ go_test(
     srcs = ["twkb_test.go"],
     embed = [":twkb"],
     deps = [
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
         "@com_github_twpayne_go_geom//:go-geom",
     ],

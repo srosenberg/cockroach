@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgwirebase
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strconv"
@@ -16,7 +8,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// withMessageTooBig decorates an error when a read would overflow the ReadBuffer.
 type withMessageTooBig struct {
 	cause error
 	size  int
@@ -25,29 +16,46 @@ type withMessageTooBig struct {
 var _ error = (*withMessageTooBig)(nil)
 var _ errors.SafeDetailer = (*withMessageTooBig)(nil)
 
-func (w *withMessageTooBig) Error() string         { return w.cause.Error() }
-func (w *withMessageTooBig) Unwrap() error         { return w.cause }
-func (w *withMessageTooBig) SafeDetails() []string { return []string{strconv.Itoa(w.size)} }
+func (w *withMessageTooBig) Error() string {
+	__antithesis_instrumentation__.Notify(561435)
+	return w.cause.Error()
+}
+func (w *withMessageTooBig) Unwrap() error {
+	__antithesis_instrumentation__.Notify(561436)
+	return w.cause
+}
+func (w *withMessageTooBig) SafeDetails() []string {
+	__antithesis_instrumentation__.Notify(561437)
+	return []string{strconv.Itoa(w.size)}
+}
 
-// withMessageTooBigError decorates the error with a severity.
 func withMessageTooBigError(err error, size int) error {
+	__antithesis_instrumentation__.Notify(561438)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(561440)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(561441)
 	}
+	__antithesis_instrumentation__.Notify(561439)
 
 	return &withMessageTooBig{cause: err, size: size}
 }
 
-// IsMessageTooBigError denotes whether a message is too big.
 func IsMessageTooBigError(err error) bool {
+	__antithesis_instrumentation__.Notify(561442)
 	var c withMessageTooBig
 	return errors.HasType(err, &c)
 }
 
-// GetMessageTooBigSize attempts to unwrap and find a MessageTooBig.
 func GetMessageTooBigSize(err error) int {
+	__antithesis_instrumentation__.Notify(561443)
 	if c := (*withMessageTooBig)(nil); errors.As(err, &c) {
+		__antithesis_instrumentation__.Notify(561445)
 		return c.size
+	} else {
+		__antithesis_instrumentation__.Notify(561446)
 	}
+	__antithesis_instrumentation__.Notify(561444)
 	return -1
 }

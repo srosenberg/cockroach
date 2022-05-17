@@ -9,5 +9,6 @@ go_library(
         "//pkg/server/diagnostics/diagnosticspb",
         "//pkg/util/protoutil",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

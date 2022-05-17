@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -24,29 +16,38 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ErrInvalidAddJoinToken is an error to signal server rejected Add/Join token as invalid.
 var ErrInvalidAddJoinToken = errors.New("invalid add/join token received")
 
-// ErrAddJoinTokenConsumed is an error to signal the server consumed the Add/Join token but failed
-// to provide the CertBundle to the client.
 var ErrAddJoinTokenConsumed = errors.New("add/join token consumed but then another error occurred")
 
-// RequestCA makes it possible for a node to request the node-to-node CA certificate.
 func (s *adminServer) RequestCA(
 	ctx context.Context, req *serverpb.CARequest,
 ) (*serverpb.CAResponse, error) {
+	__antithesis_instrumentation__.Notify(187491)
 	settings := s.server.ClusterSettings()
 	if settings == nil {
+		__antithesis_instrumentation__.Notify(187495)
 		return nil, errors.AssertionFailedf("could not look up cluster settings")
+	} else {
+		__antithesis_instrumentation__.Notify(187496)
 	}
+	__antithesis_instrumentation__.Notify(187492)
 	if !sql.FeatureTLSAutoJoinEnabled.Get(&settings.SV) {
+		__antithesis_instrumentation__.Notify(187497)
 		return nil, errors.New("feature disabled by administrator")
+	} else {
+		__antithesis_instrumentation__.Notify(187498)
 	}
+	__antithesis_instrumentation__.Notify(187493)
 
 	cm, err := s.server.rpcContext.GetCertificateManager()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187499)
 		return nil, errors.Wrap(err, "failed to get certificate manager")
+	} else {
+		__antithesis_instrumentation__.Notify(187500)
 	}
+	__antithesis_instrumentation__.Notify(187494)
 	caCert := cm.CACert().FileContents
 
 	res := &serverpb.CAResponse{
@@ -56,78 +57,116 @@ func (s *adminServer) RequestCA(
 }
 
 func (s *adminServer) consumeJoinToken(ctx context.Context, clientToken security.JoinToken) error {
+	__antithesis_instrumentation__.Notify(187501)
 	return s.server.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(187502)
 		row, err := s.ie.QueryRow(
 			ctx, "select-consume-join-token", txn,
 			"SELECT id, secret FROM system.join_tokens WHERE id = $1 AND now() < expiration",
 			clientToken.TokenID.String())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(187506)
 			return err
-		} else if len(row) != 2 {
-			return ErrInvalidAddJoinToken
+		} else {
+			__antithesis_instrumentation__.Notify(187507)
+			if len(row) != 2 {
+				__antithesis_instrumentation__.Notify(187508)
+				return ErrInvalidAddJoinToken
+			} else {
+				__antithesis_instrumentation__.Notify(187509)
+			}
 		}
+		__antithesis_instrumentation__.Notify(187503)
 
 		secret := *row[1].(*tree.DBytes)
 		if !bytes.Equal([]byte(secret), clientToken.SharedSecret) {
+			__antithesis_instrumentation__.Notify(187510)
 			return errors.New("invalid shared secret")
+		} else {
+			__antithesis_instrumentation__.Notify(187511)
 		}
+		__antithesis_instrumentation__.Notify(187504)
 
 		i, err := s.ie.Exec(ctx, "delete-consume-join-token", txn,
 			"DELETE FROM system.join_tokens WHERE id = $1",
 			clientToken.TokenID.String())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(187512)
 			return err
-		} else if i == 0 {
-			return errors.New("error when consuming join token: no token found")
+		} else {
+			__antithesis_instrumentation__.Notify(187513)
+			if i == 0 {
+				__antithesis_instrumentation__.Notify(187514)
+				return errors.New("error when consuming join token: no token found")
+			} else {
+				__antithesis_instrumentation__.Notify(187515)
+			}
 		}
+		__antithesis_instrumentation__.Notify(187505)
 
 		return nil
 	})
 }
 
-// RequestCertBundle makes it possible for a node to request its TLS certs from
-// another node. It will validate and attempt to consume a token with the uuid
-// and shared secret provided.
 func (s *adminServer) RequestCertBundle(
 	ctx context.Context, req *serverpb.CertBundleRequest,
 ) (*serverpb.CertBundleResponse, error) {
+	__antithesis_instrumentation__.Notify(187516)
 	settings := s.server.ClusterSettings()
 	if settings == nil {
+		__antithesis_instrumentation__.Notify(187523)
 		return nil, errors.AssertionFailedf("could not look up cluster settings")
+	} else {
+		__antithesis_instrumentation__.Notify(187524)
 	}
+	__antithesis_instrumentation__.Notify(187517)
 	if !sql.FeatureTLSAutoJoinEnabled.Get(&settings.SV) {
+		__antithesis_instrumentation__.Notify(187525)
 		return nil, errors.New("feature disabled by administrator")
+	} else {
+		__antithesis_instrumentation__.Notify(187526)
 	}
+	__antithesis_instrumentation__.Notify(187518)
 
 	var err error
 	var clientToken security.JoinToken
 	clientToken.SharedSecret = req.SharedSecret
 	clientToken.TokenID, err = uuid.FromString(req.TokenID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(187527)
 		return nil, ErrInvalidAddJoinToken
+	} else {
+		__antithesis_instrumentation__.Notify(187528)
 	}
+	__antithesis_instrumentation__.Notify(187519)
 
-	// Attempt to consume clientToken, error if unsuccessful.
 	if err := s.consumeJoinToken(ctx, clientToken); err != nil {
+		__antithesis_instrumentation__.Notify(187529)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(187530)
 	}
+	__antithesis_instrumentation__.Notify(187520)
 
-	// Collect certs to send to client.
 	certBundle, err := collectLocalCABundle(s.server.cfg.SSLCertsDir)
 	if err != nil {
-		// TODO(aaron-crl): Log the reason for the error on the server.
-		// errors.Wrapf(err, "failed to collect LocalCABundle")
+		__antithesis_instrumentation__.Notify(187531)
 
 		return nil, ErrAddJoinTokenConsumed
+	} else {
+		__antithesis_instrumentation__.Notify(187532)
 	}
+	__antithesis_instrumentation__.Notify(187521)
 
 	bundleBytes, err := json.Marshal(certBundle)
 	if err != nil {
-		// TODO(aaron-crl): Log the reason for the error on the server.
-		//errors.Wrapf(err, "failed to marshal LocalCABundle")
+		__antithesis_instrumentation__.Notify(187533)
 
 		return nil, ErrAddJoinTokenConsumed
+	} else {
+		__antithesis_instrumentation__.Notify(187534)
 	}
+	__antithesis_instrumentation__.Notify(187522)
 
 	res := &serverpb.CertBundleResponse{
 		Bundle: bundleBytes,

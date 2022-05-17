@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,23 +24,26 @@ func declareKeysLeaseInfo(
 	latchSpans, _ *spanset.SpanSet,
 	_ time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(97002)
 	latchSpans.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{Key: keys.RangeLeaseKey(rs.GetRangeID())})
 }
 
-// LeaseInfo returns information about the lease holder for the range.
 func LeaseInfo(
 	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(97003)
 	reply := resp.(*roachpb.LeaseInfoResponse)
 	lease, nextLease := cArgs.EvalCtx.GetLease()
 	if nextLease != (roachpb.Lease{}) {
-		// If there's a lease request in progress, speculatively return that future
-		// lease.
+		__antithesis_instrumentation__.Notify(97005)
+
 		reply.Lease = nextLease
 		reply.CurrentLease = &lease
 	} else {
+		__antithesis_instrumentation__.Notify(97006)
 		reply.Lease = lease
 	}
+	__antithesis_instrumentation__.Notify(97004)
 	reply.EvaluatedBy = cArgs.EvalCtx.StoreID()
 	return result.Result{}, nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqltelemetry
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -16,19 +8,17 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 )
 
-// EnumTelemetryType represents a type of ENUM related operation to record
-// telemetry for.
 type EnumTelemetryType int
 
 const (
 	_ EnumTelemetryType = iota
-	// EnumCreate represents a CREATE TYPE ... AS ENUM command.
+
 	EnumCreate
-	// EnumAlter represents an ALTER TYPE ... command.
+
 	EnumAlter
-	// EnumDrop represents a DROP TYPE command.
+
 	EnumDrop
-	// EnumInTable tracks when an enum type is used in a table.
+
 	EnumInTable
 )
 
@@ -40,6 +30,7 @@ var enumTelemetryMap = map[EnumTelemetryType]string{
 }
 
 func (e EnumTelemetryType) String() string {
+	__antithesis_instrumentation__.Notify(625780)
 	return enumTelemetryMap[e]
 }
 
@@ -52,8 +43,7 @@ func init() {
 	}
 }
 
-// IncrementEnumCounter is used to increment the telemetry counter for a particular
-// usage of enums.
 func IncrementEnumCounter(enumType EnumTelemetryType) {
+	__antithesis_instrumentation__.Notify(625781)
 	telemetry.Inc(enumTelemetryCounters[enumType])
 }

@@ -1,12 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,11 +23,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// rowFetcherCache maintains a cache of single table RowFetchers. Given a key
-// with an mvcc timestamp, it retrieves the correct TableDescriptor for that key
-// and returns a Fetcher initialized with that table. This Fetcher's
-// StartScanFrom can be used to turn that key (or all the keys making up the
-// column families of one row) into a row.
 type rowFetcherCache struct {
 	codec           keys.SQLCodec
 	leaseMgr        *lease.Manager
@@ -60,10 +49,11 @@ type watchedFamily struct {
 
 var rfCacheConfig = cache.Config{
 	Policy: cache.CacheFIFO,
-	// TODO: If we find ourselves thrashing here in changefeeds on many tables,
-	// we can improve performance by eagerly evicting versions using Resolved notifications.
-	// A old version with a timestamp entirely before a notification can be safely evicted.
-	ShouldEvict: func(size int, _ interface{}, _ interface{}) bool { return size > 1024 },
+
+	ShouldEvict: func(size int, _ interface{}, _ interface{}) bool {
+		__antithesis_instrumentation__.Notify(17589)
+		return size > 1024
+	},
 }
 
 type idVersion struct {
@@ -80,15 +70,18 @@ func newRowFetcherCache(
 	db *kv.DB,
 	details jobspb.ChangefeedDetails,
 ) *rowFetcherCache {
+	__antithesis_instrumentation__.Notify(17590)
 	specs := details.TargetSpecifications
 	watchedFamilies := make(map[watchedFamily]struct{}, len(specs))
 	for _, s := range specs {
+		__antithesis_instrumentation__.Notify(17592)
 		watchedFamilies[watchedFamily{tableID: s.TableID, familyName: s.FamilyName}] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(17591)
 	return &rowFetcherCache{
 		codec:           codec,
 		leaseMgr:        leaseMgr,
-		collection:      cf.NewCollection(ctx, nil /* TemporarySchemaProvider */),
+		collection:      cf.NewCollection(ctx, nil),
 		db:              db,
 		fetchers:        cache.NewUnorderedCache(rfCacheConfig),
 		watchedFamilies: watchedFamilies,
@@ -98,103 +91,132 @@ func newRowFetcherCache(
 func (c *rowFetcherCache) TableDescForKey(
 	ctx context.Context, key roachpb.Key, ts hlc.Timestamp,
 ) (catalog.TableDescriptor, descpb.FamilyID, error) {
+	__antithesis_instrumentation__.Notify(17593)
 	var tableDesc catalog.TableDescriptor
 	key, err := c.codec.StripTenantPrefix(key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(17600)
 		return nil, descpb.FamilyID(0), err
+	} else {
+		__antithesis_instrumentation__.Notify(17601)
 	}
+	__antithesis_instrumentation__.Notify(17594)
 	remaining, tableID, _, err := rowenc.DecodePartialTableIDIndexID(key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(17602)
 		return nil, descpb.FamilyID(0), err
+	} else {
+		__antithesis_instrumentation__.Notify(17603)
 	}
+	__antithesis_instrumentation__.Notify(17595)
 
 	familyID, err := keys.DecodeFamilyKey(key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(17604)
 		return nil, descpb.FamilyID(0), err
+	} else {
+		__antithesis_instrumentation__.Notify(17605)
 	}
+	__antithesis_instrumentation__.Notify(17596)
 
 	family := descpb.FamilyID(familyID)
 
-	// Retrieve the target TableDescriptor from the lease manager. No caching
-	// is attempted because the lease manager does its own caching.
 	desc, err := c.leaseMgr.Acquire(ctx, ts, tableID)
 	if err != nil {
-		// Manager can return all kinds of errors during chaos, but based on
-		// its usage, none of them should ever be terminal.
+		__antithesis_instrumentation__.Notify(17606)
+
 		return nil, family, changefeedbase.MarkRetryableError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(17607)
 	}
+	__antithesis_instrumentation__.Notify(17597)
 	tableDesc = desc.Underlying().(catalog.TableDescriptor)
-	// Immediately release the lease, since we only need it for the exact
-	// timestamp requested.
+
 	desc.Release(ctx)
 	if tableDesc.ContainsUserDefinedTypes() {
-		// If the table contains user defined types, then use the
-		// descs.Collection to retrieve a TableDescriptor with type metadata
-		// hydrated. We open a transaction here only because the
-		// descs.Collection needs one to get a read timestamp. We do this lookup
-		// again behind a conditional to avoid allocating any transaction
-		// metadata if the table has user defined types. This can be bypassed
-		// once (#53751) is fixed. Once the descs.Collection can take in a read
-		// timestamp rather than a whole transaction, we can use the
-		// descs.Collection directly here.
-		// TODO (SQL Schema): #53751.
+		__antithesis_instrumentation__.Notify(17608)
+
 		if err := c.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(17610)
 			err := txn.SetFixedTimestamp(ctx, ts)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(17612)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(17613)
 			}
+			__antithesis_instrumentation__.Notify(17611)
 			tableDesc, err = c.collection.GetImmutableTableByID(ctx, txn, tableID, tree.ObjectLookupFlags{})
 			return err
 		}); err != nil {
-			// Manager can return all kinds of errors during chaos, but based on
-			// its usage, none of them should ever be terminal.
-			return nil, family, changefeedbase.MarkRetryableError(err)
-		}
-		// Immediately release the lease, since we only need it for the exact
-		// timestamp requested.
-		c.collection.ReleaseAll(ctx)
-	}
+			__antithesis_instrumentation__.Notify(17614)
 
-	// Skip over the column data.
+			return nil, family, changefeedbase.MarkRetryableError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(17615)
+		}
+		__antithesis_instrumentation__.Notify(17609)
+
+		c.collection.ReleaseAll(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(17616)
+	}
+	__antithesis_instrumentation__.Notify(17598)
+
 	for skippedCols := 0; skippedCols < tableDesc.GetPrimaryIndex().NumKeyColumns(); skippedCols++ {
+		__antithesis_instrumentation__.Notify(17617)
 		l, err := encoding.PeekLength(remaining)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(17619)
 			return nil, family, err
+		} else {
+			__antithesis_instrumentation__.Notify(17620)
 		}
+		__antithesis_instrumentation__.Notify(17618)
 		remaining = remaining[l:]
 	}
+	__antithesis_instrumentation__.Notify(17599)
 
 	return tableDesc, family, nil
 }
 
-// ErrUnwatchedFamily is a sentinel error that indicates this part of the row
-// is not being watched and does not need to be decoded.
 var ErrUnwatchedFamily = errors.New("watched table but unwatched family")
 
 func (c *rowFetcherCache) RowFetcherForColumnFamily(
 	tableDesc catalog.TableDescriptor, family descpb.FamilyID,
 ) (*row.Fetcher, error) {
+	__antithesis_instrumentation__.Notify(17621)
 	idVer := idVersion{id: tableDesc.GetID(), version: tableDesc.GetVersion(), family: family}
 	if v, ok := c.fetchers.Get(idVer); ok {
+		__antithesis_instrumentation__.Notify(17627)
 		f := v.(*cachedFetcher)
 		if f.skip {
+			__antithesis_instrumentation__.Notify(17629)
 			return &f.fetcher, ErrUnwatchedFamily
+		} else {
+			__antithesis_instrumentation__.Notify(17630)
 		}
-		// Ensure that all user defined types are up to date with the cached
-		// version and the desired version to use the cache. It is safe to use
-		// UserDefinedTypeColsHaveSameVersion if we have a hit because we are
-		// guaranteed that the tables have the same version. Additionally, these
-		// fetchers are always initialized with a single tabledesc.Immutable.
-		// TODO (zinger): Only check types used in the relevant family.
+		__antithesis_instrumentation__.Notify(17628)
+
 		if catalog.UserDefinedTypeColsHaveSameVersion(tableDesc, f.tableDesc) {
+			__antithesis_instrumentation__.Notify(17631)
 			return &f.fetcher, nil
+		} else {
+			__antithesis_instrumentation__.Notify(17632)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(17633)
 	}
+	__antithesis_instrumentation__.Notify(17622)
 
 	familyDesc, err := tableDesc.FindFamilyByID(family)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(17634)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(17635)
 	}
+	__antithesis_instrumentation__.Notify(17623)
 
 	f := &cachedFetcher{
 		tableDesc:  tableDesc,
@@ -204,38 +226,49 @@ func (c *rowFetcherCache) RowFetcherForColumnFamily(
 
 	_, wholeTableWatched := c.watchedFamilies[watchedFamily{tableID: tableDesc.GetID()}]
 	if !wholeTableWatched {
+		__antithesis_instrumentation__.Notify(17636)
 		_, familyWatched := c.watchedFamilies[watchedFamily{tableID: tableDesc.GetID(), familyName: familyDesc.Name}]
 		if !familyWatched {
+			__antithesis_instrumentation__.Notify(17637)
 			f.skip = true
 			return rf, ErrUnwatchedFamily
+		} else {
+			__antithesis_instrumentation__.Notify(17638)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(17639)
 	}
+	__antithesis_instrumentation__.Notify(17624)
 
 	var spec descpb.IndexFetchSpec
 
-	// TODO (zinger): Make fetchColumnIDs only the family and the primary key.
-	// This seems to cause an error without further work but would be more efficient.
 	if err := rowenc.InitIndexFetchSpec(
 		&spec, c.codec, tableDesc, tableDesc.GetPrimaryIndex(), tableDesc.PublicColumnIDs(),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(17640)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(17641)
 	}
+	__antithesis_instrumentation__.Notify(17625)
 
 	if err := rf.Init(
 		context.TODO(),
-		false, /* reverse */
+		false,
 		descpb.ScanLockingStrength_FOR_NONE,
 		descpb.ScanLockingWaitPolicy_BLOCK,
-		0, /* lockTimeout */
+		0,
 		&c.a,
-		nil, /* memMonitor */
+		nil,
 		&spec,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(17642)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(17643)
 	}
+	__antithesis_instrumentation__.Notify(17626)
 
-	// Necessary because virtual columns are not populated.
-	// TODO(radu): should we stop requesting those columns from the fetcher?
 	rf.IgnoreUnexpectedNulls = true
 
 	c.fetchers.Add(idVer, f)

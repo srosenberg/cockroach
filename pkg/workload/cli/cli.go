@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -20,9 +12,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// WorkloadCmd returns a new command that can serve as the root of the workload
-// command tree.
 func WorkloadCmd(userFacing bool) *cobra.Command {
+	__antithesis_instrumentation__.Notify(693645)
 	rootCmd := SetCmdDefaults(&cobra.Command{
 		Use:     `workload`,
 		Short:   `generators for data and query loads`,
@@ -32,66 +23,83 @@ func WorkloadCmd(userFacing bool) *cobra.Command {
 		Use:   `version`,
 		Short: `print version information`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			__antithesis_instrumentation__.Notify(693649)
 			info := build.GetInfo()
 			fmt.Println(info.Long())
 			return nil
 		}},
 	)
+	__antithesis_instrumentation__.Notify(693646)
 
 	for _, subCmdFn := range subCmdFns {
+		__antithesis_instrumentation__.Notify(693650)
 		rootCmd.AddCommand(subCmdFn(userFacing))
 	}
+	__antithesis_instrumentation__.Notify(693647)
 	if userFacing {
+		__antithesis_instrumentation__.Notify(693651)
 		allowlist := map[string]struct{}{
 			`workload`: {},
 			`init`:     {},
 			`run`:      {},
 		}
 		for _, m := range workload.Registered() {
+			__antithesis_instrumentation__.Notify(693654)
 			allowlist[m.Name] = struct{}{}
 		}
+		__antithesis_instrumentation__.Notify(693652)
 		var hideNonPublic func(c *cobra.Command)
 		hideNonPublic = func(c *cobra.Command) {
+			__antithesis_instrumentation__.Notify(693655)
 			if _, ok := allowlist[c.Name()]; !ok {
+				__antithesis_instrumentation__.Notify(693657)
 				c.Hidden = true
+			} else {
+				__antithesis_instrumentation__.Notify(693658)
 			}
+			__antithesis_instrumentation__.Notify(693656)
 			for _, sub := range c.Commands() {
+				__antithesis_instrumentation__.Notify(693659)
 				hideNonPublic(sub)
 			}
 		}
+		__antithesis_instrumentation__.Notify(693653)
 		hideNonPublic(rootCmd)
+	} else {
+		__antithesis_instrumentation__.Notify(693660)
 	}
+	__antithesis_instrumentation__.Notify(693648)
 	return rootCmd
 }
 
 var subCmdFns []func(userFacing bool) *cobra.Command
 
-// AddSubCmd adds a sub-command closure to the workload cli.
-//
-// Most commands are global singletons and hooked together in init functions but
-// the workload ones do fancy things with making each generator in
-// `workload.Registered` into a subcommand. This means the commands need to be
-// generated after `workload.Registered` is fully populated, but the latter is
-// now sometimes done in the outermost possible place (main.go) and so its init
-// runs last. Instead, we return a closure that is called in the main function,
-// which is guaranteed to run after all inits.
 func AddSubCmd(fn func(userFacing bool) *cobra.Command) {
+	__antithesis_instrumentation__.Notify(693661)
 	subCmdFns = append(subCmdFns, fn)
 }
 
-// HandleErrs wraps a `RunE` cobra function to print an error but not the usage.
 func HandleErrs(
 	f func(cmd *cobra.Command, args []string) error,
 ) func(cmd *cobra.Command, args []string) {
+	__antithesis_instrumentation__.Notify(693662)
 	return func(cmd *cobra.Command, args []string) {
+		__antithesis_instrumentation__.Notify(693663)
 		err := f(cmd, args)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(693664)
 			hint := errors.FlattenHints(err)
 			cmd.Println("Error:", err.Error())
 			if hint != "" {
+				__antithesis_instrumentation__.Notify(693666)
 				cmd.Println("Hint:", hint)
+			} else {
+				__antithesis_instrumentation__.Notify(693667)
 			}
+			__antithesis_instrumentation__.Notify(693665)
 			exit.WithCode(exit.UnspecifiedError())
+		} else {
+			__antithesis_instrumentation__.Notify(693668)
 		}
 	}
 }

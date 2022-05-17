@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -36,21 +30,12 @@ const (
 	)`
 	sqlSinkEmitStmt = `INSERT INTO "%s" (topic, partition, message_id, key, value, resolved)`
 	sqlSinkEmitCols = 6
-	// Some amount of batching to mirror a bit how kafkaSink works.
+
 	sqlSinkRowBatchSize = 3
-	// While sqlSink is only used for testing, hardcode the number of
-	// partitions to something small but greater than 1.
+
 	sqlSinkNumPartitions = 3
 )
 
-// sqlSink mirrors the semantics offered by kafkaSink as closely as possible,
-// but writes to a SQL table (presumably in CockroachDB). Currently only for
-// testing.
-//
-// Each emitted row or resolved timestamp is stored as a row in the table. Each
-// table gets 3 partitions. Similar to kafkaSink, the order between two emits is
-// only preserved if they are emitted to by the same node and to the same
-// partition.
 type sqlSink struct {
 	db *gosql.DB
 
@@ -65,25 +50,31 @@ type sqlSink struct {
 	metrics *sliMetrics
 }
 
-// TODO(dan): Make tableName configurable or based on the job ID or
-// something.
 const sqlSinkTableName = `sqlsink`
 
 func makeSQLSink(
 	u sinkURL, tableName string, targets []jobspb.ChangefeedTargetSpecification, m *sliMetrics,
 ) (Sink, error) {
-	// Swap the changefeed prefix for the sql connection one that sqlSink
-	// expects.
+	__antithesis_instrumentation__.Notify(18690)
+
 	u.Scheme = `postgres`
 
 	if u.Path == `` {
+		__antithesis_instrumentation__.Notify(18694)
 		return nil, errors.Errorf(`must specify database`)
+	} else {
+		__antithesis_instrumentation__.Notify(18695)
 	}
+	__antithesis_instrumentation__.Notify(18691)
 
 	topicNamer, err := MakeTopicNamer(targets)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18696)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(18697)
 	}
+	__antithesis_instrumentation__.Notify(18692)
 
 	uri := u.String()
 	u.consumeParam(`sslcert`)
@@ -92,9 +83,13 @@ func makeSQLSink(
 	u.consumeParam(`sslrootcert`)
 
 	if unknownParams := u.remainingQueryParams(); len(unknownParams) > 0 {
+		__antithesis_instrumentation__.Notify(18698)
 		return nil, errors.Errorf(
 			`unknown SQL sink query parameters: %s`, strings.Join(unknownParams, ", "))
+	} else {
+		__antithesis_instrumentation__.Notify(18699)
 	}
+	__antithesis_instrumentation__.Notify(18693)
 
 	return &sqlSink{
 		uri:        uri,
@@ -106,19 +101,27 @@ func makeSQLSink(
 }
 
 func (s *sqlSink) Dial() error {
+	__antithesis_instrumentation__.Notify(18700)
 	db, err := gosql.Open(`postgres`, s.uri)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18703)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(18704)
 	}
+	__antithesis_instrumentation__.Notify(18701)
 	if _, err := db.Exec(fmt.Sprintf(sqlSinkCreateTableStmt, s.tableName)); err != nil {
+		__antithesis_instrumentation__.Notify(18705)
 		db.Close()
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(18706)
 	}
+	__antithesis_instrumentation__.Notify(18702)
 	s.db = db
 	return nil
 }
 
-// EmitRow implements the Sink interface.
 func (s *sqlSink) EmitRow(
 	ctx context.Context,
 	topicDescr TopicDescriptor,
@@ -126,100 +129,141 @@ func (s *sqlSink) EmitRow(
 	updated, mvcc hlc.Timestamp,
 	alloc kvevent.Alloc,
 ) error {
+	__antithesis_instrumentation__.Notify(18707)
 	defer alloc.Release(ctx)
 	defer s.metrics.recordOneMessage()(mvcc, len(key)+len(value), sinkDoesNotCompress)
 
 	topic, err := s.topicNamer.Name(topicDescr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18711)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(18712)
 	}
+	__antithesis_instrumentation__.Notify(18708)
 
-	// Hashing logic copied from sarama.HashPartitioner.
 	s.hasher.Reset()
 	if _, err := s.hasher.Write(key); err != nil {
+		__antithesis_instrumentation__.Notify(18713)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(18714)
 	}
+	__antithesis_instrumentation__.Notify(18709)
 	partition := int32(s.hasher.Sum32()) % sqlSinkNumPartitions
 	if partition < 0 {
+		__antithesis_instrumentation__.Notify(18715)
 		partition = -partition
+	} else {
+		__antithesis_instrumentation__.Notify(18716)
 	}
+	__antithesis_instrumentation__.Notify(18710)
 
 	var noResolved []byte
 	return s.emit(ctx, topic, partition, key, value, noResolved)
 }
 
-// EmitResolvedTimestamp implements the Sink interface.
 func (s *sqlSink) EmitResolvedTimestamp(
 	ctx context.Context, encoder Encoder, resolved hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(18717)
 	defer s.metrics.recordResolvedCallback()()
 
 	var noKey, noValue []byte
 	return s.topicNamer.Each(func(topic string) error {
+		__antithesis_instrumentation__.Notify(18718)
 		payload, err := encoder.EncodeResolvedTimestamp(ctx, topic, resolved)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(18721)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(18722)
 		}
-		s.scratch, payload = s.scratch.Copy(payload, 0 /* extraCap */)
+		__antithesis_instrumentation__.Notify(18719)
+		s.scratch, payload = s.scratch.Copy(payload, 0)
 		for partition := int32(0); partition < sqlSinkNumPartitions; partition++ {
+			__antithesis_instrumentation__.Notify(18723)
 			if err := s.emit(ctx, topic, partition, noKey, noValue, payload); err != nil {
+				__antithesis_instrumentation__.Notify(18724)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(18725)
 			}
 		}
+		__antithesis_instrumentation__.Notify(18720)
 		return nil
 	})
 }
 
-// Topics gives the names of all topics that have been initialized
-// and will receive resolved timestamps.
 func (s *sqlSink) Topics() []string {
+	__antithesis_instrumentation__.Notify(18726)
 	return s.topicNamer.DisplayNamesSlice()
 }
 
 func (s *sqlSink) emit(
 	ctx context.Context, topic string, partition int32, key, value, resolved []byte,
 ) error {
-	// Generate the message id on the client to match the guaranttees of kafka
-	// (two messages are only guaranteed to keep their order if emitted from the
-	// same producer to the same partition).
+	__antithesis_instrumentation__.Notify(18727)
+
 	messageID := builtins.GenerateUniqueInt(base.SQLInstanceID(partition))
 	s.rowBuf = append(s.rowBuf, topic, partition, messageID, key, value, resolved)
 	if len(s.rowBuf)/sqlSinkEmitCols >= sqlSinkRowBatchSize {
+		__antithesis_instrumentation__.Notify(18729)
 		return s.Flush(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(18730)
 	}
+	__antithesis_instrumentation__.Notify(18728)
 	return nil
 }
 
-// Flush implements the Sink interface.
 func (s *sqlSink) Flush(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(18731)
 	defer s.metrics.recordFlushRequestCallback()()
 
 	if len(s.rowBuf) == 0 {
+		__antithesis_instrumentation__.Notify(18735)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(18736)
 	}
+	__antithesis_instrumentation__.Notify(18732)
 
 	var stmt strings.Builder
 	fmt.Fprintf(&stmt, sqlSinkEmitStmt, s.tableName)
 	for i := 0; i < len(s.rowBuf); i++ {
+		__antithesis_instrumentation__.Notify(18737)
 		if i == 0 {
+			__antithesis_instrumentation__.Notify(18739)
 			stmt.WriteString(` VALUES (`)
-		} else if i%sqlSinkEmitCols == 0 {
-			stmt.WriteString(`),(`)
 		} else {
-			stmt.WriteString(`,`)
+			__antithesis_instrumentation__.Notify(18740)
+			if i%sqlSinkEmitCols == 0 {
+				__antithesis_instrumentation__.Notify(18741)
+				stmt.WriteString(`),(`)
+			} else {
+				__antithesis_instrumentation__.Notify(18742)
+				stmt.WriteString(`,`)
+			}
 		}
+		__antithesis_instrumentation__.Notify(18738)
 		fmt.Fprintf(&stmt, `$%d`, i+1)
 	}
+	__antithesis_instrumentation__.Notify(18733)
 	stmt.WriteString(`)`)
 	_, err := s.db.Exec(stmt.String(), s.rowBuf...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18743)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(18744)
 	}
+	__antithesis_instrumentation__.Notify(18734)
 	s.rowBuf = s.rowBuf[:0]
 	return nil
 }
 
-// Close implements the Sink interface.
 func (s *sqlSink) Close() error {
+	__antithesis_instrumentation__.Notify(18745)
 	return s.db.Close()
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package aws
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -24,15 +16,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Both M5 and I3 machines expose their EBS or local SSD volumes as NVMe block
-// devices, but the actual device numbers vary a bit between the two types.
-// This user-data script will create a filesystem, mount the data volume, and
-// chmod 777.
-// https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-ebs-volumes.html
-//
-// This is a template because the instantiator needs to optionally configure the
-// mounting options. The script cannot take arguments since it is to be invoked
-// by the aws tool which cannot pass args.
 const awsStartupScriptTemplate = `#!/usr/bin/env bash
 # Script for setting up a AWS machine for roachprod use.
 
@@ -150,13 +133,8 @@ sysctl --system  # reload sysctl settings
 sudo touch /mnt/data1/.roachprod-initialized
 `
 
-// writeStartupScript writes the startup script to a temp file.
-// Returns the path to the file.
-// After use, the caller should delete the temp file.
-//
-// extraMountOpts, if not empty, is appended to the default mount options. It is
-// a comma-separated list of options for the "mount -o" flag.
 func writeStartupScript(extraMountOpts string, useMultiple bool) (string, error) {
+	__antithesis_instrumentation__.Notify(183033)
 	type tmplParams struct {
 		ExtraMountOpts   string
 		UseMultipleDisks bool
@@ -166,67 +144,101 @@ func writeStartupScript(extraMountOpts string, useMultiple bool) (string, error)
 
 	tmpfile, err := ioutil.TempFile("", "aws-startup-script")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183036)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183037)
 	}
+	__antithesis_instrumentation__.Notify(183034)
 	defer tmpfile.Close()
 
 	t := template.Must(template.New("start").Parse(awsStartupScriptTemplate))
 	if err := t.Execute(tmpfile, args); err != nil {
+		__antithesis_instrumentation__.Notify(183038)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183039)
 	}
+	__antithesis_instrumentation__.Notify(183035)
 	return tmpfile.Name(), nil
 }
 
-// runCommand is used to invoke an AWS command.
 func (p *Provider) runCommand(args []string) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(183040)
 
 	if p.Profile != "" {
+		__antithesis_instrumentation__.Notify(183043)
 		args = append(args[:len(args):len(args)], "--profile", p.Profile)
+	} else {
+		__antithesis_instrumentation__.Notify(183044)
 	}
+	__antithesis_instrumentation__.Notify(183041)
 	var stderrBuf bytes.Buffer
 	cmd := exec.Command("aws", args...)
 	cmd.Stderr = &stderrBuf
 	output, err := cmd.Output()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183045)
 		if exitErr := (*exec.ExitError)(nil); errors.As(err, &exitErr) {
+			__antithesis_instrumentation__.Notify(183047)
 			log.Infof(context.Background(), "%s", string(exitErr.Stderr))
+		} else {
+			__antithesis_instrumentation__.Notify(183048)
 		}
+		__antithesis_instrumentation__.Notify(183046)
 		return nil, errors.Wrapf(err, "failed to run: aws %s: stderr: %v",
 			strings.Join(args, " "), stderrBuf.String())
+	} else {
+		__antithesis_instrumentation__.Notify(183049)
 	}
+	__antithesis_instrumentation__.Notify(183042)
 	return output, nil
 }
 
-// runJSONCommand invokes an aws command and parses the json output.
 func (p *Provider) runJSONCommand(args []string, parsed interface{}) error {
-	// Force json output in case the user has overridden the default behavior.
+	__antithesis_instrumentation__.Notify(183050)
+
 	args = append(args[:len(args):len(args)], "--output", "json")
 	rawJSON, err := p.runCommand(args)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183053)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(183054)
 	}
+	__antithesis_instrumentation__.Notify(183051)
 	if err := json.Unmarshal(rawJSON, &parsed); err != nil {
+		__antithesis_instrumentation__.Notify(183055)
 		return errors.Wrapf(err, "failed to parse json %s", rawJSON)
+	} else {
+		__antithesis_instrumentation__.Notify(183056)
 	}
+	__antithesis_instrumentation__.Notify(183052)
 
 	return nil
 }
 
-// regionMap collates VM instances by their region.
 func regionMap(vms vm.List) (map[string]vm.List, error) {
-	// Fan out the work by region
+	__antithesis_instrumentation__.Notify(183057)
+
 	byRegion := make(map[string]vm.List)
 	for _, m := range vms {
+		__antithesis_instrumentation__.Notify(183059)
 		region, err := zoneToRegion(m.Zone)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(183061)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(183062)
 		}
+		__antithesis_instrumentation__.Notify(183060)
 		byRegion[region] = append(byRegion[region], m)
 	}
+	__antithesis_instrumentation__.Notify(183058)
 	return byRegion, nil
 }
 
-// zoneToRegion converts an availability zone like us-east-2a to the zone name us-east-2
 func zoneToRegion(zone string) (string, error) {
+	__antithesis_instrumentation__.Notify(183063)
 	return zone[0 : len(zone)-1], nil
 }

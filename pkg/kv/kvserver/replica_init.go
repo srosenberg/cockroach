@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -40,35 +32,36 @@ const (
 	mergeQueueThrottleDuration = 5 * time.Second
 )
 
-// newReplica constructs a new Replica. If the desc is initialized, the store
-// must be present in it and the corresponding replica descriptor must have
-// replicaID as its ReplicaID.
 func newReplica(
 	ctx context.Context, desc *roachpb.RangeDescriptor, store *Store, replicaID roachpb.ReplicaID,
 ) (*Replica, error) {
+	__antithesis_instrumentation__.Notify(117646)
 	repl := newUnloadedReplica(ctx, desc, store, replicaID)
 	repl.raftMu.Lock()
 	defer repl.raftMu.Unlock()
 	repl.mu.Lock()
 	defer repl.mu.Unlock()
 	if err := repl.loadRaftMuLockedReplicaMuLocked(desc); err != nil {
+		__antithesis_instrumentation__.Notify(117648)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(117649)
 	}
+	__antithesis_instrumentation__.Notify(117647)
 	return repl, nil
 }
 
-// newUnloadedReplica partially constructs a replica. The primary reason this
-// function exists separately from Replica.loadRaftMuLockedReplicaMuLocked() is
-// to avoid attempting to fully constructing a Replica prior to proving that it
-// can exist during the delicate synchronization dance that occurs in
-// Store.tryGetOrCreateReplica(). A Replica returned from this function must not
-// be used in any way until it's load() method has been called.
 func newUnloadedReplica(
 	ctx context.Context, desc *roachpb.RangeDescriptor, store *Store, replicaID roachpb.ReplicaID,
 ) *Replica {
+	__antithesis_instrumentation__.Notify(117650)
 	if replicaID == 0 {
+		__antithesis_instrumentation__.Notify(117657)
 		log.Fatalf(ctx, "cannot construct a replica for range %d with a 0 replica ID", desc.RangeID)
+	} else {
+		__antithesis_instrumentation__.Notify(117658)
 	}
+	__antithesis_instrumentation__.Notify(117651)
 	r := &Replica{
 		AmbientContext: store.cfg.AmbientCtx,
 		RangeID:        desc.RangeID,
@@ -95,10 +88,13 @@ func newUnloadedReplica(
 	r.mu.quiescent = true
 	r.mu.conf = store.cfg.DefaultSpanConfig
 	split.Init(&r.loadBasedSplitter, rand.Intn, func() float64 {
+		__antithesis_instrumentation__.Notify(117659)
 		return float64(SplitByLoadQPSThreshold.Get(&store.cfg.Settings.SV))
 	}, func() time.Duration {
+		__antithesis_instrumentation__.Notify(117660)
 		return kvserverbase.SplitByLoadMergeDelay.Get(&store.cfg.Settings.SV)
 	})
+	__antithesis_instrumentation__.Notify(117652)
 	r.mu.proposals = map[kvserverbase.CmdIDKey]*ProposalData{}
 	r.mu.checksums = map[uuid.UUID]replicaChecksum{}
 	r.mu.proposalBuf.Init((*replicaProposer)(r), tracker.NewLockfreeTracker(), r.Clock(), r.ClusterSettings())
@@ -107,121 +103,146 @@ func newUnloadedReplica(
 	r.mu.proposalBuf.testing.submitProposalFilter = store.cfg.TestingKnobs.TestingProposalSubmitFilter
 
 	if leaseHistoryMaxEntries > 0 {
+		__antithesis_instrumentation__.Notify(117661)
 		r.leaseHistory = newLeaseHistory()
+	} else {
+		__antithesis_instrumentation__.Notify(117662)
 	}
+	__antithesis_instrumentation__.Notify(117653)
 	if store.cfg.StorePool != nil {
+		__antithesis_instrumentation__.Notify(117663)
 		r.leaseholderStats = newReplicaStats(store.Clock(), store.cfg.StorePool.getNodeLocalityString)
+	} else {
+		__antithesis_instrumentation__.Notify(117664)
 	}
-	// Pass nil for the localityOracle because we intentionally don't track the
-	// origin locality of write load.
+	__antithesis_instrumentation__.Notify(117654)
+
 	r.writeStats = newReplicaStats(store.Clock(), nil)
 
-	// Init rangeStr with the range ID.
 	r.rangeStr.store(replicaID, &roachpb.RangeDescriptor{RangeID: desc.RangeID})
-	// Add replica log tag - the value is rangeStr.String().
+
 	r.AmbientContext.AddLogTag("r", &r.rangeStr)
-	r.raftCtx = logtags.AddTag(r.AnnotateCtx(context.Background()), "raft", nil /* value */)
-	// Add replica pointer value. NB: this was historically useful for debugging
-	// replica GC issues, but is a distraction at the moment.
-	// r.AmbientContext.AddLogTag("@", fmt.Sprintf("%x", unsafe.Pointer(r)))
+	r.raftCtx = logtags.AddTag(r.AnnotateCtx(context.Background()), "raft", nil)
+
 	r.raftMu.stateLoader = stateloader.Make(desc.RangeID)
 
 	r.splitQueueThrottle = util.Every(splitQueueThrottleDuration)
 	r.mergeQueueThrottle = util.Every(mergeQueueThrottleDuration)
 
 	onTrip := func() {
+		__antithesis_instrumentation__.Notify(117665)
 		telemetry.Inc(telemetryTripAsync)
 		r.store.Metrics().ReplicaCircuitBreakerCumTripped.Inc(1)
 		store.Metrics().ReplicaCircuitBreakerCurTripped.Inc(1)
 	}
+	__antithesis_instrumentation__.Notify(117655)
 	onReset := func() {
+		__antithesis_instrumentation__.Notify(117666)
 		store.Metrics().ReplicaCircuitBreakerCurTripped.Dec(1)
 	}
+	__antithesis_instrumentation__.Notify(117656)
 	r.breaker = newReplicaCircuitBreaker(
 		store.cfg.Settings, store.stopper, r.AmbientContext, r, onTrip, onReset,
 	)
 	return r
 }
 
-// setStartKeyLocked sets r.startKey. Note that this field has special semantics
-// described on its comment. Callers to this method are initializing an
-// uninitialized Replica and hold Replica.mu.
 func (r *Replica) setStartKeyLocked(startKey roachpb.RKey) {
+	__antithesis_instrumentation__.Notify(117667)
 	r.mu.AssertHeld()
 	if r.startKey != nil {
+		__antithesis_instrumentation__.Notify(117669)
 		log.Fatalf(
 			r.AnnotateCtx(context.Background()),
 			"start key written twice: was %s, now %s", r.startKey, startKey,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(117670)
 	}
+	__antithesis_instrumentation__.Notify(117668)
 	r.startKey = startKey
 }
 
-// loadRaftMuLockedReplicaMuLocked will load the state of the replica from disk.
-// If desc is initialized, the Replica will be initialized when this method
-// returns. An initialized Replica may not be reloaded. If this method is called
-// with an uninitialized desc it may be called again later with an initialized
-// desc.
-//
-// This method is called in three places:
-//
-//  1) newReplica - used when the store is initializing and during testing
-//  2) tryGetOrCreateReplica - see newUnloadedReplica
-//  3) splitPostApply - this call initializes a previously uninitialized Replica.
-//
 func (r *Replica) loadRaftMuLockedReplicaMuLocked(desc *roachpb.RangeDescriptor) error {
+	__antithesis_instrumentation__.Notify(117671)
 	ctx := r.AnnotateCtx(context.TODO())
-	if r.mu.state.Desc != nil && r.isInitializedRLocked() {
+	if r.mu.state.Desc != nil && func() bool {
+		__antithesis_instrumentation__.Notify(117680)
+		return r.isInitializedRLocked() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(117681)
 		log.Fatalf(ctx, "r%d: cannot reinitialize an initialized replica", desc.RangeID)
-	} else if r.replicaID == 0 {
-		// NB: This is just a defensive check as r.mu.replicaID should never be 0.
-		log.Fatalf(ctx, "r%d: cannot initialize replica without a replicaID", desc.RangeID)
-	}
-	if desc.IsInitialized() {
-		r.setStartKeyLocked(desc.StartKey)
-	}
+	} else {
+		__antithesis_instrumentation__.Notify(117682)
+		if r.replicaID == 0 {
+			__antithesis_instrumentation__.Notify(117683)
 
-	// Clear the internal raft group in case we're being reset. Since we're
-	// reloading the raft state below, it isn't safe to use the existing raft
-	// group.
+			log.Fatalf(ctx, "r%d: cannot initialize replica without a replicaID", desc.RangeID)
+		} else {
+			__antithesis_instrumentation__.Notify(117684)
+		}
+	}
+	__antithesis_instrumentation__.Notify(117672)
+	if desc.IsInitialized() {
+		__antithesis_instrumentation__.Notify(117685)
+		r.setStartKeyLocked(desc.StartKey)
+	} else {
+		__antithesis_instrumentation__.Notify(117686)
+	}
+	__antithesis_instrumentation__.Notify(117673)
+
 	r.mu.internalRaftGroup = nil
 
 	var err error
 	if r.mu.state, err = r.mu.stateLoader.Load(ctx, r.Engine(), desc); err != nil {
+		__antithesis_instrumentation__.Notify(117687)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(117688)
 	}
+	__antithesis_instrumentation__.Notify(117674)
 	r.mu.lastIndex, err = r.mu.stateLoader.LoadLastIndex(ctx, r.Engine())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(117689)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(117690)
 	}
+	__antithesis_instrumentation__.Notify(117675)
 	r.mu.lastTerm = invalidLastTerm
 
-	// Ensure that we're not trying to load a replica with a different ID than
-	// was used to construct this Replica.
 	replicaID := r.replicaID
 	if replicaDesc, found := r.mu.state.Desc.GetReplicaDescriptor(r.StoreID()); found {
+		__antithesis_instrumentation__.Notify(117691)
 		replicaID = replicaDesc.ReplicaID
-	} else if desc.IsInitialized() {
-		log.Fatalf(ctx, "r%d: cannot initialize replica which is not in descriptor %v", desc.RangeID, desc)
+	} else {
+		__antithesis_instrumentation__.Notify(117692)
+		if desc.IsInitialized() {
+			__antithesis_instrumentation__.Notify(117693)
+			log.Fatalf(ctx, "r%d: cannot initialize replica which is not in descriptor %v", desc.RangeID, desc)
+		} else {
+			__antithesis_instrumentation__.Notify(117694)
+		}
 	}
+	__antithesis_instrumentation__.Notify(117676)
 	if r.replicaID != replicaID {
+		__antithesis_instrumentation__.Notify(117695)
 		log.Fatalf(ctx, "attempting to initialize a replica which has ID %d with ID %d",
 			r.replicaID, replicaID)
+	} else {
+		__antithesis_instrumentation__.Notify(117696)
 	}
+	__antithesis_instrumentation__.Notify(117677)
 
 	r.setDescLockedRaftMuLocked(ctx, desc)
 
-	// Only do this if there was a previous lease. This shouldn't be important
-	// to do but consider that the first lease which is obtained is back-dated
-	// to a zero start timestamp (and this de-flakes some tests). If we set the
-	// min proposed TS here, this lease could not be renewed (by the semantics
-	// of minLeaseProposedTS); and since minLeaseProposedTS is copied on splits,
-	// this problem would multiply to a number of replicas at cluster bootstrap.
-	// Instead, we make the first lease special (which is OK) and the problem
-	// disappears.
 	if r.mu.state.Lease.Sequence > 0 {
+		__antithesis_instrumentation__.Notify(117697)
 		r.mu.minLeaseProposedTS = r.Clock().NowAsClockTimestamp()
+	} else {
+		__antithesis_instrumentation__.Notify(117698)
 	}
+	__antithesis_instrumentation__.Notify(117678)
 
 	ssBase := r.Engine().GetAuxiliaryDir()
 	if r.raftMu.sideloaded, err = newDiskSideloadStorage(
@@ -232,8 +253,12 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(desc *roachpb.RangeDescriptor)
 		r.store.limiters.BulkIOWriteRate,
 		r.store.engine,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(117699)
 		return errors.Wrap(err, "while initializing sideloaded storage")
+	} else {
+		__antithesis_instrumentation__.Notify(117700)
 	}
+	__antithesis_instrumentation__.Notify(117679)
 	r.assertStateRaftMuLockedReplicaMuRLocked(ctx, r.store.Engine())
 
 	r.sideTransportClosedTimestamp.init(r.store.cfg.ClosedTimestampReceiver, desc.RangeID)
@@ -241,147 +266,179 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(desc *roachpb.RangeDescriptor)
 	return nil
 }
 
-// IsInitialized is true if we know the metadata of this replica's range, either
-// because we created it or we have received an initial snapshot from another
-// node. It is false when a replica has been created in response to an incoming
-// message but we are waiting for our initial snapshot.
 func (r *Replica) IsInitialized() bool {
+	__antithesis_instrumentation__.Notify(117701)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.isInitializedRLocked()
 }
 
-// TenantID returns the associated tenant ID and a boolean to indicate that it
-// is valid. It will be invalid only if the replica is not initialized.
 func (r *Replica) TenantID() (roachpb.TenantID, bool) {
+	__antithesis_instrumentation__.Notify(117702)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.getTenantIDRLocked()
 }
 
 func (r *Replica) getTenantIDRLocked() (roachpb.TenantID, bool) {
+	__antithesis_instrumentation__.Notify(117703)
 	return r.mu.tenantID, r.mu.tenantID != (roachpb.TenantID{})
 }
 
-// isInitializedRLocked is true if we know the metadata of this range, either
-// because we created it or we have received an initial snapshot from
-// another node. It is false when a range has been created in response
-// to an incoming message but we are waiting for our initial snapshot.
-// isInitializedLocked requires that the replica lock is held.
 func (r *Replica) isInitializedRLocked() bool {
+	__antithesis_instrumentation__.Notify(117704)
 	return r.mu.state.Desc.IsInitialized()
 }
 
-// maybeInitializeRaftGroup check whether the internal Raft group has
-// not yet been initialized. If not, it is created and set to campaign
-// if this replica is the most recent owner of the range lease.
 func (r *Replica) maybeInitializeRaftGroup(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(117705)
 	r.mu.RLock()
-	// If this replica hasn't initialized the Raft group, create it and
-	// unquiesce and wake the leader to ensure the replica comes up to date.
+
 	initialized := r.mu.internalRaftGroup != nil
-	// If this replica has been removed or is in the process of being removed
-	// then it'll never handle any raft events so there's no reason to initialize
-	// it now.
+
 	removed := !r.mu.destroyStatus.IsAlive()
 	r.mu.RUnlock()
-	if initialized || removed {
+	if initialized || func() bool {
+		__antithesis_instrumentation__.Notify(117707)
+		return removed == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(117708)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(117709)
 	}
+	__antithesis_instrumentation__.Notify(117706)
 
-	// Acquire raftMu, but need to maintain lock ordering (raftMu then mu).
 	r.raftMu.Lock()
 	defer r.raftMu.Unlock()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// If we raced on checking the destroyStatus above that's fine as
-	// the below withRaftGroupLocked will no-op.
 	if err := r.withRaftGroupLocked(true, func(raftGroup *raft.RawNode) (bool, error) {
+		__antithesis_instrumentation__.Notify(117710)
 		return true, nil
-	}); err != nil && !errors.Is(err, errRemoved) {
+	}); err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(117711)
+		return !errors.Is(err, errRemoved) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(117712)
 		log.VErrEventf(ctx, 1, "unable to initialize raft group: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(117713)
 	}
 }
 
-// setDescRaftMuLocked atomically sets the replica's descriptor. It requires raftMu to be
-// locked.
 func (r *Replica) setDescRaftMuLocked(ctx context.Context, desc *roachpb.RangeDescriptor) {
+	__antithesis_instrumentation__.Notify(117714)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.setDescLockedRaftMuLocked(ctx, desc)
 }
 
 func (r *Replica) setDescLockedRaftMuLocked(ctx context.Context, desc *roachpb.RangeDescriptor) {
+	__antithesis_instrumentation__.Notify(117715)
 	if desc.RangeID != r.RangeID {
+		__antithesis_instrumentation__.Notify(117722)
 		log.Fatalf(ctx, "range descriptor ID (%d) does not match replica's range ID (%d)",
 			desc.RangeID, r.RangeID)
+	} else {
+		__antithesis_instrumentation__.Notify(117723)
 	}
-	if r.mu.state.Desc.IsInitialized() &&
-		(desc == nil || !desc.IsInitialized()) {
+	__antithesis_instrumentation__.Notify(117716)
+	if r.mu.state.Desc.IsInitialized() && func() bool {
+		__antithesis_instrumentation__.Notify(117724)
+		return (desc == nil || func() bool {
+			__antithesis_instrumentation__.Notify(117725)
+			return !desc.IsInitialized() == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(117726)
 		log.Fatalf(ctx, "cannot replace initialized descriptor with uninitialized one: %+v -> %+v",
 			r.mu.state.Desc, desc)
+	} else {
+		__antithesis_instrumentation__.Notify(117727)
 	}
-	if r.mu.state.Desc.IsInitialized() &&
-		!r.mu.state.Desc.StartKey.Equal(desc.StartKey) {
+	__antithesis_instrumentation__.Notify(117717)
+	if r.mu.state.Desc.IsInitialized() && func() bool {
+		__antithesis_instrumentation__.Notify(117728)
+		return !r.mu.state.Desc.StartKey.Equal(desc.StartKey) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(117729)
 		log.Fatalf(ctx, "attempted to change replica's start key from %s to %s",
 			r.mu.state.Desc.StartKey, desc.StartKey)
+	} else {
+		__antithesis_instrumentation__.Notify(117730)
 	}
+	__antithesis_instrumentation__.Notify(117718)
 
-	// NB: It might be nice to assert that the current replica exists in desc
-	// however we allow it to not be present for three reasons:
-	//
-	//   1) When removing the current replica we update the descriptor to the point
-	//      of removal even though we will delete the Replica's data in the same
-	//      batch. We could avoid setting the local descriptor in this case.
-	//   2) When the DisableEagerReplicaRemoval testing knob is enabled. We
-	//      could remove all tests which utilize this behavior now that there's
-	//      no other mechanism for range state which does not contain the current
-	//      store to exist on disk.
-	//   3) Various unit tests do not provide a valid descriptor.
 	replDesc, found := desc.GetReplicaDescriptor(r.StoreID())
-	if found && replDesc.ReplicaID != r.replicaID {
+	if found && func() bool {
+		__antithesis_instrumentation__.Notify(117731)
+		return replDesc.ReplicaID != r.replicaID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(117732)
 		log.Fatalf(ctx, "attempted to change replica's ID from %d to %d",
 			r.replicaID, replDesc.ReplicaID)
+	} else {
+		__antithesis_instrumentation__.Notify(117733)
 	}
+	__antithesis_instrumentation__.Notify(117719)
 
-	// Initialize the tenant. The must be the first time that the descriptor has
-	// been initialized. Note that the desc.StartKey never changes throughout the
-	// life of a range.
-	if desc.IsInitialized() && r.mu.tenantID == (roachpb.TenantID{}) {
+	if desc.IsInitialized() && func() bool {
+		__antithesis_instrumentation__.Notify(117734)
+		return r.mu.tenantID == (roachpb.TenantID{}) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(117735)
 		_, tenantID, err := keys.DecodeTenantPrefix(desc.StartKey.AsRawKey())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(117737)
 			log.Fatalf(ctx, "failed to decode tenant prefix from key for "+
 				"replica %v: %v", r, err)
+		} else {
+			__antithesis_instrumentation__.Notify(117738)
 		}
+		__antithesis_instrumentation__.Notify(117736)
 		r.mu.tenantID = tenantID
 		r.tenantMetricsRef = r.store.metrics.acquireTenant(tenantID)
 		if tenantID != roachpb.SystemTenantID {
+			__antithesis_instrumentation__.Notify(117739)
 			r.tenantLimiter = r.store.tenantRateLimiters.GetTenant(ctx, tenantID, r.store.stopper.ShouldQuiesce())
+		} else {
+			__antithesis_instrumentation__.Notify(117740)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(117741)
 	}
+	__antithesis_instrumentation__.Notify(117720)
 
-	// Determine if a new replica was added. This is true if the new max replica
-	// ID is greater than the old max replica ID.
 	oldMaxID := maxReplicaIDOfAny(r.mu.state.Desc)
 	newMaxID := maxReplicaIDOfAny(desc)
 	if newMaxID > oldMaxID {
+		__antithesis_instrumentation__.Notify(117742)
 		r.mu.lastReplicaAdded = newMaxID
 		r.mu.lastReplicaAddedTime = timeutil.Now()
-	} else if r.mu.lastReplicaAdded > newMaxID {
-		// The last replica added was removed.
-		r.mu.lastReplicaAdded = 0
-		r.mu.lastReplicaAddedTime = time.Time{}
+	} else {
+		__antithesis_instrumentation__.Notify(117743)
+		if r.mu.lastReplicaAdded > newMaxID {
+			__antithesis_instrumentation__.Notify(117744)
+
+			r.mu.lastReplicaAdded = 0
+			r.mu.lastReplicaAddedTime = time.Time{}
+		} else {
+			__antithesis_instrumentation__.Notify(117745)
+		}
 	}
+	__antithesis_instrumentation__.Notify(117721)
 
 	r.rangeStr.store(r.replicaID, desc)
 	r.connectionClass.set(rpc.ConnectionClassForKey(desc.StartKey))
 	r.concMgr.OnRangeDescUpdated(desc)
 	r.mu.state.Desc = desc
 
-	// Prioritize the NodeLiveness Range in the Raft scheduler above all other
-	// Ranges to ensure that liveness never sees high Raft scheduler latency.
 	if bytes.HasPrefix(desc.StartKey, keys.NodeLivenessPrefix) {
+		__antithesis_instrumentation__.Notify(117746)
 		r.store.scheduler.SetPriorityID(desc.RangeID)
+	} else {
+		__antithesis_instrumentation__.Notify(117747)
 	}
 }

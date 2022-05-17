@@ -29,6 +29,7 @@ go_library(
         "//pkg/util/mon",
         "//pkg/util/ring",
         "//pkg/util/sort",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -61,6 +62,7 @@ go_test(
         "//pkg/util/mon",
         "//pkg/util/randutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",
     ],

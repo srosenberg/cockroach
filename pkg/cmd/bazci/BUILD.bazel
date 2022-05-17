@@ -11,6 +11,7 @@ go_library(
     visibility = ["//visibility:private"],
     deps = [
         "//pkg/build/util",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_alessio_shellescape//:shellescape",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_spf13_cobra//:cobra",
@@ -21,6 +22,7 @@ go_binary(
     name = "bazci",
     embed = [":bazci_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -33,6 +35,7 @@ go_test(
     embed = [":bazci_lib"],
     deps = [
         "//pkg/testutils",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//assert",
     ],
 )

@@ -1,13 +1,3 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 /*
 Package simulation provides tools meant to visualize or test aspects
 of a Cockroach cluster on a single host.
@@ -53,6 +43,8 @@ For MacOS:
 */
 package main
 
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 import (
 	"context"
 	"flag"
@@ -74,10 +66,8 @@ import (
 )
 
 const (
-	// minDotFontSize is the minimum font size for scaling node sizes
-	// proportional to the number of incoming connections.
 	minDotFontSize = 12
-	// maxDotFontSize is the maximum font size for scaling node sizes.
+
 	maxDotFontSize = 24
 )
 
@@ -85,218 +75,257 @@ var (
 	size = flag.String("size", "medium", "size of network (tiny|small|medium|large|huge|ginormous)")
 )
 
-// edge is a helper struct which describes an edge in the dot output graph.
 type edge struct {
-	dest    roachpb.NodeID // Node ID of destination
-	added   bool           // True if edge was recently added
-	deleted bool           // True if edge was recently deleted
+	dest    roachpb.NodeID
+	added   bool
+	deleted bool
 }
 
-// edgeMap is a map from node address to a list of edges. A helper
-// method is provided to simplify adding edges.
 type edgeMap map[roachpb.NodeID][]edge
 
-// addEdge creates a list of edges if one doesn't yet exist for the
-// specified node ID.
 func (em edgeMap) addEdge(nodeID roachpb.NodeID, e edge) {
+	__antithesis_instrumentation__.Notify(40972)
 	if _, ok := em[nodeID]; !ok {
+		__antithesis_instrumentation__.Notify(40974)
 		em[nodeID] = make([]edge, 0, 1)
+	} else {
+		__antithesis_instrumentation__.Notify(40975)
 	}
+	__antithesis_instrumentation__.Notify(40973)
 	em[nodeID] = append(em[nodeID], e)
 }
 
-// outputDotFile generates a .dot file describing the current state of
-// the gossip network. nodes is a map from network address to gossip
-// node. edgeSet is empty on the first invocation, but
-// its content is set to encompass the entire set of edges in the
-// network when this method returns. It should be resupplied with each
-// successive invocation, as it is used to determine which edges are
-// new and which have been deleted and show those changes visually in
-// the output graph. New edges are drawn green; edges which were
-// removed over the course of the last simulation step(s) are drawn in
-// a lightly-dashed red.
-//
-// The format of the output looks like this:
-//
-//   digraph G {
-//   node [shape=record];
-//        node1 [fontsize=12,label="{Node 1|MH=3}"]
-//        node1 -> node3 [color=green]
-//        node1 -> node4
-//        node1 -> node5 [color=red,style=dotted]
-//        node2 [fontsize=24,label="{Node 2|MH=2}"]
-//        node2 -> node5
-//        node3 [fontsize=18,label="{Node 3|MH=5}"]
-//        node3 -> node5
-//        node3 -> node4
-//        node4 [fontsize=24,label="{Node 4|MH=4}"]
-//        node4 -> node2
-//        node5 [fontsize=24,label="{Node 5|MH=1}"]
-//        node5 -> node2
-//        node5 -> node3
-//   }
-//
-// Returns the name of the output file and a boolean for whether or not
-// the network has quiesced (that is, no new edges, and all nodes are
-// connected).
 func outputDotFile(
 	dotFN string, cycle int, network *simulation.Network, edgeSet map[string]edge,
 ) (string, bool) {
+	__antithesis_instrumentation__.Notify(40976)
 	f, err := os.Create(dotFN)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40981)
 		log.Fatalf(context.TODO(), "unable to create temp file: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(40982)
 	}
+	__antithesis_instrumentation__.Notify(40977)
 	defer f.Close()
 
-	// Determine maximum number of incoming connections. Create outgoing
-	// edges, keeping track of which are new since last time (added=true).
 	outgoingMap := make(edgeMap)
 	var maxIncoming int
 	quiescent := true
-	// The order the graph file is written influences the arrangement
-	// of nodes in the output image, so it makes sense to eliminate
-	// randomness here. Unfortunately with graphviz it's fairly hard
-	// to get a consistent ordering.
+
 	for _, simNode := range network.Nodes {
+		__antithesis_instrumentation__.Notify(40983)
 		node := simNode.Gossip
 		incoming := node.Incoming()
 		for _, iNode := range incoming {
+			__antithesis_instrumentation__.Notify(40985)
 			e := edge{dest: node.NodeID.Get()}
 			key := fmt.Sprintf("%d:%d", iNode, node.NodeID.Get())
 			if _, ok := edgeSet[key]; !ok {
+				__antithesis_instrumentation__.Notify(40987)
 				e.added = true
 				quiescent = false
+			} else {
+				__antithesis_instrumentation__.Notify(40988)
 			}
+			__antithesis_instrumentation__.Notify(40986)
 			delete(edgeSet, key)
 			outgoingMap.addEdge(iNode, e)
 		}
+		__antithesis_instrumentation__.Notify(40984)
 		if len(incoming) > maxIncoming {
+			__antithesis_instrumentation__.Notify(40989)
 			maxIncoming = len(incoming)
+		} else {
+			__antithesis_instrumentation__.Notify(40990)
 		}
 	}
+	__antithesis_instrumentation__.Notify(40978)
 
-	// Find all edges which were deleted.
 	for key, e := range edgeSet {
+		__antithesis_instrumentation__.Notify(40991)
 		e.added = false
 		e.deleted = true
 		quiescent = false
 		nodeID, err := strconv.Atoi(strings.Split(key, ":")[0])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(40993)
 			log.Fatalf(context.TODO(), "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(40994)
 		}
+		__antithesis_instrumentation__.Notify(40992)
 		outgoingMap.addEdge(roachpb.NodeID(nodeID), e)
 		delete(edgeSet, key)
 	}
+	__antithesis_instrumentation__.Notify(40979)
 
 	fmt.Fprintln(f, "digraph G {")
 	fmt.Fprintln(f, "node [shape=record];")
 	for _, simNode := range network.Nodes {
+		__antithesis_instrumentation__.Notify(40995)
 		node := simNode.Gossip
 		var missing []roachpb.NodeID
 		var totalAge int64
 		for _, otherNode := range network.Nodes {
+			__antithesis_instrumentation__.Notify(41000)
 			if otherNode == simNode {
-				continue // skip the node's own info
+				__antithesis_instrumentation__.Notify(41002)
+				continue
+			} else {
+				__antithesis_instrumentation__.Notify(41003)
 			}
+			__antithesis_instrumentation__.Notify(41001)
 			infoKey := otherNode.Addr().String()
-			// GetInfo returns an error if the info is missing.
+
 			if info, err := node.GetInfo(infoKey); err != nil {
+				__antithesis_instrumentation__.Notify(41004)
 				missing = append(missing, otherNode.Gossip.NodeID.Get())
 				quiescent = false
 			} else {
+				__antithesis_instrumentation__.Notify(41005)
 				_, val, err := encoding.DecodeUint64Ascending(info)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(41007)
 					log.Fatalf(context.TODO(), "bad decode of node info cycle: %s", err)
+				} else {
+					__antithesis_instrumentation__.Notify(41008)
 				}
+				__antithesis_instrumentation__.Notify(41006)
 				totalAge += int64(cycle) - int64(val)
 			}
 		}
+		__antithesis_instrumentation__.Notify(40996)
 		log.Infof(context.TODO(), "node %d: missing infos for nodes %s", node.NodeID.Get(), missing)
 
 		var sentinelAge int64
-		// GetInfo returns an error if the info is missing.
+
 		if info, err := node.GetInfo(gossip.KeySentinel); err != nil {
+			__antithesis_instrumentation__.Notify(41009)
 			log.Infof(context.TODO(), "error getting info for sentinel gossip key %q: %s", gossip.KeySentinel, err)
 		} else {
+			__antithesis_instrumentation__.Notify(41010)
 			_, val, err := encoding.DecodeUint64Ascending(info)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(41012)
 				log.Fatalf(context.TODO(), "bad decode of sentinel cycle: %s", err)
+			} else {
+				__antithesis_instrumentation__.Notify(41013)
 			}
+			__antithesis_instrumentation__.Notify(41011)
 			sentinelAge = int64(cycle) - int64(val)
 		}
+		__antithesis_instrumentation__.Notify(40997)
 
 		var age, nodeColor string
 		if len(missing) > 0 {
+			__antithesis_instrumentation__.Notify(41014)
 			nodeColor = "color=red,"
 			age = fmt.Sprintf("missing %d", len(missing))
 		} else {
+			__antithesis_instrumentation__.Notify(41015)
 			age = strconv.FormatFloat(float64(totalAge)/float64(len(network.Nodes)-1-len(missing)), 'f', 4, 64)
 		}
+		__antithesis_instrumentation__.Notify(40998)
 		fontSize := minDotFontSize
 		if maxIncoming > 0 {
+			__antithesis_instrumentation__.Notify(41016)
 			fontSize = minDotFontSize + int(math.Floor(float64(len(node.Incoming())*
 				(maxDotFontSize-minDotFontSize))/float64(maxIncoming)))
+		} else {
+			__antithesis_instrumentation__.Notify(41017)
 		}
+		__antithesis_instrumentation__.Notify(40999)
 		fmt.Fprintf(f, "\t%s [%sfontsize=%d,label=\"{%s|AA=%s, MH=%d, SA=%d}\"]\n",
 			node.NodeID.Get(), nodeColor, fontSize, node.NodeID.Get(), age, node.MaxHops(), sentinelAge)
 		outgoing := outgoingMap[node.NodeID.Get()]
 		for _, e := range outgoing {
+			__antithesis_instrumentation__.Notify(41018)
 			destSimNode, ok := network.GetNodeFromID(e.dest)
 			if !ok {
+				__antithesis_instrumentation__.Notify(41021)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(41022)
 			}
+			__antithesis_instrumentation__.Notify(41019)
 			dest := destSimNode.Gossip
 			style := ""
 			if e.added {
+				__antithesis_instrumentation__.Notify(41023)
 				style = " [color=green]"
-			} else if e.deleted {
-				style = " [color=red,style=dotted]"
+			} else {
+				__antithesis_instrumentation__.Notify(41024)
+				if e.deleted {
+					__antithesis_instrumentation__.Notify(41025)
+					style = " [color=red,style=dotted]"
+				} else {
+					__antithesis_instrumentation__.Notify(41026)
+				}
 			}
+			__antithesis_instrumentation__.Notify(41020)
 			fmt.Fprintf(f, "\t%s -> %s%s\n", node.NodeID.Get(), dest.NodeID.Get(), style)
 			if !e.deleted {
+				__antithesis_instrumentation__.Notify(41027)
 				edgeSet[fmt.Sprintf("%d:%d", node.NodeID.Get(), e.dest)] = e
+			} else {
+				__antithesis_instrumentation__.Notify(41028)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(40980)
 	fmt.Fprintln(f, "}")
 	return f.Name(), quiescent
 }
 
 func main() {
-	// Seed the random number generator for non-determinism across
-	// multiple runs.
+	__antithesis_instrumentation__.Notify(41029)
+
 	randutil.SeedForTests()
 
 	if f := flag.Lookup("logtostderr"); f != nil {
+		__antithesis_instrumentation__.Notify(41034)
 		fmt.Println("Starting simulation. Add -logtostderr to see progress.")
+	} else {
+		__antithesis_instrumentation__.Notify(41035)
 	}
+	__antithesis_instrumentation__.Notify(41030)
 	flag.Parse()
 
 	dirName, err := ioutil.TempDir("", "gossip-simulation-")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41036)
 		log.Fatalf(context.TODO(), "could not create temporary directory for gossip simulation output: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(41037)
 	}
+	__antithesis_instrumentation__.Notify(41031)
 
-	// Simulation callbacks to run the simulation for cycleCount
-	// cycles. At each cycle % outputEvery, a dot file showing the
-	// state of the network graph is output.
 	nodeCount := 3
 	switch *size {
 	case "tiny":
-		// Use default parameters.
+		__antithesis_instrumentation__.Notify(41038)
+
 	case "small":
+		__antithesis_instrumentation__.Notify(41039)
 		nodeCount = 10
 	case "medium":
+		__antithesis_instrumentation__.Notify(41040)
 		nodeCount = 25
 	case "large":
+		__antithesis_instrumentation__.Notify(41041)
 		nodeCount = 50
 	case "huge":
+		__antithesis_instrumentation__.Notify(41042)
 		nodeCount = 100
 	case "ginormous":
+		__antithesis_instrumentation__.Notify(41043)
 		nodeCount = 250
 	default:
+		__antithesis_instrumentation__.Notify(41044)
 		log.Fatalf(context.TODO(), "unknown simulation size: %s", *size)
 	}
+	__antithesis_instrumentation__.Notify(41032)
 
 	edgeSet := make(map[string]edge)
 
@@ -306,14 +335,15 @@ func main() {
 	n := simulation.NewNetwork(stopper, nodeCount, true, zonepb.DefaultZoneConfigRef())
 	n.SimulateNetwork(
 		func(cycle int, network *simulation.Network) bool {
-			// Output dot graph.
+			__antithesis_instrumentation__.Notify(41045)
+
 			dotFN := fmt.Sprintf("%s/sim-cycle-%03d.dot", dirName, cycle)
 			_, quiescent := outputDotFile(dotFN, cycle, network, edgeSet)
-			// Run until network has quiesced.
+
 			return !quiescent
 		},
 	)
+	__antithesis_instrumentation__.Notify(41033)
 
-	// Output instructions for viewing graphs.
 	fmt.Printf("To view simulation graph output run (you must install graphviz):\n\nfor f in %s/*.dot ; do circo $f -Tpng -o $f.png ; echo $f.png ; done\n", dirName)
 }

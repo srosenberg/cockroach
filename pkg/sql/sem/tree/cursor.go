@@ -1,18 +1,9 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "strconv"
 
-// DeclareCursor represents a DECLARE statement.
 type DeclareCursor struct {
 	Name        Name
 	Select      *Select
@@ -22,198 +13,228 @@ type DeclareCursor struct {
 	Hold        bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *DeclareCursor) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(605379)
 	ctx.WriteString("DECLARE ")
 	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" ")
 	if node.Binary {
+		__antithesis_instrumentation__.Notify(605384)
 		ctx.WriteString("BINARY ")
+	} else {
+		__antithesis_instrumentation__.Notify(605385)
 	}
+	__antithesis_instrumentation__.Notify(605380)
 	if node.Sensitivity != UnspecifiedSensitivity {
+		__antithesis_instrumentation__.Notify(605386)
 		ctx.WriteString(node.Sensitivity.String())
 		ctx.WriteString(" ")
+	} else {
+		__antithesis_instrumentation__.Notify(605387)
 	}
+	__antithesis_instrumentation__.Notify(605381)
 	if node.Scroll != UnspecifiedScroll {
+		__antithesis_instrumentation__.Notify(605388)
 		ctx.WriteString(node.Scroll.String())
 		ctx.WriteString(" ")
+	} else {
+		__antithesis_instrumentation__.Notify(605389)
 	}
+	__antithesis_instrumentation__.Notify(605382)
 	ctx.WriteString("CURSOR ")
 	if node.Hold {
+		__antithesis_instrumentation__.Notify(605390)
 		ctx.WriteString("WITH HOLD ")
+	} else {
+		__antithesis_instrumentation__.Notify(605391)
 	}
+	__antithesis_instrumentation__.Notify(605383)
 	ctx.WriteString("FOR ")
 	ctx.FormatNode(node.Select)
 }
 
-// CursorScrollOption represents the scroll option, if one was given, for a
-// DECLARE statement.
 type CursorScrollOption int8
 
 const (
-	// UnspecifiedScroll represents no SCROLL option having been given. In
-	// Postgres, this is like NO SCROLL, but the returned cursor also supports
-	// some simple cases of backward seeking. For CockroachDB, this is the same
-	// as NO SCROLL.
 	UnspecifiedScroll CursorScrollOption = iota
-	// Scroll represents the SCROLL option. It is supposed to indicate that the
-	// declared cursor is "scrollable", meaning it can be seeked backward.
+
 	Scroll
-	// NoScroll represents the NO SCROLL option, which means that the declared
-	// cursor can only be moved forward.
+
 	NoScroll
 )
 
 func (o CursorScrollOption) String() string {
+	__antithesis_instrumentation__.Notify(605392)
 	switch o {
 	case Scroll:
+		__antithesis_instrumentation__.Notify(605394)
 		return "SCROLL"
 	case NoScroll:
+		__antithesis_instrumentation__.Notify(605395)
 		return "NO SCROLL"
+	default:
+		__antithesis_instrumentation__.Notify(605396)
 	}
+	__antithesis_instrumentation__.Notify(605393)
 	return ""
 }
 
-// CursorSensitivity represents the "sensitivity" of a cursor, which describes
-// whether it sees writes that occur within the transaction after it was
-// declared.
-// CockroachDB, like Postgres, only supports "insensitive" cursors, and all
-// three variants of sensitivity here resolve to insensitive. SENSITIVE cursors
-// are not supported.
 type CursorSensitivity int
 
 const (
-	// UnspecifiedSensitivity indicates that no sensitivity was specified. This
-	// is the same as INSENSITIVE.
 	UnspecifiedSensitivity CursorSensitivity = iota
-	// Insensitive indicates that the cursor is "insensitive" to subsequent
-	// writes, meaning that it sees a snapshot of data from the moment it was
-	// declared, and won't see subsequent writes within the transaction.
+
 	Insensitive
-	// Asensitive indicates that "the cursor is implementation dependent".
+
 	Asensitive
 )
 
 func (o CursorSensitivity) String() string {
+	__antithesis_instrumentation__.Notify(605397)
 	switch o {
 	case Insensitive:
+		__antithesis_instrumentation__.Notify(605399)
 		return "INSENSITIVE"
 	case Asensitive:
+		__antithesis_instrumentation__.Notify(605400)
 		return "ASENSITIVE"
+	default:
+		__antithesis_instrumentation__.Notify(605401)
 	}
+	__antithesis_instrumentation__.Notify(605398)
 	return ""
 }
 
-// CursorStmt represents the shared structure between a FETCH and MOVE statement.
 type CursorStmt struct {
 	Name      Name
 	FetchType FetchType
 	Count     int64
 }
 
-// FetchCursor represents a FETCH statement.
 type FetchCursor struct {
 	CursorStmt
 }
 
-// MoveCursor represents a MOVE statement.
 type MoveCursor struct {
 	CursorStmt
 }
 
-// FetchType represents the type of a FETCH (or MOVE) statement.
 type FetchType int
 
 const (
-	// FetchNormal represents a FETCH statement that doesn't have a special
-	// qualifier. It's used for FORWARD, BACKWARD, NEXT, and PRIOR.
 	FetchNormal FetchType = iota
-	// FetchRelative represents a FETCH RELATIVE statement.
+
 	FetchRelative
-	// FetchAbsolute represents a FETCH ABSOLUTE statement.
+
 	FetchAbsolute
-	// FetchFirst represents a FETCH FIRST statement.
+
 	FetchFirst
-	// FetchLast represents a FETCH LAST statement.
+
 	FetchLast
-	// FetchAll represents a FETCH ALL statement.
+
 	FetchAll
-	// FetchBackwardAll represents a FETCH BACKWARD ALL statement.
+
 	FetchBackwardAll
 )
 
 func (o FetchType) String() string {
+	__antithesis_instrumentation__.Notify(605402)
 	switch o {
 	case FetchNormal:
+		__antithesis_instrumentation__.Notify(605404)
 		return ""
 	case FetchRelative:
+		__antithesis_instrumentation__.Notify(605405)
 		return "RELATIVE"
 	case FetchAbsolute:
+		__antithesis_instrumentation__.Notify(605406)
 		return "ABSOLUTE"
 	case FetchFirst:
+		__antithesis_instrumentation__.Notify(605407)
 		return "FIRST"
 	case FetchLast:
+		__antithesis_instrumentation__.Notify(605408)
 		return "LAST"
 	case FetchAll:
+		__antithesis_instrumentation__.Notify(605409)
 		return "ALL"
 	case FetchBackwardAll:
+		__antithesis_instrumentation__.Notify(605410)
 		return "BACKWARD ALL"
+	default:
+		__antithesis_instrumentation__.Notify(605411)
 	}
+	__antithesis_instrumentation__.Notify(605403)
 	return ""
 }
 
-// HasCount returns true if the given fetch type should be printed with an
-// associated count.
 func (o FetchType) HasCount() bool {
+	__antithesis_instrumentation__.Notify(605412)
 	switch o {
 	case FetchNormal, FetchRelative, FetchAbsolute:
+		__antithesis_instrumentation__.Notify(605414)
 		return true
+	default:
+		__antithesis_instrumentation__.Notify(605415)
 	}
+	__antithesis_instrumentation__.Notify(605413)
 	return false
 }
 
-// Format implements the NodeFormatter interface.
 func (c CursorStmt) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(605416)
 	fetchType := c.FetchType.String()
 	if fetchType != "" {
+		__antithesis_instrumentation__.Notify(605419)
 		ctx.WriteString(fetchType)
 		ctx.WriteString(" ")
+	} else {
+		__antithesis_instrumentation__.Notify(605420)
 	}
+	__antithesis_instrumentation__.Notify(605417)
 	if c.FetchType.HasCount() {
+		__antithesis_instrumentation__.Notify(605421)
 		if ctx.HasFlags(FmtHideConstants) {
+			__antithesis_instrumentation__.Notify(605423)
 			ctx.WriteByte('0')
 		} else {
+			__antithesis_instrumentation__.Notify(605424)
 			ctx.WriteString(strconv.Itoa(int(c.Count)))
 		}
+		__antithesis_instrumentation__.Notify(605422)
 		ctx.WriteString(" ")
+	} else {
+		__antithesis_instrumentation__.Notify(605425)
 	}
+	__antithesis_instrumentation__.Notify(605418)
 	ctx.FormatNode(&c.Name)
 }
 
-// Format implements the NodeFormatter interface.
 func (f FetchCursor) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(605426)
 	ctx.WriteString("FETCH ")
 	f.CursorStmt.Format(ctx)
 }
 
-// Format implements the NodeFormatter interface.
 func (m MoveCursor) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(605427)
 	ctx.WriteString("MOVE ")
 	m.CursorStmt.Format(ctx)
 }
 
-// CloseCursor represents a CLOSE statement.
 type CloseCursor struct {
 	Name Name
 	All  bool
 }
 
-// Format implements the NodeFormatter interface.
 func (c CloseCursor) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(605428)
 	ctx.WriteString("CLOSE ")
 	if c.All {
+		__antithesis_instrumentation__.Notify(605429)
 		ctx.WriteString("ALL")
 	} else {
+		__antithesis_instrumentation__.Notify(605430)
 		ctx.FormatNode(&c.Name)
 	}
 }

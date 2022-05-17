@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -35,7 +27,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// confirmActionFlag defines a pflag to parse a confirm option.
 type confirmActionFlag int
 
 const (
@@ -44,39 +35,51 @@ const (
 	allYes
 )
 
-// Type implements the pflag.Value interface.
-func (l *confirmActionFlag) Type() string { return "confirmAction" }
+func (l *confirmActionFlag) Type() string {
+	__antithesis_instrumentation__.Notify(31477)
+	return "confirmAction"
+}
 
-// String implements the pflag.Value interface.
 func (l *confirmActionFlag) String() string {
+	__antithesis_instrumentation__.Notify(31478)
 	switch *l {
 	case allYes:
+		__antithesis_instrumentation__.Notify(31480)
 		return "y"
 	case allNo:
+		__antithesis_instrumentation__.Notify(31481)
 		return "n"
 	case prompt:
+		__antithesis_instrumentation__.Notify(31482)
 		return "p"
+	default:
+		__antithesis_instrumentation__.Notify(31483)
 	}
+	__antithesis_instrumentation__.Notify(31479)
 	log.Fatalf(context.Background(), "unknown confirm action flag value %d", *l)
 	return ""
 }
 
-// Set implements the pflag.Value interface.
 func (l *confirmActionFlag) Set(value string) error {
+	__antithesis_instrumentation__.Notify(31484)
 	switch strings.ToLower(value) {
 	case "y", "yes":
+		__antithesis_instrumentation__.Notify(31486)
 		*l = allYes
 	case "n", "no":
+		__antithesis_instrumentation__.Notify(31487)
 		*l = allNo
 	case "p", "ask":
+		__antithesis_instrumentation__.Notify(31488)
 		*l = prompt
 	default:
+		__antithesis_instrumentation__.Notify(31489)
 		return errors.Errorf("unrecognized value for confirmation flag: %s", value)
 	}
+	__antithesis_instrumentation__.Notify(31485)
 	return nil
 }
 
-// debugRecoverCmd is the root of all recover quorum commands
 var debugRecoverCmd = &cobra.Command{
 	Use:   "recover [command]",
 	Short: "commands to recover unavailable ranges in case of quorum loss",
@@ -198,46 +201,77 @@ var debugRecoverCollectInfoOpts struct {
 }
 
 func runDebugDeadReplicaCollect(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(31490)
 	stopper := stop.NewStopper()
 	defer stopper.Stop(cmd.Context())
 
 	var stores []storage.Engine
 	for _, storeSpec := range debugRecoverCollectInfoOpts.Stores.Specs {
-		db, err := OpenExistingStore(storeSpec.Path, stopper, true /* readOnly */, false /* disableAutomaticCompactions */)
+		__antithesis_instrumentation__.Notify(31496)
+		db, err := OpenExistingStore(storeSpec.Path, stopper, true, false)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(31498)
 			return errors.Wrapf(err, "failed to open store at path %q, ensure that store path is "+
 				"correct and that it is not used by another process", storeSpec.Path)
+		} else {
+			__antithesis_instrumentation__.Notify(31499)
 		}
+		__antithesis_instrumentation__.Notify(31497)
 		stores = append(stores, db)
 	}
+	__antithesis_instrumentation__.Notify(31491)
 
 	replicaInfo, err := loqrecovery.CollectReplicaInfo(cmd.Context(), stores)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31500)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31501)
 	}
+	__antithesis_instrumentation__.Notify(31492)
 
 	var writer io.Writer = os.Stdout
 	if len(args) > 0 {
+		__antithesis_instrumentation__.Notify(31502)
 		filename := args[0]
 		if _, err = os.Stat(filename); err == nil {
+			__antithesis_instrumentation__.Notify(31505)
 			return errors.Newf("file %q already exists", filename)
+		} else {
+			__antithesis_instrumentation__.Notify(31506)
 		}
+		__antithesis_instrumentation__.Notify(31503)
 
 		outFile, err := os.Create(filename)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(31507)
 			return errors.Wrapf(err, "failed to create file %q", filename)
+		} else {
+			__antithesis_instrumentation__.Notify(31508)
 		}
+		__antithesis_instrumentation__.Notify(31504)
 		defer outFile.Close()
 		writer = outFile
+	} else {
+		__antithesis_instrumentation__.Notify(31509)
 	}
+	__antithesis_instrumentation__.Notify(31493)
 	jsonpb := protoutil.JSONPb{Indent: "  "}
 	var out []byte
 	if out, err = jsonpb.Marshal(replicaInfo); err != nil {
+		__antithesis_instrumentation__.Notify(31510)
 		return errors.Wrap(err, "failed to marshal collected replica info")
+	} else {
+		__antithesis_instrumentation__.Notify(31511)
 	}
+	__antithesis_instrumentation__.Notify(31494)
 	if _, err = writer.Write(out); err != nil {
+		__antithesis_instrumentation__.Notify(31512)
 		return errors.Wrap(err, "failed to write collected replica info")
+	} else {
+		__antithesis_instrumentation__.Notify(31513)
 	}
+	__antithesis_instrumentation__.Notify(31495)
 	_, _ = fmt.Fprintf(stderr, "Collected info about %d replicas.\n", len(replicaInfo.Replicas))
 	return nil
 }
@@ -269,20 +303,31 @@ var debugRecoverPlanOpts struct {
 }
 
 func runDebugPlanReplicaRemoval(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(31514)
 	replicas, err := readReplicaInfoData(args)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31528)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31529)
 	}
+	__antithesis_instrumentation__.Notify(31515)
 
 	var deadStoreIDs []roachpb.StoreID
 	for _, id := range debugRecoverPlanOpts.deadStoreIDs {
+		__antithesis_instrumentation__.Notify(31530)
 		deadStoreIDs = append(deadStoreIDs, roachpb.StoreID(id))
 	}
+	__antithesis_instrumentation__.Notify(31516)
 
 	plan, report, err := loqrecovery.PlanReplicas(cmd.Context(), replicas, deadStoreIDs)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31531)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31532)
 	}
+	__antithesis_instrumentation__.Notify(31517)
 
 	_, _ = fmt.Fprintf(stderr, `Total replicas analyzed: %d
 Ranges without quorum:   %d
@@ -290,125 +335,205 @@ Discarded live replicas: %d
 
 `, report.TotalReplicas, len(report.PlannedUpdates), report.DiscardedNonSurvivors)
 	for _, r := range report.PlannedUpdates {
+		__antithesis_instrumentation__.Notify(31533)
 		_, _ = fmt.Fprintf(stderr, "Recovering range r%d:%s updating replica %s to %s. "+
 			"Discarding available replicas: [%s], discarding dead replicas: [%s].\n",
 			r.RangeID, r.StartKey, r.OldReplica, r.Replica,
 			r.DiscardedAvailableReplicas, r.DiscardedDeadReplicas)
 	}
+	__antithesis_instrumentation__.Notify(31518)
 
 	deadStoreMsg := fmt.Sprintf("\nDiscovered dead stores from provided files: %s",
 		joinStoreIDs(report.MissingStores))
 	if len(deadStoreIDs) > 0 {
+		__antithesis_instrumentation__.Notify(31534)
 		_, _ = fmt.Fprintf(stderr, "%s, (matches --dead-store-ids)\n\n", deadStoreMsg)
 	} else {
+		__antithesis_instrumentation__.Notify(31535)
 		_, _ = fmt.Fprintf(stderr, "%s\n\n", deadStoreMsg)
 	}
+	__antithesis_instrumentation__.Notify(31519)
 
 	planningErr := report.Error()
 	if planningErr != nil {
-		// Need to warn user before they make a decision that ignoring
-		// inconsistencies is a really bad idea.
+		__antithesis_instrumentation__.Notify(31536)
+
 		_, _ = fmt.Fprintf(stderr,
 			"Found replica inconsistencies:\n\n%s\n\nOnly proceed as a last resort!\n",
 			hintdetail.FlattenDetails(planningErr))
+	} else {
+		__antithesis_instrumentation__.Notify(31537)
 	}
+	__antithesis_instrumentation__.Notify(31520)
 
 	if debugRecoverPlanOpts.confirmAction == allNo {
+		__antithesis_instrumentation__.Notify(31538)
 		return errors.New("abort")
+	} else {
+		__antithesis_instrumentation__.Notify(31539)
 	}
+	__antithesis_instrumentation__.Notify(31521)
 
 	switch debugRecoverPlanOpts.confirmAction {
 	case prompt:
+		__antithesis_instrumentation__.Notify(31540)
 		opts := "y/N"
 		if planningErr != nil {
+			__antithesis_instrumentation__.Notify(31544)
 			opts = "f/N"
+		} else {
+			__antithesis_instrumentation__.Notify(31545)
 		}
+		__antithesis_instrumentation__.Notify(31541)
 		done := false
 		for !done {
+			__antithesis_instrumentation__.Notify(31546)
 			_, _ = fmt.Fprintf(stderr, "Proceed with plan creation [%s] ", opts)
 			reader := bufio.NewReader(os.Stdin)
 			line, err := reader.ReadString('\n')
 			if err != nil {
+				__antithesis_instrumentation__.Notify(31549)
 				return errors.Wrap(err, "failed to read user input")
+			} else {
+				__antithesis_instrumentation__.Notify(31550)
 			}
+			__antithesis_instrumentation__.Notify(31547)
 			line = strings.ToLower(strings.TrimSpace(line))
 			if len(line) == 0 {
+				__antithesis_instrumentation__.Notify(31551)
 				line = "n"
+			} else {
+				__antithesis_instrumentation__.Notify(31552)
 			}
+			__antithesis_instrumentation__.Notify(31548)
 			switch line {
 			case "y":
-				// We ignore y if we have errors. In that case you can only force or
-				// abandon attempt.
+				__antithesis_instrumentation__.Notify(31553)
+
 				if planningErr != nil {
+					__antithesis_instrumentation__.Notify(31558)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(31559)
 				}
+				__antithesis_instrumentation__.Notify(31554)
 				done = true
 			case "f":
+				__antithesis_instrumentation__.Notify(31555)
 				done = true
 			case "n":
+				__antithesis_instrumentation__.Notify(31556)
 				return errors.New("abort")
+			default:
+				__antithesis_instrumentation__.Notify(31557)
 			}
 		}
 	case allYes:
-		if planningErr != nil && !debugRecoverPlanOpts.force {
+		__antithesis_instrumentation__.Notify(31542)
+		if planningErr != nil && func() bool {
+			__antithesis_instrumentation__.Notify(31560)
+			return !debugRecoverPlanOpts.force == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(31561)
 			return errors.Errorf(
 				"can not create plan because of errors and no --force flag is given")
+		} else {
+			__antithesis_instrumentation__.Notify(31562)
 		}
 	default:
+		__antithesis_instrumentation__.Notify(31543)
 		return errors.New("unexpected CLI error, try using different --confirm option value")
 	}
+	__antithesis_instrumentation__.Notify(31522)
 
 	if len(plan.Updates) == 0 {
+		__antithesis_instrumentation__.Notify(31563)
 		_, _ = fmt.Fprintln(stderr, "Found no ranges in need of recovery, nothing to do.")
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(31564)
 	}
+	__antithesis_instrumentation__.Notify(31523)
 
 	var writer io.Writer = os.Stdout
 	if len(debugRecoverPlanOpts.outputFileName) > 0 {
+		__antithesis_instrumentation__.Notify(31565)
 		if _, err = os.Stat(debugRecoverPlanOpts.outputFileName); err == nil {
+			__antithesis_instrumentation__.Notify(31568)
 			return errors.Newf("file %q already exists", debugRecoverPlanOpts.outputFileName)
+		} else {
+			__antithesis_instrumentation__.Notify(31569)
 		}
+		__antithesis_instrumentation__.Notify(31566)
 		outFile, err := os.Create(debugRecoverPlanOpts.outputFileName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(31570)
 			return errors.Wrapf(err, "failed to create file %q", debugRecoverPlanOpts.outputFileName)
+		} else {
+			__antithesis_instrumentation__.Notify(31571)
 		}
+		__antithesis_instrumentation__.Notify(31567)
 		defer outFile.Close()
 		writer = outFile
+	} else {
+		__antithesis_instrumentation__.Notify(31572)
 	}
+	__antithesis_instrumentation__.Notify(31524)
 
 	jsonpb := protoutil.JSONPb{Indent: "  "}
 	var out []byte
 	if out, err = jsonpb.Marshal(plan); err != nil {
+		__antithesis_instrumentation__.Notify(31573)
 		return errors.Wrap(err, "failed to marshal recovery plan")
+	} else {
+		__antithesis_instrumentation__.Notify(31574)
 	}
+	__antithesis_instrumentation__.Notify(31525)
 	if _, err = writer.Write(out); err != nil {
+		__antithesis_instrumentation__.Notify(31575)
 		return errors.Wrap(err, "failed to write recovery plan")
+	} else {
+		__antithesis_instrumentation__.Notify(31576)
 	}
+	__antithesis_instrumentation__.Notify(31526)
 
 	_, _ = fmt.Fprint(stderr, "Plan created\nTo complete recovery, distribute the plan to the"+
 		" below nodes and invoke `debug recover apply-plan` on:\n")
 	for node, stores := range report.UpdatedNodes {
+		__antithesis_instrumentation__.Notify(31577)
 		_, _ = fmt.Fprintf(stderr, "- node n%d, store(s) %s\n", node, joinStoreIDs(stores))
 	}
+	__antithesis_instrumentation__.Notify(31527)
 
 	return nil
 }
 
 func readReplicaInfoData(fileNames []string) ([]loqrecoverypb.NodeReplicaInfo, error) {
+	__antithesis_instrumentation__.Notify(31578)
 	var replicas []loqrecoverypb.NodeReplicaInfo
 	for _, filename := range fileNames {
+		__antithesis_instrumentation__.Notify(31580)
 		data, err := ioutil.ReadFile(filename)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(31583)
 			return nil, errors.Wrapf(err, "failed to read replica info file %q", filename)
+		} else {
+			__antithesis_instrumentation__.Notify(31584)
 		}
+		__antithesis_instrumentation__.Notify(31581)
 
 		var nodeReplicas loqrecoverypb.NodeReplicaInfo
 		jsonpb := protoutil.JSONPb{}
 		if err = jsonpb.Unmarshal(data, &nodeReplicas); err != nil {
+			__antithesis_instrumentation__.Notify(31585)
 			return nil, errors.Wrapf(err, "failed to unmarshal replica info from file %q", filename)
+		} else {
+			__antithesis_instrumentation__.Notify(31586)
 		}
+		__antithesis_instrumentation__.Notify(31582)
 		replicas = append(replicas, nodeReplicas)
 	}
+	__antithesis_instrumentation__.Notify(31579)
 	return replicas, nil
 }
 
@@ -432,122 +557,181 @@ var debugRecoverExecuteOpts struct {
 	confirmAction confirmActionFlag
 }
 
-// runDebugExecuteRecoverPlan is using the following pattern when performing command
-// First call prepare update on stores to ensure changes could be done. This operation
-// will create update batches as needed and create a report about proposed changes.
-// After that user is asked to confirm the action either explicitly or by consulting
-// --confirm flag.
-// If action is confirmed, then all changes are committed to the storage.
 func runDebugExecuteRecoverPlan(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(31587)
 	stopper := stop.NewStopper()
 	defer stopper.Stop(cmd.Context())
 
 	planFile := args[0]
 	data, err := ioutil.ReadFile(planFile)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31596)
 		return errors.Wrapf(err, "failed to read plan file %q", planFile)
+	} else {
+		__antithesis_instrumentation__.Notify(31597)
 	}
+	__antithesis_instrumentation__.Notify(31588)
 
 	var nodeUpdates loqrecoverypb.ReplicaUpdatePlan
 	jsonpb := protoutil.JSONPb{Indent: "  "}
 	if err = jsonpb.Unmarshal(data, &nodeUpdates); err != nil {
+		__antithesis_instrumentation__.Notify(31598)
 		return errors.Wrapf(err, "failed to unmarshal plan from file %q", planFile)
+	} else {
+		__antithesis_instrumentation__.Notify(31599)
 	}
+	__antithesis_instrumentation__.Notify(31589)
 
 	var localNodeID roachpb.NodeID
 	batches := make(map[roachpb.StoreID]storage.Batch)
 	for _, storeSpec := range debugRecoverExecuteOpts.Stores.Specs {
-		store, err := OpenExistingStore(storeSpec.Path, stopper, false /* readOnly */, false /* disableAutomaticCompactions */)
+		__antithesis_instrumentation__.Notify(31600)
+		store, err := OpenExistingStore(storeSpec.Path, stopper, false, false)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(31604)
 			return errors.Wrapf(err, "failed to open store at path %q. ensure that store path is "+
 				"correct and that it is not used by another process", storeSpec.Path)
+		} else {
+			__antithesis_instrumentation__.Notify(31605)
 		}
+		__antithesis_instrumentation__.Notify(31601)
 		batch := store.NewBatch()
 		defer store.Close()
 		defer batch.Close()
 
 		storeIdent, err := kvserver.ReadStoreIdent(cmd.Context(), store)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(31606)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(31607)
 		}
+		__antithesis_instrumentation__.Notify(31602)
 		if localNodeID != storeIdent.NodeID {
+			__antithesis_instrumentation__.Notify(31608)
 			if localNodeID != roachpb.NodeID(0) {
+				__antithesis_instrumentation__.Notify(31610)
 				return errors.Errorf("found stores from multiple node IDs n%d, n%d. "+
 					"can only run in context of single node.", localNodeID, storeIdent.NodeID)
+			} else {
+				__antithesis_instrumentation__.Notify(31611)
 			}
+			__antithesis_instrumentation__.Notify(31609)
 			localNodeID = storeIdent.NodeID
+		} else {
+			__antithesis_instrumentation__.Notify(31612)
 		}
+		__antithesis_instrumentation__.Notify(31603)
 		batches[storeIdent.StoreID] = batch
 	}
+	__antithesis_instrumentation__.Notify(31590)
 
 	updateTime := timeutil.Now()
 	prepReport, err := loqrecovery.PrepareUpdateReplicas(
 		cmd.Context(), nodeUpdates, uuid.DefaultGenerator, updateTime, localNodeID, batches)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31613)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31614)
 	}
+	__antithesis_instrumentation__.Notify(31591)
 
 	for _, r := range prepReport.SkippedReplicas {
+		__antithesis_instrumentation__.Notify(31615)
 		_, _ = fmt.Fprintf(stderr, "Replica %s for range r%d is already updated.\n",
 			r.Replica, r.RangeID())
 	}
+	__antithesis_instrumentation__.Notify(31592)
 
 	if len(prepReport.UpdatedReplicas) == 0 {
+		__antithesis_instrumentation__.Notify(31616)
 		if len(prepReport.MissingStores) > 0 {
+			__antithesis_instrumentation__.Notify(31618)
 			return errors.Newf("stores %s expected on the node but no paths were provided",
 				joinStoreIDs(prepReport.MissingStores))
+		} else {
+			__antithesis_instrumentation__.Notify(31619)
 		}
+		__antithesis_instrumentation__.Notify(31617)
 		_, _ = fmt.Fprintf(stderr, "No updates planned on this node.\n")
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(31620)
 	}
+	__antithesis_instrumentation__.Notify(31593)
 
 	for _, r := range prepReport.UpdatedReplicas {
+		__antithesis_instrumentation__.Notify(31621)
 		message := fmt.Sprintf(
 			"Replica %s for range %d:%s will be updated to %s with peer replica(s) removed: %s",
 			r.OldReplica, r.RangeID(), r.StartKey(), r.Replica, r.RemovedReplicas)
 		if r.AbortedTransaction {
+			__antithesis_instrumentation__.Notify(31623)
 			message += fmt.Sprintf(", and range update transaction %s aborted.",
 				r.AbortedTransactionID.Short())
+		} else {
+			__antithesis_instrumentation__.Notify(31624)
 		}
+		__antithesis_instrumentation__.Notify(31622)
 		_, _ = fmt.Fprintf(stderr, "%s\n", message)
 	}
+	__antithesis_instrumentation__.Notify(31594)
 
 	switch debugRecoverExecuteOpts.confirmAction {
 	case prompt:
+		__antithesis_instrumentation__.Notify(31625)
 		_, _ = fmt.Fprintf(stderr, "\nProceed with above changes [y/N] ")
 		reader := bufio.NewReader(os.Stdin)
 		line, err := reader.ReadString('\n')
 		if err != nil {
+			__antithesis_instrumentation__.Notify(31629)
 			return errors.Wrap(err, "failed to read user input")
+		} else {
+			__antithesis_instrumentation__.Notify(31630)
 		}
+		__antithesis_instrumentation__.Notify(31626)
 		_, _ = fmt.Fprintf(stderr, "\n")
-		if len(line) < 1 || (line[0] != 'y' && line[0] != 'Y') {
+		if len(line) < 1 || func() bool {
+			__antithesis_instrumentation__.Notify(31631)
+			return (line[0] != 'y' && func() bool {
+				__antithesis_instrumentation__.Notify(31632)
+				return line[0] != 'Y' == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(31633)
 			_, _ = fmt.Fprint(stderr, "Aborted at user request\n")
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(31634)
 		}
 	case allYes:
-		// All actions enabled by default.
+		__antithesis_instrumentation__.Notify(31627)
+
 	default:
+		__antithesis_instrumentation__.Notify(31628)
 		return errors.New("Aborted by --confirm option")
 	}
+	__antithesis_instrumentation__.Notify(31595)
 
-	// Apply batches to the stores.
 	applyReport, err := loqrecovery.CommitReplicaChanges(batches)
 	_, _ = fmt.Fprintf(stderr, "Updated store(s): %s\n", joinStoreIDs(applyReport.UpdatedStores))
 	return err
 }
 
 func joinStoreIDs(storeIDs []roachpb.StoreID) string {
+	__antithesis_instrumentation__.Notify(31635)
 	storeNames := make([]string, 0, len(storeIDs))
 	for _, id := range storeIDs {
+		__antithesis_instrumentation__.Notify(31637)
 		storeNames = append(storeNames, fmt.Sprintf("s%d", id))
 	}
+	__antithesis_instrumentation__.Notify(31636)
 	return strings.Join(storeNames, ", ")
 }
 
-// setDebugRecoverContextDefaults resets values of command line flags to
-// their default values to ensure tests don't interfere with each other.
 func setDebugRecoverContextDefaults() {
+	__antithesis_instrumentation__.Notify(31638)
 	debugRecoverCollectInfoOpts.Stores.Specs = nil
 	debugRecoverPlanOpts.outputFileName = ""
 	debugRecoverPlanOpts.confirmAction = prompt

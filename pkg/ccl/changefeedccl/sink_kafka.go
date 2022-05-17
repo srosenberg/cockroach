@@ -1,12 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -41,43 +35,35 @@ type kafkaLogAdapter struct {
 var _ sarama.StdLogger = (*kafkaLogAdapter)(nil)
 
 func (l *kafkaLogAdapter) Print(v ...interface{}) {
+	__antithesis_instrumentation__.Notify(18325)
 	log.InfofDepth(l.ctx, 1, "", v...)
 }
 func (l *kafkaLogAdapter) Printf(format string, v ...interface{}) {
+	__antithesis_instrumentation__.Notify(18326)
 	log.InfofDepth(l.ctx, 1, format, v...)
 }
 func (l *kafkaLogAdapter) Println(v ...interface{}) {
+	__antithesis_instrumentation__.Notify(18327)
 	log.InfofDepth(l.ctx, 1, "", v...)
 }
 
 func init() {
-	// We'd much prefer to make one of these per sink, so we can use the real
-	// context, but quite unfortunately, sarama only has a global logger hook.
+
 	ctx := context.Background()
 	ctx = logtags.AddTag(ctx, "kafka-producer", nil)
 	sarama.Logger = &kafkaLogAdapter{ctx: ctx}
 
-	// Sarama should not be rejecting messages based on some arbitrary limits.
-	// This sink already manages its resource usage.  Sarama should attempt to deliver
-	// messages, no matter their size.  Of course, the downstream kafka may reject
-	// those messages, but this rejection should not be done locally.
 	sarama.MaxRequestSize = math.MaxInt32
 }
 
-// kafkaClient is a small interface restricting the functionality in sarama.Client
 type kafkaClient interface {
-	// Partitions returns the sorted list of all partition IDs for the given topic.
 	Partitions(topic string) ([]int32, error)
-	// RefreshMetadata takes a list of topics and queries the cluster to refresh the
-	// available metadata for those topics. If no topics are provided, it will refresh
-	// metadata for all topics.
+
 	RefreshMetadata(topics ...string) error
-	// Close closes kafka connection.
+
 	Close() error
 }
 
-// kafkaSink emits to Kafka asynchronously. It is not concurrency-safe; all
-// calls to Emit and Flush should be from the same goroutine.
 type kafkaSink struct {
 	ctx            context.Context
 	bootstrapAddrs string
@@ -93,7 +79,6 @@ type kafkaSink struct {
 	scratch      bufalloc.ByteAllocator
 	metrics      *sliMetrics
 
-	// Only synchronized between the client goroutine and the worker goroutine.
 	mu struct {
 		syncutil.Mutex
 		inflight int64
@@ -103,10 +88,6 @@ type kafkaSink struct {
 }
 
 type saramaConfig struct {
-	// These settings mirror ones in sarama config.
-	// We just tag them w/ JSON annotations.
-	// Flush describes settings specific to producer flushing.
-	// See sarama.Config.Producer.Flush
 	Flush struct {
 		Bytes       int          `json:",omitempty"`
 		Messages    int          `json:",omitempty"`
@@ -120,85 +101,83 @@ type saramaConfig struct {
 }
 
 func (c saramaConfig) Validate() error {
-	// If Flush.Bytes > 0 or Flush.Messages > 1 without
-	// Flush.Frequency, sarama may wait forever to flush the
-	// messages to Kafka.  We want to guard against such
-	// configurations to ensure that we don't get into a situation
-	// where our call to Flush() would block forever.
-	if (c.Flush.Bytes > 0 || c.Flush.Messages > 1) && c.Flush.Frequency == 0 {
+	__antithesis_instrumentation__.Notify(18328)
+
+	if (c.Flush.Bytes > 0 || func() bool {
+		__antithesis_instrumentation__.Notify(18330)
+		return c.Flush.Messages > 1 == true
+	}() == true) && func() bool {
+		__antithesis_instrumentation__.Notify(18331)
+		return c.Flush.Frequency == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(18332)
 		return errors.New("Flush.Frequency must be > 0 when Flush.Bytes > 0 or Flush.Messages > 1")
+	} else {
+		__antithesis_instrumentation__.Notify(18333)
 	}
+	__antithesis_instrumentation__.Notify(18329)
 	return nil
 }
 
 func defaultSaramaConfig() *saramaConfig {
+	__antithesis_instrumentation__.Notify(18334)
 	config := &saramaConfig{}
 
-	// When we emit messages to sarama, they're placed in a queue
-	// (as does any reasonable kafka producer client). When our
-	// sink's Flush is called, we have to wait for all buffered
-	// and inflight requests to be sent and then
-	// acknowledged. Quite unfortunately, we have no way to hint
-	// to the producer that it should immediately send out
-	// whatever is buffered. This configuration can have a
-	// dramatic impact on how quickly this happens naturally (and
-	// some configurations will block forever!).
-	//
-	// The default configuration of all 0 values will send
-	// messages as quickly as possible.
 	config.Flush.Messages = 0
 	config.Flush.Frequency = jsonDuration(0)
 	config.Flush.Bytes = 0
 
-	// This works around what seems to be a bug in sarama where it isn't
-	// computing the right value to compare against `Producer.MaxMessageBytes`
-	// and the server sends it back with a "Message was too large, server
-	// rejected it to avoid allocation" error. The other flush tunings are
-	// hints, but this one is a hard limit, so it's useful here as a workaround.
-	//
-	// This workaround should probably be something like setting
-	// `Producer.MaxMessageBytes` to 90% of it's value for some headroom, but
-	// this workaround is the one that's been running in roachtests and I'd want
-	// to test this one more before changing it.
 	config.Flush.MaxMessages = 1000
 
 	return config
 }
 
 func (s *kafkaSink) start() {
+	__antithesis_instrumentation__.Notify(18335)
 	s.stopWorkerCh = make(chan struct{})
 	s.worker.Add(1)
 	go s.workerLoop()
 }
 
-// Dial implements the Sink interface.
 func (s *kafkaSink) Dial() error {
+	__antithesis_instrumentation__.Notify(18336)
 	client, err := sarama.NewClient(strings.Split(s.bootstrapAddrs, `,`), s.kafkaCfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18339)
 		return pgerror.Wrapf(err, pgcode.CannotConnectNow,
 			`connecting to kafka: %s`, s.bootstrapAddrs)
+	} else {
+		__antithesis_instrumentation__.Notify(18340)
 	}
+	__antithesis_instrumentation__.Notify(18337)
 	s.producer, err = sarama.NewAsyncProducerFromClient(client)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18341)
 		return pgerror.Wrapf(err, pgcode.CannotConnectNow,
 			`connecting to kafka: %s`, s.bootstrapAddrs)
+	} else {
+		__antithesis_instrumentation__.Notify(18342)
 	}
+	__antithesis_instrumentation__.Notify(18338)
 	s.client = client
 	s.start()
 	return nil
 }
 
-// Close implements the Sink interface.
 func (s *kafkaSink) Close() error {
+	__antithesis_instrumentation__.Notify(18343)
 	close(s.stopWorkerCh)
 	s.worker.Wait()
-	// If we're shutting down, we don't care what happens to the outstanding
-	// messages, so ignore this error.
+
 	_ = s.producer.Close()
-	// s.client is only nil in tests.
+
 	if s.client != nil {
+		__antithesis_instrumentation__.Notify(18345)
 		return s.client.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(18346)
 	}
+	__antithesis_instrumentation__.Notify(18344)
 	return nil
 }
 
@@ -208,7 +187,6 @@ type messageMetadata struct {
 	mvcc          hlc.Timestamp
 }
 
-// EmitRow implements the Sink interface.
 func (s *kafkaSink) EmitRow(
 	ctx context.Context,
 	topicDescr TopicDescriptor,
@@ -216,11 +194,16 @@ func (s *kafkaSink) EmitRow(
 	updated, mvcc hlc.Timestamp,
 	alloc kvevent.Alloc,
 ) error {
+	__antithesis_instrumentation__.Notify(18347)
 
 	topic, err := s.topics.Name(topicDescr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18349)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(18350)
 	}
+	__antithesis_instrumentation__.Notify(18348)
 
 	msg := &sarama.ProducerMessage{
 		Topic:    topic,
@@ -231,43 +214,50 @@ func (s *kafkaSink) EmitRow(
 	return s.emitMessage(ctx, msg)
 }
 
-// EmitResolvedTimestamp implements the Sink interface.
 func (s *kafkaSink) EmitResolvedTimestamp(
 	ctx context.Context, encoder Encoder, resolved hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(18351)
 	defer s.metrics.recordResolvedCallback()()
 
-	// Periodically ping sarama to refresh its metadata. This means talking to
-	// zookeeper, so it shouldn't be done too often, but beyond that this
-	// constant was picked pretty arbitrarily.
-	//
-	// TODO(dan): Add a test for this. We can't right now (2018-11-13) because
-	// we'd need to bump sarama, but that's a bad idea while we're still
-	// actively working on stability. At the same time, revisit this tuning.
 	const metadataRefreshMinDuration = time.Minute
 	if timeutil.Since(s.lastMetadataRefresh) > metadataRefreshMinDuration {
+		__antithesis_instrumentation__.Notify(18353)
 		if err := s.client.RefreshMetadata(s.topics.DisplayNamesSlice()...); err != nil {
+			__antithesis_instrumentation__.Notify(18355)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(18356)
 		}
+		__antithesis_instrumentation__.Notify(18354)
 		s.lastMetadataRefresh = timeutil.Now()
+	} else {
+		__antithesis_instrumentation__.Notify(18357)
 	}
+	__antithesis_instrumentation__.Notify(18352)
 
 	return s.topics.Each(func(topic string) error {
+		__antithesis_instrumentation__.Notify(18358)
 		payload, err := encoder.EncodeResolvedTimestamp(ctx, topic, resolved)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(18362)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(18363)
 		}
-		s.scratch, payload = s.scratch.Copy(payload, 0 /* extraCap */)
+		__antithesis_instrumentation__.Notify(18359)
+		s.scratch, payload = s.scratch.Copy(payload, 0)
 
-		// sarama caches this, which is why we have to periodically refresh the
-		// metadata above. Staleness here does not impact correctness. Some new
-		// partitions will miss this resolved timestamp, but they'll eventually
-		// be picked up and get later ones.
 		partitions, err := s.client.Partitions(topic)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(18364)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(18365)
 		}
+		__antithesis_instrumentation__.Notify(18360)
 		for _, partition := range partitions {
+			__antithesis_instrumentation__.Notify(18366)
 			msg := &sarama.ProducerMessage{
 				Topic:     topic,
 				Partition: partition,
@@ -275,15 +265,19 @@ func (s *kafkaSink) EmitResolvedTimestamp(
 				Value:     sarama.ByteEncoder(payload),
 			}
 			if err := s.emitMessage(ctx, msg); err != nil {
+				__antithesis_instrumentation__.Notify(18367)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(18368)
 			}
 		}
+		__antithesis_instrumentation__.Notify(18361)
 		return nil
 	})
 }
 
-// Flush implements the Sink interface.
 func (s *kafkaSink) Flush(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(18369)
 	defer s.metrics.recordFlushRequestCallback()()
 
 	flushCh := make(chan struct{}, 1)
@@ -292,23 +286,40 @@ func (s *kafkaSink) Flush(ctx context.Context) error {
 	inflight := s.mu.inflight
 	flushErr := s.mu.flushErr
 	s.mu.flushErr = nil
-	immediateFlush := inflight == 0 || flushErr != nil
+	immediateFlush := inflight == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(18373)
+		return flushErr != nil == true
+	}() == true
 	if !immediateFlush {
+		__antithesis_instrumentation__.Notify(18374)
 		s.mu.flushCh = flushCh
+	} else {
+		__antithesis_instrumentation__.Notify(18375)
 	}
+	__antithesis_instrumentation__.Notify(18370)
 	s.mu.Unlock()
 
 	if immediateFlush {
+		__antithesis_instrumentation__.Notify(18376)
 		return flushErr
+	} else {
+		__antithesis_instrumentation__.Notify(18377)
 	}
+	__antithesis_instrumentation__.Notify(18371)
 
 	if log.V(1) {
+		__antithesis_instrumentation__.Notify(18378)
 		log.Infof(ctx, "flush waiting for %d inflight messages", inflight)
+	} else {
+		__antithesis_instrumentation__.Notify(18379)
 	}
+	__antithesis_instrumentation__.Notify(18372)
 	select {
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(18380)
 		return ctx.Err()
 	case <-flushCh:
+		__antithesis_instrumentation__.Notify(18381)
 		s.mu.Lock()
 		flushErr := s.mu.flushErr
 		s.mu.flushErr = nil
@@ -318,80 +329,130 @@ func (s *kafkaSink) Flush(ctx context.Context) error {
 }
 
 func (s *kafkaSink) startInflightMessage(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(18382)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.mu.inflight++
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(18384)
 		log.Infof(ctx, "emitting %d inflight records to kafka", s.mu.inflight)
+	} else {
+		__antithesis_instrumentation__.Notify(18385)
 	}
+	__antithesis_instrumentation__.Notify(18383)
 	return nil
 }
 
 func (s *kafkaSink) emitMessage(ctx context.Context, msg *sarama.ProducerMessage) error {
+	__antithesis_instrumentation__.Notify(18386)
 	if err := s.startInflightMessage(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(18389)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(18390)
 	}
+	__antithesis_instrumentation__.Notify(18387)
 
 	select {
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(18391)
 		return ctx.Err()
 	case s.producer.Input() <- msg:
+		__antithesis_instrumentation__.Notify(18392)
 	}
+	__antithesis_instrumentation__.Notify(18388)
 
 	return nil
 }
 
 func (s *kafkaSink) workerLoop() {
+	__antithesis_instrumentation__.Notify(18393)
 	defer s.worker.Done()
 
 	for {
+		__antithesis_instrumentation__.Notify(18394)
 		var ackMsg *sarama.ProducerMessage
 		var ackError error
 
 		select {
 		case <-s.stopWorkerCh:
+			__antithesis_instrumentation__.Notify(18399)
 			return
 		case m := <-s.producer.Successes():
+			__antithesis_instrumentation__.Notify(18400)
 			ackMsg = m
 		case err := <-s.producer.Errors():
+			__antithesis_instrumentation__.Notify(18401)
 			ackMsg, ackError = err.Msg, err.Err
 			if ackError != nil {
-				// Msg should never be nil but we're being defensive around a vendor library.
-				// Msg.Key is nil for sentinel errors (e.g. producer shutting down)
-				// and errors sending dummy messages used to prefetch metadata.
-				if err.Msg != nil && err.Msg.Key != nil && err.Msg.Value != nil {
+				__antithesis_instrumentation__.Notify(18402)
+
+				if err.Msg != nil && func() bool {
+					__antithesis_instrumentation__.Notify(18403)
+					return err.Msg.Key != nil == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(18404)
+					return err.Msg.Value != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(18405)
 					ackError = errors.Wrapf(ackError,
 						"while sending message with key=%s, size=%d",
 						err.Msg.Key, err.Msg.Key.Length()+err.Msg.Value.Length())
+				} else {
+					__antithesis_instrumentation__.Notify(18406)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(18407)
 			}
 		}
+		__antithesis_instrumentation__.Notify(18395)
 
 		if m, ok := ackMsg.Metadata.(messageMetadata); ok {
+			__antithesis_instrumentation__.Notify(18408)
 			if ackError == nil {
+				__antithesis_instrumentation__.Notify(18410)
 				m.updateMetrics(m.mvcc, ackMsg.Key.Length()+ackMsg.Value.Length(), sinkDoesNotCompress)
+			} else {
+				__antithesis_instrumentation__.Notify(18411)
 			}
+			__antithesis_instrumentation__.Notify(18409)
 			m.alloc.Release(s.ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(18412)
 		}
+		__antithesis_instrumentation__.Notify(18396)
 
 		s.mu.Lock()
 		s.mu.inflight--
-		if s.mu.flushErr == nil && ackError != nil {
+		if s.mu.flushErr == nil && func() bool {
+			__antithesis_instrumentation__.Notify(18413)
+			return ackError != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(18414)
 			s.mu.flushErr = ackError
+		} else {
+			__antithesis_instrumentation__.Notify(18415)
 		}
+		__antithesis_instrumentation__.Notify(18397)
 
-		if s.mu.inflight == 0 && s.mu.flushCh != nil {
+		if s.mu.inflight == 0 && func() bool {
+			__antithesis_instrumentation__.Notify(18416)
+			return s.mu.flushCh != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(18417)
 			s.mu.flushCh <- struct{}{}
 			s.mu.flushCh = nil
+		} else {
+			__antithesis_instrumentation__.Notify(18418)
 		}
+		__antithesis_instrumentation__.Notify(18398)
 		s.mu.Unlock()
 	}
 }
 
-// Topics gives the names of all topics that have been initialized
-// and will receive resolved timestamps.
 func (s *kafkaSink) Topics() []string {
+	__antithesis_instrumentation__.Notify(18419)
 	return s.topics.DisplayNamesSlice()
 }
 
@@ -403,42 +464,57 @@ var _ sarama.Partitioner = &changefeedPartitioner{}
 var _ sarama.PartitionerConstructor = newChangefeedPartitioner
 
 func newChangefeedPartitioner(topic string) sarama.Partitioner {
+	__antithesis_instrumentation__.Notify(18420)
 	return &changefeedPartitioner{
 		hash: sarama.NewHashPartitioner(topic),
 	}
 }
 
-func (p *changefeedPartitioner) RequiresConsistency() bool { return true }
+func (p *changefeedPartitioner) RequiresConsistency() bool {
+	__antithesis_instrumentation__.Notify(18421)
+	return true
+}
 func (p *changefeedPartitioner) Partition(
 	message *sarama.ProducerMessage, numPartitions int32,
 ) (int32, error) {
+	__antithesis_instrumentation__.Notify(18422)
 	if message.Key == nil {
+		__antithesis_instrumentation__.Notify(18424)
 		return message.Partition, nil
+	} else {
+		__antithesis_instrumentation__.Notify(18425)
 	}
+	__antithesis_instrumentation__.Notify(18423)
 	return p.hash.Partition(message, numPartitions)
 }
 
 type jsonDuration time.Duration
 
 func (j *jsonDuration) UnmarshalJSON(b []byte) error {
+	__antithesis_instrumentation__.Notify(18426)
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
+		__antithesis_instrumentation__.Notify(18429)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(18430)
 	}
+	__antithesis_instrumentation__.Notify(18427)
 	dur, err := time.ParseDuration(s)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18431)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(18432)
 	}
+	__antithesis_instrumentation__.Notify(18428)
 	*j = jsonDuration(dur)
 	return nil
 }
 
-// Apply configures provided kafka configuration struct based on this config.
 func (c *saramaConfig) Apply(kafka *sarama.Config) error {
-	// Sarama limits the size of each message to be MaxMessageSize (1MB) bytes.
-	// This is silly;  This sink already manages its memory, and therefore, if we
-	// had enough resources to ingest and process this message, then sarama shouldn't
-	// get in a way.  Set this limit to be just a bit under maximum request size.
+	__antithesis_instrumentation__.Notify(18433)
+
 	kafka.Producer.MaxMessageBytes = int(sarama.MaxRequestSize - 1)
 
 	kafka.Producer.Flush.Bytes = c.Flush.Bytes
@@ -446,45 +522,72 @@ func (c *saramaConfig) Apply(kafka *sarama.Config) error {
 	kafka.Producer.Flush.Frequency = time.Duration(c.Flush.Frequency)
 	kafka.Producer.Flush.MaxMessages = c.Flush.MaxMessages
 	if c.Version != "" {
+		__antithesis_instrumentation__.Notify(18436)
 		parsedVersion, err := sarama.ParseKafkaVersion(c.Version)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(18438)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(18439)
 		}
+		__antithesis_instrumentation__.Notify(18437)
 		kafka.Version = parsedVersion
+	} else {
+		__antithesis_instrumentation__.Notify(18440)
 	}
+	__antithesis_instrumentation__.Notify(18434)
 	if c.RequiredAcks != "" {
+		__antithesis_instrumentation__.Notify(18441)
 		parsedAcks, err := parseRequiredAcks(c.RequiredAcks)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(18443)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(18444)
 		}
+		__antithesis_instrumentation__.Notify(18442)
 		kafka.Producer.RequiredAcks = parsedAcks
+	} else {
+		__antithesis_instrumentation__.Notify(18445)
 	}
+	__antithesis_instrumentation__.Notify(18435)
 	return nil
 }
 
 func parseRequiredAcks(a string) (sarama.RequiredAcks, error) {
+	__antithesis_instrumentation__.Notify(18446)
 	switch a {
 	case "0", "NONE":
+		__antithesis_instrumentation__.Notify(18447)
 		return sarama.NoResponse, nil
 	case "1", "ONE":
+		__antithesis_instrumentation__.Notify(18448)
 		return sarama.WaitForLocal, nil
 	case "-1", "ALL":
+		__antithesis_instrumentation__.Notify(18449)
 		return sarama.WaitForAll, nil
 	default:
+		__antithesis_instrumentation__.Notify(18450)
 		return sarama.WaitForLocal,
 			fmt.Errorf(`invalid acks value "%s", must be "NONE"/"0", "ONE"/"1", or "ALL"/"-1"`, a)
 	}
 }
 
 func getSaramaConfig(opts map[string]string) (config *saramaConfig, err error) {
+	__antithesis_instrumentation__.Notify(18451)
 	config = defaultSaramaConfig()
 	if configStr, haveOverride := opts[changefeedbase.OptKafkaSinkConfig]; haveOverride {
+		__antithesis_instrumentation__.Notify(18453)
 		err = json.Unmarshal([]byte(configStr), config)
+	} else {
+		__antithesis_instrumentation__.Notify(18454)
 	}
+	__antithesis_instrumentation__.Notify(18452)
 	return
 }
 
 func buildKafkaConfig(u sinkURL, opts map[string]string) (*sarama.Config, error) {
+	__antithesis_instrumentation__.Notify(18455)
 	dialConfig := struct {
 		tlsEnabled    bool
 		tlsSkipVerify bool
@@ -499,68 +602,136 @@ func buildKafkaConfig(u sinkURL, opts map[string]string) (*sarama.Config, error)
 	}{}
 
 	if _, err := u.consumeBool(changefeedbase.SinkParamTLSEnabled, &dialConfig.tlsEnabled); err != nil {
+		__antithesis_instrumentation__.Notify(18472)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(18473)
 	}
+	__antithesis_instrumentation__.Notify(18456)
 	if _, err := u.consumeBool(changefeedbase.SinkParamSkipTLSVerify, &dialConfig.tlsSkipVerify); err != nil {
+		__antithesis_instrumentation__.Notify(18474)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(18475)
 	}
+	__antithesis_instrumentation__.Notify(18457)
 	if err := u.decodeBase64(changefeedbase.SinkParamCACert, &dialConfig.caCert); err != nil {
+		__antithesis_instrumentation__.Notify(18476)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(18477)
 	}
+	__antithesis_instrumentation__.Notify(18458)
 	if err := u.decodeBase64(changefeedbase.SinkParamClientCert, &dialConfig.clientCert); err != nil {
+		__antithesis_instrumentation__.Notify(18478)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(18479)
 	}
+	__antithesis_instrumentation__.Notify(18459)
 	if err := u.decodeBase64(changefeedbase.SinkParamClientKey, &dialConfig.clientKey); err != nil {
+		__antithesis_instrumentation__.Notify(18480)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(18481)
 	}
+	__antithesis_instrumentation__.Notify(18460)
 
 	if _, err := u.consumeBool(changefeedbase.SinkParamSASLEnabled, &dialConfig.saslEnabled); err != nil {
+		__antithesis_instrumentation__.Notify(18482)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(18483)
 	}
+	__antithesis_instrumentation__.Notify(18461)
 
-	if wasSet, err := u.consumeBool(changefeedbase.SinkParamSASLHandshake, &dialConfig.saslHandshake); !wasSet && err == nil {
+	if wasSet, err := u.consumeBool(changefeedbase.SinkParamSASLHandshake, &dialConfig.saslHandshake); !wasSet && func() bool {
+		__antithesis_instrumentation__.Notify(18484)
+		return err == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(18485)
 		dialConfig.saslHandshake = true
 	} else {
+		__antithesis_instrumentation__.Notify(18486)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(18488)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(18489)
 		}
+		__antithesis_instrumentation__.Notify(18487)
 		if !dialConfig.saslEnabled {
+			__antithesis_instrumentation__.Notify(18490)
 			return nil, errors.Errorf(`%s must be enabled to configure SASL handshake behavior`, changefeedbase.SinkParamSASLEnabled)
+		} else {
+			__antithesis_instrumentation__.Notify(18491)
 		}
 	}
+	__antithesis_instrumentation__.Notify(18462)
 
 	dialConfig.saslMechanism = u.consumeParam(changefeedbase.SinkParamSASLMechanism)
-	if dialConfig.saslMechanism != `` && !dialConfig.saslEnabled {
+	if dialConfig.saslMechanism != `` && func() bool {
+		__antithesis_instrumentation__.Notify(18492)
+		return !dialConfig.saslEnabled == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(18493)
 		return nil, errors.Errorf(`%s must be enabled to configure SASL mechanism`, changefeedbase.SinkParamSASLEnabled)
+	} else {
+		__antithesis_instrumentation__.Notify(18494)
 	}
+	__antithesis_instrumentation__.Notify(18463)
 	if dialConfig.saslMechanism == `` {
+		__antithesis_instrumentation__.Notify(18495)
 		dialConfig.saslMechanism = sarama.SASLTypePlaintext
+	} else {
+		__antithesis_instrumentation__.Notify(18496)
 	}
+	__antithesis_instrumentation__.Notify(18464)
 	switch dialConfig.saslMechanism {
 	case sarama.SASLTypeSCRAMSHA256, sarama.SASLTypeSCRAMSHA512, sarama.SASLTypePlaintext:
+		__antithesis_instrumentation__.Notify(18497)
 	default:
+		__antithesis_instrumentation__.Notify(18498)
 		return nil, errors.Errorf(`param %s must be one of %s, %s, or %s`,
 			changefeedbase.SinkParamSASLMechanism,
 			sarama.SASLTypeSCRAMSHA256, sarama.SASLTypeSCRAMSHA512, sarama.SASLTypePlaintext)
 	}
+	__antithesis_instrumentation__.Notify(18465)
 
 	dialConfig.saslUser = u.consumeParam(changefeedbase.SinkParamSASLUser)
 	dialConfig.saslPassword = u.consumeParam(changefeedbase.SinkParamSASLPassword)
 	if dialConfig.saslEnabled {
+		__antithesis_instrumentation__.Notify(18499)
 		if dialConfig.saslUser == `` {
+			__antithesis_instrumentation__.Notify(18501)
 			return nil, errors.Errorf(`%s must be provided when SASL is enabled`, changefeedbase.SinkParamSASLUser)
+		} else {
+			__antithesis_instrumentation__.Notify(18502)
 		}
+		__antithesis_instrumentation__.Notify(18500)
 		if dialConfig.saslPassword == `` {
+			__antithesis_instrumentation__.Notify(18503)
 			return nil, errors.Errorf(`%s must be provided when SASL is enabled`, changefeedbase.SinkParamSASLPassword)
+		} else {
+			__antithesis_instrumentation__.Notify(18504)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(18505)
 		if dialConfig.saslUser != `` {
+			__antithesis_instrumentation__.Notify(18507)
 			return nil, errors.Errorf(`%s must be enabled if a SASL user is provided`, changefeedbase.SinkParamSASLEnabled)
+		} else {
+			__antithesis_instrumentation__.Notify(18508)
 		}
+		__antithesis_instrumentation__.Notify(18506)
 		if dialConfig.saslPassword != `` {
+			__antithesis_instrumentation__.Notify(18509)
 			return nil, errors.Errorf(`%s must be enabled if a SASL password is provided`, changefeedbase.SinkParamSASLEnabled)
+		} else {
+			__antithesis_instrumentation__.Notify(18510)
 		}
 	}
+	__antithesis_instrumentation__.Notify(18466)
 
 	config := sarama.NewConfig()
 	config.ClientID = `CockroachDB`
@@ -568,40 +739,79 @@ func buildKafkaConfig(u sinkURL, opts map[string]string) (*sarama.Config, error)
 	config.Producer.Partitioner = newChangefeedPartitioner
 
 	if dialConfig.tlsEnabled {
+		__antithesis_instrumentation__.Notify(18511)
 		config.Net.TLS.Enable = true
 		config.Net.TLS.Config = &tls.Config{
 			InsecureSkipVerify: dialConfig.tlsSkipVerify,
 		}
 
 		if dialConfig.caCert != nil {
+			__antithesis_instrumentation__.Notify(18514)
 			caCertPool := x509.NewCertPool()
 			caCertPool.AppendCertsFromPEM(dialConfig.caCert)
 			config.Net.TLS.Config.RootCAs = caCertPool
+		} else {
+			__antithesis_instrumentation__.Notify(18515)
 		}
+		__antithesis_instrumentation__.Notify(18512)
 
-		if dialConfig.clientCert != nil && dialConfig.clientKey == nil {
+		if dialConfig.clientCert != nil && func() bool {
+			__antithesis_instrumentation__.Notify(18516)
+			return dialConfig.clientKey == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(18517)
 			return nil, errors.Errorf(`%s requires %s to be set`, changefeedbase.SinkParamClientCert, changefeedbase.SinkParamClientKey)
-		} else if dialConfig.clientKey != nil && dialConfig.clientCert == nil {
-			return nil, errors.Errorf(`%s requires %s to be set`, changefeedbase.SinkParamClientKey, changefeedbase.SinkParamClientCert)
+		} else {
+			__antithesis_instrumentation__.Notify(18518)
+			if dialConfig.clientKey != nil && func() bool {
+				__antithesis_instrumentation__.Notify(18519)
+				return dialConfig.clientCert == nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(18520)
+				return nil, errors.Errorf(`%s requires %s to be set`, changefeedbase.SinkParamClientKey, changefeedbase.SinkParamClientCert)
+			} else {
+				__antithesis_instrumentation__.Notify(18521)
+			}
 		}
+		__antithesis_instrumentation__.Notify(18513)
 
-		if dialConfig.clientCert != nil && dialConfig.clientKey != nil {
+		if dialConfig.clientCert != nil && func() bool {
+			__antithesis_instrumentation__.Notify(18522)
+			return dialConfig.clientKey != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(18523)
 			cert, err := tls.X509KeyPair(dialConfig.clientCert, dialConfig.clientKey)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(18525)
 				return nil, errors.Wrap(err, `invalid client certificate data provided`)
+			} else {
+				__antithesis_instrumentation__.Notify(18526)
 			}
+			__antithesis_instrumentation__.Notify(18524)
 			config.Net.TLS.Config.Certificates = []tls.Certificate{cert}
+		} else {
+			__antithesis_instrumentation__.Notify(18527)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(18528)
 		if dialConfig.caCert != nil {
+			__antithesis_instrumentation__.Notify(18530)
 			return nil, errors.Errorf(`%s requires %s=true`, changefeedbase.SinkParamCACert, changefeedbase.SinkParamTLSEnabled)
+		} else {
+			__antithesis_instrumentation__.Notify(18531)
 		}
+		__antithesis_instrumentation__.Notify(18529)
 		if dialConfig.clientCert != nil {
+			__antithesis_instrumentation__.Notify(18532)
 			return nil, errors.Errorf(`%s requires %s=true`, changefeedbase.SinkParamClientCert, changefeedbase.SinkParamTLSEnabled)
+		} else {
+			__antithesis_instrumentation__.Notify(18533)
 		}
 	}
+	__antithesis_instrumentation__.Notify(18467)
 
 	if dialConfig.saslEnabled {
+		__antithesis_instrumentation__.Notify(18534)
 		config.Net.SASL.Enable = true
 		config.Net.SASL.Handshake = dialConfig.saslHandshake
 		config.Net.SASL.User = dialConfig.saslUser
@@ -609,26 +819,44 @@ func buildKafkaConfig(u sinkURL, opts map[string]string) (*sarama.Config, error)
 		config.Net.SASL.Mechanism = sarama.SASLMechanism(dialConfig.saslMechanism)
 		switch config.Net.SASL.Mechanism {
 		case sarama.SASLTypeSCRAMSHA512:
+			__antithesis_instrumentation__.Notify(18535)
 			config.Net.SASL.SCRAMClientGeneratorFunc = sha512ClientGenerator
 		case sarama.SASLTypeSCRAMSHA256:
+			__antithesis_instrumentation__.Notify(18536)
 			config.Net.SASL.SCRAMClientGeneratorFunc = sha256ClientGenerator
+		default:
+			__antithesis_instrumentation__.Notify(18537)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(18538)
 	}
+	__antithesis_instrumentation__.Notify(18468)
 
-	// Apply statement level overrides.
 	saramaCfg, err := getSaramaConfig(opts)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18539)
 		return nil, errors.Wrapf(err,
 			"failed to parse sarama config; check %s option", changefeedbase.OptKafkaSinkConfig)
+	} else {
+		__antithesis_instrumentation__.Notify(18540)
 	}
+	__antithesis_instrumentation__.Notify(18469)
 
 	if err := saramaCfg.Validate(); err != nil {
+		__antithesis_instrumentation__.Notify(18541)
 		return nil, errors.Wrap(err, "invalid sarama configuration")
+	} else {
+		__antithesis_instrumentation__.Notify(18542)
 	}
+	__antithesis_instrumentation__.Notify(18470)
 
 	if err := saramaCfg.Apply(config); err != nil {
+		__antithesis_instrumentation__.Notify(18543)
 		return nil, errors.Wrap(err, "failed to apply kafka client configuration")
+	} else {
+		__antithesis_instrumentation__.Notify(18544)
 	}
+	__antithesis_instrumentation__.Notify(18471)
 	return config, nil
 }
 
@@ -639,24 +867,37 @@ func makeKafkaSink(
 	opts map[string]string,
 	m *sliMetrics,
 ) (Sink, error) {
+	__antithesis_instrumentation__.Notify(18545)
 	kafkaTopicPrefix := u.consumeParam(changefeedbase.SinkParamTopicPrefix)
 	kafkaTopicName := u.consumeParam(changefeedbase.SinkParamTopicName)
 	if schemaTopic := u.consumeParam(changefeedbase.SinkParamSchemaTopic); schemaTopic != `` {
+		__antithesis_instrumentation__.Notify(18550)
 		return nil, errors.Errorf(`%s is not yet supported`, changefeedbase.SinkParamSchemaTopic)
+	} else {
+		__antithesis_instrumentation__.Notify(18551)
 	}
+	__antithesis_instrumentation__.Notify(18546)
 
 	config, err := buildKafkaConfig(u, opts)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18552)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(18553)
 	}
+	__antithesis_instrumentation__.Notify(18547)
 
 	topics, err := MakeTopicNamer(
 		targets,
 		WithPrefix(kafkaTopicPrefix), WithSingleName(kafkaTopicName), WithSanitizeFn(SQLNameToKafkaName))
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18554)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(18555)
 	}
+	__antithesis_instrumentation__.Notify(18548)
 
 	sink := &kafkaSink{
 		ctx:            ctx,
@@ -667,9 +908,13 @@ func makeKafkaSink(
 	}
 
 	if unknownParams := u.remainingQueryParams(); len(unknownParams) > 0 {
+		__antithesis_instrumentation__.Notify(18556)
 		return nil, errors.Errorf(
 			`unknown kafka sink query parameters: %s`, strings.Join(unknownParams, ", "))
+	} else {
+		__antithesis_instrumentation__.Notify(18557)
 	}
+	__antithesis_instrumentation__.Notify(18549)
 
 	return sink, nil
 }

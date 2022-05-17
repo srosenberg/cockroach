@@ -1,16 +1,7 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// CreateChangefeed represents a CREATE CHANGEFEED statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type CreateChangefeed struct {
 	Targets ChangefeedTargets
 	SinkURI Expr
@@ -19,52 +10,67 @@ type CreateChangefeed struct {
 
 var _ Statement = &CreateChangefeed{}
 
-// Format implements the NodeFormatter interface.
 func (node *CreateChangefeed) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(604311)
 	if node.SinkURI != nil {
+		__antithesis_instrumentation__.Notify(604314)
 		ctx.WriteString("CREATE ")
 	} else {
-		// Sinkless feeds don't really CREATE anything, so the syntax omits the
-		// prefix. They're also still EXPERIMENTAL, so they get marked as such.
+		__antithesis_instrumentation__.Notify(604315)
+
 		ctx.WriteString("EXPERIMENTAL ")
 	}
+	__antithesis_instrumentation__.Notify(604312)
 	ctx.WriteString("CHANGEFEED FOR ")
 	ctx.FormatNode(&node.Targets)
 	if node.SinkURI != nil {
+		__antithesis_instrumentation__.Notify(604316)
 		ctx.WriteString(" INTO ")
 		ctx.FormatNode(node.SinkURI)
+	} else {
+		__antithesis_instrumentation__.Notify(604317)
 	}
+	__antithesis_instrumentation__.Notify(604313)
 	if node.Options != nil {
+		__antithesis_instrumentation__.Notify(604318)
 		ctx.WriteString(" WITH ")
 		ctx.FormatNode(&node.Options)
+	} else {
+		__antithesis_instrumentation__.Notify(604319)
 	}
 }
 
-// ChangefeedTarget represents a database object to be watched by a changefeed.
 type ChangefeedTarget struct {
 	TableName  TablePattern
 	FamilyName Name
 }
 
-// Format implements the NodeFormatter interface.
 func (ct *ChangefeedTarget) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(604320)
 	ctx.WriteString("TABLE ")
 	ctx.FormatNode(ct.TableName)
 	if ct.FamilyName != "" {
+		__antithesis_instrumentation__.Notify(604321)
 		ctx.WriteString(" FAMILY ")
 		ctx.FormatNode(&ct.FamilyName)
+	} else {
+		__antithesis_instrumentation__.Notify(604322)
 	}
 }
 
-// ChangefeedTargets represents a list of database objects to be watched by a changefeed.
 type ChangefeedTargets []ChangefeedTarget
 
-// Format implements the NodeFormatter interface.
 func (cts *ChangefeedTargets) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(604323)
 	for i, ct := range *cts {
+		__antithesis_instrumentation__.Notify(604324)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(604326)
 			ctx.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(604327)
 		}
+		__antithesis_instrumentation__.Notify(604325)
 		ctx.FormatNode(&ct)
 	}
 }

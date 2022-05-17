@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scbuildstmt
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
@@ -20,10 +12,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// DropSequence implements DROP SEQUENCE.
 func DropSequence(b BuildCtx, n *tree.DropSequence) {
+	__antithesis_instrumentation__.Notify(580057)
 	var toCheckBackrefs []catid.DescID
 	for idx := range n.Names {
+		__antithesis_instrumentation__.Notify(580059)
 		name := &n.Names[idx]
 		elts := b.ResolveSequence(name.ToUnresolvedObjectName(), ResolveParams{
 			IsExistenceOptional: n.IfExists,
@@ -31,37 +24,60 @@ func DropSequence(b BuildCtx, n *tree.DropSequence) {
 		})
 		_, _, seq := scpb.FindSequence(elts)
 		if seq == nil {
+			__antithesis_instrumentation__.Notify(580063)
 			b.MarkNameAsNonExistent(name)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(580064)
 		}
-		// Mutate the AST to have the fully resolved name from above, which will be
-		// used for both event logging and errors.
+		__antithesis_instrumentation__.Notify(580060)
+
 		name.ObjectNamePrefix = b.NamePrefix(seq)
-		// We don't support dropping temporary tables.
+
 		if seq.IsTemporary {
+			__antithesis_instrumentation__.Notify(580065)
 			panic(scerrors.NotImplementedErrorf(n, "dropping a temporary sequence"))
+		} else {
+			__antithesis_instrumentation__.Notify(580066)
 		}
+		__antithesis_instrumentation__.Notify(580061)
 		if n.DropBehavior == tree.DropCascade {
+			__antithesis_instrumentation__.Notify(580067)
 			dropCascadeDescriptor(b, seq.SequenceID)
-		} else if dropRestrictDescriptor(b, seq.SequenceID) {
-			// Drop sequence owner even for RESTRICT.
-			scpb.ForEachSequenceOwner(
-				undroppedBackrefs(b, seq.SequenceID),
-				func(_ scpb.Status, _ scpb.TargetStatus, so *scpb.SequenceOwner) {
-					dropElement(b, so)
-				},
-			)
-			toCheckBackrefs = append(toCheckBackrefs, seq.SequenceID)
+		} else {
+			__antithesis_instrumentation__.Notify(580068)
+			if dropRestrictDescriptor(b, seq.SequenceID) {
+				__antithesis_instrumentation__.Notify(580069)
+
+				scpb.ForEachSequenceOwner(
+					undroppedBackrefs(b, seq.SequenceID),
+					func(_ scpb.Status, _ scpb.TargetStatus, so *scpb.SequenceOwner) {
+						__antithesis_instrumentation__.Notify(580071)
+						dropElement(b, so)
+					},
+				)
+				__antithesis_instrumentation__.Notify(580070)
+				toCheckBackrefs = append(toCheckBackrefs, seq.SequenceID)
+			} else {
+				__antithesis_instrumentation__.Notify(580072)
+			}
 		}
+		__antithesis_instrumentation__.Notify(580062)
 		b.IncrementSubWorkID()
 		b.IncrementSchemaChangeDropCounter("sequence")
 	}
-	// Check if there are any back-references which would prevent a DROP RESTRICT.
+	__antithesis_instrumentation__.Notify(580058)
+
 	for _, sequenceID := range toCheckBackrefs {
+		__antithesis_instrumentation__.Notify(580073)
 		backrefs := undroppedBackrefs(b, sequenceID)
 		if backrefs.IsEmpty() {
+			__antithesis_instrumentation__.Notify(580075)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(580076)
 		}
+		__antithesis_instrumentation__.Notify(580074)
 		_, _, ns := scpb.FindNamespace(b.QueryByID(sequenceID))
 		panic(pgerror.Newf(pgcode.DependentObjectsStillExist,
 			"cannot drop sequence %s because other objects depend on it", ns.Name))

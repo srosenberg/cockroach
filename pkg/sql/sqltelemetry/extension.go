@@ -1,18 +1,10 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqltelemetry
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/server/telemetry"
 
-// CreateExtensionCounter returns a counter to increment for creating extensions.
 func CreateExtensionCounter(ext string) telemetry.Counter {
+	__antithesis_instrumentation__.Notify(625783)
 	return telemetry.GetCounter("sql.extension.create." + ext)
 }

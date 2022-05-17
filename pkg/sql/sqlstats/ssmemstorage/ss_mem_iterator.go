@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ssmemstorage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sort"
@@ -22,27 +14,31 @@ type baseIterator struct {
 	idx       int
 }
 
-// StmtStatsIterator is an iterator that iterates over the statement statistics
-// inside of a ssmemstorage.Container.
 type StmtStatsIterator struct {
 	baseIterator
 	stmtKeys     stmtList
 	currentValue *roachpb.CollectedStatementStatistics
 }
 
-// NewStmtStatsIterator returns a StmtStatsIterator.
 func NewStmtStatsIterator(
 	container *Container, options *sqlstats.IteratorOptions,
 ) *StmtStatsIterator {
+	__antithesis_instrumentation__.Notify(625487)
 	var stmtKeys stmtList
 	container.mu.Lock()
 	for k := range container.mu.stmts {
+		__antithesis_instrumentation__.Notify(625490)
 		stmtKeys = append(stmtKeys, k)
 	}
+	__antithesis_instrumentation__.Notify(625488)
 	container.mu.Unlock()
 	if options.SortedKey {
+		__antithesis_instrumentation__.Notify(625491)
 		sort.Sort(stmtKeys)
+	} else {
+		__antithesis_instrumentation__.Notify(625492)
 	}
+	__antithesis_instrumentation__.Notify(625489)
 
 	return &StmtStatsIterator{
 		baseIterator: baseIterator{
@@ -53,26 +49,30 @@ func NewStmtStatsIterator(
 	}
 }
 
-// Next updates the current value returned by the subsequent Cur() call. Next()
-// returns true if the following Cur() call is valid, false otherwise.
 func (s *StmtStatsIterator) Next() bool {
+	__antithesis_instrumentation__.Notify(625493)
 	s.idx++
 	if s.idx >= len(s.stmtKeys) {
+		__antithesis_instrumentation__.Notify(625496)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(625497)
 	}
+	__antithesis_instrumentation__.Notify(625494)
 
 	stmtKey := s.stmtKeys[s.idx]
 
 	stmtFingerprintID := constructStatementFingerprintIDFromStmtKey(stmtKey)
 	statementStats, _, _ :=
-		s.container.getStatsForStmtWithKey(stmtKey, invalidStmtFingerprintID, false /* createIfNonexistent */)
+		s.container.getStatsForStmtWithKey(stmtKey, invalidStmtFingerprintID, false)
 
-	// If the key is not found (and we expected to find it), the table must
-	// have been cleared between now and the time we read all the keys. In
-	// that case we simply skip this key and keep advancing the iterator.
 	if statementStats == nil {
+		__antithesis_instrumentation__.Notify(625498)
 		return s.Next()
+	} else {
+		__antithesis_instrumentation__.Notify(625499)
 	}
+	__antithesis_instrumentation__.Notify(625495)
 
 	statementStats.mu.Lock()
 	data := statementStats.mu.data
@@ -104,33 +104,36 @@ func (s *StmtStatsIterator) Next() bool {
 	return true
 }
 
-// Cur returns the roachpb.CollectedStatementStatistics at the current internal
-// counter.
 func (s *StmtStatsIterator) Cur() *roachpb.CollectedStatementStatistics {
+	__antithesis_instrumentation__.Notify(625500)
 	return s.currentValue
 }
 
-// TxnStatsIterator is an iterator that iterates over the transaction statistics
-// inside a ssmemstorage.Container.
 type TxnStatsIterator struct {
 	baseIterator
 	txnKeys  txnList
 	curValue *roachpb.CollectedTransactionStatistics
 }
 
-// NewTxnStatsIterator returns a new instance of TxnStatsIterator.
 func NewTxnStatsIterator(
 	container *Container, options *sqlstats.IteratorOptions,
 ) *TxnStatsIterator {
+	__antithesis_instrumentation__.Notify(625501)
 	var txnKeys txnList
 	container.mu.Lock()
 	for k := range container.mu.txns {
+		__antithesis_instrumentation__.Notify(625504)
 		txnKeys = append(txnKeys, k)
 	}
+	__antithesis_instrumentation__.Notify(625502)
 	container.mu.Unlock()
 	if options.SortedKey {
+		__antithesis_instrumentation__.Notify(625505)
 		sort.Sort(txnKeys)
+	} else {
+		__antithesis_instrumentation__.Notify(625506)
 	}
+	__antithesis_instrumentation__.Notify(625503)
 
 	return &TxnStatsIterator{
 		baseIterator: baseIterator{
@@ -141,27 +144,28 @@ func NewTxnStatsIterator(
 	}
 }
 
-// Next updates the current value returned by the subsequent Cur() call. Next()
-// returns true if the following Cur() call is valid, false otherwise.
 func (t *TxnStatsIterator) Next() bool {
+	__antithesis_instrumentation__.Notify(625507)
 	t.idx++
 	if t.idx >= len(t.txnKeys) {
+		__antithesis_instrumentation__.Notify(625510)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(625511)
 	}
+	__antithesis_instrumentation__.Notify(625508)
 
 	txnKey := t.txnKeys[t.idx]
 
-	// We don't want to create the key if it doesn't exist, so it's okay to
-	// pass nil for the statementFingerprintIDs, as they are only set when a key is
-	// constructed.
-	txnStats, _, _ := t.container.getStatsForTxnWithKey(txnKey, nil /* stmtFingerprintIDs */, false /* createIfNonexistent */)
+	txnStats, _, _ := t.container.getStatsForTxnWithKey(txnKey, nil, false)
 
-	// If the key is not found (and we expected to find it), the table must
-	// have been cleared between now and the time we read all the keys. In
-	// that case we simply skip this key and advance the iterator.
 	if txnStats == nil {
+		__antithesis_instrumentation__.Notify(625512)
 		return t.Next()
+	} else {
+		__antithesis_instrumentation__.Notify(625513)
 	}
+	__antithesis_instrumentation__.Notify(625509)
 
 	txnStats.mu.Lock()
 	defer txnStats.mu.Unlock()
@@ -176,8 +180,7 @@ func (t *TxnStatsIterator) Next() bool {
 	return true
 }
 
-// Cur returns the roachpb.CollectedTransactionStatistics at the current internal
-// counter.
 func (t *TxnStatsIterator) Cur() *roachpb.CollectedTransactionStatistics {
+	__antithesis_instrumentation__.Notify(625514)
 	return t.curValue
 }

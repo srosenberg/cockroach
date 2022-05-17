@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfigkvsubscriber
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,52 +10,50 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
-// noopKVSubscriber is a KVSubscriber that no-ops and is always up-to-date.
-// Intended for tests that do not make use of the span configurations
-// infrastructure.
 type noopKVSubscriber struct {
 	clock *hlc.Clock
 }
 
 var _ spanconfig.KVSubscriber = &noopKVSubscriber{}
 
-// NewNoopSubscriber returns a new no-op KVSubscriber.
 func NewNoopSubscriber(clock *hlc.Clock) spanconfig.KVSubscriber {
+	__antithesis_instrumentation__.Notify(240586)
 	return &noopKVSubscriber{
 		clock: clock,
 	}
 }
 
-// Subscribe is part of the spanconfig.KVSubsriber interface.
-func (n *noopKVSubscriber) Subscribe(func(context.Context, roachpb.Span)) {}
+func (n *noopKVSubscriber) Subscribe(func(context.Context, roachpb.Span)) {
+	__antithesis_instrumentation__.Notify(240587)
+}
 
-// LastUpdated is part of the spanconfig.KVSubscriber interface.
 func (n *noopKVSubscriber) LastUpdated() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(240588)
 	return n.clock.Now()
 }
 
-// NeedsSplit is part of the spanconfig.KVSubscriber interface.
 func (n *noopKVSubscriber) NeedsSplit(context.Context, roachpb.RKey, roachpb.RKey) bool {
+	__antithesis_instrumentation__.Notify(240589)
 	return false
 }
 
-// ComputeSplitKey is part of the spanconfig.KVSubscriber interface.
 func (n *noopKVSubscriber) ComputeSplitKey(
 	context.Context, roachpb.RKey, roachpb.RKey,
 ) roachpb.RKey {
+	__antithesis_instrumentation__.Notify(240590)
 	return roachpb.RKey{}
 }
 
-// GetSpanConfigForKey is part of the spanconfig.KVSubscriber interface.
 func (n *noopKVSubscriber) GetSpanConfigForKey(
 	context.Context, roachpb.RKey,
 ) (roachpb.SpanConfig, error) {
+	__antithesis_instrumentation__.Notify(240591)
 	return roachpb.SpanConfig{}, nil
 }
 
-// GetProtectionTimestamps is part of the spanconfig.KVSubscriber interface.
 func (n *noopKVSubscriber) GetProtectionTimestamps(
 	context.Context, roachpb.Span,
 ) ([]hlc.Timestamp, hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(240592)
 	return nil, n.LastUpdated(), nil
 }

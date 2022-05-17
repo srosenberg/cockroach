@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -35,22 +27,11 @@ import (
 )
 
 const (
-	// replicateQueueTimerDuration is the duration between replication of queued
-	// replicas.
-	replicateQueueTimerDuration = 0 // zero duration to process replication greedily
+	replicateQueueTimerDuration = 0
 
-	// newReplicaGracePeriod is the amount of time that we allow for a new
-	// replica's raft state to catch up to the leader's before we start
-	// considering it to be behind for the sake of rebalancing. We choose a
-	// large value here because snapshots of large replicas can take a while
-	// in high latency clusters, and not allowing enough of a cushion can
-	// make rebalance thrashing more likely (#17879).
 	newReplicaGracePeriod = 5 * time.Minute
 )
 
-// MinLeaseTransferInterval controls how frequently leases can be transferred
-// for rebalancing. It does not prevent transferring leases in order to allow
-// a replica to be removed from a range.
 var MinLeaseTransferInterval = settings.RegisterDurationSetting(
 	settings.SystemOnly,
 	"kv.allocator.min_lease_transfer_interval",
@@ -178,26 +159,24 @@ var (
 	}
 )
 
-// quorumError indicates a retryable error condition which sends replicas being
-// processed through the replicate queue into purgatory so that they can be
-// retried quickly as soon as nodes come online.
 type quorumError struct {
 	msg string
 }
 
 func newQuorumError(f string, args ...interface{}) *quorumError {
+	__antithesis_instrumentation__.Notify(121117)
 	return &quorumError{
 		msg: fmt.Sprintf(f, args...),
 	}
 }
 
 func (e *quorumError) Error() string {
+	__antithesis_instrumentation__.Notify(121118)
 	return e.msg
 }
 
-func (*quorumError) purgatoryErrorMarker() {}
+func (*quorumError) purgatoryErrorMarker() { __antithesis_instrumentation__.Notify(121119) }
 
-// ReplicateQueueMetrics is the set of metrics for the replicate queue.
 type ReplicateQueueMetrics struct {
 	AddReplicaCount                           *metric.Counter
 	AddVoterReplicaCount                      *metric.Counter
@@ -221,6 +200,7 @@ type ReplicateQueueMetrics struct {
 }
 
 func makeReplicateQueueMetrics() ReplicateQueueMetrics {
+	__antithesis_instrumentation__.Notify(121120)
 	return ReplicateQueueMetrics{
 		AddReplicaCount:                           metric.NewCounter(metaReplicateQueueAddReplicaCount),
 		AddVoterReplicaCount:                      metric.NewCounter(metaReplicateQueueAddVoterReplicaCount),
@@ -244,109 +224,119 @@ func makeReplicateQueueMetrics() ReplicateQueueMetrics {
 	}
 }
 
-// trackAddReplicaCount increases the AddReplicaCount metric and separately
-// tracks voter/non-voter metrics given a replica targetType.
 func (metrics *ReplicateQueueMetrics) trackAddReplicaCount(targetType targetReplicaType) {
+	__antithesis_instrumentation__.Notify(121121)
 	metrics.AddReplicaCount.Inc(1)
 	switch targetType {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(121122)
 		metrics.AddVoterReplicaCount.Inc(1)
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(121123)
 		metrics.AddNonVoterReplicaCount.Inc(1)
 	default:
+		__antithesis_instrumentation__.Notify(121124)
 		panic(fmt.Sprintf("unsupported targetReplicaType: %v", targetType))
 	}
 }
 
-// trackRemoveMetric increases total RemoveReplicaCount metrics and
-// increments dead/decommissioning metrics depending on replicaStatus.
 func (metrics *ReplicateQueueMetrics) trackRemoveMetric(
 	targetType targetReplicaType, replicaStatus replicaStatus,
 ) {
+	__antithesis_instrumentation__.Notify(121125)
 	metrics.trackRemoveReplicaCount(targetType)
 	switch replicaStatus {
 	case dead:
+		__antithesis_instrumentation__.Notify(121126)
 		metrics.trackRemoveDeadReplicaCount(targetType)
 	case decommissioning:
+		__antithesis_instrumentation__.Notify(121127)
 		metrics.trackRemoveDecommissioningReplicaCount(targetType)
 	case alive:
+		__antithesis_instrumentation__.Notify(121128)
 		return
 	default:
+		__antithesis_instrumentation__.Notify(121129)
 		panic(fmt.Sprintf("unknown replicaStatus %v", replicaStatus))
 	}
 }
 
-// trackRemoveReplicaCount increases the RemoveReplicaCount metric and
-// separately tracks voter/non-voter metrics given a replica targetType.
 func (metrics *ReplicateQueueMetrics) trackRemoveReplicaCount(targetType targetReplicaType) {
+	__antithesis_instrumentation__.Notify(121130)
 	metrics.RemoveReplicaCount.Inc(1)
 	switch targetType {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(121131)
 		metrics.RemoveVoterReplicaCount.Inc(1)
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(121132)
 		metrics.RemoveNonVoterReplicaCount.Inc(1)
 	default:
+		__antithesis_instrumentation__.Notify(121133)
 		panic(fmt.Sprintf("unsupported targetReplicaType: %v", targetType))
 	}
 }
 
-// trackRemoveDeadReplicaCount increases the RemoveDeadReplicaCount metric and
-// separately tracks voter/non-voter metrics given a replica targetType.
 func (metrics *ReplicateQueueMetrics) trackRemoveDeadReplicaCount(targetType targetReplicaType) {
+	__antithesis_instrumentation__.Notify(121134)
 	metrics.RemoveDeadReplicaCount.Inc(1)
 	switch targetType {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(121135)
 		metrics.RemoveDeadVoterReplicaCount.Inc(1)
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(121136)
 		metrics.RemoveDeadNonVoterReplicaCount.Inc(1)
 	default:
+		__antithesis_instrumentation__.Notify(121137)
 		panic(fmt.Sprintf("unsupported targetReplicaType: %v", targetType))
 	}
 }
 
-// trackRemoveDecommissioningReplicaCount increases the
-// RemoveDecommissioningReplicaCount metric and separately tracks
-// voter/non-voter metrics given a replica targetType.
 func (metrics *ReplicateQueueMetrics) trackRemoveDecommissioningReplicaCount(
 	targetType targetReplicaType,
 ) {
+	__antithesis_instrumentation__.Notify(121138)
 	metrics.RemoveDecommissioningReplicaCount.Inc(1)
 	switch targetType {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(121139)
 		metrics.RemoveDecommissioningVoterReplicaCount.Inc(1)
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(121140)
 		metrics.RemoveDecommissioningNonVoterReplicaCount.Inc(1)
 	default:
+		__antithesis_instrumentation__.Notify(121141)
 		panic(fmt.Sprintf("unsupported targetReplicaType: %v", targetType))
 	}
 }
 
-// trackRebalanceReplicaCount increases the RebalanceReplicaCount metric and
-// separately tracks voter/non-voter metrics given a replica targetType.
 func (metrics *ReplicateQueueMetrics) trackRebalanceReplicaCount(targetType targetReplicaType) {
+	__antithesis_instrumentation__.Notify(121142)
 	metrics.RebalanceReplicaCount.Inc(1)
 	switch targetType {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(121143)
 		metrics.RebalanceVoterReplicaCount.Inc(1)
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(121144)
 		metrics.RebalanceNonVoterReplicaCount.Inc(1)
 	default:
+		__antithesis_instrumentation__.Notify(121145)
 		panic(fmt.Sprintf("unsupported targetReplicaType: %v", targetType))
 	}
 }
 
-// replicateQueue manages a queue of replicas which may need to add an
-// additional replica to their range.
 type replicateQueue struct {
 	*baseQueue
 	metrics           ReplicateQueueMetrics
 	allocator         Allocator
 	updateChan        chan time.Time
-	lastLeaseTransfer atomic.Value // read and written by scanner & queue goroutines
+	lastLeaseTransfer atomic.Value
 }
 
-// newReplicateQueue returns a new instance of replicateQueue.
 func newReplicateQueue(store *Store, allocator Allocator) *replicateQueue {
+	__antithesis_instrumentation__.Notify(121146)
 	rq := &replicateQueue{
 		metrics:    makeReplicateQueueMetrics(),
 		allocator:  allocator,
@@ -360,10 +350,7 @@ func newReplicateQueue(store *Store, allocator Allocator) *replicateQueue {
 			needsLease:           true,
 			needsSystemConfig:    true,
 			acceptsUnsplitRanges: store.TestingKnobs().ReplicateQueueAcceptsUnsplit,
-			// The processing of the replicate queue often needs to send snapshots
-			// so we use the raftSnapshotQueueTimeoutFunc. This function sets a
-			// timeout based on the range size and the sending rate in addition
-			// to consulting the setting which controls the minimum timeout.
+
 			processTimeoutFunc: makeRateLimitedTimeoutFunc(rebalanceSnapshotRate),
 			successes:          store.metrics.ReplicateQueueSuccesses,
 			failures:           store.metrics.ReplicateQueueFailures,
@@ -374,33 +361,54 @@ func newReplicateQueue(store *Store, allocator Allocator) *replicateQueue {
 	)
 
 	updateFn := func() {
+		__antithesis_instrumentation__.Notify(121150)
 		select {
 		case rq.updateChan <- timeutil.Now():
+			__antithesis_instrumentation__.Notify(121151)
 		default:
+			__antithesis_instrumentation__.Notify(121152)
 		}
 	}
+	__antithesis_instrumentation__.Notify(121147)
 
-	// Register gossip and node liveness callbacks to signal that
-	// replicas in purgatory might be retried.
-	if g := store.cfg.Gossip; g != nil { // gossip is nil for some unittests
+	if g := store.cfg.Gossip; g != nil {
+		__antithesis_instrumentation__.Notify(121153)
 		g.RegisterCallback(gossip.MakePrefixPattern(gossip.KeyStorePrefix), func(key string, _ roachpb.Value) {
+			__antithesis_instrumentation__.Notify(121154)
 			if !rq.store.IsStarted() {
+				__antithesis_instrumentation__.Notify(121157)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(121158)
 			}
-			// Because updates to our store's own descriptor won't affect
-			// replicas in purgatory, skip updating the purgatory channel
-			// in this case.
-			if storeID, err := gossip.StoreIDFromKey(key); err == nil && storeID == rq.store.StoreID() {
+			__antithesis_instrumentation__.Notify(121155)
+
+			if storeID, err := gossip.StoreIDFromKey(key); err == nil && func() bool {
+				__antithesis_instrumentation__.Notify(121159)
+				return storeID == rq.store.StoreID() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(121160)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(121161)
 			}
+			__antithesis_instrumentation__.Notify(121156)
 			updateFn()
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(121162)
 	}
-	if nl := store.cfg.NodeLiveness; nl != nil { // node liveness is nil for some unittests
+	__antithesis_instrumentation__.Notify(121148)
+	if nl := store.cfg.NodeLiveness; nl != nil {
+		__antithesis_instrumentation__.Notify(121163)
 		nl.RegisterCallback(func(_ livenesspb.Liveness) {
+			__antithesis_instrumentation__.Notify(121164)
 			updateFn()
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(121165)
 	}
+	__antithesis_instrumentation__.Notify(121149)
 
 	return rq
 }
@@ -408,20 +416,30 @@ func newReplicateQueue(store *Store, allocator Allocator) *replicateQueue {
 func (rq *replicateQueue) shouldQueue(
 	ctx context.Context, now hlc.ClockTimestamp, repl *Replica, _ spanconfig.StoreReader,
 ) (shouldQueue bool, priority float64) {
+	__antithesis_instrumentation__.Notify(121166)
 	desc, conf := repl.DescAndSpanConfig()
 	action, priority := rq.allocator.ComputeAction(ctx, conf, desc)
 
 	if action == AllocatorNoop {
+		__antithesis_instrumentation__.Notify(121170)
 		log.VEventf(ctx, 2, "no action to take")
 		return false, 0
-	} else if action != AllocatorConsiderRebalance {
-		log.VEventf(ctx, 2, "repair needed (%s), enqueuing", action)
-		return true, priority
+	} else {
+		__antithesis_instrumentation__.Notify(121171)
+		if action != AllocatorConsiderRebalance {
+			__antithesis_instrumentation__.Notify(121172)
+			log.VEventf(ctx, 2, "repair needed (%s), enqueuing", action)
+			return true, priority
+		} else {
+			__antithesis_instrumentation__.Notify(121173)
+		}
 	}
+	__antithesis_instrumentation__.Notify(121167)
 
 	voterReplicas := desc.Replicas().VoterDescriptors()
 	nonVoterReplicas := desc.Replicas().NonVoterDescriptors()
 	if !rq.store.TestingKnobs().DisableReplicaRebalancing {
+		__antithesis_instrumentation__.Notify(121174)
 		rangeUsageInfo := rangeUsageInfoForRepl(repl)
 		_, _, _, ok := rq.allocator.RebalanceVoter(
 			ctx,
@@ -434,9 +452,13 @@ func (rq *replicateQueue) shouldQueue(
 			rq.allocator.scorerOptions(),
 		)
 		if ok {
+			__antithesis_instrumentation__.Notify(121177)
 			log.VEventf(ctx, 2, "rebalance target found for voter, enqueuing")
 			return true, 0
+		} else {
+			__antithesis_instrumentation__.Notify(121178)
 		}
+		__antithesis_instrumentation__.Notify(121175)
 		_, _, _, ok = rq.allocator.RebalanceNonVoter(
 			ctx,
 			conf,
@@ -448,21 +470,35 @@ func (rq *replicateQueue) shouldQueue(
 			rq.allocator.scorerOptions(),
 		)
 		if ok {
+			__antithesis_instrumentation__.Notify(121179)
 			log.VEventf(ctx, 2, "rebalance target found for non-voter, enqueuing")
 			return true, 0
+		} else {
+			__antithesis_instrumentation__.Notify(121180)
 		}
+		__antithesis_instrumentation__.Notify(121176)
 		log.VEventf(ctx, 2, "no rebalance target found, not enqueuing")
+	} else {
+		__antithesis_instrumentation__.Notify(121181)
 	}
+	__antithesis_instrumentation__.Notify(121168)
 
-	// If the lease is valid, check to see if we should transfer it.
 	status := repl.LeaseStatusAt(ctx, now)
-	if status.IsValid() &&
-		rq.canTransferLeaseFrom(ctx, repl) &&
-		rq.allocator.ShouldTransferLease(ctx, conf, voterReplicas, status.Lease.Replica.StoreID, repl.leaseholderStats) {
+	if status.IsValid() && func() bool {
+		__antithesis_instrumentation__.Notify(121182)
+		return rq.canTransferLeaseFrom(ctx, repl) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(121183)
+		return rq.allocator.ShouldTransferLease(ctx, conf, voterReplicas, status.Lease.Replica.StoreID, repl.leaseholderStats) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(121184)
 
 		log.VEventf(ctx, 2, "lease transfer needed, enqueuing")
 		return true, 0
+	} else {
+		__antithesis_instrumentation__.Notify(121185)
 	}
+	__antithesis_instrumentation__.Notify(121169)
 
 	return false, 0
 }
@@ -470,6 +506,7 @@ func (rq *replicateQueue) shouldQueue(
 func (rq *replicateQueue) process(
 	ctx context.Context, repl *Replica, confReader spanconfig.StoreReader,
 ) (processed bool, err error) {
+	__antithesis_instrumentation__.Notify(121186)
 	retryOpts := retry.Options{
 		InitialBackoff: 50 * time.Millisecond,
 		MaxBackoff:     1 * time.Second,
@@ -477,42 +514,56 @@ func (rq *replicateQueue) process(
 		MaxRetries:     5,
 	}
 
-	// Use a retry loop in order to backoff in the case of snapshot errors,
-	// usually signaling that a rebalancing reservation could not be made with the
-	// selected target.
 	for r := retry.StartWithCtx(ctx, retryOpts); r.Next(); {
+		__antithesis_instrumentation__.Notify(121188)
 		for {
+			__antithesis_instrumentation__.Notify(121189)
 			requeue, err := rq.processOneChange(
-				ctx, repl, rq.canTransferLeaseFrom, false /* scatter */, false, /* dryRun */
+				ctx, repl, rq.canTransferLeaseFrom, false, false,
 			)
 			if isSnapshotError(err) {
-				// If ChangeReplicas failed because the snapshot failed, we log the
-				// error but then return success indicating we should retry the
-				// operation. The most likely causes of the snapshot failing are a
-				// declined reservation or the remote node being unavailable. In either
-				// case we don't want to wait another scanner cycle before reconsidering
-				// the range.
+				__antithesis_instrumentation__.Notify(121194)
+
 				log.Infof(ctx, "%v", err)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(121195)
 			}
+			__antithesis_instrumentation__.Notify(121190)
 
 			if err != nil {
+				__antithesis_instrumentation__.Notify(121196)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(121197)
 			}
+			__antithesis_instrumentation__.Notify(121191)
 
 			if testingAggressiveConsistencyChecks {
+				__antithesis_instrumentation__.Notify(121198)
 				if _, err := rq.store.consistencyQueue.process(ctx, repl, confReader); err != nil {
+					__antithesis_instrumentation__.Notify(121199)
 					log.Warningf(ctx, "%v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(121200)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(121201)
 			}
+			__antithesis_instrumentation__.Notify(121192)
 
 			if !requeue {
+				__antithesis_instrumentation__.Notify(121202)
 				return true, nil
+			} else {
+				__antithesis_instrumentation__.Notify(121203)
 			}
+			__antithesis_instrumentation__.Notify(121193)
 
 			log.VEventf(ctx, 1, "re-processing")
 		}
 	}
+	__antithesis_instrumentation__.Notify(121187)
 
 	return false, errors.Errorf("failed to replicate after %d retries", retryOpts.MaxRetries)
 }
@@ -523,153 +574,181 @@ func (rq *replicateQueue) processOneChange(
 	canTransferLeaseFrom func(ctx context.Context, repl *Replica) bool,
 	scatter, dryRun bool,
 ) (requeue bool, _ error) {
-	// Check lease and destroy status here. The queue does this higher up already, but
-	// adminScatter (and potential other future callers) also call this method and don't
-	// perform this check, which could lead to infinite loops.
-	if _, err := repl.IsDestroyed(); err != nil {
-		return false, err
-	}
-	if _, pErr := repl.redirectOnOrAcquireLease(ctx); pErr != nil {
-		return false, pErr.GoError()
-	}
+	__antithesis_instrumentation__.Notify(121204)
 
-	// TODO(aayush): The fact that we're calling `repl.DescAndZone()` here once to
-	// pass to `ComputeAction()` to use for deciding which action to take to
-	// repair a range, and then calling it again inside methods like
-	// `addOrReplace{Non}Voters()` or `remove{Dead,Decommissioning}` to execute
-	// upon that decision is a bit unfortunate. It means that we could
-	// successfully execute a decision that was based on the state of a stale
-	// range descriptor.
+	if _, err := repl.IsDestroyed(); err != nil {
+		__antithesis_instrumentation__.Notify(121208)
+		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121209)
+	}
+	__antithesis_instrumentation__.Notify(121205)
+	if _, pErr := repl.redirectOnOrAcquireLease(ctx); pErr != nil {
+		__antithesis_instrumentation__.Notify(121210)
+		return false, pErr.GoError()
+	} else {
+		__antithesis_instrumentation__.Notify(121211)
+	}
+	__antithesis_instrumentation__.Notify(121206)
+
 	desc, conf := repl.DescAndSpanConfig()
 
-	// Avoid taking action if the range has too many dead replicas to make quorum.
-	// Consider stores marked suspect as live in order to make this determination.
 	voterReplicas := desc.Replicas().VoterDescriptors()
 	nonVoterReplicas := desc.Replicas().NonVoterDescriptors()
 	liveVoterReplicas, deadVoterReplicas := rq.allocator.storePool.liveAndDeadReplicas(
-		voterReplicas, true, /* includeSuspectAndDrainingStores */
+		voterReplicas, true,
 	)
 	liveNonVoterReplicas, deadNonVoterReplicas := rq.allocator.storePool.liveAndDeadReplicas(
-		nonVoterReplicas, true, /* includeSuspectAndDrainingStores */
+		nonVoterReplicas, true,
 	)
 
-	// NB: the replication layer ensures that the below operations don't cause
-	// unavailability; see:
 	_ = execChangeReplicasTxn
 
 	action, _ := rq.allocator.ComputeAction(ctx, conf, desc)
 	log.VEventf(ctx, 1, "next replica action: %s", action)
 
-	// For simplicity, the first thing the allocator does is remove learners, so
-	// it can do all of its reasoning about only voters. We do the same here so
-	// the executions of the allocator's decisions can be in terms of voters.
 	if action == AllocatorRemoveLearner {
+		__antithesis_instrumentation__.Notify(121212)
 		return rq.removeLearner(ctx, repl, dryRun)
+	} else {
+		__antithesis_instrumentation__.Notify(121213)
 	}
+	__antithesis_instrumentation__.Notify(121207)
 
 	switch action {
 	case AllocatorNoop, AllocatorRangeUnavailable:
-		// We're either missing liveness information or the range is known to have
-		// lost quorum. Either way, it's not a good idea to make changes right now.
-		// Let the scanner requeue it again later.
+		__antithesis_instrumentation__.Notify(121214)
+
 		return false, nil
 
-	// Add replicas.
 	case AllocatorAddVoter:
+		__antithesis_instrumentation__.Notify(121215)
 		return rq.addOrReplaceVoters(
-			ctx, repl, liveVoterReplicas, liveNonVoterReplicas, -1 /* removeIdx */, alive, dryRun,
+			ctx, repl, liveVoterReplicas, liveNonVoterReplicas, -1, alive, dryRun,
 		)
 	case AllocatorAddNonVoter:
+		__antithesis_instrumentation__.Notify(121216)
 		return rq.addOrReplaceNonVoters(
-			ctx, repl, liveVoterReplicas, liveNonVoterReplicas, -1 /* removeIdx */, alive, dryRun,
+			ctx, repl, liveVoterReplicas, liveNonVoterReplicas, -1, alive, dryRun,
 		)
 
-	// Remove replicas.
 	case AllocatorRemoveVoter:
+		__antithesis_instrumentation__.Notify(121217)
 		return rq.removeVoter(ctx, repl, voterReplicas, nonVoterReplicas, dryRun)
 	case AllocatorRemoveNonVoter:
+		__antithesis_instrumentation__.Notify(121218)
 		return rq.removeNonVoter(ctx, repl, voterReplicas, nonVoterReplicas, dryRun)
 
-	// Replace dead replicas.
 	case AllocatorReplaceDeadVoter:
+		__antithesis_instrumentation__.Notify(121219)
 		if len(deadVoterReplicas) == 0 {
-			// Nothing to do.
+			__antithesis_instrumentation__.Notify(121239)
+
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(121240)
 		}
+		__antithesis_instrumentation__.Notify(121220)
 		removeIdx := getRemoveIdx(voterReplicas, deadVoterReplicas[0])
 		if removeIdx < 0 {
+			__antithesis_instrumentation__.Notify(121241)
 			return false, errors.AssertionFailedf(
 				"dead voter %v unexpectedly not found in %v",
 				deadVoterReplicas[0], voterReplicas)
+		} else {
+			__antithesis_instrumentation__.Notify(121242)
 		}
+		__antithesis_instrumentation__.Notify(121221)
 		return rq.addOrReplaceVoters(
 			ctx, repl, liveVoterReplicas, liveNonVoterReplicas, removeIdx, dead, dryRun)
 	case AllocatorReplaceDeadNonVoter:
+		__antithesis_instrumentation__.Notify(121222)
 		if len(deadNonVoterReplicas) == 0 {
-			// Nothing to do.
+			__antithesis_instrumentation__.Notify(121243)
+
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(121244)
 		}
+		__antithesis_instrumentation__.Notify(121223)
 		removeIdx := getRemoveIdx(nonVoterReplicas, deadNonVoterReplicas[0])
 		if removeIdx < 0 {
+			__antithesis_instrumentation__.Notify(121245)
 			return false, errors.AssertionFailedf(
 				"dead non-voter %v unexpectedly not found in %v",
 				deadNonVoterReplicas[0], nonVoterReplicas)
+		} else {
+			__antithesis_instrumentation__.Notify(121246)
 		}
+		__antithesis_instrumentation__.Notify(121224)
 		return rq.addOrReplaceNonVoters(
 			ctx, repl, liveVoterReplicas, liveNonVoterReplicas, removeIdx, dead, dryRun)
 
-	// Replace decommissioning replicas.
 	case AllocatorReplaceDecommissioningVoter:
+		__antithesis_instrumentation__.Notify(121225)
 		decommissioningVoterReplicas := rq.allocator.storePool.decommissioningReplicas(voterReplicas)
 		if len(decommissioningVoterReplicas) == 0 {
-			// Nothing to do.
+			__antithesis_instrumentation__.Notify(121247)
+
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(121248)
 		}
+		__antithesis_instrumentation__.Notify(121226)
 		removeIdx := getRemoveIdx(voterReplicas, decommissioningVoterReplicas[0])
 		if removeIdx < 0 {
+			__antithesis_instrumentation__.Notify(121249)
 			return false, errors.AssertionFailedf(
 				"decommissioning voter %v unexpectedly not found in %v",
 				decommissioningVoterReplicas[0], voterReplicas)
+		} else {
+			__antithesis_instrumentation__.Notify(121250)
 		}
+		__antithesis_instrumentation__.Notify(121227)
 		return rq.addOrReplaceVoters(
 			ctx, repl, liveVoterReplicas, liveNonVoterReplicas, removeIdx, decommissioning, dryRun)
 	case AllocatorReplaceDecommissioningNonVoter:
+		__antithesis_instrumentation__.Notify(121228)
 		decommissioningNonVoterReplicas := rq.allocator.storePool.decommissioningReplicas(nonVoterReplicas)
 		if len(decommissioningNonVoterReplicas) == 0 {
+			__antithesis_instrumentation__.Notify(121251)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(121252)
 		}
+		__antithesis_instrumentation__.Notify(121229)
 		removeIdx := getRemoveIdx(nonVoterReplicas, decommissioningNonVoterReplicas[0])
 		if removeIdx < 0 {
+			__antithesis_instrumentation__.Notify(121253)
 			return false, errors.AssertionFailedf(
 				"decommissioning non-voter %v unexpectedly not found in %v",
 				decommissioningNonVoterReplicas[0], nonVoterReplicas)
+		} else {
+			__antithesis_instrumentation__.Notify(121254)
 		}
+		__antithesis_instrumentation__.Notify(121230)
 		return rq.addOrReplaceNonVoters(
 			ctx, repl, liveVoterReplicas, liveNonVoterReplicas, removeIdx, decommissioning, dryRun)
 
-	// Remove decommissioning replicas.
-	//
-	// NB: these two paths will only be hit when the range is over-replicated and
-	// has decommissioning replicas; in the common case we'll hit
-	// AllocatorReplaceDecommissioning{Non}Voter above.
 	case AllocatorRemoveDecommissioningVoter:
+		__antithesis_instrumentation__.Notify(121231)
 		return rq.removeDecommissioning(ctx, repl, voterTarget, dryRun)
 	case AllocatorRemoveDecommissioningNonVoter:
+		__antithesis_instrumentation__.Notify(121232)
 		return rq.removeDecommissioning(ctx, repl, nonVoterTarget, dryRun)
 
-	// Remove dead replicas.
-	//
-	// NB: these two paths below will only be hit when the range is
-	// over-replicated and has dead replicas; in the common case we'll hit
-	// AllocatorReplaceDead{Non}Voter above.
 	case AllocatorRemoveDeadVoter:
+		__antithesis_instrumentation__.Notify(121233)
 		return rq.removeDead(ctx, repl, deadVoterReplicas, voterTarget, dryRun)
 	case AllocatorRemoveDeadNonVoter:
+		__antithesis_instrumentation__.Notify(121234)
 		return rq.removeDead(ctx, repl, deadNonVoterReplicas, nonVoterTarget, dryRun)
 
 	case AllocatorRemoveLearner:
+		__antithesis_instrumentation__.Notify(121235)
 		return rq.removeLearner(ctx, repl, dryRun)
 	case AllocatorConsiderRebalance:
+		__antithesis_instrumentation__.Notify(121236)
 		return rq.considerRebalance(
 			ctx,
 			repl,
@@ -680,12 +759,13 @@ func (rq *replicateQueue) processOneChange(
 			dryRun,
 		)
 	case AllocatorFinalizeAtomicReplicationChange:
+		__antithesis_instrumentation__.Notify(121237)
 		_, err :=
 			repl.maybeLeaveAtomicChangeReplicasAndRemoveLearners(ctx, repl.Desc())
-		// Requeue because either we failed to transition out of a joint state
-		// (bad) or we did and there might be more to do for that range.
+
 		return true, err
 	default:
+		__antithesis_instrumentation__.Notify(121238)
 		return false, errors.Errorf("unknown allocator action %v", action)
 	}
 }
@@ -693,23 +773,21 @@ func (rq *replicateQueue) processOneChange(
 func getRemoveIdx(
 	repls []roachpb.ReplicaDescriptor, deadOrDecommissioningRepl roachpb.ReplicaDescriptor,
 ) (removeIdx int) {
+	__antithesis_instrumentation__.Notify(121255)
 	for i, rDesc := range repls {
+		__antithesis_instrumentation__.Notify(121257)
 		if rDesc.StoreID == deadOrDecommissioningRepl.StoreID {
+			__antithesis_instrumentation__.Notify(121258)
 			removeIdx = i
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(121259)
 		}
 	}
+	__antithesis_instrumentation__.Notify(121256)
 	return removeIdx
 }
 
-// addOrReplaceVoters adds or replaces a voting replica. If removeIdx is -1, an
-// addition is carried out. Otherwise, removeIdx must be a valid index into
-// existingVoters and specifies which voter to replace with a new one.
-//
-// The method preferably issues an atomic replica swap, but may not be able to
-// do this in all cases, such as when the range consists of a single replica. As
-// a fall back, only the addition is carried out; the removal is then a
-// follow-up step for the next scanner cycle.
 func (rq *replicateQueue) addOrReplaceVoters(
 	ctx context.Context,
 	repl *Replica,
@@ -718,78 +796,100 @@ func (rq *replicateQueue) addOrReplaceVoters(
 	replicaStatus replicaStatus,
 	dryRun bool,
 ) (requeue bool, _ error) {
+	__antithesis_instrumentation__.Notify(121260)
 	desc, conf := repl.DescAndSpanConfig()
 	existingVoters := desc.Replicas().VoterDescriptors()
 	if len(existingVoters) == 1 {
-		// If only one replica remains, that replica is the leaseholder and
-		// we won't be able to swap it out. Ignore the removal and simply add
-		// a replica.
+		__antithesis_instrumentation__.Notify(121269)
+
 		removeIdx = -1
+	} else {
+		__antithesis_instrumentation__.Notify(121270)
 	}
+	__antithesis_instrumentation__.Notify(121261)
 
 	remainingLiveVoters := liveVoterReplicas
 	remainingLiveNonVoters := liveNonVoterReplicas
 	if removeIdx >= 0 {
+		__antithesis_instrumentation__.Notify(121271)
 		replToRemove := existingVoters[removeIdx]
 		for i, r := range liveVoterReplicas {
+			__antithesis_instrumentation__.Notify(121273)
 			if r.ReplicaID == replToRemove.ReplicaID {
+				__antithesis_instrumentation__.Notify(121274)
 				remainingLiveVoters = append(liveVoterReplicas[:i:i], liveVoterReplicas[i+1:]...)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(121275)
 			}
 		}
-		// Determines whether we can remove the leaseholder without first
-		// transferring the lease away. The call to allocator below makes sure
-		// that we proceed with the change only if we replace the removed replica
-		// with a VOTER_INCOMING.
+		__antithesis_instrumentation__.Notify(121272)
+
 		lhRemovalAllowed := repl.store.cfg.Settings.Version.IsActive(ctx,
 			clusterversion.EnableLeaseHolderRemoval)
 		if !lhRemovalAllowed {
-			// See about transferring the lease away if we're about to remove the
-			// leaseholder.
-			done, err := rq.maybeTransferLeaseAway(
-				ctx, repl, existingVoters[removeIdx].StoreID, dryRun, nil /* canTransferLeaseFrom */)
-			if err != nil {
-				return false, err
-			}
-			if done {
-				// Lease was transferred away. Next leaseholder is going to take over.
-				return false, nil
-			}
-		}
-	}
+			__antithesis_instrumentation__.Notify(121276)
 
-	lhBeingRemoved := removeIdx >= 0 && existingVoters[removeIdx].StoreID == repl.store.StoreID()
-	// The allocator should not try to re-add this replica since there is a reason
-	// we're removing it (i.e. dead or decommissioning). If we left the replica in
-	// the slice, the allocator would not be guaranteed to pick a replica that
-	// fills the gap removeRepl leaves once it's gone.
+			done, err := rq.maybeTransferLeaseAway(
+				ctx, repl, existingVoters[removeIdx].StoreID, dryRun, nil)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(121278)
+				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(121279)
+			}
+			__antithesis_instrumentation__.Notify(121277)
+			if done {
+				__antithesis_instrumentation__.Notify(121280)
+
+				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(121281)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(121282)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(121283)
+	}
+	__antithesis_instrumentation__.Notify(121262)
+
+	lhBeingRemoved := removeIdx >= 0 && func() bool {
+		__antithesis_instrumentation__.Notify(121284)
+		return existingVoters[removeIdx].StoreID == repl.store.StoreID() == true
+	}() == true
+
 	newVoter, details, err := rq.allocator.AllocateVoter(ctx, conf, remainingLiveVoters, remainingLiveNonVoters)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121285)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121286)
 	}
-	if removeIdx >= 0 && newVoter.StoreID == existingVoters[removeIdx].StoreID {
+	__antithesis_instrumentation__.Notify(121263)
+	if removeIdx >= 0 && func() bool {
+		__antithesis_instrumentation__.Notify(121287)
+		return newVoter.StoreID == existingVoters[removeIdx].StoreID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(121288)
 		return false, errors.AssertionFailedf("allocator suggested to replace replica on s%d with itself", newVoter.StoreID)
+	} else {
+		__antithesis_instrumentation__.Notify(121289)
 	}
+	__antithesis_instrumentation__.Notify(121264)
 
 	clusterNodes := rq.allocator.storePool.ClusterNodeCount()
 	neededVoters := GetNeededVoters(conf.GetNumVoters(), clusterNodes)
 
-	// Only up-replicate if there are suitable allocation targets such that,
-	// either the replication goal is met, or it is possible to get to the next
-	// odd number of replicas. A consensus group of size 2n has worse failure
-	// tolerance properties than a group of size 2n - 1 because it has a larger
-	// quorum. For example, up-replicating from 1 to 2 replicas only makes sense
-	// if it is possible to be able to go to 3 replicas.
-	//
-	// NB: If willHave > neededVoters, then always allow up-replicating as that
-	// will be the case when up-replicating a range with a decommissioning
-	// replica.
-	//
-	// We skip this check if we're swapping a replica, since that does not
-	// change the quorum size.
-	if willHave := len(existingVoters) + 1; removeIdx < 0 && willHave < neededVoters && willHave%2 == 0 {
-		// This means we are going to up-replicate to an even replica state.
-		// Check if it is possible to go to an odd replica state beyond it.
+	if willHave := len(existingVoters) + 1; removeIdx < 0 && func() bool {
+		__antithesis_instrumentation__.Notify(121290)
+		return willHave < neededVoters == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(121291)
+		return willHave%2 == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(121292)
+
 		oldPlusNewReplicas := append([]roachpb.ReplicaDescriptor(nil), existingVoters...)
 		oldPlusNewReplicas = append(
 			oldPlusNewReplicas,
@@ -797,56 +897,74 @@ func (rq *replicateQueue) addOrReplaceVoters(
 		)
 		_, _, err := rq.allocator.AllocateVoter(ctx, conf, oldPlusNewReplicas, remainingLiveNonVoters)
 		if err != nil {
-			// It does not seem possible to go to the next odd replica state. Note
-			// that AllocateVoter returns an allocatorError (a purgatoryError)
-			// when purgatory is requested.
-			return false, errors.Wrap(err, "avoid up-replicating to fragile quorum")
-		}
-	}
+			__antithesis_instrumentation__.Notify(121293)
 
-	// Figure out whether we should be promoting an existing non-voting replica to
-	// a voting replica or if we ought to be adding a voter afresh.
+			return false, errors.Wrap(err, "avoid up-replicating to fragile quorum")
+		} else {
+			__antithesis_instrumentation__.Notify(121294)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(121295)
+	}
+	__antithesis_instrumentation__.Notify(121265)
+
 	var ops []roachpb.ReplicationChange
 	replDesc, found := desc.GetReplicaDescriptor(newVoter.StoreID)
 	if found {
+		__antithesis_instrumentation__.Notify(121296)
 		if replDesc.GetType() != roachpb.NON_VOTER {
+			__antithesis_instrumentation__.Notify(121299)
 			return false, errors.AssertionFailedf("allocation target %s for a voter"+
 				" already has an unexpected replica: %s", newVoter, replDesc)
+		} else {
+			__antithesis_instrumentation__.Notify(121300)
 		}
-		// If the allocation target has a non-voter already, we will promote it to a
-		// voter.
+		__antithesis_instrumentation__.Notify(121297)
+
 		if !dryRun {
+			__antithesis_instrumentation__.Notify(121301)
 			rq.metrics.NonVoterPromotionsCount.Inc(1)
+		} else {
+			__antithesis_instrumentation__.Notify(121302)
 		}
+		__antithesis_instrumentation__.Notify(121298)
 		ops = roachpb.ReplicationChangesForPromotion(newVoter)
 	} else {
+		__antithesis_instrumentation__.Notify(121303)
 		if !dryRun {
+			__antithesis_instrumentation__.Notify(121305)
 			rq.metrics.trackAddReplicaCount(voterTarget)
+		} else {
+			__antithesis_instrumentation__.Notify(121306)
 		}
+		__antithesis_instrumentation__.Notify(121304)
 		ops = roachpb.MakeReplicationChanges(roachpb.ADD_VOTER, newVoter)
 	}
+	__antithesis_instrumentation__.Notify(121266)
 	if removeIdx < 0 {
+		__antithesis_instrumentation__.Notify(121307)
 		log.VEventf(ctx, 1, "adding voter %+v: %s",
 			newVoter, rangeRaftProgress(repl.RaftStatus(), existingVoters))
 	} else {
+		__antithesis_instrumentation__.Notify(121308)
 		if !dryRun {
+			__antithesis_instrumentation__.Notify(121310)
 			rq.metrics.trackRemoveMetric(voterTarget, replicaStatus)
+		} else {
+			__antithesis_instrumentation__.Notify(121311)
 		}
+		__antithesis_instrumentation__.Notify(121309)
 		removeVoter := existingVoters[removeIdx]
 		log.VEventf(ctx, 1, "replacing voter %s with %+v: %s",
 			removeVoter, newVoter, rangeRaftProgress(repl.RaftStatus(), existingVoters))
-		// NB: We may have performed a promotion of a non-voter above, but we will
-		// not perform a demotion here and instead just remove the existing replica
-		// entirely. This is because we know that the `removeVoter` is either dead
-		// or decommissioning (see `Allocator.computeAction`). This means that after
-		// this allocation is executed, we could be one non-voter short. This will
-		// be handled by the replicateQueue's next attempt at this range.
+
 		ops = append(ops,
 			roachpb.MakeReplicationChanges(roachpb.REMOVE_VOTER, roachpb.ReplicationTarget{
 				StoreID: removeVoter.StoreID,
 				NodeID:  removeVoter.NodeID,
 			})...)
 	}
+	__antithesis_instrumentation__.Notify(121267)
 
 	if err := rq.changeReplicas(
 		ctx,
@@ -858,15 +976,16 @@ func (rq *replicateQueue) addOrReplaceVoters(
 		details,
 		dryRun,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(121312)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121313)
 	}
-	// Unless just removed myself (the leaseholder), always requeue to see
-	// if more work needs to be done. If leaseholder is removed, someone
-	// else will take over.
+	__antithesis_instrumentation__.Notify(121268)
+
 	return !lhBeingRemoved, nil
 }
 
-// addOrReplaceNonVoters adds a non-voting replica to `repl`s range.
 func (rq *replicateQueue) addOrReplaceNonVoters(
 	ctx context.Context,
 	repl *Replica,
@@ -875,25 +994,40 @@ func (rq *replicateQueue) addOrReplaceNonVoters(
 	replicaStatus replicaStatus,
 	dryRun bool,
 ) (requeue bool, _ error) {
+	__antithesis_instrumentation__.Notify(121314)
 	desc, conf := repl.DescAndSpanConfig()
 	existingNonVoters := desc.Replicas().NonVoterDescriptors()
 
 	newNonVoter, details, err := rq.allocator.AllocateNonVoter(ctx, conf, liveVoterReplicas, liveNonVoterReplicas)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121319)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121320)
 	}
+	__antithesis_instrumentation__.Notify(121315)
 	if !dryRun {
+		__antithesis_instrumentation__.Notify(121321)
 		rq.metrics.trackAddReplicaCount(nonVoterTarget)
+	} else {
+		__antithesis_instrumentation__.Notify(121322)
 	}
+	__antithesis_instrumentation__.Notify(121316)
 
 	ops := roachpb.MakeReplicationChanges(roachpb.ADD_NON_VOTER, newNonVoter)
 	if removeIdx < 0 {
+		__antithesis_instrumentation__.Notify(121323)
 		log.VEventf(ctx, 1, "adding non-voter %+v: %s",
 			newNonVoter, rangeRaftProgress(repl.RaftStatus(), existingNonVoters))
 	} else {
+		__antithesis_instrumentation__.Notify(121324)
 		if !dryRun {
+			__antithesis_instrumentation__.Notify(121326)
 			rq.metrics.trackRemoveMetric(nonVoterTarget, replicaStatus)
+		} else {
+			__antithesis_instrumentation__.Notify(121327)
 		}
+		__antithesis_instrumentation__.Notify(121325)
 		removeNonVoter := existingNonVoters[removeIdx]
 		log.VEventf(ctx, 1, "replacing non-voter %s with %+v: %s",
 			removeNonVoter, newNonVoter, rangeRaftProgress(repl.RaftStatus(), existingNonVoters))
@@ -903,6 +1037,7 @@ func (rq *replicateQueue) addOrReplaceNonVoters(
 				NodeID:  removeNonVoter.NodeID,
 			})...)
 	}
+	__antithesis_instrumentation__.Notify(121317)
 
 	if err := rq.changeReplicas(
 		ctx,
@@ -914,20 +1049,16 @@ func (rq *replicateQueue) addOrReplaceNonVoters(
 		details,
 		dryRun,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(121328)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121329)
 	}
-	// Always requeue to see if more work needs to be done.
+	__antithesis_instrumentation__.Notify(121318)
+
 	return true, nil
 }
 
-// findRemoveVoter takes a list of voting replicas and picks one to remove,
-// making sure to not remove a newly added voter or to violate the zone configs
-// in the process.
-//
-// TODO(aayush): The structure around replica removal is not great. The entire
-// logic of this method should probably live inside Allocator.RemoveVoter. Doing
-// so also makes the flow of adding new replicas and removing replicas more
-// symmetric.
 func (rq *replicateQueue) findRemoveVoter(
 	ctx context.Context,
 	repl interface {
@@ -937,14 +1068,9 @@ func (rq *replicateQueue) findRemoveVoter(
 	},
 	existingVoters, existingNonVoters []roachpb.ReplicaDescriptor,
 ) (roachpb.ReplicationTarget, string, error) {
+	__antithesis_instrumentation__.Notify(121330)
 	_, zone := repl.DescAndSpanConfig()
-	// This retry loop involves quick operations on local state, so a
-	// small MaxBackoff is good (but those local variables change on
-	// network time scales as raft receives responses).
-	//
-	// TODO(bdarnell): There's another retry loop at process(). It
-	// would be nice to combine these, but I'm keeping them separate
-	// for now so we can tune the options separately.
+
 	retryOpts := retry.Options{
 		InitialBackoff: time.Millisecond,
 		MaxBackoff:     200 * time.Millisecond,
@@ -953,52 +1079,64 @@ func (rq *replicateQueue) findRemoveVoter(
 
 	var candidates []roachpb.ReplicaDescriptor
 	deadline := timeutil.Now().Add(2 * base.NetworkTimeout)
-	for r := retry.StartWithCtx(ctx, retryOpts); r.Next() && timeutil.Now().Before(deadline); {
+	for r := retry.StartWithCtx(ctx, retryOpts); r.Next() && func() bool {
+		__antithesis_instrumentation__.Notify(121333)
+		return timeutil.Now().Before(deadline) == true
+	}() == true; {
+		__antithesis_instrumentation__.Notify(121334)
 		lastReplAdded, lastAddedTime := repl.LastReplicaAdded()
 		if timeutil.Since(lastAddedTime) > newReplicaGracePeriod {
+			__antithesis_instrumentation__.Notify(121338)
 			lastReplAdded = 0
+		} else {
+			__antithesis_instrumentation__.Notify(121339)
 		}
+		__antithesis_instrumentation__.Notify(121335)
 		raftStatus := repl.RaftStatus()
-		if raftStatus == nil || raftStatus.RaftState != raft.StateLeader {
-			// If we've lost raft leadership, we're unlikely to regain it so give up immediately.
+		if raftStatus == nil || func() bool {
+			__antithesis_instrumentation__.Notify(121340)
+			return raftStatus.RaftState != raft.StateLeader == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(121341)
+
 			return roachpb.ReplicationTarget{}, "", &benignError{errors.Errorf("not raft leader while range needs removal")}
+		} else {
+			__antithesis_instrumentation__.Notify(121342)
 		}
+		__antithesis_instrumentation__.Notify(121336)
 		candidates = filterUnremovableReplicas(ctx, raftStatus, existingVoters, lastReplAdded)
 		log.VEventf(ctx, 3, "filtered unremovable replicas from %v to get %v as candidates for removal: %s",
 			existingVoters, candidates, rangeRaftProgress(raftStatus, existingVoters))
 		if len(candidates) > 0 {
+			__antithesis_instrumentation__.Notify(121343)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(121344)
 		}
+		__antithesis_instrumentation__.Notify(121337)
 		if len(raftStatus.Progress) <= 2 {
-			// HACK(bdarnell): Downreplicating to a single node from
-			// multiple nodes is not really supported. There are edge
-			// cases in which the two peers stop communicating with each
-			// other too soon and we don't reach a satisfactory
-			// resolution. However, some tests (notably
-			// TestRepartitioning) get into this state, and if the
-			// replication queue spends its entire timeout waiting for the
-			// downreplication to finish the test will time out. As a
-			// hack, just fail-fast when we're trying to go down to a
-			// single replica.
+			__antithesis_instrumentation__.Notify(121345)
+
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(121346)
 		}
-		// After upreplication, the candidates for removal could still
-		// be catching up. The allocator determined that the range was
-		// over-replicated, and it's important to clear that state as
-		// quickly as we can (because over-replicated ranges may be
-		// under-diversified). If we return an error here, this range
-		// probably won't be processed again until the next scanner
-		// cycle, which is too long, so we retry here.
+
 	}
+	__antithesis_instrumentation__.Notify(121331)
 	if len(candidates) == 0 {
-		// If we timed out and still don't have any valid candidates, give up.
+		__antithesis_instrumentation__.Notify(121347)
+
 		return roachpb.ReplicationTarget{}, "", &benignError{
 			errors.Errorf(
 				"no removable replicas from range that needs a removal: %s",
 				rangeRaftProgress(repl.RaftStatus(), existingVoters),
 			),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(121348)
 	}
+	__antithesis_instrumentation__.Notify(121332)
 
 	return rq.allocator.RemoveVoter(
 		ctx,
@@ -1010,15 +1148,6 @@ func (rq *replicateQueue) findRemoveVoter(
 	)
 }
 
-// maybeTransferLeaseAway is called whenever a replica on a given store is
-// slated for removal. If the store corresponds to the store of the caller
-// (which is very likely to be the leaseholder), then this removal would fail.
-// Instead, this method will attempt to transfer the lease away, and returns
-// true to indicate to the caller that it should not pursue the current
-// replication change further because it is no longer the leaseholder. When the
-// returned bool is false, it should continue. On error, the caller should also
-// stop. If canTransferLeaseFrom is non-nil, it is consulted and an error is
-// returned if it returns false.
 func (rq *replicateQueue) maybeTransferLeaseAway(
 	ctx context.Context,
 	repl *Replica,
@@ -1026,23 +1155,26 @@ func (rq *replicateQueue) maybeTransferLeaseAway(
 	dryRun bool,
 	canTransferLeaseFrom func(ctx context.Context, repl *Replica) bool,
 ) (done bool, _ error) {
+	__antithesis_instrumentation__.Notify(121349)
 	if removeStoreID != repl.store.StoreID() {
+		__antithesis_instrumentation__.Notify(121352)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(121353)
 	}
-	if canTransferLeaseFrom != nil && !canTransferLeaseFrom(ctx, repl) {
+	__antithesis_instrumentation__.Notify(121350)
+	if canTransferLeaseFrom != nil && func() bool {
+		__antithesis_instrumentation__.Notify(121354)
+		return !canTransferLeaseFrom(ctx, repl) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(121355)
 		return false, errors.Errorf("cannot transfer lease")
+	} else {
+		__antithesis_instrumentation__.Notify(121356)
 	}
+	__antithesis_instrumentation__.Notify(121351)
 	desc, conf := repl.DescAndSpanConfig()
-	// The local replica was selected as the removal target, but that replica
-	// is the leaseholder, so transfer the lease instead. We don't check that
-	// the current store has too many leases in this case under the
-	// assumption that replica balance is a greater concern. Also note that
-	// AllocatorRemoveVoter action takes preference over AllocatorConsiderRebalance
-	// (rebalancing) which is where lease transfer would otherwise occur. We
-	// need to be able to transfer leases in AllocatorRemoveVoter in order to get
-	// out of situations where this store is overfull and yet holds all the
-	// leases. The fullness checks need to be ignored for cases where
-	// a replica needs to be removed for constraint violations.
+
 	transferred, err := rq.shedLease(
 		ctx,
 		repl,
@@ -1061,45 +1193,61 @@ func (rq *replicateQueue) removeVoter(
 	existingVoters, existingNonVoters []roachpb.ReplicaDescriptor,
 	dryRun bool,
 ) (requeue bool, _ error) {
+	__antithesis_instrumentation__.Notify(121357)
 	removeVoter, details, err := rq.findRemoveVoter(ctx, repl, existingVoters, existingNonVoters)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121363)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121364)
 	}
+	__antithesis_instrumentation__.Notify(121358)
 	done, err := rq.maybeTransferLeaseAway(
-		ctx, repl, removeVoter.StoreID, dryRun, nil /* canTransferLeaseFrom */)
+		ctx, repl, removeVoter.StoreID, dryRun, nil)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121365)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121366)
 	}
+	__antithesis_instrumentation__.Notify(121359)
 	if done {
-		// Lease is now elsewhere, so we're not in charge any more.
-		return false, nil
-	}
+		__antithesis_instrumentation__.Notify(121367)
 
-	// Remove a replica.
-	if !dryRun {
-		rq.metrics.trackRemoveMetric(voterTarget, alive)
+		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(121368)
 	}
+	__antithesis_instrumentation__.Notify(121360)
+
+	if !dryRun {
+		__antithesis_instrumentation__.Notify(121369)
+		rq.metrics.trackRemoveMetric(voterTarget, alive)
+	} else {
+		__antithesis_instrumentation__.Notify(121370)
+	}
+	__antithesis_instrumentation__.Notify(121361)
 
 	log.VEventf(ctx, 1, "removing voting replica %+v due to over-replication: %s",
 		removeVoter, rangeRaftProgress(repl.RaftStatus(), existingVoters))
 	desc := repl.Desc()
-	// TODO(aayush): Directly removing the voter here is a bit of a missed
-	// opportunity since we could potentially be 1 non-voter short and the
-	// `target` could be a valid store for a non-voter. In such a scenario, we
-	// could save a bunch of work by just performing an atomic demotion of a
-	// voter.
+
 	if err := rq.changeReplicas(
 		ctx,
 		repl,
 		roachpb.MakeReplicationChanges(roachpb.REMOVE_VOTER, removeVoter),
 		desc,
-		kvserverpb.SnapshotRequest_UNKNOWN, // unused
+		kvserverpb.SnapshotRequest_UNKNOWN,
 		kvserverpb.ReasonRangeOverReplicated,
 		details,
 		dryRun,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(121371)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121372)
 	}
+	__antithesis_instrumentation__.Notify(121362)
 	return true, nil
 }
 
@@ -1109,6 +1257,7 @@ func (rq *replicateQueue) removeNonVoter(
 	existingVoters, existingNonVoters []roachpb.ReplicaDescriptor,
 	dryRun bool,
 ) (requeue bool, _ error) {
+	__antithesis_instrumentation__.Notify(121373)
 
 	desc, conf := repl.DescAndSpanConfig()
 	removeNonVoter, details, err := rq.allocator.RemoveNonVoter(
@@ -1120,11 +1269,19 @@ func (rq *replicateQueue) removeNonVoter(
 		rq.allocator.scorerOptions(),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121377)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121378)
 	}
+	__antithesis_instrumentation__.Notify(121374)
 	if !dryRun {
+		__antithesis_instrumentation__.Notify(121379)
 		rq.metrics.trackRemoveMetric(nonVoterTarget, alive)
+	} else {
+		__antithesis_instrumentation__.Notify(121380)
 	}
+	__antithesis_instrumentation__.Notify(121375)
 	log.VEventf(ctx, 1, "removing non-voting replica %+v due to over-replication: %s",
 		removeNonVoter, rangeRaftProgress(repl.RaftStatus(), existingVoters))
 	target := roachpb.ReplicationTarget{
@@ -1142,50 +1299,74 @@ func (rq *replicateQueue) removeNonVoter(
 		details,
 		dryRun,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(121381)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121382)
 	}
+	__antithesis_instrumentation__.Notify(121376)
 	return true, nil
 }
 
 func (rq *replicateQueue) removeDecommissioning(
 	ctx context.Context, repl *Replica, targetType targetReplicaType, dryRun bool,
 ) (requeue bool, _ error) {
+	__antithesis_instrumentation__.Notify(121383)
 	desc := repl.Desc()
 	var decommissioningReplicas []roachpb.ReplicaDescriptor
 	switch targetType {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(121390)
 		decommissioningReplicas = rq.allocator.storePool.decommissioningReplicas(
 			desc.Replicas().VoterDescriptors(),
 		)
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(121391)
 		decommissioningReplicas = rq.allocator.storePool.decommissioningReplicas(
 			desc.Replicas().NonVoterDescriptors(),
 		)
 	default:
+		__antithesis_instrumentation__.Notify(121392)
 		panic(fmt.Sprintf("unknown targetReplicaType: %s", targetType))
 	}
+	__antithesis_instrumentation__.Notify(121384)
 
 	if len(decommissioningReplicas) == 0 {
+		__antithesis_instrumentation__.Notify(121393)
 		log.VEventf(ctx, 1, "range of %[1]ss %[2]s was identified as having decommissioning %[1]ss, "+
 			"but no decommissioning %[1]ss were found", targetType, repl)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(121394)
 	}
+	__antithesis_instrumentation__.Notify(121385)
 	decommissioningReplica := decommissioningReplicas[0]
 
 	done, err := rq.maybeTransferLeaseAway(
-		ctx, repl, decommissioningReplica.StoreID, dryRun, nil /* canTransferLease */)
+		ctx, repl, decommissioningReplica.StoreID, dryRun, nil)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(121395)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121396)
 	}
+	__antithesis_instrumentation__.Notify(121386)
 	if done {
-		// Not leaseholder any more.
-		return false, nil
-	}
+		__antithesis_instrumentation__.Notify(121397)
 
-	// Remove the decommissioning replica.
-	if !dryRun {
-		rq.metrics.trackRemoveMetric(targetType, decommissioning)
+		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(121398)
 	}
+	__antithesis_instrumentation__.Notify(121387)
+
+	if !dryRun {
+		__antithesis_instrumentation__.Notify(121399)
+		rq.metrics.trackRemoveMetric(targetType, decommissioning)
+	} else {
+		__antithesis_instrumentation__.Notify(121400)
+	}
+	__antithesis_instrumentation__.Notify(121388)
 	log.VEventf(ctx, 1, "removing decommissioning %s %+v from store", targetType, decommissioningReplica)
 	target := roachpb.ReplicationTarget{
 		NodeID:  decommissioningReplica.NodeID,
@@ -1196,12 +1377,16 @@ func (rq *replicateQueue) removeDecommissioning(
 		repl,
 		roachpb.MakeReplicationChanges(targetType.RemoveChangeType(), target),
 		desc,
-		kvserverpb.SnapshotRequest_UNKNOWN, // unused
+		kvserverpb.SnapshotRequest_UNKNOWN,
 		kvserverpb.ReasonStoreDecommissioning, "", dryRun,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(121401)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121402)
 	}
-	// We removed a replica, so check if there's more to do.
+	__antithesis_instrumentation__.Notify(121389)
+
 	return true, nil
 }
 
@@ -1212,8 +1397,10 @@ func (rq *replicateQueue) removeDead(
 	targetType targetReplicaType,
 	dryRun bool,
 ) (requeue bool, _ error) {
+	__antithesis_instrumentation__.Notify(121403)
 	desc := repl.Desc()
 	if len(deadReplicas) == 0 {
+		__antithesis_instrumentation__.Notify(121407)
 		log.VEventf(
 			ctx,
 			1,
@@ -1222,58 +1409,72 @@ func (rq *replicateQueue) removeDead(
 			repl,
 		)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(121408)
 	}
+	__antithesis_instrumentation__.Notify(121404)
 	deadReplica := deadReplicas[0]
 	if !dryRun {
+		__antithesis_instrumentation__.Notify(121409)
 		rq.metrics.trackRemoveMetric(targetType, dead)
+	} else {
+		__antithesis_instrumentation__.Notify(121410)
 	}
+	__antithesis_instrumentation__.Notify(121405)
 	log.VEventf(ctx, 1, "removing dead %s %+v from store", targetType, deadReplica)
 	target := roachpb.ReplicationTarget{
 		NodeID:  deadReplica.NodeID,
 		StoreID: deadReplica.StoreID,
 	}
 
-	// NB: When removing a dead voter, we don't check whether to transfer the
-	// lease away because if the removal target is dead, it's not the voter being
-	// removed (and if for some reason that happens, the removal is simply going
-	// to fail).
 	if err := rq.changeReplicas(
 		ctx,
 		repl,
 		roachpb.MakeReplicationChanges(targetType.RemoveChangeType(), target),
 		desc,
-		kvserverpb.SnapshotRequest_UNKNOWN, // unused
+		kvserverpb.SnapshotRequest_UNKNOWN,
 		kvserverpb.ReasonStoreDead,
 		"",
 		dryRun,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(121411)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121412)
 	}
+	__antithesis_instrumentation__.Notify(121406)
 	return true, nil
 }
 
 func (rq *replicateQueue) removeLearner(
 	ctx context.Context, repl *Replica, dryRun bool,
 ) (requeue bool, _ error) {
+	__antithesis_instrumentation__.Notify(121413)
 	desc := repl.Desc()
 	learnerReplicas := desc.Replicas().LearnerDescriptors()
 	if len(learnerReplicas) == 0 {
+		__antithesis_instrumentation__.Notify(121417)
 		log.VEventf(ctx, 1, "range of replica %s was identified as having learner replicas, "+
 			"but no learner replicas were found", repl)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(121418)
 	}
+	__antithesis_instrumentation__.Notify(121414)
 	learnerReplica := learnerReplicas[0]
 	if !dryRun {
+		__antithesis_instrumentation__.Notify(121419)
 		rq.metrics.RemoveLearnerReplicaCount.Inc(1)
+	} else {
+		__antithesis_instrumentation__.Notify(121420)
 	}
+	__antithesis_instrumentation__.Notify(121415)
 	log.VEventf(ctx, 1, "removing learner replica %+v from store", learnerReplica)
 	target := roachpb.ReplicationTarget{
 		NodeID:  learnerReplica.NodeID,
 		StoreID: learnerReplica.StoreID,
 	}
-	// NB: we don't check whether to transfer the lease away because we're very unlikely
-	// to be the learner (and if so, we don't have the lease any more, so after the removal
-	// fails the situation will have rectified itself).
+
 	if err := rq.changeReplicas(
 		ctx,
 		repl,
@@ -1284,8 +1485,12 @@ func (rq *replicateQueue) removeLearner(
 		"",
 		dryRun,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(121421)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121422)
 	}
+	__antithesis_instrumentation__.Notify(121416)
 	return true, nil
 }
 
@@ -1296,14 +1501,20 @@ func (rq *replicateQueue) considerRebalance(
 	canTransferLeaseFrom func(ctx context.Context, repl *Replica) bool,
 	scatter, dryRun bool,
 ) (requeue bool, _ error) {
+	__antithesis_instrumentation__.Notify(121423)
 	desc, conf := repl.DescAndSpanConfig()
 	rebalanceTargetType := voterTarget
 
 	scorerOpts := scorerOptions(rq.allocator.scorerOptions())
 	if scatter {
+		__antithesis_instrumentation__.Notify(121427)
 		scorerOpts = rq.allocator.scorerOptionsForScatter()
+	} else {
+		__antithesis_instrumentation__.Notify(121428)
 	}
+	__antithesis_instrumentation__.Notify(121424)
 	if !rq.store.TestingKnobs().DisableReplicaRebalancing {
+		__antithesis_instrumentation__.Notify(121429)
 		rangeUsageInfo := rangeUsageInfoForRepl(repl)
 		addTarget, removeTarget, details, ok := rq.allocator.RebalanceVoter(
 			ctx,
@@ -1316,8 +1527,8 @@ func (rq *replicateQueue) considerRebalance(
 			scorerOpts,
 		)
 		if !ok {
-			// If there was nothing to do for the set of voting replicas on this
-			// range, attempt to rebalance non-voters.
+			__antithesis_instrumentation__.Notify(121432)
+
 			log.VEventf(ctx, 1, "no suitable rebalance target for voters")
 			addTarget, removeTarget, details, ok = rq.allocator.RebalanceNonVoter(
 				ctx,
@@ -1330,42 +1541,71 @@ func (rq *replicateQueue) considerRebalance(
 				scorerOpts,
 			)
 			rebalanceTargetType = nonVoterTarget
+		} else {
+			__antithesis_instrumentation__.Notify(121433)
 		}
+		__antithesis_instrumentation__.Notify(121430)
 
-		// Determines whether we can remove the leaseholder without first
-		// transferring the lease away
-		lhRemovalAllowed := addTarget != (roachpb.ReplicationTarget{}) &&
-			repl.store.cfg.Settings.Version.IsActive(ctx, clusterversion.EnableLeaseHolderRemoval)
+		lhRemovalAllowed := addTarget != (roachpb.ReplicationTarget{}) && func() bool {
+			__antithesis_instrumentation__.Notify(121434)
+			return repl.store.cfg.Settings.Version.IsActive(ctx, clusterversion.EnableLeaseHolderRemoval) == true
+		}() == true
 		lhBeingRemoved := removeTarget.StoreID == repl.store.StoreID()
 
 		if !ok {
+			__antithesis_instrumentation__.Notify(121435)
 			log.VEventf(ctx, 1, "no suitable rebalance target for non-voters")
-		} else if !lhRemovalAllowed {
-			if done, err := rq.maybeTransferLeaseAway(
-				ctx, repl, removeTarget.StoreID, dryRun, canTransferLeaseFrom,
-			); err != nil {
-				log.VEventf(ctx, 1, "want to remove self, but failed to transfer lease away: %s", err)
-				ok = false
-			} else if done {
-				// Lease is now elsewhere, so we're not in charge any more.
-				return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(121436)
+			if !lhRemovalAllowed {
+				__antithesis_instrumentation__.Notify(121437)
+				if done, err := rq.maybeTransferLeaseAway(
+					ctx, repl, removeTarget.StoreID, dryRun, canTransferLeaseFrom,
+				); err != nil {
+					__antithesis_instrumentation__.Notify(121438)
+					log.VEventf(ctx, 1, "want to remove self, but failed to transfer lease away: %s", err)
+					ok = false
+				} else {
+					__antithesis_instrumentation__.Notify(121439)
+					if done {
+						__antithesis_instrumentation__.Notify(121440)
+
+						return false, nil
+					} else {
+						__antithesis_instrumentation__.Notify(121441)
+					}
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(121442)
 			}
 		}
+		__antithesis_instrumentation__.Notify(121431)
 		if ok {
-			// If we have a valid rebalance action (ok == true) and we haven't
-			// transferred our lease away, execute the rebalance.
+			__antithesis_instrumentation__.Notify(121443)
+
 			chgs, performingSwap, err := replicationChangesForRebalance(ctx, desc, len(existingVoters), addTarget,
 				removeTarget, rebalanceTargetType)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(121447)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(121448)
 			}
+			__antithesis_instrumentation__.Notify(121444)
 			if !dryRun {
+				__antithesis_instrumentation__.Notify(121449)
 				rq.metrics.trackRebalanceReplicaCount(rebalanceTargetType)
 				if performingSwap {
+					__antithesis_instrumentation__.Notify(121450)
 					rq.metrics.VoterDemotionsCount.Inc(1)
 					rq.metrics.NonVoterPromotionsCount.Inc(1)
+				} else {
+					__antithesis_instrumentation__.Notify(121451)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(121452)
 			}
+			__antithesis_instrumentation__.Notify(121445)
 			log.VEventf(ctx,
 				1,
 				"rebalancing %s %+v to %+v: %s",
@@ -1384,23 +1624,31 @@ func (rq *replicateQueue) considerRebalance(
 				details,
 				dryRun,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(121453)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(121454)
 			}
-			// Unless just removed myself (the leaseholder), always requeue to see
-			// if more work needs to be done. If leaseholder is removed, someone
-			// else will take over.
+			__antithesis_instrumentation__.Notify(121446)
+
 			return !lhBeingRemoved, nil
+		} else {
+			__antithesis_instrumentation__.Notify(121455)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(121456)
 	}
+	__antithesis_instrumentation__.Notify(121425)
 
 	if !canTransferLeaseFrom(ctx, repl) {
-		// No action was necessary and no rebalance target was found. Return
-		// without re-queuing this replica.
-		return false, nil
-	}
+		__antithesis_instrumentation__.Notify(121457)
 
-	// We require the lease in order to process replicas, so
-	// repl.store.StoreID() corresponds to the lease-holder's store ID.
+		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(121458)
+	}
+	__antithesis_instrumentation__.Notify(121426)
+
 	_, err := rq.shedLease(
 		ctx,
 		repl,
@@ -1417,12 +1665,6 @@ func (rq *replicateQueue) considerRebalance(
 
 }
 
-// replicationChangesForRebalance returns a list of ReplicationChanges to
-// execute for a rebalancing decision made by the allocator.
-//
-// This function assumes that `addTarget` and `removeTarget` are produced by the
-// allocator (i.e. they satisfy replica `constraints` and potentially
-// `voter_constraints` if we're operating over voter targets).
 func replicationChangesForRebalance(
 	ctx context.Context,
 	desc *roachpb.RangeDescriptor,
@@ -1430,94 +1672,79 @@ func replicationChangesForRebalance(
 	addTarget, removeTarget roachpb.ReplicationTarget,
 	rebalanceTargetType targetReplicaType,
 ) (chgs []roachpb.ReplicationChange, performingSwap bool, err error) {
-	if rebalanceTargetType == voterTarget && numExistingVoters == 1 {
-		// If there's only one replica, the removal target is the
-		// leaseholder and this is unsupported and will fail. However,
-		// this is also the only way to rebalance in a single-replica
-		// range. If we try the atomic swap here, we'll fail doing
-		// nothing, and so we stay locked into the current distribution
-		// of replicas. (Note that maybeTransferLeaseAway above will not
-		// have found a target, and so will have returned (false, nil).
-		//
-		// Do the best thing we can, which is carry out the addition
-		// only, which should succeed, and the next time we touch this
-		// range, we will have one more replica and hopefully it will
-		// take the lease and remove the current leaseholder.
-		//
-		// It's possible that "rebalancing deadlock" can occur in other
-		// scenarios, it's really impossible to tell from the code given
-		// the constraints we support. However, the lease transfer often
-		// does not happen spuriously, and we can't enter dangerous
-		// configurations sporadically, so this code path is only hit
-		// when we know it's necessary, picking the smaller of two evils.
-		//
-		// See https://github.com/cockroachdb/cockroach/issues/40333.
+	__antithesis_instrumentation__.Notify(121459)
+	if rebalanceTargetType == voterTarget && func() bool {
+		__antithesis_instrumentation__.Notify(121462)
+		return numExistingVoters == 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(121463)
+
 		chgs = []roachpb.ReplicationChange{
 			{ChangeType: roachpb.ADD_VOTER, Target: addTarget},
 		}
 		log.VEventf(ctx, 1, "can't swap replica due to lease; falling back to add")
 		return chgs, false, err
+	} else {
+		__antithesis_instrumentation__.Notify(121464)
 	}
+	__antithesis_instrumentation__.Notify(121460)
 
 	rdesc, found := desc.GetReplicaDescriptor(addTarget.StoreID)
 	switch rebalanceTargetType {
 	case voterTarget:
-		// Check if the target being added already has a non-voting replica.
-		if found && rdesc.GetType() == roachpb.NON_VOTER {
-			// If the receiving store already has a non-voting replica, we *must*
-			// execute a swap between that non-voting replica and the voting replica
-			// we're trying to move to it. This swap is executed atomically via
-			// joint-consensus.
-			//
-			// NB: Since voting replicas abide by both the overall `constraints` and
-			// the `voter_constraints`, it is copacetic to make this swap since:
-			//
-			// 1. `addTarget` must already be a valid target for a voting replica
-			// (i.e. it must already satisfy both *constraints fields) since an
-			// allocator method (`allocateTarget..` or `Rebalance{Non}Voter`) just
-			// handed it to us.
-			// 2. `removeTarget` may or may not be a valid target for a non-voting
-			// replica, but `considerRebalance` takes care to `requeue` the current
-			// replica into the replicateQueue. So we expect the replicateQueue's next
-			// attempt at rebalancing this range to rebalance the non-voter if it ends
-			// up being in violation of the range's constraints.
+		__antithesis_instrumentation__.Notify(121465)
+
+		if found && func() bool {
+			__antithesis_instrumentation__.Notify(121469)
+			return rdesc.GetType() == roachpb.NON_VOTER == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(121470)
+
 			promo := roachpb.ReplicationChangesForPromotion(addTarget)
 			demo := roachpb.ReplicationChangesForDemotion(removeTarget)
 			chgs = append(promo, demo...)
 			performingSwap = true
-		} else if found {
-			return nil, false, errors.AssertionFailedf(
-				"programming error:"+
-					" store being rebalanced to(%s) already has a voting replica", addTarget.StoreID,
-			)
 		} else {
-			// We have a replica to remove and one we can add, so let's swap them out.
-			chgs = []roachpb.ReplicationChange{
-				{ChangeType: roachpb.ADD_VOTER, Target: addTarget},
-				{ChangeType: roachpb.REMOVE_VOTER, Target: removeTarget},
+			__antithesis_instrumentation__.Notify(121471)
+			if found {
+				__antithesis_instrumentation__.Notify(121472)
+				return nil, false, errors.AssertionFailedf(
+					"programming error:"+
+						" store being rebalanced to(%s) already has a voting replica", addTarget.StoreID,
+				)
+			} else {
+				__antithesis_instrumentation__.Notify(121473)
+
+				chgs = []roachpb.ReplicationChange{
+					{ChangeType: roachpb.ADD_VOTER, Target: addTarget},
+					{ChangeType: roachpb.REMOVE_VOTER, Target: removeTarget},
+				}
 			}
 		}
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(121466)
 		if found {
-			// Non-voters should not consider any of the range's existing stores as
-			// valid candidates. If we get here, we must have raced with another
-			// rebalancing decision.
+			__antithesis_instrumentation__.Notify(121474)
+
 			return nil, false, errors.AssertionFailedf(
 				"invalid rebalancing decision: trying to"+
 					" move non-voter to a store that already has a replica %s for the range", rdesc,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(121475)
 		}
+		__antithesis_instrumentation__.Notify(121467)
 		chgs = []roachpb.ReplicationChange{
 			{ChangeType: roachpb.ADD_NON_VOTER, Target: addTarget},
 			{ChangeType: roachpb.REMOVE_NON_VOTER, Target: removeTarget},
 		}
+	default:
+		__antithesis_instrumentation__.Notify(121468)
 	}
+	__antithesis_instrumentation__.Notify(121461)
 	return chgs, performingSwap, nil
 }
 
-// transferLeaseGoal dictates whether a call to TransferLeaseTarget should
-// improve locality of access, convergence of lease counts or convergence of
-// QPS.
 type transferLeaseGoal int
 
 const (
@@ -1528,17 +1755,13 @@ const (
 
 type transferLeaseOptions struct {
 	goal transferLeaseGoal
-	// checkTransferLeaseSource, when false, tells `TransferLeaseTarget` to
-	// exclude the current leaseholder from consideration as a potential target
-	// (i.e. when the caller explicitly wants to shed its lease away).
+
 	checkTransferLeaseSource bool
-	// checkCandidateFullness, when false, tells `TransferLeaseTarget`
-	// to disregard the existing lease counts on candidates.
+
 	checkCandidateFullness bool
 	dryRun                 bool
 }
 
-// leaseTransferOutcome represents the result of shedLease().
 type leaseTransferOutcome int
 
 const (
@@ -1549,23 +1772,26 @@ const (
 )
 
 func (o leaseTransferOutcome) String() string {
+	__antithesis_instrumentation__.Notify(121476)
 	switch o {
 	case transferErr:
+		__antithesis_instrumentation__.Notify(121477)
 		return "err"
 	case transferOK:
+		__antithesis_instrumentation__.Notify(121478)
 		return "ok"
 	case noTransferDryRun:
+		__antithesis_instrumentation__.Notify(121479)
 		return "no transfer; dry run"
 	case noSuitableTarget:
+		__antithesis_instrumentation__.Notify(121480)
 		return "no suitable transfer target found"
 	default:
+		__antithesis_instrumentation__.Notify(121481)
 		return fmt.Sprintf("unexpected status value: %d", o)
 	}
 }
 
-// shedLease takes in a leaseholder replica, looks for a target for transferring
-// the lease and, if a suitable target is found (e.g. alive, not draining),
-// transfers the lease away.
 func (rq *replicateQueue) shedLease(
 	ctx context.Context,
 	repl *Replica,
@@ -1573,44 +1799,65 @@ func (rq *replicateQueue) shedLease(
 	conf roachpb.SpanConfig,
 	opts transferLeaseOptions,
 ) (leaseTransferOutcome, error) {
-	// Learner replicas aren't allowed to become the leaseholder or raft leader,
-	// so only consider the `VoterDescriptors` replicas.
+	__antithesis_instrumentation__.Notify(121482)
+
 	target := rq.allocator.TransferLeaseTarget(
 		ctx,
 		conf,
 		desc.Replicas().VoterDescriptors(),
 		repl,
 		repl.leaseholderStats,
-		false, /* forceDecisionWithoutStats */
+		false,
 		opts,
 	)
 	if target == (roachpb.ReplicaDescriptor{}) {
+		__antithesis_instrumentation__.Notify(121487)
 		return noSuitableTarget, nil
+	} else {
+		__antithesis_instrumentation__.Notify(121488)
 	}
+	__antithesis_instrumentation__.Notify(121483)
 
 	if opts.dryRun {
+		__antithesis_instrumentation__.Notify(121489)
 		log.VEventf(ctx, 1, "transferring lease to s%d", target.StoreID)
 		return noTransferDryRun, nil
+	} else {
+		__antithesis_instrumentation__.Notify(121490)
 	}
+	__antithesis_instrumentation__.Notify(121484)
 
 	avgQPS, qpsMeasurementDur := repl.leaseholderStats.avgQPS()
 	if qpsMeasurementDur < MinStatsDuration {
+		__antithesis_instrumentation__.Notify(121491)
 		avgQPS = 0
+	} else {
+		__antithesis_instrumentation__.Notify(121492)
 	}
+	__antithesis_instrumentation__.Notify(121485)
 	if err := rq.transferLease(ctx, repl, target, avgQPS); err != nil {
+		__antithesis_instrumentation__.Notify(121493)
 		return transferErr, err
+	} else {
+		__antithesis_instrumentation__.Notify(121494)
 	}
+	__antithesis_instrumentation__.Notify(121486)
 	return transferOK, nil
 }
 
 func (rq *replicateQueue) transferLease(
 	ctx context.Context, repl *Replica, target roachpb.ReplicaDescriptor, rangeQPS float64,
 ) error {
+	__antithesis_instrumentation__.Notify(121495)
 	rq.metrics.TransferLeaseCount.Inc(1)
 	log.VEventf(ctx, 1, "transferring lease to s%d", target.StoreID)
 	if err := repl.AdminTransferLease(ctx, target.StoreID); err != nil {
+		__antithesis_instrumentation__.Notify(121497)
 		return errors.Wrapf(err, "%s: unable to transfer lease to s%d", repl, target.StoreID)
+	} else {
+		__antithesis_instrumentation__.Notify(121498)
 	}
+	__antithesis_instrumentation__.Notify(121496)
 	rq.lastLeaseTransfer.Store(timeutil.Now())
 	rq.allocator.storePool.updateLocalStoresAfterLeaseTransfer(
 		repl.store.StoreID(), target.StoreID, rangeQPS)
@@ -1627,74 +1874,110 @@ func (rq *replicateQueue) changeReplicas(
 	details string,
 	dryRun bool,
 ) error {
+	__antithesis_instrumentation__.Notify(121499)
 	if dryRun {
+		__antithesis_instrumentation__.Notify(121503)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(121504)
 	}
-	// NB: this calls the impl rather than ChangeReplicas because
-	// the latter traps tests that try to call it while the replication
-	// queue is active.
+	__antithesis_instrumentation__.Notify(121500)
+
 	if _, err := repl.changeReplicasImpl(ctx, desc, priority, reason, details, chgs); err != nil {
+		__antithesis_instrumentation__.Notify(121505)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(121506)
 	}
+	__antithesis_instrumentation__.Notify(121501)
 	rangeUsageInfo := rangeUsageInfoForRepl(repl)
 	for _, chg := range chgs {
+		__antithesis_instrumentation__.Notify(121507)
 		rq.allocator.storePool.updateLocalStoreAfterRebalance(
 			chg.Target.StoreID, rangeUsageInfo, chg.ChangeType)
 	}
+	__antithesis_instrumentation__.Notify(121502)
 	return nil
 }
 
-// canTransferLeaseFrom checks is a lease can be transferred from the specified
-// replica. It considers two factors if the replica is in -conformance with
-// lease preferences and the last time a transfer occurred to avoid thrashing.
 func (rq *replicateQueue) canTransferLeaseFrom(ctx context.Context, repl *Replica) bool {
-	// Do a best effort check to see if this replica conforms to the configured
-	// lease preferences (if any), if it does not we want to encourage more
-	// aggressive lease movement and not delay it.
+	__antithesis_instrumentation__.Notify(121508)
+
 	respectsLeasePreferences, err := repl.checkLeaseRespectsPreferences(ctx)
-	if err == nil && !respectsLeasePreferences {
+	if err == nil && func() bool {
+		__antithesis_instrumentation__.Notify(121511)
+		return !respectsLeasePreferences == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(121512)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(121513)
 	}
+	__antithesis_instrumentation__.Notify(121509)
 	if lastLeaseTransfer := rq.lastLeaseTransfer.Load(); lastLeaseTransfer != nil {
+		__antithesis_instrumentation__.Notify(121514)
 		minInterval := MinLeaseTransferInterval.Get(&rq.store.cfg.Settings.SV)
 		return timeutil.Since(lastLeaseTransfer.(time.Time)) > minInterval
+	} else {
+		__antithesis_instrumentation__.Notify(121515)
 	}
+	__antithesis_instrumentation__.Notify(121510)
 	return true
 }
 
 func (*replicateQueue) timer(_ time.Duration) time.Duration {
+	__antithesis_instrumentation__.Notify(121516)
 	return replicateQueueTimerDuration
 }
 
-// purgatoryChan returns the replicate queue's store update channel.
 func (rq *replicateQueue) purgatoryChan() <-chan time.Time {
+	__antithesis_instrumentation__.Notify(121517)
 	return rq.updateChan
 }
 
-// rangeRaftStatus pretty-prints the Raft progress (i.e. Raft log position) of
-// the replicas.
 func rangeRaftProgress(raftStatus *raft.Status, replicas []roachpb.ReplicaDescriptor) string {
+	__antithesis_instrumentation__.Notify(121518)
 	if raftStatus == nil {
+		__antithesis_instrumentation__.Notify(121521)
 		return "[no raft status]"
-	} else if len(raftStatus.Progress) == 0 {
-		return "[no raft progress]"
+	} else {
+		__antithesis_instrumentation__.Notify(121522)
+		if len(raftStatus.Progress) == 0 {
+			__antithesis_instrumentation__.Notify(121523)
+			return "[no raft progress]"
+		} else {
+			__antithesis_instrumentation__.Notify(121524)
+		}
 	}
+	__antithesis_instrumentation__.Notify(121519)
 	var buf bytes.Buffer
 	buf.WriteString("[")
 	for i, r := range replicas {
+		__antithesis_instrumentation__.Notify(121525)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(121528)
 			buf.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(121529)
 		}
+		__antithesis_instrumentation__.Notify(121526)
 		fmt.Fprintf(&buf, "%d", r.ReplicaID)
 		if uint64(r.ReplicaID) == raftStatus.Lead {
+			__antithesis_instrumentation__.Notify(121530)
 			buf.WriteString("*")
+		} else {
+			__antithesis_instrumentation__.Notify(121531)
 		}
+		__antithesis_instrumentation__.Notify(121527)
 		if progress, ok := raftStatus.Progress[uint64(r.ReplicaID)]; ok {
+			__antithesis_instrumentation__.Notify(121532)
 			fmt.Fprintf(&buf, ":%d", progress.Match)
 		} else {
+			__antithesis_instrumentation__.Notify(121533)
 			buf.WriteString(":?")
 		}
 	}
+	__antithesis_instrumentation__.Notify(121520)
 	buf.WriteString("]")
 	return buf.String()
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanlatch
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,34 +20,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// A Manager maintains an interval tree of key and key range latches. Latch
-// acquisitions affecting keys or key ranges must wait on already-acquired
-// latches which overlap their key ranges to be released.
-//
-// Latch acquisition attempts invoke Manager.Acquire and provide details about
-// the spans that they plan to touch and the timestamps they plan to touch them
-// at. Acquire inserts the latch into the Manager's tree and waits on
-// prerequisite latch attempts that are already tracked by the Manager.
-// Manager.Acquire blocks until the latch acquisition completes, at which point
-// it returns a Guard, which is scoped to the lifetime of the latch ownership.
-//
-// When the latches are no longer needed, they are released by invoking
-// Manager.Release with the Guard returned when the latches were originally
-// acquired. Doing so removes the latches from the Manager's tree and signals to
-// dependent latch acquisitions that they no longer need to wait on the released
-// latches.
-//
-// Manager is safe for concurrent use by multiple goroutines. Concurrent access
-// is made efficient using a copy-on-write technique to capture immutable
-// snapshots of the type's inner btree structures. Using this strategy, tasks
-// requiring mutual exclusion are limited to updating the type's trees and
-// grabbing snapshots. Notably, scanning for and waiting on prerequisite latches
-// is performed outside of the mutual exclusion zone. This means that the work
-// performed under lock is linear with respect to the number of spans that a
-// latch acquisition declares but NOT linear with respect to the number of other
-// latch attempts that it will wait on.
-//
-// Manager's zero value can be used directly.
 type Manager struct {
 	mu      syncutil.Mutex
 	idAlloc uint64
@@ -65,190 +29,205 @@ type Manager struct {
 	slowReqs *metric.Gauge
 }
 
-// scopedManager is a latch manager scoped to either local or global keys.
-// See spanset.SpanScope.
 type scopedManager struct {
 	readSet latchList
 	trees   [spanset.NumSpanAccess]btree
 }
 
-// Make returns an initialized Manager. Using this constructor is optional as
-// the type's zero value is valid to use directly.
 func Make(stopper *stop.Stopper, slowReqs *metric.Gauge) Manager {
+	__antithesis_instrumentation__.Notify(122730)
 	return Manager{
 		stopper:  stopper,
 		slowReqs: slowReqs,
 	}
 }
 
-// latches are stored in the Manager's btrees. They represent the latching
-// of a single key span.
 type latch struct {
 	*signals
 	id         uint64
 	span       roachpb.Span
 	ts         hlc.Timestamp
-	next, prev *latch // readSet linked-list.
+	next, prev *latch
 }
 
 func (la *latch) inReadSet() bool {
+	__antithesis_instrumentation__.Notify(122731)
 	return la.next != nil
 }
 
-//go:generate ../../../util/interval/generic/gen.sh *latch spanlatch
-
-// Methods required by util/interval/generic type contract.
-func (la *latch) ID() uint64         { return la.id }
-func (la *latch) Key() []byte        { return la.span.Key }
-func (la *latch) EndKey() []byte     { return la.span.EndKey }
-func (la *latch) String() string     { return fmt.Sprintf("%s@%s", la.span, la.ts) }
-func (la *latch) New() *latch        { return new(latch) }
-func (la *latch) SetID(v uint64)     { la.id = v }
-func (la *latch) SetKey(v []byte)    { la.span.Key = v }
-func (la *latch) SetEndKey(v []byte) { la.span.EndKey = v }
+func (la *latch) ID() uint64  { __antithesis_instrumentation__.Notify(122732); return la.id }
+func (la *latch) Key() []byte { __antithesis_instrumentation__.Notify(122733); return la.span.Key }
+func (la *latch) EndKey() []byte {
+	__antithesis_instrumentation__.Notify(122734)
+	return la.span.EndKey
+}
+func (la *latch) String() string {
+	__antithesis_instrumentation__.Notify(122735)
+	return fmt.Sprintf("%s@%s", la.span, la.ts)
+}
+func (la *latch) New() *latch     { __antithesis_instrumentation__.Notify(122736); return new(latch) }
+func (la *latch) SetID(v uint64)  { __antithesis_instrumentation__.Notify(122737); la.id = v }
+func (la *latch) SetKey(v []byte) { __antithesis_instrumentation__.Notify(122738); la.span.Key = v }
+func (la *latch) SetEndKey(v []byte) {
+	__antithesis_instrumentation__.Notify(122739)
+	la.span.EndKey = v
+}
 
 type signals struct {
 	done   signal
 	poison idempotentSignal
 }
 
-// Guard is a handle to a set of acquired latches. It is returned by
-// Manager.Acquire and accepted by Manager.Release.
 type Guard struct {
 	signals
 	pp poison.Policy
-	// latches [spanset.NumSpanScope][spanset.NumSpanAccess][]latch, but half the size.
+
 	latchesPtrs [spanset.NumSpanScope][spanset.NumSpanAccess]unsafe.Pointer
 	latchesLens [spanset.NumSpanScope][spanset.NumSpanAccess]int32
-	// Non-nil only when AcquireOptimistic has retained the snapshot for later
-	// checking of conflicts, and waiting.
+
 	snap *snapshot
 }
 
 func (lg *Guard) latches(s spanset.SpanScope, a spanset.SpanAccess) []latch {
+	__antithesis_instrumentation__.Notify(122740)
 	len := lg.latchesLens[s][a]
 	if len == 0 {
+		__antithesis_instrumentation__.Notify(122742)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(122743)
 	}
+	__antithesis_instrumentation__.Notify(122741)
 	const maxArrayLen = 1 << 31
 	return (*[maxArrayLen]latch)(lg.latchesPtrs[s][a])[:len:len]
 }
 
 func (lg *Guard) setLatches(s spanset.SpanScope, a spanset.SpanAccess, latches []latch) {
+	__antithesis_instrumentation__.Notify(122744)
 	lg.latchesPtrs[s][a] = unsafe.Pointer(&latches[0])
 	lg.latchesLens[s][a] = int32(len(latches))
 }
 
 func allocGuardAndLatches(nLatches int) (*Guard, []latch) {
-	// Guard would be an ideal candidate for object pooling, but without
-	// reference counting its latches we can't know whether they're still
-	// referenced by other tree snapshots. The latches hold a reference to
-	// the signal living on the Guard, so the guard can't be recycled while
-	// latches still point to it.
+	__antithesis_instrumentation__.Notify(122745)
+
 	if nLatches <= 1 {
+		__antithesis_instrumentation__.Notify(122747)
 		alloc := new(struct {
 			g       Guard
 			latches [1]latch
 		})
 		return &alloc.g, alloc.latches[:nLatches]
-	} else if nLatches <= 2 {
-		alloc := new(struct {
-			g       Guard
-			latches [2]latch
-		})
-		return &alloc.g, alloc.latches[:nLatches]
-	} else if nLatches <= 4 {
-		alloc := new(struct {
-			g       Guard
-			latches [4]latch
-		})
-		return &alloc.g, alloc.latches[:nLatches]
-	} else if nLatches <= 8 {
-		alloc := new(struct {
-			g       Guard
-			latches [8]latch
-		})
-		return &alloc.g, alloc.latches[:nLatches]
+	} else {
+		__antithesis_instrumentation__.Notify(122748)
+		if nLatches <= 2 {
+			__antithesis_instrumentation__.Notify(122749)
+			alloc := new(struct {
+				g       Guard
+				latches [2]latch
+			})
+			return &alloc.g, alloc.latches[:nLatches]
+		} else {
+			__antithesis_instrumentation__.Notify(122750)
+			if nLatches <= 4 {
+				__antithesis_instrumentation__.Notify(122751)
+				alloc := new(struct {
+					g       Guard
+					latches [4]latch
+				})
+				return &alloc.g, alloc.latches[:nLatches]
+			} else {
+				__antithesis_instrumentation__.Notify(122752)
+				if nLatches <= 8 {
+					__antithesis_instrumentation__.Notify(122753)
+					alloc := new(struct {
+						g       Guard
+						latches [8]latch
+					})
+					return &alloc.g, alloc.latches[:nLatches]
+				} else {
+					__antithesis_instrumentation__.Notify(122754)
+				}
+			}
+		}
 	}
+	__antithesis_instrumentation__.Notify(122746)
 	return new(Guard), make([]latch, nLatches)
 }
 
 func newGuard(spans *spanset.SpanSet, pp poison.Policy) *Guard {
+	__antithesis_instrumentation__.Notify(122755)
 	nLatches := spans.Len()
 	guard, latches := allocGuardAndLatches(nLatches)
 	guard.pp = pp
 	for s := spanset.SpanScope(0); s < spanset.NumSpanScope; s++ {
+		__antithesis_instrumentation__.Notify(122758)
 		for a := spanset.SpanAccess(0); a < spanset.NumSpanAccess; a++ {
+			__antithesis_instrumentation__.Notify(122759)
 			ss := spans.GetSpans(a, s)
 			n := len(ss)
 			if n == 0 {
+				__antithesis_instrumentation__.Notify(122762)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(122763)
 			}
+			__antithesis_instrumentation__.Notify(122760)
 
 			ssLatches := latches[:n]
 			for i := range ssLatches {
+				__antithesis_instrumentation__.Notify(122764)
 				latch := &latches[i]
 				latch.span = ss[i].Span
 				latch.signals = &guard.signals
 				latch.ts = ss[i].Timestamp
-				// latch.setID() in Manager.insert, under lock.
+
 			}
+			__antithesis_instrumentation__.Notify(122761)
 			guard.setLatches(s, a, ssLatches)
 			latches = latches[n:]
 		}
 	}
+	__antithesis_instrumentation__.Notify(122756)
 	if len(latches) != 0 {
+		__antithesis_instrumentation__.Notify(122765)
 		panic("alloc too large")
+	} else {
+		__antithesis_instrumentation__.Notify(122766)
 	}
+	__antithesis_instrumentation__.Notify(122757)
 	return guard
 }
 
-// Acquire acquires latches from the Manager for each of the provided spans, at
-// the specified timestamp. In doing so, it waits for latches over all
-// overlapping spans to be released before returning. If the provided context
-// is canceled before the method is done waiting for overlapping latches to
-// be released, it stops waiting and releases all latches that it has already
-// acquired.
-//
-// It returns a Guard which must be provided to Release.
 func (m *Manager) Acquire(
 	ctx context.Context, spans *spanset.SpanSet, pp poison.Policy,
 ) (*Guard, error) {
+	__antithesis_instrumentation__.Notify(122767)
 	lg, snap := m.sequence(spans, pp)
 	defer snap.close()
 
 	err := m.wait(ctx, lg, snap)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(122769)
 		m.Release(lg)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(122770)
 	}
+	__antithesis_instrumentation__.Notify(122768)
 	return lg, nil
 }
 
-// AcquireOptimistic is like Acquire, except it does not wait for latches over
-// overlapping spans to be released before returning. Instead, it
-// optimistically assumes that there are no currently held latches that need
-// to be waited on. This can be verified after the fact by passing the Guard
-// and the spans actually read to CheckOptimisticNoConflicts.
-//
-// Despite existing latches being ignored by this method, future calls to
-// Acquire will observe the latches inserted here and will wait for them to be
-// Released, as usual.
-//
-// The method returns a Guard which must be provided to the
-// CheckOptimisticNoConflicts, Release methods.
 func (m *Manager) AcquireOptimistic(spans *spanset.SpanSet, pp poison.Policy) *Guard {
+	__antithesis_instrumentation__.Notify(122771)
 	lg, snap := m.sequence(spans, pp)
 	lg.snap = &snap
 	return lg
 }
 
-// WaitFor waits for conflicting latches on the spans without adding
-// any latches itself. Fast path for operations that only require past latches
-// to be released without blocking new latches.
 func (m *Manager) WaitFor(ctx context.Context, spans *spanset.SpanSet, pp poison.Policy) error {
-	// The guard is only used to store latches by this request. These latches
-	// are not actually inserted using insertLocked.
+	__antithesis_instrumentation__.Notify(122772)
+
 	lg := newGuard(spans, pp)
 
 	m.mu.Lock()
@@ -259,93 +238,115 @@ func (m *Manager) WaitFor(ctx context.Context, spans *spanset.SpanSet, pp poison
 	return m.wait(ctx, lg, snap)
 }
 
-// CheckOptimisticNoConflicts returns true iff the spans in the provided
-// spanset do not conflict with any existing latches (in the snapshot created
-// in AcquireOptimistic). It must only be called after AcquireOptimistic, and
-// if it returns true, the caller can skip calling WaitUntilAcquired and it is
-// sufficient to only call Release. If it returns false, the caller will
-// typically call WaitUntilAcquired to wait for latch acquisition. It is also
-// acceptable for the caller to skip WaitUntilAcquired and directly call
-// Release, in which case it never held the latches.
 func (m *Manager) CheckOptimisticNoConflicts(lg *Guard, spans *spanset.SpanSet) bool {
+	__antithesis_instrumentation__.Notify(122773)
 	if lg.snap == nil {
+		__antithesis_instrumentation__.Notify(122776)
 		panic(errors.AssertionFailedf("snap must not be nil"))
+	} else {
+		__antithesis_instrumentation__.Notify(122777)
 	}
+	__antithesis_instrumentation__.Notify(122774)
 	snap := lg.snap
 	var search latch
 	for s := spanset.SpanScope(0); s < spanset.NumSpanScope; s++ {
+		__antithesis_instrumentation__.Notify(122778)
 		tr := &snap.trees[s]
 		for a := spanset.SpanAccess(0); a < spanset.NumSpanAccess; a++ {
+			__antithesis_instrumentation__.Notify(122779)
 			ss := spans.GetSpans(a, s)
 			for _, sp := range ss {
+				__antithesis_instrumentation__.Notify(122780)
 				search.span = sp.Span
 				search.ts = sp.Timestamp
 				switch a {
 				case spanset.SpanReadOnly:
-					// Search for writes at equal or lower timestamps.
+					__antithesis_instrumentation__.Notify(122781)
+
 					it := tr[spanset.SpanReadWrite].MakeIter()
 					if overlaps(&it, &search, ignoreLater) {
+						__antithesis_instrumentation__.Notify(122785)
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(122786)
 					}
 				case spanset.SpanReadWrite:
-					// Search for all other writes.
+					__antithesis_instrumentation__.Notify(122782)
+
 					it := tr[spanset.SpanReadWrite].MakeIter()
 					if overlaps(&it, &search, ignoreNothing) {
+						__antithesis_instrumentation__.Notify(122787)
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(122788)
 					}
-					// Search for reads at equal or higher timestamps.
+					__antithesis_instrumentation__.Notify(122783)
+
 					it = tr[spanset.SpanReadOnly].MakeIter()
 					if overlaps(&it, &search, ignoreEarlier) {
+						__antithesis_instrumentation__.Notify(122789)
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(122790)
 					}
 				default:
+					__antithesis_instrumentation__.Notify(122784)
 					panic("unknown access")
 				}
 			}
 		}
 	}
-	// Note that we don't call lg.snap.close() since even when this returns
-	// true, it is acceptable for the caller to call WaitUntilAcquired.
+	__antithesis_instrumentation__.Notify(122775)
+
 	return true
 }
 
 func overlaps(it *iterator, search *latch, ignore ignoreFn) bool {
+	__antithesis_instrumentation__.Notify(122791)
 	for it.FirstOverlap(search); it.Valid(); it.NextOverlap(search) {
-		// The held latch may have already been signaled, but that doesn't allow
-		// us to ignore it, since it could have been held while we were
-		// concurrently evaluating, and we may not have observed the result of
-		// evaluation of that conflicting latch holder.
+		__antithesis_instrumentation__.Notify(122793)
+
 		held := it.Cur()
 		if !ignore(search.ts, held.ts) {
+			__antithesis_instrumentation__.Notify(122794)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(122795)
 		}
 	}
+	__antithesis_instrumentation__.Notify(122792)
 	return false
 }
 
-// WaitUntilAcquired is meant to be called when CheckOptimisticNoConflicts has
-// returned false, and so the caller needs to do pessimistic latching.
 func (m *Manager) WaitUntilAcquired(ctx context.Context, lg *Guard) (*Guard, error) {
+	__antithesis_instrumentation__.Notify(122796)
 	if lg.snap == nil {
+		__antithesis_instrumentation__.Notify(122800)
 		panic(errors.AssertionFailedf("snap must not be nil"))
+	} else {
+		__antithesis_instrumentation__.Notify(122801)
 	}
+	__antithesis_instrumentation__.Notify(122797)
 	defer func() {
+		__antithesis_instrumentation__.Notify(122802)
 		lg.snap.close()
 		lg.snap = nil
 	}()
+	__antithesis_instrumentation__.Notify(122798)
 	err := m.wait(ctx, lg, *lg.snap)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(122803)
 		m.Release(lg)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(122804)
 	}
+	__antithesis_instrumentation__.Notify(122799)
 	return lg, nil
 }
 
-// sequence locks the manager, captures an immutable snapshot, inserts latches
-// for each of the specified spans into the manager's interval trees, and
-// unlocks the manager. The role of the method is to sequence latch acquisition
-// attempts.
 func (m *Manager) sequence(spans *spanset.SpanSet, pp poison.Policy) (*Guard, snapshot) {
+	__antithesis_instrumentation__.Notify(122805)
 	lg := newGuard(spans, pp)
 
 	m.mu.Lock()
@@ -355,69 +356,85 @@ func (m *Manager) sequence(spans *spanset.SpanSet, pp poison.Policy) (*Guard, sn
 	return lg, snap
 }
 
-// snapshot is an immutable view into the latch manager's state.
 type snapshot struct {
 	trees [spanset.NumSpanScope][spanset.NumSpanAccess]btree
 }
 
-// close closes the snapshot and releases any associated resources.
 func (sn *snapshot) close() {
+	__antithesis_instrumentation__.Notify(122806)
 	for s := spanset.SpanScope(0); s < spanset.NumSpanScope; s++ {
+		__antithesis_instrumentation__.Notify(122807)
 		for a := spanset.SpanAccess(0); a < spanset.NumSpanAccess; a++ {
+			__antithesis_instrumentation__.Notify(122808)
 			sn.trees[s][a].Reset()
 		}
 	}
 }
 
-// snapshotLocked captures an immutable snapshot of the latch manager. It takes
-// a spanset to limit the amount of state captured.
 func (m *Manager) snapshotLocked(spans *spanset.SpanSet) snapshot {
+	__antithesis_instrumentation__.Notify(122809)
 	var snap snapshot
 	for s := spanset.SpanScope(0); s < spanset.NumSpanScope; s++ {
+		__antithesis_instrumentation__.Notify(122811)
 		sm := &m.scopes[s]
 		reading := len(spans.GetSpans(spanset.SpanReadOnly, s)) > 0
 		writing := len(spans.GetSpans(spanset.SpanReadWrite, s)) > 0
 
 		if writing {
+			__antithesis_instrumentation__.Notify(122813)
 			sm.flushReadSetLocked()
 			snap.trees[s][spanset.SpanReadOnly] = sm.trees[spanset.SpanReadOnly].Clone()
+		} else {
+			__antithesis_instrumentation__.Notify(122814)
 		}
-		if writing || reading {
+		__antithesis_instrumentation__.Notify(122812)
+		if writing || func() bool {
+			__antithesis_instrumentation__.Notify(122815)
+			return reading == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(122816)
 			snap.trees[s][spanset.SpanReadWrite] = sm.trees[spanset.SpanReadWrite].Clone()
+		} else {
+			__antithesis_instrumentation__.Notify(122817)
 		}
 	}
+	__antithesis_instrumentation__.Notify(122810)
 	return snap
 }
 
-// flushReadSetLocked flushes the read set into the read interval tree.
 func (sm *scopedManager) flushReadSetLocked() {
+	__antithesis_instrumentation__.Notify(122818)
 	for sm.readSet.len > 0 {
+		__antithesis_instrumentation__.Notify(122819)
 		latch := sm.readSet.front()
 		sm.readSet.remove(latch)
 		sm.trees[spanset.SpanReadOnly].Set(latch)
 	}
 }
 
-// insertLocked inserts the latches owned by the provided Guard into the
-// Manager.
 func (m *Manager) insertLocked(lg *Guard) {
+	__antithesis_instrumentation__.Notify(122820)
 	for s := spanset.SpanScope(0); s < spanset.NumSpanScope; s++ {
+		__antithesis_instrumentation__.Notify(122821)
 		sm := &m.scopes[s]
 		for a := spanset.SpanAccess(0); a < spanset.NumSpanAccess; a++ {
+			__antithesis_instrumentation__.Notify(122822)
 			latches := lg.latches(s, a)
 			for i := range latches {
+				__antithesis_instrumentation__.Notify(122823)
 				latch := &latches[i]
 				latch.id = m.nextIDLocked()
 				switch a {
 				case spanset.SpanReadOnly:
-					// Add reads to the readSet. They only need to enter
-					// the read tree if they're flushed by a write capturing
-					// a snapshot.
+					__antithesis_instrumentation__.Notify(122824)
+
 					sm.readSet.pushBack(latch)
 				case spanset.SpanReadWrite:
-					// Add writes directly to the write tree.
+					__antithesis_instrumentation__.Notify(122825)
+
 					sm.trees[spanset.SpanReadWrite].Set(latch)
 				default:
+					__antithesis_instrumentation__.Notify(122826)
 					panic("unknown access")
 				}
 			}
@@ -426,77 +443,91 @@ func (m *Manager) insertLocked(lg *Guard) {
 }
 
 func (m *Manager) nextIDLocked() uint64 {
+	__antithesis_instrumentation__.Notify(122827)
 	m.idAlloc++
 	return m.idAlloc
 }
 
-// ignoreFn is used for non-interference of earlier reads with later writes.
-//
-// However, this is only desired for the global scope. Reads and writes to local
-// keys are specified to always interfere, regardless of their timestamp. This
-// is done to avoid confusion with local keys declared as part of proposer
-// evaluated KV.
-//
-// This is also disabled in the global scope if either of the timestamps are
-// empty. In those cases, we consider the latch without a timestamp to be a
-// non-MVCC operation that affects all timestamps in the key range.
 type ignoreFn func(ts, other hlc.Timestamp) bool
 
-func ignoreLater(ts, other hlc.Timestamp) bool   { return !ts.IsEmpty() && ts.Less(other) }
-func ignoreEarlier(ts, other hlc.Timestamp) bool { return !other.IsEmpty() && other.Less(ts) }
-func ignoreNothing(ts, other hlc.Timestamp) bool { return false }
+func ignoreLater(ts, other hlc.Timestamp) bool {
+	__antithesis_instrumentation__.Notify(122828)
+	return !ts.IsEmpty() && func() bool {
+		__antithesis_instrumentation__.Notify(122829)
+		return ts.Less(other) == true
+	}() == true
+}
+func ignoreEarlier(ts, other hlc.Timestamp) bool {
+	__antithesis_instrumentation__.Notify(122830)
+	return !other.IsEmpty() && func() bool {
+		__antithesis_instrumentation__.Notify(122831)
+		return other.Less(ts) == true
+	}() == true
+}
+func ignoreNothing(ts, other hlc.Timestamp) bool {
+	__antithesis_instrumentation__.Notify(122832)
+	return false
+}
 
-// wait waits for all interfering latches in the provided snapshot to complete
-// before returning.
 func (m *Manager) wait(ctx context.Context, lg *Guard, snap snapshot) error {
+	__antithesis_instrumentation__.Notify(122833)
 	timer := timeutil.NewTimer()
 	timer.Reset(base.SlowRequestThreshold)
 	defer timer.Stop()
 
 	for s := spanset.SpanScope(0); s < spanset.NumSpanScope; s++ {
+		__antithesis_instrumentation__.Notify(122835)
 		tr := &snap.trees[s]
 		for a := spanset.SpanAccess(0); a < spanset.NumSpanAccess; a++ {
+			__antithesis_instrumentation__.Notify(122836)
 			latches := lg.latches(s, a)
 			for i := range latches {
+				__antithesis_instrumentation__.Notify(122837)
 				latch := &latches[i]
 				switch a {
 				case spanset.SpanReadOnly:
-					// Wait for writes at equal or lower timestamps.
+					__antithesis_instrumentation__.Notify(122838)
+
 					a2 := spanset.SpanReadWrite
 					it := tr[a2].MakeIter()
 					if err := m.iterAndWait(ctx, timer, &it, lg.pp, a, a2, latch, ignoreLater); err != nil {
+						__antithesis_instrumentation__.Notify(122842)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(122843)
 					}
 				case spanset.SpanReadWrite:
-					// Wait for all other writes.
-					//
-					// It is cheaper to wait on an already released latch than
-					// it is an unreleased latch so we prefer waiting on longer
-					// latches first. We expect writes to take longer than reads
-					// to release their latches, so we wait on them first.
+					__antithesis_instrumentation__.Notify(122839)
+
 					a2 := spanset.SpanReadWrite
 					it := tr[a2].MakeIter()
 					if err := m.iterAndWait(ctx, timer, &it, lg.pp, a, a2, latch, ignoreNothing); err != nil {
+						__antithesis_instrumentation__.Notify(122844)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(122845)
 					}
-					// Wait for reads at equal or higher timestamps.
+					__antithesis_instrumentation__.Notify(122840)
+
 					a2 = spanset.SpanReadOnly
 					it = tr[a2].MakeIter()
 					if err := m.iterAndWait(ctx, timer, &it, lg.pp, a, a2, latch, ignoreEarlier); err != nil {
+						__antithesis_instrumentation__.Notify(122846)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(122847)
 					}
 				default:
+					__antithesis_instrumentation__.Notify(122841)
 					panic("unknown access")
 				}
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(122834)
 	return nil
 }
 
-// iterAndWait uses the provided iterator to wait on all latches that overlap
-// with the search latch and which should not be ignored given their timestamp
-// and the supplied ignoreFn.
 func (m *Manager) iterAndWait(
 	ctx context.Context,
 	t *timeutil.Timer,
@@ -506,22 +537,35 @@ func (m *Manager) iterAndWait(
 	wait *latch,
 	ignore ignoreFn,
 ) error {
+	__antithesis_instrumentation__.Notify(122848)
 	for it.FirstOverlap(wait); it.Valid(); it.NextOverlap(wait) {
+		__antithesis_instrumentation__.Notify(122850)
 		held := it.Cur()
 		if held.done.signaled() {
+			__antithesis_instrumentation__.Notify(122853)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(122854)
 		}
+		__antithesis_instrumentation__.Notify(122851)
 		if ignore(wait.ts, held.ts) {
+			__antithesis_instrumentation__.Notify(122855)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(122856)
 		}
+		__antithesis_instrumentation__.Notify(122852)
 		if err := m.waitForSignal(ctx, t, pp, waitType, heldType, wait, held); err != nil {
+			__antithesis_instrumentation__.Notify(122857)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(122858)
 		}
 	}
+	__antithesis_instrumentation__.Notify(122849)
 	return nil
 }
 
-// waitForSignal waits for the latch that is currently held to be signaled.
 func (m *Manager) waitForSignal(
 	ctx context.Context,
 	t *timeutil.Timer,
@@ -529,84 +573,96 @@ func (m *Manager) waitForSignal(
 	waitType, heldType spanset.SpanAccess,
 	wait, held *latch,
 ) error {
+	__antithesis_instrumentation__.Notify(122859)
 	log.Eventf(ctx, "waiting to acquire %s latch %s, held by %s latch %s", waitType, wait, heldType, held)
 	poisonCh := held.poison.signalChan()
 	for {
+		__antithesis_instrumentation__.Notify(122860)
 		select {
 		case <-held.done.signalChan():
+			__antithesis_instrumentation__.Notify(122861)
 			return nil
 		case <-poisonCh:
-			// The latch we're waiting on was poisoned. If we continue to wait, we have to
-			// poison our latches as well (so that waiters blocked on us which want to
-			// fail fast don't get stuck). If we fail fast, we're momentarily removing
-			// ourselves anyway, so we don't need to self-poison.
+			__antithesis_instrumentation__.Notify(122862)
+
 			switch pp {
 			case poison.Policy_Error:
+				__antithesis_instrumentation__.Notify(122866)
 				return poison.NewPoisonedError(held.span, held.ts)
 			case poison.Policy_Wait:
+				__antithesis_instrumentation__.Notify(122867)
 				log.Eventf(ctx, "encountered poisoned latch; continuing to wait")
 				wait.poison.signal()
-				// No need to self-poison multiple times.
+
 				poisonCh = nil
 			default:
+				__antithesis_instrumentation__.Notify(122868)
 				return errors.Errorf("unsupported poison.Policy %d", pp)
 			}
 		case <-t.C:
+			__antithesis_instrumentation__.Notify(122863)
 			t.Read = true
 			defer t.Reset(base.SlowRequestThreshold)
 
 			log.Warningf(ctx, "have been waiting %s to acquire %s latch %s, held by %s latch %s",
 				base.SlowRequestThreshold, waitType, wait, heldType, held)
 			if m.slowReqs != nil {
+				__antithesis_instrumentation__.Notify(122869)
 				m.slowReqs.Inc(1)
 				defer m.slowReqs.Dec(1)
+			} else {
+				__antithesis_instrumentation__.Notify(122870)
 			}
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(122864)
 			log.VEventf(ctx, 2, "%s while acquiring %s latch %s, held by %s latch %s",
 				ctx.Err(), waitType, wait, heldType, held)
 			return ctx.Err()
 		case <-m.stopper.ShouldQuiesce():
-			// While shutting down, requests may acquire
-			// latches and never release them.
+			__antithesis_instrumentation__.Notify(122865)
+
 			return &roachpb.NodeUnavailableError{}
 		}
 	}
 }
 
-// Poison marks the Guard as poisoned, meaning that the request will not be
-// expected to be releasing its latches (any time soon). This gives requests
-// blocking on the Guard's latches an opportunity to fail fast, according to
-// their poison.Policy.
 func (m *Manager) Poison(lg *Guard) {
+	__antithesis_instrumentation__.Notify(122871)
 	lg.poison.signal()
 }
 
-// Release releases the latches held by the provided Guard. After being called,
-// dependent latch acquisition attempts can complete if not blocked on any other
-// owned latches.
 func (m *Manager) Release(lg *Guard) {
+	__antithesis_instrumentation__.Notify(122872)
 	lg.done.signal()
 	if lg.snap != nil {
+		__antithesis_instrumentation__.Notify(122874)
 		lg.snap.close()
+	} else {
+		__antithesis_instrumentation__.Notify(122875)
 	}
+	__antithesis_instrumentation__.Notify(122873)
 
 	m.mu.Lock()
 	m.removeLocked(lg)
 	m.mu.Unlock()
 }
 
-// removeLocked removes the latches owned by the provided Guard from the
-// Manager. Must be called with mu held.
 func (m *Manager) removeLocked(lg *Guard) {
+	__antithesis_instrumentation__.Notify(122876)
 	for s := spanset.SpanScope(0); s < spanset.NumSpanScope; s++ {
+		__antithesis_instrumentation__.Notify(122877)
 		sm := &m.scopes[s]
 		for a := spanset.SpanAccess(0); a < spanset.NumSpanAccess; a++ {
+			__antithesis_instrumentation__.Notify(122878)
 			latches := lg.latches(s, a)
 			for i := range latches {
+				__antithesis_instrumentation__.Notify(122879)
 				latch := &latches[i]
 				if latch.inReadSet() {
+					__antithesis_instrumentation__.Notify(122880)
 					sm.readSet.remove(latch)
 				} else {
+					__antithesis_instrumentation__.Notify(122881)
 					sm.trees[a].Delete(latch)
 				}
 			}
@@ -614,14 +670,13 @@ func (m *Manager) removeLocked(lg *Guard) {
 	}
 }
 
-// Metrics holds information about the state of a Manager.
 type Metrics struct {
 	ReadCount  int64
 	WriteCount int64
 }
 
-// Metrics returns information about the state of the Manager.
 func (m *Manager) Metrics() Metrics {
+	__antithesis_instrumentation__.Notify(122882)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	globalReadCount, globalWriteCount := m.scopes[spanset.SpanGlobal].metricsLocked()
@@ -633,6 +688,7 @@ func (m *Manager) Metrics() Metrics {
 }
 
 func (sm *scopedManager) metricsLocked() (readCount, writeCount int64) {
+	__antithesis_instrumentation__.Notify(122883)
 	readCount = int64(sm.trees[spanset.SpanReadOnly].Len() + sm.readSet.len)
 	writeCount = int64(sm.trees[spanset.SpanReadWrite].Len())
 	return readCount, writeCount

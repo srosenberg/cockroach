@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package skip
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"flag"
@@ -21,137 +13,159 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// SkippableTest is a testing.TB with Skip methods.
 type SkippableTest interface {
 	Helper()
 	Skip(...interface{})
 	Skipf(string, ...interface{})
 }
 
-// WithIssue skips this test, logging the given issue ID as the reason.
 func WithIssue(t SkippableTest, githubIssueID int, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(645984)
 	t.Helper()
 	t.Skip(append([]interface{}{
 		fmt.Sprintf("https://github.com/cockroachdb/cockroach/issues/%d", githubIssueID)},
 		args...))
 }
 
-// IgnoreLint skips this test, explicitly marking it as not a test that
-// should be tracked as a "skipped test" by external tools. You should use this
-// if, for example, your test should only be run in Race mode.
 func IgnoreLint(t SkippableTest, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(645985)
 	t.Helper()
 	t.Skip(args...)
 }
 
-// IgnoreLintf is like IgnoreLint, and it also takes a format string.
 func IgnoreLintf(t SkippableTest, format string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(645986)
 	t.Helper()
 	t.Skipf(format, args...)
 }
 
-// UnderDeadlock skips this test if the deadlock detector is enabled.
 func UnderDeadlock(t SkippableTest, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(645987)
 	t.Helper()
 	if syncutil.DeadlockEnabled {
+		__antithesis_instrumentation__.Notify(645988)
 		t.Skip(append([]interface{}{"disabled under deadlock detector"}, args...))
+	} else {
+		__antithesis_instrumentation__.Notify(645989)
 	}
 }
 
-// UnderDeadlockWithIssue skips this test if the deadlock detector is enabled,
-// logging the given issue ID as the reason.
 func UnderDeadlockWithIssue(t SkippableTest, githubIssueID int, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(645990)
 	t.Helper()
 	if syncutil.DeadlockEnabled {
+		__antithesis_instrumentation__.Notify(645991)
 		t.Skip(append([]interface{}{fmt.Sprintf(
 			"disabled under deadlock detector. issue: https://github.com/cockroachdb/cockroach/issue/%d",
 			githubIssueID,
 		)}, args...))
+	} else {
+		__antithesis_instrumentation__.Notify(645992)
 	}
 }
 
-// UnderRace skips this test if the race detector is enabled.
 func UnderRace(t SkippableTest, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(645993)
 	t.Helper()
 	if util.RaceEnabled {
+		__antithesis_instrumentation__.Notify(645994)
 		t.Skip(append([]interface{}{"disabled under race"}, args...))
+	} else {
+		__antithesis_instrumentation__.Notify(645995)
 	}
 }
 
-// UnderRaceWithIssue skips this test if the race detector is enabled,
-// logging the given issue ID as the reason.
 func UnderRaceWithIssue(t SkippableTest, githubIssueID int, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(645996)
 	t.Helper()
 	if util.RaceEnabled {
+		__antithesis_instrumentation__.Notify(645997)
 		t.Skip(append([]interface{}{fmt.Sprintf(
 			"disabled under race. issue: https://github.com/cockroachdb/cockroach/issue/%d", githubIssueID,
 		)}, args...))
+	} else {
+		__antithesis_instrumentation__.Notify(645998)
 	}
 }
 
-// UnderBazelWithIssue skips this test if we are building inside bazel,
-// logging the given issue ID as the reason.
 func UnderBazelWithIssue(t SkippableTest, githubIssueID int, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(645999)
 	t.Helper()
 	if bazel.BuiltWithBazel() {
+		__antithesis_instrumentation__.Notify(646000)
 		t.Skip(append([]interface{}{fmt.Sprintf(
 			"disabled under bazel. issue: https://github.com/cockroachdb/cockroach/issue/%d", githubIssueID,
 		)}, args...))
+	} else {
+		__antithesis_instrumentation__.Notify(646001)
 	}
 }
 
-// Ignore unused warnings.
 var _ = UnderBazelWithIssue
 
-// UnderShort skips this test if the -short flag is specified.
 func UnderShort(t SkippableTest, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(646002)
 	t.Helper()
 	if testing.Short() {
+		__antithesis_instrumentation__.Notify(646003)
 		t.Skip(append([]interface{}{"disabled under -short"}, args...))
+	} else {
+		__antithesis_instrumentation__.Notify(646004)
 	}
 }
 
-// UnderStress skips this test when running under stress.
 func UnderStress(t SkippableTest, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(646005)
 	t.Helper()
 	if NightlyStress() {
+		__antithesis_instrumentation__.Notify(646006)
 		t.Skip(append([]interface{}{"disabled under stress"}, args...))
+	} else {
+		__antithesis_instrumentation__.Notify(646007)
 	}
 }
 
-// UnderStressRace skips this test during stressrace runs, which are tests
-// run under stress with the -race flag.
 func UnderStressRace(t SkippableTest, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(646008)
 	t.Helper()
-	if NightlyStress() && util.RaceEnabled {
+	if NightlyStress() && func() bool {
+		__antithesis_instrumentation__.Notify(646009)
+		return util.RaceEnabled == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(646010)
 		t.Skip(append([]interface{}{"disabled under stressrace"}, args...))
+	} else {
+		__antithesis_instrumentation__.Notify(646011)
 	}
 }
 
-// UnderMetamorphic skips this test during metamorphic runs, which are tests
-// run with the metamorphic build tag.
 func UnderMetamorphic(t SkippableTest, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(646012)
 	t.Helper()
 	if util.IsMetamorphicBuild() {
+		__antithesis_instrumentation__.Notify(646013)
 		t.Skip(append([]interface{}{"disabled under metamorphic"}, args...))
+	} else {
+		__antithesis_instrumentation__.Notify(646014)
 	}
 }
 
-// UnderNonTestBuild skips this test if the build does not have the crdb_test
-// tag.
 func UnderNonTestBuild(t SkippableTest) {
+	__antithesis_instrumentation__.Notify(646015)
 	if !buildutil.CrdbTestBuild {
+		__antithesis_instrumentation__.Notify(646016)
 		t.Skip("crdb_test tag required for this test")
+	} else {
+		__antithesis_instrumentation__.Notify(646017)
 	}
 }
 
-// UnderBench returns true iff a test is currently running under `go
-// test -bench`.  When true, tests should avoid writing data on
-// stdout/stderr from goroutines that run asynchronously with the
-// test.
 func UnderBench() bool {
-	// We use here the understanding that `go test -bench` runs the
-	// test executable with `-test.bench 1`.
+	__antithesis_instrumentation__.Notify(646018)
+
 	f := flag.Lookup("test.bench")
-	return f != nil && f.Value.String() != ""
+	return f != nil && func() bool {
+		__antithesis_instrumentation__.Notify(646019)
+		return f.Value.String() != "" == true
+	}() == true
 }

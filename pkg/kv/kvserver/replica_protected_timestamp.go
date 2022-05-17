@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,52 +13,44 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// cachedProtectedTimestampState is used to cache information about the state
-// of protected timestamps as they pertain to this replica. The data is
-// refreshed when the replica examines protected timestamps when being
-// considered for gc. It is consulted when determining whether a request can be
-// served.
 type cachedProtectedTimestampState struct {
-	// readAt denotes the timestamp at which this record was read.
-	// It is used to coordinate updates to this field. It is also used to
-	// ensure that the protected timestamp subsystem can be relied upon. If
-	// the cache state is older than the lease start time then it is possible
-	// that protected timestamps have not been observed. In this case we must
-	// assume that any protected timestamp could exist to provide the contract
-	// on verify.
 	readAt                      hlc.Timestamp
 	earliestProtectionTimestamp hlc.Timestamp
 }
 
-// clearIfNotNewer clears the state in ts if it is not newer than the passed
-// value. This is used in conjunction with Replica.maybedUpdateCachedProtectedTS().
-// This optimization allows most interactions with protected timestamps to
-// operate using a shared lock. Only in cases where the cached value is known to
-// be older will the update be attempted.
 func (ts *cachedProtectedTimestampState) clearIfNotNewer(existing cachedProtectedTimestampState) {
+	__antithesis_instrumentation__.Notify(118332)
 	if !existing.readAt.Less(ts.readAt) {
+		__antithesis_instrumentation__.Notify(118333)
 		*ts = cachedProtectedTimestampState{}
+	} else {
+		__antithesis_instrumentation__.Notify(118334)
 	}
 }
 
-// maybeUpdateCachedProtectedTS is used to optimize updates. We learn about
-// needs to update the cache while holding Replica.mu for reading but need to
-// perform the update with the exclusive lock. This function is intended to
-// be deferred.
 func (r *Replica) maybeUpdateCachedProtectedTS(ts *cachedProtectedTimestampState) {
+	__antithesis_instrumentation__.Notify(118335)
 	if *ts == (cachedProtectedTimestampState{}) {
+		__antithesis_instrumentation__.Notify(118337)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(118338)
 	}
+	__antithesis_instrumentation__.Notify(118336)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.mu.cachedProtectedTS.readAt.Less(ts.readAt) {
+		__antithesis_instrumentation__.Notify(118339)
 		r.mu.cachedProtectedTS = *ts
+	} else {
+		__antithesis_instrumentation__.Notify(118340)
 	}
 }
 
 func (r *Replica) readProtectedTimestampsRLocked(
 	ctx context.Context,
 ) (ts cachedProtectedTimestampState, _ error) {
+	__antithesis_instrumentation__.Notify(118341)
 	desc := r.descRLocked()
 	gcThreshold := *r.mu.state.GCThreshold
 
@@ -78,48 +62,47 @@ func (r *Replica) readProtectedTimestampsRLocked(
 	var err error
 	protectionTimestamps, ts.readAt, err = r.store.protectedtsReader.GetProtectionTimestamps(ctx, sp)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(118344)
 		return ts, err
+	} else {
+		__antithesis_instrumentation__.Notify(118345)
 	}
+	__antithesis_instrumentation__.Notify(118342)
 	earliestTS := hlc.Timestamp{}
 	for _, protectionTimestamp := range protectionTimestamps {
-		// Check if the timestamp the record was trying to protect is strictly
-		// below the GCThreshold, in which case, we know the record does not apply.
+		__antithesis_instrumentation__.Notify(118346)
+
 		if isValid := gcThreshold.LessEq(protectionTimestamp); !isValid {
+			__antithesis_instrumentation__.Notify(118348)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(118349)
 		}
+		__antithesis_instrumentation__.Notify(118347)
 
 		log.VEventf(ctx, 2, "span: %s has a protection policy protecting: %s",
 			sp.String(), protectionTimestamp.String())
 
-		if earliestTS.IsEmpty() || protectionTimestamp.Less(earliestTS) {
+		if earliestTS.IsEmpty() || func() bool {
+			__antithesis_instrumentation__.Notify(118350)
+			return protectionTimestamp.Less(earliestTS) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(118351)
 			earliestTS = protectionTimestamp
+		} else {
+			__antithesis_instrumentation__.Notify(118352)
 		}
 	}
+	__antithesis_instrumentation__.Notify(118343)
 	ts.earliestProtectionTimestamp = earliestTS
 	return ts, nil
 }
 
-// checkProtectedTimestampsForGC determines whether the Replica can run GC. If
-// the Replica can run GC, this method returns the latest timestamp which can be
-// used to determine a valid new GCThreshold. The policy is passed in rather
-// than read from the replica state to ensure that the same value used for this
-// calculation is used later.
-//
-// In the case that GC can proceed, four timestamps are returned: The timestamp
-// corresponding to the state of the cache used to make the determination (used
-// for markPendingGC when actually performing GC), the timestamp used as the
-// basis to calculate the new gc threshold (used for scoring and reporting), the
-// old gc threshold, and the new gc threshold.
 func (r *Replica) checkProtectedTimestampsForGC(
 	ctx context.Context, gcTTL time.Duration,
 ) (canGC bool, cacheTimestamp, gcTimestamp, oldThreshold, newThreshold hlc.Timestamp, _ error) {
+	__antithesis_instrumentation__.Notify(118353)
 
-	// We may be reading the protected timestamp cache while we're holding
-	// the Replica.mu for reading. If we do so and find newer state in the cache
-	// then we want to, update the replica's cache of its state. The guarantee
-	// we provide is that if a record is successfully verified then the Replica's
-	// cachedProtectedTS will have a readAt value high enough to include that
-	// record.
 	var read cachedProtectedTimestampState
 	defer r.maybeUpdateCachedProtectedTS(&read)
 	r.mu.RLock()
@@ -129,60 +112,70 @@ func (r *Replica) checkProtectedTimestampsForGC(
 	oldThreshold = *r.mu.state.GCThreshold
 	lease := *r.mu.state.Lease
 
-	// read.earliestRecord is the record with the earliest timestamp which is
-	// greater than the existing gcThreshold.
 	var err error
 	read, err = r.readProtectedTimestampsRLocked(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(118358)
 		return false, hlc.Timestamp{}, hlc.Timestamp{}, hlc.Timestamp{}, hlc.Timestamp{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(118359)
 	}
+	__antithesis_instrumentation__.Notify(118354)
 
 	if read.readAt.IsEmpty() {
-		// We don't want to allow GC to proceed if no protected timestamp
-		// information is available. This can happen if the initial scan of the
-		// rangefeed established by the spanconfig.KVSubscriber hasn't completed
-		// yet.
+		__antithesis_instrumentation__.Notify(118360)
+
 		log.VEventf(ctx, 1,
 			"not gc'ing replica %v because protected timestamp information is unavailable", r)
 		return false, hlc.Timestamp{}, hlc.Timestamp{}, hlc.Timestamp{}, hlc.Timestamp{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(118361)
 	}
+	__antithesis_instrumentation__.Notify(118355)
 
 	gcTimestamp = read.readAt
 	if !read.earliestProtectionTimestamp.IsEmpty() {
-		// NB: we want to allow GC up to the timestamp preceding the earliest valid
-		// protection timestamp.
+		__antithesis_instrumentation__.Notify(118362)
+
 		impliedGCTimestamp := gc.TimestampForThreshold(read.earliestProtectionTimestamp.Prev(), gcTTL)
 		if impliedGCTimestamp.Less(gcTimestamp) {
+			__antithesis_instrumentation__.Notify(118363)
 			gcTimestamp = impliedGCTimestamp
+		} else {
+			__antithesis_instrumentation__.Notify(118364)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(118365)
 	}
+	__antithesis_instrumentation__.Notify(118356)
 
 	if gcTimestamp.Less(lease.Start.ToTimestamp()) {
+		__antithesis_instrumentation__.Notify(118366)
 		log.VEventf(ctx, 1, "not gc'ing replica %v due to new lease %v started after %v",
 			r, lease, gcTimestamp)
 		return false, hlc.Timestamp{}, hlc.Timestamp{}, hlc.Timestamp{}, hlc.Timestamp{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(118367)
 	}
+	__antithesis_instrumentation__.Notify(118357)
 
 	newThreshold = gc.CalculateThreshold(gcTimestamp, gcTTL)
 
 	return true, read.readAt, gcTimestamp, oldThreshold, newThreshold, nil
 }
 
-// markPendingGC is called just prior to sending the GC request to increase the
-// GC threshold during MVCC GC queue processing. This method synchronizes such
-// requests with the processing of AdminVerifyProtectedTimestamp requests. Such
-// synchronization is important to prevent races where the protected timestamp
-// state is read from a stale point in time and then concurrently, a
-// verification request arrives which applies under a later cache state and then
-// the gc queue, acting on older cache state, attempts to set the gc threshold
-// above a successfully verified record.
 func (r *Replica) markPendingGC(readAt, newThreshold hlc.Timestamp) error {
+	__antithesis_instrumentation__.Notify(118368)
 	r.protectedTimestampMu.Lock()
 	defer r.protectedTimestampMu.Unlock()
 	if readAt.Less(r.protectedTimestampMu.minStateReadTimestamp) {
+		__antithesis_instrumentation__.Notify(118370)
 		return errors.Errorf("cannot set gc threshold to %v because read at %v < min %v",
 			newThreshold, readAt, r.protectedTimestampMu.minStateReadTimestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(118371)
 	}
+	__antithesis_instrumentation__.Notify(118369)
 	r.protectedTimestampMu.pendingGCThreshold = newThreshold
 	return nil
 }

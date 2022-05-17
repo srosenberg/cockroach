@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,32 +15,39 @@ import (
 )
 
 func registerRoachtest(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(50419)
 	r.Add(registry.TestSpec{
 		Name:    "roachtest/noop",
 		Tags:    []string{"roachtest"},
 		Owner:   registry.OwnerTestEng,
-		Run:     func(_ context.Context, _ test.Test, _ cluster.Cluster) {},
+		Run:     func(_ context.Context, _ test.Test, _ cluster.Cluster) { __antithesis_instrumentation__.Notify(50422) },
 		Cluster: r.MakeClusterSpec(0),
 	})
+	__antithesis_instrumentation__.Notify(50420)
 	r.Add(registry.TestSpec{
 		Name:  "roachtest/noop-maybefail",
 		Tags:  []string{"roachtest"},
 		Owner: registry.OwnerTestEng,
 		Run: func(_ context.Context, t test.Test, _ cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(50423)
 			if rand.Float64() <= 0.2 {
+				__antithesis_instrumentation__.Notify(50424)
 				t.Fatal("randomly failing")
+			} else {
+				__antithesis_instrumentation__.Notify(50425)
 			}
 		},
 		Cluster: r.MakeClusterSpec(0),
 	})
-	// This test can be run manually to check what happens if a test times out.
-	// In particular, can manually verify that suitable artifacts are created.
+	__antithesis_instrumentation__.Notify(50421)
+
 	r.Add(registry.TestSpec{
 		Name:  "roachtest/hang",
 		Tags:  []string{"roachtest"},
 		Owner: registry.OwnerTestEng,
 		Run: func(_ context.Context, t test.Test, c cluster.Cluster) {
-			ctx := context.Background() // intentional
+			__antithesis_instrumentation__.Notify(50426)
+			ctx := context.Background()
 			c.Put(ctx, t.Cockroach(), "cockroach", c.All())
 			c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.All())
 			time.Sleep(time.Hour)

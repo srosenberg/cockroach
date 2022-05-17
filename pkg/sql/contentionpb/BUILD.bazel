@@ -12,6 +12,7 @@ go_library(
         "//pkg/util",
         "//pkg/util/encoding",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -50,6 +51,7 @@ go_test(
         "//pkg/util",
         "//pkg/util/timeutil",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

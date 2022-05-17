@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package movr
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -37,10 +29,15 @@ type movrWorker struct {
 }
 
 func (m *movrWorker) getRandomUser(city string) (string, error) {
+	__antithesis_instrumentation__.Notify(694875)
 	id, err := uuid.NewV4()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694877)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(694878)
 	}
+	__antithesis_instrumentation__.Notify(694876)
 	var user string
 	q := `
 		SELECT
@@ -58,10 +55,15 @@ func (m *movrWorker) getRandomUser(city string) (string, error) {
 }
 
 func (m *movrWorker) getRandomPromoCode() (string, error) {
+	__antithesis_instrumentation__.Notify(694879)
 	id, err := uuid.NewV4()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694881)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(694882)
 	}
+	__antithesis_instrumentation__.Notify(694880)
 	q := `
 		SELECT
 			IFNULL(a, b)
@@ -79,10 +81,15 @@ func (m *movrWorker) getRandomPromoCode() (string, error) {
 }
 
 func (m *movrWorker) getRandomVehicle(city string) (string, error) {
+	__antithesis_instrumentation__.Notify(694883)
 	id, err := uuid.NewV4()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694885)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(694886)
 	}
+	__antithesis_instrumentation__.Notify(694884)
 	q := `
 		SELECT
 			IFNULL(a, b)
@@ -100,27 +107,39 @@ func (m *movrWorker) getRandomVehicle(city string) (string, error) {
 }
 
 func (m *movrWorker) readVehicles(city string) error {
+	__antithesis_instrumentation__.Notify(694887)
 	q := `SELECT city, id FROM vehicles WHERE city = $1`
 	_, err := m.db.Exec(q, city)
 	return err
 }
 
 func (m *movrWorker) updateActiveRides() error {
+	__antithesis_instrumentation__.Notify(694888)
 	for i, ride := range m.activeRides {
+		__antithesis_instrumentation__.Notify(694890)
 		if i >= 10 {
+			__antithesis_instrumentation__.Notify(694892)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(694893)
 		}
+		__antithesis_instrumentation__.Notify(694891)
 		lat, long := randLatLong(m.rng)
 		q := `UPSERT INTO vehicle_location_histories VALUES ($1, $2, now(), $3, $4)`
 		_, err := m.db.Exec(q, ride.city, ride.id, lat, long)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(694894)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(694895)
 		}
 	}
+	__antithesis_instrumentation__.Notify(694889)
 	return nil
 }
 
 func (m *movrWorker) addUser(id uuid.UUID, city string) error {
+	__antithesis_instrumentation__.Notify(694896)
 	q := `INSERT INTO users VALUES ($1, $2, $3, $4, $5)`
 	_, err := m.db.Exec(
 		q, id.String(), city, m.faker.Name(m.rng), m.faker.StreetAddress(m.rng), randCreditCard(m.rng))
@@ -128,6 +147,7 @@ func (m *movrWorker) addUser(id uuid.UUID, city string) error {
 }
 
 func (m *movrWorker) createPromoCode(id uuid.UUID, _ string) error {
+	__antithesis_instrumentation__.Notify(694897)
 	expirationTime := m.creationTime.Add(time.Duration(m.rng.Intn(30)) * 24 * time.Hour)
 	creationTime := expirationTime.Add(-time.Duration(m.rng.Intn(30)) * 24 * time.Hour)
 	const rulesJSON = `{"type": "percent_discount", "value": "10%"}`
@@ -137,35 +157,57 @@ func (m *movrWorker) createPromoCode(id uuid.UUID, _ string) error {
 }
 
 func (m *movrWorker) applyPromoCode(id uuid.UUID, city string) error {
+	__antithesis_instrumentation__.Notify(694898)
 	user, err := m.getRandomUser(city)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694903)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694904)
 	}
+	__antithesis_instrumentation__.Notify(694899)
 	code, err := m.getRandomPromoCode()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694905)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694906)
 	}
-	// See if the promo code has been used.
+	__antithesis_instrumentation__.Notify(694900)
+
 	var count int
 	q := `SELECT count(*) FROM user_promo_codes WHERE city = $1 AND user_id = $2 AND code = $3`
 	err = m.db.QueryRow(q, city, user, code).Scan(&count)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694907)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694908)
 	}
-	// If is has not been, apply the promo code.
+	__antithesis_instrumentation__.Notify(694901)
+
 	if count == 0 {
+		__antithesis_instrumentation__.Notify(694909)
 		q = `INSERT INTO user_promo_codes VALUES ($1, $2, $3, now(), 1)`
 		_, err = m.db.Exec(q, city, user, code)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694910)
 	}
+	__antithesis_instrumentation__.Notify(694902)
 	return nil
 }
 
 func (m *movrWorker) addVehicle(id uuid.UUID, city string) error {
+	__antithesis_instrumentation__.Notify(694911)
 	ownerID, err := m.getRandomUser(city)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694913)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694914)
 	}
+	__antithesis_instrumentation__.Notify(694912)
 	typ := randVehicleType(m.rng)
 	q := `INSERT INTO vehicles VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	_, err = m.db.Exec(
@@ -179,35 +221,54 @@ func (m *movrWorker) addVehicle(id uuid.UUID, city string) error {
 }
 
 func (m *movrWorker) startRide(id uuid.UUID, city string) error {
+	__antithesis_instrumentation__.Notify(694915)
 	rider, err := m.getRandomUser(city)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694919)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694920)
 	}
+	__antithesis_instrumentation__.Notify(694916)
 	vehicle, err := m.getRandomVehicle(city)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694921)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694922)
 	}
+	__antithesis_instrumentation__.Notify(694917)
 	q := `INSERT INTO rides VALUES ($1, $2, $2, $3, $4, $5, NULL, now(), NULL, $6)`
 	_, err = m.db.Exec(q, id.String(), city, rider, vehicle, m.faker.StreetAddress(m.rng), m.rng.Intn(100))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694923)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694924)
 	}
+	__antithesis_instrumentation__.Notify(694918)
 	m.activeRides = append(m.activeRides, rideInfo{id.String(), city})
 	return err
 }
 
 func (m *movrWorker) endRide(id uuid.UUID, city string) error {
+	__antithesis_instrumentation__.Notify(694925)
 	if len(m.activeRides) > 1 {
+		__antithesis_instrumentation__.Notify(694927)
 		ride := m.activeRides[0]
 		m.activeRides = m.activeRides[1:]
 		q := `UPDATE rides SET end_address = $3, end_time = now() WHERE city = $1 AND id = $2`
 		_, err := m.db.Exec(q, ride.city, ride.id, m.faker.StreetAddress(m.rng))
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694928)
 	}
+	__antithesis_instrumentation__.Notify(694926)
 	return nil
 }
 
 func (m *movrWorker) generateWorkSimulation() func(context.Context) error {
+	__antithesis_instrumentation__.Notify(694929)
 	const readPercentage = 0.95
 	movrWorkloadFns := []struct {
 		weight float32
@@ -248,70 +309,108 @@ func (m *movrWorker) generateWorkSimulation() func(context.Context) error {
 
 	sum := float32(0.0)
 	for _, s := range movrWorkloadFns {
+		__antithesis_instrumentation__.Notify(694932)
 		sum += s.weight
 	}
+	__antithesis_instrumentation__.Notify(694930)
 
 	runAndRecord := func(key string, work func() error) error {
+		__antithesis_instrumentation__.Notify(694933)
 		start := timeutil.Now()
 		err := work()
 		elapsed := timeutil.Since(start)
 		if err == nil {
+			__antithesis_instrumentation__.Notify(694935)
 			m.hists.Get(key).Record(elapsed)
+		} else {
+			__antithesis_instrumentation__.Notify(694936)
 		}
+		__antithesis_instrumentation__.Notify(694934)
 		return err
 	}
+	__antithesis_instrumentation__.Notify(694931)
 
 	return func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(694937)
 		activeCity := randCity(m.rng)
 		id, err := uuid.NewV4()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(694943)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(694944)
 		}
-		// Our workload is as follows: with 95% chance, do a simple read operation.
-		// Else, update all active vehicle locations, then pick a random "write" operation
-		// weighted by the weights in movrWorkloadFns.
+		__antithesis_instrumentation__.Notify(694938)
+
 		if m.rng.Float64() <= readPercentage {
+			__antithesis_instrumentation__.Notify(694945)
 			return runAndRecord("readVehicles", func() error {
+				__antithesis_instrumentation__.Notify(694946)
 				return m.readVehicles(activeCity)
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(694947)
 		}
+		__antithesis_instrumentation__.Notify(694939)
 		err = runAndRecord("updateActiveRides", func() error {
+			__antithesis_instrumentation__.Notify(694948)
 			return m.updateActiveRides()
 		})
+		__antithesis_instrumentation__.Notify(694940)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(694949)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(694950)
 		}
+		__antithesis_instrumentation__.Notify(694941)
 		randVal := m.rng.Float32() * sum
 		w := float32(0.0)
 		for _, s := range movrWorkloadFns {
+			__antithesis_instrumentation__.Notify(694951)
 			w += s.weight
 			if w >= randVal {
+				__antithesis_instrumentation__.Notify(694952)
 				return runAndRecord(s.key, func() error {
+					__antithesis_instrumentation__.Notify(694953)
 					return s.work(id, activeCity)
 				})
+			} else {
+				__antithesis_instrumentation__.Notify(694954)
 			}
 		}
+		__antithesis_instrumentation__.Notify(694942)
 		panic("unreachable")
 	}
 }
 
-// Ops implements the Opser interface
 func (m *movr) Ops(
 	ctx context.Context, urls []string, reg *histogram.Registry,
 ) (workload.QueryLoad, error) {
-	// Initialize the faker in case it hasn't been setup already.
+	__antithesis_instrumentation__.Notify(694955)
+
 	m.fakerOnce.Do(func() {
+		__antithesis_instrumentation__.Notify(694959)
 		m.faker = faker.NewFaker()
 	})
+	__antithesis_instrumentation__.Notify(694956)
 	sqlDatabase, err := workload.SanitizeUrls(m, m.connFlags.DBOverride, urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694960)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(694961)
 	}
+	__antithesis_instrumentation__.Notify(694957)
 	ql := workload.QueryLoad{SQLDatabase: sqlDatabase}
 	db, err := workload.NewRoundRobinDB(urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694962)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(694963)
 	}
+	__antithesis_instrumentation__.Notify(694958)
 	worker := movrWorker{
 		db:           db,
 		rng:          rand.New(rand.NewSource(m.seed)),

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,26 +18,16 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// FollowerReadTimestampFunctionName is the name of the function which can be
-// used with AOST clauses to generate a timestamp likely to be safe for follower
-// reads.
 const FollowerReadTimestampFunctionName = "follower_read_timestamp"
 
-// FollowerReadTimestampExperimentalFunctionName is the name of the old
-// "experimental_" function, which we keep for backwards compatibility.
 const FollowerReadTimestampExperimentalFunctionName = "experimental_follower_read_timestamp"
 
-// WithMinTimestampFunctionName is the name of the function that can be used
-// with AOST clauses to generate a bounded staleness at a fixed timestamp.
 const WithMinTimestampFunctionName = "with_min_timestamp"
 
-// WithMaxStalenessFunctionName is the name of the function that can be used
-// with AOST clauses to generate a bounded staleness at a maximum interval.
 const WithMaxStalenessFunctionName = "with_max_staleness"
 
-// IsFollowerReadTimestampFunction determines whether the AS OF SYSTEM TIME
-// clause contains a simple invocation of the follower_read_timestamp function.
 func IsFollowerReadTimestampFunction(asOf AsOfClause, searchPath sessiondata.SearchPath) bool {
+	__antithesis_instrumentation__.Notify(603259)
 	return resolveAsOfFuncType(asOf, searchPath) == asOfFuncTypeFollowerRead
 }
 
@@ -58,40 +40,44 @@ const (
 )
 
 func resolveAsOfFuncType(asOf AsOfClause, searchPath sessiondata.SearchPath) asOfFuncType {
+	__antithesis_instrumentation__.Notify(603260)
 	fe, ok := asOf.Expr.(*FuncExpr)
 	if !ok {
+		__antithesis_instrumentation__.Notify(603264)
 		return asOfFuncTypeInvalid
+	} else {
+		__antithesis_instrumentation__.Notify(603265)
 	}
+	__antithesis_instrumentation__.Notify(603261)
 	def, err := fe.Func.Resolve(searchPath)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(603266)
 		return asOfFuncTypeInvalid
+	} else {
+		__antithesis_instrumentation__.Notify(603267)
 	}
+	__antithesis_instrumentation__.Notify(603262)
 	switch def.Name {
 	case FollowerReadTimestampFunctionName, FollowerReadTimestampExperimentalFunctionName:
+		__antithesis_instrumentation__.Notify(603268)
 		return asOfFuncTypeFollowerRead
 	case WithMinTimestampFunctionName, WithMaxStalenessFunctionName:
+		__antithesis_instrumentation__.Notify(603269)
 		return asOfFuncTypeBoundedStaleness
+	default:
+		__antithesis_instrumentation__.Notify(603270)
 	}
+	__antithesis_instrumentation__.Notify(603263)
 	return asOfFuncTypeInvalid
 }
 
-// AsOfSystemTime represents the result from the AS OF SYSTEM TIME clause.
 type AsOfSystemTime struct {
-	// Timestamp is the HLC timestamp evaluated from the AS OF SYSTEM TIME clause.
 	Timestamp hlc.Timestamp
-	// BoundedStaleness is true if the AS OF SYSTEM TIME clause specifies bounded
-	// staleness should be used. If true, Timestamp specifies an (inclusive) lower
-	// bound to read from - data can be read from a time later than Timestamp. If
-	// false, data is returned at the exact Timestamp specified.
+
 	BoundedStaleness bool
-	// If this is a bounded staleness read, ensures we only read from the nearest
-	// replica. The query will error if this constraint could not be satisfied.
+
 	NearestOnly bool
-	// If this is a bounded staleness read with nearest_only=True, this is set when
-	// we failed to satisfy a bounded staleness read with a nearby replica as we
-	// have no followers with an up-to-date schema.
-	// This is be zero if there is no maximum bound.
-	// In non-zero, we want a read t where Timestamp <= t < MaxTimestampBound.
+
 	MaxTimestampBound hlc.Timestamp
 }
 
@@ -99,19 +85,16 @@ type evalAsOfTimestampOptions struct {
 	allowBoundedStaleness bool
 }
 
-// EvalAsOfTimestampOption is an option to pass into EvalAsOfTimestamp.
 type EvalAsOfTimestampOption func(o evalAsOfTimestampOptions) evalAsOfTimestampOptions
 
-// EvalAsOfTimestampOptionAllowBoundedStaleness signifies EvalAsOfTimestamp
-// should not error if a bounded staleness query is found.
 var EvalAsOfTimestampOptionAllowBoundedStaleness EvalAsOfTimestampOption = func(
 	o evalAsOfTimestampOptions,
 ) evalAsOfTimestampOptions {
+	__antithesis_instrumentation__.Notify(603271)
 	o.allowBoundedStaleness = true
 	return o
 }
 
-// EvalAsOfTimestamp evaluates the timestamp argument to an AS OF SYSTEM TIME query.
 func EvalAsOfTimestamp(
 	ctx context.Context,
 	asOf AsOfClause,
@@ -119,222 +102,325 @@ func EvalAsOfTimestamp(
 	evalCtx *EvalContext,
 	opts ...EvalAsOfTimestampOption,
 ) (AsOfSystemTime, error) {
+	__antithesis_instrumentation__.Notify(603272)
 	o := evalAsOfTimestampOptions{}
 	for _, f := range opts {
+		__antithesis_instrumentation__.Notify(603278)
 		o = f(o)
 	}
+	__antithesis_instrumentation__.Notify(603273)
 
 	newInvalidExprError := func() error {
+		__antithesis_instrumentation__.Notify(603279)
 		var optFuncs string
 		if o.allowBoundedStaleness {
+			__antithesis_instrumentation__.Notify(603281)
 			optFuncs = fmt.Sprintf(
 				", %s, %s,",
 				WithMinTimestampFunctionName,
 				WithMaxStalenessFunctionName,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(603282)
 		}
+		__antithesis_instrumentation__.Notify(603280)
 		return errors.Errorf(
 			"AS OF SYSTEM TIME: only constant expressions%s or %s are allowed",
 			optFuncs,
 			FollowerReadTimestampFunctionName,
 		)
 	}
+	__antithesis_instrumentation__.Notify(603274)
 
-	// We need to save and restore the previous value of the field in
-	// semaCtx in case we are recursively called within a subquery
-	// context.
 	scalarProps := &semaCtx.Properties
 	defer scalarProps.Restore(*scalarProps)
 	scalarProps.Require("AS OF SYSTEM TIME", RejectSpecial|RejectSubqueries)
 
 	var ret AsOfSystemTime
 
-	// In order to support the follower reads feature we permit this expression
-	// to be a simple invocation of the follower_read_timestamp function.
-	// Over time we could expand the set of allowed functions or expressions.
-	// All non-function expressions must be const and must TypeCheck into a
-	// string.
 	var te TypedExpr
 	if asOfFuncExpr, ok := asOf.Expr.(*FuncExpr); ok {
+		__antithesis_instrumentation__.Notify(603283)
 		switch resolveAsOfFuncType(asOf, semaCtx.SearchPath) {
 		case asOfFuncTypeFollowerRead:
+			__antithesis_instrumentation__.Notify(603285)
 		case asOfFuncTypeBoundedStaleness:
+			__antithesis_instrumentation__.Notify(603286)
 			if !o.allowBoundedStaleness {
+				__antithesis_instrumentation__.Notify(603289)
 				return AsOfSystemTime{}, newInvalidExprError()
+			} else {
+				__antithesis_instrumentation__.Notify(603290)
 			}
+			__antithesis_instrumentation__.Notify(603287)
 			ret.BoundedStaleness = true
 
-			// Determine the value of the "nearest_only" argument.
 			if len(asOfFuncExpr.Exprs) == 2 {
+				__antithesis_instrumentation__.Notify(603291)
 				nearestOnlyExpr, err := asOfFuncExpr.Exprs[1].TypeCheck(ctx, semaCtx, types.Bool)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(603295)
 					return AsOfSystemTime{}, err
+				} else {
+					__antithesis_instrumentation__.Notify(603296)
 				}
+				__antithesis_instrumentation__.Notify(603292)
 				nearestOnlyEval, err := nearestOnlyExpr.Eval(evalCtx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(603297)
 					return AsOfSystemTime{}, err
+				} else {
+					__antithesis_instrumentation__.Notify(603298)
 				}
+				__antithesis_instrumentation__.Notify(603293)
 				nearestOnly, ok := nearestOnlyEval.(*DBool)
 				if !ok {
+					__antithesis_instrumentation__.Notify(603299)
 					return AsOfSystemTime{}, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"%s: expected bool argument for nearest_only",
 						asOfFuncExpr.Func.String(),
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(603300)
 				}
+				__antithesis_instrumentation__.Notify(603294)
 				ret.NearestOnly = bool(*nearestOnly)
+			} else {
+				__antithesis_instrumentation__.Notify(603301)
 			}
 		default:
+			__antithesis_instrumentation__.Notify(603288)
 			return AsOfSystemTime{}, newInvalidExprError()
 		}
+		__antithesis_instrumentation__.Notify(603284)
 		var err error
 		te, err = asOf.Expr.TypeCheck(ctx, semaCtx, types.TimestampTZ)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(603302)
 			return AsOfSystemTime{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(603303)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(603304)
 		var err error
 		te, err = asOf.Expr.TypeCheck(ctx, semaCtx, types.String)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(603306)
 			return AsOfSystemTime{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(603307)
 		}
+		__antithesis_instrumentation__.Notify(603305)
 		if !IsConst(evalCtx, te) {
+			__antithesis_instrumentation__.Notify(603308)
 			return AsOfSystemTime{}, newInvalidExprError()
+		} else {
+			__antithesis_instrumentation__.Notify(603309)
 		}
 	}
+	__antithesis_instrumentation__.Notify(603275)
 
 	d, err := te.Eval(evalCtx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(603310)
 		return AsOfSystemTime{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(603311)
 	}
+	__antithesis_instrumentation__.Notify(603276)
 
 	stmtTimestamp := evalCtx.GetStmtTimestamp()
 	ret.Timestamp, err = DatumToHLC(evalCtx, stmtTimestamp, d)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(603312)
 		return AsOfSystemTime{}, errors.Wrap(err, "AS OF SYSTEM TIME")
+	} else {
+		__antithesis_instrumentation__.Notify(603313)
 	}
+	__antithesis_instrumentation__.Notify(603277)
 	return ret, nil
 }
 
-// DatumToHLC performs the conversion from a Datum to an HLC timestamp.
 func DatumToHLC(evalCtx *EvalContext, stmtTimestamp time.Time, d Datum) (hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(603314)
 	ts := hlc.Timestamp{}
 	var convErr error
 	switch d := d.(type) {
 	case *DString:
+		__antithesis_instrumentation__.Notify(603318)
 		s := string(*d)
-		// Parse synthetic flag.
+
 		syn := false
 		if strings.HasSuffix(s, "?") {
+			__antithesis_instrumentation__.Notify(603329)
 			s = s[:len(s)-1]
 			syn = true
+		} else {
+			__antithesis_instrumentation__.Notify(603330)
 		}
-		// Attempt to parse as timestamp.
+		__antithesis_instrumentation__.Notify(603319)
+
 		if dt, _, err := ParseDTimestamp(evalCtx, s, time.Nanosecond); err == nil {
+			__antithesis_instrumentation__.Notify(603331)
 			ts.WallTime = dt.Time.UnixNano()
 			ts.Synthetic = syn
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(603332)
 		}
-		// Attempt to parse as a decimal.
+		__antithesis_instrumentation__.Notify(603320)
+
 		if dec, _, err := apd.NewFromString(s); err == nil {
+			__antithesis_instrumentation__.Notify(603333)
 			ts, convErr = DecimalToHLC(dec)
 			ts.Synthetic = syn
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(603334)
 		}
-		// Attempt to parse as an interval.
+		__antithesis_instrumentation__.Notify(603321)
+
 		if iv, err := ParseDInterval(evalCtx.GetIntervalStyle(), s); err == nil {
+			__antithesis_instrumentation__.Notify(603335)
 			if (iv.Duration == duration.Duration{}) {
+				__antithesis_instrumentation__.Notify(603337)
 				convErr = errors.Errorf("interval value %v too small, absolute value must be >= %v", d, time.Microsecond)
+			} else {
+				__antithesis_instrumentation__.Notify(603338)
 			}
+			__antithesis_instrumentation__.Notify(603336)
 			ts.WallTime = duration.Add(stmtTimestamp, iv.Duration).UnixNano()
 			ts.Synthetic = syn
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(603339)
 		}
+		__antithesis_instrumentation__.Notify(603322)
 		convErr = errors.Errorf("value is neither timestamp, decimal, nor interval")
 	case *DTimestamp:
+		__antithesis_instrumentation__.Notify(603323)
 		ts.WallTime = d.UnixNano()
 	case *DTimestampTZ:
+		__antithesis_instrumentation__.Notify(603324)
 		ts.WallTime = d.UnixNano()
 	case *DInt:
+		__antithesis_instrumentation__.Notify(603325)
 		ts.WallTime = int64(*d)
 	case *DDecimal:
+		__antithesis_instrumentation__.Notify(603326)
 		ts, convErr = DecimalToHLC(&d.Decimal)
 	case *DInterval:
+		__antithesis_instrumentation__.Notify(603327)
 		ts.WallTime = duration.Add(stmtTimestamp, d.Duration).UnixNano()
 	default:
+		__antithesis_instrumentation__.Notify(603328)
 		convErr = errors.WithSafeDetails(
 			errors.Errorf("expected timestamp, decimal, or interval, got %s", d.ResolvedType()),
 			"go type: %T", d)
 	}
+	__antithesis_instrumentation__.Notify(603315)
 	if convErr != nil {
+		__antithesis_instrumentation__.Notify(603340)
 		return ts, convErr
+	} else {
+		__antithesis_instrumentation__.Notify(603341)
 	}
+	__antithesis_instrumentation__.Notify(603316)
 	zero := hlc.Timestamp{}
 	if ts.EqOrdering(zero) {
+		__antithesis_instrumentation__.Notify(603342)
 		return ts, errors.Errorf("zero timestamp is invalid")
-	} else if ts.Less(zero) {
-		return ts, errors.Errorf("timestamp before 1970-01-01T00:00:00Z is invalid")
+	} else {
+		__antithesis_instrumentation__.Notify(603343)
+		if ts.Less(zero) {
+			__antithesis_instrumentation__.Notify(603344)
+			return ts, errors.Errorf("timestamp before 1970-01-01T00:00:00Z is invalid")
+		} else {
+			__antithesis_instrumentation__.Notify(603345)
+		}
 	}
+	__antithesis_instrumentation__.Notify(603317)
 	return ts, nil
 }
 
-// DecimalToHLC performs the conversion from an inputted DECIMAL datum for an
-// AS OF SYSTEM TIME query to an HLC timestamp.
 func DecimalToHLC(d *apd.Decimal) (hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(603346)
 	if d.Negative {
+		__antithesis_instrumentation__.Notify(603354)
 		return hlc.Timestamp{}, pgerror.Newf(pgcode.Syntax, "cannot be negative")
+	} else {
+		__antithesis_instrumentation__.Notify(603355)
 	}
+	__antithesis_instrumentation__.Notify(603347)
 	var integral, fractional apd.Decimal
 	d.Modf(&integral, &fractional)
 	timestamp, err := integral.Int64()
 	if err != nil {
-		return hlc.Timestamp{}, pgerror.Wrapf(err, pgcode.Syntax, "converting timestamp to integer") // should never happen
+		__antithesis_instrumentation__.Notify(603356)
+		return hlc.Timestamp{}, pgerror.Wrapf(err, pgcode.Syntax, "converting timestamp to integer")
+	} else {
+		__antithesis_instrumentation__.Notify(603357)
 	}
+	__antithesis_instrumentation__.Notify(603348)
 	if fractional.IsZero() {
-		// there is no logical portion to this clock
+		__antithesis_instrumentation__.Notify(603358)
+
 		return hlc.Timestamp{WallTime: timestamp}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(603359)
 	}
+	__antithesis_instrumentation__.Notify(603349)
 
 	var logical apd.Decimal
 	multiplier := apd.New(1, 10)
 	condition, err := apd.BaseContext.Mul(&logical, &fractional, multiplier)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(603360)
 		return hlc.Timestamp{}, pgerror.Wrapf(err, pgcode.Syntax, "determining value of logical clock")
+	} else {
+		__antithesis_instrumentation__.Notify(603361)
 	}
+	__antithesis_instrumentation__.Notify(603350)
 	if _, err := condition.GoError(apd.DefaultTraps); err != nil {
+		__antithesis_instrumentation__.Notify(603362)
 		return hlc.Timestamp{}, pgerror.Wrapf(err, pgcode.Syntax, "determining value of logical clock")
+	} else {
+		__antithesis_instrumentation__.Notify(603363)
 	}
+	__antithesis_instrumentation__.Notify(603351)
 
 	counter, err := logical.Int64()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(603364)
 		return hlc.Timestamp{}, pgerror.Newf(pgcode.Syntax, "logical part has too many digits")
+	} else {
+		__antithesis_instrumentation__.Notify(603365)
 	}
+	__antithesis_instrumentation__.Notify(603352)
 	if counter > 1<<31 {
+		__antithesis_instrumentation__.Notify(603366)
 		return hlc.Timestamp{}, pgerror.Newf(pgcode.Syntax, "logical clock too large: %d", counter)
+	} else {
+		__antithesis_instrumentation__.Notify(603367)
 	}
+	__antithesis_instrumentation__.Notify(603353)
 	return hlc.Timestamp{
 		WallTime: timestamp,
 		Logical:  int32(counter),
 	}, nil
 }
 
-// ParseHLC parses a string representation of an `hlc.Timestamp`.
-// This differs from hlc.ParseTimestamp in that it parses the decimal
-// serialization of an hlc timestamp as opposed to the string serialization
-// performed by hlc.Timestamp.String().
-//
-// This function is used to parse:
-//
-//   1580361670629466905.0000000001
-//
-// hlc.ParseTimestamp() would be used to parse:
-//
-//   1580361670.629466905,1
-//
 func ParseHLC(s string) (hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(603368)
 	dec, _, err := apd.NewFromString(s)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(603370)
 		return hlc.Timestamp{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(603371)
 	}
+	__antithesis_instrumentation__.Notify(603369)
 	return DecimalToHLC(dec)
 }

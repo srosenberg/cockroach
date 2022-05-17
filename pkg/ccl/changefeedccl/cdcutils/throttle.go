@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package cdcutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,7 +19,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 )
 
-// Throttler is a changefeed IO throttler.
 type Throttler struct {
 	name           string
 	messageLimiter *quotapool.RateLimiter
@@ -34,32 +27,43 @@ type Throttler struct {
 	metrics        *Metrics
 }
 
-// AcquireMessageQuota acquires quota for a message with the specified size.
-// Blocks until such quota is available.
 func (t *Throttler) AcquireMessageQuota(ctx context.Context, sz int) error {
-	if t.messageLimiter.AdmitN(1) && t.byteLimiter.AdmitN(int64(sz)) {
+	__antithesis_instrumentation__.Notify(15309)
+	if t.messageLimiter.AdmitN(1) && func() bool {
+		__antithesis_instrumentation__.Notify(15312)
+		return t.byteLimiter.AdmitN(int64(sz)) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(15313)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(15314)
 	}
+	__antithesis_instrumentation__.Notify(15310)
 
-	// Slow case.
 	var span *tracing.Span
 	ctx, span = tracing.ChildSpan(ctx, fmt.Sprintf("quota-wait-%s", t.name))
 	defer span.Finish()
 
 	if err := waitQuota(ctx, 1, t.messageLimiter, t.metrics.MessagesPushbackNanos); err != nil {
+		__antithesis_instrumentation__.Notify(15315)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(15316)
 	}
+	__antithesis_instrumentation__.Notify(15311)
 	return waitQuota(ctx, int64(sz), t.byteLimiter, t.metrics.BytesPushbackNanos)
 }
 
-// AcquireFlushQuota acquires quota for a message with the specified size.
-// Blocks until such quota is available.
 func (t *Throttler) AcquireFlushQuota(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(15317)
 	if t.flushLimiter.AdmitN(1) {
+		__antithesis_instrumentation__.Notify(15319)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(15320)
 	}
+	__antithesis_instrumentation__.Notify(15318)
 
-	// Slow case.
 	var span *tracing.Span
 	ctx, span = tracing.ChildSpan(ctx, fmt.Sprintf("quota-wait-flush-%s", t.name))
 	defer span.Finish()
@@ -67,27 +71,38 @@ func (t *Throttler) AcquireFlushQuota(ctx context.Context) error {
 }
 
 func (t *Throttler) updateConfig(config changefeedbase.SinkThrottleConfig) {
+	__antithesis_instrumentation__.Notify(15321)
 	setLimits := func(rl *quotapool.RateLimiter, rate, burst float64) {
-		// set rateBudget to unlimited if rate is 0.
+		__antithesis_instrumentation__.Notify(15323)
+
 		rateBudget := quotapool.Limit(math.MaxInt64)
 		if rate > 0 {
+			__antithesis_instrumentation__.Notify(15326)
 			rateBudget = quotapool.Limit(rate)
+		} else {
+			__antithesis_instrumentation__.Notify(15327)
 		}
-		// set burstBudget to be at least the rate.
+		__antithesis_instrumentation__.Notify(15324)
+
 		burstBudget := int64(burst)
 		if burst < rate {
+			__antithesis_instrumentation__.Notify(15328)
 			burstBudget = int64(rate)
+		} else {
+			__antithesis_instrumentation__.Notify(15329)
 		}
+		__antithesis_instrumentation__.Notify(15325)
 		rl.UpdateLimit(rateBudget, burstBudget)
 	}
+	__antithesis_instrumentation__.Notify(15322)
 
 	setLimits(t.messageLimiter, config.MessageRate, config.MessageBurst)
 	setLimits(t.byteLimiter, config.ByteRate, config.ByteBurst)
 	setLimits(t.flushLimiter, config.FlushRate, config.FlushBurst)
 }
 
-// NewThrottler creates a new throttler with the specified configuration.
 func NewThrottler(name string, config changefeedbase.SinkThrottleConfig, m *Metrics) *Throttler {
+	__antithesis_instrumentation__.Notify(15330)
 	logSlowAcquisition := quotapool.OnSlowAcquisition(500*time.Millisecond, quotapool.LogSlowAcquisition)
 	t := &Throttler{
 		name: name,
@@ -111,44 +126,59 @@ var nodeSinkThrottle = struct {
 	*Throttler
 }{}
 
-// NodeLevelThrottler returns node level Throttler for changefeeds.
 func NodeLevelThrottler(sv *settings.Values, metrics *Metrics) *Throttler {
+	__antithesis_instrumentation__.Notify(15331)
 	getConfig := func() (config changefeedbase.SinkThrottleConfig) {
+		__antithesis_instrumentation__.Notify(15334)
 		configStr := changefeedbase.NodeSinkThrottleConfig.Get(sv)
 		if configStr != "" {
+			__antithesis_instrumentation__.Notify(15336)
 			if err := json.Unmarshal([]byte(configStr), &config); err != nil {
+				__antithesis_instrumentation__.Notify(15337)
 				log.Errorf(context.Background(),
 					"failed to parse node throttle config %q: err=%v; throttling disabled", configStr, err)
+			} else {
+				__antithesis_instrumentation__.Notify(15338)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(15339)
 		}
+		__antithesis_instrumentation__.Notify(15335)
 		return
 	}
+	__antithesis_instrumentation__.Notify(15332)
 
-	// Initialize node level throttler once.
 	nodeSinkThrottle.Do(func() {
+		__antithesis_instrumentation__.Notify(15340)
 		if nodeSinkThrottle.Throttler != nil {
+			__antithesis_instrumentation__.Notify(15342)
 			panic("unexpected state")
+		} else {
+			__antithesis_instrumentation__.Notify(15343)
 		}
+		__antithesis_instrumentation__.Notify(15341)
 		nodeSinkThrottle.Throttler = NewThrottler("cf.node.throttle", getConfig(), metrics)
-		// Update node throttler configs when settings change.
+
 		changefeedbase.NodeSinkThrottleConfig.SetOnChange(sv, func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(15344)
 			nodeSinkThrottle.Throttler.updateConfig(getConfig())
 		})
 	})
+	__antithesis_instrumentation__.Notify(15333)
 
 	return nodeSinkThrottle.Throttler
 }
 
-// Metrics is a metric.Struct for kvfeed metrics.
 type Metrics struct {
 	BytesPushbackNanos    *metric.Counter
 	MessagesPushbackNanos *metric.Counter
 	FlushPushbackNanos    *metric.Counter
 }
 
-// MakeMetrics constructs a Metrics struct with the provided histogram window.
 func MakeMetrics(histogramWindow time.Duration) Metrics {
+	__antithesis_instrumentation__.Notify(15345)
 	makeMetric := func(n string) metric.Metadata {
+		__antithesis_instrumentation__.Notify(15347)
 		return metric.Metadata{
 			Name:        fmt.Sprintf("changefeed.%s.messages_pushback_nanos", n),
 			Help:        fmt.Sprintf("Total time spent throttled for %s quota", n),
@@ -156,6 +186,7 @@ func MakeMetrics(histogramWindow time.Duration) Metrics {
 			Unit:        metric.Unit_NANOSECONDS,
 		}
 	}
+	__antithesis_instrumentation__.Notify(15346)
 
 	return Metrics{
 		BytesPushbackNanos:    metric.NewCounter(makeMetric("bytes")),
@@ -166,15 +197,17 @@ func MakeMetrics(histogramWindow time.Duration) Metrics {
 
 var _ metric.Struct = (*Metrics)(nil)
 
-// MetricStruct makes Metrics a metric.Struct.
-func (m Metrics) MetricStruct() {}
+func (m Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(15348) }
 
 func waitQuota(
 	ctx context.Context, n int64, limit *quotapool.RateLimiter, c *metric.Counter,
 ) error {
+	__antithesis_instrumentation__.Notify(15349)
 	start := timeutil.Now()
 	defer func() {
+		__antithesis_instrumentation__.Notify(15351)
 		c.Inc(int64(timeutil.Since(start)))
 	}()
+	__antithesis_instrumentation__.Notify(15350)
 	return limit.WaitN(ctx, n)
 }

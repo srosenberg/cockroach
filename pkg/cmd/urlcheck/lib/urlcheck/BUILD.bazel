@@ -6,6 +6,7 @@ go_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/cmd/urlcheck/lib/urlcheck",
     visibility = ["//visibility:public"],
     deps = [
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_ghemawat_stream//:stream",
     ],

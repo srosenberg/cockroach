@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package security
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -80,69 +72,37 @@ var (
 	}
 )
 
-// CertificateManager lives for the duration of the process and manages certificates and keys.
-// It reloads all certificates when triggered and construct tls.Config objects for
-// servers or clients.
-//
-// Important note: Load() performs some sanity checks (file pairs match, CA certs don't disappear),
-// but these are by no means complete. Completeness is not required as nodes restarting have
-// no fallback if invalid certs/keys are present.
-//
-// The nomenclature for certificates is as follows, all within the certs-dir.
-// - ca.crt             main CA certificate.
-//                      Used to verify everything unless overridden by more specific CAs.
-// - ca-client.crt      CA certificate to verify client certificates. If it does not exist,
-//                      fall back on 'ca.crt'.
-// - node.crt           node certificate.
-//                      Server-side certificate (always) and client-side certificate unless
-//                      client.node.crt is found.
-//                      Verified using 'ca.crt'.
-// - client.<user>.crt  client certificate for 'user'. Verified using 'ca.crt', or 'ca-client.crt'.
-// - client.node.crt    client certificate for the 'node' user. If it does not exist,
-//                      fall back on 'node.crt'.
 type CertificateManager struct {
 	tenantIdentifier uint64
 	CertsLocator
 
 	tlsSettings TLSSettings
 
-	// The metrics struct is initialized at init time and metrics do their
-	// own locking.
 	certMetrics CertificateMetrics
 
-	// mu protects all remaining fields.
 	mu syncutil.RWMutex
 
-	// If false, this is the first load. Needed to ensure we do not drop certain certs.
 	initialized bool
 
-	// Set of certs. These are swapped in during Load(), and never mutated afterwards.
-	caCert         *CertInfo // default CA certificate
-	clientCACert   *CertInfo // optional: certificate to verify client certificates
-	uiCACert       *CertInfo // optional: certificate to verify UI certificates
-	nodeCert       *CertInfo // certificate for nodes (always server cert, sometimes client cert)
-	nodeClientCert *CertInfo // optional: client certificate for 'node' user. Also included in 'clientCerts'
-	uiCert         *CertInfo // optional: server certificate for the admin UI.
+	caCert         *CertInfo
+	clientCACert   *CertInfo
+	uiCACert       *CertInfo
+	nodeCert       *CertInfo
+	nodeClientCert *CertInfo
+	uiCert         *CertInfo
 	clientCerts    map[SQLUsername]*CertInfo
 
-	// Certs only used with multi-tenancy.
 	tenantCACert, tenantCert, tenantSigningCert *CertInfo
 
-	// TLS configs. Initialized lazily. Wiped on every successful Load().
-	// Server-side config.
 	serverConfig *tls.Config
-	// Server-side config for the Admin UI.
+
 	uiServerConfig *tls.Config
-	// Client-side config for the cockroach node.
-	// All other client tls.Config objects are built as requested and not cached.
+
 	clientConfig *tls.Config
-	// Client config for the tenant (if running in a SQL tenant server).
+
 	tenantConfig *tls.Config
 }
 
-// CertificateMetrics holds metrics about the various certificates.
-// These are initialized when the certificate manager is created and updated
-// on reload.
 type CertificateMetrics struct {
 	CAExpiration         *metric.Gauge
 	ClientCAExpiration   *metric.Gauge
@@ -157,10 +117,13 @@ type CertificateMetrics struct {
 func makeCertificateManager(
 	certsDir string, tlsSettings TLSSettings, opts ...Option,
 ) *CertificateManager {
+	__antithesis_instrumentation__.Notify(185993)
 	var o cmOptions
 	for _, fn := range opts {
+		__antithesis_instrumentation__.Notify(185995)
 		fn(&o)
 	}
+	__antithesis_instrumentation__.Notify(185994)
 
 	return &CertificateManager{
 		CertsLocator:     MakeCertsLocator(certsDir),
@@ -180,73 +143,74 @@ func makeCertificateManager(
 }
 
 type cmOptions struct {
-	// tenantIdentifier, if set, specifies the tenant to use for loading tenant
-	// client certs.
 	tenantIdentifier uint64
 }
 
-// Option is an option to NewCertificateManager.
 type Option func(*cmOptions)
 
-// ForTenant is an option to NewCertificateManager which ties the manager to
-// the provided tenant. Without this option, tenant client certs are not
-// available.
 func ForTenant(tenantIdentifier uint64) Option {
+	__antithesis_instrumentation__.Notify(185996)
 	return func(opts *cmOptions) {
+		__antithesis_instrumentation__.Notify(185997)
 		opts.tenantIdentifier = tenantIdentifier
 	}
 }
 
-// NewCertificateManager creates a new certificate manager.
 func NewCertificateManager(
 	certsDir string, tlsSettings TLSSettings, opts ...Option,
 ) (*CertificateManager, error) {
+	__antithesis_instrumentation__.Notify(185998)
 	cm := makeCertificateManager(certsDir, tlsSettings, opts...)
 	return cm, cm.LoadCertificates()
 }
 
-// NewCertificateManagerFirstRun creates a new certificate manager.
-// The certsDir is created if it does not exist.
-// This should only be called when generating certificates, the server has
-// no business creating the certs directory.
 func NewCertificateManagerFirstRun(
 	certsDir string, tlsSettings TLSSettings, opts ...Option,
 ) (*CertificateManager, error) {
+	__antithesis_instrumentation__.Notify(185999)
 	cm := makeCertificateManager(certsDir, tlsSettings, opts...)
 	if err := NewCertificateLoader(cm.certsDir).MaybeCreateCertsDir(); err != nil {
+		__antithesis_instrumentation__.Notify(186001)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186002)
 	}
+	__antithesis_instrumentation__.Notify(186000)
 
 	return cm, cm.LoadCertificates()
 }
 
-// IsForTenant returns true iff this certificate manager is handling certs
-// for a SQL-only server process.
 func (cm *CertificateManager) IsForTenant() bool {
+	__antithesis_instrumentation__.Notify(186003)
 	return cm.tenantIdentifier != 0
 }
 
-// Metrics returns the metrics struct.
 func (cm *CertificateManager) Metrics() CertificateMetrics {
+	__antithesis_instrumentation__.Notify(186004)
 	return cm.certMetrics
 }
 
-// RegisterSignalHandler registers a signal handler for SIGHUP, triggering a
-// refresh of the certificates directory on notification.
 func (cm *CertificateManager) RegisterSignalHandler(stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(186005)
 	ctx := context.Background()
 	go func() {
+		__antithesis_instrumentation__.Notify(186006)
 		ch := sysutil.RefreshSignaledChan()
 		for {
+			__antithesis_instrumentation__.Notify(186007)
 			select {
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(186008)
 				return
 			case sig := <-ch:
+				__antithesis_instrumentation__.Notify(186009)
 				log.Ops.Infof(ctx, "received signal %q, triggering certificate reload", sig)
 				if err := cm.LoadCertificates(); err != nil {
+					__antithesis_instrumentation__.Notify(186010)
 					log.Ops.Warningf(ctx, "could not reload certificates: %v", err)
 					log.StructuredEvent(ctx, &eventpb.CertsReload{Success: false, ErrorMessage: err.Error()})
 				} else {
+					__antithesis_instrumentation__.Notify(186011)
 					log.StructuredEvent(ctx, &eventpb.CertsReload{Success: true})
 				}
 			}
@@ -254,466 +218,556 @@ func (cm *CertificateManager) RegisterSignalHandler(stopper *stop.Stopper) {
 	}()
 }
 
-// A CertsLocator provides locations to certificates.
 type CertsLocator struct {
-	certsDir string // os.ExpandEnv'ed
+	certsDir string
 }
 
-// MakeCertsLocator initializes a CertsLocator.
 func MakeCertsLocator(certsDir string) CertsLocator {
+	__antithesis_instrumentation__.Notify(186012)
 	return CertsLocator{certsDir: os.ExpandEnv(certsDir)}
 }
 
-// CACertPath returns the expected file path for the CA certificate.
 func (cl CertsLocator) CACertPath() string {
+	__antithesis_instrumentation__.Notify(186013)
 	return filepath.Join(cl.certsDir, CACertFilename())
 }
 
-// FullPath takes a CertInfo and returns the full path for it.
 func (cl CertsLocator) FullPath(ci *CertInfo) string {
+	__antithesis_instrumentation__.Notify(186014)
 	return filepath.Join(cl.certsDir, ci.Filename)
 }
 
-// EnsureCertsDirectory ensures that the certs directory exists by
-// creating it if does not exist yet.
 func (cl CertsLocator) EnsureCertsDirectory() error {
+	__antithesis_instrumentation__.Notify(186015)
 	return os.MkdirAll(cl.certsDir, 0700)
 }
 
-// CACertFilename returns the expected file name for the CA certificate.
-func CACertFilename() string { return "ca" + certExtension }
+func CACertFilename() string {
+	__antithesis_instrumentation__.Notify(186016)
+	return "ca" + certExtension
+}
 
-// CAKeyPath returns the expected file path for the CA certificate.
 func (cl CertsLocator) CAKeyPath() string {
+	__antithesis_instrumentation__.Notify(186017)
 	return filepath.Join(cl.certsDir, CAKeyFilename())
 }
 
-// CAKeyFilename returns the expected file name for the CA certificate.
-func CAKeyFilename() string { return "ca" + keyExtension }
+func CAKeyFilename() string {
+	__antithesis_instrumentation__.Notify(186018)
+	return "ca" + keyExtension
+}
 
-// TenantCACertPath returns the expected file path for the Tenant client CA
-// certificate.
 func (cl CertsLocator) TenantCACertPath() string {
+	__antithesis_instrumentation__.Notify(186019)
 	return filepath.Join(cl.certsDir, TenantCACertFilename())
 }
 
-// TenantCACertFilename returns the expected file name for the Tenant CA
-// certificate.
 func TenantCACertFilename() string {
+	__antithesis_instrumentation__.Notify(186020)
 	return "ca-client-tenant" + certExtension
 }
 
-// ClientCACertPath returns the expected file path for the CA certificate
-// used to verify client certificates.
 func (cl CertsLocator) ClientCACertPath() string {
+	__antithesis_instrumentation__.Notify(186021)
 	return filepath.Join(cl.certsDir, "ca-client"+certExtension)
 }
 
-// ClientCAKeyPath returns the expected file path for the CA key
-// used to sign client certificates.
 func (cl CertsLocator) ClientCAKeyPath() string {
+	__antithesis_instrumentation__.Notify(186022)
 	return filepath.Join(cl.certsDir, "ca-client"+keyExtension)
 }
 
-// ClientNodeCertPath returns the expected file path for the certificate used
-// by other nodes to verify outgoing RPCs from this node.
 func (cl CertsLocator) ClientNodeCertPath() string {
+	__antithesis_instrumentation__.Notify(186023)
 	return filepath.Join(cl.certsDir, "client.node"+certExtension)
 }
 
-// ClientNodeKeyPath returns the expected file path for the key used
-// to sign outgoing RPCs.
 func (cl CertsLocator) ClientNodeKeyPath() string {
+	__antithesis_instrumentation__.Notify(186024)
 	return filepath.Join(cl.certsDir, "client.node"+keyExtension)
 }
 
-// UICACertPath returns the expected file path for the CA certificate
-// used to verify Admin UI certificates.
 func (cl CertsLocator) UICACertPath() string {
+	__antithesis_instrumentation__.Notify(186025)
 	return filepath.Join(cl.certsDir, "ca-ui"+certExtension)
 }
 
-// UICAKeyPath returns the expected file path for the CA certificate
-// used to verify Admin UI certificates.
 func (cl CertsLocator) UICAKeyPath() string {
+	__antithesis_instrumentation__.Notify(186026)
 	return filepath.Join(cl.certsDir, "ca-ui"+keyExtension)
 }
 
-// NodeCertPath returns the expected file path for the node certificate.
 func (cl CertsLocator) NodeCertPath() string {
+	__antithesis_instrumentation__.Notify(186027)
 	return filepath.Join(cl.certsDir, NodeCertFilename())
 }
 
-// HasNodeCert returns true iff the node certificate file already exists.
 func (cl CertsLocator) HasNodeCert() (bool, error) {
+	__antithesis_instrumentation__.Notify(186028)
 	_, err := os.Stat(cl.NodeCertPath())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186030)
 		if oserror.IsNotExist(err) {
+			__antithesis_instrumentation__.Notify(186032)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(186033)
 		}
+		__antithesis_instrumentation__.Notify(186031)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(186034)
 	}
+	__antithesis_instrumentation__.Notify(186029)
 	return true, nil
 }
 
-// NodeCertFilename returns the expected file name for the node certificate.
 func NodeCertFilename() string {
+	__antithesis_instrumentation__.Notify(186035)
 	return "node" + certExtension
 }
 
-// NodeKeyPath returns the expected file path for the node key.
 func (cl CertsLocator) NodeKeyPath() string {
+	__antithesis_instrumentation__.Notify(186036)
 	return filepath.Join(cl.certsDir, NodeKeyFilename())
 }
 
-// NodeKeyFilename returns the expected file name for the node key.
 func NodeKeyFilename() string {
+	__antithesis_instrumentation__.Notify(186037)
 	return "node" + keyExtension
 }
 
-// UICertPath returns the expected file path for the UI certificate.
 func (cl CertsLocator) UICertPath() string {
+	__antithesis_instrumentation__.Notify(186038)
 	return filepath.Join(cl.certsDir, "ui"+certExtension)
 }
 
-// UIKeyPath returns the expected file path for the UI key.
 func (cl CertsLocator) UIKeyPath() string {
+	__antithesis_instrumentation__.Notify(186039)
 	return filepath.Join(cl.certsDir, "ui"+keyExtension)
 }
 
-// TenantCertPath returns the expected file path for the user's certificate.
 func (cl CertsLocator) TenantCertPath(tenantIdentifier string) string {
+	__antithesis_instrumentation__.Notify(186040)
 	return filepath.Join(cl.certsDir, TenantCertFilename(tenantIdentifier))
 }
 
-// TenantCertFilename returns the expected file name for the user's certificate.
 func TenantCertFilename(tenantIdentifier string) string {
+	__antithesis_instrumentation__.Notify(186041)
 	return "client-tenant." + tenantIdentifier + certExtension
 }
 
-// TenantKeyPath returns the expected file path for the tenant's key.
 func (cl CertsLocator) TenantKeyPath(tenantIdentifier string) string {
+	__antithesis_instrumentation__.Notify(186042)
 	return filepath.Join(cl.certsDir, TenantKeyFilename(tenantIdentifier))
 }
 
-// TenantKeyFilename returns the expected file name for the user's key.
 func TenantKeyFilename(tenantIdentifier string) string {
+	__antithesis_instrumentation__.Notify(186043)
 	return "client-tenant." + tenantIdentifier + keyExtension
 }
 
-// TenantSigningCertPath returns the expected file path for the node certificate.
 func (cl CertsLocator) TenantSigningCertPath(tenantIdentifier string) string {
+	__antithesis_instrumentation__.Notify(186044)
 	return filepath.Join(cl.certsDir, TenantSigningCertFilename(tenantIdentifier))
 }
 
-// TenantSigningCertFilename returns the expected file name for the node certificate.
 func TenantSigningCertFilename(tenantIdentifier string) string {
+	__antithesis_instrumentation__.Notify(186045)
 	return "tenant-signing." + tenantIdentifier + certExtension
 }
 
-// TenantSigningKeyPath returns the expected file path for the node key.
 func (cl CertsLocator) TenantSigningKeyPath(tenantIdentifier string) string {
+	__antithesis_instrumentation__.Notify(186046)
 	return filepath.Join(cl.certsDir, TenantSigningKeyFilename(tenantIdentifier))
 }
 
-// TenantSigningKeyFilename returns the expected file name for the node key.
 func TenantSigningKeyFilename(tenantIdentifier string) string {
+	__antithesis_instrumentation__.Notify(186047)
 	return "tenant-signing." + tenantIdentifier + keyExtension
 }
 
-// ClientCertPath returns the expected file path for the user's certificate.
 func (cl CertsLocator) ClientCertPath(user SQLUsername) string {
+	__antithesis_instrumentation__.Notify(186048)
 	return filepath.Join(cl.certsDir, ClientCertFilename(user))
 }
 
-// ClientCertFilename returns the expected file name for the user's certificate.
 func ClientCertFilename(user SQLUsername) string {
+	__antithesis_instrumentation__.Notify(186049)
 	return "client." + user.Normalized() + certExtension
 }
 
-// ClientKeyPath returns the expected file path for the user's key.
 func (cl CertsLocator) ClientKeyPath(user SQLUsername) string {
+	__antithesis_instrumentation__.Notify(186050)
 	return filepath.Join(cl.certsDir, ClientKeyFilename(user))
 }
 
-// ClientKeyFilename returns the expected file name for the user's key.
 func ClientKeyFilename(user SQLUsername) string {
+	__antithesis_instrumentation__.Notify(186051)
 	return "client." + user.Normalized() + keyExtension
 }
 
-// SQLServiceCertPath returns the expected file path for the
-// SQL service certificate
 func (cl CertsLocator) SQLServiceCertPath() string {
+	__antithesis_instrumentation__.Notify(186052)
 	return filepath.Join(cl.certsDir, SQLServiceCertFilename())
 }
 
-// SQLServiceCertFilename returns the expected file name for the SQL service
-// certificate
 func SQLServiceCertFilename() string {
+	__antithesis_instrumentation__.Notify(186053)
 	return "service.sql" + certExtension
 }
 
-// SQLServiceKeyPath returns the expected file path for the SQL service key
 func (cl CertsLocator) SQLServiceKeyPath() string {
+	__antithesis_instrumentation__.Notify(186054)
 	return filepath.Join(cl.certsDir, SQLServiceKeyFilename())
 }
 
-// SQLServiceKeyFilename returns the expected file name for the SQL service
-// certificate
 func SQLServiceKeyFilename() string {
+	__antithesis_instrumentation__.Notify(186055)
 	return "service.sql" + keyExtension
 }
 
-// SQLServiceCACertPath returns the expected file path for the
-// SQL CA certificate
 func (cl CertsLocator) SQLServiceCACertPath() string {
+	__antithesis_instrumentation__.Notify(186056)
 	return filepath.Join(cl.certsDir, SQLServiceCACertFilename())
 }
 
-// SQLServiceCACertFilename returns the expected file name for the SQL CA
-// certificate
 func SQLServiceCACertFilename() string {
+	__antithesis_instrumentation__.Notify(186057)
 	return "service.ca.sql" + certExtension
 }
 
-// SQLServiceCAKeyPath returns the expected file path for the SQL CA key
 func (cl CertsLocator) SQLServiceCAKeyPath() string {
+	__antithesis_instrumentation__.Notify(186058)
 	return filepath.Join(cl.certsDir, SQLServiceCAKeyFilename())
 }
 
-// SQLServiceCAKeyFilename returns the expected file name for the SQL CA
-// certificate
 func SQLServiceCAKeyFilename() string {
+	__antithesis_instrumentation__.Notify(186059)
 	return "service.ca.sql" + keyExtension
 }
 
-// RPCServiceCertPath returns the expected file path for the
-// RPC service certificate
 func (cl CertsLocator) RPCServiceCertPath() string {
+	__antithesis_instrumentation__.Notify(186060)
 	return filepath.Join(cl.certsDir, RPCServiceCertFilename())
 }
 
-// RPCServiceCertFilename returns the expected file name for the RPC service
-// certificate
 func RPCServiceCertFilename() string {
+	__antithesis_instrumentation__.Notify(186061)
 	return "service.rpc" + certExtension
 }
 
-// RPCServiceKeyPath returns the expected file path for the RPC service key
 func (cl CertsLocator) RPCServiceKeyPath() string {
+	__antithesis_instrumentation__.Notify(186062)
 	return filepath.Join(cl.certsDir, RPCServiceKeyFilename())
 }
 
-// RPCServiceKeyFilename returns the expected file name for the RPC service
-// certificate
 func RPCServiceKeyFilename() string {
+	__antithesis_instrumentation__.Notify(186063)
 	return "service.rpc" + keyExtension
 }
 
-// RPCServiceCACertPath returns the expected file path for the
-// RPC service certificate
 func (cl CertsLocator) RPCServiceCACertPath() string {
+	__antithesis_instrumentation__.Notify(186064)
 	return filepath.Join(cl.certsDir, RPCServiceCACertFilename())
 }
 
-// RPCServiceCACertFilename returns the expected file name for the RPC service
-// certificate
 func RPCServiceCACertFilename() string {
+	__antithesis_instrumentation__.Notify(186065)
 	return "service.ca.rpc" + certExtension
 }
 
-// RPCServiceCAKeyPath returns the expected file path for the RPC service key
 func (cl CertsLocator) RPCServiceCAKeyPath() string {
+	__antithesis_instrumentation__.Notify(186066)
 	return filepath.Join(cl.certsDir, RPCServiceCAKeyFilename())
 }
 
-// RPCServiceCAKeyFilename returns the expected file name for the RPC service
-// certificate
 func RPCServiceCAKeyFilename() string {
+	__antithesis_instrumentation__.Notify(186067)
 	return "service.ca.rpc" + keyExtension
 }
 
-// CACert returns the CA cert. May be nil.
-// Callers should check for an internal Error field.
 func (cm *CertificateManager) CACert() *CertInfo {
+	__antithesis_instrumentation__.Notify(186068)
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.caCert
 }
 
-// ClientCACert returns the CA cert used to verify client certificates. May be nil.
-// Callers should check for an internal Error field.
 func (cm *CertificateManager) ClientCACert() *CertInfo {
+	__antithesis_instrumentation__.Notify(186069)
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.clientCACert
 }
 
-// UICACert returns the CA cert used to verify the Admin UI certificate. May be nil.
-// Callers should check for an internal Error field.
 func (cm *CertificateManager) UICACert() *CertInfo {
+	__antithesis_instrumentation__.Notify(186070)
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.uiCACert
 }
 
-// UICert returns the certificate used by the Admin UI. May be nil.
-// Callers should check for an internal Error field.
 func (cm *CertificateManager) UICert() *CertInfo {
+	__antithesis_instrumentation__.Notify(186071)
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.uiCert
 }
 
-// checkCertIsValid returns an error if the passed cert is missing or has an error.
 func checkCertIsValid(cert *CertInfo) error {
+	__antithesis_instrumentation__.Notify(186072)
 	if cert == nil {
+		__antithesis_instrumentation__.Notify(186074)
 		return errors.New("not found")
+	} else {
+		__antithesis_instrumentation__.Notify(186075)
 	}
+	__antithesis_instrumentation__.Notify(186073)
 	return cert.Error
 }
 
-// NodeCert returns the Node cert. May be nil.
-// Callers should check for an internal Error field.
 func (cm *CertificateManager) NodeCert() *CertInfo {
+	__antithesis_instrumentation__.Notify(186076)
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.nodeCert
 }
 
-// ClientCerts returns the Client certs.
-// Callers should check for internal Error fields.
 func (cm *CertificateManager) ClientCerts() map[SQLUsername]*CertInfo {
+	__antithesis_instrumentation__.Notify(186077)
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.clientCerts
 }
 
-// Error is the error type for this package.
-// TODO(knz): make this an error wrapper.
 type Error struct {
 	Message string
 	Err     error
 }
 
-// Error implements the error interface.
 func (e *Error) Error() string {
+	__antithesis_instrumentation__.Notify(186078)
 	return fmt.Sprintf("%s: %v", e.Message, e.Err)
 }
 
-// makeErrorf constructs an Error and returns it.
 func makeErrorf(err error, format string, args ...interface{}) *Error {
+	__antithesis_instrumentation__.Notify(186079)
 	return &Error{
 		Message: fmt.Sprintf(format, args...),
 		Err:     err,
 	}
 }
 
-// makeError constructs an Error with just a string.
-func makeError(err error, s string) *Error { return makeErrorf(err, "%s", s) }
+func makeError(err error, s string) *Error {
+	__antithesis_instrumentation__.Notify(186080)
+	return makeErrorf(err, "%s", s)
+}
 
-// LoadCertificates creates a CertificateLoader to load all certs and keys.
-// Upon success, it swaps the existing certificates for the new ones.
 func (cm *CertificateManager) LoadCertificates() error {
+	__antithesis_instrumentation__.Notify(186081)
 	cl := NewCertificateLoader(cm.certsDir)
 	if err := cl.Load(); err != nil {
+		__antithesis_instrumentation__.Notify(186087)
 		return makeErrorf(err, "problem loading certs directory %s", cm.certsDir)
+	} else {
+		__antithesis_instrumentation__.Notify(186088)
 	}
+	__antithesis_instrumentation__.Notify(186082)
 
 	var caCert, clientCACert, uiCACert, nodeCert, uiCert, nodeClientCert *CertInfo
 	var tenantCACert, tenantCert, tenantSigningCert *CertInfo
 	clientCerts := make(map[SQLUsername]*CertInfo)
 	for _, ci := range cl.Certificates() {
+		__antithesis_instrumentation__.Notify(186089)
 		switch ci.FileUsage {
 		case CAPem:
+			__antithesis_instrumentation__.Notify(186090)
 			caCert = ci
 		case ClientCAPem:
+			__antithesis_instrumentation__.Notify(186091)
 			clientCACert = ci
 		case UICAPem:
+			__antithesis_instrumentation__.Notify(186092)
 			uiCACert = ci
 		case NodePem:
+			__antithesis_instrumentation__.Notify(186093)
 			nodeCert = ci
 		case TenantPem:
-			// When there are multiple tenant client certs, pick the one we need only.
-			// In practice, this is expected only during testing, when we share a certs
-			// dir between multiple tenants.
+			__antithesis_instrumentation__.Notify(186094)
+
 			tenantID, err := strconv.ParseUint(ci.Name, 10, 64)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(186102)
 				return errors.Errorf("invalid tenant id %s", ci.Name)
+			} else {
+				__antithesis_instrumentation__.Notify(186103)
 			}
+			__antithesis_instrumentation__.Notify(186095)
 			if tenantID == cm.tenantIdentifier {
+				__antithesis_instrumentation__.Notify(186104)
 				tenantCert = ci
+			} else {
+				__antithesis_instrumentation__.Notify(186105)
 			}
 		case TenantSigningPem:
-			// When there are multiple tenant signing certs, pick the one we need only.
-			// In practice, this is expected only during testing, when we share a certs
-			// dir between multiple tenants.
+			__antithesis_instrumentation__.Notify(186096)
+
 			tenantID, err := strconv.ParseUint(ci.Name, 10, 64)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(186106)
 				return errors.Errorf("invalid tenant id %s", ci.Name)
+			} else {
+				__antithesis_instrumentation__.Notify(186107)
 			}
+			__antithesis_instrumentation__.Notify(186097)
 			if tenantID == cm.tenantIdentifier {
+				__antithesis_instrumentation__.Notify(186108)
 				tenantSigningCert = ci
+			} else {
+				__antithesis_instrumentation__.Notify(186109)
 			}
 		case TenantCAPem:
+			__antithesis_instrumentation__.Notify(186098)
 			tenantCACert = ci
 		case UIPem:
+			__antithesis_instrumentation__.Notify(186099)
 			uiCert = ci
 		case ClientPem:
+			__antithesis_instrumentation__.Notify(186100)
 			username := MakeSQLUsernameFromPreNormalizedString(ci.Name)
 			clientCerts[username] = ci
 			if username.IsNodeUser() {
+				__antithesis_instrumentation__.Notify(186110)
 				nodeClientCert = ci
+			} else {
+				__antithesis_instrumentation__.Notify(186111)
 			}
 		default:
+			__antithesis_instrumentation__.Notify(186101)
 			return errors.Errorf("unsupported certificate %v", ci.Filename)
 		}
 	}
+	__antithesis_instrumentation__.Notify(186083)
 
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	if cm.initialized {
-		// If we ran before, make sure we don't reload with missing/bad certificates.
-		if err := checkCertIsValid(caCert); checkCertIsValid(cm.caCert) == nil && err != nil {
+		__antithesis_instrumentation__.Notify(186112)
+
+		if err := checkCertIsValid(caCert); checkCertIsValid(cm.caCert) == nil && func() bool {
+			__antithesis_instrumentation__.Notify(186120)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186121)
 			return makeError(err, "reload would lose valid CA cert")
+		} else {
+			__antithesis_instrumentation__.Notify(186122)
 		}
-		if err := checkCertIsValid(nodeCert); checkCertIsValid(cm.nodeCert) == nil && err != nil {
+		__antithesis_instrumentation__.Notify(186113)
+		if err := checkCertIsValid(nodeCert); checkCertIsValid(cm.nodeCert) == nil && func() bool {
+			__antithesis_instrumentation__.Notify(186123)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186124)
 			return makeError(err, "reload would lose valid node cert")
+		} else {
+			__antithesis_instrumentation__.Notify(186125)
 		}
-		if err := checkCertIsValid(nodeClientCert); checkCertIsValid(cm.nodeClientCert) == nil && err != nil {
+		__antithesis_instrumentation__.Notify(186114)
+		if err := checkCertIsValid(nodeClientCert); checkCertIsValid(cm.nodeClientCert) == nil && func() bool {
+			__antithesis_instrumentation__.Notify(186126)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186127)
 			return makeErrorf(err, "reload would lose valid client cert for '%s'", NodeUser)
+		} else {
+			__antithesis_instrumentation__.Notify(186128)
 		}
-		if err := checkCertIsValid(clientCACert); checkCertIsValid(cm.clientCACert) == nil && err != nil {
+		__antithesis_instrumentation__.Notify(186115)
+		if err := checkCertIsValid(clientCACert); checkCertIsValid(cm.clientCACert) == nil && func() bool {
+			__antithesis_instrumentation__.Notify(186129)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186130)
 			return makeError(err, "reload would lose valid CA certificate for client verification")
+		} else {
+			__antithesis_instrumentation__.Notify(186131)
 		}
-		if err := checkCertIsValid(uiCACert); checkCertIsValid(cm.uiCACert) == nil && err != nil {
+		__antithesis_instrumentation__.Notify(186116)
+		if err := checkCertIsValid(uiCACert); checkCertIsValid(cm.uiCACert) == nil && func() bool {
+			__antithesis_instrumentation__.Notify(186132)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186133)
 			return makeError(err, "reload would lose valid CA certificate for UI")
+		} else {
+			__antithesis_instrumentation__.Notify(186134)
 		}
-		if err := checkCertIsValid(uiCert); checkCertIsValid(cm.uiCert) == nil && err != nil {
+		__antithesis_instrumentation__.Notify(186117)
+		if err := checkCertIsValid(uiCert); checkCertIsValid(cm.uiCert) == nil && func() bool {
+			__antithesis_instrumentation__.Notify(186135)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186136)
 			return makeError(err, "reload would lose valid UI certificate")
+		} else {
+			__antithesis_instrumentation__.Notify(186137)
 		}
+		__antithesis_instrumentation__.Notify(186118)
 
-		if err := checkCertIsValid(tenantCACert); checkCertIsValid(cm.tenantCACert) == nil && err != nil {
+		if err := checkCertIsValid(tenantCACert); checkCertIsValid(cm.tenantCACert) == nil && func() bool {
+			__antithesis_instrumentation__.Notify(186138)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186139)
 			return makeError(err, "reload would lose valid tenant client CA certificate")
+		} else {
+			__antithesis_instrumentation__.Notify(186140)
 		}
-		if err := checkCertIsValid(tenantCert); checkCertIsValid(cm.tenantCert) == nil && err != nil {
+		__antithesis_instrumentation__.Notify(186119)
+		if err := checkCertIsValid(tenantCert); checkCertIsValid(cm.tenantCert) == nil && func() bool {
+			__antithesis_instrumentation__.Notify(186141)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186142)
 			return makeError(err, "reload would lose valid tenant client certificate")
+		} else {
+			__antithesis_instrumentation__.Notify(186143)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(186144)
 	}
+	__antithesis_instrumentation__.Notify(186084)
 
-	if tenantCert == nil && cm.tenantIdentifier != 0 {
+	if tenantCert == nil && func() bool {
+		__antithesis_instrumentation__.Notify(186145)
+		return cm.tenantIdentifier != 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(186146)
 		return makeErrorf(errors.New("tenant client cert not found"), "for %d in %s", cm.tenantIdentifier, cm.certsDir)
+	} else {
+		__antithesis_instrumentation__.Notify(186147)
 	}
+	__antithesis_instrumentation__.Notify(186085)
 
-	if nodeClientCert == nil && nodeCert != nil {
-		// No client certificate for node, but we have a node certificate. Check that
-		// it contains the required client fields.
+	if nodeClientCert == nil && func() bool {
+		__antithesis_instrumentation__.Notify(186148)
+		return nodeCert != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(186149)
+
 		if err := validateDualPurposeNodeCert(nodeCert); err != nil {
+			__antithesis_instrumentation__.Notify(186150)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(186151)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(186152)
 	}
+	__antithesis_instrumentation__.Notify(186086)
 
-	// Swap everything.
 	cm.caCert = caCert
 	cm.clientCACert = clientCACert
 	cm.uiCACert = uiCACert
@@ -738,109 +792,127 @@ func (cm *CertificateManager) LoadCertificates() error {
 	return nil
 }
 
-// updateMetricsLocked updates the values on the certificate metrics.
-// The metrics may not exist (eg: in tests that build their own CertificateManager).
-// If the corresponding certificate is missing or invalid (Error != nil), we reset the
-// metric to zero.
-// cm.mu must be held to protect the certificates. Metrics do their own atomicity.
 func (cm *CertificateManager) updateMetricsLocked() {
+	__antithesis_instrumentation__.Notify(186153)
 	maybeSetMetric := func(m *metric.Gauge, ci *CertInfo) {
+		__antithesis_instrumentation__.Notify(186155)
 		if m == nil {
+			__antithesis_instrumentation__.Notify(186157)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(186158)
 		}
-		if ci != nil && ci.Error == nil {
+		__antithesis_instrumentation__.Notify(186156)
+		if ci != nil && func() bool {
+			__antithesis_instrumentation__.Notify(186159)
+			return ci.Error == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(186160)
 			m.Update(ci.ExpirationTime.Unix())
 		} else {
+			__antithesis_instrumentation__.Notify(186161)
 			m.Update(0)
 		}
 	}
+	__antithesis_instrumentation__.Notify(186154)
 
-	// CA certificate expiration.
 	maybeSetMetric(cm.certMetrics.CAExpiration, cm.caCert)
 
-	// Client CA certificate expiration.
 	maybeSetMetric(cm.certMetrics.ClientCAExpiration, cm.clientCACert)
 
-	// UI CA certificate expiration.
 	maybeSetMetric(cm.certMetrics.UICAExpiration, cm.uiCACert)
 
-	// Node certificate expiration.
-	// TODO(marc): we need to examine the entire certificate chain here, if the CA cert
-	// used to sign the node cert expires sooner, then that is the expiration time to report.
 	maybeSetMetric(cm.certMetrics.NodeExpiration, cm.nodeCert)
 
-	// Node client certificate expiration.
 	maybeSetMetric(cm.certMetrics.NodeClientExpiration, cm.nodeClientCert)
 
-	// UI certificate expiration.
 	maybeSetMetric(cm.certMetrics.UIExpiration, cm.uiCert)
 }
 
-// GetServerTLSConfig returns a server TLS config with a callback to fetch the
-// latest TLS config. We still attempt to get the config to make sure
-// the initial call has a valid config loaded.
 func (cm *CertificateManager) GetServerTLSConfig() (*tls.Config, error) {
+	__antithesis_instrumentation__.Notify(186162)
 	if _, err := cm.getEmbeddedServerTLSConfig(nil); err != nil {
+		__antithesis_instrumentation__.Notify(186164)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186165)
 	}
+	__antithesis_instrumentation__.Notify(186163)
 	return &tls.Config{
 		GetConfigForClient: cm.getEmbeddedServerTLSConfig,
-		// NB: this is needed to use (*http.Server).ServeTLS, which tries to load
-		// a certificate eagerly from the supplied strings (which are empty in
-		// our case) unless:
-		//
-		// 	(len(config.Certificates) > 0 || config.GetCertificate != nil) == true
-		//
-		// TODO(tbg): should we generally do this for all server certs? The docs
-		// are not clear whether this is a bug or feature.
+
 		GetCertificate: func(hi *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			__antithesis_instrumentation__.Notify(186166)
 			return nil, nil
 		},
 	}, nil
 }
 
-// getEmbeddedServerTLSConfig returns the most up-to-date server tls.Config.
-// This is the callback set in tls.Config.GetConfigForClient. We currently
-// ignore the ClientHelloInfo object.
 func (cm *CertificateManager) getEmbeddedServerTLSConfig(
 	_ *tls.ClientHelloInfo,
 ) (*tls.Config, error) {
+	__antithesis_instrumentation__.Notify(186167)
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	if cm.serverConfig != nil {
+		__antithesis_instrumentation__.Notify(186174)
 		return cm.serverConfig, nil
+	} else {
+		__antithesis_instrumentation__.Notify(186175)
 	}
+	__antithesis_instrumentation__.Notify(186168)
 
 	ca, err := cm.getCACertLocked()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186176)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186177)
 	}
+	__antithesis_instrumentation__.Notify(186169)
 
 	var nodeCert *CertInfo
 	if !cm.IsForTenant() {
-		// Host cluster.
+		__antithesis_instrumentation__.Notify(186178)
+
 		nodeCert, err = cm.getNodeCertLocked()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(186179)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(186180)
 		}
 	} else {
-		// Tenant server.
+		__antithesis_instrumentation__.Notify(186181)
+
 		nodeCert, err = cm.getTenantCertLocked()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(186182)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(186183)
 		}
 	}
+	__antithesis_instrumentation__.Notify(186170)
 
 	clientCA, err := cm.getClientCACertLocked()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186184)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186185)
 	}
+	__antithesis_instrumentation__.Notify(186171)
 
 	tenantCA, err := cm.getTenantCACertLocked()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186186)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186187)
 	}
+	__antithesis_instrumentation__.Notify(186172)
 
 	cfg, err := newServerTLSConfig(
 		cm.tlsSettings,
@@ -851,212 +923,288 @@ func (cm *CertificateManager) getEmbeddedServerTLSConfig(
 		tenantCA.FileContents,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186188)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186189)
 	}
+	__antithesis_instrumentation__.Notify(186173)
 
 	cm.serverConfig = cfg
 	return cfg, nil
 }
 
-// GetUIServerTLSConfig returns a server TLS config for the Admin UI with a
-// callback to fetch the latest TLS config. We still attempt to get the config to make sure
-// the initial call has a valid config loaded.
 func (cm *CertificateManager) GetUIServerTLSConfig() (*tls.Config, error) {
+	__antithesis_instrumentation__.Notify(186190)
 	if _, err := cm.getEmbeddedUIServerTLSConfig(nil); err != nil {
+		__antithesis_instrumentation__.Notify(186192)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186193)
 	}
+	__antithesis_instrumentation__.Notify(186191)
 	return &tls.Config{
 		GetConfigForClient: cm.getEmbeddedUIServerTLSConfig,
 	}, nil
 }
 
-// getEmbeddedUIServerTLSConfig returns the most up-to-date server tls.Config for the Admin UI.
-// This is the callback set in tls.Config.GetConfigForClient. We currently
-// ignore the ClientHelloInfo object.
 func (cm *CertificateManager) getEmbeddedUIServerTLSConfig(
 	_ *tls.ClientHelloInfo,
 ) (*tls.Config, error) {
+	__antithesis_instrumentation__.Notify(186194)
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	if cm.uiServerConfig != nil {
+		__antithesis_instrumentation__.Notify(186198)
 		return cm.uiServerConfig, nil
+	} else {
+		__antithesis_instrumentation__.Notify(186199)
 	}
+	__antithesis_instrumentation__.Notify(186195)
 
 	uiCert, err := cm.getUICertLocked()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186200)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186201)
 	}
+	__antithesis_instrumentation__.Notify(186196)
 
 	cfg, err := newUIServerTLSConfig(
 		cm.tlsSettings,
 		uiCert.FileContents,
 		uiCert.KeyFileContents)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186202)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186203)
 	}
+	__antithesis_instrumentation__.Notify(186197)
 
 	cm.uiServerConfig = cfg
 	return cfg, nil
 }
 
-// getCACertLocked returns the general CA cert.
-// cm.mu must be held.
 func (cm *CertificateManager) getCACertLocked() (*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186204)
 	if err := checkCertIsValid(cm.caCert); err != nil {
+		__antithesis_instrumentation__.Notify(186206)
 		return nil, makeError(err, "problem with CA certificate")
+	} else {
+		__antithesis_instrumentation__.Notify(186207)
 	}
+	__antithesis_instrumentation__.Notify(186205)
 	return cm.caCert, nil
 }
 
-// getClientCACertLocked returns the CA cert used to verify client certificates.
-// Use the client CA if it exists, otherwise fall back on the general CA.
-// cm.mu must be held.
 func (cm *CertificateManager) getClientCACertLocked() (*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186208)
 	if cm.clientCACert == nil {
-		// No client CA: use general CA.
+		__antithesis_instrumentation__.Notify(186211)
+
 		return cm.getCACertLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(186212)
 	}
+	__antithesis_instrumentation__.Notify(186209)
 
 	if err := checkCertIsValid(cm.clientCACert); err != nil {
+		__antithesis_instrumentation__.Notify(186213)
 		return nil, makeError(err, "problem with client CA certificate")
+	} else {
+		__antithesis_instrumentation__.Notify(186214)
 	}
+	__antithesis_instrumentation__.Notify(186210)
 	return cm.clientCACert, nil
 }
 
-// getUICACertLocked returns the CA cert for the Admin UI.
-// Use the UI CA if it exists, otherwise fall back on the general CA.
-// cm.mu must be held.
 func (cm *CertificateManager) getUICACertLocked() (*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186215)
 	if cm.uiCACert == nil {
-		// No UI CA: use general CA.
+		__antithesis_instrumentation__.Notify(186218)
+
 		return cm.getCACertLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(186219)
 	}
+	__antithesis_instrumentation__.Notify(186216)
 
 	if err := checkCertIsValid(cm.uiCACert); err != nil {
+		__antithesis_instrumentation__.Notify(186220)
 		return nil, makeError(err, "problem with UI CA certificate")
+	} else {
+		__antithesis_instrumentation__.Notify(186221)
 	}
+	__antithesis_instrumentation__.Notify(186217)
 	return cm.uiCACert, nil
 }
 
-// getNodeCertLocked returns the node certificate.
-// cm.mu must be held.
 func (cm *CertificateManager) getNodeCertLocked() (*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186222)
 	if err := checkCertIsValid(cm.nodeCert); err != nil {
+		__antithesis_instrumentation__.Notify(186224)
 		return nil, makeError(err, "problem with node certificate")
+	} else {
+		__antithesis_instrumentation__.Notify(186225)
 	}
+	__antithesis_instrumentation__.Notify(186223)
 	return cm.nodeCert, nil
 }
 
-// getUICertLocked returns the UI certificate if present, otherwise returns
-// the node certificate.
-// cm.mu must be held.
 func (cm *CertificateManager) getUICertLocked() (*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186226)
 	if cm.uiCert == nil {
-		// No UI certificate: use node certificate.
+		__antithesis_instrumentation__.Notify(186229)
+
 		if !cm.IsForTenant() {
-			// Host cluster.
+			__antithesis_instrumentation__.Notify(186231)
+
 			return cm.getNodeCertLocked()
+		} else {
+			__antithesis_instrumentation__.Notify(186232)
 		}
-		// Tenant server.
+		__antithesis_instrumentation__.Notify(186230)
+
 		return cm.getTenantCertLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(186233)
 	}
+	__antithesis_instrumentation__.Notify(186227)
 	if err := checkCertIsValid(cm.uiCert); err != nil {
+		__antithesis_instrumentation__.Notify(186234)
 		return nil, makeError(err, "problem with UI certificate")
+	} else {
+		__antithesis_instrumentation__.Notify(186235)
 	}
+	__antithesis_instrumentation__.Notify(186228)
 	return cm.uiCert, nil
 }
 
-// getClientCertLocked returns the client cert/key for the specified user,
-// or an error if not found.
-// This is used both to connect to KV nodes and SQL servers.
-// cm.mu must be held.
-//
-// TODO(catj): split the logic here into two functions.
 func (cm *CertificateManager) getClientCertLocked(user SQLUsername) (*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186236)
 	ci := cm.clientCerts[user]
 	if err := checkCertIsValid(ci); err != nil {
+		__antithesis_instrumentation__.Notify(186238)
 		return nil, makeErrorf(err, "problem with client cert for user %s", user)
+	} else {
+		__antithesis_instrumentation__.Notify(186239)
 	}
+	__antithesis_instrumentation__.Notify(186237)
 
 	return ci, nil
 }
 
-// getNodeClientCertLocked returns the client cert/key for the node user.
-// Use the client certificate for 'node' if it exists, otherwise use
-// the node certificate which should be a combined client/server certificate.
-// cm.mu must be held.
 func (cm *CertificateManager) getNodeClientCertLocked() (*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186240)
 	if cm.nodeClientCert == nil {
-		// No specific client cert for 'node': use multi-purpose node cert,
-		// but only if we are in the host cluster.
+		__antithesis_instrumentation__.Notify(186243)
+
 		if cm.IsForTenant() {
+			__antithesis_instrumentation__.Notify(186245)
 			return nil, errors.New("no node client cert for a SQL server")
+		} else {
+			__antithesis_instrumentation__.Notify(186246)
 		}
+		__antithesis_instrumentation__.Notify(186244)
 		return cm.getNodeCertLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(186247)
 	}
+	__antithesis_instrumentation__.Notify(186241)
 
 	if err := checkCertIsValid(cm.nodeClientCert); err != nil {
+		__antithesis_instrumentation__.Notify(186248)
 		return nil, makeError(err, "problem with node client certificate")
+	} else {
+		__antithesis_instrumentation__.Notify(186249)
 	}
+	__antithesis_instrumentation__.Notify(186242)
 	return cm.nodeClientCert, nil
 }
 
-// getTenantCACertLocked returns the CA cert used to verify tenant client
-// certificates. Use the tenant client CA if it exists, otherwise fall back to
-// client CA. cm.mu must be held.
 func (cm *CertificateManager) getTenantCACertLocked() (*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186250)
 	if cm.tenantCACert == nil {
+		__antithesis_instrumentation__.Notify(186253)
 		return cm.getClientCACertLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(186254)
 	}
+	__antithesis_instrumentation__.Notify(186251)
 	c := cm.tenantCACert
 	if err := checkCertIsValid(c); err != nil {
+		__antithesis_instrumentation__.Notify(186255)
 		return nil, makeError(err, "problem with tenant client CA certificate")
+	} else {
+		__antithesis_instrumentation__.Notify(186256)
 	}
+	__antithesis_instrumentation__.Notify(186252)
 	return c, nil
 }
 
-// getTenantCertLocked returns the tenant node cert.
-// cm.mu must be held.
 func (cm *CertificateManager) getTenantCertLocked() (*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186257)
 	c := cm.tenantCert
 	if err := checkCertIsValid(c); err != nil {
+		__antithesis_instrumentation__.Notify(186259)
 		return nil, makeError(err, "problem with tenant client certificate")
+	} else {
+		__antithesis_instrumentation__.Notify(186260)
 	}
+	__antithesis_instrumentation__.Notify(186258)
 	return c, nil
 }
 
-// GetTenantTLSConfig returns the most up-to-date tenant client
-// tls.Config.
 func (cm *CertificateManager) GetTenantTLSConfig() (*tls.Config, error) {
+	__antithesis_instrumentation__.Notify(186261)
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	if cm.tenantConfig != nil {
+		__antithesis_instrumentation__.Notify(186267)
 		return cm.tenantConfig, nil
+	} else {
+		__antithesis_instrumentation__.Notify(186268)
 	}
+	__antithesis_instrumentation__.Notify(186262)
 
-	// CA used to validate certs provided by KV nodes.
 	ca, err := cm.getCACertLocked()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186269)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186270)
 	}
+	__antithesis_instrumentation__.Notify(186263)
 
 	caBlob := ca.FileContents
 
 	if cm.tenantCACert != nil {
-		// If it's available, we also include the tenant CA.
+		__antithesis_instrumentation__.Notify(186271)
+
 		tenantCA, err := cm.getTenantCACertLocked()
 		if err == nil {
+			__antithesis_instrumentation__.Notify(186272)
 			caBlob = AppendCertificatesToBlob(caBlob, tenantCA.FileContents)
+		} else {
+			__antithesis_instrumentation__.Notify(186273)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(186274)
 	}
+	__antithesis_instrumentation__.Notify(186264)
 
-	// Client cert presented to KV nodes.
 	tenantCert, err := cm.getTenantCertLocked()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186275)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186276)
 	}
+	__antithesis_instrumentation__.Notify(186265)
 
 	cfg, err := newClientTLSConfig(
 		cm.tlsSettings,
@@ -1064,54 +1212,73 @@ func (cm *CertificateManager) GetTenantTLSConfig() (*tls.Config, error) {
 		tenantCert.KeyFileContents,
 		caBlob)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186277)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186278)
 	}
+	__antithesis_instrumentation__.Notify(186266)
 
 	cm.tenantConfig = cfg
 	return cfg, nil
 }
 
-// GetTenantSigningCert returns the most up-to-date tenant signing certificate.
 func (cm *CertificateManager) GetTenantSigningCert() (*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186279)
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	c := cm.tenantSigningCert
 	if err := checkCertIsValid(c); err != nil {
+		__antithesis_instrumentation__.Notify(186281)
 		return nil, makeError(err, "problem with tenant signing certificate")
+	} else {
+		__antithesis_instrumentation__.Notify(186282)
 	}
+	__antithesis_instrumentation__.Notify(186280)
 	return c, nil
 }
 
-// GetClientTLSConfig returns the most up-to-date client tls.Config.
-// Returns the dual-purpose node certs if user == NodeUser and there is no
-// separate client cert for 'node'.
 func (cm *CertificateManager) GetClientTLSConfig(user SQLUsername) (*tls.Config, error) {
+	__antithesis_instrumentation__.Notify(186283)
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// We always need the CA cert.
 	var ca *CertInfo
 	var err error
 	if !cm.IsForTenant() {
-		// Host cluster.
+		__antithesis_instrumentation__.Notify(186289)
+
 		ca, err = cm.getCACertLocked()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(186290)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(186291)
 		}
 	} else {
-		// Tenant server.
+		__antithesis_instrumentation__.Notify(186292)
+
 		ca, err = cm.getTenantCACertLocked()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(186293)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(186294)
 		}
 	}
+	__antithesis_instrumentation__.Notify(186284)
 
 	if !user.IsNodeUser() {
+		__antithesis_instrumentation__.Notify(186295)
 		clientCert, err := cm.getClientCertLocked(user)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(186298)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(186299)
 		}
+		__antithesis_instrumentation__.Notify(186296)
 
 		cfg, err := newClientTLSConfig(
 			cm.tlsSettings,
@@ -1119,22 +1286,35 @@ func (cm *CertificateManager) GetClientTLSConfig(user SQLUsername) (*tls.Config,
 			clientCert.KeyFileContents,
 			ca.FileContents)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(186300)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(186301)
 		}
+		__antithesis_instrumentation__.Notify(186297)
 
 		return cfg, nil
+	} else {
+		__antithesis_instrumentation__.Notify(186302)
 	}
+	__antithesis_instrumentation__.Notify(186285)
 
-	// We're the node user.
-	// Return the cached config if we have one.
 	if cm.clientConfig != nil {
+		__antithesis_instrumentation__.Notify(186303)
 		return cm.clientConfig, nil
+	} else {
+		__antithesis_instrumentation__.Notify(186304)
 	}
+	__antithesis_instrumentation__.Notify(186286)
 
 	clientCert, err := cm.getNodeClientCertLocked()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186305)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186306)
 	}
+	__antithesis_instrumentation__.Notify(186287)
 
 	cfg, err := newClientTLSConfig(
 		cm.tlsSettings,
@@ -1142,74 +1322,119 @@ func (cm *CertificateManager) GetClientTLSConfig(user SQLUsername) (*tls.Config,
 		clientCert.KeyFileContents,
 		ca.FileContents)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186307)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186308)
 	}
+	__antithesis_instrumentation__.Notify(186288)
 
-	// Cache the config.
 	cm.clientConfig = cfg
 	return cfg, nil
 }
 
-// GetUIClientTLSConfig returns the most up-to-date client tls.Config for Admin UI clients.
-// It does not include a client certificate and uses the UI CA certificate if present.
 func (cm *CertificateManager) GetUIClientTLSConfig() (*tls.Config, error) {
+	__antithesis_instrumentation__.Notify(186309)
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// We always need the CA cert.
 	uiCA, err := cm.getUICACertLocked()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186313)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186314)
 	}
+	__antithesis_instrumentation__.Notify(186310)
 
 	caBlob := uiCA.FileContents
 
 	if cm.tenantCACert != nil {
-		// If it's available, we also include the tenant CA.
+		__antithesis_instrumentation__.Notify(186315)
+
 		tenantCA, err := cm.getTenantCACertLocked()
 		if err == nil {
+			__antithesis_instrumentation__.Notify(186316)
 			caBlob = AppendCertificatesToBlob(caBlob, tenantCA.FileContents)
+		} else {
+			__antithesis_instrumentation__.Notify(186317)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(186318)
 	}
+	__antithesis_instrumentation__.Notify(186311)
 
 	cfg, err := newUIClientTLSConfig(cm.tlsSettings, caBlob)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186319)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(186320)
 	}
+	__antithesis_instrumentation__.Notify(186312)
 
 	return cfg, nil
 }
 
-// ListCertificates returns all loaded certificates, or an error if not yet initialized.
 func (cm *CertificateManager) ListCertificates() ([]*CertInfo, error) {
+	__antithesis_instrumentation__.Notify(186321)
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
 	if !cm.initialized {
+		__antithesis_instrumentation__.Notify(186329)
 		return nil, errors.New("certificate manager has not been initialized")
+	} else {
+		__antithesis_instrumentation__.Notify(186330)
 	}
+	__antithesis_instrumentation__.Notify(186322)
 
 	ret := make([]*CertInfo, 0, 2+len(cm.clientCerts))
 	if cm.caCert != nil {
+		__antithesis_instrumentation__.Notify(186331)
 		ret = append(ret, cm.caCert)
+	} else {
+		__antithesis_instrumentation__.Notify(186332)
 	}
+	__antithesis_instrumentation__.Notify(186323)
 	if cm.clientCACert != nil {
+		__antithesis_instrumentation__.Notify(186333)
 		ret = append(ret, cm.clientCACert)
+	} else {
+		__antithesis_instrumentation__.Notify(186334)
 	}
+	__antithesis_instrumentation__.Notify(186324)
 	if cm.uiCACert != nil {
+		__antithesis_instrumentation__.Notify(186335)
 		ret = append(ret, cm.uiCACert)
+	} else {
+		__antithesis_instrumentation__.Notify(186336)
 	}
+	__antithesis_instrumentation__.Notify(186325)
 	if cm.nodeCert != nil {
+		__antithesis_instrumentation__.Notify(186337)
 		ret = append(ret, cm.nodeCert)
+	} else {
+		__antithesis_instrumentation__.Notify(186338)
 	}
+	__antithesis_instrumentation__.Notify(186326)
 	if cm.uiCert != nil {
+		__antithesis_instrumentation__.Notify(186339)
 		ret = append(ret, cm.uiCert)
+	} else {
+		__antithesis_instrumentation__.Notify(186340)
 	}
+	__antithesis_instrumentation__.Notify(186327)
 	if cm.clientCerts != nil {
+		__antithesis_instrumentation__.Notify(186341)
 		for _, cert := range cm.clientCerts {
+			__antithesis_instrumentation__.Notify(186342)
 			ret = append(ret, cert)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(186343)
 	}
+	__antithesis_instrumentation__.Notify(186328)
 
 	return ret, nil
 }

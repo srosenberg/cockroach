@@ -1,18 +1,9 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package txnrecovery
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/util/metric"
 
-// Metrics holds all metrics relating to a transaction recovery Manager.
 type Metrics struct {
 	AttemptsPending      *metric.Gauge
 	Attempts             *metric.Counter
@@ -22,8 +13,8 @@ type Metrics struct {
 	Failures             *metric.Counter
 }
 
-// makeMetrics creates a new Metrics instance with all related metric fields.
 func makeMetrics() Metrics {
+	__antithesis_instrumentation__.Notify(127286)
 	return Metrics{
 		AttemptsPending: metric.NewGauge(
 			metric.Metadata{

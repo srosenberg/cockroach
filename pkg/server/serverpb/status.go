@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package serverpb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	context "context"
@@ -16,8 +8,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/errorutil"
 )
 
-// SQLStatusServer is a smaller version of the serverpb.StatusInterface which
-// includes only the methods used by the SQL subsystem.
 type SQLStatusServer interface {
 	ListSessions(context.Context, *ListSessionsRequest) (*ListSessionsResponse, error)
 	ListLocalSessions(context.Context, *ListSessionsRequest) (*ListSessionsResponse, error)
@@ -42,56 +32,41 @@ type SQLStatusServer interface {
 	NodesList(context.Context, *NodesListRequest) (*NodesListResponse, error)
 }
 
-// OptionalNodesStatusServer is a StatusServer that is only optionally present
-// inside the SQL subsystem. In practice, it is present on the system tenant,
-// and not present on "regular" tenants.
 type OptionalNodesStatusServer struct {
-	w errorutil.TenantSQLDeprecatedWrapper // stores serverpb.StatusServer
+	w errorutil.TenantSQLDeprecatedWrapper
 }
 
-// MakeOptionalNodesStatusServer initializes and returns an
-// OptionalNodesStatusServer. The provided server will be returned via
-// OptionalNodesStatusServer() if and only if it is not nil.
 func MakeOptionalNodesStatusServer(s NodesStatusServer) OptionalNodesStatusServer {
+	__antithesis_instrumentation__.Notify(211262)
 	return OptionalNodesStatusServer{
-		// Return the status server from OptionalSQLStatusServer() only if one was provided.
-		// We don't have any calls to .Deprecated().
-		w: errorutil.MakeTenantSQLDeprecatedWrapper(s, s != nil /* exposed */),
+
+		w: errorutil.MakeTenantSQLDeprecatedWrapper(s, s != nil),
 	}
 }
 
-// NodesStatusServer is an endpoint that allows the SQL subsystem
-// to observe node descriptors.
-// It is unavailable to tenants.
 type NodesStatusServer interface {
 	ListNodesInternal(context.Context, *NodesRequest) (*NodesResponse, error)
 }
 
-// RegionsServer is the subset of the serverpb.StatusInterface that is used
-// by the SQL system to query for available regions.
-// It is available for tenants.
 type RegionsServer interface {
 	Regions(context.Context, *RegionsRequest) (*RegionsResponse, error)
 }
 
-// TenantStatusServer is the subset of the serverpb.StatusInterface that is
-// used by tenants to query for debug information, such as tenant-specific
-// range reports.
-//
-// It is available for all tenants.
 type TenantStatusServer interface {
 	TenantRanges(context.Context, *TenantRangesRequest) (*TenantRangesResponse, error)
 }
 
-// OptionalNodesStatusServer returns the wrapped NodesStatusServer, if it is
-// available. If it is not, an error referring to the optionally supplied issues
-// is returned.
 func (s *OptionalNodesStatusServer) OptionalNodesStatusServer(
 	issue int,
 ) (NodesStatusServer, error) {
+	__antithesis_instrumentation__.Notify(211263)
 	v, err := s.w.OptionalErr(issue)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(211265)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(211266)
 	}
+	__antithesis_instrumentation__.Notify(211264)
 	return v.(NodesStatusServer), nil
 }

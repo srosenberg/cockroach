@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package tenantcostserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,110 +12,155 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// TokenBucketRequest is part of the multitenant.TenantUsageServer and
-// implements the TokenBucket API of the roachpb.Internal service. This code
-// runs on the host cluster to service requests coming from tenants (through the
-// kvtenant.Connector).
 func (s *instance) TokenBucketRequest(
 	ctx context.Context, tenantID roachpb.TenantID, in *roachpb.TokenBucketRequest,
 ) *roachpb.TokenBucketResponse {
+	__antithesis_instrumentation__.Notify(20383)
 	if tenantID == roachpb.SystemTenantID {
+		__antithesis_instrumentation__.Notify(20388)
 		return &roachpb.TokenBucketResponse{
 			Error: errors.EncodeError(ctx, errors.New("token bucket request for system tenant")),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(20389)
 	}
+	__antithesis_instrumentation__.Notify(20384)
 	instanceID := base.SQLInstanceID(in.InstanceID)
 	if instanceID < 1 {
+		__antithesis_instrumentation__.Notify(20390)
 		return &roachpb.TokenBucketResponse{
 			Error: errors.EncodeError(ctx, errors.Errorf("invalid instance ID %d", instanceID)),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(20391)
 	}
+	__antithesis_instrumentation__.Notify(20385)
 	if in.RequestedRU < 0 {
+		__antithesis_instrumentation__.Notify(20392)
 		return &roachpb.TokenBucketResponse{
 			Error: errors.EncodeError(ctx, errors.Errorf("negative requested RUs")),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(20393)
 	}
+	__antithesis_instrumentation__.Notify(20386)
 
 	metrics := s.metrics.getTenantMetrics(tenantID)
-	// Use a per-tenant mutex to serialize operations to the bucket. The
-	// transactions will need to be serialized anyway, so this avoids more
-	// expensive restarts. It also guarantees that the metric updates happen in
-	// the same order with the system table changes.
+
 	metrics.mutex.Lock()
 	defer metrics.mutex.Unlock()
 
 	result := &roachpb.TokenBucketResponse{}
 	var consumption roachpb.TenantConsumption
 	if err := s.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(20394)
 		*result = roachpb.TokenBucketResponse{}
 
 		h := makeSysTableHelper(ctx, s.executor, txn, tenantID)
 		tenant, instance, err := h.readTenantAndInstanceState(instanceID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(20403)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(20404)
 		}
+		__antithesis_instrumentation__.Notify(20395)
 
 		if !tenant.Present {
-			// If there is no state, we will initialize it. But check that the tenant
-			// is valid and active. It is possible that the tenant was deleted and an
-			// existing tenant process is still sending requests.
+			__antithesis_instrumentation__.Notify(20405)
+
 			if err := s.checkTenantID(ctx, txn, tenantID); err != nil {
+				__antithesis_instrumentation__.Notify(20406)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(20407)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(20408)
 		}
+		__antithesis_instrumentation__.Notify(20396)
 		now := s.timeSource.Now()
 		tenant.update(now)
 
 		if !instance.Present {
+			__antithesis_instrumentation__.Notify(20409)
 			if err := h.accomodateNewInstance(&tenant, &instance); err != nil {
+				__antithesis_instrumentation__.Notify(20410)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(20411)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(20412)
 		}
+		__antithesis_instrumentation__.Notify(20397)
 		if string(instance.Lease) != string(in.InstanceLease) {
-			// This must be a different incarnation of the same ID. Clear the sequence
-			// number (the client starts with sequence number 1).
+			__antithesis_instrumentation__.Notify(20413)
+
 			instance.Seq = 0
 			instance.Lease = tree.DBytes(in.InstanceLease)
+		} else {
+			__antithesis_instrumentation__.Notify(20414)
 		}
+		__antithesis_instrumentation__.Notify(20398)
 
 		if in.NextLiveInstanceID != 0 {
+			__antithesis_instrumentation__.Notify(20415)
 			if err := s.handleNextLiveInstanceID(
 				&h, &tenant, &instance, base.SQLInstanceID(in.NextLiveInstanceID),
 			); err != nil {
+				__antithesis_instrumentation__.Notify(20416)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(20417)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(20418)
 		}
+		__antithesis_instrumentation__.Notify(20399)
 
-		// Only update consumption if we are sure this is not a duplicate request
-		// that we already counted. Note that if this is a duplicate request, it
-		// will still use RUs from the bucket (RUCurrent); we rely on a higher level
-		// control loop that periodically reconfigures the token bucket to correct
-		// such errors.
-		if instance.Seq == 0 || instance.Seq < in.SeqNum {
+		if instance.Seq == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(20419)
+			return instance.Seq < in.SeqNum == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(20420)
 			tenant.Consumption.Add(&in.ConsumptionSinceLastRequest)
 			instance.Seq = in.SeqNum
+		} else {
+			__antithesis_instrumentation__.Notify(20421)
 		}
+		__antithesis_instrumentation__.Notify(20400)
 
-		// TODO(radu): update shares.
 		*result = tenant.Bucket.Request(ctx, in)
 
 		instance.LastUpdate.Time = now
 		if err := h.updateTenantAndInstanceState(tenant, instance); err != nil {
+			__antithesis_instrumentation__.Notify(20422)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(20423)
 		}
+		__antithesis_instrumentation__.Notify(20401)
 
 		if err := h.maybeCheckInvariants(); err != nil {
+			__antithesis_instrumentation__.Notify(20424)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(20425)
 		}
+		__antithesis_instrumentation__.Notify(20402)
 		consumption = tenant.Consumption
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(20426)
 		return &roachpb.TokenBucketResponse{
 			Error: errors.EncodeError(ctx, err),
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(20427)
 	}
+	__antithesis_instrumentation__.Notify(20387)
 
-	// Report current consumption.
 	metrics.totalRU.Update(consumption.RU)
 	metrics.totalReadRequests.Update(int64(consumption.ReadRequests))
 	metrics.totalReadBytes.Update(int64(consumption.ReadBytes))
@@ -132,77 +171,88 @@ func (s *instance) TokenBucketRequest(
 	return result
 }
 
-// handleNextLiveInstanceID checks the next live instance ID according to the
-// tenant and potentially cleans up stale instances that follow this instance
-// (in the circular order).
 func (s *instance) handleNextLiveInstanceID(
 	h *sysTableHelper,
 	tenant *tenantState,
 	instance *instanceState,
 	nextLiveInstanceID base.SQLInstanceID,
 ) error {
-	// We use NextLiveInstanceID to figure out if there is a potential dead
-	// instance after this instance.
-	//
-	// In the fast path, the server and the tenant will agree on the live set
-	// and the values will match. If the values don't match, there are two cases:
-	//
-	//  1. There is an instance which the tenant is aware of and the server is
-	//     not. This can either be an instance that is starting up, or an
-	//     instance that was cleaned up and the tenant information is not up
-	//     to date. In either case no cleanup needs to be triggered.
-	//
-	//  2. There is a range of instance IDs that contains no live IDs according
-	//     to the tenant but contains at least one live ID according to the
-	//     server. We trigger a cleanup check (which makes the final decision
-	//     based on the last update timestamp).
+	__antithesis_instrumentation__.Notify(20428)
+
 	expected := instance.NextInstance
 	if expected == 0 {
+		__antithesis_instrumentation__.Notify(20432)
 		expected = tenant.FirstInstance
+	} else {
+		__antithesis_instrumentation__.Notify(20433)
 	}
+	__antithesis_instrumentation__.Notify(20429)
 	if nextLiveInstanceID == expected {
-		// Fast path: the values match.
+		__antithesis_instrumentation__.Notify(20434)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(20435)
 	}
+	__antithesis_instrumentation__.Notify(20430)
 	var err error
 	cutoff := s.timeSource.Now().Add(-instanceInactivity.Get(&s.settings.SV))
 	if nextLiveInstanceID > instance.ID {
-		// According to the tenant, this is not the largest instance ID.
-		if instance.NextInstance != 0 && instance.NextInstance < nextLiveInstanceID {
-			// Case 2: range [instance.NextInstance, nextLiveInstanceID) potentially
-			// needs cleanup.
+		__antithesis_instrumentation__.Notify(20436)
+
+		if instance.NextInstance != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(20437)
+			return instance.NextInstance < nextLiveInstanceID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(20438)
+
 			instance.NextInstance, err = h.maybeCleanupStaleInstances(
 				cutoff, instance.NextInstance, nextLiveInstanceID,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(20439)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(20440)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(20441)
 		}
 	} else {
-		// According to the tenant, this is the largest instance ID and
-		// nextLiveInstanceID is the ID of the first live instance. There are
-		// two potential ranges for cleanup, one around the smallest IDs and
-		// one around the largest IDs.
+		__antithesis_instrumentation__.Notify(20442)
+
 		if tenant.FirstInstance < nextLiveInstanceID {
-			// Case 2: range [tenant.FirstInstance, nextLiveInstanceID)
-			// potentially needs cleanup.
+			__antithesis_instrumentation__.Notify(20444)
+
 			tenant.FirstInstance, err = h.maybeCleanupStaleInstances(
 				cutoff, tenant.FirstInstance, nextLiveInstanceID,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(20445)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(20446)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(20447)
 		}
+		__antithesis_instrumentation__.Notify(20443)
 		if instance.NextInstance != 0 {
-			// Case 2: in our table, this is not the largest ID. The range
-			// [instance.NextInstance, ∞) potentially needs cleanup.
+			__antithesis_instrumentation__.Notify(20448)
+
 			instance.NextInstance, err = h.maybeCleanupStaleInstances(
 				cutoff, instance.NextInstance, -1,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(20449)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(20450)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(20451)
 		}
 	}
+	__antithesis_instrumentation__.Notify(20431)
 	return nil
 }

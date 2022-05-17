@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,29 +23,13 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// joinReaderSpanGenerator is used by the joinReader to generate spans for
-// looking up into the index.
 type joinReaderSpanGenerator interface {
-	// generateSpans generates spans for the given batch of input rows. The spans
-	// are returned in rows order, but there are no duplicates (i.e. if a 2nd row
-	// results in the same spans as a previous row, the results don't include them
-	// a second time).
-	//
-	// The returned spans are not accounted for, so it is the caller's
-	// responsibility to register the spans memory usage with our memory
-	// accounting system.
 	generateSpans(ctx context.Context, rows []rowenc.EncDatumRow) (roachpb.Spans, error)
 
-	// getMatchingRowIndices returns the indices of the input rows that desire
-	// the given key (i.e., the indices of the rows passed to generateSpans that
-	// generated spans containing the given key).
 	getMatchingRowIndices(key roachpb.Key) []int
 
-	// maxLookupCols returns the maximum number of index columns used as the key
-	// for each lookup.
 	maxLookupCols() int
 
-	// close releases any resources associated with the joinReaderSpanGenerator.
 	close(context.Context)
 }
 
@@ -67,18 +43,11 @@ type defaultSpanGenerator struct {
 	lookupCols   []uint32
 
 	indexKeyRow rowenc.EncDatumRow
-	// keyToInputRowIndices maps a lookup span key to the input row indices that
-	// desire that span. This is used for joins other than index joins, for
-	// de-duping spans, and to map the fetched rows to the input rows that need
-	// to join with them. Index joins already have unique rows in the input that
-	// generate unique spans for fetch, and simply output the fetched rows, do
-	// do not use this map.
+
 	keyToInputRowIndices map[string][]int
 
 	scratchSpans roachpb.Spans
 
-	// memAcc is owned by this span generator and is closed when the generator
-	// is closed.
 	memAcc *mon.BoundAccount
 }
 
@@ -106,99 +75,121 @@ func (g *defaultSpanGenerator) init(
 	return nil
 }
 
-// Generate spans for a given row.
-// If lookup columns are specified will use those to collect the relevant
-// columns. Otherwise the first rows are assumed to correspond with the index.
-// It additionally returns whether the row contains null, which is needed to
-// decide whether or not to split the generated span into separate family
-// specific spans.
 func (g *defaultSpanGenerator) generateSpan(
 	row rowenc.EncDatumRow,
 ) (_ roachpb.Span, containsNull bool, _ error) {
+	__antithesis_instrumentation__.Notify(573548)
 	g.indexKeyRow = g.indexKeyRow[:0]
 	for _, id := range g.lookupCols {
+		__antithesis_instrumentation__.Notify(573550)
 		g.indexKeyRow = append(g.indexKeyRow, row[id])
 	}
+	__antithesis_instrumentation__.Notify(573549)
 	return g.spanBuilder.SpanFromEncDatums(g.indexKeyRow)
 }
 
 func (g *defaultSpanGenerator) hasNullLookupColumn(row rowenc.EncDatumRow) bool {
+	__antithesis_instrumentation__.Notify(573551)
 	for _, colIdx := range g.lookupCols {
+		__antithesis_instrumentation__.Notify(573553)
 		if row[colIdx].IsNull() {
+			__antithesis_instrumentation__.Notify(573554)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(573555)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573552)
 	return false
 }
 
-// generateSpans is part of the joinReaderSpanGenerator interface.
 func (g *defaultSpanGenerator) generateSpans(
 	ctx context.Context, rows []rowenc.EncDatumRow,
 ) (roachpb.Spans, error) {
-	// This loop gets optimized to a runtime.mapclear call.
+	__antithesis_instrumentation__.Notify(573556)
+
 	for k := range g.keyToInputRowIndices {
+		__antithesis_instrumentation__.Notify(573560)
 		delete(g.keyToInputRowIndices, k)
 	}
+	__antithesis_instrumentation__.Notify(573557)
 
-	// We maintain a map from index key to the corresponding input rows so we can
-	// join the index results to the inputs.
 	g.scratchSpans = g.scratchSpans[:0]
 	for i, inputRow := range rows {
+		__antithesis_instrumentation__.Notify(573561)
 		if g.hasNullLookupColumn(inputRow) {
+			__antithesis_instrumentation__.Notify(573564)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(573565)
 		}
+		__antithesis_instrumentation__.Notify(573562)
 		generatedSpan, containsNull, err := g.generateSpan(inputRow)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573566)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(573567)
 		}
+		__antithesis_instrumentation__.Notify(573563)
 		if g.keyToInputRowIndices == nil {
-			// Index join.
+			__antithesis_instrumentation__.Notify(573568)
+
 			g.scratchSpans = g.spanSplitter.MaybeSplitSpanIntoSeparateFamilies(
 				g.scratchSpans, generatedSpan, len(g.lookupCols), containsNull)
 		} else {
+			__antithesis_instrumentation__.Notify(573569)
 			inputRowIndices := g.keyToInputRowIndices[string(generatedSpan.Key)]
 			if inputRowIndices == nil {
+				__antithesis_instrumentation__.Notify(573571)
 				g.scratchSpans = g.spanSplitter.MaybeSplitSpanIntoSeparateFamilies(
 					g.scratchSpans, generatedSpan, len(g.lookupCols), containsNull)
+			} else {
+				__antithesis_instrumentation__.Notify(573572)
 			}
+			__antithesis_instrumentation__.Notify(573570)
 			g.keyToInputRowIndices[string(generatedSpan.Key)] = append(inputRowIndices, i)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573558)
 
-	// Memory accounting.
 	if err := g.memAcc.ResizeTo(ctx, g.memUsage()); err != nil {
+		__antithesis_instrumentation__.Notify(573573)
 		return nil, addWorkmemHint(err)
+	} else {
+		__antithesis_instrumentation__.Notify(573574)
 	}
+	__antithesis_instrumentation__.Notify(573559)
 
 	return g.scratchSpans, nil
 }
 
-// getMatchingRowIndices is part of the joinReaderSpanGenerator interface.
 func (g *defaultSpanGenerator) getMatchingRowIndices(key roachpb.Key) []int {
+	__antithesis_instrumentation__.Notify(573575)
 	return g.keyToInputRowIndices[string(key)]
 }
 
-// maxLookupCols is part of the joinReaderSpanGenerator interface.
 func (g *defaultSpanGenerator) maxLookupCols() int {
+	__antithesis_instrumentation__.Notify(573576)
 	return len(g.lookupCols)
 }
 
-// memUsage returns the size of the data structures in the defaultSpanGenerator
-// for memory accounting purposes.
-// NOTE: this does not account for scratchSpans because the joinReader passes
-// the ownership of spans to the fetcher which will account for it accordingly.
 func (g *defaultSpanGenerator) memUsage() int64 {
-	// Account for keyToInputRowIndices.
+	__antithesis_instrumentation__.Notify(573577)
+
 	var size int64
 	for k, v := range g.keyToInputRowIndices {
+		__antithesis_instrumentation__.Notify(573579)
 		size += memsize.MapEntryOverhead
 		size += memsize.String + int64(len(k))
 		size += memsize.IntSliceOverhead + memsize.Int*int64(cap(v))
 	}
+	__antithesis_instrumentation__.Notify(573578)
 	return size
 }
 
 func (g *defaultSpanGenerator) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573580)
 	g.memAcc.Close(ctx)
 	*g = defaultSpanGenerator{}
 }
@@ -210,124 +201,82 @@ type spanRowIndex struct {
 
 type spanRowIndices []spanRowIndex
 
-func (s spanRowIndices) Len() int           { return len(s) }
-func (s spanRowIndices) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s spanRowIndices) Less(i, j int) bool { return s[i].span.Key.Compare(s[j].span.Key) < 0 }
+func (s spanRowIndices) Len() int { __antithesis_instrumentation__.Notify(573581); return len(s) }
+func (s spanRowIndices) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(573582)
+	s[i], s[j] = s[j], s[i]
+}
+func (s spanRowIndices) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(573583)
+	return s[i].span.Key.Compare(s[j].span.Key) < 0
+}
 
 var _ sort.Interface = &spanRowIndices{}
 
-// memUsage returns the size of the spanRowIndices for memory accounting
-// purposes.
 func (s spanRowIndices) memUsage() int64 {
-	// Slice the full capacity of s so we can account for the memory
-	// used past the length of s.
+	__antithesis_instrumentation__.Notify(573584)
+
 	sCap := s[:cap(s)]
 	size := int64(unsafe.Sizeof(spanRowIndices{}))
 	for i := range sCap {
+		__antithesis_instrumentation__.Notify(573586)
 		size += sCap[i].span.MemUsage()
 		size += memsize.IntSliceOverhead + memsize.Int*int64(cap(sCap[i].rowIndices))
 	}
+	__antithesis_instrumentation__.Notify(573585)
 	return size
 }
 
-// multiSpanGenerator is the joinReaderSpanGenerator used when each lookup will
-// scan multiple spans in the index. This is the case when some of the index
-// columns can take on multiple constant values. For example, the
-// multiSpanGenerator would be used for a left lookup join in the following
-// case:
-//  - The index has key columns (region, id)
-//  - The input columns are (a, b, c)
-//  - The join condition is region IN ('east', 'west') AND id = a
-// In this case, the multiSpanGenerator would generate two spans for each input
-// row: [/'east'/<val_a> - /'east'/<val_a>] [/'west'/<val_a> - /'west'/<val_a>].
 type multiSpanGenerator struct {
 	spanBuilder  span.Builder
 	spanSplitter span.Splitter
 
-	// indexColInfos stores info about the values that each index column can
-	// take on in the spans produced by the multiSpanGenerator. See the comment
-	// above multiSpanGeneratorColInfo for more details.
 	indexColInfos []multiSpanGeneratorColInfo
 
-	// indexKeyRows and indexKeySpans are used to generate the spans for a single
-	// input row. They are allocated once in init(), and then reused for every row.
 	indexKeyRows  []rowenc.EncDatumRow
 	indexKeySpans roachpb.Spans
 
-	// keyToInputRowIndices maps a lookup span key to the input row indices that
-	// desire that span. This is used for de-duping spans, and to map the fetched
-	// rows to the input rows that need to join with them. If we have inequality
-	// exprs we can't use this from getMatchingRowIndices because the spans are
-	// ranges and not point spans so we build this map using the start keys and
-	// then convert it into a spanToInputRowIndices.
 	keyToInputRowIndices map[string][]int
 
-	// spanToInputRowIndices maps a lookup span to the input row indices that
-	// desire that span. This is a range based equivalent of the
-	// keyToInputRowIndices that is only used when there are range based, i.e.
-	// inequality conditions. This is a sorted set we do binary searches on.
 	spanToInputRowIndices spanRowIndices
 
-	// spansCount is the number of spans generated for each input row.
 	spansCount int
 
-	// indexOrds contains the ordinals (i.e., the positions in the index) of the
-	// index columns that are constrained by the spans produced by this
-	// multiSpanGenerator. indexOrds must be a prefix of the index columns.
 	indexOrds util.FastIntSet
 
-	// fetchedOrdToIndexKeyOrd maps the ordinals of fetched (right-hand side)
-	// columns to ordinals in the index key columns.
 	fetchedOrdToIndexKeyOrd util.FastIntMap
 
-	// numInputCols is the number of columns in the input to the joinReader.
 	numInputCols int
 
-	// inequalityColIdx is the index of inequality colinfo (there can be only one),
-	// -1 otherwise.
 	inequalityColIdx int
 
 	scratchSpans roachpb.Spans
 
-	// memAcc is owned by this span generator and is closed when the generator
-	// is closed.
 	memAcc *mon.BoundAccount
 }
 
-// multiSpanGeneratorColInfo contains info about the values that a specific
-// index column can take on in the spans produced by the multiSpanGenerator. The
-// column ordinal is not contained in this struct, but depends on the location
-// of this struct in the indexColInfos slice; the position in the slice
-// corresponds to the position in the index.
 type multiSpanGeneratorColInfo interface {
 	String() string
 }
 
-// multiSpanGeneratorValuesColInfo is used to represent a column constrained
-// by a set of constants (i.e. '=' or 'in' expressions).
 type multiSpanGeneratorValuesColInfo struct {
 	constVals tree.Datums
 }
 
 func (i multiSpanGeneratorValuesColInfo) String() string {
+	__antithesis_instrumentation__.Notify(573587)
 	return fmt.Sprintf("[constVals: %s]", i.constVals.String())
 }
 
-// multiSpanGeneratorIndexVarColInfo represents a column that matches a column
-// in the input row. inputRowIdx corresponds to an index into the input row.
-// This is the case for join filters such as c = a, where c is a column in the
-// index and a is a column in the input.
 type multiSpanGeneratorIndexVarColInfo struct {
 	inputRowIdx int
 }
 
 func (i multiSpanGeneratorIndexVarColInfo) String() string {
+	__antithesis_instrumentation__.Notify(573588)
 	return fmt.Sprintf("[inputRowIdx: %d]", i.inputRowIdx)
 }
 
-// multiSpanGeneratorInequalityColInfo represents a column that is bound by a
-// range expression. If there are <,>, >= or <= inequalities we distill them
-// into a start and end datum.
 type multiSpanGeneratorInequalityColInfo struct {
 	start          tree.Datum
 	startInclusive bool
@@ -336,18 +285,25 @@ type multiSpanGeneratorInequalityColInfo struct {
 }
 
 func (i multiSpanGeneratorInequalityColInfo) String() string {
+	__antithesis_instrumentation__.Notify(573589)
 	var startBoundary byte
 	if i.startInclusive {
+		__antithesis_instrumentation__.Notify(573592)
 		startBoundary = '['
 	} else {
+		__antithesis_instrumentation__.Notify(573593)
 		startBoundary = '('
 	}
+	__antithesis_instrumentation__.Notify(573590)
 	var endBoundary rune
 	if i.endInclusive {
+		__antithesis_instrumentation__.Notify(573594)
 		endBoundary = ']'
 	} else {
+		__antithesis_instrumentation__.Notify(573595)
 		endBoundary = ')'
 	}
+	__antithesis_instrumentation__.Notify(573591)
 	return fmt.Sprintf("%c%v - %v%c", startBoundary, i.start, i.end, endBoundary)
 }
 
@@ -355,13 +311,11 @@ var _ multiSpanGeneratorColInfo = &multiSpanGeneratorValuesColInfo{}
 var _ multiSpanGeneratorColInfo = &multiSpanGeneratorIndexVarColInfo{}
 var _ multiSpanGeneratorColInfo = &multiSpanGeneratorInequalityColInfo{}
 
-// maxLookupCols is part of the joinReaderSpanGenerator interface.
 func (g *multiSpanGenerator) maxLookupCols() int {
+	__antithesis_instrumentation__.Notify(573596)
 	return len(g.indexColInfos)
 }
 
-// init must be called before the multiSpanGenerator can be used to generate
-// spans.
 func (g *multiSpanGenerator) init(
 	evalCtx *tree.EvalContext,
 	codec keys.SQLCodec,
@@ -380,19 +334,13 @@ func (g *multiSpanGenerator) init(
 	g.inequalityColIdx = -1
 	g.memAcc = memAcc
 
-	// Initialize the spansCount to 1, since we'll always have at least one span.
-	// This number may increase when we call fillInIndexColInfos() below.
 	g.spansCount = 1
 
-	// Process the given expression to fill in g.indexColInfos with info from the
-	// join conditions. This info will be used later to generate the spans.
 	g.indexColInfos = make([]multiSpanGeneratorColInfo, 0, len(fetchSpec.KeyAndSuffixColumns))
 	if err := g.fillInIndexColInfos(exprHelper.Expr); err != nil {
 		return err
 	}
 
-	// Check that the results of fillInIndexColInfos can be used to generate valid
-	// spans.
 	lookupColsCount := len(g.indexColInfos)
 	if lookupColsCount != g.indexOrds.Len() {
 		return errors.AssertionFailedf(
@@ -405,29 +353,6 @@ func (g *multiSpanGenerator) init(
 		)
 	}
 
-	// Fill in g.indexKeyRows with the cartesian product of the constant values
-	// collected above. This reduces the amount of work that is needed for each
-	// input row, since only columns depending on the input values will need
-	// to be filled in later.
-	//
-	// For example, suppose that we have index columns on
-	// (region, tenant, category, id), and the join conditions are:
-	//
-	//    region IN ('east', 'west')
-	//    AND tenant = input.tenant
-	//    AND category IN (1, 2)
-	//    AND id = input.id
-	//
-	// The following code would create the following rows, leaving spaces for
-	// tenant and id to be filled in later:
-	//
-	//   [ 'east'  -  1  - ]
-	//   [ 'west'  -  1  - ]
-	//   [ 'east'  -  2  - ]
-	//   [ 'west'  -  2  - ]
-	//
-
-	// Make first pass flushing out the structure with const values.
 	g.indexKeyRows = make([]rowenc.EncDatumRow, 1, g.spansCount)
 	g.indexKeyRows[0] = make(rowenc.EncDatumRow, 0, lookupColsCount)
 	for _, info := range g.indexColInfos {
@@ -444,8 +369,7 @@ func (g *multiSpanGenerator) init(
 			}
 		} else {
 			for i := 0; i < len(g.indexKeyRows); i++ {
-				// Just fill in an empty EncDatum for now -- this will be replaced
-				// inside generateNonNullSpans when we process each row.
+
 				g.indexKeyRows[i] = append(g.indexKeyRows[i], rowenc.EncDatum{})
 			}
 		}
@@ -455,319 +379,401 @@ func (g *multiSpanGenerator) init(
 	return nil
 }
 
-// fillInIndexColInfos recursively walks the expression tree to collect join
-// conditions that are AND-ed together. It fills in g.indexColInfos with info
-// from the join conditions.
-//
-// The only acceptable join conditions are:
-//  1. Equalities between input columns and index columns, such as c1 = c2.
-//  2. Equalities or IN conditions between index columns and constants, such
-//     as c = 5 or c IN ('a', 'b', 'c').
-//  3. Inequalities from (possibly AND'd) <,>,<=,>= exprs.
-//
-// The optimizer should have ensured that all conditions fall into one of
-// these categories. Any other expression types will return an error.
-// TODO(treilly): We should probably be doing this at compile time, see #65773
 func (g *multiSpanGenerator) fillInIndexColInfos(expr tree.TypedExpr) error {
+	__antithesis_instrumentation__.Notify(573597)
 	switch t := expr.(type) {
 	case *tree.AndExpr:
+		__antithesis_instrumentation__.Notify(573599)
 		if err := g.fillInIndexColInfos(t.Left.(tree.TypedExpr)); err != nil {
+			__antithesis_instrumentation__.Notify(573610)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(573611)
 		}
+		__antithesis_instrumentation__.Notify(573600)
 		return g.fillInIndexColInfos(t.Right.(tree.TypedExpr))
 
 	case *tree.ComparisonExpr:
+		__antithesis_instrumentation__.Notify(573601)
 		setOfVals := false
 		inequality := false
 		switch t.Operator.Symbol {
 		case treecmp.EQ, treecmp.In:
+			__antithesis_instrumentation__.Notify(573612)
 			setOfVals = true
 		case treecmp.GE, treecmp.LE, treecmp.GT, treecmp.LT:
+			__antithesis_instrumentation__.Notify(573613)
 			inequality = true
 		default:
-			// This should never happen because of enforcement at opt time.
+			__antithesis_instrumentation__.Notify(573614)
+
 			return errors.AssertionFailedf("comparison operator not supported. Found %s", t.Operator)
 		}
+		__antithesis_instrumentation__.Notify(573602)
 
 		tabOrd := -1
 
 		var info multiSpanGeneratorColInfo
 
-		// For EQ and In, we just need to check the types of the arguments in order
-		// to extract the info. For inequalities we return the const datums that
-		// will form the span boundaries.
 		getInfo := func(typedExpr tree.TypedExpr) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(573615)
 			switch t := typedExpr.(type) {
 			case *tree.IndexedVar:
-				// IndexedVars can either be from the input or the index. If the
-				// IndexedVar is from the index, shift it over by numInputCols to
-				// find the corresponding ordinal in the base table.
+				__antithesis_instrumentation__.Notify(573617)
+
 				if t.Idx >= g.numInputCols {
+					__antithesis_instrumentation__.Notify(573620)
 					tabOrd = t.Idx - g.numInputCols
 				} else {
+					__antithesis_instrumentation__.Notify(573621)
 					info = multiSpanGeneratorIndexVarColInfo{inputRowIdx: t.Idx}
 				}
 
 			case tree.Datum:
+				__antithesis_instrumentation__.Notify(573618)
 				if setOfVals {
+					__antithesis_instrumentation__.Notify(573622)
 					var values tree.Datums
 					switch t.ResolvedType().Family() {
 					case types.TupleFamily:
+						__antithesis_instrumentation__.Notify(573624)
 						values = t.(*tree.DTuple).D
 					default:
+						__antithesis_instrumentation__.Notify(573625)
 						values = tree.Datums{t}
 					}
-					// Every time there are multiple possible values, we multiply the
-					// spansCount by the number of possibilities. We will need to create
-					// spans representing the cartesian product of possible values for
-					// each column.
+					__antithesis_instrumentation__.Notify(573623)
+
 					info = multiSpanGeneratorValuesColInfo{constVals: values}
 					g.spansCount *= len(values)
 				} else {
+					__antithesis_instrumentation__.Notify(573626)
 					return t, nil
 				}
 
 			default:
+				__antithesis_instrumentation__.Notify(573619)
 				return nil, errors.AssertionFailedf("unhandled comparison argument type %T", t)
 			}
+			__antithesis_instrumentation__.Notify(573616)
 			return nil, nil
 		}
-
-		// NB: we make no attempt to deal with column direction here, that is sorted
-		// out later in the span builder.
+		__antithesis_instrumentation__.Notify(573603)
 
 		lval, err := getInfo(t.Left.(tree.TypedExpr))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573627)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(573628)
 		}
+		__antithesis_instrumentation__.Notify(573604)
 
 		rval, err := getInfo(t.Right.(tree.TypedExpr))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573629)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(573630)
 		}
+		__antithesis_instrumentation__.Notify(573605)
 
 		idxOrd, ok := g.fetchedOrdToIndexKeyOrd.Get(tabOrd)
 		if !ok {
+			__antithesis_instrumentation__.Notify(573631)
 			return errors.AssertionFailedf("table column %d not found in index", tabOrd)
+		} else {
+			__antithesis_instrumentation__.Notify(573632)
 		}
+		__antithesis_instrumentation__.Notify(573606)
 
-		// Make sure slice has room for new entry.
 		if len(g.indexColInfos) <= idxOrd {
+			__antithesis_instrumentation__.Notify(573633)
 			g.indexColInfos = g.indexColInfos[:idxOrd+1]
+		} else {
+			__antithesis_instrumentation__.Notify(573634)
 		}
+		__antithesis_instrumentation__.Notify(573607)
 
 		if inequality {
-			// If we have two inequalities we might already have an info, ie if we
-			// have a < 10 and a > 0 we'll have two invocations of fillInIndexColInfo
-			// for each comparison and they need to update the same info.
+			__antithesis_instrumentation__.Notify(573635)
+
 			colInfo := g.indexColInfos[idxOrd]
 			var inequalityInfo multiSpanGeneratorInequalityColInfo
 			if colInfo != nil {
+				__antithesis_instrumentation__.Notify(573639)
 				inequalityInfo, ok = colInfo.(multiSpanGeneratorInequalityColInfo)
 				if !ok {
+					__antithesis_instrumentation__.Notify(573640)
 					return errors.AssertionFailedf("unexpected colinfo type (%d): %T", idxOrd, colInfo)
+				} else {
+					__antithesis_instrumentation__.Notify(573641)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(573642)
 			}
+			__antithesis_instrumentation__.Notify(573636)
 
 			if lval != nil {
-				if t.Operator.Symbol == treecmp.LT || t.Operator.Symbol == treecmp.LE {
+				__antithesis_instrumentation__.Notify(573643)
+				if t.Operator.Symbol == treecmp.LT || func() bool {
+					__antithesis_instrumentation__.Notify(573644)
+					return t.Operator.Symbol == treecmp.LE == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(573645)
 					inequalityInfo.start = lval
 					inequalityInfo.startInclusive = t.Operator.Symbol == treecmp.LE
 				} else {
+					__antithesis_instrumentation__.Notify(573646)
 					inequalityInfo.end = lval
 					inequalityInfo.endInclusive = t.Operator.Symbol == treecmp.GE
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(573647)
 			}
+			__antithesis_instrumentation__.Notify(573637)
 
 			if rval != nil {
-				if t.Operator.Symbol == treecmp.LT || t.Operator.Symbol == treecmp.LE {
+				__antithesis_instrumentation__.Notify(573648)
+				if t.Operator.Symbol == treecmp.LT || func() bool {
+					__antithesis_instrumentation__.Notify(573649)
+					return t.Operator.Symbol == treecmp.LE == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(573650)
 					inequalityInfo.end = rval
 					inequalityInfo.endInclusive = t.Operator.Symbol == treecmp.LE
 				} else {
+					__antithesis_instrumentation__.Notify(573651)
 					inequalityInfo.start = rval
 					inequalityInfo.startInclusive = t.Operator.Symbol == treecmp.GE
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(573652)
 			}
+			__antithesis_instrumentation__.Notify(573638)
 			info = inequalityInfo
 			g.inequalityColIdx = idxOrd
+		} else {
+			__antithesis_instrumentation__.Notify(573653)
 		}
+		__antithesis_instrumentation__.Notify(573608)
 
 		g.indexColInfos[idxOrd] = info
 		g.indexOrds.Add(idxOrd)
 
 	default:
+		__antithesis_instrumentation__.Notify(573609)
 		return errors.AssertionFailedf("unhandled expression type %T", t)
 	}
+	__antithesis_instrumentation__.Notify(573598)
 	return nil
 }
 
-// generateNonNullSpans generates spans for a given row. It does not include
-// null values, since those values would not match the lookup condition anyway.
 func (g *multiSpanGenerator) generateNonNullSpans(row rowenc.EncDatumRow) (roachpb.Spans, error) {
-	// Fill in the holes in g.indexKeyRows that correspond to input row values.
+	__antithesis_instrumentation__.Notify(573654)
+
 	for i := 0; i < len(g.indexKeyRows); i++ {
+		__antithesis_instrumentation__.Notify(573658)
 		for j, info := range g.indexColInfos {
+			__antithesis_instrumentation__.Notify(573659)
 			if inf, ok := info.(multiSpanGeneratorIndexVarColInfo); ok {
+				__antithesis_instrumentation__.Notify(573660)
 				g.indexKeyRows[i][j] = row[inf.inputRowIdx]
+			} else {
+				__antithesis_instrumentation__.Notify(573661)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(573655)
 
-	// Convert the index key rows to spans.
 	g.indexKeySpans = g.indexKeySpans[:0]
 
-	// Hoist inequality lookup out of loop if we have one.
 	var inequalityInfo multiSpanGeneratorInequalityColInfo
 	if g.inequalityColIdx != -1 {
+		__antithesis_instrumentation__.Notify(573662)
 		inequalityInfo = g.indexColInfos[g.inequalityColIdx].(multiSpanGeneratorInequalityColInfo)
+	} else {
+		__antithesis_instrumentation__.Notify(573663)
 	}
+	__antithesis_instrumentation__.Notify(573656)
 
-	// Build spans for each row.
 	for _, indexKeyRow := range g.indexKeyRows {
+		__antithesis_instrumentation__.Notify(573664)
 		var s roachpb.Span
 		var err error
 		var containsNull bool
 		if g.inequalityColIdx == -1 {
+			__antithesis_instrumentation__.Notify(573667)
 			s, containsNull, err = g.spanBuilder.SpanFromEncDatums(indexKeyRow[:len(g.indexColInfos)])
 		} else {
+			__antithesis_instrumentation__.Notify(573668)
 			s, containsNull, err = g.spanBuilder.SpanFromEncDatumsWithRange(indexKeyRow, len(g.indexColInfos),
 				inequalityInfo.start, inequalityInfo.startInclusive, inequalityInfo.end, inequalityInfo.endInclusive)
 		}
+		__antithesis_instrumentation__.Notify(573665)
 
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573669)
 			return roachpb.Spans{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(573670)
 		}
+		__antithesis_instrumentation__.Notify(573666)
 
 		if !containsNull {
+			__antithesis_instrumentation__.Notify(573671)
 			g.indexKeySpans = append(g.indexKeySpans, s)
+		} else {
+			__antithesis_instrumentation__.Notify(573672)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573657)
 
 	return g.indexKeySpans, nil
 }
 
-// findInputRowIndicesByKey does a binary search to find the span that contains
-// the given key.
 func (s *spanRowIndices) findInputRowIndicesByKey(key roachpb.Key) []int {
+	__antithesis_instrumentation__.Notify(573673)
 	i, j := 0, s.Len()
 	for i < j {
+		__antithesis_instrumentation__.Notify(573675)
 		h := (i + j) >> 1
 		sp := (*s)[h]
 		switch sp.span.CompareKey(key) {
 		case 0:
+			__antithesis_instrumentation__.Notify(573676)
 			return sp.rowIndices
 		case -1:
+			__antithesis_instrumentation__.Notify(573677)
 			j = h
 		case 1:
+			__antithesis_instrumentation__.Notify(573678)
 			i = h + 1
+		default:
+			__antithesis_instrumentation__.Notify(573679)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573674)
 
 	return nil
 }
 
-// generateSpans is part of the joinReaderSpanGenerator interface.
 func (g *multiSpanGenerator) generateSpans(
 	ctx context.Context, rows []rowenc.EncDatumRow,
 ) (roachpb.Spans, error) {
-	// This loop gets optimized to a runtime.mapclear call.
+	__antithesis_instrumentation__.Notify(573680)
+
 	for k := range g.keyToInputRowIndices {
+		__antithesis_instrumentation__.Notify(573685)
 		delete(g.keyToInputRowIndices, k)
 	}
+	__antithesis_instrumentation__.Notify(573681)
 	g.spanToInputRowIndices = g.spanToInputRowIndices[:0]
 
-	// We maintain a map from index key to the corresponding input rows so we can
-	// join the index results to the inputs.
 	g.scratchSpans = g.scratchSpans[:0]
 	for i, inputRow := range rows {
+		__antithesis_instrumentation__.Notify(573686)
 		generatedSpans, err := g.generateNonNullSpans(inputRow)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573688)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(573689)
 		}
+		__antithesis_instrumentation__.Notify(573687)
 		for j := range generatedSpans {
+			__antithesis_instrumentation__.Notify(573690)
 			generatedSpan := &generatedSpans[j]
 			inputRowIndices := g.keyToInputRowIndices[string(generatedSpan.Key)]
 			if inputRowIndices == nil {
-				// MaybeSplitSpanIntoSeparateFamilies is an optimization for doing more
-				// efficient point lookups when the span hits multiple column families.
-				// It doesn't work with inequality ranges because they aren't point lookups.
+				__antithesis_instrumentation__.Notify(573692)
+
 				if g.inequalityColIdx != -1 {
+					__antithesis_instrumentation__.Notify(573693)
 					g.scratchSpans = append(g.scratchSpans, *generatedSpan)
 				} else {
+					__antithesis_instrumentation__.Notify(573694)
 					g.scratchSpans = g.spanSplitter.MaybeSplitSpanIntoSeparateFamilies(
-						g.scratchSpans, *generatedSpan, len(g.indexColInfos), false /* containsNull */)
+						g.scratchSpans, *generatedSpan, len(g.indexColInfos), false)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(573695)
 			}
+			__antithesis_instrumentation__.Notify(573691)
 
 			g.keyToInputRowIndices[string(generatedSpan.Key)] = append(inputRowIndices, i)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573682)
 
-	// If we need to map against range spans instead of point spans convert the
-	// map into a sorted set of spans we can binary search against.
 	if g.inequalityColIdx != -1 {
+		__antithesis_instrumentation__.Notify(573696)
 		for _, s := range g.scratchSpans {
+			__antithesis_instrumentation__.Notify(573698)
 			g.spanToInputRowIndices = append(g.spanToInputRowIndices, spanRowIndex{span: s, rowIndices: g.keyToInputRowIndices[string(s.Key)]})
 		}
+		__antithesis_instrumentation__.Notify(573697)
 		sort.Sort(g.spanToInputRowIndices)
-		// We don't need this anymore.
+
 		for k := range g.keyToInputRowIndices {
+			__antithesis_instrumentation__.Notify(573699)
 			delete(g.keyToInputRowIndices, k)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573700)
 	}
+	__antithesis_instrumentation__.Notify(573683)
 
-	// Memory accounting.
 	if err := g.memAcc.ResizeTo(ctx, g.memUsage()); err != nil {
+		__antithesis_instrumentation__.Notify(573701)
 		return nil, addWorkmemHint(err)
+	} else {
+		__antithesis_instrumentation__.Notify(573702)
 	}
+	__antithesis_instrumentation__.Notify(573684)
 
 	return g.scratchSpans, nil
 }
 
-// getMatchingRowIndices is part of the joinReaderSpanGenerator interface.
 func (g *multiSpanGenerator) getMatchingRowIndices(key roachpb.Key) []int {
+	__antithesis_instrumentation__.Notify(573703)
 	if g.inequalityColIdx != -1 {
+		__antithesis_instrumentation__.Notify(573705)
 		return g.spanToInputRowIndices.findInputRowIndicesByKey(key)
+	} else {
+		__antithesis_instrumentation__.Notify(573706)
 	}
+	__antithesis_instrumentation__.Notify(573704)
 	return g.keyToInputRowIndices[string(key)]
 }
 
-// memUsage returns the size of the data structures in the multiSpanGenerator
-// for memory accounting purposes.
-// NOTE: this does not account for scratchSpans because the joinReader passes
-// the ownership of spans to the fetcher which will account for it accordingly.
 func (g *multiSpanGenerator) memUsage() int64 {
-	// Account for keyToInputRowIndices.
+	__antithesis_instrumentation__.Notify(573707)
+
 	var size int64
 	for k, v := range g.keyToInputRowIndices {
+		__antithesis_instrumentation__.Notify(573709)
 		size += memsize.MapEntryOverhead
 		size += memsize.String + int64(len(k))
 		size += memsize.IntSliceOverhead + memsize.Int*int64(cap(v))
 	}
+	__antithesis_instrumentation__.Notify(573708)
 
-	// Account for spanToInputRowIndices.
 	size += g.spanToInputRowIndices.memUsage()
 	return size
 }
 
 func (g *multiSpanGenerator) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573710)
 	g.memAcc.Close(ctx)
 	*g = multiSpanGenerator{}
 }
 
-// localityOptimizedSpanGenerator is the span generator for locality optimized
-// lookup joins. The localSpanGen is used to generate spans targeting local
-// nodes, and the remoteSpanGen is used to generate spans targeting remote
-// nodes.
 type localityOptimizedSpanGenerator struct {
 	localSpanGen  multiSpanGenerator
 	remoteSpanGen multiSpanGenerator
 }
 
-// init must be called before the localityOptimizedSpanGenerator can be used to
-// generate spans. Note that we use two different span builders so that both
-// local and remote span generators could release their own when they are
-// close()d.
 func (g *localityOptimizedSpanGenerator) init(
 	evalCtx *tree.EvalContext,
 	codec keys.SQLCodec,
@@ -792,7 +798,7 @@ func (g *localityOptimizedSpanGenerator) init(
 	); err != nil {
 		return err
 	}
-	// Check that the resulting span generators have the same lookup columns.
+
 	localLookupCols := g.localSpanGen.maxLookupCols()
 	remoteLookupCols := g.remoteSpanGen.maxLookupCols()
 	if localLookupCols != remoteLookupCols {
@@ -803,37 +809,40 @@ func (g *localityOptimizedSpanGenerator) init(
 	return nil
 }
 
-// maxLookupCols is part of the joinReaderSpanGenerator interface.
 func (g *localityOptimizedSpanGenerator) maxLookupCols() int {
-	// We already asserted in init that maxLookupCols is the same for both the
-	// local and remote span generators.
+	__antithesis_instrumentation__.Notify(573711)
+
 	return g.localSpanGen.maxLookupCols()
 }
 
-// generateSpans is part of the joinReaderSpanGenerator interface.
 func (g *localityOptimizedSpanGenerator) generateSpans(
 	ctx context.Context, rows []rowenc.EncDatumRow,
 ) (roachpb.Spans, error) {
+	__antithesis_instrumentation__.Notify(573712)
 	return g.localSpanGen.generateSpans(ctx, rows)
 }
 
-// generateRemoteSpans generates spans targeting remote nodes for the given
-// batch of input rows.
 func (g *localityOptimizedSpanGenerator) generateRemoteSpans(
 	ctx context.Context, rows []rowenc.EncDatumRow,
 ) (roachpb.Spans, error) {
+	__antithesis_instrumentation__.Notify(573713)
 	return g.remoteSpanGen.generateSpans(ctx, rows)
 }
 
-// getMatchingRowIndices is part of the joinReaderSpanGenerator interface.
 func (g *localityOptimizedSpanGenerator) getMatchingRowIndices(key roachpb.Key) []int {
+	__antithesis_instrumentation__.Notify(573714)
 	if res := g.localSpanGen.getMatchingRowIndices(key); len(res) > 0 {
+		__antithesis_instrumentation__.Notify(573716)
 		return res
+	} else {
+		__antithesis_instrumentation__.Notify(573717)
 	}
+	__antithesis_instrumentation__.Notify(573715)
 	return g.remoteSpanGen.getMatchingRowIndices(key)
 }
 
 func (g *localityOptimizedSpanGenerator) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573718)
 	g.localSpanGen.close(ctx)
 	g.remoteSpanGen.close(ctx)
 	*g = localityOptimizedSpanGenerator{}

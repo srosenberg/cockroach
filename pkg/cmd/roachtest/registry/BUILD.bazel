@@ -15,5 +15,6 @@ go_library(
         "//pkg/cmd/roachtest/cluster",
         "//pkg/cmd/roachtest/spec",
         "//pkg/cmd/roachtest/test",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

@@ -1,25 +1,7 @@
-// Copyright 2012, Google Inc. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in licenses/BSD-vitess.txt.
-
-// Portions of this file are additionally subject to the following
-// license and copyright.
-//
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// This code was derived from https://github.com/youtube/vitess.
-
 package tree
 
-// SetVar represents a SET or RESET statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type SetVar struct {
 	Name     string
 	Local    bool
@@ -28,112 +10,124 @@ type SetVar struct {
 	ResetAll bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *SetVar) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613440)
 	if node.ResetAll {
+		__antithesis_instrumentation__.Notify(613444)
 		ctx.WriteString("RESET ALL")
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(613445)
 	}
+	__antithesis_instrumentation__.Notify(613441)
 	if node.Reset {
+		__antithesis_instrumentation__.Notify(613446)
 		ctx.WriteString("RESET ")
 		ctx.WithFlags(ctx.flags & ^FmtAnonymize & ^FmtMarkRedactionNode, func() {
-			// Session var names never contain PII and should be distinguished
-			// for feature tracking purposes.
+			__antithesis_instrumentation__.Notify(613448)
+
 			ctx.FormatNameP(&node.Name)
 		})
+		__antithesis_instrumentation__.Notify(613447)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(613449)
 	}
+	__antithesis_instrumentation__.Notify(613442)
 	ctx.WriteString("SET ")
 	if node.Local {
+		__antithesis_instrumentation__.Notify(613450)
 		ctx.WriteString("LOCAL ")
+	} else {
+		__antithesis_instrumentation__.Notify(613451)
 	}
+	__antithesis_instrumentation__.Notify(613443)
 	if node.Name == "" {
+		__antithesis_instrumentation__.Notify(613452)
 		ctx.WriteString("ROW (")
 		ctx.FormatNode(&node.Values)
 		ctx.WriteString(")")
 	} else {
+		__antithesis_instrumentation__.Notify(613453)
 		ctx.WithFlags(ctx.flags & ^FmtAnonymize & ^FmtMarkRedactionNode, func() {
-			// Session var names never contain PII and should be distinguished
-			// for feature tracking purposes.
+			__antithesis_instrumentation__.Notify(613455)
+
 			ctx.FormatNameP(&node.Name)
 		})
+		__antithesis_instrumentation__.Notify(613454)
 
 		ctx.WriteString(" = ")
 		ctx.FormatNode(&node.Values)
 	}
 }
 
-// SetClusterSetting represents a SET CLUSTER SETTING statement.
 type SetClusterSetting struct {
 	Name  string
 	Value Expr
 }
 
-// Format implements the NodeFormatter interface.
 func (node *SetClusterSetting) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613456)
 	ctx.WriteString("SET CLUSTER SETTING ")
 
-	// Cluster setting names never contain PII and should be distinguished
-	// for feature tracking purposes.
 	ctx.WithFlags(ctx.flags & ^FmtAnonymize & ^FmtMarkRedactionNode, func() {
+		__antithesis_instrumentation__.Notify(613458)
 		ctx.FormatNameP(&node.Name)
 	})
+	__antithesis_instrumentation__.Notify(613457)
 
 	ctx.WriteString(" = ")
 
 	switch v := node.Value.(type) {
 	case *DBool, *DInt:
+		__antithesis_instrumentation__.Notify(613459)
 		ctx.WithFlags(ctx.flags & ^FmtAnonymize & ^FmtMarkRedactionNode, func() {
+			__antithesis_instrumentation__.Notify(613461)
 			ctx.FormatNode(v)
 		})
 	default:
+		__antithesis_instrumentation__.Notify(613460)
 		ctx.FormatNode(v)
 	}
 }
 
-// SetTransaction represents a SET TRANSACTION statement.
 type SetTransaction struct {
 	Modes TransactionModes
 }
 
-// Format implements the NodeFormatter interface.
 func (node *SetTransaction) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613462)
 	ctx.WriteString("SET TRANSACTION")
 	ctx.FormatNode(&node.Modes)
 }
 
-// SetSessionAuthorizationDefault represents a SET SESSION AUTHORIZATION DEFAULT
-// statement. This can be extended (and renamed) if we ever support names in the
-// last position.
 type SetSessionAuthorizationDefault struct{}
 
-// Format implements the NodeFormatter interface.
 func (node *SetSessionAuthorizationDefault) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613463)
 	ctx.WriteString("SET SESSION AUTHORIZATION DEFAULT")
 }
 
-// SetSessionCharacteristics represents a SET SESSION CHARACTERISTICS AS TRANSACTION statement.
 type SetSessionCharacteristics struct {
 	Modes TransactionModes
 }
 
-// Format implements the NodeFormatter interface.
 func (node *SetSessionCharacteristics) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613464)
 	ctx.WriteString("SET SESSION CHARACTERISTICS AS TRANSACTION")
 	ctx.FormatNode(&node.Modes)
 }
 
-// SetTracing represents a SET TRACING statement.
 type SetTracing struct {
 	Values Exprs
 }
 
-// Format implements the NodeFormatter interface.
 func (node *SetTracing) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613465)
 	ctx.WriteString("SET TRACING = ")
-	// Set tracing values never contain PII and should be distinguished
-	// for feature tracking purposes.
+
 	ctx.WithFlags(ctx.flags&^FmtMarkRedactionNode, func() {
+		__antithesis_instrumentation__.Notify(613466)
 		ctx.FormatNode(&node.Values)
 	})
 }

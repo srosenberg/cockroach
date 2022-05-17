@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package lease
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -19,97 +11,142 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// descriptorSet maintains an ordered set of descriptorVersionState objects
-// sorted by version. It supports addition and removal of elements, finding the
-// descriptor for a particular version, or finding the most recent version.
-// The order is maintained by insert and remove and there can only be a
-// unique entry for a version. Only the last two versions can be leased,
-// with the last one being the latest one which is always leased.
-//
-// Each entry represents a time span [ModificationTime, expiration)
-// and can be used by a transaction iif:
-// ModificationTime <= transaction.Timestamp < expiration.
 type descriptorSet struct {
 	data []*descriptorVersionState
 }
 
 func (l *descriptorSet) String() string {
+	__antithesis_instrumentation__.Notify(266047)
 	var buf bytes.Buffer
 	for i, s := range l.data {
+		__antithesis_instrumentation__.Notify(266049)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(266051)
 			buf.WriteString(" ")
+		} else {
+			__antithesis_instrumentation__.Notify(266052)
 		}
+		__antithesis_instrumentation__.Notify(266050)
 		buf.WriteString(fmt.Sprintf("%d:%d", s.GetVersion(), s.getExpiration().WallTime))
 	}
+	__antithesis_instrumentation__.Notify(266048)
 	return buf.String()
 }
 
 func (l *descriptorSet) insert(s *descriptorVersionState) {
+	__antithesis_instrumentation__.Notify(266053)
 	i, match := l.findIndex(s.GetVersion())
 	if match {
+		__antithesis_instrumentation__.Notify(266056)
 		panic("unable to insert duplicate lease")
+	} else {
+		__antithesis_instrumentation__.Notify(266057)
 	}
+	__antithesis_instrumentation__.Notify(266054)
 	if i == len(l.data) {
+		__antithesis_instrumentation__.Notify(266058)
 		l.data = append(l.data, s)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(266059)
 	}
+	__antithesis_instrumentation__.Notify(266055)
 	l.data = append(l.data, nil)
 	copy(l.data[i+1:], l.data[i:])
 	l.data[i] = s
 }
 
 func (l *descriptorSet) remove(s *descriptorVersionState) {
+	__antithesis_instrumentation__.Notify(266060)
 	i, match := l.findIndex(s.GetVersion())
 	if !match {
+		__antithesis_instrumentation__.Notify(266062)
 		panic(errors.AssertionFailedf("can't find lease to remove: %s", s))
+	} else {
+		__antithesis_instrumentation__.Notify(266063)
 	}
+	__antithesis_instrumentation__.Notify(266061)
 	l.data = append(l.data[:i], l.data[i+1:]...)
 }
 
 func (l *descriptorSet) find(version descpb.DescriptorVersion) *descriptorVersionState {
+	__antithesis_instrumentation__.Notify(266064)
 	if i, match := l.findIndex(version); match {
+		__antithesis_instrumentation__.Notify(266066)
 		return l.data[i]
+	} else {
+		__antithesis_instrumentation__.Notify(266067)
 	}
+	__antithesis_instrumentation__.Notify(266065)
 	return nil
 }
 
 func (l *descriptorSet) findIndex(version descpb.DescriptorVersion) (int, bool) {
+	__antithesis_instrumentation__.Notify(266068)
 	i := sort.Search(len(l.data), func(i int) bool {
+		__antithesis_instrumentation__.Notify(266071)
 		s := l.data[i]
 		return s.GetVersion() >= version
 	})
+	__antithesis_instrumentation__.Notify(266069)
 	if i < len(l.data) {
+		__antithesis_instrumentation__.Notify(266072)
 		s := l.data[i]
 		if s.GetVersion() == version {
+			__antithesis_instrumentation__.Notify(266073)
 			return i, true
+		} else {
+			__antithesis_instrumentation__.Notify(266074)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(266075)
 	}
+	__antithesis_instrumentation__.Notify(266070)
 	return i, false
 }
 
 func (l *descriptorSet) findNewest() *descriptorVersionState {
+	__antithesis_instrumentation__.Notify(266076)
 	if len(l.data) == 0 {
+		__antithesis_instrumentation__.Notify(266078)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266079)
 	}
+	__antithesis_instrumentation__.Notify(266077)
 	return l.data[len(l.data)-1]
 }
 
 func (l *descriptorSet) findVersion(version descpb.DescriptorVersion) *descriptorVersionState {
+	__antithesis_instrumentation__.Notify(266080)
 	if len(l.data) == 0 {
+		__antithesis_instrumentation__.Notify(266085)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266086)
 	}
-	// Find the index of the first lease with version > targetVersion.
+	__antithesis_instrumentation__.Notify(266081)
+
 	i := sort.Search(len(l.data), func(i int) bool {
+		__antithesis_instrumentation__.Notify(266087)
 		return l.data[i].GetVersion() > version
 	})
+	__antithesis_instrumentation__.Notify(266082)
 	if i == 0 {
+		__antithesis_instrumentation__.Notify(266088)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(266089)
 	}
-	// i-1 is the index of the newest lease for the previous version (the version
-	// we're looking for).
+	__antithesis_instrumentation__.Notify(266083)
+
 	s := l.data[i-1]
 	if s.GetVersion() == version {
+		__antithesis_instrumentation__.Notify(266090)
 		return s
+	} else {
+		__antithesis_instrumentation__.Notify(266091)
 	}
+	__antithesis_instrumentation__.Notify(266084)
 	return nil
 }

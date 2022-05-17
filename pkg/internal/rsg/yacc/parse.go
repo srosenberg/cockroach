@@ -1,24 +1,7 @@
-// Copyright 2011 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in licenses/BSD-golang.txt.
-
-// Portions of this file are additionally subject to the following license
-// and copyright.
-//
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// Copied from Go's text/template/parse package and modified for yacc.
-
 // Package yacc parses .y files.
 package yacc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -27,106 +10,124 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Tree is the representation of a single parsed file.
 type Tree struct {
-	Name        string // name of the template represented by the tree.
+	Name        string
 	Productions []*ProductionNode
-	text        string // text parsed to create the template (or its parent)
-	// Parsing only; cleared after parse.
+	text        string
+
 	lex       *lexer
-	token     [2]item // two-token lookahead for parser.
+	token     [2]item
 	peekCount int
 }
 
-// Parse parses the yacc file text with optional name.
 func Parse(name, text string) (t *Tree, err error) {
+	__antithesis_instrumentation__.Notify(68681)
 	t = New(name)
 	t.text = text
 	err = t.Parse(text)
 	return
 }
 
-// next returns the next token.
 func (t *Tree) next() item {
+	__antithesis_instrumentation__.Notify(68682)
 	if t.peekCount > 0 {
+		__antithesis_instrumentation__.Notify(68684)
 		t.peekCount--
 	} else {
+		__antithesis_instrumentation__.Notify(68685)
 		t.token[0] = t.lex.nextItem()
 	}
+	__antithesis_instrumentation__.Notify(68683)
 	return t.token[t.peekCount]
 }
 
-// backup backs the input stream up one token.
 func (t *Tree) backup() {
+	__antithesis_instrumentation__.Notify(68686)
 	t.peekCount++
 }
 
-// peek returns but does not consume the next token.
 func (t *Tree) peek() item {
+	__antithesis_instrumentation__.Notify(68687)
 	if t.peekCount > 0 {
+		__antithesis_instrumentation__.Notify(68689)
 		return t.token[t.peekCount-1]
+	} else {
+		__antithesis_instrumentation__.Notify(68690)
 	}
+	__antithesis_instrumentation__.Notify(68688)
 	t.peekCount = 1
 	t.token[0] = t.lex.nextItem()
 	return t.token[0]
 }
 
-// Parsing.
-
-// New allocates a new parse tree with the given name.
 func New(name string) *Tree {
+	__antithesis_instrumentation__.Notify(68691)
 	return &Tree{
 		Name: name,
 	}
 }
 
-// errorf formats the error and terminates processing.
 func (t *Tree) errorf(format string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(68692)
 	err := fmt.Errorf(format, args...)
 	err = errors.Wrapf(err, "parse: %s:%d", t.Name, t.lex.lineNumber())
 	panic(err)
 }
 
-// expect consumes the next token and guarantees it has the required type.
 func (t *Tree) expect(expected itemType, context string) item {
+	__antithesis_instrumentation__.Notify(68693)
 	token := t.next()
 	if token.typ != expected {
+		__antithesis_instrumentation__.Notify(68695)
 		t.unexpected(token, context)
+	} else {
+		__antithesis_instrumentation__.Notify(68696)
 	}
+	__antithesis_instrumentation__.Notify(68694)
 	return token
 }
 
-// unexpected complains about the token and terminates processing.
 func (t *Tree) unexpected(token item, context string) {
+	__antithesis_instrumentation__.Notify(68697)
 	t.errorf("unexpected %s in %s", token, context)
 }
 
-// recover is the handler that turns panics into returns from the top level of Parse.
 func (t *Tree) recover(errp *error) {
+	__antithesis_instrumentation__.Notify(68698)
 	if e := recover(); e != nil {
+		__antithesis_instrumentation__.Notify(68699)
 		if _, ok := e.(runtime.Error); ok {
+			__antithesis_instrumentation__.Notify(68702)
 			panic(e)
+		} else {
+			__antithesis_instrumentation__.Notify(68703)
 		}
+		__antithesis_instrumentation__.Notify(68700)
 		if t != nil {
+			__antithesis_instrumentation__.Notify(68704)
 			t.stopParse()
+		} else {
+			__antithesis_instrumentation__.Notify(68705)
 		}
+		__antithesis_instrumentation__.Notify(68701)
 		*errp = e.(error)
+	} else {
+		__antithesis_instrumentation__.Notify(68706)
 	}
 }
 
-// startParse initializes the parser, using the lexer.
 func (t *Tree) startParse(lex *lexer) {
+	__antithesis_instrumentation__.Notify(68707)
 	t.lex = lex
 }
 
-// stopParse terminates parsing.
 func (t *Tree) stopParse() {
+	__antithesis_instrumentation__.Notify(68708)
 	t.lex = nil
 }
 
-// Parse parses the yacc string to construct a representation of
-// the file for analysis.
 func (t *Tree) Parse(text string) (err error) {
+	__antithesis_instrumentation__.Notify(68709)
 	defer t.recover(&err)
 	t.startParse(lex(t.Name, text))
 	t.text = text
@@ -135,43 +136,64 @@ func (t *Tree) Parse(text string) (err error) {
 	return nil
 }
 
-// parse is the top-level parser for a file.
-// It runs to EOF.
 func (t *Tree) parse() {
+	__antithesis_instrumentation__.Notify(68710)
 	for {
+		__antithesis_instrumentation__.Notify(68711)
 		switch token := t.next(); token.typ {
 		case itemIdent:
+			__antithesis_instrumentation__.Notify(68712)
 			p := newProduction(token.pos, token.val)
 			t.parseProduction(p)
 			t.Productions = append(t.Productions, p)
 		case itemEOF:
+			__antithesis_instrumentation__.Notify(68713)
 			return
+		default:
+			__antithesis_instrumentation__.Notify(68714)
 		}
 	}
 }
 
 func (t *Tree) parseProduction(p *ProductionNode) {
+	__antithesis_instrumentation__.Notify(68715)
 	const context = "production"
 	t.expect(itemColon, context)
 	if t.peek().typ == itemNL {
+		__antithesis_instrumentation__.Notify(68717)
 		t.next()
+	} else {
+		__antithesis_instrumentation__.Notify(68718)
 	}
+	__antithesis_instrumentation__.Notify(68716)
 	expectExpr := true
 	for {
+		__antithesis_instrumentation__.Notify(68719)
 		token := t.next()
 		switch token.typ {
 		case itemComment, itemNL:
-			// ignore
+			__antithesis_instrumentation__.Notify(68720)
+
 		case itemPipe:
+			__antithesis_instrumentation__.Notify(68721)
 			if expectExpr {
+				__antithesis_instrumentation__.Notify(68725)
 				t.unexpected(token, context)
+			} else {
+				__antithesis_instrumentation__.Notify(68726)
 			}
+			__antithesis_instrumentation__.Notify(68722)
 			expectExpr = true
 		default:
+			__antithesis_instrumentation__.Notify(68723)
 			t.backup()
 			if !expectExpr {
+				__antithesis_instrumentation__.Notify(68727)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(68728)
 			}
+			__antithesis_instrumentation__.Notify(68724)
 			e := newExpression(token.pos)
 			t.parseExpression(e)
 			p.Expressions = append(p.Expressions, e)
@@ -181,27 +203,45 @@ func (t *Tree) parseProduction(p *ProductionNode) {
 }
 
 func (t *Tree) parseExpression(e *ExpressionNode) {
+	__antithesis_instrumentation__.Notify(68729)
 	const context = "expression"
 	for {
+		__antithesis_instrumentation__.Notify(68730)
 		switch token := t.next(); token.typ {
 		case itemNL:
+			__antithesis_instrumentation__.Notify(68731)
 			peek := t.peek().typ
-			if peek == itemPipe || peek == itemNL {
+			if peek == itemPipe || func() bool {
+				__antithesis_instrumentation__.Notify(68738)
+				return peek == itemNL == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(68739)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(68740)
 			}
 		case itemIdent:
+			__antithesis_instrumentation__.Notify(68732)
 			e.Items = append(e.Items, Item{token.val, TypToken})
 		case itemLiteral:
+			__antithesis_instrumentation__.Notify(68733)
 			e.Items = append(e.Items, Item{token.val, TypLiteral})
 		case itemExpr:
+			__antithesis_instrumentation__.Notify(68734)
 			e.Command = token.val
 			if t.peek().typ == itemNL {
+				__antithesis_instrumentation__.Notify(68741)
 				t.next()
+			} else {
+				__antithesis_instrumentation__.Notify(68742)
 			}
+			__antithesis_instrumentation__.Notify(68735)
 			return
 		case itemPct, itemComment:
-			// ignore
+			__antithesis_instrumentation__.Notify(68736)
+
 		default:
+			__antithesis_instrumentation__.Notify(68737)
 			t.unexpected(token, context)
 		}
 	}

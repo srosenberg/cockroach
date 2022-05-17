@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -42,51 +34,85 @@ Uploads a file to a gateway node's local file system using a SQL connection.
 }
 
 func runUpload(cmd *cobra.Command, args []string) (resErr error) {
+	__antithesis_instrumentation__.Notify(33752)
 	conn, err := makeSQLClient("cockroach nodelocal", useSystemDb)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33756)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33757)
 	}
-	defer func() { resErr = errors.CombineErrors(resErr, conn.Close()) }()
+	__antithesis_instrumentation__.Notify(33753)
+	defer func() {
+		__antithesis_instrumentation__.Notify(33758)
+		resErr = errors.CombineErrors(resErr, conn.Close())
+	}()
+	__antithesis_instrumentation__.Notify(33754)
 
 	source := args[0]
 	destination := args[1]
 	reader, err := openSourceFile(source)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33759)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33760)
 	}
+	__antithesis_instrumentation__.Notify(33755)
 	defer reader.Close()
 
 	return uploadFile(context.Background(), conn, reader, destination)
 }
 
 func openSourceFile(source string) (io.ReadCloser, error) {
+	__antithesis_instrumentation__.Notify(33761)
 	f, err := os.Open(source)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33765)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(33766)
 	}
+	__antithesis_instrumentation__.Notify(33762)
 	stat, err := f.Stat()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33767)
 		return nil, errors.Wrapf(err, "unable to get source file stats for %s", source)
+	} else {
+		__antithesis_instrumentation__.Notify(33768)
 	}
+	__antithesis_instrumentation__.Notify(33763)
 	if stat.IsDir() {
+		__antithesis_instrumentation__.Notify(33769)
 		return nil, fmt.Errorf("source file %s is a directory, not a file", source)
+	} else {
+		__antithesis_instrumentation__.Notify(33770)
 	}
+	__antithesis_instrumentation__.Notify(33764)
 	return f, nil
 }
 
 func uploadFile(
 	ctx context.Context, conn clisqlclient.Conn, reader io.Reader, destination string,
 ) error {
+	__antithesis_instrumentation__.Notify(33771)
 	if err := conn.EnsureConn(); err != nil {
+		__antithesis_instrumentation__.Notify(33780)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33781)
 	}
+	__antithesis_instrumentation__.Notify(33772)
 
 	ex := conn.GetDriverConn()
 	if _, err := ex.ExecContext(ctx, `BEGIN`, nil); err != nil {
+		__antithesis_instrumentation__.Notify(33782)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33783)
 	}
+	__antithesis_instrumentation__.Notify(33773)
 
-	// Construct the nodelocal URI as the destination for the CopyIn stmt.
 	nodelocalURL := url.URL{
 		Scheme: "nodelocal",
 		Host:   "self",
@@ -95,46 +121,81 @@ func uploadFile(
 	stmt, err := conn.GetDriverConn().Prepare(sql.CopyInFileStmt(nodelocalURL.String(), sql.CrdbInternalName,
 		sql.NodelocalFileUploadTable))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33784)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33785)
 	}
+	__antithesis_instrumentation__.Notify(33774)
 
 	defer func() {
+		__antithesis_instrumentation__.Notify(33786)
 		if stmt != nil {
+			__antithesis_instrumentation__.Notify(33787)
 			_ = stmt.Close()
 			_, _ = ex.ExecContext(ctx, `ROLLBACK`, nil)
+		} else {
+			__antithesis_instrumentation__.Notify(33788)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(33775)
 
 	send := make([]byte, chunkSize)
 	for {
+		__antithesis_instrumentation__.Notify(33789)
 		n, err := reader.Read(send)
 		if n > 0 {
-			// TODO(adityamaru): Switch to StmtExecContext once the copyin driver
-			// supports it.
-			//lint:ignore SA1019 DriverConn doesn't support go 1.8 API
+			__antithesis_instrumentation__.Notify(33790)
+
 			_, err = stmt.Exec([]driver.Value{string(send[:n])})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(33791)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(33792)
 			}
-		} else if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
+		} else {
+			__antithesis_instrumentation__.Notify(33793)
+			if err == io.EOF {
+				__antithesis_instrumentation__.Notify(33794)
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(33795)
+				if err != nil {
+					__antithesis_instrumentation__.Notify(33796)
+					return err
+				} else {
+					__antithesis_instrumentation__.Notify(33797)
+				}
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(33776)
 	if err := stmt.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(33798)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33799)
 	}
+	__antithesis_instrumentation__.Notify(33777)
 	stmt = nil
 
 	if _, err := ex.ExecContext(ctx, `COMMIT`, nil); err != nil {
+		__antithesis_instrumentation__.Notify(33800)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33801)
 	}
+	__antithesis_instrumentation__.Notify(33778)
 
 	nodeID, _, _, err := conn.GetServerMetadata(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33802)
 		return errors.Wrap(err, "unable to get node id")
+	} else {
+		__antithesis_instrumentation__.Notify(33803)
 	}
+	__antithesis_instrumentation__.Notify(33779)
 	fmt.Printf("successfully uploaded to nodelocal://%s\n", filepath.Join(roachpb.NodeID(nodeID).String(), destination))
 	return nil
 }

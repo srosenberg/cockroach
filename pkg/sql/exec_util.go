@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -108,7 +100,6 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// ClusterOrganization is the organization name.
 var ClusterOrganization = settings.RegisterStringSetting(
 	settings.TenantWritable,
 	"cluster.organization",
@@ -116,41 +107,44 @@ var ClusterOrganization = settings.RegisterStringSetting(
 	"",
 ).WithPublic()
 
-// ClusterIsInternal returns true if the cluster organization contains
-// "Cockroach Labs", indicating an internal cluster.
 func ClusterIsInternal(sv *settings.Values) bool {
+	__antithesis_instrumentation__.Notify(470335)
 	return strings.Contains(ClusterOrganization.Get(sv), "Cockroach Labs")
 }
 
-// ClusterSecret is a cluster specific secret. This setting is
-// non-reportable.
 var ClusterSecret = func() *settings.StringSetting {
+	__antithesis_instrumentation__.Notify(470336)
 	s := settings.RegisterStringSetting(
 		settings.TenantWritable,
 		"cluster.secret",
 		"cluster specific secret",
 		"",
 	)
-	// Even though string settings are non-reportable by default, we
-	// still mark them explicitly in case a future code change flips the
-	// default.
+
 	s.SetReportable(false)
 	return s
 }()
 
-// defaultIntSize controls how a "naked" INT type will be parsed.
-// TODO(bob): Change this to 4 in v2.3; https://github.com/cockroachdb/cockroach/issues/32534
-// TODO(bob): Remove or n-op this in v2.4: https://github.com/cockroachdb/cockroach/issues/32844
 var defaultIntSize = func() *settings.IntSetting {
+	__antithesis_instrumentation__.Notify(470337)
 	s := settings.RegisterIntSetting(
 		settings.TenantWritable,
 		"sql.defaults.default_int_size",
 		"the size, in bytes, of an INT type", 8, func(i int64) error {
-			if i != 4 && i != 8 {
+			__antithesis_instrumentation__.Notify(470339)
+			if i != 4 && func() bool {
+				__antithesis_instrumentation__.Notify(470341)
+				return i != 8 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(470342)
 				return errors.New("only 4 or 8 are valid values")
+			} else {
+				__antithesis_instrumentation__.Notify(470343)
 			}
+			__antithesis_instrumentation__.Notify(470340)
 			return nil
 		}).WithPublic()
+	__antithesis_instrumentation__.Notify(470338)
 	s.SetVisibility(settings.Public)
 	return s
 }()
@@ -191,15 +185,8 @@ var allowCrossDatabaseSeqReferences = settings.RegisterBoolSetting(
 	false,
 ).WithPublic()
 
-// SecondaryTenantsZoneConfigsEnabledSettingName controls if secondary tenants
-// are allowed to set zone configurations. It has no effect for the system
-// tenant.
 const SecondaryTenantsZoneConfigsEnabledSettingName = "sql.zone_configs.allow_for_secondary_tenant.enabled"
 
-// secondaryTenantZoneConfigsEnabled controls if secondary tenants are allowed
-// to set zone configurations. It has no effect for the system tenant.
-//
-// This setting has no effect on zone configurations that have already been set.
 var secondaryTenantZoneConfigsEnabled = settings.RegisterBoolSetting(
 	settings.TenantReadOnly,
 	SecondaryTenantsZoneConfigsEnabledSettingName,
@@ -207,13 +194,6 @@ var secondaryTenantZoneConfigsEnabled = settings.RegisterBoolSetting(
 	false,
 )
 
-// traceTxnThreshold can be used to log SQL transactions that take
-// longer than duration to complete. For example, traceTxnThreshold=1s
-// will log the trace for any transaction that takes 1s or longer. To
-// log traces for all transactions use traceTxnThreshold=1ns. Note
-// that any positive duration will enable tracing and will slow down
-// all execution because traces are gathered for all transactions even
-// if they are not output.
 var traceTxnThreshold = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"sql.trace.txn.enable_threshold",
@@ -223,10 +203,6 @@ var traceTxnThreshold = settings.RegisterDurationSetting(
 		"within a transaction as well as client communication (e.g. retries).", 0,
 ).WithPublic()
 
-// TraceStmtThreshold is identical to traceTxnThreshold except it applies to
-// individual statements in a transaction. The motivation for this setting is
-// to be able to reduce the noise associated with a larger transaction (e.g.
-// round trips to client).
 var TraceStmtThreshold = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"sql.trace.stmt.enable_threshold",
@@ -236,10 +212,6 @@ var TraceStmtThreshold = settings.RegisterDurationSetting(
 	0,
 ).WithPublic()
 
-// traceSessionEventLogEnabled can be used to enable the event log
-// that is normally kept for every SQL connection. The event log has a
-// non-trivial performance impact and also reveals SQL statements
-// which may be a privacy concern.
 var traceSessionEventLogEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"sql.trace.session_eventlog.enabled",
@@ -248,25 +220,29 @@ var traceSessionEventLogEnabled = settings.RegisterBoolSetting(
 	false,
 ).WithPublic()
 
-// ReorderJoinsLimitClusterSettingName is the name of the cluster setting for
-// the maximum number of joins to reorder.
 const ReorderJoinsLimitClusterSettingName = "sql.defaults.reorder_joins_limit"
 
-// ReorderJoinsLimitClusterValue controls the cluster default for the maximum
-// number of joins reordered.
 var ReorderJoinsLimitClusterValue = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	ReorderJoinsLimitClusterSettingName,
 	"default number of joins to reorder",
 	opt.DefaultJoinOrderLimit,
 	func(limit int64) error {
-		if limit < 0 || limit > opt.MaxReorderJoinsLimit {
+		__antithesis_instrumentation__.Notify(470344)
+		if limit < 0 || func() bool {
+			__antithesis_instrumentation__.Notify(470346)
+			return limit > opt.MaxReorderJoinsLimit == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(470347)
 			return pgerror.Newf(pgcode.InvalidParameterValue,
 				"cannot set %s to a value less than 0 or greater than %v",
 				ReorderJoinsLimitClusterSettingName,
 				opt.MaxReorderJoinsLimit,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(470348)
 		}
+		__antithesis_instrumentation__.Notify(470345)
 		return nil
 	},
 ).WithPublic()
@@ -354,12 +330,6 @@ var preferLookupJoinsForFKs = settings.RegisterBoolSetting(
 	false,
 ).WithPublic()
 
-// optUseHistogramsClusterMode controls the cluster default for whether
-// histograms are used by the optimizer for cardinality estimation.
-// Note that it does not control histogram collection; regardless of the
-// value of this setting, the optimizer cannot use histograms if they
-// haven't been collected. Collection of histograms is controlled by the
-// cluster setting sql.stats.histogram_collection.enabled.
 var optUseHistogramsClusterMode = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"sql.defaults.optimizer_use_histograms.enabled",
@@ -367,12 +337,6 @@ var optUseHistogramsClusterMode = settings.RegisterBoolSetting(
 	true,
 ).WithPublic()
 
-// optUseMultiColStatsClusterMode controls the cluster default for whether
-// multi-column stats are used by the optimizer for cardinality estimation.
-// Note that it does not control collection of multi-column stats; regardless
-// of the value of this setting, the optimizer cannot use multi-column stats
-// if they haven't been collected. Collection of multi-column stats is
-// controlled by the cluster setting sql.stats.multi_column_collection.enabled.
 var optUseMultiColStatsClusterMode = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"sql.defaults.optimizer_use_multicol_stats.enabled",
@@ -380,11 +344,6 @@ var optUseMultiColStatsClusterMode = settings.RegisterBoolSetting(
 	true,
 ).WithPublic()
 
-// localityOptimizedSearchMode controls the cluster default for the use of
-// locality optimized search. If enabled, the optimizer will try to plan scans
-// and lookup joins in which local nodes (i.e., nodes in the gateway region) are
-// searched for matching rows before remote nodes, in the hope that the
-// execution engine can avoid visiting remote nodes.
 var localityOptimizedSearchMode = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"sql.defaults.locality_optimized_partitioned_index_scan.enabled",
@@ -459,8 +418,6 @@ var clusterIdleInTransactionSessionTimeout = settings.RegisterDurationSetting(
 	settings.NonNegativeDuration,
 ).WithPublic()
 
-// TODO(rytaft): remove this once unique without index constraints are fully
-// supported.
 var experimentalUniqueWithoutIndexConstraintsMode = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"sql.defaults.experimental_enable_unique_without_index_constraints.enabled",
@@ -503,8 +460,9 @@ var experimentalComputedColumnRewrites = settings.RegisterValidatedStringSetting
 	"sql.defaults.experimental_computed_column_rewrites",
 	"allows rewriting computed column expressions in CREATE TABLE and ALTER TABLE statements; "+
 		"the format is: '(before expression) -> (after expression) [, (before expression) -> (after expression) ...]'",
-	"", /* defaultValue */
+	"",
 	func(_ *settings.Values, val string) error {
+		__antithesis_instrumentation__.Notify(470349)
 		_, err := schemaexpr.ParseComputedColumnRewrites(val)
 		return err
 	},
@@ -517,22 +475,15 @@ var propagateInputOrdering = settings.RegisterBoolSetting(
 	false,
 )
 
-// settingWorkMemBytes is a cluster setting that determines the maximum amount
-// of RAM that a processor can use.
 var settingWorkMemBytes = settings.RegisterByteSizeSetting(
 	settings.TenantWritable,
 	"sql.distsql.temp_storage.workmem",
 	"maximum amount of memory in bytes a processor can use before falling back to temp storage",
-	execinfra.DefaultMemoryLimit, /* 64MiB */
+	execinfra.DefaultMemoryLimit,
 ).WithPublic()
 
-// ExperimentalDistSQLPlanningClusterSettingName is the name for the cluster
-// setting that controls experimentalDistSQLPlanningClusterMode below.
 const ExperimentalDistSQLPlanningClusterSettingName = "sql.defaults.experimental_distsql_planning"
 
-// experimentalDistSQLPlanningClusterMode can be used to enable
-// optimizer-driven DistSQL planning that sidesteps intermediate planNode
-// transition when going from opt.Expr to DistSQL processor specs.
 var experimentalDistSQLPlanningClusterMode = settings.RegisterEnumSetting(
 	settings.TenantWritable,
 	ExperimentalDistSQLPlanningClusterSettingName,
@@ -544,12 +495,8 @@ var experimentalDistSQLPlanningClusterMode = settings.RegisterEnumSetting(
 	},
 ).WithPublic()
 
-// VectorizeClusterSettingName is the name for the cluster setting that controls
-// the VectorizeClusterMode below.
 const VectorizeClusterSettingName = "sql.defaults.vectorize"
 
-// VectorizeClusterMode controls the cluster default for when automatic
-// vectorization is enabled.
 var VectorizeClusterMode = settings.RegisterEnumSetting(
 	settings.TenantWritable,
 	VectorizeClusterSettingName,
@@ -563,7 +510,6 @@ var VectorizeClusterMode = settings.RegisterEnumSetting(
 	},
 ).WithPublic()
 
-// DistSQLClusterExecMode controls the cluster default for when DistSQL is used.
 var DistSQLClusterExecMode = settings.RegisterEnumSetting(
 	settings.TenantWritable,
 	"sql.defaults.distsql",
@@ -577,8 +523,6 @@ var DistSQLClusterExecMode = settings.RegisterEnumSetting(
 	},
 ).WithPublic()
 
-// SerialNormalizationMode controls how the SERIAL type is interpreted in table
-// definitions.
 var SerialNormalizationMode = settings.RegisterEnumSetting(
 	settings.TenantWritable,
 	"sql.defaults.serial_normalization",
@@ -600,17 +544,19 @@ var disallowFullTableScans = settings.RegisterBoolSetting(
 	false,
 ).WithPublic()
 
-// intervalStyle controls intervals representation.
 var intervalStyle = settings.RegisterEnumSetting(
 	settings.TenantWritable,
 	"sql.defaults.intervalstyle",
 	"default value for IntervalStyle session setting",
 	strings.ToLower(duration.IntervalStyle_POSTGRES.String()),
 	func() map[int64]string {
+		__antithesis_instrumentation__.Notify(470350)
 		ret := make(map[int64]string, len(duration.IntervalStyle_name))
 		for k, v := range duration.IntervalStyle_name {
+			__antithesis_instrumentation__.Notify(470352)
 			ret[int64(k)] = strings.ToLower(v)
 		}
+		__antithesis_instrumentation__.Notify(470351)
 		return ret
 	}(),
 ).WithPublic()
@@ -621,7 +567,6 @@ var dateStyleEnumMap = map[int64]string{
 	2: "ISO, YMD",
 }
 
-// dateStyle controls dates representation.
 var dateStyle = settings.RegisterEnumSetting(
 	settings.TenantWritable,
 	"sql.defaults.datestyle",
@@ -632,8 +577,6 @@ var dateStyle = settings.RegisterEnumSetting(
 
 const intervalStyleEnabledClusterSetting = "sql.defaults.intervalstyle.enabled"
 
-// intervalStyleEnabled controls intervals representation.
-// TODO(sql-exp): retire this setting in 22.2.
 var intervalStyleEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	intervalStyleEnabledClusterSetting,
@@ -643,8 +586,6 @@ var intervalStyleEnabled = settings.RegisterBoolSetting(
 
 const dateStyleEnabledClusterSetting = "sql.defaults.datestyle.enabled"
 
-// dateStyleEnabled controls dates representation.
-// TODO(sql-exp): retire this setting in 22.2.
 var dateStyleEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	dateStyleEnabledClusterSetting,
@@ -692,8 +633,6 @@ var txnRowsReadErr = settings.RegisterIntSetting(
 	settings.NonNegativeInt,
 ).WithPublic()
 
-// This is a float setting (rather than an int setting) because the optimizer
-// uses floating point for calculating row estimates.
 var largeFullScanRows = settings.RegisterFloatSetting(
 	settings.TenantWritable,
 	"sql.defaults.large_full_scan_rows",
@@ -733,7 +672,6 @@ var errTransactionInProgress = errors.New("there is already a transaction in pro
 const sqlTxnName string = "sql txn"
 const metricsSampleInterval = 10 * time.Second
 
-// Fully-qualified names for metrics.
 var (
 	MetaSQLExecLatency = metric.Metadata{
 		Name:        "sql.exec.latency",
@@ -820,7 +758,6 @@ var (
 		Unit:        metric.Unit_COUNT,
 	}
 
-	// Below are the metadata for the statement started counters.
 	MetaQueryStarted = metric.Metadata{
 		Name:        "sql.query.started.count",
 		Help:        "Number of SQL queries started",
@@ -924,7 +861,6 @@ var (
 		Unit:        metric.Unit_COUNT,
 	}
 
-	// Below are the metadata for the statement executed counters.
 	MetaQueryExecuted = metric.Metadata{
 		Name:        "sql.query.count",
 		Help:        "Number of SQL queries executed",
@@ -1120,40 +1056,33 @@ var (
 )
 
 func getMetricMeta(meta metric.Metadata, internal bool) metric.Metadata {
+	__antithesis_instrumentation__.Notify(470353)
 	if internal {
+		__antithesis_instrumentation__.Notify(470355)
 		meta.Name += ".internal"
 		meta.Help += " (internal queries)"
 		meta.Measurement = "SQL Internal Statements"
+	} else {
+		__antithesis_instrumentation__.Notify(470356)
 	}
+	__antithesis_instrumentation__.Notify(470354)
 	return meta
 }
 
-// NodeInfo contains metadata about the executing node and cluster.
 type NodeInfo struct {
-	// LogicalClusterID is the cluster ID of the tenant, unique per
-	// tenant.
 	LogicalClusterID func() uuid.UUID
-	// NodeID is either the SQL instance ID or node ID, depending on
-	// circumstances.
-	// TODO(knz): Split this across node ID and instance ID. Likely,
-	// the SQL layer only needs instance ID.
+
 	NodeID *base.SQLIDContainer
-	// AdminURL is the URL of the DB Console for this server.
+
 	AdminURL func() *url.URL
-	// PGURL is the SQL connection URL for this server.
+
 	PGURL func(*url.Userinfo) (*pgurl.URL, error)
 }
 
-// nodeStatusGenerator is a limited portion of the status.MetricsRecorder
-// struct, to avoid having to import all of status in sql.
 type nodeStatusGenerator interface {
 	GenerateNodeStatus(ctx context.Context) *statuspb.NodeStatus
 }
 
-// An ExecutorConfig encompasses the auxiliary objects and configuration
-// required to create an executor.
-// All fields holding a pointer or an interface are required to create
-// an Executor; the rest will have sane defaults set if omitted.
 type ExecutorConfig struct {
 	Settings *cluster.Settings
 	NodeInfo
@@ -1170,11 +1099,9 @@ type ExecutorConfig struct {
 	LeaseManager      *lease.Manager
 	Clock             *hlc.Clock
 	DistSQLSrv        *distsql.ServerImpl
-	// NodesStatusServer gives access to the NodesStatus service and is only
-	// available when running as a system tenant.
+
 	NodesStatusServer serverpb.OptionalNodesStatusServer
-	// SQLStatusServer gives access to a subset of the Status service and is
-	// available when not running as a system tenant.
+
 	SQLStatusServer    serverpb.SQLStatusServer
 	TenantStatusServer serverpb.TenantStatusServer
 	RegionsServer      serverpb.RegionsServer
@@ -1211,24 +1138,17 @@ type ExecutorConfig struct {
 	TelemetryLoggingTestingKnobs         *TelemetryLoggingTestingKnobs
 	SpanConfigTestingKnobs               *spanconfig.TestingKnobs
 	CaptureIndexUsageStatsKnobs          *scheduledlogging.CaptureIndexUsageStatsTestingKnobs
-	// HistogramWindowInterval is (server.Config).HistogramWindowInterval.
+
 	HistogramWindowInterval time.Duration
 
-	// RangeDescriptorCache is updated by DistSQL when it finds out about
-	// misplanned spans.
 	RangeDescriptorCache *rangecache.RangeCache
 
-	// Role membership cache.
 	RoleMemberCache *MembershipCache
 
-	// SessionInitCache cache; contains information used during authentication
-	// and per-role default settings.
 	SessionInitCache *sessioninit.Cache
 
-	// ProtectedTimestampProvider encapsulates the protected timestamp subsystem.
 	ProtectedTimestampProvider protectedts.Provider
 
-	// StmtDiagnosticsRecorder deals with recording statement diagnostics.
 	StmtDiagnosticsRecorder *stmtdiagnostics.Registry
 
 	ExternalIODirConfig base.ExternalIODirConfig
@@ -1237,90 +1157,48 @@ type ExecutorConfig struct {
 
 	RangeFeedFactory *rangefeed.Factory
 
-	// VersionUpgradeHook is called after validating a `SET CLUSTER SETTING
-	// version` but before executing it. It can carry out arbitrary migrations
-	// that allow us to eventually remove legacy code.
 	VersionUpgradeHook VersionUpgradeHook
 
-	// MigrationJobDeps is used to drive migrations.
 	MigrationJobDeps migration.JobDeps
 
-	// IndexBackfiller is used to backfill indexes. It is another rather circular
-	// object which mostly just holds on to an ExecConfig.
 	IndexBackfiller *IndexBackfillPlanner
 
-	// IndexValidator is used to validate indexes.
 	IndexValidator scexec.IndexValidator
 
-	// DescMetadaUpdaterFactory is used to issue queries for updating comments.
 	DescMetadaUpdaterFactory scexec.DescriptorMetadataUpdaterFactory
 
-	// ContentionRegistry is a node-level registry of contention events used for
-	// contention observability.
 	ContentionRegistry *contention.Registry
 
-	// RootMemoryMonitor is the root memory monitor of the entire server. Do not
-	// use this for normal purposes. It is to be used to establish any new
-	// root-level memory accounts that are not related to a user sessions.
 	RootMemoryMonitor *mon.BytesMonitor
 
-	// CompactEngineSpanFunc is used to inform a storage engine of the need to
-	// perform compaction over a key span.
 	CompactEngineSpanFunc tree.CompactEngineSpanFunc
 
-	// TraceCollector is used to contact all live nodes in the cluster, and
-	// collect trace spans from their inflight node registries.
 	TraceCollector *collector.TraceCollector
 
-	// TenantUsageServer is used to implement configuration APIs for tenant cost
-	// control.
 	TenantUsageServer multitenant.TenantUsageServer
 
-	// KVStoresIterator is used by various crdb_internal builtins to directly
-	// access stores on this node.
 	KVStoresIterator kvserverbase.StoresIterator
 
-	// CollectionFactory is used to construct a descs.Collection.
 	CollectionFactory *descs.CollectionFactory
 
-	// SystemTableIDResolver is used to obtain dynamic IDs for system tables.
 	SystemTableIDResolver catalog.SystemTableIDResolver
 
-	// SpanConfigReconciler is used to drive the span config reconciliation job
-	// and related migrations.
 	SpanConfigReconciler spanconfig.Reconciler
 
-	// SpanConfigSplitter is used during migrations to seed system.span_count with
-	// the right number of tenant spans.
 	SpanConfigSplitter spanconfig.Splitter
 
-	// SpanConfigLimiter is used to limit how many span configs installed.
 	SpanConfigLimiter spanconfig.Limiter
 
-	// SpanConfigKVAccessor is used when creating and deleting tenant
-	// records.
 	SpanConfigKVAccessor spanconfig.KVAccessor
 
-	// InternalExecutorFactory is used to create an InternalExecutor binded with
-	// SessionData and other ExtraTxnState.
-	// This is currently only for builtin functions where we need to execute sql.
 	InternalExecutorFactory sqlutil.SessionBoundInternalExecutorFactory
 }
 
-// UpdateVersionSystemSettingHook provides a callback that allows us
-// update the cluster version inside the system.settings table. This hook
-// is aimed at mainly updating tenant pods, which will currently skip over
-// the existing migration logic for bumping version numbers (this logic is
-// stubbed out for them). As a result there is a potential danger of migrations
-// partially being completed without the version number being persisted to storage
-// for tenants. This hook allows the version number to bumped and saved at
-// each step.
 type UpdateVersionSystemSettingHook func(
 	ctx context.Context,
 	version clusterversion.ClusterVersion,
 ) error
 
-// VersionUpgradeHook is used to run migrations starting in v21.1.
 type VersionUpgradeHook func(
 	ctx context.Context,
 	user security.SQLUsername,
@@ -1328,267 +1206,152 @@ type VersionUpgradeHook func(
 	updateSystemVersionSetting UpdateVersionSystemSettingHook,
 ) error
 
-// Organization returns the value of cluster.organization.
 func (cfg *ExecutorConfig) Organization() string {
+	__antithesis_instrumentation__.Notify(470357)
 	return ClusterOrganization.Get(&cfg.Settings.SV)
 }
 
-// GetFeatureFlagMetrics returns the value of the FeatureFlagMetrics struct.
 func (cfg *ExecutorConfig) GetFeatureFlagMetrics() *featureflag.DenialMetrics {
+	__antithesis_instrumentation__.Notify(470358)
 	return cfg.FeatureFlagMetrics
 }
 
-// SV returns the setting values.
 func (cfg *ExecutorConfig) SV() *settings.Values {
+	__antithesis_instrumentation__.Notify(470359)
 	return &cfg.Settings.SV
 }
 
 var _ base.ModuleTestingKnobs = &ExecutorTestingKnobs{}
 
-// ModuleTestingKnobs is part of the base.ModuleTestingKnobs interface.
-func (*ExecutorTestingKnobs) ModuleTestingKnobs() {}
+func (*ExecutorTestingKnobs) ModuleTestingKnobs() { __antithesis_instrumentation__.Notify(470360) }
 
-// StatementFilter is the type of callback that
-// ExecutorTestingKnobs.StatementFilter takes.
 type StatementFilter func(context.Context, *sessiondata.SessionData, string, error)
 
-// ExecutorTestingKnobs is part of the context used to control parts of the
-// system during testing.
 type ExecutorTestingKnobs struct {
-	// StatementFilter can be used to trap execution of SQL statements and
-	// optionally change their results. The filter function is invoked after each
-	// statement has been executed.
 	StatementFilter StatementFilter
 
-	// BeforePrepare can be used to trap execution of SQL statement preparation.
-	// If a nil error is returned, planning continues as usual.
 	BeforePrepare func(ctx context.Context, stmt string, txn *kv.Txn) error
 
-	// BeforeExecute is called by the Executor before plan execution. It is useful
-	// for synchronizing statement execution.
 	BeforeExecute func(ctx context.Context, stmt string)
 
-	// AfterExecute is like StatementFilter, but it runs in the same goroutine of the
-	// statement.
 	AfterExecute func(ctx context.Context, stmt string, err error)
 
-	// AfterExecCmd is called after successful execution of any command.
 	AfterExecCmd func(ctx context.Context, cmd Command, buf *StmtBuf)
 
-	// BeforeRestart is called before a transaction restarts.
 	BeforeRestart func(ctx context.Context, reason error)
 
-	// DisableAutoCommitDuringExec, if set, disables the auto-commit functionality
-	// of some SQL statements. That functionality allows some statements to commit
-	// directly when they're executed in an implicit SQL txn, without waiting for
-	// the Executor to commit the implicit txn.
-	// This has to be set in tests that need to abort such statements using a
-	// StatementFilter; otherwise, the statement commits at the same time as
-	// execution so there'll be nothing left to abort by the time the filter runs.
 	DisableAutoCommitDuringExec bool
 
-	// BeforeAutoCommit is called when the Executor is about to commit the KV
-	// transaction after running a statement in an implicit transaction, allowing
-	// tests to inject errors into that commit.
-	// If an error is returned, that error will be considered the result of
-	// txn.Commit(), and the txn.Commit() call will not actually be
-	// made. If no error is returned, txn.Commit() is called normally.
-	//
-	// Note that this is not called if the SQL statement representing the implicit
-	// transaction has committed the KV txn itself (e.g. if it used the 1-PC
-	// optimization). This is only called when the Executor is the one doing the
-	// committing.
 	BeforeAutoCommit func(ctx context.Context, stmt string) error
 
-	// DisableTempObjectsCleanupOnSessionExit disables cleaning up temporary schemas
-	// and tables when a session is closed.
 	DisableTempObjectsCleanupOnSessionExit bool
-	// TempObjectsCleanupCh replaces the time.Ticker.C channel used for scheduling
-	// a cleanup on every temp object in the cluster. If this is set, the job
-	// will now trigger when items come into this channel.
+
 	TempObjectsCleanupCh chan time.Time
-	// OnTempObjectsCleanupDone will trigger when the temporary objects cleanup
-	// job is done.
+
 	OnTempObjectsCleanupDone func()
 
-	// WithStatementTrace is called after the statement is executed in
-	// execStmtInOpenState.
 	WithStatementTrace func(trace tracing.Recording, stmt string)
 
-	// RunAfterSCJobsCacheLookup is called after the SchemaChangeJobCache is checked for
-	// a given table id.
 	RunAfterSCJobsCacheLookup func(record *jobs.Record)
 
-	// TestingSaveFlows, if set, will be called with the given stmt. The resulting
-	// function will be called with the physical plan of that statement's main
-	// query (i.e. no subqueries). The physical plan is only safe for use for the
-	// lifetime of this function. Note that returning a nil function is
-	// unsupported and will lead to a panic.
 	TestingSaveFlows func(stmt string) func(map[base.SQLInstanceID]*execinfrapb.FlowSpec, execinfra.OpChains) error
 
-	// DeterministicExplain, if set, will result in overriding fields in EXPLAIN
-	// and EXPLAIN ANALYZE that can vary between runs (like elapsed times).
-	//
-	// TODO(radu): this flag affects EXPLAIN and EXPLAIN ANALYZE differently. It
-	// hides the vectorization, distribution, and cluster nodes in EXPLAIN ANALYZE
-	// but not in EXPLAIN. This is just a consequence of how the tests we have are
-	// written. We should replace this knob with a session setting that allows
-	// exact control of the redaction flags (and have each test set it as
-	// necessary).
 	DeterministicExplain bool
 
-	// ForceRealTracingSpans, if set, forces the use of real (i.e. not no-op)
-	// tracing spans for every statement.
 	ForceRealTracingSpans bool
 
-	// DistSQLReceiverPushCallbackFactory, if set, will be called every time a
-	// DistSQLReceiver is created for a new query execution, and it should
-	// return, possibly nil, a callback that will be called every time
-	// DistSQLReceiver.Push is called.
 	DistSQLReceiverPushCallbackFactory func(query string) func(rowenc.EncDatumRow, *execinfrapb.ProducerMetadata)
 
-	// OnTxnRetry, if set, will be called if there is a transaction retry.
 	OnTxnRetry func(autoRetryReason error, evalCtx *tree.EvalContext)
 
-	// BeforeTxnStatsRecorded, if set, will be called before the statistics
-	// of a transaction is being recorded.
 	BeforeTxnStatsRecorded func(
 		sessionData *sessiondata.SessionData,
 		txnID uuid.UUID,
 		txnFingerprintID roachpb.TransactionFingerprintID,
 	)
 
-	// AfterBackupCheckpoint if set will be called after a BACKUP-CHECKPOINT
-	// is written.
 	AfterBackupCheckpoint func()
 }
 
-// PGWireTestingKnobs contains knobs for the pgwire module.
 type PGWireTestingKnobs struct {
-	// CatchPanics causes the pgwire.conn to recover from panics in its execution
-	// thread and return them as errors to the client, closing the connection
-	// afterward.
 	CatchPanics bool
 
-	// AuthHook is used to override the normal authentication handling on new
-	// connections.
 	AuthHook func(context.Context) error
 
-	// AfterReadMsgTestingKnob is called after reading a message from the
-	// pgwire read buffer.
 	AfterReadMsgTestingKnob func(context.Context) error
 }
 
 var _ base.ModuleTestingKnobs = &PGWireTestingKnobs{}
 
-// ModuleTestingKnobs implements the base.ModuleTestingKnobs interface.
-func (*PGWireTestingKnobs) ModuleTestingKnobs() {}
+func (*PGWireTestingKnobs) ModuleTestingKnobs() { __antithesis_instrumentation__.Notify(470361) }
 
-// TenantTestingKnobs contains knobs for tenant behavior.
 type TenantTestingKnobs struct {
-	// ClusterSettingsUpdater is a field that if set, allows the tenant to set
-	// in-memory cluster settings. SQL tenants are otherwise prohibited from
-	// setting cluster settings.
 	ClusterSettingsUpdater settings.Updater
 
-	// TenantIDCodecOverride overrides the tenant ID used to construct the SQL
-	// server's codec, but nothing else (e.g. its certs).
 	TenantIDCodecOverride roachpb.TenantID
 
-	// OverrideTokenBucketProvider allows a test-only TokenBucketProvider (which
-	// can optionally forward requests to the real provider).
 	OverrideTokenBucketProvider func(origProvider kvtenant.TokenBucketProvider) kvtenant.TokenBucketProvider
 }
 
 var _ base.ModuleTestingKnobs = &TenantTestingKnobs{}
 
-// ModuleTestingKnobs implements the base.ModuleTestingKnobs interface.
-func (*TenantTestingKnobs) ModuleTestingKnobs() {}
+func (*TenantTestingKnobs) ModuleTestingKnobs() { __antithesis_instrumentation__.Notify(470362) }
 
-// TTLTestingKnobs contains testing knobs for TTL deletion.
 type TTLTestingKnobs struct {
-	// AOSTDuration changes the AOST timestamp duration to add to the
-	// current time.
 	AOSTDuration *time.Duration
-	// OnStatisticsError is a hook that takes in an error if gathering statistics
-	// generates an error.
+
 	OnStatisticsError func(err error)
-	// MockDescriptorVersionDuringDelete is a version to mock the delete descriptor
-	// as during delete.
+
 	MockDescriptorVersionDuringDelete *descpb.DescriptorVersion
-	// OnDeleteLoopStart is a hook that executes before the loop for TTL deletes begin.
+
 	OnDeleteLoopStart func() error
 }
 
-// ModuleTestingKnobs implements the base.ModuleTestingKnobs interface.
-func (*TTLTestingKnobs) ModuleTestingKnobs() {}
+func (*TTLTestingKnobs) ModuleTestingKnobs() { __antithesis_instrumentation__.Notify(470363) }
 
-// BackupRestoreTestingKnobs contains knobs for backup and restore behavior.
 type BackupRestoreTestingKnobs struct {
-	// CaptureResolvedTableDescSpans allows for intercepting the spans which are
-	// resolved during backup planning, and will eventually be backed up during
-	// execution.
 	CaptureResolvedTableDescSpans func([]roachpb.Span)
 
-	// RunAfterProcessingRestoreSpanEntry allows blocking the RESTORE job after a
-	// single RestoreSpanEntry has been processed and added to the SSTBatcher.
 	RunAfterProcessingRestoreSpanEntry func(ctx context.Context)
 
-	// RunAfterExportingSpanEntry allows blocking the BACKUP job after a single
-	// span has been exported.
 	RunAfterExportingSpanEntry func(ctx context.Context, response *roachpb.ExportResponse)
 
-	// BackupMonitor is used to overwrite the monitor used by backup during
-	// testing. This is typically the bulk mem monitor if not
-	// specified here.
 	BackupMemMonitor *mon.BytesMonitor
 }
 
 var _ base.ModuleTestingKnobs = &BackupRestoreTestingKnobs{}
 
-// ModuleTestingKnobs implements the base.ModuleTestingKnobs interface.
-func (*BackupRestoreTestingKnobs) ModuleTestingKnobs() {}
+func (*BackupRestoreTestingKnobs) ModuleTestingKnobs() { __antithesis_instrumentation__.Notify(470364) }
 
-// StreamingTestingKnobs contains knobs for streaming behavior.
 type StreamingTestingKnobs struct {
-	// RunAfterReceivingEvent allows blocking the stream ingestion processor after
-	// a single event has been received.
 	RunAfterReceivingEvent func(ctx context.Context)
 }
 
 var _ base.ModuleTestingKnobs = &StreamingTestingKnobs{}
 
-// ModuleTestingKnobs implements the base.ModuleTestingKnobs interface.
-func (*StreamingTestingKnobs) ModuleTestingKnobs() {}
+func (*StreamingTestingKnobs) ModuleTestingKnobs() { __antithesis_instrumentation__.Notify(470365) }
 
 func shouldDistributeGivenRecAndMode(
 	rec distRecommendation, mode sessiondatapb.DistSQLExecMode,
 ) bool {
+	__antithesis_instrumentation__.Notify(470366)
 	switch mode {
 	case sessiondatapb.DistSQLOff:
+		__antithesis_instrumentation__.Notify(470368)
 		return false
 	case sessiondatapb.DistSQLAuto:
+		__antithesis_instrumentation__.Notify(470369)
 		return rec == shouldDistribute
 	case sessiondatapb.DistSQLOn, sessiondatapb.DistSQLAlways:
+		__antithesis_instrumentation__.Notify(470370)
 		return rec != cannotDistribute
+	default:
+		__antithesis_instrumentation__.Notify(470371)
 	}
+	__antithesis_instrumentation__.Notify(470367)
 	panic(errors.AssertionFailedf("unhandled distsql mode %v", mode))
 }
 
-// getPlanDistribution returns the PlanDistribution that plan will have. If
-// plan already has physical representation, then the stored PlanDistribution
-// is reused, but if plan has logical representation (i.e. it is a planNode
-// tree), then we traverse that tree in order to determine the distribution of
-// the plan.
-// WARNING: in some cases when this method returns
-// physicalplan.FullyDistributedPlan, the plan might actually run locally. This
-// is the case when
-// - the plan ends up with a single flow on the gateway, or
-// - during the plan finalization (in DistSQLPlanner.finalizePlanWithRowCount)
-// we decide that it is beneficial to move the single flow of the plan from the
-// remote node to the gateway.
-// TODO(yuzefovich): this will be easy to solve once the DistSQL spec factory is
-// completed but is quite annoying to do at the moment.
 func getPlanDistribution(
 	ctx context.Context,
 	p *planner,
@@ -1596,344 +1359,433 @@ func getPlanDistribution(
 	distSQLMode sessiondatapb.DistSQLExecMode,
 	plan planMaybePhysical,
 ) physicalplan.PlanDistribution {
+	__antithesis_instrumentation__.Notify(470372)
 	if plan.isPhysicalPlan() {
+		__antithesis_instrumentation__.Notify(470380)
 		return plan.physPlan.Distribution
+	} else {
+		__antithesis_instrumentation__.Notify(470381)
 	}
+	__antithesis_instrumentation__.Notify(470373)
 
-	// If this transaction has modified or created any types, it is not safe to
-	// distribute due to limitations around leasing descriptors modified in the
-	// current transaction.
 	if p.Descriptors().HasUncommittedTypes() {
+		__antithesis_instrumentation__.Notify(470382)
 		return physicalplan.LocalPlan
+	} else {
+		__antithesis_instrumentation__.Notify(470383)
 	}
+	__antithesis_instrumentation__.Notify(470374)
 
 	if _, singleTenant := nodeID.OptionalNodeID(); !singleTenant {
+		__antithesis_instrumentation__.Notify(470384)
 		return physicalplan.LocalPlan
+	} else {
+		__antithesis_instrumentation__.Notify(470385)
 	}
+	__antithesis_instrumentation__.Notify(470375)
 	if distSQLMode == sessiondatapb.DistSQLOff {
+		__antithesis_instrumentation__.Notify(470386)
 		return physicalplan.LocalPlan
+	} else {
+		__antithesis_instrumentation__.Notify(470387)
 	}
+	__antithesis_instrumentation__.Notify(470376)
 
-	// Don't try to run empty nodes (e.g. SET commands) with distSQL.
 	if _, ok := plan.planNode.(*zeroNode); ok {
+		__antithesis_instrumentation__.Notify(470388)
 		return physicalplan.LocalPlan
+	} else {
+		__antithesis_instrumentation__.Notify(470389)
 	}
+	__antithesis_instrumentation__.Notify(470377)
 
 	rec, err := checkSupportForPlanNode(plan.planNode)
 	if err != nil {
-		// Don't use distSQL for this request.
+		__antithesis_instrumentation__.Notify(470390)
+
 		log.VEventf(ctx, 1, "query not supported for distSQL: %s", err)
 		return physicalplan.LocalPlan
+	} else {
+		__antithesis_instrumentation__.Notify(470391)
 	}
+	__antithesis_instrumentation__.Notify(470378)
 
 	if shouldDistributeGivenRecAndMode(rec, distSQLMode) {
+		__antithesis_instrumentation__.Notify(470392)
 		return physicalplan.FullyDistributedPlan
+	} else {
+		__antithesis_instrumentation__.Notify(470393)
 	}
+	__antithesis_instrumentation__.Notify(470379)
 	return physicalplan.LocalPlan
 }
 
-// golangFillQueryArguments transforms Go values into datums.
-// Some of the args can be datums (in which case the transformation is a no-op).
-//
-// TODO: This does not support arguments of the SQL 'Date' type, as there is not
-// an equivalent type in Go's standard library. It's not currently needed by any
-// of our internal tables.
 func golangFillQueryArguments(args ...interface{}) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(470394)
 	res := make(tree.Datums, len(args))
 	for i, arg := range args {
+		__antithesis_instrumentation__.Notify(470396)
 		if arg == nil {
+			__antithesis_instrumentation__.Notify(470400)
 			res[i] = tree.DNull
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(470401)
 		}
+		__antithesis_instrumentation__.Notify(470397)
 
-		// A type switch to handle a few explicit types with special semantics:
-		// - Datums are passed along as is.
-		// - Time datatypes get special representation in the database.
-		// - Usernames are assumed pre-normalized for lookup and validation.
 		var d tree.Datum
 		switch t := arg.(type) {
 		case tree.Datum:
+			__antithesis_instrumentation__.Notify(470402)
 			d = t
 		case time.Time:
+			__antithesis_instrumentation__.Notify(470403)
 			var err error
 			d, err = tree.MakeDTimestamp(t, time.Microsecond)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(470408)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(470409)
 			}
 		case time.Duration:
+			__antithesis_instrumentation__.Notify(470404)
 			d = &tree.DInterval{Duration: duration.MakeDuration(t.Nanoseconds(), 0, 0)}
 		case bitarray.BitArray:
+			__antithesis_instrumentation__.Notify(470405)
 			d = &tree.DBitArray{BitArray: t}
 		case *apd.Decimal:
+			__antithesis_instrumentation__.Notify(470406)
 			dd := &tree.DDecimal{}
 			dd.Set(t)
 			d = dd
 		case security.SQLUsername:
+			__antithesis_instrumentation__.Notify(470407)
 			d = tree.NewDString(t.Normalized())
 		}
+		__antithesis_instrumentation__.Notify(470398)
 		if d == nil {
-			// Handle all types which have an underlying type that can be stored in the
-			// database.
-			// Note: if this reflection becomes a performance concern in the future,
-			// commonly used types could be added explicitly into the type switch above
-			// for a performance gain.
+			__antithesis_instrumentation__.Notify(470410)
+
 			val := reflect.ValueOf(arg)
 			switch val.Kind() {
 			case reflect.Bool:
+				__antithesis_instrumentation__.Notify(470412)
 				d = tree.MakeDBool(tree.DBool(val.Bool()))
 			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				__antithesis_instrumentation__.Notify(470413)
 				d = tree.NewDInt(tree.DInt(val.Int()))
 			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				__antithesis_instrumentation__.Notify(470414)
 				d = tree.NewDInt(tree.DInt(val.Uint()))
 			case reflect.Float32, reflect.Float64:
+				__antithesis_instrumentation__.Notify(470415)
 				d = tree.NewDFloat(tree.DFloat(val.Float()))
 			case reflect.String:
+				__antithesis_instrumentation__.Notify(470416)
 				d = tree.NewDString(val.String())
 			case reflect.Slice:
+				__antithesis_instrumentation__.Notify(470417)
 				switch {
 				case val.IsNil():
+					__antithesis_instrumentation__.Notify(470419)
 					d = tree.DNull
 				case val.Type().Elem().Kind() == reflect.String:
+					__antithesis_instrumentation__.Notify(470420)
 					a := tree.NewDArray(types.String)
 					for v := 0; v < val.Len(); v++ {
+						__antithesis_instrumentation__.Notify(470424)
 						if err := a.Append(tree.NewDString(val.Index(v).String())); err != nil {
+							__antithesis_instrumentation__.Notify(470425)
 							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(470426)
 						}
 					}
+					__antithesis_instrumentation__.Notify(470421)
 					d = a
 				case val.Type().Elem().Kind() == reflect.Uint8:
+					__antithesis_instrumentation__.Notify(470422)
 					d = tree.NewDBytes(tree.DBytes(val.Bytes()))
+				default:
+					__antithesis_instrumentation__.Notify(470423)
 				}
+			default:
+				__antithesis_instrumentation__.Notify(470418)
 			}
+			__antithesis_instrumentation__.Notify(470411)
 			if d == nil {
+				__antithesis_instrumentation__.Notify(470427)
 				panic(errors.AssertionFailedf("unexpected type %T", arg))
+			} else {
+				__antithesis_instrumentation__.Notify(470428)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(470429)
 		}
+		__antithesis_instrumentation__.Notify(470399)
 		res[i] = d
 	}
+	__antithesis_instrumentation__.Notify(470395)
 	return res, nil
 }
 
-// checkResultType verifies that a table result can be returned to the
-// client.
 func checkResultType(typ *types.T) error {
-	// Compare all types that can rely on == equality.
+	__antithesis_instrumentation__.Notify(470430)
+
 	switch typ.Family() {
 	case types.UnknownFamily:
+		__antithesis_instrumentation__.Notify(470432)
 	case types.BitFamily:
+		__antithesis_instrumentation__.Notify(470433)
 	case types.BoolFamily:
+		__antithesis_instrumentation__.Notify(470434)
 	case types.IntFamily:
+		__antithesis_instrumentation__.Notify(470435)
 	case types.FloatFamily:
+		__antithesis_instrumentation__.Notify(470436)
 	case types.DecimalFamily:
+		__antithesis_instrumentation__.Notify(470437)
 	case types.BytesFamily:
+		__antithesis_instrumentation__.Notify(470438)
 	case types.Box2DFamily:
+		__antithesis_instrumentation__.Notify(470439)
 	case types.GeographyFamily:
+		__antithesis_instrumentation__.Notify(470440)
 	case types.GeometryFamily:
+		__antithesis_instrumentation__.Notify(470441)
 	case types.StringFamily:
+		__antithesis_instrumentation__.Notify(470442)
 	case types.CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(470443)
 	case types.DateFamily:
+		__antithesis_instrumentation__.Notify(470444)
 	case types.TimestampFamily:
+		__antithesis_instrumentation__.Notify(470445)
 	case types.TimeFamily:
+		__antithesis_instrumentation__.Notify(470446)
 	case types.TimeTZFamily:
+		__antithesis_instrumentation__.Notify(470447)
 	case types.TimestampTZFamily:
+		__antithesis_instrumentation__.Notify(470448)
 	case types.IntervalFamily:
+		__antithesis_instrumentation__.Notify(470449)
 	case types.JsonFamily:
+		__antithesis_instrumentation__.Notify(470450)
 	case types.UuidFamily:
+		__antithesis_instrumentation__.Notify(470451)
 	case types.INetFamily:
+		__antithesis_instrumentation__.Notify(470452)
 	case types.OidFamily:
+		__antithesis_instrumentation__.Notify(470453)
 	case types.TupleFamily:
+		__antithesis_instrumentation__.Notify(470454)
 	case types.EnumFamily:
+		__antithesis_instrumentation__.Notify(470455)
 	case types.VoidFamily:
+		__antithesis_instrumentation__.Notify(470456)
 	case types.ArrayFamily:
+		__antithesis_instrumentation__.Notify(470457)
 		if typ.ArrayContents().Family() == types.ArrayFamily {
-			// Technically we could probably return arrays of arrays to a
-			// client (the encoding exists) but we don't want to give
-			// mixed signals -- that nested arrays appear to be supported
-			// in this case, and not in other cases (eg. CREATE). So we
-			// reject them in every case instead.
+			__antithesis_instrumentation__.Notify(470460)
+
 			return unimplemented.NewWithIssueDetail(32552,
 				"result", "arrays cannot have arrays as element type")
+		} else {
+			__antithesis_instrumentation__.Notify(470461)
 		}
 	case types.AnyFamily:
-		// Placeholder case.
+		__antithesis_instrumentation__.Notify(470458)
+
 		return errors.Errorf("could not determine data type of %s", typ)
 	default:
+		__antithesis_instrumentation__.Notify(470459)
 		return errors.Errorf("unsupported result type: %s", typ)
 	}
+	__antithesis_instrumentation__.Notify(470431)
 	return nil
 }
 
-// EvalAsOfTimestamp evaluates and returns the timestamp from an AS OF SYSTEM
-// TIME clause.
 func (p *planner) EvalAsOfTimestamp(
 	ctx context.Context, asOfClause tree.AsOfClause, opts ...tree.EvalAsOfTimestampOption,
 ) (tree.AsOfSystemTime, error) {
+	__antithesis_instrumentation__.Notify(470462)
 	asOf, err := tree.EvalAsOfTimestamp(ctx, asOfClause, &p.semaCtx, p.EvalContext(), opts...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(470465)
 		return tree.AsOfSystemTime{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(470466)
 	}
+	__antithesis_instrumentation__.Notify(470463)
 	ts := asOf.Timestamp
-	if now := p.execCfg.Clock.Now(); now.Less(ts) && !ts.Synthetic {
+	if now := p.execCfg.Clock.Now(); now.Less(ts) && func() bool {
+		__antithesis_instrumentation__.Notify(470467)
+		return !ts.Synthetic == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(470468)
 		return tree.AsOfSystemTime{}, errors.Errorf(
 			"AS OF SYSTEM TIME: cannot specify timestamp in the future (%s > %s)", ts, now)
+	} else {
+		__antithesis_instrumentation__.Notify(470469)
 	}
+	__antithesis_instrumentation__.Notify(470464)
 	return asOf, nil
 }
 
-// isAsOf analyzes a statement to bypass the logic in newPlan(), since
-// that requires the transaction to be started already. If the returned
-// timestamp is not nil, it is the timestamp to which a transaction
-// should be set. The statements that will be checked are Select,
-// ShowTrace (of a Select statement), Scrub, Export, and CreateStats.
 func (p *planner) isAsOf(ctx context.Context, stmt tree.Statement) (*tree.AsOfSystemTime, error) {
+	__antithesis_instrumentation__.Notify(470470)
 	var asOf tree.AsOfClause
 	switch s := stmt.(type) {
 	case *tree.Select:
+		__antithesis_instrumentation__.Notify(470473)
 		selStmt := s.Select
 		var parenSel *tree.ParenSelect
 		var ok bool
 		for parenSel, ok = selStmt.(*tree.ParenSelect); ok; parenSel, ok = selStmt.(*tree.ParenSelect) {
+			__antithesis_instrumentation__.Notify(470484)
 			selStmt = parenSel.Select.Select
 		}
+		__antithesis_instrumentation__.Notify(470474)
 
 		sc, ok := selStmt.(*tree.SelectClause)
 		if !ok {
+			__antithesis_instrumentation__.Notify(470485)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(470486)
 		}
+		__antithesis_instrumentation__.Notify(470475)
 		if sc.From.AsOf.Expr == nil {
+			__antithesis_instrumentation__.Notify(470487)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(470488)
 		}
+		__antithesis_instrumentation__.Notify(470476)
 
 		asOf = sc.From.AsOf
 	case *tree.Scrub:
+		__antithesis_instrumentation__.Notify(470477)
 		if s.AsOf.Expr == nil {
+			__antithesis_instrumentation__.Notify(470489)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(470490)
 		}
+		__antithesis_instrumentation__.Notify(470478)
 		asOf = s.AsOf
 	case *tree.Export:
+		__antithesis_instrumentation__.Notify(470479)
 		return p.isAsOf(ctx, s.Query)
 	case *tree.CreateStats:
+		__antithesis_instrumentation__.Notify(470480)
 		if s.Options.AsOf.Expr == nil {
+			__antithesis_instrumentation__.Notify(470491)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(470492)
 		}
+		__antithesis_instrumentation__.Notify(470481)
 		asOf = s.Options.AsOf
 	case *tree.Explain:
+		__antithesis_instrumentation__.Notify(470482)
 		return p.isAsOf(ctx, s.Statement)
 	default:
+		__antithesis_instrumentation__.Notify(470483)
 		return nil, nil
 	}
+	__antithesis_instrumentation__.Notify(470471)
 	asOfRet, err := p.EvalAsOfTimestamp(ctx, asOf, tree.EvalAsOfTimestampOptionAllowBoundedStaleness)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(470493)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(470494)
 	}
+	__antithesis_instrumentation__.Notify(470472)
 	return &asOfRet, err
 }
 
-// isSavepoint returns true if ast is a SAVEPOINT statement.
 func isSavepoint(ast tree.Statement) bool {
+	__antithesis_instrumentation__.Notify(470495)
 	_, isSavepoint := ast.(*tree.Savepoint)
 	return isSavepoint
 }
 
-// isSetTransaction returns true if ast is a "SET TRANSACTION ..." statement.
 func isSetTransaction(ast tree.Statement) bool {
+	__antithesis_instrumentation__.Notify(470496)
 	_, isSet := ast.(*tree.SetTransaction)
 	return isSet
 }
 
-// queryPhase represents a phase during a query's execution.
 type queryPhase int
 
 const (
-	// The phase before start of execution (includes parsing, building a plan).
 	preparing queryPhase = 0
 
-	// Execution phase.
 	executing queryPhase = 1
 )
 
-// queryMeta stores metadata about a query. Stored as reference in
-// session.mu.ActiveQueries.
 type queryMeta struct {
-	// The ID of the transaction that this query is running within.
 	txnID uuid.UUID
 
-	// The timestamp when this query began execution.
 	start time.Time
 
-	// The string of the SQL statement being executed. This string may
-	// contain sensitive information, so it must be converted back into
-	// an AST and dumped before use in logging.
 	rawStmt string
 
-	// States whether this query is distributed. Note that all queries,
-	// including those that are distributed, have this field set to false until
-	// start of execution; only at that point can we can actually determine whether
-	// this query will be distributed. Use the phase variable below
-	// to determine whether this query has entered execution yet.
 	isDistributed bool
 
-	// Current phase of execution of query.
 	phase queryPhase
 
-	// Cancellation function for the context associated with this query's transaction.
 	ctxCancel context.CancelFunc
 
-	// If set, this query will not be reported as part of SHOW QUERIES. This is
-	// set based on the statement implementing tree.HiddenFromShowQueries.
 	hidden bool
 
 	progressAtomic uint64
 }
 
-// cancel cancels the query associated with this queryMeta, by closing the associated
-// txn context.
 func (q *queryMeta) cancel() {
+	__antithesis_instrumentation__.Notify(470497)
 	q.ctxCancel()
 }
 
-// getStatement returns a cleaned version of the query associated
-// with this queryMeta.
 func (q *queryMeta) getStatement() (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(470498)
 	parsed, err := parser.ParseOne(q.rawStmt)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(470500)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(470501)
 	}
+	__antithesis_instrumentation__.Notify(470499)
 	return parsed.AST, nil
 }
 
-// SessionDefaults mirrors fields in Session, for restoring default
-// configuration values in SET ... TO DEFAULT (or RESET ...) statements.
 type SessionDefaults map[string]string
 
-// SessionArgs contains arguments for serving a client connection.
 type SessionArgs struct {
 	User                        security.SQLUsername
 	IsSuperuser                 bool
 	SessionDefaults             SessionDefaults
 	CustomOptionSessionDefaults SessionDefaults
-	// RemoteAddr is the client's address. This is nil iff this is an internal
-	// client.
+
 	RemoteAddr            net.Addr
 	ConnResultsBufferSize int64
-	// SessionRevivalToken may contain a token generated from a different session
-	// that can be used to authenticate this session. If it is set, all other
-	// authentication is skipped. Once the token is used to authenticate, this
-	// value should be zeroed out.
+
 	SessionRevivalToken []byte
 }
 
-// SessionRegistry stores a set of all sessions on this node.
-// Use register() and deregister() to modify this registry.
 type SessionRegistry struct {
 	syncutil.Mutex
 	sessions            map[ClusterWideID]registrySession
 	sessionsByCancelKey map[pgwirecancel.BackendKeyData]registrySession
 }
 
-// NewSessionRegistry creates a new SessionRegistry with an empty set
-// of sessions.
 func NewSessionRegistry() *SessionRegistry {
+	__antithesis_instrumentation__.Notify(470502)
 	return &SessionRegistry{
 		sessions:            make(map[ClusterWideID]registrySession),
 		sessionsByCancelKey: make(map[pgwirecancel.BackendKeyData]registrySession),
@@ -1943,6 +1795,7 @@ func NewSessionRegistry() *SessionRegistry {
 func (r *SessionRegistry) register(
 	id ClusterWideID, queryCancelKey pgwirecancel.BackendKeyData, s registrySession,
 ) {
+	__antithesis_instrumentation__.Notify(470503)
 	r.Lock()
 	defer r.Unlock()
 	r.sessions[id] = s
@@ -1950,6 +1803,7 @@ func (r *SessionRegistry) register(
 }
 
 func (r *SessionRegistry) deregister(id ClusterWideID, queryCancelKey pgwirecancel.BackendKeyData) {
+	__antithesis_instrumentation__.Notify(470504)
 	r.Lock()
 	defer r.Unlock()
 	delete(r.sessions, id)
@@ -1961,270 +1815,283 @@ type registrySession interface {
 	cancelQuery(queryID ClusterWideID) bool
 	cancelCurrentQueries() bool
 	cancelSession()
-	// serialize serializes a Session into a serverpb.Session
-	// that can be served over RPC.
+
 	serialize() serverpb.Session
 }
 
-// CancelQuery looks up the associated query in the session registry and cancels
-// it. The caller is responsible for all permission checks.
 func (r *SessionRegistry) CancelQuery(queryIDStr string) (bool, error) {
+	__antithesis_instrumentation__.Notify(470505)
 	queryID, err := StringToClusterWideID(queryIDStr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(470508)
 		return false, errors.Wrapf(err, "query ID %s malformed", queryID)
+	} else {
+		__antithesis_instrumentation__.Notify(470509)
 	}
+	__antithesis_instrumentation__.Notify(470506)
 
 	r.Lock()
 	defer r.Unlock()
 
 	for _, session := range r.sessions {
+		__antithesis_instrumentation__.Notify(470510)
 		if session.cancelQuery(queryID) {
+			__antithesis_instrumentation__.Notify(470511)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(470512)
 		}
 	}
+	__antithesis_instrumentation__.Notify(470507)
 
 	return false, fmt.Errorf("query ID %s not found", queryID)
 }
 
-// CancelQueryByKey looks up the associated query in the session registry and
-// cancels it.
 func (r *SessionRegistry) CancelQueryByKey(
 	queryCancelKey pgwirecancel.BackendKeyData,
 ) (canceled bool, err error) {
+	__antithesis_instrumentation__.Notify(470513)
 	r.Lock()
 	defer r.Unlock()
 	if session, ok := r.sessionsByCancelKey[queryCancelKey]; ok {
+		__antithesis_instrumentation__.Notify(470515)
 		if session.cancelCurrentQueries() {
+			__antithesis_instrumentation__.Notify(470517)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(470518)
 		}
+		__antithesis_instrumentation__.Notify(470516)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(470519)
 	}
+	__antithesis_instrumentation__.Notify(470514)
 	return false, fmt.Errorf("session for cancel key %d not found", queryCancelKey)
 }
 
-// CancelSession looks up the specified session in the session registry and
-// cancels it. The caller is responsible for all permission checks.
 func (r *SessionRegistry) CancelSession(
 	sessionIDBytes []byte,
 ) (*serverpb.CancelSessionResponse, error) {
+	__antithesis_instrumentation__.Notify(470520)
 	if len(sessionIDBytes) != 16 {
+		__antithesis_instrumentation__.Notify(470523)
 		return nil, errors.Errorf("invalid non-16-byte UUID %v", sessionIDBytes)
+	} else {
+		__antithesis_instrumentation__.Notify(470524)
 	}
+	__antithesis_instrumentation__.Notify(470521)
 	sessionID := BytesToClusterWideID(sessionIDBytes)
 
 	r.Lock()
 	defer r.Unlock()
 
 	for id, session := range r.sessions {
+		__antithesis_instrumentation__.Notify(470525)
 		if id == sessionID {
+			__antithesis_instrumentation__.Notify(470526)
 			session.cancelSession()
 			return &serverpb.CancelSessionResponse{Canceled: true}, nil
+		} else {
+			__antithesis_instrumentation__.Notify(470527)
 		}
 	}
+	__antithesis_instrumentation__.Notify(470522)
 
 	return &serverpb.CancelSessionResponse{
 		Error: fmt.Sprintf("session ID %s not found", sessionID),
 	}, nil
 }
 
-// SerializeAll returns a slice of all sessions in the registry, converted to serverpb.Sessions.
 func (r *SessionRegistry) SerializeAll() []serverpb.Session {
+	__antithesis_instrumentation__.Notify(470528)
 	r.Lock()
 	defer r.Unlock()
 
 	response := make([]serverpb.Session, 0, len(r.sessions))
 
 	for _, s := range r.sessions {
+		__antithesis_instrumentation__.Notify(470530)
 		response = append(response, s.serialize())
 	}
+	__antithesis_instrumentation__.Notify(470529)
 
 	return response
 }
 
-// MaxSQLBytes is the maximum length in bytes of SQL statements serialized
-// into a serverpb.Session. Exported for testing.
 const MaxSQLBytes = 1000
 
 type jobsCollection []jobspb.JobID
 
 func (jc *jobsCollection) add(ids ...jobspb.JobID) {
+	__antithesis_instrumentation__.Notify(470531)
 	*jc = append(*jc, ids...)
 }
 
-// truncateStatementStringForTelemetry truncates the string
-// representation of a statement to a maximum length, so as to not
-// create unduly large logging and error payloads.
 func truncateStatementStringForTelemetry(stmt string) string {
-	// panicLogOutputCutoiffChars is the maximum length of the copy of the
-	// current statement embedded in telemetry reports and panic errors in
-	// logs.
+	__antithesis_instrumentation__.Notify(470532)
+
 	const panicLogOutputCutoffChars = 10000
 	if len(stmt) > panicLogOutputCutoffChars {
+		__antithesis_instrumentation__.Notify(470534)
 		stmt = stmt[:len(stmt)-6] + " [...]"
+	} else {
+		__antithesis_instrumentation__.Notify(470535)
 	}
+	__antithesis_instrumentation__.Notify(470533)
 	return stmt
 }
 
-// hideNonVirtualTableNameFunc returns a function that can be used with
-// FmtCtx.SetReformatTableNames. It hides all table names that are not virtual
-// tables.
 func hideNonVirtualTableNameFunc(vt VirtualTabler) func(ctx *tree.FmtCtx, name *tree.TableName) {
+	__antithesis_instrumentation__.Notify(470536)
 	reformatFn := func(ctx *tree.FmtCtx, tn *tree.TableName) {
+		__antithesis_instrumentation__.Notify(470538)
 		virtual, err := vt.getVirtualTableEntry(tn)
 
-		if err != nil || virtual == nil {
-			// Current table is non-virtual and therefore needs to be scrubbed (for statement stats) or redacted (for logs).
-			if ctx.HasFlags(tree.FmtMarkRedactionNode) {
-				// The redaction flag is set, redact the table name.
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(470540)
+			return virtual == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(470541)
 
-				// Individually format the table name's fields for individual field redaction.
+			if ctx.HasFlags(tree.FmtMarkRedactionNode) {
+				__antithesis_instrumentation__.Notify(470543)
+
 				ctx.FormatNode(&tn.CatalogName)
 				ctx.WriteByte('.')
 
-				// Check if the table's schema name is 'public', we do not redact the 'public' schema.
 				if tn.ObjectNamePrefix.SchemaName == "public" {
+					__antithesis_instrumentation__.Notify(470545)
 					ctx.WithFlags(tree.FmtParsable, func() {
+						__antithesis_instrumentation__.Notify(470546)
 						ctx.FormatNode(&tn.ObjectNamePrefix.SchemaName)
 					})
 				} else {
-					// The table's schema name is not 'public', format schema name normally for redaction.
+					__antithesis_instrumentation__.Notify(470547)
+
 					ctx.FormatNode(&tn.ObjectNamePrefix.SchemaName)
 				}
+				__antithesis_instrumentation__.Notify(470544)
 
 				ctx.WriteByte('.')
 				ctx.FormatNode(&tn.ObjectName)
 			} else {
-				// The redaction flag is not set, this means that we are scrubbing the table for statement stats.
-				// Scrub the table name with '_'.
+				__antithesis_instrumentation__.Notify(470548)
+
 				ctx.WriteByte('_')
 			}
+			__antithesis_instrumentation__.Notify(470542)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(470549)
 		}
-		// Virtual table: we want to keep the name; however
-		// we need to scrub the database name prefix.
+		__antithesis_instrumentation__.Notify(470539)
+
 		newTn := *tn
 		newTn.CatalogName = "_"
 
 		ctx.WithFlags(tree.FmtParsable, func() {
+			__antithesis_instrumentation__.Notify(470550)
 			ctx.WithReformatTableNames(nil, func() {
+				__antithesis_instrumentation__.Notify(470551)
 				ctx.FormatNode(&newTn)
 			})
 		})
 	}
+	__antithesis_instrumentation__.Notify(470537)
 	return reformatFn
 }
 
 func anonymizeStmtAndConstants(stmt tree.Statement, vt VirtualTabler) string {
-	// Re-format to remove most names.
+	__antithesis_instrumentation__.Notify(470552)
+
 	fmtFlags := tree.FmtAnonymize | tree.FmtHideConstants
 	var f *tree.FmtCtx
 	if vt != nil {
+		__antithesis_instrumentation__.Notify(470554)
 		f = tree.NewFmtCtx(
 			fmtFlags,
 			tree.FmtReformatTableNames(hideNonVirtualTableNameFunc(vt)),
 		)
 	} else {
+		__antithesis_instrumentation__.Notify(470555)
 		f = tree.NewFmtCtx(fmtFlags)
 	}
+	__antithesis_instrumentation__.Notify(470553)
 	f.FormatNode(stmt)
 	return f.CloseAndGetString()
 }
 
-// WithAnonymizedStatement attaches the anonymized form of a statement
-// to an error object.
 func WithAnonymizedStatement(err error, stmt tree.Statement, vt VirtualTabler) error {
+	__antithesis_instrumentation__.Notify(470556)
 	anonStmtStr := anonymizeStmtAndConstants(stmt, vt)
 	anonStmtStr = truncateStatementStringForTelemetry(anonStmtStr)
 	return errors.WithSafeDetails(err,
 		"while executing: %s", errors.Safe(anonStmtStr))
 }
 
-// SessionTracing holds the state used by SET TRACING statements in the context
-// of one SQL session.
-// It holds the current trace being collected (or the last trace collected, if
-// tracing is not currently ongoing).
-//
-// SessionTracing and its interactions with the connExecutor are thread-safe;
-// tracing can be turned on at any time.
 type SessionTracing struct {
-	// enabled is set at times when "session enabled" is active - i.e. when
-	// transactions are being recorded.
 	enabled bool
 
-	// kvTracingEnabled is set at times when KV tracing is active. When
-	// KV tracing is enabled, the SQL/KV interface logs individual K/V
-	// operators to the current context.
 	kvTracingEnabled bool
 
-	// showResults, when set, indicates that the result rows produced by
-	// the execution statement must be reported in the
-	// trace. showResults can be set manually by SET TRACING = ...,
-	// results
 	showResults bool
 
-	// If recording==true, recordingType indicates the type of the current
-	// recording.
 	recordingType tracing.RecordingType
 
-	// ex is the connExecutor to which this SessionTracing is tied.
 	ex *connExecutor
 
-	// connSpan is the connection's span. This is recording. It is finished and
-	// unset in StopTracing.
 	connSpan *tracing.Span
 
-	// lastRecording will collect the recording when stopping tracing.
 	lastRecording []traceRow
 }
 
-// getSessionTrace returns the session trace. If we're not currently tracing,
-// this will be the last recorded trace. If we are currently tracing, we'll
-// return whatever was recorded so far.
 func (st *SessionTracing) getSessionTrace() ([]traceRow, error) {
+	__antithesis_instrumentation__.Notify(470557)
 	if !st.enabled {
+		__antithesis_instrumentation__.Notify(470559)
 		return st.lastRecording, nil
+	} else {
+		__antithesis_instrumentation__.Notify(470560)
 	}
+	__antithesis_instrumentation__.Notify(470558)
 
 	return generateSessionTraceVTable(st.connSpan.GetRecording(tracing.RecordingVerbose))
 }
 
-// StartTracing starts "session tracing". From this moment on, everything
-// happening on both the connection's context and the current txn's context (if
-// any) will be traced.
-// StopTracing() needs to be called to finish this trace.
-//
-// There's two contexts on which we must record:
-// 1) If we're inside a txn, we start recording on the txn's span. We assume
-// that the txn's ctx has a recordable span on it.
-// 2) Regardless of whether we're in a txn or not, we need to record the
-// connection's context. This context generally does not have a span, so we
-// "hijack" it with one that does. Whatever happens on that context, plus
-// whatever happens in future derived txn contexts, will be recorded.
-//
-// Args:
-// kvTracingEnabled: If set, the traces will also include "KV trace" messages -
-//   verbose messages around the interaction of SQL with KV. Some of the messages
-//   are per-row.
-// showResults: If set, result rows are reported in the trace.
 func (st *SessionTracing) StartTracing(
 	recType tracing.RecordingType, kvTracingEnabled, showResults bool,
 ) error {
+	__antithesis_instrumentation__.Notify(470561)
 	if st.enabled {
-		// We're already tracing. Only treat as no-op if the same options
-		// are requested.
-		if kvTracingEnabled != st.kvTracingEnabled ||
-			showResults != st.showResults ||
-			recType != st.recordingType {
+		__antithesis_instrumentation__.Notify(470565)
+
+		if kvTracingEnabled != st.kvTracingEnabled || func() bool {
+			__antithesis_instrumentation__.Notify(470567)
+			return showResults != st.showResults == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(470568)
+			return recType != st.recordingType == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(470569)
 			var desiredOptions bytes.Buffer
 			comma := ""
 			if kvTracingEnabled {
+				__antithesis_instrumentation__.Notify(470572)
 				desiredOptions.WriteString("kv")
 				comma = ", "
+			} else {
+				__antithesis_instrumentation__.Notify(470573)
 			}
+			__antithesis_instrumentation__.Notify(470570)
 			if showResults {
+				__antithesis_instrumentation__.Notify(470574)
 				fmt.Fprintf(&desiredOptions, "%sresults", comma)
 				comma = ", "
+			} else {
+				__antithesis_instrumentation__.Notify(470575)
 			}
+			__antithesis_instrumentation__.Notify(470571)
 			recOption := "cluster"
 			fmt.Fprintf(&desiredOptions, "%s%s", comma, recOption)
 
@@ -2232,15 +2099,20 @@ func (st *SessionTracing) StartTracing(
 				"tracing is already started with different options")
 			return errors.WithHintf(err,
 				"reset with SET tracing = off; SET tracing = %s", desiredOptions.String())
+		} else {
+			__antithesis_instrumentation__.Notify(470576)
 		}
+		__antithesis_instrumentation__.Notify(470566)
 
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(470577)
 	}
+	__antithesis_instrumentation__.Notify(470562)
 
-	// Hijack the conn's ctx with one that has a recording span. All future
-	// transactions will inherit from this span, so they'll all be recorded.
 	var newConnCtx context.Context
 	{
+		__antithesis_instrumentation__.Notify(470578)
 		connCtx := st.ex.ctxHolder.connCtx
 		opName := "session recording"
 		newConnCtx, st.connSpan = tracing.EnsureChildSpan(
@@ -2252,22 +2124,28 @@ func (st *SessionTracing) StartTracing(
 		st.connSpan.SetRecordingType(tracing.RecordingVerbose)
 		st.ex.ctxHolder.hijack(newConnCtx)
 	}
+	__antithesis_instrumentation__.Notify(470563)
 
-	// If we're inside a transaction, hijack the txn's ctx with one that has a
-	// recording span.
 	if _, ok := st.ex.machine.CurState().(stateNoTxn); !ok {
+		__antithesis_instrumentation__.Notify(470579)
 		txnCtx := st.ex.state.Ctx
 		sp := tracing.SpanFromContext(txnCtx)
 		if sp == nil {
+			__antithesis_instrumentation__.Notify(470581)
 			return errors.Errorf("no txn span for SessionTracing")
+		} else {
+			__antithesis_instrumentation__.Notify(470582)
 		}
-		// We're hijacking this span and we're never going to un-hijack it, so it's
-		// up to us to finish it.
+		__antithesis_instrumentation__.Notify(470580)
+
 		sp.Finish()
 
 		st.ex.state.Ctx, _ = tracing.EnsureChildSpan(
 			newConnCtx, st.ex.server.cfg.AmbientCtx.Tracer, "session tracing")
+	} else {
+		__antithesis_instrumentation__.Notify(470583)
 	}
+	__antithesis_instrumentation__.Notify(470564)
 
 	st.enabled = true
 	st.kvTracingEnabled = kvTracingEnabled
@@ -2277,22 +2155,23 @@ func (st *SessionTracing) StartTracing(
 	return nil
 }
 
-// StopTracing stops the trace that was started with StartTracing().
 func (st *SessionTracing) StopTracing() error {
+	__antithesis_instrumentation__.Notify(470584)
 	if !st.enabled {
-		// We're not currently tracing. No-op.
+		__antithesis_instrumentation__.Notify(470586)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(470587)
 	}
+	__antithesis_instrumentation__.Notify(470585)
 	st.enabled = false
 	st.kvTracingEnabled = false
 	st.showResults = false
 	st.recordingType = tracing.RecordingOff
 
-	// Accumulate all recordings and finish the tracing spans.
 	rec := st.connSpan.GetRecording(tracing.RecordingVerbose)
-	// We're about to finish this span, but there might be a child that remains
-	// open - the child corresponding to the current transaction. We don't want
-	// that span to be recording any more.
+
 	st.connSpan.SetRecordingType(tracing.RecordingOff)
 	st.connSpan.Finish()
 	st.connSpan = nil
@@ -2303,325 +2182,333 @@ func (st *SessionTracing) StopTracing() error {
 	return err
 }
 
-// KVTracingEnabled checks whether KV tracing is currently enabled.
 func (st *SessionTracing) KVTracingEnabled() bool {
+	__antithesis_instrumentation__.Notify(470588)
 	return st.kvTracingEnabled
 }
 
-// Enabled checks whether session tracing is currently enabled.
 func (st *SessionTracing) Enabled() bool {
+	__antithesis_instrumentation__.Notify(470589)
 	return st.enabled
 }
 
-// TracePlanStart conditionally emits a trace message at the moment
-// logical planning starts.
 func (st *SessionTracing) TracePlanStart(ctx context.Context, stmtTag string) {
+	__antithesis_instrumentation__.Notify(470590)
 	if st.enabled {
+		__antithesis_instrumentation__.Notify(470591)
 		log.VEventf(ctx, 2, "planning starts: %s", stmtTag)
+	} else {
+		__antithesis_instrumentation__.Notify(470592)
 	}
 }
 
-// TracePlanEnd conditionally emits a trace message at the moment
-// logical planning ends.
 func (st *SessionTracing) TracePlanEnd(ctx context.Context, err error) {
+	__antithesis_instrumentation__.Notify(470593)
 	log.VEventfDepth(ctx, 2, 1, "planning ends")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(470594)
 		log.VEventfDepth(ctx, 2, 1, "planning error: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(470595)
 	}
 }
 
-// TracePlanCheckStart conditionally emits a trace message at the
-// moment the test of which execution engine to use starts.
 func (st *SessionTracing) TracePlanCheckStart(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(470596)
 	log.VEventfDepth(ctx, 2, 1, "checking distributability")
 }
 
-// TracePlanCheckEnd conditionally emits a trace message at the moment
-// the engine check ends.
 func (st *SessionTracing) TracePlanCheckEnd(ctx context.Context, err error, dist bool) {
+	__antithesis_instrumentation__.Notify(470597)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(470598)
 		log.VEventfDepth(ctx, 2, 1, "distributability check error: %v", err)
 	} else {
+		__antithesis_instrumentation__.Notify(470599)
 		log.VEventfDepth(ctx, 2, 1, "will distribute plan: %v", dist)
 	}
 }
 
-// TraceRetryInformation conditionally emits a trace message for retry information.
 func (st *SessionTracing) TraceRetryInformation(ctx context.Context, retries int, err error) {
+	__antithesis_instrumentation__.Notify(470600)
 	log.VEventfDepth(ctx, 2, 1, "executing after %d retries, last retry reason: %v", retries, err)
 }
 
-// TraceExecStart conditionally emits a trace message at the moment
-// plan execution starts.
 func (st *SessionTracing) TraceExecStart(ctx context.Context, engine string) {
+	__antithesis_instrumentation__.Notify(470601)
 	log.VEventfDepth(ctx, 2, 1, "execution starts: %s engine", engine)
 }
 
-// TraceExecConsume creates a context for TraceExecRowsResult below.
 func (st *SessionTracing) TraceExecConsume(ctx context.Context) (context.Context, func()) {
+	__antithesis_instrumentation__.Notify(470602)
 	if st.enabled {
+		__antithesis_instrumentation__.Notify(470604)
 		consumeCtx, sp := tracing.ChildSpan(ctx, "consuming rows")
 		return consumeCtx, sp.Finish
+	} else {
+		__antithesis_instrumentation__.Notify(470605)
 	}
-	return ctx, func() {}
+	__antithesis_instrumentation__.Notify(470603)
+	return ctx, func() { __antithesis_instrumentation__.Notify(470606) }
 }
 
-// TraceExecRowsResult conditionally emits a trace message for a single output row.
 func (st *SessionTracing) TraceExecRowsResult(ctx context.Context, values tree.Datums) {
+	__antithesis_instrumentation__.Notify(470607)
 	if st.showResults {
+		__antithesis_instrumentation__.Notify(470608)
 		log.VEventfDepth(ctx, 2, 1, "output row: %s", values)
+	} else {
+		__antithesis_instrumentation__.Notify(470609)
 	}
 }
 
-// TraceExecBatchResult conditionally emits a trace message for a single batch.
 func (st *SessionTracing) TraceExecBatchResult(ctx context.Context, batch coldata.Batch) {
+	__antithesis_instrumentation__.Notify(470610)
 	if st.showResults {
+		__antithesis_instrumentation__.Notify(470611)
 		outputRows := coldata.VecsToStringWithRowPrefix(batch.ColVecs(), batch.Length(), batch.Selection(), "output row: ")
 		for _, row := range outputRows {
+			__antithesis_instrumentation__.Notify(470612)
 			log.VEventfDepth(ctx, 2, 1, "%s", row)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(470613)
 	}
 }
 
-// TraceExecEnd conditionally emits a trace message at the moment
-// plan execution completes.
 func (st *SessionTracing) TraceExecEnd(ctx context.Context, err error, count int) {
+	__antithesis_instrumentation__.Notify(470614)
 	log.VEventfDepth(ctx, 2, 1, "execution ends")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(470615)
 		log.VEventfDepth(ctx, 2, 1, "execution failed after %d rows: %v", count, err)
 	} else {
+		__antithesis_instrumentation__.Notify(470616)
 		log.VEventfDepth(ctx, 2, 1, "rows affected: %d", count)
 	}
 }
 
 const (
-	// span_idx    INT NOT NULL,        -- The span's index.
 	traceSpanIdxCol = iota
-	// message_idx INT NOT NULL,        -- The message's index within its span.
+
 	_
-	// timestamp   TIMESTAMPTZ NOT NULL,-- The message's timestamp.
+
 	traceTimestampCol
-	// duration    INTERVAL,            -- The span's duration.
-	//                                  -- NULL if the span was not finished at the time
-	//                                  -- the trace has been collected.
+
 	traceDurationCol
-	// operation   STRING NULL,         -- The span's operation.
+
 	traceOpCol
-	// loc         STRING NOT NULL,     -- The file name / line number prefix, if any.
+
 	traceLocCol
-	// tag         STRING NOT NULL,     -- The logging tag, if any.
+
 	traceTagCol
-	// message     STRING NOT NULL,     -- The logged message.
+
 	traceMsgCol
-	// age         INTERVAL NOT NULL    -- The age of the message.
+
 	traceAgeCol
-	// traceNumCols must be the last item in the enumeration.
+
 	traceNumCols
 )
 
-// traceRow is the type of a single row in the session_trace vtable.
 type traceRow [traceNumCols]tree.Datum
 
-// A regular expression to split log messages.
-// It has three parts:
-// - the (optional) code location, with at least one forward slash and a period
-//   in the file name:
-//   ((?:[^][ :]+/[^][ :]+\.[^][ :]+:[0-9]+)?)
-// - the (optional) tag: ((?:\[(?:[^][]|\[[^]]*\])*\])?)
-// - the message itself: the rest.
 var logMessageRE = regexp.MustCompile(
 	`(?s:^((?:[^][ :]+/[^][ :]+\.[^][ :]+:[0-9]+)?) *((?:\[(?:[^][]|\[[^]]*\])*\])?) *(.*))`)
 
-// generateSessionTraceVTable generates the rows of said table by using the log
-// messages from the session's trace (i.e. the ongoing trace, if any, or the
-// last one recorded).
-//
-// All the log messages from the current recording are returned, in
-// the order in which they should be presented in the crdb_internal.session_info
-// virtual table. Messages from child spans are inserted as a block in between
-// messages from the parent span. Messages from sibling spans are not
-// interleaved.
-//
-// Here's a drawing showing the order in which messages from different spans
-// will be interleaved. Each box is a span; inner-boxes are child spans. The
-// numbers indicate the order in which the log messages will appear in the
-// virtual table.
-//
-// +-----------------------+
-// |           1           |
-// | +-------------------+ |
-// | |         2         | |
-// | |  +----+           | |
-// | |  |    | +----+    | |
-// | |  | 3  | | 4  |    | |
-// | |  |    | |    |  5 | |
-// | |  |    | |    | ++ | |
-// | |  |    | |    |    | |
-// | |  +----+ |    |    | |
-// | |         +----+    | |
-// | |                   | |
-// | |          6        | |
-// | +-------------------+ |
-// |            7          |
-// +-----------------------+
-//
-// Note that what's described above is not the order in which SHOW TRACE FOR SESSION
-// displays the information: SHOW TRACE will sort by the age column.
 func generateSessionTraceVTable(spans []tracingpb.RecordedSpan) ([]traceRow, error) {
-	// Get all the log messages, in the right order.
+	__antithesis_instrumentation__.Notify(470617)
+
 	var allLogs []logRecordRow
 
-	// NOTE: The spans are recorded in the order in which they are started.
 	seenSpans := make(map[tracingpb.SpanID]struct{})
 	for spanIdx, span := range spans {
+		__antithesis_instrumentation__.Notify(470622)
 		if _, ok := seenSpans[span.SpanID]; ok {
+			__antithesis_instrumentation__.Notify(470625)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(470626)
 		}
+		__antithesis_instrumentation__.Notify(470623)
 		spanWithIndex := spanWithIndex{
 			RecordedSpan: &spans[spanIdx],
 			index:        spanIdx,
 		}
 		msgs, err := getMessagesForSubtrace(spanWithIndex, spans, seenSpans)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(470627)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(470628)
 		}
+		__antithesis_instrumentation__.Notify(470624)
 		allLogs = append(allLogs, msgs...)
 	}
+	__antithesis_instrumentation__.Notify(470618)
 
-	// Transform the log messages into table rows.
-	// We need to populate "operation" later because it is only
-	// set for the first row in each span.
 	opMap := make(map[tree.DInt]*tree.DString)
 	durMap := make(map[tree.DInt]*tree.DInterval)
 	var res []traceRow
 	var minTimestamp, zeroTime time.Time
 	for _, lrr := range allLogs {
-		// The "operation" column is only set for the first row in span.
-		// We'll populate the rest below.
+		__antithesis_instrumentation__.Notify(470629)
+
 		if lrr.index == 0 {
+			__antithesis_instrumentation__.Notify(470634)
 			spanIdx := tree.DInt(lrr.span.index)
 			opMap[spanIdx] = tree.NewDString(lrr.span.Operation)
 			if lrr.span.Duration != 0 {
+				__antithesis_instrumentation__.Notify(470635)
 				durMap[spanIdx] = &tree.DInterval{
 					Duration: duration.MakeDuration(lrr.span.Duration.Nanoseconds(), 0, 0),
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(470636)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(470637)
 		}
+		__antithesis_instrumentation__.Notify(470630)
 
-		// We'll need the lowest timestamp to compute ages below.
-		if minTimestamp == zeroTime || lrr.timestamp.Before(minTimestamp) {
+		if minTimestamp == zeroTime || func() bool {
+			__antithesis_instrumentation__.Notify(470638)
+			return lrr.timestamp.Before(minTimestamp) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(470639)
 			minTimestamp = lrr.timestamp
+		} else {
+			__antithesis_instrumentation__.Notify(470640)
 		}
+		__antithesis_instrumentation__.Notify(470631)
 
-		// Split the message into component parts.
-		//
-		// The result of FindStringSubmatchIndex is a 1D array of pairs
-		// [start, end) of positions in the input string.  The first pair
-		// identifies the entire match; the 2nd pair corresponds to the
-		// 1st parenthetized expression in the regexp, and so on.
 		loc := logMessageRE.FindStringSubmatchIndex(lrr.msg)
 		if loc == nil {
+			__antithesis_instrumentation__.Notify(470641)
 			return nil, fmt.Errorf("unable to split trace message: %q", lrr.msg)
+		} else {
+			__antithesis_instrumentation__.Notify(470642)
 		}
+		__antithesis_instrumentation__.Notify(470632)
 
 		tsDatum, err := tree.MakeDTimestampTZ(lrr.timestamp, time.Nanosecond)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(470643)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(470644)
 		}
+		__antithesis_instrumentation__.Notify(470633)
 
 		row := traceRow{
-			tree.NewDInt(tree.DInt(lrr.span.index)), // span_idx
-			tree.NewDInt(tree.DInt(lrr.index)),      // message_idx
-			tsDatum,                                 // timestamp
-			tree.DNull,                              // duration, will be populated below
-			tree.DNull,                              // operation, will be populated below
-			tree.NewDString(lrr.msg[loc[2]:loc[3]]), // location
-			tree.NewDString(lrr.msg[loc[4]:loc[5]]), // tag
-			tree.NewDString(lrr.msg[loc[6]:loc[7]]), // message
-			tree.DNull,                              // age, will be populated below
+			tree.NewDInt(tree.DInt(lrr.span.index)),
+			tree.NewDInt(tree.DInt(lrr.index)),
+			tsDatum,
+			tree.DNull,
+			tree.DNull,
+			tree.NewDString(lrr.msg[loc[2]:loc[3]]),
+			tree.NewDString(lrr.msg[loc[4]:loc[5]]),
+			tree.NewDString(lrr.msg[loc[6]:loc[7]]),
+			tree.DNull,
 		}
 		res = append(res, row)
 	}
+	__antithesis_instrumentation__.Notify(470619)
 
 	if len(res) == 0 {
-		// Nothing to do below. Shortcut.
-		return res, nil
-	}
+		__antithesis_instrumentation__.Notify(470645)
 
-	// Populate the operation and age columns.
+		return res, nil
+	} else {
+		__antithesis_instrumentation__.Notify(470646)
+	}
+	__antithesis_instrumentation__.Notify(470620)
+
 	for i := range res {
+		__antithesis_instrumentation__.Notify(470647)
 		spanIdx := res[i][traceSpanIdxCol]
 
 		if opStr, ok := opMap[*(spanIdx.(*tree.DInt))]; ok {
+			__antithesis_instrumentation__.Notify(470650)
 			res[i][traceOpCol] = opStr
+		} else {
+			__antithesis_instrumentation__.Notify(470651)
 		}
+		__antithesis_instrumentation__.Notify(470648)
 
 		if dur, ok := durMap[*(spanIdx.(*tree.DInt))]; ok {
+			__antithesis_instrumentation__.Notify(470652)
 			res[i][traceDurationCol] = dur
+		} else {
+			__antithesis_instrumentation__.Notify(470653)
 		}
+		__antithesis_instrumentation__.Notify(470649)
 
 		ts := res[i][traceTimestampCol].(*tree.DTimestampTZ)
 		res[i][traceAgeCol] = &tree.DInterval{
 			Duration: duration.MakeDuration(ts.Sub(minTimestamp).Nanoseconds(), 0, 0),
 		}
 	}
+	__antithesis_instrumentation__.Notify(470621)
 
 	return res, nil
 }
 
-// getOrderedChildSpans returns all the spans in allSpans that are children of
-// spanID. It assumes the input is ordered by start time, in which case the
-// output is also ordered.
 func getOrderedChildSpans(
 	spanID tracingpb.SpanID, allSpans []tracingpb.RecordedSpan,
 ) []spanWithIndex {
+	__antithesis_instrumentation__.Notify(470654)
 	children := make([]spanWithIndex, 0)
 	for i := range allSpans {
+		__antithesis_instrumentation__.Notify(470656)
 		if allSpans[i].ParentSpanID == spanID {
+			__antithesis_instrumentation__.Notify(470657)
 			children = append(
 				children,
 				spanWithIndex{
 					RecordedSpan: &allSpans[i],
 					index:        i,
 				})
+		} else {
+			__antithesis_instrumentation__.Notify(470658)
 		}
 	}
+	__antithesis_instrumentation__.Notify(470655)
 	return children
 }
 
-// getMessagesForSubtrace takes a span and interleaves its log messages with
-// those from its children (recursively). The order is the one defined in the
-// comment on generateSessionTraceVTable().
-//
-// seenSpans is modified to record all the spans that are part of the subtrace
-// rooted at span.
 func getMessagesForSubtrace(
 	span spanWithIndex, allSpans []tracingpb.RecordedSpan, seenSpans map[tracingpb.SpanID]struct{},
 ) ([]logRecordRow, error) {
+	__antithesis_instrumentation__.Notify(470659)
 	if _, ok := seenSpans[span.SpanID]; ok {
+		__antithesis_instrumentation__.Notify(470663)
 		return nil, errors.Errorf("duplicate span %d", span.SpanID)
+	} else {
+		__antithesis_instrumentation__.Notify(470664)
 	}
+	__antithesis_instrumentation__.Notify(470660)
 	var allLogs []logRecordRow
 	const spanStartMsgTemplate = "=== SPAN START: %s ==="
 
-	// spanStartMsgs are metadata about the span, e.g. the operation name and tags
-	// contained in the span. They are added as one log message.
 	spanStartMsgs := make([]string, 0, len(span.Tags)+1)
 
 	spanStartMsgs = append(spanStartMsgs, fmt.Sprintf(spanStartMsgTemplate, span.Operation))
 
-	// Add recognized tags to the output.
 	for name, value := range span.Tags {
+		__antithesis_instrumentation__.Notify(470665)
 		if !strings.HasPrefix(name, tracing.TagPrefix) {
-			// Not a tag to be output.
+			__antithesis_instrumentation__.Notify(470667)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(470668)
 		}
+		__antithesis_instrumentation__.Notify(470666)
 		spanStartMsgs = append(spanStartMsgs, fmt.Sprintf("%s: %s", name, value))
 	}
+	__antithesis_instrumentation__.Notify(470661)
 	sort.Strings(spanStartMsgs[1:])
 
-	// This message holds all the spanStartMsgs and marks the beginning of the
-	// span, to indicate the start time and duration of the span.
 	allLogs = append(
 		allLogs,
 		logRecordRow{
@@ -2635,50 +2522,66 @@ func getMessagesForSubtrace(
 	seenSpans[span.SpanID] = struct{}{}
 	childSpans := getOrderedChildSpans(span.SpanID, allSpans)
 	var i, j int
-	// Sentinel value - year 6000.
+
 	maxTime := time.Date(6000, 0, 0, 0, 0, 0, 0, time.UTC)
-	// Merge the logs with the child spans.
-	for i < len(span.Logs) || j < len(childSpans) {
+
+	for i < len(span.Logs) || func() bool {
+		__antithesis_instrumentation__.Notify(470669)
+		return j < len(childSpans) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(470670)
 		logTime := maxTime
 		childTime := maxTime
 		if i < len(span.Logs) {
+			__antithesis_instrumentation__.Notify(470673)
 			logTime = span.Logs[i].Time
+		} else {
+			__antithesis_instrumentation__.Notify(470674)
 		}
+		__antithesis_instrumentation__.Notify(470671)
 		if j < len(childSpans) {
+			__antithesis_instrumentation__.Notify(470675)
 			childTime = childSpans[j].StartTime
+		} else {
+			__antithesis_instrumentation__.Notify(470676)
 		}
+		__antithesis_instrumentation__.Notify(470672)
 
 		if logTime.Before(childTime) {
+			__antithesis_instrumentation__.Notify(470677)
 			allLogs = append(allLogs,
 				logRecordRow{
 					timestamp: logTime,
 					msg:       span.Logs[i].Msg().StripMarkers(),
 					span:      span,
-					// Add 1 to the index to account for the first dummy message in a
-					// span.
+
 					index: i + 1,
 				})
 			i++
 		} else {
-			// Recursively append messages from the trace rooted at the child.
+			__antithesis_instrumentation__.Notify(470678)
+
 			childMsgs, err := getMessagesForSubtrace(childSpans[j], allSpans, seenSpans)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(470680)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(470681)
 			}
+			__antithesis_instrumentation__.Notify(470679)
 			allLogs = append(allLogs, childMsgs...)
 			j++
 		}
 	}
+	__antithesis_instrumentation__.Notify(470662)
 	return allLogs, nil
 }
 
-// logRecordRow is used to temporarily hold on to log messages and their
-// metadata while flattening a trace.
 type logRecordRow struct {
 	timestamp time.Time
 	msg       string
 	span      spanWithIndex
-	// index of the log message within its span.
+
 	index int
 }
 
@@ -2687,8 +2590,6 @@ type spanWithIndex struct {
 	index int
 }
 
-// paramStatusUpdater is a subset of RestrictedCommandResult which allows sending
-// status updates. Ensure all updatable settings are in bufferableParamStatusUpdates.
 type paramStatusUpdater interface {
 	BufferParamStatusUpdate(string, string)
 }
@@ -2698,9 +2599,8 @@ type bufferableParamStatusUpdate struct {
 	lowerName string
 }
 
-// bufferableParamStatusUpdates contains all vars which can be sent through
-// ParamStatusUpdates.
 var bufferableParamStatusUpdates = func() []bufferableParamStatusUpdate {
+	__antithesis_instrumentation__.Notify(470682)
 	params := []string{
 		"application_name",
 		"DateStyle",
@@ -2710,117 +2610,100 @@ var bufferableParamStatusUpdates = func() []bufferableParamStatusUpdate {
 	}
 	ret := make([]bufferableParamStatusUpdate, len(params))
 	for i, param := range params {
+		__antithesis_instrumentation__.Notify(470684)
 		ret[i] = bufferableParamStatusUpdate{
 			name:      param,
 			lowerName: strings.ToLower(param),
 		}
 	}
+	__antithesis_instrumentation__.Notify(470683)
 	return ret
 }()
 
-// sessionDataMutatorBase contains elements in a sessionDataMutator
-// which is the same across all SessionData elements in the sessiondata.Stack.
 type sessionDataMutatorBase struct {
 	defaults SessionDefaults
 	settings *cluster.Settings
 }
 
-// sessionDataMutatorCallbacks contains elements in a sessionDataMutator
-// which are only populated when mutating the "top" sessionData element.
-// It is intended for functions which should only be called once per SET
-// (e.g. param status updates, which only should be sent once within
-// a transaction where there may be two or more SessionData elements in
-// the stack)
 type sessionDataMutatorCallbacks struct {
-	// paramStatusUpdater is called when there is a ParamStatusUpdate.
-	// It can be nil, in which case nothing triggers on execution.
 	paramStatusUpdater paramStatusUpdater
-	// setCurTxnReadOnly is called when we execute SET transaction_read_only = ...
-	// It can be nil, in which case nothing triggers on execution.
+
 	setCurTxnReadOnly func(val bool)
-	// onTempSchemaCreation is called when the temporary schema is set
-	// on the search path (the first and only time).
-	// It can be nil, in which case nothing triggers on execution.
+
 	onTempSchemaCreation func()
-	// onDefaultIntSizeChange is called when default_int_size changes. It is
-	// needed because the pgwire connection's read buffer needs to be aware
-	// of the default int size in order to be able to parse the unqualified
-	// INT type correctly.
+
 	onDefaultIntSizeChange func(int32)
-	// onApplicationName is called when the application_name changes. It is
-	// needed because the stats writer needs to be notified of changes to the
-	// application name.
+
 	onApplicationNameChange func(string)
 }
 
-// sessionDataMutatorIterator generates sessionDataMutators which allow
-// the changing of SessionData on some element inside the sessiondata Stack.
 type sessionDataMutatorIterator struct {
 	sessionDataMutatorBase
 	sds *sessiondata.Stack
 	sessionDataMutatorCallbacks
 }
 
-// mutator returns a mutator for the given sessionData.
 func (it *sessionDataMutatorIterator) mutator(
 	applyCallbacks bool, sd *sessiondata.SessionData,
 ) sessionDataMutator {
+	__antithesis_instrumentation__.Notify(470685)
 	ret := sessionDataMutator{
 		data:                   sd,
 		sessionDataMutatorBase: it.sessionDataMutatorBase,
 	}
-	// We usually apply callbacks on the first element in the stack, as the txn
-	// rollback will always reset to the first element we touch in the stack,
-	// in which case it should be up-to-date by default.
+
 	if applyCallbacks {
+		__antithesis_instrumentation__.Notify(470687)
 		ret.sessionDataMutatorCallbacks = it.sessionDataMutatorCallbacks
+	} else {
+		__antithesis_instrumentation__.Notify(470688)
 	}
+	__antithesis_instrumentation__.Notify(470686)
 	return ret
 }
 
-// SetSessionDefaultIntSize sets the default int size for the session.
-// It is exported for use in import which is a CCL package.
 func (it *sessionDataMutatorIterator) SetSessionDefaultIntSize(size int32) {
+	__antithesis_instrumentation__.Notify(470689)
 	it.applyOnEachMutator(func(m sessionDataMutator) {
+		__antithesis_instrumentation__.Notify(470690)
 		m.SetDefaultIntSize(size)
 	})
 }
 
-// applyOnTopMutator applies the given function on the mutator for the top
-// element on the sessiondata Stack only.
 func (it *sessionDataMutatorIterator) applyOnTopMutator(
 	applyFunc func(m sessionDataMutator) error,
 ) error {
-	return applyFunc(it.mutator(true /* applyCallbacks */, it.sds.Top()))
+	__antithesis_instrumentation__.Notify(470691)
+	return applyFunc(it.mutator(true, it.sds.Top()))
 }
 
-// applyOnEachMutator iterates over each mutator over all SessionData elements
-// in the stack and applies the given function to them.
-// It is the equivalent of SET SESSION x = y.
 func (it *sessionDataMutatorIterator) applyOnEachMutator(applyFunc func(m sessionDataMutator)) {
+	__antithesis_instrumentation__.Notify(470692)
 	elems := it.sds.Elems()
 	for i, sd := range elems {
+		__antithesis_instrumentation__.Notify(470693)
 		applyFunc(it.mutator(i == 0, sd))
 	}
 }
 
-// applyOnEachMutatorError is the same as applyOnEachMutator, but takes in a function
-// that can return an error, erroring if any of applications error.
 func (it *sessionDataMutatorIterator) applyOnEachMutatorError(
 	applyFunc func(m sessionDataMutator) error,
 ) error {
+	__antithesis_instrumentation__.Notify(470694)
 	elems := it.sds.Elems()
 	for i, sd := range elems {
+		__antithesis_instrumentation__.Notify(470696)
 		if err := applyFunc(it.mutator(i == 0, sd)); err != nil {
+			__antithesis_instrumentation__.Notify(470697)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(470698)
 		}
 	}
+	__antithesis_instrumentation__.Notify(470695)
 	return nil
 }
 
-// sessionDataMutator is the object used by sessionVars to change the session
-// state. It mostly mutates the session's SessionData, but not exclusively (e.g.
-// see curTxnReadOnly).
 type sessionDataMutator struct {
 	data *sessiondata.SessionData
 	sessionDataMutatorBase
@@ -2828,396 +2711,477 @@ type sessionDataMutator struct {
 }
 
 func (m *sessionDataMutator) bufferParamStatusUpdate(param string, status string) {
+	__antithesis_instrumentation__.Notify(470699)
 	if m.paramStatusUpdater != nil {
+		__antithesis_instrumentation__.Notify(470700)
 		m.paramStatusUpdater.BufferParamStatusUpdate(param, status)
+	} else {
+		__antithesis_instrumentation__.Notify(470701)
 	}
 }
 
-// SetApplicationName sets the application name.
 func (m *sessionDataMutator) SetApplicationName(appName string) {
+	__antithesis_instrumentation__.Notify(470702)
 	m.data.ApplicationName = appName
 	if m.onApplicationNameChange != nil {
+		__antithesis_instrumentation__.Notify(470704)
 		m.onApplicationNameChange(appName)
+	} else {
+		__antithesis_instrumentation__.Notify(470705)
 	}
+	__antithesis_instrumentation__.Notify(470703)
 	m.bufferParamStatusUpdate("application_name", appName)
 }
 
-// SetAvoidBuffering sets avoid buffering option.
 func (m *sessionDataMutator) SetAvoidBuffering(b bool) {
+	__antithesis_instrumentation__.Notify(470706)
 	m.data.AvoidBuffering = b
 }
 
 func (m *sessionDataMutator) SetBytesEncodeFormat(val lex.BytesEncodeFormat) {
+	__antithesis_instrumentation__.Notify(470707)
 	m.data.DataConversionConfig.BytesEncodeFormat = val
 }
 
 func (m *sessionDataMutator) SetExtraFloatDigits(val int32) {
+	__antithesis_instrumentation__.Notify(470708)
 	m.data.DataConversionConfig.ExtraFloatDigits = val
 }
 
 func (m *sessionDataMutator) SetDatabase(dbName string) {
+	__antithesis_instrumentation__.Notify(470709)
 	m.data.Database = dbName
 }
 
 func (m *sessionDataMutator) SetTemporarySchemaName(scName string) {
+	__antithesis_instrumentation__.Notify(470710)
 	if m.onTempSchemaCreation != nil {
+		__antithesis_instrumentation__.Notify(470712)
 		m.onTempSchemaCreation()
+	} else {
+		__antithesis_instrumentation__.Notify(470713)
 	}
+	__antithesis_instrumentation__.Notify(470711)
 	m.data.SearchPath = m.data.SearchPath.WithTemporarySchemaName(scName)
 }
 
 func (m *sessionDataMutator) SetTemporarySchemaIDForDatabase(dbID uint32, tempSchemaID uint32) {
+	__antithesis_instrumentation__.Notify(470714)
 	if m.data.DatabaseIDToTempSchemaID == nil {
+		__antithesis_instrumentation__.Notify(470716)
 		m.data.DatabaseIDToTempSchemaID = make(map[uint32]uint32)
+	} else {
+		__antithesis_instrumentation__.Notify(470717)
 	}
+	__antithesis_instrumentation__.Notify(470715)
 	m.data.DatabaseIDToTempSchemaID[dbID] = tempSchemaID
 }
 
 func (m *sessionDataMutator) SetDefaultIntSize(size int32) {
+	__antithesis_instrumentation__.Notify(470718)
 	m.data.DefaultIntSize = size
 	if m.onDefaultIntSizeChange != nil {
+		__antithesis_instrumentation__.Notify(470719)
 		m.onDefaultIntSizeChange(size)
+	} else {
+		__antithesis_instrumentation__.Notify(470720)
 	}
 }
 
 func (m *sessionDataMutator) SetDefaultTransactionPriority(val tree.UserPriority) {
+	__antithesis_instrumentation__.Notify(470721)
 	m.data.DefaultTxnPriority = int64(val)
 }
 
 func (m *sessionDataMutator) SetDefaultTransactionReadOnly(val bool) {
+	__antithesis_instrumentation__.Notify(470722)
 	m.data.DefaultTxnReadOnly = val
 }
 
 func (m *sessionDataMutator) SetDefaultTransactionUseFollowerReads(val bool) {
+	__antithesis_instrumentation__.Notify(470723)
 	m.data.DefaultTxnUseFollowerReads = val
 }
 
 func (m *sessionDataMutator) SetEnableSeqScan(val bool) {
+	__antithesis_instrumentation__.Notify(470724)
 	m.data.EnableSeqScan = val
 }
 
 func (m *sessionDataMutator) SetSynchronousCommit(val bool) {
+	__antithesis_instrumentation__.Notify(470725)
 	m.data.SynchronousCommit = val
 }
 
 func (m *sessionDataMutator) SetDisablePlanGists(val bool) {
+	__antithesis_instrumentation__.Notify(470726)
 	m.data.DisablePlanGists = val
 }
 
 func (m *sessionDataMutator) SetDistSQLMode(val sessiondatapb.DistSQLExecMode) {
+	__antithesis_instrumentation__.Notify(470727)
 	m.data.DistSQLMode = val
 }
 
 func (m *sessionDataMutator) SetDistSQLWorkMem(val int64) {
+	__antithesis_instrumentation__.Notify(470728)
 	m.data.WorkMemLimit = val
 }
 
 func (m *sessionDataMutator) SetForceSavepointRestart(val bool) {
+	__antithesis_instrumentation__.Notify(470729)
 	m.data.ForceSavepointRestart = val
 }
 
 func (m *sessionDataMutator) SetZigzagJoinEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470730)
 	m.data.ZigzagJoinEnabled = val
 }
 
 func (m *sessionDataMutator) SetIndexRecommendationsEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470731)
 	m.data.IndexRecommendationsEnabled = val
 }
 
 func (m *sessionDataMutator) SetExperimentalDistSQLPlanning(
 	val sessiondatapb.ExperimentalDistSQLPlanningMode,
 ) {
+	__antithesis_instrumentation__.Notify(470732)
 	m.data.ExperimentalDistSQLPlanningMode = val
 }
 
 func (m *sessionDataMutator) SetPartiallyDistributedPlansDisabled(val bool) {
+	__antithesis_instrumentation__.Notify(470733)
 	m.data.PartiallyDistributedPlansDisabled = val
 }
 
 func (m *sessionDataMutator) SetRequireExplicitPrimaryKeys(val bool) {
+	__antithesis_instrumentation__.Notify(470734)
 	m.data.RequireExplicitPrimaryKeys = val
 }
 
 func (m *sessionDataMutator) SetReorderJoinsLimit(val int) {
+	__antithesis_instrumentation__.Notify(470735)
 	m.data.ReorderJoinsLimit = int64(val)
 }
 
 func (m *sessionDataMutator) SetVectorize(val sessiondatapb.VectorizeExecMode) {
+	__antithesis_instrumentation__.Notify(470736)
 	m.data.VectorizeMode = val
 }
 
 func (m *sessionDataMutator) SetTestingVectorizeInjectPanics(val bool) {
+	__antithesis_instrumentation__.Notify(470737)
 	m.data.TestingVectorizeInjectPanics = val
 }
 
 func (m *sessionDataMutator) SetOptimizerFKCascadesLimit(val int) {
+	__antithesis_instrumentation__.Notify(470738)
 	m.data.OptimizerFKCascadesLimit = int64(val)
 }
 
 func (m *sessionDataMutator) SetOptimizerUseHistograms(val bool) {
+	__antithesis_instrumentation__.Notify(470739)
 	m.data.OptimizerUseHistograms = val
 }
 
 func (m *sessionDataMutator) SetOptimizerUseMultiColStats(val bool) {
+	__antithesis_instrumentation__.Notify(470740)
 	m.data.OptimizerUseMultiColStats = val
 }
 
 func (m *sessionDataMutator) SetLocalityOptimizedSearch(val bool) {
+	__antithesis_instrumentation__.Notify(470741)
 	m.data.LocalityOptimizedSearch = val
 }
 
 func (m *sessionDataMutator) SetImplicitSelectForUpdate(val bool) {
+	__antithesis_instrumentation__.Notify(470742)
 	m.data.ImplicitSelectForUpdate = val
 }
 
 func (m *sessionDataMutator) SetInsertFastPath(val bool) {
+	__antithesis_instrumentation__.Notify(470743)
 	m.data.InsertFastPath = val
 }
 
 func (m *sessionDataMutator) SetSerialNormalizationMode(val sessiondatapb.SerialNormalizationMode) {
+	__antithesis_instrumentation__.Notify(470744)
 	m.data.SerialNormalizationMode = val
 }
 
 func (m *sessionDataMutator) SetSafeUpdates(val bool) {
+	__antithesis_instrumentation__.Notify(470745)
 	m.data.SafeUpdates = val
 }
 
 func (m *sessionDataMutator) SetCheckFunctionBodies(val bool) {
+	__antithesis_instrumentation__.Notify(470746)
 	m.data.CheckFunctionBodies = val
 }
 
 func (m *sessionDataMutator) SetPreferLookupJoinsForFKs(val bool) {
+	__antithesis_instrumentation__.Notify(470747)
 	m.data.PreferLookupJoinsForFKs = val
 }
 
 func (m *sessionDataMutator) UpdateSearchPath(paths []string) {
+	__antithesis_instrumentation__.Notify(470748)
 	m.data.SearchPath = m.data.SearchPath.UpdatePaths(paths)
 }
 
 func (m *sessionDataMutator) SetLocation(loc *time.Location) {
+	__antithesis_instrumentation__.Notify(470749)
 	m.data.Location = loc
 	m.bufferParamStatusUpdate("TimeZone", sessionDataTimeZoneFormat(loc))
 }
 
 func (m *sessionDataMutator) SetCustomOption(name, val string) {
+	__antithesis_instrumentation__.Notify(470750)
 	if m.data.CustomOptions == nil {
+		__antithesis_instrumentation__.Notify(470752)
 		m.data.CustomOptions = make(map[string]string)
+	} else {
+		__antithesis_instrumentation__.Notify(470753)
 	}
+	__antithesis_instrumentation__.Notify(470751)
 	m.data.CustomOptions[name] = val
 }
 
 func (m *sessionDataMutator) SetReadOnly(val bool) {
-	// The read-only state is special; it's set as a session variable (SET
-	// transaction_read_only=<>), but it represents per-txn state, not
-	// per-session. There's no field for it in the SessionData struct. Instead, we
-	// call into the connEx, which modifies its TxnState.
-	// NOTE(andrei): I couldn't find good documentation on transaction_read_only,
-	// but I've tested its behavior in Postgres 11.
+	__antithesis_instrumentation__.Notify(470754)
+
 	if m.setCurTxnReadOnly != nil {
+		__antithesis_instrumentation__.Notify(470755)
 		m.setCurTxnReadOnly(val)
+	} else {
+		__antithesis_instrumentation__.Notify(470756)
 	}
 }
 
 func (m *sessionDataMutator) SetStmtTimeout(timeout time.Duration) {
+	__antithesis_instrumentation__.Notify(470757)
 	m.data.StmtTimeout = timeout
 }
 
 func (m *sessionDataMutator) SetLockTimeout(timeout time.Duration) {
+	__antithesis_instrumentation__.Notify(470758)
 	m.data.LockTimeout = timeout
 }
 
 func (m *sessionDataMutator) SetIdleInSessionTimeout(timeout time.Duration) {
+	__antithesis_instrumentation__.Notify(470759)
 	m.data.IdleInSessionTimeout = timeout
 }
 
 func (m *sessionDataMutator) SetIdleInTransactionSessionTimeout(timeout time.Duration) {
+	__antithesis_instrumentation__.Notify(470760)
 	m.data.IdleInTransactionSessionTimeout = timeout
 }
 
 func (m *sessionDataMutator) SetAllowPrepareAsOptPlan(val bool) {
+	__antithesis_instrumentation__.Notify(470761)
 	m.data.AllowPrepareAsOptPlan = val
 }
 
 func (m *sessionDataMutator) SetSaveTablesPrefix(prefix string) {
+	__antithesis_instrumentation__.Notify(470762)
 	m.data.SaveTablesPrefix = prefix
 }
 
 func (m *sessionDataMutator) SetPlacementEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470763)
 	m.data.PlacementEnabled = val
 }
 
 func (m *sessionDataMutator) SetAutoRehomingEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470764)
 	m.data.AutoRehomingEnabled = val
 }
 
 func (m *sessionDataMutator) SetOnUpdateRehomeRowEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470765)
 	m.data.OnUpdateRehomeRowEnabled = val
 }
 
 func (m *sessionDataMutator) SetTempTablesEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470766)
 	m.data.TempTablesEnabled = val
 }
 
 func (m *sessionDataMutator) SetImplicitColumnPartitioningEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470767)
 	m.data.ImplicitColumnPartitioningEnabled = val
 }
 
 func (m *sessionDataMutator) SetOverrideMultiRegionZoneConfigEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470768)
 	m.data.OverrideMultiRegionZoneConfigEnabled = val
 }
 
 func (m *sessionDataMutator) SetDisallowFullTableScans(val bool) {
+	__antithesis_instrumentation__.Notify(470769)
 	m.data.DisallowFullTableScans = val
 }
 
 func (m *sessionDataMutator) SetAlterColumnTypeGeneral(val bool) {
+	__antithesis_instrumentation__.Notify(470770)
 	m.data.AlterColumnTypeGeneralEnabled = val
 }
 
 func (m *sessionDataMutator) SetEnableSuperRegions(val bool) {
+	__antithesis_instrumentation__.Notify(470771)
 	m.data.EnableSuperRegions = val
 }
 
 func (m *sessionDataMutator) SetEnableOverrideAlterPrimaryRegionInSuperRegion(val bool) {
+	__antithesis_instrumentation__.Notify(470772)
 	m.data.OverrideAlterPrimaryRegionInSuperRegion = val
 }
 
-// TODO(rytaft): remove this once unique without index constraints are fully
-// supported.
 func (m *sessionDataMutator) SetUniqueWithoutIndexConstraints(val bool) {
+	__antithesis_instrumentation__.Notify(470773)
 	m.data.EnableUniqueWithoutIndexConstraints = val
 }
 
 func (m *sessionDataMutator) SetUseNewSchemaChanger(val sessiondatapb.NewSchemaChangerMode) {
+	__antithesis_instrumentation__.Notify(470774)
 	m.data.NewSchemaChangerMode = val
 }
 
 func (m *sessionDataMutator) SetQualityOfService(val sessiondatapb.QoSLevel) {
+	__antithesis_instrumentation__.Notify(470775)
 	m.data.DefaultTxnQualityOfService = val.Validate()
 }
 
 func (m *sessionDataMutator) SetOptSplitScanLimit(val int32) {
+	__antithesis_instrumentation__.Notify(470776)
 	m.data.OptSplitScanLimit = val
 }
 
 func (m *sessionDataMutator) SetStreamReplicationEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470777)
 	m.data.EnableStreamReplication = val
 }
 
-// RecordLatestSequenceVal records that value to which the session incremented
-// a sequence.
 func (m *sessionDataMutator) RecordLatestSequenceVal(seqID uint32, val int64) {
+	__antithesis_instrumentation__.Notify(470778)
 	m.data.SequenceState.RecordValue(seqID, val)
 }
 
-// SetNoticeDisplaySeverity sets the NoticeDisplaySeverity for the given session.
 func (m *sessionDataMutator) SetNoticeDisplaySeverity(severity pgnotice.DisplaySeverity) {
+	__antithesis_instrumentation__.Notify(470779)
 	m.data.NoticeDisplaySeverity = uint32(severity)
 }
 
-// initSequenceCache creates an empty sequence cache instance for the session.
 func (m *sessionDataMutator) initSequenceCache() {
+	__antithesis_instrumentation__.Notify(470780)
 	m.data.SequenceCache = sessiondatapb.SequenceCache{}
 }
 
-// SetIntervalStyle sets the IntervalStyle for the given session.
 func (m *sessionDataMutator) SetIntervalStyle(style duration.IntervalStyle) {
+	__antithesis_instrumentation__.Notify(470781)
 	m.data.DataConversionConfig.IntervalStyle = style
 	m.bufferParamStatusUpdate("IntervalStyle", strings.ToLower(style.String()))
 }
 
-// SetDateStyle sets the DateStyle for the given session.
 func (m *sessionDataMutator) SetDateStyle(style pgdate.DateStyle) {
+	__antithesis_instrumentation__.Notify(470782)
 	m.data.DataConversionConfig.DateStyle = style
 	m.bufferParamStatusUpdate("DateStyle", style.SQLString())
 }
 
-// SetIntervalStyleEnabled sets the IntervalStyleEnabled for the given session.
 func (m *sessionDataMutator) SetIntervalStyleEnabled(enabled bool) {
+	__antithesis_instrumentation__.Notify(470783)
 	m.data.IntervalStyleEnabled = enabled
 }
 
-// SetDateStyleEnabled sets the DateStyleEnabled for the given session.
 func (m *sessionDataMutator) SetDateStyleEnabled(enabled bool) {
+	__antithesis_instrumentation__.Notify(470784)
 	m.data.DateStyleEnabled = enabled
 }
 
-// SetStubCatalogTablesEnabled sets default value for stub_catalog_tables.
 func (m *sessionDataMutator) SetStubCatalogTablesEnabled(enabled bool) {
+	__antithesis_instrumentation__.Notify(470785)
 	m.data.StubCatalogTablesEnabled = enabled
 }
 
 func (m *sessionDataMutator) SetExperimentalComputedColumnRewrites(val string) {
+	__antithesis_instrumentation__.Notify(470786)
 	m.data.ExperimentalComputedColumnRewrites = val
 }
 
 func (m *sessionDataMutator) SetNullOrderedLast(b bool) {
+	__antithesis_instrumentation__.Notify(470787)
 	m.data.NullOrderedLast = b
 }
 
 func (m *sessionDataMutator) SetPropagateInputOrdering(b bool) {
+	__antithesis_instrumentation__.Notify(470788)
 	m.data.PropagateInputOrdering = b
 }
 
 func (m *sessionDataMutator) SetTxnRowsWrittenLog(val int64) {
+	__antithesis_instrumentation__.Notify(470789)
 	m.data.TxnRowsWrittenLog = val
 }
 
 func (m *sessionDataMutator) SetTxnRowsWrittenErr(val int64) {
+	__antithesis_instrumentation__.Notify(470790)
 	m.data.TxnRowsWrittenErr = val
 }
 
 func (m *sessionDataMutator) SetTxnRowsReadLog(val int64) {
+	__antithesis_instrumentation__.Notify(470791)
 	m.data.TxnRowsReadLog = val
 }
 
 func (m *sessionDataMutator) SetTxnRowsReadErr(val int64) {
+	__antithesis_instrumentation__.Notify(470792)
 	m.data.TxnRowsReadErr = val
 }
 
 func (m *sessionDataMutator) SetLargeFullScanRows(val float64) {
+	__antithesis_instrumentation__.Notify(470793)
 	m.data.LargeFullScanRows = val
 }
 
 func (m *sessionDataMutator) SetInjectRetryErrorsEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470794)
 	m.data.InjectRetryErrorsEnabled = val
 }
 
 func (m *sessionDataMutator) SetJoinReaderOrderingStrategyBatchSize(val int64) {
+	__antithesis_instrumentation__.Notify(470795)
 	m.data.JoinReaderOrderingStrategyBatchSize = val
 }
 
 func (m *sessionDataMutator) SetParallelizeMultiKeyLookupJoinsEnabled(val bool) {
+	__antithesis_instrumentation__.Notify(470796)
 	m.data.ParallelizeMultiKeyLookupJoinsEnabled = val
 }
 
-// TODO(harding): Remove this when costing scans based on average column size
-// is fully supported.
 func (m *sessionDataMutator) SetCostScansWithDefaultColSize(val bool) {
+	__antithesis_instrumentation__.Notify(470797)
 	m.data.CostScansWithDefaultColSize = val
 }
 
 func (m *sessionDataMutator) SetEnableImplicitTransactionForBatchStatements(val bool) {
+	__antithesis_instrumentation__.Notify(470798)
 	m.data.EnableImplicitTransactionForBatchStatements = val
 }
 
 func (m *sessionDataMutator) SetExpectAndIgnoreNotVisibleColumnsInCopy(val bool) {
+	__antithesis_instrumentation__.Notify(470799)
 	m.data.ExpectAndIgnoreNotVisibleColumnsInCopy = val
 }
 
-// Utility functions related to scrubbing sensitive information on SQL Stats.
-
-// quantizeCounts ensures that the Count field in the
-// roachpb.StatementStatistics is bucketed to the order of magnitude base 10s
-// and recomputes the squared differences using the new Count value.
 func quantizeCounts(d *roachpb.StatementStatistics) {
+	__antithesis_instrumentation__.Notify(470800)
 	oldCount := d.Count
 	newCount := telemetry.Bucket10(oldCount)
 	d.Count = newCount
-	// The SquaredDiffs values are meant to enable computing the variance
-	// via the formula variance = squareddiffs / (count - 1).
-	// Since we're adjusting the count, we must re-compute a value
-	// for SquaredDiffs that keeps the same variance with the new count.
+
 	oldCountMinusOne := float64(oldCount - 1)
 	newCountMinusOne := float64(newCount - 1)
 	d.NumRows.SquaredDiffs = (d.NumRows.SquaredDiffs / oldCountMinusOne) * newCountMinusOne
@@ -3233,13 +3197,17 @@ func quantizeCounts(d *roachpb.StatementStatistics) {
 }
 
 func scrubStmtStatKey(vt VirtualTabler, key string) (string, bool) {
-	// Re-parse the statement to obtain its AST.
+	__antithesis_instrumentation__.Notify(470801)
+
 	stmt, err := parser.ParseOne(key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(470803)
 		return "", false
+	} else {
+		__antithesis_instrumentation__.Notify(470804)
 	}
+	__antithesis_instrumentation__.Notify(470802)
 
-	// Re-format to remove most names.
 	f := tree.NewFmtCtx(
 		tree.FmtAnonymize,
 		tree.FmtReformatTableNames(hideNonVirtualTableNameFunc(vt)),
@@ -3248,11 +3216,10 @@ func scrubStmtStatKey(vt VirtualTabler, key string) (string, bool) {
 	return f.CloseAndGetString(), true
 }
 
-// formatStmtKeyAsRedactableString given an AST node this function will fully
-// qualify names using annotations to format it out into a redactable string.
 func formatStmtKeyAsRedactableString(
 	vt VirtualTabler, rootAST tree.Statement, ann *tree.Annotations, fs tree.FmtFlags,
 ) redact.RedactableString {
+	__antithesis_instrumentation__.Notify(470805)
 	f := tree.NewFmtCtx(
 		tree.FmtAlwaysQualifyTableNames|tree.FmtMarkRedactionNode|fs,
 		tree.FmtAnnotations(ann),
@@ -3262,83 +3229,90 @@ func formatStmtKeyAsRedactableString(
 	return redact.RedactableString(formattedRedactableStatementString)
 }
 
-// FailedHashedValue is used as a default return value for when HashForReporting
-// cannot hash a value correctly.
 const FailedHashedValue = "unknown"
 
-// HashForReporting 1-way hashes values for use in stat reporting. The secret
-// should be the cluster.secret setting.
 func HashForReporting(secret, appName string) string {
-	// If no secret is provided, we cannot irreversibly hash the value, so return
-	// a default value.
+	__antithesis_instrumentation__.Notify(470806)
+
 	if len(secret) == 0 {
+		__antithesis_instrumentation__.Notify(470809)
 		return FailedHashedValue
+	} else {
+		__antithesis_instrumentation__.Notify(470810)
 	}
+	__antithesis_instrumentation__.Notify(470807)
 	hash := hmac.New(sha256.New, []byte(secret))
 	if _, err := hash.Write([]byte(appName)); err != nil {
+		__antithesis_instrumentation__.Notify(470811)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err,
 			`"It never returns an error." -- https://golang.org/pkg/hash`))
+	} else {
+		__antithesis_instrumentation__.Notify(470812)
 	}
+	__antithesis_instrumentation__.Notify(470808)
 	return hex.EncodeToString(hash.Sum(nil)[:4])
 }
 
-// formatStatementHideConstants formats the statement using
-// tree.FmtHideConstants. It does *not* anonymize the statement, since
-// the result will still contain names and identifiers.
 func formatStatementHideConstants(ast tree.Statement) string {
+	__antithesis_instrumentation__.Notify(470813)
 	if ast == nil {
+		__antithesis_instrumentation__.Notify(470815)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(470816)
 	}
+	__antithesis_instrumentation__.Notify(470814)
 	return tree.AsStringWithFlags(ast, tree.FmtHideConstants)
 }
 
-// formatStatementSummary formats the statement using tree.FmtSummary
-// and tree.FmtHideConstants. This returns a summarized version of the
-// query. It does *not* anonymize the statement, since the result will
-// still contain names and identifiers.
 func formatStatementSummary(ast tree.Statement) string {
+	__antithesis_instrumentation__.Notify(470817)
 	if ast == nil {
+		__antithesis_instrumentation__.Notify(470819)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(470820)
 	}
+	__antithesis_instrumentation__.Notify(470818)
 	fmtFlags := tree.FmtSummary | tree.FmtHideConstants
 	return tree.AsStringWithFlags(ast, fmtFlags)
 }
 
-// DescsTxn is a convenient method for running a transaction on descriptors
-// when you have an ExecutorConfig.
 func DescsTxn(
 	ctx context.Context,
 	execCfg *ExecutorConfig,
 	f func(ctx context.Context, txn *kv.Txn, col *descs.Collection) error,
 ) error {
+	__antithesis_instrumentation__.Notify(470821)
 	return execCfg.CollectionFactory.Txn(ctx, execCfg.InternalExecutor, execCfg.DB, f)
 }
 
-// TestingDescsTxn is a convenience function for running a transaction on
-// descriptors when you have a serverutils.TestServerInterface.
 func TestingDescsTxn(
 	ctx context.Context,
 	s serverutils.TestServerInterface,
 	f func(ctx context.Context, txn *kv.Txn, col *descs.Collection) error,
 ) error {
+	__antithesis_instrumentation__.Notify(470822)
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 	return DescsTxn(ctx, &execCfg, f)
 }
 
-// NewRowMetrics creates a row.Metrics struct for either internal or user
-// queries.
 func NewRowMetrics(internal bool) row.Metrics {
+	__antithesis_instrumentation__.Notify(470823)
 	return row.Metrics{
 		MaxRowSizeLogCount: metric.NewCounter(getMetricMeta(row.MetaMaxRowSizeLog, internal)),
 		MaxRowSizeErrCount: metric.NewCounter(getMetricMeta(row.MetaMaxRowSizeErr, internal)),
 	}
 }
 
-// GetRowMetrics returns the proper RowMetrics for either internal or user
-// queries.
 func (cfg *ExecutorConfig) GetRowMetrics(internal bool) *row.Metrics {
+	__antithesis_instrumentation__.Notify(470824)
 	if internal {
+		__antithesis_instrumentation__.Notify(470826)
 		return cfg.InternalRowMetrics
+	} else {
+		__antithesis_instrumentation__.Notify(470827)
 	}
+	__antithesis_instrumentation__.Notify(470825)
 	return cfg.RowMetrics
 }

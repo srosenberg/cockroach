@@ -20,6 +20,7 @@ go_library(
         "//pkg/util/json",
         "//pkg/util/timeutil",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

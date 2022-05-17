@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package workload
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,140 +14,151 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// MultiConnPool maintains a set of pgx ConnPools (to different servers).
 type MultiConnPool struct {
 	Pools []*pgxpool.Pool
-	// Atomic counter used by Get().
+
 	counter uint32
 
 	mu struct {
 		syncutil.RWMutex
-		// preparedStatements is a map from name to SQL. The statements in the map
-		// are prepared whenever a new connection is acquired from the pool.
+
 		preparedStatements map[string]string
 	}
 }
 
-// MultiConnPoolCfg encapsulates the knobs passed to NewMultiConnPool.
 type MultiConnPoolCfg struct {
-	// MaxTotalConnections is the total maximum number of connections across all
-	// pools.
 	MaxTotalConnections int
 
-	// MaxConnsPerPool is the maximum number of connections in any single pool.
-	// Limiting this is useful especially for prepared statements, which are
-	// prepared on each connection inside a pool (serially).
-	// If 0, there is no per-pool maximum (other than the total maximum number of
-	// connections which still applies).
 	MaxConnsPerPool int
 }
 
-// pgxLogger implements the pgx.Logger interface.
 type pgxLogger struct{}
 
 var _ pgx.Logger = pgxLogger{}
 
-// Log implements the pgx.Logger interface.
 func (p pgxLogger) Log(
 	ctx context.Context, level pgx.LogLevel, msg string, data map[string]interface{},
 ) {
+	__antithesis_instrumentation__.Notify(694964)
 	if ctx.Err() != nil {
-		// Don't log anything from pgx if the context was canceled by the workload
-		// runner. It would result in spam at the end of every workload.
+		__antithesis_instrumentation__.Notify(694968)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(694969)
 	}
+	__antithesis_instrumentation__.Notify(694965)
 	if strings.Contains(msg, "restart transaction") {
-		// Our workloads have a lot of contention, so "restart transaction" messages
-		// are expected and noisy.
+		__antithesis_instrumentation__.Notify(694970)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(694971)
 	}
-	// data may contain error with "restart transaction" -- skip those as well.
+	__antithesis_instrumentation__.Notify(694966)
+
 	if data != nil {
+		__antithesis_instrumentation__.Notify(694972)
 		ev := data["err"]
-		if err, ok := ev.(error); ok && strings.Contains(err.Error(), "restart transaction") {
+		if err, ok := ev.(error); ok && func() bool {
+			__antithesis_instrumentation__.Notify(694973)
+			return strings.Contains(err.Error(), "restart transaction") == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(694974)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(694975)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(694976)
 	}
+	__antithesis_instrumentation__.Notify(694967)
 	log.Infof(ctx, "pgx logger [%s]: %s logParams=%v", level.String(), msg, data)
 }
 
-// NewMultiConnPool creates a new MultiConnPool.
-//
-// Each URL gets one or more pools, and each pool has at most MaxConnsPerPool
-// connections.
-//
-// The pools have approximately the same number of max connections, adding up to
-// MaxTotalConnections.
 func NewMultiConnPool(
 	ctx context.Context, cfg MultiConnPoolCfg, urls ...string,
 ) (*MultiConnPool, error) {
+	__antithesis_instrumentation__.Notify(694977)
 	m := &MultiConnPool{}
 	m.mu.preparedStatements = map[string]string{}
 
 	connsPerURL := distribute(cfg.MaxTotalConnections, len(urls))
 	maxConnsPerPool := cfg.MaxConnsPerPool
 	if maxConnsPerPool == 0 {
+		__antithesis_instrumentation__.Notify(694983)
 		maxConnsPerPool = cfg.MaxTotalConnections
+	} else {
+		__antithesis_instrumentation__.Notify(694984)
 	}
+	__antithesis_instrumentation__.Notify(694978)
 
 	var warmupConns [][]*pgxpool.Conn
 	for i := range urls {
+		__antithesis_instrumentation__.Notify(694985)
 		connsPerPool := distributeMax(connsPerURL[i], maxConnsPerPool)
 		for _, numConns := range connsPerPool {
+			__antithesis_instrumentation__.Notify(694986)
 			connCfg, err := pgxpool.ParseConfig(urls[i])
 			if err != nil {
+				__antithesis_instrumentation__.Notify(694990)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(694991)
 			}
-			// Disable the automatic prepared statement cache. We've seen a lot of
-			// churn in this cache since workloads create many of different queries.
+			__antithesis_instrumentation__.Notify(694987)
+
 			connCfg.ConnConfig.BuildStatementCache = nil
 			connCfg.ConnConfig.LogLevel = pgx.LogLevelWarn
 			connCfg.ConnConfig.Logger = pgxLogger{}
 			connCfg.MaxConns = int32(numConns)
 			connCfg.BeforeAcquire = func(ctx context.Context, conn *pgx.Conn) bool {
+				__antithesis_instrumentation__.Notify(694992)
 				m.mu.RLock()
 				defer m.mu.RUnlock()
 				for name, sql := range m.mu.preparedStatements {
-					// Note that calling `Prepare` with a name that has already been
-					// prepared is idempotent and short-circuits before doing any
-					// communication to the server.
+					__antithesis_instrumentation__.Notify(694994)
+
 					if _, err := conn.Prepare(ctx, name, sql); err != nil {
+						__antithesis_instrumentation__.Notify(694995)
 						log.Warningf(ctx, "error preparing statement. name=%s sql=%s %v", name, sql, err)
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(694996)
 					}
 				}
+				__antithesis_instrumentation__.Notify(694993)
 				return true
 			}
+			__antithesis_instrumentation__.Notify(694988)
 			p, err := pgxpool.ConnectConfig(ctx, connCfg)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(694997)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(694998)
 			}
+			__antithesis_instrumentation__.Notify(694989)
 
 			warmupConns = append(warmupConns, make([]*pgxpool.Conn, numConns))
 			m.Pools = append(m.Pools, p)
 		}
 	}
+	__antithesis_instrumentation__.Notify(694979)
 
-	// "Warm up" the pools so we don't have to establish connections later (which
-	// would affect the observed latencies of the first requests, especially when
-	// prepared statements are used). We do this by
-	// acquiring connections (in parallel), then releasing them back to the
-	// pool.
 	var g errgroup.Group
-	// Limit concurrent connection establishment. Allowing this to run
-	// at maximum parallelism would trigger syn flood protection on the
-	// host, which combined with any packet loss could cause Acquire to
-	// return an error and fail the whole function. The value 100 is
-	// chosen because it is less than the default value for SOMAXCONN
-	// (128).
+
 	sem := make(chan struct{}, 100)
 	for i, p := range m.Pools {
+		__antithesis_instrumentation__.Notify(694999)
 		p := p
 		conns := warmupConns[i]
 		for j := range conns {
+			__antithesis_instrumentation__.Notify(695000)
 			j := j
 			sem <- struct{}{}
 			g.Go(func() error {
+				__antithesis_instrumentation__.Notify(695001)
 				var err error
 				conns[j], err = p.Acquire(ctx)
 				<-sem
@@ -163,59 +166,69 @@ func NewMultiConnPool(
 			})
 		}
 	}
+	__antithesis_instrumentation__.Notify(694980)
 	if err := g.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(695002)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(695003)
 	}
+	__antithesis_instrumentation__.Notify(694981)
 	for i := range m.Pools {
+		__antithesis_instrumentation__.Notify(695004)
 		for _, c := range warmupConns[i] {
+			__antithesis_instrumentation__.Notify(695005)
 			c.Release()
 		}
 	}
+	__antithesis_instrumentation__.Notify(694982)
 
 	return m, nil
 }
 
-// AddPreparedStatement adds the given sql statement to the map of
-// statements that will be prepared when a new connection is retrieved
-// from the pool.
 func (m *MultiConnPool) AddPreparedStatement(name string, statement string) {
+	__antithesis_instrumentation__.Notify(695006)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.mu.preparedStatements[name] = statement
 }
 
-// Get returns one of the pools, in round-robin manner.
 func (m *MultiConnPool) Get() *pgxpool.Pool {
+	__antithesis_instrumentation__.Notify(695007)
 	if len(m.Pools) == 1 {
+		__antithesis_instrumentation__.Notify(695009)
 		return m.Pools[0]
+	} else {
+		__antithesis_instrumentation__.Notify(695010)
 	}
+	__antithesis_instrumentation__.Notify(695008)
 	i := atomic.AddUint32(&m.counter, 1) - 1
 	return m.Pools[i%uint32(len(m.Pools))]
 }
 
-// Close closes all the pools.
 func (m *MultiConnPool) Close() {
+	__antithesis_instrumentation__.Notify(695011)
 	for _, p := range m.Pools {
+		__antithesis_instrumentation__.Notify(695012)
 		p.Close()
 	}
 }
 
-// distribute returns a slice of <num> integers that add up to <total> and are
-// within +/-1 of each other.
 func distribute(total, num int) []int {
+	__antithesis_instrumentation__.Notify(695013)
 	res := make([]int, num)
 	for i := range res {
-		// Use the average number of remaining connections.
+		__antithesis_instrumentation__.Notify(695015)
+
 		div := len(res) - i
 		res[i] = (total + div/2) / div
 		total -= res[i]
 	}
+	__antithesis_instrumentation__.Notify(695014)
 	return res
 }
 
-// distributeMax returns a slice of integers that are at most `max` and add up
-// to <total>. The slice is as short as possible and the values are within +/-1
-// of each other.
 func distributeMax(total, max int) []int {
+	__antithesis_instrumentation__.Notify(695016)
 	return distribute(total, (total+max-1)/max)
 }

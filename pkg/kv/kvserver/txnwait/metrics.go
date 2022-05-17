@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package txnwait
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -16,7 +8,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 )
 
-// Metrics contains all the txnqueue related metrics.
 type Metrics struct {
 	PusheeWaiting  *metric.Gauge
 	PusherWaiting  *metric.Gauge
@@ -27,8 +18,8 @@ type Metrics struct {
 	DeadlocksTotal *metric.Counter
 }
 
-// NewMetrics creates a new Metrics instance with all related metric fields.
 func NewMetrics(histogramWindowInterval time.Duration) *Metrics {
+	__antithesis_instrumentation__.Notify(127287)
 	return &Metrics{
 		PusheeWaiting: metric.NewGauge(
 			metric.Metadata{

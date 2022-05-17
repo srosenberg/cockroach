@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,30 +21,45 @@ type commentOnConstraintNode struct {
 	metadataUpdater scexec.DescriptorMetadataUpdater
 }
 
-// CommentOnConstraint add comment on a constraint
-// Privileges: CREATE on table
 func (p *planner) CommentOnConstraint(
 	ctx context.Context, n *tree.CommentOnConstraint,
 ) (planNode, error) {
-	// Block comments on constraint until cluster is updated.
+	__antithesis_instrumentation__.Notify(456952)
+
 	if !p.ExecCfg().Settings.Version.IsActive(ctx, tabledesc.ConstraintIDsAddedToTableDescsVersion) {
+		__antithesis_instrumentation__.Notify(456957)
 		return nil, pgerror.Newf(pgcode.FeatureNotSupported, "cannot comment on constraint")
+	} else {
+		__antithesis_instrumentation__.Notify(456958)
 	}
+	__antithesis_instrumentation__.Notify(456953)
 	if err := checkSchemaChangeEnabled(
 		ctx,
 		p.ExecCfg(),
 		"COMMENT ON CONSTRAINT",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(456959)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(456960)
 	}
+	__antithesis_instrumentation__.Notify(456954)
 
 	tableDesc, err := p.ResolveUncachedTableDescriptorEx(ctx, n.Table, true, tree.ResolveRequireTableDesc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(456961)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(456962)
 	}
+	__antithesis_instrumentation__.Notify(456955)
 	if err := p.CheckPrivilege(ctx, tableDesc, privilege.CREATE); err != nil {
+		__antithesis_instrumentation__.Notify(456963)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(456964)
 	}
+	__antithesis_instrumentation__.Notify(456956)
 
 	return &commentOnConstraintNode{
 		n:         n,
@@ -67,42 +74,63 @@ func (p *planner) CommentOnConstraint(
 }
 
 func (n *commentOnConstraintNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(456965)
 	info, err := n.tableDesc.GetConstraintInfo()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(456970)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(456971)
 	}
+	__antithesis_instrumentation__.Notify(456966)
 
 	constraintName := string(n.n.Constraint)
 	constraint, ok := info[constraintName]
 	if !ok {
+		__antithesis_instrumentation__.Notify(456972)
 		return pgerror.Newf(pgcode.UndefinedObject,
 			"constraint %q of relation %q does not exist", constraintName, n.tableDesc.GetName())
+	} else {
+		__antithesis_instrumentation__.Notify(456973)
 	}
-	// Setting the comment to NULL is the
-	// equivalent of deleting the comment.
+	__antithesis_instrumentation__.Notify(456967)
+
 	if n.n.Comment != nil {
+		__antithesis_instrumentation__.Notify(456974)
 		err := n.metadataUpdater.UpsertConstraintComment(
 			n.tableDesc.GetID(),
 			constraint.ConstraintID,
 			*n.n.Comment,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(456975)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(456976)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(456977)
 		err := n.metadataUpdater.DeleteConstraintComment(
 			n.tableDesc.GetID(),
 			constraint.ConstraintID,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(456978)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(456979)
 		}
 	}
+	__antithesis_instrumentation__.Notify(456968)
 
 	comment := ""
 	if n.n.Comment != nil {
+		__antithesis_instrumentation__.Notify(456980)
 		comment = *n.n.Comment
+	} else {
+		__antithesis_instrumentation__.Notify(456981)
 	}
+	__antithesis_instrumentation__.Notify(456969)
 
 	return params.p.logEvent(params.ctx,
 		n.tableDesc.GetID(),
@@ -114,6 +142,14 @@ func (n *commentOnConstraintNode) startExec(params runParams) error {
 		})
 }
 
-func (n *commentOnConstraintNode) Next(runParams) (bool, error) { return false, nil }
-func (n *commentOnConstraintNode) Values() tree.Datums          { return tree.Datums{} }
-func (n *commentOnConstraintNode) Close(context.Context)        {}
+func (n *commentOnConstraintNode) Next(runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(456982)
+	return false, nil
+}
+func (n *commentOnConstraintNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(456983)
+	return tree.Datums{}
+}
+func (n *commentOnConstraintNode) Close(context.Context) {
+	__antithesis_instrumentation__.Notify(456984)
+}

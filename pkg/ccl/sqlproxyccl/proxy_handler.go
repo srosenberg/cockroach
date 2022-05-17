@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package sqlproxyccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -37,118 +31,72 @@ import (
 )
 
 var (
-	// This assumes that whitespaces are used to separate command line args.
-	// Unlike the original spec, this does not handle escaping rules.
-	//
-	// See "options" in https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS.
 	clusterIdentifierLongOptionRE = regexp.MustCompile(`(?:-c\s*|--)cluster=([\S]*)`)
 
-	// clusterNameRegex restricts cluster names to have between 6 and 20
-	// alphanumeric characters, with dashes allowed within the name (but not as a
-	// starting or ending character).
 	clusterNameRegex = regexp.MustCompile("^[a-z0-9][a-z0-9-]{4,18}[a-z0-9]$")
 )
 
 const (
-	// Cluster identifier is in the form "<cluster name>-<tenant id>. Tenant ID
-	// is always in the end but the cluster name can also contain '-' or digits.
-	// (e.g. In "foo-7-10", cluster name is "foo-7" and tenant ID is "10")
 	clusterTenantSep = "-"
 )
 
-// ProxyOptions is the information needed to construct a new proxyHandler.
 type ProxyOptions struct {
-	// Denylist file to limit access to IP addresses and tenant ids.
 	Denylist string
-	// ListenAddr is the listen address for incoming connections.
+
 	ListenAddr string
-	// ListenCert is the file containing PEM-encoded x509 certificate for listen
-	// address. Set to "*" to auto-generate self-signed cert.
+
 	ListenCert string
-	// ListenKey is the file containing PEM-encoded x509 key for listen address.
-	// Set to "*" to auto-generate self-signed cert.
+
 	ListenKey string
-	// MetricsAddress is the listen address for incoming connections for metrics
-	// retrieval.
+
 	MetricsAddress string
-	// SkipVerify if set will skip the identity verification of the
-	// backend. This is for testing only.
+
 	SkipVerify bool
-	// Insecure if set, will not use TLS for the backend connection. For testing.
+
 	Insecure bool
-	// RoutingRule for constructing the backend address for each incoming
-	// connection.
-	//
-	// TODO(jaylim-crl): Rename RoutingRule to TestRoutingRule to be
-	// explicit that this is only used in a testing environment.
+
 	RoutingRule string
-	// DirectoryAddr specified optional {HOSTNAME}:{PORT} for service that does
-	// the resolution from backend id to IP address. If specified - it will be
-	// used instead of the routing rule above.
+
 	DirectoryAddr string
-	// RatelimitBaseDelay is the initial backoff after a failed login attempt.
-	// Set to 0 to disable rate limiting.
+
 	RatelimitBaseDelay time.Duration
-	// ValidateAccessInterval is the time interval between validations, confirming
-	// that current connections are still valid.
+
 	ValidateAccessInterval time.Duration
-	// PollConfigInterval defines polling interval for pickup up changes in
-	// config file.
+
 	PollConfigInterval time.Duration
-	// DrainTimeout if set, will close DRAINING connections that have been idle
-	// for this duration.
+
 	DrainTimeout time.Duration
-	// ThrottleBaseDelay is the initial exponential backoff triggered in
-	// response to the first connection failure.
+
 	ThrottleBaseDelay time.Duration
 
-	// testingKnobs are knobs used for testing.
 	testingKnobs struct {
-		// dirOpts is used to customize the directory cache created by the
-		// proxy.
 		dirOpts []tenant.DirOption
 
-		// directoryServer represents the in-memory directory server that is
-		// created whenever a routing rule is used.
 		directoryServer tenant.DirectoryServer
 	}
 }
 
-// proxyHandler is the default implementation of a proxy handler.
 type proxyHandler struct {
 	ProxyOptions
 
-	// metrics contains various counters reflecting the proxy operations.
 	metrics *metrics
 
-	// stopper is used to do an orderly shutdown.
 	stopper *stop.Stopper
 
-	// incomingCert is the managed cert of the proxy endpoint to
-	// which clients connect.
 	incomingCert certmgr.Cert
 
-	// denyListWatcher provides access control.
 	denyListWatcher *denylist.Watcher
 
-	// throttleService will do throttling of incoming connection requests.
 	throttleService throttler.Service
 
-	// idleMonitor will detect idle connections to DRAINING pods.
 	idleMonitor *idle.Monitor
 
-	// directoryCache is used to resolve tenants to their IP addresses.
 	directoryCache tenant.DirectoryCache
 
-	// balancer is used to load balance incoming connections.
 	balancer *balancer.Balancer
 
-	// connTracker is used to track all forwarder instances. The proxy handler
-	// uses this to register/unregister forwarders, whereas the balancer uses
-	// this to rebalance connections.
 	connTracker *balancer.ConnTracker
 
-	// certManager keeps up to date the certificates used.
 	certManager *certmgr.CertManager
 }
 
@@ -160,11 +108,10 @@ var throttledError = errors.WithHint(
 	newErrorf(codeProxyRefusedConnection, "connection attempt throttled"),
 	throttledErrorHint)
 
-// newProxyHandler will create a new proxy handler with configuration based on
-// the provided options.
 func newProxyHandler(
 	ctx context.Context, stopper *stop.Stopper, proxyMetrics *metrics, options ProxyOptions,
 ) (*proxyHandler, error) {
+	__antithesis_instrumentation__.Notify(21806)
 	ctx, _ = stopper.WithCancelOnQuiesce(ctx)
 
 	handler := proxyHandler{
@@ -176,16 +123,22 @@ func newProxyHandler(
 
 	err := handler.setupIncomingCert(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21815)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(21816)
 	}
+	__antithesis_instrumentation__.Notify(21807)
 
-	// If denylist functionality is requested, create the denylist service.
 	if options.Denylist != "" {
+		__antithesis_instrumentation__.Notify(21817)
 		handler.denyListWatcher = denylist.WatcherFromFile(ctx, options.Denylist,
 			denylist.WithPollingInterval(options.PollConfigInterval))
 	} else {
+		__antithesis_instrumentation__.Notify(21818)
 		handler.denyListWatcher = denylist.NilWatcher()
 	}
+	__antithesis_instrumentation__.Notify(21808)
 
 	handler.throttleService = throttler.NewLocalService(
 		throttler.WithBaseDelay(handler.ThrottleBaseDelay),
@@ -193,26 +146,36 @@ func newProxyHandler(
 
 	var conn *grpc.ClientConn
 	if handler.DirectoryAddr != "" {
+		__antithesis_instrumentation__.Notify(21819)
 		conn, err = grpc.Dial(
 			handler.DirectoryAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(21820)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(21821)
 		}
 	} else {
-		// If no directory address was specified, assume routing rule, and
-		// start an in-memory simple directory server.
+		__antithesis_instrumentation__.Notify(21822)
+
 		directoryServer, grpcServer := tenantdirsvr.NewTestSimpleDirectoryServer(handler.RoutingRule)
 		ln, err := tenantdirsvr.ListenAndServeInMemGRPC(ctx, stopper, grpcServer)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(21825)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(21826)
 		}
+		__antithesis_instrumentation__.Notify(21823)
 		handler.testingKnobs.directoryServer = directoryServer
 
 		dialerFunc := func(ctx context.Context, addr string) (net.Conn, error) {
+			__antithesis_instrumentation__.Notify(21827)
 			return ln.DialContext(ctx)
 		}
+		__antithesis_instrumentation__.Notify(21824)
 		conn, err = grpc.DialContext(
 			ctx,
 			"",
@@ -220,113 +183,151 @@ func newProxyHandler(
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(21828)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(21829)
 		}
 	}
+	__antithesis_instrumentation__.Notify(21809)
 	stopper.AddCloser(stop.CloserFn(func() {
-		_ = conn.Close() // nolint:grpcconnclose
+		__antithesis_instrumentation__.Notify(21830)
+		_ = conn.Close()
 	}))
+	__antithesis_instrumentation__.Notify(21810)
 
-	// If a drain timeout has been specified, then start the idle monitor and
-	// the pod watcher. When a pod enters the DRAINING state, the pod watcher
-	// will set the idle monitor to detect connections without activity and
-	// terminate them.
 	var dirOpts []tenant.DirOption
 	if options.DrainTimeout != 0 {
+		__antithesis_instrumentation__.Notify(21831)
 		handler.idleMonitor = idle.NewMonitor(ctx, options.DrainTimeout)
 
 		podWatcher := make(chan *tenant.Pod)
 		go handler.startPodWatcher(ctx, podWatcher)
 		dirOpts = append(dirOpts, tenant.PodWatcher(podWatcher))
+	} else {
+		__antithesis_instrumentation__.Notify(21832)
 	}
+	__antithesis_instrumentation__.Notify(21811)
 	if handler.testingKnobs.dirOpts != nil {
+		__antithesis_instrumentation__.Notify(21833)
 		dirOpts = append(dirOpts, handler.testingKnobs.dirOpts...)
+	} else {
+		__antithesis_instrumentation__.Notify(21834)
 	}
+	__antithesis_instrumentation__.Notify(21812)
 
 	client := tenant.NewDirectoryClient(conn)
 	handler.directoryCache, err = tenant.NewDirectoryCache(ctx, stopper, client, dirOpts...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21835)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(21836)
 	}
+	__antithesis_instrumentation__.Notify(21813)
 
-	// Create the connection tracker and balancer components.
 	handler.connTracker = balancer.NewConnTracker()
 	handler.balancer, err = balancer.NewBalancer(ctx, stopper, handler.directoryCache, handler.connTracker)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21837)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(21838)
 	}
+	__antithesis_instrumentation__.Notify(21814)
 
 	return &handler, nil
 }
 
-// handle is called by the proxy server to handle a single incoming client
-// connection.
 func (handler *proxyHandler) handle(ctx context.Context, incomingConn *proxyConn) error {
+	__antithesis_instrumentation__.Notify(21839)
 	fe := FrontendAdmit(incomingConn, handler.incomingTLSConfig())
-	defer func() { _ = fe.conn.Close() }()
+	defer func() { __antithesis_instrumentation__.Notify(21855); _ = fe.conn.Close() }()
+	__antithesis_instrumentation__.Notify(21840)
 	if fe.err != nil {
+		__antithesis_instrumentation__.Notify(21856)
 		SendErrToClient(fe.conn, fe.err)
 		return fe.err
+	} else {
+		__antithesis_instrumentation__.Notify(21857)
 	}
+	__antithesis_instrumentation__.Notify(21841)
 
-	// This currently only happens for CancelRequest type of startup messages
-	// that we don't support. Return nil to the server, which simply closes the
-	// connection.
 	if fe.msg == nil {
+		__antithesis_instrumentation__.Notify(21858)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(21859)
 	}
+	__antithesis_instrumentation__.Notify(21842)
 
-	// NOTE: Errors returned from this function are user-facing errors so we
-	// should be careful with the details that we want to expose.
 	backendStartupMsg, clusterName, tenID, err := clusterNameAndTenantFromParams(ctx, fe)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21860)
 		clientErr := &codeError{codeParamsRoutingFailed, err}
 		log.Errorf(ctx, "unable to extract cluster name and tenant id: %s", err.Error())
 		updateMetricsAndSendErrToClient(clientErr, fe.conn, handler.metrics)
 		return clientErr
+	} else {
+		__antithesis_instrumentation__.Notify(21861)
 	}
+	__antithesis_instrumentation__.Notify(21843)
 
 	ctx = logtags.AddTag(ctx, "cluster", clusterName)
 	ctx = logtags.AddTag(ctx, "tenant", tenID)
 
-	// Use an empty string as the default port as we only care about the
-	// correctly parsing the IP address here.
 	ipAddr, _, err := addr.SplitHostPort(fe.conn.RemoteAddr().String(), "")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21862)
 		clientErr := newErrorf(codeParamsRoutingFailed, "unexpected connection address")
 		log.Errorf(ctx, "could not parse address: %v", err.Error())
 		updateMetricsAndSendErrToClient(clientErr, fe.conn, handler.metrics)
 		return clientErr
+	} else {
+		__antithesis_instrumentation__.Notify(21863)
 	}
+	__antithesis_instrumentation__.Notify(21844)
 
 	errConnection := make(chan error, 1)
 
 	removeListener, err := handler.denyListWatcher.ListenForDenied(
 		denylist.ConnectionTags{IP: ipAddr, Cluster: tenID.String()},
 		func(err error) {
+			__antithesis_instrumentation__.Notify(21864)
 			err = newErrorf(codeExpiredClientConnection, "connection added to deny list: %v", err)
 			select {
-			case errConnection <- err: /* error reported */
-			default: /* the channel already contains an error */
+			case errConnection <- err:
+				__antithesis_instrumentation__.Notify(21865)
+			default:
+				__antithesis_instrumentation__.Notify(21866)
 			}
 		},
 	)
+	__antithesis_instrumentation__.Notify(21845)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21867)
 		log.Errorf(ctx, "connection matched denylist: %v", err)
 		err = newErrorf(codeProxyRefusedConnection, "connection refused")
 		updateMetricsAndSendErrToClient(err, fe.conn, handler.metrics)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(21868)
 	}
+	__antithesis_instrumentation__.Notify(21846)
 	defer removeListener()
 
 	throttleTags := throttler.ConnectionTags{IP: ipAddr, TenantID: tenID.String()}
 	throttleTime, err := handler.throttleService.LoginCheck(throttleTags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21869)
 		log.Errorf(ctx, "throttler refused connection: %v", err.Error())
 		err = throttledError
 		updateMetricsAndSendErrToClient(err, fe.conn, handler.metrics)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(21870)
 	}
+	__antithesis_instrumentation__.Notify(21847)
 
 	connector := &connector{
 		ClusterName:    clusterName,
@@ -336,166 +337,203 @@ func (handler *proxyHandler) handle(ctx context.Context, incomingConn *proxyConn
 		StartupMsg:     backendStartupMsg,
 	}
 
-	// TLS options for the proxy are split into Insecure and SkipVerify.
-	// In insecure mode, TLSConfig is expected to be nil. This will cause the
-	// connector's dialer to skip TLS entirely. If SkipVerify is true,
-	// TLSConfig will be set to a non-nil config with InsecureSkipVerify set
-	// to true. InsecureSkipVerify will provide an encrypted connection but
-	// not verify that the connection recipient is a trusted party.
 	if !handler.Insecure {
+		__antithesis_instrumentation__.Notify(21871)
 		connector.TLSConfig = &tls.Config{InsecureSkipVerify: handler.SkipVerify}
+	} else {
+		__antithesis_instrumentation__.Notify(21872)
 	}
+	__antithesis_instrumentation__.Notify(21848)
 
-	// Monitor for idle connection, if requested.
 	if handler.idleMonitor != nil {
+		__antithesis_instrumentation__.Notify(21873)
 		connector.IdleMonitorWrapperFn = func(serverConn net.Conn) net.Conn {
+			__antithesis_instrumentation__.Notify(21874)
 			return handler.idleMonitor.DetectIdle(serverConn, func() {
+				__antithesis_instrumentation__.Notify(21875)
 				err := newErrorf(codeIdleDisconnect, "idle connection closed")
 				select {
-				case errConnection <- err: /* error reported */
-				default: /* the channel already contains an error */
+				case errConnection <- err:
+					__antithesis_instrumentation__.Notify(21876)
+				default:
+					__antithesis_instrumentation__.Notify(21877)
 				}
 			})
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(21878)
 	}
+	__antithesis_instrumentation__.Notify(21849)
 
 	crdbConn, sentToClient, err := connector.OpenTenantConnWithAuth(ctx, fe.conn,
 		func(status throttler.AttemptStatus) error {
+			__antithesis_instrumentation__.Notify(21879)
 			if err := handler.throttleService.ReportAttempt(
 				ctx, throttleTags, throttleTime, status,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(21881)
 				log.Errorf(ctx, "throttler refused connection after authentication: %v", err.Error())
 				return throttledError
+			} else {
+				__antithesis_instrumentation__.Notify(21882)
 			}
+			__antithesis_instrumentation__.Notify(21880)
 			return nil
 		},
 	)
+	__antithesis_instrumentation__.Notify(21850)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21883)
 		log.Errorf(ctx, "could not connect to cluster: %v", err.Error())
 		if sentToClient {
+			__antithesis_instrumentation__.Notify(21885)
 			handler.metrics.updateForError(err)
 		} else {
+			__antithesis_instrumentation__.Notify(21886)
 			updateMetricsAndSendErrToClient(err, fe.conn, handler.metrics)
 		}
+		__antithesis_instrumentation__.Notify(21884)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(21887)
 	}
-	defer func() { _ = crdbConn.Close() }()
+	__antithesis_instrumentation__.Notify(21851)
+	defer func() { __antithesis_instrumentation__.Notify(21888); _ = crdbConn.Close() }()
+	__antithesis_instrumentation__.Notify(21852)
 
 	handler.metrics.SuccessfulConnCount.Inc(1)
 
 	log.Infof(ctx, "new connection")
 	connBegin := timeutil.Now()
 	defer func() {
+		__antithesis_instrumentation__.Notify(21889)
 		log.Infof(ctx, "closing after %.2fs", timeutil.Since(connBegin).Seconds())
 	}()
+	__antithesis_instrumentation__.Notify(21853)
 
-	// Pass ownership of conn and crdbConn to the forwarder.
 	f, err := forward(ctx, connector, handler.metrics, fe.conn, crdbConn)
 	if err != nil {
-		// Don't send to the client here for the same reason below.
+		__antithesis_instrumentation__.Notify(21890)
+
 		handler.metrics.updateForError(err)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(21891)
 	}
+	__antithesis_instrumentation__.Notify(21854)
 	defer f.Close()
 
-	// Register the forwarder with the connection tracker.
 	handler.connTracker.OnConnect(tenID, f)
 	defer handler.connTracker.OnDisconnect(tenID, f)
 
-	// Block until an error is received, or when the stopper starts quiescing,
-	// whichever that happens first.
-	//
-	// TODO(jaylim-crl): We should handle all these errors properly, and
-	// propagate them back to the client if we're in a safe position to send.
-	// This PR https://github.com/cockroachdb/cockroach/pull/66205 removed error
-	// injections after connection handoff because there was a possibility of
-	// corrupted packets.
-	//
-	// TODO(jaylim-crl): It would be nice to have more consistency in how we
-	// manage background goroutines, communicate errors, etc.
 	select {
 	case <-ctx.Done():
-		// Context cancellations do not terminate forward() so we will need
-		// to manually handle that here. When this returns, we would call
-		// f.Close(). This should only happen during shutdown.
+		__antithesis_instrumentation__.Notify(21892)
+
 		handler.metrics.updateForError(ctx.Err())
 		return ctx.Err()
-	case err := <-f.errCh: // From forwarder.
+	case err := <-f.errCh:
+		__antithesis_instrumentation__.Notify(21893)
 		handler.metrics.updateForError(err)
 		return err
-	case err := <-errConnection: // From denyListWatcher or idleMonitor.
+	case err := <-errConnection:
+		__antithesis_instrumentation__.Notify(21894)
 		handler.metrics.updateForError(err)
 		return err
 	case <-handler.stopper.ShouldQuiesce():
+		__antithesis_instrumentation__.Notify(21895)
 		err := context.Canceled
 		handler.metrics.updateForError(err)
 		return err
 	}
 }
 
-// startPodWatcher runs on a background goroutine and listens to pod change
-// notifications. When a pod enters the DRAINING state, connections to that pod
-// are subject to an idle timeout that closes them after a short period of
-// inactivity. If a pod transitions back to the RUNNING state or to the DELETING
-// state, then the idle timeout needs to be cleared.
 func (handler *proxyHandler) startPodWatcher(ctx context.Context, podWatcher chan *tenant.Pod) {
+	__antithesis_instrumentation__.Notify(21896)
 	for {
+		__antithesis_instrumentation__.Notify(21897)
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(21898)
 			return
 		case pod := <-podWatcher:
+			__antithesis_instrumentation__.Notify(21899)
 			if pod.State == tenant.DRAINING {
+				__antithesis_instrumentation__.Notify(21900)
 				handler.idleMonitor.SetIdleChecks(pod.Addr)
 			} else {
-				// Clear idle checks either for RUNNING or DELETING.
+				__antithesis_instrumentation__.Notify(21901)
+
 				handler.idleMonitor.ClearIdleChecks(pod.Addr)
 			}
 		}
 	}
 }
 
-// incomingTLSConfig gets back the current TLS config for the incoming client
-// connection endpoint.
 func (handler *proxyHandler) incomingTLSConfig() *tls.Config {
+	__antithesis_instrumentation__.Notify(21902)
 	if handler.incomingCert == nil {
+		__antithesis_instrumentation__.Notify(21905)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(21906)
 	}
+	__antithesis_instrumentation__.Notify(21903)
 
 	cert := handler.incomingCert.TLSCert()
 	if cert == nil {
+		__antithesis_instrumentation__.Notify(21907)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(21908)
 	}
+	__antithesis_instrumentation__.Notify(21904)
 
 	return &tls.Config{Certificates: []tls.Certificate{*cert}}
 }
 
-// setupIncomingCert will setup a managed cert for the incoming connections.
-// They can either be unencrypted (in case a cert and key names are empty),
-// using self-signed, runtime generated cert (if cert is set to *) or
-// using file based cert where the cert/key values refer to file names
-// containing the information.
 func (handler *proxyHandler) setupIncomingCert(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(21909)
 	if (handler.ListenKey == "") != (handler.ListenCert == "") {
+		__antithesis_instrumentation__.Notify(21914)
 		return errors.New("must specify either both or neither of cert and key")
+	} else {
+		__antithesis_instrumentation__.Notify(21915)
 	}
+	__antithesis_instrumentation__.Notify(21910)
 
 	if handler.ListenCert == "" {
+		__antithesis_instrumentation__.Notify(21916)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(21917)
 	}
+	__antithesis_instrumentation__.Notify(21911)
 
-	// TODO(darin): change the cert manager so it uses the stopper.
 	certMgr := certmgr.NewCertManager(ctx)
 	var cert certmgr.Cert
 	if handler.ListenCert == "*" {
+		__antithesis_instrumentation__.Notify(21918)
 		cert = certmgr.NewSelfSignedCert(0, 3, 0, 0)
-	} else if handler.ListenCert != "" {
-		cert = certmgr.NewFileCert(handler.ListenCert, handler.ListenKey)
+	} else {
+		__antithesis_instrumentation__.Notify(21919)
+		if handler.ListenCert != "" {
+			__antithesis_instrumentation__.Notify(21920)
+			cert = certmgr.NewFileCert(handler.ListenCert, handler.ListenKey)
+		} else {
+			__antithesis_instrumentation__.Notify(21921)
+		}
 	}
+	__antithesis_instrumentation__.Notify(21912)
 	cert.Reload(ctx)
 	err := cert.Err()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21922)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(21923)
 	}
+	__antithesis_instrumentation__.Notify(21913)
 	certMgr.ManageCert("client", cert)
 	handler.certManager = certMgr
 	handler.incomingCert = cert
@@ -503,126 +541,171 @@ func (handler *proxyHandler) setupIncomingCert(ctx context.Context) error {
 	return nil
 }
 
-// clusterNameAndTenantFromParams extracts the cluster name and tenant ID from
-// the connection parameters, and rewrites the database and options parameters,
-// if necessary.
-//
-// We currently support embedding the cluster identifier in three ways:
-//
-// - Through server name identification (SNI) when using TLS connections
-//   (e.g. serverless-101.5xj.gcp-us-central1.cockroachlabs.cloud)
-//
-// - Within the database param (e.g. "happy-koala-3.defaultdb")
-//
-// - Within the options param (e.g. "... --cluster=happy-koala-5 ...").
-//   PostgreSQL supports three different ways to set a run-time parameter
-//   through its command-line options, i.e. "-c NAME=VALUE", "-cNAME=VALUE", and
-//   "--NAME=VALUE".
 func clusterNameAndTenantFromParams(
 	ctx context.Context, fe *FrontendAdmitInfo,
 ) (*pgproto3.StartupMessage, string, roachpb.TenantID, error) {
+	__antithesis_instrumentation__.Notify(21924)
 	clusterIdentifierDB, databaseName, err := parseDatabaseParam(fe.msg.Parameters["database"])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21936)
 		return fe.msg, "", roachpb.MaxTenantID, err
+	} else {
+		__antithesis_instrumentation__.Notify(21937)
 	}
+	__antithesis_instrumentation__.Notify(21925)
 
 	clusterIdentifierOpt, newOptionsParam, err := parseOptionsParam(fe.msg.Parameters["options"])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(21938)
 		return fe.msg, "", roachpb.MaxTenantID, err
+	} else {
+		__antithesis_instrumentation__.Notify(21939)
 	}
+	__antithesis_instrumentation__.Notify(21926)
 
 	sniTenID, sniPresent := parseSNI(fe.sniServerName)
 
-	// No cluster identifiers were specified.
-	if clusterIdentifierDB == "" && clusterIdentifierOpt == "" {
+	if clusterIdentifierDB == "" && func() bool {
+		__antithesis_instrumentation__.Notify(21940)
+		return clusterIdentifierOpt == "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(21941)
 		if sniPresent {
+			__antithesis_instrumentation__.Notify(21943)
 			return fe.msg, "", sniTenID, nil
+		} else {
+			__antithesis_instrumentation__.Notify(21944)
 		}
+		__antithesis_instrumentation__.Notify(21942)
 		err := errors.New("missing cluster identifier")
 		err = errors.WithHint(err, clusterIdentifierHint)
 		return fe.msg, "", roachpb.MaxTenantID, err
+	} else {
+		__antithesis_instrumentation__.Notify(21945)
 	}
+	__antithesis_instrumentation__.Notify(21927)
 
-	// Ambiguous cluster identifiers.
-	if clusterIdentifierDB != "" && clusterIdentifierOpt != "" &&
-		clusterIdentifierDB != clusterIdentifierOpt {
+	if clusterIdentifierDB != "" && func() bool {
+		__antithesis_instrumentation__.Notify(21946)
+		return clusterIdentifierOpt != "" == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(21947)
+		return clusterIdentifierDB != clusterIdentifierOpt == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(21948)
 		err := errors.New("multiple different cluster identifiers provided")
 		err = errors.WithHintf(err,
 			"Is '%s' or '%s' the identifier for the cluster that you're connecting to?",
 			clusterIdentifierDB, clusterIdentifierOpt)
 		err = errors.WithHint(err, clusterIdentifierHint)
 		return fe.msg, "", roachpb.MaxTenantID, err
+	} else {
+		__antithesis_instrumentation__.Notify(21949)
 	}
+	__antithesis_instrumentation__.Notify(21928)
 
 	if clusterIdentifierDB == "" {
+		__antithesis_instrumentation__.Notify(21950)
 		clusterIdentifierDB = clusterIdentifierOpt
+	} else {
+		__antithesis_instrumentation__.Notify(21951)
 	}
+	__antithesis_instrumentation__.Notify(21929)
 
 	sepIdx := strings.LastIndex(clusterIdentifierDB, clusterTenantSep)
 
-	// Cluster identifier provided without a tenant ID in the end.
-	if sepIdx == -1 || sepIdx == len(clusterIdentifierDB)-1 {
+	if sepIdx == -1 || func() bool {
+		__antithesis_instrumentation__.Notify(21952)
+		return sepIdx == len(clusterIdentifierDB)-1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(21953)
 		err := errors.Errorf("invalid cluster identifier '%s'", clusterIdentifierDB)
 		err = errors.WithHint(err, missingTenantIDHint)
 		err = errors.WithHint(err, clusterNameFormHint)
 		return fe.msg, "", roachpb.MaxTenantID, err
+	} else {
+		__antithesis_instrumentation__.Notify(21954)
 	}
+	__antithesis_instrumentation__.Notify(21930)
 
 	clusterName, tenantIDStr := clusterIdentifierDB[:sepIdx], clusterIdentifierDB[sepIdx+1:]
 
-	// Cluster name does not conform to the expected format (e.g. too short).
 	if !clusterNameRegex.MatchString(clusterName) {
+		__antithesis_instrumentation__.Notify(21955)
 		err := errors.Errorf("invalid cluster identifier '%s'", clusterIdentifierDB)
 		err = errors.WithHintf(err, "Is '%s' a valid cluster name?", clusterName)
 		err = errors.WithHint(err, clusterNameFormHint)
 		return fe.msg, "", roachpb.MaxTenantID, err
+	} else {
+		__antithesis_instrumentation__.Notify(21956)
 	}
+	__antithesis_instrumentation__.Notify(21931)
 
-	// Tenant ID cannot be parsed.
 	tenID, err := strconv.ParseUint(tenantIDStr, 10, 64)
 	if err != nil {
-		// Log these non user-facing errors.
+		__antithesis_instrumentation__.Notify(21957)
+
 		log.Errorf(ctx, "cannot parse tenant ID in %s: %v", clusterIdentifierDB, err)
 		err := errors.Errorf("invalid cluster identifier '%s'", clusterIdentifierDB)
 		err = errors.WithHintf(err, "Is '%s' a valid tenant ID?", tenantIDStr)
 		err = errors.WithHint(err, clusterNameFormHint)
 		return fe.msg, "", roachpb.MaxTenantID, err
+	} else {
+		__antithesis_instrumentation__.Notify(21958)
 	}
+	__antithesis_instrumentation__.Notify(21932)
 
-	// This case only happens if tenID is 0 or 1 (system tenant).
 	if tenID < roachpb.MinTenantID.ToUint64() {
-		// Log these non user-facing errors.
+		__antithesis_instrumentation__.Notify(21959)
+
 		log.Errorf(ctx, "%s contains an invalid tenant ID", clusterIdentifierDB)
 		err := errors.Errorf("invalid cluster identifier '%s'", clusterIdentifierDB)
 		err = errors.WithHintf(err, "Tenant ID %d is invalid.", tenID)
 		return fe.msg, "", roachpb.MaxTenantID, err
+	} else {
+		__antithesis_instrumentation__.Notify(21960)
 	}
+	__antithesis_instrumentation__.Notify(21933)
 
-	// Make and return a copy of the startup msg so the original is not modified.
-	// We will rewrite database and options in the new startup message.
 	paramsOut := map[string]string{}
 	for key, value := range fe.msg.Parameters {
+		__antithesis_instrumentation__.Notify(21961)
 		if key == "database" {
+			__antithesis_instrumentation__.Notify(21962)
 			paramsOut[key] = databaseName
-		} else if key == "options" {
-			if newOptionsParam != "" {
-				paramsOut[key] = newOptionsParam
-			}
 		} else {
-			paramsOut[key] = value
+			__antithesis_instrumentation__.Notify(21963)
+			if key == "options" {
+				__antithesis_instrumentation__.Notify(21964)
+				if newOptionsParam != "" {
+					__antithesis_instrumentation__.Notify(21965)
+					paramsOut[key] = newOptionsParam
+				} else {
+					__antithesis_instrumentation__.Notify(21966)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(21967)
+				paramsOut[key] = value
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(21934)
 
-	// Cluster ID provided through one of options or database (or both and the
-	// info is matching). If sni has been provided as well - check for match.
-	if sniPresent && tenID != sniTenID.InternalValue {
+	if sniPresent && func() bool {
+		__antithesis_instrumentation__.Notify(21968)
+		return tenID != sniTenID.InternalValue == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(21969)
 		err := errors.New("multiple different tenant IDs provided")
 		err = errors.WithHintf(err,
 			"Is '%d' (SNI) or '%d' (database/options) the identifier for the cluster that you're connecting to?",
 			sniTenID.InternalValue, tenID)
 		err = errors.WithHint(err, clusterIdentifierHint)
 		return fe.msg, "", roachpb.MaxTenantID, err
+	} else {
+		__antithesis_instrumentation__.Notify(21970)
 	}
+	__antithesis_instrumentation__.Notify(21935)
 
 	outMsg := &pgproto3.StartupMessage{
 		ProtocolVersion: fe.msg.ProtocolVersion,
@@ -631,107 +714,131 @@ func clusterNameAndTenantFromParams(
 	return outMsg, clusterName, roachpb.MakeTenantID(tenID), nil
 }
 
-// parseSNI parses the sni server name parameter if provided and returns the
-// extracted tenant id. If the extraction was successful the second parameter
-// will be true. If not - false.
 func parseSNI(sniServerName string) (roachpb.TenantID, bool) {
+	__antithesis_instrumentation__.Notify(21971)
 	if sniServerName == "" {
+		__antithesis_instrumentation__.Notify(21976)
 		return roachpb.MaxTenantID, false
+	} else {
+		__antithesis_instrumentation__.Notify(21977)
 	}
+	__antithesis_instrumentation__.Notify(21972)
 
-	// Try to obtain tenant ID from SNI
 	parts := strings.Split(sniServerName, ".")
 	if len(parts) == 0 {
+		__antithesis_instrumentation__.Notify(21978)
 		return roachpb.MaxTenantID, false
+	} else {
+		__antithesis_instrumentation__.Notify(21979)
 	}
+	__antithesis_instrumentation__.Notify(21973)
 
 	hostname := parts[0]
 	hostnameParts := strings.Split(hostname, "-")
-	// TODO serverless prefix may not be appropriate for all cases where the proxy
-	// is used so it needs to be mad configurable. A better design would be to pass
-	// the options (database, options, sni server name) to the tenant directory
-	// and get back a routing id.
-	if len(hostnameParts) != 2 || !strings.EqualFold("serverless", hostnameParts[0]) {
+
+	if len(hostnameParts) != 2 || func() bool {
+		__antithesis_instrumentation__.Notify(21980)
+		return !strings.EqualFold("serverless", hostnameParts[0]) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(21981)
 		return roachpb.MaxTenantID, false
+	} else {
+		__antithesis_instrumentation__.Notify(21982)
 	}
+	__antithesis_instrumentation__.Notify(21974)
 
 	tenID, err := strconv.ParseUint(hostnameParts[1], 10, 64)
-	if err != nil || tenID < roachpb.MinTenantID.ToUint64() {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(21983)
+		return tenID < roachpb.MinTenantID.ToUint64() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(21984)
 		return roachpb.MaxTenantID, false
+	} else {
+		__antithesis_instrumentation__.Notify(21985)
 	}
+	__antithesis_instrumentation__.Notify(21975)
 
 	return roachpb.MakeTenantID(tenID), true
 }
 
-// parseDatabaseParam parses the database parameter from the PG connection
-// string, and tries to extract the cluster identifier if present. The cluster
-// identifier should be embedded in the database parameter using the dot (".")
-// delimiter in the form of "<cluster identifier>.<database name>". This
-// approach is safe because dots are not allowed in the database names
-// themselves.
 func parseDatabaseParam(databaseParam string) (clusterIdentifier, databaseName string, err error) {
-	// Database param is not provided.
+	__antithesis_instrumentation__.Notify(21986)
+
 	if databaseParam == "" {
+		__antithesis_instrumentation__.Notify(21990)
 		return "", "", nil
+	} else {
+		__antithesis_instrumentation__.Notify(21991)
 	}
+	__antithesis_instrumentation__.Notify(21987)
 
 	parts := strings.Split(databaseParam, ".")
 
-	// Database param provided without cluster name.
 	if len(parts) <= 1 {
+		__antithesis_instrumentation__.Notify(21992)
 		return "", databaseParam, nil
+	} else {
+		__antithesis_instrumentation__.Notify(21993)
 	}
+	__antithesis_instrumentation__.Notify(21988)
 
 	clusterIdentifier, databaseName = parts[0], parts[1]
 
-	// Ensure that the param is in the right format if the delimiter is provided.
-	if len(parts) > 2 || clusterIdentifier == "" || databaseName == "" {
+	if len(parts) > 2 || func() bool {
+		__antithesis_instrumentation__.Notify(21994)
+		return clusterIdentifier == "" == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(21995)
+		return databaseName == "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(21996)
 		return "", "", errors.New("invalid database param")
+	} else {
+		__antithesis_instrumentation__.Notify(21997)
 	}
+	__antithesis_instrumentation__.Notify(21989)
 
 	return clusterIdentifier, databaseName, nil
 }
 
-// parseOptionsParam parses the options parameter from the PG connection string,
-// and tries to return the cluster identifier if present. It also returns the
-// options parameter with the cluster key stripped out. Just like PostgreSQL,
-// the sqlproxy supports three different ways to set a run-time parameter
-// through its command-line options:
-//     -c NAME=VALUE (commonly used throughout documentation around PGOPTIONS)
-//     -cNAME=VALUE
-//     --NAME=VALUE
-//
-// Note that this parsing approach is not perfect as it allows a negative case
-// like options="-c --cluster=happy-koala -c -c -c" to go through. To properly
-// parse this, we need to traverse the string from left to right, and look at
-// every single argument, but that involves quite a bit of work, so we'll punt
-// for now.
 func parseOptionsParam(optionsParam string) (clusterIdentifier, newOptionsParam string, err error) {
-	// Only search up to 2 in case of large inputs.
-	matches := clusterIdentifierLongOptionRE.FindAllStringSubmatch(optionsParam, 2 /* n */)
+	__antithesis_instrumentation__.Notify(21998)
+
+	matches := clusterIdentifierLongOptionRE.FindAllStringSubmatch(optionsParam, 2)
 	if len(matches) == 0 {
+		__antithesis_instrumentation__.Notify(22003)
 		return "", optionsParam, nil
+	} else {
+		__antithesis_instrumentation__.Notify(22004)
 	}
+	__antithesis_instrumentation__.Notify(21999)
 
 	if len(matches) > 1 {
-		// Technically we could still allow requests to go through if all
-		// cluster identifiers match, but we don't want to parse the entire
-		// string, so we will just error out if at least two cluster flags are
-		// provided.
+		__antithesis_instrumentation__.Notify(22005)
+
 		return "", "", errors.New("multiple cluster flags provided")
+	} else {
+		__antithesis_instrumentation__.Notify(22006)
 	}
+	__antithesis_instrumentation__.Notify(22000)
 
-	// Length of each match should always be 2 with the given regex, one for
-	// the full string, and the other for the cluster identifier.
 	if len(matches[0]) != 2 {
-		// We don't want to panic here.
-		return "", "", errors.New("internal server error")
-	}
+		__antithesis_instrumentation__.Notify(22007)
 
-	// Flag was provided, but value is NULL.
-	if len(matches[0][1]) == 0 {
-		return "", "", errors.New("invalid cluster flag")
+		return "", "", errors.New("internal server error")
+	} else {
+		__antithesis_instrumentation__.Notify(22008)
 	}
+	__antithesis_instrumentation__.Notify(22001)
+
+	if len(matches[0][1]) == 0 {
+		__antithesis_instrumentation__.Notify(22009)
+		return "", "", errors.New("invalid cluster flag")
+	} else {
+		__antithesis_instrumentation__.Notify(22010)
+	}
+	__antithesis_instrumentation__.Notify(22002)
 
 	newOptionsParam = strings.ReplaceAll(optionsParam, matches[0][0], "")
 	newOptionsParam = strings.TrimSpace(newOptionsParam)

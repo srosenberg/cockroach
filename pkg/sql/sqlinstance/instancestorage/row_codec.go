@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package instancestorage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/base"
@@ -28,15 +20,14 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// rowCodec encodes/decodes rows from the sql_instances table.
 type rowCodec struct {
 	codec   keys.SQLCodec
 	columns []catalog.Column
 	decoder valueside.Decoder
 }
 
-// MakeRowCodec makes a new rowCodec for the sql_instances table.
 func makeRowCodec(codec keys.SQLCodec) rowCodec {
+	__antithesis_instrumentation__.Notify(624121)
 	columns := systemschema.SQLInstancesTable.PublicColumns()
 	return rowCodec{
 		codec:   codec,
@@ -45,7 +36,6 @@ func makeRowCodec(codec keys.SQLCodec) rowCodec {
 	}
 }
 
-// encodeRow encodes a row of the sql_instances table.
 func (d *rowCodec) encodeRow(
 	instanceID base.SQLInstanceID,
 	addr string,
@@ -53,19 +43,28 @@ func (d *rowCodec) encodeRow(
 	codec keys.SQLCodec,
 	tableID descpb.ID,
 ) (kv kv.KeyValue, err error) {
+	__antithesis_instrumentation__.Notify(624122)
 	addrDatum := tree.NewDString(addr)
 	var valueBuf []byte
 	valueBuf, err = valueside.Encode(
 		[]byte(nil), valueside.MakeColumnIDDelta(0, d.columns[1].GetID()), addrDatum, []byte(nil))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(624125)
 		return kv, err
+	} else {
+		__antithesis_instrumentation__.Notify(624126)
 	}
+	__antithesis_instrumentation__.Notify(624123)
 	sessionDatum := tree.NewDBytes(tree.DBytes(sessionID.UnsafeBytes()))
 	sessionColDiff := valueside.MakeColumnIDDelta(d.columns[1].GetID(), d.columns[2].GetID())
 	valueBuf, err = valueside.Encode(valueBuf, sessionColDiff, sessionDatum, []byte(nil))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(624127)
 		return kv, err
+	} else {
+		__antithesis_instrumentation__.Notify(624128)
 	}
+	__antithesis_instrumentation__.Notify(624124)
 	var v roachpb.Value
 	v.SetTuple(valueBuf)
 	kv.Value = &v
@@ -73,7 +72,6 @@ func (d *rowCodec) encodeRow(
 	return kv, nil
 }
 
-// decodeRow decodes a row of the sql_instances table.
 func (d *rowCodec) decodeRow(
 	kv kv.KeyValue,
 ) (
@@ -84,51 +82,84 @@ func (d *rowCodec) decodeRow(
 	tombstone bool,
 	_ error,
 ) {
+	__antithesis_instrumentation__.Notify(624129)
 	var alloc tree.DatumAlloc
-	// First, decode the id field from the index key.
+
 	{
+		__antithesis_instrumentation__.Notify(624136)
 		types := []*types.T{d.columns[0].GetType()}
 		row := make([]rowenc.EncDatum, 1)
 		_, _, err := rowenc.DecodeIndexKey(d.codec, types, row, nil, kv.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(624139)
 			return base.SQLInstanceID(0), "", "", hlc.Timestamp{}, false, errors.Wrap(err, "failed to decode key")
+		} else {
+			__antithesis_instrumentation__.Notify(624140)
 		}
+		__antithesis_instrumentation__.Notify(624137)
 		if err := row[0].EnsureDecoded(types[0], &alloc); err != nil {
+			__antithesis_instrumentation__.Notify(624141)
 			return base.SQLInstanceID(0), "", "", hlc.Timestamp{}, false, err
+		} else {
+			__antithesis_instrumentation__.Notify(624142)
 		}
+		__antithesis_instrumentation__.Notify(624138)
 		instanceID = base.SQLInstanceID(tree.MustBeDInt(row[0].Datum))
 	}
+	__antithesis_instrumentation__.Notify(624130)
 	if !kv.Value.IsPresent() {
+		__antithesis_instrumentation__.Notify(624143)
 		return instanceID, "", "", hlc.Timestamp{}, true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(624144)
 	}
+	__antithesis_instrumentation__.Notify(624131)
 	timestamp = kv.Value.Timestamp
-	// The rest of the columns are stored as a family.
+
 	bytes, err := kv.Value.GetTuple()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(624145)
 		return instanceID, "", "", hlc.Timestamp{}, false, err
+	} else {
+		__antithesis_instrumentation__.Notify(624146)
 	}
+	__antithesis_instrumentation__.Notify(624132)
 
 	datums, err := d.decoder.Decode(&alloc, bytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(624147)
 		return instanceID, "", "", hlc.Timestamp{}, false, err
+	} else {
+		__antithesis_instrumentation__.Notify(624148)
 	}
+	__antithesis_instrumentation__.Notify(624133)
 
 	if addrVal := datums[1]; addrVal != tree.DNull {
+		__antithesis_instrumentation__.Notify(624149)
 		addr = string(tree.MustBeDString(addrVal))
+	} else {
+		__antithesis_instrumentation__.Notify(624150)
 	}
+	__antithesis_instrumentation__.Notify(624134)
 	if sessionIDVal := datums[2]; sessionIDVal != tree.DNull {
+		__antithesis_instrumentation__.Notify(624151)
 		sessionID = sqlliveness.SessionID(tree.MustBeDBytes(sessionIDVal))
+	} else {
+		__antithesis_instrumentation__.Notify(624152)
 	}
+	__antithesis_instrumentation__.Notify(624135)
 
 	return instanceID, addr, sessionID, timestamp, false, nil
 }
 
 func makeTablePrefix(codec keys.SQLCodec, tableID descpb.ID) roachpb.Key {
+	__antithesis_instrumentation__.Notify(624153)
 	return codec.IndexPrefix(uint32(tableID), 1)
 }
 
 func makeInstanceKey(
 	codec keys.SQLCodec, tableID descpb.ID, instanceID base.SQLInstanceID,
 ) roachpb.Key {
+	__antithesis_instrumentation__.Notify(624154)
 	return keys.MakeFamilyKey(encoding.EncodeVarintAscending(makeTablePrefix(codec, tableID), int64(instanceID)), 0)
 }

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,25 +23,16 @@ import (
 type aggregateFuncs []tree.AggregateFunc
 
 func (af aggregateFuncs) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(571624)
 	for _, f := range af {
+		__antithesis_instrumentation__.Notify(571625)
 		f.Close(ctx)
 	}
 }
 
-// aggregatorBase is the foundation of the processor core type that does
-// "aggregation" in the SQL sense. It groups rows and computes an aggregate for
-// each group. The group is configured using the group key and the aggregator
-// can be configured with one or more aggregation functions, as defined in the
-// AggregatorSpec_Func enum.
-//
-// aggregatorBase's output schema is comprised of what is specified by the
-// accompanying SELECT expressions.
 type aggregatorBase struct {
 	execinfra.ProcessorBase
 
-	// runningState represents the state of the aggregator. This is in addition to
-	// ProcessorBase.State - the runningState is only relevant when
-	// ProcessorBase.State == StateRunning.
 	runningState aggregatorState
 	input        execinfra.RowSource
 	inputDone    bool
@@ -62,9 +45,6 @@ type aggregatorBase struct {
 	bucketsAcc  mon.BoundAccount
 	aggFuncsAcc mon.BoundAccount
 
-	// isScalar can only be set if there are no groupCols, and it means that we
-	// will generate a result row even if there are no input rows. Used for
-	// queries like SELECT MAX(n) FROM t.
 	isScalar         bool
 	groupCols        []uint32
 	orderedGroupCols []uint32
@@ -78,10 +58,6 @@ type aggregatorBase struct {
 	cancelChecker cancelchecker.CancelChecker
 }
 
-// init initializes the aggregatorBase.
-//
-// trailingMetaCallback is passed as part of ProcStateOpts; the inputs to drain
-// are in aggregatorBase.
 func (ag *aggregatorBase) init(
 	self execinfra.RowSource,
 	flowCtx *execinfra.FlowCtx,
@@ -110,11 +86,6 @@ func (ag *aggregatorBase) init(
 	ag.arena = stringarena.Make(&ag.bucketsAcc)
 	ag.aggFuncsAcc = memMonitor.MakeBoundAccount()
 
-	// Loop over the select expressions and extract any aggregate functions --
-	// non-aggregation functions are replaced with parser.NewIdentAggregate,
-	// (which just returns the last value added to them for a bucket) to provide
-	// grouped-by values for each bucket.  ag.funcs is updated to contain all
-	// the functions which need to be fed values.
 	ag.inputTypes = input.OutputTypes()
 	semaCtx := flowCtx.NewSemaContext(flowCtx.EvalCtx.Txn)
 	for i, aggInfo := range spec.Aggregations {
@@ -152,12 +123,16 @@ func (ag *aggregatorBase) init(
 	)
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (ag *aggregatorBase) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(571626)
 	is, ok := getInputStats(ag.input)
 	if !ok {
+		__antithesis_instrumentation__.Notify(571628)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(571629)
 	}
+	__antithesis_instrumentation__.Notify(571627)
 	return &execinfrapb.ComponentStats{
 		Inputs: []execinfrapb.InputStats{is},
 		Exec: execinfrapb.ExecStats{
@@ -167,57 +142,55 @@ func (ag *aggregatorBase) execStatsForTrace() *execinfrapb.ComponentStats {
 	}
 }
 
-// ChildCount is part of the execinfra.OpNode interface.
 func (ag *aggregatorBase) ChildCount(verbose bool) int {
+	__antithesis_instrumentation__.Notify(571630)
 	if _, ok := ag.input.(execinfra.OpNode); ok {
+		__antithesis_instrumentation__.Notify(571632)
 		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(571633)
 	}
+	__antithesis_instrumentation__.Notify(571631)
 	return 0
 }
 
-// Child is part of the execinfra.OpNode interface.
 func (ag *aggregatorBase) Child(nth int, verbose bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(571634)
 	if nth == 0 {
+		__antithesis_instrumentation__.Notify(571636)
 		if n, ok := ag.input.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(571638)
 			return n
+		} else {
+			__antithesis_instrumentation__.Notify(571639)
 		}
+		__antithesis_instrumentation__.Notify(571637)
 		panic("input to aggregatorBase is not an execinfra.OpNode")
+	} else {
+		__antithesis_instrumentation__.Notify(571640)
 	}
+	__antithesis_instrumentation__.Notify(571635)
 	panic(errors.AssertionFailedf("invalid index %d", nth))
 }
 
 const (
-	// hashAggregatorBucketsInitialLen is a guess on how many "items" the
-	// 'buckets' map of hashAggregator has the capacity for initially.
 	hashAggregatorBucketsInitialLen = 8
 )
 
-// hashAggregator is a specialization of aggregatorBase that must keep track of
-// multiple grouping buckets at a time.
 type hashAggregator struct {
 	aggregatorBase
 
-	// buckets is used during the accumulation phase to track the bucket keys
-	// that have been seen. After accumulation, the keys are extracted into
-	// bucketsIter for iteration.
 	buckets     map[string]aggregateFuncs
 	bucketsIter []string
-	// bucketsLenGrowThreshold is the threshold which, when reached by the
-	// number of items in 'buckets', will trigger the update to memory
-	// accounting. It will start out at hashAggregatorBucketsInitialLen and
-	// then will be doubling in size.
+
 	bucketsLenGrowThreshold int
-	// alreadyAccountedFor tracks the number of items in 'buckets' memory for
-	// which we have already accounted for.
+
 	alreadyAccountedFor int
 }
 
-// orderedAggregator is a specialization of aggregatorBase that only needs to
-// keep track of a single grouping bucket at a time.
 type orderedAggregator struct {
 	aggregatorBase
 
-	// bucket is used during the accumulation phase to aggregate results.
 	bucket aggregateFuncs
 }
 
@@ -233,16 +206,13 @@ var _ execinfra.OpNode = &orderedAggregator{}
 
 const orderedAggregatorProcName = "ordered aggregator"
 
-// aggregatorState represents the state of the processor.
 type aggregatorState int
 
 const (
 	aggStateUnknown aggregatorState = iota
-	// aggAccumulating means that rows are being read from the input and used to
-	// compute intermediary aggregation results.
+
 	aggAccumulating
-	// aggEmittingRows means that accumulation has finished and rows are being
-	// sent to the output.
+
 	aggEmittingRows
 )
 
@@ -254,12 +224,21 @@ func newAggregator(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (execinfra.Processor, error) {
+	__antithesis_instrumentation__.Notify(571641)
 	if spec.IsRowCount() {
+		__antithesis_instrumentation__.Notify(571645)
 		return newCountAggregator(flowCtx, processorID, input, post, output)
+	} else {
+		__antithesis_instrumentation__.Notify(571646)
 	}
+	__antithesis_instrumentation__.Notify(571642)
 	if len(spec.OrderedGroupCols) == len(spec.GroupCols) {
+		__antithesis_instrumentation__.Notify(571647)
 		return newOrderedAggregator(flowCtx, processorID, spec, input, post, output)
+	} else {
+		__antithesis_instrumentation__.Notify(571648)
 	}
+	__antithesis_instrumentation__.Notify(571643)
 
 	ag := &hashAggregator{
 		buckets:                 make(map[string]aggregateFuncs),
@@ -275,16 +254,18 @@ func newAggregator(
 		post,
 		output,
 		func() []execinfrapb.ProducerMetadata {
+			__antithesis_instrumentation__.Notify(571649)
 			ag.close()
 			return nil
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(571650)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(571651)
 	}
+	__antithesis_instrumentation__.Notify(571644)
 
-	// A new tree.EvalCtx was created during initializing aggregatorBase above
-	// and will be used only by this aggregator, so it is ok to update EvalCtx
-	// directly.
 	ag.EvalCtx.SingleDatumAggMemAccount = &ag.aggFuncsAcc
 	return ag, nil
 }
@@ -297,6 +278,7 @@ func newOrderedAggregator(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*orderedAggregator, error) {
+	__antithesis_instrumentation__.Notify(571652)
 	ag := &orderedAggregator{}
 
 	if err := ag.init(
@@ -308,31 +290,34 @@ func newOrderedAggregator(
 		post,
 		output,
 		func() []execinfrapb.ProducerMetadata {
+			__antithesis_instrumentation__.Notify(571654)
 			ag.close()
 			return nil
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(571655)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(571656)
 	}
+	__antithesis_instrumentation__.Notify(571653)
 
-	// A new tree.EvalCtx was created during initializing aggregatorBase above
-	// and will be used only by this aggregator, so it is ok to update EvalCtx
-	// directly.
 	ag.EvalCtx.SingleDatumAggMemAccount = &ag.aggFuncsAcc
 	return ag, nil
 }
 
-// Start is part of the RowSource interface.
 func (ag *hashAggregator) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(571657)
 	ag.start(ctx, hashAggregatorProcName)
 }
 
-// Start is part of the RowSource interface.
 func (ag *orderedAggregator) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(571658)
 	ag.start(ctx, orderedAggregatorProcName)
 }
 
 func (ag *aggregatorBase) start(ctx context.Context, procName string) {
+	__antithesis_instrumentation__.Notify(571659)
 	ctx = ag.StartInternal(ctx, procName)
 	ag.input.Start(ctx)
 	ag.cancelChecker.Reset(ctx)
@@ -340,441 +325,594 @@ func (ag *aggregatorBase) start(ctx context.Context, procName string) {
 }
 
 func (ag *hashAggregator) close() {
+	__antithesis_instrumentation__.Notify(571660)
 	if ag.InternalClose() {
+		__antithesis_instrumentation__.Notify(571661)
 		log.VEventf(ag.Ctx, 2, "exiting aggregator")
-		// If we have started emitting rows, bucketsIter will represent which
-		// buckets are still open, since buckets are closed once their results are
-		// emitted.
+
 		if ag.bucketsIter == nil {
+			__antithesis_instrumentation__.Notify(571663)
 			for _, bucket := range ag.buckets {
+				__antithesis_instrumentation__.Notify(571664)
 				bucket.close(ag.Ctx)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(571665)
 			for _, bucket := range ag.bucketsIter {
+				__antithesis_instrumentation__.Notify(571666)
 				ag.buckets[bucket].close(ag.Ctx)
 			}
 		}
-		// Make sure to release any remaining memory under 'buckets'.
+		__antithesis_instrumentation__.Notify(571662)
+
 		ag.buckets = nil
-		// Note that we should be closing accounts only after closing all the
-		// buckets since the latter might be releasing some precisely tracked
-		// memory, and if we were to close the accounts first, there would be
-		// no memory to release for the buckets.
+
 		ag.bucketsAcc.Close(ag.Ctx)
 		ag.aggFuncsAcc.Close(ag.Ctx)
 		ag.MemMonitor.Stop(ag.Ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(571667)
 	}
 }
 
 func (ag *orderedAggregator) close() {
+	__antithesis_instrumentation__.Notify(571668)
 	if ag.InternalClose() {
+		__antithesis_instrumentation__.Notify(571669)
 		log.VEventf(ag.Ctx, 2, "exiting aggregator")
 		if ag.bucket != nil {
+			__antithesis_instrumentation__.Notify(571671)
 			ag.bucket.close(ag.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(571672)
 		}
-		// Note that we should be closing accounts only after closing the
-		// bucket since the latter might be releasing some precisely tracked
-		// memory, and if we were to close the accounts first, there would be
-		// no memory to release for the bucket.
+		__antithesis_instrumentation__.Notify(571670)
+
 		ag.bucketsAcc.Close(ag.Ctx)
 		ag.aggFuncsAcc.Close(ag.Ctx)
 		ag.MemMonitor.Stop(ag.Ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(571673)
 	}
 }
 
-// matchLastOrdGroupCols takes a row and matches it with the row stored by
-// lastOrdGroupCols. It returns true if the two rows are equal on the grouping
-// columns, and false otherwise.
 func (ag *aggregatorBase) matchLastOrdGroupCols(row rowenc.EncDatumRow) (bool, error) {
+	__antithesis_instrumentation__.Notify(571674)
 	for _, colIdx := range ag.orderedGroupCols {
+		__antithesis_instrumentation__.Notify(571676)
 		res, err := ag.lastOrdGroupCols[colIdx].Compare(
 			ag.inputTypes[colIdx], &ag.datumAlloc, ag.EvalCtx, &row[colIdx],
 		)
-		if res != 0 || err != nil {
+		if res != 0 || func() bool {
+			__antithesis_instrumentation__.Notify(571677)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(571678)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(571679)
 		}
 	}
+	__antithesis_instrumentation__.Notify(571675)
 	return true, nil
 }
 
-// accumulateRows continually reads rows from the input and accumulates them
-// into intermediary aggregate results. If it encounters metadata, the metadata
-// is immediately returned. Subsequent calls of this function will resume row
-// accumulation.
 func (ag *hashAggregator) accumulateRows() (
 	aggregatorState,
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(571680)
 	for {
+		__antithesis_instrumentation__.Notify(571685)
 		row, meta := ag.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(571689)
 			if meta.Err != nil {
-				ag.MoveToDraining(nil /* err */)
+				__antithesis_instrumentation__.Notify(571691)
+				ag.MoveToDraining(nil)
 				return aggStateUnknown, nil, meta
+			} else {
+				__antithesis_instrumentation__.Notify(571692)
 			}
+			__antithesis_instrumentation__.Notify(571690)
 			return aggAccumulating, nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(571693)
 		}
+		__antithesis_instrumentation__.Notify(571686)
 		if row == nil {
+			__antithesis_instrumentation__.Notify(571694)
 			log.VEvent(ag.Ctx, 1, "accumulation complete")
 			ag.inputDone = true
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(571695)
 		}
+		__antithesis_instrumentation__.Notify(571687)
 
 		if ag.lastOrdGroupCols == nil {
+			__antithesis_instrumentation__.Notify(571696)
 			ag.lastOrdGroupCols = ag.rowAlloc.CopyRow(row)
 		} else {
+			__antithesis_instrumentation__.Notify(571697)
 			matched, err := ag.matchLastOrdGroupCols(row)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(571699)
 				ag.MoveToDraining(err)
 				return aggStateUnknown, nil, nil
+			} else {
+				__antithesis_instrumentation__.Notify(571700)
 			}
+			__antithesis_instrumentation__.Notify(571698)
 			if !matched {
+				__antithesis_instrumentation__.Notify(571701)
 				copy(ag.lastOrdGroupCols, row)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(571702)
 			}
 		}
+		__antithesis_instrumentation__.Notify(571688)
 		if err := ag.accumulateRow(row); err != nil {
+			__antithesis_instrumentation__.Notify(571703)
 			ag.MoveToDraining(err)
 			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571704)
 		}
 	}
+	__antithesis_instrumentation__.Notify(571681)
 
-	// Queries like `SELECT MAX(n) FROM t` expect a row of NULLs if nothing was
-	// aggregated.
-	if len(ag.buckets) < 1 && len(ag.groupCols) == 0 {
+	if len(ag.buckets) < 1 && func() bool {
+		__antithesis_instrumentation__.Notify(571705)
+		return len(ag.groupCols) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(571706)
 		bucket, err := ag.createAggregateFuncs()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571708)
 			ag.MoveToDraining(err)
 			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571709)
 		}
+		__antithesis_instrumentation__.Notify(571707)
 		ag.buckets[""] = bucket
+	} else {
+		__antithesis_instrumentation__.Notify(571710)
 	}
+	__antithesis_instrumentation__.Notify(571682)
 
-	// Note that, for simplicity, we're ignoring the overhead of the slice of
-	// strings.
 	if err := ag.bucketsAcc.Grow(ag.Ctx, int64(len(ag.buckets))*memsize.String); err != nil {
+		__antithesis_instrumentation__.Notify(571711)
 		ag.MoveToDraining(err)
 		return aggStateUnknown, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(571712)
 	}
+	__antithesis_instrumentation__.Notify(571683)
 	ag.bucketsIter = make([]string, 0, len(ag.buckets))
 	for bucket := range ag.buckets {
+		__antithesis_instrumentation__.Notify(571713)
 		ag.bucketsIter = append(ag.bucketsIter, bucket)
 	}
+	__antithesis_instrumentation__.Notify(571684)
 
-	// Transition to aggEmittingRows, and let it generate the next row/meta.
 	return aggEmittingRows, nil, nil
 }
 
-// accumulateRows continually reads rows from the input and accumulates them
-// into intermediary aggregate results. If it encounters metadata, the metadata
-// is immediately returned. Subsequent calls of this function will resume row
-// accumulation.
 func (ag *orderedAggregator) accumulateRows() (
 	aggregatorState,
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(571714)
 	for {
+		__antithesis_instrumentation__.Notify(571717)
 		row, meta := ag.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(571721)
 			if meta.Err != nil {
-				ag.MoveToDraining(nil /* err */)
+				__antithesis_instrumentation__.Notify(571723)
+				ag.MoveToDraining(nil)
 				return aggStateUnknown, nil, meta
+			} else {
+				__antithesis_instrumentation__.Notify(571724)
 			}
+			__antithesis_instrumentation__.Notify(571722)
 			return aggAccumulating, nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(571725)
 		}
+		__antithesis_instrumentation__.Notify(571718)
 		if row == nil {
+			__antithesis_instrumentation__.Notify(571726)
 			log.VEvent(ag.Ctx, 1, "accumulation complete")
 			ag.inputDone = true
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(571727)
 		}
+		__antithesis_instrumentation__.Notify(571719)
 
 		if ag.lastOrdGroupCols == nil {
+			__antithesis_instrumentation__.Notify(571728)
 			ag.lastOrdGroupCols = ag.rowAlloc.CopyRow(row)
 		} else {
+			__antithesis_instrumentation__.Notify(571729)
 			matched, err := ag.matchLastOrdGroupCols(row)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(571731)
 				ag.MoveToDraining(err)
 				return aggStateUnknown, nil, nil
+			} else {
+				__antithesis_instrumentation__.Notify(571732)
 			}
+			__antithesis_instrumentation__.Notify(571730)
 			if !matched {
+				__antithesis_instrumentation__.Notify(571733)
 				copy(ag.lastOrdGroupCols, row)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(571734)
 			}
 		}
+		__antithesis_instrumentation__.Notify(571720)
 		if err := ag.accumulateRow(row); err != nil {
+			__antithesis_instrumentation__.Notify(571735)
 			ag.MoveToDraining(err)
 			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571736)
 		}
 	}
+	__antithesis_instrumentation__.Notify(571715)
 
-	// Queries like `SELECT MAX(n) FROM t` expect a row of NULLs if nothing was
-	// aggregated.
-	if ag.bucket == nil && ag.isScalar {
+	if ag.bucket == nil && func() bool {
+		__antithesis_instrumentation__.Notify(571737)
+		return ag.isScalar == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(571738)
 		var err error
 		ag.bucket, err = ag.createAggregateFuncs()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571739)
 			ag.MoveToDraining(err)
 			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571740)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(571741)
 	}
+	__antithesis_instrumentation__.Notify(571716)
 
-	// Transition to aggEmittingRows, and let it generate the next row/meta.
 	return aggEmittingRows, nil, nil
 }
 
-// getAggResults returns the new aggregatorState and the results from the
-// bucket. The bucket is closed.
 func (ag *aggregatorBase) getAggResults(
 	bucket aggregateFuncs,
 ) (aggregatorState, rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(571742)
 	defer bucket.close(ag.Ctx)
 
 	for i, b := range bucket {
+		__antithesis_instrumentation__.Notify(571745)
 		result, err := b.Result()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571748)
 			ag.MoveToDraining(err)
 			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571749)
 		}
+		__antithesis_instrumentation__.Notify(571746)
 		if result == nil {
-			// We can't encode nil into an EncDatum, so we represent it with DNull.
+			__antithesis_instrumentation__.Notify(571750)
+
 			result = tree.DNull
+		} else {
+			__antithesis_instrumentation__.Notify(571751)
 		}
+		__antithesis_instrumentation__.Notify(571747)
 		ag.row[i] = rowenc.DatumToEncDatum(ag.outputTypes[i], result)
 	}
+	__antithesis_instrumentation__.Notify(571743)
 
 	if outRow := ag.ProcessRowHelper(ag.row); outRow != nil {
+		__antithesis_instrumentation__.Notify(571752)
 		return aggEmittingRows, outRow, nil
+	} else {
+		__antithesis_instrumentation__.Notify(571753)
 	}
-	// We might have switched to draining, we might not have. In case we
-	// haven't, aggEmittingRows is accurate. If we have, it will be ignored by
-	// the caller.
+	__antithesis_instrumentation__.Notify(571744)
+
 	return aggEmittingRows, nil, nil
 }
 
-// emitRow constructs an output row from an accumulated bucket and returns it.
-//
-// emitRow() might move to stateDraining. It might also not return a row if the
-// ProcOutputHelper filtered the current row out.
 func (ag *hashAggregator) emitRow() (
 	aggregatorState,
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(571754)
 	if len(ag.bucketsIter) == 0 {
-		// We've exhausted all of the aggregation buckets.
-		if ag.inputDone {
-			// The input has been fully consumed. Transition to draining so that we
-			// emit any metadata that we've produced.
-			ag.MoveToDraining(nil /* err */)
-			return aggStateUnknown, nil, nil
-		}
+		__antithesis_instrumentation__.Notify(571756)
 
-		// We've only consumed part of the input where the rows are equal over
-		// the columns specified by ag.orderedGroupCols, so we need to continue
-		// accumulating the remaining rows.
+		if ag.inputDone {
+			__antithesis_instrumentation__.Notify(571761)
+
+			ag.MoveToDraining(nil)
+			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571762)
+		}
+		__antithesis_instrumentation__.Notify(571757)
 
 		if err := ag.arena.UnsafeReset(ag.Ctx); err != nil {
+			__antithesis_instrumentation__.Notify(571763)
 			ag.MoveToDraining(err)
 			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571764)
 		}
-		// Before we create a new 'buckets' map below, we need to "release" the
-		// already accounted for memory of the current map.
+		__antithesis_instrumentation__.Notify(571758)
+
 		ag.bucketsAcc.Shrink(ag.Ctx, int64(ag.alreadyAccountedFor)*memsize.MapEntryOverhead)
-		// Note that, for simplicity, we're ignoring the overhead of the slice of
-		// strings.
+
 		ag.bucketsAcc.Shrink(ag.Ctx, int64(len(ag.buckets))*memsize.String)
 		ag.bucketsIter = nil
 		ag.buckets = make(map[string]aggregateFuncs)
 		ag.bucketsLenGrowThreshold = hashAggregatorBucketsInitialLen
 		ag.alreadyAccountedFor = 0
 		for _, f := range ag.funcs {
+			__antithesis_instrumentation__.Notify(571765)
 			if f.seen != nil {
-				// It turns out that it is faster to delete entries from the
-				// old map rather than allocating a new one.
+				__antithesis_instrumentation__.Notify(571766)
+
 				for s := range f.seen {
+					__antithesis_instrumentation__.Notify(571767)
 					delete(f.seen, s)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(571768)
 			}
 		}
+		__antithesis_instrumentation__.Notify(571759)
 
 		if err := ag.accumulateRow(ag.lastOrdGroupCols); err != nil {
+			__antithesis_instrumentation__.Notify(571769)
 			ag.MoveToDraining(err)
 			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571770)
 		}
+		__antithesis_instrumentation__.Notify(571760)
 
 		return aggAccumulating, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(571771)
 	}
+	__antithesis_instrumentation__.Notify(571755)
 
 	bucket := ag.bucketsIter[0]
 	ag.bucketsIter = ag.bucketsIter[1:]
 
-	// Once we get the results from the bucket, we can delete it from the map.
-	// This will allow us to return the memory to the system before the hash
-	// aggregator is fully done (which matters when we have many buckets).
-	// NOTE: accounting for the memory under aggregate builtins in the bucket
-	// is updated in getAggResults (the bucket will be closed), however, we
-	// choose to not reduce our estimate of the map's internal footprint
-	// because it is error-prone to estimate the new footprint (we don't know
-	// whether and when Go runtime will release some of the underlying memory).
-	// This behavior is ok, though, since actual usage of buckets will be lower
-	// than what we accounted for - in the worst case, the query might hit a
-	// memory budget limit and error out when it might actually be within the
-	// limit. However, we might be under accounting memory usage in other
-	// places, so having some over accounting here might be actually beneficial
-	// as a defensive mechanism against OOM crashes.
 	state, row, meta := ag.getAggResults(ag.buckets[bucket])
 	delete(ag.buckets, bucket)
 	return state, row, meta
 }
 
-// emitRow constructs an output row from an accumulated bucket and returns it.
-//
-// emitRow() might move to stateDraining. It might also not return a row if the
-// ProcOutputHelper filtered a the current row out.
 func (ag *orderedAggregator) emitRow() (
 	aggregatorState,
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(571772)
 	if ag.bucket == nil {
-		// We've exhausted all of the aggregation buckets.
-		if ag.inputDone {
-			// The input has been fully consumed. Transition to draining so that we
-			// emit any metadata that we've produced.
-			ag.MoveToDraining(nil /* err */)
-			return aggStateUnknown, nil, nil
-		}
+		__antithesis_instrumentation__.Notify(571774)
 
-		// We've only consumed part of the input where the rows are equal over
-		// the columns specified by ag.orderedGroupCols, so we need to continue
-		// accumulating the remaining rows.
+		if ag.inputDone {
+			__antithesis_instrumentation__.Notify(571779)
+
+			ag.MoveToDraining(nil)
+			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571780)
+		}
+		__antithesis_instrumentation__.Notify(571775)
 
 		if err := ag.arena.UnsafeReset(ag.Ctx); err != nil {
+			__antithesis_instrumentation__.Notify(571781)
 			ag.MoveToDraining(err)
 			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571782)
 		}
+		__antithesis_instrumentation__.Notify(571776)
 		for _, f := range ag.funcs {
+			__antithesis_instrumentation__.Notify(571783)
 			if f.seen != nil {
-				// It turns out that it is faster to delete entries from the
-				// old map rather than allocating a new one.
+				__antithesis_instrumentation__.Notify(571784)
+
 				for s := range f.seen {
+					__antithesis_instrumentation__.Notify(571785)
 					delete(f.seen, s)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(571786)
 			}
 		}
+		__antithesis_instrumentation__.Notify(571777)
 
 		if err := ag.accumulateRow(ag.lastOrdGroupCols); err != nil {
+			__antithesis_instrumentation__.Notify(571787)
 			ag.MoveToDraining(err)
 			return aggStateUnknown, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(571788)
 		}
+		__antithesis_instrumentation__.Notify(571778)
 
 		return aggAccumulating, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(571789)
 	}
+	__antithesis_instrumentation__.Notify(571773)
 
 	bucket := ag.bucket
 	ag.bucket = nil
 	return ag.getAggResults(bucket)
 }
 
-// Next is part of the RowSource interface.
 func (ag *hashAggregator) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(571790)
 	for ag.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(571792)
 		var row rowenc.EncDatumRow
 		var meta *execinfrapb.ProducerMetadata
 		switch ag.runningState {
 		case aggAccumulating:
+			__antithesis_instrumentation__.Notify(571795)
 			ag.runningState, row, meta = ag.accumulateRows()
 		case aggEmittingRows:
+			__antithesis_instrumentation__.Notify(571796)
 			ag.runningState, row, meta = ag.emitRow()
 		default:
+			__antithesis_instrumentation__.Notify(571797)
 			log.Fatalf(ag.Ctx, "unsupported state: %d", ag.runningState)
 		}
+		__antithesis_instrumentation__.Notify(571793)
 
-		if row == nil && meta == nil {
+		if row == nil && func() bool {
+			__antithesis_instrumentation__.Notify(571798)
+			return meta == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(571799)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(571800)
 		}
+		__antithesis_instrumentation__.Notify(571794)
 		return row, meta
 	}
+	__antithesis_instrumentation__.Notify(571791)
 	return nil, ag.DrainHelper()
 }
 
-// Next is part of the RowSource interface.
 func (ag *orderedAggregator) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(571801)
 	for ag.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(571803)
 		var row rowenc.EncDatumRow
 		var meta *execinfrapb.ProducerMetadata
 		switch ag.runningState {
 		case aggAccumulating:
+			__antithesis_instrumentation__.Notify(571806)
 			ag.runningState, row, meta = ag.accumulateRows()
 		case aggEmittingRows:
+			__antithesis_instrumentation__.Notify(571807)
 			ag.runningState, row, meta = ag.emitRow()
 		default:
+			__antithesis_instrumentation__.Notify(571808)
 			log.Fatalf(ag.Ctx, "unsupported state: %d", ag.runningState)
 		}
+		__antithesis_instrumentation__.Notify(571804)
 
-		if row == nil && meta == nil {
+		if row == nil && func() bool {
+			__antithesis_instrumentation__.Notify(571809)
+			return meta == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(571810)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(571811)
 		}
+		__antithesis_instrumentation__.Notify(571805)
 		return row, meta
 	}
+	__antithesis_instrumentation__.Notify(571802)
 	return nil, ag.DrainHelper()
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (ag *hashAggregator) ConsumerClosed() {
-	// The consumer is done, Next() will not be called again.
+	__antithesis_instrumentation__.Notify(571812)
+
 	ag.close()
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (ag *orderedAggregator) ConsumerClosed() {
-	// The consumer is done, Next() will not be called again.
+	__antithesis_instrumentation__.Notify(571813)
+
 	ag.close()
 }
 
 func (ag *aggregatorBase) accumulateRowIntoBucket(
 	row rowenc.EncDatumRow, groupKey []byte, bucket aggregateFuncs,
 ) error {
+	__antithesis_instrumentation__.Notify(571814)
 	var err error
-	// Feed the func holders for this bucket the non-grouping datums.
+
 	for i, a := range ag.aggregations {
+		__antithesis_instrumentation__.Notify(571816)
 		if a.FilterColIdx != nil {
+			__antithesis_instrumentation__.Notify(571822)
 			col := *a.FilterColIdx
 			if err := row[col].EnsureDecoded(ag.inputTypes[col], &ag.datumAlloc); err != nil {
+				__antithesis_instrumentation__.Notify(571824)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(571825)
 			}
+			__antithesis_instrumentation__.Notify(571823)
 			if row[*a.FilterColIdx].Datum != tree.DBoolTrue {
-				// This row doesn't contribute to this aggregation.
+				__antithesis_instrumentation__.Notify(571826)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(571827)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(571828)
 		}
-		// Extract the corresponding arguments from the row to feed into the
-		// aggregate function.
-		// Most functions require at most one argument thus we separate
-		// the first argument and allocation of (if applicable) a variadic
-		// collection of arguments thereafter.
+		__antithesis_instrumentation__.Notify(571817)
+
 		var firstArg tree.Datum
 		var otherArgs tree.Datums
 		if len(a.ColIdx) > 1 {
+			__antithesis_instrumentation__.Notify(571829)
 			otherArgs = make(tree.Datums, len(a.ColIdx)-1)
+		} else {
+			__antithesis_instrumentation__.Notify(571830)
 		}
+		__antithesis_instrumentation__.Notify(571818)
 		isFirstArg := true
 		for j, c := range a.ColIdx {
+			__antithesis_instrumentation__.Notify(571831)
 			if err := row[c].EnsureDecoded(ag.inputTypes[c], &ag.datumAlloc); err != nil {
+				__antithesis_instrumentation__.Notify(571834)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(571835)
 			}
+			__antithesis_instrumentation__.Notify(571832)
 			if isFirstArg {
+				__antithesis_instrumentation__.Notify(571836)
 				firstArg = row[c].Datum
 				isFirstArg = false
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(571837)
 			}
+			__antithesis_instrumentation__.Notify(571833)
 			otherArgs[j-1] = row[c].Datum
 		}
+		__antithesis_instrumentation__.Notify(571819)
 
 		canAdd := true
 		if a.Distinct {
+			__antithesis_instrumentation__.Notify(571838)
 			canAdd, err = ag.funcs[i].isDistinct(
 				ag.Ctx,
 				&ag.datumAlloc,
@@ -783,101 +921,148 @@ func (ag *aggregatorBase) accumulateRowIntoBucket(
 				otherArgs,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(571839)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(571840)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(571841)
 		}
+		__antithesis_instrumentation__.Notify(571820)
 		if !canAdd {
+			__antithesis_instrumentation__.Notify(571842)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(571843)
 		}
+		__antithesis_instrumentation__.Notify(571821)
 		if err := bucket[i].Add(ag.Ctx, firstArg, otherArgs...); err != nil {
+			__antithesis_instrumentation__.Notify(571844)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(571845)
 		}
 	}
+	__antithesis_instrumentation__.Notify(571815)
 	return nil
 }
 
-// encode returns the encoding for the grouping columns, this is then used as
-// our group key to determine which bucket to add to.
 func (ag *hashAggregator) encode(
 	appendTo []byte, row rowenc.EncDatumRow,
 ) (encoding []byte, err error) {
+	__antithesis_instrumentation__.Notify(571846)
 	for _, colIdx := range ag.groupCols {
-		// We might allocate tree.Datums when hashing the row, so we'll ask the
-		// fingerprint to account for them. Note that if the datums are later
-		// used by the aggregate functions (and accounted for accordingly),
-		// this can lead to over-accounting which is acceptable.
+		__antithesis_instrumentation__.Notify(571848)
+
 		appendTo, err = row[colIdx].Fingerprint(
 			ag.Ctx, ag.inputTypes[colIdx], &ag.datumAlloc, appendTo, &ag.bucketsAcc,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571849)
 			return appendTo, err
+		} else {
+			__antithesis_instrumentation__.Notify(571850)
 		}
 	}
+	__antithesis_instrumentation__.Notify(571847)
 	return appendTo, nil
 }
 
-// accumulateRow accumulates a single row, returning an error if accumulation
-// failed for any reason.
 func (ag *hashAggregator) accumulateRow(row rowenc.EncDatumRow) error {
+	__antithesis_instrumentation__.Notify(571851)
 	if err := ag.cancelChecker.Check(); err != nil {
+		__antithesis_instrumentation__.Notify(571855)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(571856)
 	}
+	__antithesis_instrumentation__.Notify(571852)
 
-	// The encoding computed here determines which bucket the non-grouping
-	// datums are accumulated to.
 	encoded, err := ag.encode(ag.scratch, row)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(571857)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(571858)
 	}
+	__antithesis_instrumentation__.Notify(571853)
 	ag.scratch = encoded[:0]
 
 	bucket, ok := ag.buckets[string(encoded)]
 	if !ok {
+		__antithesis_instrumentation__.Notify(571859)
 		s, err := ag.arena.AllocBytes(ag.Ctx, encoded)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571862)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(571863)
 		}
+		__antithesis_instrumentation__.Notify(571860)
 		bucket, err = ag.createAggregateFuncs()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571864)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(571865)
 		}
+		__antithesis_instrumentation__.Notify(571861)
 		ag.buckets[s] = bucket
 		if len(ag.buckets) == ag.bucketsLenGrowThreshold {
+			__antithesis_instrumentation__.Notify(571866)
 			toAccountFor := ag.bucketsLenGrowThreshold - ag.alreadyAccountedFor
 			if err := ag.bucketsAcc.Grow(ag.Ctx, int64(toAccountFor)*memsize.MapEntryOverhead); err != nil {
+				__antithesis_instrumentation__.Notify(571868)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(571869)
 			}
+			__antithesis_instrumentation__.Notify(571867)
 			ag.alreadyAccountedFor = ag.bucketsLenGrowThreshold
 			ag.bucketsLenGrowThreshold *= 2
+		} else {
+			__antithesis_instrumentation__.Notify(571870)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(571871)
 	}
+	__antithesis_instrumentation__.Notify(571854)
 
 	return ag.accumulateRowIntoBucket(row, encoded, bucket)
 }
 
-// accumulateRow accumulates a single row, returning an error if accumulation
-// failed for any reason.
 func (ag *orderedAggregator) accumulateRow(row rowenc.EncDatumRow) error {
+	__antithesis_instrumentation__.Notify(571872)
 	if err := ag.cancelChecker.Check(); err != nil {
+		__antithesis_instrumentation__.Notify(571875)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(571876)
 	}
+	__antithesis_instrumentation__.Notify(571873)
 
 	if ag.bucket == nil {
+		__antithesis_instrumentation__.Notify(571877)
 		var err error
 		ag.bucket, err = ag.createAggregateFuncs()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571878)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(571879)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(571880)
 	}
+	__antithesis_instrumentation__.Notify(571874)
 
-	return ag.accumulateRowIntoBucket(row, nil /* groupKey */, ag.bucket)
+	return ag.accumulateRowIntoBucket(row, nil, ag.bucket)
 }
 
 type aggregateFuncHolder struct {
 	create func(*tree.EvalContext, tree.Datums) tree.AggregateFunc
 
-	// arguments is the list of constant (non-aggregated) arguments to the
-	// aggregate, for instance, the separator in string_agg.
 	arguments tree.Datums
 
 	seen  map[string]struct{}
@@ -892,6 +1077,7 @@ const (
 func (ag *aggregatorBase) newAggregateFuncHolder(
 	create func(*tree.EvalContext, tree.Datums) tree.AggregateFunc, arguments tree.Datums,
 ) *aggregateFuncHolder {
+	__antithesis_instrumentation__.Notify(571881)
 	return &aggregateFuncHolder{
 		create:    create,
 		arena:     &ag.arena,
@@ -899,10 +1085,6 @@ func (ag *aggregatorBase) newAggregateFuncHolder(
 	}
 }
 
-// isDistinct returns whether this aggregateFuncHolder has not already seen the
-// encoding of grouping columns and argument columns. It should be used *only*
-// when we have DISTINCT aggregation so that we can aggregate only the "first"
-// row in the group.
 func (a *aggregateFuncHolder) isDistinct(
 	ctx context.Context,
 	alloc *tree.DatumAlloc,
@@ -910,50 +1092,74 @@ func (a *aggregateFuncHolder) isDistinct(
 	firstArg tree.Datum,
 	otherArgs tree.Datums,
 ) (bool, error) {
-	// Allocate one EncDatum that will be reused when encoding every argument.
+	__antithesis_instrumentation__.Notify(571882)
+
 	ed := rowenc.EncDatum{Datum: firstArg}
-	// We know that we have tree.Datum, so there will definitely be no need to
-	// decode ed for fingerprinting, so we pass in nil memory account.
-	encoded, err := ed.Fingerprint(ctx, firstArg.ResolvedType(), alloc, prefix, nil /* acc */)
+
+	encoded, err := ed.Fingerprint(ctx, firstArg.ResolvedType(), alloc, prefix, nil)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(571887)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(571888)
 	}
+	__antithesis_instrumentation__.Notify(571883)
 	for _, arg := range otherArgs {
-		// Note that we don't need to explicitly unset ed because encoded
-		// field is never set during fingerprinting - we'll compute the
-		// encoding and return it without updating the EncDatum; therefore,
-		// simply setting Datum field to the argument is sufficient.
+		__antithesis_instrumentation__.Notify(571889)
+
 		ed.Datum = arg
-		encoded, err = ed.Fingerprint(ctx, arg.ResolvedType(), alloc, encoded, nil /* acc */)
+		encoded, err = ed.Fingerprint(ctx, arg.ResolvedType(), alloc, encoded, nil)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(571890)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(571891)
 		}
 	}
+	__antithesis_instrumentation__.Notify(571884)
 
 	if _, ok := a.seen[string(encoded)]; ok {
-		// We have already seen a row with such combination of grouping and
-		// argument columns.
+		__antithesis_instrumentation__.Notify(571892)
+
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(571893)
 	}
+	__antithesis_instrumentation__.Notify(571885)
 	s, err := a.arena.AllocBytes(ctx, encoded)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(571894)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(571895)
 	}
+	__antithesis_instrumentation__.Notify(571886)
 	a.seen[s] = struct{}{}
 	return true, nil
 }
 
 func (ag *aggregatorBase) createAggregateFuncs() (aggregateFuncs, error) {
+	__antithesis_instrumentation__.Notify(571896)
 	if err := ag.bucketsAcc.Grow(ag.Ctx, sizeOfAggregateFuncs+sizeOfAggregateFunc*int64(len(ag.funcs))); err != nil {
+		__antithesis_instrumentation__.Notify(571899)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(571900)
 	}
+	__antithesis_instrumentation__.Notify(571897)
 	bucket := make(aggregateFuncs, len(ag.funcs))
 	for i, f := range ag.funcs {
+		__antithesis_instrumentation__.Notify(571901)
 		agg := f.create(ag.EvalCtx, f.arguments)
 		if err := ag.bucketsAcc.Grow(ag.Ctx, agg.Size()); err != nil {
+			__antithesis_instrumentation__.Notify(571903)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(571904)
 		}
+		__antithesis_instrumentation__.Notify(571902)
 		bucket[i] = agg
 	}
+	__antithesis_instrumentation__.Notify(571898)
 	return bucket, nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package types
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -29,192 +21,30 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// T is an instance of a SQL scalar, array, or tuple type. It describes the
-// domain of possible values which a column can return, or to which an
-// expression can evaluate. The type system does not differentiate between
-// nullable and non-nullable types. It is up to the caller to store that
-// information separately if it is needed. Here are some example types:
-//
-//   INT4                     - any 32-bit integer
-//   DECIMAL(10, 3)           - any base-10 value with at most 10 digits, with
-//                              up to 3 to right of decimal point
-//   FLOAT[]                  - array of 64-bit IEEE 754 floating-point values
-//   TUPLE[TIME, VARCHAR(20)] - any pair of values where first value is a time
-//                              of day and the second value is a string having
-//                              up to 20 characters
-//
-// Fundamentally, a type consists of the following attributes, each of which has
-// a corresponding accessor method. Some of these attributes are only defined
-// for a subset of types. See the method comments for more details.
-//
-//   Family        - equivalence group of the type (enumeration)
-//   Oid           - Postgres Object ID that describes the type (enumeration)
-//   Precision     - maximum accuracy of the type (numeric)
-//   Width         - maximum size or scale of the type (numeric)
-//   Locale        - location which governs sorting, formatting, etc. (string)
-//   ArrayContents - array element type (T)
-//   TupleContents - slice of types of each tuple field ([]*T)
-//   TupleLabels   - slice of labels of each tuple field ([]string)
-//
-// Some types are not currently allowed as the type of a column (e.g. nested
-// arrays). Other usages of the types package may have similar restrictions.
-// Each such caller is responsible for enforcing their own restrictions; it's
-// not the concern of the types package.
-//
-// Implementation-wise, types.T wraps a protobuf-generated InternalType struct.
-// The generated protobuf code defines the struct fields, marshals/unmarshals
-// them, formats a string representation, etc. Meanwhile, the wrapper types.T
-// struct overrides the Marshal/Unmarshal methods in order to map to/from older
-// persisted InternalType representations. For example, older versions of
-// InternalType (previously called ColumnType) used a VisibleType field to
-// represent INT2, whereas newer versions use Width/Oid. Unmarshal upgrades from
-// this old format to the new, and Marshal downgrades, thus preserving backwards
-// compatibility.
-//
-// Simple (unary) scalars types
-// ----------------------------
-//
-// | SQL type          | Family         | Oid           | Precision | Width |
-// |-------------------|----------------|---------------|-----------|-------|
-// | NULL (unknown)    | UNKNOWN        | T_unknown     | 0         | 0     |
-// | BOOL              | BOOL           | T_bool        | 0         | 0     |
-// | DATE              | DATE           | T_date        | 0         | 0     |
-// | TIMESTAMP         | TIMESTAMP      | T_timestamp   | 0         | 0     |
-// | INTERVAL          | INTERVAL       | T_interval    | 0         | 0     |
-// | TIMESTAMPTZ       | TIMESTAMPTZ    | T_timestamptz | 0         | 0     |
-// | OID               | OID            | T_oid         | 0         | 0     |
-// | UUID              | UUID           | T_uuid        | 0         | 0     |
-// | INET              | INET           | T_inet        | 0         | 0     |
-// | TIME              | TIME           | T_time        | 0         | 0     |
-// | TIMETZ            | TIMETZ         | T_timetz      | 0         | 0     |
-// | JSON              | JSONB          | T_jsonb       | 0         | 0     |
-// | JSONB             | JSONB          | T_jsonb       | 0         | 0     |
-// |                   |                |               |           |       |
-// | BYTES             | BYTES          | T_bytea       | 0         | 0     |
-// |                   |                |               |           |       |
-// | STRING            | STRING         | T_text        | 0         | 0     |
-// | STRING(N)         | STRING         | T_text        | 0         | N     |
-// | VARCHAR           | STRING         | T_varchar     | 0         | 0     |
-// | VARCHAR(N)        | STRING         | T_varchar     | 0         | N     |
-// | CHAR              | STRING         | T_bpchar      | 0         | 1     |
-// | CHAR(N)           | STRING         | T_bpchar      | 0         | N     |
-// | "char"            | STRING         | T_char        | 0         | 0     |
-// | NAME              | STRING         | T_name        | 0         | 0     |
-// |                   |                |               |           |       |
-// | STRING COLLATE en | COLLATEDSTRING | T_text        | 0         | 0     |
-// | STRING(N) COL...  | COLLATEDSTRING | T_text        | 0         | N     |
-// | VARCHAR COL...    | COLLATEDSTRING | T_varchar     | 0         | N     |
-// | VARCHAR(N) COL... | COLLATEDSTRING | T_varchar     | 0         | N     |
-// | CHAR COL...       | COLLATEDSTRING | T_bpchar      | 0         | 1     |
-// | CHAR(N) COL...    | COLLATEDSTRING | T_bpchar      | 0         | N     |
-// | "char" COL...     | COLLATEDSTRING | T_char        | 0         | 0     |
-// |                   |                |               |           |       |
-// | DECIMAL           | DECIMAL        | T_decimal     | 0         | 0     |
-// | DECIMAL(N)        | DECIMAL        | T_decimal     | N         | 0     |
-// | DECIMAL(N,M)      | DECIMAL        | T_decimal     | N         | M     |
-// |                   |                |               |           |       |
-// | FLOAT8            | FLOAT          | T_float8      | 0         | 0     |
-// | FLOAT4            | FLOAT          | T_float4      | 0         | 0     |
-// |                   |                |               |           |       |
-// | BIT               | BIT            | T_bit         | 0         | 1     |
-// | BIT(N)            | BIT            | T_bit         | 0         | N     |
-// | VARBIT            | BIT            | T_varbit      | 0         | 0     |
-// | VARBIT(N)         | BIT            | T_varbit      | 0         | N     |
-// |                   |                |               |           |       |
-// | INT,INTEGER       | INT            | T_int8        | 0         | 64    |
-// | INT2,SMALLINT     | INT            | T_int2        | 0         | 16    |
-// | INT4              | INT            | T_int4        | 0         | 32    |
-// | INT8,INT64,BIGINT | INT            | T_int8        | 0         | 64    |
-//
-// Tuple types
-// -----------
-//
-// These cannot (yet) be used in tables but are used in DistSQL flow
-// processors for queries that have tuple-typed intermediate results.
-//
-// | Field           | Description                                             |
-// |-----------------|---------------------------------------------------------|
-// | Family          | TupleFamily                                             |
-// | Oid             | T_record                                                |
-// | TupleContents   | Contains tuple field types (can be recursively defined) |
-// | TupleLabels     | Contains labels for each tuple field                    |
-//
-// Array types
-// -----------
-//
-// | Field           | Description                                             |
-// |-----------------|---------------------------------------------------------|
-// | Family          | ArrayFamily                                             |
-// | Oid             | T__XXX (double underscores), where XXX is the Oid name  |
-// |                 | of a scalar type                                        |
-// | ArrayContents   | Type of array elements (scalar, array, or tuple)        |
-//
-// There are two special ARRAY types:
-//
-// | SQL type          | Family         | Oid           | ArrayContents |
-// |-------------------|----------------|---------------|---------------|
-// | INT2VECTOR        | ARRAY          | T_int2vector  | Int           |
-// | OIDVECTOR         | ARRAY          | T_oidvector   | Oid           |
-//
-// When these types are themselves made into arrays, the Oids become T__int2vector and
-// T__oidvector, respectively.
-//
-// User defined types
-// ------------------
-//
-// * Enums
-// | Field         | Description                                |
-// |---------------|--------------------------------------------|
-// | Family        | EnumFamily                                 |
-// | Oid           | A unique OID generated upon enum creation  |
-//
-// See types.proto for the corresponding proto definition. Its automatic
-// type declaration is suppressed in the proto so that it is possible to
-// add additional fields to T without serializing them.
 type T struct {
-	// InternalType should never be directly referenced outside this package. The
-	// only reason it is exported is because gogoproto panics when printing the
-	// string representation of an unexported field. This is a problem when this
-	// struct is embedded in a larger struct (like a ColumnDescriptor).
 	InternalType InternalType
 
-	// Fields that are only populated when hydrating from a user defined
-	// type descriptor. It is assumed that a user defined type is only used
-	// once its metadata has been hydrated through the process of type resolution.
 	TypeMeta UserDefinedTypeMetadata
 }
 
-// UserDefinedTypeMetadata contains metadata needed for runtime
-// operations on user defined types. The metadata must be read only.
 type UserDefinedTypeMetadata struct {
-	// Name is the resolved name of this type.
 	Name *UserDefinedTypeName
 
-	// Version is the descriptor version of the descriptor used to construct
-	// this version of the type metadata.
 	Version uint32
 
-	// enumData is non-nil iff the metadata is for an ENUM type.
 	EnumData *EnumMetadata
 }
 
-// EnumMetadata is metadata about an ENUM needed for evaluation.
 type EnumMetadata struct {
-	// PhysicalRepresentations is a slice of the byte array
-	// physical representations of enum members.
 	PhysicalRepresentations [][]byte
-	// LogicalRepresentations is a slice of the string logical
-	// representations of enum members.
+
 	LogicalRepresentations []string
-	// IsMemberReadOnly holds whether the enum member at index i is
-	// read only or not.
+
 	IsMemberReadOnly []bool
-	// TODO (rohany): For small enums, having a map would be slower
-	//  than just an array. Investigate at what point the tradeoff
-	//  should occur, if at all.
 }
 
 func (e *EnumMetadata) debugString() string {
+	__antithesis_instrumentation__.Notify(629572)
 	return fmt.Sprintf(
 		"PhysicalReps: %v; LogicalReps: %s",
 		e.PhysicalRepresentations,
@@ -222,11 +52,6 @@ func (e *EnumMetadata) debugString() string {
 	)
 }
 
-// UserDefinedTypeName is a struct representing a qualified user defined
-// type name. We redefine a common struct from higher level packages. We
-// do so because proto will panic if any members of a proto struct are
-// private. Rather than expose private members of higher level packages,
-// we define a separate type here to be safe.
 type UserDefinedTypeName struct {
 	Catalog        string
 	ExplicitSchema bool
@@ -234,118 +59,73 @@ type UserDefinedTypeName struct {
 	Name           string
 }
 
-// Basename returns the unqualified name.
 func (u UserDefinedTypeName) Basename() string {
+	__antithesis_instrumentation__.Notify(629573)
 	return u.Name
 }
 
-// FQName returns the fully qualified name.
 func (u UserDefinedTypeName) FQName() string {
+	__antithesis_instrumentation__.Notify(629574)
 	var sb strings.Builder
-	// Note that cross-database type references are disabled, so we only
-	// format the qualified name with the schema.
+
 	if u.ExplicitSchema {
+		__antithesis_instrumentation__.Notify(629576)
 		sb.WriteString(u.Schema)
 		sb.WriteString(".")
+	} else {
+		__antithesis_instrumentation__.Notify(629577)
 	}
+	__antithesis_instrumentation__.Notify(629575)
 	sb.WriteString(u.Name)
 	return sb.String()
 }
 
-// Convenience list of pre-constructed types. Caller code can use any of these
-// types, or use the MakeXXX methods to construct a custom type that is not
-// listed here (e.g. if a custom width is needed).
 var (
-	// Unknown is the type of an expression that statically evaluates to NULL.
-	// This type should never be returned for an expression that does not *always*
-	// evaluate to NULL.
 	Unknown = &T{InternalType: InternalType{
 		Family: UnknownFamily, Oid: oid.T_unknown, Locale: &emptyLocale}}
 
-	// Bool is the type of a boolean true/false value.
 	Bool = &T{InternalType: InternalType{
 		Family: BoolFamily, Oid: oid.T_bool, Locale: &emptyLocale}}
 
-	// VarBit is the type of an ordered list of bits (0 or 1 valued), with no
-	// specified limit on the count of bits.
 	VarBit = &T{InternalType: InternalType{
 		Family: BitFamily, Oid: oid.T_varbit, Locale: &emptyLocale}}
 
-	// Int is the type of a 64-bit signed integer. This is the canonical type
-	// for IntFamily.
 	Int = &T{InternalType: InternalType{
 		Family: IntFamily, Width: 64, Oid: oid.T_int8, Locale: &emptyLocale}}
 
-	// Int4 is the type of a 32-bit signed integer.
 	Int4 = &T{InternalType: InternalType{
 		Family: IntFamily, Width: 32, Oid: oid.T_int4, Locale: &emptyLocale}}
 
-	// Int2 is the type of a 16-bit signed integer.
 	Int2 = &T{InternalType: InternalType{
 		Family: IntFamily, Width: 16, Oid: oid.T_int2, Locale: &emptyLocale}}
 
-	// Float is the type of a 64-bit base-2 floating-point number (IEEE 754).
-	// This is the canonical type for FloatFamily.
 	Float = &T{InternalType: InternalType{
 		Family: FloatFamily, Width: 64, Oid: oid.T_float8, Locale: &emptyLocale}}
 
-	// Float4 is the type of a 32-bit base-2 floating-point number (IEEE 754).
 	Float4 = &T{InternalType: InternalType{
 		Family: FloatFamily, Width: 32, Oid: oid.T_float4, Locale: &emptyLocale}}
 
-	// Decimal is the type of a base-10 floating-point number, with no specified
-	// limit on precision (number of digits) or scale (digits to right of decimal
-	// point).
 	Decimal = &T{InternalType: InternalType{
 		Family: DecimalFamily, Oid: oid.T_numeric, Locale: &emptyLocale}}
 
-	// String is the type of a Unicode string, with no specified limit on the
-	// count of characters. This is the canonical type for StringFamily. It is
-	// reported as STRING in SHOW CREATE but "text" in introspection for
-	// compatibility with PostgreSQL.
 	String = &T{InternalType: InternalType{
 		Family: StringFamily, Oid: oid.T_text, Locale: &emptyLocale}}
 
-	// VarChar is equivalent to String, but has a differing OID (T_varchar),
-	// which makes it show up differently when displayed. It is reported as
-	// VARCHAR in SHOW CREATE and "character varying" in introspection for
-	// compatibility with PostgreSQL.
 	VarChar = &T{InternalType: InternalType{
 		Family: StringFamily, Oid: oid.T_varchar, Locale: &emptyLocale}}
 
-	// QChar is the special "char" type that is a single-character column type.
-	// It's used by system tables. It is reported as "char" (with double quotes
-	// included) in SHOW CREATE and "char" in introspection for compatibility
-	// with PostgreSQL.
-	//
-	// See https://www.postgresql.org/docs/9.1/static/datatype-character.html
 	QChar = &T{InternalType: InternalType{
 		Family: StringFamily, Width: 1, Oid: oid.T_char, Locale: &emptyLocale}}
 
-	// Name is a type-alias for String with a different OID (T_name). It is
-	// reported as NAME in SHOW CREATE and "name" in introspection for
-	// compatibility with PostgreSQL.
 	Name = &T{InternalType: InternalType{
 		Family: StringFamily, Oid: oid.T_name, Locale: &emptyLocale}}
 
-	// Bytes is the type of a list of raw byte values.
 	Bytes = &T{InternalType: InternalType{
 		Family: BytesFamily, Oid: oid.T_bytea, Locale: &emptyLocale}}
 
-	// Date is the type of a value specifying year, month, day (with no time
-	// component). There is no timezone associated with it. For example:
-	//
-	//   YYYY-MM-DD
-	//
 	Date = &T{InternalType: InternalType{
 		Family: DateFamily, Oid: oid.T_date, Locale: &emptyLocale}}
 
-	// Time is the type of a value specifying hour, minute, second (with no date
-	// component). By default, it has microsecond precision. There is no timezone
-	// associated with it. For example:
-	//
-	//   HH:MM:SS.ssssss
-	//
 	Time = &T{InternalType: InternalType{
 		Family:             TimeFamily,
 		Precision:          0,
@@ -354,11 +134,6 @@ var (
 		Locale:             &emptyLocale,
 	}}
 
-	// TimeTZ is the type specifying hour, minute, second and timezone with
-	// no date component. By default, it has microsecond precision.
-	// For example:
-	//
-	//   HH:MM:SS.ssssss+-ZZ:ZZ
 	TimeTZ = &T{InternalType: InternalType{
 		Family:             TimeTZFamily,
 		Precision:          0,
@@ -367,12 +142,6 @@ var (
 		Locale:             &emptyLocale,
 	}}
 
-	// Timestamp is the type of a value specifying year, month, day, hour, minute,
-	// and second, but with no associated timezone. By default, it has microsecond
-	// precision. For example:
-	//
-	//   YYYY-MM-DD HH:MM:SS.ssssss
-	//
 	Timestamp = &T{InternalType: InternalType{
 		Family:             TimestampFamily,
 		Precision:          0,
@@ -381,12 +150,6 @@ var (
 		Locale:             &emptyLocale,
 	}}
 
-	// TimestampTZ is the type of a value specifying year, month, day, hour,
-	// minute, and second, as well as an associated timezone. By default, it has
-	// microsecond precision. For example:
-	//
-	//   YYYY-MM-DD HH:MM:SS.ssssss+-ZZ:ZZ
-	//
 	TimestampTZ = &T{InternalType: InternalType{
 		Family:             TimestampTZFamily,
 		Precision:          0,
@@ -395,8 +158,6 @@ var (
 		Locale:             &emptyLocale,
 	}}
 
-	// Interval is the type of a value describing a duration of time. By default,
-	// it has microsecond precision.
 	Interval = &T{InternalType: InternalType{
 		Family:                IntervalFamily,
 		Precision:             0,
@@ -406,26 +167,15 @@ var (
 		IntervalDurationField: &IntervalDurationField{},
 	}}
 
-	// Jsonb is the type of a JavaScript Object Notation (JSON) value that is
-	// stored in a decomposed binary format (hence the "b" in jsonb).
 	Jsonb = &T{InternalType: InternalType{
 		Family: JsonFamily, Oid: oid.T_jsonb, Locale: &emptyLocale}}
 
-	// Uuid is the type of a universally unique identifier (UUID), which is a
-	// 128-bit quantity that is very unlikely to ever be generated again, and so
-	// can be relied on to be distinct from all other UUID values.
 	Uuid = &T{InternalType: InternalType{
 		Family: UuidFamily, Oid: oid.T_uuid, Locale: &emptyLocale}}
 
-	// INet is the type of an IPv4 or IPv6 network address. For example:
-	//
-	//   192.168.100.128/25
-	//   FE80:CD00:0:CDE:1257:0:211E:729C
-	//
 	INet = &T{InternalType: InternalType{
 		Family: INetFamily, Oid: oid.T_inet, Locale: &emptyLocale}}
 
-	// Geometry is the type of a geospatial Geometry object.
 	Geometry = &T{
 		InternalType: InternalType{
 			Family:      GeometryFamily,
@@ -435,7 +185,6 @@ var (
 		},
 	}
 
-	// Geography is the type of a geospatial Geography object.
 	Geography = &T{
 		InternalType: InternalType{
 			Family:      GeographyFamily,
@@ -445,7 +194,6 @@ var (
 		},
 	}
 
-	// Box2D is the type of a geospatial box2d object.
 	Box2D = &T{
 		InternalType: InternalType{
 			Family: Box2DFamily,
@@ -454,7 +202,6 @@ var (
 		},
 	}
 
-	// Void is the type representing void.
 	Void = &T{
 		InternalType: InternalType{
 			Family: VoidFamily,
@@ -463,12 +210,6 @@ var (
 		},
 	}
 
-	// Scalar contains all types that meet this criteria:
-	//
-	//   1. Scalar type (no ArrayFamily or TupleFamily types).
-	//   2. Non-ambiguous type (no UnknownFamily or AnyFamily types).
-	//   3. Canonical type for one of the type families.
-	//
 	Scalar = []*T{
 		Bool,
 		Box2D,
@@ -492,199 +233,126 @@ var (
 		VarBit,
 	}
 
-	// Any is a special type used only during static analysis as a wildcard type
-	// that matches any other type, including scalar, array, and tuple types.
-	// Execution-time values should never have this type. As an example of its
-	// use, many SQL builtin functions allow an input value to be of any type,
-	// and so use this type in their static definitions.
 	Any = &T{InternalType: InternalType{
 		Family: AnyFamily, Oid: oid.T_anyelement, Locale: &emptyLocale}}
 
-	// AnyArray is a special type used only during static analysis as a wildcard
-	// type that matches an array having elements of any (uniform) type (including
-	// nested array types). Execution-time values should never have this type.
 	AnyArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Any, Oid: oid.T_anyarray, Locale: &emptyLocale}}
 
-	// AnyEnum is a special type only used during static analysis as a wildcard
-	// type that matches an possible enum value. Execution-time values should
-	// never have this type.
 	AnyEnum = &T{InternalType: InternalType{
 		Family: EnumFamily, Locale: &emptyLocale, Oid: oid.T_anyenum}}
 
-	// AnyTuple is a special type used only during static analysis as a wildcard
-	// type that matches a tuple with any number of fields of any type (including
-	// tuple types). Execution-time values should never have this type.
 	AnyTuple = &T{InternalType: InternalType{
 		Family: TupleFamily, TupleContents: []*T{Any}, Oid: oid.T_record, Locale: &emptyLocale}}
 
-	// AnyTupleArray is a special type used only during static analysis as a wildcard
-	// type that matches an array of tuples with any number of fields of any type (including
-	// tuple types). Execution-time values should never have this type.
 	AnyTupleArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: AnyTuple, Oid: oid.T__record, Locale: &emptyLocale}}
 
-	// AnyCollatedString is a special type used only during static analysis as a
-	// wildcard type that matches a collated string with any locale. Execution-
-	// time values should never have this type.
 	AnyCollatedString = &T{InternalType: InternalType{
 		Family: CollatedStringFamily, Oid: oid.T_text, Locale: &emptyLocale}}
 
-	// EmptyTuple is the tuple type with no fields. Note that this is different
-	// than AnyTuple, which is a wildcard type.
 	EmptyTuple = &T{InternalType: InternalType{
 		Family: TupleFamily, Oid: oid.T_record, Locale: &emptyLocale}}
 
-	// StringArray is the type of an array value having String-typed elements.
 	StringArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: String, Oid: oid.T__text, Locale: &emptyLocale}}
 
-	// BytesArray is the type of an array value having Byte-typed elements.
 	BytesArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Bytes, Oid: oid.T__bytea, Locale: &emptyLocale}}
 
-	// IntArray is the type of an array value having Int-typed elements.
 	IntArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Int, Oid: oid.T__int8, Locale: &emptyLocale}}
 
-	// FloatArray is the type of an array value having Float-typed elements.
 	FloatArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Float, Oid: oid.T__float8, Locale: &emptyLocale}}
 
-	// DecimalArray is the type of an array value having Decimal-typed elements.
 	DecimalArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Decimal, Oid: oid.T__numeric, Locale: &emptyLocale}}
 
-	// BoolArray is the type of an array value having Bool-typed elements.
 	BoolArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Bool, Oid: oid.T__bool, Locale: &emptyLocale}}
 
-	// UUIDArray is the type of an array value having UUID-typed elements.
 	UUIDArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Uuid, Oid: oid.T__uuid, Locale: &emptyLocale}}
 
-	// TimeArray is the type of an array value having Date-typed elements.
 	DateArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Date, Oid: oid.T__date, Locale: &emptyLocale}}
 
-	// TimeArray is the type of an array value having Time-typed elements.
 	TimeArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Time, Oid: oid.T__time, Locale: &emptyLocale}}
 
-	// TimeTZArray is the type of an array value having TimeTZ-typed elements.
 	TimeTZArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: TimeTZ, Oid: oid.T__timetz, Locale: &emptyLocale}}
 
-	// TimestampArray is the type of an array value having Timestamp-typed elements.
 	TimestampArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Timestamp, Oid: oid.T__timestamp, Locale: &emptyLocale}}
 
-	// TimestampTZArray is the type of an array value having TimestampTZ-typed elements.
 	TimestampTZArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: TimestampTZ, Oid: oid.T__timestamptz, Locale: &emptyLocale}}
 
-	// IntervalArray is the type of an array value having Interval-typed elements.
 	IntervalArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Interval, Oid: oid.T__interval, Locale: &emptyLocale}}
 
-	// INetArray is the type of an array value having INet-typed elements.
 	INetArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: INet, Oid: oid.T__inet, Locale: &emptyLocale}}
 
-	// VarBitArray is the type of an array value having VarBit-typed elements.
 	VarBitArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: VarBit, Oid: oid.T__varbit, Locale: &emptyLocale}}
 
-	// AnyEnumArray is the type of an array value having AnyEnum-typed elements.
 	AnyEnumArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: AnyEnum, Oid: oid.T_anyarray, Locale: &emptyLocale}}
 
-	// JSONArray is the type of an array value having JSON-typed elements.
 	JSONArray = &T{InternalType: InternalType{
 		Family: ArrayFamily, ArrayContents: Jsonb, Oid: oid.T__jsonb, Locale: &emptyLocale}}
 
-	// Int2Vector is a type-alias for an array of Int2 values with a different
-	// OID (T_int2vector instead of T__int2). It is a special VECTOR type used
-	// by Postgres in system tables. Int2vectors are 0-indexed, unlike normal arrays.
 	Int2Vector = &T{InternalType: InternalType{
 		Family: ArrayFamily, Oid: oid.T_int2vector, ArrayContents: Int2, Locale: &emptyLocale}}
 )
 
-// Unexported wrapper types.
 var (
-	// typeBit is the SQL BIT type. It is not exported to avoid confusion with
-	// the VarBit type, and confusion over whether its default Width is
-	// unspecified or is 1. More commonly used instead is the VarBit type.
 	typeBit = &T{InternalType: InternalType{
 		Family: BitFamily, Oid: oid.T_bit, Locale: &emptyLocale}}
 
-	// typeBpChar is a CHAR type with an unspecified width. "bp" stands for
-	// "blank padded". It is not exported to avoid confusion with QChar, as well
-	// as confusion over CHAR's default width of 1.
-	//
-	// It is reported as CHAR in SHOW CREATE and "character" in introspection for
-	// compatibility with PostgreSQL.
 	typeBpChar = &T{InternalType: InternalType{
 		Family: StringFamily, Oid: oid.T_bpchar, Locale: &emptyLocale}}
 
-	// typeQChar is a "char" type with an unspecified width. It is not exported
-	// to avoid confusion with QChar. The "char" type should always have a width
-	// of one. A "char" type with an unspecified width is only used when the
-	// length of a "char" value cannot be determined, for example a placeholder
-	// typed as a "char" should have an unspecified width.
 	typeQChar = &T{InternalType: InternalType{
 		Family: StringFamily, Oid: oid.T_char, Locale: &emptyLocale}}
 )
 
 const (
-	// Deprecated after 19.1, since it's now represented using the Oid field.
 	name Family = 11
 
-	// Deprecated after 19.1, since it's now represented using the Oid field.
 	int2vector Family = 200
 
-	// Deprecated after 19.1, since it's now represented using the Oid field.
 	oidvector Family = 201
 
 	visibleNONE = 0
 
-	// Deprecated after 2.1, since it's no longer used.
 	visibleINTEGER = 1
 
-	// Deprecated after 2.1, since it's now represented using the Width field.
 	visibleSMALLINT = 2
 
-	// Deprecated after 2.1, since it's now represented using the Width field.
 	visibleBIGINT = 3
 
-	// Deprecated after 2.0, since the original BIT representation was buggy.
 	visibleBIT = 4
 
-	// Deprecated after 19.1, since it's now represented using the Width field.
 	visibleREAL = 5
 
-	// Deprecated after 2.1, since it's now represented using the Width field.
 	visibleDOUBLE = 6
 
-	// Deprecated after 19.1, since it's now represented using the Oid field.
 	visibleVARCHAR = 7
 
-	// Deprecated after 19.1, since it's now represented using the Oid field.
 	visibleCHAR = 8
 
-	// Deprecated after 19.1, since it's now represented using the Oid field.
 	visibleQCHAR = 9
 
-	// Deprecated after 19.1, since it's now represented using the Oid field.
 	visibleVARBIT = 10
 
-	// OID returned for the unknown[] array type. PG has no OID for this case.
 	unknownArrayOid = 0
 )
 
 const (
-	// defaultTimePrecision is the default precision to return for time families
-	// if time is not set.
 	defaultTimePrecision = 6
 )
 
@@ -692,79 +360,149 @@ var (
 	emptyLocale = ""
 )
 
-// MakeScalar constructs a new instance of a scalar type (i.e. not array or
-// tuple types) using the provided fields.
 func MakeScalar(family Family, o oid.Oid, precision, width int32, locale string) *T {
+	__antithesis_instrumentation__.Notify(629578)
 	t := OidToType[o]
 	if family != t.Family() {
-		if family != CollatedStringFamily || StringFamily != t.Family() {
+		__antithesis_instrumentation__.Notify(629585)
+		if family != CollatedStringFamily || func() bool {
+			__antithesis_instrumentation__.Notify(629586)
+			return StringFamily != t.Family() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629587)
 			panic(errors.AssertionFailedf("oid %d does not match %s", o, family))
+		} else {
+			__antithesis_instrumentation__.Notify(629588)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(629589)
 	}
-	if family == ArrayFamily || family == TupleFamily {
+	__antithesis_instrumentation__.Notify(629579)
+	if family == ArrayFamily || func() bool {
+		__antithesis_instrumentation__.Notify(629590)
+		return family == TupleFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(629591)
 		panic(errors.AssertionFailedf("cannot make non-scalar type %s", family))
+	} else {
+		__antithesis_instrumentation__.Notify(629592)
 	}
-	if family != CollatedStringFamily && locale != "" {
+	__antithesis_instrumentation__.Notify(629580)
+	if family != CollatedStringFamily && func() bool {
+		__antithesis_instrumentation__.Notify(629593)
+		return locale != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(629594)
 		panic(errors.AssertionFailedf("non-collation type cannot have locale %s", locale))
+	} else {
+		__antithesis_instrumentation__.Notify(629595)
 	}
+	__antithesis_instrumentation__.Notify(629581)
 
 	timePrecisionIsSet := false
 	var intervalDurationField *IntervalDurationField
 	var geoMetadata *GeoMetadata
 	switch family {
 	case IntervalFamily:
+		__antithesis_instrumentation__.Notify(629596)
 		intervalDurationField = &IntervalDurationField{}
-		if precision < 0 || precision > 6 {
+		if precision < 0 || func() bool {
+			__antithesis_instrumentation__.Notify(629602)
+			return precision > 6 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629603)
 			panic(errors.AssertionFailedf("precision must be between 0 and 6 inclusive"))
+		} else {
+			__antithesis_instrumentation__.Notify(629604)
 		}
+		__antithesis_instrumentation__.Notify(629597)
 		timePrecisionIsSet = true
 	case TimestampFamily, TimestampTZFamily, TimeFamily, TimeTZFamily:
-		if precision < 0 || precision > 6 {
+		__antithesis_instrumentation__.Notify(629598)
+		if precision < 0 || func() bool {
+			__antithesis_instrumentation__.Notify(629605)
+			return precision > 6 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629606)
 			panic(errors.AssertionFailedf("precision must be between 0 and 6 inclusive"))
+		} else {
+			__antithesis_instrumentation__.Notify(629607)
 		}
+		__antithesis_instrumentation__.Notify(629599)
 		timePrecisionIsSet = true
 	case DecimalFamily:
+		__antithesis_instrumentation__.Notify(629600)
 		if precision < 0 {
+			__antithesis_instrumentation__.Notify(629608)
 			panic(errors.AssertionFailedf("negative precision is not allowed"))
+		} else {
+			__antithesis_instrumentation__.Notify(629609)
 		}
 	default:
+		__antithesis_instrumentation__.Notify(629601)
 		if precision != 0 {
+			__antithesis_instrumentation__.Notify(629610)
 			panic(errors.AssertionFailedf("type %s cannot have precision", family))
+		} else {
+			__antithesis_instrumentation__.Notify(629611)
 		}
 	}
+	__antithesis_instrumentation__.Notify(629582)
 
 	if width < 0 {
+		__antithesis_instrumentation__.Notify(629612)
 		panic(errors.AssertionFailedf("negative width is not allowed"))
+	} else {
+		__antithesis_instrumentation__.Notify(629613)
 	}
+	__antithesis_instrumentation__.Notify(629583)
 	switch family {
 	case IntFamily:
+		__antithesis_instrumentation__.Notify(629614)
 		switch width {
 		case 16, 32, 64:
+			__antithesis_instrumentation__.Notify(629621)
 		default:
+			__antithesis_instrumentation__.Notify(629622)
 			panic(errors.AssertionFailedf("invalid width %d for IntFamily type", width))
 		}
 	case FloatFamily:
+		__antithesis_instrumentation__.Notify(629615)
 		switch width {
 		case 32, 64:
+			__antithesis_instrumentation__.Notify(629623)
 		default:
+			__antithesis_instrumentation__.Notify(629624)
 			panic(errors.AssertionFailedf("invalid width %d for FloatFamily type", width))
 		}
 	case DecimalFamily:
+		__antithesis_instrumentation__.Notify(629616)
 		if width > precision {
+			__antithesis_instrumentation__.Notify(629625)
 			panic(errors.AssertionFailedf(
 				"decimal scale %d cannot be larger than precision %d", width, precision))
+		} else {
+			__antithesis_instrumentation__.Notify(629626)
 		}
 	case StringFamily, BytesFamily, CollatedStringFamily, BitFamily:
-		// These types can have any width.
+		__antithesis_instrumentation__.Notify(629617)
+
 	case GeometryFamily:
+		__antithesis_instrumentation__.Notify(629618)
 		geoMetadata = &GeoMetadata{}
 	case GeographyFamily:
+		__antithesis_instrumentation__.Notify(629619)
 		geoMetadata = &GeoMetadata{}
 	default:
+		__antithesis_instrumentation__.Notify(629620)
 		if width != 0 {
+			__antithesis_instrumentation__.Notify(629627)
 			panic(errors.AssertionFailedf("type %s cannot have width", family))
+		} else {
+			__antithesis_instrumentation__.Notify(629628)
 		}
 	}
+	__antithesis_instrumentation__.Notify(629584)
 
 	return &T{InternalType: InternalType{
 		Family:                family,
@@ -778,113 +516,166 @@ func MakeScalar(family Family, o oid.Oid, precision, width int32, locale string)
 	}}
 }
 
-// MakeBit constructs a new instance of the BIT type (oid = T_bit) having the
-// given max # bits (0 = unspecified number).
 func MakeBit(width int32) *T {
+	__antithesis_instrumentation__.Notify(629629)
 	if width == 0 {
+		__antithesis_instrumentation__.Notify(629632)
 		return typeBit
+	} else {
+		__antithesis_instrumentation__.Notify(629633)
 	}
+	__antithesis_instrumentation__.Notify(629630)
 	if width < 0 {
+		__antithesis_instrumentation__.Notify(629634)
 		panic(errors.AssertionFailedf("width %d cannot be negative", width))
+	} else {
+		__antithesis_instrumentation__.Notify(629635)
 	}
+	__antithesis_instrumentation__.Notify(629631)
 	return &T{InternalType: InternalType{
 		Family: BitFamily, Oid: oid.T_bit, Width: width, Locale: &emptyLocale}}
 }
 
-// MakeVarBit constructs a new instance of the BIT type (oid = T_varbit) having
-// the given max # bits (0 = unspecified number).
 func MakeVarBit(width int32) *T {
+	__antithesis_instrumentation__.Notify(629636)
 	if width == 0 {
+		__antithesis_instrumentation__.Notify(629639)
 		return VarBit
+	} else {
+		__antithesis_instrumentation__.Notify(629640)
 	}
+	__antithesis_instrumentation__.Notify(629637)
 	if width < 0 {
+		__antithesis_instrumentation__.Notify(629641)
 		panic(errors.AssertionFailedf("width %d cannot be negative", width))
+	} else {
+		__antithesis_instrumentation__.Notify(629642)
 	}
+	__antithesis_instrumentation__.Notify(629638)
 	return &T{InternalType: InternalType{
 		Family: BitFamily, Width: width, Oid: oid.T_varbit, Locale: &emptyLocale}}
 }
 
-// MakeString constructs a new instance of the STRING type (oid = T_text) having
-// the given max # characters (0 = unspecified number).
 func MakeString(width int32) *T {
+	__antithesis_instrumentation__.Notify(629643)
 	if width == 0 {
+		__antithesis_instrumentation__.Notify(629646)
 		return String
+	} else {
+		__antithesis_instrumentation__.Notify(629647)
 	}
+	__antithesis_instrumentation__.Notify(629644)
 	if width < 0 {
+		__antithesis_instrumentation__.Notify(629648)
 		panic(errors.AssertionFailedf("width %d cannot be negative", width))
+	} else {
+		__antithesis_instrumentation__.Notify(629649)
 	}
+	__antithesis_instrumentation__.Notify(629645)
 	return &T{InternalType: InternalType{
 		Family: StringFamily, Oid: oid.T_text, Width: width, Locale: &emptyLocale}}
 }
 
-// MakeVarChar constructs a new instance of the VARCHAR type (oid = T_varchar)
-// having the given max # characters (0 = unspecified number).
 func MakeVarChar(width int32) *T {
+	__antithesis_instrumentation__.Notify(629650)
 	if width == 0 {
+		__antithesis_instrumentation__.Notify(629653)
 		return VarChar
+	} else {
+		__antithesis_instrumentation__.Notify(629654)
 	}
+	__antithesis_instrumentation__.Notify(629651)
 	if width < 0 {
+		__antithesis_instrumentation__.Notify(629655)
 		panic(errors.AssertionFailedf("width %d cannot be negative", width))
+	} else {
+		__antithesis_instrumentation__.Notify(629656)
 	}
+	__antithesis_instrumentation__.Notify(629652)
 	return &T{InternalType: InternalType{
 		Family: StringFamily, Oid: oid.T_varchar, Width: width, Locale: &emptyLocale}}
 }
 
-// MakeChar constructs a new instance of the CHAR type (oid = T_bpchar) having
-// the given max # characters (0 = unspecified number).
 func MakeChar(width int32) *T {
+	__antithesis_instrumentation__.Notify(629657)
 	if width == 0 {
+		__antithesis_instrumentation__.Notify(629660)
 		return typeBpChar
+	} else {
+		__antithesis_instrumentation__.Notify(629661)
 	}
+	__antithesis_instrumentation__.Notify(629658)
 	if width < 0 {
+		__antithesis_instrumentation__.Notify(629662)
 		panic(errors.AssertionFailedf("width %d cannot be negative", width))
+	} else {
+		__antithesis_instrumentation__.Notify(629663)
 	}
+	__antithesis_instrumentation__.Notify(629659)
 	return &T{InternalType: InternalType{
 		Family: StringFamily, Oid: oid.T_bpchar, Width: width, Locale: &emptyLocale}}
 }
 
-// oidCanBeCollatedString returns true if the given oid is can be a CollatedString.
 func oidCanBeCollatedString(o oid.Oid) bool {
+	__antithesis_instrumentation__.Notify(629664)
 	switch o {
 	case oid.T_text, oid.T_varchar, oid.T_bpchar, oid.T_char, oid.T_name:
+		__antithesis_instrumentation__.Notify(629666)
 		return true
+	default:
+		__antithesis_instrumentation__.Notify(629667)
 	}
+	__antithesis_instrumentation__.Notify(629665)
 	return false
 }
 
-// MakeCollatedString constructs a new instance of a CollatedStringFamily type
-// that is collated according to the given locale. The new type is based upon
-// the given string type, having the same oid and width values. For example:
-//
-//   STRING      => STRING COLLATE EN
-//   VARCHAR(20) => VARCHAR(20) COLLATE EN
-//
 func MakeCollatedString(strType *T, locale string) *T {
+	__antithesis_instrumentation__.Notify(629668)
 	if oidCanBeCollatedString(strType.Oid()) {
+		__antithesis_instrumentation__.Notify(629670)
 		return &T{InternalType: InternalType{
 			Family: CollatedStringFamily, Oid: strType.Oid(), Width: strType.Width(), Locale: &locale}}
+	} else {
+		__antithesis_instrumentation__.Notify(629671)
 	}
+	__antithesis_instrumentation__.Notify(629669)
 	panic(errors.AssertionFailedf("cannot apply collation to non-string type: %s", strType))
 }
 
-// MakeDecimal constructs a new instance of a DECIMAL type (oid = T_numeric)
-// that has at most "precision" # of decimal digits (0 = unspecified number of
-// digits) and at most "scale" # of decimal digits after the decimal point
-// (0 = unspecified number of digits). scale must be <= precision.
 func MakeDecimal(precision, scale int32) *T {
-	if precision == 0 && scale == 0 {
+	__antithesis_instrumentation__.Notify(629672)
+	if precision == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(629677)
+		return scale == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(629678)
 		return Decimal
+	} else {
+		__antithesis_instrumentation__.Notify(629679)
 	}
+	__antithesis_instrumentation__.Notify(629673)
 	if precision < 0 {
+		__antithesis_instrumentation__.Notify(629680)
 		panic(errors.AssertionFailedf("precision %d cannot be negative", precision))
+	} else {
+		__antithesis_instrumentation__.Notify(629681)
 	}
+	__antithesis_instrumentation__.Notify(629674)
 	if scale < 0 {
+		__antithesis_instrumentation__.Notify(629682)
 		panic(errors.AssertionFailedf("scale %d cannot be negative", scale))
+	} else {
+		__antithesis_instrumentation__.Notify(629683)
 	}
+	__antithesis_instrumentation__.Notify(629675)
 	if scale > precision {
+		__antithesis_instrumentation__.Notify(629684)
 		panic(errors.AssertionFailedf(
 			"scale %d cannot be larger than precision %d", scale, precision))
+	} else {
+		__antithesis_instrumentation__.Notify(629685)
 	}
+	__antithesis_instrumentation__.Notify(629676)
 	return &T{InternalType: InternalType{
 		Family:    DecimalFamily,
 		Oid:       oid.T_numeric,
@@ -894,11 +685,8 @@ func MakeDecimal(precision, scale int32) *T {
 	}}
 }
 
-// MakeTime constructs a new instance of a TIME type (oid = T_time) that has at
-// most the given number of fractional second digits.
-//
-// To use the default precision, use the `Time` variable.
 func MakeTime(precision int32) *T {
+	__antithesis_instrumentation__.Notify(629686)
 	return &T{InternalType: InternalType{
 		Family:             TimeFamily,
 		Oid:                oid.T_time,
@@ -908,11 +696,8 @@ func MakeTime(precision int32) *T {
 	}}
 }
 
-// MakeTimeTZ constructs a new instance of a TIMETZ type (oid = T_timetz) that
-// has at most the given number of fractional second digits.
-//
-// To use the default precision, use the `TimeTZ` variable.
 func MakeTimeTZ(precision int32) *T {
+	__antithesis_instrumentation__.Notify(629687)
 	return &T{InternalType: InternalType{
 		Family:             TimeTZFamily,
 		Oid:                oid.T_timetz,
@@ -922,13 +707,16 @@ func MakeTimeTZ(precision int32) *T {
 	}}
 }
 
-// MakeGeometry constructs a new instance of a GEOMETRY type (oid = T_geometry)
-// that has the given shape and SRID.
 func MakeGeometry(shape geopb.ShapeType, srid geopb.SRID) *T {
-	// Negative values are promoted to 0.
+	__antithesis_instrumentation__.Notify(629688)
+
 	if srid < 0 {
+		__antithesis_instrumentation__.Notify(629690)
 		srid = 0
+	} else {
+		__antithesis_instrumentation__.Notify(629691)
 	}
+	__antithesis_instrumentation__.Notify(629689)
 	return &T{InternalType: InternalType{
 		Family: GeometryFamily,
 		Oid:    oidext.T_geometry,
@@ -940,12 +728,16 @@ func MakeGeometry(shape geopb.ShapeType, srid geopb.SRID) *T {
 	}}
 }
 
-// MakeGeography constructs a new instance of a geography-related type.
 func MakeGeography(shape geopb.ShapeType, srid geopb.SRID) *T {
-	// Negative values are promoted to 0.
+	__antithesis_instrumentation__.Notify(629692)
+
 	if srid < 0 {
+		__antithesis_instrumentation__.Notify(629694)
 		srid = 0
+	} else {
+		__antithesis_instrumentation__.Notify(629695)
 	}
+	__antithesis_instrumentation__.Notify(629693)
 	return &T{InternalType: InternalType{
 		Family: GeographyFamily,
 		Oid:    oidext.T_geography,
@@ -957,60 +749,67 @@ func MakeGeography(shape geopb.ShapeType, srid geopb.SRID) *T {
 	}}
 }
 
-// GeoMetadata returns the GeoMetadata of the type object if it exists.
-// This should only exist on Geometry and Geography types.
 func (t *T) GeoMetadata() (*GeoMetadata, error) {
+	__antithesis_instrumentation__.Notify(629696)
 	if t.InternalType.GeoMetadata == nil {
+		__antithesis_instrumentation__.Notify(629698)
 		return nil, errors.Newf("GeoMetadata does not exist on type")
+	} else {
+		__antithesis_instrumentation__.Notify(629699)
 	}
+	__antithesis_instrumentation__.Notify(629697)
 	return t.InternalType.GeoMetadata, nil
 }
 
-// GeoSRIDOrZero returns the geo SRID of the type object if it exists.
-// This should only exist on a subset of Geometry and Geography types.
 func (t *T) GeoSRIDOrZero() geopb.SRID {
+	__antithesis_instrumentation__.Notify(629700)
 	if t.InternalType.GeoMetadata != nil {
+		__antithesis_instrumentation__.Notify(629702)
 		return t.InternalType.GeoMetadata.SRID
+	} else {
+		__antithesis_instrumentation__.Notify(629703)
 	}
+	__antithesis_instrumentation__.Notify(629701)
 	return 0
 }
 
 var (
-	// DefaultIntervalTypeMetadata returns a duration field that is unset,
-	// using INTERVAL or INTERVAL ( iconst32 ) syntax instead of INTERVAL
-	// with a qualifier afterwards.
 	DefaultIntervalTypeMetadata = IntervalTypeMetadata{}
 )
 
-// IntervalTypeMetadata is metadata pertinent for intervals.
 type IntervalTypeMetadata struct {
-	// DurationField represents the duration field definition.
 	DurationField IntervalDurationField
-	// Precision is the precision to use - note this matches InternalType rules.
+
 	Precision int32
-	// PrecisionIsSet indicates whether Precision is explicitly set.
+
 	PrecisionIsSet bool
 }
 
-// IsMinuteToSecond returns whether the IntervalDurationField represents
-// the MINUTE TO SECOND interval qualifier.
 func (m *IntervalDurationField) IsMinuteToSecond() bool {
-	return m.FromDurationType == IntervalDurationType_MINUTE &&
-		m.DurationType == IntervalDurationType_SECOND
+	__antithesis_instrumentation__.Notify(629704)
+	return m.FromDurationType == IntervalDurationType_MINUTE && func() bool {
+		__antithesis_instrumentation__.Notify(629705)
+		return m.DurationType == IntervalDurationType_SECOND == true
+	}() == true
 }
 
-// IsDayToHour returns whether the IntervalDurationField represents
-// the DAY TO HOUR interval qualifier.
 func (m *IntervalDurationField) IsDayToHour() bool {
-	return m.FromDurationType == IntervalDurationType_DAY &&
-		m.DurationType == IntervalDurationType_HOUR
+	__antithesis_instrumentation__.Notify(629706)
+	return m.FromDurationType == IntervalDurationType_DAY && func() bool {
+		__antithesis_instrumentation__.Notify(629707)
+		return m.DurationType == IntervalDurationType_HOUR == true
+	}() == true
 }
 
-// IntervalTypeMetadata returns the IntervalTypeMetadata for interval types.
 func (t *T) IntervalTypeMetadata() (IntervalTypeMetadata, error) {
+	__antithesis_instrumentation__.Notify(629708)
 	if t.Family() != IntervalFamily {
+		__antithesis_instrumentation__.Notify(629710)
 		return IntervalTypeMetadata{}, errors.Newf("cannot call IntervalTypeMetadata on non-intervals")
+	} else {
+		__antithesis_instrumentation__.Notify(629711)
 	}
+	__antithesis_instrumentation__.Notify(629709)
 	return IntervalTypeMetadata{
 		DurationField:  *t.InternalType.IntervalDurationField,
 		Precision:      t.InternalType.Precision,
@@ -1018,21 +817,31 @@ func (t *T) IntervalTypeMetadata() (IntervalTypeMetadata, error) {
 	}, nil
 }
 
-// MakeInterval constructs a new instance of a
-// INTERVAL type (oid = T_interval) with a duration field.
-//
-// To use the default precision and field, use the `Interval` variable.
 func MakeInterval(itm IntervalTypeMetadata) *T {
+	__antithesis_instrumentation__.Notify(629712)
 	switch itm.DurationField.DurationType {
 	case IntervalDurationType_SECOND, IntervalDurationType_UNSET:
+		__antithesis_instrumentation__.Notify(629715)
 	default:
+		__antithesis_instrumentation__.Notify(629716)
 		if itm.PrecisionIsSet {
+			__antithesis_instrumentation__.Notify(629717)
 			panic(errors.Errorf("cannot set precision for duration type %s", itm.DurationField.DurationType))
+		} else {
+			__antithesis_instrumentation__.Notify(629718)
 		}
 	}
-	if itm.Precision > 0 && !itm.PrecisionIsSet {
+	__antithesis_instrumentation__.Notify(629713)
+	if itm.Precision > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(629719)
+		return !itm.PrecisionIsSet == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(629720)
 		panic(errors.Errorf("precision must be set if Precision > 0"))
+	} else {
+		__antithesis_instrumentation__.Notify(629721)
 	}
+	__antithesis_instrumentation__.Notify(629714)
 
 	return &T{InternalType: InternalType{
 		Family:                IntervalFamily,
@@ -1044,11 +853,8 @@ func MakeInterval(itm IntervalTypeMetadata) *T {
 	}}
 }
 
-// MakeTimestamp constructs a new instance of a TIMESTAMP type that has at most
-// the given number of fractional second digits.
-//
-// To use the default precision, use the `Timestamp` variable.
 func MakeTimestamp(precision int32) *T {
+	__antithesis_instrumentation__.Notify(629722)
 	return &T{InternalType: InternalType{
 		Family:             TimestampFamily,
 		Oid:                oid.T_timestamp,
@@ -1058,11 +864,8 @@ func MakeTimestamp(precision int32) *T {
 	}}
 }
 
-// MakeTimestampTZ constructs a new instance of a TIMESTAMPTZ type that has at
-// most the given number of fractional second digits.
-//
-// To use the default precision, use the `TimestampTZ` variable.
 func MakeTimestampTZ(precision int32) *T {
+	__antithesis_instrumentation__.Notify(629723)
 	return &T{InternalType: InternalType{
 		Family:             TimestampTZFamily,
 		Oid:                oid.T_timestamptz,
@@ -1072,9 +875,8 @@ func MakeTimestampTZ(precision int32) *T {
 	}}
 }
 
-// MakeEnum constructs a new instance of an EnumFamily type with the given
-// stable type ID. Note that it does not hydrate cached fields on the type.
 func MakeEnum(typeOID, arrayTypeOID oid.Oid) *T {
+	__antithesis_instrumentation__.Notify(629724)
 	return &T{InternalType: InternalType{
 		Family: EnumFamily,
 		Oid:    typeOID,
@@ -1085,14 +887,16 @@ func MakeEnum(typeOID, arrayTypeOID oid.Oid) *T {
 	}}
 }
 
-// MakeArray constructs a new instance of an ArrayFamily type with the given
-// element type (which may itself be an ArrayFamily type).
 func MakeArray(typ *T) *T {
-	// Do not make an array of type unknown[]. Follow Postgres' behavior and
-	// convert this to type string[].
+	__antithesis_instrumentation__.Notify(629725)
+
 	if typ.Family() == UnknownFamily {
+		__antithesis_instrumentation__.Notify(629727)
 		typ = String
+	} else {
+		__antithesis_instrumentation__.Notify(629728)
 	}
+	__antithesis_instrumentation__.Notify(629726)
 	arr := &T{InternalType: InternalType{
 		Family:        ArrayFamily,
 		Oid:           CalcArrayOid(typ),
@@ -1102,24 +906,26 @@ func MakeArray(typ *T) *T {
 	return arr
 }
 
-// MakeTuple constructs a new instance of a TupleFamily type with the given
-// field types (some/all of which may be other TupleFamily types).
-//
-// Warning: the contents slice is used directly; the caller should not modify it
-// after calling this function.
 func MakeTuple(contents []*T) *T {
+	__antithesis_instrumentation__.Notify(629729)
 	return &T{InternalType: InternalType{
 		Family: TupleFamily, Oid: oid.T_record, TupleContents: contents, Locale: &emptyLocale,
 	}}
 }
 
-// MakeLabeledTuple constructs a new instance of a TupleFamily type with the
-// given field types and labels.
 func MakeLabeledTuple(contents []*T, labels []string) *T {
-	if len(contents) != len(labels) && labels != nil {
+	__antithesis_instrumentation__.Notify(629730)
+	if len(contents) != len(labels) && func() bool {
+		__antithesis_instrumentation__.Notify(629732)
+		return labels != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(629733)
 		panic(errors.AssertionFailedf(
 			"tuple contents and labels must be of same length: %v, %v", contents, labels))
+	} else {
+		__antithesis_instrumentation__.Notify(629734)
 	}
+	__antithesis_instrumentation__.Notify(629731)
 	return &T{InternalType: InternalType{
 		Family:        TupleFamily,
 		Oid:           oid.T_record,
@@ -1129,238 +935,232 @@ func MakeLabeledTuple(contents []*T, labels []string) *T {
 	}}
 }
 
-// Family specifies a group of types that are compatible with one another. Types
-// in the same family can be compared, assigned, etc., but may differ from one
-// another in width, precision, locale, and other attributes. For example, it is
-// always an error to insert an INT value into a FLOAT column, because they are
-// not in the same family. However, values of different types within the same
-// family are "insert-compatible" with one another. Insertion may still result
-// in an error because of width overflow or other constraints, but it can at
-// least be attempted.
-//
-// Families are convenient for performing type switches on types, because in
-// most cases it is the type family that matters, not the specific type. For
-// example, when CRDB encodes values, it maintains routines for each family,
-// since types in the same family encode in very similar ways.
-//
-// Most type families have an associated "canonical type" that is the default
-// representative of that family, and which is a superset of all other types in
-// that family. Values with other types (in the same family) can always be
-// trivially converted to the canonical type with no loss of information. For
-// example, the canonical type for IntFamily is Int, which is a 64-bit integer.
-// Both 32-bit and 16-bit integers can be trivially converted to it.
-//
-// Execution operators and functions are permissive in terms of input (allow any
-// type within a given family), and typically return only values having
-// canonical types as output. For example, the IntFamily Plus operator allows
-// values having any IntFamily type as input. But then it will always convert
-// those values to 64-bit integers, and return a final 64-bit integer value
-// (types.Int). Doing this vastly reduces the required number of operator
-// overloads.
 func (t *T) Family() Family {
+	__antithesis_instrumentation__.Notify(629735)
 	return t.InternalType.Family
 }
 
-// Oid returns the type's Postgres Object ID. The OID identifies the type more
-// specifically than the type family, and is used by the Postgres wire protocol
-// various Postgres catalog tables, functions like pg_typeof, etc. Maintaining
-// the OID is required for Postgres-compatibility.
 func (t *T) Oid() oid.Oid {
+	__antithesis_instrumentation__.Notify(629736)
 	return t.InternalType.Oid
 }
 
-// Locale identifies a specific geographical, political, or cultural region that
-// impacts various character-based operations such as sorting, pattern matching,
-// and builtin functions like lower and upper. It is only defined for the
-// types in the CollatedStringFamily, and is the empty string for all other
-// types.
 func (t *T) Locale() string {
+	__antithesis_instrumentation__.Notify(629737)
 	return *t.InternalType.Locale
 }
 
-// Width is the size or scale of the type, such as number of bits or characters.
-//
-//   INT           : # of bits (64, 32, 16)
-//   FLOAT         : # of bits (64, 32)
-//   DECIMAL       : max # of digits after decimal point (must be <= Precision)
-//   STRING        : max # of characters
-//   COLLATEDSTRING: max # of characters
-//   BIT           : max # of bits
-//
-// Width is always 0 for other types.
 func (t *T) Width() int32 {
+	__antithesis_instrumentation__.Notify(629738)
 	return t.InternalType.Width
 }
 
-// Precision is the accuracy of the data type.
-//
-//   DECIMAL    : max # digits (must be >= Width/Scale)
-//   INTERVAL   : max # fractional second digits
-//   TIME       : max # fractional second digits
-//   TIMETZ     : max # fractional second digits
-//   TIMESTAMP  : max # fractional second digits
-//   TIMESTAMPTZ: max # fractional second digits
-//
-// Precision for time-related families has special rules for 0 -- see
-// `precision_is_set` on the `InternalType` proto.
-//
-// Precision is always 0 for other types.
 func (t *T) Precision() int32 {
+	__antithesis_instrumentation__.Notify(629739)
 	switch t.InternalType.Family {
 	case IntervalFamily, TimestampFamily, TimestampTZFamily, TimeFamily, TimeTZFamily:
-		if t.InternalType.Precision == 0 && !t.InternalType.TimePrecisionIsSet {
+		__antithesis_instrumentation__.Notify(629741)
+		if t.InternalType.Precision == 0 && func() bool {
+			__antithesis_instrumentation__.Notify(629743)
+			return !t.InternalType.TimePrecisionIsSet == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629744)
 			return defaultTimePrecision
+		} else {
+			__antithesis_instrumentation__.Notify(629745)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(629742)
 	}
+	__antithesis_instrumentation__.Notify(629740)
 	return t.InternalType.Precision
 }
 
-// TypeModifier returns the type modifier of the type. This corresponds to the
-// pg_attribute.atttypmod column. atttypmod records type-specific data supplied
-// at table creation time (for example, the maximum length of a varchar column).
-// Array types have the same type modifier as the contents of the array.
-// The value will be -1 for types that do not need atttypmod.
 func (t *T) TypeModifier() int32 {
+	__antithesis_instrumentation__.Notify(629746)
 	if t.Family() == ArrayFamily {
+		__antithesis_instrumentation__.Notify(629750)
 		return t.ArrayContents().TypeModifier()
+	} else {
+		__antithesis_instrumentation__.Notify(629751)
 	}
-	// The type modifier for "char" is always -1.
+	__antithesis_instrumentation__.Notify(629747)
+
 	if t.Oid() == oid.T_char {
+		__antithesis_instrumentation__.Notify(629752)
 		return int32(-1)
+	} else {
+		__antithesis_instrumentation__.Notify(629753)
 	}
+	__antithesis_instrumentation__.Notify(629748)
 
 	switch t.Family() {
 	case StringFamily, CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(629754)
 		if width := t.Width(); width != 0 {
-			// Postgres adds 4 to the attypmod for bounded string types, the
-			// var header size.
+			__antithesis_instrumentation__.Notify(629758)
+
 			return width + 4
+		} else {
+			__antithesis_instrumentation__.Notify(629759)
 		}
 	case BitFamily:
+		__antithesis_instrumentation__.Notify(629755)
 		if width := t.Width(); width != 0 {
+			__antithesis_instrumentation__.Notify(629760)
 			return width
+		} else {
+			__antithesis_instrumentation__.Notify(629761)
 		}
 	case DecimalFamily:
-		// attTypMod is calculated by putting the precision in the upper
-		// bits and the scale in the lower bits of a 32-bit int, and adding
-		// 4 (the var header size). We mock this for clients' sake. See
-		// https://github.com/postgres/postgres/blob/5a2832465fd8984d089e8c44c094e6900d987fcd/src/backend/utils/adt/numeric.c#L1242.
-		if width, precision := t.Width(), t.Precision(); precision != 0 || width != 0 {
+		__antithesis_instrumentation__.Notify(629756)
+
+		if width, precision := t.Width(), t.Precision(); precision != 0 || func() bool {
+			__antithesis_instrumentation__.Notify(629762)
+			return width != 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629763)
 			return ((precision << 16) | width) + 4
+		} else {
+			__antithesis_instrumentation__.Notify(629764)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(629757)
 	}
+	__antithesis_instrumentation__.Notify(629749)
 	return int32(-1)
 }
 
-// WithoutTypeModifiers returns a copy of the given type with the type modifiers
-// reset, if the type has modifiers. The returned type has arbitrary width and
-// precision, or for some types, like timestamps, the maximum allowed width and
-// precision. If the given type already has no type modifiers, it is returned
-// unchanged and the function does not allocate a new type.
 func (t *T) WithoutTypeModifiers() *T {
+	__antithesis_instrumentation__.Notify(629765)
 	switch t.Family() {
 	case ArrayFamily:
-		// Remove type modifiers of the array content type.
+		__antithesis_instrumentation__.Notify(629769)
+
 		newContents := t.ArrayContents().WithoutTypeModifiers()
 		if newContents == t.ArrayContents() {
+			__antithesis_instrumentation__.Notify(629776)
 			return t
+		} else {
+			__antithesis_instrumentation__.Notify(629777)
 		}
+		__antithesis_instrumentation__.Notify(629770)
 		return MakeArray(newContents)
 	case TupleFamily:
-		// Remove type modifiers for each of the tuple content types.
+		__antithesis_instrumentation__.Notify(629771)
+
 		oldContents := t.TupleContents()
 		newContents := make([]*T, len(oldContents))
 		changed := false
 		for i := range newContents {
+			__antithesis_instrumentation__.Notify(629778)
 			newContents[i] = oldContents[i].WithoutTypeModifiers()
 			if newContents[i] != oldContents[i] {
+				__antithesis_instrumentation__.Notify(629779)
 				changed = true
+			} else {
+				__antithesis_instrumentation__.Notify(629780)
 			}
 		}
+		__antithesis_instrumentation__.Notify(629772)
 		if !changed {
+			__antithesis_instrumentation__.Notify(629781)
 			return t
+		} else {
+			__antithesis_instrumentation__.Notify(629782)
 		}
+		__antithesis_instrumentation__.Notify(629773)
 		return MakeTuple(newContents)
 	case EnumFamily:
-		// Enums have no type modifiers.
-		return t
-	}
+		__antithesis_instrumentation__.Notify(629774)
 
-	// For types that can be a collated string, we copy the type and set the width
-	// to 0 rather than returning the default OidToType type so that we retain the
-	// locale value if the type is collated.
+		return t
+	default:
+		__antithesis_instrumentation__.Notify(629775)
+	}
+	__antithesis_instrumentation__.Notify(629766)
+
 	if oidCanBeCollatedString(t.Oid()) {
+		__antithesis_instrumentation__.Notify(629783)
 		newT := *t
 		newT.InternalType.Width = 0
 		return &newT
+	} else {
+		__antithesis_instrumentation__.Notify(629784)
 	}
+	__antithesis_instrumentation__.Notify(629767)
 
 	t, ok := OidToType[t.Oid()]
 	if !ok {
+		__antithesis_instrumentation__.Notify(629785)
 		panic(errors.AssertionFailedf("unexpected OID: %d", t.Oid()))
+	} else {
+		__antithesis_instrumentation__.Notify(629786)
 	}
+	__antithesis_instrumentation__.Notify(629768)
 	return t
 }
 
-// Scale is an alias method for Width, used for clarity for types in
-// DecimalFamily.
 func (t *T) Scale() int32 {
+	__antithesis_instrumentation__.Notify(629787)
 	return t.InternalType.Width
 }
 
-// ArrayContents returns the type of array elements. This is nil for types that
-// are not in the ArrayFamily.
 func (t *T) ArrayContents() *T {
+	__antithesis_instrumentation__.Notify(629788)
 	return t.InternalType.ArrayContents
 }
 
-// TupleContents returns a slice containing the type of each tuple field. This
-// is nil for non-TupleFamily types.
 func (t *T) TupleContents() []*T {
+	__antithesis_instrumentation__.Notify(629789)
 	return t.InternalType.TupleContents
 }
 
-// TupleLabels returns a slice containing the labels of each tuple field. This
-// is nil for types not in the TupleFamily, or if the tuple type does not
-// specify labels.
 func (t *T) TupleLabels() []string {
+	__antithesis_instrumentation__.Notify(629790)
 	return t.InternalType.TupleLabels
 }
 
-// UserDefinedArrayOID returns the OID of the array type that corresponds to
-// this user defined type. This function only can only be called on user
-// defined types and returns non-zero data only for user defined types that
-// aren't arrays.
 func (t *T) UserDefinedArrayOID() oid.Oid {
+	__antithesis_instrumentation__.Notify(629791)
 	if t.InternalType.UDTMetadata == nil {
+		__antithesis_instrumentation__.Notify(629793)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(629794)
 	}
+	__antithesis_instrumentation__.Notify(629792)
 	return t.InternalType.UDTMetadata.ArrayTypeOID
 }
 
-// RemapUserDefinedTypeOIDs is used to remap OIDs stored within a types.T
-// that is a user defined type. The newArrayOID argument is ignored if the
-// input type is an Array type. It mutates the input types.T and should only
-// be used when type is known to not be shared. If the input oid values are
-// 0 then the RemapUserDefinedTypeOIDs has no effect.
 func RemapUserDefinedTypeOIDs(t *T, newOID, newArrayOID oid.Oid) {
+	__antithesis_instrumentation__.Notify(629795)
 	if newOID != 0 {
+		__antithesis_instrumentation__.Notify(629797)
 		t.InternalType.Oid = newOID
+	} else {
+		__antithesis_instrumentation__.Notify(629798)
 	}
-	if t.Family() != ArrayFamily && newArrayOID != 0 {
+	__antithesis_instrumentation__.Notify(629796)
+	if t.Family() != ArrayFamily && func() bool {
+		__antithesis_instrumentation__.Notify(629799)
+		return newArrayOID != 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(629800)
 		t.InternalType.UDTMetadata.ArrayTypeOID = newArrayOID
+	} else {
+		__antithesis_instrumentation__.Notify(629801)
 	}
 }
 
-// UserDefined returns whether or not t is a user defined type.
 func (t *T) UserDefined() bool {
+	__antithesis_instrumentation__.Notify(629802)
 	return IsOIDUserDefinedType(t.Oid())
 }
 
-// IsOIDUserDefinedType returns whether or not o corresponds to a user
-// defined type.
 func IsOIDUserDefinedType(o oid.Oid) bool {
-	// Types with OIDs larger than the predefined max are user defined.
+	__antithesis_instrumentation__.Notify(629803)
+
 	return o > oidext.CockroachPredefinedOIDMax
 }
 
@@ -1394,202 +1194,253 @@ var familyNames = map[Family]string{
 	VoidFamily:           "void",
 }
 
-// Name returns a user-friendly word indicating the family type.
-//
-// TODO(radu): investigate whether anything breaks if we use
-// enumvalue_customname and use String() instead.
 func (f Family) Name() string {
+	__antithesis_instrumentation__.Notify(629804)
 	ret, ok := familyNames[f]
 	if !ok {
+		__antithesis_instrumentation__.Notify(629806)
 		panic(errors.AssertionFailedf("unexpected Family: %d", f))
+	} else {
+		__antithesis_instrumentation__.Notify(629807)
 	}
+	__antithesis_instrumentation__.Notify(629805)
 	return ret
 }
 
-// Name returns a single word description of the type that describes it
-// succinctly, but without all the details, such as width, locale, etc. The name
-// is sometimes the same as the name returned by SQLStandardName, but is more
-// CRDB friendly.
-//
-// TODO(andyk): Should these be changed to be the same as SQLStandardName?
 func (t *T) Name() string {
+	__antithesis_instrumentation__.Notify(629808)
 	switch fam := t.Family(); fam {
 	case AnyFamily:
+		__antithesis_instrumentation__.Notify(629809)
 		return "anyelement"
 
 	case ArrayFamily:
+		__antithesis_instrumentation__.Notify(629810)
 		switch t.Oid() {
 		case oid.T_oidvector:
+			__antithesis_instrumentation__.Notify(629824)
 			return "oidvector"
 		case oid.T_int2vector:
+			__antithesis_instrumentation__.Notify(629825)
 			return "int2vector"
+		default:
+			__antithesis_instrumentation__.Notify(629826)
 		}
+		__antithesis_instrumentation__.Notify(629811)
 		return t.ArrayContents().Name() + "[]"
 
 	case BitFamily:
+		__antithesis_instrumentation__.Notify(629812)
 		if t.Oid() == oid.T_varbit {
+			__antithesis_instrumentation__.Notify(629827)
 			return "varbit"
+		} else {
+			__antithesis_instrumentation__.Notify(629828)
 		}
+		__antithesis_instrumentation__.Notify(629813)
 		return "bit"
 
 	case FloatFamily:
+		__antithesis_instrumentation__.Notify(629814)
 		switch t.Width() {
 		case 64:
+			__antithesis_instrumentation__.Notify(629829)
 			return "float"
 		case 32:
+			__antithesis_instrumentation__.Notify(629830)
 			return "float4"
 		default:
+			__antithesis_instrumentation__.Notify(629831)
 			panic(errors.AssertionFailedf("programming error: unknown float width: %d", t.Width()))
 		}
 
 	case IntFamily:
+		__antithesis_instrumentation__.Notify(629815)
 		switch t.Width() {
 		case 64:
+			__antithesis_instrumentation__.Notify(629832)
 			return "int"
 		case 32:
+			__antithesis_instrumentation__.Notify(629833)
 			return "int4"
 		case 16:
+			__antithesis_instrumentation__.Notify(629834)
 			return "int2"
 		default:
+			__antithesis_instrumentation__.Notify(629835)
 			panic(errors.AssertionFailedf("programming error: unknown int width: %d", t.Width()))
 		}
 
 	case OidFamily:
+		__antithesis_instrumentation__.Notify(629816)
 		return t.SQLStandardName()
 
 	case StringFamily, CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(629817)
 		switch t.Oid() {
 		case oid.T_text:
+			__antithesis_instrumentation__.Notify(629836)
 			return "string"
 		case oid.T_bpchar:
+			__antithesis_instrumentation__.Notify(629837)
 			return "char"
 		case oid.T_char:
-			// Yes, that's the name. The ways of PostgreSQL are inscrutable.
+			__antithesis_instrumentation__.Notify(629838)
+
 			return `"char"`
 		case oid.T_varchar:
+			__antithesis_instrumentation__.Notify(629839)
 			return "varchar"
 		case oid.T_name:
+			__antithesis_instrumentation__.Notify(629840)
 			return "name"
+		default:
+			__antithesis_instrumentation__.Notify(629841)
 		}
+		__antithesis_instrumentation__.Notify(629818)
 		panic(errors.AssertionFailedf("unexpected OID: %d", t.Oid()))
 
 	case TupleFamily:
+		__antithesis_instrumentation__.Notify(629819)
 		return t.SQLStandardName()
 
 	case EnumFamily:
+		__antithesis_instrumentation__.Notify(629820)
 		if t.Oid() == oid.T_anyenum {
+			__antithesis_instrumentation__.Notify(629842)
 			return "anyenum"
+		} else {
+			__antithesis_instrumentation__.Notify(629843)
 		}
-		// This can be nil during unit testing.
+		__antithesis_instrumentation__.Notify(629821)
+
 		if t.TypeMeta.Name == nil {
+			__antithesis_instrumentation__.Notify(629844)
 			return "unknown_enum"
+		} else {
+			__antithesis_instrumentation__.Notify(629845)
 		}
+		__antithesis_instrumentation__.Notify(629822)
 		return t.TypeMeta.Name.Basename()
 
 	default:
+		__antithesis_instrumentation__.Notify(629823)
 		return fam.Name()
 	}
 }
 
-// PGName returns the Postgres name for the type. This is sometimes different
-// than the native CRDB name for it (i.e. the Name function). It is used when
-// compatibility with PG is important. Examples of differences:
-//
-//   Name()       PGName()
-//   --------------------------
-//   char         bpchar
-//   "char"       char
-//   bytes        bytea
-//   int4[]       _int4
-//
 func (t *T) PGName() string {
+	__antithesis_instrumentation__.Notify(629846)
 	name, ok := oidext.TypeName(t.Oid())
 	if ok {
+		__antithesis_instrumentation__.Notify(629850)
 		return strings.ToLower(name)
+	} else {
+		__antithesis_instrumentation__.Notify(629851)
 	}
+	__antithesis_instrumentation__.Notify(629847)
 
-	// For user defined types, return the basename.
 	if t.UserDefined() {
+		__antithesis_instrumentation__.Notify(629852)
 		return t.TypeMeta.Name.Basename()
+	} else {
+		__antithesis_instrumentation__.Notify(629853)
 	}
+	__antithesis_instrumentation__.Notify(629848)
 
-	// Postgres does not have an UNKNOWN[] type. However, CRDB does, so
-	// manufacture a name for it.
-	if t.Family() != ArrayFamily || t.ArrayContents().Family() != UnknownFamily {
+	if t.Family() != ArrayFamily || func() bool {
+		__antithesis_instrumentation__.Notify(629854)
+		return t.ArrayContents().Family() != UnknownFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(629855)
 		panic(errors.AssertionFailedf("unknown PG name for oid %d", t.Oid()))
+	} else {
+		__antithesis_instrumentation__.Notify(629856)
 	}
+	__antithesis_instrumentation__.Notify(629849)
 	return "_unknown"
 }
 
-// SQLStandardName returns the type's name as it is specified in the SQL
-// standard (or by Postgres for any non-standard types). This can be looked up
-// for any type in Postgres using a query similar to this:
-//
-//   SELECT format_type(pg_typeof(1::int)::regtype, NULL)
-//
 func (t *T) SQLStandardName() string {
+	__antithesis_instrumentation__.Notify(629857)
 	return t.SQLStandardNameWithTypmod(false, 0)
 }
 
 var telemetryNameReplaceRegex = regexp.MustCompile("[^a-zA-Z0-9]")
 
-// TelemetryName returns a name that is friendly for telemetry.
 func (t *T) TelemetryName() string {
+	__antithesis_instrumentation__.Notify(629858)
 	return strings.ToLower(telemetryNameReplaceRegex.ReplaceAllString(t.SQLString(), "_"))
 }
 
-// SQLStandardNameWithTypmod is like SQLStandardName but it also accepts a
-// typmod argument, and a boolean which indicates whether or not a typmod was
-// even specified. The expected results of this function should be, in Postgres:
-//
-//   SELECT format_type('thetype'::regype, typmod)
-//
-// Generally, what this does with a non-0 typmod is append the scale, precision
-// or length of a datatype to the name of the datatype. For example, a
-// varchar(20) would appear as character varying(20) when provided the typmod
-// value for varchar(20), which happens to be 24.
-//
-// This function is full of special cases. See backend/utils/adt/format_type.c
-// in Postgres.
 func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
+	__antithesis_instrumentation__.Notify(629859)
 	var buf strings.Builder
 	switch t.Family() {
 	case AnyFamily:
+		__antithesis_instrumentation__.Notify(629860)
 		return "anyelement"
 	case ArrayFamily:
+		__antithesis_instrumentation__.Notify(629861)
 		switch t.Oid() {
 		case oid.T_oidvector:
+			__antithesis_instrumentation__.Notify(629898)
 			return "oidvector"
 		case oid.T_int2vector:
+			__antithesis_instrumentation__.Notify(629899)
 			return "int2vector"
+		default:
+			__antithesis_instrumentation__.Notify(629900)
 		}
+		__antithesis_instrumentation__.Notify(629862)
 		return t.ArrayContents().SQLStandardName() + "[]"
 	case BitFamily:
+		__antithesis_instrumentation__.Notify(629863)
 		if t.Oid() == oid.T_varbit {
+			__antithesis_instrumentation__.Notify(629901)
 			buf.WriteString("bit varying")
 		} else {
+			__antithesis_instrumentation__.Notify(629902)
 			buf.WriteString("bit")
 		}
-		if !haveTypmod || typmod <= 0 {
+		__antithesis_instrumentation__.Notify(629864)
+		if !haveTypmod || func() bool {
+			__antithesis_instrumentation__.Notify(629903)
+			return typmod <= 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629904)
 			return buf.String()
+		} else {
+			__antithesis_instrumentation__.Notify(629905)
 		}
+		__antithesis_instrumentation__.Notify(629865)
 		buf.WriteString(fmt.Sprintf("(%d)", typmod))
 		return buf.String()
 	case BoolFamily:
+		__antithesis_instrumentation__.Notify(629866)
 		return "boolean"
 	case Box2DFamily:
+		__antithesis_instrumentation__.Notify(629867)
 		return "box2d"
 	case BytesFamily:
+		__antithesis_instrumentation__.Notify(629868)
 		return "bytea"
 	case DateFamily:
+		__antithesis_instrumentation__.Notify(629869)
 		return "date"
 	case DecimalFamily:
-		if !haveTypmod || typmod <= 0 {
+		__antithesis_instrumentation__.Notify(629870)
+		if !haveTypmod || func() bool {
+			__antithesis_instrumentation__.Notify(629906)
+			return typmod <= 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629907)
 			return "numeric"
+		} else {
+			__antithesis_instrumentation__.Notify(629908)
 		}
-		// The typmod of a numeric has the precision in the upper bits and the
-		// scale in the lower bits of a 32-bit int, after subtracting 4 (the var
-		// header size). See numeric.c.
+		__antithesis_instrumentation__.Notify(629871)
+
 		typmod -= 4
 		return fmt.Sprintf(
 			"numeric(%d,%d)",
@@ -1598,218 +1449,372 @@ func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
 		)
 
 	case FloatFamily:
+		__antithesis_instrumentation__.Notify(629872)
 		switch t.Width() {
 		case 32:
+			__antithesis_instrumentation__.Notify(629909)
 			return "real"
 		case 64:
+			__antithesis_instrumentation__.Notify(629910)
 			return "double precision"
 		default:
+			__antithesis_instrumentation__.Notify(629911)
 			panic(errors.AssertionFailedf("programming error: unknown float width: %d", t.Width()))
 		}
 	case GeometryFamily, GeographyFamily:
+		__antithesis_instrumentation__.Notify(629873)
 		return t.Name() + t.InternalType.GeoMetadata.SQLString()
 	case INetFamily:
+		__antithesis_instrumentation__.Notify(629874)
 		return "inet"
 	case IntFamily:
+		__antithesis_instrumentation__.Notify(629875)
 		switch t.Width() {
 		case 16:
+			__antithesis_instrumentation__.Notify(629912)
 			return "smallint"
 		case 32:
-			// PG shows "integer" for int4.
+			__antithesis_instrumentation__.Notify(629913)
+
 			return "integer"
 		case 64:
+			__antithesis_instrumentation__.Notify(629914)
 			return "bigint"
 		default:
+			__antithesis_instrumentation__.Notify(629915)
 			panic(errors.AssertionFailedf("programming error: unknown int width: %d", t.Width()))
 		}
 	case IntervalFamily:
-		// TODO(jordan): intervals can have typmods, but we don't support them in the same way.
-		// Masking is used to extract the precision (src/include/utils/timestamp.h), whereas
-		// we store it as `IntervalDurationField`.
+		__antithesis_instrumentation__.Notify(629876)
+
 		return "interval"
 	case JsonFamily:
-		// Only binary JSON is currently supported.
+		__antithesis_instrumentation__.Notify(629877)
+
 		return "jsonb"
 	case OidFamily:
+		__antithesis_instrumentation__.Notify(629878)
 		switch t.Oid() {
 		case oid.T_oid:
+			__antithesis_instrumentation__.Notify(629916)
 			return "oid"
 		case oid.T_regclass:
+			__antithesis_instrumentation__.Notify(629917)
 			return "regclass"
 		case oid.T_regnamespace:
+			__antithesis_instrumentation__.Notify(629918)
 			return "regnamespace"
 		case oid.T_regproc:
+			__antithesis_instrumentation__.Notify(629919)
 			return "regproc"
 		case oid.T_regprocedure:
+			__antithesis_instrumentation__.Notify(629920)
 			return "regprocedure"
 		case oid.T_regrole:
+			__antithesis_instrumentation__.Notify(629921)
 			return "regrole"
 		case oid.T_regtype:
+			__antithesis_instrumentation__.Notify(629922)
 			return "regtype"
 		default:
+			__antithesis_instrumentation__.Notify(629923)
 			panic(errors.AssertionFailedf("unexpected Oid: %v", errors.Safe(t.Oid())))
 		}
 	case StringFamily, CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(629879)
 		switch t.Oid() {
 		case oid.T_text:
+			__antithesis_instrumentation__.Notify(629924)
 			buf.WriteString("text")
 		case oid.T_varchar:
+			__antithesis_instrumentation__.Notify(629925)
 			buf.WriteString("character varying")
 		case oid.T_bpchar:
-			if haveTypmod && typmod < 0 {
-				// Special case. Run `select format_type('bpchar'::regtype, -1);` in pg.
+			__antithesis_instrumentation__.Notify(629926)
+			if haveTypmod && func() bool {
+				__antithesis_instrumentation__.Notify(629931)
+				return typmod < 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(629932)
+
 				return "bpchar"
+			} else {
+				__antithesis_instrumentation__.Notify(629933)
 			}
+			__antithesis_instrumentation__.Notify(629927)
 			buf.WriteString("character")
 		case oid.T_char:
-			// Type modifiers not allowed for "char".
+			__antithesis_instrumentation__.Notify(629928)
+
 			return `"char"`
 		case oid.T_name:
-			// Type modifiers not allowed for name.
+			__antithesis_instrumentation__.Notify(629929)
+
 			return "name"
 		default:
+			__antithesis_instrumentation__.Notify(629930)
 			panic(errors.AssertionFailedf("unexpected OID: %d", t.Oid()))
 		}
+		__antithesis_instrumentation__.Notify(629880)
 		if !haveTypmod {
+			__antithesis_instrumentation__.Notify(629934)
 			return buf.String()
+		} else {
+			__antithesis_instrumentation__.Notify(629935)
 		}
+		__antithesis_instrumentation__.Notify(629881)
 
-		// Typmod gets subtracted by 4 for all non-text string-like types to produce
-		// the length.
 		if t.Oid() != oid.T_text {
+			__antithesis_instrumentation__.Notify(629936)
 			typmod -= 4
+		} else {
+			__antithesis_instrumentation__.Notify(629937)
 		}
+		__antithesis_instrumentation__.Notify(629882)
 		if typmod <= 0 {
-			// In this case, we don't print any modifier.
+			__antithesis_instrumentation__.Notify(629938)
+
 			return buf.String()
+		} else {
+			__antithesis_instrumentation__.Notify(629939)
 		}
+		__antithesis_instrumentation__.Notify(629883)
 		buf.WriteString(fmt.Sprintf("(%d)", typmod))
 		return buf.String()
 
 	case TimeFamily:
-		if !haveTypmod || typmod < 0 {
+		__antithesis_instrumentation__.Notify(629884)
+		if !haveTypmod || func() bool {
+			__antithesis_instrumentation__.Notify(629940)
+			return typmod < 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629941)
 			return "time without time zone"
+		} else {
+			__antithesis_instrumentation__.Notify(629942)
 		}
+		__antithesis_instrumentation__.Notify(629885)
 		return fmt.Sprintf("time(%d) without time zone", typmod)
 	case TimeTZFamily:
-		if !haveTypmod || typmod < 0 {
+		__antithesis_instrumentation__.Notify(629886)
+		if !haveTypmod || func() bool {
+			__antithesis_instrumentation__.Notify(629943)
+			return typmod < 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629944)
 			return "time with time zone"
+		} else {
+			__antithesis_instrumentation__.Notify(629945)
 		}
+		__antithesis_instrumentation__.Notify(629887)
 		return fmt.Sprintf("time(%d) with time zone", typmod)
 	case TimestampFamily:
-		if !haveTypmod || typmod < 0 {
+		__antithesis_instrumentation__.Notify(629888)
+		if !haveTypmod || func() bool {
+			__antithesis_instrumentation__.Notify(629946)
+			return typmod < 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629947)
 			return "timestamp without time zone"
+		} else {
+			__antithesis_instrumentation__.Notify(629948)
 		}
+		__antithesis_instrumentation__.Notify(629889)
 		return fmt.Sprintf("timestamp(%d) without time zone", typmod)
 	case TimestampTZFamily:
-		if !haveTypmod || typmod < 0 {
+		__antithesis_instrumentation__.Notify(629890)
+		if !haveTypmod || func() bool {
+			__antithesis_instrumentation__.Notify(629949)
+			return typmod < 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629950)
 			return "timestamp with time zone"
+		} else {
+			__antithesis_instrumentation__.Notify(629951)
 		}
+		__antithesis_instrumentation__.Notify(629891)
 		return fmt.Sprintf("timestamp(%d) with time zone", typmod)
 	case TupleFamily:
+		__antithesis_instrumentation__.Notify(629892)
 		if t.UserDefined() {
-			// If we have a user-defined tuple type, use its user-defined name.
+			__antithesis_instrumentation__.Notify(629952)
+
 			return t.TypeMeta.Name.Basename()
+		} else {
+			__antithesis_instrumentation__.Notify(629953)
 		}
+		__antithesis_instrumentation__.Notify(629893)
 		return "record"
 	case UnknownFamily:
+		__antithesis_instrumentation__.Notify(629894)
 		return "unknown"
 	case UuidFamily:
+		__antithesis_instrumentation__.Notify(629895)
 		return "uuid"
 	case EnumFamily:
+		__antithesis_instrumentation__.Notify(629896)
 		return t.TypeMeta.Name.Basename()
 	default:
+		__antithesis_instrumentation__.Notify(629897)
 		panic(errors.AssertionFailedf("unexpected Family: %v", errors.Safe(t.Family())))
 	}
 }
 
-// InformationSchemaName returns the string suitable to populate the data_type
-// column of information_schema.columns.
-//
-// This is different from SQLString() in that it must report SQL standard names
-// that are compatible with PostgreSQL client expectations.
 func (t *T) InformationSchemaName() string {
-	// This is the same as SQLStandardName, except for the case of arrays.
+	__antithesis_instrumentation__.Notify(629954)
+
 	if t.Family() == ArrayFamily {
+		__antithesis_instrumentation__.Notify(629957)
 		return "ARRAY"
+	} else {
+		__antithesis_instrumentation__.Notify(629958)
 	}
-	// TypeMeta attributes are populated only when it is user defined type.
+	__antithesis_instrumentation__.Notify(629955)
+
 	if t.TypeMeta.Name != nil {
+		__antithesis_instrumentation__.Notify(629959)
 		return "USER-DEFINED"
+	} else {
+		__antithesis_instrumentation__.Notify(629960)
 	}
+	__antithesis_instrumentation__.Notify(629956)
 	return t.SQLStandardName()
 }
 
-// SQLString returns the CockroachDB native SQL string that can be used to
-// reproduce the type via parsing the string as a type. It is used in error
-// messages and also to produce the output of SHOW CREATE.
 func (t *T) SQLString() string {
+	__antithesis_instrumentation__.Notify(629961)
 	switch t.Family() {
 	case BitFamily:
+		__antithesis_instrumentation__.Notify(629963)
 		o := t.Oid()
 		typName := "BIT"
 		if o == oid.T_varbit {
+			__antithesis_instrumentation__.Notify(629983)
 			typName = "VARBIT"
+		} else {
+			__antithesis_instrumentation__.Notify(629984)
 		}
-		// BIT(1) pretty-prints as just BIT.
-		if (o != oid.T_varbit && t.Width() > 1) ||
-			(o == oid.T_varbit && t.Width() > 0) {
+		__antithesis_instrumentation__.Notify(629964)
+
+		if (o != oid.T_varbit && func() bool {
+			__antithesis_instrumentation__.Notify(629985)
+			return t.Width() > 1 == true
+		}() == true) || func() bool {
+			__antithesis_instrumentation__.Notify(629986)
+			return (o == oid.T_varbit && func() bool {
+				__antithesis_instrumentation__.Notify(629987)
+				return t.Width() > 0 == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(629988)
 			typName = fmt.Sprintf("%s(%d)", typName, t.Width())
+		} else {
+			__antithesis_instrumentation__.Notify(629989)
 		}
+		__antithesis_instrumentation__.Notify(629965)
 		return typName
 	case IntFamily:
+		__antithesis_instrumentation__.Notify(629966)
 		switch t.Width() {
 		case 16:
+			__antithesis_instrumentation__.Notify(629990)
 			return "INT2"
 		case 32:
+			__antithesis_instrumentation__.Notify(629991)
 			return "INT4"
 		case 64:
+			__antithesis_instrumentation__.Notify(629992)
 			return "INT8"
 		default:
+			__antithesis_instrumentation__.Notify(629993)
 			panic(errors.AssertionFailedf("programming error: unknown int width: %d", t.Width()))
 		}
 	case StringFamily:
+		__antithesis_instrumentation__.Notify(629967)
 		return t.stringTypeSQL()
 	case CollatedStringFamily:
-		return t.collatedStringTypeSQL(false /* isArray */)
+		__antithesis_instrumentation__.Notify(629968)
+		return t.collatedStringTypeSQL(false)
 	case FloatFamily:
+		__antithesis_instrumentation__.Notify(629969)
 		const realName = "FLOAT4"
 		const doubleName = "FLOAT8"
 		if t.Width() == 32 {
+			__antithesis_instrumentation__.Notify(629994)
 			return realName
+		} else {
+			__antithesis_instrumentation__.Notify(629995)
 		}
+		__antithesis_instrumentation__.Notify(629970)
 		return doubleName
 	case DecimalFamily:
+		__antithesis_instrumentation__.Notify(629971)
 		if t.Precision() > 0 {
+			__antithesis_instrumentation__.Notify(629996)
 			if t.Width() > 0 {
+				__antithesis_instrumentation__.Notify(629998)
 				return fmt.Sprintf("DECIMAL(%d,%d)", t.Precision(), t.Scale())
+			} else {
+				__antithesis_instrumentation__.Notify(629999)
 			}
+			__antithesis_instrumentation__.Notify(629997)
 			return fmt.Sprintf("DECIMAL(%d)", t.Precision())
+		} else {
+			__antithesis_instrumentation__.Notify(630000)
 		}
 	case JsonFamily:
-		// Only binary JSON is currently supported.
+		__antithesis_instrumentation__.Notify(629972)
+
 		return "JSONB"
 	case TimestampFamily, TimestampTZFamily, TimeFamily, TimeTZFamily:
-		if t.InternalType.Precision > 0 || t.InternalType.TimePrecisionIsSet {
+		__antithesis_instrumentation__.Notify(629973)
+		if t.InternalType.Precision > 0 || func() bool {
+			__antithesis_instrumentation__.Notify(630001)
+			return t.InternalType.TimePrecisionIsSet == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(630002)
 			return fmt.Sprintf("%s(%d)", strings.ToUpper(t.Name()), t.Precision())
+		} else {
+			__antithesis_instrumentation__.Notify(630003)
 		}
 	case GeometryFamily, GeographyFamily:
+		__antithesis_instrumentation__.Notify(629974)
 		return strings.ToUpper(t.Name() + t.InternalType.GeoMetadata.SQLString())
 	case IntervalFamily:
+		__antithesis_instrumentation__.Notify(629975)
 		switch t.InternalType.IntervalDurationField.DurationType {
 		case IntervalDurationType_UNSET:
-			if t.InternalType.Precision > 0 || t.InternalType.TimePrecisionIsSet {
+			__antithesis_instrumentation__.Notify(630004)
+			if t.InternalType.Precision > 0 || func() bool {
+				__antithesis_instrumentation__.Notify(630008)
+				return t.InternalType.TimePrecisionIsSet == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(630009)
 				return fmt.Sprintf("%s(%d)", strings.ToUpper(t.Name()), t.Precision())
+			} else {
+				__antithesis_instrumentation__.Notify(630010)
 			}
 		default:
+			__antithesis_instrumentation__.Notify(630005)
 			fromStr := ""
 			if t.InternalType.IntervalDurationField.FromDurationType != IntervalDurationType_UNSET {
+				__antithesis_instrumentation__.Notify(630011)
 				fromStr = fmt.Sprintf("%s TO ", t.InternalType.IntervalDurationField.FromDurationType.String())
+			} else {
+				__antithesis_instrumentation__.Notify(630012)
 			}
+			__antithesis_instrumentation__.Notify(630006)
 			precisionStr := ""
-			if t.InternalType.Precision > 0 || t.InternalType.TimePrecisionIsSet {
+			if t.InternalType.Precision > 0 || func() bool {
+				__antithesis_instrumentation__.Notify(630013)
+				return t.InternalType.TimePrecisionIsSet == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(630014)
 				precisionStr = fmt.Sprintf("(%d)", t.Precision())
+			} else {
+				__antithesis_instrumentation__.Notify(630015)
 			}
+			__antithesis_instrumentation__.Notify(630007)
 			return fmt.Sprintf(
 				"%s %s%s%s",
 				strings.ToUpper(t.Name()),
@@ -1819,410 +1824,672 @@ func (t *T) SQLString() string {
 			)
 		}
 	case OidFamily:
+		__antithesis_instrumentation__.Notify(629976)
 		if name, ok := oidext.TypeName(t.Oid()); ok {
+			__antithesis_instrumentation__.Notify(630016)
 			return name
+		} else {
+			__antithesis_instrumentation__.Notify(630017)
 		}
 	case ArrayFamily:
+		__antithesis_instrumentation__.Notify(629977)
 		switch t.Oid() {
 		case oid.T_oidvector:
+			__antithesis_instrumentation__.Notify(630018)
 			return "OIDVECTOR"
 		case oid.T_int2vector:
+			__antithesis_instrumentation__.Notify(630019)
 			return "INT2VECTOR"
+		default:
+			__antithesis_instrumentation__.Notify(630020)
 		}
+		__antithesis_instrumentation__.Notify(629978)
 		if t.ArrayContents().Family() == CollatedStringFamily {
-			return t.ArrayContents().collatedStringTypeSQL(true /* isArray */)
+			__antithesis_instrumentation__.Notify(630021)
+			return t.ArrayContents().collatedStringTypeSQL(true)
+		} else {
+			__antithesis_instrumentation__.Notify(630022)
 		}
+		__antithesis_instrumentation__.Notify(629979)
 		return t.ArrayContents().SQLString() + "[]"
 	case EnumFamily:
+		__antithesis_instrumentation__.Notify(629980)
 		if t.Oid() == oid.T_anyenum {
+			__antithesis_instrumentation__.Notify(630023)
 			return "anyenum"
+		} else {
+			__antithesis_instrumentation__.Notify(630024)
 		}
+		__antithesis_instrumentation__.Notify(629981)
 		return t.TypeMeta.Name.FQName()
+	default:
+		__antithesis_instrumentation__.Notify(629982)
 	}
+	__antithesis_instrumentation__.Notify(629962)
 	return strings.ToUpper(t.Name())
 }
 
-// Equivalent returns true if this type is "equivalent" to the given type.
-// Equivalent types are compatible with one another: they can be compared,
-// assigned, and unioned. Equivalent types must always have the same type family
-// for the root type and any descendant types (i.e. in case of array or tuple
-// types). Types in the CollatedStringFamily must have the same locale. But
-// other attributes of equivalent types, such as width, precision, and oid, can
-// be different.
-//
-// Wildcard types (e.g. Any, AnyArray, AnyTuple, etc) have special equivalence
-// behavior. AnyFamily types match any other type, including other AnyFamily
-// types. And a wildcard collation (empty string) matches any other collation.
 func (t *T) Equivalent(other *T) bool {
-	if t.Family() == AnyFamily || other.Family() == AnyFamily {
+	__antithesis_instrumentation__.Notify(630025)
+	if t.Family() == AnyFamily || func() bool {
+		__antithesis_instrumentation__.Notify(630029)
+		return other.Family() == AnyFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(630030)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(630031)
 	}
+	__antithesis_instrumentation__.Notify(630026)
 	if t.Family() != other.Family() {
+		__antithesis_instrumentation__.Notify(630032)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630033)
 	}
+	__antithesis_instrumentation__.Notify(630027)
 
 	switch t.Family() {
 	case CollatedStringFamily:
-		// CockroachDB differs from Postgres by comparing collation names
-		// case-insensitively and equating hyphens/underscores.
-		if t.Locale() != "" && other.Locale() != "" {
+		__antithesis_instrumentation__.Notify(630034)
+
+		if t.Locale() != "" && func() bool {
+			__antithesis_instrumentation__.Notify(630042)
+			return other.Locale() != "" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(630043)
 			if !lex.LocaleNamesAreEqual(t.Locale(), other.Locale()) {
+				__antithesis_instrumentation__.Notify(630044)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(630045)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(630046)
 		}
 
 	case TupleFamily:
-		// If either tuple is the wildcard tuple, it's equivalent to any other
-		// tuple type. This allows overloads to specify that they take an arbitrary
-		// tuple type.
-		if IsWildcardTupleType(t) || IsWildcardTupleType(other) {
+		__antithesis_instrumentation__.Notify(630035)
+
+		if IsWildcardTupleType(t) || func() bool {
+			__antithesis_instrumentation__.Notify(630047)
+			return IsWildcardTupleType(other) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(630048)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(630049)
 		}
+		__antithesis_instrumentation__.Notify(630036)
 		if len(t.TupleContents()) != len(other.TupleContents()) {
+			__antithesis_instrumentation__.Notify(630050)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630051)
 		}
+		__antithesis_instrumentation__.Notify(630037)
 		for i := range t.TupleContents() {
+			__antithesis_instrumentation__.Notify(630052)
 			if !t.TupleContents()[i].Equivalent(other.TupleContents()[i]) {
+				__antithesis_instrumentation__.Notify(630053)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(630054)
 			}
 		}
 
 	case ArrayFamily:
+		__antithesis_instrumentation__.Notify(630038)
 		if !t.ArrayContents().Equivalent(other.ArrayContents()) {
+			__antithesis_instrumentation__.Notify(630055)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630056)
 		}
 
 	case EnumFamily:
-		// If one of the types is anyenum, then allow the comparison to
-		// go through -- anyenum is used when matching overloads.
-		if t.Oid() == oid.T_anyenum || other.Oid() == oid.T_anyenum {
+		__antithesis_instrumentation__.Notify(630039)
+
+		if t.Oid() == oid.T_anyenum || func() bool {
+			__antithesis_instrumentation__.Notify(630057)
+			return other.Oid() == oid.T_anyenum == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(630058)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(630059)
 		}
+		__antithesis_instrumentation__.Notify(630040)
 		if t.Oid() != other.Oid() {
+			__antithesis_instrumentation__.Notify(630060)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630061)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(630041)
 	}
+	__antithesis_instrumentation__.Notify(630028)
 
 	return true
 }
 
-// EquivalentOrNull is the same as Equivalent, except it returns true if:
-// * `t` is Unknown (i.e., NULL) AND (allowNullTupleEquivalence OR `other` is not a tuple),
-// * `t` is a tuple with all non-Unknown elements matching the types in `other`.
 func (t *T) EquivalentOrNull(other *T, allowNullTupleEquivalence bool) bool {
-	// Check normal equivalency first, then check for Null
+	__antithesis_instrumentation__.Notify(630062)
+
 	normalEquivalency := t.Equivalent(other)
 	if normalEquivalency {
+		__antithesis_instrumentation__.Notify(630064)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(630065)
 	}
+	__antithesis_instrumentation__.Notify(630063)
 
 	switch t.Family() {
 	case UnknownFamily:
-		return allowNullTupleEquivalence || other.Family() != TupleFamily
+		__antithesis_instrumentation__.Notify(630066)
+		return allowNullTupleEquivalence || func() bool {
+			__antithesis_instrumentation__.Notify(630073)
+			return other.Family() != TupleFamily == true
+		}() == true
 
 	case TupleFamily:
+		__antithesis_instrumentation__.Notify(630067)
 		if other.Family() != TupleFamily {
+			__antithesis_instrumentation__.Notify(630074)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630075)
 		}
-		// If either tuple is the wildcard tuple, it's equivalent to any other
-		// tuple type. This allows overloads to specify that they take an arbitrary
-		// tuple type.
-		if IsWildcardTupleType(t) || IsWildcardTupleType(other) {
+		__antithesis_instrumentation__.Notify(630068)
+
+		if IsWildcardTupleType(t) || func() bool {
+			__antithesis_instrumentation__.Notify(630076)
+			return IsWildcardTupleType(other) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(630077)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(630078)
 		}
+		__antithesis_instrumentation__.Notify(630069)
 		if len(t.TupleContents()) != len(other.TupleContents()) {
+			__antithesis_instrumentation__.Notify(630079)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630080)
 		}
+		__antithesis_instrumentation__.Notify(630070)
 		for i := range t.TupleContents() {
+			__antithesis_instrumentation__.Notify(630081)
 			if !t.TupleContents()[i].EquivalentOrNull(other.TupleContents()[i], allowNullTupleEquivalence) {
+				__antithesis_instrumentation__.Notify(630082)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(630083)
 			}
 		}
+		__antithesis_instrumentation__.Notify(630071)
 		return true
 
 	default:
+		__antithesis_instrumentation__.Notify(630072)
 		return normalEquivalency
 	}
 }
 
-// Identical returns true if every field in this ColumnType is exactly the same
-// as every corresponding field in the given ColumnType. Identical performs a
-// deep comparison, traversing any Tuple or Array contents.
-//
-// NOTE: Consider whether the desired semantics really require identical types,
-// or if Equivalent is the right method to call instead.
 func (t *T) Identical(other *T) bool {
+	__antithesis_instrumentation__.Notify(630084)
 	return t.InternalType.Identical(&other.InternalType)
 }
 
-// Equal is for use in generated protocol buffer code only.
 func (t *T) Equal(other *T) bool {
+	__antithesis_instrumentation__.Notify(630085)
 	return t.Identical(other)
 }
 
-// Size returns the size, in bytes, of this type once it has been marshaled to
-// a byte buffer. This is typically called to determine the size of the buffer
-// that needs to be allocated before calling Marshal.
-//
-// Marshal is part of the protoutil.Message interface.
 func (t *T) Size() (n int) {
-	// Need to first downgrade the type before delegating to InternalType,
-	// because Marshal will downgrade.
+	__antithesis_instrumentation__.Notify(630086)
+
 	temp := *t
 	err := temp.downgradeType()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(630088)
 		panic(errors.NewAssertionErrorWithWrappedErrf(err, "error during Size call"))
+	} else {
+		__antithesis_instrumentation__.Notify(630089)
 	}
+	__antithesis_instrumentation__.Notify(630087)
 	return temp.InternalType.Size()
 }
 
-// Identical is the internal implementation for T.Identical. See that comment
-// for details.
 func (t *InternalType) Identical(other *InternalType) bool {
+	__antithesis_instrumentation__.Notify(630090)
 	if t.Family != other.Family {
+		__antithesis_instrumentation__.Notify(630104)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630105)
 	}
+	__antithesis_instrumentation__.Notify(630091)
 	if t.Width != other.Width {
+		__antithesis_instrumentation__.Notify(630106)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630107)
 	}
+	__antithesis_instrumentation__.Notify(630092)
 	if t.Precision != other.Precision {
+		__antithesis_instrumentation__.Notify(630108)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630109)
 	}
+	__antithesis_instrumentation__.Notify(630093)
 	if t.TimePrecisionIsSet != other.TimePrecisionIsSet {
+		__antithesis_instrumentation__.Notify(630110)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630111)
 	}
-	if t.IntervalDurationField != nil && other.IntervalDurationField != nil {
+	__antithesis_instrumentation__.Notify(630094)
+	if t.IntervalDurationField != nil && func() bool {
+		__antithesis_instrumentation__.Notify(630112)
+		return other.IntervalDurationField != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(630113)
 		if *t.IntervalDurationField != *other.IntervalDurationField {
+			__antithesis_instrumentation__.Notify(630114)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630115)
 		}
-	} else if t.IntervalDurationField != nil {
-		return false
-	} else if other.IntervalDurationField != nil {
-		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630116)
+		if t.IntervalDurationField != nil {
+			__antithesis_instrumentation__.Notify(630117)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630118)
+			if other.IntervalDurationField != nil {
+				__antithesis_instrumentation__.Notify(630119)
+				return false
+			} else {
+				__antithesis_instrumentation__.Notify(630120)
+			}
+		}
 	}
-	if t.GeoMetadata != nil && other.GeoMetadata != nil {
+	__antithesis_instrumentation__.Notify(630095)
+	if t.GeoMetadata != nil && func() bool {
+		__antithesis_instrumentation__.Notify(630121)
+		return other.GeoMetadata != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(630122)
 		if t.GeoMetadata.ShapeType != other.GeoMetadata.ShapeType {
+			__antithesis_instrumentation__.Notify(630124)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630125)
 		}
+		__antithesis_instrumentation__.Notify(630123)
 		if t.GeoMetadata.SRID != other.GeoMetadata.SRID {
+			__antithesis_instrumentation__.Notify(630126)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630127)
 		}
-	} else if t.GeoMetadata != nil {
-		return false
-	} else if other.GeoMetadata != nil {
-		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630128)
+		if t.GeoMetadata != nil {
+			__antithesis_instrumentation__.Notify(630129)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630130)
+			if other.GeoMetadata != nil {
+				__antithesis_instrumentation__.Notify(630131)
+				return false
+			} else {
+				__antithesis_instrumentation__.Notify(630132)
+			}
+		}
 	}
-	if t.Locale != nil && other.Locale != nil {
+	__antithesis_instrumentation__.Notify(630096)
+	if t.Locale != nil && func() bool {
+		__antithesis_instrumentation__.Notify(630133)
+		return other.Locale != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(630134)
 		if *t.Locale != *other.Locale {
+			__antithesis_instrumentation__.Notify(630135)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630136)
 		}
-	} else if t.Locale != nil {
-		return false
-	} else if other.Locale != nil {
-		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630137)
+		if t.Locale != nil {
+			__antithesis_instrumentation__.Notify(630138)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630139)
+			if other.Locale != nil {
+				__antithesis_instrumentation__.Notify(630140)
+				return false
+			} else {
+				__antithesis_instrumentation__.Notify(630141)
+			}
+		}
 	}
-	if t.ArrayContents != nil && other.ArrayContents != nil {
+	__antithesis_instrumentation__.Notify(630097)
+	if t.ArrayContents != nil && func() bool {
+		__antithesis_instrumentation__.Notify(630142)
+		return other.ArrayContents != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(630143)
 		if !t.ArrayContents.Identical(other.ArrayContents) {
+			__antithesis_instrumentation__.Notify(630144)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630145)
 		}
-	} else if t.ArrayContents != nil {
-		return false
-	} else if other.ArrayContents != nil {
-		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630146)
+		if t.ArrayContents != nil {
+			__antithesis_instrumentation__.Notify(630147)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630148)
+			if other.ArrayContents != nil {
+				__antithesis_instrumentation__.Notify(630149)
+				return false
+			} else {
+				__antithesis_instrumentation__.Notify(630150)
+			}
+		}
 	}
+	__antithesis_instrumentation__.Notify(630098)
 	if len(t.TupleContents) != len(other.TupleContents) {
+		__antithesis_instrumentation__.Notify(630151)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630152)
 	}
+	__antithesis_instrumentation__.Notify(630099)
 	for i := range t.TupleContents {
+		__antithesis_instrumentation__.Notify(630153)
 		if !t.TupleContents[i].Identical(other.TupleContents[i]) {
+			__antithesis_instrumentation__.Notify(630154)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630155)
 		}
 	}
+	__antithesis_instrumentation__.Notify(630100)
 	if len(t.TupleLabels) != len(other.TupleLabels) {
+		__antithesis_instrumentation__.Notify(630156)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630157)
 	}
+	__antithesis_instrumentation__.Notify(630101)
 	for i := range t.TupleLabels {
+		__antithesis_instrumentation__.Notify(630158)
 		if t.TupleLabels[i] != other.TupleLabels[i] {
+			__antithesis_instrumentation__.Notify(630159)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630160)
 		}
 	}
-	if t.UDTMetadata != nil && other.UDTMetadata != nil {
+	__antithesis_instrumentation__.Notify(630102)
+	if t.UDTMetadata != nil && func() bool {
+		__antithesis_instrumentation__.Notify(630161)
+		return other.UDTMetadata != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(630162)
 		if t.UDTMetadata.ArrayTypeOID != other.UDTMetadata.ArrayTypeOID {
+			__antithesis_instrumentation__.Notify(630163)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630164)
 		}
-	} else if t.UDTMetadata != nil {
-		return false
-	} else if other.UDTMetadata != nil {
-		return false
+	} else {
+		__antithesis_instrumentation__.Notify(630165)
+		if t.UDTMetadata != nil {
+			__antithesis_instrumentation__.Notify(630166)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(630167)
+			if other.UDTMetadata != nil {
+				__antithesis_instrumentation__.Notify(630168)
+				return false
+			} else {
+				__antithesis_instrumentation__.Notify(630169)
+			}
+		}
 	}
+	__antithesis_instrumentation__.Notify(630103)
 	return t.Oid == other.Oid
 }
 
-// Unmarshal deserializes a type from the given byte representation using gogo
-// protobuf serialization rules. It is backwards-compatible with formats used
-// by older versions of CRDB.
-//
-//   var t T
-//   err := protoutil.Unmarshal(data, &t)
-//
-// Unmarshal is part of the protoutil.Message interface.
 func (t *T) Unmarshal(data []byte) error {
-	// Unmarshal the internal type, and then perform an upgrade step to convert
-	// to the latest format.
+	__antithesis_instrumentation__.Notify(630170)
+
 	err := protoutil.Unmarshal(data, &t.InternalType)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(630172)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(630173)
 	}
+	__antithesis_instrumentation__.Notify(630171)
 	return t.upgradeType()
 }
 
-// upgradeType assumes its input was just unmarshaled from bytes that may have
-// been serialized by any previous version of CRDB. It upgrades the object
-// according to the requirements of the latest version by remapping fields and
-// setting required values. This is necessary to preserve backwards-
-// compatibility with older formats (e.g. restoring database from old backup).
 func (t *T) upgradeType() error {
+	__antithesis_instrumentation__.Notify(630174)
 	switch t.Family() {
 	case IntFamily:
-		// Check VisibleType field that was populated in previous versions.
+		__antithesis_instrumentation__.Notify(630178)
+
 		switch t.InternalType.VisibleType {
 		case visibleSMALLINT:
+			__antithesis_instrumentation__.Notify(630196)
 			t.InternalType.Width = 16
 			t.InternalType.Oid = oid.T_int2
 		case visibleINTEGER:
+			__antithesis_instrumentation__.Notify(630197)
 			t.InternalType.Width = 32
 			t.InternalType.Oid = oid.T_int4
 		case visibleBIGINT:
+			__antithesis_instrumentation__.Notify(630198)
 			t.InternalType.Width = 64
 			t.InternalType.Oid = oid.T_int8
 		case visibleBIT, visibleNONE:
-			// Pre-2.1 BIT was using IntFamily with arbitrary widths. Clamp them
-			// to fixed/known widths. See #34161.
+			__antithesis_instrumentation__.Notify(630199)
+
 			switch t.Width() {
 			case 16:
+				__antithesis_instrumentation__.Notify(630201)
 				t.InternalType.Oid = oid.T_int2
 			case 32:
+				__antithesis_instrumentation__.Notify(630202)
 				t.InternalType.Oid = oid.T_int4
 			default:
-				// Assume INT8 if width is 0 or not valid.
+				__antithesis_instrumentation__.Notify(630203)
+
 				t.InternalType.Oid = oid.T_int8
 				t.InternalType.Width = 64
 			}
 		default:
+			__antithesis_instrumentation__.Notify(630200)
 			return errors.AssertionFailedf("unexpected visible type: %d", t.InternalType.VisibleType)
 		}
 
 	case FloatFamily:
-		// Map visible REAL type to 32-bit width.
+		__antithesis_instrumentation__.Notify(630179)
+
 		switch t.InternalType.VisibleType {
 		case visibleREAL:
+			__antithesis_instrumentation__.Notify(630204)
 			t.InternalType.Oid = oid.T_float4
 			t.InternalType.Width = 32
 		case visibleDOUBLE:
+			__antithesis_instrumentation__.Notify(630205)
 			t.InternalType.Oid = oid.T_float8
 			t.InternalType.Width = 64
 		case visibleNONE:
+			__antithesis_instrumentation__.Notify(630206)
 			switch t.Width() {
 			case 32:
+				__antithesis_instrumentation__.Notify(630208)
 				t.InternalType.Oid = oid.T_float4
 			case 64:
+				__antithesis_instrumentation__.Notify(630209)
 				t.InternalType.Oid = oid.T_float8
 			default:
-				// Pre-2.1 (before Width) there were 3 cases:
-				// - VisibleType = DOUBLE PRECISION, Width = 0 -> now clearly FLOAT8
-				// - VisibleType = NONE, Width = 0 -> now clearly FLOAT8
-				// - VisibleType = NONE, Precision > 0 -> we need to derive the width.
-				if t.Precision() >= 1 && t.Precision() <= 24 {
+				__antithesis_instrumentation__.Notify(630210)
+
+				if t.Precision() >= 1 && func() bool {
+					__antithesis_instrumentation__.Notify(630211)
+					return t.Precision() <= 24 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(630212)
 					t.InternalType.Oid = oid.T_float4
 					t.InternalType.Width = 32
 				} else {
+					__antithesis_instrumentation__.Notify(630213)
 					t.InternalType.Oid = oid.T_float8
 					t.InternalType.Width = 64
 				}
 			}
 		default:
+			__antithesis_instrumentation__.Notify(630207)
 			return errors.AssertionFailedf("unexpected visible type: %d", t.InternalType.VisibleType)
 		}
+		__antithesis_instrumentation__.Notify(630180)
 
-		// Precision should always be set to 0 going forward.
 		t.InternalType.Precision = 0
 
 	case TimestampFamily, TimestampTZFamily, TimeFamily, TimeTZFamily:
-		// Some bad/experimental versions of master had precision stored as `-1`.
-		// This represented a default - so upgrade this to 0 with TimePrecisionIsSet = false.
+		__antithesis_instrumentation__.Notify(630181)
+
 		if t.InternalType.Precision == -1 {
+			__antithesis_instrumentation__.Notify(630214)
 			t.InternalType.Precision = 0
 			t.InternalType.TimePrecisionIsSet = false
+		} else {
+			__antithesis_instrumentation__.Notify(630215)
 		}
-		// Going forwards after 19.2, we want `TimePrecisionIsSet` to be explicitly set
-		// if Precision is > 0.
+		__antithesis_instrumentation__.Notify(630182)
+
 		if t.InternalType.Precision > 0 {
+			__antithesis_instrumentation__.Notify(630216)
 			t.InternalType.TimePrecisionIsSet = true
+		} else {
+			__antithesis_instrumentation__.Notify(630217)
 		}
 	case IntervalFamily:
-		// Fill in the IntervalDurationField here.
+		__antithesis_instrumentation__.Notify(630183)
+
 		if t.InternalType.IntervalDurationField == nil {
+			__antithesis_instrumentation__.Notify(630218)
 			t.InternalType.IntervalDurationField = &IntervalDurationField{}
+		} else {
+			__antithesis_instrumentation__.Notify(630219)
 		}
-		// Going forwards after 19.2, we want `TimePrecisionIsSet` to be explicitly set
-		// if Precision is > 0.
+		__antithesis_instrumentation__.Notify(630184)
+
 		if t.InternalType.Precision > 0 {
+			__antithesis_instrumentation__.Notify(630220)
 			t.InternalType.TimePrecisionIsSet = true
+		} else {
+			__antithesis_instrumentation__.Notify(630221)
 		}
 	case StringFamily, CollatedStringFamily:
-		// Map string-related visible types to corresponding Oid values.
+		__antithesis_instrumentation__.Notify(630185)
+
 		switch t.InternalType.VisibleType {
 		case visibleVARCHAR:
+			__antithesis_instrumentation__.Notify(630222)
 			t.InternalType.Oid = oid.T_varchar
 		case visibleCHAR:
+			__antithesis_instrumentation__.Notify(630223)
 			t.InternalType.Oid = oid.T_bpchar
 		case visibleQCHAR:
+			__antithesis_instrumentation__.Notify(630224)
 			t.InternalType.Oid = oid.T_char
 		case visibleNONE:
+			__antithesis_instrumentation__.Notify(630225)
 			t.InternalType.Oid = oid.T_text
 		default:
+			__antithesis_instrumentation__.Notify(630226)
 			return errors.AssertionFailedf("unexpected visible type: %d", t.InternalType.VisibleType)
 		}
+		__antithesis_instrumentation__.Notify(630186)
 		if t.InternalType.Family == StringFamily {
-			if t.InternalType.Locale != nil && len(*t.InternalType.Locale) != 0 {
+			__antithesis_instrumentation__.Notify(630227)
+			if t.InternalType.Locale != nil && func() bool {
+				__antithesis_instrumentation__.Notify(630228)
+				return len(*t.InternalType.Locale) != 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(630229)
 				return errors.AssertionFailedf(
 					"STRING type should not have locale: %s", *t.InternalType.Locale)
+			} else {
+				__antithesis_instrumentation__.Notify(630230)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(630231)
 		}
 
 	case BitFamily:
-		// Map visible VARBIT type to T_varbit OID value.
+		__antithesis_instrumentation__.Notify(630187)
+
 		switch t.InternalType.VisibleType {
 		case visibleVARBIT:
+			__antithesis_instrumentation__.Notify(630232)
 			t.InternalType.Oid = oid.T_varbit
 		case visibleNONE:
+			__antithesis_instrumentation__.Notify(630233)
 			t.InternalType.Oid = oid.T_bit
 		default:
+			__antithesis_instrumentation__.Notify(630234)
 			return errors.AssertionFailedf("unexpected visible type: %d", t.InternalType.VisibleType)
 		}
 
 	case ArrayFamily:
+		__antithesis_instrumentation__.Notify(630188)
 		if t.ArrayContents() == nil {
-			// This array type was serialized by a previous version of CRDB,
-			// so construct the array contents from scratch.
+			__antithesis_instrumentation__.Notify(630235)
+
 			arrayContents := *t
 			arrayContents.InternalType.Family = *t.InternalType.ArrayElemType
 			arrayContents.InternalType.ArrayDimensions = nil
 			arrayContents.InternalType.ArrayElemType = nil
 			if err := arrayContents.upgradeType(); err != nil {
+				__antithesis_instrumentation__.Notify(630237)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(630238)
 			}
+			__antithesis_instrumentation__.Notify(630236)
 			t.InternalType.ArrayContents = &arrayContents
 			t.InternalType.Oid = CalcArrayOid(t.ArrayContents())
+		} else {
+			__antithesis_instrumentation__.Notify(630239)
 		}
+		__antithesis_instrumentation__.Notify(630189)
 
-		// Marshaling/unmarshaling nested arrays is not yet supported.
 		if t.ArrayContents().Family() == ArrayFamily {
+			__antithesis_instrumentation__.Notify(630240)
 			return errors.AssertionFailedf("nested array should never be unmarshaled")
+		} else {
+			__antithesis_instrumentation__.Notify(630241)
 		}
+		__antithesis_instrumentation__.Notify(630190)
 
-		// Zero out fields that may have been used to store information about
-		// the array element type, or which are no longer in use.
 		t.InternalType.Width = 0
 		t.InternalType.Precision = 0
 		t.InternalType.Locale = nil
@@ -2231,136 +2498,166 @@ func (t *T) upgradeType() error {
 		t.InternalType.ArrayDimensions = nil
 
 	case int2vector:
+		__antithesis_instrumentation__.Notify(630191)
 		t.InternalType.Family = ArrayFamily
 		t.InternalType.Width = 0
 		t.InternalType.Oid = oid.T_int2vector
 		t.InternalType.ArrayContents = Int2
 
 	case oidvector:
+		__antithesis_instrumentation__.Notify(630192)
 		t.InternalType.Family = ArrayFamily
 		t.InternalType.Oid = oid.T_oidvector
 		t.InternalType.ArrayContents = Oid
 
 	case name:
+		__antithesis_instrumentation__.Notify(630193)
 		if t.InternalType.Locale != nil {
+			__antithesis_instrumentation__.Notify(630242)
 			t.InternalType.Family = CollatedStringFamily
 		} else {
+			__antithesis_instrumentation__.Notify(630243)
 			t.InternalType.Family = StringFamily
 		}
+		__antithesis_instrumentation__.Notify(630194)
 		t.InternalType.Oid = oid.T_name
 		if t.Width() != 0 {
+			__antithesis_instrumentation__.Notify(630244)
 			return errors.AssertionFailedf("name type cannot have non-zero width: %d", t.Width())
+		} else {
+			__antithesis_instrumentation__.Notify(630245)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(630195)
 	}
+	__antithesis_instrumentation__.Notify(630175)
 
 	if t.InternalType.Oid == 0 {
+		__antithesis_instrumentation__.Notify(630246)
 		t.InternalType.Oid = familyToOid[t.Family()]
+	} else {
+		__antithesis_instrumentation__.Notify(630247)
 	}
+	__antithesis_instrumentation__.Notify(630176)
 
-	// Clear the deprecated visible types, since they are now handled by the
-	// Width or Oid fields.
 	t.InternalType.VisibleType = 0
 
-	// If locale is not set, always set it to the empty string, in order to avoid
-	// bothersome deref errors when the Locale method is called.
 	if t.InternalType.Locale == nil {
+		__antithesis_instrumentation__.Notify(630248)
 		t.InternalType.Locale = &emptyLocale
+	} else {
+		__antithesis_instrumentation__.Notify(630249)
 	}
+	__antithesis_instrumentation__.Notify(630177)
 
 	return nil
 }
 
-// Marshal serializes a type into a byte representation using gogo protobuf
-// serialization rules. It returns the resulting bytes as a slice. The bytes
-// are serialized in a format that is backwards-compatible with the previous
-// version of CRDB so that clusters can run in mixed version mode during
-// upgrade.
-//
-//   bytes, err := protoutil.Marshal(&typ)
-//
 func (t *T) Marshal() (data []byte, err error) {
-	// First downgrade to a struct that will be serialized in a backwards-
-	// compatible bytes format.
+	__antithesis_instrumentation__.Notify(630250)
+
 	temp := *t
 	if err := temp.downgradeType(); err != nil {
+		__antithesis_instrumentation__.Notify(630252)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(630253)
 	}
+	__antithesis_instrumentation__.Notify(630251)
 	return protoutil.Marshal(&temp.InternalType)
 }
 
-// MarshalToSizedBuffer is like Mashal, except that it deserializes to
-// an existing byte slice with exactly enough remaining space for
-// Size().
-//
-// Marshal is part of the protoutil.Message interface.
 func (t *T) MarshalToSizedBuffer(data []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(630254)
 	temp := *t
 	if err := temp.downgradeType(); err != nil {
+		__antithesis_instrumentation__.Notify(630256)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(630257)
 	}
+	__antithesis_instrumentation__.Notify(630255)
 	return temp.InternalType.MarshalToSizedBuffer(data)
 }
 
-// MarshalTo behaves like Marshal, except that it deserializes to an existing
-// byte slice and returns the number of bytes written to it. The slice must
-// already have sufficient capacity. Callers can use the Size method to
-// determine how much capacity needs to be allocated.
-//
-// Marshal is part of the protoutil.Message interface.
 func (t *T) MarshalTo(data []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(630258)
 	temp := *t
 	if err := temp.downgradeType(); err != nil {
+		__antithesis_instrumentation__.Notify(630260)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(630261)
 	}
+	__antithesis_instrumentation__.Notify(630259)
 	return temp.InternalType.MarshalTo(data)
 }
 
-// of the latest CRDB version. It updates the fields so that they will be
-// marshaled into a format that is compatible with the previous version of
-// CRDB. This is necessary to preserve backwards-compatibility in mixed-version
-// scenarios, such as during upgrade.
 func (t *T) downgradeType() error {
-	// Set Family and VisibleType for 19.1 backwards-compatibility.
+	__antithesis_instrumentation__.Notify(630262)
+
 	switch t.Family() {
 	case BitFamily:
+		__antithesis_instrumentation__.Notify(630265)
 		if t.Oid() == oid.T_varbit {
+			__antithesis_instrumentation__.Notify(630272)
 			t.InternalType.VisibleType = visibleVARBIT
+		} else {
+			__antithesis_instrumentation__.Notify(630273)
 		}
 
 	case FloatFamily:
+		__antithesis_instrumentation__.Notify(630266)
 		switch t.Width() {
 		case 32:
+			__antithesis_instrumentation__.Notify(630274)
 			t.InternalType.VisibleType = visibleREAL
+		default:
+			__antithesis_instrumentation__.Notify(630275)
 		}
 
 	case StringFamily, CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(630267)
 		switch t.Oid() {
 		case oid.T_text:
-			// Nothing to do.
+			__antithesis_instrumentation__.Notify(630276)
+
 		case oid.T_varchar:
+			__antithesis_instrumentation__.Notify(630277)
 			t.InternalType.VisibleType = visibleVARCHAR
 		case oid.T_bpchar:
+			__antithesis_instrumentation__.Notify(630278)
 			t.InternalType.VisibleType = visibleCHAR
 		case oid.T_char:
+			__antithesis_instrumentation__.Notify(630279)
 			t.InternalType.VisibleType = visibleQCHAR
 		case oid.T_name:
+			__antithesis_instrumentation__.Notify(630280)
 			t.InternalType.Family = name
 		default:
+			__antithesis_instrumentation__.Notify(630281)
 			return errors.AssertionFailedf("unexpected Oid: %d", t.Oid())
 		}
 
 	case ArrayFamily:
-		// Marshaling/unmarshaling nested arrays is not yet supported.
-		if t.ArrayContents().Family() == ArrayFamily {
-			return errors.AssertionFailedf("nested array should never be marshaled")
-		}
+		__antithesis_instrumentation__.Notify(630268)
 
-		// Downgrade to array representation used before 19.2, in which the array
-		// type fields specified the width, locale, etc. of the element type.
+		if t.ArrayContents().Family() == ArrayFamily {
+			__antithesis_instrumentation__.Notify(630282)
+			return errors.AssertionFailedf("nested array should never be marshaled")
+		} else {
+			__antithesis_instrumentation__.Notify(630283)
+		}
+		__antithesis_instrumentation__.Notify(630269)
+
 		temp := *t.InternalType.ArrayContents
 		if err := temp.downgradeType(); err != nil {
+			__antithesis_instrumentation__.Notify(630284)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(630285)
 		}
+		__antithesis_instrumentation__.Notify(630270)
 		t.InternalType.Width = temp.InternalType.Width
 		t.InternalType.Precision = temp.InternalType.Precision
 		t.InternalType.Locale = temp.InternalType.Locale
@@ -2369,147 +2666,213 @@ func (t *T) downgradeType() error {
 
 		switch t.Oid() {
 		case oid.T_int2vector:
+			__antithesis_instrumentation__.Notify(630286)
 			t.InternalType.Family = int2vector
 		case oid.T_oidvector:
+			__antithesis_instrumentation__.Notify(630287)
 			t.InternalType.Family = oidvector
+		default:
+			__antithesis_instrumentation__.Notify(630288)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(630271)
 	}
+	__antithesis_instrumentation__.Notify(630263)
 
-	// Map empty locale to nil.
-	if t.InternalType.Locale != nil && len(*t.InternalType.Locale) == 0 {
+	if t.InternalType.Locale != nil && func() bool {
+		__antithesis_instrumentation__.Notify(630289)
+		return len(*t.InternalType.Locale) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(630290)
 		t.InternalType.Locale = nil
+	} else {
+		__antithesis_instrumentation__.Notify(630291)
 	}
+	__antithesis_instrumentation__.Notify(630264)
 
 	return nil
 }
 
-// String returns the name of the type, similar to the Name method. However, it
-// expands CollatedStringFamily, ArrayFamily, and TupleFamily types to be more
-// descriptive.
-//
-// TODO(andyk): It'd be nice to have this return SqlString() method output,
-// since that is more descriptive.
 func (t *T) String() string {
+	__antithesis_instrumentation__.Notify(630292)
 	switch t.Family() {
 	case CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(630294)
 		if t.Locale() == "" {
-			// Used in telemetry.
+			__antithesis_instrumentation__.Notify(630302)
+
 			return fmt.Sprintf("collated%s{*}", t.Name())
+		} else {
+			__antithesis_instrumentation__.Notify(630303)
 		}
+		__antithesis_instrumentation__.Notify(630295)
 		return fmt.Sprintf("collated%s{%s}", t.Name(), t.Locale())
 
 	case ArrayFamily:
+		__antithesis_instrumentation__.Notify(630296)
 		switch t.Oid() {
 		case oid.T_oidvector, oid.T_int2vector:
+			__antithesis_instrumentation__.Notify(630304)
 			return t.Name()
+		default:
+			__antithesis_instrumentation__.Notify(630305)
 		}
+		__antithesis_instrumentation__.Notify(630297)
 		return t.ArrayContents().String() + "[]"
 
 	case TupleFamily:
+		__antithesis_instrumentation__.Notify(630298)
 		var buf bytes.Buffer
 		buf.WriteString("tuple")
-		if len(t.TupleContents()) != 0 && !IsWildcardTupleType(t) {
+		if len(t.TupleContents()) != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(630306)
+			return !IsWildcardTupleType(t) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(630307)
 			buf.WriteByte('{')
 			for i, typ := range t.TupleContents() {
+				__antithesis_instrumentation__.Notify(630309)
 				if i != 0 {
+					__antithesis_instrumentation__.Notify(630311)
 					buf.WriteString(", ")
+				} else {
+					__antithesis_instrumentation__.Notify(630312)
 				}
+				__antithesis_instrumentation__.Notify(630310)
 				buf.WriteString(typ.String())
 				if t.TupleLabels() != nil {
+					__antithesis_instrumentation__.Notify(630313)
 					buf.WriteString(" AS ")
 					buf.WriteString(t.InternalType.TupleLabels[i])
+				} else {
+					__antithesis_instrumentation__.Notify(630314)
 				}
 			}
+			__antithesis_instrumentation__.Notify(630308)
 			buf.WriteByte('}')
+		} else {
+			__antithesis_instrumentation__.Notify(630315)
 		}
+		__antithesis_instrumentation__.Notify(630299)
 		return buf.String()
 	case IntervalFamily, TimestampFamily, TimestampTZFamily, TimeFamily, TimeTZFamily:
-		if t.InternalType.Precision > 0 || t.InternalType.TimePrecisionIsSet {
+		__antithesis_instrumentation__.Notify(630300)
+		if t.InternalType.Precision > 0 || func() bool {
+			__antithesis_instrumentation__.Notify(630316)
+			return t.InternalType.TimePrecisionIsSet == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(630317)
 			return fmt.Sprintf("%s(%d)", t.Name(), t.Precision())
+		} else {
+			__antithesis_instrumentation__.Notify(630318)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(630301)
 	}
+	__antithesis_instrumentation__.Notify(630293)
 	return t.Name()
 }
 
-// MarshalText is implemented here so that gogo/protobuf know how to text marshal
-// protobuf struct directly/indirectly depends on types.T without panic.
 func (t *T) MarshalText() (text []byte, err error) {
+	__antithesis_instrumentation__.Notify(630319)
 	var buf bytes.Buffer
 	if err := proto.MarshalText(&buf, &t.InternalType); err != nil {
+		__antithesis_instrumentation__.Notify(630321)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(630322)
 	}
+	__antithesis_instrumentation__.Notify(630320)
 	return buf.Bytes(), nil
 }
 
-// DebugString returns a detailed dump of the type protobuf struct, suitable for
-// debugging scenarios.
 func (t *T) DebugString() string {
-	if t.Family() == ArrayFamily && t.ArrayContents().UserDefined() {
-		// In the case that this type is an array that contains a user defined
-		// type, the introspection that protobuf performs to generate a string
-		// representation will panic if the UserDefinedTypeMetadata field of the
-		// type is populated. It seems to not understand that fields in the element
-		// T could be not generated by proto, and panics trying to operate on the
-		// TypeMeta field of the T. To get around this, we just deep copy the T and
-		// zero out the type metadata to placate proto. See the following issue for
-		// details: https://github.com/gogo/protobuf/issues/693.
+	__antithesis_instrumentation__.Notify(630323)
+	if t.Family() == ArrayFamily && func() bool {
+		__antithesis_instrumentation__.Notify(630325)
+		return t.ArrayContents().UserDefined() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(630326)
+
 		internalTypeCopy := protoutil.Clone(&t.InternalType).(*InternalType)
 		internalTypeCopy.ArrayContents.TypeMeta = UserDefinedTypeMetadata{}
 		return internalTypeCopy.String()
+	} else {
+		__antithesis_instrumentation__.Notify(630327)
 	}
+	__antithesis_instrumentation__.Notify(630324)
 	return t.InternalType.String()
 }
 
-// IsAmbiguous returns true if this type is in UnknownFamily or AnyFamily.
-// Instances of ambiguous types can be NULL or be in one of several different
-// type families. This is important for parameterized types to determine whether
-// they are fully concrete or not.
 func (t *T) IsAmbiguous() bool {
+	__antithesis_instrumentation__.Notify(630328)
 	switch t.Family() {
 	case UnknownFamily, AnyFamily:
+		__antithesis_instrumentation__.Notify(630330)
 		return true
 	case CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(630331)
 		return t.Locale() == ""
 	case TupleFamily:
+		__antithesis_instrumentation__.Notify(630332)
 		if len(t.TupleContents()) == 0 {
+			__antithesis_instrumentation__.Notify(630338)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(630339)
 		}
+		__antithesis_instrumentation__.Notify(630333)
 		for i := range t.TupleContents() {
+			__antithesis_instrumentation__.Notify(630340)
 			if t.TupleContents()[i].IsAmbiguous() {
+				__antithesis_instrumentation__.Notify(630341)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(630342)
 			}
 		}
+		__antithesis_instrumentation__.Notify(630334)
 		return false
 	case ArrayFamily:
+		__antithesis_instrumentation__.Notify(630335)
 		return t.ArrayContents().IsAmbiguous()
 	case EnumFamily:
+		__antithesis_instrumentation__.Notify(630336)
 		return t.Oid() == oid.T_anyenum
+	default:
+		__antithesis_instrumentation__.Notify(630337)
 	}
+	__antithesis_instrumentation__.Notify(630329)
 	return false
 }
 
-// IsNumeric returns true iff this type is an integer, float, or decimal.
 func (t *T) IsNumeric() bool {
+	__antithesis_instrumentation__.Notify(630343)
 	switch t.Family() {
 	case IntFamily, FloatFamily, DecimalFamily:
+		__antithesis_instrumentation__.Notify(630344)
 		return true
 	default:
+		__antithesis_instrumentation__.Notify(630345)
 		return false
 	}
 }
 
-// EnumGetIdxOfPhysical returns the index within the TypeMeta's slice of
-// enum physical representations that matches the input byte slice.
 func (t *T) EnumGetIdxOfPhysical(phys []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(630346)
 	t.ensureHydratedEnum()
-	// TODO (rohany): We can either use a map or just binary search here
-	//  since the physical representations are sorted.
+
 	reps := t.TypeMeta.EnumData.PhysicalRepresentations
 	for i := range reps {
+		__antithesis_instrumentation__.Notify(630348)
 		if bytes.Equal(phys, reps[i]) {
+			__antithesis_instrumentation__.Notify(630349)
 			return i, nil
+		} else {
+			__antithesis_instrumentation__.Notify(630350)
 		}
 	}
+	__antithesis_instrumentation__.Notify(630347)
 	err := errors.Newf(
 		"could not find %v in enum %q representation %s %s",
 		phys,
@@ -2520,150 +2883,188 @@ func (t *T) EnumGetIdxOfPhysical(phys []byte) (int, error) {
 	return 0, err
 }
 
-// EnumGetIdxOfLogical returns the index within the TypeMeta's slice of
-// enum logical representations that matches the input string.
 func (t *T) EnumGetIdxOfLogical(logical string) (int, error) {
+	__antithesis_instrumentation__.Notify(630351)
 	t.ensureHydratedEnum()
 	reps := t.TypeMeta.EnumData.LogicalRepresentations
 	for i := range reps {
+		__antithesis_instrumentation__.Notify(630353)
 		if reps[i] == logical {
+			__antithesis_instrumentation__.Notify(630354)
 			return i, nil
+		} else {
+			__antithesis_instrumentation__.Notify(630355)
 		}
 	}
+	__antithesis_instrumentation__.Notify(630352)
 	return 0, pgerror.Newf(
 		pgcode.InvalidTextRepresentation, "invalid input value for enum %s: %q", t, logical)
 }
 
 func (t *T) ensureHydratedEnum() {
+	__antithesis_instrumentation__.Notify(630356)
 	if t.TypeMeta.EnumData == nil {
+		__antithesis_instrumentation__.Notify(630357)
 		panic(errors.AssertionFailedf("use of enum metadata before hydration as an enum: %v %p", t, t))
+	} else {
+		__antithesis_instrumentation__.Notify(630358)
 	}
 }
 
-// IsStringType returns true iff the given type is String or a collated string
-// type.
 func IsStringType(t *T) bool {
+	__antithesis_instrumentation__.Notify(630359)
 	switch t.Family() {
 	case StringFamily, CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(630360)
 		return true
 	default:
+		__antithesis_instrumentation__.Notify(630361)
 		return false
 	}
 }
 
-// IsValidArrayElementType returns true if the given type can be used as the
-// element type of an ArrayFamily-typed column. If the valid return is false,
-// the issue number should be included in the error report to inform the user.
 func IsValidArrayElementType(t *T) (valid bool, issueNum int) {
+	__antithesis_instrumentation__.Notify(630362)
 	switch t.Family() {
 	default:
+		__antithesis_instrumentation__.Notify(630363)
 		return true, 0
 	}
 }
 
-// CheckArrayElementType ensures that the given type can be used as the element
-// type of an ArrayFamily-typed column. If not, it returns an error.
 func CheckArrayElementType(t *T) error {
+	__antithesis_instrumentation__.Notify(630364)
 	if ok, issueNum := IsValidArrayElementType(t); !ok {
+		__antithesis_instrumentation__.Notify(630366)
 		return unimplemented.NewWithIssueDetailf(issueNum, t.String(),
 			"arrays of %s not allowed", t)
+	} else {
+		__antithesis_instrumentation__.Notify(630367)
 	}
+	__antithesis_instrumentation__.Notify(630365)
 	return nil
 }
 
-// IsDateTimeType returns true if the given type is a date or time-related type.
 func IsDateTimeType(t *T) bool {
+	__antithesis_instrumentation__.Notify(630368)
 	switch t.Family() {
 	case DateFamily:
+		__antithesis_instrumentation__.Notify(630369)
 		return true
 	case TimeFamily:
+		__antithesis_instrumentation__.Notify(630370)
 		return true
 	case TimeTZFamily:
+		__antithesis_instrumentation__.Notify(630371)
 		return true
 	case TimestampFamily:
+		__antithesis_instrumentation__.Notify(630372)
 		return true
 	case TimestampTZFamily:
+		__antithesis_instrumentation__.Notify(630373)
 		return true
 	case IntervalFamily:
+		__antithesis_instrumentation__.Notify(630374)
 		return true
 	default:
+		__antithesis_instrumentation__.Notify(630375)
 		return false
 	}
 }
 
-// IsAdditiveType returns true if the given type supports addition and
-// subtraction.
 func IsAdditiveType(t *T) bool {
+	__antithesis_instrumentation__.Notify(630376)
 	switch t.Family() {
 	case IntFamily:
+		__antithesis_instrumentation__.Notify(630377)
 		return true
 	case FloatFamily:
+		__antithesis_instrumentation__.Notify(630378)
 		return true
 	case DecimalFamily:
+		__antithesis_instrumentation__.Notify(630379)
 		return true
 	default:
+		__antithesis_instrumentation__.Notify(630380)
 		return IsDateTimeType(t)
 	}
 }
 
-// IsWildcardTupleType returns true if this is the wildcard AnyTuple type. The
-// wildcard type matches a tuple type having any number of fields (including 0).
 func IsWildcardTupleType(t *T) bool {
-	return len(t.TupleContents()) == 1 && t.TupleContents()[0].Family() == AnyFamily
+	__antithesis_instrumentation__.Notify(630381)
+	return len(t.TupleContents()) == 1 && func() bool {
+		__antithesis_instrumentation__.Notify(630382)
+		return t.TupleContents()[0].Family() == AnyFamily == true
+	}() == true
 }
 
-// collatedStringTypeSQL returns the string representation of a COLLATEDSTRING
-// or []COLLATEDSTRING type. This is tricky in the case of an array of collated
-// string, since brackets must precede the COLLATE identifier:
-//
-//   STRING COLLATE EN
-//   VARCHAR(20)[] COLLATE DE
-//
 func (t *T) collatedStringTypeSQL(isArray bool) string {
+	__antithesis_instrumentation__.Notify(630383)
 	var buf bytes.Buffer
 	buf.WriteString(t.stringTypeSQL())
 	if isArray {
+		__antithesis_instrumentation__.Notify(630385)
 		buf.WriteString("[] COLLATE ")
 	} else {
+		__antithesis_instrumentation__.Notify(630386)
 		buf.WriteString(" COLLATE ")
 	}
+	__antithesis_instrumentation__.Notify(630384)
 	lex.EncodeLocaleName(&buf, t.Locale())
 	return buf.String()
 }
 
-// stringTypeSQL returns the visible type name plus any width specifier for the
-// STRING/COLLATEDSTRING type.
 func (t *T) stringTypeSQL() string {
+	__antithesis_instrumentation__.Notify(630387)
 	typName := "STRING"
 	switch t.Oid() {
 	case oid.T_varchar:
+		__antithesis_instrumentation__.Notify(630390)
 		typName = "VARCHAR"
 	case oid.T_bpchar:
+		__antithesis_instrumentation__.Notify(630391)
 		typName = "CHAR"
 	case oid.T_char:
-		// Yes, that's the name. The ways of PostgreSQL are inscrutable.
+		__antithesis_instrumentation__.Notify(630392)
+
 		typName = `"char"`
 	case oid.T_name:
+		__antithesis_instrumentation__.Notify(630393)
 		typName = "NAME"
+	default:
+		__antithesis_instrumentation__.Notify(630394)
 	}
+	__antithesis_instrumentation__.Notify(630388)
 
-	// In general, if there is a specified width we want to print it next to the
-	// type. However, in the specific case of CHAR and "char", the default is 1
-	// and the width should be omitted in that case.
 	if t.Width() > 0 {
+		__antithesis_instrumentation__.Notify(630395)
 		o := t.Oid()
-		if t.Width() != 1 || (o != oid.T_bpchar && o != oid.T_char) {
+		if t.Width() != 1 || func() bool {
+			__antithesis_instrumentation__.Notify(630396)
+			return (o != oid.T_bpchar && func() bool {
+				__antithesis_instrumentation__.Notify(630397)
+				return o != oid.T_char == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(630398)
 			typName = fmt.Sprintf("%s(%d)", typName, t.Width())
+		} else {
+			__antithesis_instrumentation__.Notify(630399)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(630400)
 	}
+	__antithesis_instrumentation__.Notify(630389)
 
 	return typName
 }
 
-// IsHydrated returns true if this is a user-defined type and the TypeMeta
-// is hydrated.
 func (t *T) IsHydrated() bool {
-	return t.UserDefined() && t.TypeMeta != (UserDefinedTypeMetadata{})
+	__antithesis_instrumentation__.Notify(630401)
+	return t.UserDefined() && func() bool {
+		__antithesis_instrumentation__.Notify(630402)
+		return t.TypeMeta != (UserDefinedTypeMetadata{}) == true
+	}() == true
 }
 
 var typNameLiterals map[string]*T
@@ -2687,42 +3088,37 @@ func init() {
 	}
 }
 
-// TypeForNonKeywordTypeName returns the column type for the string name of a
-// type, if one exists. The third return value indicates:
-//
-//   0 if no error or the type is not known in postgres.
-//   -1 if the type is known in postgres.
-//  >0 for a github issue number.
 func TypeForNonKeywordTypeName(name string) (*T, bool, int) {
+	__antithesis_instrumentation__.Notify(630403)
 	t, ok := typNameLiterals[name]
 	if ok {
+		__antithesis_instrumentation__.Notify(630405)
 		return t, ok, 0
+	} else {
+		__antithesis_instrumentation__.Notify(630406)
 	}
+	__antithesis_instrumentation__.Notify(630404)
 	return nil, false, postgresPredefinedTypeIssues[name]
 }
 
-// The SERIAL types are pseudo-types that are only used during parsing. After
-// that, they should behave identically to INT columns. They are declared
-// as INT types, but using different instances than types.Int, types.Int2, etc.
-// so that they can be compared by pointer to differentiate them from the
-// singleton INT types. While the usual requirement is that == is never used to
-// compare types, this is one case where it's allowed.
 var (
 	Serial2Type = *Int2
 	Serial4Type = *Int4
 	Serial8Type = *Int
 )
 
-// IsSerialType returns whether or not the input type is a SERIAL type.
-// This function should only be used during parsing.
 func IsSerialType(typ *T) bool {
-	// This is a special case where == is used to compare types, since the SERIAL
-	// types are pseudo-types.
-	return typ == &Serial2Type || typ == &Serial4Type || typ == &Serial8Type
+	__antithesis_instrumentation__.Notify(630407)
+
+	return typ == &Serial2Type || func() bool {
+		__antithesis_instrumentation__.Notify(630408)
+		return typ == &Serial4Type == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(630409)
+		return typ == &Serial8Type == true
+	}() == true
 }
 
-// unreservedTypeTokens contain type alias that we resolve during parsing.
-// Instead of adding a new token to the parser, add the type here.
 var unreservedTypeTokens = map[string]*T{
 	"blob":       Bytes,
 	"bool":       Bool,
@@ -2742,7 +3138,7 @@ var unreservedTypeTokens = map[string]*T{
 	"name":       Name,
 	"oid":        Oid,
 	"oidvector":  OidVector,
-	// Postgres OID pseudo-types. See https://www.postgresql.org/docs/9.4/static/datatype-oid.html.
+
 	"regclass":     RegClass,
 	"regnamespace": RegNamespace,
 	"regproc":      RegProc,
@@ -2760,10 +3156,6 @@ var unreservedTypeTokens = map[string]*T{
 	"uuid":   Uuid,
 }
 
-// The following map must include all types predefined in PostgreSQL
-// that are also not yet defined in CockroachDB and link them to
-// github issues. It is also possible, but not necessary, to include
-// PostgreSQL types that are already implemented in CockroachDB.
 var postgresPredefinedTypeIssues = map[string]int{
 	"box":           21286,
 	"cidr":          18846,
@@ -2782,18 +3174,29 @@ var postgresPredefinedTypeIssues = map[string]int{
 	"xml":           43355,
 }
 
-// SQLString outputs the GeoMetadata in a SQL-compatible string.
 func (m *GeoMetadata) SQLString() string {
-	// If SRID is available, display both shape and SRID.
-	// If shape is available but not SRID, just display shape.
+	__antithesis_instrumentation__.Notify(630410)
+
 	if m.SRID != 0 {
+		__antithesis_instrumentation__.Notify(630412)
 		shapeName := strings.ToLower(m.ShapeType.String())
 		if m.ShapeType == geopb.ShapeType_Unset {
+			__antithesis_instrumentation__.Notify(630414)
 			shapeName = "geometry"
+		} else {
+			__antithesis_instrumentation__.Notify(630415)
 		}
+		__antithesis_instrumentation__.Notify(630413)
 		return fmt.Sprintf("(%s,%d)", shapeName, m.SRID)
-	} else if m.ShapeType != geopb.ShapeType_Unset {
-		return fmt.Sprintf("(%s)", m.ShapeType)
+	} else {
+		__antithesis_instrumentation__.Notify(630416)
+		if m.ShapeType != geopb.ShapeType_Unset {
+			__antithesis_instrumentation__.Notify(630417)
+			return fmt.Sprintf("(%s)", m.ShapeType)
+		} else {
+			__antithesis_instrumentation__.Notify(630418)
+		}
 	}
+	__antithesis_instrumentation__.Notify(630411)
 	return ""
 }

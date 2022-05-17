@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgerror
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strings"
@@ -17,121 +9,119 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// WithCandidateCode decorates the error with a candidate postgres
-// error code. It is called "candidate" because the code is only used
-// by GetPGCode() below conditionally.
-// The code is considered PII-free and is thus reportable.
 func WithCandidateCode(err error, code pgcode.Code) error {
+	__antithesis_instrumentation__.Notify(560818)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(560820)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(560821)
 	}
+	__antithesis_instrumentation__.Notify(560819)
 
 	return &withCandidateCode{cause: err, code: code.String()}
 }
 
-// HasCandidateCode returns tue iff the error or one of its causes
-// has a candidate pg error code.
 func HasCandidateCode(err error) bool {
+	__antithesis_instrumentation__.Notify(560822)
 	return errors.HasType(err, (*withCandidateCode)(nil))
 }
 
-// GetPGCodeInternal retrieves a code for the error. It operates by
-// combining the inner (cause) code and the code at the current level,
-// at each level of cause.
-//
-// - at each level:
-//
-//   - if there is a candidate code at that level, that is used;
-//   - otherwise, it calls computeDefaultCode().
-//     if the function returns an empty string,
-//     UncategorizedError is used.
-//     An example implementation for computeDefaultCode is provided below.
-//
-// - after that, it combines the code computed already for the cause
-//   (inner) and the new code just computed at the current level (outer)
-//   as follows:
-//
-//   - if the outer code is uncategorized, the inner code is kept no
-//     matter what.
-//   - if the outer code has the special XX prefix, that is kept.
-//     (The "XX" prefix signals importance in the pg code hierarchy.)
-//   - if the inner code is not uncategorized, it is retained.
-//   - otherwise the outer code is retained.
-//
-// This function should not be used directly. It is only exported
-// for use in testing code. Use GetPGCode() instead.
 func GetPGCodeInternal(
 	err error, computeDefaultCode func(err error) (code pgcode.Code),
 ) (code pgcode.Code) {
+	__antithesis_instrumentation__.Notify(560823)
 	code = pgcode.Uncategorized
 	if c, ok := err.(*withCandidateCode); ok {
+		__antithesis_instrumentation__.Notify(560826)
 		code = pgcode.MakeCode(c.code)
-	} else if newCode := computeDefaultCode(err); newCode.String() != "" {
-		code = newCode
+	} else {
+		__antithesis_instrumentation__.Notify(560827)
+		if newCode := computeDefaultCode(err); newCode.String() != "" {
+			__antithesis_instrumentation__.Notify(560828)
+			code = newCode
+		} else {
+			__antithesis_instrumentation__.Notify(560829)
+		}
 	}
+	__antithesis_instrumentation__.Notify(560824)
 
 	if c := errors.UnwrapOnce(err); c != nil {
+		__antithesis_instrumentation__.Notify(560830)
 		innerCode := GetPGCodeInternal(c, computeDefaultCode)
 		code = combineCodes(innerCode, code)
+	} else {
+		__antithesis_instrumentation__.Notify(560831)
 	}
+	__antithesis_instrumentation__.Notify(560825)
 
 	return code
 }
 
-// ComputeDefaultCode looks at the current error object
-// (not its causes) and returns:
-// - the existing code for Error instances
-// - SerializationFailure for roachpb retry errors that can be reported to clients
-// - StatementCompletionUnknown for ambiguous commit errors
-// - InternalError for assertion failures
-// - FeatureNotSupportedError for unimplemented errors.
-//
-// It is not meant to be used directly - it is only exported
-// for use by test code. Use GetPGCode() instead.
 func ComputeDefaultCode(err error) pgcode.Code {
+	__antithesis_instrumentation__.Notify(560832)
 	switch e := err.(type) {
-	// If there was already a pgcode in the cause, use that.
+
 	case *Error:
+		__antithesis_instrumentation__.Notify(560836)
 		return pgcode.MakeCode(e.Code)
-	// Special roachpb errors get a special code.
+
 	case ClientVisibleRetryError:
+		__antithesis_instrumentation__.Notify(560837)
 		return pgcode.SerializationFailure
 	case ClientVisibleAmbiguousError:
+		__antithesis_instrumentation__.Notify(560838)
 		return pgcode.StatementCompletionUnknown
 	}
+	__antithesis_instrumentation__.Notify(560833)
 
 	if errors.IsAssertionFailure(err) {
+		__antithesis_instrumentation__.Notify(560839)
 		return pgcode.Internal
+	} else {
+		__antithesis_instrumentation__.Notify(560840)
 	}
+	__antithesis_instrumentation__.Notify(560834)
 	if errors.IsUnimplementedError(err) {
+		__antithesis_instrumentation__.Notify(560841)
 		return pgcode.FeatureNotSupported
+	} else {
+		__antithesis_instrumentation__.Notify(560842)
 	}
+	__antithesis_instrumentation__.Notify(560835)
 	return pgcode.Code{}
 }
 
-// ClientVisibleRetryError mirrors roachpb.ClientVisibleRetryError but
-// is defined here to avoid an import cycle.
 type ClientVisibleRetryError interface {
 	ClientVisibleRetryError()
 }
 
-// ClientVisibleAmbiguousError mirrors
-// roachpb.ClientVisibleAmbiguousError but is defined here to avoid an
-// import cycle.
 type ClientVisibleAmbiguousError interface {
 	ClientVisibleAmbiguousError()
 }
 
-// combineCodes combines the inner and outer codes.
 func combineCodes(innerCode, outerCode pgcode.Code) pgcode.Code {
+	__antithesis_instrumentation__.Notify(560843)
 	if outerCode == pgcode.Uncategorized {
+		__antithesis_instrumentation__.Notify(560847)
 		return innerCode
+	} else {
+		__antithesis_instrumentation__.Notify(560848)
 	}
+	__antithesis_instrumentation__.Notify(560844)
 	if strings.HasPrefix(outerCode.String(), "XX") {
+		__antithesis_instrumentation__.Notify(560849)
 		return outerCode
+	} else {
+		__antithesis_instrumentation__.Notify(560850)
 	}
+	__antithesis_instrumentation__.Notify(560845)
 	if innerCode != pgcode.Uncategorized {
+		__antithesis_instrumentation__.Notify(560851)
 		return innerCode
+	} else {
+		__antithesis_instrumentation__.Notify(560852)
 	}
+	__antithesis_instrumentation__.Notify(560846)
 	return outerCode
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package azure
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -17,13 +9,9 @@ import (
 	"text/template"
 )
 
-// Startup script used to find/format/mount all local or attached disks.
-// Each disk is mounted as /data<disknum>, and, in addition, a symlink
-// created from /mnt/data<disknum> to the mount point.
-// azureStartupArgs specifies template arguments for the setup template.
 type azureStartupArgs struct {
-	RemoteUser      string // The uname for /data* directories.
-	AttachedDiskLun *int   // Use attached disk, with specified LUN; Use local ssd if nil.
+	RemoteUser      string
+	AttachedDiskLun *int
 }
 
 const azureStartupTemplate = `#!/bin/bash
@@ -101,30 +89,32 @@ sysctl --system  # reload sysctl settings
 touch /mnt/data1/.roachprod-initialized
 `
 
-// evalStartupTemplate evaluates startup template defined above and returns
-// a cloud-init base64 encoded custom data used to configure VM.
-//
-// Errors in startup files are hard to debug.  If roachprod create does not complete,
-// CTRL-c while roachprod waiting for initialization to complete (otherwise, roachprod
-// tries to destroy partially created cluster).
-// Then, ssh to one of the machines:
-//    1. /var/log/cloud-init-output.log contains the output of all the steps
-//       performed by cloud-init, including the steps performed by above script.
-//    2. You can extract uploaded script and try executing/debugging it via:
-//       sudo cloud-init query userdata > script.sh
 func evalStartupTemplate(args azureStartupArgs) (string, error) {
+	__antithesis_instrumentation__.Notify(183552)
 	cloudInit := bytes.NewBuffer(nil)
 	encoder := base64.NewEncoder(base64.StdEncoding, cloudInit)
 	gz := gzip.NewWriter(encoder)
 	t := template.Must(template.New("start").Parse(azureStartupTemplate))
 	if err := t.Execute(gz, args); err != nil {
+		__antithesis_instrumentation__.Notify(183556)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183557)
 	}
+	__antithesis_instrumentation__.Notify(183553)
 	if err := gz.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(183558)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183559)
 	}
+	__antithesis_instrumentation__.Notify(183554)
 	if err := encoder.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(183560)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183561)
 	}
+	__antithesis_instrumentation__.Notify(183555)
 	return cloudInit.String(), nil
 }

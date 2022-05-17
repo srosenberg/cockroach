@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package geogfn
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -22,179 +14,157 @@ import (
 	"github.com/golang/geo/s2"
 )
 
-// SpheroidErrorFraction is an error fraction to compensate for using a sphere
-// to calculate the distance for what is actually a spheroid. The distance
-// calculation has an error that is bounded by (2 * spheroid.Flattening)%.
-// This 5% margin is pretty safe.
 const SpheroidErrorFraction = 0.05
 
-// Distance returns the distance between geographies a and b on a sphere or spheroid.
-// Returns a geo.EmptyGeometryError if any of the Geographies are EMPTY.
 func Distance(
 	a geo.Geography, b geo.Geography, useSphereOrSpheroid UseSphereOrSpheroid,
 ) (float64, error) {
+	__antithesis_instrumentation__.Notify(59603)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(59608)
 		return 0, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(59609)
 	}
+	__antithesis_instrumentation__.Notify(59604)
 
 	aRegions, err := a.AsS2(geo.EmptyBehaviorError)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(59610)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(59611)
 	}
+	__antithesis_instrumentation__.Notify(59605)
 	bRegions, err := b.AsS2(geo.EmptyBehaviorError)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(59612)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(59613)
 	}
+	__antithesis_instrumentation__.Notify(59606)
 	spheroid, err := a.Spheroid()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(59614)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(59615)
 	}
+	__antithesis_instrumentation__.Notify(59607)
 	return distanceGeographyRegions(
 		spheroid,
 		useSphereOrSpheroid,
 		aRegions,
 		bRegions,
 		a.BoundingRect().Intersects(b.BoundingRect()),
-		0, /* stopAfter */
+		0,
 		geo.FnInclusive,
 	)
 }
 
-//
-// Spheroids
-//
-
-// s2GeodistLineString implements geodist.LineString.
 type s2GeodistLineString struct {
 	*s2.Polyline
 }
 
 var _ geodist.LineString = (*s2GeodistLineString)(nil)
 
-// IsShape implements the geodist.LineString interface.
-func (*s2GeodistLineString) IsShape() {}
+func (*s2GeodistLineString) IsShape() { __antithesis_instrumentation__.Notify(59616) }
 
-// LineString implements the geodist.LineString interface.
-func (*s2GeodistLineString) IsLineString() {}
+func (*s2GeodistLineString) IsLineString() { __antithesis_instrumentation__.Notify(59617) }
 
-// Edge implements the geodist.LineString interface.
 func (g *s2GeodistLineString) Edge(i int) geodist.Edge {
+	__antithesis_instrumentation__.Notify(59618)
 	return geodist.Edge{
 		V0: geodist.Point{GeogPoint: (*g.Polyline)[i]},
 		V1: geodist.Point{GeogPoint: (*g.Polyline)[i+1]},
 	}
 }
 
-// NumEdges implements the geodist.LineString interface.
 func (g *s2GeodistLineString) NumEdges() int {
+	__antithesis_instrumentation__.Notify(59619)
 	return len(*g.Polyline) - 1
 }
 
-// Vertex implements the geodist.LineString interface.
 func (g *s2GeodistLineString) Vertex(i int) geodist.Point {
+	__antithesis_instrumentation__.Notify(59620)
 	return geodist.Point{
 		GeogPoint: (*g.Polyline)[i],
 	}
 }
 
-// NumVertexes implements the geodist.LineString interface.
 func (g *s2GeodistLineString) NumVertexes() int {
+	__antithesis_instrumentation__.Notify(59621)
 	return len(*g.Polyline)
 }
 
-// s2GeodistLinearRing implements geodist.LinearRing.
 type s2GeodistLinearRing struct {
 	*s2.Loop
 }
 
 var _ geodist.LinearRing = (*s2GeodistLinearRing)(nil)
 
-// IsShape implements the geodist.LinearRing interface.
-func (*s2GeodistLinearRing) IsShape() {}
+func (*s2GeodistLinearRing) IsShape() { __antithesis_instrumentation__.Notify(59622) }
 
-// LinearRing implements the geodist.LinearRing interface.
-func (*s2GeodistLinearRing) IsLinearRing() {}
+func (*s2GeodistLinearRing) IsLinearRing() { __antithesis_instrumentation__.Notify(59623) }
 
-// Edge implements the geodist.LinearRing interface.
 func (g *s2GeodistLinearRing) Edge(i int) geodist.Edge {
+	__antithesis_instrumentation__.Notify(59624)
 	return geodist.Edge{
 		V0: geodist.Point{GeogPoint: g.Loop.Vertex(i)},
 		V1: geodist.Point{GeogPoint: g.Loop.Vertex(i + 1)},
 	}
 }
 
-// NumEdges implements the geodist.LinearRing interface.
 func (g *s2GeodistLinearRing) NumEdges() int {
+	__antithesis_instrumentation__.Notify(59625)
 	return g.Loop.NumEdges()
 }
 
-// Vertex implements the geodist.LinearRing interface.
 func (g *s2GeodistLinearRing) Vertex(i int) geodist.Point {
+	__antithesis_instrumentation__.Notify(59626)
 	return geodist.Point{
 		GeogPoint: g.Loop.Vertex(i),
 	}
 }
 
-// NumVertexes implements the geodist.LinearRing interface.
 func (g *s2GeodistLinearRing) NumVertexes() int {
+	__antithesis_instrumentation__.Notify(59627)
 	return g.Loop.NumVertices()
 }
 
-// s2GeodistPolygon implements geodist.Polygon.
 type s2GeodistPolygon struct {
 	*s2.Polygon
 }
 
 var _ geodist.Polygon = (*s2GeodistPolygon)(nil)
 
-// IsShape implements the geodist.Polygon interface.
-func (*s2GeodistPolygon) IsShape() {}
+func (*s2GeodistPolygon) IsShape() { __antithesis_instrumentation__.Notify(59628) }
 
-// Polygon implements the geodist.Polygon interface.
-func (*s2GeodistPolygon) IsPolygon() {}
+func (*s2GeodistPolygon) IsPolygon() { __antithesis_instrumentation__.Notify(59629) }
 
-// LinearRing implements the geodist.Polygon interface.
 func (g *s2GeodistPolygon) LinearRing(i int) geodist.LinearRing {
+	__antithesis_instrumentation__.Notify(59630)
 	return &s2GeodistLinearRing{Loop: g.Polygon.Loop(i)}
 }
 
-// NumLinearRings implements the geodist.Polygon interface.
 func (g *s2GeodistPolygon) NumLinearRings() int {
+	__antithesis_instrumentation__.Notify(59631)
 	return g.Polygon.NumLoops()
 }
 
-// s2GeodistEdgeCrosser implements geodist.EdgeCrosser.
 type s2GeodistEdgeCrosser struct {
 	*s2.EdgeCrosser
 }
 
 var _ geodist.EdgeCrosser = (*s2GeodistEdgeCrosser)(nil)
 
-// ChainCrossing implements geodist.EdgeCrosser.
 func (c *s2GeodistEdgeCrosser) ChainCrossing(p geodist.Point) (bool, geodist.Point) {
-	// Returns nil for the intersection point as we don't require the intersection
-	// point as we do not have to implement ShortestLine in geography.
+	__antithesis_instrumentation__.Notify(59632)
+
 	return c.EdgeCrosser.ChainCrossingSign(p.GeogPoint) != s2.DoNotCross, geodist.Point{}
 }
 
-// distanceGeographyRegions calculates the distance between two sets of regions.
-// If inclusive, it will quit if it finds a distance that is less than or equal
-// to stopAfter. Otherwise, it will quit if a distance less than stopAfter is
-// found. It is not guaranteed to find the absolute minimum distance if
-// stopAfter > 0.
-//
-// !!! SURPRISING BEHAVIOR WARNING FOR SPHEROIDS !!!
-// PostGIS evaluates the distance between spheroid regions by computing the min of
-// the pair-wise distance between the cross-product of the regions in A and the regions
-// in B, where the pair-wise distance is computed as:
-// * Find the two closest points between the pairs of regions using the sphere
-//   for distance calculations.
-// * Compute the spheroid distance between the two closest points.
-//
-// This is technically incorrect, since it is possible that the two closest points on
-// the spheroid are different than the two closest points on the sphere.
-// See distance_test.go for examples of the "truer" distance values.
-// Since we aim to be compatible with PostGIS, we adopt the same approach.
 func distanceGeographyRegions(
 	spheroid *geographiclib.Spheroid,
 	useSphereOrSpheroid UseSphereOrSpheroid,
@@ -204,13 +174,20 @@ func distanceGeographyRegions(
 	stopAfter float64,
 	exclusivity geo.FnExclusivity,
 ) (float64, error) {
+	__antithesis_instrumentation__.Notify(59633)
 	minDistance := math.MaxFloat64
 	for _, aRegion := range aRegions {
+		__antithesis_instrumentation__.Notify(59635)
 		aGeodist, err := regionToGeodistShape(aRegion)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(59637)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(59638)
 		}
+		__antithesis_instrumentation__.Notify(59636)
 		for _, bRegion := range bRegions {
+			__antithesis_instrumentation__.Notify(59639)
 			minDistanceUpdater := newGeographyMinDistanceUpdater(
 				spheroid,
 				useSphereOrSpheroid,
@@ -219,8 +196,12 @@ func distanceGeographyRegions(
 			)
 			bGeodist, err := regionToGeodistShape(bRegion)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(59642)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(59643)
 			}
+			__antithesis_instrumentation__.Notify(59640)
 			earlyExit, err := geodist.ShapeDistance(
 				&geographyDistanceCalculator{
 					updater:               minDistanceUpdater,
@@ -230,19 +211,25 @@ func distanceGeographyRegions(
 				bGeodist,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(59644)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(59645)
 			}
+			__antithesis_instrumentation__.Notify(59641)
 			minDistance = math.Min(minDistance, minDistanceUpdater.Distance())
 			if earlyExit {
+				__antithesis_instrumentation__.Notify(59646)
 				return minDistance, nil
+			} else {
+				__antithesis_instrumentation__.Notify(59647)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(59634)
 	return minDistance, nil
 }
 
-// geographyMinDistanceUpdater finds the minimum distance using a sphere.
-// Methods will return early if it finds a minimum distance <= stopAfterLE.
 type geographyMinDistanceUpdater struct {
 	spheroid            *geographiclib.Spheroid
 	useSphereOrSpheroid UseSphereOrSpheroid
@@ -254,21 +241,22 @@ type geographyMinDistanceUpdater struct {
 
 var _ geodist.DistanceUpdater = (*geographyMinDistanceUpdater)(nil)
 
-// newGeographyMinDistanceUpdater returns a new geographyMinDistanceUpdater with the
-// correct arguments set up.
 func newGeographyMinDistanceUpdater(
 	spheroid *geographiclib.Spheroid,
 	useSphereOrSpheroid UseSphereOrSpheroid,
 	stopAfter float64,
 	exclusivity geo.FnExclusivity,
 ) *geographyMinDistanceUpdater {
+	__antithesis_instrumentation__.Notify(59648)
 	multiplier := 1.0
 	if useSphereOrSpheroid == UseSpheroid {
-		// Modify the stopAfterLE distance to be less by the error fraction, since
-		// we use the sphere to calculate the distance and we want to leave a
-		// buffer for spheroid distances being slightly off.
+		__antithesis_instrumentation__.Notify(59650)
+
 		multiplier -= SpheroidErrorFraction
+	} else {
+		__antithesis_instrumentation__.Notify(59651)
 	}
+	__antithesis_instrumentation__.Notify(59649)
 	stopAfterChordAngle := s1.ChordAngleFromAngle(s1.Angle(stopAfter * multiplier / spheroid.SphereRadius))
 	return &geographyMinDistanceUpdater{
 		spheroid:            spheroid,
@@ -279,56 +267,75 @@ func newGeographyMinDistanceUpdater(
 	}
 }
 
-// Distance implements the DistanceUpdater interface.
 func (u *geographyMinDistanceUpdater) Distance() float64 {
-	// If the distance is zero, avoid the call to spheroidDistance and return early.
+	__antithesis_instrumentation__.Notify(59652)
+
 	if u.minD == 0 {
+		__antithesis_instrumentation__.Notify(59655)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(59656)
 	}
+	__antithesis_instrumentation__.Notify(59653)
 	if u.useSphereOrSpheroid == UseSpheroid {
+		__antithesis_instrumentation__.Notify(59657)
 		return spheroidDistance(u.spheroid, u.minEdge.V0, u.minEdge.V1)
+	} else {
+		__antithesis_instrumentation__.Notify(59658)
 	}
+	__antithesis_instrumentation__.Notify(59654)
 	return u.minD.Angle().Radians() * u.spheroid.SphereRadius
 }
 
-// Update implements the geodist.DistanceUpdater interface.
 func (u *geographyMinDistanceUpdater) Update(aPoint geodist.Point, bPoint geodist.Point) bool {
+	__antithesis_instrumentation__.Notify(59659)
 	a := aPoint.GeogPoint
 	b := bPoint.GeogPoint
 
 	sphereDistance := s2.ChordAngleBetweenPoints(a, b)
 	if sphereDistance < u.minD {
+		__antithesis_instrumentation__.Notify(59661)
 		u.minD = sphereDistance
 		u.minEdge = s2.Edge{V0: a, V1: b}
-		// If we have a threshold, determine if we can stop early.
-		// If the sphere distance is within range of the stopAfter, we can
-		// definitively say we've reach the close enough point.
-		if (u.exclusivity == geo.FnInclusive && u.minD <= u.stopAfter) ||
-			(u.exclusivity == geo.FnExclusive && u.minD < u.stopAfter) {
+
+		if (u.exclusivity == geo.FnInclusive && func() bool {
+			__antithesis_instrumentation__.Notify(59662)
+			return u.minD <= u.stopAfter == true
+		}() == true) || func() bool {
+			__antithesis_instrumentation__.Notify(59663)
+			return (u.exclusivity == geo.FnExclusive && func() bool {
+				__antithesis_instrumentation__.Notify(59664)
+				return u.minD < u.stopAfter == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(59665)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(59666)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(59667)
 	}
+	__antithesis_instrumentation__.Notify(59660)
 	return false
 }
 
-// OnIntersects implements the geodist.DistanceUpdater interface.
 func (u *geographyMinDistanceUpdater) OnIntersects(p geodist.Point) bool {
+	__antithesis_instrumentation__.Notify(59668)
 	u.minD = 0
 	return true
 }
 
-// IsMaxDistance implements the geodist.DistanceUpdater interface.
 func (u *geographyMinDistanceUpdater) IsMaxDistance() bool {
+	__antithesis_instrumentation__.Notify(59669)
 	return false
 }
 
-// FlipGeometries implements the geodist.DistanceUpdater interface.
 func (u *geographyMinDistanceUpdater) FlipGeometries() {
-	// FlipGeometries is unimplemented for geographyMinDistanceUpdater as we don't
-	// require the order of geometries for calculation of minimum distance.
+	__antithesis_instrumentation__.Notify(59670)
+
 }
 
-// geographyDistanceCalculator implements geodist.DistanceCalculator
 type geographyDistanceCalculator struct {
 	updater               *geographyMinDistanceUpdater
 	boundingBoxIntersects bool
@@ -336,20 +343,20 @@ type geographyDistanceCalculator struct {
 
 var _ geodist.DistanceCalculator = (*geographyDistanceCalculator)(nil)
 
-// DistanceUpdater implements geodist.DistanceCalculator.
 func (c *geographyDistanceCalculator) DistanceUpdater() geodist.DistanceUpdater {
+	__antithesis_instrumentation__.Notify(59671)
 	return c.updater
 }
 
-// BoundingBoxIntersects implements geodist.DistanceCalculator.
 func (c *geographyDistanceCalculator) BoundingBoxIntersects() bool {
+	__antithesis_instrumentation__.Notify(59672)
 	return c.boundingBoxIntersects
 }
 
-// NewEdgeCrosser implements geodist.DistanceCalculator.
 func (c *geographyDistanceCalculator) NewEdgeCrosser(
 	edge geodist.Edge, startPoint geodist.Point,
 ) geodist.EdgeCrosser {
+	__antithesis_instrumentation__.Notify(59673)
 	return &s2GeodistEdgeCrosser{
 		EdgeCrosser: s2.NewChainEdgeCrosser(
 			edge.V0.GeogPoint,
@@ -359,54 +366,42 @@ func (c *geographyDistanceCalculator) NewEdgeCrosser(
 	}
 }
 
-// PointIntersectsLinearRing implements geodist.DistanceCalculator.
 func (c *geographyDistanceCalculator) PointIntersectsLinearRing(
 	point geodist.Point, polygon geodist.LinearRing,
 ) bool {
+	__antithesis_instrumentation__.Notify(59674)
 	return polygon.(*s2GeodistLinearRing).ContainsPoint(point.GeogPoint)
 }
 
-// ClosestPointToEdge implements geodist.DistanceCalculator.
-//
-// ClosestPointToEdge projects the point onto the infinite line represented
-// by the edge. This will return the point on the line closest to the edge.
-// It will return the closest point on the line, as well as a bool representing
-// whether the point that is projected lies directly on the edge as a segment.
-//
-// For visualization and more, see: Section 6 / Figure 4 of
-// "Projective configuration theorems: old wine into new wineskins", Tabachnikov, Serge, 2016/07/16
 func (c *geographyDistanceCalculator) ClosestPointToEdge(
 	edge geodist.Edge, point geodist.Point,
 ) (geodist.Point, bool) {
+	__antithesis_instrumentation__.Notify(59675)
 	eV0 := edge.V0.GeogPoint
 	eV1 := edge.V1.GeogPoint
 
-	// Project the point onto the normal of the edge. A great circle passing through
-	// the normal and the point will intersect with the great circle represented
-	// by the given edge.
 	normal := eV0.Vector.Cross(eV1.Vector).Normalize()
-	// To find the point where the great circle represented by the edge and the
-	// great circle represented by (normal, point), we project the point
-	// onto the normal.
+
 	normalScaledToPoint := normal.Mul(normal.Dot(point.GeogPoint.Vector))
-	// The difference between the point and the projection of the normal when normalized
-	// should give us a point on the great circle which contains the vertexes of the edge.
+
 	closestPoint := s2.Point{Vector: point.GeogPoint.Vector.Sub(normalScaledToPoint).Normalize()}
-	// We then check whether the given point lies on the geodesic of the edge,
-	// as the above algorithm only generates a point on the great circle
-	// represented by the edge.
+
 	return geodist.Point{GeogPoint: closestPoint}, (&s2.Polyline{eV0, eV1}).IntersectsCell(s2.CellFromPoint(closestPoint))
 }
 
-// regionToGeodistShape converts the s2 Region to a geodist object.
 func regionToGeodistShape(r s2.Region) (geodist.Shape, error) {
+	__antithesis_instrumentation__.Notify(59676)
 	switch r := r.(type) {
 	case s2.Point:
+		__antithesis_instrumentation__.Notify(59678)
 		return &geodist.Point{GeogPoint: r}, nil
 	case *s2.Polyline:
+		__antithesis_instrumentation__.Notify(59679)
 		return &s2GeodistLineString{Polyline: r}, nil
 	case *s2.Polygon:
+		__antithesis_instrumentation__.Notify(59680)
 		return &s2GeodistPolygon{Polygon: r}, nil
 	}
+	__antithesis_instrumentation__.Notify(59677)
 	return nil, pgerror.Newf(pgcode.InvalidParameterValue, "unknown region: %T", r)
 }

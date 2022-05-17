@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package roachpb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -18,146 +10,233 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// StoreMatchesConstraint returns whether a store's attributes or node's
-// locality match the constraint's spec. It notably ignores whether the
-// constraint is required, prohibited, positive, or otherwise.
 func StoreMatchesConstraint(store StoreDescriptor, c Constraint) bool {
+	__antithesis_instrumentation__.Notify(176944)
 	if c.Key == "" {
+		__antithesis_instrumentation__.Notify(176947)
 		for _, attrs := range []Attributes{store.Attrs, store.Node.Attrs} {
+			__antithesis_instrumentation__.Notify(176949)
 			for _, attr := range attrs.Attrs {
+				__antithesis_instrumentation__.Notify(176950)
 				if attr == c.Value {
+					__antithesis_instrumentation__.Notify(176951)
 					return true
+				} else {
+					__antithesis_instrumentation__.Notify(176952)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(176948)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(176953)
 	}
+	__antithesis_instrumentation__.Notify(176945)
 	for _, tier := range store.Node.Locality.Tiers {
-		if c.Key == tier.Key && c.Value == tier.Value {
+		__antithesis_instrumentation__.Notify(176954)
+		if c.Key == tier.Key && func() bool {
+			__antithesis_instrumentation__.Notify(176955)
+			return c.Value == tier.Value == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(176956)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(176957)
 		}
 	}
+	__antithesis_instrumentation__.Notify(176946)
 	return false
 }
 
 var emptySpanConfig = &SpanConfig{}
 
-// IsEmpty returns true if s is an empty SpanConfig.
 func (s *SpanConfig) IsEmpty() bool {
+	__antithesis_instrumentation__.Notify(176958)
 	return s.Equal(emptySpanConfig)
 }
 
-// TTL returns the implies TTL as a time.Duration.
 func (s *SpanConfig) TTL() time.Duration {
+	__antithesis_instrumentation__.Notify(176959)
 	return time.Duration(s.GCPolicy.TTLSeconds) * time.Second
 }
 
-// ValidateSystemTargetSpanConfig ensures that only protection policies
-// (GCPolicy.ProtectionPolicies) field is set on the underlying
-// roachpb.SpanConfig.
 func (s *SpanConfig) ValidateSystemTargetSpanConfig() error {
+	__antithesis_instrumentation__.Notify(176960)
 	if s.RangeMinBytes != 0 {
+		__antithesis_instrumentation__.Notify(176973)
 		return errors.AssertionFailedf("RangeMinBytes set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176974)
 	}
+	__antithesis_instrumentation__.Notify(176961)
 	if s.RangeMaxBytes != 0 {
+		__antithesis_instrumentation__.Notify(176975)
 		return errors.AssertionFailedf("RangeMaxBytes set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176976)
 	}
+	__antithesis_instrumentation__.Notify(176962)
 	if s.GCPolicy.TTLSeconds != 0 {
+		__antithesis_instrumentation__.Notify(176977)
 		return errors.AssertionFailedf("TTLSeconds set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176978)
 	}
+	__antithesis_instrumentation__.Notify(176963)
 	if s.GCPolicy.IgnoreStrictEnforcement {
+		__antithesis_instrumentation__.Notify(176979)
 		return errors.AssertionFailedf("IgnoreStrictEnforcement set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176980)
 	}
+	__antithesis_instrumentation__.Notify(176964)
 	if s.GlobalReads {
+		__antithesis_instrumentation__.Notify(176981)
 		return errors.AssertionFailedf("GlobalReads set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176982)
 	}
+	__antithesis_instrumentation__.Notify(176965)
 	if s.NumReplicas != 0 {
+		__antithesis_instrumentation__.Notify(176983)
 		return errors.AssertionFailedf("NumReplicas set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176984)
 	}
+	__antithesis_instrumentation__.Notify(176966)
 	if s.NumVoters != 0 {
+		__antithesis_instrumentation__.Notify(176985)
 		return errors.AssertionFailedf("NumVoters set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176986)
 	}
+	__antithesis_instrumentation__.Notify(176967)
 	if len(s.Constraints) != 0 {
+		__antithesis_instrumentation__.Notify(176987)
 		return errors.AssertionFailedf("Constraints set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176988)
 	}
+	__antithesis_instrumentation__.Notify(176968)
 	if len(s.VoterConstraints) != 0 {
+		__antithesis_instrumentation__.Notify(176989)
 		return errors.AssertionFailedf("VoterConstraints set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176990)
 	}
+	__antithesis_instrumentation__.Notify(176969)
 	if len(s.LeasePreferences) != 0 {
+		__antithesis_instrumentation__.Notify(176991)
 		return errors.AssertionFailedf("LeasePreferences set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176992)
 	}
+	__antithesis_instrumentation__.Notify(176970)
 	if s.RangefeedEnabled {
+		__antithesis_instrumentation__.Notify(176993)
 		return errors.AssertionFailedf("RangefeedEnabled set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176994)
 	}
+	__antithesis_instrumentation__.Notify(176971)
 	if s.ExcludeDataFromBackup {
+		__antithesis_instrumentation__.Notify(176995)
 		return errors.AssertionFailedf("ExcludeDataFromBackup set on system span config")
+	} else {
+		__antithesis_instrumentation__.Notify(176996)
 	}
+	__antithesis_instrumentation__.Notify(176972)
 	return nil
 }
 
-// GetNumVoters returns the number of voting replicas as defined in the
-// span config.
-// TODO(arul): We can get rid of this now that we're correctly populating
-//  numVoters when going from ZoneConfigs -> SpanConfigs.
 func (s *SpanConfig) GetNumVoters() int32 {
+	__antithesis_instrumentation__.Notify(176997)
 	if s.NumVoters != 0 {
+		__antithesis_instrumentation__.Notify(176999)
 		return s.NumVoters
+	} else {
+		__antithesis_instrumentation__.Notify(177000)
 	}
+	__antithesis_instrumentation__.Notify(176998)
 	return s.NumReplicas
 }
 
-// GetNumNonVoters returns the number of non-voting replicas as defined in the
-// span config.
 func (s *SpanConfig) GetNumNonVoters() int32 {
+	__antithesis_instrumentation__.Notify(177001)
 	return s.NumReplicas - s.GetNumVoters()
 }
 
 func (c Constraint) String() string {
+	__antithesis_instrumentation__.Notify(177002)
 	var str string
 	switch c.Type {
 	case Constraint_REQUIRED:
+		__antithesis_instrumentation__.Notify(177005)
 		str += "+"
 	case Constraint_PROHIBITED:
+		__antithesis_instrumentation__.Notify(177006)
 		str += "-"
+	default:
+		__antithesis_instrumentation__.Notify(177007)
 	}
+	__antithesis_instrumentation__.Notify(177003)
 	if len(c.Key) > 0 {
+		__antithesis_instrumentation__.Notify(177008)
 		str += c.Key + "="
+	} else {
+		__antithesis_instrumentation__.Notify(177009)
 	}
+	__antithesis_instrumentation__.Notify(177004)
 	str += c.Value
 	return str
 }
 
 func (c ConstraintsConjunction) String() string {
+	__antithesis_instrumentation__.Notify(177010)
 	var sb strings.Builder
 	for i, cons := range c.Constraints {
+		__antithesis_instrumentation__.Notify(177013)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(177015)
 			sb.WriteRune(',')
+		} else {
+			__antithesis_instrumentation__.Notify(177016)
 		}
+		__antithesis_instrumentation__.Notify(177014)
 		sb.WriteString(cons.String())
 	}
+	__antithesis_instrumentation__.Notify(177011)
 	if c.NumReplicas != 0 {
+		__antithesis_instrumentation__.Notify(177017)
 		fmt.Fprintf(&sb, ":%d", c.NumReplicas)
+	} else {
+		__antithesis_instrumentation__.Notify(177018)
 	}
+	__antithesis_instrumentation__.Notify(177012)
 	return sb.String()
 }
 
-// String implements the stringer interface.
 func (p ProtectionPolicy) String() string {
+	__antithesis_instrumentation__.Notify(177019)
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("{ts: %d", int(p.ProtectedTimestamp.WallTime)))
 	if p.IgnoreIfExcludedFromBackup {
+		__antithesis_instrumentation__.Notify(177021)
 		sb.WriteString(fmt.Sprintf(",ignore_if_excluded_from_backup: %t",
 			p.IgnoreIfExcludedFromBackup))
+	} else {
+		__antithesis_instrumentation__.Notify(177022)
 	}
+	__antithesis_instrumentation__.Notify(177020)
 	sb.WriteString("}")
 	return sb.String()
 }
 
-// TestingDefaultSpanConfig exports the default span config for testing purposes.
 func TestingDefaultSpanConfig() SpanConfig {
+	__antithesis_instrumentation__.Notify(177023)
 	return SpanConfig{
-		RangeMinBytes: 128 << 20, // 128 MB
-		RangeMaxBytes: 512 << 20, // 512 MB
+		RangeMinBytes: 128 << 20,
+		RangeMaxBytes: 512 << 20,
 		GCPolicy: GCPolicy{
 			TTLSeconds: 25 * 60 * 60,
 		},
@@ -165,54 +244,50 @@ func TestingDefaultSpanConfig() SpanConfig {
 	}
 }
 
-// TestingDefaultSystemSpanConfiguration exports the default span config that
-// applies to spanconfig.SystemTargets for testing purposes.
 func TestingDefaultSystemSpanConfiguration() SpanConfig {
+	__antithesis_instrumentation__.Notify(177024)
 	return SpanConfig{}
 }
 
-// TestingSystemSpanConfig exports the system span config for testing purposes.
 func TestingSystemSpanConfig() SpanConfig {
+	__antithesis_instrumentation__.Notify(177025)
 	config := TestingDefaultSpanConfig()
 	config.NumReplicas = 5
 	return config
 }
 
-// TestingDatabaseSystemSpanConfig exports the span config expected to be
-// installed on system database for testing purposes. The provided bool switches
-// between what's expected on the host vs. any secondary tenant.
 func TestingDatabaseSystemSpanConfig(host bool) SpanConfig {
+	__antithesis_instrumentation__.Notify(177026)
 	config := TestingSystemSpanConfig()
 	if !host {
+		__antithesis_instrumentation__.Notify(177028)
 		config = TestingDefaultSpanConfig()
+	} else {
+		__antithesis_instrumentation__.Notify(177029)
 	}
+	__antithesis_instrumentation__.Notify(177027)
 	config.RangefeedEnabled = true
 	config.GCPolicy.IgnoreStrictEnforcement = true
 	return config
 }
 
-// IsEntireKeyspaceTarget returns true if the receiver targets the entire
-// keyspace.
 func (st SystemSpanConfigTarget) IsEntireKeyspaceTarget() bool {
+	__antithesis_instrumentation__.Notify(177030)
 	return st.Type.GetEntireKeyspace() != nil
 }
 
-// IsSpecificTenantKeyspaceTarget returns true if the receiver targets a
-// specific tenant's keyspace.
 func (st SystemSpanConfigTarget) IsSpecificTenantKeyspaceTarget() bool {
+	__antithesis_instrumentation__.Notify(177031)
 	return st.Type.GetSpecificTenantKeyspace() != nil
 }
 
-// IsAllTenantKeyspaceTargetsSetTarget returns true if the receiver target
-// encompasses all targets that have been set on specific tenant keyspaces
-// by the system target source.
 func (st SystemSpanConfigTarget) IsAllTenantKeyspaceTargetsSetTarget() bool {
+	__antithesis_instrumentation__.Notify(177032)
 	return st.Type.GetAllTenantKeyspaceTargetsSet() != nil
 }
 
-// NewEntireKeyspaceTargetType returns a system span config target type that
-// targets the entire keyspace.
 func NewEntireKeyspaceTargetType() *SystemSpanConfigTarget_Type {
+	__antithesis_instrumentation__.Notify(177033)
 	return &SystemSpanConfigTarget_Type{
 		Type: &SystemSpanConfigTarget_Type_EntireKeyspace{
 			EntireKeyspace: &SystemSpanConfigTarget_EntireKeyspace{},
@@ -220,9 +295,8 @@ func NewEntireKeyspaceTargetType() *SystemSpanConfigTarget_Type {
 	}
 }
 
-// NewSpecificTenantKeyspaceTargetType returns a system span config target type
-// that the given tenant ID's keyspace.
 func NewSpecificTenantKeyspaceTargetType(tenantID TenantID) *SystemSpanConfigTarget_Type {
+	__antithesis_instrumentation__.Notify(177034)
 	return &SystemSpanConfigTarget_Type{
 		Type: &SystemSpanConfigTarget_Type_SpecificTenantKeyspace{
 			SpecificTenantKeyspace: &SystemSpanConfigTarget_TenantKeyspace{
@@ -232,10 +306,8 @@ func NewSpecificTenantKeyspaceTargetType(tenantID TenantID) *SystemSpanConfigTar
 	}
 }
 
-// NewAllTenantKeyspaceTargetsSetTargetType returns a read-only system span
-// config target  type that encompasses all targets that have been set on
-// specific tenant keyspaces.
 func NewAllTenantKeyspaceTargetsSetTargetType() *SystemSpanConfigTarget_Type {
+	__antithesis_instrumentation__.Notify(177035)
 	return &SystemSpanConfigTarget_Type{
 		Type: &SystemSpanConfigTarget_Type_AllTenantKeyspaceTargetsSet{
 			AllTenantKeyspaceTargetsSet: &SystemSpanConfigTarget_AllTenantKeyspaceTargetsSet{},

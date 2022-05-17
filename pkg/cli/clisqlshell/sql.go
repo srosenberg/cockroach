@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package clisqlshell
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -45,9 +37,6 @@ import (
 )
 
 const (
-	// Refer to README.md to understand the general design guidelines for
-	// help texts.
-
 	helpMessageFmt = `You are using 'cockroach sql', CockroachDB's lightweight SQL client.
 General
   \q, quit, exit    exit the shell (Ctrl+C/Ctrl+D also supported).
@@ -111,17 +100,9 @@ Commands specific to the demo shell (EXPERIMENTAL):
 
 	defaultPromptPattern = "%n@%M/%/%x>"
 
-	// debugPromptPattern avoids substitution patterns that require a db roundtrip.
 	debugPromptPattern = "%n@%M>"
 )
 
-// cliState defines the current state of the CLI during
-// command-line processing.
-//
-// Note: options customizable via \set and \unset should be defined in
-// sqlConnCtx or sqlCtx instead, so that the configuration remains global
-// across multiple instances of cliState (e.g. across file inclusion
-// with \i).
 type cliState struct {
 	cliCtx     *clicfg.Context
 	sqlConnCtx *clisqlclient.Context
@@ -130,130 +111,81 @@ type cliState struct {
 	iCtx       *internalContext
 
 	conn clisqlclient.Conn
-	// ins is used to read lines if isInteractive is true.
+
 	ins readline.EditLine
-	// buf is used to read lines if isInteractive is false.
+
 	buf *bufio.Reader
-	// singleStatement is set to true when this state level
-	// is currently processing for runString(). In that mode:
-	// - a missing semicolon at the end of input is ignored:
-	//   runString("select 1") is valid.
-	// - errors are not printed by runStatement, since the
-	//   caller of runString() is responsible for processing/
-	//   printing the exitErr.
+
 	singleStatement bool
 
-	// levels is the number of inclusion recursion levels.
 	levels int
-	// includeDir is the directory relative to which relative
-	// includes (\ir) resolve the file name.
+
 	includeDir string
 
-	// The prompt at the beginning of a multi-line entry.
 	fullPrompt string
-	// The prompt on a continuation line in a multi-line entry.
+
 	continuePrompt string
-	// Which prompt to use to populate currentPrompt.
+
 	useContinuePrompt bool
-	// The current prompt, either fullPrompt or continuePrompt.
+
 	currentPrompt string
 
-	// State of COPY FROM on the client.
 	copyFromState *clisqlclient.CopyFromState
 
-	// State
-	//
-	// lastInputLine is the last valid line obtained from readline.
 	lastInputLine string
-	// atEOF indicates whether the last call to readline signaled EOF on input.
+
 	atEOF bool
-	// lastKnownTxnStatus reports the last known transaction
-	// status. Erased after every statement executed, until the next
-	// query to the server updates it.
+
 	lastKnownTxnStatus string
 
-	// forwardLines is the array of lookahead lines. This gets
-	// populated when there is more than one line of input
-	// in the data read by ReadLine(), which can happen
-	// when copy-pasting.
 	forwardLines []string
 
-	// partialLines is the array of lines accumulated so far in a
-	// multi-line entry.
 	partialLines []string
 
-	// partialStmtsLen represents the number of entries in partialLines
-	// parsed successfully so far. It grows larger than zero whenever 1)
-	// syntax checking is enabled and 2) multi-statement (as opposed to
-	// multi-line) entry starts, i.e. when the shell decides to continue
-	// inputting statements even after a full statement followed by a
-	// semicolon was read successfully. This is currently used for
-	// multi-line transaction editing.
 	partialStmtsLen int
 
-	// concatLines is the concatenation of partialLines, computed during
-	// doPrepareStatementLine and then reused in doRunStatements() and
-	// doCheckStatement().
 	concatLines string
 
-	// exitErr defines the error to report to the user upon termination.
-	// This can carry over from one line of input to another. For
-	// example in the interactive shell, a statement causing a SQL
-	// error, followed by lines of whitespace or SQL comments, followed
-	// by Ctrl+D, causes the shell to terminate with an error --
-	// reporting the status of the last valid SQL statement executed.
 	exitErr error
 }
 
-// cliStateEnum drives the CLI state machine in runInteractive().
 type cliStateEnum int
 
 const (
 	cliStart cliStateEnum = iota
 	cliStop
 
-	// Querying the server for the current transaction status
-	// and setting the prompt accordingly.
 	cliRefreshPrompt
 
-	// Just before reading the first line of a potentially multi-line
-	// statement.
 	cliStartLine
 
-	// Just before reading the 2nd line or after in a multi-line
-	// statement.
 	cliContinueLine
 
-	// Actually reading the input and checking for input errors.
 	cliReadLine
 
-	// Determine to do with the newly input line.
 	cliDecidePath
 
-	// Process the first line of a (possibly multi-line) entry.
 	cliProcessFirstLine
 
-	// Check and handle for client-side commands.
 	cliHandleCliCmd
 
-	// Concatenate the inputs so far, discard entry made only of whitespace
-	// and/or comments, and check for semicolons.
 	cliPrepareStatementLine
 
-	// Perform syntax validation if enabled with check_syntax,
-	// and possibly trigger entry for multi-line transactions.
 	cliCheckStatement
 
-	// Actually run the SQL buffered so far.
 	cliRunStatement
 )
 
-// printCliHelp prints a short inline help about the CLI.
 func (c *cliState) printCliHelp() {
+	__antithesis_instrumentation__.Notify(29417)
 	demoHelpStr := ""
 	if c.sqlCtx.DemoCluster != nil {
+		__antithesis_instrumentation__.Notify(29419)
 		demoHelpStr = demoCommandsHelp
+	} else {
+		__antithesis_instrumentation__.Notify(29420)
 	}
+	__antithesis_instrumentation__.Notify(29418)
 	fmt.Fprintf(c.iCtx.stdout, helpMessageFmt,
 		demoHelpStr,
 		docs.URL("sql-statements.html"),
@@ -265,39 +197,51 @@ func (c *cliState) printCliHelp() {
 const noLineEditor readline.EditLine = -1
 
 func (c *cliState) hasEditor() bool {
+	__antithesis_instrumentation__.Notify(29421)
 	return c.ins != noLineEditor
 }
 
-// addHistory persists a line of input to the readline history file.
 func (c *cliState) addHistory(line string) {
-	if !c.hasEditor() || len(line) == 0 {
+	__antithesis_instrumentation__.Notify(29422)
+	if !c.hasEditor() || func() bool {
+		__antithesis_instrumentation__.Notify(29424)
+		return len(line) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(29425)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(29426)
 	}
+	__antithesis_instrumentation__.Notify(29423)
 
-	// ins.AddHistory will push command into memory and try to
-	// persist to disk (if ins's history file is set). err can
-	// be not nil only if it got a IO error while trying to persist.
 	if err := c.ins.AddHistory(line); err != nil {
+		__antithesis_instrumentation__.Notify(29427)
 		fmt.Fprintf(c.iCtx.stderr, "warning: cannot save command-line history: %v\n", err)
 		c.ins.SetAutoSaveHistory("", false)
+	} else {
+		__antithesis_instrumentation__.Notify(29428)
 	}
 }
 
 func (c *cliState) invalidSyntax(nextState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29429)
 	return c.invalidSyntaxf(nextState, `%s. Try \? for help.`, c.lastInputLine)
 }
 
 func (c *cliState) inCopy() bool {
+	__antithesis_instrumentation__.Notify(29430)
 	return c.copyFromState != nil
 }
 
 func (c *cliState) resetCopy() {
+	__antithesis_instrumentation__.Notify(29431)
 	c.copyFromState = nil
 }
 
 func (c *cliState) invalidSyntaxf(
 	nextState cliStateEnum, format string, args ...interface{},
 ) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29432)
 	fmt.Fprint(c.iCtx.stderr, "invalid syntax: ")
 	fmt.Fprintf(c.iCtx.stderr, format, args...)
 	fmt.Fprintln(c.iCtx.stderr)
@@ -306,12 +250,14 @@ func (c *cliState) invalidSyntaxf(
 }
 
 func (c *cliState) invalidOptionChange(nextState cliStateEnum, opt string) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29433)
 	c.exitErr = errors.Newf("cannot change option during multi-line editing: %s\n", opt)
 	fmt.Fprintln(c.iCtx.stderr, c.exitErr)
 	return nextState
 }
 
 func (c *cliState) internalServerError(nextState cliStateEnum, err error) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29434)
 	fmt.Fprintf(c.iCtx.stderr, "internal server error: %v\n", err)
 	c.exitErr = err
 	return nextState
@@ -323,7 +269,7 @@ var options = map[string]struct {
 	validDuringMultilineEntry bool
 	set                       func(c *cliState, val string) error
 	reset                     func(c *cliState) error
-	// display is used to retrieve the current value.
+
 	display    func(c *cliState) string
 	deprecated bool
 }{
@@ -332,24 +278,38 @@ var options = map[string]struct {
 		isBoolean:                 false,
 		validDuringMultilineEntry: false,
 		set: func(c *cliState, val string) error {
+			__antithesis_instrumentation__.Notify(29435)
 			b, err := clisqlclient.ParseBool(val)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(29437)
 				c.iCtx.autoTrace = "on, " + val
-			} else if b {
-				c.iCtx.autoTrace = "on, on"
 			} else {
-				c.iCtx.autoTrace = ""
+				__antithesis_instrumentation__.Notify(29438)
+				if b {
+					__antithesis_instrumentation__.Notify(29439)
+					c.iCtx.autoTrace = "on, on"
+				} else {
+					__antithesis_instrumentation__.Notify(29440)
+					c.iCtx.autoTrace = ""
+				}
 			}
+			__antithesis_instrumentation__.Notify(29436)
 			return nil
 		},
 		reset: func(c *cliState) error {
+			__antithesis_instrumentation__.Notify(29441)
 			c.iCtx.autoTrace = ""
 			return nil
 		},
 		display: func(c *cliState) string {
+			__antithesis_instrumentation__.Notify(29442)
 			if c.iCtx.autoTrace == "" {
+				__antithesis_instrumentation__.Notify(29444)
 				return "off"
+			} else {
+				__antithesis_instrumentation__.Notify(29445)
 			}
+			__antithesis_instrumentation__.Notify(29443)
 			return c.iCtx.autoTrace
 		},
 	},
@@ -358,90 +318,180 @@ var options = map[string]struct {
 		isBoolean:                 false,
 		validDuringMultilineEntry: true,
 		set: func(c *cliState, val string) error {
+			__antithesis_instrumentation__.Notify(29446)
 			v, err := strconv.Atoi(val)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(29449)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(29450)
 			}
-			if v < 0 || v > 3 {
+			__antithesis_instrumentation__.Notify(29447)
+			if v < 0 || func() bool {
+				__antithesis_instrumentation__.Notify(29451)
+				return v > 3 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(29452)
 				return errors.New("only values between 0 and 4 are supported")
+			} else {
+				__antithesis_instrumentation__.Notify(29453)
 			}
+			__antithesis_instrumentation__.Notify(29448)
 			c.sqlExecCtx.TableBorderMode = v
 			return nil
 		},
-		display: func(c *cliState) string { return strconv.Itoa(c.sqlExecCtx.TableBorderMode) },
+		display: func(c *cliState) string {
+			__antithesis_instrumentation__.Notify(29454)
+			return strconv.Itoa(c.sqlExecCtx.TableBorderMode)
+		},
 	},
 	`display_format`: {
 		description:               "the output format for tabular data (table, csv, tsv, html, sql, records, raw)",
 		isBoolean:                 false,
 		validDuringMultilineEntry: true,
 		set: func(c *cliState, val string) error {
+			__antithesis_instrumentation__.Notify(29455)
 			return c.sqlExecCtx.TableDisplayFormat.Set(val)
 		},
 		reset: func(c *cliState) error {
+			__antithesis_instrumentation__.Notify(29456)
 			displayFormat := clisqlexec.TableDisplayTSV
 			if c.sqlExecCtx.TerminalOutput {
+				__antithesis_instrumentation__.Notify(29458)
 				displayFormat = clisqlexec.TableDisplayTable
+			} else {
+				__antithesis_instrumentation__.Notify(29459)
 			}
+			__antithesis_instrumentation__.Notify(29457)
 			c.sqlExecCtx.TableDisplayFormat = displayFormat
 			return nil
 		},
-		display: func(c *cliState) string { return c.sqlExecCtx.TableDisplayFormat.String() },
+		display: func(c *cliState) string {
+			__antithesis_instrumentation__.Notify(29460)
+			return c.sqlExecCtx.TableDisplayFormat.String()
+		},
 	},
 	`echo`: {
 		description:               "show SQL queries before they are sent to the server",
 		isBoolean:                 true,
 		validDuringMultilineEntry: false,
-		set:                       func(c *cliState, _ string) error { c.sqlConnCtx.Echo = true; return nil },
-		reset:                     func(c *cliState) error { c.sqlConnCtx.Echo = false; return nil },
-		display:                   func(c *cliState) string { return strconv.FormatBool(c.sqlConnCtx.Echo) },
+		set: func(c *cliState, _ string) error {
+			__antithesis_instrumentation__.Notify(29461)
+			c.sqlConnCtx.Echo = true
+			return nil
+		},
+		reset: func(c *cliState) error {
+			__antithesis_instrumentation__.Notify(29462)
+			c.sqlConnCtx.Echo = false
+			return nil
+		},
+		display: func(c *cliState) string {
+			__antithesis_instrumentation__.Notify(29463)
+			return strconv.FormatBool(c.sqlConnCtx.Echo)
+		},
 	},
 	`errexit`: {
 		description:               "exit the shell upon a query error",
 		isBoolean:                 true,
 		validDuringMultilineEntry: true,
-		set:                       func(c *cliState, _ string) error { c.iCtx.errExit = true; return nil },
-		reset:                     func(c *cliState) error { c.iCtx.errExit = false; return nil },
-		display:                   func(c *cliState) string { return strconv.FormatBool(c.iCtx.errExit) },
+		set: func(c *cliState, _ string) error {
+			__antithesis_instrumentation__.Notify(29464)
+			c.iCtx.errExit = true
+			return nil
+		},
+		reset: func(c *cliState) error {
+			__antithesis_instrumentation__.Notify(29465)
+			c.iCtx.errExit = false
+			return nil
+		},
+		display: func(c *cliState) string {
+			__antithesis_instrumentation__.Notify(29466)
+			return strconv.FormatBool(c.iCtx.errExit)
+		},
 	},
 	`check_syntax`: {
 		description:               "check the SQL syntax before running a query",
 		isBoolean:                 true,
 		validDuringMultilineEntry: false,
-		set:                       func(c *cliState, _ string) error { c.iCtx.checkSyntax = true; return nil },
-		reset:                     func(c *cliState) error { c.iCtx.checkSyntax = false; return nil },
-		display:                   func(c *cliState) string { return strconv.FormatBool(c.iCtx.checkSyntax) },
+		set: func(c *cliState, _ string) error {
+			__antithesis_instrumentation__.Notify(29467)
+			c.iCtx.checkSyntax = true
+			return nil
+		},
+		reset: func(c *cliState) error {
+			__antithesis_instrumentation__.Notify(29468)
+			c.iCtx.checkSyntax = false
+			return nil
+		},
+		display: func(c *cliState) string {
+			__antithesis_instrumentation__.Notify(29469)
+			return strconv.FormatBool(c.iCtx.checkSyntax)
+		},
 	},
 	`show_times`: {
 		description:               "display the execution time after each query",
 		isBoolean:                 true,
 		validDuringMultilineEntry: true,
-		set:                       func(c *cliState, _ string) error { c.sqlExecCtx.ShowTimes = true; return nil },
-		reset:                     func(c *cliState) error { c.sqlExecCtx.ShowTimes = false; return nil },
-		display:                   func(c *cliState) string { return strconv.FormatBool(c.sqlExecCtx.ShowTimes) },
+		set: func(c *cliState, _ string) error {
+			__antithesis_instrumentation__.Notify(29470)
+			c.sqlExecCtx.ShowTimes = true
+			return nil
+		},
+		reset: func(c *cliState) error {
+			__antithesis_instrumentation__.Notify(29471)
+			c.sqlExecCtx.ShowTimes = false
+			return nil
+		},
+		display: func(c *cliState) string {
+			__antithesis_instrumentation__.Notify(29472)
+			return strconv.FormatBool(c.sqlExecCtx.ShowTimes)
+		},
 	},
 	`show_server_times`: {
 		description:               "display the server execution times for queries (requires show_times to be set)",
 		isBoolean:                 true,
 		validDuringMultilineEntry: true,
-		set:                       func(c *cliState, _ string) error { c.sqlConnCtx.EnableServerExecutionTimings = true; return nil },
-		reset:                     func(c *cliState) error { c.sqlConnCtx.EnableServerExecutionTimings = false; return nil },
-		display:                   func(c *cliState) string { return strconv.FormatBool(c.sqlConnCtx.EnableServerExecutionTimings) },
+		set: func(c *cliState, _ string) error {
+			__antithesis_instrumentation__.Notify(29473)
+			c.sqlConnCtx.EnableServerExecutionTimings = true
+			return nil
+		},
+		reset: func(c *cliState) error {
+			__antithesis_instrumentation__.Notify(29474)
+			c.sqlConnCtx.EnableServerExecutionTimings = false
+			return nil
+		},
+		display: func(c *cliState) string {
+			__antithesis_instrumentation__.Notify(29475)
+			return strconv.FormatBool(c.sqlConnCtx.EnableServerExecutionTimings)
+		},
 	},
 	`verbose_times`: {
 		description:               "display execution times with more precision (requires show_times to be set)",
 		isBoolean:                 true,
 		validDuringMultilineEntry: true,
-		set:                       func(c *cliState, _ string) error { c.sqlExecCtx.VerboseTimings = true; return nil },
-		reset:                     func(c *cliState) error { c.sqlExecCtx.VerboseTimings = false; return nil },
-		display:                   func(c *cliState) string { return strconv.FormatBool(c.sqlExecCtx.VerboseTimings) },
+		set: func(c *cliState, _ string) error {
+			__antithesis_instrumentation__.Notify(29476)
+			c.sqlExecCtx.VerboseTimings = true
+			return nil
+		},
+		reset: func(c *cliState) error {
+			__antithesis_instrumentation__.Notify(29477)
+			c.sqlExecCtx.VerboseTimings = false
+			return nil
+		},
+		display: func(c *cliState) string {
+			__antithesis_instrumentation__.Notify(29478)
+			return strconv.FormatBool(c.sqlExecCtx.VerboseTimings)
+		},
 	},
 	`smart_prompt`: {
 		description:               "deprecated",
 		isBoolean:                 true,
 		validDuringMultilineEntry: false,
-		set:                       func(c *cliState, _ string) error { return nil },
-		reset:                     func(c *cliState) error { return nil },
-		display:                   func(c *cliState) string { return "false" },
+		set:                       func(c *cliState, _ string) error { __antithesis_instrumentation__.Notify(29479); return nil },
+		reset:                     func(c *cliState) error { __antithesis_instrumentation__.Notify(29480); return nil },
+		display:                   func(c *cliState) string { __antithesis_instrumentation__.Notify(29481); return "false" },
 		deprecated:                true,
 	},
 	`prompt1`: {
@@ -449,242 +499,366 @@ var options = map[string]struct {
 		isBoolean:                 false,
 		validDuringMultilineEntry: true,
 		set: func(c *cliState, val string) error {
+			__antithesis_instrumentation__.Notify(29482)
 			c.iCtx.customPromptPattern = val
 			return nil
 		},
 		reset: func(c *cliState) error {
+			__antithesis_instrumentation__.Notify(29483)
 			c.iCtx.customPromptPattern = defaultPromptPattern
 			return nil
 		},
-		display: func(c *cliState) string { return c.iCtx.customPromptPattern },
+		display: func(c *cliState) string {
+			__antithesis_instrumentation__.Notify(29484)
+			return c.iCtx.customPromptPattern
+		},
 	},
 }
 
-// optionNames retains the names of every option in the map above in sorted
-// order. We want them sorted to ensure the output of \? is deterministic.
 var optionNames = func() []string {
+	__antithesis_instrumentation__.Notify(29485)
 	names := make([]string, 0, len(options))
 	for k := range options {
+		__antithesis_instrumentation__.Notify(29487)
 		names = append(names, k)
 	}
+	__antithesis_instrumentation__.Notify(29486)
 	sort.Strings(names)
 	return names
 }()
 
-// handleSet supports the \set client-side command.
 func (c *cliState) handleSet(args []string, nextState, errState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29488)
 	if len(args) == 0 {
+		__antithesis_instrumentation__.Notify(29496)
 		optData := make([][]string, 0, len(options))
 		for _, n := range optionNames {
+			__antithesis_instrumentation__.Notify(29499)
 			if options[n].deprecated {
+				__antithesis_instrumentation__.Notify(29501)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(29502)
 			}
+			__antithesis_instrumentation__.Notify(29500)
 			optData = append(optData, []string{n, options[n].display(c), options[n].description})
 		}
+		__antithesis_instrumentation__.Notify(29497)
 		err := c.sqlExecCtx.PrintQueryOutput(c.iCtx.stdout, c.iCtx.stderr,
 			[]string{"Option", "Value", "Description"},
-			clisqlexec.NewRowSliceIter(optData, "lll" /*align*/))
+			clisqlexec.NewRowSliceIter(optData, "lll"))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(29503)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(29504)
 		}
+		__antithesis_instrumentation__.Notify(29498)
 
 		return nextState
+	} else {
+		__antithesis_instrumentation__.Notify(29505)
 	}
+	__antithesis_instrumentation__.Notify(29489)
 
 	if len(args) == 1 {
-		// Try harder to find a value.
+		__antithesis_instrumentation__.Notify(29506)
+
 		args = strings.SplitN(args[0], "=", 2)
+	} else {
+		__antithesis_instrumentation__.Notify(29507)
 	}
+	__antithesis_instrumentation__.Notify(29490)
 
 	opt, ok := options[args[0]]
 	if !ok {
+		__antithesis_instrumentation__.Notify(29508)
 		return c.invalidSyntax(errState)
+	} else {
+		__antithesis_instrumentation__.Notify(29509)
 	}
-	if len(c.partialLines) > 0 && !opt.validDuringMultilineEntry {
+	__antithesis_instrumentation__.Notify(29491)
+	if len(c.partialLines) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(29510)
+		return !opt.validDuringMultilineEntry == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(29511)
 		return c.invalidOptionChange(errState, args[0])
+	} else {
+		__antithesis_instrumentation__.Notify(29512)
 	}
+	__antithesis_instrumentation__.Notify(29492)
 
-	// Determine which value to use.
 	var val string
 	switch len(args) {
 	case 1:
+		__antithesis_instrumentation__.Notify(29513)
 		val = "true"
 	case 2:
+		__antithesis_instrumentation__.Notify(29514)
 		val = args[1]
 	default:
+		__antithesis_instrumentation__.Notify(29515)
 		return c.invalidSyntax(errState)
 	}
+	__antithesis_instrumentation__.Notify(29493)
 
-	// Run the command.
 	var err error
 	if !opt.isBoolean {
+		__antithesis_instrumentation__.Notify(29516)
 		err = opt.set(c, val)
-	} else if b, e := clisqlclient.ParseBool(val); e != nil {
-		return c.invalidSyntax(errState)
-	} else if b {
-		err = opt.set(c, "true")
 	} else {
-		err = opt.reset(c)
+		__antithesis_instrumentation__.Notify(29517)
+		if b, e := clisqlclient.ParseBool(val); e != nil {
+			__antithesis_instrumentation__.Notify(29518)
+			return c.invalidSyntax(errState)
+		} else {
+			__antithesis_instrumentation__.Notify(29519)
+			if b {
+				__antithesis_instrumentation__.Notify(29520)
+				err = opt.set(c, "true")
+			} else {
+				__antithesis_instrumentation__.Notify(29521)
+				err = opt.reset(c)
+			}
+		}
 	}
+	__antithesis_instrumentation__.Notify(29494)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(29522)
 		fmt.Fprintf(c.iCtx.stderr, "\\set %s: %v\n", strings.Join(args, " "), err)
 		c.exitErr = err
 		return errState
+	} else {
+		__antithesis_instrumentation__.Notify(29523)
 	}
+	__antithesis_instrumentation__.Notify(29495)
 
 	return nextState
 }
 
-// handleUnset supports the \unset client-side command.
 func (c *cliState) handleUnset(args []string, nextState, errState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29524)
 	if len(args) != 1 {
+		__antithesis_instrumentation__.Notify(29529)
 		return c.invalidSyntax(errState)
+	} else {
+		__antithesis_instrumentation__.Notify(29530)
 	}
+	__antithesis_instrumentation__.Notify(29525)
 	opt, ok := options[args[0]]
 	if !ok {
+		__antithesis_instrumentation__.Notify(29531)
 		return c.invalidSyntax(errState)
+	} else {
+		__antithesis_instrumentation__.Notify(29532)
 	}
-	if len(c.partialLines) > 0 && !opt.validDuringMultilineEntry {
+	__antithesis_instrumentation__.Notify(29526)
+	if len(c.partialLines) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(29533)
+		return !opt.validDuringMultilineEntry == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(29534)
 		return c.invalidOptionChange(errState, args[0])
+	} else {
+		__antithesis_instrumentation__.Notify(29535)
 	}
+	__antithesis_instrumentation__.Notify(29527)
 	if err := opt.reset(c); err != nil {
+		__antithesis_instrumentation__.Notify(29536)
 		fmt.Fprintf(c.iCtx.stderr, "\\unset %s: %v\n", args[0], err)
 		c.exitErr = err
 		return errState
+	} else {
+		__antithesis_instrumentation__.Notify(29537)
 	}
+	__antithesis_instrumentation__.Notify(29528)
 	return nextState
 }
 
 func isEndOfStatement(lastTok int) bool {
-	return lastTok == ';' || lastTok == lexbase.HELPTOKEN
+	__antithesis_instrumentation__.Notify(29538)
+	return lastTok == ';' || func() bool {
+		__antithesis_instrumentation__.Notify(29539)
+		return lastTok == lexbase.HELPTOKEN == true
+	}() == true
 }
 
-// handleDemo handles operations on \demo.
-// This can only be done from `cockroach demo`.
 func (c *cliState) handleDemo(cmd []string, nextState, errState cliStateEnum) cliStateEnum {
-	// A demo cluster signifies the presence of `cockroach demo`.
-	if c.sqlCtx.DemoCluster == nil {
-		return c.invalidSyntaxf(errState, `\demo can only be run with cockroach demo`)
-	}
+	__antithesis_instrumentation__.Notify(29540)
 
-	// The \demo command has one of three patterns:
-	//
-	//	- A lone command (currently, only ls)
-	//	- A command followed by a string (add followed by locality string)
-	//	- A command followed by a node number (shutdown, restart, decommission, recommission)
-	//
-	// We parse these commands separately, in the following blocks.
-	if len(cmd) == 1 && cmd[0] == "ls" {
-		c.sqlCtx.DemoCluster.ListDemoNodes(c.iCtx.stdout, c.iCtx.stderr, false /* justOne */)
-		return nextState
+	if c.sqlCtx.DemoCluster == nil {
+		__antithesis_instrumentation__.Notify(29545)
+		return c.invalidSyntaxf(errState, `\demo can only be run with cockroach demo`)
+	} else {
+		__antithesis_instrumentation__.Notify(29546)
 	}
+	__antithesis_instrumentation__.Notify(29541)
+
+	if len(cmd) == 1 && func() bool {
+		__antithesis_instrumentation__.Notify(29547)
+		return cmd[0] == "ls" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(29548)
+		c.sqlCtx.DemoCluster.ListDemoNodes(c.iCtx.stdout, c.iCtx.stderr, false)
+		return nextState
+	} else {
+		__antithesis_instrumentation__.Notify(29549)
+	}
+	__antithesis_instrumentation__.Notify(29542)
 
 	if len(cmd) != 2 {
+		__antithesis_instrumentation__.Notify(29550)
 		return c.invalidSyntax(errState)
+	} else {
+		__antithesis_instrumentation__.Notify(29551)
 	}
+	__antithesis_instrumentation__.Notify(29543)
 
-	// Special case the add command it takes a string instead of a node number.
 	if cmd[0] == "add" {
+		__antithesis_instrumentation__.Notify(29552)
 		return c.handleDemoAddNode(cmd, nextState, errState)
+	} else {
+		__antithesis_instrumentation__.Notify(29553)
 	}
+	__antithesis_instrumentation__.Notify(29544)
 
-	// If we've made it down here, we're handling the remaining demo node commands.
 	return c.handleDemoNodeCommands(cmd, nextState, errState)
 }
 
-// handleDemoAddNode handles the `add` node command in demo.
 func (c *cliState) handleDemoAddNode(cmd []string, nextState, errState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29554)
 	if cmd[0] != "add" {
+		__antithesis_instrumentation__.Notify(29557)
 		return c.internalServerError(errState, fmt.Errorf("bad call to handleDemoAddNode"))
+	} else {
+		__antithesis_instrumentation__.Notify(29558)
 	}
+	__antithesis_instrumentation__.Notify(29555)
 
 	addedNodeID, err := c.sqlCtx.DemoCluster.AddNode(context.Background(), cmd[1])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(29559)
 		return c.internalServerError(errState, err)
+	} else {
+		__antithesis_instrumentation__.Notify(29560)
 	}
+	__antithesis_instrumentation__.Notify(29556)
 	fmt.Fprintf(c.iCtx.stdout, "node %v has been added with locality \"%s\"\n",
 		addedNodeID, c.sqlCtx.DemoCluster.GetLocality(addedNodeID))
 	return nextState
 }
 
-// handleDemoNodeCommands handles the node commands in demo (with the exception of `add` which is handled
-// with handleDemoAddNode.
 func (c *cliState) handleDemoNodeCommands(
 	cmd []string, nextState, errState cliStateEnum,
 ) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29561)
 	nodeID, err := strconv.ParseInt(cmd[1], 10, 32)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(29564)
 		return c.invalidSyntaxf(
 			errState,
 			"%s",
 			errors.Wrapf(err, "%q is not a valid node ID", cmd[1]),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(29565)
 	}
+	__antithesis_instrumentation__.Notify(29562)
 
 	ctx := context.Background()
 
 	switch cmd[0] {
 	case "shutdown":
+		__antithesis_instrumentation__.Notify(29566)
 		if err := c.sqlCtx.DemoCluster.DrainAndShutdown(ctx, int32(nodeID)); err != nil {
+			__antithesis_instrumentation__.Notify(29575)
 			return c.internalServerError(errState, err)
+		} else {
+			__antithesis_instrumentation__.Notify(29576)
 		}
+		__antithesis_instrumentation__.Notify(29567)
 		fmt.Fprintf(c.iCtx.stdout, "node %d has been shutdown\n", nodeID)
 		return nextState
 	case "restart":
+		__antithesis_instrumentation__.Notify(29568)
 		if err := c.sqlCtx.DemoCluster.RestartNode(ctx, int32(nodeID)); err != nil {
+			__antithesis_instrumentation__.Notify(29577)
 			return c.internalServerError(errState, err)
+		} else {
+			__antithesis_instrumentation__.Notify(29578)
 		}
+		__antithesis_instrumentation__.Notify(29569)
 		fmt.Fprintf(c.iCtx.stdout, "node %d has been restarted\n", nodeID)
 		return nextState
 	case "recommission":
+		__antithesis_instrumentation__.Notify(29570)
 		if err := c.sqlCtx.DemoCluster.Recommission(ctx, int32(nodeID)); err != nil {
+			__antithesis_instrumentation__.Notify(29579)
 			return c.internalServerError(errState, err)
+		} else {
+			__antithesis_instrumentation__.Notify(29580)
 		}
+		__antithesis_instrumentation__.Notify(29571)
 		fmt.Fprintf(c.iCtx.stdout, "node %d has been recommissioned\n", nodeID)
 		return nextState
 	case "decommission":
+		__antithesis_instrumentation__.Notify(29572)
 		if err := c.sqlCtx.DemoCluster.Decommission(ctx, int32(nodeID)); err != nil {
+			__antithesis_instrumentation__.Notify(29581)
 			return c.internalServerError(errState, err)
+		} else {
+			__antithesis_instrumentation__.Notify(29582)
 		}
+		__antithesis_instrumentation__.Notify(29573)
 		fmt.Fprintf(c.iCtx.stdout, "node %d has been decommissioned\n", nodeID)
 		return nextState
+	default:
+		__antithesis_instrumentation__.Notify(29574)
 	}
+	__antithesis_instrumentation__.Notify(29563)
 	return c.invalidSyntax(errState)
 }
 
-// handleHelp prints SQL help.
 func (c *cliState) handleHelp(cmd []string, nextState, errState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29583)
 	command := strings.TrimSpace(strings.Join(cmd, " "))
 	helpText, _ := c.serverSideParse(command + " ??")
 	if helpText != "" {
+		__antithesis_instrumentation__.Notify(29585)
 		fmt.Fprintln(c.iCtx.stdout, helpText)
 	} else {
+		__antithesis_instrumentation__.Notify(29586)
 		fmt.Fprintf(c.iCtx.stderr,
 			"no help available for %q.\nTry \\h with no argument to see available help.\n", command)
 		c.exitErr = errors.New("no help available")
 		return errState
 	}
+	__antithesis_instrumentation__.Notify(29584)
 	return nextState
 }
 
-// handleFunctionHelp prints help about built-in functions.
 func (c *cliState) handleFunctionHelp(cmd []string, nextState, errState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29587)
 	funcName := strings.TrimSpace(strings.Join(cmd, " "))
 	helpText, _ := c.serverSideParse(fmt.Sprintf("select %s(??", funcName))
 	if helpText != "" {
+		__antithesis_instrumentation__.Notify(29589)
 		fmt.Fprintln(c.iCtx.stdout, helpText)
 	} else {
+		__antithesis_instrumentation__.Notify(29590)
 		fmt.Fprintf(c.iCtx.stderr,
 			"no help available for %q.\nTry \\hf with no argument to see available help.\n", funcName)
 		c.exitErr = errors.New("no help available")
 		return errState
 	}
+	__antithesis_instrumentation__.Notify(29588)
 	return nextState
 }
 
-// execSyscmd executes system commands.
 func (c *cliState) execSyscmd(command string) (string, error) {
+	__antithesis_instrumentation__.Notify(29591)
 	var cmd *exec.Cmd
 
 	shell := envutil.GetShellCommand(command)
@@ -695,215 +869,283 @@ func (c *cliState) execSyscmd(command string) (string, error) {
 	cmd.Stderr = c.iCtx.stderr
 
 	if err := cmd.Run(); err != nil {
+		__antithesis_instrumentation__.Notify(29593)
 		return "", errors.Wrap(err, "error in external command")
+	} else {
+		__antithesis_instrumentation__.Notify(29594)
 	}
+	__antithesis_instrumentation__.Notify(29592)
 
 	return out.String(), nil
 }
 
 var errInvalidSyntax = errors.New("invalid syntax")
 
-// runSyscmd runs system commands on the interactive CLI.
 func (c *cliState) runSyscmd(line string, nextState, errState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29595)
 	command := strings.Trim(line[2:], " \r\n\t\f")
 	if command == "" {
+		__antithesis_instrumentation__.Notify(29598)
 		fmt.Fprintf(c.iCtx.stderr, "Usage:\n  \\! [command]\n")
 		c.exitErr = errInvalidSyntax
 		return errState
+	} else {
+		__antithesis_instrumentation__.Notify(29599)
 	}
+	__antithesis_instrumentation__.Notify(29596)
 
 	cmdOut, err := c.execSyscmd(command)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(29600)
 		fmt.Fprintf(c.iCtx.stderr, "command failed: %s\n", err)
 		c.exitErr = err
 		return errState
+	} else {
+		__antithesis_instrumentation__.Notify(29601)
 	}
+	__antithesis_instrumentation__.Notify(29597)
 
 	fmt.Fprint(c.iCtx.stdout, cmdOut)
 	return nextState
 }
 
-// pipeSyscmd executes system commands and pipe the output into the current SQL.
 func (c *cliState) pipeSyscmd(line string, nextState, errState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29602)
 	command := strings.Trim(line[2:], " \n\r\t\f")
 	if command == "" {
+		__antithesis_instrumentation__.Notify(29605)
 		fmt.Fprintf(c.iCtx.stderr, "Usage:\n  \\| [command]\n")
 		c.exitErr = errInvalidSyntax
 		return errState
+	} else {
+		__antithesis_instrumentation__.Notify(29606)
 	}
+	__antithesis_instrumentation__.Notify(29603)
 
 	cmdOut, err := c.execSyscmd(command)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(29607)
 		fmt.Fprintf(c.iCtx.stderr, "command failed: %s\n", err)
 		c.exitErr = err
 		return errState
+	} else {
+		__antithesis_instrumentation__.Notify(29608)
 	}
+	__antithesis_instrumentation__.Notify(29604)
 
 	c.lastInputLine = cmdOut
 	return nextState
 }
 
-// rePromptFmt recognizes every substitution pattern in the prompt format string.
 var rePromptFmt = regexp.MustCompile("(%.)")
 
-// rePromptDbState recognizes every substitution pattern that requires
-// access to the current database state.
-// Currently:
-// %/ database name
-// %x txn status
 var rePromptDbState = regexp.MustCompile("(?:^|[^%])%[/x]")
 
-// unknownDbName is the string to use in the prompt when
-// the database cannot be determined.
 const unknownDbName = "?"
 
-// unknownTxnStatus is the string to use in the prompt when the txn status cannot be determined.
 const unknownTxnStatus = " ?"
 
-// doRefreshPrompts refreshes the prompts of the client depending on the
-// status of the current transaction.
 func (c *cliState) doRefreshPrompts(nextState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29609)
 	if !c.hasEditor() {
+		__antithesis_instrumentation__.Notify(29613)
 		return nextState
+	} else {
+		__antithesis_instrumentation__.Notify(29614)
 	}
+	__antithesis_instrumentation__.Notify(29610)
 
 	if c.useContinuePrompt {
+		__antithesis_instrumentation__.Notify(29615)
 		if c.inCopy() {
+			__antithesis_instrumentation__.Notify(29617)
 			c.continuePrompt = ">> "
-		} else if len(c.fullPrompt) < 3 {
-			c.continuePrompt = "> "
 		} else {
-			// continued statement prompt is: "        -> ".
-			c.continuePrompt = strings.Repeat(" ", len(c.fullPrompt)-3) + "-> "
+			__antithesis_instrumentation__.Notify(29618)
+			if len(c.fullPrompt) < 3 {
+				__antithesis_instrumentation__.Notify(29619)
+				c.continuePrompt = "> "
+			} else {
+				__antithesis_instrumentation__.Notify(29620)
+
+				c.continuePrompt = strings.Repeat(" ", len(c.fullPrompt)-3) + "-> "
+			}
 		}
+		__antithesis_instrumentation__.Notify(29616)
 
 		c.ins.SetLeftPrompt(c.continuePrompt)
 		return nextState
+	} else {
+		__antithesis_instrumentation__.Notify(29621)
 	}
+	__antithesis_instrumentation__.Notify(29611)
 
 	if c.inCopy() {
+		__antithesis_instrumentation__.Notify(29622)
 		c.fullPrompt = ">>"
 	} else {
-		// Configure the editor to use the new prompt.
+		__antithesis_instrumentation__.Notify(29623)
 
 		parsedURL, err := url.Parse(c.conn.GetURL())
 		if err != nil {
-			// If parsing fails, we'll keep the entire URL. The Open call succeeded, and that
-			// is the important part.
+			__antithesis_instrumentation__.Notify(29628)
+
 			c.fullPrompt = c.conn.GetURL() + "> "
 			c.continuePrompt = strings.Repeat(" ", len(c.fullPrompt)-3) + "-> "
 			return nextState
+		} else {
+			__antithesis_instrumentation__.Notify(29629)
 		}
+		__antithesis_instrumentation__.Notify(29624)
 
 		userName := ""
 		if parsedURL.User != nil {
+			__antithesis_instrumentation__.Notify(29630)
 			userName = parsedURL.User.Username()
+		} else {
+			__antithesis_instrumentation__.Notify(29631)
 		}
+		__antithesis_instrumentation__.Notify(29625)
 
 		dbName := unknownDbName
 		c.lastKnownTxnStatus = unknownTxnStatus
 
 		wantDbStateInPrompt := rePromptDbState.MatchString(c.iCtx.customPromptPattern)
 		if wantDbStateInPrompt {
+			__antithesis_instrumentation__.Notify(29632)
 			c.refreshTransactionStatus()
-			// refreshDatabaseName() must be called *after* refreshTransactionStatus(),
-			// even when %/ appears before %x in the prompt format.
-			// This is because the database name should not be queried during
-			// some transaction phases.
+
 			dbName = c.refreshDatabaseName()
+		} else {
+			__antithesis_instrumentation__.Notify(29633)
 		}
+		__antithesis_instrumentation__.Notify(29626)
 
 		c.fullPrompt = rePromptFmt.ReplaceAllStringFunc(c.iCtx.customPromptPattern, func(m string) string {
+			__antithesis_instrumentation__.Notify(29634)
 			switch m {
 			case "%M":
-				return parsedURL.Host // full host name.
+				__antithesis_instrumentation__.Notify(29635)
+				return parsedURL.Host
 			case "%m":
-				return parsedURL.Hostname() // host name.
+				__antithesis_instrumentation__.Notify(29636)
+				return parsedURL.Hostname()
 			case "%>":
-				return parsedURL.Port() // port.
-			case "%n": // user name.
+				__antithesis_instrumentation__.Notify(29637)
+				return parsedURL.Port()
+			case "%n":
+				__antithesis_instrumentation__.Notify(29638)
 				return userName
-			case "%/": // database name.
+			case "%/":
+				__antithesis_instrumentation__.Notify(29639)
 				return dbName
-			case "%x": // txn status.
+			case "%x":
+				__antithesis_instrumentation__.Notify(29640)
 				return c.lastKnownTxnStatus
 			case "%%":
+				__antithesis_instrumentation__.Notify(29641)
 				return "%"
 			default:
+				__antithesis_instrumentation__.Notify(29642)
 				err = fmt.Errorf("unrecognized format code in prompt: %q", m)
 				return ""
 			}
 
 		})
+		__antithesis_instrumentation__.Notify(29627)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(29643)
 			c.fullPrompt = err.Error()
+		} else {
+			__antithesis_instrumentation__.Notify(29644)
 		}
 	}
+	__antithesis_instrumentation__.Notify(29612)
 	c.fullPrompt += " "
 	c.currentPrompt = c.fullPrompt
 
-	// Configure the editor to use the new prompt.
 	c.ins.SetLeftPrompt(c.currentPrompt)
 
 	return nextState
 }
 
-// refreshTransactionStatus retrieves and sets the current transaction status.
 func (c *cliState) refreshTransactionStatus() {
+	__antithesis_instrumentation__.Notify(29645)
 	c.lastKnownTxnStatus = unknownTxnStatus
 
 	dbVal, dbColType, hasVal := c.conn.GetServerValue(
 		context.Background(),
 		"transaction status", `SHOW TRANSACTION STATUS`)
 	if !hasVal {
+		__antithesis_instrumentation__.Notify(29647)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(29648)
 	}
+	__antithesis_instrumentation__.Notify(29646)
 
 	txnString := clisqlexec.FormatVal(dbVal, dbColType,
-		false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
+		false, false)
 
-	// Change the prompt based on the response from the server.
 	switch txnString {
 	case sqlfsm.NoTxnStateStr:
+		__antithesis_instrumentation__.Notify(29649)
 		c.lastKnownTxnStatus = ""
 	case sqlfsm.AbortedStateStr:
+		__antithesis_instrumentation__.Notify(29650)
 		c.lastKnownTxnStatus = " ERROR"
 	case sqlfsm.CommitWaitStateStr:
+		__antithesis_instrumentation__.Notify(29651)
 		c.lastKnownTxnStatus = "  DONE"
 	case sqlfsm.OpenStateStr:
-		// The state AutoRetry is reported by the server as Open, so no need to
-		// handle it here.
+		__antithesis_instrumentation__.Notify(29652)
+
 		c.lastKnownTxnStatus = "  OPEN"
+	default:
+		__antithesis_instrumentation__.Notify(29653)
 	}
 }
 
-// refreshDatabaseName retrieves the current database name from the server.
-// The database name is only queried if there is no transaction ongoing,
-// or the transaction is fully open.
 func (c *cliState) refreshDatabaseName() string {
-	if !(c.lastKnownTxnStatus == "" /*NoTxn*/ ||
-		c.lastKnownTxnStatus == "  OPEN" ||
-		c.lastKnownTxnStatus == unknownTxnStatus) {
+	__antithesis_instrumentation__.Notify(29654)
+	if !(c.lastKnownTxnStatus == "" || func() bool {
+		__antithesis_instrumentation__.Notify(29658)
+		return c.lastKnownTxnStatus == "  OPEN" == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(29659)
+		return c.lastKnownTxnStatus == unknownTxnStatus == true
+	}() == true) {
+		__antithesis_instrumentation__.Notify(29660)
 		return unknownDbName
+	} else {
+		__antithesis_instrumentation__.Notify(29661)
 	}
+	__antithesis_instrumentation__.Notify(29655)
 
 	dbVal, dbColType, hasVal := c.conn.GetServerValue(
 		context.Background(),
 		"database name", `SHOW DATABASE`)
 	if !hasVal {
+		__antithesis_instrumentation__.Notify(29662)
 		return unknownDbName
+	} else {
+		__antithesis_instrumentation__.Notify(29663)
 	}
+	__antithesis_instrumentation__.Notify(29656)
 
 	if dbVal == "" {
-		// Attempt to be helpful to new users.
+		__antithesis_instrumentation__.Notify(29664)
+
 		fmt.Fprintln(c.iCtx.stderr, "warning: no current database set."+
 			" Use SET database = <dbname> to change, CREATE DATABASE to make a new database.")
+	} else {
+		__antithesis_instrumentation__.Notify(29665)
 	}
+	__antithesis_instrumentation__.Notify(29657)
 
 	dbName := clisqlexec.FormatVal(dbVal, dbColType,
-		false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
+		false, false)
 
-	// Preserve the current database name in case of reconnects.
 	c.conn.SetCurrentDatabase(dbName)
 	c.iCtx.dbName = dbName
 
@@ -912,65 +1154,93 @@ func (c *cliState) refreshDatabaseName() string {
 
 var cmdHistFile = envutil.EnvOrDefaultString("COCKROACH_SQL_CLI_HISTORY", ".cockroachsql_history")
 
-// GetCompletions implements the readline.CompletionGenerator interface.
 func (c *cliState) GetCompletions(s string) []string {
+	__antithesis_instrumentation__.Notify(29666)
 	sql, _ := c.ins.GetLineInfo()
 
-	// In COPY mode, just add a tab character.
 	if c.inCopy() {
+		__antithesis_instrumentation__.Notify(29670)
 		return []string{s + "\t"}
+	} else {
+		__antithesis_instrumentation__.Notify(29671)
 	}
+	__antithesis_instrumentation__.Notify(29667)
 
 	if !strings.HasSuffix(sql, "??") {
+		__antithesis_instrumentation__.Notify(29672)
 		query := fmt.Sprintf(`SHOW COMPLETIONS AT OFFSET %d FOR %s`, len(sql), lexbase.EscapeSQLString(sql))
 		var rows [][]string
 		var err error
 		err = c.runWithInterruptableCtx(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(29676)
 			_, rows, err = c.sqlExecCtx.RunQuery(ctx, c.conn,
 				clisqlclient.MakeQuery(query), true)
 			return err
 		})
+		__antithesis_instrumentation__.Notify(29673)
 
 		if err != nil {
-			clierror.OutputError(c.iCtx.stdout, err, true /*showSeverity*/, false /*verbose*/)
+			__antithesis_instrumentation__.Notify(29677)
+			clierror.OutputError(c.iCtx.stdout, err, true, false)
+		} else {
+			__antithesis_instrumentation__.Notify(29678)
 		}
+		__antithesis_instrumentation__.Notify(29674)
 
 		var completions []string
 		for _, row := range rows {
+			__antithesis_instrumentation__.Notify(29679)
 			completions = append(completions, row[0])
 		}
+		__antithesis_instrumentation__.Notify(29675)
 
 		return completions
+	} else {
+		__antithesis_instrumentation__.Notify(29680)
 	}
+	__antithesis_instrumentation__.Notify(29668)
 
 	helpText, err := c.serverSideParse(sql)
 	if helpText != "" {
-		// We have a completion suggestion. Use that.
-		fmt.Fprintf(c.iCtx.stdout, "\nSuggestion:\n%s\n", helpText)
-	} else if err != nil {
-		// Some other error. Display it.
-		fmt.Fprintln(c.iCtx.stdout)
-		clierror.OutputError(c.iCtx.stdout, err, true /*showSeverity*/, false /*verbose*/)
-	}
+		__antithesis_instrumentation__.Notify(29681)
 
-	// After the suggestion or error, re-display the prompt and current entry.
+		fmt.Fprintf(c.iCtx.stdout, "\nSuggestion:\n%s\n", helpText)
+	} else {
+		__antithesis_instrumentation__.Notify(29682)
+		if err != nil {
+			__antithesis_instrumentation__.Notify(29683)
+
+			fmt.Fprintln(c.iCtx.stdout)
+			clierror.OutputError(c.iCtx.stdout, err, true, false)
+		} else {
+			__antithesis_instrumentation__.Notify(29684)
+		}
+	}
+	__antithesis_instrumentation__.Notify(29669)
+
 	fmt.Fprint(c.iCtx.stdout, c.currentPrompt, sql)
 	return nil
 }
 
 func (c *cliState) doStart(nextState cliStateEnum) cliStateEnum {
-	// Common initialization.
+	__antithesis_instrumentation__.Notify(29685)
+
 	c.partialLines = []string{}
 
 	if c.cliCtx.IsInteractive {
+		__antithesis_instrumentation__.Notify(29687)
 		fmt.Fprintln(c.iCtx.stdout, "#\n# Enter \\? for a brief introduction.\n#")
+	} else {
+		__antithesis_instrumentation__.Notify(29688)
 	}
+	__antithesis_instrumentation__.Notify(29686)
 
 	return nextState
 }
 
 func (c *cliState) doStartLine(nextState cliStateEnum) cliStateEnum {
-	// Clear the input buffer.
+	__antithesis_instrumentation__.Notify(29689)
+
 	c.atEOF = false
 	c.partialLines = c.partialLines[:0]
 	c.partialStmtsLen = 0
@@ -981,6 +1251,7 @@ func (c *cliState) doStartLine(nextState cliStateEnum) cliStateEnum {
 }
 
 func (c *cliState) doContinueLine(nextState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29690)
 	c.atEOF = false
 
 	c.useContinuePrompt = true
@@ -988,330 +1259,482 @@ func (c *cliState) doContinueLine(nextState cliStateEnum) cliStateEnum {
 	return nextState
 }
 
-// doReadline reads a line of input and check the input status.  If
-// input was successful it populates c.lastInputLine.  Otherwise
-// c.exitErr is set in some cases and an error/retry state is returned.
 func (c *cliState) doReadLine(nextState cliStateEnum) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29691)
 	if len(c.forwardLines) > 0 {
-		// Are there some lines accumulated from a previous multi-line
-		// readline input? If so, consume one.
+		__antithesis_instrumentation__.Notify(29695)
+
 		c.lastInputLine = c.forwardLines[0]
 		c.forwardLines = c.forwardLines[1:]
 		return nextState
+	} else {
+		__antithesis_instrumentation__.Notify(29696)
 	}
+	__antithesis_instrumentation__.Notify(29692)
 
 	var l string
 	var err error
 	if c.buf == nil {
+		__antithesis_instrumentation__.Notify(29697)
 		l, err = c.ins.GetLine()
-		if len(l) > 0 && l[len(l)-1] == '\n' {
-			// Strip the final newline.
+		if len(l) > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(29698)
+			return l[len(l)-1] == '\n' == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(29699)
+
 			l = l[:len(l)-1]
 		} else {
-			// There was no newline at the end of the input
-			// (e.g. Ctrl+C was entered). Force one.
+			__antithesis_instrumentation__.Notify(29700)
+
 			fmt.Fprintln(c.iCtx.stdout)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(29701)
 		l, err = c.buf.ReadString('\n')
-		// bufio.ReadString() differs from readline.Readline in the handling of
-		// EOF. Readline only returns EOF when there is nothing left to read and
-		// there is no partial line while bufio.ReadString() returns EOF when the
-		// end of input has been reached but will return the non-empty partial line
-		// as well. We workaround this by converting the bufio behavior to match
-		// the Readline behavior.
-		if err == io.EOF && len(l) != 0 {
+
+		if err == io.EOF && func() bool {
+			__antithesis_instrumentation__.Notify(29702)
+			return len(l) != 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(29703)
 			err = nil
-		} else if err == nil {
-			// From the bufio.ReadString docs: ReadString returns err != nil if and
-			// only if the returned data does not end in delim. To match the behavior
-			// of readline.Readline, we strip off the trailing delimiter.
-			l = l[:len(l)-1]
+		} else {
+			__antithesis_instrumentation__.Notify(29704)
+			if err == nil {
+				__antithesis_instrumentation__.Notify(29705)
+
+				l = l[:len(l)-1]
+			} else {
+				__antithesis_instrumentation__.Notify(29706)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(29693)
 
 	switch {
 	case err == nil:
-		// Do we have multiple lines of input?
+		__antithesis_instrumentation__.Notify(29707)
+
 		lines := strings.Split(l, "\n")
 		if len(lines) > 1 {
-			// Yes: only keep the first one for now, queue the remainder for
-			// next time the shell needs a line.
+			__antithesis_instrumentation__.Notify(29718)
+
 			l = lines[0]
 			c.forwardLines = lines[1:]
+		} else {
+			__antithesis_instrumentation__.Notify(29719)
 		}
-		// In any case, process one line.
 
 	case errors.Is(err, readline.ErrInterrupted):
+		__antithesis_instrumentation__.Notify(29708)
 		if !c.cliCtx.IsInteractive {
-			// Ctrl+C terminates non-interactive shells in all cases.
+			__antithesis_instrumentation__.Notify(29720)
+
 			c.exitErr = err
 			return cliStop
+		} else {
+			__antithesis_instrumentation__.Notify(29721)
 		}
+		__antithesis_instrumentation__.Notify(29709)
 
 		if c.inCopy() {
-			// CTRL+C in COPY cancels the copy.
+			__antithesis_instrumentation__.Notify(29722)
+
 			defer func() {
+				__antithesis_instrumentation__.Notify(29725)
 				c.resetCopy()
 				c.partialLines = c.partialLines[:0]
 				c.partialStmtsLen = 0
 				c.useContinuePrompt = false
 			}()
+			__antithesis_instrumentation__.Notify(29723)
 			c.exitErr = errors.CombineErrors(
 				pgerror.Newf(pgcode.QueryCanceled, "COPY canceled by user"),
 				c.copyFromState.Cancel(),
 			)
 			if c.exitErr != nil {
+				__antithesis_instrumentation__.Notify(29726)
 				if !c.singleStatement {
-					clierror.OutputError(c.iCtx.stderr, c.exitErr, true /*showSeverity*/, false /*verbose*/)
+					__antithesis_instrumentation__.Notify(29727)
+					clierror.OutputError(c.iCtx.stderr, c.exitErr, true, false)
+				} else {
+					__antithesis_instrumentation__.Notify(29728)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(29729)
 			}
+			__antithesis_instrumentation__.Notify(29724)
 			return cliRefreshPrompt
+		} else {
+			__antithesis_instrumentation__.Notify(29730)
 		}
+		__antithesis_instrumentation__.Notify(29710)
 
 		if l != "" {
-			// Ctrl+C after the beginning of a line cancels the current
-			// line.
+			__antithesis_instrumentation__.Notify(29731)
+
 			return cliReadLine
+		} else {
+			__antithesis_instrumentation__.Notify(29732)
 		}
+		__antithesis_instrumentation__.Notify(29711)
 
 		if len(c.partialLines) > 0 {
-			// Ctrl+C at the beginning of a line in a multi-line statement
-			// cancels the multi-line statement.
-			return cliStartLine
-		}
+			__antithesis_instrumentation__.Notify(29733)
 
-		// If a human is looking, tell them that quitting is done in another way.
-		if c.sqlExecCtx.TerminalOutput {
-			fmt.Fprintf(c.iCtx.stdout, "^C\nUse \\q or terminate input to exit.\n")
+			return cliStartLine
+		} else {
+			__antithesis_instrumentation__.Notify(29734)
 		}
+		__antithesis_instrumentation__.Notify(29712)
+
+		if c.sqlExecCtx.TerminalOutput {
+			__antithesis_instrumentation__.Notify(29735)
+			fmt.Fprintf(c.iCtx.stdout, "^C\nUse \\q or terminate input to exit.\n")
+		} else {
+			__antithesis_instrumentation__.Notify(29736)
+		}
+		__antithesis_instrumentation__.Notify(29713)
 		return cliStartLine
 
 	case errors.Is(err, io.EOF):
-		// If we're in COPY and we're interactive, this signifies the copy is complete.
-		if c.inCopy() && c.cliCtx.IsInteractive {
+		__antithesis_instrumentation__.Notify(29714)
+
+		if c.inCopy() && func() bool {
+			__antithesis_instrumentation__.Notify(29737)
+			return c.cliCtx.IsInteractive == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(29738)
 			return cliRunStatement
+		} else {
+			__antithesis_instrumentation__.Notify(29739)
 		}
+		__antithesis_instrumentation__.Notify(29715)
 
 		c.atEOF = true
 
 		if c.cliCtx.IsInteractive {
-			// In interactive mode, EOF terminates.
-			// exitErr is left to be whatever has set it previously.
-			return cliStop
-		}
+			__antithesis_instrumentation__.Notify(29740)
 
-		// Non-interactive: if no partial statement, EOF terminates.
-		// exitErr is left to be whatever has set it previously.
+			return cliStop
+		} else {
+			__antithesis_instrumentation__.Notify(29741)
+		}
+		__antithesis_instrumentation__.Notify(29716)
+
 		if len(c.partialLines) == 0 {
+			__antithesis_instrumentation__.Notify(29742)
 			return cliStop
+		} else {
+			__antithesis_instrumentation__.Notify(29743)
 		}
-
-		// Otherwise, give the shell a chance to process the last input line.
 
 	default:
-		// Other errors terminate the shell.
+		__antithesis_instrumentation__.Notify(29717)
+
 		fmt.Fprintf(c.iCtx.stderr, "input error: %s\n", err)
 		c.exitErr = err
 		return cliStop
 	}
+	__antithesis_instrumentation__.Notify(29694)
 
 	c.lastInputLine = l
 	return nextState
 }
 
 func (c *cliState) doProcessFirstLine(startState, nextState cliStateEnum) cliStateEnum {
-	// Special case: first line of multi-line statement.
-	// In this case ignore empty lines, and recognize "help" specially.
+	__antithesis_instrumentation__.Notify(29744)
+
 	switch c.lastInputLine {
 	case "":
-		// Ignore empty lines, just continue reading if it isn't interactive mode.
+		__antithesis_instrumentation__.Notify(29746)
+
 		return startState
 
 	case "help":
+		__antithesis_instrumentation__.Notify(29747)
 		c.printCliHelp()
 		return startState
 
 	case "exit", "quit":
+		__antithesis_instrumentation__.Notify(29748)
 		return cliStop
+	default:
+		__antithesis_instrumentation__.Notify(29749)
 	}
+	__antithesis_instrumentation__.Notify(29745)
 
 	return nextState
 }
 
 func (c *cliState) doHandleCliCmd(loopState, nextState cliStateEnum) cliStateEnum {
-	if len(c.lastInputLine) == 0 || c.lastInputLine[0] != '\\' {
+	__antithesis_instrumentation__.Notify(29750)
+	if len(c.lastInputLine) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(29754)
+		return c.lastInputLine[0] != '\\' == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(29755)
 		return nextState
+	} else {
+		__antithesis_instrumentation__.Notify(29756)
 	}
+	__antithesis_instrumentation__.Notify(29751)
 
 	errState := loopState
 	if c.iCtx.errExit {
-		// If exiterr is set, an error in a client-side command also
-		// terminates the shell.
-		errState = cliStop
-	}
+		__antithesis_instrumentation__.Notify(29757)
 
-	// This is a client-side command. Whatever happens, we are not going
-	// to handle it as a statement, so save the history.
+		errState = cliStop
+	} else {
+		__antithesis_instrumentation__.Notify(29758)
+	}
+	__antithesis_instrumentation__.Notify(29752)
+
 	c.addHistory(c.lastInputLine)
 
-	// As a convenience to the user, we strip the final semicolon, if
-	// any, in all cases.
 	line := strings.TrimRight(c.lastInputLine, "; ")
 
 	cmd := strings.Fields(line)
 	switch cmd[0] {
 	case `\q`, `\quit`, `\exit`:
+		__antithesis_instrumentation__.Notify(29759)
 		return cliStop
 
 	case `\`, `\?`, `\help`:
+		__antithesis_instrumentation__.Notify(29760)
 		c.printCliHelp()
 
 	case `\echo`:
+		__antithesis_instrumentation__.Notify(29761)
 		fmt.Fprintln(c.iCtx.stdout, strings.Join(cmd[1:], " "))
 
 	case `\set`:
+		__antithesis_instrumentation__.Notify(29762)
 		return c.handleSet(cmd[1:], loopState, errState)
 
 	case `\unset`:
+		__antithesis_instrumentation__.Notify(29763)
 		return c.handleUnset(cmd[1:], loopState, errState)
 
 	case `\!`:
+		__antithesis_instrumentation__.Notify(29764)
 		return c.runSyscmd(c.lastInputLine, loopState, errState)
 
 	case `\i`:
-		return c.runInclude(cmd[1:], loopState, errState, false /* relative */)
+		__antithesis_instrumentation__.Notify(29765)
+		return c.runInclude(cmd[1:], loopState, errState, false)
 
 	case `\ir`:
-		return c.runInclude(cmd[1:], loopState, errState, true /* relative */)
+		__antithesis_instrumentation__.Notify(29766)
+		return c.runInclude(cmd[1:], loopState, errState, true)
 
 	case `\p`:
-		// This is analogous to \show but does not need a special case.
-		// Implemented for compatibility with psql.
+		__antithesis_instrumentation__.Notify(29767)
+
 		fmt.Fprintln(c.iCtx.stdout, strings.Join(c.partialLines, "\n"))
 
 	case `\r`:
-		// Reset the input buffer so far. This is useful when e.g. a user
-		// got confused with string delimiters and multi-line input.
+		__antithesis_instrumentation__.Notify(29768)
+
 		return cliStartLine
 
 	case `\show`:
+		__antithesis_instrumentation__.Notify(29769)
 		fmt.Fprintln(c.iCtx.stderr, `warning: \show is deprecated. Use \p.`)
 		if len(c.partialLines) == 0 {
+			__antithesis_instrumentation__.Notify(29796)
 			fmt.Fprintf(c.iCtx.stderr, "No input so far. Did you mean SHOW?\n")
 		} else {
+			__antithesis_instrumentation__.Notify(29797)
 			for _, s := range c.partialLines {
+				__antithesis_instrumentation__.Notify(29798)
 				fmt.Fprintln(c.iCtx.stdout, s)
 			}
 		}
 
 	case `\|`:
+		__antithesis_instrumentation__.Notify(29770)
 		return c.pipeSyscmd(c.lastInputLine, nextState, errState)
 
 	case `\h`:
+		__antithesis_instrumentation__.Notify(29771)
 		return c.handleHelp(cmd[1:], loopState, errState)
 
 	case `\hf`:
+		__antithesis_instrumentation__.Notify(29772)
 		if len(cmd) == 1 {
+			__antithesis_instrumentation__.Notify(29799)
 			c.concatLines = `SELECT DISTINCT proname AS function FROM pg_proc ORDER BY 1`
 			return cliRunStatement
+		} else {
+			__antithesis_instrumentation__.Notify(29800)
 		}
+		__antithesis_instrumentation__.Notify(29773)
 		return c.handleFunctionHelp(cmd[1:], loopState, errState)
 
 	case `\l`:
+		__antithesis_instrumentation__.Notify(29774)
 		c.concatLines = `SHOW DATABASES`
 		return cliRunStatement
 
 	case `\dt`:
+		__antithesis_instrumentation__.Notify(29775)
 		c.concatLines = `SHOW TABLES`
 		return cliRunStatement
 
 	case `\copy`:
+		__antithesis_instrumentation__.Notify(29776)
 		c.exitErr = c.runWithInterruptableCtx(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(29801)
 			return c.beginCopyFrom(ctx, c.concatLines)
 		})
+		__antithesis_instrumentation__.Notify(29777)
 		if !c.singleStatement {
-			clierror.OutputError(c.iCtx.stderr, c.exitErr, true /*showSeverity*/, false /*verbose*/)
+			__antithesis_instrumentation__.Notify(29802)
+			clierror.OutputError(c.iCtx.stderr, c.exitErr, true, false)
+		} else {
+			__antithesis_instrumentation__.Notify(29803)
 		}
-		if c.exitErr != nil && c.iCtx.errExit {
+		__antithesis_instrumentation__.Notify(29778)
+		if c.exitErr != nil && func() bool {
+			__antithesis_instrumentation__.Notify(29804)
+			return c.iCtx.errExit == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(29805)
 			return cliStop
+		} else {
+			__antithesis_instrumentation__.Notify(29806)
 		}
+		__antithesis_instrumentation__.Notify(29779)
 		return cliStartLine
 
 	case `\.`:
+		__antithesis_instrumentation__.Notify(29780)
 		if c.inCopy() {
+			__antithesis_instrumentation__.Notify(29807)
 			c.concatLines += "\n" + `\.`
 			return cliRunStatement
+		} else {
+			__antithesis_instrumentation__.Notify(29808)
 		}
+		__antithesis_instrumentation__.Notify(29781)
 		return c.invalidSyntax(errState)
 
 	case `\dT`:
+		__antithesis_instrumentation__.Notify(29782)
 		c.concatLines = `SHOW TYPES`
 		return cliRunStatement
 
 	case `\du`:
+		__antithesis_instrumentation__.Notify(29783)
 		if len(cmd) == 1 {
+			__antithesis_instrumentation__.Notify(29809)
 			c.concatLines = `SHOW USERS`
 			return cliRunStatement
-		} else if len(cmd) == 2 {
-			c.concatLines = fmt.Sprintf(`SELECT * FROM [SHOW USERS] WHERE username = %s`, lexbase.EscapeSQLString(cmd[1]))
-			return cliRunStatement
+		} else {
+			__antithesis_instrumentation__.Notify(29810)
+			if len(cmd) == 2 {
+				__antithesis_instrumentation__.Notify(29811)
+				c.concatLines = fmt.Sprintf(`SELECT * FROM [SHOW USERS] WHERE username = %s`, lexbase.EscapeSQLString(cmd[1]))
+				return cliRunStatement
+			} else {
+				__antithesis_instrumentation__.Notify(29812)
+			}
 		}
+		__antithesis_instrumentation__.Notify(29784)
 		return c.invalidSyntax(errState)
 
 	case `\d`:
+		__antithesis_instrumentation__.Notify(29785)
 		if len(cmd) == 1 {
+			__antithesis_instrumentation__.Notify(29813)
 			c.concatLines = `SHOW TABLES`
 			return cliRunStatement
-		} else if len(cmd) == 2 {
-			c.concatLines = `SHOW COLUMNS FROM ` + cmd[1]
-			return cliRunStatement
+		} else {
+			__antithesis_instrumentation__.Notify(29814)
+			if len(cmd) == 2 {
+				__antithesis_instrumentation__.Notify(29815)
+				c.concatLines = `SHOW COLUMNS FROM ` + cmd[1]
+				return cliRunStatement
+			} else {
+				__antithesis_instrumentation__.Notify(29816)
+			}
 		}
+		__antithesis_instrumentation__.Notify(29786)
 		return c.invalidSyntax(errState)
 	case `\dd`:
+		__antithesis_instrumentation__.Notify(29787)
 		if len(cmd) == 2 {
+			__antithesis_instrumentation__.Notify(29817)
 			c.concatLines = `SHOW CONSTRAINTS FROM ` + cmd[1] + ` WITH COMMENT`
 			return cliRunStatement
+		} else {
+			__antithesis_instrumentation__.Notify(29818)
 		}
+		__antithesis_instrumentation__.Notify(29788)
 		return c.invalidSyntax(errState)
 	case `\connect`, `\c`:
+		__antithesis_instrumentation__.Notify(29789)
 		return c.handleConnect(cmd[1:], loopState, errState)
 
 	case `\x`:
+		__antithesis_instrumentation__.Notify(29790)
 		format := clisqlexec.TableDisplayRecords
 		switch len(cmd) {
 		case 1:
+			__antithesis_instrumentation__.Notify(29819)
 			if c.sqlExecCtx.TableDisplayFormat == clisqlexec.TableDisplayRecords {
+				__antithesis_instrumentation__.Notify(29822)
 				format = clisqlexec.TableDisplayTable
+			} else {
+				__antithesis_instrumentation__.Notify(29823)
 			}
 		case 2:
+			__antithesis_instrumentation__.Notify(29820)
 			b, err := clisqlclient.ParseBool(cmd[1])
 			if err != nil {
+				__antithesis_instrumentation__.Notify(29824)
 				return c.invalidSyntax(errState)
-			} else if b {
-				format = clisqlexec.TableDisplayRecords
 			} else {
-				format = clisqlexec.TableDisplayTable
+				__antithesis_instrumentation__.Notify(29825)
+				if b {
+					__antithesis_instrumentation__.Notify(29826)
+					format = clisqlexec.TableDisplayRecords
+				} else {
+					__antithesis_instrumentation__.Notify(29827)
+					format = clisqlexec.TableDisplayTable
+				}
 			}
 		default:
+			__antithesis_instrumentation__.Notify(29821)
 			return c.invalidSyntax(errState)
 		}
+		__antithesis_instrumentation__.Notify(29791)
 		c.sqlExecCtx.TableDisplayFormat = format
 		return loopState
 
 	case `\demo`:
+		__antithesis_instrumentation__.Notify(29792)
 		return c.handleDemo(cmd[1:], loopState, errState)
 
 	case `\statement-diag`:
+		__antithesis_instrumentation__.Notify(29793)
 		return c.handleStatementDiag(cmd[1:], loopState, errState)
 
 	default:
+		__antithesis_instrumentation__.Notify(29794)
 		if strings.HasPrefix(cmd[0], `\d`) {
-			// Unrecognized command for now, but we want to be helpful.
+			__antithesis_instrumentation__.Notify(29828)
+
 			fmt.Fprint(c.iCtx.stderr, "Suggestion: use the SQL SHOW statement to inspect your schema.\n")
+		} else {
+			__antithesis_instrumentation__.Notify(29829)
 		}
+		__antithesis_instrumentation__.Notify(29795)
 		return c.invalidSyntax(errState)
 	}
+	__antithesis_instrumentation__.Notify(29753)
 
 	return loopState
 }
@@ -1319,156 +1742,238 @@ func (c *cliState) doHandleCliCmd(loopState, nextState cliStateEnum) cliStateEnu
 func (c *cliState) handleConnect(
 	cmd []string, loopState, errState cliStateEnum,
 ) (resState cliStateEnum) {
+	__antithesis_instrumentation__.Notify(29830)
 	if err := c.handleConnectInternal(cmd); err != nil {
+		__antithesis_instrumentation__.Notify(29832)
 		fmt.Fprintln(c.iCtx.stderr, err)
 		c.exitErr = err
 		return errState
+	} else {
+		__antithesis_instrumentation__.Notify(29833)
 	}
+	__antithesis_instrumentation__.Notify(29831)
 	return loopState
 }
 
 func (c *cliState) handleConnectInternal(cmd []string) error {
-	firstArgIsURL := len(cmd) > 0 &&
-		(strings.HasPrefix(cmd[0], "postgres://") ||
-			strings.HasPrefix(cmd[0], "postgresql://"))
+	__antithesis_instrumentation__.Notify(29834)
+	firstArgIsURL := len(cmd) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(29843)
+		return (strings.HasPrefix(cmd[0], "postgres://") || func() bool {
+			__antithesis_instrumentation__.Notify(29844)
+			return strings.HasPrefix(cmd[0], "postgresql://") == true
+		}() == true) == true
+	}() == true
 
-	if len(cmd) == 1 && firstArgIsURL {
-		// Note: we use a custom URL parser here to inherit the complex
-		// custom logic from crdb's own handling of --url in `cockroach
-		// sql`.
+	if len(cmd) == 1 && func() bool {
+		__antithesis_instrumentation__.Notify(29845)
+		return firstArgIsURL == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(29846)
+
 		parseURL := c.sqlCtx.ParseURL
 		if parseURL == nil {
+			__antithesis_instrumentation__.Notify(29849)
 			parseURL = pgurl.Parse
+		} else {
+			__antithesis_instrumentation__.Notify(29850)
 		}
+		__antithesis_instrumentation__.Notify(29847)
 		purl, err := parseURL(cmd[0])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(29851)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(29852)
 		}
+		__antithesis_instrumentation__.Notify(29848)
 		return c.switchToURL(purl)
+	} else {
+		__antithesis_instrumentation__.Notify(29853)
 	}
+	__antithesis_instrumentation__.Notify(29835)
 
-	// currURL is the previous connection URL up to this point.
 	currURL, err := pgurl.Parse(c.conn.GetURL())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(29854)
 		return errors.Wrap(err, "parsing current connection URL")
+	} else {
+		__antithesis_instrumentation__.Notify(29855)
 	}
+	__antithesis_instrumentation__.Notify(29836)
 
-	// Reuse the current database from the session if known
-	// (debug mode disabled, database in prompt), otherwise
-	// from the current URL.
 	dbName := c.iCtx.dbName
 	if dbName == "" {
+		__antithesis_instrumentation__.Notify(29856)
 		dbName = currURL.GetDatabase()
+	} else {
+		__antithesis_instrumentation__.Notify(29857)
 	}
+	__antithesis_instrumentation__.Notify(29837)
 
-	// Extract the current config.
 	prevproto, prevhost, prevport := currURL.GetNetworking()
 	tlsUsed, mode, caCertPath := currURL.GetTLSOptions()
 
-	// newURL will be our new connection URL past this point.
 	newURL := pgurl.New()
-	// Populate the main fields from the current URL.
+
 	newURL.
 		WithDefaultHost(prevhost).
 		WithDefaultPort(prevport).
 		WithDefaultDatabase(dbName).
 		WithDefaultUsername(currURL.GetUsername())
 	if tlsUsed {
+		__antithesis_instrumentation__.Notify(29858)
 		newURL.WithTransport(pgurl.TransportTLS(mode, caCertPath))
 	} else {
+		__antithesis_instrumentation__.Notify(29859)
 		newURL.WithTransport(pgurl.TransportNone())
 	}
+	__antithesis_instrumentation__.Notify(29838)
 	if err := newURL.AddOptions(currURL.GetExtraOptions()); err != nil {
+		__antithesis_instrumentation__.Notify(29860)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(29861)
 	}
+	__antithesis_instrumentation__.Notify(29839)
 
-	// Parse the arguments to \connect:
-	// it accepts newdb, user, host, port in that order.
-	// Each field can be marked as "-" to reuse the current defaults.
 	switch len(cmd) {
 	case 4:
+		__antithesis_instrumentation__.Notify(29862)
 		if cmd[3] != "-" {
+			__antithesis_instrumentation__.Notify(29872)
 			if err := newURL.SetOption("port", cmd[3]); err != nil {
+				__antithesis_instrumentation__.Notify(29873)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(29874)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(29875)
 		}
+		__antithesis_instrumentation__.Notify(29863)
 		fallthrough
 	case 3:
+		__antithesis_instrumentation__.Notify(29864)
 		if cmd[2] != "-" {
+			__antithesis_instrumentation__.Notify(29876)
 			if err := newURL.SetOption("host", cmd[2]); err != nil {
+				__antithesis_instrumentation__.Notify(29877)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(29878)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(29879)
 		}
+		__antithesis_instrumentation__.Notify(29865)
 		fallthrough
 	case 2:
+		__antithesis_instrumentation__.Notify(29866)
 		if cmd[1] != "-" {
+			__antithesis_instrumentation__.Notify(29880)
 			if err := newURL.SetOption("user", cmd[1]); err != nil {
+				__antithesis_instrumentation__.Notify(29881)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(29882)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(29883)
 		}
+		__antithesis_instrumentation__.Notify(29867)
 		fallthrough
 	case 1:
+		__antithesis_instrumentation__.Notify(29868)
 		if cmd[0] != "-" {
+			__antithesis_instrumentation__.Notify(29884)
 			if err := newURL.SetOption("database", cmd[0]); err != nil {
+				__antithesis_instrumentation__.Notify(29885)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(29886)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(29887)
 		}
 	case 0:
-		// Just print the current connection settings.
+		__antithesis_instrumentation__.Notify(29869)
+
 		dbName := c.iCtx.dbName
 		if dbName == "" {
+			__antithesis_instrumentation__.Notify(29888)
 			dbName = currURL.GetDatabase()
+		} else {
+			__antithesis_instrumentation__.Notify(29889)
 		}
+		__antithesis_instrumentation__.Notify(29870)
 		fmt.Fprintf(c.iCtx.stdout, "Connection string: %s\n", currURL.ToPQ())
 		fmt.Fprintf(c.iCtx.stdout, "You are connected to database %q as user %q.\n", dbName, currURL.GetUsername())
 		return nil
 
 	default:
+		__antithesis_instrumentation__.Notify(29871)
 		return errors.Newf(`unknown syntax: \c %s`, strings.Join(cmd, " "))
 	}
+	__antithesis_instrumentation__.Notify(29840)
 
-	// If we are reconnecting to the same server with the same user, reuse
-	// the authentication credentials present inside the URL, if any.
-	// We do take care to avoid reusing the password however, for two separate
-	// reasons:
-	// - if the connection has just failed because of an invalid password,
-	//   we don't want to fix the invalid password in the URL.
-	// - the transport may be insecure, in which case we want to give
-	//   the user the opportunity to think twice about entering their
-	//   password over an untrusted link.
-	if proto, host, port := newURL.GetNetworking(); proto == prevproto &&
-		host == prevhost && port == prevport &&
-		newURL.GetUsername() == currURL.GetUsername() {
-		// Remove the password from the current URL.
+	if proto, host, port := newURL.GetNetworking(); proto == prevproto && func() bool {
+		__antithesis_instrumentation__.Notify(29890)
+		return host == prevhost == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(29891)
+		return port == prevport == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(29892)
+		return newURL.GetUsername() == currURL.GetUsername() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(29893)
+
 		currURL.ClearPassword()
 
-		// Migrate the details from the previous URL to the new one.
 		prevAuthn, err := currURL.GetAuthnOption()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(29895)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(29896)
 		}
+		__antithesis_instrumentation__.Notify(29894)
 		newURL.WithAuthn(prevAuthn)
+	} else {
+		__antithesis_instrumentation__.Notify(29897)
 	}
+	__antithesis_instrumentation__.Notify(29841)
 
 	if err := newURL.Validate(); err != nil {
+		__antithesis_instrumentation__.Notify(29898)
 		return errors.Wrap(err, "validating the new URL")
+	} else {
+		__antithesis_instrumentation__.Notify(29899)
 	}
+	__antithesis_instrumentation__.Notify(29842)
 
 	return c.switchToURL(newURL)
 }
 
 func (c *cliState) switchToURL(newURL *pgurl.URL) error {
+	__antithesis_instrumentation__.Notify(29900)
 	fmt.Fprintln(c.iCtx.stdout, "using new connection URL:", newURL)
 
-	// Ensure the new connection will prompt for a password if the
-	// server requires one.
 	usePw, pwSet, _ := newURL.GetAuthnPassword()
 
 	if err := c.conn.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(29902)
 		fmt.Fprintf(c.iCtx.stderr, "warning: error while closing connection: %v\n", err)
+	} else {
+		__antithesis_instrumentation__.Notify(29903)
 	}
+	__antithesis_instrumentation__.Notify(29901)
 	c.conn.SetURL(newURL.ToPQ().String())
-	c.conn.SetMissingPassword(!usePw || !pwSet)
+	c.conn.SetMissingPassword(!usePw || func() bool {
+		__antithesis_instrumentation__.Notify(29904)
+		return !pwSet == true
+	}() == true)
 	return nil
 }
 
@@ -1477,63 +1982,87 @@ const maxRecursionLevels = 10
 func (c *cliState) runInclude(
 	cmd []string, contState, errState cliStateEnum, relative bool,
 ) (resState cliStateEnum) {
+	__antithesis_instrumentation__.Notify(29905)
 	if len(cmd) != 1 {
+		__antithesis_instrumentation__.Notify(29912)
 		return c.invalidSyntax(errState)
+	} else {
+		__antithesis_instrumentation__.Notify(29913)
 	}
+	__antithesis_instrumentation__.Notify(29906)
 
 	if c.levels >= maxRecursionLevels {
+		__antithesis_instrumentation__.Notify(29914)
 		c.exitErr = errors.Newf(`\i: too many recursion levels (max %d)`, maxRecursionLevels)
 		fmt.Fprintf(c.iCtx.stderr, "%v\n", c.exitErr)
 		return errState
+	} else {
+		__antithesis_instrumentation__.Notify(29915)
 	}
+	__antithesis_instrumentation__.Notify(29907)
 
 	if len(c.partialLines) > 0 {
+		__antithesis_instrumentation__.Notify(29916)
 		return c.invalidSyntax(errState)
+	} else {
+		__antithesis_instrumentation__.Notify(29917)
 	}
+	__antithesis_instrumentation__.Notify(29908)
 
 	filename := cmd[0]
-	if !filepath.IsAbs(filename) && relative {
-		// In relative mode, the filename is resolved relative to the
-		// surrounding script.
+	if !filepath.IsAbs(filename) && func() bool {
+		__antithesis_instrumentation__.Notify(29918)
+		return relative == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(29919)
+
 		filename = filepath.Join(c.includeDir, filename)
+	} else {
+		__antithesis_instrumentation__.Notify(29920)
 	}
+	__antithesis_instrumentation__.Notify(29909)
 
 	f, err := os.Open(filename)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(29921)
 		fmt.Fprintln(c.iCtx.stderr, err)
 		c.exitErr = err
 		return errState
+	} else {
+		__antithesis_instrumentation__.Notify(29922)
 	}
-	// Close the file at the end.
+	__antithesis_instrumentation__.Notify(29910)
+
 	defer func() {
+		__antithesis_instrumentation__.Notify(29923)
 		if err := f.Close(); err != nil {
+			__antithesis_instrumentation__.Notify(29924)
 			fmt.Fprintf(c.iCtx.stderr, "error: closing %s: %v\n", filename, err)
 			c.exitErr = errors.CombineErrors(c.exitErr, err)
 			resState = errState
+		} else {
+			__antithesis_instrumentation__.Notify(29925)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(29911)
 
-	// Including a file: increase the recursion level.
 	newLevel := c.levels + 1
 
 	return c.runIncludeInternal(contState, errState,
-		filename, bufio.NewReader(f), newLevel, false /* singleStatement */)
+		filename, bufio.NewReader(f), newLevel, false)
 }
 
 func (c *cliState) runString(
 	contState, errState cliStateEnum, stmt string,
 ) (resState cliStateEnum) {
+	__antithesis_instrumentation__.Notify(29926)
 	r := strings.NewReader(stmt)
 	buf := bufio.NewReader(r)
 
-	// Running a string: don't increase the recursion level. We want
-	// that running sql -e '\i ...' gives access to the same maximum
-	// number of recursive includes as entering \i on the interactive
-	// prompt.
 	newLevel := c.levels
 
 	return c.runIncludeInternal(contState, errState,
-		"-e", buf, newLevel, true /* singleStatement */)
+		"-e", buf, newLevel, true)
 }
 
 func (c *cliState) runIncludeInternal(
@@ -1543,6 +2072,7 @@ func (c *cliState) runIncludeInternal(
 	level int,
 	singleStatement bool,
 ) (resState cliStateEnum) {
+	__antithesis_instrumentation__.Notify(29927)
 	newState := cliState{
 		cliCtx:     c.cliCtx,
 		sqlConnCtx: c.sqlConnCtx,
@@ -1560,11 +2090,14 @@ func (c *cliState) runIncludeInternal(
 	}
 
 	if err := newState.doRunShell(cliStartLine, nil, nil, nil); err != nil {
-		// Note: a message was already printed on stderr at the point at
-		// which the error originated. No need to repeat it here.
+		__antithesis_instrumentation__.Notify(29929)
+
 		c.exitErr = errors.Wrapf(err, "%v", filename)
 		return errState
+	} else {
+		__antithesis_instrumentation__.Notify(29930)
 	}
+	__antithesis_instrumentation__.Notify(29928)
 
 	return contState
 }
@@ -1572,98 +2105,166 @@ func (c *cliState) runIncludeInternal(
 func (c *cliState) doPrepareStatementLine(
 	startState, contState, checkState, execState cliStateEnum,
 ) cliStateEnum {
+	__antithesis_instrumentation__.Notify(29931)
 	c.partialLines = append(c.partialLines, c.lastInputLine)
 
-	// We join the statements back together with newlines in case
-	// there is a significant newline inside a string literal.
 	c.concatLines = strings.Trim(strings.Join(c.partialLines, "\n"), " \r\n\t\f")
 
 	if c.concatLines == "" {
-		// Only whitespace.
+		__antithesis_instrumentation__.Notify(29938)
+
 		return startState
+	} else {
+		__antithesis_instrumentation__.Notify(29939)
 	}
+	__antithesis_instrumentation__.Notify(29932)
 
 	lastTok, ok := scanner.LastLexicalToken(c.concatLines)
-	if c.partialStmtsLen == 0 && !ok {
-		// More whitespace, or comments. Still nothing to do. However
-		// if the syntax was non-trivial to arrive here,
-		// keep it for history.
+	if c.partialStmtsLen == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(29940)
+		return !ok == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(29941)
+
 		if c.lastInputLine != "" {
+			__antithesis_instrumentation__.Notify(29943)
 			c.addHistory(c.lastInputLine)
+		} else {
+			__antithesis_instrumentation__.Notify(29944)
 		}
+		__antithesis_instrumentation__.Notify(29942)
 		return startState
+	} else {
+		__antithesis_instrumentation__.Notify(29945)
 	}
-	endOfStmt := (!c.inCopy() && isEndOfStatement(lastTok)) ||
-		// We're always at the end of a statement if we're in COPY and encounter
-		// the \. or EOF character.
-		(c.inCopy() && (strings.HasSuffix(c.concatLines, "\n"+`\.`) || c.atEOF)) ||
-		// We're always at the end of a statement if EOF is reached in the
-		// single statement mode.
-		c.singleStatement && c.atEOF
+	__antithesis_instrumentation__.Notify(29933)
+	endOfStmt := (!c.inCopy() && func() bool {
+		__antithesis_instrumentation__.Notify(29946)
+		return isEndOfStatement(lastTok) == true
+	}() == true) || func() bool {
+		__antithesis_instrumentation__.Notify(29947)
+		return (c.inCopy() && func() bool {
+			__antithesis_instrumentation__.Notify(29948)
+			return (strings.HasSuffix(c.concatLines, "\n"+`\.`) || func() bool {
+				__antithesis_instrumentation__.Notify(29949)
+				return c.atEOF == true
+			}() == true) == true
+		}() == true) == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(29950)
+		return (c.singleStatement && func() bool {
+			__antithesis_instrumentation__.Notify(29951)
+			return c.atEOF == true
+		}() == true) == true
+	}() == true
 	if c.atEOF {
-		// Definitely no more input expected.
+		__antithesis_instrumentation__.Notify(29952)
+
 		if !endOfStmt {
+			__antithesis_instrumentation__.Notify(29953)
 			fmt.Fprintf(c.iCtx.stderr, "missing semicolon at end of statement: %s\n", c.concatLines)
 			c.exitErr = fmt.Errorf("last statement was not executed: %s", c.concatLines)
 			return cliStop
+		} else {
+			__antithesis_instrumentation__.Notify(29954)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(29955)
 	}
+	__antithesis_instrumentation__.Notify(29934)
 
 	if !endOfStmt {
+		__antithesis_instrumentation__.Notify(29956)
 		if lastTok == '?' {
+			__antithesis_instrumentation__.Notify(29958)
 			fmt.Fprintf(c.iCtx.stdout,
 				"Note: a single '?' is a JSON operator. If you want contextual help, use '??'.\n")
+		} else {
+			__antithesis_instrumentation__.Notify(29959)
 		}
+		__antithesis_instrumentation__.Notify(29957)
 		return contState
+	} else {
+		__antithesis_instrumentation__.Notify(29960)
 	}
+	__antithesis_instrumentation__.Notify(29935)
 
-	// Complete input. Remember it in the history.
 	if !c.inCopy() {
+		__antithesis_instrumentation__.Notify(29961)
 		c.addHistory(c.concatLines)
+	} else {
+		__antithesis_instrumentation__.Notify(29962)
 	}
+	__antithesis_instrumentation__.Notify(29936)
 
 	if !c.iCtx.checkSyntax {
+		__antithesis_instrumentation__.Notify(29963)
 		return execState
+	} else {
+		__antithesis_instrumentation__.Notify(29964)
 	}
+	__antithesis_instrumentation__.Notify(29937)
 
 	return checkState
 }
 
 func (c *cliState) doCheckStatement(startState, contState, execState cliStateEnum) cliStateEnum {
-	// If we are in COPY, we have no valid SQL, so skip directly to the next state.
+	__antithesis_instrumentation__.Notify(29965)
+
 	if c.inCopy() {
+		__antithesis_instrumentation__.Notify(29969)
 		return execState
+	} else {
+		__antithesis_instrumentation__.Notify(29970)
 	}
-	// From here on, client-side syntax checking is enabled.
+	__antithesis_instrumentation__.Notify(29966)
+
 	helpText, err := c.serverSideParse(c.concatLines)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(29971)
 		if helpText != "" {
-			// There was a help text included. Use it.
+			__antithesis_instrumentation__.Notify(29975)
+
 			fmt.Fprintln(c.iCtx.stdout, helpText)
+		} else {
+			__antithesis_instrumentation__.Notify(29976)
 		}
+		__antithesis_instrumentation__.Notify(29972)
 
 		_ = c.invalidSyntaxf(
 			cliStart, "statement ignored: %v",
-			clierror.NewFormattedError(err, false /*showSeverity*/, false /*verbose*/),
+			clierror.NewFormattedError(err, false, false),
 		)
 
-		// Stop here if exiterr is set.
 		if c.iCtx.errExit {
+			__antithesis_instrumentation__.Notify(29977)
 			return cliStop
+		} else {
+			__antithesis_instrumentation__.Notify(29978)
 		}
+		__antithesis_instrumentation__.Notify(29973)
 
-		// Remove the erroneous lines from the buffered input,
-		// then try again.
 		c.partialLines = c.partialLines[:c.partialStmtsLen]
 		if len(c.partialLines) == 0 {
+			__antithesis_instrumentation__.Notify(29979)
 			return startState
+		} else {
+			__antithesis_instrumentation__.Notify(29980)
 		}
+		__antithesis_instrumentation__.Notify(29974)
 		return contState
+	} else {
+		__antithesis_instrumentation__.Notify(29981)
 	}
+	__antithesis_instrumentation__.Notify(29967)
 
 	if !c.cliCtx.IsInteractive {
+		__antithesis_instrumentation__.Notify(29982)
 		return execState
+	} else {
+		__antithesis_instrumentation__.Notify(29983)
 	}
+	__antithesis_instrumentation__.Notify(29968)
 
 	nextState := execState
 
@@ -1672,44 +2273,63 @@ func (c *cliState) doCheckStatement(startState, contState, execState cliStateEnu
 	return nextState
 }
 
-// doRunStatements runs all the statements that have been accumulated by
-// concatLines.
 func (c *cliState) doRunStatements(nextState cliStateEnum) cliStateEnum {
-	// Once we send something to the server, the txn status may change arbitrarily.
-	// Clear the known state so that further entries do not assume anything.
+	__antithesis_instrumentation__.Notify(29984)
+
 	c.lastKnownTxnStatus = " ?"
 
-	// Are we tracing?
 	if c.iCtx.autoTrace != "" {
-		// Clear the trace by disabling tracing, then restart tracing
-		// with the specified options.
+		__antithesis_instrumentation__.Notify(29990)
+
 		c.exitErr = c.conn.Exec(
 			context.Background(),
 			"SET tracing = off; SET tracing = "+c.iCtx.autoTrace)
 		if c.exitErr != nil {
+			__antithesis_instrumentation__.Notify(29991)
 			if !c.singleStatement {
-				clierror.OutputError(c.iCtx.stderr, c.exitErr, true /*showSeverity*/, false /*verbose*/)
+				__antithesis_instrumentation__.Notify(29994)
+				clierror.OutputError(c.iCtx.stderr, c.exitErr, true, false)
+			} else {
+				__antithesis_instrumentation__.Notify(29995)
 			}
+			__antithesis_instrumentation__.Notify(29992)
 			if c.iCtx.errExit {
+				__antithesis_instrumentation__.Notify(29996)
 				return cliStop
+			} else {
+				__antithesis_instrumentation__.Notify(29997)
 			}
+			__antithesis_instrumentation__.Notify(29993)
 			return nextState
+		} else {
+			__antithesis_instrumentation__.Notify(29998)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(29999)
 	}
+	__antithesis_instrumentation__.Notify(29985)
 
-	// Now run the statement/query.
 	c.exitErr = c.runWithInterruptableCtx(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(30000)
 		if scanner.FirstLexicalToken(c.concatLines) == lexbase.COPY {
+			__antithesis_instrumentation__.Notify(30003)
 			return c.beginCopyFrom(ctx, c.concatLines)
+		} else {
+			__antithesis_instrumentation__.Notify(30004)
 		}
+		__antithesis_instrumentation__.Notify(30001)
 		q := clisqlclient.MakeQuery(c.concatLines)
 		if c.inCopy() {
+			__antithesis_instrumentation__.Notify(30005)
 			q = c.copyFromState.Commit(
 				ctx,
 				c.resetCopy,
 				c.concatLines,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(30006)
 		}
+		__antithesis_instrumentation__.Notify(30002)
 		return c.sqlExecCtx.RunQueryAndFormatResults(
 			ctx,
 			c.conn,
@@ -1718,99 +2338,138 @@ func (c *cliState) doRunStatements(nextState cliStateEnum) cliStateEnum {
 			q,
 		)
 	})
+	__antithesis_instrumentation__.Notify(29986)
 	if c.exitErr != nil {
+		__antithesis_instrumentation__.Notify(30007)
 		if !c.singleStatement {
-			clierror.OutputError(c.iCtx.stderr, c.exitErr, true /*showSeverity*/, false /*verbose*/)
+			__antithesis_instrumentation__.Notify(30008)
+			clierror.OutputError(c.iCtx.stderr, c.exitErr, true, false)
+		} else {
+			__antithesis_instrumentation__.Notify(30009)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(30010)
 	}
+	__antithesis_instrumentation__.Notify(29987)
 
-	// If we are tracing, stop tracing and display the trace. We do
-	// this even if there was an error: a trace on errors is useful.
 	if c.iCtx.autoTrace != "" {
-		// First, disable tracing.
+		__antithesis_instrumentation__.Notify(30011)
+
 		if err := c.conn.Exec(context.Background(),
 			"SET tracing = off"); err != nil {
-			// Print the error for the SET tracing statement. This will
-			// appear below the error for the main query above, if any,
-			clierror.OutputError(c.iCtx.stderr, err, true /*showSeverity*/, false /*verbose*/)
+			__antithesis_instrumentation__.Notify(30012)
+
+			clierror.OutputError(c.iCtx.stderr, err, true, false)
 			if c.exitErr == nil {
-				// The query had encountered no error above, but now we are
-				// encountering an error on SET tracing. Consider this to
-				// become the query's error.
+				__antithesis_instrumentation__.Notify(30013)
+
 				c.exitErr = err
+			} else {
+				__antithesis_instrumentation__.Notify(30014)
 			}
-			// If the query above had encountered an error already
-			// (c.exitErr != nil), we keep that as the main error for the
-			// shell.
+
 		} else {
+			__antithesis_instrumentation__.Notify(30015)
 			traceType := ""
 			if strings.Contains(c.iCtx.autoTrace, "kv") {
+				__antithesis_instrumentation__.Notify(30017)
 				traceType = "kv"
+			} else {
+				__antithesis_instrumentation__.Notify(30018)
 			}
+			__antithesis_instrumentation__.Notify(30016)
 			if err := c.runWithInterruptableCtx(func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(30019)
 				return c.sqlExecCtx.RunQueryAndFormatResults(ctx,
 					c.conn, c.iCtx.stdout, c.iCtx.stderr,
 					clisqlclient.MakeQuery(fmt.Sprintf("SHOW %s TRACE FOR SESSION", traceType)))
 			}); err != nil {
-				clierror.OutputError(c.iCtx.stderr, err, true /*showSeverity*/, false /*verbose*/)
+				__antithesis_instrumentation__.Notify(30020)
+				clierror.OutputError(c.iCtx.stderr, err, true, false)
 				if c.exitErr == nil {
-					// Both the query and SET tracing had encountered no error
-					// above, but now we are encountering an error on SHOW TRACE
-					// Consider this to become the query's error.
+					__antithesis_instrumentation__.Notify(30021)
+
 					c.exitErr = err
+				} else {
+					__antithesis_instrumentation__.Notify(30022)
 				}
-				// If the query above or SET tracing had encountered an error
-				// already (c.exitErr != nil), we keep that as the main error
-				// for the shell.
+
+			} else {
+				__antithesis_instrumentation__.Notify(30023)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(30024)
 	}
+	__antithesis_instrumentation__.Notify(29988)
 
-	if c.exitErr != nil && c.iCtx.errExit {
+	if c.exitErr != nil && func() bool {
+		__antithesis_instrumentation__.Notify(30025)
+		return c.iCtx.errExit == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(30026)
 		return cliStop
+	} else {
+		__antithesis_instrumentation__.Notify(30027)
 	}
+	__antithesis_instrumentation__.Notify(29989)
 
 	return nextState
 }
 
 func (c *cliState) beginCopyFrom(ctx context.Context, sql string) error {
+	__antithesis_instrumentation__.Notify(30028)
 	c.refreshTransactionStatus()
 	if c.lastKnownTxnStatus != "" {
+		__antithesis_instrumentation__.Notify(30032)
 		return unimplemented.Newf(
 			"cli_copy_in_txn",
 			"cannot use COPY inside a transaction",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(30033)
 	}
+	__antithesis_instrumentation__.Notify(30029)
 	copyFromState, err := clisqlclient.BeginCopyFrom(ctx, c.conn, sql)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(30034)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(30035)
 	}
+	__antithesis_instrumentation__.Notify(30030)
 	c.copyFromState = copyFromState
 	if c.cliCtx.IsInteractive {
+		__antithesis_instrumentation__.Notify(30036)
 		fmt.Fprintln(c.iCtx.stdout, `Enter data to be copied followed by a newline.`)
 		fmt.Fprintln(c.iCtx.stdout, `End with a backslash and a period on a line by itself, or an EOF signal.`)
+	} else {
+		__antithesis_instrumentation__.Notify(30037)
 	}
+	__antithesis_instrumentation__.Notify(30031)
 	return nil
 }
 
 func (c *cliState) doDecidePath() cliStateEnum {
+	__antithesis_instrumentation__.Notify(30038)
 	if len(c.partialLines) == 0 {
+		__antithesis_instrumentation__.Notify(30040)
 		return cliProcessFirstLine
-	} else if c.cliCtx.IsInteractive {
-		// In interactive mode, we allow client-side commands to be
-		// issued on intermediate lines.
-		return cliHandleCliCmd
+	} else {
+		__antithesis_instrumentation__.Notify(30041)
+		if c.cliCtx.IsInteractive {
+			__antithesis_instrumentation__.Notify(30042)
+
+			return cliHandleCliCmd
+		} else {
+			__antithesis_instrumentation__.Notify(30043)
+		}
 	}
-	// Neither interactive nor at start, continue with processing.
+	__antithesis_instrumentation__.Notify(30039)
+
 	return cliPrepareStatementLine
 }
 
-// NewShell instantiates a cliState.
-//
-// In simple uses of the SQL shell (e.g. in the standalone
-// cockroach-sql), the urlParser argument can be set to pgurl.Parse;
-// however CockroachDB's own CLI package has a more advanced URL
-// parser that is used instead.
 func NewShell(
 	cliCtx *clicfg.Context,
 	sqlConnCtx *clisqlclient.Context,
@@ -1818,6 +2477,7 @@ func NewShell(
 	sqlCtx *Context,
 	conn clisqlclient.Conn,
 ) Shell {
+	__antithesis_instrumentation__.Notify(30044)
 	return &cliState{
 		cliCtx:     cliCtx,
 		sqlConnCtx: sqlConnCtx,
@@ -1831,8 +2491,8 @@ func NewShell(
 	}
 }
 
-// RunInteractive implements the Shell interface.
 func (c *cliState) RunInteractive(cmdIn, cmdOut, cmdErr *os.File) (exitErr error) {
+	__antithesis_instrumentation__.Notify(30045)
 	finalFn := c.maybeHandleInterrupt()
 	defer finalFn()
 
@@ -1840,387 +2500,505 @@ func (c *cliState) RunInteractive(cmdIn, cmdOut, cmdErr *os.File) (exitErr error
 }
 
 func (c *cliState) doRunShell(state cliStateEnum, cmdIn, cmdOut, cmdErr *os.File) (exitErr error) {
+	__antithesis_instrumentation__.Notify(30046)
 	for {
+		__antithesis_instrumentation__.Notify(30048)
 		if state == cliStop {
+			__antithesis_instrumentation__.Notify(30050)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(30051)
 		}
+		__antithesis_instrumentation__.Notify(30049)
 		switch state {
 		case cliStart:
+			__antithesis_instrumentation__.Notify(30052)
 			cleanupFn, err := c.configurePreShellDefaults(cmdIn, cmdOut, cmdErr)
 			defer cleanupFn()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(30066)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(30067)
 			}
+			__antithesis_instrumentation__.Notify(30053)
 			if len(c.sqlCtx.ExecStmts) > 0 {
-				// Single-line sql; run as simple as possible, without noise on stdout.
+				__antithesis_instrumentation__.Notify(30068)
+
 				if err := c.runStatements(c.sqlCtx.ExecStmts); err != nil {
+					__antithesis_instrumentation__.Notify(30070)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(30071)
 				}
+				__antithesis_instrumentation__.Notify(30069)
 				if c.iCtx.quitAfterExecStmts {
+					__antithesis_instrumentation__.Notify(30072)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(30073)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(30074)
 			}
+			__antithesis_instrumentation__.Notify(30054)
 
 			state = c.doStart(cliStartLine)
 
 		case cliRefreshPrompt:
+			__antithesis_instrumentation__.Notify(30055)
 			state = c.doRefreshPrompts(cliReadLine)
 
 		case cliStartLine:
+			__antithesis_instrumentation__.Notify(30056)
 			state = c.doStartLine(cliRefreshPrompt)
 
 		case cliContinueLine:
+			__antithesis_instrumentation__.Notify(30057)
 			state = c.doContinueLine(cliRefreshPrompt)
 
 		case cliReadLine:
+			__antithesis_instrumentation__.Notify(30058)
 			state = c.doReadLine(cliDecidePath)
 
 		case cliDecidePath:
+			__antithesis_instrumentation__.Notify(30059)
 			state = c.doDecidePath()
 
 		case cliProcessFirstLine:
+			__antithesis_instrumentation__.Notify(30060)
 			state = c.doProcessFirstLine(cliStartLine, cliHandleCliCmd)
 
 		case cliHandleCliCmd:
+			__antithesis_instrumentation__.Notify(30061)
 			state = c.doHandleCliCmd(cliRefreshPrompt, cliPrepareStatementLine)
 
 		case cliPrepareStatementLine:
+			__antithesis_instrumentation__.Notify(30062)
 			state = c.doPrepareStatementLine(
 				cliStartLine, cliContinueLine, cliCheckStatement, cliRunStatement,
 			)
 
 		case cliCheckStatement:
+			__antithesis_instrumentation__.Notify(30063)
 			state = c.doCheckStatement(cliStartLine, cliContinueLine, cliRunStatement)
 
 		case cliRunStatement:
+			__antithesis_instrumentation__.Notify(30064)
 			state = c.doRunStatements(cliStartLine)
 
 		default:
+			__antithesis_instrumentation__.Notify(30065)
 			panic(fmt.Sprintf("unknown state: %d", state))
 		}
 	}
+	__antithesis_instrumentation__.Notify(30047)
 
 	return c.exitErr
 }
 
-// configurePreShellDefaults should be called after command-line flags
-// have been loaded into the cliCtx/sqlCtx and .isInteractive /
-// .terminalOutput have been initialized, but before the SQL shell or
-// execution starts.
-//
-// The returned cleanupFn must be called even when the err return is
-// not nil.
 func (c *cliState) configurePreShellDefaults(
 	cmdIn, cmdOut, cmdErr *os.File,
 ) (cleanupFn func(), err error) {
+	__antithesis_instrumentation__.Notify(30075)
 	c.iCtx.stdout = cmdOut
 	c.iCtx.stderr = cmdErr
 
 	if c.sqlExecCtx.TerminalOutput {
-		// If results are shown on a terminal also enable printing of
-		// times by default.
+		__antithesis_instrumentation__.Notify(30081)
+
 		c.sqlExecCtx.ShowTimes = true
+	} else {
+		__antithesis_instrumentation__.Notify(30082)
 	}
+	__antithesis_instrumentation__.Notify(30076)
 
 	if c.cliCtx.IsInteractive {
-		// If a human user is providing the input, we want to help them with
-		// what they are entering:
-		c.iCtx.errExit = false // let the user retry failing commands
+		__antithesis_instrumentation__.Notify(30083)
+
+		c.iCtx.errExit = false
 		if !c.sqlConnCtx.DebugMode {
-			// Also, try to enable syntax checking if supported by the server.
-			// This is a form of client-side error checking to help with large txns.
+			__antithesis_instrumentation__.Notify(30084)
+
 			c.iCtx.checkSyntax = true
+		} else {
+			__antithesis_instrumentation__.Notify(30085)
 		}
 	} else {
-		// When running non-interactive, by default we want errors to stop
-		// further processing and we can just let syntax checking to be
-		// done server-side to avoid client-side churn.
+		__antithesis_instrumentation__.Notify(30086)
+
 		c.iCtx.errExit = true
 		c.iCtx.checkSyntax = false
-		// We also don't need (smart) prompts at all.
-	}
 
-	// An interactive readline prompter is comparatively slow at
-	// reading input, so we only use it in interactive mode and when
-	// there is also a terminal on stdout.
-	if c.cliCtx.IsInteractive && c.sqlExecCtx.TerminalOutput {
-		// The readline initialization is not placed in
-		// the doStart() method because of the defer.
+	}
+	__antithesis_instrumentation__.Notify(30077)
+
+	if c.cliCtx.IsInteractive && func() bool {
+		__antithesis_instrumentation__.Notify(30087)
+		return c.sqlExecCtx.TerminalOutput == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(30088)
+
 		c.ins, c.exitErr = readline.InitFiles("cockroach",
-			true, /* wideChars */
+			true,
 			cmdIn, c.iCtx.stdout, c.iCtx.stderr)
 		if errors.Is(c.exitErr, readline.ErrWidecharNotSupported) {
+			__antithesis_instrumentation__.Notify(30091)
 			fmt.Fprintln(c.iCtx.stderr, "warning: wide character support disabled")
 			c.ins, c.exitErr = readline.InitFiles("cockroach",
 				false, cmdIn, c.iCtx.stdout, c.iCtx.stderr)
+		} else {
+			__antithesis_instrumentation__.Notify(30092)
 		}
+		__antithesis_instrumentation__.Notify(30089)
 		if c.exitErr != nil {
+			__antithesis_instrumentation__.Notify(30093)
 			return cleanupFn, c.exitErr
+		} else {
+			__antithesis_instrumentation__.Notify(30094)
 		}
-		// The readline library may have a custom file descriptor for stdout.
-		// Use that for further output.
+		__antithesis_instrumentation__.Notify(30090)
+
 		c.iCtx.stdout = c.ins.Stdout()
 
-		// If the user has used bind -v or bind -l in their ~/.editrc,
-		// this will reset the standard bindings. However we really
-		// want in this shell that Ctrl+C, tab, Ctrl+Z and Ctrl+R
-		// always have the same meaning.  So reload these bindings
-		// explicitly no matter what ~/.editrc may have changed.
 		c.ins.RebindControlKeys()
-		cleanupFn = func() { c.ins.Close() }
+		cleanupFn = func() { __antithesis_instrumentation__.Notify(30095); c.ins.Close() }
 	} else {
+		__antithesis_instrumentation__.Notify(30096)
 		c.ins = noLineEditor
 		c.buf = bufio.NewReader(cmdIn)
-		cleanupFn = func() {}
+		cleanupFn = func() { __antithesis_instrumentation__.Notify(30097) }
 	}
+	__antithesis_instrumentation__.Notify(30078)
 
 	if c.hasEditor() {
-		// We only enable prompt and history management when the
-		// interactive input prompter is enabled. This saves on churn and
-		// memory when e.g. piping a large SQL script through the
-		// command-line client.
+		__antithesis_instrumentation__.Notify(30098)
 
-		// Default prompt is part of the connection URL. eg: "marc@localhost:26257>".
 		c.iCtx.customPromptPattern = defaultPromptPattern
 		if c.sqlConnCtx.DebugMode {
+			__antithesis_instrumentation__.Notify(30100)
 			c.iCtx.customPromptPattern = debugPromptPattern
+		} else {
+			__antithesis_instrumentation__.Notify(30101)
 		}
+		__antithesis_instrumentation__.Notify(30099)
 
 		c.ins.SetCompleter(c)
-		if err := c.ins.UseHistory(-1 /*maxEntries*/, true /*dedup*/); err != nil {
+		if err := c.ins.UseHistory(-1, true); err != nil {
+			__antithesis_instrumentation__.Notify(30102)
 			fmt.Fprintf(c.iCtx.stderr, "warning: cannot enable history: %v\n ", err)
 		} else {
+			__antithesis_instrumentation__.Notify(30103)
 			homeDir, err := envutil.HomeDir()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(30104)
 				fmt.Fprintf(c.iCtx.stderr, "warning: cannot retrieve user information: %v\nwarning: history will not be saved\n", err)
 			} else {
+				__antithesis_instrumentation__.Notify(30105)
 				histFile := filepath.Join(homeDir, cmdHistFile)
 				err = c.ins.LoadHistory(histFile)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(30107)
 					fmt.Fprintf(c.iCtx.stderr, "warning: cannot load the command-line history (file corrupted?): %v\n", err)
 					fmt.Fprintf(c.iCtx.stderr, "note: the history file will be cleared upon first entry\n")
+				} else {
+					__antithesis_instrumentation__.Notify(30108)
 				}
+				__antithesis_instrumentation__.Notify(30106)
 				c.ins.SetAutoSaveHistory(histFile, true)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(30109)
 	}
+	__antithesis_instrumentation__.Notify(30079)
 
-	// If any --set flags were set through the command line,
-	// synthetize '-e set=xxx' statements for them at the beginning.
 	c.iCtx.quitAfterExecStmts = len(c.sqlCtx.ExecStmts) > 0
 	if len(c.sqlCtx.SetStmts) > 0 {
+		__antithesis_instrumentation__.Notify(30110)
 		setStmts := make([]string, 0, len(c.sqlCtx.SetStmts)+len(c.sqlCtx.ExecStmts))
 		for _, s := range c.sqlCtx.SetStmts {
+			__antithesis_instrumentation__.Notify(30112)
 			setStmts = append(setStmts, `\set `+s)
 		}
+		__antithesis_instrumentation__.Notify(30111)
 		c.sqlCtx.SetStmts = nil
 		c.sqlCtx.ExecStmts = append(setStmts, c.sqlCtx.ExecStmts...)
+	} else {
+		__antithesis_instrumentation__.Notify(30113)
 	}
+	__antithesis_instrumentation__.Notify(30080)
 
 	return cleanupFn, nil
 }
 
-// runStatements executes the given statements and terminates
-// on error.
 func (c *cliState) runStatements(stmts []string) error {
+	__antithesis_instrumentation__.Notify(30114)
 	for {
+		__antithesis_instrumentation__.Notify(30117)
 		for i, stmt := range stmts {
+			__antithesis_instrumentation__.Notify(30120)
 			c.exitErr = nil
 			_ = c.runString(cliRunStatement, cliStop, stmt)
 			if c.exitErr != nil {
-				if !c.iCtx.errExit && i < len(stmts)-1 {
-					// Print the error now because we don't get a chance later.
-					clierror.OutputError(c.iCtx.stderr, c.exitErr, true /*showSeverity*/, false /*verbose*/)
+				__antithesis_instrumentation__.Notify(30121)
+				if !c.iCtx.errExit && func() bool {
+					__antithesis_instrumentation__.Notify(30123)
+					return i < len(stmts)-1 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(30124)
+
+					clierror.OutputError(c.iCtx.stderr, c.exitErr, true, false)
+				} else {
+					__antithesis_instrumentation__.Notify(30125)
 				}
+				__antithesis_instrumentation__.Notify(30122)
 				if c.iCtx.errExit {
+					__antithesis_instrumentation__.Notify(30126)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(30127)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(30128)
 			}
 		}
-		// If --watch was specified and no error was encountered,
-		// repeat.
-		if c.sqlCtx.RepeatDelay > 0 && c.exitErr == nil {
+		__antithesis_instrumentation__.Notify(30118)
+
+		if c.sqlCtx.RepeatDelay > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(30129)
+			return c.exitErr == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(30130)
 			time.Sleep(c.sqlCtx.RepeatDelay)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(30131)
 		}
+		__antithesis_instrumentation__.Notify(30119)
 		break
 	}
+	__antithesis_instrumentation__.Notify(30115)
 
 	if c.exitErr != nil {
-		// Don't write the error to stderr ourselves. Cobra will do this for
-		// us on the exit path. We do want the details though, so add them.
-		c.exitErr = clierror.NewFormattedError(c.exitErr, true /*showSeverity*/, false /*verbose*/)
+		__antithesis_instrumentation__.Notify(30132)
+
+		c.exitErr = clierror.NewFormattedError(c.exitErr, true, false)
+	} else {
+		__antithesis_instrumentation__.Notify(30133)
 	}
+	__antithesis_instrumentation__.Notify(30116)
 	return c.exitErr
 }
 
-// serverSideParse uses the SHOW SYNTAX statement to analyze the given string.
-// If the syntax is correct, the function returns the statement
-// decomposition in the first return value. If it is not, the function
-// extracts a help string if available.
 func (c *cliState) serverSideParse(sql string) (helpText string, err error) {
+	__antithesis_instrumentation__.Notify(30134)
 	cols, rows, err := c.sqlExecCtx.RunQuery(
 		context.Background(),
 		c.conn,
 		clisqlclient.MakeQuery("SHOW SYNTAX "+lexbase.EscapeSQLString(sql)),
 		true)
 	if err != nil {
-		// The query failed with some error. This is not a syntax error
-		// detected by SHOW SYNTAX (those show up as valid rows) but
-		// instead something else.
+		__antithesis_instrumentation__.Notify(30138)
+
 		return "", errors.Wrap(err, "unexpected error")
+	} else {
+		__antithesis_instrumentation__.Notify(30139)
 	}
+	__antithesis_instrumentation__.Notify(30135)
 
 	if len(cols) < 2 {
+		__antithesis_instrumentation__.Notify(30140)
 		return "", errors.Newf(
 			"invalid results for SHOW SYNTAX: %q %q", cols, rows)
+	} else {
+		__antithesis_instrumentation__.Notify(30141)
 	}
+	__antithesis_instrumentation__.Notify(30136)
 
-	// If SHOW SYNTAX reports an error, then it does so on the first row.
-	if len(rows) >= 1 && rows[0][0] == "error" {
+	if len(rows) >= 1 && func() bool {
+		__antithesis_instrumentation__.Notify(30142)
+		return rows[0][0] == "error" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(30143)
 		var message, code, detail, hint string
 		for _, row := range rows {
+			__antithesis_instrumentation__.Notify(30148)
 			switch row[0] {
 			case "error":
+				__antithesis_instrumentation__.Notify(30149)
 				message = row[1]
 			case "detail":
+				__antithesis_instrumentation__.Notify(30150)
 				detail = row[1]
 			case "hint":
+				__antithesis_instrumentation__.Notify(30151)
 				hint = row[1]
 			case "code":
+				__antithesis_instrumentation__.Notify(30152)
 				code = row[1]
+			default:
+				__antithesis_instrumentation__.Notify(30153)
 			}
 		}
-		// Is it a help text?
-		//
-		// The string here must match the constant string
-		// parser.specialHelpErrorPrefix. The second string must match
-		// the constant string parser.helpHintPrefix.
-		//
-		// However, we cannot include the 'parser' package here because it
-		// would incur a huge dependency overhead.
-		if strings.HasPrefix(message, "help token in input") && strings.HasPrefix(hint, "help:") {
-			// Yes: return it.
+		__antithesis_instrumentation__.Notify(30144)
+
+		if strings.HasPrefix(message, "help token in input") && func() bool {
+			__antithesis_instrumentation__.Notify(30154)
+			return strings.HasPrefix(hint, "help:") == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(30155)
+
 			helpText = hint[6:]
 			hint = ""
+		} else {
+			__antithesis_instrumentation__.Notify(30156)
 		}
-		// In any case report that there was an error while parsing.
+		__antithesis_instrumentation__.Notify(30145)
+
 		err := errors.Newf("%s", message)
 		err = pgerror.WithCandidateCode(err, pgcode.MakeCode(code))
 		if hint != "" {
+			__antithesis_instrumentation__.Notify(30157)
 			err = errors.WithHint(err, hint)
+		} else {
+			__antithesis_instrumentation__.Notify(30158)
 		}
+		__antithesis_instrumentation__.Notify(30146)
 		if detail != "" {
+			__antithesis_instrumentation__.Notify(30159)
 			err = errors.WithDetail(err, detail)
+		} else {
+			__antithesis_instrumentation__.Notify(30160)
 		}
+		__antithesis_instrumentation__.Notify(30147)
 		return helpText, err
+	} else {
+		__antithesis_instrumentation__.Notify(30161)
 	}
+	__antithesis_instrumentation__.Notify(30137)
 	return "", nil
 }
 
-// At this time, lib/pq contains a bug whereby a query cancellation
-// results in the driver dropping the connection. This results in poor
-// user UX. Instead of suffering the UX drawback, we choose to disable
-// query cancellation for a little while more until we switch the shell
-// to use pgx instead.
-// See: https://github.com/cockroachdb/cockroach/issues/76483
 const queryCancelEnabled = false
 
 func (c *cliState) maybeHandleInterrupt() func() {
+	__antithesis_instrumentation__.Notify(30162)
 	if !c.cliCtx.IsInteractive {
-		return func() {}
+		__antithesis_instrumentation__.Notify(30165)
+		return func() { __antithesis_instrumentation__.Notify(30166) }
+	} else {
+		__antithesis_instrumentation__.Notify(30167)
 	}
+	__antithesis_instrumentation__.Notify(30163)
 	intCh := make(chan os.Signal, 1)
 	signal.Notify(intCh, os.Interrupt)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	if !queryCancelEnabled {
+		__antithesis_instrumentation__.Notify(30168)
 		go func() {
+			__antithesis_instrumentation__.Notify(30169)
 			for {
+				__antithesis_instrumentation__.Notify(30170)
 				select {
 				case <-ctx.Done():
-					// Shell is terminating.
+					__antithesis_instrumentation__.Notify(30172)
+
 					return
 				case <-intCh:
+					__antithesis_instrumentation__.Notify(30173)
 				}
+				__antithesis_instrumentation__.Notify(30171)
 				fmt.Fprintln(c.iCtx.stderr,
 					"query cancellation disabled in this client; a second interrupt will stop the shell.")
 				signal.Reset(os.Interrupt)
 			}
 		}()
 	} else {
+		__antithesis_instrumentation__.Notify(30174)
 		go func() {
+			__antithesis_instrumentation__.Notify(30175)
 			for {
+				__antithesis_instrumentation__.Notify(30176)
 				select {
 				case <-intCh:
+					__antithesis_instrumentation__.Notify(30177)
 					c.iCtx.mu.Lock()
 					cancelFn, doneCh := c.iCtx.mu.cancelFn, c.iCtx.mu.doneCh
 					c.iCtx.mu.Unlock()
 					if cancelFn == nil {
-						// No query currently executing; nothing to do.
+						__antithesis_instrumentation__.Notify(30181)
+
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(30182)
 					}
+					__antithesis_instrumentation__.Notify(30178)
 
 					fmt.Fprintf(c.iCtx.stderr, "\nattempting to cancel query...\n")
-					// Cancel the query's context, which should make the driver
-					// send a cancellation message.
+
 					cancelFn()
 
-					// Now wait for the shell to process the cancellation.
-					//
-					// If it takes too long (e.g. server has become unresponsive,
-					// or we're connected to a pre-22.1 server which does not
-					// support cancellation), fall back to the previous behavior
-					// which is to interrupt the shell altogether.
 					tooLongTimer := time.After(3 * time.Second)
 				wait:
 					for {
+						__antithesis_instrumentation__.Notify(30183)
 						select {
 						case <-doneCh:
+							__antithesis_instrumentation__.Notify(30184)
 							break wait
 						case <-tooLongTimer:
+							__antithesis_instrumentation__.Notify(30185)
 							fmt.Fprintln(c.iCtx.stderr, "server does not respond to query cancellation; a second interrupt will stop the shell.")
 							signal.Reset(os.Interrupt)
 						}
 					}
-					// Re-arm the signal handler.
+					__antithesis_instrumentation__.Notify(30179)
+
 					signal.Notify(intCh, os.Interrupt)
 
 				case <-ctx.Done():
-					// Shell is terminating.
+					__antithesis_instrumentation__.Notify(30180)
+
 					return
 				}
 			}
 		}()
 	}
+	__antithesis_instrumentation__.Notify(30164)
 	return cancel
 }
 
 func (c *cliState) runWithInterruptableCtx(fn func(ctx context.Context) error) error {
+	__antithesis_instrumentation__.Notify(30186)
 	if !c.cliCtx.IsInteractive {
+		__antithesis_instrumentation__.Notify(30190)
 		return fn(context.Background())
+	} else {
+		__antithesis_instrumentation__.Notify(30191)
 	}
-	// The cancellation function can be used by the Ctrl+C handler
-	// to cancel this query.
-	ctx, cancel := context.WithCancel(context.Background())
-	// doneCh will be used on the return path to teach the Ctrl+C
-	// handler that the query has been cancelled successfully.
-	doneCh := make(chan struct{})
-	defer func() { close(doneCh) }()
+	__antithesis_instrumentation__.Notify(30187)
 
-	// Inform the Ctrl+C handler that this query is executing.
+	ctx, cancel := context.WithCancel(context.Background())
+
+	doneCh := make(chan struct{})
+	defer func() { __antithesis_instrumentation__.Notify(30192); close(doneCh) }()
+	__antithesis_instrumentation__.Notify(30188)
+
 	c.iCtx.mu.Lock()
 	c.iCtx.mu.cancelFn = cancel
 	c.iCtx.mu.doneCh = doneCh
 	c.iCtx.mu.Unlock()
 	defer func() {
+		__antithesis_instrumentation__.Notify(30193)
 		c.iCtx.mu.Lock()
 		c.iCtx.mu.cancelFn = nil
 		c.iCtx.mu.doneCh = nil
 		c.iCtx.mu.Unlock()
 	}()
+	__antithesis_instrumentation__.Notify(30189)
 
-	// Now run the query.
 	err := fn(ctx)
 	return err
 }

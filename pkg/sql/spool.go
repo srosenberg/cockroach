@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,11 +10,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// spoolNode ensures that a child planNode is executed to completion
-// during the start phase. The results, if any, are collected. The
-// child node is guaranteed to run to completion.
-// If hardLimit is set, only that number of rows is collected, but
-// the child node is still run to completion.
 type spoolNode struct {
 	source    planNode
 	rows      *rowcontainer.RowContainer
@@ -30,88 +17,114 @@ type spoolNode struct {
 	curRowIdx int
 }
 
-// spoolNode is not a mutationPlanNode itself, but it might wrap one.
 var _ mutationPlanNode = &spoolNode{}
 
 func (s *spoolNode) startExec(params runParams) error {
-	// If FastPathResults() on the source indicates that the results are
-	// already available (2nd value true), then the computation is
-	// already done at start time and spooling is unnecessary.
+	__antithesis_instrumentation__.Notify(623714)
+
 	if f, ok := s.source.(planNodeFastPath); ok {
+		__antithesis_instrumentation__.Notify(623717)
 		_, done := f.FastPathResults()
 		if done {
+			__antithesis_instrumentation__.Notify(623718)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(623719)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(623720)
 	}
+	__antithesis_instrumentation__.Notify(623715)
 
 	s.rows = rowcontainer.NewRowContainer(
 		params.EvalContext().Mon.MakeBoundAccount(),
 		colinfo.ColTypeInfoFromResCols(planColumns(s.source)),
 	)
 
-	// Accumulate all the rows up to the hardLimit, if any.
-	// This also guarantees execution of the child node to completion,
-	// even if Next() on the spool itself is not called for every row.
 	for {
+		__antithesis_instrumentation__.Notify(623721)
 		next, err := s.source.Next(params)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(623724)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(623725)
 		}
+		__antithesis_instrumentation__.Notify(623722)
 		if !next {
+			__antithesis_instrumentation__.Notify(623726)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(623727)
 		}
-		if s.hardLimit == 0 || int64(s.rows.Len()) < s.hardLimit {
+		__antithesis_instrumentation__.Notify(623723)
+		if s.hardLimit == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(623728)
+			return int64(s.rows.Len()) < s.hardLimit == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(623729)
 			if _, err := s.rows.AddRow(params.ctx, s.source.Values()); err != nil {
+				__antithesis_instrumentation__.Notify(623730)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(623731)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(623732)
 		}
 	}
+	__antithesis_instrumentation__.Notify(623716)
 	s.curRowIdx = -1
 	return nil
 }
 
-// FastPathResults implements the planNodeFastPath interface.
 func (s *spoolNode) FastPathResults() (int, bool) {
-	// If the source implements the fast path interface, let it report
-	// its status through. This lets e.g. the fast path of a DELETE or
-	// an UPSERT report that they have finished its computing already,
-	// so the calls to Next() on the spool itself can also be elided.
-	// If FastPathResults() on the source says the fast path is unavailable,
-	// then startExec() on the spool will also notice that and
-	// spooling will occur as expected.
+	__antithesis_instrumentation__.Notify(623733)
+
 	if f, ok := s.source.(planNodeFastPath); ok {
+		__antithesis_instrumentation__.Notify(623735)
 		return f.FastPathResults()
+	} else {
+		__antithesis_instrumentation__.Notify(623736)
 	}
+	__antithesis_instrumentation__.Notify(623734)
 	return 0, false
 }
 
-// spooled implements the planNodeSpooled interface.
-func (s *spoolNode) spooled() {}
+func (s *spoolNode) spooled() { __antithesis_instrumentation__.Notify(623737) }
 
-// Next is part of the planNode interface.
 func (s *spoolNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(623738)
 	s.curRowIdx++
 	return s.curRowIdx < s.rows.Len(), nil
 }
 
-// Values is part of the planNode interface.
 func (s *spoolNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(623739)
 	return s.rows.At(s.curRowIdx)
 }
 
-// Close is part of the planNode interface.
 func (s *spoolNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(623740)
 	s.source.Close(ctx)
 	if s.rows != nil {
+		__antithesis_instrumentation__.Notify(623741)
 		s.rows.Close(ctx)
 		s.rows = nil
+	} else {
+		__antithesis_instrumentation__.Notify(623742)
 	}
 }
 
 func (s *spoolNode) rowsWritten() int64 {
+	__antithesis_instrumentation__.Notify(623743)
 	m, ok := s.source.(mutationPlanNode)
 	if !ok {
+		__antithesis_instrumentation__.Notify(623745)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(623746)
 	}
+	__antithesis_instrumentation__.Notify(623744)
 	return m.rowsWritten()
 }

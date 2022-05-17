@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colexecutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,12 +20,13 @@ type zeroOperator struct {
 
 var _ colexecop.Operator = &zeroOperator{}
 
-// NewZeroOp creates a new operator which just returns an empty batch.
 func NewZeroOp(input colexecop.Operator) colexecop.Operator {
+	__antithesis_instrumentation__.Notify(431737)
 	return &zeroOperator{OneInputHelper: colexecop.MakeOneInputHelper(input)}
 }
 
 func (s *zeroOperator) Next() coldata.Batch {
+	__antithesis_instrumentation__.Notify(431738)
 	return coldata.ZeroBatch
 }
 
@@ -47,69 +40,58 @@ type fixedNumTuplesNoInputOp struct {
 
 var _ colexecop.Operator = &fixedNumTuplesNoInputOp{}
 
-// NewFixedNumTuplesNoInputOp creates a new Operator which returns batches with
-// no actual columns that have specified number of tuples as the sum of their
-// lengths. It takes in an optional colexecop.Operator that will be initialized
-// in Init() but is otherwise ignored. This behavior is needed when the returned
-// operator replaces a tree of operators which are expected to be initialized.
 func NewFixedNumTuplesNoInputOp(
 	allocator *colmem.Allocator, numTuples int, opToInitialize colexecop.Operator,
 ) colexecop.Operator {
+	__antithesis_instrumentation__.Notify(431739)
 	capacity := numTuples
 	if capacity > coldata.BatchSize() {
+		__antithesis_instrumentation__.Notify(431741)
 		capacity = coldata.BatchSize()
+	} else {
+		__antithesis_instrumentation__.Notify(431742)
 	}
+	__antithesis_instrumentation__.Notify(431740)
 	return &fixedNumTuplesNoInputOp{
-		batch:          allocator.NewMemBatchWithFixedCapacity(nil /* types */, capacity),
+		batch:          allocator.NewMemBatchWithFixedCapacity(nil, capacity),
 		numTuplesLeft:  numTuples,
 		opToInitialize: opToInitialize,
 	}
 }
 
 func (s *fixedNumTuplesNoInputOp) Init(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(431743)
 	if s.opToInitialize != nil {
+		__antithesis_instrumentation__.Notify(431744)
 		s.opToInitialize.Init(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(431745)
 	}
 }
 
 func (s *fixedNumTuplesNoInputOp) Next() coldata.Batch {
+	__antithesis_instrumentation__.Notify(431746)
 	if s.numTuplesLeft == 0 {
+		__antithesis_instrumentation__.Notify(431749)
 		return coldata.ZeroBatch
+	} else {
+		__antithesis_instrumentation__.Notify(431750)
 	}
+	__antithesis_instrumentation__.Notify(431747)
 	s.batch.ResetInternalBatch()
 	length := s.numTuplesLeft
 	if length > coldata.BatchSize() {
+		__antithesis_instrumentation__.Notify(431751)
 		length = coldata.BatchSize()
+	} else {
+		__antithesis_instrumentation__.Notify(431752)
 	}
+	__antithesis_instrumentation__.Notify(431748)
 	s.numTuplesLeft -= length
 	s.batch.SetLength(length)
 	return s.batch
 }
 
-// vectorTypeEnforcer is a utility Operator that on every call to Next
-// enforces that non-zero length batch from the input has a vector of the
-// desired type in the desired position. If the width of the batch is less than
-// the desired position, a new vector will be appended; if the batch has a
-// well-typed vector of an undesired type in the desired position, an error
-// will occur.
-//
-// This Operator is designed to be planned as a wrapper on the input to a
-// "projecting" Operator (such Operator that has a single column as its output
-// and does not touch other columns by simply passing them along).
-//
-// The intended diagram is as follows:
-//
-//       original input                (with schema [t1, ..., tN])
-//       --------------
-//             |
-//             ↓
-//     vectorTypeEnforcer              (will enforce that tN+1 = outputType)
-//     ------------------
-//             |
-//             ↓
-//   "projecting" operator             (projects its output of type outputType
-//   ---------------------              in column at position of N+1)
-//
 type vectorTypeEnforcer struct {
 	colexecop.OneInputInitCloserHelper
 	colexecop.NonExplainable
@@ -121,10 +103,10 @@ type vectorTypeEnforcer struct {
 
 var _ colexecop.ResettableOperator = &vectorTypeEnforcer{}
 
-// NewVectorTypeEnforcer returns a new vectorTypeEnforcer.
 func NewVectorTypeEnforcer(
 	allocator *colmem.Allocator, input colexecop.Operator, typ *types.T, idx int,
 ) colexecop.Operator {
+	__antithesis_instrumentation__.Notify(431753)
 	return &vectorTypeEnforcer{
 		OneInputInitCloserHelper: colexecop.MakeOneInputInitCloserHelper(input),
 		allocator:                allocator,
@@ -134,33 +116,29 @@ func NewVectorTypeEnforcer(
 }
 
 func (e *vectorTypeEnforcer) Next() coldata.Batch {
+	__antithesis_instrumentation__.Notify(431754)
 	b := e.Input.Next()
 	if b.Length() == 0 {
+		__antithesis_instrumentation__.Notify(431756)
 		return b
+	} else {
+		__antithesis_instrumentation__.Notify(431757)
 	}
+	__antithesis_instrumentation__.Notify(431755)
 	e.allocator.MaybeAppendColumn(b, e.typ, e.idx)
 	return b
 }
 
 func (e *vectorTypeEnforcer) Reset(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(431758)
 	if r, ok := e.Input.(colexecop.Resetter); ok {
+		__antithesis_instrumentation__.Notify(431759)
 		r.Reset(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(431760)
 	}
 }
 
-// BatchSchemaSubsetEnforcer is similar to vectorTypeEnforcer in its purpose,
-// but it enforces that the subset of the columns of the non-zero length batch
-// satisfies the desired schema. It needs to wrap the input to a "projecting"
-// operator that internally uses other "projecting" operators (for example,
-// caseOp and logical projection operators). This operator supports type
-// schemas with unsupported types in which case in the corresponding
-// position an "unknown" vector can be appended.
-//
-// The word "subset" is actually more like a "range", but we chose the former
-// since the latter is overloaded.
-//
-// NOTE: the type schema passed into BatchSchemaSubsetEnforcer *must* include
-// the output type of the Operator that the enforcer will be the input to.
 type BatchSchemaSubsetEnforcer struct {
 	colexecop.OneInputInitCloserHelper
 	colexecop.NonExplainable
@@ -172,16 +150,13 @@ type BatchSchemaSubsetEnforcer struct {
 
 var _ colexecop.Operator = &BatchSchemaSubsetEnforcer{}
 
-// NewBatchSchemaSubsetEnforcer creates a new BatchSchemaSubsetEnforcer.
-// - subsetStartIdx and subsetEndIdx define the boundaries of the range of
-// columns that the projecting operator and its internal projecting operators
-// own.
 func NewBatchSchemaSubsetEnforcer(
 	allocator *colmem.Allocator,
 	input colexecop.Operator,
 	typs []*types.T,
 	subsetStartIdx, subsetEndIdx int,
 ) *BatchSchemaSubsetEnforcer {
+	__antithesis_instrumentation__.Notify(431761)
 	return &BatchSchemaSubsetEnforcer{
 		OneInputInitCloserHelper: colexecop.MakeOneInputInitCloserHelper(input),
 		allocator:                allocator,
@@ -191,29 +166,38 @@ func NewBatchSchemaSubsetEnforcer(
 	}
 }
 
-// Init implements the colexecop.Operator interface.
 func (e *BatchSchemaSubsetEnforcer) Init(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(431762)
 	if e.subsetStartIdx >= e.subsetEndIdx {
+		__antithesis_instrumentation__.Notify(431764)
 		colexecerror.InternalError(errors.AssertionFailedf("unexpectedly subsetStartIdx is not less than subsetEndIdx"))
+	} else {
+		__antithesis_instrumentation__.Notify(431765)
 	}
+	__antithesis_instrumentation__.Notify(431763)
 	e.OneInputInitCloserHelper.Init(ctx)
 }
 
-// Next implements the colexecop.Operator interface.
 func (e *BatchSchemaSubsetEnforcer) Next() coldata.Batch {
+	__antithesis_instrumentation__.Notify(431766)
 	b := e.Input.Next()
 	if b.Length() == 0 {
+		__antithesis_instrumentation__.Notify(431769)
 		return b
+	} else {
+		__antithesis_instrumentation__.Notify(431770)
 	}
+	__antithesis_instrumentation__.Notify(431767)
 	for i := e.subsetStartIdx; i < e.subsetEndIdx; i++ {
+		__antithesis_instrumentation__.Notify(431771)
 		e.allocator.MaybeAppendColumn(b, e.typs[i], i)
 	}
+	__antithesis_instrumentation__.Notify(431768)
 	return b
 }
 
-// SetTypes sets the types of this schema subset enforcer, and sets the end
-// of the range of enforced columns to the length of the input types.
 func (e *BatchSchemaSubsetEnforcer) SetTypes(typs []*types.T) {
+	__antithesis_instrumentation__.Notify(431772)
 	e.typs = typs
 	e.subsetEndIdx = len(typs)
 }

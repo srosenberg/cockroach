@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,44 +21,70 @@ type alterTableOwnerNode struct {
 	prefix catalog.ResolvedObjectPrefix
 }
 
-// AlterTableOwner sets the owner for a table, view, or sequence.
 func (p *planner) AlterTableOwner(ctx context.Context, n *tree.AlterTableOwner) (planNode, error) {
+	__antithesis_instrumentation__.Notify(244953)
 	if err := checkSchemaChangeEnabled(
 		ctx,
 		p.ExecCfg(),
 		"ALTER TABLE/VIEW/SEQUENCE OWNER",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244960)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244961)
 	}
+	__antithesis_instrumentation__.Notify(244954)
 
 	tn := n.Name.ToTableName()
 
-	// ALTER TABLE [table] OWNER TO command applies to VIEWS and SEQUENCES
-	// so we must resolve any table kind.
 	requiredTableKind := tree.ResolveAnyTableKind
 	if n.IsView {
+		__antithesis_instrumentation__.Notify(244962)
 		requiredTableKind = tree.ResolveRequireViewDesc
-	} else if n.IsSequence {
-		requiredTableKind = tree.ResolveRequireSequenceDesc
+	} else {
+		__antithesis_instrumentation__.Notify(244963)
+		if n.IsSequence {
+			__antithesis_instrumentation__.Notify(244964)
+			requiredTableKind = tree.ResolveRequireSequenceDesc
+		} else {
+			__antithesis_instrumentation__.Notify(244965)
+		}
 	}
+	__antithesis_instrumentation__.Notify(244955)
 	prefix, tableDesc, err := p.ResolveMutableTableDescriptor(
 		ctx, &tn, !n.IfExists, requiredTableKind)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244966)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244967)
 	}
+	__antithesis_instrumentation__.Notify(244956)
 	if tableDesc == nil {
-		// Noop.
-		return newZeroNode(nil /* columns */), nil
+		__antithesis_instrumentation__.Notify(244968)
+
+		return newZeroNode(nil), nil
+	} else {
+		__antithesis_instrumentation__.Notify(244969)
 	}
+	__antithesis_instrumentation__.Notify(244957)
 
 	if err := checkViewMatchesMaterialized(tableDesc, n.IsView, n.IsMaterialized); err != nil {
+		__antithesis_instrumentation__.Notify(244970)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244971)
 	}
+	__antithesis_instrumentation__.Notify(244958)
 
 	owner, err := n.Owner.ToSQLUsername(p.SessionData(), security.UsernameValidation)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(244972)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(244973)
 	}
+	__antithesis_instrumentation__.Notify(244959)
 	return &alterTableOwnerNode{
 		owner:  owner,
 		desc:   tableDesc,
@@ -76,6 +94,7 @@ func (p *planner) AlterTableOwner(ctx context.Context, n *tree.AlterTableOwner) 
 }
 
 func (n *alterTableOwnerNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(244974)
 	telemetry.Inc(n.n.TelemetryCounter())
 	ctx := params.ctx
 	p := params.p
@@ -84,14 +103,21 @@ func (n *alterTableOwnerNode) startExec(params runParams) error {
 	oldOwner := n.desc.GetPrivileges().Owner()
 
 	if err := p.checkCanAlterToNewOwner(ctx, tableDesc, newOwner); err != nil {
+		__antithesis_instrumentation__.Notify(244980)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244981)
 	}
+	__antithesis_instrumentation__.Notify(244975)
 
-	// Ensure the new owner has CREATE privilege on the table's schema.
 	if err := p.canCreateOnSchema(
 		ctx, tableDesc.GetParentSchemaID(), tableDesc.ParentID, newOwner, checkPublicSchema); err != nil {
+		__antithesis_instrumentation__.Notify(244982)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244983)
 	}
+	__antithesis_instrumentation__.Notify(244976)
 
 	tbNameWithSchema := tree.MakeTableNameWithSchema(
 		tree.Name(n.prefix.Database.GetName()),
@@ -100,31 +126,41 @@ func (n *alterTableOwnerNode) startExec(params runParams) error {
 	)
 
 	if err := p.setNewTableOwner(ctx, tableDesc, tbNameWithSchema, newOwner); err != nil {
+		__antithesis_instrumentation__.Notify(244984)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244985)
 	}
+	__antithesis_instrumentation__.Notify(244977)
 
-	// If the owner we want to set to is the current owner, do a no-op.
 	if newOwner == oldOwner {
+		__antithesis_instrumentation__.Notify(244986)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(244987)
 	}
+	__antithesis_instrumentation__.Notify(244978)
 
 	if err := p.writeSchemaChange(
 		ctx, tableDesc, descpb.InvalidMutationID, tree.AsStringWithFQNames(n.n, params.Ann()),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(244988)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(244989)
 	}
+	__antithesis_instrumentation__.Notify(244979)
 
 	return nil
 }
 
-// setNewTableOwner handles setting a new table owner.
-// Called in ALTER SCHEMA and REASSIGN OWNED BY.
 func (p *planner) setNewTableOwner(
 	ctx context.Context,
 	desc *tabledesc.Mutable,
 	tbNameWithSchema tree.TableName,
 	newOwner security.SQLUsername,
 ) error {
+	__antithesis_instrumentation__.Notify(244990)
 	privs := desc.GetPrivileges()
 	privs.SetOwner(newOwner)
 
@@ -136,11 +172,14 @@ func (p *planner) setNewTableOwner(
 		})
 }
 
-// ReadingOwnWrites implements the planNodeReadingOwnWrites interface.
-// This is because SET SCHEMA performs multiple KV operations on descriptors
-// and expects to see its own writes.
-func (n *alterTableOwnerNode) ReadingOwnWrites() {}
+func (n *alterTableOwnerNode) ReadingOwnWrites() { __antithesis_instrumentation__.Notify(244991) }
 
-func (n *alterTableOwnerNode) Next(runParams) (bool, error) { return false, nil }
-func (n *alterTableOwnerNode) Values() tree.Datums          { return tree.Datums{} }
-func (n *alterTableOwnerNode) Close(context.Context)        {}
+func (n *alterTableOwnerNode) Next(runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(244992)
+	return false, nil
+}
+func (n *alterTableOwnerNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(244993)
+	return tree.Datums{}
+}
+func (n *alterTableOwnerNode) Close(context.Context) { __antithesis_instrumentation__.Notify(244994) }

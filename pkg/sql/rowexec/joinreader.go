@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,78 +32,49 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// joinReaderState represents the state of the processor.
 type joinReaderState int
 
 const (
 	jrStateUnknown joinReaderState = iota
-	// jrReadingInput means that a batch of rows is being read from the input.
+
 	jrReadingInput
-	// jrPerformingLookup means we are performing an index lookup for the current
-	// input row batch.
+
 	jrPerformingLookup
-	// jrEmittingRows means we are emitting the results of the index lookup.
+
 	jrEmittingRows
-	// jrReadyToDrain means we are done but have not yet started draining.
+
 	jrReadyToDrain
 )
 
-// joinReaderType represents the type of join being used.
 type joinReaderType int
 
 const (
-	// lookupJoinReaderType means we are performing a lookup join.
 	lookupJoinReaderType joinReaderType = iota
-	// indexJoinReaderType means we are performing an index join.
+
 	indexJoinReaderType
 )
 
-// joinReader performs a lookup join between `input` and the specified `index`.
-// `lookupCols` specifies the input columns which will be used for the index
-// lookup.
 type joinReader struct {
 	joinerBase
 	strategy joinReaderStrategy
 
-	// runningState represents the state of the joinReader. This is in addition to
-	// ProcessorBase.State - the runningState is only relevant when
-	// ProcessorBase.State == StateRunning.
 	runningState joinReaderState
 
-	// memAcc is used to account for the memory used by the in-memory data
-	// structures used directly by the joinReader. Note that the joinReader
-	// strategies and span generators have separate accounts.
 	memAcc mon.BoundAccount
 
-	// accountedFor tracks the memory usage of scratchInputRows and
-	// groupingState that is currently registered with memAcc.
 	accountedFor struct {
-		// scratchInputRows accounts only for the slice of scratchInputRows, not
-		// the actual rows.
 		scratchInputRows int64
 		groupingState    int64
 	}
 
-	// limitedMemMonitor is a limited memory monitor to account for the memory
-	// used by buffered rows in joinReaderOrderingStrategy. If the memory limit is
-	// exceeded, the joinReader will spill to disk. diskMonitor is used to monitor
-	// the disk utilization in this case.
 	limitedMemMonitor *mon.BytesMonitor
 	diskMonitor       *mon.BytesMonitor
 
 	fetchSpec      descpb.IndexFetchSpec
 	splitFamilyIDs []descpb.FamilyID
 
-	// Indicates that the join reader should maintain the ordering of the input
-	// stream. This is applicable to both lookup joins and index joins. For lookup
-	// joins, maintaining order is expensive because it requires buffering. For
-	// index joins buffering is not required, but still, if ordering is not
-	// required, we'll change the output order to allow for some Pebble
-	// optimizations.
 	maintainOrdering bool
 
-	// fetcher wraps the row.Fetcher used to perform lookups. This enables the
-	// joinReader to wrap the fetcher with a stat collector when necessary.
 	fetcher            rowFetcher
 	alloc              tree.DatumAlloc
 	rowAlloc           rowenc.EncDatumRowAlloc
@@ -121,8 +84,6 @@ type joinReader struct {
 	keyLocking     descpb.ScanLockingStrength
 	lockWaitPolicy lock.WaitPolicy
 
-	// usesStreamer indicates whether the joinReader performs the lookups using
-	// the kvcoord.Streamer API.
 	usesStreamer bool
 	streamerInfo struct {
 		*kvstreamer.Streamer
@@ -135,70 +96,25 @@ type joinReader struct {
 
 	input execinfra.RowSource
 
-	// lookupCols and lookupExpr (and optionally remoteLookupExpr) represent the
-	// part of the join condition used to perform the lookup into the index.
-	// Exactly one of lookupCols or lookupExpr must be non-empty.
-	//
-	// lookupCols is used when the lookup condition is just a simple equality
-	// between input columns and index columns. In this case, lookupCols contains
-	// the column indexes in the input stream specifying the columns which match
-	// with the index columns. These are the equality columns of the join.
-	//
-	// lookupExpr is used when the lookup condition is more complicated than a
-	// simple equality between input columns and index columns. In this case,
-	// lookupExpr specifies the expression that will be used to construct the
-	// spans for each lookup. See comments in the spec for details about the
-	// supported expressions.
-	//
-	// If remoteLookupExpr is set, this is a locality optimized lookup join. In
-	// this case, lookupExpr contains the lookup join conditions targeting ranges
-	// located on local nodes (relative to the gateway region), and
-	// remoteLookupExpr contains the lookup join conditions targeting remote
-	// nodes. See comments in the spec for more details.
 	lookupCols       []uint32
 	lookupExpr       execinfrapb.ExprHelper
 	remoteLookupExpr execinfrapb.ExprHelper
 
-	// Batch size for fetches. Not a constant so we can lower for testing.
 	batchSizeBytes    int64
 	curBatchSizeBytes int64
 
-	// pendingRow tracks the row that has already been read from the input but
-	// was not included into the lookup batch because it would make the batch
-	// exceed batchSizeBytes.
 	pendingRow rowenc.EncDatumRow
 
-	// rowsRead is the total number of rows that this fetcher read from
-	// disk.
 	rowsRead int64
 
-	// curBatchRowsRead is the number of rows that this fetcher read from disk for
-	// the current batch.
 	curBatchRowsRead int64
 
-	// curBatchInputRowCount is the number of input rows in the current batch.
 	curBatchInputRowCount int64
 
-	// State variables for each batch of input rows.
 	scratchInputRows rowenc.EncDatumRows
-	// resetScratchWhenReadingInput tracks whether scratchInputRows needs to be
-	// reset the next time the joinReader is in the jrReadingInput state.
+
 	resetScratchWhenReadingInput bool
 
-	// Fields used when this is the second join in a pair of joins that are
-	// together implementing left {outer,semi,anti} joins where the first join
-	// produces false positives because it cannot evaluate the whole expression
-	// (or evaluate it accurately, as is sometimes the case with inverted
-	// indexes). The first join is running a left outer or inner join, and each
-	// group of rows seen by the second join correspond to one left row.
-
-	// The input rows in the current batch belong to groups which are tracked in
-	// groupingState. The last row from the last batch is in
-	// lastInputRowFromLastBatch -- it is tracked because we don't know if it
-	// was the last row in a group until we get to the next batch. NB:
-	// groupingState is used even when there is no grouping -- we simply have
-	// groups of one. The no grouping cases include the case of this join being
-	// the first join in the paired joins.
 	groupingState *inputBatchGroupingState
 
 	lastBatchState struct {
@@ -207,22 +123,12 @@ type joinReader struct {
 		lastGroupContinued bool
 	}
 
-	// Set to true when this is the first join in the paired-joins (see the
-	// detailed comment in the spec). This can never be true for index joins,
-	// and requires that the spec has MaintainOrdering set to true.
 	outputGroupContinuationForLeftRow bool
 
-	// lookupBatchBytesLimit controls the TargetBytes of lookup requests. If 0, a
-	// default will be used. Regardless of this value, bytes limits aren't always
-	// used.
 	lookupBatchBytesLimit rowinfra.BytesLimit
 
-	// limitHintHelper is used in limiting batches of input rows in the presence
-	// of hard and soft limits.
 	limitHintHelper execinfra.LimitHintHelper
 
-	// scanStats is collected from the trace after we finish doing work for this
-	// join.
 	scanStats execinfra.ScanStats
 }
 
@@ -232,8 +138,6 @@ var _ execinfra.OpNode = &joinReader{}
 
 const joinReaderProcName = "join reader"
 
-// ParallelizeMultiKeyLookupJoinsEnabled determines whether the joinReader
-// parallelizes KV batches in all cases.
 var ParallelizeMultiKeyLookupJoinsEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"sql.distsql.parallelize_multi_key_lookup_joins.enabled",
@@ -243,7 +147,6 @@ var ParallelizeMultiKeyLookupJoinsEnabled = settings.RegisterBoolSetting(
 	false,
 )
 
-// newJoinReader returns a new joinReader.
 func newJoinReader(
 	flowCtx *execinfra.FlowCtx,
 	processorID int32,
@@ -253,59 +156,101 @@ func newJoinReader(
 	output execinfra.RowReceiver,
 	readerType joinReaderType,
 ) (execinfra.RowSourcedProcessor, error) {
-	if spec.OutputGroupContinuationForLeftRow && !spec.MaintainOrdering {
+	__antithesis_instrumentation__.Notify(573157)
+	if spec.OutputGroupContinuationForLeftRow && func() bool {
+		__antithesis_instrumentation__.Notify(573174)
+		return !spec.MaintainOrdering == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(573175)
 		return nil, errors.AssertionFailedf(
 			"lookup join must maintain ordering since it is first join in paired-joins")
+	} else {
+		__antithesis_instrumentation__.Notify(573176)
 	}
+	__antithesis_instrumentation__.Notify(573158)
 	switch readerType {
 	case lookupJoinReaderType:
+		__antithesis_instrumentation__.Notify(573177)
 		switch spec.Type {
 		case descpb.InnerJoin, descpb.LeftOuterJoin, descpb.LeftSemiJoin, descpb.LeftAntiJoin:
+			__antithesis_instrumentation__.Notify(573183)
 		default:
+			__antithesis_instrumentation__.Notify(573184)
 			return nil, errors.AssertionFailedf("only inner and left {outer, semi, anti} lookup joins are supported, %s requested", spec.Type)
 		}
 	case indexJoinReaderType:
+		__antithesis_instrumentation__.Notify(573178)
 		if spec.Type != descpb.InnerJoin {
+			__antithesis_instrumentation__.Notify(573185)
 			return nil, errors.AssertionFailedf("only inner index joins are supported, %s requested", spec.Type)
+		} else {
+			__antithesis_instrumentation__.Notify(573186)
 		}
+		__antithesis_instrumentation__.Notify(573179)
 		if !spec.LookupExpr.Empty() {
+			__antithesis_instrumentation__.Notify(573187)
 			return nil, errors.AssertionFailedf("non-empty lookup expressions are not supported for index joins")
+		} else {
+			__antithesis_instrumentation__.Notify(573188)
 		}
+		__antithesis_instrumentation__.Notify(573180)
 		if !spec.RemoteLookupExpr.Empty() {
+			__antithesis_instrumentation__.Notify(573189)
 			return nil, errors.AssertionFailedf("non-empty remote lookup expressions are not supported for index joins")
+		} else {
+			__antithesis_instrumentation__.Notify(573190)
 		}
+		__antithesis_instrumentation__.Notify(573181)
 		if !spec.OnExpr.Empty() {
+			__antithesis_instrumentation__.Notify(573191)
 			return nil, errors.AssertionFailedf("non-empty ON expressions are not supported for index joins")
+		} else {
+			__antithesis_instrumentation__.Notify(573192)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(573182)
 	}
+	__antithesis_instrumentation__.Notify(573159)
 
 	var lookupCols []uint32
 	switch readerType {
 	case indexJoinReaderType:
+		__antithesis_instrumentation__.Notify(573193)
 		lookupCols = make([]uint32, len(spec.FetchSpec.KeyColumns()))
 		for i := range lookupCols {
+			__antithesis_instrumentation__.Notify(573196)
 			lookupCols[i] = uint32(i)
 		}
 	case lookupJoinReaderType:
+		__antithesis_instrumentation__.Notify(573194)
 		lookupCols = spec.LookupColumns
 	default:
+		__antithesis_instrumentation__.Notify(573195)
 		return nil, errors.Errorf("unsupported joinReaderType")
 	}
-	// The joiner has a choice to make between getting DistSender-level
-	// parallelism for its lookup batches and setting row and memory limits (due
-	// to implementation limitations, you can't have both at the same time). We
-	// choose parallelism when we know that each lookup returns at most one row:
-	// in case of indexJoinReaderType, we know that there's exactly one lookup
-	// row for each input row. Similarly, in case of spec.LookupColumnsAreKey,
-	// we know that there's at most one lookup row per input row. In other
-	// cases, we use limits.
-	shouldLimitBatches := !spec.LookupColumnsAreKey && readerType == lookupJoinReaderType
+	__antithesis_instrumentation__.Notify(573160)
+
+	shouldLimitBatches := !spec.LookupColumnsAreKey && func() bool {
+		__antithesis_instrumentation__.Notify(573197)
+		return readerType == lookupJoinReaderType == true
+	}() == true
 	if flowCtx.EvalCtx.SessionData().ParallelizeMultiKeyLookupJoinsEnabled {
+		__antithesis_instrumentation__.Notify(573198)
 		shouldLimitBatches = false
+	} else {
+		__antithesis_instrumentation__.Notify(573199)
 	}
-	useStreamer := flowCtx.Txn != nil && flowCtx.Txn.Type() == kv.LeafTxn &&
-		readerType == indexJoinReaderType &&
-		row.CanUseStreamer(flowCtx.EvalCtx.Ctx(), flowCtx.EvalCtx.Settings)
+	__antithesis_instrumentation__.Notify(573161)
+	useStreamer := flowCtx.Txn != nil && func() bool {
+		__antithesis_instrumentation__.Notify(573200)
+		return flowCtx.Txn.Type() == kv.LeafTxn == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(573201)
+		return readerType == indexJoinReaderType == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(573202)
+		return row.CanUseStreamer(flowCtx.EvalCtx.Ctx(), flowCtx.EvalCtx.Settings) == true
+	}() == true
 
 	jr := &joinReader{
 		fetchSpec:                         spec.FetchSpec,
@@ -323,39 +268,46 @@ func newJoinReader(
 		limitHintHelper:                   execinfra.MakeLimitHintHelper(spec.LimitHint, post),
 	}
 	if readerType != indexJoinReaderType {
+		__antithesis_instrumentation__.Notify(573203)
 		jr.groupingState = &inputBatchGroupingState{doGrouping: spec.LeftJoinWithPairedJoiner}
+	} else {
+		__antithesis_instrumentation__.Notify(573204)
 	}
+	__antithesis_instrumentation__.Notify(573162)
 
-	// Make sure the key column types are hydrated. The fetched column types will
-	// be hydrated in ProcessorBase.Init (via joinerBase.init).
 	resolver := flowCtx.NewTypeResolver(flowCtx.Txn)
 	for i := range spec.FetchSpec.KeyAndSuffixColumns {
+		__antithesis_instrumentation__.Notify(573205)
 		if err := typedesc.EnsureTypeIsHydrated(
 			flowCtx.EvalCtx.Ctx(), spec.FetchSpec.KeyAndSuffixColumns[i].Type, &resolver,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(573206)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(573207)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573163)
 
 	var leftTypes []*types.T
 	switch readerType {
 	case indexJoinReaderType:
-		// Index join performs a join between a secondary index, the `input`,
-		// and the primary index of the same table, `desc`, to retrieve columns
-		// which are not stored in the secondary index. It outputs the looked
-		// up rows as is (meaning that the output rows before post-processing
-		// will contain all columns from the table) whereas the columns that
-		// came from the secondary index (input rows) are ignored. As a result,
-		// we leave leftTypes as empty.
+		__antithesis_instrumentation__.Notify(573208)
+
 	case lookupJoinReaderType:
+		__antithesis_instrumentation__.Notify(573209)
 		leftTypes = input.OutputTypes()
 	default:
+		__antithesis_instrumentation__.Notify(573210)
 		return nil, errors.Errorf("unsupported joinReaderType")
 	}
+	__antithesis_instrumentation__.Notify(573164)
 	rightTypes := make([]*types.T, len(spec.FetchSpec.FetchedColumns))
 	for i := range rightTypes {
+		__antithesis_instrumentation__.Notify(573211)
 		rightTypes[i] = spec.FetchSpec.FetchedColumns[i].Type
 	}
+	__antithesis_instrumentation__.Notify(573165)
 
 	if err := jr.joinerBase.init(
 		jr,
@@ -371,22 +323,25 @@ func newJoinReader(
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{jr.input},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
-				// We need to generate metadata before closing the processor
-				// because InternalClose() updates jr.Ctx to the "original"
-				// context.
+				__antithesis_instrumentation__.Notify(573212)
+
 				trailingMeta := jr.generateMeta()
 				jr.close()
 				return trailingMeta
 			},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(573213)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(573214)
 	}
+	__antithesis_instrumentation__.Notify(573166)
 
 	var fetcher row.Fetcher
 	if err := fetcher.Init(
 		flowCtx.EvalCtx.Context,
-		false, /* reverse */
+		false,
 		spec.LockingStrength,
 		spec.LockingWaitPolicy,
 		flowCtx.EvalCtx.SessionData().LockTimeout,
@@ -394,108 +349,141 @@ func newJoinReader(
 		flowCtx.EvalCtx.Mon,
 		&spec.FetchSpec,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(573215)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(573216)
 	}
+	__antithesis_instrumentation__.Notify(573167)
 
 	if execinfra.ShouldCollectStats(flowCtx.EvalCtx.Ctx(), flowCtx) {
+		__antithesis_instrumentation__.Notify(573217)
 		jr.input = newInputStatCollector(jr.input)
 		jr.fetcher = newRowFetcherStatCollector(&fetcher)
 		jr.ExecStatsForTrace = jr.execStatsForTrace
 	} else {
+		__antithesis_instrumentation__.Notify(573218)
 		jr.fetcher = &fetcher
 	}
+	__antithesis_instrumentation__.Notify(573168)
 
 	if !spec.LookupExpr.Empty() {
+		__antithesis_instrumentation__.Notify(573219)
 		lookupExprTypes := make([]*types.T, 0, len(leftTypes)+len(rightTypes))
 		lookupExprTypes = append(lookupExprTypes, leftTypes...)
 		lookupExprTypes = append(lookupExprTypes, rightTypes...)
 
 		semaCtx := flowCtx.NewSemaContext(flowCtx.EvalCtx.Txn)
 		if err := jr.lookupExpr.Init(spec.LookupExpr, lookupExprTypes, semaCtx, jr.EvalCtx); err != nil {
+			__antithesis_instrumentation__.Notify(573221)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(573222)
 		}
+		__antithesis_instrumentation__.Notify(573220)
 		if !spec.RemoteLookupExpr.Empty() {
+			__antithesis_instrumentation__.Notify(573223)
 			if err := jr.remoteLookupExpr.Init(
 				spec.RemoteLookupExpr, lookupExprTypes, semaCtx, jr.EvalCtx,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(573224)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(573225)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(573226)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573227)
 	}
+	__antithesis_instrumentation__.Notify(573169)
 
-	// We will create a memory monitor with a hard memory limit since the join
-	// reader doesn't know how to spill its in-memory state to disk (separate
-	// from the buffered rows). It is most likely that if the target limit is
-	// really low then we're in a test scenario and we don't want to error out.
 	minMemoryLimit := int64(8 << 20)
-	// Streamer can handle lower memory limit and doing so makes testing at
-	// the limits more efficient.
+
 	if jr.usesStreamer {
+		__antithesis_instrumentation__.Notify(573228)
 		minMemoryLimit = 100 << 10
+	} else {
+		__antithesis_instrumentation__.Notify(573229)
 	}
+	__antithesis_instrumentation__.Notify(573170)
 	memoryLimit := execinfra.GetWorkMemLimit(flowCtx)
 	if memoryLimit < minMemoryLimit {
+		__antithesis_instrumentation__.Notify(573230)
 		memoryLimit = minMemoryLimit
+	} else {
+		__antithesis_instrumentation__.Notify(573231)
 	}
+	__antithesis_instrumentation__.Notify(573171)
 
-	// Initialize memory monitors and bound account for data structures in the joinReader.
 	jr.MemMonitor = mon.NewMonitorInheritWithLimit(
-		"joinreader-mem" /* name */, memoryLimit, flowCtx.EvalCtx.Mon,
+		"joinreader-mem", memoryLimit, flowCtx.EvalCtx.Mon,
 	)
 	jr.MemMonitor.Start(flowCtx.EvalCtx.Ctx(), flowCtx.EvalCtx.Mon, mon.BoundAccount{})
 	jr.memAcc = jr.MemMonitor.MakeBoundAccount()
 
 	if err := jr.initJoinReaderStrategy(flowCtx, rightTypes, readerType); err != nil {
+		__antithesis_instrumentation__.Notify(573232)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(573233)
 	}
+	__antithesis_instrumentation__.Notify(573172)
 	jr.batchSizeBytes = jr.strategy.getLookupRowsBatchSizeHint(flowCtx.EvalCtx.SessionData())
 
 	if jr.usesStreamer {
-		// When using the Streamer API, we want to limit the batch size hint to
-		// at most a quarter of the workmem limit. Note that it is ok if it is
-		// set to zero since the joinReader will always include at least one row
-		// into the lookup batch.
+		__antithesis_instrumentation__.Notify(573234)
+
 		if jr.batchSizeBytes > memoryLimit/4 {
+			__antithesis_instrumentation__.Notify(573236)
 			jr.batchSizeBytes = memoryLimit / 4
+		} else {
+			__antithesis_instrumentation__.Notify(573237)
 		}
-		// jr.batchSizeBytes will be used up by the input batch, and we'll give
-		// everything else to the streamer budget.
+		__antithesis_instrumentation__.Notify(573235)
+
 		jr.streamerInfo.budgetLimit = memoryLimit - jr.batchSizeBytes
-		// We need to use an unlimited monitor for the streamer's budget since
-		// the streamer itself is responsible for staying under the limit.
+
 		jr.streamerInfo.unlimitedMemMonitor = mon.NewMonitorInheritWithLimit(
-			"joinreader-streamer-unlimited" /* name */, math.MaxInt64, flowCtx.EvalCtx.Mon,
+			"joinreader-streamer-unlimited", math.MaxInt64, flowCtx.EvalCtx.Mon,
 		)
 		jr.streamerInfo.unlimitedMemMonitor.Start(flowCtx.EvalCtx.Ctx(), flowCtx.EvalCtx.Mon, mon.BoundAccount{})
 		jr.streamerInfo.budgetAcc = jr.streamerInfo.unlimitedMemMonitor.MakeBoundAccount()
 		jr.streamerInfo.maxKeysPerRow = int(jr.fetchSpec.MaxKeysPerRow)
 	} else {
-		// When not using the Streamer API, we want to limit the batch size hint
-		// to at most half of the workmem limit. Note that it is ok if it is set
-		// to zero since the joinReader will always include at least one row
-		// into the lookup batch.
+		__antithesis_instrumentation__.Notify(573238)
+
 		if jr.batchSizeBytes > memoryLimit/2 {
+			__antithesis_instrumentation__.Notify(573239)
 			jr.batchSizeBytes = memoryLimit / 2
+		} else {
+			__antithesis_instrumentation__.Notify(573240)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573173)
 
-	// TODO(radu): verify the input types match the index key types
 	return jr, nil
 }
 
 func (jr *joinReader) initJoinReaderStrategy(
 	flowCtx *execinfra.FlowCtx, typs []*types.T, readerType joinReaderType,
 ) error {
+	__antithesis_instrumentation__.Notify(573241)
 	strategyMemAcc := jr.MemMonitor.MakeBoundAccount()
 	spanGeneratorMemAcc := jr.MemMonitor.MakeBoundAccount()
 	var generator joinReaderSpanGenerator
 	if jr.lookupExpr.Expr == nil {
+		__antithesis_instrumentation__.Notify(573246)
 		var keyToInputRowIndices map[string][]int
-		// See the comment in defaultSpanGenerator on why we don't need
-		// this map for index joins.
+
 		if readerType != indexJoinReaderType {
+			__antithesis_instrumentation__.Notify(573249)
 			keyToInputRowIndices = make(map[string][]int)
+		} else {
+			__antithesis_instrumentation__.Notify(573250)
 		}
+		__antithesis_instrumentation__.Notify(573247)
 		defGen := &defaultSpanGenerator{}
 		if err := defGen.init(
 			flowCtx.EvalCtx,
@@ -506,30 +494,36 @@ func (jr *joinReader) initJoinReaderStrategy(
 			jr.lookupCols,
 			&spanGeneratorMemAcc,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(573251)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(573252)
 		}
+		__antithesis_instrumentation__.Notify(573248)
 		generator = defGen
 	} else {
-		// Since jr.lookupExpr is set, we need to use either multiSpanGenerator or
-		// localityOptimizedSpanGenerator, which support looking up multiple spans
-		// per input row.
+		__antithesis_instrumentation__.Notify(573253)
 
-		// Map fetched columns to index key columns.
 		var fetchedOrdToIndexKeyOrd util.FastIntMap
 		fullColumns := jr.fetchSpec.KeyFullColumns()
 		for keyOrdinal := range fullColumns {
+			__antithesis_instrumentation__.Notify(573255)
 			keyColID := fullColumns[keyOrdinal].ColumnID
 			for fetchedOrdinal := range jr.fetchSpec.FetchedColumns {
+				__antithesis_instrumentation__.Notify(573256)
 				if jr.fetchSpec.FetchedColumns[fetchedOrdinal].ColumnID == keyColID {
+					__antithesis_instrumentation__.Notify(573257)
 					fetchedOrdToIndexKeyOrd.Set(fetchedOrdinal, keyOrdinal)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(573258)
 				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(573254)
 
-		// If jr.remoteLookupExpr is set, this is a locality optimized lookup join
-		// and we need to use localityOptimizedSpanGenerator.
 		if jr.remoteLookupExpr.Expr == nil {
+			__antithesis_instrumentation__.Notify(573259)
 			multiSpanGen := &multiSpanGenerator{}
 			if err := multiSpanGen.init(
 				flowCtx.EvalCtx,
@@ -541,10 +535,15 @@ func (jr *joinReader) initJoinReaderStrategy(
 				fetchedOrdToIndexKeyOrd,
 				&spanGeneratorMemAcc,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(573261)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(573262)
 			}
+			__antithesis_instrumentation__.Notify(573260)
 			generator = multiSpanGen
 		} else {
+			__antithesis_instrumentation__.Notify(573263)
 			localityOptSpanGen := &localityOptimizedSpanGenerator{}
 			remoteSpanGenMemAcc := jr.MemMonitor.MakeBoundAccount()
 			if err := localityOptSpanGen.init(
@@ -559,41 +558,56 @@ func (jr *joinReader) initJoinReaderStrategy(
 				&spanGeneratorMemAcc,
 				&remoteSpanGenMemAcc,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(573265)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(573266)
 			}
+			__antithesis_instrumentation__.Notify(573264)
 			generator = localityOptSpanGen
 		}
 	}
+	__antithesis_instrumentation__.Notify(573242)
 
 	if readerType == indexJoinReaderType {
+		__antithesis_instrumentation__.Notify(573267)
 		jr.strategy = &joinReaderIndexJoinStrategy{
 			joinerBase:              &jr.joinerBase,
 			joinReaderSpanGenerator: generator,
 			memAcc:                  &strategyMemAcc,
 		}
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(573268)
 	}
+	__antithesis_instrumentation__.Notify(573243)
 
 	if !jr.maintainOrdering {
+		__antithesis_instrumentation__.Notify(573269)
 		jr.strategy = &joinReaderNoOrderingStrategy{
 			joinerBase:              &jr.joinerBase,
 			joinReaderSpanGenerator: generator,
-			isPartialJoin:           jr.joinType == descpb.LeftSemiJoin || jr.joinType == descpb.LeftAntiJoin,
-			groupingState:           jr.groupingState,
-			memAcc:                  &strategyMemAcc,
+			isPartialJoin: jr.joinType == descpb.LeftSemiJoin || func() bool {
+				__antithesis_instrumentation__.Notify(573270)
+				return jr.joinType == descpb.LeftAntiJoin == true
+			}() == true,
+			groupingState: jr.groupingState,
+			memAcc:        &strategyMemAcc,
 		}
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(573271)
 	}
+	__antithesis_instrumentation__.Notify(573244)
 
 	ctx := flowCtx.EvalCtx.Ctx()
-	// Limit the memory use by creating a child monitor with a hard limit.
-	// joinReader will overflow to disk if this limit is not enough.
+
 	limit := execinfra.GetWorkMemLimit(flowCtx)
-	// Initialize memory monitors and row container for looked up rows.
+
 	jr.limitedMemMonitor = execinfra.NewLimitedMonitor(ctx, jr.MemMonitor, flowCtx, "joinreader-limited")
 	jr.diskMonitor = execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, "joinreader-disk")
 	drc := rowcontainer.NewDiskBackedNumberedRowContainer(
-		false, /* deDup */
+		false,
 		typs,
 		jr.EvalCtx,
 		jr.FlowCtx.Cfg.TempStorage,
@@ -601,14 +615,20 @@ func (jr *joinReader) initJoinReaderStrategy(
 		jr.diskMonitor,
 	)
 	if limit < mon.DefaultPoolAllocationSize {
-		// The memory limit is too low for caching, most likely to force disk
-		// spilling for testing.
+		__antithesis_instrumentation__.Notify(573272)
+
 		drc.DisableCache = true
+	} else {
+		__antithesis_instrumentation__.Notify(573273)
 	}
+	__antithesis_instrumentation__.Notify(573245)
 	jr.strategy = &joinReaderOrderingStrategy{
-		joinerBase:                        &jr.joinerBase,
-		joinReaderSpanGenerator:           generator,
-		isPartialJoin:                     jr.joinType == descpb.LeftSemiJoin || jr.joinType == descpb.LeftAntiJoin,
+		joinerBase:              &jr.joinerBase,
+		joinReaderSpanGenerator: generator,
+		isPartialJoin: jr.joinType == descpb.LeftSemiJoin || func() bool {
+			__antithesis_instrumentation__.Notify(573274)
+			return jr.joinType == descpb.LeftAntiJoin == true
+		}() == true,
 		lookedUpRows:                      drc,
 		groupingState:                     jr.groupingState,
 		outputGroupContinuationForLeftRow: jr.outputGroupContinuationForLeftRow,
@@ -617,353 +637,495 @@ func (jr *joinReader) initJoinReaderStrategy(
 	return nil
 }
 
-// SetBatchSizeBytes sets the desired batch size. It should only be used in tests.
 func (jr *joinReader) SetBatchSizeBytes(batchSize int64) {
+	__antithesis_instrumentation__.Notify(573275)
 	jr.batchSizeBytes = batchSize
 }
 
-// Spilled returns whether the joinReader spilled to disk.
 func (jr *joinReader) Spilled() bool {
+	__antithesis_instrumentation__.Notify(573276)
 	return jr.strategy.spilled()
 }
 
-// Next is part of the RowSource interface.
 func (jr *joinReader) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
-	// The lookup join is implemented as follows:
-	// - Read the input rows in batches.
-	// - For each batch, map the rows onto index keys and perform an index
-	//   lookup for those keys. Note that multiple rows may map to the same key.
-	// - Retrieve the index lookup results in batches, since the index scan may
-	//   return more rows than the input batch size.
-	// - Join the index rows with the corresponding input rows and buffer the
-	//   results in jr.toEmit.
+	__antithesis_instrumentation__.Notify(573277)
+
 	for jr.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(573279)
 		var row rowenc.EncDatumRow
 		var meta *execinfrapb.ProducerMetadata
 		switch jr.runningState {
 		case jrReadingInput:
+			__antithesis_instrumentation__.Notify(573283)
 			jr.runningState, row, meta = jr.readInput()
 		case jrPerformingLookup:
+			__antithesis_instrumentation__.Notify(573284)
 			jr.runningState, meta = jr.performLookup()
 		case jrEmittingRows:
+			__antithesis_instrumentation__.Notify(573285)
 			jr.runningState, row, meta = jr.emitRow()
 		case jrReadyToDrain:
+			__antithesis_instrumentation__.Notify(573286)
 			jr.MoveToDraining(nil)
 			meta = jr.DrainHelper()
 			jr.runningState = jrStateUnknown
 		default:
+			__antithesis_instrumentation__.Notify(573287)
 			log.Fatalf(jr.Ctx, "unsupported state: %d", jr.runningState)
 		}
-		if row == nil && meta == nil {
+		__antithesis_instrumentation__.Notify(573280)
+		if row == nil && func() bool {
+			__antithesis_instrumentation__.Notify(573288)
+			return meta == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573289)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(573290)
 		}
+		__antithesis_instrumentation__.Notify(573281)
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(573291)
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(573292)
 		}
+		__antithesis_instrumentation__.Notify(573282)
 		if outRow := jr.ProcessRowHelper(row); outRow != nil {
+			__antithesis_instrumentation__.Notify(573293)
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(573294)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573278)
 	return nil, jr.DrainHelper()
 }
 
-// addWorkmemHint checks whether err is non-nil, and if so, wraps it with a hint
-// to increase workmem limit. It is expected that err was returned by the memory
-// accounting system.
 func addWorkmemHint(err error) error {
+	__antithesis_instrumentation__.Notify(573295)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(573297)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(573298)
 	}
+	__antithesis_instrumentation__.Notify(573296)
 	return errors.WithHint(
 		err, "consider increasing sql.distsql.temp_storage.workmem cluster"+
 			" setting or distsql_workmem session variable",
 	)
 }
 
-// readInput reads the next batch of input rows and starts an index scan.
-// It can sometimes emit a single row on behalf of the previous batch.
 func (jr *joinReader) readInput() (
 	joinReaderState,
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(573299)
 	if jr.groupingState != nil {
-		// Lookup join.
+		__antithesis_instrumentation__.Notify(573313)
+
 		if jr.groupingState.initialized {
-			// State is from last batch.
+			__antithesis_instrumentation__.Notify(573314)
+
 			jr.lastBatchState.lastGroupMatched = jr.groupingState.lastGroupMatched()
 			jr.groupingState.reset()
 			jr.lastBatchState.lastGroupContinued = false
+		} else {
+			__antithesis_instrumentation__.Notify(573315)
 		}
-		// Else, returning meta interrupted reading the input batch, so we already
-		// did the reset for this batch.
+
+	} else {
+		__antithesis_instrumentation__.Notify(573316)
 	}
+	__antithesis_instrumentation__.Notify(573300)
 
 	if jr.resetScratchWhenReadingInput {
-		// Deeply reset the rows from the previous input batch.
+		__antithesis_instrumentation__.Notify(573317)
+
 		for i := range jr.scratchInputRows {
+			__antithesis_instrumentation__.Notify(573320)
 			jr.scratchInputRows[i] = nil
 		}
-		// We've just discarded the old rows, so we have to update the memory
-		// accounting accordingly.
+		__antithesis_instrumentation__.Notify(573318)
+
 		newSz := jr.accountedFor.scratchInputRows + jr.accountedFor.groupingState
 		if err := jr.memAcc.ResizeTo(jr.Ctx, newSz); err != nil {
+			__antithesis_instrumentation__.Notify(573321)
 			jr.MoveToDraining(addWorkmemHint(err))
 			return jrStateUnknown, nil, jr.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(573322)
 		}
+		__antithesis_instrumentation__.Notify(573319)
 		jr.scratchInputRows = jr.scratchInputRows[:0]
 		jr.resetScratchWhenReadingInput = false
+	} else {
+		__antithesis_instrumentation__.Notify(573323)
 	}
+	__antithesis_instrumentation__.Notify(573301)
 
-	// Read the next batch of input rows.
 	for {
+		__antithesis_instrumentation__.Notify(573324)
 		var encDatumRow rowenc.EncDatumRow
 		var rowSize int64
 		if jr.pendingRow == nil {
-			// There is no pending row, so we have to get the next one from the
-			// input.
+			__antithesis_instrumentation__.Notify(573328)
+
 			var meta *execinfrapb.ProducerMetadata
 			encDatumRow, meta = jr.input.Next()
 			if meta != nil {
+				__antithesis_instrumentation__.Notify(573331)
 				if meta.Err != nil {
-					jr.MoveToDraining(nil /* err */)
+					__antithesis_instrumentation__.Notify(573334)
+					jr.MoveToDraining(nil)
 					return jrStateUnknown, nil, meta
+				} else {
+					__antithesis_instrumentation__.Notify(573335)
 				}
+				__antithesis_instrumentation__.Notify(573332)
 
 				if err := jr.performMemoryAccounting(); err != nil {
+					__antithesis_instrumentation__.Notify(573336)
 					jr.MoveToDraining(err)
 					return jrStateUnknown, nil, meta
+				} else {
+					__antithesis_instrumentation__.Notify(573337)
 				}
+				__antithesis_instrumentation__.Notify(573333)
 
 				return jrReadingInput, nil, meta
+			} else {
+				__antithesis_instrumentation__.Notify(573338)
 			}
+			__antithesis_instrumentation__.Notify(573329)
 			if encDatumRow == nil {
+				__antithesis_instrumentation__.Notify(573339)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(573340)
 			}
+			__antithesis_instrumentation__.Notify(573330)
 			rowSize = int64(encDatumRow.Size())
-			if jr.curBatchSizeBytes > 0 && jr.curBatchSizeBytes+rowSize > jr.batchSizeBytes {
-				// Adding this row to the current batch will make the batch
-				// exceed jr.batchSizeBytes. Additionally, the batch is not
-				// empty, so we'll store this row as "pending" and will include
-				// it into the next batch.
-				//
-				// The batch being non-empty is important because in case it was
-				// empty and we decided to not include this (first) row into it,
-				// then we'd be stalled - we'd generate no spans, so we'd not
-				// perform the lookup of anything.
+			if jr.curBatchSizeBytes > 0 && func() bool {
+				__antithesis_instrumentation__.Notify(573341)
+				return jr.curBatchSizeBytes+rowSize > jr.batchSizeBytes == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(573342)
+
 				jr.pendingRow = encDatumRow
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(573343)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(573344)
 			encDatumRow = jr.pendingRow
 			jr.pendingRow = nil
 			rowSize = int64(encDatumRow.Size())
 		}
+		__antithesis_instrumentation__.Notify(573325)
 		jr.curBatchSizeBytes += rowSize
 		if jr.groupingState != nil {
-			// Lookup Join.
+			__antithesis_instrumentation__.Notify(573345)
+
 			if err := jr.processContinuationValForRow(encDatumRow); err != nil {
+				__antithesis_instrumentation__.Notify(573346)
 				jr.MoveToDraining(err)
 				return jrStateUnknown, nil, jr.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(573347)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(573348)
 		}
-		// Keep the copy of the row after accounting for its memory usage.
-		//
-		// We need to subtract the EncDatumRowOverhead because that is already
-		// tracked in jr.accountedFor.scratchInputRows.
+		__antithesis_instrumentation__.Notify(573326)
+
 		if err := jr.memAcc.Grow(jr.Ctx, rowSize-int64(rowenc.EncDatumRowOverhead)); err != nil {
+			__antithesis_instrumentation__.Notify(573349)
 			jr.MoveToDraining(addWorkmemHint(err))
 			return jrStateUnknown, nil, jr.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(573350)
 		}
+		__antithesis_instrumentation__.Notify(573327)
 		jr.scratchInputRows = append(jr.scratchInputRows, jr.rowAlloc.CopyRow(encDatumRow))
 
-		if l := jr.limitHintHelper.LimitHint(); l != 0 && l == int64(len(jr.scratchInputRows)) {
+		if l := jr.limitHintHelper.LimitHint(); l != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(573351)
+			return l == int64(len(jr.scratchInputRows)) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573352)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(573353)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573302)
 
 	if err := jr.performMemoryAccounting(); err != nil {
+		__antithesis_instrumentation__.Notify(573354)
 		jr.MoveToDraining(err)
 		return jrStateUnknown, nil, jr.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(573355)
 	}
+	__antithesis_instrumentation__.Notify(573303)
 
 	var outRow rowenc.EncDatumRow
-	// Finished reading the input batch.
+
 	if jr.groupingState != nil {
-		// Lookup join.
+		__antithesis_instrumentation__.Notify(573356)
+
 		outRow = jr.allContinuationValsProcessed()
+	} else {
+		__antithesis_instrumentation__.Notify(573357)
 	}
+	__antithesis_instrumentation__.Notify(573304)
 
 	if len(jr.scratchInputRows) == 0 {
+		__antithesis_instrumentation__.Notify(573358)
 		log.VEventf(jr.Ctx, 1, "no more input rows")
 		if outRow != nil {
+			__antithesis_instrumentation__.Notify(573360)
 			return jrReadyToDrain, outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(573361)
 		}
-		// We're done.
+		__antithesis_instrumentation__.Notify(573359)
+
 		jr.MoveToDraining(nil)
 		return jrStateUnknown, nil, jr.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(573362)
 	}
+	__antithesis_instrumentation__.Notify(573305)
 	log.VEventf(jr.Ctx, 1, "read %d input rows", len(jr.scratchInputRows))
 
-	if jr.groupingState != nil && len(jr.scratchInputRows) > 0 {
+	if jr.groupingState != nil && func() bool {
+		__antithesis_instrumentation__.Notify(573363)
+		return len(jr.scratchInputRows) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(573364)
 		jr.updateGroupingStateForNonEmptyBatch()
+	} else {
+		__antithesis_instrumentation__.Notify(573365)
 	}
+	__antithesis_instrumentation__.Notify(573306)
 
 	if err := jr.limitHintHelper.ReadSomeRows(int64(len(jr.scratchInputRows))); err != nil {
+		__antithesis_instrumentation__.Notify(573366)
 		jr.MoveToDraining(err)
 		return jrStateUnknown, nil, jr.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(573367)
 	}
+	__antithesis_instrumentation__.Notify(573307)
 
-	// Figure out what key spans we need to lookup.
 	spans, err := jr.strategy.processLookupRows(jr.scratchInputRows)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(573368)
 		jr.MoveToDraining(err)
 		return jrStateUnknown, nil, jr.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(573369)
 	}
+	__antithesis_instrumentation__.Notify(573308)
 	jr.curBatchInputRowCount = int64(len(jr.scratchInputRows))
 	jr.resetScratchWhenReadingInput = true
 	jr.curBatchSizeBytes = 0
 	jr.curBatchRowsRead = 0
 	if len(spans) == 0 {
-		// All of the input rows were filtered out. Skip the index lookup.
-		return jrEmittingRows, outRow, nil
-	}
+		__antithesis_instrumentation__.Notify(573370)
 
-	// Sort the spans by key order, except for a special case: an index-join with
-	// maintainOrdering. That case can be executed efficiently if we don't sort:
-	// we know that, for an index-join, each input row corresponds to exactly one
-	// lookup row, and vice-versa. So, `spans` has one span per input/lookup-row,
-	// in the right order. joinReaderIndexJoinStrategy.processLookedUpRow()
-	// immediately emits each looked up row (it never buffers or reorders rows)
-	// so, if ordering matters, we cannot sort the spans here.
-	//
-	// In every other case than the one discussed above, we sort the spans because
-	// a) if we sort, we can then configure the fetcher below with a limit (the
-	//    fetcher only accepts a limit if the spans are sorted), and
-	// b) Pebble has various optimizations for Seeks in sorted order.
-	if jr.readerType == indexJoinReaderType && jr.maintainOrdering {
-		// Assert that the index join doesn't have shouldLimitBatches set. Since we
-		// didn't sort above, the fetcher doesn't support a limit.
+		return jrEmittingRows, outRow, nil
+	} else {
+		__antithesis_instrumentation__.Notify(573371)
+	}
+	__antithesis_instrumentation__.Notify(573309)
+
+	if jr.readerType == indexJoinReaderType && func() bool {
+		__antithesis_instrumentation__.Notify(573372)
+		return jr.maintainOrdering == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(573373)
+
 		if jr.shouldLimitBatches {
+			__antithesis_instrumentation__.Notify(573374)
 			err := errors.AssertionFailedf("index join configured with both maintainOrdering and " +
 				"shouldLimitBatched; this shouldn't have happened as the implementation doesn't support it")
 			jr.MoveToDraining(err)
 			return jrStateUnknown, nil, jr.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(573375)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(573376)
 		sort.Sort(spans)
 	}
+	__antithesis_instrumentation__.Notify(573310)
 
 	log.VEventf(jr.Ctx, 1, "scanning %d spans", len(spans))
-	// Note that the fetcher takes ownership of the spans slice - it will modify
-	// it and perform the memory accounting. We don't care about the
-	// modification here, but we want to be conscious about the memory
-	// accounting - we don't double count for any memory of spans because the
-	// joinReaderStrategy doesn't account for any memory used by the spans.
+
 	if jr.usesStreamer {
+		__antithesis_instrumentation__.Notify(573377)
 		var kvBatchFetcher *row.TxnKVStreamer
 		kvBatchFetcher, err = row.NewTxnKVStreamer(jr.Ctx, jr.streamerInfo.Streamer, spans, jr.keyLocking)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573379)
 			jr.MoveToDraining(err)
 			return jrStateUnknown, nil, jr.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(573380)
 		}
+		__antithesis_instrumentation__.Notify(573378)
 		err = jr.fetcher.StartScanFrom(jr.Ctx, kvBatchFetcher, jr.FlowCtx.TraceKV)
 	} else {
+		__antithesis_instrumentation__.Notify(573381)
 		var bytesLimit rowinfra.BytesLimit
 		if !jr.shouldLimitBatches {
+			__antithesis_instrumentation__.Notify(573383)
 			bytesLimit = rowinfra.NoBytesLimit
 		} else {
+			__antithesis_instrumentation__.Notify(573384)
 			bytesLimit = jr.lookupBatchBytesLimit
 			if jr.lookupBatchBytesLimit == 0 {
+				__antithesis_instrumentation__.Notify(573385)
 				bytesLimit = rowinfra.DefaultBatchBytesLimit
+			} else {
+				__antithesis_instrumentation__.Notify(573386)
 			}
 		}
+		__antithesis_instrumentation__.Notify(573382)
 		err = jr.fetcher.StartScan(
 			jr.Ctx, jr.FlowCtx.Txn, spans, bytesLimit, rowinfra.NoRowLimit,
 			jr.FlowCtx.TraceKV, jr.EvalCtx.TestingKnobs.ForceProductionBatchSizes,
 		)
 	}
+	__antithesis_instrumentation__.Notify(573311)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(573387)
 		jr.MoveToDraining(err)
 		return jrStateUnknown, nil, jr.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(573388)
 	}
+	__antithesis_instrumentation__.Notify(573312)
 
 	return jrPerformingLookup, outRow, nil
 }
 
-// performLookup reads the next batch of index rows.
 func (jr *joinReader) performLookup() (joinReaderState, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(573389)
 	for {
-		// Construct a "partial key" of nCols, so we can match the key format that
-		// was stored in our keyToInputRowIndices map. This matches the format that
-		// is output in jr.generateSpan.
+		__antithesis_instrumentation__.Notify(573392)
+
 		var key roachpb.Key
-		// Index joins do not look at this key parameter so don't bother populating
-		// it, since it is not cheap for long keys.
+
 		if jr.readerType != indexJoinReaderType {
+			__antithesis_instrumentation__.Notify(573396)
 			var err error
 			key, err = jr.fetcher.PartialKey(jr.strategy.getMaxLookupKeyCols())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(573397)
 				jr.MoveToDraining(err)
 				return jrStateUnknown, jr.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(573398)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(573399)
 		}
+		__antithesis_instrumentation__.Notify(573393)
 
-		// Fetch the next row and tell the strategy to process it.
 		lookedUpRow, err := jr.fetcher.NextRow(jr.Ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573400)
 			jr.MoveToDraining(scrub.UnwrapScrubError(err))
 			return jrStateUnknown, jr.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(573401)
 		}
+		__antithesis_instrumentation__.Notify(573394)
 		if lookedUpRow == nil {
-			// Done with this input batch.
+			__antithesis_instrumentation__.Notify(573402)
+
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(573403)
 		}
+		__antithesis_instrumentation__.Notify(573395)
 		jr.rowsRead++
 		jr.curBatchRowsRead++
 
 		if nextState, err := jr.strategy.processLookedUpRow(jr.Ctx, lookedUpRow, key); err != nil {
+			__antithesis_instrumentation__.Notify(573404)
 			jr.MoveToDraining(err)
 			return jrStateUnknown, jr.DrainHelper()
-		} else if nextState != jrPerformingLookup {
-			return nextState, nil
+		} else {
+			__antithesis_instrumentation__.Notify(573405)
+			if nextState != jrPerformingLookup {
+				__antithesis_instrumentation__.Notify(573406)
+				return nextState, nil
+			} else {
+				__antithesis_instrumentation__.Notify(573407)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(573390)
 
-	// If this is a locality optimized lookup join and we haven't yet generated
-	// remote spans, check whether all input rows in the batch had local matches.
-	// If not all rows matched, generate remote spans and start a scan to search
-	// the remote nodes for the current batch.
-	if jr.remoteLookupExpr.Expr != nil && !jr.strategy.generatedRemoteSpans() &&
-		jr.curBatchRowsRead != jr.curBatchInputRowCount {
+	if jr.remoteLookupExpr.Expr != nil && func() bool {
+		__antithesis_instrumentation__.Notify(573408)
+		return !jr.strategy.generatedRemoteSpans() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(573409)
+		return jr.curBatchRowsRead != jr.curBatchInputRowCount == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(573410)
 		spans, err := jr.strategy.generateRemoteSpans()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(573412)
 			jr.MoveToDraining(err)
 			return jrStateUnknown, jr.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(573413)
 		}
+		__antithesis_instrumentation__.Notify(573411)
 
 		if len(spans) != 0 {
-			// Sort the spans so that we can rely upon the fetcher to limit the number
-			// of results per batch. It's safe to reorder the spans here because we
-			// already restore the original order of the output during the output
-			// collection phase.
+			__antithesis_instrumentation__.Notify(573414)
+
 			sort.Sort(spans)
 
 			log.VEventf(jr.Ctx, 1, "scanning %d remote spans", len(spans))
 			bytesLimit := rowinfra.DefaultBatchBytesLimit
 			if !jr.shouldLimitBatches {
+				__antithesis_instrumentation__.Notify(573417)
 				bytesLimit = rowinfra.NoBytesLimit
+			} else {
+				__antithesis_instrumentation__.Notify(573418)
 			}
+			__antithesis_instrumentation__.Notify(573415)
 			if err := jr.fetcher.StartScan(
 				jr.Ctx, jr.FlowCtx.Txn, spans, bytesLimit, rowinfra.NoRowLimit,
 				jr.FlowCtx.TraceKV, jr.EvalCtx.TestingKnobs.ForceProductionBatchSizes,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(573419)
 				jr.MoveToDraining(err)
 				return jrStateUnknown, jr.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(573420)
 			}
+			__antithesis_instrumentation__.Notify(573416)
 			return jrPerformingLookup, nil
+		} else {
+			__antithesis_instrumentation__.Notify(573421)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573422)
 	}
+	__antithesis_instrumentation__.Notify(573391)
 
 	log.VEvent(jr.Ctx, 1, "done joining rows")
 	jr.strategy.prepareToEmit(jr.Ctx)
@@ -971,22 +1133,26 @@ func (jr *joinReader) performLookup() (joinReaderState, *execinfrapb.ProducerMet
 	return jrEmittingRows, nil
 }
 
-// emitRow returns the next row from jr.toEmit, if present. Otherwise it
-// prepares for another input batch.
 func (jr *joinReader) emitRow() (
 	joinReaderState,
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(573423)
 	rowToEmit, nextState, err := jr.strategy.nextRowToEmit(jr.Ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(573425)
 		jr.MoveToDraining(err)
 		return jrStateUnknown, nil, jr.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(573426)
 	}
+	__antithesis_instrumentation__.Notify(573424)
 	return nextState, rowToEmit, nil
 }
 
 func (jr *joinReader) performMemoryAccounting() error {
+	__antithesis_instrumentation__.Notify(573427)
 	oldSz := jr.accountedFor.scratchInputRows + jr.accountedFor.groupingState
 	jr.accountedFor.scratchInputRows = int64(cap(jr.scratchInputRows)) * int64(rowenc.EncDatumRowOverhead)
 	jr.accountedFor.groupingState = jr.groupingState.memUsage()
@@ -994,11 +1160,12 @@ func (jr *joinReader) performMemoryAccounting() error {
 	return addWorkmemHint(jr.memAcc.Resize(jr.Ctx, oldSz, newSz))
 }
 
-// Start is part of the RowSource interface.
 func (jr *joinReader) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(573428)
 	ctx = jr.StartInternal(ctx, joinReaderProcName)
 	jr.input.Start(ctx)
 	if jr.usesStreamer {
+		__antithesis_instrumentation__.Notify(573430)
 		jr.streamerInfo.Streamer = kvstreamer.NewStreamer(
 			jr.FlowCtx.Cfg.DistSender,
 			jr.FlowCtx.Stopper(),
@@ -1010,11 +1177,15 @@ func (jr *joinReader) Start(ctx context.Context) {
 		)
 		mode := kvstreamer.OutOfOrder
 		if jr.maintainOrdering {
+			__antithesis_instrumentation__.Notify(573432)
 			mode = kvstreamer.InOrder
 			jr.streamerInfo.diskMonitor = execinfra.NewMonitor(
-				ctx, jr.FlowCtx.DiskMonitor, "streamer-disk", /* name */
+				ctx, jr.FlowCtx.DiskMonitor, "streamer-disk",
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(573433)
 		}
+		__antithesis_instrumentation__.Notify(573431)
 		jr.streamerInfo.Streamer.Init(
 			mode,
 			kvstreamer.Hints{UniqueRequests: true},
@@ -1022,58 +1193,97 @@ func (jr *joinReader) Start(ctx context.Context) {
 			jr.FlowCtx.Cfg.TempStorage,
 			jr.streamerInfo.diskMonitor,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(573434)
 	}
+	__antithesis_instrumentation__.Notify(573429)
 	jr.runningState = jrReadingInput
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (jr *joinReader) ConsumerClosed() {
-	// The consumer is done, Next() will not be called again.
+	__antithesis_instrumentation__.Notify(573435)
+
 	jr.close()
 }
 
 func (jr *joinReader) close() {
+	__antithesis_instrumentation__.Notify(573436)
 	if jr.InternalClose() {
+		__antithesis_instrumentation__.Notify(573437)
 		if jr.fetcher != nil {
+			__antithesis_instrumentation__.Notify(573442)
 			jr.fetcher.Close(jr.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(573443)
 		}
+		__antithesis_instrumentation__.Notify(573438)
 		if jr.usesStreamer {
-			// We have to cleanup the streamer after closing the fetcher because
-			// the latter might release some memory tracked by the budget of the
-			// streamer.
+			__antithesis_instrumentation__.Notify(573444)
+
 			if jr.streamerInfo.Streamer != nil {
+				__antithesis_instrumentation__.Notify(573446)
 				jr.streamerInfo.Streamer.Close(jr.Ctx)
+			} else {
+				__antithesis_instrumentation__.Notify(573447)
 			}
+			__antithesis_instrumentation__.Notify(573445)
 			jr.streamerInfo.budgetAcc.Close(jr.Ctx)
 			jr.streamerInfo.unlimitedMemMonitor.Stop(jr.Ctx)
 			if jr.streamerInfo.diskMonitor != nil {
+				__antithesis_instrumentation__.Notify(573448)
 				jr.streamerInfo.diskMonitor.Stop(jr.Ctx)
+			} else {
+				__antithesis_instrumentation__.Notify(573449)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(573450)
 		}
+		__antithesis_instrumentation__.Notify(573439)
 		jr.strategy.close(jr.Ctx)
 		jr.memAcc.Close(jr.Ctx)
 		if jr.limitedMemMonitor != nil {
+			__antithesis_instrumentation__.Notify(573451)
 			jr.limitedMemMonitor.Stop(jr.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(573452)
 		}
+		__antithesis_instrumentation__.Notify(573440)
 		if jr.MemMonitor != nil {
+			__antithesis_instrumentation__.Notify(573453)
 			jr.MemMonitor.Stop(jr.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(573454)
 		}
+		__antithesis_instrumentation__.Notify(573441)
 		if jr.diskMonitor != nil {
+			__antithesis_instrumentation__.Notify(573455)
 			jr.diskMonitor.Stop(jr.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(573456)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573457)
 	}
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (jr *joinReader) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(573458)
 	is, ok := getInputStats(jr.input)
 	if !ok {
+		__antithesis_instrumentation__.Notify(573463)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(573464)
 	}
+	__antithesis_instrumentation__.Notify(573459)
 	fis, ok := getFetcherInputStats(jr.fetcher)
 	if !ok {
+		__antithesis_instrumentation__.Notify(573465)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(573466)
 	}
+	__antithesis_instrumentation__.Notify(573460)
 
 	jr.scanStats = execinfra.GetScanStats(jr.Ctx)
 	ret := &execinfrapb.ComponentStats{
@@ -1086,231 +1296,300 @@ func (jr *joinReader) execStatsForTrace() *execinfrapb.ComponentStats {
 		},
 		Output: jr.OutputHelper.Stats(),
 	}
-	// Note that there is no need to include the maximum bytes of
-	// jr.limitedMemMonitor because it is a child of jr.MemMonitor.
+
 	ret.Exec.MaxAllocatedMem.Add(jr.MemMonitor.MaximumBytes())
 	if jr.diskMonitor != nil {
+		__antithesis_instrumentation__.Notify(573467)
 		ret.Exec.MaxAllocatedDisk.Add(jr.diskMonitor.MaximumBytes())
+	} else {
+		__antithesis_instrumentation__.Notify(573468)
 	}
+	__antithesis_instrumentation__.Notify(573461)
 	if jr.usesStreamer {
+		__antithesis_instrumentation__.Notify(573469)
 		ret.Exec.MaxAllocatedMem.Add(jr.streamerInfo.unlimitedMemMonitor.MaximumBytes())
 		if jr.streamerInfo.diskMonitor != nil {
+			__antithesis_instrumentation__.Notify(573470)
 			ret.Exec.MaxAllocatedDisk.Add(jr.streamerInfo.diskMonitor.MaximumBytes())
+		} else {
+			__antithesis_instrumentation__.Notify(573471)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573472)
 	}
+	__antithesis_instrumentation__.Notify(573462)
 	execinfra.PopulateKVMVCCStats(&ret.KV, &jr.scanStats)
 	return ret
 }
 
 func (jr *joinReader) generateMeta() []execinfrapb.ProducerMetadata {
+	__antithesis_instrumentation__.Notify(573473)
 	trailingMeta := make([]execinfrapb.ProducerMetadata, 1, 2)
 	meta := &trailingMeta[0]
 	meta.Metrics = execinfrapb.GetMetricsMeta()
 	meta.Metrics.RowsRead = jr.rowsRead
 	meta.Metrics.BytesRead = jr.fetcher.GetBytesRead()
 	if tfs := execinfra.GetLeafTxnFinalState(jr.Ctx, jr.FlowCtx.Txn); tfs != nil {
+		__antithesis_instrumentation__.Notify(573475)
 		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{LeafTxnFinalState: tfs})
+	} else {
+		__antithesis_instrumentation__.Notify(573476)
 	}
+	__antithesis_instrumentation__.Notify(573474)
 	return trailingMeta
 }
 
-// ChildCount is part of the execinfra.OpNode interface.
 func (jr *joinReader) ChildCount(verbose bool) int {
+	__antithesis_instrumentation__.Notify(573477)
 	if _, ok := jr.input.(execinfra.OpNode); ok {
+		__antithesis_instrumentation__.Notify(573479)
 		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(573480)
 	}
+	__antithesis_instrumentation__.Notify(573478)
 	return 0
 }
 
-// Child is part of the execinfra.OpNode interface.
 func (jr *joinReader) Child(nth int, verbose bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(573481)
 	if nth == 0 {
+		__antithesis_instrumentation__.Notify(573483)
 		if n, ok := jr.input.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(573485)
 			return n
+		} else {
+			__antithesis_instrumentation__.Notify(573486)
 		}
+		__antithesis_instrumentation__.Notify(573484)
 		panic("input to joinReader is not an execinfra.OpNode")
+	} else {
+		__antithesis_instrumentation__.Notify(573487)
 	}
+	__antithesis_instrumentation__.Notify(573482)
 	panic(errors.AssertionFailedf("invalid index %d", nth))
 }
 
-// processContinuationValForRow is called for each row in a batch which has a
-// continuation column.
 func (jr *joinReader) processContinuationValForRow(row rowenc.EncDatumRow) error {
+	__antithesis_instrumentation__.Notify(573488)
 	if !jr.groupingState.doGrouping {
-		// Lookup join with no continuation column.
+		__antithesis_instrumentation__.Notify(573490)
+
 		jr.groupingState.addContinuationValForRow(false)
 	} else {
+		__antithesis_instrumentation__.Notify(573491)
 		continuationEncDatum := row[len(row)-1]
 		if err := continuationEncDatum.EnsureDecoded(types.Bool, &jr.alloc); err != nil {
+			__antithesis_instrumentation__.Notify(573493)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(573494)
 		}
+		__antithesis_instrumentation__.Notify(573492)
 		continuationVal := bool(*continuationEncDatum.Datum.(*tree.DBool))
 		jr.groupingState.addContinuationValForRow(continuationVal)
-		if len(jr.scratchInputRows) == 0 && continuationVal {
-			// First row in batch is a continuation of last group.
+		if len(jr.scratchInputRows) == 0 && func() bool {
+			__antithesis_instrumentation__.Notify(573495)
+			return continuationVal == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573496)
+
 			jr.lastBatchState.lastGroupContinued = true
+		} else {
+			__antithesis_instrumentation__.Notify(573497)
 		}
 	}
+	__antithesis_instrumentation__.Notify(573489)
 	return nil
 }
 
-// allContinuationValsProcessed is called after all the rows in the batch have
-// been read, or the batch is empty, and processContinuationValForRow has been
-// called. It returns a non-nil row if one needs to output a row from the
-// batch previous to the current batch.
 func (jr *joinReader) allContinuationValsProcessed() rowenc.EncDatumRow {
+	__antithesis_instrumentation__.Notify(573498)
 	var outRow rowenc.EncDatumRow
 	jr.groupingState.initialized = true
-	if jr.lastBatchState.lastInputRow != nil && !jr.lastBatchState.lastGroupContinued {
-		// Group ended in previous batch and this is a lookup join with a
-		// continuation column.
+	if jr.lastBatchState.lastInputRow != nil && func() bool {
+		__antithesis_instrumentation__.Notify(573500)
+		return !jr.lastBatchState.lastGroupContinued == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(573501)
+
 		if !jr.lastBatchState.lastGroupMatched {
-			// Handle the cases where we need to emit the left row when there is no
-			// match.
+			__antithesis_instrumentation__.Notify(573502)
+
 			switch jr.joinType {
 			case descpb.LeftOuterJoin:
+				__antithesis_instrumentation__.Notify(573503)
 				outRow = jr.renderUnmatchedRow(jr.lastBatchState.lastInputRow, leftSide)
 			case descpb.LeftAntiJoin:
+				__antithesis_instrumentation__.Notify(573504)
 				outRow = jr.lastBatchState.lastInputRow
+			default:
+				__antithesis_instrumentation__.Notify(573505)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(573506)
 		}
-		// Else the last group matched, so already emitted 1+ row for left outer
-		// join, 1 row for semi join, and no need to emit for anti join.
+
+	} else {
+		__antithesis_instrumentation__.Notify(573507)
 	}
-	// Else, last group continued, or this is the first ever batch, or all
-	// groups are of length 1. Either way, we don't need to do anything
-	// special for the last group from the last batch.
+	__antithesis_instrumentation__.Notify(573499)
 
 	jr.lastBatchState.lastInputRow = nil
 	return outRow
 }
 
-// updateGroupingStateForNonEmptyBatch is called once the batch has been read
-// and found to be non-empty.
 func (jr *joinReader) updateGroupingStateForNonEmptyBatch() {
+	__antithesis_instrumentation__.Notify(573508)
 	if jr.groupingState.doGrouping {
-		// Groups can continue from one batch to another.
+		__antithesis_instrumentation__.Notify(573509)
 
-		// Remember state from the last group in this batch.
 		jr.lastBatchState.lastInputRow = jr.scratchInputRows[len(jr.scratchInputRows)-1]
-		// Initialize matching state for the first group in this batch.
-		if jr.lastBatchState.lastGroupMatched && jr.lastBatchState.lastGroupContinued {
+
+		if jr.lastBatchState.lastGroupMatched && func() bool {
+			__antithesis_instrumentation__.Notify(573510)
+			return jr.lastBatchState.lastGroupContinued == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(573511)
 			jr.groupingState.setFirstGroupMatched()
+		} else {
+			__antithesis_instrumentation__.Notify(573512)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(573513)
 	}
 }
 
-// inputBatchGroupingState encapsulates the state needed for all the
-// groups in an input batch, for lookup joins (not used for index
-// joins).
-// It functions in one of two modes:
-// - doGrouping is false: It is expected that for each input row in
-//   a batch, addContinuationValForRow(false) will be called.
-// - doGrouping is true: The join is functioning in a manner where
-//   the continuation column in the input indicates the parameter
-//   value of addContinuationValForRow calls.
-//
-// The initialization and resetting of state for a batch is
-// handled by joinReader. Updates to this state based on row
-// matching is done by the appropriate joinReaderStrategy
-// implementation. The joinReaderStrategy implementations
-// also lookup the state to decide when to output.
 type inputBatchGroupingState struct {
 	doGrouping bool
 
 	initialized bool
-	// Row index in batch to the group index. Only used when doGrouping = true.
+
 	batchRowToGroupIndex []int
-	// State per group.
+
 	groupState []groupState
 }
 
 type groupState struct {
-	// Whether the group matched.
 	matched bool
-	// The last row index in the group. Only valid when doGrouping = true.
+
 	lastRow int
 }
 
 func (ib *inputBatchGroupingState) reset() {
+	__antithesis_instrumentation__.Notify(573514)
 	ib.batchRowToGroupIndex = ib.batchRowToGroupIndex[:0]
 	ib.groupState = ib.groupState[:0]
 	ib.initialized = false
 }
 
-// addContinuationValForRow is called with each row in an input batch, with
-// the cont parameter indicating whether or not it is a continuation of the
-// group from the previous row.
 func (ib *inputBatchGroupingState) addContinuationValForRow(cont bool) {
-	if len(ib.groupState) == 0 || !cont {
-		// First row in input batch or the start of a new group. We need to
-		// add entries in the group indexed slices.
+	__antithesis_instrumentation__.Notify(573515)
+	if len(ib.groupState) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(573517)
+		return !cont == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(573518)
+
 		ib.groupState = append(ib.groupState,
 			groupState{matched: false, lastRow: len(ib.batchRowToGroupIndex)})
+	} else {
+		__antithesis_instrumentation__.Notify(573519)
 	}
+	__antithesis_instrumentation__.Notify(573516)
 	if ib.doGrouping {
+		__antithesis_instrumentation__.Notify(573520)
 		groupIndex := len(ib.groupState) - 1
 		ib.groupState[groupIndex].lastRow = len(ib.batchRowToGroupIndex)
 		ib.batchRowToGroupIndex = append(ib.batchRowToGroupIndex, groupIndex)
+	} else {
+		__antithesis_instrumentation__.Notify(573521)
 	}
 }
 
 func (ib *inputBatchGroupingState) setFirstGroupMatched() {
+	__antithesis_instrumentation__.Notify(573522)
 	ib.groupState[0].matched = true
 }
 
-// setMatched records that the given rowIndex has matched. It returns the
-// previous value of the matched field.
 func (ib *inputBatchGroupingState) setMatched(rowIndex int) bool {
+	__antithesis_instrumentation__.Notify(573523)
 	groupIndex := rowIndex
 	if ib.doGrouping {
+		__antithesis_instrumentation__.Notify(573525)
 		groupIndex = ib.batchRowToGroupIndex[rowIndex]
+	} else {
+		__antithesis_instrumentation__.Notify(573526)
 	}
+	__antithesis_instrumentation__.Notify(573524)
 	rv := ib.groupState[groupIndex].matched
 	ib.groupState[groupIndex].matched = true
 	return rv
 }
 
 func (ib *inputBatchGroupingState) getMatched(rowIndex int) bool {
+	__antithesis_instrumentation__.Notify(573527)
 	groupIndex := rowIndex
 	if ib.doGrouping {
+		__antithesis_instrumentation__.Notify(573529)
 		groupIndex = ib.batchRowToGroupIndex[rowIndex]
+	} else {
+		__antithesis_instrumentation__.Notify(573530)
 	}
+	__antithesis_instrumentation__.Notify(573528)
 	return ib.groupState[groupIndex].matched
 }
 
 func (ib *inputBatchGroupingState) lastGroupMatched() bool {
-	if !ib.doGrouping || len(ib.groupState) == 0 {
+	__antithesis_instrumentation__.Notify(573531)
+	if !ib.doGrouping || func() bool {
+		__antithesis_instrumentation__.Notify(573533)
+		return len(ib.groupState) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(573534)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(573535)
 	}
+	__antithesis_instrumentation__.Notify(573532)
 	return ib.groupState[len(ib.groupState)-1].matched
 }
 
 func (ib *inputBatchGroupingState) isUnmatched(rowIndex int) bool {
+	__antithesis_instrumentation__.Notify(573536)
 	if !ib.doGrouping {
-		// The rowIndex is also the groupIndex.
+		__antithesis_instrumentation__.Notify(573539)
+
 		return !ib.groupState[rowIndex].matched
+	} else {
+		__antithesis_instrumentation__.Notify(573540)
 	}
+	__antithesis_instrumentation__.Notify(573537)
 	groupIndex := ib.batchRowToGroupIndex[rowIndex]
 	if groupIndex == len(ib.groupState)-1 {
-		// Return false for last group since it is not necessarily complete yet --
-		// the next batch may continue the group.
+		__antithesis_instrumentation__.Notify(573541)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(573542)
 	}
-	// Group is complete -- return true for the last row index in a group that
-	// is unmatched. Note that there are join reader strategies that on a
-	// row-by-row basis (a) evaluate the match condition, (b) decide whether to
-	// output (including when there is no match). It is necessary to delay
-	// saying that there is no match for the group until the last row in the
-	// group since for earlier rows, when at step (b), one does not know the
-	// match state of later rows in the group.
-	return !ib.groupState[groupIndex].matched && ib.groupState[groupIndex].lastRow == rowIndex
+	__antithesis_instrumentation__.Notify(573538)
+
+	return !ib.groupState[groupIndex].matched && func() bool {
+		__antithesis_instrumentation__.Notify(573543)
+		return ib.groupState[groupIndex].lastRow == rowIndex == true
+	}() == true
 }
 
 func (ib *inputBatchGroupingState) memUsage() int64 {
+	__antithesis_instrumentation__.Notify(573544)
 	if ib == nil {
+		__antithesis_instrumentation__.Notify(573546)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(573547)
 	}
+	__antithesis_instrumentation__.Notify(573545)
 	return int64(cap(ib.groupState))*int64(unsafe.Sizeof(groupState{})) +
 		int64(cap(ib.batchRowToGroupIndex))*memsize.Int
 }

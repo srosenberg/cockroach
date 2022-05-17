@@ -16,6 +16,7 @@ go_library(
     deps = [
         "//pkg/sql/types",
         "//pkg/workload",
+        "@com_antithesis_instrumentation//wrappers",
         "@in_gopkg_yaml_v2//:yaml_v2",
     ],
 )

@@ -5,11 +5,15 @@ go_library(
     srcs = ["main.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/cmd/fuzz",
     visibility = ["//visibility:private"],
-    deps = ["@org_golang_x_tools//go/packages"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@org_golang_x_tools//go/packages",
+    ],
 )
 
 go_binary(
     name = "fuzz",
     embed = [":fuzz_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

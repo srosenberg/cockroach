@@ -8,6 +8,7 @@ protobufjs_library(
         "//pkg/server/serverpb:serverpb_proto",
         "//pkg/ts/tspb:tspb_proto",
     ],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 js_library(
@@ -17,5 +18,8 @@ js_library(
         "package.json",
     ],
     visibility = ["//visibility:public"],
-    deps = [":crdb-protobuf-client__proto"],
+    deps = [
+        ":crdb-protobuf-client__proto",
+        "@com_antithesis_instrumentation//wrappers",
+    ],
 )

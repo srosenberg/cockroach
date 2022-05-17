@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package roachprod
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -28,17 +20,6 @@ import (
 	"github.com/cockroachdb/errors/oserror"
 )
 
-// The code in this file deals with storing cluster metadata in the
-// config.ClustersDir.
-//
-// This directory is used as a local cache storing metadata from all known
-// clusters. It is also used as the "source of truth" for the local cluster.
-//
-// Each cluster corresponds to a json file in this directory.
-
-// syncedClusters stores the synced clusters metadata, populated from the
-// clusters cache.
-
 type syncedClustersWithMutex struct {
 	clusters cloud.Clusters
 	mu       syncutil.Mutex
@@ -47,211 +28,295 @@ type syncedClustersWithMutex struct {
 var syncedClusters syncedClustersWithMutex
 
 func readSyncedClusters(key string) (*cloud.Cluster, bool) {
+	__antithesis_instrumentation__.Notify(180314)
 	syncedClusters.mu.Lock()
 	defer syncedClusters.mu.Unlock()
 	if cluster, ok := syncedClusters.clusters[key]; ok {
+		__antithesis_instrumentation__.Notify(180316)
 		return cluster, ok
+	} else {
+		__antithesis_instrumentation__.Notify(180317)
 	}
+	__antithesis_instrumentation__.Notify(180315)
 	return nil, false
 }
 
-// InitDirs initializes the directories for storing cluster metadata and debug
-// logs.
 func InitDirs() error {
+	__antithesis_instrumentation__.Notify(180318)
 	cd := os.ExpandEnv(config.ClustersDir)
 	if err := os.MkdirAll(cd, 0755); err != nil {
+		__antithesis_instrumentation__.Notify(180320)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180321)
 	}
+	__antithesis_instrumentation__.Notify(180319)
 	return os.MkdirAll(os.ExpandEnv(config.DefaultDebugDir), 0755)
 }
 
-// saveCluster creates (or overwrites) the file in config.ClusterDir storing the
-// given metadata.
 func saveCluster(c *cloud.Cluster) error {
+	__antithesis_instrumentation__.Notify(180322)
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(c); err != nil {
+		__antithesis_instrumentation__.Notify(180327)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180328)
 	}
+	__antithesis_instrumentation__.Notify(180323)
 
 	filename := clusterFilename(c.Name)
 
-	// Other roachprod processes might be accessing the cluster files at the same
-	// time, so we need to write the file atomically by writing to a temporary
-	// file and renaming. We store the temporary file in the same directory so
-	// that it can always be renamed.
 	tmpFile, err := os.CreateTemp(os.ExpandEnv(config.ClustersDir), c.Name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180329)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180330)
 	}
+	__antithesis_instrumentation__.Notify(180324)
 
 	_, err = tmpFile.Write(b.Bytes())
 	err = errors.CombineErrors(err, tmpFile.Sync())
 	err = errors.CombineErrors(err, tmpFile.Close())
 	if err == nil {
+		__antithesis_instrumentation__.Notify(180331)
 		err = os.Rename(tmpFile.Name(), filename)
+	} else {
+		__antithesis_instrumentation__.Notify(180332)
 	}
+	__antithesis_instrumentation__.Notify(180325)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180333)
 		_ = os.Remove(tmpFile.Name())
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180334)
 	}
+	__antithesis_instrumentation__.Notify(180326)
 	return nil
 }
 
-// loadCluster reads the file in config.ClustersDir with the metadata for the
-// given cluster name.
 func loadCluster(name string) (*cloud.Cluster, error) {
+	__antithesis_instrumentation__.Notify(180335)
 	filename := clusterFilename(name)
 	data, err := os.ReadFile(filename)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180339)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(180340)
 	}
+	__antithesis_instrumentation__.Notify(180336)
 	c := &cloud.Cluster{}
 	if err := json.Unmarshal(data, c); err != nil {
+		__antithesis_instrumentation__.Notify(180341)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(180342)
 	}
+	__antithesis_instrumentation__.Notify(180337)
 	if c.Name != name {
+		__antithesis_instrumentation__.Notify(180343)
 		return nil, errors.Errorf("name mismatch (%s vs %s)", name, c.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(180344)
 	}
+	__antithesis_instrumentation__.Notify(180338)
 	return c, nil
 }
 
-// shouldIgnoreCluster returns true if the cluster references a project that is
-// not active. This is relevant if we have a cluster that was cached when
-// another project was in use.
 func shouldIgnoreCluster(c *cloud.Cluster) bool {
+	__antithesis_instrumentation__.Notify(180345)
 	for i := range c.VMs {
+		__antithesis_instrumentation__.Notify(180347)
 		provider, ok := vm.Providers[c.VMs[i].Provider]
-		if !ok || !provider.ProjectActive(c.VMs[i].Project) {
+		if !ok || func() bool {
+			__antithesis_instrumentation__.Notify(180348)
+			return !provider.ProjectActive(c.VMs[i].Project) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(180349)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(180350)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180346)
 	return false
 }
 
-// LoadClusters reads the cached cluster metadata from config.ClustersDir and
-// populates syncedClusters. It is assumed that this is called when the process
-// starts, before any roachprod operations.
 func LoadClusters() error {
+	__antithesis_instrumentation__.Notify(180351)
 	syncedClusters.mu.Lock()
 	defer syncedClusters.mu.Unlock()
 	syncedClusters.clusters = make(cloud.Clusters)
 
 	clusterNames, err := listClustersInCache()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180354)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180355)
 	}
+	__antithesis_instrumentation__.Notify(180352)
 
 	for _, name := range clusterNames {
+		__antithesis_instrumentation__.Notify(180356)
 		c, err := loadCluster(name)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(180360)
 			if oserror.IsNotExist(err) {
-				// It is possible that another process is syncing the cache and just
-				// removed the file. Ignore the error.
+				__antithesis_instrumentation__.Notify(180362)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(180363)
 			}
+			__antithesis_instrumentation__.Notify(180361)
 			return errors.Wrapf(err, "could not load info for cluster %s", name)
+		} else {
+			__antithesis_instrumentation__.Notify(180364)
 		}
+		__antithesis_instrumentation__.Notify(180357)
 
 		if len(c.VMs) == 0 {
+			__antithesis_instrumentation__.Notify(180365)
 			return errors.Errorf("found no VMs in %s", clusterFilename(name))
+		} else {
+			__antithesis_instrumentation__.Notify(180366)
 		}
+		__antithesis_instrumentation__.Notify(180358)
 		if shouldIgnoreCluster(c) {
+			__antithesis_instrumentation__.Notify(180367)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(180368)
 		}
+		__antithesis_instrumentation__.Notify(180359)
 
 		syncedClusters.clusters[c.Name] = c
 
 		if config.IsLocalClusterName(c.Name) {
-			// Add the local cluster to the local provider.
+			__antithesis_instrumentation__.Notify(180369)
+
 			local.AddCluster(c)
+		} else {
+			__antithesis_instrumentation__.Notify(180370)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180353)
 
 	return nil
 }
 
-// syncClustersCache synchronizes the ClustersDir with the available clusters
-// (across all providers, including any local cluster).
-//
-// A file in ClustersDir is created for each cluster; other files are removed.
-//
-// This function assumes the caller took a lock on a file to ensure that
-// multiple processes don't run through this code at the same time. However, it
-// is allowed for LoadClusters to run in another process at the same time.
 func syncClustersCache(cloud *cloud.Cloud) error {
-	// Write all cluster files.
+	__antithesis_instrumentation__.Notify(180371)
+
 	for _, c := range cloud.Clusters {
+		__antithesis_instrumentation__.Notify(180375)
 		if err := saveCluster(c); err != nil {
+			__antithesis_instrumentation__.Notify(180376)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(180377)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180372)
 
-	// Remove any other files.
 	clusterNames, err := listClustersInCache()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180378)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(180379)
 	}
+	__antithesis_instrumentation__.Notify(180373)
 	for _, name := range clusterNames {
+		__antithesis_instrumentation__.Notify(180380)
 		if _, ok := cloud.Clusters[name]; !ok {
-			// This cluster may no longer exist, or it may involve projects that are
-			// not active in the current invocation.
+			__antithesis_instrumentation__.Notify(180381)
+
 			c, err := loadCluster(name)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(180383)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(180384)
 			}
+			__antithesis_instrumentation__.Notify(180382)
 			if !shouldIgnoreCluster(c) {
+				__antithesis_instrumentation__.Notify(180385)
 				filename := clusterFilename(name)
 				if err := os.Remove(filename); err != nil {
+					__antithesis_instrumentation__.Notify(180386)
 					log.Infof(context.Background(), "failed to remove file %s", filename)
+				} else {
+					__antithesis_instrumentation__.Notify(180387)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(180388)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(180389)
 		}
 	}
+	__antithesis_instrumentation__.Notify(180374)
 
 	return nil
 }
 
-// clusterFilename returns the filename in config.ClusterDir corresponding to a
-// cluster name.
 func clusterFilename(name string) string {
+	__antithesis_instrumentation__.Notify(180390)
 	cd := os.ExpandEnv(config.ClustersDir)
 	return path.Join(cd, name+".json")
 }
 
-// listClustersInCache returns the list of cluster names that have corresponding
-// files in config.ClusterDir.
 func listClustersInCache() ([]string, error) {
+	__antithesis_instrumentation__.Notify(180391)
 	var result []string
 	cd := os.ExpandEnv(config.ClustersDir)
 	files, err := os.ReadDir(cd)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(180394)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(180395)
 	}
+	__antithesis_instrumentation__.Notify(180392)
 	for _, file := range files {
+		__antithesis_instrumentation__.Notify(180396)
 		if !file.Type().IsRegular() {
+			__antithesis_instrumentation__.Notify(180399)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(180400)
 		}
+		__antithesis_instrumentation__.Notify(180397)
 		if !strings.HasSuffix(file.Name(), ".json") {
+			__antithesis_instrumentation__.Notify(180401)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(180402)
 		}
+		__antithesis_instrumentation__.Notify(180398)
 		result = append(result, strings.TrimSuffix(file.Name(), ".json"))
 	}
+	__antithesis_instrumentation__.Notify(180393)
 	return result, nil
 }
 
-// localVMStorage implements the local.VMStorage interface.
 type localVMStorage struct{}
 
 var _ local.VMStorage = localVMStorage{}
 
-// SaveCluster is part of the local.VMStorage interface.
 func (localVMStorage) SaveCluster(cluster *cloud.Cluster) error {
+	__antithesis_instrumentation__.Notify(180403)
 	return saveCluster(cluster)
 }
 
-// DeleteCluster is part of the local.VMStorage interface.
 func (localVMStorage) DeleteCluster(name string) error {
+	__antithesis_instrumentation__.Notify(180404)
 	return os.Remove(clusterFilename(name))
 }

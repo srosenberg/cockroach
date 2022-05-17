@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,15 +15,18 @@ import (
 )
 
 func runAcceptanceMultitenant(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(49409)
 	c.Put(ctx, t.Cockroach(), "./cockroach")
 
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.All())
 
 	const tenantID = 123
 	{
+		__antithesis_instrumentation__.Notify(49413)
 		_, err := c.Conn(ctx, t.L(), 1).Exec(`SELECT crdb_internal.create_tenant($1)`, tenantID)
 		require.NoError(t, err)
 	}
+	__antithesis_instrumentation__.Notify(49410)
 
 	kvAddrs, err := c.ExternalAddr(ctx, t.L(), c.All())
 	require.NoError(t, err)
@@ -54,23 +49,32 @@ func runAcceptanceMultitenant(ctx context.Context, t test.Test, c cluster.Cluste
 
 	t.Status("stopping the server ahead of checking for the tenant server")
 
-	// Stop the server, which also ensures that log files get flushed.
 	tenant.stop(ctx, t, c)
 
 	t.Status("checking log file contents")
 
-	// Check that the server identifiers are present in the tenant log file.
 	logFile := filepath.Join(tenant.logDir(), "*.log")
 	if err := c.RunE(ctx, c.Node(1),
 		"grep", "-q", "'start\\.go.*clusterID:'", logFile); err != nil {
+		__antithesis_instrumentation__.Notify(49414)
 		t.Fatal(errors.Wrap(err, "cluster ID not found in log file"))
+	} else {
+		__antithesis_instrumentation__.Notify(49415)
 	}
+	__antithesis_instrumentation__.Notify(49411)
 	if err := c.RunE(ctx, c.Node(1),
 		"grep", "-q", "'start\\.go.*tenantID:'", logFile); err != nil {
+		__antithesis_instrumentation__.Notify(49416)
 		t.Fatal(errors.Wrap(err, "tenant ID not found in log file"))
+	} else {
+		__antithesis_instrumentation__.Notify(49417)
 	}
+	__antithesis_instrumentation__.Notify(49412)
 	if err := c.RunE(ctx, c.Node(1),
 		"grep", "-q", "'start\\.go.*instanceID:'", logFile); err != nil {
+		__antithesis_instrumentation__.Notify(49418)
 		t.Fatal(errors.Wrap(err, "SQL instance ID not found in log file"))
+	} else {
+		__antithesis_instrumentation__.Notify(49419)
 	}
 }

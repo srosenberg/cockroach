@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ts
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,60 +23,23 @@ import (
 )
 
 const (
-	// URLPrefix is the prefix for all time series endpoints hosted by the
-	// server.
 	URLPrefix = "/ts/"
-	// queryWorkerMax is the default maximum number of worker goroutines that
-	// the time series server can use to service incoming queries.
+
 	queryWorkerMax = 8
-	// DefaultQueryMemoryMax is a soft limit for the amount of total
-	// memory used by time series queries. This is not currently enforced,
-	// but is used for monitoring purposes.
-	DefaultQueryMemoryMax = int64(64 * 1024 * 1024) // 64MiB
-	// dumpBatchSize is the number of keys processed in each batch by the dump
-	// command.
+
+	DefaultQueryMemoryMax = int64(64 * 1024 * 1024)
+
 	dumpBatchSize = 100
 )
 
-// ClusterNodeCountFn is a function that returns the number of nodes active on
-// the cluster.
 type ClusterNodeCountFn func() int64
 
-// ServerConfig provides a means for tests to override settings in the time
-// series server.
 type ServerConfig struct {
-	// The maximum number of query workers used by the server. If this
-	// value is zero, a default non-zero value is used instead.
 	QueryWorkerMax int
-	// The maximum amount of memory that should be used for processing queries
-	// across all workers. If this value is zero, a default non-zero value is
-	// used instead.
+
 	QueryMemoryMax int64
 }
 
-// Server handles incoming external requests related to time series data.
-//
-// The server attempts to constrain the total amount of memory it uses for
-// processing incoming queries. This is accomplished with a multi-pronged
-// strategy:
-// + The server has a worker memory limit, which is a quota for the amount of
-//   memory that can be used across all currently executing queries.
-// + The server also has a pre-set limit on the number of parallel workers that
-//   can be executing at one time. Each worker is given an even share of the
-//   server's total memory limit, which it should not exceed.
-// + Each worker breaks its task into chunks which it will process sequentially;
-//   the size of each chunk is calculated to avoid exceeding the memory limit.
-//
-// In addition to this strategy, the server uses a memory monitor to track the
-// amount of memory being used in reality by worker tasks. This is intended to
-// verify the calculations of the individual workers are correct.
-//
-// A second memory monitor is used to track the space used by the results of
-// query workers, which are longer lived; an incoming request may utilize
-// several workers, but the results of each worker cannot be released until
-// being returned to the requestor. Result memory is not currently limited,
-// as in practical usage it is dwarfed by the memory needed by workers to
-// generate the results.
 type Server struct {
 	log.AmbientContext
 	db               *DB
@@ -97,8 +52,6 @@ type Server struct {
 	workerSem        *quotapool.IntPool
 }
 
-// MakeServer instantiates a new Server which services requests with data from
-// the supplied DB.
 func MakeServer(
 	ambient log.AmbientContext,
 	db *DB,
@@ -107,18 +60,26 @@ func MakeServer(
 	memoryMonitor *mon.BytesMonitor,
 	stopper *stop.Stopper,
 ) Server {
+	__antithesis_instrumentation__.Notify(648584)
 	ambient.AddLogTag("ts-srv", nil)
 	ctx := ambient.AnnotateCtx(context.Background())
 
-	// Override default values from configuration.
 	queryWorkerMax := queryWorkerMax
 	if cfg.QueryWorkerMax != 0 {
+		__antithesis_instrumentation__.Notify(648589)
 		queryWorkerMax = cfg.QueryWorkerMax
+	} else {
+		__antithesis_instrumentation__.Notify(648590)
 	}
+	__antithesis_instrumentation__.Notify(648585)
 	queryMemoryMax := DefaultQueryMemoryMax
 	if cfg.QueryMemoryMax > DefaultQueryMemoryMax {
+		__antithesis_instrumentation__.Notify(648591)
 		queryMemoryMax = cfg.QueryMemoryMax
+	} else {
+		__antithesis_instrumentation__.Notify(648592)
 	}
+	__antithesis_instrumentation__.Notify(648586)
 	workerSem := quotapool.NewIntPool("ts.Server worker", uint64(queryWorkerMax))
 	stopper.AddCloser(workerSem.Closer("stopper"))
 	s := Server{
@@ -143,81 +104,84 @@ func MakeServer(
 
 	s.workerMemMonitor.Start(ctx, memoryMonitor, mon.BoundAccount{})
 	stopper.AddCloser(stop.CloserFn(func() {
+		__antithesis_instrumentation__.Notify(648593)
 		s.workerMemMonitor.Stop(ctx)
 	}))
+	__antithesis_instrumentation__.Notify(648587)
 
 	s.resultMemMonitor.Start(ambient.AnnotateCtx(context.Background()), memoryMonitor, mon.BoundAccount{})
 	stopper.AddCloser(stop.CloserFn(func() {
+		__antithesis_instrumentation__.Notify(648594)
 		s.resultMemMonitor.Stop(ctx)
 	}))
+	__antithesis_instrumentation__.Notify(648588)
 
 	return s
 }
 
-// RegisterService registers the GRPC service.
 func (s *Server) RegisterService(g *grpc.Server) {
+	__antithesis_instrumentation__.Notify(648595)
 	tspb.RegisterTimeSeriesServer(g, s)
 }
 
-// RegisterGateway starts the gateway (i.e. reverse proxy) that proxies HTTP requests
-// to the appropriate gRPC endpoints.
 func (s *Server) RegisterGateway(
 	ctx context.Context, mux *gwruntime.ServeMux, conn *grpc.ClientConn,
 ) error {
+	__antithesis_instrumentation__.Notify(648596)
 	return tspb.RegisterTimeSeriesHandler(ctx, mux, conn)
 }
 
-// Query is an endpoint that returns data for one or more metrics over a
-// specific time span.
 func (s *Server) Query(
 	ctx context.Context, request *tspb.TimeSeriesQueryRequest,
 ) (*tspb.TimeSeriesQueryResponse, error) {
+	__antithesis_instrumentation__.Notify(648597)
 	ctx = s.AnnotateCtx(ctx)
 	if len(request.Queries) == 0 {
+		__antithesis_instrumentation__.Notify(648604)
 		return nil, status.Errorf(codes.InvalidArgument, "Queries cannot be empty")
+	} else {
+		__antithesis_instrumentation__.Notify(648605)
 	}
+	__antithesis_instrumentation__.Notify(648598)
 
-	// If not set, sampleNanos should default to ten second resolution.
 	sampleNanos := request.SampleNanos
 	if sampleNanos == 0 {
+		__antithesis_instrumentation__.Notify(648606)
 		sampleNanos = Resolution10s.SampleDuration()
+	} else {
+		__antithesis_instrumentation__.Notify(648607)
 	}
+	__antithesis_instrumentation__.Notify(648599)
 
-	// For the interpolation limit, use the time limit until stores are considered
-	// dead. This is a conservatively long span, but gives us a good indication of
-	// when a gap likely indicates an outage (and thus missing values should not
-	// be interpolated).
 	interpolationLimit := kvserver.TimeUntilStoreDead.Get(&s.db.st.SV).Nanoseconds()
 
-	// Get the estimated number of nodes on the cluster, used to compute more
-	// accurate memory usage estimates. Set a minimum of 1 in order to avoid
-	// divide-by-zero panics.
 	estimatedClusterNodeCount := s.nodeCountFn()
 	if estimatedClusterNodeCount == 0 {
+		__antithesis_instrumentation__.Notify(648608)
 		estimatedClusterNodeCount = 1
+	} else {
+		__antithesis_instrumentation__.Notify(648609)
 	}
+	__antithesis_instrumentation__.Notify(648600)
 
 	response := tspb.TimeSeriesQueryResponse{
 		Results: make([]tspb.TimeSeriesQueryResponse_Result, len(request.Queries)),
 	}
 
-	// Defer cancellation of context passed to worker tasks; if main task
-	// returns early, worker tasks should be torn down quickly.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Channel which workers use to report their result, which is either an
-	// error or nil (when successful).
 	workerOutput := make(chan error)
 
-	// Create a separate memory management context for each query, allowing them
-	// to be run in parallel.
 	memContexts := make([]QueryMemoryContext, len(request.Queries))
 	defer func() {
+		__antithesis_instrumentation__.Notify(648610)
 		for idx := range memContexts {
+			__antithesis_instrumentation__.Notify(648611)
 			memContexts[idx].Close(ctx)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(648601)
 
 	timespan := QueryTimespan{
 		StartNanos:          request.StartNanos,
@@ -226,14 +190,10 @@ func (s *Server) Query(
 		NowNanos:            timeutil.Now().UnixNano(),
 	}
 
-	// Start a task which is itself responsible for starting per-query worker
-	// tasks. This is needed because RunAsyncTaskEx can block; in the
-	// case where a single request has more queries than the semaphore limit,
-	// a deadlock would occur because queries cannot complete until
-	// they have written their result to the "output" channel, which is
-	// processed later in the main function.
 	if err := s.stopper.RunAsyncTask(ctx, "ts.Server: queries", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(648612)
 		for queryIdx, query := range request.Queries {
+			__antithesis_instrumentation__.Notify(648613)
 			queryIdx := queryIdx
 			query := query
 
@@ -245,16 +205,18 @@ func (s *Server) Query(
 					WaitForSem: true,
 				},
 				func(ctx context.Context) {
-					// Estimated source count is either the count of requested sources
-					// *or* the estimated cluster node count if no sources are specified.
+					__antithesis_instrumentation__.Notify(648614)
+
 					var estimatedSourceCount int64
 					if len(query.Sources) > 0 {
+						__antithesis_instrumentation__.Notify(648617)
 						estimatedSourceCount = int64(len(query.Sources))
 					} else {
+						__antithesis_instrumentation__.Notify(648618)
 						estimatedSourceCount = estimatedClusterNodeCount
 					}
+					__antithesis_instrumentation__.Notify(648615)
 
-					// Create a memory account for the results of this query.
 					memContexts[queryIdx] = MakeQueryMemoryContext(
 						s.workerMemMonitor,
 						s.resultMemMonitor,
@@ -273,65 +235,77 @@ func (s *Server) Query(
 						memContexts[queryIdx],
 					)
 					if err == nil {
+						__antithesis_instrumentation__.Notify(648619)
 						response.Results[queryIdx] = tspb.TimeSeriesQueryResponse_Result{
 							Query:      query,
 							Datapoints: datapoints,
 						}
 						response.Results[queryIdx].Sources = sources
+					} else {
+						__antithesis_instrumentation__.Notify(648620)
 					}
+					__antithesis_instrumentation__.Notify(648616)
 					select {
 					case workerOutput <- err:
+						__antithesis_instrumentation__.Notify(648621)
 					case <-ctx.Done():
+						__antithesis_instrumentation__.Notify(648622)
 					}
 				},
 			); err != nil {
-				// Stopper has been closed and is draining. Return an error and
-				// exit the worker-spawning loop.
+				__antithesis_instrumentation__.Notify(648623)
+
 				select {
 				case workerOutput <- err:
+					__antithesis_instrumentation__.Notify(648625)
 				case <-ctx.Done():
+					__antithesis_instrumentation__.Notify(648626)
 				}
+				__antithesis_instrumentation__.Notify(648624)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(648627)
 			}
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(648628)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(648629)
 	}
+	__antithesis_instrumentation__.Notify(648602)
 
 	for range request.Queries {
+		__antithesis_instrumentation__.Notify(648630)
 		select {
 		case err := <-workerOutput:
+			__antithesis_instrumentation__.Notify(648631)
 			if err != nil {
-				// Return the first error encountered. This will cancel the
-				// worker context and cause all other in-progress workers to
-				// exit.
+				__antithesis_instrumentation__.Notify(648633)
+
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(648634)
 			}
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(648632)
 			return nil, ctx.Err()
 		}
 	}
+	__antithesis_instrumentation__.Notify(648603)
 
 	return &response, nil
 }
 
-// Dump returns a stream of raw timeseries data that has been stored on the
-// server. Only data from the 10-second resolution is returned; rollup data is
-// not currently returned. Data is returned in the order it is read from disk,
-// and will thus not be totally organized by series.
-//
-// TODO(tbg): needs testing that restricting to individual timeseries works
-// and that the date range restrictions are respected. Should be easy enough to
-// set up a KV store and write some keys into it (`MakeDataKey`) to do so without
-// setting up a `*Server`.
 func (s *Server) Dump(req *tspb.DumpRequest, stream tspb.TimeSeries_DumpServer) error {
+	__antithesis_instrumentation__.Notify(648635)
 	d := defaultDumper{stream}.Dump
 	return dumpImpl(stream.Context(), s.db.db, req, d)
 
 }
 
-// DumpRaw is like Dump, but it returns a stream of raw KV pairs.
 func (s *Server) DumpRaw(req *tspb.DumpRequest, stream tspb.TimeSeries_DumpRawServer) error {
+	__antithesis_instrumentation__.Notify(648636)
 	d := rawDumper{stream}.Dump
 	return dumpImpl(stream.Context(), s.db.db, req, d)
 }
@@ -339,16 +313,27 @@ func (s *Server) DumpRaw(req *tspb.DumpRequest, stream tspb.TimeSeries_DumpRawSe
 func dumpImpl(
 	ctx context.Context, db *kv.DB, req *tspb.DumpRequest, d func(*roachpb.KeyValue) error,
 ) error {
+	__antithesis_instrumentation__.Notify(648637)
 	names := req.Names
 	if len(names) == 0 {
+		__antithesis_instrumentation__.Notify(648641)
 		names = catalog.AllInternalTimeseriesMetricNames()
+	} else {
+		__antithesis_instrumentation__.Notify(648642)
 	}
+	__antithesis_instrumentation__.Notify(648638)
 	resolutions := req.Resolutions
 	if len(resolutions) == 0 {
+		__antithesis_instrumentation__.Notify(648643)
 		resolutions = []tspb.TimeSeriesResolution{tspb.TimeSeriesResolution_RESOLUTION_10S}
+	} else {
+		__antithesis_instrumentation__.Notify(648644)
 	}
+	__antithesis_instrumentation__.Notify(648639)
 	for _, seriesName := range names {
+		__antithesis_instrumentation__.Notify(648645)
 		for _, res := range resolutions {
+			__antithesis_instrumentation__.Notify(648646)
 			if err := dumpTimeseriesAllSources(
 				ctx,
 				db,
@@ -358,10 +343,14 @@ func dumpImpl(
 				req.EndNanos,
 				d,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(648647)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(648648)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(648640)
 	return nil
 }
 
@@ -370,14 +359,23 @@ type defaultDumper struct {
 }
 
 func (dd defaultDumper) Dump(kv *roachpb.KeyValue) error {
+	__antithesis_instrumentation__.Notify(648649)
 	name, source, _, _, err := DecodeDataKey(kv.Key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(648653)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(648654)
 	}
+	__antithesis_instrumentation__.Notify(648650)
 	var idata roachpb.InternalTimeSeriesData
 	if err := kv.Value.GetProto(&idata); err != nil {
+		__antithesis_instrumentation__.Notify(648655)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(648656)
 	}
+	__antithesis_instrumentation__.Notify(648651)
 
 	tsdata := &tspb.TimeSeriesData{
 		Name:       name,
@@ -385,14 +383,18 @@ func (dd defaultDumper) Dump(kv *roachpb.KeyValue) error {
 		Datapoints: make([]tspb.TimeSeriesDatapoint, idata.SampleCount()),
 	}
 	for i := 0; i < idata.SampleCount(); i++ {
+		__antithesis_instrumentation__.Notify(648657)
 		if idata.IsColumnar() {
+			__antithesis_instrumentation__.Notify(648658)
 			tsdata.Datapoints[i].TimestampNanos = idata.TimestampForOffset(idata.Offset[i])
 			tsdata.Datapoints[i].Value = idata.Last[i]
 		} else {
+			__antithesis_instrumentation__.Notify(648659)
 			tsdata.Datapoints[i].TimestampNanos = idata.TimestampForOffset(idata.Samples[i].Offset)
 			tsdata.Datapoints[i].Value = idata.Samples[i].Sum
 		}
 	}
+	__antithesis_instrumentation__.Notify(648652)
 	return dd.stream.Send(tsdata)
 }
 
@@ -401,6 +403,7 @@ type rawDumper struct {
 }
 
 func (rd rawDumper) Dump(kv *roachpb.KeyValue) error {
+	__antithesis_instrumentation__.Notify(648660)
 	return rd.stream.Send(kv)
 }
 
@@ -412,41 +415,59 @@ func dumpTimeseriesAllSources(
 	startNanos, endNanos int64,
 	dump func(*roachpb.KeyValue) error,
 ) error {
+	__antithesis_instrumentation__.Notify(648661)
 	if endNanos == 0 {
-		endNanos = math.MaxInt64
-	}
-
-	if delta := diskResolution.SlabDuration() - 1; endNanos > math.MaxInt64-delta {
+		__antithesis_instrumentation__.Notify(648665)
 		endNanos = math.MaxInt64
 	} else {
+		__antithesis_instrumentation__.Notify(648666)
+	}
+	__antithesis_instrumentation__.Notify(648662)
+
+	if delta := diskResolution.SlabDuration() - 1; endNanos > math.MaxInt64-delta {
+		__antithesis_instrumentation__.Notify(648667)
+		endNanos = math.MaxInt64
+	} else {
+		__antithesis_instrumentation__.Notify(648668)
 		endNanos += delta
 	}
+	__antithesis_instrumentation__.Notify(648663)
 
 	span := &roachpb.Span{
 		Key: MakeDataKey(
-			seriesName, "" /* source */, diskResolution, startNanos,
+			seriesName, "", diskResolution, startNanos,
 		),
 		EndKey: MakeDataKey(
-			seriesName, "" /* source */, diskResolution, endNanos,
+			seriesName, "", diskResolution, endNanos,
 		),
 	}
 
 	for span != nil {
+		__antithesis_instrumentation__.Notify(648669)
 		b := &kv.Batch{}
-		scan := roachpb.NewScan(span.Key, span.EndKey, false /* forUpdate */)
+		scan := roachpb.NewScan(span.Key, span.EndKey, false)
 		b.AddRawRequest(scan)
 		b.Header.MaxSpanRequestKeys = dumpBatchSize
 		err := db.Run(ctx, b)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(648671)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(648672)
 		}
+		__antithesis_instrumentation__.Notify(648670)
 		resp := b.RawResponse().Responses[0].GetScan()
 		span = resp.ResumeSpan
 		for i := range resp.Rows {
+			__antithesis_instrumentation__.Notify(648673)
 			if err := dump(&resp.Rows[i]); err != nil {
+				__antithesis_instrumentation__.Notify(648674)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(648675)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(648664)
 	return nil
 }

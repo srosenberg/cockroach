@@ -1,20 +1,17 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/cmd/roachtest/cluster"
 
 func ifLocal(c cluster.Cluster, trueVal, falseVal string) string {
+	__antithesis_instrumentation__.Notify(52249)
 	if c.IsLocal() {
+		__antithesis_instrumentation__.Notify(52251)
 		return trueVal
+	} else {
+		__antithesis_instrumentation__.Notify(52252)
 	}
+	__antithesis_instrumentation__.Notify(52250)
 	return falseVal
 }

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scdeps
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,8 +26,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// JobRegistry implements the methods the schema changer needs from the
-// job registry. Outside of tests this should always be backed by *job.Registry.
 type JobRegistry interface {
 	MakeJobID() jobspb.JobID
 	CreateJobWithTxn(ctx context.Context, record jobs.Record, jobID jobspb.JobID, txn *kv.Txn) (*jobs.Job, error)
@@ -45,8 +35,6 @@ type JobRegistry interface {
 	CheckPausepoint(name string) error
 }
 
-// NewExecutorDependencies returns an scexec.Dependencies implementation built
-// from the given arguments.
 func NewExecutorDependencies(
 	codec keys.SQLCodec,
 	sessionData *sessiondata.SessionData,
@@ -65,6 +53,7 @@ func NewExecutorDependencies(
 	schemaChangerJobID jobspb.JobID,
 	statements []string,
 ) scexec.Dependencies {
+	__antithesis_instrumentation__.Notify(580624)
 	return &execDeps{
 		txnDeps: txnDeps{
 			txn:                txn,
@@ -103,27 +92,34 @@ type txnDeps struct {
 func (d *txnDeps) UpdateSchemaChangeJob(
 	ctx context.Context, id jobspb.JobID, callback scexec.JobUpdateCallback,
 ) error {
+	__antithesis_instrumentation__.Notify(580625)
 	const useReadLock = false
 	return d.jobRegistry.UpdateJobWithTxn(ctx, id, d.txn, useReadLock, func(
 		txn *kv.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater,
 	) error {
+		__antithesis_instrumentation__.Notify(580626)
 		setNonCancelable := func() {
+			__antithesis_instrumentation__.Notify(580628)
 			payload := *md.Payload
 			if !payload.Noncancelable {
+				__antithesis_instrumentation__.Notify(580629)
 				payload.Noncancelable = true
 				ju.UpdatePayload(&payload)
+			} else {
+				__antithesis_instrumentation__.Notify(580630)
 			}
 		}
+		__antithesis_instrumentation__.Notify(580627)
 		return callback(md, ju.UpdateProgress, setNonCancelable)
 	})
 }
 
 var _ scexec.Catalog = (*txnDeps)(nil)
 
-// MustReadImmutableDescriptors implements the scmutationexec.CatalogReader interface.
 func (d *txnDeps) MustReadImmutableDescriptors(
 	ctx context.Context, ids ...descpb.ID,
 ) ([]catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(580631)
 	flags := tree.CommonLookupFlags{
 		Required:       true,
 		RequireMutable: false,
@@ -134,8 +130,8 @@ func (d *txnDeps) MustReadImmutableDescriptors(
 	return d.descsCollection.GetImmutableDescriptorsByID(ctx, d.txn, flags, ids...)
 }
 
-// GetFullyQualifiedName implements the scmutationexec.CatalogReader interface
 func (d *txnDeps) GetFullyQualifiedName(ctx context.Context, id descpb.ID) (string, error) {
+	__antithesis_instrumentation__.Notify(580632)
 	objectDesc, err := d.descsCollection.GetImmutableDescriptorByID(ctx,
 		d.txn,
 		id,
@@ -145,12 +141,18 @@ func (d *txnDeps) GetFullyQualifiedName(ctx context.Context, id descpb.ID) (stri
 			AvoidLeased:    true,
 		})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580635)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(580636)
 	}
-	// For objects like tables, views, sequences, and types
-	// we can fetch the fully qualified names.
-	if objectDesc.DescriptorType() != catalog.Database &&
-		objectDesc.DescriptorType() != catalog.Schema {
+	__antithesis_instrumentation__.Notify(580633)
+
+	if objectDesc.DescriptorType() != catalog.Database && func() bool {
+		__antithesis_instrumentation__.Notify(580637)
+		return objectDesc.DescriptorType() != catalog.Schema == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(580638)
 		_, databaseDesc, err := d.descsCollection.GetImmutableDatabaseByID(ctx,
 			d.txn,
 			objectDesc.GetParentID(),
@@ -160,8 +162,12 @@ func (d *txnDeps) GetFullyQualifiedName(ctx context.Context, id descpb.ID) (stri
 				AvoidLeased:    true,
 			})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(580641)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(580642)
 		}
+		__antithesis_instrumentation__.Notify(580639)
 		schemaDesc, err := d.descsCollection.GetImmutableSchemaByID(ctx, d.txn, objectDesc.GetParentSchemaID(),
 			tree.SchemaLookupFlags{
 				Required:       true,
@@ -169,50 +175,69 @@ func (d *txnDeps) GetFullyQualifiedName(ctx context.Context, id descpb.ID) (stri
 				AvoidLeased:    true,
 			})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(580643)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(580644)
 		}
+		__antithesis_instrumentation__.Notify(580640)
 		name := tree.MakeTableNameWithSchema(tree.Name(databaseDesc.GetName()),
 			tree.Name(schemaDesc.GetName()),
 			tree.Name(objectDesc.GetName()))
 		return name.FQString(), nil
-	} else if objectDesc.DescriptorType() == catalog.Database {
-		return objectDesc.GetName(), nil
-	} else if objectDesc.DescriptorType() == catalog.Schema {
-		_, databaseDesc, err := d.descsCollection.GetImmutableDatabaseByID(ctx,
-			d.txn,
-			objectDesc.GetParentID(),
-			tree.CommonLookupFlags{
-				IncludeDropped: true,
-				Required:       true,
-				AvoidLeased:    true,
-			})
-		if err != nil {
-			return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(580645)
+		if objectDesc.DescriptorType() == catalog.Database {
+			__antithesis_instrumentation__.Notify(580646)
+			return objectDesc.GetName(), nil
+		} else {
+			__antithesis_instrumentation__.Notify(580647)
+			if objectDesc.DescriptorType() == catalog.Schema {
+				__antithesis_instrumentation__.Notify(580648)
+				_, databaseDesc, err := d.descsCollection.GetImmutableDatabaseByID(ctx,
+					d.txn,
+					objectDesc.GetParentID(),
+					tree.CommonLookupFlags{
+						IncludeDropped: true,
+						Required:       true,
+						AvoidLeased:    true,
+					})
+				if err != nil {
+					__antithesis_instrumentation__.Notify(580650)
+					return "", err
+				} else {
+					__antithesis_instrumentation__.Notify(580651)
+				}
+				__antithesis_instrumentation__.Notify(580649)
+				return fmt.Sprintf("%s.%s", databaseDesc.GetName(), objectDesc.GetName()), nil
+			} else {
+				__antithesis_instrumentation__.Notify(580652)
+			}
 		}
-		return fmt.Sprintf("%s.%s", databaseDesc.GetName(), objectDesc.GetName()), nil
 	}
+	__antithesis_instrumentation__.Notify(580634)
 	return "", errors.Newf("unknown descriptor type : %s\n", objectDesc.DescriptorType())
 }
 
-// AddSyntheticDescriptor implements the scmutationexec.CatalogReader interface.
 func (d *txnDeps) AddSyntheticDescriptor(desc catalog.Descriptor) {
+	__antithesis_instrumentation__.Notify(580653)
 	d.descsCollection.AddSyntheticDescriptor(desc)
 }
 
-// RemoveSyntheticDescriptor implements the scmutationexec.CatalogReader interface.
 func (d *txnDeps) RemoveSyntheticDescriptor(id descpb.ID) {
+	__antithesis_instrumentation__.Notify(580654)
 	d.descsCollection.RemoveSyntheticDescriptor(id)
 }
 
-// MustReadMutableDescriptor implements the scexec.Catalog interface.
 func (d *txnDeps) MustReadMutableDescriptor(
 	ctx context.Context, id descpb.ID,
 ) (catalog.MutableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(580655)
 	return d.descsCollection.GetMutableDescriptorByID(ctx, d.txn, id)
 }
 
-// NewCatalogChangeBatcher implements the scexec.Catalog interface.
 func (d *txnDeps) NewCatalogChangeBatcher() scexec.CatalogChangeBatcher {
+	__antithesis_instrumentation__.Notify(580656)
 	return &catalogChangeBatcher{
 		txnDeps: d,
 		batch:   d.txn.NewBatch(),
@@ -226,99 +251,134 @@ type catalogChangeBatcher struct {
 
 var _ scexec.CatalogChangeBatcher = (*catalogChangeBatcher)(nil)
 
-// CreateOrUpdateDescriptor implements the scexec.CatalogWriter interface.
 func (b *catalogChangeBatcher) CreateOrUpdateDescriptor(
 	ctx context.Context, desc catalog.MutableDescriptor,
 ) error {
+	__antithesis_instrumentation__.Notify(580657)
 	return b.descsCollection.WriteDescToBatch(ctx, b.kvTrace, desc, b.batch)
 }
 
-// DeleteName implements the scexec.CatalogWriter interface.
 func (b *catalogChangeBatcher) DeleteName(
 	ctx context.Context, nameInfo descpb.NameInfo, id descpb.ID,
 ) error {
+	__antithesis_instrumentation__.Notify(580658)
 	marshalledKey := catalogkeys.EncodeNameKey(b.codec, nameInfo)
 	if b.kvTrace {
+		__antithesis_instrumentation__.Notify(580660)
 		log.VEventf(ctx, 2, "Del %s", marshalledKey)
+	} else {
+		__antithesis_instrumentation__.Notify(580661)
 	}
+	__antithesis_instrumentation__.Notify(580659)
 	b.batch.Del(marshalledKey)
 	return nil
 }
 
-// DeleteDescriptor implements the scexec.CatalogChangeBatcher interface.
 func (b *catalogChangeBatcher) DeleteDescriptor(ctx context.Context, id descpb.ID) error {
+	__antithesis_instrumentation__.Notify(580662)
 	marshalledKey := catalogkeys.MakeDescMetadataKey(b.codec, id)
 	b.batch.Del(marshalledKey)
 	if b.kvTrace {
+		__antithesis_instrumentation__.Notify(580664)
 		log.VEventf(ctx, 2, "Del %s", marshalledKey)
+	} else {
+		__antithesis_instrumentation__.Notify(580665)
 	}
+	__antithesis_instrumentation__.Notify(580663)
 	b.deletedDescriptors.Add(id)
 	b.descsCollection.AddDeletedDescriptor(id)
 	return nil
 }
 
-// DeleteZoneConfig implements the scexec.CatalogChangeBatcher interface.
 func (b *catalogChangeBatcher) DeleteZoneConfig(ctx context.Context, id descpb.ID) error {
+	__antithesis_instrumentation__.Notify(580666)
 	zoneKeyPrefix := config.MakeZoneKeyPrefix(b.codec, id)
 	if b.kvTrace {
+		__antithesis_instrumentation__.Notify(580668)
 		log.VEventf(ctx, 2, "DelRange %s", zoneKeyPrefix)
+	} else {
+		__antithesis_instrumentation__.Notify(580669)
 	}
-	b.batch.DelRange(zoneKeyPrefix, zoneKeyPrefix.PrefixEnd(), false /* returnKeys */)
+	__antithesis_instrumentation__.Notify(580667)
+	b.batch.DelRange(zoneKeyPrefix, zoneKeyPrefix.PrefixEnd(), false)
 	return nil
 }
 
-// ValidateAndRun implements the scexec.CatalogChangeBatcher interface.
 func (b *catalogChangeBatcher) ValidateAndRun(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(580670)
 	if err := b.descsCollection.ValidateUncommittedDescriptors(ctx, b.txn); err != nil {
+		__antithesis_instrumentation__.Notify(580673)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(580674)
 	}
+	__antithesis_instrumentation__.Notify(580671)
 	if err := b.txn.Run(ctx, b.batch); err != nil {
+		__antithesis_instrumentation__.Notify(580675)
 		return errors.Wrap(err, "writing descriptors")
+	} else {
+		__antithesis_instrumentation__.Notify(580676)
 	}
+	__antithesis_instrumentation__.Notify(580672)
 	return nil
 }
 
 var _ scexec.TransactionalJobRegistry = (*txnDeps)(nil)
 
 func (d *txnDeps) MakeJobID() jobspb.JobID {
+	__antithesis_instrumentation__.Notify(580677)
 	return d.jobRegistry.MakeJobID()
 }
 
 func (d *txnDeps) CheckPausepoint(name string) error {
+	__antithesis_instrumentation__.Notify(580678)
 	return d.jobRegistry.CheckPausepoint(name)
 }
 
 func (d *txnDeps) SchemaChangerJobID() jobspb.JobID {
+	__antithesis_instrumentation__.Notify(580679)
 	if d.schemaChangerJobID == 0 {
+		__antithesis_instrumentation__.Notify(580681)
 		d.schemaChangerJobID = d.jobRegistry.MakeJobID()
+	} else {
+		__antithesis_instrumentation__.Notify(580682)
 	}
+	__antithesis_instrumentation__.Notify(580680)
 	return d.schemaChangerJobID
 }
 
-// CreateJob implements the scexec.TransactionalJobRegistry interface.
 func (d *txnDeps) CreateJob(ctx context.Context, record jobs.Record) error {
+	__antithesis_instrumentation__.Notify(580683)
 	if _, err := d.jobRegistry.CreateJobWithTxn(ctx, record, record.JobID, d.txn); err != nil {
+		__antithesis_instrumentation__.Notify(580685)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(580686)
 	}
+	__antithesis_instrumentation__.Notify(580684)
 	d.createdJobs = append(d.createdJobs, record.JobID)
 	return nil
 }
 
-// CreatedJobs implements the scexec.TransactionalJobRegistry interface.
 func (d *txnDeps) CreatedJobs() []jobspb.JobID {
+	__antithesis_instrumentation__.Notify(580687)
 	return d.createdJobs
 }
 
 var _ scexec.IndexSpanSplitter = (*txnDeps)(nil)
 
-// MaybeSplitIndexSpans implements the scexec.IndexSpanSplitter interface.
 func (d *txnDeps) MaybeSplitIndexSpans(
 	ctx context.Context, table catalog.TableDescriptor, indexToBackfill catalog.Index,
 ) error {
-	// Only perform splits on the system tenant.
+	__antithesis_instrumentation__.Notify(580688)
+
 	if !d.codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(580690)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(580691)
 	}
+	__antithesis_instrumentation__.Notify(580689)
 
 	span := table.IndexSpan(d.codec, indexToBackfill.GetID())
 	const backfillSplitExpiration = time.Hour
@@ -326,10 +386,10 @@ func (d *txnDeps) MaybeSplitIndexSpans(
 	return d.txn.DB().AdminSplit(ctx, span.Key, expirationTime)
 }
 
-// GetResumeSpans implements the scexec.BackfillTracker interface.
 func (d *txnDeps) GetResumeSpans(
 	ctx context.Context, tableID descpb.ID, indexID descpb.IndexID,
 ) ([]roachpb.Span, error) {
+	__antithesis_instrumentation__.Notify(580692)
 	table, err := d.descsCollection.GetImmutableTableByID(ctx, d.txn, tableID, tree.ObjectLookupFlags{
 		CommonLookupFlags: tree.CommonLookupFlags{
 			Required:    true,
@@ -337,15 +397,19 @@ func (d *txnDeps) GetResumeSpans(
 		},
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580694)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(580695)
 	}
+	__antithesis_instrumentation__.Notify(580693)
 	return []roachpb.Span{table.IndexSpan(d.codec, indexID)}, nil
 }
 
-// SetResumeSpans implements the scexec.BackfillTracker interface.
 func (d *txnDeps) SetResumeSpans(
 	ctx context.Context, tableID descpb.ID, indexID descpb.IndexID, total, done []roachpb.Span,
 ) error {
+	__antithesis_instrumentation__.Notify(580696)
 	panic("implement me")
 }
 
@@ -362,73 +426,71 @@ type execDeps struct {
 }
 
 func (d *execDeps) Clock() scmutationexec.Clock {
+	__antithesis_instrumentation__.Notify(580697)
 	return d.clock
 }
 
 var _ scexec.Dependencies = (*execDeps)(nil)
 
-// Catalog implements the scexec.Dependencies interface.
 func (d *execDeps) Catalog() scexec.Catalog {
+	__antithesis_instrumentation__.Notify(580698)
 	return d
 }
 
-// IndexBackfiller implements the scexec.Dependencies interface.
 func (d *execDeps) IndexBackfiller() scexec.Backfiller {
+	__antithesis_instrumentation__.Notify(580699)
 	return d.backfiller
 }
 
-// BackfillProgressTracker implements the scexec.Dependencies interface.
 func (d *execDeps) BackfillProgressTracker() scexec.BackfillTracker {
+	__antithesis_instrumentation__.Notify(580700)
 	return d.backfillTracker
 }
 
-// PeriodicProgressFlusher implements the scexec.Dependencies interface.
 func (d *execDeps) PeriodicProgressFlusher() scexec.PeriodicProgressFlusher {
+	__antithesis_instrumentation__.Notify(580701)
 	return d.periodicProgressFlusher
 }
 
 func (d *execDeps) IndexValidator() scexec.IndexValidator {
+	__antithesis_instrumentation__.Notify(580702)
 	return d.indexValidator
 }
 
-// IndexSpanSplitter implements the scexec.Dependencies interface.
 func (d *execDeps) IndexSpanSplitter() scexec.IndexSpanSplitter {
+	__antithesis_instrumentation__.Notify(580703)
 	return d
 }
 
-// TransactionalJobCreator implements the scexec.Dependencies interface.
 func (d *execDeps) TransactionalJobRegistry() scexec.TransactionalJobRegistry {
+	__antithesis_instrumentation__.Notify(580704)
 	return d
 }
 
-// Statements implements the scexec.Dependencies interface.
 func (d *execDeps) Statements() []string {
+	__antithesis_instrumentation__.Notify(580705)
 	return d.statements
 }
 
-// User implements the scexec.Dependencies interface.
 func (d *execDeps) User() security.SQLUsername {
+	__antithesis_instrumentation__.Notify(580706)
 	return d.user
 }
 
-// CommentUpdater implements the scexec.Dependencies interface.
 func (d *execDeps) DescriptorMetadataUpdater(ctx context.Context) scexec.DescriptorMetadataUpdater {
+	__antithesis_instrumentation__.Notify(580707)
 	return d.commentUpdaterFactory.NewMetadataUpdater(ctx, d.txn, d.sessionData)
 }
 
-// EventLoggerFactory constructs a new event logger with a txn.
 type EventLoggerFactory = func(*kv.Txn) scexec.EventLogger
 
-// EventLogger implements scexec.Dependencies
 func (d *execDeps) EventLogger() scexec.EventLogger {
+	__antithesis_instrumentation__.Notify(580708)
 	return d.eventLogger
 }
 
-// NewNoOpBackfillTracker constructs a backfill tracker which does not do
-// anything. It will always return progress for a given backfill which
-// contains a full set of CompletedSpans corresponding to the source index
-// span and an empty MinimumWriteTimestamp.
 func NewNoOpBackfillTracker(codec keys.SQLCodec) scexec.BackfillTracker {
+	__antithesis_instrumentation__.Notify(580709)
 	return noopBackfillProgress{codec: codec}
 }
 
@@ -437,16 +499,19 @@ type noopBackfillProgress struct {
 }
 
 func (n noopBackfillProgress) FlushCheckpoint(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(580710)
 	return nil
 }
 
 func (n noopBackfillProgress) FlushFractionCompleted(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(580711)
 	return nil
 }
 
 func (n noopBackfillProgress) GetBackfillProgress(
 	ctx context.Context, b scexec.Backfill,
 ) (scexec.BackfillProgress, error) {
+	__antithesis_instrumentation__.Notify(580712)
 	key := n.codec.IndexPrefix(uint32(b.TableID), uint32(b.SourceIndexID))
 	return scexec.BackfillProgress{
 		Backfill: b,
@@ -459,33 +524,35 @@ func (n noopBackfillProgress) GetBackfillProgress(
 func (n noopBackfillProgress) SetBackfillProgress(
 	ctx context.Context, progress scexec.BackfillProgress,
 ) error {
+	__antithesis_instrumentation__.Notify(580713)
 	return nil
 }
 
 type noopPeriodicProgressFlusher struct {
 }
 
-// NewNoopPeriodicProgressFlusher constructs a new
-// PeriodicProgressFlusher which never does anything.
 func NewNoopPeriodicProgressFlusher() scexec.PeriodicProgressFlusher {
+	__antithesis_instrumentation__.Notify(580714)
 	return noopPeriodicProgressFlusher{}
 }
 
 func (n noopPeriodicProgressFlusher) StartPeriodicUpdates(
 	ctx context.Context, tracker scexec.BackfillProgressFlusher,
 ) (stop func() error) {
-	return func() error { return nil }
+	__antithesis_instrumentation__.Notify(580715)
+	return func() error { __antithesis_instrumentation__.Notify(580716); return nil }
 }
 
 type constantClock struct {
 	ts time.Time
 }
 
-// NewConstantClock constructs a new clock for use in execution.
 func NewConstantClock(ts time.Time) scmutationexec.Clock {
+	__antithesis_instrumentation__.Notify(580717)
 	return constantClock{ts: ts}
 }
 
 func (c constantClock) ApproximateTime() time.Time {
+	__antithesis_instrumentation__.Notify(580718)
 	return c.ts
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gcjob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,51 +13,73 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// gcTenant drops the data of tenant that has an expired deadline and updates
-// the job details to mark the work it did. The job progress is updated in
-// place, but needs to be persisted to the job.
 func gcTenant(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
 	tenID uint64,
 	progress *jobspb.SchemaChangeGCProgress,
 ) error {
+	__antithesis_instrumentation__.Notify(492727)
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(492733)
 		log.Infof(ctx, "GC is being considered for tenant: %d", tenID)
+	} else {
+		__antithesis_instrumentation__.Notify(492734)
 	}
+	__antithesis_instrumentation__.Notify(492728)
 
 	if progress.Tenant.Status == jobspb.SchemaChangeGCProgress_WAITING_FOR_GC {
+		__antithesis_instrumentation__.Notify(492735)
 		return errors.AssertionFailedf(
 			"Tenant id %d is expired and should not be in state %+v",
 			tenID, jobspb.SchemaChangeGCProgress_WAITING_FOR_GC,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(492736)
 	}
+	__antithesis_instrumentation__.Notify(492729)
 
-	info, err := sql.GetTenantRecord(ctx, execCfg, nil /* txn */, tenID)
+	info, err := sql.GetTenantRecord(ctx, execCfg, nil, tenID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(492737)
 		if pgerror.GetPGCode(err) == pgcode.UndefinedObject {
-			// The tenant row is deleted only after its data is cleared so there is
-			// nothing to do in this case but mark the job as done.
+			__antithesis_instrumentation__.Notify(492739)
+
 			if progress.Tenant.Status != jobspb.SchemaChangeGCProgress_DELETED {
-				// This will happen if the job deletes the tenant row and fails to update
-				// its progress. In this case there's nothing to do but update the job
-				// progress.
+				__antithesis_instrumentation__.Notify(492741)
+
 				log.Errorf(ctx, "tenant id %d not found while attempting to GC", tenID)
 				progress.Tenant.Status = jobspb.SchemaChangeGCProgress_DELETED
+			} else {
+				__antithesis_instrumentation__.Notify(492742)
 			}
+			__antithesis_instrumentation__.Notify(492740)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(492743)
 		}
+		__antithesis_instrumentation__.Notify(492738)
 		return errors.Wrapf(err, "fetching tenant %d", info.ID)
+	} else {
+		__antithesis_instrumentation__.Notify(492744)
 	}
+	__antithesis_instrumentation__.Notify(492730)
 
-	// This case should never happen.
 	if progress.Tenant.Status == jobspb.SchemaChangeGCProgress_DELETED {
+		__antithesis_instrumentation__.Notify(492745)
 		return errors.AssertionFailedf("GC state for tenant %+v is DELETED yet the tenant row still exists", info)
+	} else {
+		__antithesis_instrumentation__.Notify(492746)
 	}
+	__antithesis_instrumentation__.Notify(492731)
 
 	if err := sql.GCTenantSync(ctx, execCfg, info); err != nil {
+		__antithesis_instrumentation__.Notify(492747)
 		return errors.Wrapf(err, "gc tenant %d", info.ID)
+	} else {
+		__antithesis_instrumentation__.Notify(492748)
 	}
+	__antithesis_instrumentation__.Notify(492732)
 
 	progress.Tenant.Status = jobspb.SchemaChangeGCProgress_DELETED
 	return nil

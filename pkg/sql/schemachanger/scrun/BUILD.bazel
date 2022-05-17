@@ -21,6 +21,7 @@ go_library(
         "//pkg/sql/schemachanger/scplan",
         "//pkg/util/log",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

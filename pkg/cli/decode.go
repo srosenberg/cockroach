@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -26,64 +18,93 @@ import (
 )
 
 func runDebugDecodeProto(_ *cobra.Command, _ []string) error {
+	__antithesis_instrumentation__.Notify(31800)
 	if isatty.IsTerminal(os.Stdin.Fd()) {
+		__antithesis_instrumentation__.Notify(31802)
 		fmt.Fprintln(stderr,
 			`# Reading proto-encoded pieces of data from stdin.
 # Press Ctrl+C or Ctrl+D to terminate.`,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(31803)
 	}
+	__antithesis_instrumentation__.Notify(31801)
 	return streamMap(os.Stdout, os.Stdin,
 		func(s string) (bool, string, error) {
+			__antithesis_instrumentation__.Notify(31804)
 			return tryDecodeValue(s, debugDecodeProtoName, debugDecodeProtoEmitDefaults)
 		})
 }
 
-// streamMap applies `fn` to all the scanned fields in `in`, and reports
-// the result of `fn` on `out`.
-// Errors returned by `fn` are emitted on `out` with a "warning" prefix.
 func streamMap(out io.Writer, in io.Reader, fn func(string) (bool, string, error)) error {
+	__antithesis_instrumentation__.Notify(31805)
 	sc := bufio.NewScanner(in)
-	sc.Buffer(nil, 128<<20 /* 128 MiB */)
+	sc.Buffer(nil, 128<<20)
 	for sc.Scan() {
+		__antithesis_instrumentation__.Notify(31807)
 		for _, field := range strings.Fields(sc.Text()) {
+			__antithesis_instrumentation__.Notify(31809)
 			ok, value, err := fn(field)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(31812)
 				fmt.Fprintf(out, "warning:  %v", err)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(31813)
 			}
+			__antithesis_instrumentation__.Notify(31810)
 			if !ok {
+				__antithesis_instrumentation__.Notify(31814)
 				fmt.Fprintf(out, "%s\t", field)
-				// Skip since it doesn't appear that this field is an encoded proto.
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(31815)
 			}
+			__antithesis_instrumentation__.Notify(31811)
 			fmt.Fprintf(out, "%s\t", value)
 		}
+		__antithesis_instrumentation__.Notify(31808)
 		fmt.Fprintln(out, "")
 	}
+	__antithesis_instrumentation__.Notify(31806)
 	return sc.Err()
 }
 
-// tryDecodeValue tries to decode the given string with the given proto name
-// reports ok=false if the data was not valid proto-encoded.
 func tryDecodeValue(s, protoName string, emitDefaults bool) (ok bool, val string, err error) {
+	__antithesis_instrumentation__.Notify(31816)
 	bytes, err := gohex.DecodeString(s)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31820)
 		b, err := base64.StdEncoding.DecodeString(s)
 		if err != nil {
-			return false, "", nil //nolint:returnerrcheck
+			__antithesis_instrumentation__.Notify(31822)
+			return false, "", nil
+		} else {
+			__antithesis_instrumentation__.Notify(31823)
 		}
+		__antithesis_instrumentation__.Notify(31821)
 		bytes = b
+	} else {
+		__antithesis_instrumentation__.Notify(31824)
 	}
+	__antithesis_instrumentation__.Notify(31817)
 	msg, err := protoreflect.DecodeMessage(protoName, bytes)
 	if err != nil {
-		return false, "", nil //nolint:returnerrcheck
+		__antithesis_instrumentation__.Notify(31825)
+		return false, "", nil
+	} else {
+		__antithesis_instrumentation__.Notify(31826)
 	}
+	__antithesis_instrumentation__.Notify(31818)
 	j, err := protoreflect.MessageToJSON(msg, protoreflect.FmtFlags{EmitDefaults: emitDefaults})
 	if err != nil {
-		// Unexpected error: the data was valid protobuf, but does not
-		// reflect back to JSON. We report the protobuf struct in the
-		// error message nonetheless.
+		__antithesis_instrumentation__.Notify(31827)
+
 		return false, "", errors.Wrapf(err, "while JSON-encoding %#v", msg)
+	} else {
+		__antithesis_instrumentation__.Notify(31828)
 	}
+	__antithesis_instrumentation__.Notify(31819)
 	return true, j.String(), nil
 }

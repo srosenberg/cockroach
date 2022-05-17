@@ -26,6 +26,7 @@ go_library(
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_errors//oserror",
         "@com_github_containerd_containerd//platforms",
@@ -49,7 +50,10 @@ proto_library(
     srcs = ["testconfig.proto"],
     strip_import_prefix = "/pkg",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto:gogo_proto"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@com_github_gogo_protobuf//gogoproto:gogo_proto",
+    ],
 )
 
 go_proto_library(
@@ -58,5 +62,8 @@ go_proto_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/acceptance/cluster",
     proto = ":cluster_proto",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@com_github_gogo_protobuf//gogoproto",
+    ],
 )

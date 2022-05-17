@@ -27,6 +27,7 @@ go_library(
         "//pkg/util/quotapool",
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -54,6 +55,7 @@ go_test(
         "//pkg/util/quotapool",
         "//pkg/util/randutil",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

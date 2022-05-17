@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package nstree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sync"
@@ -18,6 +10,7 @@ import (
 )
 
 func (t byIDMap) len() int {
+	__antithesis_instrumentation__.Notify(266940)
 	return t.t.Len()
 }
 
@@ -27,31 +20,36 @@ type byIDItem struct {
 }
 
 func makeByIDItem(d interface{ GetID() descpb.ID }) byIDItem {
+	__antithesis_instrumentation__.Notify(266941)
 	return byIDItem{id: d.GetID(), v: d}
 }
 
 var _ btree.Item = (*byIDItem)(nil)
 
 func (b *byIDItem) Less(thanItem btree.Item) bool {
+	__antithesis_instrumentation__.Notify(266942)
 	than := thanItem.(*byIDItem)
 	return b.id < than.id
 }
 
 var byIDItemPool = sync.Pool{
-	New: func() interface{} { return new(byIDItem) },
+	New: func() interface{} { __antithesis_instrumentation__.Notify(266943); return new(byIDItem) },
 }
 
 func (b byIDItem) get() *byIDItem {
+	__antithesis_instrumentation__.Notify(266944)
 	alloc := byIDItemPool.Get().(*byIDItem)
 	*alloc = b
 	return alloc
 }
 
 func (b *byIDItem) value() interface{} {
+	__antithesis_instrumentation__.Notify(266945)
 	return b.v
 }
 
 func (b *byIDItem) put() {
+	__antithesis_instrumentation__.Notify(266946)
 	*b = byIDItem{}
 	byIDItemPool.Put(b)
 }

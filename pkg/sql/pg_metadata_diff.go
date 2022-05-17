@@ -1,17 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// This file contains constants and types used by pg_catalog diff tool
-// that are also re-used in /pkg/cmd/generate-postgres-metadata-tables
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"encoding/json"
@@ -24,14 +13,11 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// RDBMS options
 const (
 	MySQL    = "mysql"
 	Postgres = "postgres"
 )
 
-// GetPGMetadataSQL is a query uses udt_name::regtype instead of data_type column because
-// data_type only says "ARRAY" but does not say which kind of array it is.
 const GetPGMetadataSQL = `
 	SELECT
 		c.relname AS table_name,
@@ -47,7 +33,6 @@ const GetPGMetadataSQL = `
   AND c.relkind != 'i';
 `
 
-// Summary will keep accountability for any unexpected difference and report it in the log.
 type Summary struct {
 	TotalTables        int
 	TotalColumns       int
@@ -56,7 +41,6 @@ type Summary struct {
 	DatatypeMismatches int
 }
 
-// PGMetadataColumnDiff describes diffs information for a column type. Fields are exported for marshaling purposes.
 type PGMetadataColumnDiff struct {
 	Oid              uint32 `json:"oid"`
 	DataType         string `json:"dataType"`
@@ -64,43 +48,29 @@ type PGMetadataColumnDiff struct {
 	ExpectedDataType string `json:"expectedDataType"`
 }
 
-// PGMetadataColumnDiffs maps column names to datatype diffs.
 type PGMetadataColumnDiffs map[string]*PGMetadataColumnDiff
 
-// PGMetadataTableDiffs is used to store and load expected diffs:
-// - A table name pointing to a zero length PGMetadataColumnDiffs means that we expect this table to be missing
-//   in cockroach db.
-// - If PGMetadataColumnDiffs is not empty but columnName points to null, we expect that column to be missing in that table in
-//   cockroach db.
-// - If column Name points to a not null PGMetadataColumnDiff, the test column describes how we expect that data type to be
-//   different between cockroach db and postgres.
 type PGMetadataTableDiffs map[string]PGMetadataColumnDiffs
 
-// PGMetadataColumnType represents a column type from postgres/mysql.
 type PGMetadataColumnType struct {
 	Oid      uint32 `json:"oid"`
 	DataType string `json:"dataType"`
 }
 
-// PGMetadataColumns maps columns names to datatypes.
 type PGMetadataColumns map[string]*PGMetadataColumnType
 
-// PGMetadataTableInfo represents a table with column mapping and column names in insertion order.
 type PGMetadataTableInfo struct {
 	ColumnNames []string          `json:"columnNames"`
 	Columns     PGMetadataColumns `json:"columns"`
 }
 
-// PGMetadataTables maps tables with columns.
 type PGMetadataTables map[string]PGMetadataTableInfo
 
-// PGMetadataFile stores the schema gotten from postgres/mysql.
 type PGMetadataFile struct {
 	Version    string           `json:"version"`
 	PGMetadata PGMetadataTables `json:"tables"`
 }
 
-// PGMetadataDiffFile is used to store expected diffs or by the diff tool to validate a diff is an expected diff.
 type PGMetadataDiffFile struct {
 	Version            string               `json:"version"`
 	DiffSummary        Summary              `json:"diffSummary"`
@@ -111,12 +81,17 @@ type PGMetadataDiffFile struct {
 func (d PGMetadataTableDiffs) addColumn(
 	tableName, columnName string, column *PGMetadataColumnDiff,
 ) {
+	__antithesis_instrumentation__.Notify(558781)
 	columns, ok := d[tableName]
 
 	if !ok {
+		__antithesis_instrumentation__.Notify(558783)
 		columns = make(PGMetadataColumnDiffs)
 		d[tableName] = columns
+	} else {
+		__antithesis_instrumentation__.Notify(558784)
 	}
+	__antithesis_instrumentation__.Notify(558782)
 
 	columns[columnName] = column
 }
@@ -124,35 +99,40 @@ func (d PGMetadataTableDiffs) addColumn(
 func (p PGMetadataTables) addColumn(
 	tableName string, columnName string, column *PGMetadataColumnType,
 ) {
+	__antithesis_instrumentation__.Notify(558785)
 	tableInfo, ok := p[tableName]
 
 	if !ok {
+		__antithesis_instrumentation__.Notify(558787)
 		tableInfo = PGMetadataTableInfo{
 			ColumnNames: []string{},
 			Columns:     make(PGMetadataColumns),
 		}
 		p[tableName] = tableInfo
+	} else {
+		__antithesis_instrumentation__.Notify(558788)
 	}
+	__antithesis_instrumentation__.Notify(558786)
 
 	tableInfo.ColumnNames = append(tableInfo.ColumnNames, columnName)
 	tableInfo.Columns[columnName] = column
 	p[tableName] = tableInfo
 }
 
-// AddColumnMetadata is used to load data from postgres or cockroach pg_catalog schema
 func (p PGMetadataTables) AddColumnMetadata(
 	tableName string, columnName string, dataType string, dataTypeOid uint32,
 ) {
+	__antithesis_instrumentation__.Notify(558789)
 	p.addColumn(tableName, columnName, &PGMetadataColumnType{
 		dataTypeOid,
 		dataType,
 	})
 }
 
-// addDiff is for the second use case for pgTables which objective is create a datatype diff
 func (d PGMetadataTableDiffs) addDiff(
 	tableName string, columnName string, expected *PGMetadataColumnType, actual *PGMetadataColumnType,
 ) {
+	__antithesis_instrumentation__.Notify(558790)
 	d.addColumn(tableName, columnName, &PGMetadataColumnDiff{
 		actual.Oid,
 		actual.DataType,
@@ -161,7 +141,6 @@ func (d PGMetadataTableDiffs) addDiff(
 	})
 }
 
-// Not using error interface because message is not relevant
 type compareResult int
 
 const (
@@ -170,91 +149,137 @@ const (
 	diffError
 )
 
-// compareColumns verifies if there is a datatype mismatch or if the diff is an expected diff
 func (d PGMetadataTableDiffs) compareColumns(
 	tableName string, columnName string, expected *PGMetadataColumnType, actual *PGMetadataColumnType,
 ) compareResult {
-	// MySQL don't have oid as they are in postgres so we can't compare oids.
+	__antithesis_instrumentation__.Notify(558791)
+
 	if expected.Oid == 0 {
+		__antithesis_instrumentation__.Notify(558794)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(558795)
 	}
+	__antithesis_instrumentation__.Notify(558792)
 
 	expectedDiff := d.getExpectedDiff(tableName, columnName)
 
 	if actual.Oid == expected.Oid {
+		__antithesis_instrumentation__.Notify(558796)
 		if expectedDiff != nil {
-			// Need to update JSON file
+			__antithesis_instrumentation__.Notify(558797)
+
 			return expectedDiffError
+		} else {
+			__antithesis_instrumentation__.Notify(558798)
 		}
-	} else if expectedDiff == nil || expectedDiff.Oid != actual.Oid ||
-		expectedDiff.ExpectedOid != expected.Oid {
-		// This diff is not expected
-		return diffError
+	} else {
+		__antithesis_instrumentation__.Notify(558799)
+		if expectedDiff == nil || func() bool {
+			__antithesis_instrumentation__.Notify(558800)
+			return expectedDiff.Oid != actual.Oid == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(558801)
+			return expectedDiff.ExpectedOid != expected.Oid == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(558802)
+
+			return diffError
+		} else {
+			__antithesis_instrumentation__.Notify(558803)
+		}
 	}
+	__antithesis_instrumentation__.Notify(558793)
 
 	return success
 }
 
-// If there is an expected diff for a table.column it will return it
 func (d PGMetadataTableDiffs) getExpectedDiff(tableName, columnName string) *PGMetadataColumnDiff {
+	__antithesis_instrumentation__.Notify(558804)
 	columns, ok := d[tableName]
 	if !ok {
+		__antithesis_instrumentation__.Notify(558806)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(558807)
 	}
+	__antithesis_instrumentation__.Notify(558805)
 
 	return columns[columnName]
 }
 
-// isExpectedMissingTable is used by the diff PGMetadataTableDiffs to verify whether missing a table in cockroach is expected
-// or not
 func (d PGMetadataTableDiffs) isExpectedMissingTable(tableName string) bool {
-	if columns, ok := d[tableName]; !ok || len(columns) > 0 {
+	__antithesis_instrumentation__.Notify(558808)
+	if columns, ok := d[tableName]; !ok || func() bool {
+		__antithesis_instrumentation__.Notify(558810)
+		return len(columns) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(558811)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(558812)
 	}
+	__antithesis_instrumentation__.Notify(558809)
 
 	return true
 }
 
-// isExpectedMissingColumn is similar to isExpectedMissingTable to verify column expected misses
 func (d PGMetadataTableDiffs) isExpectedMissingColumn(tableName string, columnName string) bool {
+	__antithesis_instrumentation__.Notify(558813)
 	columns, ok := d[tableName]
 	if !ok {
+		__antithesis_instrumentation__.Notify(558816)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(558817)
 	}
+	__antithesis_instrumentation__.Notify(558814)
 
 	diff, ok := columns[columnName]
 	if !ok {
+		__antithesis_instrumentation__.Notify(558818)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(558819)
 	}
+	__antithesis_instrumentation__.Notify(558815)
 
 	return diff == nil
 }
 
-// addMissingTable adds a tablename when it is not found in cockroach db
 func (d PGMetadataTableDiffs) addMissingTable(tableName string) {
+	__antithesis_instrumentation__.Notify(558820)
 	d[tableName] = make(PGMetadataColumnDiffs)
 }
 
-// addMissingColumn adds a column when it is not found in cockroach db
 func (d PGMetadataTableDiffs) addMissingColumn(tableName string, columnName string) {
+	__antithesis_instrumentation__.Notify(558821)
 	columns, ok := d[tableName]
 
 	if !ok {
+		__antithesis_instrumentation__.Notify(558823)
 		columns = make(PGMetadataColumnDiffs)
 		d[tableName] = columns
+	} else {
+		__antithesis_instrumentation__.Notify(558824)
 	}
+	__antithesis_instrumentation__.Notify(558822)
 
 	columns[columnName] = nil
 }
 
-// rewriteDiffs creates pg_catalog_test-diffs.json
 func (d PGMetadataTableDiffs) rewriteDiffs(
 	source PGMetadataFile, sum Summary, diffFile string,
 ) error {
+	__antithesis_instrumentation__.Notify(558825)
 	f, err := os.OpenFile(diffFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(558827)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(558828)
 	}
+	__antithesis_instrumentation__.Notify(558826)
 	defer f.Close()
 
 	mf := &PGMetadataDiffFile{
@@ -267,110 +292,162 @@ func (d PGMetadataTableDiffs) rewriteDiffs(
 	return nil
 }
 
-// Save stores the diff file in a JSON format.
 func (df *PGMetadataDiffFile) Save(writer io.Writer) {
+	__antithesis_instrumentation__.Notify(558829)
 	Save(writer, df)
 }
 
-// Save stores the table metadata in a JSON format.
 func (f *PGMetadataFile) Save(writer io.Writer) {
+	__antithesis_instrumentation__.Notify(558830)
 	Save(writer, f)
 }
 
-// Save stores any file into the writer in JSON format
 func Save(writer io.Writer, file interface{}) {
+	__antithesis_instrumentation__.Notify(558831)
 	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(file); err != nil {
+		__antithesis_instrumentation__.Notify(558832)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(558833)
 	}
 }
 
-//getUnimplementedTables retrieves the tables that are not yet part of CRDB.
 func (d PGMetadataTableDiffs) getUnimplementedTables(source PGMetadataTables) PGMetadataTables {
+	__antithesis_instrumentation__.Notify(558834)
 	unimplementedTables := make(PGMetadataTables)
 	for tableName := range d {
-		if len(d[tableName]) == 0 && len(source[tableName].Columns.getUnimplementedTypes()) == 0 {
+		__antithesis_instrumentation__.Notify(558836)
+		if len(d[tableName]) == 0 && func() bool {
+			__antithesis_instrumentation__.Notify(558837)
+			return len(source[tableName].Columns.getUnimplementedTypes()) == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(558838)
 			unimplementedTables[tableName] = source[tableName]
+		} else {
+			__antithesis_instrumentation__.Notify(558839)
 		}
 	}
+	__antithesis_instrumentation__.Notify(558835)
 	return unimplementedTables
 }
 
-// getUnimplementedColumns is used by diffs as it might not be in sync with
-// already implemented columns.
 func (d PGMetadataTableDiffs) getUnimplementedColumns(target PGMetadataTables) PGMetadataTables {
+	__antithesis_instrumentation__.Notify(558840)
 	unimplementedColumns := make(PGMetadataTables)
 	for tableName, columns := range d {
+		__antithesis_instrumentation__.Notify(558842)
 		for columnName, columnType := range columns {
+			__antithesis_instrumentation__.Notify(558843)
 			if columnType != nil {
-				// dataType mismatch (Not a new column).
+				__antithesis_instrumentation__.Notify(558847)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(558848)
 			}
+			__antithesis_instrumentation__.Notify(558844)
 			sourceType, ok := target[tableName].Columns[columnName]
 			if !ok {
+				__antithesis_instrumentation__.Notify(558849)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(558850)
 			}
+			__antithesis_instrumentation__.Notify(558845)
 			typeOid := oid.Oid(sourceType.Oid)
-			if _, ok := types.OidToType[typeOid]; !ok || typeOid == oid.T_anyarray {
-				// can't implement this column due to missing type.
+			if _, ok := types.OidToType[typeOid]; !ok || func() bool {
+				__antithesis_instrumentation__.Notify(558851)
+				return typeOid == oid.T_anyarray == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(558852)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(558853)
 			}
+			__antithesis_instrumentation__.Notify(558846)
 			unimplementedColumns.AddColumnMetadata(tableName, columnName, sourceType.DataType, sourceType.Oid)
 		}
 	}
+	__antithesis_instrumentation__.Notify(558841)
 	return unimplementedColumns
 }
 
-// removeImplementedColumns removes diff columns that are marked as expected
-// diff (or unimplemented column) but is already implemented in CRDB.
 func (d PGMetadataTableDiffs) removeImplementedColumns(source PGMetadataTables) {
+	__antithesis_instrumentation__.Notify(558854)
 	for tableName, tableInfo := range source {
+		__antithesis_instrumentation__.Notify(558855)
 		pColumns, exists := d[tableName]
 		if !exists {
+			__antithesis_instrumentation__.Notify(558857)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(558858)
 		}
+		__antithesis_instrumentation__.Notify(558856)
 		for _, columnName := range tableInfo.ColumnNames {
+			__antithesis_instrumentation__.Notify(558859)
 			columnType, exists := pColumns[columnName]
 			if !exists {
+				__antithesis_instrumentation__.Notify(558862)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(558863)
 			}
+			__antithesis_instrumentation__.Notify(558860)
 			if columnType != nil {
+				__antithesis_instrumentation__.Notify(558864)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(558865)
 			}
+			__antithesis_instrumentation__.Notify(558861)
 
 			delete(pColumns, columnName)
 		}
 	}
 }
 
-// getUnimplementedTypes verifies that all the types are implemented in cockroach db.
 func (c PGMetadataColumns) getUnimplementedTypes() map[oid.Oid]string {
+	__antithesis_instrumentation__.Notify(558866)
 	unimplemented := make(map[oid.Oid]string)
 	for _, column := range c {
+		__antithesis_instrumentation__.Notify(558868)
 		typeOid := oid.Oid(column.Oid)
-		if _, ok := types.OidToType[typeOid]; !ok || typeOid == oid.T_anyarray {
+		if _, ok := types.OidToType[typeOid]; !ok || func() bool {
+			__antithesis_instrumentation__.Notify(558869)
+			return typeOid == oid.T_anyarray == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(558870)
 			unimplemented[typeOid] = column.DataType
+		} else {
+			__antithesis_instrumentation__.Notify(558871)
 		}
 	}
+	__antithesis_instrumentation__.Notify(558867)
 
 	return unimplemented
 }
 
 func (p PGMetadataTables) getUnimplementedTypes() map[oid.Oid]string {
+	__antithesis_instrumentation__.Notify(558872)
 	unimplemented := make(map[oid.Oid]string)
 	for _, tableInfo := range p {
+		__antithesis_instrumentation__.Notify(558874)
 		for typeOid, dataType := range tableInfo.Columns.getUnimplementedTypes() {
+			__antithesis_instrumentation__.Notify(558875)
 			unimplemented[typeOid] = dataType
 		}
 	}
+	__antithesis_instrumentation__.Notify(558873)
 
 	return unimplemented
 }
 
-// TablesMetadataFilename give the appropriate name where to store or read
-// any schema description from a specific database.
 func TablesMetadataFilename(path, rdbms, schema string) string {
+	__antithesis_instrumentation__.Notify(558876)
 	return filepath.Join(
 		path,
 		fmt.Sprintf("%s_tables_from_%s.json", schema, rdbms),

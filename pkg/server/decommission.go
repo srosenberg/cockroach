@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,109 +23,144 @@ import (
 func getPingCheckDecommissionFn(
 	engines Engines,
 ) (*nodeTombstoneStorage, func(context.Context, roachpb.NodeID, codes.Code) error) {
+	__antithesis_instrumentation__.Notify(190560)
 	nodeTombStorage := &nodeTombstoneStorage{engs: engines}
 	return nodeTombStorage, func(ctx context.Context, nodeID roachpb.NodeID, errorCode codes.Code) error {
+		__antithesis_instrumentation__.Notify(190561)
 		ts, err := nodeTombStorage.IsDecommissioned(ctx, nodeID)
 		if err != nil {
-			// An error here means something very basic is not working. Better to terminate
-			// than to limp along.
+			__antithesis_instrumentation__.Notify(190564)
+
 			log.Fatalf(ctx, "unable to read decommissioned status for n%d: %v", nodeID, err)
+		} else {
+			__antithesis_instrumentation__.Notify(190565)
 		}
+		__antithesis_instrumentation__.Notify(190562)
 		if !ts.IsZero() {
-			// The node was decommissioned.
+			__antithesis_instrumentation__.Notify(190566)
+
 			return grpcstatus.Errorf(errorCode,
 				"n%d was permanently removed from the cluster at %s; it is not allowed to rejoin the cluster",
 				nodeID, ts,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(190567)
 		}
-		// The common case - target node is not decommissioned.
+		__antithesis_instrumentation__.Notify(190563)
+
 		return nil
 	}
 }
 
-// Decommission idempotently sets the decommissioning flag for specified nodes.
-// The error return is a gRPC error.
 func (s *Server) Decommission(
 	ctx context.Context, targetStatus livenesspb.MembershipStatus, nodeIDs []roachpb.NodeID,
 ) error {
-	// If we're asked to decommission ourself we may lose access to cluster RPC,
-	// so we decommission ourself last. We copy the slice to avoid mutating the
-	// input slice.
+	__antithesis_instrumentation__.Notify(190568)
+
 	if targetStatus == livenesspb.MembershipStatus_DECOMMISSIONED {
+		__antithesis_instrumentation__.Notify(190572)
 		orderedNodeIDs := make([]roachpb.NodeID, len(nodeIDs))
 		copy(orderedNodeIDs, nodeIDs)
 		sort.SliceStable(orderedNodeIDs, func(i, j int) bool {
+			__antithesis_instrumentation__.Notify(190574)
 			return orderedNodeIDs[j] == s.NodeID()
 		})
+		__antithesis_instrumentation__.Notify(190573)
 		nodeIDs = orderedNodeIDs
+	} else {
+		__antithesis_instrumentation__.Notify(190575)
 	}
+	__antithesis_instrumentation__.Notify(190569)
 
 	var event eventpb.EventPayload
 	var nodeDetails *eventpb.CommonNodeDecommissionDetails
 	if targetStatus.Decommissioning() {
+		__antithesis_instrumentation__.Notify(190576)
 		ev := &eventpb.NodeDecommissioning{}
 		nodeDetails = &ev.CommonNodeDecommissionDetails
 		event = ev
-	} else if targetStatus.Decommissioned() {
-		ev := &eventpb.NodeDecommissioned{}
-		nodeDetails = &ev.CommonNodeDecommissionDetails
-		event = ev
-	} else if targetStatus.Active() {
-		ev := &eventpb.NodeRecommissioned{}
-		nodeDetails = &ev.CommonNodeDecommissionDetails
-		event = ev
 	} else {
-		panic("unexpected target membership status")
+		__antithesis_instrumentation__.Notify(190577)
+		if targetStatus.Decommissioned() {
+			__antithesis_instrumentation__.Notify(190578)
+			ev := &eventpb.NodeDecommissioned{}
+			nodeDetails = &ev.CommonNodeDecommissionDetails
+			event = ev
+		} else {
+			__antithesis_instrumentation__.Notify(190579)
+			if targetStatus.Active() {
+				__antithesis_instrumentation__.Notify(190580)
+				ev := &eventpb.NodeRecommissioned{}
+				nodeDetails = &ev.CommonNodeDecommissionDetails
+				event = ev
+			} else {
+				__antithesis_instrumentation__.Notify(190581)
+				panic("unexpected target membership status")
+			}
+		}
 	}
+	__antithesis_instrumentation__.Notify(190570)
 	event.CommonDetails().Timestamp = timeutil.Now().UnixNano()
 	nodeDetails.RequestingNodeID = int32(s.NodeID())
 
 	for _, nodeID := range nodeIDs {
+		__antithesis_instrumentation__.Notify(190582)
 		statusChanged, err := s.nodeLiveness.SetMembershipStatus(ctx, nodeID, targetStatus)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(190585)
 			if errors.Is(err, liveness.ErrMissingRecord) {
+				__antithesis_instrumentation__.Notify(190587)
 				return grpcstatus.Error(codes.NotFound, liveness.ErrMissingRecord.Error())
+			} else {
+				__antithesis_instrumentation__.Notify(190588)
 			}
+			__antithesis_instrumentation__.Notify(190586)
 			log.Errorf(ctx, "%+s", err)
 			return grpcstatus.Errorf(codes.Internal, err.Error())
+		} else {
+			__antithesis_instrumentation__.Notify(190589)
 		}
+		__antithesis_instrumentation__.Notify(190583)
 		if statusChanged {
+			__antithesis_instrumentation__.Notify(190590)
 			nodeDetails.TargetNodeID = int32(nodeID)
-			// Ensure an entry is produced in the external log in all cases.
+
 			log.StructuredEvent(ctx, event)
 
-			// If we die right now or if this transaction fails to commit, the
-			// membership event will not be recorded to the event log. While we
-			// could insert the event record in the same transaction as the liveness
-			// update, this would force a 2PC and potentially leave write intents in
-			// the node liveness range. Better to make the event logging best effort
-			// than to slow down future node liveness transactions.
 			if err := s.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+				__antithesis_instrumentation__.Notify(190591)
 				return sql.InsertEventRecord(
 					ctx,
 					s.sqlServer.execCfg.InternalExecutor,
 					txn,
-					int32(s.NodeID()), /* reporting ID: the node where the event is logged */
-					sql.LogToSystemTable|sql.LogToDevChannelIfVerbose, /* we already call log.StructuredEvent above */
-					int32(nodeID), /* target ID: the node that we wee a membership change for */
+					int32(s.NodeID()),
+					sql.LogToSystemTable|sql.LogToDevChannelIfVerbose,
+					int32(nodeID),
 					event,
 				)
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(190592)
 				log.Ops.Errorf(ctx, "unable to record event: %+v: %+v", event, err)
+			} else {
+				__antithesis_instrumentation__.Notify(190593)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(190594)
 		}
+		__antithesis_instrumentation__.Notify(190584)
 
-		// Similarly to the log event above, we may not be able to clean up the
-		// status entry if we crash or fail -- the status entry is inline, and
-		// thus cannot be transactional. However, since decommissioning is
-		// idempotent, we can attempt to remove the key regardless of whether
-		// the status changed, such that a stale key can be removed by
-		// decommissioning the node again.
 		if targetStatus.Decommissioned() {
+			__antithesis_instrumentation__.Notify(190595)
 			if err := s.db.PutInline(ctx, keys.NodeStatusKey(nodeID), nil); err != nil {
+				__antithesis_instrumentation__.Notify(190596)
 				log.Errorf(ctx, "unable to clean up node status data for node %d: %s", nodeID, err)
+			} else {
+				__antithesis_instrumentation__.Notify(190597)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(190598)
 		}
 	}
+	__antithesis_instrumentation__.Notify(190571)
 	return nil
 }

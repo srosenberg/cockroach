@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package geogfn
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -20,77 +12,70 @@ import (
 	"github.com/golang/geo/s2"
 )
 
-// BestGeomProjection translates roughly to the ST_BestSRID function in PostGIS.
-// It attempts to find the best projection for a bounding box into an accurate
-// geometry-type projection.
-//
-// The algorithm is described by ST_Buffer/ST_Intersection documentation (paraphrased):
-//   It first determines the best SRID that fits the bounding box of the 2 geography objects (ST_Intersection only).
-//   It favors a north/south pole projection, then UTM, then LAEA for smaller zones, otherwise falling back
-//   to web mercator.
-//   If geography objects are within one half zone UTM but not the same UTM it will pick one of those.
-//   After the calculation is complete, it will fall back to WGS84 Geography.
 func BestGeomProjection(boundingRect s2.Rect) (geoprojbase.Proj4Text, error) {
+	__antithesis_instrumentation__.Notify(59462)
 	center := boundingRect.Center()
 
 	latWidth := s1.Angle(boundingRect.Lat.Length())
 	lngWidth := s1.Angle(boundingRect.Lng.Length())
 
-	// Check if these fit either the North Pole or South Pole areas.
-	// If the center has latitude greater than 70 (an arbitrary polar threshold), and it is
-	// within the polar ranges, return that.
-	if center.Lat.Degrees() > 70 && boundingRect.Lo().Lat.Degrees() > 45 {
-		// See: https://epsg.io/3574.
-		return getGeomProjection(3574)
-	}
-	// Same for south pole.
-	if center.Lat.Degrees() < -70 && boundingRect.Hi().Lat.Degrees() < -45 {
-		// See: https://epsg.io/3409
-		return getGeomProjection(3409)
-	}
+	if center.Lat.Degrees() > 70 && func() bool {
+		__antithesis_instrumentation__.Notify(59467)
+		return boundingRect.Lo().Lat.Degrees() > 45 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(59468)
 
-	// Each UTM zone is 6 degrees wide and distortion is low for geometries that fit within the zone. We use
-	// UTM if the width is lower than the UTM zone width, even though the geometry may span 2 zones -- using
-	// the geometry center to pick the UTM zone should result in most of the geometry being in the picked zone.
+		return getGeomProjection(3574)
+	} else {
+		__antithesis_instrumentation__.Notify(59469)
+	}
+	__antithesis_instrumentation__.Notify(59463)
+
+	if center.Lat.Degrees() < -70 && func() bool {
+		__antithesis_instrumentation__.Notify(59470)
+		return boundingRect.Hi().Lat.Degrees() < -45 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(59471)
+
+		return getGeomProjection(3409)
+	} else {
+		__antithesis_instrumentation__.Notify(59472)
+	}
+	__antithesis_instrumentation__.Notify(59464)
+
 	if lngWidth.Degrees() < 6 {
-		// Determine the offset of the projection.
-		// Offset longitude -180 to 0 and divide by 6 to get the zone.
-		// Note that we treat 180 degree longitudes as offset 59.
-		// TODO(#geo): do we care about https://en.wikipedia.org/wiki/Universal_Transverse_Mercator_coordinate_system#Exceptions?
-		// PostGIS's _ST_BestSRID function doesn't seem to care: .
+		__antithesis_instrumentation__.Notify(59473)
+
 		sridOffset := geopb.SRID(math.Min(math.Floor((center.Lng.Degrees()+180)/6), 59))
 		if center.Lat.Degrees() >= 0 {
-			// Start at the north UTM SRID.
-			return getGeomProjection(32601 + sridOffset)
-		}
-		// Start at the south UTM SRID.
-		// This should make no difference in end result compared to using the north UTMs,
-		// but for completeness we do it.
-		return getGeomProjection(32701 + sridOffset)
-	}
+			__antithesis_instrumentation__.Notify(59475)
 
-	// Attempt to fit into LAEA areas if the width is less than 25 degrees (we can go up to 30
-	// but want to leave some room for precision issues).
-	//
-	// LAEA areas are separated into 3 latitude zones between 0 and 90 and 3 latitude zones
-	// between -90 and 0. Within each latitude zones, they have different longitude bands:
-	// * The bands closest to the equator have 12x30 degree longitude zones.
-	// * The bands in the temperate area 8x45 degree longitude zones.
-	// * The bands near the poles have 4x90 degree longitude zones.
-	//
-	// For each of these bands, we custom define a LAEA area with the center of the LAEA area
-	// as the lat/lon offset.
-	//
-	// See also: https://en.wikipedia.org/wiki/Lambert_azimuthal_equal-area_projection.
+			return getGeomProjection(32601 + sridOffset)
+		} else {
+			__antithesis_instrumentation__.Notify(59476)
+		}
+		__antithesis_instrumentation__.Notify(59474)
+
+		return getGeomProjection(32701 + sridOffset)
+	} else {
+		__antithesis_instrumentation__.Notify(59477)
+	}
+	__antithesis_instrumentation__.Notify(59465)
+
 	if latWidth.Degrees() < 25 {
-		// Convert lat to a known 30 degree zone..
-		// -3 represents [-90, -60), -2 represents [-60, -30) ... and 2 represents [60, 90].
-		// (note: 90 is inclusive at the end).
-		// Treat a 90 degree latitude as band 2.
+		__antithesis_instrumentation__.Notify(59478)
+
 		latZone := math.Min(math.Floor(center.Lat.Degrees()/30), 2)
 		latZoneCenterDegrees := (latZone * 30) + 15
-		// Equator bands - 30 degree zones.
-		if (latZone == 0 || latZone == -1) && lngWidth.Degrees() <= 30 {
+
+		if (latZone == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(59481)
+			return latZone == -1 == true
+		}() == true) && func() bool {
+			__antithesis_instrumentation__.Notify(59482)
+			return lngWidth.Degrees() <= 30 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(59483)
 			lngZone := math.Floor(center.Lng.Degrees() / 30)
 			return geoprojbase.MakeProj4Text(
 				fmt.Sprintf(
@@ -99,9 +84,19 @@ func BestGeomProjection(boundingRect s2.Rect) (geoprojbase.Proj4Text, error) {
 					(lngZone*30)+15,
 				),
 			), nil
+		} else {
+			__antithesis_instrumentation__.Notify(59484)
 		}
-		// Temperate bands - 45 degree zones.
-		if (latZone == -2 || latZone == 1) && lngWidth.Degrees() <= 45 {
+		__antithesis_instrumentation__.Notify(59479)
+
+		if (latZone == -2 || func() bool {
+			__antithesis_instrumentation__.Notify(59485)
+			return latZone == 1 == true
+		}() == true) && func() bool {
+			__antithesis_instrumentation__.Notify(59486)
+			return lngWidth.Degrees() <= 45 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(59487)
 			lngZone := math.Floor(center.Lng.Degrees() / 45)
 			return geoprojbase.MakeProj4Text(
 				fmt.Sprintf(
@@ -110,9 +105,19 @@ func BestGeomProjection(boundingRect s2.Rect) (geoprojbase.Proj4Text, error) {
 					(lngZone*45)+22.5,
 				),
 			), nil
+		} else {
+			__antithesis_instrumentation__.Notify(59488)
 		}
-		// Polar bands -- 90 degree zones.
-		if (latZone == -3 || latZone == 2) && lngWidth.Degrees() <= 90 {
+		__antithesis_instrumentation__.Notify(59480)
+
+		if (latZone == -3 || func() bool {
+			__antithesis_instrumentation__.Notify(59489)
+			return latZone == 2 == true
+		}() == true) && func() bool {
+			__antithesis_instrumentation__.Notify(59490)
+			return lngWidth.Degrees() <= 90 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(59491)
 			lngZone := math.Floor(center.Lng.Degrees() / 90)
 			return geoprojbase.MakeProj4Text(
 				fmt.Sprintf(
@@ -121,18 +126,26 @@ func BestGeomProjection(boundingRect s2.Rect) (geoprojbase.Proj4Text, error) {
 					(lngZone*90)+45,
 				),
 			), nil
+		} else {
+			__antithesis_instrumentation__.Notify(59492)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(59493)
 	}
+	__antithesis_instrumentation__.Notify(59466)
 
-	// Default to Web Mercator.
 	return getGeomProjection(3857)
 }
 
-// getGeomProjection returns the Proj4Text associated with an SRID.
 func getGeomProjection(srid geopb.SRID) (geoprojbase.Proj4Text, error) {
+	__antithesis_instrumentation__.Notify(59494)
 	proj, err := geoprojbase.Projection(srid)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(59496)
 		return geoprojbase.Proj4Text{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(59497)
 	}
+	__antithesis_instrumentation__.Notify(59495)
 	return proj.Proj4Text, nil
 }

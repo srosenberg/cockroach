@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,165 +20,137 @@ import (
 	"github.com/kr/pretty"
 )
 
-// executeReadOnlyBatch is the execution logic for client requests which do not
-// mutate the range's replicated state. The method uses a single RocksDB
-// iterator to evaluate the batch and then updates the timestamp cache to
-// reflect the key spans that it read.
 func (r *Replica) executeReadOnlyBatch(
 	ctx context.Context, ba *roachpb.BatchRequest, g *concurrency.Guard,
 ) (br *roachpb.BatchResponse, _ *concurrency.Guard, pErr *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(120135)
 	r.readOnlyCmdMu.RLock()
 	defer r.readOnlyCmdMu.RUnlock()
 
-	// Verify that the batch can be executed.
 	st, err := r.checkExecutionCanProceed(ctx, ba, g)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(120144)
 		return nil, g, roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(120145)
 	}
+	__antithesis_instrumentation__.Notify(120136)
 
-	// Compute the transaction's local uncertainty limit using observed
-	// timestamps, which can help avoid uncertainty restarts.
 	ui := uncertainty.ComputeInterval(&ba.Header, st, r.Clock().MaxOffset())
 
-	// Evaluate read-only batch command.
 	rec := NewReplicaEvalContext(r, g.LatchSpans())
 
-	// TODO(irfansharif): It's unfortunate that in this read-only code path,
-	// we're stuck with a ReadWriter because of the way evaluateBatch is
-	// designed.
 	rw := r.store.Engine().NewReadOnly(storage.StandardDurability)
 	if !rw.ConsistentIterators() {
-		// This is not currently needed for correctness, but future optimizations
-		// may start relying on this, so we assert here.
-		panic("expected consistent iterators")
-	}
-	if util.RaceEnabled {
-		rw = spanset.NewReadWriterAt(rw, g.LatchSpans(), ba.Timestamp)
-	}
-	defer rw.Close()
+		__antithesis_instrumentation__.Notify(120146)
 
-	// TODO(nvanbenschoten): once all replicated intents are pulled into the
-	// concurrency manager's lock-table, we can be sure that if we reached this
-	// point, we will not conflict with any of them during evaluation. This in
-	// turn means that we can bump the timestamp cache *before* evaluation
-	// without risk of starving writes. Once we start doing that, we're free to
-	// release latches immediately after we acquire an engine iterator as long
-	// as we're performing a non-locking read. Note that this also requires that
-	// the request is not being optimistically evaluated (optimistic evaluation
-	// does not wait for latches or check locks). It would also be nice, but not
-	// required for correctness, that the read-only engine eagerly create an
-	// iterator (that is later cloned) while the latches are held, so that this
-	// request does not "see" the effect of any later requests that happen after
-	// the latches are released.
+		panic("expected consistent iterators")
+	} else {
+		__antithesis_instrumentation__.Notify(120147)
+	}
+	__antithesis_instrumentation__.Notify(120137)
+	if util.RaceEnabled {
+		__antithesis_instrumentation__.Notify(120148)
+		rw = spanset.NewReadWriterAt(rw, g.LatchSpans(), ba.Timestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(120149)
+	}
+	__antithesis_instrumentation__.Notify(120138)
+	defer rw.Close()
 
 	var result result.Result
 	br, result, pErr = r.executeReadOnlyBatchWithServersideRefreshes(ctx, rw, rec, ba, ui, g)
 
-	// If the request hit a server-side concurrency retry error, immediately
-	// propagate the error. Don't assume ownership of the concurrency guard.
 	if isConcurrencyRetryError(pErr) {
+		__antithesis_instrumentation__.Notify(120150)
 		if g.EvalKind == concurrency.OptimisticEval {
-			// Since this request was not holding latches, it could have raced with
-			// intent resolution. So we can't trust it to add discovered locks, if
-			// there is a latch conflict. This means that a discovered lock plus a
-			// latch conflict will likely cause the request to evaluate at least 3
-			// times: optimistically; pessimistically and add the discovered lock;
-			// wait until resolution and evaluate pessimistically again.
-			//
-			// TODO(sumeer): scans and gets are correctly setting the resume span
-			// when returning a WriteIntentError. I am not sure about other
-			// concurrency errors. We could narrow the spans we check the latch
-			// conflicts for by using collectSpansRead as done below in the
-			// non-error path.
-			if !g.CheckOptimisticNoLatchConflicts() {
-				return nil, g, roachpb.NewError(roachpb.NewOptimisticEvalConflictsError())
-			}
-		}
-		pErr = maybeAttachLease(pErr, &st.Lease)
-		return nil, g, pErr
-	}
+			__antithesis_instrumentation__.Notify(120152)
 
-	if g.EvalKind == concurrency.OptimisticEval {
-		if pErr == nil {
-			// Gather the spans that were read -- we distinguish the spans in the
-			// request from the spans that were actually read, using resume spans in
-			// the response.
-			latchSpansRead, lockSpansRead, err := r.collectSpansRead(ba, br)
-			if err != nil {
-				return nil, g, roachpb.NewError(err)
-			}
-			if ok := g.CheckOptimisticNoConflicts(latchSpansRead, lockSpansRead); !ok {
+			if !g.CheckOptimisticNoLatchConflicts() {
+				__antithesis_instrumentation__.Notify(120153)
 				return nil, g, roachpb.NewError(roachpb.NewOptimisticEvalConflictsError())
+			} else {
+				__antithesis_instrumentation__.Notify(120154)
 			}
 		} else {
-			// There was an error, that was not classified as a concurrency retry
-			// error, and this request was not holding latches. This should be rare,
-			// and in the interest of not having subtle correctness bugs, we retry
-			// pessimistically.
+			__antithesis_instrumentation__.Notify(120155)
+		}
+		__antithesis_instrumentation__.Notify(120151)
+		pErr = maybeAttachLease(pErr, &st.Lease)
+		return nil, g, pErr
+	} else {
+		__antithesis_instrumentation__.Notify(120156)
+	}
+	__antithesis_instrumentation__.Notify(120139)
+
+	if g.EvalKind == concurrency.OptimisticEval {
+		__antithesis_instrumentation__.Notify(120157)
+		if pErr == nil {
+			__antithesis_instrumentation__.Notify(120158)
+
+			latchSpansRead, lockSpansRead, err := r.collectSpansRead(ba, br)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(120160)
+				return nil, g, roachpb.NewError(err)
+			} else {
+				__antithesis_instrumentation__.Notify(120161)
+			}
+			__antithesis_instrumentation__.Notify(120159)
+			if ok := g.CheckOptimisticNoConflicts(latchSpansRead, lockSpansRead); !ok {
+				__antithesis_instrumentation__.Notify(120162)
+				return nil, g, roachpb.NewError(roachpb.NewOptimisticEvalConflictsError())
+			} else {
+				__antithesis_instrumentation__.Notify(120163)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(120164)
+
 			return nil, g, roachpb.NewError(roachpb.NewOptimisticEvalConflictsError())
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(120165)
 	}
+	__antithesis_instrumentation__.Notify(120140)
 
-	// Handle any local (leaseholder-only) side-effects of the request.
-	//
-	// Processing these is fine for optimistic evaluation since these were non
-	// conflicting intents so intent resolution could have been racing with this
-	// request even if latches were held.
 	intents := result.Local.DetachEncounteredIntents()
 	if pErr == nil {
+		__antithesis_instrumentation__.Notify(120166)
 		pErr = r.handleReadOnlyLocalEvalResult(ctx, ba, result.Local)
+	} else {
+		__antithesis_instrumentation__.Notify(120167)
 	}
+	__antithesis_instrumentation__.Notify(120141)
 
-	// Otherwise, update the timestamp cache and release the concurrency guard.
-	// Note:
-	// - The update to the timestamp cache is not gated on pErr == nil,
-	//   since certain semantic errors (e.g. ConditionFailedError on CPut)
-	//   require updating the timestamp cache (see updatesTSCacheOnErr).
-	// - For optimistic evaluation, used for limited scans, the update to the
-	//   timestamp cache limits itself to the spans that were read, by using
-	//   the ResumeSpans.
 	ec, g := endCmds{repl: r, g: g, st: st}, nil
 	ec.done(ctx, ba, br, pErr)
 
-	// Semi-synchronously process any intents that need resolving here in
-	// order to apply back pressure on the client which generated them. The
-	// resolution is semi-synchronous in that there is a limited number of
-	// outstanding asynchronous resolution tasks allowed after which
-	// further calls will block.
 	if len(intents) > 0 {
+		__antithesis_instrumentation__.Notify(120168)
 		log.Eventf(ctx, "submitting %d intents to asynchronous processing", len(intents))
-		// We only allow synchronous intent resolution for consistent requests.
-		// Intent resolution is async/best-effort for inconsistent requests.
-		//
-		// An important case where this logic is necessary is for RangeLookup
-		// requests. In their case, synchronous intent resolution can deadlock
-		// if the request originated from the local node which means the local
-		// range descriptor cache has an in-flight RangeLookup request which
-		// prohibits any concurrent requests for the same range. See #17760.
+
 		allowSyncProcessing := ba.ReadConsistency == roachpb.CONSISTENT
 		if err := r.store.intentResolver.CleanupIntentsAsync(ctx, intents, allowSyncProcessing); err != nil {
+			__antithesis_instrumentation__.Notify(120169)
 			log.Warningf(ctx, "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(120170)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(120171)
 	}
+	__antithesis_instrumentation__.Notify(120142)
 
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(120172)
 		log.VErrEventf(ctx, 3, "%v", pErr.String())
 	} else {
+		__antithesis_instrumentation__.Notify(120173)
 		log.Event(ctx, "read completed")
 	}
+	__antithesis_instrumentation__.Notify(120143)
 	return br, nil, pErr
 }
 
-// evalContextWithAccount wraps an EvalContext to provide a non-nil
-// mon.BoundAccount. This wrapping is conditional on various factors, and
-// specific to a request (see executeReadOnlyBatchWithServersideRefreshes),
-// which is why the implementation of EvalContext by Replica does not by
-// default provide a non-nil mon.BoundAccount.
-//
-// If we start using evalContextWithAccount on more code paths we should
-// consider using it everywhere and lift it to an earlier point in the code.
-// Then code that decides that we need a non-nil BoundAccount can set a field
-// instead of wrapping.
 type evalContextWithAccount struct {
 	batcheval.EvalContext
 	memAccount *mon.BoundAccount
@@ -194,40 +158,41 @@ type evalContextWithAccount struct {
 
 var evalContextWithAccountPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(120174)
 		return &evalContextWithAccount{}
 	},
 }
 
-// newEvalContextWithAccount creates an evalContextWithAccount with an account
-// connected to the given monitor. It uses a sync.Pool.
 func newEvalContextWithAccount(
 	ctx context.Context, evalCtx batcheval.EvalContext, mon *mon.BytesMonitor,
 ) *evalContextWithAccount {
+	__antithesis_instrumentation__.Notify(120175)
 	ec := evalContextWithAccountPool.Get().(*evalContextWithAccount)
 	ec.EvalContext = evalCtx
 	if ec.memAccount != nil {
+		__antithesis_instrumentation__.Notify(120177)
 		ec.memAccount.Init(ctx, mon)
 	} else {
+		__antithesis_instrumentation__.Notify(120178)
 		acc := mon.MakeBoundAccount()
 		ec.memAccount = &acc
 	}
+	__antithesis_instrumentation__.Notify(120176)
 	return ec
 }
 
-// close returns the accounted memory and returns objects to the sync.Pool.
 func (e *evalContextWithAccount) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(120179)
 	e.memAccount.Close(ctx)
-	// Clear the BoundAccount struct, so it can be later reused.
+
 	*e.memAccount = mon.BoundAccount{}
 	evalContextWithAccountPool.Put(e)
 }
 func (e evalContextWithAccount) GetResponseMemoryAccount() *mon.BoundAccount {
+	__antithesis_instrumentation__.Notify(120180)
 	return e.memAccount
 }
 
-// executeReadOnlyBatchWithServersideRefreshes invokes evaluateBatch and retries
-// at a higher timestamp in the event of some retriable errors if allowed by the
-// batch/txn.
 func (r *Replica) executeReadOnlyBatchWithServersideRefreshes(
 	ctx context.Context,
 	rw storage.ReadWriter,
@@ -236,156 +201,181 @@ func (r *Replica) executeReadOnlyBatchWithServersideRefreshes(
 	ui uncertainty.Interval,
 	g *concurrency.Guard,
 ) (br *roachpb.BatchResponse, res result.Result, pErr *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(120181)
 	log.Event(ctx, "executing read-only batch")
 
 	var rootMonitor *mon.BytesMonitor
-	// Only do memory allocation accounting if the request did not originate
-	// locally, or for a local request that has reserved no memory. Local
-	// requests (originating in DistSQL) do memory accounting before issuing the
-	// request. Even though the accounting for the first request in the caller
-	// is small (the NoMemoryReservedAtSource=true case), subsequent ones use
-	// the size of the response for subsequent requests (see row.txnKVFetcher).
-	// Note that we could additionally add an OR-clause with
-	// ba.AdmissionHeader.Source != FROM_SQL for the if-block that does memory
-	// accounting. We don't do that currently since there are some SQL requests
-	// that are not marked as FROM_SQL.
-	//
-	// This whole scheme could be tightened, both in terms of marking, and
-	// compensating for the amount of memory reserved at the source.
-	//
-	// TODO(sumeer): for multi-tenant KV we should be accounting on a per-tenant
-	// basis and not letting a single tenant consume all the memory (we could
-	// place a limit equal to total/2).
-	if ba.AdmissionHeader.SourceLocation != roachpb.AdmissionHeader_LOCAL ||
-		ba.AdmissionHeader.NoMemoryReservedAtSource {
-		// rootMonitor will never be nil in production settings, but it can be nil
-		// for tests that do not have a monitor.
+
+	if ba.AdmissionHeader.SourceLocation != roachpb.AdmissionHeader_LOCAL || func() bool {
+		__antithesis_instrumentation__.Notify(120186)
+		return ba.AdmissionHeader.NoMemoryReservedAtSource == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(120187)
+
 		rootMonitor = r.store.getRootMemoryMonitorForKV()
+	} else {
+		__antithesis_instrumentation__.Notify(120188)
 	}
+	__antithesis_instrumentation__.Notify(120182)
 	var boundAccount *mon.BoundAccount
 	if rootMonitor != nil {
+		__antithesis_instrumentation__.Notify(120189)
 		evalCtx := newEvalContextWithAccount(ctx, rec, rootMonitor)
 		boundAccount = evalCtx.memAccount
-		// Closing evalCtx also closes boundAccount. Memory is not actually
-		// released when this function returns, but at least the batch is fully
-		// evaluated. Ideally we would like to release after grpc has sent the
-		// response, but there are no interceptors at that stage. The interceptors
-		// execute before the response is marshaled in Server.processUnaryRPC by
-		// calling sendResponse. We are intentionally not using finalizers because
-		// they delay GC and because they have had bugs in the past (and can
-		// prevent GC of objects with cyclic references).
+
 		defer evalCtx.close(ctx)
 		rec = evalCtx
+	} else {
+		__antithesis_instrumentation__.Notify(120190)
 	}
+	__antithesis_instrumentation__.Notify(120183)
 
 	for retries := 0; ; retries++ {
+		__antithesis_instrumentation__.Notify(120191)
 		if retries > 0 {
-			// It is safe to call Clear on an uninitialized BoundAccount.
+			__antithesis_instrumentation__.Notify(120193)
+
 			boundAccount.Clear(ctx)
 			log.VEventf(ctx, 2, "server-side retry of batch")
+		} else {
+			__antithesis_instrumentation__.Notify(120194)
 		}
-		br, res, pErr = evaluateBatch(ctx, kvserverbase.CmdIDKey(""), rw, rec, nil, ba, ui, true /* readOnly */)
-		// If we can retry, set a higher batch timestamp and continue.
-		// Allow one retry only.
-		if pErr == nil || retries > 0 || !canDoServersideRetry(ctx, pErr, ba, br, g, nil /* deadline */) {
+		__antithesis_instrumentation__.Notify(120192)
+		br, res, pErr = evaluateBatch(ctx, kvserverbase.CmdIDKey(""), rw, rec, nil, ba, ui, true)
+
+		if pErr == nil || func() bool {
+			__antithesis_instrumentation__.Notify(120195)
+			return retries > 0 == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(120196)
+			return !canDoServersideRetry(ctx, pErr, ba, br, g, nil) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(120197)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(120198)
 		}
 	}
+	__antithesis_instrumentation__.Notify(120184)
 
 	if pErr != nil {
-		// Failed read-only batches can't have any Result except for what's
-		// allowlisted here.
+		__antithesis_instrumentation__.Notify(120199)
+
 		res.Local = result.LocalResult{
 			EncounteredIntents: res.Local.DetachEncounteredIntents(),
 			Metrics:            res.Local.Metrics,
 		}
 		return nil, res, pErr
+	} else {
+		__antithesis_instrumentation__.Notify(120200)
 	}
+	__antithesis_instrumentation__.Notify(120185)
 	return br, res, nil
 }
 
 func (r *Replica) handleReadOnlyLocalEvalResult(
 	ctx context.Context, ba *roachpb.BatchRequest, lResult result.LocalResult,
 ) *roachpb.Error {
-	// Fields for which no action is taken in this method are zeroed so that
-	// they don't trigger an assertion at the end of the method (which checks
-	// that all fields were handled).
+	__antithesis_instrumentation__.Notify(120201)
+
 	{
+		__antithesis_instrumentation__.Notify(120205)
 		lResult.Reply = nil
 	}
+	__antithesis_instrumentation__.Notify(120202)
 
 	if lResult.AcquiredLocks != nil {
-		// These will all be unreplicated locks.
+		__antithesis_instrumentation__.Notify(120206)
+
 		log.Eventf(ctx, "acquiring %d unreplicated locks", len(lResult.AcquiredLocks))
 		for i := range lResult.AcquiredLocks {
+			__antithesis_instrumentation__.Notify(120208)
 			r.concMgr.OnLockAcquired(ctx, &lResult.AcquiredLocks[i])
 		}
+		__antithesis_instrumentation__.Notify(120207)
 		lResult.AcquiredLocks = nil
+	} else {
+		__antithesis_instrumentation__.Notify(120209)
 	}
+	__antithesis_instrumentation__.Notify(120203)
 
 	if !lResult.IsZero() {
+		__antithesis_instrumentation__.Notify(120210)
 		log.Fatalf(ctx, "unhandled field in LocalEvalResult: %s", pretty.Diff(lResult, result.LocalResult{}))
+	} else {
+		__antithesis_instrumentation__.Notify(120211)
 	}
+	__antithesis_instrumentation__.Notify(120204)
 	return nil
 }
 
-// collectSpansRead uses the spans declared in the requests, and the resume
-// spans in the responses, to construct the effective spans that were read,
-// and uses that to compute the latch and lock spans.
 func (r *Replica) collectSpansRead(
 	ba *roachpb.BatchRequest, br *roachpb.BatchResponse,
 ) (latchSpans, lockSpans *spanset.SpanSet, _ error) {
+	__antithesis_instrumentation__.Notify(120212)
 	baCopy := *ba
 	baCopy.Requests = make([]roachpb.RequestUnion, len(baCopy.Requests))
 	j := 0
 	for i := 0; i < len(baCopy.Requests); i++ {
+		__antithesis_instrumentation__.Notify(120214)
 		baReq := ba.Requests[i]
 		req := baReq.GetInner()
 		header := req.Header()
 
 		resp := br.Responses[i].GetInner()
 		if resp.Header().ResumeSpan == nil {
-			// Fully evaluated.
+			__antithesis_instrumentation__.Notify(120217)
+
 			baCopy.Requests[j] = baReq
 			j++
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(120218)
 		}
+		__antithesis_instrumentation__.Notify(120215)
 
 		switch t := resp.(type) {
 		case *roachpb.ScanResponse:
+			__antithesis_instrumentation__.Notify(120219)
 			if header.Key.Equal(t.ResumeSpan.Key) {
-				// The request did not evaluate. Ignore it.
+				__antithesis_instrumentation__.Notify(120224)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(120225)
 			}
-			// The scan will resume at the inclusive ResumeSpan.Key. So
-			// ResumeSpan.Key has not been read and becomes the exclusive end key of
-			// what was read.
+			__antithesis_instrumentation__.Notify(120220)
+
 			header.EndKey = t.ResumeSpan.Key
 		case *roachpb.ReverseScanResponse:
+			__antithesis_instrumentation__.Notify(120221)
 			if header.EndKey.Equal(t.ResumeSpan.EndKey) {
-				// The request did not evaluate. Ignore it.
+				__antithesis_instrumentation__.Notify(120226)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(120227)
 			}
-			// The scan will resume at the exclusive ResumeSpan.EndKey and proceed
-			// towards the current header.Key. So ResumeSpan.EndKey has been read
-			// and becomes the inclusive start key of what was read.
+			__antithesis_instrumentation__.Notify(120222)
+
 			header.Key = t.ResumeSpan.EndKey
 		default:
-			// Consider it fully evaluated, which is safe.
+			__antithesis_instrumentation__.Notify(120223)
+
 			baCopy.Requests[j] = baReq
 			j++
 			continue
 		}
-		// The ResumeSpan has changed the header.
+		__antithesis_instrumentation__.Notify(120216)
+
 		req = req.ShallowCopy()
 		req.SetHeader(header)
 		baCopy.Requests[j].MustSetInner(req)
 		j++
 	}
+	__antithesis_instrumentation__.Notify(120213)
 	baCopy.Requests = baCopy.Requests[:j]
 
-	// Collect the batch's declared spans again, this time with the
-	// span bounds constrained to what was read.
 	var err error
 	latchSpans, lockSpans, _, err = r.collectSpans(&baCopy)
 	return latchSpans, lockSpans, err

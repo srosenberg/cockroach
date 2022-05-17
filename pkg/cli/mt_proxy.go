@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,68 +32,103 @@ determined by the arguments used.
 }
 
 func runStartSQLProxy(cmd *cobra.Command, args []string) (returnErr error) {
-	// Initialize logging, stopper and context that can be canceled
+	__antithesis_instrumentation__.Notify(33416)
+
 	ctx, stopper, err := initLogging(cmd)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33424)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33425)
 	}
+	__antithesis_instrumentation__.Notify(33417)
 	defer stopper.Stop(ctx)
 
 	log.Infof(ctx, "New proxy with opts: %+v", proxyContext)
 
 	proxyLn, err := net.Listen("tcp", proxyContext.ListenAddr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33426)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33427)
 	}
+	__antithesis_instrumentation__.Notify(33418)
 
 	metricsLn, err := net.Listen("tcp", proxyContext.MetricsAddress)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33428)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33429)
 	}
-	stopper.AddCloser(stop.CloserFn(func() { _ = metricsLn.Close() }))
+	__antithesis_instrumentation__.Notify(33419)
+	stopper.AddCloser(stop.CloserFn(func() { __antithesis_instrumentation__.Notify(33430); _ = metricsLn.Close() }))
+	__antithesis_instrumentation__.Notify(33420)
 
 	server, err := sqlproxyccl.NewServer(ctx, stopper, proxyContext)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33431)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33432)
 	}
+	__antithesis_instrumentation__.Notify(33421)
 
 	errChan := make(chan error, 1)
 
 	if err := stopper.RunAsyncTask(ctx, "serve-http", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(33433)
 		log.Infof(ctx, "HTTP metrics server listening at %s", metricsLn.Addr())
 		if err := server.ServeHTTP(ctx, metricsLn); err != nil {
+			__antithesis_instrumentation__.Notify(33434)
 			errChan <- err
+		} else {
+			__antithesis_instrumentation__.Notify(33435)
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(33436)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33437)
 	}
+	__antithesis_instrumentation__.Notify(33422)
 
 	if err := stopper.RunAsyncTask(ctx, "serve-proxy", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(33438)
 		log.Infof(ctx, "proxy server listening at %s", proxyLn.Addr())
 		if err := server.Serve(ctx, proxyLn); err != nil {
+			__antithesis_instrumentation__.Notify(33439)
 			errChan <- err
+		} else {
+			__antithesis_instrumentation__.Notify(33440)
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(33441)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33442)
 	}
+	__antithesis_instrumentation__.Notify(33423)
 
 	return waitForSignals(ctx, stopper, errChan)
 }
 
 func initLogging(cmd *cobra.Command) (ctx context.Context, stopper *stop.Stopper, err error) {
-	// Remove the default store, which avoids using it to set up logging.
-	// Instead, we'll default to logging to stderr unless --log-dir is
-	// specified. This makes sense since the standalone SQL server is
-	// at the time of writing stateless and may not be provisioned with
-	// suitable storage.
+	__antithesis_instrumentation__.Notify(33443)
+
 	serverCfg.Stores.Specs = nil
 	serverCfg.ClusterName = ""
 
 	ctx = context.Background()
-	stopper, err = setupAndInitializeLoggingAndProfiling(ctx, cmd, false /* isServerCmd */)
+	stopper, err = setupAndInitializeLoggingAndProfiling(ctx, cmd, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33445)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(33446)
 	}
+	__antithesis_instrumentation__.Notify(33444)
 	ctx, _ = stopper.WithCancelOnQuiesce(ctx)
 	return ctx, stopper, err
 }
@@ -109,54 +136,73 @@ func initLogging(cmd *cobra.Command) (ctx context.Context, stopper *stop.Stopper
 func waitForSignals(
 	ctx context.Context, stopper *stop.Stopper, errChan chan error,
 ) (returnErr error) {
-	// Need to alias the signals if this has to run on non-unix OSes too.
+	__antithesis_instrumentation__.Notify(33447)
+
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, drainSignals...)
 
 	select {
 	case err := <-errChan:
+		__antithesis_instrumentation__.Notify(33450)
 		log.StartAlwaysFlush()
 		return err
 	case <-stopper.ShouldQuiesce():
-		// Stop has been requested through the stopper's Stop
+		__antithesis_instrumentation__.Notify(33451)
+
 		<-stopper.IsStopped()
-		// StartAlwaysFlush both flushes and ensures that subsequent log
-		// writes are flushed too.
+
 		log.StartAlwaysFlush()
-	case sig := <-signalCh: // INT or TERM
-		log.StartAlwaysFlush() // In case the caller follows up with KILL
+	case sig := <-signalCh:
+		__antithesis_instrumentation__.Notify(33452)
+		log.StartAlwaysFlush()
 		log.Ops.Infof(ctx, "received signal '%s'", sig)
 		if sig == os.Interrupt {
+			__antithesis_instrumentation__.Notify(33455)
 			returnErr = errors.New("interrupted")
+		} else {
+			__antithesis_instrumentation__.Notify(33456)
 		}
+		__antithesis_instrumentation__.Notify(33453)
 		go func() {
+			__antithesis_instrumentation__.Notify(33457)
 			log.Infof(ctx, "server stopping")
 			stopper.Stop(ctx)
 		}()
 	case <-log.FatalChan():
+		__antithesis_instrumentation__.Notify(33454)
 		stopper.Stop(ctx)
-		select {} // Block and wait for logging go routine to shut down the process
+		select {}
 	}
+	__antithesis_instrumentation__.Notify(33448)
 
 	for {
+		__antithesis_instrumentation__.Notify(33458)
 		select {
 		case sig := <-signalCh:
+			__antithesis_instrumentation__.Notify(33460)
 			switch sig {
-			case os.Interrupt: // SIGTERM after SIGTERM
+			case os.Interrupt:
+				__antithesis_instrumentation__.Notify(33463)
 				log.Ops.Infof(ctx, "received additional signal '%s'; continuing graceful shutdown", sig)
 				continue
+			default:
+				__antithesis_instrumentation__.Notify(33464)
 			}
+			__antithesis_instrumentation__.Notify(33461)
 
 			log.Ops.Shoutf(ctx, severity.ERROR,
 				"received signal '%s' during shutdown, initiating hard shutdown", redact.Safe(sig))
 			panic("terminate")
 		case <-stopper.IsStopped():
+			__antithesis_instrumentation__.Notify(33462)
 			const msgDone = "server shutdown completed"
 			log.Ops.Infof(ctx, msgDone)
 			fmt.Fprintln(os.Stdout, msgDone)
 		}
+		__antithesis_instrumentation__.Notify(33459)
 		break
 	}
+	__antithesis_instrumentation__.Notify(33449)
 
 	return returnErr
 }

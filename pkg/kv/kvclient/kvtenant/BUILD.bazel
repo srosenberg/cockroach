@@ -19,6 +19,7 @@ go_library(
         "//pkg/spanconfig",
         "//pkg/util/log",
         "//pkg/util/retry",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

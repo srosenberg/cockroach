@@ -10,6 +10,7 @@ go_library(
         "//pkg/ccl/cliccl",
         "//pkg/cli",
         "//pkg/ui/distccl",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -17,4 +18,12 @@ go_binary(
     name = "cockroach",
     embed = [":cockroach_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
+    #cdeps = [":libvoidstar"],
+    #cgo = True
 )
+
+#cc_import(
+#	name = "libvoidstar",
+#        shared_library = "foobar/libvoidstar.so",
+#)

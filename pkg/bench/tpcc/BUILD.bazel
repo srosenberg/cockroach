@@ -5,6 +5,7 @@ go_library(
     srcs = ["tpcc_bench.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/bench/tpcc",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -36,6 +37,7 @@ go_test(
         "//pkg/workload/histogram",
         "//pkg/workload/tpcc",
         "//pkg/workload/workloadsql",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_pebble//vfs",
         "@com_github_stretchr_testify//require",
     ],

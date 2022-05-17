@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package stats
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -23,12 +15,8 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// DefaultHistogramBuckets is the maximum number of histogram buckets to build
-// when creating statistics.
 const DefaultHistogramBuckets = 200
 
-// HistogramClusterMode controls the cluster setting for enabling
-// histogram collection.
 var HistogramClusterMode = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"sql.stats.histogram_collection.enabled",
@@ -36,47 +24,10 @@ var HistogramClusterMode = settings.RegisterBoolSetting(
 	true,
 ).WithPublic()
 
-// HistogramVersion identifies histogram versions.
 type HistogramVersion uint32
 
-// histVersion is the current histogram version.
-//
-// ATTENTION: When updating this field, add a brief description of what
-// changed to the version history below.
 const histVersion HistogramVersion = 1
 
-/*
-
-**  VERSION HISTORY **
-
-Please add new entries at the top.
-
-- Version: 1
-- The histogram creation logic was changed so the number of distinct values in
-  the histogram matched the estimated distinct count from the HyperLogLog sketch.
-
-- Version: 0
-- Histogram implementations up to and including 21.1.x. The version field is
-  omitted on Version 0 histograms.
-
-*/
-
-// EquiDepthHistogram creates a histogram where each bucket contains roughly
-// the same number of samples (though it can vary when a boundary value has
-// high frequency).
-//
-// numRows is the total number of rows from which values were sampled
-// (excluding rows that have NULL values on the histogram column).
-//
-// In addition to building the histogram buckets, EquiDepthHistogram also
-// estimates the number of distinct values in each bucket. It distributes the
-// known number of distinct values (distinctCount) among the buckets, in
-// proportion with the number of rows in each bucket.
-//
-// In addition to returning the encoded histogram (HistogramData), it also
-// returns the unencoded histogram buckets ([]cat.HistogramBucket) when
-// HistogramData.HistogramData_Bucket is non-nil, otherwise a nil
-// []cat.HistogramBucket.
 func EquiDepthHistogram(
 	evalCtx *tree.EvalContext,
 	colType *types.T,
@@ -84,64 +35,111 @@ func EquiDepthHistogram(
 	numRows, distinctCount int64,
 	maxBuckets int,
 ) (HistogramData, []cat.HistogramBucket, error) {
+	__antithesis_instrumentation__.Notify(626161)
 	numSamples := len(samples)
 	if numSamples == 0 {
+		__antithesis_instrumentation__.Notify(626170)
 		return HistogramData{ColumnType: colType}, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(626171)
 	}
+	__antithesis_instrumentation__.Notify(626162)
 	if maxBuckets < 2 {
+		__antithesis_instrumentation__.Notify(626172)
 		return HistogramData{}, nil, errors.Errorf("histogram requires at least two buckets")
+	} else {
+		__antithesis_instrumentation__.Notify(626173)
 	}
+	__antithesis_instrumentation__.Notify(626163)
 	if numRows < int64(numSamples) {
+		__antithesis_instrumentation__.Notify(626174)
 		return HistogramData{}, nil, errors.Errorf("more samples than rows")
+	} else {
+		__antithesis_instrumentation__.Notify(626175)
 	}
+	__antithesis_instrumentation__.Notify(626164)
 	if distinctCount == 0 {
+		__antithesis_instrumentation__.Notify(626176)
 		return HistogramData{}, nil, errors.Errorf("histogram requires distinctCount > 0")
+	} else {
+		__antithesis_instrumentation__.Notify(626177)
 	}
+	__antithesis_instrumentation__.Notify(626165)
 	for _, d := range samples {
+		__antithesis_instrumentation__.Notify(626178)
 		if d == tree.DNull {
+			__antithesis_instrumentation__.Notify(626179)
 			return HistogramData{}, nil, errors.Errorf("NULL values not allowed in histogram")
+		} else {
+			__antithesis_instrumentation__.Notify(626180)
 		}
 	}
+	__antithesis_instrumentation__.Notify(626166)
 
 	sort.Slice(samples, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(626181)
 		return samples[i].Compare(evalCtx, samples[j]) < 0
 	})
+	__antithesis_instrumentation__.Notify(626167)
 	numBuckets := maxBuckets
 	if maxBuckets > numSamples {
+		__antithesis_instrumentation__.Notify(626182)
 		numBuckets = numSamples
+	} else {
+		__antithesis_instrumentation__.Notify(626183)
 	}
+	__antithesis_instrumentation__.Notify(626168)
 	h := histogram{buckets: make([]cat.HistogramBucket, 0, numBuckets)}
 	lowerBound := samples[0]
 
-	// i keeps track of the current sample and advances as we form buckets.
-	for i, b := 0, 0; b < numBuckets && i < numSamples; b++ {
-		// numSamplesInBucket is the number of samples in this bucket. The first
-		// bucket has numSamplesInBucket=1 so the histogram has a clear lower bound.
+	for i, b := 0, 0; b < numBuckets && func() bool {
+		__antithesis_instrumentation__.Notify(626184)
+		return i < numSamples == true
+	}() == true; b++ {
+		__antithesis_instrumentation__.Notify(626185)
+
 		numSamplesInBucket := (numSamples - i) / (numBuckets - b)
-		if i == 0 || numSamplesInBucket < 1 {
+		if i == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(626189)
+			return numSamplesInBucket < 1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(626190)
 			numSamplesInBucket = 1
+		} else {
+			__antithesis_instrumentation__.Notify(626191)
 		}
+		__antithesis_instrumentation__.Notify(626186)
 		upper := samples[i+numSamplesInBucket-1]
-		// numLess is the number of samples less than upper (in this bucket).
+
 		numLess := 0
 		for ; numLess < numSamplesInBucket-1; numLess++ {
+			__antithesis_instrumentation__.Notify(626192)
 			if c := samples[i+numLess].Compare(evalCtx, upper); c == 0 {
+				__antithesis_instrumentation__.Notify(626193)
 				break
-			} else if c > 0 {
-				return HistogramData{}, nil, errors.AssertionFailedf("%+v", "samples not sorted")
+			} else {
+				__antithesis_instrumentation__.Notify(626194)
+				if c > 0 {
+					__antithesis_instrumentation__.Notify(626195)
+					return HistogramData{}, nil, errors.AssertionFailedf("%+v", "samples not sorted")
+				} else {
+					__antithesis_instrumentation__.Notify(626196)
+				}
 			}
 		}
-		// Advance the boundary of the bucket to cover all samples equal to upper.
-		for ; i+numSamplesInBucket < numSamples; numSamplesInBucket++ {
-			if samples[i+numSamplesInBucket].Compare(evalCtx, upper) != 0 {
-				break
-			}
-		}
+		__antithesis_instrumentation__.Notify(626187)
 
-		// Estimate the number of rows equal to the upper bound and less than the
-		// upper bound, as well as the number of distinct values less than the upper
-		// bound. These estimates may be adjusted later based on the total distinct
-		// count.
+		for ; i+numSamplesInBucket < numSamples; numSamplesInBucket++ {
+			__antithesis_instrumentation__.Notify(626197)
+			if samples[i+numSamplesInBucket].Compare(evalCtx, upper) != 0 {
+				__antithesis_instrumentation__.Notify(626198)
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(626199)
+			}
+		}
+		__antithesis_instrumentation__.Notify(626188)
+
 		numEq := float64(numSamplesInBucket-numLess) * float64(numRows) / float64(numSamples)
 		numRange := float64(numLess) * float64(numRows) / float64(numSamples)
 		distinctRange := estimatedDistinctValuesInRange(evalCtx, numRange, lowerBound, upper)
@@ -156,6 +154,7 @@ func EquiDepthHistogram(
 
 		lowerBound = getNextLowerBound(evalCtx, upper)
 	}
+	__antithesis_instrumentation__.Notify(626169)
 
 	h.adjustCounts(evalCtx, float64(numRows), float64(distinctCount))
 	histogramData, err := h.toHistogramData(colType)
@@ -166,143 +165,168 @@ type histogram struct {
 	buckets []cat.HistogramBucket
 }
 
-// adjustCounts adjusts the row count and number of distinct values per bucket
-// based on the total row count and estimated distinct count.
 func (h *histogram) adjustCounts(
 	evalCtx *tree.EvalContext, rowCountTotal, distinctCountTotal float64,
 ) {
-	// Calculate the current state of the histogram so we can adjust it as needed.
-	// The number of rows and distinct values represented by the histogram should
-	// be adjusted so they equal rowCountTotal and distinctCountTotal.
+	__antithesis_instrumentation__.Notify(626200)
+
 	var rowCountRange, rowCountEq float64
-	// Total distinct count for values strictly inside bucket boundaries.
+
 	var distinctCountRange float64
-	// Number of bucket boundaries with at least one row on the boundary.
+
 	var distinctCountEq float64
 	for i := range h.buckets {
+		__antithesis_instrumentation__.Notify(626208)
 		rowCountRange += h.buckets[i].NumRange
 		rowCountEq += h.buckets[i].NumEq
 		distinctCountRange += h.buckets[i].DistinctRange
 		if h.buckets[i].NumEq > 0 {
+			__antithesis_instrumentation__.Notify(626209)
 			distinctCountEq++
+		} else {
+			__antithesis_instrumentation__.Notify(626210)
 		}
 	}
+	__antithesis_instrumentation__.Notify(626201)
 
 	if rowCountEq <= 0 {
+		__antithesis_instrumentation__.Notify(626211)
 		panic(errors.AssertionFailedf("expected a positive value for rowCountEq"))
+	} else {
+		__antithesis_instrumentation__.Notify(626212)
 	}
+	__antithesis_instrumentation__.Notify(626202)
 
-	// If the upper bounds account for all distinct values (as estimated by the
-	// sketch), make the histogram consistent by clearing the ranges and adjusting
-	// the NumEq values to add up to the row count.
 	if distinctCountEq >= distinctCountTotal {
+		__antithesis_instrumentation__.Notify(626213)
 		adjustmentFactorNumEq := rowCountTotal / rowCountEq
 		for i := range h.buckets {
+			__antithesis_instrumentation__.Notify(626215)
 			h.buckets[i].NumRange = 0
 			h.buckets[i].DistinctRange = 0
 			h.buckets[i].NumEq *= adjustmentFactorNumEq
 		}
+		__antithesis_instrumentation__.Notify(626214)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(626216)
 	}
+	__antithesis_instrumentation__.Notify(626203)
 
-	// The upper bounds do not account for all distinct values, so adjust the
-	// NumEq values if needed so they add up to less than the row count.
 	remDistinctCount := distinctCountTotal - distinctCountEq
 	if rowCountEq+remDistinctCount >= rowCountTotal {
+		__antithesis_instrumentation__.Notify(626217)
 		targetRowCountEq := rowCountTotal - remDistinctCount
 		adjustmentFactorNumEq := targetRowCountEq / rowCountEq
 		for i := range h.buckets {
+			__antithesis_instrumentation__.Notify(626219)
 			h.buckets[i].NumEq *= adjustmentFactorNumEq
 		}
+		__antithesis_instrumentation__.Notify(626218)
 		rowCountEq = targetRowCountEq
+	} else {
+		__antithesis_instrumentation__.Notify(626220)
 	}
+	__antithesis_instrumentation__.Notify(626204)
 
-	// If the ranges do not account for the remaining distinct values, increment
-	// them so they add up to the remaining distinct count.
 	if remDistinctCount > distinctCountRange {
+		__antithesis_instrumentation__.Notify(626221)
 		remDistinctCount -= distinctCountRange
 
-		// Calculate the maximum possible number of distinct values that can be
-		// added to the histogram.
 		maxDistinctCountRange := float64(math.MaxInt64)
 		lowerBound := h.buckets[0].UpperBound
 		upperBound := h.buckets[len(h.buckets)-1].UpperBound
 		if maxDistinct, ok := tree.MaxDistinctCount(evalCtx, lowerBound, upperBound); ok {
-			// Subtract distinctCountEq to account for the upper bounds of the
-			// buckets, along with the current range distinct count which has already
-			// been accounted for.
-			maxDistinctCountRange = float64(maxDistinct) - distinctCountEq - distinctCountRange
-		}
+			__antithesis_instrumentation__.Notify(626223)
 
-		// Add distinct values into the histogram if there is space. Increment the
-		// distinct count of each bucket except the first one.
+			maxDistinctCountRange = float64(maxDistinct) - distinctCountEq - distinctCountRange
+		} else {
+			__antithesis_instrumentation__.Notify(626224)
+		}
+		__antithesis_instrumentation__.Notify(626222)
+
 		if maxDistinctCountRange > 0 {
+			__antithesis_instrumentation__.Notify(626225)
 			if remDistinctCount > maxDistinctCountRange {
-				// There isn't enough space in the entire histogram for these distinct
-				// values. Add what we can now, and we will add extra buckets below.
+				__antithesis_instrumentation__.Notify(626227)
+
 				remDistinctCount = maxDistinctCountRange
+			} else {
+				__antithesis_instrumentation__.Notify(626228)
 			}
+			__antithesis_instrumentation__.Notify(626226)
 			avgRemPerBucket := remDistinctCount / float64(len(h.buckets)-1)
 			for i := 1; i < len(h.buckets); i++ {
+				__antithesis_instrumentation__.Notify(626229)
 				lowerBound := h.buckets[i-1].UpperBound
 				upperBound := h.buckets[i].UpperBound
 				maxDistRange, countable := maxDistinctRange(evalCtx, lowerBound, upperBound)
 
 				inc := avgRemPerBucket
 				if countable {
+					__antithesis_instrumentation__.Notify(626231)
 					maxDistRange -= h.buckets[i].DistinctRange
 
-					// Set the increment proportional to the remaining number of
-					// distinct values in the bucket.
 					inc = remDistinctCount * (maxDistRange / maxDistinctCountRange)
+				} else {
+					__antithesis_instrumentation__.Notify(626232)
 				}
+				__antithesis_instrumentation__.Notify(626230)
 
 				h.buckets[i].NumRange += inc
 				h.buckets[i].DistinctRange += inc
 				rowCountRange += inc
 				distinctCountRange += inc
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(626233)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(626234)
 	}
+	__antithesis_instrumentation__.Notify(626205)
 
-	// If there are still some distinct values that are unaccounted for, this is
-	// probably because the samples did not cover the full domain of possible
-	// values. Add buckets above and below the existing buckets to contain these
-	// values.
 	remDistinctCount = distinctCountTotal - distinctCountRange - distinctCountEq
 	if remDistinctCount > 0 {
+		__antithesis_instrumentation__.Notify(626235)
 		h.addOuterBuckets(
 			evalCtx, remDistinctCount, &rowCountEq, &distinctCountEq, &rowCountRange, &distinctCountRange,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(626236)
 	}
+	__antithesis_instrumentation__.Notify(626206)
 
-	// Adjust the values so the row counts and distinct counts add up correctly.
 	adjustmentFactorDistinctRange := float64(1)
 	if distinctCountRange > 0 {
+		__antithesis_instrumentation__.Notify(626237)
 		adjustmentFactorDistinctRange = (distinctCountTotal - distinctCountEq) / distinctCountRange
+	} else {
+		__antithesis_instrumentation__.Notify(626238)
 	}
+	__antithesis_instrumentation__.Notify(626207)
 	adjustmentFactorRowCount := rowCountTotal / (rowCountRange + rowCountEq)
 	for i := range h.buckets {
+		__antithesis_instrumentation__.Notify(626239)
 		h.buckets[i].DistinctRange *= adjustmentFactorDistinctRange
 		h.buckets[i].NumRange *= adjustmentFactorRowCount
 		h.buckets[i].NumEq *= adjustmentFactorRowCount
 	}
 }
 
-// addOuterBuckets adds buckets above and below the existing buckets in the
-// histogram to include the remaining distinct values in remDistinctCount. It
-// also increments the counters rowCountEq, distinctCountEq, rowCountRange, and
-// distinctCountRange as needed.
 func (h *histogram) addOuterBuckets(
 	evalCtx *tree.EvalContext,
 	remDistinctCount float64,
 	rowCountEq, distinctCountEq, rowCountRange, distinctCountRange *float64,
 ) {
+	__antithesis_instrumentation__.Notify(626240)
 	var maxDistinctCountExtraBuckets float64
 	var addedMin, addedMax bool
 	var newBuckets int
 	if !h.buckets[0].UpperBound.IsMin(evalCtx) {
+		__antithesis_instrumentation__.Notify(626248)
 		if minVal, ok := h.buckets[0].UpperBound.Min(evalCtx); ok {
+			__antithesis_instrumentation__.Notify(626249)
 			lowerBound := minVal
 			upperBound := h.buckets[0].UpperBound
 			maxDistRange, _ := maxDistinctRange(evalCtx, lowerBound, upperBound)
@@ -310,10 +334,17 @@ func (h *histogram) addOuterBuckets(
 			h.buckets = append([]cat.HistogramBucket{{UpperBound: minVal}}, h.buckets...)
 			addedMin = true
 			newBuckets++
+		} else {
+			__antithesis_instrumentation__.Notify(626250)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(626251)
 	}
+	__antithesis_instrumentation__.Notify(626241)
 	if !h.buckets[len(h.buckets)-1].UpperBound.IsMax(evalCtx) {
+		__antithesis_instrumentation__.Notify(626252)
 		if maxVal, ok := h.buckets[len(h.buckets)-1].UpperBound.Max(evalCtx); ok {
+			__antithesis_instrumentation__.Notify(626253)
 			lowerBound := h.buckets[len(h.buckets)-1].UpperBound
 			upperBound := maxVal
 			maxDistRange, _ := maxDistinctRange(evalCtx, lowerBound, upperBound)
@@ -321,56 +352,94 @@ func (h *histogram) addOuterBuckets(
 			h.buckets = append(h.buckets, cat.HistogramBucket{UpperBound: maxVal})
 			addedMax = true
 			newBuckets++
+		} else {
+			__antithesis_instrumentation__.Notify(626254)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(626255)
 	}
+	__antithesis_instrumentation__.Notify(626242)
 
 	if newBuckets == 0 {
-		// No new buckets added.
-		return
-	}
+		__antithesis_instrumentation__.Notify(626256)
 
-	// If this is an enum or bool histogram, increment numEq for the upper
-	// bounds.
-	if typFam := h.buckets[0].UpperBound.ResolvedType().Family(); typFam == types.EnumFamily ||
-		typFam == types.BoolFamily {
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(626257)
+	}
+	__antithesis_instrumentation__.Notify(626243)
+
+	if typFam := h.buckets[0].UpperBound.ResolvedType().Family(); typFam == types.EnumFamily || func() bool {
+		__antithesis_instrumentation__.Notify(626258)
+		return typFam == types.BoolFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(626259)
 		if addedMin {
+			__antithesis_instrumentation__.Notify(626262)
 			h.buckets[0].NumEq++
+		} else {
+			__antithesis_instrumentation__.Notify(626263)
 		}
+		__antithesis_instrumentation__.Notify(626260)
 		if addedMax {
+			__antithesis_instrumentation__.Notify(626264)
 			h.buckets[len(h.buckets)-1].NumEq++
+		} else {
+			__antithesis_instrumentation__.Notify(626265)
 		}
+		__antithesis_instrumentation__.Notify(626261)
 		*rowCountEq += float64(newBuckets)
 		*distinctCountEq += float64(newBuckets)
 		remDistinctCount -= float64(newBuckets)
+	} else {
+		__antithesis_instrumentation__.Notify(626266)
 	}
+	__antithesis_instrumentation__.Notify(626244)
 
 	if remDistinctCount <= 0 {
-		// All distinct values accounted for.
-		return
-	}
+		__antithesis_instrumentation__.Notify(626267)
 
-	// Account for the remaining values in the new bucket ranges.
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(626268)
+	}
+	__antithesis_instrumentation__.Notify(626245)
+
 	bucIndexes := make([]int, 0, newBuckets)
 	if addedMin {
-		// We'll be incrementing the range of the second bucket.
+		__antithesis_instrumentation__.Notify(626269)
+
 		bucIndexes = append(bucIndexes, 1)
+	} else {
+		__antithesis_instrumentation__.Notify(626270)
 	}
+	__antithesis_instrumentation__.Notify(626246)
 	if addedMax {
+		__antithesis_instrumentation__.Notify(626271)
 		bucIndexes = append(bucIndexes, len(h.buckets)-1)
+	} else {
+		__antithesis_instrumentation__.Notify(626272)
 	}
+	__antithesis_instrumentation__.Notify(626247)
 	avgRemPerBucket := remDistinctCount / float64(newBuckets)
 	for _, i := range bucIndexes {
+		__antithesis_instrumentation__.Notify(626273)
 		lowerBound := h.buckets[i-1].UpperBound
 		upperBound := h.buckets[i].UpperBound
 		maxDistRange, countable := maxDistinctRange(evalCtx, lowerBound, upperBound)
 
 		inc := avgRemPerBucket
-		if countable && h.buckets[0].UpperBound.ResolvedType().Family() == types.EnumFamily {
-			// Set the increment proportional to the remaining number of
-			// distinct values in the bucket. This only really matters for
-			// enums.
+		if countable && func() bool {
+			__antithesis_instrumentation__.Notify(626275)
+			return h.buckets[0].UpperBound.ResolvedType().Family() == types.EnumFamily == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(626276)
+
 			inc = remDistinctCount * (maxDistRange / maxDistinctCountExtraBuckets)
+		} else {
+			__antithesis_instrumentation__.Notify(626277)
 		}
+		__antithesis_instrumentation__.Notify(626274)
 
 		h.buckets[i].NumRange += inc
 		h.buckets[i].DistinctRange += inc
@@ -379,9 +448,8 @@ func (h *histogram) addOuterBuckets(
 	}
 }
 
-// toHistogramData converts a histogram to a HistogramData protobuf with the
-// given type.
 func (h histogram) toHistogramData(colType *types.T) (HistogramData, error) {
+	__antithesis_instrumentation__.Notify(626278)
 	histogramData := HistogramData{
 		Buckets:    make([]HistogramData_Bucket, len(h.buckets)),
 		ColumnType: colType,
@@ -389,10 +457,15 @@ func (h histogram) toHistogramData(colType *types.T) (HistogramData, error) {
 	}
 
 	for i := range h.buckets {
+		__antithesis_instrumentation__.Notify(626280)
 		encoded, err := keyside.Encode(nil, h.buckets[i].UpperBound, encoding.Ascending)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(626282)
 			return HistogramData{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(626283)
 		}
+		__antithesis_instrumentation__.Notify(626281)
 
 		histogramData.Buckets[i] = HistogramData_Bucket{
 			NumEq:         int64(math.Round(h.buckets[i].NumEq)),
@@ -401,90 +474,102 @@ func (h histogram) toHistogramData(colType *types.T) (HistogramData, error) {
 			UpperBound:    encoded,
 		}
 	}
+	__antithesis_instrumentation__.Notify(626279)
 
 	return histogramData, nil
 }
 
-// estimatedDistinctValuesInRange returns the estimated number of distinct
-// values in the range [lowerBound, upperBound), given that the total number
-// of values is numRange.
-//
-// If lowerBound and upperBound are not countable, the distinct count is just
-// equal to numRange. If they are countable, we can estimate the distinct count
-// based on the total number of distinct values in the range.
 func estimatedDistinctValuesInRange(
 	evalCtx *tree.EvalContext, numRange float64, lowerBound, upperBound tree.Datum,
 ) float64 {
+	__antithesis_instrumentation__.Notify(626284)
 	if numRange == 0 {
+		__antithesis_instrumentation__.Notify(626288)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(626289)
 	}
+	__antithesis_instrumentation__.Notify(626285)
 	rangeUpperBound, ok := upperBound.Prev(evalCtx)
 	if !ok {
+		__antithesis_instrumentation__.Notify(626290)
 		rangeUpperBound = upperBound
+	} else {
+		__antithesis_instrumentation__.Notify(626291)
 	}
+	__antithesis_instrumentation__.Notify(626286)
 	if maxDistinct, ok := tree.MaxDistinctCount(evalCtx, lowerBound, rangeUpperBound); ok {
+		__antithesis_instrumentation__.Notify(626292)
 		return expectedDistinctCount(numRange, float64(maxDistinct))
+	} else {
+		__antithesis_instrumentation__.Notify(626293)
 	}
+	__antithesis_instrumentation__.Notify(626287)
 	return numRange
 }
 
 func getNextLowerBound(evalCtx *tree.EvalContext, currentUpperBound tree.Datum) tree.Datum {
+	__antithesis_instrumentation__.Notify(626294)
 	nextLowerBound, ok := currentUpperBound.Next(evalCtx)
 	if !ok {
+		__antithesis_instrumentation__.Notify(626296)
 		nextLowerBound = currentUpperBound
+	} else {
+		__antithesis_instrumentation__.Notify(626297)
 	}
+	__antithesis_instrumentation__.Notify(626295)
 	return nextLowerBound
 }
 
-// maxDistinctRange returns the maximum number of distinct values in the given
-// range, excluding both lowerBound and upperBound. Returns countable=true if
-// the returned value is countable.
 func maxDistinctRange(
 	evalCtx *tree.EvalContext, lowerBound, upperBound tree.Datum,
 ) (_ float64, countable bool) {
+	__antithesis_instrumentation__.Notify(626298)
 	if maxDistinct, ok := tree.MaxDistinctCount(evalCtx, lowerBound, upperBound); ok {
-		// Remove 2 for the upper and lower boundaries.
+		__antithesis_instrumentation__.Notify(626300)
+
 		if maxDistinct < 2 {
+			__antithesis_instrumentation__.Notify(626302)
 			return 0, true
+		} else {
+			__antithesis_instrumentation__.Notify(626303)
 		}
+		__antithesis_instrumentation__.Notify(626301)
 		return float64(maxDistinct - 2), true
+	} else {
+		__antithesis_instrumentation__.Notify(626304)
 	}
+	__antithesis_instrumentation__.Notify(626299)
 	return float64(math.MaxInt64), false
 }
 
-// expectedDistinctCount returns the expected number of distinct values
-// among k random numbers selected from n possible values. We assume the
-// values are chosen using uniform random sampling with replacement.
 func expectedDistinctCount(k, n float64) float64 {
-	if n == 0 || k == 0 {
+	__antithesis_instrumentation__.Notify(626305)
+	if n == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(626308)
+		return k == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(626309)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(626310)
 	}
-	// The probability that one specific value (out of the n possible values)
-	// does not appear in any of the k selections is:
-	//
-	//         ⎛ n-1 ⎞ k
-	//     p = ⎜-----⎟
-	//         ⎝  n  ⎠
-	//
-	// Therefore, the probability that a specific value appears at least once is
-	// 1-p. Over all n values, the expected number that appear at least once is
-	// n * (1-p). In other words, the expected distinct count is:
-	//
-	//                             ⎛     ⎛ n-1 ⎞ k ⎞
-	//     E[distinct count] = n * ⎜ 1 - ⎜-----⎟   ⎟
-	//                             ⎝     ⎝  n  ⎠   ⎠
-	//
-	// See https://math.stackexchange.com/questions/72223/finding-expected-
-	//   number-of-distinct-values-selected-from-a-set-of-integers for more info.
+	__antithesis_instrumentation__.Notify(626306)
+
 	count := n * (1 - math.Pow((n-1)/n, k))
 
-	// It's possible that if n is very large, floating point precision errors
-	// will cause count to be 0. In that case, just return min(n, k).
 	if count == 0 {
+		__antithesis_instrumentation__.Notify(626311)
 		count = k
 		if n < k {
+			__antithesis_instrumentation__.Notify(626312)
 			count = n
+		} else {
+			__antithesis_instrumentation__.Notify(626313)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(626314)
 	}
+	__antithesis_instrumentation__.Notify(626307)
 	return count
 }

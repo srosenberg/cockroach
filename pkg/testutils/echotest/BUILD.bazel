@@ -5,5 +5,8 @@ go_library(
     srcs = ["echotest.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/testutils/echotest",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_cockroachdb_datadriven//:datadriven"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@com_github_cockroachdb_datadriven//:datadriven",
+    ],
 )

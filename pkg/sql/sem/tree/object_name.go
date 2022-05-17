@@ -1,16 +1,7 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// ObjectName is a common interface for qualified object names.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type ObjectName interface {
 	NodeFormatter
 	Object() string
@@ -23,194 +14,223 @@ type ObjectName interface {
 var _ ObjectName = &TableName{}
 var _ ObjectName = &TypeName{}
 
-// objName is the internal type for a qualified object.
 type objName struct {
-	// ObjectName is the unqualified name for the object
-	// (table/view/sequence/function/type).
 	ObjectName Name
 
-	// ObjectNamePrefix is the path to the object.  This can be modified
-	// further by name resolution, see name_resolution.go.
 	ObjectNamePrefix
 }
 
 func (o *objName) Object() string {
+	__antithesis_instrumentation__.Notify(610963)
 	return string(o.ObjectName)
 }
 
-// ToUnresolvedObjectName converts the type name to an unresolved object name.
-// Schema and catalog are included if indicated by the ExplicitSchema and
-// ExplicitCatalog flags.
 func (o *objName) ToUnresolvedObjectName() *UnresolvedObjectName {
+	__antithesis_instrumentation__.Notify(610964)
 	u := &UnresolvedObjectName{}
 
 	u.NumParts = 1
 	u.Parts[0] = string(o.ObjectName)
 	if o.ExplicitSchema {
+		__antithesis_instrumentation__.Notify(610967)
 		u.Parts[u.NumParts] = string(o.SchemaName)
 		u.NumParts++
+	} else {
+		__antithesis_instrumentation__.Notify(610968)
 	}
+	__antithesis_instrumentation__.Notify(610965)
 	if o.ExplicitCatalog {
+		__antithesis_instrumentation__.Notify(610969)
 		u.Parts[u.NumParts] = string(o.CatalogName)
 		u.NumParts++
+	} else {
+		__antithesis_instrumentation__.Notify(610970)
 	}
+	__antithesis_instrumentation__.Notify(610966)
 	return u
 }
 
-// ObjectNamePrefix corresponds to the path prefix of an object name.
 type ObjectNamePrefix struct {
 	CatalogName Name
 	SchemaName  Name
 
-	// ExplicitCatalog is true iff the catalog was explicitly specified
-	// or it needs to be rendered during pretty-printing.
 	ExplicitCatalog bool
-	// ExplicitSchema is true iff the schema was explicitly specified
-	// or it needs to be rendered during pretty-printing.
+
 	ExplicitSchema bool
 }
 
-// Format implements the NodeFormatter interface.
 func (tp *ObjectNamePrefix) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(610971)
 	alwaysFormat := ctx.alwaysFormatTablePrefix()
-	if tp.ExplicitSchema || alwaysFormat {
-		if tp.ExplicitCatalog || alwaysFormat {
+	if tp.ExplicitSchema || func() bool {
+		__antithesis_instrumentation__.Notify(610972)
+		return alwaysFormat == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610973)
+		if tp.ExplicitCatalog || func() bool {
+			__antithesis_instrumentation__.Notify(610975)
+			return alwaysFormat == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(610976)
 			ctx.FormatNode(&tp.CatalogName)
 			ctx.WriteByte('.')
+		} else {
+			__antithesis_instrumentation__.Notify(610977)
 		}
+		__antithesis_instrumentation__.Notify(610974)
 		ctx.FormatNode(&tp.SchemaName)
+	} else {
+		__antithesis_instrumentation__.Notify(610978)
 	}
 }
 
-func (tp *ObjectNamePrefix) String() string { return AsString(tp) }
+func (tp *ObjectNamePrefix) String() string {
+	__antithesis_instrumentation__.Notify(610979)
+	return AsString(tp)
+}
 
-// Schema retrieves the unqualified schema name.
 func (tp *ObjectNamePrefix) Schema() string {
+	__antithesis_instrumentation__.Notify(610980)
 	return string(tp.SchemaName)
 }
 
-// Catalog retrieves the unqualified catalog name.
 func (tp *ObjectNamePrefix) Catalog() string {
+	__antithesis_instrumentation__.Notify(610981)
 	return string(tp.CatalogName)
 }
 
-// ObjectNamePrefixList is a list of ObjectNamePrefix
 type ObjectNamePrefixList []ObjectNamePrefix
 
-// Format implements the NodeFormatter interface.
 func (tp ObjectNamePrefixList) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(610982)
 	for idx, objectNamePrefix := range tp {
+		__antithesis_instrumentation__.Notify(610983)
 		ctx.FormatNode(&objectNamePrefix)
 		if idx != len(tp)-1 {
+			__antithesis_instrumentation__.Notify(610984)
 			ctx.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(610985)
 		}
 	}
 }
 
-// UnresolvedObjectName is an unresolved qualified name for a database object
-// (table, view, etc). It is like UnresolvedName but more restrictive.
-// It should only be constructed via NewUnresolvedObjectName.
 type UnresolvedObjectName struct {
-	// NumParts indicates the number of name parts specified; always 1 or greater.
 	NumParts int
 
-	// Parts are the name components, in reverse order.
-	// There are at most 3: object name, schema, catalog/db.
-	//
-	// Note: Parts has a fixed size so that we avoid a heap allocation for the
-	// slice every time we construct an UnresolvedObjectName. It does imply
-	// however that Parts does not have a meaningful "length"; its actual length
-	// (the number of parts specified) is populated in NumParts above.
 	Parts [3]string
 
-	// UnresolvedObjectName can be annotated with a *tree.TableName.
 	AnnotatedNode
 }
 
-// UnresolvedObjectName implements TableExpr.
-func (*UnresolvedObjectName) tableExpr() {}
+func (*UnresolvedObjectName) tableExpr() { __antithesis_instrumentation__.Notify(610986) }
 
-// NewUnresolvedObjectName creates an unresolved object name, verifying that it
-// is well-formed.
 func NewUnresolvedObjectName(
 	numParts int, parts [3]string, annotationIdx AnnotationIdx,
 ) (*UnresolvedObjectName, error) {
+	__antithesis_instrumentation__.Notify(610987)
 	u := &UnresolvedObjectName{
 		NumParts:      numParts,
 		Parts:         parts,
 		AnnotatedNode: AnnotatedNode{AnnIdx: annotationIdx},
 	}
 	if u.NumParts < 1 {
+		__antithesis_instrumentation__.Notify(610991)
 		return nil, newInvTableNameError(u)
+	} else {
+		__antithesis_instrumentation__.Notify(610992)
 	}
+	__antithesis_instrumentation__.Notify(610988)
 
-	// Check that all the parts specified are not empty.
-	// It's OK if the catalog name is empty.
-	// We allow this in e.g. `select * from "".crdb_internal.tables`.
 	lastCheck := u.NumParts
 	if lastCheck > 2 {
+		__antithesis_instrumentation__.Notify(610993)
 		lastCheck = 2
+	} else {
+		__antithesis_instrumentation__.Notify(610994)
 	}
+	__antithesis_instrumentation__.Notify(610989)
 	for i := 0; i < lastCheck; i++ {
+		__antithesis_instrumentation__.Notify(610995)
 		if len(u.Parts[i]) == 0 {
+			__antithesis_instrumentation__.Notify(610996)
 			return nil, newInvTableNameError(u)
+		} else {
+			__antithesis_instrumentation__.Notify(610997)
 		}
 	}
+	__antithesis_instrumentation__.Notify(610990)
 	return u, nil
 }
 
-// Resolved returns the resolved name in the annotation for this node (or nil if
-// there isn't one).
 func (u *UnresolvedObjectName) Resolved(ann *Annotations) ObjectName {
+	__antithesis_instrumentation__.Notify(610998)
 	r := u.GetAnnotation(ann)
 	if r == nil {
+		__antithesis_instrumentation__.Notify(611000)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(611001)
 	}
+	__antithesis_instrumentation__.Notify(610999)
 	return r.(ObjectName)
 }
 
-// Format implements the NodeFormatter interface.
 func (u *UnresolvedObjectName) Format(ctx *FmtCtx) {
-	// If we want to format the corresponding resolved name, look it up in the
-	// annotation.
-	if ctx.HasFlags(FmtAlwaysQualifyTableNames) || ctx.tableNameFormatter != nil {
-		if ctx.tableNameFormatter != nil && ctx.ann == nil {
-			// TODO(radu): this is a temporary hack while we transition to using
-			// unresolved names everywhere. We will need to revisit and see if we need
-			// to switch to (or add) an UnresolvedObjectName formatter.
+	__antithesis_instrumentation__.Notify(611002)
+
+	if ctx.HasFlags(FmtAlwaysQualifyTableNames) || func() bool {
+		__antithesis_instrumentation__.Notify(611004)
+		return ctx.tableNameFormatter != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(611005)
+		if ctx.tableNameFormatter != nil && func() bool {
+			__antithesis_instrumentation__.Notify(611007)
+			return ctx.ann == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(611008)
+
 			tn := u.ToTableName()
 			tn.Format(ctx)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(611009)
 		}
+		__antithesis_instrumentation__.Notify(611006)
 
 		if n := u.Resolved(ctx.ann); n != nil {
+			__antithesis_instrumentation__.Notify(611010)
 			n.Format(ctx)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(611011)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(611012)
 	}
+	__antithesis_instrumentation__.Notify(611003)
 
 	for i := u.NumParts; i > 0; i-- {
-		// The first part to print is the last item in u.Parts. It is also
-		// a potentially restricted name to disambiguate from keywords in
-		// the grammar, so print it out as a "Name". Every part after that is
-		// necessarily an unrestricted name.
+		__antithesis_instrumentation__.Notify(611013)
+
 		if i == u.NumParts {
+			__antithesis_instrumentation__.Notify(611014)
 			ctx.FormatNode((*Name)(&u.Parts[i-1]))
 		} else {
+			__antithesis_instrumentation__.Notify(611015)
 			ctx.WriteByte('.')
 			ctx.FormatNode((*UnrestrictedName)(&u.Parts[i-1]))
 		}
 	}
 }
 
-func (u *UnresolvedObjectName) String() string { return AsString(u) }
+func (u *UnresolvedObjectName) String() string {
+	__antithesis_instrumentation__.Notify(611016)
+	return AsString(u)
+}
 
-// ToTableName converts the unresolved name to a table name.
-//
-// TODO(radu): the schema and catalog names might not be in the right places; we
-// would only figure that out during name resolution. This method is temporary,
-// while we change all the code paths to only use TableName after resolution.
 func (u *UnresolvedObjectName) ToTableName() TableName {
+	__antithesis_instrumentation__.Notify(611017)
 	return TableName{objName{
 		ObjectName: Name(u.Parts[0]),
 		ObjectNamePrefix: ObjectNamePrefix{
@@ -222,38 +242,35 @@ func (u *UnresolvedObjectName) ToTableName() TableName {
 	}}
 }
 
-// ToUnresolvedName converts the unresolved object name to the more general
-// unresolved name.
 func (u *UnresolvedObjectName) ToUnresolvedName() *UnresolvedName {
+	__antithesis_instrumentation__.Notify(611018)
 	return &UnresolvedName{
 		NumParts: u.NumParts,
 		Parts:    NameParts{u.Parts[0], u.Parts[1], u.Parts[2]},
 	}
 }
 
-// Utility methods below for operating on UnresolvedObjectName more natural.
-
-// Object returns the unqualified object name.
 func (u *UnresolvedObjectName) Object() string {
+	__antithesis_instrumentation__.Notify(611019)
 	return u.Parts[0]
 }
 
-// Schema returns the schema of the object.
 func (u *UnresolvedObjectName) Schema() string {
+	__antithesis_instrumentation__.Notify(611020)
 	return u.Parts[1]
 }
 
-// Catalog returns the catalog of the object.
 func (u *UnresolvedObjectName) Catalog() string {
+	__antithesis_instrumentation__.Notify(611021)
 	return u.Parts[2]
 }
 
-// HasExplicitSchema returns whether a schema is specified on the object.
 func (u *UnresolvedObjectName) HasExplicitSchema() bool {
+	__antithesis_instrumentation__.Notify(611022)
 	return u.NumParts >= 2
 }
 
-// HasExplicitCatalog returns whether a catalog is specified on the object.
 func (u *UnresolvedObjectName) HasExplicitCatalog() bool {
+	__antithesis_instrumentation__.Notify(611023)
 	return u.NumParts >= 3
 }

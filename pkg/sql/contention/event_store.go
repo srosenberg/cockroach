@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package contention
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,67 +24,46 @@ const (
 	eventChannelSize = 24
 )
 
-// eventWriter provides interfaces to write contention event into eventStore.
 type eventWriter interface {
 	addEvent(contentionpb.ExtendedContentionEvent)
 }
 
-// eventReader provides interface to read contention events from eventStore.
 type eventReader interface {
-	// ForEachEvent executes the callback function on every single contention
-	// event. If an error is returned from the callback, the iteration is aborted
-	// and the error returned by the callback is bubbled up. The contention event
-	// is first copied out from the store before being passed into the callback.
-	// This means ForEachEvent is thread-safe.
 	ForEachEvent(func(*contentionpb.ExtendedContentionEvent) error) error
 }
 
 type timeSource func() time.Time
 
-// eventBatch is used to batch up multiple contention events to amortize the
-// cost of acquiring a mutex.
 type eventBatch [eventBatchSize]contentionpb.ExtendedContentionEvent
 
 func (b *eventBatch) len() int {
+	__antithesis_instrumentation__.Notify(459047)
 	for i := 0; i < eventBatchSize; i++ {
+		__antithesis_instrumentation__.Notify(459049)
 		if !b[i].Valid() {
+			__antithesis_instrumentation__.Notify(459050)
 			return i
+		} else {
+			__antithesis_instrumentation__.Notify(459051)
 		}
 	}
+	__antithesis_instrumentation__.Notify(459048)
 	return eventBatchSize
 }
 
 var eventBatchPool = &sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(459052)
 		return &eventBatch{}
 	},
 }
 
-// eventStore is a contention event store that performs asynchronous contention
-// event collection. It subsequently resolves the transaction ID reported in the
-// contention event into transaction fingerprint ID.
-// eventStore relies on two background goroutines:
-// 1. intake goroutine: this goroutine is responsible for inserting batched
-//    contention events into the in-memory store, and then queue the batched
-//    events into the resolver. This means that the contention events can be
-//    immediately visible as early as possible to the readers of the eventStore
-//    before the txn id resolution is performed.
-// 2. resolver goroutine: this goroutine runs on a timer (controlled via
-//    sql.contention.event_store.resolution_interval cluster setting).
-//    Periodically, the timer fires and resolver attempts to contact remote
-//    nodes to resolve the transaction IDs in the queued contention events
-//    into transaction fingerprint IDs. If the attempt is successful, the
-//    resolver goroutine will update the stored contention events with the
-//    transaction fingerprint IDs.
 type eventStore struct {
 	st *cluster.Settings
 
 	guard struct {
 		*contentionutils.ConcurrentBufferGuard
 
-		// buffer is used to store a batch of contention events to amortize the
-		// cost of acquiring mutex. It is used in conjunction with the concurrent
-		// buffer guard.
 		buffer *eventBatch
 	}
 
@@ -104,13 +75,10 @@ type eventStore struct {
 	mu struct {
 		syncutil.RWMutex
 
-		// store is the main in-memory FIFO contention event store.
 		store *cache.UnorderedCache
 	}
 
 	atomic struct {
-		// storageSize is used to determine when to start evicting the older
-		// contention events.
 		storageSize int64
 	}
 
@@ -125,9 +93,10 @@ var (
 func newEventStore(
 	st *cluster.Settings, endpoint ResolverEndpoint, timeSrc timeSource, metrics *Metrics,
 ) *eventStore {
+	__antithesis_instrumentation__.Notify(459053)
 	s := &eventStore{
 		st:             st,
-		resolver:       newResolver(endpoint, metrics, eventBatchSize /* sizeHint */),
+		resolver:       newResolver(endpoint, metrics, eventBatchSize),
 		eventBatchChan: make(chan *eventBatch, eventChannelSize),
 		closeCh:        make(chan struct{}),
 		timeSrc:        timeSrc,
@@ -136,150 +105,202 @@ func newEventStore(
 	s.mu.store = cache.NewUnorderedCache(cache.Config{
 		Policy: cache.CacheFIFO,
 		ShouldEvict: func(_ int, _, _ interface{}) bool {
+			__antithesis_instrumentation__.Notify(459056)
 			capacity := StoreCapacity.Get(&st.SV)
 			size := atomic.LoadInt64(&s.atomic.storageSize)
 			return size > capacity
 		},
 		OnEvictedEntry: func(entry *cache.Entry) {
+			__antithesis_instrumentation__.Notify(459057)
 			event := entry.Value.(contentionpb.ExtendedContentionEvent)
 			entrySize := int64(entryBytes(&event))
 			atomic.AddInt64(&s.atomic.storageSize, -entrySize)
 		},
 	})
+	__antithesis_instrumentation__.Notify(459054)
 
 	s.guard.buffer = eventBatchPool.Get().(*eventBatch)
 	s.guard.ConcurrentBufferGuard = contentionutils.NewConcurrentBufferGuard(
 		func() int64 {
+			__antithesis_instrumentation__.Notify(459058)
 			return eventBatchSize
-		}, /* limiter */
+		},
 		func(_ int64) {
+			__antithesis_instrumentation__.Notify(459059)
 			select {
 			case s.eventBatchChan <- s.guard.buffer:
+				__antithesis_instrumentation__.Notify(459061)
 			case <-s.closeCh:
+				__antithesis_instrumentation__.Notify(459062)
 			}
+			__antithesis_instrumentation__.Notify(459060)
 			s.guard.buffer = eventBatchPool.Get().(*eventBatch)
-		}, /* onBufferFullSync */
+		},
 	)
+	__antithesis_instrumentation__.Notify(459055)
 
 	return s
 }
 
-// start runs both background goroutines used by eventStore.
 func (s *eventStore) start(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(459063)
 	s.startEventIntake(ctx, stopper)
 	s.startResolver(ctx, stopper)
 }
 
 func (s *eventStore) startEventIntake(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(459064)
 	handleInsert := func(batch []contentionpb.ExtendedContentionEvent) {
+		__antithesis_instrumentation__.Notify(459067)
 		s.resolver.enqueue(batch)
 		s.upsertBatch(batch)
 	}
+	__antithesis_instrumentation__.Notify(459065)
 
 	consumeBatch := func(batch *eventBatch) {
+		__antithesis_instrumentation__.Notify(459068)
 		batchLen := batch.len()
 		handleInsert(batch[:batchLen])
 		*batch = eventBatch{}
 		eventBatchPool.Put(batch)
 	}
+	__antithesis_instrumentation__.Notify(459066)
 
 	if err := stopper.RunAsyncTask(ctx, "contention-event-intake", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(459069)
 		for {
+			__antithesis_instrumentation__.Notify(459070)
 			select {
 			case batch := <-s.eventBatchChan:
+				__antithesis_instrumentation__.Notify(459071)
 				consumeBatch(batch)
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(459072)
 				close(s.closeCh)
 				return
 			}
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(459073)
 		close(s.closeCh)
+	} else {
+		__antithesis_instrumentation__.Notify(459074)
 	}
 }
 
 func (s *eventStore) startResolver(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(459075)
 	_ = stopper.RunAsyncTask(ctx, "contention-event-resolver", func(ctx context.Context) {
-		// Handles resolution interval changes.
+		__antithesis_instrumentation__.Notify(459076)
+
 		var resolutionIntervalChanged = make(chan struct{}, 1)
 		TxnIDResolutionInterval.SetOnChange(&s.st.SV, func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(459078)
 			resolutionIntervalChanged <- struct{}{}
 		})
+		__antithesis_instrumentation__.Notify(459077)
 
 		initialDelay := s.resolutionIntervalWithJitter()
 		timer := timeutil.NewTimer()
 		timer.Reset(initialDelay)
 
 		for {
+			__antithesis_instrumentation__.Notify(459079)
 			waitInterval := s.resolutionIntervalWithJitter()
 			timer.Reset(waitInterval)
 
 			select {
 			case <-timer.C:
+				__antithesis_instrumentation__.Notify(459080)
 				if err := s.flushAndResolve(ctx); err != nil {
+					__antithesis_instrumentation__.Notify(459084)
 					if log.V(1) {
+						__antithesis_instrumentation__.Notify(459085)
 						log.Warningf(ctx, "unexpected error encountered when performing "+
 							"txn id resolution %s", err)
+					} else {
+						__antithesis_instrumentation__.Notify(459086)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(459087)
 				}
+				__antithesis_instrumentation__.Notify(459081)
 				timer.Read = true
 			case <-resolutionIntervalChanged:
+				__antithesis_instrumentation__.Notify(459082)
 				continue
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(459083)
 				return
 			}
 		}
 	})
 }
 
-// addEvent implements the eventWriter interface.
 func (s *eventStore) addEvent(e contentionpb.ExtendedContentionEvent) {
-	// Setting the TxnIDResolutionInterval to 0 effectively disables the
-	// eventStore.
-	if TxnIDResolutionInterval.Get(&s.st.SV) == 0 {
-		return
-	}
+	__antithesis_instrumentation__.Notify(459088)
 
-	// If the duration threshold is set, we only collect contention events whose
-	// duration exceeds the threshold.
-	if threshold := DurationThreshold.Get(&s.st.SV); threshold > 0 {
-		if e.BlockingEvent.Duration < threshold {
-			return
-		}
+	if TxnIDResolutionInterval.Get(&s.st.SV) == 0 {
+		__antithesis_instrumentation__.Notify(459091)
+		return
+	} else {
+		__antithesis_instrumentation__.Notify(459092)
 	}
+	__antithesis_instrumentation__.Notify(459089)
+
+	if threshold := DurationThreshold.Get(&s.st.SV); threshold > 0 {
+		__antithesis_instrumentation__.Notify(459093)
+		if e.BlockingEvent.Duration < threshold {
+			__antithesis_instrumentation__.Notify(459094)
+			return
+		} else {
+			__antithesis_instrumentation__.Notify(459095)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(459096)
+	}
+	__antithesis_instrumentation__.Notify(459090)
 
 	s.guard.AtomicWrite(func(writerIdx int64) {
+		__antithesis_instrumentation__.Notify(459097)
 		e.CollectionTs = s.timeSrc()
 		s.guard.buffer[writerIdx] = e
 	})
 }
 
-// ForEachEvent implements the eventReader interface.
 func (s *eventStore) ForEachEvent(
 	op func(event *contentionpb.ExtendedContentionEvent) error,
 ) error {
-	// First we read all the keys in the eventStore, and then immediately release
-	// the read lock. This is to minimize the time we need to hold the lock. This
-	// is important since the op() callback can take arbitrary long to execute,
-	// we should not be holding the lock while op() is executing.
+	__antithesis_instrumentation__.Notify(459098)
+
 	s.mu.RLock()
 	keys := make([]uint64, 0, s.mu.store.Len())
 	s.mu.store.Do(func(entry *cache.Entry) {
+		__antithesis_instrumentation__.Notify(459101)
 		keys = append(keys, entry.Key.(uint64))
 	})
+	__antithesis_instrumentation__.Notify(459099)
 	s.mu.RUnlock()
 
 	for i := range keys {
+		__antithesis_instrumentation__.Notify(459102)
 		event, ok := s.getEventByEventHash(keys[i])
 		if !ok {
-			// The event might have been evicted between reading the keys and
-			// getting the event. In this case we simply ignore it.
+			__antithesis_instrumentation__.Notify(459104)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(459105)
 		}
+		__antithesis_instrumentation__.Notify(459103)
 		if err := op(&event); err != nil {
+			__antithesis_instrumentation__.Notify(459106)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(459107)
 		}
 	}
+	__antithesis_instrumentation__.Notify(459100)
 
 	return nil
 }
@@ -287,6 +308,7 @@ func (s *eventStore) ForEachEvent(
 func (s *eventStore) getEventByEventHash(
 	hash uint64,
 ) (_ contentionpb.ExtendedContentionEvent, ok bool) {
+	__antithesis_instrumentation__.Notify(459108)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -294,61 +316,49 @@ func (s *eventStore) getEventByEventHash(
 	return event.(contentionpb.ExtendedContentionEvent), ok
 }
 
-// flushAndResolve is the main method called by the resolver goroutine each
-// time the timer fires. This method does two things:
-// 1. it triggers the batching buffer to flush its content into the intake
-//    goroutine. This is to ensure that in the case where we have very low
-//    rate of contentions, the contention events won't be permanently trapped
-//    in the batching buffer.
-// 2. it invokes the dequeue() method on the resolverQueue. This cause the
-//    resolver to perform txnID resolution. See inline comments on the method
-//    for details.
 func (s *eventStore) flushAndResolve(ctx context.Context) error {
-	// This forces the write-buffer flushes its batch into the intake goroutine.
-	// The intake goroutine will asynchronously add all events in the batch
-	// into the in-memory store and the resolverQueue.
+	__antithesis_instrumentation__.Notify(459109)
+
 	s.guard.ForceSync()
 
-	// Since call the ForceSync() is asynchronous, it is possible that the
-	// events is not yet available in the resolver queue yet. This is fine,
-	// since those events will be processed in the next iteration of the resolver
-	// goroutine.
 	result, err := s.resolver.dequeue(ctx)
 
-	// Ensure that all the resolved contention events are added to the store
-	// before we bubble up the error.
 	s.upsertBatch(result)
 
 	return err
 }
 
-// upsertBatch update or insert a batch of contention events into the in-memory
-// store
 func (s *eventStore) upsertBatch(events []contentionpb.ExtendedContentionEvent) {
+	__antithesis_instrumentation__.Notify(459110)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for i := range events {
+		__antithesis_instrumentation__.Notify(459111)
 		blockingTxnID := events[i].BlockingEvent.TxnMeta.ID
 		_, ok := s.mu.store.Get(blockingTxnID)
 		if !ok {
+			__antithesis_instrumentation__.Notify(459113)
 			atomic.AddInt64(&s.atomic.storageSize, int64(entryBytes(&events[i])))
+		} else {
+			__antithesis_instrumentation__.Notify(459114)
 		}
+		__antithesis_instrumentation__.Notify(459112)
 		s.mu.store.Add(events[i].Hash(), events[i])
 	}
 }
 
 func (s *eventStore) resolutionIntervalWithJitter() time.Duration {
+	__antithesis_instrumentation__.Notify(459115)
 	baseInterval := TxnIDResolutionInterval.Get(&s.st.SV)
 
-	// Jitter the interval a by +/- 15%.
 	frac := 1 + (2*rand.Float64()-1)*0.15
 	jitteredInterval := time.Duration(frac * float64(baseInterval.Nanoseconds()))
 	return jitteredInterval
 }
 
 func entryBytes(event *contentionpb.ExtendedContentionEvent) int {
-	// Since we store the event's hash as the key to the unordered cache,
-	// this is means we are storing another copy of uint64 (8 bytes).
+	__antithesis_instrumentation__.Notify(459116)
+
 	return event.Size() + 8
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -18,43 +10,59 @@ import (
 	"os/exec"
 )
 
-// capture executes the command specified by args and returns its stdout. If
-// the process exits with a failing exit code, capture instead returns an error
-// which includes the process's stderr.
 func capture(args ...string) (string, error) {
+	__antithesis_instrumentation__.Notify(52662)
 	var cmd *exec.Cmd
 	if len(args) == 0 {
+		__antithesis_instrumentation__.Notify(52665)
 		panic("capture called with no arguments")
-	} else if len(args) == 1 {
-		cmd = exec.Command(args[0])
 	} else {
-		cmd = exec.Command(args[0], args[1:]...)
+		__antithesis_instrumentation__.Notify(52666)
+		if len(args) == 1 {
+			__antithesis_instrumentation__.Notify(52667)
+			cmd = exec.Command(args[0])
+		} else {
+			__antithesis_instrumentation__.Notify(52668)
+			cmd = exec.Command(args[0], args[1:]...)
+		}
 	}
+	__antithesis_instrumentation__.Notify(52663)
 	out, err := cmd.Output()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(52669)
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
+			__antithesis_instrumentation__.Notify(52671)
 			err = fmt.Errorf("%w: %s", err, exitErr.Stderr)
+		} else {
+			__antithesis_instrumentation__.Notify(52672)
 		}
+		__antithesis_instrumentation__.Notify(52670)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(52673)
 	}
+	__antithesis_instrumentation__.Notify(52664)
 	return string(bytes.TrimSpace(out)), err
 }
 
-// spawn executes the command specified by args. The subprocess inherits the
-// current processes's stdin, stdout, and stderr streams. If the process exits
-// with a failing exit code, run returns a generic "process exited with
-// status..." error, as the process has likely written an error message to
-// stderr.
 func spawn(args ...string) error {
+	__antithesis_instrumentation__.Notify(52674)
 	var cmd *exec.Cmd
 	if len(args) == 0 {
+		__antithesis_instrumentation__.Notify(52676)
 		panic("spawn called with no arguments")
-	} else if len(args) == 1 {
-		cmd = exec.Command(args[0])
 	} else {
-		cmd = exec.Command(args[0], args[1:]...)
+		__antithesis_instrumentation__.Notify(52677)
+		if len(args) == 1 {
+			__antithesis_instrumentation__.Notify(52678)
+			cmd = exec.Command(args[0])
+		} else {
+			__antithesis_instrumentation__.Notify(52679)
+			cmd = exec.Command(args[0], args[1:]...)
+		}
 	}
+	__antithesis_instrumentation__.Notify(52675)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

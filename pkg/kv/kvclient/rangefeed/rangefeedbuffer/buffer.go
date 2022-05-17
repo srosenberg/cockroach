@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rangefeedbuffer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,19 +12,12 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ErrBufferLimitExceeded is returned by the buffer when attempting to add more
-// events than the limit the buffer is configured with.
 var ErrBufferLimitExceeded = errors.New("rangefeed buffer limit exceeded")
 
-// Event is the unit of what can be added to the buffer.
 type Event interface {
 	Timestamp() hlc.Timestamp
 }
 
-// Buffer provides a thin memory-bounded buffer to sit on top of a rangefeed. It
-// accumulates raw events which can then be flushed out in timestamp sorted
-// order en-masse whenever the rangefeed frontier is bumped. If we accumulate
-// more events than the limit allows for, we error out to the caller.
 type Buffer struct {
 	mu struct {
 		syncutil.Mutex
@@ -43,50 +28,58 @@ type Buffer struct {
 	}
 }
 
-// New constructs a Buffer with the provided limit.
 func New(limit int) *Buffer {
+	__antithesis_instrumentation__.Notify(89862)
 	b := &Buffer{}
 	b.mu.limit = limit
 	return b
 }
 
-// Add adds the given entry to the buffer.
 func (b *Buffer) Add(ev Event) error {
+	__antithesis_instrumentation__.Notify(89863)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	if ev.Timestamp().LessEq(b.mu.frontier) {
-		// If the entry is at a timestamp less than or equal to our last known
-		// frontier, we can discard it.
+		__antithesis_instrumentation__.Notify(89866)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(89867)
 	}
+	__antithesis_instrumentation__.Notify(89864)
 
 	if b.mu.events.Len()+1 > b.mu.limit {
+		__antithesis_instrumentation__.Notify(89868)
 		return ErrBufferLimitExceeded
+	} else {
+		__antithesis_instrumentation__.Notify(89869)
 	}
+	__antithesis_instrumentation__.Notify(89865)
 
 	b.mu.events = append(b.mu.events, ev)
 	return nil
 }
 
-// Flush returns the timestamp sorted list of accumulated events with timestamps
-// less than or equal to the provided frontier timestamp. The timestamp is
-// recorded (expected to monotonically increase), and future events with
-// timestamps less than or equal to it are discarded.
 func (b *Buffer) Flush(ctx context.Context, frontier hlc.Timestamp) (events []Event) {
+	__antithesis_instrumentation__.Notify(89870)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	if frontier.Less(b.mu.frontier) {
+		__antithesis_instrumentation__.Notify(89873)
 		log.Fatalf(ctx, "frontier timestamp regressed: saw %s, previously %s", frontier, b.mu.frontier)
+	} else {
+		__antithesis_instrumentation__.Notify(89874)
 	}
+	__antithesis_instrumentation__.Notify(89871)
 
-	// Accumulate all events with timestamps <= the given timestamp in sorted
-	// order.
 	sort.Sort(&b.mu.events)
 	idx := sort.Search(len(b.mu.events), func(i int) bool {
+		__antithesis_instrumentation__.Notify(89875)
 		return !b.mu.events[i].Timestamp().LessEq(frontier)
 	})
+	__antithesis_instrumentation__.Notify(89872)
 
 	events = b.mu.events[:idx]
 	b.mu.events = b.mu.events[idx:]
@@ -94,10 +87,8 @@ func (b *Buffer) Flush(ctx context.Context, frontier hlc.Timestamp) (events []Ev
 	return events
 }
 
-// SetLimit is used to limit the number of events the buffer internally tracks.
-// If already in excess of the limit, future additions will error out (until the
-// buffer is Flush()-ed at least).
 func (b *Buffer) SetLimit(limit int) {
+	__antithesis_instrumentation__.Notify(89876)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -108,6 +99,12 @@ type events []Event
 
 var _ sort.Interface = (*events)(nil)
 
-func (es *events) Len() int           { return len(*es) }
-func (es *events) Less(i, j int) bool { return (*es)[i].Timestamp().Less((*es)[j].Timestamp()) }
-func (es *events) Swap(i, j int)      { (*es)[i], (*es)[j] = (*es)[j], (*es)[i] }
+func (es *events) Len() int { __antithesis_instrumentation__.Notify(89877); return len(*es) }
+func (es *events) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(89878)
+	return (*es)[i].Timestamp().Less((*es)[j].Timestamp())
+}
+func (es *events) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(89879)
+	(*es)[i], (*es)[j] = (*es)[j], (*es)[i]
+}

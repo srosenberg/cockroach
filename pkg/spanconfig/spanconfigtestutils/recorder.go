@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfigtestutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,8 +15,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// KVAccessorRecorder wraps around a KVAccessor and records the mutations
-// applied to it.
 type KVAccessorRecorder struct {
 	underlying spanconfig.KVAccessor
 
@@ -37,8 +27,8 @@ type KVAccessorRecorder struct {
 
 var _ spanconfig.KVAccessor = &KVAccessorRecorder{}
 
-// NewKVAccessorRecorder returns a new KVAccessorRecorder.
 func NewKVAccessorRecorder(underlying spanconfig.KVAccessor) *KVAccessorRecorder {
+	__antithesis_instrumentation__.Notify(241705)
 	return &KVAccessorRecorder{
 		underlying: underlying,
 	}
@@ -49,106 +39,133 @@ type mutation struct {
 	batchIdx int
 }
 
-// GetSpanConfigRecords is part of the KVAccessor interface.
 func (r *KVAccessorRecorder) GetSpanConfigRecords(
 	ctx context.Context, targets []spanconfig.Target,
 ) ([]spanconfig.Record, error) {
+	__antithesis_instrumentation__.Notify(241706)
 	return r.underlying.GetSpanConfigRecords(ctx, targets)
 }
 
-// UpdateSpanConfigRecords is part of the KVAccessor interface.
 func (r *KVAccessorRecorder) UpdateSpanConfigRecords(
 	ctx context.Context,
 	toDelete []spanconfig.Target,
 	toUpsert []spanconfig.Record,
 	minCommitTS, maxCommitTS hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(241707)
 	if err := r.underlying.UpdateSpanConfigRecords(
 		ctx, toDelete, toUpsert, minCommitTS, maxCommitTS,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(241711)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(241712)
 	}
+	__antithesis_instrumentation__.Notify(241708)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	for _, d := range toDelete {
+		__antithesis_instrumentation__.Notify(241713)
 		del, err := spanconfig.Deletion(d)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(241715)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(241716)
 		}
+		__antithesis_instrumentation__.Notify(241714)
 		r.mu.mutations = append(r.mu.mutations, mutation{
 			update:   del,
 			batchIdx: r.mu.batchCount,
 		})
 	}
+	__antithesis_instrumentation__.Notify(241709)
 	for _, u := range toUpsert {
+		__antithesis_instrumentation__.Notify(241717)
 		r.mu.mutations = append(r.mu.mutations, mutation{
 			update:   spanconfig.Update(u),
 			batchIdx: r.mu.batchCount,
 		})
 	}
+	__antithesis_instrumentation__.Notify(241710)
 	r.mu.batchCount++
 	return nil
 }
 
-// GetAllSystemSpanConfigsThatApply is part of the spanconfig.KVAccessor
-// interface.
 func (r *KVAccessorRecorder) GetAllSystemSpanConfigsThatApply(
 	ctx context.Context, id roachpb.TenantID,
 ) ([]roachpb.SpanConfig, error) {
+	__antithesis_instrumentation__.Notify(241718)
 	return r.underlying.GetAllSystemSpanConfigsThatApply(ctx, id)
 }
 
-// WithTxn is part of the KVAccessor interface.
 func (r *KVAccessorRecorder) WithTxn(context.Context, *kv.Txn) spanconfig.KVAccessor {
+	__antithesis_instrumentation__.Notify(241719)
 	panic("unimplemented")
 }
 
-// Recording returns a string-ified form of the mutations made so far, i.e. list
-// of spans that were deleted and entries that were upserted. It optionally
-// clears out the recording.
 func (r *KVAccessorRecorder) Recording(clear bool) string {
+	__antithesis_instrumentation__.Notify(241720)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	sort.Slice(r.mu.mutations, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(241724)
 		mi, mj := r.mu.mutations[i], r.mu.mutations[j]
-		if mi.batchIdx != mj.batchIdx { // sort by batch/ts order
+		if mi.batchIdx != mj.batchIdx {
+			__antithesis_instrumentation__.Notify(241727)
 			return mi.batchIdx < mj.batchIdx
+		} else {
+			__antithesis_instrumentation__.Notify(241728)
 		}
-		if !mi.update.GetTarget().Equal(mj.update.GetTarget()) { // sort by target order
+		__antithesis_instrumentation__.Notify(241725)
+		if !mi.update.GetTarget().Equal(mj.update.GetTarget()) {
+			__antithesis_instrumentation__.Notify(241729)
 			return mi.update.GetTarget().Less(mj.update.GetTarget())
+		} else {
+			__antithesis_instrumentation__.Notify(241730)
 		}
+		__antithesis_instrumentation__.Notify(241726)
 
-		return mi.update.Deletion() // sort deletes before upserts
+		return mi.update.Deletion()
 	})
-
-	// TODO(irfansharif): We could also print out separators to distinguish
-	// between different batches, if any.
+	__antithesis_instrumentation__.Notify(241721)
 
 	var output strings.Builder
 	for _, m := range r.mu.mutations {
+		__antithesis_instrumentation__.Notify(241731)
 		if m.update.Deletion() {
+			__antithesis_instrumentation__.Notify(241732)
 			output.WriteString(fmt.Sprintf("delete %s\n", m.update.GetTarget()))
 		} else {
+			__antithesis_instrumentation__.Notify(241733)
 			switch {
 			case m.update.GetTarget().IsSpanTarget():
+				__antithesis_instrumentation__.Notify(241734)
 				output.WriteString(fmt.Sprintf("upsert %-35s %s\n", m.update.GetTarget(),
 					PrintSpanConfigDiffedAgainstDefaults(m.update.GetConfig())))
 			case m.update.GetTarget().IsSystemTarget():
+				__antithesis_instrumentation__.Notify(241735)
 				output.WriteString(fmt.Sprintf("upsert %-35s %s\n", m.update.GetTarget(),
 					PrintSystemSpanConfigDiffedAgainstDefault(m.update.GetConfig())))
 			default:
+				__antithesis_instrumentation__.Notify(241736)
 				panic("unsupported target type")
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(241722)
 
 	if clear {
+		__antithesis_instrumentation__.Notify(241737)
 		r.mu.mutations = r.mu.mutations[:0]
 		r.mu.batchCount = 0
+	} else {
+		__antithesis_instrumentation__.Notify(241738)
 	}
+	__antithesis_instrumentation__.Notify(241723)
 
 	return output.String()
 }

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,9 +11,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// TestingNudgeAdoptionQueue is used by tests to tell the registry that there is
-// a job to be adopted.
 func (r *Registry) TestingNudgeAdoptionQueue() {
+	__antithesis_instrumentation__.Notify(84924)
 	r.adoptionCh <- claimAndResumeClaimedJobs
 }
 
@@ -29,52 +20,70 @@ type config struct {
 	jobID jobspb.JobID
 }
 
-// TestCreateAndStartJobOption optionally modifies TestingCreateAndStartJob.
 type TestCreateAndStartJobOption func(*config)
 
-// WithJobID is used to inject an existing JobID to TestingCreateAndStartJob.
 func WithJobID(jobID jobspb.JobID) TestCreateAndStartJobOption {
+	__antithesis_instrumentation__.Notify(84925)
 	return func(c *config) {
+		__antithesis_instrumentation__.Notify(84926)
 		c.jobID = jobID
 	}
 }
 
-// TestingCreateAndStartJob creates and asynchronously starts a job from record.
-// An error is returned if the job type has not been registered with
-// RegisterConstructor. The ctx passed to this function is not the context the
-// job will be started with (canceling ctx will not cause the job to cancel).
 func TestingCreateAndStartJob(
 	ctx context.Context, r *Registry, db *kv.DB, record Record, opts ...TestCreateAndStartJobOption,
 ) (*StartableJob, error) {
+	__antithesis_instrumentation__.Notify(84927)
 	var rj *StartableJob
 	c := config{
 		jobID: r.MakeJobID(),
 	}
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(84931)
 		opt(&c)
 	}
+	__antithesis_instrumentation__.Notify(84928)
 	if err := db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
+		__antithesis_instrumentation__.Notify(84932)
 		return r.CreateStartableJobWithTxn(ctx, &rj, c.jobID, txn, record)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(84933)
 		if rj != nil {
+			__antithesis_instrumentation__.Notify(84935)
 			if cleanupErr := rj.CleanupOnRollback(ctx); cleanupErr != nil {
+				__antithesis_instrumentation__.Notify(84936)
 				log.Warningf(ctx, "failed to cleanup StartableJob: %v", cleanupErr)
+			} else {
+				__antithesis_instrumentation__.Notify(84937)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(84938)
 		}
+		__antithesis_instrumentation__.Notify(84934)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84939)
 	}
+	__antithesis_instrumentation__.Notify(84929)
 	err := rj.Start(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84940)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84941)
 	}
+	__antithesis_instrumentation__.Notify(84930)
 	return rj, nil
 }
 
-// TestingGetTraceDumpDir returns the directory in which jobs might dump their
-// traces after execution.
 func TestingGetTraceDumpDir(r *Registry) string {
+	__antithesis_instrumentation__.Notify(84942)
 	if r.td == nil {
+		__antithesis_instrumentation__.Notify(84944)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(84945)
 	}
+	__antithesis_instrumentation__.Notify(84943)
 	return tracedumper.TestingGetTraceDumpDir(r.td)
 }

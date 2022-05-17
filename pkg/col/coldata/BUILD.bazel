@@ -23,6 +23,7 @@ go_library(
         "//pkg/util/buildutil",
         "//pkg/util/duration",
         "//pkg/util/json",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_apd_v3//:apd",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",
@@ -61,6 +62,7 @@ genrule(
     srcs = ["vec_tmpl.go"],
     outs = ["vec.eg.go"],
     cmd = """
+      export LD_LIBRARY_PATH=/home/srosenberg/go/src/antithesis.com/instrumentation/lib/
       $(location //pkg/sql/colexec/execgen/cmd/execgen) \
         -fmt=false pkg/col/coldata/$@ > $@
       $(location @com_github_cockroachdb_gostdlib//x/tools/cmd/goimports) -w $@

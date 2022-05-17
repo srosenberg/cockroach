@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree/treebin"
@@ -24,370 +16,566 @@ type normalizableExpr interface {
 }
 
 func (expr *CastExpr) normalize(v *NormalizeVisitor) TypedExpr {
+	__antithesis_instrumentation__.Notify(610538)
 	return expr
 }
 
 func (expr *CoalesceExpr) normalize(v *NormalizeVisitor) TypedExpr {
-	// This normalization checks whether COALESCE can be simplified
-	// based on constant expressions at the start of the COALESCE
-	// argument list. All known-null constant arguments are simply
-	// removed, and any known-nonnull constant argument before
-	// non-constant argument cause the entire COALESCE expression to
-	// collapse to that argument.
+	__antithesis_instrumentation__.Notify(610539)
+
 	last := len(expr.Exprs) - 1
 	for i := range expr.Exprs {
+		__antithesis_instrumentation__.Notify(610541)
 		subExpr := expr.TypedExprAt(i)
 
 		if i == last {
+			__antithesis_instrumentation__.Notify(610545)
 			return subExpr
+		} else {
+			__antithesis_instrumentation__.Notify(610546)
 		}
+		__antithesis_instrumentation__.Notify(610542)
 
 		if !v.isConst(subExpr) {
+			__antithesis_instrumentation__.Notify(610547)
 			exprCopy := *expr
 			exprCopy.Exprs = expr.Exprs[i:]
 			return &exprCopy
+		} else {
+			__antithesis_instrumentation__.Notify(610548)
 		}
+		__antithesis_instrumentation__.Notify(610543)
 
 		val, err := subExpr.Eval(v.ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(610549)
 			v.err = err
 			return expr
+		} else {
+			__antithesis_instrumentation__.Notify(610550)
 		}
+		__antithesis_instrumentation__.Notify(610544)
 
 		if val != DNull {
+			__antithesis_instrumentation__.Notify(610551)
 			return subExpr
+		} else {
+			__antithesis_instrumentation__.Notify(610552)
 		}
 	}
+	__antithesis_instrumentation__.Notify(610540)
 	return expr
 }
 
 func (expr *IfExpr) normalize(v *NormalizeVisitor) TypedExpr {
+	__antithesis_instrumentation__.Notify(610553)
 	if v.isConst(expr.Cond) {
+		__antithesis_instrumentation__.Notify(610555)
 		cond, err := expr.TypedCondExpr().Eval(v.ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(610558)
 			v.err = err
 			return expr
+		} else {
+			__antithesis_instrumentation__.Notify(610559)
 		}
+		__antithesis_instrumentation__.Notify(610556)
 		if d, err := GetBool(cond); err == nil {
+			__antithesis_instrumentation__.Notify(610560)
 			if d {
+				__antithesis_instrumentation__.Notify(610562)
 				return expr.TypedTrueExpr()
+			} else {
+				__antithesis_instrumentation__.Notify(610563)
 			}
+			__antithesis_instrumentation__.Notify(610561)
 			return expr.TypedElseExpr()
+		} else {
+			__antithesis_instrumentation__.Notify(610564)
 		}
+		__antithesis_instrumentation__.Notify(610557)
 		return DNull
+	} else {
+		__antithesis_instrumentation__.Notify(610565)
 	}
+	__antithesis_instrumentation__.Notify(610554)
 	return expr
 }
 
 func (expr *UnaryExpr) normalize(v *NormalizeVisitor) TypedExpr {
+	__antithesis_instrumentation__.Notify(610566)
 	val := expr.TypedInnerExpr()
 
 	if val == DNull {
+		__antithesis_instrumentation__.Notify(610569)
 		return val
+	} else {
+		__antithesis_instrumentation__.Notify(610570)
 	}
+	__antithesis_instrumentation__.Notify(610567)
 
 	switch expr.Operator.Symbol {
 	case UnaryMinus:
+		__antithesis_instrumentation__.Notify(610571)
 		if expr.Operator.IsExplicitOperator {
+			__antithesis_instrumentation__.Notify(610575)
 			return expr
+		} else {
+			__antithesis_instrumentation__.Notify(610576)
 		}
-		// -0 -> 0 (except for float which has negative zero)
-		if val.ResolvedType().Family() != types.FloatFamily && v.isNumericZero(val) {
+		__antithesis_instrumentation__.Notify(610572)
+
+		if val.ResolvedType().Family() != types.FloatFamily && func() bool {
+			__antithesis_instrumentation__.Notify(610577)
+			return v.isNumericZero(val) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(610578)
 			return val
+		} else {
+			__antithesis_instrumentation__.Notify(610579)
 		}
+		__antithesis_instrumentation__.Notify(610573)
 		switch b := val.(type) {
-		// -(a - b) -> (b - a)
+
 		case *BinaryExpr:
+			__antithesis_instrumentation__.Notify(610580)
 			if b.Operator.Symbol == treebin.Minus {
+				__antithesis_instrumentation__.Notify(610582)
 				newBinExpr := newBinExprIfValidOverload(
 					treebin.MakeBinaryOperator(treebin.Minus),
 					b.TypedRight(),
 					b.TypedLeft(),
 				)
 				if newBinExpr != nil {
+					__antithesis_instrumentation__.Notify(610584)
 					newBinExpr.memoizeFn()
 					b = newBinExpr
+				} else {
+					__antithesis_instrumentation__.Notify(610585)
 				}
+				__antithesis_instrumentation__.Notify(610583)
 				return b
+			} else {
+				__antithesis_instrumentation__.Notify(610586)
 			}
-		// - (- a) -> a
+
 		case *UnaryExpr:
+			__antithesis_instrumentation__.Notify(610581)
 			if b.Operator.Symbol == UnaryMinus {
+				__antithesis_instrumentation__.Notify(610587)
 				return b.TypedInnerExpr()
+			} else {
+				__antithesis_instrumentation__.Notify(610588)
 			}
 		}
+	default:
+		__antithesis_instrumentation__.Notify(610574)
 	}
+	__antithesis_instrumentation__.Notify(610568)
 
 	return expr
 }
 
 func (expr *BinaryExpr) normalize(v *NormalizeVisitor) TypedExpr {
+	__antithesis_instrumentation__.Notify(610589)
 	left := expr.TypedLeft()
 	right := expr.TypedRight()
 	expectedType := expr.ResolvedType()
 
-	if !expr.Fn.NullableArgs && (left == DNull || right == DNull) {
+	if !expr.Fn.NullableArgs && func() bool {
+		__antithesis_instrumentation__.Notify(610593)
+		return (left == DNull || func() bool {
+			__antithesis_instrumentation__.Notify(610594)
+			return right == DNull == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610595)
 		return DNull
+	} else {
+		__antithesis_instrumentation__.Notify(610596)
 	}
+	__antithesis_instrumentation__.Notify(610590)
 
 	var final TypedExpr
 
 	switch expr.Operator.Symbol {
 	case treebin.Plus:
+		__antithesis_instrumentation__.Notify(610597)
 		if v.isNumericZero(right) {
+			__antithesis_instrumentation__.Notify(610604)
 			final, _ = ReType(left, expectedType)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(610605)
 		}
+		__antithesis_instrumentation__.Notify(610598)
 		if v.isNumericZero(left) {
+			__antithesis_instrumentation__.Notify(610606)
 			final, _ = ReType(right, expectedType)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(610607)
 		}
 	case treebin.Minus:
-		if types.IsAdditiveType(left.ResolvedType()) && v.isNumericZero(right) {
+		__antithesis_instrumentation__.Notify(610599)
+		if types.IsAdditiveType(left.ResolvedType()) && func() bool {
+			__antithesis_instrumentation__.Notify(610608)
+			return v.isNumericZero(right) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(610609)
 			final, _ = ReType(left, expectedType)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(610610)
 		}
 	case treebin.Mult:
+		__antithesis_instrumentation__.Notify(610600)
 		if v.isNumericOne(right) {
+			__antithesis_instrumentation__.Notify(610611)
 			final, _ = ReType(left, expectedType)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(610612)
 		}
+		__antithesis_instrumentation__.Notify(610601)
 		if v.isNumericOne(left) {
+			__antithesis_instrumentation__.Notify(610613)
 			final, _ = ReType(right, expectedType)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(610614)
 		}
-		// We can't simplify multiplication by zero to zero,
-		// because if the other operand is NULL during evaluation
-		// the result must be NULL.
+
 	case treebin.Div, treebin.FloorDiv:
+		__antithesis_instrumentation__.Notify(610602)
 		if v.isNumericOne(right) {
+			__antithesis_instrumentation__.Notify(610615)
 			final, _ = ReType(left, expectedType)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(610616)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(610603)
 	}
+	__antithesis_instrumentation__.Notify(610591)
 
-	// final is nil when the binary expression did not match the cases above,
-	// or when ReType was unsuccessful.
 	if final == nil {
+		__antithesis_instrumentation__.Notify(610617)
 		return expr
+	} else {
+		__antithesis_instrumentation__.Notify(610618)
 	}
+	__antithesis_instrumentation__.Notify(610592)
 	return final
 }
 
 func (expr *AndExpr) normalize(v *NormalizeVisitor) TypedExpr {
+	__antithesis_instrumentation__.Notify(610619)
 	left := expr.TypedLeft()
 	right := expr.TypedRight()
 	var dleft, dright Datum
 
-	if left == DNull && right == DNull {
+	if left == DNull && func() bool {
+		__antithesis_instrumentation__.Notify(610623)
+		return right == DNull == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610624)
 		return DNull
+	} else {
+		__antithesis_instrumentation__.Notify(610625)
 	}
+	__antithesis_instrumentation__.Notify(610620)
 
-	// Use short-circuit evaluation to simplify AND expressions.
 	if v.isConst(left) {
+		__antithesis_instrumentation__.Notify(610626)
 		dleft, v.err = left.Eval(v.ctx)
 		if v.err != nil {
+			__antithesis_instrumentation__.Notify(610629)
 			return expr
+		} else {
+			__antithesis_instrumentation__.Notify(610630)
 		}
+		__antithesis_instrumentation__.Notify(610627)
 		if dleft != DNull {
+			__antithesis_instrumentation__.Notify(610631)
 			if d, err := GetBool(dleft); err == nil {
+				__antithesis_instrumentation__.Notify(610633)
 				if !d {
+					__antithesis_instrumentation__.Notify(610635)
 					return dleft
+				} else {
+					__antithesis_instrumentation__.Notify(610636)
 				}
+				__antithesis_instrumentation__.Notify(610634)
 				return right
+			} else {
+				__antithesis_instrumentation__.Notify(610637)
 			}
+			__antithesis_instrumentation__.Notify(610632)
 			return DNull
+		} else {
+			__antithesis_instrumentation__.Notify(610638)
 		}
+		__antithesis_instrumentation__.Notify(610628)
 		return NewTypedAndExpr(
 			dleft,
 			right,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(610639)
 	}
+	__antithesis_instrumentation__.Notify(610621)
 	if v.isConst(right) {
+		__antithesis_instrumentation__.Notify(610640)
 		dright, v.err = right.Eval(v.ctx)
 		if v.err != nil {
+			__antithesis_instrumentation__.Notify(610643)
 			return expr
+		} else {
+			__antithesis_instrumentation__.Notify(610644)
 		}
+		__antithesis_instrumentation__.Notify(610641)
 		if dright != DNull {
+			__antithesis_instrumentation__.Notify(610645)
 			if d, err := GetBool(dright); err == nil {
+				__antithesis_instrumentation__.Notify(610647)
 				if !d {
+					__antithesis_instrumentation__.Notify(610649)
 					return right
+				} else {
+					__antithesis_instrumentation__.Notify(610650)
 				}
+				__antithesis_instrumentation__.Notify(610648)
 				return left
+			} else {
+				__antithesis_instrumentation__.Notify(610651)
 			}
+			__antithesis_instrumentation__.Notify(610646)
 			return DNull
+		} else {
+			__antithesis_instrumentation__.Notify(610652)
 		}
+		__antithesis_instrumentation__.Notify(610642)
 		return NewTypedAndExpr(
 			left,
 			dright,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(610653)
 	}
+	__antithesis_instrumentation__.Notify(610622)
 	return expr
 }
 
 func (expr *ComparisonExpr) normalize(v *NormalizeVisitor) TypedExpr {
+	__antithesis_instrumentation__.Notify(610654)
 	switch expr.Operator.Symbol {
 	case treecmp.EQ, treecmp.GE, treecmp.GT, treecmp.LE, treecmp.LT:
-		// We want var nodes (VariableExpr, VarName, etc) to be immediate
-		// children of the comparison expression and not second or third
-		// children. That is, we want trees that look like:
-		//
-		//    cmp            cmp
-		//   /   \          /   \
-		//  a    op        op    a
-		//      /  \      /  \
-		//     1    2    1    2
-		//
-		// Not trees that look like:
-		//
-		//      cmp          cmp        cmp          cmp
-		//     /   \        /   \      /   \        /   \
-		//    op    2      op    2    1    op      1    op
-		//   /  \         /  \            /  \         /  \
-		//  a    1       1    a          a    2       2    a
-		//
-		// We loop attempting to simplify the comparison expression. As a
-		// pre-condition, we know there is at least one variable in the expression
-		// tree or we would not have entered this code path.
+		__antithesis_instrumentation__.Notify(610656)
+
 		exprCopied := false
 		for {
-			if expr.TypedLeft() == DNull || expr.TypedRight() == DNull {
+			__antithesis_instrumentation__.Notify(610661)
+			if expr.TypedLeft() == DNull || func() bool {
+				__antithesis_instrumentation__.Notify(610666)
+				return expr.TypedRight() == DNull == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(610667)
 				return DNull
+			} else {
+				__antithesis_instrumentation__.Notify(610668)
 			}
+			__antithesis_instrumentation__.Notify(610662)
 
 			if v.isConst(expr.Left) {
+				__antithesis_instrumentation__.Notify(610669)
 				switch expr.Right.(type) {
 				case *BinaryExpr, VariableExpr:
+					__antithesis_instrumentation__.Notify(610673)
 					break
 				default:
+					__antithesis_instrumentation__.Notify(610674)
 					return expr
 				}
+				__antithesis_instrumentation__.Notify(610670)
 
 				invertedOp, err := invertComparisonOp(expr.Operator)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(610675)
 					v.err = err
 					return expr
+				} else {
+					__antithesis_instrumentation__.Notify(610676)
 				}
+				__antithesis_instrumentation__.Notify(610671)
 
-				// The left side is const and the right side is a binary expression or a
-				// variable. Flip the comparison op so that the right side is const and
-				// the left side is a binary expression or variable.
-				// Create a new ComparisonExpr so the function cache isn't reused.
 				if !exprCopied {
+					__antithesis_instrumentation__.Notify(610677)
 					exprCopy := *expr
 					expr = &exprCopy
 					exprCopied = true
+				} else {
+					__antithesis_instrumentation__.Notify(610678)
 				}
+				__antithesis_instrumentation__.Notify(610672)
 
 				expr = NewTypedComparisonExpr(invertedOp, expr.TypedRight(), expr.TypedLeft())
-			} else if !v.isConst(expr.Right) {
-				return expr
+			} else {
+				__antithesis_instrumentation__.Notify(610679)
+				if !v.isConst(expr.Right) {
+					__antithesis_instrumentation__.Notify(610680)
+					return expr
+				} else {
+					__antithesis_instrumentation__.Notify(610681)
+				}
 			}
+			__antithesis_instrumentation__.Notify(610663)
 
 			left, ok := expr.Left.(*BinaryExpr)
 			if !ok {
+				__antithesis_instrumentation__.Notify(610682)
 				return expr
+			} else {
+				__antithesis_instrumentation__.Notify(610683)
 			}
-			// The right is const and the left side is a binary expression. Rotate the
-			// comparison combining portions that are const.
+			__antithesis_instrumentation__.Notify(610664)
 
 			switch {
-			case v.isConst(left.Right) &&
-				(left.Operator.Symbol == treebin.Plus || left.Operator.Symbol == treebin.Minus || left.Operator.Symbol == treebin.Div):
+			case v.isConst(left.Right) && func() bool {
+				__antithesis_instrumentation__.Notify(610695)
+				return (left.Operator.Symbol == treebin.Plus || func() bool {
+					__antithesis_instrumentation__.Notify(610696)
+					return left.Operator.Symbol == treebin.Minus == true
+				}() == true || func() bool {
+					__antithesis_instrumentation__.Notify(610697)
+					return left.Operator.Symbol == treebin.Div == true
+				}() == true) == true
+			}() == true:
+				__antithesis_instrumentation__.Notify(610684)
 
-				//        cmp          cmp
-				//       /   \        /   \
-				//    [+-/]   2  ->  a   [-+*]
-				//   /     \            /     \
-				//  a       1          2       1
 				var op treebin.BinaryOperator
 				switch left.Operator.Symbol {
 				case treebin.Plus:
+					__antithesis_instrumentation__.Notify(610698)
 					op = treebin.MakeBinaryOperator(treebin.Minus)
 				case treebin.Minus:
+					__antithesis_instrumentation__.Notify(610699)
 					op = treebin.MakeBinaryOperator(treebin.Plus)
 				case treebin.Div:
+					__antithesis_instrumentation__.Notify(610700)
 					op = treebin.MakeBinaryOperator(treebin.Mult)
 					if expr.Operator.Symbol != treecmp.EQ {
-						// In this case, we must remember to *flip* the inequality if the
-						// divisor is negative, since we are in effect multiplying both sides
-						// of the inequality by a negative number.
+						__antithesis_instrumentation__.Notify(610702)
+
 						divisor, err := left.TypedRight().Eval(v.ctx)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(610704)
 							v.err = err
 							return expr
+						} else {
+							__antithesis_instrumentation__.Notify(610705)
 						}
+						__antithesis_instrumentation__.Notify(610703)
 						if divisor.Compare(v.ctx, DZero) < 0 {
+							__antithesis_instrumentation__.Notify(610706)
 							if !exprCopied {
+								__antithesis_instrumentation__.Notify(610709)
 								exprCopy := *expr
 								expr = &exprCopy
 								exprCopied = true
+							} else {
+								__antithesis_instrumentation__.Notify(610710)
 							}
+							__antithesis_instrumentation__.Notify(610707)
 
 							invertedOp, err := invertComparisonOp(expr.Operator)
 							if err != nil {
+								__antithesis_instrumentation__.Notify(610711)
 								v.err = err
 								return expr
+							} else {
+								__antithesis_instrumentation__.Notify(610712)
 							}
+							__antithesis_instrumentation__.Notify(610708)
 							expr = NewTypedComparisonExpr(invertedOp, expr.TypedLeft(), expr.TypedRight())
+						} else {
+							__antithesis_instrumentation__.Notify(610713)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(610714)
 					}
+				default:
+					__antithesis_instrumentation__.Notify(610701)
 				}
+				__antithesis_instrumentation__.Notify(610685)
 
 				newBinExpr := newBinExprIfValidOverload(op,
 					expr.TypedRight(), left.TypedRight())
 				if newBinExpr == nil {
-					// Substitution is not possible type-wise. Nothing else to do.
+					__antithesis_instrumentation__.Notify(610715)
+
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(610716)
 				}
+				__antithesis_instrumentation__.Notify(610686)
 
 				newRightExpr, err := newBinExpr.Eval(v.ctx)
 				if err != nil {
-					// In the case of an error during Eval, give up on normalizing this
-					// expression. There are some expected errors here if, for example,
-					// normalization produces a result that overflows an int64.
+					__antithesis_instrumentation__.Notify(610717)
+
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(610718)
 				}
+				__antithesis_instrumentation__.Notify(610687)
 
 				if !exprCopied {
+					__antithesis_instrumentation__.Notify(610719)
 					exprCopy := *expr
 					expr = &exprCopy
 					exprCopied = true
+				} else {
+					__antithesis_instrumentation__.Notify(610720)
 				}
+				__antithesis_instrumentation__.Notify(610688)
 
 				expr.Left = left.Left
 				expr.Right = newRightExpr
 				expr.memoizeFn()
-				if !isVar(v.ctx, expr.Left, true /*allowConstPlaceholders*/) {
-					// Continue as long as the left side of the comparison is not a
-					// variable.
+				if !isVar(v.ctx, expr.Left, true) {
+					__antithesis_instrumentation__.Notify(610721)
+
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(610722)
 				}
 
-			case v.isConst(left.Left) && (left.Operator.Symbol == treebin.Plus || left.Operator.Symbol == treebin.Minus):
-				//       cmp              cmp
-				//      /   \            /   \
-				//    [+-]   2  ->     [+-]   a
-				//   /    \           /    \
-				//  1      a         1      2
+			case v.isConst(left.Left) && func() bool {
+				__antithesis_instrumentation__.Notify(610723)
+				return (left.Operator.Symbol == treebin.Plus || func() bool {
+					__antithesis_instrumentation__.Notify(610724)
+					return left.Operator.Symbol == treebin.Minus == true
+				}() == true) == true
+			}() == true:
+				__antithesis_instrumentation__.Notify(610689)
 
 				op := expr.Operator
 				var newBinExpr *BinaryExpr
 
 				switch left.Operator.Symbol {
 				case treebin.Plus:
-					//
-					// (A + X) cmp B => X cmp (B - C)
-					//
+					__antithesis_instrumentation__.Notify(610725)
+
 					newBinExpr = newBinExprIfValidOverload(
 						treebin.MakeBinaryOperator(treebin.Minus),
 						expr.TypedRight(),
 						left.TypedLeft(),
 					)
 				case treebin.Minus:
-					//
-					// (A - X) cmp B => X cmp' (A - B)
-					//
+					__antithesis_instrumentation__.Notify(610726)
+
 					newBinExpr = newBinExprIfValidOverload(
 						treebin.MakeBinaryOperator(treebin.Minus),
 						left.TypedLeft(),
@@ -395,76 +583,124 @@ func (expr *ComparisonExpr) normalize(v *NormalizeVisitor) TypedExpr {
 					)
 					op, v.err = invertComparisonOp(op)
 					if v.err != nil {
+						__antithesis_instrumentation__.Notify(610728)
 						return expr
+					} else {
+						__antithesis_instrumentation__.Notify(610729)
 					}
+				default:
+					__antithesis_instrumentation__.Notify(610727)
 				}
+				__antithesis_instrumentation__.Notify(610690)
 
 				if newBinExpr == nil {
+					__antithesis_instrumentation__.Notify(610730)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(610731)
 				}
+				__antithesis_instrumentation__.Notify(610691)
 
 				newRightExpr, err := newBinExpr.Eval(v.ctx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(610732)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(610733)
 				}
+				__antithesis_instrumentation__.Notify(610692)
 
 				if !exprCopied {
+					__antithesis_instrumentation__.Notify(610734)
 					exprCopy := *expr
 					expr = &exprCopy
 					exprCopied = true
+				} else {
+					__antithesis_instrumentation__.Notify(610735)
 				}
+				__antithesis_instrumentation__.Notify(610693)
 
 				expr.Operator = op
 				expr.Left = left.Right
 				expr.Right = newRightExpr
 				expr.memoizeFn()
-				if !isVar(v.ctx, expr.Left, true /*allowConstPlaceholders*/) {
-					// Continue as long as the left side of the comparison is not a
-					// variable.
-					continue
-				}
-			}
+				if !isVar(v.ctx, expr.Left, true) {
+					__antithesis_instrumentation__.Notify(610736)
 
-			// We've run out of work to do.
+					continue
+				} else {
+					__antithesis_instrumentation__.Notify(610737)
+				}
+			default:
+				__antithesis_instrumentation__.Notify(610694)
+			}
+			__antithesis_instrumentation__.Notify(610665)
+
 			break
 		}
 	case treecmp.In, treecmp.NotIn:
-		// If the right tuple in an In or NotIn comparison expression is constant, it can
-		// be normalized.
+		__antithesis_instrumentation__.Notify(610657)
+
 		tuple, ok := expr.Right.(*DTuple)
 		if ok {
+			__antithesis_instrumentation__.Notify(610738)
 			tupleCopy := *tuple
 			tupleCopy.Normalize(v.ctx)
 
-			// If the tuple only contains NULL values, Normalize will have reduced
-			// it to a single NULL value.
-			if len(tupleCopy.D) == 1 && tupleCopy.D[0] == DNull {
+			if len(tupleCopy.D) == 1 && func() bool {
+				__antithesis_instrumentation__.Notify(610742)
+				return tupleCopy.D[0] == DNull == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(610743)
 				return DNull
+			} else {
+				__antithesis_instrumentation__.Notify(610744)
 			}
+			__antithesis_instrumentation__.Notify(610739)
 			if len(tupleCopy.D) == 0 {
-				// NULL IN <empty-tuple> is false.
+				__antithesis_instrumentation__.Notify(610745)
+
 				if expr.Operator.Symbol == treecmp.In {
+					__antithesis_instrumentation__.Notify(610747)
 					return DBoolFalse
+				} else {
+					__antithesis_instrumentation__.Notify(610748)
 				}
+				__antithesis_instrumentation__.Notify(610746)
 				return DBoolTrue
+			} else {
+				__antithesis_instrumentation__.Notify(610749)
 			}
+			__antithesis_instrumentation__.Notify(610740)
 			if expr.TypedLeft() == DNull {
-				// NULL IN <non-empty-tuple> is NULL.
+				__antithesis_instrumentation__.Notify(610750)
+
 				return DNull
+			} else {
+				__antithesis_instrumentation__.Notify(610751)
 			}
+			__antithesis_instrumentation__.Notify(610741)
 
 			exprCopy := *expr
 			expr = &exprCopy
 			expr.Right = &tupleCopy
+		} else {
+			__antithesis_instrumentation__.Notify(610752)
 		}
 	case treecmp.IsDistinctFrom, treecmp.IsNotDistinctFrom:
+		__antithesis_instrumentation__.Notify(610658)
 		left := expr.TypedLeft()
 		right := expr.TypedRight()
 
-		if v.isConst(left) && !v.isConst(right) {
-			// Switch operand order so that constant expression is on the right.
-			// This helps support index selection rules.
+		if v.isConst(left) && func() bool {
+			__antithesis_instrumentation__.Notify(610753)
+			return !v.isConst(right) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(610754)
+
 			return NewTypedComparisonExpr(expr.Operator, right, left)
+		} else {
+			__antithesis_instrumentation__.Notify(610755)
 		}
 	case treecmp.NE,
 		treecmp.Like, treecmp.NotLike,
@@ -473,182 +709,294 @@ func (expr *ComparisonExpr) normalize(v *NormalizeVisitor) TypedExpr {
 		treecmp.RegMatch, treecmp.NotRegMatch,
 		treecmp.RegIMatch, treecmp.NotRegIMatch,
 		treecmp.Any, treecmp.Some, treecmp.All:
-		if expr.TypedLeft() == DNull || expr.TypedRight() == DNull {
+		__antithesis_instrumentation__.Notify(610659)
+		if expr.TypedLeft() == DNull || func() bool {
+			__antithesis_instrumentation__.Notify(610756)
+			return expr.TypedRight() == DNull == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(610757)
 			return DNull
+		} else {
+			__antithesis_instrumentation__.Notify(610758)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(610660)
 	}
+	__antithesis_instrumentation__.Notify(610655)
 
 	return expr
 }
 
 func (expr *OrExpr) normalize(v *NormalizeVisitor) TypedExpr {
+	__antithesis_instrumentation__.Notify(610759)
 	left := expr.TypedLeft()
 	right := expr.TypedRight()
 	var dleft, dright Datum
 
-	if left == DNull && right == DNull {
+	if left == DNull && func() bool {
+		__antithesis_instrumentation__.Notify(610763)
+		return right == DNull == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610764)
 		return DNull
+	} else {
+		__antithesis_instrumentation__.Notify(610765)
 	}
+	__antithesis_instrumentation__.Notify(610760)
 
-	// Use short-circuit evaluation to simplify OR expressions.
 	if v.isConst(left) {
+		__antithesis_instrumentation__.Notify(610766)
 		dleft, v.err = left.Eval(v.ctx)
 		if v.err != nil {
+			__antithesis_instrumentation__.Notify(610769)
 			return expr
+		} else {
+			__antithesis_instrumentation__.Notify(610770)
 		}
+		__antithesis_instrumentation__.Notify(610767)
 		if dleft != DNull {
+			__antithesis_instrumentation__.Notify(610771)
 			if d, err := GetBool(dleft); err == nil {
+				__antithesis_instrumentation__.Notify(610773)
 				if d {
+					__antithesis_instrumentation__.Notify(610775)
 					return dleft
+				} else {
+					__antithesis_instrumentation__.Notify(610776)
 				}
+				__antithesis_instrumentation__.Notify(610774)
 				return right
+			} else {
+				__antithesis_instrumentation__.Notify(610777)
 			}
+			__antithesis_instrumentation__.Notify(610772)
 			return DNull
+		} else {
+			__antithesis_instrumentation__.Notify(610778)
 		}
+		__antithesis_instrumentation__.Notify(610768)
 		return NewTypedOrExpr(
 			dleft,
 			right,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(610779)
 	}
+	__antithesis_instrumentation__.Notify(610761)
 	if v.isConst(right) {
+		__antithesis_instrumentation__.Notify(610780)
 		dright, v.err = right.Eval(v.ctx)
 		if v.err != nil {
+			__antithesis_instrumentation__.Notify(610783)
 			return expr
+		} else {
+			__antithesis_instrumentation__.Notify(610784)
 		}
+		__antithesis_instrumentation__.Notify(610781)
 		if dright != DNull {
+			__antithesis_instrumentation__.Notify(610785)
 			if d, err := GetBool(dright); err == nil {
+				__antithesis_instrumentation__.Notify(610787)
 				if d {
+					__antithesis_instrumentation__.Notify(610789)
 					return right
+				} else {
+					__antithesis_instrumentation__.Notify(610790)
 				}
+				__antithesis_instrumentation__.Notify(610788)
 				return left
+			} else {
+				__antithesis_instrumentation__.Notify(610791)
 			}
+			__antithesis_instrumentation__.Notify(610786)
 			return DNull
+		} else {
+			__antithesis_instrumentation__.Notify(610792)
 		}
+		__antithesis_instrumentation__.Notify(610782)
 		return NewTypedOrExpr(
 			left,
 			dright,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(610793)
 	}
+	__antithesis_instrumentation__.Notify(610762)
 	return expr
 }
 
 func (expr *NotExpr) normalize(v *NormalizeVisitor) TypedExpr {
+	__antithesis_instrumentation__.Notify(610794)
 	inner := expr.TypedInnerExpr()
 	switch t := inner.(type) {
 	case *NotExpr:
+		__antithesis_instrumentation__.Notify(610796)
 		return t.TypedInnerExpr()
 	}
+	__antithesis_instrumentation__.Notify(610795)
 	return expr
 }
 
 func (expr *ParenExpr) normalize(v *NormalizeVisitor) TypedExpr {
+	__antithesis_instrumentation__.Notify(610797)
 	return expr.TypedInnerExpr()
 }
 
 func (expr *AnnotateTypeExpr) normalize(v *NormalizeVisitor) TypedExpr {
-	// Type annotations have no runtime effect, so they can be removed after
-	// semantic analysis.
+	__antithesis_instrumentation__.Notify(610798)
+
 	return expr.TypedInnerExpr()
 }
 
 func (expr *RangeCond) normalize(v *NormalizeVisitor) TypedExpr {
+	__antithesis_instrumentation__.Notify(610799)
 	leftFrom, from := expr.TypedLeftFrom(), expr.TypedFrom()
 	leftTo, to := expr.TypedLeftTo(), expr.TypedTo()
-	// The visitor hasn't walked down into leftTo; do it now.
-	if leftTo, v.err = v.ctx.NormalizeExpr(leftTo); v.err != nil {
-		return expr
-	}
 
-	if (leftFrom == DNull || from == DNull) && (leftTo == DNull || to == DNull) {
-		return DNull
+	if leftTo, v.err = v.ctx.NormalizeExpr(leftTo); v.err != nil {
+		__antithesis_instrumentation__.Notify(610805)
+		return expr
+	} else {
+		__antithesis_instrumentation__.Notify(610806)
 	}
+	__antithesis_instrumentation__.Notify(610800)
+
+	if (leftFrom == DNull || func() bool {
+		__antithesis_instrumentation__.Notify(610807)
+		return from == DNull == true
+	}() == true) && func() bool {
+		__antithesis_instrumentation__.Notify(610808)
+		return (leftTo == DNull || func() bool {
+			__antithesis_instrumentation__.Notify(610809)
+			return to == DNull == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610810)
+		return DNull
+	} else {
+		__antithesis_instrumentation__.Notify(610811)
+	}
+	__antithesis_instrumentation__.Notify(610801)
 
 	leftCmp := treecmp.GE
 	rightCmp := treecmp.LE
 	if expr.Not {
+		__antithesis_instrumentation__.Notify(610812)
 		leftCmp = treecmp.LT
 		rightCmp = treecmp.GT
+	} else {
+		__antithesis_instrumentation__.Notify(610813)
 	}
+	__antithesis_instrumentation__.Notify(610802)
 
-	// "a BETWEEN b AND c" -> "a >= b AND a <= c"
-	// "a NOT BETWEEN b AND c" -> "a < b OR a > c"
 	transform := func(from, to TypedExpr) TypedExpr {
+		__antithesis_instrumentation__.Notify(610814)
 		var newLeft, newRight TypedExpr
 		if from == DNull {
+			__antithesis_instrumentation__.Notify(610818)
 			newLeft = DNull
 		} else {
+			__antithesis_instrumentation__.Notify(610819)
 			newLeft = NewTypedComparisonExpr(treecmp.MakeComparisonOperator(leftCmp), leftFrom, from).normalize(v)
 			if v.err != nil {
+				__antithesis_instrumentation__.Notify(610820)
 				return expr
+			} else {
+				__antithesis_instrumentation__.Notify(610821)
 			}
 		}
+		__antithesis_instrumentation__.Notify(610815)
 		if to == DNull {
+			__antithesis_instrumentation__.Notify(610822)
 			newRight = DNull
 		} else {
+			__antithesis_instrumentation__.Notify(610823)
 			newRight = NewTypedComparisonExpr(treecmp.MakeComparisonOperator(rightCmp), leftTo, to).normalize(v)
 			if v.err != nil {
+				__antithesis_instrumentation__.Notify(610824)
 				return expr
+			} else {
+				__antithesis_instrumentation__.Notify(610825)
 			}
 		}
+		__antithesis_instrumentation__.Notify(610816)
 		if expr.Not {
+			__antithesis_instrumentation__.Notify(610826)
 			return NewTypedOrExpr(newLeft, newRight).normalize(v)
+		} else {
+			__antithesis_instrumentation__.Notify(610827)
 		}
+		__antithesis_instrumentation__.Notify(610817)
 		return NewTypedAndExpr(newLeft, newRight).normalize(v)
 	}
+	__antithesis_instrumentation__.Notify(610803)
 
 	out := transform(from, to)
 	if expr.Symmetric {
+		__antithesis_instrumentation__.Notify(610828)
 		if expr.Not {
-			// "a NOT BETWEEN SYMMETRIC b AND c" -> "(a < b OR a > c) AND (a < c OR a > b)"
+			__antithesis_instrumentation__.Notify(610829)
+
 			out = NewTypedAndExpr(out, transform(to, from)).normalize(v)
 		} else {
-			// "a BETWEEN SYMMETRIC b AND c" -> "(a >= b AND a <= c) OR (a >= c OR a <= b)"
+			__antithesis_instrumentation__.Notify(610830)
+
 			out = NewTypedOrExpr(out, transform(to, from)).normalize(v)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(610831)
 	}
+	__antithesis_instrumentation__.Notify(610804)
 	return out
 }
 
 func (expr *Tuple) normalize(v *NormalizeVisitor) TypedExpr {
-	// A Tuple should be directly evaluated into a DTuple if it's either fully
-	// constant or contains only constants and top-level Placeholders.
+	__antithesis_instrumentation__.Notify(610832)
+
 	isConst := true
 	for _, subExpr := range expr.Exprs {
+		__antithesis_instrumentation__.Notify(610836)
 		if !v.isConst(subExpr) {
+			__antithesis_instrumentation__.Notify(610837)
 			isConst = false
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(610838)
 		}
 	}
+	__antithesis_instrumentation__.Notify(610833)
 	if !isConst {
+		__antithesis_instrumentation__.Notify(610839)
 		return expr
+	} else {
+		__antithesis_instrumentation__.Notify(610840)
 	}
+	__antithesis_instrumentation__.Notify(610834)
 	e, err := expr.Eval(v.ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(610841)
 		v.err = err
+	} else {
+		__antithesis_instrumentation__.Notify(610842)
 	}
+	__antithesis_instrumentation__.Notify(610835)
 	return e
 }
 
-// NormalizeExpr normalizes a typed expression, simplifying where possible,
-// but guaranteeing that the result of evaluating the expression is
-// unchanged and that resulting expression tree is still well-typed.
-// Example normalizations:
-//
-//   (a)                   -> a
-//   a = 1 + 1             -> a = 2
-//   a + 1 = 2             -> a = 1
-//   a BETWEEN b AND c     -> (a >= b) AND (a <= c)
-//   a NOT BETWEEN b AND c -> (a < b) OR (a > c)
 func (ctx *EvalContext) NormalizeExpr(typedExpr TypedExpr) (TypedExpr, error) {
+	__antithesis_instrumentation__.Notify(610843)
 	v := MakeNormalizeVisitor(ctx)
 	expr, _ := WalkExpr(&v, typedExpr)
 	if v.err != nil {
+		__antithesis_instrumentation__.Notify(610845)
 		return nil, v.err
+	} else {
+		__antithesis_instrumentation__.Notify(610846)
 	}
+	__antithesis_instrumentation__.Notify(610844)
 	return expr.(TypedExpr), nil
 }
 
-// NormalizeVisitor supports the execution of NormalizeExpr.
 type NormalizeVisitor struct {
 	ctx *EvalContext
 	err error
@@ -658,122 +1006,164 @@ type NormalizeVisitor struct {
 
 var _ Visitor = &NormalizeVisitor{}
 
-// MakeNormalizeVisitor creates a NormalizeVisitor instance.
 func MakeNormalizeVisitor(ctx *EvalContext) NormalizeVisitor {
+	__antithesis_instrumentation__.Notify(610847)
 	return NormalizeVisitor{ctx: ctx, fastIsConstVisitor: fastIsConstVisitor{ctx: ctx}}
 }
 
-// Err retrieves the error field in the NormalizeVisitor.
-func (v *NormalizeVisitor) Err() error { return v.err }
+func (v *NormalizeVisitor) Err() error { __antithesis_instrumentation__.Notify(610848); return v.err }
 
-// VisitPre implements the Visitor interface.
 func (v *NormalizeVisitor) VisitPre(expr Expr) (recurse bool, newExpr Expr) {
+	__antithesis_instrumentation__.Notify(610849)
 	if v.err != nil {
+		__antithesis_instrumentation__.Notify(610852)
 		return false, expr
+	} else {
+		__antithesis_instrumentation__.Notify(610853)
 	}
+	__antithesis_instrumentation__.Notify(610850)
 
 	switch expr.(type) {
 	case *Subquery:
-		// Subqueries are pre-normalized during semantic analysis. There
-		// is nothing to do here.
+		__antithesis_instrumentation__.Notify(610854)
+
 		return false, expr
 	}
+	__antithesis_instrumentation__.Notify(610851)
 
 	return true, expr
 }
 
-// VisitPost implements the Visitor interface.
 func (v *NormalizeVisitor) VisitPost(expr Expr) Expr {
+	__antithesis_instrumentation__.Notify(610855)
 	if v.err != nil {
+		__antithesis_instrumentation__.Notify(610859)
 		return expr
+	} else {
+		__antithesis_instrumentation__.Notify(610860)
 	}
-	// We don't propagate errors during this step because errors might involve a
-	// branch of code that isn't traversed by normal execution (for example,
-	// IF(2 = 2, 1, 1 / 0)).
+	__antithesis_instrumentation__.Notify(610856)
 
-	// Normalize expressions that know how to normalize themselves.
 	if normalizable, ok := expr.(normalizableExpr); ok {
+		__antithesis_instrumentation__.Notify(610861)
 		expr = normalizable.normalize(v)
 		if v.err != nil {
+			__antithesis_instrumentation__.Notify(610862)
 			return expr
+		} else {
+			__antithesis_instrumentation__.Notify(610863)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(610864)
 	}
+	__antithesis_instrumentation__.Notify(610857)
 
-	// Evaluate all constant expressions.
 	if v.isConst(expr) {
+		__antithesis_instrumentation__.Notify(610865)
 		value, err := expr.(TypedExpr).Eval(v.ctx)
 		if err != nil {
-			// Ignore any errors here (e.g. division by zero), so they can happen
-			// during execution where they are correctly handled. Note that in some
-			// cases we might not even get an error (if this particular expression
-			// does not get evaluated when the query runs, e.g. it's inside a CASE).
+			__antithesis_instrumentation__.Notify(610868)
+
 			return expr
+		} else {
+			__antithesis_instrumentation__.Notify(610869)
 		}
+		__antithesis_instrumentation__.Notify(610866)
 		if value == DNull {
-			// We don't want to return an expression that has a different type; cast
-			// the NULL if necessary.
+			__antithesis_instrumentation__.Notify(610870)
+
 			retypedNull, ok := ReType(DNull, expr.(TypedExpr).ResolvedType())
 			if !ok {
+				__antithesis_instrumentation__.Notify(610872)
 				v.err = errors.AssertionFailedf("failed to retype NULL to %s", expr.(TypedExpr).ResolvedType())
 				return expr
+			} else {
+				__antithesis_instrumentation__.Notify(610873)
 			}
+			__antithesis_instrumentation__.Notify(610871)
 			return retypedNull
+		} else {
+			__antithesis_instrumentation__.Notify(610874)
 		}
+		__antithesis_instrumentation__.Notify(610867)
 		return value
+	} else {
+		__antithesis_instrumentation__.Notify(610875)
 	}
+	__antithesis_instrumentation__.Notify(610858)
 
 	return expr
 }
 
 func (v *NormalizeVisitor) isConst(expr Expr) bool {
+	__antithesis_instrumentation__.Notify(610876)
 	return v.fastIsConstVisitor.run(expr)
 }
 
-// isNumericZero returns true if the datum is a number and equal to
-// zero.
 func (v *NormalizeVisitor) isNumericZero(expr TypedExpr) bool {
+	__antithesis_instrumentation__.Notify(610877)
 	if d, ok := expr.(Datum); ok {
+		__antithesis_instrumentation__.Notify(610879)
 		switch t := UnwrapDatum(v.ctx, d).(type) {
 		case *DDecimal:
+			__antithesis_instrumentation__.Notify(610880)
 			return t.Decimal.Sign() == 0
 		case *DFloat:
+			__antithesis_instrumentation__.Notify(610881)
 			return *t == 0
 		case *DInt:
+			__antithesis_instrumentation__.Notify(610882)
 			return *t == 0
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(610883)
 	}
+	__antithesis_instrumentation__.Notify(610878)
 	return false
 }
 
-// isNumericOne returns true if the datum is a number and equal to
-// one.
 func (v *NormalizeVisitor) isNumericOne(expr TypedExpr) bool {
+	__antithesis_instrumentation__.Notify(610884)
 	if d, ok := expr.(Datum); ok {
+		__antithesis_instrumentation__.Notify(610886)
 		switch t := UnwrapDatum(v.ctx, d).(type) {
 		case *DDecimal:
+			__antithesis_instrumentation__.Notify(610887)
 			return t.Decimal.Cmp(&DecimalOne.Decimal) == 0
 		case *DFloat:
+			__antithesis_instrumentation__.Notify(610888)
 			return *t == 1.0
 		case *DInt:
+			__antithesis_instrumentation__.Notify(610889)
 			return *t == 1
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(610890)
 	}
+	__antithesis_instrumentation__.Notify(610885)
 	return false
 }
 
 func invertComparisonOp(op treecmp.ComparisonOperator) (treecmp.ComparisonOperator, error) {
+	__antithesis_instrumentation__.Notify(610891)
 	switch op.Symbol {
 	case treecmp.EQ:
+		__antithesis_instrumentation__.Notify(610892)
 		return treecmp.MakeComparisonOperator(treecmp.EQ), nil
 	case treecmp.GE:
+		__antithesis_instrumentation__.Notify(610893)
 		return treecmp.MakeComparisonOperator(treecmp.LE), nil
 	case treecmp.GT:
+		__antithesis_instrumentation__.Notify(610894)
 		return treecmp.MakeComparisonOperator(treecmp.LT), nil
 	case treecmp.LE:
+		__antithesis_instrumentation__.Notify(610895)
 		return treecmp.MakeComparisonOperator(treecmp.GE), nil
 	case treecmp.LT:
+		__antithesis_instrumentation__.Notify(610896)
 		return treecmp.MakeComparisonOperator(treecmp.GT), nil
 	default:
+		__antithesis_instrumentation__.Notify(610897)
 		return op, errors.AssertionFailedf("unable to invert: %s", op)
 	}
 }
@@ -786,133 +1176,177 @@ type isConstVisitor struct {
 var _ Visitor = &isConstVisitor{}
 
 func (v *isConstVisitor) VisitPre(expr Expr) (recurse bool, newExpr Expr) {
+	__antithesis_instrumentation__.Notify(610898)
 	if v.isConst {
-		if !operatorIsImmutable(expr, v.ctx.SessionData()) || isVar(v.ctx, expr, true /*allowConstPlaceholders*/) {
+		__antithesis_instrumentation__.Notify(610900)
+		if !operatorIsImmutable(expr, v.ctx.SessionData()) || func() bool {
+			__antithesis_instrumentation__.Notify(610901)
+			return isVar(v.ctx, expr, true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(610902)
 			v.isConst = false
 			return false, expr
+		} else {
+			__antithesis_instrumentation__.Notify(610903)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(610904)
 	}
+	__antithesis_instrumentation__.Notify(610899)
 	return true, expr
 }
 
 func operatorIsImmutable(expr Expr, sd *sessiondata.SessionData) bool {
+	__antithesis_instrumentation__.Notify(610905)
 	switch t := expr.(type) {
 	case *FuncExpr:
-		return t.fnProps.Class == NormalClass && t.fn.Volatility <= VolatilityImmutable
+		__antithesis_instrumentation__.Notify(610906)
+		return t.fnProps.Class == NormalClass && func() bool {
+			__antithesis_instrumentation__.Notify(610912)
+			return t.fn.Volatility <= VolatilityImmutable == true
+		}() == true
 
 	case *CastExpr:
+		__antithesis_instrumentation__.Notify(610907)
 		volatility, ok := LookupCastVolatility(t.Expr.(TypedExpr).ResolvedType(), t.typ, sd)
-		return ok && volatility <= VolatilityImmutable
+		return ok && func() bool {
+			__antithesis_instrumentation__.Notify(610913)
+			return volatility <= VolatilityImmutable == true
+		}() == true
 
 	case *UnaryExpr:
+		__antithesis_instrumentation__.Notify(610908)
 		return t.fn.Volatility <= VolatilityImmutable
 
 	case *BinaryExpr:
+		__antithesis_instrumentation__.Notify(610909)
 		return t.Fn.Volatility <= VolatilityImmutable
 
 	case *ComparisonExpr:
+		__antithesis_instrumentation__.Notify(610910)
 		return t.Fn.Volatility <= VolatilityImmutable
 
 	default:
+		__antithesis_instrumentation__.Notify(610911)
 		return true
 	}
 }
 
-func (*isConstVisitor) VisitPost(expr Expr) Expr { return expr }
+func (*isConstVisitor) VisitPost(expr Expr) Expr {
+	__antithesis_instrumentation__.Notify(610914)
+	return expr
+}
 
 func (v *isConstVisitor) run(expr Expr) bool {
+	__antithesis_instrumentation__.Notify(610915)
 	v.isConst = true
 	WalkExprConst(v, expr)
 	return v.isConst
 }
 
-// IsConst returns whether the expression is constant. A constant expression
-// does not contain variables, as defined by ContainsVars, nor impure functions.
 func IsConst(evalCtx *EvalContext, expr TypedExpr) bool {
+	__antithesis_instrumentation__.Notify(610916)
 	v := isConstVisitor{ctx: evalCtx}
 	return v.run(expr)
 }
 
-// fastIsConstVisitor is similar to isConstVisitor, but it only visits
-// at most two levels of the tree (with one exception, see below).
-// In essence, it determines whether an expression is constant by checking
-// whether its children are const Datums.
-//
-// This can be used during normalization since constants are evaluated
-// bottom-up. If a child is *not* a const Datum, that means it was already
-// determined to be non-constant, and therefore was not evaluated.
 type fastIsConstVisitor struct {
 	ctx     *EvalContext
 	isConst bool
 
-	// visited indicates whether we have already visited one level of the tree.
-	// fastIsConstVisitor only visits at most two levels of the tree, with one
-	// exception: If the second level has a Cast expression, fastIsConstVisitor
-	// may visit three levels.
 	visited bool
 }
 
 var _ Visitor = &fastIsConstVisitor{}
 
 func (v *fastIsConstVisitor) VisitPre(expr Expr) (recurse bool, newExpr Expr) {
+	__antithesis_instrumentation__.Notify(610917)
 	if v.visited {
+		__antithesis_instrumentation__.Notify(610920)
 		if _, ok := expr.(*CastExpr); ok {
-			// We recurse one more time for cast expressions, since the
-			// NormalizeVisitor may have wrapped a NULL.
+			__antithesis_instrumentation__.Notify(610923)
+
 			return true, expr
+		} else {
+			__antithesis_instrumentation__.Notify(610924)
 		}
-		if _, ok := expr.(Datum); !ok || isVar(v.ctx, expr, true /*allowConstPlaceholders*/) {
-			// If the child expression is not a const Datum, the parent expression is
-			// not constant. Note that all constant literals have already been
-			// normalized to Datum in TypeCheck.
+		__antithesis_instrumentation__.Notify(610921)
+		if _, ok := expr.(Datum); !ok || func() bool {
+			__antithesis_instrumentation__.Notify(610925)
+			return isVar(v.ctx, expr, true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(610926)
+
 			v.isConst = false
+		} else {
+			__antithesis_instrumentation__.Notify(610927)
 		}
+		__antithesis_instrumentation__.Notify(610922)
 		return false, expr
+	} else {
+		__antithesis_instrumentation__.Notify(610928)
 	}
+	__antithesis_instrumentation__.Notify(610918)
 	v.visited = true
 
-	// If the parent expression is a variable or non-immutable operator, we know
-	// that it is not constant.
-
-	if !operatorIsImmutable(expr, v.ctx.SessionData()) || isVar(v.ctx, expr, true /*allowConstPlaceholders*/) {
+	if !operatorIsImmutable(expr, v.ctx.SessionData()) || func() bool {
+		__antithesis_instrumentation__.Notify(610929)
+		return isVar(v.ctx, expr, true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610930)
 		v.isConst = false
 		return false, expr
+	} else {
+		__antithesis_instrumentation__.Notify(610931)
 	}
+	__antithesis_instrumentation__.Notify(610919)
 
 	return true, expr
 }
 
-func (*fastIsConstVisitor) VisitPost(expr Expr) Expr { return expr }
+func (*fastIsConstVisitor) VisitPost(expr Expr) Expr {
+	__antithesis_instrumentation__.Notify(610932)
+	return expr
+}
 
 func (v *fastIsConstVisitor) run(expr Expr) bool {
+	__antithesis_instrumentation__.Notify(610933)
 	v.isConst = true
 	v.visited = false
 	WalkExprConst(v, expr)
 	return v.isConst
 }
 
-// isVar returns true if the expression's value can vary during plan
-// execution. The parameter allowConstPlaceholders should be true
-// in the common case of scalar expressions that will be evaluated
-// in the context of the execution of a prepared query, where the
-// placeholder will have the same value for every row processed.
-// It is set to false for scalar expressions that are not
-// evaluated as part of query execution, eg. DEFAULT expressions.
 func isVar(evalCtx *EvalContext, expr Expr, allowConstPlaceholders bool) bool {
+	__antithesis_instrumentation__.Notify(610934)
 	switch expr.(type) {
 	case VariableExpr:
+		__antithesis_instrumentation__.Notify(610936)
 		return true
 	case *Placeholder:
+		__antithesis_instrumentation__.Notify(610937)
 		if allowConstPlaceholders {
-			if evalCtx == nil || !evalCtx.HasPlaceholders() {
-				// The placeholder cannot be resolved -- it is variable.
+			__antithesis_instrumentation__.Notify(610939)
+			if evalCtx == nil || func() bool {
+				__antithesis_instrumentation__.Notify(610941)
+				return !evalCtx.HasPlaceholders() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(610942)
+
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(610943)
 			}
+			__antithesis_instrumentation__.Notify(610940)
 			return evalCtx.Placeholders.IsUnresolvedPlaceholder(expr)
+		} else {
+			__antithesis_instrumentation__.Notify(610944)
 		}
-		// Placeholders considered always variable.
+		__antithesis_instrumentation__.Notify(610938)
+
 		return true
 	}
+	__antithesis_instrumentation__.Notify(610935)
 	return false
 }
 
@@ -923,48 +1357,66 @@ type containsVarsVisitor struct {
 var _ Visitor = &containsVarsVisitor{}
 
 func (v *containsVarsVisitor) VisitPre(expr Expr) (recurse bool, newExpr Expr) {
-	if !v.containsVars && isVar(nil, expr, false /*allowConstPlaceholders*/) {
+	__antithesis_instrumentation__.Notify(610945)
+	if !v.containsVars && func() bool {
+		__antithesis_instrumentation__.Notify(610948)
+		return isVar(nil, expr, false) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610949)
 		v.containsVars = true
+	} else {
+		__antithesis_instrumentation__.Notify(610950)
 	}
+	__antithesis_instrumentation__.Notify(610946)
 	if v.containsVars {
+		__antithesis_instrumentation__.Notify(610951)
 		return false, expr
+	} else {
+		__antithesis_instrumentation__.Notify(610952)
 	}
+	__antithesis_instrumentation__.Notify(610947)
 	return true, expr
 }
 
-func (*containsVarsVisitor) VisitPost(expr Expr) Expr { return expr }
+func (*containsVarsVisitor) VisitPost(expr Expr) Expr {
+	__antithesis_instrumentation__.Notify(610953)
+	return expr
+}
 
-// ContainsVars returns true if the expression contains any variables.
-// (variables = sub-expressions, placeholders, indexed vars, etc.)
 func ContainsVars(expr Expr) bool {
+	__antithesis_instrumentation__.Notify(610954)
 	v := containsVarsVisitor{containsVars: false}
 	WalkExprConst(&v, expr)
 	return v.containsVars
 }
 
-// DecimalOne represents the constant 1 as DECIMAL.
 var DecimalOne DDecimal
 
 func init() {
 	DecimalOne.SetInt64(1)
 }
 
-// ReType ensures that the given expression evaluates to the requested type,
-// wrapping the expression in a cast if necessary. Returns ok=false if a cast
-// cannot wrap the expression because no valid cast from the expression's type
-// to the wanted type exists.
 func ReType(expr TypedExpr, wantedType *types.T) (_ TypedExpr, ok bool) {
+	__antithesis_instrumentation__.Notify(610955)
 	resolvedType := expr.ResolvedType()
-	if wantedType.Family() == types.AnyFamily || resolvedType.Identical(wantedType) {
+	if wantedType.Family() == types.AnyFamily || func() bool {
+		__antithesis_instrumentation__.Notify(610958)
+		return resolvedType.Identical(wantedType) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610959)
 		return expr, true
+	} else {
+		__antithesis_instrumentation__.Notify(610960)
 	}
-	// TODO(#75103): For legacy reasons, we check for a valid cast in the most
-	// permissive context, CastContextExplicit. To be consistent with Postgres,
-	// we should check for a valid cast in the most restrictive context,
-	// CastContextImplicit.
+	__antithesis_instrumentation__.Notify(610956)
+
 	if !ValidCast(resolvedType, wantedType, CastContextExplicit) {
+		__antithesis_instrumentation__.Notify(610961)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(610962)
 	}
+	__antithesis_instrumentation__.Notify(610957)
 	res := &CastExpr{Expr: expr, Type: wantedType}
 	res.typ = wantedType
 	return res, true

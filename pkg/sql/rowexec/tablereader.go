@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,10 +20,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// tableReader is the start of a computation flow; it performs KV operations to
-// retrieve rows for a table, runs a filter expression, and passes rows with the
-// desired column values to an output RowReceiver.
-// See docs/RFCS/distributed_sql.md
 type tableReader struct {
 	execinfra.ProcessorBase
 	execinfra.SpansWithCopy
@@ -42,19 +30,15 @@ type tableReader struct {
 
 	scanStarted bool
 
-	// See TableReaderSpec.MaxTimestampAgeNanos.
 	maxTimestampAge time.Duration
 
 	ignoreMisplannedRanges bool
 
-	// fetcher wraps a row.Fetcher, allowing the tableReader to add a stat
-	// collection layer.
 	fetcher rowFetcher
 	alloc   tree.DatumAlloc
 
 	scanStats execinfra.ScanStats
 
-	// rowsRead is the number of rows read and is tracked unconditionally.
 	rowsRead int64
 }
 
@@ -67,11 +51,11 @@ const tableReaderProcName = "table reader"
 
 var trPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(575125)
 		return &tableReader{}
 	},
 }
 
-// newTableReader creates a tableReader.
 func newTableReader(
 	flowCtx *execinfra.FlowCtx,
 	processorID int32,
@@ -79,23 +63,44 @@ func newTableReader(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*tableReader, error) {
-	// NB: we hit this with a zero NodeID (but !ok) with multi-tenancy.
-	if nodeID, ok := flowCtx.NodeID.OptionalNodeID(); ok && nodeID == 0 {
-		return nil, errors.Errorf("attempting to create a tableReader with uninitialized NodeID")
-	}
+	__antithesis_instrumentation__.Notify(575126)
 
-	if spec.LimitHint > 0 || spec.BatchBytesLimit > 0 {
-		// Parallelize shouldn't be set when there's a limit hint, but double-check
-		// just in case.
-		spec.Parallelize = false
+	if nodeID, ok := flowCtx.NodeID.OptionalNodeID(); ok && func() bool {
+		__antithesis_instrumentation__.Notify(575136)
+		return nodeID == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(575137)
+		return nil, errors.Errorf("attempting to create a tableReader with uninitialized NodeID")
+	} else {
+		__antithesis_instrumentation__.Notify(575138)
 	}
+	__antithesis_instrumentation__.Notify(575127)
+
+	if spec.LimitHint > 0 || func() bool {
+		__antithesis_instrumentation__.Notify(575139)
+		return spec.BatchBytesLimit > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(575140)
+
+		spec.Parallelize = false
+	} else {
+		__antithesis_instrumentation__.Notify(575141)
+	}
+	__antithesis_instrumentation__.Notify(575128)
 	var batchBytesLimit rowinfra.BytesLimit
 	if !spec.Parallelize {
+		__antithesis_instrumentation__.Notify(575142)
 		batchBytesLimit = rowinfra.BytesLimit(spec.BatchBytesLimit)
 		if batchBytesLimit == 0 {
+			__antithesis_instrumentation__.Notify(575143)
 			batchBytesLimit = rowinfra.DefaultBatchBytesLimit
+		} else {
+			__antithesis_instrumentation__.Notify(575144)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(575145)
 	}
+	__antithesis_instrumentation__.Notify(575129)
 
 	tr := trPool.Get().(*tableReader)
 
@@ -104,21 +109,26 @@ func newTableReader(
 	tr.batchBytesLimit = batchBytesLimit
 	tr.maxTimestampAge = time.Duration(spec.MaxTimestampAgeNanos)
 
-	// Make sure the key column types are hydrated. The fetched column types
-	// will be hydrated in ProcessorBase.Init below.
 	resolver := flowCtx.NewTypeResolver(flowCtx.Txn)
 	for i := range spec.FetchSpec.KeyAndSuffixColumns {
+		__antithesis_instrumentation__.Notify(575146)
 		if err := typedesc.EnsureTypeIsHydrated(
 			flowCtx.EvalCtx.Ctx(), spec.FetchSpec.KeyAndSuffixColumns[i].Type, &resolver,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(575147)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(575148)
 		}
 	}
+	__antithesis_instrumentation__.Notify(575130)
 
 	resultTypes := make([]*types.T, len(spec.FetchSpec.FetchedColumns))
 	for i := range resultTypes {
+		__antithesis_instrumentation__.Notify(575149)
 		resultTypes[i] = spec.FetchSpec.FetchedColumns[i].Type
 	}
+	__antithesis_instrumentation__.Notify(575131)
 
 	tr.ignoreMisplannedRanges = flowCtx.Local
 	if err := tr.Init(
@@ -128,18 +138,19 @@ func newTableReader(
 		flowCtx,
 		processorID,
 		output,
-		nil, /* memMonitor */
+		nil,
 		execinfra.ProcStateOpts{
-			// We don't pass tr.input as an inputToDrain; tr.input is just an adapter
-			// on top of a Fetcher; draining doesn't apply to it. Moreover, Andrei
-			// doesn't trust that the adapter will do the right thing on a Next() call
-			// after it had previously returned an error.
+
 			InputsToDrain:        nil,
 			TrailingMetaCallback: tr.generateTrailingMeta,
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(575150)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(575151)
 	}
+	__antithesis_instrumentation__.Notify(575132)
 
 	var fetcher row.Fetcher
 	if err := fetcher.Init(
@@ -152,63 +163,82 @@ func newTableReader(
 		flowCtx.EvalCtx.Mon,
 		&spec.FetchSpec,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(575152)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(575153)
 	}
+	__antithesis_instrumentation__.Notify(575133)
 
 	tr.Spans = spec.Spans
 	if !tr.ignoreMisplannedRanges {
-		// Make a copy of the spans so that we could get the misplanned ranges
-		// info.
+		__antithesis_instrumentation__.Notify(575154)
+
 		tr.MakeSpansCopy()
+	} else {
+		__antithesis_instrumentation__.Notify(575155)
 	}
+	__antithesis_instrumentation__.Notify(575134)
 
 	if execinfra.ShouldCollectStats(flowCtx.EvalCtx.Ctx(), flowCtx) {
+		__antithesis_instrumentation__.Notify(575156)
 		tr.fetcher = newRowFetcherStatCollector(&fetcher)
 		tr.ExecStatsForTrace = tr.execStatsForTrace
 	} else {
+		__antithesis_instrumentation__.Notify(575157)
 		tr.fetcher = &fetcher
 	}
+	__antithesis_instrumentation__.Notify(575135)
 
 	return tr, nil
 }
 
 func (tr *tableReader) generateTrailingMeta() []execinfrapb.ProducerMetadata {
-	// We need to generate metadata before closing the processor because
-	// InternalClose() updates tr.Ctx to the "original" context.
+	__antithesis_instrumentation__.Notify(575158)
+
 	trailingMeta := tr.generateMeta()
 	tr.close()
 	return trailingMeta
 }
 
-// Start is part of the RowSource interface.
 func (tr *tableReader) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(575159)
 	if tr.FlowCtx.Txn == nil {
+		__antithesis_instrumentation__.Notify(575161)
 		log.Fatalf(ctx, "tableReader outside of txn")
+	} else {
+		__antithesis_instrumentation__.Notify(575162)
 	}
+	__antithesis_instrumentation__.Notify(575160)
 
-	// Keep ctx assignment so we remember StartInternal can make a new one.
 	ctx = tr.StartInternal(ctx, tableReaderProcName)
-	// Appease the linter.
+
 	_ = ctx
 }
 
 func (tr *tableReader) startScan(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(575163)
 	limitBatches := !tr.parallelize
 	var bytesLimit rowinfra.BytesLimit
 	if !limitBatches {
+		__antithesis_instrumentation__.Notify(575166)
 		bytesLimit = rowinfra.NoBytesLimit
 	} else {
+		__antithesis_instrumentation__.Notify(575167)
 		bytesLimit = tr.batchBytesLimit
 	}
+	__antithesis_instrumentation__.Notify(575164)
 	log.VEventf(ctx, 1, "starting scan with limitBatches %t", limitBatches)
 	var err error
 	if tr.maxTimestampAge == 0 {
+		__antithesis_instrumentation__.Notify(575168)
 		err = tr.fetcher.StartScan(
 			ctx, tr.FlowCtx.Txn, tr.Spans, bytesLimit, tr.limitHint,
 			tr.FlowCtx.TraceKV,
 			tr.EvalCtx.TestingKnobs.ForceProductionBatchSizes,
 		)
 	} else {
+		__antithesis_instrumentation__.Notify(575169)
 		initialTS := tr.FlowCtx.Txn.ReadTimestamp()
 		err = tr.fetcher.StartInconsistentScan(
 			ctx, tr.FlowCtx.Cfg.DB, initialTS, tr.maxTimestampAge, tr.Spans,
@@ -217,15 +247,16 @@ func (tr *tableReader) startScan(ctx context.Context) error {
 			tr.EvalCtx.QualityOfService(),
 		)
 	}
+	__antithesis_instrumentation__.Notify(575165)
 	tr.scanStarted = true
 	return err
 }
 
-// Release releases this tableReader back to the pool.
 func (tr *tableReader) Release() {
+	__antithesis_instrumentation__.Notify(575170)
 	tr.ProcessorBase.Reset()
 	tr.fetcher.Reset()
-	// Deeply reset the spans so that we don't hold onto the keys of the spans.
+
 	tr.SpansWithCopy.Reset()
 	*tr = tableReader{
 		ProcessorBase: tr.ProcessorBase,
@@ -238,70 +269,99 @@ func (tr *tableReader) Release() {
 
 var tableReaderProgressFrequency int64 = 5000
 
-// TestingSetScannedRowProgressFrequency changes the frequency at which
-// row-scanned progress metadata is emitted by table readers.
 func TestingSetScannedRowProgressFrequency(val int64) func() {
+	__antithesis_instrumentation__.Notify(575171)
 	oldVal := tableReaderProgressFrequency
 	tableReaderProgressFrequency = val
-	return func() { tableReaderProgressFrequency = oldVal }
+	return func() { __antithesis_instrumentation__.Notify(575172); tableReaderProgressFrequency = oldVal }
 }
 
-// Next is part of the RowSource interface.
 func (tr *tableReader) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(575173)
 	for tr.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(575175)
 		if !tr.scanStarted {
+			__antithesis_instrumentation__.Notify(575179)
 			err := tr.startScan(tr.Ctx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(575180)
 				tr.MoveToDraining(err)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(575181)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(575182)
 		}
-		// Check if it is time to emit a progress update.
+		__antithesis_instrumentation__.Notify(575176)
+
 		if tr.rowsRead >= tableReaderProgressFrequency {
+			__antithesis_instrumentation__.Notify(575183)
 			meta := execinfrapb.GetProducerMeta()
 			meta.Metrics = execinfrapb.GetMetricsMeta()
 			meta.Metrics.RowsRead = tr.rowsRead
 			tr.rowsRead = 0
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(575184)
 		}
+		__antithesis_instrumentation__.Notify(575177)
 
 		row, err := tr.fetcher.NextRow(tr.Ctx)
-		if row == nil || err != nil {
+		if row == nil || func() bool {
+			__antithesis_instrumentation__.Notify(575185)
+			return err != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(575186)
 			tr.MoveToDraining(err)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(575187)
 		}
+		__antithesis_instrumentation__.Notify(575178)
 
-		// When tracing is enabled, number of rows read is tracked twice (once
-		// here, and once through InputStats). This is done so that non-tracing
-		// case can avoid tracking of the stall time which gives a noticeable
-		// performance hit.
 		tr.rowsRead++
 		if outRow := tr.ProcessRowHelper(row); outRow != nil {
+			__antithesis_instrumentation__.Notify(575188)
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(575189)
 		}
 	}
+	__antithesis_instrumentation__.Notify(575174)
 	return nil, tr.DrainHelper()
 }
 
 func (tr *tableReader) close() {
+	__antithesis_instrumentation__.Notify(575190)
 	if tr.InternalClose() {
+		__antithesis_instrumentation__.Notify(575191)
 		if tr.fetcher != nil {
+			__antithesis_instrumentation__.Notify(575192)
 			tr.fetcher.Close(tr.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(575193)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(575194)
 	}
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (tr *tableReader) ConsumerClosed() {
+	__antithesis_instrumentation__.Notify(575195)
 	tr.close()
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (tr *tableReader) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(575196)
 	is, ok := getFetcherInputStats(tr.fetcher)
 	if !ok {
+		__antithesis_instrumentation__.Notify(575198)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(575199)
 	}
+	__antithesis_instrumentation__.Notify(575197)
 	tr.scanStats = execinfra.GetScanStats(tr.Ctx)
 	ret := &execinfrapb.ComponentStats{
 		KV: execinfrapb.KVStats{
@@ -317,19 +377,34 @@ func (tr *tableReader) execStatsForTrace() *execinfrapb.ComponentStats {
 }
 
 func (tr *tableReader) generateMeta() []execinfrapb.ProducerMetadata {
+	__antithesis_instrumentation__.Notify(575200)
 	var trailingMeta []execinfrapb.ProducerMetadata
 	if !tr.ignoreMisplannedRanges {
+		__antithesis_instrumentation__.Notify(575203)
 		nodeID, ok := tr.FlowCtx.NodeID.OptionalNodeID()
 		if ok {
+			__antithesis_instrumentation__.Notify(575204)
 			ranges := execinfra.MisplannedRanges(tr.Ctx, tr.SpansCopy, nodeID, tr.FlowCtx.Cfg.RangeCache)
 			if ranges != nil {
+				__antithesis_instrumentation__.Notify(575205)
 				trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{Ranges: ranges})
+			} else {
+				__antithesis_instrumentation__.Notify(575206)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(575207)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(575208)
 	}
+	__antithesis_instrumentation__.Notify(575201)
 	if tfs := execinfra.GetLeafTxnFinalState(tr.Ctx, tr.FlowCtx.Txn); tfs != nil {
+		__antithesis_instrumentation__.Notify(575209)
 		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{LeafTxnFinalState: tfs})
+	} else {
+		__antithesis_instrumentation__.Notify(575210)
 	}
+	__antithesis_instrumentation__.Notify(575202)
 
 	meta := execinfrapb.GetProducerMeta()
 	meta.Metrics = execinfrapb.GetMetricsMeta()
@@ -338,12 +413,12 @@ func (tr *tableReader) generateMeta() []execinfrapb.ProducerMetadata {
 	return append(trailingMeta, *meta)
 }
 
-// ChildCount is part of the execinfra.OpNode interface.
 func (tr *tableReader) ChildCount(bool) int {
+	__antithesis_instrumentation__.Notify(575211)
 	return 0
 }
 
-// Child is part of the execinfra.OpNode interface.
 func (tr *tableReader) Child(nth int, _ bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(575212)
 	panic(errors.AssertionFailedf("invalid index %d", nth))
 }

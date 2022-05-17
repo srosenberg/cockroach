@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ts
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -42,29 +34,36 @@ type rollupData struct {
 func (rd *rollupData) toInternal(
 	keyDuration, sampleDuration int64,
 ) ([]roachpb.InternalTimeSeriesData, error) {
+	__antithesis_instrumentation__.Notify(648520)
 	if err := tspb.VerifySlabAndSampleDuration(keyDuration, sampleDuration); err != nil {
+		__antithesis_instrumentation__.Notify(648523)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(648524)
 	}
+	__antithesis_instrumentation__.Notify(648521)
 
-	// This slice must be preallocated to avoid reallocation on `append` because
-	// we maintain pointers to its elements in the map below.
 	result := make([]roachpb.InternalTimeSeriesData, 0, len(rd.datapoints))
-	// Pointers because they need to mutate the stuff in the slice above.
+
 	resultByKeyTime := make(map[int64]*roachpb.InternalTimeSeriesData)
 
 	for _, dp := range rd.datapoints {
-		// Determine which InternalTimeSeriesData this datapoint belongs to,
-		// creating if it has not already been created for a previous sample.
+		__antithesis_instrumentation__.Notify(648525)
+
 		keyTime := normalizeToPeriod(dp.timestampNanos, keyDuration)
 		itsd, ok := resultByKeyTime[keyTime]
 		if !ok {
+			__antithesis_instrumentation__.Notify(648527)
 			result = append(result, roachpb.InternalTimeSeriesData{
 				StartTimestampNanos: keyTime,
 				SampleDurationNanos: sampleDuration,
 			})
 			itsd = &result[len(result)-1]
 			resultByKeyTime[keyTime] = itsd
+		} else {
+			__antithesis_instrumentation__.Notify(648528)
 		}
+		__antithesis_instrumentation__.Notify(648526)
 
 		itsd.Offset = append(itsd.Offset, itsd.OffsetForTimestamp(dp.timestampNanos))
 		itsd.Last = append(itsd.Last, dp.last)
@@ -75,31 +74,40 @@ func (rd *rollupData) toInternal(
 		itsd.Sum = append(itsd.Sum, dp.sum)
 		itsd.Variance = append(itsd.Variance, dp.variance)
 	}
+	__antithesis_instrumentation__.Notify(648522)
 
 	return result, nil
 }
 
 func computeRollupsFromData(data tspb.TimeSeriesData, rollupPeriodNanos int64) rollupData {
+	__antithesis_instrumentation__.Notify(648529)
 	rollup := rollupData{
 		name:   data.Name,
 		source: data.Source,
 	}
 
 	createRollupPoint := func(timestamp int64, dataSlice []tspb.TimeSeriesDatapoint) {
+		__antithesis_instrumentation__.Notify(648532)
 		result := rollupDatapoint{
 			timestampNanos: timestamp,
 			max:            -math.MaxFloat64,
 			min:            math.MaxFloat64,
 		}
 		for i, dp := range dataSlice {
+			__antithesis_instrumentation__.Notify(648534)
 			if i == 0 {
+				__antithesis_instrumentation__.Notify(648537)
 				result.first = dp.Value
+			} else {
+				__antithesis_instrumentation__.Notify(648538)
 			}
+			__antithesis_instrumentation__.Notify(648535)
 			result.last = dp.Value
 			result.max = math.Max(result.max, dp.Value)
 			result.min = math.Min(result.min, dp.Value)
 
 			if result.count > 0 {
+				__antithesis_instrumentation__.Notify(648539)
 				result.variance = computeParallelVariance(
 					parallelVarianceArgs{
 						count:    result.count,
@@ -112,24 +120,33 @@ func computeRollupsFromData(data tspb.TimeSeriesData, rollupPeriodNanos int64) r
 						variance: 0,
 					},
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(648540)
 			}
+			__antithesis_instrumentation__.Notify(648536)
 
 			result.count++
 			result.sum += dp.Value
 		}
+		__antithesis_instrumentation__.Notify(648533)
 
 		rollup.datapoints = append(rollup.datapoints, result)
 	}
+	__antithesis_instrumentation__.Notify(648530)
 
 	dps := data.Datapoints
 	for len(dps) > 0 {
+		__antithesis_instrumentation__.Notify(648541)
 		rollupTimestamp := normalizeToPeriod(dps[0].TimestampNanos, rollupPeriodNanos)
 		endIdx := sort.Search(len(dps), func(i int) bool {
+			__antithesis_instrumentation__.Notify(648543)
 			return normalizeToPeriod(dps[i].TimestampNanos, rollupPeriodNanos) > rollupTimestamp
 		})
+		__antithesis_instrumentation__.Notify(648542)
 		createRollupPoint(rollupTimestamp, dps[:endIdx])
 		dps = dps[endIdx:]
 	}
+	__antithesis_instrumentation__.Notify(648531)
 
 	return rollup
 }
@@ -140,30 +157,29 @@ func (db *DB) rollupTimeSeries(
 	now hlc.Timestamp,
 	qmc QueryMemoryContext,
 ) error {
+	__antithesis_instrumentation__.Notify(648544)
 	thresholds := db.computeThresholds(now.WallTime)
 	for _, timeSeries := range timeSeriesList {
-		// Only process rollup if this resolution has a target rollup resolution.
+		__antithesis_instrumentation__.Notify(648546)
+
 		targetResolution, hasRollup := timeSeries.Resolution.TargetRollupResolution()
 		if !hasRollup {
+			__antithesis_instrumentation__.Notify(648550)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(648551)
 		}
+		__antithesis_instrumentation__.Notify(648547)
 
-		// Query from beginning of time up to the threshold for this resolution.
 		threshold := thresholds[timeSeries.Resolution]
 
-		// Create an initial targetSpan to find data for this series, starting at
-		// the beginning of time and ending with the threshold time. Queries use
-		// MaxSpanRequestKeys to limit the number of rows in memory at one time,
-		// and will use ResumeSpan to issue additional queries if necessary.
 		targetSpan := roachpb.Span{
-			Key: MakeDataKey(timeSeries.Name, "" /* source */, timeSeries.Resolution, 0),
+			Key: MakeDataKey(timeSeries.Name, "", timeSeries.Resolution, 0),
 			EndKey: MakeDataKey(
-				timeSeries.Name, "" /* source */, timeSeries.Resolution, threshold,
+				timeSeries.Name, "", timeSeries.Resolution, threshold,
 			),
 		}
 
-		// For each row, generate a rollup datapoint and add it to the correct
-		// rollupData object.
 		rollupDataMap := make(map[string]rollupData)
 
 		account := qmc.workerMonitor.MakeBoundAccount()
@@ -175,29 +191,37 @@ func (db *DB) rollupTimeSeries(
 			QueryMemoryOptions: qmc.QueryMemoryOptions,
 		}
 		for querySpan := targetSpan; querySpan.Valid(); {
+			__antithesis_instrumentation__.Notify(648552)
 			var err error
 			querySpan, err = db.queryAndComputeRollupsForSpan(
 				ctx, timeSeries, querySpan, targetResolution, rollupDataMap, childQmc,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(648553)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(648554)
 			}
 		}
+		__antithesis_instrumentation__.Notify(648548)
 
-		// Write computed rollupDataMap to disk
 		var rollupDataSlice []rollupData
 		for _, data := range rollupDataMap {
+			__antithesis_instrumentation__.Notify(648555)
 			rollupDataSlice = append(rollupDataSlice, data)
 		}
+		__antithesis_instrumentation__.Notify(648549)
 		if err := db.storeRollup(ctx, targetResolution, rollupDataSlice); err != nil {
+			__antithesis_instrumentation__.Notify(648556)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(648557)
 		}
 	}
+	__antithesis_instrumentation__.Notify(648545)
 	return nil
 }
 
-// queryAndComputeRollupsForSpan queries time series data from the provided
-// span, up to a maximum limit of rows based on memory limits.
 func (db *DB) queryAndComputeRollupsForSpan(
 	ctx context.Context,
 	series timeSeriesResolutionInfo,
@@ -206,38 +230,52 @@ func (db *DB) queryAndComputeRollupsForSpan(
 	rollupDataMap map[string]rollupData,
 	qmc QueryMemoryContext,
 ) (roachpb.Span, error) {
+	__antithesis_instrumentation__.Notify(648558)
 	b := &kv.Batch{}
 	b.Header.MaxSpanRequestKeys = qmc.GetMaxRollupSlabs(series.Resolution)
 	b.Scan(span.Key, span.EndKey)
 	if err := db.db.Run(ctx, b); err != nil {
+		__antithesis_instrumentation__.Notify(648562)
 		return roachpb.Span{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(648563)
 	}
+	__antithesis_instrumentation__.Notify(648559)
 
-	// Convert result data into a map of source strings to ordered spans of
-	// time series data.
 	diskAccount := qmc.workerMonitor.MakeBoundAccount()
 	defer diskAccount.Close(ctx)
 	sourceSpans, err := convertKeysToSpans(ctx, b.Results[0].Rows, &diskAccount)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(648564)
 		return roachpb.Span{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(648565)
 	}
+	__antithesis_instrumentation__.Notify(648560)
 
-	// For each source, iterate over the data span and compute
-	// rollupDatapoints.
 	for source, span := range sourceSpans {
+		__antithesis_instrumentation__.Notify(648566)
 		rollup, ok := rollupDataMap[source]
 		if !ok {
+			__antithesis_instrumentation__.Notify(648569)
 			rollup = rollupData{
 				name:   series.Name,
 				source: source,
 			}
 			if err := qmc.resultAccount.Grow(ctx, int64(unsafe.Sizeof(rollup))); err != nil {
+				__antithesis_instrumentation__.Notify(648570)
 				return roachpb.Span{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(648571)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(648572)
 		}
+		__antithesis_instrumentation__.Notify(648567)
 
 		var end timeSeriesSpanIterator
 		for start := makeTimeSeriesSpanIterator(span); start.isValid(); start = end {
+			__antithesis_instrumentation__.Notify(648573)
 			rollupPeriod := targetResolution.SampleDuration()
 			sampleTimestamp := normalizeToPeriod(start.timestamp, rollupPeriod)
 			datapoint := rollupDatapoint{
@@ -247,18 +285,23 @@ func (db *DB) queryAndComputeRollupsForSpan(
 				first:          start.first(),
 			}
 			if err := qmc.resultAccount.Grow(ctx, int64(unsafe.Sizeof(datapoint))); err != nil {
+				__antithesis_instrumentation__.Notify(648576)
 				return roachpb.Span{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(648577)
 			}
-			for end = start; end.isValid() && normalizeToPeriod(end.timestamp, rollupPeriod) == sampleTimestamp; end.forward() {
+			__antithesis_instrumentation__.Notify(648574)
+			for end = start; end.isValid() && func() bool {
+				__antithesis_instrumentation__.Notify(648578)
+				return normalizeToPeriod(end.timestamp, rollupPeriod) == sampleTimestamp == true
+			}() == true; end.forward() {
+				__antithesis_instrumentation__.Notify(648579)
 				datapoint.last = end.last()
 				datapoint.max = math.Max(datapoint.max, end.max())
 				datapoint.min = math.Min(datapoint.min, end.min())
 
-				// Chan et al. algorithm for computing parallel variance. This allows
-				// the combination of two previously computed sample variances into a
-				// variance for the combined sample; this is needed when further
-				// downsampling previously downsampled variance values.
 				if datapoint.count > 0 {
+					__antithesis_instrumentation__.Notify(648581)
 					datapoint.variance = computeParallelVariance(
 						parallelVarianceArgs{
 							count:    end.count(),
@@ -271,15 +314,21 @@ func (db *DB) queryAndComputeRollupsForSpan(
 							variance: datapoint.variance,
 						},
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(648582)
 				}
+				__antithesis_instrumentation__.Notify(648580)
 
 				datapoint.count += end.count()
 				datapoint.sum += end.sum()
 			}
+			__antithesis_instrumentation__.Notify(648575)
 			rollup.datapoints = append(rollup.datapoints, datapoint)
 		}
+		__antithesis_instrumentation__.Notify(648568)
 		rollupDataMap[source] = rollup
 	}
+	__antithesis_instrumentation__.Notify(648561)
 	return b.Results[0].ResumeSpanAsValue(), nil
 }
 
@@ -289,14 +338,8 @@ type parallelVarianceArgs struct {
 	variance float64
 }
 
-// computeParallelVariance computes the combined variance of two previously
-// computed sample variances. This is an implementation of the Chan et al.
-// algorithm for computing parallel variance. This allows the combination of two
-// previously computed sample variances into a variance for the combined sample;
-// this is needed when further downsampling previously downsampled variance
-// values. Note that it is exactly equivalent to the more widely used Welford's
-// algorithm when either variance set has a count of one.
 func computeParallelVariance(left, right parallelVarianceArgs) float64 {
+	__antithesis_instrumentation__.Notify(648583)
 	leftCount := float64(left.count)
 	rightCount := float64(right.count)
 	totalCount := leftCount + rightCount

@@ -15,6 +15,7 @@ go_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/workload/cli",
     visibility = ["//visibility:public"],
     deps = [
+        "@com_antithesis_instrumentation//wrappers",
         "//pkg/build",
         "//pkg/cli/exit",
         "//pkg/util/envutil",
@@ -82,6 +83,7 @@ go_test(
     deps = [
         "//pkg/util/leaktest",
         "//pkg/workload/histogram",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

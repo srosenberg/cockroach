@@ -25,6 +25,7 @@ go_library(
         "//pkg/util/system",
         "//pkg/util/tracing",
         "//pkg/util/tracing/tracingpb",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",
     ],
@@ -58,5 +59,6 @@ go_test(
         "//pkg/testutils/serverutils",
         "//pkg/testutils/testcluster",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

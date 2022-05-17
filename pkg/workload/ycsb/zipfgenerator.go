@@ -1,18 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-//
-// ZipfGenerator implements the Incrementing Zipfian Random Number Generator from
-// [1]: "Quickly Generating Billion-Record Synthetic Databases"
-// by Gray, Sundaresan, Englert, Baclawski, and Weinberger, SIGMOD 1994.
-
 package ycsb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -24,30 +12,21 @@ import (
 )
 
 const (
-	// See https://github.com/brianfrankcooper/YCSB/blob/f886c1e7988f8f4965cb88a1fe2f6bad2c61b56d/core/src/main/java/com/yahoo/ycsb/generator/ScrambledZipfianGenerator.java#L33-L35
 	defaultIMax  = 10000000000
 	defaultTheta = 0.99
 	defaultZetaN = 26.46902820178302
 )
 
-// ZipfGenerator is a random number generator that generates draws from a Zipf
-// distribution. Unlike rand.Zipf, this generator supports incrementing the
-// imax parameter without performing an expensive recomputation of the
-// underlying hidden parameters, which is a pattern used in [1] for efficiently
-// generating large volumes of Zipf-distributed records for synthetic data.
-// Second, rand.Zipf only supports theta <= 1, we suppose all values of theta.
 type ZipfGenerator struct {
-	// The underlying RNG
 	zipfGenMu ZipfGeneratorMu
-	// supplied values
+
 	theta float64
 	iMin  uint64
-	// internally computed values
+
 	alpha, zeta2, halfPowTheta float64
 	verbose                    bool
 }
 
-// ZipfGeneratorMu holds variables which must be globally synced.
 type ZipfGeneratorMu struct {
 	mu    syncutil.Mutex
 	r     *rand.Rand
@@ -56,17 +35,27 @@ type ZipfGeneratorMu struct {
 	zetaN float64
 }
 
-// NewZipfGenerator constructs a new ZipfGenerator with the given parameters.
-// It returns an error if the parameters are outside the accepted range.
 func NewZipfGenerator(
 	rng *rand.Rand, iMin, iMax uint64, theta float64, verbose bool,
 ) (*ZipfGenerator, error) {
+	__antithesis_instrumentation__.Notify(699507)
 	if iMin > iMax {
+		__antithesis_instrumentation__.Notify(699512)
 		return nil, errors.Errorf("iMin %d > iMax %d", iMin, iMax)
+	} else {
+		__antithesis_instrumentation__.Notify(699513)
 	}
-	if theta < 0.0 || theta == 1.0 {
+	__antithesis_instrumentation__.Notify(699508)
+	if theta < 0.0 || func() bool {
+		__antithesis_instrumentation__.Notify(699514)
+		return theta == 1.0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(699515)
 		return nil, errors.Errorf("0 < theta, and theta != 1")
+	} else {
+		__antithesis_instrumentation__.Notify(699516)
 	}
+	__antithesis_instrumentation__.Notify(699509)
 
 	z := ZipfGenerator{
 		iMin: iMin,
@@ -80,16 +69,23 @@ func NewZipfGenerator(
 	z.zipfGenMu.mu.Lock()
 	defer z.zipfGenMu.mu.Unlock()
 
-	// Compute hidden parameters
 	zeta2, err := computeZetaFromScratch(2, theta)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(699517)
 		return nil, errors.Wrap(err, "Could not compute zeta(2,theta)")
+	} else {
+		__antithesis_instrumentation__.Notify(699518)
 	}
+	__antithesis_instrumentation__.Notify(699510)
 	var zetaN float64
 	zetaN, err = computeZetaFromScratch(iMax+1-iMin, theta)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(699519)
 		return nil, errors.Wrapf(err, "Could not compute zeta(%d,theta)", iMax)
+	} else {
+		__antithesis_instrumentation__.Notify(699520)
 	}
+	__antithesis_instrumentation__.Notify(699511)
 	z.alpha = 1.0 / (1.0 - theta)
 	z.zipfGenMu.eta = (1 - math.Pow(2.0/float64(z.zipfGenMu.iMax+1-z.iMin), 1.0-theta)) / (1.0 - zeta2/zetaN)
 	z.zipfGenMu.zetaN = zetaN
@@ -98,65 +94,92 @@ func NewZipfGenerator(
 	return &z, nil
 }
 
-// computeZetaIncrementally recomputes zeta(iMax, theta), assuming that
-// sum = zeta(oldIMax, theta). It returns zeta(iMax, theta), computed incrementally.
 func computeZetaIncrementally(oldIMax, iMax uint64, theta float64, sum float64) (float64, error) {
+	__antithesis_instrumentation__.Notify(699521)
 	if iMax < oldIMax {
+		__antithesis_instrumentation__.Notify(699524)
 		return 0, errors.Errorf("Can't increment iMax backwards!")
+	} else {
+		__antithesis_instrumentation__.Notify(699525)
 	}
+	__antithesis_instrumentation__.Notify(699522)
 	for i := oldIMax + 1; i <= iMax; i++ {
+		__antithesis_instrumentation__.Notify(699526)
 		sum += 1.0 / math.Pow(float64(i), theta)
 	}
+	__antithesis_instrumentation__.Notify(699523)
 	return sum, nil
 }
 
-// The function zeta computes the value
-// zeta(n, theta) = (1/1)^theta + (1/2)^theta + (1/3)^theta + ... + (1/n)^theta
 func computeZetaFromScratch(n uint64, theta float64) (float64, error) {
-	if n == defaultIMax && theta == defaultTheta {
-		// Precomputed value, borrowed from ScrambledZipfianGenerator.java. (This is
-		// quite slow to calculate from scratch due to the large n value.)
+	__antithesis_instrumentation__.Notify(699527)
+	if n == defaultIMax && func() bool {
+		__antithesis_instrumentation__.Notify(699530)
+		return theta == defaultTheta == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(699531)
+
 		return defaultZetaN, nil
+	} else {
+		__antithesis_instrumentation__.Notify(699532)
 	}
+	__antithesis_instrumentation__.Notify(699528)
 	zeta, err := computeZetaIncrementally(0, n, theta, 0.0)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(699533)
 		return zeta, errors.Wrap(err, "could not compute zeta")
+	} else {
+		__antithesis_instrumentation__.Notify(699534)
 	}
+	__antithesis_instrumentation__.Notify(699529)
 	return zeta, nil
 }
 
-// Uint64 draws a new value between iMin and iMax, with probabilities
-// according to the Zipf distribution.
 func (z *ZipfGenerator) Uint64() uint64 {
+	__antithesis_instrumentation__.Notify(699535)
 	z.zipfGenMu.mu.Lock()
 	u := z.zipfGenMu.r.Float64()
 	uz := u * z.zipfGenMu.zetaN
 	var result uint64
 	if uz < 1.0 {
+		__antithesis_instrumentation__.Notify(699538)
 		result = z.iMin
-	} else if uz < z.halfPowTheta {
-		result = z.iMin + 1
 	} else {
-		spread := float64(z.zipfGenMu.iMax + 1 - z.iMin)
-		result = z.iMin + uint64(int64(spread*math.Pow(z.zipfGenMu.eta*u-z.zipfGenMu.eta+1.0, z.alpha)))
+		__antithesis_instrumentation__.Notify(699539)
+		if uz < z.halfPowTheta {
+			__antithesis_instrumentation__.Notify(699540)
+			result = z.iMin + 1
+		} else {
+			__antithesis_instrumentation__.Notify(699541)
+			spread := float64(z.zipfGenMu.iMax + 1 - z.iMin)
+			result = z.iMin + uint64(int64(spread*math.Pow(z.zipfGenMu.eta*u-z.zipfGenMu.eta+1.0, z.alpha)))
+		}
 	}
+	__antithesis_instrumentation__.Notify(699536)
 	if z.verbose {
+		__antithesis_instrumentation__.Notify(699542)
 		fmt.Printf("Uint64[%d, %d] -> %d\n", z.iMin, z.zipfGenMu.iMax, result)
+	} else {
+		__antithesis_instrumentation__.Notify(699543)
 	}
+	__antithesis_instrumentation__.Notify(699537)
 	z.zipfGenMu.mu.Unlock()
 	return result
 }
 
-// IncrementIMax increments iMax by count and recomputes the internal values
-// that depend on it. It throws an error if the recomputation failed.
 func (z *ZipfGenerator) IncrementIMax(count uint64) error {
+	__antithesis_instrumentation__.Notify(699544)
 	z.zipfGenMu.mu.Lock()
 	zetaN, err := computeZetaIncrementally(
 		z.zipfGenMu.iMax+1-z.iMin, z.zipfGenMu.iMax+count+1-z.iMin, z.theta, z.zipfGenMu.zetaN)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(699546)
 		z.zipfGenMu.mu.Unlock()
 		return errors.Wrap(err, "Could not incrementally compute zeta")
+	} else {
+		__antithesis_instrumentation__.Notify(699547)
 	}
+	__antithesis_instrumentation__.Notify(699545)
 	z.zipfGenMu.iMax += count
 	eta := (1 - math.Pow(2.0/float64(z.zipfGenMu.iMax+1-z.iMin), 1.0-z.theta)) / (1.0 - z.zeta2/zetaN)
 	z.zipfGenMu.eta = eta

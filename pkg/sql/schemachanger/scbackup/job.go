@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scbackup
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,53 +15,57 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/screl"
 )
 
-// CreateDeclarativeSchemaChangeJobs is called during the last phase of a
-// restore. The provided catalog should contain all descriptors being restored.
-// The code here will iterate those descriptors and synthesize the appropriate
-// jobs.
-//
-// It should only be called for backups which do not restore the jobs table
-// directly.
 func CreateDeclarativeSchemaChangeJobs(
 	ctx context.Context, registry *jobs.Registry, txn *kv.Txn, allMut nstree.Catalog,
 ) error {
+	__antithesis_instrumentation__.Notify(579276)
 	byJobID := make(map[catpb.JobID][]catalog.MutableDescriptor)
 	_ = allMut.ForEachDescriptorEntry(func(d catalog.Descriptor) error {
+		__antithesis_instrumentation__.Notify(579279)
 		if s := d.GetDeclarativeSchemaChangerState(); s != nil {
+			__antithesis_instrumentation__.Notify(579281)
 			byJobID[s.JobID] = append(byJobID[s.JobID], d.(catalog.MutableDescriptor))
+		} else {
+			__antithesis_instrumentation__.Notify(579282)
 		}
+		__antithesis_instrumentation__.Notify(579280)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(579277)
 	var records []*jobs.Record
 	for _, descs := range byJobID {
-		// TODO(ajwerner): Consider the need to trim elements or update
-		// descriptors in the face of restoring only some constituent
-		// descriptors of a larger change. One example where this needs
-		// to happen urgently is sequences. Others shouldn't be possible
-		// at this point.
+		__antithesis_instrumentation__.Notify(579283)
+
 		newID := registry.MakeJobID()
 		var descriptorStates []*scpb.DescriptorState
 		for _, d := range descs {
+			__antithesis_instrumentation__.Notify(579286)
 			ds := d.GetDeclarativeSchemaChangerState()
 			ds.JobID = newID
 			descriptorStates = append(descriptorStates, ds)
 		}
+		__antithesis_instrumentation__.Notify(579284)
 		currentState, err := scpb.MakeCurrentStateFromDescriptors(
 			descriptorStates,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(579287)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(579288)
 		}
+		__antithesis_instrumentation__.Notify(579285)
 		const runningStatus = "restored from backup"
 		records = append(records, scexec.MakeDeclarativeSchemaChangeJobRecord(
 			newID,
 			currentState.Statements,
-			!currentState.Revertible, // NonCancelable
+			!currentState.Revertible,
 			currentState.Authorization,
 			screl.AllTargetDescIDs(currentState.TargetState).Ordered(),
 			runningStatus,
 		))
 	}
+	__antithesis_instrumentation__.Notify(579278)
 	_, err := registry.CreateJobsWithTxn(ctx, txn, records)
 	return err
 }

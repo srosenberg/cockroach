@@ -1,24 +1,13 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package roachpb
 
-// TableID is same as descpb.ID. We redefine it here to avoid importing descpb.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type TableID uint32
 
-// IndexID is same as descpb.IndexID. We redefine it here to avoid importing
-// descpb.
 type IndexID uint32
 
-// Add adds the fields from other IndexUsageStatistics.
 func (m *IndexUsageStatistics) Add(other *IndexUsageStatistics) {
+	__antithesis_instrumentation__.Notify(170488)
 	m.TotalRowsRead += other.TotalRowsRead
 	m.TotalRowsWritten += other.TotalRowsWritten
 
@@ -26,10 +15,17 @@ func (m *IndexUsageStatistics) Add(other *IndexUsageStatistics) {
 	m.TotalWriteCount += other.TotalWriteCount
 
 	if m.LastWrite.Before(other.LastWrite) {
+		__antithesis_instrumentation__.Notify(170490)
 		m.LastWrite = other.LastWrite
+	} else {
+		__antithesis_instrumentation__.Notify(170491)
 	}
+	__antithesis_instrumentation__.Notify(170489)
 
 	if m.LastRead.Before(other.LastRead) {
+		__antithesis_instrumentation__.Notify(170492)
 		m.LastRead = other.LastRead
+	} else {
+		__antithesis_instrumentation__.Notify(170493)
 	}
 }

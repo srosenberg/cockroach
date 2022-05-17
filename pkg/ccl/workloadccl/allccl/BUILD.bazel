@@ -30,6 +30,7 @@ go_library(
         "//pkg/workload/tpch",
         "//pkg/workload/ttllogger",
         "//pkg/workload/ycsb",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -63,6 +64,7 @@ go_test(
         "//pkg/util/randutil",
         "//pkg/workload",
         "//pkg/workload/workloadsql",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",
     ],

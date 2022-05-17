@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -35,25 +27,14 @@ type tpchBenchSpec struct {
 	benchType       string
 	url             string
 	numRunsPerQuery int
-	// minVersion specifies the minimum version of CRDB nodes. If omitted, it
-	// will default to v19.1.0.
+
 	minVersion string
-	// maxLatency is the expected maximum time that a query will take to execute
-	// needed to correctly initialize histograms.
+
 	maxLatency time.Duration
 }
 
-// runTPCHBench runs sets of queries against CockroachDB clusters in different
-// configurations.
-//
-// In order to run a benchmark, a TPC-H dataset must first be loaded. To reuse
-// this data across runs, it is recommended to use a combination of
-// `--cluster=<cluster>` and `--wipe=false` flags to limit the loading phase to
-// the first run.
-//
-// This benchmark runs with a single load generator node running a single
-// worker.
 func runTPCHBench(ctx context.Context, t test.Test, c cluster.Cluster, b tpchBenchSpec) {
+	__antithesis_instrumentation__.Notify(51929)
 	roachNodes := c.Range(1, c.Spec().NodeCount-1)
 	loadNode := c.Node(c.Spec().NodeCount)
 
@@ -64,31 +45,42 @@ func runTPCHBench(ctx context.Context, t test.Test, c cluster.Cluster, b tpchBen
 	filename := b.benchType
 	t.Status(fmt.Sprintf("downloading %s query file from %s", filename, b.url))
 	if err := c.RunE(ctx, loadNode, fmt.Sprintf("curl %s > %s", b.url, filename)); err != nil {
+		__antithesis_instrumentation__.Notify(51932)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(51933)
 	}
+	__antithesis_instrumentation__.Notify(51930)
 
 	t.Status("starting nodes")
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), roachNodes)
 
 	m := c.NewMonitor(ctx, roachNodes)
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(51934)
 		t.Status("setting up dataset")
 		err := loadTPCHDataset(ctx, t, c, b.ScaleFactor, m, roachNodes)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(51938)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(51939)
 		}
+		__antithesis_instrumentation__.Notify(51935)
 
 		t.L().Printf("running %s benchmark on tpch scale-factor=%d", filename, b.ScaleFactor)
 
 		numQueries, err := getNumQueriesInFile(filename, b.url)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(51940)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(51941)
 		}
-		// maxOps flag will allow us to exit the workload once all the queries were
-		// run b.numRunsPerQuery number of times.
+		__antithesis_instrumentation__.Notify(51936)
+
 		maxOps := b.numRunsPerQuery * numQueries
 
-		// Run with only one worker to get best-case single-query performance.
 		cmd := fmt.Sprintf(
 			"./workload run querybench --db=tpch --concurrency=1 --query-file=%s "+
 				"--num-runs=%d --max-ops=%d {pgurl%s} "+
@@ -100,58 +92,77 @@ func runTPCHBench(ctx context.Context, t test.Test, c cluster.Cluster, b tpchBen
 			b.maxLatency.String(),
 		)
 		if err := c.RunE(ctx, loadNode, cmd); err != nil {
+			__antithesis_instrumentation__.Notify(51942)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(51943)
 		}
+		__antithesis_instrumentation__.Notify(51937)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(51931)
 	m.Wait()
 }
 
-// getNumQueriesInFile downloads a file that url points to, stores it at a
-// temporary location, parses it using querybench, and deletes the file. It
-// returns the number of queries in the file.
 func getNumQueriesInFile(filename, url string) (int, error) {
+	__antithesis_instrumentation__.Notify(51944)
 	tempFile, err := downloadFile(filename, url)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(51948)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(51949)
 	}
-	// Use closure to make linter happy about unchecked error.
+	__antithesis_instrumentation__.Notify(51945)
+
 	defer func() {
+		__antithesis_instrumentation__.Notify(51950)
 		_ = os.Remove(tempFile.Name())
 	}()
+	__antithesis_instrumentation__.Notify(51946)
 
 	queries, err := querybench.GetQueries(tempFile.Name())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(51951)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(51952)
 	}
+	__antithesis_instrumentation__.Notify(51947)
 	return len(queries), nil
 }
 
-// downloadFile will download a url as a local temporary file.
 func downloadFile(filename string, url string) (*os.File, error) {
-	// These files may be a bit large, so give ourselves
-	// some room before the timeout expires.
+	__antithesis_instrumentation__.Notify(51953)
+
 	httpClient := httputil.NewClientWithTimeout(30 * time.Second)
-	// Get the data.
+
 	resp, err := httpClient.Get(context.TODO(), url)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(51956)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(51957)
 	}
+	__antithesis_instrumentation__.Notify(51954)
 	defer resp.Body.Close()
 
-	// Create the file.
-	out, err := ioutil.TempFile(`` /* dir */, filename)
+	out, err := ioutil.TempFile(``, filename)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(51958)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(51959)
 	}
+	__antithesis_instrumentation__.Notify(51955)
 	defer out.Close()
 
-	// Write the body to file.
 	_, err = io.Copy(out, resp.Body)
 	return out, err
 }
 
 func registerTPCHBenchSpec(r registry.Registry, b tpchBenchSpec) {
+	__antithesis_instrumentation__.Notify(51960)
 	nameParts := []string{
 		"tpchbench",
 		b.benchType,
@@ -160,24 +171,29 @@ func registerTPCHBenchSpec(r registry.Registry, b tpchBenchSpec) {
 		fmt.Sprintf("sf=%d", b.ScaleFactor),
 	}
 
-	// Add a load generator node.
 	numNodes := b.Nodes + 1
 	minVersion := b.minVersion
 	if minVersion == `` {
-		minVersion = "v19.1.0" // needed for import
+		__antithesis_instrumentation__.Notify(51962)
+		minVersion = "v19.1.0"
+	} else {
+		__antithesis_instrumentation__.Notify(51963)
 	}
+	__antithesis_instrumentation__.Notify(51961)
 
 	r.Add(registry.TestSpec{
 		Name:    strings.Join(nameParts, "/"),
 		Owner:   registry.OwnerSQLQueries,
 		Cluster: r.MakeClusterSpec(numNodes),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(51964)
 			runTPCHBench(ctx, t, c, b)
 		},
 	})
 }
 
 func registerTPCHBench(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(51965)
 	specs := []tpchBenchSpec{
 		{
 			Nodes:           3,
@@ -201,6 +217,7 @@ func registerTPCHBench(r registry.Registry) {
 	}
 
 	for _, b := range specs {
+		__antithesis_instrumentation__.Notify(51966)
 		registerTPCHBenchSpec(r, b)
 	}
 }

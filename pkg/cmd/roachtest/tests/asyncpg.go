@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,14 +24,20 @@ var asyncpgReleaseTagRegex = regexp.MustCompile(`^(?P<major>v\d+)\.(?P<minor>\d+
 var asyncpgSupportedTag = "v0.24.0"
 
 func registerAsyncpg(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(45464)
 	runAsyncpg := func(
 		ctx context.Context,
 		t test.Test,
 		c cluster.Cluster,
 	) {
+		__antithesis_instrumentation__.Notify(45466)
 		if c.IsLocal() {
+			__antithesis_instrumentation__.Notify(45478)
 			t.Fatal("cannot be run in local mode")
+		} else {
+			__antithesis_instrumentation__.Notify(45479)
 		}
+		__antithesis_instrumentation__.Notify(45467)
 		node := c.Node(1)
 		t.Status("setting up cockroach")
 		c.Put(ctx, t.Cockroach(), "./cockroach", c.All())
@@ -47,12 +45,20 @@ func registerAsyncpg(r registry.Registry) {
 
 		version, err := fetchCockroachVersion(ctx, t.L(), c, node[0])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(45480)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(45481)
 		}
+		__antithesis_instrumentation__.Notify(45468)
 
 		if err := alterZoneConfigAndClusterSettings(ctx, t, version, c, node[0]); err != nil {
+			__antithesis_instrumentation__.Notify(45482)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(45483)
 		}
+		__antithesis_instrumentation__.Notify(45469)
 
 		t.Status("cloning asyncpg and installing prerequisites")
 
@@ -60,8 +66,12 @@ func registerAsyncpg(r registry.Registry) {
 			ctx, t, "MagicStack", "asyncpg", asyncpgReleaseTagRegex,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(45484)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(45485)
 		}
+		__antithesis_instrumentation__.Notify(45470)
 
 		t.L().Printf("Latest asyncpg release is %s.", latestTag)
 		t.L().Printf("Supported asyncpg release is %s.", latestTag)
@@ -75,8 +85,12 @@ func registerAsyncpg(r registry.Registry) {
 			asyncpgSupportedTag,
 			node,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(45486)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(45487)
 		}
+		__antithesis_instrumentation__.Notify(45471)
 
 		if err := repeatRunE(
 			ctx,
@@ -86,8 +100,12 @@ func registerAsyncpg(r registry.Registry) {
 			"install python and pip",
 			`sudo apt-get -qq install python3.7 python3-pip libpq-dev python-dev`,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(45488)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(45489)
 		}
+		__antithesis_instrumentation__.Notify(45472)
 
 		if err := repeatRunE(
 			ctx,
@@ -96,16 +114,28 @@ func registerAsyncpg(r registry.Registry) {
 			node,
 			"install asyncpg's dependencies",
 			"cd /mnt/data1/asyncpg && sudo pip3 install django && pip3 install -e ."); err != nil {
+			__antithesis_instrumentation__.Notify(45490)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(45491)
 		}
+		__antithesis_instrumentation__.Notify(45473)
 
 		blocklistName, expectedFailureList, ignoredlistName, ignoredlist := asyncpgBlocklists.getLists(version)
 		if expectedFailureList == nil {
+			__antithesis_instrumentation__.Notify(45492)
 			t.Fatalf("No asyncpg blocklist defined for cockroach version %s", version)
+		} else {
+			__antithesis_instrumentation__.Notify(45493)
 		}
+		__antithesis_instrumentation__.Notify(45474)
 		if ignoredlist == nil {
+			__antithesis_instrumentation__.Notify(45494)
 			t.Fatalf("No asyncpg ignorelist defined for cockroach version %s", version)
+		} else {
+			__antithesis_instrumentation__.Notify(45495)
 		}
+		__antithesis_instrumentation__.Notify(45475)
 		t.L().Printf("Running cockroach version %s, using blocklist %s, using ignorelist %s",
 			version, blocklistName, ignoredlistName)
 
@@ -113,24 +143,33 @@ func registerAsyncpg(r registry.Registry) {
 		result, err := c.RunWithDetailsSingleNode(
 			ctx, t.L(), node, asyncpgRunTestCmd)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(45496)
 			t.L().Printf("error during asyncpg run (may be ok): %v\n", err)
+		} else {
+			__antithesis_instrumentation__.Notify(45497)
 		}
+		__antithesis_instrumentation__.Notify(45476)
 		t.L().Printf("Test results for asyncpg: %s", result.Stdout+result.Stderr)
 		t.L().Printf("Test stdout for asyncpg")
 		if err := c.RunE(
 			ctx, node, "cd /mnt/data1/asyncpg && cat asyncpg.stdout",
 		); err != nil {
+			__antithesis_instrumentation__.Notify(45498)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(45499)
 		}
+		__antithesis_instrumentation__.Notify(45477)
 
 		t.Status("collating test results")
 
 		results := newORMTestsResults()
 		results.parsePythonUnitTestOutput([]byte(result.Stdout+result.Stderr), expectedFailureList, ignoredlist)
 		results.summarizeAll(
-			t, "asyncpg" /* ormName */, blocklistName, expectedFailureList, version, asyncpgSupportedTag,
+			t, "asyncpg", blocklistName, expectedFailureList, version, asyncpgSupportedTag,
 		)
 	}
+	__antithesis_instrumentation__.Notify(45465)
 
 	r.Add(registry.TestSpec{
 		Name:    "asyncpg",
@@ -138,6 +177,7 @@ func registerAsyncpg(r registry.Registry) {
 		Cluster: r.MakeClusterSpec(1, spec.CPU(16)),
 		Tags:    []string{`default`, `orm`},
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(45500)
 			runAsyncpg(ctx, t, c)
 		},
 	})

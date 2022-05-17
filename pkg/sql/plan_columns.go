@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
@@ -17,187 +9,229 @@ import (
 
 var noColumns = make(colinfo.ResultColumns, 0)
 
-// planColumns returns the signature of rows logically computed
-// by the given planNode.
-// The signature consists of the list of columns with
-// their name and type.
-//
-// The length of the returned slice is guaranteed to be equal to the
-// length of the tuple returned by the planNode's Values() method
-// during local execution.
-//
-// The returned slice is *not* mutable. To modify the result column
-// set, implement a separate recursion (e.g. needed_columns.go) or use
-// planMutableColumns defined below.
 func planColumns(plan planNode) colinfo.ResultColumns {
+	__antithesis_instrumentation__.Notify(562656)
 	return getPlanColumns(plan, false)
 }
 
-// planMutableColumns is similar to planColumns() but returns a
-// ResultColumns slice that can be modified by the caller.
 func planMutableColumns(plan planNode) colinfo.ResultColumns {
+	__antithesis_instrumentation__.Notify(562657)
 	return getPlanColumns(plan, true)
 }
 
-// getPlanColumns implements the logic for the
-// planColumns/planMutableColumns functions. The mut argument
-// indicates whether the slice should be mutable (mut=true) or not.
 func getPlanColumns(plan planNode, mut bool) colinfo.ResultColumns {
+	__antithesis_instrumentation__.Notify(562658)
 	switch n := plan.(type) {
 
-	// Nodes that define their own schema.
 	case *delayedNode:
+		__antithesis_instrumentation__.Notify(562660)
 		return n.columns
 	case *groupNode:
+		__antithesis_instrumentation__.Notify(562661)
 		return n.columns
 	case *joinNode:
+		__antithesis_instrumentation__.Notify(562662)
 		return n.columns
 	case *ordinalityNode:
+		__antithesis_instrumentation__.Notify(562663)
 		return n.columns
 	case *renderNode:
+		__antithesis_instrumentation__.Notify(562664)
 		return n.columns
 	case *scanNode:
+		__antithesis_instrumentation__.Notify(562665)
 		return n.resultColumns
 	case *unionNode:
+		__antithesis_instrumentation__.Notify(562666)
 		return n.columns
 	case *valuesNode:
+		__antithesis_instrumentation__.Notify(562667)
 		return n.columns
 	case *virtualTableNode:
+		__antithesis_instrumentation__.Notify(562668)
 		return n.columns
 	case *windowNode:
+		__antithesis_instrumentation__.Notify(562669)
 		return n.columns
 	case *showTraceNode:
+		__antithesis_instrumentation__.Notify(562670)
 		return n.columns
 	case *zeroNode:
+		__antithesis_instrumentation__.Notify(562671)
 		return n.columns
 	case *deleteNode:
+		__antithesis_instrumentation__.Notify(562672)
 		return n.columns
 	case *updateNode:
+		__antithesis_instrumentation__.Notify(562673)
 		return n.columns
 	case *insertNode:
+		__antithesis_instrumentation__.Notify(562674)
 		return n.columns
 	case *insertFastPathNode:
+		__antithesis_instrumentation__.Notify(562675)
 		return n.columns
 	case *upsertNode:
+		__antithesis_instrumentation__.Notify(562676)
 		return n.columns
 	case *indexJoinNode:
+		__antithesis_instrumentation__.Notify(562677)
 		return n.resultColumns
 	case *projectSetNode:
+		__antithesis_instrumentation__.Notify(562678)
 		return n.columns
 	case *applyJoinNode:
+		__antithesis_instrumentation__.Notify(562679)
 		return n.columns
 	case *lookupJoinNode:
+		__antithesis_instrumentation__.Notify(562680)
 		return n.columns
 	case *zigzagJoinNode:
+		__antithesis_instrumentation__.Notify(562681)
 		return n.columns
 	case *vTableLookupJoinNode:
+		__antithesis_instrumentation__.Notify(562682)
 		return n.columns
 	case *invertedFilterNode:
+		__antithesis_instrumentation__.Notify(562683)
 		return n.resultColumns
 	case *invertedJoinNode:
+		__antithesis_instrumentation__.Notify(562684)
 		return n.columns
 
-	// Nodes with a fixed schema.
 	case *scrubNode:
+		__antithesis_instrumentation__.Notify(562685)
 		return n.getColumns(mut, colinfo.ScrubColumns)
 	case *explainDDLNode:
+		__antithesis_instrumentation__.Notify(562686)
 		return n.getColumns(mut, colinfo.ExplainPlanColumns)
 	case *explainPlanNode:
+		__antithesis_instrumentation__.Notify(562687)
 		return n.getColumns(mut, colinfo.ExplainPlanColumns)
 	case *explainVecNode:
+		__antithesis_instrumentation__.Notify(562688)
 		return n.getColumns(mut, colinfo.ExplainPlanColumns)
 	case *relocateNode:
+		__antithesis_instrumentation__.Notify(562689)
 		return n.getColumns(mut, colinfo.AlterTableRelocateColumns)
 	case *relocateRange:
+		__antithesis_instrumentation__.Notify(562690)
 		return n.getColumns(mut, colinfo.AlterRangeRelocateColumns)
 	case *scatterNode:
+		__antithesis_instrumentation__.Notify(562691)
 		return n.getColumns(mut, colinfo.AlterTableScatterColumns)
 	case *showFingerprintsNode:
+		__antithesis_instrumentation__.Notify(562692)
 		return n.getColumns(mut, colinfo.ShowFingerprintsColumns)
 	case *splitNode:
+		__antithesis_instrumentation__.Notify(562693)
 		return n.getColumns(mut, colinfo.AlterTableSplitColumns)
 	case *unsplitNode:
+		__antithesis_instrumentation__.Notify(562694)
 		return n.getColumns(mut, colinfo.AlterTableUnsplitColumns)
 	case *unsplitAllNode:
+		__antithesis_instrumentation__.Notify(562695)
 		return n.getColumns(mut, colinfo.AlterTableUnsplitColumns)
 	case *showTraceReplicaNode:
+		__antithesis_instrumentation__.Notify(562696)
 		return n.getColumns(mut, colinfo.ShowReplicaTraceColumns)
 	case *sequenceSelectNode:
+		__antithesis_instrumentation__.Notify(562697)
 		return n.getColumns(mut, colinfo.SequenceSelectColumns)
 	case *exportNode:
+		__antithesis_instrumentation__.Notify(562698)
 		return n.getColumns(mut, colinfo.ExportColumns)
 
-	// The columns in the hookFnNode are returned by the hook function; we don't
-	// know if they can be modified in place or not.
 	case *hookFnNode:
+		__antithesis_instrumentation__.Notify(562699)
 		return n.getColumns(mut, n.header)
 
-	// Nodes that have the same schema as their source or their
-	// valueNode helper.
 	case *bufferNode:
+		__antithesis_instrumentation__.Notify(562700)
 		return getPlanColumns(n.plan, mut)
 	case *distinctNode:
+		__antithesis_instrumentation__.Notify(562701)
 		return getPlanColumns(n.plan, mut)
 	case *fetchNode:
+		__antithesis_instrumentation__.Notify(562702)
 		return n.cursor.Types()
 	case *filterNode:
+		__antithesis_instrumentation__.Notify(562703)
 		return getPlanColumns(n.source.plan, mut)
 	case *max1RowNode:
+		__antithesis_instrumentation__.Notify(562704)
 		return getPlanColumns(n.plan, mut)
 	case *limitNode:
+		__antithesis_instrumentation__.Notify(562705)
 		return getPlanColumns(n.plan, mut)
 	case *spoolNode:
+		__antithesis_instrumentation__.Notify(562706)
 		return getPlanColumns(n.source, mut)
 	case *serializeNode:
+		__antithesis_instrumentation__.Notify(562707)
 		return getPlanColumns(n.source, mut)
 	case *saveTableNode:
+		__antithesis_instrumentation__.Notify(562708)
 		return getPlanColumns(n.source, mut)
 	case *scanBufferNode:
+		__antithesis_instrumentation__.Notify(562709)
 		return getPlanColumns(n.buffer, mut)
 	case *sortNode:
+		__antithesis_instrumentation__.Notify(562710)
 		return getPlanColumns(n.plan, mut)
 	case *topKNode:
+		__antithesis_instrumentation__.Notify(562711)
 		return getPlanColumns(n.plan, mut)
 	case *recursiveCTENode:
+		__antithesis_instrumentation__.Notify(562712)
 		return getPlanColumns(n.initial, mut)
 
 	case *showVarNode:
+		__antithesis_instrumentation__.Notify(562713)
 		return colinfo.ResultColumns{
 			{Name: n.name, Typ: types.String},
 		}
 	case *rowSourceToPlanNode:
+		__antithesis_instrumentation__.Notify(562714)
 		return n.planCols
 	}
+	__antithesis_instrumentation__.Notify(562659)
 
-	// Every other node has no columns in their results.
 	return noColumns
 }
 
-// planTypes returns the types schema of the rows produced by this planNode. See
-// comments on planColumns for more details.
 func planTypes(plan planNode) []*types.T {
+	__antithesis_instrumentation__.Notify(562715)
 	columns := planColumns(plan)
 	typs := make([]*types.T, len(columns))
 	for i := range typs {
+		__antithesis_instrumentation__.Notify(562717)
 		typs[i] = columns[i].Typ
 	}
+	__antithesis_instrumentation__.Notify(562716)
 	return typs
 }
 
-// optColumnsSlot is a helper struct for nodes with a static signature.
-// It allows instances to reuse a common (shared) ResultColumns slice as long as
-// no read/write access is requested to the slice via planMutableColumns.
 type optColumnsSlot struct {
 	columns colinfo.ResultColumns
 }
 
 func (c *optColumnsSlot) getColumns(mut bool, cols colinfo.ResultColumns) colinfo.ResultColumns {
+	__antithesis_instrumentation__.Notify(562718)
 	if c.columns != nil {
+		__antithesis_instrumentation__.Notify(562721)
 		return c.columns
+	} else {
+		__antithesis_instrumentation__.Notify(562722)
 	}
+	__antithesis_instrumentation__.Notify(562719)
 	if !mut {
+		__antithesis_instrumentation__.Notify(562723)
 		return cols
+	} else {
+		__antithesis_instrumentation__.Notify(562724)
 	}
+	__antithesis_instrumentation__.Notify(562720)
 	c.columns = make(colinfo.ResultColumns, len(cols))
 	copy(c.columns, cols)
 	return c.columns

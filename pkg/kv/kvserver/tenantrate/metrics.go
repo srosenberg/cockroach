@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tenantrate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/multitenant"
@@ -17,7 +9,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/metric/aggmetric"
 )
 
-// Metrics is a metric.Struct for the LimiterFactory.
 type Metrics struct {
 	Tenants               *metric.Gauge
 	CurrentBlocked        *aggmetric.AggGauge
@@ -69,6 +60,7 @@ var (
 )
 
 func makeMetrics() Metrics {
+	__antithesis_instrumentation__.Notify(126699)
 	b := aggmetric.MakeBuilder(multitenant.TenantIDLabel)
 	return Metrics{
 		Tenants:               metric.NewGauge(metaTenants),
@@ -80,10 +72,8 @@ func makeMetrics() Metrics {
 	}
 }
 
-// MetricStruct indicates that Metrics is a metric.Struct
-func (m *Metrics) MetricStruct() {}
+func (m *Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(126700) }
 
-// tenantMetrics represent metrics for an individual tenant.
 type tenantMetrics struct {
 	currentBlocked        *aggmetric.Gauge
 	readRequestsAdmitted  *aggmetric.Counter
@@ -93,6 +83,7 @@ type tenantMetrics struct {
 }
 
 func (m *Metrics) tenantMetrics(tenantID roachpb.TenantID) tenantMetrics {
+	__antithesis_instrumentation__.Notify(126701)
 	tid := tenantID.String()
 	return tenantMetrics{
 		currentBlocked:        m.CurrentBlocked.AddChild(tid),
@@ -104,6 +95,7 @@ func (m *Metrics) tenantMetrics(tenantID roachpb.TenantID) tenantMetrics {
 }
 
 func (tm *tenantMetrics) destroy() {
+	__antithesis_instrumentation__.Notify(126702)
 	tm.currentBlocked.Destroy()
 	tm.readRequestsAdmitted.Destroy()
 	tm.writeRequestsAdmitted.Destroy()

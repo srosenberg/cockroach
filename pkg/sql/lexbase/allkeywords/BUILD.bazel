@@ -5,6 +5,7 @@ go_library(
     srcs = ["main.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/lexbase/allkeywords",
     visibility = ["//visibility:private"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_binary(

@@ -11,6 +11,7 @@ go_library(
     embed = [":geopb_go_proto"],
     importpath = "github.com/cockroachdb/cockroach/pkg/geo/geopb",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 proto_library(
@@ -18,7 +19,9 @@ proto_library(
     srcs = ["geopb.proto"],
     strip_import_prefix = "/pkg",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto:gogo_proto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto:gogo_proto",
+    ],
 )
 
 go_proto_library(
@@ -27,12 +30,17 @@ go_proto_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/geo/geopb",
     proto = ":geopb_proto",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_gogo_protobuf//gogoproto"],
+    deps = [
+        "@com_github_gogo_protobuf//gogoproto",
+    ],
 )
 
 go_test(
     name = "geopb_test",
     srcs = ["types_test.go"],
     embed = [":geopb"],
-    deps = ["@com_github_stretchr_testify//require"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@com_github_stretchr_testify//require",
+    ],
 )

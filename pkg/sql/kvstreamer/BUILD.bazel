@@ -32,6 +32,7 @@ go_library(
         "//pkg/util/quotapool",
         "//pkg/util/stop",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -68,6 +69,7 @@ go_test(
         "//pkg/util/mon",
         "//pkg/util/randutil",
         "//pkg/util/tracing",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_dustin_go_humanize//:go-humanize",
         "@com_github_stretchr_testify//require",

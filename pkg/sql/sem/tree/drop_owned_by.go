@@ -1,16 +1,7 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// DropOwnedBy represents a DROP OWNED BY command.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type DropOwnedBy struct {
 	Roles        RoleSpecList
 	DropBehavior DropBehavior
@@ -18,17 +9,26 @@ type DropOwnedBy struct {
 
 var _ Statement = &DropOwnedBy{}
 
-// Format implements the NodeFormatter interface.
 func (node *DropOwnedBy) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(607680)
 	ctx.WriteString("DROP OWNED BY ")
 	for i := range node.Roles {
+		__antithesis_instrumentation__.Notify(607682)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(607684)
 			ctx.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(607685)
 		}
+		__antithesis_instrumentation__.Notify(607683)
 		node.Roles[i].Format(ctx)
 	}
+	__antithesis_instrumentation__.Notify(607681)
 	if node.DropBehavior != DropDefault {
+		__antithesis_instrumentation__.Notify(607686)
 		ctx.WriteString(" ")
 		ctx.WriteString(node.DropBehavior.String())
+	} else {
+		__antithesis_instrumentation__.Notify(607687)
 	}
 }

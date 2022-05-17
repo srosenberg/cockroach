@@ -1,20 +1,10 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// This file was generated from `./pkg/cmd/generate-spatial-ref-sys`.
-
 package geoprojbase
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
-	_ "embed" // required for go:embed
+	_ "embed"
 	"sync"
 
 	"github.com/cockroachdb/cockroach/pkg/geo/geographiclib"
@@ -23,34 +13,43 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-//go:embed data/proj.json.gz
 var projData []byte
 
 var once sync.Once
 var projectionsInternal map[geopb.SRID]ProjInfo
 
-// getProjections returns the mapping of SRID to projections.
-// Use the `Projection` function to obtain one.
 func getProjections() map[geopb.SRID]ProjInfo {
+	__antithesis_instrumentation__.Notify(64081)
 	once.Do(func() {
+		__antithesis_instrumentation__.Notify(64083)
 		d, err := embeddedproj.Decode(bytes.NewReader(projData))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(64086)
 			panic(errors.NewAssertionErrorWithWrappedErrf(err, "error decoding embedded projection data"))
+		} else {
+			__antithesis_instrumentation__.Notify(64087)
 		}
+		__antithesis_instrumentation__.Notify(64084)
 
-		// Build a temporary map of spheroids so we can look them up by hash.
 		spheroids := make(map[int64]*geographiclib.Spheroid, len(d.Spheroids))
 		for _, s := range d.Spheroids {
+			__antithesis_instrumentation__.Notify(64088)
 			spheroids[s.Hash] = geographiclib.NewSpheroid(s.Radius, s.Flattening)
 		}
+		__antithesis_instrumentation__.Notify(64085)
 
 		projectionsInternal = make(map[geopb.SRID]ProjInfo, len(d.Projections))
 		for _, p := range d.Projections {
+			__antithesis_instrumentation__.Notify(64089)
 			srid := geopb.SRID(p.SRID)
 			spheroid, ok := spheroids[p.Spheroid]
 			if !ok {
+				__antithesis_instrumentation__.Notify(64091)
 				panic(errors.AssertionFailedf("embedded projection data contains invalid spheroid %x", p.Spheroid))
+			} else {
+				__antithesis_instrumentation__.Notify(64092)
 			}
+			__antithesis_instrumentation__.Notify(64090)
 			projectionsInternal[srid] = ProjInfo{
 				SRID:      srid,
 				AuthName:  "EPSG",
@@ -68,6 +67,7 @@ func getProjections() map[geopb.SRID]ProjInfo {
 			}
 		}
 	})
+	__antithesis_instrumentation__.Notify(64082)
 
 	return projectionsInternal
 }

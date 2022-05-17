@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -45,29 +37,40 @@ import (
 
 type execFactory struct {
 	planner *planner
-	// isExplain is true if this factory is used to build a statement inside
-	// EXPLAIN or EXPLAIN ANALYZE.
+
 	isExplain bool
 }
 
 var _ exec.Factory = &execFactory{}
 
 func newExecFactory(p *planner) *execFactory {
+	__antithesis_instrumentation__.Notify(551395)
 	return &execFactory{
 		planner: p,
 	}
 }
 
-// ConstructValues is part of the exec.Factory interface.
 func (ef *execFactory) ConstructValues(
 	rows [][]tree.TypedExpr, cols colinfo.ResultColumns,
 ) (exec.Node, error) {
-	if len(cols) == 0 && len(rows) == 1 {
+	__antithesis_instrumentation__.Notify(551396)
+	if len(cols) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(551399)
+		return len(rows) == 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551400)
 		return &unaryNode{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551401)
 	}
+	__antithesis_instrumentation__.Notify(551397)
 	if len(rows) == 0 {
+		__antithesis_instrumentation__.Notify(551402)
 		return &zeroNode{columns: cols}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551403)
 	}
+	__antithesis_instrumentation__.Notify(551398)
 	return &valuesNode{
 		columns:          cols,
 		tuples:           rows,
@@ -75,28 +78,43 @@ func (ef *execFactory) ConstructValues(
 	}, nil
 }
 
-// ConstructScan is part of the exec.Factory interface.
 func (ef *execFactory) ConstructScan(
 	table cat.Table, index cat.Index, params exec.ScanParams, reqOrdering exec.OutputOrdering,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551404)
 	if table.IsVirtualTable() {
+		__antithesis_instrumentation__.Notify(551412)
 		return ef.constructVirtualScan(table, index, params, reqOrdering)
+	} else {
+		__antithesis_instrumentation__.Notify(551413)
 	}
+	__antithesis_instrumentation__.Notify(551405)
 
 	tabDesc := table.(*optTable).desc
 	idx := index.(*optIndex).idx
-	// Create a scanNode.
+
 	scan := ef.planner.Scan()
 	colCfg := makeScanColumnsConfig(table, params.NeededCols)
 
 	ctx := ef.planner.extendedEvalCtx.Ctx()
 	if err := scan.initTable(ctx, ef.planner, tabDesc, colCfg); err != nil {
+		__antithesis_instrumentation__.Notify(551414)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551415)
 	}
+	__antithesis_instrumentation__.Notify(551406)
 
-	if params.IndexConstraint != nil && params.IndexConstraint.IsContradiction() {
+	if params.IndexConstraint != nil && func() bool {
+		__antithesis_instrumentation__.Notify(551416)
+		return params.IndexConstraint.IsContradiction() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551417)
 		return newZeroNode(scan.resultColumns), nil
+	} else {
+		__antithesis_instrumentation__.Notify(551418)
 	}
+	__antithesis_instrumentation__.Notify(551407)
 
 	scan.index = idx
 	scan.hardLimit = params.HardLimit
@@ -107,29 +125,48 @@ func (ef *execFactory) ConstructScan(
 	var err error
 	scan.spans, err = generateScanSpans(ef.planner.EvalContext(), ef.planner.ExecCfg().Codec, tabDesc, idx, params)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551419)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551420)
 	}
+	__antithesis_instrumentation__.Notify(551408)
 
-	scan.isFull = len(scan.spans) == 1 && scan.spans[0].EqualValue(
-		scan.desc.IndexSpan(ef.planner.ExecCfg().Codec, scan.index.GetID()),
-	)
+	scan.isFull = len(scan.spans) == 1 && func() bool {
+		__antithesis_instrumentation__.Notify(551421)
+		return scan.spans[0].EqualValue(
+			scan.desc.IndexSpan(ef.planner.ExecCfg().Codec, scan.index.GetID()),
+		) == true
+	}() == true
 	if err = colCfg.assertValidReqOrdering(reqOrdering); err != nil {
+		__antithesis_instrumentation__.Notify(551422)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551423)
 	}
+	__antithesis_instrumentation__.Notify(551409)
 	scan.reqOrdering = ReqOrdering(reqOrdering)
 	scan.estimatedRowCount = uint64(params.EstimatedRowCount)
 	if params.Locking != nil {
+		__antithesis_instrumentation__.Notify(551424)
 		scan.lockingStrength = descpb.ToScanLockingStrength(params.Locking.Strength)
 		scan.lockingWaitPolicy = descpb.ToScanLockingWaitPolicy(params.Locking.WaitPolicy)
+	} else {
+		__antithesis_instrumentation__.Notify(551425)
 	}
+	__antithesis_instrumentation__.Notify(551410)
 	scan.localityOptimized = params.LocalityOptimized
 	if !ef.isExplain {
+		__antithesis_instrumentation__.Notify(551426)
 		idxUsageKey := roachpb.IndexUsageKey{
 			TableID: roachpb.TableID(tabDesc.GetID()),
 			IndexID: roachpb.IndexID(idx.GetID()),
 		}
 		ef.planner.extendedEvalCtx.indexUsageStats.RecordRead(idxUsageKey)
+	} else {
+		__antithesis_instrumentation__.Notify(551427)
 	}
+	__antithesis_instrumentation__.Notify(551411)
 
 	return scan, nil
 }
@@ -141,11 +178,16 @@ func generateScanSpans(
 	index catalog.Index,
 	params exec.ScanParams,
 ) (roachpb.Spans, error) {
+	__antithesis_instrumentation__.Notify(551428)
 	var sb span.Builder
 	sb.Init(evalCtx, codec, tabDesc, index)
 	if params.InvertedConstraint != nil {
-		return sb.SpansFromInvertedSpans(params.InvertedConstraint, params.IndexConstraint, nil /* scratch */)
+		__antithesis_instrumentation__.Notify(551430)
+		return sb.SpansFromInvertedSpans(params.InvertedConstraint, params.IndexConstraint, nil)
+	} else {
+		__antithesis_instrumentation__.Notify(551431)
 	}
+	__antithesis_instrumentation__.Notify(551429)
 	splitter := span.MakeSplitter(tabDesc, index, params.NeededCols)
 	return sb.SpansFromConstraint(params.IndexConstraint, splitter)
 }
@@ -153,13 +195,15 @@ func generateScanSpans(
 func (ef *execFactory) constructVirtualScan(
 	table cat.Table, index cat.Index, params exec.ScanParams, reqOrdering exec.OutputOrdering,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551432)
 	return constructVirtualScan(
 		ef, ef.planner, table, index, params, reqOrdering,
-		func(d *delayedNode) (exec.Node, error) { return d, nil },
+		func(d *delayedNode) (exec.Node, error) { __antithesis_instrumentation__.Notify(551433); return d, nil },
 	)
 }
 
 func asDataSource(n exec.Node) planDataSource {
+	__antithesis_instrumentation__.Notify(551434)
 	plan := n.(planNode)
 	return planDataSource{
 		columns: planColumns(plan),
@@ -167,11 +211,11 @@ func asDataSource(n exec.Node) planDataSource {
 	}
 }
 
-// ConstructFilter is part of the exec.Factory interface.
 func (ef *execFactory) ConstructFilter(
 	n exec.Node, filter tree.TypedExpr, reqOrdering exec.OutputOrdering,
 ) (exec.Node, error) {
-	// Create a filterNode.
+	__antithesis_instrumentation__.Notify(551435)
+
 	src := asDataSource(n)
 	f := &filterNode{
 		source: src,
@@ -179,21 +223,27 @@ func (ef *execFactory) ConstructFilter(
 	f.ivarHelper = tree.MakeIndexedVarHelper(f, len(src.columns))
 	f.filter = f.ivarHelper.Rebind(filter)
 	if f.filter == nil {
-		// Filter statically evaluates to true. Just return the input plan.
+		__antithesis_instrumentation__.Notify(551438)
+
 		return n, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551439)
 	}
+	__antithesis_instrumentation__.Notify(551436)
 	f.reqOrdering = ReqOrdering(reqOrdering)
 
-	// If there's a spool, pull it up.
 	if spool, ok := f.source.plan.(*spoolNode); ok {
+		__antithesis_instrumentation__.Notify(551440)
 		f.source.plan = spool.source
 		spool.source = f
 		return spool, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551441)
 	}
+	__antithesis_instrumentation__.Notify(551437)
 	return f, nil
 }
 
-// ConstructInvertedFilter is part of the exec.Factory interface.
 func (ef *execFactory) ConstructInvertedFilter(
 	n exec.Node,
 	invFilter *inverted.SpanExpression,
@@ -201,6 +251,7 @@ func (ef *execFactory) ConstructInvertedFilter(
 	preFiltererType *types.T,
 	invColumn exec.NodeColumnOrdinal,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551442)
 	inputCols := planColumns(n.(planNode))
 	columns := make(colinfo.ResultColumns, len(inputCols))
 	copy(columns, inputCols)
@@ -215,132 +266,176 @@ func (ef *execFactory) ConstructInvertedFilter(
 	return n, nil
 }
 
-// ConstructSimpleProject is part of the exec.Factory interface.
 func (ef *execFactory) ConstructSimpleProject(
 	n exec.Node, cols []exec.NodeColumnOrdinal, reqOrdering exec.OutputOrdering,
 ) (exec.Node, error) {
-	return constructSimpleProjectForPlanNode(n.(planNode), cols, nil /* colNames */, reqOrdering)
+	__antithesis_instrumentation__.Notify(551443)
+	return constructSimpleProjectForPlanNode(n.(planNode), cols, nil, reqOrdering)
 }
 
 func constructSimpleProjectForPlanNode(
 	n planNode, cols []exec.NodeColumnOrdinal, colNames []string, reqOrdering exec.OutputOrdering,
 ) (exec.Node, error) {
-	// If the top node is already a renderNode, just rearrange the columns. But
-	// we don't want to duplicate a rendering expression (in case it is expensive
-	// to compute or has side-effects); so if we have duplicates we avoid this
-	// optimization (and add a new renderNode).
-	if r, ok := n.(*renderNode); ok && !hasDuplicates(cols) {
+	__antithesis_instrumentation__.Notify(551444)
+
+	if r, ok := n.(*renderNode); ok && func() bool {
+		__antithesis_instrumentation__.Notify(551448)
+		return !hasDuplicates(cols) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551449)
 		oldCols, oldRenders := r.columns, r.render
 		r.columns = make(colinfo.ResultColumns, len(cols))
 		r.render = make([]tree.TypedExpr, len(cols))
 		for i, ord := range cols {
+			__antithesis_instrumentation__.Notify(551451)
 			r.columns[i] = oldCols[ord]
 			if colNames != nil {
+				__antithesis_instrumentation__.Notify(551453)
 				r.columns[i].Name = colNames[i]
+			} else {
+				__antithesis_instrumentation__.Notify(551454)
 			}
+			__antithesis_instrumentation__.Notify(551452)
 			r.render[i] = oldRenders[ord]
 		}
+		__antithesis_instrumentation__.Notify(551450)
 		r.reqOrdering = ReqOrdering(reqOrdering)
 		return r, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551455)
 	}
+	__antithesis_instrumentation__.Notify(551445)
 	inputCols := planColumns(n)
 	var rb renderBuilder
 	rb.init(n, reqOrdering)
 
 	exprs := make(tree.TypedExprs, len(cols))
 	for i, col := range cols {
+		__antithesis_instrumentation__.Notify(551456)
 		exprs[i] = rb.r.ivarHelper.IndexedVar(int(col))
 	}
+	__antithesis_instrumentation__.Notify(551446)
 	var resultTypes []*types.T
 	if colNames != nil {
-		// We will need updated result types.
+		__antithesis_instrumentation__.Notify(551457)
+
 		resultTypes = make([]*types.T, len(cols))
 		for i := range exprs {
+			__antithesis_instrumentation__.Notify(551458)
 			resultTypes[i] = exprs[i].ResolvedType()
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(551459)
 	}
+	__antithesis_instrumentation__.Notify(551447)
 	resultCols := getResultColumnsForSimpleProject(cols, colNames, resultTypes, inputCols)
 	rb.setOutput(exprs, resultCols)
 	return rb.res, nil
 }
 
 func hasDuplicates(cols []exec.NodeColumnOrdinal) bool {
+	__antithesis_instrumentation__.Notify(551460)
 	var set util.FastIntSet
 	for _, c := range cols {
+		__antithesis_instrumentation__.Notify(551462)
 		if set.Contains(int(c)) {
+			__antithesis_instrumentation__.Notify(551464)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(551465)
 		}
+		__antithesis_instrumentation__.Notify(551463)
 		set.Add(int(c))
 	}
+	__antithesis_instrumentation__.Notify(551461)
 	return false
 }
 
-// ConstructSerializingProject is part of the exec.Factory interface.
 func (ef *execFactory) ConstructSerializingProject(
 	n exec.Node, cols []exec.NodeColumnOrdinal, colNames []string,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551466)
 	node := n.(planNode)
-	// If we are just renaming columns, we can do that in place.
+
 	if len(cols) == len(planColumns(node)) {
+		__antithesis_instrumentation__.Notify(551470)
 		identity := true
 		for i := range cols {
+			__antithesis_instrumentation__.Notify(551472)
 			if cols[i] != exec.NodeColumnOrdinal(i) {
+				__antithesis_instrumentation__.Notify(551473)
 				identity = false
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(551474)
 			}
 		}
+		__antithesis_instrumentation__.Notify(551471)
 		if identity {
+			__antithesis_instrumentation__.Notify(551475)
 			inputCols := planMutableColumns(node)
 			for i := range inputCols {
+				__antithesis_instrumentation__.Notify(551478)
 				inputCols[i].Name = colNames[i]
 			}
-			// TODO(yuzefovich): if n is not a renderNode, we won't serialize
-			// it, but this is breaking the contract of
-			// ConstructSerializingProject. We should clean this up, but in the
-			// mean time it seems acceptable given that the method is called
-			// only for the root node.
+			__antithesis_instrumentation__.Notify(551476)
+
 			if r, ok := n.(*renderNode); ok {
+				__antithesis_instrumentation__.Notify(551479)
 				r.serialize = true
+			} else {
+				__antithesis_instrumentation__.Notify(551480)
 			}
+			__antithesis_instrumentation__.Notify(551477)
 			return n, nil
+		} else {
+			__antithesis_instrumentation__.Notify(551481)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(551482)
 	}
-	res, err := constructSimpleProjectForPlanNode(node, cols, colNames, nil /* reqOrdering */)
+	__antithesis_instrumentation__.Notify(551467)
+	res, err := constructSimpleProjectForPlanNode(node, cols, colNames, nil)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551483)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551484)
 	}
+	__antithesis_instrumentation__.Notify(551468)
 	switch r := res.(type) {
 	case *renderNode:
+		__antithesis_instrumentation__.Notify(551485)
 		r.serialize = true
 	case *spoolNode:
-		// If we pulled up a spoolNode, we don't need to materialize the
-		// ordering (because all mutations are currently not distributed).
-		// TODO(yuzefovich): evaluate whether we still need to push renderings
-		// through the spoolNode.
+		__antithesis_instrumentation__.Notify(551486)
+
 	default:
+		__antithesis_instrumentation__.Notify(551487)
 		return nil, errors.AssertionFailedf("unexpected planNode type %T in ConstructSerializingProject", res)
 	}
+	__antithesis_instrumentation__.Notify(551469)
 	return res, nil
 }
 
-// ConstructRender is part of the exec.Factory interface.
-// N.B.: The input exprs will be modified.
 func (ef *execFactory) ConstructRender(
 	n exec.Node,
 	columns colinfo.ResultColumns,
 	exprs tree.TypedExprs,
 	reqOrdering exec.OutputOrdering,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551488)
 	var rb renderBuilder
 	rb.init(n, reqOrdering)
 	for i, expr := range exprs {
+		__antithesis_instrumentation__.Notify(551490)
 		exprs[i] = rb.r.ivarHelper.Rebind(expr)
 	}
+	__antithesis_instrumentation__.Notify(551489)
 	rb.setOutput(exprs, columns)
 	return rb.res, nil
 }
 
-// ConstructHashJoin is part of the exec.Factory interface.
 func (ef *execFactory) ConstructHashJoin(
 	joinType descpb.JoinType,
 	left, right exec.Node,
@@ -348,6 +443,7 @@ func (ef *execFactory) ConstructHashJoin(
 	leftEqColsAreKey, rightEqColsAreKey bool,
 	extraOnCond tree.TypedExpr,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551491)
 	p := ef.planner
 	leftSrc := asDataSource(left)
 	rightSrc := asDataSource(right)
@@ -361,9 +457,11 @@ func (ef *execFactory) ConstructHashJoin(
 	pred.rightColNames = nameBuf[numEqCols:]
 
 	for i := range leftEqCols {
+		__antithesis_instrumentation__.Notify(551493)
 		pred.leftColNames[i] = tree.Name(leftSrc.columns[leftEqCols[i]].Name)
 		pred.rightColNames[i] = tree.Name(rightSrc.columns[rightEqCols[i]].Name)
 	}
+	__antithesis_instrumentation__.Notify(551492)
 	pred.leftEqKey = leftEqColsAreKey
 	pred.rightEqKey = rightEqColsAreKey
 
@@ -372,7 +470,6 @@ func (ef *execFactory) ConstructHashJoin(
 	return p.makeJoinNode(leftSrc, rightSrc, pred), nil
 }
 
-// ConstructApplyJoin is part of the exec.Factory interface.
 func (ef *execFactory) ConstructApplyJoin(
 	joinType descpb.JoinType,
 	left exec.Node,
@@ -380,13 +477,13 @@ func (ef *execFactory) ConstructApplyJoin(
 	onCond tree.TypedExpr,
 	planRightSideFn exec.ApplyJoinPlanRightSideFn,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551494)
 	leftSrc := asDataSource(left)
 	pred := makePredicate(joinType, leftSrc.columns, rightColumns)
 	pred.onCond = pred.iVarHelper.Rebind(onCond)
 	return newApplyJoinNode(joinType, leftSrc, rightColumns, pred, planRightSideFn)
 }
 
-// ConstructMergeJoin is part of the exec.Factory interface.
 func (ef *execFactory) ConstructMergeJoin(
 	joinType descpb.JoinType,
 	left, right exec.Node,
@@ -395,6 +492,7 @@ func (ef *execFactory) ConstructMergeJoin(
 	reqOrdering exec.OutputOrdering,
 	leftEqColsAreKey, rightEqColsAreKey bool,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551495)
 	var err error
 	p := ef.planner
 	leftSrc := asDataSource(left)
@@ -407,31 +505,33 @@ func (ef *execFactory) ConstructMergeJoin(
 
 	pred.leftEqualityIndices, pred.rightEqualityIndices, node.mergeJoinOrdering, err = getEqualityIndicesAndMergeJoinOrdering(leftOrdering, rightOrdering)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551498)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551499)
 	}
+	__antithesis_instrumentation__.Notify(551496)
 	n := len(leftOrdering)
 	pred.leftColNames = make(tree.NameList, n)
 	pred.rightColNames = make(tree.NameList, n)
 	for i := 0; i < n; i++ {
+		__antithesis_instrumentation__.Notify(551500)
 		leftColIdx, rightColIdx := leftOrdering[i].ColIdx, rightOrdering[i].ColIdx
 		pred.leftColNames[i] = tree.Name(leftSrc.columns[leftColIdx].Name)
 		pred.rightColNames[i] = tree.Name(rightSrc.columns[rightColIdx].Name)
 	}
+	__antithesis_instrumentation__.Notify(551497)
 
-	// Set up node.props, which tells the distsql planner to maintain the
-	// resulting ordering (if needed).
 	node.reqOrdering = ReqOrdering(reqOrdering)
 
 	return node, nil
 }
 
-// ConstructScalarGroupBy is part of the exec.Factory interface.
 func (ef *execFactory) ConstructScalarGroupBy(
 	input exec.Node, aggregations []exec.AggInfo,
 ) (exec.Node, error) {
-	// There are no grouping columns with scalar GroupBy, so we create empty
-	// arguments upfront to be passed into getResultColumnsForGroupBy call
-	// below.
+	__antithesis_instrumentation__.Notify(551501)
+
 	var inputCols colinfo.ResultColumns
 	var groupCols []exec.NodeColumnOrdinal
 	n := &groupNode{
@@ -441,12 +541,15 @@ func (ef *execFactory) ConstructScalarGroupBy(
 		isScalar: true,
 	}
 	if err := ef.addAggregations(n, aggregations); err != nil {
+		__antithesis_instrumentation__.Notify(551503)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551504)
 	}
+	__antithesis_instrumentation__.Notify(551502)
 	return n, nil
 }
 
-// ConstructGroupBy is part of the exec.Factory interface.
 func (ef *execFactory) ConstructGroupBy(
 	input exec.Node,
 	groupCols []exec.NodeColumnOrdinal,
@@ -455,10 +558,10 @@ func (ef *execFactory) ConstructGroupBy(
 	reqOrdering exec.OutputOrdering,
 	groupingOrderType exec.GroupingOrderType,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551505)
 	inputPlan := input.(planNode)
 	inputCols := planColumns(inputPlan)
-	// TODO(harding): Use groupingOrder to determine when to use a hash
-	// aggregator.
+
 	n := &groupNode{
 		plan:             inputPlan,
 		funcs:            make([]*aggregateFuncHolder, 0, len(groupCols)+len(aggregations)),
@@ -469,23 +572,31 @@ func (ef *execFactory) ConstructGroupBy(
 		reqOrdering:      ReqOrdering(reqOrdering),
 	}
 	for _, col := range n.groupCols {
-		// TODO(radu): only generate the grouping columns we actually need.
+		__antithesis_instrumentation__.Notify(551508)
+
 		f := newAggregateFuncHolder(
 			builtins.AnyNotNull,
 			[]int{col},
-			nil,   /* arguments */
-			false, /* isDistinct */
+			nil,
+			false,
 		)
 		n.funcs = append(n.funcs, f)
 	}
+	__antithesis_instrumentation__.Notify(551506)
 	if err := ef.addAggregations(n, aggregations); err != nil {
+		__antithesis_instrumentation__.Notify(551509)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551510)
 	}
+	__antithesis_instrumentation__.Notify(551507)
 	return n, nil
 }
 
 func (ef *execFactory) addAggregations(n *groupNode, aggregations []exec.AggInfo) error {
+	__antithesis_instrumentation__.Notify(551511)
 	for i := range aggregations {
+		__antithesis_instrumentation__.Notify(551513)
 		agg := &aggregations[i]
 		renderIdxs := convertNodeOrdinalsToInts(agg.ArgCols)
 
@@ -499,10 +610,10 @@ func (ef *execFactory) addAggregations(n *groupNode, aggregations []exec.AggInfo
 
 		n.funcs = append(n.funcs, f)
 	}
+	__antithesis_instrumentation__.Notify(551512)
 	return nil
 }
 
-// ConstructDistinct is part of the exec.Factory interface.
 func (ef *execFactory) ConstructDistinct(
 	input exec.Node,
 	distinctCols, orderedCols exec.NodeColumnOrdinalSet,
@@ -510,6 +621,7 @@ func (ef *execFactory) ConstructDistinct(
 	nullsAreDistinct bool,
 	errorOnDup string,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551514)
 	return &distinctNode{
 		plan:              input.(planNode),
 		distinctOnColIdxs: distinctCols,
@@ -520,16 +632,15 @@ func (ef *execFactory) ConstructDistinct(
 	}, nil
 }
 
-// ConstructHashSetOp is part of the exec.Factory interface.
 func (ef *execFactory) ConstructHashSetOp(
 	typ tree.UnionType, all bool, left, right exec.Node,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551515)
 	return ef.planner.newUnionNode(
-		typ, all, left.(planNode), right.(planNode), nil, nil, 0, /* hardLimit */
+		typ, all, left.(planNode), right.(planNode), nil, nil, 0,
 	)
 }
 
-// ConstructStreamingSetOp is part of the exec.Factory interface.
 func (ef *execFactory) ConstructStreamingSetOp(
 	typ tree.UnionType,
 	all bool,
@@ -537,6 +648,7 @@ func (ef *execFactory) ConstructStreamingSetOp(
 	streamingOrdering colinfo.ColumnOrdering,
 	reqOrdering exec.OutputOrdering,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551516)
 	return ef.planner.newUnionNode(
 		typ,
 		all,
@@ -544,17 +656,17 @@ func (ef *execFactory) ConstructStreamingSetOp(
 		right.(planNode),
 		streamingOrdering,
 		ReqOrdering(reqOrdering),
-		0, /* hardLimit */
+		0,
 	)
 }
 
-// ConstructUnionAll is part of the exec.Factory interface.
 func (ef *execFactory) ConstructUnionAll(
 	left, right exec.Node, reqOrdering exec.OutputOrdering, hardLimit uint64,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551517)
 	return ef.planner.newUnionNode(
 		tree.UnionOp,
-		true, /* all */
+		true,
 		left.(planNode),
 		right.(planNode),
 		colinfo.ColumnOrdering(reqOrdering),
@@ -563,10 +675,10 @@ func (ef *execFactory) ConstructUnionAll(
 	)
 }
 
-// ConstructSort is part of the exec.Factory interface.
 func (ef *execFactory) ConstructSort(
 	input exec.Node, ordering exec.OutputOrdering, alreadyOrderedPrefix int,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551518)
 	return &sortNode{
 		plan:                 input.(planNode),
 		ordering:             colinfo.ColumnOrdering(ordering),
@@ -574,8 +686,8 @@ func (ef *execFactory) ConstructSort(
 	}, nil
 }
 
-// ConstructOrdinality is part of the exec.Factory interface.
 func (ef *execFactory) ConstructOrdinality(input exec.Node, colName string) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551519)
 	plan := input.(planNode)
 	inputColumns := planColumns(plan)
 	cols := make(colinfo.ResultColumns, len(inputColumns)+1)
@@ -590,7 +702,6 @@ func (ef *execFactory) ConstructOrdinality(input exec.Node, colName string) (exe
 	}, nil
 }
 
-// ConstructIndexJoin is part of the exec.Factory interface.
 func (ef *execFactory) ConstructIndexJoin(
 	input exec.Node,
 	table cat.Table,
@@ -599,6 +710,7 @@ func (ef *execFactory) ConstructIndexJoin(
 	reqOrdering exec.OutputOrdering,
 	limitHint int64,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551520)
 	tabDesc := table.(*optTable).desc
 	colCfg := makeScanColumnsConfig(table, tableCols)
 	cols := makeColList(table, tableCols)
@@ -607,20 +719,28 @@ func (ef *execFactory) ConstructIndexJoin(
 
 	ctx := ef.planner.extendedEvalCtx.Ctx()
 	if err := tableScan.initTable(ctx, ef.planner, tabDesc, colCfg); err != nil {
+		__antithesis_instrumentation__.Notify(551524)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551525)
 	}
+	__antithesis_instrumentation__.Notify(551521)
 
 	idx := tabDesc.GetPrimaryIndex()
 	tableScan.index = idx
 	tableScan.disableBatchLimit()
 
 	if !ef.isExplain {
+		__antithesis_instrumentation__.Notify(551526)
 		idxUsageKey := roachpb.IndexUsageKey{
 			TableID: roachpb.TableID(tabDesc.GetID()),
 			IndexID: roachpb.IndexID(idx.GetID()),
 		}
 		ef.planner.extendedEvalCtx.indexUsageStats.RecordRead(idxUsageKey)
+	} else {
+		__antithesis_instrumentation__.Notify(551527)
 	}
+	__antithesis_instrumentation__.Notify(551522)
 
 	n := &indexJoinNode{
 		input:         input.(planNode),
@@ -633,13 +753,14 @@ func (ef *execFactory) ConstructIndexJoin(
 
 	n.keyCols = make([]int, len(keyCols))
 	for i, c := range keyCols {
+		__antithesis_instrumentation__.Notify(551528)
 		n.keyCols[i] = int(c)
 	}
+	__antithesis_instrumentation__.Notify(551523)
 
 	return n, nil
 }
 
-// ConstructLookupJoin is part of the exec.Factory interface.
 func (ef *execFactory) ConstructLookupJoin(
 	joinType descpb.JoinType,
 	input exec.Node,
@@ -657,9 +778,14 @@ func (ef *execFactory) ConstructLookupJoin(
 	locking *tree.LockingItem,
 	limitHint int64,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551529)
 	if table.IsVirtualTable() {
+		__antithesis_instrumentation__.Notify(551539)
 		return ef.constructVirtualTableLookupJoin(joinType, input, table, index, eqCols, lookupCols, onCond)
+	} else {
+		__antithesis_instrumentation__.Notify(551540)
 	}
+	__antithesis_instrumentation__.Notify(551530)
 	tabDesc := table.(*optTable).desc
 	idx := index.(*optIndex).idx
 	colCfg := makeScanColumnsConfig(table, lookupCols)
@@ -667,22 +793,34 @@ func (ef *execFactory) ConstructLookupJoin(
 
 	ctx := ef.planner.extendedEvalCtx.Ctx()
 	if err := tableScan.initTable(ctx, ef.planner, tabDesc, colCfg); err != nil {
+		__antithesis_instrumentation__.Notify(551541)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551542)
 	}
+	__antithesis_instrumentation__.Notify(551531)
 
 	tableScan.index = idx
 	if locking != nil {
+		__antithesis_instrumentation__.Notify(551543)
 		tableScan.lockingStrength = descpb.ToScanLockingStrength(locking.Strength)
 		tableScan.lockingWaitPolicy = descpb.ToScanLockingWaitPolicy(locking.WaitPolicy)
+	} else {
+		__antithesis_instrumentation__.Notify(551544)
 	}
+	__antithesis_instrumentation__.Notify(551532)
 
 	if !ef.isExplain {
+		__antithesis_instrumentation__.Notify(551545)
 		idxUsageKey := roachpb.IndexUsageKey{
 			TableID: roachpb.TableID(tabDesc.GetID()),
 			IndexID: roachpb.IndexID(idx.GetID()),
 		}
 		ef.planner.extendedEvalCtx.indexUsageStats.RecordRead(idxUsageKey)
+	} else {
+		__antithesis_instrumentation__.Notify(551546)
 	}
+	__antithesis_instrumentation__.Notify(551533)
 
 	n := &lookupJoinNode{
 		input:                      input.(planNode),
@@ -696,22 +834,43 @@ func (ef *execFactory) ConstructLookupJoin(
 	}
 	n.eqCols = make([]int, len(eqCols))
 	for i, c := range eqCols {
+		__antithesis_instrumentation__.Notify(551547)
 		n.eqCols[i] = int(c)
 	}
+	__antithesis_instrumentation__.Notify(551534)
 	pred := makePredicate(joinType, planColumns(input.(planNode)), planColumns(tableScan))
 	if lookupExpr != nil {
+		__antithesis_instrumentation__.Notify(551548)
 		n.lookupExpr = pred.iVarHelper.Rebind(lookupExpr)
+	} else {
+		__antithesis_instrumentation__.Notify(551549)
 	}
+	__antithesis_instrumentation__.Notify(551535)
 	if remoteLookupExpr != nil {
+		__antithesis_instrumentation__.Notify(551550)
 		n.remoteLookupExpr = pred.iVarHelper.Rebind(remoteLookupExpr)
+	} else {
+		__antithesis_instrumentation__.Notify(551551)
 	}
-	if onCond != nil && onCond != tree.DBoolTrue {
+	__antithesis_instrumentation__.Notify(551536)
+	if onCond != nil && func() bool {
+		__antithesis_instrumentation__.Notify(551552)
+		return onCond != tree.DBoolTrue == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551553)
 		n.onCond = pred.iVarHelper.Rebind(onCond)
+	} else {
+		__antithesis_instrumentation__.Notify(551554)
 	}
+	__antithesis_instrumentation__.Notify(551537)
 	n.columns = pred.cols
 	if isFirstJoinInPairedJoiner {
+		__antithesis_instrumentation__.Notify(551555)
 		n.columns = append(n.columns, colinfo.ResultColumn{Name: "cont", Typ: types.Bool})
+	} else {
+		__antithesis_instrumentation__.Notify(551556)
 	}
+	__antithesis_instrumentation__.Notify(551538)
 
 	return n, nil
 }
@@ -725,45 +884,69 @@ func (ef *execFactory) constructVirtualTableLookupJoin(
 	lookupCols exec.TableColumnOrdinalSet,
 	onCond tree.TypedExpr,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551557)
 	tn := &table.(*optVirtualTable).name
 	virtual, err := ef.planner.getVirtualTabler().getVirtualTableEntry(tn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551564)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551565)
 	}
+	__antithesis_instrumentation__.Notify(551558)
 	if !canQueryVirtualTable(ef.planner.EvalContext(), virtual) {
+		__antithesis_instrumentation__.Notify(551566)
 		return nil, newUnimplementedVirtualTableError(tn.Schema(), tn.Table())
+	} else {
+		__antithesis_instrumentation__.Notify(551567)
 	}
+	__antithesis_instrumentation__.Notify(551559)
 	if len(eqCols) > 1 {
+		__antithesis_instrumentation__.Notify(551568)
 		return nil, errors.AssertionFailedf("vtable indexes with more than one column aren't supported yet")
+	} else {
+		__antithesis_instrumentation__.Notify(551569)
 	}
-	// Check for explicit use of the dummy column.
+	__antithesis_instrumentation__.Notify(551560)
+
 	if lookupCols.Contains(0) {
+		__antithesis_instrumentation__.Notify(551570)
 		return nil, errors.Errorf("use of %s column not allowed.", table.Column(0).ColName())
+	} else {
+		__antithesis_instrumentation__.Notify(551571)
 	}
+	__antithesis_instrumentation__.Notify(551561)
 	idx := index.(*optVirtualIndex).idx
 	tableDesc := table.(*optVirtualTable).desc
-	// Build the result columns.
+
 	inputCols := planColumns(input.(planNode))
 
 	if onCond == tree.DBoolTrue {
+		__antithesis_instrumentation__.Notify(551572)
 		onCond = nil
+	} else {
+		__antithesis_instrumentation__.Notify(551573)
 	}
+	__antithesis_instrumentation__.Notify(551562)
 
 	var tableScan scanNode
-	// Set up a scanNode that we won't actually use, just to get the needed
-	// column analysis.
+
 	colCfg := makeScanColumnsConfig(table, lookupCols)
 	ctx := ef.planner.extendedEvalCtx.Ctx()
 	if err := tableScan.initTable(ctx, ef.planner, tableDesc, colCfg); err != nil {
+		__antithesis_instrumentation__.Notify(551574)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551575)
 	}
+	__antithesis_instrumentation__.Notify(551563)
 	tableScan.index = idx
 	vtableCols := colinfo.ResultColumnsFromColumns(tableDesc.GetID(), tableDesc.PublicColumns())
 	projectedVtableCols := planColumns(&tableScan)
 	outputCols := make(colinfo.ResultColumns, 0, len(inputCols)+len(projectedVtableCols))
 	outputCols = append(outputCols, inputCols...)
 	outputCols = append(outputCols, projectedVtableCols...)
-	// joinType is either INNER or LEFT_OUTER.
+
 	pred := makePredicate(joinType, inputCols, projectedVtableCols)
 	pred.onCond = pred.iVarHelper.Rebind(onCond)
 	n := &vTableLookupJoinNode{
@@ -795,29 +978,34 @@ func (ef *execFactory) ConstructInvertedJoin(
 	isFirstJoinInPairedJoiner bool,
 	reqOrdering exec.OutputOrdering,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551576)
 	tabDesc := table.(*optTable).desc
 	idx := index.(*optIndex).idx
-	// NB: lookupCols does not include the inverted column, which is only a partial
-	// representation of the original table column. This scan configuration does not
-	// affect what the invertedJoiner implementation retrieves from the inverted
-	// index (which includes the inverted column). This scan configuration is used
-	// later for computing the output from the inverted join.
+
 	colCfg := makeScanColumnsConfig(table, lookupCols)
 	tableScan := ef.planner.Scan()
 
 	ctx := ef.planner.extendedEvalCtx.Ctx()
 	if err := tableScan.initTable(ctx, ef.planner, tabDesc, colCfg); err != nil {
+		__antithesis_instrumentation__.Notify(551584)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551585)
 	}
+	__antithesis_instrumentation__.Notify(551577)
 	tableScan.index = idx
 
 	if !ef.isExplain {
+		__antithesis_instrumentation__.Notify(551586)
 		idxUsageKey := roachpb.IndexUsageKey{
 			TableID: roachpb.TableID(tabDesc.GetID()),
 			IndexID: roachpb.IndexID(idx.GetID()),
 		}
 		ef.planner.extendedEvalCtx.indexUsageStats.RecordRead(idxUsageKey)
+	} else {
+		__antithesis_instrumentation__.Notify(551587)
 	}
+	__antithesis_instrumentation__.Notify(551578)
 
 	n := &invertedJoinNode{
 		input:                     input.(planNode),
@@ -828,67 +1016,99 @@ func (ef *execFactory) ConstructInvertedJoin(
 		reqOrdering:               ReqOrdering(reqOrdering),
 	}
 	if len(prefixEqCols) > 0 {
+		__antithesis_instrumentation__.Notify(551588)
 		n.prefixEqCols = make([]int, len(prefixEqCols))
 		for i, c := range prefixEqCols {
+			__antithesis_instrumentation__.Notify(551589)
 			n.prefixEqCols[i] = int(c)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(551590)
 	}
-	if onCond != nil && onCond != tree.DBoolTrue {
+	__antithesis_instrumentation__.Notify(551579)
+	if onCond != nil && func() bool {
+		__antithesis_instrumentation__.Notify(551591)
+		return onCond != tree.DBoolTrue == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551592)
 		n.onExpr = onCond
+	} else {
+		__antithesis_instrumentation__.Notify(551593)
 	}
-	// Build the result columns.
+	__antithesis_instrumentation__.Notify(551580)
+
 	inputCols := planColumns(input.(planNode))
 	var scanCols colinfo.ResultColumns
 	if joinType.ShouldIncludeRightColsInOutput() {
+		__antithesis_instrumentation__.Notify(551594)
 		scanCols = planColumns(tableScan)
+	} else {
+		__antithesis_instrumentation__.Notify(551595)
 	}
+	__antithesis_instrumentation__.Notify(551581)
 	numCols := len(inputCols) + len(scanCols)
 	if isFirstJoinInPairedJoiner {
+		__antithesis_instrumentation__.Notify(551596)
 		numCols++
+	} else {
+		__antithesis_instrumentation__.Notify(551597)
 	}
+	__antithesis_instrumentation__.Notify(551582)
 	n.columns = make(colinfo.ResultColumns, 0, numCols)
 	n.columns = append(n.columns, inputCols...)
 	n.columns = append(n.columns, scanCols...)
 	if isFirstJoinInPairedJoiner {
+		__antithesis_instrumentation__.Notify(551598)
 		n.columns = append(n.columns, colinfo.ResultColumn{Name: "cont", Typ: types.Bool})
+	} else {
+		__antithesis_instrumentation__.Notify(551599)
 	}
+	__antithesis_instrumentation__.Notify(551583)
 	return n, nil
 }
 
-// Helper function to create a scanNode from just a table / index descriptor
-// and requested cols.
 func (ef *execFactory) constructScanForZigzag(
 	index catalog.Index, tableDesc catalog.TableDescriptor, cols exec.TableColumnOrdinalSet,
 ) (*scanNode, error) {
+	__antithesis_instrumentation__.Notify(551600)
 
 	colCfg := scanColumnsConfig{
 		wantedColumns: make([]tree.ColumnID, 0, cols.Len()),
 	}
 
 	for c, ok := cols.Next(0); ok; c, ok = cols.Next(c + 1) {
+		__antithesis_instrumentation__.Notify(551604)
 		colCfg.wantedColumns = append(colCfg.wantedColumns, tableDesc.PublicColumns()[c].GetID())
 	}
+	__antithesis_instrumentation__.Notify(551601)
 
 	scan := ef.planner.Scan()
 	ctx := ef.planner.extendedEvalCtx.Ctx()
 	if err := scan.initTable(ctx, ef.planner, tableDesc, colCfg); err != nil {
+		__antithesis_instrumentation__.Notify(551605)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551606)
 	}
+	__antithesis_instrumentation__.Notify(551602)
 
 	if !ef.isExplain {
+		__antithesis_instrumentation__.Notify(551607)
 		idxUsageKey := roachpb.IndexUsageKey{
 			TableID: roachpb.TableID(tableDesc.GetID()),
 			IndexID: roachpb.IndexID(index.GetID()),
 		}
 		ef.planner.extendedEvalCtx.indexUsageStats.RecordRead(idxUsageKey)
+	} else {
+		__antithesis_instrumentation__.Notify(551608)
 	}
+	__antithesis_instrumentation__.Notify(551603)
 
 	scan.index = index
 
 	return scan, nil
 }
 
-// ConstructZigzagJoin is part of the exec.Factory interface.
 func (ef *execFactory) ConstructZigzagJoin(
 	leftTable cat.Table,
 	leftIndex cat.Index,
@@ -903,6 +1123,7 @@ func (ef *execFactory) ConstructZigzagJoin(
 	onCond tree.TypedExpr,
 	reqOrdering exec.OutputOrdering,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551609)
 	leftIdx := leftIndex.(*optIndex).idx
 	leftTabDesc := leftTable.(*optTable).desc
 	rightIdx := rightIndex.(*optIndex).idx
@@ -910,19 +1131,34 @@ func (ef *execFactory) ConstructZigzagJoin(
 
 	leftScan, err := ef.constructScanForZigzag(leftIdx, leftTabDesc, leftCols)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551616)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551617)
 	}
+	__antithesis_instrumentation__.Notify(551610)
 	rightScan, err := ef.constructScanForZigzag(rightIdx, rightTabDesc, rightCols)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551618)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551619)
 	}
+	__antithesis_instrumentation__.Notify(551611)
 
 	n := &zigzagJoinNode{
 		reqOrdering: ReqOrdering(reqOrdering),
 	}
-	if onCond != nil && onCond != tree.DBoolTrue {
+	if onCond != nil && func() bool {
+		__antithesis_instrumentation__.Notify(551620)
+		return onCond != tree.DBoolTrue == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551621)
 		n.onCond = onCond
+	} else {
+		__antithesis_instrumentation__.Notify(551622)
 	}
+	__antithesis_instrumentation__.Notify(551612)
 	n.sides = make([]zigzagJoinSide, 2)
 	n.sides[0].scan = leftScan
 	n.sides[1].scan = rightScan
@@ -930,15 +1166,20 @@ func (ef *execFactory) ConstructZigzagJoin(
 	n.sides[1].eqCols = make([]int, len(rightEqCols))
 
 	if len(leftEqCols) != len(rightEqCols) {
+		__antithesis_instrumentation__.Notify(551623)
 		panic("creating zigzag join with unequal number of equated cols")
+	} else {
+		__antithesis_instrumentation__.Notify(551624)
 	}
+	__antithesis_instrumentation__.Notify(551613)
 
 	for i, c := range leftEqCols {
+		__antithesis_instrumentation__.Notify(551625)
 		n.sides[0].eqCols[i] = int(c)
 		n.sides[1].eqCols[i] = int(rightEqCols[i])
 	}
-	// The resultant columns are identical to those from individual index scans; so
-	// reuse the resultColumns generated in the scanNodes.
+	__antithesis_instrumentation__.Notify(551614)
+
 	n.columns = make(
 		colinfo.ResultColumns,
 		0,
@@ -947,49 +1188,61 @@ func (ef *execFactory) ConstructZigzagJoin(
 	n.columns = append(n.columns, leftScan.resultColumns...)
 	n.columns = append(n.columns, rightScan.resultColumns...)
 
-	// Fixed values are the values fixed for a prefix of each side's index columns.
-	// See the comment in pkg/sql/rowexec/zigzagjoiner.go for how they are used.
-
-	// mkFixedVals creates a values node that contains a single row with values
-	// for a prefix of the index columns.
-	// TODO(radu): using a valuesNode to represent a single tuple is dubious.
 	mkFixedVals := func(fixedVals []tree.TypedExpr, index cat.Index) *valuesNode {
+		__antithesis_instrumentation__.Notify(551626)
 		cols := make(colinfo.ResultColumns, len(fixedVals))
 		for i := range cols {
+			__antithesis_instrumentation__.Notify(551628)
 			col := index.Column(i)
 			cols[i].Name = string(col.ColName())
 			cols[i].Typ = col.DatumType()
 		}
+		__antithesis_instrumentation__.Notify(551627)
 		return &valuesNode{
 			columns:          cols,
 			tuples:           [][]tree.TypedExpr{fixedVals},
 			specifiedInQuery: true,
 		}
 	}
+	__antithesis_instrumentation__.Notify(551615)
 	n.sides[0].fixedVals = mkFixedVals(leftFixedVals, leftIndex)
 	n.sides[1].fixedVals = mkFixedVals(rightFixedVals, rightIndex)
 	return n, nil
 }
 
-// ConstructLimit is part of the exec.Factory interface.
 func (ef *execFactory) ConstructLimit(
 	input exec.Node, limit, offset tree.TypedExpr,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551629)
 	plan := input.(planNode)
-	// If the input plan is also a limitNode that has just an offset, and we are
-	// only applying a limit, update the existing node. This is useful because
-	// Limit and Offset are separate operators which result in separate calls to
-	// this function.
-	if l, ok := plan.(*limitNode); ok && l.countExpr == nil && offset == nil {
+
+	if l, ok := plan.(*limitNode); ok && func() bool {
+		__antithesis_instrumentation__.Notify(551632)
+		return l.countExpr == nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(551633)
+		return offset == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(551634)
 		l.countExpr = limit
 		return l, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551635)
 	}
-	// If the input plan is a spoolNode, then propagate any constant limit to it.
+	__antithesis_instrumentation__.Notify(551630)
+
 	if spool, ok := plan.(*spoolNode); ok {
+		__antithesis_instrumentation__.Notify(551636)
 		if val, ok := limit.(*tree.DInt); ok {
+			__antithesis_instrumentation__.Notify(551637)
 			spool.hardLimit = int64(*val)
+		} else {
+			__antithesis_instrumentation__.Notify(551638)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(551639)
 	}
+	__antithesis_instrumentation__.Notify(551631)
 	return &limitNode{
 		plan:       plan,
 		countExpr:  limit,
@@ -997,10 +1250,10 @@ func (ef *execFactory) ConstructLimit(
 	}, nil
 }
 
-// ConstructTopK is part of the execFactory interface.
 func (ef *execFactory) ConstructTopK(
 	input exec.Node, k int64, ordering exec.OutputOrdering, alreadyOrderedPrefix int,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551640)
 	return &topKNode{
 		plan:                 input.(planNode),
 		k:                    k,
@@ -1009,8 +1262,8 @@ func (ef *execFactory) ConstructTopK(
 	}, nil
 }
 
-// ConstructMax1Row is part of the exec.Factory interface.
 func (ef *execFactory) ConstructMax1Row(input exec.Node, errorText string) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551641)
 	plan := input.(planNode)
 	return &max1RowNode{
 		plan:      plan,
@@ -1018,31 +1271,34 @@ func (ef *execFactory) ConstructMax1Row(input exec.Node, errorText string) (exec
 	}, nil
 }
 
-// ConstructBuffer is part of the exec.Factory interface.
 func (ef *execFactory) ConstructBuffer(input exec.Node, label string) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551642)
 	return &bufferNode{
 		plan:  input.(planNode),
 		label: label,
 	}, nil
 }
 
-// ConstructScanBuffer is part of the exec.Factory interface.
 func (ef *execFactory) ConstructScanBuffer(ref exec.Node, label string) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551643)
 	if n, ok := ref.(*explain.Node); ok {
-		// This can happen if we used explain on the main query but we construct the
-		// scan buffer inside a separate plan (e.g. recursive CTEs).
+		__antithesis_instrumentation__.Notify(551645)
+
 		ref = n.WrappedNode()
+	} else {
+		__antithesis_instrumentation__.Notify(551646)
 	}
+	__antithesis_instrumentation__.Notify(551644)
 	return &scanBufferNode{
 		buffer: ref.(*bufferNode),
 		label:  label,
 	}, nil
 }
 
-// ConstructRecursiveCTE is part of the exec.Factory interface.
 func (ef *execFactory) ConstructRecursiveCTE(
 	initial exec.Node, fn exec.RecursiveCTEIterationFn, label string, deduplicate bool,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551647)
 	return &recursiveCTENode{
 		initial:        initial.(planNode),
 		genIterationFn: fn,
@@ -1051,10 +1307,10 @@ func (ef *execFactory) ConstructRecursiveCTE(
 	}, nil
 }
 
-// ConstructProjectSet is part of the exec.Factory interface.
 func (ef *execFactory) ConstructProjectSet(
 	n exec.Node, exprs tree.TypedExprs, zipCols colinfo.ResultColumns, numColsPerGen []int,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551648)
 	src := asDataSource(n)
 	cols := append(src.columns, zipCols...)
 	return &projectSetNode{
@@ -1068,8 +1324,8 @@ func (ef *execFactory) ConstructProjectSet(
 	}, nil
 }
 
-// ConstructWindow is part of the exec.Factory interface.
 func (ef *execFactory) ConstructWindow(root exec.Node, wi exec.WindowInfo) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551649)
 	p := &windowNode{
 		plan:         root.(planNode),
 		columns:      wi.Cols,
@@ -1078,15 +1334,20 @@ func (ef *execFactory) ConstructWindow(root exec.Node, wi exec.WindowInfo) (exec
 
 	partitionIdxs := make([]int, len(wi.Partition))
 	for i, idx := range wi.Partition {
+		__antithesis_instrumentation__.Notify(551652)
 		partitionIdxs[i] = int(idx)
 	}
+	__antithesis_instrumentation__.Notify(551650)
 
 	p.funcs = make([]*windowFuncHolder, len(wi.Exprs))
 	for i := range wi.Exprs {
+		__antithesis_instrumentation__.Notify(551653)
 		argsIdxs := make([]uint32, len(wi.ArgIdxs[i]))
 		for j := range argsIdxs {
+			__antithesis_instrumentation__.Notify(551656)
 			argsIdxs[j] = uint32(wi.ArgIdxs[i][j])
 		}
+		__antithesis_instrumentation__.Notify(551654)
 
 		p.funcs[i] = &windowFuncHolder{
 			expr:           wi.Exprs[i],
@@ -1100,21 +1361,30 @@ func (ef *execFactory) ConstructWindow(root exec.Node, wi exec.WindowInfo) (exec
 			frame:          wi.Exprs[i].WindowDef.Frame,
 		}
 		if len(wi.Ordering) == 0 {
+			__antithesis_instrumentation__.Notify(551657)
 			frame := p.funcs[i].frame
-			if frame.Mode == treewindow.RANGE && frame.Bounds.HasOffset() {
-				// Execution requires a single column to order by when there is
-				// a RANGE mode frame with at least one 'offset' bound.
+			if frame.Mode == treewindow.RANGE && func() bool {
+				__antithesis_instrumentation__.Notify(551658)
+				return frame.Bounds.HasOffset() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(551659)
+
 				return nil, errors.AssertionFailedf("a RANGE mode frame with an offset bound must have an ORDER BY column")
+			} else {
+				__antithesis_instrumentation__.Notify(551660)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(551661)
 		}
+		__antithesis_instrumentation__.Notify(551655)
 
 		p.windowRender[wi.OutputIdxs[i]] = p.funcs[i]
 	}
+	__antithesis_instrumentation__.Notify(551651)
 
 	return p, nil
 }
 
-// ConstructPlan is part of the exec.Factory interface.
 func (ef *execFactory) ConstructPlan(
 	root exec.Node,
 	subqueries []exec.Subquery,
@@ -1122,41 +1392,61 @@ func (ef *execFactory) ConstructPlan(
 	checks []exec.Node,
 	rootRowCount int64,
 ) (exec.Plan, error) {
-	// No need to spool at the root.
+	__antithesis_instrumentation__.Notify(551662)
+
 	if spool, ok := root.(*spoolNode); ok {
+		__antithesis_instrumentation__.Notify(551664)
 		root = spool.source
+	} else {
+		__antithesis_instrumentation__.Notify(551665)
 	}
+	__antithesis_instrumentation__.Notify(551663)
 	return constructPlan(ef.planner, root, subqueries, cascades, checks, rootRowCount)
 }
 
-// urlOutputter handles writing strings into an encoded URL for EXPLAIN (OPT,
-// ENV). It also ensures that (in the text that is encoded by the URL) each
-// entry gets its own line and there's exactly one blank line between entries.
 type urlOutputter struct {
 	buf bytes.Buffer
 }
 
 func (e *urlOutputter) writef(format string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(551666)
 	if e.buf.Len() > 0 {
+		__antithesis_instrumentation__.Notify(551668)
 		e.buf.WriteString("\n")
+	} else {
+		__antithesis_instrumentation__.Notify(551669)
 	}
+	__antithesis_instrumentation__.Notify(551667)
 	fmt.Fprintf(&e.buf, format, args...)
 }
 
 func (e *urlOutputter) finish() (url.URL, error) {
-	// Generate a URL that encodes all the text.
+	__antithesis_instrumentation__.Notify(551670)
+
 	var compressed bytes.Buffer
 	encoder := base64.NewEncoder(base64.URLEncoding, &compressed)
 	compressor := zlib.NewWriter(encoder)
 	if _, err := e.buf.WriteTo(compressor); err != nil {
+		__antithesis_instrumentation__.Notify(551674)
 		return url.URL{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(551675)
 	}
+	__antithesis_instrumentation__.Notify(551671)
 	if err := compressor.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(551676)
 		return url.URL{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(551677)
 	}
+	__antithesis_instrumentation__.Notify(551672)
 	if err := encoder.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(551678)
 		return url.URL{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(551679)
 	}
+	__antithesis_instrumentation__.Notify(551673)
 	return url.URL{
 		Scheme:   "https",
 		Host:     "cockroachdb.github.io",
@@ -1165,9 +1455,8 @@ func (e *urlOutputter) finish() (url.URL, error) {
 	}, nil
 }
 
-// showEnv implements EXPLAIN (opt, env). It returns a node which displays
-// the environment a query was run in.
 func (ef *execFactory) showEnv(plan string, envOpts exec.ExplainEnvData) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551680)
 	var out urlOutputter
 
 	ie := ef.planner.extendedEvalCtx.ExecCfg.InternalExecutorFactory(
@@ -1176,61 +1465,79 @@ func (ef *execFactory) showEnv(plan string, envOpts exec.ExplainEnvData) (exec.N
 	)
 	c := makeStmtEnvCollector(ef.planner.EvalContext().Context, ie.(*InternalExecutor))
 
-	// Show the version of Cockroach running.
 	if err := c.PrintVersion(&out.buf); err != nil {
+		__antithesis_instrumentation__.Notify(551687)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551688)
 	}
+	__antithesis_instrumentation__.Notify(551681)
 	out.writef("")
-	// Show the values of any non-default session variables that can impact
-	// planning decisions.
-	if err := c.PrintSessionSettings(&out.buf); err != nil {
-		return nil, err
-	}
 
-	// Show the definition of each referenced catalog object.
+	if err := c.PrintSessionSettings(&out.buf); err != nil {
+		__antithesis_instrumentation__.Notify(551689)
+		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551690)
+	}
+	__antithesis_instrumentation__.Notify(551682)
+
 	for i := range envOpts.Sequences {
+		__antithesis_instrumentation__.Notify(551691)
 		out.writef("")
 		if err := c.PrintCreateSequence(&out.buf, &envOpts.Sequences[i]); err != nil {
+			__antithesis_instrumentation__.Notify(551692)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(551693)
 		}
 	}
+	__antithesis_instrumentation__.Notify(551683)
 
-	// TODO(justin): it might also be relevant in some cases to print the create
-	// statements for tables referenced via FKs in these tables.
 	for i := range envOpts.Tables {
+		__antithesis_instrumentation__.Notify(551694)
 		out.writef("")
 		if err := c.PrintCreateTable(&out.buf, &envOpts.Tables[i]); err != nil {
+			__antithesis_instrumentation__.Notify(551696)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(551697)
 		}
+		__antithesis_instrumentation__.Notify(551695)
 		out.writef("")
 
-		// In addition to the schema, it's important to know what the table
-		// statistics on each table are.
-
-		// NOTE: We don't include the histograms because they take up a ton of
-		// vertical space. Unfortunately this means that in some cases we won't be
-		// able to reproduce a particular plan.
-		err := c.PrintTableStats(&out.buf, &envOpts.Tables[i], true /* hideHistograms */)
+		err := c.PrintTableStats(&out.buf, &envOpts.Tables[i], true)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(551698)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(551699)
 		}
 	}
+	__antithesis_instrumentation__.Notify(551684)
 
 	for i := range envOpts.Views {
+		__antithesis_instrumentation__.Notify(551700)
 		out.writef("")
 		if err := c.PrintCreateView(&out.buf, &envOpts.Views[i]); err != nil {
+			__antithesis_instrumentation__.Notify(551701)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(551702)
 		}
 	}
+	__antithesis_instrumentation__.Notify(551685)
 
-	// Show the query running. Note that this is the *entire* query, including
-	// the "EXPLAIN (opt, env)" preamble.
 	out.writef("%s;\n----\n%s", ef.planner.stmt.AST.String(), plan)
 
 	url, err := out.finish()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551703)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551704)
 	}
+	__antithesis_instrumentation__.Notify(551686)
 	return &valuesNode{
 		columns:          append(colinfo.ResultColumns(nil), colinfo.ExplainPlanColumns...),
 		tuples:           [][]tree.TypedExpr{{tree.NewDString(url.String())}},
@@ -1238,21 +1545,26 @@ func (ef *execFactory) showEnv(plan string, envOpts exec.ExplainEnvData) (exec.N
 	}, nil
 }
 
-// ConstructExplainOpt is part of the exec.Factory interface.
 func (ef *execFactory) ConstructExplainOpt(
 	planText string, envOpts exec.ExplainEnvData,
 ) (exec.Node, error) {
-	// If this was an EXPLAIN (opt, env), we need to run a bunch of auxiliary
-	// queries to fetch the environment info.
+	__antithesis_instrumentation__.Notify(551705)
+
 	if envOpts.ShowEnv {
+		__antithesis_instrumentation__.Notify(551708)
 		return ef.showEnv(planText, envOpts)
+	} else {
+		__antithesis_instrumentation__.Notify(551709)
 	}
+	__antithesis_instrumentation__.Notify(551706)
 
 	var rows [][]tree.TypedExpr
 	ss := strings.Split(strings.Trim(planText, "\n"), "\n")
 	for _, line := range ss {
+		__antithesis_instrumentation__.Notify(551710)
 		rows = append(rows, []tree.TypedExpr{tree.NewDString(line)})
 	}
+	__antithesis_instrumentation__.Notify(551707)
 
 	return &valuesNode{
 		columns:          append(colinfo.ResultColumns(nil), colinfo.ExplainPlanColumns...),
@@ -1261,12 +1573,10 @@ func (ef *execFactory) ConstructExplainOpt(
 	}, nil
 }
 
-// ConstructShowTrace is part of the exec.Factory interface.
 func (ef *execFactory) ConstructShowTrace(typ tree.ShowTraceType, compact bool) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551711)
 	var node planNode = ef.planner.makeShowTraceNode(compact, typ == tree.ShowTraceKV)
 
-	// Ensure the messages are sorted in age order, so that the user
-	// does not get confused.
 	ageColIdx := colinfo.GetTraceAgeColumnIdx(compact)
 	node = &sortNode{
 		plan: node,
@@ -1276,8 +1586,12 @@ func (ef *execFactory) ConstructShowTrace(typ tree.ShowTraceType, compact bool) 
 	}
 
 	if typ == tree.ShowTraceReplica {
+		__antithesis_instrumentation__.Notify(551713)
 		node = &showTraceReplicaNode{plan: node}
+	} else {
+		__antithesis_instrumentation__.Notify(551714)
 	}
+	__antithesis_instrumentation__.Notify(551712)
 	return node, nil
 }
 
@@ -1291,18 +1605,21 @@ func (ef *execFactory) ConstructInsert(
 	checkOrdSet exec.CheckOrdinalSet,
 	autoCommit bool,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551715)
 	ctx := ef.planner.extendedEvalCtx.Context
 
-	// Derive insert table and column descriptors.
 	rowsNeeded := !returnColOrdSet.Empty()
 	tabDesc := table.(*optTable).desc
 	cols := makeColList(table, insertColOrdSet)
 
 	if err := ef.planner.maybeSetSystemConfig(tabDesc.GetID()); err != nil {
+		__antithesis_instrumentation__.Notify(551721)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551722)
 	}
+	__antithesis_instrumentation__.Notify(551716)
 
-	// Create the table inserter, which does the bulk of the work.
 	internal := ef.planner.SessionData().Internal
 	ri, err := row.MakeInserter(
 		ctx,
@@ -1316,10 +1633,13 @@ func (ef *execFactory) ConstructInsert(
 		ef.planner.ExecCfg().GetRowMetrics(internal),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551723)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551724)
 	}
+	__antithesis_instrumentation__.Notify(551717)
 
-	// Regular path for INSERT.
 	ins := insertNodePool.Get().(*insertNode)
 	*ins = insertNode{
 		source: input.(planNode),
@@ -1330,30 +1650,34 @@ func (ef *execFactory) ConstructInsert(
 		},
 	}
 
-	// If rows are not needed, no columns are returned.
 	if rowsNeeded {
+		__antithesis_instrumentation__.Notify(551725)
 		returnCols := makeColList(table, returnColOrdSet)
 		ins.columns = colinfo.ResultColumnsFromColumns(tabDesc.GetID(), returnCols)
 
-		// Set the tabColIdxToRetIdx for the mutation. Insert always returns
-		// non-mutation columns in the same order they are defined in the table.
 		ins.run.tabColIdxToRetIdx = makePublicToReturnColumnIndexMapping(tabDesc, returnCols)
 		ins.run.rowsNeeded = true
+	} else {
+		__antithesis_instrumentation__.Notify(551726)
 	}
+	__antithesis_instrumentation__.Notify(551718)
 
 	if autoCommit {
+		__antithesis_instrumentation__.Notify(551727)
 		ins.enableAutoCommit()
+	} else {
+		__antithesis_instrumentation__.Notify(551728)
 	}
+	__antithesis_instrumentation__.Notify(551719)
 
-	// serialize the data-modifying plan to ensure that no data is
-	// observed that hasn't been validated first. See the comments
-	// on BatchedNext() in plan_batch.go.
 	if rowsNeeded {
+		__antithesis_instrumentation__.Notify(551729)
 		return &spoolNode{source: &serializeNode{source: ins}}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551730)
 	}
+	__antithesis_instrumentation__.Notify(551720)
 
-	// We could use serializeNode here, but using rowCountNode is an
-	// optimization that saves on calls to Next() by the caller.
 	return &rowCountNode{source: ins}, nil
 }
 
@@ -1366,18 +1690,21 @@ func (ef *execFactory) ConstructInsertFastPath(
 	fkChecks []exec.InsertFastPathFKCheck,
 	autoCommit bool,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551731)
 	ctx := ef.planner.extendedEvalCtx.Context
 
-	// Derive insert table and column descriptors.
 	rowsNeeded := !returnColOrdSet.Empty()
 	tabDesc := table.(*optTable).desc
 	cols := makeColList(table, insertColOrdSet)
 
 	if err := ef.planner.maybeSetSystemConfig(tabDesc.GetID()); err != nil {
+		__antithesis_instrumentation__.Notify(551739)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551740)
 	}
+	__antithesis_instrumentation__.Notify(551732)
 
-	// Create the table inserter, which does the bulk of the work.
 	internal := ef.planner.SessionData().Internal
 	ri, err := row.MakeInserter(
 		ctx,
@@ -1391,10 +1718,13 @@ func (ef *execFactory) ConstructInsertFastPath(
 		ef.planner.ExecCfg().GetRowMetrics(internal),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551741)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551742)
 	}
+	__antithesis_instrumentation__.Notify(551733)
 
-	// Regular path for INSERT.
 	ins := insertFastPathNodePool.Get().(*insertFastPathNode)
 	*ins = insertFastPathNode{
 		input: rows,
@@ -1408,40 +1738,53 @@ func (ef *execFactory) ConstructInsertFastPath(
 	}
 
 	if len(fkChecks) > 0 {
+		__antithesis_instrumentation__.Notify(551743)
 		ins.run.fkChecks = make([]insertFastPathFKCheck, len(fkChecks))
 		for i := range fkChecks {
+			__antithesis_instrumentation__.Notify(551744)
 			ins.run.fkChecks[i].InsertFastPathFKCheck = fkChecks[i]
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(551745)
 	}
+	__antithesis_instrumentation__.Notify(551734)
 
-	// If rows are not needed, no columns are returned.
 	if rowsNeeded {
+		__antithesis_instrumentation__.Notify(551746)
 		returnCols := makeColList(table, returnColOrdSet)
 		ins.columns = colinfo.ResultColumnsFromColumns(tabDesc.GetID(), returnCols)
 
-		// Set the tabColIdxToRetIdx for the mutation. Insert always returns
-		// non-mutation columns in the same order they are defined in the table.
 		ins.run.tabColIdxToRetIdx = makePublicToReturnColumnIndexMapping(tabDesc, returnCols)
 		ins.run.rowsNeeded = true
+	} else {
+		__antithesis_instrumentation__.Notify(551747)
 	}
+	__antithesis_instrumentation__.Notify(551735)
 
 	if len(rows) == 0 {
+		__antithesis_instrumentation__.Notify(551748)
 		return &zeroNode{columns: ins.columns}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551749)
 	}
+	__antithesis_instrumentation__.Notify(551736)
 
 	if autoCommit {
+		__antithesis_instrumentation__.Notify(551750)
 		ins.enableAutoCommit()
+	} else {
+		__antithesis_instrumentation__.Notify(551751)
 	}
+	__antithesis_instrumentation__.Notify(551737)
 
-	// serialize the data-modifying plan to ensure that no data is
-	// observed that hasn't been validated first. See the comments
-	// on BatchedNext() in plan_batch.go.
 	if rowsNeeded {
+		__antithesis_instrumentation__.Notify(551752)
 		return &spoolNode{source: &serializeNode{source: ins}}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551753)
 	}
+	__antithesis_instrumentation__.Notify(551738)
 
-	// We could use serializeNode here, but using rowCountNode is an
-	// optimization that saves on calls to Next() by the caller.
 	return &rowCountNode{source: ins}, nil
 }
 
@@ -1455,35 +1798,37 @@ func (ef *execFactory) ConstructUpdate(
 	passthrough colinfo.ResultColumns,
 	autoCommit bool,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551754)
 	ctx := ef.planner.extendedEvalCtx.Context
 
-	// TODO(radu): the execution code has an annoying limitation that the fetch
-	// columns must be a superset of the update columns, even when the "old" value
-	// of a column is not necessary. The optimizer code for pruning columns is
-	// aware of this limitation.
 	if !updateColOrdSet.SubsetOf(fetchColOrdSet) {
+		__antithesis_instrumentation__.Notify(551763)
 		return nil, errors.AssertionFailedf("execution requires all update columns have a fetch column")
+	} else {
+		__antithesis_instrumentation__.Notify(551764)
 	}
+	__antithesis_instrumentation__.Notify(551755)
 
-	// Derive table and column descriptors.
 	rowsNeeded := !returnColOrdSet.Empty()
 	tabDesc := table.(*optTable).desc
 	fetchCols := makeColList(table, fetchColOrdSet)
 
 	if err := ef.planner.maybeSetSystemConfig(tabDesc.GetID()); err != nil {
+		__antithesis_instrumentation__.Notify(551765)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551766)
 	}
+	__antithesis_instrumentation__.Notify(551756)
 
-	// Add each column to update as a sourceSlot. The CBO only uses scalarSlot,
-	// since it compiles tuples and subqueries into a simple sequence of target
-	// columns.
 	updateCols := makeColList(table, updateColOrdSet)
 	sourceSlots := make([]sourceSlot, len(updateCols))
 	for i := range sourceSlots {
+		__antithesis_instrumentation__.Notify(551767)
 		sourceSlots[i] = scalarSlot{column: updateCols[i], sourceIndex: len(fetchCols) + i}
 	}
+	__antithesis_instrumentation__.Notify(551757)
 
-	// Create the table updater, which does the bulk of the work.
 	internal := ef.planner.SessionData().Internal
 	ru, err := row.MakeUpdater(
 		ctx,
@@ -1499,16 +1844,20 @@ func (ef *execFactory) ConstructUpdate(
 		ef.planner.ExecCfg().GetRowMetrics(internal),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551768)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551769)
 	}
+	__antithesis_instrumentation__.Notify(551758)
 
-	// updateColsIdx inverts the mapping of UpdateCols to FetchCols. See
-	// the explanatory comments in updateRun.
 	var updateColsIdx catalog.TableColMap
 	for i := range ru.UpdateCols {
+		__antithesis_instrumentation__.Notify(551770)
 		id := ru.UpdateCols[i].GetID()
 		updateColsIdx.Set(id, i)
 	}
+	__antithesis_instrumentation__.Notify(551759)
 
 	upd := updateNodePool.Get().(*updateNode)
 	*upd = updateNode{
@@ -1528,38 +1877,37 @@ func (ef *execFactory) ConstructUpdate(
 		},
 	}
 
-	// If rows are not needed, no columns are returned.
 	if rowsNeeded {
+		__antithesis_instrumentation__.Notify(551771)
 		returnCols := makeColList(table, returnColOrdSet)
 
 		upd.columns = colinfo.ResultColumnsFromColumns(tabDesc.GetID(), returnCols)
-		// Add the passthrough columns to the returning columns.
+
 		upd.columns = append(upd.columns, passthrough...)
 
-		// Set the rowIdxToRetIdx for the mutation. Update returns the non-mutation
-		// columns specified, in the same order they are defined in the table.
-		//
-		// The Updater derives/stores the fetch columns of the mutation and
-		// since the return columns are always a subset of the fetch columns,
-		// we can use use the fetch columns to generate the mapping for the
-		// returned rows.
 		upd.run.rowIdxToRetIdx = row.ColMapping(ru.FetchCols, returnCols)
 		upd.run.rowsNeeded = true
+	} else {
+		__antithesis_instrumentation__.Notify(551772)
 	}
+	__antithesis_instrumentation__.Notify(551760)
 
 	if autoCommit {
+		__antithesis_instrumentation__.Notify(551773)
 		upd.enableAutoCommit()
+	} else {
+		__antithesis_instrumentation__.Notify(551774)
 	}
+	__antithesis_instrumentation__.Notify(551761)
 
-	// Serialize the data-modifying plan to ensure that no data is observed that
-	// hasn't been validated first. See the comments on BatchedNext() in
-	// plan_batch.go.
 	if rowsNeeded {
+		__antithesis_instrumentation__.Notify(551775)
 		return &spoolNode{source: &serializeNode{source: upd}}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551776)
 	}
+	__antithesis_instrumentation__.Notify(551762)
 
-	// We could use serializeNode here, but using rowCountNode is an
-	// optimization that saves on calls to Next() by the caller.
 	return &rowCountNode{source: upd}, nil
 }
 
@@ -1576,9 +1924,9 @@ func (ef *execFactory) ConstructUpsert(
 	checks exec.CheckOrdinalSet,
 	autoCommit bool,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551777)
 	ctx := ef.planner.extendedEvalCtx.Context
 
-	// Derive table and column descriptors.
 	rowsNeeded := !returnColOrdSet.Empty()
 	tabDesc := table.(*optTable).desc
 	insertCols := makeColList(table, insertColOrdSet)
@@ -1586,10 +1934,13 @@ func (ef *execFactory) ConstructUpsert(
 	updateCols := makeColList(table, updateColOrdSet)
 
 	if err := ef.planner.maybeSetSystemConfig(tabDesc.GetID()); err != nil {
+		__antithesis_instrumentation__.Notify(551784)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551785)
 	}
+	__antithesis_instrumentation__.Notify(551778)
 
-	// Create the table inserter, which does the bulk of the insert-related work.
 	internal := ef.planner.SessionData().Internal
 	ri, err := row.MakeInserter(
 		ctx,
@@ -1603,10 +1954,13 @@ func (ef *execFactory) ConstructUpsert(
 		ef.planner.ExecCfg().GetRowMetrics(internal),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551786)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551787)
 	}
+	__antithesis_instrumentation__.Notify(551779)
 
-	// Create the table updater, which does the bulk of the update-related work.
 	ru, err := row.MakeUpdater(
 		ctx,
 		ef.planner.txn,
@@ -1621,10 +1975,13 @@ func (ef *execFactory) ConstructUpsert(
 		ef.planner.ExecCfg().GetRowMetrics(internal),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551788)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551789)
 	}
+	__antithesis_instrumentation__.Notify(551780)
 
-	// Instantiate the upsert node.
 	ups := upsertNodePool.Get().(*upsertNode)
 	*ups = upsertNode{
 		source: input.(planNode),
@@ -1641,32 +1998,35 @@ func (ef *execFactory) ConstructUpsert(
 		},
 	}
 
-	// If rows are not needed, no columns are returned.
 	if rowsNeeded {
+		__antithesis_instrumentation__.Notify(551790)
 		returnCols := makeColList(table, returnColOrdSet)
 		ups.columns = colinfo.ResultColumnsFromColumns(tabDesc.GetID(), returnCols)
 
-		// Update the tabColIdxToRetIdx for the mutation. Upsert returns
-		// non-mutation columns specified, in the same order they are defined
-		// in the table.
 		ups.run.tw.tabColIdxToRetIdx = makePublicToReturnColumnIndexMapping(tabDesc, returnCols)
 		ups.run.tw.returnCols = returnCols
 		ups.run.tw.rowsNeeded = true
+	} else {
+		__antithesis_instrumentation__.Notify(551791)
 	}
+	__antithesis_instrumentation__.Notify(551781)
 
 	if autoCommit {
+		__antithesis_instrumentation__.Notify(551792)
 		ups.enableAutoCommit()
+	} else {
+		__antithesis_instrumentation__.Notify(551793)
 	}
+	__antithesis_instrumentation__.Notify(551782)
 
-	// Serialize the data-modifying plan to ensure that no data is observed that
-	// hasn't been validated first. See the comments on BatchedNext() in
-	// plan_batch.go.
 	if rowsNeeded {
+		__antithesis_instrumentation__.Notify(551794)
 		return &spoolNode{source: &serializeNode{source: ups}}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551795)
 	}
+	__antithesis_instrumentation__.Notify(551783)
 
-	// We could use serializeNode here, but using rowCountNode is an
-	// optimization that saves on calls to Next() by the caller.
 	return &rowCountNode{source: ups}, nil
 }
 
@@ -1677,19 +2037,20 @@ func (ef *execFactory) ConstructDelete(
 	returnColOrdSet exec.TableColumnOrdinalSet,
 	autoCommit bool,
 ) (exec.Node, error) {
-	// Derive table and column descriptors.
+	__antithesis_instrumentation__.Notify(551796)
+
 	rowsNeeded := !returnColOrdSet.Empty()
 	tabDesc := table.(*optTable).desc
 	fetchCols := makeColList(table, fetchColOrdSet)
 
 	if err := ef.planner.maybeSetSystemConfig(tabDesc.GetID()); err != nil {
+		__antithesis_instrumentation__.Notify(551801)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551802)
 	}
+	__antithesis_instrumentation__.Notify(551797)
 
-	// Create the table deleter, which does the bulk of the work. In the HP,
-	// the deleter derives the columns that need to be fetched. By contrast, the
-	// CBO will have already determined the set of fetch columns, and passes
-	// those sets into the deleter (which will basically be a no-op).
 	internal := ef.planner.SessionData().Internal
 	rd := row.MakeDeleter(
 		ef.planner.ExecCfg().Codec,
@@ -1700,7 +2061,6 @@ func (ef *execFactory) ConstructDelete(
 		ef.planner.ExecCfg().GetRowMetrics(internal),
 	)
 
-	// Now make a delete node. We use a pool.
 	del := deleteNodePool.Get().(*deleteNode)
 	*del = deleteNode{
 		source: input.(planNode),
@@ -1710,30 +2070,35 @@ func (ef *execFactory) ConstructDelete(
 		},
 	}
 
-	// If rows are not needed, no columns are returned.
 	if rowsNeeded {
+		__antithesis_instrumentation__.Notify(551803)
 		returnCols := makeColList(table, returnColOrdSet)
-		// Delete returns the non-mutation columns specified, in the same
-		// order they are defined in the table.
+
 		del.columns = colinfo.ResultColumnsFromColumns(tabDesc.GetID(), returnCols)
 
 		del.run.rowIdxToRetIdx = row.ColMapping(rd.FetchCols, returnCols)
 		del.run.rowsNeeded = true
+	} else {
+		__antithesis_instrumentation__.Notify(551804)
 	}
+	__antithesis_instrumentation__.Notify(551798)
 
 	if autoCommit {
+		__antithesis_instrumentation__.Notify(551805)
 		del.enableAutoCommit()
+	} else {
+		__antithesis_instrumentation__.Notify(551806)
 	}
+	__antithesis_instrumentation__.Notify(551799)
 
-	// Serialize the data-modifying plan to ensure that no data is observed that
-	// hasn't been validated first. See the comments on BatchedNext() in
-	// plan_batch.go.
 	if rowsNeeded {
+		__antithesis_instrumentation__.Notify(551807)
 		return &spoolNode{source: &serializeNode{source: del}}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551808)
 	}
+	__antithesis_instrumentation__.Notify(551800)
 
-	// We could use serializeNode here, but using rowCountNode is an
-	// optimization that saves on calls to Next() by the caller.
 	return &rowCountNode{source: del}, nil
 }
 
@@ -1743,18 +2108,27 @@ func (ef *execFactory) ConstructDeleteRange(
 	indexConstraint *constraint.Constraint,
 	autoCommit bool,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551809)
 	tabDesc := table.(*optTable).desc
 	var sb span.Builder
 	sb.Init(ef.planner.EvalContext(), ef.planner.ExecCfg().Codec, tabDesc, tabDesc.GetPrimaryIndex())
 
 	if err := ef.planner.maybeSetSystemConfig(tabDesc.GetID()); err != nil {
+		__antithesis_instrumentation__.Notify(551812)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551813)
 	}
+	__antithesis_instrumentation__.Notify(551810)
 
 	spans, err := sb.SpansFromConstraint(indexConstraint, span.NoopSplitter())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551814)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551815)
 	}
+	__antithesis_instrumentation__.Notify(551811)
 
 	dr := &deleteRangeNode{
 		spans:             spans,
@@ -1765,34 +2139,42 @@ func (ef *execFactory) ConstructDeleteRange(
 	return dr, nil
 }
 
-// ConstructCreateTable is part of the exec.Factory interface.
 func (ef *execFactory) ConstructCreateTable(
 	schema cat.Schema, ct *tree.CreateTable,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551816)
 	if err := checkSchemaChangeEnabled(
 		ef.planner.EvalContext().Context,
 		ef.planner.ExecCfg(),
 		"CREATE TABLE",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(551818)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551819)
 	}
+	__antithesis_instrumentation__.Notify(551817)
 	return &createTableNode{
 		n:      ct,
 		dbDesc: schema.(*optSchema).database,
 	}, nil
 }
 
-// ConstructCreateTableAs is part of the exec.Factory interface.
 func (ef *execFactory) ConstructCreateTableAs(
 	input exec.Node, schema cat.Schema, ct *tree.CreateTable,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551820)
 	if err := checkSchemaChangeEnabled(
 		ef.planner.EvalContext().Context,
 		ef.planner.ExecCfg(),
 		"CREATE TABLE",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(551822)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551823)
 	}
+	__antithesis_instrumentation__.Notify(551821)
 
 	return &createTableNode{
 		n:          ct,
@@ -1801,7 +2183,6 @@ func (ef *execFactory) ConstructCreateTableAs(
 	}, nil
 }
 
-// ConstructCreateView is part of the exec.Factory interface.
 func (ef *execFactory) ConstructCreateView(
 	schema cat.Schema,
 	viewName *cat.DataSourceName,
@@ -1814,42 +2195,64 @@ func (ef *execFactory) ConstructCreateView(
 	deps opt.ViewDeps,
 	typeDeps opt.ViewTypeDeps,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551824)
 
 	if err := checkSchemaChangeEnabled(
 		ef.planner.EvalContext().Context,
 		ef.planner.ExecCfg(),
 		"CREATE VIEW",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(551828)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551829)
 	}
+	__antithesis_instrumentation__.Notify(551825)
 
 	planDeps := make(planDependencies, len(deps))
 	for _, d := range deps {
+		__antithesis_instrumentation__.Notify(551830)
 		desc, err := getDescForDataSource(d.DataSource)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(551834)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(551835)
 		}
+		__antithesis_instrumentation__.Notify(551831)
 		var ref descpb.TableDescriptor_Reference
 		if d.SpecificIndex {
+			__antithesis_instrumentation__.Notify(551836)
 			idx := d.DataSource.(cat.Table).Index(d.Index)
 			ref.IndexID = idx.(*optIndex).idx.GetID()
+		} else {
+			__antithesis_instrumentation__.Notify(551837)
 		}
+		__antithesis_instrumentation__.Notify(551832)
 		if !d.ColumnOrdinals.Empty() {
+			__antithesis_instrumentation__.Notify(551838)
 			ref.ColumnIDs = make([]descpb.ColumnID, 0, d.ColumnOrdinals.Len())
 			d.ColumnOrdinals.ForEach(func(ord int) {
+				__antithesis_instrumentation__.Notify(551839)
 				ref.ColumnIDs = append(ref.ColumnIDs, desc.AllColumns()[ord].GetID())
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(551840)
 		}
+		__antithesis_instrumentation__.Notify(551833)
 		entry := planDeps[desc.GetID()]
 		entry.desc = desc
 		entry.deps = append(entry.deps, ref)
 		planDeps[desc.GetID()] = entry
 	}
+	__antithesis_instrumentation__.Notify(551826)
 
 	typeDepSet := make(typeDependencies, typeDeps.Len())
 	typeDeps.ForEach(func(id int) {
+		__antithesis_instrumentation__.Notify(551841)
 		typeDepSet[descpb.ID(id)] = struct{}{}
 	})
+	__antithesis_instrumentation__.Notify(551827)
 
 	return &createViewNode{
 		viewName:     viewName,
@@ -1865,53 +2268,65 @@ func (ef *execFactory) ConstructCreateView(
 	}, nil
 }
 
-// ConstructSequenceSelect is part of the exec.Factory interface.
 func (ef *execFactory) ConstructSequenceSelect(sequence cat.Sequence) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551842)
 	return ef.planner.SequenceSelectNode(sequence.(*optSequence).desc)
 }
 
-// ConstructSaveTable is part of the exec.Factory interface.
 func (ef *execFactory) ConstructSaveTable(
 	input exec.Node, table *cat.DataSourceName, colNames []string,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551843)
 	return ef.planner.makeSaveTable(input.(planNode), table, colNames), nil
 }
 
-// ConstructErrorIfRows is part of the exec.Factory interface.
 func (ef *execFactory) ConstructErrorIfRows(
 	input exec.Node, mkErr exec.MkErrFn,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551844)
 	return &errorIfRowsNode{
 		plan:  input.(planNode),
 		mkErr: mkErr,
 	}, nil
 }
 
-// ConstructOpaque is part of the exec.Factory interface.
 func (ef *execFactory) ConstructOpaque(metadata opt.OpaqueMetadata) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551845)
 	return constructOpaque(metadata)
 }
 
-// ConstructAlterTableSplit is part of the exec.Factory interface.
 func (ef *execFactory) ConstructAlterTableSplit(
 	index cat.Index, input exec.Node, expiration tree.TypedExpr,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551846)
 	if err := checkSchemaChangeEnabled(
 		ef.planner.EvalContext().Context,
 		ef.planner.ExecCfg(),
 		"ALTER TABLE/INDEX SPLIT AT",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(551850)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551851)
 	}
+	__antithesis_instrumentation__.Notify(551847)
 
 	if !ef.planner.ExecCfg().Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(551852)
 		return nil, errorutil.UnsupportedWithMultiTenancy(54254)
+	} else {
+		__antithesis_instrumentation__.Notify(551853)
 	}
+	__antithesis_instrumentation__.Notify(551848)
 
 	expirationTime, err := parseExpirationTime(ef.planner.EvalContext(), expiration)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551854)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551855)
 	}
+	__antithesis_instrumentation__.Notify(551849)
 
 	return &splitNode{
 		tableDesc:      index.Table().(*optTable).desc,
@@ -1921,21 +2336,29 @@ func (ef *execFactory) ConstructAlterTableSplit(
 	}, nil
 }
 
-// ConstructAlterTableUnsplit is part of the exec.Factory interface.
 func (ef *execFactory) ConstructAlterTableUnsplit(
 	index cat.Index, input exec.Node,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551856)
 	if err := checkSchemaChangeEnabled(
 		ef.planner.EvalContext().Context,
 		ef.planner.ExecCfg(),
 		"ALTER TABLE/INDEX UNSPLIT AT",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(551859)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551860)
 	}
+	__antithesis_instrumentation__.Notify(551857)
 
 	if !ef.planner.ExecCfg().Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(551861)
 		return nil, errorutil.UnsupportedWithMultiTenancy(54254)
+	} else {
+		__antithesis_instrumentation__.Notify(551862)
 	}
+	__antithesis_instrumentation__.Notify(551858)
 
 	return &unsplitNode{
 		tableDesc: index.Table().(*optTable).desc,
@@ -1944,19 +2367,27 @@ func (ef *execFactory) ConstructAlterTableUnsplit(
 	}, nil
 }
 
-// ConstructAlterTableUnsplitAll is part of the exec.Factory interface.
 func (ef *execFactory) ConstructAlterTableUnsplitAll(index cat.Index) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551863)
 	if err := checkSchemaChangeEnabled(
 		ef.planner.EvalContext().Context,
 		ef.planner.ExecCfg(),
 		"ALTER TABLE/INDEX UNSPLIT ALL",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(551866)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551867)
 	}
+	__antithesis_instrumentation__.Notify(551864)
 
 	if !ef.planner.ExecCfg().Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(551868)
 		return nil, errorutil.UnsupportedWithMultiTenancy(54254)
+	} else {
+		__antithesis_instrumentation__.Notify(551869)
 	}
+	__antithesis_instrumentation__.Notify(551865)
 
 	return &unsplitAllNode{
 		tableDesc: index.Table().(*optTable).desc,
@@ -1964,13 +2395,17 @@ func (ef *execFactory) ConstructAlterTableUnsplitAll(index cat.Index) (exec.Node
 	}, nil
 }
 
-// ConstructAlterTableRelocate is part of the exec.Factory interface.
 func (ef *execFactory) ConstructAlterTableRelocate(
 	index cat.Index, input exec.Node, relocateSubject tree.RelocateSubject,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551870)
 	if !ef.planner.ExecCfg().Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(551872)
 		return nil, errorutil.UnsupportedWithMultiTenancy(54250)
+	} else {
+		__antithesis_instrumentation__.Notify(551873)
 	}
+	__antithesis_instrumentation__.Notify(551871)
 
 	return &relocateNode{
 		subjectReplicas: relocateSubject,
@@ -1980,16 +2415,20 @@ func (ef *execFactory) ConstructAlterTableRelocate(
 	}, nil
 }
 
-// ConstructAlterRangeRelocate is part of the exec.Factory interface.
 func (ef *execFactory) ConstructAlterRangeRelocate(
 	input exec.Node,
 	relocateSubject tree.RelocateSubject,
 	toStoreID tree.TypedExpr,
 	fromStoreID tree.TypedExpr,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551874)
 	if !ef.planner.ExecCfg().Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(551876)
 		return nil, errorutil.UnsupportedWithMultiTenancy(54250)
+	} else {
+		__antithesis_instrumentation__.Notify(551877)
 	}
+	__antithesis_instrumentation__.Notify(551875)
 
 	return &relocateRange{
 		rows:            input.(planNode),
@@ -1999,23 +2438,35 @@ func (ef *execFactory) ConstructAlterRangeRelocate(
 	}, nil
 }
 
-// ConstructControlJobs is part of the exec.Factory interface.
 func (ef *execFactory) ConstructControlJobs(
 	command tree.JobCommand, input exec.Node, reason tree.TypedExpr,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551878)
 	reasonDatum, err := reason.Eval(ef.planner.EvalContext())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551881)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551882)
 	}
+	__antithesis_instrumentation__.Notify(551879)
 
 	var reasonStr string
 	if reasonDatum != tree.DNull {
+		__antithesis_instrumentation__.Notify(551883)
 		reasonStrDatum, ok := reasonDatum.(*tree.DString)
 		if !ok {
+			__antithesis_instrumentation__.Notify(551885)
 			return nil, errors.Errorf("expected string value for the reason")
+		} else {
+			__antithesis_instrumentation__.Notify(551886)
 		}
+		__antithesis_instrumentation__.Notify(551884)
 		reasonStr = string(*reasonStrDatum)
+	} else {
+		__antithesis_instrumentation__.Notify(551887)
 	}
+	__antithesis_instrumentation__.Notify(551880)
 
 	return &controlJobsNode{
 		rows:          input.(planNode),
@@ -2024,34 +2475,34 @@ func (ef *execFactory) ConstructControlJobs(
 	}, nil
 }
 
-// ConstructControlJobs is part of the exec.Factory interface.
 func (ef *execFactory) ConstructControlSchedules(
 	command tree.ScheduleCommand, input exec.Node,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551888)
 	return &controlSchedulesNode{
 		rows:    input.(planNode),
 		command: command,
 	}, nil
 }
 
-// ConstructCancelQueries is part of the exec.Factory interface.
 func (ef *execFactory) ConstructCancelQueries(input exec.Node, ifExists bool) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551889)
 	return &cancelQueriesNode{
 		rows:     input.(planNode),
 		ifExists: ifExists,
 	}, nil
 }
 
-// ConstructCancelSessions is part of the exec.Factory interface.
 func (ef *execFactory) ConstructCancelSessions(input exec.Node, ifExists bool) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551890)
 	return &cancelSessionsNode{
 		rows:     input.(planNode),
 		ifExists: ifExists,
 	}, nil
 }
 
-// ConstructCreateStatistics is part of the exec.Factory interface.
 func (ef *execFactory) ConstructCreateStatistics(cs *tree.CreateStats) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551891)
 	ctx := ef.planner.extendedEvalCtx.Context
 	if err := featureflag.CheckEnabled(
 		ctx,
@@ -2059,11 +2510,17 @@ func (ef *execFactory) ConstructCreateStatistics(cs *tree.CreateStats) (exec.Nod
 		featureStatsEnabled,
 		"ANALYZE/CREATE STATISTICS",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(551893)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551894)
 	}
-	// Don't run as a job if we are inside an EXPLAIN / EXPLAIN ANALYZE. That will
-	// allow us to get insight into the actual execution.
-	runAsJob := !ef.isExplain && ef.planner.instrumentation.ShouldUseJobForCreateStats()
+	__antithesis_instrumentation__.Notify(551892)
+
+	runAsJob := !ef.isExplain && func() bool {
+		__antithesis_instrumentation__.Notify(551895)
+		return ef.planner.instrumentation.ShouldUseJobForCreateStats() == true
+	}() == true
 
 	return &createStatsNode{
 		CreateStats: *cs,
@@ -2072,41 +2529,61 @@ func (ef *execFactory) ConstructCreateStatistics(cs *tree.CreateStats) (exec.Nod
 	}, nil
 }
 
-// ConstructExplain is part of the exec.Factory interface.
 func (ef *execFactory) ConstructExplain(
 	options *tree.ExplainOptions,
 	stmtType tree.StatementReturnType,
 	buildFn exec.BuildPlanForExplainFn,
 ) (exec.Node, error) {
+	__antithesis_instrumentation__.Notify(551896)
 	if options.Flags[tree.ExplainFlagEnv] {
+		__antithesis_instrumentation__.Notify(551902)
 		return nil, errors.New("ENV only supported with (OPT) option")
+	} else {
+		__antithesis_instrumentation__.Notify(551903)
 	}
+	__antithesis_instrumentation__.Notify(551897)
 
 	plan, err := buildFn(&execFactory{
 		planner:   ef.planner,
 		isExplain: true,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(551904)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(551905)
 	}
+	__antithesis_instrumentation__.Notify(551898)
 	if options.Mode == tree.ExplainVec {
+		__antithesis_instrumentation__.Notify(551906)
 		wrappedPlan := plan.(*explain.Plan).WrappedPlan.(*planComponents)
 		return &explainVecNode{
 			options: options,
 			plan:    *wrappedPlan,
 		}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551907)
 	}
+	__antithesis_instrumentation__.Notify(551899)
 	if options.Mode == tree.ExplainDDL {
+		__antithesis_instrumentation__.Notify(551908)
 		wrappedPlan := plan.(*explain.Plan).WrappedPlan.(*planComponents)
 		return &explainDDLNode{
 			options: options,
 			plan:    *wrappedPlan,
 		}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(551909)
 	}
+	__antithesis_instrumentation__.Notify(551900)
 	flags := explain.MakeFlags(options)
 	if ef.planner.execCfg.TestingKnobs.DeterministicExplain {
+		__antithesis_instrumentation__.Notify(551910)
 		flags.Redact = explain.RedactVolatile
+	} else {
+		__antithesis_instrumentation__.Notify(551911)
 	}
+	__antithesis_instrumentation__.Notify(551901)
 	n := &explainPlanNode{
 		options: options,
 		flags:   flags,
@@ -2115,13 +2592,11 @@ func (ef *execFactory) ConstructExplain(
 	return n, nil
 }
 
-// renderBuilder encapsulates the code to build a renderNode.
 type renderBuilder struct {
 	r   *renderNode
 	res planNode
 }
 
-// init initializes the renderNode with render expressions.
 func (rb *renderBuilder) init(n exec.Node, reqOrdering exec.OutputOrdering) {
 	src := asDataSource(n)
 	rb.r = &renderNode{
@@ -2130,7 +2605,6 @@ func (rb *renderBuilder) init(n exec.Node, reqOrdering exec.OutputOrdering) {
 	rb.r.ivarHelper = tree.MakeIndexedVarHelper(rb.r, len(src.columns))
 	rb.r.reqOrdering = ReqOrdering(reqOrdering)
 
-	// If there's a spool, pull it up.
 	if spool, ok := rb.r.source.plan.(*spoolNode); ok {
 		rb.r.source.plan = spool.source
 		spool.source = rb.r
@@ -2140,36 +2614,34 @@ func (rb *renderBuilder) init(n exec.Node, reqOrdering exec.OutputOrdering) {
 	}
 }
 
-// setOutput sets the output of the renderNode. exprs is the list of render
-// expressions, and columns is the list of information about the expressions,
-// including their names, types, and so on. They must be the same length.
 func (rb *renderBuilder) setOutput(exprs tree.TypedExprs, columns colinfo.ResultColumns) {
+	__antithesis_instrumentation__.Notify(551912)
 	rb.r.render = exprs
 	rb.r.columns = columns
 }
 
-// makeColList returns a list of table column interfaces. Columns are
-// included if their ordinal position in the table schema is in the cols set.
 func makeColList(table cat.Table, cols exec.TableColumnOrdinalSet) []catalog.Column {
+	__antithesis_instrumentation__.Notify(551913)
 	tab := table.(optCatalogTableInterface)
 	ret := make([]catalog.Column, 0, cols.Len())
 	for i, n := 0, table.ColumnCount(); i < n; i++ {
+		__antithesis_instrumentation__.Notify(551915)
 		if !cols.Contains(i) {
+			__antithesis_instrumentation__.Notify(551917)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(551918)
 		}
+		__antithesis_instrumentation__.Notify(551916)
 		ret = append(ret, tab.getCol(i))
 	}
+	__antithesis_instrumentation__.Notify(551914)
 	return ret
 }
 
-// makePublicToReturnColumnIndexMapping returns a map from the ordinals
-// of the table's public columns to ordinals in the returnColDescs slice.
-//  More precisely, for 0 <= i < len(tableDesc.PublicColumns()):
-//   result[i] = j such that returnColDescs[j].ID is the ID of
-//                   the i'th public column, or
-//              -1 if the i'th public column is not found in returnColDescs.
 func makePublicToReturnColumnIndexMapping(
 	tableDesc catalog.TableDescriptor, returnCols []catalog.Column,
 ) []int {
+	__antithesis_instrumentation__.Notify(551919)
 	return row.ColMapping(tableDesc.PublicColumns(), returnCols)
 }

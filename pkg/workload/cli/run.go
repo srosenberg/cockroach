@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -130,8 +122,7 @@ func init() {
 		for _, meta := range workload.Registered() {
 			gen := meta.New()
 			if _, ok := gen.(workload.Opser); !ok {
-				// If Opser is not implemented, this would just fail at runtime,
-				// so omit it.
+
 				continue
 			}
 
@@ -151,7 +142,7 @@ func init() {
 			genRunCmd.Flags().AddFlagSet(genFlags)
 			genRunCmd.Flags().AddFlagSet(securityFlags)
 			initFlags.VisitAll(func(initFlag *pflag.Flag) {
-				// Every init flag is a valid run flag that implies the --init option.
+
 				f := *initFlag
 				f.Usage += ` (implies --init)`
 				genRunCmd.Flags().AddFlag(&f)
@@ -166,89 +157,128 @@ func init() {
 	})
 }
 
-// CmdHelper handles common workload command logic, such as error handling and
-// ensuring the database name in the connection string (if provided) matches the
-// expected one.
 func CmdHelper(
 	gen workload.Generator, fn func(gen workload.Generator, urls []string, dbName string) error,
 ) func(*cobra.Command, []string) {
+	__antithesis_instrumentation__.Notify(693690)
 	return HandleErrs(func(cmd *cobra.Command, args []string) error {
-		// Apply the logging configuration if none was set already.
+		__antithesis_instrumentation__.Notify(693691)
+
 		if active, _ := log.IsActive(); !active {
+			__antithesis_instrumentation__.Notify(693697)
 			cfg := logconfig.DefaultStderrConfig()
-			if err := cfg.Validate(nil /* no default log directory */); err != nil {
+			if err := cfg.Validate(nil); err != nil {
+				__antithesis_instrumentation__.Notify(693699)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(693700)
 			}
+			__antithesis_instrumentation__.Notify(693698)
 			if _, err := log.ApplyConfig(cfg); err != nil {
+				__antithesis_instrumentation__.Notify(693701)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(693702)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(693703)
 		}
+		__antithesis_instrumentation__.Notify(693692)
 
 		if h, ok := gen.(workload.Hookser); ok {
+			__antithesis_instrumentation__.Notify(693704)
 			if h.Hooks().Validate != nil {
+				__antithesis_instrumentation__.Notify(693705)
 				if err := h.Hooks().Validate(); err != nil {
+					__antithesis_instrumentation__.Notify(693706)
 					return errors.Wrapf(err, "could not validate")
+				} else {
+					__antithesis_instrumentation__.Notify(693707)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(693708)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(693709)
 		}
+		__antithesis_instrumentation__.Notify(693693)
 
-		// HACK: Steal the dbOverride out of flags. This should go away
-		// once more of run.go moves inside workload.
 		var dbOverride string
 		if dbFlag := cmd.Flag(`db`); dbFlag != nil {
+			__antithesis_instrumentation__.Notify(693710)
 			dbOverride = dbFlag.Value.String()
+		} else {
+			__antithesis_instrumentation__.Notify(693711)
 		}
+		__antithesis_instrumentation__.Notify(693694)
 
 		urls := args
 		if len(urls) == 0 {
+			__antithesis_instrumentation__.Notify(693712)
 			crdbDefaultURL := fmt.Sprintf(`postgres://%s@localhost:26257?sslmode=disable`, *user)
 			if *secure {
+				__antithesis_instrumentation__.Notify(693714)
 				if *password != "" {
+					__antithesis_instrumentation__.Notify(693715)
 					crdbDefaultURL = fmt.Sprintf(
 						`postgres://%s:%s@localhost:26257?sslmode=require&sslrootcert=certs/ca.crt`,
 						*user, *password)
 				} else {
+					__antithesis_instrumentation__.Notify(693716)
 					crdbDefaultURL = fmt.Sprintf(
-						// This URL expects the certs to have been created by the user.
+
 						`postgres://%s@localhost:26257?sslcert=certs/client.%s.crt&sslkey=certs/client.%s.key&sslrootcert=certs/ca.crt&sslmode=require`,
 						*user, *user, *user)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(693717)
 			}
+			__antithesis_instrumentation__.Notify(693713)
 
 			urls = []string{crdbDefaultURL}
+		} else {
+			__antithesis_instrumentation__.Notify(693718)
 		}
+		__antithesis_instrumentation__.Notify(693695)
 		dbName, err := workload.SanitizeUrls(gen, dbOverride, urls)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(693719)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(693720)
 		}
+		__antithesis_instrumentation__.Notify(693696)
 		return fn(gen, urls, dbName)
 	})
 }
 
-// SetCmdDefaults ensures that the provided Cobra command will properly report
-// an error if the user specifies an invalid subcommand. It is safe to call on
-// any Cobra command.
-//
-// This is a wontfix bug in Cobra: https://github.com/spf13/cobra/pull/329
 func SetCmdDefaults(cmd *cobra.Command) *cobra.Command {
-	if cmd.Run == nil && cmd.RunE == nil {
+	__antithesis_instrumentation__.Notify(693721)
+	if cmd.Run == nil && func() bool {
+		__antithesis_instrumentation__.Notify(693724)
+		return cmd.RunE == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(693725)
 		cmd.Run = func(cmd *cobra.Command, args []string) {
+			__antithesis_instrumentation__.Notify(693726)
 			_ = cmd.Usage()
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(693727)
 	}
+	__antithesis_instrumentation__.Notify(693722)
 	if cmd.Args == nil {
+		__antithesis_instrumentation__.Notify(693728)
 		cmd.Args = cobra.NoArgs
+	} else {
+		__antithesis_instrumentation__.Notify(693729)
 	}
+	__antithesis_instrumentation__.Notify(693723)
 	return cmd
 }
 
-// numOps keeps a global count of successful operations (if countErrors is
-// false) or of all operations (if countErrors is true).
 var numOps uint64
 
-// workerRun is an infinite loop in which the worker continuously attempts to
-// read / write blocks of random data into a table in cockroach DB. The function
-// returns only when the provided context is canceled.
 func workerRun(
 	ctx context.Context,
 	errCh chan<- error,
@@ -256,51 +286,92 @@ func workerRun(
 	limiter *rate.Limiter,
 	workFn func(context.Context) error,
 ) {
+	__antithesis_instrumentation__.Notify(693730)
 	if wg != nil {
+		__antithesis_instrumentation__.Notify(693732)
 		defer wg.Done()
+	} else {
+		__antithesis_instrumentation__.Notify(693733)
 	}
+	__antithesis_instrumentation__.Notify(693731)
 
 	for {
+		__antithesis_instrumentation__.Notify(693734)
 		if ctx.Err() != nil {
+			__antithesis_instrumentation__.Notify(693738)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(693739)
 		}
+		__antithesis_instrumentation__.Notify(693735)
 
-		// Limit how quickly the load generator sends requests based on --max-rate.
 		if limiter != nil {
+			__antithesis_instrumentation__.Notify(693740)
 			if err := limiter.Wait(ctx); err != nil {
+				__antithesis_instrumentation__.Notify(693741)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(693742)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(693743)
 		}
+		__antithesis_instrumentation__.Notify(693736)
 
 		if err := workFn(ctx); err != nil {
-			if ctx.Err() != nil && (errors.Is(err, ctx.Err()) || errors.Is(err, driver.ErrBadConn)) {
-				// lib/pq may return either the `context canceled` error or a
-				// `bad connection` error when performing an operation with a context
-				// that has been canceled. See https://github.com/lib/pq/pull/1000
+			__antithesis_instrumentation__.Notify(693744)
+			if ctx.Err() != nil && func() bool {
+				__antithesis_instrumentation__.Notify(693746)
+				return (errors.Is(err, ctx.Err()) || func() bool {
+					__antithesis_instrumentation__.Notify(693747)
+					return errors.Is(err, driver.ErrBadConn) == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(693748)
+
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(693749)
 			}
+			__antithesis_instrumentation__.Notify(693745)
 			errCh <- err
 			if !*countErrors {
-				// Continue to the next iteration of the infinite loop only if
-				// we are not counting the errors.
+				__antithesis_instrumentation__.Notify(693750)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(693751)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(693752)
 		}
+		__antithesis_instrumentation__.Notify(693737)
 
 		v := atomic.AddUint64(&numOps, 1)
-		if *maxOps > 0 && v >= *maxOps {
+		if *maxOps > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(693753)
+			return v >= *maxOps == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(693754)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(693755)
 		}
 	}
 }
 
 func runInit(gen workload.Generator, urls []string, dbName string) error {
+	__antithesis_instrumentation__.Notify(693756)
 	ctx := context.Background()
 
 	initDB, err := gosql.Open(`cockroach`, strings.Join(urls, ` `))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(693758)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(693759)
 	}
+	__antithesis_instrumentation__.Notify(693757)
 
 	startPProfEndPoint(ctx)
 	return runInitImpl(ctx, gen, initDB, dbName)
@@ -309,105 +380,163 @@ func runInit(gen workload.Generator, urls []string, dbName string) error {
 func runInitImpl(
 	ctx context.Context, gen workload.Generator, initDB *gosql.DB, dbName string,
 ) error {
+	__antithesis_instrumentation__.Notify(693760)
 	if *drop {
+		__antithesis_instrumentation__.Notify(693764)
 		if _, err := initDB.ExecContext(ctx, `DROP DATABASE IF EXISTS `+dbName); err != nil {
+			__antithesis_instrumentation__.Notify(693765)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(693766)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(693767)
 	}
+	__antithesis_instrumentation__.Notify(693761)
 	if _, err := initDB.ExecContext(ctx, `CREATE DATABASE IF NOT EXISTS `+dbName); err != nil {
+		__antithesis_instrumentation__.Notify(693768)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(693769)
 	}
+	__antithesis_instrumentation__.Notify(693762)
 
 	var l workload.InitialDataLoader
 	switch strings.ToLower(*dataLoader) {
 	case `insert`, `inserts`:
+		__antithesis_instrumentation__.Notify(693770)
 		l = workloadsql.InsertsDataLoader{
 			Concurrency: *initConns,
 		}
 	case `import`, `imports`:
+		__antithesis_instrumentation__.Notify(693771)
 		l = workload.ImportDataLoader
 	default:
+		__antithesis_instrumentation__.Notify(693772)
 		return errors.Errorf(`unknown data loader: %s`, *dataLoader)
 	}
+	__antithesis_instrumentation__.Notify(693763)
 
 	_, err := workloadsql.Setup(ctx, initDB, gen, l)
 	return err
 }
 
 func startPProfEndPoint(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(693773)
 	b := envutil.EnvOrDefaultInt64("COCKROACH_BLOCK_PROFILE_RATE",
-		10000000 /* 1 sample per 10 milliseconds spent blocking */)
+		10000000)
 
 	m := envutil.EnvOrDefaultInt("COCKROACH_MUTEX_PROFILE_RATE",
-		1000 /* 1 sample per 1000 mutex contention events */)
+		1000)
 	runtime.SetBlockProfileRate(int(b))
 	runtime.SetMutexProfileFraction(m)
 
 	go func() {
+		__antithesis_instrumentation__.Notify(693774)
 		err := http.ListenAndServe(":"+strconv.Itoa(*pprofport), nil)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(693775)
 			log.Errorf(ctx, "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(693776)
 		}
 	}()
 }
 
 func runRun(gen workload.Generator, urls []string, dbName string) error {
+	__antithesis_instrumentation__.Notify(693777)
 	ctx := context.Background()
 
 	var formatter outputFormat
 	switch *displayFormat {
 	case "simple":
+		__antithesis_instrumentation__.Notify(693790)
 		formatter = &textFormatter{}
 	case "incremental-json":
+		__antithesis_instrumentation__.Notify(693791)
 		formatter = &jsonFormatter{w: os.Stdout}
 	default:
+		__antithesis_instrumentation__.Notify(693792)
 		return errors.Errorf("unknown display format: %s", *displayFormat)
 	}
+	__antithesis_instrumentation__.Notify(693778)
 
 	startPProfEndPoint(ctx)
 	initDB, err := gosql.Open(`cockroach`, strings.Join(urls, ` `))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(693793)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(693794)
 	}
-	if *doInit || *drop {
+	__antithesis_instrumentation__.Notify(693779)
+	if *doInit || func() bool {
+		__antithesis_instrumentation__.Notify(693795)
+		return *drop == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(693796)
 		log.Info(ctx, `DEPRECATION: `+
 			`the --init flag on "workload run" will no longer be supported after 19.2`)
 		for {
+			__antithesis_instrumentation__.Notify(693797)
 			err = runInitImpl(ctx, gen, initDB, dbName)
 			if err == nil {
+				__antithesis_instrumentation__.Notify(693800)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(693801)
 			}
+			__antithesis_instrumentation__.Notify(693798)
 			if !*tolerateErrors {
+				__antithesis_instrumentation__.Notify(693802)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(693803)
 			}
+			__antithesis_instrumentation__.Notify(693799)
 			log.Infof(ctx, "retrying after error during init: %v", err)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(693804)
 	}
+	__antithesis_instrumentation__.Notify(693780)
 
 	var limiter *rate.Limiter
 	if *maxRate > 0 {
-		// Create a limiter using maxRate specified on the command line and
-		// with allowed burst of 1 at the maximum allowed rate.
+		__antithesis_instrumentation__.Notify(693805)
+
 		limiter = rate.NewLimiter(rate.Limit(*maxRate), 1)
+	} else {
+		__antithesis_instrumentation__.Notify(693806)
 	}
+	__antithesis_instrumentation__.Notify(693781)
 
 	o, ok := gen.(workload.Opser)
 	if !ok {
+		__antithesis_instrumentation__.Notify(693807)
 		return errors.Errorf(`no operations defined for %s`, gen.Meta().Name)
+	} else {
+		__antithesis_instrumentation__.Notify(693808)
 	}
+	__antithesis_instrumentation__.Notify(693782)
 	reg := histogram.NewRegistry(
 		*histogramsMaxLatency,
 		gen.Meta().Name,
 	)
-	// Expose the prometheus gatherer.
+
 	go func() {
+		__antithesis_instrumentation__.Notify(693809)
 		if err := http.ListenAndServe(
 			fmt.Sprintf(":%d", *prometheusPort),
 			promhttp.HandlerFor(reg.Gatherer(), promhttp.HandlerOpts{}),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(693810)
 			log.Errorf(context.Background(), "error serving prometheus: %v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(693811)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(693783)
 
 	var ops workload.QueryLoad
 	prepareStart := timeutil.Now()
@@ -416,76 +545,113 @@ func runRun(gen workload.Generator, urls []string, dbName string) error {
 	prepareCtx, cancel := context.WithTimeout(ctx, prepareTimeout)
 	defer cancel()
 	if prepareErr := func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(693812)
 		retry := retry.StartWithCtx(ctx, retry.Options{})
 		var err error
 		for retry.Next() {
+			__antithesis_instrumentation__.Notify(693815)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(693818)
 				log.Warningf(ctx, "retrying after error while creating load: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(693819)
 			}
+			__antithesis_instrumentation__.Notify(693816)
 			ops, err = o.Ops(ctx, urls, reg)
 			if err == nil {
+				__antithesis_instrumentation__.Notify(693820)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(693821)
 			}
+			__antithesis_instrumentation__.Notify(693817)
 			err = errors.Wrapf(err, "failed to initialize the load generator")
 			if !*tolerateErrors {
+				__antithesis_instrumentation__.Notify(693822)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(693823)
 			}
 		}
+		__antithesis_instrumentation__.Notify(693813)
 		if ctx.Err() != nil {
-			// Don't retry endlessly. Note that this retry loop is not under the
-			// control of --duration, so we're avoiding retrying endlessly.
+			__antithesis_instrumentation__.Notify(693824)
+
 			log.Errorf(ctx, "Attempt to create load generator failed. "+
 				"It's been more than %s since we started trying to create the load generator "+
 				"so we're giving up. Last failure: %s", prepareTimeout, err)
+		} else {
+			__antithesis_instrumentation__.Notify(693825)
 		}
+		__antithesis_instrumentation__.Notify(693814)
 		return err
 	}(prepareCtx); prepareErr != nil {
+		__antithesis_instrumentation__.Notify(693826)
 		return prepareErr
+	} else {
+		__antithesis_instrumentation__.Notify(693827)
 	}
+	__antithesis_instrumentation__.Notify(693784)
 	log.Infof(ctx, "creating load generator... done (took %s)", timeutil.Since(prepareStart))
 
 	start := timeutil.Now()
 	errCh := make(chan error)
 	var rampDone chan struct{}
 	if *ramp > 0 {
-		// Create a channel to signal when the ramp period finishes. Will
-		// be reset to nil when consumed by the process loop below.
+		__antithesis_instrumentation__.Notify(693828)
+
 		rampDone = make(chan struct{})
+	} else {
+		__antithesis_instrumentation__.Notify(693829)
 	}
+	__antithesis_instrumentation__.Notify(693785)
 
 	workersCtx, cancelWorkers := context.WithCancel(ctx)
 	defer cancelWorkers()
 	var wg sync.WaitGroup
 	wg.Add(len(ops.WorkerFns))
 	go func() {
-		// If a ramp period was specified, start all of the workers gradually
-		// with a new context.
+		__antithesis_instrumentation__.Notify(693830)
+
 		var rampCtx context.Context
 		if rampDone != nil {
+			__antithesis_instrumentation__.Notify(693833)
 			var cancel func()
 			rampCtx, cancel = context.WithTimeout(workersCtx, *ramp)
 			defer cancel()
+		} else {
+			__antithesis_instrumentation__.Notify(693834)
 		}
+		__antithesis_instrumentation__.Notify(693831)
 
 		for i, workFn := range ops.WorkerFns {
+			__antithesis_instrumentation__.Notify(693835)
 			go func(i int, workFn func(context.Context) error) {
-				// If a ramp period was specified, start all of the workers
-				// gradually.
+				__antithesis_instrumentation__.Notify(693836)
+
 				if rampCtx != nil {
+					__antithesis_instrumentation__.Notify(693838)
 					rampPerWorker := *ramp / time.Duration(len(ops.WorkerFns))
 					time.Sleep(time.Duration(i) * rampPerWorker)
+				} else {
+					__antithesis_instrumentation__.Notify(693839)
 				}
+				__antithesis_instrumentation__.Notify(693837)
 				workerRun(workersCtx, errCh, &wg, limiter, workFn)
 			}(i, workFn)
 		}
+		__antithesis_instrumentation__.Notify(693832)
 
 		if rampCtx != nil {
-			// Wait for the ramp period to finish, then notify the process loop
-			// below to reset timers and histograms.
+			__antithesis_instrumentation__.Notify(693840)
+
 			<-rampCtx.Done()
 			close(rampDone)
+		} else {
+			__antithesis_instrumentation__.Notify(693841)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(693786)
 
 	ticker := time.NewTicker(*displayEvery)
 	defer ticker.Stop()
@@ -493,107 +659,181 @@ func runRun(gen workload.Generator, urls []string, dbName string) error {
 	signal.Notify(done, exitSignals...)
 
 	go func() {
+		__antithesis_instrumentation__.Notify(693842)
 		wg.Wait()
 		done <- os.Interrupt
 	}()
+	__antithesis_instrumentation__.Notify(693787)
 
 	if *duration > 0 {
+		__antithesis_instrumentation__.Notify(693843)
 		go func() {
+			__antithesis_instrumentation__.Notify(693844)
 			time.Sleep(*duration + *ramp)
 			done <- os.Interrupt
 		}()
+	} else {
+		__antithesis_instrumentation__.Notify(693845)
 	}
+	__antithesis_instrumentation__.Notify(693788)
 
 	var jsonEnc *json.Encoder
 	if *histograms != "" {
+		__antithesis_instrumentation__.Notify(693846)
 		_ = os.MkdirAll(filepath.Dir(*histograms), 0755)
 		jsonF, err := os.Create(*histograms)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(693848)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(693849)
 		}
+		__antithesis_instrumentation__.Notify(693847)
 		jsonEnc = json.NewEncoder(jsonF)
 		defer func() {
+			__antithesis_instrumentation__.Notify(693850)
 			if err := jsonF.Sync(); err != nil {
+				__antithesis_instrumentation__.Notify(693852)
 				log.Warningf(ctx, "histogram: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(693853)
 			}
+			__antithesis_instrumentation__.Notify(693851)
 
 			if err := jsonF.Close(); err != nil {
+				__antithesis_instrumentation__.Notify(693854)
 				log.Warningf(ctx, "histogram: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(693855)
 			}
 		}()
+	} else {
+		__antithesis_instrumentation__.Notify(693856)
 	}
+	__antithesis_instrumentation__.Notify(693789)
 
 	everySecond := log.Every(*displayEvery)
 	for {
+		__antithesis_instrumentation__.Notify(693857)
 		select {
 		case err := <-errCh:
+			__antithesis_instrumentation__.Notify(693858)
 			formatter.outputError(err)
 			if *tolerateErrors {
+				__antithesis_instrumentation__.Notify(693866)
 				if everySecond.ShouldLog() {
+					__antithesis_instrumentation__.Notify(693868)
 					log.Errorf(ctx, "%v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(693869)
 				}
+				__antithesis_instrumentation__.Notify(693867)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(693870)
 			}
+			__antithesis_instrumentation__.Notify(693859)
 			return err
 
 		case <-ticker.C:
+			__antithesis_instrumentation__.Notify(693860)
 			startElapsed := timeutil.Since(start)
 			reg.Tick(func(t histogram.Tick) {
+				__antithesis_instrumentation__.Notify(693871)
 				formatter.outputTick(startElapsed, t)
-				if jsonEnc != nil && rampDone == nil {
+				if jsonEnc != nil && func() bool {
+					__antithesis_instrumentation__.Notify(693872)
+					return rampDone == nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(693873)
 					if err := jsonEnc.Encode(t.Snapshot()); err != nil {
+						__antithesis_instrumentation__.Notify(693874)
 						log.Warningf(ctx, "histogram: %v", err)
+					} else {
+						__antithesis_instrumentation__.Notify(693875)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(693876)
 				}
 			})
 
-		// Once the load generator is fully ramped up, we reset the histogram
-		// and the start time to throw away the stats for the ramp up period.
 		case <-rampDone:
+			__antithesis_instrumentation__.Notify(693861)
 			rampDone = nil
 			start = timeutil.Now()
 			formatter.rampDone()
 			reg.Tick(func(t histogram.Tick) {
+				__antithesis_instrumentation__.Notify(693877)
 				t.Cumulative.Reset()
 				t.Hist.Reset()
 			})
 
 		case <-done:
+			__antithesis_instrumentation__.Notify(693862)
 			cancelWorkers()
 			if ops.Close != nil {
+				__antithesis_instrumentation__.Notify(693878)
 				ops.Close(ctx)
+			} else {
+				__antithesis_instrumentation__.Notify(693879)
 			}
+			__antithesis_instrumentation__.Notify(693863)
 
 			startElapsed := timeutil.Since(start)
 			resultTick := histogram.Tick{Name: ops.ResultHist}
 			reg.Tick(func(t histogram.Tick) {
+				__antithesis_instrumentation__.Notify(693880)
 				formatter.outputTotal(startElapsed, t)
 				if jsonEnc != nil {
-					// Note that we're outputting the delta from the last tick. The
-					// cumulative histogram can be computed by merging all of the
-					// per-tick histograms.
+					__antithesis_instrumentation__.Notify(693882)
+
 					if err := jsonEnc.Encode(t.Snapshot()); err != nil {
+						__antithesis_instrumentation__.Notify(693883)
 						log.Warningf(ctx, "histogram: %v", err)
+					} else {
+						__antithesis_instrumentation__.Notify(693884)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(693885)
 				}
-				if ops.ResultHist == `` || ops.ResultHist == t.Name {
+				__antithesis_instrumentation__.Notify(693881)
+				if ops.ResultHist == `` || func() bool {
+					__antithesis_instrumentation__.Notify(693886)
+					return ops.ResultHist == t.Name == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(693887)
 					if resultTick.Cumulative == nil {
+						__antithesis_instrumentation__.Notify(693888)
 						resultTick.Now = t.Now
 						resultTick.Cumulative = t.Cumulative
 					} else {
+						__antithesis_instrumentation__.Notify(693889)
 						resultTick.Cumulative.Merge(t.Cumulative)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(693890)
 				}
 			})
+			__antithesis_instrumentation__.Notify(693864)
 			formatter.outputResult(startElapsed, resultTick)
 
 			if h, ok := gen.(workload.Hookser); ok {
+				__antithesis_instrumentation__.Notify(693891)
 				if h.Hooks().PostRun != nil {
+					__antithesis_instrumentation__.Notify(693892)
 					if err := h.Hooks().PostRun(startElapsed); err != nil {
+						__antithesis_instrumentation__.Notify(693893)
 						fmt.Printf("failed post-run hook: %v\n", err)
+					} else {
+						__antithesis_instrumentation__.Notify(693894)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(693895)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(693896)
 			}
+			__antithesis_instrumentation__.Notify(693865)
 
 			return nil
 		}

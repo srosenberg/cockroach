@@ -40,6 +40,7 @@ go_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/server/status",
     visibility = ["//visibility:public"],
     deps = [
+        "@com_antithesis_instrumentation//wrappers",
         "//pkg/build",
         "//pkg/gossip",
         "//pkg/keys",
@@ -146,6 +147,7 @@ go_test(
         "//pkg/util/metric/aggmetric",
         "//pkg/util/system",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_kr_pretty//:pretty",
         "@com_github_shirou_gopsutil_v3//net",
     ],

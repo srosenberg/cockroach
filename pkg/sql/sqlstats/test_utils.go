@@ -1,49 +1,32 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqlstats
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "time"
 
-// TestingKnobs provides hooks and knobs for unit tests.
 type TestingKnobs struct {
-	// OnStmtStatsFlushFinished is a callback that is triggered when stmt stats
-	// finishes flushing.
 	OnStmtStatsFlushFinished func()
 
-	// OnTxnStatsFlushFinished is a callback that is triggered when txn stats
-	// finishes flushing.
 	OnTxnStatsFlushFinished func()
 
-	// OnCleanupStartForShard is a callback that is triggered when background
-	// cleanup job starts to delete data from a shard from the system table.
 	OnCleanupStartForShard func(shardIdx int, existingCountInShard, shardLimit int64)
 
-	// StubTimeNow allows tests to override the timeutil.Now() function used
-	// by the flush operation to calculate aggregated_ts timestamp.
 	StubTimeNow func() time.Time
 
-	// AOSTClause overrides the AS OF SYSTEM TIME clause in queries used in
-	// persistedsqlstats.
 	AOSTClause string
 }
 
-// ModuleTestingKnobs implements base.ModuleTestingKnobs interface.
-func (*TestingKnobs) ModuleTestingKnobs() {}
+func (*TestingKnobs) ModuleTestingKnobs() { __antithesis_instrumentation__.Notify(625773) }
 
-// GetAOSTClause returns the appropriate AS OF SYSTEM TIME clause to be
-// used when reading from statements and transactions system tables.
 func (knobs *TestingKnobs) GetAOSTClause() string {
+	__antithesis_instrumentation__.Notify(625774)
 	if knobs != nil {
+		__antithesis_instrumentation__.Notify(625776)
 		return knobs.AOSTClause
+	} else {
+		__antithesis_instrumentation__.Notify(625777)
 	}
+	__antithesis_instrumentation__.Notify(625775)
 
 	return "AS OF SYSTEM TIME follower_read_timestamp()"
 }

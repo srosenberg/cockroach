@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -59,200 +51,301 @@ var singleMethods = []string{
 	"Health",
 }
 
-// runHTTP extracts HTTP endpoint documentation. It does this by reading the
-// status.proto file and converting it into a JSON file. This JSON file is then
-// fed as data into various Go templates that are used to populate markdown
-// files. A full.md file is produced with all endpoints. The singleMethods
-// string slice is used to produce additional markdown files with a single
-// method per file.
 func runHTTP(protocPath, genDocPath, protocFlags, outPath string) error {
-	// Extract out all the data into a JSON file. We will use this JSON
-	// file to then generate full and single pages.
+	__antithesis_instrumentation__.Notify(39880)
+
 	if err := os.MkdirAll(outPath, 0777); err != nil {
+		__antithesis_instrumentation__.Notify(39896)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(39897)
 	}
+	__antithesis_instrumentation__.Notify(39881)
 	tmpJSON, err := ioutil.TempDir("", "docgen-*")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(39898)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(39899)
 	}
-	// gen-doc wants a file on disk to use as its template. Make and
-	// cleanup a temp file.
+	__antithesis_instrumentation__.Notify(39882)
+
 	jsonTmpl := filepath.Join(tmpJSON, "json.tmpl")
 	if err := ioutil.WriteFile(jsonTmpl, []byte(tmplJSON), 0666); err != nil {
+		__antithesis_instrumentation__.Notify(39900)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(39901)
 	}
+	__antithesis_instrumentation__.Notify(39883)
 	defer func() {
+		__antithesis_instrumentation__.Notify(39902)
 		_ = os.RemoveAll(tmpJSON)
 	}()
+	__antithesis_instrumentation__.Notify(39884)
 	var args []string
 	if protocPath == "" {
+		__antithesis_instrumentation__.Notify(39903)
 		args = append(args, "protoc")
+	} else {
+		__antithesis_instrumentation__.Notify(39904)
 	}
+	__antithesis_instrumentation__.Notify(39885)
 	args = append(args,
 		fmt.Sprintf("--doc_out=%s", tmpJSON),
 		fmt.Sprintf("--doc_opt=%s,http.json", jsonTmpl),
 		fmt.Sprintf("--plugin=protoc-gen-doc=%s", genDocPath))
 	args = append(args, strings.Fields(protocFlags)...)
-	// Generate the JSON file.
+
 	executable := protocPath
 	if protocPath == "" {
+		__antithesis_instrumentation__.Notify(39905)
 		executable = "buf"
+	} else {
+		__antithesis_instrumentation__.Notify(39906)
 	}
+	__antithesis_instrumentation__.Notify(39886)
 	cmd := exec.Command(executable, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		__antithesis_instrumentation__.Notify(39907)
 		fmt.Println(string(out))
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(39908)
 	}
+	__antithesis_instrumentation__.Notify(39887)
 	dataFile, err := ioutil.ReadFile(filepath.Join(tmpJSON, "http.json"))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(39909)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(39910)
 	}
+	__antithesis_instrumentation__.Notify(39888)
 	var data protoData
 	if err := json.Unmarshal(dataFile, &data); err != nil {
+		__antithesis_instrumentation__.Notify(39911)
 		return fmt.Errorf("json unmarshal: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(39912)
 	}
+	__antithesis_instrumentation__.Notify(39889)
 
-	// Annotate all non-public message, method and field descriptions
-	// with a disclaimer.
 	for k := range data.Files {
+		__antithesis_instrumentation__.Notify(39913)
 		file := &data.Files[k]
 		for i := range file.Messages {
+			__antithesis_instrumentation__.Notify(39915)
 			m := &file.Messages[i]
-			if !(strings.HasSuffix(m.Name, "Entry") && len(m.Fields) == 2 && m.Fields[0].Name == "key" && m.Fields[1].Name == "value") {
-				// We only annotate the support status for non-KV
-				// (auto-generated, intermediate) message types.
+			if !(strings.HasSuffix(m.Name, "Entry") && func() bool {
+				__antithesis_instrumentation__.Notify(39916)
+				return len(m.Fields) == 2 == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(39917)
+				return m.Fields[0].Name == "key" == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(39918)
+				return m.Fields[1].Name == "value" == true
+			}() == true) {
+				__antithesis_instrumentation__.Notify(39919)
+
 				annotateStatus(&m.Description, &m.SupportStatus, "payload")
 				for j := range m.Fields {
+					__antithesis_instrumentation__.Notify(39920)
 					f := &m.Fields[j]
 					annotateStatus(&f.Description, &f.SupportStatus, "field")
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(39921)
 			}
 		}
+		__antithesis_instrumentation__.Notify(39914)
 		for j := range file.Services {
+			__antithesis_instrumentation__.Notify(39922)
 			service := &file.Services[j]
 			for i := range service.Methods {
+				__antithesis_instrumentation__.Notify(39923)
 				m := &service.Methods[i]
 				annotateStatus(&m.Description, &m.SupportStatus, "endpoint")
 				if len(m.Options.GoogleAPIHTTP.Rules) > 0 {
-					// Just keep the last entry. This is a special accommodation for
-					// "/health" which aliases "/_admin/v1/health": we only
-					// want to document the latter.
+					__antithesis_instrumentation__.Notify(39924)
+
 					m.Options.GoogleAPIHTTP.Rules = m.Options.GoogleAPIHTTP.Rules[len(m.Options.GoogleAPIHTTP.Rules)-1:]
+				} else {
+					__antithesis_instrumentation__.Notify(39925)
 				}
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(39890)
 
-	// Start by making maps of methods and messages for lookup.
 	messages := make(map[string]*protoMessage)
 	methods := make(map[string]*protoMethod)
 	for f := range data.Files {
+		__antithesis_instrumentation__.Notify(39926)
 		file := &data.Files[f]
 		for i := range file.Messages {
+			__antithesis_instrumentation__.Notify(39928)
 			messages[file.Messages[i].FullName] = &file.Messages[i]
 		}
+		__antithesis_instrumentation__.Notify(39927)
 
 		for j := range file.Services {
+			__antithesis_instrumentation__.Notify(39929)
 			service := &file.Services[j]
 			for i := range service.Methods {
+				__antithesis_instrumentation__.Notify(39930)
 				methods[service.Methods[i].Name] = &service.Methods[i]
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(39891)
 
-	// Given a message type, returns all message types in its type field that are
-	// also present in the messages map. Useful to recurse into types that have
-	// other types.
 	extraMessages := func(name string) []string {
+		__antithesis_instrumentation__.Notify(39931)
 		seen := make(map[string]bool)
 		var extraFn func(name string) []string
 		extraFn = func(name string) []string {
+			__antithesis_instrumentation__.Notify(39933)
 			if seen[name] {
+				__antithesis_instrumentation__.Notify(39937)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(39938)
 			}
+			__antithesis_instrumentation__.Notify(39934)
 			seen[name] = true
 			msg, ok := messages[name]
 			if !ok {
+				__antithesis_instrumentation__.Notify(39939)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(39940)
 			}
+			__antithesis_instrumentation__.Notify(39935)
 			var other []string
 			for _, field := range msg.Fields {
+				__antithesis_instrumentation__.Notify(39941)
 				if innerMsg, ok := messages[field.FullType]; ok {
+					__antithesis_instrumentation__.Notify(39942)
 					other = append(other, field.FullType)
 					other = append(other, extraFn(innerMsg.FullName)...)
+				} else {
+					__antithesis_instrumentation__.Notify(39943)
 				}
 			}
+			__antithesis_instrumentation__.Notify(39936)
 			return other
 		}
+		__antithesis_instrumentation__.Notify(39932)
 		return extraFn(name)
 	}
+	__antithesis_instrumentation__.Notify(39892)
 
 	tmplFuncs := template.FuncMap{
-		// tableCell formats strings for use in a table cell. For example, it converts \n\n into <br>.
+
 		"tableCell": func(s string) string {
+			__antithesis_instrumentation__.Notify(39944)
 			s = strings.TrimSpace(s)
 			if s == "" {
+				__antithesis_instrumentation__.Notify(39946)
 				return ""
+			} else {
+				__antithesis_instrumentation__.Notify(39947)
 			}
+			__antithesis_instrumentation__.Notify(39945)
 			s = strings.ReplaceAll(s, "\r", "")
-			// Double newlines are paragraph breaks.
+
 			s = strings.ReplaceAll(s, "\n\n", "<br><br>")
-			// Other newlines are just width wrapping and should be converted to spaces.
+
 			s = strings.ReplaceAll(s, "\n", " ")
 			return s
 		},
 		"getMessage": func(name string) *protoMessage {
+			__antithesis_instrumentation__.Notify(39948)
 			return messages[name]
 		},
 		"extraMessages": extraMessages,
 	}
+	__antithesis_instrumentation__.Notify(39893)
 	tmplFull := template.Must(template.New("full").Funcs(tmplFuncs).Parse(fullTemplate))
 	tmplMessages := template.Must(template.New("single").Funcs(tmplFuncs).Parse(messagesTemplate))
 
-	// JSON data is now in memory. Generate full doc page.
 	if err := execHTTPTmpl(tmplFull, &data, filepath.Join(outPath, "full.md")); err != nil {
+		__antithesis_instrumentation__.Notify(39949)
 		return fmt.Errorf("execHTTPTmpl: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(39950)
 	}
+	__antithesis_instrumentation__.Notify(39894)
 
 	for _, methodName := range singleMethods {
+		__antithesis_instrumentation__.Notify(39951)
 		method, ok := methods[methodName]
 		if !ok {
+			__antithesis_instrumentation__.Notify(39953)
 			return fmt.Errorf("single method not found: %s", methodName)
+		} else {
+			__antithesis_instrumentation__.Notify(39954)
 		}
+		__antithesis_instrumentation__.Notify(39952)
 		for name, messages := range map[string][]string{
 			"request":  {method.RequestFullType},
 			"response": {method.ResponseFullType},
 			"other":    append(extraMessages(method.RequestFullType), extraMessages(method.ResponseFullType)...),
 		} {
+			__antithesis_instrumentation__.Notify(39955)
 			path := filepath.Join(outPath, fmt.Sprintf("%s-%s.md", strings.ToLower(methodName), name))
 			if err := execHTTPTmpl(tmplMessages, messages, path); err != nil {
+				__antithesis_instrumentation__.Notify(39956)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(39957)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(39895)
 	return nil
 }
 
 func annotateStatus(desc *string, status *string, kind string) {
+	__antithesis_instrumentation__.Notify(39958)
 	if !strings.Contains(*desc, "API: PUBLIC") {
+		__antithesis_instrumentation__.Notify(39962)
 		*status = `[reserved](#support-status)`
+	} else {
+		__antithesis_instrumentation__.Notify(39963)
 	}
+	__antithesis_instrumentation__.Notify(39959)
 	if strings.Contains(*desc, "API: PUBLIC ALPHA") {
+		__antithesis_instrumentation__.Notify(39964)
 		*status = `[alpha](#support-status)`
+	} else {
+		__antithesis_instrumentation__.Notify(39965)
 	}
+	__antithesis_instrumentation__.Notify(39960)
 	if *status == "" {
+		__antithesis_instrumentation__.Notify(39966)
 		*status = `[public](#support-status)`
+	} else {
+		__antithesis_instrumentation__.Notify(39967)
 	}
+	__antithesis_instrumentation__.Notify(39961)
 	*desc = strings.Replace(*desc, "API: PUBLIC ALPHA", "", 1)
 	*desc = strings.Replace(*desc, "API: PUBLIC", "", 1)
 	*desc = strings.TrimSpace(*desc)
 }
 
 func execHTTPTmpl(tmpl *template.Template, data interface{}, path string) error {
+	__antithesis_instrumentation__.Notify(39968)
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
+		__antithesis_instrumentation__.Notify(39970)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(39971)
 	}
+	__antithesis_instrumentation__.Notify(39969)
 	return ioutil.WriteFile(path, buf.Bytes(), 0666)
 }
 

@@ -1,61 +1,70 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// With represents a WITH statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type With struct {
 	Recursive bool
 	CTEList   []*CTE
 }
 
-// CTE represents a common table expression inside of a WITH clause.
 type CTE struct {
 	Name AliasClause
 	Mtr  MaterializeClause
 	Stmt Statement
 }
 
-// MaterializeClause represents a materialize clause inside of a WITH clause.
 type MaterializeClause struct {
-	// Set controls whether to use the Materialize bool instead of the default.
 	Set bool
 
-	// Materialize overrides the default materialization behavior.
 	Materialize bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *With) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(617141)
 	if node == nil {
+		__antithesis_instrumentation__.Notify(617145)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(617146)
 	}
+	__antithesis_instrumentation__.Notify(617142)
 	ctx.WriteString("WITH ")
 	if node.Recursive {
+		__antithesis_instrumentation__.Notify(617147)
 		ctx.WriteString("RECURSIVE ")
+	} else {
+		__antithesis_instrumentation__.Notify(617148)
 	}
+	__antithesis_instrumentation__.Notify(617143)
 	for i, cte := range node.CTEList {
+		__antithesis_instrumentation__.Notify(617149)
 		if i != 0 {
+			__antithesis_instrumentation__.Notify(617152)
 			ctx.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(617153)
 		}
+		__antithesis_instrumentation__.Notify(617150)
 		ctx.FormatNode(&cte.Name)
 		ctx.WriteString(" AS ")
 		if cte.Mtr.Set {
+			__antithesis_instrumentation__.Notify(617154)
 			if !cte.Mtr.Materialize {
+				__antithesis_instrumentation__.Notify(617156)
 				ctx.WriteString("NOT ")
+			} else {
+				__antithesis_instrumentation__.Notify(617157)
 			}
+			__antithesis_instrumentation__.Notify(617155)
 			ctx.WriteString("MATERIALIZED ")
+		} else {
+			__antithesis_instrumentation__.Notify(617158)
 		}
+		__antithesis_instrumentation__.Notify(617151)
 		ctx.WriteString("(")
 		ctx.FormatNode(cte.Stmt)
 		ctx.WriteString(")")
 	}
+	__antithesis_instrumentation__.Notify(617144)
 	ctx.WriteByte(' ')
 }

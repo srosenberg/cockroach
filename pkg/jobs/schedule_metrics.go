@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -16,8 +8,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 )
 
-// ExecutorMetrics describes metrics related to scheduled
-// job executor operations.
 type ExecutorMetrics struct {
 	NumStarted   *metric.Counter
 	NumSucceeded *metric.Counter
@@ -26,26 +16,22 @@ type ExecutorMetrics struct {
 
 var _ metric.Struct = &ExecutorMetrics{}
 
-// MetricStruct implements metric.Struct interface
-func (m *ExecutorMetrics) MetricStruct() {}
+func (m *ExecutorMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(84710) }
 
-// SchedulerMetrics are metrics specific to job scheduler daemon.
 type SchedulerMetrics struct {
-	// Number of scheduled jobs started.
 	NumStarted *metric.Gauge
-	// Number of schedules rescheduled due to SKIP policy.
+
 	RescheduleSkip *metric.Gauge
-	// Number of schedules rescheduled due to WAIT policy.
+
 	RescheduleWait *metric.Gauge
-	// Number of schedules that could not be processed due to an error.
+
 	NumErrSchedules *metric.Gauge
-	// Number of schedules that are malformed: that is, the schedules
-	// we cannot parse, or even attempt to execute.
+
 	NumMalformedSchedules *metric.Gauge
 }
 
-// MakeSchedulerMetrics returns metrics for scheduled job daemon.
 func MakeSchedulerMetrics() SchedulerMetrics {
+	__antithesis_instrumentation__.Notify(84711)
 	return SchedulerMetrics{
 		NumStarted: metric.NewGauge(metric.Metadata{
 			Name:        "schedules.round.jobs-started",
@@ -84,13 +70,12 @@ func MakeSchedulerMetrics() SchedulerMetrics {
 	}
 }
 
-// MetricStruct implements metric.Struct interface
-func (m *SchedulerMetrics) MetricStruct() {}
+func (m *SchedulerMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(84712) }
 
 var _ metric.Struct = &SchedulerMetrics{}
 
-// MakeExecutorMetrics creates metrics for scheduled job executor.
 func MakeExecutorMetrics(name string) ExecutorMetrics {
+	__antithesis_instrumentation__.Notify(84713)
 	return ExecutorMetrics{
 		NumStarted: metric.NewCounter(metric.Metadata{
 			Name:        fmt.Sprintf("schedules.%s.started", name),

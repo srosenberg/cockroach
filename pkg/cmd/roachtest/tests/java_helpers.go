@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,14 +24,8 @@ const (
 	statusSkip
 )
 
-// extractFailureFromJUnitXML parses an XML report to find all failed tests. The
-// return values are:
-// - slice of all test names.
-// - slice of status for each test.
-// - map from name of a failed test to a github issue that explains the failure,
-//   if the error message contained a reference to an issue.
-// - error if there was a problem parsing the XML.
 func extractFailureFromJUnitXML(contents []byte) ([]string, []status, map[string]string, error) {
+	__antithesis_instrumentation__.Notify(48650)
 	type Failure struct {
 		Message string `xml:"message,attr"`
 	}
@@ -71,110 +57,168 @@ func extractFailureFromJUnitXML(contents []byte) ([]string, []status, map[string
 	var testStatuses []status
 	var failedTestToIssue = make(map[string]string)
 	processTestSuite := func(testSuite TestSuite) {
+		__antithesis_instrumentation__.Notify(48653)
 		for _, testCase := range testSuite.TestCases {
+			__antithesis_instrumentation__.Notify(48654)
 			testName := fmt.Sprintf("%s.%s", testCase.ClassName, testCase.Name)
-			testPassed := len(testCase.Failure.Message) == 0 && len(testCase.Error.Message) == 0
+			testPassed := len(testCase.Failure.Message) == 0 && func() bool {
+				__antithesis_instrumentation__.Notify(48655)
+				return len(testCase.Error.Message) == 0 == true
+			}() == true
 			tests = append(tests, testName)
 			if testCase.Skipped != nil {
+				__antithesis_instrumentation__.Notify(48656)
 				testStatuses = append(testStatuses, statusSkip)
-			} else if testPassed {
-				testStatuses = append(testStatuses, statusPass)
 			} else {
-				testStatuses = append(testStatuses, statusFail)
-				message := testCase.Failure.Message
-				if len(message) == 0 {
-					message = testCase.Error.Message
-				}
+				__antithesis_instrumentation__.Notify(48657)
+				if testPassed {
+					__antithesis_instrumentation__.Notify(48658)
+					testStatuses = append(testStatuses, statusPass)
+				} else {
+					__antithesis_instrumentation__.Notify(48659)
+					testStatuses = append(testStatuses, statusFail)
+					message := testCase.Failure.Message
+					if len(message) == 0 {
+						__antithesis_instrumentation__.Notify(48662)
+						message = testCase.Error.Message
+					} else {
+						__antithesis_instrumentation__.Notify(48663)
+					}
+					__antithesis_instrumentation__.Notify(48660)
 
-				issue := "unknown"
-				match := issueRegexp.FindStringSubmatch(message)
-				if match != nil {
-					issue = match[1]
+					issue := "unknown"
+					match := issueRegexp.FindStringSubmatch(message)
+					if match != nil {
+						__antithesis_instrumentation__.Notify(48664)
+						issue = match[1]
+					} else {
+						__antithesis_instrumentation__.Notify(48665)
+					}
+					__antithesis_instrumentation__.Notify(48661)
+					failedTestToIssue[testName] = issue
 				}
-				failedTestToIssue[testName] = issue
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(48651)
 
-	// First, we try to parse the XML with an assumption that there are multiple
-	// test suites in contents.
 	if err := xml.Unmarshal(contents, &testSuites); err == nil {
-		// The parsing was successful, so we process each test suite.
+		__antithesis_instrumentation__.Notify(48666)
+
 		for _, testSuite := range testSuites.TestSuites {
+			__antithesis_instrumentation__.Notify(48667)
 			processTestSuite(testSuite)
 		}
 	} else {
-		// The parsing wasn't successful, so now we try to parse the XML with an
-		// assumption that there is a single test suite.
+		__antithesis_instrumentation__.Notify(48668)
+
 		if err := xml.Unmarshal(contents, &testSuite); err != nil {
+			__antithesis_instrumentation__.Notify(48670)
 			return nil, nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(48671)
 		}
+		__antithesis_instrumentation__.Notify(48669)
 		processTestSuite(testSuite)
 	}
+	__antithesis_instrumentation__.Notify(48652)
 
 	return tests, testStatuses, failedTestToIssue, nil
 }
 
-// parseJUnitXML parses testOutputInJUnitXMLFormat and updates the receiver
-// accordingly.
 func (r *ormTestsResults) parseJUnitXML(
 	t test.Test, expectedFailures, ignorelist blocklist, testOutputInJUnitXMLFormat []byte,
 ) {
+	__antithesis_instrumentation__.Notify(48672)
 	tests, statuses, issueHints, err := extractFailureFromJUnitXML(testOutputInJUnitXMLFormat)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(48675)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(48676)
 	}
+	__antithesis_instrumentation__.Notify(48673)
 	for testName, issue := range issueHints {
+		__antithesis_instrumentation__.Notify(48677)
 		r.allIssueHints[testName] = issue
 	}
+	__antithesis_instrumentation__.Notify(48674)
 	for i, test := range tests {
-		// There is at least a single test that's run twice, so if we already
-		// have a result, skip it.
+		__antithesis_instrumentation__.Notify(48678)
+
 		if _, alreadyTested := r.results[test]; alreadyTested {
+			__antithesis_instrumentation__.Notify(48682)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(48683)
 		}
+		__antithesis_instrumentation__.Notify(48679)
 		r.allTests = append(r.allTests, test)
 		ignoredIssue, expectedIgnored := ignorelist[test]
 		issue, expectedFailure := expectedFailures[test]
-		if len(issue) == 0 || issue == "unknown" {
+		if len(issue) == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(48684)
+			return issue == "unknown" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(48685)
 			issue = issueHints[test]
+		} else {
+			__antithesis_instrumentation__.Notify(48686)
 		}
+		__antithesis_instrumentation__.Notify(48680)
 		status := statuses[i]
 		switch {
 		case expectedIgnored:
+			__antithesis_instrumentation__.Notify(48687)
 			r.results[test] = fmt.Sprintf("--- IGNORE: %s due to %s (expected)", test, ignoredIssue)
 			r.ignoredCount++
 		case status == statusSkip:
+			__antithesis_instrumentation__.Notify(48688)
 			r.results[test] = fmt.Sprintf("--- SKIP: %s", test)
 			r.skipCount++
-		case status == statusPass && !expectedFailure:
+		case status == statusPass && func() bool {
+			__antithesis_instrumentation__.Notify(48694)
+			return !expectedFailure == true
+		}() == true:
+			__antithesis_instrumentation__.Notify(48689)
 			r.results[test] = fmt.Sprintf("--- PASS: %s (expected)", test)
 			r.passExpectedCount++
-		case status == statusPass && expectedFailure:
+		case status == statusPass && func() bool {
+			__antithesis_instrumentation__.Notify(48695)
+			return expectedFailure == true
+		}() == true:
+			__antithesis_instrumentation__.Notify(48690)
 			r.results[test] = fmt.Sprintf("--- PASS: %s - %s (unexpected)",
 				test, maybeAddGithubLink(issue),
 			)
 			r.passUnexpectedCount++
-		case status == statusFail && expectedFailure:
+		case status == statusFail && func() bool {
+			__antithesis_instrumentation__.Notify(48696)
+			return expectedFailure == true
+		}() == true:
+			__antithesis_instrumentation__.Notify(48691)
 			r.results[test] = fmt.Sprintf("--- FAIL: %s - %s (expected)",
 				test, maybeAddGithubLink(issue),
 			)
 			r.failExpectedCount++
 			r.currentFailures = append(r.currentFailures, test)
-		case status == statusFail && !expectedFailure:
+		case status == statusFail && func() bool {
+			__antithesis_instrumentation__.Notify(48697)
+			return !expectedFailure == true
+		}() == true:
+			__antithesis_instrumentation__.Notify(48692)
 			r.results[test] = fmt.Sprintf("--- FAIL: %s - %s (unexpected)",
 				test, maybeAddGithubLink(issue))
 			r.failUnexpectedCount++
 			r.currentFailures = append(r.currentFailures, test)
+		default:
+			__antithesis_instrumentation__.Notify(48693)
 		}
+		__antithesis_instrumentation__.Notify(48681)
 		r.runTests[test] = struct{}{}
 	}
 }
 
-// parseAndSummarizeJavaORMTestsResults parses the test output of running a
-// test suite for some Java ORM against cockroach and summarizes it. If an
-// unexpected result is observed (for example, a test unexpectedly failed or
-// passed), a new blocklist is populated.
 func parseAndSummarizeJavaORMTestsResults(
 	ctx context.Context,
 	t test.Test,
@@ -188,19 +232,24 @@ func parseAndSummarizeJavaORMTestsResults(
 	version string,
 	tag string,
 ) {
+	__antithesis_instrumentation__.Notify(48698)
 	results := newORMTestsResults()
 	filesRaw := strings.Split(string(testOutput), "\n")
 
-	// There is always at least one entry that's just space characters, remove
-	// it.
 	var files []string
 	for _, f := range filesRaw {
+		__antithesis_instrumentation__.Notify(48701)
 		file := strings.TrimSpace(f)
 		if len(file) > 0 {
+			__antithesis_instrumentation__.Notify(48702)
 			files = append(files, file)
+		} else {
+			__antithesis_instrumentation__.Notify(48703)
 		}
 	}
+	__antithesis_instrumentation__.Notify(48699)
 	for i, file := range files {
+		__antithesis_instrumentation__.Notify(48704)
 		t.L().Printf("Parsing %d of %d: %s\n", i+1, len(files), file)
 		result, err := repeatRunWithDetailsSingleNode(
 			ctx,
@@ -211,11 +260,16 @@ func parseAndSummarizeJavaORMTestsResults(
 			fmt.Sprintf("cat %s", file),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(48706)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(48707)
 		}
+		__antithesis_instrumentation__.Notify(48705)
 
 		results.parseJUnitXML(t, expectedFailures, ignorelist, []byte(result.Stdout))
 	}
+	__antithesis_instrumentation__.Notify(48700)
 
 	results.summarizeAll(
 		t, ormName, blocklistName, expectedFailures, version, tag,

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,152 +12,159 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// A ConfigOption may be passed to Open to configure the storage engine.
 type ConfigOption func(cfg *engineConfig) error
 
-// CombineOptions combines many options into one.
 func CombineOptions(opts ...ConfigOption) ConfigOption {
+	__antithesis_instrumentation__.Notify(641638)
 	return func(cfg *engineConfig) error {
+		__antithesis_instrumentation__.Notify(641639)
 		for _, opt := range opts {
+			__antithesis_instrumentation__.Notify(641641)
 			if err := opt(cfg); err != nil {
+				__antithesis_instrumentation__.Notify(641642)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(641643)
 			}
 		}
+		__antithesis_instrumentation__.Notify(641640)
 		return nil
 	}
 }
 
-// ReadOnly configures an engine to be opened in read-only mode.
 var ReadOnly ConfigOption = func(cfg *engineConfig) error {
+	__antithesis_instrumentation__.Notify(641644)
 	cfg.Opts.ReadOnly = true
 	return nil
 }
 
-// MustExist configures an engine to error on Open if the target directory
-// does not contain an initialized store.
 var MustExist ConfigOption = func(cfg *engineConfig) error {
+	__antithesis_instrumentation__.Notify(641645)
 	cfg.MustExist = true
 	return nil
 }
 
-// DisableAutomaticCompactions configures an engine to be opened with disabled
-// automatic compactions. Used primarily for debugCompactCmd.
 var DisableAutomaticCompactions ConfigOption = func(cfg *engineConfig) error {
+	__antithesis_instrumentation__.Notify(641646)
 	cfg.Opts.DisableAutomaticCompactions = true
 	return nil
 }
 
-// ForTesting configures the engine for use in testing. It may randomize some
-// config options to improve test coverage.
 var ForTesting ConfigOption = func(cfg *engineConfig) error {
+	__antithesis_instrumentation__.Notify(641647)
 	if cfg.Settings == nil {
+		__antithesis_instrumentation__.Notify(641649)
 		cfg.Settings = cluster.MakeTestingClusterSettings()
+	} else {
+		__antithesis_instrumentation__.Notify(641650)
 	}
+	__antithesis_instrumentation__.Notify(641648)
 	return nil
 }
 
-// ForStickyEngineTesting is similar to ForTesting but leaves separated
-// intents as enabled since we cannot ensure consistency in the test setup
-// between what the KV layer thinks and what the engine does in terms of
-// writing separated intents. Since our optimizations are for the case where
-// we know there are only separated intents, this sidesteps any test issues
-// due to inconsistencies.
 var ForStickyEngineTesting ConfigOption = func(cfg *engineConfig) error {
+	__antithesis_instrumentation__.Notify(641651)
 	if cfg.Settings == nil {
+		__antithesis_instrumentation__.Notify(641653)
 		cfg.Settings = cluster.MakeTestingClusterSettings()
+	} else {
+		__antithesis_instrumentation__.Notify(641654)
 	}
+	__antithesis_instrumentation__.Notify(641652)
 	return nil
 }
 
-// Attributes configures the engine's attributes.
 func Attributes(attrs roachpb.Attributes) ConfigOption {
+	__antithesis_instrumentation__.Notify(641655)
 	return func(cfg *engineConfig) error {
+		__antithesis_instrumentation__.Notify(641656)
 		cfg.Attrs = attrs
 		return nil
 	}
 }
 
-// MaxSize sets the intended maximum store size. MaxSize is used for
-// calculating free space and making rebalancing decisions.
 func MaxSize(size int64) ConfigOption {
+	__antithesis_instrumentation__.Notify(641657)
 	return func(cfg *engineConfig) error {
+		__antithesis_instrumentation__.Notify(641658)
 		cfg.MaxSize = size
 		return nil
 	}
 }
 
-// MaxOpenFiles sets the maximum number of files an engine should open.
 func MaxOpenFiles(count int) ConfigOption {
+	__antithesis_instrumentation__.Notify(641659)
 	return func(cfg *engineConfig) error {
+		__antithesis_instrumentation__.Notify(641660)
 		cfg.Opts.MaxOpenFiles = count
 		return nil
 	}
 
 }
 
-// Settings sets the cluster settings to use.
 func Settings(settings *cluster.Settings) ConfigOption {
+	__antithesis_instrumentation__.Notify(641661)
 	return func(cfg *engineConfig) error {
+		__antithesis_instrumentation__.Notify(641662)
 		cfg.Settings = settings
 		return nil
 	}
 }
 
-// CacheSize configures the size of the block cache.
 func CacheSize(size int64) ConfigOption {
+	__antithesis_instrumentation__.Notify(641663)
 	return func(cfg *engineConfig) error {
+		__antithesis_instrumentation__.Notify(641664)
 		cfg.cacheSize = &size
 		return nil
 	}
 }
 
-// EncryptionAtRest configures an engine to use encryption-at-rest. It is used
-// for configuring in-memory engines, which are used in tests. It is not safe
-// to modify the given slice afterwards as it is captured by reference.
 func EncryptionAtRest(encryptionOptions []byte) ConfigOption {
+	__antithesis_instrumentation__.Notify(641665)
 	return func(cfg *engineConfig) error {
+		__antithesis_instrumentation__.Notify(641666)
 		if len(encryptionOptions) > 0 {
+			__antithesis_instrumentation__.Notify(641668)
 			cfg.UseFileRegistry = true
 			cfg.EncryptionOptions = encryptionOptions
+		} else {
+			__antithesis_instrumentation__.Notify(641669)
 		}
+		__antithesis_instrumentation__.Notify(641667)
 		return nil
 	}
 }
 
-// Hook configures a hook to initialize additional storage options. It's used
-// to initialize encryption-at-rest details in CCL builds.
 func Hook(hookFunc func(*base.StorageConfig) error) ConfigOption {
+	__antithesis_instrumentation__.Notify(641670)
 	return func(cfg *engineConfig) error {
+		__antithesis_instrumentation__.Notify(641671)
 		if hookFunc == nil {
+			__antithesis_instrumentation__.Notify(641673)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(641674)
 		}
+		__antithesis_instrumentation__.Notify(641672)
 		return hookFunc(&cfg.PebbleConfig.StorageConfig)
 	}
 }
 
-// A Location describes where the storage engine's data will be written. A
-// Location may be in-memory or on the filesystem.
 type Location struct {
 	dir string
 	fs  vfs.FS
 }
 
-// Filesystem constructs a Location that instructs the storage engine to read
-// and store data on the filesystem in the provided directory.
 func Filesystem(dir string) Location {
+	__antithesis_instrumentation__.Notify(641675)
 	return Location{
 		dir: dir,
-		// fs is left nil intentionally, so that it will be left as the
-		// default of vfs.Default wrapped in vfs.WithDiskHealthChecks
-		// (initialized by DefaultPebbleOptions).
-		// TODO(jackson): Refactor to make it harder to accidentally remove
-		// disk health checks by setting your own VFS in a call to NewPebble.
 	}
 }
 
-// InMemory constructs a Location that instructs the storage engine to store
-// data in-memory.
 func InMemory() Location {
+	__antithesis_instrumentation__.Notify(641676)
 	return Location{
 		dir: "",
 		fs:  vfs.NewMem(),
@@ -174,46 +173,68 @@ func InMemory() Location {
 
 type engineConfig struct {
 	PebbleConfig
-	// cacheSize is stored separately so that we can avoid constructing the
-	// PebbleConfig.Opts.Cache until the call to Open. A Cache is created with
-	// a ref count of 1, so creating the Cache during execution of
-	// ConfigOption makes it too easy to leak a cache.
+
 	cacheSize *int64
 }
 
-// Open opens a new Pebble storage engine, reading and writing data to the
-// provided Location, configured with the provided options.
 func Open(ctx context.Context, loc Location, opts ...ConfigOption) (*Pebble, error) {
+	__antithesis_instrumentation__.Notify(641677)
 	var cfg engineConfig
 	cfg.Dir = loc.dir
 	cfg.Opts = DefaultPebbleOptions()
 	if loc.fs != nil {
+		__antithesis_instrumentation__.Notify(641684)
 		cfg.Opts.FS = loc.fs
+	} else {
+		__antithesis_instrumentation__.Notify(641685)
 	}
+	__antithesis_instrumentation__.Notify(641678)
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(641686)
 		if err := opt(&cfg); err != nil {
+			__antithesis_instrumentation__.Notify(641687)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(641688)
 		}
 	}
+	__antithesis_instrumentation__.Notify(641679)
 	if cfg.cacheSize != nil {
+		__antithesis_instrumentation__.Notify(641689)
 		cfg.Opts.Cache = pebble.NewCache(*cfg.cacheSize)
 		defer cfg.Opts.Cache.Unref()
+	} else {
+		__antithesis_instrumentation__.Notify(641690)
 	}
+	__antithesis_instrumentation__.Notify(641680)
 	if cfg.Settings == nil {
+		__antithesis_instrumentation__.Notify(641691)
 		cfg.Settings = cluster.MakeClusterSettings()
+	} else {
+		__antithesis_instrumentation__.Notify(641692)
 	}
+	__antithesis_instrumentation__.Notify(641681)
 	p, err := NewPebble(ctx, cfg.PebbleConfig)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(641693)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(641694)
 	}
-	// Set the active cluster version, ensuring the engine's format
-	// major version is ratcheted sufficiently high to match the
-	// settings cluster version.
+	__antithesis_instrumentation__.Notify(641682)
+
 	if v := p.settings.Version.ActiveVersionOrEmpty(ctx).Version; v != (roachpb.Version{}) {
+		__antithesis_instrumentation__.Notify(641695)
 		if err := p.SetMinVersion(v); err != nil {
+			__antithesis_instrumentation__.Notify(641696)
 			p.Close()
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(641697)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(641698)
 	}
+	__antithesis_instrumentation__.Notify(641683)
 	return p, nil
 }

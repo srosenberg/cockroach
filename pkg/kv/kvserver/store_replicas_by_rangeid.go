@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"unsafe"
@@ -19,33 +11,32 @@ import (
 
 type rangeIDReplicaMap syncutil.IntMap
 
-// Load loads the Replica for the RangeID. If not found, returns
-// (nil, false), otherwise the Replica and true.
 func (m *rangeIDReplicaMap) Load(rangeID roachpb.RangeID) (*Replica, bool) {
+	__antithesis_instrumentation__.Notify(125837)
 	val, ok := (*syncutil.IntMap)(m).Load(int64(rangeID))
 	return (*Replica)(val), ok
 }
 
-// LoadOrStore loads the replica and returns it (and `true`). If it does not
-// exist, atomically inserts the provided Replica and returns it along with
-// `false`.
 func (m *rangeIDReplicaMap) LoadOrStore(
 	rangeID roachpb.RangeID, repl *Replica,
 ) (_ *Replica, loaded bool) {
+	__antithesis_instrumentation__.Notify(125838)
 	val, loaded := (*syncutil.IntMap)(m).LoadOrStore(int64(rangeID), unsafe.Pointer(repl))
 	return (*Replica)(val), loaded
 }
 
-// Delete drops the Replica if it existed in the map.
 func (m *rangeIDReplicaMap) Delete(rangeID roachpb.RangeID) {
+	__antithesis_instrumentation__.Notify(125839)
 	(*syncutil.IntMap)(m).Delete(int64(rangeID))
 }
 
-// Range invokes the provided function with each Replica in the map.
 func (m *rangeIDReplicaMap) Range(f func(*Replica)) {
+	__antithesis_instrumentation__.Notify(125840)
 	v := func(k int64, v unsafe.Pointer) bool {
+		__antithesis_instrumentation__.Notify(125842)
 		f((*Replica)(v))
-		return true // wantMore
+		return true
 	}
+	__antithesis_instrumentation__.Notify(125841)
 	(*syncutil.IntMap)(m).Range(v)
 }

@@ -1,26 +1,22 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"os"
 
-	_ "github.com/cockroachdb/cockroach/pkg/ccl/workloadccl/allccl" // init hooks
-	_ "github.com/cockroachdb/cockroach/pkg/ccl/workloadccl/cliccl" // init hooks
+	_ "github.com/cockroachdb/cockroach/pkg/ccl/workloadccl/allccl"
+	_ "github.com/cockroachdb/cockroach/pkg/ccl/workloadccl/cliccl"
 	workloadcli "github.com/cockroachdb/cockroach/pkg/workload/cli"
 )
 
 func main() {
-	if err := workloadcli.WorkloadCmd(false /* userFacing */).Execute(); err != nil {
-		// Cobra has already printed the error message.
+	__antithesis_instrumentation__.Notify(53359)
+	if err := workloadcli.WorkloadCmd(false).Execute(); err != nil {
+		__antithesis_instrumentation__.Notify(53360)
+
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(53361)
 	}
 }

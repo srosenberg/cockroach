@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -62,63 +54,60 @@ well unless it can be verified using a trusted root certificate store. That is,
 }
 
 func runStartSQL(cmd *cobra.Command, args []string) error {
+	__antithesis_instrumentation__.Notify(33465)
 	tBegin := timeutil.Now()
 
-	// First things first: if the user wants background processing,
-	// relinquish the terminal ASAP by forking and exiting.
-	//
-	// If executing in the background, the function returns ok == true in
-	// the parent process (regardless of err) and the parent exits at
-	// this point.
 	if ok, err := maybeRerunBackground(); ok {
+		__antithesis_instrumentation__.Notify(33475)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33476)
 	}
+	__antithesis_instrumentation__.Notify(33466)
 
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, drainSignals...)
 
-	// Set up a cancellable context for the entire start command.
-	// The context will be canceled at the end.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// The context annotation ensures that server identifiers show up
-	// in the logging metadata as soon as they are known.
 	ambientCtx := serverCfg.AmbientCtx
 	ctx = ambientCtx.AnnotateCtx(ctx)
 
 	const clusterName = ""
 
-	stopper, err := setupAndInitializeLoggingAndProfiling(ctx, cmd, false /* isServerCmd */)
+	stopper, err := setupAndInitializeLoggingAndProfiling(ctx, cmd, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33477)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33478)
 	}
+	__antithesis_instrumentation__.Notify(33467)
 	defer stopper.Stop(ctx)
 	stopper.SetTracer(serverCfg.BaseConfig.AmbientCtx.Tracer)
 
 	st := serverCfg.BaseConfig.Settings
 
-	// This value is injected in order to have something populated during startup.
-	// In the initial 20.2 release of multi-tenant clusters, no version state was
-	// ever populated in the version cluster setting. A value is populated during
-	// the activation of 21.1. See the documentation attached to the TenantCluster
-	// in migration/migrationcluster for more details on the tenant upgrade flow.
-	// Note that a the value of 21.1 is populated when a tenant cluster is created
-	// during 21.1 in crdb_internal.create_tenant.
-	//
-	// Note that the tenant will read the value in the system.settings table
-	// before accepting SQL connections.
 	if err := clusterversion.Initialize(
 		ctx, st.Version.BinaryMinSupportedVersion(), &st.SV,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(33479)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33480)
 	}
+	__antithesis_instrumentation__.Notify(33468)
 
 	if serverCfg.SQLConfig.TempStorageConfig, err = initTempStorageConfig(
 		ctx, serverCfg.Settings, stopper, serverCfg.Stores,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(33481)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33482)
 	}
+	__antithesis_instrumentation__.Notify(33469)
 
 	initGEOS(ctx)
 
@@ -130,53 +119,61 @@ func runStartSQL(cmd *cobra.Command, args []string) error {
 		serverCfg.SQLConfig,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33483)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33484)
 	}
-	// If another process was waiting on the PID (e.g. using a FIFO),
-	// this is when we can tell them the node has started listening.
+	__antithesis_instrumentation__.Notify(33470)
+
 	if startCtx.pidFile != "" {
+		__antithesis_instrumentation__.Notify(33485)
 		log.Ops.Infof(ctx, "PID file: %s", startCtx.pidFile)
 		if err := ioutil.WriteFile(startCtx.pidFile, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0644); err != nil {
+			__antithesis_instrumentation__.Notify(33486)
 			log.Ops.Errorf(ctx, "failed writing the PID: %v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(33487)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(33488)
 	}
+	__antithesis_instrumentation__.Notify(33471)
 
-	// Ensure the configuration logging is written to disk in case a
-	// process is waiting for the sdnotify readiness to read important
-	// information from there.
 	log.Flush()
 
-	// Signal readiness. This unblocks the process when running with
-	// --background or under systemd.
 	if err := sdnotify.Ready(); err != nil {
+		__antithesis_instrumentation__.Notify(33489)
 		log.Ops.Errorf(ctx, "failed to signal readiness using systemd protocol: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(33490)
 	}
+	__antithesis_instrumentation__.Notify(33472)
 
-	// Start up the diagnostics reporting loop.
-	// We don't do this in (*server.SQLServer).preStart() because we don't
-	// want this overhead and possible interference in tests.
 	if !cluster.TelemetryOptOut() {
+		__antithesis_instrumentation__.Notify(33491)
 		sqlServer.StartDiagnostics(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(33492)
 	}
+	__antithesis_instrumentation__.Notify(33473)
 
 	tenantClusterID := sqlServer.LogicalClusterID()
 
-	// Report the server identifiers and other server details
-	// in the same format as 'cockroach start'.
-	if err := reportServerInfo(ctx, tBegin, &serverCfg, st, false /* isHostNode */, false /* initialStart */, tenantClusterID); err != nil {
+	if err := reportServerInfo(ctx, tBegin, &serverCfg, st, false, false, tenantClusterID); err != nil {
+		__antithesis_instrumentation__.Notify(33493)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33494)
 	}
-
-	// TODO(tbg): make the other goodies in `./cockroach start` reusable, such as
-	// logging to files, periodic memory output, heap and goroutine dumps.
-	// Then use them here.
+	__antithesis_instrumentation__.Notify(33474)
 
 	errChan := make(chan error, 1)
 	var serverStatusMu serverStatus
 	serverStatusMu.started = true
 
 	return waitForShutdown(
-		func() serverShutdownInterface { return sqlServer },
+		func() serverShutdownInterface { __antithesis_instrumentation__.Notify(33495); return sqlServer },
 		stopper,
 		errChan, signalCh,
 		&serverStatusMu)

@@ -1,22 +1,9 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 //go:build acceptance
 // +build acceptance
 
-// Acceptance tests are comparatively slow to run, so we use the above build
-// tag to separate invocations of `go test` which are intended to run the
-// acceptance tests from those which are not. The corollary file to this one
-// is test_main.go
-
 package acceptance
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,25 +21,28 @@ import (
 )
 
 func MainTest(m *testing.M) {
+	__antithesis_instrumentation__.Notify(1152)
 	security.SetAssetLoader(securitytest.EmbeddedAssets)
 	serverutils.InitTestServerFactory(server.TestServerFactory)
 	serverutils.InitTestClusterFactory(testcluster.TestClusterFactory)
 	os.Exit(RunTests(m))
 }
 
-// RunTests runs the tests in a package while gracefully handling interrupts.
 func RunTests(m *testing.M) int {
+	__antithesis_instrumentation__.Notify(1153)
 	randutil.SeedForTests()
 
 	ctx := context.Background()
 	defer cluster.GenerateCerts(ctx)()
 
 	go func() {
-		// Shut down tests when interrupted (for example CTRL+C).
+		__antithesis_instrumentation__.Notify(1155)
+
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt)
 		<-sig
 		stopper.Stop(ctx)
 	}()
+	__antithesis_instrumentation__.Notify(1154)
 	return m.Run()
 }

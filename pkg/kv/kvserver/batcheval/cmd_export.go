@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,12 +21,8 @@ import (
 	"github.com/gogo/protobuf/types"
 )
 
-// SSTTargetSizeSetting is the cluster setting name for the
-// ExportRequestTargetFileSize setting.
 const SSTTargetSizeSetting = "kv.bulk_sst.target_size"
 
-// ExportRequestTargetFileSize controls the target file size for SSTs created
-// during backups.
 var ExportRequestTargetFileSize = settings.RegisterByteSizeSetting(
 	settings.TenantWritable,
 	SSTTargetSizeSetting,
@@ -45,14 +33,8 @@ var ExportRequestTargetFileSize = settings.RegisterByteSizeSetting(
 	16<<20,
 ).WithPublic()
 
-// MaxExportOverageSetting is the cluster setting name for the
-// ExportRequestMaxAllowedFileSizeOverage setting.
 const MaxExportOverageSetting = "kv.bulk_sst.max_allowed_overage"
 
-// ExportRequestMaxAllowedFileSizeOverage controls the maximum size in excess of
-// the target file size which an exported SST may be. If this value is positive
-// and an SST would exceed this size (due to large rows or large numbers of
-// versions), then the export will fail.
 var ExportRequestMaxAllowedFileSizeOverage = settings.RegisterByteSizeSetting(
 	settings.TenantWritable,
 	MaxExportOverageSetting,
@@ -60,21 +42,16 @@ var ExportRequestMaxAllowedFileSizeOverage = settings.RegisterByteSizeSetting(
 		"export requests (i.e. BACKUP) may buffer up to the sum of %s and %s in memory",
 		SSTTargetSizeSetting, MaxExportOverageSetting,
 	),
-	64<<20, /* 64 MiB */
+	64<<20,
 ).WithPublic()
 
-// exportRequestMaxIterationTime controls time spent by export request iterating
-// over data in underlying storage. This threshold preventing export request from
-// holding locks for too long and preventing non mvcc operations from progressing.
-// If request takes longer than this threshold it would stop and return already
-// collected data and allow caller to use resume span to continue.
 var exportRequestMaxIterationTime = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"kv.bulk_sst.max_request_time",
 	"if set, limits amount of time spent in export requests; "+
 		"if export request can not finish within allocated time it will resume from the point it stopped in "+
 		"subsequent request",
-	// Feature is disabled by default.
+
 	0,
 )
 
@@ -89,15 +66,15 @@ func declareKeysExport(
 	latchSpans, lockSpans *spanset.SpanSet,
 	maxOffset time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(96814)
 	DefaultDeclareIsolatedKeys(rs, header, req, latchSpans, lockSpans, maxOffset)
 	latchSpans.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{Key: keys.RangeGCThresholdKey(header.RangeID)})
 }
 
-// evalExport dumps the requested keys into files of non-overlapping key ranges
-// in a format suitable for bulk ingest.
 func evalExport(
 	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(96815)
 	args := cArgs.Args.(*roachpb.ExportRequest)
 	h := cArgs.Header
 	reply := resp.(*roachpb.ExportResponse)
@@ -107,82 +84,114 @@ func evalExport(
 
 	var evalExportTrace types.StringValue
 	if cArgs.EvalCtx.NodeID() == h.GatewayNodeID {
+		__antithesis_instrumentation__.Notify(96827)
 		evalExportTrace.Value = fmt.Sprintf("evaluating Export on gateway node %d", cArgs.EvalCtx.NodeID())
 	} else {
+		__antithesis_instrumentation__.Notify(96828)
 		evalExportTrace.Value = fmt.Sprintf("evaluating Export on remote node %d", cArgs.EvalCtx.NodeID())
 	}
+	__antithesis_instrumentation__.Notify(96816)
 	evalExportSpan.RecordStructured(&evalExportTrace)
 
-	// Table's marked to be excluded from backup are expected to be configured
-	// with a short GC TTL. Additionally, backup excludes such table's from being
-	// protected from GC when writing ProtectedTimestamp records. The
-	// ExportRequest is likely to find its target data has been GC'ed at this
-	// point, and so if the range being exported is part of such a table, we do
-	// not want to send back any row data to be backed up.
 	if cArgs.EvalCtx.ExcludeDataFromBackup() {
+		__antithesis_instrumentation__.Notify(96829)
 		log.Infof(ctx, "[%s, %s) is part of a table excluded from backup, returning empty ExportResponse", args.Key, args.EndKey)
 		return result.Result{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(96830)
 	}
+	__antithesis_instrumentation__.Notify(96817)
 
 	if !args.ReturnSST {
+		__antithesis_instrumentation__.Notify(96831)
 		return result.Result{}, errors.New("ReturnSST is required")
+	} else {
+		__antithesis_instrumentation__.Notify(96832)
 	}
+	__antithesis_instrumentation__.Notify(96818)
 
 	if args.Encryption != nil {
+		__antithesis_instrumentation__.Notify(96833)
 		return result.Result{}, errors.New("returned SSTs cannot be encrypted")
+	} else {
+		__antithesis_instrumentation__.Notify(96834)
 	}
+	__antithesis_instrumentation__.Notify(96819)
 
-	// For MVCC_All backups with no start time, they'll only be capturing the
-	// *revisions* since the gc threshold, so noting that in the reply allows the
-	// BACKUP to correctly note the supported time bounds for RESTORE AS OF SYSTEM
-	// TIME.
 	if args.MVCCFilter == roachpb.MVCCFilter_All {
+		__antithesis_instrumentation__.Notify(96835)
 		reply.StartTime = cArgs.EvalCtx.GetGCThreshold()
+	} else {
+		__antithesis_instrumentation__.Notify(96836)
 	}
+	__antithesis_instrumentation__.Notify(96820)
 
 	var exportAllRevisions bool
 	switch args.MVCCFilter {
 	case roachpb.MVCCFilter_Latest:
+		__antithesis_instrumentation__.Notify(96837)
 		exportAllRevisions = false
 	case roachpb.MVCCFilter_All:
+		__antithesis_instrumentation__.Notify(96838)
 		exportAllRevisions = true
 	default:
+		__antithesis_instrumentation__.Notify(96839)
 		return result.Result{}, errors.Errorf("unknown MVCC filter: %s", args.MVCCFilter)
 	}
+	__antithesis_instrumentation__.Notify(96821)
 
 	targetSize := uint64(args.TargetFileSize)
-	// TODO(adityamaru): Remove this once we are able to set tenant specific
-	// cluster settings. This takes the minimum of the system tenant's cluster
-	// setting and the target size sent as part of the ExportRequest from the
-	// tenant.
+
 	clusterSettingTargetSize := uint64(ExportRequestTargetFileSize.Get(&cArgs.EvalCtx.ClusterSettings().SV))
 	if targetSize > clusterSettingTargetSize {
+		__antithesis_instrumentation__.Notify(96840)
 		targetSize = clusterSettingTargetSize
+	} else {
+		__antithesis_instrumentation__.Notify(96841)
 	}
+	__antithesis_instrumentation__.Notify(96822)
 
 	var maxSize uint64
 	allowedOverage := ExportRequestMaxAllowedFileSizeOverage.Get(&cArgs.EvalCtx.ClusterSettings().SV)
-	if targetSize > 0 && allowedOverage > 0 {
+	if targetSize > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(96842)
+		return allowedOverage > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(96843)
 		maxSize = targetSize + uint64(allowedOverage)
+	} else {
+		__antithesis_instrumentation__.Notify(96844)
 	}
+	__antithesis_instrumentation__.Notify(96823)
 
 	maxRunTime := exportRequestMaxIterationTime.Get(&cArgs.EvalCtx.ClusterSettings().SV)
 
 	var maxIntents uint64
 	if m := storage.MaxIntentsPerWriteIntentError.Get(&cArgs.EvalCtx.ClusterSettings().SV); m > 0 {
+		__antithesis_instrumentation__.Notify(96845)
 		maxIntents = uint64(m)
+	} else {
+		__antithesis_instrumentation__.Notify(96846)
 	}
+	__antithesis_instrumentation__.Notify(96824)
 
-	// Time-bound iterators only make sense to use if the start time is set.
-	useTBI := args.EnableTimeBoundIteratorOptimization && !args.StartTime.IsEmpty()
-	// Only use resume timestamp if splitting mid key is enabled.
+	useTBI := args.EnableTimeBoundIteratorOptimization && func() bool {
+		__antithesis_instrumentation__.Notify(96847)
+		return !args.StartTime.IsEmpty() == true
+	}() == true
+
 	resumeKeyTS := hlc.Timestamp{}
 	if args.SplitMidKey {
+		__antithesis_instrumentation__.Notify(96848)
 		resumeKeyTS = args.ResumeKeyTS
+	} else {
+		__antithesis_instrumentation__.Notify(96849)
 	}
+	__antithesis_instrumentation__.Notify(96825)
 
 	var curSizeOfExportedSSTs int64
 	for start := args.Key; start != nil; {
+		__antithesis_instrumentation__.Notify(96850)
 		destFile := &storage.MemFile{}
 		summary, resume, resumeTS, err := reader.ExportMVCCToSst(ctx, storage.ExportOptions{
 			StartKey:           storage.MVCCKey{Key: start, Timestamp: resumeKeyTS},
@@ -198,27 +207,39 @@ func evalExport(
 			ResourceLimiter:    storage.NewResourceLimiter(storage.ResourceLimiterOptions{MaxRunTime: maxRunTime}, timeutil.DefaultTimeSource{}),
 		}, destFile)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(96854)
 			if errors.HasType(err, (*storage.ExceedMaxSizeError)(nil)) {
+				__antithesis_instrumentation__.Notify(96856)
 				err = errors.WithHintf(err,
 					"consider increasing cluster setting %q", MaxExportOverageSetting)
+			} else {
+				__antithesis_instrumentation__.Notify(96857)
 			}
+			__antithesis_instrumentation__.Notify(96855)
 			return result.Result{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(96858)
 		}
+		__antithesis_instrumentation__.Notify(96851)
 		data := destFile.Data()
 
-		// NB: This should only happen on the first page of results. If there were
-		// more data to be read that lead to pagination then we'd see it in this
-		// page. Break out of the loop because there must be no data to export.
 		if summary.DataSize == 0 {
+			__antithesis_instrumentation__.Notify(96859)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(96860)
 		}
+		__antithesis_instrumentation__.Notify(96852)
 
 		span := roachpb.Span{Key: start}
 		if resume != nil {
+			__antithesis_instrumentation__.Notify(96861)
 			span.EndKey = resume
 		} else {
+			__antithesis_instrumentation__.Notify(96862)
 			span.EndKey = args.EndKey
 		}
+		__antithesis_instrumentation__.Notify(96853)
 		exported := roachpb.ExportResponse_File{
 			Span:     span,
 			EndKeyTS: resumeTS,
@@ -230,45 +251,41 @@ func evalExport(
 		resumeKeyTS = resumeTS
 
 		if h.TargetBytes > 0 {
+			__antithesis_instrumentation__.Notify(96863)
 			curSizeOfExportedSSTs += summary.DataSize
-			// There could be a situation where the size of exported SSTs is larger
-			// than the TargetBytes. In such a scenario, we want to report back
-			// TargetBytes as the size of the processed SSTs otherwise the DistSender
-			// will error out with an "exceeded limit". In every other case we want to
-			// report back the actual size so that the DistSender can shrink the limit
-			// for subsequent range requests.
-			// This is semantically OK for two reasons:
-			//
-			// - DistSender does not parallelize requests with TargetBytes > 0.
-			//
-			// - DistSender uses NumBytes to shrink the limit for subsequent requests.
-			// By returning TargetBytes, no more requests will be processed (and there
-			// are no parallel running requests) which is what we expect.
-			//
-			// The ResumeSpan is what is used as the source of truth by the caller
-			// issuing the request, and that contains accurate information about what
-			// is left to be exported.
+
 			targetSize := h.TargetBytes
 			if curSizeOfExportedSSTs < targetSize {
+				__antithesis_instrumentation__.Notify(96865)
 				targetSize = curSizeOfExportedSSTs
+			} else {
+				__antithesis_instrumentation__.Notify(96866)
 			}
+			__antithesis_instrumentation__.Notify(96864)
 			reply.NumBytes = targetSize
-			// NB: This condition means that we will allow another SST to be created
-			// even if we have less room in our TargetBytes than the target size of
-			// the next SST. In the worst case this could lead to us exceeding our
-			// TargetBytes by SST target size + overage.
+
 			if reply.NumBytes == h.TargetBytes {
+				__antithesis_instrumentation__.Notify(96867)
 				if resume != nil {
+					__antithesis_instrumentation__.Notify(96869)
 					reply.ResumeSpan = &roachpb.Span{
 						Key:    resume,
 						EndKey: args.EndKey,
 					}
 					reply.ResumeReason = roachpb.RESUME_BYTE_LIMIT
+				} else {
+					__antithesis_instrumentation__.Notify(96870)
 				}
+				__antithesis_instrumentation__.Notify(96868)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(96871)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(96872)
 		}
 	}
+	__antithesis_instrumentation__.Notify(96826)
 
 	return result.Result{}, nil
 }

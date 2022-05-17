@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,695 +15,1026 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// IndexedRows are rows with the corresponding indices.
 type IndexedRows interface {
-	Len() int                                                // returns number of rows
-	GetRow(ctx context.Context, idx int) (IndexedRow, error) // returns a row at the given index or an error
+	Len() int
+	GetRow(ctx context.Context, idx int) (IndexedRow, error)
 }
 
-// IndexedRow is a row with a corresponding index.
 type IndexedRow interface {
-	GetIdx() int                                    // returns index of the row
-	GetDatum(idx int) (Datum, error)                // returns a datum at the given index
-	GetDatums(startIdx, endIdx int) (Datums, error) // returns datums at indices [startIdx, endIdx)
+	GetIdx() int
+	GetDatum(idx int) (Datum, error)
+	GetDatums(startIdx, endIdx int) (Datums, error)
 }
 
-// WindowFrameRun contains the runtime state of window frame during calculations.
 type WindowFrameRun struct {
-	// constant for all calls to WindowFunc.Add
 	Rows             IndexedRows
-	ArgsIdxs         []uint32     // indices of the arguments to the window function
-	Frame            *WindowFrame // If non-nil, Frame represents the frame specification of this window. If nil, default frame is used.
+	ArgsIdxs         []uint32
+	Frame            *WindowFrame
 	StartBoundOffset Datum
 	EndBoundOffset   Datum
 	FilterColIdx     int
-	OrdColIdx        int                // Column over which rows are ordered within the partition. It is only required in RANGE mode.
-	OrdDirection     encoding.Direction // Direction of the ordering over OrdColIdx.
-	PlusOp, MinusOp  *BinOp             // Binary operators for addition and subtraction required only in RANGE mode.
+	OrdColIdx        int
+	OrdDirection     encoding.Direction
+	PlusOp, MinusOp  *BinOp
 	PeerHelper       PeerGroupsIndicesHelper
 
-	// Any error that occurred within methods that cannot return an error (like
-	// within a closure that is passed into sort.Search()).
 	err error
 
-	// changes for each peer group
-	CurRowPeerGroupNum int // the number of the current row's peer group
+	CurRowPeerGroupNum int
 
-	// changes for each row (each call to WindowFunc.Add)
-	RowIdx int // the current row index
+	RowIdx int
 }
 
-// WindowFrameRangeOps allows for looking up an implementation of binary
-// operators necessary for RANGE mode of framing.
 type WindowFrameRangeOps struct{}
 
-// LookupImpl looks up implementation of Plus and Minus binary operators for
-// provided left and right types and returns them along with a boolean which
-// indicates whether lookup is successful.
 func (o WindowFrameRangeOps) LookupImpl(left, right *types.T) (*BinOp, *BinOp, bool) {
+	__antithesis_instrumentation__.Notify(616740)
 	plusOverloads, minusOverloads := BinOps[treebin.Plus], BinOps[treebin.Minus]
 	plusOp, found := plusOverloads.lookupImpl(left, right)
 	if !found {
+		__antithesis_instrumentation__.Notify(616743)
 		return nil, nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(616744)
 	}
+	__antithesis_instrumentation__.Notify(616741)
 	minusOp, found := minusOverloads.lookupImpl(left, right)
 	if !found {
+		__antithesis_instrumentation__.Notify(616745)
 		return nil, nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(616746)
 	}
+	__antithesis_instrumentation__.Notify(616742)
 	return plusOp, minusOp, true
 }
 
-// getValueByOffset returns a datum calculated as the value of the current row
-// in the column over which rows are ordered plus/minus logic offset, and an
-// error if encountered. It should be used only in RANGE mode.
 func (wfr *WindowFrameRun) getValueByOffset(
 	ctx context.Context, evalCtx *EvalContext, offset Datum, negative bool,
 ) (Datum, error) {
+	__antithesis_instrumentation__.Notify(616747)
 	if wfr.OrdDirection == encoding.Descending {
-		// If rows are in descending order, we want to perform the "opposite"
-		// addition/subtraction to default ascending order.
+		__antithesis_instrumentation__.Notify(616752)
+
 		negative = !negative
+	} else {
+		__antithesis_instrumentation__.Notify(616753)
 	}
+	__antithesis_instrumentation__.Notify(616748)
 	var binOp *BinOp
 	if negative {
+		__antithesis_instrumentation__.Notify(616754)
 		binOp = wfr.MinusOp
 	} else {
+		__antithesis_instrumentation__.Notify(616755)
 		binOp = wfr.PlusOp
 	}
+	__antithesis_instrumentation__.Notify(616749)
 	value, err := wfr.valueAt(ctx, wfr.RowIdx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(616756)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(616757)
 	}
+	__antithesis_instrumentation__.Notify(616750)
 	if value == DNull {
+		__antithesis_instrumentation__.Notify(616758)
 		return DNull, nil
+	} else {
+		__antithesis_instrumentation__.Notify(616759)
 	}
+	__antithesis_instrumentation__.Notify(616751)
 	return binOp.Fn(evalCtx, value, offset)
 }
 
-// FrameStartIdx returns the index of starting row in the frame (which is the first to be included).
 func (wfr *WindowFrameRun) FrameStartIdx(ctx context.Context, evalCtx *EvalContext) (int, error) {
+	__antithesis_instrumentation__.Notify(616760)
 	if wfr.Frame == nil {
+		__antithesis_instrumentation__.Notify(616762)
 		return 0, nil
+	} else {
+		__antithesis_instrumentation__.Notify(616763)
 	}
+	__antithesis_instrumentation__.Notify(616761)
 	switch wfr.Frame.Mode {
 	case treewindow.RANGE:
+		__antithesis_instrumentation__.Notify(616764)
 		switch wfr.Frame.Bounds.StartBound.BoundType {
 		case treewindow.UnboundedPreceding:
+			__antithesis_instrumentation__.Notify(616768)
 			return 0, nil
 		case treewindow.OffsetPreceding:
-			value, err := wfr.getValueByOffset(ctx, evalCtx, wfr.StartBoundOffset, true /* negative */)
+			__antithesis_instrumentation__.Notify(616769)
+			value, err := wfr.getValueByOffset(ctx, evalCtx, wfr.StartBoundOffset, true)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(616777)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(616778)
 			}
+			__antithesis_instrumentation__.Notify(616770)
 			if wfr.OrdDirection == encoding.Descending {
-				// We use binary search on [0, wfr.RowIdx) interval to find the first row
-				// whose value is smaller or equal to 'value'. If such row is not found,
-				// then Search will correctly return wfr.RowIdx.
+				__antithesis_instrumentation__.Notify(616779)
+
 				return sort.Search(wfr.RowIdx, func(i int) bool {
+					__antithesis_instrumentation__.Notify(616780)
 					if wfr.err != nil {
+						__antithesis_instrumentation__.Notify(616784)
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616785)
 					}
+					__antithesis_instrumentation__.Notify(616781)
 					valueAt, err := wfr.valueAt(ctx, i)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(616786)
 						wfr.err = err
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616787)
 					}
+					__antithesis_instrumentation__.Notify(616782)
 					cmp, err := compareForWindow(evalCtx, valueAt, value)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(616788)
 						wfr.err = err
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616789)
 					}
+					__antithesis_instrumentation__.Notify(616783)
 					return cmp <= 0
 				}), wfr.err
+			} else {
+				__antithesis_instrumentation__.Notify(616790)
 			}
-			// We use binary search on [0, wfr.RowIdx) interval to find the first row
-			// whose value is greater or equal to 'value'. If such row is not found,
-			// then Search will correctly return wfr.RowIdx.
+			__antithesis_instrumentation__.Notify(616771)
+
 			return sort.Search(wfr.RowIdx, func(i int) bool {
+				__antithesis_instrumentation__.Notify(616791)
 				if wfr.err != nil {
+					__antithesis_instrumentation__.Notify(616795)
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616796)
 				}
+				__antithesis_instrumentation__.Notify(616792)
 				valueAt, err := wfr.valueAt(ctx, i)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(616797)
 					wfr.err = err
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616798)
 				}
+				__antithesis_instrumentation__.Notify(616793)
 				cmp, err := compareForWindow(evalCtx, valueAt, value)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(616799)
 					wfr.err = err
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616800)
 				}
+				__antithesis_instrumentation__.Notify(616794)
 				return cmp >= 0
 			}), wfr.err
 		case treewindow.CurrentRow:
-			// Spec: in RANGE mode CURRENT ROW means that the frame starts with the current row's first peer.
+			__antithesis_instrumentation__.Notify(616772)
+
 			return wfr.PeerHelper.GetFirstPeerIdx(wfr.CurRowPeerGroupNum), nil
 		case treewindow.OffsetFollowing:
-			value, err := wfr.getValueByOffset(ctx, evalCtx, wfr.StartBoundOffset, false /* negative */)
+			__antithesis_instrumentation__.Notify(616773)
+			value, err := wfr.getValueByOffset(ctx, evalCtx, wfr.StartBoundOffset, false)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(616801)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(616802)
 			}
+			__antithesis_instrumentation__.Notify(616774)
 			if wfr.OrdDirection == encoding.Descending {
-				// We use binary search on [0, wfr.PartitionSize()) interval to find
-				// the first row whose value is smaller or equal to 'value'.
+				__antithesis_instrumentation__.Notify(616803)
+
 				return sort.Search(wfr.PartitionSize(), func(i int) bool {
+					__antithesis_instrumentation__.Notify(616804)
 					if wfr.err != nil {
+						__antithesis_instrumentation__.Notify(616808)
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616809)
 					}
+					__antithesis_instrumentation__.Notify(616805)
 					valueAt, err := wfr.valueAt(ctx, i)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(616810)
 						wfr.err = err
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616811)
 					}
+					__antithesis_instrumentation__.Notify(616806)
 					cmp, err := compareForWindow(evalCtx, valueAt, value)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(616812)
 						wfr.err = err
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616813)
 					}
+					__antithesis_instrumentation__.Notify(616807)
 					return cmp <= 0
 				}), wfr.err
+			} else {
+				__antithesis_instrumentation__.Notify(616814)
 			}
-			// We use binary search on [0, wfr.PartitionSize()) interval to find the
-			// first row whose value is greater or equal to 'value'.
+			__antithesis_instrumentation__.Notify(616775)
+
 			return sort.Search(wfr.PartitionSize(), func(i int) bool {
+				__antithesis_instrumentation__.Notify(616815)
 				if wfr.err != nil {
+					__antithesis_instrumentation__.Notify(616819)
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616820)
 				}
+				__antithesis_instrumentation__.Notify(616816)
 				valueAt, err := wfr.valueAt(ctx, i)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(616821)
 					wfr.err = err
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616822)
 				}
+				__antithesis_instrumentation__.Notify(616817)
 				cmp, err := compareForWindow(evalCtx, valueAt, value)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(616823)
 					wfr.err = err
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616824)
 				}
+				__antithesis_instrumentation__.Notify(616818)
 				return cmp >= 0
 			}), wfr.err
 		default:
+			__antithesis_instrumentation__.Notify(616776)
 			return 0, errors.AssertionFailedf(
 				"unexpected WindowFrameBoundType in RANGE mode: %d",
 				redact.Safe(wfr.Frame.Bounds.StartBound.BoundType))
 		}
 	case treewindow.ROWS:
+		__antithesis_instrumentation__.Notify(616765)
 		switch wfr.Frame.Bounds.StartBound.BoundType {
 		case treewindow.UnboundedPreceding:
+			__antithesis_instrumentation__.Notify(616825)
 			return 0, nil
 		case treewindow.OffsetPreceding:
+			__antithesis_instrumentation__.Notify(616826)
 			offset := MustBeDInt(wfr.StartBoundOffset)
 			idx := wfr.RowIdx - int(offset)
 			if idx < 0 {
+				__antithesis_instrumentation__.Notify(616832)
 				idx = 0
+			} else {
+				__antithesis_instrumentation__.Notify(616833)
 			}
+			__antithesis_instrumentation__.Notify(616827)
 			return idx, nil
 		case treewindow.CurrentRow:
+			__antithesis_instrumentation__.Notify(616828)
 			return wfr.RowIdx, nil
 		case treewindow.OffsetFollowing:
+			__antithesis_instrumentation__.Notify(616829)
 			offset := MustBeDInt(wfr.StartBoundOffset)
 			idx := wfr.RowIdx + int(offset)
-			if idx >= wfr.PartitionSize() || int(offset) >= wfr.PartitionSize() {
-				// The second part of the condition protects us from an integer
-				// overflow when offset is very large.
+			if idx >= wfr.PartitionSize() || func() bool {
+				__antithesis_instrumentation__.Notify(616834)
+				return int(offset) >= wfr.PartitionSize() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(616835)
+
 				idx = wfr.unboundedFollowing()
+			} else {
+				__antithesis_instrumentation__.Notify(616836)
 			}
+			__antithesis_instrumentation__.Notify(616830)
 			return idx, nil
 		default:
+			__antithesis_instrumentation__.Notify(616831)
 			return 0, errors.AssertionFailedf(
 				"unexpected WindowFrameBoundType in ROWS mode: %d",
 				redact.Safe(wfr.Frame.Bounds.StartBound.BoundType))
 		}
 	case treewindow.GROUPS:
+		__antithesis_instrumentation__.Notify(616766)
 		switch wfr.Frame.Bounds.StartBound.BoundType {
 		case treewindow.UnboundedPreceding:
+			__antithesis_instrumentation__.Notify(616837)
 			return 0, nil
 		case treewindow.OffsetPreceding:
+			__antithesis_instrumentation__.Notify(616838)
 			offset := MustBeDInt(wfr.StartBoundOffset)
 			peerGroupNum := wfr.CurRowPeerGroupNum - int(offset)
 			if peerGroupNum < 0 {
+				__antithesis_instrumentation__.Notify(616844)
 				peerGroupNum = 0
+			} else {
+				__antithesis_instrumentation__.Notify(616845)
 			}
+			__antithesis_instrumentation__.Notify(616839)
 			return wfr.PeerHelper.GetFirstPeerIdx(peerGroupNum), nil
 		case treewindow.CurrentRow:
-			// Spec: in GROUPS mode CURRENT ROW means that the frame starts with the current row's first peer.
+			__antithesis_instrumentation__.Notify(616840)
+
 			return wfr.PeerHelper.GetFirstPeerIdx(wfr.CurRowPeerGroupNum), nil
 		case treewindow.OffsetFollowing:
+			__antithesis_instrumentation__.Notify(616841)
 			offset := MustBeDInt(wfr.StartBoundOffset)
 			peerGroupNum := wfr.CurRowPeerGroupNum + int(offset)
 			lastPeerGroupNum := wfr.PeerHelper.GetLastPeerGroupNum()
-			if peerGroupNum > lastPeerGroupNum || peerGroupNum < 0 {
-				// peerGroupNum is out of bounds, so we return the index of the first
-				// row after the partition.
+			if peerGroupNum > lastPeerGroupNum || func() bool {
+				__antithesis_instrumentation__.Notify(616846)
+				return peerGroupNum < 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(616847)
+
 				return wfr.unboundedFollowing(), nil
+			} else {
+				__antithesis_instrumentation__.Notify(616848)
 			}
+			__antithesis_instrumentation__.Notify(616842)
 			return wfr.PeerHelper.GetFirstPeerIdx(peerGroupNum), nil
 		default:
+			__antithesis_instrumentation__.Notify(616843)
 			return 0, errors.AssertionFailedf(
 				"unexpected WindowFrameBoundType in GROUPS mode: %d",
 				redact.Safe(wfr.Frame.Bounds.StartBound.BoundType))
 		}
 	default:
+		__antithesis_instrumentation__.Notify(616767)
 		return 0, errors.AssertionFailedf("unexpected WindowFrameMode: %d", wfr.Frame.Mode)
 	}
 }
 
-// IsDefaultFrame returns whether a frame equivalent to the default frame
-// is being used (default is RANGE UNBOUNDED PRECEDING).
 func (f *WindowFrame) IsDefaultFrame() bool {
+	__antithesis_instrumentation__.Notify(616849)
 	if f == nil {
+		__antithesis_instrumentation__.Notify(616852)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(616853)
 	}
+	__antithesis_instrumentation__.Notify(616850)
 	if f.Bounds.StartBound.BoundType == treewindow.UnboundedPreceding {
-		return f.DefaultFrameExclusion() && f.Mode == treewindow.RANGE &&
-			(f.Bounds.EndBound == nil || f.Bounds.EndBound.BoundType == treewindow.CurrentRow)
+		__antithesis_instrumentation__.Notify(616854)
+		return f.DefaultFrameExclusion() && func() bool {
+			__antithesis_instrumentation__.Notify(616855)
+			return f.Mode == treewindow.RANGE == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(616856)
+			return (f.Bounds.EndBound == nil || func() bool {
+				__antithesis_instrumentation__.Notify(616857)
+				return f.Bounds.EndBound.BoundType == treewindow.CurrentRow == true
+			}() == true) == true
+		}() == true
+	} else {
+		__antithesis_instrumentation__.Notify(616858)
 	}
+	__antithesis_instrumentation__.Notify(616851)
 	return false
 }
 
-// DefaultFrameExclusion returns true if optional frame exclusion is omitted.
 func (f *WindowFrame) DefaultFrameExclusion() bool {
-	return f == nil || f.Exclusion == treewindow.NoExclusion
+	__antithesis_instrumentation__.Notify(616859)
+	return f == nil || func() bool {
+		__antithesis_instrumentation__.Notify(616860)
+		return f.Exclusion == treewindow.NoExclusion == true
+	}() == true
 }
 
-// FrameEndIdx returns the index of the first row after the frame.
 func (wfr *WindowFrameRun) FrameEndIdx(ctx context.Context, evalCtx *EvalContext) (int, error) {
+	__antithesis_instrumentation__.Notify(616861)
 	if wfr.Frame == nil {
+		__antithesis_instrumentation__.Notify(616863)
 		return wfr.DefaultFrameSize(), nil
+	} else {
+		__antithesis_instrumentation__.Notify(616864)
 	}
+	__antithesis_instrumentation__.Notify(616862)
 	switch wfr.Frame.Mode {
 	case treewindow.RANGE:
+		__antithesis_instrumentation__.Notify(616865)
 		if wfr.Frame.Bounds.EndBound == nil {
-			// We're using default value of CURRENT ROW when EndBound is omitted.
-			// Spec: in RANGE mode CURRENT ROW means that the frame ends with the current row's last peer.
+			__antithesis_instrumentation__.Notify(616872)
+
 			return wfr.DefaultFrameSize(), nil
+		} else {
+			__antithesis_instrumentation__.Notify(616873)
 		}
+		__antithesis_instrumentation__.Notify(616866)
 		switch wfr.Frame.Bounds.EndBound.BoundType {
 		case treewindow.OffsetPreceding:
-			value, err := wfr.getValueByOffset(ctx, evalCtx, wfr.EndBoundOffset, true /* negative */)
+			__antithesis_instrumentation__.Notify(616874)
+			value, err := wfr.getValueByOffset(ctx, evalCtx, wfr.EndBoundOffset, true)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(616883)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(616884)
 			}
+			__antithesis_instrumentation__.Notify(616875)
 			if wfr.OrdDirection == encoding.Descending {
-				// We use binary search on [0, wfr.PartitionSize()) interval to find
-				// the first row whose value is smaller than 'value'. If such row is
-				// not found, then Search will correctly return wfr.PartitionSize().
-				// Note that searching up to wfr.RowIdx is not correct in case of a
-				// zero offset (we need to include all peers of the current row).
+				__antithesis_instrumentation__.Notify(616885)
+
 				return sort.Search(wfr.PartitionSize(), func(i int) bool {
+					__antithesis_instrumentation__.Notify(616886)
 					if wfr.err != nil {
+						__antithesis_instrumentation__.Notify(616890)
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616891)
 					}
+					__antithesis_instrumentation__.Notify(616887)
 					valueAt, err := wfr.valueAt(ctx, i)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(616892)
 						wfr.err = err
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616893)
 					}
+					__antithesis_instrumentation__.Notify(616888)
 					cmp, err := compareForWindow(evalCtx, valueAt, value)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(616894)
 						wfr.err = err
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616895)
 					}
+					__antithesis_instrumentation__.Notify(616889)
 					return cmp < 0
 				}), wfr.err
+			} else {
+				__antithesis_instrumentation__.Notify(616896)
 			}
-			// We use binary search on [0, wfr.PartitionSize()) interval to find
-			// the first row whose value is smaller than 'value'. If such row is
-			// not found, then Search will correctly return wfr.PartitionSize().
-			// Note that searching up to wfr.RowIdx is not correct in case of a
-			// zero offset (we need to include all peers of the current row).
+			__antithesis_instrumentation__.Notify(616876)
+
 			return sort.Search(wfr.PartitionSize(), func(i int) bool {
+				__antithesis_instrumentation__.Notify(616897)
 				if wfr.err != nil {
+					__antithesis_instrumentation__.Notify(616901)
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616902)
 				}
+				__antithesis_instrumentation__.Notify(616898)
 				valueAt, err := wfr.valueAt(ctx, i)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(616903)
 					wfr.err = err
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616904)
 				}
+				__antithesis_instrumentation__.Notify(616899)
 				cmp, err := compareForWindow(evalCtx, valueAt, value)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(616905)
 					wfr.err = err
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616906)
 				}
+				__antithesis_instrumentation__.Notify(616900)
 				return cmp > 0
 			}), wfr.err
 		case treewindow.CurrentRow:
-			// Spec: in RANGE mode CURRENT ROW means that the frame end with the current row's last peer.
+			__antithesis_instrumentation__.Notify(616877)
+
 			return wfr.DefaultFrameSize(), nil
 		case treewindow.OffsetFollowing:
-			value, err := wfr.getValueByOffset(ctx, evalCtx, wfr.EndBoundOffset, false /* negative */)
+			__antithesis_instrumentation__.Notify(616878)
+			value, err := wfr.getValueByOffset(ctx, evalCtx, wfr.EndBoundOffset, false)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(616907)
 				return 0, err
+			} else {
+				__antithesis_instrumentation__.Notify(616908)
 			}
+			__antithesis_instrumentation__.Notify(616879)
 			if wfr.OrdDirection == encoding.Descending {
-				// We use binary search on [0, wfr.PartitionSize()) interval to find
-				// the first row whose value is smaller than 'value'.
+				__antithesis_instrumentation__.Notify(616909)
+
 				return sort.Search(wfr.PartitionSize(), func(i int) bool {
+					__antithesis_instrumentation__.Notify(616910)
 					if wfr.err != nil {
+						__antithesis_instrumentation__.Notify(616914)
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616915)
 					}
+					__antithesis_instrumentation__.Notify(616911)
 					valueAt, err := wfr.valueAt(ctx, i)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(616916)
 						wfr.err = err
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616917)
 					}
+					__antithesis_instrumentation__.Notify(616912)
 					cmp, err := compareForWindow(evalCtx, valueAt, value)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(616918)
 						wfr.err = err
 						return false
+					} else {
+						__antithesis_instrumentation__.Notify(616919)
 					}
+					__antithesis_instrumentation__.Notify(616913)
 					return cmp < 0
 				}), wfr.err
+			} else {
+				__antithesis_instrumentation__.Notify(616920)
 			}
-			// We use binary search on [0, wfr.PartitionSize()) interval to find
-			// the first row whose value is smaller than 'value'.
+			__antithesis_instrumentation__.Notify(616880)
+
 			return sort.Search(wfr.PartitionSize(), func(i int) bool {
+				__antithesis_instrumentation__.Notify(616921)
 				if wfr.err != nil {
+					__antithesis_instrumentation__.Notify(616925)
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616926)
 				}
+				__antithesis_instrumentation__.Notify(616922)
 				valueAt, err := wfr.valueAt(ctx, i)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(616927)
 					wfr.err = err
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616928)
 				}
+				__antithesis_instrumentation__.Notify(616923)
 				cmp, err := compareForWindow(evalCtx, valueAt, value)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(616929)
 					wfr.err = err
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(616930)
 				}
+				__antithesis_instrumentation__.Notify(616924)
 				return cmp > 0
 			}), wfr.err
 		case treewindow.UnboundedFollowing:
+			__antithesis_instrumentation__.Notify(616881)
 			return wfr.unboundedFollowing(), nil
 		default:
+			__antithesis_instrumentation__.Notify(616882)
 			return 0, errors.AssertionFailedf(
 				"unexpected WindowFrameBoundType in RANGE mode: %d",
 				redact.Safe(wfr.Frame.Bounds.EndBound.BoundType))
 		}
 	case treewindow.ROWS:
+		__antithesis_instrumentation__.Notify(616867)
 		if wfr.Frame.Bounds.EndBound == nil {
-			// We're using default value of CURRENT ROW when EndBound is omitted.
+			__antithesis_instrumentation__.Notify(616931)
+
 			return wfr.RowIdx + 1, nil
+		} else {
+			__antithesis_instrumentation__.Notify(616932)
 		}
+		__antithesis_instrumentation__.Notify(616868)
 		switch wfr.Frame.Bounds.EndBound.BoundType {
 		case treewindow.OffsetPreceding:
+			__antithesis_instrumentation__.Notify(616933)
 			offset := MustBeDInt(wfr.EndBoundOffset)
 			idx := wfr.RowIdx - int(offset) + 1
 			if idx < 0 {
+				__antithesis_instrumentation__.Notify(616940)
 				idx = 0
+			} else {
+				__antithesis_instrumentation__.Notify(616941)
 			}
+			__antithesis_instrumentation__.Notify(616934)
 			return idx, nil
 		case treewindow.CurrentRow:
+			__antithesis_instrumentation__.Notify(616935)
 			return wfr.RowIdx + 1, nil
 		case treewindow.OffsetFollowing:
+			__antithesis_instrumentation__.Notify(616936)
 			offset := MustBeDInt(wfr.EndBoundOffset)
 			idx := wfr.RowIdx + int(offset) + 1
-			if idx >= wfr.PartitionSize() || int(offset) >= wfr.PartitionSize() {
-				// The second part of the condition protects us from an integer
-				// overflow when offset is very large.
+			if idx >= wfr.PartitionSize() || func() bool {
+				__antithesis_instrumentation__.Notify(616942)
+				return int(offset) >= wfr.PartitionSize() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(616943)
+
 				idx = wfr.unboundedFollowing()
+			} else {
+				__antithesis_instrumentation__.Notify(616944)
 			}
+			__antithesis_instrumentation__.Notify(616937)
 			return idx, nil
 		case treewindow.UnboundedFollowing:
+			__antithesis_instrumentation__.Notify(616938)
 			return wfr.unboundedFollowing(), nil
 		default:
+			__antithesis_instrumentation__.Notify(616939)
 			return 0, errors.AssertionFailedf(
 				"unexpected WindowFrameBoundType in ROWS mode: %d",
 				redact.Safe(wfr.Frame.Bounds.EndBound.BoundType))
 		}
 	case treewindow.GROUPS:
+		__antithesis_instrumentation__.Notify(616869)
 		if wfr.Frame.Bounds.EndBound == nil {
-			// We're using default value of CURRENT ROW when EndBound is omitted.
-			// Spec: in GROUPS mode CURRENT ROW means that the frame ends with the current row's last peer.
+			__antithesis_instrumentation__.Notify(616945)
+
 			return wfr.DefaultFrameSize(), nil
+		} else {
+			__antithesis_instrumentation__.Notify(616946)
 		}
+		__antithesis_instrumentation__.Notify(616870)
 		switch wfr.Frame.Bounds.EndBound.BoundType {
 		case treewindow.OffsetPreceding:
+			__antithesis_instrumentation__.Notify(616947)
 			offset := MustBeDInt(wfr.EndBoundOffset)
 			peerGroupNum := wfr.CurRowPeerGroupNum - int(offset)
 			if peerGroupNum < wfr.PeerHelper.headPeerGroupNum {
-				// EndBound's peer group is "outside" of the partition.
+				__antithesis_instrumentation__.Notify(616954)
+
 				return 0, nil
+			} else {
+				__antithesis_instrumentation__.Notify(616955)
 			}
+			__antithesis_instrumentation__.Notify(616948)
 			return wfr.PeerHelper.GetFirstPeerIdx(peerGroupNum) + wfr.PeerHelper.GetRowCount(peerGroupNum), nil
 		case treewindow.CurrentRow:
+			__antithesis_instrumentation__.Notify(616949)
 			return wfr.DefaultFrameSize(), nil
 		case treewindow.OffsetFollowing:
+			__antithesis_instrumentation__.Notify(616950)
 			offset := MustBeDInt(wfr.EndBoundOffset)
 			peerGroupNum := wfr.CurRowPeerGroupNum + int(offset)
 			lastPeerGroupNum := wfr.PeerHelper.GetLastPeerGroupNum()
-			if peerGroupNum > lastPeerGroupNum || peerGroupNum < 0 {
-				// peerGroupNum is out of bounds, so we return the index of the first
-				// row after the partition.
+			if peerGroupNum > lastPeerGroupNum || func() bool {
+				__antithesis_instrumentation__.Notify(616956)
+				return peerGroupNum < 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(616957)
+
 				return wfr.unboundedFollowing(), nil
+			} else {
+				__antithesis_instrumentation__.Notify(616958)
 			}
+			__antithesis_instrumentation__.Notify(616951)
 			return wfr.PeerHelper.GetFirstPeerIdx(peerGroupNum) + wfr.PeerHelper.GetRowCount(peerGroupNum), nil
 		case treewindow.UnboundedFollowing:
+			__antithesis_instrumentation__.Notify(616952)
 			return wfr.unboundedFollowing(), nil
 		default:
+			__antithesis_instrumentation__.Notify(616953)
 			return 0, errors.AssertionFailedf(
 				"unexpected WindowFrameBoundType in GROUPS mode: %d",
 				redact.Safe(wfr.Frame.Bounds.EndBound.BoundType))
 		}
 	default:
+		__antithesis_instrumentation__.Notify(616871)
 		return 0, errors.AssertionFailedf(
 			"unexpected WindowFrameMode: %d", redact.Safe(wfr.Frame.Mode))
 	}
 }
 
-// FrameSize returns the number of rows in the current frame (taking into
-// account - if present - a filter and a frame exclusion).
 func (wfr *WindowFrameRun) FrameSize(ctx context.Context, evalCtx *EvalContext) (int, error) {
+	__antithesis_instrumentation__.Notify(616959)
 	if wfr.Frame == nil {
+		__antithesis_instrumentation__.Notify(616965)
 		return wfr.DefaultFrameSize(), nil
+	} else {
+		__antithesis_instrumentation__.Notify(616966)
 	}
+	__antithesis_instrumentation__.Notify(616960)
 	frameEndIdx, err := wfr.FrameEndIdx(ctx, evalCtx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(616967)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(616968)
 	}
+	__antithesis_instrumentation__.Notify(616961)
 	frameStartIdx, err := wfr.FrameStartIdx(ctx, evalCtx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(616969)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(616970)
 	}
+	__antithesis_instrumentation__.Notify(616962)
 	size := frameEndIdx - frameStartIdx
-	if !wfr.noFilter() || !wfr.Frame.DefaultFrameExclusion() {
+	if !wfr.noFilter() || func() bool {
+		__antithesis_instrumentation__.Notify(616971)
+		return !wfr.Frame.DefaultFrameExclusion() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(616972)
 		size = 0
 		for idx := frameStartIdx; idx < frameEndIdx; idx++ {
+			__antithesis_instrumentation__.Notify(616973)
 			if skipped, err := wfr.IsRowSkipped(ctx, idx); err != nil {
+				__antithesis_instrumentation__.Notify(616975)
 				return 0, err
-			} else if skipped {
-				continue
+			} else {
+				__antithesis_instrumentation__.Notify(616976)
+				if skipped {
+					__antithesis_instrumentation__.Notify(616977)
+					continue
+				} else {
+					__antithesis_instrumentation__.Notify(616978)
+				}
 			}
+			__antithesis_instrumentation__.Notify(616974)
 			size++
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(616979)
 	}
+	__antithesis_instrumentation__.Notify(616963)
 	if size <= 0 {
+		__antithesis_instrumentation__.Notify(616980)
 		size = 0
+	} else {
+		__antithesis_instrumentation__.Notify(616981)
 	}
+	__antithesis_instrumentation__.Notify(616964)
 	return size, nil
 }
 
-// Rank returns the rank of the current row.
 func (wfr *WindowFrameRun) Rank() int {
+	__antithesis_instrumentation__.Notify(616982)
 	return wfr.RowIdx + 1
 }
 
-// PartitionSize returns the number of rows in the current partition.
 func (wfr *WindowFrameRun) PartitionSize() int {
+	__antithesis_instrumentation__.Notify(616983)
 	return wfr.Rows.Len()
 }
 
-// unboundedFollowing returns the index of the "first row beyond" the partition
-// so that current frame contains all the rows till the end of the partition.
 func (wfr *WindowFrameRun) unboundedFollowing() int {
+	__antithesis_instrumentation__.Notify(616984)
 	return wfr.PartitionSize()
 }
 
-// DefaultFrameSize returns the size of default window frame which contains
-// the rows from the start of the partition through the last peer of the current row.
 func (wfr *WindowFrameRun) DefaultFrameSize() int {
+	__antithesis_instrumentation__.Notify(616985)
 	return wfr.PeerHelper.GetFirstPeerIdx(wfr.CurRowPeerGroupNum) + wfr.PeerHelper.GetRowCount(wfr.CurRowPeerGroupNum)
 }
 
-// FirstInPeerGroup returns if the current row is the first in its peer group.
 func (wfr *WindowFrameRun) FirstInPeerGroup() bool {
+	__antithesis_instrumentation__.Notify(616986)
 	return wfr.RowIdx == wfr.PeerHelper.GetFirstPeerIdx(wfr.CurRowPeerGroupNum)
 }
 
-// Args returns the current argument set in the window frame.
 func (wfr *WindowFrameRun) Args(ctx context.Context) (Datums, error) {
+	__antithesis_instrumentation__.Notify(616987)
 	return wfr.ArgsWithRowOffset(ctx, 0)
 }
 
-// ArgsWithRowOffset returns the argument set at the given offset in the window frame.
 func (wfr *WindowFrameRun) ArgsWithRowOffset(ctx context.Context, offset int) (Datums, error) {
+	__antithesis_instrumentation__.Notify(616988)
 	return wfr.ArgsByRowIdx(ctx, wfr.RowIdx+offset)
 }
 
-// ArgsByRowIdx returns the argument set of the row at idx.
 func (wfr *WindowFrameRun) ArgsByRowIdx(ctx context.Context, idx int) (Datums, error) {
+	__antithesis_instrumentation__.Notify(616989)
 	row, err := wfr.Rows.GetRow(ctx, idx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(616992)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(616993)
 	}
+	__antithesis_instrumentation__.Notify(616990)
 	datums := make(Datums, len(wfr.ArgsIdxs))
 	for i, argIdx := range wfr.ArgsIdxs {
+		__antithesis_instrumentation__.Notify(616994)
 		datums[i], err = row.GetDatum(int(argIdx))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(616995)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(616996)
 		}
 	}
+	__antithesis_instrumentation__.Notify(616991)
 	return datums, nil
 }
 
-// valueAt returns the first argument of the window function at the row idx.
 func (wfr *WindowFrameRun) valueAt(ctx context.Context, idx int) (Datum, error) {
+	__antithesis_instrumentation__.Notify(616997)
 	row, err := wfr.Rows.GetRow(ctx, idx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(616999)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(617000)
 	}
+	__antithesis_instrumentation__.Notify(616998)
 	return row.GetDatum(wfr.OrdColIdx)
 }
 
-// RangeModeWithOffsets returns whether the frame is in RANGE mode with at least
-// one of the bounds containing an offset.
 func (wfr *WindowFrameRun) RangeModeWithOffsets() bool {
-	return wfr.Frame.Mode == treewindow.RANGE && wfr.Frame.Bounds.HasOffset()
+	__antithesis_instrumentation__.Notify(617001)
+	return wfr.Frame.Mode == treewindow.RANGE && func() bool {
+		__antithesis_instrumentation__.Notify(617002)
+		return wfr.Frame.Bounds.HasOffset() == true
+	}() == true
 }
 
-// FullPartitionIsInWindow checks whether we have such a window frame that all
-// rows of the partition are inside of the window for each of the rows.
 func (wfr *WindowFrameRun) FullPartitionIsInWindow() bool {
-	// Note that we do not need to check whether a filter is present because
-	// application of the filter to a row does not depend on the position of the
-	// row or whether it is inside of the window frame.
-	if wfr.Frame == nil || !wfr.Frame.DefaultFrameExclusion() {
+	__antithesis_instrumentation__.Notify(617003)
+
+	if wfr.Frame == nil || func() bool {
+		__antithesis_instrumentation__.Notify(617007)
+		return !wfr.Frame.DefaultFrameExclusion() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(617008)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(617009)
 	}
+	__antithesis_instrumentation__.Notify(617004)
 	if wfr.Frame.Bounds.EndBound == nil {
-		// If the end bound is omitted, it is CURRENT ROW (the default value) which
-		// doesn't guarantee full partition in the window for all rows.
+		__antithesis_instrumentation__.Notify(617010)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(617011)
 	}
-	// precedingConfirmed and followingConfirmed indicate whether, for every row,
-	// all preceding and following, respectively, rows are always in the window.
+	__antithesis_instrumentation__.Notify(617005)
+
 	precedingConfirmed := wfr.Frame.Bounds.StartBound.BoundType == treewindow.UnboundedPreceding
 	followingConfirmed := wfr.Frame.Bounds.EndBound.BoundType == treewindow.UnboundedFollowing
-	if wfr.Frame.Mode == treewindow.ROWS || wfr.Frame.Mode == treewindow.GROUPS {
-		// Every peer group in GROUPS mode always contains at least one row, so
-		// treating GROUPS as ROWS here is a subset of the cases when we should
-		// return true.
+	if wfr.Frame.Mode == treewindow.ROWS || func() bool {
+		__antithesis_instrumentation__.Notify(617012)
+		return wfr.Frame.Mode == treewindow.GROUPS == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(617013)
+
 		if wfr.Frame.Bounds.StartBound.BoundType == treewindow.OffsetPreceding {
-			// Both ROWS and GROUPS have an offset of integer type, so this type
-			// conversion is safe.
+			__antithesis_instrumentation__.Notify(617015)
+
 			startOffset := wfr.StartBoundOffset.(*DInt)
-			// The idea of this conditional is that to confirm that all preceding
-			// rows will always be in the window, we only need to look at the last
-			// row: if startOffset is at least as large as the number of rows in the
-			// partition before the last one, then it will be true for the first to
-			// last, second to last, etc.
-			precedingConfirmed = precedingConfirmed || *startOffset >= DInt(wfr.Rows.Len()-1)
+
+			precedingConfirmed = precedingConfirmed || func() bool {
+				__antithesis_instrumentation__.Notify(617016)
+				return *startOffset >= DInt(wfr.Rows.Len()-1) == true
+			}() == true
+		} else {
+			__antithesis_instrumentation__.Notify(617017)
 		}
+		__antithesis_instrumentation__.Notify(617014)
 		if wfr.Frame.Bounds.EndBound.BoundType == treewindow.OffsetFollowing {
-			// Both ROWS and GROUPS have an offset of integer type, so this type
-			// conversion is safe.
+			__antithesis_instrumentation__.Notify(617018)
+
 			endOffset := wfr.EndBoundOffset.(*DInt)
-			// The idea of this conditional is that to confirm that all following
-			// rows will always be in the window, we only need to look at the first
-			// row: if endOffset is at least as large as the number of rows in the
-			// partition after the first one, then it will be true for the second,
-			// third, etc rows as well.
-			followingConfirmed = followingConfirmed || *endOffset >= DInt(wfr.Rows.Len()-1)
+
+			followingConfirmed = followingConfirmed || func() bool {
+				__antithesis_instrumentation__.Notify(617019)
+				return *endOffset >= DInt(wfr.Rows.Len()-1) == true
+			}() == true
+		} else {
+			__antithesis_instrumentation__.Notify(617020)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(617021)
 	}
-	return precedingConfirmed && followingConfirmed
+	__antithesis_instrumentation__.Notify(617006)
+	return precedingConfirmed && func() bool {
+		__antithesis_instrumentation__.Notify(617022)
+		return followingConfirmed == true
+	}() == true
 }
 
-// noFilter returns whether a filter is present.
 func (wfr *WindowFrameRun) noFilter() bool {
+	__antithesis_instrumentation__.Notify(617023)
 	return wfr.FilterColIdx == NoColumnIdx
 }
 
-// isRowExcluded returns whether the row at index idx should be excluded from
-// the window frame of the current row.
 func (wfr *WindowFrameRun) isRowExcluded(idx int) (bool, error) {
+	__antithesis_instrumentation__.Notify(617024)
 	if wfr.Frame.DefaultFrameExclusion() {
-		// By default, no rows are excluded.
+		__antithesis_instrumentation__.Notify(617026)
+
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(617027)
 	}
+	__antithesis_instrumentation__.Notify(617025)
 	switch wfr.Frame.Exclusion {
 	case treewindow.ExcludeCurrentRow:
+		__antithesis_instrumentation__.Notify(617028)
 		return idx == wfr.RowIdx, nil
 	case treewindow.ExcludeGroup:
+		__antithesis_instrumentation__.Notify(617029)
 		curRowFirstPeerIdx := wfr.PeerHelper.GetFirstPeerIdx(wfr.CurRowPeerGroupNum)
 		curRowPeerGroupRowCount := wfr.PeerHelper.GetRowCount(wfr.CurRowPeerGroupNum)
-		return curRowFirstPeerIdx <= idx && idx < curRowFirstPeerIdx+curRowPeerGroupRowCount, nil
+		return curRowFirstPeerIdx <= idx && func() bool {
+			__antithesis_instrumentation__.Notify(617032)
+			return idx < curRowFirstPeerIdx+curRowPeerGroupRowCount == true
+		}() == true, nil
 	case treewindow.ExcludeTies:
+		__antithesis_instrumentation__.Notify(617030)
 		curRowFirstPeerIdx := wfr.PeerHelper.GetFirstPeerIdx(wfr.CurRowPeerGroupNum)
 		curRowPeerGroupRowCount := wfr.PeerHelper.GetRowCount(wfr.CurRowPeerGroupNum)
-		return curRowFirstPeerIdx <= idx && idx < curRowFirstPeerIdx+curRowPeerGroupRowCount && idx != wfr.RowIdx, nil
+		return curRowFirstPeerIdx <= idx && func() bool {
+			__antithesis_instrumentation__.Notify(617033)
+			return idx < curRowFirstPeerIdx+curRowPeerGroupRowCount == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(617034)
+			return idx != wfr.RowIdx == true
+		}() == true, nil
 	default:
+		__antithesis_instrumentation__.Notify(617031)
 		return false, errors.AssertionFailedf("unexpected WindowFrameExclusion")
 	}
 }
 
-// IsRowSkipped returns whether a row at index idx is skipped from the window
-// frame (it can either be filtered out according to the filter clause or
-// excluded according to the frame exclusion clause) and any error if it
-// occurs.
 func (wfr *WindowFrameRun) IsRowSkipped(ctx context.Context, idx int) (bool, error) {
+	__antithesis_instrumentation__.Notify(617035)
 	if !wfr.noFilter() {
+		__antithesis_instrumentation__.Notify(617037)
 		row, err := wfr.Rows.GetRow(ctx, idx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(617040)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(617041)
 		}
+		__antithesis_instrumentation__.Notify(617038)
 		d, err := row.GetDatum(wfr.FilterColIdx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(617042)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(617043)
 		}
+		__antithesis_instrumentation__.Notify(617039)
 		if d != DBoolTrue {
-			// Row idx is filtered out from the window frame, so it is skipped.
+			__antithesis_instrumentation__.Notify(617044)
+
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(617045)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(617046)
 	}
-	// If a row is excluded from the window frame, it is skipped.
+	__antithesis_instrumentation__.Notify(617036)
+
 	return wfr.isRowExcluded(idx)
 }
 
-// compareForWindow wraps the Datum Compare method so that casts can be
-// performed up front. This allows us to return an expected error in the event
-// of an invalid comparison, rather than panicking.
 func compareForWindow(evalCtx *EvalContext, left, right Datum) (int, error) {
-	if types.IsDateTimeType(left.ResolvedType()) && left.ResolvedType() != types.Interval {
-		// Datetime values (other than Intervals) are converted to timestamps for
-		// comparison. Note that the right side never needs to be casted.
+	__antithesis_instrumentation__.Notify(617047)
+	if types.IsDateTimeType(left.ResolvedType()) && func() bool {
+		__antithesis_instrumentation__.Notify(617049)
+		return left.ResolvedType() != types.Interval == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(617050)
+
 		ts, err := timeFromDatumForComparison(evalCtx, left)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(617052)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(617053)
 		}
+		__antithesis_instrumentation__.Notify(617051)
 		left, err = MakeDTimestampTZ(ts, time.Microsecond)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(617054)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(617055)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(617056)
 	}
+	__antithesis_instrumentation__.Notify(617048)
 	return left.Compare(evalCtx, right), nil
 }
 
-// WindowFunc performs a computation on each row using data from a provided *WindowFrameRun.
 type WindowFunc interface {
-	// Compute computes the window function for the provided window frame, given the
-	// current state of WindowFunc. The method should be called sequentially for every
-	// row in a partition in turn with the desired ordering of the WindowFunc. This is
-	// because there is an implicit carried dependency between each row and all those
-	// that have come before it (like in an AggregateFunc). As such, this approach does
-	// not present any exploitable associativity/commutativity for optimization.
 	Compute(context.Context, *EvalContext, *WindowFrameRun) (Datum, error)
 
-	// Reset resets the window function which allows for reusing it when
-	// computing over different partitions.
 	Reset(context.Context)
 
-	// Close allows the window function to free any memory it requested during execution,
-	// such as during the execution of an aggregation like CONCAT_AGG or ARRAY_AGG.
 	Close(context.Context, *EvalContext)
 }

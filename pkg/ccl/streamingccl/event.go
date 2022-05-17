@@ -1,123 +1,102 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package streamingccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
-// EventType enumerates all possible events emitted over a cluster stream.
 type EventType int
 
 const (
-	// KVEvent indicates that the KV field of an event holds an updated KV which
-	// needs to be ingested.
 	KVEvent EventType = iota
-	// CheckpointEvent indicates that GetResolved will be meaningful. The resolved
-	// timestamp indicates that all KVs have been emitted up to this timestamp.
+
 	CheckpointEvent
-	// GenerationEvent indicates that the stream should start ingesting with the
-	// updated topology.
+
 	GenerationEvent
 )
 
-// Event describes an event emitted by a cluster to cluster stream.  Its Type
-// field indicates which other fields are meaningful.
 type Event interface {
-	// Type specifies which accessor will be meaningful.
 	Type() EventType
 
-	// GetKV returns a KV event if the EventType is KVEvent.
 	GetKV() *roachpb.KeyValue
-	// GetResolved returns a resolved timestamp if the EventType is
-	// CheckpointEvent. The resolved timestamp indicates that all KV events until
-	// this time have been emitted.
+
 	GetResolved() *hlc.Timestamp
 }
 
-// kvEvent is a key value pair that needs to be ingested.
 type kvEvent struct {
 	kv roachpb.KeyValue
 }
 
 var _ Event = kvEvent{}
 
-// Type implements the Event interface.
 func (kve kvEvent) Type() EventType {
+	__antithesis_instrumentation__.Notify(24941)
 	return KVEvent
 }
 
-// GetKV implements the Event interface.
 func (kve kvEvent) GetKV() *roachpb.KeyValue {
+	__antithesis_instrumentation__.Notify(24942)
 	return &kve.kv
 }
 
-// GetResolved implements the Event interface.
 func (kve kvEvent) GetResolved() *hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(24943)
 	return nil
 }
 
-// checkpointEvent indicates that the stream has emitted every change for all
-// keys in the span it is responsible for up until this timestamp.
 type checkpointEvent struct {
 	resolvedTimestamp hlc.Timestamp
 }
 
 var _ Event = checkpointEvent{}
 
-// Type implements the Event interface.
 func (ce checkpointEvent) Type() EventType {
+	__antithesis_instrumentation__.Notify(24944)
 	return CheckpointEvent
 }
 
-// GetKV implements the Event interface.
 func (ce checkpointEvent) GetKV() *roachpb.KeyValue {
+	__antithesis_instrumentation__.Notify(24945)
 	return nil
 }
 
-// GetResolved implements the Event interface.
 func (ce checkpointEvent) GetResolved() *hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(24946)
 	return &ce.resolvedTimestamp
 }
 
-// generationEvent indicates that the topology of the stream has changed.
 type generationEvent struct{}
 
 var _ Event = generationEvent{}
 
-// Type implements the Event interface.
 func (ge generationEvent) Type() EventType {
+	__antithesis_instrumentation__.Notify(24947)
 	return GenerationEvent
 }
 
-// GetKV implements the Event interface.
 func (ge generationEvent) GetKV() *roachpb.KeyValue {
+	__antithesis_instrumentation__.Notify(24948)
 	return nil
 }
 
-// GetResolved implements the Event interface.
 func (ge generationEvent) GetResolved() *hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(24949)
 	return nil
 }
 
-// MakeKVEvent creates an Event from a KV.
 func MakeKVEvent(kv roachpb.KeyValue) Event {
+	__antithesis_instrumentation__.Notify(24950)
 	return kvEvent{kv: kv}
 }
 
-// MakeCheckpointEvent creates an Event from a resolved timestamp.
 func MakeCheckpointEvent(resolvedTimestamp hlc.Timestamp) Event {
+	__antithesis_instrumentation__.Notify(24951)
 	return checkpointEvent{resolvedTimestamp: resolvedTimestamp}
 }
 
-// MakeGenerationEvent creates an GenerationEvent.
 func MakeGenerationEvent() Event {
+	__antithesis_instrumentation__.Notify(24952)
 	return generationEvent{}
 }

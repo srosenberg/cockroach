@@ -6,6 +6,7 @@ go_library(
     importpath = "github.com/cockroachdb/cockroach/pkg/cmd/returncheck",
     visibility = ["//visibility:private"],
     deps = [
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_returncheck//:returncheck",
         "@com_github_kisielk_gotool//:gotool",
     ],
@@ -15,4 +16,5 @@ go_binary(
     name = "returncheck",
     embed = [":returncheck_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

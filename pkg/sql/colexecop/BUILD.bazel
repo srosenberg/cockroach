@@ -17,6 +17,7 @@ go_library(
         "//pkg/sql/execinfrapb",
         "//pkg/sql/types",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -30,5 +31,6 @@ go_test(
     deps = [
         "//pkg/testutils/buildutil",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

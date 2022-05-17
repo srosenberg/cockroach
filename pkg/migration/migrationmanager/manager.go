@@ -1,16 +1,8 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package migrationmanager provides an implementation of migration.Manager
 // for use on kv nodes.
 package migrationmanager
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -38,8 +30,6 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// Manager is the instance responsible for executing migrations across the
-// cluster.
 type Manager struct {
 	deps     migration.SystemDeps
 	lm       *lease.Manager
@@ -50,24 +40,28 @@ type Manager struct {
 	knobs    migration.TestingKnobs
 }
 
-// GetMigration returns the migration associated with this key.
 func (m *Manager) GetMigration(key clusterversion.ClusterVersion) (migration.Migration, bool) {
+	__antithesis_instrumentation__.Notify(128265)
 	if m.knobs.RegistryOverride != nil {
+		__antithesis_instrumentation__.Notify(128267)
 		if m, ok := m.knobs.RegistryOverride(key); ok {
+			__antithesis_instrumentation__.Notify(128268)
 			return m, ok
+		} else {
+			__antithesis_instrumentation__.Notify(128269)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(128270)
 	}
+	__antithesis_instrumentation__.Notify(128266)
 	return migrations.GetMigration(key)
 }
 
-// SystemDeps returns dependencies to run system migrations for the cluster
-// associated with this manager. It may be the zero value in a secondary tenant.
 func (m *Manager) SystemDeps() migration.SystemDeps {
+	__antithesis_instrumentation__.Notify(128271)
 	return m.deps
 }
 
-// NewManager constructs a new Manager. The SystemDeps parameter may be zero in
-// secondary tenants. The testingKnobs parameter may be nil.
 func NewManager(
 	deps migration.SystemDeps,
 	lm *lease.Manager,
@@ -77,10 +71,15 @@ func NewManager(
 	settings *cluster.Settings,
 	testingKnobs *migration.TestingKnobs,
 ) *Manager {
+	__antithesis_instrumentation__.Notify(128272)
 	var knobs migration.TestingKnobs
 	if testingKnobs != nil {
+		__antithesis_instrumentation__.Notify(128274)
 		knobs = *testingKnobs
+	} else {
+		__antithesis_instrumentation__.Notify(128275)
 	}
+	__antithesis_instrumentation__.Notify(128273)
 	return &Manager{
 		deps:     deps,
 		lm:       lm,
@@ -94,182 +93,133 @@ func NewManager(
 
 var _ migration.JobDeps = (*Manager)(nil)
 
-// Migrate runs the set of migrations required to upgrade the cluster version
-// from the current version to the target one.
 func (m *Manager) Migrate(
 	ctx context.Context,
 	user security.SQLUsername,
 	from, to clusterversion.ClusterVersion,
 	updateSystemVersionSetting sql.UpdateVersionSystemSettingHook,
 ) error {
-	// TODO(irfansharif): Should we inject every ctx here with specific labels
-	// for each migration, so they log distinctly?
+	__antithesis_instrumentation__.Notify(128276)
+
 	ctx = logtags.AddTag(ctx, "migration-mgr", nil)
 	if from == to {
-		// Nothing to do here.
+		__antithesis_instrumentation__.Notify(128281)
+
 		log.Infof(ctx, "no need to migrate, cluster already at newest version")
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(128282)
 	}
+	__antithesis_instrumentation__.Notify(128277)
 
 	clusterVersions := m.listBetween(from, to)
 	log.Infof(ctx, "migrating cluster from %s to %s (stepping through %s)", from, to, clusterVersions)
 	if len(clusterVersions) == 0 {
+		__antithesis_instrumentation__.Notify(128283)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(128284)
 	}
 
-	// Sanity check that we'll actually be able to perform the real
-	// cluster version bump, cluster-wide, before potentially creating a job
-	// that might be doomed to fail.
 	{
+		__antithesis_instrumentation__.Notify(128285)
 		finalVersion := clusterVersions[len(clusterVersions)-1]
 		if err := validateTargetClusterVersion(ctx, m.deps.Cluster, finalVersion); err != nil {
+			__antithesis_instrumentation__.Notify(128286)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128287)
 		}
 	}
+	__antithesis_instrumentation__.Notify(128278)
 
 	if err := m.checkPreconditions(ctx, clusterVersions); err != nil {
+		__antithesis_instrumentation__.Notify(128288)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128289)
 	}
+	__antithesis_instrumentation__.Notify(128279)
 
 	for _, clusterVersion := range clusterVersions {
+		__antithesis_instrumentation__.Notify(128290)
 		log.Infof(ctx, "stepping through %s", clusterVersion)
-		// First, run the actual migration if any.
+
 		if err := m.runMigration(ctx, user, clusterVersion); err != nil {
+			__antithesis_instrumentation__.Notify(128294)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128295)
 		}
-
-		// Next we'll push out the version gate to every node in the cluster.
-		// Each node will persist the version, bump the local version gates, and
-		// then return. The migration associated with the specific version is
-		// executed before every node in the cluster has the corresponding
-		// version activated. Migrations that depend on a certain version
-		// already being activated will need to registered using a cluster
-		// version greater than it.
-		//
-		// For each intermediate version, we'll need to first bump the fence
-		// version before bumping the "real" one. Doing so allows us to provide
-		// the invariant that whenever a cluster version is active, all Nodes in
-		// the cluster (including ones added concurrently during version
-		// upgrades) are running binaries that know about the version.
-
-		// Below-raft migrations mutate replica state, making use of the
-		// Migrate(version=V) primitive which they issue against the entire
-		// keyspace. These migrations typically want to rely on the invariant
-		// that there are no extant replicas in the system that haven't seen the
-		// specific Migrate command.
-		//
-		// This is partly achieved through the implementation of the Migrate
-		// command itself, which waits until it's applied on all followers[2]
-		// before returning. This also addresses the concern of extant snapshots
-		// with pre-migrated state possibly instantiating older version
-		// replicas. The intended learner replicas are listed as part of the
-		// range descriptor, and is also waited on for during command
-		// application. As for stale snapshots, if they specify a replicaID
-		// that's no longer part of the raft group, they're discarded by the
-		// recipient. Snapshots are also discarded unless they move the LAI
-		// forward.
-		//
-		// That still leaves rooms for replicas in the replica GC queue to evade
-		// detection. To address this, below-raft migrations typically take a
-		// two-phrase approach (the TruncatedAndRangeAppliedStateMigration being
-		// one example of this), where after having migrated the entire keyspace
-		// to version V, and after having prevented subsequent snapshots
-		// originating from replicas with versions < V, the migration sets out
-		// to purge outdated replicas in the system[3]. Specifically it
-		// processes all replicas in the GC queue with a version < V (which are
-		// not accessible during the application of the Migrate command).
-		//
-		// [1]: See ReplicaState.Version.
-		// [2]: See Replica.executeWriteBatch, specifically how proposals with the
-		//      Migrate request are handled downstream of raft.
-		// [3]: See PurgeOutdatedReplicas from the SystemMigration service.
 
 		{
-			// The migrations infrastructure makes use of internal fence
-			// versions when stepping through consecutive versions. It's
-			// instructive to walk through how we expect a version migration
-			// from v21.1 to v21.2 to take place, and how we behave in the
-			// presence of new v21.1 or v21.2 Nodes being added to the cluster.
-			//
-			//   - All Nodes are running v21.1
-			//   - All Nodes are rolled into v21.2 binaries, but with active
-			//     cluster version still as v21.1
-			//   - The first version bump will be into v21.2-1(fence), see the
-			//     migration manager above for where that happens
-			//
-			// Then concurrently:
-			//
-			//   - A new node is added to the cluster, but running binary v21.1
-			//   - We try bumping the cluster gates to v21.2-1(fence)
-			//
-			// If the v21.1 Nodes manages to sneak in before the version bump,
-			// it's fine as the version bump is a no-op one (all fence versions
-			// are). Any subsequent bumps (including the "actual" one bumping to
-			// v21.2) will fail during the validation step where we'll first
-			// check to see that all Nodes are running v21.2 binaries.
-			//
-			// If the v21.1 node is only added after v21.2-1(fence) is active,
-			// it won't be able to actually join the cluster (it'll be prevented
-			// by the join RPC).
-			//
-			// All of which is to say that once we've seen the node list
-			// stabilize (as UntilClusterStable enforces), any new nodes that
-			// can join the cluster will run a release that support the fence
-			// version, and by design also supports the actual version (which is
-			// the direct successor of the fence).
+			__antithesis_instrumentation__.Notify(128296)
+
 			fenceVersion := migration.FenceVersionFor(ctx, clusterVersion)
 			if err := bumpClusterVersion(ctx, m.deps.Cluster, fenceVersion); err != nil {
+				__antithesis_instrumentation__.Notify(128297)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(128298)
 			}
 		}
+		__antithesis_instrumentation__.Notify(128291)
 
-		// Now sanity check that we'll actually be able to perform the real
-		// cluster version bump, cluster-wide.
 		if err := validateTargetClusterVersion(ctx, m.deps.Cluster, clusterVersion); err != nil {
+			__antithesis_instrumentation__.Notify(128299)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128300)
 		}
+		__antithesis_instrumentation__.Notify(128292)
 
-		// Finally, bump the real version cluster-wide.
 		err := bumpClusterVersion(ctx, m.deps.Cluster, clusterVersion)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(128301)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128302)
 		}
-		// Bump up the cluster version for tenants, which
-		// will bump over individual version bumps.
+		__antithesis_instrumentation__.Notify(128293)
+
 		err = updateSystemVersionSetting(ctx, clusterVersion)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(128303)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128304)
 		}
 	}
+	__antithesis_instrumentation__.Notify(128280)
 
 	return nil
 }
 
-// bumpClusterVersion will invoke the BumpClusterVersion rpc on every node
-// until the cluster is stable.
 func bumpClusterVersion(
 	ctx context.Context, c migration.Cluster, clusterVersion clusterversion.ClusterVersion,
 ) error {
+	__antithesis_instrumentation__.Notify(128305)
 	req := &serverpb.BumpClusterVersionRequest{ClusterVersion: &clusterVersion}
 	op := fmt.Sprintf("bump-cluster-version=%s", req.ClusterVersion.PrettyPrint())
 	return forEveryNodeUntilClusterStable(ctx, op, c, func(
 		ctx context.Context, client serverpb.MigrationClient,
 	) error {
+		__antithesis_instrumentation__.Notify(128306)
 		_, err := client.BumpClusterVersion(ctx, req)
 		return err
 	})
 }
 
-// bumpClusterVersion will invoke the ValidateTargetClusterVersion rpc on
-// every node until the cluster is stable.
 func validateTargetClusterVersion(
 	ctx context.Context, c migration.Cluster, clusterVersion clusterversion.ClusterVersion,
 ) error {
+	__antithesis_instrumentation__.Notify(128307)
 	req := &serverpb.ValidateTargetClusterVersionRequest{ClusterVersion: &clusterVersion}
 	op := fmt.Sprintf("validate-cluster-version=%s", req.ClusterVersion.PrettyPrint())
 	return forEveryNodeUntilClusterStable(ctx, op, c, func(
 		tx context.Context, client serverpb.MigrationClient,
 	) error {
+		__antithesis_instrumentation__.Notify(128308)
 		_, err := client.ValidateTargetClusterVersion(ctx, req)
 		return err
 	})
@@ -281,7 +231,9 @@ func forEveryNodeUntilClusterStable(
 	c migration.Cluster,
 	f func(ctx context.Context, client serverpb.MigrationClient) error,
 ) error {
+	__antithesis_instrumentation__.Notify(128309)
 	return c.UntilClusterStable(ctx, func() error {
+		__antithesis_instrumentation__.Notify(128310)
 		return c.ForEveryNode(ctx, op, f)
 	})
 }
@@ -289,18 +241,37 @@ func forEveryNodeUntilClusterStable(
 func (m *Manager) runMigration(
 	ctx context.Context, user security.SQLUsername, version clusterversion.ClusterVersion,
 ) error {
+	__antithesis_instrumentation__.Notify(128311)
 	mig, exists := m.GetMigration(version)
 	if !exists {
+		__antithesis_instrumentation__.Notify(128315)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(128316)
 	}
+	__antithesis_instrumentation__.Notify(128312)
 	_, isSystemMigration := mig.(*migration.SystemMigration)
-	if isSystemMigration && !m.codec.ForSystemTenant() {
+	if isSystemMigration && func() bool {
+		__antithesis_instrumentation__.Notify(128317)
+		return !m.codec.ForSystemTenant() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(128318)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(128319)
 	}
+	__antithesis_instrumentation__.Notify(128313)
 	alreadyCompleted, id, err := m.getOrCreateMigrationJob(ctx, user, version, mig.Name())
-	if alreadyCompleted || err != nil {
+	if alreadyCompleted || func() bool {
+		__antithesis_instrumentation__.Notify(128320)
+		return err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(128321)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128322)
 	}
+	__antithesis_instrumentation__.Notify(128314)
 	return m.jr.Run(ctx, m.ie, []jobspb.JobID{id})
 }
 
@@ -310,35 +281,64 @@ func (m *Manager) getOrCreateMigrationJob(
 	version clusterversion.ClusterVersion,
 	name string,
 ) (alreadyCompleted bool, jobID jobspb.JobID, _ error) {
+	__antithesis_instrumentation__.Notify(128323)
 	newJobID := m.jr.MakeJobID()
 	if err := m.deps.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
+		__antithesis_instrumentation__.Notify(128325)
 		alreadyCompleted, err = migrationjob.CheckIfMigrationCompleted(ctx, txn, m.ie, version)
-		if err != nil && ctx.Err() == nil {
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(128330)
+			return ctx.Err() == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(128331)
 			log.Warningf(ctx, "failed to check if migration already completed: %v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(128332)
 		}
-		if err != nil || alreadyCompleted {
+		__antithesis_instrumentation__.Notify(128326)
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(128333)
+			return alreadyCompleted == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(128334)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128335)
 		}
+		__antithesis_instrumentation__.Notify(128327)
 		var found bool
 		found, jobID, err = m.getRunningMigrationJob(ctx, txn, version)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(128336)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128337)
 		}
+		__antithesis_instrumentation__.Notify(128328)
 		if found {
+			__antithesis_instrumentation__.Notify(128338)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(128339)
 		}
+		__antithesis_instrumentation__.Notify(128329)
 		jobID = newJobID
 		_, err = m.jr.CreateJobWithTxn(ctx, migrationjob.NewRecord(version, user, name), jobID, txn)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(128340)
 		return false, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(128341)
 	}
+	__antithesis_instrumentation__.Notify(128324)
 	return alreadyCompleted, jobID, nil
 }
 
 func (m *Manager) getRunningMigrationJob(
 	ctx context.Context, txn *kv.Txn, version clusterversion.ClusterVersion,
 ) (found bool, jobID jobspb.JobID, _ error) {
+	__antithesis_instrumentation__.Notify(128342)
 	const query = `
 SELECT id, status
 	FROM (
@@ -355,33 +355,52 @@ SELECT id, status
 	WHERE pl->'migration'->'clusterVersion' = $1::JSON;`
 	jsonMsg, err := protoreflect.MessageToJSON(&version, protoreflect.FmtFlags{EmitDefaults: false})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128346)
 		return false, 0, errors.Wrap(err, "failed to marshal version to JSON")
+	} else {
+		__antithesis_instrumentation__.Notify(128347)
 	}
+	__antithesis_instrumentation__.Notify(128343)
 	rows, err := m.ie.QueryBuffered(ctx, "migration-manager-find-jobs", txn, query, jsonMsg.String())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(128348)
 		return false, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(128349)
 	}
+	__antithesis_instrumentation__.Notify(128344)
 	parseRow := func(row tree.Datums) (id jobspb.JobID, status jobs.Status) {
+		__antithesis_instrumentation__.Notify(128350)
 		return jobspb.JobID(*row[0].(*tree.DInt)), jobs.Status(*row[1].(*tree.DString))
 	}
+	__antithesis_instrumentation__.Notify(128345)
 	switch len(rows) {
 	case 0:
+		__antithesis_instrumentation__.Notify(128351)
 		return false, 0, nil
 	case 1:
+		__antithesis_instrumentation__.Notify(128352)
 		id, status := parseRow(rows[0])
 		log.Infof(ctx, "found existing migration job %d for version %v in status %s, waiting",
 			id, &version, status)
 		return true, id, nil
 	default:
+		__antithesis_instrumentation__.Notify(128353)
 		var buf redact.StringBuilder
 		buf.Printf("found multiple non-terminal jobs for version %s: [", redact.Safe(&version))
 		for i, row := range rows {
+			__antithesis_instrumentation__.Notify(128355)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(128357)
 				buf.SafeString(", ")
+			} else {
+				__antithesis_instrumentation__.Notify(128358)
 			}
+			__antithesis_instrumentation__.Notify(128356)
 			id, status := parseRow(row)
 			buf.Printf("(%d, %s)", id, redact.Safe(status))
 		}
+		__antithesis_instrumentation__.Notify(128354)
 		log.Errorf(ctx, "%s", buf)
 		return false, 0, errors.AssertionFailedf("%s", buf)
 	}
@@ -390,26 +409,39 @@ SELECT id, status
 func (m *Manager) listBetween(
 	from clusterversion.ClusterVersion, to clusterversion.ClusterVersion,
 ) []clusterversion.ClusterVersion {
+	__antithesis_instrumentation__.Notify(128359)
 	if m.knobs.ListBetweenOverride != nil {
+		__antithesis_instrumentation__.Notify(128361)
 		return m.knobs.ListBetweenOverride(from, to)
+	} else {
+		__antithesis_instrumentation__.Notify(128362)
 	}
+	__antithesis_instrumentation__.Notify(128360)
 	return clusterversion.ListBetween(from, to)
 }
 
-// checkPreconditions runs the precondition check for each tenant migration
-// associated with the provided versions.
 func (m *Manager) checkPreconditions(
 	ctx context.Context, versions []clusterversion.ClusterVersion,
 ) error {
+	__antithesis_instrumentation__.Notify(128363)
 	for _, v := range versions {
+		__antithesis_instrumentation__.Notify(128365)
 		mig, ok := m.GetMigration(v)
 		if !ok {
+			__antithesis_instrumentation__.Notify(128368)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(128369)
 		}
+		__antithesis_instrumentation__.Notify(128366)
 		tm, ok := mig.(*migration.TenantMigration)
 		if !ok {
+			__antithesis_instrumentation__.Notify(128370)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(128371)
 		}
+		__antithesis_instrumentation__.Notify(128367)
 		if err := tm.Precondition(ctx, v, migration.TenantDeps{
 			DB:               m.deps.DB,
 			Codec:            m.codec,
@@ -417,12 +449,16 @@ func (m *Manager) checkPreconditions(
 			LeaseManager:     m.lm,
 			InternalExecutor: m.ie,
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(128372)
 			return errors.Wrapf(
 				err,
 				"verifying precondition for version %s",
 				redact.SafeString(v.PrettyPrint()),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(128373)
 		}
 	}
+	__antithesis_instrumentation__.Notify(128364)
 	return nil
 }

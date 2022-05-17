@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,8 +19,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-// grpcGatewayServer represents a grpc service with HTTP endpoints through GRPC
-// gateway.
 type grpcGatewayServer interface {
 	RegisterService(g *grpc.Server)
 	RegisterGateway(
@@ -43,16 +33,6 @@ var _ grpcGatewayServer = (*statusServer)(nil)
 var _ grpcGatewayServer = (*authenticationServer)(nil)
 var _ grpcGatewayServer = (*ts.Server)(nil)
 
-// configureGRPCGateway initializes services necessary for running the
-// GRPC Gateway services proxied against the server at `grpcSrv`.
-//
-// The connection between the reverse proxy provided by grpc-gateway
-// and our grpc server uses a loopback-based listener to create
-// connections between the two.
-//
-// The function returns 3 arguments that are necessary to call
-// `RegisterGateway` which generated for each of your gRPC services
-// by grpc-gateway.
 func configureGRPCGateway(
 	ctx, workersCtx context.Context,
 	ambientCtx log.AmbientContext,
@@ -61,6 +41,7 @@ func configureGRPCGateway(
 	grpcSrv *grpcServer,
 	GRPCAddr string,
 ) (*gwruntime.ServeMux, context.Context, *grpc.ClientConn, error) {
+	__antithesis_instrumentation__.Notify(193443)
 	jsonpb := &protoutil.JSONPb{
 		EnumsAsInts:  true,
 		EmitDefaults: true,
@@ -79,27 +60,36 @@ func configureGRPCGateway(
 	gwCtx, gwCancel := context.WithCancel(ambientCtx.AnnotateCtx(context.Background()))
 	stopper.AddCloser(stop.CloserFn(gwCancel))
 
-	// loopback handles the HTTP <-> RPC loopback connection.
 	loopback := newLoopbackListener(workersCtx, stopper)
 
 	waitQuiesce := func(context.Context) {
+		__antithesis_instrumentation__.Notify(193451)
 		<-stopper.ShouldQuiesce()
 		_ = loopback.Close()
 	}
+	__antithesis_instrumentation__.Notify(193444)
 	if err := stopper.RunAsyncTask(workersCtx, "gw-quiesce", waitQuiesce); err != nil {
+		__antithesis_instrumentation__.Notify(193452)
 		waitQuiesce(workersCtx)
+	} else {
+		__antithesis_instrumentation__.Notify(193453)
 	}
+	__antithesis_instrumentation__.Notify(193445)
 
 	_ = stopper.RunAsyncTask(workersCtx, "serve-loopback", func(context.Context) {
+		__antithesis_instrumentation__.Notify(193454)
 		netutil.FatalIfUnexpected(grpcSrv.Serve(loopback))
 	})
+	__antithesis_instrumentation__.Notify(193446)
 
-	// Eschew `(*rpc.Context).GRPCDial` to avoid unnecessary moving parts on the
-	// uniquely in-process connection.
 	dialOpts, err := rpcContext.GRPCDialOptions()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193455)
 		return nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193456)
 	}
+	__antithesis_instrumentation__.Notify(193447)
 
 	callCountInterceptor := func(
 		ctx context.Context,
@@ -109,41 +99,54 @@ func configureGRPCGateway(
 		invoker grpc.UnaryInvoker,
 		opts ...grpc.CallOption,
 	) error {
+		__antithesis_instrumentation__.Notify(193457)
 		telemetry.Inc(getServerEndpointCounter(method))
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
+	__antithesis_instrumentation__.Notify(193448)
 	conn, err := grpc.DialContext(ctx, GRPCAddr, append(append(
 		dialOpts,
 		grpc.WithUnaryInterceptor(callCountInterceptor)),
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			__antithesis_instrumentation__.Notify(193458)
 			return loopback.Connect(ctx)
 		}),
 	)...)
+	__antithesis_instrumentation__.Notify(193449)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193459)
 		return nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(193460)
 	}
 	{
+		__antithesis_instrumentation__.Notify(193461)
 		waitQuiesce := func(workersCtx context.Context) {
+			__antithesis_instrumentation__.Notify(193463)
 			<-stopper.ShouldQuiesce()
-			// NB: we can't do this as a Closer because (*Server).ServeWith is
-			// running in a worker and usually sits on accept() which unblocks
-			// only when the listener closes. In other words, the listener needs
-			// to close when quiescing starts to allow that worker to shut down.
-			err := conn.Close() // nolint:grpcconnclose
+
+			err := conn.Close()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(193464)
 				log.Ops.Fatalf(workersCtx, "%v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(193465)
 			}
 		}
+		__antithesis_instrumentation__.Notify(193462)
 		if err := stopper.RunAsyncTask(workersCtx, "wait-quiesce", waitQuiesce); err != nil {
+			__antithesis_instrumentation__.Notify(193466)
 			waitQuiesce(workersCtx)
+		} else {
+			__antithesis_instrumentation__.Notify(193467)
 		}
 	}
+	__antithesis_instrumentation__.Notify(193450)
 	return gwMux, gwCtx, conn, nil
 }
 
-// getServerEndpointCounter returns a telemetry Counter corresponding to the
-// given grpc method.
 func getServerEndpointCounter(method string) telemetry.Counter {
+	__antithesis_instrumentation__.Notify(193468)
 	const counterPrefix = "http.grpc-gateway"
 	return telemetry.GetCounter(fmt.Sprintf("%s.%s", counterPrefix, method))
 }

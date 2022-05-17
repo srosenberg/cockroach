@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package span
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -20,77 +12,84 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Splitter is a helper for splitting single-row spans into more specific spans
-// that target a subset of column families.
-//
-// Note that a zero Splitter (NoopSplitter) is a usable instance that never
-// splits spans.
 type Splitter struct {
-	// numKeyColumns is the number of key columns in the index; a span needs to
-	// constrain this many columns to be considered for splitting.
-	// It is 0 if splitting is not possible.
 	numKeyColumns int
 
-	// neededFamilies contains the family IDs into which spans will be split, or
-	// nil if splitting is not possible.
 	neededFamilies []descpb.FamilyID
 }
 
-// NoopSplitter returns a splitter that never splits spans.
 func NoopSplitter() Splitter {
+	__antithesis_instrumentation__.Notify(623620)
 	return Splitter{}
 }
 
-// MakeSplitter returns a Splitter that splits spans into more specific spans
-// for the needed families. If span splitting is not possible/useful, returns
-// the NoopSplitter (which never splits).
 func MakeSplitter(
 	table catalog.TableDescriptor, index catalog.Index, neededColOrdinals util.FastIntSet,
 ) Splitter {
-	// We can only split a span into separate family specific point lookups if:
-	//
-	// * The table is not a special system table. (System tables claim to have
-	//   column families, but actually do not, since they're written to with
-	//   raw KV puts in a "legacy" way.)
+	__antithesis_instrumentation__.Notify(623621)
+
 	if catalog.IsSystemDescriptor(table) {
+		__antithesis_instrumentation__.Notify(623627)
 		return NoopSplitter()
+	} else {
+		__antithesis_instrumentation__.Notify(623628)
 	}
-	// * The index is unique.
+	__antithesis_instrumentation__.Notify(623622)
+
 	if !index.IsUnique() {
+		__antithesis_instrumentation__.Notify(623629)
 		return NoopSplitter()
+	} else {
+		__antithesis_instrumentation__.Notify(623630)
 	}
+	__antithesis_instrumentation__.Notify(623623)
 
-	// If we're looking at a secondary index...
 	if index.GetID() != table.GetPrimaryIndexID() {
+		__antithesis_instrumentation__.Notify(623631)
 
-		// * The index cannot be inverted.
 		if index.GetType() != descpb.IndexDescriptor_FORWARD {
+			__antithesis_instrumentation__.Notify(623633)
 			return NoopSplitter()
+		} else {
+			__antithesis_instrumentation__.Notify(623634)
 		}
+		__antithesis_instrumentation__.Notify(623632)
 
-		// * The index is a new enough version.
 		if index.GetVersion() < descpb.SecondaryIndexFamilyFormatVersion {
+			__antithesis_instrumentation__.Notify(623635)
 			return NoopSplitter()
+		} else {
+			__antithesis_instrumentation__.Notify(623636)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(623637)
 	}
+	__antithesis_instrumentation__.Notify(623624)
 
 	neededFamilies := rowenc.NeededColumnFamilyIDs(neededColOrdinals, table, index)
 
-	// Sanity check.
 	for i := range neededFamilies[1:] {
+		__antithesis_instrumentation__.Notify(623638)
 		if neededFamilies[i] >= neededFamilies[i+1] {
+			__antithesis_instrumentation__.Notify(623639)
 			panic(errors.AssertionFailedf("family IDs not increasing"))
+		} else {
+			__antithesis_instrumentation__.Notify(623640)
 		}
 	}
+	__antithesis_instrumentation__.Notify(623625)
 
-	// * The index either has just 1 family (so we'll make a GetRequest) or we
-	//   need fewer than every column family in the table (otherwise we'd just
-	//   make a big ScanRequest).
-	// TODO(radu): should we be using IndexKeysPerRow() instead?
 	numFamilies := len(table.GetFamilies())
-	if numFamilies > 1 && len(neededFamilies) == numFamilies {
+	if numFamilies > 1 && func() bool {
+		__antithesis_instrumentation__.Notify(623641)
+		return len(neededFamilies) == numFamilies == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(623642)
 		return NoopSplitter()
+	} else {
+		__antithesis_instrumentation__.Notify(623643)
 	}
+	__antithesis_instrumentation__.Notify(623626)
 
 	return Splitter{
 		numKeyColumns:  index.NumKeyColumns(),
@@ -98,93 +97,98 @@ func MakeSplitter(
 	}
 }
 
-// MakeSplitterWithFamilyIDs creates a Splitter that splits spans that constrain
-// all key columns along the given family IDs.
-//
-// Returns NoopSplitter if familyIDs is empty.
-//
-// This should only be used when the conditions checked by MakeSplitter are
-// already known to be satisfied.
 func MakeSplitterWithFamilyIDs(numKeyColumns int, familyIDs []descpb.FamilyID) Splitter {
+	__antithesis_instrumentation__.Notify(623644)
 	if len(familyIDs) == 0 {
+		__antithesis_instrumentation__.Notify(623647)
 		return NoopSplitter()
+	} else {
+		__antithesis_instrumentation__.Notify(623648)
 	}
+	__antithesis_instrumentation__.Notify(623645)
 
-	// Sanity check.
 	for i := range familyIDs[1:] {
+		__antithesis_instrumentation__.Notify(623649)
 		if familyIDs[i] >= familyIDs[i+1] {
+			__antithesis_instrumentation__.Notify(623650)
 			panic(errors.AssertionFailedf("family IDs not increasing"))
+		} else {
+			__antithesis_instrumentation__.Notify(623651)
 		}
 	}
+	__antithesis_instrumentation__.Notify(623646)
 	return Splitter{
 		numKeyColumns:  numKeyColumns,
 		neededFamilies: familyIDs,
 	}
 }
 
-// FamilyIDs returns the family IDs into which spans will be split, or nil if
-// splitting is not possible.
 func (s *Splitter) FamilyIDs() []descpb.FamilyID {
+	__antithesis_instrumentation__.Notify(623652)
 	return s.neededFamilies
 }
 
-// IsNoop returns true if this instance will never split spans.
 func (s *Splitter) IsNoop() bool {
+	__antithesis_instrumentation__.Notify(623653)
 	return s.numKeyColumns == 0
 }
 
-// MaybeSplitSpanIntoSeparateFamilies uses the needed columns configured by
-// MakeSplitter to conditionally split the input span into multiple family
-// specific spans.
-//
-// prefixLen is the number of index columns encoded in the span.
-// containsNull indicates if one of the encoded columns was NULL.
-//
-// The function accepts a slice of spans to append to.
 func (s *Splitter) MaybeSplitSpanIntoSeparateFamilies(
 	appendTo roachpb.Spans, span roachpb.Span, prefixLen int, containsNull bool,
 ) roachpb.Spans {
+	__antithesis_instrumentation__.Notify(623654)
 	if s.CanSplitSpanIntoFamilySpans(prefixLen, containsNull) {
+		__antithesis_instrumentation__.Notify(623656)
 		return rowenc.SplitRowKeyIntoFamilySpans(appendTo, span.Key, s.neededFamilies)
+	} else {
+		__antithesis_instrumentation__.Notify(623657)
 	}
+	__antithesis_instrumentation__.Notify(623655)
 	return append(appendTo, span)
 }
 
-// CanSplitSpanIntoFamilySpans returns whether a span encoded with prefixLen
-// encoded columns can be safely split into 1 or more family specific spans.
 func (s *Splitter) CanSplitSpanIntoFamilySpans(prefixLen int, containsNull bool) bool {
+	__antithesis_instrumentation__.Notify(623658)
 	if s.IsNoop() {
-		// This is a no-op splitter (the necessary conditions in MakeSplitter are
-		// not satisfied).
-		return false
-	}
-	// * The index must be fully constrained.
-	if prefixLen != s.numKeyColumns {
-		return false
-	}
-	// * The index constraint must not contain null, since that would cause the
-	//   index key to not be completely knowable.
-	if containsNull {
-		return false
-	}
+		__antithesis_instrumentation__.Notify(623662)
 
-	// We've passed all the conditions, and should be able to safely split this
-	// span into multiple column-family-specific spans.
+		return false
+	} else {
+		__antithesis_instrumentation__.Notify(623663)
+	}
+	__antithesis_instrumentation__.Notify(623659)
+
+	if prefixLen != s.numKeyColumns {
+		__antithesis_instrumentation__.Notify(623664)
+		return false
+	} else {
+		__antithesis_instrumentation__.Notify(623665)
+	}
+	__antithesis_instrumentation__.Notify(623660)
+
+	if containsNull {
+		__antithesis_instrumentation__.Notify(623666)
+		return false
+	} else {
+		__antithesis_instrumentation__.Notify(623667)
+	}
+	__antithesis_instrumentation__.Notify(623661)
+
 	return true
 }
 
-// ExistenceCheckSpan returns a span that can be used to check whether a row
-// exists: when there are multiple families, we narrow down the span to family
-// 0.
 func (s *Splitter) ExistenceCheckSpan(
 	span roachpb.Span, prefixLen int, containsNull bool,
 ) roachpb.Span {
+	__antithesis_instrumentation__.Notify(623668)
 	if s.CanSplitSpanIntoFamilySpans(prefixLen, containsNull) {
-		// If it is safe to split this lookup into multiple families, generate a
-		// point lookup for family 0. Because we are just checking for existence, we
-		// only need family 0.
-		key := keys.MakeFamilyKey(span.Key, 0 /* famID */)
+		__antithesis_instrumentation__.Notify(623670)
+
+		key := keys.MakeFamilyKey(span.Key, 0)
 		return roachpb.Span{Key: key, EndKey: roachpb.Key(key).PrefixEnd()}
+	} else {
+		__antithesis_instrumentation__.Notify(623671)
 	}
+	__antithesis_instrumentation__.Notify(623669)
 	return span
 }

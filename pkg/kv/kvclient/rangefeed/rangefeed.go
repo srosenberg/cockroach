@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rangefeed
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,20 +26,7 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-//go:generate mockgen -destination=mocks_generated_test.go --package=rangefeed . DB
-
-// TODO(ajwerner): Expose hooks for metrics.
-// TODO(ajwerner): Expose access to checkpoints and the frontier.
-// TODO(ajwerner): Expose better control over how the exponential backoff gets
-// reset when the feed has been running successfully for a while.
-// TODO(yevgeniy): Instead of rolling our own logic to parallelize scans, we should
-// use streamer API instead (https://github.com/cockroachdb/cockroach/pull/68430)
-
-// DB is an adapter to the underlying KV store.
 type DB interface {
-
-	// RangeFeed runs a rangefeed on a given span with the given arguments.
-	// It encapsulates the RangeFeed method on roachpb.Internal.
 	RangeFeed(
 		ctx context.Context,
 		spans []roachpb.Span,
@@ -56,10 +35,6 @@ type DB interface {
 		eventC chan<- *roachpb.RangeFeedEvent,
 	) error
 
-	// Scan encapsulates scanning a key span at a given point in time. The method
-	// deals with pagination, calling the caller back for each row. Note that
-	// the API does not require that the rows be ordered to allow for future
-	// parallelism.
 	Scan(
 		ctx context.Context,
 		spans []roachpb.Span,
@@ -69,37 +44,37 @@ type DB interface {
 	) error
 }
 
-// Factory is used to construct RangeFeeds.
 type Factory struct {
 	stopper *stop.Stopper
 	client  DB
 	knobs   *TestingKnobs
 }
 
-// TestingKnobs is used to inject behavior into a rangefeed for testing.
 type TestingKnobs struct {
-
-	// OnRangefeedRestart is called when a rangefeed restarts.
 	OnRangefeedRestart func()
 }
 
-// ModuleTestingKnobs is part of the base.ModuleTestingKnobs interface.
-func (t TestingKnobs) ModuleTestingKnobs() {}
+func (t TestingKnobs) ModuleTestingKnobs() { __antithesis_instrumentation__.Notify(89764) }
 
 var _ base.ModuleTestingKnobs = (*TestingKnobs)(nil)
 
-// NewFactory constructs a new Factory.
 func NewFactory(
 	stopper *stop.Stopper, db *kv.DB, st *cluster.Settings, knobs *TestingKnobs,
 ) (*Factory, error) {
+	__antithesis_instrumentation__.Notify(89765)
 	kvDB, err := newDBAdapter(db, st)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(89767)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(89768)
 	}
+	__antithesis_instrumentation__.Notify(89766)
 	return newFactory(stopper, kvDB, knobs), nil
 }
 
 func newFactory(stopper *stop.Stopper, client DB, knobs *TestingKnobs) *Factory {
+	__antithesis_instrumentation__.Notify(89769)
 	return &Factory{
 		stopper: stopper,
 		client:  client,
@@ -107,13 +82,6 @@ func newFactory(stopper *stop.Stopper, client DB, knobs *TestingKnobs) *Factory 
 	}
 }
 
-// RangeFeed constructs a new rangefeed and runs it in an async task.
-//
-// The rangefeed can be stopped via Close(); otherwise, it will stop when the
-// server shuts down.
-//
-// The only error which can be returned will indicate that the server is being
-// shut down.
 func (f *Factory) RangeFeed(
 	ctx context.Context,
 	name string,
@@ -122,17 +90,22 @@ func (f *Factory) RangeFeed(
 	onValue OnValue,
 	options ...Option,
 ) (_ *RangeFeed, err error) {
+	__antithesis_instrumentation__.Notify(89770)
 	r := f.New(name, initialTimestamp, onValue, options...)
 	if err := r.Start(ctx, spans); err != nil {
+		__antithesis_instrumentation__.Notify(89772)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(89773)
 	}
+	__antithesis_instrumentation__.Notify(89771)
 	return r, nil
 }
 
-// New constructs a new RangeFeed (without running it).
 func (f *Factory) New(
 	name string, initialTimestamp hlc.Timestamp, onValue OnValue, options ...Option,
 ) *RangeFeed {
+	__antithesis_instrumentation__.Notify(89774)
 	r := RangeFeed{
 		client:  f.client,
 		stopper: f.stopper,
@@ -148,10 +121,8 @@ func (f *Factory) New(
 	return &r
 }
 
-// OnValue is called for each rangefeed value.
 type OnValue func(ctx context.Context, value *roachpb.RangeFeedValue)
 
-// RangeFeed represents a running RangeFeed.
 type RangeFeed struct {
 	config
 	name    string
@@ -161,7 +132,7 @@ type RangeFeed struct {
 
 	initialTimestamp hlc.Timestamp
 	spans            []roachpb.Span
-	spansDebugStr    string // Debug string describing spans
+	spansDebugStr    string
 
 	onValue OnValue
 
@@ -169,192 +140,281 @@ type RangeFeed struct {
 	cancel    context.CancelFunc
 	stopped   chan struct{}
 
-	started int32 // accessed atomically
+	started int32
 }
 
-// Start kicks off the rangefeed in an async task, it can only be invoked once.
-// All the installed callbacks (OnValue, OnCheckpoint, OnFrontierAdvance,
-// OnInitialScanDone) are called in said async task in a single thread.
 func (f *RangeFeed) Start(ctx context.Context, spans []roachpb.Span) error {
+	__antithesis_instrumentation__.Notify(89775)
 	if len(spans) == 0 {
+		__antithesis_instrumentation__.Notify(89784)
 		return errors.AssertionFailedf("expected at least 1 span, got none")
+	} else {
+		__antithesis_instrumentation__.Notify(89785)
 	}
+	__antithesis_instrumentation__.Notify(89776)
 
 	if !atomic.CompareAndSwapInt32(&f.started, 0, 1) {
+		__antithesis_instrumentation__.Notify(89786)
 		return errors.AssertionFailedf("rangefeed already started")
+	} else {
+		__antithesis_instrumentation__.Notify(89787)
 	}
+	__antithesis_instrumentation__.Notify(89777)
 
-	// Maintain a frontier in order to resume at a reasonable timestamp.
-	// TODO(ajwerner): Consider exposing the frontier through a RangeFeed method.
-	// Doing so would require some synchronization.
 	frontier, err := span.MakeFrontier(spans...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(89788)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(89789)
 	}
+	__antithesis_instrumentation__.Notify(89778)
 
 	for _, sp := range spans {
+		__antithesis_instrumentation__.Notify(89790)
 		if _, err := frontier.Forward(sp, f.initialTimestamp); err != nil {
+			__antithesis_instrumentation__.Notify(89791)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(89792)
 		}
 	}
+	__antithesis_instrumentation__.Notify(89779)
 
-	// Frontier merges and de-dups passed in spans.  So, use frontier to initialize
-	// sorted list of spans.
 	frontier.Entries(func(sp roachpb.Span, _ hlc.Timestamp) (done span.OpResult) {
+		__antithesis_instrumentation__.Notify(89793)
 		f.spans = append(f.spans, sp)
 		return span.ContinueMatch
 	})
+	__antithesis_instrumentation__.Notify(89780)
 
 	runWithFrontier := func(ctx context.Context) {
-		// pprof.Do function does exactly what we do here, but it also results in
-		// pprof.Do function showing up in the stack traces -- so, just set and reset
-		// labels manually.
+		__antithesis_instrumentation__.Notify(89794)
+
 		defer pprof.SetGoroutineLabels(ctx)
 		ctx = pprof.WithLabels(ctx, pprof.Labels(append(f.extraPProfLabels, "rangefeed", f.name)...))
 		pprof.SetGoroutineLabels(ctx)
 		f.run(ctx, frontier)
 	}
+	__antithesis_instrumentation__.Notify(89781)
 
 	f.spansDebugStr = func() string {
+		__antithesis_instrumentation__.Notify(89795)
 		n := len(spans)
 		if n == 1 {
+			__antithesis_instrumentation__.Notify(89797)
 			return spans[0].String()
+		} else {
+			__antithesis_instrumentation__.Notify(89798)
 		}
+		__antithesis_instrumentation__.Notify(89796)
 
 		return fmt.Sprintf("{%s}", frontier.String())
 	}()
+	__antithesis_instrumentation__.Notify(89782)
 
 	ctx = logtags.AddTag(ctx, "rangefeed", f.name)
 	ctx, f.cancel = f.stopper.WithCancelOnQuiesce(ctx)
 	if err := f.stopper.RunAsyncTask(ctx, "rangefeed", runWithFrontier); err != nil {
+		__antithesis_instrumentation__.Notify(89799)
 		f.cancel()
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(89800)
 	}
+	__antithesis_instrumentation__.Notify(89783)
 	return nil
 }
 
-// Close closes the RangeFeed and waits for it to shut down; it does so
-// idempotently. It waits for the currently running handler, if any, to complete
-// and guarantees that no future handlers will be invoked after this point.
 func (f *RangeFeed) Close() {
+	__antithesis_instrumentation__.Notify(89801)
 	f.closeOnce.Do(func() {
+		__antithesis_instrumentation__.Notify(89802)
 		f.cancel()
 		<-f.stopped
 	})
 }
 
-// Run the rangefeed in a loop in the case of failure, likely due to node
-// failures or general unavailability. If the rangefeed runs successfully for at
-// least this long, then after subsequent failures we would like to reset the
-// exponential backoff to experience long delays between retry attempts.
-// This is the threshold of successful running after which the backoff state
-// will be reset.
 const resetThreshold = 30 * time.Second
 
-// run will run the RangeFeed until the context is canceled or if the client
-// indicates that an initial scan error is non-recoverable.
 func (f *RangeFeed) run(ctx context.Context, frontier *span.Frontier) {
+	__antithesis_instrumentation__.Notify(89803)
 	defer close(f.stopped)
 	r := retry.StartWithCtx(ctx, f.retryOptions)
 	restartLogEvery := log.Every(10 * time.Second)
 
 	if f.withInitialScan {
+		__antithesis_instrumentation__.Notify(89806)
 		if done := f.runInitialScan(ctx, &restartLogEvery, &r); done {
+			__antithesis_instrumentation__.Notify(89807)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(89808)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(89809)
 	}
+	__antithesis_instrumentation__.Notify(89804)
 
-	// Check the context before kicking off a rangefeed.
 	if ctx.Err() != nil {
+		__antithesis_instrumentation__.Notify(89810)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(89811)
 	}
+	__antithesis_instrumentation__.Notify(89805)
 
-	// TODO(ajwerner): Consider adding event buffering. Doing so would require
-	// draining when the rangefeed fails.
 	eventCh := make(chan *roachpb.RangeFeedEvent)
 
 	for i := 0; r.Next(); i++ {
+		__antithesis_instrumentation__.Notify(89812)
 		ts := frontier.Frontier()
 		if log.ExpensiveLogEnabled(ctx, 1) {
+			__antithesis_instrumentation__.Notify(89820)
 			log.Eventf(ctx, "starting rangefeed from %v on %v", ts, f.spansDebugStr)
+		} else {
+			__antithesis_instrumentation__.Notify(89821)
 		}
+		__antithesis_instrumentation__.Notify(89813)
 
 		start := timeutil.Now()
 
 		rangeFeedTask := func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(89822)
 			return f.client.RangeFeed(ctx, f.spans, ts, f.withDiff, eventCh)
 		}
+		__antithesis_instrumentation__.Notify(89814)
 		processEventsTask := func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(89823)
 			return f.processEvents(ctx, frontier, eventCh)
 		}
+		__antithesis_instrumentation__.Notify(89815)
 
 		err := ctxgroup.GoAndWait(ctx, rangeFeedTask, processEventsTask)
-		if errors.HasType(err, &roachpb.BatchTimestampBeforeGCError{}) ||
-			errors.HasType(err, &roachpb.MVCCHistoryMutationError{}) {
+		if errors.HasType(err, &roachpb.BatchTimestampBeforeGCError{}) || func() bool {
+			__antithesis_instrumentation__.Notify(89824)
+			return errors.HasType(err, &roachpb.MVCCHistoryMutationError{}) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(89825)
 			if errCallback := f.onUnrecoverableError; errCallback != nil {
+				__antithesis_instrumentation__.Notify(89827)
 				errCallback(ctx, err)
+			} else {
+				__antithesis_instrumentation__.Notify(89828)
 			}
+			__antithesis_instrumentation__.Notify(89826)
 
 			log.VEventf(ctx, 1, "exiting rangefeed due to internal error: %v", err)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(89829)
 		}
-		if err != nil && ctx.Err() == nil && restartLogEvery.ShouldLog() {
+		__antithesis_instrumentation__.Notify(89816)
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(89830)
+			return ctx.Err() == nil == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(89831)
+			return restartLogEvery.ShouldLog() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(89832)
 			log.Warningf(ctx, "rangefeed failed %d times, restarting: %v",
 				redact.Safe(i), err)
+		} else {
+			__antithesis_instrumentation__.Notify(89833)
 		}
+		__antithesis_instrumentation__.Notify(89817)
 		if ctx.Err() != nil {
+			__antithesis_instrumentation__.Notify(89834)
 			log.VEventf(ctx, 1, "exiting rangefeed")
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(89835)
 		}
+		__antithesis_instrumentation__.Notify(89818)
 
 		ranFor := timeutil.Since(start)
 		log.VEventf(ctx, 1, "restarting rangefeed for %v after %v",
 			f.spansDebugStr, ranFor)
-		if f.knobs != nil && f.knobs.OnRangefeedRestart != nil {
+		if f.knobs != nil && func() bool {
+			__antithesis_instrumentation__.Notify(89836)
+			return f.knobs.OnRangefeedRestart != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(89837)
 			f.knobs.OnRangefeedRestart()
+		} else {
+			__antithesis_instrumentation__.Notify(89838)
 		}
+		__antithesis_instrumentation__.Notify(89819)
 
-		// If the rangefeed ran successfully for long enough, reset the retry
-		// state so that the exponential backoff begins from its minimum value.
 		if ranFor > resetThreshold {
+			__antithesis_instrumentation__.Notify(89839)
 			i = 1
 			r.Reset()
+		} else {
+			__antithesis_instrumentation__.Notify(89840)
 		}
 	}
 }
 
-// processEvents processes events sent by the rangefeed on the eventCh.
 func (f *RangeFeed) processEvents(
 	ctx context.Context, frontier *span.Frontier, eventCh <-chan *roachpb.RangeFeedEvent,
 ) error {
+	__antithesis_instrumentation__.Notify(89841)
 	for {
+		__antithesis_instrumentation__.Notify(89842)
 		select {
 		case ev := <-eventCh:
+			__antithesis_instrumentation__.Notify(89843)
 			switch {
 			case ev.Val != nil:
+				__antithesis_instrumentation__.Notify(89845)
 				f.onValue(ctx, ev.Val)
 			case ev.Checkpoint != nil:
+				__antithesis_instrumentation__.Notify(89846)
 				advanced, err := frontier.Forward(ev.Checkpoint.Span, ev.Checkpoint.ResolvedTS)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(89853)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(89854)
 				}
+				__antithesis_instrumentation__.Notify(89847)
 				if f.onCheckpoint != nil {
+					__antithesis_instrumentation__.Notify(89855)
 					f.onCheckpoint(ctx, ev.Checkpoint)
+				} else {
+					__antithesis_instrumentation__.Notify(89856)
 				}
-				if advanced && f.onFrontierAdvance != nil {
+				__antithesis_instrumentation__.Notify(89848)
+				if advanced && func() bool {
+					__antithesis_instrumentation__.Notify(89857)
+					return f.onFrontierAdvance != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(89858)
 					f.onFrontierAdvance(ctx, frontier.Frontier())
+				} else {
+					__antithesis_instrumentation__.Notify(89859)
 				}
 			case ev.SST != nil:
+				__antithesis_instrumentation__.Notify(89849)
 				if f.onSSTable == nil {
+					__antithesis_instrumentation__.Notify(89860)
 					return errors.AssertionFailedf(
 						"received unexpected rangefeed SST event with no OnSSTable handler")
+				} else {
+					__antithesis_instrumentation__.Notify(89861)
 				}
+				__antithesis_instrumentation__.Notify(89850)
 				f.onSSTable(ctx, ev.SST)
 			case ev.Error != nil:
-				// Intentionally do nothing, we'll get an error returned from the
-				// call to RangeFeed.
+				__antithesis_instrumentation__.Notify(89851)
+			default:
+				__antithesis_instrumentation__.Notify(89852)
+
 			}
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(89844)
 			return ctx.Err()
 		}
 	}

@@ -1,16 +1,8 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Command terraformgen generate the terraform file used to configure AWS for
 // multiregion support.
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -103,10 +95,13 @@ module "vpc_peer_{{index . 0 }}-{{ index . 1 }}" {
 }
 
 var tmpl = func() *template.Template {
+	__antithesis_instrumentation__.Notify(183064)
 	cur := template.New("base")
 	for _, t := range templates {
+		__antithesis_instrumentation__.Notify(183066)
 		cur = template.Must(cur.New(t.name).Parse(t.template))
 	}
+	__antithesis_instrumentation__.Notify(183065)
 	return cur
 }()
 
@@ -117,23 +112,26 @@ type data struct {
 }
 
 func (d *data) Resource(s string) string {
+	__antithesis_instrumentation__.Notify(183067)
 	return d.ResourcePrefix + "-" + s
 }
 
 func (d *data) Peerings() (peerings [][2]string) {
+	__antithesis_instrumentation__.Notify(183068)
 	for i := 0; i < len(d.Regions); i++ {
+		__antithesis_instrumentation__.Notify(183070)
 		for j := i + 1; j < len(d.Regions); j++ {
+			__antithesis_instrumentation__.Notify(183071)
 			peerings = append(peerings, [2]string{
 				d.Resource(d.Regions[i]),
 				d.Resource(d.Regions[j]),
 			})
 		}
 	}
+	__antithesis_instrumentation__.Notify(183069)
 	return peerings
 }
 
-// Defeat the unused linter because it's not smart enough to know about template
-// calls.
 var _ = (*data)(nil).Peerings
 var _ = (*data)(nil).Resource
 
@@ -160,6 +158,7 @@ var defaultData = data{
 }
 
 func main() {
+	__antithesis_instrumentation__.Notify(183072)
 	data := defaultData
 	output := "-"
 	rootCmd := &cobra.Command{
@@ -173,16 +172,22 @@ the provided account number. The json artifact created as a result of running
 terraform apply is consumed by roachprod.
 `,
 		Run: func(_ *cobra.Command, _ []string) {
+			__antithesis_instrumentation__.Notify(183074)
 			out := io.Writer(os.Stderr)
 			if output != "-" {
+				__antithesis_instrumentation__.Notify(183076)
 				f, err := os.Create(output)
 				exitIfError(err)
 				defer f.Close()
 				out = f
+			} else {
+				__antithesis_instrumentation__.Notify(183077)
 			}
+			__antithesis_instrumentation__.Notify(183075)
 			exitIfError(tmpl.Execute(out, &data))
 		},
 	}
+	__antithesis_instrumentation__.Notify(183073)
 	rootCmd.Flags().StringSliceVar(&data.Regions, "regions", data.Regions,
 		"list of regions to operate in")
 	rootCmd.Flags().StringVar(&data.AccountNumber, "account-number", data.AccountNumber,
@@ -194,9 +199,14 @@ terraform apply is consumed by roachprod.
 }
 
 func exitIfError(err error) {
+	__antithesis_instrumentation__.Notify(183078)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(183080)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(183081)
 	}
+	__antithesis_instrumentation__.Notify(183079)
 	fmt.Fprintf(os.Stderr, "%v\n", err)
 	exit.WithCode(exit.UnspecifiedError())
 }

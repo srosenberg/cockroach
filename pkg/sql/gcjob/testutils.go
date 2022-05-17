@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gcjob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -17,13 +9,12 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql"
 )
 
-// TestingGCTenant is a wrapper around the internal function that gc-s a tenant
-// made public for testing.
 func TestingGCTenant(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
 	tenID uint64,
 	progress *jobspb.SchemaChangeGCProgress,
 ) error {
+	__antithesis_instrumentation__.Notify(492749)
 	return gcTenant(ctx, execCfg, tenID, progress)
 }

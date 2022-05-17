@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpch
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -23,24 +15,17 @@ import (
 
 const alphanumericLen64 = `abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890, `
 
-// randInt returns a random value between x and y inclusively, with a mean of
-// (x+y)/2. See 4.2.2.3.
 func randInt(rng *rand.Rand, x, y int) int {
+	__antithesis_instrumentation__.Notify(698783)
 	return rng.Intn(y-x+1) + x
 }
 
 func randFloat(rng *rand.Rand, x, y, shift int) float32 {
+	__antithesis_instrumentation__.Notify(698784)
 	return float32(randInt(rng, x, y)) / float32(shift)
 }
 
 type textPool interface {
-	// 4.2.2.10:
-	// The term text string[min, max] represents a substring of a 300 MB string
-	// populated according to the pseudo text grammar defined in Clause 4.2.2.14.
-	// The length of the substring is a random number between min and max
-	// inclusive. The substring offset is randomly chosen.
-	//
-	// randString implementations must be threadsafe.
 	randString(rng *rand.Rand, minLen, maxLen int) []byte
 }
 
@@ -52,43 +37,43 @@ type fakeTextPool struct {
 	}
 }
 
-// randString implements textPool with a cheaper simulation of the 300 MB
-// string. It's not to spec both because it's shorter and also because it's not
-// generated according to the pseudo text grammar.
 func (p *fakeTextPool) randString(rng *rand.Rand, minLen, maxLen int) []byte {
-	const fakeTextPoolSize = 1 << 20 // 1 MiB
+	__antithesis_instrumentation__.Notify(698785)
+	const fakeTextPoolSize = 1 << 20
 	p.once.Do(func() {
+		__antithesis_instrumentation__.Notify(698787)
 		bufRng := rand.New(rand.NewSource(p.seed))
 		f := faker.NewFaker()
-		// This loop generates random paragraphs and adds them until the length is
-		// >= fakeTextPoolSize. Add some extra capacity so that we don't allocate
-		// and copy on the paragraph that goes over.
+
 		buf := bytes.NewBuffer(make([]byte, 0, fakeTextPoolSize+1024))
 		for buf.Len() < fakeTextPoolSize {
+			__antithesis_instrumentation__.Notify(698789)
 			buf.WriteString(f.Paragraph(bufRng))
 			buf.WriteString(` `)
 		}
+		__antithesis_instrumentation__.Notify(698788)
 		p.once.buf = buf.Bytes()[:fakeTextPoolSize:fakeTextPoolSize]
 	})
+	__antithesis_instrumentation__.Notify(698786)
 	start := rng.Intn(len(p.once.buf) - maxLen)
 	end := start + rng.Intn(maxLen-minLen) + minLen
 	return p.once.buf[start:end]
 }
 
-// randVString returns "a string comprised of randomly generated alphanumeric
-// characters within a character set of at least 64 symbols. The length of the
-// string is a random value between min and max inclusive". See 4.2.2.7.
 func randVString(rng *rand.Rand, a *bufalloc.ByteAllocator, minLen, maxLen int) []byte {
+	__antithesis_instrumentation__.Notify(698790)
 	var buf []byte
 	*a, buf = a.Alloc(randInt(rng, minLen, maxLen), 0)
 	for i := range buf {
+		__antithesis_instrumentation__.Notify(698792)
 		buf[i] = alphanumericLen64[rng.Intn(len(alphanumericLen64))]
 	}
+	__antithesis_instrumentation__.Notify(698791)
 	return buf
 }
 
-// randPhone returns a phone number generated according to 4.2.2.9.
 func randPhone(rng *rand.Rand, a *bufalloc.ByteAllocator, nationKey int16) []byte {
+	__antithesis_instrumentation__.Notify(698793)
 	var buf []byte
 	*a, buf = a.Alloc(15, 0)
 	buf = buf[:0]
@@ -123,31 +108,38 @@ var randPartNames = [...]string{
 const maxPartNameLen = 10
 const nPartNames = 5
 
-// randPartName concatenates 5 random unique strings from randPartNames, separated
-// by spaces.
 func randPartName(rng *rand.Rand, namePerm []int, a *bufalloc.ByteAllocator) []byte {
-	// do nPartNames iterations of rand.Perm, to get a random 5-subset of the
-	// indexes into randPartNames.
+	__antithesis_instrumentation__.Notify(698794)
+
 	for i := 0; i < nPartNames; i++ {
+		__antithesis_instrumentation__.Notify(698797)
 		j := rng.Intn(i + 1)
 		namePerm[i] = namePerm[j]
 		namePerm[j] = i
 	}
+	__antithesis_instrumentation__.Notify(698795)
 	var buf []byte
 	*a, buf = a.Alloc(maxPartNameLen*nPartNames+nPartNames, 0)
 	buf = buf[:0]
 	for i := 0; i < nPartNames; i++ {
+		__antithesis_instrumentation__.Notify(698798)
 		if i != 0 {
+			__antithesis_instrumentation__.Notify(698800)
 			buf = append(buf, byte(' '))
+		} else {
+			__antithesis_instrumentation__.Notify(698801)
 		}
+		__antithesis_instrumentation__.Notify(698799)
 		buf = append(buf, randPartNames[namePerm[i]]...)
 	}
+	__antithesis_instrumentation__.Notify(698796)
 	return buf
 }
 
 const manufacturerString = "Manufacturer#"
 
 func randMfgr(rng *rand.Rand, a *bufalloc.ByteAllocator) (byte, []byte) {
+	__antithesis_instrumentation__.Notify(698802)
 	var buf []byte
 	*a, buf = a.Alloc(len(manufacturerString)+1, 0)
 
@@ -160,6 +152,7 @@ func randMfgr(rng *rand.Rand, a *bufalloc.ByteAllocator) (byte, []byte) {
 const brandString = "Brand#"
 
 func randBrand(rng *rand.Rand, a *bufalloc.ByteAllocator, m byte) []byte {
+	__antithesis_instrumentation__.Notify(698803)
 	var buf []byte
 	*a, buf = a.Alloc(len(brandString)+2, 0)
 
@@ -173,6 +166,7 @@ func randBrand(rng *rand.Rand, a *bufalloc.ByteAllocator, m byte) []byte {
 const clerkString = "Clerk#"
 
 func randClerk(rng *rand.Rand, a *bufalloc.ByteAllocator, scaleFactor int) []byte {
+	__antithesis_instrumentation__.Notify(698804)
 	var buf []byte
 	*a, buf = a.Alloc(len(clerkString)+9, 0)
 	copy(buf, clerkString)
@@ -183,6 +177,7 @@ func randClerk(rng *rand.Rand, a *bufalloc.ByteAllocator, scaleFactor int) []byt
 const supplierString = "Supplier#"
 
 func supplierName(a *bufalloc.ByteAllocator, suppKey int64) []byte {
+	__antithesis_instrumentation__.Notify(698805)
 	var buf []byte
 	*a, buf = a.Alloc(len(supplierString)+9, 0)
 	copy(buf, supplierString)
@@ -193,6 +188,7 @@ func supplierName(a *bufalloc.ByteAllocator, suppKey int64) []byte {
 const customerString = "Customer#"
 
 func customerName(a *bufalloc.ByteAllocator, custKey int64) []byte {
+	__antithesis_instrumentation__.Notify(698806)
 	var buf []byte
 	*a, buf = a.Alloc(len(customerString)+9, 0)
 	copy(buf, customerString)
@@ -203,6 +199,7 @@ func customerName(a *bufalloc.ByteAllocator, custKey int64) []byte {
 const ninePadding = `000000000`
 
 func ninePaddedInt(buf []byte, x int64) {
+	__antithesis_instrumentation__.Notify(698807)
 	buf = buf[:len(ninePadding)]
 	intLen := len(strconv.AppendInt(buf[:0], x, 10))
 	numZeros := len(ninePadding) - intLen
@@ -213,16 +210,23 @@ func ninePaddedInt(buf []byte, x int64) {
 func randSyllables(
 	rng *rand.Rand, a *bufalloc.ByteAllocator, maxLen int, syllables [][]string,
 ) []byte {
+	__antithesis_instrumentation__.Notify(698808)
 	var buf []byte
 	*a, buf = a.Alloc(maxLen, 0)
 	buf = buf[:0]
 
 	for i, syl := range syllables {
+		__antithesis_instrumentation__.Notify(698810)
 		if i != 0 {
+			__antithesis_instrumentation__.Notify(698812)
 			buf = append(buf, ' ')
+		} else {
+			__antithesis_instrumentation__.Notify(698813)
 		}
+		__antithesis_instrumentation__.Notify(698811)
 		buf = append(buf, syl[rng.Intn(len(syl))]...)
 	}
+	__antithesis_instrumentation__.Notify(698809)
 	return buf
 }
 
@@ -235,6 +239,7 @@ var typeSyllables = [][]string{
 const maxTypeLen = 25
 
 func randType(rng *rand.Rand, a *bufalloc.ByteAllocator) []byte {
+	__antithesis_instrumentation__.Notify(698814)
 	return randSyllables(rng, a, maxTypeLen, typeSyllables)
 }
 
@@ -246,6 +251,7 @@ var containerSyllables = [][]string{
 const maxContainerLen = 10
 
 func randContainer(rng *rand.Rand, a *bufalloc.ByteAllocator) []byte {
+	__antithesis_instrumentation__.Notify(698815)
 	return randSyllables(rng, a, maxContainerLen, containerSyllables)
 }
 
@@ -254,6 +260,7 @@ var segments = []string{
 }
 
 func randSegment(rng *rand.Rand) []byte {
+	__antithesis_instrumentation__.Notify(698816)
 	return encoding.UnsafeConvertStringToBytes(segments[rng.Intn(len(segments))])
 }
 
@@ -262,6 +269,7 @@ var priorities = []string{
 }
 
 func randPriority(rng *rand.Rand) []byte {
+	__antithesis_instrumentation__.Notify(698817)
 	return encoding.UnsafeConvertStringToBytes(priorities[rng.Intn(len(priorities))])
 }
 
@@ -272,6 +280,7 @@ var instructions = []string{
 }
 
 func randInstruction(rng *rand.Rand) []byte {
+	__antithesis_instrumentation__.Notify(698818)
 	return encoding.UnsafeConvertStringToBytes(instructions[rng.Intn(len(instructions))])
 }
 
@@ -280,5 +289,6 @@ var modes = []string{
 }
 
 func randMode(rng *rand.Rand) []byte {
+	__antithesis_instrumentation__.Notify(698819)
 	return []byte(modes[rng.Intn(len(modes))])
 }

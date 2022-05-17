@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package clusterversion
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,87 +13,103 @@ import (
 	"github.com/kr/pretty"
 )
 
-// keyedVersion associates a key to a version.
 type keyedVersion struct {
 	Key Key
 	roachpb.Version
 }
 
-// keyedVersions is a container for managing the versions of CockroachDB.
 type keyedVersions []keyedVersion
 
-// MustByKey asserts that the version specified by this key exists, and returns it.
 func (kv keyedVersions) MustByKey(k Key) roachpb.Version {
+	__antithesis_instrumentation__.Notify(37228)
 	key := int(k)
-	if key >= len(kv) || key < 0 {
+	if key >= len(kv) || func() bool {
+		__antithesis_instrumentation__.Notify(37230)
+		return key < 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(37231)
 		log.Fatalf(context.Background(), "version with key %d does not exist, have:\n%s",
 			key, pretty.Sprint(kv))
+	} else {
+		__antithesis_instrumentation__.Notify(37232)
 	}
+	__antithesis_instrumentation__.Notify(37229)
 	return kv[key].Version
 }
 
-// Validate makes sure that the keyedVersions are sorted chronologically, that
-// their keys correspond to their position in the list, and that no obsolete
-// versions (i.e. known to always be active) are present.
-//
-// For versions introduced in v21.1 and beyond, the internal versions must be
-// even.
 func (kv keyedVersions) Validate() error {
+	__antithesis_instrumentation__.Notify(37233)
 	type majorMinor struct {
 		major, minor int32
 		vs           []keyedVersion
 	}
-	// byRelease maps major.minor to a slice of versions that were first
-	// released right after major.minor. For example, a version 20.1-12 would
-	// first be released in 20.2, and would be slotted under 20.1. We'll need
-	// this to determine which versions are always active with a binary built
-	// from the current SHA.
+
 	var byRelease []majorMinor
 	for i, namedVersion := range kv {
+		__antithesis_instrumentation__.Notify(37237)
 		if int(namedVersion.Key) != i {
+			__antithesis_instrumentation__.Notify(37241)
 			return errors.Errorf("version %s should have key %d but has %d",
 				namedVersion, i, namedVersion.Key)
+		} else {
+			__antithesis_instrumentation__.Notify(37242)
 		}
+		__antithesis_instrumentation__.Notify(37238)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(37243)
 			prev := kv[i-1]
 			if !prev.Version.Less(namedVersion.Version) {
+				__antithesis_instrumentation__.Notify(37244)
 				return errors.Errorf("version %s must be larger than %s", namedVersion, prev)
+			} else {
+				__antithesis_instrumentation__.Notify(37245)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(37246)
 		}
+		__antithesis_instrumentation__.Notify(37239)
 		mami := majorMinor{major: namedVersion.Major, minor: namedVersion.Minor}
 		n := len(byRelease)
-		if n == 0 || byRelease[n-1].major != mami.major || byRelease[n-1].minor != mami.minor {
-			// Add new entry to the slice.
+		if n == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(37247)
+			return byRelease[n-1].major != mami.major == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(37248)
+			return byRelease[n-1].minor != mami.minor == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(37249)
+
 			byRelease = append(byRelease, mami)
 			n++
+		} else {
+			__antithesis_instrumentation__.Notify(37250)
 		}
-		// Add to existing entry.
+		__antithesis_instrumentation__.Notify(37240)
+
 		byRelease[n-1].vs = append(byRelease[n-1].vs, namedVersion)
 	}
+	__antithesis_instrumentation__.Notify(37234)
 
-	// Iterate through all versions known to be active. For example, if
-	//
-	//   byRelease = ["19.1", "19.2", "20.1", "20.2"]
-	//
-	// then we know that the current release cycle is 21.1, so mixed version
-	// clusters are running at least 20.2, so anything slotted under 20.1 (like
-	// 20.1-12) and 19.2 is always-on. To avoid interfering with backports, we're
-	// a bit more lenient and allow one more release cycle until validation fails.
-	// In the above example, we would tolerate 20.1-x but not 19.2-x.
-	// Currently we're actually a few versions behind in enforcing a ban on old
-	// versions/migrations. See #47447.
 	if n := len(byRelease) - 5; n >= 0 {
+		__antithesis_instrumentation__.Notify(37251)
 		var buf strings.Builder
 		for i, mami := range byRelease[:n+1] {
+			__antithesis_instrumentation__.Notify(37253)
 			s := "next release"
 			if i+1 < len(byRelease)-1 {
+				__antithesis_instrumentation__.Notify(37255)
 				nextMM := byRelease[i+1]
 				s = fmt.Sprintf("%d.%d", nextMM.major, nextMM.minor)
+			} else {
+				__antithesis_instrumentation__.Notify(37256)
 			}
+			__antithesis_instrumentation__.Notify(37254)
 			for _, nv := range mami.vs {
+				__antithesis_instrumentation__.Notify(37257)
 				fmt.Fprintf(&buf, "introduced in %s: %s\n", s, nv.Key)
 			}
 		}
+		__antithesis_instrumentation__.Notify(37252)
 		mostRecentRelease := byRelease[len(byRelease)-1]
 		return errors.Errorf(
 			"found versions that are always active because %d.%d is already "+
@@ -109,28 +117,44 @@ func (kv keyedVersions) Validate() error {
 			mostRecentRelease.minor, mostRecentRelease.major,
 			buf.String(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(37258)
 	}
+	__antithesis_instrumentation__.Notify(37235)
 
-	// Check to see that for versions introduced in v21.1 and beyond, the
-	// internal versions are always even. The odd versions are used for internal
-	// book-keeping.
 	for _, release := range byRelease {
-		// v21.1 versions (20.2-x) will be slotted under 20.2. Ignore all other
-		// releases.
+		__antithesis_instrumentation__.Notify(37259)
+
 		if release.major < 20 {
+			__antithesis_instrumentation__.Notify(37262)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(37263)
 		}
-		if release.major == 20 && release.minor == 1 {
+		__antithesis_instrumentation__.Notify(37260)
+		if release.major == 20 && func() bool {
+			__antithesis_instrumentation__.Notify(37264)
+			return release.minor == 1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(37265)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(37266)
 		}
+		__antithesis_instrumentation__.Notify(37261)
 
 		for _, v := range release.vs {
+			__antithesis_instrumentation__.Notify(37267)
 			if (v.Internal % 2) != 0 {
+				__antithesis_instrumentation__.Notify(37268)
 				return errors.Errorf("found version %s with odd-numbered internal version (%s);"+
 					" versions introduced in 21.1+ must have even-numbered internal versions", v.Key, v.Version)
+			} else {
+				__antithesis_instrumentation__.Notify(37269)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(37236)
 
 	return nil
 }

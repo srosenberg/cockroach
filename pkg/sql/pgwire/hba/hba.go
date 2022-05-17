@@ -1,22 +1,7 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package hba implements an hba.conf parser.
 package hba
 
-// conf.rl is a ragel v6.10 file containing a parser for pg_hba.conf
-// files. "make" should be executed in this directory when conf.rl is
-// changed. Since it is changed so rarely it is not hooked up to the top-level
-// Makefile since that would require ragel being a dev dependency, which is
-// an annoying burden since it's written in C and we can't auto install it
-// on all systems.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -30,84 +15,87 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
-// Conf is a parsed configuration.
 type Conf struct {
 	Entries []Entry
 }
 
-// Entry is a single line of a configuration.
 type Entry struct {
-	// ConnType is the connection type to match.
 	ConnType ConnType
-	// Database is the list of databases to match. An empty list means
-	// "match any database".
+
 	Database []String
-	// User is the list of users to match. An empty list means "match
-	// any user".
+
 	User []String
-	// Address is either AnyAddr, *net.IPNet or (unsupported) String for a hostname.
+
 	Address interface{}
 	Method  String
-	// MethodFn is populated during name resolution of Method.
+
 	MethodFn     interface{}
 	Options      [][2]string
 	OptionQuotes []bool
-	// Input is the original configuration line in the HBA configuration string.
-	// This is used for auditing purposes.
+
 	Input string
-	// Generated is true if the entry was expanded from another. All the
-	// generated entries share the same value for Input.
+
 	Generated bool
 }
 
-// ConnType represents the type of connection matched by a rule.
 type ConnType int
 
 const (
-	// ConnLocal matches unix socket connections.
 	ConnLocal ConnType = 1 << iota
-	// ConnHostNoSSL matches TCP connections without SSL/TLS.
+
 	ConnHostNoSSL
-	// ConnHostSSL matches TCP connections with SSL/TLS.
+
 	ConnHostSSL
 
-	// ConnHostAny matches TCP connections with or without SSL/TLS.
 	ConnHostAny = ConnHostNoSSL | ConnHostSSL
 
-	// ConnAny matches any connection type. Used when registering auth
-	// methods.
 	ConnAny = ConnHostAny | ConnLocal
 )
 
-// String implements the fmt.Stringer interface.
 func (t ConnType) String() string {
+	__antithesis_instrumentation__.Notify(559843)
 	switch t {
 	case ConnLocal:
+		__antithesis_instrumentation__.Notify(559844)
 		return "local"
 	case ConnHostNoSSL:
+		__antithesis_instrumentation__.Notify(559845)
 		return "hostnossl"
 	case ConnHostSSL:
+		__antithesis_instrumentation__.Notify(559846)
 		return "hostssl"
 	case ConnHostAny:
+		__antithesis_instrumentation__.Notify(559847)
 		return "host"
 	default:
+		__antithesis_instrumentation__.Notify(559848)
 		panic(errors.Newf("unimplemented conn type: %v", int(t)))
 	}
 }
 
-// String implements the fmt.Stringer interface.
 func (c Conf) String() string {
+	__antithesis_instrumentation__.Notify(559849)
 	if len(c.Entries) == 0 {
+		__antithesis_instrumentation__.Notify(559853)
 		return "# (empty configuration)\n"
+	} else {
+		__antithesis_instrumentation__.Notify(559854)
 	}
+	__antithesis_instrumentation__.Notify(559850)
 	var sb strings.Builder
 	sb.WriteString("# Original configuration:\n")
 	for _, e := range c.Entries {
+		__antithesis_instrumentation__.Notify(559855)
 		if e.Generated {
+			__antithesis_instrumentation__.Notify(559857)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(559858)
 		}
+		__antithesis_instrumentation__.Notify(559856)
 		fmt.Fprintf(&sb, "# %s\n", e.Input)
 	}
+	__antithesis_instrumentation__.Notify(559851)
 	sb.WriteString("#\n# Interpreted configuration:\n")
 
 	table := tablewriter.NewWriter(&sb)
@@ -122,6 +110,7 @@ func (c Conf) String() string {
 	row := []string{"# TYPE", "DATABASE", "USER", "ADDRESS", "METHOD", "OPTIONS"}
 	table.Append(row)
 	for _, e := range c.Entries {
+		__antithesis_instrumentation__.Notify(559859)
 		row[0] = e.ConnType.String()
 		row[1] = e.DatabaseString()
 		row[2] = e.UserString()
@@ -130,250 +119,312 @@ func (c Conf) String() string {
 		row[5] = e.OptionsString()
 		table.Append(row)
 	}
+	__antithesis_instrumentation__.Notify(559852)
 	table.Render()
 	return sb.String()
 }
 
-// AnyAddr represents "any address" and is used when parsing "all" for
-// the "Address" field.
 type AnyAddr struct{}
 
-// String implements the fmt.Stringer interface.
-func (AnyAddr) String() string { return "all" }
+func (AnyAddr) String() string { __antithesis_instrumentation__.Notify(559860); return "all" }
 
-// GetOption returns the value of option name if there is exactly one
-// occurrence of name in the options list, otherwise the empty string.
 func (h Entry) GetOption(name string) string {
+	__antithesis_instrumentation__.Notify(559861)
 	var val string
 	for _, opt := range h.Options {
+		__antithesis_instrumentation__.Notify(559863)
 		if opt[0] == name {
-			// If there is more than one entry, return empty string.
+			__antithesis_instrumentation__.Notify(559864)
+
 			if val != "" {
+				__antithesis_instrumentation__.Notify(559866)
 				return ""
+			} else {
+				__antithesis_instrumentation__.Notify(559867)
 			}
+			__antithesis_instrumentation__.Notify(559865)
 			val = opt[1]
+		} else {
+			__antithesis_instrumentation__.Notify(559868)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559862)
 	return val
 }
 
-// Equivalent returns true iff the entry is equivalent to another,
-// excluding the original syntax.
 func (h Entry) Equivalent(other Entry) bool {
+	__antithesis_instrumentation__.Notify(559869)
 	h.Input = ""
 	other.Input = ""
 	return reflect.DeepEqual(h, other)
 }
 
-// GetOptions returns all values of option name.
 func (h Entry) GetOptions(name string) []string {
+	__antithesis_instrumentation__.Notify(559870)
 	var val []string
 	for _, opt := range h.Options {
+		__antithesis_instrumentation__.Notify(559872)
 		if opt[0] == name {
+			__antithesis_instrumentation__.Notify(559873)
 			val = append(val, opt[1])
+		} else {
+			__antithesis_instrumentation__.Notify(559874)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559871)
 	return val
 }
 
-// ConnTypeMatches returns true iff the provided actual client connection
-// type matches the connection type specified in the rule.
 func (h Entry) ConnTypeMatches(clientConn ConnType) bool {
+	__antithesis_instrumentation__.Notify(559875)
 	switch clientConn {
 	case ConnLocal:
+		__antithesis_instrumentation__.Notify(559876)
 		return h.ConnType == ConnLocal
 	case ConnHostSSL:
-		// A SSL connection matches both "hostssl" and "host".
+		__antithesis_instrumentation__.Notify(559877)
+
 		return h.ConnType&ConnHostSSL != 0
 	case ConnHostNoSSL:
-		// A non-SSL connection matches both "hostnossl" and "host".
+		__antithesis_instrumentation__.Notify(559878)
+
 		return h.ConnType&ConnHostNoSSL != 0
 	default:
+		__antithesis_instrumentation__.Notify(559879)
 		panic("unimplemented")
 	}
 }
 
-// ConnMatches returns true iff the provided client connection
-// type and address matches the entry spec.
 func (h Entry) ConnMatches(clientConn ConnType, ip net.IP) (bool, error) {
+	__antithesis_instrumentation__.Notify(559880)
 	if !h.ConnTypeMatches(clientConn) {
+		__antithesis_instrumentation__.Notify(559883)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(559884)
 	}
+	__antithesis_instrumentation__.Notify(559881)
 	if clientConn != ConnLocal {
+		__antithesis_instrumentation__.Notify(559885)
 		return h.AddressMatches(ip)
+	} else {
+		__antithesis_instrumentation__.Notify(559886)
 	}
+	__antithesis_instrumentation__.Notify(559882)
 	return true, nil
 }
 
-// UserMatches returns true iff the provided username matches an
-// entry in the User list or if the user list is empty (the entry
-// matches all).
-//
-// The provided username must be normalized already.
-// The function assumes the entry was normalized to contain only
-// one user and its username normalized. See ParseAndNormalize().
 func (h Entry) UserMatches(userName security.SQLUsername) bool {
+	__antithesis_instrumentation__.Notify(559887)
 	if h.User == nil {
+		__antithesis_instrumentation__.Notify(559890)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(559891)
 	}
+	__antithesis_instrumentation__.Notify(559888)
 	for _, u := range h.User {
+		__antithesis_instrumentation__.Notify(559892)
 		if u.Value == userName.Normalized() {
+			__antithesis_instrumentation__.Notify(559893)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(559894)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559889)
 	return false
 }
 
-// AddressMatches returns true iff the provided address matches the
-// entry. The function assumes the entry was normalized already.
-// See ParseAndNormalize.
 func (h Entry) AddressMatches(addr net.IP) (bool, error) {
+	__antithesis_instrumentation__.Notify(559895)
 	switch a := h.Address.(type) {
 	case AnyAddr:
+		__antithesis_instrumentation__.Notify(559896)
 		return true, nil
 	case *net.IPNet:
+		__antithesis_instrumentation__.Notify(559897)
 		return a.Contains(addr), nil
 	default:
-		// This is where name-based validation can occur later.
+		__antithesis_instrumentation__.Notify(559898)
+
 		return false, errors.Newf("unknown address type: %T", addr)
 	}
 }
 
-// DatabaseString returns a string that describes the database field.
 func (h Entry) DatabaseString() string {
+	__antithesis_instrumentation__.Notify(559899)
 	if h.Database == nil {
+		__antithesis_instrumentation__.Notify(559902)
 		return "all"
+	} else {
+		__antithesis_instrumentation__.Notify(559903)
 	}
+	__antithesis_instrumentation__.Notify(559900)
 	var sb strings.Builder
 	comma := ""
 	for _, s := range h.Database {
+		__antithesis_instrumentation__.Notify(559904)
 		sb.WriteString(comma)
 		sb.WriteString(s.String())
 		comma = ","
 	}
+	__antithesis_instrumentation__.Notify(559901)
 	return sb.String()
 }
 
-// UserString returns a string that describes the username field.
 func (h Entry) UserString() string {
+	__antithesis_instrumentation__.Notify(559905)
 	if h.User == nil {
+		__antithesis_instrumentation__.Notify(559908)
 		return "all"
+	} else {
+		__antithesis_instrumentation__.Notify(559909)
 	}
+	__antithesis_instrumentation__.Notify(559906)
 	var sb strings.Builder
 	comma := ""
 	for _, s := range h.User {
+		__antithesis_instrumentation__.Notify(559910)
 		sb.WriteString(comma)
 		sb.WriteString(s.String())
 		comma = ","
 	}
+	__antithesis_instrumentation__.Notify(559907)
 	return sb.String()
 }
 
-// AddressString returns a string that describes the address field.
 func (h Entry) AddressString() string {
+	__antithesis_instrumentation__.Notify(559911)
 	if h.Address == nil {
-		// This is possible for conn type "local".
+		__antithesis_instrumentation__.Notify(559913)
+
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(559914)
 	}
+	__antithesis_instrumentation__.Notify(559912)
 	return fmt.Sprintf("%s", h.Address)
 }
 
-// OptionsString returns a string that describes the option field.
 func (h Entry) OptionsString() string {
+	__antithesis_instrumentation__.Notify(559915)
 	var sb strings.Builder
 	sp := ""
 	for i, opt := range h.Options {
+		__antithesis_instrumentation__.Notify(559917)
 		sb.WriteString(sp)
 		sb.WriteString(String{Value: opt[0] + "=" + opt[1], Quoted: h.OptionQuotes[i]}.String())
 		sp = " "
 	}
+	__antithesis_instrumentation__.Notify(559916)
 	return sb.String()
 }
 
-// String implements the fmt.Stringer interface.
 func (h Entry) String() string {
+	__antithesis_instrumentation__.Notify(559918)
 	return Conf{Entries: []Entry{h}}.String()
 }
 
-// String is a possibly quoted string.
 type String struct {
 	Value  string
 	Quoted bool
 }
 
-// String implements the fmt.Stringer interface.
 func (s String) String() string {
+	__antithesis_instrumentation__.Notify(559919)
 	if s.Quoted {
+		__antithesis_instrumentation__.Notify(559921)
 		return `"` + s.Value + `"`
+	} else {
+		__antithesis_instrumentation__.Notify(559922)
 	}
+	__antithesis_instrumentation__.Notify(559920)
 	return s.Value
 }
 
-// Empty returns true iff s is the unquoted empty string.
-func (s String) Empty() bool { return s.IsKeyword("") }
+func (s String) Empty() bool { __antithesis_instrumentation__.Notify(559923); return s.IsKeyword("") }
 
-// IsKeyword returns whether s is the non-quoted string v.
 func (s String) IsKeyword(v string) bool {
-	return !s.Quoted && s.Value == v
+	__antithesis_instrumentation__.Notify(559924)
+	return !s.Quoted && func() bool {
+		__antithesis_instrumentation__.Notify(559925)
+		return s.Value == v == true
+	}() == true
 }
 
-// ParseAndNormalize parses the HBA configuration from the provided
-// string and performs two tasks:
-//
-// - it unicode-normalizes the usernames. Since usernames are
-//   initialized during pgwire session initialization, this
-//   ensures that string comparisons can be used to match usernames.
-//
-// - it ensures there is one entry per username. This simplifies
-//   the code in the authentication logic.
-//
 func ParseAndNormalize(val string) (*Conf, error) {
+	__antithesis_instrumentation__.Notify(559926)
 	conf, err := Parse(val)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(559929)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(559930)
 	}
+	__antithesis_instrumentation__.Notify(559927)
 
 	entries := conf.Entries[:0]
 	entriesCopied := false
 outer:
 	for i := range conf.Entries {
+		__antithesis_instrumentation__.Notify(559931)
 		entry := conf.Entries[i]
 
-		// The database field is not supported yet in CockroachDB.
 		entry.Database = nil
 
-		// Normalize the 'all' keyword into AnyAddr.
-		if addr, ok := entry.Address.(String); ok && addr.IsKeyword("all") {
+		if addr, ok := entry.Address.(String); ok && func() bool {
+			__antithesis_instrumentation__.Notify(559935)
+			return addr.IsKeyword("all") == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(559936)
 			entry.Address = AnyAddr{}
+		} else {
+			__antithesis_instrumentation__.Notify(559937)
 		}
+		__antithesis_instrumentation__.Notify(559932)
 
-		// If we're observing an "any" entry, just keep that and move
-		// along.
 		for _, iu := range entry.User {
+			__antithesis_instrumentation__.Notify(559938)
 			if iu.IsKeyword("all") {
+				__antithesis_instrumentation__.Notify(559939)
 				entry.User = nil
 				entries = append(entries, entry)
 				continue outer
+			} else {
+				__antithesis_instrumentation__.Notify(559940)
 			}
 		}
+		__antithesis_instrumentation__.Notify(559933)
 
-		// If we're about to change the size of the slice, first copy the
-		// result entries.
-		if len(entry.User) != 1 && !entriesCopied {
+		if len(entry.User) != 1 && func() bool {
+			__antithesis_instrumentation__.Notify(559941)
+			return !entriesCopied == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(559942)
 			entries = append([]Entry(nil), conf.Entries[:len(entries)]...)
 			entriesCopied = true
+		} else {
+			__antithesis_instrumentation__.Notify(559943)
 		}
-		// Expand and normalize the usernames.
+		__antithesis_instrumentation__.Notify(559934)
+
 		allUsers := entry.User
 		for userIdx, iu := range allUsers {
+			__antithesis_instrumentation__.Notify(559944)
 			entry.User = allUsers[userIdx : userIdx+1]
 			entry.User[0].Value = tree.Name(iu.Value).Normalize()
 			if userIdx > 0 {
+				__antithesis_instrumentation__.Notify(559946)
 				entry.Generated = true
+			} else {
+				__antithesis_instrumentation__.Notify(559947)
 			}
+			__antithesis_instrumentation__.Notify(559945)
 			entries = append(entries, entry)
 		}
 	}
+	__antithesis_instrumentation__.Notify(559928)
 	conf.Entries = entries
 	return conf, nil
 }

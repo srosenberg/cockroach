@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package metamorphic
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/storage"
@@ -20,8 +12,9 @@ const numStandardOptions = 18
 const numRandomOptions = 10
 
 func standardOptions(i int) *pebble.Options {
+	__antithesis_instrumentation__.Notify(640198)
 	stdOpts := []string{
-		0: "", // default options
+		0: "",
 		1: `
 [Options]
   cache_size=1
@@ -83,7 +76,7 @@ func standardOptions(i int) *pebble.Options {
 [Level "0"]
   filter_policy=none
 `,
-		// 1GB
+
 		16: `
 [Options]
   bytes_per_sync=1073741824
@@ -93,17 +86,29 @@ func standardOptions(i int) *pebble.Options {
   max_concurrent_compactions=2
 `,
 	}
-	if i < 0 || i >= len(stdOpts) {
+	if i < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(640201)
+		return i >= len(stdOpts) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(640202)
 		panic("invalid index for standard option")
+	} else {
+		__antithesis_instrumentation__.Notify(640203)
 	}
+	__antithesis_instrumentation__.Notify(640199)
 	opts := storage.DefaultPebbleOptions()
 	if err := opts.Parse(stdOpts[i], nil); err != nil {
+		__antithesis_instrumentation__.Notify(640204)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(640205)
 	}
+	__antithesis_instrumentation__.Notify(640200)
 	return opts
 }
 
 func randomOptions() *pebble.Options {
+	__antithesis_instrumentation__.Notify(640206)
 	opts := storage.DefaultPebbleOptions()
 
 	rng, _ := randutil.NewTestRand()
@@ -113,20 +118,28 @@ func randomOptions() *pebble.Options {
 	opts.L0CompactionThreshold = int(rngIntRange(rng, 1, 10))
 	opts.L0StopWritesThreshold = int(rngIntRange(rng, 1, 32))
 	if opts.L0StopWritesThreshold < opts.L0CompactionThreshold {
+		__antithesis_instrumentation__.Notify(640209)
 		opts.L0StopWritesThreshold = opts.L0CompactionThreshold
+	} else {
+		__antithesis_instrumentation__.Notify(640210)
 	}
+	__antithesis_instrumentation__.Notify(640207)
 	for i := range opts.Levels {
+		__antithesis_instrumentation__.Notify(640211)
 		if i == 0 {
+			__antithesis_instrumentation__.Notify(640212)
 			opts.Levels[i].BlockRestartInterval = int(rngIntRange(rng, 1, 64))
 			opts.Levels[i].BlockSize = 1 << rngIntRange(rng, 1, 20)
 			opts.Levels[i].BlockSizeThreshold = int(rngIntRange(rng, 50, 100))
 			opts.Levels[i].IndexBlockSize = opts.Levels[i].BlockSize
 			opts.Levels[i].TargetFileSize = 1 << rngIntRange(rng, 1, 20)
 		} else {
+			__antithesis_instrumentation__.Notify(640213)
 			opts.Levels[i] = opts.Levels[i-1]
 			opts.Levels[i].TargetFileSize = opts.Levels[i-1].TargetFileSize * 2
 		}
 	}
+	__antithesis_instrumentation__.Notify(640208)
 	opts.MaxManifestFileSize = 1 << rngIntRange(rng, 1, 28)
 	opts.MaxOpenFiles = int(rngIntRange(rng, 20, 2000))
 	opts.MemTableSize = 1 << rngIntRange(rng, 11, 28)

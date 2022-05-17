@@ -1,16 +1,7 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// AlterIndex represents an ALTER INDEX statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type AlterIndex struct {
 	IfExists bool
 	Index    TableIndexName
@@ -19,48 +10,52 @@ type AlterIndex struct {
 
 var _ Statement = &AlterIndex{}
 
-// Format implements the NodeFormatter interface.
 func (node *AlterIndex) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603014)
 	ctx.WriteString("ALTER INDEX ")
 	if node.IfExists {
+		__antithesis_instrumentation__.Notify(603016)
 		ctx.WriteString("IF EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(603017)
 	}
+	__antithesis_instrumentation__.Notify(603015)
 	ctx.FormatNode(&node.Index)
 	ctx.FormatNode(&node.Cmds)
 }
 
-// AlterIndexCmds represents a list of index alterations.
 type AlterIndexCmds []AlterIndexCmd
 
-// Format implements the NodeFormatter interface.
 func (node *AlterIndexCmds) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603018)
 	for i, n := range *node {
+		__antithesis_instrumentation__.Notify(603019)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(603021)
 			ctx.WriteString(",")
+		} else {
+			__antithesis_instrumentation__.Notify(603022)
 		}
+		__antithesis_instrumentation__.Notify(603020)
 		ctx.FormatNode(n)
 	}
 }
 
-// AlterIndexCmd represents an index modification operation.
 type AlterIndexCmd interface {
 	NodeFormatter
-	// Placeholder function to ensure that only desired types
-	// (AlterIndex*) conform to the AlterIndexCmd interface.
+
 	alterIndexCmd()
 }
 
-func (*AlterIndexPartitionBy) alterIndexCmd() {}
+func (*AlterIndexPartitionBy) alterIndexCmd() { __antithesis_instrumentation__.Notify(603023) }
 
 var _ AlterIndexCmd = &AlterIndexPartitionBy{}
 
-// AlterIndexPartitionBy represents an ALTER INDEX PARTITION BY
-// command.
 type AlterIndexPartitionBy struct {
 	*PartitionByIndex
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterIndexPartitionBy) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603024)
 	ctx.FormatNode(node.PartitionByIndex)
 }

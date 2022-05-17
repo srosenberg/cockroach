@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sidetransport
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,11 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Receiver is the gRPC server for the closed timestamp side-transport,
-// receiving updates from remote nodes. It maintains the set of current
-// streaming connections.
-//
-// The state of the Receiver is exposed on each node at /debug/closedts-receiver.
 type Receiver struct {
 	log.AmbientContext
 	stop         *stop.Stopper
@@ -39,7 +26,7 @@ type Receiver struct {
 
 	mu struct {
 		syncutil.RWMutex
-		// conns maintains the list of currently-open connections.
+
 		conns map[roachpb.NodeID]*incomingStream
 	}
 
@@ -55,20 +42,17 @@ type streamCloseInfo struct {
 	closeTime time.Time
 }
 
-// receiverTestingKnobs contains knobs for incomingStreams connected to a
-// Receiver. The map is indexed by the sender NodeID.
 type receiverTestingKnobs map[roachpb.NodeID]incomingStreamTestingKnobs
 
 var _ ctpb.SideTransportServer = &Receiver{}
 
-// NewReceiver creates a Receiver, to be used as a gRPC server with
-// ctpb.RegisterClosedTimestampSideTransportServer.
 func NewReceiver(
 	nodeID *base.NodeIDContainer,
 	stop *stop.Stopper,
 	stores Stores,
 	testingKnobs receiverTestingKnobs,
 ) *Receiver {
+	__antithesis_instrumentation__.Notify(98623)
 	r := &Receiver{
 		stop:         stop,
 		stores:       stores,
@@ -80,75 +64,65 @@ func NewReceiver(
 	return r
 }
 
-// PushUpdates is the streaming RPC handler.
 func (s *Receiver) PushUpdates(stream ctpb.SideTransport_PushUpdatesServer) error {
-	// Create a steam to service this connection. The stream will call back into
-	// the Receiver through onFirstMsg to register itself once it finds out the
-	// sender's node id.
+	__antithesis_instrumentation__.Notify(98624)
+
 	ctx := s.AnnotateCtx(stream.Context())
 	return newIncomingStream(s, s.stores).Run(ctx, s.stop, stream)
 }
 
-// GetClosedTimestamp returns the latest closed timestamp that the receiver
-// knows for a particular range, together with the LAI needed to have applied in
-// order to use this closed timestamp.
-//
-// leaseholderNode is the last known leaseholder for the range. For efficiency
-// reasons, only the closed timestamp info received from that node is checked
-// for closed timestamp info about this range.
 func (s *Receiver) GetClosedTimestamp(
 	ctx context.Context, rangeID roachpb.RangeID, leaseholderNode roachpb.NodeID,
 ) (hlc.Timestamp, ctpb.LAI) {
+	__antithesis_instrumentation__.Notify(98625)
 	s.mu.RLock()
 	conn, ok := s.mu.conns[leaseholderNode]
 	s.mu.RUnlock()
 	if !ok {
+		__antithesis_instrumentation__.Notify(98627)
 		return hlc.Timestamp{}, 0
+	} else {
+		__antithesis_instrumentation__.Notify(98628)
 	}
+	__antithesis_instrumentation__.Notify(98626)
 	return conn.GetClosedTimestamp(ctx, rangeID)
 }
 
-// onFirstMsg is called when the first message on a stream is received. This is
-// the point where the stream finds out what node it's receiving data from.
 func (s *Receiver) onFirstMsg(ctx context.Context, r *incomingStream, nodeID roachpb.NodeID) error {
+	__antithesis_instrumentation__.Notify(98629)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	log.VEventf(ctx, 2, "n%d opened a closed timestamps side-transport connection", nodeID)
-	// If we already have a connection from nodeID, we don't accept this one. The
-	// other one has to be zombie going away soon. The client is expected to retry
-	// to establish the new connection.
-	//
-	// We could figure out a way to signal the existing connection to terminate,
-	// but it doesn't seem worth it.
+
 	if _, ok := s.mu.conns[nodeID]; ok {
+		__antithesis_instrumentation__.Notify(98631)
 		return errors.Errorf("connection from n%d already exists", nodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(98632)
 	}
+	__antithesis_instrumentation__.Notify(98630)
 	s.mu.conns[nodeID] = r
 	r.testingKnobs = s.testingKnobs[nodeID]
 	return nil
 }
 
-// onRecvErr is called when one of the inbound streams errors out. The stream is
-// removed from the Receiver's collection.
 func (s *Receiver) onRecvErr(ctx context.Context, nodeID roachpb.NodeID, err error) {
+	__antithesis_instrumentation__.Notify(98633)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if err != io.EOF {
+		__antithesis_instrumentation__.Notify(98635)
 		log.Warningf(ctx, "closed timestamps side-transport connection dropped from node: %d", nodeID)
 	} else {
+		__antithesis_instrumentation__.Notify(98636)
 		log.VEventf(ctx, 2, "closed timestamps side-transport connection dropped from node: %d (%s)", nodeID, err)
 	}
+	__antithesis_instrumentation__.Notify(98634)
 	if nodeID != 0 {
-		// Remove the connection from the map, awaiting a new conn to be opened by
-		// the remote node. Note that, in doing so, we lose all information about
-		// the ranges tracked by this connection. We could go through all of them
-		// and move their data to the replica, but that might be expensive.
-		// Alternatively, we could also do something else to not destroy the state
-		// of this connection. Note, though, that if any of these closed timestamps
-		// have been actually used to serve a read already, the info has been copied
-		// to the respective replica.
+		__antithesis_instrumentation__.Notify(98637)
+
 		delete(s.mu.conns, nodeID)
 		s.historyMu.Lock()
 		s.historyMu.lastClosed[nodeID] = streamCloseInfo{
@@ -157,19 +131,17 @@ func (s *Receiver) onRecvErr(ctx context.Context, nodeID roachpb.NodeID, err err
 			closeTime: timeutil.Now(),
 		}
 		s.historyMu.Unlock()
+	} else {
+		__antithesis_instrumentation__.Notify(98638)
 	}
 }
 
-// incomingStream represents an inbound connection to a node publishing closed
-// timestamp information. It maintains the latest closed timestamps communicated
-// by the sender node.
 type incomingStream struct {
-	// The server that created this stream.
 	server       *Receiver
 	stores       Stores
 	testingKnobs incomingStreamTestingKnobs
 	connectedAt  time.Time
-	// The node that's sending info on this stream.
+
 	nodeID roachpb.NodeID
 
 	mu struct {
@@ -185,15 +157,13 @@ type incomingStreamTestingKnobs struct {
 	onMsg      chan *ctpb.Update
 }
 
-// Stores is the interface of *Stores needed by incomingStream.
 type Stores interface {
-	// ForwardSideTransportClosedTimestampForRange forwards the side-transport
-	// closed timestamp for the local replica(s) of the given range.
 	ForwardSideTransportClosedTimestampForRange(
 		ctx context.Context, rangeID roachpb.RangeID, closedTS hlc.Timestamp, lai ctpb.LAI)
 }
 
 func newIncomingStream(s *Receiver, stores Stores) *incomingStream {
+	__antithesis_instrumentation__.Notify(98639)
 	r := &incomingStream{
 		server:      s,
 		stores:      stores,
@@ -202,147 +172,201 @@ func newIncomingStream(s *Receiver, stores Stores) *incomingStream {
 	return r
 }
 
-// GetClosedTimestamp returns the latest closed timestamp that the receiver
-// knows for a particular range, together with the LAI needed to have applied in
-// order to use this closed timestamp. Returns an empty timestamp if the stream
-// does not have state for the range.
 func (r *incomingStream) GetClosedTimestamp(
 	ctx context.Context, rangeID roachpb.RangeID,
 ) (hlc.Timestamp, ctpb.LAI) {
+	__antithesis_instrumentation__.Notify(98640)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	info, ok := r.mu.tracked[rangeID]
 	if !ok {
+		__antithesis_instrumentation__.Notify(98642)
 		return hlc.Timestamp{}, 0
+	} else {
+		__antithesis_instrumentation__.Notify(98643)
 	}
+	__antithesis_instrumentation__.Notify(98641)
 	return r.mu.lastClosed[info.policy], info.lai
 }
 
-// processUpdate processes one update received on the stream, updating the local
-// state.
 func (r *incomingStream) processUpdate(ctx context.Context, msg *ctpb.Update) {
+	__antithesis_instrumentation__.Notify(98644)
 	log.VEventf(ctx, 4, "received side-transport update: %v", msg)
 
 	if msg.NodeID == 0 {
+		__antithesis_instrumentation__.Notify(98651)
 		log.Fatalf(ctx, "missing NodeID in message: %s", msg)
+	} else {
+		__antithesis_instrumentation__.Notify(98652)
 	}
+	__antithesis_instrumentation__.Notify(98645)
 
 	if msg.NodeID != r.nodeID {
+		__antithesis_instrumentation__.Notify(98653)
 		log.Fatalf(ctx, "wrong NodeID; expected %d, got %d", r.nodeID, msg.NodeID)
+	} else {
+		__antithesis_instrumentation__.Notify(98654)
 	}
+	__antithesis_instrumentation__.Notify(98646)
 
-	// Handle the removed ranges. In order to not lose closed ts info, before we
-	// can remove a range from our tracking, we copy the info about its closed
-	// timestamp to the local replica(s). Note that it's important to do this
-	// before updating lastClosed below since, by definition, the closed
-	// timestamps in this message don't apply to the Removed ranges.
 	if len(msg.Removed) != 0 {
-		// Note that we call r.stores.ForwardSideTransportClosedTimestampForRange while holding
-		// our read lock, not write lock. ForwardSideTransportClosedTimestampForRange will call
-		// into each Replica, telling it to hold on locally to the the info we're about to
-		// remove from the stream. We can't do this with the mutex write-locked
-		// because replicas call GetClosedTimestamp() independently, with r.mu held
-		// (=> deadlock).
+		__antithesis_instrumentation__.Notify(98655)
+
 		r.mu.RLock()
 		for _, rangeID := range msg.Removed {
+			__antithesis_instrumentation__.Notify(98657)
 			info, ok := r.mu.tracked[rangeID]
 			if !ok {
+				__antithesis_instrumentation__.Notify(98659)
 				log.Fatalf(ctx, "attempting to unregister a missing range: r%d", rangeID)
+			} else {
+				__antithesis_instrumentation__.Notify(98660)
 			}
+			__antithesis_instrumentation__.Notify(98658)
 			r.stores.ForwardSideTransportClosedTimestampForRange(
 				ctx, rangeID, r.mu.lastClosed[info.policy], info.lai)
 		}
+		__antithesis_instrumentation__.Notify(98656)
 		r.mu.RUnlock()
+	} else {
+		__antithesis_instrumentation__.Notify(98661)
 	}
+	__antithesis_instrumentation__.Notify(98647)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.mu.lastReceived = timeutil.Now()
 
-	// Reset all the state on snapshots.
 	if msg.Snapshot {
+		__antithesis_instrumentation__.Notify(98662)
 		for i := range r.mu.lastClosed {
+			__antithesis_instrumentation__.Notify(98664)
 			r.mu.lastClosed[i] = hlc.Timestamp{}
 		}
+		__antithesis_instrumentation__.Notify(98663)
 		r.mu.tracked = make(map[roachpb.RangeID]trackedRange, len(r.mu.tracked))
-	} else if msg.SeqNum != r.mu.lastSeqNum+1 {
-		log.Fatalf(ctx, "expected closed timestamp side-transport message with sequence number "+
-			"%d, got %d", r.mu.lastSeqNum+1, msg.SeqNum)
+	} else {
+		__antithesis_instrumentation__.Notify(98665)
+		if msg.SeqNum != r.mu.lastSeqNum+1 {
+			__antithesis_instrumentation__.Notify(98666)
+			log.Fatalf(ctx, "expected closed timestamp side-transport message with sequence number "+
+				"%d, got %d", r.mu.lastSeqNum+1, msg.SeqNum)
+		} else {
+			__antithesis_instrumentation__.Notify(98667)
+		}
 	}
+	__antithesis_instrumentation__.Notify(98648)
 	r.mu.lastSeqNum = msg.SeqNum
 
 	for _, rng := range msg.AddedOrUpdated {
+		__antithesis_instrumentation__.Notify(98668)
 		r.mu.tracked[rng.RangeID] = trackedRange{
 			lai:    rng.LAI,
 			policy: rng.Policy,
 		}
 	}
+	__antithesis_instrumentation__.Notify(98649)
 	for _, rangeID := range msg.Removed {
+		__antithesis_instrumentation__.Notify(98669)
 		delete(r.mu.tracked, rangeID)
 	}
+	__antithesis_instrumentation__.Notify(98650)
 	for _, update := range msg.ClosedTimestamps {
+		__antithesis_instrumentation__.Notify(98670)
 		r.mu.lastClosed[update.Policy] = update.ClosedTimestamp
 	}
 }
 
-// Run handles an incoming stream of closed timestamps.
 func (r *incomingStream) Run(
 	ctx context.Context,
 	stopper *stop.Stopper,
-	// The gRPC stream with incoming messages.
+
 	stream ctpb.SideTransport_PushUpdatesServer,
 ) error {
-	// We have to do the stream processing on a separate goroutine because Recv()
-	// is blocking, with no way to interrupt it other than returning from the RPC
-	// handler (i.e. this Run function).
-	// The main goroutine remains in charge of listening for stopper quiescence.
+	__antithesis_instrumentation__.Notify(98671)
+
 	streamDone := make(chan struct{})
 	if err := stopper.RunAsyncTask(ctx, "closedts side-transport server conn", func(ctx context.Context) {
-		// On exit, signal the other goroutine to terminate.
+		__antithesis_instrumentation__.Notify(98674)
+
 		defer close(streamDone)
 		for {
+			__antithesis_instrumentation__.Notify(98675)
 			msg, err := stream.Recv()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(98678)
 				if fn := r.testingKnobs.onRecvErr; fn != nil {
+					__antithesis_instrumentation__.Notify(98680)
 					fn(r.nodeID, err)
+				} else {
+					__antithesis_instrumentation__.Notify(98681)
 				}
+				__antithesis_instrumentation__.Notify(98679)
 
 				r.server.onRecvErr(ctx, r.nodeID, err)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(98682)
 			}
+			__antithesis_instrumentation__.Notify(98676)
 
 			if r.nodeID == 0 {
+				__antithesis_instrumentation__.Notify(98683)
 				r.nodeID = msg.NodeID
 
 				if err := r.server.onFirstMsg(ctx, r, r.nodeID); err != nil {
+					__antithesis_instrumentation__.Notify(98685)
 					log.Warningf(ctx, "%s", err.Error())
 					return
-				} else if ch := r.testingKnobs.onFirstMsg; ch != nil {
-					ch <- struct{}{}
+				} else {
+					__antithesis_instrumentation__.Notify(98686)
+					if ch := r.testingKnobs.onFirstMsg; ch != nil {
+						__antithesis_instrumentation__.Notify(98687)
+						ch <- struct{}{}
+					} else {
+						__antithesis_instrumentation__.Notify(98688)
+					}
 				}
+				__antithesis_instrumentation__.Notify(98684)
 				if !msg.Snapshot {
+					__antithesis_instrumentation__.Notify(98689)
 					log.Fatal(ctx, "expected the first message to be a snapshot")
+				} else {
+					__antithesis_instrumentation__.Notify(98690)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(98691)
 			}
+			__antithesis_instrumentation__.Notify(98677)
 
 			r.processUpdate(ctx, msg)
 			if ch := r.testingKnobs.onMsg; ch != nil {
+				__antithesis_instrumentation__.Notify(98692)
 				select {
 				case ch <- msg:
+					__antithesis_instrumentation__.Notify(98693)
 				default:
+					__antithesis_instrumentation__.Notify(98694)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(98695)
 			}
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(98696)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(98697)
 	}
+	__antithesis_instrumentation__.Notify(98672)
 
-	// Block until the client terminates (or there's another stream error) or
-	// the stopper signals us to bail.
 	select {
 	case <-streamDone:
+		__antithesis_instrumentation__.Notify(98698)
 	case <-stopper.ShouldQuiesce():
+		__antithesis_instrumentation__.Notify(98699)
 	}
-	// Returning causes a blocked stream.Recv() (if there still is one) to return.
+	__antithesis_instrumentation__.Notify(98673)
+
 	return nil
 }

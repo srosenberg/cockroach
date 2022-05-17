@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -19,14 +11,16 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
 )
 
-// delegateShowSchemas implements SHOW SCHEMAS which returns all the schemas in
-// the given or current database.
-// Privileges: None.
 func (d *delegator) delegateShowSchemas(n *tree.ShowSchemas) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465776)
 	name, err := d.getSpecifiedOrCurrentDatabase(n.Database)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465778)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465779)
 	}
+	__antithesis_instrumentation__.Notify(465777)
 	getSchemasQuery := fmt.Sprintf(`
       SELECT nspname AS schema_name, rolname AS owner
       FROM %[1]s.information_schema.schemata i
@@ -34,7 +28,7 @@ func (d *delegator) delegateShowSchemas(n *tree.ShowSchemas) (tree.Statement, er
       LEFT JOIN %[1]s.pg_catalog.pg_roles r ON (n.nspowner = r.oid)
 			WHERE catalog_name = %[2]s
 			ORDER BY schema_name`,
-		name.String(), // note: (tree.Name).String() != string(name)
+		name.String(),
 		lexbase.EscapeSQLString(string(name)),
 	)
 
@@ -42,6 +36,7 @@ func (d *delegator) delegateShowSchemas(n *tree.ShowSchemas) (tree.Statement, er
 }
 
 func (d *delegator) delegateShowCreateAllSchemas() (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465780)
 	sqltelemetry.IncrementShowCounter(sqltelemetry.Create)
 
 	const showCreateAllSchemasQuery = `
@@ -56,24 +51,27 @@ func (d *delegator) delegateShowCreateAllSchemas() (tree.Statement, error) {
 	return parse(query)
 }
 
-// getSpecifiedOrCurrentDatabase returns the name of the specified database, or
-// of the current database if the specified name is empty.
-//
-// Returns an error if there is no current database, or if the specified
-// database doesn't exist.
 func (d *delegator) getSpecifiedOrCurrentDatabase(specifiedDB tree.Name) (tree.Name, error) {
+	__antithesis_instrumentation__.Notify(465781)
 	var name cat.SchemaName
 	if specifiedDB != "" {
-		// Note: the schema name may be interpreted as database name,
-		// see name_resolution.go.
+		__antithesis_instrumentation__.Notify(465784)
+
 		name.SchemaName = specifiedDB
 		name.ExplicitSchema = true
+	} else {
+		__antithesis_instrumentation__.Notify(465785)
 	}
+	__antithesis_instrumentation__.Notify(465782)
 
 	flags := cat.Flags{AvoidDescriptorCaches: true}
 	_, resName, err := d.catalog.ResolveSchema(d.ctx, flags, &name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465786)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(465787)
 	}
+	__antithesis_instrumentation__.Notify(465783)
 	return resName.CatalogName, nil
 }

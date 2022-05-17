@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package featureflag
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,25 +14,21 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 )
 
-// FeatureFlagEnabledDefault is used for the default value of all feature flag
-// cluster settings.
 const FeatureFlagEnabledDefault = true
 
-// CheckEnabled checks whether a specific feature has been enabled or disabled
-// via its cluster settings, and returns an error if it has been disabled. It
-// increments a telemetry counter for any feature flag that is denied and logs
-// the feature and category that was denied.
 func CheckEnabled(
 	ctx context.Context, config Config, s *settings.BoolSetting, featureName string,
 ) error {
+	__antithesis_instrumentation__.Notify(58473)
 	sv := config.SV()
 
 	if enabled := s.Get(sv); !enabled {
-		// Increment telemetry counter for feature flag denial.
+		__antithesis_instrumentation__.Notify(58475)
+
 		telemetry.Inc(sqltelemetry.FeatureDeniedByFeatureFlagCounter)
 
-		// Increment metrics counter for feature flag denial.
 		if config.GetFeatureFlagMetrics() == nil {
+			__antithesis_instrumentation__.Notify(58478)
 			log.Warningf(
 				ctx,
 				"executorConfig.FeatureFlagMetrics is uninitiated; feature %s was attempted but disabled via cluster settings",
@@ -51,28 +39,36 @@ func CheckEnabled(
 				"feature %s was disabled by the database administrator",
 				featureName,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(58479)
 		}
+		__antithesis_instrumentation__.Notify(58476)
 		config.GetFeatureFlagMetrics().FeatureDenialMetric.Inc(1)
 
 		if log.V(2) {
+			__antithesis_instrumentation__.Notify(58480)
 			log.Warningf(
 				ctx,
 				"feature %s was attempted but disabled via cluster settings",
 				featureName,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(58481)
 		}
+		__antithesis_instrumentation__.Notify(58477)
 
 		return pgerror.Newf(
 			pgcode.OperatorIntervention,
 			"feature %s was disabled by the database administrator",
 			featureName,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(58482)
 	}
+	__antithesis_instrumentation__.Notify(58474)
 	return nil
 }
 
-// metaFeatureDenialMetric is a metric counting the statements denied by a
-//feature flag.
 var metaFeatureDenialMetric = metric.Metadata{
 	Name:        "sql.feature_flag_denial",
 	Help:        "Counter of the number of statements denied by a feature flag",
@@ -80,27 +76,21 @@ var metaFeatureDenialMetric = metric.Metadata{
 	Unit:        metric.Unit_COUNT,
 }
 
-// DenialMetrics is a struct corresponding to any metrics related to feature
-// flag denials. Future metrics related to feature flags should be added to
-// this struct.
 type DenialMetrics struct {
 	FeatureDenialMetric *metric.Counter
 }
 
-// MetricStruct makes FeatureFlagMetrics a metric.Struct.
-func (s *DenialMetrics) MetricStruct() {}
+func (s *DenialMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(58483) }
 
 var _ metric.Struct = (*DenialMetrics)(nil)
 
-// NewFeatureFlagMetrics constructs a new FeatureFlagMetrics metric.Struct.
 func NewFeatureFlagMetrics() *DenialMetrics {
+	__antithesis_instrumentation__.Notify(58484)
 	return &DenialMetrics{
 		FeatureDenialMetric: metric.NewCounter(metaFeatureDenialMetric),
 	}
 }
 
-// Config is an interface used to pass required values from ExecutorConfig to
-// check if a feature flag is enabled.
 type Config interface {
 	SV() *settings.Values
 	GetFeatureFlagMetrics() *DenialMetrics

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -29,118 +21,168 @@ import (
 	"github.com/kr/pretty"
 )
 
-// optimizePuts searches for contiguous runs of Put & CPut commands in
-// the supplied request union. Any run which exceeds a minimum length
-// threshold employs a full order iterator to determine whether the
-// range of keys being written is empty. If so, then the run can be
-// set to put "blindly", meaning no iterator need be used to read
-// existing values during the MVCC write.
-// The caller should use the returned slice (which is either equal to
-// the input slice, or has been shallow-copied appropriately to avoid
-// mutating the original requests).
 func optimizePuts(
 	reader storage.Reader, origReqs []roachpb.RequestUnion, distinctSpans bool,
 ) []roachpb.RequestUnion {
+	__antithesis_instrumentation__.Notify(117229)
 	var minKey, maxKey roachpb.Key
 	var unique map[string]struct{}
 	if !distinctSpans {
+		__antithesis_instrumentation__.Notify(117236)
 		unique = make(map[string]struct{}, len(origReqs))
+	} else {
+		__antithesis_instrumentation__.Notify(117237)
 	}
-	// Returns false on occurrence of a duplicate key.
+	__antithesis_instrumentation__.Notify(117230)
+
 	maybeAddPut := func(key roachpb.Key) bool {
-		// Note that casting the byte slice key to a string does not allocate.
+		__antithesis_instrumentation__.Notify(117238)
+
 		if unique != nil {
+			__antithesis_instrumentation__.Notify(117242)
 			if _, ok := unique[string(key)]; ok {
+				__antithesis_instrumentation__.Notify(117244)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(117245)
 			}
+			__antithesis_instrumentation__.Notify(117243)
 			unique[string(key)] = struct{}{}
+		} else {
+			__antithesis_instrumentation__.Notify(117246)
 		}
-		if minKey == nil || bytes.Compare(key, minKey) < 0 {
+		__antithesis_instrumentation__.Notify(117239)
+		if minKey == nil || func() bool {
+			__antithesis_instrumentation__.Notify(117247)
+			return bytes.Compare(key, minKey) < 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(117248)
 			minKey = key
+		} else {
+			__antithesis_instrumentation__.Notify(117249)
 		}
-		if maxKey == nil || bytes.Compare(key, maxKey) > 0 {
+		__antithesis_instrumentation__.Notify(117240)
+		if maxKey == nil || func() bool {
+			__antithesis_instrumentation__.Notify(117250)
+			return bytes.Compare(key, maxKey) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(117251)
 			maxKey = key
+		} else {
+			__antithesis_instrumentation__.Notify(117252)
 		}
+		__antithesis_instrumentation__.Notify(117241)
 		return true
 	}
+	__antithesis_instrumentation__.Notify(117231)
 
 	firstUnoptimizedIndex := len(origReqs)
 	for i, r := range origReqs {
+		__antithesis_instrumentation__.Notify(117253)
 		switch t := r.GetInner().(type) {
 		case *roachpb.PutRequest:
+			__antithesis_instrumentation__.Notify(117255)
 			if maybeAddPut(t.Key) {
+				__antithesis_instrumentation__.Notify(117258)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(117259)
 			}
 		case *roachpb.ConditionalPutRequest:
+			__antithesis_instrumentation__.Notify(117256)
 			if maybeAddPut(t.Key) {
+				__antithesis_instrumentation__.Notify(117260)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(117261)
 			}
 		case *roachpb.InitPutRequest:
+			__antithesis_instrumentation__.Notify(117257)
 			if maybeAddPut(t.Key) {
+				__antithesis_instrumentation__.Notify(117262)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(117263)
 			}
 		}
+		__antithesis_instrumentation__.Notify(117254)
 		firstUnoptimizedIndex = i
 		break
 	}
+	__antithesis_instrumentation__.Notify(117232)
 
-	if firstUnoptimizedIndex < optimizePutThreshold { // don't bother if below this threshold
+	if firstUnoptimizedIndex < optimizePutThreshold {
+		__antithesis_instrumentation__.Notify(117264)
 		return origReqs
+	} else {
+		__antithesis_instrumentation__.Notify(117265)
 	}
-	// iter is being used to find the parts of the key range that is empty. We
-	// don't need to see intents for this purpose since intents also have
-	// provisional values that we will see.
+	__antithesis_instrumentation__.Notify(117233)
+
 	iter := reader.NewMVCCIterator(storage.MVCCKeyIterKind, storage.IterOptions{
-		// We want to include maxKey in our scan. Since UpperBound is exclusive, we
-		// need to set it to the key after maxKey.
+
 		UpperBound: maxKey.Next(),
 	})
 	defer iter.Close()
 
-	// If there are enough puts in the run to justify calling seek,
-	// we can determine whether any part of the range being written
-	// is "virgin" and set the puts to write blindly.
-	// Find the first non-empty key in the run.
 	iter.SeekGE(storage.MakeMVCCMetadataKey(minKey))
 	var iterKey roachpb.Key
 	if ok, err := iter.Valid(); err != nil {
-		// TODO(bdarnell): return an error here instead of silently
-		// running without the optimization?
+		__antithesis_instrumentation__.Notify(117266)
+
 		log.Errorf(context.TODO(), "Seek returned error; disabling blind-put optimization: %+v", err)
 		return origReqs
-	} else if ok && bytes.Compare(iter.Key().Key, maxKey) <= 0 {
-		iterKey = iter.Key().Key
+	} else {
+		__antithesis_instrumentation__.Notify(117267)
+		if ok && func() bool {
+			__antithesis_instrumentation__.Notify(117268)
+			return bytes.Compare(iter.Key().Key, maxKey) <= 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(117269)
+			iterKey = iter.Key().Key
+		} else {
+			__antithesis_instrumentation__.Notify(117270)
+		}
 	}
-	// Set the prefix of the run which is being written to virgin
-	// keyspace to "blindly" put values.
+	__antithesis_instrumentation__.Notify(117234)
+
 	reqs := append([]roachpb.RequestUnion(nil), origReqs...)
 	for i := range reqs[:firstUnoptimizedIndex] {
+		__antithesis_instrumentation__.Notify(117271)
 		inner := reqs[i].GetInner()
-		if iterKey == nil || bytes.Compare(iterKey, inner.Header().Key) > 0 {
+		if iterKey == nil || func() bool {
+			__antithesis_instrumentation__.Notify(117272)
+			return bytes.Compare(iterKey, inner.Header().Key) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(117273)
 			switch t := inner.(type) {
 			case *roachpb.PutRequest:
+				__antithesis_instrumentation__.Notify(117274)
 				shallow := *t
 				shallow.Blind = true
 				reqs[i].MustSetInner(&shallow)
 			case *roachpb.ConditionalPutRequest:
+				__antithesis_instrumentation__.Notify(117275)
 				shallow := *t
 				shallow.Blind = true
 				reqs[i].MustSetInner(&shallow)
 			case *roachpb.InitPutRequest:
+				__antithesis_instrumentation__.Notify(117276)
 				shallow := *t
 				shallow.Blind = true
 				reqs[i].MustSetInner(&shallow)
 			default:
+				__antithesis_instrumentation__.Notify(117277)
 				log.Fatalf(context.TODO(), "unexpected non-put request: %s", t)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(117278)
 		}
 	}
+	__antithesis_instrumentation__.Notify(117235)
 	return reqs
 }
 
-// evaluateBatch evaluates a batch request by splitting it up into its
-// individual commands, passing them to evaluateCommand, and combining
-// the results.
 func evaluateBatch(
 	ctx context.Context,
 	idKey kvserverbase.CmdIDKey,
@@ -151,99 +193,93 @@ func evaluateBatch(
 	ui uncertainty.Interval,
 	readOnly bool,
 ) (_ *roachpb.BatchResponse, _ result.Result, retErr *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(117279)
 
 	defer func() {
-		// Ensure that errors don't carry the WriteTooOld flag set. The client
-		// handles non-error responses with the WriteTooOld flag set, and errors
-		// with this flag set confuse it.
-		if retErr != nil && retErr.GetTxn() != nil {
+		__antithesis_instrumentation__.Notify(117286)
+
+		if retErr != nil && func() bool {
+			__antithesis_instrumentation__.Notify(117287)
+			return retErr.GetTxn() != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(117288)
 			retErr.GetTxn().WriteTooOld = false
+		} else {
+			__antithesis_instrumentation__.Notify(117289)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(117280)
 
-	// NB: Don't mutate BatchRequest directly.
 	baReqs := ba.Requests
 
-	// baHeader is the header passed to evaluate each command in the batch.
-	// After each command, it is updated with the result and used again for
-	// the next batch. At the end of evaluation, it is used to populate the
-	// response header (timestamp, txn, etc).
 	baHeader := ba.Header
 
 	br := ba.CreateReply()
 
-	// Optimize any contiguous sequences of put and conditional put ops.
-	if len(baReqs) >= optimizePutThreshold && !readOnly {
+	if len(baReqs) >= optimizePutThreshold && func() bool {
+		__antithesis_instrumentation__.Notify(117290)
+		return !readOnly == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(117291)
 		baReqs = optimizePuts(readWriter, baReqs, baHeader.DistinctSpans)
+	} else {
+		__antithesis_instrumentation__.Notify(117292)
 	}
+	__antithesis_instrumentation__.Notify(117281)
 
-	// Create a clone of the transaction to store the new txn state produced on
-	// the return/error path.
 	if baHeader.Txn != nil {
+		__antithesis_instrumentation__.Notify(117293)
 		baHeader.Txn = baHeader.Txn.Clone()
 
-		// Check whether this transaction has been aborted, if applicable. This
-		// applies to reads and writes once a transaction that has begun to
-		// acquire locks (see #2231 for more about why we check for aborted
-		// transactions on reads). Note that 1PC transactions have had their
-		// transaction field cleared by this point so we do not execute this
-		// check in that case.
 		if baHeader.Txn.IsLocking() {
-			// We don't check the abort span for a couple of special requests:
-			// - if the request is asking to abort the transaction, then don't check the
-			// AbortSpan; we don't want the request to be rejected if the transaction
-			// has already been aborted.
-			// - heartbeats don't check the abort span. If the txn is aborted, they'll
-			// return an aborted proto in their otherwise successful response.
-			// TODO(nvanbenschoten): Let's remove heartbeats from this allowlist when
-			// we rationalize the TODO in txnHeartbeater.heartbeat.
-			if !ba.IsSingleAbortTxnRequest() && !ba.IsSingleHeartbeatTxnRequest() {
+			__antithesis_instrumentation__.Notify(117294)
+
+			if !ba.IsSingleAbortTxnRequest() && func() bool {
+				__antithesis_instrumentation__.Notify(117295)
+				return !ba.IsSingleHeartbeatTxnRequest() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(117296)
 				if pErr := checkIfTxnAborted(ctx, rec, readWriter, *baHeader.Txn); pErr != nil {
+					__antithesis_instrumentation__.Notify(117297)
 					return nil, result.Result{}, pErr
+				} else {
+					__antithesis_instrumentation__.Notify(117298)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(117299)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(117300)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(117301)
 	}
+	__antithesis_instrumentation__.Notify(117282)
 
 	var mergedResult result.Result
 
-	// WriteTooOldErrors have particular handling. When a request encounters the
-	// error, we'd like to lay down an intent in order to avoid writers being
-	// starved. So, for blind writes, we swallow the error and instead we set the
-	// WriteTooOld flag on the response. For non-blind writes (e.g. CPut), we
-	// can't do that and so we just return the WriteTooOldError - see note on
-	// IsRead() stanza below. Upon receiving either a WriteTooOldError or a
-	// response with the WriteTooOld flag set, the client will attempt to bump
-	// the txn's read timestamp through a refresh. If successful, the client
-	// will retry this batch (in both cases).
-	//
-	// In any case, evaluation of the current batch always continue after a
-	// WriteTooOldError in order to find out if there's more conflicts and chose
-	// a final write timestamp.
 	var writeTooOldState struct {
 		err *roachpb.WriteTooOldError
-		// cantDeferWTOE is set when a WriteTooOldError cannot be deferred past the
-		// end of the current batch.
+
 		cantDeferWTOE bool
 	}
 
-	// TODO(tbg): if we introduced an "executor" helper here that could carry state
-	// across the slots in the batch while we execute them, this code could come
-	// out a lot less ad-hoc.
 	for index, union := range baReqs {
-		// Execute the command.
+		__antithesis_instrumentation__.Notify(117302)
+
 		args := union.GetInner()
 
 		if baHeader.Txn != nil {
-			// Set the Request's sequence number on the TxnMeta for this
-			// request. The MVCC layer (currently) uses TxnMeta to
-			// pass input arguments, such as the seqnum at which a
-			// request operates.
-			baHeader.Txn.Sequence = args.Header().Sequence
-		}
+			__antithesis_instrumentation__.Notify(117311)
 
-		// If a unittest filter was installed, check for an injected error; otherwise, continue.
+			baHeader.Txn.Sequence = args.Header().Sequence
+		} else {
+			__antithesis_instrumentation__.Notify(117312)
+		}
+		__antithesis_instrumentation__.Notify(117303)
+
 		if filter := rec.EvalKnobs().TestingEvalFilter; filter != nil {
+			__antithesis_instrumentation__.Notify(117313)
 			filterArgs := kvserverbase.FilterArgs{
 				Ctx:     ctx,
 				CmdID:   idKey,
@@ -254,23 +290,31 @@ func evaluateBatch(
 				Hdr:     baHeader,
 			}
 			if pErr := filter(filterArgs); pErr != nil {
+				__antithesis_instrumentation__.Notify(117314)
 				if pErr.GetTxn() == nil {
+					__antithesis_instrumentation__.Notify(117316)
 					pErr.SetTxn(baHeader.Txn)
+				} else {
+					__antithesis_instrumentation__.Notify(117317)
 				}
+				__antithesis_instrumentation__.Notify(117315)
 				log.Infof(ctx, "test injecting error: %s", pErr)
 				return nil, result.Result{}, pErr
+			} else {
+				__antithesis_instrumentation__.Notify(117318)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(117319)
 		}
+		__antithesis_instrumentation__.Notify(117304)
 
 		reply := br.Responses[index].GetInner()
 
-		// Note that `reply` is populated even when an error is returned: it
-		// may carry a response transaction and in the case of WriteTooOldError
-		// (which is sometimes deferred) it is fully populated.
 		curResult, err := evaluateCommand(
 			ctx, readWriter, rec, ms, baHeader, args, reply, ui)
 
 		if filter := rec.EvalKnobs().TestingPostEvalFilter; filter != nil {
+			__antithesis_instrumentation__.Notify(117320)
 			filterArgs := kvserverbase.FilterArgs{
 				Ctx:   ctx,
 				CmdID: idKey,
@@ -281,192 +325,206 @@ func evaluateBatch(
 				Err:   err,
 			}
 			if pErr := filter(filterArgs); pErr != nil {
+				__antithesis_instrumentation__.Notify(117321)
 				if pErr.GetTxn() == nil {
+					__antithesis_instrumentation__.Notify(117323)
 					pErr.SetTxn(baHeader.Txn)
+				} else {
+					__antithesis_instrumentation__.Notify(117324)
 				}
+				__antithesis_instrumentation__.Notify(117322)
 				log.Infof(ctx, "test injecting error: %s", pErr)
 				return nil, result.Result{}, pErr
+			} else {
+				__antithesis_instrumentation__.Notify(117325)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(117326)
 		}
+		__antithesis_instrumentation__.Notify(117305)
 
-		// If this request is transactional, we now have potentially two
-		// transactions floating around: the one on baHeader.Txn (always
-		// there in a txn) and possibly a newer version in `reply.Header().Txn`.
-		// Absorb the update into baHeader.Txn and write back a nil Transaction
-		// to the header to ensure that there is only one version going forward.
-		if headerCopy := reply.Header(); baHeader.Txn != nil && headerCopy.Txn != nil {
+		if headerCopy := reply.Header(); baHeader.Txn != nil && func() bool {
+			__antithesis_instrumentation__.Notify(117327)
+			return headerCopy.Txn != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(117328)
 			baHeader.Txn.Update(headerCopy.Txn)
 			headerCopy.Txn = nil
 			reply.SetHeader(headerCopy)
+		} else {
+			__antithesis_instrumentation__.Notify(117329)
 		}
+		__antithesis_instrumentation__.Notify(117306)
 
 		if err != nil {
-			// If an EndTxn wants to restart because of a write too old, we
-			// might have a better error to return to the client.
-			if retErr := (*roachpb.TransactionRetryError)(nil); errors.As(err, &retErr) &&
-				retErr.Reason == roachpb.RETRY_WRITE_TOO_OLD &&
-				args.Method() == roachpb.EndTxn && writeTooOldState.err != nil {
+			__antithesis_instrumentation__.Notify(117330)
+
+			if retErr := (*roachpb.TransactionRetryError)(nil); errors.As(err, &retErr) && func() bool {
+				__antithesis_instrumentation__.Notify(117331)
+				return retErr.Reason == roachpb.RETRY_WRITE_TOO_OLD == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(117332)
+				return args.Method() == roachpb.EndTxn == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(117333)
+				return writeTooOldState.err != nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(117334)
 				err = writeTooOldState.err
-				// Don't defer this error. We could perhaps rely on the client observing
-				// the WriteTooOld flag and retry the batch, but we choose not too.
+
 				writeTooOldState.cantDeferWTOE = true
-			} else if wtoErr := (*roachpb.WriteTooOldError)(nil); errors.As(err, &wtoErr) {
-				// We got a WriteTooOldError. We continue on to run all
-				// commands in the batch in order to determine the highest
-				// timestamp for more efficient retries. If the batch is
-				// transactional, we continue to lay down intents so that
-				// other concurrent overlapping transactions are forced
-				// through intent resolution and the chances of this batch
-				// succeeding when it will be retried are increased.
-				if writeTooOldState.err != nil {
-					writeTooOldState.err.ActualTimestamp.Forward(
-						wtoErr.ActualTimestamp)
+			} else {
+				__antithesis_instrumentation__.Notify(117335)
+				if wtoErr := (*roachpb.WriteTooOldError)(nil); errors.As(err, &wtoErr) {
+					__antithesis_instrumentation__.Notify(117336)
+
+					if writeTooOldState.err != nil {
+						__antithesis_instrumentation__.Notify(117340)
+						writeTooOldState.err.ActualTimestamp.Forward(
+							wtoErr.ActualTimestamp)
+					} else {
+						__antithesis_instrumentation__.Notify(117341)
+						writeTooOldState.err = wtoErr
+					}
+					__antithesis_instrumentation__.Notify(117337)
+
+					if !roachpb.IsBlindWrite(args) {
+						__antithesis_instrumentation__.Notify(117342)
+						writeTooOldState.cantDeferWTOE = true
+					} else {
+						__antithesis_instrumentation__.Notify(117343)
+					}
+					__antithesis_instrumentation__.Notify(117338)
+
+					if baHeader.Txn != nil {
+						__antithesis_instrumentation__.Notify(117344)
+						log.VEventf(ctx, 2, "setting WriteTooOld because of key: %s. wts: %s -> %s",
+							args.Header().Key, baHeader.Txn.WriteTimestamp, wtoErr.ActualTimestamp)
+						baHeader.Txn.WriteTimestamp.Forward(wtoErr.ActualTimestamp)
+						baHeader.Txn.WriteTooOld = true
+					} else {
+						__antithesis_instrumentation__.Notify(117345)
+
+						writeTooOldState.cantDeferWTOE = true
+					}
+					__antithesis_instrumentation__.Notify(117339)
+
+					err = nil
 				} else {
-					writeTooOldState.err = wtoErr
+					__antithesis_instrumentation__.Notify(117346)
 				}
-
-				// For read-write requests that observe key-value state, we don't have
-				// the option of leaving an intent behind when they encounter a
-				// WriteTooOldError, so we have to return an error instead of a response
-				// with the WriteTooOld flag set (which would also leave intents
-				// behind). These requests need to be re-evaluated at the bumped
-				// timestamp in order for their results to be valid. The current
-				// evaluation resulted in an result that could well be different from
-				// what the request would return if it were evaluated at the bumped
-				// timestamp, which would cause the request to be rejected if it were
-				// sent again with the same sequence number after a refresh.
-				//
-				// Similarly, for read-only requests that encounter a WriteTooOldError,
-				// we don't have the option of returning a response with the WriteTooOld
-				// flag set because a response is not even generated in tandem with the
-				// WriteTooOldError. We could fix this and then allow WriteTooOldErrors
-				// to be deferred in these cases, but doing so would buy more into the
-				// extremely error-prone approach of retuning responses and errors
-				// together throughout the MVCC read path. Doing so is not desirable as
-				// it has repeatedly caused bugs in the past. Instead, we'd like to get
-				// rid of this pattern entirely and instead address the TODO below.
-				//
-				// TODO(andrei): What we really want to do here is either speculatively
-				// evaluate the request at the bumped timestamp and return that
-				// speculative result, or leave behind an unreplicated lock that won't
-				// prevent the request for evaluating again at the same sequence number
-				// but at a bumped timestamp.
-				if !roachpb.IsBlindWrite(args) {
-					writeTooOldState.cantDeferWTOE = true
-				}
-
-				if baHeader.Txn != nil {
-					log.VEventf(ctx, 2, "setting WriteTooOld because of key: %s. wts: %s -> %s",
-						args.Header().Key, baHeader.Txn.WriteTimestamp, wtoErr.ActualTimestamp)
-					baHeader.Txn.WriteTimestamp.Forward(wtoErr.ActualTimestamp)
-					baHeader.Txn.WriteTooOld = true
-				} else {
-					// For non-transactional requests, there's nowhere to defer the error
-					// to. And the request has to fail because non-transactional batches
-					// should read and write at the same timestamp.
-					writeTooOldState.cantDeferWTOE = true
-				}
-
-				// Clear error; we're done processing the WTOE for now and we'll return
-				// to considering it below after we've evaluated all requests.
-				err = nil
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(117347)
 		}
+		__antithesis_instrumentation__.Notify(117307)
 
-		// Even on error, we need to propagate the result of evaluation.
-		//
-		// TODO(tbg): find out if that's true and why and improve the comment.
 		if err := mergedResult.MergeAndDestroy(curResult); err != nil {
+			__antithesis_instrumentation__.Notify(117348)
 			log.Fatalf(
 				ctx,
 				"unable to absorb Result: %s\ndiff(new, old): %s",
 				err, pretty.Diff(curResult, mergedResult),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(117349)
 		}
+		__antithesis_instrumentation__.Notify(117308)
 
 		if err != nil {
+			__antithesis_instrumentation__.Notify(117350)
 			pErr := roachpb.NewErrorWithTxn(err, baHeader.Txn)
-			// Initialize the error index.
+
 			pErr.SetErrorIndex(int32(index))
 
 			return nil, mergedResult, pErr
+		} else {
+			__antithesis_instrumentation__.Notify(117351)
 		}
+		__antithesis_instrumentation__.Notify(117309)
 
-		// If the last request was carried out with a limit, subtract the number
-		// of results from the limit going forward. Exhausting the limit results
-		// in a limit of -1. This makes sure that we still execute the rest of
-		// the batch, but with limit-aware operations returning no data.
 		h := reply.Header()
-		if limit, retResults := baHeader.MaxSpanRequestKeys, h.NumKeys; limit != 0 && retResults > 0 {
+		if limit, retResults := baHeader.MaxSpanRequestKeys, h.NumKeys; limit != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(117352)
+			return retResults > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(117353)
 			if retResults > limit {
-				index, retResults, limit := index, retResults, limit // don't alloc unless branch taken
+				__antithesis_instrumentation__.Notify(117354)
+				index, retResults, limit := index, retResults, limit
 				return nil, mergedResult, roachpb.NewError(errors.AssertionFailedf(
 					"received %d results, limit was %d (original limit: %d, batch=%s idx=%d)",
 					retResults, limit, ba.Header.MaxSpanRequestKeys,
 					redact.Safe(ba.Summary()), index))
-			} else if retResults < limit {
-				baHeader.MaxSpanRequestKeys -= retResults
 			} else {
-				// They were equal, so drop to -1 instead of zero (which would
-				// mean "no limit").
-				baHeader.MaxSpanRequestKeys = -1
+				__antithesis_instrumentation__.Notify(117355)
+				if retResults < limit {
+					__antithesis_instrumentation__.Notify(117356)
+					baHeader.MaxSpanRequestKeys -= retResults
+				} else {
+					__antithesis_instrumentation__.Notify(117357)
+
+					baHeader.MaxSpanRequestKeys = -1
+				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(117358)
 		}
-		// Same as for MaxSpanRequestKeys above, keep track of the limit and make
-		// sure to fall through to -1 instead of hitting zero (which means no
-		// limit). We have to check the ResumeReason as well, since e.g. a Scan
-		// response may not include the value that pushed it across the limit.
+		__antithesis_instrumentation__.Notify(117310)
+
 		if baHeader.TargetBytes > 0 {
+			__antithesis_instrumentation__.Notify(117359)
 			if h.ResumeReason == roachpb.RESUME_BYTE_LIMIT {
+				__antithesis_instrumentation__.Notify(117360)
 				baHeader.TargetBytes = -1
-			} else if baHeader.TargetBytes > h.NumBytes {
-				baHeader.TargetBytes -= h.NumBytes
 			} else {
-				baHeader.TargetBytes = -1
+				__antithesis_instrumentation__.Notify(117361)
+				if baHeader.TargetBytes > h.NumBytes {
+					__antithesis_instrumentation__.Notify(117362)
+					baHeader.TargetBytes -= h.NumBytes
+				} else {
+					__antithesis_instrumentation__.Notify(117363)
+					baHeader.TargetBytes = -1
+				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(117364)
 		}
 	}
+	__antithesis_instrumentation__.Notify(117283)
 
-	// If we made it here, there was no error during evaluation, with the exception of
-	// a deferred WTOE. If it can't be deferred - return it now; otherwise it is swallowed.
-	// Note that we don't attach an Index to the returned Error.
-	//
-	// TODO(tbg): we could attach the index of the first WriteTooOldError seen, but does
-	// that buy us anything?
 	if writeTooOldState.cantDeferWTOE {
-		// NB: we can't do any error wrapping here yet due to compatibility with 20.2 nodes;
-		// there needs to be an ErrorDetail here.
+		__antithesis_instrumentation__.Notify(117365)
+
 		return nil, mergedResult, roachpb.NewErrorWithTxn(writeTooOldState.err, baHeader.Txn)
+	} else {
+		__antithesis_instrumentation__.Notify(117366)
 	}
+	__antithesis_instrumentation__.Notify(117284)
 
-	// The batch evaluation will not return an error (i.e. either everything went
-	// fine or we're deferring a WriteTooOldError by having bumped
-	// baHeader.Txn.WriteTimestamp).
-
-	// Update the batch response timestamp field to the timestamp at which the
-	// batch's reads were evaluated.
 	if baHeader.Txn != nil {
-		// If transactional, send out the final transaction entry with the reply.
+		__antithesis_instrumentation__.Notify(117367)
+
 		br.Txn = baHeader.Txn
-		// Note that br.Txn.ReadTimestamp might be higher than baHeader.Timestamp if
-		// we had an EndTxn that decided that it can refresh to something higher
-		// than baHeader.Timestamp because there were no refresh spans.
+
 		if br.Txn.ReadTimestamp.Less(baHeader.Timestamp) {
+			__antithesis_instrumentation__.Notify(117369)
 			log.Fatalf(ctx, "br.Txn.ReadTimestamp < ba.Timestamp (%s < %s). ba: %s",
 				br.Txn.ReadTimestamp, baHeader.Timestamp, ba)
+		} else {
+			__antithesis_instrumentation__.Notify(117370)
 		}
+		__antithesis_instrumentation__.Notify(117368)
 		br.Timestamp = br.Txn.ReadTimestamp
 	} else {
+		__antithesis_instrumentation__.Notify(117371)
 		br.Timestamp = baHeader.Timestamp
 	}
+	__antithesis_instrumentation__.Notify(117285)
 
 	return br, mergedResult, nil
 }
 
-// evaluateCommand delegates to the eval method for the given
-// roachpb.Request. The returned Result may be partially valid
-// even if an error is returned. maxKeys is the number of scan results
-// remaining for this batch (MaxInt64 for no limit).
 func evaluateCommand(
 	ctx context.Context,
 	readWriter storage.ReadWriter,
@@ -477,10 +535,12 @@ func evaluateCommand(
 	reply roachpb.Response,
 	ui uncertainty.Interval,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(117372)
 	var err error
 	var pd result.Result
 
 	if cmd, ok := batcheval.LookupCommand(args.Method()); ok {
+		__antithesis_instrumentation__.Notify(117375)
 		cArgs := batcheval.CommandArgs{
 			EvalCtx:     rec,
 			Header:      h,
@@ -490,49 +550,42 @@ func evaluateCommand(
 		}
 
 		if cmd.EvalRW != nil {
+			__antithesis_instrumentation__.Notify(117376)
 			pd, err = cmd.EvalRW(ctx, readWriter, cArgs, reply)
 		} else {
+			__antithesis_instrumentation__.Notify(117377)
 			pd, err = cmd.EvalRO(ctx, readWriter, cArgs, reply)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(117378)
 		return result.Result{}, errors.Errorf("unrecognized command %s", args.Method())
 	}
+	__antithesis_instrumentation__.Notify(117373)
 
 	if log.ExpensiveLogEnabled(ctx, 2) {
+		__antithesis_instrumentation__.Notify(117379)
 		trunc := func(s string) string {
+			__antithesis_instrumentation__.Notify(117381)
 			const maxLen = 256
 			if len(s) > maxLen {
+				__antithesis_instrumentation__.Notify(117383)
 				return s[:maxLen-3] + "..."
+			} else {
+				__antithesis_instrumentation__.Notify(117384)
 			}
+			__antithesis_instrumentation__.Notify(117382)
 			return s
 		}
+		__antithesis_instrumentation__.Notify(117380)
 		log.VEventf(ctx, 2, "evaluated %s command %s, txn=%v : resp=%s, err=%v",
 			args.Method(), trunc(args.String()), h.Txn, trunc(reply.String()), err)
+	} else {
+		__antithesis_instrumentation__.Notify(117385)
 	}
+	__antithesis_instrumentation__.Notify(117374)
 	return pd, err
 }
 
-// canDoServersideRetry looks at the error produced by evaluating ba (or the
-// WriteTooOldFlag in br.Txn if there's no error) and decides if it's possible
-// to retry the batch evaluation at a higher timestamp. Retrying is sometimes
-// possible in case of some retriable errors which ask for higher timestamps:
-// for transactional requests, retrying is possible if the transaction had not
-// performed any prior reads that need refreshing.
-//
-// This function is called both below and above latching, which is indicated by
-// the concurrency guard argument. The concurrency guard, if not nil, indicates
-// that the caller is holding latches and cannot adjust its timestamp beyond the
-// limits of what is protected by those latches. If the concurrency guard is
-// nil, the caller indicates that it is not holding latches and can therefore
-// more freely adjust its timestamp because it will re-acquire latches at
-// whatever timestamp the batch is bumped to.
-//
-// deadline, if not nil, specifies the highest timestamp (exclusive) at which
-// the request can be evaluated. If ba is a transactional request, then deadline
-// cannot be specified; a transaction's deadline comes from it's EndTxn request.
-//
-// If true is returned, ba and ba.Txn will have been updated with the new
-// timestamp.
 func canDoServersideRetry(
 	ctx context.Context,
 	pErr *roachpb.Error,
@@ -541,51 +594,90 @@ func canDoServersideRetry(
 	g *concurrency.Guard,
 	deadline *hlc.Timestamp,
 ) bool {
+	__antithesis_instrumentation__.Notify(117386)
 	if ba.Txn != nil {
+		__antithesis_instrumentation__.Notify(117390)
 		if !ba.CanForwardReadTimestamp {
+			__antithesis_instrumentation__.Notify(117393)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(117394)
 		}
+		__antithesis_instrumentation__.Notify(117391)
 		if deadline != nil {
+			__antithesis_instrumentation__.Notify(117395)
 			log.Fatal(ctx, "deadline passed for transactional request")
+		} else {
+			__antithesis_instrumentation__.Notify(117396)
 		}
+		__antithesis_instrumentation__.Notify(117392)
 		if etArg, ok := ba.GetArg(roachpb.EndTxn); ok {
+			__antithesis_instrumentation__.Notify(117397)
 			et := etArg.(*roachpb.EndTxnRequest)
 			deadline = et.Deadline
+		} else {
+			__antithesis_instrumentation__.Notify(117398)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(117399)
 	}
+	__antithesis_instrumentation__.Notify(117387)
 
 	var newTimestamp hlc.Timestamp
 	if ba.Txn != nil {
+		__antithesis_instrumentation__.Notify(117400)
 		if pErr != nil {
+			__antithesis_instrumentation__.Notify(117401)
 			var ok bool
 			ok, newTimestamp = roachpb.TransactionRefreshTimestamp(pErr)
 			if !ok {
+				__antithesis_instrumentation__.Notify(117402)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(117403)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(117404)
 			if !br.Txn.WriteTooOld {
+				__antithesis_instrumentation__.Notify(117406)
 				log.Fatalf(ctx, "expected the WriteTooOld flag to be set")
+			} else {
+				__antithesis_instrumentation__.Notify(117407)
 			}
+			__antithesis_instrumentation__.Notify(117405)
 			newTimestamp = br.Txn.WriteTimestamp
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(117408)
 		if pErr == nil {
+			__antithesis_instrumentation__.Notify(117410)
 			log.Fatalf(ctx, "canDoServersideRetry called for non-txn request without error")
+		} else {
+			__antithesis_instrumentation__.Notify(117411)
 		}
+		__antithesis_instrumentation__.Notify(117409)
 		switch tErr := pErr.GetDetail().(type) {
 		case *roachpb.WriteTooOldError:
+			__antithesis_instrumentation__.Notify(117412)
 			newTimestamp = tErr.RetryTimestamp()
 
 		case *roachpb.ReadWithinUncertaintyIntervalError:
+			__antithesis_instrumentation__.Notify(117413)
 			newTimestamp = tErr.RetryTimestamp()
 
 		default:
+			__antithesis_instrumentation__.Notify(117414)
 			return false
 		}
 	}
+	__antithesis_instrumentation__.Notify(117388)
 
 	if batcheval.IsEndTxnExceedingDeadline(newTimestamp, deadline) {
+		__antithesis_instrumentation__.Notify(117415)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(117416)
 	}
+	__antithesis_instrumentation__.Notify(117389)
 	return tryBumpBatchTimestamp(ctx, ba, g, newTimestamp)
 }

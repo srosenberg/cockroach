@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,21 +12,13 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// IndexedVarContainer provides the implementation of TypeCheck, Eval, and
-// String for IndexedVars.
 type IndexedVarContainer interface {
 	IndexedVarEval(idx int, ctx *EvalContext) (Datum, error)
 	IndexedVarResolvedType(idx int) *types.T
-	// IndexedVarNodeFormatter returns a NodeFormatter; if an object that
-	// wishes to implement this interface has lost the textual name that an
-	// IndexedVar originates from, this function can return nil (and the
-	// ordinal syntax "@1, @2, .." will be used).
+
 	IndexedVarNodeFormatter(idx int) NodeFormatter
 }
 
-// IndexedVar is a VariableExpr that can be used as a leaf in expressions; it
-// represents a dynamic value. It defers calls to TypeCheck, Eval, String to an
-// IndexedVarContainer.
 type IndexedVar struct {
 	Idx  int
 	Used bool
@@ -46,134 +30,157 @@ type IndexedVar struct {
 
 var _ TypedExpr = &IndexedVar{}
 
-// Variable is a dummy function part of the VariableExpr interface.
-func (*IndexedVar) Variable() {}
+func (*IndexedVar) Variable() { __antithesis_instrumentation__.Notify(610011) }
 
-// Walk is part of the Expr interface.
 func (v *IndexedVar) Walk(_ Visitor) Expr {
+	__antithesis_instrumentation__.Notify(610012)
 	return v
 }
 
-// TypeCheck is part of the Expr interface.
 func (v *IndexedVar) TypeCheck(
 	_ context.Context, semaCtx *SemaContext, desired *types.T,
 ) (TypedExpr, error) {
-	if semaCtx.IVarContainer == nil || semaCtx.IVarContainer == unboundContainer {
-		// A more technically correct message would be to say that the
-		// reference is unbound and thus cannot be typed. However this is
-		// a tad bit too technical for the average SQL use case and
-		// instead we acknowledge that we only get here if someone has
-		// used a column reference in a place where it's not allowed by
-		// the docs, so just say that instead.
+	__antithesis_instrumentation__.Notify(610013)
+	if semaCtx.IVarContainer == nil || func() bool {
+		__antithesis_instrumentation__.Notify(610015)
+		return semaCtx.IVarContainer == unboundContainer == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610016)
+
 		return nil, pgerror.Newf(
 			pgcode.UndefinedColumn, "column reference @%d not allowed in this context", v.Idx+1)
+	} else {
+		__antithesis_instrumentation__.Notify(610017)
 	}
+	__antithesis_instrumentation__.Notify(610014)
 	v.typ = semaCtx.IVarContainer.IndexedVarResolvedType(v.Idx)
 	return v, nil
 }
 
-// Eval is part of the TypedExpr interface.
 func (v *IndexedVar) Eval(ctx *EvalContext) (Datum, error) {
-	if ctx.IVarContainer == nil || ctx.IVarContainer == unboundContainer {
+	__antithesis_instrumentation__.Notify(610018)
+	if ctx.IVarContainer == nil || func() bool {
+		__antithesis_instrumentation__.Notify(610020)
+		return ctx.IVarContainer == unboundContainer == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610021)
 		return nil, errors.AssertionFailedf(
 			"indexed var must be bound to a container before evaluation")
+	} else {
+		__antithesis_instrumentation__.Notify(610022)
 	}
+	__antithesis_instrumentation__.Notify(610019)
 	return ctx.IVarContainer.IndexedVarEval(v.Idx, ctx)
 }
 
-// ResolvedType is part of the TypedExpr interface.
 func (v *IndexedVar) ResolvedType() *types.T {
+	__antithesis_instrumentation__.Notify(610023)
 	if v.typ == nil {
+		__antithesis_instrumentation__.Notify(610025)
 		panic(errors.AssertionFailedf("indexed var must be type checked first"))
+	} else {
+		__antithesis_instrumentation__.Notify(610026)
 	}
+	__antithesis_instrumentation__.Notify(610024)
 	return v.typ
 }
 
-// Format implements the NodeFormatter interface.
 func (v *IndexedVar) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(610027)
 	f := ctx.flags
 	if ctx.indexedVarFormat != nil {
+		__antithesis_instrumentation__.Notify(610028)
 		ctx.indexedVarFormat(ctx, v.Idx)
-	} else if f.HasFlags(fmtSymbolicVars) || v.col == nil {
-		ctx.Printf("@%d", v.Idx+1)
 	} else {
-		ctx.FormatNode(v.col)
+		__antithesis_instrumentation__.Notify(610029)
+		if f.HasFlags(fmtSymbolicVars) || func() bool {
+			__antithesis_instrumentation__.Notify(610030)
+			return v.col == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(610031)
+			ctx.Printf("@%d", v.Idx+1)
+		} else {
+			__antithesis_instrumentation__.Notify(610032)
+			ctx.FormatNode(v.col)
+		}
 	}
 }
 
-// NewOrdinalReference is a helper routine to create a standalone
-// IndexedVar with the given index value. This needs to undergo
-// BindIfUnbound() below before it can be fully used.
 func NewOrdinalReference(r int) *IndexedVar {
+	__antithesis_instrumentation__.Notify(610033)
 	return &IndexedVar{Idx: r}
 }
 
-// NewTypedOrdinalReference returns a new IndexedVar with the given index value
-// that is verified to be well-typed.
 func NewTypedOrdinalReference(r int, typ *types.T) *IndexedVar {
+	__antithesis_instrumentation__.Notify(610034)
 	return &IndexedVar{Idx: r, typeAnnotation: typeAnnotation{typ: typ}}
 }
 
-// IndexedVarHelper wraps an IndexedVarContainer (an interface) and creates
-// IndexedVars bound to that container.
-//
-// It also keeps track of which indexes from the container are used by
-// expressions.
 type IndexedVarHelper struct {
 	vars      []IndexedVar
 	container IndexedVarContainer
 }
 
-// Container returns the container associated with the helper.
 func (h *IndexedVarHelper) Container() IndexedVarContainer {
+	__antithesis_instrumentation__.Notify(610035)
 	return h.container
 }
 
-// BindIfUnbound ensures the IndexedVar is attached to this helper's container.
-// - for freshly created IndexedVars (with a nil container) this will bind in-place.
-// - for already bound IndexedVar, bound to this container, this will return the same ivar unchanged.
-// - for ordinal references (with an explicit unboundContainer) this will return a new var.
-// - for already bound IndexedVars, bound to another container, this will error out.
 func (h *IndexedVarHelper) BindIfUnbound(ivar *IndexedVar) (*IndexedVar, error) {
-	// We perform the range check always, even if the ivar is already
-	// bound, as a form of safety assertion against misreuse of ivars
-	// across containers.
-	if ivar.Idx < 0 || ivar.Idx >= len(h.vars) {
+	__antithesis_instrumentation__.Notify(610036)
+
+	if ivar.Idx < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(610039)
+		return ivar.Idx >= len(h.vars) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610040)
 		return ivar, pgerror.Newf(
 			pgcode.UndefinedColumn, "invalid column ordinal: @%d", ivar.Idx+1)
+	} else {
+		__antithesis_instrumentation__.Notify(610041)
 	}
+	__antithesis_instrumentation__.Notify(610037)
 
 	if !ivar.Used {
+		__antithesis_instrumentation__.Notify(610042)
 		return h.IndexedVar(ivar.Idx), nil
+	} else {
+		__antithesis_instrumentation__.Notify(610043)
 	}
+	__antithesis_instrumentation__.Notify(610038)
 	return ivar, nil
 }
 
-// MakeIndexedVarHelper initializes an IndexedVarHelper structure.
 func MakeIndexedVarHelper(container IndexedVarContainer, numVars int) IndexedVarHelper {
+	__antithesis_instrumentation__.Notify(610044)
 	return IndexedVarHelper{
 		vars:      make([]IndexedVar, numVars),
 		container: container,
 	}
 }
 
-// AppendSlot expands the capacity of this IndexedVarHelper by one and returns
-// the index of the new slot.
 func (h *IndexedVarHelper) AppendSlot() int {
+	__antithesis_instrumentation__.Notify(610045)
 	h.vars = append(h.vars, IndexedVar{})
 	return len(h.vars) - 1
 }
 
 func (h *IndexedVarHelper) checkIndex(idx int) {
-	if idx < 0 || idx >= len(h.vars) {
+	__antithesis_instrumentation__.Notify(610046)
+	if idx < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(610047)
+		return idx >= len(h.vars) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610048)
 		panic(errors.AssertionFailedf(
 			"invalid var index %d (columns: %d)", redact.Safe(idx), redact.Safe(len(h.vars))))
+	} else {
+		__antithesis_instrumentation__.Notify(610049)
 	}
 }
 
-// IndexedVar returns an IndexedVar for the given index. The index must be
-// valid.
 func (h *IndexedVarHelper) IndexedVar(idx int) *IndexedVar {
+	__antithesis_instrumentation__.Notify(610050)
 	h.checkIndex(idx)
 	v := &h.vars[idx]
 	v.Idx = idx
@@ -183,11 +190,8 @@ func (h *IndexedVarHelper) IndexedVar(idx int) *IndexedVar {
 	return v
 }
 
-// IndexedVarWithType returns an IndexedVar for the given index, with the given
-// type. The index must be valid. This should be used in the case where an
-// indexed var is being added before its container has a corresponding entry
-// for it.
 func (h *IndexedVarHelper) IndexedVarWithType(idx int, typ *types.T) *IndexedVar {
+	__antithesis_instrumentation__.Notify(610051)
 	h.checkIndex(idx)
 	v := &h.vars[idx]
 	v.Idx = idx
@@ -196,65 +200,65 @@ func (h *IndexedVarHelper) IndexedVarWithType(idx int, typ *types.T) *IndexedVar
 	return v
 }
 
-// IndexedVarUsed returns true if IndexedVar() was called for the given index.
-// The index must be valid.
 func (h *IndexedVarHelper) IndexedVarUsed(idx int) bool {
+	__antithesis_instrumentation__.Notify(610052)
 	h.checkIndex(idx)
 	return h.vars[idx].Used
 }
 
-// GetIndexedVars returns the indexed var array of this helper.
-// IndexedVars to the caller; unused vars are guaranteed to have
-// a false Used field.
 func (h *IndexedVarHelper) GetIndexedVars() []IndexedVar {
+	__antithesis_instrumentation__.Notify(610053)
 	return h.vars
 }
 
-// Rebind collects all the IndexedVars in the given expression and re-binds them
-// to this helper.
 func (h *IndexedVarHelper) Rebind(expr TypedExpr) TypedExpr {
+	__antithesis_instrumentation__.Notify(610054)
 	if expr == nil {
+		__antithesis_instrumentation__.Notify(610056)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(610057)
 	}
+	__antithesis_instrumentation__.Notify(610055)
 	ret, _ := WalkExpr(h, expr)
 	return ret.(TypedExpr)
 }
 
 var _ Visitor = &IndexedVarHelper{}
 
-// VisitPre implements the Visitor interface.
 func (h *IndexedVarHelper) VisitPre(expr Expr) (recurse bool, newExpr Expr) {
+	__antithesis_instrumentation__.Notify(610058)
 	if iv, ok := expr.(*IndexedVar); ok {
+		__antithesis_instrumentation__.Notify(610060)
 		return false, h.IndexedVar(iv.Idx)
+	} else {
+		__antithesis_instrumentation__.Notify(610061)
 	}
+	__antithesis_instrumentation__.Notify(610059)
 	return true, expr
 }
 
-// VisitPost implements the Visitor interface.
-func (*IndexedVarHelper) VisitPost(expr Expr) Expr { return expr }
+func (*IndexedVarHelper) VisitPost(expr Expr) Expr {
+	__antithesis_instrumentation__.Notify(610062)
+	return expr
+}
 
 type unboundContainerType struct{}
 
-// unboundContainer is the marker used by ordinal references (@N) in
-// the input syntax. It differs from `nil` in that calling
-// BindIfUnbound on an indexed var that uses unboundContainer will
-// cause a new IndexedVar object to be returned, to ensure that the
-// original is left unchanged (to preserve the invariant that the AST
-// is constant after parse).
 var unboundContainer = &unboundContainerType{}
 
-// IndexedVarEval is part of the IndexedVarContainer interface.
 func (*unboundContainerType) IndexedVarEval(idx int, _ *EvalContext) (Datum, error) {
+	__antithesis_instrumentation__.Notify(610063)
 	return nil, errors.AssertionFailedf("unbound ordinal reference @%d", redact.Safe(idx+1))
 }
 
-// IndexedVarResolvedType is part of the IndexedVarContainer interface.
 func (*unboundContainerType) IndexedVarResolvedType(idx int) *types.T {
+	__antithesis_instrumentation__.Notify(610064)
 	panic(errors.AssertionFailedf("unbound ordinal reference @%d", redact.Safe(idx+1)))
 }
 
-// IndexedVarNodeFormatter is part of the IndexedVarContainer interface.
 func (*unboundContainerType) IndexedVarNodeFormatter(idx int) NodeFormatter {
+	__antithesis_instrumentation__.Notify(610065)
 	panic(errors.AssertionFailedf("unbound ordinal reference @%d", redact.Safe(idx+1)))
 }
 
@@ -264,25 +268,23 @@ type typeContainer struct {
 
 var _ IndexedVarContainer = &typeContainer{}
 
-// IndexedVarEval is part of the IndexedVarContainer interface.
 func (tc *typeContainer) IndexedVarEval(idx int, ctx *EvalContext) (Datum, error) {
+	__antithesis_instrumentation__.Notify(610066)
 	return nil, errors.AssertionFailedf("no eval allowed in typeContainer")
 }
 
-// IndexedVarResolvedType is part of the IndexedVarContainer interface.
 func (tc *typeContainer) IndexedVarResolvedType(idx int) *types.T {
+	__antithesis_instrumentation__.Notify(610067)
 	return tc.types[idx]
 }
 
-// IndexedVarNodeFormatter is part of the IndexedVarContainer interface.
 func (tc *typeContainer) IndexedVarNodeFormatter(idx int) NodeFormatter {
+	__antithesis_instrumentation__.Notify(610068)
 	return nil
 }
 
-// MakeTypesOnlyIndexedVarHelper creates an IndexedVarHelper which provides
-// the given types for indexed vars. It does not support evaluation, unless
-// Rebind is used with another container which supports evaluation.
 func MakeTypesOnlyIndexedVarHelper(types []*types.T) IndexedVarHelper {
+	__antithesis_instrumentation__.Notify(610069)
 	c := &typeContainer{types: types}
 	return MakeIndexedVarHelper(c, len(types))
 }

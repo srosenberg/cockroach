@@ -1,25 +1,7 @@
-// Copyright 2012, Google Inc. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in licenses/BSD-vitess.txt.
-
-// Portions of this file are additionally subject to the following
-// license and copyright.
-//
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// This code was derived from https://github.com/youtube/vitess.
-
 package tree
 
-// Insert represents an INSERT statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type Insert struct {
 	With       *With
 	Table      TableExpr
@@ -29,78 +11,104 @@ type Insert struct {
 	Returning  ReturningClause
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Insert) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(610070)
 	ctx.FormatNode(node.With)
 	if node.OnConflict.IsUpsertAlias() {
+		__antithesis_instrumentation__.Notify(610075)
 		ctx.WriteString("UPSERT")
 	} else {
+		__antithesis_instrumentation__.Notify(610076)
 		ctx.WriteString("INSERT")
 	}
+	__antithesis_instrumentation__.Notify(610071)
 	ctx.WriteString(" INTO ")
 	ctx.FormatNode(node.Table)
 	if node.Columns != nil {
+		__antithesis_instrumentation__.Notify(610077)
 		ctx.WriteByte('(')
 		ctx.FormatNode(&node.Columns)
 		ctx.WriteByte(')')
+	} else {
+		__antithesis_instrumentation__.Notify(610078)
 	}
+	__antithesis_instrumentation__.Notify(610072)
 	if node.DefaultValues() {
+		__antithesis_instrumentation__.Notify(610079)
 		ctx.WriteString(" DEFAULT VALUES")
 	} else {
+		__antithesis_instrumentation__.Notify(610080)
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Rows)
 	}
-	if node.OnConflict != nil && !node.OnConflict.IsUpsertAlias() {
+	__antithesis_instrumentation__.Notify(610073)
+	if node.OnConflict != nil && func() bool {
+		__antithesis_instrumentation__.Notify(610081)
+		return !node.OnConflict.IsUpsertAlias() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610082)
 		ctx.WriteString(" ON CONFLICT")
 		if node.OnConflict.Constraint != "" {
+			__antithesis_instrumentation__.Notify(610086)
 			ctx.WriteString(" ON CONSTRAINT ")
 			ctx.FormatNode(&node.OnConflict.Constraint)
+		} else {
+			__antithesis_instrumentation__.Notify(610087)
 		}
+		__antithesis_instrumentation__.Notify(610083)
 		if len(node.OnConflict.Columns) > 0 {
+			__antithesis_instrumentation__.Notify(610088)
 			ctx.WriteString(" (")
 			ctx.FormatNode(&node.OnConflict.Columns)
 			ctx.WriteString(")")
+		} else {
+			__antithesis_instrumentation__.Notify(610089)
 		}
+		__antithesis_instrumentation__.Notify(610084)
 		if node.OnConflict.ArbiterPredicate != nil {
+			__antithesis_instrumentation__.Notify(610090)
 			ctx.WriteString(" WHERE ")
 			ctx.FormatNode(node.OnConflict.ArbiterPredicate)
+		} else {
+			__antithesis_instrumentation__.Notify(610091)
 		}
+		__antithesis_instrumentation__.Notify(610085)
 		if node.OnConflict.DoNothing {
+			__antithesis_instrumentation__.Notify(610092)
 			ctx.WriteString(" DO NOTHING")
 		} else {
+			__antithesis_instrumentation__.Notify(610093)
 			ctx.WriteString(" DO UPDATE SET ")
 			ctx.FormatNode(&node.OnConflict.Exprs)
 			if node.OnConflict.Where != nil {
+				__antithesis_instrumentation__.Notify(610094)
 				ctx.WriteByte(' ')
 				ctx.FormatNode(node.OnConflict.Where)
+			} else {
+				__antithesis_instrumentation__.Notify(610095)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(610096)
 	}
+	__antithesis_instrumentation__.Notify(610074)
 	if HasReturningClause(node.Returning) {
+		__antithesis_instrumentation__.Notify(610097)
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Returning)
+	} else {
+		__antithesis_instrumentation__.Notify(610098)
 	}
 }
 
-// DefaultValues returns true iff only default values are being inserted.
 func (node *Insert) DefaultValues() bool {
+	__antithesis_instrumentation__.Notify(610099)
 	return node.Rows.Select == nil
 }
 
-// OnConflict represents an `ON CONFLICT (columns) WHERE arbiter DO UPDATE SET
-// exprs WHERE where` clause.
-//
-// The zero value for OnConflict is used to signal the UPSERT short form, which
-// uses the primary key for as the conflict index and the values being inserted
-// for Exprs.
 type OnConflict struct {
-	// At most one of Columns and Constraint will be set at once.
-	// Columns is the list of arbiter columns, if set, that the user specified
-	// in the ON CONFLICT (columns) list.
 	Columns NameList
-	// Constraint is the name of a table constraint that the user specified to
-	// get the list of arbiter columns from, in the ON CONFLICT ON CONSTRAINT
-	// form.
+
 	Constraint       Name
 	ArbiterPredicate Expr
 	Exprs            UpdateExprs
@@ -108,8 +116,25 @@ type OnConflict struct {
 	DoNothing        bool
 }
 
-// IsUpsertAlias returns true if the UPSERT syntactic sugar was used.
 func (oc *OnConflict) IsUpsertAlias() bool {
-	return oc != nil && oc.Columns == nil && oc.Constraint == "" &&
-		oc.ArbiterPredicate == nil && oc.Exprs == nil && oc.Where == nil && !oc.DoNothing
+	__antithesis_instrumentation__.Notify(610100)
+	return oc != nil && func() bool {
+		__antithesis_instrumentation__.Notify(610101)
+		return oc.Columns == nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(610102)
+		return oc.Constraint == "" == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(610103)
+		return oc.ArbiterPredicate == nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(610104)
+		return oc.Exprs == nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(610105)
+		return oc.Where == nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(610106)
+		return !oc.DoNothing == true
+	}() == true
 }

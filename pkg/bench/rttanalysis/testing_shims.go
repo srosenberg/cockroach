@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rttanalysis
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strings"
@@ -26,8 +18,6 @@ type testingB interface {
 	ReportMetric(float64, string)
 	Run(string, func(testingB))
 
-	// logScope is used to wrap log.Scope and make it available only in
-	// appropriate contexts.
 	logScope() (getDirectory func() string, close func())
 }
 
@@ -38,20 +28,19 @@ type bShim struct {
 var _ testingB = bShim{}
 
 func (b bShim) logScope() (getDirectory func() string, close func()) {
+	__antithesis_instrumentation__.Notify(1891)
 	sc := log.Scope(b)
-	return sc.GetDirectory, func() { sc.Close(b) }
+	return sc.GetDirectory, func() { __antithesis_instrumentation__.Notify(1892); sc.Close(b) }
 }
-func (b bShim) N() int { return b.B.N }
+func (b bShim) N() int { __antithesis_instrumentation__.Notify(1893); return b.B.N }
 func (b bShim) Run(name string, f func(b testingB)) {
+	__antithesis_instrumentation__.Notify(1894)
 	b.B.Run(name, func(b *testing.B) {
+		__antithesis_instrumentation__.Notify(1895)
 		f(bShim{b})
 	})
 }
 
-// tShim is used by the expectation test's testing.T to appear as though
-// it is a testing.B and can be used capture the output. The object also
-// suppresses creation of a new log.Scope in order to permit parallel
-// execution.
 type tShim struct {
 	*testing.T
 	scope   *log.TestLogScope
@@ -61,30 +50,39 @@ type tShim struct {
 var _ testingB = tShim{}
 
 func (ts tShim) logScope() (getDirectory func() string, close func()) {
-	return ts.scope.GetDirectory, func() {}
+	__antithesis_instrumentation__.Notify(1896)
+	return ts.scope.GetDirectory, func() { __antithesis_instrumentation__.Notify(1897) }
 }
 func (ts tShim) GetDirectory() string {
+	__antithesis_instrumentation__.Notify(1898)
 	return ts.scope.GetDirectory()
 }
-func (ts tShim) N() int      { return 2 }
-func (ts tShim) ResetTimer() {}
-func (ts tShim) StopTimer()  {}
-func (ts tShim) StartTimer() {}
+func (ts tShim) N() int      { __antithesis_instrumentation__.Notify(1899); return 2 }
+func (ts tShim) ResetTimer() { __antithesis_instrumentation__.Notify(1900) }
+func (ts tShim) StopTimer()  { __antithesis_instrumentation__.Notify(1901) }
+func (ts tShim) StartTimer() { __antithesis_instrumentation__.Notify(1902) }
 func (ts tShim) ReportMetric(f float64, s string) {
+	__antithesis_instrumentation__.Notify(1903)
 	if s == roundTripsMetric {
+		__antithesis_instrumentation__.Notify(1904)
 		ts.results.add(benchmarkResult{
 			name:   ts.Name(),
 			result: int(f),
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(1905)
 	}
 }
 func (ts tShim) Name() string {
-	// Trim the name of the outermost test off the beginning of the name.
+	__antithesis_instrumentation__.Notify(1906)
+
 	tn := ts.T.Name()
 	return tn[strings.Index(tn, "/")+1:]
 }
 func (ts tShim) Run(s string, f func(testingB)) {
+	__antithesis_instrumentation__.Notify(1907)
 	ts.T.Run(s, func(t *testing.T) {
+		__antithesis_instrumentation__.Notify(1908)
 		f(tShim{results: ts.results, T: t, scope: ts.scope})
 	})
 }

@@ -1,16 +1,8 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package descs provides abstractions for dealing with sets of descriptors.
 // It is utilized during schema changes and by catalog.Accessor implementations.
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -38,7 +30,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// makeCollection constructs a Collection.
 func makeCollection(
 	ctx context.Context,
 	leaseMgr *lease.Manager,
@@ -49,6 +40,7 @@ func makeCollection(
 	virtualSchemas catalog.VirtualSchemas,
 	temporarySchemaProvider TemporarySchemaProvider,
 ) Collection {
+	__antithesis_instrumentation__.Notify(264075)
 	return Collection{
 		settings:       settings,
 		version:        settings.Version.ActiveVersion(ctx),
@@ -61,119 +53,72 @@ func makeCollection(
 	}
 }
 
-// Collection is a collection of descriptors held by a single session that
-// serves SQL requests, or a background job using descriptors. The
-// collection is cleared using ReleaseAll() which is called at the
-// end of each transaction on the session, or on hitting conditions such
-// as errors, or retries that result in transaction timestamp changes.
 type Collection struct {
-
-	// settings dictate whether we validate descriptors on write.
 	settings *cluster.Settings
 
-	// version used for validation
 	version clusterversion.ClusterVersion
 
-	// virtualSchemas optionally holds the virtual schemas.
 	virtual virtualDescriptors
 
-	// A collection of descriptors valid for the timestamp. They are released once
-	// the transaction using them is complete.
 	leased leasedDescriptors
 
-	// Descriptors modified by the uncommitted transaction affiliated with this
-	// Collection. This allows a transaction to see its own modifications while
-	// bypassing the descriptor lease mechanism. The lease mechanism will have its
-	// own transaction to read the descriptor and will hang waiting for the
-	// uncommitted changes to the descriptor if this transaction is PRIORITY HIGH.
-	// These descriptors are local to this Collection and their state is thus not
-	// visible to other transactions.
 	uncommitted uncommittedDescriptors
 
-	// A collection of descriptors which were read from the store.
 	kv kvDescriptors
 
-	// syntheticDescriptors contains in-memory descriptors which override all
-	// other matching descriptors during immutable descriptor resolution (by name
-	// or by ID), but should not be written to disk. These support internal
-	// queries which need to use a special modified descriptor (e.g. validating
-	// non-public schema elements during a schema change). Attempting to resolve
-	// a mutable descriptor by name or ID when a matching synthetic descriptor
-	// exists is illegal.
 	synthetic syntheticDescriptors
 
-	// temporary contains logic to access temporary schema descriptors.
 	temporary temporaryDescriptors
 
-	// hydratedTables is node-level cache of table descriptors which utlize
-	// user-defined types.
 	hydratedTables *hydratedtables.Cache
 
-	// skipValidationOnWrite should only be set to true during forced descriptor
-	// repairs.
 	skipValidationOnWrite bool
 
-	// droppedDescriptors that will not need to wait for new
-	// lease versions.
 	deletedDescs catalog.DescriptorIDSet
 
-	// maxTimestampBoundDeadlineHolder contains the maximum timestamp to read
-	// schemas at. This is only set during the retries of bounded_staleness when
-	// nearest_only=True, in which we want a schema read that should be no older
-	// than MaxTimestampBound.
 	maxTimestampBoundDeadlineHolder maxTimestampBoundDeadlineHolder
 
-	// Session is a sqlliveness.Session which may be optionally set.
-	// It must be set in the multi-tenant environment for ephemeral
-	// SQL pods. It should not be set otherwise.
 	sqlLivenessSession sqlliveness.Session
 
-	// direct provides low-level access to descriptors via the Direct interface.
-	// For the most part, it is in deprecated or testing settings.
 	direct direct
 }
 
 var _ catalog.Accessor = (*Collection)(nil)
 
-// MaybeUpdateDeadline updates the deadline in a given transaction
-// based on the leased descriptors in this collection. This update is
-// only done when a deadline exists.
 func (tc *Collection) MaybeUpdateDeadline(ctx context.Context, txn *kv.Txn) (err error) {
+	__antithesis_instrumentation__.Notify(264076)
 	return tc.leased.maybeUpdateDeadline(ctx, txn, tc.sqlLivenessSession)
 }
 
-// SetMaxTimestampBound sets the maximum timestamp to read schemas at.
 func (tc *Collection) SetMaxTimestampBound(maxTimestampBound hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(264077)
 	tc.maxTimestampBoundDeadlineHolder.maxTimestampBound = maxTimestampBound
 }
 
-// ResetMaxTimestampBound resets the maximum timestamp to read schemas at.
 func (tc *Collection) ResetMaxTimestampBound() {
+	__antithesis_instrumentation__.Notify(264078)
 	tc.maxTimestampBoundDeadlineHolder.maxTimestampBound = hlc.Timestamp{}
 }
 
-// SkipValidationOnWrite avoids validating uncommitted descriptors prior to
-// a transaction commit.
 func (tc *Collection) SkipValidationOnWrite() {
+	__antithesis_instrumentation__.Notify(264079)
 	tc.skipValidationOnWrite = true
 }
 
-// ReleaseSpecifiedLeases releases the leases for the descriptors with ids in
-// the passed slice. Errors are logged but ignored.
 func (tc *Collection) ReleaseSpecifiedLeases(ctx context.Context, descs []lease.IDVersion) {
+	__antithesis_instrumentation__.Notify(264080)
 	tc.leased.release(ctx, descs)
 }
 
-// ReleaseLeases releases all leases. Errors are logged but ignored.
 func (tc *Collection) ReleaseLeases(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(264081)
 	tc.leased.releaseAll(ctx)
-	// Clear the associated sqlliveness.session
+
 	tc.sqlLivenessSession = nil
 }
 
-// ReleaseAll releases all state currently held by the Collection.
-// ReleaseAll calls ReleaseLeases.
 func (tc *Collection) ReleaseAll(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(264082)
 	tc.ReleaseLeases(ctx)
 	tc.uncommitted.reset()
 	tc.kv.reset()
@@ -182,161 +127,175 @@ func (tc *Collection) ReleaseAll(ctx context.Context) {
 	tc.skipValidationOnWrite = false
 }
 
-// HasUncommittedTables returns true if the Collection contains uncommitted
-// tables.
 func (tc *Collection) HasUncommittedTables() bool {
+	__antithesis_instrumentation__.Notify(264083)
 	return tc.uncommitted.hasUncommittedTables()
 }
 
-// HasUncommittedTypes returns true if the Collection contains uncommitted
-// types.
 func (tc *Collection) HasUncommittedTypes() bool {
+	__antithesis_instrumentation__.Notify(264084)
 	return tc.uncommitted.hasUncommittedTypes()
 }
 
-// AddUncommittedDescriptor adds an uncommitted descriptor modified in the
-// transaction to the Collection. The descriptor must either be a new descriptor
-// or carry the original version or carry the subsequent version to the original
-// version.
-//
-// Subsequent attempts to resolve this descriptor mutably, either by name or ID
-// will return this exact object. Subsequent attempts to resolve this descriptor
-// immutably will return a copy of the descriptor in the current state. A deep
-// copy is performed in this call.
 func (tc *Collection) AddUncommittedDescriptor(desc catalog.MutableDescriptor) error {
-	// Invalidate all the cached descriptors since a stale copy of this may be
-	// included.
+	__antithesis_instrumentation__.Notify(264085)
+
 	tc.kv.releaseAllDescriptors()
 	return tc.uncommitted.checkIn(desc)
 }
 
-// ValidateOnWriteEnabled is the cluster setting used to enable or disable
-// validating descriptors prior to writing.
 var ValidateOnWriteEnabled = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"sql.catalog.descs.validate_on_write.enabled",
 	"set to true to validate descriptors prior to writing, false to disable; default is true",
-	true, /* defaultValue */
+	true,
 )
 
-// WriteDescToBatch calls MaybeIncrementVersion, adds the descriptor to the
-// collection as an uncommitted descriptor, and writes it into b.
 func (tc *Collection) WriteDescToBatch(
 	ctx context.Context, kvTrace bool, desc catalog.MutableDescriptor, b *kv.Batch,
 ) error {
+	__antithesis_instrumentation__.Notify(264086)
 	desc.MaybeIncrementVersion()
-	if !tc.skipValidationOnWrite && ValidateOnWriteEnabled.Get(&tc.settings.SV) {
+	if !tc.skipValidationOnWrite && func() bool {
+		__antithesis_instrumentation__.Notify(264090)
+		return ValidateOnWriteEnabled.Get(&tc.settings.SV) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264091)
 		if err := validate.Self(tc.version, desc); err != nil {
+			__antithesis_instrumentation__.Notify(264092)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(264093)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(264094)
 	}
+	__antithesis_instrumentation__.Notify(264087)
 	if err := tc.AddUncommittedDescriptor(desc); err != nil {
+		__antithesis_instrumentation__.Notify(264095)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(264096)
 	}
+	__antithesis_instrumentation__.Notify(264088)
 	descKey := catalogkeys.MakeDescMetadataKey(tc.codec(), desc.GetID())
 	proto := desc.DescriptorProto()
 	if kvTrace {
+		__antithesis_instrumentation__.Notify(264097)
 		log.VEventf(ctx, 2, "Put %s -> %s", descKey, proto)
+	} else {
+		__antithesis_instrumentation__.Notify(264098)
 	}
+	__antithesis_instrumentation__.Notify(264089)
 	b.Put(descKey, proto)
 	return nil
 }
 
-// WriteDesc constructs a new Batch, calls WriteDescToBatch and runs it.
 func (tc *Collection) WriteDesc(
 	ctx context.Context, kvTrace bool, desc catalog.MutableDescriptor, txn *kv.Txn,
 ) error {
+	__antithesis_instrumentation__.Notify(264099)
 	b := txn.NewBatch()
 	if err := tc.WriteDescToBatch(ctx, kvTrace, desc, b); err != nil {
+		__antithesis_instrumentation__.Notify(264101)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(264102)
 	}
+	__antithesis_instrumentation__.Notify(264100)
 	return txn.Run(ctx, b)
 }
 
-// GetDescriptorsWithNewVersion returns all the IDVersion pairs that have
-// undergone a schema change. Returns nil for no schema changes. The version
-// returned for each schema change is ClusterVersion - 1, because that's the one
-// that will be used when checking for table descriptor two version invariance.
 func (tc *Collection) GetDescriptorsWithNewVersion() (originalVersions []lease.IDVersion) {
+	__antithesis_instrumentation__.Notify(264103)
 	_ = tc.uncommitted.iterateNewVersionByID(func(originalVersion lease.IDVersion) error {
+		__antithesis_instrumentation__.Notify(264105)
 		originalVersions = append(originalVersions, originalVersion)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(264104)
 	return originalVersions
 }
 
-// GetUncommittedTables returns all the tables updated or created in the
-// transaction.
 func (tc *Collection) GetUncommittedTables() (tables []catalog.TableDescriptor) {
+	__antithesis_instrumentation__.Notify(264106)
 	return tc.uncommitted.getUncommittedTables()
 }
 
 func newMutableSyntheticDescriptorAssertionError(id descpb.ID) error {
+	__antithesis_instrumentation__.Notify(264107)
 	return errors.AssertionFailedf("attempted mutable access of synthetic descriptor %d", id)
 }
 
-// GetAllDescriptors returns all descriptors visible by the transaction,
-// first checking the Collection's cached descriptors for validity if validate
-// is set to true before defaulting to a key-value scan, if necessary.
 func (tc *Collection) GetAllDescriptors(ctx context.Context, txn *kv.Txn) (nstree.Catalog, error) {
+	__antithesis_instrumentation__.Notify(264108)
 	return tc.kv.getAllDescriptors(ctx, txn, tc.version)
 }
 
-// GetAllDatabaseDescriptors returns all database descriptors visible by the
-// transaction, first checking the Collection's cached descriptors for
-// validity before scanning system.namespace and looking up the descriptors
-// in the database cache, if necessary.
-// If the argument allowMissingDesc is true, the function will return nil-s for
-// missing database descriptors.
 func (tc *Collection) GetAllDatabaseDescriptors(
 	ctx context.Context, txn *kv.Txn,
 ) ([]catalog.DatabaseDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264109)
 	vd := tc.newValidationDereferencer(txn)
 	return tc.kv.getAllDatabaseDescriptors(ctx, tc.version, txn, vd)
 }
 
-// GetAllTableDescriptorsInDatabase returns all the table descriptors visible to
-// the transaction under the database with the given ID. It first checks the
-// collection's cached descriptors before defaulting to a key-value scan, if
-// necessary.
 func (tc *Collection) GetAllTableDescriptorsInDatabase(
 	ctx context.Context, txn *kv.Txn, dbID descpb.ID,
 ) ([]catalog.TableDescriptor, error) {
-	// Ensure the given ID does indeed belong to a database.
+	__antithesis_instrumentation__.Notify(264110)
+
 	found, _, err := tc.getDatabaseByID(ctx, txn, dbID, tree.DatabaseLookupFlags{
 		AvoidLeased: false,
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264115)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264116)
 	}
+	__antithesis_instrumentation__.Notify(264111)
 	if !found {
+		__antithesis_instrumentation__.Notify(264117)
 		return nil, sqlerrors.NewUndefinedDatabaseError(fmt.Sprintf("[%d]", dbID))
+	} else {
+		__antithesis_instrumentation__.Notify(264118)
 	}
+	__antithesis_instrumentation__.Notify(264112)
 	all, err := tc.GetAllDescriptors(ctx, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264119)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264120)
 	}
+	__antithesis_instrumentation__.Notify(264113)
 	var ret []catalog.TableDescriptor
 	for _, desc := range all.OrderedDescriptors() {
+		__antithesis_instrumentation__.Notify(264121)
 		if desc.GetParentID() == dbID {
+			__antithesis_instrumentation__.Notify(264122)
 			if table, ok := desc.(catalog.TableDescriptor); ok {
+				__antithesis_instrumentation__.Notify(264123)
 				ret = append(ret, table)
+			} else {
+				__antithesis_instrumentation__.Notify(264124)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(264125)
 		}
 	}
+	__antithesis_instrumentation__.Notify(264114)
 	return ret, nil
 }
 
-// GetSchemasForDatabase returns the schemas for a given database
-// visible by the transaction. This uses the schema cache locally
-// if possible, or else performs a scan on kv.
 func (tc *Collection) GetSchemasForDatabase(
 	ctx context.Context, txn *kv.Txn, dbDesc catalog.DatabaseDescriptor,
 ) (map[descpb.ID]string, error) {
+	__antithesis_instrumentation__.Notify(264126)
 	return tc.kv.getSchemasForDatabase(ctx, txn, dbDesc)
 }
 
-// GetObjectNamesAndIDs returns the names and IDs of all objects in a database and schema.
 func (tc *Collection) GetObjectNamesAndIDs(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -344,43 +303,68 @@ func (tc *Collection) GetObjectNamesAndIDs(
 	scName string,
 	flags tree.DatabaseListFlags,
 ) (tree.TableNames, descpb.IDs, error) {
+	__antithesis_instrumentation__.Notify(264127)
 	if ok, names, ds := tc.virtual.maybeGetObjectNamesAndIDs(
 		scName, dbDesc, flags,
 	); ok {
+		__antithesis_instrumentation__.Notify(264133)
 		return names, ds, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264134)
 	}
+	__antithesis_instrumentation__.Notify(264128)
 
 	schemaFlags := tree.SchemaLookupFlags{
-		Required:       flags.Required,
-		AvoidLeased:    flags.RequireMutable || flags.AvoidLeased,
+		Required: flags.Required,
+		AvoidLeased: flags.RequireMutable || func() bool {
+			__antithesis_instrumentation__.Notify(264135)
+			return flags.AvoidLeased == true
+		}() == true,
 		IncludeDropped: flags.IncludeDropped,
 		IncludeOffline: flags.IncludeOffline,
 	}
 	schema, err := tc.getSchemaByName(ctx, txn, dbDesc, scName, schemaFlags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264136)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264137)
 	}
-	if schema == nil { // required must have been false
+	__antithesis_instrumentation__.Notify(264129)
+	if schema == nil {
+		__antithesis_instrumentation__.Notify(264138)
 		return nil, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264139)
 	}
+	__antithesis_instrumentation__.Notify(264130)
 
 	log.Eventf(ctx, "fetching list of objects for %q", dbDesc.GetName())
 	prefix := catalogkeys.MakeObjectNameKey(tc.codec(), dbDesc.GetID(), schema.GetID(), "")
 	sr, err := txn.Scan(ctx, prefix, prefix.PrefixEnd(), 0)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264140)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264141)
 	}
+	__antithesis_instrumentation__.Notify(264131)
 
 	alreadySeen := make(map[string]bool)
 	var tableNames tree.TableNames
 	var tableIDs descpb.IDs
 
 	for _, row := range sr {
+		__antithesis_instrumentation__.Notify(264142)
 		_, tableName, err := encoding.DecodeUnsafeStringAscending(bytes.TrimPrefix(
 			row.Key, prefix), nil)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(264144)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(264145)
 		}
+		__antithesis_instrumentation__.Notify(264143)
 		alreadySeen[tableName] = true
 		tn := tree.MakeTableNameWithSchema(tree.Name(dbDesc.GetName()), tree.Name(scName), tree.Name(tableName))
 		tn.ExplicitCatalog = flags.ExplicitPrefix
@@ -388,48 +372,37 @@ func (tc *Collection) GetObjectNamesAndIDs(
 		tableNames = append(tableNames, tn)
 		tableIDs = append(tableIDs, descpb.ID(row.ValueInt()))
 	}
+	__antithesis_instrumentation__.Notify(264132)
 
 	return tableNames, tableIDs, nil
 }
 
-// SetSyntheticDescriptors sets the provided descriptors as the synthetic
-// descriptors to override all other matching descriptors during immutable
-// access. An immutable copy is made if the descriptor is mutable. See the
-// documentation on syntheticDescriptors.
 func (tc *Collection) SetSyntheticDescriptors(descs []catalog.Descriptor) {
+	__antithesis_instrumentation__.Notify(264146)
 	tc.synthetic.set(descs)
 }
 
-// AddSyntheticDescriptor replaces a descriptor with a synthetic
-// one temporarily for a given transaction. This synthetic descriptor
-// will be immutable.
 func (tc *Collection) AddSyntheticDescriptor(desc catalog.Descriptor) {
+	__antithesis_instrumentation__.Notify(264147)
 	tc.synthetic.add(desc)
 }
 
-// RemoveSyntheticDescriptor removes a synthetic descriptor
-// override that temporarily exists for a given transaction.
 func (tc *Collection) RemoveSyntheticDescriptor(id descpb.ID) {
+	__antithesis_instrumentation__.Notify(264148)
 	tc.synthetic.remove(id)
 }
 
 func (tc *Collection) codec() keys.SQLCodec {
+	__antithesis_instrumentation__.Notify(264149)
 	return tc.kv.codec
 }
 
-// AddDeletedDescriptor is temporarily tracking descriptors that have been,
-// deleted which from an add state without any intermediate steps
-// Any descriptors marked as deleted will be skipped for the
-// wait for one version logic inside descs.Txn, since they will no longer
-// be inside storage.
-// Note: that this happens, at time of writing, only when reverting an
-// IMPORT or RESTORE.
 func (tc *Collection) AddDeletedDescriptor(id descpb.ID) {
+	__antithesis_instrumentation__.Notify(264150)
 	tc.deletedDescs.Add(id)
 }
 
-// SetSession sets the sqlliveness.Session for the transaction. This
-// should only be called in a multi-tenant environment.
 func (tc *Collection) SetSession(session sqlliveness.Session) {
+	__antithesis_instrumentation__.Notify(264151)
 	tc.sqlLivenessSession = session
 }

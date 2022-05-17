@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,17 +20,13 @@ import (
 )
 
 func registerCopy(r registry.Registry) {
-	// This test imports a fully-populated Bank table. It then creates an empty
-	// Bank schema. Finally, it performs a series of `INSERT ... SELECT ...`
-	// statements to copy all data from the first table into the second table.
+	__antithesis_instrumentation__.Notify(46830)
+
 	runCopy := func(ctx context.Context, t test.Test, c cluster.Cluster, rows int, inTxn bool) {
-		// payload is the size of the payload column for each row in the Bank
-		// table. If this is adjusted, a new fixture may need to be generated.
+		__antithesis_instrumentation__.Notify(46832)
+
 		const payload = 100
-		// rowOverheadEstimate is an estimate of the overhead of a single
-		// row in the Bank table, not including the size of the payload
-		// itself. This overhead includes the size of the other two columns
-		// in the table along with the size of each row's associated KV key.
+
 		const rowOverheadEstimate = 160
 		const rowEstimate = rowOverheadEstimate + payload
 
@@ -48,60 +36,75 @@ func registerCopy(r registry.Registry) {
 
 		m := c.NewMonitor(ctx, c.All())
 		m.Go(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(46834)
 			db := c.Conn(ctx, t.L(), 1)
 			defer db.Close()
 
-			// Disable load-based splitting so that we can more accurately
-			// predict an upper-bound on the number of ranges that the cluster
-			// will end up with.
 			if err := disableLoadBasedSplitting(ctx, db); err != nil {
+				__antithesis_instrumentation__.Notify(46844)
 				return errors.Wrap(err, "disabling load-based splitting")
+			} else {
+				__antithesis_instrumentation__.Notify(46845)
 			}
+			__antithesis_instrumentation__.Notify(46835)
 
 			t.Status("importing Bank fixture")
 			c.Run(ctx, c.Node(1), fmt.Sprintf(
 				"./workload fixtures load bank --rows=%d --payload-bytes=%d {pgurl:1}",
 				rows, payload))
 			if _, err := db.Exec("ALTER TABLE bank.bank RENAME TO bank.bank_orig"); err != nil {
+				__antithesis_instrumentation__.Notify(46846)
 				t.Fatalf("failed to rename table: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(46847)
 			}
+			__antithesis_instrumentation__.Notify(46836)
 
 			t.Status("create copy of Bank schema")
 			c.Run(ctx, c.Node(1), "./workload init bank --rows=0 --ranges=0 {pgurl:1}")
 
 			rangeCount := func() int {
+				__antithesis_instrumentation__.Notify(46848)
 				var count int
 				const q = "SELECT count(*) FROM [SHOW RANGES FROM TABLE bank.bank]"
 				if err := db.QueryRow(q).Scan(&count); err != nil {
+					__antithesis_instrumentation__.Notify(46850)
 					t.Fatalf("failed to get range count: %v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(46851)
 				}
+				__antithesis_instrumentation__.Notify(46849)
 				return count
 			}
+			__antithesis_instrumentation__.Notify(46837)
 			if rc := rangeCount(); rc != 1 {
+				__antithesis_instrumentation__.Notify(46852)
 				return errors.Errorf("empty bank table split over multiple ranges")
+			} else {
+				__antithesis_instrumentation__.Notify(46853)
 			}
+			__antithesis_instrumentation__.Notify(46838)
 
-			// Copy batches of rows from bank_orig to bank. Each batch needs to
-			// be under kv.raft.command.max_size=64MB or we'll hit a "command is
-			// too large" error. We play it safe and chose batches whose rows
-			// add up to well less than this limit.
-			rowsPerInsert := (60 << 20 /* 60MB */) / rowEstimate
+			rowsPerInsert := (60 << 20) / rowEstimate
 			t.Status("copying from bank_orig to bank")
 
-			// querier is a common interface shared by sql.DB and sql.Tx. It
-			// can be replaced by https://github.com/golang/go/issues/14468 if
-			// that is ever resolved.
 			type querier interface {
 				QueryRowContext(ctx context.Context, query string, args ...interface{}) *gosql.Row
 			}
 			runCopy := func(ctx context.Context, qu querier) error {
-				ctx, cancel := context.WithTimeout(ctx, 10*time.Minute) // avoid infinite internal retries
+				__antithesis_instrumentation__.Notify(46854)
+				ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 				defer cancel()
 
 				for lastID := -1; lastID+1 < rows; {
+					__antithesis_instrumentation__.Notify(46856)
 					if lastID > 0 {
+						__antithesis_instrumentation__.Notify(46858)
 						t.Progress(float64(lastID+1) / float64(rows))
+					} else {
+						__antithesis_instrumentation__.Notify(46859)
 					}
+					__antithesis_instrumentation__.Notify(46857)
 					q := fmt.Sprintf(`
 						SELECT id FROM [
 							INSERT INTO bank.bank
@@ -115,54 +118,76 @@ func registerCopy(r registry.Registry) {
 						LIMIT 1`,
 						lastID, rowsPerInsert)
 					if err := qu.QueryRowContext(ctx, q).Scan(&lastID); err != nil {
+						__antithesis_instrumentation__.Notify(46860)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(46861)
 					}
 				}
+				__antithesis_instrumentation__.Notify(46855)
 				return nil
 			}
+			__antithesis_instrumentation__.Notify(46839)
 
 			var err error
 			if inTxn {
+				__antithesis_instrumentation__.Notify(46862)
 				attempt := 0
 				err = crdb.ExecuteTx(ctx, db, nil, func(tx *gosql.Tx) error {
+					__antithesis_instrumentation__.Notify(46863)
 					attempt++
 					if attempt > 5 {
+						__antithesis_instrumentation__.Notify(46865)
 						return errors.Errorf("aborting after %v failed attempts", attempt-1)
+					} else {
+						__antithesis_instrumentation__.Notify(46866)
 					}
+					__antithesis_instrumentation__.Notify(46864)
 					t.Status(fmt.Sprintf("copying (attempt %v)", attempt))
 					return runCopy(ctx, tx)
 				})
 			} else {
+				__antithesis_instrumentation__.Notify(46867)
 				err = runCopy(ctx, db)
 			}
+			__antithesis_instrumentation__.Notify(46840)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(46868)
 				t.Fatalf("failed to copy rows: %s", err)
+			} else {
+				__antithesis_instrumentation__.Notify(46869)
 			}
+			__antithesis_instrumentation__.Notify(46841)
 			rangeMinBytes, rangeMaxBytes, err := getDefaultRangeSize(ctx, db)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(46870)
 				t.Fatalf("failed to get default range size: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(46871)
 			}
+			__antithesis_instrumentation__.Notify(46842)
 			rc := rangeCount()
 			t.L().Printf("range count after copy = %d\n", rc)
 			lowExp := (rows * rowEstimate) / rangeMaxBytes
 			highExp := int(math.Ceil(float64(rows*rowEstimate) / float64(rangeMinBytes)))
-			if rc > highExp || rc < lowExp {
+			if rc > highExp || func() bool {
+				__antithesis_instrumentation__.Notify(46872)
+				return rc < lowExp == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(46873)
 				return errors.Errorf("expected range count for table between %d and %d, found %d",
 					lowExp, highExp, rc)
+			} else {
+				__antithesis_instrumentation__.Notify(46874)
 			}
+			__antithesis_instrumentation__.Notify(46843)
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(46833)
 		m.Wait()
 	}
+	__antithesis_instrumentation__.Notify(46831)
 
-	// We use a smaller dataset with a txn, to have a very large margin to the
-	// commit deadline (5 minutes). Otherwise, if the txn takes longer than
-	// usual (for whatever reason) and triggers a RETRY_COMMIT_DEADLINE_EXCEEDED
-	// error, the retry is likely to 1) take longer due to e.g. intent handling,
-	// and 2) have a shorter deadline due to existing table descriptor leases.
-	// If the margin is too small, the retries will always exceed the deadline
-	// and keep retrying forever. See:
-	// https://github.com/cockroachdb/cockroach/issues/62470
 	testcases := []struct {
 		rows  int
 		nodes int
@@ -173,12 +198,14 @@ func registerCopy(r registry.Registry) {
 	}
 
 	for _, tc := range testcases {
+		__antithesis_instrumentation__.Notify(46875)
 		tc := tc
 		r.Add(registry.TestSpec{
 			Name:    fmt.Sprintf("copy/bank/rows=%d,nodes=%d,txn=%t", tc.rows, tc.nodes, tc.txn),
 			Owner:   registry.OwnerKV,
 			Cluster: r.MakeClusterSpec(tc.nodes),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(46876)
 				runCopy(ctx, t, c, tc.rows, tc.txn)
 			},
 		})
@@ -188,6 +215,7 @@ func registerCopy(r registry.Registry) {
 func getDefaultRangeSize(
 	ctx context.Context, db *gosql.DB,
 ) (rangeMinBytes, rangeMaxBytes int, err error) {
+	__antithesis_instrumentation__.Notify(46877)
 	err = db.QueryRow(`SELECT
     regexp_extract(regexp_extract(raw_config_sql, e'range_min_bytes = \\d+'), e'\\d+')::INT8
         AS range_min_bytes,
@@ -195,9 +223,16 @@ func getDefaultRangeSize(
         AS range_max_bytes
 FROM
     [SHOW ZONE CONFIGURATION FOR RANGE default];`).Scan(&rangeMinBytes, &rangeMaxBytes)
-	// Older cluster versions do not contain this column. Use the old default.
-	if err != nil && strings.Contains(err.Error(), `column "raw_config_sql" does not exist`) {
-		rangeMinBytes, rangeMaxBytes, err = 32<<20 /* 32MB */, 64<<20 /* 64MB */, nil
+
+	if err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(46879)
+		return strings.Contains(err.Error(), `column "raw_config_sql" does not exist`) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(46880)
+		rangeMinBytes, rangeMaxBytes, err = 32<<20, 64<<20, nil
+	} else {
+		__antithesis_instrumentation__.Notify(46881)
 	}
+	__antithesis_instrumentation__.Notify(46878)
 	return rangeMinBytes, rangeMaxBytes, err
 }

@@ -3,6 +3,7 @@ module github.com/cockroachdb/cockroach
 go 1.17
 
 require (
+	antithesis.com/instrumentation v1.0.0
 	cloud.google.com/go/kms v1.1.0
 	cloud.google.com/go/pubsub v1.16.0
 	cloud.google.com/go/storage v1.18.2
@@ -328,6 +329,7 @@ require (
 )
 
 require (
+	antithesis.com/go/instrumentation v1.0.0
 	github.com/Azure/go-autorest/autorest/azure/cli v0.4.3 // indirect
 	github.com/DataDog/zstd v1.5.0 // indirect
 	github.com/andybalholm/cascadia v1.2.0 // indirect
@@ -369,3 +371,7 @@ replace go.etcd.io/etcd/pkg/v3 => go.etcd.io/etcd/pkg/v3 v3.0.0-20201109164711-0
 replace github.com/docker/docker => github.com/moby/moby v20.10.6+incompatible
 
 replace github.com/maruel/panicparse/v2 => github.com/cockroachdb/panicparse/v2 v2.0.0-20211103220158-604c82a44f1e
+
+replace antithesis.com/instrumentation v1.0.0 => ../../../antithesis.com/instrumentation
+
+replace antithesis.com/go/instrumentation => /home/srosenberg/crdb_instrumented/antithesis

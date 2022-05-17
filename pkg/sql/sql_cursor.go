@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,37 +19,60 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// DeclareCursor implements the DECLARE statement.
-// See https://www.postgresql.org/docs/current/sql-declare.html for details.
 func (p *planner) DeclareCursor(ctx context.Context, s *tree.DeclareCursor) (planNode, error) {
+	__antithesis_instrumentation__.Notify(623747)
 	if s.Hold {
+		__antithesis_instrumentation__.Notify(623751)
 		return nil, unimplemented.NewWithIssue(77101, "DECLARE CURSOR WITH HOLD")
+	} else {
+		__antithesis_instrumentation__.Notify(623752)
 	}
+	__antithesis_instrumentation__.Notify(623748)
 	if s.Binary {
+		__antithesis_instrumentation__.Notify(623753)
 		return nil, unimplemented.NewWithIssue(77099, "DECLARE BINARY CURSOR")
+	} else {
+		__antithesis_instrumentation__.Notify(623754)
 	}
+	__antithesis_instrumentation__.Notify(623749)
 	if s.Scroll == tree.Scroll {
+		__antithesis_instrumentation__.Notify(623755)
 		return nil, unimplemented.NewWithIssue(77102, "DECLARE SCROLL CURSOR")
+	} else {
+		__antithesis_instrumentation__.Notify(623756)
 	}
+	__antithesis_instrumentation__.Notify(623750)
 
 	return &delayedNode{
 		name: s.String(),
 		constructor: func(ctx context.Context, p *planner) (_ planNode, _ error) {
+			__antithesis_instrumentation__.Notify(623757)
 			if p.extendedEvalCtx.TxnImplicit {
+				__antithesis_instrumentation__.Notify(623766)
 				return nil, pgerror.Newf(pgcode.NoActiveSQLTransaction, "DECLARE CURSOR can only be used in transaction blocks")
+			} else {
+				__antithesis_instrumentation__.Notify(623767)
 			}
+			__antithesis_instrumentation__.Notify(623758)
 
 			ie := p.ExecCfg().InternalExecutorFactory(ctx, p.SessionData())
 			cursorName := s.Name.String()
 			if cursor, _ := p.sqlCursors.getCursor(cursorName); cursor != nil {
+				__antithesis_instrumentation__.Notify(623768)
 				return nil, pgerror.Newf(pgcode.DuplicateCursor, "cursor %q already exists", cursorName)
+			} else {
+				__antithesis_instrumentation__.Notify(623769)
 			}
+			__antithesis_instrumentation__.Notify(623759)
 
 			if p.extendedEvalCtx.PreparedStatementState.HasPortal(cursorName) {
+				__antithesis_instrumentation__.Notify(623770)
 				return nil, pgerror.Newf(pgcode.DuplicateCursor, "cursor %q already exists as portal", cursorName)
+			} else {
+				__antithesis_instrumentation__.Notify(623771)
 			}
+			__antithesis_instrumentation__.Notify(623760)
 
-			// Try to plan the cursor query to make sure that it's valid.
 			stmt := makeStatement(parser.Statement{AST: s.Select}, ClusterWideID{})
 			pt := planTop{}
 			pt.init(&stmt, &p.instrumentation)
@@ -67,8 +82,12 @@ func (p *planner) DeclareCursor(ctx context.Context, s *tree.DeclareCursor) (pla
 
 			memo, err := opc.buildExecMemo(ctx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(623772)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(623773)
 			}
+			__antithesis_instrumentation__.Notify(623761)
 			if err := opc.runExecBuilder(
 				&pt,
 				&stmt,
@@ -77,20 +96,32 @@ func (p *planner) DeclareCursor(ctx context.Context, s *tree.DeclareCursor) (pla
 				p.EvalContext(),
 				p.autoCommit,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(623774)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(623775)
 			}
+			__antithesis_instrumentation__.Notify(623762)
 			if pt.flags.IsSet(planFlagContainsMutation) {
-				// Cursors with mutations are invalid.
+				__antithesis_instrumentation__.Notify(623776)
+
 				return nil, pgerror.Newf(pgcode.FeatureNotSupported,
 					"DECLARE CURSOR must not contain data-modifying statements in WITH")
+			} else {
+				__antithesis_instrumentation__.Notify(623777)
 			}
+			__antithesis_instrumentation__.Notify(623763)
 
 			statement := s.Select.String()
 			itCtx := context.Background()
 			rows, err := ie.QueryIterator(itCtx, "sql-cursor", p.txn, statement)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(623778)
 				return nil, errors.Wrap(err, "failed to DECLARE CURSOR")
+			} else {
+				__antithesis_instrumentation__.Notify(623779)
 			}
+			__antithesis_instrumentation__.Notify(623764)
 			inputState := p.txn.GetLeafTxnInputState(ctx)
 			cursor := &sqlCursor{
 				InternalRows: rows,
@@ -100,31 +131,43 @@ func (p *planner) DeclareCursor(ctx context.Context, s *tree.DeclareCursor) (pla
 				created:      timeutil.Now(),
 			}
 			if err := p.sqlCursors.addCursor(cursorName, cursor); err != nil {
-				// This case shouldn't happen because cursor names are scoped to a session,
-				// and sessions can't have more than one statement running at once. But
-				// let's be diligent and clean up if it somehow does happen anyway.
+				__antithesis_instrumentation__.Notify(623780)
+
 				_ = cursor.Close()
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(623781)
 			}
-			return newZeroNode(nil /* columns */), nil
+			__antithesis_instrumentation__.Notify(623765)
+			return newZeroNode(nil), nil
 		},
 	}, nil
 }
 
 var errBackwardScan = pgerror.Newf(pgcode.ObjectNotInPrerequisiteState, "cursor can only scan forward")
 
-// FetchCursor implements the FETCH and MOVE statements.
-// See https://www.postgresql.org/docs/current/sql-fetch.html for details.
 func (p *planner) FetchCursor(
 	_ context.Context, s *tree.CursorStmt, isMove bool,
 ) (planNode, error) {
+	__antithesis_instrumentation__.Notify(623782)
 	cursor, err := p.sqlCursors.getCursor(s.Name.String())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(623786)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(623787)
 	}
-	if s.Count < 0 || s.FetchType == tree.FetchBackwardAll {
+	__antithesis_instrumentation__.Notify(623783)
+	if s.Count < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(623788)
+		return s.FetchType == tree.FetchBackwardAll == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(623789)
 		return nil, errBackwardScan
+	} else {
+		__antithesis_instrumentation__.Notify(623790)
 	}
+	__antithesis_instrumentation__.Notify(623784)
 	node := &fetchNode{
 		n:         s.Count,
 		fetchType: s.FetchType,
@@ -132,240 +175,300 @@ func (p *planner) FetchCursor(
 		isMove:    isMove,
 	}
 	if s.FetchType != tree.FetchNormal {
+		__antithesis_instrumentation__.Notify(623791)
 		node.n = 0
 		node.offset = s.Count
+	} else {
+		__antithesis_instrumentation__.Notify(623792)
 	}
+	__antithesis_instrumentation__.Notify(623785)
 	return node, nil
 }
 
 type fetchNode struct {
 	cursor *sqlCursor
-	// n is the number of rows requested.
+
 	n int64
-	// offset is the number of rows to read first, when in relative or absolute
-	// mode.
+
 	offset    int64
 	fetchType tree.FetchType
-	// isMove is true if this is a MOVE statement, which is identical to a FETCH
-	// statement but returns only a statement tag of how many rows would have been
-	// fetched.
+
 	isMove bool
 
 	seeked bool
 
-	// origTxnSeqNum is the transaction sequence number of the user's transaction
-	// before the fetch began.
 	origTxnSeqNum enginepb.TxnSeq
 }
 
 func (f *fetchNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(623793)
 	state := f.cursor.txn.GetLeafTxnInputState(params.ctx)
-	// We need to make sure that we're reading at the same read sequence number
-	// that we had when we created the cursor, to preserve the "sensitivity"
-	// semantics of cursors, which demand that data written after the cursor
-	// was declared is not visible to the cursor.
+
 	f.origTxnSeqNum = state.ReadSeqNum
 	return f.cursor.txn.SetReadSeqNum(f.cursor.readSeqNum)
 }
 
 func (f *fetchNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(623794)
 	if f.fetchType == tree.FetchAll {
+		__antithesis_instrumentation__.Notify(623798)
 		return f.cursor.Next(params.ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(623799)
 	}
+	__antithesis_instrumentation__.Notify(623795)
 
 	if !f.seeked {
-		// FIRST, LAST, ABSOLUTE, and RELATIVE require seeking before returning
-		// values. Do that first.
+		__antithesis_instrumentation__.Notify(623800)
+
 		f.seeked = true
 		switch f.fetchType {
 		case tree.FetchFirst:
+			__antithesis_instrumentation__.Notify(623801)
 			switch f.cursor.curRow {
 			case 0:
+				__antithesis_instrumentation__.Notify(623810)
 				_, err := f.cursor.Next(params.ctx)
 				return true, err
 			case 1:
+				__antithesis_instrumentation__.Notify(623811)
 				return true, nil
+			default:
+				__antithesis_instrumentation__.Notify(623812)
 			}
+			__antithesis_instrumentation__.Notify(623802)
 			return false, errBackwardScan
 		case tree.FetchLast:
+			__antithesis_instrumentation__.Notify(623803)
 			return false, errBackwardScan
 		case tree.FetchAbsolute:
+			__antithesis_instrumentation__.Notify(623804)
 			if f.cursor.curRow > f.offset {
+				__antithesis_instrumentation__.Notify(623813)
 				return false, errBackwardScan
+			} else {
+				__antithesis_instrumentation__.Notify(623814)
 			}
+			__antithesis_instrumentation__.Notify(623805)
 			for f.cursor.curRow < f.offset {
+				__antithesis_instrumentation__.Notify(623815)
 				more, err := f.cursor.Next(params.ctx)
-				if !more || err != nil {
+				if !more || func() bool {
+					__antithesis_instrumentation__.Notify(623816)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(623817)
 					return more, err
+				} else {
+					__antithesis_instrumentation__.Notify(623818)
 				}
 			}
+			__antithesis_instrumentation__.Notify(623806)
 			return true, nil
 		case tree.FetchRelative:
+			__antithesis_instrumentation__.Notify(623807)
 			for i := int64(0); i < f.offset; i++ {
+				__antithesis_instrumentation__.Notify(623819)
 				more, err := f.cursor.Next(params.ctx)
-				if !more || err != nil {
+				if !more || func() bool {
+					__antithesis_instrumentation__.Notify(623820)
+					return err != nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(623821)
 					return more, err
+				} else {
+					__antithesis_instrumentation__.Notify(623822)
 				}
 			}
+			__antithesis_instrumentation__.Notify(623808)
 			return true, nil
+		default:
+			__antithesis_instrumentation__.Notify(623809)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(623823)
 	}
+	__antithesis_instrumentation__.Notify(623796)
 	if f.n <= 0 {
+		__antithesis_instrumentation__.Notify(623824)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(623825)
 	}
+	__antithesis_instrumentation__.Notify(623797)
 	f.n--
 	return f.cursor.Next(params.ctx)
 }
 
 func (f fetchNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(623826)
 	return f.cursor.Cur()
 }
 
 func (f fetchNode) Close(ctx context.Context) {
-	// We explicitly do not pass through the Close to our InternalRows, because
-	// running FETCH on a CURSOR does not close it.
+	__antithesis_instrumentation__.Notify(623827)
 
-	// Reset the transaction's read sequence number to what it was before the
-	// fetch began, so that subsequent reads in the transaction can still see
-	// writes from that transaction.
 	if err := f.cursor.txn.SetReadSeqNum(f.origTxnSeqNum); err != nil {
+		__antithesis_instrumentation__.Notify(623828)
 		log.Warningf(ctx, "error resetting transaction read seq num after CURSOR operation: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(623829)
 	}
 }
 
-// CloseCursor implements the FETCH statement.
-// See https://www.postgresql.org/docs/current/sql-close.html for details.
 func (p *planner) CloseCursor(ctx context.Context, n *tree.CloseCursor) (planNode, error) {
+	__antithesis_instrumentation__.Notify(623830)
 	return &delayedNode{
 		name: n.String(),
 		constructor: func(ctx context.Context, p *planner) (planNode, error) {
-			return newZeroNode(nil /* columns */), p.sqlCursors.closeCursor(n.Name.String())
+			__antithesis_instrumentation__.Notify(623831)
+			return newZeroNode(nil), p.sqlCursors.closeCursor(n.Name.String())
 		},
 	}, nil
 }
 
 type sqlCursor struct {
 	sqlutil.InternalRows
-	// txn is the transaction object that the internal executor for this cursor
-	// is running with.
+
 	txn *kv.Txn
-	// readSeqNum is the sequence number of the transaction that the cursor was
-	// initialized with.
+
 	readSeqNum enginepb.TxnSeq
 	statement  string
 	created    time.Time
 	curRow     int64
 }
 
-// Next implements the InternalRows interface.
 func (s *sqlCursor) Next(ctx context.Context) (bool, error) {
+	__antithesis_instrumentation__.Notify(623832)
 	more, err := s.InternalRows.Next(ctx)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(623834)
 		s.curRow++
+	} else {
+		__antithesis_instrumentation__.Notify(623835)
 	}
+	__antithesis_instrumentation__.Notify(623833)
 	return more, err
 }
 
-// sqlCursors contains a set of active cursors for a session.
 type sqlCursors interface {
-	// closeAll closes all cursors in the set.
 	closeAll()
-	// closeCursor closes the named cursor, returning an error if that cursor
-	// didn't exist in the set.
+
 	closeCursor(string) error
-	// getCursor returns the named cursor, returning an error if that cursor
-	// didn't exist in the set.
+
 	getCursor(string) (*sqlCursor, error)
-	// addCursor adds a new cursor with the given name to the set, returning an
-	// error if the cursor already existed in the set.
+
 	addCursor(string, *sqlCursor) error
-	// list returns all open cursors in the set.
+
 	list() map[string]*sqlCursor
 }
 
-// cursorMap is a sqlCursors that's backed by an actual map.
 type cursorMap struct {
 	cursors map[string]*sqlCursor
 }
 
 func (c *cursorMap) closeAll() {
+	__antithesis_instrumentation__.Notify(623836)
 	for _, c := range c.cursors {
+		__antithesis_instrumentation__.Notify(623838)
 		_ = c.Close()
 	}
+	__antithesis_instrumentation__.Notify(623837)
 	c.cursors = nil
 }
 
 func (c *cursorMap) closeCursor(s string) error {
+	__antithesis_instrumentation__.Notify(623839)
 	cursor, ok := c.cursors[s]
 	if !ok {
+		__antithesis_instrumentation__.Notify(623841)
 		return pgerror.Newf(pgcode.InvalidCursorName, "cursor %q does not exist", s)
+	} else {
+		__antithesis_instrumentation__.Notify(623842)
 	}
+	__antithesis_instrumentation__.Notify(623840)
 	err := cursor.Close()
 	delete(c.cursors, s)
 	return err
 }
 
 func (c *cursorMap) getCursor(s string) (*sqlCursor, error) {
+	__antithesis_instrumentation__.Notify(623843)
 	cursor, ok := c.cursors[s]
 	if !ok {
+		__antithesis_instrumentation__.Notify(623845)
 		return nil, pgerror.Newf(pgcode.InvalidCursorName, "cursor %q does not exist", s)
+	} else {
+		__antithesis_instrumentation__.Notify(623846)
 	}
+	__antithesis_instrumentation__.Notify(623844)
 	return cursor, nil
 }
 
 func (c *cursorMap) addCursor(s string, cursor *sqlCursor) error {
+	__antithesis_instrumentation__.Notify(623847)
 	if c.cursors == nil {
+		__antithesis_instrumentation__.Notify(623850)
 		c.cursors = make(map[string]*sqlCursor)
+	} else {
+		__antithesis_instrumentation__.Notify(623851)
 	}
+	__antithesis_instrumentation__.Notify(623848)
 	if _, ok := c.cursors[s]; ok {
+		__antithesis_instrumentation__.Notify(623852)
 		return pgerror.Newf(pgcode.DuplicateCursor, "cursor %q already exists", s)
+	} else {
+		__antithesis_instrumentation__.Notify(623853)
 	}
+	__antithesis_instrumentation__.Notify(623849)
 	c.cursors[s] = cursor
 	return nil
 }
 
 func (c *cursorMap) list() map[string]*sqlCursor {
+	__antithesis_instrumentation__.Notify(623854)
 	return c.cursors
 }
 
-// connExCursorAccessor is a sqlCursors that delegates to a connExecutor's
-// extraTxnState.
 type connExCursorAccessor struct {
 	ex *connExecutor
 }
 
 func (c connExCursorAccessor) closeAll() {
+	__antithesis_instrumentation__.Notify(623855)
 	c.ex.extraTxnState.sqlCursors.closeAll()
 }
 
 func (c connExCursorAccessor) closeCursor(s string) error {
+	__antithesis_instrumentation__.Notify(623856)
 	return c.ex.extraTxnState.sqlCursors.closeCursor(s)
 }
 
 func (c connExCursorAccessor) getCursor(s string) (*sqlCursor, error) {
+	__antithesis_instrumentation__.Notify(623857)
 	return c.ex.extraTxnState.sqlCursors.getCursor(s)
 }
 
 func (c connExCursorAccessor) addCursor(s string, cursor *sqlCursor) error {
+	__antithesis_instrumentation__.Notify(623858)
 	return c.ex.extraTxnState.sqlCursors.addCursor(s, cursor)
 }
 
 func (c connExCursorAccessor) list() map[string]*sqlCursor {
+	__antithesis_instrumentation__.Notify(623859)
 	return c.ex.extraTxnState.sqlCursors.list()
 }
 
-// checkNoConflictingCursors returns an error if the input schema changing
-// statement conflicts with any open SQL cursors in the current planner.
 func (p *planner) checkNoConflictingCursors(stmt tree.Statement) error {
-	// TODO(jordan): this is stricter than Postgres is. Postgres permits
-	// concurrent schema changes within a transaction where a cursor is already
-	// open if the open cursors do not depend on schema objects being changed.
-	// We could improve this by matching the memo metadata's list of dependent
-	// schema objects in each open cursor with the objects being changed in the
-	// schema change.
+	__antithesis_instrumentation__.Notify(623860)
+
 	if len(p.sqlCursors.list()) > 0 {
+		__antithesis_instrumentation__.Notify(623862)
 		return unimplemented.NewWithIssue(74608, "cannot run schema change "+
 			"in a transaction with open DECLARE cursors")
+	} else {
+		__antithesis_instrumentation__.Notify(623863)
 	}
+	__antithesis_instrumentation__.Notify(623861)
 	return nil
 }

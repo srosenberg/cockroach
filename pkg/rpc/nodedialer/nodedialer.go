@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package nodedialer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,7 +22,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-// No more than one failure to connect to a given node will be logged in the given interval.
 const logPerNodeFailInterval = time.Minute
 
 type wrappedBreaker struct {
@@ -38,145 +29,169 @@ type wrappedBreaker struct {
 	log.EveryN
 }
 
-// An AddressResolver translates NodeIDs into addresses.
 type AddressResolver func(roachpb.NodeID) (net.Addr, error)
 
-// A Dialer wraps an *rpc.Context for dialing based on node IDs. For each node,
-// it maintains a circuit breaker that prevents rapid connection attempts and
-// provides hints to the callers on whether to log the outcome of the operation.
 type Dialer struct {
 	rpcContext   *rpc.Context
 	resolver     AddressResolver
 	testingKnobs DialerTestingKnobs
 
-	breakers [rpc.NumConnectionClasses]syncutil.IntMap // map[roachpb.NodeID]*wrappedBreaker
+	breakers [rpc.NumConnectionClasses]syncutil.IntMap
 }
 
-// DialerOpt contains configuration options for a Dialer.
 type DialerOpt struct {
-	// TestingKnobs contains testing utilities.
 	TestingKnobs DialerTestingKnobs
 }
 
-// DialerTestingKnobs contains dialer testing options.
 type DialerTestingKnobs struct {
-	// TestingNoLocalClientOptimization, if set, disables the optimization about
-	// using a direct client for the local node instead of going through gRPC. For
-	// one, the behavior on cancellation of the client RPC ctx is different: when
-	// going through gRPC, the framework watches for client ctx cancellation and
-	// interrupts the RPC. When bypassing gRPC, the client ctx is passed directly
-	// to the RPC handler.
 	TestingNoLocalClientOptimization bool
 }
 
-// ModuleTestingKnobs implements the ModuleTestingKnobs interface.
-func (DialerTestingKnobs) ModuleTestingKnobs() {}
+func (DialerTestingKnobs) ModuleTestingKnobs() { __antithesis_instrumentation__.Notify(185379) }
 
-// New initializes a Dialer.
 func New(rpcContext *rpc.Context, resolver AddressResolver) *Dialer {
+	__antithesis_instrumentation__.Notify(185380)
 	return &Dialer{
 		rpcContext: rpcContext,
 		resolver:   resolver,
 	}
 }
 
-// NewWithOpt initializes a Dialer and allows passing in configuration options.
 func NewWithOpt(rpcContext *rpc.Context, resolver AddressResolver, opt DialerOpt) *Dialer {
+	__antithesis_instrumentation__.Notify(185381)
 	d := New(rpcContext, resolver)
 	d.testingKnobs = opt.TestingKnobs
 	return d
 }
 
-// Stopper returns this node dialer's Stopper.
-// TODO(bdarnell): This is a bit of a hack for kv/transport_race.go
 func (n *Dialer) Stopper() *stop.Stopper {
+	__antithesis_instrumentation__.Notify(185382)
 	return n.rpcContext.Stopper
 }
 
-// Silence lint warning because this method is only used in race builds.
 var _ = (*Dialer).Stopper
 
-// Dial returns a grpc connection to the given node. It logs whenever the
-// node first becomes unreachable or reachable.
 func (n *Dialer) Dial(
 	ctx context.Context, nodeID roachpb.NodeID, class rpc.ConnectionClass,
 ) (_ *grpc.ClientConn, err error) {
-	if n == nil || n.resolver == nil {
+	__antithesis_instrumentation__.Notify(185383)
+	if n == nil || func() bool {
+		__antithesis_instrumentation__.Notify(185387)
+		return n.resolver == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(185388)
 		return nil, errors.New("no node dialer configured")
+	} else {
+		__antithesis_instrumentation__.Notify(185389)
 	}
-	// Don't trip the breaker if we're already canceled.
+	__antithesis_instrumentation__.Notify(185384)
+
 	if ctxErr := ctx.Err(); ctxErr != nil {
+		__antithesis_instrumentation__.Notify(185390)
 		return nil, ctxErr
+	} else {
+		__antithesis_instrumentation__.Notify(185391)
 	}
+	__antithesis_instrumentation__.Notify(185385)
 	breaker := n.getBreaker(nodeID, class)
 	addr, err := n.resolver(nodeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185392)
 		err = errors.Wrapf(err, "failed to resolve n%d", nodeID)
 		breaker.Fail(err)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185393)
 	}
-	return n.dial(ctx, nodeID, addr, breaker, true /* checkBreaker */, class)
+	__antithesis_instrumentation__.Notify(185386)
+	return n.dial(ctx, nodeID, addr, breaker, true, class)
 }
 
-// DialNoBreaker is like Dial, but will not check the circuit breaker before
-// trying to connect. The breaker is notified of the outcome. This function
-// should only be used when there is good reason to believe that the node is
-// reachable.
 func (n *Dialer) DialNoBreaker(
 	ctx context.Context, nodeID roachpb.NodeID, class rpc.ConnectionClass,
 ) (_ *grpc.ClientConn, err error) {
-	if n == nil || n.resolver == nil {
+	__antithesis_instrumentation__.Notify(185394)
+	if n == nil || func() bool {
+		__antithesis_instrumentation__.Notify(185397)
+		return n.resolver == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(185398)
 		return nil, errors.New("no node dialer configured")
+	} else {
+		__antithesis_instrumentation__.Notify(185399)
 	}
+	__antithesis_instrumentation__.Notify(185395)
 	addr, err := n.resolver(nodeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185400)
 		if ctx.Err() == nil {
+			__antithesis_instrumentation__.Notify(185402)
 			n.getBreaker(nodeID, class).Fail(err)
+		} else {
+			__antithesis_instrumentation__.Notify(185403)
 		}
+		__antithesis_instrumentation__.Notify(185401)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185404)
 	}
-	return n.dial(ctx, nodeID, addr, n.getBreaker(nodeID, class), false /* checkBreaker */, class)
+	__antithesis_instrumentation__.Notify(185396)
+	return n.dial(ctx, nodeID, addr, n.getBreaker(nodeID, class), false, class)
 }
 
-// DialInternalClient is a specialization of DialClass for callers that
-// want a roachpb.InternalClient. This supports an optimization to bypass the
-// network for the local node. Returns a context.Context which should be used
-// when making RPC calls on the returned server. (This context is annotated to
-// mark this request as in-process and bypass ctx.Peer checks).
 func (n *Dialer) DialInternalClient(
 	ctx context.Context, nodeID roachpb.NodeID, class rpc.ConnectionClass,
 ) (context.Context, roachpb.InternalClient, error) {
-	if n == nil || n.resolver == nil {
+	__antithesis_instrumentation__.Notify(185405)
+	if n == nil || func() bool {
+		__antithesis_instrumentation__.Notify(185409)
+		return n.resolver == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(185410)
 		return nil, nil, errors.New("no node dialer configured")
+	} else {
+		__antithesis_instrumentation__.Notify(185411)
 	}
+	__antithesis_instrumentation__.Notify(185406)
 	addr, err := n.resolver(nodeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185412)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185413)
 	}
 
 	{
-		// If we're dialing the local node, don't go through gRPC.
+		__antithesis_instrumentation__.Notify(185414)
+
 		localClient := n.rpcContext.GetLocalInternalClientForAddr(addr.String(), nodeID)
-		if localClient != nil && !n.testingKnobs.TestingNoLocalClientOptimization {
+		if localClient != nil && func() bool {
+			__antithesis_instrumentation__.Notify(185415)
+			return !n.testingKnobs.TestingNoLocalClientOptimization == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(185416)
 			log.VEvent(ctx, 2, kvbase.RoutingRequestLocallyMsg)
 
-			// Create a new context from the existing one with the "local request" field set.
-			// This tells the handler that this is an in-process request, bypassing ctx.Peer checks.
 			localCtx := grpcutil.NewLocalRequestContext(ctx)
 
 			return localCtx, localClient, nil
+		} else {
+			__antithesis_instrumentation__.Notify(185417)
 		}
 	}
+	__antithesis_instrumentation__.Notify(185407)
 	log.VEventf(ctx, 2, "sending request to %s", addr)
-	conn, err := n.dial(ctx, nodeID, addr, n.getBreaker(nodeID, class), true /* checkBreaker */, class)
+	conn, err := n.dial(ctx, nodeID, addr, n.getBreaker(nodeID, class), true, class)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185418)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185419)
 	}
+	__antithesis_instrumentation__.Notify(185408)
 	return ctx, TracingInternalClient{InternalClient: roachpb.NewInternalClient(conn)}, err
 }
 
-// dial performs the dialing of the remote connection. If breaker is nil,
-// then perform this logic without using any breaker functionality.
 func (n *Dialer) dial(
 	ctx context.Context,
 	nodeID roachpb.NodeID,
@@ -185,149 +200,225 @@ func (n *Dialer) dial(
 	checkBreaker bool,
 	class rpc.ConnectionClass,
 ) (_ *grpc.ClientConn, err error) {
-	// Don't trip the breaker if we're already canceled.
+	__antithesis_instrumentation__.Notify(185420)
+
 	if ctxErr := ctx.Err(); ctxErr != nil {
+		__antithesis_instrumentation__.Notify(185427)
 		return nil, ctxErr
+	} else {
+		__antithesis_instrumentation__.Notify(185428)
 	}
-	if checkBreaker && !breaker.Ready() {
+	__antithesis_instrumentation__.Notify(185421)
+	if checkBreaker && func() bool {
+		__antithesis_instrumentation__.Notify(185429)
+		return !breaker.Ready() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(185430)
 		err = errors.Wrapf(circuit.ErrBreakerOpen, "unable to dial n%d", nodeID)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185431)
 	}
+	__antithesis_instrumentation__.Notify(185422)
 	defer func() {
-		// Enforce a minimum interval between warnings for failed connections.
-		if err != nil && ctx.Err() == nil && breaker != nil && breaker.ShouldLog() {
+		__antithesis_instrumentation__.Notify(185432)
+
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(185433)
+			return ctx.Err() == nil == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(185434)
+			return breaker != nil == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(185435)
+			return breaker.ShouldLog() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(185436)
 			log.Health.Warningf(ctx, "unable to connect to n%d: %s", nodeID, err)
+		} else {
+			__antithesis_instrumentation__.Notify(185437)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(185423)
 	conn, err := n.rpcContext.GRPCDialNode(addr.String(), nodeID, class).Connect(ctx)
 	if err != nil {
-		// If we were canceled during the dial, don't trip the breaker.
+		__antithesis_instrumentation__.Notify(185438)
+
 		if ctxErr := ctx.Err(); ctxErr != nil {
+			__antithesis_instrumentation__.Notify(185441)
 			return nil, ctxErr
+		} else {
+			__antithesis_instrumentation__.Notify(185442)
 		}
+		__antithesis_instrumentation__.Notify(185439)
 		err = errors.Wrapf(err, "failed to connect to n%d at %v", nodeID, addr)
 		if breaker != nil {
+			__antithesis_instrumentation__.Notify(185443)
 			breaker.Fail(err)
+		} else {
+			__antithesis_instrumentation__.Notify(185444)
 		}
+		__antithesis_instrumentation__.Notify(185440)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185445)
 	}
-	// Check to see if the connection is in the transient failure state. This can
-	// happen if the connection already existed, but a recent heartbeat has
-	// failed and we haven't yet torn down the connection.
+	__antithesis_instrumentation__.Notify(185424)
+
 	if err := grpcutil.ConnectionReady(conn); err != nil {
+		__antithesis_instrumentation__.Notify(185446)
 		err = errors.Wrapf(err, "failed to check for ready connection to n%d at %v", nodeID, addr)
 		if breaker != nil {
+			__antithesis_instrumentation__.Notify(185448)
 			breaker.Fail(err)
+		} else {
+			__antithesis_instrumentation__.Notify(185449)
 		}
+		__antithesis_instrumentation__.Notify(185447)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(185450)
 	}
+	__antithesis_instrumentation__.Notify(185425)
 
-	// TODO(bdarnell): Reconcile the different health checks and circuit breaker
-	// behavior in this file. Note that this different behavior causes problems
-	// for higher-levels in the system. For example, DistSQL checks for
-	// ConnHealth when scheduling processors, but can then see attempts to send
-	// RPCs fail when dial fails due to an open breaker. Reset the breaker here
-	// as a stop-gap before the reconciliation occurs.
 	if breaker != nil {
+		__antithesis_instrumentation__.Notify(185451)
 		breaker.Success()
+	} else {
+		__antithesis_instrumentation__.Notify(185452)
 	}
+	__antithesis_instrumentation__.Notify(185426)
 	return conn, nil
 }
 
-// ConnHealth returns nil if we have an open connection of the request
-// class to the given node that succeeded on its most recent heartbeat.
-// Returns circuit.ErrBreakerOpen if the breaker is tripped, otherwise
-// ErrNoConnection if no connection to the node currently exists.
 func (n *Dialer) ConnHealth(nodeID roachpb.NodeID, class rpc.ConnectionClass) error {
-	if n == nil || n.resolver == nil {
+	__antithesis_instrumentation__.Notify(185453)
+	if n == nil || func() bool {
+		__antithesis_instrumentation__.Notify(185457)
+		return n.resolver == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(185458)
 		return errors.New("no node dialer configured")
+	} else {
+		__antithesis_instrumentation__.Notify(185459)
 	}
-	// NB: Don't call Ready(). The breaker protocol would require us to follow
-	// that up with a dial, which we won't do as this is called in hot paths.
+	__antithesis_instrumentation__.Notify(185454)
+
 	if n.getBreaker(nodeID, class).Tripped() {
+		__antithesis_instrumentation__.Notify(185460)
 		return circuit.ErrBreakerOpen
+	} else {
+		__antithesis_instrumentation__.Notify(185461)
 	}
+	__antithesis_instrumentation__.Notify(185455)
 	addr, err := n.resolver(nodeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185462)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(185463)
 	}
+	__antithesis_instrumentation__.Notify(185456)
 	return n.rpcContext.ConnHealth(addr.String(), nodeID, class)
 }
 
-// ConnHealthTryDial returns nil if we have an open connection of the request
-// class to the given node that succeeded on its most recent heartbeat. If no
-// healthy connection is found, it will attempt to dial the node.
-//
-// This exists for components that do not themselves actively maintain RPC
-// connections to remote nodes, e.g. DistSQL. However, it can cause significant
-// latency if the remote node is unresponsive (e.g. if the server/VM is shut
-// down), and should be avoided in latency-sensitive code paths. Preferably,
-// this should be replaced by some other mechanism to maintain RPC connections.
-// See also: https://github.com/cockroachdb/cockroach/issues/70111
 func (n *Dialer) ConnHealthTryDial(nodeID roachpb.NodeID, class rpc.ConnectionClass) error {
+	__antithesis_instrumentation__.Notify(185464)
 	err := n.ConnHealth(nodeID, class)
-	if err == nil || !n.getBreaker(nodeID, class).Ready() {
+	if err == nil || func() bool {
+		__antithesis_instrumentation__.Notify(185467)
+		return !n.getBreaker(nodeID, class).Ready() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(185468)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(185469)
 	}
+	__antithesis_instrumentation__.Notify(185465)
 	addr, err := n.resolver(nodeID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185470)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(185471)
 	}
+	__antithesis_instrumentation__.Notify(185466)
 	return n.rpcContext.GRPCDialNode(addr.String(), nodeID, class).Health()
 }
 
-// GetCircuitBreaker retrieves the circuit breaker for connections to the
-// given node. The breaker should not be mutated as this affects all connections
-// dialing to that node through this NodeDialer.
 func (n *Dialer) GetCircuitBreaker(
 	nodeID roachpb.NodeID, class rpc.ConnectionClass,
 ) *circuit.Breaker {
+	__antithesis_instrumentation__.Notify(185472)
 	return n.getBreaker(nodeID, class).Breaker
 }
 
 func (n *Dialer) getBreaker(nodeID roachpb.NodeID, class rpc.ConnectionClass) *wrappedBreaker {
+	__antithesis_instrumentation__.Notify(185473)
 	breakers := &n.breakers[class]
 	value, ok := breakers.Load(int64(nodeID))
 	if !ok {
+		__antithesis_instrumentation__.Notify(185475)
 		name := fmt.Sprintf("rpc %v [n%d]", n.rpcContext.Config.Addr, nodeID)
 		breaker := &wrappedBreaker{Breaker: n.rpcContext.NewBreaker(name), EveryN: log.Every(logPerNodeFailInterval)}
 		value, _ = breakers.LoadOrStore(int64(nodeID), unsafe.Pointer(breaker))
+	} else {
+		__antithesis_instrumentation__.Notify(185476)
 	}
+	__antithesis_instrumentation__.Notify(185474)
 	return (*wrappedBreaker)(value)
 }
 
-// Latency returns the exponentially weighted moving average latency to the
-// given node ID. Returns a latency of 0 with no error if we don't have enough
-// samples to compute a reliable average.
 func (n *Dialer) Latency(nodeID roachpb.NodeID) (time.Duration, error) {
-	if n == nil || n.resolver == nil {
+	__antithesis_instrumentation__.Notify(185477)
+	if n == nil || func() bool {
+		__antithesis_instrumentation__.Notify(185481)
+		return n.resolver == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(185482)
 		return 0, errors.New("no node dialer configured")
+	} else {
+		__antithesis_instrumentation__.Notify(185483)
 	}
+	__antithesis_instrumentation__.Notify(185478)
 	addr, err := n.resolver(nodeID)
 	if err != nil {
-		// Don't trip the breaker.
+		__antithesis_instrumentation__.Notify(185484)
+
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(185485)
 	}
+	__antithesis_instrumentation__.Notify(185479)
 	latency, ok := n.rpcContext.RemoteClocks.Latency(addr.String())
 	if !ok {
+		__antithesis_instrumentation__.Notify(185486)
 		latency = 0
+	} else {
+		__antithesis_instrumentation__.Notify(185487)
 	}
+	__antithesis_instrumentation__.Notify(185480)
 	return latency, nil
 }
 
-// TracingInternalClient wraps an InternalClient and fills in trace information
-// on Batch RPCs.
 type TracingInternalClient struct {
 	roachpb.InternalClient
 }
 
-// Batch overrides the Batch RPC client method and fills in tracing information.
 func (tic TracingInternalClient) Batch(
 	ctx context.Context, req *roachpb.BatchRequest, opts ...grpc.CallOption,
 ) (*roachpb.BatchResponse, error) {
+	__antithesis_instrumentation__.Notify(185488)
 	sp := tracing.SpanFromContext(ctx)
-	if sp != nil && !sp.IsNoop() {
+	if sp != nil && func() bool {
+		__antithesis_instrumentation__.Notify(185490)
+		return !sp.IsNoop() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(185491)
 		req.TraceInfo = sp.Meta().ToProto()
+	} else {
+		__antithesis_instrumentation__.Notify(185492)
 	}
+	__antithesis_instrumentation__.Notify(185489)
 	return tic.InternalClient.Batch(ctx, req, opts...)
 }

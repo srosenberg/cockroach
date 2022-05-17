@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/base"
@@ -23,8 +15,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// joinPlanningInfo is a utility struct that contains the information needed to
-// perform the physical planning of hash and merge joins.
 type joinPlanningInfo struct {
 	leftPlan, rightPlan *PhysicalPlan
 	joinType            descpb.JoinType
@@ -32,31 +22,31 @@ type joinPlanningInfo struct {
 	onExpr              execinfrapb.Expression
 	post                execinfrapb.PostProcessSpec
 	joinToStreamColMap  []int
-	// leftEqCols and rightEqCols are the indices of equality columns. These
-	// are only used when planning a hash join.
+
 	leftEqCols, rightEqCols             []uint32
 	leftEqColsAreKey, rightEqColsAreKey bool
-	// leftMergeOrd and rightMergeOrd are the orderings on both inputs to a
-	// merge join. They must be of the same length, and if the length is 0,
-	// then a hash join is planned.
+
 	leftMergeOrd, rightMergeOrd                 execinfrapb.Ordering
 	leftPlanDistribution, rightPlanDistribution physicalplan.PlanDistribution
 	allowPartialDistribution                    bool
 }
 
-// makeCoreSpec creates a processor core for hash and merge joins based on the
-// join planning information. Merge ordering fields of info determine which
-// kind of join is being planned.
 func (info *joinPlanningInfo) makeCoreSpec() execinfrapb.ProcessorCoreUnion {
+	__antithesis_instrumentation__.Notify(467671)
 	var core execinfrapb.ProcessorCoreUnion
 	if len(info.leftMergeOrd.Columns) != len(info.rightMergeOrd.Columns) {
+		__antithesis_instrumentation__.Notify(467674)
 		panic(errors.AssertionFailedf(
 			"unexpectedly different merge join ordering lengths: left %d, right %d",
 			len(info.leftMergeOrd.Columns), len(info.rightMergeOrd.Columns),
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(467675)
 	}
+	__antithesis_instrumentation__.Notify(467672)
 	if len(info.leftMergeOrd.Columns) == 0 {
-		// There is no required ordering on the columns, so we plan a hash join.
+		__antithesis_instrumentation__.Notify(467676)
+
 		core.HashJoiner = &execinfrapb.HashJoinerSpec{
 			LeftEqColumns:        info.leftEqCols,
 			RightEqColumns:       info.rightEqCols,
@@ -66,6 +56,7 @@ func (info *joinPlanningInfo) makeCoreSpec() execinfrapb.ProcessorCoreUnion {
 			RightEqColumnsAreKey: info.rightEqColsAreKey,
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(467677)
 		core.MergeJoiner = &execinfrapb.MergeJoinerSpec{
 			LeftOrdering:         info.leftMergeOrd,
 			RightOrdering:        info.rightMergeOrd,
@@ -75,19 +66,13 @@ func (info *joinPlanningInfo) makeCoreSpec() execinfrapb.ProcessorCoreUnion {
 			RightEqColumnsAreKey: info.rightEqColsAreKey,
 		}
 	}
+	__antithesis_instrumentation__.Notify(467673)
 	return core
 }
 
-// joinPlanningHelper is a utility struct that helps with the physical planning
-// of joins.
 type joinPlanningHelper struct {
-	// numLeftOutCols and numRightOutCols store the number of columns that need
-	// to be included in the output of the join from each of the sides.
 	numLeftOutCols, numRightOutCols int
-	// numAllLeftCols stores the width of the rows coming from the left side.
-	// Note that it includes all of the left "out" columns and might include
-	// other "internal" columns that are needed to merge the streams for the
-	// left input.
+
 	numAllLeftCols                                  int
 	leftPlanToStreamColMap, rightPlanToStreamColMap []int
 }
@@ -95,132 +80,162 @@ type joinPlanningHelper struct {
 func (h *joinPlanningHelper) joinOutColumns(
 	joinType descpb.JoinType, columns colinfo.ResultColumns,
 ) (post execinfrapb.PostProcessSpec, joinToStreamColMap []int) {
+	__antithesis_instrumentation__.Notify(467678)
 	joinToStreamColMap = makePlanToStreamColMap(len(columns))
 	post.Projection = true
 
-	// addOutCol appends to post.OutputColumns and returns the index
-	// in the slice of the added column.
 	addOutCol := func(col uint32) int {
+		__antithesis_instrumentation__.Notify(467682)
 		idx := len(post.OutputColumns)
 		post.OutputColumns = append(post.OutputColumns, col)
 		return idx
 	}
+	__antithesis_instrumentation__.Notify(467679)
 
-	// The join columns are in two groups:
-	//  - the columns on the left side (numLeftOutCols)
-	//  - the columns on the right side (numRightOutCols)
 	var numLeftOutCols int
 	var numAllLeftCols int
 	if joinType.ShouldIncludeLeftColsInOutput() {
+		__antithesis_instrumentation__.Notify(467683)
 		numLeftOutCols = h.numLeftOutCols
 		numAllLeftCols = h.numAllLeftCols
 		for i := 0; i < h.numLeftOutCols; i++ {
+			__antithesis_instrumentation__.Notify(467684)
 			joinToStreamColMap[i] = addOutCol(uint32(h.leftPlanToStreamColMap[i]))
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(467685)
 	}
+	__antithesis_instrumentation__.Notify(467680)
 
 	if joinType.ShouldIncludeRightColsInOutput() {
+		__antithesis_instrumentation__.Notify(467686)
 		for i := 0; i < h.numRightOutCols; i++ {
+			__antithesis_instrumentation__.Notify(467687)
 			joinToStreamColMap[numLeftOutCols+i] = addOutCol(
 				uint32(numAllLeftCols + h.rightPlanToStreamColMap[i]),
 			)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(467688)
 	}
+	__antithesis_instrumentation__.Notify(467681)
 
 	return post, joinToStreamColMap
 }
 
-// remapOnExpr remaps ordinal references in the ON condition (which refer to the
-// join columns as described above) to values that make sense in the joiner (0
-// to N-1 for the left input columns, N to N+M-1 for the right input columns).
 func (h *joinPlanningHelper) remapOnExpr(
 	planCtx *PlanningCtx, onCond tree.TypedExpr,
 ) (execinfrapb.Expression, error) {
+	__antithesis_instrumentation__.Notify(467689)
 	if onCond == nil {
+		__antithesis_instrumentation__.Notify(467693)
 		return execinfrapb.Expression{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(467694)
 	}
+	__antithesis_instrumentation__.Notify(467690)
 
 	joinColMap := make([]int, h.numLeftOutCols+h.numRightOutCols)
 	idx := 0
 	leftCols := 0
 	for i := 0; i < h.numLeftOutCols; i++ {
+		__antithesis_instrumentation__.Notify(467695)
 		joinColMap[idx] = h.leftPlanToStreamColMap[i]
 		if h.leftPlanToStreamColMap[i] != -1 {
+			__antithesis_instrumentation__.Notify(467697)
 			leftCols++
+		} else {
+			__antithesis_instrumentation__.Notify(467698)
 		}
+		__antithesis_instrumentation__.Notify(467696)
 		idx++
 	}
+	__antithesis_instrumentation__.Notify(467691)
 	for i := 0; i < h.numRightOutCols; i++ {
+		__antithesis_instrumentation__.Notify(467699)
 		joinColMap[idx] = leftCols + h.rightPlanToStreamColMap[i]
 		idx++
 	}
+	__antithesis_instrumentation__.Notify(467692)
 
 	return physicalplan.MakeExpression(onCond, planCtx, joinColMap)
 }
 
-// eqCols produces a slice of ordinal references for the plan columns specified
-// in eqIndices using planToColMap.
-// That is: eqIndices contains a slice of plan column indexes and planToColMap
-// maps the plan column indexes to the ordinal references (index of the
-// intermediate row produced).
 func eqCols(eqIndices []exec.NodeColumnOrdinal, planToColMap []int) []uint32 {
+	__antithesis_instrumentation__.Notify(467700)
 	eqCols := make([]uint32, len(eqIndices))
 	for i, planCol := range eqIndices {
+		__antithesis_instrumentation__.Notify(467702)
 		eqCols[i] = uint32(planToColMap[planCol])
 	}
+	__antithesis_instrumentation__.Notify(467701)
 
 	return eqCols
 }
 
-// distsqlOrdering converts the ordering specified by mergeJoinOrdering in
-// terms of the index of eqCols to the ordinal references provided by eqCols.
 func distsqlOrdering(
 	mergeJoinOrdering colinfo.ColumnOrdering, eqCols []uint32,
 ) execinfrapb.Ordering {
+	__antithesis_instrumentation__.Notify(467703)
 	var ord execinfrapb.Ordering
 	ord.Columns = make([]execinfrapb.Ordering_Column, len(mergeJoinOrdering))
 	for i, c := range mergeJoinOrdering {
+		__antithesis_instrumentation__.Notify(467705)
 		ord.Columns[i].ColIdx = eqCols[c.ColIdx]
 		dir := execinfrapb.Ordering_Column_ASC
 		if c.Direction == encoding.Descending {
+			__antithesis_instrumentation__.Notify(467707)
 			dir = execinfrapb.Ordering_Column_DESC
+		} else {
+			__antithesis_instrumentation__.Notify(467708)
 		}
+		__antithesis_instrumentation__.Notify(467706)
 		ord.Columns[i].Direction = dir
 	}
+	__antithesis_instrumentation__.Notify(467704)
 
 	return ord
 }
 
 func distsqlSetOpJoinType(setOpType tree.UnionType) descpb.JoinType {
+	__antithesis_instrumentation__.Notify(467709)
 	switch setOpType {
 	case tree.ExceptOp:
+		__antithesis_instrumentation__.Notify(467710)
 		return descpb.ExceptAllJoin
 	case tree.IntersectOp:
+		__antithesis_instrumentation__.Notify(467711)
 		return descpb.IntersectAllJoin
 	default:
+		__antithesis_instrumentation__.Notify(467712)
 		panic(errors.AssertionFailedf("set op type %v unsupported by joins", setOpType))
 	}
 }
 
-// getSQLInstanceIDsOfRouters returns all nodes that routers are put on.
 func getSQLInstanceIDsOfRouters(
 	routers []physicalplan.ProcessorIdx, processors []physicalplan.Processor,
 ) (sqlInstanceIDs []base.SQLInstanceID) {
+	__antithesis_instrumentation__.Notify(467713)
 	seen := make(map[base.SQLInstanceID]struct{})
 	for _, pIdx := range routers {
+		__antithesis_instrumentation__.Notify(467715)
 		n := processors[pIdx].SQLInstanceID
 		if _, ok := seen[n]; !ok {
+			__antithesis_instrumentation__.Notify(467716)
 			seen[n] = struct{}{}
 			sqlInstanceIDs = append(sqlInstanceIDs, n)
+		} else {
+			__antithesis_instrumentation__.Notify(467717)
 		}
 	}
+	__antithesis_instrumentation__.Notify(467714)
 	return sqlInstanceIDs
 }
 
 func findJoinProcessorNodes(
 	leftRouters, rightRouters []physicalplan.ProcessorIdx, processors []physicalplan.Processor,
 ) (instances []base.SQLInstanceID) {
-	// TODO(radu): for now we run a join processor on every node that produces
-	// data for either source. In the future we should be smarter here.
+	__antithesis_instrumentation__.Notify(467718)
+
 	return getSQLInstanceIDsOfRouters(append(leftRouters, rightRouters...), processors)
 }

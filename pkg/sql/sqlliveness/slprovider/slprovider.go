@@ -1,16 +1,8 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package slprovider exposes an implementation of the sqlliveness.Provider
 // interface.
 package slprovider
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,7 +19,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
 )
 
-// New constructs a new Provider.
 func New(
 	ambientCtx log.AmbientContext,
 	stopper *stop.Stopper,
@@ -37,6 +28,7 @@ func New(
 	settings *cluster.Settings,
 	testingKnobs *sqlliveness.TestingKnobs,
 ) sqlliveness.Provider {
+	__antithesis_instrumentation__.Notify(624263)
 	storage := slstorage.NewStorage(ambientCtx, stopper, clock, db, codec, settings)
 	instance := slinstance.NewSQLInstance(stopper, clock, storage, settings, testingKnobs)
 	return &provider{
@@ -46,11 +38,13 @@ func New(
 }
 
 func (p *provider) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(624264)
 	p.Storage.Start(ctx)
 	p.Instance.Start(ctx)
 }
 
 func (p *provider) Metrics() metric.Struct {
+	__antithesis_instrumentation__.Notify(624265)
 	return p.Storage.Metrics()
 }
 

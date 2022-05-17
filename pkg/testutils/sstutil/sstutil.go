@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sstutil
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,9 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// MakeSST builds a binary in-memory SST from the given tests data. It returns
-// the binary SST data as well as the start and end (exclusive) keys of the SST.
 func MakeSST(t *testing.T, st *cluster.Settings, kvs []KV) ([]byte, roachpb.Key, roachpb.Key) {
+	__antithesis_instrumentation__.Notify(646407)
 	t.Helper()
 
 	sstFile := &storage.MemFile{}
@@ -34,29 +25,41 @@ func MakeSST(t *testing.T, st *cluster.Settings, kvs []KV) ([]byte, roachpb.Key,
 
 	start, end := keys.MaxKey, keys.MinKey
 	for _, kv := range kvs {
+		__antithesis_instrumentation__.Notify(646409)
 		if kv.Key().Compare(start) < 0 {
+			__antithesis_instrumentation__.Notify(646412)
 			start = kv.Key()
+		} else {
+			__antithesis_instrumentation__.Notify(646413)
 		}
+		__antithesis_instrumentation__.Notify(646410)
 		if kv.Key().Compare(end) > 0 {
+			__antithesis_instrumentation__.Notify(646414)
 			end = kv.Key()
+		} else {
+			__antithesis_instrumentation__.Notify(646415)
 		}
+		__antithesis_instrumentation__.Notify(646411)
 		if kv.Timestamp().IsEmpty() {
+			__antithesis_instrumentation__.Notify(646416)
 			meta := &enginepb.MVCCMetadata{RawBytes: kv.ValueBytes()}
 			metaBytes, err := protoutil.Marshal(meta)
 			require.NoError(t, err)
 			require.NoError(t, writer.PutUnversioned(kv.Key(), metaBytes))
 		} else {
+			__antithesis_instrumentation__.Notify(646417)
 			require.NoError(t, writer.PutMVCC(kv.MVCCKey(), kv.ValueBytes()))
 		}
 	}
+	__antithesis_instrumentation__.Notify(646408)
 	require.NoError(t, writer.Finish())
 	writer.Close()
 
 	return sstFile.Data(), start, end.Next()
 }
 
-// ScanSST scans a binary in-memory SST for KV pairs.
 func ScanSST(t *testing.T, sst []byte) []KV {
+	__antithesis_instrumentation__.Notify(646418)
 	t.Helper()
 
 	var kvs []KV
@@ -66,11 +69,16 @@ func ScanSST(t *testing.T, sst []byte) []KV {
 
 	iter.SeekGE(storage.MVCCKey{Key: keys.MinKey})
 	for {
+		__antithesis_instrumentation__.Notify(646420)
 		ok, err := iter.Valid()
 		require.NoError(t, err)
 		if !ok {
+			__antithesis_instrumentation__.Notify(646422)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(646423)
 		}
+		__antithesis_instrumentation__.Notify(646421)
 
 		k := iter.UnsafeKey()
 		v := roachpb.Value{RawBytes: iter.UnsafeValue()}
@@ -83,11 +91,12 @@ func ScanSST(t *testing.T, sst []byte) []KV {
 		})
 		iter.Next()
 	}
+	__antithesis_instrumentation__.Notify(646419)
 	return kvs
 }
 
-// ComputeStats computes the MVCC stats for the given binary SST.
 func ComputeStats(t *testing.T, sst []byte) *enginepb.MVCCStats {
+	__antithesis_instrumentation__.Notify(646424)
 	t.Helper()
 
 	iter, err := storage.NewMemSSTIterator(sst, true)

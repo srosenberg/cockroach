@@ -13,6 +13,7 @@ go_library(
         "//pkg/cli/clisqlclient",
         "//pkg/cli/clisqlexec",
         "//pkg/cli/exit",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_spf13_cobra//:cobra",
     ],
@@ -22,4 +23,5 @@ go_binary(
     name = "cockroach-sql",
     embed = [":cockroach-sql_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

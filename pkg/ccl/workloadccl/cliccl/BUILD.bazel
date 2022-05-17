@@ -13,6 +13,7 @@ go_library(
         "//pkg/workload",
         "//pkg/workload/cli",
         "//pkg/workload/workloadsql",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_spf13_cobra//:cobra",
         "@com_github_spf13_pflag//:pflag",

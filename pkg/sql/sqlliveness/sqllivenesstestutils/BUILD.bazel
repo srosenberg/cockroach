@@ -8,5 +8,6 @@ go_library(
     deps = [
         "//pkg/sql/sqlliveness",
         "//pkg/util/hlc",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

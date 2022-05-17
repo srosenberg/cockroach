@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -17,59 +9,71 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 )
 
-// RowCounter is a helper that counts how many distinct rows appear in the KVs
-// that is is shown via `Count`. Note: the `DataSize` field of the BulkOpSummary
-// is *not* populated by this and should be set separately.
 type RowCounter struct {
 	roachpb.BulkOpSummary
 	prev roachpb.Key
 }
 
-// Count examines each key passed to it and increments the running count when it
-// sees a key that belongs to a new row.
 func (r *RowCounter) Count(key roachpb.Key) error {
-	// EnsureSafeSplitKey is usually used to avoid splitting a row across ranges,
-	// by returning the row's key prefix.
-	// We reuse it here to count "rows" by counting when it changes.
-	// Non-SQL keys are returned unchanged or may error -- we ignore them, since
-	// non-SQL keys are obviously thus not SQL rows.
-	//
-	// TODO(ajwerner): provide a separate mechanism to determine whether the key
-	// is a valid SQL key which explicitly indicates whether the key is valid as
-	// a split key independent of an error. See #43423.
-	row, err := keys.EnsureSafeSplitKey(key)
-	if err != nil || len(key) == len(row) {
-		// TODO(ajwerner): Determine which errors should be ignored and only
-		// ignore those.
-		return nil //nolint:returnerrcheck
-	}
+	__antithesis_instrumentation__.Notify(643668)
 
-	// no change key prefix => no new row.
-	if bytes.Equal(row, r.prev) {
+	row, err := keys.EnsureSafeSplitKey(key)
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(643675)
+		return len(key) == len(row) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643676)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(643677)
 	}
+	__antithesis_instrumentation__.Notify(643669)
+
+	if bytes.Equal(row, r.prev) {
+		__antithesis_instrumentation__.Notify(643678)
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(643679)
+	}
+	__antithesis_instrumentation__.Notify(643670)
 
 	r.prev = append(r.prev[:0], row...)
 
 	rem, _, err := keys.DecodeTenantPrefix(row)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(643680)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(643681)
 	}
+	__antithesis_instrumentation__.Notify(643671)
 	_, tableID, indexID, err := keys.DecodeTableIDIndexID(rem)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(643682)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(643683)
 	}
+	__antithesis_instrumentation__.Notify(643672)
 
 	if r.EntryCounts == nil {
+		__antithesis_instrumentation__.Notify(643684)
 		r.EntryCounts = make(map[uint64]int64)
+	} else {
+		__antithesis_instrumentation__.Notify(643685)
 	}
+	__antithesis_instrumentation__.Notify(643673)
 	r.EntryCounts[roachpb.BulkOpSummaryID(uint64(tableID), uint64(indexID))]++
 
 	if indexID == 1 {
+		__antithesis_instrumentation__.Notify(643686)
 		r.DeprecatedRows++
 	} else {
+		__antithesis_instrumentation__.Notify(643687)
 		r.DeprecatedIndexEntries++
 	}
+	__antithesis_instrumentation__.Notify(643674)
 
 	return nil
 }

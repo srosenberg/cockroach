@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rditer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
@@ -16,29 +8,38 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/storage/enginepb"
 )
 
-// ComputeStatsForRange computes the stats for a given range by
-// iterating over all key ranges for the given range that should
-// be accounted for in its stats.
 func ComputeStatsForRange(
 	d *roachpb.RangeDescriptor, reader storage.Reader, nowNanos int64,
 ) (enginepb.MVCCStats, error) {
+	__antithesis_instrumentation__.Notify(114253)
 	ms := enginepb.MVCCStats{}
 	var err error
 	for _, keyRange := range MakeReplicatedKeyRangesExceptLockTable(d) {
+		__antithesis_instrumentation__.Notify(114255)
 		func() {
+			__antithesis_instrumentation__.Notify(114257)
 			iter := reader.NewMVCCIterator(storage.MVCCKeyAndIntentsIterKind,
 				storage.IterOptions{UpperBound: keyRange.End})
 			defer iter.Close()
 
 			var msDelta enginepb.MVCCStats
 			if msDelta, err = iter.ComputeStats(keyRange.Start, keyRange.End, nowNanos); err != nil {
+				__antithesis_instrumentation__.Notify(114259)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(114260)
 			}
+			__antithesis_instrumentation__.Notify(114258)
 			ms.Add(msDelta)
 		}()
+		__antithesis_instrumentation__.Notify(114256)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(114261)
 			return enginepb.MVCCStats{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(114262)
 		}
 	}
+	__antithesis_instrumentation__.Notify(114254)
 	return ms, nil
 }

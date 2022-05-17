@@ -5,13 +5,17 @@ go_library(
     srcs = ["prereqs.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/cmd/prereqs",
     visibility = ["//visibility:private"],
-    deps = ["@org_golang_x_tools//go/packages"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@org_golang_x_tools//go/packages",
+    ],
 )
 
 go_binary(
     name = "prereqs",
     embed = [":prereqs_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -21,5 +25,8 @@ go_test(
     data = glob(["testdata/**"]),
     embed = [":prereqs_lib"],
     tags = ["broken_in_bazel"],
-    deps = ["//pkg/testutils"],
+    deps = [
+        "//pkg/testutils",
+        "@com_antithesis_instrumentation//wrappers",
+    ],
 )

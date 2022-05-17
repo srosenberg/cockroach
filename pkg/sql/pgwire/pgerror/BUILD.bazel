@@ -20,6 +20,7 @@ go_library(
     deps = [
         "//pkg/docs",
         "//pkg/sql/pgwire/pgcode",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_errors//errorspb",
         "@com_github_gogo_protobuf//proto",
@@ -48,6 +49,7 @@ go_test(
         "//pkg/util/hlc",
         "//pkg/util/log",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_errors//testutils",
         "@com_github_kr_pretty//:pretty",

@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,68 +20,44 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Direct provides direct access to the underlying KV-storage.
-func (tc *Collection) Direct() Direct { return &tc.direct }
+func (tc *Collection) Direct() Direct {
+	__antithesis_instrumentation__.Notify(264412)
+	return &tc.direct
+}
 
-// Direct provides access to the underlying key-value store directly. A key
-// difference between descriptors retrieved directly vs. descriptors retrieved
-// through the Collection is that the descriptors will not be hydrated.
-//
-// Note: If you are tempted to use this in a place which is not currently using
-// it, pause, and consider the decision very carefully.
 type Direct interface {
-	// GetCatalogUnvalidated looks up and returns all available descriptors and
-	// namespace system table entries but does not validate anything.
-	// It is exported solely to be used by functions which want to perform explicit
-	// validation to detect corruption.
 	GetCatalogUnvalidated(
 		ctx context.Context, txn *kv.Txn,
 	) (nstree.Catalog, error)
 
-	// MustGetDatabaseDescByID looks up the database descriptor given its ID,
-	// returning an error if the descriptor is not found.
 	MustGetDatabaseDescByID(
 		ctx context.Context, txn *kv.Txn, id descpb.ID,
 	) (catalog.DatabaseDescriptor, error)
 
-	// MustGetSchemaDescByID looks up the schema descriptor given its ID,
-	// returning an error if the descriptor is not found.
 	MustGetSchemaDescByID(
 		ctx context.Context, txn *kv.Txn, id descpb.ID,
 	) (catalog.SchemaDescriptor, error)
 
-	// MustGetTypeDescByID looks up the type descriptor given its ID,
-	// returning an error if the type is not found.
 	MustGetTypeDescByID(
 		ctx context.Context, txn *kv.Txn, id descpb.ID,
 	) (catalog.TypeDescriptor, error)
 
-	// MustGetTableDescByID looks up the table descriptor given its ID,
-	// returning an error if the table is not found.
 	MustGetTableDescByID(
 		ctx context.Context, txn *kv.Txn, id descpb.ID,
 	) (catalog.TableDescriptor, error)
 
-	// GetSchemaDescriptorsFromIDs returns the schema descriptors from an input
-	// list of schema IDs. It will return an error if any one of the IDs is not
-	// a schema.
 	GetSchemaDescriptorsFromIDs(
 		ctx context.Context, txn *kv.Txn, ids []descpb.ID,
 	) ([]catalog.SchemaDescriptor, error)
 
-	// ResolveSchemaID resolves a schema's ID based on db and name.
 	ResolveSchemaID(
 		ctx context.Context, txn *kv.Txn, dbID descpb.ID, scName string,
 	) (descpb.ID, error)
 
-	// GetDescriptorCollidingWithObject looks up the object ID and returns the
-	// corresponding descriptor if it exists.
 	GetDescriptorCollidingWithObject(
 		ctx context.Context, txn *kv.Txn, parentID descpb.ID, parentSchemaID descpb.ID, name string,
 	) (catalog.Descriptor, error)
 
-	// CheckObjectCollision returns an error if an object already exists with the
-	// same parentID, parentSchemaID and name.
 	CheckObjectCollision(
 		ctx context.Context,
 		txn *kv.Txn,
@@ -98,27 +66,18 @@ type Direct interface {
 		name tree.ObjectName,
 	) error
 
-	// LookupDatabaseID is a wrapper around LookupObjectID for databases.
 	LookupDatabaseID(
 		ctx context.Context, txn *kv.Txn, dbName string,
 	) (descpb.ID, error)
 
-	// LookupSchemaID is a wrapper around LookupObjectID for schemas.
 	LookupSchemaID(
 		ctx context.Context, txn *kv.Txn, dbID descpb.ID, schemaName string,
 	) (descpb.ID, error)
 
-	// LookupObjectID returns the table or type descriptor ID for the namespace
-	// entry keyed by (parentID, parentSchemaID, name).
-	// Returns descpb.InvalidID when no matching entry exists.
 	LookupObjectID(
 		ctx context.Context, txn *kv.Txn, dbID descpb.ID, schemaID descpb.ID, objectName string,
 	) (descpb.ID, error)
 
-	// WriteNewDescToBatch adds a CPut command writing a descriptor proto to the
-	// descriptors table. It writes the descriptor desc at the id descID, asserting
-	// that there was no previous descriptor at that id present already. If kvTrace
-	// is enabled, it will log an event explaining the CPut that was performed.
 	WriteNewDescToBatch(
 		ctx context.Context, kvTrace bool, b *kv.Batch, desc catalog.Descriptor,
 	) error
@@ -131,6 +90,7 @@ type direct struct {
 }
 
 func makeDirect(ctx context.Context, codec keys.SQLCodec, s *cluster.Settings) direct {
+	__antithesis_instrumentation__.Notify(264413)
 	return direct{
 		settings: s,
 		codec:    codec,
@@ -139,94 +99,148 @@ func makeDirect(ctx context.Context, codec keys.SQLCodec, s *cluster.Settings) d
 }
 
 func (d *direct) GetCatalogUnvalidated(ctx context.Context, txn *kv.Txn) (nstree.Catalog, error) {
+	__antithesis_instrumentation__.Notify(264414)
 	return catkv.GetCatalogUnvalidated(ctx, d.codec, txn)
 }
 
 func (d *direct) MustGetDatabaseDescByID(
 	ctx context.Context, txn *kv.Txn, id descpb.ID,
 ) (catalog.DatabaseDescriptor, error) {
-	desc, err := catkv.MustGetDescriptorByID(ctx, d.version, d.codec, txn, nil /* vd */, id, catalog.Database)
+	__antithesis_instrumentation__.Notify(264415)
+	desc, err := catkv.MustGetDescriptorByID(ctx, d.version, d.codec, txn, nil, id, catalog.Database)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264417)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264418)
 	}
+	__antithesis_instrumentation__.Notify(264416)
 	return desc.(catalog.DatabaseDescriptor), nil
 }
 
 func (d *direct) MustGetSchemaDescByID(
 	ctx context.Context, txn *kv.Txn, id descpb.ID,
 ) (catalog.SchemaDescriptor, error) {
-	desc, err := catkv.MustGetDescriptorByID(ctx, d.version, d.codec, txn, nil /* vd */, id, catalog.Schema)
+	__antithesis_instrumentation__.Notify(264419)
+	desc, err := catkv.MustGetDescriptorByID(ctx, d.version, d.codec, txn, nil, id, catalog.Schema)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264421)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264422)
 	}
+	__antithesis_instrumentation__.Notify(264420)
 	return desc.(catalog.SchemaDescriptor), nil
 }
 
 func (d *direct) MustGetTableDescByID(
 	ctx context.Context, txn *kv.Txn, id descpb.ID,
 ) (catalog.TableDescriptor, error) {
-	desc, err := catkv.MustGetDescriptorByID(ctx, d.version, d.codec, txn, nil /* vd */, id, catalog.Table)
+	__antithesis_instrumentation__.Notify(264423)
+	desc, err := catkv.MustGetDescriptorByID(ctx, d.version, d.codec, txn, nil, id, catalog.Table)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264425)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264426)
 	}
+	__antithesis_instrumentation__.Notify(264424)
 	return desc.(catalog.TableDescriptor), nil
 }
 
 func (d *direct) MustGetTypeDescByID(
 	ctx context.Context, txn *kv.Txn, id descpb.ID,
 ) (catalog.TypeDescriptor, error) {
-	desc, err := catkv.MustGetDescriptorByID(ctx, d.version, d.codec, txn, nil /* vd */, id, catalog.Type)
+	__antithesis_instrumentation__.Notify(264427)
+	desc, err := catkv.MustGetDescriptorByID(ctx, d.version, d.codec, txn, nil, id, catalog.Type)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264429)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264430)
 	}
+	__antithesis_instrumentation__.Notify(264428)
 	return desc.(catalog.TypeDescriptor), nil
 }
 
 func (d *direct) GetSchemaDescriptorsFromIDs(
 	ctx context.Context, txn *kv.Txn, ids []descpb.ID,
 ) ([]catalog.SchemaDescriptor, error) {
-	descs, err := catkv.MustGetDescriptorsByID(ctx, d.version, d.codec, txn, nil /* vd */, ids, catalog.Schema)
+	__antithesis_instrumentation__.Notify(264431)
+	descs, err := catkv.MustGetDescriptorsByID(ctx, d.version, d.codec, txn, nil, ids, catalog.Schema)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264434)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264435)
 	}
+	__antithesis_instrumentation__.Notify(264432)
 	ret := make([]catalog.SchemaDescriptor, len(descs))
 	for i, desc := range descs {
+		__antithesis_instrumentation__.Notify(264436)
 		ret[i] = desc.(catalog.SchemaDescriptor)
 	}
+	__antithesis_instrumentation__.Notify(264433)
 	return ret, nil
 }
 
 func (d *direct) ResolveSchemaID(
 	ctx context.Context, txn *kv.Txn, dbID descpb.ID, scName string,
 ) (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(264437)
 	if !d.version.IsActive(clusterversion.PublicSchemasWithDescriptors) {
-		// Try to use the system name resolution bypass. Avoids a hotspot by explicitly
-		// checking for public schema.
+		__antithesis_instrumentation__.Notify(264439)
+
 		if scName == tree.PublicSchema {
+			__antithesis_instrumentation__.Notify(264440)
 			return keys.PublicSchemaID, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264441)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(264442)
 	}
+	__antithesis_instrumentation__.Notify(264438)
 	return catkv.LookupID(ctx, txn, d.codec, dbID, keys.RootNamespaceID, scName)
 }
 
 func (d *direct) GetDescriptorCollidingWithObject(
 	ctx context.Context, txn *kv.Txn, parentID descpb.ID, parentSchemaID descpb.ID, name string,
 ) (catalog.Descriptor, error) {
+	__antithesis_instrumentation__.Notify(264443)
 	id, err := catkv.LookupID(ctx, txn, d.codec, parentID, parentSchemaID, name)
-	if err != nil || id == descpb.InvalidID {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(264447)
+		return id == descpb.InvalidID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264448)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264449)
 	}
-	// ID is already in use by another object.
-	desc, err := catkv.MaybeGetDescriptorByID(ctx, d.version, d.codec, txn, nil /* vd */, id, catalog.Any)
-	if desc == nil && err == nil {
+	__antithesis_instrumentation__.Notify(264444)
+
+	desc, err := catkv.MaybeGetDescriptorByID(ctx, d.version, d.codec, txn, nil, id, catalog.Any)
+	if desc == nil && func() bool {
+		__antithesis_instrumentation__.Notify(264450)
+		return err == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264451)
 		return nil, errors.NewAssertionErrorWithWrappedErrf(
 			catalog.ErrDescriptorNotFound,
 			"parentID=%d parentSchemaID=%d name=%q has ID=%d",
 			parentID, parentSchemaID, name, id)
+	} else {
+		__antithesis_instrumentation__.Notify(264452)
 	}
+	__antithesis_instrumentation__.Notify(264445)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264453)
 		return nil, sqlerrors.WrapErrorWhileConstructingObjectAlreadyExistsErr(err)
+	} else {
+		__antithesis_instrumentation__.Notify(264454)
 	}
+	__antithesis_instrumentation__.Notify(264446)
 	return desc, nil
 }
 
@@ -237,46 +251,70 @@ func (d *direct) CheckObjectCollision(
 	parentSchemaID descpb.ID,
 	name tree.ObjectName,
 ) error {
+	__antithesis_instrumentation__.Notify(264455)
 	desc, err := d.GetDescriptorCollidingWithObject(ctx, txn, parentID, parentSchemaID, name.Object())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264458)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(264459)
 	}
+	__antithesis_instrumentation__.Notify(264456)
 	if desc != nil {
+		__antithesis_instrumentation__.Notify(264460)
 		maybeQualifiedName := name.Object()
-		if name.Catalog() != "" && name.Schema() != "" {
+		if name.Catalog() != "" && func() bool {
+			__antithesis_instrumentation__.Notify(264462)
+			return name.Schema() != "" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(264463)
 			maybeQualifiedName = name.FQString()
+		} else {
+			__antithesis_instrumentation__.Notify(264464)
 		}
+		__antithesis_instrumentation__.Notify(264461)
 		return sqlerrors.MakeObjectAlreadyExistsError(desc.DescriptorProto(), maybeQualifiedName)
+	} else {
+		__antithesis_instrumentation__.Notify(264465)
 	}
+	__antithesis_instrumentation__.Notify(264457)
 	return nil
 }
 
 func (d *direct) LookupObjectID(
 	ctx context.Context, txn *kv.Txn, dbID descpb.ID, schemaID descpb.ID, objectName string,
 ) (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(264466)
 	return catkv.LookupID(ctx, txn, d.codec, dbID, schemaID, objectName)
 }
 
 func (d *direct) LookupSchemaID(
 	ctx context.Context, txn *kv.Txn, dbID descpb.ID, schemaName string,
 ) (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(264467)
 	return catkv.LookupID(ctx, txn, d.codec, dbID, keys.RootNamespaceID, schemaName)
 }
 
 func (d *direct) LookupDatabaseID(
 	ctx context.Context, txn *kv.Txn, dbName string,
 ) (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(264468)
 	return catkv.LookupID(ctx, txn, d.codec, keys.RootNamespaceID, keys.RootNamespaceID, dbName)
 }
 
 func (d *direct) WriteNewDescToBatch(
 	ctx context.Context, kvTrace bool, b *kv.Batch, desc catalog.Descriptor,
 ) error {
+	__antithesis_instrumentation__.Notify(264469)
 	descKey := catalogkeys.MakeDescMetadataKey(d.codec, desc.GetID())
 	proto := desc.DescriptorProto()
 	if kvTrace {
+		__antithesis_instrumentation__.Notify(264471)
 		log.VEventf(ctx, 2, "CPut %s -> %s", descKey, proto)
+	} else {
+		__antithesis_instrumentation__.Notify(264472)
 	}
+	__antithesis_instrumentation__.Notify(264470)
 	b.CPut(descKey, proto, nil)
 	return nil
 }

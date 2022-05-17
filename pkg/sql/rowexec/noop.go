@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,10 +11,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// noopProcessor is a processor that simply passes rows through from the
-// synchronizer to the post-processing stage. It can be useful for its
-// post-processing or in the last stage of a computation, where we may only
-// need the synchronizer to join streams.
 type noopProcessor struct {
 	execinfra.ProcessorBase
 	input execinfra.RowSource
@@ -41,6 +29,7 @@ func newNoopProcessor(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*noopProcessor, error) {
+	__antithesis_instrumentation__.Notify(574012)
 	n := &noopProcessor{input: input}
 	if err := n.Init(
 		n,
@@ -49,75 +38,116 @@ func newNoopProcessor(
 		flowCtx,
 		processorID,
 		output,
-		nil, /* memMonitor */
+		nil,
 		execinfra.ProcStateOpts{InputsToDrain: []execinfra.RowSource{n.input}},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(574015)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(574016)
 	}
+	__antithesis_instrumentation__.Notify(574013)
 	ctx := flowCtx.EvalCtx.Ctx()
 	if execinfra.ShouldCollectStats(ctx, flowCtx) {
+		__antithesis_instrumentation__.Notify(574017)
 		n.input = newInputStatCollector(n.input)
 		n.ExecStatsForTrace = n.execStatsForTrace
+	} else {
+		__antithesis_instrumentation__.Notify(574018)
 	}
+	__antithesis_instrumentation__.Notify(574014)
 	return n, nil
 }
 
-// Start is part of the RowSource interface.
 func (n *noopProcessor) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(574019)
 	ctx = n.StartInternal(ctx, noopProcName)
 	n.input.Start(ctx)
 }
 
-// Next is part of the RowSource interface.
 func (n *noopProcessor) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(574020)
 	for n.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(574022)
 		row, meta := n.input.Next()
 
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(574025)
 			if meta.Err != nil {
-				n.MoveToDraining(nil /* err */)
+				__antithesis_instrumentation__.Notify(574027)
+				n.MoveToDraining(nil)
+			} else {
+				__antithesis_instrumentation__.Notify(574028)
 			}
+			__antithesis_instrumentation__.Notify(574026)
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(574029)
 		}
+		__antithesis_instrumentation__.Notify(574023)
 		if row == nil {
-			n.MoveToDraining(nil /* err */)
+			__antithesis_instrumentation__.Notify(574030)
+			n.MoveToDraining(nil)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(574031)
 		}
+		__antithesis_instrumentation__.Notify(574024)
 
 		if outRow := n.ProcessRowHelper(row); outRow != nil {
+			__antithesis_instrumentation__.Notify(574032)
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(574033)
 		}
 	}
+	__antithesis_instrumentation__.Notify(574021)
 	return nil, n.DrainHelper()
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (n *noopProcessor) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(574034)
 	is, ok := getInputStats(n.input)
 	if !ok {
+		__antithesis_instrumentation__.Notify(574036)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(574037)
 	}
+	__antithesis_instrumentation__.Notify(574035)
 	return &execinfrapb.ComponentStats{
 		Inputs: []execinfrapb.InputStats{is},
 		Output: n.OutputHelper.Stats(),
 	}
 }
 
-// ChildCount is part of the execinfra.OpNode interface.
 func (n *noopProcessor) ChildCount(bool) int {
+	__antithesis_instrumentation__.Notify(574038)
 	if _, ok := n.input.(execinfra.OpNode); ok {
+		__antithesis_instrumentation__.Notify(574040)
 		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(574041)
 	}
+	__antithesis_instrumentation__.Notify(574039)
 	return 0
 }
 
-// Child is part of the execinfra.OpNode interface.
 func (n *noopProcessor) Child(nth int, _ bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(574042)
 	if nth == 0 {
+		__antithesis_instrumentation__.Notify(574044)
 		if n, ok := n.input.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(574046)
 			return n
+		} else {
+			__antithesis_instrumentation__.Notify(574047)
 		}
+		__antithesis_instrumentation__.Notify(574045)
 		panic("input to noop is not an execinfra.OpNode")
+	} else {
+		__antithesis_instrumentation__.Notify(574048)
 	}
+	__antithesis_instrumentation__.Notify(574043)
 	panic(errors.AssertionFailedf("invalid index %d", nth))
 }

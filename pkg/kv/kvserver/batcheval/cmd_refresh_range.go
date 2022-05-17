@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,7 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// refreshRangeTBIEnabled controls whether we use a TBI during ranged refreshes.
 var refreshRangeTBIEnabled = settings.RegisterBoolSetting(
 	settings.SystemOnly,
 	"kv.refresh_range.time_bound_iterators.enabled",
@@ -38,45 +29,46 @@ func init() {
 	RegisterReadOnlyCommand(roachpb.RefreshRange, DefaultDeclareKeys, RefreshRange)
 }
 
-// RefreshRange checks whether the key range specified has any values written in
-// the interval (args.RefreshFrom, header.Timestamp].
 func RefreshRange(
 	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(97336)
 	args := cArgs.Args.(*roachpb.RefreshRangeRequest)
 	h := cArgs.Header
 
 	if h.Txn == nil {
+		__antithesis_instrumentation__.Notify(97340)
 		return result.Result{}, errors.AssertionFailedf("no transaction specified to %s", args.Method())
+	} else {
+		__antithesis_instrumentation__.Notify(97341)
 	}
+	__antithesis_instrumentation__.Notify(97337)
 
-	// We're going to refresh up to the transaction's read timestamp.
 	if h.Timestamp != h.Txn.WriteTimestamp {
-		// We're expecting the read and write timestamp to have converged before the
-		// Refresh request was sent.
+		__antithesis_instrumentation__.Notify(97342)
+
 		log.Fatalf(ctx, "expected provisional commit ts %s == read ts %s. txn: %s", h.Timestamp,
 			h.Txn.WriteTimestamp, h.Txn)
+	} else {
+		__antithesis_instrumentation__.Notify(97343)
 	}
+	__antithesis_instrumentation__.Notify(97338)
 	refreshTo := h.Timestamp
 
 	refreshFrom := args.RefreshFrom
 	if refreshFrom.IsEmpty() {
+		__antithesis_instrumentation__.Notify(97344)
 		return result.Result{}, errors.AssertionFailedf("empty RefreshFrom: %s", args)
+	} else {
+		__antithesis_instrumentation__.Notify(97345)
 	}
+	__antithesis_instrumentation__.Notify(97339)
 
 	log.VEventf(ctx, 2, "refresh %s @[%s-%s]", args.Span(), refreshFrom, refreshTo)
 	tbi := refreshRangeTBIEnabled.Get(&cArgs.EvalCtx.ClusterSettings().SV)
 	return result.Result{}, refreshRange(reader, tbi, args.Span(), refreshFrom, refreshTo, h.Txn.ID)
 }
 
-// refreshRange iterates over the specified key span until it discovers a value
-// written after the refreshFrom timestamp but before or at the refreshTo
-// timestamp. The iteration observes MVCC tombstones, which must be considered
-// as conflicts during a refresh. The iteration also observes intents, and any
-// intent that is not owned by the specified txn ID is considered a conflict.
-//
-// If such a conflict is found, the function returns an error. Otherwise, no
-// error is returned.
 func refreshRange(
 	reader storage.Reader,
 	timeBoundIterator bool,
@@ -84,14 +76,13 @@ func refreshRange(
 	refreshFrom, refreshTo hlc.Timestamp,
 	txnID uuid.UUID,
 ) error {
-	// Construct an incremental iterator with the desired time bounds. Incremental
-	// iterators will emit MVCC tombstones by default and will emit intents when
-	// configured to do so (see IntentPolicy).
+	__antithesis_instrumentation__.Notify(97346)
+
 	iter := storage.NewMVCCIncrementalIterator(reader, storage.MVCCIncrementalIterOptions{
 		EnableTimeBoundIteratorOptimization: timeBoundIterator,
 		EndKey:                              span.EndKey,
-		StartTime:                           refreshFrom, // exclusive
-		EndTime:                             refreshTo,   // inclusive
+		StartTime:                           refreshFrom,
+		EndTime:                             refreshTo,
 		IntentPolicy:                        storage.MVCCIncrementalIterIntentPolicyEmit,
 	})
 	defer iter.Close()
@@ -99,49 +90,82 @@ func refreshRange(
 	var meta enginepb.MVCCMetadata
 	iter.SeekGE(storage.MakeMVCCMetadataKey(span.Key))
 	for {
+		__antithesis_instrumentation__.Notify(97348)
 		if ok, err := iter.Valid(); err != nil {
+			__antithesis_instrumentation__.Notify(97351)
 			return err
-		} else if !ok {
-			break
+		} else {
+			__antithesis_instrumentation__.Notify(97352)
+			if !ok {
+				__antithesis_instrumentation__.Notify(97353)
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(97354)
+			}
 		}
+		__antithesis_instrumentation__.Notify(97349)
 
 		key := iter.Key()
 		if !key.IsValue() {
-			// Found an intent. Check whether it is owned by this transaction.
-			// If so, proceed with iteration. Otherwise, return an error.
+			__antithesis_instrumentation__.Notify(97355)
+
 			if err := protoutil.Unmarshal(iter.UnsafeValue(), &meta); err != nil {
+				__antithesis_instrumentation__.Notify(97359)
 				return errors.Wrapf(err, "unmarshaling mvcc meta: %v", key)
+			} else {
+				__antithesis_instrumentation__.Notify(97360)
 			}
+			__antithesis_instrumentation__.Notify(97356)
 			if meta.IsInline() {
-				// Ignore inline MVCC metadata. We don't expect to see this in practice
-				// when performing a refresh of an MVCC keyspace.
+				__antithesis_instrumentation__.Notify(97361)
+
 				iter.Next()
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(97362)
 			}
+			__antithesis_instrumentation__.Notify(97357)
 			if meta.Txn.ID == txnID {
-				// Ignore the transaction's own intent and skip past the corresponding
-				// provisional key-value. To do this, iterate to the provisional
-				// key-value, validate its timestamp, then iterate again.
+				__antithesis_instrumentation__.Notify(97363)
+
 				iter.Next()
 				if ok, err := iter.Valid(); err != nil {
+					__antithesis_instrumentation__.Notify(97366)
 					return errors.Wrap(err, "iterating to provisional value for intent")
-				} else if !ok {
-					return errors.Errorf("expected provisional value for intent")
+				} else {
+					__antithesis_instrumentation__.Notify(97367)
+					if !ok {
+						__antithesis_instrumentation__.Notify(97368)
+						return errors.Errorf("expected provisional value for intent")
+					} else {
+						__antithesis_instrumentation__.Notify(97369)
+					}
 				}
+				__antithesis_instrumentation__.Notify(97364)
 				if !meta.Timestamp.ToTimestamp().EqOrdering(iter.UnsafeKey().Timestamp) {
+					__antithesis_instrumentation__.Notify(97370)
 					return errors.Errorf("expected provisional value for intent with ts %s, found %s",
 						meta.Timestamp, iter.UnsafeKey().Timestamp)
+				} else {
+					__antithesis_instrumentation__.Notify(97371)
 				}
+				__antithesis_instrumentation__.Notify(97365)
 				iter.Next()
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(97372)
 			}
+			__antithesis_instrumentation__.Notify(97358)
 			return roachpb.NewRefreshFailedError(roachpb.RefreshFailedError_REASON_INTENT,
 				key.Key, meta.Txn.WriteTimestamp)
+		} else {
+			__antithesis_instrumentation__.Notify(97373)
 		}
+		__antithesis_instrumentation__.Notify(97350)
 
-		// If a committed value is found, return an error.
 		return roachpb.NewRefreshFailedError(roachpb.RefreshFailedError_REASON_COMMITTED_VALUE,
 			key.Key, key.Timestamp)
 	}
+	__antithesis_instrumentation__.Notify(97347)
 	return nil
 }

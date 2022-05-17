@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rangefeed
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -39,7 +31,6 @@ var (
 	}
 )
 
-// Metrics are for production monitoring of RangeFeeds.
 type Metrics struct {
 	RangeFeedCatchUpScanNanos *metric.Counter
 	RangeFeedBudgetExhausted  *metric.Counter
@@ -47,18 +38,14 @@ type Metrics struct {
 
 	RangeFeedSlowClosedTimestampLogN  log.EveryN
 	RangeFeedSlowClosedTimestampNudge singleflight.Group
-	// RangeFeedSlowClosedTimestampNudgeSem bounds the amount of work that can be
-	// spun up on behalf of the RangeFeed nudger. We don't expect to hit this
-	// limit, but it's here to limit the effect on stability in case something
-	// unexpected happens.
+
 	RangeFeedSlowClosedTimestampNudgeSem chan struct{}
 }
 
-// MetricStruct implements the metric.Struct interface.
-func (*Metrics) MetricStruct() {}
+func (*Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(113621) }
 
-// NewMetrics makes the metrics for RangeFeeds monitoring.
 func NewMetrics() *Metrics {
+	__antithesis_instrumentation__.Notify(113622)
 	return &Metrics{
 		RangeFeedCatchUpScanNanos:            metric.NewCounter(metaRangeFeedCatchUpScanNanos),
 		RangeFeedBudgetExhausted:             metric.NewCounter(metaRangeFeedExhausted),
@@ -68,19 +55,17 @@ func NewMetrics() *Metrics {
 	}
 }
 
-// FeedBudgetPoolMetrics holds metrics for RangeFeed budgets for the purpose
-// or registration in a metric registry.
 type FeedBudgetPoolMetrics struct {
 	SystemBytesCount *metric.Gauge
 	SharedBytesCount *metric.Gauge
 }
 
-// MetricStruct implements metrics.Struct interface.
-func (FeedBudgetPoolMetrics) MetricStruct() {}
+func (FeedBudgetPoolMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(113623) }
 
-// NewFeedBudgetMetrics creates new metrics for RangeFeed budgets.
 func NewFeedBudgetMetrics(histogramWindow time.Duration) *FeedBudgetPoolMetrics {
+	__antithesis_instrumentation__.Notify(113624)
 	makeMemMetricMetadata := func(name, help string) metric.Metadata {
+		__antithesis_instrumentation__.Notify(113626)
 		return metric.Metadata{
 			Name:        "kv.rangefeed.mem_" + name,
 			Help:        help,
@@ -88,6 +73,7 @@ func NewFeedBudgetMetrics(histogramWindow time.Duration) *FeedBudgetPoolMetrics 
 			Unit:        metric.Unit_BYTES,
 		}
 	}
+	__antithesis_instrumentation__.Notify(113625)
 
 	return &FeedBudgetPoolMetrics{
 		SystemBytesCount: metric.NewGauge(makeMemMetricMetadata("system",

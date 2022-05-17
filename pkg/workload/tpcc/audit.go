@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpcc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -22,32 +14,25 @@ const (
 	minSignificantTransactions = 10000
 )
 
-// auditor maintains statistics about TPC-C input data and runs distribution
-// checks, as specified in Clause 9.2 of the TPC-C spec.
 type auditor struct {
 	syncutil.Mutex
 
 	warehouses int
 
-	// transaction counts
 	newOrderTransactions    uint64
 	newOrderRollbacks       uint64
 	paymentTransactions     uint64
 	orderStatusTransactions uint64
 	deliveryTransactions    uint64
 
-	// map from order-lines count to the number of orders with that count
 	orderLinesFreq map[int]uint64
 
-	// sum of order lines across all orders
 	totalOrderLines uint64
 
-	// map from warehouse to number of remote order lines for that warehouse
 	orderLineRemoteWarehouseFreq map[int]uint64
-	// map from warehouse to number of remote payments for that warehouse
+
 	paymentRemoteWarehouseFreq map[int]uint64
 
-	// counts of how many transactions select the customer by last name
 	paymentsByLastName    uint64
 	orderStatusByLastName uint64
 
@@ -55,6 +40,7 @@ type auditor struct {
 }
 
 func newAuditor(warehouses int) *auditor {
+	__antithesis_instrumentation__.Notify(697440)
 	return &auditor{
 		warehouses:                   warehouses,
 		orderLinesFreq:               make(map[int]uint64),
@@ -64,23 +50,24 @@ func newAuditor(warehouses int) *auditor {
 }
 
 type auditResult struct {
-	status      string // PASS, FAIL, or SKIP
+	status      string
 	description string
 }
 
 var passResult = auditResult{status: "PASS"}
 
 func newFailResult(format string, args ...interface{}) auditResult {
+	__antithesis_instrumentation__.Notify(697441)
 	return auditResult{"FAIL", fmt.Sprintf(format, args...)}
 }
 
 func newSkipResult(format string, args ...interface{}) auditResult {
+	__antithesis_instrumentation__.Notify(697442)
 	return auditResult{"SKIP", fmt.Sprintf(format, args...)}
 }
 
-// runChecks runs the audit checks and prints warnings to stdout for those that
-// fail.
 func (a *auditor) runChecks(localWarehouses bool) {
+	__antithesis_instrumentation__.Notify(697443)
 	type check struct {
 		name string
 		f    func(a *auditor) auditResult
@@ -93,216 +80,318 @@ func (a *auditor) runChecks(localWarehouses bool) {
 		{"9.2.2.5.6", check92256},
 	}
 
-	// If we're keeping the workload local, these checks are expected to fail.
-	// Bypass them instead of allowing them to fail.
 	if !localWarehouses {
+		__antithesis_instrumentation__.Notify(697445)
 		checks = append(checks,
 			check{"9.2.2.5.3", check92253},
 			check{"9.2.2.5.4", check92254},
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(697446)
 	}
+	__antithesis_instrumentation__.Notify(697444)
 
 	for _, check := range checks {
+		__antithesis_instrumentation__.Notify(697447)
 		result := check.f(a)
 		msg := fmt.Sprintf("Audit check %s: %s", check.name, result.status)
 		if result.description == "" {
+			__antithesis_instrumentation__.Notify(697448)
 			fmt.Println(msg)
 		} else {
+			__antithesis_instrumentation__.Notify(697449)
 			fmt.Println(msg + ": " + result.description)
 		}
 	}
 }
 
 func check9217(a *auditor) auditResult {
-	// Verify that no more than 1%, or no more than one (1), whichever is greater,
-	// of the Delivery transactions skipped because there were fewer than
-	// necessary orders present in the New-Order table.
+	__antithesis_instrumentation__.Notify(697450)
+
 	a.Lock()
 	defer a.Unlock()
 
 	if a.deliveryTransactions < minSignificantTransactions {
+		__antithesis_instrumentation__.Notify(697454)
 		return newSkipResult("not enough delivery transactions to be statistically significant")
+	} else {
+		__antithesis_instrumentation__.Notify(697455)
 	}
+	__antithesis_instrumentation__.Notify(697451)
 
 	var threshold uint64
 	if a.deliveryTransactions > 100 {
+		__antithesis_instrumentation__.Notify(697456)
 		threshold = a.deliveryTransactions / 100
 	} else {
+		__antithesis_instrumentation__.Notify(697457)
 		threshold = 1
 	}
+	__antithesis_instrumentation__.Notify(697452)
 	if a.skippedDelivieries > threshold {
+		__antithesis_instrumentation__.Notify(697458)
 		return newFailResult(
 			"expected no more than %d skipped deliveries, got %d", threshold, a.skippedDelivieries)
+	} else {
+		__antithesis_instrumentation__.Notify(697459)
 	}
+	__antithesis_instrumentation__.Notify(697453)
 	return passResult
 }
 
 func check92251(a *auditor) auditResult {
-	// At least 0.9% and at most 1.1% of the New-Order transactions roll back as a
-	// result of an unused item number.
+	__antithesis_instrumentation__.Notify(697460)
+
 	orders := atomic.LoadUint64(&a.newOrderTransactions)
 	if orders < minSignificantTransactions {
+		__antithesis_instrumentation__.Notify(697463)
 		return newSkipResult("not enough orders to be statistically significant")
+	} else {
+		__antithesis_instrumentation__.Notify(697464)
 	}
+	__antithesis_instrumentation__.Notify(697461)
 	rollbacks := atomic.LoadUint64(&a.newOrderRollbacks)
 	rollbackPct := 100 * float64(rollbacks) / float64(orders)
-	if rollbackPct < 0.9 || rollbackPct > 1.1 {
+	if rollbackPct < 0.9 || func() bool {
+		__antithesis_instrumentation__.Notify(697465)
+		return rollbackPct > 1.1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(697466)
 		return newFailResult(
 			"new order rollback percent %.1f is not between allowed bounds [0.9, 1.1]", rollbackPct)
+	} else {
+		__antithesis_instrumentation__.Notify(697467)
 	}
+	__antithesis_instrumentation__.Notify(697462)
 	return passResult
 }
 
 func check92252(a *auditor) auditResult {
-	// The average number of order-lines per order is in the range of 9.5 to 10.5
-	// and the number of order-lines is uniformly distributed from 5 to 15 for the
-	// New-Order transactions that are submitted to the SUT during the measurement
-	// interval.
+	__antithesis_instrumentation__.Notify(697468)
+
 	a.Lock()
 	defer a.Unlock()
 
 	if a.newOrderTransactions < minSignificantTransactions {
+		__antithesis_instrumentation__.Notify(697472)
 		return newSkipResult("not enough orders to be statistically significant")
+	} else {
+		__antithesis_instrumentation__.Notify(697473)
 	}
+	__antithesis_instrumentation__.Notify(697469)
 
 	avg := float64(a.totalOrderLines) / float64(a.newOrderTransactions)
-	if avg < 9.5 || avg > 10.5 {
+	if avg < 9.5 || func() bool {
+		__antithesis_instrumentation__.Notify(697474)
+		return avg > 10.5 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(697475)
 		return newFailResult(
 			"average order-lines count %.1f is not between allowed bounds [9.5, 10.5]", avg)
+	} else {
+		__antithesis_instrumentation__.Notify(697476)
 	}
+	__antithesis_instrumentation__.Notify(697470)
 
-	expectedPct := 100.0 / 11 // uniformly distributed across 11 possible values
-	tolerance := 1.0          // allow 1 percent deviation from expected
+	expectedPct := 100.0 / 11
+	tolerance := 1.0
 	for i := 5; i <= 15; i++ {
+		__antithesis_instrumentation__.Notify(697477)
 		freq := a.orderLinesFreq[i]
 		pct := 100 * float64(freq) / float64(a.newOrderTransactions)
 		if math.Abs(expectedPct-pct) > tolerance {
+			__antithesis_instrumentation__.Notify(697478)
 			return newFailResult(
 				"order-lines count should be uniformly distributed from 5 to 15, but it was %d for %.1f "+
 					"percent of orders", i, pct)
+		} else {
+			__antithesis_instrumentation__.Notify(697479)
 		}
 	}
+	__antithesis_instrumentation__.Notify(697471)
 	return passResult
 }
 
 func check92253(a *auditor) auditResult {
-	// The number of remote order-lines is at least 0.95% and at most 1.05% of the
-	// number of order-lines that are filled in by the New-Order transactions that
-	// are submitted to the SUT during the measurement interval, and the remote
-	// warehouse numbers are uniformly distributed within the range of active
-	// warehouses.
+	__antithesis_instrumentation__.Notify(697480)
+
 	a.Lock()
 	defer a.Unlock()
 
 	if a.warehouses == 1 {
-		// Not applicable when there are no remote warehouses.
+		__antithesis_instrumentation__.Notify(697487)
+
 		return passResult
+	} else {
+		__antithesis_instrumentation__.Notify(697488)
 	}
+	__antithesis_instrumentation__.Notify(697481)
 	if a.newOrderTransactions < minSignificantTransactions {
+		__antithesis_instrumentation__.Notify(697489)
 		return newSkipResult("not enough orders to be statistically significant")
+	} else {
+		__antithesis_instrumentation__.Notify(697490)
 	}
+	__antithesis_instrumentation__.Notify(697482)
 
 	var remoteOrderLines uint64
 	for _, freq := range a.orderLineRemoteWarehouseFreq {
+		__antithesis_instrumentation__.Notify(697491)
 		remoteOrderLines += freq
 	}
+	__antithesis_instrumentation__.Notify(697483)
 	remotePct := 100 * float64(remoteOrderLines) / float64(a.totalOrderLines)
-	if remotePct < 0.95 || remotePct > 1.05 {
+	if remotePct < 0.95 || func() bool {
+		__antithesis_instrumentation__.Notify(697492)
+		return remotePct > 1.05 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(697493)
 		return newFailResult(
 			"remote order-line percent %.1f is not between allowed bounds [0.95, 1.05]", remotePct)
+	} else {
+		__antithesis_instrumentation__.Notify(697494)
 	}
+	__antithesis_instrumentation__.Notify(697484)
 
-	// In the absence of a more sophisticated distribution check like a
-	// chi-squared test, check each warehouse is used as a remote warehouse at
-	// least once. We need the number of remote order-lines to be at least 15
-	// times the number of warehouses (experimentally determined) to have this
-	// expectation.
 	if remoteOrderLines < 15*uint64(a.warehouses) {
+		__antithesis_instrumentation__.Notify(697495)
 		return newSkipResult("insufficient data for remote warehouse distribution check")
+	} else {
+		__antithesis_instrumentation__.Notify(697496)
 	}
+	__antithesis_instrumentation__.Notify(697485)
 	for i := 0; i < a.warehouses; i++ {
+		__antithesis_instrumentation__.Notify(697497)
 		if _, ok := a.orderLineRemoteWarehouseFreq[i]; !ok {
+			__antithesis_instrumentation__.Notify(697498)
 			return newFailResult("no remote order-lines for warehouses %d", i)
+		} else {
+			__antithesis_instrumentation__.Notify(697499)
 		}
 	}
+	__antithesis_instrumentation__.Notify(697486)
 
 	return passResult
 }
 
 func check92254(a *auditor) auditResult {
-	// The number of remote Payment transactions is at least 14% and at most 16%
-	// of the number of Payment transactions that are submitted to the SUT during
-	// the measurement interval, and the remote warehouse numbers are uniformly
-	// distributed within the range of active warehouses.
+	__antithesis_instrumentation__.Notify(697500)
+
 	a.Lock()
 	defer a.Unlock()
 
 	if a.warehouses == 1 {
-		// Not applicable when there are no remote warehouses.
+		__antithesis_instrumentation__.Notify(697507)
+
 		return passResult
+	} else {
+		__antithesis_instrumentation__.Notify(697508)
 	}
+	__antithesis_instrumentation__.Notify(697501)
 	if a.paymentTransactions < minSignificantTransactions {
+		__antithesis_instrumentation__.Notify(697509)
 		return newSkipResult("not enough payments to be statistically significant")
+	} else {
+		__antithesis_instrumentation__.Notify(697510)
 	}
+	__antithesis_instrumentation__.Notify(697502)
 
 	var remotePayments uint64
 	for _, freq := range a.paymentRemoteWarehouseFreq {
+		__antithesis_instrumentation__.Notify(697511)
 		remotePayments += freq
 	}
+	__antithesis_instrumentation__.Notify(697503)
 	remotePct := 100 * float64(remotePayments) / float64(a.paymentTransactions)
-	if remotePct < 14 || remotePct > 16 {
+	if remotePct < 14 || func() bool {
+		__antithesis_instrumentation__.Notify(697512)
+		return remotePct > 16 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(697513)
 		return newFailResult(
 			"remote payment percent %.1f is not between allowed bounds [14, 16]", remotePct)
+	} else {
+		__antithesis_instrumentation__.Notify(697514)
 	}
+	__antithesis_instrumentation__.Notify(697504)
 
 	if remotePayments < 15*uint64(a.warehouses) {
+		__antithesis_instrumentation__.Notify(697515)
 		return newSkipResult("insufficient data for remote warehouse distribution check")
+	} else {
+		__antithesis_instrumentation__.Notify(697516)
 	}
+	__antithesis_instrumentation__.Notify(697505)
 	for i := 0; i < a.warehouses; i++ {
+		__antithesis_instrumentation__.Notify(697517)
 		if _, ok := a.paymentRemoteWarehouseFreq[i]; !ok {
+			__antithesis_instrumentation__.Notify(697518)
 			return newFailResult("no remote payments for warehouses %d", i)
+		} else {
+			__antithesis_instrumentation__.Notify(697519)
 		}
 	}
+	__antithesis_instrumentation__.Notify(697506)
 
 	return passResult
 }
 
 func check92255(a *auditor) auditResult {
-	// The number of customer selections by customer last name in the Payment
-	// transaction is at least 57% and at most 63% of the number of Payment
-	// transactions.
+	__antithesis_instrumentation__.Notify(697520)
+
 	a.Lock()
 	defer a.Unlock()
 
 	if a.paymentTransactions < minSignificantTransactions {
+		__antithesis_instrumentation__.Notify(697523)
 		return newSkipResult("not enough payments to be statistically significant")
+	} else {
+		__antithesis_instrumentation__.Notify(697524)
 	}
+	__antithesis_instrumentation__.Notify(697521)
 	lastNamePct := 100 * float64(a.paymentsByLastName) / float64(a.paymentTransactions)
-	if lastNamePct < 57 || lastNamePct > 63 {
+	if lastNamePct < 57 || func() bool {
+		__antithesis_instrumentation__.Notify(697525)
+		return lastNamePct > 63 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(697526)
 		return newFailResult(
 			"percent of customer selections by last name in payment transactions %.1f is not between "+
 				"allowed bounds [57, 63]", lastNamePct)
+	} else {
+		__antithesis_instrumentation__.Notify(697527)
 	}
+	__antithesis_instrumentation__.Notify(697522)
 
 	return passResult
 }
 
 func check92256(a *auditor) auditResult {
-	// The number of customer selections by customer last name in the Order-Status
-	// transaction is at least 57% and at most 63% of the number of Order-Status
-	// transactions.
+	__antithesis_instrumentation__.Notify(697528)
+
 	a.Lock()
 	defer a.Unlock()
 
 	if a.orderStatusTransactions < minSignificantTransactions {
+		__antithesis_instrumentation__.Notify(697531)
 		return newSkipResult("not enough order status transactions to be statistically significant")
+	} else {
+		__antithesis_instrumentation__.Notify(697532)
 	}
+	__antithesis_instrumentation__.Notify(697529)
 	lastNamePct := 100 * float64(a.orderStatusByLastName) / float64(a.orderStatusTransactions)
-	if lastNamePct < 57 || lastNamePct > 63 {
+	if lastNamePct < 57 || func() bool {
+		__antithesis_instrumentation__.Notify(697533)
+		return lastNamePct > 63 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(697534)
 		return newFailResult(
 			"percent of customer selections by last name in order status transactions %.1f is not "+
 				"between allowed bounds [57, 63]", lastNamePct)
+	} else {
+		__antithesis_instrumentation__.Notify(697535)
 	}
+	__antithesis_instrumentation__.Notify(697530)
 
 	return passResult
 }

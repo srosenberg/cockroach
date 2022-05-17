@@ -39,6 +39,7 @@ go_library(
     deps = [
         "//pkg/roachpb",
         "//pkg/util/hlc",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -54,6 +55,7 @@ go_test(
         "//pkg/testutils/echotest",
         "//pkg/util/hlc",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_redact//:redact",
         "@com_github_stretchr_testify//require",

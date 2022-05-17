@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package schemafeed
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -21,16 +15,14 @@ var metaChangefeedTableMetadataNanos = metric.Metadata{
 	Unit:        metric.Unit_NANOSECONDS,
 }
 
-// Metrics is a metric.Struct for schemafeed metrics.
 type Metrics struct {
 	TableMetadataNanos *metric.Counter
 }
 
-// MetricStruct implements the metric.Struct interface.
-func (Metrics) MetricStruct() {}
+func (Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(17710) }
 
-// MakeMetrics constructs a Metrics struct with the provided histogram window.
 func MakeMetrics(histogramWindow time.Duration) Metrics {
+	__antithesis_instrumentation__.Notify(17711)
 	return Metrics{
 		TableMetadataNanos: metric.NewCounter(metaChangefeedTableMetadataNanos),
 	}

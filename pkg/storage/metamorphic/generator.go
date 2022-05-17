@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package metamorphic
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -32,6 +24,7 @@ import (
 const zipfMax uint64 = 100000
 
 func makeStorageConfig(path string) base.StorageConfig {
+	__antithesis_instrumentation__.Notify(639640)
 	return base.StorageConfig{
 		Dir:      path,
 		Settings: cluster.MakeTestingClusterSettings(),
@@ -39,6 +32,7 @@ func makeStorageConfig(path string) base.StorageConfig {
 }
 
 func rngIntRange(rng *rand.Rand, min int64, max int64) int64 {
+	__antithesis_instrumentation__.Notify(639641)
 	return min + rng.Int63n(max-min)
 }
 
@@ -48,16 +42,25 @@ type engineConfig struct {
 }
 
 func (e *engineConfig) create(path string, fs vfs.FS) (storage.Engine, error) {
+	__antithesis_instrumentation__.Notify(639642)
 	pebbleConfig := storage.PebbleConfig{
 		StorageConfig: makeStorageConfig(path),
 		Opts:          e.opts,
 	}
 	if pebbleConfig.Opts == nil {
+		__antithesis_instrumentation__.Notify(639645)
 		pebbleConfig.Opts = storage.DefaultPebbleOptions()
+	} else {
+		__antithesis_instrumentation__.Notify(639646)
 	}
+	__antithesis_instrumentation__.Notify(639643)
 	if fs != nil {
+		__antithesis_instrumentation__.Notify(639647)
 		pebbleConfig.Opts.FS = fs
+	} else {
+		__antithesis_instrumentation__.Notify(639648)
 	}
+	__antithesis_instrumentation__.Notify(639644)
 	pebbleConfig.Opts.Cache = pebble.NewCache(1 << 20)
 	defer pebbleConfig.Opts.Cache.Unref()
 
@@ -67,6 +70,7 @@ func (e *engineConfig) create(path string, fs vfs.FS) (storage.Engine, error) {
 var _ fmt.Stringer = &engineConfig{}
 
 func (e *engineConfig) String() string {
+	__antithesis_instrumentation__.Notify(639649)
 	return e.name
 }
 
@@ -77,8 +81,6 @@ type engineSequence struct {
 	configs []engineConfig
 }
 
-// Object to store info corresponding to one metamorphic test run. Responsible
-// for generating and executing operations.
 type metaTestRunner struct {
 	ctx             context.Context
 	w               io.Writer
@@ -115,8 +117,7 @@ type metaTestRunner struct {
 }
 
 func (m *metaTestRunner) init() {
-	// Use a passed-in seed. Using the same seed for two consecutive metamorphic
-	// test runs should guarantee the same operations being generated.
+
 	m.rng = rand.New(rand.NewSource(m.seed))
 	m.tsGenerator.init(m.rng)
 	m.curEngine = 0
@@ -130,8 +131,6 @@ func (m *metaTestRunner) init() {
 		m.t.Fatal(err)
 	}
 
-	// Initialize opGenerator structs. These retain all generation time
-	// state of open objects.
 	m.txnGenerator = &txnGenerator{
 		rng:            m.rng,
 		tsGenerator:    &m.tsGenerator,
@@ -196,7 +195,7 @@ func (m *metaTestRunner) init() {
 	for i := range opGenerators {
 		m.weights[i] = opGenerators[i].weight
 		if !m.restarts && opGenerators[i].name == "restart" {
-			// Don't generate restarts.
+
 			m.weights[i] = 0
 		}
 		m.nameToGenerator[opGenerators[i].name] = &opGenerators[i]
@@ -209,190 +208,285 @@ func (m *metaTestRunner) init() {
 }
 
 func (m *metaTestRunner) closeGenerators() {
+	__antithesis_instrumentation__.Notify(639650)
 	closingOrder := []operandGenerator{
 		m.iterGenerator,
 		m.rwGenerator,
 		m.txnGenerator,
 	}
 	for _, generator := range closingOrder {
+		__antithesis_instrumentation__.Notify(639651)
 		generator.closeAll()
 	}
 }
 
-// Run this function in a defer to ensure any Fatals on m.t do not cause panics
-// due to leaked iterators.
 func (m *metaTestRunner) closeAll() {
+	__antithesis_instrumentation__.Notify(639652)
 	if m.engine == nil {
-		// Engine already closed; possibly running in a defer after a panic.
+		__antithesis_instrumentation__.Notify(639656)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(639657)
 	}
-	// If there are any open objects, close them.
+	__antithesis_instrumentation__.Notify(639653)
+
 	for _, iter := range m.openIters {
+		__antithesis_instrumentation__.Notify(639658)
 		iter.iter.Close()
 	}
+	__antithesis_instrumentation__.Notify(639654)
 	for _, batch := range m.openBatches {
+		__antithesis_instrumentation__.Notify(639659)
 		batch.Close()
 	}
-	// TODO(itsbilal): Abort all txns.
+	__antithesis_instrumentation__.Notify(639655)
+
 	m.openIters = make(map[iteratorID]iteratorInfo)
 	m.openBatches = make(map[readWriterID]storage.ReadWriter)
 	m.openTxns = make(map[txnID]*roachpb.Transaction)
 	m.openSavepoints = make(map[txnID][]enginepb.TxnSeq)
 	if m.engine != nil {
+		__antithesis_instrumentation__.Notify(639660)
 		m.engine.Close()
 		m.engine = nil
+	} else {
+		__antithesis_instrumentation__.Notify(639661)
 	}
 }
 
-// Getters and setters for txns, batches, and iterators.
 func (m *metaTestRunner) getTxn(id txnID) *roachpb.Transaction {
+	__antithesis_instrumentation__.Notify(639662)
 	txn, ok := m.openTxns[id]
 	if !ok {
+		__antithesis_instrumentation__.Notify(639664)
 		panic(fmt.Sprintf("txn with id %s not found", string(id)))
+	} else {
+		__antithesis_instrumentation__.Notify(639665)
 	}
+	__antithesis_instrumentation__.Notify(639663)
 	return txn
 }
 
 func (m *metaTestRunner) setTxn(id txnID, txn *roachpb.Transaction) {
+	__antithesis_instrumentation__.Notify(639666)
 	m.openTxns[id] = txn
 }
 
 func (m *metaTestRunner) getReadWriter(id readWriterID) storage.ReadWriter {
+	__antithesis_instrumentation__.Notify(639667)
 	if id == "engine" {
+		__antithesis_instrumentation__.Notify(639670)
 		return m.engine
+	} else {
+		__antithesis_instrumentation__.Notify(639671)
 	}
+	__antithesis_instrumentation__.Notify(639668)
 
 	batch, ok := m.openBatches[id]
 	if !ok {
+		__antithesis_instrumentation__.Notify(639672)
 		panic(fmt.Sprintf("batch with id %s not found", string(id)))
+	} else {
+		__antithesis_instrumentation__.Notify(639673)
 	}
+	__antithesis_instrumentation__.Notify(639669)
 	return batch
 }
 
 func (m *metaTestRunner) setReadWriter(id readWriterID, rw storage.ReadWriter) {
+	__antithesis_instrumentation__.Notify(639674)
 	if id == "engine" {
-		// no-op
+		__antithesis_instrumentation__.Notify(639676)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(639677)
 	}
+	__antithesis_instrumentation__.Notify(639675)
 	m.openBatches[id] = rw
 }
 
 func (m *metaTestRunner) getIterInfo(id iteratorID) iteratorInfo {
+	__antithesis_instrumentation__.Notify(639678)
 	iter, ok := m.openIters[id]
 	if !ok {
+		__antithesis_instrumentation__.Notify(639680)
 		panic(fmt.Sprintf("iter with id %s not found", string(id)))
+	} else {
+		__antithesis_instrumentation__.Notify(639681)
 	}
+	__antithesis_instrumentation__.Notify(639679)
 	return iter
 }
 
 func (m *metaTestRunner) setIterInfo(id iteratorID, iterInfo iteratorInfo) {
+	__antithesis_instrumentation__.Notify(639682)
 	m.openIters[id] = iterInfo
 }
 
-// generateAndRun generates n operations using a TPCC-style deck shuffle with
-// weighted probabilities of each operation appearing.
 func (m *metaTestRunner) generateAndRun(n int) {
+	__antithesis_instrumentation__.Notify(639683)
 	deck := newDeck(m.rng, m.weights...)
 	for i := 0; i < n; i++ {
+		__antithesis_instrumentation__.Notify(639685)
 		op := &opGenerators[deck.Int()]
 
 		m.resolveAndAddOp(op)
 	}
+	__antithesis_instrumentation__.Notify(639684)
 
 	for i := range m.ops {
+		__antithesis_instrumentation__.Notify(639686)
 		opRun := &m.ops[i]
 		output := opRun.op.run(m.ctx)
 		m.printOp(opRun.name, opRun.args, output)
 	}
 }
 
-// Closes the current engine and starts another one up, with the same path.
-// Returns the old and new engine configs.
 func (m *metaTestRunner) restart() (engineConfig, engineConfig) {
+	__antithesis_instrumentation__.Notify(639687)
 	m.closeAll()
 	oldEngine := m.engineSeq.configs[m.curEngine]
-	// TODO(itsbilal): Select engines at random instead of cycling through them.
+
 	m.curEngine++
 	if m.curEngine >= len(m.engineSeq.configs) {
-		// If we're restarting more times than the number of engine implementations
-		// specified, loop back around to the first engine type specified.
+		__antithesis_instrumentation__.Notify(639690)
+
 		m.curEngine = 0
+	} else {
+		__antithesis_instrumentation__.Notify(639691)
 	}
+	__antithesis_instrumentation__.Notify(639688)
 
 	var err error
 	m.engine, err = m.engineSeq.configs[m.curEngine].create(m.path, m.engineFS)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(639692)
 		m.engine = nil
 		m.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(639693)
 	}
+	__antithesis_instrumentation__.Notify(639689)
 	return oldEngine, m.engineSeq.configs[m.curEngine]
 }
 
 func (m *metaTestRunner) parseFileAndRun(f io.Reader) {
+	__antithesis_instrumentation__.Notify(639694)
 	reader := bufio.NewReader(f)
 	lineCount := uint64(0)
 	for {
+		__antithesis_instrumentation__.Notify(639696)
 		var opName, argListString, expectedOutput string
 		var firstByte byte
 		var err error
 
 		lineCount++
-		// Read the first byte to check if this line is a comment.
+
 		firstByte, err = reader.ReadByte()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(639705)
 			if err == io.EOF {
+				__antithesis_instrumentation__.Notify(639707)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(639708)
 			}
+			__antithesis_instrumentation__.Notify(639706)
 			m.t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(639709)
 		}
+		__antithesis_instrumentation__.Notify(639697)
 		if firstByte == '#' {
-			// Advance to the end of the line and continue.
+			__antithesis_instrumentation__.Notify(639710)
+
 			if _, err := reader.ReadString('\n'); err != nil {
+				__antithesis_instrumentation__.Notify(639712)
 				if err == io.EOF {
+					__antithesis_instrumentation__.Notify(639714)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(639715)
 				}
+				__antithesis_instrumentation__.Notify(639713)
 				m.t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(639716)
 			}
+			__antithesis_instrumentation__.Notify(639711)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(639717)
 		}
+		__antithesis_instrumentation__.Notify(639698)
 
 		if opName, err = reader.ReadString('('); err != nil {
+			__antithesis_instrumentation__.Notify(639718)
 			if err == io.EOF {
+				__antithesis_instrumentation__.Notify(639720)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(639721)
 			}
+			__antithesis_instrumentation__.Notify(639719)
 			m.t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(639722)
 		}
+		__antithesis_instrumentation__.Notify(639699)
 		opName = string(firstByte) + opName[:len(opName)-1]
 
 		if argListString, err = reader.ReadString(')'); err != nil {
+			__antithesis_instrumentation__.Notify(639723)
 			m.t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(639724)
 		}
+		__antithesis_instrumentation__.Notify(639700)
 
-		// Parse argument list
 		argStrings := strings.Split(argListString, ", ")
-		// Special handling for last element: could end with ), or could just be )
+
 		lastElem := argStrings[len(argStrings)-1]
 		if strings.HasSuffix(lastElem, ")") {
+			__antithesis_instrumentation__.Notify(639725)
 			lastElem = lastElem[:len(lastElem)-1]
 			if len(lastElem) > 0 {
+				__antithesis_instrumentation__.Notify(639726)
 				argStrings[len(argStrings)-1] = lastElem
 			} else {
+				__antithesis_instrumentation__.Notify(639727)
 				argStrings = argStrings[:len(argStrings)-1]
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(639728)
 			m.t.Fatalf("while parsing: last element %s did not have ) suffix", lastElem)
 		}
+		__antithesis_instrumentation__.Notify(639701)
 
 		if _, err = reader.ReadString('>'); err != nil {
+			__antithesis_instrumentation__.Notify(639729)
 			m.t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(639730)
 		}
-		// Space after arrow.
+		__antithesis_instrumentation__.Notify(639702)
+
 		if _, err = reader.Discard(1); err != nil {
+			__antithesis_instrumentation__.Notify(639731)
 			m.t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(639732)
 		}
+		__antithesis_instrumentation__.Notify(639703)
 		if expectedOutput, err = reader.ReadString('\n'); err != nil {
+			__antithesis_instrumentation__.Notify(639733)
 			m.t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(639734)
 		}
+		__antithesis_instrumentation__.Notify(639704)
 		opGenerator := m.nameToGenerator[opName]
 		m.ops = append(m.ops, opRun{
 			name:           opGenerator.name,
@@ -402,32 +496,47 @@ func (m *metaTestRunner) parseFileAndRun(f io.Reader) {
 			expectedOutput: expectedOutput,
 		})
 	}
+	__antithesis_instrumentation__.Notify(639695)
 
 	for i := range m.ops {
+		__antithesis_instrumentation__.Notify(639735)
 		op := &m.ops[i]
 		actualOutput := op.op.run(m.ctx)
 		m.printOp(op.name, op.args, actualOutput)
 		if strings.Compare(strings.TrimSpace(op.expectedOutput), strings.TrimSpace(actualOutput)) != 0 {
-			// Error messages can sometimes mismatch. If both outputs contain "error",
-			// consider this a pass.
-			if strings.Contains(op.expectedOutput, "error") && strings.Contains(actualOutput, "error") {
+			__antithesis_instrumentation__.Notify(639736)
+
+			if strings.Contains(op.expectedOutput, "error") && func() bool {
+				__antithesis_instrumentation__.Notify(639738)
+				return strings.Contains(actualOutput, "error") == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(639739)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(639740)
 			}
+			__antithesis_instrumentation__.Notify(639737)
 			m.t.Fatalf("mismatching output at line %d, operation index %d: expected %s, got %s", op.lineNum, i, op.expectedOutput, actualOutput)
+		} else {
+			__antithesis_instrumentation__.Notify(639741)
 		}
 	}
 }
 
 func (m *metaTestRunner) generateAndAddOp(run opReference) mvccOp {
+	__antithesis_instrumentation__.Notify(639742)
 	opGenerator := run.generator
 
-	// This operation might require other operations to run before it runs. Call
-	// the dependentOps method to resolve these dependencies.
 	if opGenerator.dependentOps != nil {
+		__antithesis_instrumentation__.Notify(639744)
 		for _, opReference := range opGenerator.dependentOps(m, run.args...) {
+			__antithesis_instrumentation__.Notify(639745)
 			m.generateAndAddOp(opReference)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(639746)
 	}
+	__antithesis_instrumentation__.Notify(639743)
 
 	op := opGenerator.generate(m.ctx, m, run.args...)
 	m.ops = append(m.ops, opRun{
@@ -438,41 +547,54 @@ func (m *metaTestRunner) generateAndAddOp(run opReference) mvccOp {
 	return op
 }
 
-// Resolve all operands (including recursively queueing openers for operands as
-// necessary) and add the specified operation to the operations list.
 func (m *metaTestRunner) resolveAndAddOp(op *opGenerator, fixedArgs ...string) {
+	__antithesis_instrumentation__.Notify(639747)
 	argStrings := make([]string, len(op.operands))
 	copy(argStrings, fixedArgs)
 
-	// Operation op depends on some operands to exist in an open state.
-	// If those operands' opGenerators report a zero count for that object's open
-	// instances, recursively call generateAndAddOp with that operand type's
-	// opener.
 	for i, operand := range op.operands {
+		__antithesis_instrumentation__.Notify(639749)
 		if i < len(fixedArgs) {
+			__antithesis_instrumentation__.Notify(639753)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(639754)
 		}
+		__antithesis_instrumentation__.Notify(639750)
 		opGenerator := m.opGenerators[operand]
-		// Special case: if this is an opener operation, and the operand is the
-		// last one in the list of operands, call getNew() to get a new ID instead.
-		if i == len(op.operands)-1 && op.isOpener {
+
+		if i == len(op.operands)-1 && func() bool {
+			__antithesis_instrumentation__.Notify(639755)
+			return op.isOpener == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(639756)
 			argStrings[i] = opGenerator.getNew(argStrings[:i])
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(639757)
 		}
+		__antithesis_instrumentation__.Notify(639751)
 		if opGenerator.count(argStrings[:i]) == 0 {
+			__antithesis_instrumentation__.Notify(639758)
 			var args []string
-			// Special case: Savepoints need to be created on transactions, so affix
-			// the txn when recursing.
+
 			switch opGenerator.opener() {
 			case "txn_create_savepoint":
+				__antithesis_instrumentation__.Notify(639760)
 				args = append(args, argStrings[0])
+			default:
+				__antithesis_instrumentation__.Notify(639761)
 			}
-			// Add this operation to the list first, so that it creates the
-			// dependency.
+			__antithesis_instrumentation__.Notify(639759)
+
 			m.resolveAndAddOp(m.nameToGenerator[opGenerator.opener()], args...)
+		} else {
+			__antithesis_instrumentation__.Notify(639762)
 		}
+		__antithesis_instrumentation__.Notify(639752)
 		argStrings[i] = opGenerator.get(argStrings[:i])
 	}
+	__antithesis_instrumentation__.Notify(639748)
 
 	m.generateAndAddOp(opReference{
 		generator: op,
@@ -480,26 +602,30 @@ func (m *metaTestRunner) resolveAndAddOp(op *opGenerator, fixedArgs ...string) {
 	})
 }
 
-// Print passed-in operation, arguments and output string to output file.
 func (m *metaTestRunner) printOp(opName string, argStrings []string, output string) {
+	__antithesis_instrumentation__.Notify(639763)
 	fmt.Fprintf(m.w, "%s(", opName)
 	for i, arg := range argStrings {
+		__antithesis_instrumentation__.Notify(639765)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(639767)
 			fmt.Fprintf(m.w, ", ")
+		} else {
+			__antithesis_instrumentation__.Notify(639768)
 		}
+		__antithesis_instrumentation__.Notify(639766)
 		fmt.Fprintf(m.w, "%s", arg)
 	}
+	__antithesis_instrumentation__.Notify(639764)
 	fmt.Fprintf(m.w, ") -> %s\n", output)
 }
 
-// printComment prints a comment line into the output file. Supports single-line
-// comments only.
 func (m *metaTestRunner) printComment(comment string) {
+	__antithesis_instrumentation__.Notify(639769)
 	comment = strings.ReplaceAll(comment, "\n", "\n# ")
 	fmt.Fprintf(m.w, "# %s\n", comment)
 }
 
-// Monotonically increasing timestamp generator.
 type tsGenerator struct {
 	lastTS hlc.Timestamp
 	zipf   *rand.Zipf
@@ -510,14 +636,15 @@ func (t *tsGenerator) init(rng *rand.Rand) {
 }
 
 func (t *tsGenerator) generate() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(639770)
 	t.lastTS.WallTime++
 	return t.lastTS
 }
 
 func (t *tsGenerator) randomPastTimestamp(rng *rand.Rand) hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(639771)
 	var result hlc.Timestamp
 
-	// Return a result that's skewed toward the latest wall time.
 	result.WallTime = int64(float64(t.lastTS.WallTime) * float64((zipfMax - t.zipf.Uint64())) / float64(zipfMax))
 	return result
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,28 +21,26 @@ import (
 )
 
 func registerSchemaChangeDatabaseVersionUpgrade(r registry.Registry) {
-	// This test tests 2 loosely related things:
-	// 1. Correctness of database schema changes during the 20.1/20.2 mixed-
-	//    version state, in which 20.2 nodes still use the deprecated database
-	//    cache and non-lease-based schema change implementation.
-	// 2. Ability to use ALTER DATABASE ... CONVERT TO SCHEMA WITH PARENT on
-	//    databases created in 20.1.
-	// TODO (lucy): Remove this test in 21.1.
+	__antithesis_instrumentation__.Notify(50496)
+
 	r.Add(registry.TestSpec{
 		Name:    "schemachange/database-version-upgrade",
 		Owner:   registry.OwnerSQLSchema,
 		Cluster: r.MakeClusterSpec(3),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(50497)
 			runSchemaChangeDatabaseVersionUpgrade(ctx, t, c, *t.BuildVersion())
 		},
 	})
 }
 
 func uploadAndStart(nodes option.NodeListOption, v string) versionStep {
+	__antithesis_instrumentation__.Notify(50498)
 	return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
-		// Put and start the binary.
+		__antithesis_instrumentation__.Notify(50499)
+
 		binary := u.uploadVersion(ctx, t, nodes, v)
-		// NB: can't start sequentially since cluster already bootstrapped.
+
 		startOpts := option.DefaultStartOpts()
 		startOpts.RoachprodOpts.Sequential = false
 		settings := install.MakeClusterSettings(install.BinaryOption(binary))
@@ -61,142 +51,219 @@ func uploadAndStart(nodes option.NodeListOption, v string) versionStep {
 func runSchemaChangeDatabaseVersionUpgrade(
 	ctx context.Context, t test.Test, c cluster.Cluster, buildVersion version.Version,
 ) {
-	// An empty string means that the cockroach binary specified by flag
-	// `cockroach` will be used.
+	__antithesis_instrumentation__.Notify(50500)
+
 	const mainVersion = ""
 	predecessorVersion, err := PredecessorVersion(buildVersion)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(50511)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(50512)
 	}
-	// If the version is PublicSchemasWithDescriptors, we do not support
-	// ALTER DATABASE CONVERT TO SCHEMA.
+	__antithesis_instrumentation__.Notify(50501)
+
 	publicSchemaWithDescriptorsVersion := clusterversion.ByKey(clusterversion.PublicSchemasWithDescriptors)
 
 	createDatabaseWithTableStep := func(dbName string) versionStep {
+		__antithesis_instrumentation__.Notify(50513)
 		t.L().Printf("creating database %s", dbName)
 		return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+			__antithesis_instrumentation__.Notify(50514)
 			db := u.conn(ctx, t, 1)
 			_, err := db.ExecContext(ctx, fmt.Sprintf(`CREATE DATABASE %s; CREATE TABLE %s.t(a INT)`, dbName, dbName))
 			require.NoError(t, err)
 		}
 	}
+	__antithesis_instrumentation__.Notify(50502)
 
 	assertDatabaseResolvable := func(ctx context.Context, db *gosql.DB, dbName string) error {
+		__antithesis_instrumentation__.Notify(50515)
 		var tblName string
 		row := db.QueryRowContext(ctx, fmt.Sprintf(`SELECT table_name FROM [SHOW TABLES FROM %s]`, dbName))
 		if err := row.Scan(&tblName); err != nil {
+			__antithesis_instrumentation__.Notify(50518)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(50519)
 		}
+		__antithesis_instrumentation__.Notify(50516)
 		if tblName != "t" {
+			__antithesis_instrumentation__.Notify(50520)
 			return errors.AssertionFailedf("unexpected table name %s", tblName)
+		} else {
+			__antithesis_instrumentation__.Notify(50521)
 		}
+		__antithesis_instrumentation__.Notify(50517)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(50503)
 
 	assertDatabaseNotResolvable := func(ctx context.Context, db *gosql.DB, dbName string) error {
+		__antithesis_instrumentation__.Notify(50522)
 		_, err = db.ExecContext(ctx, fmt.Sprintf(`SELECT table_name FROM [SHOW TABLES FROM %s]`, dbName))
-		if err == nil || err.Error() != "pq: target database or schema does not exist" {
+		if err == nil || func() bool {
+			__antithesis_instrumentation__.Notify(50524)
+			return err.Error() != "pq: target database or schema does not exist" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(50525)
 			return errors.Newf("unexpected error: %s", pgerror.FullError(err))
+		} else {
+			__antithesis_instrumentation__.Notify(50526)
 		}
+		__antithesis_instrumentation__.Notify(50523)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(50504)
 
-	// Rename the database, drop it, and create a new database with the original
-	// name.
 	runSchemaChangesStep := func(dbName string) versionStep {
+		__antithesis_instrumentation__.Notify(50527)
 		return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+			__antithesis_instrumentation__.Notify(50528)
 			t.L().Printf("running schema changes on %s", dbName)
 			newDbName := dbName + "_new_name"
 			dbNode1 := u.conn(ctx, t, 1)
 			dbNode2 := u.conn(ctx, t, 2)
 
-			// Rename the database.
 			_, err := dbNode1.ExecContext(ctx, fmt.Sprintf(`ALTER DATABASE %s RENAME TO %s`, dbName, newDbName))
 			require.NoError(t, err)
 
 			if err := assertDatabaseResolvable(ctx, dbNode1, newDbName); err != nil {
+				__antithesis_instrumentation__.Notify(50536)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(50537)
 			}
+			__antithesis_instrumentation__.Notify(50529)
 			if err := assertDatabaseNotResolvable(ctx, dbNode1, dbName); err != nil {
+				__antithesis_instrumentation__.Notify(50538)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(50539)
 			}
-			// Also run the above steps connected to a different node. Since we still
-			// use the incoherent database cache in the mixed-version state, we retry
-			// until these queries produce the expected result.
+			__antithesis_instrumentation__.Notify(50530)
+
 			if err := testutils.SucceedsSoonError(func() error {
+				__antithesis_instrumentation__.Notify(50540)
 				return assertDatabaseResolvable(ctx, dbNode2, newDbName)
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(50541)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(50542)
 			}
+			__antithesis_instrumentation__.Notify(50531)
 			if err := testutils.SucceedsSoonError(func() error {
+				__antithesis_instrumentation__.Notify(50543)
 				return assertDatabaseNotResolvable(ctx, dbNode2, dbName)
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(50544)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(50545)
 			}
+			__antithesis_instrumentation__.Notify(50532)
 
-			// Drop the database.
 			_, err = dbNode1.ExecContext(ctx, fmt.Sprintf(`DROP DATABASE %s CASCADE`, newDbName))
 			require.NoError(t, err)
 
 			if err := assertDatabaseNotResolvable(ctx, dbNode1, newDbName); err != nil {
+				__antithesis_instrumentation__.Notify(50546)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(50547)
 			}
+			__antithesis_instrumentation__.Notify(50533)
 			if err := testutils.SucceedsSoonError(func() error {
+				__antithesis_instrumentation__.Notify(50548)
 				return assertDatabaseNotResolvable(ctx, dbNode2, newDbName)
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(50549)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(50550)
 			}
+			__antithesis_instrumentation__.Notify(50534)
 
-			// Create a new database with the original name.
 			_, err = dbNode1.ExecContext(ctx, fmt.Sprintf(`CREATE DATABASE %s; CREATE TABLE %s.t(a INT)`, dbName, dbName))
 			require.NoError(t, err)
 
 			if err := assertDatabaseResolvable(ctx, dbNode1, dbName); err != nil {
+				__antithesis_instrumentation__.Notify(50551)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(50552)
 			}
+			__antithesis_instrumentation__.Notify(50535)
 			if err := testutils.SucceedsSoonError(func() error {
+				__antithesis_instrumentation__.Notify(50553)
 				return assertDatabaseResolvable(ctx, dbNode1, dbName)
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(50554)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(50555)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(50505)
 
 	createParentDatabaseStep := func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+		__antithesis_instrumentation__.Notify(50556)
 		if publicSchemaWithDescriptorsVersion.LessEq(u.clusterVersion(ctx, t, 1)) {
+			__antithesis_instrumentation__.Notify(50558)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(50559)
 		}
+		__antithesis_instrumentation__.Notify(50557)
 		t.L().Printf("creating parent database")
 		db := u.conn(ctx, t, 1)
 		_, err := db.ExecContext(ctx, `CREATE DATABASE new_parent_db`)
 		require.NoError(t, err)
 	}
+	__antithesis_instrumentation__.Notify(50506)
 
 	reparentDatabaseStep := func(dbName string) versionStep {
+		__antithesis_instrumentation__.Notify(50560)
 		return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+			__antithesis_instrumentation__.Notify(50561)
 			if publicSchemaWithDescriptorsVersion.LessEq(u.clusterVersion(ctx, t, 1)) {
+				__antithesis_instrumentation__.Notify(50563)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(50564)
 			}
+			__antithesis_instrumentation__.Notify(50562)
 			db := u.conn(ctx, t, 1)
 			t.L().Printf("reparenting database %s", dbName)
 			_, err = db.ExecContext(ctx, fmt.Sprintf(`ALTER DATABASE %s CONVERT TO SCHEMA WITH PARENT new_parent_db;`, dbName))
 			require.NoError(t, err)
 		}
 	}
+	__antithesis_instrumentation__.Notify(50507)
 
 	validationStep := func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+		__antithesis_instrumentation__.Notify(50565)
 		t.L().Printf("validating")
 		result, err := c.RunWithDetailsSingleNode(ctx, t.L(), c.Node(1),
 			[]string{"./cockroach debug doctor cluster", "--url {pgurl:1}"}...)
 		require.NoError(t, err)
 		t.L().Printf("%s", result.Stdout)
 	}
+	__antithesis_instrumentation__.Notify(50508)
 
 	interactWithReparentedSchemaStep := func(schemaName string) versionStep {
+		__antithesis_instrumentation__.Notify(50566)
 		return func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+			__antithesis_instrumentation__.Notify(50567)
 			if publicSchemaWithDescriptorsVersion.LessEq(u.clusterVersion(ctx, t, 1)) {
+				__antithesis_instrumentation__.Notify(50569)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(50570)
 			}
+			__antithesis_instrumentation__.Notify(50568)
 			t.L().Printf("running schema changes on %s", schemaName)
 			db := u.conn(ctx, t, 1)
 
@@ -217,11 +284,17 @@ func runSchemaChangeDatabaseVersionUpgrade(
 			require.NoError(t, err)
 		}
 	}
+	__antithesis_instrumentation__.Notify(50509)
 
 	dropDatabaseCascadeStep := func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+		__antithesis_instrumentation__.Notify(50571)
 		if publicSchemaWithDescriptorsVersion.LessEq(u.clusterVersion(ctx, t, 1)) {
+			__antithesis_instrumentation__.Notify(50573)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(50574)
 		}
+		__antithesis_instrumentation__.Notify(50572)
 		t.L().Printf("dropping parent database")
 		db := u.conn(ctx, t, 1)
 		_, err = db.ExecContext(ctx, `
@@ -230,12 +303,8 @@ DROP DATABASE new_parent_db CASCADE;
 `)
 		require.NoError(t, err)
 	}
+	__antithesis_instrumentation__.Notify(50510)
 
-	// This test creates several databases and then runs schema changes on each
-	// one at a different stage (including deleting and re-creating) in the
-	// rolling upgrade process. At the end we also test CONVERT TO SCHEMA WITH
-	// PARENT on all of them. Note that we always issue schema change statements
-	// to node 1 on this 3-node cluster and verify results on nodes 1 and 2.
 	u := newVersionUpgradeTest(c,
 		uploadAndStart(c.All(), predecessorVersion),
 		waitForUpgradeStep(c.All()),
@@ -248,8 +317,6 @@ DROP DATABASE new_parent_db CASCADE;
 		createDatabaseWithTableStep("db_4"),
 		createDatabaseWithTableStep("db_5"),
 
-		// Start upgrading to 20.2.
-
 		binaryUpgradeStep(c.Node(1), mainVersion),
 
 		runSchemaChangesStep("db_1"),
@@ -258,8 +325,6 @@ DROP DATABASE new_parent_db CASCADE;
 
 		runSchemaChangesStep("db_2"),
 
-		// Roll back to 20.1.
-
 		binaryUpgradeStep(c.Node(1), predecessorVersion),
 
 		runSchemaChangesStep("db_3"),
@@ -267,8 +332,6 @@ DROP DATABASE new_parent_db CASCADE;
 		binaryUpgradeStep(c.Nodes(2, 3), predecessorVersion),
 
 		runSchemaChangesStep("db_4"),
-
-		// Upgrade nodes to 20.2 again and finalize the upgrade.
 
 		binaryUpgradeStep(c.All(), mainVersion),
 
@@ -285,8 +348,6 @@ DROP DATABASE new_parent_db CASCADE;
 		reparentDatabaseStep("db_4"),
 		reparentDatabaseStep("db_5"),
 		validationStep,
-
-		// Run some schema changes on the re-parented schemas and their tables.
 
 		interactWithReparentedSchemaStep("db_0"),
 		interactWithReparentedSchemaStep("db_1"),

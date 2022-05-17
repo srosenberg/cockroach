@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package bulk
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -16,15 +8,12 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 )
 
-// Metrics contains pointers to the metrics for
-// monitoring bulk operations.
 type Metrics struct {
 	MaxBytesHist  *metric.Histogram
 	CurBytesCount *metric.Gauge
 }
 
-// MetricStruct implements the metrics.Struct interface.
-func (Metrics) MetricStruct() {}
+func (Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(86325) }
 
 var _ metric.Struct = Metrics{}
 
@@ -43,12 +32,10 @@ var (
 	}
 )
 
-// See pkg/sql/mem_metrics.go
-// log10int64times1000 = log10(math.MaxInt64) * 1000, rounded up somewhat
 const log10int64times1000 = 19 * 1000
 
-// MakeBulkMetrics instantiates the metrics holder for bulk operation monitoring.
 func MakeBulkMetrics(histogramWindow time.Duration) Metrics {
+	__antithesis_instrumentation__.Notify(86326)
 	return Metrics{
 		MaxBytesHist:  metric.NewHistogram(metaMemMaxBytes, histogramWindow, log10int64times1000, 3),
 		CurBytesCount: metric.NewGauge(metaMemCurBytes),

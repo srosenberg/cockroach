@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvcoord
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,91 +11,71 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// condensableSpanSet is a set of key spans that is condensable in order to
-// stay below some maximum byte limit. Condensing of the set happens in two
-// ways. Initially, overlapping spans are merged together to deduplicate
-// redundant keys. If that alone isn't sufficient to stay below the byte limit,
-// spans within the same Range will be merged together. This can cause the
-// "footprint" of the set to grow, so the set should be thought of as on
-// overestimate.
 type condensableSpanSet struct {
 	s     []roachpb.Span
 	bytes int64
 
-	// condensed is set if we ever condensed the spans. Meaning, if the set of
-	// spans currently tracked has lost fidelity compared to the spans inserted.
-	// Note that we might have otherwise mucked with the inserted spans to save
-	// memory without losing fidelity, in which case this flag would not be set
-	// (e.g. merging overlapping or adjacent spans).
 	condensed bool
 
-	// Avoid heap allocations for transactions with a small number of spans.
 	sAlloc [2]roachpb.Span
 }
 
-// insert adds new spans to the condensable span set. No attempt to condense the
-// set or deduplicate the new span with existing spans is made.
 func (s *condensableSpanSet) insert(spans ...roachpb.Span) {
+	__antithesis_instrumentation__.Notify(86978)
 	if cap(s.s) == 0 {
+		__antithesis_instrumentation__.Notify(86980)
 		s.s = s.sAlloc[:0]
+	} else {
+		__antithesis_instrumentation__.Notify(86981)
 	}
+	__antithesis_instrumentation__.Notify(86979)
 	s.s = append(s.s, spans...)
 	for _, sp := range spans {
+		__antithesis_instrumentation__.Notify(86982)
 		s.bytes += spanSize(sp)
 	}
 }
 
-// mergeAndSort merges all overlapping spans. Calling this method will not
-// increase the overall bounds of the span set, but will eliminate duplicated
-// spans and combine overlapping spans.
-//
-// The method has the side effect of sorting the set.
 func (s *condensableSpanSet) mergeAndSort() {
+	__antithesis_instrumentation__.Notify(86983)
 	oldLen := len(s.s)
 	s.s, _ = roachpb.MergeSpans(&s.s)
-	// Recompute the size if anything has changed.
+
 	if oldLen != len(s.s) {
+		__antithesis_instrumentation__.Notify(86984)
 		s.bytes = 0
 		for _, sp := range s.s {
+			__antithesis_instrumentation__.Notify(86985)
 			s.bytes += spanSize(sp)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(86986)
 	}
 }
 
-// maybeCondense is similar in spirit to mergeAndSort, but it only adjusts the
-// span set when the maximum byte limit is exceeded. However, when this limit is
-// exceeded, the method is more aggressive in its attempt to reduce the memory
-// footprint of the span set. Not only will it merge overlapping spans, but
-// spans within the same range boundaries are also condensed.
-//
-// Returns true if condensing was done. Note that, even if condensing was
-// performed, this doesn't guarantee that the size was reduced below the byte
-// limit. Condensing is only performed at the level of individual ranges, not
-// across ranges, so it's possible to not be able to condense as much as
-// desired.
-//
-// maxBytes <= 0 means that each range will be maximally condensed.
 func (s *condensableSpanSet) maybeCondense(
 	ctx context.Context, riGen rangeIteratorFactory, maxBytes int64,
 ) bool {
+	__antithesis_instrumentation__.Notify(86987)
 	if s.bytes <= maxBytes {
+		__antithesis_instrumentation__.Notify(86993)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(86994)
 	}
+	__antithesis_instrumentation__.Notify(86988)
 
-	// Start by attempting to simply merge the spans within the set. This alone
-	// may bring us under the byte limit. Even if it doesn't, this step has the
-	// nice property that it sorts the spans by start key, which we rely on
-	// lower in this method.
 	s.mergeAndSort()
 	if s.bytes <= maxBytes {
+		__antithesis_instrumentation__.Notify(86995)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(86996)
 	}
+	__antithesis_instrumentation__.Notify(86989)
 
 	ri := riGen.newRangeIterator()
 
-	// Divide spans by range boundaries and condense. Iterate over spans
-	// using a range iterator and add each to a bucket keyed by range
-	// ID. Local keys are kept in a new slice and not added to buckets.
 	type spanBucket struct {
 		rangeID roachpb.RangeID
 		bytes   int64
@@ -112,135 +84,163 @@ func (s *condensableSpanSet) maybeCondense(
 	var buckets []spanBucket
 	var localSpans []roachpb.Span
 	for _, sp := range s.s {
+		__antithesis_instrumentation__.Notify(86997)
 		if keys.IsLocal(sp.Key) {
+			__antithesis_instrumentation__.Notify(87001)
 			localSpans = append(localSpans, sp)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(87002)
 		}
+		__antithesis_instrumentation__.Notify(86998)
 		ri.Seek(ctx, roachpb.RKey(sp.Key), Ascending)
 		if !ri.Valid() {
-			// We haven't modified s.s yet, so it is safe to return.
+			__antithesis_instrumentation__.Notify(87003)
+
 			log.Warningf(ctx, "failed to condense lock spans: %v", ri.Error())
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(87004)
 		}
+		__antithesis_instrumentation__.Notify(86999)
 		rangeID := ri.Desc().RangeID
-		if l := len(buckets); l > 0 && buckets[l-1].rangeID == rangeID {
+		if l := len(buckets); l > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(87005)
+			return buckets[l-1].rangeID == rangeID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(87006)
 			buckets[l-1].spans = append(buckets[l-1].spans, sp)
 		} else {
+			__antithesis_instrumentation__.Notify(87007)
 			buckets = append(buckets, spanBucket{
 				rangeID: rangeID, spans: []roachpb.Span{sp},
 			})
 		}
+		__antithesis_instrumentation__.Notify(87000)
 		buckets[len(buckets)-1].bytes += spanSize(sp)
 	}
+	__antithesis_instrumentation__.Notify(86990)
 
-	// Sort the buckets by size and collapse from largest to smallest
-	// until total size of uncondensed spans no longer exceeds threshold.
-	sort.Slice(buckets, func(i, j int) bool { return buckets[i].bytes > buckets[j].bytes })
-	s.s = localSpans // reset to hold just the local spans; will add newly condensed and remainder
+	sort.Slice(buckets, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(87008)
+		return buckets[i].bytes > buckets[j].bytes
+	})
+	__antithesis_instrumentation__.Notify(86991)
+	s.s = localSpans
 	for _, bucket := range buckets {
-		// Condense until we get to half the threshold.
+		__antithesis_instrumentation__.Notify(87009)
+
 		if s.bytes <= maxBytes/2 {
-			// Collect remaining spans from each bucket into uncondensed slice.
+			__antithesis_instrumentation__.Notify(87012)
+
 			s.s = append(s.s, bucket.spans...)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(87013)
 		}
+		__antithesis_instrumentation__.Notify(87010)
 		s.bytes -= bucket.bytes
-		// TODO(spencer): consider further optimizations here to create
-		// more than one span out of a bucket to avoid overly broad span
-		// combinations.
+
 		cs := bucket.spans[0]
 		for _, s := range bucket.spans[1:] {
+			__antithesis_instrumentation__.Notify(87014)
 			cs = cs.Combine(s)
 			if !cs.Valid() {
-				// If we didn't fatal here then we would need to ensure that the
-				// spans were restored or a transaction could lose part of its
-				// lock footprint.
+				__antithesis_instrumentation__.Notify(87015)
+
 				log.Fatalf(ctx, "failed to condense lock spans: "+
 					"combining span %s yielded invalid result", s)
+			} else {
+				__antithesis_instrumentation__.Notify(87016)
 			}
 		}
+		__antithesis_instrumentation__.Notify(87011)
 		s.bytes += spanSize(cs)
 		s.s = append(s.s, cs)
 	}
+	__antithesis_instrumentation__.Notify(86992)
 	s.condensed = true
 	return true
 }
 
-// asSlice returns the set as a slice of spans.
 func (s *condensableSpanSet) asSlice() []roachpb.Span {
+	__antithesis_instrumentation__.Notify(87017)
 	l := len(s.s)
-	return s.s[:l:l] // immutable on append
+	return s.s[:l:l]
 }
 
-// empty returns whether the set is empty or whether it contains spans.
 func (s *condensableSpanSet) empty() bool {
+	__antithesis_instrumentation__.Notify(87018)
 	return len(s.s) == 0
 }
 
 func (s *condensableSpanSet) clear() {
+	__antithesis_instrumentation__.Notify(87019)
 	*s = condensableSpanSet{}
 }
 
-// estimateSize returns the size that the spanSet would grow to if spans were
-// added to the set. As a side-effect, the receiver might get its spans merged.
-//
-// The result doesn't take into consideration the effect of condensing the
-// spans, but might take into consideration the effects of merging the spans
-// (which is not a lossy operation): mergeThresholdBytes instructs the
-// simulation to perform merging and de-duping if the size grows over this
-// threshold.
 func (s *condensableSpanSet) estimateSize(spans []roachpb.Span, mergeThresholdBytes int64) int64 {
+	__antithesis_instrumentation__.Notify(87020)
 	var bytes int64
 	for _, sp := range spans {
+		__antithesis_instrumentation__.Notify(87025)
 		bytes += spanSize(sp)
 	}
 	{
+		__antithesis_instrumentation__.Notify(87026)
 		estimate := s.bytes + bytes
 		if estimate <= mergeThresholdBytes {
+			__antithesis_instrumentation__.Notify(87027)
 			return estimate
+		} else {
+			__antithesis_instrumentation__.Notify(87028)
 		}
 	}
+	__antithesis_instrumentation__.Notify(87021)
 
-	// Merge and de-dupe in the hope of saving some space.
-
-	// First, merge the existing spans in-place. Doing it in-place instead of
-	// operating on a copy avoids the risk of quadratic behavior over a series of
-	// estimateSize() calls, where each call has to repeatedly merge a copy in
-	// order to discover that the merge saves enough space to stay under the
-	// threshold.
 	s.mergeAndSort()
 
-	// See if merging s was enough.
 	estimate := s.bytes + bytes
 	if estimate <= mergeThresholdBytes {
+		__antithesis_instrumentation__.Notify(87029)
 		return estimate
+	} else {
+		__antithesis_instrumentation__.Notify(87030)
 	}
+	__antithesis_instrumentation__.Notify(87022)
 
-	// Try harder - merge (a copy of) the existing spans with the new spans.
 	spans = append(spans, s.s...)
 	lenBeforeMerge := len(spans)
 	spans, _ = roachpb.MergeSpans(&spans)
 	if len(spans) == lenBeforeMerge {
-		// Nothing changed -i.e. we failed to merge any spans.
+		__antithesis_instrumentation__.Notify(87031)
+
 		return estimate
+	} else {
+		__antithesis_instrumentation__.Notify(87032)
 	}
-	// Recompute the size.
+	__antithesis_instrumentation__.Notify(87023)
+
 	bytes = 0
 	for _, sp := range spans {
+		__antithesis_instrumentation__.Notify(87033)
 		bytes += spanSize(sp)
 	}
+	__antithesis_instrumentation__.Notify(87024)
 	return bytes
 }
 
-// bytesSize returns the size of the tracked spans.
 func (s *condensableSpanSet) bytesSize() int64 {
+	__antithesis_instrumentation__.Notify(87034)
 	return s.bytes
 }
 
 func spanSize(sp roachpb.Span) int64 {
+	__antithesis_instrumentation__.Notify(87035)
 	return int64(len(sp.Key) + len(sp.EndKey))
 }
 
 func keySize(k roachpb.Key) int64 {
+	__antithesis_instrumentation__.Notify(87036)
 	return int64(len(k))
 }

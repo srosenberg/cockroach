@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kv
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -44,8 +36,7 @@ const (
 		v BYTES NOT NULL,
 		INDEX (v)
 	)`
-	// TODO(ajwerner): Change this to use the "easier" hash sharded index syntax once that
-	// is in.
+
 	shardedKvSchema = `(
 		k BIGINT NOT NULL,
 		v BYTES NOT NULL,
@@ -103,6 +94,7 @@ var kvMeta = workload.Meta{
 	Version:      `1.0.0`,
 	PublicFacing: true,
 	New: func() workload.Generator {
+		__antithesis_instrumentation__.Notify(694349)
 		g := &kv{}
 		g.flags.FlagSet = pflag.NewFlagSet(`kv`, pflag.ContinueOnError)
 		g.flags.Meta = map[string]workload.FlagMeta{
@@ -148,193 +140,320 @@ var kvMeta = workload.Meta{
 	},
 }
 
-// Meta implements the Generator interface.
-func (*kv) Meta() workload.Meta { return kvMeta }
+func (*kv) Meta() workload.Meta { __antithesis_instrumentation__.Notify(694350); return kvMeta }
 
-// Flags implements the Flagser interface.
-func (w *kv) Flags() workload.Flags { return w.flags }
+func (w *kv) Flags() workload.Flags { __antithesis_instrumentation__.Notify(694351); return w.flags }
 
-// Hooks implements the Hookser interface.
 func (w *kv) Hooks() workload.Hooks {
+	__antithesis_instrumentation__.Notify(694352)
 	return workload.Hooks{
 		PostLoad: func(db *gosql.DB) error {
+			__antithesis_instrumentation__.Notify(694353)
 			if !w.enum {
+				__antithesis_instrumentation__.Notify(694355)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(694356)
 			}
+			__antithesis_instrumentation__.Notify(694354)
 			_, err := db.Exec(`
 CREATE TYPE enum_type AS ENUM ('v');
 ALTER TABLE kv ADD COLUMN e enum_type NOT NULL AS ('v') STORED;`)
 			return err
 		},
 		Validate: func() error {
+			__antithesis_instrumentation__.Notify(694357)
 			if w.maxBlockSizeBytes < w.minBlockSizeBytes {
+				__antithesis_instrumentation__.Notify(694363)
 				return errors.Errorf("Value of 'max-block-bytes' (%d) must be greater than or equal to value of 'min-block-bytes' (%d)",
 					w.maxBlockSizeBytes, w.minBlockSizeBytes)
+			} else {
+				__antithesis_instrumentation__.Notify(694364)
 			}
-			if w.sequential && w.splits > 0 {
+			__antithesis_instrumentation__.Notify(694358)
+			if w.sequential && func() bool {
+				__antithesis_instrumentation__.Notify(694365)
+				return w.splits > 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(694366)
 				return errors.New("'sequential' and 'splits' cannot both be enabled")
+			} else {
+				__antithesis_instrumentation__.Notify(694367)
 			}
-			if w.sequential && w.zipfian {
+			__antithesis_instrumentation__.Notify(694359)
+			if w.sequential && func() bool {
+				__antithesis_instrumentation__.Notify(694368)
+				return w.zipfian == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(694369)
 				return errors.New("'sequential' and 'zipfian' cannot both be enabled")
+			} else {
+				__antithesis_instrumentation__.Notify(694370)
 			}
+			__antithesis_instrumentation__.Notify(694360)
 			if w.readPercent+w.spanPercent > 100 {
+				__antithesis_instrumentation__.Notify(694371)
 				return errors.New("'read-percent' and 'span-percent' higher than 100")
+			} else {
+				__antithesis_instrumentation__.Notify(694372)
 			}
-			if w.targetCompressionRatio < 1.0 || math.IsNaN(w.targetCompressionRatio) {
+			__antithesis_instrumentation__.Notify(694361)
+			if w.targetCompressionRatio < 1.0 || func() bool {
+				__antithesis_instrumentation__.Notify(694373)
+				return math.IsNaN(w.targetCompressionRatio) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(694374)
 				return errors.New("'target-compression-ratio' must be a number >= 1.0")
+			} else {
+				__antithesis_instrumentation__.Notify(694375)
 			}
+			__antithesis_instrumentation__.Notify(694362)
 			return nil
 		},
 	}
 }
 
-// Tables implements the Generator interface.
 func (w *kv) Tables() []workload.Table {
+	__antithesis_instrumentation__.Notify(694376)
 	table := workload.Table{
 		Name: `kv`,
-		// TODO(dan): Support initializing kv with data.
+
 		Splits: workload.Tuples(
 			w.splits,
 			func(splitIdx int) []interface{} {
+				__antithesis_instrumentation__.Notify(694379)
 				stride := (float64(w.cycleLength) - float64(math.MinInt64)) / float64(w.splits+1)
 				splitPoint := int(math.MinInt64 + float64(splitIdx+1)*stride)
 				return []interface{}{splitPoint}
 			},
 		),
 	}
+	__antithesis_instrumentation__.Notify(694377)
 	if w.shards > 0 {
+		__antithesis_instrumentation__.Notify(694380)
 		schema := shardedKvSchema
 		if w.secondaryIndex {
+			__antithesis_instrumentation__.Notify(694383)
 			schema = shardedKvSchemaWithIndex
+		} else {
+			__antithesis_instrumentation__.Notify(694384)
 		}
+		__antithesis_instrumentation__.Notify(694381)
 		checkConstraint := strings.Builder{}
 		checkConstraint.WriteString(`shard IN (`)
 		for i := 0; i < w.shards; i++ {
+			__antithesis_instrumentation__.Notify(694385)
 			if i != 0 {
+				__antithesis_instrumentation__.Notify(694387)
 				checkConstraint.WriteString(",")
+			} else {
+				__antithesis_instrumentation__.Notify(694388)
 			}
+			__antithesis_instrumentation__.Notify(694386)
 			fmt.Fprintf(&checkConstraint, "%d", i)
 		}
+		__antithesis_instrumentation__.Notify(694382)
 		checkConstraint.WriteString(")")
 		table.Schema = fmt.Sprintf(schema, w.shards, checkConstraint.String())
 	} else {
+		__antithesis_instrumentation__.Notify(694389)
 		if w.secondaryIndex {
+			__antithesis_instrumentation__.Notify(694390)
 			table.Schema = kvSchemaWithIndex
 		} else {
+			__antithesis_instrumentation__.Notify(694391)
 			table.Schema = kvSchema
 		}
 	}
+	__antithesis_instrumentation__.Notify(694378)
 	return []workload.Table{table}
 }
 
-// Ops implements the Opser interface.
 func (w *kv) Ops(
 	ctx context.Context, urls []string, reg *histogram.Registry,
 ) (workload.QueryLoad, error) {
+	__antithesis_instrumentation__.Notify(694392)
 	writeSeq := 0
 	if w.writeSeq != "" {
+		__antithesis_instrumentation__.Notify(694401)
 		first := w.writeSeq[0]
-		if len(w.writeSeq) < 2 || (first != 'R' && first != 'S') {
+		if len(w.writeSeq) < 2 || func() bool {
+			__antithesis_instrumentation__.Notify(694405)
+			return (first != 'R' && func() bool {
+				__antithesis_instrumentation__.Notify(694406)
+				return first != 'S' == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(694407)
 			return workload.QueryLoad{}, fmt.Errorf("--write-seq has to be of the form '(R|S)<num>'")
+		} else {
+			__antithesis_instrumentation__.Notify(694408)
 		}
+		__antithesis_instrumentation__.Notify(694402)
 		rest := w.writeSeq[1:]
 		var err error
 		writeSeq, err = strconv.Atoi(rest)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(694409)
 			return workload.QueryLoad{}, fmt.Errorf("--write-seq has to be of the form '(R|S)<num>'")
+		} else {
+			__antithesis_instrumentation__.Notify(694410)
 		}
-		if first == 'R' && w.sequential {
+		__antithesis_instrumentation__.Notify(694403)
+		if first == 'R' && func() bool {
+			__antithesis_instrumentation__.Notify(694411)
+			return w.sequential == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(694412)
 			return workload.QueryLoad{}, fmt.Errorf("--sequential incompatible with a Random --write-seq")
+		} else {
+			__antithesis_instrumentation__.Notify(694413)
 		}
-		if first == 'S' && !w.sequential {
+		__antithesis_instrumentation__.Notify(694404)
+		if first == 'S' && func() bool {
+			__antithesis_instrumentation__.Notify(694414)
+			return !w.sequential == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(694415)
 			return workload.QueryLoad{}, fmt.Errorf(
 				"--sequential=false incompatible with a Sequential --write-seq")
+		} else {
+			__antithesis_instrumentation__.Notify(694416)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(694417)
 	}
+	__antithesis_instrumentation__.Notify(694393)
 
 	sqlDatabase, err := workload.SanitizeUrls(w, w.connFlags.DBOverride, urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694418)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(694419)
 	}
+	__antithesis_instrumentation__.Notify(694394)
 	cfg := workload.MultiConnPoolCfg{
 		MaxTotalConnections: w.connFlags.Concurrency + 1,
 	}
 	mcp, err := workload.NewMultiConnPool(ctx, cfg, urls...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694420)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(694421)
 	}
+	__antithesis_instrumentation__.Notify(694395)
 
-	// Read statement
 	var buf strings.Builder
 	if w.shards == 0 {
+		__antithesis_instrumentation__.Notify(694422)
 		buf.WriteString(`SELECT k, v FROM kv WHERE k IN (`)
 		for i := 0; i < w.batchSize; i++ {
+			__antithesis_instrumentation__.Notify(694423)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(694425)
 				buf.WriteString(", ")
+			} else {
+				__antithesis_instrumentation__.Notify(694426)
 			}
-			fmt.Fprintf(&buf, `$%d`, i+1)
-		}
-	} else if w.enum {
-		buf.WriteString(`SELECT k, v, e FROM kv WHERE k IN (`)
-		for i := 0; i < w.batchSize; i++ {
-			if i > 0 {
-				buf.WriteString(", ")
-			}
+			__antithesis_instrumentation__.Notify(694424)
 			fmt.Fprintf(&buf, `$%d`, i+1)
 		}
 	} else {
-		// TODO(ajwerner): We're currently manually plumbing down the computed shard column
-		// since the optimizer doesn't yet support deriving values of computed columns
-		// when all the columns they reference are available. See
-		// https://github.com/cockroachdb/cockroach/issues/39340#issuecomment-535338071
-		// for details. Remove this once that functionality is added.
-		buf.WriteString(`SELECT k, v FROM kv WHERE (shard, k) in (`)
-		for i := 0; i < w.batchSize; i++ {
-			if i > 0 {
-				buf.WriteString(", ")
+		__antithesis_instrumentation__.Notify(694427)
+		if w.enum {
+			__antithesis_instrumentation__.Notify(694428)
+			buf.WriteString(`SELECT k, v, e FROM kv WHERE k IN (`)
+			for i := 0; i < w.batchSize; i++ {
+				__antithesis_instrumentation__.Notify(694429)
+				if i > 0 {
+					__antithesis_instrumentation__.Notify(694431)
+					buf.WriteString(", ")
+				} else {
+					__antithesis_instrumentation__.Notify(694432)
+				}
+				__antithesis_instrumentation__.Notify(694430)
+				fmt.Fprintf(&buf, `$%d`, i+1)
 			}
-			fmt.Fprintf(&buf, `(mod($%d, %d), $%d)`, i+1, w.shards, i+1)
+		} else {
+			__antithesis_instrumentation__.Notify(694433)
+
+			buf.WriteString(`SELECT k, v FROM kv WHERE (shard, k) in (`)
+			for i := 0; i < w.batchSize; i++ {
+				__antithesis_instrumentation__.Notify(694434)
+				if i > 0 {
+					__antithesis_instrumentation__.Notify(694436)
+					buf.WriteString(", ")
+				} else {
+					__antithesis_instrumentation__.Notify(694437)
+				}
+				__antithesis_instrumentation__.Notify(694435)
+				fmt.Fprintf(&buf, `(mod($%d, %d), $%d)`, i+1, w.shards, i+1)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(694396)
 	buf.WriteString(`)`)
 	readStmtStr := buf.String()
 
-	// Write statement
 	buf.Reset()
 	buf.WriteString(`UPSERT INTO kv (k, v) VALUES`)
 	for i := 0; i < w.batchSize; i++ {
+		__antithesis_instrumentation__.Notify(694438)
 		j := i * 2
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(694440)
 			buf.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(694441)
 		}
+		__antithesis_instrumentation__.Notify(694439)
 		fmt.Fprintf(&buf, ` ($%d, $%d)`, j+1, j+2)
 	}
+	__antithesis_instrumentation__.Notify(694397)
 	writeStmtStr := buf.String()
 
-	// Select for update statement
 	var sfuStmtStr string
 	if w.writesUseSelectForUpdate {
+		__antithesis_instrumentation__.Notify(694442)
 		if w.shards != 0 {
+			__antithesis_instrumentation__.Notify(694445)
 			return workload.QueryLoad{}, fmt.Errorf("select for update in kv requires shard=0")
+		} else {
+			__antithesis_instrumentation__.Notify(694446)
 		}
+		__antithesis_instrumentation__.Notify(694443)
 		buf.Reset()
 		buf.WriteString(`SELECT k, v FROM kv WHERE k IN (`)
 		for i := 0; i < w.batchSize; i++ {
+			__antithesis_instrumentation__.Notify(694447)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(694449)
 				buf.WriteString(", ")
+			} else {
+				__antithesis_instrumentation__.Notify(694450)
 			}
+			__antithesis_instrumentation__.Notify(694448)
 			fmt.Fprintf(&buf, `$%d`, i+1)
 		}
+		__antithesis_instrumentation__.Notify(694444)
 		buf.WriteString(`) FOR UPDATE`)
 		sfuStmtStr = buf.String()
+	} else {
+		__antithesis_instrumentation__.Notify(694451)
 	}
+	__antithesis_instrumentation__.Notify(694398)
 
-	// Span statement
 	buf.Reset()
 	buf.WriteString(`SELECT count(v) FROM [SELECT v FROM kv`)
 	if w.spanLimit > 0 {
+		__antithesis_instrumentation__.Notify(694452)
 		fmt.Fprintf(&buf, ` ORDER BY k LIMIT %d`, w.spanLimit)
+	} else {
+		__antithesis_instrumentation__.Notify(694453)
 	}
+	__antithesis_instrumentation__.Notify(694399)
 	buf.WriteString(`]`)
 	spanStmtStr := buf.String()
 
@@ -342,6 +461,7 @@ func (w *kv) Ops(
 	seq := &sequence{config: w, val: int64(writeSeq)}
 	numEmptyResults := new(int64)
 	for i := 0; i < w.connFlags.Concurrency; i++ {
+		__antithesis_instrumentation__.Notify(694454)
 		op := &kvOp{
 			config:          w,
 			hists:           reg.GetHandle(),
@@ -350,23 +470,39 @@ func (w *kv) Ops(
 		op.readStmt = op.sr.Define(readStmtStr)
 		op.writeStmt = op.sr.Define(writeStmtStr)
 		if len(sfuStmtStr) > 0 {
+			__antithesis_instrumentation__.Notify(694458)
 			op.sfuStmt = op.sr.Define(sfuStmtStr)
+		} else {
+			__antithesis_instrumentation__.Notify(694459)
 		}
+		__antithesis_instrumentation__.Notify(694455)
 		op.spanStmt = op.sr.Define(spanStmtStr)
 		if err := op.sr.Init(ctx, "kv", mcp, w.connFlags); err != nil {
+			__antithesis_instrumentation__.Notify(694460)
 			return workload.QueryLoad{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(694461)
 		}
+		__antithesis_instrumentation__.Notify(694456)
 		op.mcp = mcp
 		if w.sequential {
+			__antithesis_instrumentation__.Notify(694462)
 			op.g = newSequentialGenerator(seq)
-		} else if w.zipfian {
-			op.g = newZipfianGenerator(seq)
 		} else {
-			op.g = newHashGenerator(seq)
+			__antithesis_instrumentation__.Notify(694463)
+			if w.zipfian {
+				__antithesis_instrumentation__.Notify(694464)
+				op.g = newZipfianGenerator(seq)
+			} else {
+				__antithesis_instrumentation__.Notify(694465)
+				op.g = newHashGenerator(seq)
+			}
 		}
+		__antithesis_instrumentation__.Notify(694457)
 		ql.WorkerFns = append(ql.WorkerFns, op.run)
 		ql.Close = op.close
 	}
+	__antithesis_instrumentation__.Notify(694400)
 	return ql, nil
 }
 
@@ -380,126 +516,195 @@ type kvOp struct {
 	spanStmt        workload.StmtHandle
 	sfuStmt         workload.StmtHandle
 	g               keyGenerator
-	numEmptyResults *int64 // accessed atomically
+	numEmptyResults *int64
 }
 
 func (o *kvOp) run(ctx context.Context) (retErr error) {
-	statementProbability := o.g.rand().Intn(100) // Determines what statement is executed.
+	__antithesis_instrumentation__.Notify(694466)
+	statementProbability := o.g.rand().Intn(100)
 	if statementProbability < o.config.readPercent {
+		__antithesis_instrumentation__.Notify(694472)
 		args := make([]interface{}, o.config.batchSize)
 		for i := 0; i < o.config.batchSize; i++ {
+			__antithesis_instrumentation__.Notify(694477)
 			args[i] = o.g.readKey()
 		}
+		__antithesis_instrumentation__.Notify(694473)
 		start := timeutil.Now()
 		rows, err := o.readStmt.Query(ctx, args...)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(694478)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(694479)
 		}
+		__antithesis_instrumentation__.Notify(694474)
 		empty := true
 		for rows.Next() {
+			__antithesis_instrumentation__.Notify(694480)
 			empty = false
 		}
+		__antithesis_instrumentation__.Notify(694475)
 		if empty {
+			__antithesis_instrumentation__.Notify(694481)
 			atomic.AddInt64(o.numEmptyResults, 1)
+		} else {
+			__antithesis_instrumentation__.Notify(694482)
 		}
+		__antithesis_instrumentation__.Notify(694476)
 		elapsed := timeutil.Since(start)
 		o.hists.Get(`read`).Record(elapsed)
 		return rows.Err()
+	} else {
+		__antithesis_instrumentation__.Notify(694483)
 	}
-	// Since we know the statement is not a read, we recalibrate
-	// statementProbability to only consider the other statements.
+	__antithesis_instrumentation__.Notify(694467)
+
 	statementProbability -= o.config.readPercent
 	if statementProbability < o.config.spanPercent {
+		__antithesis_instrumentation__.Notify(694484)
 		start := timeutil.Now()
 		_, err := o.spanStmt.Exec(ctx)
 		elapsed := timeutil.Since(start)
 		o.hists.Get(`span`).Record(elapsed)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694485)
 	}
+	__antithesis_instrumentation__.Notify(694468)
 	const argCount = 2
 	writeArgs := make([]interface{}, argCount*o.config.batchSize)
 	var sfuArgs []interface{}
 	if o.config.writesUseSelectForUpdate {
+		__antithesis_instrumentation__.Notify(694486)
 		sfuArgs = make([]interface{}, o.config.batchSize)
+	} else {
+		__antithesis_instrumentation__.Notify(694487)
 	}
+	__antithesis_instrumentation__.Notify(694469)
 	for i := 0; i < o.config.batchSize; i++ {
+		__antithesis_instrumentation__.Notify(694488)
 		j := i * argCount
 		writeArgs[j+0] = o.g.writeKey()
 		if sfuArgs != nil {
+			__antithesis_instrumentation__.Notify(694490)
 			sfuArgs[i] = writeArgs[j]
+		} else {
+			__antithesis_instrumentation__.Notify(694491)
 		}
+		__antithesis_instrumentation__.Notify(694489)
 		writeArgs[j+1] = randomBlock(o.config, o.g.rand())
 	}
+	__antithesis_instrumentation__.Notify(694470)
 	start := timeutil.Now()
 	var err error
 	if o.config.writesUseSelectForUpdate {
-		// We could use crdb.ExecuteTx, but we avoid retries in this workload so
-		// that each run call makes 1 attempt, so that rate limiting in workerRun
-		// behaves as expected.
+		__antithesis_instrumentation__.Notify(694492)
+
 		var tx pgx.Tx
 		if tx, err = o.mcp.Get().Begin(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(694498)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(694499)
 		}
+		__antithesis_instrumentation__.Notify(694493)
 		defer func() {
+			__antithesis_instrumentation__.Notify(694500)
 			rollbackErr := tx.Rollback(ctx)
 			if !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+				__antithesis_instrumentation__.Notify(694501)
 				retErr = errors.CombineErrors(retErr, rollbackErr)
+			} else {
+				__antithesis_instrumentation__.Notify(694502)
 			}
 		}()
+		__antithesis_instrumentation__.Notify(694494)
 		rows, err := o.sfuStmt.QueryTx(ctx, tx, sfuArgs...)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(694503)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(694504)
 		}
+		__antithesis_instrumentation__.Notify(694495)
 		rows.Close()
 		if err = rows.Err(); err != nil {
+			__antithesis_instrumentation__.Notify(694505)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(694506)
 		}
-		// Simulate a transaction that does other work between the SFU and write.
-		// TODO(sumeer): this should be configurable.
+		__antithesis_instrumentation__.Notify(694496)
+
 		time.Sleep(10 * time.Millisecond)
 		if _, err = o.writeStmt.ExecTx(ctx, tx, writeArgs...); err != nil {
-			// Multiple write transactions can contend and encounter
-			// a serialization failure. We swallow such an error.
+			__antithesis_instrumentation__.Notify(694507)
+
 			return o.tryHandleWriteErr("write-write-err", start, err)
+		} else {
+			__antithesis_instrumentation__.Notify(694508)
 		}
+		__antithesis_instrumentation__.Notify(694497)
 		if err = tx.Commit(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(694509)
 			return o.tryHandleWriteErr("write-commit-err", start, err)
+		} else {
+			__antithesis_instrumentation__.Notify(694510)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(694511)
 		_, err = o.writeStmt.Exec(ctx, writeArgs...)
 	}
+	__antithesis_instrumentation__.Notify(694471)
 	elapsed := timeutil.Since(start)
 	o.hists.Get(`write`).Record(elapsed)
 	return err
 }
 
 func (o *kvOp) tryHandleWriteErr(name string, start time.Time, err error) error {
-	// If the error is not an instance of pgconn.PgError, then it is unexpected.
+	__antithesis_instrumentation__.Notify(694512)
+
 	pgErr := new(pgconn.PgError)
 	if !errors.As(err, &pgErr) {
+		__antithesis_instrumentation__.Notify(694515)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694516)
 	}
-	// Transaction retry errors are acceptable. Allow the transaction
-	// to rollback.
+	__antithesis_instrumentation__.Notify(694513)
+
 	if pgcode.MakeCode(pgErr.Code) == pgcode.SerializationFailure {
+		__antithesis_instrumentation__.Notify(694517)
 		elapsed := timeutil.Since(start)
 		o.hists.Get(name).Record(elapsed)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(694518)
 	}
+	__antithesis_instrumentation__.Notify(694514)
 	return err
 }
 
 func (o *kvOp) close(context.Context) {
+	__antithesis_instrumentation__.Notify(694519)
 	if empty := atomic.LoadInt64(o.numEmptyResults); empty != 0 {
+		__antithesis_instrumentation__.Notify(694522)
 		fmt.Printf("Number of reads that didn't return any results: %d.\n", empty)
+	} else {
+		__antithesis_instrumentation__.Notify(694523)
 	}
+	__antithesis_instrumentation__.Notify(694520)
 	seq := o.g.sequence()
 	var ch string
 	if o.config.sequential {
+		__antithesis_instrumentation__.Notify(694524)
 		ch = "S"
 	} else {
+		__antithesis_instrumentation__.Notify(694525)
 		ch = "R"
 	}
+	__antithesis_instrumentation__.Notify(694521)
 	fmt.Printf("Highest sequence written: %d. Can be passed as --write-seq=%s%d to the next run.\n",
 		seq, ch, seq)
 }
@@ -510,18 +715,15 @@ type sequence struct {
 }
 
 func (s *sequence) write() int64 {
+	__antithesis_instrumentation__.Notify(694526)
 	return (atomic.AddInt64(&s.val, 1) - 1) % s.config.cycleLength
 }
 
-// read returns the last key index that has been written. Note that the returned
-// index might not actually have been written yet, so a read operation cannot
-// require that the key is present.
 func (s *sequence) read() int64 {
+	__antithesis_instrumentation__.Notify(694527)
 	return atomic.LoadInt64(&s.val) % s.config.cycleLength
 }
 
-// keyGenerator generates read and write keys. Read keys may not yet exist and
-// write keys may already exist.
 type keyGenerator interface {
 	writeKey() int64
 	readKey() int64
@@ -537,6 +739,7 @@ type hashGenerator struct {
 }
 
 func newHashGenerator(seq *sequence) *hashGenerator {
+	__antithesis_instrumentation__.Notify(694528)
 	return &hashGenerator{
 		seq:    seq,
 		random: rand.New(rand.NewSource(timeutil.Now().UnixNano())),
@@ -545,6 +748,7 @@ func newHashGenerator(seq *sequence) *hashGenerator {
 }
 
 func (g *hashGenerator) hash(v int64) int64 {
+	__antithesis_instrumentation__.Notify(694529)
 	binary.BigEndian.PutUint64(g.buf[:8], uint64(v))
 	binary.BigEndian.PutUint64(g.buf[8:16], uint64(g.seq.config.seed))
 	g.hasher.Reset()
@@ -554,22 +758,30 @@ func (g *hashGenerator) hash(v int64) int64 {
 }
 
 func (g *hashGenerator) writeKey() int64 {
+	__antithesis_instrumentation__.Notify(694530)
 	return g.hash(g.seq.write())
 }
 
 func (g *hashGenerator) readKey() int64 {
+	__antithesis_instrumentation__.Notify(694531)
 	v := g.seq.read()
 	if v == 0 {
+		__antithesis_instrumentation__.Notify(694533)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(694534)
 	}
+	__antithesis_instrumentation__.Notify(694532)
 	return g.hash(g.random.Int63n(v))
 }
 
 func (g *hashGenerator) rand() *rand.Rand {
+	__antithesis_instrumentation__.Notify(694535)
 	return g.random
 }
 
 func (g *hashGenerator) sequence() int64 {
+	__antithesis_instrumentation__.Notify(694536)
 	return atomic.LoadInt64(&g.seq.val)
 }
 
@@ -579,6 +791,7 @@ type sequentialGenerator struct {
 }
 
 func newSequentialGenerator(seq *sequence) *sequentialGenerator {
+	__antithesis_instrumentation__.Notify(694537)
 	return &sequentialGenerator{
 		seq:    seq,
 		random: rand.New(rand.NewSource(timeutil.Now().UnixNano())),
@@ -586,22 +799,30 @@ func newSequentialGenerator(seq *sequence) *sequentialGenerator {
 }
 
 func (g *sequentialGenerator) writeKey() int64 {
+	__antithesis_instrumentation__.Notify(694538)
 	return g.seq.write()
 }
 
 func (g *sequentialGenerator) readKey() int64 {
+	__antithesis_instrumentation__.Notify(694539)
 	v := g.seq.read()
 	if v == 0 {
+		__antithesis_instrumentation__.Notify(694541)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(694542)
 	}
+	__antithesis_instrumentation__.Notify(694540)
 	return g.random.Int63n(v)
 }
 
 func (g *sequentialGenerator) rand() *rand.Rand {
+	__antithesis_instrumentation__.Notify(694543)
 	return g.random
 }
 
 func (g *sequentialGenerator) sequence() int64 {
+	__antithesis_instrumentation__.Notify(694544)
 	return atomic.LoadInt64(&g.seq.val)
 }
 
@@ -611,8 +832,8 @@ type zipfGenerator struct {
 	zipf   *zipf
 }
 
-// Creates a new zipfian generator.
 func newZipfianGenerator(seq *sequence) *zipfGenerator {
+	__antithesis_instrumentation__.Notify(694545)
 	random := rand.New(rand.NewSource(timeutil.Now().UnixNano()))
 	return &zipfGenerator{
 		seq:    seq,
@@ -621,48 +842,62 @@ func newZipfianGenerator(seq *sequence) *zipfGenerator {
 	}
 }
 
-// Get a random number seeded by v that follows the
-// zipfian distribution.
 func (g *zipfGenerator) zipfian(seed int64) int64 {
+	__antithesis_instrumentation__.Notify(694546)
 	randomWithSeed := rand.New(rand.NewSource(seed))
 	return int64(g.zipf.Uint64(randomWithSeed))
 }
 
-// Get a zipf write key appropriately.
 func (g *zipfGenerator) writeKey() int64 {
+	__antithesis_instrumentation__.Notify(694547)
 	return g.zipfian(g.seq.write())
 }
 
-// Get a zipf read key appropriately.
 func (g *zipfGenerator) readKey() int64 {
+	__antithesis_instrumentation__.Notify(694548)
 	v := g.seq.read()
 	if v == 0 {
+		__antithesis_instrumentation__.Notify(694550)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(694551)
 	}
+	__antithesis_instrumentation__.Notify(694549)
 	return g.zipfian(g.random.Int63n(v))
 }
 
 func (g *zipfGenerator) rand() *rand.Rand {
+	__antithesis_instrumentation__.Notify(694552)
 	return g.random
 }
 
 func (g *zipfGenerator) sequence() int64 {
+	__antithesis_instrumentation__.Notify(694553)
 	return atomic.LoadInt64(&g.seq.val)
 }
 
 func randomBlock(config *kv, r *rand.Rand) []byte {
+	__antithesis_instrumentation__.Notify(694554)
 	blockSize := r.Intn(config.maxBlockSizeBytes-config.minBlockSizeBytes+1) + config.minBlockSizeBytes
 	blockData := make([]byte, blockSize)
 	uniqueSize := int(float64(blockSize) / config.targetCompressionRatio)
 	if uniqueSize < 1 {
+		__antithesis_instrumentation__.Notify(694557)
 		uniqueSize = 1
+	} else {
+		__antithesis_instrumentation__.Notify(694558)
 	}
+	__antithesis_instrumentation__.Notify(694555)
 	for i := range blockData {
+		__antithesis_instrumentation__.Notify(694559)
 		if i >= uniqueSize {
+			__antithesis_instrumentation__.Notify(694560)
 			blockData[i] = blockData[i-uniqueSize]
 		} else {
+			__antithesis_instrumentation__.Notify(694561)
 			blockData[i] = byte(r.Int() & 0xff)
 		}
 	}
+	__antithesis_instrumentation__.Notify(694556)
 	return blockData
 }

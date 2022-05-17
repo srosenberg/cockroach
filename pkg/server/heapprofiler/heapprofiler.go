@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package heapprofiler
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,30 +13,23 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// HeapProfiler is used to take Go heap profiles.
-//
-// MaybeTakeProfile() is supposed to be called periodically. A profile is taken
-// every time Go heap allocated bytes exceeds the previous high-water mark. The
-// recorded high-water mark is also reset periodically, so that we take some
-// profiles periodically.
-// Profiles are also GCed periodically. The latest is always kept, and a couple
-// of the ones with the largest heap are also kept.
 type HeapProfiler struct {
 	profiler
 }
 
-// HeapFileNamePrefix is the prefix of files containing pprof data.
 const HeapFileNamePrefix = "memprof"
 
-// HeapFileNameSuffix is the suffix of files containing pprof data.
 const HeapFileNameSuffix = ".pprof"
 
-// NewHeapProfiler creates a HeapProfiler. dir is the directory in which
-// profiles are to be stored.
 func NewHeapProfiler(ctx context.Context, dir string, st *cluster.Settings) (*HeapProfiler, error) {
+	__antithesis_instrumentation__.Notify(193564)
 	if dir == "" {
+		__antithesis_instrumentation__.Notify(193566)
 		return nil, errors.AssertionFailedf("need to specify dir for NewHeapProfiler")
+	} else {
+		__antithesis_instrumentation__.Notify(193567)
 	}
+	__antithesis_instrumentation__.Notify(193565)
 
 	log.Infof(ctx, "writing go heap profiles to %s at least every %s", dir, resetHighWaterMarkInterval)
 
@@ -58,24 +43,31 @@ func NewHeapProfiler(ctx context.Context, dir string, st *cluster.Settings) (*He
 	return hp, nil
 }
 
-// MaybeTakeProfile takes a heap profile if the heap is big enough.
 func (o *HeapProfiler) MaybeTakeProfile(ctx context.Context, curHeap int64) {
+	__antithesis_instrumentation__.Notify(193568)
 	o.maybeTakeProfile(ctx, curHeap, takeHeapProfile)
 }
 
-// takeHeapProfile returns true if and only if the profile dump was
-// taken successfully.
 func takeHeapProfile(ctx context.Context, path string) (success bool) {
-	// Try writing a go heap profile.
+	__antithesis_instrumentation__.Notify(193569)
+
 	f, err := os.Create(path)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(193572)
 		log.Warningf(ctx, "error creating go heap profile %s: %v", path, err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193573)
 	}
+	__antithesis_instrumentation__.Notify(193570)
 	defer f.Close()
 	if err = pprof.WriteHeapProfile(f); err != nil {
+		__antithesis_instrumentation__.Notify(193574)
 		log.Warningf(ctx, "error writing go heap profile %s: %v", path, err)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(193575)
 	}
+	__antithesis_instrumentation__.Notify(193571)
 	return true
 }

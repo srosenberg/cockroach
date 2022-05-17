@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,34 +19,51 @@ type cancelSessionsNode struct {
 }
 
 func (n *cancelSessionsNode) startExec(runParams) error {
+	__antithesis_instrumentation__.Notify(247199)
 	return nil
 }
 
 func (n *cancelSessionsNode) Next(params runParams) (bool, error) {
-	// TODO(knz): instead of performing the cancels sequentially,
-	// accumulate all the query IDs and then send batches to each of the
-	// nodes.
+	__antithesis_instrumentation__.Notify(247200)
 
-	if ok, err := n.rows.Next(params); err != nil || !ok {
+	if ok, err := n.rows.Next(params); err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(247207)
+		return !ok == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(247208)
 		return ok, err
+	} else {
+		__antithesis_instrumentation__.Notify(247209)
 	}
+	__antithesis_instrumentation__.Notify(247201)
 
 	datum := n.rows.Values()[0]
 	if datum == tree.DNull {
+		__antithesis_instrumentation__.Notify(247210)
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(247211)
 	}
+	__antithesis_instrumentation__.Notify(247202)
 
 	sessionIDString, ok := tree.AsDString(datum)
 	if !ok {
+		__antithesis_instrumentation__.Notify(247212)
 		return false, errors.AssertionFailedf("%q: expected *DString, found %T", datum, datum)
+	} else {
+		__antithesis_instrumentation__.Notify(247213)
 	}
+	__antithesis_instrumentation__.Notify(247203)
 
 	sessionID, err := StringToClusterWideID(string(sessionIDString))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(247214)
 		return false, pgerror.Wrapf(err, pgcode.Syntax, "invalid session ID %s", datum)
+	} else {
+		__antithesis_instrumentation__.Notify(247215)
 	}
+	__antithesis_instrumentation__.Notify(247204)
 
-	// Get the lowest 32 bits of the session ID.
 	nodeID := sessionID.GetNodeID()
 
 	request := &serverpb.CancelSessionRequest{
@@ -65,18 +74,33 @@ func (n *cancelSessionsNode) Next(params runParams) (bool, error) {
 
 	response, err := params.extendedEvalCtx.SQLStatusServer.CancelSession(params.ctx, request)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(247216)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(247217)
 	}
+	__antithesis_instrumentation__.Notify(247205)
 
-	if !response.Canceled && !n.ifExists {
+	if !response.Canceled && func() bool {
+		__antithesis_instrumentation__.Notify(247218)
+		return !n.ifExists == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(247219)
 		return false, errors.Newf("could not cancel session %s: %s", sessionID, response.Error)
+	} else {
+		__antithesis_instrumentation__.Notify(247220)
 	}
+	__antithesis_instrumentation__.Notify(247206)
 
 	return true, nil
 }
 
-func (*cancelSessionsNode) Values() tree.Datums { return nil }
+func (*cancelSessionsNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(247221)
+	return nil
+}
 
 func (n *cancelSessionsNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(247222)
 	n.rows.Close(ctx)
 }

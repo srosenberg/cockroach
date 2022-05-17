@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfigtestcluster
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,9 +23,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Handle is a testing helper that lets users operate a multi-tenant test
-// cluster while providing convenient, scoped access to each tenant's specific
-// span config primitives. It's not safe for concurrent use.
 type Handle struct {
 	t       *testing.T
 	tc      *testcluster.TestCluster
@@ -41,10 +30,10 @@ type Handle struct {
 	scKnobs *spanconfig.TestingKnobs
 }
 
-// NewHandle returns a new Handle.
 func NewHandle(
 	t *testing.T, tc *testcluster.TestCluster, scKnobs *spanconfig.TestingKnobs,
 ) *Handle {
+	__antithesis_instrumentation__.Notify(241739)
 	return &Handle{
 		t:       t,
 		tc:      tc,
@@ -53,16 +42,17 @@ func NewHandle(
 	}
 }
 
-// InitializeTenant initializes a tenant with the given ID, returning the
-// relevant tenant state.
 func (h *Handle) InitializeTenant(ctx context.Context, tenID roachpb.TenantID) *Tenant {
+	__antithesis_instrumentation__.Notify(241740)
 	testServer := h.tc.Server(0)
 	tenantState := &Tenant{t: h.t}
 	if tenID == roachpb.SystemTenantID {
+		__antithesis_instrumentation__.Notify(241743)
 		tenantState.TestTenantInterface = testServer
 		tenantState.db = sqlutils.MakeSQLRunner(h.tc.ServerConn(0))
-		tenantState.cleanup = func() {} // noop
+		tenantState.cleanup = func() { __antithesis_instrumentation__.Notify(241744) }
 	} else {
+		__antithesis_instrumentation__.Notify(241745)
 		tenantArgs := base.TestTenantArgs{
 			TenantID: tenID,
 			TestingKnobs: base.TestingKnobs{
@@ -79,22 +69,26 @@ func (h *Handle) InitializeTenant(ctx context.Context, tenID roachpb.TenantID) *
 
 		tenantState.db = sqlutils.MakeSQLRunner(tenantSQLDB)
 		tenantState.cleanup = func() {
+			__antithesis_instrumentation__.Notify(241746)
 			require.NoError(h.t, tenantSQLDB.Close())
 			cleanupPGUrl()
 		}
 	}
+	__antithesis_instrumentation__.Notify(241741)
 
 	var tenKnobs *spanconfig.TestingKnobs
 	if scKnobs := tenantState.TestingKnobs().SpanConfig; scKnobs != nil {
+		__antithesis_instrumentation__.Notify(241747)
 		tenKnobs = scKnobs.(*spanconfig.TestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(241748)
 	}
+	__antithesis_instrumentation__.Notify(241742)
 	tenExecCfg := tenantState.ExecutorConfig().(sql.ExecutorConfig)
 	tenKVAccessor := tenantState.SpanConfigKVAccessor().(spanconfig.KVAccessor)
 	tenSQLTranslatorFactory := tenantState.SpanConfigSQLTranslatorFactory().(*spanconfigsqltranslator.Factory)
 	tenSQLWatcher := tenantState.SpanConfigSQLWatcher().(spanconfig.SQLWatcher)
 
-	// TODO(irfansharif): We don't always care about these recordings -- should
-	// it be optional?
 	tenantState.recorder = spanconfigtestutils.NewKVAccessorRecorder(tenKVAccessor)
 	tenantState.reconciler = spanconfigreconciler.New(
 		tenSQLWatcher,
@@ -110,10 +104,8 @@ func (h *Handle) InitializeTenant(ctx context.Context, tenID roachpb.TenantID) *
 	return tenantState
 }
 
-// AllowSecondaryTenantToSetZoneConfigurations enables zone configuration
-// support for the given tenant. Given the cluster setting involved is tenant
-// read-only, the SQL statement is run as the system tenant.
 func (h *Handle) AllowSecondaryTenantToSetZoneConfigurations(t *testing.T, tenID roachpb.TenantID) {
+	__antithesis_instrumentation__.Notify(241749)
 	_, found := h.LookupTenant(tenID)
 	require.True(t, found)
 	sqlDB := sqlutils.MakeSQLRunner(h.tc.ServerConn(0))
@@ -124,44 +116,51 @@ func (h *Handle) AllowSecondaryTenantToSetZoneConfigurations(t *testing.T, tenID
 	)
 }
 
-// EnsureTenantCanSetZoneConfigurationsOrFatal ensures that the tenant observes
-// a 'true' value for sql.zone_configs.allow_for_secondary_tenants.enabled. It
-// fatals if this condition doesn't evaluate within SucceedsSoonDuration.
 func (h *Handle) EnsureTenantCanSetZoneConfigurationsOrFatal(t *testing.T, tenant *Tenant) {
+	__antithesis_instrumentation__.Notify(241750)
 	testutils.SucceedsSoon(t, func() error {
+		__antithesis_instrumentation__.Notify(241751)
 		var val string
 		tenant.QueryRow(
 			"SHOW CLUSTER SETTING sql.zone_configs.allow_for_secondary_tenant.enabled",
 		).Scan(&val)
 
 		if val == "false" {
+			__antithesis_instrumentation__.Notify(241753)
 			return errors.New(
 				"waiting for sql.zone_configs.allow_for_secondary_tenant.enabled to be updated",
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(241754)
 		}
+		__antithesis_instrumentation__.Notify(241752)
 		return nil
 	})
 }
 
-// LookupTenant returns the relevant tenant state, if any.
 func (h *Handle) LookupTenant(tenantID roachpb.TenantID) (_ *Tenant, found bool) {
+	__antithesis_instrumentation__.Notify(241755)
 	s, ok := h.ts[tenantID]
 	return s, ok
 }
 
-// Tenants returns all available tenant states.
 func (h *Handle) Tenants() []*Tenant {
+	__antithesis_instrumentation__.Notify(241756)
 	ts := make([]*Tenant, 0, len(h.ts))
 	for _, tenantState := range h.ts {
+		__antithesis_instrumentation__.Notify(241758)
 		ts = append(ts, tenantState)
 	}
+	__antithesis_instrumentation__.Notify(241757)
 	return ts
 }
 
-// Cleanup frees up internal resources.
 func (h *Handle) Cleanup() {
+	__antithesis_instrumentation__.Notify(241759)
 	for _, tenantState := range h.ts {
+		__antithesis_instrumentation__.Notify(241761)
 		tenantState.cleanup()
 	}
+	__antithesis_instrumentation__.Notify(241760)
 	h.ts = nil
 }

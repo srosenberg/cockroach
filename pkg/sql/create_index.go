@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -41,152 +33,219 @@ type createIndexNode struct {
 	tableDesc *tabledesc.Mutable
 }
 
-// CreateIndex creates an index.
-// Privileges: CREATE on table.
-//   notes: postgres requires CREATE on the table.
-//          mysql requires INDEX on the table.
 func (p *planner) CreateIndex(ctx context.Context, n *tree.CreateIndex) (planNode, error) {
+	__antithesis_instrumentation__.Notify(462931)
 	if err := checkSchemaChangeEnabled(
 		ctx,
 		p.ExecCfg(),
 		"CREATE INDEX",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(462938)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(462939)
 	}
+	__antithesis_instrumentation__.Notify(462932)
 	_, tableDesc, err := p.ResolveMutableTableDescriptor(
-		ctx, &n.Table, true /*required*/, tree.ResolveRequireTableOrViewDesc,
+		ctx, &n.Table, true, tree.ResolveRequireTableOrViewDesc,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(462940)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(462941)
 	}
+	__antithesis_instrumentation__.Notify(462933)
 
-	if tableDesc.IsView() && !tableDesc.MaterializedView() {
+	if tableDesc.IsView() && func() bool {
+		__antithesis_instrumentation__.Notify(462942)
+		return !tableDesc.MaterializedView() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(462943)
 		return nil, pgerror.Newf(pgcode.WrongObjectType, "%q is not a table or materialized view", tableDesc.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(462944)
 	}
+	__antithesis_instrumentation__.Notify(462934)
 
 	if tableDesc.MaterializedView() {
+		__antithesis_instrumentation__.Notify(462945)
 		if n.Sharded != nil {
+			__antithesis_instrumentation__.Notify(462946)
 			return nil, pgerror.New(pgcode.InvalidObjectDefinition,
 				"cannot create hash sharded index on materialized view")
+		} else {
+			__antithesis_instrumentation__.Notify(462947)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(462948)
 	}
+	__antithesis_instrumentation__.Notify(462935)
 
 	if err := p.CheckPrivilege(ctx, tableDesc, privilege.CREATE); err != nil {
+		__antithesis_instrumentation__.Notify(462949)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(462950)
 	}
+	__antithesis_instrumentation__.Notify(462936)
 
 	if tableDesc.IsLocalityRegionalByRow() {
+		__antithesis_instrumentation__.Notify(462951)
 		if err := p.checkNoRegionChangeUnderway(
 			ctx,
 			tableDesc.GetParentID(),
 			"CREATE INDEX on a REGIONAL BY ROW table",
 		); err != nil {
+			__antithesis_instrumentation__.Notify(462952)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(462953)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(462954)
 	}
+	__antithesis_instrumentation__.Notify(462937)
 
 	return &createIndexNode{tableDesc: tableDesc, n: n}, nil
 }
 
-// maybeSetupConstraintForShard adds a check constraint ensuring that the shard
-// column's value is within [0..ShardBuckets-1]. This method is called when a
-// `CREATE INDEX`/`ALTER PRIMARY KEY` statement is issued for the creation of a
-// sharded index that *does not* re-use a pre-existing shard column.
 func (p *planner) maybeSetupConstraintForShard(
 	ctx context.Context, tableDesc *tabledesc.Mutable, shardCol catalog.Column, buckets int32,
 ) error {
-	// Assign an ID to the newly-added shard column, which is needed for the creation
-	// of a valid check constraint.
+	__antithesis_instrumentation__.Notify(462955)
+
 	version := p.ExecCfg().Settings.Version.ActiveVersion(ctx)
 	if err := tableDesc.AllocateIDs(ctx, version); err != nil {
+		__antithesis_instrumentation__.Notify(462961)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(462962)
 	}
+	__antithesis_instrumentation__.Notify(462956)
 
 	ckDef, err := makeShardCheckConstraintDef(int(buckets), shardCol)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(462963)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(462964)
 	}
+	__antithesis_instrumentation__.Notify(462957)
 	ckBuilder := schemaexpr.MakeCheckConstraintBuilder(ctx, p.tableName, tableDesc, &p.semaCtx)
 	ckDesc, err := ckBuilder.Build(ckDef)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(462965)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(462966)
 	}
+	__antithesis_instrumentation__.Notify(462958)
 
 	curConstraintInfos, err := tableDesc.GetConstraintInfo()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(462967)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(462968)
 	}
+	__antithesis_instrumentation__.Notify(462959)
 
-	// Avoid creating duplicate check constraints.
 	for _, info := range curConstraintInfos {
-		if info.CheckConstraint != nil && info.CheckConstraint.Expr == ckDesc.Expr {
+		__antithesis_instrumentation__.Notify(462969)
+		if info.CheckConstraint != nil && func() bool {
+			__antithesis_instrumentation__.Notify(462970)
+			return info.CheckConstraint.Expr == ckDesc.Expr == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(462971)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(462972)
 		}
 	}
+	__antithesis_instrumentation__.Notify(462960)
 
 	ckDesc.Validity = descpb.ConstraintValidity_Validating
 	tableDesc.AddCheckMutation(ckDesc, descpb.DescriptorMutation_ADD)
 	return nil
 }
 
-// makeIndexDescriptor creates an index descriptor from a CreateIndex node and optionally
-// adds a hidden computed shard column (along with its check constraint) in case the index
-// is hash sharded. Note that `tableDesc` will be modified when this method is called for
-// a hash sharded index.
 func makeIndexDescriptor(
 	params runParams, n tree.CreateIndex, tableDesc *tabledesc.Mutable,
 ) (*descpb.IndexDescriptor, error) {
-	if n.Sharded == nil && n.StorageParams.GetVal(`bucket_count`) != nil {
+	__antithesis_instrumentation__.Notify(462973)
+	if n.Sharded == nil && func() bool {
+		__antithesis_instrumentation__.Notify(462988)
+		return n.StorageParams.GetVal(`bucket_count`) != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(462989)
 		return nil, pgerror.New(
 			pgcode.InvalidParameterValue,
 			`"bucket_count" storage param should only be set with "USING HASH" for hash sharded index`,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(462990)
 	}
-	// Since we mutate the columns below, we make copies of them
-	// here so that on retry we do not attempt to validate the
-	// mutated columns.
+	__antithesis_instrumentation__.Notify(462974)
+
 	columns := make(tree.IndexElemList, len(n.Columns))
 	copy(columns, n.Columns)
 
-	// Ensure that the columns we want to index are accessible before trying to
-	// create the index. This must be checked before inaccessible columns are
-	// created for expression indexes in replaceExpressionElemsWithVirtualCols.
 	if err := validateColumnsAreAccessible(tableDesc, columns); err != nil {
+		__antithesis_instrumentation__.Notify(462991)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(462992)
 	}
+	__antithesis_instrumentation__.Notify(462975)
 
 	tn, err := params.p.getQualifiedTableName(params.ctx, tableDesc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(462993)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(462994)
 	}
+	__antithesis_instrumentation__.Notify(462976)
 
-	// Replace expression index elements with hidden virtual computed columns.
-	// The virtual columns are added as mutation columns to tableDesc.
 	if err := replaceExpressionElemsWithVirtualCols(
 		params.ctx,
 		tableDesc,
 		tn,
 		columns,
 		n.Inverted,
-		false, /* isNewTable */
+		false,
 		params.p.SemaCtx(),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(462995)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(462996)
 	}
+	__antithesis_instrumentation__.Notify(462977)
 
-	// Ensure that the columns we want to index exist before trying to create the
-	// index.
 	if err := validateIndexColumnsExist(tableDesc, columns); err != nil {
+		__antithesis_instrumentation__.Notify(462997)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(462998)
 	}
+	__antithesis_instrumentation__.Notify(462978)
 
-	// Ensure that the index name does not exist before trying to create the index.
 	if idx, _ := tableDesc.FindIndexWithName(string(n.Name)); idx != nil {
+		__antithesis_instrumentation__.Notify(462999)
 		if idx.Dropped() {
+			__antithesis_instrumentation__.Notify(463001)
 			return nil, pgerror.Newf(pgcode.DuplicateRelation, "index with name %q already exists and is being dropped, try again later", n.Name)
+		} else {
+			__antithesis_instrumentation__.Notify(463002)
 		}
+		__antithesis_instrumentation__.Notify(463000)
 		return nil, pgerror.Newf(pgcode.DuplicateRelation, "index with name %q already exists", n.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(463003)
 	}
+	__antithesis_instrumentation__.Notify(462979)
 
 	indexDesc := descpb.IndexDescriptor{
 		Name:              string(n.Name),
@@ -197,39 +256,72 @@ func makeIndexDescriptor(
 	}
 
 	if n.Inverted {
+		__antithesis_instrumentation__.Notify(463004)
 		if n.Sharded != nil {
+			__antithesis_instrumentation__.Notify(463009)
 			return nil, pgerror.New(pgcode.InvalidSQLStatementName, "inverted indexes don't support hash sharding")
+		} else {
+			__antithesis_instrumentation__.Notify(463010)
 		}
+		__antithesis_instrumentation__.Notify(463005)
 
 		if len(indexDesc.StoreColumnNames) > 0 {
+			__antithesis_instrumentation__.Notify(463011)
 			return nil, pgerror.New(pgcode.InvalidSQLStatementName, "inverted indexes don't support stored columns")
+		} else {
+			__antithesis_instrumentation__.Notify(463012)
 		}
+		__antithesis_instrumentation__.Notify(463006)
 
 		if n.Unique {
+			__antithesis_instrumentation__.Notify(463013)
 			return nil, pgerror.New(pgcode.InvalidSQLStatementName, "inverted indexes can't be unique")
+		} else {
+			__antithesis_instrumentation__.Notify(463014)
 		}
+		__antithesis_instrumentation__.Notify(463007)
 
 		indexDesc.Type = descpb.IndexDescriptor_INVERTED
 		column, err := tableDesc.FindColumnWithName(columns[len(columns)-1].Column)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(463015)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(463016)
 		}
+		__antithesis_instrumentation__.Notify(463008)
 		switch column.GetType().Family() {
 		case types.GeometryFamily:
+			__antithesis_instrumentation__.Notify(463017)
 			config, err := geoindex.GeometryIndexConfigForSRID(column.GetType().GeoSRIDOrZero())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(463021)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(463022)
 			}
+			__antithesis_instrumentation__.Notify(463018)
 			indexDesc.GeoConfig = *config
 		case types.GeographyFamily:
+			__antithesis_instrumentation__.Notify(463019)
 			indexDesc.GeoConfig = *geoindex.DefaultGeographyIndexConfig()
+		default:
+			__antithesis_instrumentation__.Notify(463020)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(463023)
 	}
+	__antithesis_instrumentation__.Notify(462980)
 
 	if n.Sharded != nil {
+		__antithesis_instrumentation__.Notify(463024)
 		if n.PartitionByIndex.ContainsPartitions() {
+			__antithesis_instrumentation__.Notify(463027)
 			return nil, pgerror.New(pgcode.FeatureNotSupported, "sharded indexes don't support explicit partitioning")
+		} else {
+			__antithesis_instrumentation__.Notify(463028)
 		}
+		__antithesis_instrumentation__.Notify(463025)
 
 		shardCol, newColumns, err := setupShardedIndex(
 			params.ctx,
@@ -240,31 +332,53 @@ func makeIndexDescriptor(
 			tableDesc,
 			&indexDesc,
 			n.StorageParams,
-			false /* isNewTable */)
+			false)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(463029)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(463030)
 		}
+		__antithesis_instrumentation__.Notify(463026)
 		columns = newColumns
 		if err := params.p.maybeSetupConstraintForShard(
 			params.ctx, tableDesc, shardCol, indexDesc.Sharded.ShardBuckets,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(463031)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(463032)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(463033)
 	}
+	__antithesis_instrumentation__.Notify(462981)
 
 	if n.Predicate != nil {
+		__antithesis_instrumentation__.Notify(463034)
 		expr, err := schemaexpr.ValidatePartialIndexPredicate(
 			params.ctx, tableDesc, n.Predicate, &n.Table, params.p.SemaCtx(),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(463036)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(463037)
 		}
+		__antithesis_instrumentation__.Notify(463035)
 		indexDesc.Predicate = expr
+	} else {
+		__antithesis_instrumentation__.Notify(463038)
 	}
+	__antithesis_instrumentation__.Notify(462982)
 
 	if err := indexDesc.FillColumns(columns); err != nil {
+		__antithesis_instrumentation__.Notify(463039)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(463040)
 	}
+	__antithesis_instrumentation__.Notify(462983)
 
 	if err := paramparse.SetStorageParameters(
 		params.ctx,
@@ -273,81 +387,130 @@ func makeIndexDescriptor(
 		n.StorageParams,
 		&paramparse.IndexStorageParamObserver{IndexDesc: &indexDesc},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(463041)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(463042)
 	}
+	__antithesis_instrumentation__.Notify(462984)
 
-	// Increment telemetry once a descriptor has been successfully created.
 	if indexDesc.Type == descpb.IndexDescriptor_INVERTED {
+		__antithesis_instrumentation__.Notify(463043)
 		telemetry.Inc(sqltelemetry.InvertedIndexCounter)
 		if geoindex.IsGeometryConfig(&indexDesc.GeoConfig) {
+			__antithesis_instrumentation__.Notify(463047)
 			telemetry.Inc(sqltelemetry.GeometryInvertedIndexCounter)
+		} else {
+			__antithesis_instrumentation__.Notify(463048)
 		}
+		__antithesis_instrumentation__.Notify(463044)
 		if geoindex.IsGeographyConfig(&indexDesc.GeoConfig) {
+			__antithesis_instrumentation__.Notify(463049)
 			telemetry.Inc(sqltelemetry.GeographyInvertedIndexCounter)
+		} else {
+			__antithesis_instrumentation__.Notify(463050)
 		}
+		__antithesis_instrumentation__.Notify(463045)
 		if indexDesc.IsPartial() {
+			__antithesis_instrumentation__.Notify(463051)
 			telemetry.Inc(sqltelemetry.PartialInvertedIndexCounter)
+		} else {
+			__antithesis_instrumentation__.Notify(463052)
 		}
+		__antithesis_instrumentation__.Notify(463046)
 		if len(indexDesc.KeyColumnNames) > 1 {
+			__antithesis_instrumentation__.Notify(463053)
 			telemetry.Inc(sqltelemetry.MultiColumnInvertedIndexCounter)
+		} else {
+			__antithesis_instrumentation__.Notify(463054)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(463055)
 	}
+	__antithesis_instrumentation__.Notify(462985)
 	if indexDesc.IsSharded() {
+		__antithesis_instrumentation__.Notify(463056)
 		telemetry.Inc(sqltelemetry.HashShardedIndexCounter)
+	} else {
+		__antithesis_instrumentation__.Notify(463057)
 	}
+	__antithesis_instrumentation__.Notify(462986)
 	if indexDesc.IsPartial() {
+		__antithesis_instrumentation__.Notify(463058)
 		telemetry.Inc(sqltelemetry.PartialIndexCounter)
+	} else {
+		__antithesis_instrumentation__.Notify(463059)
 	}
+	__antithesis_instrumentation__.Notify(462987)
 
 	return &indexDesc, nil
 }
 
-// validateColumnsAreAccessible validates that the columns for an index are
-// accessible. This check must be performed before creating inaccessible columns
-// for expression indexes with replaceExpressionElemsWithVirtualCols.
 func validateColumnsAreAccessible(desc *tabledesc.Mutable, columns tree.IndexElemList) error {
+	__antithesis_instrumentation__.Notify(463060)
 	for _, column := range columns {
-		// Skip expression elements.
+		__antithesis_instrumentation__.Notify(463062)
+
 		if column.Expr != nil {
+			__antithesis_instrumentation__.Notify(463065)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(463066)
 		}
+		__antithesis_instrumentation__.Notify(463063)
 		foundColumn, err := desc.FindColumnWithName(column.Column)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(463067)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(463068)
 		}
+		__antithesis_instrumentation__.Notify(463064)
 		if foundColumn.IsInaccessible() {
+			__antithesis_instrumentation__.Notify(463069)
 			return pgerror.Newf(
 				pgcode.UndefinedColumn,
 				"column %q is inaccessible and cannot be referenced",
 				foundColumn.GetName(),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(463070)
 		}
 	}
+	__antithesis_instrumentation__.Notify(463061)
 	return nil
 }
 
-// validateIndexColumnsExists validates that the columns for an index exist
-// in the table and are not being dropped prior to attempting to add the index.
 func validateIndexColumnsExist(desc *tabledesc.Mutable, columns tree.IndexElemList) error {
+	__antithesis_instrumentation__.Notify(463071)
 	for _, column := range columns {
+		__antithesis_instrumentation__.Notify(463073)
 		if column.Expr != nil {
+			__antithesis_instrumentation__.Notify(463076)
 			return errors.AssertionFailedf("index elem expression should have been replaced with a column")
+		} else {
+			__antithesis_instrumentation__.Notify(463077)
 		}
+		__antithesis_instrumentation__.Notify(463074)
 		foundColumn, err := desc.FindColumnWithName(column.Column)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(463078)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(463079)
 		}
+		__antithesis_instrumentation__.Notify(463075)
 		if foundColumn.Dropped() {
+			__antithesis_instrumentation__.Notify(463080)
 			return colinfo.NewUndefinedColumnError(string(column.Column))
+		} else {
+			__antithesis_instrumentation__.Notify(463081)
 		}
 	}
+	__antithesis_instrumentation__.Notify(463072)
 	return nil
 }
 
-// replaceExpressionElemsWithVirtualCols replaces each non-nil expression in
-// elems with an inaccessible virtual column with the same expression. If
-// isNewTable is true, the column is added directly to desc. Otherwise, the
-// virtual column is added to desc as a mutation column.
 func replaceExpressionElemsWithVirtualCols(
 	ctx context.Context,
 	desc *tabledesc.Mutable,
@@ -357,22 +520,33 @@ func replaceExpressionElemsWithVirtualCols(
 	isNewTable bool,
 	semaCtx *tree.SemaContext,
 ) error {
+	__antithesis_instrumentation__.Notify(463082)
 	findExistingExprIndexCol := func(expr string) (colName string, ok bool) {
+		__antithesis_instrumentation__.Notify(463085)
 		for _, col := range desc.AllColumns() {
-			if col.IsExpressionIndexColumn() && col.GetComputeExpr() == expr {
+			__antithesis_instrumentation__.Notify(463087)
+			if col.IsExpressionIndexColumn() && func() bool {
+				__antithesis_instrumentation__.Notify(463088)
+				return col.GetComputeExpr() == expr == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(463089)
 				return col.GetName(), true
+			} else {
+				__antithesis_instrumentation__.Notify(463090)
 			}
 		}
+		__antithesis_instrumentation__.Notify(463086)
 		return "", false
 	}
+	__antithesis_instrumentation__.Notify(463083)
 
 	lastColumnIdx := len(elems) - 1
 	for i := range elems {
+		__antithesis_instrumentation__.Notify(463091)
 		elem := &elems[i]
 		if elem.Expr != nil {
-			// Create a dummy ColumnTableDef to use for validating the
-			// expression. The type is Any because it is unknown until
-			// validation is performed.
+			__antithesis_instrumentation__.Notify(463092)
+
 			colDef := &tree.ColumnTableDef{
 				Type: types.Any,
 			}
@@ -380,7 +554,6 @@ func replaceExpressionElemsWithVirtualCols(
 			colDef.Computed.Expr = elem.Expr
 			colDef.Computed.Virtual = true
 
-			// Validate the expression and resolve its type.
 			expr, typ, err := schemaexpr.ValidateComputedColumnExpression(
 				ctx,
 				desc,
@@ -390,22 +563,28 @@ func replaceExpressionElemsWithVirtualCols(
 				semaCtx,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(463100)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(463101)
 			}
+			__antithesis_instrumentation__.Notify(463093)
 
-			// Use an existing expression index column if one exists, rather
-			// than creating a new one.
 			if existingColName, ok := findExistingExprIndexCol(expr); ok {
-				// Set the column name and unset the expression.
+				__antithesis_instrumentation__.Notify(463102)
+
 				elem.Column = tree.Name(existingColName)
 				elem.Expr = nil
-				// Increment expression index telemetry.
+
 				telemetry.Inc(sqltelemetry.ExpressionIndexCounter)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(463103)
 			}
+			__antithesis_instrumentation__.Notify(463094)
 
-			// The expression type cannot be ambiguous.
 			if typ.IsAmbiguous() {
+				__antithesis_instrumentation__.Notify(463104)
 				return errors.WithHint(
 					pgerror.Newf(
 						pgcode.InvalidTableDefinition,
@@ -414,10 +593,18 @@ func replaceExpressionElemsWithVirtualCols(
 					),
 					"consider adding a type cast to the expression",
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(463105)
 			}
+			__antithesis_instrumentation__.Notify(463095)
 
-			if !isInverted && !colinfo.ColumnTypeIsIndexable(typ) {
+			if !isInverted && func() bool {
+				__antithesis_instrumentation__.Notify(463106)
+				return !colinfo.ColumnTypeIsIndexable(typ) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(463107)
 				if colinfo.ColumnTypeIsInvertedIndexable(typ) {
+					__antithesis_instrumentation__.Notify(463109)
 					return errors.WithHint(
 						pgerror.Newf(
 							pgcode.InvalidTableDefinition,
@@ -427,17 +614,28 @@ func replaceExpressionElemsWithVirtualCols(
 						),
 						"you may want to create an inverted index instead. See the documentation for inverted indexes: "+docs.URL("inverted-indexes.html"),
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(463110)
 				}
+				__antithesis_instrumentation__.Notify(463108)
 				return pgerror.Newf(
 					pgcode.InvalidTableDefinition,
 					"index element %s of type %s is not indexable",
 					elem.Expr.String(),
 					typ.Name(),
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(463111)
 			}
+			__antithesis_instrumentation__.Notify(463096)
 
 			if isInverted {
-				if i < lastColumnIdx && !colinfo.ColumnTypeIsIndexable(typ) {
+				__antithesis_instrumentation__.Notify(463112)
+				if i < lastColumnIdx && func() bool {
+					__antithesis_instrumentation__.Notify(463114)
+					return !colinfo.ColumnTypeIsIndexable(typ) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(463115)
 					return errors.WithHint(
 						pgerror.Newf(
 							pgcode.InvalidTableDefinition,
@@ -447,8 +645,15 @@ func replaceExpressionElemsWithVirtualCols(
 						),
 						"see the documentation for more information about inverted indexes: "+docs.URL("inverted-indexes.html"),
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(463116)
 				}
-				if i == lastColumnIdx && !colinfo.ColumnTypeIsInvertedIndexable(typ) {
+				__antithesis_instrumentation__.Notify(463113)
+				if i == lastColumnIdx && func() bool {
+					__antithesis_instrumentation__.Notify(463117)
+					return !colinfo.ColumnTypeIsInvertedIndexable(typ) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(463118)
 					return errors.WithHint(
 						pgerror.Newf(
 							pgcode.InvalidTableDefinition,
@@ -458,14 +663,20 @@ func replaceExpressionElemsWithVirtualCols(
 						),
 						"see the documentation for more information about inverted indexes: "+docs.URL("inverted-indexes.html"),
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(463119)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(463120)
 			}
+			__antithesis_instrumentation__.Notify(463097)
 
-			// Create a new virtual column and add it to the table descriptor.
 			colName := tabledesc.GenerateUniqueName("crdb_internal_idx_expr", func(name string) bool {
+				__antithesis_instrumentation__.Notify(463121)
 				_, err := desc.FindColumnWithName(tree.Name(name))
 				return err == nil
 			})
+			__antithesis_instrumentation__.Notify(463098)
 			col := &descpb.ColumnDescriptor{
 				Name:         colName,
 				Inaccessible: true,
@@ -475,36 +686,30 @@ func replaceExpressionElemsWithVirtualCols(
 				Nullable:     true,
 			}
 
-			// Add the column to the table descriptor. If the table already
-			// exists, add it as a mutation column.
 			if isNewTable {
+				__antithesis_instrumentation__.Notify(463122)
 				desc.AddColumn(col)
 			} else {
+				__antithesis_instrumentation__.Notify(463123)
 				desc.AddColumnMutation(col, descpb.DescriptorMutation_ADD)
 			}
+			__antithesis_instrumentation__.Notify(463099)
 
-			// Set the column name and unset the expression.
 			elem.Column = tree.Name(colName)
 			elem.Expr = nil
 
-			// Increment expression index telemetry.
 			telemetry.Inc(sqltelemetry.ExpressionIndexCounter)
+		} else {
+			__antithesis_instrumentation__.Notify(463124)
 		}
 	}
+	__antithesis_instrumentation__.Notify(463084)
 
 	return nil
 }
 
-// ReadingOwnWrites implements the planNodeReadingOwnWrites interface.
-// This is because CREATE INDEX performs multiple KV operations on descriptors
-// and expects to see its own writes.
-func (n *createIndexNode) ReadingOwnWrites() {}
+func (n *createIndexNode) ReadingOwnWrites() { __antithesis_instrumentation__.Notify(463125) }
 
-// setupShardedIndex creates a shard column for the given index descriptor. It
-// returns the shard column and the new column list for the index. If the shard
-// column is new, either of the following happens:
-// (1) the column is added to tableDesc if it's a new table;
-// (2) a column mutation is added to tableDesc if the table is not new.
 func setupShardedIndex(
 	ctx context.Context,
 	evalCtx *tree.EvalContext,
@@ -516,33 +721,58 @@ func setupShardedIndex(
 	storageParams tree.StorageParams,
 	isNewTable bool,
 ) (shard catalog.Column, newColumns tree.IndexElemList, err error) {
-	if !isNewTable && tableDesc.IsPartitionAllBy() {
+	__antithesis_instrumentation__.Notify(463126)
+	if !isNewTable && func() bool {
+		__antithesis_instrumentation__.Notify(463131)
+		return tableDesc.IsPartitionAllBy() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(463132)
 		partitionAllBy, err := partitionByFromTableDesc(evalCtx.Codec, tableDesc)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(463134)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(463135)
 		}
+		__antithesis_instrumentation__.Notify(463133)
 		if anyColumnIsPartitioningField(columns, partitionAllBy) {
+			__antithesis_instrumentation__.Notify(463136)
 			return nil, nil, pgerror.New(
 				pgcode.FeatureNotSupported,
 				`hash sharded indexes cannot include implicit partitioning columns from "PARTITION ALL BY" or "LOCALITY REGIONAL BY ROW"`,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(463137)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(463138)
 	}
+	__antithesis_instrumentation__.Notify(463127)
 
 	colNames := make([]string, 0, len(columns))
 	for _, c := range columns {
+		__antithesis_instrumentation__.Notify(463139)
 		colNames = append(colNames, string(c.Column))
 	}
+	__antithesis_instrumentation__.Notify(463128)
 	buckets, err := tabledesc.EvalShardBucketCount(ctx, semaCtx, evalCtx, bucketsExpr, storageParams)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(463140)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(463141)
 	}
+	__antithesis_instrumentation__.Notify(463129)
 	shardCol, err := maybeCreateAndAddShardCol(int(buckets), tableDesc,
 		colNames, isNewTable)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(463142)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(463143)
 	}
+	__antithesis_instrumentation__.Notify(463130)
 	shardIdxElem := tree.IndexElem{
 		Column:    tree.Name(shardCol.GetName()),
 		Direction: tree.Ascending,
@@ -557,71 +787,114 @@ func setupShardedIndex(
 	return shardCol, newColumns, nil
 }
 
-// maybeCreateAndAddShardCol adds a new hidden computed shard column (or its mutation) to
-// `desc`, if one doesn't already exist for the given index column set and number of shard
-// buckets.
 func maybeCreateAndAddShardCol(
 	shardBuckets int, desc *tabledesc.Mutable, colNames []string, isNewTable bool,
 ) (col catalog.Column, err error) {
+	__antithesis_instrumentation__.Notify(463144)
 	shardColDesc, err := makeShardColumnDesc(colNames, shardBuckets)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(463149)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(463150)
 	}
+	__antithesis_instrumentation__.Notify(463145)
 	existingShardCol, err := desc.FindColumnWithName(tree.Name(shardColDesc.Name))
-	if err == nil && !existingShardCol.Dropped() {
-		// TODO(ajwerner): In what ways is existingShardCol allowed to differ from
-		// the newly made shardCol? Should there be some validation of
-		// existingShardCol?
+	if err == nil && func() bool {
+		__antithesis_instrumentation__.Notify(463151)
+		return !existingShardCol.Dropped() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(463152)
+
 		if !existingShardCol.IsHidden() {
-			// The user managed to reverse-engineer our crazy shard column name, so
-			// we'll return an error here rather than try to be tricky.
+			__antithesis_instrumentation__.Notify(463154)
+
 			return nil, pgerror.Newf(pgcode.DuplicateColumn,
 				"column %s already specified; can't be used for sharding", shardColDesc.Name)
+		} else {
+			__antithesis_instrumentation__.Notify(463155)
 		}
+		__antithesis_instrumentation__.Notify(463153)
 		return existingShardCol, nil
+	} else {
+		__antithesis_instrumentation__.Notify(463156)
 	}
+	__antithesis_instrumentation__.Notify(463146)
 	columnIsUndefined := sqlerrors.IsUndefinedColumnError(err)
-	if err != nil && !columnIsUndefined {
+	if err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(463157)
+		return !columnIsUndefined == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(463158)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(463159)
 	}
-	if columnIsUndefined || existingShardCol.Dropped() {
+	__antithesis_instrumentation__.Notify(463147)
+	if columnIsUndefined || func() bool {
+		__antithesis_instrumentation__.Notify(463160)
+		return existingShardCol.Dropped() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(463161)
 		if isNewTable {
+			__antithesis_instrumentation__.Notify(463162)
 			desc.AddColumn(shardColDesc)
 		} else {
+			__antithesis_instrumentation__.Notify(463163)
 			desc.AddColumnMutation(shardColDesc, descpb.DescriptorMutation_ADD)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(463164)
 	}
+	__antithesis_instrumentation__.Notify(463148)
 	shardCol, err := desc.FindColumnWithName(tree.Name(shardColDesc.Name))
 	return shardCol, err
 }
 
 func (n *createIndexNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(463165)
 	telemetry.Inc(sqltelemetry.SchemaChangeCreateCounter("index"))
 	foundIndex, err := n.tableDesc.FindIndexWithName(string(n.n.Name))
 	if err == nil {
+		__antithesis_instrumentation__.Notify(463179)
 		if foundIndex.Dropped() {
+			__antithesis_instrumentation__.Notify(463181)
 			return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 				"index %q being dropped, try again later", string(n.n.Name))
+		} else {
+			__antithesis_instrumentation__.Notify(463182)
 		}
+		__antithesis_instrumentation__.Notify(463180)
 		if n.n.IfNotExists {
+			__antithesis_instrumentation__.Notify(463183)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(463184)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(463185)
 	}
+	__antithesis_instrumentation__.Notify(463166)
 
 	if n.n.Concurrently {
+		__antithesis_instrumentation__.Notify(463186)
 		params.p.BufferClientNotice(
 			params.ctx,
 			pgnotice.Newf("CONCURRENTLY is not required as all indexes are created concurrently"),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(463187)
 	}
+	__antithesis_instrumentation__.Notify(463167)
 
-	// Warn against creating a non-partitioned index on a partitioned table,
-	// which is undesirable in most cases.
-	// Avoid the warning if we have PARTITION ALL BY as all indexes will implicitly
-	// have relevant partitioning columns prepended at the front.
-	if n.n.PartitionByIndex == nil &&
-		n.tableDesc.GetPrimaryIndex().GetPartitioning().NumColumns() > 0 &&
-		!n.tableDesc.IsPartitionAllBy() {
+	if n.n.PartitionByIndex == nil && func() bool {
+		__antithesis_instrumentation__.Notify(463188)
+		return n.tableDesc.GetPrimaryIndex().GetPartitioning().NumColumns() > 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(463189)
+		return !n.tableDesc.IsPartitionAllBy() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(463190)
 		params.p.BufferClientNotice(
 			params.ctx,
 			errors.WithHint(
@@ -629,29 +902,46 @@ func (n *createIndexNode) startExec(params runParams) error {
 				"Consider modifying the index such that it is also partitioned.",
 			),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(463191)
 	}
+	__antithesis_instrumentation__.Notify(463168)
 
 	indexDesc, err := makeIndexDescriptor(params, *n.n, n.tableDesc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(463192)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(463193)
 	}
+	__antithesis_instrumentation__.Notify(463169)
 
-	// Increment the counter if this index could be storing data across multiple column families.
-	if len(indexDesc.StoreColumnNames) > 1 && len(n.tableDesc.Families) > 1 {
+	if len(indexDesc.StoreColumnNames) > 1 && func() bool {
+		__antithesis_instrumentation__.Notify(463194)
+		return len(n.tableDesc.Families) > 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(463195)
 		telemetry.Inc(sqltelemetry.SecondaryIndexColumnFamiliesCounter)
+	} else {
+		__antithesis_instrumentation__.Notify(463196)
 	}
+	__antithesis_instrumentation__.Notify(463170)
 
-	// TODO(postamar): bump version to LatestIndexDescriptorVersion in 22.2
-	// This is not possible until then because of a limitation in 21.2 which
-	// affects mixed-21.2-22.1-version clusters (issue #78426).
 	indexDesc.Version = descpb.StrictIndexColumnIDGuaranteesVersion
 
-	if n.n.PartitionByIndex != nil && n.tableDesc.GetLocalityConfig() != nil {
+	if n.n.PartitionByIndex != nil && func() bool {
+		__antithesis_instrumentation__.Notify(463197)
+		return n.tableDesc.GetLocalityConfig() != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(463198)
 		return pgerror.New(
 			pgcode.FeatureNotSupported,
 			"cannot define PARTITION BY on a new INDEX in a multi-region database",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(463199)
 	}
+	__antithesis_instrumentation__.Notify(463171)
 
 	*indexDesc, err = params.p.configureIndexDescForNewIndexPartitioning(
 		params.ctx,
@@ -660,32 +950,53 @@ func (n *createIndexNode) startExec(params runParams) error {
 		n.n.PartitionByIndex,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(463200)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(463201)
 	}
+	__antithesis_instrumentation__.Notify(463172)
 
-	if indexDesc.Type == descpb.IndexDescriptor_INVERTED && indexDesc.Partitioning.NumColumns != 0 {
+	if indexDesc.Type == descpb.IndexDescriptor_INVERTED && func() bool {
+		__antithesis_instrumentation__.Notify(463202)
+		return indexDesc.Partitioning.NumColumns != 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(463203)
 		telemetry.Inc(sqltelemetry.PartitionedInvertedIndexCounter)
+	} else {
+		__antithesis_instrumentation__.Notify(463204)
 	}
+	__antithesis_instrumentation__.Notify(463173)
 
 	mutationIdx := len(n.tableDesc.Mutations)
 	if err := n.tableDesc.AddIndexMutation(params.ctx, indexDesc, descpb.DescriptorMutation_ADD, params.p.ExecCfg().Settings); err != nil {
+		__antithesis_instrumentation__.Notify(463205)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(463206)
 	}
+	__antithesis_instrumentation__.Notify(463174)
 	version := params.ExecCfg().Settings.Version.ActiveVersion(params.ctx)
 	if err := n.tableDesc.AllocateIDs(params.ctx, version); err != nil {
+		__antithesis_instrumentation__.Notify(463207)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(463208)
 	}
+	__antithesis_instrumentation__.Notify(463175)
 
 	if err := params.p.configureZoneConfigForNewIndexPartitioning(
 		params.ctx,
 		n.tableDesc,
 		*indexDesc,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(463209)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(463210)
 	}
+	__antithesis_instrumentation__.Notify(463176)
 
-	// The index name may have changed as a result of
-	// AllocateIDs(). Retrieve it for the event log below.
 	index := n.tableDesc.Mutations[mutationIdx].GetIndex()
 	indexName := index.Name
 
@@ -693,17 +1004,21 @@ func (n *createIndexNode) startExec(params runParams) error {
 	if err := params.p.writeSchemaChange(
 		params.ctx, n.tableDesc, mutationID, tree.AsStringWithFQNames(n.n, params.Ann()),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(463211)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(463212)
 	}
+	__antithesis_instrumentation__.Notify(463177)
 
-	// Add all newly created type back references.
 	if err := params.p.addBackRefsFromAllTypesInTable(params.ctx, n.tableDesc); err != nil {
+		__antithesis_instrumentation__.Notify(463213)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(463214)
 	}
+	__antithesis_instrumentation__.Notify(463178)
 
-	// Record index creation in the event log. This is an auditable log
-	// event and is recorded in the same transaction as the table descriptor
-	// update.
 	return params.p.logEvent(params.ctx,
 		n.tableDesc.ID,
 		&eventpb.CreateIndex{
@@ -713,39 +1028,64 @@ func (n *createIndexNode) startExec(params runParams) error {
 		})
 }
 
-func (*createIndexNode) Next(runParams) (bool, error) { return false, nil }
-func (*createIndexNode) Values() tree.Datums          { return tree.Datums{} }
-func (*createIndexNode) Close(context.Context)        {}
+func (*createIndexNode) Next(runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(463215)
+	return false, nil
+}
+func (*createIndexNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(463216)
+	return tree.Datums{}
+}
+func (*createIndexNode) Close(context.Context) { __antithesis_instrumentation__.Notify(463217) }
 
-// configureIndexDescForNewIndexPartitioning returns a new copy of an index descriptor
-// containing modifications needed if partitioning is configured.
 func (p *planner) configureIndexDescForNewIndexPartitioning(
 	ctx context.Context,
 	tableDesc *tabledesc.Mutable,
 	indexDesc descpb.IndexDescriptor,
 	partitionByIndex *tree.PartitionByIndex,
 ) (descpb.IndexDescriptor, error) {
+	__antithesis_instrumentation__.Notify(463218)
 	var err error
-	if partitionByIndex.ContainsPartitioningClause() || tableDesc.IsPartitionAllBy() {
+	if partitionByIndex.ContainsPartitioningClause() || func() bool {
+		__antithesis_instrumentation__.Notify(463220)
+		return tableDesc.IsPartitionAllBy() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(463221)
 		var partitionBy *tree.PartitionBy
 		if !tableDesc.IsPartitionAllBy() {
+			__antithesis_instrumentation__.Notify(463223)
 			if partitionByIndex.ContainsPartitions() {
+				__antithesis_instrumentation__.Notify(463224)
 				partitionBy = partitionByIndex.PartitionBy
+			} else {
+				__antithesis_instrumentation__.Notify(463225)
 			}
-		} else if partitionByIndex.ContainsPartitioningClause() {
-			return indexDesc, pgerror.New(
-				pgcode.FeatureNotSupported,
-				"cannot define PARTITION BY on an index if the table has a PARTITION ALL BY definition",
-			)
 		} else {
-			partitionBy, err = partitionByFromTableDesc(p.ExecCfg().Codec, tableDesc)
-			if err != nil {
-				return indexDesc, err
+			__antithesis_instrumentation__.Notify(463226)
+			if partitionByIndex.ContainsPartitioningClause() {
+				__antithesis_instrumentation__.Notify(463227)
+				return indexDesc, pgerror.New(
+					pgcode.FeatureNotSupported,
+					"cannot define PARTITION BY on an index if the table has a PARTITION ALL BY definition",
+				)
+			} else {
+				__antithesis_instrumentation__.Notify(463228)
+				partitionBy, err = partitionByFromTableDesc(p.ExecCfg().Codec, tableDesc)
+				if err != nil {
+					__antithesis_instrumentation__.Notify(463229)
+					return indexDesc, err
+				} else {
+					__antithesis_instrumentation__.Notify(463230)
+				}
 			}
 		}
-		allowImplicitPartitioning := p.EvalContext().SessionData().ImplicitColumnPartitioningEnabled ||
-			tableDesc.IsLocalityRegionalByRow()
+		__antithesis_instrumentation__.Notify(463222)
+		allowImplicitPartitioning := p.EvalContext().SessionData().ImplicitColumnPartitioningEnabled || func() bool {
+			__antithesis_instrumentation__.Notify(463231)
+			return tableDesc.IsLocalityRegionalByRow() == true
+		}() == true
 		if partitionBy != nil {
+			__antithesis_instrumentation__.Notify(463232)
 			newImplicitCols, newPartitioning, err := CreatePartitioning(
 				ctx,
 				p.ExecCfg().Settings,
@@ -753,38 +1093,58 @@ func (p *planner) configureIndexDescForNewIndexPartitioning(
 				tableDesc,
 				indexDesc,
 				partitionBy,
-				nil, /* allowedNewColumnNames */
+				nil,
 				allowImplicitPartitioning,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(463234)
 				return indexDesc, err
+			} else {
+				__antithesis_instrumentation__.Notify(463235)
 			}
-			tabledesc.UpdateIndexPartitioning(&indexDesc, false /* isIndexPrimary */, newImplicitCols, newPartitioning)
+			__antithesis_instrumentation__.Notify(463233)
+			tabledesc.UpdateIndexPartitioning(&indexDesc, false, newImplicitCols, newPartitioning)
+		} else {
+			__antithesis_instrumentation__.Notify(463236)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(463237)
 	}
+	__antithesis_instrumentation__.Notify(463219)
 	return indexDesc, nil
 }
 
-// configureZoneConfigForNewIndexPartitioning configures the zone config for any new index
-// in a REGIONAL BY ROW table.
-// This *must* be done after the index ID has been allocated.
 func (p *planner) configureZoneConfigForNewIndexPartitioning(
 	ctx context.Context, tableDesc *tabledesc.Mutable, indexDesc descpb.IndexDescriptor,
 ) error {
+	__antithesis_instrumentation__.Notify(463238)
 	if indexDesc.ID == 0 {
+		__antithesis_instrumentation__.Notify(463241)
 		return errors.AssertionFailedf("index %s does not have id", indexDesc.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(463242)
 	}
-	// For REGIONAL BY ROW tables, correctly configure relevant zone configurations.
+	__antithesis_instrumentation__.Notify(463239)
+
 	if tableDesc.IsLocalityRegionalByRow() {
+		__antithesis_instrumentation__.Notify(463243)
 		regionConfig, err := SynthesizeRegionConfig(ctx, p.txn, tableDesc.GetParentID(), p.Descriptors())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(463246)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(463247)
 		}
+		__antithesis_instrumentation__.Notify(463244)
 
 		indexIDs := []descpb.IndexID{indexDesc.ID}
 		if idx := catalog.FindCorrespondingTemporaryIndexByID(tableDesc, indexDesc.ID); idx != nil {
+			__antithesis_instrumentation__.Notify(463248)
 			indexIDs = append(indexIDs, idx.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(463249)
 		}
+		__antithesis_instrumentation__.Notify(463245)
 
 		if err := ApplyZoneConfigForMultiRegionTable(
 			ctx,
@@ -794,19 +1154,32 @@ func (p *planner) configureZoneConfigForNewIndexPartitioning(
 			tableDesc,
 			applyZoneConfigForMultiRegionTableOptionNewIndexes(indexIDs...),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(463250)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(463251)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(463252)
 	}
+	__antithesis_instrumentation__.Notify(463240)
 	return nil
 }
 
 func anyColumnIsPartitioningField(columns tree.IndexElemList, partitionBy *tree.PartitionBy) bool {
+	__antithesis_instrumentation__.Notify(463253)
 	for _, field := range partitionBy.Fields {
+		__antithesis_instrumentation__.Notify(463255)
 		for _, column := range columns {
+			__antithesis_instrumentation__.Notify(463256)
 			if field == column.Column {
+				__antithesis_instrumentation__.Notify(463257)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(463258)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(463254)
 	return false
 }

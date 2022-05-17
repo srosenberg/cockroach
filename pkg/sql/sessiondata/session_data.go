@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sessiondata
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"net"
@@ -22,93 +14,90 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// SessionData contains session parameters. They are all user-configurable.
-// A SQL Session changes fields in SessionData through sql.sessionDataMutator.
 type SessionData struct {
-	// SessionData contains session parameters that are easily serializable and
-	// are required to be propagated to the remote nodes for the correct
-	// execution of DistSQL flows.
 	sessiondatapb.SessionData
-	// LocalOnlySessionData contains session parameters that don't need to be
-	// propagated to the remote nodes.
+
 	sessiondatapb.LocalOnlySessionData
-	// LocalUnmigratableSessionData contains session parameters that cannot
-	// be propagated to remote nodes and cannot be migrated to another
-	// session.
+
 	LocalUnmigratableSessionData
 
-	// All session parameters below must be propagated to the remote nodes but
-	// are not easily serializable. They require custom serialization
-	// (MarshalNonLocal) and deserialization (UnmarshalNonLocal).
-	//
-	// Location indicates the current time zone.
 	Location *time.Location
-	// SearchPath is a list of namespaces to search builtins in.
+
 	SearchPath SearchPath
-	// SequenceState gives access to the SQL sequences that have been
-	// manipulated by the session.
+
 	SequenceState *SequenceState
 }
 
-// Clone returns a clone of SessionData.
 func (s *SessionData) Clone() *SessionData {
+	__antithesis_instrumentation__.Notify(617907)
 	var newCustomOptions map[string]string
 	if len(s.CustomOptions) > 0 {
+		__antithesis_instrumentation__.Notify(617909)
 		newCustomOptions = make(map[string]string, len(s.CustomOptions))
 		for k, v := range s.CustomOptions {
+			__antithesis_instrumentation__.Notify(617910)
 			newCustomOptions[k] = v
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(617911)
 	}
-	// Other options in SessionData are shallow cloned - we can get away with it
-	// as all the slices/maps does a copy if it mutates OR are operations that
-	// affect the whole SessionDataStack (e.g. setting SequenceState should be the
-	// setting the same value across all copied SessionData).
+	__antithesis_instrumentation__.Notify(617908)
+
 	ret := *s
 	ret.CustomOptions = newCustomOptions
 	return &ret
 }
 
-// MarshalNonLocal serializes all non-local parameters from SessionData struct
-// that don't have native protobuf support into proto.
 func MarshalNonLocal(sd *SessionData, proto *sessiondatapb.SessionData) {
+	__antithesis_instrumentation__.Notify(617912)
 	proto.Location = sd.GetLocation().String()
-	// Populate the search path. Make sure not to include the implicit pg_catalog,
-	// since the remote end already knows to add the implicit pg_catalog if
-	// necessary, and sending it over would make the remote end think that
-	// pg_catalog was explicitly included by the user.
+
 	proto.SearchPath = sd.SearchPath.GetPathArray()
 	proto.TemporarySchemaName = sd.SearchPath.GetTemporarySchemaName()
-	// Populate the sequences state.
+
 	latestValues, lastIncremented := sd.SequenceState.Export()
 	if len(latestValues) > 0 {
+		__antithesis_instrumentation__.Notify(617913)
 		proto.SeqState.LastSeqIncremented = lastIncremented
 		for seqID, latestVal := range latestValues {
+			__antithesis_instrumentation__.Notify(617914)
 			proto.SeqState.Seqs = append(proto.SeqState.Seqs,
 				&sessiondatapb.SequenceState_Seq{SeqID: seqID, LatestVal: latestVal},
 			)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(617915)
 	}
 }
 
-// UnmarshalNonLocal returns a new SessionData based on the serialized
-// representation. Note that only non-local session parameters are populated.
 func UnmarshalNonLocal(proto sessiondatapb.SessionData) (*SessionData, error) {
+	__antithesis_instrumentation__.Notify(617916)
 	location, err := timeutil.TimeZoneStringToLocation(
 		proto.Location,
 		timeutil.TimeZoneStringToLocationISO8601Standard,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(617920)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(617921)
 	}
+	__antithesis_instrumentation__.Notify(617917)
 	seqState := NewSequenceState()
 	var haveSequences bool
 	for _, seq := range proto.SeqState.Seqs {
+		__antithesis_instrumentation__.Notify(617922)
 		seqState.RecordValue(seq.SeqID, seq.LatestVal)
 		haveSequences = true
 	}
+	__antithesis_instrumentation__.Notify(617918)
 	if haveSequences {
+		__antithesis_instrumentation__.Notify(617923)
 		seqState.SetLastSequenceIncremented(proto.SeqState.LastSeqIncremented)
+	} else {
+		__antithesis_instrumentation__.Notify(617924)
 	}
+	__antithesis_instrumentation__.Notify(617919)
 	return &SessionData{
 		SessionData: proto,
 		SearchPath: MakeSearchPath(
@@ -121,187 +110,202 @@ func UnmarshalNonLocal(proto sessiondatapb.SessionData) (*SessionData, error) {
 	}, nil
 }
 
-// GetLocation returns the session timezone.
 func (s *SessionData) GetLocation() *time.Location {
-	if s == nil || s.Location == nil {
+	__antithesis_instrumentation__.Notify(617925)
+	if s == nil || func() bool {
+		__antithesis_instrumentation__.Notify(617927)
+		return s.Location == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(617928)
 		return time.UTC
+	} else {
+		__antithesis_instrumentation__.Notify(617929)
 	}
+	__antithesis_instrumentation__.Notify(617926)
 	return s.Location
 }
 
-// GetIntervalStyle returns the session interval style.
 func (s *SessionData) GetIntervalStyle() duration.IntervalStyle {
+	__antithesis_instrumentation__.Notify(617930)
 	if s == nil {
+		__antithesis_instrumentation__.Notify(617932)
 		return duration.IntervalStyle_POSTGRES
+	} else {
+		__antithesis_instrumentation__.Notify(617933)
 	}
+	__antithesis_instrumentation__.Notify(617931)
 	return s.DataConversionConfig.IntervalStyle
 }
 
-// GetDateStyle returns the session date style.
 func (s *SessionData) GetDateStyle() pgdate.DateStyle {
+	__antithesis_instrumentation__.Notify(617934)
 	if s == nil {
+		__antithesis_instrumentation__.Notify(617936)
 		return pgdate.DefaultDateStyle()
+	} else {
+		__antithesis_instrumentation__.Notify(617937)
 	}
+	__antithesis_instrumentation__.Notify(617935)
 	return s.DataConversionConfig.DateStyle
 }
 
-// SessionUser retrieves the session_user.
-// The SessionUser is the username that originally logged into the session.
-// If a user applies SET ROLE, the SessionUser remains the same whilst the
-// User() changes.
 func (s *SessionData) SessionUser() security.SQLUsername {
+	__antithesis_instrumentation__.Notify(617938)
 	if s.SessionUserProto == "" {
+		__antithesis_instrumentation__.Notify(617940)
 		return s.User()
+	} else {
+		__antithesis_instrumentation__.Notify(617941)
 	}
+	__antithesis_instrumentation__.Notify(617939)
 	return s.SessionUserProto.Decode()
 }
 
-// LocalUnmigratableSessionData contains session parameters that cannot
-// be propagated to remote nodes and cannot be migrated to another
-// session.
 type LocalUnmigratableSessionData struct {
-	// RemoteAddr is used to generate logging events.
-	// RemoteAddr will acceptably change between session migrations.
 	RemoteAddr net.Addr
-	// DatabaseIDToTempSchemaID stores the temp schema ID for every
-	// database that has created a temporary schema. The mapping is from
-	// descpb.ID -> descpb.ID, but cannot be stored as such due to package
-	// dependencies. Temporary tables are not supported in session migrations.
-	DatabaseIDToTempSchemaID map[uint32]uint32
 
-	///////////////////////////////////////////////////////////////////////////
-	// WARNING: consider whether a session parameter you're adding needs to  //
-	// be propagated to the remote nodes or needs to persist amongst session //
-	// migrations. If so, they should live in the LocalOnlySessionData or    //
-	// SessionData protobuf in the sessiondatapb package.                    //
-	///////////////////////////////////////////////////////////////////////////
+	DatabaseIDToTempSchemaID map[uint32]uint32
 }
 
-// IsTemporarySchemaID returns true if the given ID refers to any of the temp
-// schemas created by the session.
 func (s *SessionData) IsTemporarySchemaID(schemaID uint32) bool {
+	__antithesis_instrumentation__.Notify(617942)
 	_, exists := s.MaybeGetDatabaseForTemporarySchemaID(schemaID)
 	return exists
 }
 
-// MaybeGetDatabaseForTemporarySchemaID returns the corresponding database and
-// true if the schemaID refers to any of the temp schemas created by this
-// session.
 func (s *SessionData) MaybeGetDatabaseForTemporarySchemaID(schemaID uint32) (uint32, bool) {
+	__antithesis_instrumentation__.Notify(617943)
 	for dbID, tempSchemaID := range s.DatabaseIDToTempSchemaID {
+		__antithesis_instrumentation__.Notify(617945)
 		if tempSchemaID == schemaID {
+			__antithesis_instrumentation__.Notify(617946)
 			return dbID, true
+		} else {
+			__antithesis_instrumentation__.Notify(617947)
 		}
 	}
+	__antithesis_instrumentation__.Notify(617944)
 	return 0, false
 }
 
-// GetTemporarySchemaIDForDB returns the schemaID for the temporary schema if
-// one exists for the DB. The second return value communicates the existence of
-// the temp schema for that DB.
 func (s *SessionData) GetTemporarySchemaIDForDB(dbID uint32) (uint32, bool) {
+	__antithesis_instrumentation__.Notify(617948)
 	schemaID, found := s.DatabaseIDToTempSchemaID[dbID]
 	return schemaID, found
 }
 
-// Stack represents a stack of SessionData objects.
-// This is used to support transaction-scoped variables, where SET LOCAL only
-// affects the top of the stack.
-// There is always guaranteed to be one element in the stack.
 type Stack struct {
-	// Use an internal variable to prevent abstraction leakage.
 	stack []*SessionData
-	// base is a pointer to the first element of the stack.
-	// This avoids a race with stack being reassigned, as the first element
-	// is *always* set.
+
 	base *SessionData
 }
 
-// NewStack creates a new tack.
 func NewStack(firstElem *SessionData) *Stack {
+	__antithesis_instrumentation__.Notify(617949)
 	return &Stack{stack: []*SessionData{firstElem}, base: firstElem}
 }
 
-// Clone clones the current stack.
 func (s *Stack) Clone() *Stack {
+	__antithesis_instrumentation__.Notify(617950)
 	ret := &Stack{
 		stack: make([]*SessionData, len(s.stack)),
 	}
 	for i, st := range s.stack {
+		__antithesis_instrumentation__.Notify(617952)
 		ret.stack[i] = st.Clone()
 	}
+	__antithesis_instrumentation__.Notify(617951)
 	ret.base = ret.stack[0]
 	return ret
 }
 
-// Replace replaces the current stack with the provided stack.
 func (s *Stack) Replace(repl *Stack) {
-	// Replace with a clone, as the same stack savepoint can be re-used.
+	__antithesis_instrumentation__.Notify(617953)
+
 	*s = *repl.Clone()
 }
 
-// Top returns the top element of the stack.
 func (s *Stack) Top() *SessionData {
+	__antithesis_instrumentation__.Notify(617954)
 	if len(s.stack) == 0 {
+		__antithesis_instrumentation__.Notify(617956)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(617957)
 	}
+	__antithesis_instrumentation__.Notify(617955)
 	return s.stack[len(s.stack)-1]
 }
 
-// Base returns the bottom element of the stack.
-// This is a non-racy structure, as the bottom element is always constant.
 func (s *Stack) Base() *SessionData {
+	__antithesis_instrumentation__.Notify(617958)
 	return s.base
 }
 
-// Push pushes a SessionData element to the stack.
 func (s *Stack) Push(elem *SessionData) {
+	__antithesis_instrumentation__.Notify(617959)
 	s.stack = append(s.stack, elem)
 }
 
-// PushTopClone pushes a copy of the top element to the stack.
 func (s *Stack) PushTopClone() {
+	__antithesis_instrumentation__.Notify(617960)
 	if len(s.stack) == 0 {
+		__antithesis_instrumentation__.Notify(617962)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(617963)
 	}
+	__antithesis_instrumentation__.Notify(617961)
 	sd := s.stack[len(s.stack)-1]
 	s.stack = append(s.stack, sd.Clone())
 }
 
-// Pop removes the top SessionData element from the stack.
 func (s *Stack) Pop() error {
+	__antithesis_instrumentation__.Notify(617964)
 	if len(s.stack) <= 1 {
+		__antithesis_instrumentation__.Notify(617966)
 		return errors.AssertionFailedf("there must always be at least one element in the SessionData stack")
+	} else {
+		__antithesis_instrumentation__.Notify(617967)
 	}
+	__antithesis_instrumentation__.Notify(617965)
 	idx := len(s.stack) - 1
 	s.stack[idx] = nil
 	s.stack = s.stack[:idx]
 	return nil
 }
 
-// PopN removes the top SessionData N elements from the stack.
 func (s *Stack) PopN(n int) error {
+	__antithesis_instrumentation__.Notify(617968)
 	if len(s.stack)-n <= 0 {
+		__antithesis_instrumentation__.Notify(617971)
 		return errors.AssertionFailedf("there must always be at least one element in the SessionData stack")
+	} else {
+		__antithesis_instrumentation__.Notify(617972)
 	}
-	// Explicitly unassign each pointer.
+	__antithesis_instrumentation__.Notify(617969)
+
 	for i := 0; i < n; i++ {
+		__antithesis_instrumentation__.Notify(617973)
 		s.stack[len(s.stack)-1-i] = nil
 	}
+	__antithesis_instrumentation__.Notify(617970)
 	s.stack = s.stack[:len(s.stack)-n]
 	return nil
 }
 
-// PopAll removes all except the base SessionData element from the stack.
 func (s *Stack) PopAll() {
-	// Explicitly unassign each pointer.
+	__antithesis_instrumentation__.Notify(617974)
+
 	for i := 1; i < len(s.stack); i++ {
+		__antithesis_instrumentation__.Notify(617976)
 		s.stack[i] = nil
 	}
+	__antithesis_instrumentation__.Notify(617975)
 	s.stack = s.stack[:1]
 }
 
-// Elems returns all elements in the Stack.
 func (s *Stack) Elems() []*SessionData {
+	__antithesis_instrumentation__.Notify(617977)
 	return s.stack
 }

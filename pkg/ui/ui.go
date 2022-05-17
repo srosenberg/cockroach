@@ -1,13 +1,3 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package ui embeds the assets for the web UI into the Cockroach binary.
 //
 // By default, it serves a stub web UI. Linking with distoss or distccl will
@@ -15,6 +5,8 @@
 // symbols in this package are thus function pointers instead of functions so
 // that they can be mutated by init hooks.
 package ui
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -31,18 +23,10 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Assets is used for embedded JS assets required for UI.
-// In case the binary is built without UI, it provides single index.html file with
-// the same content as indexHTMLTemplate as a fallback.
 var Assets fs.FS
 
-// HaveUI tells whether the admin UI has been linked into the binary.
 var HaveUI = false
 
-// indexTemplate takes arguments about the current session and returns HTML
-// which includes the UI JavaScript bundles, plus a script tag which sets the
-// currently logged in user so that the UI JavaScript can decide whether to show
-// a login page.
 var indexHTMLTemplate = template.Must(template.New("index").Parse(`<!DOCTYPE html>
 <html>
 	<head>
@@ -74,33 +58,22 @@ type indexHTMLArgs struct {
 	OIDCButtonText       string
 }
 
-// OIDCUIConf is a variable that stores data required by the
-// Admin UI to display and manage the OIDC login flow. It is
-// provided by the `oidcAuthenticationServer` at runtime
-// since that's where all the OIDC configuration is centralized.
 type OIDCUIConf struct {
 	ButtonText string
 	AutoLogin  bool
 	Enabled    bool
 }
 
-// OIDCUI is an interface that our OIDC configuration must implement in order to be able
-// to pass relevant configuration info to the ui module. This is to pass through variables that
-// are necessary to render an appropriate user interface for OIDC support and to set the state
-// cookie that OIDC requires for securing auth requests.
 type OIDCUI interface {
 	GetOIDCConf() OIDCUIConf
 }
 
-// bareIndexHTML is used in place of indexHTMLTemplate when the binary is built
-// without the web UI.
 var bareIndexHTML = []byte(fmt.Sprintf(`<!DOCTYPE html>
 <title>CockroachDB</title>
 Binary built without web UI.
 <hr>
 <em>%s</em>`, build.GetInfo().Short()))
 
-// Config contains the configuration parameters for Handler.
 type Config struct {
 	ExperimentalUseLogin bool
 	LoginEnabled         bool
@@ -109,21 +82,28 @@ type Config struct {
 	OIDC                 OIDCUI
 }
 
-// Handler returns an http.Handler that serves the UI,
-// including index.html, which has some login-related variables
-// templated into it, as well as static assets.
 func Handler(cfg Config) http.Handler {
-	// etags is used to provide a unique per-file checksum for each served file,
-	// which enables client-side caching using Cache-Control and ETag headers.
+	__antithesis_instrumentation__.Notify(650206)
+
 	etags := make(map[string]string)
 
-	if HaveUI && Assets != nil {
-		// Only compute hashes for UI-enabled builds
+	if HaveUI && func() bool {
+		__antithesis_instrumentation__.Notify(650208)
+		return Assets != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(650209)
+
 		err := httputil.ComputeEtags(Assets, etags)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(650210)
 			log.Errorf(context.Background(), "Unable to compute asset hashes: %+v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(650211)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(650212)
 	}
+	__antithesis_instrumentation__.Notify(650207)
 
 	fileHandlerChain := httputil.EtagHandler(
 		etags,
@@ -134,15 +114,24 @@ func Handler(cfg Config) http.Handler {
 	buildInfo := build.GetInfo()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		__antithesis_instrumentation__.Notify(650213)
 		if !HaveUI {
+			__antithesis_instrumentation__.Notify(650216)
 			http.ServeContent(w, r, "index.html", buildInfo.GoTime(), bytes.NewReader(bareIndexHTML))
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(650217)
 		}
+		__antithesis_instrumentation__.Notify(650214)
 
 		if r.URL.Path != "/" {
+			__antithesis_instrumentation__.Notify(650218)
 			fileHandlerChain.ServeHTTP(w, r)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(650219)
 		}
+		__antithesis_instrumentation__.Notify(650215)
 
 		oidcConf := cfg.OIDC.GetOIDCConf()
 
@@ -157,9 +146,12 @@ func Handler(cfg Config) http.Handler {
 			OIDCLoginEnabled:     oidcConf.Enabled,
 			OIDCButtonText:       oidcConf.ButtonText,
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(650220)
 			err = errors.Wrap(err, "templating index.html")
 			http.Error(w, err.Error(), 500)
 			log.Errorf(r.Context(), "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(650221)
 		}
 	})
 }

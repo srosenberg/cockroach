@@ -1,70 +1,74 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package settings
 
-// MaskedSetting is a pseudo-variable constructed on-the-fly by Lookup
-// when the actual setting is non-reportable.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type MaskedSetting struct {
 	setting NonMaskedSetting
 }
 
 var _ Setting = &MaskedSetting{}
 
-// UnderlyingSetting retrieves the actual setting object.
 func (s *MaskedSetting) UnderlyingSetting() NonMaskedSetting {
+	__antithesis_instrumentation__.Notify(240027)
 	return s.setting
 }
 
-// String hides the underlying value.
 func (s *MaskedSetting) String(sv *Values) string {
-	// Special case for non-reportable strings: we still want
-	// to distinguish empty from non-empty (= customized).
-	if st, ok := s.UnderlyingSetting().(*StringSetting); ok && st.String(sv) == "" {
+	__antithesis_instrumentation__.Notify(240028)
+
+	if st, ok := s.UnderlyingSetting().(*StringSetting); ok && func() bool {
+		__antithesis_instrumentation__.Notify(240030)
+		return st.String(sv) == "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(240031)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(240032)
 	}
+	__antithesis_instrumentation__.Notify(240029)
 	return "<redacted>"
 }
 
-// Visibility returns the visibility setting for the underlying setting.
 func (s *MaskedSetting) Visibility() Visibility {
+	__antithesis_instrumentation__.Notify(240033)
 	return s.setting.Visibility()
 }
 
-// Key returns the key string for the underlying setting.
 func (s *MaskedSetting) Key() string {
+	__antithesis_instrumentation__.Notify(240034)
 	return s.setting.Key()
 }
 
-// Description returns the description string for the underlying setting.
 func (s *MaskedSetting) Description() string {
+	__antithesis_instrumentation__.Notify(240035)
 	return s.setting.Description()
 }
 
-// Typ returns the short (1 char) string denoting the type of setting.
 func (s *MaskedSetting) Typ() string {
+	__antithesis_instrumentation__.Notify(240036)
 	return s.setting.Typ()
 }
 
-// Class returns the class for the underlying setting.
 func (s *MaskedSetting) Class() Class {
+	__antithesis_instrumentation__.Notify(240037)
 	return s.setting.Class()
 }
 
-// TestingIsReportable is used in testing for reportability.
 func TestingIsReportable(s Setting) bool {
+	__antithesis_instrumentation__.Notify(240038)
 	if _, ok := s.(*MaskedSetting); ok {
+		__antithesis_instrumentation__.Notify(240041)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(240042)
 	}
+	__antithesis_instrumentation__.Notify(240039)
 	if e, ok := s.(internalSetting); ok {
+		__antithesis_instrumentation__.Notify(240043)
 		return e.isReportable()
+	} else {
+		__antithesis_instrumentation__.Notify(240044)
 	}
+	__antithesis_instrumentation__.Notify(240040)
 	return true
 }

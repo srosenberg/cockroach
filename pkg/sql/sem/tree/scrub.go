@@ -1,79 +1,85 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "fmt"
 
-// ScrubType describes the SCRUB statement operation.
 type ScrubType int
 
 const (
-	// ScrubTable describes the SCRUB operation SCRUB TABLE.
 	ScrubTable = iota
-	// ScrubDatabase describes the SCRUB operation SCRUB DATABASE.
+
 	ScrubDatabase = iota
 )
 
-// Scrub represents a SCRUB statement.
 type Scrub struct {
 	Typ     ScrubType
 	Options ScrubOptions
-	// Table is only set during SCRUB TABLE statements.
+
 	Table *UnresolvedObjectName
-	// Database is only set during SCRUB DATABASE statements.
+
 	Database Name
 	AsOf     AsOfClause
 }
 
-// Format implements the NodeFormatter interface.
 func (n *Scrub) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613039)
 	ctx.WriteString("EXPERIMENTAL SCRUB ")
 	switch n.Typ {
 	case ScrubTable:
+		__antithesis_instrumentation__.Notify(613042)
 		ctx.WriteString("TABLE ")
 		ctx.FormatNode(n.Table)
 	case ScrubDatabase:
+		__antithesis_instrumentation__.Notify(613043)
 		ctx.WriteString("DATABASE ")
 		ctx.FormatNode(&n.Database)
 	default:
+		__antithesis_instrumentation__.Notify(613044)
 		panic("Unhandled ScrubType")
 	}
+	__antithesis_instrumentation__.Notify(613040)
 
 	if n.AsOf.Expr != nil {
+		__antithesis_instrumentation__.Notify(613045)
 		ctx.WriteByte(' ')
 		ctx.FormatNode(&n.AsOf)
+	} else {
+		__antithesis_instrumentation__.Notify(613046)
 	}
+	__antithesis_instrumentation__.Notify(613041)
 
 	if len(n.Options) > 0 {
+		__antithesis_instrumentation__.Notify(613047)
 		ctx.WriteString(" WITH OPTIONS ")
 		ctx.FormatNode(&n.Options)
+	} else {
+		__antithesis_instrumentation__.Notify(613048)
 	}
 }
 
-// ScrubOptions corresponds to a comma-delimited list of scrub options.
 type ScrubOptions []ScrubOption
 
-// Format implements the NodeFormatter interface.
 func (n *ScrubOptions) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613049)
 	for i, option := range *n {
+		__antithesis_instrumentation__.Notify(613050)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(613052)
 			ctx.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(613053)
 		}
+		__antithesis_instrumentation__.Notify(613051)
 		ctx.FormatNode(option)
 	}
 }
 
-func (n *ScrubOptions) String() string { return AsString(n) }
+func (n *ScrubOptions) String() string {
+	__antithesis_instrumentation__.Notify(613054)
+	return AsString(n)
+}
 
-// ScrubOption represents a scrub option.
 type ScrubOption interface {
 	fmt.Stringer
 	NodeFormatter
@@ -81,53 +87,62 @@ type ScrubOption interface {
 	scrubOptionType()
 }
 
-// scrubOptionType implements the ScrubOption interface
-func (*ScrubOptionIndex) scrubOptionType()      {}
-func (*ScrubOptionPhysical) scrubOptionType()   {}
-func (*ScrubOptionConstraint) scrubOptionType() {}
+func (*ScrubOptionIndex) scrubOptionType()      { __antithesis_instrumentation__.Notify(613055) }
+func (*ScrubOptionPhysical) scrubOptionType()   { __antithesis_instrumentation__.Notify(613056) }
+func (*ScrubOptionConstraint) scrubOptionType() { __antithesis_instrumentation__.Notify(613057) }
 
-func (n *ScrubOptionIndex) String() string      { return AsString(n) }
-func (n *ScrubOptionPhysical) String() string   { return AsString(n) }
-func (n *ScrubOptionConstraint) String() string { return AsString(n) }
+func (n *ScrubOptionIndex) String() string {
+	__antithesis_instrumentation__.Notify(613058)
+	return AsString(n)
+}
+func (n *ScrubOptionPhysical) String() string {
+	__antithesis_instrumentation__.Notify(613059)
+	return AsString(n)
+}
+func (n *ScrubOptionConstraint) String() string {
+	__antithesis_instrumentation__.Notify(613060)
+	return AsString(n)
+}
 
-// ScrubOptionIndex represents an INDEX scrub check.
 type ScrubOptionIndex struct {
 	IndexNames NameList
 }
 
-// Format implements the NodeFormatter interface.
 func (n *ScrubOptionIndex) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613061)
 	ctx.WriteString("INDEX ")
 	if n.IndexNames != nil {
+		__antithesis_instrumentation__.Notify(613062)
 		ctx.WriteByte('(')
 		ctx.FormatNode(&n.IndexNames)
 		ctx.WriteByte(')')
 	} else {
+		__antithesis_instrumentation__.Notify(613063)
 		ctx.WriteString("ALL")
 	}
 }
 
-// ScrubOptionPhysical represents a PHYSICAL scrub check.
 type ScrubOptionPhysical struct{}
 
-// Format implements the NodeFormatter interface.
 func (n *ScrubOptionPhysical) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613064)
 	ctx.WriteString("PHYSICAL")
 }
 
-// ScrubOptionConstraint represents a CONSTRAINT scrub check.
 type ScrubOptionConstraint struct {
 	ConstraintNames NameList
 }
 
-// Format implements the NodeFormatter interface.
 func (n *ScrubOptionConstraint) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613065)
 	ctx.WriteString("CONSTRAINT ")
 	if n.ConstraintNames != nil {
+		__antithesis_instrumentation__.Notify(613066)
 		ctx.WriteByte('(')
 		ctx.FormatNode(&n.ConstraintNames)
 		ctx.WriteByte(')')
 	} else {
+		__antithesis_instrumentation__.Notify(613067)
 		ctx.WriteString("ALL")
 	}
 }

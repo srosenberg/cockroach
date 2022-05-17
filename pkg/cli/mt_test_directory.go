@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -47,26 +39,40 @@ test-directory command will always add the following arguments (in that order):
 }
 
 func runDirectorySvr(cmd *cobra.Command, args []string) (returnErr error) {
+	__antithesis_instrumentation__.Notify(33496)
 	ctx := context.Background()
 	serverCfg.Stores.Specs = nil
 
-	stopper, err := setupAndInitializeLoggingAndProfiling(ctx, cmd, false /* isServerCmd */)
+	stopper, err := setupAndInitializeLoggingAndProfiling(ctx, cmd, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33501)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33502)
 	}
+	__antithesis_instrumentation__.Notify(33497)
 	defer stopper.Stop(ctx)
 
 	tds, err := tenantdirsvr.New(stopper, args...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33503)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33504)
 	}
+	__antithesis_instrumentation__.Notify(33498)
 
 	listenPort, err := net.Listen(
 		"tcp", fmt.Sprintf(":%d", testDirectorySvrContext.port),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(33505)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(33506)
 	}
-	stopper.AddCloser(stop.CloserFn(func() { _ = listenPort.Close() }))
+	__antithesis_instrumentation__.Notify(33499)
+	stopper.AddCloser(stop.CloserFn(func() { __antithesis_instrumentation__.Notify(33507); _ = listenPort.Close() }))
+	__antithesis_instrumentation__.Notify(33500)
 	return tds.Serve(listenPort)
 }

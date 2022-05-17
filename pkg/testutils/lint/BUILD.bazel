@@ -1,4 +1,6 @@
-exports_files(["testdata/errcheck_excludes.txt"])
+exports_files(
+    ["testdata/errcheck_excludes.txt"],
+)
 
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
@@ -10,6 +12,7 @@ go_library(
     srcs = ["lint.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/testutils/lint",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -32,6 +35,7 @@ go_test(
         "//pkg/testutils",
         "//pkg/testutils/buildutil",
         "//pkg/testutils/skip",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_ghemawat_stream//:stream",
         "@com_github_jordanlewis_gcassert//:gcassert",

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colfetcher
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -48,51 +40,22 @@ import (
 )
 
 type cTableInfo struct {
-	// -- Fields initialized once --
-
 	*cFetcherTableArgs
 
-	// The set of required value-component column ordinals among only needed
-	// columns.
 	neededValueColsByIdx util.FastIntSet
 
-	// Map used to get the column index based on the descpb.ColumnID.
-	// It's kept as a pointer so we don't have to re-allocate to sort it each
-	// time.
 	orderedColIdxMap *colIdxMap
 
-	// One value per column that is part of the key; each value is a column
-	// ordinal among only needed columns; -1 if we don't need the value for
-	// that column.
 	indexColOrdinals []int
 
-	// The set of column ordinals which are both composite and part of the index
-	// key.
 	compositeIndexColOrdinals util.FastIntSet
 
-	// One number per column coming from the "key suffix" that is part of the
-	// value; each number is a column ordinal among only needed columns; -1 if
-	// we don't need the value for that column.
-	//
-	// The "key suffix" columns are only used for secondary indexes:
-	// - for non-unique indexes, these columns are appended to the key (and will
-	// be included in indexColOrdinals instead);
-	// - for unique indexes, these columns are stored in the value (unless the
-	// key contains a NULL value: then the extra columns are appended to the key
-	// to unique-ify it).
 	extraValColOrdinals []int
 
-	// The following fields contain MVCC metadata for each row and may be
-	// returned to users of cFetcher immediately after NextBatch returns.
-	//
-	// rowLastModified is the timestamp of the last time any family in the row
-	// was modified in any way.
 	rowLastModified hlc.Timestamp
-	// timestampOutputIdx controls at what column ordinal in the output batch to
-	// write the timestamp for the MVCC timestamp system column.
+
 	timestampOutputIdx int
-	// oidOutputIdx controls at what column ordinal in the output batch to write
-	// the value for the tableoid system column.
+
 	oidOutputIdx int
 
 	da tree.DatumAlloc
@@ -102,6 +65,7 @@ var _ execinfra.Releasable = &cTableInfo{}
 
 var cTableInfoPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(455175)
 		return &cTableInfo{
 			orderedColIdxMap: &colIdxMap{},
 		}
@@ -109,14 +73,14 @@ var cTableInfoPool = sync.Pool{
 }
 
 func newCTableInfo() *cTableInfo {
+	__antithesis_instrumentation__.Notify(455176)
 	return cTableInfoPool.Get().(*cTableInfo)
 }
 
-// Release implements the execinfra.Releasable interface.
 func (c *cTableInfo) Release() {
+	__antithesis_instrumentation__.Notify(455177)
 	c.cFetcherTableArgs.Release()
-	// Note that all slices are being reused, but there is no need to deeply
-	// reset them since all of the slices are of Go native types.
+
 	c.orderedColIdxMap.ords = c.orderedColIdxMap.ords[:0]
 	c.orderedColIdxMap.vals = c.orderedColIdxMap.vals[:0]
 	*c = cTableInfo{
@@ -127,239 +91,182 @@ func (c *cTableInfo) Release() {
 	cTableInfoPool.Put(c)
 }
 
-// colIdxMap is a "map" that contains the ordinals for each ColumnID among the
-// columns that need to be fetched. This map is used to figure out what index
-// within a row a particular value-component column goes into. Value-component
-// columns are encoded with a column id prefix, with the guarantee that within
-// any given row, the column ids are always increasing. Because of this
-// guarantee, we can store this map as two sorted lists that the fetcher keeps
-// an index into, giving fast access during decoding.
-//
-// It implements sort.Interface to be sortable on vals, while keeping ords
-// matched up to the order of vals.
 type colIdxMap struct {
-	// vals is the sorted list of descpb.ColumnIDs in the table to fetch.
 	vals descpb.ColumnIDs
-	// ords is the list of ordinals into all columns of the table for each
-	// column in vals. The ith entry in ords is the ordinal among all columns of
-	// the table for the ith column in vals.
+
 	ords []int
 }
 
-// Len implements sort.Interface.
 func (m colIdxMap) Len() int {
+	__antithesis_instrumentation__.Notify(455178)
 	return len(m.vals)
 }
 
-// Less implements sort.Interface.
 func (m colIdxMap) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(455179)
 	return m.vals[i] < m.vals[j]
 }
 
-// Swap implements sort.Interface.
 func (m colIdxMap) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(455180)
 	m.vals[i], m.vals[j] = m.vals[j], m.vals[i]
 	m.ords[i], m.ords[j] = m.ords[j], m.ords[i]
 }
 
 type cFetcherArgs struct {
-	// lockStrength represents the row-level locking mode to use when fetching
-	// rows.
 	lockStrength descpb.ScanLockingStrength
-	// lockWaitPolicy represents the policy to be used for handling conflicting
-	// locks held by other active transactions.
+
 	lockWaitPolicy descpb.ScanLockingWaitPolicy
-	// lockTimeout specifies the maximum amount of time that the fetcher will
-	// wait while attempting to acquire a lock on a key or while blocking on an
-	// existing lock in order to perform a non-locking read on a key.
+
 	lockTimeout time.Duration
-	// memoryLimit determines the maximum memory footprint of the output batch.
+
 	memoryLimit int64
-	// estimatedRowCount is the optimizer-derived number of expected rows that
-	// this fetch will produce, if non-zero.
+
 	estimatedRowCount uint64
-	// reverse denotes whether or not the spans should be read in reverse or not
-	// when StartScan is invoked.
+
 	reverse bool
-	// traceKV indicates whether or not session tracing is enabled. It is set
-	// when initializing the fetcher.
+
 	traceKV bool
 }
 
-// noOutputColumn is a sentinel value to denote that a system column is not
-// part of the output.
 const noOutputColumn = -1
 
-// cFetcher handles fetching kvs and forming table rows for an
-// arbitrary number of tables.
-// Usage:
-//   var cf cFetcher
-//   err := cf.Init(..)
-//   // Handle err
-//   err := cf.StartScan(..)
-//   // Handle err
-//   for {
-//      res, err := cf.NextBatch()
-//      // Handle err
-//      if res.colBatch.Length() == 0 {
-//         // Done
-//         break
-//      }
-//      // Process res.colBatch
-//   }
-//   cf.Close(ctx)
 type cFetcher struct {
 	cFetcherArgs
 
-	// table is the table that's configured for fetching.
 	table *cTableInfo
 
-	// True if the index key must be decoded. This is only false if there are no
-	// needed columns.
 	mustDecodeIndexKey bool
 
-	// mvccDecodeStrategy controls whether or not MVCC timestamps should
-	// be decoded from KV's fetched. It is set if any of the requested tables
-	// are required to produce an MVCC timestamp system column.
 	mvccDecodeStrategy row.MVCCDecodingStrategy
 
-	// fetcher is the underlying fetcher that provides KVs.
 	fetcher *row.KVFetcher
-	// bytesRead stores the cumulative number of bytes read by this cFetcher
-	// throughout its whole existence (i.e. between its construction and
-	// Release()). It accumulates the bytes read statistic across StartScan* and
-	// Close methods.
-	//
-	// The field should not be accessed directly by the users of the cFetcher -
-	// getBytesRead() should be used instead.
+
 	bytesRead int64
 
-	// machine contains fields that get updated during the run of the fetcher.
 	machine struct {
-		// state is the queue of next states of the state machine. The 0th entry
-		// is the next state.
 		state [3]fetcherState
-		// rowIdx is always set to the ordinal of the row we're currently writing to
-		// within the current batch. It's incremented as soon as we detect that a row
-		// is finished.
+
 		rowIdx int
-		// nextKV is the kv to process next.
+
 		nextKV roachpb.KeyValue
 
-		// limitHint is a hint as to the number of rows that the caller expects
-		// to be returned from this fetch. It will be decremented whenever a
-		// batch is returned by the length of the batch so that it tracks the
-		// hint for the rows remaining to be returned. It might become negative
-		// indicating that the hint is no longer applicable.
 		limitHint int
 
-		// remainingValueColsByIdx is the set of value columns that are yet to be
-		// seen during the decoding of the current row.
 		remainingValueColsByIdx util.FastIntSet
-		// lastRowPrefix is the row prefix for the last row we saw a key for. New
-		// keys are compared against this prefix to determine whether they're part
-		// of a new row or not.
+
 		lastRowPrefix roachpb.Key
-		// prettyValueBuf is a temp buffer used to create strings for tracing.
+
 		prettyValueBuf *bytes.Buffer
 
-		// batch is the output batch the fetcher writes to.
 		batch coldata.Batch
 
-		// colvecs are the vectors of batch that have been converted to the well
-		// typed columns to avoid expensive type casts on each row.
 		colvecs coldata.TypedVecs
 
-		// timestampCol is the underlying ColVec for the timestamp output column,
-		// or nil if the timestamp column was not requested. It is pulled out from
-		// colvecs to avoid having to cast the vec to decimal on every write.
 		timestampCol []apd.Decimal
-		// tableoidCol is the same as timestampCol but for the tableoid system column.
+
 		tableoidCol coldata.DatumVec
 	}
 
-	// scratch is a scratch space used when decoding bytes-like and decimal
-	// keys.
 	scratch []byte
 
 	accountingHelper colmem.SetAccountingHelper
 
-	// kvFetcherMemAcc is a memory account that will be used by the underlying
-	// KV fetcher.
 	kvFetcherMemAcc *mon.BoundAccount
 
-	// maxCapacity if non-zero indicates the target capacity of the output
-	// batch. It is set when at the row finalization we realize that the output
-	// batch has exceeded the memory limit.
 	maxCapacity int
 }
 
 func (cf *cFetcher) resetBatch() {
+	__antithesis_instrumentation__.Notify(455181)
 	var reallocated bool
 	var minDesiredCapacity int
 	if cf.maxCapacity > 0 {
-		// If we have already exceeded the memory limit for the output batch, we
-		// will only be using the same batch from now on.
+		__antithesis_instrumentation__.Notify(455183)
+
 		minDesiredCapacity = cf.maxCapacity
-	} else if cf.machine.limitHint > 0 && (cf.estimatedRowCount == 0 || uint64(cf.machine.limitHint) < cf.estimatedRowCount) {
-		// If we have a limit hint, and either
-		//   1) we don't have an estimate, or
-		//   2) we have a soft limit,
-		// use the hint to size the batch. Note that if it exceeds
-		// coldata.BatchSize, ResetMaybeReallocate will chop it down.
-		minDesiredCapacity = cf.machine.limitHint
 	} else {
-		// Otherwise, use the estimate. Note that if the estimate is not
-		// present, it'll be 0 and ResetMaybeReallocate will allocate the
-		// initial batch of capacity 1 which is the desired behavior.
-		//
-		// We need to transform our cf.estimatedRowCount, which is a uint64,
-		// into an int. We have to be careful: if we just cast it directly, a
-		// giant estimate will wrap around and become negative.
-		if cf.estimatedRowCount > uint64(coldata.BatchSize()) {
-			minDesiredCapacity = coldata.BatchSize()
+		__antithesis_instrumentation__.Notify(455184)
+		if cf.machine.limitHint > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(455185)
+			return (cf.estimatedRowCount == 0 || func() bool {
+				__antithesis_instrumentation__.Notify(455186)
+				return uint64(cf.machine.limitHint) < cf.estimatedRowCount == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(455187)
+
+			minDesiredCapacity = cf.machine.limitHint
 		} else {
-			minDesiredCapacity = int(cf.estimatedRowCount)
+			__antithesis_instrumentation__.Notify(455188)
+
+			if cf.estimatedRowCount > uint64(coldata.BatchSize()) {
+				__antithesis_instrumentation__.Notify(455189)
+				minDesiredCapacity = coldata.BatchSize()
+			} else {
+				__antithesis_instrumentation__.Notify(455190)
+				minDesiredCapacity = int(cf.estimatedRowCount)
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(455182)
 	cf.machine.batch, reallocated = cf.accountingHelper.ResetMaybeReallocate(
 		cf.table.typs, cf.machine.batch, minDesiredCapacity, cf.memoryLimit,
 	)
 	if reallocated {
+		__antithesis_instrumentation__.Notify(455191)
 		cf.machine.colvecs.SetBatch(cf.machine.batch)
-		// Pull out any requested system column output vecs.
+
 		if cf.table.timestampOutputIdx != noOutputColumn {
+			__antithesis_instrumentation__.Notify(455194)
 			cf.machine.timestampCol = cf.machine.colvecs.DecimalCols[cf.machine.colvecs.ColsMap[cf.table.timestampOutputIdx]]
+		} else {
+			__antithesis_instrumentation__.Notify(455195)
 		}
+		__antithesis_instrumentation__.Notify(455192)
 		if cf.table.oidOutputIdx != noOutputColumn {
+			__antithesis_instrumentation__.Notify(455196)
 			cf.machine.tableoidCol = cf.machine.colvecs.DatumCols[cf.machine.colvecs.ColsMap[cf.table.oidOutputIdx]]
+		} else {
+			__antithesis_instrumentation__.Notify(455197)
 		}
-		// Change the allocation size to be the same as the capacity of the
-		// batch we allocated above.
+		__antithesis_instrumentation__.Notify(455193)
+
 		cf.table.da.AllocSize = cf.machine.batch.Capacity()
+	} else {
+		__antithesis_instrumentation__.Notify(455198)
 	}
 }
 
-// Init sets up a Fetcher based on the table args. Only columns present in
-// tableArgs.cols will be fetched.
 func (cf *cFetcher) Init(
 	allocator *colmem.Allocator, kvFetcherMemAcc *mon.BoundAccount, tableArgs *cFetcherTableArgs,
 ) error {
+	__antithesis_instrumentation__.Notify(455199)
 	if tableArgs.spec.Version != descpb.IndexFetchSpecVersionInitial {
+		__antithesis_instrumentation__.Notify(455209)
 		return errors.Newf("unsupported IndexFetchSpec version %d", tableArgs.spec.Version)
+	} else {
+		__antithesis_instrumentation__.Notify(455210)
 	}
+	__antithesis_instrumentation__.Notify(455200)
 	cf.kvFetcherMemAcc = kvFetcherMemAcc
 	table := newCTableInfo()
 	nCols := tableArgs.ColIdxMap.Len()
 	if cap(table.orderedColIdxMap.vals) < nCols {
+		__antithesis_instrumentation__.Notify(455211)
 		table.orderedColIdxMap.vals = make(descpb.ColumnIDs, 0, nCols)
 		table.orderedColIdxMap.ords = make([]int, 0, nCols)
+	} else {
+		__antithesis_instrumentation__.Notify(455212)
 	}
+	__antithesis_instrumentation__.Notify(455201)
 	for i := range tableArgs.spec.FetchedColumns {
+		__antithesis_instrumentation__.Notify(455213)
 		id := tableArgs.spec.FetchedColumns[i].ColumnID
 		table.orderedColIdxMap.vals = append(table.orderedColIdxMap.vals, id)
 		table.orderedColIdxMap.ords = append(table.orderedColIdxMap.ords, tableArgs.ColIdxMap.GetDefault(id))
 	}
+	__antithesis_instrumentation__.Notify(455202)
 	sort.Sort(table.orderedColIdxMap)
 	*table = cTableInfo{
 		cFetcherTableArgs:   tableArgs,
@@ -371,111 +278,149 @@ func (cf *cFetcher) Init(
 	}
 
 	if nCols > 0 {
-		table.neededValueColsByIdx.AddRange(0 /* start */, nCols-1)
+		__antithesis_instrumentation__.Notify(455214)
+		table.neededValueColsByIdx.AddRange(0, nCols-1)
+	} else {
+		__antithesis_instrumentation__.Notify(455215)
 	}
+	__antithesis_instrumentation__.Notify(455203)
 
-	// Check for system columns.
 	for idx := range tableArgs.spec.FetchedColumns {
+		__antithesis_instrumentation__.Notify(455216)
 		colID := tableArgs.spec.FetchedColumns[idx].ColumnID
 		if colinfo.IsColIDSystemColumn(colID) {
-			// Set up extra metadata for system columns.
-			//
-			// Currently the system columns are present in neededValueColsByIdx,
-			// but we don't want to include them in that set because the
-			// handling of system columns is separate from the standard value
-			// decoding process.
+			__antithesis_instrumentation__.Notify(455217)
+
 			switch colinfo.GetSystemColumnKindFromColumnID(colID) {
 			case catpb.SystemColumnKind_MVCCTIMESTAMP:
+				__antithesis_instrumentation__.Notify(455218)
 				table.timestampOutputIdx = idx
 				cf.mvccDecodeStrategy = row.MVCCDecodingRequired
 				table.neededValueColsByIdx.Remove(idx)
 			case catpb.SystemColumnKind_TABLEOID:
+				__antithesis_instrumentation__.Notify(455219)
 				table.oidOutputIdx = idx
 				table.neededValueColsByIdx.Remove(idx)
+			default:
+				__antithesis_instrumentation__.Notify(455220)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(455221)
 		}
 	}
+	__antithesis_instrumentation__.Notify(455204)
 
 	fullColumns := table.spec.KeyFullColumns()
 
 	nIndexCols := len(fullColumns)
 	if cap(table.indexColOrdinals) >= nIndexCols {
+		__antithesis_instrumentation__.Notify(455222)
 		table.indexColOrdinals = table.indexColOrdinals[:nIndexCols]
 	} else {
+		__antithesis_instrumentation__.Notify(455223)
 		table.indexColOrdinals = make([]int, nIndexCols)
 	}
+	__antithesis_instrumentation__.Notify(455205)
 	indexColOrdinals := table.indexColOrdinals
 	_ = indexColOrdinals[len(fullColumns)-1]
 	needToDecodeDecimalKey := false
 	for i := range fullColumns {
+		__antithesis_instrumentation__.Notify(455224)
 		col := &fullColumns[i]
 		colIdx, ok := tableArgs.ColIdxMap.Get(col.ColumnID)
 		if ok {
-			//gcassert:bce
+			__antithesis_instrumentation__.Notify(455225)
+
 			indexColOrdinals[i] = colIdx
 			cf.mustDecodeIndexKey = true
-			needToDecodeDecimalKey = needToDecodeDecimalKey || tableArgs.spec.FetchedColumns[colIdx].Type.Family() == types.DecimalFamily
-			// A composite column might also have a value encoding which must be
-			// decoded. Others can be removed from neededValueColsByIdx.
+			needToDecodeDecimalKey = needToDecodeDecimalKey || func() bool {
+				__antithesis_instrumentation__.Notify(455226)
+				return tableArgs.spec.FetchedColumns[colIdx].Type.Family() == types.DecimalFamily == true
+			}() == true
+
 			if col.IsComposite {
+				__antithesis_instrumentation__.Notify(455227)
 				table.compositeIndexColOrdinals.Add(colIdx)
 			} else {
+				__antithesis_instrumentation__.Notify(455228)
 				table.neededValueColsByIdx.Remove(colIdx)
 			}
 		} else {
-			//gcassert:bce
+			__antithesis_instrumentation__.Notify(455229)
+
 			indexColOrdinals[i] = -1
 		}
 	}
-	if needToDecodeDecimalKey && cap(cf.scratch) < 64 {
-		// If we need to decode the decimal key encoding, it might use a scratch
-		// byte slice internally, so we'll allocate such a space to be reused
-		// for every decimal.
-		// TODO(yuzefovich): 64 was chosen arbitrarily, tune it.
+	__antithesis_instrumentation__.Notify(455206)
+	if needToDecodeDecimalKey && func() bool {
+		__antithesis_instrumentation__.Notify(455230)
+		return cap(cf.scratch) < 64 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455231)
+
 		cf.scratch = make([]byte, 64)
+	} else {
+		__antithesis_instrumentation__.Notify(455232)
 	}
-	// Unique secondary indexes contain the extra column IDs as part of
-	// the value component. We process these separately, so we need to know
-	// what extra columns are composite or not.
-	if table.spec.NumKeySuffixColumns > 0 && table.spec.IsSecondaryIndex && table.spec.IsUniqueIndex {
+	__antithesis_instrumentation__.Notify(455207)
+
+	if table.spec.NumKeySuffixColumns > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(455233)
+		return table.spec.IsSecondaryIndex == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(455234)
+		return table.spec.IsUniqueIndex == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455235)
 		suffixCols := table.spec.KeySuffixColumns()
 		for i := range suffixCols {
+			__antithesis_instrumentation__.Notify(455238)
 			id := suffixCols[i].ColumnID
 			colIdx, ok := tableArgs.ColIdxMap.Get(id)
 			if ok {
+				__antithesis_instrumentation__.Notify(455239)
 				if suffixCols[i].IsComposite {
+					__antithesis_instrumentation__.Notify(455240)
 					table.compositeIndexColOrdinals.Add(colIdx)
-					// Note: we account for these composite columns separately: we add
-					// them back into the remaining values set in processValueBytes.
+
 					table.neededValueColsByIdx.Remove(colIdx)
+				} else {
+					__antithesis_instrumentation__.Notify(455241)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(455242)
 			}
 		}
+		__antithesis_instrumentation__.Notify(455236)
 
-		// Unique secondary indexes have a value that is the
-		// primary index key.
-		// Primary indexes only contain ascendingly-encoded
-		// values. If this ever changes, we'll probably have to
-		// figure out the directions here too.
 		if cap(table.extraValColOrdinals) >= len(suffixCols) {
+			__antithesis_instrumentation__.Notify(455243)
 			table.extraValColOrdinals = table.extraValColOrdinals[:len(suffixCols)]
 		} else {
+			__antithesis_instrumentation__.Notify(455244)
 			table.extraValColOrdinals = make([]int, len(suffixCols))
 		}
+		__antithesis_instrumentation__.Notify(455237)
 
 		extraValColOrdinals := table.extraValColOrdinals
 		_ = extraValColOrdinals[len(suffixCols)-1]
 		for i := range suffixCols {
+			__antithesis_instrumentation__.Notify(455245)
 			idx, ok := tableArgs.ColIdxMap.Get(suffixCols[i].ColumnID)
 			if ok {
-				//gcassert:bce
+				__antithesis_instrumentation__.Notify(455246)
+
 				extraValColOrdinals[i] = idx
 			} else {
-				//gcassert:bce
+				__antithesis_instrumentation__.Notify(455247)
+
 				extraValColOrdinals[i] = -1
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(455248)
 	}
+	__antithesis_instrumentation__.Notify(455208)
 
 	cf.table = table
 	cf.accountingHelper.Init(allocator, cf.table.typs)
@@ -483,8 +428,8 @@ func (cf *cFetcher) Init(
 	return nil
 }
 
-//gcassert:inline
 func (cf *cFetcher) setFetcher(f *row.KVFetcher, limitHint rowinfra.RowLimit) {
+	__antithesis_instrumentation__.Notify(455249)
 	cf.fetcher = f
 	cf.machine.lastRowPrefix = nil
 	cf.machine.limitHint = int(limitHint)
@@ -492,14 +437,6 @@ func (cf *cFetcher) setFetcher(f *row.KVFetcher, limitHint rowinfra.RowLimit) {
 	cf.machine.state[1] = stateInitFetch
 }
 
-// StartScan initializes and starts the key-value scan. Can be used multiple
-// times.
-//
-// The fetcher takes ownership of the spans slice - it can modify the slice and
-// will perform the memory accounting accordingly. The caller can only reuse the
-// spans slice after the fetcher has been closed (which happens when the fetcher
-// emits the first zero batch), and if the caller does, it becomes responsible
-// for the memory accounting.
 func (cf *cFetcher) StartScan(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -510,37 +447,34 @@ func (cf *cFetcher) StartScan(
 	limitHint rowinfra.RowLimit,
 	forceProductionKVBatchSize bool,
 ) error {
+	__antithesis_instrumentation__.Notify(455250)
 	if len(spans) == 0 {
+		__antithesis_instrumentation__.Notify(455255)
 		return errors.AssertionFailedf("no spans")
+	} else {
+		__antithesis_instrumentation__.Notify(455256)
 	}
-	if !limitBatches && batchBytesLimit != rowinfra.NoBytesLimit {
+	__antithesis_instrumentation__.Notify(455251)
+	if !limitBatches && func() bool {
+		__antithesis_instrumentation__.Notify(455257)
+		return batchBytesLimit != rowinfra.NoBytesLimit == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455258)
 		return errors.AssertionFailedf("batchBytesLimit set without limitBatches")
+	} else {
+		__antithesis_instrumentation__.Notify(455259)
 	}
+	__antithesis_instrumentation__.Notify(455252)
 
-	// If we have a limit hint, we limit the first batch size. Subsequent
-	// batches get larger to avoid making things too slow (e.g. in case we have
-	// a very restrictive filter and actually have to retrieve a lot of rows).
 	firstBatchLimit := rowinfra.KeyLimit(limitHint)
 	if firstBatchLimit != 0 {
-		// The limitHint is a row limit, but each row could be made up of more
-		// than one key. We take the maximum possible keys per row out of all
-		// the table rows we could potentially scan over.
-		//
-		// Note that unlike for the row.Fetcher, we don't need an extra key to
-		// form the last row in the cFetcher because we are eagerly finalizing
-		// each row once we know that all KVs comprising that row have been
-		// fetched. Consider several cases:
-		// - the table has only one column family - then we can finalize each
-		//   row right after the first KV is decoded;
-		// - the table has multiple column families:
-		//   - KVs for all column families are present for all rows - then for
-		//     each row, when its last KV is fetched, the row can be finalized
-		//     (and firstBatchLimit asks exactly for the correct number of KVs);
-		//   - KVs for some column families are omitted for some rows - then we
-		//     will actually fetch more KVs than necessary, but we'll decode
-		//     limitHint number of rows.
+		__antithesis_instrumentation__.Notify(455260)
+
 		firstBatchLimit = rowinfra.KeyLimit(int(limitHint) * int(cf.table.spec.MaxKeysPerRow))
+	} else {
+		__antithesis_instrumentation__.Notify(455261)
 	}
+	__antithesis_instrumentation__.Notify(455253)
 
 	f, err := row.NewKVFetcher(
 		ctx,
@@ -557,120 +491,74 @@ func (cf *cFetcher) StartScan(
 		forceProductionKVBatchSize,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(455262)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(455263)
 	}
+	__antithesis_instrumentation__.Notify(455254)
 	cf.setFetcher(f, limitHint)
 	return nil
 }
 
-// StartScanStreaming initializes and starts the key-value scan using the
-// Streamer API. Can be used multiple times.
-//
-// The fetcher takes ownership of the spans slice - it can modify the slice and
-// will perform the memory accounting accordingly. The caller can only reuse the
-// spans slice after the fetcher has been closed (which happens when the fetcher
-// emits the first zero batch), and if the caller does, it becomes responsible
-// for the memory accounting.
 func (cf *cFetcher) StartScanStreaming(
 	ctx context.Context,
 	streamer *kvstreamer.Streamer,
 	spans roachpb.Spans,
 	limitHint rowinfra.RowLimit,
 ) error {
+	__antithesis_instrumentation__.Notify(455264)
 	kvBatchFetcher, err := row.NewTxnKVStreamer(ctx, streamer, spans, cf.lockStrength)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(455266)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(455267)
 	}
+	__antithesis_instrumentation__.Notify(455265)
 	f := row.NewKVStreamingFetcher(kvBatchFetcher)
 	cf.setFetcher(f, limitHint)
 	return nil
 }
 
-// fetcherState is the state enum for NextBatch.
 type fetcherState int
-
-//go:generate stringer -type=fetcherState
 
 const (
 	stateInvalid fetcherState = iota
 
-	// stateInitFetch is the empty state of a fetcher: there is no current KV to
-	// look at, and there's no current row, either because the fetcher has just
-	// started, or because the last row was already finalized.
-	//
-	//   1. fetch next kv into nextKV buffer
-	//     -> decodeFirstKVOfRow
 	stateInitFetch
 
-	// stateResetBatch resets the batch of a fetcher, removing nulls and the
-	// selection vector.
 	stateResetBatch
 
-	// stateDecodeFirstKVOfRow is the state of looking at a key that is part of
-	// a row that the fetcher hasn't processed before. s.machine.nextKV must be
-	// set.
-	//   1. skip common prefix
-	//   2. parse key (past common prefix) into row buffer, setting last row prefix buffer
-	//   3. parse value into row buffer.
-	//   4. 1-cf or secondary index?
-	//     -> doneRow(initFetch)
-	//   else:
-	//     -> fetchNextKVWithUnfinishedRow
 	stateDecodeFirstKVOfRow
 
-	// stateFetchNextKVWithUnfinishedRow is the state of getting a new key for
-	// the current row. The machine will read a new key from the underlying
-	// fetcher, process it, and either add the results to the current row, or
-	// shift to a new row.
-	//   1. fetch next kv into nextKV buffer
-	//   2. skip common prefix
-	//   3. check equality to last row prefix buffer
-	//   4. no?
-	//     -> finalizeRow(decodeFirstKVOfRow)
-	//   5. skip to end of last row prefix buffer
-	//   6. parse value into row buffer
-	//   7. -> fetchNextKVWithUnfinishedRow
 	stateFetchNextKVWithUnfinishedRow
 
-	// stateFinalizeRow is the state of finalizing a row. It assumes that no more
-	// keys for the current row are present.
-	// state[1] must be set, and stateFinalizeRow will transition to that state
-	// once it finishes finalizing the row.
-	//   1. fill missing nulls
-	//   2. bump rowIdx
-	//   -> nextState and optionally return if row-by-row or batch full
 	stateFinalizeRow
 
-	// stateEmitLastBatch emits the current batch and then transitions to
-	// stateFinished.
 	stateEmitLastBatch
 
-	// stateFinished is the end state of the state machine - it causes NextBatch
-	// to return empty batches forever.
 	stateFinished
 )
 
-// Turn this on to enable super verbose logging of the fetcher state machine.
 const debugState = false
 
 func (cf *cFetcher) setEstimatedRowCount(estimatedRowCount uint64) {
+	__antithesis_instrumentation__.Notify(455268)
 	cf.estimatedRowCount = estimatedRowCount
 }
 
-// setNextKV sets the next KV to process to the input KV. needsCopy, if true,
-// causes the input kv to be deep copied. needsCopy should be set to true if
-// the input KV is pointing to the last KV of a batch, so that the batch can
-// be garbage collected before fetching the next one.
-// gcassert:inline
 func (cf *cFetcher) setNextKV(kv roachpb.KeyValue, needsCopy bool) {
+	__antithesis_instrumentation__.Notify(455269)
 	if !needsCopy {
+		__antithesis_instrumentation__.Notify(455271)
 		cf.machine.nextKV = kv
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(455272)
 	}
+	__antithesis_instrumentation__.Notify(455270)
 
-	// If we've made it to the very last key in the batch, copy out the key
-	// so that the GC can reclaim the large backing slice before we call
-	// NextKV() again.
 	kvCopy := roachpb.KeyValue{}
 	kvCopy.Key = make(roachpb.Key, len(kv.Key))
 	copy(kvCopy.Key, kv.Key)
@@ -680,79 +568,74 @@ func (cf *cFetcher) setNextKV(kv roachpb.KeyValue, needsCopy bool) {
 	cf.machine.nextKV = kvCopy
 }
 
-// NextBatch processes keys until we complete one batch of rows (subject to the
-// limit hint and the memory limit while being max coldata.BatchSize() in
-// length), which are returned in columnar format as a coldata.Batch. The batch
-// contains one Vec per table column, regardless of the index used; columns that
-// are not needed (as per neededCols) are filled with nulls. The Batch should
-// not be modified and is only valid until the next call. When there are no more
-// rows, the Batch.Length is 0.
 func (cf *cFetcher) NextBatch(ctx context.Context) (coldata.Batch, error) {
+	__antithesis_instrumentation__.Notify(455273)
 	for {
+		__antithesis_instrumentation__.Notify(455274)
 		if debugState {
+			__antithesis_instrumentation__.Notify(455276)
 			log.Infof(ctx, "State %s", cf.machine.state[0])
+		} else {
+			__antithesis_instrumentation__.Notify(455277)
 		}
+		__antithesis_instrumentation__.Notify(455275)
 		switch cf.machine.state[0] {
 		case stateInvalid:
+			__antithesis_instrumentation__.Notify(455278)
 			return nil, errors.New("invalid fetcher state")
 		case stateInitFetch:
+			__antithesis_instrumentation__.Notify(455279)
 			moreKVs, kv, finalReferenceToBatch, err := cf.fetcher.NextKV(ctx, cf.mvccDecodeStrategy)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455306)
 				return nil, cf.convertFetchError(ctx, err)
+			} else {
+				__antithesis_instrumentation__.Notify(455307)
 			}
+			__antithesis_instrumentation__.Notify(455280)
 			if !moreKVs {
+				__antithesis_instrumentation__.Notify(455308)
 				cf.machine.state[0] = stateEmitLastBatch
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(455309)
 			}
-			// TODO(jordan): parse the logical longest common prefix of the span
-			// into a buffer. The logical longest common prefix is the longest
-			// common prefix that contains only full key components. For example,
-			// the keys /Table/53/1/foo/bar/10 and /Table/53/1/foo/bop/10 would
-			// have LLCS of /Table/53/1/foo, even though they share a b prefix of
-			// the next key, since that prefix isn't a complete key component.
-			/*
-				if newSpan {
-				lcs := cf.fetcher.span.LongestCommonPrefix()
-				// parse lcs into stuff
-				key, matches, err := rowenc.DecodeIndexKeyWithoutTableIDIndexIDPrefix(
-					cf.table.desc, cf.table.info.index, cf.table.info.keyValTypes,
-					cf.table.keyVals, cf.table.info.indexColumnDirs, kv.Key[cf.table.info.knownPrefixLength:],
-				)
-				if err != nil {
-					// This is expected - the longest common prefix of the keyspan might
-					// end half way through a key. Suppress the error and set the actual
-					// LCS we'll use later to the decodable components of the key.
-				}
-				}
-			*/
+			__antithesis_instrumentation__.Notify(455281)
 
 			cf.setNextKV(kv, finalReferenceToBatch)
 			cf.machine.state[0] = stateDecodeFirstKVOfRow
 
 		case stateResetBatch:
+			__antithesis_instrumentation__.Notify(455282)
 			cf.resetBatch()
 			cf.shiftState()
 		case stateDecodeFirstKVOfRow:
-			// Reset MVCC metadata for the table, since this is the first KV of a row.
+			__antithesis_instrumentation__.Notify(455283)
+
 			cf.table.rowLastModified = hlc.Timestamp{}
 
-			// foundNull is set when decoding a new index key for a row finds a NULL value
-			// in the index key. This is used when decoding unique secondary indexes in order
-			// to tell whether they have extra columns appended to the key.
 			var foundNull bool
 			if cf.mustDecodeIndexKey {
+				__antithesis_instrumentation__.Notify(455310)
 				if debugState {
+					__antithesis_instrumentation__.Notify(455313)
 					log.Infof(ctx, "decoding first key %s", cf.machine.nextKV.Key)
+				} else {
+					__antithesis_instrumentation__.Notify(455314)
 				}
+				__antithesis_instrumentation__.Notify(455311)
 				var (
 					key []byte
 					err error
 				)
-				// For unique secondary indexes on tables with multiple column
-				// families, we must check all columns for NULL values in order
-				// to determine whether a KV belongs to the same row as the
-				// previous KV or a different row.
-				checkAllColsForNull := cf.table.spec.IsSecondaryIndex && cf.table.spec.IsUniqueIndex && cf.table.spec.MaxKeysPerRow != 1
+
+				checkAllColsForNull := cf.table.spec.IsSecondaryIndex && func() bool {
+					__antithesis_instrumentation__.Notify(455315)
+					return cf.table.spec.IsUniqueIndex == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(455316)
+					return cf.table.spec.MaxKeysPerRow != 1 == true
+				}() == true
 				key, foundNull, cf.scratch, err = colencoding.DecodeKeyValsToCols(
 					&cf.table.da,
 					&cf.machine.colvecs,
@@ -760,259 +643,324 @@ func (cf *cFetcher) NextBatch(ctx context.Context) (coldata.Batch, error) {
 					cf.table.indexColOrdinals,
 					checkAllColsForNull,
 					cf.table.spec.KeyFullColumns(),
-					nil, /* unseen */
+					nil,
 					cf.machine.nextKV.Key[cf.table.spec.KeyPrefixLength:],
 					cf.scratch,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(455317)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(455318)
 				}
+				__antithesis_instrumentation__.Notify(455312)
 				prefix := cf.machine.nextKV.Key[:len(cf.machine.nextKV.Key)-len(key)]
 				cf.machine.lastRowPrefix = prefix
 			} else {
+				__antithesis_instrumentation__.Notify(455319)
 				prefixLen, err := keys.GetRowPrefixLength(cf.machine.nextKV.Key)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(455321)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(455322)
 				}
+				__antithesis_instrumentation__.Notify(455320)
 				cf.machine.lastRowPrefix = cf.machine.nextKV.Key[:prefixLen]
 			}
+			__antithesis_instrumentation__.Notify(455284)
 
-			// For unique secondary indexes on tables with multiple column
-			// families, the index-key does not distinguish one row from the
-			// next if both rows contain identical values along with a NULL.
-			// Consider the keys:
-			//
-			//   /test/unique_idx/NULL/0
-			//   /test/unique_idx/NULL/1
-			//
-			// The index-key extracted from the above keys is
-			// /test/unique_idx/NULL. The trailing /0 and /1 are the primary key
-			// used to unique-ify the keys when a NULL is present. When a null
-			// is present in the index key, we include the primary key columns
-			// in lastRowPrefix.
-			//
-			// Note that we do not need to do this for non-unique secondary
-			// indexes because the extra columns in the primary key will
-			// _always_ be there, so we can decode them when processing the
-			// index. The difference with unique secondary indexes is that the
-			// extra columns are not always there, and are used to unique-ify
-			// the index key, rather than provide the primary key column values.
-			//
-			// We also do not need to do this when a table has only one column
-			// family because it is guaranteed that there is only one KV per
-			// row. We entirely skip the check that determines if the row is
-			// unfinished.
-			if foundNull && cf.table.spec.IsSecondaryIndex && cf.table.spec.IsUniqueIndex && cf.table.spec.MaxKeysPerRow != 1 {
-				// We get the remaining bytes after the computed prefix, and then
-				// slice off the extra encoded columns from those bytes. We calculate
-				// how many bytes were sliced away, and then extend lastRowPrefix
-				// by that amount.
+			if foundNull && func() bool {
+				__antithesis_instrumentation__.Notify(455323)
+				return cf.table.spec.IsSecondaryIndex == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(455324)
+				return cf.table.spec.IsUniqueIndex == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(455325)
+				return cf.table.spec.MaxKeysPerRow != 1 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(455326)
+
 				prefixLen := len(cf.machine.lastRowPrefix)
 				remainingBytes := cf.machine.nextKV.Key[prefixLen:]
 				origRemainingBytesLen := len(remainingBytes)
 				for i := 0; i < int(cf.table.spec.NumKeySuffixColumns); i++ {
+					__antithesis_instrumentation__.Notify(455328)
 					var err error
-					// Slice off an extra encoded column from remainingBytes.
+
 					remainingBytes, err = keyside.Skip(remainingBytes)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(455329)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(455330)
 					}
 				}
+				__antithesis_instrumentation__.Notify(455327)
 				cf.machine.lastRowPrefix = cf.machine.nextKV.Key[:prefixLen+(origRemainingBytesLen-len(remainingBytes))]
+			} else {
+				__antithesis_instrumentation__.Notify(455331)
 			}
+			__antithesis_instrumentation__.Notify(455285)
 
 			familyID, err := cf.getCurrentColumnFamilyID()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455332)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(455333)
 			}
+			__antithesis_instrumentation__.Notify(455286)
 			cf.machine.remainingValueColsByIdx.CopyFrom(cf.table.neededValueColsByIdx)
-			// Process the current KV's value component.
+
 			if err := cf.processValue(ctx, familyID); err != nil {
+				__antithesis_instrumentation__.Notify(455334)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(455335)
 			}
-			// Update the MVCC values for this row.
+			__antithesis_instrumentation__.Notify(455287)
+
 			if cf.table.rowLastModified.Less(cf.machine.nextKV.Value.Timestamp) {
+				__antithesis_instrumentation__.Notify(455336)
 				cf.table.rowLastModified = cf.machine.nextKV.Value.Timestamp
+			} else {
+				__antithesis_instrumentation__.Notify(455337)
 			}
-			// If the index has only one column family, then the next KV will
-			// always belong to a different row than the current KV.
+			__antithesis_instrumentation__.Notify(455288)
+
 			if cf.table.spec.MaxKeysPerRow == 1 {
+				__antithesis_instrumentation__.Notify(455338)
 				cf.machine.state[0] = stateFinalizeRow
 				cf.machine.state[1] = stateInitFetch
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(455339)
 			}
-			// If the table has more than one column family, then the next KV
-			// may belong to the same row as the current KV.
+			__antithesis_instrumentation__.Notify(455289)
+
 			cf.machine.state[0] = stateFetchNextKVWithUnfinishedRow
 
 		case stateFetchNextKVWithUnfinishedRow:
+			__antithesis_instrumentation__.Notify(455290)
 			moreKVs, kv, finalReferenceToBatch, err := cf.fetcher.NextKV(ctx, cf.mvccDecodeStrategy)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455340)
 				return nil, cf.convertFetchError(ctx, err)
+			} else {
+				__antithesis_instrumentation__.Notify(455341)
 			}
+			__antithesis_instrumentation__.Notify(455291)
 			if !moreKVs {
-				// No more data. Finalize the row and exit.
+				__antithesis_instrumentation__.Notify(455342)
+
 				cf.machine.state[0] = stateFinalizeRow
 				cf.machine.state[1] = stateEmitLastBatch
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(455343)
 			}
-			// TODO(jordan): if nextKV returns newSpan = true, set the new span
-			// prefix and indicate that it needs decoding.
+			__antithesis_instrumentation__.Notify(455292)
+
 			cf.setNextKV(kv, finalReferenceToBatch)
 			if debugState {
+				__antithesis_instrumentation__.Notify(455344)
 				log.Infof(ctx, "decoding next key %s", cf.machine.nextKV.Key)
+			} else {
+				__antithesis_instrumentation__.Notify(455345)
 			}
+			__antithesis_instrumentation__.Notify(455293)
 
-			// TODO(yuzefovich): optimize this prefix check by skipping logical
-			// longest common span prefix.
 			if !bytes.HasPrefix(kv.Key[cf.table.spec.KeyPrefixLength:], cf.machine.lastRowPrefix[cf.table.spec.KeyPrefixLength:]) {
-				// The kv we just found is from a different row.
+				__antithesis_instrumentation__.Notify(455346)
+
 				cf.machine.state[0] = stateFinalizeRow
 				cf.machine.state[1] = stateDecodeFirstKVOfRow
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(455347)
 			}
+			__antithesis_instrumentation__.Notify(455294)
 
 			familyID, err := cf.getCurrentColumnFamilyID()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455348)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(455349)
 			}
+			__antithesis_instrumentation__.Notify(455295)
 
-			// Process the current KV's value component.
 			if err := cf.processValue(ctx, familyID); err != nil {
+				__antithesis_instrumentation__.Notify(455350)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(455351)
 			}
+			__antithesis_instrumentation__.Notify(455296)
 
-			// Update the MVCC values for this row.
 			if cf.table.rowLastModified.Less(cf.machine.nextKV.Value.Timestamp) {
+				__antithesis_instrumentation__.Notify(455352)
 				cf.table.rowLastModified = cf.machine.nextKV.Value.Timestamp
+			} else {
+				__antithesis_instrumentation__.Notify(455353)
 			}
+			__antithesis_instrumentation__.Notify(455297)
 
 			if familyID == cf.table.spec.MaxFamilyID {
-				// We know the row can't have any more keys, so finalize the row.
+				__antithesis_instrumentation__.Notify(455354)
+
 				cf.machine.state[0] = stateFinalizeRow
 				cf.machine.state[1] = stateInitFetch
 			} else {
-				// Continue with current state.
+				__antithesis_instrumentation__.Notify(455355)
+
 				cf.machine.state[0] = stateFetchNextKVWithUnfinishedRow
 			}
 
 		case stateFinalizeRow:
-			// Populate the timestamp system column if needed. We have to do it
-			// on a per row basis since each row can be modified at a different
-			// time.
-			if cf.table.timestampOutputIdx != noOutputColumn {
-				cf.machine.timestampCol[cf.machine.rowIdx] = tree.TimestampToDecimal(cf.table.rowLastModified)
-			}
+			__antithesis_instrumentation__.Notify(455298)
 
-			// We're finished with a row. Fill the row in with nulls if
-			// necessary, perform the memory accounting for the row, bump the
-			// row index, emit the batch if necessary, and move to the next
-			// state.
-			if err := cf.fillNulls(); err != nil {
-				return nil, err
+			if cf.table.timestampOutputIdx != noOutputColumn {
+				__antithesis_instrumentation__.Notify(455356)
+				cf.machine.timestampCol[cf.machine.rowIdx] = tree.TimestampToDecimal(cf.table.rowLastModified)
+			} else {
+				__antithesis_instrumentation__.Notify(455357)
 			}
-			// Note that we haven't set the tableoid value (if that system
-			// column is requested) yet, but it is ok for the purposes of the
-			// memory accounting - oids are fixed length values and, thus, have
-			// already been accounted for when the batch was allocated.
+			__antithesis_instrumentation__.Notify(455299)
+
+			if err := cf.fillNulls(); err != nil {
+				__antithesis_instrumentation__.Notify(455358)
+				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(455359)
+			}
+			__antithesis_instrumentation__.Notify(455300)
+
 			cf.accountingHelper.AccountForSet(cf.machine.rowIdx)
 			cf.machine.rowIdx++
 			cf.shiftState()
 
 			var emitBatch bool
-			if cf.maxCapacity == 0 && cf.accountingHelper.Allocator.Used() >= cf.memoryLimit {
+			if cf.maxCapacity == 0 && func() bool {
+				__antithesis_instrumentation__.Notify(455360)
+				return cf.accountingHelper.Allocator.Used() >= cf.memoryLimit == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(455361)
 				cf.maxCapacity = cf.machine.rowIdx
+			} else {
+				__antithesis_instrumentation__.Notify(455362)
 			}
-			if cf.machine.rowIdx >= cf.machine.batch.Capacity() ||
-				(cf.maxCapacity > 0 && cf.machine.rowIdx >= cf.maxCapacity) ||
-				(cf.machine.limitHint > 0 && cf.machine.rowIdx >= cf.machine.limitHint) {
-				// We either
-				//   1. have no more room in our batch, so output it immediately
-				// or
-				//   2. we made it to our limit hint, so output our batch early
-				//      to make sure that we don't bother filling in extra data
-				//      if we don't need to.
+			__antithesis_instrumentation__.Notify(455301)
+			if cf.machine.rowIdx >= cf.machine.batch.Capacity() || func() bool {
+				__antithesis_instrumentation__.Notify(455363)
+				return (cf.maxCapacity > 0 && func() bool {
+					__antithesis_instrumentation__.Notify(455364)
+					return cf.machine.rowIdx >= cf.maxCapacity == true
+				}() == true) == true
+			}() == true || func() bool {
+				__antithesis_instrumentation__.Notify(455365)
+				return (cf.machine.limitHint > 0 && func() bool {
+					__antithesis_instrumentation__.Notify(455366)
+					return cf.machine.rowIdx >= cf.machine.limitHint == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(455367)
+
 				emitBatch = true
-				// Update the limit hint to track the expected remaining rows to
-				// be fetched.
-				//
-				// Note that limitHint might become negative at which point we
-				// will start ignoring it.
+
 				cf.machine.limitHint -= cf.machine.rowIdx
+			} else {
+				__antithesis_instrumentation__.Notify(455368)
 			}
+			__antithesis_instrumentation__.Notify(455302)
 
 			if emitBatch {
+				__antithesis_instrumentation__.Notify(455369)
 				cf.pushState(stateResetBatch)
 				cf.finalizeBatch()
 				return cf.machine.batch, nil
+			} else {
+				__antithesis_instrumentation__.Notify(455370)
 			}
 
 		case stateEmitLastBatch:
+			__antithesis_instrumentation__.Notify(455303)
 			cf.machine.state[0] = stateFinished
 			cf.finalizeBatch()
-			// Close the fetcher eagerly so that its memory could be GCed.
+
 			cf.Close(ctx)
 			return cf.machine.batch, nil
 
 		case stateFinished:
-			// Close the fetcher eagerly so that its memory could be GCed.
+			__antithesis_instrumentation__.Notify(455304)
+
 			cf.Close(ctx)
 			return coldata.ZeroBatch, nil
+		default:
+			__antithesis_instrumentation__.Notify(455305)
 		}
 	}
 }
 
-// shiftState shifts the state queue to the left, removing the first element and
-// clearing the last element.
 func (cf *cFetcher) shiftState() {
+	__antithesis_instrumentation__.Notify(455371)
 	copy(cf.machine.state[:2], cf.machine.state[1:])
 	cf.machine.state[2] = stateInvalid
 }
 
 func (cf *cFetcher) pushState(state fetcherState) {
+	__antithesis_instrumentation__.Notify(455372)
 	copy(cf.machine.state[1:], cf.machine.state[:2])
 	cf.machine.state[0] = state
 }
 
-// getDatumAt returns the converted datum object at the given (colIdx, rowIdx).
-// This function is meant for tracing and should not be used in hot paths.
 func (cf *cFetcher) getDatumAt(colIdx int, rowIdx int) tree.Datum {
+	__antithesis_instrumentation__.Notify(455373)
 	res := []tree.Datum{nil}
-	colconv.ColVecToDatumAndDeselect(res, cf.machine.colvecs.Vecs[colIdx], 1 /* length */, []int{rowIdx}, &cf.table.da)
+	colconv.ColVecToDatumAndDeselect(res, cf.machine.colvecs.Vecs[colIdx], 1, []int{rowIdx}, &cf.table.da)
 	return res[0]
 }
 
-// writeDecodedCols writes the stringified representation of the decoded columns
-// specified by colOrdinals. -1 in colOrdinals indicates that a column wasn't
-// actually decoded (this is represented as "?" in the result). separator is
-// inserted between each two subsequent decoded column values (but not before
-// the first one).
 func (cf *cFetcher) writeDecodedCols(buf *strings.Builder, colOrdinals []int, separator byte) {
+	__antithesis_instrumentation__.Notify(455374)
 	for i, idx := range colOrdinals {
+		__antithesis_instrumentation__.Notify(455375)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(455377)
 			buf.WriteByte(separator)
+		} else {
+			__antithesis_instrumentation__.Notify(455378)
 		}
+		__antithesis_instrumentation__.Notify(455376)
 		if idx != -1 {
+			__antithesis_instrumentation__.Notify(455379)
 			buf.WriteString(cf.getDatumAt(idx, cf.machine.rowIdx).String())
 		} else {
+			__antithesis_instrumentation__.Notify(455380)
 			buf.WriteByte('?')
 		}
 	}
 }
 
-// processValue processes the state machine's current value component, setting
-// columns in the rowIdx'th tuple in the current batch depending on what data
-// is found in the current value component.
 func (cf *cFetcher) processValue(ctx context.Context, familyID descpb.FamilyID) (err error) {
+	__antithesis_instrumentation__.Notify(455381)
 	table := cf.table
 
 	var prettyKey, prettyValue string
 	if cf.traceKV {
+		__antithesis_instrumentation__.Notify(455386)
 		defer func() {
+			__antithesis_instrumentation__.Notify(455388)
 			if err == nil {
+				__antithesis_instrumentation__.Notify(455389)
 				log.VEventf(ctx, 2, "fetched: %s -> %s", prettyKey, prettyValue)
+			} else {
+				__antithesis_instrumentation__.Notify(455390)
 			}
 		}()
+		__antithesis_instrumentation__.Notify(455387)
 
 		var buf strings.Builder
 		buf.WriteByte('/')
@@ -1022,180 +970,271 @@ func (cf *cFetcher) processValue(ctx context.Context, familyID descpb.FamilyID) 
 		buf.WriteByte('/')
 		cf.writeDecodedCols(&buf, cf.table.indexColOrdinals, '/')
 		prettyKey = buf.String()
+	} else {
+		__antithesis_instrumentation__.Notify(455391)
 	}
+	__antithesis_instrumentation__.Notify(455382)
 
 	if len(table.spec.FetchedColumns) == 0 {
-		// We don't need to decode any values.
+		__antithesis_instrumentation__.Notify(455392)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(455393)
 	}
+	__antithesis_instrumentation__.Notify(455383)
 
 	val := cf.machine.nextKV.Value
-	if !table.spec.IsSecondaryIndex || table.spec.EncodingType == descpb.PrimaryIndexEncoding {
-		// If familyID is 0, kv.Value contains values for composite key columns.
-		// These columns already have a table.row value assigned above, but that value
-		// (obtained from the key encoding) might not be correct (e.g. for decimals,
-		// it might not contain the right number of trailing 0s; for collated
-		// strings, it is one of potentially many strings with the same collation
-		// key).
-		//
-		// In these cases, the correct value will be present in family 0 and the
-		// table.row value gets overwritten.
+	if !table.spec.IsSecondaryIndex || func() bool {
+		__antithesis_instrumentation__.Notify(455394)
+		return table.spec.EncodingType == descpb.PrimaryIndexEncoding == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455395)
 
 		switch val.GetTag() {
 		case roachpb.ValueType_TUPLE:
-			// In this case, we don't need to decode the column family ID, because
-			// the ValueType_TUPLE encoding includes the column id with every encoded
-			// column value.
+			__antithesis_instrumentation__.Notify(455397)
+
 			var tupleBytes []byte
 			tupleBytes, err = val.GetTuple()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455403)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(455404)
 			}
+			__antithesis_instrumentation__.Notify(455398)
 			prettyKey, prettyValue, err = cf.processValueBytes(ctx, table, tupleBytes, prettyKey)
 
 		default:
-			// If familyID is 0, this is the row sentinel (in the legacy pre-family format),
-			// and a value is not expected, so we're done.
+			__antithesis_instrumentation__.Notify(455399)
+
 			if familyID == 0 {
+				__antithesis_instrumentation__.Notify(455405)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(455406)
 			}
-			// Find the default column ID for the family.
+			__antithesis_instrumentation__.Notify(455400)
+
 			var defaultColumnID descpb.ColumnID
 			for _, f := range table.spec.FamilyDefaultColumns {
+				__antithesis_instrumentation__.Notify(455407)
 				if f.FamilyID == familyID {
+					__antithesis_instrumentation__.Notify(455408)
 					defaultColumnID = f.DefaultColumnID
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(455409)
 				}
 			}
+			__antithesis_instrumentation__.Notify(455401)
 			if defaultColumnID == 0 {
+				__antithesis_instrumentation__.Notify(455410)
 				return scrub.WrapError(
 					scrub.IndexKeyDecodingError,
 					errors.Errorf("single entry value with no default column id"),
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(455411)
 			}
+			__antithesis_instrumentation__.Notify(455402)
 			prettyKey, prettyValue, err = cf.processValueSingle(ctx, table, defaultColumnID, prettyKey)
 		}
+		__antithesis_instrumentation__.Notify(455396)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(455412)
 			return scrub.WrapError(scrub.IndexValueDecodingError, err)
+		} else {
+			__antithesis_instrumentation__.Notify(455413)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(455414)
 		tag := val.GetTag()
 		var valueBytes []byte
 		switch tag {
 		case roachpb.ValueType_BYTES:
-			// If we have the ValueType_BYTES on a secondary index, then we know we
-			// are looking at column family 0. Column family 0 stores the extra primary
-			// key columns if they are present, so we decode them here.
+			__antithesis_instrumentation__.Notify(455416)
+
 			valueBytes, err = val.GetBytes()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455420)
 				return scrub.WrapError(scrub.IndexValueDecodingError, err)
+			} else {
+				__antithesis_instrumentation__.Notify(455421)
 			}
+			__antithesis_instrumentation__.Notify(455417)
 
-			if table.spec.IsSecondaryIndex && table.spec.IsUniqueIndex {
-				// This is a unique secondary index; decode the extra
-				// column values from the value.
+			if table.spec.IsSecondaryIndex && func() bool {
+				__antithesis_instrumentation__.Notify(455422)
+				return table.spec.IsUniqueIndex == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(455423)
+
 				valueBytes, _, cf.scratch, err = colencoding.DecodeKeyValsToCols(
 					&table.da,
 					&cf.machine.colvecs,
 					cf.machine.rowIdx,
 					table.extraValColOrdinals,
-					false, /* checkAllColsForNull */
+					false,
 					table.spec.KeySuffixColumns(),
 					&cf.machine.remainingValueColsByIdx,
 					valueBytes,
 					cf.scratch,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(455425)
 					return scrub.WrapError(scrub.SecondaryIndexKeyExtraValueDecodingError, err)
+				} else {
+					__antithesis_instrumentation__.Notify(455426)
 				}
-				if cf.traceKV && len(table.extraValColOrdinals) > 0 {
+				__antithesis_instrumentation__.Notify(455424)
+				if cf.traceKV && func() bool {
+					__antithesis_instrumentation__.Notify(455427)
+					return len(table.extraValColOrdinals) > 0 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(455428)
 					var buf strings.Builder
 					buf.WriteByte('/')
 					cf.writeDecodedCols(&buf, table.extraValColOrdinals, '/')
 					prettyValue = buf.String()
+				} else {
+					__antithesis_instrumentation__.Notify(455429)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(455430)
 			}
 		case roachpb.ValueType_TUPLE:
+			__antithesis_instrumentation__.Notify(455418)
 			valueBytes, err = val.GetTuple()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455431)
 				return scrub.WrapError(scrub.IndexValueDecodingError, err)
+			} else {
+				__antithesis_instrumentation__.Notify(455432)
 			}
+		default:
+			__antithesis_instrumentation__.Notify(455419)
 		}
+		__antithesis_instrumentation__.Notify(455415)
 
 		if len(valueBytes) > 0 {
+			__antithesis_instrumentation__.Notify(455433)
 			prettyKey, prettyValue, err = cf.processValueBytes(
 				ctx, table, valueBytes, prettyKey,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455434)
 				return scrub.WrapError(scrub.IndexValueDecodingError, err)
+			} else {
+				__antithesis_instrumentation__.Notify(455435)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(455436)
 		}
 	}
+	__antithesis_instrumentation__.Notify(455384)
 
-	if cf.traceKV && prettyValue == "" {
+	if cf.traceKV && func() bool {
+		__antithesis_instrumentation__.Notify(455437)
+		return prettyValue == "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455438)
 		prettyValue = "<undecoded>"
+	} else {
+		__antithesis_instrumentation__.Notify(455439)
 	}
+	__antithesis_instrumentation__.Notify(455385)
 
 	return nil
 }
 
-// processValueSingle processes the given value for a single column, setting the
-// value in cf.machine.colvecs accordingly.
-// The key is only used for logging.
 func (cf *cFetcher) processValueSingle(
 	ctx context.Context, table *cTableInfo, colID descpb.ColumnID, prettyKeyPrefix string,
 ) (prettyKey string, prettyValue string, err error) {
+	__antithesis_instrumentation__.Notify(455440)
 	prettyKey = prettyKeyPrefix
 
 	if idx, ok := table.ColIdxMap.Get(colID); ok {
+		__antithesis_instrumentation__.Notify(455443)
 		if cf.traceKV {
+			__antithesis_instrumentation__.Notify(455449)
 			prettyKey = fmt.Sprintf("%s/%s", prettyKey, table.spec.FetchedColumns[idx].Name)
+		} else {
+			__antithesis_instrumentation__.Notify(455450)
 		}
+		__antithesis_instrumentation__.Notify(455444)
 		val := cf.machine.nextKV.Value
 		if len(val.RawBytes) == 0 {
+			__antithesis_instrumentation__.Notify(455451)
 			return prettyKey, "", nil
+		} else {
+			__antithesis_instrumentation__.Notify(455452)
 		}
+		__antithesis_instrumentation__.Notify(455445)
 		typ := cf.table.spec.FetchedColumns[idx].Type
 		err := colencoding.UnmarshalColumnValueToCol(
 			&table.da, &cf.machine.colvecs, idx, cf.machine.rowIdx, typ, val,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(455453)
 			return "", "", err
+		} else {
+			__antithesis_instrumentation__.Notify(455454)
 		}
+		__antithesis_instrumentation__.Notify(455446)
 		cf.machine.remainingValueColsByIdx.Remove(idx)
 
 		if cf.traceKV {
+			__antithesis_instrumentation__.Notify(455455)
 			prettyValue = cf.getDatumAt(idx, cf.machine.rowIdx).String()
+		} else {
+			__antithesis_instrumentation__.Notify(455456)
 		}
+		__antithesis_instrumentation__.Notify(455447)
 		if row.DebugRowFetch {
+			__antithesis_instrumentation__.Notify(455457)
 			log.Infof(ctx, "Scan %s -> %v", cf.machine.nextKV.Key, "?")
+		} else {
+			__antithesis_instrumentation__.Notify(455458)
 		}
+		__antithesis_instrumentation__.Notify(455448)
 		return prettyKey, prettyValue, nil
+	} else {
+		__antithesis_instrumentation__.Notify(455459)
 	}
+	__antithesis_instrumentation__.Notify(455441)
 
-	// No need to unmarshal the column value. Either the column was part of
-	// the index key or it isn't needed.
 	if row.DebugRowFetch {
+		__antithesis_instrumentation__.Notify(455460)
 		log.Infof(ctx, "Scan %s -> [%d] (skipped)", cf.machine.nextKV.Key, colID)
+	} else {
+		__antithesis_instrumentation__.Notify(455461)
 	}
+	__antithesis_instrumentation__.Notify(455442)
 	return prettyKey, prettyValue, nil
 }
 
 func (cf *cFetcher) processValueBytes(
 	ctx context.Context, table *cTableInfo, valueBytes []byte, prettyKeyPrefix string,
 ) (prettyKey string, prettyValue string, err error) {
+	__antithesis_instrumentation__.Notify(455462)
 	prettyKey = prettyKeyPrefix
 	if cf.traceKV {
+		__antithesis_instrumentation__.Notify(455466)
 		if cf.machine.prettyValueBuf == nil {
+			__antithesis_instrumentation__.Notify(455468)
 			cf.machine.prettyValueBuf = &bytes.Buffer{}
+		} else {
+			__antithesis_instrumentation__.Notify(455469)
 		}
+		__antithesis_instrumentation__.Notify(455467)
 		cf.machine.prettyValueBuf.Reset()
+	} else {
+		__antithesis_instrumentation__.Notify(455470)
 	}
+	__antithesis_instrumentation__.Notify(455463)
 
-	// Composite columns that are key encoded in the value (like the pk columns
-	// in a unique secondary index) have gotten removed from the set of
-	// remaining value columns. So, we need to add them back in here in case
-	// they have full value encoded composite values.
 	cf.machine.remainingValueColsByIdx.UnionWith(cf.table.compositeIndexColOrdinals)
 
 	var (
@@ -1205,163 +1244,235 @@ func (cf *cFetcher) processValueBytes(
 		typ            encoding.Type
 		lastColIDIndex int
 	)
-	// Continue reading data until there's none left or we've finished
-	// populating the data for all of the requested columns.
-	for len(valueBytes) > 0 && cf.machine.remainingValueColsByIdx.Len() > 0 {
+
+	for len(valueBytes) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(455471)
+		return cf.machine.remainingValueColsByIdx.Len() > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455472)
 		_, dataOffset, colIDDiff, typ, err = encoding.DecodeValueTag(valueBytes)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(455478)
 			return "", "", err
+		} else {
+			__antithesis_instrumentation__.Notify(455479)
 		}
+		__antithesis_instrumentation__.Notify(455473)
 		colID := lastColID + descpb.ColumnID(colIDDiff)
 		lastColID = colID
 		vecIdx := -1
-		// Find the ordinal into table.cols for the column ID we just decoded,
-		// by advancing through the sorted list of needed value columns until
-		// there's a match, or we passed the column ID we're looking for.
+
 		for ; lastColIDIndex < len(table.orderedColIdxMap.vals); lastColIDIndex++ {
+			__antithesis_instrumentation__.Notify(455480)
 			nextID := table.orderedColIdxMap.vals[lastColIDIndex]
 			if nextID == colID {
+				__antithesis_instrumentation__.Notify(455481)
 				vecIdx = table.orderedColIdxMap.ords[lastColIDIndex]
-				// Since the next value part (if it exists) will belong to the
-				// column after the current one, we can advance the index.
+
 				lastColIDIndex++
 				break
-			} else if nextID > colID {
-				break
+			} else {
+				__antithesis_instrumentation__.Notify(455482)
+				if nextID > colID {
+					__antithesis_instrumentation__.Notify(455483)
+					break
+				} else {
+					__antithesis_instrumentation__.Notify(455484)
+				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(455474)
 		if vecIdx == -1 {
-			// This column wasn't requested, so read its length and skip it.
+			__antithesis_instrumentation__.Notify(455485)
+
 			len, err := encoding.PeekValueLengthWithOffsetsAndType(valueBytes, dataOffset, typ)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455488)
 				return "", "", err
+			} else {
+				__antithesis_instrumentation__.Notify(455489)
 			}
+			__antithesis_instrumentation__.Notify(455486)
 			valueBytes = valueBytes[len:]
 			if row.DebugRowFetch {
+				__antithesis_instrumentation__.Notify(455490)
 				log.Infof(ctx, "Scan %s -> [%d] (skipped)", cf.machine.nextKV.Key, colID)
+			} else {
+				__antithesis_instrumentation__.Notify(455491)
 			}
+			__antithesis_instrumentation__.Notify(455487)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(455492)
 		}
+		__antithesis_instrumentation__.Notify(455475)
 
 		if cf.traceKV {
+			__antithesis_instrumentation__.Notify(455493)
 			prettyKey = fmt.Sprintf("%s/%s", prettyKey, table.spec.FetchedColumns[vecIdx].Name)
+		} else {
+			__antithesis_instrumentation__.Notify(455494)
 		}
+		__antithesis_instrumentation__.Notify(455476)
 
 		valueBytes, err = colencoding.DecodeTableValueToCol(
 			&table.da, &cf.machine.colvecs, vecIdx, cf.machine.rowIdx, typ,
 			dataOffset, cf.table.typs[vecIdx], valueBytes,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(455495)
 			return "", "", err
+		} else {
+			__antithesis_instrumentation__.Notify(455496)
 		}
+		__antithesis_instrumentation__.Notify(455477)
 		cf.machine.remainingValueColsByIdx.Remove(vecIdx)
 		if cf.traceKV {
+			__antithesis_instrumentation__.Notify(455497)
 			dVal := cf.getDatumAt(vecIdx, cf.machine.rowIdx)
 			if _, err := fmt.Fprintf(cf.machine.prettyValueBuf, "/%v", dVal.String()); err != nil {
+				__antithesis_instrumentation__.Notify(455498)
 				return "", "", err
+			} else {
+				__antithesis_instrumentation__.Notify(455499)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(455500)
 		}
 	}
+	__antithesis_instrumentation__.Notify(455464)
 	if cf.traceKV {
+		__antithesis_instrumentation__.Notify(455501)
 		prettyValue = cf.machine.prettyValueBuf.String()
+	} else {
+		__antithesis_instrumentation__.Notify(455502)
 	}
+	__antithesis_instrumentation__.Notify(455465)
 	return prettyKey, prettyValue, nil
 }
 
 func (cf *cFetcher) fillNulls() error {
+	__antithesis_instrumentation__.Notify(455503)
 	table := cf.table
 	if cf.machine.remainingValueColsByIdx.Empty() {
+		__antithesis_instrumentation__.Notify(455506)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(455507)
 	}
+	__antithesis_instrumentation__.Notify(455504)
 	for i, ok := cf.machine.remainingValueColsByIdx.Next(0); ok; i, ok = cf.machine.remainingValueColsByIdx.Next(i + 1) {
-		// Composite index columns may have a key but no value. Ignore them so we
-		// don't incorrectly mark them as null.
+		__antithesis_instrumentation__.Notify(455508)
+
 		if table.compositeIndexColOrdinals.Contains(i) {
+			__antithesis_instrumentation__.Notify(455511)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(455512)
 		}
+		__antithesis_instrumentation__.Notify(455509)
 		if table.spec.FetchedColumns[i].IsNonNullable {
+			__antithesis_instrumentation__.Notify(455513)
 			var indexColValues strings.Builder
 			cf.writeDecodedCols(&indexColValues, table.indexColOrdinals, ',')
 			var indexColNames []string
 			for i := range table.spec.KeyFullColumns() {
+				__antithesis_instrumentation__.Notify(455515)
 				indexColNames = append(indexColNames, table.spec.KeyAndSuffixColumns[i].Name)
 			}
+			__antithesis_instrumentation__.Notify(455514)
 			return scrub.WrapError(scrub.UnexpectedNullValueError, errors.Errorf(
 				"non-nullable column \"%s:%s\" with no value! Index scanned was %q with the index key columns (%s) and the values (%s)",
 				table.spec.TableName, table.spec.FetchedColumns[i].Name, table.spec.IndexName,
 				strings.Join(indexColNames, ","), indexColValues.String()))
+		} else {
+			__antithesis_instrumentation__.Notify(455516)
 		}
+		__antithesis_instrumentation__.Notify(455510)
 		cf.machine.colvecs.Nulls[i].SetNull(cf.machine.rowIdx)
 	}
+	__antithesis_instrumentation__.Notify(455505)
 	return nil
 }
 
 func (cf *cFetcher) finalizeBatch() {
-	// Populate the tableoid system column for the whole batch if necessary.
+	__antithesis_instrumentation__.Notify(455517)
+
 	if cf.table.oidOutputIdx != noOutputColumn {
+		__antithesis_instrumentation__.Notify(455519)
 		id := cf.table.spec.TableID
 		for i := 0; i < cf.machine.rowIdx; i++ {
-			// Note that we don't need to update the memory accounting because
-			// oids are fixed length values and have already been accounted for
-			// when finalizing each row.
+			__antithesis_instrumentation__.Notify(455520)
+
 			cf.machine.tableoidCol.Set(i, cf.table.da.NewDOid(tree.MakeDOid(tree.DInt(id))))
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(455521)
 	}
+	__antithesis_instrumentation__.Notify(455518)
 	cf.machine.batch.SetLength(cf.machine.rowIdx)
 	cf.machine.rowIdx = 0
 }
 
-// getCurrentColumnFamilyID returns the column family id of the key in
-// cf.machine.nextKV.Key.
 func (cf *cFetcher) getCurrentColumnFamilyID() (descpb.FamilyID, error) {
-	// If the table only has 1 column family, and its ID is 0, we know that the
-	// key has to be the 0th column family.
+	__antithesis_instrumentation__.Notify(455522)
+
 	if cf.table.spec.MaxFamilyID == 0 {
+		__antithesis_instrumentation__.Notify(455525)
 		return 0, nil
+	} else {
+		__antithesis_instrumentation__.Notify(455526)
 	}
-	// The column family is encoded in the final bytes of the key. The last
-	// byte of the key is the length of the column family id encoding
-	// itself. See encoding.md for more details, and see MakeFamilyKey for
-	// the routine that performs this encoding.
+	__antithesis_instrumentation__.Notify(455523)
+
 	var id uint64
 	_, id, err := encoding.DecodeUvarintAscending(cf.machine.nextKV.Key[len(cf.machine.lastRowPrefix):])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(455527)
 		return 0, scrub.WrapError(scrub.IndexKeyDecodingError, err)
+	} else {
+		__antithesis_instrumentation__.Notify(455528)
 	}
+	__antithesis_instrumentation__.Notify(455524)
 	return descpb.FamilyID(id), nil
 }
 
-// convertFetchError converts an error generated during a key-value fetch to a
-// storage error that will propagate through the exec subsystem unchanged. The
-// error may also undergo a mapping to make it more user friendly for SQL
-// consumers.
 func (cf *cFetcher) convertFetchError(ctx context.Context, err error) error {
+	__antithesis_instrumentation__.Notify(455529)
 	err = row.ConvertFetchError(&cf.table.spec, err)
 	err = colexecerror.NewStorageError(err)
 	return err
 }
 
-// getBytesRead returns the number of bytes read by the cFetcher throughout its
-// existence so far. This number accumulates the bytes read statistic across
-// StartScan* and Close methods.
 func (cf *cFetcher) getBytesRead() int64 {
+	__antithesis_instrumentation__.Notify(455530)
 	if cf.fetcher != nil {
+		__antithesis_instrumentation__.Notify(455532)
 		cf.bytesRead += cf.fetcher.ResetBytesRead()
+	} else {
+		__antithesis_instrumentation__.Notify(455533)
 	}
+	__antithesis_instrumentation__.Notify(455531)
 	return cf.bytesRead
 }
 
 var cFetcherPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(455534)
 		return &cFetcher{}
 	},
 }
 
 func (cf *cFetcher) Release() {
+	__antithesis_instrumentation__.Notify(455535)
 	cf.accountingHelper.Release()
 	if cf.table != nil {
+		__antithesis_instrumentation__.Notify(455537)
 		cf.table.Release()
+	} else {
+		__antithesis_instrumentation__.Notify(455538)
 	}
+	__antithesis_instrumentation__.Notify(455536)
 	colvecs := cf.machine.colvecs
 	colvecs.Reset()
 	*cf = cFetcher{
@@ -1372,9 +1483,16 @@ func (cf *cFetcher) Release() {
 }
 
 func (cf *cFetcher) Close(ctx context.Context) {
-	if cf != nil && cf.fetcher != nil {
+	__antithesis_instrumentation__.Notify(455539)
+	if cf != nil && func() bool {
+		__antithesis_instrumentation__.Notify(455540)
+		return cf.fetcher != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455541)
 		cf.bytesRead += cf.fetcher.GetBytesRead()
 		cf.fetcher.Close(ctx)
 		cf.fetcher = nil
+	} else {
+		__antithesis_instrumentation__.Notify(455542)
 	}
 }

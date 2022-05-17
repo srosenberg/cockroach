@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package status
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -50,11 +42,8 @@ import (
 )
 
 const (
-	// storeTimeSeriesPrefix is the common prefix for time series keys which
-	// record store-specific data.
 	storeTimeSeriesPrefix = "cr.store.%s"
-	// nodeTimeSeriesPrefix is the common prefix for time series keys which
-	// record node-specific data.
+
 	nodeTimeSeriesPrefix = "cr.node.%s"
 
 	advertiseAddrLabelKey = "advertise-addr"
@@ -78,9 +67,6 @@ var recordHistogramQuantiles = []quantile{
 	{"-p50", 50},
 }
 
-// storeMetrics is the minimum interface of the storage.Store object needed by
-// MetricsRecorder to provide status summaries. This is used instead of Store
-// directly in order to simplify testing.
 type storeMetrics interface {
 	StoreID() roachpb.StoreID
 	Descriptor(context.Context, bool) (*roachpb.StoreDescriptor, error)
@@ -92,13 +78,6 @@ var childMetricsEnabled = settings.RegisterBoolSetting(
 	"enables the exporting of child metrics, additional prometheus time series with extra labels",
 	false).WithPublic()
 
-// MetricsRecorder is used to periodically record the information in a number of
-// metric registries.
-//
-// Two types of registries are maintained: "node-level" registries, provided by
-// node-level systems, and "store-level" registries which are provided by each
-// store hosted by the node. There are slight differences in the way these are
-// recorded, and they are thus kept separate.
 type MetricsRecorder struct {
 	*HealthChecker
 	gossip       *gossip.Gossip
@@ -107,43 +86,27 @@ type MetricsRecorder struct {
 	settings     *cluster.Settings
 	clock        *hlc.Clock
 
-	// Counts to help optimize slice allocation. Should only be accessed atomically.
 	lastDataCount        int64
 	lastSummaryCount     int64
 	lastNodeMetricCount  int64
 	lastStoreMetricCount int64
 
-	// mu synchronizes the reading of node/store registries against the adding of
-	// nodes/stores. Consequently, almost all uses of it only need to take an
-	// RLock on it.
 	mu struct {
 		syncutil.RWMutex
-		// nodeRegistry contains, as subregistries, the multiple component-specific
-		// registries which are recorded as "node level" metrics.
+
 		nodeRegistry *metric.Registry
 		desc         roachpb.NodeDescriptor
 		startedAt    int64
 
-		// storeRegistries contains a registry for each store on the node. These
-		// are not stored as subregistries, but rather are treated as wholly
-		// independent.
 		storeRegistries map[roachpb.StoreID]*metric.Registry
 		stores          map[roachpb.StoreID]storeMetrics
 	}
 
-	// prometheusExporter merges metrics into families and generates the
-	// prometheus text format. It has a ScrapeAndPrintAsText method for thread safe
-	// scrape and print so there is no need to have additional lock here.
 	prometheusExporter metric.PrometheusExporter
 
-	// WriteNodeStatus is a potentially long-running method (with a network
-	// round-trip) that requires a mutex to be safe for concurrent usage. We
-	// therefore give it its own mutex to avoid blocking other methods.
 	writeSummaryMu syncutil.Mutex
 }
 
-// NewMetricsRecorder initializes a new MetricsRecorder object that uses the
-// given clock.
 func NewMetricsRecorder(
 	clock *hlc.Clock,
 	nodeLiveness *liveness.NodeLiveness,
@@ -151,6 +114,7 @@ func NewMetricsRecorder(
 	gossip *gossip.Gossip,
 	settings *cluster.Settings,
 ) *MetricsRecorder {
+	__antithesis_instrumentation__.Notify(235463)
 	mr := &MetricsRecorder{
 		HealthChecker: NewHealthChecker(trackedMetrics),
 		nodeLiveness:  nodeLiveness,
@@ -165,21 +129,19 @@ func NewMetricsRecorder(
 	return mr
 }
 
-// AddNode adds the Registry from an initialized node, along with its descriptor
-// and start time.
 func (mr *MetricsRecorder) AddNode(
 	reg *metric.Registry,
 	desc roachpb.NodeDescriptor,
 	startedAt int64,
 	advertiseAddr, httpAddr, sqlAddr string,
 ) {
+	__antithesis_instrumentation__.Notify(235464)
 	mr.mu.Lock()
 	defer mr.mu.Unlock()
 	mr.mu.nodeRegistry = reg
 	mr.mu.desc = desc
 	mr.mu.startedAt = startedAt
 
-	// Create node ID gauge metric with host as a label.
 	metadata := metric.Metadata{
 		Name:        "node-id",
 		Help:        "node ID with labels for advertised RPC and HTTP addresses",
@@ -195,12 +157,8 @@ func (mr *MetricsRecorder) AddNode(
 	reg.AddMetric(nodeIDGauge)
 }
 
-// AddStore adds the Registry from the provided store as a store-level registry
-// in this recorder. A reference to the store is kept for the purpose of
-// gathering some additional information which is present in store status
-// summaries.
-// Stores should only be added to the registry after they have been started.
 func (mr *MetricsRecorder) AddStore(store storeMetrics) {
+	__antithesis_instrumentation__.Notify(235465)
 	mr.mu.Lock()
 	defer mr.mu.Unlock()
 	storeID := store.StoreID()
@@ -209,92 +167,111 @@ func (mr *MetricsRecorder) AddStore(store storeMetrics) {
 	mr.mu.stores[storeID] = store
 }
 
-// MarshalJSON returns an appropriate JSON representation of the current values
-// of the metrics being tracked by this recorder.
 func (mr *MetricsRecorder) MarshalJSON() ([]byte, error) {
+	__antithesis_instrumentation__.Notify(235466)
 	mr.mu.RLock()
 	defer mr.mu.RUnlock()
 	if mr.mu.nodeRegistry == nil {
-		// We haven't yet processed initialization information; return an empty
-		// JSON object.
+		__antithesis_instrumentation__.Notify(235469)
+
 		if log.V(1) {
+			__antithesis_instrumentation__.Notify(235471)
 			log.Warning(context.TODO(), "MetricsRecorder.MarshalJSON() called before NodeID allocation")
+		} else {
+			__antithesis_instrumentation__.Notify(235472)
 		}
+		__antithesis_instrumentation__.Notify(235470)
 		return []byte("{}"), nil
+	} else {
+		__antithesis_instrumentation__.Notify(235473)
 	}
+	__antithesis_instrumentation__.Notify(235467)
 	topLevel := map[string]interface{}{
 		fmt.Sprintf("node.%d", mr.mu.desc.NodeID): mr.mu.nodeRegistry,
 	}
-	// Add collection of stores to top level. JSON requires that keys be strings,
-	// so we must convert the store ID to a string.
+
 	storeLevel := make(map[string]interface{})
 	for id, reg := range mr.mu.storeRegistries {
+		__antithesis_instrumentation__.Notify(235474)
 		storeLevel[strconv.Itoa(int(id))] = reg
 	}
+	__antithesis_instrumentation__.Notify(235468)
 	topLevel["stores"] = storeLevel
 	return json.Marshal(topLevel)
 }
 
-// ScrapeIntoPrometheus updates the passed-in prometheusExporter's metrics
-// snapshot.
 func (mr *MetricsRecorder) ScrapeIntoPrometheus(pm *metric.PrometheusExporter) {
+	__antithesis_instrumentation__.Notify(235475)
 	mr.mu.RLock()
 	defer mr.mu.RUnlock()
 	if mr.mu.nodeRegistry == nil {
-		// We haven't yet processed initialization information; output nothing.
+		__antithesis_instrumentation__.Notify(235477)
+
 		if log.V(1) {
+			__antithesis_instrumentation__.Notify(235478)
 			log.Warning(context.TODO(), "MetricsRecorder asked to scrape metrics before NodeID allocation")
+		} else {
+			__antithesis_instrumentation__.Notify(235479)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(235480)
 	}
+	__antithesis_instrumentation__.Notify(235476)
 	includeChildMetrics := childMetricsEnabled.Get(&mr.settings.SV)
 	pm.ScrapeRegistry(mr.mu.nodeRegistry, includeChildMetrics)
 	for _, reg := range mr.mu.storeRegistries {
+		__antithesis_instrumentation__.Notify(235481)
 		pm.ScrapeRegistry(reg, includeChildMetrics)
 	}
 }
 
-// PrintAsText writes the current metrics values as plain-text to the writer.
-// We write metrics to a temporary buffer which is then copied to the writer.
-// This is to avoid hanging requests from holding the lock.
 func (mr *MetricsRecorder) PrintAsText(w io.Writer) error {
+	__antithesis_instrumentation__.Notify(235482)
 	var buf bytes.Buffer
 	if err := mr.prometheusExporter.ScrapeAndPrintAsText(&buf, mr.ScrapeIntoPrometheus); err != nil {
+		__antithesis_instrumentation__.Notify(235484)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(235485)
 	}
+	__antithesis_instrumentation__.Notify(235483)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-// ExportToGraphite sends the current metric values to a Graphite server.
-// It creates a new PrometheusExporter each time to avoid needing to worry
-// about races with mr.promMu.prometheusExporter. We are not as worried
-// about the extra memory allocations.
 func (mr *MetricsRecorder) ExportToGraphite(
 	ctx context.Context, endpoint string, pm *metric.PrometheusExporter,
 ) error {
+	__antithesis_instrumentation__.Notify(235486)
 	mr.ScrapeIntoPrometheus(pm)
 	graphiteExporter := metric.MakeGraphiteExporter(pm)
 	return graphiteExporter.Push(ctx, endpoint)
 }
 
-// GetTimeSeriesData serializes registered metrics for consumption by
-// CockroachDB's time series system.
 func (mr *MetricsRecorder) GetTimeSeriesData() []tspb.TimeSeriesData {
+	__antithesis_instrumentation__.Notify(235487)
 	mr.mu.RLock()
 	defer mr.mu.RUnlock()
 
 	if mr.mu.nodeRegistry == nil {
-		// We haven't yet processed initialization information; do nothing.
+		__antithesis_instrumentation__.Notify(235490)
+
 		if log.V(1) {
+			__antithesis_instrumentation__.Notify(235492)
 			log.Warning(context.TODO(), "MetricsRecorder.GetTimeSeriesData() called before NodeID allocation")
+		} else {
+			__antithesis_instrumentation__.Notify(235493)
 		}
+		__antithesis_instrumentation__.Notify(235491)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(235494)
 	}
+	__antithesis_instrumentation__.Notify(235488)
 
 	lastDataCount := atomic.LoadInt64(&mr.lastDataCount)
 	data := make([]tspb.TimeSeriesData, 0, lastDataCount)
 
-	// Record time series from node-level registries.
 	now := mr.clock.PhysicalNow()
 	recorder := registryRecorder{
 		registry:       mr.mu.nodeRegistry,
@@ -304,8 +281,8 @@ func (mr *MetricsRecorder) GetTimeSeriesData() []tspb.TimeSeriesData {
 	}
 	recorder.record(&data)
 
-	// Record time series from store-level registries.
 	for storeID, r := range mr.mu.storeRegistries {
+		__antithesis_instrumentation__.Notify(235495)
 		storeRecorder := registryRecorder{
 			registry:       r,
 			format:         storeTimeSeriesPrefix,
@@ -314,100 +291,142 @@ func (mr *MetricsRecorder) GetTimeSeriesData() []tspb.TimeSeriesData {
 		}
 		storeRecorder.record(&data)
 	}
+	__antithesis_instrumentation__.Notify(235489)
 	atomic.CompareAndSwapInt64(&mr.lastDataCount, lastDataCount, int64(len(data)))
 	return data
 }
 
-// GetMetricsMetadata returns the metadata from all metrics tracked in the node's
-// nodeRegistry and a randomly selected storeRegistry.
 func (mr *MetricsRecorder) GetMetricsMetadata() map[string]metric.Metadata {
+	__antithesis_instrumentation__.Notify(235496)
 	mr.mu.Lock()
 	defer mr.mu.Unlock()
 
 	if mr.mu.nodeRegistry == nil {
-		// We haven't yet processed initialization information; do nothing.
+		__antithesis_instrumentation__.Notify(235499)
+
 		if log.V(1) {
+			__antithesis_instrumentation__.Notify(235501)
 			log.Warning(context.TODO(), "MetricsRecorder.GetMetricsMetadata() called before NodeID allocation")
+		} else {
+			__antithesis_instrumentation__.Notify(235502)
 		}
+		__antithesis_instrumentation__.Notify(235500)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(235503)
 	}
+	__antithesis_instrumentation__.Notify(235497)
 
 	metrics := make(map[string]metric.Metadata)
 
 	mr.mu.nodeRegistry.WriteMetricsMetadata(metrics)
 
-	// Get a random storeID.
 	var sID roachpb.StoreID
 
 	for storeID := range mr.mu.storeRegistries {
+		__antithesis_instrumentation__.Notify(235504)
 		sID = storeID
 		break
 	}
+	__antithesis_instrumentation__.Notify(235498)
 
-	// Get metric metadata from that store because all stores have the same metadata.
 	mr.mu.storeRegistries[sID].WriteMetricsMetadata(metrics)
 
 	return metrics
 }
 
-// getNetworkActivity produces three maps detailing information about
-// network activity between this node and all other nodes. The maps
-// are incoming throughput, outgoing throughput, and average
-// latency. Throughputs are stored as bytes, and latencies as nanos.
 func (mr *MetricsRecorder) getNetworkActivity(
 	ctx context.Context,
 ) map[roachpb.NodeID]statuspb.NodeStatus_NetworkActivity {
+	__antithesis_instrumentation__.Notify(235505)
 	activity := make(map[roachpb.NodeID]statuspb.NodeStatus_NetworkActivity)
-	if mr.nodeLiveness != nil && mr.gossip != nil {
+	if mr.nodeLiveness != nil && func() bool {
+		__antithesis_instrumentation__.Notify(235507)
+		return mr.gossip != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(235508)
 		isLiveMap := mr.nodeLiveness.GetIsLiveMap()
 
 		throughputMap := mr.rpcContext.GetStatsMap()
 		var currentAverages map[string]time.Duration
 		if mr.rpcContext.RemoteClocks != nil {
+			__antithesis_instrumentation__.Notify(235510)
 			currentAverages = mr.rpcContext.RemoteClocks.AllLatencies()
+		} else {
+			__antithesis_instrumentation__.Notify(235511)
 		}
+		__antithesis_instrumentation__.Notify(235509)
 		for nodeID, entry := range isLiveMap {
+			__antithesis_instrumentation__.Notify(235512)
 			address, err := mr.gossip.GetNodeIDAddress(nodeID)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(235516)
 				if entry.IsLive {
+					__antithesis_instrumentation__.Notify(235518)
 					log.Warningf(ctx, "%v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(235519)
 				}
+				__antithesis_instrumentation__.Notify(235517)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(235520)
 			}
+			__antithesis_instrumentation__.Notify(235513)
 			na := statuspb.NodeStatus_NetworkActivity{}
 			key := address.String()
 			if tp, ok := throughputMap.Load(key); ok {
+				__antithesis_instrumentation__.Notify(235521)
 				stats := tp.(*rpc.Stats)
 				na.Incoming = stats.Incoming()
 				na.Outgoing = stats.Outgoing()
+			} else {
+				__antithesis_instrumentation__.Notify(235522)
 			}
+			__antithesis_instrumentation__.Notify(235514)
 			if entry.IsLive {
+				__antithesis_instrumentation__.Notify(235523)
 				if latency, ok := currentAverages[key]; ok {
+					__antithesis_instrumentation__.Notify(235524)
 					na.Latency = latency.Nanoseconds()
+				} else {
+					__antithesis_instrumentation__.Notify(235525)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(235526)
 			}
+			__antithesis_instrumentation__.Notify(235515)
 			activity[nodeID] = na
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(235527)
 	}
+	__antithesis_instrumentation__.Notify(235506)
 	return activity
 }
 
-// GenerateNodeStatus returns a status summary message for the node. The summary
-// includes the recent values of metrics for both the node and all of its
-// component stores. When the node isn't initialized yet, nil is returned.
 func (mr *MetricsRecorder) GenerateNodeStatus(ctx context.Context) *statuspb.NodeStatus {
+	__antithesis_instrumentation__.Notify(235528)
 	activity := mr.getNetworkActivity(ctx)
 
 	mr.mu.RLock()
 	defer mr.mu.RUnlock()
 
 	if mr.mu.nodeRegistry == nil {
-		// We haven't yet processed initialization information; do nothing.
+		__antithesis_instrumentation__.Notify(235534)
+
 		if log.V(1) {
+			__antithesis_instrumentation__.Notify(235536)
 			log.Warning(ctx, "attempt to generate status summary before NodeID allocation.")
+		} else {
+			__antithesis_instrumentation__.Notify(235537)
 		}
+		__antithesis_instrumentation__.Notify(235535)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(235538)
 	}
+	__antithesis_instrumentation__.Notify(235529)
 
 	now := mr.clock.PhysicalNow()
 
@@ -417,10 +436,13 @@ func (mr *MetricsRecorder) GenerateNodeStatus(ctx context.Context) *statuspb.Nod
 
 	systemMemory, _, err := GetTotalMemoryWithoutLogging()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235539)
 		log.Errorf(ctx, "could not get total system memory: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(235540)
 	}
+	__antithesis_instrumentation__.Notify(235530)
 
-	// Generate a node status with no store data.
 	nodeStat := &statuspb.NodeStatus{
 		Desc:              mr.mu.desc,
 		BuildInfo:         build.GetInfo(),
@@ -436,98 +458,137 @@ func (mr *MetricsRecorder) GenerateNodeStatus(ctx context.Context) *statuspb.Nod
 	}
 
 	eachRecordableValue(mr.mu.nodeRegistry, func(name string, val float64) {
+		__antithesis_instrumentation__.Notify(235541)
 		nodeStat.Metrics[name] = val
 	})
+	__antithesis_instrumentation__.Notify(235531)
 
-	// Generate status summaries for stores.
 	for storeID, r := range mr.mu.storeRegistries {
+		__antithesis_instrumentation__.Notify(235542)
 		storeMetrics := make(map[string]float64, lastStoreMetricCount)
 		eachRecordableValue(r, func(name string, val float64) {
+			__antithesis_instrumentation__.Notify(235545)
 			storeMetrics[name] = val
 		})
+		__antithesis_instrumentation__.Notify(235543)
 
-		// Gather descriptor from store.
-		descriptor, err := mr.mu.stores[storeID].Descriptor(ctx, false /* useCached */)
+		descriptor, err := mr.mu.stores[storeID].Descriptor(ctx, false)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(235546)
 			log.Errorf(ctx, "could not record status summaries: Store %d could not return descriptor, error: %s", storeID, err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(235547)
 		}
+		__antithesis_instrumentation__.Notify(235544)
 
 		nodeStat.StoreStatuses = append(nodeStat.StoreStatuses, statuspb.StoreStatus{
 			Desc:    *descriptor,
 			Metrics: storeMetrics,
 		})
 	}
+	__antithesis_instrumentation__.Notify(235532)
 
 	atomic.CompareAndSwapInt64(
 		&mr.lastSummaryCount, lastSummaryCount, int64(len(nodeStat.StoreStatuses)))
 	atomic.CompareAndSwapInt64(
 		&mr.lastNodeMetricCount, lastNodeMetricCount, int64(len(nodeStat.Metrics)))
 	if len(nodeStat.StoreStatuses) > 0 {
+		__antithesis_instrumentation__.Notify(235548)
 		atomic.CompareAndSwapInt64(
 			&mr.lastStoreMetricCount, lastStoreMetricCount, int64(len(nodeStat.StoreStatuses[0].Metrics)))
+	} else {
+		__antithesis_instrumentation__.Notify(235549)
 	}
+	__antithesis_instrumentation__.Notify(235533)
 
 	return nodeStat
 }
 
 func flattenStrings(s []redact.RedactableString) []string {
+	__antithesis_instrumentation__.Notify(235550)
 	res := make([]string, len(s))
 	for i, v := range s {
+		__antithesis_instrumentation__.Notify(235552)
 		res[i] = v.StripMarkers()
 	}
+	__antithesis_instrumentation__.Notify(235551)
 	return res
 }
 
-// WriteNodeStatus writes the supplied summary to the given client. If mustExist
-// is true, the key must already exist and must not change while being updated,
-// otherwise an error is returned -- if false, the status is always written.
 func (mr *MetricsRecorder) WriteNodeStatus(
 	ctx context.Context, db *kv.DB, nodeStatus statuspb.NodeStatus, mustExist bool,
 ) error {
+	__antithesis_instrumentation__.Notify(235553)
 	mr.writeSummaryMu.Lock()
 	defer mr.writeSummaryMu.Unlock()
 	key := keys.NodeStatusKey(nodeStatus.Desc.NodeID)
-	// We use an inline value to store only a single version of the node status.
-	// There's not much point in keeping the historical versions as we keep
-	// all of the constituent data as timeseries. Further, due to the size
-	// of the build info in the node status, writing one of these every 10s
-	// will generate more versions than will easily fit into a range over
-	// the course of a day.
+
 	if mustExist {
+		__antithesis_instrumentation__.Notify(235556)
 		entry, err := db.Get(ctx, key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(235559)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(235560)
 		}
+		__antithesis_instrumentation__.Notify(235557)
 		if entry.Value == nil {
+			__antithesis_instrumentation__.Notify(235561)
 			return errors.New("status entry not found, node may have been decommissioned")
+		} else {
+			__antithesis_instrumentation__.Notify(235562)
 		}
+		__antithesis_instrumentation__.Notify(235558)
 		err = db.CPutInline(ctx, key, &nodeStatus, entry.Value.TagAndDataBytes())
 		if detail := (*roachpb.ConditionFailedError)(nil); errors.As(err, &detail) {
+			__antithesis_instrumentation__.Notify(235563)
 			if detail.ActualValue == nil {
+				__antithesis_instrumentation__.Notify(235565)
 				return errors.New("status entry not found, node may have been decommissioned")
+			} else {
+				__antithesis_instrumentation__.Notify(235566)
 			}
+			__antithesis_instrumentation__.Notify(235564)
 			return errors.New("status entry unexpectedly changed during update")
-		} else if err != nil {
-			return err
+		} else {
+			__antithesis_instrumentation__.Notify(235567)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(235568)
+				return err
+			} else {
+				__antithesis_instrumentation__.Notify(235569)
+			}
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(235570)
 		if err := db.PutInline(ctx, key, &nodeStatus); err != nil {
+			__antithesis_instrumentation__.Notify(235571)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(235572)
 		}
 	}
+	__antithesis_instrumentation__.Notify(235554)
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(235573)
 		statusJSON, err := json.Marshal(&nodeStatus)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(235575)
 			log.Errorf(ctx, "error marshaling nodeStatus to json: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(235576)
 		}
+		__antithesis_instrumentation__.Notify(235574)
 		log.Infof(ctx, "node %d status: %s", nodeStatus.Desc.NodeID, statusJSON)
+	} else {
+		__antithesis_instrumentation__.Notify(235577)
 	}
+	__antithesis_instrumentation__.Notify(235555)
 	return nil
 }
 
-// registryRecorder is a helper class for recording time series datapoints
-// from a metrics Registry.
 type registryRecorder struct {
 	registry       *metric.Registry
 	format         string
@@ -536,8 +597,8 @@ type registryRecorder struct {
 }
 
 func extractValue(name string, mtr interface{}, fn func(string, float64)) error {
-	// TODO(tschottdorf,ajwerner): consider moving this switch to a single
-	// interface implemented by the individual metric types.
+	__antithesis_instrumentation__.Notify(235578)
+
 	type (
 		float64Valuer   interface{ Value() float64 }
 		int64Valuer     interface{ Value() int64 }
@@ -548,54 +609,53 @@ func extractValue(name string, mtr interface{}, fn func(string, float64)) error 
 	)
 	switch mtr := mtr.(type) {
 	case float64:
+		__antithesis_instrumentation__.Notify(235580)
 		fn(name, mtr)
 	case float64Valuer:
+		__antithesis_instrumentation__.Notify(235581)
 		fn(name, mtr.Value())
 	case int64Valuer:
+		__antithesis_instrumentation__.Notify(235582)
 		fn(name, float64(mtr.Value()))
 	case int64Counter:
+		__antithesis_instrumentation__.Notify(235583)
 		fn(name, float64(mtr.Count()))
 	case histogramValuer:
-		// TODO(mrtracy): Where should this comment go for better
-		// visibility?
-		//
-		// Proper support of Histograms for time series is difficult and
-		// likely not worth the trouble. Instead, we aggregate a windowed
-		// histogram at fixed quantiles. If the scraping window and the
-		// histogram's eviction duration are similar, this should give
-		// good results; if the two durations are very different, we either
-		// report stale results or report only the more recent data.
-		//
-		// Additionally, we can only aggregate max/min of the quantiles;
-		// roll-ups don't know that and so they will return mathematically
-		// nonsensical values, but that seems acceptable for the time
-		// being.
+		__antithesis_instrumentation__.Notify(235584)
+
 		curr, _ := mtr.Windowed()
 		for _, pt := range recordHistogramQuantiles {
+			__antithesis_instrumentation__.Notify(235587)
 			fn(name+pt.suffix, float64(curr.ValueAtQuantile(pt.quantile)))
 		}
+		__antithesis_instrumentation__.Notify(235585)
 		fn(name+"-count", float64(curr.TotalCount()))
 	default:
+		__antithesis_instrumentation__.Notify(235586)
 		return errors.Errorf("cannot extract value for type %T", mtr)
 	}
+	__antithesis_instrumentation__.Notify(235579)
 	return nil
 }
 
-// eachRecordableValue visits each metric in the registry, calling the supplied
-// function once for each recordable value represented by that metric. This is
-// useful to expand certain metric types (such as histograms) into multiple
-// recordable values.
 func eachRecordableValue(reg *metric.Registry, fn func(string, float64)) {
+	__antithesis_instrumentation__.Notify(235588)
 	reg.Each(func(name string, mtr interface{}) {
+		__antithesis_instrumentation__.Notify(235589)
 		if err := extractValue(name, mtr, fn); err != nil {
+			__antithesis_instrumentation__.Notify(235590)
 			log.Warningf(context.TODO(), "%v", err)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(235591)
 		}
 	})
 }
 
 func (rr registryRecorder) record(dest *[]tspb.TimeSeriesData) {
+	__antithesis_instrumentation__.Notify(235592)
 	eachRecordableValue(rr.registry, func(name string, val float64) {
+		__antithesis_instrumentation__.Notify(235593)
 		*dest = append(*dest, tspb.TimeSeriesData{
 			Name:   fmt.Sprintf(rr.format, name),
 			Source: rr.source,
@@ -609,56 +669,100 @@ func (rr registryRecorder) record(dest *[]tspb.TimeSeriesData) {
 	})
 }
 
-// GetTotalMemory returns either the total system memory (in bytes) or if
-// possible the cgroups available memory.
 func GetTotalMemory(ctx context.Context) (int64, error) {
+	__antithesis_instrumentation__.Notify(235594)
 	memory, warning, err := GetTotalMemoryWithoutLogging()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235597)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(235598)
 	}
+	__antithesis_instrumentation__.Notify(235595)
 	if warning != "" {
+		__antithesis_instrumentation__.Notify(235599)
 		log.Infof(ctx, "%s", warning)
+	} else {
+		__antithesis_instrumentation__.Notify(235600)
 	}
+	__antithesis_instrumentation__.Notify(235596)
 	return memory, nil
 }
 
-// GetTotalMemoryWithoutLogging is the same as GetTotalMemory, but returns any warning
-// as a string instead of logging it.
 func GetTotalMemoryWithoutLogging() (int64, string, error) {
+	__antithesis_instrumentation__.Notify(235601)
 	totalMem, err := func() (int64, error) {
+		__antithesis_instrumentation__.Notify(235608)
 		mem := gosigar.Mem{}
 		if err := mem.Get(); err != nil {
+			__antithesis_instrumentation__.Notify(235611)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(235612)
 		}
+		__antithesis_instrumentation__.Notify(235609)
 		if mem.Total > math.MaxInt64 {
+			__antithesis_instrumentation__.Notify(235613)
 			return 0, fmt.Errorf("inferred memory size %s exceeds maximum supported memory size %s",
 				humanize.IBytes(mem.Total), humanize.Bytes(math.MaxInt64))
+		} else {
+			__antithesis_instrumentation__.Notify(235614)
 		}
+		__antithesis_instrumentation__.Notify(235610)
 		return int64(mem.Total), nil
 	}()
+	__antithesis_instrumentation__.Notify(235602)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235615)
 		return 0, "", err
+	} else {
+		__antithesis_instrumentation__.Notify(235616)
 	}
+	__antithesis_instrumentation__.Notify(235603)
 	checkTotal := func(x int64, warning string) (int64, string, error) {
+		__antithesis_instrumentation__.Notify(235617)
 		if x <= 0 {
-			// https://github.com/elastic/gosigar/issues/72
+			__antithesis_instrumentation__.Notify(235619)
+
 			return 0, warning, fmt.Errorf("inferred memory size %d is suspicious, considering invalid", x)
+		} else {
+			__antithesis_instrumentation__.Notify(235620)
 		}
+		__antithesis_instrumentation__.Notify(235618)
 		return x, warning, nil
 	}
+	__antithesis_instrumentation__.Notify(235604)
 	if runtime.GOOS != "linux" {
+		__antithesis_instrumentation__.Notify(235621)
 		return checkTotal(totalMem, "")
+	} else {
+		__antithesis_instrumentation__.Notify(235622)
 	}
+	__antithesis_instrumentation__.Notify(235605)
 	cgAvlMem, warning, err := cgroups.GetMemoryLimit()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235623)
 		return checkTotal(totalMem,
 			fmt.Sprintf("available memory from cgroups is unsupported, using system memory %s instead: %v",
 				humanizeutil.IBytes(totalMem), err))
+	} else {
+		__antithesis_instrumentation__.Notify(235624)
 	}
-	if cgAvlMem == 0 || (totalMem > 0 && cgAvlMem > totalMem) {
+	__antithesis_instrumentation__.Notify(235606)
+	if cgAvlMem == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(235625)
+		return (totalMem > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(235626)
+			return cgAvlMem > totalMem == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(235627)
 		return checkTotal(totalMem,
 			fmt.Sprintf("available memory from cgroups (%s) is unsupported, using system memory %s instead: %s",
 				humanize.IBytes(uint64(cgAvlMem)), humanizeutil.IBytes(totalMem), warning))
+	} else {
+		__antithesis_instrumentation__.Notify(235628)
 	}
+	__antithesis_instrumentation__.Notify(235607)
 	return checkTotal(cgAvlMem, "")
 }

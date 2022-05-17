@@ -1,12 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package backupccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -64,57 +58,58 @@ import (
 	pbtypes "github.com/gogo/protobuf/types"
 )
 
-// restoreStatsInsertBatchSize is an arbitrarily chosen value of the number of
-// tables we process in a single txn when restoring their table statistics.
 var restoreStatsInsertBatchSize = 10
 
-// rewriteBackupSpanKey rewrites a backup span start key for the purposes of
-// splitting up the target key-space to send out the actual work of restoring.
-//
-// Keys for the primary index of the top-level table are rewritten to the just
-// the overall start of the table. That is, /Table/51/1 becomes /Table/51.
-//
-// Any suffix of the key that does is not rewritten by kr's configured rewrites
-// is truncated. For instance if a passed span has key /Table/51/1/77#/53/2/1
-// but kr only configured with a rewrite for 51, it would return /Table/51/1/77.
-// Such span boundaries are usually due to a interleaved table which has since
-// been dropped -- any splits that happened to pick one of its rows live on, but
-// include an ID of a table that no longer exists.
-//
-// Note that the actual restore process (i.e the restore processor method which
-// writes the KVs) does not use these keys -- they are only used to split the
-// key space and distribute those requests, thus truncation is fine. In the rare
-// case where multiple backup spans are truncated to the same prefix (i.e.
-// entire spans resided under the same interleave parent row) we'll generate
-// some no-op splits and route the work to the same range, but the actual
-// imported data is unaffected.
 func rewriteBackupSpanKey(
 	codec keys.SQLCodec, kr *KeyRewriter, key roachpb.Key,
 ) (roachpb.Key, error) {
+	__antithesis_instrumentation__.Notify(10544)
 	newKey, rewritten, err := kr.RewriteKey(append([]byte(nil), key...))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(10549)
 		return nil, errors.NewAssertionErrorWithWrappedErrf(err,
 			"could not rewrite span start key: %s", key)
+	} else {
+		__antithesis_instrumentation__.Notify(10550)
 	}
-	if !rewritten && bytes.Equal(newKey, key) {
-		// if nothing was changed, we didn't match the top-level key at all.
+	__antithesis_instrumentation__.Notify(10545)
+	if !rewritten && func() bool {
+		__antithesis_instrumentation__.Notify(10551)
+		return bytes.Equal(newKey, key) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(10552)
+
 		return nil, errors.AssertionFailedf(
 			"no rewrite for span start key: %s", key)
+	} else {
+		__antithesis_instrumentation__.Notify(10553)
 	}
+	__antithesis_instrumentation__.Notify(10546)
 	if bytes.HasPrefix(newKey, keys.TenantPrefix) {
+		__antithesis_instrumentation__.Notify(10554)
 		return newKey, nil
+	} else {
+		__antithesis_instrumentation__.Notify(10555)
 	}
+	__antithesis_instrumentation__.Notify(10547)
 
-	// Modify all spans that begin at the primary index to instead begin at the
-	// start of the table. That is, change a span start key from /Table/51/1 to
-	// /Table/51. Otherwise a permanently empty span at /Table/51-/Table/51/1
-	// will be created.
 	if b, id, idx, err := codec.DecodeIndexPrefix(newKey); err != nil {
+		__antithesis_instrumentation__.Notify(10556)
 		return nil, errors.NewAssertionErrorWithWrappedErrf(err,
 			"could not rewrite span start key: %s", key)
-	} else if idx == 1 && len(b) == 0 {
-		newKey = codec.TablePrefix(id)
+	} else {
+		__antithesis_instrumentation__.Notify(10557)
+		if idx == 1 && func() bool {
+			__antithesis_instrumentation__.Notify(10558)
+			return len(b) == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(10559)
+			newKey = codec.TablePrefix(id)
+		} else {
+			__antithesis_instrumentation__.Notify(10560)
+		}
 	}
+	__antithesis_instrumentation__.Notify(10548)
 	return newKey, nil
 }
 
@@ -129,19 +124,17 @@ func restoreWithRetry(
 	job *jobs.Job,
 	encryption *jobspb.BackupEncryptionOptions,
 ) (roachpb.RowCount, error) {
-	// We retry on pretty generic failures -- any rpc error. If a worker node were
-	// to restart, it would produce this kind of error, but there may be other
-	// errors that are also rpc errors. Don't retry to aggressively.
+	__antithesis_instrumentation__.Notify(10561)
+
 	retryOpts := retry.Options{
 		MaxBackoff: 1 * time.Second,
 		MaxRetries: 5,
 	}
 
-	// We want to retry a restore if there are transient failures (i.e. worker nodes
-	// dying), so if we receive a retryable error, re-plan and retry the backup.
 	var res roachpb.RowCount
 	var err error
 	for r := retry.StartWithCtx(restoreCtx, retryOpts); r.Next(); {
+		__antithesis_instrumentation__.Notify(10564)
 		res, err = restore(
 			restoreCtx,
 			execCtx,
@@ -154,23 +147,40 @@ func restoreWithRetry(
 			encryption,
 		)
 		if err == nil {
+			__antithesis_instrumentation__.Notify(10568)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(10569)
 		}
+		__antithesis_instrumentation__.Notify(10565)
 
 		if errors.HasType(err, &roachpb.InsufficientSpaceError{}) {
+			__antithesis_instrumentation__.Notify(10570)
 			return roachpb.RowCount{}, jobs.MarkPauseRequestError(errors.UnwrapAll(err))
+		} else {
+			__antithesis_instrumentation__.Notify(10571)
 		}
+		__antithesis_instrumentation__.Notify(10566)
 
 		if joberror.IsPermanentBulkJobError(err) {
+			__antithesis_instrumentation__.Notify(10572)
 			return roachpb.RowCount{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(10573)
 		}
+		__antithesis_instrumentation__.Notify(10567)
 
 		log.Warningf(restoreCtx, `encountered retryable error: %+v`, err)
 	}
+	__antithesis_instrumentation__.Notify(10562)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(10574)
 		return roachpb.RowCount{}, errors.Wrap(err, "exhausted retries")
+	} else {
+		__antithesis_instrumentation__.Notify(10575)
 	}
+	__antithesis_instrumentation__.Notify(10563)
 	return res, nil
 }
 
@@ -179,28 +189,38 @@ type storeByLocalityKV map[string]roachpb.ExternalStorage
 func makeBackupLocalityMap(
 	backupLocalityInfos []jobspb.RestoreDetails_BackupLocalityInfo, user security.SQLUsername,
 ) (map[int]storeByLocalityKV, error) {
+	__antithesis_instrumentation__.Notify(10576)
 
 	backupLocalityMap := make(map[int]storeByLocalityKV)
 	for i, localityInfo := range backupLocalityInfos {
+		__antithesis_instrumentation__.Notify(10578)
 		storesByLocalityKV := make(storeByLocalityKV)
 		if localityInfo.URIsByOriginalLocalityKV != nil {
+			__antithesis_instrumentation__.Notify(10580)
 			for kv, uri := range localityInfo.URIsByOriginalLocalityKV {
+				__antithesis_instrumentation__.Notify(10581)
 				conf, err := cloud.ExternalStorageConfFromURI(uri, user)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(10583)
 					return nil, errors.Wrap(err,
 						"creating locality external storage configuration")
+				} else {
+					__antithesis_instrumentation__.Notify(10584)
 				}
+				__antithesis_instrumentation__.Notify(10582)
 				storesByLocalityKV[kv] = conf
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(10585)
 		}
+		__antithesis_instrumentation__.Notify(10579)
 		backupLocalityMap[i] = storesByLocalityKV
 	}
+	__antithesis_instrumentation__.Notify(10577)
 
 	return backupLocalityMap, nil
 }
 
-// restore imports a SQL table (or tables) from sets of non-overlapping sstable
-// files.
 func restore(
 	restoreCtx context.Context,
 	execCtx sql.JobExecContext,
@@ -212,24 +232,27 @@ func restore(
 	job *jobs.Job,
 	encryption *jobspb.BackupEncryptionOptions,
 ) (roachpb.RowCount, error) {
+	__antithesis_instrumentation__.Notify(10586)
 	user := execCtx.User()
-	// A note about contexts and spans in this method: the top-level context
-	// `restoreCtx` is used for orchestration logging. All operations that carry
-	// out work get their individual contexts.
+
 	emptyRowCount := roachpb.RowCount{}
 
-	// If there isn't any data to restore, then return early.
 	if dataToRestore.isEmpty() {
+		__antithesis_instrumentation__.Notify(10599)
 		return emptyRowCount, nil
+	} else {
+		__antithesis_instrumentation__.Notify(10600)
 	}
+	__antithesis_instrumentation__.Notify(10587)
 
-	// If we've already migrated some of the system tables we're about to
-	// restore, this implies that a previous attempt restored all of this data.
-	// We want to avoid restoring again since we'll be shadowing migrated keys.
 	details := job.Details().(jobspb.RestoreDetails)
 	if alreadyMigrated := checkForMigratedData(details, dataToRestore); alreadyMigrated {
+		__antithesis_instrumentation__.Notify(10601)
 		return emptyRowCount, nil
+	} else {
+		__antithesis_instrumentation__.Notify(10602)
 	}
+	__antithesis_instrumentation__.Notify(10588)
 
 	mu := struct {
 		syncutil.Mutex
@@ -242,121 +265,159 @@ func restore(
 
 	backupLocalityMap, err := makeBackupLocalityMap(backupLocalityInfo, user)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(10603)
 		return emptyRowCount, errors.Wrap(err, "resolving locality locations")
+	} else {
+		__antithesis_instrumentation__.Notify(10604)
 	}
+	__antithesis_instrumentation__.Notify(10589)
 
 	if err := checkCoverage(restoreCtx, dataToRestore.getSpans(), backupManifests); err != nil {
+		__antithesis_instrumentation__.Notify(10605)
 		return emptyRowCount, err
+	} else {
+		__antithesis_instrumentation__.Notify(10606)
 	}
+	__antithesis_instrumentation__.Notify(10590)
 
-	// Pivot the backups, which are grouped by time, into requests for import,
-	// which are grouped by keyrange.
 	highWaterMark := job.Progress().Details.(*jobspb.Progress_Restore).Restore.HighWater
 
 	importSpans := makeSimpleImportSpans(dataToRestore.getSpans(), backupManifests, backupLocalityMap,
 		highWaterMark)
 
 	if len(importSpans) == 0 {
-		// There are no files to restore.
+		__antithesis_instrumentation__.Notify(10607)
+
 		return emptyRowCount, nil
+	} else {
+		__antithesis_instrumentation__.Notify(10608)
 	}
+	__antithesis_instrumentation__.Notify(10591)
 
 	for i := range importSpans {
+		__antithesis_instrumentation__.Notify(10609)
 		importSpans[i].ProgressIdx = int64(i)
 	}
+	__antithesis_instrumentation__.Notify(10592)
 	mu.requestsCompleted = make([]bool, len(importSpans))
 
-	// TODO(pbardea): This not super principled. I just wanted something that
-	// wasn't a constant and grew slower than linear with the length of
-	// importSpans. It seems to be working well for BenchmarkRestore2TB but
-	// worth revisiting.
-	// It tries to take the cluster size into account so that larger clusters
-	// distribute more chunks amongst them so that after scattering there isn't
-	// a large varience in the distribution of entries.
 	chunkSize := int(math.Sqrt(float64(len(importSpans)))) / numNodes
 	if chunkSize == 0 {
+		__antithesis_instrumentation__.Notify(10610)
 		chunkSize = 1
+	} else {
+		__antithesis_instrumentation__.Notify(10611)
 	}
+	__antithesis_instrumentation__.Notify(10593)
 	importSpanChunks := make([][]execinfrapb.RestoreSpanEntry, 0, len(importSpans)/chunkSize)
 	for start := 0; start < len(importSpans); {
+		__antithesis_instrumentation__.Notify(10612)
 		importSpanChunk := importSpans[start:]
 		end := start + chunkSize
 		if end < len(importSpans) {
+			__antithesis_instrumentation__.Notify(10614)
 			importSpanChunk = importSpans[start:end]
+		} else {
+			__antithesis_instrumentation__.Notify(10615)
 		}
+		__antithesis_instrumentation__.Notify(10613)
 		importSpanChunks = append(importSpanChunks, importSpanChunk)
 		start = end
 	}
+	__antithesis_instrumentation__.Notify(10594)
 
-	requestFinishedCh := make(chan struct{}, len(importSpans)) // enough buffer to never block
+	requestFinishedCh := make(chan struct{}, len(importSpans))
 	progCh := make(chan *execinfrapb.RemoteProducerMetadata_BulkProcessorProgress)
 
-	// tasks are the concurrent tasks that are run during the restore.
 	var tasks []func(ctx context.Context) error
 	if dataToRestore.isMainBundle() {
-		// Only update the job progress on the main data bundle. This should account
-		// for the bulk of the data to restore. Other data (e.g. zone configs in
-		// cluster restores) may be restored first. When restoring that data, we
-		// don't want to update the high-water mark key, so instead progress is just
-		// defined on the main data bundle (of which there should only be one).
+		__antithesis_instrumentation__.Notify(10616)
+
 		progressLogger := jobs.NewChunkProgressLogger(job, len(importSpans), job.FractionCompleted(),
 			func(progressedCtx context.Context, details jobspb.ProgressDetails) {
+				__antithesis_instrumentation__.Notify(10619)
 				switch d := details.(type) {
 				case *jobspb.Progress_Restore:
+					__antithesis_instrumentation__.Notify(10620)
 					mu.Lock()
 					if mu.highWaterMark >= 0 {
+						__antithesis_instrumentation__.Notify(10623)
 						d.Restore.HighWater = importSpans[mu.highWaterMark].Span.Key
+					} else {
+						__antithesis_instrumentation__.Notify(10624)
 					}
+					__antithesis_instrumentation__.Notify(10621)
 					mu.Unlock()
 				default:
+					__antithesis_instrumentation__.Notify(10622)
 					log.Errorf(progressedCtx, "job payload had unexpected type %T", d)
 				}
 			})
+		__antithesis_instrumentation__.Notify(10617)
 
 		jobProgressLoop := func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(10625)
 			ctx, progressSpan := tracing.ChildSpan(ctx, "progress-log")
 			defer progressSpan.Finish()
 			return progressLogger.Loop(ctx, requestFinishedCh)
 		}
+		__antithesis_instrumentation__.Notify(10618)
 		tasks = append(tasks, jobProgressLoop)
+	} else {
+		__antithesis_instrumentation__.Notify(10626)
 	}
+	__antithesis_instrumentation__.Notify(10595)
 
 	jobCheckpointLoop := func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(10627)
 		defer close(requestFinishedCh)
-		// When a processor is done importing a span, it will send a progress update
-		// to progCh.
+
 		for progress := range progCh {
+			__antithesis_instrumentation__.Notify(10629)
 			mu.Lock()
 			var progDetails RestoreProgress
 			if err := pbtypes.UnmarshalAny(&progress.ProgressDetails, &progDetails); err != nil {
+				__antithesis_instrumentation__.Notify(10633)
 				log.Errorf(ctx, "unable to unmarshal restore progress details: %+v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(10634)
 			}
+			__antithesis_instrumentation__.Notify(10630)
 
 			mu.res.Add(progDetails.Summary)
 			idx := progDetails.ProgressIdx
 
-			// Assert that we're actually marking the correct span done. See #23977.
 			if !importSpans[progDetails.ProgressIdx].Span.Key.Equal(progDetails.DataSpan.Key) {
+				__antithesis_instrumentation__.Notify(10635)
 				mu.Unlock()
 				return errors.Newf("request %d for span %v does not match import span for same idx: %v",
 					idx, progDetails.DataSpan, importSpans[idx],
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(10636)
 			}
+			__antithesis_instrumentation__.Notify(10631)
 			mu.requestsCompleted[idx] = true
-			for j := mu.highWaterMark + 1; j < len(mu.requestsCompleted) && mu.requestsCompleted[j]; j++ {
+			for j := mu.highWaterMark + 1; j < len(mu.requestsCompleted) && func() bool {
+				__antithesis_instrumentation__.Notify(10637)
+				return mu.requestsCompleted[j] == true
+			}() == true; j++ {
+				__antithesis_instrumentation__.Notify(10638)
 				mu.highWaterMark = j
 			}
+			__antithesis_instrumentation__.Notify(10632)
 			mu.Unlock()
 
-			// Signal that the processor has finished importing a span, to update job
-			// progress.
 			requestFinishedCh <- struct{}{}
 		}
+		__antithesis_instrumentation__.Notify(10628)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(10596)
 	tasks = append(tasks, jobCheckpointLoop)
 
 	runRestore := func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(10639)
 		return distRestore(
 			ctx,
 			execCtx,
@@ -370,27 +431,21 @@ func restore(
 			progCh,
 		)
 	}
+	__antithesis_instrumentation__.Notify(10597)
 	tasks = append(tasks, runRestore)
 
 	if err := ctxgroup.GoAndWait(restoreCtx, tasks...); err != nil {
-		// This leaves the data that did get imported in case the user wants to
-		// retry.
-		// TODO(dan): Build tooling to allow a user to restart a failed restore.
+		__antithesis_instrumentation__.Notify(10640)
+
 		return emptyRowCount, errors.Wrapf(err, "importing %d ranges", len(importSpans))
+	} else {
+		__antithesis_instrumentation__.Notify(10641)
 	}
+	__antithesis_instrumentation__.Notify(10598)
 
 	return mu.res, nil
 }
 
-// loadBackupSQLDescs extracts the backup descriptors, the latest backup
-// descriptor, and all the Descriptors for a backup to be restored. It upgrades
-// the table descriptors to the new FK representation if necessary. FKs that
-// can't be restored because the necessary tables are missing are omitted; if
-// skip_missing_foreign_keys was set, we should have aborted the RESTORE and
-// returned an error prior to this.
-// TODO(anzoteh96): this method returns two things: backup manifests
-// and the descriptors of the relevant manifests. Ideally, this should
-// be broken down into two methods.
 func loadBackupSQLDescs(
 	ctx context.Context,
 	mem *mon.BoundAccount,
@@ -398,44 +453,64 @@ func loadBackupSQLDescs(
 	details jobspb.RestoreDetails,
 	encryption *jobspb.BackupEncryptionOptions,
 ) ([]BackupManifest, BackupManifest, []catalog.Descriptor, int64, error) {
+	__antithesis_instrumentation__.Notify(10642)
 	backupManifests, sz, err := loadBackupManifests(ctx, mem, details.URIs,
 		p.User(), p.ExecCfg().DistSQLSrv.ExternalStorageFromURI, encryption)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(10647)
 		return nil, BackupManifest{}, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(10648)
 	}
+	__antithesis_instrumentation__.Notify(10643)
 
 	allDescs, latestBackupManifest := loadSQLDescsFromBackupsAtTime(backupManifests, details.EndTime)
 
 	for _, m := range details.DatabaseModifiers {
+		__antithesis_instrumentation__.Notify(10649)
 		for _, typ := range m.ExtraTypeDescs {
+			__antithesis_instrumentation__.Notify(10650)
 			allDescs = append(allDescs, typedesc.NewBuilder(typ).BuildCreatedMutableType())
 		}
 	}
+	__antithesis_instrumentation__.Notify(10644)
 
 	var sqlDescs []catalog.Descriptor
 	for _, desc := range allDescs {
+		__antithesis_instrumentation__.Notify(10651)
 		id := desc.GetID()
 		switch desc := desc.(type) {
 		case *dbdesc.Mutable:
+			__antithesis_instrumentation__.Notify(10653)
 			if m, ok := details.DatabaseModifiers[id]; ok {
+				__antithesis_instrumentation__.Notify(10654)
 				desc.SetRegionConfig(m.RegionConfig)
+			} else {
+				__antithesis_instrumentation__.Notify(10655)
 			}
 		}
+		__antithesis_instrumentation__.Notify(10652)
 		if _, ok := details.DescriptorRewrites[id]; ok {
+			__antithesis_instrumentation__.Notify(10656)
 			sqlDescs = append(sqlDescs, desc)
+		} else {
+			__antithesis_instrumentation__.Notify(10657)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10645)
 
-	if err := maybeUpgradeDescriptors(sqlDescs, true /* skipFKsWithNoMatchingTable */); err != nil {
+	if err := maybeUpgradeDescriptors(sqlDescs, true); err != nil {
+		__antithesis_instrumentation__.Notify(10658)
 		mem.Shrink(ctx, sz)
 		return nil, BackupManifest{}, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(10659)
 	}
+	__antithesis_instrumentation__.Notify(10646)
 
 	return backupManifests, latestBackupManifest, sqlDescs, sz, nil
 }
 
-// restoreResumer should only store a reference to the job it's running. State
-// should not be stored here, but rather in the job details.
 type restoreResumer struct {
 	job *jobs.Job
 
@@ -444,104 +519,98 @@ type restoreResumer struct {
 	restoreStats roachpb.RowCount
 
 	testingKnobs struct {
-		// beforePublishingDescriptors is called right before publishing
-		// descriptors, after any data has been restored.
 		beforePublishingDescriptors func() error
-		// afterPublishingDescriptors is called after committing the transaction to
-		// publish new descriptors in the public state.
+
 		afterPublishingDescriptors func() error
-		// duringSystemTableRestoration is called once for every system table we
-		// restore. It is used to simulate any errors that we may face at this point
-		// of the restore.
+
 		duringSystemTableRestoration func(systemTableName string) error
-		// afterOfflineTableCreation is called after creating the OFFLINE table
-		// descriptors we're ingesting. If an error is returned, we fail the
-		// restore.
+
 		afterOfflineTableCreation func() error
-		// afterPreRestore runs on cluster restores after restoring the "preRestore"
-		// data.
+
 		afterPreRestore func() error
 	}
 }
 
-// getStatisticsFromBackup retrieves Statistics from backup manifest,
-// either through the Statistics field or from the files.
 func getStatisticsFromBackup(
 	ctx context.Context,
 	exportStore cloud.ExternalStorage,
 	encryption *jobspb.BackupEncryptionOptions,
 	backup BackupManifest,
 ) ([]*stats.TableStatisticProto, error) {
-	// This part deals with pre-20.2 stats format where backup statistics
-	// are stored as a field in backup manifests instead of in their
-	// individual files.
+	__antithesis_instrumentation__.Notify(10660)
+
 	if backup.DeprecatedStatistics != nil {
+		__antithesis_instrumentation__.Notify(10663)
 		return backup.DeprecatedStatistics, nil
+	} else {
+		__antithesis_instrumentation__.Notify(10664)
 	}
+	__antithesis_instrumentation__.Notify(10661)
 	tableStatistics := make([]*stats.TableStatisticProto, 0, len(backup.StatisticsFilenames))
 	uniqueFileNames := make(map[string]struct{})
 	for _, fname := range backup.StatisticsFilenames {
+		__antithesis_instrumentation__.Notify(10665)
 		if _, exists := uniqueFileNames[fname]; !exists {
+			__antithesis_instrumentation__.Notify(10666)
 			uniqueFileNames[fname] = struct{}{}
 			myStatsTable, err := readTableStatistics(ctx, exportStore, fname, encryption)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(10668)
 				return tableStatistics, err
+			} else {
+				__antithesis_instrumentation__.Notify(10669)
 			}
+			__antithesis_instrumentation__.Notify(10667)
 			tableStatistics = append(tableStatistics, myStatsTable.Statistics...)
+		} else {
+			__antithesis_instrumentation__.Notify(10670)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10662)
 
 	return tableStatistics, nil
 }
 
-// remapRelevantStatistics changes the table ID references in the stats
-// from those they had in the backed up database to what they should be
-// in the restored database.
-// It also selects only the statistics which belong to one of the tables
-// being restored. If the descriptorRewrites can re-write the table ID, then that
-// table is being restored.
 func remapRelevantStatistics(
 	ctx context.Context,
 	tableStatistics []*stats.TableStatisticProto,
 	descriptorRewrites jobspb.DescRewriteMap,
 	tableDescs []*descpb.TableDescriptor,
 ) []*stats.TableStatisticProto {
+	__antithesis_instrumentation__.Notify(10671)
 	relevantTableStatistics := make([]*stats.TableStatisticProto, 0, len(tableStatistics))
 
 	tableHasStatsInBackup := make(map[descpb.ID]struct{})
 	for _, stat := range tableStatistics {
+		__antithesis_instrumentation__.Notify(10674)
 		tableHasStatsInBackup[stat.TableID] = struct{}{}
 		if tableRewrite, ok := descriptorRewrites[stat.TableID]; ok {
-			// Statistics imported only when table re-write is present.
+			__antithesis_instrumentation__.Notify(10675)
+
 			stat.TableID = tableRewrite.ID
 			relevantTableStatistics = append(relevantTableStatistics, stat)
+		} else {
+			__antithesis_instrumentation__.Notify(10676)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10672)
 
-	// Check if we are missing stats for any table that is being restored. This
-	// could be because we ran into an error when computing stats during the
-	// backup.
 	for _, desc := range tableDescs {
+		__antithesis_instrumentation__.Notify(10677)
 		if _, ok := tableHasStatsInBackup[desc.GetID()]; !ok {
+			__antithesis_instrumentation__.Notify(10678)
 			log.Warningf(ctx, "statistics for table: %s, table ID: %d not found in the backup. "+
 				"Query performance on this table could suffer until statistics are recomputed.",
 				desc.GetName(), desc.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(10679)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10673)
 
 	return relevantTableStatistics
 }
 
-// isDatabaseEmpty checks if there exists any tables in the given database.
-// It pretends that the ignoredChildren do not exist for the purposes of
-// checking if a database is empty.
-//
-// It is used to construct a transaction which deletes a set of tables as well
-// as some empty databases. However, we want to check that the databases are
-// empty _after_ the transaction would have completed, so we want to ignore
-// the tables that we're deleting in the same transaction. It is done this way
-// to avoid having 2 transactions reading and writing the same keys one right
-// after the other.
 func isDatabaseEmpty(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -549,19 +618,27 @@ func isDatabaseEmpty(
 	allDescs []catalog.Descriptor,
 	ignoredChildren map[descpb.ID]struct{},
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(10680)
 	for _, desc := range allDescs {
+		__antithesis_instrumentation__.Notify(10682)
 		if _, ok := ignoredChildren[desc.GetID()]; ok {
+			__antithesis_instrumentation__.Notify(10684)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(10685)
 		}
+		__antithesis_instrumentation__.Notify(10683)
 		if desc.GetParentID() == dbID {
+			__antithesis_instrumentation__.Notify(10686)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(10687)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10681)
 	return true, nil
 }
 
-// isSchemaEmpty is like isDatabaseEmpty for schemas: it returns whether the
-// schema is empty, disregarding the contents of ignoredChildren.
 func isSchemaEmpty(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -569,89 +646,126 @@ func isSchemaEmpty(
 	allDescs []catalog.Descriptor,
 	ignoredChildren map[descpb.ID]struct{},
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(10688)
 	for _, desc := range allDescs {
+		__antithesis_instrumentation__.Notify(10690)
 		if _, ok := ignoredChildren[desc.GetID()]; ok {
+			__antithesis_instrumentation__.Notify(10692)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(10693)
 		}
+		__antithesis_instrumentation__.Notify(10691)
 		if desc.GetParentSchemaID() == schemaID {
+			__antithesis_instrumentation__.Notify(10694)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(10695)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10689)
 	return true, nil
 }
 
-// spansForAllRestoreTableIndexes returns non-overlapping spans for every index
-// and table passed in. They would normally overlap if any of them are
-// interleaved.
 func spansForAllRestoreTableIndexes(
 	codec keys.SQLCodec, tables []catalog.TableDescriptor, revs []BackupManifest_DescriptorRevision,
 ) []roachpb.Span {
+	__antithesis_instrumentation__.Notify(10696)
 
 	added := make(map[tableAndIndex]bool, len(tables))
 	sstIntervalTree := interval.NewTree(interval.ExclusiveOverlapper)
 	for _, table := range tables {
-		// We only import spans for physical tables.
+		__antithesis_instrumentation__.Notify(10700)
+
 		if !table.IsPhysicalTable() {
+			__antithesis_instrumentation__.Notify(10702)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(10703)
 		}
+		__antithesis_instrumentation__.Notify(10701)
 		for _, index := range table.ActiveIndexes() {
+			__antithesis_instrumentation__.Notify(10704)
 			if err := sstIntervalTree.Insert(intervalSpan(table.IndexSpan(codec, index.GetID())), false); err != nil {
+				__antithesis_instrumentation__.Notify(10706)
 				panic(errors.NewAssertionErrorWithWrappedErrf(err, "IndexSpan"))
+			} else {
+				__antithesis_instrumentation__.Notify(10707)
 			}
+			__antithesis_instrumentation__.Notify(10705)
 			added[tableAndIndex{tableID: table.GetID(), indexID: index.GetID()}] = true
 		}
 	}
-	// If there are desc revisions, ensure that we also add any index spans
-	// in them that we didn't already get above e.g. indexes or tables that are
-	// not in latest because they were dropped during the time window in question.
+	__antithesis_instrumentation__.Notify(10697)
+
 	for _, rev := range revs {
-		// If the table was dropped during the last interval, it will have
-		// at least 2 revisions, and the first one should have the table in a PUBLIC
-		// state. We want (and do) ignore tables that have been dropped for the
-		// entire interval. DROPPED tables should never later become PUBLIC.
-		// TODO(pbardea): Consider and test the interaction between revision_history
-		// backups and OFFLINE tables.
+		__antithesis_instrumentation__.Notify(10708)
+
 		rawTbl, _, _, _ := descpb.FromDescriptor(rev.Desc)
-		if rawTbl != nil && !rawTbl.Dropped() {
+		if rawTbl != nil && func() bool {
+			__antithesis_instrumentation__.Notify(10709)
+			return !rawTbl.Dropped() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(10710)
 			tbl := tabledesc.NewBuilder(rawTbl).BuildImmutableTable()
-			// We only import spans for physical tables.
+
 			if !tbl.IsPhysicalTable() {
+				__antithesis_instrumentation__.Notify(10712)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(10713)
 			}
+			__antithesis_instrumentation__.Notify(10711)
 			for _, idx := range tbl.ActiveIndexes() {
+				__antithesis_instrumentation__.Notify(10714)
 				key := tableAndIndex{tableID: tbl.GetID(), indexID: idx.GetID()}
 				if !added[key] {
+					__antithesis_instrumentation__.Notify(10715)
 					if err := sstIntervalTree.Insert(intervalSpan(tbl.IndexSpan(codec, idx.GetID())), false); err != nil {
+						__antithesis_instrumentation__.Notify(10717)
 						panic(errors.NewAssertionErrorWithWrappedErrf(err, "IndexSpan"))
+					} else {
+						__antithesis_instrumentation__.Notify(10718)
 					}
+					__antithesis_instrumentation__.Notify(10716)
 					added[key] = true
+				} else {
+					__antithesis_instrumentation__.Notify(10719)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(10720)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10698)
 
 	var spans []roachpb.Span
 	_ = sstIntervalTree.Do(func(r interval.Interface) bool {
+		__antithesis_instrumentation__.Notify(10721)
 		spans = append(spans, roachpb.Span{
 			Key:    roachpb.Key(r.Range().Start),
 			EndKey: roachpb.Key(r.Range().End),
 		})
 		return false
 	})
+	__antithesis_instrumentation__.Notify(10699)
 	return spans
 }
 
 func shouldPreRestore(table *tabledesc.Mutable) bool {
+	__antithesis_instrumentation__.Notify(10722)
 	if table.GetParentID() != keys.SystemDatabaseID {
+		__antithesis_instrumentation__.Notify(10724)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(10725)
 	}
+	__antithesis_instrumentation__.Notify(10723)
 	tablesToPreRestore := getSystemTablesToRestoreBeforeData()
 	_, ok := tablesToPreRestore[table.GetName()]
 	return ok
 }
 
-// createImportingDescriptors create the tables that we will restore into. It also
-// fetches the information from the old tables that we need for the restore.
 func createImportingDescriptors(
 	ctx context.Context,
 	p sql.JobExecContext,
@@ -659,16 +773,14 @@ func createImportingDescriptors(
 	sqlDescs []catalog.Descriptor,
 	r *restoreResumer,
 ) (*restorationDataBase, *mainRestorationData, error) {
+	__antithesis_instrumentation__.Notify(10726)
 	details := r.job.Details().(jobspb.RestoreDetails)
 
 	var databases []catalog.DatabaseDescriptor
 	var writtenTypes []catalog.TypeDescriptor
 	var schemas []*schemadesc.Mutable
 	var types []*typedesc.Mutable
-	// Store the tables as both the concrete mutable structs and the interface
-	// to deal with the lack of slice covariance in go. We want the slice of
-	// mutable descriptors for rewriting but ultimately want to return the
-	// tables as the slice of interfaces.
+
 	var mutableTables []*tabledesc.Mutable
 	var mutableDatabases []*dbdesc.Mutable
 
@@ -680,209 +792,270 @@ func createImportingDescriptors(
 	preRestoreTables := make([]catalog.TableDescriptor, 0)
 
 	for _, desc := range sqlDescs {
+		__antithesis_instrumentation__.Notify(10749)
 		switch desc := desc.(type) {
 		case catalog.TableDescriptor:
+			__antithesis_instrumentation__.Notify(10750)
 			mut := tabledesc.NewBuilder(desc.TableDesc()).BuildCreatedMutableTable()
 			if shouldPreRestore(mut) {
+				__antithesis_instrumentation__.Notify(10755)
 				preRestoreTables = append(preRestoreTables, mut)
 			} else {
+				__antithesis_instrumentation__.Notify(10756)
 				postRestoreTables = append(postRestoreTables, mut)
 			}
+			__antithesis_instrumentation__.Notify(10751)
 			tables = append(tables, mut)
 			mutableTables = append(mutableTables, mut)
 			oldTableIDs = append(oldTableIDs, mut.GetID())
 		case catalog.DatabaseDescriptor:
+			__antithesis_instrumentation__.Notify(10752)
 			if _, ok := details.DescriptorRewrites[desc.GetID()]; ok {
+				__antithesis_instrumentation__.Notify(10757)
 				mut := dbdesc.NewBuilder(desc.DatabaseDesc()).BuildCreatedMutableDatabase()
 				databases = append(databases, mut)
 				mutableDatabases = append(mutableDatabases, mut)
+			} else {
+				__antithesis_instrumentation__.Notify(10758)
 			}
 		case catalog.SchemaDescriptor:
+			__antithesis_instrumentation__.Notify(10753)
 			mut := schemadesc.NewBuilder(desc.SchemaDesc()).BuildCreatedMutableSchema()
 			schemas = append(schemas, mut)
 		case catalog.TypeDescriptor:
+			__antithesis_instrumentation__.Notify(10754)
 			mut := typedesc.NewBuilder(desc.TypeDesc()).BuildCreatedMutableType()
 			types = append(types, mut)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10727)
 
 	tempSystemDBID := tempSystemDatabaseID(details)
 	if tempSystemDBID != descpb.InvalidID {
+		__antithesis_instrumentation__.Notify(10759)
 		tempSystemDB := dbdesc.NewInitial(tempSystemDBID, restoreTempSystemDB,
 			security.AdminRoleName(), dbdesc.WithPublicSchemaID(keys.SystemPublicSchemaID))
 		databases = append(databases, tempSystemDB)
+	} else {
+		__antithesis_instrumentation__.Notify(10760)
 	}
+	__antithesis_instrumentation__.Notify(10728)
 
-	// We get the spans of the restoring tables _as they appear in the backup_,
-	// that is, in the 'old' keyspace, before we reassign the table IDs.
 	preRestoreSpans := spansForAllRestoreTableIndexes(backupCodec, preRestoreTables, nil)
 	postRestoreSpans := spansForAllRestoreTableIndexes(backupCodec, postRestoreTables, nil)
 
 	log.Eventf(ctx, "starting restore for %d tables", len(mutableTables))
 
-	// Assign new IDs to the database descriptors.
 	if err := rewrite.DatabaseDescs(mutableDatabases, details.DescriptorRewrites); err != nil {
+		__antithesis_instrumentation__.Notify(10761)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(10762)
 	}
+	__antithesis_instrumentation__.Notify(10729)
 
 	databaseDescs := make([]*descpb.DatabaseDescriptor, len(mutableDatabases))
 	for i, database := range mutableDatabases {
+		__antithesis_instrumentation__.Notify(10763)
 		databaseDescs[i] = database.DatabaseDesc()
 	}
+	__antithesis_instrumentation__.Notify(10730)
 
-	// Collect all schemas that are going to be restored.
 	var schemasToWrite []*schemadesc.Mutable
 	var writtenSchemas []catalog.SchemaDescriptor
 	for i := range schemas {
+		__antithesis_instrumentation__.Notify(10764)
 		sc := schemas[i]
 		rw, ok := details.DescriptorRewrites[sc.ID]
 		if ok {
+			__antithesis_instrumentation__.Notify(10765)
 			if !rw.ToExisting {
+				__antithesis_instrumentation__.Notify(10766)
 				schemasToWrite = append(schemasToWrite, sc)
 				writtenSchemas = append(writtenSchemas, sc)
+			} else {
+				__antithesis_instrumentation__.Notify(10767)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(10768)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10731)
 
 	if err := rewrite.SchemaDescs(schemasToWrite, details.DescriptorRewrites); err != nil {
+		__antithesis_instrumentation__.Notify(10769)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(10770)
 	}
+	__antithesis_instrumentation__.Notify(10732)
 
 	if err := remapPublicSchemas(ctx, p, mutableDatabases, &schemasToWrite, &writtenSchemas, &details); err != nil {
+		__antithesis_instrumentation__.Notify(10771)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(10772)
 	}
+	__antithesis_instrumentation__.Notify(10733)
 
-	// Assign new IDs and privileges to the tables, and update all references to
-	// use the new IDs.
 	if err := rewrite.TableDescs(
 		mutableTables, details.DescriptorRewrites, details.OverrideDB,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(10773)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(10774)
 	}
+	__antithesis_instrumentation__.Notify(10734)
 	tableDescs := make([]*descpb.TableDescriptor, len(mutableTables))
 	for i, table := range mutableTables {
+		__antithesis_instrumentation__.Notify(10775)
 		tableDescs[i] = table.TableDesc()
 	}
+	__antithesis_instrumentation__.Notify(10735)
 
-	// For each type, we might be writing the type in the backup, or we could be
-	// remapping to an existing type descriptor. Split up the descriptors into
-	// these two groups.
 	var typesToWrite []*typedesc.Mutable
 	existingTypeIDs := make(map[descpb.ID]struct{})
 	for i := range types {
+		__antithesis_instrumentation__.Notify(10776)
 		typ := types[i]
 		rewrite := details.DescriptorRewrites[typ.GetID()]
 		if rewrite.ToExisting {
+			__antithesis_instrumentation__.Notify(10777)
 			existingTypeIDs[rewrite.ID] = struct{}{}
 		} else {
+			__antithesis_instrumentation__.Notify(10778)
 			typesToWrite = append(typesToWrite, typ)
 			writtenTypes = append(writtenTypes, typ)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10736)
 
-	// Perform rewrites on ALL type descriptors that are present in the rewrite
-	// mapping.
-	//
-	// `types` contains a mix of existing type descriptors in the restoring
-	// cluster, and new type descriptors we will write from the backup.
-	//
-	// New type descriptors need to be rewritten with their generated IDs before
-	// they are written out to disk.
-	//
-	// Existing type descriptors need to be rewritten to the type ID of the type
-	// they are referring to in the restoring cluster. This ID is different from
-	// the ID the descriptor had when it was backed up. Changes to existing type
-	// descriptors will not be written to disk, and is only for accurate,
-	// in-memory resolution hereon out.
 	if err := rewrite.TypeDescs(types, details.DescriptorRewrites); err != nil {
+		__antithesis_instrumentation__.Notify(10779)
 		return nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(10780)
 	}
+	__antithesis_instrumentation__.Notify(10737)
 
-	// Set the new descriptors' states to offline.
 	for _, desc := range mutableTables {
+		__antithesis_instrumentation__.Notify(10781)
 		desc.SetOffline("restoring")
 	}
+	__antithesis_instrumentation__.Notify(10738)
 	for _, desc := range typesToWrite {
+		__antithesis_instrumentation__.Notify(10782)
 		desc.SetOffline("restoring")
 	}
+	__antithesis_instrumentation__.Notify(10739)
 	for _, desc := range schemasToWrite {
+		__antithesis_instrumentation__.Notify(10783)
 		desc.SetOffline("restoring")
 	}
+	__antithesis_instrumentation__.Notify(10740)
 	for _, desc := range mutableDatabases {
+		__antithesis_instrumentation__.Notify(10784)
 		desc.SetOffline("restoring")
 	}
+	__antithesis_instrumentation__.Notify(10741)
 
 	if tempSystemDBID != descpb.InvalidID {
+		__antithesis_instrumentation__.Notify(10785)
 		for _, desc := range mutableTables {
+			__antithesis_instrumentation__.Notify(10786)
 			if desc.GetParentID() == tempSystemDBID {
+				__antithesis_instrumentation__.Notify(10787)
 				desc.SetPublic()
+			} else {
+				__antithesis_instrumentation__.Notify(10788)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(10789)
 	}
+	__antithesis_instrumentation__.Notify(10742)
 
-	// Collect all types after they have had their ID's rewritten.
 	typesByID := make(map[descpb.ID]catalog.TypeDescriptor)
 	for i := range types {
+		__antithesis_instrumentation__.Notify(10790)
 		typesByID[types[i].GetID()] = types[i]
 	}
+	__antithesis_instrumentation__.Notify(10743)
 
-	// Collect all databases, for doing lookups of whether a database is new when
-	// updating schema references later on.
 	dbsByID := make(map[descpb.ID]catalog.DatabaseDescriptor)
 	for i := range databases {
+		__antithesis_instrumentation__.Notify(10791)
 		dbsByID[databases[i].GetID()] = databases[i]
 	}
+	__antithesis_instrumentation__.Notify(10744)
 
 	if !details.PrepareCompleted {
+		__antithesis_instrumentation__.Notify(10792)
 		err := sql.DescsTxn(ctx, p.ExecCfg(), func(
 			ctx context.Context, txn *kv.Txn, descsCol *descs.Collection,
 		) error {
-			// A couple of pieces of cleanup are required for multi-region databases.
-			// First, we need to find all of the MULTIREGION_ENUMs types and remap the
-			// IDs stored in the corresponding database descriptors to match the type's
-			// new ID. Secondly, we need to rebuild the zone configuration for each
-			// multi-region database. We don't perform the zone configuration rebuild on
-			// cluster restores, as they will have the zone configurations restored as
-			// as the system tables are restored.
+			__antithesis_instrumentation__.Notify(10794)
+
 			mrEnumsFound := make(map[descpb.ID]descpb.ID)
 			for _, t := range typesByID {
+				__antithesis_instrumentation__.Notify(10806)
 				typeDesc := typedesc.NewBuilder(t.TypeDesc()).BuildImmutableType()
 				if typeDesc.GetKind() == descpb.TypeDescriptor_MULTIREGION_ENUM {
-					// Check to see if we've found more than one multi-region enum on any
-					// given database.
+					__antithesis_instrumentation__.Notify(10807)
+
 					if id, ok := mrEnumsFound[typeDesc.GetParentID()]; ok {
+						__antithesis_instrumentation__.Notify(10809)
 						return errors.AssertionFailedf(
 							"unexpectedly found more than one MULTIREGION_ENUM (IDs = %d, %d) "+
 								"on database %d during restore", id, typeDesc.GetID(), typeDesc.GetParentID())
+					} else {
+						__antithesis_instrumentation__.Notify(10810)
 					}
+					__antithesis_instrumentation__.Notify(10808)
 					mrEnumsFound[typeDesc.GetParentID()] = typeDesc.GetID()
 
 					if db, ok := dbsByID[typeDesc.GetParentID()]; ok {
+						__antithesis_instrumentation__.Notify(10811)
 						desc := db.DatabaseDesc()
 						if desc.RegionConfig == nil {
+							__antithesis_instrumentation__.Notify(10813)
 							return errors.AssertionFailedf(
 								"found MULTIREGION_ENUM on non-multi-region database %s", desc.Name)
+						} else {
+							__antithesis_instrumentation__.Notify(10814)
 						}
+						__antithesis_instrumentation__.Notify(10812)
 
-						// Update the RegionEnumID to record the new multi-region enum ID.
 						desc.RegionConfig.RegionEnumID = t.GetID()
 
-						// If we're not in a cluster restore, rebuild the database-level zone
-						// configuration.
 						if details.DescriptorCoverage != tree.AllDescriptors {
+							__antithesis_instrumentation__.Notify(10815)
 							log.Infof(ctx, "restoring zone configuration for database %d", desc.ID)
 							regionNames, err := typeDesc.RegionNames()
 							if err != nil {
+								__antithesis_instrumentation__.Notify(10819)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(10820)
 							}
+							__antithesis_instrumentation__.Notify(10816)
 							superRegions, err := typeDesc.SuperRegions()
 							if err != nil {
+								__antithesis_instrumentation__.Notify(10821)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(10822)
 							}
+							__antithesis_instrumentation__.Notify(10817)
 							zoneCfgExtensions, err := typeDesc.ZoneConfigExtensions()
 							if err != nil {
+								__antithesis_instrumentation__.Notify(10823)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(10824)
 							}
+							__antithesis_instrumentation__.Notify(10818)
 							regionConfig := multiregion.MakeRegionConfig(
 								regionNames,
 								desc.RegionConfig.PrimaryRegion,
@@ -899,65 +1072,96 @@ func createImportingDescriptors(
 								txn,
 								p.ExecCfg(),
 							); err != nil {
+								__antithesis_instrumentation__.Notify(10825)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(10826)
 							}
+						} else {
+							__antithesis_instrumentation__.Notify(10827)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(10828)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(10829)
 				}
 			}
+			__antithesis_instrumentation__.Notify(10795)
 
-			// Allocate no schedule to the row-level TTL.
-			// This will be re-written when the descriptor is published.
 			if details.DescriptorCoverage != tree.AllDescriptors {
+				__antithesis_instrumentation__.Notify(10830)
 				for _, table := range mutableTables {
+					__antithesis_instrumentation__.Notify(10831)
 					if table.HasRowLevelTTL() {
+						__antithesis_instrumentation__.Notify(10832)
 						table.RowLevelTTL.ScheduleID = 0
+					} else {
+						__antithesis_instrumentation__.Notify(10833)
 					}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(10834)
 			}
+			__antithesis_instrumentation__.Notify(10796)
 
-			// Write the new descriptors which are set in the OFFLINE state.
 			if err := ingesting.WriteDescriptors(
 				ctx, p.ExecCfg().Codec, txn, p.User(), descsCol, databases, writtenSchemas, tables, writtenTypes,
-				details.DescriptorCoverage, nil /* extra */, restoreTempSystemDB,
+				details.DescriptorCoverage, nil, restoreTempSystemDB,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(10835)
 				return errors.Wrapf(err, "restoring %d TableDescriptors from %d databases", len(tables), len(databases))
+			} else {
+				__antithesis_instrumentation__.Notify(10836)
 			}
+			__antithesis_instrumentation__.Notify(10797)
 
 			b := txn.NewBatch()
 
-			// For new schemas with existing parent databases, the schema map on the
-			// database descriptor needs to be updated.
 			existingDBsWithNewSchemas := make(map[descpb.ID][]catalog.SchemaDescriptor)
 			for _, sc := range writtenSchemas {
+				__antithesis_instrumentation__.Notify(10837)
 				parentID := sc.GetParentID()
 				if _, ok := dbsByID[parentID]; !ok {
+					__antithesis_instrumentation__.Notify(10838)
 					existingDBsWithNewSchemas[parentID] = append(existingDBsWithNewSchemas[parentID], sc)
+				} else {
+					__antithesis_instrumentation__.Notify(10839)
 				}
 			}
-			// Write the updated databases.
+			__antithesis_instrumentation__.Notify(10798)
+
 			for dbID, schemas := range existingDBsWithNewSchemas {
+				__antithesis_instrumentation__.Notify(10840)
 				log.Infof(ctx, "writing %d schema entries to database %d", len(schemas), dbID)
 				desc, err := descsCol.GetMutableDescriptorByID(ctx, txn, dbID)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(10843)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(10844)
 				}
+				__antithesis_instrumentation__.Notify(10841)
 				db := desc.(*dbdesc.Mutable)
 				for _, sc := range schemas {
+					__antithesis_instrumentation__.Notify(10845)
 					db.AddSchemaToDatabase(sc.GetName(), descpb.DatabaseDescriptor_SchemaInfo{ID: sc.GetID()})
 				}
+				__antithesis_instrumentation__.Notify(10842)
 				if err := descsCol.WriteDescToBatch(
-					ctx, false /* kvTrace */, db, b,
+					ctx, false, db, b,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(10846)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(10847)
 				}
 			}
+			__antithesis_instrumentation__.Notify(10799)
 
-			// We could be restoring tables that point to existing types. We need to
-			// ensure that those existing types are updated with back references pointing
-			// to the new tables being restored.
 			for _, table := range mutableTables {
-				// Collect all types used by this table.
+				__antithesis_instrumentation__.Notify(10848)
+
 				_, dbDesc, err := descsCol.GetImmutableDatabaseByID(
 					ctx, txn, table.GetParentID(), tree.DatabaseLookupFlags{
 						Required:       true,
@@ -965,50 +1169,78 @@ func createImportingDescriptors(
 						IncludeOffline: true,
 					})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(10852)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(10853)
 				}
+				__antithesis_instrumentation__.Notify(10849)
 				typeIDs, _, err := table.GetAllReferencedTypeIDs(dbDesc, func(id descpb.ID) (catalog.TypeDescriptor, error) {
+					__antithesis_instrumentation__.Notify(10854)
 					t, ok := typesByID[id]
 					if !ok {
+						__antithesis_instrumentation__.Notify(10856)
 						return nil, errors.AssertionFailedf("type with id %d was not found in rewritten type mapping", id)
+					} else {
+						__antithesis_instrumentation__.Notify(10857)
 					}
+					__antithesis_instrumentation__.Notify(10855)
 					return t, nil
 				})
+				__antithesis_instrumentation__.Notify(10850)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(10858)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(10859)
 				}
+				__antithesis_instrumentation__.Notify(10851)
 				for _, id := range typeIDs {
-					// If the type was restored as part of the backup, then the backreference
-					// already exists.
+					__antithesis_instrumentation__.Notify(10860)
+
 					_, ok := existingTypeIDs[id]
 					if !ok {
+						__antithesis_instrumentation__.Notify(10863)
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(10864)
 					}
-					// Otherwise, add a backreference to this table.
+					__antithesis_instrumentation__.Notify(10861)
+
 					typDesc, err := descsCol.GetMutableTypeVersionByID(ctx, txn, id)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(10865)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(10866)
 					}
+					__antithesis_instrumentation__.Notify(10862)
 					typDesc.AddReferencingDescriptorID(table.GetID())
 					if err := descsCol.WriteDescToBatch(
-						ctx, false /* kvTrace */, typDesc, b,
+						ctx, false, typDesc, b,
 					); err != nil {
+						__antithesis_instrumentation__.Notify(10867)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(10868)
 					}
 				}
 			}
+			__antithesis_instrumentation__.Notify(10800)
 			if err := txn.Run(ctx, b); err != nil {
+				__antithesis_instrumentation__.Notify(10869)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(10870)
 			}
+			__antithesis_instrumentation__.Notify(10801)
 
-			// Now that all of the descriptors have been written to disk, rebuild
-			// the zone configurations for any multi-region tables. We only do this
-			// in cases where this is not a full cluster restore, because in cluster
-			// restore cases, the zone configurations will be restored when the
-			// system tables are restored.
 			if details.DescriptorCoverage != tree.AllDescriptors {
+				__antithesis_instrumentation__.Notify(10871)
 				for _, table := range tableDescs {
+					__antithesis_instrumentation__.Notify(10872)
 					if lc := table.GetLocalityConfig(); lc != nil {
+						__antithesis_instrumentation__.Notify(10873)
 						_, desc, err := descsCol.GetImmutableDatabaseByID(
 							ctx,
 							txn,
@@ -1020,18 +1252,30 @@ func createImportingDescriptors(
 							},
 						)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(10878)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(10879)
 						}
+						__antithesis_instrumentation__.Notify(10874)
 						if desc.GetRegionConfig() == nil {
+							__antithesis_instrumentation__.Notify(10880)
 							return errors.AssertionFailedf(
 								"found multi-region table %d in non-multi-region database %d",
 								table.ID, table.ParentID)
+						} else {
+							__antithesis_instrumentation__.Notify(10881)
 						}
+						__antithesis_instrumentation__.Notify(10875)
 
 						mutTable, err := descsCol.GetMutableTableVersionByID(ctx, table.GetID(), txn)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(10882)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(10883)
 						}
+						__antithesis_instrumentation__.Notify(10876)
 
 						regionConfig, err := sql.SynthesizeRegionConfig(
 							ctx,
@@ -1041,8 +1285,12 @@ func createImportingDescriptors(
 							sql.SynthesizeRegionConfigOptionIncludeOffline,
 						)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(10884)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(10885)
 						}
+						__antithesis_instrumentation__.Notify(10877)
 						if err := sql.ApplyZoneConfigForMultiRegionTable(
 							ctx,
 							txn,
@@ -1051,64 +1299,93 @@ func createImportingDescriptors(
 							mutTable,
 							sql.ApplyZoneConfigForMultiRegionTableOptionTableAndIndexes,
 						); err != nil {
+							__antithesis_instrumentation__.Notify(10886)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(10887)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(10888)
 					}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(10889)
 			}
+			__antithesis_instrumentation__.Notify(10802)
 
 			for _, tenant := range details.Tenants {
-				// Mark the tenant info as adding.
+				__antithesis_instrumentation__.Notify(10890)
+
 				tenant.State = descpb.TenantInfo_ADD
 				if err := sql.CreateTenantRecord(ctx, p.ExecCfg(), txn, &tenant); err != nil {
+					__antithesis_instrumentation__.Notify(10891)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(10892)
 				}
 			}
+			__antithesis_instrumentation__.Notify(10803)
 
 			details.PrepareCompleted = true
 			details.DatabaseDescs = databaseDescs
 			details.TableDescs = tableDescs
 			details.TypeDescs = make([]*descpb.TypeDescriptor, len(typesToWrite))
 			for i := range typesToWrite {
+				__antithesis_instrumentation__.Notify(10893)
 				details.TypeDescs[i] = typesToWrite[i].TypeDesc()
 			}
+			__antithesis_instrumentation__.Notify(10804)
 			details.SchemaDescs = make([]*descpb.SchemaDescriptor, len(schemasToWrite))
 			for i := range schemasToWrite {
+				__antithesis_instrumentation__.Notify(10894)
 				details.SchemaDescs[i] = schemasToWrite[i].SchemaDesc()
 			}
+			__antithesis_instrumentation__.Notify(10805)
 
-			// Update the job once all descs have been prepared for ingestion.
 			err := r.job.SetDetails(ctx, txn, details)
 
-			// Emit to the event log now that the job has finished preparing descs.
 			emitRestoreJobEvent(ctx, p, jobs.StatusRunning, r.job)
 
 			return err
 		})
+		__antithesis_instrumentation__.Notify(10793)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(10895)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(10896)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(10897)
 	}
+	__antithesis_instrumentation__.Notify(10745)
 
-	// Get TableRekeys to use when importing raw data.
 	var rekeys []execinfrapb.TableRekey
 	for i := range tables {
+		__antithesis_instrumentation__.Notify(10898)
 		tableToSerialize := tables[i]
 		newDescBytes, err := protoutil.Marshal(tableToSerialize.DescriptorProto())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(10900)
 			return nil, nil, errors.NewAssertionErrorWithWrappedErrf(err,
 				"marshaling descriptor")
+		} else {
+			__antithesis_instrumentation__.Notify(10901)
 		}
+		__antithesis_instrumentation__.Notify(10899)
 		rekeys = append(rekeys, execinfrapb.TableRekey{
 			OldID:   uint32(oldTableIDs[i]),
 			NewDesc: newDescBytes,
 		})
 	}
+	__antithesis_instrumentation__.Notify(10746)
 
 	pkIDs := make(map[uint64]bool)
 	for _, tbl := range tables {
+		__antithesis_instrumentation__.Notify(10902)
 		pkIDs[roachpb.BulkOpSummaryID(uint64(tbl.GetID()), uint64(tbl.GetPrimaryIndexID()))] = true
 	}
+	__antithesis_instrumentation__.Notify(10747)
 
 	dataToPreRestore := &restorationDataBase{
 		spans:       preRestoreSpans,
@@ -1125,23 +1402,33 @@ func createImportingDescriptors(
 	}
 
 	if tempSystemDBID != descpb.InvalidID {
+		__antithesis_instrumentation__.Notify(10903)
 		for _, table := range preRestoreTables {
+			__antithesis_instrumentation__.Notify(10905)
 			if table.GetParentID() == tempSystemDBID {
+				__antithesis_instrumentation__.Notify(10906)
 				dataToPreRestore.systemTables = append(dataToPreRestore.systemTables, table)
+			} else {
+				__antithesis_instrumentation__.Notify(10907)
 			}
 		}
+		__antithesis_instrumentation__.Notify(10904)
 		for _, table := range postRestoreTables {
+			__antithesis_instrumentation__.Notify(10908)
 			if table.GetParentID() == tempSystemDBID {
+				__antithesis_instrumentation__.Notify(10909)
 				dataToRestore.systemTables = append(dataToRestore.systemTables, table)
+			} else {
+				__antithesis_instrumentation__.Notify(10910)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(10911)
 	}
+	__antithesis_instrumentation__.Notify(10748)
 	return dataToPreRestore, dataToRestore, nil
 }
 
-// remapPublicSchemas is used to create a descriptor backed public schema
-// for databases that have virtual public schemas.
-// The rewrite map is updated with the new public schema id.
 func remapPublicSchemas(
 	ctx context.Context,
 	p sql.JobExecContext,
@@ -1150,28 +1437,37 @@ func remapPublicSchemas(
 	writtenSchemas *[]catalog.SchemaDescriptor,
 	details *jobspb.RestoreDetails,
 ) error {
+	__antithesis_instrumentation__.Notify(10912)
 	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.PublicSchemasWithDescriptors) {
-		// If we're not on PublicSchemasWithDescriptors, there is no work to do as
-		// we did not create any public schemas with descriptors.
+		__antithesis_instrumentation__.Notify(10916)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(10917)
 	}
+	__antithesis_instrumentation__.Notify(10913)
 	databaseToPublicSchemaID := make(map[descpb.ID]descpb.ID)
 	for _, db := range mutableDatabases {
+		__antithesis_instrumentation__.Notify(10918)
 		if db.HasPublicSchemaWithDescriptor() {
+			__antithesis_instrumentation__.Notify(10921)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(10922)
 		}
-		// mutableDatabases contains the list of databases being restored,
-		// if the database does not have a public schema backed by a descriptor
-		// (meaning they were created before 22.1), we need to create a public
-		// schema descriptor for it.
+		__antithesis_instrumentation__.Notify(10919)
+
 		id, err := descidgen.GenerateUniqueDescID(ctx, p.ExecCfg().DB, p.ExecCfg().Codec)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(10923)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(10924)
 		}
+		__antithesis_instrumentation__.Notify(10920)
 
 		db.AddSchemaToDatabase(tree.PublicSchema, descpb.DatabaseDescriptor_SchemaInfo{ID: id})
-		// Every database must be initialized with the public schema.
-		// Create the SchemaDescriptor.
+
 		publicSchemaPrivileges := catpb.NewPublicSchemaPrivilegeDescriptor()
 		publicSchemaDesc := schemadesc.NewBuilder(&descpb.SchemaDescriptor{
 			ParentID:   db.GetID(),
@@ -1185,203 +1481,299 @@ func remapPublicSchemas(
 		*writtenSchemas = append(*writtenSchemas, publicSchemaDesc)
 		databaseToPublicSchemaID[db.GetID()] = id
 	}
+	__antithesis_instrumentation__.Notify(10914)
 
-	// Now we need to handle rewriting the table parent schema ids.
 	for id, rw := range details.DescriptorRewrites {
+		__antithesis_instrumentation__.Notify(10925)
 		if publicSchemaID, ok := databaseToPublicSchemaID[rw.ParentID]; ok {
-			// For all items that were previously mapped to a synthetic public
-			// schemas ID, update the ParentSchemaID to be the newly allocated ID.
-			//
-			// We also have to consider restoring tables from the system table
-			// where the system public schema still uses 29 as an ID.
-			if details.DescriptorRewrites[id].ParentSchemaID == keys.PublicSchemaIDForBackup ||
-				details.DescriptorRewrites[id].ParentSchemaID == descpb.InvalidID {
+			__antithesis_instrumentation__.Notify(10926)
+
+			if details.DescriptorRewrites[id].ParentSchemaID == keys.PublicSchemaIDForBackup || func() bool {
+				__antithesis_instrumentation__.Notify(10927)
+				return details.DescriptorRewrites[id].ParentSchemaID == descpb.InvalidID == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(10928)
 				details.DescriptorRewrites[id].ParentSchemaID = publicSchemaID
+			} else {
+				__antithesis_instrumentation__.Notify(10929)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(10930)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10915)
 
 	return nil
 }
 
-// Resume is part of the jobs.Resumer interface.
 func (r *restoreResumer) Resume(ctx context.Context, execCtx interface{}) error {
+	__antithesis_instrumentation__.Notify(10931)
 	if err := r.doResume(ctx, execCtx); err != nil {
+		__antithesis_instrumentation__.Notify(10933)
 		details := r.job.Details().(jobspb.RestoreDetails)
 		if details.DebugPauseOn == "error" {
+			__antithesis_instrumentation__.Notify(10935)
 			const errorFmt = "job failed with error (%v) but is being paused due to the %s=%s setting"
 			log.Warningf(ctx, errorFmt, err, restoreOptDebugPauseOn, details.DebugPauseOn)
 
 			return jobs.MarkPauseRequestError(errors.Wrapf(err,
 				"pausing job due to the %s=%s setting",
 				restoreOptDebugPauseOn, details.DebugPauseOn))
+		} else {
+			__antithesis_instrumentation__.Notify(10936)
 		}
+		__antithesis_instrumentation__.Notify(10934)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(10937)
 	}
+	__antithesis_instrumentation__.Notify(10932)
 
 	return nil
 }
 
 func (r *restoreResumer) doResume(ctx context.Context, execCtx interface{}) error {
+	__antithesis_instrumentation__.Notify(10938)
 	details := r.job.Details().(jobspb.RestoreDetails)
 	p := execCtx.(sql.JobExecContext)
 	r.execCfg = p.ExecCfg()
 
 	if details.Validation != jobspb.RestoreValidation_DefaultRestore {
+		__antithesis_instrumentation__.Notify(10963)
 		return errors.Errorf("No restore validation tools are supported")
+	} else {
+		__antithesis_instrumentation__.Notify(10964)
 	}
+	__antithesis_instrumentation__.Notify(10939)
 
 	mem := p.ExecCfg().RootMemoryMonitor.MakeBoundAccount()
 	defer mem.Close(ctx)
 
 	if err := p.ExecCfg().JobRegistry.CheckPausepoint("restore.before_load_descriptors_from_backup"); err != nil {
+		__antithesis_instrumentation__.Notify(10965)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(10966)
 	}
+	__antithesis_instrumentation__.Notify(10940)
 
 	backupManifests, latestBackupManifest, sqlDescs, memSize, err := loadBackupSQLDescs(
 		ctx, &mem, p, details, details.Encryption,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(10967)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(10968)
 	}
+	__antithesis_instrumentation__.Notify(10941)
 	defer func() {
+		__antithesis_instrumentation__.Notify(10969)
 		mem.Shrink(ctx, memSize)
 	}()
-	// backupCodec is the codec that was used to encode the keys in the backup. It
-	// is the tenant in which the backup was taken.
+	__antithesis_instrumentation__.Notify(10942)
+
 	backupCodec := keys.SystemSQLCodec
 	backupTenantID := roachpb.SystemTenantID
 
 	if len(sqlDescs) != 0 {
-		if len(latestBackupManifest.Spans) != 0 && !latestBackupManifest.HasTenants() {
-			// If there are no tenant targets, then the entire keyspace covered by
-			// Spans must lie in 1 tenant.
+		__antithesis_instrumentation__.Notify(10970)
+		if len(latestBackupManifest.Spans) != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(10971)
+			return !latestBackupManifest.HasTenants() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(10972)
+
 			_, backupTenantID, err = keys.DecodeTenantPrefix(latestBackupManifest.Spans[0].Key)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(10974)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(10975)
 			}
+			__antithesis_instrumentation__.Notify(10973)
 			backupCodec = keys.MakeSQLCodec(backupTenantID)
+		} else {
+			__antithesis_instrumentation__.Notify(10976)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(10977)
 	}
+	__antithesis_instrumentation__.Notify(10943)
 
 	lastBackupIndex, err := getBackupIndexAtTime(backupManifests, details.EndTime)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(10978)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(10979)
 	}
+	__antithesis_instrumentation__.Notify(10944)
 	defaultConf, err := cloud.ExternalStorageConfFromURI(details.URIs[lastBackupIndex], p.User())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(10980)
 		return errors.Wrapf(err, "creating external store configuration")
+	} else {
+		__antithesis_instrumentation__.Notify(10981)
 	}
+	__antithesis_instrumentation__.Notify(10945)
 	defaultStore, err := p.ExecCfg().DistSQLSrv.ExternalStorage(ctx, defaultConf)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(10982)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(10983)
 	}
+	__antithesis_instrumentation__.Notify(10946)
 
 	preData, mainData, err := createImportingDescriptors(ctx, p, backupCodec, sqlDescs, r)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(10984)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(10985)
 	}
+	__antithesis_instrumentation__.Notify(10947)
 
 	if !backupCodec.TenantPrefix().Equal(p.ExecCfg().Codec.TenantPrefix()) {
-		// Ensure old processors fail if this is a previously unsupported restore of
-		// a tenant backup by the system tenant, which the old rekey processor would
-		// mishandle since it assumed the system tenant always restored tenant keys
-		// to tenant prefixes, i.e. as tenant restore.
-		if backupTenantID != roachpb.SystemTenantID && p.ExecCfg().Codec.ForSystemTenant() {
-			// This empty table rekey acts as a poison-pill, which will be ignored by
-			// a current processor but reliably cause an older processor, which would
-			// otherwise mishandle tenant-made backup keys, to fail as it will be
-			// unable to decode the zero ID table desc.
+		__antithesis_instrumentation__.Notify(10986)
+
+		if backupTenantID != roachpb.SystemTenantID && func() bool {
+			__antithesis_instrumentation__.Notify(10987)
+			return p.ExecCfg().Codec.ForSystemTenant() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(10988)
+
 			preData.tableRekeys = append(preData.tableRekeys, execinfrapb.TableRekey{})
 			mainData.tableRekeys = append(preData.tableRekeys, execinfrapb.TableRekey{})
+		} else {
+			__antithesis_instrumentation__.Notify(10989)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(10990)
 	}
+	__antithesis_instrumentation__.Notify(10948)
 
-	// If, and only if, the backup was made by a system tenant, can it contain
-	// backed up tenants, which the processor needs to know when is rekeying -- if
-	// the backup contains tenants, then a key with a tenant prefix should be
-	// restored if, and only if, we're restoring that tenant, and restored to a
-	// tenant. Otherwise, if this backup was not made by a system tenant, it does
-	// not contain tenants, so the rekey will assume if a key has a tenant prefix,
-	// it is because the tenant produced the backup, and it should be removed to
-	// then decode the remainder of the key. We communicate this distinction to
-	// the processor with a special tenant rekey _into_ the system tenant, which
-	// would never otherwise be valid. It will discard this rekey but it signals
-	// to it that we're rekeying a system-made backup.
 	if backupTenantID == roachpb.SystemTenantID {
+		__antithesis_instrumentation__.Notify(10991)
 		preData.tenantRekeys = append(preData.tenantRekeys, isBackupFromSystemTenantRekey)
 		mainData.tenantRekeys = append(preData.tenantRekeys, isBackupFromSystemTenantRekey)
+	} else {
+		__antithesis_instrumentation__.Notify(10992)
 	}
+	__antithesis_instrumentation__.Notify(10949)
 
-	// Refresh the job details since they may have been updated when creating the
-	// importing descriptors.
 	details = r.job.Details().(jobspb.RestoreDetails)
 
 	if fn := r.testingKnobs.afterOfflineTableCreation; fn != nil {
+		__antithesis_instrumentation__.Notify(10993)
 		if err := fn(); err != nil {
+			__antithesis_instrumentation__.Notify(10994)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(10995)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(10996)
 	}
+	__antithesis_instrumentation__.Notify(10950)
 	var remappedStats []*stats.TableStatisticProto
 	backupStats, err := getStatisticsFromBackup(ctx, defaultStore, details.Encryption,
 		latestBackupManifest)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(10997)
 		remappedStats = remapRelevantStatistics(ctx, backupStats, details.DescriptorRewrites,
 			details.TableDescs)
 	} else {
-		// We don't want to fail the restore if we are unable to resolve statistics
-		// from the backup, since they can be recomputed after the restore has
-		// completed.
+		__antithesis_instrumentation__.Notify(10998)
+
 		log.Warningf(ctx, "failed to resolve table statistics from backup during restore: %+v",
 			err.Error())
 	}
+	__antithesis_instrumentation__.Notify(10951)
 
-	if len(details.TableDescs) == 0 && len(details.Tenants) == 0 && len(details.TypeDescs) == 0 {
-		// We have no tables to restore (we are restoring an empty DB).
-		// Since we have already created any new databases that we needed,
-		// we can return without importing any data.
+	if len(details.TableDescs) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(10999)
+		return len(details.Tenants) == 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(11000)
+		return len(details.TypeDescs) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(11001)
+
 		log.Warning(ctx, "nothing to restore")
-		// The database was created in the offline state and needs to be made
-		// public.
-		// TODO (lucy): Ideally we'd just create the database in the public state in
-		// the first place, as a special case.
+
 		publishDescriptors := func(ctx context.Context, txn *kv.Txn, descsCol *descs.Collection) (err error) {
+			__antithesis_instrumentation__.Notify(11005)
 			return r.publishDescriptors(ctx, txn, p.ExecCfg(), p.User(), descsCol, details, nil)
 		}
+		__antithesis_instrumentation__.Notify(11002)
 		if err := sql.DescsTxn(ctx, r.execCfg, publishDescriptors); err != nil {
+			__antithesis_instrumentation__.Notify(11006)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11007)
 		}
+		__antithesis_instrumentation__.Notify(11003)
 
 		p.ExecCfg().JobRegistry.NotifyToAdoptJobs()
 		if fn := r.testingKnobs.afterPublishingDescriptors; fn != nil {
+			__antithesis_instrumentation__.Notify(11008)
 			if err := fn(); err != nil {
+				__antithesis_instrumentation__.Notify(11009)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11010)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11011)
 		}
+		__antithesis_instrumentation__.Notify(11004)
 		emitRestoreJobEvent(ctx, p, jobs.StatusSucceeded, r.job)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(11012)
 	}
+	__antithesis_instrumentation__.Notify(10952)
 
 	for _, tenant := range details.Tenants {
+		__antithesis_instrumentation__.Notify(11013)
 		to := roachpb.MakeTenantID(tenant.ID)
 		from := to
 		if details.PreRewriteTenantId != nil {
+			__antithesis_instrumentation__.Notify(11015)
 			from = *details.PreRewriteTenantId
+		} else {
+			__antithesis_instrumentation__.Notify(11016)
 		}
+		__antithesis_instrumentation__.Notify(11014)
 		mainData.addTenant(from, to)
 	}
+	__antithesis_instrumentation__.Notify(10953)
 
 	numNodes, err := clusterNodeCount(p.ExecCfg().Gossip)
 	if err != nil {
-		if !build.IsRelease() && p.ExecCfg().Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(11017)
+		if !build.IsRelease() && func() bool {
+			__antithesis_instrumentation__.Notify(11019)
+			return p.ExecCfg().Codec.ForSystemTenant() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(11020)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11021)
 		}
+		__antithesis_instrumentation__.Notify(11018)
 		log.Warningf(ctx, "unable to determine cluster node count: %v", err)
 		numNodes = 1
+	} else {
+		__antithesis_instrumentation__.Notify(11022)
 	}
+	__antithesis_instrumentation__.Notify(10954)
 
 	var resTotal roachpb.RowCount
 	if !preData.isEmpty() {
+		__antithesis_instrumentation__.Notify(11023)
 		res, err := restoreWithRetry(
 			ctx,
 			p,
@@ -1394,29 +1786,49 @@ func (r *restoreResumer) doResume(ctx context.Context, execCtx interface{}) erro
 			details.Encryption,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11026)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11027)
 		}
+		__antithesis_instrumentation__.Notify(11024)
 
 		resTotal.Add(res)
 
 		if details.DescriptorCoverage == tree.AllDescriptors {
+			__antithesis_instrumentation__.Notify(11028)
 			if err := r.restoreSystemTables(ctx, p.ExecCfg().DB, preData.systemTables); err != nil {
+				__antithesis_instrumentation__.Notify(11030)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11031)
 			}
-			// Reload the details as we may have updated the job.
+			__antithesis_instrumentation__.Notify(11029)
+
 			details = r.job.Details().(jobspb.RestoreDetails)
+		} else {
+			__antithesis_instrumentation__.Notify(11032)
 		}
+		__antithesis_instrumentation__.Notify(11025)
 
 		if fn := r.testingKnobs.afterPreRestore; fn != nil {
+			__antithesis_instrumentation__.Notify(11033)
 			if err := fn(); err != nil {
+				__antithesis_instrumentation__.Notify(11034)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11035)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11036)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(11037)
 	}
 
 	{
-		// Restore the main data bundle. We notably only restore the system tables
-		// later.
+		__antithesis_instrumentation__.Notify(11038)
+
 		res, err := restoreWithRetry(
 			ctx,
 			p,
@@ -1429,99 +1841,160 @@ func (r *restoreResumer) doResume(ctx context.Context, execCtx interface{}) erro
 			details.Encryption,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11040)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11041)
 		}
+		__antithesis_instrumentation__.Notify(11039)
 
 		resTotal.Add(res)
 	}
+	__antithesis_instrumentation__.Notify(10955)
 
 	if err := insertStats(ctx, r.job, p.ExecCfg(), remappedStats); err != nil {
+		__antithesis_instrumentation__.Notify(11042)
 		return errors.Wrap(err, "inserting table statistics")
+	} else {
+		__antithesis_instrumentation__.Notify(11043)
 	}
+	__antithesis_instrumentation__.Notify(10956)
 
 	var devalidateIndexes map[descpb.ID][]descpb.IndexID
 	if toValidate := len(details.RevalidateIndexes); toValidate > 0 {
-		if err := r.job.RunningStatus(ctx, nil /* txn */, func(_ context.Context, _ jobspb.Details) (jobs.RunningStatus, error) {
+		__antithesis_instrumentation__.Notify(11044)
+		if err := r.job.RunningStatus(ctx, nil, func(_ context.Context, _ jobspb.Details) (jobs.RunningStatus, error) {
+			__antithesis_instrumentation__.Notify(11047)
 			return jobs.RunningStatus(fmt.Sprintf("re-validating %d indexes", toValidate)), nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(11048)
 			return errors.Wrapf(err, "failed to update running status of job %d", errors.Safe(r.job.ID()))
+		} else {
+			__antithesis_instrumentation__.Notify(11049)
 		}
+		__antithesis_instrumentation__.Notify(11045)
 		bad, err := revalidateIndexes(ctx, p.ExecCfg(), r.job, details.TableDescs, details.RevalidateIndexes)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11050)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11051)
 		}
+		__antithesis_instrumentation__.Notify(11046)
 		devalidateIndexes = bad
+	} else {
+		__antithesis_instrumentation__.Notify(11052)
 	}
+	__antithesis_instrumentation__.Notify(10957)
 
 	publishDescriptors := func(ctx context.Context, txn *kv.Txn, descsCol *descs.Collection) (err error) {
+		__antithesis_instrumentation__.Notify(11053)
 		err = r.publishDescriptors(ctx, txn, p.ExecCfg(), p.User(), descsCol, details, devalidateIndexes)
 		return err
 	}
+	__antithesis_instrumentation__.Notify(10958)
 	if err := sql.DescsTxn(ctx, p.ExecCfg(), publishDescriptors); err != nil {
+		__antithesis_instrumentation__.Notify(11054)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(11055)
 	}
-	// Reload the details as we may have updated the job.
+	__antithesis_instrumentation__.Notify(10959)
+
 	details = r.job.Details().(jobspb.RestoreDetails)
 	p.ExecCfg().JobRegistry.NotifyToAdoptJobs()
 
 	if details.DescriptorCoverage == tree.AllDescriptors {
-		// We restore the system tables from the main data bundle so late because it
-		// includes the jobs that are being restored. As soon as we restore these
-		// jobs, they become accessible to the user, and may start executing. We
-		// need this to happen after the descriptors have been marked public.
+		__antithesis_instrumentation__.Notify(11056)
+
 		if err := r.restoreSystemTables(ctx, p.ExecCfg().DB, mainData.systemTables); err != nil {
+			__antithesis_instrumentation__.Notify(11058)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11059)
 		}
-		// Reload the details as we may have updated the job.
+		__antithesis_instrumentation__.Notify(11057)
+
 		details = r.job.Details().(jobspb.RestoreDetails)
 
-		if err := r.cleanupTempSystemTables(ctx, nil /* txn */); err != nil {
+		if err := r.cleanupTempSystemTables(ctx, nil); err != nil {
+			__antithesis_instrumentation__.Notify(11060)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11061)
 		}
-	} else if details.RestoreSystemUsers {
-		if err := r.restoreSystemUsers(ctx, p.ExecCfg().DB, mainData.systemTables); err != nil {
-			return err
-		}
-		details = r.job.Details().(jobspb.RestoreDetails)
+	} else {
+		__antithesis_instrumentation__.Notify(11062)
+		if details.RestoreSystemUsers {
+			__antithesis_instrumentation__.Notify(11063)
+			if err := r.restoreSystemUsers(ctx, p.ExecCfg().DB, mainData.systemTables); err != nil {
+				__antithesis_instrumentation__.Notify(11065)
+				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11066)
+			}
+			__antithesis_instrumentation__.Notify(11064)
+			details = r.job.Details().(jobspb.RestoreDetails)
 
-		if err := r.cleanupTempSystemTables(ctx, nil /* txn */); err != nil {
-			return err
+			if err := r.cleanupTempSystemTables(ctx, nil); err != nil {
+				__antithesis_instrumentation__.Notify(11067)
+				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11068)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(11069)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10960)
 
 	if fn := r.testingKnobs.afterPublishingDescriptors; fn != nil {
+		__antithesis_instrumentation__.Notify(11070)
 		if err := fn(); err != nil {
+			__antithesis_instrumentation__.Notify(11071)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11072)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(11073)
 	}
+	__antithesis_instrumentation__.Notify(10961)
 
 	r.notifyStatsRefresherOfNewTables()
 
 	r.restoreStats = resTotal
 
-	// Emit an event now that the restore job has completed.
 	emitRestoreJobEvent(ctx, p, jobs.StatusSucceeded, r.job)
 
-	// Collect telemetry.
 	{
+		__antithesis_instrumentation__.Notify(11074)
 		telemetry.Count("restore.total.succeeded")
 		const mb = 1 << 20
 		sizeMb := resTotal.DataSize / mb
 		sec := int64(timeutil.Since(timeutil.FromUnixMicros(r.job.Payload().StartedMicros)).Seconds())
 		var mbps int64
 		if sec > 0 {
+			__antithesis_instrumentation__.Notify(11076)
 			mbps = mb / sec
+		} else {
+			__antithesis_instrumentation__.Notify(11077)
 		}
+		__antithesis_instrumentation__.Notify(11075)
 		telemetry.CountBucketed("restore.duration-sec.succeeded", sec)
 		telemetry.CountBucketed("restore.size-mb.full", sizeMb)
 		telemetry.CountBucketed("restore.speed-mbps.total", mbps)
 		telemetry.CountBucketed("restore.speed-mbps.per-node", mbps/int64(numNodes))
-		// Tiny restores may skew throughput numbers due to overhead.
+
 		if sizeMb > 10 {
+			__antithesis_instrumentation__.Notify(11078)
 			telemetry.CountBucketed("restore.speed-mbps.over10mb", mbps)
 			telemetry.CountBucketed("restore.speed-mbps.over10mb.per-node", mbps/int64(numNodes))
+		} else {
+			__antithesis_instrumentation__.Notify(11079)
 		}
 	}
+	__antithesis_instrumentation__.Notify(10962)
 	return nil
 }
 
@@ -1532,86 +2005,127 @@ func revalidateIndexes(
 	tables []*descpb.TableDescriptor,
 	indexIDs []jobspb.RestoreDetails_RevalidateIndex,
 ) (map[descpb.ID][]descpb.IndexID, error) {
+	__antithesis_instrumentation__.Notify(11080)
 	indexIDsByTable := make(map[descpb.ID]map[descpb.IndexID]struct{})
 	for _, idx := range indexIDs {
+		__antithesis_instrumentation__.Notify(11084)
 		if indexIDsByTable[idx.TableID] == nil {
+			__antithesis_instrumentation__.Notify(11086)
 			indexIDsByTable[idx.TableID] = make(map[descpb.IndexID]struct{})
+		} else {
+			__antithesis_instrumentation__.Notify(11087)
 		}
+		__antithesis_instrumentation__.Notify(11085)
 		indexIDsByTable[idx.TableID][idx.IndexID] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(11081)
 
-	// We don't actually need the 'historical' read the way the schema change does
-	// since our table is offline.
 	var runner sqlutil.HistoricalInternalExecTxnRunner = func(ctx context.Context, fn sqlutil.InternalExecFn) error {
+		__antithesis_instrumentation__.Notify(11088)
 		return execCfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(11089)
 			ie := job.MakeSessionBoundInternalExecutor(ctx, sql.NewFakeSessionData(execCfg.SV())).(*sql.InternalExecutor)
 			return fn(ctx, txn, ie)
 		})
 	}
+	__antithesis_instrumentation__.Notify(11082)
 
 	invalidIndexes := make(map[descpb.ID][]descpb.IndexID)
 
 	for _, tbl := range tables {
+		__antithesis_instrumentation__.Notify(11090)
 		indexes := indexIDsByTable[tbl.ID]
 		if len(indexes) == 0 {
+			__antithesis_instrumentation__.Notify(11094)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(11095)
 		}
+		__antithesis_instrumentation__.Notify(11091)
 		tableDesc := tabledesc.NewBuilder(tbl).BuildExistingMutableTable()
 
 		var forward, inverted []catalog.Index
 		for _, idx := range tableDesc.AllIndexes() {
+			__antithesis_instrumentation__.Notify(11096)
 			if _, ok := indexes[idx.GetID()]; ok {
+				__antithesis_instrumentation__.Notify(11097)
 				switch idx.GetType() {
 				case descpb.IndexDescriptor_FORWARD:
+					__antithesis_instrumentation__.Notify(11098)
 					forward = append(forward, idx)
 				case descpb.IndexDescriptor_INVERTED:
+					__antithesis_instrumentation__.Notify(11099)
 					inverted = append(inverted, idx)
+				default:
+					__antithesis_instrumentation__.Notify(11100)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(11101)
 			}
 		}
+		__antithesis_instrumentation__.Notify(11092)
 		if len(forward) > 0 {
+			__antithesis_instrumentation__.Notify(11102)
 			if err := sql.ValidateForwardIndexes(
 				ctx,
 				tableDesc.MakePublic(),
 				forward,
 				runner,
-				false, /* withFirstMutationPublic */
-				true,  /* gatherAllInvalid */
+				false,
+				true,
 				sessiondata.InternalExecutorOverride{},
 			); err != nil {
+				__antithesis_instrumentation__.Notify(11103)
 				if invalid := (sql.InvalidIndexesError{}); errors.As(err, &invalid) {
+					__antithesis_instrumentation__.Notify(11104)
 					invalidIndexes[tableDesc.ID] = invalid.Indexes
 				} else {
+					__antithesis_instrumentation__.Notify(11105)
 					return nil, err
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(11106)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11107)
 		}
+		__antithesis_instrumentation__.Notify(11093)
 		if len(inverted) > 0 {
+			__antithesis_instrumentation__.Notify(11108)
 			if err := sql.ValidateInvertedIndexes(
 				ctx,
 				execCfg.Codec,
 				tableDesc.MakePublic(),
 				inverted,
 				runner,
-				false, /* withFirstMutationPublic */
-				true,  /* gatherAllInvalid */
+				false,
+				true,
 				sessiondata.InternalExecutorOverride{},
 			); err != nil {
+				__antithesis_instrumentation__.Notify(11109)
 				if invalid := (sql.InvalidIndexesError{}); errors.As(err, &invalid) {
+					__antithesis_instrumentation__.Notify(11110)
 					invalidIndexes[tableDesc.ID] = append(invalidIndexes[tableDesc.ID], invalid.Indexes...)
 				} else {
+					__antithesis_instrumentation__.Notify(11111)
 					return nil, err
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(11112)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11113)
 		}
 	}
+	__antithesis_instrumentation__.Notify(11083)
 	return invalidIndexes, nil
 }
 
-// ReportResults implements JobResultsReporter interface.
 func (r *restoreResumer) ReportResults(ctx context.Context, resultsCh chan<- tree.Datums) error {
+	__antithesis_instrumentation__.Notify(11114)
 	select {
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(11115)
 		return ctx.Err()
 	case resultsCh <- tree.Datums{
 		tree.NewDInt(tree.DInt(r.job.ID())),
@@ -1621,93 +2135,120 @@ func (r *restoreResumer) ReportResults(ctx context.Context, resultsCh chan<- tre
 		tree.NewDInt(tree.DInt(r.restoreStats.IndexEntries)),
 		tree.NewDInt(tree.DInt(r.restoreStats.DataSize)),
 	}:
+		__antithesis_instrumentation__.Notify(11116)
 		return nil
 	}
 }
 
-// Initiate a run of CREATE STATISTICS. We don't know the actual number of
-// rows affected per table, so we use a large number because we want to make
-// sure that stats always get created/refreshed here.
 func (r *restoreResumer) notifyStatsRefresherOfNewTables() {
+	__antithesis_instrumentation__.Notify(11117)
 	details := r.job.Details().(jobspb.RestoreDetails)
 	for i := range details.TableDescs {
+		__antithesis_instrumentation__.Notify(11118)
 		desc := tabledesc.NewBuilder(details.TableDescs[i]).BuildImmutableTable()
-		r.execCfg.StatsRefresher.NotifyMutation(desc, math.MaxInt32 /* rowsAffected */)
+		r.execCfg.StatsRefresher.NotifyMutation(desc, math.MaxInt32)
 	}
 }
 
-// tempSystemDatabaseID returns the ID of the descriptor for the temporary
-// system database used in full cluster restores.
-// This is the last of the IDs pre-allocated by the restore planner.
-// TODO(postamar): Store it directly in the details instead? This is brittle.
 func tempSystemDatabaseID(details jobspb.RestoreDetails) descpb.ID {
-	if details.DescriptorCoverage != tree.AllDescriptors && !details.RestoreSystemUsers {
+	__antithesis_instrumentation__.Notify(11119)
+	if details.DescriptorCoverage != tree.AllDescriptors && func() bool {
+		__antithesis_instrumentation__.Notify(11122)
+		return !details.RestoreSystemUsers == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(11123)
 		return descpb.InvalidID
+	} else {
+		__antithesis_instrumentation__.Notify(11124)
 	}
+	__antithesis_instrumentation__.Notify(11120)
 	var maxPreAllocatedID descpb.ID
 	for id := range details.DescriptorRewrites {
-		// This map is never empty in this case (full cluster restore),
-		// it contains at minimum the entry for the temporary system database.
+		__antithesis_instrumentation__.Notify(11125)
+
 		if id > maxPreAllocatedID {
+			__antithesis_instrumentation__.Notify(11126)
 			maxPreAllocatedID = id
+		} else {
+			__antithesis_instrumentation__.Notify(11127)
 		}
 	}
+	__antithesis_instrumentation__.Notify(11121)
 	return maxPreAllocatedID
 }
 
-// Insert stats re-inserts the table statistics stored in the backup manifest.
 func insertStats(
 	ctx context.Context,
 	job *jobs.Job,
 	execCfg *sql.ExecutorConfig,
 	latestStats []*stats.TableStatisticProto,
 ) error {
+	__antithesis_instrumentation__.Notify(11128)
 	details := job.Details().(jobspb.RestoreDetails)
 	if details.StatsInserted {
+		__antithesis_instrumentation__.Notify(11130)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(11131)
 	}
+	__antithesis_instrumentation__.Notify(11129)
 
-	// We could be restoring hundreds of tables, so insert the new stats in
-	// batches instead of all in a single, long-running txn. This prevents intent
-	// buildup in the face of txn retries.
 	for {
+		__antithesis_instrumentation__.Notify(11132)
 		if len(latestStats) == 0 {
+			__antithesis_instrumentation__.Notify(11136)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(11137)
 		}
+		__antithesis_instrumentation__.Notify(11133)
 
 		if len(latestStats) < restoreStatsInsertBatchSize {
+			__antithesis_instrumentation__.Notify(11138)
 			restoreStatsInsertBatchSize = len(latestStats)
+		} else {
+			__antithesis_instrumentation__.Notify(11139)
 		}
+		__antithesis_instrumentation__.Notify(11134)
 
 		if err := execCfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(11140)
 			if err := stats.InsertNewStats(ctx, execCfg.Settings, execCfg.InternalExecutor, txn,
 				latestStats[:restoreStatsInsertBatchSize]); err != nil {
+				__antithesis_instrumentation__.Notify(11143)
 				return errors.Wrapf(err, "inserting stats from backup")
+			} else {
+				__antithesis_instrumentation__.Notify(11144)
 			}
+			__antithesis_instrumentation__.Notify(11141)
 
-			// If this is the last batch, mark the stats insertion complete.
 			if restoreStatsInsertBatchSize == len(latestStats) {
+				__antithesis_instrumentation__.Notify(11145)
 				details.StatsInserted = true
 				if err := job.SetDetails(ctx, txn, details); err != nil {
+					__antithesis_instrumentation__.Notify(11146)
 					return errors.Wrapf(err, "updating job marking stats insertion complete")
+				} else {
+					__antithesis_instrumentation__.Notify(11147)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(11148)
 			}
+			__antithesis_instrumentation__.Notify(11142)
 
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(11149)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11150)
 		}
+		__antithesis_instrumentation__.Notify(11135)
 
-		// Truncate the stats that we have inserted in the txn above.
 		latestStats = latestStats[restoreStatsInsertBatchSize:]
 	}
 }
 
-// publishDescriptors updates the RESTORED descriptors' status from OFFLINE to
-// PUBLIC. The schema change jobs are returned to be started after the
-// transaction commits. The details struct is passed in rather than loaded
-// from r.job as the call to r.job.SetDetails will overwrite the job details
-// with a new value even if this transaction does not commit.
 func (r *restoreResumer) publishDescriptors(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -1717,74 +2258,105 @@ func (r *restoreResumer) publishDescriptors(
 	details jobspb.RestoreDetails,
 	devalidateIndexes map[descpb.ID][]descpb.IndexID,
 ) (err error) {
+	__antithesis_instrumentation__.Notify(11151)
 	if details.DescriptorsPublished {
+		__antithesis_instrumentation__.Notify(11164)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(11165)
 	}
+	__antithesis_instrumentation__.Notify(11152)
 	if fn := r.testingKnobs.beforePublishingDescriptors; fn != nil {
+		__antithesis_instrumentation__.Notify(11166)
 		if err := fn(); err != nil {
+			__antithesis_instrumentation__.Notify(11167)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11168)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(11169)
 	}
+	__antithesis_instrumentation__.Notify(11153)
 	log.VEventf(ctx, 1, "making tables live")
 
-	// Write the new descriptors and flip state over to public so they can be
-	// accessed.
-
-	// Pre-fetch all the descriptors into the collection to avoid doing
-	// round-trips per descriptor.
 	all, err := prefetchDescriptors(ctx, txn, descsCol, details)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(11170)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(11171)
 	}
+	__antithesis_instrumentation__.Notify(11154)
 
-	// Create slices of raw descriptors for the restore job details.
 	newTables := make([]*descpb.TableDescriptor, 0, len(details.TableDescs))
 	newTypes := make([]*descpb.TypeDescriptor, 0, len(details.TypeDescs))
 	newSchemas := make([]*descpb.SchemaDescriptor, 0, len(details.SchemaDescs))
 	newDBs := make([]*descpb.DatabaseDescriptor, 0, len(details.DatabaseDescs))
 
-	// Go through the descriptors and find any declarative schema change jobs
-	// affecting them.
-	//
-	// If we're restoring all the descriptors, it means we're also restoring the
-	// jobs.
 	if details.DescriptorCoverage != tree.AllDescriptors {
+		__antithesis_instrumentation__.Notify(11172)
 		if err := scbackup.CreateDeclarativeSchemaChangeJobs(
 			ctx, r.execCfg.JobRegistry, txn, all,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(11173)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11174)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(11175)
 	}
+	__antithesis_instrumentation__.Notify(11155)
 
-	// Write the new TableDescriptors and flip state over to public so they can be
-	// accessed.
 	for i := range details.TableDescs {
+		__antithesis_instrumentation__.Notify(11176)
 		mutTable := all.LookupDescriptorEntry(details.TableDescs[i].GetID()).(*tabledesc.Mutable)
-		// Note that we don't need to worry about the re-validated indexes for descriptors
-		// with a declarative schema change job.
+
 		if mutTable.GetDeclarativeSchemaChangerState() != nil {
+			__antithesis_instrumentation__.Notify(11181)
 			newTables = append(newTables, mutTable.TableDesc())
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(11182)
 		}
+		__antithesis_instrumentation__.Notify(11177)
 
 		badIndexes := devalidateIndexes[mutTable.ID]
 		for _, badIdx := range badIndexes {
+			__antithesis_instrumentation__.Notify(11183)
 			found, err := mutTable.FindIndexWithID(badIdx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(11185)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11186)
 			}
+			__antithesis_instrumentation__.Notify(11184)
 			newIdx := found.IndexDescDeepCopy()
 			mutTable.RemovePublicNonPrimaryIndex(found.Ordinal())
 			if err := mutTable.AddIndexMutation(ctx, &newIdx, descpb.DescriptorMutation_ADD, r.settings); err != nil {
+				__antithesis_instrumentation__.Notify(11187)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11188)
 			}
 		}
+		__antithesis_instrumentation__.Notify(11178)
 		version := r.settings.Version.ActiveVersion(ctx)
 		if err := mutTable.AllocateIDs(ctx, version); err != nil {
+			__antithesis_instrumentation__.Notify(11189)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11190)
 		}
-		// Assign a TTL schedule before publishing.
-		if details.DescriptorCoverage != tree.AllDescriptors && mutTable.HasRowLevelTTL() {
+		__antithesis_instrumentation__.Notify(11179)
+
+		if details.DescriptorCoverage != tree.AllDescriptors && func() bool {
+			__antithesis_instrumentation__.Notify(11191)
+			return mutTable.HasRowLevelTTL() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(11192)
 			j, err := sql.CreateRowLevelTTLScheduledJob(
 				ctx,
 				execCfg,
@@ -1794,151 +2366,208 @@ func (r *restoreResumer) publishDescriptors(
 				mutTable.GetRowLevelTTL(),
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(11194)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11195)
 			}
+			__antithesis_instrumentation__.Notify(11193)
 			mutTable.RowLevelTTL.ScheduleID = j.ScheduleID()
+		} else {
+			__antithesis_instrumentation__.Notify(11196)
 		}
+		__antithesis_instrumentation__.Notify(11180)
 		newTables = append(newTables, mutTable.TableDesc())
-		// For cluster restores, all the jobs are restored directly from the jobs
-		// table, so there is no need to re-create ongoing schema change jobs,
-		// otherwise we'll create duplicate jobs.
-		if details.DescriptorCoverage != tree.AllDescriptors || len(badIndexes) > 0 {
-			// Convert any mutations that were in progress on the table descriptor
-			// when the backup was taken, and convert them to schema change jobs.
+
+		if details.DescriptorCoverage != tree.AllDescriptors || func() bool {
+			__antithesis_instrumentation__.Notify(11197)
+			return len(badIndexes) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(11198)
+
 			if err := createSchemaChangeJobsFromMutations(ctx,
 				r.execCfg.JobRegistry, r.execCfg.Codec, txn, r.job.Payload().UsernameProto.Decode(), mutTable,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(11199)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11200)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11201)
 		}
 	}
-	// For all of the newly created types, make type schema change jobs for any
-	// type descriptors that were backed up in the middle of a type schema change.
+	__antithesis_instrumentation__.Notify(11156)
+
 	for i := range details.TypeDescs {
+		__antithesis_instrumentation__.Notify(11202)
 		typ := all.LookupDescriptorEntry(details.TypeDescs[i].GetID()).(catalog.TypeDescriptor)
 		newTypes = append(newTypes, typ.TypeDesc())
-		if typ.GetDeclarativeSchemaChangerState() == nil &&
-			typ.HasPendingSchemaChanges() && details.DescriptorCoverage != tree.AllDescriptors {
+		if typ.GetDeclarativeSchemaChangerState() == nil && func() bool {
+			__antithesis_instrumentation__.Notify(11203)
+			return typ.HasPendingSchemaChanges() == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(11204)
+			return details.DescriptorCoverage != tree.AllDescriptors == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(11205)
 			if err := createTypeChangeJobFromDesc(
 				ctx, r.execCfg.JobRegistry, r.execCfg.Codec, txn, r.job.Payload().UsernameProto.Decode(), typ,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(11206)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11207)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11208)
 		}
 	}
+	__antithesis_instrumentation__.Notify(11157)
 	for i := range details.SchemaDescs {
+		__antithesis_instrumentation__.Notify(11209)
 		sc := all.LookupDescriptorEntry(details.SchemaDescs[i].GetID()).(catalog.SchemaDescriptor)
 		newSchemas = append(newSchemas, sc.SchemaDesc())
 	}
+	__antithesis_instrumentation__.Notify(11158)
 	for i := range details.DatabaseDescs {
+		__antithesis_instrumentation__.Notify(11210)
 		db := all.LookupDescriptorEntry(details.DatabaseDescs[i].GetID()).(catalog.DatabaseDescriptor)
 		newDBs = append(newDBs, db.DatabaseDesc())
 	}
+	__antithesis_instrumentation__.Notify(11159)
 	b := txn.NewBatch()
 	if err := all.ForEachDescriptorEntry(func(desc catalog.Descriptor) error {
+		__antithesis_instrumentation__.Notify(11211)
 		d := desc.(catalog.MutableDescriptor)
 		d.SetPublic()
 		return descsCol.WriteDescToBatch(
-			ctx, false /* kvTrace */, d, b,
+			ctx, false, d, b,
 		)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(11212)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(11213)
 	}
+	__antithesis_instrumentation__.Notify(11160)
 	if err := txn.Run(ctx, b); err != nil {
+		__antithesis_instrumentation__.Notify(11214)
 		return errors.Wrap(err, "publishing tables")
+	} else {
+		__antithesis_instrumentation__.Notify(11215)
 	}
+	__antithesis_instrumentation__.Notify(11161)
 
 	for _, tenant := range details.Tenants {
+		__antithesis_instrumentation__.Notify(11216)
 		if err := sql.ActivateTenant(ctx, r.execCfg, txn, tenant.ID); err != nil {
+			__antithesis_instrumentation__.Notify(11217)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11218)
 		}
 	}
+	__antithesis_instrumentation__.Notify(11162)
 
-	// Update and persist the state of the job.
 	details.DescriptorsPublished = true
 	details.TableDescs = newTables
 	details.TypeDescs = newTypes
 	details.SchemaDescs = newSchemas
 	details.DatabaseDescs = newDBs
 	if err := r.job.SetDetails(ctx, txn, details); err != nil {
+		__antithesis_instrumentation__.Notify(11219)
 		return errors.Wrap(err,
 			"updating job details after publishing tables")
+	} else {
+		__antithesis_instrumentation__.Notify(11220)
 	}
+	__antithesis_instrumentation__.Notify(11163)
 	return nil
 }
 
-// prefetchDescriptors calculates the set of descriptors needed by looking
-// at the relevant fields of the job details. It then fetches all of those
-// descriptors in a batch using the descsCol. It packages up that set of
-// descriptors into an nstree.Catalog for easy use.
-//
-// This function also takes care of asserting that the retrieved version
-// matches the expectation.
 func prefetchDescriptors(
 	ctx context.Context, txn *kv.Txn, descsCol *descs.Collection, details jobspb.RestoreDetails,
 ) (_ nstree.Catalog, _ error) {
+	__antithesis_instrumentation__.Notify(11221)
 	var all nstree.MutableCatalog
 	var allDescIDs catalog.DescriptorIDSet
 	expVersion := map[descpb.ID]descpb.DescriptorVersion{}
 	for i := range details.TableDescs {
+		__antithesis_instrumentation__.Notify(11228)
 		expVersion[details.TableDescs[i].GetID()] = details.TableDescs[i].GetVersion()
 		allDescIDs.Add(details.TableDescs[i].GetID())
 	}
+	__antithesis_instrumentation__.Notify(11222)
 	for i := range details.TypeDescs {
+		__antithesis_instrumentation__.Notify(11229)
 		expVersion[details.TypeDescs[i].GetID()] = details.TypeDescs[i].GetVersion()
 		allDescIDs.Add(details.TypeDescs[i].GetID())
 	}
+	__antithesis_instrumentation__.Notify(11223)
 	for i := range details.SchemaDescs {
+		__antithesis_instrumentation__.Notify(11230)
 		expVersion[details.SchemaDescs[i].GetID()] = details.SchemaDescs[i].GetVersion()
 		allDescIDs.Add(details.SchemaDescs[i].GetID())
 	}
+	__antithesis_instrumentation__.Notify(11224)
 	for i := range details.DatabaseDescs {
+		__antithesis_instrumentation__.Notify(11231)
 		expVersion[details.DatabaseDescs[i].GetID()] = details.DatabaseDescs[i].GetVersion()
 		allDescIDs.Add(details.DatabaseDescs[i].GetID())
 	}
-	// Note that no maximum size is put on the batch here because,
-	// in general, we assume that we can fit all of the descriptors
-	// in RAM (we have them in RAM as part of the details object,
-	// and we're going to write them to KV very soon as part of a
-	// single batch).
+	__antithesis_instrumentation__.Notify(11225)
+
 	ids := allDescIDs.Ordered()
 	got, err := descsCol.GetMutableDescriptorsByID(ctx, txn, ids...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(11232)
 		return nstree.Catalog{}, errors.Wrap(err, "prefetch descriptors")
+	} else {
+		__antithesis_instrumentation__.Notify(11233)
 	}
+	__antithesis_instrumentation__.Notify(11226)
 	for i, id := range ids {
+		__antithesis_instrumentation__.Notify(11234)
 		if got[i].GetVersion() != expVersion[id] {
+			__antithesis_instrumentation__.Notify(11236)
 			return nstree.Catalog{}, errors.Errorf(
 				"version mismatch for descriptor %d, expected version %d, got %v",
 				got[i].GetID(), got[i].GetVersion(), expVersion[id],
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(11237)
 		}
+		__antithesis_instrumentation__.Notify(11235)
 		all.UpsertDescriptorEntry(got[i])
 	}
+	__antithesis_instrumentation__.Notify(11227)
 	return all.Catalog, nil
 }
 
 func emitRestoreJobEvent(
 	ctx context.Context, p sql.JobExecContext, status jobs.Status, job *jobs.Job,
 ) {
-	// Emit to the event log now that we have completed the prepare step.
+	__antithesis_instrumentation__.Notify(11238)
+
 	var restoreEvent eventpb.Restore
 	if err := p.ExecCfg().DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(11239)
 		return sql.LogEventForJobs(ctx, p.ExecCfg(), txn, &restoreEvent, int64(job.ID()),
 			job.Payload(), p.User(), status)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(11240)
 		log.Warningf(ctx, "failed to log event: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(11241)
 	}
 }
 
-// OnFailOrCancel is part of the jobs.Resumer interface. Removes KV data that
-// has been committed from a restore that has failed or been canceled. It does
-// this by adding the table descriptors in DROP state, which causes the schema
-// change stuff to delete the keys in the background.
 func (r *restoreResumer) OnFailOrCancel(ctx context.Context, execCtx interface{}) error {
+	__antithesis_instrumentation__.Notify(11242)
 	p := execCtx.(sql.JobExecContext)
 	r.execCfg = p.ExecCfg()
-	// Emit to the event log that the job has started reverting.
+
 	emitRestoreJobEvent(ctx, p, jobs.StatusReverting, r.job)
 
 	telemetry.Count("restore.total.failed")
@@ -1951,54 +2580,79 @@ func (r *restoreResumer) OnFailOrCancel(ctx context.Context, execCtx interface{}
 	if err := sql.DescsTxn(ctx, execCfg, func(
 		ctx context.Context, txn *kv.Txn, descsCol *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(11245)
 		for _, tenant := range details.Tenants {
+			__antithesis_instrumentation__.Notify(11249)
 			tenant.State = descpb.TenantInfo_DROP
-			// This is already a job so no need to spin up a gc job for the tenant;
-			// instead just GC the data eagerly.
+
 			if err := sql.GCTenantSync(ctx, execCfg, &tenant.TenantInfo); err != nil {
+				__antithesis_instrumentation__.Notify(11250)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11251)
 			}
 		}
+		__antithesis_instrumentation__.Notify(11246)
 
 		if err := r.dropDescriptors(ctx, execCfg.JobRegistry, execCfg.Codec, txn, descsCol); err != nil {
+			__antithesis_instrumentation__.Notify(11252)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11253)
 		}
+		__antithesis_instrumentation__.Notify(11247)
 
 		if details.DescriptorCoverage == tree.AllDescriptors {
-			// We've dropped defaultdb and postgres in the planning phase, we must
-			// recreate them now if the full cluster restore failed.
+			__antithesis_instrumentation__.Notify(11254)
+
 			ie := p.ExecCfg().InternalExecutor
 			_, err := ie.Exec(ctx, "recreate-defaultdb", txn, "CREATE DATABASE IF NOT EXISTS defaultdb")
 			if err != nil {
+				__antithesis_instrumentation__.Notify(11256)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11257)
 			}
+			__antithesis_instrumentation__.Notify(11255)
 
 			_, err = ie.Exec(ctx, "recreate-postgres", txn, "CREATE DATABASE IF NOT EXISTS postgres")
 			if err != nil {
+				__antithesis_instrumentation__.Notify(11258)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11259)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11260)
 		}
+		__antithesis_instrumentation__.Notify(11248)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(11261)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(11262)
 	}
+	__antithesis_instrumentation__.Notify(11243)
 
 	if details.DescriptorCoverage == tree.AllDescriptors {
-		// The temporary system table descriptors should already have been dropped
-		// in `dropDescriptors` but we still need to drop the temporary system db.
-		if err := execCfg.DB.Txn(ctx, r.cleanupTempSystemTables); err != nil {
-			return err
-		}
-	}
+		__antithesis_instrumentation__.Notify(11263)
 
-	// Emit to the event log that the job has completed reverting.
+		if err := execCfg.DB.Txn(ctx, r.cleanupTempSystemTables); err != nil {
+			__antithesis_instrumentation__.Notify(11264)
+			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11265)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(11266)
+	}
+	__antithesis_instrumentation__.Notify(11244)
+
 	emitRestoreJobEvent(ctx, p, jobs.StatusFailed, r.job)
 	return nil
 }
 
-// dropDescriptors implements the OnFailOrCancel logic.
-// TODO (lucy): If the descriptors have already been published, we need to queue
-// drop jobs for all the descriptors.
 func (r *restoreResumer) dropDescriptors(
 	ctx context.Context,
 	jr *jobs.Registry,
@@ -2006,81 +2660,97 @@ func (r *restoreResumer) dropDescriptors(
 	txn *kv.Txn,
 	descsCol *descs.Collection,
 ) error {
+	__antithesis_instrumentation__.Notify(11267)
 	details := r.job.Details().(jobspb.RestoreDetails)
 
-	// No need to mark the tables as dropped if they were not even created in the
-	// first place.
 	if !details.PrepareCompleted {
+		__antithesis_instrumentation__.Notify(11284)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(11285)
 	}
+	__antithesis_instrumentation__.Notify(11268)
 
 	b := txn.NewBatch()
 
-	// Collect the tables into mutable versions.
 	mutableTables := make([]*tabledesc.Mutable, len(details.TableDescs))
 	for i := range details.TableDescs {
+		__antithesis_instrumentation__.Notify(11286)
 		var err error
 		mutableTables[i], err = descsCol.GetMutableTableVersionByID(ctx, details.TableDescs[i].ID, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11288)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11289)
 		}
-		// Ensure that the version matches what we expect. In the case that it
-		// doesn't, it's not really clear what to do. Just log and carry on. If the
-		// descriptors have already been published, then there's nothing to fuss
-		// about so we only do this check if they have not been published.
+		__antithesis_instrumentation__.Notify(11287)
+
 		if !details.DescriptorsPublished {
+			__antithesis_instrumentation__.Notify(11290)
 			if got, exp := mutableTables[i].Version, details.TableDescs[i].Version; got != exp {
+				__antithesis_instrumentation__.Notify(11291)
 				log.Errorf(ctx, "version changed for restored descriptor %d before "+
 					"drop: got %d, expected %d", mutableTables[i].GetVersion(), got, exp)
+			} else {
+				__antithesis_instrumentation__.Notify(11292)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11293)
 		}
 
 	}
+	__antithesis_instrumentation__.Notify(11269)
 
-	// Remove any back references installed from existing types to tables being restored.
 	if err := r.removeExistingTypeBackReferences(
 		ctx, txn, descsCol, b, mutableTables, &details,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(11294)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(11295)
 	}
+	__antithesis_instrumentation__.Notify(11270)
 
-	// Drop the table descriptors that were created at the start of the restore.
 	tablesToGC := make([]descpb.ID, 0, len(details.TableDescs))
-	// Set the drop time as 1 (ns in Unix time), so that the table gets GC'd
-	// immediately.
+
 	dropTime := int64(1)
 	for i := range mutableTables {
+		__antithesis_instrumentation__.Notify(11296)
 		tableToDrop := mutableTables[i]
 		tablesToGC = append(tablesToGC, tableToDrop.ID)
 		tableToDrop.SetDropped()
 
-		// Drop any schedules we may have implicitly created.
 		if tableToDrop.HasRowLevelTTL() {
+			__antithesis_instrumentation__.Notify(11298)
 			scheduleID := tableToDrop.RowLevelTTL.ScheduleID
 			if scheduleID != 0 {
+				__antithesis_instrumentation__.Notify(11299)
 				if err := sql.DeleteSchedule(
 					ctx, r.execCfg, txn, scheduleID,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(11300)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(11301)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(11302)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11303)
 		}
+		__antithesis_instrumentation__.Notify(11297)
 
-		// If the DropTime is set, a table uses RangeClear for fast data removal. This
-		// operation starts at DropTime + the GC TTL. If we used now() here, it would
-		// not clean up data until the TTL from the time of the error. Instead, use 1
-		// (that is, 1ns past the epoch) to allow this to be cleaned up as soon as
-		// possible. This is safe since the table data was never visible to users,
-		// and so we don't need to preserve MVCC semantics.
 		tableToDrop.DropTime = dropTime
 		b.Del(catalogkeys.EncodeNameKey(codec, tableToDrop))
 		descsCol.AddDeletedDescriptor(tableToDrop.GetID())
 	}
+	__antithesis_instrumentation__.Notify(11271)
 
-	// Drop the type descriptors that this restore created.
 	for i := range details.TypeDescs {
-		// TypeDescriptors don't have a GC job process, so we can just write them
-		// as dropped here.
+		__antithesis_instrumentation__.Notify(11304)
+
 		typDesc := details.TypeDescs[i]
 		mutType, err := descsCol.GetMutableTypeByID(ctx, txn, typDesc.ID, tree.ObjectLookupFlags{
 			CommonLookupFlags: tree.CommonLookupFlags{
@@ -2089,24 +2759,30 @@ func (r *restoreResumer) dropDescriptors(
 			},
 		})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11306)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11307)
 		}
+		__antithesis_instrumentation__.Notify(11305)
 
 		b.Del(catalogkeys.EncodeNameKey(codec, typDesc))
 		mutType.SetDropped()
-		// Remove the system.descriptor entry.
+
 		b.Del(catalogkeys.MakeDescMetadataKey(codec, typDesc.ID))
 		descsCol.AddDeletedDescriptor(mutType.GetID())
 	}
+	__antithesis_instrumentation__.Notify(11272)
 
-	// Queue a GC job.
 	gcDetails := jobspb.SchemaChangeGCDetails{}
 	for _, tableID := range tablesToGC {
+		__antithesis_instrumentation__.Notify(11308)
 		gcDetails.Tables = append(gcDetails.Tables, jobspb.SchemaChangeGCDetails_DroppedID{
 			ID:       tableID,
 			DropTime: dropTime,
 		})
 	}
+	__antithesis_instrumentation__.Notify(11273)
 	gcJobRecord := jobs.Record{
 		Description:   fmt.Sprintf("GC for %s", r.job.Payload().Description),
 		Username:      r.job.Payload().UsernameProto.Decode(),
@@ -2116,161 +2792,211 @@ func (r *restoreResumer) dropDescriptors(
 		NonCancelable: true,
 	}
 	if _, err := jr.CreateJobWithTxn(ctx, gcJobRecord, jr.MakeJobID(), txn); err != nil {
+		__antithesis_instrumentation__.Notify(11309)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(11310)
 	}
+	__antithesis_instrumentation__.Notify(11274)
 
-	// Drop the database and schema descriptors that were created at the start of
-	// the restore if they are now empty (i.e. no user created a table, etc. in
-	// the database or schema during the restore).
 	ignoredChildDescIDs := make(map[descpb.ID]struct{})
 	for _, table := range details.TableDescs {
+		__antithesis_instrumentation__.Notify(11311)
 		ignoredChildDescIDs[table.ID] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(11275)
 	for _, typ := range details.TypeDescs {
+		__antithesis_instrumentation__.Notify(11312)
 		ignoredChildDescIDs[typ.ID] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(11276)
 	for _, schema := range details.SchemaDescs {
+		__antithesis_instrumentation__.Notify(11313)
 		ignoredChildDescIDs[schema.ID] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(11277)
 	all, err := descsCol.GetAllDescriptors(ctx, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(11314)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(11315)
 	}
+	__antithesis_instrumentation__.Notify(11278)
 	allDescs := all.OrderedDescriptors()
 
-	// Delete any schema descriptors that this restore created. Also collect the
-	// descriptors so we can update their parent databases later.
 	dbsWithDeletedSchemas := make(map[descpb.ID][]catalog.Descriptor)
 	for _, schemaDesc := range details.SchemaDescs {
-		// We need to ignore descriptors we just added since we haven't committed the txn that deletes these.
+		__antithesis_instrumentation__.Notify(11316)
+
 		isSchemaEmpty, err := isSchemaEmpty(ctx, txn, schemaDesc.GetID(), allDescs, ignoredChildDescIDs)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11321)
 			return errors.Wrapf(err, "checking if schema %s is empty during restore cleanup", schemaDesc.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(11322)
 		}
+		__antithesis_instrumentation__.Notify(11317)
 
 		if !isSchemaEmpty {
+			__antithesis_instrumentation__.Notify(11323)
 			log.Warningf(ctx, "preserving schema %s on restore failure because it contains new child objects", schemaDesc.GetName())
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(11324)
 		}
+		__antithesis_instrumentation__.Notify(11318)
 
 		mutSchema, err := descsCol.GetMutableDescriptorByID(ctx, txn, schemaDesc.GetID())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11325)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11326)
 		}
+		__antithesis_instrumentation__.Notify(11319)
 
-		// Mark schema as dropped and add uncommitted version to pass pre-txn
-		// descriptor validation.
 		mutSchema.SetDropped()
 		mutSchema.MaybeIncrementVersion()
 		if err := descsCol.AddUncommittedDescriptor(mutSchema); err != nil {
+			__antithesis_instrumentation__.Notify(11327)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11328)
 		}
+		__antithesis_instrumentation__.Notify(11320)
 
 		b.Del(catalogkeys.EncodeNameKey(codec, mutSchema))
 		b.Del(catalogkeys.MakeDescMetadataKey(codec, mutSchema.GetID()))
 		descsCol.AddDeletedDescriptor(mutSchema.GetID())
 		dbsWithDeletedSchemas[mutSchema.GetParentID()] = append(dbsWithDeletedSchemas[mutSchema.GetParentID()], mutSchema)
 	}
+	__antithesis_instrumentation__.Notify(11279)
 
-	// For each database that had a child schema deleted (regardless of whether
-	// the db was created in the restore job), if it wasn't deleted just now,
-	// delete the now-deleted child schema from its schema map.
-	//
-	// This cleanup must be done prior to dropping the database descriptors in the
-	// loop below so that we do not accidentally `b.Put` the descriptor with the
-	// modified schema slice after we have issued a `b.Del` to drop it.
 	for dbID, schemas := range dbsWithDeletedSchemas {
+		__antithesis_instrumentation__.Notify(11329)
 		log.Infof(ctx, "deleting %d schema entries from database %d", len(schemas), dbID)
 		desc, err := descsCol.GetMutableDescriptorByID(ctx, txn, dbID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11332)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11333)
 		}
+		__antithesis_instrumentation__.Notify(11330)
 		db := desc.(*dbdesc.Mutable)
 		for _, sc := range schemas {
+			__antithesis_instrumentation__.Notify(11334)
 			if schemaInfo, ok := db.Schemas[sc.GetName()]; !ok {
+				__antithesis_instrumentation__.Notify(11335)
 				log.Warningf(ctx, "unexpected missing schema entry for %s from db %d; skipping deletion",
 					sc.GetName(), dbID)
-			} else if schemaInfo.ID != sc.GetID() {
-				log.Warningf(ctx, "unexpected schema entry %d for %s from db %d, expecting %d; skipping deletion",
-					schemaInfo.ID, sc.GetName(), dbID, sc.GetID())
 			} else {
-				delete(db.Schemas, sc.GetName())
+				__antithesis_instrumentation__.Notify(11336)
+				if schemaInfo.ID != sc.GetID() {
+					__antithesis_instrumentation__.Notify(11337)
+					log.Warningf(ctx, "unexpected schema entry %d for %s from db %d, expecting %d; skipping deletion",
+						schemaInfo.ID, sc.GetName(), dbID, sc.GetID())
+				} else {
+					__antithesis_instrumentation__.Notify(11338)
+					delete(db.Schemas, sc.GetName())
+				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(11331)
 
 		if err := descsCol.WriteDescToBatch(
-			ctx, false /* kvTrace */, db, b,
+			ctx, false, db, b,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(11339)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11340)
 		}
 	}
+	__antithesis_instrumentation__.Notify(11280)
 
-	// Delete the database descriptors.
-	//
-	// This should be the last step in mutating the database descriptors to ensure
-	// that no batch requests are queued after the `b.Del` to delete the dropped
-	// database descriptor.
 	deletedDBs := make(map[descpb.ID]struct{})
 	for _, dbDesc := range details.DatabaseDescs {
+		__antithesis_instrumentation__.Notify(11341)
 
-		// We need to ignore descriptors we just added since we haven't committed the txn that deletes these.
 		isDBEmpty, err := isDatabaseEmpty(ctx, txn, dbDesc.GetID(), allDescs, ignoredChildDescIDs)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11347)
 			return errors.Wrapf(err, "checking if database %s is empty during restore cleanup", dbDesc.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(11348)
 		}
+		__antithesis_instrumentation__.Notify(11342)
 		if !isDBEmpty {
+			__antithesis_instrumentation__.Notify(11349)
 			log.Warningf(ctx, "preserving database %s on restore failure because it contains new child objects or schemas", dbDesc.GetName())
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(11350)
 		}
+		__antithesis_instrumentation__.Notify(11343)
 
 		db, err := descsCol.GetMutableDescriptorByID(ctx, txn, dbDesc.GetID())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11351)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11352)
 		}
+		__antithesis_instrumentation__.Notify(11344)
 
-		// Mark db as dropped and add uncommitted version to pass pre-txn
-		// descriptor validation.
 		db.SetDropped()
 		db.MaybeIncrementVersion()
 		if err := descsCol.AddUncommittedDescriptor(db); err != nil {
+			__antithesis_instrumentation__.Notify(11353)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11354)
 		}
+		__antithesis_instrumentation__.Notify(11345)
 
 		descKey := catalogkeys.MakeDescMetadataKey(codec, db.GetID())
 		b.Del(descKey)
 
-		// We have explicitly to delete the system.namespace entry for the public schema
-		// if the database does not have a public schema backed by a descriptor.
 		if !db.(catalog.DatabaseDescriptor).HasPublicSchemaWithDescriptor() {
+			__antithesis_instrumentation__.Notify(11355)
 			b.Del(catalogkeys.MakeSchemaNameKey(codec, db.GetID(), tree.PublicSchema))
+		} else {
+			__antithesis_instrumentation__.Notify(11356)
 		}
+		__antithesis_instrumentation__.Notify(11346)
 
 		nameKey := catalogkeys.MakeDatabaseNameKey(codec, db.GetName())
 		b.Del(nameKey)
 		descsCol.AddDeletedDescriptor(db.GetID())
 		deletedDBs[db.GetID()] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(11281)
 
-	// Avoid telling the descriptor collection about the mutated descriptors
-	// until after all relevant relations have been retrieved to avoid a
-	// scenario whereby we make a descriptor invalid too early.
 	const kvTrace = false
 	for _, t := range mutableTables {
+		__antithesis_instrumentation__.Notify(11357)
 		if err := descsCol.WriteDescToBatch(ctx, kvTrace, t, b); err != nil {
+			__antithesis_instrumentation__.Notify(11358)
 			return errors.Wrap(err, "writing dropping table to batch")
+		} else {
+			__antithesis_instrumentation__.Notify(11359)
 		}
 	}
+	__antithesis_instrumentation__.Notify(11282)
 
 	if err := txn.Run(ctx, b); err != nil {
+		__antithesis_instrumentation__.Notify(11360)
 		return errors.Wrap(err, "dropping tables created at the start of restore caused by fail/cancel")
+	} else {
+		__antithesis_instrumentation__.Notify(11361)
 	}
+	__antithesis_instrumentation__.Notify(11283)
 
 	return nil
 }
 
-// removeExistingTypeBackReferences removes back references from types that
-// exist in the cluster to tables restored. It is used when rolling back from
-// a failed restore.
 func (r *restoreResumer) removeExistingTypeBackReferences(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -2279,28 +3005,42 @@ func (r *restoreResumer) removeExistingTypeBackReferences(
 	restoredTables []*tabledesc.Mutable,
 	details *jobspb.RestoreDetails,
 ) error {
-	// We first collect the restored types to be addressable by ID.
+	__antithesis_instrumentation__.Notify(11362)
+
 	restoredTypes := make(map[descpb.ID]catalog.TypeDescriptor)
 	existingTypes := make(map[descpb.ID]*typedesc.Mutable)
 	for i := range details.TypeDescs {
+		__antithesis_instrumentation__.Notify(11366)
 		typ := details.TypeDescs[i]
 		restoredTypes[typ.ID] = typedesc.NewBuilder(typ).BuildImmutableType()
 	}
+	__antithesis_instrumentation__.Notify(11363)
 	for _, tbl := range restoredTables {
+		__antithesis_instrumentation__.Notify(11367)
 		lookup := func(id descpb.ID) (catalog.TypeDescriptor, error) {
-			// First see if the type was restored.
+			__antithesis_instrumentation__.Notify(11371)
+
 			restored, ok := restoredTypes[id]
 			if ok {
+				__antithesis_instrumentation__.Notify(11374)
 				return restored, nil
+			} else {
+				__antithesis_instrumentation__.Notify(11375)
 			}
-			// Finally, look it up using the transaction.
+			__antithesis_instrumentation__.Notify(11372)
+
 			typ, err := descsCol.GetMutableTypeVersionByID(ctx, txn, id)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(11376)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(11377)
 			}
+			__antithesis_instrumentation__.Notify(11373)
 			existingTypes[typ.GetID()] = typ
 			return typ, nil
 		}
+		__antithesis_instrumentation__.Notify(11368)
 
 		_, dbDesc, err := descsCol.GetImmutableDatabaseByID(
 			ctx, txn, tbl.GetParentID(), tree.DatabaseLookupFlags{
@@ -2309,40 +3049,62 @@ func (r *restoreResumer) removeExistingTypeBackReferences(
 				IncludeOffline: true,
 			})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11378)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11379)
 		}
+		__antithesis_instrumentation__.Notify(11369)
 
-		// Get all types that this descriptor references.
 		referencedTypes, _, err := tbl.GetAllReferencedTypeIDs(dbDesc, lookup)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11380)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11381)
 		}
+		__antithesis_instrumentation__.Notify(11370)
 
-		// For each type that is existing, remove the backreference from tbl.
 		for _, id := range referencedTypes {
+			__antithesis_instrumentation__.Notify(11382)
 			_, restored := restoredTypes[id]
 			if !restored {
+				__antithesis_instrumentation__.Notify(11383)
 				desc, err := lookup(id)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(11385)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(11386)
 				}
+				__antithesis_instrumentation__.Notify(11384)
 				existing := desc.(*typedesc.Mutable)
 				existing.MaybeIncrementVersion()
 				existing.RemoveReferencingDescriptorID(tbl.ID)
+			} else {
+				__antithesis_instrumentation__.Notify(11387)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(11364)
 
-	// Now write any changed existing types.
 	for _, typ := range existingTypes {
+		__antithesis_instrumentation__.Notify(11388)
 		if typ.IsUncommittedVersion() {
+			__antithesis_instrumentation__.Notify(11389)
 			if err := descsCol.WriteDescToBatch(
-				ctx, false /* kvTrace */, typ, b,
+				ctx, false, typ, b,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(11390)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11391)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11392)
 		}
 	}
+	__antithesis_instrumentation__.Notify(11365)
 
 	return nil
 }
@@ -2353,173 +3115,253 @@ type systemTableNameWithConfig struct {
 	config           systemBackupConfiguration
 }
 
-// Restore system.users from the backup into the restoring cluster. Only recreate users
-// which are in a backup of system.users but do not currently exist (ignoring those who do)
-// and re-grant roles for users if the backup has system.role_members.
 func (r *restoreResumer) restoreSystemUsers(
 	ctx context.Context, db *kv.DB, systemTables []catalog.TableDescriptor,
 ) error {
+	__antithesis_instrumentation__.Notify(11393)
 	executor := r.execCfg.InternalExecutor
 	return db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(11394)
 		selectNonExistentUsers := "SELECT * FROM crdb_temp_system.users temp " +
 			"WHERE NOT EXISTS (SELECT * FROM system.users u WHERE temp.username = u.username)"
 		users, err := executor.QueryBuffered(ctx, "get-users",
 			txn, selectNonExistentUsers)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11400)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11401)
 		}
+		__antithesis_instrumentation__.Notify(11395)
 
 		insertUser := `INSERT INTO system.users ("username", "hashedPassword", "isRole") VALUES ($1, $2, $3)`
 		newUsernames := make(map[string]bool)
 		for _, user := range users {
+			__antithesis_instrumentation__.Notify(11402)
 			newUsernames[user[0].String()] = true
 			if _, err = executor.Exec(ctx, "insert-non-existent-users", txn, insertUser,
 				user[0], user[1], user[2]); err != nil {
+				__antithesis_instrumentation__.Notify(11403)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11404)
 			}
 		}
+		__antithesis_instrumentation__.Notify(11396)
 
-		// We skip granting roles if the backup does not contain system.role_members.
 		if len(systemTables) == 1 {
+			__antithesis_instrumentation__.Notify(11405)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(11406)
 		}
+		__antithesis_instrumentation__.Notify(11397)
 
 		selectNonExistentRoleMembers := "SELECT * FROM crdb_temp_system.role_members temp_rm WHERE " +
 			"NOT EXISTS (SELECT * FROM system.role_members rm WHERE temp_rm.role = rm.role AND temp_rm.member = rm.member)"
 		roleMembers, err := executor.QueryBuffered(ctx, "get-role-members",
 			txn, selectNonExistentRoleMembers)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(11407)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11408)
 		}
+		__antithesis_instrumentation__.Notify(11398)
 
 		insertRoleMember := `INSERT INTO system.role_members ("role", "member", "isAdmin") VALUES ($1, $2, $3)`
 		for _, roleMember := range roleMembers {
-			// Only grant roles to users that don't currently exist, i.e., new users we just added
+			__antithesis_instrumentation__.Notify(11409)
+
 			if _, ok := newUsernames[roleMember[1].String()]; ok {
+				__antithesis_instrumentation__.Notify(11410)
 				if _, err = executor.Exec(ctx, "insert-non-existent-role-members", txn, insertRoleMember,
 					roleMember[0], roleMember[1], roleMember[2]); err != nil {
+					__antithesis_instrumentation__.Notify(11411)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(11412)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(11413)
 			}
 		}
+		__antithesis_instrumentation__.Notify(11399)
 		return nil
 	})
 }
 
-// restoreSystemTables atomically replaces the contents of the system tables
-// with the data from the restored system tables.
 func (r *restoreResumer) restoreSystemTables(
 	ctx context.Context, db *kv.DB, tables []catalog.TableDescriptor,
 ) error {
+	__antithesis_instrumentation__.Notify(11414)
 	details := r.job.Details().(jobspb.RestoreDetails)
 	if details.SystemTablesMigrated == nil {
+		__antithesis_instrumentation__.Notify(11419)
 		details.SystemTablesMigrated = make(map[string]bool)
+	} else {
+		__antithesis_instrumentation__.Notify(11420)
 	}
+	__antithesis_instrumentation__.Notify(11415)
 	tempSystemDBID := tempSystemDatabaseID(details)
 
-	// Iterate through all the tables that we're restoring, and if it was restored
-	// to the temporary system DB then populate the metadata required to restore
-	// to the real system table.
 	systemTablesToRestore := make([]systemTableNameWithConfig, 0)
 	for _, table := range tables {
+		__antithesis_instrumentation__.Notify(11421)
 		if table.GetParentID() != tempSystemDBID {
+			__antithesis_instrumentation__.Notify(11424)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(11425)
 		}
+		__antithesis_instrumentation__.Notify(11422)
 		systemTableName := table.GetName()
 		stagingTableName := restoreTempSystemDB + "." + systemTableName
 
 		config, ok := systemTableBackupConfiguration[systemTableName]
 		if !ok {
+			__antithesis_instrumentation__.Notify(11426)
 			log.Warningf(ctx, "no configuration specified for table %s... skipping restoration",
 				systemTableName)
+		} else {
+			__antithesis_instrumentation__.Notify(11427)
 		}
+		__antithesis_instrumentation__.Notify(11423)
 		systemTablesToRestore = append(systemTablesToRestore, systemTableNameWithConfig{
 			systemTableName:  systemTableName,
 			stagingTableName: stagingTableName,
 			config:           config,
 		})
 	}
+	__antithesis_instrumentation__.Notify(11416)
 
-	// Sort the system tables to be restored based on the order specified in the
-	// configuration.
 	sort.SliceStable(systemTablesToRestore, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(11428)
 		return systemTablesToRestore[i].config.restoreInOrder < systemTablesToRestore[j].config.restoreInOrder
 	})
+	__antithesis_instrumentation__.Notify(11417)
 
-	// Copy the data from the temporary system DB to the real system table.
 	for _, systemTable := range systemTablesToRestore {
+		__antithesis_instrumentation__.Notify(11429)
 		if systemTable.config.migrationFunc != nil {
+			__antithesis_instrumentation__.Notify(11432)
 			if details.SystemTablesMigrated[systemTable.systemTableName] {
+				__antithesis_instrumentation__.Notify(11434)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(11435)
 			}
+			__antithesis_instrumentation__.Notify(11433)
 
 			if err := db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+				__antithesis_instrumentation__.Notify(11436)
 				if err := systemTable.config.migrationFunc(ctx, r.execCfg, txn,
 					systemTable.stagingTableName); err != nil {
+					__antithesis_instrumentation__.Notify(11438)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(11439)
 				}
+				__antithesis_instrumentation__.Notify(11437)
 
-				// Keep track of which system tables we've migrated so that future job
-				// restarts don't try to import data over our migrated data. This would
-				// fail since the restored data would shadow the migrated keys.
 				details.SystemTablesMigrated[systemTable.systemTableName] = true
 				return r.job.SetDetails(ctx, txn, details)
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(11440)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11441)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11442)
 		}
+		__antithesis_instrumentation__.Notify(11430)
 
 		if err := db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(11443)
 			txn.SetDebugName("system-restore-txn")
 
 			restoreFunc := defaultSystemTableRestoreFunc
 			if systemTable.config.customRestoreFunc != nil {
+				__antithesis_instrumentation__.Notify(11446)
 				restoreFunc = systemTable.config.customRestoreFunc
 				log.Eventf(ctx, "using custom restore function for table %s", systemTable.systemTableName)
+			} else {
+				__antithesis_instrumentation__.Notify(11447)
 			}
+			__antithesis_instrumentation__.Notify(11444)
 
 			log.Eventf(ctx, "restoring system table %s", systemTable.systemTableName)
 			err := restoreFunc(ctx, r.execCfg, txn, systemTable.systemTableName, systemTable.stagingTableName)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(11448)
 				return errors.Wrapf(err, "restoring system table %s", systemTable.systemTableName)
+			} else {
+				__antithesis_instrumentation__.Notify(11449)
 			}
+			__antithesis_instrumentation__.Notify(11445)
 			return nil
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(11450)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(11451)
 		}
+		__antithesis_instrumentation__.Notify(11431)
 
 		if fn := r.testingKnobs.duringSystemTableRestoration; fn != nil {
+			__antithesis_instrumentation__.Notify(11452)
 			if err := fn(systemTable.systemTableName); err != nil {
+				__antithesis_instrumentation__.Notify(11453)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(11454)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(11455)
 		}
 	}
+	__antithesis_instrumentation__.Notify(11418)
 
 	return nil
 }
 
 func (r *restoreResumer) cleanupTempSystemTables(ctx context.Context, txn *kv.Txn) error {
+	__antithesis_instrumentation__.Notify(11456)
 	executor := r.execCfg.InternalExecutor
-	// Check if the temp system database has already been dropped. This can happen
-	// if the restore job fails after the system database has cleaned up.
-	checkIfDatabaseExists := "SELECT database_name FROM [SHOW DATABASES] WHERE database_name=$1"
-	if row, err := executor.QueryRow(ctx, "checking-for-temp-system-db" /* opName */, txn, checkIfDatabaseExists, restoreTempSystemDB); err != nil {
-		return errors.Wrap(err, "checking for temporary system db")
-	} else if row == nil {
-		// Temporary system DB might already have been dropped by the restore job.
-		return nil
-	}
 
-	// After restoring the system tables, drop the temporary database holding the
-	// system tables.
+	checkIfDatabaseExists := "SELECT database_name FROM [SHOW DATABASES] WHERE database_name=$1"
+	if row, err := executor.QueryRow(ctx, "checking-for-temp-system-db", txn, checkIfDatabaseExists, restoreTempSystemDB); err != nil {
+		__antithesis_instrumentation__.Notify(11460)
+		return errors.Wrap(err, "checking for temporary system db")
+	} else {
+		__antithesis_instrumentation__.Notify(11461)
+		if row == nil {
+			__antithesis_instrumentation__.Notify(11462)
+
+			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(11463)
+		}
+	}
+	__antithesis_instrumentation__.Notify(11457)
+
 	gcTTLQuery := fmt.Sprintf("ALTER DATABASE %s CONFIGURE ZONE USING gc.ttlseconds=1", restoreTempSystemDB)
-	if _, err := executor.Exec(ctx, "altering-gc-ttl-temp-system" /* opName */, txn, gcTTLQuery); err != nil {
+	if _, err := executor.Exec(ctx, "altering-gc-ttl-temp-system", txn, gcTTLQuery); err != nil {
+		__antithesis_instrumentation__.Notify(11464)
 		log.Errorf(ctx, "failed to update the GC TTL of %q: %+v", restoreTempSystemDB, err)
+	} else {
+		__antithesis_instrumentation__.Notify(11465)
 	}
+	__antithesis_instrumentation__.Notify(11458)
 	dropTableQuery := fmt.Sprintf("DROP DATABASE %s CASCADE", restoreTempSystemDB)
-	if _, err := executor.Exec(ctx, "drop-temp-system-db" /* opName */, txn, dropTableQuery); err != nil {
+	if _, err := executor.Exec(ctx, "drop-temp-system-db", txn, dropTableQuery); err != nil {
+		__antithesis_instrumentation__.Notify(11466)
 		return errors.Wrap(err, "dropping temporary system db")
+	} else {
+		__antithesis_instrumentation__.Notify(11467)
 	}
+	__antithesis_instrumentation__.Notify(11459)
 	return nil
 }
 

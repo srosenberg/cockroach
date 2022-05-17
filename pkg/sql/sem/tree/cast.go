@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -39,122 +31,62 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// CastContext represents the contexts in which a cast can be performed. There
-// are three types of cast contexts: explicit, assignment, and implicit. Not all
-// casts can be performed in all contexts. See the description of each context
-// below for more details.
-//
-// The concept of cast contexts is taken directly from Postgres's cast behavior.
-// More information can be found in the Postgres documentation on type
-// conversion: https://www.postgresql.org/docs/current/typeconv.html
 type CastContext uint8
 
 const (
 	_ CastContext = iota
-	// CastContextExplicit is a cast performed explicitly with the syntax
-	// CAST(x AS T) or x::T.
+
 	CastContextExplicit
-	// CastContextAssignment is a cast implicitly performed during an INSERT,
-	// UPSERT, or UPDATE statement.
+
 	CastContextAssignment
-	// CastContextImplicit is a cast performed implicitly. For example, the DATE
-	// below is implicitly cast to a TIMESTAMPTZ so that the values can be
-	// compared.
-	//
-	//   SELECT '2021-01-10'::DATE < now()
-	//
+
 	CastContextImplicit
 )
 
-// String returns the representation of CastContext as a string.
 func (cc CastContext) String() string {
+	__antithesis_instrumentation__.Notify(603603)
 	switch cc {
 	case CastContextExplicit:
+		__antithesis_instrumentation__.Notify(603604)
 		return "explicit"
 	case CastContextAssignment:
+		__antithesis_instrumentation__.Notify(603605)
 		return "assignment"
 	case CastContextImplicit:
+		__antithesis_instrumentation__.Notify(603606)
 		return "implicit"
 	default:
+		__antithesis_instrumentation__.Notify(603607)
 		return "invalid"
 	}
 }
 
-// contextOrigin indicates the source of information for a cast's maximum
-// context (see cast.maxContext below). It is only used to annotate entries in
-// castMap and to perform assertions on cast entries in the init function. It
-// has no effect on the behavior of a cast.
 type contextOrigin uint8
 
 const (
 	_ contextOrigin = iota
-	// contextOriginPgCast specifies that a cast's maximum context is based on
-	// information in Postgres's pg_cast table.
+
 	contextOriginPgCast
-	// contextOriginAutomaticIOConversion specifies that a cast's maximum
-	// context is not included in Postgres's pg_cast table. In Postgres's
-	// internals, these casts are evaluated by each data type's input and output
-	// functions.
-	//
-	// Automatic casts can only convert to or from string types [1]. Conversions
-	// to string types are assignment casts and conversions from string types
-	// are explicit casts [2]. These rules are asserted in the init function.
-	//
-	// [1] https://www.postgresql.org/docs/13/catalog-pg-cast.html#CATALOG-PG-CAST
-	// [2] https://www.postgresql.org/docs/13/sql-createcast.html#SQL-CREATECAST-NOTES
+
 	contextOriginAutomaticIOConversion
-	// contextOriginLegacyConversion is used for casts that are not supported by
-	// Postgres, but are supported by CockroachDB and continue to be supported
-	// for backwards compatibility.
+
 	contextOriginLegacyConversion
 )
 
-// cast includes details about a cast from one OID to another.
-// TODO(mgartner, otan): Move PerformCast logic to this struct.
 type cast struct {
-	// maxContext is the maximum context in which the cast is allowed. A cast
-	// can only be performed in a context that is at or below the specified
-	// maximum context.
-	//
-	// CastContextExplicit casts can only be performed in an explicit context.
-	//
-	// CastContextAssignment casts can be performed in an explicit context or in
-	// an assignment context in an INSERT, UPSERT, or UPDATE statement.
-	//
-	// CastContextImplicit casts can be performed in any context.
 	maxContext CastContext
-	// origin is the source of truth for the cast's context. It is used to
-	// annotate entries in castMap and to perform assertions on cast entries in
-	// the init function. It has no effect on the behavior of a cast.
+
 	origin contextOrigin
-	// volatility indicates whether the result of the cast is dependent only on
-	// the source value, or dependent on outside factors (such as parameter
-	// variables or table contents).
+
 	volatility Volatility
-	// volatilityHint is an optional string for VolatilityStable casts. When
-	// set, it is used as an error hint suggesting a possible workaround when
-	// stable casts are not allowed.
+
 	volatilityHint string
-	// intervalStyleAffected is true if the cast is a stable cast when
-	// SemaContext.IntervalStyleEnabled is true, and an immutable cast
-	// otherwise.
+
 	intervalStyleAffected bool
-	// dateStyleAffected is true if the cast is a stable cast when
-	// SemaContext.DateStyleEnabled is true, and an immutable cast otherwise.
+
 	dateStyleAffected bool
 }
 
-// castMap defines valid casts. It maps from a source OID to a target OID to a
-// cast struct that contains information about the cast. Some possible casts,
-// such as casts from the UNKNOWN type and casts from a type to the identical
-// type, are not defined in the castMap and are instead codified in ValidCast.
-//
-// Validation is performed on the map in init().
-//
-// Entries with a contextOriginPgCast origin were automatically generated by the
-// cast_map_gen.sh script. The script outputs some types that we do not support.
-// Those types were manually deleted. Entries with
-// contextOriginAutomaticIOConversion origin were manually added.
 var castMap = map[oid.Oid]map[oid.Oid]cast{
 	oid.T_bit: {
 		oid.T_bit:    {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
@@ -162,7 +94,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_int4:   {maxContext: CastContextExplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_int8:   {maxContext: CastContextExplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_varbit: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -179,13 +111,13 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_numeric: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_text:    {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_char: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 	},
 	oidext.T_box2d: {
 		oidext.T_geometry: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -198,7 +130,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_name:    {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_text:    {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_varchar: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions from bpchar to other types.
+
 		oid.T_bit:      {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_bool:     {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oidext.T_box2d: {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -221,7 +153,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_interval: {
 			maxContext: CastContextExplicit,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility:            VolatilityImmutable,
 			volatilityHint:        "CHAR to INTERVAL casts depend on session IntervalStyle; use parse_interval(string) instead",
 			intervalStyleAffected: true,
@@ -271,9 +203,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oidext.T_geography: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oidext.T_geometry:  {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_uuid:         {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
-		// Casts from BYTEA to string types are stable, since they depend on
-		// the bytea_output session variable.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
@@ -285,9 +215,9 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_int4:    {maxContext: CastContextExplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_text:    {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_name: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
-		// Automatic I/O conversions from "char" to other types.
+
 		oid.T_bit:      {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_bool:     {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oidext.T_box2d: {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -309,7 +239,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_interval: {
 			maxContext: CastContextExplicit,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility:            VolatilityImmutable,
 			volatilityHint:        `"char" to INTERVAL casts depend on session IntervalStyle; use parse_interval(string) instead`,
 			intervalStyleAffected: true,
@@ -364,11 +294,11 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_numeric:     {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_timestamp:   {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_timestamptz: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityStable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility: VolatilityImmutable,
 			volatilityHint: "DATE to CHAR casts are dependent on DateStyle; consider " +
 				"using to_char(date) instead.",
@@ -377,7 +307,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_char: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility: VolatilityImmutable,
 			volatilityHint: `DATE to "char" casts are dependent on DateStyle; consider ` +
 				"using to_char(date) instead.",
@@ -386,7 +316,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_name: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility: VolatilityImmutable,
 			volatilityHint: "DATE to NAME casts are dependent on DateStyle; consider " +
 				"using to_char(date) instead.",
@@ -395,7 +325,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_text: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility: VolatilityImmutable,
 			volatilityHint: "DATE to STRING casts are dependent on DateStyle; consider " +
 				"using to_char(date) instead.",
@@ -404,7 +334,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_varchar: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility: VolatilityImmutable,
 			volatilityHint: "DATE to VARCHAR casts are dependent on DateStyle; consider " +
 				"using to_char(date) instead.",
@@ -419,9 +349,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_int8:     {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_interval: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_numeric:  {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
-		// Casts from FLOAT4 to string types are stable, since they depend on the
-		// extra_float_digits session variable.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
@@ -436,9 +364,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_int8:     {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_interval: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_numeric:  {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
-		// Casts from FLOAT8 to string types are stable, since they depend on the
-		// extra_float_digits session variable.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
@@ -450,7 +376,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oidext.T_geography: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oidext.T_geometry:  {maxContext: CastContextExplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_jsonb:        {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -464,7 +390,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oidext.T_geometry:  {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_jsonb:        {maxContext: CastContextExplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_text:         {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -474,7 +400,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_text:    {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_char: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 	},
@@ -498,7 +424,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_timestamp:    {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_timestamptz:  {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_varbit:       {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -526,7 +452,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_timestamp:    {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_timestamptz:  {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_varbit:       {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_text:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -552,7 +478,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_timestamp:    {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_timestamptz:  {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_varbit:       {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -568,7 +494,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_interval: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_numeric:  {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_time:     {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar: {
 			maxContext:            CastContextAssignment,
 			origin:                contextOriginAutomaticIOConversion,
@@ -615,7 +541,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_int4:         {maxContext: CastContextExplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_int8:         {maxContext: CastContextExplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_numeric:      {maxContext: CastContextExplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -626,9 +552,9 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_text:    {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_char: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
-		// Automatic I/O conversions from NAME to other types.
+
 		oid.T_bit:      {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_bool:     {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oidext.T_box2d: {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -651,7 +577,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_interval: {
 			maxContext: CastContextExplicit,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility:            VolatilityImmutable,
 			volatilityHint:        "NAME to INTERVAL casts depend on session IntervalStyle; use parse_interval(string) instead",
 			intervalStyleAffected: true,
@@ -706,7 +632,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_int8:     {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_interval: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_numeric:  {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -714,7 +640,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 	},
 	oid.T_oid: {
-		// TODO(mgartner): Casts to INT2 should not be allowed.
+
 		oid.T_int2:         {maxContext: CastContextAssignment, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_int4:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_int8:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
@@ -724,7 +650,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_regprocedure: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_regrole:      {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_regtype:      {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -732,7 +658,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 	},
 	oid.T_record: {
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
@@ -740,7 +666,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 	},
 	oid.T_regclass: {
-		// TODO(mgartner): Casts to INT2 should not be allowed.
+
 		oid.T_int2:         {maxContext: CastContextAssignment, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_int4:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_int8:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
@@ -750,7 +676,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_regprocedure: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regrole:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regtype:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
@@ -758,7 +684,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 	},
 	oid.T_regnamespace: {
-		// TODO(mgartner): Casts to INT2 should not be allowed.
+
 		oid.T_int2:         {maxContext: CastContextAssignment, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_int4:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_int8:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
@@ -768,7 +694,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_regprocedure: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regrole:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regtype:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
@@ -776,7 +702,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 	},
 	oid.T_regproc: {
-		// TODO(mgartner): Casts to INT2 should not be allowed.
+
 		oid.T_int2:         {maxContext: CastContextAssignment, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_int4:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_int8:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
@@ -786,7 +712,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_regnamespace: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regrole:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regtype:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
@@ -794,7 +720,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 	},
 	oid.T_regprocedure: {
-		// TODO(mgartner): Casts to INT2 should not be allowed.
+
 		oid.T_int2:         {maxContext: CastContextAssignment, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_int4:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_int8:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
@@ -804,7 +730,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_regnamespace: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regrole:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regtype:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
@@ -812,7 +738,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 	},
 	oid.T_regrole: {
-		// TODO(mgartner): Casts to INT2 should not be allowed.
+
 		oid.T_int2:         {maxContext: CastContextAssignment, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_int4:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_int8:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
@@ -822,7 +748,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_regproc:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regprocedure: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regtype:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
@@ -830,7 +756,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_varchar: {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 	},
 	oid.T_regtype: {
-		// TODO(mgartner): Casts to INT2 should not be allowed.
+
 		oid.T_int2:         {maxContext: CastContextAssignment, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_int4:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_int8:         {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
@@ -840,7 +766,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_regproc:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regprocedure: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
 		oid.T_regrole:      {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityStable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityStable},
@@ -853,20 +779,10 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oidext.T_geometry: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_name:        {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_regclass:    {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityStable},
-		// We include a TEXT->TEXT entry to mimic the VARCHAR->VARCHAR entry
-		// that is included in the pg_cast table. Postgres doesn't include a
-		// TEXT->TEXT entry because it does not allow width-limited TEXT types,
-		// so a cast from TEXT->TEXT is always a trivial no-op because the types
-		// are always identical (see ValidCast). Because we support
-		// width-limited TEXT types with STRING(n), it is possible to have
-		// non-identical TEXT types. So, we must include a TEXT->TEXT entry so
-		// that casts from STRING(n)->STRING(m) are valid.
-		//
-		// TODO(#72980): If we use the VARCHAR OID for STRING(n) types rather
-		// then the TEXT OID, and we can remove this entry.
+
 		oid.T_text:    {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_varchar: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions from TEXT to other types.
+
 		oid.T_bit:      {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_bool:     {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oidext.T_box2d: {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -888,7 +804,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_interval: {
 			maxContext: CastContextExplicit,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility:            VolatilityImmutable,
 			volatilityHint:        "STRING to INTERVAL casts depend on session IntervalStyle; use parse_interval(string) instead",
 			intervalStyleAffected: true,
@@ -937,7 +853,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_interval: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_time:     {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_timetz:   {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityStable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -955,11 +871,11 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_time:        {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_timestamp:   {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_timestamptz: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityStable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility: VolatilityImmutable,
 			volatilityHint: "TIMESTAMP to CHAR casts are dependent on DateStyle; consider " +
 				"using to_char(timestamp) instead.",
@@ -968,7 +884,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_char: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility: VolatilityImmutable,
 			volatilityHint: `TIMESTAMP to "char" casts are dependent on DateStyle; consider ` +
 				"using to_char(timestamp) instead.",
@@ -977,7 +893,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_name: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility: VolatilityImmutable,
 			volatilityHint: "TIMESTAMP to NAME casts are dependent on DateStyle; consider " +
 				"using to_char(timestamp) instead.",
@@ -986,7 +902,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_text: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility: VolatilityImmutable,
 			volatilityHint: "TIMESTAMP to STRING casts are dependent on DateStyle; consider " +
 				"using to_char(timestamp) instead.",
@@ -995,7 +911,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_varchar: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility: VolatilityImmutable,
 			volatilityHint: "TIMESTAMP to VARCHAR casts are dependent on DateStyle; consider " +
 				"using to_char(timestamp) instead.",
@@ -1019,7 +935,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		},
 		oid.T_timestamptz: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_timetz:      {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityStable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar: {
 			maxContext: CastContextAssignment,
 			origin:     contextOriginAutomaticIOConversion,
@@ -1059,7 +975,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 	oid.T_timetz: {
 		oid.T_time:   {maxContext: CastContextAssignment, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_timetz: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -1068,7 +984,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 	},
 	oid.T_uuid: {
 		oid.T_bytea: {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -1081,7 +997,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_int4:   {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_int8:   {maxContext: CastContextExplicit, origin: contextOriginLegacyConversion, volatility: VolatilityImmutable},
 		oid.T_varbit: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions to string types.
+
 		oid.T_bpchar:  {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_char:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_name:    {maxContext: CastContextAssignment, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -1095,7 +1011,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_regclass: {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityStable},
 		oid.T_text:     {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
 		oid.T_varchar:  {maxContext: CastContextImplicit, origin: contextOriginPgCast, volatility: VolatilityImmutable},
-		// Automatic I/O conversions from VARCHAR to other types.
+
 		oid.T_bit:      {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oid.T_bool:     {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
 		oidext.T_box2d: {maxContext: CastContextExplicit, origin: contextOriginAutomaticIOConversion, volatility: VolatilityImmutable},
@@ -1118,7 +1034,7 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 		oid.T_interval: {
 			maxContext: CastContextExplicit,
 			origin:     contextOriginAutomaticIOConversion,
-			// TODO(mgartner): This should be stable.
+
 			volatility:            VolatilityImmutable,
 			volatilityHint:        "VARCHAR to INTERVAL casts depend on session IntervalStyle; use parse_interval(string) instead",
 			intervalStyleAffected: true,
@@ -1172,7 +1088,6 @@ var castMap = map[oid.Oid]map[oid.Oid]cast{
 	},
 }
 
-// init performs sanity checks on castMap.
 func init() {
 	var stringTypes = [...]oid.Oid{
 		oid.T_bpchar,
@@ -1197,7 +1112,6 @@ func init() {
 		panic(errors.AssertionFailedf("no type name for oid %d", o))
 	}
 
-	// Assert that there is a cast to and from every string type.
 	for _, strType := range stringTypes {
 		for otherType := range castMap {
 			if strType == otherType {
@@ -1214,13 +1128,11 @@ func init() {
 		}
 	}
 
-	// Assert that each cast is valid.
 	for src, tgts := range castMap {
 		for tgt, ent := range tgts {
 			srcStr := typeName(src)
 			tgtStr := typeName(tgt)
 
-			// Assert that maxContext, method, and origin have been set.
 			if ent.maxContext == CastContext(0) {
 				panic(errors.AssertionFailedf("cast from %s to %s has no maxContext set", srcStr, tgtStr))
 			}
@@ -1228,7 +1140,6 @@ func init() {
 				panic(errors.AssertionFailedf("cast from %s to %s has no origin set", srcStr, tgtStr))
 			}
 
-			// Casts from a type to the same type should be implicit.
 			if src == tgt {
 				if ent.maxContext != CastContextImplicit {
 					panic(errors.AssertionFailedf(
@@ -1238,7 +1149,6 @@ func init() {
 				}
 			}
 
-			// Automatic I/O conversions to string types are assignment casts.
 			if isStringType(tgt) && ent.origin == contextOriginAutomaticIOConversion &&
 				ent.maxContext != CastContextAssignment {
 				panic(errors.AssertionFailedf(
@@ -1247,7 +1157,6 @@ func init() {
 				))
 			}
 
-			// Automatic I/O conversions from string types are explicit casts.
 			if isStringType(src) && !isStringType(tgt) && ent.origin == contextOriginAutomaticIOConversion &&
 				ent.maxContext != CastContextExplicit {
 				panic(errors.AssertionFailedf(
@@ -1259,703 +1168,1090 @@ func init() {
 	}
 }
 
-// ForEachCast calls fn for every valid cast from a source type to a target
-// type.
 func ForEachCast(fn func(src, tgt oid.Oid)) {
+	__antithesis_instrumentation__.Notify(603608)
 	for src, tgts := range castMap {
+		__antithesis_instrumentation__.Notify(603609)
 		for tgt := range tgts {
+			__antithesis_instrumentation__.Notify(603610)
 			fn(src, tgt)
 		}
 	}
 }
 
-// ValidCast returns true if a valid cast exists from src to tgt in the given
-// context.
 func ValidCast(src, tgt *types.T, ctx CastContext) bool {
+	__antithesis_instrumentation__.Notify(603611)
 	srcFamily := src.Family()
 	tgtFamily := tgt.Family()
 
-	// If src and tgt are array types, check for a valid cast between their
-	// content types.
-	if srcFamily == types.ArrayFamily && tgtFamily == types.ArrayFamily {
+	if srcFamily == types.ArrayFamily && func() bool {
+		__antithesis_instrumentation__.Notify(603615)
+		return tgtFamily == types.ArrayFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(603616)
 		return ValidCast(src.ArrayContents(), tgt.ArrayContents(), ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(603617)
 	}
+	__antithesis_instrumentation__.Notify(603612)
 
-	// If src and tgt are tuple types, check for a valid cast between each
-	// corresponding tuple element.
-	//
-	// Casts from a tuple type to AnyTuple are a no-op so they are always valid.
-	// If tgt is AnyTuple, we continue to lookupCast below which contains a
-	// special case for these casts.
-	if srcFamily == types.TupleFamily && tgtFamily == types.TupleFamily && tgt != types.AnyTuple {
+	if srcFamily == types.TupleFamily && func() bool {
+		__antithesis_instrumentation__.Notify(603618)
+		return tgtFamily == types.TupleFamily == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(603619)
+		return tgt != types.AnyTuple == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(603620)
 		srcTypes := src.TupleContents()
 		tgtTypes := tgt.TupleContents()
-		// The tuple types must have the same number of elements.
+
 		if len(srcTypes) != len(tgtTypes) {
+			__antithesis_instrumentation__.Notify(603623)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(603624)
 		}
+		__antithesis_instrumentation__.Notify(603621)
 		for i := range srcTypes {
+			__antithesis_instrumentation__.Notify(603625)
 			if ok := ValidCast(srcTypes[i], tgtTypes[i], ctx); !ok {
+				__antithesis_instrumentation__.Notify(603626)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(603627)
 			}
 		}
+		__antithesis_instrumentation__.Notify(603622)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(603628)
 	}
+	__antithesis_instrumentation__.Notify(603613)
 
-	// If src and tgt are not both array or tuple types, check castMap for a
-	// valid cast.
-	c, ok := lookupCast(src, tgt, false /* intervalStyleEnabled */, false /* dateStyleEnabled */)
+	c, ok := lookupCast(src, tgt, false, false)
 	if ok {
+		__antithesis_instrumentation__.Notify(603629)
 		return c.maxContext >= ctx
+	} else {
+		__antithesis_instrumentation__.Notify(603630)
 	}
+	__antithesis_instrumentation__.Notify(603614)
 
 	return false
 }
 
-// lookupCast returns a cast that describes the cast from src to tgt if it
-// exists. If it does not exist, ok=false is returned.
 func lookupCast(src, tgt *types.T, intervalStyleEnabled, dateStyleEnabled bool) (cast, bool) {
+	__antithesis_instrumentation__.Notify(603631)
 	srcFamily := src.Family()
 	tgtFamily := tgt.Family()
 	srcFamily.Name()
 
-	// Unknown is the type given to an expression that statically evaluates
-	// to NULL. NULL can be immutably cast to any type in any context.
 	if srcFamily == types.UnknownFamily {
+		__antithesis_instrumentation__.Notify(603641)
 		return cast{
 			maxContext: CastContextImplicit,
 			volatility: VolatilityImmutable,
 		}, true
+	} else {
+		__antithesis_instrumentation__.Notify(603642)
 	}
+	__antithesis_instrumentation__.Notify(603632)
 
-	// Enums have dynamic OIDs, so they can't be populated in castMap. Instead,
-	// we dynamically create cast structs for valid enum casts.
-	if srcFamily == types.EnumFamily && tgtFamily == types.StringFamily {
-		// Casts from enum types to strings are immutable and allowed in
-		// assignment contexts.
+	if srcFamily == types.EnumFamily && func() bool {
+		__antithesis_instrumentation__.Notify(603643)
+		return tgtFamily == types.StringFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(603644)
+
 		return cast{
 			maxContext: CastContextAssignment,
 			volatility: VolatilityImmutable,
 		}, true
+	} else {
+		__antithesis_instrumentation__.Notify(603645)
 	}
+	__antithesis_instrumentation__.Notify(603633)
 	if tgtFamily == types.EnumFamily {
+		__antithesis_instrumentation__.Notify(603646)
 		switch srcFamily {
 		case types.StringFamily:
-			// Casts from string types to enums are immutable and allowed in
-			// explicit contexts.
+			__antithesis_instrumentation__.Notify(603647)
+
 			return cast{
 				maxContext: CastContextExplicit,
 				volatility: VolatilityImmutable,
 			}, true
 		case types.UnknownFamily:
-			// Casts from unknown to enums are immutable and allowed in implicit
-			// contexts.
+			__antithesis_instrumentation__.Notify(603648)
+
 			return cast{
 				maxContext: CastContextImplicit,
 				volatility: VolatilityImmutable,
 			}, true
+		default:
+			__antithesis_instrumentation__.Notify(603649)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(603650)
 	}
+	__antithesis_instrumentation__.Notify(603634)
 
-	// Casts from array types to string types are stable and allowed in
-	// assignment contexts.
-	if srcFamily == types.ArrayFamily && tgtFamily == types.StringFamily {
+	if srcFamily == types.ArrayFamily && func() bool {
+		__antithesis_instrumentation__.Notify(603651)
+		return tgtFamily == types.StringFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(603652)
 		return cast{
 			maxContext: CastContextAssignment,
 			volatility: VolatilityStable,
 		}, true
+	} else {
+		__antithesis_instrumentation__.Notify(603653)
 	}
+	__antithesis_instrumentation__.Notify(603635)
 
-	// Casts from array and tuple types to string types are immutable and
-	// allowed in assignment contexts.
-	// TODO(mgartner): Tuple to string casts should be stable. They are
-	// immutable to avoid backward incompatibility with previous versions, but
-	// this is incorrect and can causes corrupt indexes, corrupt tables, and
-	// incorrect query results.
-	if srcFamily == types.TupleFamily && tgtFamily == types.StringFamily {
+	if srcFamily == types.TupleFamily && func() bool {
+		__antithesis_instrumentation__.Notify(603654)
+		return tgtFamily == types.StringFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(603655)
 		return cast{
 			maxContext: CastContextAssignment,
 			volatility: VolatilityImmutable,
 		}, true
+	} else {
+		__antithesis_instrumentation__.Notify(603656)
 	}
+	__antithesis_instrumentation__.Notify(603636)
 
-	// Casts from any tuple type to AnyTuple are no-ops, so they are implicit
-	// and immutable.
-	if srcFamily == types.TupleFamily && tgt == types.AnyTuple {
+	if srcFamily == types.TupleFamily && func() bool {
+		__antithesis_instrumentation__.Notify(603657)
+		return tgt == types.AnyTuple == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(603658)
 		return cast{
 			maxContext: CastContextImplicit,
 			volatility: VolatilityImmutable,
 		}, true
+	} else {
+		__antithesis_instrumentation__.Notify(603659)
 	}
+	__antithesis_instrumentation__.Notify(603637)
 
-	// Casts from string types to array and tuple types are stable and allowed
-	// in explicit contexts.
-	if srcFamily == types.StringFamily &&
-		(tgtFamily == types.ArrayFamily || tgtFamily == types.TupleFamily) {
+	if srcFamily == types.StringFamily && func() bool {
+		__antithesis_instrumentation__.Notify(603660)
+		return (tgtFamily == types.ArrayFamily || func() bool {
+			__antithesis_instrumentation__.Notify(603661)
+			return tgtFamily == types.TupleFamily == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(603662)
 		return cast{
 			maxContext: CastContextExplicit,
 			volatility: VolatilityStable,
 		}, true
+	} else {
+		__antithesis_instrumentation__.Notify(603663)
 	}
+	__antithesis_instrumentation__.Notify(603638)
 
 	if tgts, ok := castMap[src.Oid()]; ok {
+		__antithesis_instrumentation__.Notify(603664)
 		if c, ok := tgts[tgt.Oid()]; ok {
-			if intervalStyleEnabled && c.intervalStyleAffected ||
-				dateStyleEnabled && c.dateStyleAffected {
+			__antithesis_instrumentation__.Notify(603665)
+			if intervalStyleEnabled && func() bool {
+				__antithesis_instrumentation__.Notify(603667)
+				return c.intervalStyleAffected == true
+			}() == true || func() bool {
+				__antithesis_instrumentation__.Notify(603668)
+				return (dateStyleEnabled && func() bool {
+					__antithesis_instrumentation__.Notify(603669)
+					return c.dateStyleAffected == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(603670)
 				c.volatility = VolatilityStable
+			} else {
+				__antithesis_instrumentation__.Notify(603671)
 			}
+			__antithesis_instrumentation__.Notify(603666)
 			return c, true
+		} else {
+			__antithesis_instrumentation__.Notify(603672)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(603673)
 	}
+	__antithesis_instrumentation__.Notify(603639)
 
-	// If src and tgt are the same type, the immutable cast is valid in any
-	// context. This logic is intentionally after the lookup into castMap so
-	// that entries in castMap are preferred.
 	if src.Oid() == tgt.Oid() {
+		__antithesis_instrumentation__.Notify(603674)
 		return cast{
 			maxContext: CastContextImplicit,
 			volatility: VolatilityImmutable,
 		}, true
+	} else {
+		__antithesis_instrumentation__.Notify(603675)
 	}
+	__antithesis_instrumentation__.Notify(603640)
 
 	return cast{}, false
 }
 
-// LookupCastVolatility returns the volatility of a valid cast.
 func LookupCastVolatility(from, to *types.T, sd *sessiondata.SessionData) (_ Volatility, ok bool) {
+	__antithesis_instrumentation__.Notify(603676)
 	fromFamily := from.Family()
 	toFamily := to.Family()
-	// Special case for casting between arrays.
-	if fromFamily == types.ArrayFamily && toFamily == types.ArrayFamily {
+
+	if fromFamily == types.ArrayFamily && func() bool {
+		__antithesis_instrumentation__.Notify(603681)
+		return toFamily == types.ArrayFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(603682)
 		return LookupCastVolatility(from.ArrayContents(), to.ArrayContents(), sd)
+	} else {
+		__antithesis_instrumentation__.Notify(603683)
 	}
-	// Special case for casting between tuples.
-	if fromFamily == types.TupleFamily && toFamily == types.TupleFamily {
+	__antithesis_instrumentation__.Notify(603677)
+
+	if fromFamily == types.TupleFamily && func() bool {
+		__antithesis_instrumentation__.Notify(603684)
+		return toFamily == types.TupleFamily == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(603685)
 		fromTypes := from.TupleContents()
 		toTypes := to.TupleContents()
-		// Handle case where an overload makes a tuple get casted to tuple{}.
-		if len(toTypes) == 1 && toTypes[0].Family() == types.AnyFamily {
+
+		if len(toTypes) == 1 && func() bool {
+			__antithesis_instrumentation__.Notify(603689)
+			return toTypes[0].Family() == types.AnyFamily == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(603690)
 			return VolatilityStable, true
+		} else {
+			__antithesis_instrumentation__.Notify(603691)
 		}
+		__antithesis_instrumentation__.Notify(603686)
 		if len(fromTypes) != len(toTypes) {
+			__antithesis_instrumentation__.Notify(603692)
 			return 0, false
+		} else {
+			__antithesis_instrumentation__.Notify(603693)
 		}
+		__antithesis_instrumentation__.Notify(603687)
 		maxVolatility := VolatilityLeakProof
 		for i := range fromTypes {
+			__antithesis_instrumentation__.Notify(603694)
 			v, lookupOk := LookupCastVolatility(fromTypes[i], toTypes[i], sd)
 			if !lookupOk {
+				__antithesis_instrumentation__.Notify(603696)
 				return 0, false
+			} else {
+				__antithesis_instrumentation__.Notify(603697)
 			}
+			__antithesis_instrumentation__.Notify(603695)
 			if v > maxVolatility {
+				__antithesis_instrumentation__.Notify(603698)
 				maxVolatility = v
+			} else {
+				__antithesis_instrumentation__.Notify(603699)
 			}
 		}
+		__antithesis_instrumentation__.Notify(603688)
 		return maxVolatility, true
+	} else {
+		__antithesis_instrumentation__.Notify(603700)
 	}
+	__antithesis_instrumentation__.Notify(603678)
 
 	intervalStyleEnabled := false
 	dateStyleEnabled := false
 	if sd != nil {
+		__antithesis_instrumentation__.Notify(603701)
 		intervalStyleEnabled = sd.IntervalStyleEnabled
 		dateStyleEnabled = sd.DateStyleEnabled
+	} else {
+		__antithesis_instrumentation__.Notify(603702)
 	}
+	__antithesis_instrumentation__.Notify(603679)
 
 	cast, ok := lookupCast(from, to, intervalStyleEnabled, dateStyleEnabled)
 	if !ok {
+		__antithesis_instrumentation__.Notify(603703)
 		return 0, false
+	} else {
+		__antithesis_instrumentation__.Notify(603704)
 	}
+	__antithesis_instrumentation__.Notify(603680)
 	return cast.volatility, true
 }
 
-// PerformCast performs a cast from the provided Datum to the specified
-// types.T. The original datum is returned if its type is identical
-// to the specified type.
 func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
-	ret, err := performCastWithoutPrecisionTruncation(ctx, d, t, true /* truncateWidth */)
+	__antithesis_instrumentation__.Notify(603705)
+	ret, err := performCastWithoutPrecisionTruncation(ctx, d, t, true)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(603707)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(603708)
 	}
+	__antithesis_instrumentation__.Notify(603706)
 	return AdjustValueToType(t, ret)
 }
 
-// PerformAssignmentCast performs an assignment cast from the provided Datum to
-// the specified type. The original datum is returned if its type is identical
-// to the specified type.
-//
-// It is similar to PerformCast, but differs because it errors when a bit-array
-// or string values are too wide for the given type, rather than truncating the
-// value. The one exception to this is casts to the special "char" type which
-// are truncated.
 func PerformAssignmentCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
+	__antithesis_instrumentation__.Notify(603709)
 	if !ValidCast(d.ResolvedType(), t, CastContextAssignment) {
+		__antithesis_instrumentation__.Notify(603712)
 		return nil, pgerror.Newf(
 			pgcode.CannotCoerce,
 			"invalid assignment cast: %s -> %s", d.ResolvedType(), t,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(603713)
 	}
-	d, err := performCastWithoutPrecisionTruncation(ctx, d, t, false /* truncateWidth */)
+	__antithesis_instrumentation__.Notify(603710)
+	d, err := performCastWithoutPrecisionTruncation(ctx, d, t, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(603714)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(603715)
 	}
+	__antithesis_instrumentation__.Notify(603711)
 	return AdjustValueToType(t, d)
 }
 
-// AdjustValueToType checks that the width (for strings, byte arrays, and bit
-// strings) and scale (decimal). and, shape/srid (for geospatial types) fits the
-// specified column type.
-//
-// Additionally, some precision truncation may occur for the specified column type.
-//
-// In case of decimals, it can truncate fractional digits in the input
-// value in order to fit the target column. If the input value fits the target
-// column, it is returned unchanged. If the input value can be truncated to fit,
-// then a truncated copy is returned. Otherwise, an error is returned.
-//
-// In the case of time, it can truncate fractional digits of time datums
-// to its relevant rounding for the given type definition.
-//
-// In the case of geospatial types, it will check whether the SRID and Shape in the
-// datum matches the type definition.
-//
-// This method is used by casts and parsing. It is important to note that this
-// function will error if the given value is too wide for the given type. For
-// explicit casts and parsing, inVal should be truncated before this function is
-// called so that an error is not returned. For assignment casts, inVal should
-// not be truncated before this function is called, so that an error is
-// returned. The one exception for assignment casts is for the special "char"
-// type. An assignment cast to "char" does not error and truncates a value if
-// the width of the value is wider than a single character. For this exception,
-// AdjustValueToType performs the truncation itself.
 func AdjustValueToType(typ *types.T, inVal Datum) (outVal Datum, err error) {
+	__antithesis_instrumentation__.Notify(603716)
 	switch typ.Family() {
 	case types.StringFamily, types.CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(603718)
 		var sv string
 		if v, ok := AsDString(inVal); ok {
+			__antithesis_instrumentation__.Notify(603733)
 			sv = string(v)
-		} else if v, ok := inVal.(*DCollatedString); ok {
-			sv = v.Contents
+		} else {
+			__antithesis_instrumentation__.Notify(603734)
+			if v, ok := inVal.(*DCollatedString); ok {
+				__antithesis_instrumentation__.Notify(603735)
+				sv = v.Contents
+			} else {
+				__antithesis_instrumentation__.Notify(603736)
+			}
 		}
+		__antithesis_instrumentation__.Notify(603719)
 		sv = adjustStringValueToType(typ, sv)
-		if typ.Width() > 0 && utf8.RuneCountInString(sv) > int(typ.Width()) {
+		if typ.Width() > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(603737)
+			return utf8.RuneCountInString(sv) > int(typ.Width()) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(603738)
 			return nil, pgerror.Newf(pgcode.StringDataRightTruncation,
 				"value too long for type %s",
 				typ.SQLString())
+		} else {
+			__antithesis_instrumentation__.Notify(603739)
 		}
+		__antithesis_instrumentation__.Notify(603720)
 
-		if typ.Oid() == oid.T_bpchar || typ.Oid() == oid.T_char {
+		if typ.Oid() == oid.T_bpchar || func() bool {
+			__antithesis_instrumentation__.Notify(603740)
+			return typ.Oid() == oid.T_char == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(603741)
 			if _, ok := AsDString(inVal); ok {
+				__antithesis_instrumentation__.Notify(603742)
 				return NewDString(sv), nil
-			} else if _, ok := inVal.(*DCollatedString); ok {
-				return NewDCollatedString(sv, typ.Locale(), &CollationEnvironment{})
-			}
-		}
-	case types.IntFamily:
-		if v, ok := AsDInt(inVal); ok {
-			if typ.Width() == 32 || typ.Width() == 16 {
-				// Width is defined in bits.
-				width := uint(typ.Width() - 1)
-
-				// We're performing range checks in line with Go's
-				// implementation of math.(Max|Min)(16|32) numbers that store
-				// the boundaries of the allowed range.
-				// NOTE: when updating the code below, make sure to update
-				// execgen/cast_gen_util.go as well.
-				shifted := v >> width
-				if (v >= 0 && shifted > 0) || (v < 0 && shifted < -1) {
-					if typ.Width() == 16 {
-						return nil, ErrInt2OutOfRange
-					}
-					return nil, ErrInt4OutOfRange
+			} else {
+				__antithesis_instrumentation__.Notify(603743)
+				if _, ok := inVal.(*DCollatedString); ok {
+					__antithesis_instrumentation__.Notify(603744)
+					return NewDCollatedString(sv, typ.Locale(), &CollationEnvironment{})
+				} else {
+					__antithesis_instrumentation__.Notify(603745)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(603746)
+		}
+	case types.IntFamily:
+		__antithesis_instrumentation__.Notify(603721)
+		if v, ok := AsDInt(inVal); ok {
+			__antithesis_instrumentation__.Notify(603747)
+			if typ.Width() == 32 || func() bool {
+				__antithesis_instrumentation__.Notify(603748)
+				return typ.Width() == 16 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(603749)
+
+				width := uint(typ.Width() - 1)
+
+				shifted := v >> width
+				if (v >= 0 && func() bool {
+					__antithesis_instrumentation__.Notify(603750)
+					return shifted > 0 == true
+				}() == true) || func() bool {
+					__antithesis_instrumentation__.Notify(603751)
+					return (v < 0 && func() bool {
+						__antithesis_instrumentation__.Notify(603752)
+						return shifted < -1 == true
+					}() == true) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(603753)
+					if typ.Width() == 16 {
+						__antithesis_instrumentation__.Notify(603755)
+						return nil, ErrInt2OutOfRange
+					} else {
+						__antithesis_instrumentation__.Notify(603756)
+					}
+					__antithesis_instrumentation__.Notify(603754)
+					return nil, ErrInt4OutOfRange
+				} else {
+					__antithesis_instrumentation__.Notify(603757)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(603758)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(603759)
 		}
 	case types.BitFamily:
+		__antithesis_instrumentation__.Notify(603722)
 		if v, ok := AsDBitArray(inVal); ok {
+			__antithesis_instrumentation__.Notify(603760)
 			if typ.Width() > 0 {
+				__antithesis_instrumentation__.Notify(603761)
 				bitLen := v.BitLen()
 				switch typ.Oid() {
 				case oid.T_varbit:
+					__antithesis_instrumentation__.Notify(603762)
 					if bitLen > uint(typ.Width()) {
+						__antithesis_instrumentation__.Notify(603764)
 						return nil, pgerror.Newf(pgcode.StringDataRightTruncation,
 							"bit string length %d too large for type %s", bitLen, typ.SQLString())
+					} else {
+						__antithesis_instrumentation__.Notify(603765)
 					}
 				default:
+					__antithesis_instrumentation__.Notify(603763)
 					if bitLen != uint(typ.Width()) {
+						__antithesis_instrumentation__.Notify(603766)
 						return nil, pgerror.Newf(pgcode.StringDataLengthMismatch,
 							"bit string length %d does not match type %s", bitLen, typ.SQLString())
+					} else {
+						__antithesis_instrumentation__.Notify(603767)
 					}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(603768)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(603769)
 		}
 	case types.DecimalFamily:
+		__antithesis_instrumentation__.Notify(603723)
 		if inDec, ok := inVal.(*DDecimal); ok {
-			if inDec.Form != apd.Finite || typ.Precision() == 0 {
-				// Non-finite form or unlimited target precision, so no need to limit.
+			__antithesis_instrumentation__.Notify(603770)
+			if inDec.Form != apd.Finite || func() bool {
+				__antithesis_instrumentation__.Notify(603774)
+				return typ.Precision() == 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(603775)
+
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(603776)
 			}
-			if int64(typ.Precision()) >= inDec.NumDigits() && typ.Scale() == inDec.Exponent {
-				// Precision and scale of target column are sufficient.
+			__antithesis_instrumentation__.Notify(603771)
+			if int64(typ.Precision()) >= inDec.NumDigits() && func() bool {
+				__antithesis_instrumentation__.Notify(603777)
+				return typ.Scale() == inDec.Exponent == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(603778)
+
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(603779)
 			}
+			__antithesis_instrumentation__.Notify(603772)
 
 			var outDec DDecimal
 			outDec.Set(&inDec.Decimal)
 			err := LimitDecimalWidth(&outDec.Decimal, int(typ.Precision()), int(typ.Scale()))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(603780)
 				return nil, errors.Wrapf(err, "type %s", typ.SQLString())
+			} else {
+				__antithesis_instrumentation__.Notify(603781)
 			}
+			__antithesis_instrumentation__.Notify(603773)
 			return &outDec, nil
+		} else {
+			__antithesis_instrumentation__.Notify(603782)
 		}
 	case types.ArrayFamily:
+		__antithesis_instrumentation__.Notify(603724)
 		if inArr, ok := inVal.(*DArray); ok {
+			__antithesis_instrumentation__.Notify(603783)
 			var outArr *DArray
 			elementType := typ.ArrayContents()
 			for i, inElem := range inArr.Array {
+				__antithesis_instrumentation__.Notify(603785)
 				outElem, err := AdjustValueToType(elementType, inElem)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(603788)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(603789)
 				}
+				__antithesis_instrumentation__.Notify(603786)
 				if outElem != inElem {
+					__antithesis_instrumentation__.Notify(603790)
 					if outArr == nil {
+						__antithesis_instrumentation__.Notify(603791)
 						outArr = &DArray{}
 						*outArr = *inArr
 						outArr.Array = make(Datums, len(inArr.Array))
 						copy(outArr.Array, inArr.Array[:i])
+					} else {
+						__antithesis_instrumentation__.Notify(603792)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(603793)
 				}
+				__antithesis_instrumentation__.Notify(603787)
 				if outArr != nil {
+					__antithesis_instrumentation__.Notify(603794)
 					outArr.Array[i] = inElem
+				} else {
+					__antithesis_instrumentation__.Notify(603795)
 				}
 			}
+			__antithesis_instrumentation__.Notify(603784)
 			if outArr != nil {
+				__antithesis_instrumentation__.Notify(603796)
 				return outArr, nil
+			} else {
+				__antithesis_instrumentation__.Notify(603797)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(603798)
 		}
 	case types.TimeFamily:
+		__antithesis_instrumentation__.Notify(603725)
 		if in, ok := inVal.(*DTime); ok {
+			__antithesis_instrumentation__.Notify(603799)
 			return in.Round(TimeFamilyPrecisionToRoundDuration(typ.Precision())), nil
+		} else {
+			__antithesis_instrumentation__.Notify(603800)
 		}
 	case types.TimestampFamily:
+		__antithesis_instrumentation__.Notify(603726)
 		if in, ok := inVal.(*DTimestamp); ok {
+			__antithesis_instrumentation__.Notify(603801)
 			return in.Round(TimeFamilyPrecisionToRoundDuration(typ.Precision()))
+		} else {
+			__antithesis_instrumentation__.Notify(603802)
 		}
 	case types.TimestampTZFamily:
+		__antithesis_instrumentation__.Notify(603727)
 		if in, ok := inVal.(*DTimestampTZ); ok {
+			__antithesis_instrumentation__.Notify(603803)
 			return in.Round(TimeFamilyPrecisionToRoundDuration(typ.Precision()))
+		} else {
+			__antithesis_instrumentation__.Notify(603804)
 		}
 	case types.TimeTZFamily:
+		__antithesis_instrumentation__.Notify(603728)
 		if in, ok := inVal.(*DTimeTZ); ok {
+			__antithesis_instrumentation__.Notify(603805)
 			return in.Round(TimeFamilyPrecisionToRoundDuration(typ.Precision())), nil
+		} else {
+			__antithesis_instrumentation__.Notify(603806)
 		}
 	case types.IntervalFamily:
+		__antithesis_instrumentation__.Notify(603729)
 		if in, ok := inVal.(*DInterval); ok {
+			__antithesis_instrumentation__.Notify(603807)
 			itm, err := typ.IntervalTypeMetadata()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(603809)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(603810)
 			}
+			__antithesis_instrumentation__.Notify(603808)
 			return NewDInterval(in.Duration, itm), nil
+		} else {
+			__antithesis_instrumentation__.Notify(603811)
 		}
 	case types.GeometryFamily:
+		__antithesis_instrumentation__.Notify(603730)
 		if in, ok := inVal.(*DGeometry); ok {
+			__antithesis_instrumentation__.Notify(603812)
 			if err := geo.SpatialObjectFitsColumnMetadata(
 				in.Geometry.SpatialObject(),
 				typ.InternalType.GeoMetadata.SRID,
 				typ.InternalType.GeoMetadata.ShapeType,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(603813)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(603814)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(603815)
 		}
 	case types.GeographyFamily:
+		__antithesis_instrumentation__.Notify(603731)
 		if in, ok := inVal.(*DGeography); ok {
+			__antithesis_instrumentation__.Notify(603816)
 			if err := geo.SpatialObjectFitsColumnMetadata(
 				in.Geography.SpatialObject(),
 				typ.InternalType.GeoMetadata.SRID,
 				typ.InternalType.GeoMetadata.ShapeType,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(603817)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(603818)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(603819)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(603732)
 	}
+	__antithesis_instrumentation__.Notify(603717)
 	return inVal, nil
 }
 
-// adjustStringToType checks that the width for strings fits the
-// specified column type.
 func adjustStringValueToType(typ *types.T, sv string) string {
+	__antithesis_instrumentation__.Notify(603820)
 	switch typ.Oid() {
 	case oid.T_char:
-		// "char" is supposed to truncate long values
+		__antithesis_instrumentation__.Notify(603822)
+
 		return util.TruncateString(sv, 1)
 	case oid.T_bpchar:
-		// bpchar types truncate trailing whitespace.
+		__antithesis_instrumentation__.Notify(603823)
+
 		return strings.TrimRight(sv, " ")
+	default:
+		__antithesis_instrumentation__.Notify(603824)
 	}
+	__antithesis_instrumentation__.Notify(603821)
 	return sv
 }
 
-// formatBitArrayToType formats bit arrays such that they fill the total width
-// if too short, or truncate if too long.
 func formatBitArrayToType(d *DBitArray, t *types.T) *DBitArray {
-	if t.Width() == 0 || d.BitLen() == uint(t.Width()) {
+	__antithesis_instrumentation__.Notify(603825)
+	if t.Width() == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(603828)
+		return d.BitLen() == uint(t.Width()) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(603829)
 		return d
+	} else {
+		__antithesis_instrumentation__.Notify(603830)
 	}
+	__antithesis_instrumentation__.Notify(603826)
 	a := d.BitArray.Clone()
 	switch t.Oid() {
 	case oid.T_varbit:
-		// VARBITs do not have padding attached, so only truncate.
+		__antithesis_instrumentation__.Notify(603831)
+
 		if uint(t.Width()) < a.BitLen() {
+			__antithesis_instrumentation__.Notify(603833)
 			a = a.ToWidth(uint(t.Width()))
+		} else {
+			__antithesis_instrumentation__.Notify(603834)
 		}
 	default:
+		__antithesis_instrumentation__.Notify(603832)
 		a = a.ToWidth(uint(t.Width()))
 	}
+	__antithesis_instrumentation__.Notify(603827)
 	return &DBitArray{a}
 }
 
-// performCastWithoutPrecisionTruncation performs the cast, but does not perform
-// precision truncation. For example, if d is of type DECIMAL(6, 2) and t is
-// DECIMAL(4, 2), d is not truncated to fit into t. However, if truncateWidth is
-// true, widths are truncated to match the target type t for some types,
-// including the bit and string types. If truncateWidth is false, the input
-// datum is not truncated.
-//
-// In an ideal state, components of AdjustValueToType should be embedded into
-// this function, but the code base needs a general refactor of parsing
-// and casting logic before this can happen.
-// See also: #55094.
 func performCastWithoutPrecisionTruncation(
 	ctx *EvalContext, d Datum, t *types.T, truncateWidth bool,
 ) (Datum, error) {
-	// No conversion is needed if d is NULL.
-	if d == DNull {
-		return d, nil
-	}
+	__antithesis_instrumentation__.Notify(603835)
 
-	// If we're casting a DOidWrapper, then we want to cast the wrapped datum.
-	// It is also reasonable to lose the old Oid value too.
-	// Note that we pass in nil as the first argument since we're not interested
-	// in evaluating the placeholders.
-	d = UnwrapDatum(nil /* evalCtx */, d)
+	if d == DNull {
+		__antithesis_instrumentation__.Notify(603838)
+		return d, nil
+	} else {
+		__antithesis_instrumentation__.Notify(603839)
+	}
+	__antithesis_instrumentation__.Notify(603836)
+
+	d = UnwrapDatum(nil, d)
 	switch t.Family() {
 	case types.BitFamily:
+		__antithesis_instrumentation__.Notify(603840)
 		var ba *DBitArray
 		switch v := d.(type) {
 		case *DBitArray:
+			__antithesis_instrumentation__.Notify(603872)
 			ba = v
 		case *DInt:
+			__antithesis_instrumentation__.Notify(603873)
 			var err error
 			ba, err = NewDBitArrayFromInt(int64(*v), uint(t.Width()))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(603878)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(603879)
 			}
 		case *DString:
+			__antithesis_instrumentation__.Notify(603874)
 			res, err := bitarray.Parse(string(*v))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(603880)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(603881)
 			}
+			__antithesis_instrumentation__.Notify(603875)
 			ba = &DBitArray{res}
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(603876)
 			res, err := bitarray.Parse(v.Contents)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(603882)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(603883)
 			}
+			__antithesis_instrumentation__.Notify(603877)
 			ba = &DBitArray{res}
 		}
+		__antithesis_instrumentation__.Notify(603841)
 		if truncateWidth {
+			__antithesis_instrumentation__.Notify(603884)
 			ba = formatBitArrayToType(ba, t)
+		} else {
+			__antithesis_instrumentation__.Notify(603885)
 		}
+		__antithesis_instrumentation__.Notify(603842)
 		return ba, nil
 
 	case types.BoolFamily:
+		__antithesis_instrumentation__.Notify(603843)
 		switch v := d.(type) {
 		case *DBool:
+			__antithesis_instrumentation__.Notify(603886)
 			return d, nil
 		case *DInt:
+			__antithesis_instrumentation__.Notify(603887)
 			return MakeDBool(*v != 0), nil
 		case *DFloat:
+			__antithesis_instrumentation__.Notify(603888)
 			return MakeDBool(*v != 0), nil
 		case *DDecimal:
+			__antithesis_instrumentation__.Notify(603889)
 			return MakeDBool(v.Sign() != 0), nil
 		case *DString:
+			__antithesis_instrumentation__.Notify(603890)
 			return ParseDBool(strings.TrimSpace(string(*v)))
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(603891)
 			return ParseDBool(v.Contents)
 		case *DJSON:
+			__antithesis_instrumentation__.Notify(603892)
 			b, ok := v.AsBool()
 			if !ok {
+				__antithesis_instrumentation__.Notify(603894)
 				return nil, failedCastFromJSON(v, t)
+			} else {
+				__antithesis_instrumentation__.Notify(603895)
 			}
+			__antithesis_instrumentation__.Notify(603893)
 			return MakeDBool(DBool(b)), nil
 		}
 
 	case types.IntFamily:
+		__antithesis_instrumentation__.Notify(603844)
 		var res *DInt
 		switch v := d.(type) {
 		case *DBitArray:
+			__antithesis_instrumentation__.Notify(603896)
 			res = v.AsDInt(uint(t.Width()))
 		case *DBool:
+			__antithesis_instrumentation__.Notify(603897)
 			if *v {
+				__antithesis_instrumentation__.Notify(603915)
 				res = NewDInt(1)
 			} else {
+				__antithesis_instrumentation__.Notify(603916)
 				res = DZero
 			}
 		case *DInt:
-			// TODO(knz): enforce the coltype width here.
+			__antithesis_instrumentation__.Notify(603898)
+
 			res = v
 		case *DFloat:
+			__antithesis_instrumentation__.Notify(603899)
 			f := float64(*v)
-			// Use `<=` and `>=` here instead of just `<` and `>` because when
-			// math.MaxInt64 and math.MinInt64 are converted to float64s, they are
-			// rounded to numbers with larger absolute values. Note that the first
-			// next FP value after and strictly greater than float64(math.MinInt64)
-			// is -9223372036854774784 (= float64(math.MinInt64)+513) and the first
-			// previous value and strictly smaller than float64(math.MaxInt64)
-			// is 9223372036854774784 (= float64(math.MaxInt64)-513), and both are
-			// convertible to int without overflow.
-			if math.IsNaN(f) || f <= float64(math.MinInt64) || f >= float64(math.MaxInt64) {
+
+			if math.IsNaN(f) || func() bool {
+				__antithesis_instrumentation__.Notify(603917)
+				return f <= float64(math.MinInt64) == true
+			}() == true || func() bool {
+				__antithesis_instrumentation__.Notify(603918)
+				return f >= float64(math.MaxInt64) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(603919)
 				return nil, ErrIntOutOfRange
+			} else {
+				__antithesis_instrumentation__.Notify(603920)
 			}
+			__antithesis_instrumentation__.Notify(603900)
 			res = NewDInt(DInt(f))
 		case *DDecimal:
+			__antithesis_instrumentation__.Notify(603901)
 			i, err := roundDecimalToInt(ctx, &v.Decimal)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(603921)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(603922)
 			}
+			__antithesis_instrumentation__.Notify(603902)
 			res = NewDInt(DInt(i))
 		case *DString:
+			__antithesis_instrumentation__.Notify(603903)
 			var err error
 			if res, err = ParseDInt(strings.TrimSpace(string(*v))); err != nil {
+				__antithesis_instrumentation__.Notify(603923)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(603924)
 			}
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(603904)
 			var err error
 			if res, err = ParseDInt(v.Contents); err != nil {
+				__antithesis_instrumentation__.Notify(603925)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(603926)
 			}
 		case *DTimestamp:
+			__antithesis_instrumentation__.Notify(603905)
 			res = NewDInt(DInt(v.Unix()))
 		case *DTimestampTZ:
+			__antithesis_instrumentation__.Notify(603906)
 			res = NewDInt(DInt(v.Unix()))
 		case *DDate:
-			// TODO(mjibson): This cast is unsupported by postgres. Should we remove ours?
+			__antithesis_instrumentation__.Notify(603907)
+
 			if !v.IsFinite() {
+				__antithesis_instrumentation__.Notify(603927)
 				return nil, ErrIntOutOfRange
+			} else {
+				__antithesis_instrumentation__.Notify(603928)
 			}
+			__antithesis_instrumentation__.Notify(603908)
 			res = NewDInt(DInt(v.UnixEpochDays()))
 		case *DInterval:
+			__antithesis_instrumentation__.Notify(603909)
 			iv, ok := v.AsInt64()
 			if !ok {
+				__antithesis_instrumentation__.Notify(603929)
 				return nil, ErrIntOutOfRange
+			} else {
+				__antithesis_instrumentation__.Notify(603930)
 			}
+			__antithesis_instrumentation__.Notify(603910)
 			res = NewDInt(DInt(iv))
 		case *DOid:
+			__antithesis_instrumentation__.Notify(603911)
 			res = &v.DInt
 		case *DJSON:
+			__antithesis_instrumentation__.Notify(603912)
 			dec, ok := v.AsDecimal()
 			if !ok {
+				__antithesis_instrumentation__.Notify(603931)
 				return nil, failedCastFromJSON(v, t)
+			} else {
+				__antithesis_instrumentation__.Notify(603932)
 			}
+			__antithesis_instrumentation__.Notify(603913)
 			i, err := dec.Int64()
 			if err != nil {
-				// Attempt to round the number to an integer.
+				__antithesis_instrumentation__.Notify(603933)
+
 				i, err = roundDecimalToInt(ctx, dec)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(603934)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(603935)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(603936)
 			}
+			__antithesis_instrumentation__.Notify(603914)
 			res = NewDInt(DInt(i))
 		}
+		__antithesis_instrumentation__.Notify(603845)
 		if res != nil {
+			__antithesis_instrumentation__.Notify(603937)
 			return res, nil
+		} else {
+			__antithesis_instrumentation__.Notify(603938)
 		}
 
 	case types.EnumFamily:
+		__antithesis_instrumentation__.Notify(603846)
 		switch v := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(603939)
 			return MakeDEnumFromLogicalRepresentation(t, string(*v))
 		case *DBytes:
+			__antithesis_instrumentation__.Notify(603940)
 			return MakeDEnumFromPhysicalRepresentation(t, []byte(*v))
 		case *DEnum:
+			__antithesis_instrumentation__.Notify(603941)
 			return d, nil
 		}
 
 	case types.FloatFamily:
+		__antithesis_instrumentation__.Notify(603847)
 		switch v := d.(type) {
 		case *DBool:
+			__antithesis_instrumentation__.Notify(603942)
 			if *v {
+				__antithesis_instrumentation__.Notify(603958)
 				return NewDFloat(1), nil
+			} else {
+				__antithesis_instrumentation__.Notify(603959)
 			}
+			__antithesis_instrumentation__.Notify(603943)
 			return NewDFloat(0), nil
 		case *DInt:
+			__antithesis_instrumentation__.Notify(603944)
 			return NewDFloat(DFloat(*v)), nil
 		case *DFloat:
+			__antithesis_instrumentation__.Notify(603945)
 			return d, nil
 		case *DDecimal:
+			__antithesis_instrumentation__.Notify(603946)
 			f, err := v.Float64()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(603960)
 				return nil, ErrFloatOutOfRange
+			} else {
+				__antithesis_instrumentation__.Notify(603961)
 			}
+			__antithesis_instrumentation__.Notify(603947)
 			return NewDFloat(DFloat(f)), nil
 		case *DString:
+			__antithesis_instrumentation__.Notify(603948)
 			return ParseDFloat(strings.TrimSpace(string(*v)))
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(603949)
 			return ParseDFloat(v.Contents)
 		case *DTimestamp:
+			__antithesis_instrumentation__.Notify(603950)
 			micros := float64(v.Nanosecond() / int(time.Microsecond))
 			return NewDFloat(DFloat(float64(v.Unix()) + micros*1e-6)), nil
 		case *DTimestampTZ:
+			__antithesis_instrumentation__.Notify(603951)
 			micros := float64(v.Nanosecond() / int(time.Microsecond))
 			return NewDFloat(DFloat(float64(v.Unix()) + micros*1e-6)), nil
 		case *DDate:
-			// TODO(mjibson): This cast is unsupported by postgres. Should we remove ours?
+			__antithesis_instrumentation__.Notify(603952)
+
 			if !v.IsFinite() {
+				__antithesis_instrumentation__.Notify(603962)
 				return nil, ErrFloatOutOfRange
+			} else {
+				__antithesis_instrumentation__.Notify(603963)
 			}
+			__antithesis_instrumentation__.Notify(603953)
 			return NewDFloat(DFloat(float64(v.UnixEpochDays()))), nil
 		case *DInterval:
+			__antithesis_instrumentation__.Notify(603954)
 			return NewDFloat(DFloat(v.AsFloat64())), nil
 		case *DJSON:
+			__antithesis_instrumentation__.Notify(603955)
 			dec, ok := v.AsDecimal()
 			if !ok {
+				__antithesis_instrumentation__.Notify(603964)
 				return nil, failedCastFromJSON(v, t)
+			} else {
+				__antithesis_instrumentation__.Notify(603965)
 			}
+			__antithesis_instrumentation__.Notify(603956)
 			fl, err := dec.Float64()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(603966)
 				return nil, ErrFloatOutOfRange
+			} else {
+				__antithesis_instrumentation__.Notify(603967)
 			}
+			__antithesis_instrumentation__.Notify(603957)
 			return NewDFloat(DFloat(fl)), nil
 		}
 
 	case types.DecimalFamily:
+		__antithesis_instrumentation__.Notify(603848)
 		var dd DDecimal
 		var err error
 		unset := false
 		switch v := d.(type) {
 		case *DBool:
+			__antithesis_instrumentation__.Notify(603968)
 			if *v {
+				__antithesis_instrumentation__.Notify(603983)
 				dd.SetInt64(1)
+			} else {
+				__antithesis_instrumentation__.Notify(603984)
 			}
 		case *DInt:
+			__antithesis_instrumentation__.Notify(603969)
 			dd.SetInt64(int64(*v))
 		case *DDate:
-			// TODO(mjibson): This cast is unsupported by postgres. Should we remove ours?
+			__antithesis_instrumentation__.Notify(603970)
+
 			if !v.IsFinite() {
+				__antithesis_instrumentation__.Notify(603985)
 				return nil, ErrDecOutOfRange
+			} else {
+				__antithesis_instrumentation__.Notify(603986)
 			}
+			__antithesis_instrumentation__.Notify(603971)
 			dd.SetInt64(v.UnixEpochDays())
 		case *DFloat:
+			__antithesis_instrumentation__.Notify(603972)
 			_, err = dd.SetFloat64(float64(*v))
 		case *DDecimal:
-			// Small optimization to avoid copying into dd in normal case.
+			__antithesis_instrumentation__.Notify(603973)
+
 			if t.Precision() == 0 {
+				__antithesis_instrumentation__.Notify(603987)
 				return d, nil
+			} else {
+				__antithesis_instrumentation__.Notify(603988)
 			}
+			__antithesis_instrumentation__.Notify(603974)
 			dd.Set(&v.Decimal)
 		case *DString:
+			__antithesis_instrumentation__.Notify(603975)
 			err = dd.SetString(strings.TrimSpace(string(*v)))
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(603976)
 			err = dd.SetString(v.Contents)
 		case *DTimestamp:
+			__antithesis_instrumentation__.Notify(603977)
 			val := &dd.Coeff
 			val.SetInt64(v.Unix())
 			val.Mul(val, big10E6)
@@ -1963,6 +2259,7 @@ func performCastWithoutPrecisionTruncation(
 			val.Add(val, apd.NewBigInt(int64(micros)))
 			dd.Exponent = -6
 		case *DTimestampTZ:
+			__antithesis_instrumentation__.Notify(603978)
 			val := &dd.Coeff
 			val.SetInt64(v.Unix())
 			val.Mul(val, big10E6)
@@ -1970,619 +2267,979 @@ func performCastWithoutPrecisionTruncation(
 			val.Add(val, apd.NewBigInt(int64(micros)))
 			dd.Exponent = -6
 		case *DInterval:
+			__antithesis_instrumentation__.Notify(603979)
 			v.AsBigInt(&dd.Coeff)
 			dd.Exponent = -9
 		case *DJSON:
+			__antithesis_instrumentation__.Notify(603980)
 			dec, ok := v.AsDecimal()
 			if !ok {
+				__antithesis_instrumentation__.Notify(603989)
 				return nil, failedCastFromJSON(v, t)
+			} else {
+				__antithesis_instrumentation__.Notify(603990)
 			}
+			__antithesis_instrumentation__.Notify(603981)
 			dd.Set(dec)
 		default:
+			__antithesis_instrumentation__.Notify(603982)
 			unset = true
 		}
+		__antithesis_instrumentation__.Notify(603849)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(603991)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(603992)
 		}
+		__antithesis_instrumentation__.Notify(603850)
 		if !unset {
-			// dd.Coeff must be positive. If it was set to a negative value
-			// above, transfer the sign to dd.Negative.
+			__antithesis_instrumentation__.Notify(603993)
+
 			if dd.Coeff.Sign() < 0 {
+				__antithesis_instrumentation__.Notify(603996)
 				dd.Negative = true
 				dd.Coeff.Abs(&dd.Coeff)
+			} else {
+				__antithesis_instrumentation__.Notify(603997)
 			}
+			__antithesis_instrumentation__.Notify(603994)
 			err = LimitDecimalWidth(&dd.Decimal, int(t.Precision()), int(t.Scale()))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(603998)
 				return nil, errors.Wrapf(err, "type %s", t.SQLString())
+			} else {
+				__antithesis_instrumentation__.Notify(603999)
 			}
+			__antithesis_instrumentation__.Notify(603995)
 			return &dd, nil
+		} else {
+			__antithesis_instrumentation__.Notify(604000)
 		}
 
 	case types.StringFamily, types.CollatedStringFamily:
+		__antithesis_instrumentation__.Notify(603851)
 		var s string
 		typ := t
 		switch t := d.(type) {
 		case *DBitArray:
+			__antithesis_instrumentation__.Notify(604001)
 			s = t.BitArray.String()
 		case *DFloat:
+			__antithesis_instrumentation__.Notify(604002)
 			s = strconv.FormatFloat(float64(*t), 'g',
 				ctx.SessionData().DataConversionConfig.GetFloatPrec(), 64)
 		case *DInt:
+			__antithesis_instrumentation__.Notify(604003)
 			if typ.Oid() == oid.T_char {
-				// int to "char" casts just return the correspondong ASCII byte.
-				if *t > math.MaxInt8 || *t < math.MinInt8 {
+				__antithesis_instrumentation__.Notify(604020)
+
+				if *t > math.MaxInt8 || func() bool {
+					__antithesis_instrumentation__.Notify(604021)
+					return *t < math.MinInt8 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(604022)
 					return nil, errCharOutOfRange
-				} else if *t == 0 {
-					s = ""
 				} else {
-					s = string([]byte{byte(*t)})
+					__antithesis_instrumentation__.Notify(604023)
+					if *t == 0 {
+						__antithesis_instrumentation__.Notify(604024)
+						s = ""
+					} else {
+						__antithesis_instrumentation__.Notify(604025)
+						s = string([]byte{byte(*t)})
+					}
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(604026)
 				s = d.String()
 			}
 		case *DBool, *DDecimal:
+			__antithesis_instrumentation__.Notify(604004)
 			s = d.String()
 		case *DTimestamp, *DDate, *DTime, *DTimeTZ, *DGeography, *DGeometry, *DBox2D:
+			__antithesis_instrumentation__.Notify(604005)
 			s = AsStringWithFlags(d, FmtBareStrings)
 		case *DTimestampTZ:
-			// Convert to context timezone for correct display.
+			__antithesis_instrumentation__.Notify(604006)
+
 			ts, err := MakeDTimestampTZ(t.In(ctx.GetLocation()), time.Microsecond)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604027)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604028)
 			}
+			__antithesis_instrumentation__.Notify(604007)
 			s = AsStringWithFlags(
 				ts,
 				FmtBareStrings,
 			)
 		case *DTuple:
+			__antithesis_instrumentation__.Notify(604008)
 			s = AsStringWithFlags(
 				d,
 				FmtPgwireText,
 				FmtDataConversionConfig(ctx.SessionData().DataConversionConfig),
 			)
 		case *DArray:
+			__antithesis_instrumentation__.Notify(604009)
 			s = AsStringWithFlags(
 				d,
 				FmtPgwireText,
 				FmtDataConversionConfig(ctx.SessionData().DataConversionConfig),
 			)
 		case *DInterval:
-			// When converting an interval to string, we need a string representation
-			// of the duration (e.g. "5s") and not of the interval itself (e.g.
-			// "INTERVAL '5s'").
+			__antithesis_instrumentation__.Notify(604010)
+
 			s = AsStringWithFlags(
 				d,
 				FmtPgwireText,
 				FmtDataConversionConfig(ctx.SessionData().DataConversionConfig),
 			)
 		case *DUuid:
+			__antithesis_instrumentation__.Notify(604011)
 			s = t.UUID.String()
 		case *DIPAddr:
+			__antithesis_instrumentation__.Notify(604012)
 			s = AsStringWithFlags(d, FmtBareStrings)
 		case *DString:
+			__antithesis_instrumentation__.Notify(604013)
 			s = string(*t)
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604014)
 			s = t.Contents
 		case *DBytes:
+			__antithesis_instrumentation__.Notify(604015)
 			s = lex.EncodeByteArrayToRawBytes(
 				string(*t),
 				ctx.SessionData().DataConversionConfig.BytesEncodeFormat,
-				false, /* skipHexPrefix */
+				false,
 			)
 		case *DOid:
+			__antithesis_instrumentation__.Notify(604016)
 			s = t.String()
 		case *DJSON:
+			__antithesis_instrumentation__.Notify(604017)
 			s = t.JSON.String()
 		case *DEnum:
+			__antithesis_instrumentation__.Notify(604018)
 			s = t.LogicalRep
 		case *DVoid:
+			__antithesis_instrumentation__.Notify(604019)
 			s = ""
 		}
+		__antithesis_instrumentation__.Notify(603852)
 		switch t.Family() {
 		case types.StringFamily:
+			__antithesis_instrumentation__.Notify(604029)
 			if t.Oid() == oid.T_name {
+				__antithesis_instrumentation__.Notify(604037)
 				return NewDName(s), nil
+			} else {
+				__antithesis_instrumentation__.Notify(604038)
 			}
+			__antithesis_instrumentation__.Notify(604030)
 
-			// bpchar types truncate trailing whitespace.
 			if t.Oid() == oid.T_bpchar {
+				__antithesis_instrumentation__.Notify(604039)
 				s = strings.TrimRight(s, " ")
+			} else {
+				__antithesis_instrumentation__.Notify(604040)
 			}
+			__antithesis_instrumentation__.Notify(604031)
 
-			// If the string type specifies a limit we truncate to that limit:
-			//   'hello'::CHAR(2) -> 'he'
-			// This is true of all the string type variants.
-			if truncateWidth && t.Width() > 0 {
+			if truncateWidth && func() bool {
+				__antithesis_instrumentation__.Notify(604041)
+				return t.Width() > 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(604042)
 				s = util.TruncateString(s, int(t.Width()))
+			} else {
+				__antithesis_instrumentation__.Notify(604043)
 			}
+			__antithesis_instrumentation__.Notify(604032)
 			return NewDString(s), nil
 		case types.CollatedStringFamily:
-			// bpchar types truncate trailing whitespace.
+			__antithesis_instrumentation__.Notify(604033)
+
 			if t.Oid() == oid.T_bpchar {
+				__antithesis_instrumentation__.Notify(604044)
 				s = strings.TrimRight(s, " ")
+			} else {
+				__antithesis_instrumentation__.Notify(604045)
 			}
-			// Ditto truncation like for TString.
-			if truncateWidth && t.Width() > 0 {
+			__antithesis_instrumentation__.Notify(604034)
+
+			if truncateWidth && func() bool {
+				__antithesis_instrumentation__.Notify(604046)
+				return t.Width() > 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(604047)
 				s = util.TruncateString(s, int(t.Width()))
+			} else {
+				__antithesis_instrumentation__.Notify(604048)
 			}
+			__antithesis_instrumentation__.Notify(604035)
 			return NewDCollatedString(s, t.Locale(), &ctx.CollationEnv)
+		default:
+			__antithesis_instrumentation__.Notify(604036)
 		}
 
 	case types.BytesFamily:
+		__antithesis_instrumentation__.Notify(603853)
 		switch t := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604049)
 			return ParseDByte(string(*t))
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604050)
 			return NewDBytes(DBytes(t.Contents)), nil
 		case *DUuid:
+			__antithesis_instrumentation__.Notify(604051)
 			return NewDBytes(DBytes(t.GetBytes())), nil
 		case *DBytes:
+			__antithesis_instrumentation__.Notify(604052)
 			return d, nil
 		case *DGeography:
+			__antithesis_instrumentation__.Notify(604053)
 			return NewDBytes(DBytes(t.Geography.EWKB())), nil
 		case *DGeometry:
+			__antithesis_instrumentation__.Notify(604054)
 			return NewDBytes(DBytes(t.Geometry.EWKB())), nil
 		}
 
 	case types.UuidFamily:
+		__antithesis_instrumentation__.Notify(603854)
 		switch t := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604055)
 			return ParseDUuidFromString(string(*t))
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604056)
 			return ParseDUuidFromString(t.Contents)
 		case *DBytes:
+			__antithesis_instrumentation__.Notify(604057)
 			return ParseDUuidFromBytes([]byte(*t))
 		case *DUuid:
+			__antithesis_instrumentation__.Notify(604058)
 			return d, nil
 		}
 
 	case types.INetFamily:
+		__antithesis_instrumentation__.Notify(603855)
 		switch t := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604059)
 			return ParseDIPAddrFromINetString(string(*t))
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604060)
 			return ParseDIPAddrFromINetString(t.Contents)
 		case *DIPAddr:
+			__antithesis_instrumentation__.Notify(604061)
 			return d, nil
 		}
 
 	case types.Box2DFamily:
+		__antithesis_instrumentation__.Notify(603856)
 		switch d := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604062)
 			return ParseDBox2D(string(*d))
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604063)
 			return ParseDBox2D(d.Contents)
 		case *DBox2D:
+			__antithesis_instrumentation__.Notify(604064)
 			return d, nil
 		case *DGeometry:
+			__antithesis_instrumentation__.Notify(604065)
 			bbox := d.CartesianBoundingBox()
 			if bbox == nil {
+				__antithesis_instrumentation__.Notify(604067)
 				return DNull, nil
+			} else {
+				__antithesis_instrumentation__.Notify(604068)
 			}
+			__antithesis_instrumentation__.Notify(604066)
 			return NewDBox2D(*bbox), nil
 		}
 
 	case types.GeographyFamily:
+		__antithesis_instrumentation__.Notify(603857)
 		switch d := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604069)
 			return ParseDGeography(string(*d))
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604070)
 			return ParseDGeography(d.Contents)
 		case *DGeography:
+			__antithesis_instrumentation__.Notify(604071)
 			if err := geo.SpatialObjectFitsColumnMetadata(
 				d.Geography.SpatialObject(),
 				t.InternalType.GeoMetadata.SRID,
 				t.InternalType.GeoMetadata.ShapeType,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(604082)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604083)
 			}
+			__antithesis_instrumentation__.Notify(604072)
 			return d, nil
 		case *DGeometry:
+			__antithesis_instrumentation__.Notify(604073)
 			g, err := d.AsGeography()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604084)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604085)
 			}
+			__antithesis_instrumentation__.Notify(604074)
 			if err := geo.SpatialObjectFitsColumnMetadata(
 				g.SpatialObject(),
 				t.InternalType.GeoMetadata.SRID,
 				t.InternalType.GeoMetadata.ShapeType,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(604086)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604087)
 			}
+			__antithesis_instrumentation__.Notify(604075)
 			return &DGeography{g}, nil
 		case *DJSON:
+			__antithesis_instrumentation__.Notify(604076)
 			t, err := d.AsText()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604088)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604089)
 			}
+			__antithesis_instrumentation__.Notify(604077)
 			if t == nil {
+				__antithesis_instrumentation__.Notify(604090)
 				return DNull, nil
+			} else {
+				__antithesis_instrumentation__.Notify(604091)
 			}
+			__antithesis_instrumentation__.Notify(604078)
 			g, err := geo.ParseGeographyFromGeoJSON([]byte(*t))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604092)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604093)
 			}
+			__antithesis_instrumentation__.Notify(604079)
 			return &DGeography{g}, nil
 		case *DBytes:
+			__antithesis_instrumentation__.Notify(604080)
 			g, err := geo.ParseGeographyFromEWKB(geopb.EWKB(*d))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604094)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604095)
 			}
+			__antithesis_instrumentation__.Notify(604081)
 			return &DGeography{g}, nil
 		}
 	case types.GeometryFamily:
+		__antithesis_instrumentation__.Notify(603858)
 		switch d := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604096)
 			return ParseDGeometry(string(*d))
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604097)
 			return ParseDGeometry(d.Contents)
 		case *DGeometry:
+			__antithesis_instrumentation__.Notify(604098)
 			if err := geo.SpatialObjectFitsColumnMetadata(
 				d.Geometry.SpatialObject(),
 				t.InternalType.GeoMetadata.SRID,
 				t.InternalType.GeoMetadata.ShapeType,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(604111)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604112)
 			}
+			__antithesis_instrumentation__.Notify(604099)
 			return d, nil
 		case *DGeography:
+			__antithesis_instrumentation__.Notify(604100)
 			if err := geo.SpatialObjectFitsColumnMetadata(
 				d.Geography.SpatialObject(),
 				t.InternalType.GeoMetadata.SRID,
 				t.InternalType.GeoMetadata.ShapeType,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(604113)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604114)
 			}
+			__antithesis_instrumentation__.Notify(604101)
 			g, err := d.AsGeometry()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604115)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604116)
 			}
+			__antithesis_instrumentation__.Notify(604102)
 			return &DGeometry{g}, nil
 		case *DJSON:
+			__antithesis_instrumentation__.Notify(604103)
 			t, err := d.AsText()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604117)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604118)
 			}
+			__antithesis_instrumentation__.Notify(604104)
 			if t == nil {
+				__antithesis_instrumentation__.Notify(604119)
 				return DNull, nil
+			} else {
+				__antithesis_instrumentation__.Notify(604120)
 			}
+			__antithesis_instrumentation__.Notify(604105)
 			g, err := geo.ParseGeometryFromGeoJSON([]byte(*t))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604121)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604122)
 			}
+			__antithesis_instrumentation__.Notify(604106)
 			return &DGeometry{g}, nil
 		case *DBox2D:
+			__antithesis_instrumentation__.Notify(604107)
 			g, err := geo.MakeGeometryFromGeomT(d.ToGeomT(geopb.DefaultGeometrySRID))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604123)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604124)
 			}
+			__antithesis_instrumentation__.Notify(604108)
 			return &DGeometry{g}, nil
 		case *DBytes:
+			__antithesis_instrumentation__.Notify(604109)
 			g, err := geo.ParseGeometryFromEWKB(geopb.EWKB(*d))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604125)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604126)
 			}
+			__antithesis_instrumentation__.Notify(604110)
 			return &DGeometry{g}, nil
 		}
 
 	case types.DateFamily:
+		__antithesis_instrumentation__.Notify(603859)
 		switch d := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604127)
 			res, _, err := ParseDDate(ctx, string(*d))
 			return res, err
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604128)
 			res, _, err := ParseDDate(ctx, d.Contents)
 			return res, err
 		case *DDate:
+			__antithesis_instrumentation__.Notify(604129)
 			return d, nil
 		case *DInt:
-			// TODO(mjibson): This cast is unsupported by postgres. Should we remove ours?
+			__antithesis_instrumentation__.Notify(604130)
+
 			t, err := pgdate.MakeDateFromUnixEpoch(int64(*d))
 			return NewDDate(t), err
 		case *DTimestampTZ:
+			__antithesis_instrumentation__.Notify(604131)
 			return NewDDateFromTime(d.Time.In(ctx.GetLocation()))
 		case *DTimestamp:
+			__antithesis_instrumentation__.Notify(604132)
 			return NewDDateFromTime(d.Time)
 		}
 
 	case types.TimeFamily:
+		__antithesis_instrumentation__.Notify(603860)
 		roundTo := TimeFamilyPrecisionToRoundDuration(t.Precision())
 		switch d := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604133)
 			res, _, err := ParseDTime(ctx, string(*d), roundTo)
 			return res, err
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604134)
 			res, _, err := ParseDTime(ctx, d.Contents, roundTo)
 			return res, err
 		case *DTime:
+			__antithesis_instrumentation__.Notify(604135)
 			return d.Round(roundTo), nil
 		case *DTimeTZ:
+			__antithesis_instrumentation__.Notify(604136)
 			return MakeDTime(d.TimeOfDay.Round(roundTo)), nil
 		case *DTimestamp:
+			__antithesis_instrumentation__.Notify(604137)
 			return MakeDTime(timeofday.FromTime(d.Time).Round(roundTo)), nil
 		case *DTimestampTZ:
-			// Strip time zone. Times don't carry their location.
+			__antithesis_instrumentation__.Notify(604138)
+
 			stripped, err := d.stripTimeZone(ctx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604141)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604142)
 			}
+			__antithesis_instrumentation__.Notify(604139)
 			return MakeDTime(timeofday.FromTime(stripped.Time).Round(roundTo)), nil
 		case *DInterval:
+			__antithesis_instrumentation__.Notify(604140)
 			return MakeDTime(timeofday.Min.Add(d.Duration).Round(roundTo)), nil
 		}
 
 	case types.TimeTZFamily:
+		__antithesis_instrumentation__.Notify(603861)
 		roundTo := TimeFamilyPrecisionToRoundDuration(t.Precision())
 		switch d := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604143)
 			res, _, err := ParseDTimeTZ(ctx, string(*d), roundTo)
 			return res, err
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604144)
 			res, _, err := ParseDTimeTZ(ctx, d.Contents, roundTo)
 			return res, err
 		case *DTime:
+			__antithesis_instrumentation__.Notify(604145)
 			return NewDTimeTZFromLocation(timeofday.TimeOfDay(*d).Round(roundTo), ctx.GetLocation()), nil
 		case *DTimeTZ:
+			__antithesis_instrumentation__.Notify(604146)
 			return d.Round(roundTo), nil
 		case *DTimestampTZ:
+			__antithesis_instrumentation__.Notify(604147)
 			return NewDTimeTZFromTime(d.Time.In(ctx.GetLocation()).Round(roundTo)), nil
 		}
 
 	case types.TimestampFamily:
+		__antithesis_instrumentation__.Notify(603862)
 		roundTo := TimeFamilyPrecisionToRoundDuration(t.Precision())
-		// TODO(knz): Timestamp from float, decimal.
+
 		switch d := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604148)
 			res, _, err := ParseDTimestamp(ctx, string(*d), roundTo)
 			return res, err
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604149)
 			res, _, err := ParseDTimestamp(ctx, d.Contents, roundTo)
 			return res, err
 		case *DDate:
+			__antithesis_instrumentation__.Notify(604150)
 			t, err := d.ToTime()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604156)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604157)
 			}
+			__antithesis_instrumentation__.Notify(604151)
 			return MakeDTimestamp(t, roundTo)
 		case *DInt:
+			__antithesis_instrumentation__.Notify(604152)
 			return MakeDTimestamp(timeutil.Unix(int64(*d), 0), roundTo)
 		case *DTimestamp:
+			__antithesis_instrumentation__.Notify(604153)
 			return d.Round(roundTo)
 		case *DTimestampTZ:
-			// Strip time zone. Timestamps don't carry their location.
+			__antithesis_instrumentation__.Notify(604154)
+
 			stripped, err := d.stripTimeZone(ctx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604158)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604159)
 			}
+			__antithesis_instrumentation__.Notify(604155)
 			return stripped.Round(roundTo)
 		}
 
 	case types.TimestampTZFamily:
+		__antithesis_instrumentation__.Notify(603863)
 		roundTo := TimeFamilyPrecisionToRoundDuration(t.Precision())
-		// TODO(knz): TimestampTZ from float, decimal.
+
 		switch d := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604160)
 			res, _, err := ParseDTimestampTZ(ctx, string(*d), roundTo)
 			return res, err
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604161)
 			res, _, err := ParseDTimestampTZ(ctx, d.Contents, roundTo)
 			return res, err
 		case *DDate:
+			__antithesis_instrumentation__.Notify(604162)
 			t, err := d.ToTime()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604167)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604168)
 			}
+			__antithesis_instrumentation__.Notify(604163)
 			_, before := t.Zone()
 			_, after := t.In(ctx.GetLocation()).Zone()
 			return MakeDTimestampTZ(t.Add(time.Duration(before-after)*time.Second), roundTo)
 		case *DTimestamp:
+			__antithesis_instrumentation__.Notify(604164)
 			_, before := d.Time.Zone()
 			_, after := d.Time.In(ctx.GetLocation()).Zone()
 			return MakeDTimestampTZ(d.Time.Add(time.Duration(before-after)*time.Second), roundTo)
 		case *DInt:
+			__antithesis_instrumentation__.Notify(604165)
 			return MakeDTimestampTZ(timeutil.Unix(int64(*d), 0), roundTo)
 		case *DTimestampTZ:
+			__antithesis_instrumentation__.Notify(604166)
 			return d.Round(roundTo)
 		}
 
 	case types.IntervalFamily:
+		__antithesis_instrumentation__.Notify(603864)
 		itm, err := t.IntervalTypeMetadata()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(604169)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(604170)
 		}
+		__antithesis_instrumentation__.Notify(603865)
 		switch v := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604171)
 			return ParseDIntervalWithTypeMetadata(ctx.GetIntervalStyle(), string(*v), itm)
 		case *DCollatedString:
+			__antithesis_instrumentation__.Notify(604172)
 			return ParseDIntervalWithTypeMetadata(ctx.GetIntervalStyle(), v.Contents, itm)
 		case *DInt:
+			__antithesis_instrumentation__.Notify(604173)
 			return NewDInterval(duration.FromInt64(int64(*v)), itm), nil
 		case *DFloat:
+			__antithesis_instrumentation__.Notify(604174)
 			return NewDInterval(duration.FromFloat64(float64(*v)), itm), nil
 		case *DTime:
+			__antithesis_instrumentation__.Notify(604175)
 			return NewDInterval(duration.MakeDuration(int64(*v)*1000, 0, 0), itm), nil
 		case *DDecimal:
+			__antithesis_instrumentation__.Notify(604176)
 			var d apd.Decimal
 			dnanos := v.Decimal
 			dnanos.Exponent += 9
-			// We need HighPrecisionCtx because duration values can contain
-			// upward of 35 decimal digits and DecimalCtx only provides 25.
+
 			_, err := HighPrecisionCtx.Quantize(&d, &dnanos, 0)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604181)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604182)
 			}
+			__antithesis_instrumentation__.Notify(604177)
 			if dnanos.Negative {
+				__antithesis_instrumentation__.Notify(604183)
 				d.Coeff.Neg(&d.Coeff)
+			} else {
+				__antithesis_instrumentation__.Notify(604184)
 			}
+			__antithesis_instrumentation__.Notify(604178)
 			dv, ok := duration.FromBigInt(&d.Coeff)
 			if !ok {
+				__antithesis_instrumentation__.Notify(604185)
 				return nil, ErrDecOutOfRange
+			} else {
+				__antithesis_instrumentation__.Notify(604186)
 			}
+			__antithesis_instrumentation__.Notify(604179)
 			return NewDInterval(dv, itm), nil
 		case *DInterval:
+			__antithesis_instrumentation__.Notify(604180)
 			return NewDInterval(v.Duration, itm), nil
 		}
 	case types.JsonFamily:
+		__antithesis_instrumentation__.Notify(603866)
 		switch v := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604187)
 			return ParseDJSON(string(*v))
 		case *DJSON:
+			__antithesis_instrumentation__.Notify(604188)
 			return v, nil
 		case *DGeography:
+			__antithesis_instrumentation__.Notify(604189)
 			j, err := geo.SpatialObjectToGeoJSON(v.Geography.SpatialObject(), -1, geo.SpatialObjectToGeoJSONFlagZero)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604193)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604194)
 			}
+			__antithesis_instrumentation__.Notify(604190)
 			return ParseDJSON(string(j))
 		case *DGeometry:
+			__antithesis_instrumentation__.Notify(604191)
 			j, err := geo.SpatialObjectToGeoJSON(v.Geometry.SpatialObject(), -1, geo.SpatialObjectToGeoJSONFlagZero)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604195)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604196)
 			}
+			__antithesis_instrumentation__.Notify(604192)
 			return ParseDJSON(string(j))
 		}
 	case types.ArrayFamily:
+		__antithesis_instrumentation__.Notify(603867)
 		switch v := d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604197)
 			res, _, err := ParseDArrayFromString(ctx, string(*v), t.ArrayContents())
 			return res, err
 		case *DArray:
+			__antithesis_instrumentation__.Notify(604198)
 			dcast := NewDArray(t.ArrayContents())
 			if err := dcast.MaybeSetCustomOid(t); err != nil {
+				__antithesis_instrumentation__.Notify(604201)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604202)
 			}
+			__antithesis_instrumentation__.Notify(604199)
 			for _, e := range v.Array {
+				__antithesis_instrumentation__.Notify(604203)
 				ecast := DNull
 				if e != DNull {
+					__antithesis_instrumentation__.Notify(604205)
 					var err error
 					ecast, err = PerformCast(ctx, e, t.ArrayContents())
 					if err != nil {
+						__antithesis_instrumentation__.Notify(604206)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(604207)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(604208)
 				}
+				__antithesis_instrumentation__.Notify(604204)
 
 				if err := dcast.Append(ecast); err != nil {
+					__antithesis_instrumentation__.Notify(604209)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(604210)
 				}
 			}
+			__antithesis_instrumentation__.Notify(604200)
 			return dcast, nil
 		}
 	case types.OidFamily:
+		__antithesis_instrumentation__.Notify(603868)
 		switch v := d.(type) {
 		case *DOid:
+			__antithesis_instrumentation__.Notify(604211)
 			return performIntToOidCast(ctx, t, v.DInt)
 		case *DInt:
-			// OIDs are always unsigned 32-bit integers. Some languages, like Java,
-			// store OIDs as signed 32-bit integers, so we implement the cast
-			// by converting to a uint32 first. This matches Postgres behavior.
+			__antithesis_instrumentation__.Notify(604212)
+
 			i := DInt(uint32(*v))
 			return performIntToOidCast(ctx, t, i)
 		case *DString:
-			if t.Oid() != oid.T_oid && string(*v) == ZeroOidValue {
+			__antithesis_instrumentation__.Notify(604213)
+			if t.Oid() != oid.T_oid && func() bool {
+				__antithesis_instrumentation__.Notify(604215)
+				return string(*v) == ZeroOidValue == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(604216)
 				return wrapAsZeroOid(t), nil
+			} else {
+				__antithesis_instrumentation__.Notify(604217)
 			}
+			__antithesis_instrumentation__.Notify(604214)
 			return ParseDOid(ctx, string(*v), t)
 		}
 	case types.TupleFamily:
+		__antithesis_instrumentation__.Notify(603869)
 		switch v := d.(type) {
 		case *DTuple:
+			__antithesis_instrumentation__.Notify(604218)
 			if t == types.AnyTuple {
-				// If AnyTuple is the target type, we can just use the input tuple.
+				__antithesis_instrumentation__.Notify(604223)
+
 				return v, nil
+			} else {
+				__antithesis_instrumentation__.Notify(604224)
 			}
-			// To cast a Tuple to a Tuple, the lengths must be the same on both sides.
-			// Then, each element is casted to the other element type. The labels of
-			// the target type are kept.
+			__antithesis_instrumentation__.Notify(604219)
+
 			if len(v.D) != len(t.TupleContents()) {
+				__antithesis_instrumentation__.Notify(604225)
 				return nil, pgerror.New(
 					pgcode.CannotCoerce, "cannot cast tuple; wrong number of columns")
+			} else {
+				__antithesis_instrumentation__.Notify(604226)
 			}
+			__antithesis_instrumentation__.Notify(604220)
 			ret := NewDTupleWithLen(t, len(v.D))
 			for i := range v.D {
+				__antithesis_instrumentation__.Notify(604227)
 				var err error
 				ret.D[i], err = PerformCast(ctx, v.D[i], t.TupleContents()[i])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(604228)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(604229)
 				}
 			}
+			__antithesis_instrumentation__.Notify(604221)
 			return ret, nil
 		case *DString:
+			__antithesis_instrumentation__.Notify(604222)
 			res, _, err := ParseDTupleFromString(ctx, string(*v), t)
 			return res, err
 		}
 	case types.VoidFamily:
+		__antithesis_instrumentation__.Notify(603870)
 		switch d.(type) {
 		case *DString:
+			__antithesis_instrumentation__.Notify(604230)
 			return DVoidDatum, nil
 		}
+	default:
+		__antithesis_instrumentation__.Notify(603871)
 	}
+	__antithesis_instrumentation__.Notify(603837)
 
 	return nil, pgerror.Newf(
 		pgcode.CannotCoerce, "invalid cast: %s -> %s", d.ResolvedType(), t)
 }
 
-// performIntToOidCast casts the input integer to the OID type given by the
-// input types.T.
 func performIntToOidCast(ctx *EvalContext, t *types.T, v DInt) (Datum, error) {
+	__antithesis_instrumentation__.Notify(604231)
 	switch t.Oid() {
 	case oid.T_oid:
+		__antithesis_instrumentation__.Notify(604232)
 		return &DOid{semanticType: t, DInt: v}, nil
 	case oid.T_regtype:
-		// Mapping an dOid to a regtype is easy: we have a hardcoded map.
+		__antithesis_instrumentation__.Notify(604233)
+
 		ret := &DOid{semanticType: t, DInt: v}
 		if typ, ok := types.OidToType[oid.Oid(v)]; ok {
+			__antithesis_instrumentation__.Notify(604240)
 			ret.name = typ.PGName()
-		} else if types.IsOIDUserDefinedType(oid.Oid(v)) {
-			typ, err := ctx.Planner.ResolveTypeByOID(ctx.Context, oid.Oid(v))
-			if err != nil {
-				return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(604241)
+			if types.IsOIDUserDefinedType(oid.Oid(v)) {
+				__antithesis_instrumentation__.Notify(604242)
+				typ, err := ctx.Planner.ResolveTypeByOID(ctx.Context, oid.Oid(v))
+				if err != nil {
+					__antithesis_instrumentation__.Notify(604244)
+					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(604245)
+				}
+				__antithesis_instrumentation__.Notify(604243)
+				ret.name = typ.PGName()
+			} else {
+				__antithesis_instrumentation__.Notify(604246)
+				if v == 0 {
+					__antithesis_instrumentation__.Notify(604247)
+					return wrapAsZeroOid(t), nil
+				} else {
+					__antithesis_instrumentation__.Notify(604248)
+				}
 			}
-			ret.name = typ.PGName()
-		} else if v == 0 {
-			return wrapAsZeroOid(t), nil
 		}
+		__antithesis_instrumentation__.Notify(604234)
 		return ret, nil
 
 	case oid.T_regproc, oid.T_regprocedure:
-		// Mapping an dOid to a regproc is easy: we have a hardcoded map.
+		__antithesis_instrumentation__.Notify(604235)
+
 		name, ok := OidToBuiltinName[oid.Oid(v)]
 		ret := &DOid{semanticType: t, DInt: v}
 		if !ok {
+			__antithesis_instrumentation__.Notify(604249)
 			if v == 0 {
+				__antithesis_instrumentation__.Notify(604251)
 				return wrapAsZeroOid(t), nil
+			} else {
+				__antithesis_instrumentation__.Notify(604252)
 			}
+			__antithesis_instrumentation__.Notify(604250)
 			return ret, nil
+		} else {
+			__antithesis_instrumentation__.Notify(604253)
 		}
+		__antithesis_instrumentation__.Notify(604236)
 		ret.name = name
 		return ret, nil
 
 	default:
+		__antithesis_instrumentation__.Notify(604237)
 		if v == 0 {
+			__antithesis_instrumentation__.Notify(604254)
 			return wrapAsZeroOid(t), nil
+		} else {
+			__antithesis_instrumentation__.Notify(604255)
 		}
+		__antithesis_instrumentation__.Notify(604238)
 
 		dOid, err := ctx.Planner.ResolveOIDFromOID(ctx.Ctx(), t, NewDOid(v))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(604256)
 			dOid = NewDOid(v)
 			dOid.semanticType = t
+		} else {
+			__antithesis_instrumentation__.Notify(604257)
 		}
+		__antithesis_instrumentation__.Notify(604239)
 		return dOid, nil
 	}
 }
 
 func roundDecimalToInt(ctx *EvalContext, d *apd.Decimal) (int64, error) {
+	__antithesis_instrumentation__.Notify(604258)
 	var newD apd.Decimal
 	if _, err := DecimalCtx.RoundToIntegralValue(&newD, d); err != nil {
+		__antithesis_instrumentation__.Notify(604261)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(604262)
 	}
+	__antithesis_instrumentation__.Notify(604259)
 	i, err := newD.Int64()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(604263)
 		return 0, ErrIntOutOfRange
+	} else {
+		__antithesis_instrumentation__.Notify(604264)
 	}
+	__antithesis_instrumentation__.Notify(604260)
 	return i, nil
 }
 
 func failedCastFromJSON(j *DJSON, t *types.T) error {
+	__antithesis_instrumentation__.Notify(604265)
 	return pgerror.Newf(
 		pgcode.InvalidParameterValue,
 		"cannot cast jsonb %s to type %s",
@@ -2590,102 +3247,139 @@ func failedCastFromJSON(j *DJSON, t *types.T) error {
 	)
 }
 
-// PopulateRecordWithJSON is used for the json to record function family, like
-// json_populate_record. Given a JSON object, a desired tuple type, and a tuple
-// of the same length as the desired type, this function will populate the tuple
-// by setting each named field in the tuple to the value of the key with the
-// same name in the input JSON object. Fields in the tuple that are not present
-// in the JSON will not be modified, and JSON keys that are not in the tuple
-// will be ignored.
-// Each field will be set by a best-effort coercion to its type from the JSON
-// field. The logic is more permissive than casts.
 func PopulateRecordWithJSON(
 	ctx *EvalContext, j json.JSON, desiredType *types.T, tup *DTuple,
 ) error {
+	__antithesis_instrumentation__.Notify(604266)
 	if j.Type() != json.ObjectJSONType {
+		__antithesis_instrumentation__.Notify(604270)
 		return pgerror.Newf(pgcode.InvalidParameterValue, "expected JSON object")
+	} else {
+		__antithesis_instrumentation__.Notify(604271)
 	}
+	__antithesis_instrumentation__.Notify(604267)
 	tupleTypes := desiredType.TupleContents()
 	labels := desiredType.TupleLabels()
 	if labels == nil {
+		__antithesis_instrumentation__.Notify(604272)
 		return pgerror.Newf(
 			pgcode.InvalidParameterValue,
 			"anonymous records cannot be used with json{b}_populate_record{set}",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(604273)
 	}
+	__antithesis_instrumentation__.Notify(604268)
 	for i := range tupleTypes {
+		__antithesis_instrumentation__.Notify(604274)
 		val, err := j.FetchValKey(labels[i])
-		if err != nil || val == nil {
-			// No value? Use the value that was already in the tuple.
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(604276)
+			return val == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(604277)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(604278)
 		}
+		__antithesis_instrumentation__.Notify(604275)
 		tup.D[i], err = PopulateDatumWithJSON(ctx, val, tupleTypes[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(604279)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(604280)
 		}
 	}
+	__antithesis_instrumentation__.Notify(604269)
 	return nil
 }
 
-// PopulateDatumWithJSON is used for the json to record function family, like
-// json_populate_record. It's less restrictive than the casting system, which
-// is why it's implemented separately.
 func PopulateDatumWithJSON(ctx *EvalContext, j json.JSON, desiredType *types.T) (Datum, error) {
+	__antithesis_instrumentation__.Notify(604281)
 	if j == json.NullJSONValue {
+		__antithesis_instrumentation__.Notify(604285)
 		return DNull, nil
+	} else {
+		__antithesis_instrumentation__.Notify(604286)
 	}
+	__antithesis_instrumentation__.Notify(604282)
 	switch desiredType.Family() {
 	case types.ArrayFamily:
+		__antithesis_instrumentation__.Notify(604287)
 		if j.Type() != json.ArrayJSONType {
+			__antithesis_instrumentation__.Notify(604293)
 			return nil, pgerror.Newf(pgcode.InvalidTextRepresentation, "expected JSON array")
+		} else {
+			__antithesis_instrumentation__.Notify(604294)
 		}
+		__antithesis_instrumentation__.Notify(604288)
 		n := j.Len()
 		elementTyp := desiredType.ArrayContents()
 		d := NewDArray(elementTyp)
 		d.Array = make(Datums, n)
 		for i := 0; i < n; i++ {
+			__antithesis_instrumentation__.Notify(604295)
 			elt, err := j.FetchValIdx(i)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604297)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604298)
 			}
+			__antithesis_instrumentation__.Notify(604296)
 			d.Array[i], err = PopulateDatumWithJSON(ctx, elt, elementTyp)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(604299)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(604300)
 			}
 		}
+		__antithesis_instrumentation__.Notify(604289)
 		return d, nil
 	case types.TupleFamily:
+		__antithesis_instrumentation__.Notify(604290)
 		tup := NewDTupleWithLen(desiredType, len(desiredType.TupleContents()))
 		for i := range tup.D {
+			__antithesis_instrumentation__.Notify(604301)
 			tup.D[i] = DNull
 		}
+		__antithesis_instrumentation__.Notify(604291)
 		err := PopulateRecordWithJSON(ctx, j, desiredType, tup)
 		return tup, err
+	default:
+		__antithesis_instrumentation__.Notify(604292)
 	}
+	__antithesis_instrumentation__.Notify(604283)
 	var s string
 	switch j.Type() {
 	case json.StringJSONType:
+		__antithesis_instrumentation__.Notify(604302)
 		t, err := j.AsText()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(604305)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(604306)
 		}
+		__antithesis_instrumentation__.Notify(604303)
 		s = *t
 	default:
+		__antithesis_instrumentation__.Notify(604304)
 		s = j.String()
 	}
+	__antithesis_instrumentation__.Notify(604284)
 	return PerformCast(ctx, NewDString(s), desiredType)
 }
 
-// castCounterType represents a cast from one family to another.
 type castCounterType struct {
 	from, to types.Family
 }
 
-// castCounterMap is a map of cast counter types to their corresponding
-// telemetry counters.
 var castCounters map[castCounterType]telemetry.Counter
 
-// Initialize castCounters.
 func init() {
 	castCounters = make(map[castCounterType]telemetry.Counter)
 	for fromID := range types.Family_name {
@@ -2708,12 +3402,15 @@ func init() {
 	}
 }
 
-// GetCastCounter returns the telemetry counter for the cast from one family to
-// another family.
 func GetCastCounter(from, to types.Family) telemetry.Counter {
+	__antithesis_instrumentation__.Notify(604307)
 	if c, ok := castCounters[castCounterType{from, to}]; ok {
+		__antithesis_instrumentation__.Notify(604309)
 		return c
+	} else {
+		__antithesis_instrumentation__.Notify(604310)
 	}
+	__antithesis_instrumentation__.Notify(604308)
 	panic(errors.AssertionFailedf(
 		"no cast counter found for cast from %s to %s", from.Name(), to.Name(),
 	))

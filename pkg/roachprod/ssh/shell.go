@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ssh
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -18,23 +10,27 @@ import (
 
 const shellMetachars = "|&;()<> \t\n$\\`"
 
-// Escape1 TODO(peter): document
 func Escape1(arg string) string {
+	__antithesis_instrumentation__.Notify(182532)
 	if strings.ContainsAny(arg, shellMetachars) {
-		// Argument contains shell metacharacters. Double quote the
-		// argument, and backslash-escape any characters that still have
-		// meaning inside of double quotes.
+		__antithesis_instrumentation__.Notify(182534)
+
 		e := regexp.MustCompile("([$`\"\\\\])").ReplaceAllString(arg, `\$1`)
 		return fmt.Sprintf(`"%s"`, e)
+	} else {
+		__antithesis_instrumentation__.Notify(182535)
 	}
+	__antithesis_instrumentation__.Notify(182533)
 	return arg
 }
 
-// Escape TODO(peter): document
 func Escape(args []string) string {
+	__antithesis_instrumentation__.Notify(182536)
 	escaped := make([]string, len(args))
 	for i := range args {
+		__antithesis_instrumentation__.Notify(182538)
 		escaped[i] = Escape1(args[i])
 	}
+	__antithesis_instrumentation__.Notify(182537)
 	return strings.Join(escaped, " ")
 }

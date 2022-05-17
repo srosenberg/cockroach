@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scbuild
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,30 +20,38 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Build constructs a new state from an initial state and a statement.
-//
-// The function takes an AST for a DDL statement and constructs targets
-// which represent schema changes to be performed.
 func Build(
 	ctx context.Context, dependencies Dependencies, initial scpb.CurrentState, n tree.Statement,
 ) (_ scpb.CurrentState, err error) {
+	__antithesis_instrumentation__.Notify(579306)
 	start := timeutil.Now()
 	defer func() {
-		if err != nil || !log.ExpensiveLogEnabled(ctx, 2) {
+		__antithesis_instrumentation__.Notify(579312)
+		if err != nil || func() bool {
+			__antithesis_instrumentation__.Notify(579314)
+			return !log.ExpensiveLogEnabled(ctx, 2) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(579315)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(579316)
 		}
+		__antithesis_instrumentation__.Notify(579313)
 		log.Infof(ctx, "build for %s took %v", n.StatementTag(), timeutil.Since(start))
 	}()
+	__antithesis_instrumentation__.Notify(579307)
 	initial = initial.DeepCopy()
 	bs := newBuilderState(ctx, dependencies, initial)
 	els := newEventLogState(dependencies, initial, n)
-	// TODO(fqazi): The optimizer can end up already modifying the statement above
-	// to fully resolve names. We need to take this into account for CTAS/CREATE
-	// VIEW statements.
+
 	an, err := newAstAnnotator(n)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(579317)
 		return scpb.CurrentState{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(579318)
 	}
+	__antithesis_instrumentation__.Notify(579308)
 	b := buildCtx{
 		Context:              ctx,
 		Dependencies:         dependencies,
@@ -61,14 +61,21 @@ func Build(
 		SchemaFeatureChecker: dependencies.FeatureChecker(),
 	}
 	defer func() {
+		__antithesis_instrumentation__.Notify(579319)
 		if recErr := recover(); recErr != nil {
+			__antithesis_instrumentation__.Notify(579320)
 			if errObj, ok := recErr.(error); ok {
+				__antithesis_instrumentation__.Notify(579321)
 				err = errObj
 			} else {
+				__antithesis_instrumentation__.Notify(579322)
 				err = errors.Errorf("unexpected error encountered while building schema change plan %s", recErr)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(579323)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(579309)
 	scbuildstmt.Process(b, an.GetStatement())
 	an.ValidateAnnotations()
 	els.statements[len(els.statements)-1].RedactedStatement =
@@ -80,29 +87,36 @@ func Build(
 	}
 	current := make([]scpb.Status, 0, len(bs.output))
 	for _, e := range bs.output {
+		__antithesis_instrumentation__.Notify(579324)
 		if e.metadata.Size() == 0 {
-			// Exclude targets which weren't explicitly set.
-			// Explicity-set targets have non-zero values in the target metadata.
+			__antithesis_instrumentation__.Notify(579326)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(579327)
 		}
+		__antithesis_instrumentation__.Notify(579325)
 		ts.Targets = append(ts.Targets, scpb.MakeTarget(e.target, e.element, &e.metadata))
 		current = append(current, e.current)
 	}
-	// Ensure that no concurrent schema change are on going on any targets.
+	__antithesis_instrumentation__.Notify(579310)
+
 	descSet := screl.AllTargetDescIDs(ts)
 	descSet.ForEach(func(id descpb.ID) {
+		__antithesis_instrumentation__.Notify(579328)
 		bs.ensureDescriptor(id)
 		desc := bs.descCache[id].desc
 		if desc.HasConcurrentSchemaChanges() {
+			__antithesis_instrumentation__.Notify(579329)
 			panic(scerrors.ConcurrentSchemaChangeError(desc))
+		} else {
+			__antithesis_instrumentation__.Notify(579330)
 		}
 	})
+	__antithesis_instrumentation__.Notify(579311)
 	return scpb.CurrentState{TargetState: ts, Current: current}, nil
 }
 
-// Export dependency interfaces.
-// These are defined in the scbuildstmts package instead of scbuild to avoid
-// circular import dependencies.
 type (
 	// FeatureChecker contains operations for checking if a schema change
 	// feature is allowed by the database administrator.
@@ -116,9 +130,7 @@ type elementState struct {
 	metadata scpb.TargetMetadata
 }
 
-// builderState is the backing struct for scbuildstmt.BuilderState interface.
 type builderState struct {
-	// Dependencies
 	ctx             context.Context
 	clusterSettings *cluster.Settings
 	evalCtx         *tree.EvalContext
@@ -128,7 +140,6 @@ type builderState struct {
 	createPartCCL   CreatePartitioningCCLCallback
 	hasAdmin        bool
 
-	// output contains the schema change targets that have been planned so far.
 	output []elementState
 
 	descCache   map[catid.DescID]*cachedDesc
@@ -143,19 +154,11 @@ type cachedDesc struct {
 	privileges   map[privilege.Kind]error
 	hasOwnership bool
 
-	// elementIndexMap maps from the string serialization of the element
-	// to the index of the element in the builder state. Note that this
-	// works as a key because the string is derived from the same set of
-	// attributes used to define equality. If we were to change that, we'd
-	// need to derive a new cache key.
-	//
-	// This map ends up being very important to make sure that Ensure does
-	// not become O(N) where N is the number of elements in the descriptor.
 	elementIndexMap map[string]int
 }
 
-// newBuilderState constructs a builderState.
 func newBuilderState(ctx context.Context, d Dependencies, initial scpb.CurrentState) *builderState {
+	__antithesis_instrumentation__.Notify(579331)
 	bs := builderState{
 		ctx:             ctx,
 		clusterSettings: d.ClusterSettings(),
@@ -171,41 +174,39 @@ func newBuilderState(ctx context.Context, d Dependencies, initial scpb.CurrentSt
 	var err error
 	bs.hasAdmin, err = bs.auth.HasAdminRole(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(579335)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(579336)
 	}
+	__antithesis_instrumentation__.Notify(579332)
 	for _, t := range initial.TargetState.Targets {
+		__antithesis_instrumentation__.Notify(579337)
 		bs.ensureDescriptor(screl.GetDescID(t.Element()))
 	}
+	__antithesis_instrumentation__.Notify(579333)
 	for i, t := range initial.TargetState.Targets {
+		__antithesis_instrumentation__.Notify(579338)
 		bs.Ensure(initial.Current[i], scpb.AsTargetStatus(t.TargetStatus), t.Element(), t.Metadata)
 	}
+	__antithesis_instrumentation__.Notify(579334)
 	return &bs
 }
 
-// eventLogState is the backing struct for scbuildstmt.EventLogState interface.
 type eventLogState struct {
-
-	// statements contains the statements in the schema changer state.
 	statements []scpb.Statement
 
-	// authorization contains application and user names for the current session.
 	authorization scpb.Authorization
 
-	// statementMetaData is used to associate each element in the output to the
-	// statement which resulted in it being added there.
 	statementMetaData scpb.TargetMetadata
 
-	// sourceElementID tracks the parent elements responsible
-	// for any new elements added. This is used for detailed
-	// tracking during cascade operations.
 	sourceElementID *scpb.SourceElementID
 
-	// astFormatter used to format AST elements as redactable strings.
 	astFormatter AstFormatter
 }
 
-// newEventLogState constructs an eventLogState.
 func newEventLogState(d Dependencies, initial scpb.CurrentState, n tree.Statement) *eventLogState {
+	__antithesis_instrumentation__.Notify(579339)
 	stmts := initial.Statements
 	els := eventLogState{
 		statements: append(stmts, scpb.Statement{
@@ -228,9 +229,6 @@ func newEventLogState(d Dependencies, initial scpb.CurrentState, n tree.Statemen
 	return &els
 }
 
-// buildCtx is the backing struct for the scbuildstmt.BuildCtx interface.
-// It deliberately embeds the scbuildstmt.BuilderState interface instead of
-// the builderState backing struct to avoid leaking the latter's internal state.
 type buildCtx struct {
 	context.Context
 	Dependencies
@@ -242,18 +240,18 @@ type buildCtx struct {
 
 var _ scbuildstmt.BuildCtx = buildCtx{}
 
-// Add implements the scbuildstmt.BuildCtx interface.
 func (b buildCtx) Add(element scpb.Element) {
+	__antithesis_instrumentation__.Notify(579340)
 	b.Ensure(scpb.Status_UNKNOWN, scpb.ToPublic, element, b.TargetMetadata())
 }
 
-// Drop implements the scbuildstmt.BuildCtx interface.
 func (b buildCtx) Drop(element scpb.Element) {
+	__antithesis_instrumentation__.Notify(579341)
 	b.Ensure(scpb.Status_UNKNOWN, scpb.ToAbsent, element, b.TargetMetadata())
 }
 
-// WithNewSourceElementID implements the scbuildstmt.BuildCtx interface.
 func (b buildCtx) WithNewSourceElementID() scbuildstmt.BuildCtx {
+	__antithesis_instrumentation__.Notify(579342)
 	return buildCtx{
 		Context:       b.Context,
 		Dependencies:  b.Dependencies,

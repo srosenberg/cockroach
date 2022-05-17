@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -17,8 +9,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// showVarNode represents a SHOW <var> statement.
-// This is reached if <var> contains a period.
 type showVarNode struct {
 	name  string
 	shown bool
@@ -26,30 +16,41 @@ type showVarNode struct {
 }
 
 func (s *showVarNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(623348)
 	return nil
 }
 
 func (s *showVarNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(623349)
 	if s.shown {
+		__antithesis_instrumentation__.Notify(623352)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(623353)
 	}
+	__antithesis_instrumentation__.Notify(623350)
 	s.shown = true
 
-	_, v, err := getSessionVar(s.name, false /* missingOk */)
+	_, v, err := getSessionVar(s.name, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(623354)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(623355)
 	}
+	__antithesis_instrumentation__.Notify(623351)
 	s.val, err = v.Get(params.extendedEvalCtx)
 	return true, err
 }
 
 func (s *showVarNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(623356)
 	return tree.Datums{tree.NewDString(s.val)}
 }
 
-func (s *showVarNode) Close(ctx context.Context) {}
+func (s *showVarNode) Close(ctx context.Context) { __antithesis_instrumentation__.Notify(623357) }
 
-// ShowVar shows a session variable.
 func (p *planner) ShowVar(ctx context.Context, n *tree.ShowVar) (planNode, error) {
+	__antithesis_instrumentation__.Notify(623358)
 	return &showVarNode{name: strings.ToLower(n.Name)}, nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,23 +17,18 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// migrationServer is an implementation of the Migration service. The RPCs here
-// are used to power the migrations infrastructure in pkg/migrations.
 type migrationServer struct {
 	server *Server
 
-	// We use this mutex to serialize attempts to bump the cluster version.
 	syncutil.Mutex
 }
 
 var _ serverpb.MigrationServer = &migrationServer{}
 
-// ValidateTargetClusterVersion implements the MigrationServer interface.
-// It's used to verify that we're running a binary that's able to support the
-// given cluster version.
 func (m *migrationServer) ValidateTargetClusterVersion(
 	ctx context.Context, req *serverpb.ValidateTargetClusterVersionRequest,
 ) (*serverpb.ValidateTargetClusterVersionResponse, error) {
+	__antithesis_instrumentation__.Notify(194295)
 	ctx, span := m.server.AnnotateCtxWithSpan(ctx, "validate-cluster-version")
 	defer span.Finish()
 	ctx = logtags.AddTag(ctx, "validate-cluster-version", nil)
@@ -49,45 +36,36 @@ func (m *migrationServer) ValidateTargetClusterVersion(
 	targetCV := req.ClusterVersion
 	versionSetting := m.server.ClusterSettings().Version
 
-	// We're validating the following:
-	//
-	//   node's minimum supported version <= target version <= node's binary version
 	if targetCV.Less(versionSetting.BinaryMinSupportedVersion()) {
+		__antithesis_instrumentation__.Notify(194298)
 		msg := fmt.Sprintf("target cluster version %s less than binary's min supported version %s",
 			targetCV, versionSetting.BinaryMinSupportedVersion())
 		log.Warningf(ctx, "%s", msg)
 		return nil, errors.Newf("%s", redact.Safe(msg))
+	} else {
+		__antithesis_instrumentation__.Notify(194299)
 	}
+	__antithesis_instrumentation__.Notify(194296)
 
-	// TODO(irfansharif): These errors are propagated all the way back to the
-	// user during improper version upgrades. Given the migrations
-	// infrastructure is stepping through internal versions during major cluster
-	// version upgrades, and given we don't use negative internal versions (as
-	// suggested in #33578), it currently manifests (see
-	// TestClusterVersionMixedVersionTooOld) as errors of the form:
-	//
-	//     "binary version 20.1 less than target cluster version 20.1-1"
-	//
-	// It would be a bit clearer to use negative internal versions, to be able
-	// to surface more obvious errors. Alternatively we could simply construct
-	// a better error message here.
 	if versionSetting.BinaryVersion().Less(targetCV.Version) {
+		__antithesis_instrumentation__.Notify(194300)
 		msg := fmt.Sprintf("binary version %s less than target cluster version %s",
 			versionSetting.BinaryVersion(), targetCV)
 		log.Warningf(ctx, "%s", msg)
 		return nil, errors.Newf("%s", redact.Safe(msg))
+	} else {
+		__antithesis_instrumentation__.Notify(194301)
 	}
+	__antithesis_instrumentation__.Notify(194297)
 
 	resp := &serverpb.ValidateTargetClusterVersionResponse{}
 	return resp, nil
 }
 
-// BumpClusterVersion implements the MigrationServer interface. It's used to
-// inform us of a cluster version bump. Here we're responsible for durably
-// persisting the cluster version and enabling the corresponding version gates.
 func (m *migrationServer) BumpClusterVersion(
 	ctx context.Context, req *serverpb.BumpClusterVersionRequest,
 ) (*serverpb.BumpClusterVersionResponse, error) {
+	__antithesis_instrumentation__.Notify(194302)
 	const opName = "bump-cluster-version"
 	ctx, span := m.server.AnnotateCtxWithSpan(ctx, opName)
 	defer span.Finish()
@@ -96,18 +74,24 @@ func (m *migrationServer) BumpClusterVersion(
 	if err := m.server.stopper.RunTaskWithErr(ctx, opName, func(
 		ctx context.Context,
 	) error {
+		__antithesis_instrumentation__.Notify(194304)
 		m.Lock()
 		defer m.Unlock()
 		return bumpClusterVersion(ctx, m.server.st, *req.ClusterVersion, m.server.engines)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(194305)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(194306)
 	}
+	__antithesis_instrumentation__.Notify(194303)
 	return &serverpb.BumpClusterVersionResponse{}, nil
 }
 
 func bumpClusterVersion(
 	ctx context.Context, st *cluster.Settings, newCV clusterversion.ClusterVersion, engines Engines,
 ) error {
+	__antithesis_instrumentation__.Notify(194307)
 
 	versionSetting := st.Version
 	prevCV, err := kvserver.SynthesizeClusterVersionFromEngines(
@@ -115,46 +99,46 @@ func bumpClusterVersion(
 		versionSetting.BinaryMinSupportedVersion(),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(194312)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(194313)
 	}
+	__antithesis_instrumentation__.Notify(194308)
 
 	if !prevCV.Less(newCV.Version) {
-		// Nothing to do.
+		__antithesis_instrumentation__.Notify(194314)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(194315)
 	}
+	__antithesis_instrumentation__.Notify(194309)
 
-	// TODO(irfansharif): We should probably capture this pattern of
-	// "persist the cluster version first" and only then bump the
-	// version setting in a better way.
-
-	// Whenever the version changes, we want to persist that update to
-	// wherever the CRDB process retrieved the initial version from
-	// (typically a collection of storage.Engines).
 	if err := kvserver.WriteClusterVersionToEngines(ctx, engines, newCV); err != nil {
+		__antithesis_instrumentation__.Notify(194316)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(194317)
 	}
+	__antithesis_instrumentation__.Notify(194310)
 
-	// We bump the local version gate here.
-	//
-	// NB: On 21.1 nodes we no longer use gossip to propagate cluster
-	// version bumps. We'll still disseminate it through gossip, but the
-	// actual (local) setting update happens here.
-	//
-	// TODO(irfansharif): We should stop disseminating cluster version
-	// bumps through gossip after 21.1 is cut. There will be no one
-	// listening in on it.
 	if err := st.Version.SetActiveVersion(ctx, newCV); err != nil {
+		__antithesis_instrumentation__.Notify(194318)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(194319)
 	}
+	__antithesis_instrumentation__.Notify(194311)
 	log.Infof(ctx, "active cluster version setting is now %s (up from %s)",
 		newCV.PrettyPrint(), prevCV.PrettyPrint())
 	return nil
 }
 
-// SyncAllEngines implements the MigrationServer interface.
 func (m *migrationServer) SyncAllEngines(
 	ctx context.Context, _ *serverpb.SyncAllEnginesRequest,
 ) (*serverpb.SyncAllEnginesResponse, error) {
+	__antithesis_instrumentation__.Notify(194320)
 	const opName = "sync-all-engines"
 	ctx, span := m.server.AnnotateCtxWithSpan(ctx, opName)
 	defer span.Finish()
@@ -163,30 +147,39 @@ func (m *migrationServer) SyncAllEngines(
 	if err := m.server.stopper.RunTaskWithErr(ctx, opName, func(
 		ctx context.Context,
 	) error {
-		// Let's be paranoid here and ensure that all stores have been fully
-		// initialized.
+		__antithesis_instrumentation__.Notify(194322)
+
 		m.server.node.waitForAdditionalStoreInit()
 
 		for _, eng := range m.server.engines {
+			__antithesis_instrumentation__.Notify(194324)
 			batch := eng.NewBatch()
 			if err := batch.LogData(nil); err != nil {
+				__antithesis_instrumentation__.Notify(194325)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(194326)
 			}
 		}
+		__antithesis_instrumentation__.Notify(194323)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(194327)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(194328)
 	}
+	__antithesis_instrumentation__.Notify(194321)
 
 	log.Infof(ctx, "synced %d engines", len(m.server.engines))
 	resp := &serverpb.SyncAllEnginesResponse{}
 	return resp, nil
 }
 
-// PurgeOutdatedReplicas implements the MigrationServer interface.
 func (m *migrationServer) PurgeOutdatedReplicas(
 	ctx context.Context, req *serverpb.PurgeOutdatedReplicasRequest,
 ) (*serverpb.PurgeOutdatedReplicasResponse, error) {
+	__antithesis_instrumentation__.Notify(194329)
 	const opName = "purged-outdated-replicas"
 	ctx, span := m.server.AnnotateCtxWithSpan(ctx, opName)
 	defer span.Finish()
@@ -195,25 +188,30 @@ func (m *migrationServer) PurgeOutdatedReplicas(
 	if err := m.server.stopper.RunTaskWithErr(ctx, opName, func(
 		ctx context.Context,
 	) error {
-		// Same as in SyncAllEngines, because stores can be added asynchronously, we
-		// need to ensure that the bootstrap process has happened.
+		__antithesis_instrumentation__.Notify(194331)
+
 		m.server.node.waitForAdditionalStoreInit()
 
 		return m.server.node.stores.VisitStores(func(s *kvserver.Store) error {
+			__antithesis_instrumentation__.Notify(194332)
 			return s.PurgeOutdatedReplicas(ctx, *req.Version)
 		})
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(194333)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(194334)
 	}
+	__antithesis_instrumentation__.Notify(194330)
 
 	resp := &serverpb.PurgeOutdatedReplicasResponse{}
 	return resp, nil
 }
 
-// WaitForSpanConfigSubscription implements the MigrationServer interface.
 func (m *migrationServer) WaitForSpanConfigSubscription(
 	ctx context.Context, _ *serverpb.WaitForSpanConfigSubscriptionRequest,
 ) (*serverpb.WaitForSpanConfigSubscriptionResponse, error) {
+	__antithesis_instrumentation__.Notify(194335)
 	const opName = "wait-for-spanconfig-subscription"
 	ctx, span := m.server.AnnotateCtxWithSpan(ctx, opName)
 	defer span.Finish()
@@ -222,16 +220,21 @@ func (m *migrationServer) WaitForSpanConfigSubscription(
 	if err := m.server.stopper.RunTaskWithErr(ctx, opName, func(
 		ctx context.Context,
 	) error {
-		// Same as in SyncAllEngines, because stores can be added asynchronously, we
-		// need to ensure that the bootstrap process has happened.
+		__antithesis_instrumentation__.Notify(194337)
+
 		m.server.node.waitForAdditionalStoreInit()
 
 		return m.server.node.stores.VisitStores(func(s *kvserver.Store) error {
+			__antithesis_instrumentation__.Notify(194338)
 			return s.WaitForSpanConfigSubscription(ctx)
 		})
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(194339)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(194340)
 	}
+	__antithesis_instrumentation__.Notify(194336)
 
 	resp := &serverpb.WaitForSpanConfigSubscriptionResponse{}
 	return resp, nil

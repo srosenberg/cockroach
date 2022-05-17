@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,10 +21,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// authenticationV2Server is a sub-server under apiV2Server that handles
-// authentication-related endpoints, such as login and logout. The actual
-// verification of sessions for regular endpoints happens in authenticationV2Mux,
-// not here.
 type authenticationV2Server struct {
 	ctx        context.Context
 	sqlServer  *SQLServer
@@ -41,11 +29,10 @@ type authenticationV2Server struct {
 	basePath   string
 }
 
-// newAuthenticationV2Server creates a new authenticationV2Server for the given
-// outer Server, and base path.
 func newAuthenticationV2Server(
 	ctx context.Context, s *Server, basePath string,
 ) *authenticationV2Server {
+	__antithesis_instrumentation__.Notify(188925)
 	simpleMux := http.NewServeMux()
 
 	authServer := &authenticationV2Server{
@@ -61,275 +48,280 @@ func newAuthenticationV2Server(
 }
 
 func (a *authenticationV2Server) registerRoutes() {
+	__antithesis_instrumentation__.Notify(188926)
 	a.bindEndpoint("login/", a.login)
 	a.bindEndpoint("logout/", a.logout)
 }
 
 func (a *authenticationV2Server) bindEndpoint(endpoint string, handler http.HandlerFunc) {
+	__antithesis_instrumentation__.Notify(188927)
 	a.mux.HandleFunc(a.basePath+endpoint, handler)
 }
 
-// createSessionFor creates a login session for the given user.
-//
-// The caller is responsible to ensure the username has been normalized already.
 func (a *authenticationV2Server) createSessionFor(
 	ctx context.Context, username security.SQLUsername,
 ) (string, error) {
-	// Create a new database session, generating an ID and secret key.
+	__antithesis_instrumentation__.Notify(188928)
+
 	id, secret, err := a.authServer.newAuthSession(ctx, username)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(188931)
 		return "", apiInternalError(ctx, err)
+	} else {
+		__antithesis_instrumentation__.Notify(188932)
 	}
+	__antithesis_instrumentation__.Notify(188929)
 
-	// Generate and set a session for the response. Because HTTP cookies
-	// must be strings, the cookie value (a marshaled protobuf) is encoded in
-	// base64. We just piggyback on the v1 API SessionCookie here, however
-	// this won't be set as an HTTP cookie on the client side.
 	cookieValue := &serverpb.SessionCookie{
 		ID:     id,
 		Secret: secret,
 	}
 	cookieValueBytes, err := protoutil.Marshal(cookieValue)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(188933)
 		return "", errors.Wrap(err, "session cookie could not be encoded")
+	} else {
+		__antithesis_instrumentation__.Notify(188934)
 	}
+	__antithesis_instrumentation__.Notify(188930)
 	value := base64.StdEncoding.EncodeToString(cookieValueBytes)
 	return value, nil
 }
 
-// swagger:model loginResponse
 type loginResponse struct {
-	// Session string for a valid API session. Specify this in header for any API
-	// requests that require authentication.
 	Session string `json:"session"`
 }
 
-// swagger:operation POST /login/ login
-//
-// API Login
-//
-// Creates an API session for use with API endpoints that require
-// authentication.
-//
-// ---
-// parameters:
-// - name: credentials
-//   schema:
-//     type: object
-//     properties:
-//       username:
-//         type: string
-//       password:
-//         type: string
-//     required:
-//       - username
-//       - password
-//   in: body
-//   description: Credentials for login
-//   required: true
-// produces:
-// - application/json
-// - text/plain
-// consumes:
-// - application/x-www-form-urlencoded
-// responses:
-//   "200":
-//     description: Login response.
-//     schema:
-//       "$ref": "#/definitions/loginResponse"
-//   "400":
-//     description: Bad request, if required parameters absent.
-//     type: string
-//   "401":
-//     description: Unauthorized, if credentials don't match.
-//     type: string
 func (a *authenticationV2Server) login(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(188935)
 	if r.Method != "POST" {
+		__antithesis_instrumentation__.Notify(188943)
 		http.Error(w, "not found", http.StatusNotFound)
+	} else {
+		__antithesis_instrumentation__.Notify(188944)
 	}
+	__antithesis_instrumentation__.Notify(188936)
 	if err := r.ParseForm(); err != nil {
+		__antithesis_instrumentation__.Notify(188945)
 		apiV2InternalError(r.Context(), err, w)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(188946)
 	}
+	__antithesis_instrumentation__.Notify(188937)
 	if r.Form.Get("username") == "" {
+		__antithesis_instrumentation__.Notify(188947)
 		http.Error(w, "username not specified", http.StatusBadRequest)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(188948)
 	}
+	__antithesis_instrumentation__.Notify(188938)
 
-	// In CockroachDB SQL, unlike in PostgreSQL, usernames are
-	// case-insensitive. Therefore we need to normalize the username
-	// here, so that the normalized username is retained in the session
-	// table: the APIs extract the username from the session table
-	// without further normalization.
 	username, _ := security.MakeSQLUsernameFromUserInput(r.Form.Get("username"), security.UsernameValidation)
 
-	// Verify the provided username/password pair.
 	verified, expired, err := a.authServer.verifyPasswordDBConsole(a.ctx, username, r.Form.Get("password"))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(188949)
 		apiV2InternalError(r.Context(), err, w)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(188950)
 	}
+	__antithesis_instrumentation__.Notify(188939)
 	if expired {
+		__antithesis_instrumentation__.Notify(188951)
 		http.Error(w, "the password has expired", http.StatusUnauthorized)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(188952)
 	}
+	__antithesis_instrumentation__.Notify(188940)
 	if !verified {
+		__antithesis_instrumentation__.Notify(188953)
 		http.Error(w, "the provided credentials did not match any account on the server", http.StatusUnauthorized)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(188954)
 	}
+	__antithesis_instrumentation__.Notify(188941)
 
 	session, err := a.createSessionFor(a.ctx, username)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(188955)
 		apiV2InternalError(r.Context(), err, w)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(188956)
 	}
+	__antithesis_instrumentation__.Notify(188942)
 
 	writeJSONResponse(r.Context(), w, http.StatusOK, &loginResponse{Session: session})
 }
 
-// swagger:model logoutResponse
 type logoutResponse struct {
-	// Indicates whether logout was successful.
 	LoggedOut bool `json:"logged_out"`
 }
 
-// swagger:operation POST /logout/ logout
-//
-// API Logout
-//
-// Logs out on a previously-created API session.
-//
-// ---
-// produces:
-// - application/json
-// - text/plain
-// security:
-// - api_session: []
-// responses:
-//   "200":
-//     description: Logout response.
-//     schema:
-//       "$ref": "#/definitions/logoutResponse"
-//   "400":
-//     description: Bad request, if API session not present in headers, or
-//       invalid session.
-//     type: string
 func (a *authenticationV2Server) logout(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(188957)
 	if r.Method != "POST" {
+		__antithesis_instrumentation__.Notify(188963)
 		http.Error(w, "not found", http.StatusNotFound)
+	} else {
+		__antithesis_instrumentation__.Notify(188964)
 	}
+	__antithesis_instrumentation__.Notify(188958)
 	session := r.Header.Get(apiV2AuthHeader)
 	if session == "" {
+		__antithesis_instrumentation__.Notify(188965)
 		http.Error(w, "invalid or unspecified session", http.StatusBadRequest)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(188966)
 	}
+	__antithesis_instrumentation__.Notify(188959)
 	var sessionCookie serverpb.SessionCookie
 	decoded, err := base64.StdEncoding.DecodeString(session)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(188967)
 		apiV2InternalError(r.Context(), err, w)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(188968)
 	}
+	__antithesis_instrumentation__.Notify(188960)
 	if err := protoutil.Unmarshal(decoded, &sessionCookie); err != nil {
+		__antithesis_instrumentation__.Notify(188969)
 		apiV2InternalError(r.Context(), err, w)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(188970)
 	}
+	__antithesis_instrumentation__.Notify(188961)
 
-	// Revoke the session.
 	if n, err := a.sqlServer.internalExecutor.ExecEx(
 		a.ctx,
 		"revoke-auth-session",
-		nil, /* txn */
+		nil,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		`UPDATE system.web_sessions SET "revokedAt" = now() WHERE id = $1`,
 		sessionCookie.ID,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(188971)
 		apiV2InternalError(r.Context(), err, w)
 		return
-	} else if n == 0 {
-		err := status.Errorf(
-			codes.InvalidArgument,
-			"session with id %d nonexistent", sessionCookie.ID)
-		log.Infof(a.ctx, "%v", err)
-		http.Error(w, "invalid session", http.StatusBadRequest)
-		return
+	} else {
+		__antithesis_instrumentation__.Notify(188972)
+		if n == 0 {
+			__antithesis_instrumentation__.Notify(188973)
+			err := status.Errorf(
+				codes.InvalidArgument,
+				"session with id %d nonexistent", sessionCookie.ID)
+			log.Infof(a.ctx, "%v", err)
+			http.Error(w, "invalid session", http.StatusBadRequest)
+			return
+		} else {
+			__antithesis_instrumentation__.Notify(188974)
+		}
 	}
+	__antithesis_instrumentation__.Notify(188962)
 
 	writeJSONResponse(r.Context(), w, http.StatusOK, &logoutResponse{LoggedOut: true})
 }
 
 func (a *authenticationV2Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(188975)
 	a.mux.ServeHTTP(w, r)
 }
 
-// authenticationV2Mux provides authentication checks for an arbitrary inner
-// http.Handler. If the session cookie is not set, an HTTP 401 error is returned
-// and the request isn't routed through to the inner handler. On success, the
-// username is set on the request context for use in the inner handler.
 type authenticationV2Mux struct {
 	s     *authenticationV2Server
 	inner http.Handler
 }
 
 func newAuthenticationV2Mux(s *authenticationV2Server, inner http.Handler) *authenticationV2Mux {
+	__antithesis_instrumentation__.Notify(188976)
 	return &authenticationV2Mux{
 		s:     s,
 		inner: inner,
 	}
 }
 
-// getSession decodes the cookie from the request, looks up the corresponding session, and
-// returns the logged in user name. If there's an error, it returns an error value and
-// also sends the error over http using w.
 func (a *authenticationV2Mux) getSession(
 	w http.ResponseWriter, req *http.Request,
 ) (string, *serverpb.SessionCookie, error) {
-	// Validate the returned cookie.
+	__antithesis_instrumentation__.Notify(188977)
+
 	rawSession := req.Header.Get(apiV2AuthHeader)
 	if len(rawSession) == 0 {
+		__antithesis_instrumentation__.Notify(188983)
 		err := errors.New("invalid session header")
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return "", nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(188984)
 	}
+	__antithesis_instrumentation__.Notify(188978)
 	sessionCookie := &serverpb.SessionCookie{}
 	decoded, err := base64.StdEncoding.DecodeString(rawSession)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(188985)
 		err := errors.New("invalid session header")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return "", nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(188986)
 	}
+	__antithesis_instrumentation__.Notify(188979)
 	if err := protoutil.Unmarshal(decoded, sessionCookie); err != nil {
+		__antithesis_instrumentation__.Notify(188987)
 		err := errors.New("invalid session header")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return "", nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(188988)
 	}
+	__antithesis_instrumentation__.Notify(188980)
 
 	valid, username, err := a.s.authServer.verifySession(req.Context(), sessionCookie)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(188989)
 		apiV2InternalError(req.Context(), err, w)
 		return "", nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(188990)
 	}
+	__antithesis_instrumentation__.Notify(188981)
 	if !valid {
+		__antithesis_instrumentation__.Notify(188991)
 		err := errors.New("the provided authentication session could not be validated")
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return "", nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(188992)
 	}
+	__antithesis_instrumentation__.Notify(188982)
 
 	return username, sessionCookie, nil
 }
 
 func (a *authenticationV2Mux) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	__antithesis_instrumentation__.Notify(188993)
 	username, cookie, err := a.getSession(w, req)
 	if err == nil {
-		// Valid session found. Set the username in the request context, so
-		// child http.Handlers can access it.
+		__antithesis_instrumentation__.Notify(188995)
+
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, webSessionUserKey{}, username)
 		ctx = context.WithValue(ctx, webSessionIDKey{}, cookie.ID)
 		req = req.WithContext(ctx)
 	} else {
-		// getSession writes an error to w if err != nil.
+		__antithesis_instrumentation__.Notify(188996)
+
 		return
 	}
+	__antithesis_instrumentation__.Notify(188994)
 	a.inner.ServeHTTP(w, req)
 }
 
@@ -341,11 +333,6 @@ const (
 	superUserRole
 )
 
-// roleAuthorizationMux enforces a role (eg. type of user, role option)
-// for an arbitrary inner mux. Meant to be used under authenticationV2Mux. If
-// the logged-in user is not at least of `role` type, and doesn't have
-// the `option` roleoption, an HTTP 403 forbidden error is returned. Otherwise,
-// the request is passed onto the inner http.Handler.
 type roleAuthorizationMux struct {
 	ie     *sql.InternalExecutor
 	role   apiRole
@@ -356,88 +343,154 @@ type roleAuthorizationMux struct {
 func (r *roleAuthorizationMux) getRoleForUser(
 	ctx context.Context, user security.SQLUsername,
 ) (apiRole, error) {
+	__antithesis_instrumentation__.Notify(188997)
 	if user.IsRootUser() {
-		// Shortcut.
+		__antithesis_instrumentation__.Notify(189004)
+
 		return superUserRole, nil
+	} else {
+		__antithesis_instrumentation__.Notify(189005)
 	}
+	__antithesis_instrumentation__.Notify(188998)
 	row, err := r.ie.QueryRowEx(
-		ctx, "check-is-admin", nil, /* txn */
+		ctx, "check-is-admin", nil,
 		sessiondata.InternalExecutorOverride{User: user},
 		"SELECT crdb_internal.is_admin()")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(189006)
 		return regularRole, err
+	} else {
+		__antithesis_instrumentation__.Notify(189007)
 	}
+	__antithesis_instrumentation__.Notify(188999)
 	if row == nil {
+		__antithesis_instrumentation__.Notify(189008)
 		return regularRole, errors.AssertionFailedf("hasAdminRole: expected 1 row, got 0")
+	} else {
+		__antithesis_instrumentation__.Notify(189009)
 	}
+	__antithesis_instrumentation__.Notify(189000)
 	if len(row) != 1 {
+		__antithesis_instrumentation__.Notify(189010)
 		return regularRole, errors.AssertionFailedf("hasAdminRole: expected 1 column, got %d", len(row))
+	} else {
+		__antithesis_instrumentation__.Notify(189011)
 	}
+	__antithesis_instrumentation__.Notify(189001)
 	dbDatum, ok := tree.AsDBool(row[0])
 	if !ok {
+		__antithesis_instrumentation__.Notify(189012)
 		return regularRole, errors.AssertionFailedf("hasAdminRole: expected bool, got %T", row[0])
+	} else {
+		__antithesis_instrumentation__.Notify(189013)
 	}
+	__antithesis_instrumentation__.Notify(189002)
 	if dbDatum {
+		__antithesis_instrumentation__.Notify(189014)
 		return adminRole, nil
+	} else {
+		__antithesis_instrumentation__.Notify(189015)
 	}
+	__antithesis_instrumentation__.Notify(189003)
 	return regularRole, nil
 }
 
 func (r *roleAuthorizationMux) hasRoleOption(
 	ctx context.Context, user security.SQLUsername, roleOption roleoption.Option,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(189016)
 	if user.IsRootUser() {
-		// Shortcut.
+		__antithesis_instrumentation__.Notify(189022)
+
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(189023)
 	}
+	__antithesis_instrumentation__.Notify(189017)
 	row, err := r.ie.QueryRowEx(
-		ctx, "check-role-option", nil, /* txn */
+		ctx, "check-role-option", nil,
 		sessiondata.InternalExecutorOverride{User: user},
 		"SELECT crdb_internal.has_role_option($1)", roleOption.String())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(189024)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(189025)
 	}
+	__antithesis_instrumentation__.Notify(189018)
 	if row == nil {
+		__antithesis_instrumentation__.Notify(189026)
 		return false, errors.AssertionFailedf("hasRoleOption: expected 1 row, got 0")
+	} else {
+		__antithesis_instrumentation__.Notify(189027)
 	}
+	__antithesis_instrumentation__.Notify(189019)
 	if len(row) != 1 {
+		__antithesis_instrumentation__.Notify(189028)
 		return false, errors.AssertionFailedf("hasRoleOption: expected 1 column, got %d", len(row))
+	} else {
+		__antithesis_instrumentation__.Notify(189029)
 	}
+	__antithesis_instrumentation__.Notify(189020)
 	dbDatum, ok := tree.AsDBool(row[0])
 	if !ok {
+		__antithesis_instrumentation__.Notify(189030)
 		return false, errors.AssertionFailedf("hasRoleOption: expected bool, got %T", row[0])
+	} else {
+		__antithesis_instrumentation__.Notify(189031)
 	}
+	__antithesis_instrumentation__.Notify(189021)
 	return bool(dbDatum), nil
 }
 
 func (r *roleAuthorizationMux) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	// The username is set in authenticationV2Mux, and must correspond with a
-	// logged-in user.
+	__antithesis_instrumentation__.Notify(189032)
+
 	username := security.MakeSQLUsernameFromPreNormalizedString(
 		req.Context().Value(webSessionUserKey{}).(string))
-	if role, err := r.getRoleForUser(req.Context(), username); err != nil || role < r.role {
+	if role, err := r.getRoleForUser(req.Context(), username); err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(189035)
+		return role < r.role == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(189036)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(189038)
 			apiV2InternalError(req.Context(), err, w)
 		} else {
+			__antithesis_instrumentation__.Notify(189039)
 			http.Error(w, "user not allowed to access this endpoint", http.StatusForbidden)
 		}
+		__antithesis_instrumentation__.Notify(189037)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(189040)
 	}
+	__antithesis_instrumentation__.Notify(189033)
 	if r.option > 0 {
+		__antithesis_instrumentation__.Notify(189041)
 		ok, err := r.hasRoleOption(req.Context(), username, r.option)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(189042)
 			apiV2InternalError(req.Context(), err, w)
 			return
-		} else if !ok {
-			http.Error(w, "user not allowed to access this endpoint", http.StatusForbidden)
-			return
+		} else {
+			__antithesis_instrumentation__.Notify(189043)
+			if !ok {
+				__antithesis_instrumentation__.Notify(189044)
+				http.Error(w, "user not allowed to access this endpoint", http.StatusForbidden)
+				return
+			} else {
+				__antithesis_instrumentation__.Notify(189045)
+			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(189046)
 	}
+	__antithesis_instrumentation__.Notify(189034)
 	r.inner.ServeHTTP(w, req)
 }
 
-// apiToOutgoingGatewayCtx converts an HTTP API (v1 or v2) context, to one that
-// can issue outgoing RPC requests under the same logged-in user.
 func apiToOutgoingGatewayCtx(ctx context.Context, r *http.Request) context.Context {
+	__antithesis_instrumentation__.Notify(189047)
 	return metadata.NewOutgoingContext(ctx, forwardAuthenticationMetadata(ctx, r))
 }

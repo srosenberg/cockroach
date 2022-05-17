@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgerror
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -17,29 +9,35 @@ import (
 )
 
 func NewWithDepthf(depth int, code pgcode.Code, format string, args ...interface{}) error {
+	__antithesis_instrumentation__.Notify(644575)
 	return fmt.Errorf(format, args)
 }
 
 func New(code pgcode.Code, msg string) error {
+	__antithesis_instrumentation__.Notify(644576)
 	return fmt.Errorf(msg)
 
 }
 
 func Newf(code pgcode.Code, format string, args ...interface{}) error {
+	__antithesis_instrumentation__.Notify(644577)
 	return fmt.Errorf(format, args)
 }
 
 func Wrapf(err error, code pgcode.Code, format string, args ...interface{}) error {
+	__antithesis_instrumentation__.Notify(644578)
 	return fmt.Errorf(format, args)
 }
 
 func WrapWithDepthf(
 	depth int, err error, code pgcode.Code, format string, args ...interface{},
 ) error {
+	__antithesis_instrumentation__.Notify(644579)
 	return fmt.Errorf(format, args)
 
 }
 
 func Wrap(err error, code pgcode.Code, msg string) error {
+	__antithesis_instrumentation__.Notify(644580)
 	return fmt.Errorf(msg)
 }

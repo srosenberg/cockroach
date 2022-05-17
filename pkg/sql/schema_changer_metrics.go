@@ -1,22 +1,12 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 )
-
-// TODO(ajwerner): Add many more metrics.
 
 var (
 	metaRunning = metric.Metadata{
@@ -45,7 +35,6 @@ var (
 	}
 )
 
-// SchemaChangerMetrics are metrics corresponding to the schema changer.
 type SchemaChangerMetrics struct {
 	RunningSchemaChanges *metric.Gauge
 	Successes            *metric.Counter
@@ -55,13 +44,12 @@ type SchemaChangerMetrics struct {
 	UncategorizedErrors  telemetry.Counter
 }
 
-// MetricStruct makes SchemaChangerMetrics a metric.Struct.
-func (s *SchemaChangerMetrics) MetricStruct() {}
+func (s *SchemaChangerMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(578238) }
 
 var _ metric.Struct = (*SchemaChangerMetrics)(nil)
 
-// NewSchemaChangerMetrics constructs a new SchemaChangerMetrics.
 func NewSchemaChangerMetrics() *SchemaChangerMetrics {
+	__antithesis_instrumentation__.Notify(578239)
 	return &SchemaChangerMetrics{
 		RunningSchemaChanges: metric.NewGauge(metaRunning),
 		Successes:            metric.NewCounter(metaSuccesses),

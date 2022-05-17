@@ -1,16 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-//go:generate mockgen -package=prometheus -destination=mocks_generated_test.go . Cluster
-
 package prometheus
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,33 +16,26 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Client is an interface allowing queries against Prometheus.
 type Client interface {
 	Query(ctx context.Context, query string, ts time.Time) (model.Value, promv1.Warnings, error)
 }
 
-// ScrapeNode are nodes to scrape from.
 type ScrapeNode struct {
 	Nodes option.NodeListOption
 	Port  int
 }
 
-// ScrapeConfig represents a single instance of scraping.
 type ScrapeConfig struct {
 	JobName     string
 	MetricsPath string
 	ScrapeNodes []ScrapeNode
 }
 
-// Config is a monitor that watches over the running of prometheus.
 type Config struct {
 	PrometheusNode option.NodeListOption
 	ScrapeConfigs  []ScrapeConfig
 }
 
-// Cluster is a subset of roachtest.Cluster.
-// It is abstracted to prevent a circular dependency on roachtest, as Cluster
-// requires the test interface.
 type Cluster interface {
 	ExternalIP(context.Context, *logger.Logger, option.NodeListOption) ([]string, error)
 	Get(ctx context.Context, l *logger.Logger, src, dest string, opts ...option.Option) error
@@ -62,12 +45,10 @@ type Cluster interface {
 	) error
 }
 
-// Prometheus contains metadata of a running instance of prometheus.
 type Prometheus struct {
 	Config
 }
 
-// Init creates a prometheus instance on the given cluster.
 func Init(
 	ctx context.Context,
 	cfg Config,
@@ -75,13 +56,18 @@ func Init(
 	l *logger.Logger,
 	repeatFunc func(context.Context, option.NodeListOption, string, ...string) error,
 ) (*Prometheus, error) {
+	__antithesis_instrumentation__.Notify(44332)
 	if err := c.RunE(
 		ctx,
 		cfg.PrometheusNode,
 		"sudo systemctl stop prometheus || echo 'no prometheus is running'",
 	); err != nil {
+		__antithesis_instrumentation__.Notify(44338)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(44339)
 	}
+	__antithesis_instrumentation__.Notify(44333)
 
 	if err := repeatFunc(
 		ctx,
@@ -90,8 +76,12 @@ func Init(
 		`rm -rf /tmp/prometheus && mkdir /tmp/prometheus && cd /tmp/prometheus &&
 			curl -fsSL https://storage.googleapis.com/cockroach-fixtures/prometheus/prometheus-2.27.1.linux-amd64.tar.gz | tar zxv --strip-components=1`,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(44340)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(44341)
 	}
+	__antithesis_instrumentation__.Notify(44334)
 
 	yamlCfg, err := makeYAMLConfig(
 		ctx,
@@ -100,8 +90,12 @@ func Init(
 		cfg.ScrapeConfigs,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(44342)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(44343)
 	}
+	__antithesis_instrumentation__.Notify(44335)
 
 	if err := c.PutString(
 		ctx,
@@ -110,10 +104,13 @@ func Init(
 		0644,
 		cfg.PrometheusNode,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(44344)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(44345)
 	}
+	__antithesis_instrumentation__.Notify(44336)
 
-	// Start prometheus as systemd.
 	if err := c.RunE(
 		ctx,
 		cfg.PrometheusNode,
@@ -121,22 +118,29 @@ func Init(
 sudo systemd-run --unit prometheus --same-dir \
 	./prometheus --config.file=prometheus.yml --storage.tsdb.path=data/ --web.enable-admin-api`,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(44346)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(44347)
 	}
+	__antithesis_instrumentation__.Notify(44337)
 	return &Prometheus{Config: cfg}, nil
 }
 
-// Snapshot takes a snapshot of prometheus and stores the snapshot and a script to spin up
-// a docker instance for it to the given directory.
 func (pm *Prometheus) Snapshot(ctx context.Context, c Cluster, l *logger.Logger, dir string) error {
+	__antithesis_instrumentation__.Notify(44348)
 	if err := c.RunE(
 		ctx,
 		pm.PrometheusNode,
 		`curl -XPOST http://localhost:9090/api/v1/admin/tsdb/snapshot &&
 	cd /tmp/prometheus && tar cvf prometheus-snapshot.tar.gz data/snapshots`,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(44351)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(44352)
 	}
+	__antithesis_instrumentation__.Notify(44349)
 	if err := os.WriteFile(filepath.Join(dir, "prometheus-docker-run.sh"), []byte(`#!/bin/sh
 set -eu
 
@@ -160,8 +164,12 @@ docker run --privileged -p 9090:9090 \
     --storage.tsdb.path=/prometheus \
     --web.enable-admin-api
 `), 0755); err != nil {
+		__antithesis_instrumentation__.Notify(44353)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(44354)
 	}
+	__antithesis_instrumentation__.Notify(44350)
 
 	return c.Get(
 		ctx,
@@ -173,18 +181,15 @@ docker run --privileged -p 9090:9090 \
 }
 
 const (
-	// DefaultScrapeInterval is the default interval between prometheus
-	// scrapes.
 	DefaultScrapeInterval = 10 * time.Second
-	// DefaultScrapeTimeout is the maximum amount of time before a scrape
-	// is timed out.
+
 	DefaultScrapeTimeout = 5 * time.Second
 )
 
-// makeYAMLConfig creates a prometheus YAML config for the server to use.
 func makeYAMLConfig(
 	ctx context.Context, l *logger.Logger, c Cluster, scrapeConfigs []ScrapeConfig,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(44355)
 	type yamlStaticConfig struct {
 		Targets []string
 	}
@@ -208,16 +213,24 @@ func makeYAMLConfig(
 	cfg.Global.ScrapeTimeout = DefaultScrapeTimeout.String()
 
 	for _, scrapeConfig := range scrapeConfigs {
+		__antithesis_instrumentation__.Notify(44357)
 		var targets []string
 		for _, scrapeNode := range scrapeConfig.ScrapeNodes {
+			__antithesis_instrumentation__.Notify(44359)
 			ips, err := c.ExternalIP(ctx, l, scrapeNode.Nodes)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(44361)
 				return "", err
+			} else {
+				__antithesis_instrumentation__.Notify(44362)
 			}
+			__antithesis_instrumentation__.Notify(44360)
 			for _, ip := range ips {
+				__antithesis_instrumentation__.Notify(44363)
 				targets = append(targets, fmt.Sprintf("%s:%d", ip, scrapeNode.Port))
 			}
 		}
+		__antithesis_instrumentation__.Notify(44358)
 
 		cfg.ScrapeConfigs = append(
 			cfg.ScrapeConfigs,
@@ -232,13 +245,14 @@ func makeYAMLConfig(
 			},
 		)
 	}
+	__antithesis_instrumentation__.Notify(44356)
 
 	ret, err := yaml.Marshal(&cfg)
 	return string(ret), err
 }
 
-// MakeWorkloadScrapeConfig creates a scrape config for a workload.
 func MakeWorkloadScrapeConfig(jobName string, scrapeNodes []ScrapeNode) ScrapeConfig {
+	__antithesis_instrumentation__.Notify(44364)
 	return ScrapeConfig{
 		JobName:     jobName,
 		MetricsPath: "/",
@@ -246,10 +260,8 @@ func MakeWorkloadScrapeConfig(jobName string, scrapeNodes []ScrapeNode) ScrapeCo
 	}
 }
 
-// MakeInsecureCockroachScrapeConfig creates scrape configs for the given
-// cockroach nodes. All nodes are assumed to be insecure and running on
-// port 26258.
 func MakeInsecureCockroachScrapeConfig(jobName string, nodes option.NodeListOption) ScrapeConfig {
+	__antithesis_instrumentation__.Notify(44365)
 	return ScrapeConfig{
 		JobName:     jobName,
 		MetricsPath: "/_status/vars",

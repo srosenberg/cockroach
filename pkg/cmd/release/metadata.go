@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,51 +17,84 @@ type buildInfo struct {
 	Timestamp string `json:"timestamp"`
 }
 
-// getBuildInfo retrieves the release qualification metadata file and returns its unmarshalled struct
 func getBuildInfo(ctx context.Context, bucket string, obj string) (buildInfo, error) {
+	__antithesis_instrumentation__.Notify(42779)
 	client, err := storage.NewClient(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42785)
 		return buildInfo{}, fmt.Errorf("cannot create GCS client: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42786)
 	}
+	__antithesis_instrumentation__.Notify(42780)
 	reader, err := client.Bucket(bucket).Object(obj).NewReader(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42787)
 		return buildInfo{}, fmt.Errorf("cannot create GCS reader: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42788)
 	}
+	__antithesis_instrumentation__.Notify(42781)
 	defer func() {
+		__antithesis_instrumentation__.Notify(42789)
 		_ = reader.Close()
 	}()
+	__antithesis_instrumentation__.Notify(42782)
 
 	data, err := ioutil.ReadAll(reader)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42790)
 		return buildInfo{}, fmt.Errorf("cannot read GCS object: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42791)
 	}
+	__antithesis_instrumentation__.Notify(42783)
 	var info buildInfo
 	if err := json.Unmarshal(data, &info); err != nil {
+		__antithesis_instrumentation__.Notify(42792)
 		return buildInfo{}, fmt.Errorf("cannot unmarshal metadata: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42793)
 	}
+	__antithesis_instrumentation__.Notify(42784)
 	return info, nil
 }
 
-// publishReleaseCandidateInfo copies release candidate metadata to a separate location.
-// This file will be used by the week 1 automation.
 func publishReleaseCandidateInfo(
 	ctx context.Context, next releaseInfo, bucket string, obj string,
 ) error {
+	__antithesis_instrumentation__.Notify(42794)
 	marshalled, err := json.MarshalIndent(next.buildInfo, "", "  ")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42799)
 		return fmt.Errorf("cannot marshall buildInfo: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42800)
 	}
+	__antithesis_instrumentation__.Notify(42795)
 	client, err := storage.NewClient(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(42801)
 		return fmt.Errorf("cannot create storage client: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42802)
 	}
+	__antithesis_instrumentation__.Notify(42796)
 	wc := client.Bucket(bucket).Object(obj).NewWriter(ctx)
 	wc.ContentType = "application/json"
 	if _, err := wc.Write(marshalled); err != nil {
+		__antithesis_instrumentation__.Notify(42803)
 		return fmt.Errorf("cannot write to bucket: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42804)
 	}
+	__antithesis_instrumentation__.Notify(42797)
 	if err := wc.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(42805)
 		return fmt.Errorf("cannot close storage writer filehandle: %w", err)
+	} else {
+		__antithesis_instrumentation__.Notify(42806)
 	}
+	__antithesis_instrumentation__.Notify(42798)
 	return nil
 }

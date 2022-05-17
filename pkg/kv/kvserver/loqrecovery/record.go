@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package loqrecovery
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,12 +16,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// writeReplicaRecoveryStoreRecord adds a replica recovery record to store local
-// part of key range. This entry is subsequently used on node startup to
-// log the data and preserve this information for subsequent debugging as
-// needed.
-// See RegisterOfflineRecoveryEvents for details on where these records
-// are read and deleted.
 func writeReplicaRecoveryStoreRecord(
 	uuid uuid.UUID,
 	timestamp int64,
@@ -37,6 +23,7 @@ func writeReplicaRecoveryStoreRecord(
 	report PrepareReplicaReport,
 	readWriter storage.ReadWriter,
 ) error {
+	__antithesis_instrumentation__.Notify(110036)
 	record := loqrecoverypb.ReplicaRecoveryRecord{
 		Timestamp:       timestamp,
 		RangeID:         report.RangeID(),
@@ -49,27 +36,29 @@ func writeReplicaRecoveryStoreRecord(
 
 	data, err := protoutil.Marshal(&record)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(110039)
 		return errors.Wrap(err, "failed to marshal update record entry")
+	} else {
+		__antithesis_instrumentation__.Notify(110040)
 	}
+	__antithesis_instrumentation__.Notify(110037)
 	if err := readWriter.PutUnversioned(
 		keys.StoreUnsafeReplicaRecoveryKey(uuid), data); err != nil {
+		__antithesis_instrumentation__.Notify(110041)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(110042)
 	}
+	__antithesis_instrumentation__.Notify(110038)
 	return nil
 }
 
-// RegisterOfflineRecoveryEvents checks if recovery data was captured in the
-// store and notifies callback about all registered events. It's up to the
-// callback function to send events where appropriate. Events are removed
-// from the store unless callback returns false or error. If latter case events
-// would be reprocessed on subsequent call to this function.
-// This function is called on startup to ensure that any offline replica
-// recovery actions are properly reflected in server logs as needed.
 func RegisterOfflineRecoveryEvents(
 	ctx context.Context,
 	readWriter storage.ReadWriter,
 	registerEvent func(context.Context, loqrecoverypb.ReplicaRecoveryRecord) (bool, error),
 ) (int, error) {
+	__antithesis_instrumentation__.Notify(110043)
 	successCount := 0
 	var processingErrors error
 
@@ -82,51 +71,79 @@ func RegisterOfflineRecoveryEvents(
 
 	iter.SeekGE(storage.MVCCKey{Key: keys.LocalStoreUnsafeReplicaRecoveryKeyMin})
 	for ; ; iter.Next() {
+		__antithesis_instrumentation__.Notify(110046)
 		valid, err := iter.Valid()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(110052)
 			processingErrors = errors.CombineErrors(processingErrors,
 				errors.Wrapf(err, "failed to iterate replica recovery record keys"))
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(110053)
 		}
+		__antithesis_instrumentation__.Notify(110047)
 		if !valid {
+			__antithesis_instrumentation__.Notify(110054)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(110055)
 		}
+		__antithesis_instrumentation__.Notify(110048)
 
 		record := loqrecoverypb.ReplicaRecoveryRecord{}
 		if err := iter.ValueProto(&record); err != nil {
+			__antithesis_instrumentation__.Notify(110056)
 			processingErrors = errors.CombineErrors(processingErrors, errors.Wrapf(err,
 				"failed to deserialize replica recovery event at key %s", iter.Key()))
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(110057)
 		}
+		__antithesis_instrumentation__.Notify(110049)
 		removeEvent, err := registerEvent(ctx, record)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(110058)
 			processingErrors = errors.CombineErrors(processingErrors,
 				errors.Wrapf(err, "replica recovery record processing failed"))
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(110059)
 		}
+		__antithesis_instrumentation__.Notify(110050)
 		if removeEvent {
+			__antithesis_instrumentation__.Notify(110060)
 			if err := readWriter.ClearUnversioned(iter.UnsafeKey().Key); err != nil {
+				__antithesis_instrumentation__.Notify(110061)
 				processingErrors = errors.CombineErrors(processingErrors, errors.Wrapf(
 					err, "failed to delete replica recovery record at key %s", iter.Key()))
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(110062)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(110063)
 		}
+		__antithesis_instrumentation__.Notify(110051)
 		successCount++
 	}
+	__antithesis_instrumentation__.Notify(110044)
 	if processingErrors != nil {
+		__antithesis_instrumentation__.Notify(110064)
 		return 0, errors.Wrapf(processingErrors,
 			"failed to fully process replica recovery records, successfully processed %d", successCount)
+	} else {
+		__antithesis_instrumentation__.Notify(110065)
 	}
+	__antithesis_instrumentation__.Notify(110045)
 	return successCount, nil
 }
 
-// UpdateRangeLogWithRecovery inserts a range log update to system.rangelog
-// using information from recovery event.
 func UpdateRangeLogWithRecovery(
 	ctx context.Context,
 	sqlExec func(ctx context.Context, stmt string, args ...interface{}) (int, error),
 	event loqrecoverypb.ReplicaRecoveryRecord,
 ) error {
+	__antithesis_instrumentation__.Notify(110066)
 	const insertEventTableStmt = `
 	INSERT INTO system.rangelog (
 		timestamp, "rangeID", "storeID", "eventType", "otherRangeID", info
@@ -143,24 +160,36 @@ func UpdateRangeLogWithRecovery(
 	}
 	infoBytes, err := json.Marshal(updateInfo)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(110070)
 		return errors.Wrap(err, "failed to serialize a RangeLog info entry")
+	} else {
+		__antithesis_instrumentation__.Notify(110071)
 	}
+	__antithesis_instrumentation__.Notify(110067)
 	args := []interface{}{
 		timeutil.Unix(0, event.Timestamp),
 		event.RangeID,
 		event.NewReplica.StoreID,
 		kvserverpb.RangeLogEventType_unsafe_quorum_recovery.String(),
-		nil, // otherRangeID
+		nil,
 		string(infoBytes),
 	}
 
 	rows, err := sqlExec(ctx, insertEventTableStmt, args...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(110072)
 		return errors.Wrap(err, "failed to insert a RangeLog entry")
+	} else {
+		__antithesis_instrumentation__.Notify(110073)
 	}
+	__antithesis_instrumentation__.Notify(110068)
 	if rows != 1 {
+		__antithesis_instrumentation__.Notify(110074)
 		return errors.Errorf("%d row(s) affected by RangeLog insert while expected 1",
 			rows)
+	} else {
+		__antithesis_instrumentation__.Notify(110075)
 	}
+	__antithesis_instrumentation__.Notify(110069)
 	return nil
 }

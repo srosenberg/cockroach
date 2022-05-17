@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package backupccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -36,9 +30,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// fetchPreviousBackups takes a list of URIs of previous backups and returns
-// their manifest as well as the encryption options of the first backup in the
-// chain.
 func fetchPreviousBackups(
 	ctx context.Context,
 	mem *mon.BoundAccount,
@@ -48,34 +39,38 @@ func fetchPreviousBackups(
 	encryptionParams jobspb.BackupEncryptionOptions,
 	kmsEnv cloud.KMSEnv,
 ) ([]BackupManifest, *jobspb.BackupEncryptionOptions, int64, error) {
+	__antithesis_instrumentation__.Notify(6887)
 	if len(prevBackupURIs) == 0 {
+		__antithesis_instrumentation__.Notify(6891)
 		return nil, nil, 0, nil
+	} else {
+		__antithesis_instrumentation__.Notify(6892)
 	}
+	__antithesis_instrumentation__.Notify(6888)
 
 	baseBackup := prevBackupURIs[0]
 	encryptionOptions, err := getEncryptionFromBase(ctx, user, makeCloudStorage, baseBackup,
 		encryptionParams, kmsEnv)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6893)
 		return nil, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(6894)
 	}
+	__antithesis_instrumentation__.Notify(6889)
 	prevBackups, size, err := getBackupManifests(ctx, mem, user, makeCloudStorage, prevBackupURIs,
 		encryptionOptions)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6895)
 		return nil, nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(6896)
 	}
+	__antithesis_instrumentation__.Notify(6890)
 
 	return prevBackups, encryptionOptions, size, nil
 }
 
-// resolveDest resolves the true destination of a backup. The backup command
-// provided by the user may point to a backup collection, or a backup location
-// which auto-appends incremental backups to it. This method checks for these
-// cases and finds the actual directory where we'll write this new backup.
-//
-// In addition, in this case that this backup is an incremental backup (either
-// explicitly, or due to the auto-append feature), it will resolve the
-// encryption options based on the base backup, as well as find all previous
-// backup manifests in the backup chain.
 func resolveDest(
 	ctx context.Context,
 	user security.SQLUsername,
@@ -85,63 +80,100 @@ func resolveDest(
 	execCfg *sql.ExecutorConfig,
 ) (
 	collectionURI string,
-	plannedBackupDefaultURI string, /* the full path for the planned backup */
-	/* chosenSuffix is the automatically chosen suffix within the collection path
-	   if we're backing up INTO a collection. */
+	plannedBackupDefaultURI string,
+
 	chosenSuffix string,
 	urisByLocalityKV map[string]string,
-	prevBackupURIs []string, /* list of full paths for previous backups in the chain */
+	prevBackupURIs []string,
 	err error,
 ) {
+	__antithesis_instrumentation__.Notify(6897)
 	makeCloudStorage := execCfg.DistSQLSrv.ExternalStorageFromURI
 
 	defaultURI, _, err := getURIsByLocalityKV(dest.To, "")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6911)
 		return "", "", "", nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(6912)
 	}
+	__antithesis_instrumentation__.Notify(6898)
 
 	chosenSuffix = dest.Subdir
 
 	if chosenSuffix != "" {
-		// The legacy backup syntax, BACKUP TO, leaves the dest.Subdir and collection parameters empty.
+		__antithesis_instrumentation__.Notify(6913)
+
 		collectionURI = defaultURI
 
 		if chosenSuffix == latestFileName {
+			__antithesis_instrumentation__.Notify(6914)
 			latest, err := readLatestFile(ctx, defaultURI, makeCloudStorage, user)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(6916)
 				return "", "", "", nil, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(6917)
 			}
+			__antithesis_instrumentation__.Notify(6915)
 			chosenSuffix = latest
+		} else {
+			__antithesis_instrumentation__.Notify(6918)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(6919)
 	}
+	__antithesis_instrumentation__.Notify(6899)
 
 	plannedBackupDefaultURI, urisByLocalityKV, err = getURIsByLocalityKV(dest.To, chosenSuffix)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6920)
 		return "", "", "", nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(6921)
 	}
+	__antithesis_instrumentation__.Notify(6900)
 
-	// At this point, the plannedBackupDefaultURI is the full path for the backup. For BACKUP
-	// INTO, this path includes the chosenSuffix. Once this function returns, the
-	// plannedBackupDefaultURI will be the full path for this backup in planning.
 	if len(incrementalFrom) != 0 {
-		// Legacy backup with deprecated BACKUP TO-syntax.
+		__antithesis_instrumentation__.Notify(6922)
+
 		prevBackupURIs = incrementalFrom
 		return collectionURI, plannedBackupDefaultURI, chosenSuffix, urisByLocalityKV, prevBackupURIs, nil
+	} else {
+		__antithesis_instrumentation__.Notify(6923)
 	}
+	__antithesis_instrumentation__.Notify(6901)
 
 	defaultStore, err := makeCloudStorage(ctx, plannedBackupDefaultURI, user)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6924)
 		return "", "", "", nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(6925)
 	}
+	__antithesis_instrumentation__.Notify(6902)
 	defer defaultStore.Close()
 	exists, err := containsManifest(ctx, defaultStore)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6926)
 		return "", "", "", nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(6927)
 	}
-	if exists && !dest.Exists && chosenSuffix != "" && execCfg.Settings.Version.IsActive(ctx,
-		clusterversion.Start22_1) {
-		// We disallow a user from writing a full backup to a path in a collection containing an
-		// existing backup iff we're 99.9% confident this backup was planned on a 22.1 node.
+	__antithesis_instrumentation__.Notify(6903)
+	if exists && func() bool {
+		__antithesis_instrumentation__.Notify(6928)
+		return !dest.Exists == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(6929)
+		return chosenSuffix != "" == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(6930)
+		return execCfg.Settings.Version.IsActive(ctx,
+			clusterversion.Start22_1) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(6931)
+
 		return "",
 			"",
 			"",
@@ -151,38 +183,43 @@ func resolveDest(
 				"Consider running an incremental backup to this full backup via `BACKUP INTO '%s' IN '%s'`",
 				plannedBackupDefaultURI, chosenSuffix, dest.To[0])
 
-	} else if !exists {
-		if dest.Exists {
-			// Implies the user passed a subdirectory in their backup command, either
-			// explicitly or using LATEST; however, we could not find an existing
-			// backup in that subdirectory.
-			// - Pre 22.1: this was fine. we created a full backup in their specified subdirectory.
-			// - 22.1: throw an error: full backups with an explicit subdirectory are deprecated.
-			// User can use old behavior by switching the 'bulkio.backup.full_backup_with_subdir.
-			// enabled' to true.
-			// - 22.2+: the backup will fail unconditionally.
-			// TODO (msbutler): throw error in 22.2
-			if err := featureflag.CheckEnabled(
-				ctx,
-				execCfg,
-				featureFullBackupUserSubdir,
-				"'Full Backup with user defined subdirectory'",
-			); err != nil {
-				return "", "", "", nil, nil, errors.Wrapf(err,
-					"The full backup cannot get written to '%s', a user defined subdirectory. "+
-						"To take a full backup, remove the subdirectory from the backup command, "+
-						"(i.e. run 'BACKUP ... INTO <collectionURI>'). "+
-						"Or, to take a full backup at a specific subdirectory, "+
-						"enable the deprecated syntax by switching the 'bulkio.backup."+
-						"deprecated_full_backup_with_subdir.enable' cluster setting to true; "+
-						"however, note this deprecated syntax will not be available in a future release.", chosenSuffix)
-			}
-		}
-		// There's no full backup in the resolved subdirectory; therefore, we're conducting a full backup.
-		return collectionURI, plannedBackupDefaultURI, chosenSuffix, urisByLocalityKV, prevBackupURIs, nil
-	}
+	} else {
+		__antithesis_instrumentation__.Notify(6932)
+		if !exists {
+			__antithesis_instrumentation__.Notify(6933)
+			if dest.Exists {
+				__antithesis_instrumentation__.Notify(6935)
 
-	// The defaultStore contains a full backup; consequently, we're conducting an incremental backup.
+				if err := featureflag.CheckEnabled(
+					ctx,
+					execCfg,
+					featureFullBackupUserSubdir,
+					"'Full Backup with user defined subdirectory'",
+				); err != nil {
+					__antithesis_instrumentation__.Notify(6936)
+					return "", "", "", nil, nil, errors.Wrapf(err,
+						"The full backup cannot get written to '%s', a user defined subdirectory. "+
+							"To take a full backup, remove the subdirectory from the backup command, "+
+							"(i.e. run 'BACKUP ... INTO <collectionURI>'). "+
+							"Or, to take a full backup at a specific subdirectory, "+
+							"enable the deprecated syntax by switching the 'bulkio.backup."+
+							"deprecated_full_backup_with_subdir.enable' cluster setting to true; "+
+							"however, note this deprecated syntax will not be available in a future release.", chosenSuffix)
+				} else {
+					__antithesis_instrumentation__.Notify(6937)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(6938)
+			}
+			__antithesis_instrumentation__.Notify(6934)
+
+			return collectionURI, plannedBackupDefaultURI, chosenSuffix, urisByLocalityKV, prevBackupURIs, nil
+		} else {
+			__antithesis_instrumentation__.Notify(6939)
+		}
+	}
+	__antithesis_instrumentation__.Notify(6904)
+
 	fullyResolvedIncrementalsLocation, err := resolveIncrementalsBackupLocation(
 		ctx,
 		user,
@@ -191,45 +228,69 @@ func resolveDest(
 		dest.To,
 		chosenSuffix)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6940)
 		return "", "", "", nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(6941)
 	}
+	__antithesis_instrumentation__.Notify(6905)
 
 	priorsDefaultURI, _, err := getURIsByLocalityKV(fullyResolvedIncrementalsLocation, "")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6942)
 		return "", "", "", nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(6943)
 	}
+	__antithesis_instrumentation__.Notify(6906)
 	incrementalStore, err := makeCloudStorage(ctx, priorsDefaultURI, user)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6944)
 		return "", "", "", nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(6945)
 	}
+	__antithesis_instrumentation__.Notify(6907)
 	defer incrementalStore.Close()
 
 	priors, err := FindPriorBackups(ctx, incrementalStore, OmitManifest)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6946)
 		return "", "", "", nil, nil, errors.Wrap(err, "adjusting backup destination to append new layer to existing backup")
+	} else {
+		__antithesis_instrumentation__.Notify(6947)
 	}
+	__antithesis_instrumentation__.Notify(6908)
 
 	for _, prior := range priors {
+		__antithesis_instrumentation__.Notify(6948)
 		priorURI, err := url.Parse(priorsDefaultURI)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(6950)
 			return "", "", "", nil, nil, errors.Wrapf(err, "parsing default backup location %s",
 				priorsDefaultURI)
+		} else {
+			__antithesis_instrumentation__.Notify(6951)
 		}
+		__antithesis_instrumentation__.Notify(6949)
 		priorURI.Path = JoinURLPath(priorURI.Path, prior)
 		prevBackupURIs = append(prevBackupURIs, priorURI.String())
 	}
+	__antithesis_instrumentation__.Notify(6909)
 	prevBackupURIs = append([]string{plannedBackupDefaultURI}, prevBackupURIs...)
 
-	// Within the chosenSuffix dir, differentiate incremental backups with partName.
 	partName := endTime.GoTime().Format(DateBasedIncFolderName)
 	defaultIncrementalsURI, urisByLocalityKV, err := getURIsByLocalityKV(fullyResolvedIncrementalsLocation, partName)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6952)
 		return "", "", "", nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(6953)
 	}
+	__antithesis_instrumentation__.Notify(6910)
 	return collectionURI, defaultIncrementalsURI, chosenSuffix, urisByLocalityKV, prevBackupURIs, nil
 }
 
-// getBackupManifests fetches the backup manifest from a list of backup URIs.
 func getBackupManifests(
 	ctx context.Context,
 	mem *mon.BoundAccount,
@@ -238,10 +299,15 @@ func getBackupManifests(
 	backupURIs []string,
 	encryption *jobspb.BackupEncryptionOptions,
 ) ([]BackupManifest, int64, error) {
+	__antithesis_instrumentation__.Notify(6954)
 	manifests := make([]BackupManifest, len(backupURIs))
 	if len(backupURIs) == 0 {
+		__antithesis_instrumentation__.Notify(6958)
 		return manifests, 0, nil
+	} else {
+		__antithesis_instrumentation__.Notify(6959)
 	}
+	__antithesis_instrumentation__.Notify(6955)
 
 	memMu := struct {
 		syncutil.Mutex
@@ -252,53 +318,58 @@ func getBackupManifests(
 
 	g := ctxgroup.WithContext(ctx)
 	for i := range backupURIs {
+		__antithesis_instrumentation__.Notify(6960)
 		i := i
-		// boundAccount isn't threadsafe so we'll make a new one this goroutine to
-		// pass while reading. When it is done, we'll lock an mu, reserve its size
-		// from the main one tracking the total amount reserved.
+
 		subMem := mem.Monitor().MakeBoundAccount()
 		g.GoCtx(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(6961)
 			defer subMem.Close(ctx)
-			// TODO(lucy): We may want to upgrade the table descs to the newer
-			// foreign key representation here, in case there are backups from an
-			// older cluster. Keeping the descriptors as they are works for now
-			// since all we need to do is get the past backups' table/index spans,
-			// but it will be safer for future code to avoid having older-style
-			// descriptors around.
+
 			uri := backupURIs[i]
 			desc, size, err := ReadBackupManifestFromURI(
 				ctx, &subMem, uri, user, makeCloudStorage, encryption,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(6964)
 				return errors.Wrapf(err, "failed to read backup from %q",
 					RedactURIForErrorMessage(uri))
+			} else {
+				__antithesis_instrumentation__.Notify(6965)
 			}
+			__antithesis_instrumentation__.Notify(6962)
 
 			memMu.Lock()
 			err = memMu.mem.Grow(ctx, size)
 
 			if err == nil {
+				__antithesis_instrumentation__.Notify(6966)
 				memMu.total += size
 				manifests[i] = desc
+			} else {
+				__antithesis_instrumentation__.Notify(6967)
 			}
+			__antithesis_instrumentation__.Notify(6963)
 			subMem.Shrink(ctx, size)
 			memMu.Unlock()
 
 			return err
 		})
 	}
+	__antithesis_instrumentation__.Notify(6956)
 
 	if err := g.Wait(); err != nil {
+		__antithesis_instrumentation__.Notify(6968)
 		mem.Shrink(ctx, memMu.total)
 		return nil, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(6969)
 	}
+	__antithesis_instrumentation__.Notify(6957)
 
 	return manifests, memMu.total, nil
 }
 
-// getEncryptionFromBase retrieves the encryption options of a base backup. It
-// is expected that incremental backups use the same encryption options as the
-// base backups.
 func getEncryptionFromBase(
 	ctx context.Context,
 	user security.SQLUsername,
@@ -307,41 +378,67 @@ func getEncryptionFromBase(
 	encryptionParams jobspb.BackupEncryptionOptions,
 	kmsEnv cloud.KMSEnv,
 ) (*jobspb.BackupEncryptionOptions, error) {
+	__antithesis_instrumentation__.Notify(6970)
 	var encryptionOptions *jobspb.BackupEncryptionOptions
 	if encryptionParams.Mode != jobspb.EncryptionMode_None {
+		__antithesis_instrumentation__.Notify(6972)
 		exportStore, err := makeCloudStorage(ctx, baseBackupURI, user)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(6975)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(6976)
 		}
+		__antithesis_instrumentation__.Notify(6973)
 		defer exportStore.Close()
 		opts, err := readEncryptionOptions(ctx, exportStore)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(6977)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(6978)
 		}
+		__antithesis_instrumentation__.Notify(6974)
 
 		switch encryptionParams.Mode {
 		case jobspb.EncryptionMode_Passphrase:
+			__antithesis_instrumentation__.Notify(6979)
 			encryptionOptions = &jobspb.BackupEncryptionOptions{
 				Mode: jobspb.EncryptionMode_Passphrase,
 				Key:  storageccl.GenerateKey([]byte(encryptionParams.RawPassphrae), opts[0].Salt),
 			}
 		case jobspb.EncryptionMode_KMS:
+			__antithesis_instrumentation__.Notify(6980)
 			var defaultKMSInfo *jobspb.BackupEncryptionOptions_KMSInfo
 			for _, encFile := range opts {
+				__antithesis_instrumentation__.Notify(6984)
 				defaultKMSInfo, err = validateKMSURIsAgainstFullBackup(encryptionParams.RawKmsUris,
 					newEncryptedDataKeyMapFromProtoMap(encFile.EncryptedDataKeyByKMSMasterKeyID), kmsEnv)
 				if err == nil {
+					__antithesis_instrumentation__.Notify(6985)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(6986)
 				}
 			}
+			__antithesis_instrumentation__.Notify(6981)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(6987)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(6988)
 			}
+			__antithesis_instrumentation__.Notify(6982)
 			encryptionOptions = &jobspb.BackupEncryptionOptions{
 				Mode:    jobspb.EncryptionMode_KMS,
 				KMSInfo: defaultKMSInfo}
+		default:
+			__antithesis_instrumentation__.Notify(6983)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(6989)
 	}
+	__antithesis_instrumentation__.Notify(6971)
 	return encryptionOptions, nil
 }
 
@@ -351,115 +448,136 @@ func readLatestFile(
 	makeCloudStorage cloud.ExternalStorageFromURIFactory,
 	user security.SQLUsername,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(6990)
 	collection, err := makeCloudStorage(ctx, collectionURI, user)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6995)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(6996)
 	}
+	__antithesis_instrumentation__.Notify(6991)
 	defer collection.Close()
 
 	latestFile, err := findLatestFile(ctx, collection)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(6997)
 		if errors.Is(err, cloud.ErrFileDoesNotExist) {
+			__antithesis_instrumentation__.Notify(6999)
 			return "", pgerror.Wrapf(err, pgcode.UndefinedFile, "path does not contain a completed latest backup")
+		} else {
+			__antithesis_instrumentation__.Notify(7000)
 		}
+		__antithesis_instrumentation__.Notify(6998)
 		return "", pgerror.WithCandidateCode(err, pgcode.Io)
+	} else {
+		__antithesis_instrumentation__.Notify(7001)
 	}
+	__antithesis_instrumentation__.Notify(6992)
 	latest, err := ioctx.ReadAll(ctx, latestFile)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(7002)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(7003)
 	}
+	__antithesis_instrumentation__.Notify(6993)
 	if len(latest) == 0 {
+		__antithesis_instrumentation__.Notify(7004)
 		return "", errors.Errorf("malformed LATEST file")
+	} else {
+		__antithesis_instrumentation__.Notify(7005)
 	}
+	__antithesis_instrumentation__.Notify(6994)
 	return string(latest), nil
 }
 
-// findLatestFile returns a ioctx.ReaderCloserCtx of the most recent LATEST
-// file. First it tries reading from the latest directory. If
-// the backup is from an older version, it may not exist there yet so
-// it tries reading in the base directory if the first attempt fails.
 func findLatestFile(
 	ctx context.Context, exportStore cloud.ExternalStorage,
 ) (ioctx.ReadCloserCtx, error) {
+	__antithesis_instrumentation__.Notify(7006)
 	var latestFile string
 	var latestFileFound bool
-	// First try reading from the metadata/latest directory. If the backup
-	// is from an older version, it may not exist there yet so try reading
-	// in the base directory if the first attempt fails.
 
-	// We name files such that the most recent latest file will always
-	// be at the top, so just grab the first filename.
 	err := exportStore.List(ctx, latestHistoryDirectory, "", func(p string) error {
+		__antithesis_instrumentation__.Notify(7011)
 		p = strings.TrimPrefix(p, "/")
 		latestFile = p
 		latestFileFound = true
-		// We only want the first latest file so return an error that it is
-		// done listing.
+
 		return cloud.ErrListingDone
 	})
-	// If the list failed because the storage used does not support listing,
-	// such as http, we can try reading the non-timestamped backup latest
-	// file directly. This can still fail if it is a mixed cluster and the
-	// latest file was written in the base directory.
+	__antithesis_instrumentation__.Notify(7007)
+
 	if errors.Is(err, cloud.ErrListingUnsupported) {
+		__antithesis_instrumentation__.Notify(7012)
 		r, err := exportStore.ReadFile(ctx, latestHistoryDirectory+"/"+latestFileName)
 		if err == nil {
+			__antithesis_instrumentation__.Notify(7013)
 			return r, nil
+		} else {
+			__antithesis_instrumentation__.Notify(7014)
 		}
-	} else if err != nil && !errors.Is(err, cloud.ErrListingDone) {
-		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(7015)
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(7016)
+			return !errors.Is(err, cloud.ErrListingDone) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(7017)
+			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(7018)
+		}
 	}
+	__antithesis_instrumentation__.Notify(7008)
 
 	if latestFileFound {
+		__antithesis_instrumentation__.Notify(7019)
 		return exportStore.ReadFile(ctx, latestHistoryDirectory+"/"+latestFile)
+	} else {
+		__antithesis_instrumentation__.Notify(7020)
 	}
+	__antithesis_instrumentation__.Notify(7009)
 
-	// The latest file couldn't be found in the latest directory,
-	// try the base directory instead.
 	r, err := exportStore.ReadFile(ctx, latestFileName)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(7021)
 		return nil, errors.Wrap(err, "LATEST file could not be read in base or metadata directory")
+	} else {
+		__antithesis_instrumentation__.Notify(7022)
 	}
+	__antithesis_instrumentation__.Notify(7010)
 	return r, nil
 }
 
-// writeNewLatestFile writes a new LATEST file to both the base directory
-// and latest-history directory, depending on cluster version.
 func writeNewLatestFile(
 	ctx context.Context, settings *cluster.Settings, exportStore cloud.ExternalStorage, suffix string,
 ) error {
-	// If the cluster is still running on a mixed version, we want to write
-	// to the base directory instead of the metadata/latest directory. That
-	// way an old node can still find the LATEST file.
+	__antithesis_instrumentation__.Notify(7023)
+
 	if !settings.Version.IsActive(ctx, clusterversion.BackupDoesNotOverwriteLatestAndCheckpoint) {
+		__antithesis_instrumentation__.Notify(7026)
 		return cloud.WriteFile(ctx, exportStore, latestFileName, strings.NewReader(suffix))
+	} else {
+		__antithesis_instrumentation__.Notify(7027)
 	}
+	__antithesis_instrumentation__.Notify(7024)
 
-	// HTTP storage does not support listing and so we cannot rely on the
-	// above-mentioned List method to return us the most recent latest file.
-	// Instead, we disregard write once semantics and always read and write
-	// a non-timestamped latest file for HTTP.
 	if exportStore.Conf().Provider == roachpb.ExternalStorageProvider_http {
+		__antithesis_instrumentation__.Notify(7028)
 		return cloud.WriteFile(ctx, exportStore, latestFileName, strings.NewReader(suffix))
+	} else {
+		__antithesis_instrumentation__.Notify(7029)
 	}
+	__antithesis_instrumentation__.Notify(7025)
 
-	// We timestamp the latest files in order to enforce write once backups.
-	// When the job goes to read these timestamped files, it will List
-	// the latest files and pick the file whose name is lexicographically
-	// sorted to the top. This will be the last latest file we write. It
-	// Takes the one's complement of the timestamp so that files are sorted
-	// lexicographically such that the most recent is always the top.
 	return cloud.WriteFile(ctx, exportStore, newTimestampedLatestFileName(), strings.NewReader(suffix))
 }
 
-// newTimestampedLatestFileName returns a string of a new latest filename
-// with a suffixed version. It returns it in the format of LATEST-<version>
-// where version is a hex encoded one's complement of the timestamp.
-// This means that as long as the supplied timestamp is correct, the filenames
-// will adhere to a lexicographical/utf-8 ordering such that the most
-// recent file is at the top.
 func newTimestampedLatestFileName() string {
+	__antithesis_instrumentation__.Notify(7030)
 	var buffer []byte
 	buffer = encoding.EncodeStringDescending(buffer, timeutil.Now().String())
 	return fmt.Sprintf("%s/%s-%s", latestHistoryDirectory, latestFileName, hex.EncodeToString(buffer))

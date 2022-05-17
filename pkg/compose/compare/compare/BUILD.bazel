@@ -5,6 +5,7 @@ go_library(
     srcs = ["empty.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/compose/compare/compare",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )
 
 go_test(
@@ -20,6 +21,7 @@ go_test(
         "//pkg/sql/randgen",
         "//pkg/testutils",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_jackc_pgx_v4//:pgx",
     ],
 )

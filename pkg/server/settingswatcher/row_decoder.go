@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package settingswatcher
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -23,7 +15,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// RowDecoder decodes rows from the settings table.
 type RowDecoder struct {
 	codec   keys.SQLCodec
 	alloc   tree.DatumAlloc
@@ -31,8 +22,8 @@ type RowDecoder struct {
 	decoder valueside.Decoder
 }
 
-// MakeRowDecoder makes a new RowDecoder for the settings table.
 func MakeRowDecoder(codec keys.SQLCodec) RowDecoder {
+	__antithesis_instrumentation__.Notify(235099)
 	columns := systemschema.SettingsTable.PublicColumns()
 	return RowDecoder{
 		codec:   codec,
@@ -41,49 +32,75 @@ func MakeRowDecoder(codec keys.SQLCodec) RowDecoder {
 	}
 }
 
-// DecodeRow decodes a row of the system.settings table. If the value is not
-// present, the setting key will be returned but the value will be zero and the
-// tombstone bool will be set.
 func (d *RowDecoder) DecodeRow(
 	kv roachpb.KeyValue,
 ) (setting string, val settings.EncodedValue, tombstone bool, _ error) {
-	// First we need to decode the setting name field from the index key.
+	__antithesis_instrumentation__.Notify(235100)
+
 	{
+		__antithesis_instrumentation__.Notify(235107)
 		types := []*types.T{d.columns[0].GetType()}
 		nameRow := make([]rowenc.EncDatum, 1)
 		_, _, err := rowenc.DecodeIndexKey(d.codec, types, nameRow, nil, kv.Key)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(235110)
 			return "", settings.EncodedValue{}, false, errors.Wrap(err, "failed to decode key")
+		} else {
+			__antithesis_instrumentation__.Notify(235111)
 		}
+		__antithesis_instrumentation__.Notify(235108)
 		if err := nameRow[0].EnsureDecoded(types[0], &d.alloc); err != nil {
+			__antithesis_instrumentation__.Notify(235112)
 			return "", settings.EncodedValue{}, false, err
+		} else {
+			__antithesis_instrumentation__.Notify(235113)
 		}
+		__antithesis_instrumentation__.Notify(235109)
 		setting = string(tree.MustBeDString(nameRow[0].Datum))
 	}
+	__antithesis_instrumentation__.Notify(235101)
 	if !kv.Value.IsPresent() {
+		__antithesis_instrumentation__.Notify(235114)
 		return setting, settings.EncodedValue{}, true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(235115)
 	}
+	__antithesis_instrumentation__.Notify(235102)
 
-	// The rest of the columns are stored as a family.
 	bytes, err := kv.Value.GetTuple()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235116)
 		return "", settings.EncodedValue{}, false, err
+	} else {
+		__antithesis_instrumentation__.Notify(235117)
 	}
+	__antithesis_instrumentation__.Notify(235103)
 
 	datums, err := d.decoder.Decode(&d.alloc, bytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(235118)
 		return "", settings.EncodedValue{}, false, err
+	} else {
+		__antithesis_instrumentation__.Notify(235119)
 	}
+	__antithesis_instrumentation__.Notify(235104)
 
 	if value := datums[1]; value != tree.DNull {
+		__antithesis_instrumentation__.Notify(235120)
 		val.Value = string(tree.MustBeDString(value))
+	} else {
+		__antithesis_instrumentation__.Notify(235121)
 	}
+	__antithesis_instrumentation__.Notify(235105)
 	if typ := datums[3]; typ != tree.DNull {
+		__antithesis_instrumentation__.Notify(235122)
 		val.Type = string(tree.MustBeDString(typ))
 	} else {
-		// Column valueType is missing; default it to "s".
+		__antithesis_instrumentation__.Notify(235123)
+
 		val.Type = "s"
 	}
+	__antithesis_instrumentation__.Notify(235106)
 
 	return setting, val, false, nil
 }

@@ -9,6 +9,8 @@
 // licenses/APL.txt.
 package main
 
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 import (
 	"io/ioutil"
 	"os"
@@ -62,71 +64,114 @@ STATICCHECK_CHECKS = [
 )
 
 func main() {
+	__antithesis_instrumentation__.Notify(40518)
 	fileTpl := template.Must(template.New("source").Parse(analysisFileTemplate))
 	rootDir := "build/bazelutil/staticcheckanalyzers"
 	err := os.RemoveAll(rootDir)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40525)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(40526)
 	}
+	__antithesis_instrumentation__.Notify(40519)
 	err = os.MkdirAll(rootDir, 0755)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40527)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(40528)
 	}
+	__antithesis_instrumentation__.Notify(40520)
 	err = ioutil.WriteFile(filepath.Join(rootDir, "README.md"), []byte(readmeContent), 0644)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40529)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(40530)
 	}
+	__antithesis_instrumentation__.Notify(40521)
 	err = ioutil.WriteFile(filepath.Join(rootDir, "BUILD.bazel"), []byte(buildBazelContent), 0644)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40531)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(40532)
 	}
-	// All of these analyzers will be written to def.bzl.
+	__antithesis_instrumentation__.Notify(40522)
+
 	var allAnalyzers []string
 	for _, check := range []struct {
 		Analyzers []*lint.Analyzer
 		CheckType string
 	}{
-		// TODO: Consider adding quickfix checks.
+
 		{Analyzers: staticcheck.Analyzers, CheckType: "staticcheck"},
 		{Analyzers: stylecheck.Analyzers, CheckType: "stylecheck"},
 		{Analyzers: simple.Analyzers, CheckType: "simple"},
 		{Analyzers: []*lint.Analyzer{unused.Analyzer}, CheckType: "unused"},
 	} {
+		__antithesis_instrumentation__.Notify(40533)
 		for _, v := range check.Analyzers {
+			__antithesis_instrumentation__.Notify(40534)
 			analyzer := v.Analyzer
 			pkgname := strings.ToLower(analyzer.Name)
 			dirname := filepath.Join(rootDir, pkgname)
 			err := os.MkdirAll(dirname, 0755)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(40539)
 				panic(err)
+			} else {
+				__antithesis_instrumentation__.Notify(40540)
 			}
+			__antithesis_instrumentation__.Notify(40535)
 			outFile, err := os.Create(filepath.Join(dirname, "analyzer.go"))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(40541)
 				panic(err)
+			} else {
+				__antithesis_instrumentation__.Notify(40542)
 			}
+			__antithesis_instrumentation__.Notify(40536)
 			err = fileTpl.Execute(outFile, struct {
 				Package   string
 				Check     string
 				CheckType string
 			}{Package: pkgname, Check: analyzer.Name, CheckType: check.CheckType})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(40543)
 				panic(err)
+			} else {
+				__antithesis_instrumentation__.Notify(40544)
 			}
+			__antithesis_instrumentation__.Notify(40537)
 			err = outFile.Close()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(40545)
 				panic(err)
+			} else {
+				__antithesis_instrumentation__.Notify(40546)
 			}
+			__antithesis_instrumentation__.Notify(40538)
 			allAnalyzers = append(allAnalyzers, "//"+dirname)
 		}
 	}
+	__antithesis_instrumentation__.Notify(40523)
 	sort.Strings(allAnalyzers)
 	fileTpl = template.Must(template.New("defbzl").Parse(defBzlFileTemplate))
 	defBzlFile, err := os.Create(filepath.Join(rootDir, "def.bzl"))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40547)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(40548)
 	}
+	__antithesis_instrumentation__.Notify(40524)
 	err = fileTpl.Execute(defBzlFile, struct{ AllAnalyzers []string }{AllAnalyzers: allAnalyzers})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40549)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(40550)
 	}
 }

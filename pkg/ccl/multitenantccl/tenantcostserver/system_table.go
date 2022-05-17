@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package tenantcostserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -30,42 +24,27 @@ import (
 )
 
 type tenantState struct {
-	// Present indicates if the state existed in the table.
 	Present bool
 
-	// Time of last update.
 	LastUpdate tree.DTimestamp
 
-	// FirstInstance is the smallest active instance ID, or 0 if there are no
-	// known active instances.
 	FirstInstance base.SQLInstanceID
 
-	// Bucket state, as of LastUpdate.
 	Bucket tenanttokenbucket.State
 
-	// Current consumption information.
 	Consumption roachpb.TenantConsumption
 }
 
-// defaultRefillRate is the default refill rate if it is never configured (via
-// the crdb_internal.update_tenant_resource_limits SQL built-in).
 const defaultRefillRate = 100
 
-// defaultInitialRUs is the default quantity of RUs available to use immediately
-// if it is never configured (via the
-// crdb_internal.update_tenant_resource_limits SQL built-in).
-// This value is intended to prevent short-running unit tests from being
-// throttled.
 const defaultInitialRUs = 10 * 1000 * 1000
 
-// maxInstancesCleanup restricts the number of stale instances that are removed
-// in a single transaction.
 const maxInstancesCleanup = 10
 
-// update accounts for the passing of time since LastUpdate.
-// If the tenantState is not initialized (Present=false), it is initialized now.
 func (ts *tenantState) update(now time.Time) {
+	__antithesis_instrumentation__.Notify(20226)
 	if !ts.Present {
+		__antithesis_instrumentation__.Notify(20228)
 		*ts = tenantState{
 			Present:       true,
 			LastUpdate:    tree.DTimestamp{Time: now},
@@ -76,39 +55,37 @@ func (ts *tenantState) update(now time.Time) {
 			},
 		}
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(20229)
 	}
+	__antithesis_instrumentation__.Notify(20227)
 	delta := now.Sub(ts.LastUpdate.Time)
 	if delta > 0 {
-		// Make sure we never push back LastUpdate, or we'd refill tokens for the
-		// same period multiple times.
+		__antithesis_instrumentation__.Notify(20230)
+
 		ts.Bucket.Update(delta)
 		ts.LastUpdate.Time = now
+	} else {
+		__antithesis_instrumentation__.Notify(20231)
 	}
 }
 
 type instanceState struct {
 	ID base.SQLInstanceID
 
-	// Present indicates if the instance existed in the table.
 	Present bool
 
-	// Time of last request from this instance.
 	LastUpdate tree.DTimestamp
 
-	// Next active instance ID or 0 if this is the instance with the largest ID.
 	NextInstance base.SQLInstanceID
 
-	// Lease uniquely identifies the instance; used to disambiguate different
-	// incarnations of the same ID.
 	Lease tree.DBytes
-	// Seq is a sequence number used to detect duplicate client requests.
+
 	Seq int64
-	// Shares term for this instance; see tenanttokenbucket.State.
+
 	Shares float64
 }
 
-// sysTableHelper implements the interactions with the system.tenant_usage
-// table.
 type sysTableHelper struct {
 	ctx      context.Context
 	ex       *sql.InternalExecutor
@@ -119,6 +96,7 @@ type sysTableHelper struct {
 func makeSysTableHelper(
 	ctx context.Context, ex *sql.InternalExecutor, txn *kv.Txn, tenantID roachpb.TenantID,
 ) sysTableHelper {
+	__antithesis_instrumentation__.Notify(20232)
 	return sysTableHelper{
 		ctx:      ctx,
 		ex:       ex,
@@ -127,31 +105,19 @@ func makeSysTableHelper(
 	}
 }
 
-// readTenantState reads the tenant state from the system table.
-//
-// If the table was not initialized for the tenant, the tenant stats will not be
-// Present.
 func (h *sysTableHelper) readTenantState() (tenant tenantState, _ error) {
-	// We could use a simplified query, but the benefit will be marginal and
-	// this is not used in the hot path.
-	tenant, _, err := h.readTenantAndInstanceState(0 /* instanceID */)
+	__antithesis_instrumentation__.Notify(20233)
+
+	tenant, _, err := h.readTenantAndInstanceState(0)
 	return tenant, err
 }
 
-// readTenantAndInstanceState reads the tenant and instance state from the system
-// table.
-//
-// If the table was not initialized for the tenant, the tenant and instance
-// state will not be Present.
-//
-// If the instance is not in the current active set (according to the table),
-// the instance state will not be Present.
 func (h *sysTableHelper) readTenantAndInstanceState(
 	instanceID base.SQLInstanceID,
 ) (tenant tenantState, instance instanceState, _ error) {
+	__antithesis_instrumentation__.Notify(20234)
 	instance.ID = instanceID
-	// Read the two rows for the per-tenant state (instance_id = 0) and the
-	// per-instance state.
+
 	rows, err := h.ex.QueryBufferedEx(
 		h.ctx, "tenant-usage-select", h.txn,
 		sessiondata.NodeUserSessionDataOverride,
@@ -173,12 +139,18 @@ func (h *sysTableHelper) readTenantAndInstanceState(
 		int64(instanceID),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20237)
 		return tenantState{}, instanceState{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(20238)
 	}
+	__antithesis_instrumentation__.Notify(20235)
 	for _, r := range rows {
+		__antithesis_instrumentation__.Notify(20239)
 		instanceID := base.SQLInstanceID(tree.MustBeDInt(r[0]))
 		if instanceID == 0 {
-			// Tenant state.
+			__antithesis_instrumentation__.Notify(20240)
+
 			tenant.Present = true
 			tenant.LastUpdate = tree.MustBeDTimestamp(r[2])
 			tenant.FirstInstance = base.SQLInstanceID(tree.MustBeDInt(r[1]))
@@ -189,16 +161,22 @@ func (h *sysTableHelper) readTenantAndInstanceState(
 				CurrentShareSum: float64(tree.MustBeDFloat(r[6])),
 			}
 			if consumption := r[7]; consumption != tree.DNull {
-				// total_consumption can be NULL because of a migration of the
-				// tenant_usage table.
+				__antithesis_instrumentation__.Notify(20241)
+
 				if err := protoutil.Unmarshal(
 					[]byte(tree.MustBeDBytes(consumption)), &tenant.Consumption,
 				); err != nil {
+					__antithesis_instrumentation__.Notify(20242)
 					return tenantState{}, instanceState{}, err
+				} else {
+					__antithesis_instrumentation__.Notify(20243)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(20244)
 			}
 		} else {
-			// Instance state.
+			__antithesis_instrumentation__.Notify(20245)
+
 			instance.Present = true
 			instance.LastUpdate = tree.MustBeDTimestamp(r[2])
 			instance.NextInstance = base.SQLInstanceID(tree.MustBeDInt(r[1]))
@@ -207,18 +185,22 @@ func (h *sysTableHelper) readTenantAndInstanceState(
 			instance.Shares = float64(tree.MustBeDFloat(r[10]))
 		}
 	}
+	__antithesis_instrumentation__.Notify(20236)
 
 	return tenant, instance, nil
 }
 
-// updateTenantState writes out an updated tenant state.
 func (h *sysTableHelper) updateTenantState(tenant tenantState) error {
+	__antithesis_instrumentation__.Notify(20246)
 	consumption, err := protoutil.Marshal(&tenant.Consumption)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20248)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(20249)
 	}
-	// Note: it is important that this UPSERT specifies all columns of the
-	// table, to allow it to perform "blind" writes.
+	__antithesis_instrumentation__.Notify(20247)
+
 	_, err = h.ex.ExecEx(
 		h.ctx, "tenant-usage-upsert", h.txn,
 		sessiondata.NodeUserSessionDataOverride,
@@ -237,28 +219,31 @@ func (h *sysTableHelper) updateTenantState(tenant tenantState) error {
 			instance_shares
 		 ) VALUES ($1, 0, $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NULL)
 		 `,
-		h.tenantID.ToUint64(),                    // $1
-		int64(tenant.FirstInstance),              // $2
-		&tenant.LastUpdate,                       // $3
-		tenant.Bucket.RUBurstLimit,               // $4
-		tenant.Bucket.RURefillRate,               // $5
-		tenant.Bucket.RUCurrent,                  // $6
-		tenant.Bucket.CurrentShareSum,            // $7
-		tree.NewDBytes(tree.DBytes(consumption)), // $8
+		h.tenantID.ToUint64(),
+		int64(tenant.FirstInstance),
+		&tenant.LastUpdate,
+		tenant.Bucket.RUBurstLimit,
+		tenant.Bucket.RURefillRate,
+		tenant.Bucket.RUCurrent,
+		tenant.Bucket.CurrentShareSum,
+		tree.NewDBytes(tree.DBytes(consumption)),
 	)
 	return err
 }
 
-// updateTenantState writes out updated tenant and instance states.
 func (h *sysTableHelper) updateTenantAndInstanceState(
 	tenant tenantState, instance instanceState,
 ) error {
+	__antithesis_instrumentation__.Notify(20250)
 	consumption, err := protoutil.Marshal(&tenant.Consumption)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20252)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(20253)
 	}
-	// Note: it is important that this UPSERT specifies all columns of the
-	// table, to allow it to perform "blind" writes.
+	__antithesis_instrumentation__.Notify(20251)
+
 	_, err = h.ex.ExecEx(
 		h.ctx, "tenant-usage-insert", h.txn,
 		sessiondata.NodeUserSessionDataOverride,
@@ -279,39 +264,40 @@ func (h *sysTableHelper) updateTenantAndInstanceState(
 		   ($1, 0,  $2,  $3,  $4,   $5,   $6,   $7,   $8,   NULL, NULL, NULL),
 			 ($1, $9, $10, $11, NULL, NULL, NULL, NULL, NULL, $12,  $13,  $14)
 		 `,
-		h.tenantID.ToUint64(),                    // $1
-		int64(tenant.FirstInstance),              // $2
-		&tenant.LastUpdate,                       // $3
-		tenant.Bucket.RUBurstLimit,               // $4
-		tenant.Bucket.RURefillRate,               // $5
-		tenant.Bucket.RUCurrent,                  // $6
-		tenant.Bucket.CurrentShareSum,            // $7
-		tree.NewDBytes(tree.DBytes(consumption)), // $8
-		int64(instance.ID),                       // $9
-		int64(instance.NextInstance),             // $10
-		&instance.LastUpdate,                     // $11
-		&instance.Lease,                          // $12
-		instance.Seq,                             // $13
-		instance.Shares,                          // $14
+		h.tenantID.ToUint64(),
+		int64(tenant.FirstInstance),
+		&tenant.LastUpdate,
+		tenant.Bucket.RUBurstLimit,
+		tenant.Bucket.RURefillRate,
+		tenant.Bucket.RUCurrent,
+		tenant.Bucket.CurrentShareSum,
+		tree.NewDBytes(tree.DBytes(consumption)),
+		int64(instance.ID),
+		int64(instance.NextInstance),
+		&instance.LastUpdate,
+		&instance.Lease,
+		instance.Seq,
+		instance.Shares,
 	)
 	return err
 }
 
-// accomodateNewInstance is used when we are about to insert a new instance. It
-// sets instance.NextInstance and updates the previous instance's
-// next_instance_id in the table (or updates tenant.FirstInstance).
-//
-// Note that this should only happen after a SQL pod starts up (which is
-// infrequent). In addition, the SQL pod start-up process is not blocked on
-// tenant bucket requests (which happen in the background).
 func (h *sysTableHelper) accomodateNewInstance(tenant *tenantState, instance *instanceState) error {
-	if tenant.FirstInstance == 0 || tenant.FirstInstance > instance.ID {
-		// The new instance has the lowest ID.
+	__antithesis_instrumentation__.Notify(20254)
+	if tenant.FirstInstance == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(20258)
+		return tenant.FirstInstance > instance.ID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(20259)
+
 		instance.NextInstance = tenant.FirstInstance
 		tenant.FirstInstance = instance.ID
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(20260)
 	}
-	// Find the previous instance.
+	__antithesis_instrumentation__.Notify(20255)
+
 	row, err := h.ex.QueryRowEx(
 		h.ctx, "find-prev-id", h.txn,
 		sessiondata.NodeUserSessionDataOverride,
@@ -330,11 +316,19 @@ func (h *sysTableHelper) accomodateNewInstance(tenant *tenantState, instance *in
 		int64(instance.ID),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20261)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(20262)
 	}
+	__antithesis_instrumentation__.Notify(20256)
 	if row == nil {
+		__antithesis_instrumentation__.Notify(20263)
 		return errors.Errorf("could not find row for previous instance")
+	} else {
+		__antithesis_instrumentation__.Notify(20264)
 	}
+	__antithesis_instrumentation__.Notify(20257)
 	prevInstanceID := base.SQLInstanceID(tree.MustBeDInt(row[0]))
 	instance.NextInstance = base.SQLInstanceID(tree.MustBeDInt(row[1]))
 	prevInstanceLastUpdate := row[2]
@@ -342,13 +336,10 @@ func (h *sysTableHelper) accomodateNewInstance(tenant *tenantState, instance *in
 	prevInstanceSeq := row[4]
 	prevInstanceShares := row[5]
 
-	// Update the previous instance: its next_instance_id is the new instance.
-	// TODO(radu): consider coalescing this with updateTenantAndInstanceState to
-	// perform a single UPSERT.
 	_, err = h.ex.ExecEx(
 		h.ctx, "update-next-id", h.txn,
 		sessiondata.NodeUserSessionDataOverride,
-		// Update the previous instance's next_instance_id.
+
 		`UPSERT INTO system.tenant_usage(
 		  tenant_id,
 		  instance_id,
@@ -364,23 +355,21 @@ func (h *sysTableHelper) accomodateNewInstance(tenant *tenantState, instance *in
 			instance_shares
 		 ) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL, NULL, $5, $6, $7)
 		`,
-		h.tenantID.ToUint64(),  // $1
-		int64(prevInstanceID),  // $2
-		int64(instance.ID),     // $3
-		prevInstanceLastUpdate, // $4
-		prevInstanceLease,      // $5
-		prevInstanceSeq,        // $6
-		prevInstanceShares,     // $7
+		h.tenantID.ToUint64(),
+		int64(prevInstanceID),
+		int64(instance.ID),
+		prevInstanceLastUpdate,
+		prevInstanceLease,
+		prevInstanceSeq,
+		prevInstanceShares,
 	)
 	return err
 }
 
-// maybeCleanupStaleInstance checks the last update time of the given instance;
-// if it is older than the cutoff time, the instance is removed and the next
-// instance ID is returned (this ID is 0 if this is the highest instance ID).
 func (h *sysTableHelper) maybeCleanupStaleInstance(
 	cutoff time.Time, instanceID base.SQLInstanceID,
 ) (deleted bool, nextInstance base.SQLInstanceID, _ error) {
+	__antithesis_instrumentation__.Notify(20265)
 	ts := tree.MustMakeDTimestamp(cutoff, time.Microsecond)
 	row, err := h.ex.QueryRowEx(
 		h.ctx, "tenant-usage-delete", h.txn,
@@ -393,63 +382,87 @@ func (h *sysTableHelper) maybeCleanupStaleInstance(
 		ts,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20268)
 		return false, -1, err
+	} else {
+		__antithesis_instrumentation__.Notify(20269)
 	}
+	__antithesis_instrumentation__.Notify(20266)
 	if row == nil {
+		__antithesis_instrumentation__.Notify(20270)
 		log.VEventf(h.ctx, 1, "tenant %s instance %d not stale", h.tenantID, instanceID)
 		return false, -1, nil
+	} else {
+		__antithesis_instrumentation__.Notify(20271)
 	}
+	__antithesis_instrumentation__.Notify(20267)
 	nextInstance = base.SQLInstanceID(tree.MustBeDInt(row[0]))
 	log.VEventf(h.ctx, 1, "cleaned up tenant %s instance %d", h.tenantID, instanceID)
 	return true, nextInstance, nil
 }
 
-// maybeCleanupStaleInstances removes up to maxInstancesCleanup stale instances
-// (where the last update time is before the cutoff) with IDs in the range
-//   [startID, endID).
-// If endID is -1, then the range is unrestricted [startID, ∞).
-//
-// Returns the ID of the instance following the deleted instances. This is
-// the same with startID if nothing was cleaned up, and it is 0 if we cleaned up
-// the last (highest ID) instance.
 func (h *sysTableHelper) maybeCleanupStaleInstances(
 	cutoff time.Time, startID, endID base.SQLInstanceID,
 ) (nextInstance base.SQLInstanceID, _ error) {
+	__antithesis_instrumentation__.Notify(20272)
 	log.VEventf(
 		h.ctx, 1, "checking stale instances (tenant=%s startID=%d endID=%d)",
 		h.tenantID, startID, endID,
 	)
 	id := startID
 	for n := 0; n < maxInstancesCleanup; n++ {
+		__antithesis_instrumentation__.Notify(20274)
 		deleted, nextInstance, err := h.maybeCleanupStaleInstance(cutoff, id)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(20277)
 			return -1, err
+		} else {
+			__antithesis_instrumentation__.Notify(20278)
 		}
+		__antithesis_instrumentation__.Notify(20275)
 		if !deleted {
+			__antithesis_instrumentation__.Notify(20279)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(20280)
 		}
+		__antithesis_instrumentation__.Notify(20276)
 		id = nextInstance
-		if id == 0 || (endID != -1 && id >= endID) {
+		if id == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(20281)
+			return (endID != -1 && func() bool {
+				__antithesis_instrumentation__.Notify(20282)
+				return id >= endID == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(20283)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(20284)
 		}
 	}
+	__antithesis_instrumentation__.Notify(20273)
 	return id, nil
 }
 
-// maybeCheckInvariants checks the invariants for the system table with a random
-// probability and only if this is a test build.
 func (h *sysTableHelper) maybeCheckInvariants() error {
-	if buildutil.CrdbTestBuild && rand.Intn(10) == 0 {
+	__antithesis_instrumentation__.Notify(20285)
+	if buildutil.CrdbTestBuild && func() bool {
+		__antithesis_instrumentation__.Notify(20287)
+		return rand.Intn(10) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(20288)
 		return h.checkInvariants()
+	} else {
+		__antithesis_instrumentation__.Notify(20289)
 	}
+	__antithesis_instrumentation__.Notify(20286)
 	return nil
 }
 
-// checkInvariants reads all rows in the system table for the given tenant and
-// checks that the state is consistent.
 func (h *sysTableHelper) checkInvariants() error {
-	// Read the two rows for the per-tenant state (instance_id = 0) and the
-	// per-instance state.
+	__antithesis_instrumentation__.Notify(20290)
+
 	rows, err := h.ex.QueryBufferedEx(
 		h.ctx, "tenant-usage-select", h.txn,
 		sessiondata.NodeUserSessionDataOverride,
@@ -471,93 +484,142 @@ func (h *sysTableHelper) checkInvariants() error {
 		h.tenantID.ToUint64(),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20300)
 		if h.ctx.Err() == nil {
+			__antithesis_instrumentation__.Notify(20302)
 			log.Warningf(h.ctx, "checkInvariants query failed: %v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(20303)
 		}
-		// We don't want to cause a panic for a query error (which is expected
-		// during shutdown).
-		return nil
-	}
-	if len(rows) == 0 {
-		return nil
-	}
+		__antithesis_instrumentation__.Notify(20301)
 
-	// Get the instance IDs.
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(20304)
+	}
+	__antithesis_instrumentation__.Notify(20291)
+	if len(rows) == 0 {
+		__antithesis_instrumentation__.Notify(20305)
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(20306)
+	}
+	__antithesis_instrumentation__.Notify(20292)
+
 	instanceIDs := make([]base.SQLInstanceID, len(rows))
 	for i := range rows {
+		__antithesis_instrumentation__.Notify(20307)
 		instanceIDs[i] = base.SQLInstanceID(tree.MustBeDInt(rows[i][0]))
-		if i > 0 && instanceIDs[i-1] >= instanceIDs[i] {
+		if i > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(20308)
+			return instanceIDs[i-1] >= instanceIDs[i] == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(20309)
 			return errors.New("instances out of order")
+		} else {
+			__antithesis_instrumentation__.Notify(20310)
 		}
 	}
+	__antithesis_instrumentation__.Notify(20293)
 	if instanceIDs[0] != 0 {
+		__antithesis_instrumentation__.Notify(20311)
 		return errors.New("instance 0 row missing")
+	} else {
+		__antithesis_instrumentation__.Notify(20312)
 	}
+	__antithesis_instrumentation__.Notify(20294)
 
-	// Check NULL values.
 	for i := range rows {
+		__antithesis_instrumentation__.Notify(20313)
 		var nullFirst, nullLast int
 		if i == 0 {
-			// Row 0 should have NULL per-instance values.
+			__antithesis_instrumentation__.Notify(20315)
+
 			nullFirst, nullLast = 8, 10
 		} else {
-			// Other rows should have NULL per-tenant values.
+			__antithesis_instrumentation__.Notify(20316)
+
 			nullFirst, nullLast = 3, 7
 		}
+		__antithesis_instrumentation__.Notify(20314)
 		for j := range rows[i] {
+			__antithesis_instrumentation__.Notify(20317)
 			isNull := (rows[i][j] == tree.DNull)
-			expNull := (j >= nullFirst && j <= nullLast)
+			expNull := (j >= nullFirst && func() bool {
+				__antithesis_instrumentation__.Notify(20318)
+				return j <= nullLast == true
+			}() == true)
 			if expNull != isNull {
+				__antithesis_instrumentation__.Notify(20319)
 				if !expNull {
+					__antithesis_instrumentation__.Notify(20321)
 					return errors.Errorf("expected NULL column %d", j)
+				} else {
+					__antithesis_instrumentation__.Notify(20322)
 				}
-				// We have an exception for total_consumption, which can be NULL because
-				// of a migration of the tenant_usage table.
+				__antithesis_instrumentation__.Notify(20320)
+
 				if i != 7 {
+					__antithesis_instrumentation__.Notify(20323)
 					return errors.Errorf("expected non-NULL column %d", j)
+				} else {
+					__antithesis_instrumentation__.Notify(20324)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(20325)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(20295)
 
-	// Verify next_instance_id values.
 	for i := range rows {
+		__antithesis_instrumentation__.Notify(20326)
 		expNextInstanceID := base.SQLInstanceID(0)
 		if i+1 < len(rows) {
+			__antithesis_instrumentation__.Notify(20328)
 			expNextInstanceID = instanceIDs[i+1]
+		} else {
+			__antithesis_instrumentation__.Notify(20329)
 		}
+		__antithesis_instrumentation__.Notify(20327)
 		nextInstanceID := base.SQLInstanceID(tree.MustBeDInt(rows[i][1]))
 		if expNextInstanceID != nextInstanceID {
+			__antithesis_instrumentation__.Notify(20330)
 			return errors.Errorf("expected next instance %d, have %d", expNextInstanceID, nextInstanceID)
+		} else {
+			__antithesis_instrumentation__.Notify(20331)
 		}
 	}
+	__antithesis_instrumentation__.Notify(20296)
 
-	// Verify the shares sum.
 	sharesSum := float64(tree.MustBeDFloat(rows[0][6]))
 	var expSharesSum float64
 	for _, r := range rows[1:] {
+		__antithesis_instrumentation__.Notify(20332)
 		expSharesSum += float64(tree.MustBeDFloat(r[10]))
 	}
+	__antithesis_instrumentation__.Notify(20297)
 
 	a, b := sharesSum, expSharesSum
 	if a > b {
+		__antithesis_instrumentation__.Notify(20333)
 		a, b = b, a
+	} else {
+		__antithesis_instrumentation__.Notify(20334)
 	}
-	// We use "units of least precision" for similarity: this is the number of
-	// representable floating point numbers in-between the two values. This is
-	// better than a fixed epsilon because the allowed error is proportional to
-	// the magnitude of the numbers. Because the mantissa is in the low bits, we
-	// can just use the bit representations as integers.
+	__antithesis_instrumentation__.Notify(20298)
+
 	const ulpTolerance = 1000
 	if math.Float64bits(a)+ulpTolerance <= math.Float64bits(b) {
+		__antithesis_instrumentation__.Notify(20335)
 		return errors.Errorf("expected shares sum %g, have %g", expSharesSum, sharesSum)
+	} else {
+		__antithesis_instrumentation__.Notify(20336)
 	}
+	__antithesis_instrumentation__.Notify(20299)
 	return nil
 }
 
-// InspectTenantMetadata returns all the information from the tenant_usage table
-// for a given tenant, in a user-readable format (multi-line). Used for testing
-// and debugging.
 func InspectTenantMetadata(
 	ctx context.Context,
 	ex *sql.InternalExecutor,
@@ -565,14 +627,23 @@ func InspectTenantMetadata(
 	tenantID roachpb.TenantID,
 	timeFormat string,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(20337)
 	h := makeSysTableHelper(ctx, ex, txn, tenantID)
 	tenant, err := h.readTenantState()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20342)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(20343)
 	}
+	__antithesis_instrumentation__.Notify(20338)
 	if !tenant.Present {
+		__antithesis_instrumentation__.Notify(20344)
 		return "empty state", nil
+	} else {
+		__antithesis_instrumentation__.Notify(20345)
 	}
+	__antithesis_instrumentation__.Notify(20339)
 
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "Bucket state: ru-burst-limit=%g  ru-refill-rate=%g  ru-current=%.12g  current-share-sum=%.12g\n",
@@ -609,13 +680,19 @@ func InspectTenantMetadata(
 		tenantID.ToUint64(),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20346)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(20347)
 	}
+	__antithesis_instrumentation__.Notify(20340)
 	for _, r := range rows {
+		__antithesis_instrumentation__.Notify(20348)
 		fmt.Fprintf(
 			&buf, "  Instance %s:  lease=%q  seq=%s  shares=%s  next-instance=%s  last-update=%s\n",
 			r[0], tree.MustBeDBytes(r[3]), r[4], r[5], r[1], tree.MustBeDTimestamp(r[2]).Time.Format(timeFormat),
 		)
 	}
+	__antithesis_instrumentation__.Notify(20341)
 	return buf.String(), nil
 }

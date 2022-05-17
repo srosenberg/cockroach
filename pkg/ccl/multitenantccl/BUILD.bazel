@@ -8,5 +8,6 @@ go_library(
     deps = [
         "//pkg/ccl/multitenantccl/tenantcostclient",
         "//pkg/ccl/multitenantccl/tenantcostserver",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

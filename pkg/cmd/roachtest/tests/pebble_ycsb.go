@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,30 +16,33 @@ import (
 )
 
 func registerPebbleYCSB(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(49679)
 	pebble := os.Getenv("PEBBLE_BIN")
 	if pebble == "" {
+		__antithesis_instrumentation__.Notify(49681)
 		pebble = "./pebble.linux"
+	} else {
+		__antithesis_instrumentation__.Notify(49682)
 	}
+	__antithesis_instrumentation__.Notify(49680)
 
 	for _, dur := range []int64{10, 90} {
+		__antithesis_instrumentation__.Notify(49683)
 		for _, size := range []int{64, 1024} {
+			__antithesis_instrumentation__.Notify(49684)
 			size := size
 
-			// NOTE: This test name should not change for benchmark data that gets
-			// persisted to S3, as it is relied-upon by the Pebble mkbench command,
-			// which creates a well-known directory structure that is in-turn
-			// relied-upon by the javascript on the Pebble Benchmarks webpage.
 			name := fmt.Sprintf("pebble/ycsb/size=%d", size)
 			tag := "pebble_nightly_ycsb"
 
-			// For the shorter benchmark runs, we append a suffix to the name to avoid
-			// a name collision. This is safe to do as these tests are not executed as
-			// part of the nightly benchmark runs (see the tag used to filter, found
-			// in build/teamcity-nightly-pebble.sh).
 			if dur != 90 {
+				__antithesis_instrumentation__.Notify(49686)
 				tag = "pebble"
 				name += fmt.Sprintf("/duration=%d", dur)
+			} else {
+				__antithesis_instrumentation__.Notify(49687)
 			}
+			__antithesis_instrumentation__.Notify(49685)
 
 			d := dur
 			r.Add(registry.TestSpec{
@@ -57,6 +52,7 @@ func registerPebbleYCSB(r registry.Registry) {
 				Cluster: r.MakeClusterSpec(5, spec.CPU(16)),
 				Tags:    []string{tag},
 				Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+					__antithesis_instrumentation__.Notify(49688)
 					runPebbleYCSB(ctx, t, c, size, pebble, d)
 				},
 			})
@@ -64,23 +60,20 @@ func registerPebbleYCSB(r registry.Registry) {
 	}
 }
 
-// runPebbleYCSB runs the Pebble YCSB benchmarks.
 func runPebbleYCSB(
 	ctx context.Context, t test.Test, c cluster.Cluster, size int, bin string, dur int64,
 ) {
+	__antithesis_instrumentation__.Notify(49689)
 	c.Put(ctx, bin, "./pebble")
 
 	const initialKeys = 10_000_000
-	const cache = 4 << 30 // 4 GB
+	const cache = 4 << 30
 	const dataDir = "$(dirname {store-dir})"
 	const dataTar = dataDir + "/data.tar"
 	const benchDir = dataDir + "/bench"
 
 	var duration = time.Duration(dur) * time.Minute
 
-	// Generate the initial DB state. This is somewhat time consuming for
-	// larger value sizes, so we do this once and reuse the same DB state on
-	// all of the workloads.
 	runPebbleCmd(ctx, t, c, fmt.Sprintf(
 		"(./pebble bench ycsb %s"+
 			" --wipe "+
@@ -94,11 +87,16 @@ func runPebbleYCSB(
 		benchDir, size, initialKeys, cache, dataTar, dataTar, benchDir))
 
 	for _, workload := range []string{"A", "B", "C", "D", "E", "F"} {
+		__antithesis_instrumentation__.Notify(49690)
 		keys := "zipf"
 		switch workload {
 		case "D":
+			__antithesis_instrumentation__.Notify(49694)
 			keys = "uniform"
+		default:
+			__antithesis_instrumentation__.Notify(49695)
 		}
+		__antithesis_instrumentation__.Notify(49691)
 
 		runPebbleCmd(ctx, t, c, fmt.Sprintf(
 			"rm -fr %s && tar xPf %s &&"+
@@ -117,28 +115,43 @@ func runPebbleYCSB(
 
 		dest := filepath.Join(t.ArtifactsDir(), fmt.Sprintf("ycsb_%s.log", workload))
 		if err := c.Get(ctx, t.L(), "ycsb.log", dest, c.All()); err != nil {
+			__antithesis_instrumentation__.Notify(49696)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(49697)
 		}
+		__antithesis_instrumentation__.Notify(49692)
 
 		profilesName := fmt.Sprintf("profiles_%s.tar", workload)
 		dest = filepath.Join(t.ArtifactsDir(), profilesName)
 		if err := c.Get(ctx, t.L(), profilesName, dest, c.All()); err != nil {
+			__antithesis_instrumentation__.Notify(49698)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(49699)
 		}
+		__antithesis_instrumentation__.Notify(49693)
 
 		runPebbleCmd(ctx, t, c, "rm -fr *.prof")
 	}
 }
 
-// runPebbleCmd runs the given command on all worker nodes in the test cluster.
 func runPebbleCmd(ctx context.Context, t test.Test, c cluster.Cluster, cmd string) {
+	__antithesis_instrumentation__.Notify(49700)
 	t.L().PrintfCtx(ctx, "> %s", cmd)
 	err := c.RunE(ctx, c.All(), cmd)
 	t.L().Printf("> result: %+v", err)
 	if err := ctx.Err(); err != nil {
+		__antithesis_instrumentation__.Notify(49702)
 		t.L().Printf("(note: incoming context was canceled: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(49703)
 	}
+	__antithesis_instrumentation__.Notify(49701)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(49704)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(49705)
 	}
 }

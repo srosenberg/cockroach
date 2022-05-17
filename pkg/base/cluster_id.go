@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package base
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,61 +10,70 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 )
 
-// ClusterIDContainer is used to share a single Cluster ID instance between
-// multiple layers. It allows setting and getting the value. Once a value is
-// set, the value cannot change.
-//
-// The cluster ID is determined on startup as follows:
-// - If there are existing stores, their cluster ID is used.
-// - If the node is bootstrapping, a new UUID is generated.
-// - Otherwise, it is determined via gossip with other nodes.
 type ClusterIDContainer struct {
-	clusterID atomic.Value // uuid.UUID
-	// OnSet, if non-nil, is called after the ID is set with the new value.
+	clusterID atomic.Value
+
 	OnSet func(uuid.UUID)
 }
 
-// String returns the cluster ID, or "?" if it is unset.
 func (c *ClusterIDContainer) String() string {
+	__antithesis_instrumentation__.Notify(1381)
 	val := c.Get()
 	if val == uuid.Nil {
+		__antithesis_instrumentation__.Notify(1383)
 		return "?"
+	} else {
+		__antithesis_instrumentation__.Notify(1384)
 	}
+	__antithesis_instrumentation__.Notify(1382)
 	return val.String()
 }
 
-// Get returns the current cluster ID; uuid.Nil if it is unset.
 func (c *ClusterIDContainer) Get() uuid.UUID {
+	__antithesis_instrumentation__.Notify(1385)
 	v := c.clusterID.Load()
 	if v == nil {
+		__antithesis_instrumentation__.Notify(1387)
 		return uuid.Nil
+	} else {
+		__antithesis_instrumentation__.Notify(1388)
 	}
+	__antithesis_instrumentation__.Notify(1386)
 	return v.(uuid.UUID)
 }
 
-// Set sets the current cluster ID. If it is already set, the value must match.
 func (c *ClusterIDContainer) Set(ctx context.Context, val uuid.UUID) {
-	// NOTE: this compare-and-swap is intentionally racy and won't catch all
-	// cases where two different cluster IDs are set. That's ok, as this is
-	// just a sanity check. But if we decide to care, we can use the new
-	// (*atomic.Value).CompareAndSwap API introduced in go1.17.
+	__antithesis_instrumentation__.Notify(1389)
+
 	cur := c.Get()
 	if cur == uuid.Nil {
+		__antithesis_instrumentation__.Notify(1391)
 		c.clusterID.Store(val)
 		if log.V(2) {
+			__antithesis_instrumentation__.Notify(1392)
 			log.Infof(ctx, "ClusterID set to %s", val)
+		} else {
+			__antithesis_instrumentation__.Notify(1393)
 		}
-	} else if cur != val {
-		log.Fatalf(ctx, "different ClusterIDs set: %s, then %s", cur, val)
+	} else {
+		__antithesis_instrumentation__.Notify(1394)
+		if cur != val {
+			__antithesis_instrumentation__.Notify(1395)
+			log.Fatalf(ctx, "different ClusterIDs set: %s, then %s", cur, val)
+		} else {
+			__antithesis_instrumentation__.Notify(1396)
+		}
 	}
+	__antithesis_instrumentation__.Notify(1390)
 	if c.OnSet != nil {
+		__antithesis_instrumentation__.Notify(1397)
 		c.OnSet(val)
+	} else {
+		__antithesis_instrumentation__.Notify(1398)
 	}
 }
 
-// Reset changes the ClusterID regardless of the old value.
-//
-// Should only be used in testing code.
 func (c *ClusterIDContainer) Reset(val uuid.UUID) {
+	__antithesis_instrumentation__.Notify(1399)
 	c.clusterID.Store(val)
 }

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -29,130 +21,223 @@ type intervalLexer struct {
 	err    error
 }
 
-// consumeNum consumes the next decimal number.
-// 1st return value is the integer part.
-// 2nd return value is whether a decimal part was encountered.
-// 3rd return value is the decimal part as a float.
-// If the number is negative, both the 1st and 3rd return
-// value are negative.
-// The decimal value is returned separately from the integer value so
-// as to support large integer values which would not fit in a float.
 func (l *intervalLexer) consumeNum() (int64, bool, float64) {
+	__antithesis_instrumentation__.Notify(610107)
 	if l.err != nil {
+		__antithesis_instrumentation__.Notify(610113)
 		return 0, false, 0
+	} else {
+		__antithesis_instrumentation__.Notify(610114)
 	}
+	__antithesis_instrumentation__.Notify(610108)
 
 	offset := l.offset
 
 	neg := false
-	if l.offset < len(l.str) && l.str[l.offset] == '-' {
-		// Remember a leading negative sign. We can't use "intPart < 0"
-		// below, because when the input syntax is "-0.xxxx" intPart is 0.
-		neg = true
-	}
+	if l.offset < len(l.str) && func() bool {
+		__antithesis_instrumentation__.Notify(610115)
+		return l.str[l.offset] == '-' == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610116)
 
-	// Integer part before the decimal separator.
+		neg = true
+	} else {
+		__antithesis_instrumentation__.Notify(610117)
+	}
+	__antithesis_instrumentation__.Notify(610109)
+
 	intPart := l.consumeInt()
 
 	var decPart float64
 	hasDecimal := false
-	if l.offset < len(l.str) && l.str[l.offset] == '.' {
+	if l.offset < len(l.str) && func() bool {
+		__antithesis_instrumentation__.Notify(610118)
+		return l.str[l.offset] == '.' == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610119)
 		hasDecimal = true
 		start := l.offset
 
-		// Advance offset to prepare a valid argument to ParseFloat().
 		l.offset++
-		for ; l.offset < len(l.str) && l.str[l.offset] >= '0' && l.str[l.offset] <= '9'; l.offset++ {
+		for ; l.offset < len(l.str) && func() bool {
+			__antithesis_instrumentation__.Notify(610122)
+			return l.str[l.offset] >= '0' == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(610123)
+			return l.str[l.offset] <= '9' == true
+		}() == true; l.offset++ {
+			__antithesis_instrumentation__.Notify(610124)
 		}
-		// Try to convert.
+		__antithesis_instrumentation__.Notify(610120)
+
 		value, err := strconv.ParseFloat(l.str[start:l.offset], 64)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(610125)
 			l.err = pgerror.Wrap(
 				err, pgcode.InvalidDatetimeFormat, "interval")
 			return 0, false, 0
+		} else {
+			__antithesis_instrumentation__.Notify(610126)
 		}
+		__antithesis_instrumentation__.Notify(610121)
 		decPart = value
+	} else {
+		__antithesis_instrumentation__.Notify(610127)
 	}
+	__antithesis_instrumentation__.Notify(610110)
 
-	// Ensure we have something.
 	if offset == l.offset {
+		__antithesis_instrumentation__.Notify(610128)
 		l.err = pgerror.Newf(
 			pgcode.InvalidDatetimeFormat, "interval: missing number at position %d: %q", offset, l.str)
 		return 0, false, 0
+	} else {
+		__antithesis_instrumentation__.Notify(610129)
 	}
+	__antithesis_instrumentation__.Notify(610111)
 
 	if neg {
+		__antithesis_instrumentation__.Notify(610130)
 		decPart = -decPart
+	} else {
+		__antithesis_instrumentation__.Notify(610131)
 	}
+	__antithesis_instrumentation__.Notify(610112)
 	return intPart, hasDecimal, decPart
 }
 
-// Consumes the next integer.
 func (l *intervalLexer) consumeInt() int64 {
+	__antithesis_instrumentation__.Notify(610132)
 	if l.err != nil {
+		__antithesis_instrumentation__.Notify(610139)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(610140)
 	}
+	__antithesis_instrumentation__.Notify(610133)
 
 	start := l.offset
 
-	// Advance offset to prepare a valid argument to ParseInt().
-	if l.offset < len(l.str) && (l.str[l.offset] == '-' || l.str[l.offset] == '+') {
+	if l.offset < len(l.str) && func() bool {
+		__antithesis_instrumentation__.Notify(610141)
+		return (l.str[l.offset] == '-' || func() bool {
+			__antithesis_instrumentation__.Notify(610142)
+			return l.str[l.offset] == '+' == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610143)
 		l.offset++
+	} else {
+		__antithesis_instrumentation__.Notify(610144)
 	}
-	for ; l.offset < len(l.str) && l.str[l.offset] >= '0' && l.str[l.offset] <= '9'; l.offset++ {
+	__antithesis_instrumentation__.Notify(610134)
+	for ; l.offset < len(l.str) && func() bool {
+		__antithesis_instrumentation__.Notify(610145)
+		return l.str[l.offset] >= '0' == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(610146)
+		return l.str[l.offset] <= '9' == true
+	}() == true; l.offset++ {
+		__antithesis_instrumentation__.Notify(610147)
 	}
-	// Check if we have something like ".X".
-	if start == l.offset && len(l.str) > (l.offset+1) && l.str[l.offset] == '.' {
+	__antithesis_instrumentation__.Notify(610135)
+
+	if start == l.offset && func() bool {
+		__antithesis_instrumentation__.Notify(610148)
+		return len(l.str) > (l.offset + 1) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(610149)
+		return l.str[l.offset] == '.' == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610150)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(610151)
 	}
+	__antithesis_instrumentation__.Notify(610136)
 
 	x, err := strconv.ParseInt(l.str[start:l.offset], 10, 64)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(610152)
 		l.err = pgerror.Wrap(
 			err, pgcode.InvalidDatetimeFormat, "interval")
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(610153)
 	}
+	__antithesis_instrumentation__.Notify(610137)
 	if start == l.offset {
+		__antithesis_instrumentation__.Notify(610154)
 		l.err = pgerror.Newf(
 			pgcode.InvalidDatetimeFormat, "interval: missing number at position %d: %q", start, l.str)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(610155)
 	}
+	__antithesis_instrumentation__.Notify(610138)
 	return x
 }
 
-// Consumes the next unit.
 func (l *intervalLexer) consumeUnit(skipCharacter byte) string {
+	__antithesis_instrumentation__.Notify(610156)
 	if l.err != nil {
+		__antithesis_instrumentation__.Notify(610160)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(610161)
 	}
+	__antithesis_instrumentation__.Notify(610157)
 
 	offset := l.offset
 	for ; l.offset < len(l.str); l.offset++ {
-		if (l.str[l.offset] >= '0' && l.str[l.offset] <= '9') ||
-			l.str[l.offset] == skipCharacter ||
-			l.str[l.offset] == '-' {
+		__antithesis_instrumentation__.Notify(610162)
+		if (l.str[l.offset] >= '0' && func() bool {
+			__antithesis_instrumentation__.Notify(610163)
+			return l.str[l.offset] <= '9' == true
+		}() == true) || func() bool {
+			__antithesis_instrumentation__.Notify(610164)
+			return l.str[l.offset] == skipCharacter == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(610165)
+			return l.str[l.offset] == '-' == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(610166)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(610167)
 		}
 	}
+	__antithesis_instrumentation__.Notify(610158)
 
 	if offset == l.offset {
+		__antithesis_instrumentation__.Notify(610168)
 		l.err = pgerror.Newf(
 			pgcode.InvalidDatetimeFormat, "interval: missing unit at position %d: %q", offset, l.str)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(610169)
 	}
+	__antithesis_instrumentation__.Notify(610159)
 	return l.str[offset:l.offset]
 }
 
-// Consumes any number of spaces.
 func (l *intervalLexer) consumeSpaces() {
+	__antithesis_instrumentation__.Notify(610170)
 	if l.err != nil {
+		__antithesis_instrumentation__.Notify(610172)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(610173)
 	}
-	for ; l.offset < len(l.str) && l.str[l.offset] == ' '; l.offset++ {
+	__antithesis_instrumentation__.Notify(610171)
+	for ; l.offset < len(l.str) && func() bool {
+		__antithesis_instrumentation__.Notify(610174)
+		return l.str[l.offset] == ' ' == true
+	}() == true; l.offset++ {
+		__antithesis_instrumentation__.Notify(610175)
 	}
 }
 
-// ISO Units.
 var isoDateUnitMap = map[string]duration.Duration{
 	"D": duration.MakeDuration(0, 1, 0),
 	"W": duration.MakeDuration(0, 7, 0),
@@ -178,300 +263,467 @@ const (
 )
 
 func newInvalidSQLDurationError(s string) error {
+	__antithesis_instrumentation__.Notify(610176)
 	return pgerror.Newf(pgcode.InvalidDatetimeFormat, errInvalidSQLDuration, s)
 }
 
-// Parses a SQL standard interval string.
-// See the following links for examples:
-//  - http://www.postgresql.org/docs/9.1/static/datatype-datetime.html#DATATYPE-INTERVAL-INPUT-EXAMPLES
-//  - http://www.ibm.com/support/knowledgecenter/SSGU8G_12.1.0/com.ibm.esqlc.doc/ids_esqlc_0190.htm
 func sqlStdToDuration(s string, itm types.IntervalTypeMetadata) (duration.Duration, error) {
+	__antithesis_instrumentation__.Notify(610177)
 	var d duration.Duration
 	parts := strings.Fields(s)
-	if len(parts) > 3 || len(parts) == 0 {
+	if len(parts) > 3 || func() bool {
+		__antithesis_instrumentation__.Notify(610180)
+		return len(parts) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610181)
 		return d, newInvalidSQLDurationError(s)
+	} else {
+		__antithesis_instrumentation__.Notify(610182)
 	}
-	// Index of which part(s) have been parsed for detecting bad order such as `HH:MM:SS Year-Month`.
+	__antithesis_instrumentation__.Notify(610178)
+
 	parsedIdx := nothingParsed
-	// Both 'Day' and 'Second' can be float, but 'Day Second'::interval is invalid.
+
 	floatParsed := false
-	// Parsing backward makes it easy to distinguish 'Day' and 'Second' when encountering a single value.
-	//   `1-2 5 9:` and `1-2 5`
-	//        |              |
-	// day ---+              |
-	// second ---------------+
+
 	for i := len(parts) - 1; i >= 0; i-- {
-		// Parses leading sign
+		__antithesis_instrumentation__.Notify(610183)
+
 		part := parts[i]
 
 		consumeNeg := func(str string) (newStr string, mult int64, ok bool) {
+			__antithesis_instrumentation__.Notify(610186)
 			neg := false
-			// Consumes [-+]
+
 			if str != "" {
+				__antithesis_instrumentation__.Notify(610191)
 				c := str[0]
-				if c == '-' || c == '+' {
+				if c == '-' || func() bool {
+					__antithesis_instrumentation__.Notify(610192)
+					return c == '+' == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(610193)
 					neg = c == '-'
 					str = str[1:]
+				} else {
+					__antithesis_instrumentation__.Notify(610194)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(610195)
 			}
+			__antithesis_instrumentation__.Notify(610187)
 			if len(str) == 0 {
+				__antithesis_instrumentation__.Notify(610196)
 				return str, 0, false
+			} else {
+				__antithesis_instrumentation__.Notify(610197)
 			}
-			if str[0] == '-' || str[0] == '+' {
+			__antithesis_instrumentation__.Notify(610188)
+			if str[0] == '-' || func() bool {
+				__antithesis_instrumentation__.Notify(610198)
+				return str[0] == '+' == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(610199)
 				return str, 0, false
+			} else {
+				__antithesis_instrumentation__.Notify(610200)
 			}
+			__antithesis_instrumentation__.Notify(610189)
 
 			mult = 1
 			if neg {
+				__antithesis_instrumentation__.Notify(610201)
 				mult = -1
+			} else {
+				__antithesis_instrumentation__.Notify(610202)
 			}
+			__antithesis_instrumentation__.Notify(610190)
 			return str, mult, true
 		}
+		__antithesis_instrumentation__.Notify(610184)
 
 		var mult int64
 		var ok bool
 		if part, mult, ok = consumeNeg(part); !ok {
+			__antithesis_instrumentation__.Notify(610203)
 			return d, newInvalidSQLDurationError(s)
+		} else {
+			__antithesis_instrumentation__.Notify(610204)
 		}
+		__antithesis_instrumentation__.Notify(610185)
 
 		if strings.ContainsRune(part, ':') {
-			// Try to parse as HH:MM:SS
+			__antithesis_instrumentation__.Notify(610205)
+
 			if parsedIdx != nothingParsed {
+				__antithesis_instrumentation__.Notify(610211)
 				return d, newInvalidSQLDurationError(s)
+			} else {
+				__antithesis_instrumentation__.Notify(610212)
 			}
+			__antithesis_instrumentation__.Notify(610206)
 			parsedIdx = hmsParsed
-			// Colon-separated intervals in Postgres are odd. They have day, hour,
-			// minute, or second parts depending on number of fields and if the field
-			// is an int or float.
-			//
-			// Instead of supporting unit changing based on int or float, use the
-			// following rules:
-			// - If there is a float at the front, it represents D:(<apply below rules).
-			// - Two fields is H:M or M:S.fff (unless using MINUTE TO SECOND, then M:S).
-			// - Three fields is H:M:S(.fff)?.
+
 			hms := strings.Split(part, ":")
 
-			// If the first element is blank or is a float, it represents a day.
-			// Take it to days, and simplify logic below to a H:M:S scenario.
 			firstComponentIsFloat := strings.Contains(hms[0], ".")
-			if firstComponentIsFloat || hms[0] == "" {
-				// Negatives are not permitted in this format.
-				// Also, there must be more units in front.
-				if mult != 1 || len(hms) == 1 {
+			if firstComponentIsFloat || func() bool {
+				__antithesis_instrumentation__.Notify(610213)
+				return hms[0] == "" == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(610214)
+
+				if mult != 1 || func() bool {
+					__antithesis_instrumentation__.Notify(610217)
+					return len(hms) == 1 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(610218)
 					return d, newInvalidSQLDurationError(s)
+				} else {
+					__antithesis_instrumentation__.Notify(610219)
 				}
+				__antithesis_instrumentation__.Notify(610215)
 				if firstComponentIsFloat {
+					__antithesis_instrumentation__.Notify(610220)
 					days, err := strconv.ParseFloat(hms[0], 64)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(610222)
 						return d, newInvalidSQLDurationError(s)
+					} else {
+						__antithesis_instrumentation__.Notify(610223)
 					}
+					__antithesis_instrumentation__.Notify(610221)
 					d = d.Add(duration.MakeDuration(0, 1, 0).MulFloat(days))
+				} else {
+					__antithesis_instrumentation__.Notify(610224)
 				}
+				__antithesis_instrumentation__.Notify(610216)
 
 				hms = hms[1:]
 				if hms[0], mult, ok = consumeNeg(hms[0]); !ok {
+					__antithesis_instrumentation__.Notify(610225)
 					return d, newInvalidSQLDurationError(s)
+				} else {
+					__antithesis_instrumentation__.Notify(610226)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(610227)
 			}
+			__antithesis_instrumentation__.Notify(610207)
 
-			// Postgres fills in the blanks of all H:M:S as if they were zero.
 			for i := 0; i < len(hms); i++ {
+				__antithesis_instrumentation__.Notify(610228)
 				if hms[i] == "" {
+					__antithesis_instrumentation__.Notify(610229)
 					hms[i] = "0"
+				} else {
+					__antithesis_instrumentation__.Notify(610230)
 				}
 			}
+			__antithesis_instrumentation__.Notify(610208)
 
 			var hours, mins int64
 			var secs float64
 
 			switch len(hms) {
 			case 2:
-				// If we find a decimal, it must be the m:s.ffffff format
+				__antithesis_instrumentation__.Notify(610231)
+
 				var err error
-				if strings.Contains(hms[1], ".") || itm.DurationField.IsMinuteToSecond() {
+				if strings.Contains(hms[1], ".") || func() bool {
+					__antithesis_instrumentation__.Notify(610236)
+					return itm.DurationField.IsMinuteToSecond() == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(610237)
 					if mins, err = strconv.ParseInt(hms[0], 10, 64); err != nil {
+						__antithesis_instrumentation__.Notify(610239)
 						return d, newInvalidSQLDurationError(s)
+					} else {
+						__antithesis_instrumentation__.Notify(610240)
 					}
+					__antithesis_instrumentation__.Notify(610238)
 					if secs, err = strconv.ParseFloat(hms[1], 64); err != nil {
+						__antithesis_instrumentation__.Notify(610241)
 						return d, newInvalidSQLDurationError(s)
+					} else {
+						__antithesis_instrumentation__.Notify(610242)
 					}
 				} else {
+					__antithesis_instrumentation__.Notify(610243)
 					if hours, err = strconv.ParseInt(hms[0], 10, 64); err != nil {
+						__antithesis_instrumentation__.Notify(610245)
 						return d, newInvalidSQLDurationError(s)
+					} else {
+						__antithesis_instrumentation__.Notify(610246)
 					}
+					__antithesis_instrumentation__.Notify(610244)
 					if mins, err = strconv.ParseInt(hms[1], 10, 64); err != nil {
+						__antithesis_instrumentation__.Notify(610247)
 						return d, newInvalidSQLDurationError(s)
+					} else {
+						__antithesis_instrumentation__.Notify(610248)
 					}
 				}
 			case 3:
+				__antithesis_instrumentation__.Notify(610232)
 				var err error
 				if hours, err = strconv.ParseInt(hms[0], 10, 64); err != nil {
+					__antithesis_instrumentation__.Notify(610249)
 					return d, newInvalidSQLDurationError(s)
+				} else {
+					__antithesis_instrumentation__.Notify(610250)
 				}
+				__antithesis_instrumentation__.Notify(610233)
 				if mins, err = strconv.ParseInt(hms[1], 10, 64); err != nil {
+					__antithesis_instrumentation__.Notify(610251)
 					return d, newInvalidSQLDurationError(s)
+				} else {
+					__antithesis_instrumentation__.Notify(610252)
 				}
+				__antithesis_instrumentation__.Notify(610234)
 				if secs, err = strconv.ParseFloat(hms[2], 64); err != nil {
+					__antithesis_instrumentation__.Notify(610253)
 					return d, newInvalidSQLDurationError(s)
+				} else {
+					__antithesis_instrumentation__.Notify(610254)
 				}
 			default:
+				__antithesis_instrumentation__.Notify(610235)
 				return d, newInvalidSQLDurationError(s)
 			}
+			__antithesis_instrumentation__.Notify(610209)
 
-			// None of these units can be negative, as we explicitly strip the negative
-			// unit from the very beginning.
-			if hours < 0 || mins < 0 || secs < 0 {
+			if hours < 0 || func() bool {
+				__antithesis_instrumentation__.Notify(610255)
+				return mins < 0 == true
+			}() == true || func() bool {
+				__antithesis_instrumentation__.Notify(610256)
+				return secs < 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(610257)
 				return d, newInvalidSQLDurationError(s)
+			} else {
+				__antithesis_instrumentation__.Notify(610258)
 			}
+			__antithesis_instrumentation__.Notify(610210)
 
 			d = d.Add(duration.MakeDuration(time.Hour.Nanoseconds(), 0, 0).Mul(mult * hours))
 			d = d.Add(duration.MakeDuration(time.Minute.Nanoseconds(), 0, 0).Mul(mult * mins))
 			d = d.Add(duration.MakeDuration(time.Second.Nanoseconds(), 0, 0).MulFloat(float64(mult) * secs))
-		} else if strings.ContainsRune(part, '-') {
-			// Try to parse as Year-Month.
-			if parsedIdx >= yearMonthParsed {
-				return d, newInvalidSQLDurationError(s)
-			}
-			parsedIdx = yearMonthParsed
-
-			yms := strings.Split(part, "-")
-			if len(yms) != 2 {
-				return d, newInvalidSQLDurationError(s)
-			}
-			year, errYear := strconv.Atoi(yms[0])
-			var month int
-			var errMonth error
-			if yms[1] != "" {
-				// postgres technically supports decimals here, but it seems to be buggy
-				// due to the way it is parsed on their side.
-				// e.g. `select interval '0-2.1'` is different to select interval `'0-2.1 01:00'` --
-				// it seems the ".1" represents either a day or a constant, which we cannot
-				// replicate because we use spaces for divisors, but also seems like something
-				// we shouldn't sink too much time into looking at supporting.
-				month, errMonth = strconv.Atoi(yms[1])
-			}
-			if errYear == nil && errMonth == nil {
-				delta := duration.MakeDuration(0, 0, 1).Mul(int64(year)*12 + int64(month))
-				if mult < 0 {
-					d = d.Sub(delta)
-				} else {
-					d = d.Add(delta)
-				}
-			} else {
-				return d, newInvalidSQLDurationError(s)
-			}
-		} else if value, err := strconv.ParseFloat(part, 64); err == nil {
-			// We cannot specify '<Day> <Second>'::interval as two floats,
-			// but we can in the DAY TO HOUR format, where it is '<Day> <Hour>'.
-			if floatParsed && !itm.DurationField.IsDayToHour() {
-				return d, newInvalidSQLDurationError(s)
-			}
-			floatParsed = true
-			if parsedIdx == nothingParsed {
-				// It must be <DurationType> part because nothing has been parsed.
-				switch itm.DurationField.DurationType {
-				case types.IntervalDurationType_YEAR:
-					d = d.Add(duration.MakeDuration(0, 0, 12).MulFloat(value * float64(mult)))
-				case types.IntervalDurationType_MONTH:
-					d = d.Add(duration.MakeDuration(0, 0, 1).MulFloat(value * float64(mult)))
-				case types.IntervalDurationType_DAY:
-					d = d.Add(duration.MakeDuration(0, 1, 0).MulFloat(value * float64(mult)))
-				case types.IntervalDurationType_HOUR:
-					d = d.Add(duration.MakeDuration(time.Hour.Nanoseconds(), 0, 0).MulFloat(value * float64(mult)))
-				case types.IntervalDurationType_MINUTE:
-					d = d.Add(duration.MakeDuration(time.Minute.Nanoseconds(), 0, 0).MulFloat(value * float64(mult)))
-				case types.IntervalDurationType_SECOND, types.IntervalDurationType_UNSET:
-					d = d.Add(duration.MakeDuration(time.Second.Nanoseconds(), 0, 0).MulFloat(value * float64(mult)))
-				case types.IntervalDurationType_MILLISECOND:
-					d = d.Add(duration.MakeDuration(time.Millisecond.Nanoseconds(), 0, 0).MulFloat(value * float64(mult)))
-				default:
-					return d, errors.AssertionFailedf("unhandled DurationField constant %#v", itm.DurationField)
-				}
-				parsedIdx = hmsParsed
-			} else if parsedIdx == hmsParsed {
-				// Day part.
-				delta := duration.MakeDuration(0, 1, 0).MulFloat(value)
-				if mult < 0 {
-					d = d.Sub(delta)
-				} else {
-					d = d.Add(delta)
-				}
-				parsedIdx = dayParsed
-			} else {
-				return d, newInvalidSQLDurationError(s)
-			}
 		} else {
-			return d, newInvalidSQLDurationError(s)
+			__antithesis_instrumentation__.Notify(610259)
+			if strings.ContainsRune(part, '-') {
+				__antithesis_instrumentation__.Notify(610260)
+
+				if parsedIdx >= yearMonthParsed {
+					__antithesis_instrumentation__.Notify(610264)
+					return d, newInvalidSQLDurationError(s)
+				} else {
+					__antithesis_instrumentation__.Notify(610265)
+				}
+				__antithesis_instrumentation__.Notify(610261)
+				parsedIdx = yearMonthParsed
+
+				yms := strings.Split(part, "-")
+				if len(yms) != 2 {
+					__antithesis_instrumentation__.Notify(610266)
+					return d, newInvalidSQLDurationError(s)
+				} else {
+					__antithesis_instrumentation__.Notify(610267)
+				}
+				__antithesis_instrumentation__.Notify(610262)
+				year, errYear := strconv.Atoi(yms[0])
+				var month int
+				var errMonth error
+				if yms[1] != "" {
+					__antithesis_instrumentation__.Notify(610268)
+
+					month, errMonth = strconv.Atoi(yms[1])
+				} else {
+					__antithesis_instrumentation__.Notify(610269)
+				}
+				__antithesis_instrumentation__.Notify(610263)
+				if errYear == nil && func() bool {
+					__antithesis_instrumentation__.Notify(610270)
+					return errMonth == nil == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(610271)
+					delta := duration.MakeDuration(0, 0, 1).Mul(int64(year)*12 + int64(month))
+					if mult < 0 {
+						__antithesis_instrumentation__.Notify(610272)
+						d = d.Sub(delta)
+					} else {
+						__antithesis_instrumentation__.Notify(610273)
+						d = d.Add(delta)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(610274)
+					return d, newInvalidSQLDurationError(s)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(610275)
+				if value, err := strconv.ParseFloat(part, 64); err == nil {
+					__antithesis_instrumentation__.Notify(610276)
+
+					if floatParsed && func() bool {
+						__antithesis_instrumentation__.Notify(610278)
+						return !itm.DurationField.IsDayToHour() == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(610279)
+						return d, newInvalidSQLDurationError(s)
+					} else {
+						__antithesis_instrumentation__.Notify(610280)
+					}
+					__antithesis_instrumentation__.Notify(610277)
+					floatParsed = true
+					if parsedIdx == nothingParsed {
+						__antithesis_instrumentation__.Notify(610281)
+
+						switch itm.DurationField.DurationType {
+						case types.IntervalDurationType_YEAR:
+							__antithesis_instrumentation__.Notify(610283)
+							d = d.Add(duration.MakeDuration(0, 0, 12).MulFloat(value * float64(mult)))
+						case types.IntervalDurationType_MONTH:
+							__antithesis_instrumentation__.Notify(610284)
+							d = d.Add(duration.MakeDuration(0, 0, 1).MulFloat(value * float64(mult)))
+						case types.IntervalDurationType_DAY:
+							__antithesis_instrumentation__.Notify(610285)
+							d = d.Add(duration.MakeDuration(0, 1, 0).MulFloat(value * float64(mult)))
+						case types.IntervalDurationType_HOUR:
+							__antithesis_instrumentation__.Notify(610286)
+							d = d.Add(duration.MakeDuration(time.Hour.Nanoseconds(), 0, 0).MulFloat(value * float64(mult)))
+						case types.IntervalDurationType_MINUTE:
+							__antithesis_instrumentation__.Notify(610287)
+							d = d.Add(duration.MakeDuration(time.Minute.Nanoseconds(), 0, 0).MulFloat(value * float64(mult)))
+						case types.IntervalDurationType_SECOND, types.IntervalDurationType_UNSET:
+							__antithesis_instrumentation__.Notify(610288)
+							d = d.Add(duration.MakeDuration(time.Second.Nanoseconds(), 0, 0).MulFloat(value * float64(mult)))
+						case types.IntervalDurationType_MILLISECOND:
+							__antithesis_instrumentation__.Notify(610289)
+							d = d.Add(duration.MakeDuration(time.Millisecond.Nanoseconds(), 0, 0).MulFloat(value * float64(mult)))
+						default:
+							__antithesis_instrumentation__.Notify(610290)
+							return d, errors.AssertionFailedf("unhandled DurationField constant %#v", itm.DurationField)
+						}
+						__antithesis_instrumentation__.Notify(610282)
+						parsedIdx = hmsParsed
+					} else {
+						__antithesis_instrumentation__.Notify(610291)
+						if parsedIdx == hmsParsed {
+							__antithesis_instrumentation__.Notify(610292)
+
+							delta := duration.MakeDuration(0, 1, 0).MulFloat(value)
+							if mult < 0 {
+								__antithesis_instrumentation__.Notify(610294)
+								d = d.Sub(delta)
+							} else {
+								__antithesis_instrumentation__.Notify(610295)
+								d = d.Add(delta)
+							}
+							__antithesis_instrumentation__.Notify(610293)
+							parsedIdx = dayParsed
+						} else {
+							__antithesis_instrumentation__.Notify(610296)
+							return d, newInvalidSQLDurationError(s)
+						}
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(610297)
+					return d, newInvalidSQLDurationError(s)
+				}
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(610179)
 	return d, nil
 }
 
-// Parses an ISO8601 (with designators) string.
-// See the following links for examples:
-//  - http://www.postgresql.org/docs/9.1/static/datatype-datetime.html#DATATYPE-INTERVAL-INPUT-EXAMPLES
-//  - https://en.wikipedia.org/wiki/ISO_8601#Time_intervals
-//  - https://en.wikipedia.org/wiki/ISO_8601#Durations
 func iso8601ToDuration(s string) (duration.Duration, error) {
+	__antithesis_instrumentation__.Notify(610298)
 	var d duration.Duration
-	if len(s) == 0 || s[0] != 'P' {
+	if len(s) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(610301)
+		return s[0] != 'P' == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610302)
 		return d, newInvalidSQLDurationError(s)
+	} else {
+		__antithesis_instrumentation__.Notify(610303)
 	}
+	__antithesis_instrumentation__.Notify(610299)
 
-	// Advance to offset 1, since we don't care about the leading P.
 	l := intervalLexer{str: s, offset: 1, err: nil}
 	unitMap := isoDateUnitMap
 
 	for l.offset < len(s) {
-		// Check if we're in the time part yet.
+		__antithesis_instrumentation__.Notify(610304)
+
 		if s[l.offset] == 'T' {
+			__antithesis_instrumentation__.Notify(610307)
 			unitMap = isoTimeUnitMap
 			l.offset++
+		} else {
+			__antithesis_instrumentation__.Notify(610308)
 		}
+		__antithesis_instrumentation__.Notify(610305)
 
 		v, hasDecimal, vp := l.consumeNum()
 		u := l.consumeUnit('T')
 		if l.err != nil {
+			__antithesis_instrumentation__.Notify(610309)
 			return d, l.err
+		} else {
+			__antithesis_instrumentation__.Notify(610310)
 		}
+		__antithesis_instrumentation__.Notify(610306)
 
 		if unit, ok := unitMap[u]; ok {
+			__antithesis_instrumentation__.Notify(610311)
 			d = d.Add(unit.Mul(v))
 			if hasDecimal {
+				__antithesis_instrumentation__.Notify(610312)
 				var err error
 				d, err = addFrac(d, unit, vp)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(610313)
 					return d, err
+				} else {
+					__antithesis_instrumentation__.Notify(610314)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(610315)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(610316)
 			return d, pgerror.Newf(
 				pgcode.InvalidDatetimeFormat,
 				"interval: unknown unit %s in ISO-8601 duration %s", u, s)
 		}
 	}
+	__antithesis_instrumentation__.Notify(610300)
 
 	return d, nil
 }
 
-// unitMap defines for each unit name what is the time duration for
-// that unit.
 var unitMap = func(
 	units map[string]duration.Duration,
 	aliases map[string][]string,
 ) map[string]duration.Duration {
+	__antithesis_instrumentation__.Notify(610317)
 	for a, alist := range aliases {
-		// Pluralize.
+		__antithesis_instrumentation__.Notify(610319)
+
 		units[a+"s"] = units[a]
 		for _, alias := range alist {
-			// Populate the remaining aliases.
+			__antithesis_instrumentation__.Notify(610320)
+
 			units[alias] = units[a]
 		}
 	}
+	__antithesis_instrumentation__.Notify(610318)
 	return units
 }(map[string]duration.Duration{
-	// Use DecodeDuration here because ns is the only unit for which we do not
-	// want to round nanoseconds since it is only used for multiplication.
+
 	"microsecond": duration.MakeDuration(time.Microsecond.Nanoseconds(), 0, 0),
 	"millisecond": duration.MakeDuration(time.Millisecond.Nanoseconds(), 0, 0),
 	"second":      duration.MakeDuration(time.Second.Nanoseconds(), 0, 0),
@@ -482,11 +734,7 @@ var unitMap = func(
 	"month":       duration.MakeDuration(0, 0, 1),
 	"year":        duration.MakeDuration(0, 0, 12),
 }, map[string][]string{
-	// Include PostgreSQL's unit keywords for compatibility; see
-	// https://github.com/postgres/postgres/blob/a01d0fa1d889cc2003e1941e8b98707c4d701ba9/src/backend/utils/adt/datetime.c#L175-L240
-	//
-	// µ = U+00B5 = micro symbol
-	// μ = U+03BC = Greek letter mu
+
 	"microsecond": {"us", "µs", "μs", "usec", "usecs", "usecond", "useconds"},
 	"millisecond": {"ms", "msec", "msecs", "msecond", "mseconds"},
 	"second":      {"s", "sec", "secs"},
@@ -498,115 +746,169 @@ var unitMap = func(
 	"year":        {"y", "yr", "yrs"},
 })
 
-// parseDuration parses a duration in the "traditional" Postgres
-// format (e.g. '1 day 2 hours', '1 day 03:02:04', etc.) or golang
-// format (e.g. '1d2h', '1d3h2m4s', etc.)
 func parseDuration(
 	style duration.IntervalStyle, s string, itm types.IntervalTypeMetadata,
 ) (duration.Duration, error) {
+	__antithesis_instrumentation__.Notify(610321)
 	var d duration.Duration
 	l := intervalLexer{str: s, offset: 0, err: nil}
 	l.consumeSpaces()
 
 	if l.offset == len(l.str) {
+		__antithesis_instrumentation__.Notify(610326)
 		return d, pgerror.Newf(
 			pgcode.InvalidDatetimeFormat, "interval: invalid input syntax: %q", l.str)
+	} else {
+		__antithesis_instrumentation__.Notify(610327)
 	}
+	__antithesis_instrumentation__.Notify(610322)
 
-	// If we have strictly one negative at the beginning belonging to a
-	// in SQL Standard parsing, treat everything as negative.
 	isSQLStandardNegative :=
-		style == duration.IntervalStyle_SQL_STANDARD &&
-			(l.offset+1) < len(l.str) && l.str[l.offset] == '-' &&
-			!strings.ContainsAny(l.str[l.offset+1:], "+-")
+		style == duration.IntervalStyle_SQL_STANDARD && func() bool {
+			__antithesis_instrumentation__.Notify(610328)
+			return (l.offset + 1) < len(l.str) == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(610329)
+			return l.str[l.offset] == '-' == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(610330)
+			return !strings.ContainsAny(l.str[l.offset+1:], "+-") == true
+		}() == true
 	if isSQLStandardNegative {
+		__antithesis_instrumentation__.Notify(610331)
 		l.offset++
+	} else {
+		__antithesis_instrumentation__.Notify(610332)
 	}
+	__antithesis_instrumentation__.Notify(610323)
 
 	for l.offset != len(l.str) {
-		// To support -00:XX:XX we record the sign here since -0 doesn't exist
-		// as an int64.
+		__antithesis_instrumentation__.Notify(610333)
+
 		sign := l.str[l.offset] == '-'
-		// Parse the next number.
+
 		v, hasDecimal, vp := l.consumeNum()
 		l.consumeSpaces()
 
-		if l.offset < len(l.str) && l.str[l.offset] == ':' && !hasDecimal {
-			// Special case: HH:MM[:SS.ffff] or MM:SS.ffff
+		if l.offset < len(l.str) && func() bool {
+			__antithesis_instrumentation__.Notify(610338)
+			return l.str[l.offset] == ':' == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(610339)
+			return !hasDecimal == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(610340)
+
 			delta, err := l.parseShortDuration(v, sign, itm)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(610342)
 				return d, err
+			} else {
+				__antithesis_instrumentation__.Notify(610343)
 			}
+			__antithesis_instrumentation__.Notify(610341)
 			d = d.Add(delta)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(610344)
 		}
+		__antithesis_instrumentation__.Notify(610334)
 
-		// Parse the unit.
 		u := l.consumeUnit(' ')
 		l.consumeSpaces()
 		if unit, ok := unitMap[strings.ToLower(u)]; ok {
-			// A regular number followed by a unit, such as "9 day".
+			__antithesis_instrumentation__.Notify(610345)
+
 			d = d.Add(unit.Mul(v))
 			if hasDecimal {
+				__antithesis_instrumentation__.Notify(610347)
 				var err error
 				d, err = addFrac(d, unit, vp)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(610348)
 					return d, err
+				} else {
+					__antithesis_instrumentation__.Notify(610349)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(610350)
 			}
+			__antithesis_instrumentation__.Notify(610346)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(610351)
 		}
+		__antithesis_instrumentation__.Notify(610335)
 
 		if l.err != nil {
+			__antithesis_instrumentation__.Notify(610352)
 			return d, l.err
+		} else {
+			__antithesis_instrumentation__.Notify(610353)
 		}
+		__antithesis_instrumentation__.Notify(610336)
 		if u != "" {
+			__antithesis_instrumentation__.Notify(610354)
 			return d, pgerror.Newf(
 				pgcode.InvalidDatetimeFormat, "interval: unknown unit %q in duration %q", u, s)
+		} else {
+			__antithesis_instrumentation__.Notify(610355)
 		}
+		__antithesis_instrumentation__.Notify(610337)
 		return d, pgerror.Newf(
 			pgcode.InvalidDatetimeFormat, "interval: missing unit at position %d: %q", l.offset, s)
 	}
+	__antithesis_instrumentation__.Notify(610324)
 	if isSQLStandardNegative {
+		__antithesis_instrumentation__.Notify(610356)
 		return duration.MakeDuration(
 			-d.Nanos(),
 			-d.Days,
 			-d.Months,
 		), l.err
+	} else {
+		__antithesis_instrumentation__.Notify(610357)
 	}
+	__antithesis_instrumentation__.Notify(610325)
 	return d, l.err
 }
 
 func (l *intervalLexer) parseShortDuration(
 	h int64, hasSign bool, itm types.IntervalTypeMetadata,
 ) (duration.Duration, error) {
+	__antithesis_instrumentation__.Notify(610358)
 	sign := int64(1)
 	if hasSign {
+		__antithesis_instrumentation__.Notify(610365)
 		sign = -1
+	} else {
+		__antithesis_instrumentation__.Notify(610366)
 	}
-	// postgresToDuration() has rewound the cursor to just after the
-	// first number, so that we can check here there are no unwanted
-	// spaces.
+	__antithesis_instrumentation__.Notify(610359)
+
 	if l.str[l.offset] != ':' {
+		__antithesis_instrumentation__.Notify(610367)
 		return duration.Duration{}, pgerror.Newf(
 			pgcode.InvalidDatetimeFormat, "interval: invalid format %s", l.str[l.offset:])
+	} else {
+		__antithesis_instrumentation__.Notify(610368)
 	}
+	__antithesis_instrumentation__.Notify(610360)
 	l.offset++
-	// Parse the second number.
+
 	m, hasDecimal, mp := l.consumeNum()
 
 	if m < 0 {
+		__antithesis_instrumentation__.Notify(610369)
 		return duration.Duration{}, pgerror.Newf(
 			pgcode.InvalidDatetimeFormat, "interval: invalid format: %s", l.str)
+	} else {
+		__antithesis_instrumentation__.Notify(610370)
 	}
-	// We have three possible formats:
-	// - MM:SS.ffffff
-	// - HH:MM (or MM:SS for MINUTE TO SECOND)
-	// - HH:MM:SS[.ffffff]
-	//
-	// The top format has the "h" field parsed above actually
-	// represent minutes. Get this out of the way first.
+	__antithesis_instrumentation__.Notify(610361)
+
 	if hasDecimal {
+		__antithesis_instrumentation__.Notify(610371)
 		l.consumeSpaces()
 		return duration.MakeDuration(
 			h*time.Minute.Nanoseconds()+
@@ -615,32 +917,51 @@ func (l *intervalLexer) parseShortDuration(
 			0,
 			0,
 		), nil
+	} else {
+		__antithesis_instrumentation__.Notify(610372)
 	}
+	__antithesis_instrumentation__.Notify(610362)
 
-	// Remaining formats.
 	var s int64
 	var sp float64
 	hasSecondsComponent := false
-	if l.offset != len(l.str) && l.str[l.offset] == ':' {
+	if l.offset != len(l.str) && func() bool {
+		__antithesis_instrumentation__.Notify(610373)
+		return l.str[l.offset] == ':' == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610374)
 		hasSecondsComponent = true
-		// The last :NN part.
+
 		l.offset++
 		s, _, sp = l.consumeNum()
 		if s < 0 {
+			__antithesis_instrumentation__.Notify(610375)
 			return duration.Duration{}, pgerror.Newf(
 				pgcode.InvalidDatetimeFormat, "interval: invalid format: %s", l.str)
+		} else {
+			__antithesis_instrumentation__.Notify(610376)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(610377)
 	}
+	__antithesis_instrumentation__.Notify(610363)
 
 	l.consumeSpaces()
 
-	if !hasSecondsComponent && itm.DurationField.IsMinuteToSecond() {
+	if !hasSecondsComponent && func() bool {
+		__antithesis_instrumentation__.Notify(610378)
+		return itm.DurationField.IsMinuteToSecond() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(610379)
 		return duration.MakeDuration(
 			h*time.Minute.Nanoseconds()+sign*(m*time.Second.Nanoseconds()),
 			0,
 			0,
 		), nil
+	} else {
+		__antithesis_instrumentation__.Notify(610380)
 	}
+	__antithesis_instrumentation__.Notify(610364)
 	return duration.MakeDuration(
 		h*time.Hour.Nanoseconds()+
 			sign*(m*time.Minute.Nanoseconds()+
@@ -652,46 +973,44 @@ func (l *intervalLexer) parseShortDuration(
 	), nil
 }
 
-// addFrac increases the duration given as first argument by the unit
-// given as second argument multiplied by the factor in the third
-// argument. For computing fractions there are 30 days to a month and
-// 24 hours to a day.
 func addFrac(d duration.Duration, unit duration.Duration, f float64) (duration.Duration, error) {
+	__antithesis_instrumentation__.Notify(610381)
 	if unit.Months > 0 {
+		__antithesis_instrumentation__.Notify(610383)
 		f = f * float64(unit.Months)
 		d.Months += int64(f)
 		switch unit.Months {
 		case 1:
+			__antithesis_instrumentation__.Notify(610384)
 			f = math.Mod(f, 1) * 30
 			d.Days += int64(f)
 			f = math.Mod(f, 1) * 24
 			d.SetNanos(d.Nanos() + int64(float64(time.Hour.Nanoseconds())*f))
 		case 12:
-			// Nothing to do: Postgres limits the precision of fractional years to
-			// months. Do not continue to add precision to the interval.
-			// See issue #55226 for more details on this.
+			__antithesis_instrumentation__.Notify(610385)
+
 		default:
+			__antithesis_instrumentation__.Notify(610386)
 			return duration.Duration{}, errors.AssertionFailedf("unhandled unit type %v", unit)
 		}
-	} else if unit.Days > 0 {
-		f = f * float64(unit.Days)
-		d.Days += int64(f)
-		f = math.Mod(f, 1) * 24
-		d.SetNanos(d.Nanos() + int64(float64(time.Hour.Nanoseconds())*f))
 	} else {
-		d.SetNanos(d.Nanos() + int64(float64(unit.Nanos())*f))
+		__antithesis_instrumentation__.Notify(610387)
+		if unit.Days > 0 {
+			__antithesis_instrumentation__.Notify(610388)
+			f = f * float64(unit.Days)
+			d.Days += int64(f)
+			f = math.Mod(f, 1) * 24
+			d.SetNanos(d.Nanos() + int64(float64(time.Hour.Nanoseconds())*f))
+		} else {
+			__antithesis_instrumentation__.Notify(610389)
+			d.SetNanos(d.Nanos() + int64(float64(unit.Nanos())*f))
+		}
 	}
+	__antithesis_instrumentation__.Notify(610382)
 	return d, nil
 }
 
-// floatToNanos converts a fractional number representing nanoseconds to the
-// number of integer nanoseconds. For example: ".354874219" to "354874219"
-// or ".123" to "123000000". This function takes care to round correctly
-// when a naive conversion would incorrectly truncate due to floating point
-// inaccuracies. This function should match the semantics of rint() from
-// Postgres. See:
-// https://git.postgresql.org/gitweb/?p=postgresql.git;a=blob;f=src/backend/utils/adt/timestamp.c;h=449164ae7e5b00f6580771017888d4922685a73c;hb=HEAD#l1511
-// https://git.postgresql.org/gitweb/?p=postgresql.git;a=blob;f=src/port/rint.c;h=d59d9ab774307b7db2f7cb2347815a30da563fc5;hb=HEAD
 func floatToNanos(f float64) int64 {
+	__antithesis_instrumentation__.Notify(610390)
 	return int64(math.Round(f * float64(time.Second.Nanoseconds())))
 }

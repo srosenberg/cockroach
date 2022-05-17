@@ -18,5 +18,6 @@ go_library(
         "//pkg/sql/sqlliveness",
         "//pkg/util/metric",
         "//pkg/util/stop",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

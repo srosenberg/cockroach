@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package constraint
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -16,33 +8,18 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 )
 
-// AnalyzedConstraints represents the result or AnalyzeConstraints(). It
-// combines a zone's constraints with information about which stores satisfy
-// what term of the constraints disjunction.
 type AnalyzedConstraints struct {
 	Constraints []roachpb.ConstraintsConjunction
-	// True if the per-replica constraints don't fully cover all the desired
-	// replicas in the range (sum(constraints.NumReplicas) < zone.NumReplicas).
-	// In such cases, we allow replicas that don't match any of the per-replica
-	// constraints, but never mark them as necessary.
+
 	UnconstrainedReplicas bool
-	// For each conjunction of constraints in the above slice, track which
-	// StoreIDs satisfy them. This field is unused if there are no constraints.
+
 	SatisfiedBy [][]roachpb.StoreID
-	// Maps from StoreID to the indices in the constraints slice of which
-	// constraints the store satisfies. This field is unused if there are no
-	// constraints.
+
 	Satisfies map[roachpb.StoreID][]int
 }
 
-// EmptyAnalyzedConstraints represents an empty set of constraints that are
-// satisfied by any given configuration of replicas.
 var EmptyAnalyzedConstraints = AnalyzedConstraints{}
 
-// AnalyzeConstraints processes the zone config constraints that apply to a
-// range along with the current replicas for a range, spitting back out
-// information about which constraints are satisfied by which replicas and
-// which replicas satisfy which constraints, aiding in allocation decisions.
 func AnalyzeConstraints(
 	ctx context.Context,
 	getStoreDescFn func(roachpb.StoreID) (roachpb.StoreDescriptor, bool),
@@ -50,48 +27,76 @@ func AnalyzeConstraints(
 	numReplicas int32,
 	constraints []roachpb.ConstraintsConjunction,
 ) AnalyzedConstraints {
+	__antithesis_instrumentation__.Notify(101053)
 	result := AnalyzedConstraints{
 		Constraints: constraints,
 	}
 
 	if len(constraints) > 0 {
+		__antithesis_instrumentation__.Notify(101057)
 		result.SatisfiedBy = make([][]roachpb.StoreID, len(constraints))
 		result.Satisfies = make(map[roachpb.StoreID][]int)
+	} else {
+		__antithesis_instrumentation__.Notify(101058)
 	}
+	__antithesis_instrumentation__.Notify(101054)
 
 	var constrainedReplicas int32
 	for i, subConstraints := range constraints {
+		__antithesis_instrumentation__.Notify(101059)
 		constrainedReplicas += subConstraints.NumReplicas
 		for _, repl := range existing {
-			// If for some reason we don't have the store descriptor (which shouldn't
-			// happen once a node is hooked into gossip), trust that it's valid. This
-			// is a much more stable failure state than frantically moving everything
-			// off such a node.
+			__antithesis_instrumentation__.Notify(101060)
+
 			store, ok := getStoreDescFn(repl.StoreID)
-			if !ok || ConjunctionsCheck(store, subConstraints.Constraints) {
+			if !ok || func() bool {
+				__antithesis_instrumentation__.Notify(101061)
+				return ConjunctionsCheck(store, subConstraints.Constraints) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(101062)
 				result.SatisfiedBy[i] = append(result.SatisfiedBy[i], store.StoreID)
 				result.Satisfies[store.StoreID] = append(result.Satisfies[store.StoreID], i)
+			} else {
+				__antithesis_instrumentation__.Notify(101063)
 			}
 		}
 	}
-	if constrainedReplicas > 0 && constrainedReplicas < numReplicas {
+	__antithesis_instrumentation__.Notify(101055)
+	if constrainedReplicas > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(101064)
+		return constrainedReplicas < numReplicas == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(101065)
 		result.UnconstrainedReplicas = true
+	} else {
+		__antithesis_instrumentation__.Notify(101066)
 	}
+	__antithesis_instrumentation__.Notify(101056)
 	return result
 }
 
-// ConjunctionsCheck checks a store against a single set of constraints (out of
-// the possibly numerous sets that apply to a range), returning true iff the
-// store matches the constraints. The contraints are AND'ed together; a store
-// matches the conjunction if it matches all of them.
 func ConjunctionsCheck(store roachpb.StoreDescriptor, constraints []roachpb.Constraint) bool {
+	__antithesis_instrumentation__.Notify(101067)
 	for _, constraint := range constraints {
-		// StoreMatchesConstraint returns whether a store matches the given constraint.
+		__antithesis_instrumentation__.Notify(101069)
+
 		hasConstraint := roachpb.StoreMatchesConstraint(store, constraint)
-		if (constraint.Type == roachpb.Constraint_REQUIRED && !hasConstraint) ||
-			(constraint.Type == roachpb.Constraint_PROHIBITED && hasConstraint) {
+		if (constraint.Type == roachpb.Constraint_REQUIRED && func() bool {
+			__antithesis_instrumentation__.Notify(101070)
+			return !hasConstraint == true
+		}() == true) || func() bool {
+			__antithesis_instrumentation__.Notify(101071)
+			return (constraint.Type == roachpb.Constraint_PROHIBITED && func() bool {
+				__antithesis_instrumentation__.Notify(101072)
+				return hasConstraint == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(101073)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(101074)
 		}
 	}
+	__antithesis_instrumentation__.Notify(101068)
 	return true
 }

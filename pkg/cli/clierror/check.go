@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package clierror
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -17,21 +9,28 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// CheckAndMaybeLog reports the error, if non-nil, to the given
-// logger.
 func CheckAndMaybeLog(
 	err error, logger func(context.Context, logpb.Severity, string, ...interface{}),
 ) error {
+	__antithesis_instrumentation__.Notify(28274)
 	if err == nil {
+		__antithesis_instrumentation__.Notify(28277)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(28278)
 	}
+	__antithesis_instrumentation__.Notify(28275)
 	severity := logpb.Severity_ERROR
 	cause := err
 	var ec *Error
 	if errors.As(err, &ec) {
+		__antithesis_instrumentation__.Notify(28279)
 		severity = ec.GetSeverity()
 		cause = ec.Unwrap()
+	} else {
+		__antithesis_instrumentation__.Notify(28280)
 	}
+	__antithesis_instrumentation__.Notify(28276)
 	logger(context.Background(), severity, "%v", cause)
 	return err
 }

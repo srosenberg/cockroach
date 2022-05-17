@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rpc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -43,39 +35,43 @@ type lazyCertificateManager struct {
 }
 
 func wrapError(err error) error {
+	__antithesis_instrumentation__.Notify(185577)
 	if !errors.HasType(err, (*security.Error)(nil)) {
+		__antithesis_instrumentation__.Notify(185579)
 		return &security.Error{
 			Message: "problem using security settings",
 			Err:     err,
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(185580)
 	}
+	__antithesis_instrumentation__.Notify(185578)
 	return err
 }
 
-// SecurityContext is a wrapper providing transport security helpers such as
-// the certificate manager.
 type SecurityContext struct {
 	security.CertsLocator
 	security.TLSSettings
 	config *base.Config
 	tenID  roachpb.TenantID
 	lazy   struct {
-		// The certificate manager. Must be accessed through GetCertificateManager.
 		certificateManager lazyCertificateManager
-		// httpClient uses the client TLS config. It is initialized lazily.
+
 		httpClient lazyHTTPClient
 	}
 }
 
-// MakeSecurityContext makes a SecurityContext.
-//
-// TODO(tbg): don't take a whole Config. This can be trimmed down significantly.
 func MakeSecurityContext(
 	cfg *base.Config, tlsSettings security.TLSSettings, tenID roachpb.TenantID,
 ) SecurityContext {
+	__antithesis_instrumentation__.Notify(185581)
 	if tenID.ToUint64() == 0 {
+		__antithesis_instrumentation__.Notify(185583)
 		panic(errors.AssertionFailedf("programming error: tenant ID not defined"))
+	} else {
+		__antithesis_instrumentation__.Notify(185584)
 	}
+	__antithesis_instrumentation__.Notify(185582)
 	return SecurityContext{
 		CertsLocator: security.MakeCertsLocator(cfg.SSLCertsDir),
 		TLSSettings:  tlsSettings,
@@ -84,259 +80,328 @@ func MakeSecurityContext(
 	}
 }
 
-// GetCertificateManager returns the certificate manager, initializing it
-// on the first call. If certificates should be used but none are found,
-// fails eagerly.
 func (ctx *SecurityContext) GetCertificateManager() (*security.CertificateManager, error) {
+	__antithesis_instrumentation__.Notify(185585)
 	ctx.lazy.certificateManager.Do(func() {
+		__antithesis_instrumentation__.Notify(185587)
 		var opts []security.Option
 		if ctx.tenID != roachpb.SystemTenantID {
+			__antithesis_instrumentation__.Notify(185589)
 			opts = append(opts, security.ForTenant(ctx.tenID.ToUint64()))
+		} else {
+			__antithesis_instrumentation__.Notify(185590)
 		}
+		__antithesis_instrumentation__.Notify(185588)
 		ctx.lazy.certificateManager.cm, ctx.lazy.certificateManager.err =
 			security.NewCertificateManager(ctx.config.SSLCertsDir, ctx, opts...)
 
-		if ctx.lazy.certificateManager.err == nil && !ctx.config.Insecure {
+		if ctx.lazy.certificateManager.err == nil && func() bool {
+			__antithesis_instrumentation__.Notify(185591)
+			return !ctx.config.Insecure == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(185592)
 			infos, err := ctx.lazy.certificateManager.cm.ListCertificates()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(185593)
 				ctx.lazy.certificateManager.err = err
-			} else if len(infos) == 0 {
-				// If we know there should be certificates (we're in secure mode)
-				// but there aren't any, this likely indicates that the certs dir
-				// was misconfigured.
-				ctx.lazy.certificateManager.err = errNoCertificatesFound
+			} else {
+				__antithesis_instrumentation__.Notify(185594)
+				if len(infos) == 0 {
+					__antithesis_instrumentation__.Notify(185595)
+
+					ctx.lazy.certificateManager.err = errNoCertificatesFound
+				} else {
+					__antithesis_instrumentation__.Notify(185596)
+				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(185597)
 		}
 	})
+	__antithesis_instrumentation__.Notify(185586)
 	return ctx.lazy.certificateManager.cm, ctx.lazy.certificateManager.err
 }
 
 var errNoCertificatesFound = errors.New("no certificates found; does certs dir exist?")
 
-// GetServerTLSConfig returns the server TLS config, initializing it if needed.
-// If Insecure is true, return a nil config, otherwise ask the certificate
-// manager for a server TLS config.
 func (ctx *SecurityContext) GetServerTLSConfig() (*tls.Config, error) {
-	// Early out.
+	__antithesis_instrumentation__.Notify(185598)
+
 	if ctx.config.Insecure {
+		__antithesis_instrumentation__.Notify(185602)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(185603)
 	}
+	__antithesis_instrumentation__.Notify(185599)
 
 	cm, err := ctx.GetCertificateManager()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185604)
 		return nil, wrapError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(185605)
 	}
+	__antithesis_instrumentation__.Notify(185600)
 
 	tlsCfg, err := cm.GetServerTLSConfig()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185606)
 		return nil, wrapError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(185607)
 	}
+	__antithesis_instrumentation__.Notify(185601)
 	return tlsCfg, nil
 }
 
-// GetClientTLSConfig returns the client TLS config, initializing it if needed.
-// If Insecure is true, return a nil config, otherwise ask the certificate
-// manager for a TLS config using certs for the config.User.
-// This TLSConfig might **NOT** be suitable to talk to the Admin UI, use GetUIClientTLSConfig instead.
 func (ctx *SecurityContext) GetClientTLSConfig() (*tls.Config, error) {
-	// Early out.
+	__antithesis_instrumentation__.Notify(185608)
+
 	if ctx.config.Insecure {
+		__antithesis_instrumentation__.Notify(185612)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(185613)
 	}
+	__antithesis_instrumentation__.Notify(185609)
 
 	cm, err := ctx.GetCertificateManager()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185614)
 		return nil, wrapError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(185615)
 	}
+	__antithesis_instrumentation__.Notify(185610)
 
 	tlsCfg, err := cm.GetClientTLSConfig(ctx.config.User)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185616)
 		return nil, wrapError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(185617)
 	}
+	__antithesis_instrumentation__.Notify(185611)
 	return tlsCfg, nil
 }
 
-// GetTenantTLSConfig returns the client TLS config for the tenant, provided
-// the SecurityContext operates on behalf of a secondary tenant (i.e. not the
-// system tenant).
-//
-// If Insecure is true, return a nil config, otherwise retrieves the client
-// certificate for the configured tenant from the cert manager.
 func (ctx *SecurityContext) GetTenantTLSConfig() (*tls.Config, error) {
-	// Early out.
+	__antithesis_instrumentation__.Notify(185618)
+
 	if ctx.config.Insecure {
+		__antithesis_instrumentation__.Notify(185622)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(185623)
 	}
+	__antithesis_instrumentation__.Notify(185619)
 
 	cm, err := ctx.GetCertificateManager()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185624)
 		return nil, wrapError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(185625)
 	}
+	__antithesis_instrumentation__.Notify(185620)
 
 	tlsCfg, err := cm.GetTenantTLSConfig()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185626)
 		return nil, wrapError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(185627)
 	}
+	__antithesis_instrumentation__.Notify(185621)
 	return tlsCfg, nil
 }
 
-// getUIClientTLSConfig returns the client TLS config for Admin UI clients, initializing it if needed.
-// If Insecure is true, return a nil config, otherwise ask the certificate
-// manager for a TLS config configured to talk to the Admin UI.
-// This TLSConfig is **NOT** suitable to talk to the GRPC or SQL servers, use GetClientTLSConfig instead.
 func (ctx *SecurityContext) getUIClientTLSConfig() (*tls.Config, error) {
-	// Early out.
+	__antithesis_instrumentation__.Notify(185628)
+
 	if ctx.config.Insecure {
+		__antithesis_instrumentation__.Notify(185632)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(185633)
 	}
+	__antithesis_instrumentation__.Notify(185629)
 
 	cm, err := ctx.GetCertificateManager()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185634)
 		return nil, wrapError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(185635)
 	}
+	__antithesis_instrumentation__.Notify(185630)
 
 	tlsCfg, err := cm.GetUIClientTLSConfig()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185636)
 		return nil, wrapError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(185637)
 	}
+	__antithesis_instrumentation__.Notify(185631)
 	return tlsCfg, nil
 }
 
-// GetUIServerTLSConfig returns the server TLS config for the Admin UI, initializing it if needed.
-// If Insecure is true, return a nil config, otherwise ask the certificate
-// manager for a server UI TLS config.
-//
-// TODO(peter): This method is only used by `server.NewServer` and
-// `Server.Start`. Move it.
 func (ctx *SecurityContext) GetUIServerTLSConfig() (*tls.Config, error) {
-	// Early out.
-	if ctx.config.Insecure || ctx.config.DisableTLSForHTTP {
+	__antithesis_instrumentation__.Notify(185638)
+
+	if ctx.config.Insecure || func() bool {
+		__antithesis_instrumentation__.Notify(185642)
+		return ctx.config.DisableTLSForHTTP == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(185643)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(185644)
 	}
+	__antithesis_instrumentation__.Notify(185639)
 
 	cm, err := ctx.GetCertificateManager()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185645)
 		return nil, wrapError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(185646)
 	}
+	__antithesis_instrumentation__.Notify(185640)
 
 	tlsCfg, err := cm.GetUIServerTLSConfig()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(185647)
 		return nil, wrapError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(185648)
 	}
+	__antithesis_instrumentation__.Notify(185641)
 	return tlsCfg, nil
 }
 
-// GetHTTPClient returns the http client, initializing it
-// if needed. It uses the client TLS config.
 func (ctx *SecurityContext) GetHTTPClient() (http.Client, error) {
+	__antithesis_instrumentation__.Notify(185649)
 	ctx.lazy.httpClient.Do(func() {
+		__antithesis_instrumentation__.Notify(185651)
 		ctx.lazy.httpClient.httpClient.Timeout = 10 * time.Second
 		var transport http.Transport
 		ctx.lazy.httpClient.httpClient.Transport = &transport
 		transport.TLSClientConfig, ctx.lazy.httpClient.err = ctx.getUIClientTLSConfig()
 	})
+	__antithesis_instrumentation__.Notify(185650)
 
 	return ctx.lazy.httpClient.httpClient, ctx.lazy.httpClient.err
 }
 
-// CheckCertificateAddrs validates the addresses inside the configured
-// certificates to be compatible with the configured listen and
-// advertise addresses. This is an advisory function (to inform/educate
-// the user) and not a requirement for security.
-// This must also be called after ValidateAddrs() and after
-// the certificate manager was initialized.
 func (ctx *SecurityContext) CheckCertificateAddrs(cctx context.Context) {
+	__antithesis_instrumentation__.Notify(185652)
 	if ctx.config.Insecure {
+		__antithesis_instrumentation__.Notify(185656)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(185657)
 	}
+	__antithesis_instrumentation__.Notify(185653)
 
-	// By now the certificate manager must be initialized.
 	cm, _ := ctx.GetCertificateManager()
 
-	// Verify that the listen and advertise addresses are compatible
-	// with the provided certificate.
 	certInfo := cm.NodeCert()
 	if certInfo.Error != nil {
+		__antithesis_instrumentation__.Notify(185658)
 		log.Ops.Shoutf(cctx, severity.ERROR,
 			"invalid node certificate: %v", certInfo.Error)
 	} else {
+		__antithesis_instrumentation__.Notify(185659)
 		cert := certInfo.ParsedCertificates[0]
 		addrInfo := certAddrs(cert)
 
-		// Log the certificate details in any case. This will aid during troubleshooting.
 		log.Ops.Infof(cctx, "server certificate addresses: %s", addrInfo)
 
 		var msg bytes.Buffer
-		// Verify the compatibility. This requires that ValidateAddrs() has
-		// been called already.
+
 		host, _, err := net.SplitHostPort(ctx.config.AdvertiseAddr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(185664)
 			panic(errors.AssertionFailedf("programming error: call ValidateAddrs() first"))
+		} else {
+			__antithesis_instrumentation__.Notify(185665)
 		}
+		__antithesis_instrumentation__.Notify(185660)
 		if err := cert.VerifyHostname(host); err != nil {
+			__antithesis_instrumentation__.Notify(185666)
 			fmt.Fprintf(&msg, "advertise address %q not in node certificate (%s)\n", host, addrInfo)
+		} else {
+			__antithesis_instrumentation__.Notify(185667)
 		}
+		__antithesis_instrumentation__.Notify(185661)
 		host, _, err = net.SplitHostPort(ctx.config.SQLAdvertiseAddr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(185668)
 			panic(errors.AssertionFailedf("programming error: call ValidateAddrs() first"))
+		} else {
+			__antithesis_instrumentation__.Notify(185669)
 		}
+		__antithesis_instrumentation__.Notify(185662)
 		if err := cert.VerifyHostname(host); err != nil {
+			__antithesis_instrumentation__.Notify(185670)
 			fmt.Fprintf(&msg, "advertise SQL address %q not in node certificate (%s)\n", host, addrInfo)
+		} else {
+			__antithesis_instrumentation__.Notify(185671)
 		}
+		__antithesis_instrumentation__.Notify(185663)
 		if msg.Len() > 0 {
+			__antithesis_instrumentation__.Notify(185672)
 			log.Ops.Shoutf(cctx, severity.WARNING,
 				"%s"+
 					"Secure client connections are likely to fail.\n"+
 					"Consider extending the node certificate or tweak --listen-addr/--advertise-addr/--sql-addr/--advertise-sql-addr.",
 				msg.String())
+		} else {
+			__antithesis_instrumentation__.Notify(185673)
 		}
 	}
+	__antithesis_instrumentation__.Notify(185654)
 
-	// TODO(tbg): Verify that the tenant listen and advertise addresses are
-	// compatible with the provided certificate.
-
-	// Verify that the http listen and advertise addresses are
-	// compatible with the provided certificate.
 	certInfo = cm.UICert()
 	if certInfo == nil {
-		// A nil UI cert means use the node cert instead;
-		// see details in (*CertificateManager) getEmbeddedUIServerTLSConfig()
-		// and (*CertificateManager) getUICertLocked().
+		__antithesis_instrumentation__.Notify(185674)
+
 		certInfo = cm.NodeCert()
+	} else {
+		__antithesis_instrumentation__.Notify(185675)
 	}
+	__antithesis_instrumentation__.Notify(185655)
 	if certInfo.Error != nil {
+		__antithesis_instrumentation__.Notify(185676)
 		log.Ops.Shoutf(cctx, severity.ERROR,
 			"invalid UI certificate: %v", certInfo.Error)
 	} else {
+		__antithesis_instrumentation__.Notify(185677)
 		cert := certInfo.ParsedCertificates[0]
 		addrInfo := certAddrs(cert)
 
-		// Log the certificate details in any case. This will aid during
-		// troubleshooting.
 		log.Ops.Infof(cctx, "web UI certificate addresses: %s", addrInfo)
 	}
 }
 
-// HTTPRequestScheme returns "http" or "https" based on the value of
-// Insecure and DisableTLSForHTTP.
 func (ctx *SecurityContext) HTTPRequestScheme() string {
+	__antithesis_instrumentation__.Notify(185678)
 	return ctx.config.HTTPRequestScheme()
 }
 
-// certAddrs formats the list of addresses included in a certificate for
-// printing in an error message.
 func certAddrs(cert *x509.Certificate) string {
-	// If an IP address was specified as listen/adv address, the
-	// hostname validation will only use the IPAddresses field. So this
-	// needs to be printed in all cases.
+	__antithesis_instrumentation__.Notify(185679)
+
 	addrs := make([]string, len(cert.IPAddresses))
 	for i, ip := range cert.IPAddresses {
+		__antithesis_instrumentation__.Notify(185681)
 		addrs[i] = ip.String()
 	}
-	// For names, the hostname validation will use DNSNames if
-	// the Subject Alt Name is present in the cert, otherwise
-	// it will use the common name. We can't parse the
-	// extensions here so we print both.
+	__antithesis_instrumentation__.Notify(185680)
+
 	return fmt.Sprintf("IP=%s; DNS=%s; CN=%s",
 		strings.Join(addrs, ","),
 		strings.Join(cert.DNSNames, ","),

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sslocal
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,16 +18,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 )
 
-// SQLStats carries per-application in-memory statistics for all applications.
 type SQLStats struct {
 	st *cluster.Settings
 
-	// uniqueStmtFingerprintLimit is the limit on number of unique statement
-	// fingerprints we can store in memory.
 	uniqueStmtFingerprintLimit *settings.IntSetting
 
-	// uniqueTxnFingerprintLimit is the limit on number of unique transaction
-	// fingerprints we can store in memory.
 	uniqueTxnFingerprintLimit *settings.IntSetting
 
 	mu struct {
@@ -43,25 +30,17 @@ type SQLStats struct {
 
 		mon *mon.BytesMonitor
 
-		// lastReset is the last time at which the app containers were reset.
 		lastReset time.Time
-		// apps is the container for all the per-application statistics objects.
+
 		apps map[string]*ssmemstorage.Container
 	}
 
 	atomic struct {
-		// uniqueStmtFingerprintCount is the number of unique statement fingerprints
-		// we are storing in memory.
 		uniqueStmtFingerprintCount int64
 
-		// uniqueTxnFingerprintCount is the number of unique transaction fingerprints
-		// we are storing in memory.
 		uniqueTxnFingerprintCount int64
 	}
 
-	// flushTarget is a Sink that, when the SQLStats resets at the end of its
-	// reset interval, the SQLStats will dump all of the stats into if it is not
-	// nil.
 	flushTarget Sink
 
 	knobs *sqlstats.TestingKnobs
@@ -77,12 +56,13 @@ func newSQLStats(
 	flushTarget Sink,
 	knobs *sqlstats.TestingKnobs,
 ) *SQLStats {
+	__antithesis_instrumentation__.Notify(625355)
 	monitor := mon.NewMonitor(
 		"SQLStats",
 		mon.MemoryResource,
 		curMemBytesCount,
 		maxMemBytesHist,
-		-1, /* increment */
+		-1,
 		math.MaxInt64,
 		st,
 	)
@@ -99,27 +79,29 @@ func newSQLStats(
 	return s
 }
 
-// GetTotalFingerprintCount returns total number of unique statement and
-// transaction fingerprints stored in the currnet SQLStats.
 func (s *SQLStats) GetTotalFingerprintCount() int64 {
+	__antithesis_instrumentation__.Notify(625356)
 	return atomic.LoadInt64(&s.atomic.uniqueStmtFingerprintCount) + atomic.LoadInt64(&s.atomic.uniqueTxnFingerprintCount)
 }
 
-// GetTotalFingerprintBytes returns the total amount of bytes currently
-// allocated for storing statistics for both statement and transaction
-// fingerprints.
 func (s *SQLStats) GetTotalFingerprintBytes() int64 {
+	__antithesis_instrumentation__.Notify(625357)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.mu.mon.AllocBytes()
 }
 
 func (s *SQLStats) getStatsForApplication(appName string) *ssmemstorage.Container {
+	__antithesis_instrumentation__.Notify(625358)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if a, ok := s.mu.apps[appName]; ok {
+		__antithesis_instrumentation__.Notify(625360)
 		return a
+	} else {
+		__antithesis_instrumentation__.Notify(625361)
 	}
+	__antithesis_instrumentation__.Notify(625359)
 	a := ssmemstorage.New(
 		s.st,
 		s.uniqueStmtFingerprintLimit,
@@ -134,51 +116,40 @@ func (s *SQLStats) getStatsForApplication(appName string) *ssmemstorage.Containe
 	return a
 }
 
-// resetAndMaybeDumpStats clears all the stored per-app, per-statement and
-// per-transaction statistics. If target is not nil, then the stats in s will be
-// flushed into target.
 func (s *SQLStats) resetAndMaybeDumpStats(ctx context.Context, target Sink) (err error) {
-	// Note: we do not clear the entire s.mu.apps map here. We would need
-	// to do so to prevent problems with a runaway client running `SET
-	// APPLICATION_NAME=...` with a different name every time.  However,
-	// any ongoing open client session at the time of the reset has
-	// cached a pointer to its appStats struct and would thus continue
-	// to report its stats in an object now invisible to the target tools
-	// (virtual table, marshaling, etc.). It's a judgement call, but
-	// for now we prefer to see more data and thus not clear the map, at
-	// the risk of seeing the map grow unboundedly with the number of
-	// different application_names seen so far.
+	__antithesis_instrumentation__.Notify(625362)
 
 	s.mu.Lock()
 
-	// Clear the per-apps maps manually,
-	// because any SQL session currently open has cached the
-	// pointer to its appStats object and will continue to
-	// accumulate data using that until it closes (or changes its
-	// application_name).
 	for appName, statsContainer := range s.mu.apps {
-		// Save the existing data to logs.
-		// TODO(knz/dt): instead of dumping the stats to the log, save
-		// them in a SQL table so they can be inspected by the DBA and/or
-		// the UI.
+		__antithesis_instrumentation__.Notify(625364)
+
 		if sqlstats.DumpStmtStatsToLogBeforeReset.Get(&s.st.SV) {
+			__antithesis_instrumentation__.Notify(625367)
 			statsContainer.SaveToLog(ctx, appName)
+		} else {
+			__antithesis_instrumentation__.Notify(625368)
 		}
+		__antithesis_instrumentation__.Notify(625365)
 
 		if target != nil {
+			__antithesis_instrumentation__.Notify(625369)
 			lastErr := target.AddAppStats(ctx, appName, statsContainer)
-			// If we run out of memory budget, Container.Add() will merge stats in
-			// statsContainer with all the existing stats. However it will discard
-			// rest of the stats in statsContainer that requires memory allocation.
-			// We do not wish to short circuit here because we want to still try our
-			// best to merge all the stats that we can.
+
 			if lastErr != nil {
+				__antithesis_instrumentation__.Notify(625370)
 				err = lastErr
+			} else {
+				__antithesis_instrumentation__.Notify(625371)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(625372)
 		}
+		__antithesis_instrumentation__.Notify(625366)
 
 		statsContainer.Clear(ctx)
 	}
+	__antithesis_instrumentation__.Notify(625363)
 	s.mu.lastReset = timeutil.Now()
 	s.mu.Unlock()
 

@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ptutil
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,9 +15,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// TestingVerifyProtectionTimestampExistsOnSpans refreshes the PTS state in KV and
-// ensures a protection at the given protectionTimestamp exists for all the
-// supplied spans.
 func TestingVerifyProtectionTimestampExistsOnSpans(
 	ctx context.Context,
 	t *testing.T,
@@ -34,29 +23,50 @@ func TestingVerifyProtectionTimestampExistsOnSpans(
 	protectionTimestamp hlc.Timestamp,
 	spans roachpb.Spans,
 ) error {
+	__antithesis_instrumentation__.Notify(112193)
 	testutils.SucceedsSoon(t, func() error {
+		__antithesis_instrumentation__.Notify(112195)
 		if err := spanconfigptsreader.TestingRefreshPTSState(
 			ctx, t, ptsReader, srv.Clock().Now(),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(112198)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(112199)
 		}
+		__antithesis_instrumentation__.Notify(112196)
 		for _, sp := range spans {
+			__antithesis_instrumentation__.Notify(112200)
 			timestamps, _, err := ptsReader.GetProtectionTimestamps(ctx, sp)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(112203)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(112204)
 			}
+			__antithesis_instrumentation__.Notify(112201)
 			found := false
 			for _, ts := range timestamps {
+				__antithesis_instrumentation__.Notify(112205)
 				if ts.Equal(protectionTimestamp) {
+					__antithesis_instrumentation__.Notify(112206)
 					found = true
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(112207)
 				}
 			}
+			__antithesis_instrumentation__.Notify(112202)
 			if !found {
+				__antithesis_instrumentation__.Notify(112208)
 				return errors.Newf("protection timestamp %s does not exist on span %s", protectionTimestamp, sp)
+			} else {
+				__antithesis_instrumentation__.Notify(112209)
 			}
 		}
+		__antithesis_instrumentation__.Notify(112197)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(112194)
 	return nil
 }

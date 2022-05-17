@@ -19,6 +19,7 @@ go_library(
         "//pkg/sql/catalog/descpb",
         "//pkg/sql/privilege",
         "//pkg/sql/sem/tree",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -38,6 +39,7 @@ go_test(
         "//pkg/sql/privilege",
         "//pkg/sql/sem/tree",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

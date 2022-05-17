@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scgraph
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/screl"
@@ -25,7 +17,8 @@ type depEdgeTree struct {
 type nodeCmpFn func(a, b *screl.Node) (less, eq bool)
 
 func newDepEdgeTree(order edgeTreeOrder, cmp nodeCmpFn) *depEdgeTree {
-	const degree = 8 // arbitrary
+	__antithesis_instrumentation__.Notify(594209)
+	const degree = 8
 	return &depEdgeTree{
 		t:     btree.New(degree),
 		order: order,
@@ -33,21 +26,29 @@ func newDepEdgeTree(order edgeTreeOrder, cmp nodeCmpFn) *depEdgeTree {
 	}
 }
 
-// edgeTreeOrder order in which the edge tree is sorted,
-// either based on from/to node indexes.
 type edgeTreeOrder bool
 
 func (o edgeTreeOrder) first(e Edge) *screl.Node {
+	__antithesis_instrumentation__.Notify(594210)
 	if o == fromTo {
+		__antithesis_instrumentation__.Notify(594212)
 		return e.From()
+	} else {
+		__antithesis_instrumentation__.Notify(594213)
 	}
+	__antithesis_instrumentation__.Notify(594211)
 	return e.To()
 }
 
 func (o edgeTreeOrder) second(e Edge) *screl.Node {
+	__antithesis_instrumentation__.Notify(594214)
 	if o == toFrom {
+		__antithesis_instrumentation__.Notify(594216)
 		return e.From()
+	} else {
+		__antithesis_instrumentation__.Notify(594217)
 	}
+	__antithesis_instrumentation__.Notify(594215)
 	return e.To()
 }
 
@@ -56,14 +57,13 @@ const (
 	toFrom edgeTreeOrder = false
 )
 
-// edgeTreeEntry BTree items for tracking edges
-// in an ordered manner.
 type edgeTreeEntry struct {
 	t    *depEdgeTree
 	edge *DepEdge
 }
 
 func (et *depEdgeTree) insert(e *DepEdge) {
+	__antithesis_instrumentation__.Notify(594218)
 	et.t.ReplaceOrInsert(&edgeTreeEntry{
 		t:    et,
 		edge: e,
@@ -71,32 +71,50 @@ func (et *depEdgeTree) insert(e *DepEdge) {
 }
 
 func (et *depEdgeTree) iterateSourceNode(n *screl.Node, it DepEdgeIterator) (err error) {
+	__antithesis_instrumentation__.Notify(594219)
 	e := &edgeTreeEntry{t: et, edge: &DepEdge{}}
 	if et.order == fromTo {
+		__antithesis_instrumentation__.Notify(594223)
 		e.edge.from = n
 	} else {
+		__antithesis_instrumentation__.Notify(594224)
 		e.edge.to = n
 	}
+	__antithesis_instrumentation__.Notify(594220)
 	et.t.AscendGreaterOrEqual(e, func(i btree.Item) (wantMore bool) {
+		__antithesis_instrumentation__.Notify(594225)
 		e := i.(*edgeTreeEntry)
 		if et.order.first(e.edge) != n {
+			__antithesis_instrumentation__.Notify(594227)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(594228)
 		}
+		__antithesis_instrumentation__.Notify(594226)
 		err = it(e.edge)
 		return err == nil
 	})
+	__antithesis_instrumentation__.Notify(594221)
 	if iterutil.Done(err) {
+		__antithesis_instrumentation__.Notify(594229)
 		err = nil
+	} else {
+		__antithesis_instrumentation__.Notify(594230)
 	}
+	__antithesis_instrumentation__.Notify(594222)
 	return err
 }
 
-// Less implements btree.Item.
 func (e *edgeTreeEntry) Less(otherItem btree.Item) bool {
+	__antithesis_instrumentation__.Notify(594231)
 	o := otherItem.(*edgeTreeEntry)
 	if less, eq := e.t.cmp(e.t.order.first(e.edge), e.t.order.first(o.edge)); !eq {
+		__antithesis_instrumentation__.Notify(594233)
 		return less
+	} else {
+		__antithesis_instrumentation__.Notify(594234)
 	}
+	__antithesis_instrumentation__.Notify(594232)
 	less, _ := e.t.cmp(e.t.order.second(e.edge), e.t.order.second(o.edge))
 	return less
 }

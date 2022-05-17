@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,6 +12,7 @@ import (
 )
 
 func registerAcceptance(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(45217)
 	testCases := map[registry.Owner][]struct {
 		name            string
 		fn              func(ctx context.Context, t test.Test, c cluster.Cluster)
@@ -41,25 +34,22 @@ func registerAcceptance(r registry.Registry) {
 			{name: "gossip/locality-address", fn: runCheckLocalityIPAddress},
 			{
 				name:       "multitenant",
-				minVersion: "v20.2.0", // multitenancy is introduced in this cycle
+				minVersion: "v20.2.0",
 				fn:         runAcceptanceMultitenant,
 			},
 			{name: "reset-quorum", fn: runResetQuorum, numNodes: 8},
 			{
 				name: "many-splits", fn: runManySplits,
-				minVersion:      "v19.2.0", // SQL syntax unsupported on 19.1.x
+				minVersion:      "v19.2.0",
 				encryptAtRandom: true,
 			},
 			{
 				name: "version-upgrade",
 				fn: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+					__antithesis_instrumentation__.Notify(45219)
 					runVersionUpgrade(ctx, t, c)
 				},
-				// This test doesn't like running on old versions because it upgrades to
-				// the latest released version and then it tries to "head", where head is
-				// the cockroach binary built from the branch on which the test is
-				// running. If that branch corresponds to an older release, then upgrading
-				// to head after 19.2 fails.
+
 				minVersion: "v19.2.0",
 				timeout:    30 * time.Minute,
 			},
@@ -73,26 +63,28 @@ func registerAcceptance(r registry.Registry) {
 			{name: "status-server", fn: runStatusServer},
 		},
 	}
+	__antithesis_instrumentation__.Notify(45218)
 	tags := []string{"default", "quick"}
 	specTemplate := registry.TestSpec{
-		// NB: teamcity-post-failures.py relies on the acceptance tests
-		// being named acceptance/<testname> and will avoid posting a
-		// blank issue for the "acceptance" parent test. Make sure to
-		// teach that script (if it's still used at that point) should
-		// this naming scheme ever change (or issues such as #33519)
-		// will be posted.
+
 		Name:    "acceptance",
 		Timeout: 10 * time.Minute,
 		Tags:    tags,
 	}
 
 	for owner, tests := range testCases {
+		__antithesis_instrumentation__.Notify(45220)
 		for _, tc := range tests {
-			tc := tc // copy for closure
+			__antithesis_instrumentation__.Notify(45221)
+			tc := tc
 			numNodes := 4
 			if tc.numNodes != 0 {
+				__antithesis_instrumentation__.Notify(45225)
 				numNodes = tc.numNodes
+			} else {
+				__antithesis_instrumentation__.Notify(45226)
 			}
+			__antithesis_instrumentation__.Notify(45222)
 
 			spec := specTemplate
 			spec.Owner = owner
@@ -100,12 +92,18 @@ func registerAcceptance(r registry.Registry) {
 			spec.Skip = tc.skip
 			spec.Name = specTemplate.Name + "/" + tc.name
 			if tc.timeout != 0 {
+				__antithesis_instrumentation__.Notify(45227)
 				spec.Timeout = tc.timeout
+			} else {
+				__antithesis_instrumentation__.Notify(45228)
 			}
+			__antithesis_instrumentation__.Notify(45223)
 			spec.EncryptAtRandom = tc.encryptAtRandom
 			spec.Run = func(ctx context.Context, t test.Test, c cluster.Cluster) {
+				__antithesis_instrumentation__.Notify(45229)
 				tc.fn(ctx, t, c)
 			}
+			__antithesis_instrumentation__.Notify(45224)
 			r.Add(spec)
 		}
 	}

@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -43,50 +35,58 @@ var (
 	).WithPublic()
 )
 
-// startMonitoringForwardClockJumps starts a background task to monitor forward
-// clock jumps based on a cluster setting.
 func (s *Server) startMonitoringForwardClockJumps(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(189667)
 	forwardJumpCheckEnabled := make(chan bool, 1)
-	s.stopper.AddCloser(stop.CloserFn(func() { close(forwardJumpCheckEnabled) }))
+	s.stopper.AddCloser(stop.CloserFn(func() { __antithesis_instrumentation__.Notify(189671); close(forwardJumpCheckEnabled) }))
+	__antithesis_instrumentation__.Notify(189668)
 
 	forwardClockJumpCheckEnabled.SetOnChange(&s.st.SV, func(context.Context) {
+		__antithesis_instrumentation__.Notify(189672)
 		forwardJumpCheckEnabled <- forwardClockJumpCheckEnabled.Get(&s.st.SV)
 	})
+	__antithesis_instrumentation__.Notify(189669)
 
 	if err := s.clock.StartMonitoringForwardClockJumps(
 		ctx,
 		forwardJumpCheckEnabled,
 		time.NewTicker,
-		nil, /* tick callback */
+		nil,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(189673)
 		return errors.Wrap(err, "monitoring forward clock jumps")
+	} else {
+		__antithesis_instrumentation__.Notify(189674)
 	}
+	__antithesis_instrumentation__.Notify(189670)
 
 	log.Ops.Info(ctx, "monitoring forward clock jumps based on server.clock.forward_jump_check_enabled")
 	return nil
 }
 
-// checkHLCUpperBoundExists determines whether there's an HLC
-// upper bound that will need to refreshed/persisted after
-// the server has initialized.
 func (s *Server) checkHLCUpperBoundExistsAndEnsureMonotonicity(
 	ctx context.Context, initialStart bool,
 ) (hlcUpperBoundExists bool, err error) {
+	__antithesis_instrumentation__.Notify(189675)
 	if initialStart {
-		// Clock monotonicity checks can be skipped on server bootstrap
-		// because the server has never
-		// been used before.
+		__antithesis_instrumentation__.Notify(189678)
+
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(189679)
 	}
+	__antithesis_instrumentation__.Notify(189676)
 
 	hlcUpperBound, err := kvserver.ReadMaxHLCUpperBound(ctx, s.engines)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(189680)
 		return false, errors.Wrap(err, "reading max HLC upper bound")
+	} else {
+		__antithesis_instrumentation__.Notify(189681)
 	}
+	__antithesis_instrumentation__.Notify(189677)
 	hlcUpperBoundExists = hlcUpperBound > 0
 
-	// If the server is being restarted, sleep to ensure monotonicity of the HLC
-	// clock.
 	ensureClockMonotonicity(
 		ctx,
 		s.clock,
@@ -98,13 +98,6 @@ func (s *Server) checkHLCUpperBoundExistsAndEnsureMonotonicity(
 	return hlcUpperBoundExists, nil
 }
 
-// ensureClockMonotonicity sleeps till the wall time reaches
-// prevHLCUpperBound. prevHLCUpperBound > 0 implies we need to guarantee HLC
-// monotonicity across server restarts. prevHLCUpperBound is the last
-// successfully persisted timestamp greater then any wall time used by the
-// server.
-//
-// If prevHLCUpperBound is 0, the function sleeps up to max offset.
 func ensureClockMonotonicity(
 	ctx context.Context,
 	clock *hlc.Clock,
@@ -112,31 +105,23 @@ func ensureClockMonotonicity(
 	prevHLCUpperBound int64,
 	sleepUntilFn func(context.Context, hlc.Timestamp) error,
 ) {
+	__antithesis_instrumentation__.Notify(189682)
 	var sleepUntil int64
 	if prevHLCUpperBound != 0 {
-		// Sleep until previous HLC upper bound to ensure wall time monotonicity
+		__antithesis_instrumentation__.Notify(189684)
+
 		sleepUntil = prevHLCUpperBound + 1
 	} else {
-		// Previous HLC Upper bound is not known
-		// We might have to sleep a bit to protect against this node producing non-
-		// monotonic timestamps. Before restarting, its clock might have been driven
-		// by other nodes' fast clocks, but when we restarted, we lost all this
-		// information. For example, a client might have written a value at a
-		// timestamp that's in the future of the restarted node's clock, and if we
-		// don't do something, the same client's read would not return the written
-		// value. So, we wait up to MaxOffset; we couldn't have served timestamps more
-		// than MaxOffset in the future (assuming that MaxOffset was not changed, see
-		// #9733).
-		//
-		// As an optimization for tests, we don't sleep if all the stores are brand
-		// new. In this case, the node will not serve anything anyway until it
-		// synchronizes with other nodes.
+		__antithesis_instrumentation__.Notify(189685)
+
 		sleepUntil = startTime.UnixNano() + int64(clock.MaxOffset()) + 1
 	}
+	__antithesis_instrumentation__.Notify(189683)
 
 	currentWallTime := clock.Now().WallTime
 	delta := time.Duration(sleepUntil - currentWallTime)
 	if delta > 0 {
+		__antithesis_instrumentation__.Notify(189686)
 		log.Ops.Infof(
 			ctx,
 			"Sleeping till wall time %v to catches up to %v to ensure monotonicity. Delta: %v",
@@ -145,19 +130,11 @@ func ensureClockMonotonicity(
 			delta,
 		)
 		_ = sleepUntilFn(ctx, hlc.Timestamp{WallTime: sleepUntil})
+	} else {
+		__antithesis_instrumentation__.Notify(189687)
 	}
 }
 
-// periodicallyPersistHLCUpperBound periodically persists an upper bound of
-// the HLC's wall time. The interval for persisting is read from
-// persistHLCUpperBoundIntervalCh. An interval of 0 disables persisting.
-//
-// persistHLCUpperBoundFn is used to persist the hlc upper bound, and should
-// return an error if the persist fails.
-//
-// tickerFn is used to create the ticker used for persisting
-//
-// tickCallback is called whenever a tick is processed
 func periodicallyPersistHLCUpperBound(
 	clock *hlc.Clock,
 	persistHLCUpperBoundIntervalCh chan time.Duration,
@@ -166,114 +143,139 @@ func periodicallyPersistHLCUpperBound(
 	stopCh <-chan struct{},
 	tickCallback func(),
 ) {
-	// Create a ticker which can be used in selects.
-	// This ticker is turned on / off based on persistHLCUpperBoundIntervalCh
+	__antithesis_instrumentation__.Notify(189688)
+
 	ticker := tickerFn(time.Hour)
 	ticker.Stop()
 
-	// persistInterval is the interval used for persisting the
-	// an upper bound of the HLC
 	var persistInterval time.Duration
 	var ok bool
 
 	persistHLCUpperBound := func() {
+		__antithesis_instrumentation__.Notify(189690)
 		if err := clock.RefreshHLCUpperBound(
 			persistHLCUpperBoundFn,
-			int64(persistInterval*3), /* delta to compute upper bound */
+			int64(persistInterval*3),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(189691)
 			log.Ops.Fatalf(
 				context.Background(),
 				"error persisting HLC upper bound: %v",
 				err,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(189692)
 		}
 	}
+	__antithesis_instrumentation__.Notify(189689)
 
 	for {
+		__antithesis_instrumentation__.Notify(189693)
 		select {
 		case persistInterval, ok = <-persistHLCUpperBoundIntervalCh:
+			__antithesis_instrumentation__.Notify(189695)
 			ticker.Stop()
 			if !ok {
+				__antithesis_instrumentation__.Notify(189699)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(189700)
 			}
+			__antithesis_instrumentation__.Notify(189696)
 
 			if persistInterval > 0 {
+				__antithesis_instrumentation__.Notify(189701)
 				ticker = tickerFn(persistInterval)
 				persistHLCUpperBound()
 				log.Ops.Info(context.Background(), "persisting HLC upper bound is enabled")
 			} else {
+				__antithesis_instrumentation__.Notify(189702)
 				if err := clock.ResetHLCUpperBound(persistHLCUpperBoundFn); err != nil {
+					__antithesis_instrumentation__.Notify(189704)
 					log.Ops.Fatalf(
 						context.Background(),
 						"error resetting hlc upper bound: %v",
 						err,
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(189705)
 				}
+				__antithesis_instrumentation__.Notify(189703)
 				log.Ops.Info(context.Background(), "persisting HLC upper bound is disabled")
 			}
 
 		case <-ticker.C:
+			__antithesis_instrumentation__.Notify(189697)
 			if persistInterval > 0 {
+				__antithesis_instrumentation__.Notify(189706)
 				persistHLCUpperBound()
+			} else {
+				__antithesis_instrumentation__.Notify(189707)
 			}
 
 		case <-stopCh:
+			__antithesis_instrumentation__.Notify(189698)
 			ticker.Stop()
 			return
 		}
+		__antithesis_instrumentation__.Notify(189694)
 
 		if tickCallback != nil {
+			__antithesis_instrumentation__.Notify(189708)
 			tickCallback()
+		} else {
+			__antithesis_instrumentation__.Notify(189709)
 		}
 	}
 }
 
-// startPersistingHLCUpperBound starts a goroutine to persist an upper bound
-// to the HLC.
-//
-// persistHLCUpperBoundFn is used to persist upper bound of the HLC, and should
-// return an error if the persist fails
-//
-// tickerFn is used to create a new ticker
-//
-// tickCallback is called whenever persistHLCUpperBoundCh or a ticker tick is
-// processed
 func (s *Server) startPersistingHLCUpperBound(ctx context.Context, hlcUpperBoundExists bool) error {
+	__antithesis_instrumentation__.Notify(189710)
 	tickerFn := time.NewTicker
-	persistHLCUpperBoundFn := func(t int64) error { /* function to persist upper bound of HLC to all stores */
+	persistHLCUpperBoundFn := func(t int64) error {
+		__antithesis_instrumentation__.Notify(189715)
 		return s.node.SetHLCUpperBound(context.Background(), t)
 	}
+	__antithesis_instrumentation__.Notify(189711)
 	persistHLCUpperBoundIntervalCh := make(chan time.Duration, 1)
 	persistHLCUpperBoundInterval.SetOnChange(&s.st.SV, func(context.Context) {
+		__antithesis_instrumentation__.Notify(189716)
 		persistHLCUpperBoundIntervalCh <- persistHLCUpperBoundInterval.Get(&s.st.SV)
 	})
+	__antithesis_instrumentation__.Notify(189712)
 
 	if hlcUpperBoundExists {
-		// The feature to persist upper bounds to wall times is enabled.
-		// Persist a new upper bound to continue guaranteeing monotonicity
-		// Going forward the goroutine launched below will take over persisting
-		// the upper bound
+		__antithesis_instrumentation__.Notify(189717)
+
 		if err := s.clock.RefreshHLCUpperBound(
 			persistHLCUpperBoundFn,
 			int64(5*time.Second),
 		); err != nil {
+			__antithesis_instrumentation__.Notify(189718)
 			return errors.Wrap(err, "refreshing HLC upper bound")
+		} else {
+			__antithesis_instrumentation__.Notify(189719)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(189720)
 	}
+	__antithesis_instrumentation__.Notify(189713)
 
 	_ = s.stopper.RunAsyncTask(
 		ctx,
 		"persist-hlc-upper-bound",
 		func(context.Context) {
+			__antithesis_instrumentation__.Notify(189721)
 			periodicallyPersistHLCUpperBound(
 				s.clock,
 				persistHLCUpperBoundIntervalCh,
 				persistHLCUpperBoundFn,
 				tickerFn,
 				s.stopper.ShouldQuiesce(),
-				nil, /* tick callback */
+				nil,
 			)
 		},
 	)
+	__antithesis_instrumentation__.Notify(189714)
 	return nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gcjob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,46 +16,61 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// updateDescriptorGCMutations removes the GCMutation for the given
-// index ID. We no longer populate this field, but we still search it
-// to remove existing entries.
 func updateDescriptorGCMutations(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
 	tableID descpb.ID,
 	garbageCollectedIndexID descpb.IndexID,
 ) error {
+	__antithesis_instrumentation__.Notify(492173)
 	return sql.DescsTxn(ctx, execCfg, func(
 		ctx context.Context, txn *kv.Txn, descsCol *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(492174)
 		tbl, err := descsCol.GetMutableTableVersionByID(ctx, tableID, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(492178)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(492179)
 		}
+		__antithesis_instrumentation__.Notify(492175)
 		found := false
 		for i := 0; i < len(tbl.GCMutations); i++ {
+			__antithesis_instrumentation__.Notify(492180)
 			other := tbl.GCMutations[i]
 			if other.IndexID == garbageCollectedIndexID {
+				__antithesis_instrumentation__.Notify(492181)
 				tbl.GCMutations = append(tbl.GCMutations[:i], tbl.GCMutations[i+1:]...)
 				found = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(492182)
 			}
 		}
+		__antithesis_instrumentation__.Notify(492176)
 		if found {
+			__antithesis_instrumentation__.Notify(492183)
 			log.Infof(ctx, "updating GCMutations for table %d after removing index %d",
 				tableID, garbageCollectedIndexID)
-			// Remove the mutation from the table descriptor.
+
 			b := txn.NewBatch()
-			if err := descsCol.WriteDescToBatch(ctx, false /* kvTrace */, tbl, b); err != nil {
+			if err := descsCol.WriteDescToBatch(ctx, false, tbl, b); err != nil {
+				__antithesis_instrumentation__.Notify(492185)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492186)
 			}
+			__antithesis_instrumentation__.Notify(492184)
 			return txn.Run(ctx, b)
+		} else {
+			__antithesis_instrumentation__.Notify(492187)
 		}
+		__antithesis_instrumentation__.Notify(492177)
 		return nil
 	})
 }
 
-// deleteDatabaseZoneConfig removes the zone config for a given database ID.
 func deleteDatabaseZoneConfig(
 	ctx context.Context,
 	db *kv.DB,
@@ -71,23 +78,34 @@ func deleteDatabaseZoneConfig(
 	settings *cluster.Settings,
 	databaseID descpb.ID,
 ) error {
+	__antithesis_instrumentation__.Notify(492188)
 	if databaseID == descpb.InvalidID {
+		__antithesis_instrumentation__.Notify(492190)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(492191)
 	}
+	__antithesis_instrumentation__.Notify(492189)
 	return db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(492192)
 		if !settings.Version.IsActive(
 			ctx, clusterversion.DisableSystemConfigGossipTrigger,
 		) {
+			__antithesis_instrumentation__.Notify(492194)
 			if err := txn.DeprecatedSetSystemConfigTrigger(codec.ForSystemTenant()); err != nil {
+				__antithesis_instrumentation__.Notify(492195)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492196)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(492197)
 		}
+		__antithesis_instrumentation__.Notify(492193)
 		b := &kv.Batch{}
 
-		// Delete the zone config entry for the dropped database associated with the
-		// job, if it exists.
 		dbZoneKeyPrefix := config.MakeZoneKeyPrefix(codec, databaseID)
-		b.DelRange(dbZoneKeyPrefix, dbZoneKeyPrefix.PrefixEnd(), false /* returnKeys */)
+		b.DelRange(dbZoneKeyPrefix, dbZoneKeyPrefix.PrefixEnd(), false)
 		return txn.Run(ctx, b)
 	})
 }

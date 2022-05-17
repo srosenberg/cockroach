@@ -1,49 +1,50 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package geopb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
 	"unsafe"
 )
 
-// EWKBHex returns the EWKB-hex version of this data type
 func (b *SpatialObject) EWKBHex() string {
+	__antithesis_instrumentation__.Notify(63664)
 	return fmt.Sprintf("%X", b.EWKB)
 }
 
-// MemSize returns the size of the spatial object in memory.
 func (b *SpatialObject) MemSize() uintptr {
+	__antithesis_instrumentation__.Notify(63665)
 	var bboxSize uintptr
 	if bbox := b.BoundingBox; bbox != nil {
+		__antithesis_instrumentation__.Notify(63667)
 		bboxSize = unsafe.Sizeof(*bbox)
+	} else {
+		__antithesis_instrumentation__.Notify(63668)
 	}
+	__antithesis_instrumentation__.Notify(63666)
 	return unsafe.Sizeof(*b) + bboxSize + uintptr(len(b.EWKB))
 }
 
-// MultiType returns the corresponding multi-type for a shape type, or unset
-// if there is no multi-type.
 func (s ShapeType) MultiType() ShapeType {
+	__antithesis_instrumentation__.Notify(63669)
 	switch s {
 	case ShapeType_Unset:
+		__antithesis_instrumentation__.Notify(63670)
 		return ShapeType_Unset
 	case ShapeType_Point, ShapeType_MultiPoint:
+		__antithesis_instrumentation__.Notify(63671)
 		return ShapeType_MultiPoint
 	case ShapeType_LineString, ShapeType_MultiLineString:
+		__antithesis_instrumentation__.Notify(63672)
 		return ShapeType_MultiLineString
 	case ShapeType_Polygon, ShapeType_MultiPolygon:
+		__antithesis_instrumentation__.Notify(63673)
 		return ShapeType_MultiPolygon
 	case ShapeType_GeometryCollection:
+		__antithesis_instrumentation__.Notify(63674)
 		return ShapeType_GeometryCollection
 	default:
+		__antithesis_instrumentation__.Notify(63675)
 		return ShapeType_Unset
 	}
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowcontainer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"container/heap"
@@ -28,9 +20,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// DiskBackedNumberedRowContainer that stores a map from idx => row, where idx is a
-// 0-based dense numbering. Optionally, if deDup is true, it can de-duplicate the
-// rows before assigning a number. It spills to disk if needed.
 type DiskBackedNumberedRowContainer struct {
 	deDup bool
 	rc    *DiskBackedRowContainer
@@ -38,26 +27,15 @@ type DiskBackedNumberedRowContainer struct {
 	deduper DeDupingRowContainer
 
 	storedTypes []*types.T
-	idx         int // the index of the next row to be added into the container
+	idx         int
 
 	rowIter *numberedDiskRowIterator
-	// cacheMap is a map used in the implementation of rowIter that is kept
-	// in the container to avoid repeated allocation.
+
 	cacheMap      map[int]*cacheElement
 	rowIterMemAcc mon.BoundAccount
 	DisableCache  bool
 }
 
-// NewDiskBackedNumberedRowContainer creates a DiskBackedNumberedRowContainer.
-//
-// Arguments:
-//  - deDup is true if it should de-duplicate.
-//  - types is the schema of rows that will be added to this container.
-//  - evalCtx defines the context.
-//  - engine is the underlying store that rows are stored on when the container
-//    spills to disk.
-//  - memoryMonitor is used to monitor this container's memory usage.
-//  - diskMonitor is used to monitor this container's disk usage.
 func NewDiskBackedNumberedRowContainer(
 	deDup bool,
 	types []*types.T,
@@ -66,237 +44,263 @@ func NewDiskBackedNumberedRowContainer(
 	memoryMonitor *mon.BytesMonitor,
 	diskMonitor *mon.BytesMonitor,
 ) *DiskBackedNumberedRowContainer {
+	__antithesis_instrumentation__.Notify(569431)
 	d := &DiskBackedNumberedRowContainer{
 		deDup:         deDup,
 		storedTypes:   types,
 		rowIterMemAcc: memoryMonitor.MakeBoundAccount(),
 	}
 	d.rc = &DiskBackedRowContainer{}
-	d.rc.Init(nil /*ordering*/, types, evalCtx, engine, memoryMonitor, diskMonitor)
+	d.rc.Init(nil, types, evalCtx, engine, memoryMonitor, diskMonitor)
 	if deDup {
+		__antithesis_instrumentation__.Notify(569433)
 		ordering := make(colinfo.ColumnOrdering, len(types))
 		for i := range types {
+			__antithesis_instrumentation__.Notify(569435)
 			ordering[i].ColIdx = i
 			ordering[i].Direction = encoding.Ascending
 		}
+		__antithesis_instrumentation__.Notify(569434)
 		deduper := &DiskBackedRowContainer{}
 		deduper.Init(ordering, types, evalCtx, engine, memoryMonitor, diskMonitor)
 		deduper.DoDeDuplicate()
 		d.deduper = deduper
+	} else {
+		__antithesis_instrumentation__.Notify(569436)
 	}
+	__antithesis_instrumentation__.Notify(569432)
 	return d
 }
 
-// UsingDisk returns whether the primary container is using disk.
 func (d *DiskBackedNumberedRowContainer) UsingDisk() bool {
+	__antithesis_instrumentation__.Notify(569437)
 	return d.rc.UsingDisk()
 }
 
-// Spilled returns whether or not the primary container spilled to disk in its
-// lifetime.
 func (d *DiskBackedNumberedRowContainer) Spilled() bool {
+	__antithesis_instrumentation__.Notify(569438)
 	return d.rc.Spilled()
 }
 
-// SpillToDisk spills the container(s) to disk. Boolean indicates whether at
-// least one container actually spilled.
 func (d *DiskBackedNumberedRowContainer) SpillToDisk(ctx context.Context) (bool, error) {
-	if d.rc.UsingDisk() && (!d.deDup || d.deduper.(*DiskBackedRowContainer).UsingDisk()) {
-		// All containers are already using disk, so there is nothing to spill.
+	__antithesis_instrumentation__.Notify(569439)
+	if d.rc.UsingDisk() && func() bool {
+		__antithesis_instrumentation__.Notify(569443)
+		return (!d.deDup || func() bool {
+			__antithesis_instrumentation__.Notify(569444)
+			return d.deduper.(*DiskBackedRowContainer).UsingDisk() == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(569445)
+
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(569446)
 	}
+	__antithesis_instrumentation__.Notify(569440)
 	if !d.rc.UsingDisk() {
+		__antithesis_instrumentation__.Notify(569447)
 		if err := d.rc.SpillToDisk(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(569448)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(569449)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(569450)
 	}
-	if d.deDup && !d.deduper.(*DiskBackedRowContainer).UsingDisk() {
+	__antithesis_instrumentation__.Notify(569441)
+	if d.deDup && func() bool {
+		__antithesis_instrumentation__.Notify(569451)
+		return !d.deduper.(*DiskBackedRowContainer).UsingDisk() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(569452)
 		if err := d.deduper.(*DiskBackedRowContainer).SpillToDisk(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(569453)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(569454)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(569455)
 	}
+	__antithesis_instrumentation__.Notify(569442)
 	return true, nil
 }
 
-// AddRow tries to add a row. It returns the position of the
-// row in the container.
 func (d *DiskBackedNumberedRowContainer) AddRow(
 	ctx context.Context, row rowenc.EncDatumRow,
 ) (int, error) {
+	__antithesis_instrumentation__.Notify(569456)
 	if d.deDup {
+		__antithesis_instrumentation__.Notify(569458)
 		assignedIdx, err := d.deduper.AddRowWithDeDup(ctx, row)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569460)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(569461)
 		}
+		__antithesis_instrumentation__.Notify(569459)
 		if assignedIdx < d.idx {
-			// Existing row.
+			__antithesis_instrumentation__.Notify(569462)
+
 			return assignedIdx, nil
-		} else if assignedIdx != d.idx {
-			panic(errors.AssertionFailedf("DiskBackedNumberedRowContainer bug: assignedIdx %d != d.idx %d",
-				assignedIdx, d.idx))
+		} else {
+			__antithesis_instrumentation__.Notify(569463)
+			if assignedIdx != d.idx {
+				__antithesis_instrumentation__.Notify(569464)
+				panic(errors.AssertionFailedf("DiskBackedNumberedRowContainer bug: assignedIdx %d != d.idx %d",
+					assignedIdx, d.idx))
+			} else {
+				__antithesis_instrumentation__.Notify(569465)
+			}
 		}
-		// Else assignedIdx == d.idx, so a new row.
+
+	} else {
+		__antithesis_instrumentation__.Notify(569466)
 	}
+	__antithesis_instrumentation__.Notify(569457)
 	idx := d.idx
-	// An error in AddRow() will cause the two row containers
-	// to no longer be in-step with each other wrt the numbering
-	// but that is not a concern since the caller will not
-	// continue using d after an error.
+
 	d.idx++
 	return idx, d.rc.AddRow(ctx, row)
 }
 
-// SetupForRead must be called before calling GetRow(). No more AddRow() calls
-// are permitted (before UnsafeReset()). See the comment for
-// NumberedDiskRowIterator for how we use the future accesses.
 func (d *DiskBackedNumberedRowContainer) SetupForRead(ctx context.Context, accesses [][]int) {
+	__antithesis_instrumentation__.Notify(569467)
 	if !d.rc.UsingDisk() {
+		__antithesis_instrumentation__.Notify(569472)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(569473)
 	}
+	__antithesis_instrumentation__.Notify(569468)
 	rowIter := d.rc.drc.newNumberedIterator(ctx)
 	meanBytesPerRow := d.rc.drc.MeanEncodedRowBytes()
 	if meanBytesPerRow == 0 {
-		meanBytesPerRow = 100 // arbitrary
+		__antithesis_instrumentation__.Notify(569474)
+		meanBytesPerRow = 100
+	} else {
+		__antithesis_instrumentation__.Notify(569475)
 	}
-	// TODO(sumeer): make bytesPerSSBlock a parameter to
-	// NewDiskBackedNumberedRowContainer.
+	__antithesis_instrumentation__.Notify(569469)
+
 	const bytesPerSSBlock = 32 * 1024
 	meanRowsPerSSBlock := bytesPerSSBlock / meanBytesPerRow
 	const maxCacheSize = 4096
 	cacheSize := maxCacheSize
 	if d.DisableCache {
-		// This is not an efficient way to disable the cache, but ok for tests.
+		__antithesis_instrumentation__.Notify(569476)
+
 		cacheSize = 0
+	} else {
+		__antithesis_instrumentation__.Notify(569477)
 	}
+	__antithesis_instrumentation__.Notify(569470)
 	if d.cacheMap == nil {
+		__antithesis_instrumentation__.Notify(569478)
 		d.cacheMap = make(map[int]*cacheElement)
+	} else {
+		__antithesis_instrumentation__.Notify(569479)
 	}
+	__antithesis_instrumentation__.Notify(569471)
 	d.rowIter = newNumberedDiskRowIterator(
 		ctx, rowIter, accesses, meanRowsPerSSBlock, cacheSize, d.cacheMap, &d.rowIterMemAcc)
 }
 
-// GetRow returns a row with the given index. If skip is true the row is not
-// actually read and just indicates a read that is being skipped. It is used
-// to maintain synchronization with the future, since the caller can skip
-// accesses for semi-joins and anti-joins.
 func (d *DiskBackedNumberedRowContainer) GetRow(
 	ctx context.Context, idx int, skip bool,
 ) (rowenc.EncDatumRow, error) {
+	__antithesis_instrumentation__.Notify(569480)
 	if !d.rc.UsingDisk() {
+		__antithesis_instrumentation__.Notify(569482)
 		if skip {
+			__antithesis_instrumentation__.Notify(569484)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(569485)
 		}
+		__antithesis_instrumentation__.Notify(569483)
 		return d.rc.mrc.EncRow(idx), nil
+	} else {
+		__antithesis_instrumentation__.Notify(569486)
 	}
+	__antithesis_instrumentation__.Notify(569481)
 	return d.rowIter.getRow(ctx, idx, skip)
 }
 
-// UnsafeReset resets this container to be reused.
 func (d *DiskBackedNumberedRowContainer) UnsafeReset(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(569487)
 	if d.rowIter != nil {
+		__antithesis_instrumentation__.Notify(569491)
 		d.rowIter.close()
 		d.rowIterMemAcc.Clear(ctx)
 		d.rowIter = nil
+	} else {
+		__antithesis_instrumentation__.Notify(569492)
 	}
+	__antithesis_instrumentation__.Notify(569488)
 	d.idx = 0
 	if err := d.rc.UnsafeReset(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(569493)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(569494)
 	}
+	__antithesis_instrumentation__.Notify(569489)
 	if d.deduper != nil {
+		__antithesis_instrumentation__.Notify(569495)
 		if err := d.deduper.UnsafeReset(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(569496)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(569497)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(569498)
 	}
+	__antithesis_instrumentation__.Notify(569490)
 	return nil
 }
 
-// Close closes the container.
 func (d *DiskBackedNumberedRowContainer) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(569499)
 	if d.rowIter != nil {
+		__antithesis_instrumentation__.Notify(569502)
 		d.rowIter.close()
+	} else {
+		__antithesis_instrumentation__.Notify(569503)
 	}
+	__antithesis_instrumentation__.Notify(569500)
 	d.rowIterMemAcc.Close(ctx)
 	d.rc.Close(ctx)
 	if d.deduper != nil {
+		__antithesis_instrumentation__.Notify(569504)
 		d.deduper.Close(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(569505)
 	}
+	__antithesis_instrumentation__.Notify(569501)
 	d.cacheMap = nil
 }
 
-// numberedDiskRowIterator wraps a numberedRowIterator and adds two pieces
-// of functionality:
-// - decides between seek and next when positioning the iterator.
-// - maintains a cache.
-//
-// Cache:
-//
-// The callers of GetRow() know the full pattern of future accesses,
-// represented as a [][]int where the int is the row number. Within a slice
-// they access in increasing order of index (since forward iteration is
-// cheaper), but across different slices there is no such constraint. Caching
-// policies like LRU work without knowing the future, and use "recency" of row
-// R (number of other distinct rows accessed since last access to row R) as a
-// proxy for "reuse distance" of row R (number of distinct rows that will be
-// accessed from one access of R to the next access of R). More sophisticated
-// policies try to use the recently observed reuse distance as a predictor for
-// the future reuse distance. In our case we know the exact reuse distance
-// from each access of row R to its next access, so one can construct an
-// optimal cache policy for a certain cache size: keep track of the current
-// reuse distance for each element of the cache and evict the one with the
-// highest reuse distance. A cache miss causes the retrieved entry to be added
-// to a full cache only if its reuse distance to the next access is less than
-// the highest reuse distance currently in the cache. This optimality requires
-// some book-keeping overhead:
-//
-// - A map with O(R) entries where R is the number of unique rows that will be
-//   accessed and an overall size proportional to the total number of accesses.
-//   Overall this is within a constant factor of [][]int, but the constant could
-//   be high. Note that we need this map because when doing Next() on the iterator
-//   we encounter entries different from the ones that caused this cache miss
-//   and we need to decide whether to cache them -- if we had a random access
-//   iterator such that sequential access was the same cost as random
-//   access, then a single []int with the next reuse position for each access
-//   would have sufficed.
-// - A heap containing the rows in the cache that is updated on each cache hit,
-//   and whenever a row is evicted or added to the cache. This is O(log N) where
-//   N is the number of entries in the cache.
-//
-// Overall, this may be too much memory and cpu overhead for not enough
-// benefit, but it will put an upper bound on what we can achieve with a
-// cache. And for inverted index queries involving intersection it is possible
-// that the row container contains far more rows than the number of unique
-// rows that will be accessed, so a small cache which knows the future could
-// be very beneficial. One motivation for this approach was that #48118
-// mentioned low observed cache hit rates with a simpler approach. And since
-// we turn off ssblock caching for these underlying storage engine, the
-// cost of a cache miss is high.
-//
-// TODO(sumeer):
-// - Use some realistic inverted index workloads (including geospatial) to
-//   measure the effect of this cache.
 type numberedDiskRowIterator struct {
 	rowIter *numberedRowIterator
-	// After creation, the rowIter is not positioned. isPositioned transitions
-	// once from false => true.
+
 	isPositioned bool
-	// The current index the rowIter is positioned at, when isPositioned == true.
+
 	idxRowIter int
-	// The mean number of rows per ssblock.
+
 	meanRowsPerSSBlock int
-	// The maximum number of rows in the cache. This can be shrunk under memory
-	// pressure.
+
 	maxCacheSize int
 	memAcc       *mon.BoundAccount
 
-	// The cache. It contains an entry for all the rows that will be accessed,
-	// and not just the ones for which we currently have a cached EncDatumRow.
 	cache map[int]*cacheElement
-	// The current access index in the sequence of all the accesses. This is
-	// used to know where we are in the known future.
+
 	accessIdx int
-	// A max heap containing only the rows for which we have a cached
-	// EncDatumRow. The top element has the highest nextAccess and is the
-	// best candidate to evict.
+
 	cacheHeap  cacheMaxNextAccessHeap
 	datumAlloc tree.DatumAlloc
 	rowAlloc   rowenc.EncDatumRowAlloc
@@ -306,27 +310,24 @@ type numberedDiskRowIterator struct {
 }
 
 type cacheElement struct {
-	// The future accesses for this row, expressed as the accessIdx when it will
-	// happen. We update this slice to remove the first entry whenever an access
-	// happens, so when non-empty, accesses[0] represents the next access, and
-	// when empty there are no more accesses left.
 	accesses []int
-	// row is non-nil for a cached row.
+
 	row rowenc.EncDatumRow
-	// When row is non-nil, this is the element in the heap.
+
 	heapElement cacheRowHeapElement
-	// Used only when initializing accesses, so that we can allocate a single
-	// shared slice for accesses across all cacheElements.
+
 	numAccesses int
 }
 
 var cacheElementSyncPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(569506)
 		return &cacheElement{}
 	},
 }
 
 func freeCacheElement(elem *cacheElement) {
+	__antithesis_instrumentation__.Notify(569507)
 	elem.accesses = nil
 	elem.row = nil
 	elem.numAccesses = 0
@@ -334,36 +335,43 @@ func freeCacheElement(elem *cacheElement) {
 }
 
 func newCacheElement() *cacheElement {
+	__antithesis_instrumentation__.Notify(569508)
 	return cacheElementSyncPool.Get().(*cacheElement)
 }
 
 type cacheRowHeapElement struct {
-	// The index of this cached row.
 	rowIdx int
-	// The next access of this cached row.
+
 	nextAccess int
-	// The index in the heap.
+
 	heapIdx int
 }
 
 type cacheMaxNextAccessHeap []*cacheRowHeapElement
 
-func (h cacheMaxNextAccessHeap) Len() int { return len(h) }
+func (h cacheMaxNextAccessHeap) Len() int {
+	__antithesis_instrumentation__.Notify(569509)
+	return len(h)
+}
 func (h cacheMaxNextAccessHeap) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(569510)
 	return h[i].nextAccess > h[j].nextAccess
 }
 func (h cacheMaxNextAccessHeap) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(569511)
 	h[i], h[j] = h[j], h[i]
 	h[i].heapIdx = i
 	h[j].heapIdx = j
 }
 func (h *cacheMaxNextAccessHeap) Push(x interface{}) {
+	__antithesis_instrumentation__.Notify(569512)
 	n := len(*h)
 	elem := x.(*cacheRowHeapElement)
 	elem.heapIdx = n
 	*h = append(*h, elem)
 }
 func (h *cacheMaxNextAccessHeap) Pop() interface{} {
+	__antithesis_instrumentation__.Notify(569513)
 	old := *h
 	n := len(old)
 	elem := old[n-1]
@@ -372,7 +380,6 @@ func (h *cacheMaxNextAccessHeap) Pop() interface{} {
 	return elem
 }
 
-// TODO(sumeer): memory accounting for map and heap.
 func newNumberedDiskRowIterator(
 	_ context.Context,
 	rowIter *numberedRowIterator,
@@ -382,6 +389,7 @@ func newNumberedDiskRowIterator(
 	cache map[int]*cacheElement,
 	memAcc *mon.BoundAccount,
 ) *numberedDiskRowIterator {
+	__antithesis_instrumentation__.Notify(569514)
 	n := &numberedDiskRowIterator{
 		rowIter:            rowIter,
 		meanRowsPerSSBlock: meanRowsPerSSBlock,
@@ -391,37 +399,53 @@ func newNumberedDiskRowIterator(
 	}
 	var numAccesses int
 	for _, accSlice := range accesses {
+		__antithesis_instrumentation__.Notify(569517)
 		for _, rowIdx := range accSlice {
+			__antithesis_instrumentation__.Notify(569518)
 			elem := n.cache[rowIdx]
 			if elem == nil {
+				__antithesis_instrumentation__.Notify(569520)
 				elem = newCacheElement()
 				elem.heapElement.rowIdx = rowIdx
 				n.cache[rowIdx] = elem
+			} else {
+				__antithesis_instrumentation__.Notify(569521)
 			}
+			__antithesis_instrumentation__.Notify(569519)
 			elem.numAccesses++
 			numAccesses++
 		}
 	}
+	__antithesis_instrumentation__.Notify(569515)
 	allAccesses := make([]int, numAccesses)
 	accessIdx := 0
 	for _, accSlice := range accesses {
+		__antithesis_instrumentation__.Notify(569522)
 		for _, rowIdx := range accSlice {
+			__antithesis_instrumentation__.Notify(569523)
 			elem := n.cache[rowIdx]
 			if elem.accesses == nil {
-				// Sub-slice that can grow up to elem.numAccesses
+				__antithesis_instrumentation__.Notify(569525)
+
 				elem.accesses = allAccesses[0:0:elem.numAccesses]
 				allAccesses = allAccesses[elem.numAccesses:]
+			} else {
+				__antithesis_instrumentation__.Notify(569526)
 			}
+			__antithesis_instrumentation__.Notify(569524)
 			elem.accesses = append(elem.accesses, accessIdx)
 			accessIdx++
 		}
 	}
+	__antithesis_instrumentation__.Notify(569516)
 	return n
 }
 
 func (n *numberedDiskRowIterator) close() {
+	__antithesis_instrumentation__.Notify(569527)
 	n.rowIter.Close()
 	for k, v := range n.cache {
+		__antithesis_instrumentation__.Notify(569528)
 		freeCacheElement(v)
 		delete(n.cache, k)
 	}
@@ -430,214 +454,359 @@ func (n *numberedDiskRowIterator) close() {
 func (n *numberedDiskRowIterator) getRow(
 	ctx context.Context, idx int, skip bool,
 ) (rowenc.EncDatumRow, error) {
+	__antithesis_instrumentation__.Notify(569529)
 	thisAccessIdx := n.accessIdx
 	n.accessIdx++
 	elem, ok := n.cache[idx]
 	if !ok {
+		__antithesis_instrumentation__.Notify(569537)
 		return nil, errors.Errorf("caller is accessing a row that was not specified up front")
+	} else {
+		__antithesis_instrumentation__.Notify(569538)
 	}
-	if len(elem.accesses) == 0 || elem.accesses[0] != thisAccessIdx {
+	__antithesis_instrumentation__.Notify(569530)
+	if len(elem.accesses) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(569539)
+		return elem.accesses[0] != thisAccessIdx == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(569540)
 		return nil, errors.Errorf("caller is no longer synchronized with future accesses")
+	} else {
+		__antithesis_instrumentation__.Notify(569541)
 	}
+	__antithesis_instrumentation__.Notify(569531)
 	elem.accesses = elem.accesses[1:]
 	var nextAccess int
 	if len(elem.accesses) > 0 {
+		__antithesis_instrumentation__.Notify(569542)
 		nextAccess = elem.accesses[0]
 	} else {
+		__antithesis_instrumentation__.Notify(569543)
 		nextAccess = math.MaxInt32
 	}
+	__antithesis_instrumentation__.Notify(569532)
 
-	// Check for cache hit. This also updates the heap position,
-	// which we need to do even for skip == true.
 	if elem.row != nil {
+		__antithesis_instrumentation__.Notify(569544)
 		n.hitCount++
 		elem.heapElement.nextAccess = nextAccess
 		heap.Fix(&n.cacheHeap, elem.heapElement.heapIdx)
 		if skip {
+			__antithesis_instrumentation__.Notify(569546)
 			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(569547)
 		}
+		__antithesis_instrumentation__.Notify(569545)
 		return elem.row, nil
+	} else {
+		__antithesis_instrumentation__.Notify(569548)
 	}
+	__antithesis_instrumentation__.Notify(569533)
 
-	// Cache miss.
 	n.missCount++
-	// If skip, we can just return.
-	if skip {
-		return nil, nil
-	}
 
-	// Need to position the rowIter. We could add Prev(), since the engine supports
-	// it, if benchmarks indicate it would help. For now we just Seek() for that
-	// case.
-	if n.isPositioned && idx >= n.idxRowIter && (idx-n.idxRowIter <= n.meanRowsPerSSBlock) {
-		// Need to move forward, possibly within the same ssblock, so use Next().
-		// It is possible we are already positioned at the right place.
+	if skip {
+		__antithesis_instrumentation__.Notify(569549)
+		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(569550)
+	}
+	__antithesis_instrumentation__.Notify(569534)
+
+	if n.isPositioned && func() bool {
+		__antithesis_instrumentation__.Notify(569551)
+		return idx >= n.idxRowIter == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(569552)
+		return (idx-n.idxRowIter <= n.meanRowsPerSSBlock) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(569553)
+
 		for i := idx - n.idxRowIter; i > 0; {
+			__antithesis_instrumentation__.Notify(569555)
 			n.rowIter.Next()
-			if valid, err := n.rowIter.Valid(); err != nil || !valid {
+			if valid, err := n.rowIter.Valid(); err != nil || func() bool {
+				__antithesis_instrumentation__.Notify(569561)
+				return !valid == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(569562)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(569564)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(569565)
 				}
+				__antithesis_instrumentation__.Notify(569563)
 				return nil, errors.Errorf("caller is asking for index higher than any added index")
+			} else {
+				__antithesis_instrumentation__.Notify(569566)
 			}
+			__antithesis_instrumentation__.Notify(569556)
 			n.idxRowIter++
 			i--
 			if i == 0 {
+				__antithesis_instrumentation__.Notify(569567)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(569568)
 			}
-			// i > 0. This is before the row we want to return, but it may
-			// be worthwhile to cache it.
+			__antithesis_instrumentation__.Notify(569557)
+
 			preElem, ok := n.cache[n.idxRowIter]
 			if !ok {
-				// This is a row that is never accessed.
+				__antithesis_instrumentation__.Notify(569569)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(569570)
 			}
+			__antithesis_instrumentation__.Notify(569558)
 			if preElem.row != nil {
-				// Already in cache.
+				__antithesis_instrumentation__.Notify(569571)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(569572)
 			}
+			__antithesis_instrumentation__.Notify(569559)
 			if len(preElem.accesses) == 0 {
-				// No accesses left.
+				__antithesis_instrumentation__.Notify(569573)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(569574)
 			}
+			__antithesis_instrumentation__.Notify(569560)
 			if err := n.tryAddCache(ctx, preElem); err != nil {
+				__antithesis_instrumentation__.Notify(569575)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(569576)
 			}
 		}
-		// Try adding to cache
+		__antithesis_instrumentation__.Notify(569554)
+
 		return n.tryAddCacheAndReturnRow(ctx, elem)
+	} else {
+		__antithesis_instrumentation__.Notify(569577)
 	}
+	__antithesis_instrumentation__.Notify(569535)
 	n.rowIter.seekToIndex(idx)
 	n.isPositioned = true
 	n.idxRowIter = idx
-	if valid, err := n.rowIter.Valid(); err != nil || !valid {
+	if valid, err := n.rowIter.Valid(); err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(569578)
+		return !valid == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(569579)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569581)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(569582)
 		}
+		__antithesis_instrumentation__.Notify(569580)
 		return nil, errors.Errorf("caller is asking for index higher than any added index")
+	} else {
+		__antithesis_instrumentation__.Notify(569583)
 	}
-	// Try adding to cache
+	__antithesis_instrumentation__.Notify(569536)
+
 	return n.tryAddCacheAndReturnRow(ctx, elem)
 }
 
 func (n *numberedDiskRowIterator) ensureDecoded(row rowenc.EncDatumRow) error {
+	__antithesis_instrumentation__.Notify(569584)
 	for i := range row {
+		__antithesis_instrumentation__.Notify(569586)
 		if err := row[i].EnsureDecoded(n.rowIter.rowContainer.types[i], &n.datumAlloc); err != nil {
+			__antithesis_instrumentation__.Notify(569587)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(569588)
 		}
 	}
+	__antithesis_instrumentation__.Notify(569585)
 	return nil
 }
 
 func (n *numberedDiskRowIterator) tryAddCacheAndReturnRow(
 	ctx context.Context, elem *cacheElement,
 ) (rowenc.EncDatumRow, error) {
+	__antithesis_instrumentation__.Notify(569589)
 	r, err := n.rowIter.Row()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(569593)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(569594)
 	}
+	__antithesis_instrumentation__.Notify(569590)
 	if err = n.ensureDecoded(r); err != nil {
+		__antithesis_instrumentation__.Notify(569595)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(569596)
 	}
+	__antithesis_instrumentation__.Notify(569591)
 	if len(elem.accesses) == 0 {
+		__antithesis_instrumentation__.Notify(569597)
 		return r, nil
+	} else {
+		__antithesis_instrumentation__.Notify(569598)
 	}
+	__antithesis_instrumentation__.Notify(569592)
 	return r, n.tryAddCacheHelper(ctx, elem, r, true)
 }
 
 func (n *numberedDiskRowIterator) tryAddCache(ctx context.Context, elem *cacheElement) error {
-	// We don't want to pay the cost of rowIter.Row() if the row will not be
-	// added to the cache. But to do correct memory accounting, which is needed
-	// for the precise caching decision, we do need the EncDatumRow. So we do a
-	// cheap check that is a good predictor of whether the row will be cached,
-	// and then call rowIter.Row().
+	__antithesis_instrumentation__.Notify(569599)
+
 	cacheSize := len(n.cacheHeap)
-	if cacheSize == n.maxCacheSize && (cacheSize == 0 || n.cacheHeap[0].nextAccess <= elem.accesses[0]) {
+	if cacheSize == n.maxCacheSize && func() bool {
+		__antithesis_instrumentation__.Notify(569602)
+		return (cacheSize == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(569603)
+			return n.cacheHeap[0].nextAccess <= elem.accesses[0] == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(569604)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(569605)
 	}
+	__antithesis_instrumentation__.Notify(569600)
 	row, err := n.rowIter.Row()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(569606)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(569607)
 	}
+	__antithesis_instrumentation__.Notify(569601)
 	return n.tryAddCacheHelper(ctx, elem, row, false)
 }
 
 func (n *numberedDiskRowIterator) tryAddCacheHelper(
 	ctx context.Context, elem *cacheElement, row rowenc.EncDatumRow, alreadyDecoded bool,
 ) error {
+	__antithesis_instrumentation__.Notify(569608)
 	if elem.row != nil {
+		__antithesis_instrumentation__.Notify(569613)
 		log.Fatalf(ctx, "adding row to cache when it is already in cache")
+	} else {
+		__antithesis_instrumentation__.Notify(569614)
 	}
+	__antithesis_instrumentation__.Notify(569609)
 	nextAccess := elem.accesses[0]
 	evict := func() (rowenc.EncDatumRow, error) {
+		__antithesis_instrumentation__.Notify(569615)
 		heapElem := heap.Pop(&n.cacheHeap).(*cacheRowHeapElement)
 		evictElem, ok := n.cache[heapElem.rowIdx]
 		if !ok {
+			__antithesis_instrumentation__.Notify(569617)
 			return nil, errors.Errorf("bug: element not in cache map")
+		} else {
+			__antithesis_instrumentation__.Notify(569618)
 		}
+		__antithesis_instrumentation__.Notify(569616)
 		bytes := evictElem.row.Size()
 		n.memAcc.Shrink(ctx, int64(bytes))
 		evictedRow := evictElem.row
 		evictElem.row = nil
 		return evictedRow, nil
 	}
+	__antithesis_instrumentation__.Notify(569610)
 	rowBytesUsage := -1
 	var rowToReuse rowenc.EncDatumRow
 	for {
+		__antithesis_instrumentation__.Notify(569619)
 		if n.maxCacheSize == 0 {
+			__antithesis_instrumentation__.Notify(569625)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(569626)
 		}
-		if len(n.cacheHeap) == n.maxCacheSize && n.cacheHeap[0].nextAccess <= nextAccess {
+		__antithesis_instrumentation__.Notify(569620)
+		if len(n.cacheHeap) == n.maxCacheSize && func() bool {
+			__antithesis_instrumentation__.Notify(569627)
+			return n.cacheHeap[0].nextAccess <= nextAccess == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(569628)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(569629)
 		}
+		__antithesis_instrumentation__.Notify(569621)
 		var err error
 		if len(n.cacheHeap) >= n.maxCacheSize {
+			__antithesis_instrumentation__.Notify(569630)
 			if rowToReuse, err = evict(); err != nil {
+				__antithesis_instrumentation__.Notify(569632)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(569633)
 			}
+			__antithesis_instrumentation__.Notify(569631)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(569634)
 		}
+		__antithesis_instrumentation__.Notify(569622)
 
-		// We shrink maxCacheSize such that it is a good current indicator of how
-		// many rows memAcc will allow us to place in the cache. So it is likely
-		// that this row can be added. Decode the row to get the correct
-		// rowBytesUsage.
 		if !alreadyDecoded {
+			__antithesis_instrumentation__.Notify(569635)
 			err = n.ensureDecoded(row)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(569637)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(569638)
 			}
+			__antithesis_instrumentation__.Notify(569636)
 			alreadyDecoded = true
+		} else {
+			__antithesis_instrumentation__.Notify(569639)
 		}
+		__antithesis_instrumentation__.Notify(569623)
 		if rowBytesUsage == -1 {
+			__antithesis_instrumentation__.Notify(569640)
 			rowBytesUsage = int(row.Size())
+		} else {
+			__antithesis_instrumentation__.Notify(569641)
 		}
+		__antithesis_instrumentation__.Notify(569624)
 		if err := n.memAcc.Grow(ctx, int64(rowBytesUsage)); err != nil {
+			__antithesis_instrumentation__.Notify(569642)
 			if sqlerrors.IsOutOfMemoryError(err) {
-				// Could not grow the memory to handle this row, so reduce the
-				// maxCacheSize (max count of entries), to the current number of
-				// entries in the cache. The assumption here is that rows in the cache
-				// are of similar size. Using maxCacheSize to make eviction decisions
-				// is cheaper than calling Grow().
+				__antithesis_instrumentation__.Notify(569643)
+
 				n.maxCacheSize = len(n.cacheHeap)
 				continue
 			} else {
+				__antithesis_instrumentation__.Notify(569644)
 				return err
 			}
 		} else {
-			// There is room in the cache.
+			__antithesis_instrumentation__.Notify(569645)
+
 			break
 		}
 	}
-	// Add to cache.
+	__antithesis_instrumentation__.Notify(569611)
+
 	elem.heapElement.nextAccess = nextAccess
-	// Need to copy row, since its lifetime is less than the cached row.
+
 	if rowToReuse == nil {
+		__antithesis_instrumentation__.Notify(569646)
 		elem.row = n.rowAlloc.CopyRow(row)
 	} else {
+		__antithesis_instrumentation__.Notify(569647)
 		copy(rowToReuse, row)
 		elem.row = rowToReuse
 	}
+	__antithesis_instrumentation__.Notify(569612)
 	heap.Push(&n.cacheHeap, &elem.heapElement)
 	return nil
 }

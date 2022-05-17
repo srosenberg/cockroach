@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,45 +31,16 @@ var consistencyCheckRate = settings.RegisterByteSizeSetting(
 		"conjunction with server.consistency_check.interval to control the "+
 		"frequency of consistency checks. Note that setting this too high can "+
 		"negatively impact performance.",
-	8<<20, // 8MB
+	8<<20,
 	settings.PositiveInt,
 ).WithPublic()
 
-// consistencyCheckRateBurstFactor we use this to set the burst parameter on the
-// quotapool.RateLimiter. It seems overkill to provide a user setting for this,
-// so we use a factor to scale the burst setting based on the rate defined above.
 const consistencyCheckRateBurstFactor = 8
 
-// consistencyCheckRateMinWait is the minimum time to wait once the rate limit
-// is reached. We check the limit on every key/value pair, which can lead to
-// a lot of nano-second waits because each pair could be very small. Instead we
-// force a larger pause every time the timer is breached to reduce the
-// churn on timers.
 const consistencyCheckRateMinWait = 100 * time.Millisecond
 
-// consistencyCheckAsyncConcurrency is the maximum number of asynchronous
-// consistency checks to run concurrently per store below Raft. The
-// server.consistency_check.max_rate limit is shared among these, so running too
-// many at the same time will cause them to time out. The rate is multiplied by
-// 10 (permittedRangeScanSlowdown) to obtain the per-check timeout. 7 gives
-// reasonable headroom, and also handles clusters with high replication factor
-// and/or many nodes -- recall that each node runs a separate consistency queue
-// which can schedule checks on other nodes, e.g. a 7-node cluster with a
-// replication factor of 7 could run 7 concurrent checks on every node.
-//
-// Note that checksum calculations below Raft are not tied to the caller's
-// context (especially on followers), and will continue to run even after the
-// caller has given up on them, which may cause them to build up.
-//
-// CHECK_STATS checks do not count towards this limit, as they are cheap and the
-// DistSender will parallelize them across all ranges (notably when calling
-// crdb_internal.check_consistency()).
 const consistencyCheckAsyncConcurrency = 7
 
-// consistencyCheckAsyncTimeout is a below-Raft timeout for asynchronous
-// consistency check calculations. These are not tied to the caller's context,
-// and thus will continue to run even after the caller has given up on them, so
-// we give them an upper timeout to prevent them from running forever.
 const consistencyCheckAsyncTimeout = time.Hour
 
 var testingAggressiveConsistencyChecks = envutil.EnvOrDefaultBool("COCKROACH_CONSISTENCY_AGGRESSIVE", false)
@@ -88,7 +51,6 @@ type consistencyQueue struct {
 	replicaCountFn func() int
 }
 
-// A data wrapper to allow for the shouldQueue method to be easier to test.
 type consistencyShouldQueueData struct {
 	desc                      *roachpb.RangeDescriptor
 	getQueueLastProcessed     func(ctx context.Context) (hlc.Timestamp, error)
@@ -97,14 +59,16 @@ type consistencyShouldQueueData struct {
 	interval                  time.Duration
 }
 
-// newConsistencyQueue returns a new instance of consistencyQueue.
 func newConsistencyQueue(store *Store) *consistencyQueue {
+	__antithesis_instrumentation__.Notify(101000)
 	q := &consistencyQueue{
 		interval: func() time.Duration {
+			__antithesis_instrumentation__.Notify(101002)
 			return consistencyCheckInterval.Get(&store.ClusterSettings().SV)
 		},
 		replicaCountFn: store.ReplicaCount,
 	}
+	__antithesis_instrumentation__.Notify(101001)
 	q.baseQueue = newBaseQueue(
 		"consistencyChecker", q, store,
 		queueConfig{
@@ -125,17 +89,24 @@ func newConsistencyQueue(store *Store) *consistencyQueue {
 func (q *consistencyQueue) shouldQueue(
 	ctx context.Context, now hlc.ClockTimestamp, repl *Replica, _ spanconfig.StoreReader,
 ) (bool, float64) {
+	__antithesis_instrumentation__.Notify(101003)
 	return consistencyQueueShouldQueueImpl(ctx, now,
 		consistencyShouldQueueData{
 			desc: repl.Desc(),
 			getQueueLastProcessed: func(ctx context.Context) (hlc.Timestamp, error) {
+				__antithesis_instrumentation__.Notify(101004)
 				return repl.getQueueLastProcessed(ctx, q.name)
 			},
 			isNodeAvailable: func(nodeID roachpb.NodeID) bool {
+				__antithesis_instrumentation__.Notify(101005)
 				if repl.store.cfg.NodeLiveness != nil {
+					__antithesis_instrumentation__.Notify(101007)
 					return repl.store.cfg.NodeLiveness.IsAvailableNotDraining(nodeID)
+				} else {
+					__antithesis_instrumentation__.Notify(101008)
 				}
-				// Some tests run without a NodeLiveness configured.
+				__antithesis_instrumentation__.Notify(101006)
+
 				return true
 			},
 			disableLastProcessedCheck: repl.store.cfg.TestingKnobs.DisableLastProcessedCheck,
@@ -143,98 +114,141 @@ func (q *consistencyQueue) shouldQueue(
 		})
 }
 
-// ConsistencyQueueShouldQueueImpl is exposed for testability without having
-// to setup a fully fledged replica.
 func consistencyQueueShouldQueueImpl(
 	ctx context.Context, now hlc.ClockTimestamp, data consistencyShouldQueueData,
 ) (bool, float64) {
+	__antithesis_instrumentation__.Notify(101009)
 	if data.interval <= 0 {
+		__antithesis_instrumentation__.Notify(101013)
 		return false, 0
+	} else {
+		__antithesis_instrumentation__.Notify(101014)
 	}
+	__antithesis_instrumentation__.Notify(101010)
 
 	shouldQ, priority := true, float64(0)
 	if !data.disableLastProcessedCheck {
+		__antithesis_instrumentation__.Notify(101015)
 		lpTS, err := data.getQueueLastProcessed(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(101017)
 			return false, 0
+		} else {
+			__antithesis_instrumentation__.Notify(101018)
 		}
+		__antithesis_instrumentation__.Notify(101016)
 		if shouldQ, priority = shouldQueueAgain(now.ToTimestamp(), lpTS, data.interval); !shouldQ {
+			__antithesis_instrumentation__.Notify(101019)
 			return false, 0
+		} else {
+			__antithesis_instrumentation__.Notify(101020)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(101021)
 	}
-	// Check if all replicas are available.
+	__antithesis_instrumentation__.Notify(101011)
+
 	for _, rep := range data.desc.Replicas().Descriptors() {
+		__antithesis_instrumentation__.Notify(101022)
 		if !data.isNodeAvailable(rep.NodeID) {
+			__antithesis_instrumentation__.Notify(101023)
 			return false, 0
+		} else {
+			__antithesis_instrumentation__.Notify(101024)
 		}
 	}
+	__antithesis_instrumentation__.Notify(101012)
 	return true, priority
 }
 
-// process() is called on every range for which this node is a lease holder.
 func (q *consistencyQueue) process(
 	ctx context.Context, repl *Replica, _ spanconfig.StoreReader,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(101025)
 	if q.interval() <= 0 {
+		__antithesis_instrumentation__.Notify(101030)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(101031)
 	}
+	__antithesis_instrumentation__.Notify(101026)
 
-	// Call setQueueLastProcessed because the consistency checker targets a much
-	// longer cycle time than other queues. That it ignores errors is likely a
-	// historical accident that should be revisited.
 	if err := repl.setQueueLastProcessed(ctx, q.name, repl.store.Clock().Now()); err != nil {
+		__antithesis_instrumentation__.Notify(101032)
 		log.VErrEventf(ctx, 2, "failed to update last processed time: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(101033)
 	}
+	__antithesis_instrumentation__.Notify(101027)
 
 	req := roachpb.CheckConsistencyRequest{
-		// Tell CheckConsistency that the caller is the queue. This triggers
-		// code to handle inconsistencies by recomputing with a diff and
-		// instructing the nodes in the minority to terminate with a fatal
-		// error. It also triggers a stats readjustment if there is no
-		// inconsistency but the persisted stats are found to disagree with
-		// those reflected in the data. All of this really ought to be lifted
-		// into the queue in the future.
+
 		Mode: roachpb.ChecksumMode_CHECK_VIA_QUEUE,
 	}
 	resp, pErr := repl.CheckConsistency(ctx, req)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(101034)
 		var shouldQuiesce bool
 		select {
 		case <-repl.store.Stopper().ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(101037)
 			shouldQuiesce = true
 		default:
+			__antithesis_instrumentation__.Notify(101038)
 		}
+		__antithesis_instrumentation__.Notify(101035)
 
-		if shouldQuiesce && grpcutil.IsClosedConnection(pErr.GoError()) {
-			// Suppress noisy errors about closed GRPC connections when the
-			// server is quiescing.
+		if shouldQuiesce && func() bool {
+			__antithesis_instrumentation__.Notify(101039)
+			return grpcutil.IsClosedConnection(pErr.GoError()) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(101040)
+
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(101041)
 		}
+		__antithesis_instrumentation__.Notify(101036)
 		err := pErr.GoError()
 		log.Errorf(ctx, "%v", err)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(101042)
 	}
+	__antithesis_instrumentation__.Notify(101028)
 	if fn := repl.store.cfg.TestingKnobs.ConsistencyTestingKnobs.ConsistencyQueueResultHook; fn != nil {
+		__antithesis_instrumentation__.Notify(101043)
 		fn(resp)
+	} else {
+		__antithesis_instrumentation__.Notify(101044)
 	}
+	__antithesis_instrumentation__.Notify(101029)
 	return true, nil
 }
 
 func (q *consistencyQueue) timer(duration time.Duration) time.Duration {
-	// An interval between replicas to space consistency checks out over
-	// the check interval.
+	__antithesis_instrumentation__.Notify(101045)
+
 	replicaCount := q.replicaCountFn()
 	if replicaCount == 0 {
+		__antithesis_instrumentation__.Notify(101048)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(101049)
 	}
+	__antithesis_instrumentation__.Notify(101046)
 	replInterval := q.interval() / time.Duration(replicaCount)
 	if replInterval < duration {
+		__antithesis_instrumentation__.Notify(101050)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(101051)
 	}
+	__antithesis_instrumentation__.Notify(101047)
 	return replInterval - duration
 }
 
-// purgatoryChan returns nil.
 func (*consistencyQueue) purgatoryChan() <-chan time.Time {
+	__antithesis_instrumentation__.Notify(101052)
 	return nil
 }

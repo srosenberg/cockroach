@@ -40,6 +40,7 @@ go_library(
         "//pkg/util/sysutil",
         "//pkg/util/timeutil",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_errors//oserror",
         "@com_github_cockroachdb_redact//:redact",
@@ -73,6 +74,7 @@ go_test(
     ],
     embed = [":security"],
     deps = [
+        "@com_antithesis_instrumentation//wrappers",
         "//pkg/base",
         "//pkg/roachpb",
         "//pkg/rpc",

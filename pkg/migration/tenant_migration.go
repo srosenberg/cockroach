@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package migration
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,8 +19,6 @@ import (
 	"github.com/cockroachdb/logtags"
 )
 
-// TenantDeps are the dependencies of migrations which perform actions at the
-// SQL layer.
 type TenantDeps struct {
 	DB                *kv.DB
 	Codec             keys.SQLCodec
@@ -37,7 +27,7 @@ type TenantDeps struct {
 	LeaseManager      *lease.Manager
 	InternalExecutor  sqlutil.InternalExecutor
 
-	SpanConfig struct { // deps for span config migrations; can be removed accordingly
+	SpanConfig struct {
 		spanconfig.KVAccessor
 		spanconfig.Splitter
 		Default roachpb.SpanConfig
@@ -46,20 +36,10 @@ type TenantDeps struct {
 	TestingKnobs *TestingKnobs
 }
 
-// TenantMigrationFunc is used to perform sql-level migrations. It may be run from
-// any tenant.
 type TenantMigrationFunc func(context.Context, clusterversion.ClusterVersion, TenantDeps, *jobs.Job) error
 
-// PreconditionFunc is a function run without isolation before attempting an
-// upgrade that includes this migration. It is used to verify that the
-// required conditions for the migration to succeed are met. This can allow
-// users to fix any problems before "crossing the rubicon" and no longer
-// being able to upgrade.
 type PreconditionFunc func(context.Context, clusterversion.ClusterVersion, TenantDeps) error
 
-// TenantMigration is an implementation of Migration for tenant-level
-// migrations. This is used for all migration which might affect the state of
-// sql. It includes the system tenant.
 type TenantMigration struct {
 	migration
 	fn           TenantMigrationFunc
@@ -68,13 +48,13 @@ type TenantMigration struct {
 
 var _ Migration = (*TenantMigration)(nil)
 
-// NewTenantMigration constructs a TenantMigration.
 func NewTenantMigration(
 	description string,
 	cv clusterversion.ClusterVersion,
 	precondition PreconditionFunc,
 	fn TenantMigrationFunc,
 ) *TenantMigration {
+	__antithesis_instrumentation__.Notify(128753)
 	m := &TenantMigration{
 		migration: migration{
 			description: description,
@@ -86,19 +66,18 @@ func NewTenantMigration(
 	return m
 }
 
-// Run kickstarts the actual migration process for tenant-level migrations.
 func (m *TenantMigration) Run(
 	ctx context.Context, cv clusterversion.ClusterVersion, d TenantDeps, job *jobs.Job,
 ) error {
+	__antithesis_instrumentation__.Notify(128754)
 	ctx = logtags.AddTag(ctx, fmt.Sprintf("migration=%s", cv), nil)
 	return m.fn(ctx, cv, d, job)
 }
 
-// Precondition runs the precondition check if there is one and reports
-// any errors.
 func (m *TenantMigration) Precondition(
 	ctx context.Context, cv clusterversion.ClusterVersion, d TenantDeps,
 ) error {
+	__antithesis_instrumentation__.Notify(128755)
 	ctx = logtags.AddTag(ctx, fmt.Sprintf("migration=%s,precondition", cv), nil)
 	return m.precondition(ctx, cv, d)
 }

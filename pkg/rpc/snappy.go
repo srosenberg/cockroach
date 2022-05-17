@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rpc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"io"
@@ -18,9 +10,6 @@ import (
 	"google.golang.org/grpc/encoding"
 )
 
-// NB: The encoding.Compressor implementation needs to be goroutine
-// safe as multiple goroutines may be using the same compressor for
-// different streams on the same connection.
 var snappyWriterPool sync.Pool
 var snappyReaderPool sync.Pool
 
@@ -29,6 +18,7 @@ type snappyWriter struct {
 }
 
 func (w *snappyWriter) Close() error {
+	__antithesis_instrumentation__.Notify(185537)
 	defer snappyWriterPool.Put(w)
 	return w.Writer.Close()
 }
@@ -38,10 +28,15 @@ type snappyReader struct {
 }
 
 func (r *snappyReader) Read(p []byte) (n int, err error) {
+	__antithesis_instrumentation__.Notify(185538)
 	n, err = r.Reader.Read(p)
 	if err == io.EOF {
+		__antithesis_instrumentation__.Notify(185540)
 		snappyReaderPool.Put(r)
+	} else {
+		__antithesis_instrumentation__.Notify(185541)
 	}
+	__antithesis_instrumentation__.Notify(185539)
 	return n, err
 }
 
@@ -49,26 +44,35 @@ type snappyCompressor struct {
 }
 
 func (snappyCompressor) Name() string {
+	__antithesis_instrumentation__.Notify(185542)
 	return "snappy"
 }
 
 func (snappyCompressor) Compress(w io.Writer) (io.WriteCloser, error) {
+	__antithesis_instrumentation__.Notify(185543)
 	sw, ok := snappyWriterPool.Get().(*snappyWriter)
 	if !ok {
+		__antithesis_instrumentation__.Notify(185545)
 		sw = &snappyWriter{snappy.NewBufferedWriter(w)}
 	} else {
+		__antithesis_instrumentation__.Notify(185546)
 		sw.Reset(w)
 	}
+	__antithesis_instrumentation__.Notify(185544)
 	return sw, nil
 }
 
 func (snappyCompressor) Decompress(r io.Reader) (io.Reader, error) {
+	__antithesis_instrumentation__.Notify(185547)
 	sr, ok := snappyReaderPool.Get().(*snappyReader)
 	if !ok {
+		__antithesis_instrumentation__.Notify(185549)
 		sr = &snappyReader{snappy.NewReader(r)}
 	} else {
+		__antithesis_instrumentation__.Notify(185550)
 		sr.Reset(r)
 	}
+	__antithesis_instrumentation__.Notify(185548)
 	return sr, nil
 }
 

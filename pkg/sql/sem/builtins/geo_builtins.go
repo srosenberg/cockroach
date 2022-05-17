@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package builtins
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -43,8 +35,6 @@ import (
 	"github.com/twpayne/go-geom/encoding/ewkb"
 )
 
-// libraryUsage is a masked bit indicating which libraries are used by
-// a given geospatial builtin.
 type libraryUsage uint64
 
 const (
@@ -63,8 +53,6 @@ const (
 	defaultWKTDecimalDigits = 15
 )
 
-// infoBuilder is used to build a detailed info string that is consistent between
-// geospatial data types.
 type infoBuilder struct {
 	info         string
 	libraryUsage libraryUsage
@@ -72,34 +60,59 @@ type infoBuilder struct {
 }
 
 func (ib infoBuilder) String() string {
+	__antithesis_instrumentation__.Notify(599858)
 	var sb strings.Builder
 	sb.WriteString(ib.info)
 	if ib.precision != "" {
+		__antithesis_instrumentation__.Notify(599864)
 		sb.WriteString(fmt.Sprintf("\n\nThe calculations performed are have a precision of %s.", ib.precision))
+	} else {
+		__antithesis_instrumentation__.Notify(599865)
 	}
+	__antithesis_instrumentation__.Notify(599859)
 	if ib.libraryUsage&usesGEOS != 0 {
+		__antithesis_instrumentation__.Notify(599866)
 		sb.WriteString("\n\nThis function utilizes the GEOS module.")
+	} else {
+		__antithesis_instrumentation__.Notify(599867)
 	}
+	__antithesis_instrumentation__.Notify(599860)
 	if ib.libraryUsage&usesS2 != 0 {
+		__antithesis_instrumentation__.Notify(599868)
 		sb.WriteString("\n\nThis function utilizes the S2 library for spherical calculations.")
+	} else {
+		__antithesis_instrumentation__.Notify(599869)
 	}
+	__antithesis_instrumentation__.Notify(599861)
 	if ib.libraryUsage&usesGeographicLib != 0 {
+		__antithesis_instrumentation__.Notify(599870)
 		sb.WriteString("\n\nThis function utilizes the GeographicLib library for spheroid calculations.")
+	} else {
+		__antithesis_instrumentation__.Notify(599871)
 	}
+	__antithesis_instrumentation__.Notify(599862)
 	if ib.libraryUsage&usesPROJ != 0 {
+		__antithesis_instrumentation__.Notify(599872)
 		sb.WriteString("\n\nThis function utilizes the PROJ library for coordinate projections.")
+	} else {
+		__antithesis_instrumentation__.Notify(599873)
 	}
+	__antithesis_instrumentation__.Notify(599863)
 	return sb.String()
 }
 
-// geomFromWKTOverload converts an (E)WKT string to its Geometry form.
 var geomFromWKTOverload = stringOverload1(
 	func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(599874)
 		g, err := geo.ParseGeometryFromEWKT(geopb.EWKT(s), geopb.DefaultGeometrySRID, geo.DefaultSRIDIsHint)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(599876)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(599877)
 		}
-		// TODO(otan): to truly have PostGIS behavior, this needs a warning if it starts with SRID=.
+		__antithesis_instrumentation__.Notify(599875)
+
 		return tree.NewDGeometry(g), nil
 	},
 	types.Geometry,
@@ -107,13 +120,17 @@ var geomFromWKTOverload = stringOverload1(
 	tree.VolatilityImmutable,
 )
 
-// geomFromWKBOverload converts a WKB bytea to its Geometry form.
 var geomFromWKBOverload = bytesOverload1(
 	func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(599878)
 		g, err := geo.ParseGeometryFromEWKB([]byte(s))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(599880)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(599881)
 		}
+		__antithesis_instrumentation__.Notify(599879)
 		return tree.NewDGeometry(g), nil
 	},
 	types.Geometry,
@@ -121,19 +138,28 @@ var geomFromWKBOverload = bytesOverload1(
 	tree.VolatilityImmutable,
 )
 
-// geometryFromTextCheckShapeBuiltin is used for the ST_<Shape>FromText builtins.
 func geometryFromTextCheckShapeBuiltin(shapeType geopb.ShapeType) builtinDefinition {
+	__antithesis_instrumentation__.Notify(599882)
 	return makeBuiltin(
 		defProps(),
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(599883)
 				g, err := geo.ParseGeometryFromEWKT(geopb.EWKT(s), geopb.DefaultGeometrySRID, geo.DefaultSRIDIsHint)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(599886)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(599887)
 				}
+				__antithesis_instrumentation__.Notify(599884)
 				if g.ShapeType2D() != shapeType {
+					__antithesis_instrumentation__.Notify(599888)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(599889)
 				}
+				__antithesis_instrumentation__.Notify(599885)
 				return tree.NewDGeometry(g), nil
 			},
 			types.Geometry,
@@ -149,15 +175,24 @@ func geometryFromTextCheckShapeBuiltin(shapeType geopb.ShapeType) builtinDefinit
 			Types:      tree.ArgTypes{{"str", types.String}, {"srid", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(599890)
 				s := string(tree.MustBeDString(args[0]))
 				srid := geopb.SRID(tree.MustBeDInt(args[1]))
 				g, err := geo.ParseGeometryFromEWKT(geopb.EWKT(s), srid, geo.DefaultSRIDShouldOverwrite)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(599893)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(599894)
 				}
+				__antithesis_instrumentation__.Notify(599891)
 				if g.ShapeType2D() != shapeType {
+					__antithesis_instrumentation__.Notify(599895)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(599896)
 				}
+				__antithesis_instrumentation__.Notify(599892)
 				return tree.NewDGeometry(g), nil
 			},
 			Info: infoBuilder{
@@ -171,19 +206,28 @@ func geometryFromTextCheckShapeBuiltin(shapeType geopb.ShapeType) builtinDefinit
 	)
 }
 
-// geometryFromWKBCheckShapeBuiltin is used for the ST_<Shape>FromWKB builtins.
 func geometryFromWKBCheckShapeBuiltin(shapeType geopb.ShapeType) builtinDefinition {
+	__antithesis_instrumentation__.Notify(599897)
 	return makeBuiltin(
 		defProps(),
 		bytesOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(599898)
 				g, err := geo.ParseGeometryFromEWKB(geopb.EWKB(s))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(599901)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(599902)
 				}
+				__antithesis_instrumentation__.Notify(599899)
 				if g.ShapeType2D() != shapeType {
+					__antithesis_instrumentation__.Notify(599903)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(599904)
 				}
+				__antithesis_instrumentation__.Notify(599900)
 				return tree.NewDGeometry(g), nil
 			},
 			types.Geometry,
@@ -199,15 +243,24 @@ func geometryFromWKBCheckShapeBuiltin(shapeType geopb.ShapeType) builtinDefiniti
 			Types:      tree.ArgTypes{{"wkb", types.Bytes}, {"srid", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(599905)
 				s := string(tree.MustBeDBytes(args[0]))
 				srid := geopb.SRID(tree.MustBeDInt(args[1]))
 				g, err := geo.ParseGeometryFromEWKBAndSRID(geopb.EWKB(s), srid)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(599908)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(599909)
 				}
+				__antithesis_instrumentation__.Notify(599906)
 				if g.ShapeType2D() != shapeType {
+					__antithesis_instrumentation__.Notify(599910)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(599911)
 				}
+				__antithesis_instrumentation__.Notify(599907)
 				return tree.NewDGeometry(g), nil
 			},
 			Info: infoBuilder{
@@ -223,10 +276,15 @@ func geometryFromWKBCheckShapeBuiltin(shapeType geopb.ShapeType) builtinDefiniti
 
 var areaOverloadGeometry1 = geometryOverload1(
 	func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(599912)
 		ret, err := geomfn.Area(g.Geometry)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(599914)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(599915)
 		}
+		__antithesis_instrumentation__.Notify(599913)
 		return tree.NewDFloat(tree.DFloat(ret)), nil
 	},
 	types.Float,
@@ -239,10 +297,15 @@ var areaOverloadGeometry1 = geometryOverload1(
 
 var lengthOverloadGeometry1 = geometryOverload1(
 	func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(599916)
 		ret, err := geomfn.Length(g.Geometry)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(599918)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(599919)
 		}
+		__antithesis_instrumentation__.Notify(599917)
 		return tree.NewDFloat(tree.DFloat(ret)), nil
 	},
 	types.Float,
@@ -257,10 +320,15 @@ Note ST_Length is only valid for LineString - use ST_Perimeter for Polygon.`,
 
 var perimeterOverloadGeometry1 = geometryOverload1(
 	func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+		__antithesis_instrumentation__.Notify(599920)
 		ret, err := geomfn.Perimeter(g.Geometry)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(599922)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(599923)
 		}
+		__antithesis_instrumentation__.Notify(599921)
 		return tree.NewDFloat(tree.DFloat(ret)), nil
 	},
 	types.Float,
@@ -307,29 +375,43 @@ the Geography objects into Geometry objects before applying an LAEA, UTM or Web 
 based projection based on the bounding boxes of the given Geography objects. When the result is
 calculated, the result is transformed back into a Geography with SRID 4326.`
 
-// performGeographyOperationUsingBestGeomProjection performs an operation on a
-// Geography by transforming it to a relevant Geometry SRID and applying the closure,
-// before retransforming it back into a geopb.DefaultGeographySRID geometry.
 func performGeographyOperationUsingBestGeomProjection(
 	g geo.Geography, f func(geo.Geometry) (geo.Geometry, error),
 ) (geo.Geography, error) {
+	__antithesis_instrumentation__.Notify(599924)
 	bestProj, err := geogfn.BestGeomProjection(g.BoundingRect())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599932)
 		return geo.Geography{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(599933)
 	}
+	__antithesis_instrumentation__.Notify(599925)
 	geogDefaultProj, err := geoprojbase.Projection(geopb.DefaultGeographySRID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599934)
 		return geo.Geography{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(599935)
 	}
+	__antithesis_instrumentation__.Notify(599926)
 	gProj, err := geoprojbase.Projection(g.SRID())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599936)
 		return geo.Geography{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(599937)
 	}
+	__antithesis_instrumentation__.Notify(599927)
 
 	inLatLonGeom, err := g.AsGeometry()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599938)
 		return geo.Geography{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(599939)
 	}
+	__antithesis_instrumentation__.Notify(599928)
 
 	inProjectedGeom, err := geotransform.Transform(
 		inLatLonGeom,
@@ -338,13 +420,21 @@ func performGeographyOperationUsingBestGeomProjection(
 		g.SRID(),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599940)
 		return geo.Geography{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(599941)
 	}
+	__antithesis_instrumentation__.Notify(599929)
 
 	outProjectedGeom, err := f(inProjectedGeom)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599942)
 		return geo.Geography{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(599943)
 	}
+	__antithesis_instrumentation__.Notify(599930)
 
 	outGeom, err := geotransform.Transform(
 		outProjectedGeom,
@@ -353,32 +443,48 @@ func performGeographyOperationUsingBestGeomProjection(
 		geopb.DefaultGeographySRID,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599944)
 		return geo.Geography{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(599945)
 	}
+	__antithesis_instrumentation__.Notify(599931)
 	return outGeom.AsGeography()
 }
 
-// fitMaxDecimalDigitsToBounds ensures maxDecimalDigits falls within the bounds that
-// is permitted by strconv.FormatFloat.
 func fitMaxDecimalDigitsToBounds(maxDecimalDigits int) int {
+	__antithesis_instrumentation__.Notify(599946)
 	if maxDecimalDigits < -1 {
+		__antithesis_instrumentation__.Notify(599949)
 		return -1
+	} else {
+		__antithesis_instrumentation__.Notify(599950)
 	}
+	__antithesis_instrumentation__.Notify(599947)
 	if maxDecimalDigits > 64 {
+		__antithesis_instrumentation__.Notify(599951)
 		return 64
+	} else {
+		__antithesis_instrumentation__.Notify(599952)
 	}
+	__antithesis_instrumentation__.Notify(599948)
 	return maxDecimalDigits
 }
 
 func makeMinimumBoundGenerator(
 	ctx *tree.EvalContext, args tree.Datums,
 ) (tree.ValueGenerator, error) {
+	__antithesis_instrumentation__.Notify(599953)
 	geometry := tree.MustBeDGeometry(args[0])
 
 	_, center, radius, err := geomfn.MinimumBoundingCircle(geometry.Geometry)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(599955)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(599956)
 	}
+	__antithesis_instrumentation__.Notify(599954)
 	return &minimumBoundRadiusGen{
 		center: center,
 		radius: radius,
@@ -398,43 +504,62 @@ type minimumBoundRadiusGen struct {
 }
 
 func (m *minimumBoundRadiusGen) ResolvedType() *types.T {
+	__antithesis_instrumentation__.Notify(599957)
 	return minimumBoundingRadiusReturnType
 }
 
 func (m *minimumBoundRadiusGen) Start(ctx context.Context, txn *kv.Txn) error {
+	__antithesis_instrumentation__.Notify(599958)
 	return nil
 }
 
 func (m *minimumBoundRadiusGen) Next(ctx context.Context) (bool, error) {
+	__antithesis_instrumentation__.Notify(599959)
 	if m.next {
+		__antithesis_instrumentation__.Notify(599961)
 		m.next = false
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(599962)
 	}
+	__antithesis_instrumentation__.Notify(599960)
 	return false, nil
 }
 
 func (m *minimumBoundRadiusGen) Values() (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(599963)
 	return []tree.Datum{tree.NewDGeometry(m.center),
 		tree.NewDFloat(tree.DFloat(m.radius))}, nil
 }
 
-func (m *minimumBoundRadiusGen) Close(_ context.Context) {}
+func (m *minimumBoundRadiusGen) Close(_ context.Context) {
+	__antithesis_instrumentation__.Notify(599964)
+}
 
 func makeSubdividedGeometriesGeneratorFactory(expectMaxVerticesArg bool) tree.GeneratorFactory {
+	__antithesis_instrumentation__.Notify(599965)
 	return func(
 		ctx *tree.EvalContext, args tree.Datums,
 	) (tree.ValueGenerator, error) {
+		__antithesis_instrumentation__.Notify(599966)
 		geometry := tree.MustBeDGeometry(args[0])
 		var maxVertices int
 		if expectMaxVerticesArg {
+			__antithesis_instrumentation__.Notify(599969)
 			maxVertices = int(tree.MustBeDInt(args[1]))
 		} else {
+			__antithesis_instrumentation__.Notify(599970)
 			maxVertices = 256
 		}
+		__antithesis_instrumentation__.Notify(599967)
 		results, err := geomfn.Subdivide(geometry.Geometry, maxVertices)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(599971)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(599972)
 		}
+		__antithesis_instrumentation__.Notify(599968)
 		return &subdividedGeometriesGen{
 			geometries: results,
 			curr:       -1,
@@ -442,38 +567,44 @@ func makeSubdividedGeometriesGeneratorFactory(expectMaxVerticesArg bool) tree.Ge
 	}
 }
 
-// subdividedGeometriesGen implements the tree.ValueGenerator interface
 type subdividedGeometriesGen struct {
 	geometries []geo.Geometry
 	curr       int
 }
 
-func (s *subdividedGeometriesGen) ResolvedType() *types.T { return types.Geometry }
+func (s *subdividedGeometriesGen) ResolvedType() *types.T {
+	__antithesis_instrumentation__.Notify(599973)
+	return types.Geometry
+}
 
-func (s *subdividedGeometriesGen) Close(_ context.Context) {}
+func (s *subdividedGeometriesGen) Close(_ context.Context) {
+	__antithesis_instrumentation__.Notify(599974)
+}
 
 func (s *subdividedGeometriesGen) Start(_ context.Context, _ *kv.Txn) error {
+	__antithesis_instrumentation__.Notify(599975)
 	s.curr = -1
 	return nil
 }
 
 func (s *subdividedGeometriesGen) Values() (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(599976)
 	return tree.Datums{tree.NewDGeometry(s.geometries[s.curr])}, nil
 }
 
 func (s *subdividedGeometriesGen) Next(_ context.Context) (bool, error) {
+	__antithesis_instrumentation__.Notify(599977)
 	s.curr++
 	return s.curr < len(s.geometries), nil
 }
 
 var geoBuiltins = map[string]builtinDefinition{
-	//
-	// Meta builtins.
-	//
+
 	"postgis_addbbox": makeBuiltin(
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(599978)
 				return g, nil
 			},
 			types.Geometry,
@@ -487,6 +618,7 @@ var geoBuiltins = map[string]builtinDefinition{
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(599979)
 				return g, nil
 			},
 			types.Geometry,
@@ -500,12 +632,21 @@ var geoBuiltins = map[string]builtinDefinition{
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(599980)
 				if g.Geometry.Empty() {
+					__antithesis_instrumentation__.Notify(599983)
 					return tree.DBoolFalse, nil
+				} else {
+					__antithesis_instrumentation__.Notify(599984)
 				}
+				__antithesis_instrumentation__.Notify(599981)
 				if g.Geometry.ShapeType2D() == geopb.ShapeType_Point {
+					__antithesis_instrumentation__.Notify(599985)
 					return tree.DBoolFalse, nil
+				} else {
+					__antithesis_instrumentation__.Notify(599986)
 				}
+				__antithesis_instrumentation__.Notify(599982)
 				return tree.DBoolTrue, nil
 			},
 			types.Bool,
@@ -519,10 +660,15 @@ var geoBuiltins = map[string]builtinDefinition{
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(599987)
 				bbox := g.CartesianBoundingBox()
 				if bbox == nil {
+					__antithesis_instrumentation__.Notify(599989)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(599990)
 				}
+				__antithesis_instrumentation__.Notify(599988)
 				return tree.NewDBox2D(*bbox), nil
 			},
 			types.Box2D,
@@ -550,22 +696,27 @@ var geoBuiltins = map[string]builtinDefinition{
 	"postgis_version":            returnCompatibilityFixedStringBuiltin("3.0 USE_GEOS=1 USE_PROJ=1 USE_STATS=1"),
 	"postgis_wagyu_version":      returnCompatibilityFixedStringBuiltin("0.4.3 (Internal)"),
 
-	//
-	// Indexing
-	//
-
 	"st_s2covering": makeBuiltin(
 		defProps(),
 		geometryOverload1(
 			func(evalCtx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(599991)
 				cfg, err := geoindex.GeometryIndexConfigForSRID(g.SRID())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(599994)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(599995)
 				}
+				__antithesis_instrumentation__.Notify(599992)
 				ret, err := geoindex.NewS2GeometryIndex(*cfg.S2Geometry).CoveringGeometry(evalCtx.Context, g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(599996)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(599997)
 				}
+				__antithesis_instrumentation__.Notify(599993)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -578,21 +729,34 @@ var geoBuiltins = map[string]builtinDefinition{
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"settings", types.String}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(599998)
 				g := tree.MustBeDGeometry(args[0])
 				params := tree.MustBeDString(args[1])
 
 				startCfg, err := geoindex.GeometryIndexConfigForSRID(g.SRID())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600002)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600003)
 				}
+				__antithesis_instrumentation__.Notify(599999)
 				cfg, err := applyGeoindexConfigStorageParams(evalCtx, *startCfg, string(params))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600004)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600005)
 				}
+				__antithesis_instrumentation__.Notify(600000)
 				ret, err := geoindex.NewS2GeometryIndex(*cfg.S2Geometry).CoveringGeometry(evalCtx.Context, g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600006)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600007)
 				}
+				__antithesis_instrumentation__.Notify(600001)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -609,11 +773,16 @@ SELECT ST_S2Covering(geometry, 's2_max_level=15,s2_level_mod=3').
 		},
 		geographyOverload1(
 			func(evalCtx *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600008)
 				cfg := geoindex.DefaultGeographyIndexConfig().S2Geography
 				ret, err := geoindex.NewS2GeographyIndex(*cfg).CoveringGeography(evalCtx.Context, g.Geography)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600010)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600011)
 				}
+				__antithesis_instrumentation__.Notify(600009)
 				return tree.NewDGeography(ret), nil
 			},
 			types.Geography,
@@ -626,18 +795,27 @@ SELECT ST_S2Covering(geometry, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"geography", types.Geography}, {"settings", types.String}},
 			ReturnType: tree.FixedReturnType(types.Geography),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600012)
 				g := tree.MustBeDGeography(args[0])
 				params := tree.MustBeDString(args[1])
 
 				startCfg := geoindex.DefaultGeographyIndexConfig()
 				cfg, err := applyGeoindexConfigStorageParams(evalCtx, *startCfg, string(params))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600015)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600016)
 				}
+				__antithesis_instrumentation__.Notify(600013)
 				ret, err := geoindex.NewS2GeographyIndex(*cfg.S2Geography).CoveringGeography(evalCtx.Context, g.Geography)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600017)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600018)
 				}
+				__antithesis_instrumentation__.Notify(600014)
 				return tree.NewDGeography(ret), nil
 			},
 			Info: infoBuilder{
@@ -654,10 +832,6 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		},
 	),
 
-	//
-	// Input (Geometry)
-	//
-
 	"st_geometryfromtext": makeBuiltin(
 		defProps(),
 		geomFromWKTOverload,
@@ -665,12 +839,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"str", types.String}, {"srid", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600019)
 				s := string(tree.MustBeDString(args[0]))
 				srid := geopb.SRID(tree.MustBeDInt(args[1]))
 				g, err := geo.ParseGeometryFromEWKT(geopb.EWKT(s), srid, geo.DefaultSRIDShouldOverwrite)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600021)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600022)
 				}
+				__antithesis_instrumentation__.Notify(600020)
 				return tree.NewDGeometry(g), nil
 			},
 			Info: infoBuilder{
@@ -683,10 +862,15 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600023)
 				g, err := geo.ParseGeometryFromEWKT(geopb.EWKT(s), geopb.DefaultGeometrySRID, geo.DefaultSRIDIsHint)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600025)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600026)
 				}
+				__antithesis_instrumentation__.Notify(600024)
 				return tree.NewDGeometry(g), nil
 			},
 			types.Geometry,
@@ -703,12 +887,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"bytes", types.Bytes}, {"srid", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600027)
 				b := string(tree.MustBeDBytes(args[0]))
 				srid := geopb.SRID(tree.MustBeDInt(args[1]))
 				g, err := geo.ParseGeometryFromEWKBAndSRID(geopb.EWKB(b), srid)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600029)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600030)
 				}
+				__antithesis_instrumentation__.Notify(600028)
 				return tree.NewDGeometry(g), nil
 			},
 			Info: infoBuilder{
@@ -721,10 +910,15 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		bytesOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600031)
 				g, err := geo.ParseGeometryFromEWKB([]byte(s))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600033)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600034)
 				}
+				__antithesis_instrumentation__.Notify(600032)
 				return tree.NewDGeometry(g), nil
 			},
 			types.Geometry,
@@ -738,32 +932,49 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"val", types.String}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600035)
 				g, err := geo.ParseGeometryFromGeoJSON([]byte(tree.MustBeDString(args[0])))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600037)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600038)
 				}
+				__antithesis_instrumentation__.Notify(600036)
 				return tree.NewDGeometry(g), nil
 			},
-			// Simulate PostgreSQL's ambiguity type resolving check that prefers
-			// strings over JSON.
+
 			PreferredOverload: true,
 			Info:              infoBuilder{info: "Returns the Geometry from an GeoJSON representation."}.String(),
 			Volatility:        tree.VolatilityImmutable,
 		},
 		jsonOverload1(
 			func(_ *tree.EvalContext, s json.JSON) (tree.Datum, error) {
-				// TODO(otan): optimize to not string it first.
+				__antithesis_instrumentation__.Notify(600039)
+
 				asString, err := s.AsText()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600043)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600044)
 				}
+				__antithesis_instrumentation__.Notify(600040)
 				if asString == nil {
+					__antithesis_instrumentation__.Notify(600045)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600046)
 				}
+				__antithesis_instrumentation__.Notify(600041)
 				g, err := geo.ParseGeometryFromGeoJSON([]byte(*asString))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600047)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600048)
 				}
+				__antithesis_instrumentation__.Notify(600042)
 				return tree.NewDGeometry(g), nil
 			},
 			types.Geometry,
@@ -777,12 +988,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"x", types.Float}, {"y", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600049)
 				x := float64(tree.MustBeDFloat(args[0]))
 				y := float64(tree.MustBeDFloat(args[1]))
 				g, err := geo.MakeGeometryFromLayoutAndPointCoords(geom.XY, []float64{x, y})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600051)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600052)
 				}
+				__antithesis_instrumentation__.Notify(600050)
 				return tree.NewDGeometry(g), nil
 			},
 			Info:       infoBuilder{info: `Returns a new Point with the given X and Y coordinates.`}.String(),
@@ -792,13 +1008,18 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"x", types.Float}, {"y", types.Float}, {"z", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600053)
 				x := float64(tree.MustBeDFloat(args[0]))
 				y := float64(tree.MustBeDFloat(args[1]))
 				z := float64(tree.MustBeDFloat(args[2]))
 				g, err := geo.MakeGeometryFromLayoutAndPointCoords(geom.XYZ, []float64{x, y, z})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600055)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600056)
 				}
+				__antithesis_instrumentation__.Notify(600054)
 				return tree.NewDGeometry(g), nil
 			},
 			Info:       infoBuilder{info: `Returns a new Point with the given X, Y, and Z coordinates.`}.String(),
@@ -808,14 +1029,19 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"x", types.Float}, {"y", types.Float}, {"z", types.Float}, {"m", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600057)
 				x := float64(tree.MustBeDFloat(args[0]))
 				y := float64(tree.MustBeDFloat(args[1]))
 				z := float64(tree.MustBeDFloat(args[2]))
 				m := float64(tree.MustBeDFloat(args[3]))
 				g, err := geo.MakeGeometryFromLayoutAndPointCoords(geom.XYZM, []float64{x, y, z, m})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600059)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600060)
 				}
+				__antithesis_instrumentation__.Notify(600058)
 				return tree.NewDGeometry(g), nil
 			},
 			Info:       infoBuilder{info: `Returns a new Point with the given X, Y, Z, and M coordinates.`}.String(),
@@ -828,13 +1054,18 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"x", types.Float}, {"y", types.Float}, {"m", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600061)
 				x := float64(tree.MustBeDFloat(args[0]))
 				y := float64(tree.MustBeDFloat(args[1]))
 				m := float64(tree.MustBeDFloat(args[2]))
 				g, err := geo.MakeGeometryFromLayoutAndPointCoords(geom.XYM, []float64{x, y, m})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600063)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600064)
 				}
+				__antithesis_instrumentation__.Notify(600062)
 				return tree.NewDGeometry(g), nil
 			},
 			Info:       infoBuilder{info: `Returns a new Point with the given X, Y, and M coordinates.`}.String(),
@@ -845,10 +1076,15 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, outer *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600065)
 				g, err := geomfn.MakePolygon(outer.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600067)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600068)
 				}
+				__antithesis_instrumentation__.Notify(600066)
 				return tree.NewDGeometry(g), nil
 			},
 			types.Geometry,
@@ -864,20 +1100,31 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600069)
 				outer := tree.MustBeDGeometry(args[0])
 				interiorArr := tree.MustBeDArray(args[1])
 				interior := make([]geo.Geometry, len(interiorArr.Array))
 				for i, v := range interiorArr.Array {
+					__antithesis_instrumentation__.Notify(600072)
 					g, ok := v.(*tree.DGeometry)
 					if !ok {
+						__antithesis_instrumentation__.Notify(600074)
 						return nil, errors.Newf("argument must be LINESTRING geometries")
+					} else {
+						__antithesis_instrumentation__.Notify(600075)
 					}
+					__antithesis_instrumentation__.Notify(600073)
 					interior[i] = g.Geometry
 				}
+				__antithesis_instrumentation__.Notify(600070)
 				g, err := geomfn.MakePolygon(outer.Geometry, interior...)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600076)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600077)
 				}
+				__antithesis_instrumentation__.Notify(600071)
 				return tree.NewDGeometry(g), nil
 			},
 			Info: infoBuilder{
@@ -895,12 +1142,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600078)
 				g := tree.MustBeDGeometry(args[0])
 				srid := tree.MustBeDInt(args[1])
 				polygon, err := geomfn.MakePolygonWithSRID(g.Geometry, int(srid))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600080)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600081)
 				}
+				__antithesis_instrumentation__.Notify(600079)
 				return tree.NewDGeometry(polygon), nil
 			},
 			Info: infoBuilder{
@@ -915,7 +1167,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 	"st_geomcollfromwkb":         geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_GeometryCollection),
 	"st_linefromtext":            geometryFromTextCheckShapeBuiltin(geopb.ShapeType_LineString),
 	"st_linefromwkb":             geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_LineString),
-	"st_linestringfromtext":      geometryFromTextCheckShapeBuiltin(geopb.ShapeType_LineString), // missing from PostGIS
+	"st_linestringfromtext":      geometryFromTextCheckShapeBuiltin(geopb.ShapeType_LineString),
 	"st_linestringfromwkb":       geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_LineString),
 	"st_mlinefromtext":           geometryFromTextCheckShapeBuiltin(geopb.ShapeType_MultiLineString),
 	"st_mlinefromwkb":            geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_MultiLineString),
@@ -923,16 +1175,16 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 	"st_mpointfromwkb":           geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_MultiPoint),
 	"st_mpolyfromtext":           geometryFromTextCheckShapeBuiltin(geopb.ShapeType_MultiPolygon),
 	"st_mpolyfromwkb":            geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_MultiPolygon),
-	"st_multilinefromtext":       geometryFromTextCheckShapeBuiltin(geopb.ShapeType_MultiLineString), // missing from PostGIS
+	"st_multilinefromtext":       geometryFromTextCheckShapeBuiltin(geopb.ShapeType_MultiLineString),
 	"st_multilinefromwkb":        geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_MultiLineString),
 	"st_multilinestringfromtext": geometryFromTextCheckShapeBuiltin(geopb.ShapeType_MultiLineString),
-	"st_multilinestringfromwkb":  geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_MultiLineString), // missing from PostGIS
-	"st_multipointfromtext":      geometryFromTextCheckShapeBuiltin(geopb.ShapeType_MultiPoint),     // SRID version missing from PostGIS
+	"st_multilinestringfromwkb":  geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_MultiLineString),
+	"st_multipointfromtext":      geometryFromTextCheckShapeBuiltin(geopb.ShapeType_MultiPoint),
 	"st_multipointfromwkb":       geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_MultiPoint),
-	"st_multipolyfromtext":       geometryFromTextCheckShapeBuiltin(geopb.ShapeType_MultiPolygon), // missing from PostGIS
+	"st_multipolyfromtext":       geometryFromTextCheckShapeBuiltin(geopb.ShapeType_MultiPolygon),
 	"st_multipolyfromwkb":        geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_MultiPolygon),
 	"st_multipolygonfromtext":    geometryFromTextCheckShapeBuiltin(geopb.ShapeType_MultiPolygon),
-	"st_multipolygonfromwkb":     geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_MultiPolygon), // missing from PostGIS
+	"st_multipolygonfromwkb":     geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_MultiPolygon),
 	"st_pointfromtext":           geometryFromTextCheckShapeBuiltin(geopb.ShapeType_Point),
 	"st_pointfromwkb":            geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_Point),
 	"st_polyfromtext":            geometryFromTextCheckShapeBuiltin(geopb.ShapeType_Polygon),
@@ -940,18 +1192,19 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 	"st_polygonfromtext":         geometryFromTextCheckShapeBuiltin(geopb.ShapeType_Polygon),
 	"st_polygonfromwkb":          geometryFromWKBCheckShapeBuiltin(geopb.ShapeType_Polygon),
 
-	//
-	// Input (Geography)
-	//
-
 	"st_geographyfromtext": makeBuiltin(
 		defProps(),
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600082)
 				g, err := geo.ParseGeographyFromEWKT(geopb.EWKT(s), geopb.DefaultGeographySRID, geo.DefaultSRIDIsHint)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600084)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600085)
 				}
+				__antithesis_instrumentation__.Notify(600083)
 				return tree.NewDGeography(g), nil
 			},
 			types.Geography,
@@ -962,12 +1215,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"str", types.String}, {"srid", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Geography),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600086)
 				s := string(tree.MustBeDString(args[0]))
 				srid := geopb.SRID(tree.MustBeDInt(args[1]))
 				g, err := geo.ParseGeographyFromEWKT(geopb.EWKT(s), srid, geo.DefaultSRIDShouldOverwrite)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600088)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600089)
 				}
+				__antithesis_instrumentation__.Notify(600087)
 				return tree.NewDGeography(g), nil
 			},
 			Info: infoBuilder{
@@ -981,10 +1239,15 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600090)
 				g, err := geo.ParseGeographyFromEWKT(geopb.EWKT(s), geopb.DefaultGeographySRID, geo.DefaultSRIDIsHint)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600092)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600093)
 				}
+				__antithesis_instrumentation__.Notify(600091)
 				return tree.NewDGeography(g), nil
 			},
 			types.Geography,
@@ -996,10 +1259,15 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		bytesOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600094)
 				g, err := geo.ParseGeographyFromEWKB([]byte(s))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600096)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600097)
 				}
+				__antithesis_instrumentation__.Notify(600095)
 				return tree.NewDGeography(g), nil
 			},
 			types.Geography,
@@ -1010,12 +1278,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"bytes", types.Bytes}, {"srid", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Geography),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600098)
 				b := string(tree.MustBeDBytes(args[0]))
 				srid := geopb.SRID(tree.MustBeDInt(args[1]))
 				g, err := geo.ParseGeographyFromEWKBAndSRID(geopb.EWKB(b), srid)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600100)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600101)
 				}
+				__antithesis_instrumentation__.Notify(600099)
 				return tree.NewDGeography(g), nil
 			},
 			Info: infoBuilder{
@@ -1028,10 +1301,15 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		bytesOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600102)
 				g, err := geo.ParseGeographyFromEWKB([]byte(s))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600104)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600105)
 				}
+				__antithesis_instrumentation__.Notify(600103)
 				return tree.NewDGeography(g), nil
 			},
 			types.Geography,
@@ -1043,10 +1321,15 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		stringOverload1(
 			func(_ *tree.EvalContext, s string) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600106)
 				g, err := geo.ParseGeographyFromGeoJSON([]byte(s))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600108)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600109)
 				}
+				__antithesis_instrumentation__.Notify(600107)
 				return tree.NewDGeography(g), nil
 			},
 			types.Geography,
@@ -1055,18 +1338,31 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		),
 		jsonOverload1(
 			func(_ *tree.EvalContext, s json.JSON) (tree.Datum, error) {
-				// TODO(otan): optimize to not string it first.
+				__antithesis_instrumentation__.Notify(600110)
+
 				asString, err := s.AsText()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600114)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600115)
 				}
+				__antithesis_instrumentation__.Notify(600111)
 				if asString == nil {
+					__antithesis_instrumentation__.Notify(600116)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600117)
 				}
+				__antithesis_instrumentation__.Notify(600112)
 				g, err := geo.ParseGeographyFromGeoJSON([]byte(*asString))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600118)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600119)
 				}
+				__antithesis_instrumentation__.Notify(600113)
 				return tree.NewDGeography(g), nil
 			},
 			types.Geography,
@@ -1080,12 +1376,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"x", types.Float}, {"y", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600120)
 				x := float64(tree.MustBeDFloat(args[0]))
 				y := float64(tree.MustBeDFloat(args[1]))
 				g, err := geo.MakeGeometryFromPointCoords(x, y)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600122)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600123)
 				}
+				__antithesis_instrumentation__.Notify(600121)
 				return tree.NewDGeometry(g), nil
 			},
 			Info:       infoBuilder{info: `Returns a new Point with the given X and Y coordinates.`}.String(),
@@ -1101,12 +1402,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600124)
 				g := tree.MustBeDString(args[0])
 				p := tree.MustBeDInt(args[1])
 				ret, err := geo.ParseGeometryPointFromGeoHash(string(g), int(p))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600126)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600127)
 				}
+				__antithesis_instrumentation__.Notify(600125)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -1120,12 +1426,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600128)
 				g := tree.MustBeDString(args[0])
 				p := len(string(g))
 				ret, err := geo.ParseGeometryPointFromGeoHash(string(g), p)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600130)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600131)
 				}
+				__antithesis_instrumentation__.Notify(600129)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -1143,16 +1454,25 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600132)
 				g := tree.MustBeDString(args[0])
 				p := tree.MustBeDInt(args[1])
 				bbox, err := geo.ParseCartesianBoundingBoxFromGeoHash(string(g), int(p))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600135)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600136)
 				}
+				__antithesis_instrumentation__.Notify(600133)
 				ret, err := geo.MakeGeometryFromGeomT(bbox.ToGeomT(geopb.DefaultGeometrySRID))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600137)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600138)
 				}
+				__antithesis_instrumentation__.Notify(600134)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -1166,16 +1486,25 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600139)
 				g := tree.MustBeDString(args[0])
 				p := len(string(g))
 				bbox, err := geo.ParseCartesianBoundingBoxFromGeoHash(string(g), p)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600142)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600143)
 				}
+				__antithesis_instrumentation__.Notify(600140)
 				ret, err := geo.MakeGeometryFromGeomT(bbox.ToGeomT(geopb.DefaultGeometrySRID))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600144)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600145)
 				}
+				__antithesis_instrumentation__.Notify(600141)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -1193,23 +1522,34 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Box2D),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600146)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(600150)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600151)
 				}
+				__antithesis_instrumentation__.Notify(600147)
 
 				g := tree.MustBeDString(args[0])
 
-				// Precision is allowed to be NULL, in that case treat it as if the
-				// argument had not been passed in at all
 				p := len(string(g))
 				if args[1] != tree.DNull {
+					__antithesis_instrumentation__.Notify(600152)
 					p = int(tree.MustBeDInt(args[1]))
+				} else {
+					__antithesis_instrumentation__.Notify(600153)
 				}
+				__antithesis_instrumentation__.Notify(600148)
 
 				bbox, err := geo.ParseCartesianBoundingBoxFromGeoHash(string(g), p)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600154)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600155)
 				}
+				__antithesis_instrumentation__.Notify(600149)
 				return tree.NewDBox2D(bbox), nil
 			},
 			Info: infoBuilder{
@@ -1223,15 +1563,24 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Box2D),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600156)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(600159)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600160)
 				}
+				__antithesis_instrumentation__.Notify(600157)
 				g := tree.MustBeDString(args[0])
 				p := len(string(g))
 				bbox, err := geo.ParseCartesianBoundingBoxFromGeoHash(string(g), p)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600161)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600162)
 				}
+				__antithesis_instrumentation__.Notify(600158)
 				return tree.NewDBox2D(bbox), nil
 			},
 			Info: infoBuilder{
@@ -1241,14 +1590,11 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		},
 	),
 
-	//
-	// Output
-	//
-
 	"st_astext": makeBuiltin(
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600163)
 				wkt, err := geo.SpatialObjectToWKT(g.Geometry.SpatialObject(), defaultWKTDecimalDigits)
 				return tree.NewDString(string(wkt)), err
 			},
@@ -1265,6 +1611,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600164)
 				g := tree.MustBeDGeometry(args[0])
 				maxDecimalDigits := int(tree.MustBeDInt(args[1]))
 				wkt, err := geo.SpatialObjectToWKT(g.Geometry.SpatialObject(), fitMaxDecimalDigitsToBounds(maxDecimalDigits))
@@ -1277,6 +1624,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		},
 		geographyOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600165)
 				wkt, err := geo.SpatialObjectToWKT(g.Geography.SpatialObject(), defaultWKTDecimalDigits)
 				return tree.NewDString(string(wkt)), err
 			},
@@ -1293,6 +1641,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600166)
 				g := tree.MustBeDGeography(args[0])
 				maxDecimalDigits := int(tree.MustBeDInt(args[1]))
 				wkt, err := geo.SpatialObjectToWKT(g.Geography.SpatialObject(), fitMaxDecimalDigitsToBounds(maxDecimalDigits))
@@ -1308,6 +1657,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600167)
 				ewkt, err := geo.SpatialObjectToEWKT(g.Geometry.SpatialObject(), defaultWKTDecimalDigits)
 				return tree.NewDString(string(ewkt)), err
 			},
@@ -1324,6 +1674,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600168)
 				g := tree.MustBeDGeometry(args[0])
 				maxDecimalDigits := int(tree.MustBeDInt(args[1]))
 				ewkt, err := geo.SpatialObjectToEWKT(g.Geometry.SpatialObject(), fitMaxDecimalDigitsToBounds(maxDecimalDigits))
@@ -1336,6 +1687,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		},
 		geographyOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600169)
 				ewkt, err := geo.SpatialObjectToEWKT(g.Geography.SpatialObject(), defaultWKTDecimalDigits)
 				return tree.NewDString(string(ewkt)), err
 			},
@@ -1352,6 +1704,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600170)
 				g := tree.MustBeDGeography(args[0])
 				maxDecimalDigits := int(tree.MustBeDInt(args[1]))
 				ewkt, err := geo.SpatialObjectToEWKT(g.Geography.SpatialObject(), fitMaxDecimalDigitsToBounds(maxDecimalDigits))
@@ -1367,6 +1720,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600171)
 				wkb, err := geo.SpatialObjectToWKB(g.Geometry.SpatialObject(), geo.DefaultEWKBEncodingFormat)
 				return tree.NewDBytes(tree.DBytes(wkb)), err
 			},
@@ -1376,6 +1730,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		),
 		geographyOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600172)
 				wkb, err := geo.SpatialObjectToWKB(g.Geography.SpatialObject(), geo.DefaultEWKBEncodingFormat)
 				return tree.NewDBytes(tree.DBytes(wkb)), err
 			},
@@ -1390,6 +1745,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600173)
 				g := tree.MustBeDGeometry(args[0])
 				text := string(tree.MustBeDString(args[1]))
 
@@ -1409,6 +1765,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600174)
 				g := tree.MustBeDGeography(args[0])
 				text := string(tree.MustBeDString(args[1]))
 
@@ -1426,6 +1783,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600175)
 				return tree.NewDBytes(tree.DBytes(g.EWKB())), nil
 			},
 			types.Bytes,
@@ -1434,6 +1792,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		),
 		geographyOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600176)
 				return tree.NewDBytes(tree.DBytes(g.EWKB())), nil
 			},
 			types.Bytes,
@@ -1445,6 +1804,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600177)
 				hexwkb, err := geo.SpatialObjectToWKBHex(g.Geometry.SpatialObject())
 				return tree.NewDString(hexwkb), err
 			},
@@ -1454,6 +1814,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		),
 		geographyOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600178)
 				hexwkb, err := geo.SpatialObjectToWKBHex(g.Geography.SpatialObject())
 				return tree.NewDString(hexwkb), err
 			},
@@ -1466,6 +1827,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600179)
 				return tree.NewDString(g.Geometry.EWKBHex()), nil
 			},
 			types.String,
@@ -1474,6 +1836,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		),
 		geographyOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600180)
 				return tree.NewDString(g.Geography.EWKBHex()), nil
 			},
 			types.String,
@@ -1487,23 +1850,36 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600181)
 				g := tree.MustBeDGeometry(args[0])
 				text := string(tree.MustBeDString(args[1]))
 
 				byteOrder := geo.StringToByteOrder(text)
 				if byteOrder == geo.DefaultEWKBEncodingFormat {
+					__antithesis_instrumentation__.Notify(600185)
 					return tree.NewDString(fmt.Sprintf("%X", g.EWKB())), nil
+				} else {
+					__antithesis_instrumentation__.Notify(600186)
 				}
+				__antithesis_instrumentation__.Notify(600182)
 
 				geomT, err := g.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600187)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600188)
 				}
+				__antithesis_instrumentation__.Notify(600183)
 
 				b, err := ewkb.Marshal(geomT, byteOrder)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600189)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600190)
 				}
+				__antithesis_instrumentation__.Notify(600184)
 
 				return tree.NewDString(fmt.Sprintf("%X", b)), nil
 			},
@@ -1520,23 +1896,36 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600191)
 				g := tree.MustBeDGeography(args[0])
 				text := string(tree.MustBeDString(args[1]))
 
 				byteOrder := geo.StringToByteOrder(text)
 				if byteOrder == geo.DefaultEWKBEncodingFormat {
+					__antithesis_instrumentation__.Notify(600195)
 					return tree.NewDString(fmt.Sprintf("%X", g.EWKB())), nil
+				} else {
+					__antithesis_instrumentation__.Notify(600196)
 				}
+				__antithesis_instrumentation__.Notify(600192)
 
 				geomT, err := g.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600197)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600198)
 				}
+				__antithesis_instrumentation__.Notify(600193)
 
 				b, err := ewkb.Marshal(geomT, byteOrder)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600199)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600200)
 				}
+				__antithesis_instrumentation__.Notify(600194)
 
 				return tree.NewDString(fmt.Sprintf("%X", b)), nil
 			},
@@ -1556,17 +1945,26 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600201)
 				t, err := tree.MustBeDGeometry(args[0]).AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600204)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600205)
 				}
+				__antithesis_instrumentation__.Notify(600202)
 				ret, err := twkb.Marshal(
 					t,
 					twkb.MarshalOptionPrecisionXY(int64(tree.MustBeDInt(args[1]))),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600206)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600207)
 				}
+				__antithesis_instrumentation__.Notify(600203)
 				return tree.NewDBytes(tree.DBytes(ret)), nil
 			},
 			Info: infoBuilder{
@@ -1582,18 +1980,27 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600208)
 				t, err := tree.MustBeDGeometry(args[0]).AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600211)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600212)
 				}
+				__antithesis_instrumentation__.Notify(600209)
 				ret, err := twkb.Marshal(
 					t,
 					twkb.MarshalOptionPrecisionXY(int64(tree.MustBeDInt(args[1]))),
 					twkb.MarshalOptionPrecisionZ(int64(tree.MustBeDInt(args[2]))),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600213)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600214)
 				}
+				__antithesis_instrumentation__.Notify(600210)
 				return tree.NewDBytes(tree.DBytes(ret)), nil
 			},
 			Info: infoBuilder{
@@ -1610,10 +2017,15 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.Bytes),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600215)
 				t, err := tree.MustBeDGeometry(args[0]).AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600218)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600219)
 				}
+				__antithesis_instrumentation__.Notify(600216)
 				ret, err := twkb.Marshal(
 					t,
 					twkb.MarshalOptionPrecisionXY(int64(tree.MustBeDInt(args[1]))),
@@ -1621,8 +2033,12 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 					twkb.MarshalOptionPrecisionM(int64(tree.MustBeDInt(args[3]))),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600220)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600221)
 				}
+				__antithesis_instrumentation__.Notify(600217)
 				return tree.NewDBytes(tree.DBytes(ret)), nil
 			},
 			Info: infoBuilder{
@@ -1635,6 +2051,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600222)
 				kml, err := geo.SpatialObjectToKML(g.Geometry.SpatialObject())
 				return tree.NewDString(kml), err
 			},
@@ -1644,6 +2061,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		),
 		geographyOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600223)
 				kml, err := geo.SpatialObjectToKML(g.Geography.SpatialObject())
 				return tree.NewDString(kml), err
 			},
@@ -1656,10 +2074,15 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600224)
 				ret, err := geo.SpatialObjectToGeoHash(g.Geometry.SpatialObject(), geo.GeoHashAutoPrecision)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600226)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600227)
 				}
+				__antithesis_instrumentation__.Notify(600225)
 				return tree.NewDString(ret), nil
 			},
 			types.String,
@@ -1675,12 +2098,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600228)
 				g := tree.MustBeDGeometry(args[0])
 				p := tree.MustBeDInt(args[1])
 				ret, err := geo.SpatialObjectToGeoHash(g.Geometry.SpatialObject(), int(p))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600230)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600231)
 				}
+				__antithesis_instrumentation__.Notify(600229)
 				return tree.NewDString(ret), nil
 			},
 			Info: infoBuilder{
@@ -1690,10 +2118,15 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		},
 		geographyOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600232)
 				ret, err := geo.SpatialObjectToGeoHash(g.Geography.SpatialObject(), geo.GeoHashAutoPrecision)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600234)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600235)
 				}
+				__antithesis_instrumentation__.Notify(600233)
 				return tree.NewDString(ret), nil
 			},
 			types.String,
@@ -1709,12 +2142,17 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600236)
 				g := tree.MustBeDGeography(args[0])
 				p := tree.MustBeDInt(args[1])
 				ret, err := geo.SpatialObjectToGeoHash(g.Geography.SpatialObject(), int(p))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600238)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600239)
 				}
+				__antithesis_instrumentation__.Notify(600237)
 				return tree.NewDString(ret), nil
 			},
 			Info: infoBuilder{
@@ -1729,13 +2167,14 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"row", types.AnyTuple}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600240)
 				tuple := tree.MustBeDTuple(args[0])
 				return stAsGeoJSONFromTuple(
 					ctx,
 					tuple,
-					"", /* geoColumn */
+					"",
 					geo.DefaultGeoJSONDecimalDigits,
-					false, /* pretty */
+					false,
 				)
 			},
 			Info: infoBuilder{
@@ -1750,13 +2189,14 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			Types:      tree.ArgTypes{{"row", types.AnyTuple}, {"geo_column", types.String}},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600241)
 				tuple := tree.MustBeDTuple(args[0])
 				return stAsGeoJSONFromTuple(
 					ctx,
 					tuple,
 					string(tree.MustBeDString(args[1])),
 					geo.DefaultGeoJSONDecimalDigits,
-					false, /* pretty */
+					false,
 				)
 			},
 			Info: infoBuilder{
@@ -1775,13 +2215,14 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600242)
 				tuple := tree.MustBeDTuple(args[0])
 				return stAsGeoJSONFromTuple(
 					ctx,
 					tuple,
 					string(tree.MustBeDString(args[1])),
 					fitMaxDecimalDigitsToBounds(int(tree.MustBeDInt(args[2]))),
-					false, /* pretty */
+					false,
 				)
 			},
 			Info: infoBuilder{
@@ -1801,6 +2242,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600243)
 				tuple := tree.MustBeDTuple(args[0])
 				return stAsGeoJSONFromTuple(
 					ctx,
@@ -1820,6 +2262,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 		},
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600244)
 				geojson, err := geo.SpatialObjectToGeoJSON(g.Geometry.SpatialObject(), geo.DefaultGeoJSONDecimalDigits, geo.SpatialObjectToGeoJSONFlagShortCRSIfNot4326)
 				return tree.NewDString(string(geojson)), err
 			},
@@ -1839,6 +2282,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600245)
 				g := tree.MustBeDGeometry(args[0])
 				maxDecimalDigits := int(tree.MustBeDInt(args[1]))
 				geojson, err := geo.SpatialObjectToGeoJSON(g.Geometry.SpatialObject(), fitMaxDecimalDigitsToBounds(maxDecimalDigits), geo.SpatialObjectToGeoJSONFlagShortCRSIfNot4326)
@@ -1857,6 +2301,7 @@ SELECT ST_S2Covering(geography, 's2_max_level=15,s2_level_mod=3').
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600246)
 				g := tree.MustBeDGeometry(args[0])
 				maxDecimalDigits := int(tree.MustBeDInt(args[1]))
 				options := geo.SpatialObjectToGeoJSONFlag(tree.MustBeDInt(args[2]))
@@ -1877,6 +2322,7 @@ Options is a flag that can be bitmasked. The options are:
 		},
 		geographyOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600247)
 				geojson, err := geo.SpatialObjectToGeoJSON(g.Geography.SpatialObject(), geo.DefaultGeoJSONDecimalDigits, geo.SpatialObjectToGeoJSONFlagZero)
 				return tree.NewDString(string(geojson)), err
 			},
@@ -1896,6 +2342,7 @@ Options is a flag that can be bitmasked. The options are:
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600248)
 				g := tree.MustBeDGeography(args[0])
 				maxDecimalDigits := int(tree.MustBeDInt(args[1]))
 				geojson, err := geo.SpatialObjectToGeoJSON(g.Geography.SpatialObject(), fitMaxDecimalDigitsToBounds(maxDecimalDigits), geo.SpatialObjectToGeoJSONFlagZero)
@@ -1914,6 +2361,7 @@ Options is a flag that can be bitmasked. The options are:
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600249)
 				g := tree.MustBeDGeography(args[0])
 				maxDecimalDigits := int(tree.MustBeDInt(args[1]))
 				options := geo.SpatialObjectToGeoJSONFlag(tree.MustBeDInt(args[2]))
@@ -1943,14 +2391,19 @@ Options is a flag that can be bitmasked. The options are:
 			},
 			ReturnType: tree.FixedReturnType(types.Geography),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600250)
 				g := tree.MustBeDGeography(args[0])
 				distance := float64(tree.MustBeDFloat(args[1]))
 				azimuth := float64(tree.MustBeDFloat(args[2]))
 
 				geog, err := geogfn.Project(g.Geography, distance, s1.Angle(azimuth))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600252)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600253)
 				}
+				__antithesis_instrumentation__.Notify(600251)
 
 				return &tree.DGeography{Geography: geog}, nil
 			},
@@ -1968,25 +2421,35 @@ Negative azimuth values and values greater than 2π (360 degrees) are supported.
 		},
 	),
 
-	//
-	// Unary functions.
-	//
-
 	"st_ndims": makeBuiltin(
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600254)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600256)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600257)
 				}
+				__antithesis_instrumentation__.Notify(600255)
 				switch t.Layout() {
 				case geom.NoLayout:
-					if gc, ok := t.(*geom.GeometryCollection); ok && gc.Empty() {
+					__antithesis_instrumentation__.Notify(600258)
+					if gc, ok := t.(*geom.GeometryCollection); ok && func() bool {
+						__antithesis_instrumentation__.Notify(600261)
+						return gc.Empty() == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(600262)
 						return tree.NewDInt(tree.DInt(geom.XY.Stride())), nil
+					} else {
+						__antithesis_instrumentation__.Notify(600263)
 					}
+					__antithesis_instrumentation__.Notify(600259)
 					return nil, errors.AssertionFailedf("no layout found on object")
 				default:
+					__antithesis_instrumentation__.Notify(600260)
 					return tree.NewDInt(tree.DInt(t.Stride())), nil
 				}
 			},
@@ -2001,10 +2464,15 @@ Negative azimuth values and values greater than 2π (360 degrees) are supported.
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600264)
 				dim, err := geomfn.Dimension(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600266)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600267)
 				}
+				__antithesis_instrumentation__.Notify(600265)
 				return tree.NewDInt(tree.DInt(dim)), nil
 			},
 			types.Int,
@@ -2018,24 +2486,39 @@ Negative azimuth values and values greater than 2π (360 degrees) are supported.
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600268)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600271)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600272)
 				}
+				__antithesis_instrumentation__.Notify(600269)
 				switch t := t.(type) {
 				case *geom.LineString:
+					__antithesis_instrumentation__.Notify(600273)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600276)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600277)
 					}
+					__antithesis_instrumentation__.Notify(600274)
 					coord := t.Coord(0)
 					retG, err := geo.MakeGeometryFromGeomT(
 						geom.NewPointFlat(geom.XY, []float64{coord.X(), coord.Y()}).SetSRID(t.SRID()),
 					)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600278)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600279)
 					}
+					__antithesis_instrumentation__.Notify(600275)
 					return &tree.DGeometry{Geometry: retG}, nil
 				}
+				__antithesis_instrumentation__.Notify(600270)
 				return tree.DNull, nil
 			},
 			types.Geometry,
@@ -2049,15 +2532,24 @@ Negative azimuth values and values greater than 2π (360 degrees) are supported.
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600280)
 				t, err := g.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600283)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600284)
 				}
+				__antithesis_instrumentation__.Notify(600281)
 
 				summary, err := geo.Summary(t, g.SpatialObject().BoundingBox != nil, g.ShapeType2D(), false)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600285)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600286)
 				}
+				__antithesis_instrumentation__.Notify(600282)
 
 				return tree.NewDString(summary), nil
 			},
@@ -2077,15 +2569,24 @@ Flags shown square brackets after the geometry type have the following meaning:
 		),
 		geographyOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600287)
 				t, err := g.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600290)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600291)
 				}
+				__antithesis_instrumentation__.Notify(600288)
 
 				summary, err := geo.Summary(t, g.SpatialObject().BoundingBox != nil, g.ShapeType2D(), true)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600292)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600293)
 				}
+				__antithesis_instrumentation__.Notify(600289)
 
 				return tree.NewDString(summary), nil
 			},
@@ -2108,24 +2609,39 @@ Flags shown square brackets after the geometry type have the following meaning:
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600294)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600297)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600298)
 				}
+				__antithesis_instrumentation__.Notify(600295)
 				switch t := t.(type) {
 				case *geom.LineString:
+					__antithesis_instrumentation__.Notify(600299)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600302)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600303)
 					}
+					__antithesis_instrumentation__.Notify(600300)
 					coord := t.Coord(t.NumCoords() - 1)
 					retG, err := geo.MakeGeometryFromGeomT(
 						geom.NewPointFlat(geom.XY, []float64{coord.X(), coord.Y()}).SetSRID(t.SRID()),
 					)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600304)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600305)
 					}
+					__antithesis_instrumentation__.Notify(600301)
 					return &tree.DGeometry{Geometry: retG}, nil
 				}
+				__antithesis_instrumentation__.Notify(600296)
 				return tree.DNull, nil
 			},
 			types.Geometry,
@@ -2141,16 +2657,25 @@ Flags shown square brackets after the geometry type have the following meaning:
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"npoints", types.Int4}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600306)
 				geometry := tree.MustBeDGeometry(args[0]).Geometry
 				npoints := int(tree.MustBeDInt(args[1]))
 				seed := timeutil.Now().Unix()
 				generatedPoints, err := geomfn.GenerateRandomPoints(geometry, npoints, rand.New(rand.NewSource(seed)))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600308)
 					if errors.Is(err, geomfn.ErrGenerateRandomPointsInvalidPoints) {
+						__antithesis_instrumentation__.Notify(600310)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600311)
 					}
+					__antithesis_instrumentation__.Notify(600309)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600312)
 				}
+				__antithesis_instrumentation__.Notify(600307)
 				return tree.NewDGeometry(generatedPoints), nil
 			},
 			Info: infoBuilder{
@@ -2163,19 +2688,32 @@ The requested number of points must be not larger than 65336.`,
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"npoints", types.Int4}, {"seed", types.Int4}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600313)
 				geometry := tree.MustBeDGeometry(args[0]).Geometry
 				npoints := int(tree.MustBeDInt(args[1]))
 				seed := int64(tree.MustBeDInt(args[2]))
 				if seed < 1 {
+					__antithesis_instrumentation__.Notify(600316)
 					return nil, errors.New("seed must be greater than zero")
+				} else {
+					__antithesis_instrumentation__.Notify(600317)
 				}
+				__antithesis_instrumentation__.Notify(600314)
 				generatedPoints, err := geomfn.GenerateRandomPoints(geometry, npoints, rand.New(rand.NewSource(seed)))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600318)
 					if errors.Is(err, geomfn.ErrGenerateRandomPointsInvalidPoints) {
+						__antithesis_instrumentation__.Notify(600320)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600321)
 					}
+					__antithesis_instrumentation__.Notify(600319)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600322)
 				}
+				__antithesis_instrumentation__.Notify(600315)
 				return tree.NewDGeometry(generatedPoints), nil
 			},
 			Info: infoBuilder{
@@ -2189,14 +2727,21 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600323)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600326)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600327)
 				}
+				__antithesis_instrumentation__.Notify(600324)
 				switch t := t.(type) {
 				case *geom.LineString:
+					__antithesis_instrumentation__.Notify(600328)
 					return tree.NewDInt(tree.DInt(t.NumCoords())), nil
 				}
+				__antithesis_instrumentation__.Notify(600325)
 				return tree.DNull, nil
 			},
 			types.Int,
@@ -2210,7 +2755,8 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
-				// We don't support CIRCULARSTRINGs, so always return false.
+				__antithesis_instrumentation__.Notify(600329)
+
 				return tree.DBoolFalse, nil
 			},
 			types.Bool,
@@ -2224,10 +2770,15 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600330)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600332)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600333)
 				}
+				__antithesis_instrumentation__.Notify(600331)
 				return tree.NewDInt(tree.DInt(geomfn.CountVertices(t))), nil
 			},
 			types.Int,
@@ -2241,10 +2792,15 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600334)
 				points, err := geomfn.Points(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600336)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600337)
 				}
+				__antithesis_instrumentation__.Notify(600335)
 				return tree.NewDGeometry(points), nil
 			},
 			types.Geometry,
@@ -2258,25 +2814,39 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600338)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600341)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600342)
 				}
+				__antithesis_instrumentation__.Notify(600339)
 				switch t := t.(type) {
 				case *geom.Polygon:
+					__antithesis_instrumentation__.Notify(600343)
 					var lineString *geom.LineString
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600346)
 						lineString = geom.NewLineString(t.Layout())
 					} else {
+						__antithesis_instrumentation__.Notify(600347)
 						ring := t.LinearRing(0)
 						lineString = geom.NewLineStringFlat(t.Layout(), ring.FlatCoords())
 					}
+					__antithesis_instrumentation__.Notify(600344)
 					ret, err := geo.MakeGeometryFromGeomT(lineString.SetSRID(t.SRID()))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600348)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600349)
 					}
+					__antithesis_instrumentation__.Notify(600345)
 					return tree.NewDGeometry(ret), nil
 				}
+				__antithesis_instrumentation__.Notify(600340)
 				return tree.DNull, nil
 			},
 			types.Geometry,
@@ -2292,26 +2862,44 @@ The requested number of points must be not larger than 65336.`,
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"n", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600350)
 				g := tree.MustBeDGeometry(args[0])
 				n := int(tree.MustBeDInt(args[1]))
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600353)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600354)
 				}
+				__antithesis_instrumentation__.Notify(600351)
 				switch t := t.(type) {
 				case *geom.Polygon:
-					// N is 1-indexed. Ignore the exterior ring and return NULL for that case.
-					if n >= t.NumLinearRings() || n <= 0 {
+					__antithesis_instrumentation__.Notify(600355)
+
+					if n >= t.NumLinearRings() || func() bool {
+						__antithesis_instrumentation__.Notify(600358)
+						return n <= 0 == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(600359)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600360)
 					}
+					__antithesis_instrumentation__.Notify(600356)
 					ring := t.LinearRing(n)
 					lineString := geom.NewLineStringFlat(t.Layout(), ring.FlatCoords()).SetSRID(t.SRID())
 					ret, err := geo.MakeGeometryFromGeomT(lineString)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600361)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600362)
 					}
+					__antithesis_instrumentation__.Notify(600357)
 					return tree.NewDGeometry(ret), nil
 				}
+				__antithesis_instrumentation__.Notify(600352)
 				return tree.DNull, nil
 			},
 			Info: infoBuilder{
@@ -2326,26 +2914,45 @@ The requested number of points must be not larger than 65336.`,
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"n", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600363)
 				g := tree.MustBeDGeometry(args[0])
 				n := int(tree.MustBeDInt(args[1])) - 1
 				if n < 0 {
+					__antithesis_instrumentation__.Notify(600367)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600368)
 				}
+				__antithesis_instrumentation__.Notify(600364)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600369)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600370)
 				}
+				__antithesis_instrumentation__.Notify(600365)
 				switch t := t.(type) {
 				case *geom.LineString:
+					__antithesis_instrumentation__.Notify(600371)
 					if n >= t.NumCoords() {
+						__antithesis_instrumentation__.Notify(600374)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600375)
 					}
+					__antithesis_instrumentation__.Notify(600372)
 					g, err := geo.MakeGeometryFromGeomT(geom.NewPointFlat(t.Layout(), t.Coord(n)).SetSRID(t.SRID()))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600376)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600377)
 					}
+					__antithesis_instrumentation__.Notify(600373)
 					return tree.NewDGeometry(g), nil
 				}
+				__antithesis_instrumentation__.Notify(600366)
 				return tree.DNull, nil
 			},
 			Info: infoBuilder{
@@ -2360,62 +2967,117 @@ The requested number of points must be not larger than 65336.`,
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"n", types.Int}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600378)
 				g := tree.MustBeDGeometry(args[0])
 				n := int(tree.MustBeDInt(args[1])) - 1
 				if n < 0 {
+					__antithesis_instrumentation__.Notify(600382)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600383)
 				}
+				__antithesis_instrumentation__.Notify(600379)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600384)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600385)
 				}
+				__antithesis_instrumentation__.Notify(600380)
 				switch t := t.(type) {
 				case *geom.Point, *geom.Polygon, *geom.LineString:
+					__antithesis_instrumentation__.Notify(600386)
 					if n > 0 {
+						__antithesis_instrumentation__.Notify(600401)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600402)
 					}
+					__antithesis_instrumentation__.Notify(600387)
 					return args[0], nil
 				case *geom.MultiPoint:
+					__antithesis_instrumentation__.Notify(600388)
 					if n >= t.NumPoints() {
+						__antithesis_instrumentation__.Notify(600403)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600404)
 					}
+					__antithesis_instrumentation__.Notify(600389)
 					g, err := geo.MakeGeometryFromGeomT(t.Point(n).SetSRID(t.SRID()))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600405)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600406)
 					}
+					__antithesis_instrumentation__.Notify(600390)
 					return tree.NewDGeometry(g), nil
 				case *geom.MultiLineString:
+					__antithesis_instrumentation__.Notify(600391)
 					if n >= t.NumLineStrings() {
+						__antithesis_instrumentation__.Notify(600407)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600408)
 					}
+					__antithesis_instrumentation__.Notify(600392)
 					g, err := geo.MakeGeometryFromGeomT(t.LineString(n).SetSRID(t.SRID()))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600409)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600410)
 					}
+					__antithesis_instrumentation__.Notify(600393)
 					return tree.NewDGeometry(g), nil
 				case *geom.MultiPolygon:
+					__antithesis_instrumentation__.Notify(600394)
 					if n >= t.NumPolygons() {
+						__antithesis_instrumentation__.Notify(600411)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600412)
 					}
+					__antithesis_instrumentation__.Notify(600395)
 					g, err := geo.MakeGeometryFromGeomT(t.Polygon(n).SetSRID(t.SRID()))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600413)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600414)
 					}
+					__antithesis_instrumentation__.Notify(600396)
 					return tree.NewDGeometry(g), nil
 				case *geom.GeometryCollection:
+					__antithesis_instrumentation__.Notify(600397)
 					if n >= t.NumGeoms() {
+						__antithesis_instrumentation__.Notify(600415)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600416)
 					}
+					__antithesis_instrumentation__.Notify(600398)
 					g, err := geo.MakeGeometryFromGeomT(t.Geom(n))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600417)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600418)
 					}
+					__antithesis_instrumentation__.Notify(600399)
 					gWithSRID, err := g.CloneWithSRID(geopb.SRID(t.SRID()))
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600419)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600420)
 					}
+					__antithesis_instrumentation__.Notify(600400)
 					return tree.NewDGeometry(gWithSRID), nil
 				}
+				__antithesis_instrumentation__.Notify(600381)
 				return tree.DNull, nil
 			},
 			Info: infoBuilder{
@@ -2428,10 +3090,15 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600421)
 				ret, err := geomfn.MinimumClearance(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600423)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600424)
 				}
+				__antithesis_instrumentation__.Notify(600422)
 				return tree.NewDFloat(tree.DFloat(ret)), nil
 			},
 			types.Float,
@@ -2446,10 +3113,15 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600425)
 				ret, err := geomfn.MinimumClearanceLine(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600427)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600428)
 				}
+				__antithesis_instrumentation__.Notify(600426)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -2465,18 +3137,29 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600429)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600432)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600433)
 				}
+				__antithesis_instrumentation__.Notify(600430)
 				switch t := t.(type) {
 				case *geom.Polygon:
+					__antithesis_instrumentation__.Notify(600434)
 					numRings := t.NumLinearRings()
 					if numRings <= 1 {
+						__antithesis_instrumentation__.Notify(600436)
 						return tree.NewDInt(0), nil
+					} else {
+						__antithesis_instrumentation__.Notify(600437)
 					}
+					__antithesis_instrumentation__.Notify(600435)
 					return tree.NewDInt(tree.DInt(numRings - 1)), nil
 				}
+				__antithesis_instrumentation__.Notify(600431)
 				return tree.DNull, nil
 			},
 			types.Int,
@@ -2490,14 +3173,21 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600438)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600441)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600442)
 				}
+				__antithesis_instrumentation__.Notify(600439)
 				switch t := t.(type) {
 				case *geom.Polygon:
+					__antithesis_instrumentation__.Notify(600443)
 					return tree.NewDInt(tree.DInt(t.NumLinearRings())), nil
 				}
+				__antithesis_instrumentation__.Notify(600440)
 				return tree.NewDInt(0), nil
 			},
 			types.Int,
@@ -2511,10 +3201,15 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600444)
 				ret, err := geomfn.ForceLayout(g.Geometry, geom.XY)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600446)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600447)
 				}
+				__antithesis_instrumentation__.Notify(600445)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -2524,15 +3219,20 @@ The requested number of points must be not larger than 65336.`,
 			tree.VolatilityImmutable,
 		),
 	),
-	// TODO(ayang): see if it's possible to refactor default args
+
 	"st_force3dz": makeBuiltin(
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600448)
 				ret, err := geomfn.ForceLayout(g.Geometry, geom.XYZ)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600450)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600451)
 				}
+				__antithesis_instrumentation__.Notify(600449)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -2547,13 +3247,18 @@ The requested number of points must be not larger than 65336.`,
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"defaultZ", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600452)
 				g := tree.MustBeDGeometry(args[0])
 				defaultZ := tree.MustBeDFloat(args[1])
 
 				ret, err := geomfn.ForceLayoutWithDefaultZ(g.Geometry, geom.XYZ, float64(defaultZ))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600454)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600455)
 				}
+				__antithesis_instrumentation__.Notify(600453)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{info: "Returns a Geometry that is forced into XYZ layout. " +
@@ -2566,10 +3271,15 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600456)
 				ret, err := geomfn.ForceLayout(g.Geometry, geom.XYM)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600458)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600459)
 				}
+				__antithesis_instrumentation__.Notify(600457)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -2584,13 +3294,18 @@ The requested number of points must be not larger than 65336.`,
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"defaultM", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600460)
 				g := tree.MustBeDGeometry(args[0])
 				defaultM := tree.MustBeDFloat(args[1])
 
 				ret, err := geomfn.ForceLayoutWithDefaultM(g.Geometry, geom.XYM, float64(defaultM))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600462)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600463)
 				}
+				__antithesis_instrumentation__.Notify(600461)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{info: "Returns a Geometry that is forced into XYM layout. " +
@@ -2603,10 +3318,15 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600464)
 				ret, err := geomfn.ForceLayout(g.Geometry, geom.XYZM)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600466)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600467)
 				}
+				__antithesis_instrumentation__.Notify(600465)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -2621,13 +3341,18 @@ The requested number of points must be not larger than 65336.`,
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"defaultZ", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600468)
 				g := tree.MustBeDGeometry(args[0])
 				defaultZ := tree.MustBeDFloat(args[1])
 
 				ret, err := geomfn.ForceLayoutWithDefaultZ(g.Geometry, geom.XYZM, float64(defaultZ))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600470)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600471)
 				}
+				__antithesis_instrumentation__.Notify(600469)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{info: "Returns a Geometry that is forced into XYZ layout. " +
@@ -2639,14 +3364,19 @@ The requested number of points must be not larger than 65336.`,
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"defaultZ", types.Float}, {"defaultM", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600472)
 				g := tree.MustBeDGeometry(args[0])
 				defaultZ := tree.MustBeDFloat(args[1])
 				defaultM := tree.MustBeDFloat(args[2])
 
 				ret, err := geomfn.ForceLayoutWithDefaultZM(g.Geometry, geom.XYZM, float64(defaultZ), float64(defaultM))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600474)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600475)
 				}
+				__antithesis_instrumentation__.Notify(600473)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{info: "Returns a Geometry that is forced into XYZ layout. " +
@@ -2659,10 +3389,15 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600476)
 				ret, err := geomfn.ForcePolygonOrientation(g.Geometry, geomfn.OrientationCW)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600478)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600479)
 				}
+				__antithesis_instrumentation__.Notify(600477)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -2676,10 +3411,15 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600480)
 				ret, err := geomfn.ForcePolygonOrientation(g.Geometry, geomfn.OrientationCCW)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600482)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600483)
 				}
+				__antithesis_instrumentation__.Notify(600481)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -2693,6 +3433,7 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1UnaryPredicate(
 			func(g geo.Geometry) (bool, error) {
+				__antithesis_instrumentation__.Notify(600484)
 				return geomfn.HasPolygonOrientation(g, geomfn.OrientationCW)
 			},
 			infoBuilder{
@@ -2704,6 +3445,7 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1UnaryPredicate(
 			func(g geo.Geometry) (bool, error) {
+				__antithesis_instrumentation__.Notify(600485)
 				return geomfn.HasPolygonOrientation(g, geomfn.OrientationCCW)
 			},
 			infoBuilder{
@@ -2715,47 +3457,88 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600486)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600489)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600490)
 				}
+				__antithesis_instrumentation__.Notify(600487)
 				switch t := t.(type) {
 				case *geom.Point:
+					__antithesis_instrumentation__.Notify(600491)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600505)
 						return tree.NewDInt(0), nil
+					} else {
+						__antithesis_instrumentation__.Notify(600506)
 					}
+					__antithesis_instrumentation__.Notify(600492)
 					return tree.NewDInt(1), nil
 				case *geom.LineString:
+					__antithesis_instrumentation__.Notify(600493)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600507)
 						return tree.NewDInt(0), nil
+					} else {
+						__antithesis_instrumentation__.Notify(600508)
 					}
+					__antithesis_instrumentation__.Notify(600494)
 					return tree.NewDInt(1), nil
 				case *geom.Polygon:
+					__antithesis_instrumentation__.Notify(600495)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600509)
 						return tree.NewDInt(0), nil
+					} else {
+						__antithesis_instrumentation__.Notify(600510)
 					}
+					__antithesis_instrumentation__.Notify(600496)
 					return tree.NewDInt(1), nil
 				case *geom.MultiPoint:
+					__antithesis_instrumentation__.Notify(600497)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600511)
 						return tree.NewDInt(0), nil
+					} else {
+						__antithesis_instrumentation__.Notify(600512)
 					}
+					__antithesis_instrumentation__.Notify(600498)
 					return tree.NewDInt(tree.DInt(t.NumPoints())), nil
 				case *geom.MultiLineString:
+					__antithesis_instrumentation__.Notify(600499)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600513)
 						return tree.NewDInt(0), nil
+					} else {
+						__antithesis_instrumentation__.Notify(600514)
 					}
+					__antithesis_instrumentation__.Notify(600500)
 					return tree.NewDInt(tree.DInt(t.NumLineStrings())), nil
 				case *geom.MultiPolygon:
+					__antithesis_instrumentation__.Notify(600501)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600515)
 						return tree.NewDInt(0), nil
+					} else {
+						__antithesis_instrumentation__.Notify(600516)
 					}
+					__antithesis_instrumentation__.Notify(600502)
 					return tree.NewDInt(tree.DInt(t.NumPolygons())), nil
 				case *geom.GeometryCollection:
+					__antithesis_instrumentation__.Notify(600503)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600517)
 						return tree.NewDInt(0), nil
+					} else {
+						__antithesis_instrumentation__.Notify(600518)
 					}
+					__antithesis_instrumentation__.Notify(600504)
 					return tree.NewDInt(tree.DInt(t.NumGeoms())), nil
 				}
+				__antithesis_instrumentation__.Notify(600488)
 				return nil, errors.Newf("unknown type: %T", t)
 			},
 			types.Int,
@@ -2769,18 +3552,29 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600519)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600522)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600523)
 				}
+				__antithesis_instrumentation__.Notify(600520)
 				switch t := t.(type) {
 				case *geom.Point:
+					__antithesis_instrumentation__.Notify(600524)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600526)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600527)
 					}
+					__antithesis_instrumentation__.Notify(600525)
 					return tree.NewDFloat(tree.DFloat(t.X())), nil
 				}
-				// Ideally we should return NULL here, but following PostGIS on this.
+				__antithesis_instrumentation__.Notify(600521)
+
 				return nil, errors.Newf("argument to st_x() must have shape POINT")
 			},
 			types.Float,
@@ -2794,18 +3588,29 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600528)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600531)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600532)
 				}
+				__antithesis_instrumentation__.Notify(600529)
 				switch t := t.(type) {
 				case *geom.Point:
+					__antithesis_instrumentation__.Notify(600533)
 					if t.Empty() {
+						__antithesis_instrumentation__.Notify(600535)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600536)
 					}
+					__antithesis_instrumentation__.Notify(600534)
 					return tree.NewDFloat(tree.DFloat(t.Y())), nil
 				}
-				// Ideally we should return NULL here, but following PostGIS on this.
+				__antithesis_instrumentation__.Notify(600530)
+
 				return nil, errors.Newf("argument to st_y() must have shape POINT")
 			},
 			types.Float,
@@ -2819,18 +3624,32 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(evalContext *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600537)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600540)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600541)
 				}
+				__antithesis_instrumentation__.Notify(600538)
 				switch t := t.(type) {
 				case *geom.Point:
-					if t.Empty() || t.Layout().ZIndex() == -1 {
+					__antithesis_instrumentation__.Notify(600542)
+					if t.Empty() || func() bool {
+						__antithesis_instrumentation__.Notify(600544)
+						return t.Layout().ZIndex() == -1 == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(600545)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600546)
 					}
+					__antithesis_instrumentation__.Notify(600543)
 					return tree.NewDFloat(tree.DFloat(t.Z())), nil
 				}
-				// Ideally we should return NULL here, but following PostGIS on this.
+				__antithesis_instrumentation__.Notify(600539)
+
 				return nil, errors.Newf("argument to st_z() must have shape POINT")
 			},
 			types.Float,
@@ -2844,18 +3663,32 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(evalContext *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600547)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600550)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600551)
 				}
+				__antithesis_instrumentation__.Notify(600548)
 				switch t := t.(type) {
 				case *geom.Point:
-					if t.Empty() || t.Layout().MIndex() == -1 {
+					__antithesis_instrumentation__.Notify(600552)
+					if t.Empty() || func() bool {
+						__antithesis_instrumentation__.Notify(600554)
+						return t.Layout().MIndex() == -1 == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(600555)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600556)
 					}
+					__antithesis_instrumentation__.Notify(600553)
 					return tree.NewDFloat(tree.DFloat(t.M())), nil
 				}
-				// Ideally we should return NULL here, but following PostGIS on this.
+				__antithesis_instrumentation__.Notify(600549)
+
 				return nil, errors.Newf("argument to st_m() must have shape POINT")
 			},
 			types.Float,
@@ -2869,20 +3702,30 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(evalContext *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600557)
 				t, err := g.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600559)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600560)
 				}
+				__antithesis_instrumentation__.Notify(600558)
 				switch layout := t.Layout(); layout {
 				case geom.XY:
+					__antithesis_instrumentation__.Notify(600561)
 					return tree.NewDInt(tree.DInt(0)), nil
 				case geom.XYM:
+					__antithesis_instrumentation__.Notify(600562)
 					return tree.NewDInt(tree.DInt(1)), nil
 				case geom.XYZ:
+					__antithesis_instrumentation__.Notify(600563)
 					return tree.NewDInt(tree.DInt(2)), nil
 				case geom.XYZM:
+					__antithesis_instrumentation__.Notify(600564)
 					return tree.NewDInt(tree.DInt(3)), nil
 				default:
+					__antithesis_instrumentation__.Notify(600565)
 					return nil, errors.Newf("unknown geom.Layout %d", layout)
 				}
 			},
@@ -2898,10 +3741,15 @@ The requested number of points must be not larger than 65336.`,
 		append(
 			geographyOverload1WithUseSpheroid(
 				func(ctx *tree.EvalContext, g *tree.DGeography, useSphereOrSpheroid geogfn.UseSphereOrSpheroid) (tree.Datum, error) {
+					__antithesis_instrumentation__.Notify(600566)
 					ret, err := geogfn.Area(g.Geography, useSphereOrSpheroid)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600568)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600569)
 					}
+					__antithesis_instrumentation__.Notify(600567)
 					return tree.NewDFloat(tree.DFloat(ret)), nil
 				},
 				types.Float,
@@ -2922,10 +3770,15 @@ The requested number of points must be not larger than 65336.`,
 		append(
 			geographyOverload1WithUseSpheroid(
 				func(ctx *tree.EvalContext, g *tree.DGeography, useSphereOrSpheroid geogfn.UseSphereOrSpheroid) (tree.Datum, error) {
+					__antithesis_instrumentation__.Notify(600570)
 					ret, err := geogfn.Length(g.Geography, useSphereOrSpheroid)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600572)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600573)
 					}
+					__antithesis_instrumentation__.Notify(600571)
 					return tree.NewDFloat(tree.DFloat(ret)), nil
 				},
 				types.Float,
@@ -2946,10 +3799,15 @@ The requested number of points must be not larger than 65336.`,
 		append(
 			geographyOverload1WithUseSpheroid(
 				func(ctx *tree.EvalContext, g *tree.DGeography, useSphereOrSpheroid geogfn.UseSphereOrSpheroid) (tree.Datum, error) {
+					__antithesis_instrumentation__.Notify(600574)
 					ret, err := geogfn.Perimeter(g.Geography, useSphereOrSpheroid)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600576)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600577)
 					}
+					__antithesis_instrumentation__.Notify(600575)
 					return tree.NewDFloat(tree.DFloat(ret)), nil
 				},
 				types.Float,
@@ -2969,6 +3827,7 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geographyOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600578)
 				return tree.NewDInt(tree.DInt(g.SRID())), nil
 			},
 			types.Int,
@@ -2979,6 +3838,7 @@ The requested number of points must be not larger than 65336.`,
 		),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600579)
 				return tree.NewDInt(tree.DInt(g.SRID())), nil
 			},
 			types.Int,
@@ -2992,6 +3852,7 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600580)
 				return tree.NewDString(g.ShapeType2D().String()), nil
 			},
 			types.String,
@@ -3006,6 +3867,7 @@ The requested number of points must be not larger than 65336.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600581)
 				return tree.NewDString(fmt.Sprintf("ST_%s", g.ShapeType2D().String())), nil
 			},
 			types.String,
@@ -3022,14 +3884,19 @@ The requested number of points must be not larger than 65336.`,
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"start", types.Float}, {"end", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600582)
 				g := tree.MustBeDGeometry(args[0])
 				start := tree.MustBeDFloat(args[1])
 				end := tree.MustBeDFloat(args[2])
 
 				ret, err := geomfn.AddMeasure(g.Geometry, float64(start), float64(end))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600584)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600585)
 				}
+				__antithesis_instrumentation__.Notify(600583)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{info: "Returns a copy of a LineString or MultiLineString with measure coordinates " +
@@ -3062,13 +3929,18 @@ Note If the result has zero or one points, it will be returned as a POINT. If it
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600586)
 				g := tree.MustBeDGeometry(args[0])
 				fraction := float64(tree.MustBeDFloat(args[1]))
 				repeat := bool(tree.MustBeDBool(args[2]))
 				interpolatedPoints, err := geomfn.LineInterpolatePoints(g.Geometry, fraction, repeat)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600588)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600589)
 				}
+				__antithesis_instrumentation__.Notify(600587)
 				return tree.NewDGeometry(interpolatedPoints), nil
 			},
 			Info: infoBuilder{
@@ -3085,10 +3957,15 @@ Note If the result has zero or one points, it will be returned as a POINT. If it
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600590)
 				multi, err := geomfn.Multi(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600592)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600593)
 				}
+				__antithesis_instrumentation__.Notify(600591)
 				return &tree.DGeometry{Geometry: multi}, nil
 			},
 			types.Geometry,
@@ -3108,12 +3985,17 @@ Note If the result has zero or one points, it will be returned as a POINT. If it
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600594)
 				g := tree.MustBeDGeometry(args[0])
 				shapeType := tree.MustBeDInt(args[1])
 				res, err := geomfn.CollectionExtract(g.Geometry, geopb.ShapeType(shapeType))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600596)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600597)
 				}
+				__antithesis_instrumentation__.Notify(600595)
 				return &tree.DGeometry{Geometry: res}, nil
 			},
 			Info: infoBuilder{
@@ -3128,10 +4010,15 @@ Note If the result has zero or one points, it will be returned as a POINT. If it
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600598)
 				ret, err := geomfn.CollectionHomogenize(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600600)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600601)
 				}
+				__antithesis_instrumentation__.Notify(600599)
 				return &tree.DGeometry{Geometry: ret}, nil
 			},
 			types.Geometry,
@@ -3147,10 +4034,15 @@ Note If the result has zero or one points, it will be returned as a POINT. If it
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600602)
 				ret, err := geomfn.ForceCollection(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600604)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600605)
 				}
+				__antithesis_instrumentation__.Notify(600603)
 				return &tree.DGeometry{Geometry: ret}, nil
 			},
 			types.Geometry,
@@ -3164,10 +4056,15 @@ Note If the result has zero or one points, it will be returned as a POINT. If it
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600606)
 				line, err := geomfn.LineStringFromMultiPoint(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600608)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600609)
 				}
+				__antithesis_instrumentation__.Notify(600607)
 				return &tree.DGeometry{Geometry: line}, nil
 			},
 			types.Geometry,
@@ -3181,10 +4078,15 @@ Note If the result has zero or one points, it will be returned as a POINT. If it
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600610)
 				line, err := geomfn.LineMerge(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600612)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600613)
 				}
+				__antithesis_instrumentation__.Notify(600611)
 				return &tree.DGeometry{Geometry: line}, nil
 			},
 			types.Geometry,
@@ -3201,10 +4103,15 @@ Note If the result has zero or one points, it will be returned as a POINT. If it
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600614)
 				ret, err := geomfn.ShiftLongitude(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600616)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600617)
 				}
+				__antithesis_instrumentation__.Notify(600615)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -3217,9 +4124,6 @@ Note If the result has zero or one points, it will be returned as a POINT. If it
 		),
 	),
 
-	//
-	// Unary predicates
-	//
 	"st_isclosed": makeBuiltin(
 		defProps(),
 		geometryOverload1UnaryPredicate(
@@ -3272,21 +4176,27 @@ Note If the result has zero or one points, it will be returned as a POINT. If it
 		),
 	),
 
-	//
-	// Binary functions
-	//
 	"st_azimuth": makeBuiltin(
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600618)
 				azimuth, err := geomfn.Azimuth(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600621)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600622)
 				}
+				__antithesis_instrumentation__.Notify(600619)
 
 				if azimuth == nil {
+					__antithesis_instrumentation__.Notify(600623)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600624)
 				}
+				__antithesis_instrumentation__.Notify(600620)
 
 				return tree.NewDFloat(tree.DFloat(*azimuth)), nil
 			},
@@ -3300,14 +4210,23 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 		),
 		geographyOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600625)
 				azimuth, err := geogfn.Azimuth(a.Geography, b.Geography)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600628)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600629)
 				}
+				__antithesis_instrumentation__.Notify(600626)
 
 				if azimuth == nil {
+					__antithesis_instrumentation__.Notify(600630)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600631)
 				}
+				__antithesis_instrumentation__.Notify(600627)
 
 				return tree.NewDFloat(tree.DFloat(*azimuth)), nil
 			},
@@ -3325,13 +4244,22 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600632)
 				ret, err := geomfn.MinDistance(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600634)
 					if geo.IsEmptyGeometryError(err) {
+						__antithesis_instrumentation__.Notify(600636)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600637)
 					}
+					__antithesis_instrumentation__.Notify(600635)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600638)
 				}
+				__antithesis_instrumentation__.Notify(600633)
 				return tree.NewDFloat(tree.DFloat(ret)), nil
 			},
 			types.Float,
@@ -3342,13 +4270,22 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 		),
 		geographyOverload2(
 			func(ctx *tree.EvalContext, a *tree.DGeography, b *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600639)
 				ret, err := geogfn.Distance(a.Geography, b.Geography, geogfn.UseSpheroid)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600641)
 					if geo.IsEmptyGeometryError(err) {
+						__antithesis_instrumentation__.Notify(600643)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600644)
 					}
+					__antithesis_instrumentation__.Notify(600642)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600645)
 				}
+				__antithesis_instrumentation__.Notify(600640)
 				return tree.NewDFloat(tree.DFloat(ret)), nil
 			},
 			types.Float,
@@ -3366,17 +4303,26 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 			},
 			ReturnType: tree.FixedReturnType(types.Float),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600646)
 				a := tree.MustBeDGeography(args[0])
 				b := tree.MustBeDGeography(args[1])
 				useSpheroid := tree.MustBeDBool(args[2])
 
 				ret, err := geogfn.Distance(a.Geography, b.Geography, toUseSphereOrSpheroid(useSpheroid))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600648)
 					if geo.IsEmptyGeometryError(err) {
+						__antithesis_instrumentation__.Notify(600650)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600651)
 					}
+					__antithesis_instrumentation__.Notify(600649)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600652)
 				}
+				__antithesis_instrumentation__.Notify(600647)
 				return tree.NewDFloat(tree.DFloat(ret)), nil
 			},
 			Info: infoBuilder{
@@ -3390,21 +4336,38 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600653)
 				aGeog, err := a.Geometry.AsGeography()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600657)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600658)
 				}
+				__antithesis_instrumentation__.Notify(600654)
 				bGeog, err := b.Geometry.AsGeography()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600659)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600660)
 				}
+				__antithesis_instrumentation__.Notify(600655)
 				ret, err := geogfn.Distance(aGeog, bGeog, geogfn.UseSphere)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600661)
 					if geo.IsEmptyGeometryError(err) {
+						__antithesis_instrumentation__.Notify(600663)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600664)
 					}
+					__antithesis_instrumentation__.Notify(600662)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600665)
 				}
+				__antithesis_instrumentation__.Notify(600656)
 				return tree.NewDFloat(tree.DFloat(ret)), nil
 			},
 			types.Float,
@@ -3420,21 +4383,38 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600666)
 				aGeog, err := a.Geometry.AsGeography()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600670)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600671)
 				}
+				__antithesis_instrumentation__.Notify(600667)
 				bGeog, err := b.Geometry.AsGeography()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600672)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600673)
 				}
+				__antithesis_instrumentation__.Notify(600668)
 				ret, err := geogfn.Distance(aGeog, bGeog, geogfn.UseSpheroid)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600674)
 					if geo.IsEmptyGeometryError(err) {
+						__antithesis_instrumentation__.Notify(600676)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600677)
 					}
+					__antithesis_instrumentation__.Notify(600675)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600678)
 				}
+				__antithesis_instrumentation__.Notify(600669)
 				return tree.NewDFloat(tree.DFloat(ret)), nil
 			},
 			types.Float,
@@ -3450,13 +4430,22 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600679)
 				ret, err := geomfn.FrechetDistance(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600682)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600683)
 				}
+				__antithesis_instrumentation__.Notify(600680)
 				if ret == nil {
+					__antithesis_instrumentation__.Notify(600684)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600685)
 				}
+				__antithesis_instrumentation__.Notify(600681)
 				return tree.NewDFloat(tree.DFloat(*ret)), nil
 			},
 			types.Float,
@@ -3474,17 +4463,26 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 			},
 			ReturnType: tree.FixedReturnType(types.Float),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600686)
 				a := tree.MustBeDGeometry(args[0])
 				b := tree.MustBeDGeometry(args[1])
 				densifyFrac := tree.MustBeDFloat(args[2])
 
 				ret, err := geomfn.FrechetDistanceDensify(a.Geometry, b.Geometry, float64(densifyFrac))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600689)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600690)
 				}
+				__antithesis_instrumentation__.Notify(600687)
 				if ret == nil {
+					__antithesis_instrumentation__.Notify(600691)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600692)
 				}
+				__antithesis_instrumentation__.Notify(600688)
 				return tree.NewDFloat(tree.DFloat(*ret)), nil
 			},
 			Info: infoBuilder{
@@ -3501,13 +4499,22 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600693)
 				ret, err := geomfn.HausdorffDistance(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600696)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600697)
 				}
+				__antithesis_instrumentation__.Notify(600694)
 				if ret == nil {
+					__antithesis_instrumentation__.Notify(600698)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600699)
 				}
+				__antithesis_instrumentation__.Notify(600695)
 				return tree.NewDFloat(tree.DFloat(*ret)), nil
 			},
 			types.Float,
@@ -3525,17 +4532,26 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 			},
 			ReturnType: tree.FixedReturnType(types.Float),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600700)
 				a := tree.MustBeDGeometry(args[0])
 				b := tree.MustBeDGeometry(args[1])
 				densifyFrac := tree.MustBeDFloat(args[2])
 
 				ret, err := geomfn.HausdorffDistanceDensify(a.Geometry, b.Geometry, float64(densifyFrac))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600703)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600704)
 				}
+				__antithesis_instrumentation__.Notify(600701)
 				if ret == nil {
+					__antithesis_instrumentation__.Notify(600705)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600706)
 				}
+				__antithesis_instrumentation__.Notify(600702)
 				return tree.NewDFloat(tree.DFloat(*ret)), nil
 			},
 			Info: infoBuilder{
@@ -3550,13 +4566,22 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600707)
 				ret, err := geomfn.MaxDistance(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600709)
 					if geo.IsEmptyGeometryError(err) {
+						__antithesis_instrumentation__.Notify(600711)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600712)
 					}
+					__antithesis_instrumentation__.Notify(600710)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600713)
 				}
+				__antithesis_instrumentation__.Notify(600708)
 				return tree.NewDFloat(tree.DFloat(ret)), nil
 			},
 			types.Float,
@@ -3571,13 +4596,22 @@ The azimuth is angle is referenced from north, and is positive clockwise: North 
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600714)
 				longestLineString, err := geomfn.LongestLineString(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600716)
 					if geo.IsEmptyGeometryError(err) {
+						__antithesis_instrumentation__.Notify(600718)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600719)
 					}
+					__antithesis_instrumentation__.Notify(600717)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600720)
 				}
+				__antithesis_instrumentation__.Notify(600715)
 				return tree.NewDGeometry(longestLineString), nil
 			},
 			types.Geometry,
@@ -3596,13 +4630,22 @@ Note if geometries are the same, it will return the LineString with the maximum 
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600721)
 				shortestLineString, err := geomfn.ShortestLineString(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600723)
 					if geo.IsEmptyGeometryError(err) {
+						__antithesis_instrumentation__.Notify(600725)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600726)
 					}
+					__antithesis_instrumentation__.Notify(600724)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600727)
 				}
+				__antithesis_instrumentation__.Notify(600722)
 				return tree.NewDGeometry(shortestLineString), nil
 			},
 			types.Geometry,
@@ -3617,10 +4660,6 @@ Note if geometries are the same, it will return the LineString with the minimum 
 			tree.VolatilityImmutable,
 		),
 	),
-
-	//
-	// Binary Predicates
-	//
 
 	"st_covers": makeBuiltin(
 		defProps(),
@@ -3708,13 +4747,18 @@ Note if geometries are the same, it will return the LineString with the minimum 
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600728)
 				a := tree.MustBeDGeometry(args[0])
 				b := tree.MustBeDGeometry(args[1])
 				dist := tree.MustBeDFloat(args[2])
 				ret, err := geomfn.DFullyWithin(a.Geometry, b.Geometry, float64(dist), geo.FnInclusive)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600730)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600731)
 				}
+				__antithesis_instrumentation__.Notify(600729)
 				return tree.MakeDBool(tree.DBool(ret)), nil
 			},
 			Info: infoBuilder{
@@ -3750,10 +4794,15 @@ Note if geometries are the same, it will return the LineString with the minimum 
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600732)
 				ret, err := geomfn.Normalize(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600734)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600735)
 				}
+				__antithesis_instrumentation__.Notify(600733)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -3816,18 +4865,19 @@ Note if geometries are the same, it will return the LineString with the minimum 
 		),
 	),
 
-	//
-	// DE-9IM related
-	//
-
 	"st_relate": makeBuiltin(
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a *tree.DGeometry, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600736)
 				ret, err := geomfn.Relate(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600738)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600739)
 				}
+				__antithesis_instrumentation__.Notify(600737)
 				return tree.NewDString(ret), nil
 			},
 			types.String,
@@ -3845,13 +4895,18 @@ Note if geometries are the same, it will return the LineString with the minimum 
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600740)
 				a := tree.MustBeDGeometry(args[0])
 				b := tree.MustBeDGeometry(args[1])
 				pattern := tree.MustBeDString(args[2])
 				ret, err := geomfn.RelatePattern(a.Geometry, b.Geometry, string(pattern))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600742)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600743)
 				}
+				__antithesis_instrumentation__.Notify(600741)
 				return tree.MakeDBool(tree.DBool(ret)), nil
 			},
 			Info: infoBuilder{
@@ -3868,13 +4923,18 @@ Note if geometries are the same, it will return the LineString with the minimum 
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600744)
 				a := tree.MustBeDGeometry(args[0])
 				b := tree.MustBeDGeometry(args[1])
 				bnr := tree.MustBeDInt(args[2])
 				ret, err := geomfn.RelateBoundaryNodeRule(a.Geometry, b.Geometry, int(bnr))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600746)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600747)
 				}
+				__antithesis_instrumentation__.Notify(600745)
 				return tree.NewDString(ret), nil
 			},
 			Info: infoBuilder{
@@ -3893,13 +4953,18 @@ Note if geometries are the same, it will return the LineString with the minimum 
 				{"pattern", types.String},
 			},
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600748)
 				matrix := string(tree.MustBeDString(args[0]))
 				pattern := string(tree.MustBeDString(args[1]))
 
 				matches, err := geomfn.MatchesDE9IM(matrix, pattern)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600750)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600751)
 				}
+				__antithesis_instrumentation__.Notify(600749)
 				return tree.MakeDBool(tree.DBool(matches)), nil
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
@@ -3910,18 +4975,19 @@ Note if geometries are the same, it will return the LineString with the minimum 
 		},
 	),
 
-	//
-	// Validity checks
-	//
-
 	"st_isvalid": makeBuiltin(
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600752)
 				ret, err := geomfn.IsValid(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600754)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600755)
 				}
+				__antithesis_instrumentation__.Notify(600753)
 				return tree.MakeDBool(tree.DBool(ret)), nil
 			},
 			types.Bool,
@@ -3938,12 +5004,17 @@ Note if geometries are the same, it will return the LineString with the minimum 
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600756)
 				g := tree.MustBeDGeometry(args[0])
 				flags := int(tree.MustBeDInt(args[1]))
 				validDetail, err := geomfn.IsValidDetail(g.Geometry, flags)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600758)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600759)
 				}
+				__antithesis_instrumentation__.Notify(600757)
 				return tree.MakeDBool(tree.DBool(validDetail.IsValid)), nil
 			},
 			Info: infoBuilder{
@@ -3961,10 +5032,15 @@ For flags=1, validity considers self-intersecting rings forming holes as valid a
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600760)
 				ret, err := geomfn.IsValidReason(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600762)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600763)
 				}
+				__antithesis_instrumentation__.Notify(600761)
 				return tree.NewDString(ret), nil
 			},
 			types.String,
@@ -3981,15 +5057,24 @@ For flags=1, validity considers self-intersecting rings forming holes as valid a
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600764)
 				g := tree.MustBeDGeometry(args[0])
 				flags := int(tree.MustBeDInt(args[1]))
 				validDetail, err := geomfn.IsValidDetail(g.Geometry, flags)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600767)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600768)
 				}
+				__antithesis_instrumentation__.Notify(600765)
 				if validDetail.IsValid {
+					__antithesis_instrumentation__.Notify(600769)
 					return tree.NewDString("Valid Geometry"), nil
+				} else {
+					__antithesis_instrumentation__.Notify(600770)
 				}
+				__antithesis_instrumentation__.Notify(600766)
 				return tree.NewDString(validDetail.Reason), nil
 			},
 			Info: infoBuilder{
@@ -4007,10 +5092,15 @@ For flags=1, validity considers self-intersecting rings forming holes as valid a
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600771)
 				ret, err := geomfn.IsValidTrajectory(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600773)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600774)
 				}
+				__antithesis_instrumentation__.Notify(600772)
 				return tree.MakeDBool(tree.DBool(ret)), nil
 			},
 			types.Bool,
@@ -4026,10 +5116,15 @@ Note the geometry must be a LineString with M coordinates.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600775)
 				validGeom, err := geomfn.MakeValid(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600777)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600778)
 				}
+				__antithesis_instrumentation__.Notify(600776)
 				return tree.NewDGeometry(validGeom), err
 			},
 			types.Geometry,
@@ -4041,18 +5136,19 @@ Note the geometry must be a LineString with M coordinates.`,
 		),
 	),
 
-	//
-	// Topology operations
-	//
-
 	"st_boundary": makeBuiltin(
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600779)
 				centroid, err := geomfn.Boundary(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600781)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600782)
 				}
+				__antithesis_instrumentation__.Notify(600780)
 				return tree.NewDGeometry(centroid), err
 			},
 			types.Geometry,
@@ -4068,10 +5164,15 @@ Note the geometry must be a LineString with M coordinates.`,
 		append(
 			geographyOverload1WithUseSpheroid(
 				func(ctx *tree.EvalContext, g *tree.DGeography, useSphereOrSpheroid geogfn.UseSphereOrSpheroid) (tree.Datum, error) {
+					__antithesis_instrumentation__.Notify(600783)
 					ret, err := geogfn.Centroid(g.Geography, useSphereOrSpheroid)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600785)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600786)
 					}
+					__antithesis_instrumentation__.Notify(600784)
 					return tree.NewDGeography(ret), nil
 				},
 				types.Geography,
@@ -4082,10 +5183,15 @@ Note the geometry must be a LineString with M coordinates.`,
 			),
 			geometryOverload1(
 				func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+					__antithesis_instrumentation__.Notify(600787)
 					centroid, err := geomfn.Centroid(g.Geometry)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(600789)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(600790)
 					}
+					__antithesis_instrumentation__.Notify(600788)
 					return tree.NewDGeometry(centroid), err
 				},
 				types.Geometry,
@@ -4103,12 +5209,17 @@ Note the geometry must be a LineString with M coordinates.`,
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"box2d", types.Box2D}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600791)
 				g := tree.MustBeDGeometry(args[0])
 				bbox := tree.MustBeDBox2D(args[1])
 				ret, err := geomfn.ClipByRect(g.Geometry, bbox.CartesianBoundingBox)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600793)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600794)
 				}
+				__antithesis_instrumentation__.Notify(600792)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -4121,10 +5232,15 @@ Note the geometry must be a LineString with M coordinates.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600795)
 				convexHull, err := geomfn.ConvexHull(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600797)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600798)
 				}
+				__antithesis_instrumentation__.Notify(600796)
 				return tree.NewDGeometry(convexHull), err
 			},
 			types.Geometry,
@@ -4139,10 +5255,15 @@ Note the geometry must be a LineString with M coordinates.`,
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600799)
 				diff, err := geomfn.Difference(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600801)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600802)
 				}
+				__antithesis_instrumentation__.Notify(600800)
 				return tree.NewDGeometry(diff), err
 			},
 			types.Geometry,
@@ -4157,10 +5278,15 @@ Note the geometry must be a LineString with M coordinates.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600803)
 				pointOnSurface, err := geomfn.PointOnSurface(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600805)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600806)
 				}
+				__antithesis_instrumentation__.Notify(600804)
 				return tree.NewDGeometry(pointOnSurface), err
 			},
 			types.Geometry,
@@ -4175,10 +5301,15 @@ Note the geometry must be a LineString with M coordinates.`,
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a *tree.DGeometry, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600807)
 				intersection, err := geomfn.Intersection(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600809)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600810)
 				}
+				__antithesis_instrumentation__.Notify(600808)
 				return tree.NewDGeometry(intersection), err
 			},
 			types.Geometry,
@@ -4190,31 +5321,56 @@ Note the geometry must be a LineString with M coordinates.`,
 		),
 		geographyOverload2(
 			func(ctx *tree.EvalContext, a *tree.DGeography, b *tree.DGeography) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600811)
 				proj, err := geogfn.BestGeomProjection(a.Geography.BoundingRect().Union(b.Geography.BoundingRect()))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600823)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600824)
 				}
+				__antithesis_instrumentation__.Notify(600812)
 				aProj, err := geoprojbase.Projection(a.Geography.SRID())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600825)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600826)
 				}
+				__antithesis_instrumentation__.Notify(600813)
 				bProj, err := geoprojbase.Projection(b.Geography.SRID())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600827)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600828)
 				}
+				__antithesis_instrumentation__.Notify(600814)
 				geogDefaultProj, err := geoprojbase.Projection(geopb.DefaultGeographySRID)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600829)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600830)
 				}
+				__antithesis_instrumentation__.Notify(600815)
 
 				aInGeom, err := a.Geography.AsGeometry()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600831)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600832)
 				}
+				__antithesis_instrumentation__.Notify(600816)
 				bInGeom, err := b.Geography.AsGeometry()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600833)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600834)
 				}
+				__antithesis_instrumentation__.Notify(600817)
 
 				aInProjected, err := geotransform.Transform(
 					aInGeom,
@@ -4223,8 +5379,12 @@ Note the geometry must be a LineString with M coordinates.`,
 					a.Geography.SRID(),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600835)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600836)
 				}
+				__antithesis_instrumentation__.Notify(600818)
 				bInProjected, err := geotransform.Transform(
 					bInGeom,
 					bProj.Proj4Text,
@@ -4232,13 +5392,21 @@ Note the geometry must be a LineString with M coordinates.`,
 					b.Geography.SRID(),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600837)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600838)
 				}
+				__antithesis_instrumentation__.Notify(600819)
 
 				projectedIntersection, err := geomfn.Intersection(aInProjected, bInProjected)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600839)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600840)
 				}
+				__antithesis_instrumentation__.Notify(600820)
 
 				outGeom, err := geotransform.Transform(
 					projectedIntersection,
@@ -4247,12 +5415,20 @@ Note the geometry must be a LineString with M coordinates.`,
 					geopb.DefaultGeographySRID,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600841)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600842)
 				}
+				__antithesis_instrumentation__.Notify(600821)
 				ret, err := outGeom.AsGeography()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600843)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600844)
 				}
+				__antithesis_instrumentation__.Notify(600822)
 				return tree.NewDGeography(ret), nil
 			},
 			types.Geography,
@@ -4267,10 +5443,15 @@ Note the geometry must be a LineString with M coordinates.`,
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600845)
 				ret, err := geomfn.SharedPaths(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600847)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600848)
 				}
+				__antithesis_instrumentation__.Notify(600846)
 				geom := tree.NewDGeometry(ret)
 				return geom, nil
 			},
@@ -4289,13 +5470,22 @@ The paths themselves are given in the direction of the first geometry.`,
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600849)
 				ret, err := geomfn.ClosestPoint(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600851)
 					if geo.IsEmptyGeometryError(err) {
+						__antithesis_instrumentation__.Notify(600853)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(600854)
 					}
+					__antithesis_instrumentation__.Notify(600852)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600855)
 				}
+				__antithesis_instrumentation__.Notify(600850)
 				geom := tree.NewDGeometry(ret)
 				return geom, nil
 			},
@@ -4310,10 +5500,15 @@ The paths themselves are given in the direction of the first geometry.`,
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600856)
 				ret, err := geomfn.SymDifference(a.Geometry, b.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600858)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600859)
 				}
+				__antithesis_instrumentation__.Notify(600857)
 				return tree.NewDGeometry(ret), nil
 			},
 			types.Geometry,
@@ -4333,14 +5528,18 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600860)
 				g := tree.MustBeDGeometry(args[0])
 				tolerance := float64(tree.MustBeDFloat(args[1]))
-				// TODO(#spatial): post v21.1, use the geomfn.Simplify we have implemented internally.
-				// GEOS currently preserves collapsed for linestrings and not for polygons.
+
 				ret, err := geomfn.SimplifyGEOS(g.Geometry, tolerance)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600862)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600863)
 				}
+				__antithesis_instrumentation__.Notify(600861)
 				return &tree.DGeometry{Geometry: ret}, nil
 			},
 			Info: infoBuilder{
@@ -4357,16 +5556,25 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600864)
 				g := tree.MustBeDGeometry(args[0])
 				tolerance := float64(tree.MustBeDFloat(args[1]))
 				preserveCollapsed := bool(tree.MustBeDBool(args[2]))
 				ret, collapsed, err := geomfn.Simplify(g.Geometry, tolerance, preserveCollapsed)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600867)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600868)
 				}
+				__antithesis_instrumentation__.Notify(600865)
 				if collapsed {
+					__antithesis_instrumentation__.Notify(600869)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600870)
 				}
+				__antithesis_instrumentation__.Notify(600866)
 				return &tree.DGeometry{Geometry: ret}, nil
 			},
 			Info: infoBuilder{
@@ -4384,12 +5592,17 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600871)
 				g := tree.MustBeDGeometry(args[0])
 				tolerance := float64(tree.MustBeDFloat(args[1]))
 				ret, err := geomfn.SimplifyPreserveTopology(g.Geometry, tolerance)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600873)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600874)
 				}
+				__antithesis_instrumentation__.Notify(600872)
 				return &tree.DGeometry{Geometry: ret}, nil
 			},
 			Info: infoBuilder{
@@ -4400,9 +5613,6 @@ The paths themselves are given in the direction of the first geometry.`,
 		},
 	),
 
-	//
-	// Transformations
-	//
 	"st_setsrid": makeBuiltin(
 		defProps(),
 		tree.Overload{
@@ -4412,12 +5622,17 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600875)
 				g := tree.MustBeDGeometry(args[0])
 				srid := tree.MustBeDInt(args[1])
 				newGeom, err := g.Geometry.CloneWithSRID(geopb.SRID(srid))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600877)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600878)
 				}
+				__antithesis_instrumentation__.Notify(600876)
 				return &tree.DGeometry{Geometry: newGeom}, nil
 			},
 			Info: infoBuilder{
@@ -4432,12 +5647,17 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geography),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600879)
 				g := tree.MustBeDGeography(args[0])
 				srid := tree.MustBeDInt(args[1])
 				newGeom, err := g.Geography.CloneWithSRID(geopb.SRID(srid))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600881)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600882)
 				}
+				__antithesis_instrumentation__.Notify(600880)
 				return &tree.DGeography{Geography: newGeom}, nil
 			},
 			Info: infoBuilder{
@@ -4455,21 +5675,34 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600883)
 				g := tree.MustBeDGeometry(args[0])
 				srid := geopb.SRID(tree.MustBeDInt(args[1]))
 
 				fromProj, err := geoprojbase.Projection(g.SRID())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600887)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600888)
 				}
+				__antithesis_instrumentation__.Notify(600884)
 				toProj, err := geoprojbase.Projection(srid)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600889)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600890)
 				}
+				__antithesis_instrumentation__.Notify(600885)
 				ret, err := geotransform.Transform(g.Geometry, fromProj.Proj4Text, toProj.Proj4Text, srid)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600891)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600892)
 				}
+				__antithesis_instrumentation__.Notify(600886)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -4485,13 +5718,18 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600893)
 				g := tree.MustBeDGeometry(args[0])
 				toProj := string(tree.MustBeDString(args[1]))
 
 				fromProj, err := geoprojbase.Projection(g.SRID())
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600896)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600897)
 				}
+				__antithesis_instrumentation__.Notify(600894)
 				ret, err := geotransform.Transform(
 					g.Geometry,
 					fromProj.Proj4Text,
@@ -4499,8 +5737,12 @@ The paths themselves are given in the direction of the first geometry.`,
 					geopb.SRID(0),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600898)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600899)
 				}
+				__antithesis_instrumentation__.Notify(600895)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -4517,6 +5759,7 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600900)
 				g := tree.MustBeDGeometry(args[0])
 				fromProj := string(tree.MustBeDString(args[1]))
 				toProj := string(tree.MustBeDString(args[2]))
@@ -4528,8 +5771,12 @@ The paths themselves are given in the direction of the first geometry.`,
 					geopb.SRID(0),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600902)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600903)
 				}
+				__antithesis_instrumentation__.Notify(600901)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -4546,14 +5793,19 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600904)
 				g := tree.MustBeDGeometry(args[0])
 				fromProj := string(tree.MustBeDString(args[1]))
 				srid := geopb.SRID(tree.MustBeDInt(args[2]))
 
 				toProj, err := geoprojbase.Projection(srid)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600907)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600908)
 				}
+				__antithesis_instrumentation__.Notify(600905)
 				ret, err := geotransform.Transform(
 					g.Geometry,
 					geoprojbase.MakeProj4Text(fromProj),
@@ -4561,8 +5813,12 @@ The paths themselves are given in the direction of the first geometry.`,
 					srid,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600909)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600910)
 				}
+				__antithesis_instrumentation__.Notify(600906)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -4582,14 +5838,19 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600911)
 				g := tree.MustBeDGeometry(args[0])
 				deltaX := float64(tree.MustBeDFloat(args[1]))
 				deltaY := float64(tree.MustBeDFloat(args[2]))
 
 				ret, err := geomfn.Translate(g.Geometry, []float64{deltaX, deltaY})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600913)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600914)
 				}
+				__antithesis_instrumentation__.Notify(600912)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -4607,6 +5868,7 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600915)
 				g := tree.MustBeDGeometry(args[0])
 				deltaX := float64(tree.MustBeDFloat(args[1]))
 				deltaY := float64(tree.MustBeDFloat(args[2]))
@@ -4614,8 +5876,12 @@ The paths themselves are given in the direction of the first geometry.`,
 
 				ret, err := geomfn.Translate(g.Geometry, []float64{deltaX, deltaY, deltaZ})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600917)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600918)
 				}
+				__antithesis_instrumentation__.Notify(600916)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -4639,6 +5905,7 @@ The paths themselves are given in the direction of the first geometry.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600919)
 				g := tree.MustBeDGeometry(args[0])
 				ret, err := geomfn.Affine(
 					g.Geometry,
@@ -4650,8 +5917,12 @@ The paths themselves are given in the direction of the first geometry.`,
 					}),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600921)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600922)
 				}
+				__antithesis_instrumentation__.Notify(600920)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -4683,6 +5954,7 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600923)
 				g := tree.MustBeDGeometry(args[0])
 				ret, err := geomfn.Affine(
 					g.Geometry,
@@ -4694,8 +5966,12 @@ The matrix transformation will be applied as follows for each coordinate:
 					}),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600925)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600926)
 				}
+				__antithesis_instrumentation__.Notify(600924)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -4721,14 +5997,19 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600927)
 				g := tree.MustBeDGeometry(args[0])
 				xFactor := float64(tree.MustBeDFloat(args[1]))
 				yFactor := float64(tree.MustBeDFloat(args[2]))
 
 				ret, err := geomfn.Scale(g.Geometry, []float64{xFactor, yFactor})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600929)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600930)
 				}
+				__antithesis_instrumentation__.Notify(600928)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -4744,27 +6025,43 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600931)
 				g := tree.MustBeDGeometry(args[0])
 				factor, err := tree.MustBeDGeometry(args[1]).AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600936)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600937)
 				}
+				__antithesis_instrumentation__.Notify(600932)
 
 				pointFactor, ok := factor.(*geom.Point)
 				if !ok {
+					__antithesis_instrumentation__.Notify(600938)
 					return nil, errors.Newf("a Point must be used as the scaling factor")
+				} else {
+					__antithesis_instrumentation__.Notify(600939)
 				}
+				__antithesis_instrumentation__.Notify(600933)
 
 				factors := pointFactor.FlatCoords()
 				if len(factors) < 2 {
-					// Scale by 0, and leave Z untouched (this matches the behavior of
-					// ScaleRelativeToOrigin).
+					__antithesis_instrumentation__.Notify(600940)
+
 					factors = []float64{0, 0, 1}
+				} else {
+					__antithesis_instrumentation__.Notify(600941)
 				}
+				__antithesis_instrumentation__.Notify(600934)
 				ret, err := geomfn.Scale(g.Geometry, factors)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600942)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600943)
 				}
+				__antithesis_instrumentation__.Notify(600935)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -4781,14 +6078,19 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600944)
 				g := tree.MustBeDGeometry(args[0])
 				factor := tree.MustBeDGeometry(args[1])
 				origin := tree.MustBeDGeometry(args[2])
 
 				ret, err := geomfn.ScaleRelativeToOrigin(g.Geometry, factor.Geometry, origin.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600946)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600947)
 				}
+				__antithesis_instrumentation__.Notify(600945)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -4807,13 +6109,18 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600948)
 				g := tree.MustBeDGeometry(args[0])
 				rotRadians := float64(tree.MustBeDFloat(args[1]))
 
 				ret, err := geomfn.Rotate(g.Geometry, rotRadians)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600950)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600951)
 				}
+				__antithesis_instrumentation__.Notify(600949)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -4831,14 +6138,19 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600952)
 				g := tree.MustBeDGeometry(args[0])
 				rotRadians := float64(tree.MustBeDFloat(args[1]))
 				x := float64(tree.MustBeDFloat(args[2]))
 				y := float64(tree.MustBeDFloat(args[3]))
 				geometry, err := geomfn.RotateWithXY(g.Geometry, rotRadians, x, y)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600954)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600955)
 				}
+				__antithesis_instrumentation__.Notify(600953)
 				return tree.NewDGeometry(geometry), nil
 			},
 			Info: infoBuilder{
@@ -4854,18 +6166,27 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600956)
 				g := tree.MustBeDGeometry(args[0])
 				rotRadians := float64(tree.MustBeDFloat(args[1]))
 				originPoint := tree.MustBeDGeometry(args[2])
 
 				ret, err := geomfn.RotateWithPointOrigin(g.Geometry, rotRadians, originPoint.Geometry)
 				if errors.Is(err, geomfn.ErrPointOriginEmpty) {
+					__antithesis_instrumentation__.Notify(600959)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(600960)
 				}
+				__antithesis_instrumentation__.Notify(600957)
 
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600961)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600962)
 				}
+				__antithesis_instrumentation__.Notify(600958)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -4883,13 +6204,18 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600963)
 				g := tree.MustBeDGeometry(args[0])
 				rotRadians := float64(tree.MustBeDFloat(args[1]))
 
 				ret, err := geomfn.RotateX(g.Geometry, rotRadians)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600965)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600966)
 				}
+				__antithesis_instrumentation__.Notify(600964)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -4908,13 +6234,18 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600967)
 				g := tree.MustBeDGeometry(args[0])
 				rotRadians := float64(tree.MustBeDFloat(args[1]))
 
 				ret, err := geomfn.RotateY(g.Geometry, rotRadians)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600969)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600970)
 				}
+				__antithesis_instrumentation__.Notify(600968)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -4933,13 +6264,18 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600971)
 				g := tree.MustBeDGeometry(args[0])
 				rotRadians := float64(tree.MustBeDFloat(args[1]))
 
 				ret, err := geomfn.RotateZ(g.Geometry, rotRadians)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600973)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600974)
 				}
+				__antithesis_instrumentation__.Notify(600972)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -4959,14 +6295,19 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600975)
 				lineString := tree.MustBeDGeometry(args[0])
 				point := tree.MustBeDGeometry(args[1])
 				index := int(tree.MustBeDInt(args[2]))
 
 				ret, err := geomfn.AddPoint(lineString.Geometry, index, point.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600977)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600978)
 				}
+				__antithesis_instrumentation__.Notify(600976)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -4982,13 +6323,18 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600979)
 				lineString := tree.MustBeDGeometry(args[0])
 				point := tree.MustBeDGeometry(args[1])
 
 				ret, err := geomfn.AddPoint(lineString.Geometry, -1, point.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600981)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600982)
 				}
+				__antithesis_instrumentation__.Notify(600980)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -5008,14 +6354,19 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600983)
 				lineString := tree.MustBeDGeometry(args[0])
 				index := int(tree.MustBeDInt(args[1]))
 				point := tree.MustBeDGeometry(args[2])
 
 				ret, err := geomfn.SetPoint(lineString.Geometry, index, point.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600985)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600986)
 				}
+				__antithesis_instrumentation__.Notify(600984)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -5034,13 +6385,18 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600987)
 				lineString := tree.MustBeDGeometry(args[0])
 				index := int(tree.MustBeDInt(args[1]))
 
 				ret, err := geomfn.RemovePoint(lineString.Geometry, index)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600989)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600990)
 				}
+				__antithesis_instrumentation__.Notify(600988)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -5059,13 +6415,18 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600991)
 				g := tree.MustBeDGeometry(args[0])
 				tolerance := float64(tree.MustBeDFloat(args[1]))
 
 				ret, err := geomfn.RemoveRepeatedPoints(g.Geometry, tolerance)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600993)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600994)
 				}
+				__antithesis_instrumentation__.Notify(600992)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -5080,11 +6441,16 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600995)
 				g := tree.MustBeDGeometry(args[0])
 				ret, err := geomfn.RemoveRepeatedPoints(g.Geometry, 0)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(600997)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(600998)
 				}
+				__antithesis_instrumentation__.Notify(600996)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -5102,12 +6468,17 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(600999)
 				geometry := tree.MustBeDGeometry(args[0])
 
 				ret, err := geomfn.Reverse(geometry.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601001)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601002)
 				}
+				__antithesis_instrumentation__.Notify(601000)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -5126,12 +6497,17 @@ The matrix transformation will be applied as follows for each coordinate:
 			},
 			ReturnType: tree.FixedReturnType(types.Geography),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601003)
 				g := tree.MustBeDGeography(args[0])
 				segmentMaxLength := float64(tree.MustBeDFloat(args[1]))
 				segGeography, err := geogfn.Segmentize(g.Geography, segmentMaxLength)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601005)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601006)
 				}
+				__antithesis_instrumentation__.Notify(601004)
 				return tree.NewDGeography(segGeography), nil
 			},
 			Info: infoBuilder{
@@ -5149,12 +6525,17 @@ The calculations are done on a sphere.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601007)
 				g := tree.MustBeDGeometry(args[0])
 				segmentMaxLength := float64(tree.MustBeDFloat(args[1]))
 				segGeometry, err := geomfn.Segmentize(g.Geometry, segmentMaxLength)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601009)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601010)
 				}
+				__antithesis_instrumentation__.Notify(601008)
 				return tree.NewDGeometry(segGeometry), nil
 			},
 			Info: infoBuilder{
@@ -5173,12 +6554,17 @@ The calculations are done on a sphere.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601011)
 				g := tree.MustBeDGeometry(args[0])
 				size := float64(tree.MustBeDFloat(args[1]))
 				ret, err := geomfn.SnapToGrid(g.Geometry, geom.Coord{0, 0, 0, 0}, geom.Coord{size, size, 0, 0})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601013)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601014)
 				}
+				__antithesis_instrumentation__.Notify(601012)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -5195,13 +6581,18 @@ The calculations are done on a sphere.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601015)
 				g := tree.MustBeDGeometry(args[0])
 				sizeX := float64(tree.MustBeDFloat(args[1]))
 				sizeY := float64(tree.MustBeDFloat(args[2]))
 				ret, err := geomfn.SnapToGrid(g.Geometry, geom.Coord{0, 0, 0, 0}, geom.Coord{sizeX, sizeY, 0, 0})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601017)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601018)
 				}
+				__antithesis_instrumentation__.Notify(601016)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -5219,6 +6610,7 @@ The calculations are done on a sphere.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601019)
 				g := tree.MustBeDGeometry(args[0])
 				originX := float64(tree.MustBeDFloat(args[1]))
 				originY := float64(tree.MustBeDFloat(args[2]))
@@ -5226,8 +6618,12 @@ The calculations are done on a sphere.`,
 				sizeY := float64(tree.MustBeDFloat(args[4]))
 				ret, err := geomfn.SnapToGrid(g.Geometry, geom.Coord{originX, originY, 0, 0}, geom.Coord{sizeX, sizeY, 0, 0})
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601021)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601022)
 				}
+				__antithesis_instrumentation__.Notify(601020)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -5246,6 +6642,7 @@ The calculations are done on a sphere.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601023)
 				g := tree.MustBeDGeometry(args[0])
 				origin := tree.MustBeDGeometry(args[1])
 				sizeX := float64(tree.MustBeDFloat(args[2]))
@@ -5254,23 +6651,37 @@ The calculations are done on a sphere.`,
 				sizeM := float64(tree.MustBeDFloat(args[5]))
 				originT, err := origin.Geometry.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601025)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601026)
 				}
+				__antithesis_instrumentation__.Notify(601024)
 				switch originT := originT.(type) {
 				case *geom.Point:
-					// Prevent nil dereference if origin is an empty point.
+					__antithesis_instrumentation__.Notify(601027)
+
 					if originT.Empty() {
+						__antithesis_instrumentation__.Notify(601031)
 						originT = geom.NewPoint(originT.Layout())
+					} else {
+						__antithesis_instrumentation__.Notify(601032)
 					}
+					__antithesis_instrumentation__.Notify(601028)
 					ret, err := geomfn.SnapToGrid(
 						g.Geometry,
 						geom.Coord{originT.X(), originT.Y(), originT.Z(), originT.M()},
 						geom.Coord{sizeX, sizeY, sizeZ, sizeM})
 					if err != nil {
+						__antithesis_instrumentation__.Notify(601033)
 						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(601034)
 					}
+					__antithesis_instrumentation__.Notify(601029)
 					return tree.NewDGeometry(ret), nil
 				default:
+					__antithesis_instrumentation__.Notify(601030)
 					return nil, errors.Newf("origin must be a POINT")
 				}
 			},
@@ -5291,13 +6702,18 @@ The calculations are done on a sphere.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601035)
 				g1 := tree.MustBeDGeometry(args[0])
 				g2 := tree.MustBeDGeometry(args[1])
 				tolerance := tree.MustBeDFloat(args[2])
 				ret, err := geomfn.Snap(g1.Geometry, g2.Geometry, float64(tolerance))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601037)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601038)
 				}
+				__antithesis_instrumentation__.Notify(601036)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -5317,13 +6733,18 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601039)
 				g := tree.MustBeDGeometry(args[0])
 				distance := tree.MustBeDInt(args[1])
 
 				ret, err := geomfn.Buffer(g.Geometry, geomfn.MakeDefaultBufferParams(), float64(distance))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601041)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601042)
 				}
+				__antithesis_instrumentation__.Notify(601040)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info:       stBufferInfoBuilder.String(),
@@ -5336,13 +6757,18 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601043)
 				g := tree.MustBeDGeometry(args[0])
 				distance := tree.MustBeDFloat(args[1])
 
 				ret, err := geomfn.Buffer(g.Geometry, geomfn.MakeDefaultBufferParams(), float64(distance))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601045)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601046)
 				}
+				__antithesis_instrumentation__.Notify(601044)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info:       stBufferInfoBuilder.String(),
@@ -5355,18 +6781,27 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601047)
 				g := tree.MustBeDGeometry(args[0])
 				distanceDec := tree.MustBeDDecimal(args[1])
 
 				distance, err := distanceDec.Float64()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601050)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601051)
 				}
+				__antithesis_instrumentation__.Notify(601048)
 
 				ret, err := geomfn.Buffer(g.Geometry, geomfn.MakeDefaultBufferParams(), distance)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601052)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601053)
 				}
+				__antithesis_instrumentation__.Notify(601049)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info:       stBufferInfoBuilder.String(),
@@ -5380,6 +6815,7 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601054)
 				g := tree.MustBeDGeometry(args[0])
 				distance := tree.MustBeDFloat(args[1])
 				quadSegs := tree.MustBeDInt(args[2])
@@ -5390,8 +6826,12 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 					float64(distance),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601056)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601057)
 				}
+				__antithesis_instrumentation__.Notify(601055)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info:       stBufferWithQuadSegInfoBuilder.String(),
@@ -5405,14 +6845,19 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601058)
 				g := tree.MustBeDGeometry(args[0])
 				distance := tree.MustBeDFloat(args[1])
 				paramsString := tree.MustBeDString(args[2])
 
 				params, modifiedDistance, err := geomfn.ParseBufferParams(string(paramsString), float64(distance))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601061)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601062)
 				}
+				__antithesis_instrumentation__.Notify(601059)
 
 				ret, err := geomfn.Buffer(
 					g.Geometry,
@@ -5420,8 +6865,12 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 					modifiedDistance,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601063)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601064)
 				}
+				__antithesis_instrumentation__.Notify(601060)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info:       stBufferWithParamsInfoBuilder.String(),
@@ -5434,18 +6883,25 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geography),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601065)
 				g := tree.MustBeDGeography(args[0])
 				distance := tree.MustBeDFloat(args[1])
 
 				ret, err := performGeographyOperationUsingBestGeomProjection(
 					g.Geography,
 					func(g geo.Geometry) (geo.Geometry, error) {
+						__antithesis_instrumentation__.Notify(601068)
 						return geomfn.Buffer(g, geomfn.MakeDefaultBufferParams(), float64(distance))
 					},
 				)
+				__antithesis_instrumentation__.Notify(601066)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601069)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601070)
 				}
+				__antithesis_instrumentation__.Notify(601067)
 
 				return tree.NewDGeography(ret), nil
 			},
@@ -5460,6 +6916,7 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geography),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601071)
 				g := tree.MustBeDGeography(args[0])
 				distance := tree.MustBeDFloat(args[1])
 				quadSegs := tree.MustBeDInt(args[2])
@@ -5467,6 +6924,7 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 				ret, err := performGeographyOperationUsingBestGeomProjection(
 					g.Geography,
 					func(g geo.Geometry) (geo.Geometry, error) {
+						__antithesis_instrumentation__.Notify(601074)
 						return geomfn.Buffer(
 							g,
 							geomfn.MakeDefaultBufferParams().WithQuadrantSegments(int(quadSegs)),
@@ -5474,9 +6932,14 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 						)
 					},
 				)
+				__antithesis_instrumentation__.Notify(601072)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601075)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601076)
 				}
+				__antithesis_instrumentation__.Notify(601073)
 				return tree.NewDGeography(ret), nil
 			},
 			Info:       stBufferWithQuadSegInfoBuilder.String() + usingBestGeomProjectionWarning,
@@ -5490,18 +6953,24 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geography),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601077)
 				g := tree.MustBeDGeography(args[0])
 				distance := tree.MustBeDFloat(args[1])
 				paramsString := tree.MustBeDString(args[2])
 
 				params, modifiedDistance, err := geomfn.ParseBufferParams(string(paramsString), float64(distance))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601081)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601082)
 				}
+				__antithesis_instrumentation__.Notify(601078)
 
 				ret, err := performGeographyOperationUsingBestGeomProjection(
 					g.Geography,
 					func(g geo.Geometry) (geo.Geometry, error) {
+						__antithesis_instrumentation__.Notify(601083)
 						return geomfn.Buffer(
 							g,
 							params,
@@ -5509,9 +6978,14 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 						)
 					},
 				)
+				__antithesis_instrumentation__.Notify(601079)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601084)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601085)
 				}
+				__antithesis_instrumentation__.Notify(601080)
 				return tree.NewDGeography(ret), nil
 			},
 			Info:       stBufferWithParamsInfoBuilder.String() + usingBestGeomProjectionWarning,
@@ -5522,10 +6996,15 @@ If no snapping occurs then the input geometry is returned unchanged.`,
 		defProps(),
 		geometryOverload1(
 			func(ctx *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601086)
 				envelope, err := geomfn.Envelope(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601088)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601089)
 				}
+				__antithesis_instrumentation__.Notify(601087)
 				return tree.NewDGeometry(envelope), nil
 			},
 			types.Geometry,
@@ -5545,11 +7024,16 @@ Bottom Left.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601090)
 				bbox := tree.MustBeDBox2D(args[0]).CartesianBoundingBox
-				ret, err := geo.MakeGeometryFromGeomT(bbox.ToGeomT(0 /* SRID */))
+				ret, err := geo.MakeGeometryFromGeomT(bbox.ToGeomT(0))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601092)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601093)
 				}
+				__antithesis_instrumentation__.Notify(601091)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -5566,12 +7050,17 @@ Bottom Left.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601094)
 				g := tree.MustBeDGeometry(args[0])
 
 				ret, err := geomfn.FlipCoordinates(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601096)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601097)
 				}
+				__antithesis_instrumentation__.Notify(601095)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -5596,13 +7085,18 @@ Bottom Left.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601098)
 				g := tree.MustBeDGeometry(args[0])
 				cString := tree.MustBeDString(args[1])
 
 				ret, err := geomfn.SwapOrdinates(g.Geometry, string(cString))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601100)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601101)
 				}
+				__antithesis_instrumentation__.Notify(601099)
 
 				return tree.NewDGeometry(ret), nil
 			},
@@ -5625,17 +7119,26 @@ The swap_ordinate_string parameter is a 2-character string naming the ordinates 
 			},
 			ReturnType: tree.FixedReturnType(types.Float),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601102)
 				g1 := tree.MustBeDGeometry(args[0]).Geometry
 				g2 := tree.MustBeDGeometry(args[1]).Geometry
 				g3 := tree.MustBeDGeometry(args[2]).Geometry
 				g4 := tree.MustBeDGeometry(args[3]).Geometry
 				angle, err := geomfn.Angle(g1, g2, g3, g4)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601105)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601106)
 				}
+				__antithesis_instrumentation__.Notify(601103)
 				if angle == nil {
+					__antithesis_instrumentation__.Notify(601107)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(601108)
 				}
+				__antithesis_instrumentation__.Notify(601104)
 				return tree.NewDFloat(tree.DFloat(*angle)), nil
 			},
 			Info: infoBuilder{
@@ -5652,20 +7155,33 @@ The swap_ordinate_string parameter is a 2-character string naming the ordinates 
 			},
 			ReturnType: tree.FixedReturnType(types.Float),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601109)
 				g1 := tree.MustBeDGeometry(args[0]).Geometry
 				g2 := tree.MustBeDGeometry(args[1]).Geometry
 				g3 := tree.MustBeDGeometry(args[2]).Geometry
 				g4, err := geo.MakeGeometryFromGeomT(geom.NewPointEmpty(geom.XY))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601113)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601114)
 				}
+				__antithesis_instrumentation__.Notify(601110)
 				angle, err := geomfn.Angle(g1, g2, g3, g4)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601115)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601116)
 				}
+				__antithesis_instrumentation__.Notify(601111)
 				if angle == nil {
+					__antithesis_instrumentation__.Notify(601117)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(601118)
 				}
+				__antithesis_instrumentation__.Notify(601112)
 				return tree.NewDFloat(tree.DFloat(*angle)), nil
 			},
 			Info: infoBuilder{
@@ -5681,15 +7197,24 @@ The swap_ordinate_string parameter is a 2-character string naming the ordinates 
 			},
 			ReturnType: tree.FixedReturnType(types.Float),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601119)
 				g1 := tree.MustBeDGeometry(args[0]).Geometry
 				g2 := tree.MustBeDGeometry(args[1]).Geometry
 				angle, err := geomfn.AngleLineString(g1, g2)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601122)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601123)
 				}
+				__antithesis_instrumentation__.Notify(601120)
 				if angle == nil {
+					__antithesis_instrumentation__.Notify(601124)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(601125)
 				}
+				__antithesis_instrumentation__.Notify(601121)
 				return tree.NewDFloat(tree.DFloat(*angle)), nil
 			},
 			Info: infoBuilder{
@@ -5707,11 +7232,16 @@ The swap_ordinate_string parameter is a 2-character string naming the ordinates 
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601126)
 				g := tree.MustBeDGeometry(args[0]).Geometry
 				s, err := geo.GeometryToEncodedPolyline(g, 5)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601128)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601129)
 				}
+				__antithesis_instrumentation__.Notify(601127)
 				return tree.NewDString(s), nil
 			},
 			Info: infoBuilder{
@@ -5728,12 +7258,17 @@ Preserves 5 decimal places.`,
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601130)
 				g := tree.MustBeDGeometry(args[0]).Geometry
 				p := int(tree.MustBeDInt(args[1]))
 				s, err := geo.GeometryToEncodedPolyline(g, p)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601132)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601133)
 				}
+				__antithesis_instrumentation__.Notify(601131)
 				return tree.NewDString(s), nil
 			},
 			Info: infoBuilder{
@@ -5751,12 +7286,17 @@ Precision specifies how many decimal places will be preserved in Encoded Polylin
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601134)
 				s := string(tree.MustBeDString(args[0]))
 				p := 5
 				g, err := geo.ParseEncodedPolyline(s, p)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601136)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601137)
 				}
+				__antithesis_instrumentation__.Notify(601135)
 				return tree.NewDGeometry(g), nil
 			},
 			Info: infoBuilder{
@@ -5775,12 +7315,17 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601138)
 				s := string(tree.MustBeDString(args[0]))
 				p := int(tree.MustBeDInt(args[1]))
 				g, err := geo.ParseEncodedPolyline(s, p)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601140)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601141)
 				}
+				__antithesis_instrumentation__.Notify(601139)
 				return tree.NewDGeometry(g), nil
 			},
 			Info: infoBuilder{
@@ -5797,10 +7342,15 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601142)
 				res, err := geomfn.UnaryUnion(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601144)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601145)
 				}
+				__antithesis_instrumentation__.Notify(601143)
 				return tree.NewDGeometry(res), nil
 			},
 			types.Geometry,
@@ -5814,10 +7364,15 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 		defProps(),
 		geometryOverload1(
 			func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601146)
 				res, err := geomfn.Node(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601148)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601149)
 				}
+				__antithesis_instrumentation__.Notify(601147)
 				return tree.NewDGeometry(res), nil
 			},
 			types.Geometry,
@@ -5834,7 +7389,7 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 				{"geometry", types.Geometry},
 			},
 			types.Geometry,
-			makeSubdividedGeometriesGeneratorFactory(false /* expectMaxVerticesArg */),
+			makeSubdividedGeometriesGeneratorFactory(false),
 			"Returns a geometry divided into parts, where each part contains no more than 256 vertices.",
 			tree.VolatilityImmutable,
 		),
@@ -5844,45 +7399,65 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 				{"max_vertices", types.Int4},
 			},
 			types.Geometry,
-			makeSubdividedGeometriesGeneratorFactory(true /* expectMaxVerticesArg */),
+			makeSubdividedGeometriesGeneratorFactory(true),
 			"Returns a geometry divided into parts, where each part contains no more than the number of vertices provided.",
 			tree.VolatilityImmutable,
 		),
 	),
 
-	//
-	// BoundingBox
-	//
-
 	"st_makebox2d": makeBuiltin(
 		defProps(),
 		geometryOverload2(
 			func(ctx *tree.EvalContext, a *tree.DGeometry, b *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601150)
 				if a.Geometry.SRID() != b.Geometry.SRID() {
+					__antithesis_instrumentation__.Notify(601154)
 					return nil, geo.NewMismatchingSRIDsError(a.Geometry.SpatialObject(), b.Geometry.SpatialObject())
+				} else {
+					__antithesis_instrumentation__.Notify(601155)
 				}
+				__antithesis_instrumentation__.Notify(601151)
 				aGeomT, err := a.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601156)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601157)
 				}
+				__antithesis_instrumentation__.Notify(601152)
 				bGeomT, err := b.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601158)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601159)
 				}
+				__antithesis_instrumentation__.Notify(601153)
 
 				switch aGeomT := aGeomT.(type) {
 				case *geom.Point:
+					__antithesis_instrumentation__.Notify(601160)
 					switch bGeomT := bGeomT.(type) {
 					case *geom.Point:
-						if aGeomT.Empty() || bGeomT.Empty() {
+						__antithesis_instrumentation__.Notify(601162)
+						if aGeomT.Empty() || func() bool {
+							__antithesis_instrumentation__.Notify(601165)
+							return bGeomT.Empty() == true
+						}() == true {
+							__antithesis_instrumentation__.Notify(601166)
 							return nil, pgerror.Newf(pgcode.InvalidParameterValue, "cannot use POINT EMPTY")
+						} else {
+							__antithesis_instrumentation__.Notify(601167)
 						}
+						__antithesis_instrumentation__.Notify(601163)
 						bbox := a.CartesianBoundingBox().Combine(b.CartesianBoundingBox())
 						return tree.NewDBox2D(*bbox), nil
 					default:
+						__antithesis_instrumentation__.Notify(601164)
 						return nil, pgerror.Newf(pgcode.InvalidParameterValue, "second argument is not a POINT")
 					}
 				default:
+					__antithesis_instrumentation__.Notify(601161)
 					return nil, pgerror.Newf(pgcode.InvalidParameterValue, "first argument is not a POINT")
 				}
 			},
@@ -5899,22 +7474,39 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 			Types:      tree.ArgTypes{{"box2d", types.Box2D}, {"geometry", types.Geometry}},
 			ReturnType: tree.FixedReturnType(types.Box2D),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601168)
 				if args[1] == tree.DNull {
+					__antithesis_instrumentation__.Notify(601172)
 					return args[0], nil
+				} else {
+					__antithesis_instrumentation__.Notify(601173)
 				}
+				__antithesis_instrumentation__.Notify(601169)
 				if args[0] == tree.DNull {
+					__antithesis_instrumentation__.Notify(601174)
 					bbox := tree.MustBeDGeometry(args[1]).CartesianBoundingBox()
 					if bbox == nil {
+						__antithesis_instrumentation__.Notify(601176)
 						return tree.DNull, nil
+					} else {
+						__antithesis_instrumentation__.Notify(601177)
 					}
+					__antithesis_instrumentation__.Notify(601175)
 					return tree.NewDBox2D(*bbox), nil
+				} else {
+					__antithesis_instrumentation__.Notify(601178)
 				}
+				__antithesis_instrumentation__.Notify(601170)
 				bbox := &tree.MustBeDBox2D(args[0]).CartesianBoundingBox
 				g := tree.MustBeDGeometry(args[1])
 				bbox = bbox.Combine(g.CartesianBoundingBox())
 				if bbox == nil {
+					__antithesis_instrumentation__.Notify(601179)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(601180)
 				}
+				__antithesis_instrumentation__.Notify(601171)
 				return tree.NewDBox2D(*bbox), nil
 			},
 			Info: infoBuilder{
@@ -5929,12 +7521,17 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 			Types:      tree.ArgTypes{{"box2d", types.Box2D}, {"delta", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Box2D),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601181)
 				bbox := tree.MustBeDBox2D(args[0])
 				delta := float64(tree.MustBeDFloat(args[1]))
 				bboxBuffered := bbox.Buffer(delta, delta)
 				if bboxBuffered == nil {
+					__antithesis_instrumentation__.Notify(601183)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(601184)
 				}
+				__antithesis_instrumentation__.Notify(601182)
 				return tree.NewDBox2D(*bboxBuffered), nil
 			},
 			Info: infoBuilder{
@@ -5950,13 +7547,18 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 			},
 			ReturnType: tree.FixedReturnType(types.Box2D),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601185)
 				bbox := tree.MustBeDBox2D(args[0])
 				deltaX := float64(tree.MustBeDFloat(args[1]))
 				deltaY := float64(tree.MustBeDFloat(args[2]))
 				bboxBuffered := bbox.Buffer(deltaX, deltaY)
 				if bboxBuffered == nil {
+					__antithesis_instrumentation__.Notify(601187)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(601188)
 				}
+				__antithesis_instrumentation__.Notify(601186)
 				return tree.NewDBox2D(*bboxBuffered), nil
 			},
 			Info: infoBuilder{
@@ -5968,16 +7570,25 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 			Types:      tree.ArgTypes{{"geometry", types.Geometry}, {"delta", types.Float}},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601189)
 				g := tree.MustBeDGeometry(args[0])
 				delta := float64(tree.MustBeDFloat(args[1]))
 				if g.Empty() {
+					__antithesis_instrumentation__.Notify(601192)
 					return g, nil
+				} else {
+					__antithesis_instrumentation__.Notify(601193)
 				}
+				__antithesis_instrumentation__.Notify(601190)
 				bbox := g.CartesianBoundingBox().Buffer(delta, delta)
 				ret, err := geo.MakeGeometryFromGeomT(bbox.ToGeomT(g.SRID()))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601194)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601195)
 				}
+				__antithesis_instrumentation__.Notify(601191)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -5993,17 +7604,26 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(_ *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601196)
 				g := tree.MustBeDGeometry(args[0])
 				deltaX := float64(tree.MustBeDFloat(args[1]))
 				deltaY := float64(tree.MustBeDFloat(args[2]))
 				if g.Empty() {
+					__antithesis_instrumentation__.Notify(601199)
 					return g, nil
+				} else {
+					__antithesis_instrumentation__.Notify(601200)
 				}
+				__antithesis_instrumentation__.Notify(601197)
 				bbox := g.CartesianBoundingBox().Buffer(deltaX, deltaY)
 				ret, err := geo.MakeGeometryFromGeomT(bbox.ToGeomT(g.SRID()))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601201)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601202)
 				}
+				__antithesis_instrumentation__.Notify(601198)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -6012,10 +7632,6 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 			Volatility: tree.VolatilityImmutable,
 		},
 	),
-
-	//
-	// Table metadata
-	//
 
 	"st_estimatedextent": makeBuiltin(
 		tree.FunctionProperties{
@@ -6030,7 +7646,8 @@ See http://developers.google.com/maps/documentation/utilities/polylinealgorithm`
 			},
 			ReturnType: tree.FixedReturnType(types.Box2D),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				// TODO(#64257): implement by looking at statistics.
+				__antithesis_instrumentation__.Notify(601203)
+
 				return tree.DNull, nil
 			},
 			Info: infoBuilder{
@@ -6048,7 +7665,8 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Box2D),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				// TODO(#64257): implement by looking at statistics.
+				__antithesis_instrumentation__.Notify(601204)
+
 				return tree.DNull, nil
 			},
 			Info: infoBuilder{
@@ -6063,7 +7681,8 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Box2D),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				// TODO(#64257): implement by looking at statistics.
+				__antithesis_instrumentation__.Notify(601205)
+
 				return tree.DNull, nil
 			},
 			Info: infoBuilder{
@@ -6072,10 +7691,6 @@ The parent_only boolean is always ignored.`,
 			Volatility: tree.VolatilityStable,
 		},
 	),
-
-	//
-	// Schema changes
-	//
 
 	"addgeometrycolumn": makeBuiltin(
 		tree.FunctionProperties{
@@ -6093,10 +7708,11 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			SQLFn: func(ctx *tree.EvalContext, args tree.Datums) (string, error) {
+				__antithesis_instrumentation__.Notify(601206)
 				return addGeometryColumnSQL(
 					ctx,
-					"", /* catalogName */
-					"", /* schemaName */
+					"",
+					"",
 					string(tree.MustBeDString(args[0])),
 					string(tree.MustBeDString(args[1])),
 					int(tree.MustBeDInt(args[2])),
@@ -6106,10 +7722,11 @@ The parent_only boolean is always ignored.`,
 				)
 			},
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601207)
 				return addGeometryColumnSummary(
 					ctx,
-					"", /* catalogName */
-					"", /* schemaName */
+					"",
+					"",
 					string(tree.MustBeDString(args[0])),
 					string(tree.MustBeDString(args[1])),
 					int(tree.MustBeDInt(args[2])),
@@ -6135,9 +7752,10 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			SQLFn: func(ctx *tree.EvalContext, args tree.Datums) (string, error) {
+				__antithesis_instrumentation__.Notify(601208)
 				return addGeometryColumnSQL(
 					ctx,
-					"", /* catalogName */
+					"",
 					string(tree.MustBeDString(args[0])),
 					string(tree.MustBeDString(args[1])),
 					string(tree.MustBeDString(args[2])),
@@ -6148,9 +7766,10 @@ The parent_only boolean is always ignored.`,
 				)
 			},
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601209)
 				return addGeometryColumnSummary(
 					ctx,
-					"", /* catalogName */
+					"",
 					string(tree.MustBeDString(args[0])),
 					string(tree.MustBeDString(args[1])),
 					string(tree.MustBeDString(args[2])),
@@ -6178,6 +7797,7 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			SQLFn: func(ctx *tree.EvalContext, args tree.Datums) (string, error) {
+				__antithesis_instrumentation__.Notify(601210)
 				return addGeometryColumnSQL(
 					ctx,
 					string(tree.MustBeDString(args[0])),
@@ -6191,6 +7811,7 @@ The parent_only boolean is always ignored.`,
 				)
 			},
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601211)
 				return addGeometryColumnSummary(
 					ctx,
 					string(tree.MustBeDString(args[0])),
@@ -6218,29 +7839,31 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			SQLFn: func(ctx *tree.EvalContext, args tree.Datums) (string, error) {
+				__antithesis_instrumentation__.Notify(601212)
 				return addGeometryColumnSQL(
 					ctx,
-					"", /* catalogName */
-					"", /* schemaName */
+					"",
+					"",
 					string(tree.MustBeDString(args[0])),
 					string(tree.MustBeDString(args[1])),
 					int(tree.MustBeDInt(args[2])),
 					string(tree.MustBeDString(args[3])),
 					int(tree.MustBeDInt(args[4])),
-					true, /* useTypmod */
+					true,
 				)
 			},
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601213)
 				return addGeometryColumnSummary(
 					ctx,
-					"", /* catalogName */
-					"", /* schemaName */
+					"",
+					"",
 					string(tree.MustBeDString(args[0])),
 					string(tree.MustBeDString(args[1])),
 					int(tree.MustBeDInt(args[2])),
 					string(tree.MustBeDString(args[3])),
 					int(tree.MustBeDInt(args[4])),
-					true, /* useTypmod */
+					true,
 				)
 			},
 			Info: infoBuilder{
@@ -6259,29 +7882,31 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			SQLFn: func(ctx *tree.EvalContext, args tree.Datums) (string, error) {
+				__antithesis_instrumentation__.Notify(601214)
 				return addGeometryColumnSQL(
 					ctx,
-					"", /* catalogName */
+					"",
 					string(tree.MustBeDString(args[0])),
 					string(tree.MustBeDString(args[1])),
 					string(tree.MustBeDString(args[2])),
 					int(tree.MustBeDInt(args[3])),
 					string(tree.MustBeDString(args[4])),
 					int(tree.MustBeDInt(args[5])),
-					true, /* useTypmod */
+					true,
 				)
 			},
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601215)
 				return addGeometryColumnSummary(
 					ctx,
-					"", /* catalogName */
+					"",
 					string(tree.MustBeDString(args[0])),
 					string(tree.MustBeDString(args[1])),
 					string(tree.MustBeDString(args[2])),
 					int(tree.MustBeDInt(args[3])),
 					string(tree.MustBeDString(args[4])),
 					int(tree.MustBeDInt(args[5])),
-					true, /* useTypmod */
+					true,
 				)
 			},
 			Info: infoBuilder{
@@ -6301,6 +7926,7 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.String),
 			SQLFn: func(ctx *tree.EvalContext, args tree.Datums) (string, error) {
+				__antithesis_instrumentation__.Notify(601216)
 				return addGeometryColumnSQL(
 					ctx,
 					string(tree.MustBeDString(args[0])),
@@ -6310,10 +7936,11 @@ The parent_only boolean is always ignored.`,
 					int(tree.MustBeDInt(args[4])),
 					string(tree.MustBeDString(args[5])),
 					int(tree.MustBeDInt(args[6])),
-					true, /* useTypmod */
+					true,
 				)
 			},
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601217)
 				return addGeometryColumnSummary(
 					ctx,
 					string(tree.MustBeDString(args[0])),
@@ -6323,7 +7950,7 @@ The parent_only boolean is always ignored.`,
 					int(tree.MustBeDInt(args[4])),
 					string(tree.MustBeDString(args[5])),
 					int(tree.MustBeDInt(args[6])),
-					true, /* useTypmod */
+					true,
 				)
 			},
 			Info: infoBuilder{
@@ -6343,13 +7970,18 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601218)
 				a := tree.MustBeDGeometry(args[0])
 				b := tree.MustBeDGeometry(args[1])
 				dist := tree.MustBeDFloat(args[2])
 				ret, err := geomfn.DFullyWithin(a.Geometry, b.Geometry, float64(dist), geo.FnExclusive)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601220)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601221)
 				}
+				__antithesis_instrumentation__.Notify(601219)
 				return tree.MakeDBool(tree.DBool(ret)), nil
 			},
 			Info: infoBuilder{
@@ -6370,37 +8002,58 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601222)
 				point := tree.MustBeDGeometry(args[0])
 
 				geomT, err := point.AsGeomT()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601228)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601229)
 				}
+				__antithesis_instrumentation__.Notify(601223)
 
 				if _, ok := geomT.(*geom.Point); !ok {
+					__antithesis_instrumentation__.Notify(601230)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"first parameter has to be of type Point",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(601231)
 				}
+				__antithesis_instrumentation__.Notify(601224)
 
 				x := float64(tree.MustBeDFloat(args[1]))
 				y := float64(tree.MustBeDFloat(args[2]))
 				radius := float64(tree.MustBeDFloat(args[3]))
 				if radius <= 0 {
+					__antithesis_instrumentation__.Notify(601232)
 					return nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						"radius of the circle has to be positive",
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(601233)
 				}
+				__antithesis_instrumentation__.Notify(601225)
 				center, err := geo.MakeGeometryFromPointCoords(x, y)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601234)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601235)
 				}
+				__antithesis_instrumentation__.Notify(601226)
 				dist, err := geomfn.MinDistance(point.Geometry, center)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601236)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601237)
 				}
+				__antithesis_instrumentation__.Notify(601227)
 				return tree.MakeDBool(dist <= radius), nil
 			},
 			Info: infoBuilder{
@@ -6420,6 +8073,7 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601238)
 				geo := tree.MustBeDGeometry(args[0])
 				return tree.NewDInt(tree.DInt(geo.Size())), nil
 			},
@@ -6441,14 +8095,18 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Float),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601239)
 				line := tree.MustBeDGeometry(args[0])
 				p := tree.MustBeDGeometry(args[1])
 
-				// compute fraction of new line segment compared to total line length
 				fraction, err := geomfn.LineLocatePoint(line.Geometry, p.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601241)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601242)
 				}
+				__antithesis_instrumentation__.Notify(601240)
 				return tree.NewDFloat(tree.DFloat(fraction)), nil
 			},
 			Info: "Returns a float between 0 and 1 representing the location of the closest point " +
@@ -6468,10 +8126,15 @@ The parent_only boolean is always ignored.`,
 	"st_minimumboundingcircle": makeBuiltin(defProps(),
 		geometryOverload1(
 			func(evalContext *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601243)
 				polygon, _, _, err := geomfn.MinimumBoundingCircle(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601245)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601246)
 				}
+				__antithesis_instrumentation__.Notify(601244)
 				return tree.NewDGeometry(polygon), nil
 			},
 			types.Geometry,
@@ -6488,12 +8151,17 @@ The parent_only boolean is always ignored.`,
 			}.String(),
 			Volatility: tree.VolatilityImmutable,
 			Fn: func(evalContext *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601247)
 				g := tree.MustBeDGeometry(args[0])
 				numOfSeg := tree.MustBeDInt(args[1])
 				_, centroid, radius, err := geomfn.MinimumBoundingCircle(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601250)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601251)
 				}
+				__antithesis_instrumentation__.Notify(601248)
 
 				polygon, err := geomfn.Buffer(
 					centroid,
@@ -6501,8 +8169,12 @@ The parent_only boolean is always ignored.`,
 					radius,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601252)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601253)
 				}
+				__antithesis_instrumentation__.Notify(601249)
 
 				return tree.NewDGeometry(polygon), nil
 			},
@@ -6523,6 +8195,7 @@ The parent_only boolean is always ignored.`,
 				info: "Translates the geometry using the deltaX and deltaY args, then scales it using the XFactor, YFactor args, working in 2D only.",
 			}.String(),
 			Fn: func(_ *tree.EvalContext, datums tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601254)
 				g := tree.MustBeDGeometry(datums[0])
 				deltaX := float64(tree.MustBeDFloat(datums[1]))
 				deltaY := float64(tree.MustBeDFloat(datums[2]))
@@ -6530,8 +8203,12 @@ The parent_only boolean is always ignored.`,
 				yFactor := float64(tree.MustBeDFloat(datums[4]))
 				geometry, err := geomfn.TransScale(g.Geometry, deltaX, deltaY, xFactor, yFactor)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601256)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601257)
 				}
+				__antithesis_instrumentation__.Notify(601255)
 				return tree.NewDGeometry(geometry), nil
 			},
 		}),
@@ -6543,12 +8220,17 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601258)
 				g := tree.MustBeDGeometry(args[0])
 				var env *geo.Geometry
-				ret, err := geomfn.VoronoiDiagram(g.Geometry, env, 0.0, false /* onlyEdges */)
+				ret, err := geomfn.VoronoiDiagram(g.Geometry, env, 0.0, false)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601260)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601261)
 				}
+				__antithesis_instrumentation__.Notify(601259)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -6563,13 +8245,18 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601262)
 				g := tree.MustBeDGeometry(args[0])
 				tolerance := tree.MustBeDFloat(args[1])
 				var env *geo.Geometry
-				ret, err := geomfn.VoronoiDiagram(g.Geometry, env, float64(tolerance), false /* onlyEdges */)
+				ret, err := geomfn.VoronoiDiagram(g.Geometry, env, float64(tolerance), false)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601264)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601265)
 				}
+				__antithesis_instrumentation__.Notify(601263)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -6585,13 +8272,18 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601266)
 				g := tree.MustBeDGeometry(args[0])
 				tolerance := tree.MustBeDFloat(args[1])
 				env := tree.MustBeDGeometry(args[2])
-				ret, err := geomfn.VoronoiDiagram(g.Geometry, &env.Geometry, float64(tolerance), false /* onlyEdges */)
+				ret, err := geomfn.VoronoiDiagram(g.Geometry, &env.Geometry, float64(tolerance), false)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601268)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601269)
 				}
+				__antithesis_instrumentation__.Notify(601267)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -6608,12 +8300,17 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601270)
 				g := tree.MustBeDGeometry(args[0])
 				var env *geo.Geometry
-				ret, err := geomfn.VoronoiDiagram(g.Geometry, env, 0.0, true /* onlyEdges */)
+				ret, err := geomfn.VoronoiDiagram(g.Geometry, env, 0.0, true)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601272)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601273)
 				}
+				__antithesis_instrumentation__.Notify(601271)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -6629,13 +8326,18 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601274)
 				g := tree.MustBeDGeometry(args[0])
 				tolerance := tree.MustBeDFloat(args[1])
 				var env *geo.Geometry
-				ret, err := geomfn.VoronoiDiagram(g.Geometry, env, float64(tolerance), true /* onlyEdges */)
+				ret, err := geomfn.VoronoiDiagram(g.Geometry, env, float64(tolerance), true)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601276)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601277)
 				}
+				__antithesis_instrumentation__.Notify(601275)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -6652,13 +8354,18 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601278)
 				g := tree.MustBeDGeometry(args[0])
 				tolerance := tree.MustBeDFloat(args[1])
 				env := tree.MustBeDGeometry(args[2])
-				ret, err := geomfn.VoronoiDiagram(g.Geometry, &env.Geometry, float64(tolerance), true /* onlyEdges */)
+				ret, err := geomfn.VoronoiDiagram(g.Geometry, &env.Geometry, float64(tolerance), true)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601280)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601281)
 				}
+				__antithesis_instrumentation__.Notify(601279)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -6676,11 +8383,16 @@ The parent_only boolean is always ignored.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Geometry),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601282)
 				g := tree.MustBeDGeometry(args[0])
 				ret, err := geomfn.MinimumRotatedRectangle(g.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601284)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601285)
 				}
+				__antithesis_instrumentation__.Notify(601283)
 				return tree.NewDGeometry(ret), nil
 			},
 			Info: infoBuilder{
@@ -6704,13 +8416,18 @@ May return a Point or LineString in the case of degenerate inputs.`,
 				info: "Return a linestring being a substring of the input one starting and ending at the given fractions of total 2D length. Second and third arguments are float8 values between 0 and 1.",
 			}.String(),
 			Fn: func(_ *tree.EvalContext, datums tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601286)
 				g := tree.MustBeDGeometry(datums[0])
 				startFraction := float64(tree.MustBeDFloat(datums[1]))
 				endFraction := float64(tree.MustBeDFloat(datums[2]))
 				geometry, err := geomfn.LineSubstring(g.Geometry, startFraction, endFraction)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601288)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601289)
 				}
+				__antithesis_instrumentation__.Notify(601287)
 				return tree.NewDGeometry(geometry), nil
 			},
 		},
@@ -6726,25 +8443,45 @@ May return a Point or LineString in the case of degenerate inputs.`,
 				info: "Return a linestring being a substring of the input one starting and ending at the given fractions of total 2D length. Second and third arguments are float8 values between 0 and 1.",
 			}.String(),
 			Fn: func(_ *tree.EvalContext, datums tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601290)
 				g := tree.MustBeDGeometry(datums[0])
 				startFraction := tree.MustBeDDecimal(datums[1])
 				startFractionFloat, err := startFraction.Float64()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601295)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601296)
 				}
+				__antithesis_instrumentation__.Notify(601291)
 				endFraction := tree.MustBeDDecimal(datums[2])
 				endFractionFloat, err := endFraction.Float64()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601297)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601298)
 				}
-				// PostGIS returns nil for empty linestrings.
-				if g.Empty() && g.ShapeType2D() == geopb.ShapeType_LineString {
+				__antithesis_instrumentation__.Notify(601292)
+
+				if g.Empty() && func() bool {
+					__antithesis_instrumentation__.Notify(601299)
+					return g.ShapeType2D() == geopb.ShapeType_LineString == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(601300)
 					return tree.DNull, nil
+				} else {
+					__antithesis_instrumentation__.Notify(601301)
 				}
+				__antithesis_instrumentation__.Notify(601293)
 				geometry, err := geomfn.LineSubstring(g.Geometry, startFractionFloat, endFractionFloat)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601302)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601303)
 				}
+				__antithesis_instrumentation__.Notify(601294)
 				return tree.NewDGeometry(geometry), nil
 			},
 		}),
@@ -6758,13 +8495,18 @@ May return a Point or LineString in the case of degenerate inputs.`,
 			},
 			ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601304)
 				linestringA := tree.MustBeDGeometry(args[0])
 				linestringB := tree.MustBeDGeometry(args[1])
 
 				ret, err := geomfn.LineCrossingDirection(linestringA.Geometry, linestringB.Geometry)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601306)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601307)
 				}
+				__antithesis_instrumentation__.Notify(601305)
 				return tree.NewDInt(tree.DInt(ret)), nil
 			},
 			Info: infoBuilder{
@@ -6782,10 +8524,6 @@ Note that the top vertex of the segment touching another line does not count as 
 			Volatility: tree.VolatilityImmutable,
 		},
 	),
-
-	//
-	// Unimplemented.
-	//
 
 	"st_asgml":               makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 48877}),
 	"st_aslatlontext":        makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 48882}),
@@ -6821,16 +8559,15 @@ Note that the top vertex of the segment touching another line does not count as 
 	"st_gmltosql":            makeBuiltin(tree.FunctionProperties{UnsupportedWithIssue: 48810}),
 }
 
-// returnCompatibilityFixedStringBuiltin is an overload that takes in 0 arguments
-// and returns the given fixed string.
-// It is assumed to be fully immutable.
 func returnCompatibilityFixedStringBuiltin(ret string) builtinDefinition {
+	__antithesis_instrumentation__.Notify(601308)
 	return makeBuiltin(
 		defProps(),
 		tree.Overload{
 			Types:      tree.ArgTypes{},
 			ReturnType: tree.FixedReturnType(types.String),
 			Fn: func(_ *tree.EvalContext, _ tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601309)
 				return tree.NewDString(ret), nil
 			},
 			Info: infoBuilder{
@@ -6841,19 +8578,20 @@ func returnCompatibilityFixedStringBuiltin(ret string) builtinDefinition {
 	)
 }
 
-// geometryOverload1 hides the boilerplate for builtins operating on one geometry.
 func geometryOverload1(
 	f func(*tree.EvalContext, *tree.DGeometry) (tree.Datum, error),
 	returnType *types.T,
 	ib infoBuilder,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(601310)
 	return tree.Overload{
 		Types: tree.ArgTypes{
 			{"geometry", types.Geometry},
 		},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(601311)
 			a := tree.MustBeDGeometry(args[0])
 			return f(ctx, a)
 		},
@@ -6862,17 +8600,21 @@ func geometryOverload1(
 	}
 }
 
-// geometryOverload1UnaryPredicate hides the boilerplate for builtins
-// operating on one geometry wrapping a unary predicate.
 func geometryOverload1UnaryPredicate(
 	f func(geo.Geometry) (bool, error), ib infoBuilder,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(601312)
 	return geometryOverload1(
 		func(_ *tree.EvalContext, g *tree.DGeometry) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(601313)
 			ret, err := f(g.Geometry)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(601315)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(601316)
 			}
+			__antithesis_instrumentation__.Notify(601314)
 			return tree.MakeDBool(tree.DBool(ret)), nil
 		},
 		types.Bool,
@@ -6881,13 +8623,13 @@ func geometryOverload1UnaryPredicate(
 	)
 }
 
-// geometryOverload2 hides the boilerplate for builtins operating on two geometries.
 func geometryOverload2(
 	f func(*tree.EvalContext, *tree.DGeometry, *tree.DGeometry) (tree.Datum, error),
 	returnType *types.T,
 	ib infoBuilder,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(601317)
 	return tree.Overload{
 		Types: tree.ArgTypes{
 			{"geometry_a", types.Geometry},
@@ -6895,6 +8637,7 @@ func geometryOverload2(
 		},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(601318)
 			a := tree.MustBeDGeometry(args[0])
 			b := tree.MustBeDGeometry(args[1])
 			return f(ctx, a, b)
@@ -6904,17 +8647,21 @@ func geometryOverload2(
 	}
 }
 
-// geometryOverload2BinaryPredicate hides the boilerplate for builtins
-// operating on two geometries and the overlap wraps a binary predicate.
 func geometryOverload2BinaryPredicate(
 	f func(geo.Geometry, geo.Geometry) (bool, error), ib infoBuilder,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(601319)
 	return geometryOverload2(
 		func(_ *tree.EvalContext, a *tree.DGeometry, b *tree.DGeometry) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(601320)
 			ret, err := f(a.Geometry, b.Geometry)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(601322)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(601323)
 			}
+			__antithesis_instrumentation__.Notify(601321)
 			return tree.MakeDBool(tree.DBool(ret)), nil
 		},
 		types.Bool,
@@ -6923,19 +8670,20 @@ func geometryOverload2BinaryPredicate(
 	)
 }
 
-// geographyOverload1 hides the boilerplate for builtins operating on one geography.
 func geographyOverload1(
 	f func(*tree.EvalContext, *tree.DGeography) (tree.Datum, error),
 	returnType *types.T,
 	ib infoBuilder,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(601324)
 	return tree.Overload{
 		Types: tree.ArgTypes{
 			{"geography", types.Geography},
 		},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(601325)
 			a := tree.MustBeDGeography(args[0])
 			return f(ctx, a)
 		},
@@ -6944,14 +8692,13 @@ func geographyOverload1(
 	}
 }
 
-// geographyOverload1WithUseSpheroid hides the boilerplate for builtins operating on one geography
-// with an optional spheroid argument.
 func geographyOverload1WithUseSpheroid(
 	f func(*tree.EvalContext, *tree.DGeography, geogfn.UseSphereOrSpheroid) (tree.Datum, error),
 	returnType *types.T,
 	ib infoBuilder,
 	volatility tree.Volatility,
 ) []tree.Overload {
+	__antithesis_instrumentation__.Notify(601326)
 	infoWithSphereAndSpheroid := ib
 	infoWithSphereAndSpheroid.libraryUsage = usesS2 | usesGeographicLib
 	infoWithSpheroid := ib
@@ -6965,6 +8712,7 @@ func geographyOverload1WithUseSpheroid(
 			},
 			ReturnType: tree.FixedReturnType(returnType),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601327)
 				a := tree.MustBeDGeography(args[0])
 				return f(ctx, a, geogfn.UseSpheroid)
 			},
@@ -6978,6 +8726,7 @@ func geographyOverload1WithUseSpheroid(
 			},
 			ReturnType: tree.FixedReturnType(returnType),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601328)
 				a := tree.MustBeDGeography(args[0])
 				b := tree.MustBeDBool(args[1])
 				return f(ctx, a, toUseSphereOrSpheroid(b))
@@ -6988,13 +8737,13 @@ func geographyOverload1WithUseSpheroid(
 	}
 }
 
-// geographyOverload2 hides the boilerplate for builtins operating on two geographys.
 func geographyOverload2(
 	f func(*tree.EvalContext, *tree.DGeography, *tree.DGeography) (tree.Datum, error),
 	returnType *types.T,
 	ib infoBuilder,
 	volatility tree.Volatility,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(601329)
 	return tree.Overload{
 		Types: tree.ArgTypes{
 			{"geography_a", types.Geography},
@@ -7002,6 +8751,7 @@ func geographyOverload2(
 		},
 		ReturnType: tree.FixedReturnType(returnType),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(601330)
 			a := tree.MustBeDGeography(args[0])
 			b := tree.MustBeDGeography(args[1])
 			return f(ctx, a, b)
@@ -7011,17 +8761,21 @@ func geographyOverload2(
 	}
 }
 
-// geographyOverload2 hides the boilerplate for builtins operating on two geographys
-// and the overlap wraps a binary predicate.
 func geographyOverload2BinaryPredicate(
 	f func(geo.Geography, geo.Geography) (bool, error), ib infoBuilder,
 ) tree.Overload {
+	__antithesis_instrumentation__.Notify(601331)
 	return geographyOverload2(
 		func(_ *tree.EvalContext, a *tree.DGeography, b *tree.DGeography) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(601332)
 			ret, err := f(a.Geography, b.Geography)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(601334)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(601335)
 			}
+			__antithesis_instrumentation__.Notify(601333)
 			return tree.MakeDBool(tree.DBool(ret)), nil
 		},
 		types.Bool,
@@ -7030,17 +8784,21 @@ func geographyOverload2BinaryPredicate(
 	)
 }
 
-// toUseSphereOrSpheroid returns whether to use a sphere or spheroid.
 func toUseSphereOrSpheroid(useSpheroid tree.DBool) geogfn.UseSphereOrSpheroid {
+	__antithesis_instrumentation__.Notify(601336)
 	if useSpheroid {
+		__antithesis_instrumentation__.Notify(601338)
 		return geogfn.UseSpheroid
+	} else {
+		__antithesis_instrumentation__.Notify(601339)
 	}
+	__antithesis_instrumentation__.Notify(601337)
 	return geogfn.UseSphere
 }
 
 func initGeoBuiltins() {
-	// Some functions have exactly the same definition - in which case,
-	// we can just copy them.
+	__antithesis_instrumentation__.Notify(601340)
+
 	for _, alias := range []struct {
 		alias       string
 		builtinName string
@@ -7054,56 +8812,57 @@ func initGeoBuiltins() {
 		{"st_symmetricdifference", "st_symdifference"},
 		{"st_force3d", "st_force3dz"},
 	} {
+		__antithesis_instrumentation__.Notify(601344)
 		if _, ok := geoBuiltins[alias.builtinName]; !ok {
+			__antithesis_instrumentation__.Notify(601346)
 			panic("expected builtin definition for alias: " + alias.builtinName)
+		} else {
+			__antithesis_instrumentation__.Notify(601347)
 		}
+		__antithesis_instrumentation__.Notify(601345)
 		geoBuiltins[alias.alias] = geoBuiltins[alias.builtinName]
 	}
+	__antithesis_instrumentation__.Notify(601341)
 
-	// Indexed functions have an alternative version with an underscore prepended
-	// to the name, which tells the optimizer to not utilize the index.
 	for indexBuiltinName := range geoindex.RelationshipMap {
+		__antithesis_instrumentation__.Notify(601348)
 		builtin, exists := geoBuiltins[indexBuiltinName]
 		if !exists {
+			__antithesis_instrumentation__.Notify(601351)
 			panic("expected builtin: " + indexBuiltinName)
+		} else {
+			__antithesis_instrumentation__.Notify(601352)
 		}
-		// Copy the builtin and add an underscore on the name.
+		__antithesis_instrumentation__.Notify(601349)
+
 		overloads := make([]tree.Overload, len(builtin.overloads))
 		for i, ovCopy := range builtin.overloads {
+			__antithesis_instrumentation__.Notify(601353)
 			builtin.overloads[i].Info += "\n\nThis function variant will attempt to utilize any available spatial index."
 
 			ovCopy.Info += "\n\nThis function variant does not utilize any spatial index."
 			overloads[i] = ovCopy
 		}
+		__antithesis_instrumentation__.Notify(601350)
 		underscoreBuiltin := makeBuiltin(
 			builtin.props,
 			overloads...,
 		)
 		geoBuiltins["_"+indexBuiltinName] = underscoreBuiltin
 	}
+	__antithesis_instrumentation__.Notify(601342)
 
-	// These builtins have both a GEOMETRY and GEOGRAPHY overload.
-	// For these cases, having an unknown argument for the function will
-	// automatically resolve it to a string type and be implicitly cast as
-	// GEOMETRY.
 	for _, builtinName := range []string{
 		"st_area",
 		"st_asewkt",
 		"st_asgeojson",
-		// TODO(#48877): uncomment
-		// "st_asgml",
+
 		"st_askml",
-		// TODO(#48883): uncomment
-		// "st_assvg",
-		// TODO(#48886): uncomment
-		// "st_astwkb",
+
 		"st_astext",
 		"st_buffer",
 		"st_centroid",
-		// TODO(#48899): uncomment
-		// "st_clusterintersecting",
-		// TODO(#48901): uncomment
-		// "st_clusterwithin",
+
 		"st_coveredby",
 		"st_covers",
 		"st_distance",
@@ -7113,25 +8872,34 @@ func initGeoBuiltins() {
 		"st_length",
 		"st_dwithinexclusive",
 	} {
+		__antithesis_instrumentation__.Notify(601354)
 		builtin, exists := geoBuiltins[builtinName]
 		if !exists {
+			__antithesis_instrumentation__.Notify(601356)
 			panic("expected builtin: " + builtinName)
+		} else {
+			__antithesis_instrumentation__.Notify(601357)
 		}
+		__antithesis_instrumentation__.Notify(601355)
 		geoBuiltins[builtinName] = appendStrArgOverloadForGeometryArgOverloads(builtin)
 	}
+	__antithesis_instrumentation__.Notify(601343)
 
 	for k, v := range geoBuiltins {
+		__antithesis_instrumentation__.Notify(601358)
 		if _, exists := builtins[k]; exists {
+			__antithesis_instrumentation__.Notify(601360)
 			panic("duplicate builtin: " + k)
+		} else {
+			__antithesis_instrumentation__.Notify(601361)
 		}
+		__antithesis_instrumentation__.Notify(601359)
 		v.props.Category = categorySpatial
 		v.props.AvailableOnPublicSchema = true
 		builtins[k] = v
 	}
 }
 
-// addGeometryColumnSQL returns the SQL statement that should be executed to
-// add a geometry column.
 func addGeometryColumnSQL(
 	ctx *tree.EvalContext,
 	catalogName string,
@@ -7143,18 +8911,27 @@ func addGeometryColumnSQL(
 	dimension int,
 	useTypmod bool,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(601362)
 	if dimension != 2 {
+		__antithesis_instrumentation__.Notify(601365)
 		return "", pgerror.Newf(
 			pgcode.FeatureNotSupported,
 			"only dimension=2 is currently supported",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(601366)
 	}
+	__antithesis_instrumentation__.Notify(601363)
 	if !useTypmod {
+		__antithesis_instrumentation__.Notify(601367)
 		return "", unimplemented.NewWithIssue(
 			49402,
 			"useTypmod=false is currently not supported with AddGeometryColumn",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(601368)
 	}
+	__antithesis_instrumentation__.Notify(601364)
 
 	tn := makeTableName(catalogName, schemaName, tableName)
 	stmt := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s GEOMETRY(%s,%d)",
@@ -7166,8 +8943,6 @@ func addGeometryColumnSQL(
 	return stmt, nil
 }
 
-// addGeometryColumnSummary returns metadata about the geometry column that
-// was added.
 func addGeometryColumnSummary(
 	ctx *tree.EvalContext,
 	catalogName string,
@@ -7179,6 +8954,7 @@ func addGeometryColumnSummary(
 	dimension int,
 	useTypmod bool,
 ) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(601369)
 	tn := makeTableName(catalogName, schemaName, tableName)
 	summary := fmt.Sprintf("%s.%s SRID:%d TYPE:%s DIMS:%d",
 		tn.String(),
@@ -7191,15 +8967,25 @@ func addGeometryColumnSummary(
 }
 
 func makeTableName(catalogName string, schemaName string, tableName string) tree.UnresolvedName {
+	__antithesis_instrumentation__.Notify(601370)
 	if catalogName != "" {
+		__antithesis_instrumentation__.Notify(601372)
 		return tree.MakeUnresolvedName(catalogName, schemaName, tableName)
-	} else if schemaName != "" {
-		return tree.MakeUnresolvedName(schemaName, tableName)
+	} else {
+		__antithesis_instrumentation__.Notify(601373)
+		if schemaName != "" {
+			__antithesis_instrumentation__.Notify(601374)
+			return tree.MakeUnresolvedName(schemaName, tableName)
+		} else {
+			__antithesis_instrumentation__.Notify(601375)
+		}
 	}
+	__antithesis_instrumentation__.Notify(601371)
 	return tree.MakeUnresolvedName(tableName)
 }
 
 func lineInterpolatePointForRepeatOverload(repeat bool, builtinInfo string) tree.Overload {
+	__antithesis_instrumentation__.Notify(601376)
 	return tree.Overload{
 		Types: tree.ArgTypes{
 			{"geometry", types.Geometry},
@@ -7207,12 +8993,17 @@ func lineInterpolatePointForRepeatOverload(repeat bool, builtinInfo string) tree
 		},
 		ReturnType: tree.FixedReturnType(types.Geometry),
 		Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(601377)
 			g := tree.MustBeDGeometry(args[0])
 			fraction := float64(tree.MustBeDFloat(args[1]))
 			interpolatedPoints, err := geomfn.LineInterpolatePoints(g.Geometry, fraction, repeat)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(601379)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(601380)
 			}
+			__antithesis_instrumentation__.Notify(601378)
 			return tree.NewDGeometry(interpolatedPoints), nil
 		},
 		Info: infoBuilder{
@@ -7223,60 +9014,80 @@ func lineInterpolatePointForRepeatOverload(repeat bool, builtinInfo string) tree
 	}
 }
 
-// appendStrArgOverloadForGeometryArgOverloads appends overloads by casting string
-// types into geometry types if any geometry arguments are taken in as input.
-// These are useful for functions which take GEOMETRY and GEOGRAPHY unknown args,
-// which the type system will be unable to resolve without a cast. If a string
-// argument is given in the same position, it is always favored.
 func appendStrArgOverloadForGeometryArgOverloads(def builtinDefinition) builtinDefinition {
+	__antithesis_instrumentation__.Notify(601381)
 	newOverloads := make([]tree.Overload, len(def.overloads))
 	copy(newOverloads, def.overloads)
 
 	for i := range def.overloads {
-		// Define independntly as it is used by a closure below.
+		__antithesis_instrumentation__.Notify(601383)
+
 		ov := def.overloads[i]
 
 		argTypes, ok := ov.Types.(tree.ArgTypes)
 		if !ok {
+			__antithesis_instrumentation__.Notify(601389)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(601390)
 		}
+		__antithesis_instrumentation__.Notify(601384)
 
-		// Find all argument indexes that have the Geometry type.
 		var argsToCast util.FastIntSet
 		for i, argType := range argTypes {
+			__antithesis_instrumentation__.Notify(601391)
 			if argType.Typ.Equal(types.Geometry) {
+				__antithesis_instrumentation__.Notify(601392)
 				argsToCast.Add(i)
+			} else {
+				__antithesis_instrumentation__.Notify(601393)
 			}
 		}
+		__antithesis_instrumentation__.Notify(601385)
 		if argsToCast.Len() == 0 {
+			__antithesis_instrumentation__.Notify(601394)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(601395)
 		}
+		__antithesis_instrumentation__.Notify(601386)
 
 		newOverload := ov
 
-		// Replace them with strings ArgType.
 		newArgTypes := make(tree.ArgTypes, len(argTypes))
 		for i := range argTypes {
+			__antithesis_instrumentation__.Notify(601396)
 			newArgTypes[i] = argTypes[i]
 			if argsToCast.Contains(i) {
+				__antithesis_instrumentation__.Notify(601397)
 				newArgTypes[i].Name += "_str"
 				newArgTypes[i].Typ = types.String
+			} else {
+				__antithesis_instrumentation__.Notify(601398)
 			}
 		}
+		__antithesis_instrumentation__.Notify(601387)
 
-		// Wrap the overloads to cast to Geometry.
 		newOverload.Types = newArgTypes
 		newOverload.Fn = func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			__antithesis_instrumentation__.Notify(601399)
 			for i, ok := argsToCast.Next(0); ok; i, ok = argsToCast.Next(i + 1) {
+				__antithesis_instrumentation__.Notify(601401)
 				arg := string(tree.MustBeDString(args[i]))
 				g, err := geo.ParseGeometry(arg)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601403)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601404)
 				}
+				__antithesis_instrumentation__.Notify(601402)
 				args[i] = tree.NewDGeometry(g)
 			}
+			__antithesis_instrumentation__.Notify(601400)
 			return ov.Fn(ctx, args)
 		}
+		__antithesis_instrumentation__.Notify(601388)
 
 		newOverload.Info += `
 
@@ -7285,16 +9096,16 @@ This variant will cast all geometry_str arguments into Geometry types.
 
 		newOverloads = append(newOverloads, newOverload)
 	}
+	__antithesis_instrumentation__.Notify(601382)
 
 	def.overloads = newOverloads
 	return def
 }
 
-// stAsGeoJSONFromTuple returns a *tree.DString representing JSON output
-// for ST_AsGeoJSON.
 func stAsGeoJSONFromTuple(
 	ctx *tree.EvalContext, tuple *tree.DTuple, geoColumn string, numDecimalDigits int, pretty bool,
 ) (*tree.DString, error) {
+	__antithesis_instrumentation__.Notify(601405)
 	typ := tuple.ResolvedType()
 	labels := typ.TupleLabels()
 
@@ -7303,102 +9114,169 @@ func stAsGeoJSONFromTuple(
 
 	foundGeoColumn := false
 	for i, d := range tuple.D {
+		__antithesis_instrumentation__.Notify(601412)
 		var label string
 		if labels != nil {
+			__antithesis_instrumentation__.Notify(601417)
 			label = labels[i]
+		} else {
+			__antithesis_instrumentation__.Notify(601418)
 		}
-		// If label is not specified, append `f + index` as the name, in line with
-		// row_to_json.
+		__antithesis_instrumentation__.Notify(601413)
+
 		if label == "" {
+			__antithesis_instrumentation__.Notify(601419)
 			label = fmt.Sprintf("f%d", i+1)
+		} else {
+			__antithesis_instrumentation__.Notify(601420)
 		}
-		// If the geoColumn is not specified and the geometry is not found,
-		// take a look.
-		// Also take a look if the column label is the column we desire.
-		if (geoColumn == "" && geometry == nil) || geoColumn == label {
-			// If we can parse the data type as Geometry or Geography,
-			// we've found it.
+		__antithesis_instrumentation__.Notify(601414)
+
+		if (geoColumn == "" && func() bool {
+			__antithesis_instrumentation__.Notify(601421)
+			return geometry == nil == true
+		}() == true) || func() bool {
+			__antithesis_instrumentation__.Notify(601422)
+			return geoColumn == label == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(601423)
+
 			if g, ok := d.(*tree.DGeometry); ok {
+				__antithesis_instrumentation__.Notify(601426)
 				foundGeoColumn = true
 				var err error
 				geometry, err = json.FromSpatialObject(g.SpatialObject(), numDecimalDigits)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601428)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601429)
 				}
+				__antithesis_instrumentation__.Notify(601427)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(601430)
 			}
+			__antithesis_instrumentation__.Notify(601424)
 			if g, ok := d.(*tree.DGeography); ok {
+				__antithesis_instrumentation__.Notify(601431)
 				foundGeoColumn = true
 				var err error
 				geometry, err = json.FromSpatialObject(g.SpatialObject(), numDecimalDigits)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601433)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601434)
 				}
+				__antithesis_instrumentation__.Notify(601432)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(601435)
 			}
+			__antithesis_instrumentation__.Notify(601425)
 
 			if geoColumn == label {
+				__antithesis_instrumentation__.Notify(601436)
 				foundGeoColumn = true
-				// If the entry is NULL, skip the current entry.
-				// Otherwise, we found the column but it was the wrong type, in which case,
-				// we error out.
+
 				if d == tree.DNull {
+					__antithesis_instrumentation__.Notify(601438)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(601439)
 				}
+				__antithesis_instrumentation__.Notify(601437)
 				return nil, errors.Newf(
 					"expected column %s to be a geo type, but it is of type %s",
 					geoColumn,
 					d.ResolvedType().SQLString(),
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(601440)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(601441)
 		}
+		__antithesis_instrumentation__.Notify(601415)
 		tupleJSON, err := tree.AsJSON(
 			d,
 			ctx.SessionData().DataConversionConfig,
 			ctx.GetLocation(),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(601442)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(601443)
 		}
+		__antithesis_instrumentation__.Notify(601416)
 		properties.Add(label, tupleJSON)
 	}
-	// If we have not found a column with the matching name, error out.
-	if !foundGeoColumn && geoColumn != "" {
+	__antithesis_instrumentation__.Notify(601406)
+
+	if !foundGeoColumn && func() bool {
+		__antithesis_instrumentation__.Notify(601444)
+		return geoColumn != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(601445)
 		return nil, errors.Newf("%q column not found", geoColumn)
+	} else {
+		__antithesis_instrumentation__.Notify(601446)
 	}
-	// If geometry is still NULL, we either found no geometry columns
-	// or the found geometry column is NULL. Return a NULL type, a la
-	// PostGIS.
+	__antithesis_instrumentation__.Notify(601407)
+
 	if geometry == nil {
+		__antithesis_instrumentation__.Notify(601447)
 		geometryBuilder := json.NewObjectBuilder(1)
 		geometryBuilder.Add("type", json.NullJSONValue)
 		geometry = geometryBuilder.Build()
+	} else {
+		__antithesis_instrumentation__.Notify(601448)
 	}
+	__antithesis_instrumentation__.Notify(601408)
 	retJSON := json.NewObjectBuilder(3)
 	retJSON.Add("type", json.FromString("Feature"))
 	retJSON.Add("geometry", geometry)
 	retJSON.Add("properties", properties.Build())
 	retString := retJSON.Build().String()
 	if !pretty {
+		__antithesis_instrumentation__.Notify(601449)
 		return tree.NewDString(retString), nil
+	} else {
+		__antithesis_instrumentation__.Notify(601450)
 	}
+	__antithesis_instrumentation__.Notify(601409)
 	var reserializedJSON map[string]interface{}
 	err := gojson.Unmarshal([]byte(retString), &reserializedJSON)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(601451)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(601452)
 	}
+	__antithesis_instrumentation__.Notify(601410)
 	marshalledIndent, err := gojson.MarshalIndent(reserializedJSON, "", "\t")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(601453)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(601454)
 	}
+	__antithesis_instrumentation__.Notify(601411)
 	return tree.NewDString(string(marshalledIndent)), nil
 }
 
 func makeSTDWithinBuiltin(exclusivity geo.FnExclusivity) builtinDefinition {
+	__antithesis_instrumentation__.Notify(601455)
 	exclusivityStr := ", inclusive."
 	if exclusivity == geo.FnExclusive {
+		__antithesis_instrumentation__.Notify(601457)
 		exclusivityStr = ", exclusive."
+	} else {
+		__antithesis_instrumentation__.Notify(601458)
 	}
+	__antithesis_instrumentation__.Notify(601456)
 	return makeBuiltin(
 		defProps(),
 		tree.Overload{
@@ -7409,13 +9287,18 @@ func makeSTDWithinBuiltin(exclusivity geo.FnExclusivity) builtinDefinition {
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601459)
 				a := tree.MustBeDGeometry(args[0])
 				b := tree.MustBeDGeometry(args[1])
 				dist := tree.MustBeDFloat(args[2])
 				ret, err := geomfn.DWithin(a.Geometry, b.Geometry, float64(dist), exclusivity)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601461)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601462)
 				}
+				__antithesis_instrumentation__.Notify(601460)
 				return tree.MakeDBool(tree.DBool(ret)), nil
 			},
 			Info: infoBuilder{
@@ -7432,13 +9315,18 @@ func makeSTDWithinBuiltin(exclusivity geo.FnExclusivity) builtinDefinition {
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601463)
 				a := tree.MustBeDGeography(args[0])
 				b := tree.MustBeDGeography(args[1])
 				dist := tree.MustBeDFloat(args[2])
 				ret, err := geogfn.DWithin(a.Geography, b.Geography, float64(dist), geogfn.UseSpheroid, exclusivity)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601465)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601466)
 				}
+				__antithesis_instrumentation__.Notify(601464)
 				return tree.MakeDBool(tree.DBool(ret)), nil
 			},
 			Info: infoBuilder{
@@ -7458,6 +9346,7 @@ func makeSTDWithinBuiltin(exclusivity geo.FnExclusivity) builtinDefinition {
 			},
 			ReturnType: tree.FixedReturnType(types.Bool),
 			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				__antithesis_instrumentation__.Notify(601467)
 				a := tree.MustBeDGeography(args[0])
 				b := tree.MustBeDGeography(args[1])
 				dist := tree.MustBeDFloat(args[2])
@@ -7465,8 +9354,12 @@ func makeSTDWithinBuiltin(exclusivity geo.FnExclusivity) builtinDefinition {
 
 				ret, err := geogfn.DWithin(a.Geography, b.Geography, float64(dist), toUseSphereOrSpheroid(useSpheroid), exclusivity)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(601469)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(601470)
 				}
+				__antithesis_instrumentation__.Notify(601468)
 				return tree.MakeDBool(tree.DBool(ret)), nil
 			},
 			Info: infoBuilder{
@@ -7483,13 +9376,18 @@ func makeSTDWithinBuiltin(exclusivity geo.FnExclusivity) builtinDefinition {
 func applyGeoindexConfigStorageParams(
 	evalCtx *tree.EvalContext, cfg geoindex.Config, params string,
 ) (geoindex.Config, error) {
+	__antithesis_instrumentation__.Notify(601471)
 	indexDesc := &descpb.IndexDescriptor{GeoConfig: cfg}
 	stmt, err := parser.ParseOne(
 		fmt.Sprintf("CREATE INDEX t_idx ON t USING GIST(geom) WITH (%s)", params),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(601474)
 		return geoindex.Config{}, errors.Newf("invalid storage parameters specified: %s", params)
+	} else {
+		__antithesis_instrumentation__.Notify(601475)
 	}
+	__antithesis_instrumentation__.Notify(601472)
 	semaCtx := tree.MakeSemaContext()
 	if err := paramparse.SetStorageParameters(
 		evalCtx.Context,
@@ -7498,7 +9396,11 @@ func applyGeoindexConfigStorageParams(
 		stmt.AST.(*tree.CreateIndex).StorageParams,
 		&paramparse.IndexStorageParamObserver{IndexDesc: indexDesc},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(601476)
 		return geoindex.Config{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(601477)
 	}
+	__antithesis_instrumentation__.Notify(601473)
 	return indexDesc.GeoConfig, nil
 }

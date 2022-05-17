@@ -1,45 +1,43 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package clisqlcfg
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "strconv"
 
-// OptBool implements a boolean value that may be undefined.
 type OptBool struct {
 	isDef bool
 	v     bool
 }
 
-// Get returns whether the value is defined, and the value.
 func (o OptBool) Get() (isDef, val bool) {
+	__antithesis_instrumentation__.Notify(28516)
 	return o.isDef, o.v
 }
 
-// String implements the pflag.Value interface.
 func (o OptBool) String() string {
+	__antithesis_instrumentation__.Notify(28517)
 	if !o.isDef {
+		__antithesis_instrumentation__.Notify(28519)
 		return "<unspecified>"
+	} else {
+		__antithesis_instrumentation__.Notify(28520)
 	}
+	__antithesis_instrumentation__.Notify(28518)
 	return strconv.FormatBool(o.v)
 }
 
-// Type implements the pflag.Value interface.
-func (o OptBool) Type() string { return "bool" }
+func (o OptBool) Type() string { __antithesis_instrumentation__.Notify(28521); return "bool" }
 
-// Set implements the pflag.Value interface.
 func (o *OptBool) Set(v string) error {
+	__antithesis_instrumentation__.Notify(28522)
 	b, err := strconv.ParseBool(v)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(28524)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(28525)
 	}
+	__antithesis_instrumentation__.Notify(28523)
 	o.isDef = true
 	o.v = b
 	return nil

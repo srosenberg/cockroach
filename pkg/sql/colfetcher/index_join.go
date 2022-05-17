@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colfetcher
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -40,55 +32,29 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ColIndexJoin operators are used to execute index joins (lookup joins that
-// scan the primary index and discard input rows).
 type ColIndexJoin struct {
 	colexecop.InitHelper
 	colexecop.OneInputNode
 
 	state indexJoinState
 
-	// spanAssembler is used to construct the lookup spans for each input batch.
 	spanAssembler colexecspan.ColSpanAssembler
 
-	// batch keeps track of the input batch currently being processed; if we only
-	// generate spans for a portion of the batch on one iteration, we need to keep
-	// a reference to it for the next iteration.
 	batch coldata.Batch
 
-	// startIdx keeps track of the index into the current input batch from which
-	// the next set of spans should start to be generated. This is necessary
-	// because the size of input rows from which spans are generated is limited,
-	// and may not correspond to batch boundaries.
 	startIdx int
 
-	// limitHintHelper is used in limiting batches of input rows in the presence
-	// of hard and soft limits.
 	limitHintHelper execinfra.LimitHintHelper
 
 	mem struct {
-		// inputBatchSize tracks the size of the rows that have been used to
-		// generate spans so far. This is used to prevent memory usage from growing
-		// too large.
 		inputBatchSize int64
 
-		// inputBatchSizeLimit is a batch size limit for the number of input
-		// rows that will be used to form lookup spans for each scan. It is
-		// usually equal to the inputBatchSizeLimit metamorphic variable, but it
-		// might be lower than that value when low distsql_workmem limit is
-		// used.
 		inputBatchSizeLimit int64
 
-		// currentBatchSize tracks the size of the current input batch. This
-		// provides a shortcut when the entire batch fits in the memory limit.
 		currentBatchSize int64
 
-		// constRowSize tracks the portion of the size of each row that remains
-		// constant between rows - for example, an int64 column will add 8 bytes to
-		// this field.
 		constRowSize int64
 
-		// Fields that deal with variable-size types.
 		hasVarSizeCols bool
 		varSizeVecIdxs util.FastIntSet
 		byteLikeCols   []*coldata.Bytes
@@ -99,26 +65,17 @@ type ColIndexJoin struct {
 	flowCtx *execinfra.FlowCtx
 	cf      *cFetcher
 
-	// tracingSpan is created when the stats should be collected for the query
-	// execution, and it will be finished when closing the operator.
 	tracingSpan *tracing.Span
 	mu          struct {
 		syncutil.Mutex
-		// rowsRead contains the number of total rows this ColIndexJoin has
-		// returned so far.
+
 		rowsRead int64
 	}
-	// ResultTypes is the slice of resulting column types from this operator.
-	// It should be used rather than the slice of column types from the scanned
-	// table because the scan might synthesize additional implicit system columns.
+
 	ResultTypes []*types.T
 
-	// maintainOrdering is true when the index join is required to maintain its
-	// input ordering, in which case the ordering of the spans cannot be changed.
 	maintainOrdering bool
 
-	// usesStreamer indicates whether the ColIndexJoin is using the Streamer
-	// API.
 	usesStreamer bool
 	streamerInfo struct {
 		*kvstreamer.Streamer
@@ -132,18 +89,20 @@ var _ colexecop.KVReader = &ColIndexJoin{}
 var _ execinfra.Releasable = &ColIndexJoin{}
 var _ colexecop.ClosableOperator = &ColIndexJoin{}
 
-// Init initializes a ColIndexJoin.
 func (s *ColIndexJoin) Init(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(455634)
 	if !s.InitHelper.Init(ctx) {
+		__antithesis_instrumentation__.Notify(455636)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(455637)
 	}
-	// If tracing is enabled, we need to start a child span so that the only
-	// contention events present in the recording would be because of this
-	// cFetcher. Note that ProcessorSpan method itself will check whether
-	// tracing is enabled.
+	__antithesis_instrumentation__.Notify(455635)
+
 	s.Ctx, s.tracingSpan = execinfra.ProcessorSpan(s.Ctx, "colindexjoin")
 	s.Input.Init(s.Ctx)
 	if s.usesStreamer {
+		__antithesis_instrumentation__.Notify(455638)
 		s.streamerInfo.Streamer = kvstreamer.NewStreamer(
 			s.flowCtx.Cfg.DistSender,
 			s.flowCtx.Stopper(),
@@ -155,8 +114,12 @@ func (s *ColIndexJoin) Init(ctx context.Context) {
 		)
 		mode := kvstreamer.OutOfOrder
 		if s.maintainOrdering {
+			__antithesis_instrumentation__.Notify(455640)
 			mode = kvstreamer.InOrder
+		} else {
+			__antithesis_instrumentation__.Notify(455641)
 		}
+		__antithesis_instrumentation__.Notify(455639)
 		s.streamerInfo.Streamer.Init(
 			mode,
 			kvstreamer.Hints{UniqueRequests: true},
@@ -164,6 +127,8 @@ func (s *ColIndexJoin) Init(ctx context.Context) {
 			s.flowCtx.Cfg.TempStorage,
 			s.streamerInfo.diskMonitor,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(455642)
 	}
 }
 
@@ -175,66 +140,86 @@ const (
 	indexJoinDone
 )
 
-// Next is part of the Operator interface.
 func (s *ColIndexJoin) Next() coldata.Batch {
+	__antithesis_instrumentation__.Notify(455643)
 	for {
+		__antithesis_instrumentation__.Notify(455644)
 		switch s.state {
 		case indexJoinConstructingSpans:
+			__antithesis_instrumentation__.Notify(455645)
 			var rowCount int64
 			var spans roachpb.Spans
 			s.mem.inputBatchSize = 0
 			for s.next() {
-				// Because index joins discard input rows, we do not have to maintain a
-				// reference to input tuples after span generation. So, we can discard
-				// the input batch reference on each iteration.
+				__antithesis_instrumentation__.Notify(455658)
+
 				endIdx := s.findEndIndex(rowCount > 0)
-				// If we have a limit hint, make sure we don't include more rows
-				// than needed.
-				if l := s.limitHintHelper.LimitHint(); l != 0 && rowCount+int64(endIdx-s.startIdx) > l {
+
+				if l := s.limitHintHelper.LimitHint(); l != 0 && func() bool {
+					__antithesis_instrumentation__.Notify(455661)
+					return rowCount+int64(endIdx-s.startIdx) > l == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(455662)
 					endIdx = s.startIdx + int(l-rowCount)
+				} else {
+					__antithesis_instrumentation__.Notify(455663)
 				}
+				__antithesis_instrumentation__.Notify(455659)
 				rowCount += int64(endIdx - s.startIdx)
 				s.spanAssembler.ConsumeBatch(s.batch, s.startIdx, endIdx)
 				s.startIdx = endIdx
-				if l := s.limitHintHelper.LimitHint(); l != 0 && rowCount == l {
-					// Reached the limit hint. Note that rowCount cannot be
-					// larger than l because we chopped the former off above.
+				if l := s.limitHintHelper.LimitHint(); l != 0 && func() bool {
+					__antithesis_instrumentation__.Notify(455664)
+					return rowCount == l == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(455665)
+
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(455666)
 				}
+				__antithesis_instrumentation__.Notify(455660)
 				if endIdx < s.batch.Length() {
-					// Reached the memory limit.
+					__antithesis_instrumentation__.Notify(455667)
+
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(455668)
 				}
 			}
+			__antithesis_instrumentation__.Notify(455646)
 			if err := s.limitHintHelper.ReadSomeRows(rowCount); err != nil {
+				__antithesis_instrumentation__.Notify(455669)
 				colexecerror.InternalError(err)
+			} else {
+				__antithesis_instrumentation__.Notify(455670)
 			}
+			__antithesis_instrumentation__.Notify(455647)
 			spans = s.spanAssembler.GetSpans()
 			if len(spans) == 0 {
-				// No lookups left to perform.
+				__antithesis_instrumentation__.Notify(455671)
+
 				s.state = indexJoinDone
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(455672)
 			}
+			__antithesis_instrumentation__.Notify(455648)
 
 			if !s.maintainOrdering {
-				// Sort the spans when !maintainOrdering. This allows lower layers to
-				// optimize iteration over the data. Note that the looked up rows are
-				// output unchanged, in the retrieval order, so it is not safe to do
-				// this when maintainOrdering is true (the ordering to be maintained
-				// may be different than the ordering in the index).
-				sort.Sort(spans)
-			}
+				__antithesis_instrumentation__.Notify(455673)
 
-			// Index joins will always return exactly one output row per input row.
+				sort.Sort(spans)
+			} else {
+				__antithesis_instrumentation__.Notify(455674)
+			}
+			__antithesis_instrumentation__.Notify(455649)
+
 			s.cf.setEstimatedRowCount(uint64(rowCount))
-			// Note that the fetcher takes ownership of the spans slice - it
-			// will modify it and perform the memory accounting. We don't care
-			// about the modification here, but we want to be conscious about
-			// the memory accounting - we don't double count for any memory of
-			// spans because the spanAssembler released all of the relevant
-			// memory from its account in GetSpans().
+
 			var err error
 			if s.usesStreamer {
+				__antithesis_instrumentation__.Notify(455675)
 				err = s.cf.StartScanStreaming(
 					s.Ctx,
 					s.streamerInfo.Streamer,
@@ -242,117 +227,161 @@ func (s *ColIndexJoin) Next() coldata.Batch {
 					rowinfra.NoRowLimit,
 				)
 			} else {
+				__antithesis_instrumentation__.Notify(455676)
 				err = s.cf.StartScan(
 					s.Ctx,
 					s.flowCtx.Txn,
 					spans,
-					nil,   /* bsHeader */
-					false, /* limitBatches */
+					nil,
+					false,
 					rowinfra.NoBytesLimit,
 					rowinfra.NoRowLimit,
 					s.flowCtx.EvalCtx.TestingKnobs.ForceProductionBatchSizes,
 				)
 			}
+			__antithesis_instrumentation__.Notify(455650)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455677)
 				colexecerror.InternalError(err)
+			} else {
+				__antithesis_instrumentation__.Notify(455678)
 			}
+			__antithesis_instrumentation__.Notify(455651)
 			s.state = indexJoinScanning
 		case indexJoinScanning:
+			__antithesis_instrumentation__.Notify(455652)
 			batch, err := s.cf.NextBatch(s.Ctx)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(455679)
 				colexecerror.InternalError(err)
+			} else {
+				__antithesis_instrumentation__.Notify(455680)
 			}
+			__antithesis_instrumentation__.Notify(455653)
 			if batch.Selection() != nil {
+				__antithesis_instrumentation__.Notify(455681)
 				colexecerror.InternalError(
 					errors.AssertionFailedf("unexpected selection vector on the batch coming from CFetcher"))
+			} else {
+				__antithesis_instrumentation__.Notify(455682)
 			}
+			__antithesis_instrumentation__.Notify(455654)
 			n := batch.Length()
 			if n == 0 {
-				// NB: the fetcher has just been closed automatically, so it
-				// released all of the resources. We now have to tell the
-				// ColSpanAssembler to account for the spans slice since it
-				// still has the references to it.
+				__antithesis_instrumentation__.Notify(455683)
+
 				s.spanAssembler.AccountForSpans()
 				s.state = indexJoinConstructingSpans
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(455684)
 			}
+			__antithesis_instrumentation__.Notify(455655)
 			s.mu.Lock()
 			s.mu.rowsRead += int64(n)
 			s.mu.Unlock()
 			return batch
 		case indexJoinDone:
-			// Eagerly close the index joiner. Note that closeInternal() is
-			// idempotent, so it's ok if it'll be closed again.
+			__antithesis_instrumentation__.Notify(455656)
+
 			s.closeInternal()
 			return coldata.ZeroBatch
+		default:
+			__antithesis_instrumentation__.Notify(455657)
 		}
 	}
 }
 
-// findEndIndex returns an index endIdx into s.batch such that generating spans
-// for rows in the interval [s.startIdx, endIdx) will get as close to the memory
-// limit as possible without exceeding it, subject to the length of the batch.
-// If no spans have been generated so far, the interval will include at least
-// one row to ensure that progress is made. If no more spans should be generated
-// for the current iteration, endIdx == s.startIdx.
 func (s *ColIndexJoin) findEndIndex(hasSpans bool) (endIdx int) {
+	__antithesis_instrumentation__.Notify(455685)
 	n := s.batch.Length()
-	if n == 0 || s.startIdx >= n || s.mem.inputBatchSize >= s.mem.inputBatchSizeLimit {
-		// No more spans should be generated.
+	if n == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(455690)
+		return s.startIdx >= n == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(455691)
+		return s.mem.inputBatchSize >= s.mem.inputBatchSizeLimit == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455692)
+
 		return s.startIdx
+	} else {
+		__antithesis_instrumentation__.Notify(455693)
 	}
+	__antithesis_instrumentation__.Notify(455686)
 	if s.mem.inputBatchSize+s.mem.currentBatchSize <= s.mem.inputBatchSizeLimit {
-		// The entire batch fits within the memory limit.
+		__antithesis_instrumentation__.Notify(455694)
+
 		s.mem.inputBatchSize += s.mem.currentBatchSize
 		return n
+	} else {
+		__antithesis_instrumentation__.Notify(455695)
 	}
+	__antithesis_instrumentation__.Notify(455687)
 	for endIdx = s.startIdx; endIdx < n; endIdx++ {
+		__antithesis_instrumentation__.Notify(455696)
 		s.mem.inputBatchSize += s.getRowSize(endIdx)
 		if s.mem.inputBatchSize > s.mem.inputBatchSizeLimit {
-			// The current row (but not the previous) brings us to or over the memory
-			// limit, so use it as the exclusive end index.
+			__antithesis_instrumentation__.Notify(455698)
+
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(455699)
 		}
+		__antithesis_instrumentation__.Notify(455697)
 		if s.mem.inputBatchSize == s.mem.inputBatchSizeLimit {
-			// The current row exactly meets the memory limit. Increment idx in order
-			// to make it exclusive.
+			__antithesis_instrumentation__.Notify(455700)
+
 			endIdx++
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(455701)
 		}
 	}
-	if !hasSpans && endIdx == s.startIdx {
-		// We must generate spans for at least one row in order to make progress.
+	__antithesis_instrumentation__.Notify(455688)
+	if !hasSpans && func() bool {
+		__antithesis_instrumentation__.Notify(455702)
+		return endIdx == s.startIdx == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455703)
+
 		return s.startIdx + 1
+	} else {
+		__antithesis_instrumentation__.Notify(455704)
 	}
+	__antithesis_instrumentation__.Notify(455689)
 	return endIdx
 }
 
-// getRowSize calculates the size of the row stored at index i in the current
-// batch. Note that it accounts only for the size of the data itself, and
-// ignores extra overhead such as selection vectors or byte offsets.
 func (s *ColIndexJoin) getRowSize(idx int) int64 {
+	__antithesis_instrumentation__.Notify(455705)
 	rowSize := s.mem.constRowSize
 	if s.mem.hasVarSizeCols {
+		__antithesis_instrumentation__.Notify(455707)
 		for i := range s.mem.byteLikeCols {
+			__antithesis_instrumentation__.Notify(455710)
 			rowSize += adjustMemEstimate(s.mem.byteLikeCols[i].ElemSize(idx))
 		}
+		__antithesis_instrumentation__.Notify(455708)
 		for i := range s.mem.decimalCols {
+			__antithesis_instrumentation__.Notify(455711)
 			rowSize += adjustMemEstimate(int64(s.mem.decimalCols[i][idx].Size()))
 		}
+		__antithesis_instrumentation__.Notify(455709)
 		for i := range s.mem.datumCols {
+			__antithesis_instrumentation__.Notify(455712)
 			memEstimate := int64(s.mem.datumCols[i].Get(idx).(tree.Datum).Size()) + memsize.DatumOverhead
 			rowSize += adjustMemEstimate(memEstimate)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(455713)
 	}
+	__antithesis_instrumentation__.Notify(455706)
 	return rowSize
 }
 
-// getBatchSize calculates the size of the entire current batch. Note that it
-// accounts only for the size of the data itself, and ignores extra overhead
-// such as selection vectors or byte offsets. getBatchSize is not exactly
-// equivalent to calling getRowSize for every row, but it is not necessary for
-// the accounting to be exact, anyway.
 func (s *ColIndexJoin) getBatchSize() int64 {
+	__antithesis_instrumentation__.Notify(455714)
 	n := s.batch.Length()
 	batchSize := colmem.GetBatchMemSize(s.batch)
 	batchSize += int64(n*s.batch.Width()) * memEstimateAdditive
@@ -360,104 +389,127 @@ func (s *ColIndexJoin) getBatchSize() int64 {
 	return batchSize
 }
 
-// next pulls the next input batch (if the current one is entirely finished)
-// and performs initial processing of the batch. This includes performing
-// interface conversions up front and retrieving the overall memory footprint of
-// the data. next returns false once the input is finished, and otherwise true.
 func (s *ColIndexJoin) next() bool {
-	if s.batch == nil || s.startIdx >= s.batch.Length() {
-		// The current batch is finished.
+	__antithesis_instrumentation__.Notify(455715)
+	if s.batch == nil || func() bool {
+		__antithesis_instrumentation__.Notify(455719)
+		return s.startIdx >= s.batch.Length() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455720)
+
 		s.startIdx = 0
 		s.batch = s.Input.Next()
 		if s.batch.Length() == 0 {
+			__antithesis_instrumentation__.Notify(455722)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(455723)
 		}
+		__antithesis_instrumentation__.Notify(455721)
 		s.mem.currentBatchSize = s.getBatchSize()
+	} else {
+		__antithesis_instrumentation__.Notify(455724)
 	}
+	__antithesis_instrumentation__.Notify(455716)
 	if !s.mem.hasVarSizeCols {
+		__antithesis_instrumentation__.Notify(455725)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(455726)
 	}
+	__antithesis_instrumentation__.Notify(455717)
 	s.mem.byteLikeCols = s.mem.byteLikeCols[:0]
 	s.mem.decimalCols = s.mem.decimalCols[:0]
 	s.mem.datumCols = s.mem.datumCols[:0]
 	for i, ok := s.mem.varSizeVecIdxs.Next(0); ok; i, ok = s.mem.varSizeVecIdxs.Next(i + 1) {
+		__antithesis_instrumentation__.Notify(455727)
 		vec := s.batch.ColVec(i)
 		switch vec.CanonicalTypeFamily() {
 		case types.BytesFamily:
+			__antithesis_instrumentation__.Notify(455728)
 			s.mem.byteLikeCols = append(s.mem.byteLikeCols, vec.Bytes())
 		case types.JsonFamily:
+			__antithesis_instrumentation__.Notify(455729)
 			s.mem.byteLikeCols = append(s.mem.byteLikeCols, &vec.JSON().Bytes)
 		case types.DecimalFamily:
+			__antithesis_instrumentation__.Notify(455730)
 			s.mem.decimalCols = append(s.mem.decimalCols, vec.Decimal())
 		case typeconv.DatumVecCanonicalTypeFamily:
+			__antithesis_instrumentation__.Notify(455731)
 			s.mem.datumCols = append(s.mem.datumCols, vec.Datum())
+		default:
+			__antithesis_instrumentation__.Notify(455732)
 		}
 	}
+	__antithesis_instrumentation__.Notify(455718)
 	return true
 }
 
-// DrainMeta is part of the colexecop.MetadataSource interface.
 func (s *ColIndexJoin) DrainMeta() []execinfrapb.ProducerMetadata {
+	__antithesis_instrumentation__.Notify(455733)
 	var trailingMeta []execinfrapb.ProducerMetadata
 	if tfs := execinfra.GetLeafTxnFinalState(s.Ctx, s.flowCtx.Txn); tfs != nil {
+		__antithesis_instrumentation__.Notify(455736)
 		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{LeafTxnFinalState: tfs})
+	} else {
+		__antithesis_instrumentation__.Notify(455737)
 	}
+	__antithesis_instrumentation__.Notify(455734)
 	meta := execinfrapb.GetProducerMeta()
 	meta.Metrics = execinfrapb.GetMetricsMeta()
 	meta.Metrics.BytesRead = s.GetBytesRead()
 	meta.Metrics.RowsRead = s.GetRowsRead()
 	trailingMeta = append(trailingMeta, *meta)
 	if trace := execinfra.GetTraceData(s.Ctx); trace != nil {
+		__antithesis_instrumentation__.Notify(455738)
 		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{TraceData: trace})
+	} else {
+		__antithesis_instrumentation__.Notify(455739)
 	}
+	__antithesis_instrumentation__.Notify(455735)
 	return trailingMeta
 }
 
-// GetBytesRead is part of the colexecop.KVReader interface.
 func (s *ColIndexJoin) GetBytesRead() int64 {
+	__antithesis_instrumentation__.Notify(455740)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.cf.getBytesRead()
 }
 
-// GetRowsRead is part of the colexecop.KVReader interface.
 func (s *ColIndexJoin) GetRowsRead() int64 {
+	__antithesis_instrumentation__.Notify(455741)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.mu.rowsRead
 }
 
-// GetCumulativeContentionTime is part of the colexecop.KVReader interface.
 func (s *ColIndexJoin) GetCumulativeContentionTime() time.Duration {
+	__antithesis_instrumentation__.Notify(455742)
 	return execinfra.GetCumulativeContentionTime(s.Ctx)
 }
 
-// inputBatchSizeLimit is a batch size limit for the number of input rows that
-// will be used to form lookup spans for each scan. This is used as a proxy for
-// result batch size in order to prevent OOMs, because index joins do not limit
-// result batches. TODO(drewk): once the Streamer work is finished, the fetcher
-// logic will be able to control result size without sacrificing parallelism, so
-// we can remove this limit.
 var inputBatchSizeLimit = int64(util.ConstantWithMetamorphicTestRange(
 	"ColIndexJoin-batch-size",
-	productionIndexJoinBatchSize, /* defaultValue */
-	1,                            /* min */
-	productionIndexJoinBatchSize, /* max */
+	productionIndexJoinBatchSize,
+	1,
+	productionIndexJoinBatchSize,
 ))
 
-const productionIndexJoinBatchSize = 4 << 20 /* 4MiB */
+const productionIndexJoinBatchSize = 4 << 20
 
 func getIndexJoinBatchSize(forceProductionValue bool) int64 {
+	__antithesis_instrumentation__.Notify(455743)
 	if forceProductionValue {
+		__antithesis_instrumentation__.Notify(455745)
 		return productionIndexJoinBatchSize
+	} else {
+		__antithesis_instrumentation__.Notify(455746)
 	}
+	__antithesis_instrumentation__.Notify(455744)
 	return inputBatchSizeLimit
 }
 
-// NewColIndexJoin creates a new ColIndexJoin operator.
-//
-// If spec.MaintainOrdering is true, then the diskMonitor argument must be
-// non-nil.
 func NewColIndexJoin(
 	ctx context.Context,
 	allocator *colmem.Allocator,
@@ -471,38 +523,73 @@ func NewColIndexJoin(
 	inputTypes []*types.T,
 	diskMonitor *mon.BytesMonitor,
 ) (*ColIndexJoin, error) {
-	// NB: we hit this with a zero NodeID (but !ok) with multi-tenancy.
-	if nodeID, ok := flowCtx.NodeID.OptionalNodeID(); nodeID == 0 && ok {
+	__antithesis_instrumentation__.Notify(455747)
+
+	if nodeID, ok := flowCtx.NodeID.OptionalNodeID(); nodeID == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(455756)
+		return ok == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455757)
 		return nil, errors.Errorf("attempting to create a ColIndexJoin with uninitialized NodeID")
+	} else {
+		__antithesis_instrumentation__.Notify(455758)
 	}
+	__antithesis_instrumentation__.Notify(455748)
 	if !spec.LookupExpr.Empty() {
+		__antithesis_instrumentation__.Notify(455759)
 		return nil, errors.AssertionFailedf("non-empty lookup expressions are not supported for index joins")
+	} else {
+		__antithesis_instrumentation__.Notify(455760)
 	}
+	__antithesis_instrumentation__.Notify(455749)
 	if !spec.RemoteLookupExpr.Empty() {
+		__antithesis_instrumentation__.Notify(455761)
 		return nil, errors.AssertionFailedf("non-empty remote lookup expressions are not supported for index joins")
+	} else {
+		__antithesis_instrumentation__.Notify(455762)
 	}
+	__antithesis_instrumentation__.Notify(455750)
 	if !spec.OnExpr.Empty() {
+		__antithesis_instrumentation__.Notify(455763)
 		return nil, errors.AssertionFailedf("non-empty ON expressions are not supported for index joins")
+	} else {
+		__antithesis_instrumentation__.Notify(455764)
 	}
+	__antithesis_instrumentation__.Notify(455751)
 
 	tableArgs, err := populateTableArgs(ctx, flowCtx, &spec.FetchSpec)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(455765)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(455766)
 	}
+	__antithesis_instrumentation__.Notify(455752)
 
 	memoryLimit := execinfra.GetWorkMemLimit(flowCtx)
 
-	useStreamer := flowCtx.Txn != nil && flowCtx.Txn.Type() == kv.LeafTxn &&
-		row.CanUseStreamer(ctx, flowCtx.EvalCtx.Settings)
+	useStreamer := flowCtx.Txn != nil && func() bool {
+		__antithesis_instrumentation__.Notify(455767)
+		return flowCtx.Txn.Type() == kv.LeafTxn == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(455768)
+		return row.CanUseStreamer(ctx, flowCtx.EvalCtx.Settings) == true
+	}() == true
 	if useStreamer {
+		__antithesis_instrumentation__.Notify(455769)
 		if streamerBudgetAcc == nil {
+			__antithesis_instrumentation__.Notify(455771)
 			return nil, errors.AssertionFailedf("streamer budget account is nil when the Streamer API is desired")
+		} else {
+			__antithesis_instrumentation__.Notify(455772)
 		}
-		// Keep the quarter of the memory limit for the output batch of the
-		// cFetcher, and we'll give the remaining three quarters to the streamer
-		// budget below.
+		__antithesis_instrumentation__.Notify(455770)
+
 		memoryLimit = int64(math.Ceil(float64(memoryLimit) / 4.0))
+	} else {
+		__antithesis_instrumentation__.Notify(455773)
 	}
+	__antithesis_instrumentation__.Notify(455753)
 
 	fetcher := cFetcherPool.Get().(*cFetcher)
 	fetcher.cFetcherArgs = cFetcherArgs{
@@ -510,18 +597,21 @@ func NewColIndexJoin(
 		spec.LockingWaitPolicy,
 		flowCtx.EvalCtx.SessionData().LockTimeout,
 		memoryLimit,
-		// Note that the correct estimated row count will be set by the index
-		// joiner for each set of spans to read.
-		0,     /* estimatedRowCount */
-		false, /* reverse */
+
+		0,
+		false,
 		flowCtx.TraceKV,
 	}
 	if err = fetcher.Init(
 		fetcherAllocator, kvFetcherMemAcc, tableArgs,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(455774)
 		fetcher.Release()
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(455775)
 	}
+	__antithesis_instrumentation__.Notify(455754)
 
 	spanAssembler := colexecspan.NewColSpanAssembler(
 		flowCtx.Codec(), allocator, &spec.FetchSpec, spec.SplitFamilyIDs, inputTypes,
@@ -540,36 +630,41 @@ func NewColIndexJoin(
 	op.mem.inputBatchSizeLimit = getIndexJoinBatchSize(flowCtx.EvalCtx.TestingKnobs.ForceProductionBatchSizes)
 	op.prepareMemLimit(inputTypes)
 	if useStreamer {
+		__antithesis_instrumentation__.Notify(455776)
 		op.streamerInfo.budgetLimit = 3 * memoryLimit
 		op.streamerInfo.budgetAcc = streamerBudgetAcc
-		if spec.MaintainOrdering && diskMonitor == nil {
+		if spec.MaintainOrdering && func() bool {
+			__antithesis_instrumentation__.Notify(455778)
+			return diskMonitor == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(455779)
 			return nil, errors.AssertionFailedf("diskMonitor is nil when ordering needs to be maintained")
+		} else {
+			__antithesis_instrumentation__.Notify(455780)
 		}
+		__antithesis_instrumentation__.Notify(455777)
 		op.streamerInfo.diskMonitor = diskMonitor
 		if memoryLimit < op.mem.inputBatchSizeLimit {
-			// If we have a low workmem limit, then we want to reduce the input
-			// batch size limit.
-			//
-			// The Streamer gets three quarters of workmem as its budget which
-			// accounts for two usages - for the footprint of the spans
-			// themselves in the enqueued requests as well as the footprint of
-			// the responses received by the Streamer. If we don't reduce the
-			// input batch size limit here, then 4MiB value will be used, and
-			// the constructed spans (i.e. the enqueued requests) alone might
-			// exceed the budget leading to the Streamer erroring out in
-			// Enqueue().
+			__antithesis_instrumentation__.Notify(455781)
+
 			op.mem.inputBatchSizeLimit = memoryLimit
+		} else {
+			__antithesis_instrumentation__.Notify(455782)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(455783)
 	}
+	__antithesis_instrumentation__.Notify(455755)
 
 	return op, nil
 }
 
-// prepareMemLimit sets up the fields used to limit lookup batch size.
 func (s *ColIndexJoin) prepareMemLimit(inputTypes []*types.T) {
-	// Add the EncDatum overhead to ensure parity with row engine size limits.
+	__antithesis_instrumentation__.Notify(455784)
+
 	s.mem.constRowSize = int64(rowenc.EncDatumRowOverhead)
 	for i, t := range inputTypes {
+		__antithesis_instrumentation__.Notify(455786)
 		switch typeconv.TypeFamilyToCanonicalTypeFamily(t.Family()) {
 		case
 			types.BoolFamily,
@@ -577,78 +672,81 @@ func (s *ColIndexJoin) prepareMemLimit(inputTypes []*types.T) {
 			types.FloatFamily,
 			types.TimestampTZFamily,
 			types.IntervalFamily:
+			__antithesis_instrumentation__.Notify(455787)
 			s.mem.constRowSize += adjustMemEstimate(colmem.GetFixedSizeTypeSize(t))
 		case
 			types.DecimalFamily,
 			types.BytesFamily,
 			types.JsonFamily,
 			typeconv.DatumVecCanonicalTypeFamily:
+			__antithesis_instrumentation__.Notify(455788)
 			s.mem.varSizeVecIdxs.Add(i)
 			s.mem.hasVarSizeCols = true
 		default:
+			__antithesis_instrumentation__.Notify(455789)
 			colexecerror.InternalError(errors.AssertionFailedf("unhandled type %s", t))
 		}
 	}
+	__antithesis_instrumentation__.Notify(455785)
 	s.mem.hasVarSizeCols = !s.mem.varSizeVecIdxs.Empty()
 }
 
 var (
-	// memEstimateAdditive is an additive correction that simulates the overhead
-	// of the EncDatum struct the row engine uses to store values.
 	memEstimateAdditive = int64(rowenc.EncDatumOverhead)
 
-	// memEstimateMultiplier is a multiplicative correction that simulates the
-	// overhead of the encoded bytes field of EncDatum objects. It is somewhat
-	// arbitrary, but the size of the 'encoded' field should not greatly exceed
-	// the size of the decoded value, so the result should not be too far off.
 	memEstimateMultiplier = int64(2)
 )
 
-// adjustMemEstimate attempts to adjust the given estimate for the size of a
-// single data value to reflect what the size would be in the row engine. This
-// is necessary in order to achieve similar batch sizes to the row-wise index
-// joiner. Until the Streamer work is finished, increasing batch size could
-// increase cluster instability.
 func adjustMemEstimate(estimate int64) int64 {
+	__antithesis_instrumentation__.Notify(455790)
 	return estimate*memEstimateMultiplier + memEstimateAdditive
 }
 
-// GetScanStats is part of the colexecop.KVReader interface.
 func (s *ColIndexJoin) GetScanStats() execinfra.ScanStats {
+	__antithesis_instrumentation__.Notify(455791)
 	return execinfra.GetScanStats(s.Ctx)
 }
 
-// Release implements the execinfra.Releasable interface.
 func (s *ColIndexJoin) Release() {
+	__antithesis_instrumentation__.Notify(455792)
 	s.cf.Release()
 	s.spanAssembler.Release()
 	*s = ColIndexJoin{}
 }
 
-// Close implements the colexecop.Closer interface.
 func (s *ColIndexJoin) Close(context.Context) error {
+	__antithesis_instrumentation__.Notify(455793)
 	s.closeInternal()
 	if s.tracingSpan != nil {
+		__antithesis_instrumentation__.Notify(455795)
 		s.tracingSpan.Finish()
 		s.tracingSpan = nil
+	} else {
+		__antithesis_instrumentation__.Notify(455796)
 	}
+	__antithesis_instrumentation__.Notify(455794)
 	return nil
 }
 
-// closeInternal is a subset of Close() which doesn't finish the operator's
-// span.
 func (s *ColIndexJoin) closeInternal() {
-	// Note that we're using the context of the ColIndexJoin rather than the
-	// argument of Close() because the ColIndexJoin derives its own tracing
-	// span.
+	__antithesis_instrumentation__.Notify(455797)
+
 	ctx := s.EnsureCtx()
 	s.cf.Close(ctx)
 	if s.spanAssembler != nil {
-		// spanAssembler can be nil if Release() has already been called.
+		__antithesis_instrumentation__.Notify(455800)
+
 		s.spanAssembler.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(455801)
 	}
+	__antithesis_instrumentation__.Notify(455798)
 	if s.streamerInfo.Streamer != nil {
+		__antithesis_instrumentation__.Notify(455802)
 		s.streamerInfo.Streamer.Close(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(455803)
 	}
+	__antithesis_instrumentation__.Notify(455799)
 	s.batch = nil
 }

@@ -22,6 +22,7 @@ go_test(
         "//pkg/workload",
         "//pkg/workload/histogram",
         "//pkg/workload/schemachange",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
         "@org_golang_x_sync//errgroup",
     ],

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvclientutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,39 +13,24 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// PushExpectation expresses an expectation for CheckPushResult about what the
-// push did.
 type PushExpectation int
 
 const (
-	// ExpectPusheeTxnRecovery means we're expecting transaction recovery to be
-	// performed (after finding a STAGING txn record).
 	ExpectPusheeTxnRecovery PushExpectation = iota
-	// ExpectPusheeTxnRecordNotFound means we're expecting the push to not find the
-	// pushee txn record.
+
 	ExpectPusheeTxnRecordNotFound
-	// DontExpectAnything means we're not going to check the state in which the
-	// pusher found the pushee's txn record.
+
 	DontExpectAnything
 )
 
-// ExpectedTxnResolution expresses an expectation for CheckPushResult about the
-// outcome of the push.
 type ExpectedTxnResolution int
 
 const (
-	// ExpectAborted means that the pushee is expected to have been aborted. Note
-	// that a committed txn that has been cleaned up also results in an ABORTED
-	// result for a pusher.
 	ExpectAborted ExpectedTxnResolution = iota
-	// ExpectCommitted means that the pushee is expected to have found the pushee
-	// to be committed - or STAGING in which case the push will have performed
-	// successful transaction recovery.
+
 	ExpectCommitted
 )
 
-// CheckPushResult pushes the specified txn and checks that the pushee's
-// resolution is the expected one.
 func CheckPushResult(
 	ctx context.Context,
 	db *kv.DB,
@@ -62,6 +39,7 @@ func CheckPushResult(
 	expResolution ExpectedTxnResolution,
 	pushExpectation PushExpectation,
 ) error {
+	__antithesis_instrumentation__.Notify(644430)
 	pushReq := roachpb.PushTxnRequest{
 		RequestHeader: roachpb.RequestHeader{
 			Key: txn.Key,
@@ -69,8 +47,7 @@ func CheckPushResult(
 		PusheeTxn: txn.TxnMeta,
 		PushTo:    hlc.Timestamp{},
 		PushType:  roachpb.PUSH_ABORT,
-		// We're going to Force the push in order to not wait for the pushee to
-		// expire.
+
 		Force: true,
 	}
 	ba := roachpb.BatchRequest{}
@@ -81,45 +58,69 @@ func CheckPushResult(
 
 	resp, pErr := db.NonTransactionalSender().Send(recCtx, ba)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(644434)
 		return pErr.GoError()
+	} else {
+		__antithesis_instrumentation__.Notify(644435)
 	}
+	__antithesis_instrumentation__.Notify(644431)
 
 	var statusErr error
 	pusheeStatus := resp.Responses[0].GetPushTxn().PusheeTxn.Status
 	switch pusheeStatus {
 	case roachpb.ABORTED:
+		__antithesis_instrumentation__.Notify(644436)
 		if expResolution != ExpectAborted {
+			__antithesis_instrumentation__.Notify(644439)
 			statusErr = errors.Errorf("transaction unexpectedly aborted")
+		} else {
+			__antithesis_instrumentation__.Notify(644440)
 		}
 	case roachpb.COMMITTED:
+		__antithesis_instrumentation__.Notify(644437)
 		if expResolution != ExpectCommitted {
+			__antithesis_instrumentation__.Notify(644441)
 			statusErr = errors.Errorf("transaction unexpectedly committed")
+		} else {
+			__antithesis_instrumentation__.Notify(644442)
 		}
 	default:
+		__antithesis_instrumentation__.Notify(644438)
 		return errors.Errorf("unexpected txn status: %s", pusheeStatus)
 	}
+	__antithesis_instrumentation__.Notify(644432)
 
-	// Verify that we're not fooling ourselves and that checking for the implicit
-	// commit actually caused the txn recovery procedure to run.
 	recording := collectRecAndFinish()
 	var resolutionErr error
 	switch pushExpectation {
 	case ExpectPusheeTxnRecovery:
+		__antithesis_instrumentation__.Notify(644443)
 		expMsg := fmt.Sprintf("recovered txn %s", txn.ID.Short())
 		if _, ok := recording.FindLogMessage(expMsg); !ok {
+			__antithesis_instrumentation__.Notify(644447)
 			resolutionErr = errors.Errorf(
 				"recovery didn't run as expected (missing \"%s\"). recording: %s",
 				expMsg, recording)
+		} else {
+			__antithesis_instrumentation__.Notify(644448)
 		}
 	case ExpectPusheeTxnRecordNotFound:
+		__antithesis_instrumentation__.Notify(644444)
 		expMsg := "pushee txn record not found"
 		if _, ok := recording.FindLogMessage(expMsg); !ok {
+			__antithesis_instrumentation__.Notify(644449)
 			resolutionErr = errors.Errorf(
 				"push didn't run as expected (missing \"%s\"). recording: %s",
 				expMsg, recording)
+		} else {
+			__antithesis_instrumentation__.Notify(644450)
 		}
 	case DontExpectAnything:
+		__antithesis_instrumentation__.Notify(644445)
+	default:
+		__antithesis_instrumentation__.Notify(644446)
 	}
+	__antithesis_instrumentation__.Notify(644433)
 
 	return errors.CombineErrors(statusErr, resolutionErr)
 }

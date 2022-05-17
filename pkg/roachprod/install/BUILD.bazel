@@ -36,6 +36,7 @@ go_library(
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
         "//pkg/util/version",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_alessio_shellescape//:shellescape",
         "@com_github_cockroachdb_errors//:errors",
         "@org_golang_x_sync//errgroup",
@@ -52,6 +53,7 @@ go_test(
     embed = [":install"],
     deps = [
         "//pkg/testutils",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@com_github_stretchr_testify//require",
     ],

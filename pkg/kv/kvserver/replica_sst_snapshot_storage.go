@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,17 +16,14 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// SSTSnapshotStorage provides an interface to create scratches and owns the
-// directory of scratches created. A scratch manages the SSTs created during a
-// specific snapshot.
 type SSTSnapshotStorage struct {
 	engine  storage.Engine
 	limiter *rate.Limiter
 	dir     string
 }
 
-// NewSSTSnapshotStorage creates a new SST snapshot storage.
 func NewSSTSnapshotStorage(engine storage.Engine, limiter *rate.Limiter) SSTSnapshotStorage {
+	__antithesis_instrumentation__.Notify(120716)
 	return SSTSnapshotStorage{
 		engine:  engine,
 		limiter: limiter,
@@ -42,11 +31,10 @@ func NewSSTSnapshotStorage(engine storage.Engine, limiter *rate.Limiter) SSTSnap
 	}
 }
 
-// NewScratchSpace creates a new storage scratch space for SSTs for a specific
-// snapshot.
 func (s *SSTSnapshotStorage) NewScratchSpace(
 	rangeID roachpb.RangeID, snapUUID uuid.UUID,
 ) *SSTSnapshotStorageScratch {
+	__antithesis_instrumentation__.Notify(120717)
 	snapDir := filepath.Join(s.dir, strconv.Itoa(int(rangeID)), snapUUID.String())
 	return &SSTSnapshotStorageScratch{
 		storage: s,
@@ -54,14 +42,11 @@ func (s *SSTSnapshotStorage) NewScratchSpace(
 	}
 }
 
-// Clear removes all created directories and SSTs.
 func (s *SSTSnapshotStorage) Clear() error {
+	__antithesis_instrumentation__.Notify(120718)
 	return s.engine.RemoveAll(s.dir)
 }
 
-// SSTSnapshotStorageScratch keeps track of the SST files incrementally created
-// when receiving a snapshot. Each scratch is associated with a specific
-// snapshot.
 type SSTSnapshotStorageScratch struct {
 	storage    *SSTSnapshotStorage
 	ssts       []string
@@ -70,23 +55,24 @@ type SSTSnapshotStorageScratch struct {
 }
 
 func (s *SSTSnapshotStorageScratch) filename(id int) string {
+	__antithesis_instrumentation__.Notify(120719)
 	return filepath.Join(s.snapDir, fmt.Sprintf("%d.sst", id))
 }
 
 func (s *SSTSnapshotStorageScratch) createDir() error {
+	__antithesis_instrumentation__.Notify(120720)
 	err := s.storage.engine.MkdirAll(s.snapDir)
-	s.dirCreated = s.dirCreated || err == nil
+	s.dirCreated = s.dirCreated || func() bool {
+		__antithesis_instrumentation__.Notify(120721)
+		return err == nil == true
+	}() == true
 	return err
 }
 
-// NewFile adds another file to SSTSnapshotStorageScratch. This file is lazily
-// created when the file is written to the first time. A nonzero value for
-// bytesPerSync will sync dirty data periodically as it is written. The syncing
-// does not provide persistency guarantees, but is used to smooth out disk
-// writes. Sync() must be called for data persistence.
 func (s *SSTSnapshotStorageScratch) NewFile(
 	ctx context.Context, bytesPerSync int64,
 ) (*SSTSnapshotStorageFile, error) {
+	__antithesis_instrumentation__.Notify(120722)
 	id := len(s.ssts)
 	filename := s.filename(id)
 	s.ssts = append(s.ssts, filename)
@@ -99,43 +85,56 @@ func (s *SSTSnapshotStorageScratch) NewFile(
 	return f, nil
 }
 
-// WriteSST writes SST data to a file. The method closes
-// the provided SST when it is finished using it. If the provided SST is empty,
-// then no file will be created and nothing will be written.
 func (s *SSTSnapshotStorageScratch) WriteSST(ctx context.Context, data []byte) error {
+	__antithesis_instrumentation__.Notify(120723)
 	if len(data) == 0 {
+		__antithesis_instrumentation__.Notify(120729)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(120730)
 	}
-	f, err := s.NewFile(ctx, 512<<10 /* 512 KB */)
+	__antithesis_instrumentation__.Notify(120724)
+	f, err := s.NewFile(ctx, 512<<10)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(120731)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(120732)
 	}
+	__antithesis_instrumentation__.Notify(120725)
 	defer func() {
-		// Closing an SSTSnapshotStorageFile multiple times is idempotent. Nothing
-		// actionable if closing fails.
+		__antithesis_instrumentation__.Notify(120733)
+
 		_ = f.Close()
 	}()
+	__antithesis_instrumentation__.Notify(120726)
 	if _, err := f.Write(data); err != nil {
+		__antithesis_instrumentation__.Notify(120734)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(120735)
 	}
+	__antithesis_instrumentation__.Notify(120727)
 	if err := f.Sync(); err != nil {
+		__antithesis_instrumentation__.Notify(120736)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(120737)
 	}
+	__antithesis_instrumentation__.Notify(120728)
 	return f.Close()
 }
 
-// SSTs returns the names of the files created.
 func (s *SSTSnapshotStorageScratch) SSTs() []string {
+	__antithesis_instrumentation__.Notify(120738)
 	return s.ssts
 }
 
-// Clear removes the directory and SSTs created for a particular snapshot.
 func (s *SSTSnapshotStorageScratch) Clear() error {
+	__antithesis_instrumentation__.Notify(120739)
 	return s.storage.engine.RemoveAll(s.snapDir)
 }
 
-// SSTSnapshotStorageFile is an SST file managed by a
-// SSTSnapshotStorageScratch.
 type SSTSnapshotStorageFile struct {
 	scratch      *SSTSnapshotStorageScratch
 	created      bool
@@ -146,65 +145,108 @@ type SSTSnapshotStorageFile struct {
 }
 
 func (f *SSTSnapshotStorageFile) ensureFile() error {
+	__antithesis_instrumentation__.Notify(120740)
 	if f.created {
+		__antithesis_instrumentation__.Notify(120745)
 		if f.file == nil {
+			__antithesis_instrumentation__.Notify(120747)
 			return errors.Errorf("file has already been closed")
+		} else {
+			__antithesis_instrumentation__.Notify(120748)
 		}
+		__antithesis_instrumentation__.Notify(120746)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(120749)
 	}
+	__antithesis_instrumentation__.Notify(120741)
 	if !f.scratch.dirCreated {
+		__antithesis_instrumentation__.Notify(120750)
 		if err := f.scratch.createDir(); err != nil {
+			__antithesis_instrumentation__.Notify(120751)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(120752)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(120753)
 	}
+	__antithesis_instrumentation__.Notify(120742)
 	var err error
 	if f.bytesPerSync > 0 {
+		__antithesis_instrumentation__.Notify(120754)
 		f.file, err = f.scratch.storage.engine.CreateWithSync(f.filename, int(f.bytesPerSync))
 	} else {
+		__antithesis_instrumentation__.Notify(120755)
 		f.file, err = f.scratch.storage.engine.Create(f.filename)
 	}
+	__antithesis_instrumentation__.Notify(120743)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(120756)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(120757)
 	}
+	__antithesis_instrumentation__.Notify(120744)
 	f.created = true
 	return nil
 }
 
-// Write writes contents to the file while respecting the limiter passed into
-// SSTSnapshotStorageScratch. Writing empty contents is okay and is treated as
-// a noop. The file must have not been closed.
 func (f *SSTSnapshotStorageFile) Write(contents []byte) (int, error) {
+	__antithesis_instrumentation__.Notify(120758)
 	if len(contents) == 0 {
+		__antithesis_instrumentation__.Notify(120762)
 		return 0, nil
+	} else {
+		__antithesis_instrumentation__.Notify(120763)
 	}
+	__antithesis_instrumentation__.Notify(120759)
 	if err := f.ensureFile(); err != nil {
+		__antithesis_instrumentation__.Notify(120764)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(120765)
 	}
+	__antithesis_instrumentation__.Notify(120760)
 	if err := limitBulkIOWrite(f.ctx, f.scratch.storage.limiter, len(contents)); err != nil {
+		__antithesis_instrumentation__.Notify(120766)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(120767)
 	}
+	__antithesis_instrumentation__.Notify(120761)
 	return f.file.Write(contents)
 }
 
-// Close closes the file. Calling this function multiple times is idempotent.
-// The file must have been written to before being closed.
 func (f *SSTSnapshotStorageFile) Close() error {
-	// We throw an error for empty files because it would be an error to ingest
-	// an empty SST so catch this error earlier.
+	__antithesis_instrumentation__.Notify(120768)
+
 	if !f.created {
+		__antithesis_instrumentation__.Notify(120772)
 		return errors.New("file is empty")
+	} else {
+		__antithesis_instrumentation__.Notify(120773)
 	}
+	__antithesis_instrumentation__.Notify(120769)
 	if f.file == nil {
+		__antithesis_instrumentation__.Notify(120774)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(120775)
 	}
+	__antithesis_instrumentation__.Notify(120770)
 	if err := f.file.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(120776)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(120777)
 	}
+	__antithesis_instrumentation__.Notify(120771)
 	f.file = nil
 	return nil
 }
 
-// Sync syncs the file to disk. Implements writeCloseSyncer in engine.
 func (f *SSTSnapshotStorageFile) Sync() error {
+	__antithesis_instrumentation__.Notify(120778)
 	return f.file.Sync()
 }

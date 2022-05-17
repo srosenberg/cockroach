@@ -17,6 +17,7 @@ go_library(
         "//pkg/util/ioctx",
         "//pkg/util/mon",
         "//pkg/util/retry",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_pebble//sstable",
         "@com_github_cockroachdb_pebble//vfs",
@@ -43,6 +44,7 @@ go_test(
         "//pkg/util/ioctx",
         "//pkg/util/leaktest",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

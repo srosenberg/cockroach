@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowcontainer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -28,55 +20,34 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// DiskRowContainer is a SortableRowContainer that stores rows on disk according
-// to the ordering specified in DiskRowContainer.ordering. The underlying store
-// is a SortedDiskMap so the sorting itself is delegated. Use an iterator
-// created through NewIterator() to read the rows in sorted order.
 type DiskRowContainer struct {
 	diskMap diskmap.SortedDiskMap
-	// diskAcc keeps track of disk usage.
+
 	diskAcc mon.BoundAccount
-	// bufferedRows buffers writes to the diskMap.
+
 	bufferedRows  diskmap.SortedDiskMapBatchWriter
 	scratchKey    []byte
 	scratchVal    []byte
 	scratchEncRow rowenc.EncDatumRow
 
-	// For computing mean encoded row bytes.
 	totalEncodedRowBytes uint64
 
-	// lastReadKey is used to implement NewFinalIterator. Refer to the method's
-	// comment for more information.
 	lastReadKey []byte
 
-	// topK is set by callers through InitTopK. Since rows are kept in sorted
-	// order, topK will simply limit iterators to read the first k rows.
 	topK int
 
-	// rowID is used as a key suffix to prevent duplicate rows from overwriting
-	// each other.
 	rowID uint64
 
-	// types is the schema of rows in the container.
 	types []*types.T
-	// ordering is the order in which rows should be sorted.
+
 	ordering colinfo.ColumnOrdering
-	// encodings keeps around the DatumEncoding equivalents of the encoding
-	// directions in ordering to avoid conversions in hot paths.
+
 	encodings []descpb.DatumEncoding
-	// valueIdxs holds the indexes of the columns that we encode as values. The
-	// columns described by ordering will be encoded as keys. See
-	// MakeDiskRowContainer() for more encoding specifics.
+
 	valueIdxs []int
 
-	// See comment in DoDeDuplicate().
 	deDuplicate bool
-	// A mapping from a key to the dense row index assigned to the key. It
-	// contains all the key strings that are potentially buffered in bufferedRows.
-	// Since we need to de-duplicate for every insert attempt, we don't want to
-	// keep flushing bufferedRows after every insert.
-	// There is currently no memory-accounting for the deDupCache, just like there
-	// is none for the bufferedRows. Both will be approximately the same size.
+
 	deDupCache map[string]int
 
 	diskMonitor *mon.BytesMonitor
@@ -88,19 +59,13 @@ type DiskRowContainer struct {
 var _ SortableRowContainer = &DiskRowContainer{}
 var _ DeDupingRowContainer = &DiskRowContainer{}
 
-// MakeDiskRowContainer creates a DiskRowContainer with the given engine as the
-// underlying store that rows are stored on.
-// Arguments:
-// 	- diskMonitor is used to monitor this DiskRowContainer's disk usage.
-// 	- types is the schema of rows that will be added to this container.
-// 	- ordering is the output ordering; the order in which rows should be sorted.
-// 	- e is the underlying store that rows are stored on.
 func MakeDiskRowContainer(
 	diskMonitor *mon.BytesMonitor,
 	types []*types.T,
 	ordering colinfo.ColumnOrdering,
 	e diskmap.Factory,
 ) DiskRowContainer {
+	__antithesis_instrumentation__.Notify(569014)
 	diskMap := e.NewSortedDiskMap()
 	d := DiskRowContainer{
 		diskMap:       diskMap,
@@ -114,88 +79,87 @@ func MakeDiskRowContainer(
 	}
 	d.bufferedRows = d.diskMap.NewBatchWriter()
 
-	// The ordering is specified for a subset of the columns. These will be
-	// encoded as a key in the given order according to the given direction so
-	// that the sorting can be delegated to the underlying SortedDiskMap. To
-	// avoid converting encoding.Direction to descpb.DatumEncoding we do this
-	// once at initialization and store the conversions in d.encodings.
-	// We encode the other columns as values. The indexes of these columns are
-	// kept around in d.valueIdxs to have them ready in hot paths.
-	// For composite columns that are specified in d.ordering, the Datum is
-	// encoded both in the key for comparison and in the value for decoding.
 	orderingIdxs := make(map[int]struct{})
 	for _, orderInfo := range d.ordering {
+		__antithesis_instrumentation__.Notify(569018)
 		orderingIdxs[orderInfo.ColIdx] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(569015)
 	d.valueIdxs = make([]int, 0, len(d.types))
 	for i := range d.types {
-		// TODO(asubiotto): A datum of a type for which CanHaveCompositeKeyEncoding
-		// returns true may not necessarily need to be encoded in the value, so
-		// make this more fine-grained. See IsComposite() methods in
-		// pkg/sql/parser/datum.go.
-		if _, ok := orderingIdxs[i]; !ok || colinfo.CanHaveCompositeKeyEncoding(d.types[i]) {
+		__antithesis_instrumentation__.Notify(569019)
+
+		if _, ok := orderingIdxs[i]; !ok || func() bool {
+			__antithesis_instrumentation__.Notify(569020)
+			return colinfo.CanHaveCompositeKeyEncoding(d.types[i]) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(569021)
 			d.valueIdxs = append(d.valueIdxs, i)
+		} else {
+			__antithesis_instrumentation__.Notify(569022)
 		}
 	}
+	__antithesis_instrumentation__.Notify(569016)
 
 	d.encodings = make([]descpb.DatumEncoding, len(d.ordering))
 	for i, orderInfo := range ordering {
+		__antithesis_instrumentation__.Notify(569023)
 		d.encodings[i] = rowenc.EncodingDirToDatumEncoding(orderInfo.Direction)
 	}
+	__antithesis_instrumentation__.Notify(569017)
 
 	return d
 }
 
-// DoDeDuplicate causes DiskRowContainer to behave as an implementation of
-// DeDupingRowContainer. It should not be mixed with calls to AddRow() (except
-// when the AddRow() already represent deduplicated rows). It de-duplicates
-// the keys such that only the first row with the given key will be stored.
-// The index returned in AddRowWithDedup() is a dense index starting from 0,
-// representing when that key was first added. This feature does not combine
-// with Sort(), Reorder() etc., and only to be used for assignment of these
-// dense indexes. The main reason to add this to DiskBackedRowContainer is to
-// avoid significant code duplication in constructing another row container.
 func (d *DiskRowContainer) DoDeDuplicate() {
+	__antithesis_instrumentation__.Notify(569024)
 	d.deDuplicate = true
 	d.deDupCache = make(map[string]int)
 }
 
-// Len is part of the SortableRowContainer interface.
 func (d *DiskRowContainer) Len() int {
+	__antithesis_instrumentation__.Notify(569025)
 	return int(d.rowID)
 }
 
-// AddRow is part of the SortableRowContainer interface.
-//
-// It is additionally used in de-duping mode by DiskBackedRowContainer when
-// switching from a memory container to this disk container, since it is
-// adding rows that are already de-duped. Once it has added all the already
-// de-duped rows, it should switch to using AddRowWithDeDup() and never call
-// AddRow() again.
-//
-// Note: if key calculation changes, computeKey() of hashMemRowIterator should
-// be changed accordingly.
 func (d *DiskRowContainer) AddRow(ctx context.Context, row rowenc.EncDatumRow) error {
+	__antithesis_instrumentation__.Notify(569026)
 	if err := d.encodeRow(ctx, row); err != nil {
+		__antithesis_instrumentation__.Notify(569031)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(569032)
 	}
+	__antithesis_instrumentation__.Notify(569027)
 	if err := d.diskAcc.Grow(ctx, int64(len(d.scratchKey)+len(d.scratchVal))); err != nil {
+		__antithesis_instrumentation__.Notify(569033)
 		return pgerror.Wrapf(err, pgcode.OutOfMemory,
 			"this query requires additional disk space")
+	} else {
+		__antithesis_instrumentation__.Notify(569034)
 	}
+	__antithesis_instrumentation__.Notify(569028)
 	if err := d.bufferedRows.Put(d.scratchKey, d.scratchVal); err != nil {
+		__antithesis_instrumentation__.Notify(569035)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(569036)
 	}
-	// See comment above on when this is used for already de-duplicated
-	// rows -- we need to track these in the de-dup cache so that later
-	// calls to AddRowWithDeDup() de-duplicate wrt this cache.
+	__antithesis_instrumentation__.Notify(569029)
+
 	if d.deDuplicate {
+		__antithesis_instrumentation__.Notify(569037)
 		if d.bufferedRows.NumPutsSinceFlush() == 0 {
+			__antithesis_instrumentation__.Notify(569038)
 			d.clearDeDupCache()
 		} else {
+			__antithesis_instrumentation__.Notify(569039)
 			d.deDupCache[string(d.scratchKey)] = int(d.rowID)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(569040)
 	}
+	__antithesis_instrumentation__.Notify(569030)
 	d.totalEncodedRowBytes += uint64(len(d.scratchKey) + len(d.scratchVal))
 	d.scratchKey = d.scratchKey[:0]
 	d.scratchVal = d.scratchVal[:0]
@@ -203,59 +167,86 @@ func (d *DiskRowContainer) AddRow(ctx context.Context, row rowenc.EncDatumRow) e
 	return nil
 }
 
-// AddRowWithDeDup is part of the DeDupingRowContainer interface.
 func (d *DiskRowContainer) AddRowWithDeDup(
 	ctx context.Context, row rowenc.EncDatumRow,
 ) (int, error) {
+	__antithesis_instrumentation__.Notify(569041)
 	if err := d.encodeRow(ctx, row); err != nil {
+		__antithesis_instrumentation__.Notify(569050)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(569051)
 	}
+	__antithesis_instrumentation__.Notify(569042)
 	defer func() {
+		__antithesis_instrumentation__.Notify(569052)
 		d.scratchKey = d.scratchKey[:0]
 		d.scratchVal = d.scratchVal[:0]
 	}()
-	// First use the cache to de-dup.
+	__antithesis_instrumentation__.Notify(569043)
+
 	entry, ok := d.deDupCache[string(d.scratchKey)]
 	if ok {
+		__antithesis_instrumentation__.Notify(569053)
 		return entry, nil
+	} else {
+		__antithesis_instrumentation__.Notify(569054)
 	}
-	// Since not in cache, we need to use an iterator to de-dup.
-	// TODO(sumeer): this read is expensive:
-	// - if there is a significant  fraction of duplicates, we can do better
-	//   with a larger cache
-	// - if duplicates are rare, use a bloom filter for all the keys in the
-	//   diskMap, since a miss in the bloom filter allows us to write to the
-	//   diskMap without reading.
+	__antithesis_instrumentation__.Notify(569044)
+
 	iter := d.diskMap.NewIterator()
 	defer iter.Close()
 	iter.SeekGE(d.scratchKey)
 	valid, err := iter.Valid()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(569055)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(569056)
 	}
-	if valid && bytes.Equal(iter.UnsafeKey(), d.scratchKey) {
-		// Found the key. Note that as documented in DeDupingRowContainer,
-		// this feature is limited to the case where the whole row is
-		// encoded into the key. The value only contains the dense RowID
-		// assigned to the key.
+	__antithesis_instrumentation__.Notify(569045)
+	if valid && func() bool {
+		__antithesis_instrumentation__.Notify(569057)
+		return bytes.Equal(iter.UnsafeKey(), d.scratchKey) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(569058)
+
 		_, idx, err := encoding.DecodeUvarintAscending(iter.UnsafeValue())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569060)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(569061)
 		}
+		__antithesis_instrumentation__.Notify(569059)
 		return int(idx), nil
+	} else {
+		__antithesis_instrumentation__.Notify(569062)
 	}
+	__antithesis_instrumentation__.Notify(569046)
 	if err := d.diskAcc.Grow(ctx, int64(len(d.scratchKey)+len(d.scratchVal))); err != nil {
+		__antithesis_instrumentation__.Notify(569063)
 		return 0, pgerror.Wrapf(err, pgcode.OutOfMemory,
 			"this query requires additional disk space")
+	} else {
+		__antithesis_instrumentation__.Notify(569064)
 	}
+	__antithesis_instrumentation__.Notify(569047)
 	if err := d.bufferedRows.Put(d.scratchKey, d.scratchVal); err != nil {
+		__antithesis_instrumentation__.Notify(569065)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(569066)
 	}
+	__antithesis_instrumentation__.Notify(569048)
 	if d.bufferedRows.NumPutsSinceFlush() == 0 {
+		__antithesis_instrumentation__.Notify(569067)
 		d.clearDeDupCache()
 	} else {
+		__antithesis_instrumentation__.Notify(569068)
 		d.deDupCache[string(d.scratchKey)] = int(d.rowID)
 	}
+	__antithesis_instrumentation__.Notify(569049)
 	d.totalEncodedRowBytes += uint64(len(d.scratchKey) + len(d.scratchVal))
 	idx := int(d.rowID)
 	d.rowID++
@@ -263,118 +254,149 @@ func (d *DiskRowContainer) AddRowWithDeDup(
 }
 
 func (d *DiskRowContainer) clearDeDupCache() {
+	__antithesis_instrumentation__.Notify(569069)
 	for k := range d.deDupCache {
+		__antithesis_instrumentation__.Notify(569070)
 		delete(d.deDupCache, k)
 	}
 }
 
 func (d *DiskRowContainer) testingFlushBuffer(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(569071)
 	if err := d.bufferedRows.Flush(); err != nil {
+		__antithesis_instrumentation__.Notify(569073)
 		log.Fatalf(ctx, "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(569074)
 	}
+	__antithesis_instrumentation__.Notify(569072)
 	d.clearDeDupCache()
 }
 
 func (d *DiskRowContainer) encodeRow(ctx context.Context, row rowenc.EncDatumRow) error {
+	__antithesis_instrumentation__.Notify(569075)
 	if len(row) != len(d.types) {
+		__antithesis_instrumentation__.Notify(569079)
 		log.Fatalf(ctx, "invalid row length %d, expected %d", len(row), len(d.types))
+	} else {
+		__antithesis_instrumentation__.Notify(569080)
 	}
+	__antithesis_instrumentation__.Notify(569076)
 
 	for i, orderInfo := range d.ordering {
+		__antithesis_instrumentation__.Notify(569081)
 		col := orderInfo.ColIdx
 		var err error
 		d.scratchKey, err = row[col].Encode(d.types[col], d.datumAlloc, d.encodings[i], d.scratchKey)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569082)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(569083)
 		}
 	}
+	__antithesis_instrumentation__.Notify(569077)
 	if !d.deDuplicate {
+		__antithesis_instrumentation__.Notify(569084)
 		for _, i := range d.valueIdxs {
+			__antithesis_instrumentation__.Notify(569086)
 			var err error
 			d.scratchVal, err = row[i].Encode(d.types[i], d.datumAlloc, descpb.DatumEncoding_VALUE, d.scratchVal)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(569087)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(569088)
 			}
 		}
-		// Put a unique row to keep track of duplicates. Note that this will not
-		// mess with key decoding.
+		__antithesis_instrumentation__.Notify(569085)
+
 		d.scratchKey = encoding.EncodeUvarintAscending(d.scratchKey, d.rowID)
 	} else {
-		// Add the row id to the value. Note that in this de-duping case the
-		// row id is the only thing in the value since the whole row is encoded
-		// into the key. Note that the key could have types for which
-		// CanHaveCompositeKeyEncoding() returns true and we do not encode them
-		// into the value (only in the key) for this DeDupingRowContainer. This
-		// is ok since:
-		// - The DeDupingRowContainer never needs to return the original row
-		//   (there is no get method).
-		// - The columns encoded into the key are the primary key columns
-		//   of the original table, so the key encoding represents a unique
-		//   row in the original table (the key encoding here is not only
-		//   a determinant of sort ordering).
+		__antithesis_instrumentation__.Notify(569089)
+
 		d.scratchVal = encoding.EncodeUvarintAscending(d.scratchVal, d.rowID)
 	}
+	__antithesis_instrumentation__.Notify(569078)
 	return nil
 }
 
-// Sort is a noop because the use of a SortedDiskMap as the underlying store
-// keeps the rows in sorted order.
-func (d *DiskRowContainer) Sort(context.Context) {}
+func (d *DiskRowContainer) Sort(context.Context) { __antithesis_instrumentation__.Notify(569090) }
 
-// Reorder implements ReorderableRowContainer. It creates a new
-// DiskRowContainer with the requested ordering and adds a row one by one from
-// the current DiskRowContainer, the latter is closed at the end.
 func (d *DiskRowContainer) Reorder(ctx context.Context, ordering colinfo.ColumnOrdering) error {
-	// We need to create a new DiskRowContainer since its ordering can only be
-	// changed at initialization.
+	__antithesis_instrumentation__.Notify(569091)
+
 	newContainer := MakeDiskRowContainer(d.diskMonitor, d.types, ordering, d.engine)
 	i := d.NewFinalIterator(ctx)
 	defer i.Close()
 	for i.Rewind(); ; i.Next() {
+		__antithesis_instrumentation__.Notify(569093)
 		if ok, err := i.Valid(); err != nil {
+			__antithesis_instrumentation__.Notify(569096)
 			return err
-		} else if !ok {
-			break
+		} else {
+			__antithesis_instrumentation__.Notify(569097)
+			if !ok {
+				__antithesis_instrumentation__.Notify(569098)
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(569099)
+			}
 		}
+		__antithesis_instrumentation__.Notify(569094)
 		row, err := i.Row()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569100)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(569101)
 		}
+		__antithesis_instrumentation__.Notify(569095)
 		if err := newContainer.AddRow(ctx, row); err != nil {
+			__antithesis_instrumentation__.Notify(569102)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(569103)
 		}
 	}
+	__antithesis_instrumentation__.Notify(569092)
 	d.Close(ctx)
 	*d = newContainer
 	return nil
 }
 
-// InitTopK limits iterators to read the first k rows.
 func (d *DiskRowContainer) InitTopK() {
+	__antithesis_instrumentation__.Notify(569104)
 	d.topK = d.Len()
 }
 
-// MaybeReplaceMax adds row to the DiskRowContainer. The SortedDiskMap will
-// sort this row into the top k if applicable.
 func (d *DiskRowContainer) MaybeReplaceMax(ctx context.Context, row rowenc.EncDatumRow) error {
+	__antithesis_instrumentation__.Notify(569105)
 	return d.AddRow(ctx, row)
 }
 
-// MeanEncodedRowBytes returns the mean bytes consumed by an encoded row stored in
-// this container.
 func (d *DiskRowContainer) MeanEncodedRowBytes() int {
+	__antithesis_instrumentation__.Notify(569106)
 	if d.rowID == 0 {
+		__antithesis_instrumentation__.Notify(569108)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(569109)
 	}
+	__antithesis_instrumentation__.Notify(569107)
 	return int(d.totalEncodedRowBytes / d.rowID)
 }
 
-// UnsafeReset is part of the SortableRowContainer interface.
 func (d *DiskRowContainer) UnsafeReset(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(569110)
 	_ = d.bufferedRows.Close(ctx)
 	if err := d.diskMap.Clear(); err != nil {
+		__antithesis_instrumentation__.Notify(569112)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(569113)
 	}
+	__antithesis_instrumentation__.Notify(569111)
 	d.diskAcc.Clear(ctx)
 	d.bufferedRows = d.diskMap.NewBatchWriter()
 	d.clearDeDupCache()
@@ -384,50 +406,64 @@ func (d *DiskRowContainer) UnsafeReset(ctx context.Context) error {
 	return nil
 }
 
-// Close is part of the SortableRowContainer interface.
 func (d *DiskRowContainer) Close(ctx context.Context) {
-	// We can ignore the error here because the flushed data is immediately cleared
-	// in the following Close.
+	__antithesis_instrumentation__.Notify(569114)
+
 	_ = d.bufferedRows.Close(ctx)
 	d.diskMap.Close(ctx)
 	d.diskAcc.Close(ctx)
 }
 
-// keyValToRow decodes a key and a value byte slice stored with AddRow() into
-// a sqlbase.EncDatumRow. The returned EncDatumRow is only valid until the next
-// call to keyValToRow().
 func (d *DiskRowContainer) keyValToRow(k []byte, v []byte) (rowenc.EncDatumRow, error) {
+	__antithesis_instrumentation__.Notify(569115)
 	for i, orderInfo := range d.ordering {
-		// Types with composite key encodings are decoded from the value.
+		__antithesis_instrumentation__.Notify(569118)
+
 		if colinfo.CanHaveCompositeKeyEncoding(d.types[orderInfo.ColIdx]) {
-			// Skip over the encoded key.
+			__antithesis_instrumentation__.Notify(569120)
+
 			encLen, err := encoding.PeekLength(k)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(569122)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(569123)
 			}
+			__antithesis_instrumentation__.Notify(569121)
 			k = k[encLen:]
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(569124)
 		}
+		__antithesis_instrumentation__.Notify(569119)
 		var err error
 		col := orderInfo.ColIdx
 		d.scratchEncRow[col], k, err = rowenc.EncDatumFromBuffer(d.types[col], d.encodings[i], k)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569125)
 			return nil, errors.NewAssertionErrorWithWrappedErrf(err,
 				"unable to decode row, column idx %d", errors.Safe(col))
+		} else {
+			__antithesis_instrumentation__.Notify(569126)
 		}
 	}
+	__antithesis_instrumentation__.Notify(569116)
 	for _, i := range d.valueIdxs {
+		__antithesis_instrumentation__.Notify(569127)
 		var err error
 		d.scratchEncRow[i], v, err = rowenc.EncDatumFromBuffer(d.types[i], descpb.DatumEncoding_VALUE, v)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(569128)
 			return nil, errors.NewAssertionErrorWithWrappedErrf(err,
 				"unable to decode row, value idx %d", errors.Safe(i))
+		} else {
+			__antithesis_instrumentation__.Notify(569129)
 		}
 	}
+	__antithesis_instrumentation__.Notify(569117)
 	return d.scratchEncRow, nil
 }
 
-// diskRowIterator iterates over the rows in a DiskRowContainer.
 type diskRowIterator struct {
 	rowContainer *DiskRowContainer
 	rowBuf       []byte
@@ -437,40 +473,59 @@ type diskRowIterator struct {
 var _ RowIterator = &diskRowIterator{}
 
 func (d *DiskRowContainer) newIterator(ctx context.Context) diskRowIterator {
+	__antithesis_instrumentation__.Notify(569130)
 	if err := d.bufferedRows.Flush(); err != nil {
+		__antithesis_instrumentation__.Notify(569132)
 		log.Fatalf(ctx, "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(569133)
 	}
+	__antithesis_instrumentation__.Notify(569131)
 	return diskRowIterator{rowContainer: d, SortedDiskMapIterator: d.diskMap.NewIterator()}
 }
 
-//NewIterator is part of the SortableRowContainer interface.
 func (d *DiskRowContainer) NewIterator(ctx context.Context) RowIterator {
+	__antithesis_instrumentation__.Notify(569134)
 	i := d.newIterator(ctx)
 	if d.topK > 0 {
+		__antithesis_instrumentation__.Notify(569136)
 		return &diskRowTopKIterator{RowIterator: &i, k: d.topK}
+	} else {
+		__antithesis_instrumentation__.Notify(569137)
 	}
+	__antithesis_instrumentation__.Notify(569135)
 	return &i
 }
 
-// Row returns the current row. The returned sqlbase.EncDatumRow is only valid
-// until the next call to Row().
 func (r *diskRowIterator) Row() (rowenc.EncDatumRow, error) {
+	__antithesis_instrumentation__.Notify(569138)
 	if ok, err := r.Valid(); err != nil {
+		__antithesis_instrumentation__.Notify(569141)
 		return nil, errors.NewAssertionErrorWithWrappedErrf(err, "unable to check row validity")
-	} else if !ok {
-		return nil, errors.AssertionFailedf("invalid row")
+	} else {
+		__antithesis_instrumentation__.Notify(569142)
+		if !ok {
+			__antithesis_instrumentation__.Notify(569143)
+			return nil, errors.AssertionFailedf("invalid row")
+		} else {
+			__antithesis_instrumentation__.Notify(569144)
+		}
 	}
+	__antithesis_instrumentation__.Notify(569139)
 
 	k := r.UnsafeKey()
 	v := r.UnsafeValue()
-	// TODO(asubiotto): the "true ||" should not be necessary. We should be to
-	// reuse rowBuf, yet doing so causes
-	// TestDiskBackedIndexedRowContainer/ReorderingOnDisk, TestHashJoiner, and
-	// TestSorter to fail. Some caller of Row() is presumably not making a copy
-	// of the return value.
-	if true || cap(r.rowBuf) < len(k)+len(v) {
+
+	if true || func() bool {
+		__antithesis_instrumentation__.Notify(569145)
+		return cap(r.rowBuf) < len(k)+len(v) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(569146)
 		r.rowBuf = make([]byte, 0, len(k)+len(v))
+	} else {
+		__antithesis_instrumentation__.Notify(569147)
 	}
+	__antithesis_instrumentation__.Notify(569140)
 	r.rowBuf = r.rowBuf[:len(k)+len(v)]
 	copy(r.rowBuf, k)
 	copy(r.rowBuf[len(k):], v)
@@ -481,24 +536,28 @@ func (r *diskRowIterator) Row() (rowenc.EncDatumRow, error) {
 }
 
 func (r *diskRowIterator) Close() {
+	__antithesis_instrumentation__.Notify(569148)
 	if r.SortedDiskMapIterator != nil {
+		__antithesis_instrumentation__.Notify(569149)
 		r.SortedDiskMapIterator.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(569150)
 	}
 }
 
-// numberedRowIterator is a specialization of diskRowIterator that is
-// only for the case where the key is the rowID assigned in AddRow().
 type numberedRowIterator struct {
 	*diskRowIterator
 	scratchKey []byte
 }
 
 func (d *DiskRowContainer) newNumberedIterator(ctx context.Context) *numberedRowIterator {
+	__antithesis_instrumentation__.Notify(569151)
 	i := d.newIterator(ctx)
 	return &numberedRowIterator{diskRowIterator: &i}
 }
 
 func (n numberedRowIterator) seekToIndex(idx int) {
+	__antithesis_instrumentation__.Notify(569152)
 	n.scratchKey = encoding.EncodeUvarintAscending(n.scratchKey, uint64(idx))
 	n.SeekGE(n.scratchKey)
 }
@@ -509,33 +568,40 @@ type diskRowFinalIterator struct {
 
 var _ RowIterator = &diskRowFinalIterator{}
 
-// NewFinalIterator returns an iterator that reads rows exactly once throughout
-// the lifetime of a DiskRowContainer. Rows are not actually discarded from the
-// DiskRowContainer, but the lastReadKey is kept track of in order to serve as
-// the start key for future diskRowFinalIterators.
-// NOTE: Don't use NewFinalIterator if you passed in an ordering for the rows
-// and will be adding rows between iterations. New rows could sort before the
-// current row.
 func (d *DiskRowContainer) NewFinalIterator(ctx context.Context) RowIterator {
+	__antithesis_instrumentation__.Notify(569153)
 	i := diskRowFinalIterator{diskRowIterator: d.newIterator(ctx)}
 	if d.topK > 0 {
+		__antithesis_instrumentation__.Notify(569155)
 		return &diskRowTopKIterator{RowIterator: &i, k: d.topK}
+	} else {
+		__antithesis_instrumentation__.Notify(569156)
 	}
+	__antithesis_instrumentation__.Notify(569154)
 	return &i
 }
 
 func (r *diskRowFinalIterator) Rewind() {
+	__antithesis_instrumentation__.Notify(569157)
 	r.SeekGE(r.diskRowIterator.rowContainer.lastReadKey)
 	if r.diskRowIterator.rowContainer.lastReadKey != nil {
+		__antithesis_instrumentation__.Notify(569158)
 		r.Next()
+	} else {
+		__antithesis_instrumentation__.Notify(569159)
 	}
 }
 
 func (r *diskRowFinalIterator) Row() (rowenc.EncDatumRow, error) {
+	__antithesis_instrumentation__.Notify(569160)
 	row, err := r.diskRowIterator.Row()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(569162)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(569163)
 	}
+	__antithesis_instrumentation__.Notify(569161)
 	r.diskRowIterator.rowContainer.lastReadKey =
 		append(r.diskRowIterator.rowContainer.lastReadKey[:0], r.UnsafeKey()...)
 	return row, nil
@@ -544,25 +610,32 @@ func (r *diskRowFinalIterator) Row() (rowenc.EncDatumRow, error) {
 type diskRowTopKIterator struct {
 	RowIterator
 	position int
-	// k is the limit of rows to read.
+
 	k int
 }
 
 var _ RowIterator = &diskRowTopKIterator{}
 
 func (d *diskRowTopKIterator) Rewind() {
+	__antithesis_instrumentation__.Notify(569164)
 	d.RowIterator.Rewind()
 	d.position = 0
 }
 
 func (d *diskRowTopKIterator) Valid() (bool, error) {
+	__antithesis_instrumentation__.Notify(569165)
 	if d.position >= d.k {
+		__antithesis_instrumentation__.Notify(569167)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(569168)
 	}
+	__antithesis_instrumentation__.Notify(569166)
 	return d.RowIterator.Valid()
 }
 
 func (d *diskRowTopKIterator) Next() {
+	__antithesis_instrumentation__.Notify(569169)
 	d.position++
 	d.RowIterator.Next()
 }

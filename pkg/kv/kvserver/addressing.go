@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -22,89 +14,70 @@ import (
 type metaAction func(*kv.Batch, roachpb.Key, *roachpb.RangeDescriptor)
 
 func putMeta(b *kv.Batch, key roachpb.Key, desc *roachpb.RangeDescriptor) {
+	__antithesis_instrumentation__.Notify(94095)
 	b.Put(key, desc)
 }
 
 func delMeta(b *kv.Batch, key roachpb.Key, desc *roachpb.RangeDescriptor) {
+	__antithesis_instrumentation__.Notify(94096)
 	b.Del(key)
 }
 
-// splitRangeAddressing creates (or overwrites if necessary) the meta1
-// and meta2 range addressing records for the left and right ranges
-// caused by a split.
 func splitRangeAddressing(b *kv.Batch, left, right *roachpb.RangeDescriptor) error {
+	__antithesis_instrumentation__.Notify(94097)
 	if err := rangeAddressing(b, left, putMeta); err != nil {
+		__antithesis_instrumentation__.Notify(94099)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(94100)
 	}
+	__antithesis_instrumentation__.Notify(94098)
 	return rangeAddressing(b, right, putMeta)
 }
 
-// mergeRangeAddressing removes subsumed meta1 and meta2 range
-// addressing records caused by merging and updates the records for
-// the new merged range. Left is the range descriptor for the "left"
-// range before merging and merged describes the left to right merge.
 func mergeRangeAddressing(b *kv.Batch, left, merged *roachpb.RangeDescriptor) error {
+	__antithesis_instrumentation__.Notify(94101)
 	if err := rangeAddressing(b, left, delMeta); err != nil {
+		__antithesis_instrumentation__.Notify(94103)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(94104)
 	}
+	__antithesis_instrumentation__.Notify(94102)
 	return rangeAddressing(b, merged, putMeta)
 }
 
-// updateRangeAddressing overwrites the meta1 and meta2 range addressing records
-// for the descriptor. These are copies of the range descriptor but keyed by the
-// EndKey (for historical reasons relating to ReverseScan not having been
-// available; we might use the StartKey if starting from scratch today). While
-// usually in sync with the main copy under RangeDescriptorKey(StartKey), after
-// loss-of-quorum recovery the Range-resident copy is the newer descriptor
-// (containing fewer replicas). This is why updateRangeAddressing uses Put over
-// ConditionalPut, thus allowing up-replication to "repair" the meta copies of
-// the descriptor as a by-product.
-//
-// Because the last meta2 range can extend past the meta2 keyspace, it has two
-// index entries, at Meta1KeyMax and RangeMetaKey(desc.EndKey). See #18998.
-//
-// See also kv.RangeLookup for more information on the meta ranges.
 func updateRangeAddressing(b *kv.Batch, desc *roachpb.RangeDescriptor) error {
+	__antithesis_instrumentation__.Notify(94105)
 	return rangeAddressing(b, desc, putMeta)
 }
 
-// rangeAddressing updates or deletes the range addressing metadata
-// for the range specified by desc. The action to take is specified by
-// the supplied metaAction function.
-//
-// The rules for meta1 and meta2 records are as follows:
-//
-//  1. If desc.StartKey or desc.EndKey is meta1:
-//     - ERROR
-//  2. If desc.EndKey is meta2:
-//     - meta1(desc.EndKey)
-//  3. If desc.EndKey is normal user key:
-//     - meta2(desc.EndKey)
-//     3a. If desc.StartKey is not normal user key:
-//         - meta1(KeyMax)
 func rangeAddressing(b *kv.Batch, desc *roachpb.RangeDescriptor, action metaAction) error {
-	// 1. handle illegal case of start or end key being meta1.
-	if bytes.HasPrefix(desc.EndKey, keys.Meta1Prefix) ||
-		bytes.HasPrefix(desc.StartKey, keys.Meta1Prefix) {
-		return errors.Errorf("meta1 addressing records cannot be split: %+v", desc)
-	}
+	__antithesis_instrumentation__.Notify(94106)
 
-	// Note that both cases 2 and 3 are handled by keys.RangeMetaKey.
-	//
-	// 2. the case of the range ending with a meta2 prefix. This means
-	// the range is full of meta2. We must update the relevant meta1
-	// entry pointing to the end of this range.
-	//
-	// 3. the range ends with a normal user key, so we must update the
-	// relevant meta2 entry pointing to the end of this range.
+	if bytes.HasPrefix(desc.EndKey, keys.Meta1Prefix) || func() bool {
+		__antithesis_instrumentation__.Notify(94109)
+		return bytes.HasPrefix(desc.StartKey, keys.Meta1Prefix) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94110)
+		return errors.Errorf("meta1 addressing records cannot be split: %+v", desc)
+	} else {
+		__antithesis_instrumentation__.Notify(94111)
+	}
+	__antithesis_instrumentation__.Notify(94107)
+
 	action(b, keys.RangeMetaKey(desc.EndKey).AsRawKey(), desc)
 
-	if bytes.Compare(desc.StartKey, keys.MetaMax) < 0 &&
-		bytes.Compare(desc.EndKey, keys.MetaMax) >= 0 {
-		// 3a. the range spans meta2 and user keys, update the meta1
-		// entry for KeyMax. We do this to prevent the 3 levels of
-		// descriptor indirection described in #18998.
+	if bytes.Compare(desc.StartKey, keys.MetaMax) < 0 && func() bool {
+		__antithesis_instrumentation__.Notify(94112)
+		return bytes.Compare(desc.EndKey, keys.MetaMax) >= 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94113)
+
 		action(b, keys.Meta1KeyMax, desc)
+	} else {
+		__antithesis_instrumentation__.Notify(94114)
 	}
+	__antithesis_instrumentation__.Notify(94108)
 	return nil
 }

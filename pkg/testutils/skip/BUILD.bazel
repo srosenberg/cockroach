@@ -14,5 +14,6 @@ go_library(
         "//pkg/util/buildutil",
         "//pkg/util/envutil",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

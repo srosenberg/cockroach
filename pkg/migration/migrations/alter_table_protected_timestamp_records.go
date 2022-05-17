@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package migrations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,6 +20,7 @@ ADD COLUMN IF NOT EXISTS target BYTES FAMILY "primary"
 func alterTableProtectedTimestampRecords(
 	ctx context.Context, cs clusterversion.ClusterVersion, d migration.TenantDeps, _ *jobs.Job,
 ) error {
+	__antithesis_instrumentation__.Notify(128380)
 	op := operation{
 		name:           "add-table-pts-records-target-col",
 		schemaList:     []string{"target"},
@@ -37,7 +30,11 @@ func alterTableProtectedTimestampRecords(
 	if err := migrateTable(ctx, cs, d, op,
 		keys.ProtectedTimestampsRecordsTableID,
 		systemschema.ProtectedTimestampsRecordsTable); err != nil {
+		__antithesis_instrumentation__.Notify(128382)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(128383)
 	}
+	__antithesis_instrumentation__.Notify(128381)
 	return nil
 }

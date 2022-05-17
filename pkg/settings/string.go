@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package settings
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -16,9 +8,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// StringSetting is the interface of a setting variable that will be
-// updated automatically when the corresponding cluster-wide setting
-// of type "string" is updated.
 type StringSetting struct {
 	defaultValue string
 	validateFn   func(*Values, string) error
@@ -28,106 +17,133 @@ type StringSetting struct {
 var _ internalSetting = &StringSetting{}
 
 func (s *StringSetting) String(sv *Values) string {
+	__antithesis_instrumentation__.Notify(240097)
 	return s.Get(sv)
 }
 
-// Encoded returns the encoded value of the current value of the setting.
 func (s *StringSetting) Encoded(sv *Values) string {
+	__antithesis_instrumentation__.Notify(240098)
 	return s.String(sv)
 }
 
-// EncodedDefault returns the encoded value of the default value of the setting.
 func (s *StringSetting) EncodedDefault() string {
+	__antithesis_instrumentation__.Notify(240099)
 	return s.defaultValue
 }
 
-// DecodeToString decodes and renders an encoded value.
 func (s *StringSetting) DecodeToString(encoded string) (string, error) {
+	__antithesis_instrumentation__.Notify(240100)
 	return encoded, nil
 }
 
-// Typ returns the short (1 char) string denoting the type of setting.
 func (*StringSetting) Typ() string {
+	__antithesis_instrumentation__.Notify(240101)
 	return "s"
 }
 
-// Default returns default value for setting.
 func (s *StringSetting) Default() string {
+	__antithesis_instrumentation__.Notify(240102)
 	return s.defaultValue
 }
 
-// Defeat the linter.
 var _ = (*StringSetting).Default
 
-// Get retrieves the string value in the setting.
 func (s *StringSetting) Get(sv *Values) string {
+	__antithesis_instrumentation__.Notify(240103)
 	loaded := sv.getGeneric(s.slot)
 	if loaded == nil {
+		__antithesis_instrumentation__.Notify(240105)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(240106)
 	}
+	__antithesis_instrumentation__.Notify(240104)
 	return loaded.(string)
 }
 
-// Validate that a value conforms with the validation function.
 func (s *StringSetting) Validate(sv *Values, v string) error {
+	__antithesis_instrumentation__.Notify(240107)
 	if s.validateFn != nil {
+		__antithesis_instrumentation__.Notify(240109)
 		if err := s.validateFn(sv, v); err != nil {
+			__antithesis_instrumentation__.Notify(240110)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(240111)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(240112)
 	}
+	__antithesis_instrumentation__.Notify(240108)
 	return nil
 }
 
-// Override sets the setting to the given value, assuming
-// it passes validation.
 func (s *StringSetting) Override(ctx context.Context, sv *Values, v string) {
+	__antithesis_instrumentation__.Notify(240113)
 	_ = s.set(ctx, sv, v)
 }
 
 func (s *StringSetting) set(ctx context.Context, sv *Values, v string) error {
+	__antithesis_instrumentation__.Notify(240114)
 	if err := s.Validate(sv, v); err != nil {
+		__antithesis_instrumentation__.Notify(240117)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(240118)
 	}
+	__antithesis_instrumentation__.Notify(240115)
 	if s.Get(sv) != v {
+		__antithesis_instrumentation__.Notify(240119)
 		sv.setGeneric(ctx, s.slot, v)
+	} else {
+		__antithesis_instrumentation__.Notify(240120)
 	}
+	__antithesis_instrumentation__.Notify(240116)
 	return nil
 }
 
 func (s *StringSetting) setToDefault(ctx context.Context, sv *Values) {
+	__antithesis_instrumentation__.Notify(240121)
 	if err := s.set(ctx, sv, s.defaultValue); err != nil {
+		__antithesis_instrumentation__.Notify(240122)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(240123)
 	}
 }
 
-// WithPublic sets public visibility and can be chained.
 func (s *StringSetting) WithPublic() *StringSetting {
+	__antithesis_instrumentation__.Notify(240124)
 	s.SetVisibility(Public)
 	return s
 }
 
-// RegisterStringSetting defines a new setting with type string.
 func RegisterStringSetting(class Class, key, desc string, defaultValue string) *StringSetting {
+	__antithesis_instrumentation__.Notify(240125)
 	return RegisterValidatedStringSetting(class, key, desc, defaultValue, nil)
 }
 
-// RegisterValidatedStringSetting defines a new setting with type string with a
-// validation function.
 func RegisterValidatedStringSetting(
 	class Class, key, desc string, defaultValue string, validateFn func(*Values, string) error,
 ) *StringSetting {
+	__antithesis_instrumentation__.Notify(240126)
 	if validateFn != nil {
+		__antithesis_instrumentation__.Notify(240128)
 		if err := validateFn(nil, defaultValue); err != nil {
+			__antithesis_instrumentation__.Notify(240129)
 			panic(errors.Wrap(err, "invalid default"))
+		} else {
+			__antithesis_instrumentation__.Notify(240130)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(240131)
 	}
+	__antithesis_instrumentation__.Notify(240127)
 	setting := &StringSetting{
 		defaultValue: defaultValue,
 		validateFn:   validateFn,
 	}
-	// By default all string settings are considered to perhaps contain
-	// PII and are thus non-reportable (to exclude them from telemetry
-	// reports).
+
 	setting.SetReportable(false)
 	register(class, key, desc, setting)
 	return setting

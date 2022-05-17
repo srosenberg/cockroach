@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package settings
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -17,9 +9,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// IntSetting is the interface of a setting variable that will be
-// updated automatically when the corresponding cluster-wide setting
-// of type "int" is updated.
 type IntSetting struct {
 	common
 	defaultValue int64
@@ -28,113 +17,149 @@ type IntSetting struct {
 
 var _ numericSetting = &IntSetting{}
 
-// Get retrieves the int value in the setting.
 func (i *IntSetting) Get(sv *Values) int64 {
+	__antithesis_instrumentation__.Notify(239976)
 	return sv.container.getInt64(i.slot)
 }
 
 func (i *IntSetting) String(sv *Values) string {
+	__antithesis_instrumentation__.Notify(239977)
 	return EncodeInt(i.Get(sv))
 }
 
-// Encoded returns the encoded value of the current value of the setting.
 func (i *IntSetting) Encoded(sv *Values) string {
+	__antithesis_instrumentation__.Notify(239978)
 	return i.String(sv)
 }
 
-// EncodedDefault returns the encoded value of the default value of the setting.
 func (i *IntSetting) EncodedDefault() string {
+	__antithesis_instrumentation__.Notify(239979)
 	return EncodeInt(i.defaultValue)
 }
 
-// DecodeToString decodes and renders an encoded value.
 func (i *IntSetting) DecodeToString(encoded string) (string, error) {
+	__antithesis_instrumentation__.Notify(239980)
 	iv, err := i.DecodeValue(encoded)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(239982)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(239983)
 	}
+	__antithesis_instrumentation__.Notify(239981)
 	return EncodeInt(iv), nil
 }
 
-// DecodeValue decodes the value into an integer.
 func (i *IntSetting) DecodeValue(value string) (int64, error) {
+	__antithesis_instrumentation__.Notify(239984)
 	return strconv.ParseInt(value, 10, 64)
 }
 
-// Typ returns the short (1 char) string denoting the type of setting.
 func (*IntSetting) Typ() string {
+	__antithesis_instrumentation__.Notify(239985)
 	return "i"
 }
 
-// Default returns default value for setting.
 func (i *IntSetting) Default() int64 {
+	__antithesis_instrumentation__.Notify(239986)
 	return i.defaultValue
 }
 
-// Defeat the linter.
 var _ = (*IntSetting).Default
 
-// Validate that a value conforms with the validation function.
 func (i *IntSetting) Validate(v int64) error {
+	__antithesis_instrumentation__.Notify(239987)
 	if i.validateFn != nil {
+		__antithesis_instrumentation__.Notify(239989)
 		if err := i.validateFn(v); err != nil {
+			__antithesis_instrumentation__.Notify(239990)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(239991)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(239992)
 	}
+	__antithesis_instrumentation__.Notify(239988)
 	return nil
 }
 
-// Override changes the setting without validation and also overrides the
-// default value.
-//
-// For testing usage only.
 func (i *IntSetting) Override(ctx context.Context, sv *Values, v int64) {
+	__antithesis_instrumentation__.Notify(239993)
 	sv.setInt64(ctx, i.slot, v)
 	sv.setDefaultOverride(i.slot, v)
 }
 
 func (i *IntSetting) set(ctx context.Context, sv *Values, v int64) error {
+	__antithesis_instrumentation__.Notify(239994)
 	if err := i.Validate(v); err != nil {
+		__antithesis_instrumentation__.Notify(239996)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(239997)
 	}
+	__antithesis_instrumentation__.Notify(239995)
 	sv.setInt64(ctx, i.slot, v)
 	return nil
 }
 
 func (i *IntSetting) setToDefault(ctx context.Context, sv *Values) {
-	// See if the default value was overridden.
+	__antithesis_instrumentation__.Notify(239998)
+
 	if val := sv.getDefaultOverride(i.slot); val != nil {
-		// As per the semantics of override, these values don't go through
-		// validation.
+		__antithesis_instrumentation__.Notify(240000)
+
 		_ = i.set(ctx, sv, val.(int64))
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(240001)
 	}
+	__antithesis_instrumentation__.Notify(239999)
 	if err := i.set(ctx, sv, i.defaultValue); err != nil {
+		__antithesis_instrumentation__.Notify(240002)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(240003)
 	}
 }
 
-// RegisterIntSetting defines a new setting with type int with a
-// validation function.
 func RegisterIntSetting(
 	class Class, key, desc string, defaultValue int64, validateFns ...func(int64) error,
 ) *IntSetting {
+	__antithesis_instrumentation__.Notify(240004)
 	var composed func(int64) error
 	if len(validateFns) > 0 {
+		__antithesis_instrumentation__.Notify(240007)
 		composed = func(v int64) error {
+			__antithesis_instrumentation__.Notify(240008)
 			for _, validateFn := range validateFns {
+				__antithesis_instrumentation__.Notify(240010)
 				if err := validateFn(v); err != nil {
+					__antithesis_instrumentation__.Notify(240011)
 					return errors.Wrapf(err, "invalid value for %s", key)
+				} else {
+					__antithesis_instrumentation__.Notify(240012)
 				}
 			}
+			__antithesis_instrumentation__.Notify(240009)
 			return nil
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(240013)
 	}
+	__antithesis_instrumentation__.Notify(240005)
 	if composed != nil {
+		__antithesis_instrumentation__.Notify(240014)
 		if err := composed(defaultValue); err != nil {
+			__antithesis_instrumentation__.Notify(240015)
 			panic(errors.Wrap(err, "invalid default"))
+		} else {
+			__antithesis_instrumentation__.Notify(240016)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(240017)
 	}
+	__antithesis_instrumentation__.Notify(240006)
 	setting := &IntSetting{
 		defaultValue: defaultValue,
 		validateFn:   composed,
@@ -143,24 +168,32 @@ func RegisterIntSetting(
 	return setting
 }
 
-// WithPublic sets public visibility and can be chained.
 func (i *IntSetting) WithPublic() *IntSetting {
+	__antithesis_instrumentation__.Notify(240018)
 	i.SetVisibility(Public)
 	return i
 }
 
-// PositiveInt can be passed to RegisterIntSetting
 func PositiveInt(v int64) error {
+	__antithesis_instrumentation__.Notify(240019)
 	if v < 1 {
+		__antithesis_instrumentation__.Notify(240021)
 		return errors.Errorf("cannot be set to a non-positive value: %d", v)
+	} else {
+		__antithesis_instrumentation__.Notify(240022)
 	}
+	__antithesis_instrumentation__.Notify(240020)
 	return nil
 }
 
-// NonNegativeInt can be passed to RegisterIntSetting.
 func NonNegativeInt(v int64) error {
+	__antithesis_instrumentation__.Notify(240023)
 	if v < 0 {
+		__antithesis_instrumentation__.Notify(240025)
 		return errors.Errorf("cannot be set to a negative value: %d", v)
+	} else {
+		__antithesis_instrumentation__.Notify(240026)
 	}
+	__antithesis_instrumentation__.Notify(240024)
 	return nil
 }

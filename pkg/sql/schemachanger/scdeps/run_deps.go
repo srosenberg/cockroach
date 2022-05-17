@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scdeps
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,8 +18,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 )
 
-// NewJobRunDependencies returns an scrun.JobRunDependencies implementation built from the
-// given arguments.
 func NewJobRunDependencies(
 	collectionFactory *descs.CollectionFactory,
 	db *kv.DB,
@@ -46,6 +36,7 @@ func NewJobRunDependencies(
 	sessionData *sessiondata.SessionData,
 	kvTrace bool,
 ) scrun.JobRunDependencies {
+	__antithesis_instrumentation__.Notify(580753)
 	return &jobExecutionDeps{
 		collectionFactory:     collectionFactory,
 		db:                    db,
@@ -89,17 +80,18 @@ type jobExecutionDeps struct {
 
 var _ scrun.JobRunDependencies = (*jobExecutionDeps)(nil)
 
-// ClusterSettings implements the scrun.JobRunDependencies interface.
 func (d *jobExecutionDeps) ClusterSettings() *cluster.Settings {
+	__antithesis_instrumentation__.Notify(580754)
 	return d.settings
 }
 
-// WithTxnInJob implements the scrun.JobRunDependencies interface.
 func (d *jobExecutionDeps) WithTxnInJob(ctx context.Context, fn scrun.JobTxnFunc) error {
+	__antithesis_instrumentation__.Notify(580755)
 	var createdJobs []jobspb.JobID
 	err := d.collectionFactory.Txn(ctx, d.internalExecutor, d.db, func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(580759)
 		pl := d.job.Payload()
 		ed := &execDeps{
 			txnDeps: txnDeps{
@@ -127,16 +119,29 @@ func (d *jobExecutionDeps) WithTxnInJob(ctx context.Context, fn scrun.JobTxnFunc
 			sessionData:             d.sessionData,
 		}
 		if err := fn(ctx, ed); err != nil {
+			__antithesis_instrumentation__.Notify(580761)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(580762)
 		}
+		__antithesis_instrumentation__.Notify(580760)
 		createdJobs = ed.CreatedJobs()
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(580756)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(580763)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(580764)
 	}
+	__antithesis_instrumentation__.Notify(580757)
 	if len(createdJobs) > 0 {
+		__antithesis_instrumentation__.Notify(580765)
 		d.jobRegistry.NotifyToResume(ctx, createdJobs...)
+	} else {
+		__antithesis_instrumentation__.Notify(580766)
 	}
+	__antithesis_instrumentation__.Notify(580758)
 	return nil
 }

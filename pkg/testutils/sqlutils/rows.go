@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqlutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	gosql "database/sql"
@@ -19,93 +11,121 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-// RowsToDataDrivenOutput converts a gosql.Rows object into an appropriate
-// string for usage in data driven tests.
 func RowsToDataDrivenOutput(rows *gosql.Rows) (string, error) {
-	// Find out how many output columns there are.
+	__antithesis_instrumentation__.Notify(646195)
+
 	cols, err := rows.Columns()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(646200)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(646201)
 	}
-	// Allocate a buffer of *interface{} to write results into.
+	__antithesis_instrumentation__.Notify(646196)
+
 	elemsI := make([]interface{}, len(cols))
 	for i := range elemsI {
+		__antithesis_instrumentation__.Notify(646202)
 		elemsI[i] = new(interface{})
 	}
+	__antithesis_instrumentation__.Notify(646197)
 	elems := make([]string, len(cols))
 
-	// Build string output of the row data.
 	var output strings.Builder
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(646203)
 		if err := rows.Scan(elemsI...); err != nil {
+			__antithesis_instrumentation__.Notify(646206)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(646207)
 		}
+		__antithesis_instrumentation__.Notify(646204)
 		for i, elem := range elemsI {
+			__antithesis_instrumentation__.Notify(646208)
 			val := *(elem.(*interface{}))
 			switch t := val.(type) {
 			case []byte:
-				// The postgres wire protocol does not distinguish between
-				// strings and byte arrays, but our tests do. In order to do
-				// The Right Thing™, we replace byte arrays which are valid
-				// UTF-8 with strings. This allows byte arrays which are not
-				// valid UTF-8 to print as a list of bytes (e.g. `[124 107]`)
-				// while printing valid strings naturally.
+				__antithesis_instrumentation__.Notify(646209)
+
 				if str := string(t); utf8.ValidString(str) {
+					__antithesis_instrumentation__.Notify(646211)
 					elems[i] = str
+				} else {
+					__antithesis_instrumentation__.Notify(646212)
 				}
 			default:
+				__antithesis_instrumentation__.Notify(646210)
 				elems[i] = fmt.Sprintf("%v", val)
 			}
 		}
+		__antithesis_instrumentation__.Notify(646205)
 		output.WriteString(strings.Join(elems, " "))
 		output.WriteString("\n")
 	}
+	__antithesis_instrumentation__.Notify(646198)
 	if err := rows.Err(); err != nil {
+		__antithesis_instrumentation__.Notify(646213)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(646214)
 	}
+	__antithesis_instrumentation__.Notify(646199)
 	return output.String(), nil
 }
 
-// PGXRowsToDataDrivenOutput converts a pgx.Rows object into an appropriate
-// string for usage in data driven tests.
 func PGXRowsToDataDrivenOutput(rows pgx.Rows) (string, error) {
-	// Find out how many output columns there are.
+	__antithesis_instrumentation__.Notify(646215)
+
 	cols := rows.FieldDescriptions()
-	// Allocate a buffer of *interface{} to write results into.
+
 	elemsI := make([]interface{}, len(cols))
 	for i := range elemsI {
+		__antithesis_instrumentation__.Notify(646219)
 		elemsI[i] = new(interface{})
 	}
+	__antithesis_instrumentation__.Notify(646216)
 	elems := make([]string, len(cols))
 
-	// Build string output of the row data.
 	var output strings.Builder
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(646220)
 		if err := rows.Scan(elemsI...); err != nil {
+			__antithesis_instrumentation__.Notify(646223)
 			return "", err
+		} else {
+			__antithesis_instrumentation__.Notify(646224)
 		}
+		__antithesis_instrumentation__.Notify(646221)
 		for i, elem := range elemsI {
+			__antithesis_instrumentation__.Notify(646225)
 			val := *(elem.(*interface{}))
 			switch t := val.(type) {
 			case []byte:
-				// The postgres wire protocol does not distinguish between
-				// strings and byte arrays, but our tests do. In order to do
-				// The Right Thing™, we replace byte arrays which are valid
-				// UTF-8 with strings. This allows byte arrays which are not
-				// valid UTF-8 to print as a list of bytes (e.g. `[124 107]`)
-				// while printing valid strings naturally.
+				__antithesis_instrumentation__.Notify(646226)
+
 				if str := string(t); utf8.ValidString(str) {
+					__antithesis_instrumentation__.Notify(646228)
 					elems[i] = str
+				} else {
+					__antithesis_instrumentation__.Notify(646229)
 				}
 			default:
+				__antithesis_instrumentation__.Notify(646227)
 				elems[i] = fmt.Sprintf("%v", val)
 			}
 		}
+		__antithesis_instrumentation__.Notify(646222)
 		output.WriteString(strings.Join(elems, " "))
 		output.WriteString("\n")
 	}
+	__antithesis_instrumentation__.Notify(646217)
 	if err := rows.Err(); err != nil {
+		__antithesis_instrumentation__.Notify(646230)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(646231)
 	}
+	__antithesis_instrumentation__.Notify(646218)
 	return output.String(), nil
 }

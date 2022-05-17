@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -46,60 +38,17 @@ import (
 )
 
 var (
-	// raftLogTruncationClearRangeThreshold is the number of entries at which Raft
-	// log truncation uses a Pebble range tombstone rather than point deletes. It
-	// is set high enough to avoid writing too many range tombstones to Pebble,
-	// but low enough that we don't do too many point deletes either (in
-	// particular, we don't want to overflow the Pebble write batch).
-	//
-	// In the steady state, Raft log truncation occurs when RaftLogQueueStaleSize
-	// (64 KB) or RaftLogQueueStaleThreshold (100 entries) is exceeded, so
-	// truncations are generally small. If followers are lagging, we let the log
-	// grow to RaftLogTruncationThreshold (16 MB) before truncating.
-	//
-	// 100k was chosen because it is unlikely to be hit in most common cases,
-	// keeping the number of range tombstones low, but will trigger when Raft logs
-	// have grown abnormally large. RaftLogTruncationThreshold will typically not
-	// trigger it, unless the average log entry is <= 160 bytes. The key size is
-	// ~16 bytes, so Pebble point deletion batches will be bounded at ~1.6MB.
 	raftLogTruncationClearRangeThreshold = uint64(util.ConstantWithMetamorphicTestRange(
-		"raft-log-truncation-clearrange-threshold", 100000 /* default */, 1 /* min */, 1e6 /* max */))
+		"raft-log-truncation-clearrange-threshold", 100000, 1, 1e6))
 )
 
 func makeIDKey() kvserverbase.CmdIDKey {
+	__antithesis_instrumentation__.Notify(118372)
 	idKeyBuf := make([]byte, 0, kvserverbase.RaftCommandIDLen)
 	idKeyBuf = encoding.EncodeUint64Ascending(idKeyBuf, uint64(rand.Int63()))
 	return kvserverbase.CmdIDKey(idKeyBuf)
 }
 
-// evalAndPropose prepares the necessary pending command struct and initializes
-// a client command ID if one hasn't been. A verified lease is supplied as a
-// parameter if the command requires a lease; nil otherwise. It then evaluates
-// the command and proposes it to Raft on success.
-//
-// The method accepts a concurrency guard, which it assumes responsibility for
-// if it succeeds in proposing a command into Raft. If the method does not
-// return an error, the guard is guaranteed to be eventually freed and the
-// caller should relinquish all ownership of it. If it does return an error, the
-// caller retains full ownership over the guard.
-//
-// evalAndPropose takes ownership of the supplied token; the caller should
-// tok.Move() it into this method. It will be used to untrack the request once
-// it comes out of the proposal buffer.
-//
-// Nothing here or below can take out a raftMu lock, since executeWriteBatch()
-// is already holding readOnlyCmdMu when calling this. Locking raftMu after it
-// would violate the locking order specified for Store.mu.
-//
-// Return values:
-// - a channel which receives a response or error upon application
-// - a closure used to attempt to abandon the command. When called, it unbinds
-//   the command's context from its Raft proposal. The client is then free to
-//   terminate execution, although it is given no guarantee that the proposal
-//   won't still go on to commit and apply at some later time.
-// - the proposal's ID.
-// - any error obtained during the creation or proposal of the command, in
-//   which case the other returned values are zero.
 func (r *Replica) evalAndPropose(
 	ctx context.Context,
 	ba *roachpb.BatchRequest,
@@ -108,41 +57,43 @@ func (r *Replica) evalAndPropose(
 	ui uncertainty.Interval,
 	tok TrackedRequestToken,
 ) (chan proposalResult, func(), kvserverbase.CmdIDKey, *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(118373)
 	defer tok.DoneIfNotMoved(ctx)
 	idKey := makeIDKey()
 	proposal, pErr := r.requestToProposal(ctx, idKey, ba, st, ui, g)
 	log.Event(proposal.ctx, "evaluated request")
 
-	// If the request hit a server-side concurrency retry error, immediately
-	// proagate the error. Don't assume ownership of the concurrency guard.
 	if isConcurrencyRetryError(pErr) {
+		__antithesis_instrumentation__.Notify(118384)
 		pErr = maybeAttachLease(pErr, &st.Lease)
 		return nil, nil, "", pErr
-	} else if _, ok := pErr.GetDetail().(*roachpb.ReplicaCorruptionError); ok {
-		return nil, nil, "", pErr
+	} else {
+		__antithesis_instrumentation__.Notify(118385)
+		if _, ok := pErr.GetDetail().(*roachpb.ReplicaCorruptionError); ok {
+			__antithesis_instrumentation__.Notify(118386)
+			return nil, nil, "", pErr
+		} else {
+			__antithesis_instrumentation__.Notify(118387)
+		}
 	}
+	__antithesis_instrumentation__.Notify(118374)
 
-	// Attach the endCmds to the proposal and assume responsibility for
-	// releasing the concurrency guard if the proposal makes it to Raft.
 	proposal.ec = endCmds{repl: r, g: g, st: st}
 
-	// Pull out proposal channel to return. proposal.doneCh may be set to
-	// nil if it is signaled in this function.
 	proposalCh := proposal.doneCh
 
-	// There are two cases where request evaluation does not lead to a Raft
-	// proposal:
-	// 1. proposal.command == nil indicates that the evaluation was a no-op
-	//    and that no Raft command needs to be proposed.
-	// 2. pErr != nil corresponds to a failed proposal - the command resulted
-	//    in an error.
 	if proposal.command == nil {
+		__antithesis_instrumentation__.Notify(118388)
 		if proposal.Local.RequiresRaft() {
+			__antithesis_instrumentation__.Notify(118390)
 			return nil, nil, "", roachpb.NewError(errors.AssertionFailedf(
 				"proposal resulting from batch %s erroneously bypassed Raft", ba))
+		} else {
+			__antithesis_instrumentation__.Notify(118391)
 		}
+		__antithesis_instrumentation__.Notify(118389)
 		intents := proposal.Local.DetachEncounteredIntents()
-		endTxns := proposal.Local.DetachEndTxns(pErr != nil /* alwaysOnly */)
+		endTxns := proposal.Local.DetachEndTxns(pErr != nil)
 		r.handleReadWriteLocalEvalResult(ctx, *proposal.Local)
 
 		pr := proposalResult{
@@ -152,8 +103,11 @@ func (r *Replica) evalAndPropose(
 			EndTxns:            endTxns,
 		}
 		proposal.finishApplication(ctx, pr)
-		return proposalCh, func() {}, "", nil
+		return proposalCh, func() { __antithesis_instrumentation__.Notify(118392) }, "", nil
+	} else {
+		__antithesis_instrumentation__.Notify(118393)
 	}
+	__antithesis_instrumentation__.Notify(118375)
 
 	log.VEventf(proposal.ctx, 2,
 		"proposing command to write %d new keys, %d new values, %d new intents, "+
@@ -164,23 +118,20 @@ func (r *Replica) evalAndPropose(
 		proposal.command.WriteBatch.Size(),
 	)
 
-	// If the request requested that Raft consensus be performed asynchronously,
-	// return a proposal result immediately on the proposal's done channel.
-	// The channel's capacity will be large enough to accommodate this.
 	if ba.AsyncConsensus {
-		if ets := proposal.Local.DetachEndTxns(false /* alwaysOnly */); len(ets) != 0 {
-			// Disallow async consensus for commands with EndTxnIntents because
-			// any !Always EndTxnIntent can't be cleaned up until after the
-			// command succeeds.
+		__antithesis_instrumentation__.Notify(118394)
+		if ets := proposal.Local.DetachEndTxns(false); len(ets) != 0 {
+			__antithesis_instrumentation__.Notify(118396)
+
 			return nil, nil, "", roachpb.NewErrorf("cannot perform consensus asynchronously for "+
 				"proposal with EndTxnIntents=%v; %v", ets, ba)
+		} else {
+			__antithesis_instrumentation__.Notify(118397)
 		}
+		__antithesis_instrumentation__.Notify(118395)
 
-		// Fork the proposal's context span so that the proposal's context
-		// can outlive the original proposer's context.
 		proposal.ctx, proposal.sp = tracing.ForkSpan(ctx, "async consensus")
 
-		// Signal the proposal's response channel immediately.
 		reply := *proposal.Local.Reply
 		reply.Responses = append([]roachpb.ResponseUnion(nil), reply.Responses...)
 		pr := proposalResult{
@@ -189,71 +140,73 @@ func (r *Replica) evalAndPropose(
 		}
 		proposal.signalProposalResult(pr)
 
-		// Continue with proposal...
+	} else {
+		__antithesis_instrumentation__.Notify(118398)
 	}
+	__antithesis_instrumentation__.Notify(118376)
 
-	// Attach information about the proposer's lease to the command, for
-	// verification below raft. Lease requests are special since they are not
-	// necessarily proposed under a valid lease (by necessity). Instead, they
-	// reference the previous lease. Note that TransferLease also skip lease
-	// checks (for technical reasons, see `TransferLease.flags`) and uses the
-	// same mechanism.
 	if ba.IsSingleSkipsLeaseCheckRequest() {
-		// Lease-related commands have below-raft special casing and will carry the
-		// lease sequence of the lease they are intending to follow.
-		// The remaining requests that skip a lease check (at the time of writing
-		// ProbeRequest) will assign a zero lease sequence and thus won't be able
-		// to mutate state.
+		__antithesis_instrumentation__.Notify(118399)
+
 		var seq roachpb.LeaseSequence
 		switch t := ba.Requests[0].GetInner().(type) {
 		case *roachpb.RequestLeaseRequest:
+			__antithesis_instrumentation__.Notify(118401)
 			seq = t.PrevLease.Sequence
 		case *roachpb.TransferLeaseRequest:
+			__antithesis_instrumentation__.Notify(118402)
 			seq = t.PrevLease.Sequence
 		default:
+			__antithesis_instrumentation__.Notify(118403)
 		}
+		__antithesis_instrumentation__.Notify(118400)
 		proposal.command.ProposerLeaseSequence = seq
-	} else if !st.Lease.OwnedBy(r.store.StoreID()) {
-		// Perform a sanity check that the lease is owned by this replica. This must
-		// have been ascertained by the callers in checkExecutionCanProceed.
-		log.Fatalf(ctx, "cannot propose %s on follower with remotely owned lease %s", ba, st.Lease)
 	} else {
-		proposal.command.ProposerLeaseSequence = st.Lease.Sequence
-	}
+		__antithesis_instrumentation__.Notify(118404)
+		if !st.Lease.OwnedBy(r.store.StoreID()) {
+			__antithesis_instrumentation__.Notify(118405)
 
-	// Once a command is written to the raft log, it must be loaded into memory
-	// and replayed on all replicas. If a command is too big, stop it here. If
-	// the command is not too big, acquire an appropriate amount of quota from
-	// the replica's proposal quota pool.
-	//
-	// TODO(tschottdorf): blocking a proposal here will leave it dangling in the
-	// closed timestamp tracker for an extended period of time, which will in turn
-	// prevent the node-wide closed timestamp from making progress. This is quite
-	// unfortunate; we should hoist the quota pool before the reference with the
-	// closed timestamp tracker is acquired. This is better anyway; right now many
-	// commands can evaluate but then be blocked on quota, which has worse memory
-	// behavior.
+			log.Fatalf(ctx, "cannot propose %s on follower with remotely owned lease %s", ba, st.Lease)
+		} else {
+			__antithesis_instrumentation__.Notify(118406)
+			proposal.command.ProposerLeaseSequence = st.Lease.Sequence
+		}
+	}
+	__antithesis_instrumentation__.Notify(118377)
+
 	quotaSize := uint64(proposal.command.Size())
 	if maxSize := uint64(MaxCommandSize.Get(&r.store.cfg.Settings.SV)); quotaSize > maxSize {
+		__antithesis_instrumentation__.Notify(118407)
 		return nil, nil, "", roachpb.NewError(errors.Errorf(
 			"command is too large: %d bytes (max: %d)", quotaSize, maxSize,
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(118408)
 	}
+	__antithesis_instrumentation__.Notify(118378)
 	var err error
 	proposal.quotaAlloc, err = r.maybeAcquireProposalQuota(ctx, quotaSize)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(118409)
 		return nil, nil, "", roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(118410)
 	}
-	// Make sure we clean up the proposal if we fail to insert it into the
-	// proposal buffer successfully. This ensures that we always release any
-	// quota that we acquire.
+	__antithesis_instrumentation__.Notify(118379)
+
 	defer func() {
+		__antithesis_instrumentation__.Notify(118411)
 		if pErr != nil {
+			__antithesis_instrumentation__.Notify(118412)
 			proposal.releaseQuota()
+		} else {
+			__antithesis_instrumentation__.Notify(118413)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(118380)
 
 	if filter := r.store.TestingKnobs().TestingProposalFilter; filter != nil {
+		__antithesis_instrumentation__.Notify(118414)
 		filterArgs := kvserverbase.ProposalFilterArgs{
 			Ctx:        ctx,
 			Cmd:        *proposal.command,
@@ -262,164 +215,157 @@ func (r *Replica) evalAndPropose(
 			Req:        *ba,
 		}
 		if pErr = filter(filterArgs); pErr != nil {
+			__antithesis_instrumentation__.Notify(118415)
 			return nil, nil, "", pErr
+		} else {
+			__antithesis_instrumentation__.Notify(118416)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(118417)
 	}
+	__antithesis_instrumentation__.Notify(118381)
 
 	pErr = r.propose(ctx, proposal, tok.Move(ctx))
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(118418)
 		return nil, nil, "", pErr
+	} else {
+		__antithesis_instrumentation__.Notify(118419)
 	}
-	// Abandoning a proposal unbinds its context so that the proposal's client
-	// is free to terminate execution. However, it does nothing to try to
-	// prevent the command from succeeding. In particular, endCmds will still be
-	// invoked when the command is applied. There are a handful of cases where
-	// the command may not be applied (or even processed): the process crashes
-	// or the local replica is removed from the range.
+	__antithesis_instrumentation__.Notify(118382)
+
 	abandon := func() {
-		// The proposal may or may not be in the Replica's proposals map.
-		// Instead of trying to look it up, simply modify the captured object
-		// directly. The raftMu must be locked to modify the context of a
-		// proposal because as soon as we propose a command to Raft, ownership
-		// passes to the "below Raft" machinery.
+		__antithesis_instrumentation__.Notify(118420)
+
 		r.raftMu.Lock()
 		defer r.raftMu.Unlock()
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		// TODO(radu): Should this context be created via tracer.ForkSpan?
-		// We'd need to make sure the span is finished eventually.
+
 		proposal.ctx = r.AnnotateCtx(context.TODO())
 	}
+	__antithesis_instrumentation__.Notify(118383)
 	return proposalCh, abandon, idKey, nil
 }
 
-// propose encodes a command, starts tracking it, and proposes it to Raft.
-//
-// The method hands ownership of the command over to the Raft machinery. After
-// the method returns, all access to the command must be performed while holding
-// Replica.mu and Replica.raftMu.
-//
-// propose takes ownership of the supplied token; the caller should tok.Move()
-// it into this method. It will be used to untrack the request once it comes out
-// of the proposal buffer.
 func (r *Replica) propose(
 	ctx context.Context, p *ProposalData, tok TrackedRequestToken,
 ) (pErr *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(118421)
 	defer tok.DoneIfNotMoved(ctx)
 
-	// If an error occurs reset the command's MaxLeaseIndex to its initial value.
-	// Failure to propose will propagate to the client. An invariant of this
-	// package is that proposals which are finished carry a raft command with a
-	// MaxLeaseIndex equal to the proposal command's max lease index.
 	defer func(prev uint64) {
+		__antithesis_instrumentation__.Notify(118430)
 		if pErr != nil {
+			__antithesis_instrumentation__.Notify(118431)
 			p.command.MaxLeaseIndex = prev
+		} else {
+			__antithesis_instrumentation__.Notify(118432)
 		}
 	}(p.command.MaxLeaseIndex)
+	__antithesis_instrumentation__.Notify(118422)
 
-	// Make sure the maximum lease index is unset. This field will be set in
-	// propBuf.Insert and its encoded bytes will be appended to the encoding
-	// buffer as a MaxLeaseFooter.
 	p.command.MaxLeaseIndex = 0
 
-	// Determine the encoding style for the Raft command.
 	prefix := true
 	version := kvserverbase.RaftVersionStandard
 	if crt := p.command.ReplicatedEvalResult.ChangeReplicas; crt != nil {
-		// EndTxnRequest with a ChangeReplicasTrigger is special because Raft
-		// needs to understand it; it cannot simply be an opaque command. To
-		// permit this, the command is proposed by the proposal buffer using
-		// ProposeConfChange. For that reason, we also don't need a Raft command
-		// prefix because the command ID is stored in a field in
-		// raft.ConfChange.
+		__antithesis_instrumentation__.Notify(118433)
+
 		log.Infof(p.ctx, "proposing %s", crt)
 		prefix = false
 
-		// The following deals with removing a leaseholder. A voter can be removed
-		// in two ways. 1) Simple (old style) where there is a reconfiguration
-		// turning a voter into a LEARNER / NON-VOTER. 2) Through an intermediate
-		// joint configuration, where the replica remains in the descriptor, but
-		// as VOTER_{OUTGOING, DEMOTING}. When leaving the JOINT config (a second
-		// Raft operation), the removed replica transitions a LEARNER / NON-VOTER.
-		//
-		// In case (1) the lease needs to be transferred out before a removal is
-		// proposed (cooperative transfer). The code below permits leaseholder
-		// removal only if entering a joint configuration (option 2 above) in which
-		// the leaseholder is (any kind of) voter, and in addition, this joint config
-		// should include a VOTER_INCOMING replica. In this case, the lease is
-		// transferred to this new replica in maybeLeaveAtomicChangeReplicas right
-		// before we exit the joint configuration.
-		//
-		// When the leaseholder is replaced by a new replica, transferring the
-		// lease in the joint config allows transferring directly from old to new,
-		// since both are active in the joint config, without going through a third
-		// node or adding the new node before transferring, which might reduce
-		// fault tolerance. For example, consider v1 in region1 (leaseholder), v2
-		// in region2 and v3 in region3. We want to relocate v1 to a new node v4 in
-		// region1. We add v4 as LEARNER. At this point we can't transfer the lease
-		// to v4, so we could transfer it to v2 first, but this is likely to hurt
-		// application performance. We could instead add v4 as VOTER first, and
-		// then transfer lease directly to v4, but this would change the number of
-		// replicas to 4, and if region1 goes down, we loose a quorum. Instead,
-		// we move to a joint config where v1 (VOTER_DEMOTING_LEARNER) transfer the
-		// lease to v4 (VOTER_INCOMING) directly.
-		// See also https://github.com/cockroachdb/cockroach/issues/67740.
 		replID := r.ReplicaID()
 		rDesc, ok := p.command.ReplicatedEvalResult.State.Desc.GetReplicaDescriptorByID(replID)
 		hasVoterIncoming := p.command.ReplicatedEvalResult.State.Desc.ContainsVoterIncoming()
-		lhRemovalAllowed := hasVoterIncoming && r.store.cfg.Settings.Version.IsActive(ctx,
-			clusterversion.EnableLeaseHolderRemoval)
-		// Previously, we were not allowed to enter a joint config where the
-		// leaseholder is being removed (i.e., not a full voter). In the new version
-		// we're allowed to enter such a joint config (if it has a VOTER_INCOMING),
-		// but not to exit it in this state, i.e., the leaseholder must be some
-		// kind of voter in the next new config (potentially VOTER_DEMOTING).
-		if !ok ||
-			(lhRemovalAllowed && !rDesc.IsAnyVoter()) ||
-			(!lhRemovalAllowed && !rDesc.IsVoterNewConfig()) {
+		lhRemovalAllowed := hasVoterIncoming && func() bool {
+			__antithesis_instrumentation__.Notify(118434)
+			return r.store.cfg.Settings.Version.IsActive(ctx,
+				clusterversion.EnableLeaseHolderRemoval) == true
+		}() == true
+
+		if !ok || func() bool {
+			__antithesis_instrumentation__.Notify(118435)
+			return (lhRemovalAllowed && func() bool {
+				__antithesis_instrumentation__.Notify(118436)
+				return !rDesc.IsAnyVoter() == true
+			}() == true) == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(118437)
+			return (!lhRemovalAllowed && func() bool {
+				__antithesis_instrumentation__.Notify(118438)
+				return !rDesc.IsVoterNewConfig() == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(118439)
 			err := errors.Mark(errors.Newf("received invalid ChangeReplicasTrigger %s to remove "+
 				"self (leaseholder); hasVoterIncoming: %v, lhRemovalAllowed: %v; proposed descriptor: %v",
 				crt, hasVoterIncoming, lhRemovalAllowed, p.command.ReplicatedEvalResult.State.Desc),
 				errMarkInvalidReplicationChange)
 			log.Errorf(p.ctx, "%v", err)
 			return roachpb.NewError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(118440)
 		}
-	} else if p.command.ReplicatedEvalResult.AddSSTable != nil {
-		log.VEvent(p.ctx, 4, "sideloadable proposal detected")
-		version = kvserverbase.RaftVersionSideloaded
-		r.store.metrics.AddSSTableProposals.Inc(1)
+	} else {
+		__antithesis_instrumentation__.Notify(118441)
+		if p.command.ReplicatedEvalResult.AddSSTable != nil {
+			__antithesis_instrumentation__.Notify(118442)
+			log.VEvent(p.ctx, 4, "sideloadable proposal detected")
+			version = kvserverbase.RaftVersionSideloaded
+			r.store.metrics.AddSSTableProposals.Inc(1)
 
-		if p.command.ReplicatedEvalResult.AddSSTable.Data == nil {
-			return roachpb.NewErrorf("cannot sideload empty SSTable")
+			if p.command.ReplicatedEvalResult.AddSSTable.Data == nil {
+				__antithesis_instrumentation__.Notify(118443)
+				return roachpb.NewErrorf("cannot sideload empty SSTable")
+			} else {
+				__antithesis_instrumentation__.Notify(118444)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(118445)
+			if log.V(4) {
+				__antithesis_instrumentation__.Notify(118446)
+				log.Infof(p.ctx, "proposing command %x: %s", p.idKey, p.Request.Summary())
+			} else {
+				__antithesis_instrumentation__.Notify(118447)
+			}
 		}
-	} else if log.V(4) {
-		log.Infof(p.ctx, "proposing command %x: %s", p.idKey, p.Request.Summary())
 	}
+	__antithesis_instrumentation__.Notify(118423)
 
-	// Create encoding buffer.
 	preLen := 0
 	if prefix {
+		__antithesis_instrumentation__.Notify(118448)
 		preLen = kvserverbase.RaftCommandPrefixLen
+	} else {
+		__antithesis_instrumentation__.Notify(118449)
 	}
+	__antithesis_instrumentation__.Notify(118424)
 	cmdLen := p.command.Size()
-	// Allocate the data slice with enough capacity to eventually hold the two
-	// "footers" that are filled later.
+
 	needed := preLen + cmdLen + kvserverpb.MaxRaftCommandFooterSize()
 	data := make([]byte, preLen, needed)
-	// Encode prefix with command ID, if necessary.
+
 	if prefix {
+		__antithesis_instrumentation__.Notify(118450)
 		kvserverbase.EncodeRaftCommandPrefix(data, version, p.idKey)
+	} else {
+		__antithesis_instrumentation__.Notify(118451)
 	}
-	// Encode body of command.
+	__antithesis_instrumentation__.Notify(118425)
+
 	data = data[:preLen+cmdLen]
 	if _, err := protoutil.MarshalTo(p.command, data[preLen:]); err != nil {
+		__antithesis_instrumentation__.Notify(118452)
 		return roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(118453)
 	}
+	__antithesis_instrumentation__.Notify(118426)
 	p.encodedCommand = data
 
-	// Too verbose even for verbose logging, so manually enable if you want to
-	// debug proposal sizes.
 	if false {
+		__antithesis_instrumentation__.Notify(118454)
 		log.Infof(p.ctx, `%s: proposal: %d
   RaftCommand.ReplicatedEvalResult:          %d
   RaftCommand.ReplicatedEvalResult.Delta:    %d
@@ -429,106 +375,86 @@ func (r *Replica) propose(
 			p.command.ReplicatedEvalResult.Delta.Size(),
 			p.command.WriteBatch.Size(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(118455)
 	}
+	__antithesis_instrumentation__.Notify(118427)
 
-	// Log an event if this is a large proposal. These are more likely to cause
-	// blips or worse, and it's good to be able to pick them from traces.
-	//
-	// TODO(tschottdorf): can we mark them so lightstep can group them?
-	const largeProposalEventThresholdBytes = 2 << 19 // 512kb
+	const largeProposalEventThresholdBytes = 2 << 19
 	if cmdLen > largeProposalEventThresholdBytes {
+		__antithesis_instrumentation__.Notify(118456)
 		log.Eventf(p.ctx, "proposal is large: %s", humanizeutil.IBytes(int64(cmdLen)))
+	} else {
+		__antithesis_instrumentation__.Notify(118457)
 	}
+	__antithesis_instrumentation__.Notify(118428)
 
-	// Insert into the proposal buffer, which passes the command to Raft to be
-	// proposed. The proposal buffer assigns the command a maximum lease index
-	// when it sequences it.
-	//
-	// NB: we must not hold r.mu while using the proposal buffer, see comment
-	// on the field.
 	err := r.mu.proposalBuf.Insert(ctx, p, tok.Move(ctx))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(118458)
 		return roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(118459)
 	}
+	__antithesis_instrumentation__.Notify(118429)
 	return nil
 }
 
 func (r *Replica) numPendingProposalsRLocked() int {
+	__antithesis_instrumentation__.Notify(118460)
 	return len(r.mu.proposals) + r.mu.proposalBuf.AllocatedIdx()
 }
 
-// hasPendingProposalsRLocked is part of the quiescer interface.
-// It returns true if this node has any outstanding proposals. A client might be
-// waiting for the outcome of these proposals, so we definitely don't want to
-// quiesce while such proposals are in-flight.
-//
-// Note that this method says nothing about other node's outstanding proposals:
-// if this node is the current leaseholders, previous leaseholders might have
-// proposals on which they're waiting. If this node is not the current
-// leaseholder, then obviously whoever is the current leaseholder might have
-// pending proposals. This method is called in two places: on the current
-// leaseholder when deciding whether the leaseholder should attempt to quiesce
-// the range, and then on every follower to confirm that the range can indeed be
-// quiesced.
 func (r *Replica) hasPendingProposalsRLocked() bool {
+	__antithesis_instrumentation__.Notify(118461)
 	return r.numPendingProposalsRLocked() > 0
 }
 
-// hasPendingProposalQuotaRLocked is part of the quiescer interface. It returns
-// true if there are any commands that haven't completed replicating that are
-// tracked by this node's quota pool (i.e. commands that haven't been acked by
-// all live replicas).
-// We can't quiesce while there's outstanding quota because the respective quota
-// would not be released while quiesced, and it might prevent the range from
-// unquiescing (leading to deadlock). See #46699.
 func (r *Replica) hasPendingProposalQuotaRLocked() bool {
+	__antithesis_instrumentation__.Notify(118462)
 	if r.mu.proposalQuota == nil {
+		__antithesis_instrumentation__.Notify(118464)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(118465)
 	}
+	__antithesis_instrumentation__.Notify(118463)
 	return !r.mu.proposalQuota.Full()
 }
 
 var errRemoved = errors.New("replica removed")
 
-// stepRaftGroup calls Step on the replica's RawNode with the provided request's
-// message. Before doing so, it assures that the replica is unquiesced and ready
-// to handle the request.
 func (r *Replica) stepRaftGroup(req *kvserverpb.RaftMessageRequest) error {
-	// We're processing an incoming raft message (from a batch that may
-	// include MsgVotes), so don't campaign if we wake up our raft
-	// group.
+	__antithesis_instrumentation__.Notify(118466)
+
 	return r.withRaftGroup(false, func(raftGroup *raft.RawNode) (bool, error) {
-		// We're processing a message from another replica which means that the
-		// other replica is not quiesced, so we don't need to wake the leader.
-		// Note that we avoid campaigning when receiving raft messages, because
-		// we expect the originator to campaign instead.
-		r.maybeUnquiesceWithOptionsLocked(false /* campaignOnWake */)
+		__antithesis_instrumentation__.Notify(118467)
+
+		r.maybeUnquiesceWithOptionsLocked(false)
 		r.mu.lastUpdateTimes.update(req.FromReplica.ReplicaID, timeutil.Now())
 		if req.Message.Type == raftpb.MsgSnap {
-			// Occasionally a snapshot message may arrive under an outdated term,
-			// which would lead to Raft discarding the snapshot. This should be
-			// really rare in practice, but it does happen in tests and in particular
-			// can happen to the synchronous snapshots on the learner path, which
-			// will then have to wait for the raft snapshot queue to send another
-			// snapshot. However, in some tests it is desirable to disable the
-			// raft snapshot queue. This workaround makes that possible.
-			//
-			// See TestReportUnreachableRemoveRace for the test that prompted
-			// this addition.
+			__antithesis_instrumentation__.Notify(118470)
+
 			if term := raftGroup.BasicStatus().Term; term > req.Message.Term {
+				__antithesis_instrumentation__.Notify(118471)
 				req.Message.Term = term
+			} else {
+				__antithesis_instrumentation__.Notify(118472)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(118473)
 		}
+		__antithesis_instrumentation__.Notify(118468)
 		err := raftGroup.Step(req.Message)
 		if errors.Is(err, raft.ErrProposalDropped) {
-			// A proposal was forwarded to this replica but we couldn't propose it.
-			// Swallow the error since we don't have an effective way of signaling
-			// this to the sender.
-			// TODO(bdarnell): Handle ErrProposalDropped better.
-			// https://github.com/cockroachdb/cockroach/issues/21849
+			__antithesis_instrumentation__.Notify(118474)
+
 			err = nil
+		} else {
+			__antithesis_instrumentation__.Notify(118475)
 		}
-		return false /* unquiesceAndWakeLeader */, err
+		__antithesis_instrumentation__.Notify(118469)
+		return false, err
 	})
 }
 
@@ -542,499 +468,501 @@ type handleRaftReadyStats struct {
 	snap handleSnapshotStats
 }
 
-// noSnap can be passed to handleRaftReady when no snapshot should be processed.
 var noSnap IncomingSnapshot
 
-// handleRaftReady processes a raft.Ready containing entries and messages that
-// are ready to read, be saved to stable storage, committed, or sent to other
-// peers. It takes a non-empty IncomingSnapshot to indicate that it is
-// about to process a snapshot.
-//
-// The returned string is nonzero whenever an error is returned to give a
-// non-sensitive cue as to what happened.
 func (r *Replica) handleRaftReady(
 	ctx context.Context, inSnap IncomingSnapshot,
 ) (handleRaftReadyStats, string, error) {
+	__antithesis_instrumentation__.Notify(118476)
 	r.raftMu.Lock()
 	defer r.raftMu.Unlock()
 	return r.handleRaftReadyRaftMuLocked(ctx, inSnap)
 }
 
-// handleRaftReadyRaftMuLocked is the same as handleRaftReady but requires that
-// the replica's raftMu be held.
-//
-// The returned string is nonzero whenever an error is returned to give a
-// non-sensitive cue as to what happened.
 func (r *Replica) handleRaftReadyRaftMuLocked(
 	ctx context.Context, inSnap IncomingSnapshot,
 ) (handleRaftReadyStats, string, error) {
-	// handleRaftReadyRaftMuLocked is not prepared to handle context cancellation,
-	// so assert that it's given a non-cancellable context.
+	__antithesis_instrumentation__.Notify(118477)
+
 	if ctx.Done() != nil {
+		__antithesis_instrumentation__.Notify(118499)
 		return handleRaftReadyStats{}, "", errors.AssertionFailedf(
 			"handleRaftReadyRaftMuLocked cannot be called with a cancellable context")
+	} else {
+		__antithesis_instrumentation__.Notify(118500)
 	}
+	__antithesis_instrumentation__.Notify(118478)
 
 	var stats handleRaftReadyStats
 	if inSnap.Desc != nil {
+		__antithesis_instrumentation__.Notify(118501)
 		stats.snap.offered = true
+	} else {
+		__antithesis_instrumentation__.Notify(118502)
 	}
+	__antithesis_instrumentation__.Notify(118479)
 
 	var hasReady bool
 	var rd raft.Ready
 	r.mu.Lock()
-	lastIndex := r.mu.lastIndex // used for append below
+	lastIndex := r.mu.lastIndex
 	lastTerm := r.mu.lastTerm
 	raftLogSize := r.mu.raftLogSize
 	leaderID := r.mu.leaderID
 	lastLeaderID := leaderID
 	err := r.withRaftGroupLocked(true, func(raftGroup *raft.RawNode) (bool, error) {
+		__antithesis_instrumentation__.Notify(118503)
 		numFlushed, err := r.mu.proposalBuf.FlushLockedWithRaftGroup(ctx, raftGroup)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(118506)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(118507)
 		}
+		__antithesis_instrumentation__.Notify(118504)
 		if hasReady = raftGroup.HasReady(); hasReady {
+			__antithesis_instrumentation__.Notify(118508)
 			rd = raftGroup.Ready()
+		} else {
+			__antithesis_instrumentation__.Notify(118509)
 		}
-		// We unquiesce if we have a Ready (= there's work to do). We also have
-		// to unquiesce if we just flushed some proposals but there isn't a
-		// Ready, which can happen if the proposals got dropped (raft does this
-		// if it doesn't know who the leader is). And, for extra defense in depth,
-		// we also unquiesce if there are outstanding proposals.
-		//
-		// NB: if we had the invariant that the group can only be in quiesced
-		// state if it knows the leader (state.Lead) AND we knew that raft would
-		// never give us an empty ready here (i.e. the only reason to drop a
-		// proposal is not knowing the leader) then numFlushed would not be
-		// necessary. The latter is likely true but we don't want to rely on
-		// it. The former is maybe true, but there's no easy way to enforce it.
-		unquiesceAndWakeLeader := hasReady || numFlushed > 0 || len(r.mu.proposals) > 0
+		__antithesis_instrumentation__.Notify(118505)
+
+		unquiesceAndWakeLeader := hasReady || func() bool {
+			__antithesis_instrumentation__.Notify(118510)
+			return numFlushed > 0 == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(118511)
+			return len(r.mu.proposals) > 0 == true
+		}() == true
 		return unquiesceAndWakeLeader, nil
 	})
+	__antithesis_instrumentation__.Notify(118480)
 	r.mu.applyingEntries = len(rd.CommittedEntries) > 0
 	r.mu.Unlock()
 	if errors.Is(err, errRemoved) {
-		// If we've been removed then just return.
+		__antithesis_instrumentation__.Notify(118512)
+
 		return stats, "", nil
-	} else if err != nil {
-		const expl = "while checking raft group for Ready"
-		return stats, expl, errors.Wrap(err, expl)
+	} else {
+		__antithesis_instrumentation__.Notify(118513)
+		if err != nil {
+			__antithesis_instrumentation__.Notify(118514)
+			const expl = "while checking raft group for Ready"
+			return stats, expl, errors.Wrap(err, expl)
+		} else {
+			__antithesis_instrumentation__.Notify(118515)
+		}
 	}
+	__antithesis_instrumentation__.Notify(118481)
 	if !hasReady {
-		// We must update the proposal quota even if we don't have a ready.
-		// Consider the case when our quota is of size 1 and two out of three
-		// replicas have committed one log entry while the third is lagging
-		// behind. When the third replica finally does catch up and sends
-		// along a MsgAppResp, since the entry is already committed on the
-		// leader replica, no Ready is emitted. But given that the third
-		// replica has caught up, we can release
-		// some quota back to the pool.
+		__antithesis_instrumentation__.Notify(118516)
+
 		r.updateProposalQuotaRaftMuLocked(ctx, lastLeaderID)
 		return stats, "", nil
+	} else {
+		__antithesis_instrumentation__.Notify(118517)
 	}
+	__antithesis_instrumentation__.Notify(118482)
 
 	logRaftReady(ctx, rd)
 
 	refreshReason := noReason
-	if rd.SoftState != nil && leaderID != roachpb.ReplicaID(rd.SoftState.Lead) {
-		// Refresh pending commands if the Raft leader has changed. This is usually
-		// the first indication we have of a new leader on a restarted node.
-		//
-		// TODO(peter): Re-proposing commands when SoftState.Lead changes can lead
-		// to wasteful multiple-reproposals when we later see an empty Raft command
-		// indicating a newly elected leader or a conf change. Replay protection
-		// prevents any corruption, so the waste is only a performance issue.
+	if rd.SoftState != nil && func() bool {
+		__antithesis_instrumentation__.Notify(118518)
+		return leaderID != roachpb.ReplicaID(rd.SoftState.Lead) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118519)
+
 		if log.V(3) {
+			__antithesis_instrumentation__.Notify(118522)
 			log.Infof(ctx, "raft leader changed: %d -> %d", leaderID, rd.SoftState.Lead)
+		} else {
+			__antithesis_instrumentation__.Notify(118523)
 		}
+		__antithesis_instrumentation__.Notify(118520)
 		if !r.store.TestingKnobs().DisableRefreshReasonNewLeader {
+			__antithesis_instrumentation__.Notify(118524)
 			refreshReason = reasonNewLeader
+		} else {
+			__antithesis_instrumentation__.Notify(118525)
 		}
+		__antithesis_instrumentation__.Notify(118521)
 		leaderID = roachpb.ReplicaID(rd.SoftState.Lead)
+	} else {
+		__antithesis_instrumentation__.Notify(118526)
 	}
+	__antithesis_instrumentation__.Notify(118483)
 
 	if inSnap.Desc != nil {
+		__antithesis_instrumentation__.Notify(118527)
 		if !raft.IsEmptySnap(rd.Snapshot) {
+			__antithesis_instrumentation__.Notify(118528)
 			snapUUID, err := uuid.FromBytes(rd.Snapshot.Data)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(118533)
 				const expl = "invalid snapshot id"
 				return stats, expl, errors.Wrap(err, expl)
+			} else {
+				__antithesis_instrumentation__.Notify(118534)
 			}
+			__antithesis_instrumentation__.Notify(118529)
 			if inSnap.SnapUUID == (uuid.UUID{}) {
+				__antithesis_instrumentation__.Notify(118535)
 				log.Fatalf(ctx, "programming error: a snapshot application was attempted outside of the streaming snapshot codepath")
+			} else {
+				__antithesis_instrumentation__.Notify(118536)
 			}
+			__antithesis_instrumentation__.Notify(118530)
 			if snapUUID != inSnap.SnapUUID {
+				__antithesis_instrumentation__.Notify(118537)
 				log.Fatalf(ctx, "incoming snapshot id doesn't match raft snapshot id: %s != %s", snapUUID, inSnap.SnapUUID)
+			} else {
+				__antithesis_instrumentation__.Notify(118538)
 			}
+			__antithesis_instrumentation__.Notify(118531)
 
-			// Applying this snapshot may require us to subsume one or more of our right
-			// neighbors. This occurs if this replica is informed about the merges via a
-			// Raft snapshot instead of a MsgApp containing the merge commits, e.g.,
-			// because it went offline before the merge commits applied and did not come
-			// back online until after the merge commits were truncated away.
 			subsumedRepls, releaseMergeLock := r.maybeAcquireSnapshotMergeLock(ctx, inSnap)
 			defer releaseMergeLock()
 
 			if err := r.applySnapshot(ctx, inSnap, rd.Snapshot, rd.HardState, subsumedRepls); err != nil {
+				__antithesis_instrumentation__.Notify(118539)
 				const expl = "while applying snapshot"
 				return stats, expl, errors.Wrap(err, expl)
+			} else {
+				__antithesis_instrumentation__.Notify(118540)
 			}
+			__antithesis_instrumentation__.Notify(118532)
 			stats.snap.applied = true
 
-			// r.mu.lastIndex, r.mu.lastTerm and r.mu.raftLogSize were updated in
-			// applySnapshot, but we also want to make sure we reflect these changes in
-			// the local variables we're tracking here.
 			r.mu.RLock()
 			lastIndex = r.mu.lastIndex
 			lastTerm = r.mu.lastTerm
 			raftLogSize = r.mu.raftLogSize
 			r.mu.RUnlock()
 
-			// We refresh pending commands after applying a snapshot because this
-			// replica may have been temporarily partitioned from the Raft group and
-			// missed leadership changes that occurred. Suppose node A is the leader,
-			// and then node C gets partitioned away from the others. Leadership passes
-			// back and forth between A and B during the partition, but when the
-			// partition is healed node A is leader again.
-			if !r.store.TestingKnobs().DisableRefreshReasonSnapshotApplied &&
-				refreshReason == noReason {
+			if !r.store.TestingKnobs().DisableRefreshReasonSnapshotApplied && func() bool {
+				__antithesis_instrumentation__.Notify(118541)
+				return refreshReason == noReason == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(118542)
 				refreshReason = reasonSnapshotApplied
+			} else {
+				__antithesis_instrumentation__.Notify(118543)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(118544)
 		}
-	} else if !raft.IsEmptySnap(rd.Snapshot) {
-		// If we didn't expect Raft to have a snapshot but it has one
-		// regardless, that is unexpected and indicates a programming
-		// error.
-		err := makeNonDeterministicFailure(
-			"have inSnap=nil, but raft has a snapshot %s",
-			raft.DescribeSnapshot(rd.Snapshot),
-		)
-		return stats, getNonDeterministicFailureExplanation(err), err
-	}
+	} else {
+		__antithesis_instrumentation__.Notify(118545)
+		if !raft.IsEmptySnap(rd.Snapshot) {
+			__antithesis_instrumentation__.Notify(118546)
 
-	// If the ready struct includes entries that have been committed, these
-	// entries will be applied to the Replica's replicated state machine down
-	// below, after appending new entries to the raft log and sending messages
-	// to peers. However, the process of appending new entries to the raft log
-	// and then applying committed entries to the state machine can take some
-	// time - and these entries are already durably committed. If they have
-	// clients waiting on them, we'd like to acknowledge their success as soon
-	// as possible. To facilitate this, we take a quick pass over the committed
-	// entries and acknowledge as many as we can trivially prove will not be
-	// rejected beneath raft.
-	//
-	// Note that we only acknowledge up to the current last index in the Raft
-	// log. The CommittedEntries slice may contain entries that are also in the
-	// Entries slice (to be appended in this ready pass), and we don't want to
-	// acknowledge them until they are durably in our local Raft log. This is
-	// most common in single node replication groups, but it is possible when a
-	// follower in a multi-node replication group is catching up after falling
-	// behind. In the first case, the entries are not yet committed so
-	// acknowledging them would be a lie. In the second case, the entries are
-	// committed so we could acknowledge them at this point, but doing so seems
-	// risky. To avoid complications in either case, we pass lastIndex for the
-	// maxIndex argument to AckCommittedEntriesBeforeApplication.
+			err := makeNonDeterministicFailure(
+				"have inSnap=nil, but raft has a snapshot %s",
+				raft.DescribeSnapshot(rd.Snapshot),
+			)
+			return stats, getNonDeterministicFailureExplanation(err), err
+		} else {
+			__antithesis_instrumentation__.Notify(118547)
+		}
+	}
+	__antithesis_instrumentation__.Notify(118484)
+
 	sm := r.getStateMachine()
 	dec := r.getDecoder()
 	appTask := apply.MakeTask(sm, dec)
 	appTask.SetMaxBatchSize(r.store.TestingKnobs().MaxApplicationBatchSize)
 	defer appTask.Close()
 	if err := appTask.Decode(ctx, rd.CommittedEntries); err != nil {
+		__antithesis_instrumentation__.Notify(118548)
 		return stats, getNonDeterministicFailureExplanation(err), err
+	} else {
+		__antithesis_instrumentation__.Notify(118549)
 	}
+	__antithesis_instrumentation__.Notify(118485)
 	if err := appTask.AckCommittedEntriesBeforeApplication(ctx, lastIndex); err != nil {
+		__antithesis_instrumentation__.Notify(118550)
 		return stats, getNonDeterministicFailureExplanation(err), err
+	} else {
+		__antithesis_instrumentation__.Notify(118551)
 	}
-
-	// Separate the MsgApp messages from all other Raft message types so that we
-	// can take advantage of the optimization discussed in the Raft thesis under
-	// the section: `10.2.1 Writing to the leader’s disk in parallel`. The
-	// optimization suggests that instead of a leader writing new log entries to
-	// disk before replicating them to its followers, the leader can instead
-	// write the entries to disk in parallel with replicating to its followers
-	// and them writing to their disks.
-	//
-	// Here, we invoke this optimization by:
-	// 1. sending all MsgApps.
-	// 2. syncing all entries and Raft state to disk.
-	// 3. sending all other messages.
-	//
-	// Since this is all handled in handleRaftReadyRaftMuLocked, we're assured
-	// that even though we may sync new entries to disk after sending them in
-	// MsgApps to followers, we'll always have them synced to disk before we
-	// process followers' MsgAppResps for the corresponding entries because
-	// Ready processing is sequential (and because a restart of the leader would
-	// prevent the MsgAppResp from being handled by it). This is important
-	// because it makes sure that the leader always has all of the entries in
-	// the log for its term, which is required in etcd/raft for technical
-	// reasons[1].
-	//
-	// MsgApps are also used to inform followers of committed entries through
-	// the Commit index that they contain. Due to the optimization described
-	// above, a Commit index may be sent out to a follower before it is
-	// persisted on the leader. This is safe because the Commit index can be
-	// treated as volatile state, as is supported by raft.MustSync[2].
-	// Additionally, the Commit index can never refer to entries from the
-	// current Ready (due to the MsgAppResp argument above) except in
-	// single-node groups, in which as a result we have to be careful to not
-	// persist a Commit index without the entries its commit index might refer
-	// to (see the HardState update below for details).
-	//
-	// [1]: the Raft thesis states that this can be made safe:
-	//
-	// > The leader may even commit an entry before it has been written to its
-	// > own disk, if a majority of followers have written it to their disks;
-	// > this is still safe.
-	//
-	// [2]: Raft thesis section: `3.8 Persisted state and server restarts`:
-	//
-	// > Other state variables are safe to lose on a restart, as they can all be
-	// > recreated. The most interesting example is the commit index, which can
-	// > safely be reinitialized to zero on a restart.
-	//
-	// Note that this will change when joint quorums are implemented, at which
-	// point we have to introduce coupling between the Commit index and
-	// persisted config changes, and also require some commit indexes to be
-	// durably synced.
-	// See:
-	// https://github.com/etcd-io/etcd/issues/7625#issuecomment-489232411
+	__antithesis_instrumentation__.Notify(118486)
 
 	msgApps, otherMsgs := splitMsgApps(rd.Messages)
 	r.traceMessageSends(msgApps, "sending msgApp")
 	r.sendRaftMessagesRaftMuLocked(ctx, msgApps)
 
-	// Use a more efficient write-only batch because we don't need to do any
-	// reads from the batch. Any reads are performed on the underlying DB.
-	batch := r.store.Engine().NewUnindexedBatch(false /* writeOnly */)
+	batch := r.store.Engine().NewUnindexedBatch(false)
 	defer batch.Close()
 
 	prevLastIndex := lastIndex
 	if len(rd.Entries) > 0 {
-		// All of the entries are appended to distinct keys, returning a new
-		// last index.
+		__antithesis_instrumentation__.Notify(118552)
+
 		thinEntries, sideLoadedEntriesSize, err := r.maybeSideloadEntriesRaftMuLocked(ctx, rd.Entries)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(118554)
 			const expl = "during sideloading"
 			return stats, expl, errors.Wrap(err, expl)
+		} else {
+			__antithesis_instrumentation__.Notify(118555)
 		}
+		__antithesis_instrumentation__.Notify(118553)
 		raftLogSize += sideLoadedEntriesSize
 		if lastIndex, lastTerm, raftLogSize, err = r.append(
 			ctx, batch, lastIndex, lastTerm, raftLogSize, thinEntries,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(118556)
 			const expl = "during append"
 			return stats, expl, errors.Wrap(err, expl)
+		} else {
+			__antithesis_instrumentation__.Notify(118557)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(118558)
 	}
+	__antithesis_instrumentation__.Notify(118487)
 	if !raft.IsEmptyHardState(rd.HardState) {
-		if !r.IsInitialized() && rd.HardState.Commit != 0 {
+		__antithesis_instrumentation__.Notify(118559)
+		if !r.IsInitialized() && func() bool {
+			__antithesis_instrumentation__.Notify(118561)
+			return rd.HardState.Commit != 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(118562)
 			log.Fatalf(ctx, "setting non-zero HardState.Commit on uninitialized replica %s. HS=%+v", r, rd.HardState)
+		} else {
+			__antithesis_instrumentation__.Notify(118563)
 		}
-		// NB: Note that without additional safeguards, it's incorrect to write
-		// the HardState before appending rd.Entries. When catching up, a follower
-		// will receive Entries that are immediately Committed in the same
-		// Ready. If we persist the HardState but happen to lose the Entries,
-		// assertions can be tripped.
-		//
-		// We have both in the same batch, so there's no problem. If that ever
-		// changes, we must write and sync the Entries before the HardState.
+		__antithesis_instrumentation__.Notify(118560)
+
 		if err := r.raftMu.stateLoader.SetHardState(ctx, batch, rd.HardState); err != nil {
+			__antithesis_instrumentation__.Notify(118564)
 			const expl = "during setHardState"
 			return stats, expl, errors.Wrap(err, expl)
+		} else {
+			__antithesis_instrumentation__.Notify(118565)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(118566)
 	}
-	// Synchronously commit the batch with the Raft log entries and Raft hard
-	// state as we're promising not to lose this data.
-	//
-	// Note that the data is visible to other goroutines before it is synced to
-	// disk. This is fine. The important constraints are that these syncs happen
-	// before Raft messages are sent and before the call to RawNode.Advance. Our
-	// regular locking is sufficient for this and if other goroutines can see the
-	// data early, that's fine. In particular, snapshots are not a problem (I
-	// think they're the only thing that might access log entries or HardState
-	// from other goroutines). Snapshots do not include either the HardState or
-	// uncommitted log entries, and even if they did include log entries that
-	// were not persisted to disk, it wouldn't be a problem because raft does not
-	// infer the that entries are persisted on the node that sends a snapshot.
+	__antithesis_instrumentation__.Notify(118488)
+
 	commitStart := timeutil.Now()
-	if err := batch.Commit(rd.MustSync && !disableSyncRaftLog.Get(&r.store.cfg.Settings.SV)); err != nil {
+	if err := batch.Commit(rd.MustSync && func() bool {
+		__antithesis_instrumentation__.Notify(118567)
+		return !disableSyncRaftLog.Get(&r.store.cfg.Settings.SV) == true
+	}() == true); err != nil {
+		__antithesis_instrumentation__.Notify(118568)
 		const expl = "while committing batch"
 		return stats, expl, errors.Wrap(err, expl)
+	} else {
+		__antithesis_instrumentation__.Notify(118569)
 	}
+	__antithesis_instrumentation__.Notify(118489)
 	if rd.MustSync {
+		__antithesis_instrumentation__.Notify(118570)
 		elapsed := timeutil.Since(commitStart)
 		r.store.metrics.RaftLogCommitLatency.RecordValue(elapsed.Nanoseconds())
+	} else {
+		__antithesis_instrumentation__.Notify(118571)
 	}
+	__antithesis_instrumentation__.Notify(118490)
 
 	if len(rd.Entries) > 0 {
-		// We may have just overwritten parts of the log which contain
-		// sideloaded SSTables from a previous term (and perhaps discarded some
-		// entries that we didn't overwrite). Remove any such leftover on-disk
-		// payloads (we can do that now because we've committed the deletion
-		// just above).
-		firstPurge := rd.Entries[0].Index // first new entry written
+		__antithesis_instrumentation__.Notify(118572)
+
+		firstPurge := rd.Entries[0].Index
 		purgeTerm := rd.Entries[0].Term - 1
-		lastPurge := prevLastIndex // old end of the log, include in deletion
+		lastPurge := prevLastIndex
 		purgedSize, err := maybePurgeSideloaded(ctx, r.raftMu.sideloaded, firstPurge, lastPurge, purgeTerm)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(118574)
 			const expl = "while purging sideloaded storage"
 			return stats, expl, err
+		} else {
+			__antithesis_instrumentation__.Notify(118575)
 		}
+		__antithesis_instrumentation__.Notify(118573)
 		raftLogSize -= purgedSize
 		if raftLogSize < 0 {
-			// Might have gone negative if node was recently restarted.
-			raftLogSize = 0
-		}
-	}
+			__antithesis_instrumentation__.Notify(118576)
 
-	// Update protected state - last index, last term, raft log size, and raft
-	// leader ID.
+			raftLogSize = 0
+		} else {
+			__antithesis_instrumentation__.Notify(118577)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(118578)
+	}
+	__antithesis_instrumentation__.Notify(118491)
+
 	r.mu.Lock()
 	r.mu.lastIndex = lastIndex
 	r.mu.lastTerm = lastTerm
 	r.mu.raftLogSize = raftLogSize
 	var becameLeader bool
 	if r.mu.leaderID != leaderID {
+		__antithesis_instrumentation__.Notify(118579)
 		r.mu.leaderID = leaderID
-		// Clear the remote proposal set. Would have been nil already if not
-		// previously the leader.
+
 		becameLeader = r.mu.leaderID == r.replicaID
+	} else {
+		__antithesis_instrumentation__.Notify(118580)
 	}
+	__antithesis_instrumentation__.Notify(118492)
 	r.mu.Unlock()
 
-	// When becoming the leader, proactively add the replica to the replicate
-	// queue. We might have been handed leadership by a remote node which wanted
-	// to remove itself from the range.
-	if becameLeader && r.store.replicateQueue != nil {
+	if becameLeader && func() bool {
+		__antithesis_instrumentation__.Notify(118581)
+		return r.store.replicateQueue != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118582)
 		r.store.replicateQueue.MaybeAddAsync(ctx, r, r.store.Clock().NowAsClockTimestamp())
+	} else {
+		__antithesis_instrumentation__.Notify(118583)
 	}
+	__antithesis_instrumentation__.Notify(118493)
 
-	// Update raft log entry cache. We clear any older, uncommitted log entries
-	// and cache the latest ones.
-	r.store.raftEntryCache.Add(r.RangeID, rd.Entries, true /* truncate */)
+	r.store.raftEntryCache.Add(r.RangeID, rd.Entries, true)
 	r.sendRaftMessagesRaftMuLocked(ctx, otherMsgs)
 	r.traceEntries(rd.CommittedEntries, "committed, before applying any entries")
 
 	applicationStart := timeutil.Now()
 	if len(rd.CommittedEntries) > 0 {
+		__antithesis_instrumentation__.Notify(118584)
 		err := appTask.ApplyCommittedEntries(ctx)
 		stats.applyCommittedEntriesStats = sm.moveStats()
 		if errors.Is(err, apply.ErrRemoved) {
-			// We know that our replica has been removed. All future calls to
-			// r.withRaftGroup() will return errRemoved so no future Ready objects
-			// will be processed by this Replica.
-			return stats, "", err
-		} else if err != nil {
-			return stats, getNonDeterministicFailureExplanation(err), err
-		}
+			__antithesis_instrumentation__.Notify(118586)
 
-		// etcd raft occasionally adds a nil entry (our own commands are never
-		// empty). This happens in two situations: When a new leader is elected, and
-		// when a config change is dropped due to the "one at a time" rule. In both
-		// cases we may need to resubmit our pending proposals (In the former case
-		// we resubmit everything because we proposed them to a former leader that
-		// is no longer able to commit them. In the latter case we only need to
-		// resubmit pending config changes, but it's hard to distinguish so we
-		// resubmit everything anyway). We delay resubmission until after we have
-		// processed the entire batch of entries.
-		if stats.numEmptyEntries > 0 {
-			// Overwrite unconditionally since this is the most aggressive
-			// reproposal mode.
-			if !r.store.TestingKnobs().DisableRefreshReasonNewLeaderOrConfigChange {
-				refreshReason = reasonNewLeaderOrConfigChange
+			return stats, "", err
+		} else {
+			__antithesis_instrumentation__.Notify(118587)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(118588)
+				return stats, getNonDeterministicFailureExplanation(err), err
+			} else {
+				__antithesis_instrumentation__.Notify(118589)
 			}
 		}
+		__antithesis_instrumentation__.Notify(118585)
+
+		if stats.numEmptyEntries > 0 {
+			__antithesis_instrumentation__.Notify(118590)
+
+			if !r.store.TestingKnobs().DisableRefreshReasonNewLeaderOrConfigChange {
+				__antithesis_instrumentation__.Notify(118591)
+				refreshReason = reasonNewLeaderOrConfigChange
+			} else {
+				__antithesis_instrumentation__.Notify(118592)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(118593)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(118594)
 	}
+	__antithesis_instrumentation__.Notify(118494)
 	applicationElapsed := timeutil.Since(applicationStart).Nanoseconds()
 	r.store.metrics.RaftApplyCommittedLatency.RecordValue(applicationElapsed)
 	r.store.metrics.RaftCommandsApplied.Inc(int64(len(rd.CommittedEntries)))
 	if r.store.TestingKnobs().EnableUnconditionalRefreshesInRaftReady {
+		__antithesis_instrumentation__.Notify(118595)
 		refreshReason = reasonNewLeaderOrConfigChange
+	} else {
+		__antithesis_instrumentation__.Notify(118596)
 	}
+	__antithesis_instrumentation__.Notify(118495)
 	if refreshReason != noReason {
+		__antithesis_instrumentation__.Notify(118597)
 		r.mu.Lock()
-		r.refreshProposalsLocked(ctx, 0 /* refreshAtDelta */, refreshReason)
+		r.refreshProposalsLocked(ctx, 0, refreshReason)
 		r.mu.Unlock()
+	} else {
+		__antithesis_instrumentation__.Notify(118598)
 	}
+	__antithesis_instrumentation__.Notify(118496)
 
-	// NB: if we just processed a command which removed this replica from the
-	// raft group we will early return before this point. This, combined with
-	// the fact that we'll refuse to process messages intended for a higher
-	// replica ID ensures that our replica ID could not have changed.
 	const expl = "during advance"
 
 	r.mu.Lock()
 	err = r.withRaftGroupLocked(true, func(raftGroup *raft.RawNode) (bool, error) {
+		__antithesis_instrumentation__.Notify(118599)
 		raftGroup.Advance(rd)
 		if stats.numConfChangeEntries > 0 {
-			// If the raft leader got removed, campaign the first remaining voter.
-			//
-			// NB: this must be called after Advance() above since campaigning is
-			// a no-op in the presence of unapplied conf changes.
-			if shouldCampaignAfterConfChange(ctx, r.store.StoreID(), r.descRLocked(), raftGroup) {
-				r.campaignLocked(ctx)
-			}
-		}
+			__antithesis_instrumentation__.Notify(118602)
 
-		// If the Raft group still has more to process then we immediately
-		// re-enqueue it for another round of processing. This is possible if
-		// the group's committed entries were paginated due to size limitations
-		// and we didn't apply all of them in this pass.
-		if raftGroup.HasReady() {
-			r.store.enqueueRaftUpdateCheck(r.RangeID)
+			if shouldCampaignAfterConfChange(ctx, r.store.StoreID(), r.descRLocked(), raftGroup) {
+				__antithesis_instrumentation__.Notify(118603)
+				r.campaignLocked(ctx)
+			} else {
+				__antithesis_instrumentation__.Notify(118604)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(118605)
 		}
+		__antithesis_instrumentation__.Notify(118600)
+
+		if raftGroup.HasReady() {
+			__antithesis_instrumentation__.Notify(118606)
+			r.store.enqueueRaftUpdateCheck(r.RangeID)
+		} else {
+			__antithesis_instrumentation__.Notify(118607)
+		}
+		__antithesis_instrumentation__.Notify(118601)
 		return true, nil
 	})
+	__antithesis_instrumentation__.Notify(118497)
 	r.mu.applyingEntries = false
 	r.mu.Unlock()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(118608)
 		return stats, expl, errors.Wrap(err, expl)
+	} else {
+		__antithesis_instrumentation__.Notify(118609)
 	}
+	__antithesis_instrumentation__.Notify(118498)
 
-	// NB: All early returns other than the one due to not having a ready
-	// which also makes the below call are due to fatal errors.
-	// We must also update the proposal quota when have a ready; consider the
-	// case where there are two replicas and we have a quota of size 1. We
-	// acquire the quota when the write gets proposed on the leader and expect it
-	// to be released when the follower commits it locally. In order to do so we
-	// need to have the entry 'come out of raft' and in the case of a two node
-	// raft group, this only happens if hasReady == true. If we don't release
-	// quota back at the end of handleRaftReadyRaftMuLocked, the next write will
-	// get blocked.
 	r.updateProposalQuotaRaftMuLocked(ctx, lastLeaderID)
 	return stats, "", nil
 }
 
-// splitMsgApps splits the Raft message slice into two slices, one containing
-// MsgApps and one containing all other message types. Each slice retains the
-// relative ordering between messages in the original slice.
 func splitMsgApps(msgs []raftpb.Message) (msgApps, otherMsgs []raftpb.Message) {
+	__antithesis_instrumentation__.Notify(118610)
 	splitIdx := 0
 	for i, msg := range msgs {
+		__antithesis_instrumentation__.Notify(118612)
 		if msg.Type == raftpb.MsgApp {
+			__antithesis_instrumentation__.Notify(118613)
 			msgs[i], msgs[splitIdx] = msgs[splitIdx], msgs[i]
 			splitIdx++
+		} else {
+			__antithesis_instrumentation__.Notify(118614)
 		}
 	}
+	__antithesis_instrumentation__.Notify(118611)
 	return msgs[:splitIdx], msgs[splitIdx:]
 }
 
-// maybeFatalOnRaftReadyErr will fatal if err is neither nil nor
-// apply.ErrRemoved.
 func maybeFatalOnRaftReadyErr(ctx context.Context, expl string, err error) (removed bool) {
+	__antithesis_instrumentation__.Notify(118615)
 	switch {
 	case err == nil:
+		__antithesis_instrumentation__.Notify(118616)
 		return false
 	case errors.Is(err, apply.ErrRemoved):
+		__antithesis_instrumentation__.Notify(118617)
 		return true
 	default:
+		__antithesis_instrumentation__.Notify(118618)
 		log.FatalfDepth(ctx, 1, "%s: %+v", redact.Safe(expl), err)
 		panic("unreachable")
 	}
 }
 
-// tick the Raft group, returning true if the raft group exists and is
-// unquiesced; false otherwise.
 func (r *Replica) tick(ctx context.Context, livenessMap liveness.IsLiveMap) (bool, error) {
+	__antithesis_instrumentation__.Notify(118619)
 	r.unreachablesMu.Lock()
 	remotes := r.unreachablesMu.remotes
 	r.unreachablesMu.remotes = nil
@@ -1045,147 +973,181 @@ func (r *Replica) tick(ctx context.Context, livenessMap liveness.IsLiveMap) (boo
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// If the raft group is uninitialized, do not initialize on tick.
 	if r.mu.internalRaftGroup == nil {
+		__antithesis_instrumentation__.Notify(118628)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(118629)
 	}
+	__antithesis_instrumentation__.Notify(118620)
 
 	for remoteReplica := range remotes {
+		__antithesis_instrumentation__.Notify(118630)
 		r.mu.internalRaftGroup.ReportUnreachable(uint64(remoteReplica))
 	}
+	__antithesis_instrumentation__.Notify(118621)
 
 	if r.mu.quiescent {
+		__antithesis_instrumentation__.Notify(118631)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(118632)
 	}
+	__antithesis_instrumentation__.Notify(118622)
 
 	now := r.store.Clock().NowAsClockTimestamp()
 	if r.maybeQuiesceRaftMuLockedReplicaMuLocked(ctx, now, livenessMap) {
+		__antithesis_instrumentation__.Notify(118633)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(118634)
 	}
+	__antithesis_instrumentation__.Notify(118623)
 
 	r.maybeTransferRaftLeadershipToLeaseholderLocked(ctx, now)
 
-	// For followers, we update lastUpdateTimes when we step a message from them
-	// into the local Raft group. The leader won't hit that path, so we update
-	// it whenever it ticks. In effect, this makes sure it always sees itself as
-	// alive.
 	if r.replicaID == r.mu.leaderID {
+		__antithesis_instrumentation__.Notify(118635)
 		r.mu.lastUpdateTimes.update(r.replicaID, timeutil.Now())
+	} else {
+		__antithesis_instrumentation__.Notify(118636)
 	}
+	__antithesis_instrumentation__.Notify(118624)
 
 	r.mu.ticks++
 	preTickState := r.mu.internalRaftGroup.BasicStatus().RaftState
 	r.mu.internalRaftGroup.Tick()
 	postTickState := r.mu.internalRaftGroup.BasicStatus().RaftState
 	if preTickState != postTickState {
+		__antithesis_instrumentation__.Notify(118637)
 		if postTickState == raft.StatePreCandidate {
+			__antithesis_instrumentation__.Notify(118638)
 			r.store.Metrics().RaftTimeoutCampaign.Inc(1)
-			if k := r.store.TestingKnobs(); k != nil && k.OnRaftTimeoutCampaign != nil {
+			if k := r.store.TestingKnobs(); k != nil && func() bool {
+				__antithesis_instrumentation__.Notify(118639)
+				return k.OnRaftTimeoutCampaign != nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(118640)
 				k.OnRaftTimeoutCampaign(r.RangeID)
+			} else {
+				__antithesis_instrumentation__.Notify(118641)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(118642)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(118643)
 	}
+	__antithesis_instrumentation__.Notify(118625)
 
 	refreshAtDelta := r.store.cfg.RaftElectionTimeoutTicks
 	if knob := r.store.TestingKnobs().RefreshReasonTicksPeriod; knob > 0 {
+		__antithesis_instrumentation__.Notify(118644)
 		refreshAtDelta = knob
+	} else {
+		__antithesis_instrumentation__.Notify(118645)
 	}
-	if !r.store.TestingKnobs().DisableRefreshReasonTicks && r.mu.ticks%refreshAtDelta == 0 {
-		// RaftElectionTimeoutTicks is a reasonable approximation of how long we
-		// should wait before deciding that our previous proposal didn't go
-		// through. Note that the combination of the above condition and passing
-		// RaftElectionTimeoutTicks to refreshProposalsLocked means that commands
-		// will be refreshed when they have been pending for 1 to 2 election
-		// cycles.
+	__antithesis_instrumentation__.Notify(118626)
+	if !r.store.TestingKnobs().DisableRefreshReasonTicks && func() bool {
+		__antithesis_instrumentation__.Notify(118646)
+		return r.mu.ticks%refreshAtDelta == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118647)
+
 		r.refreshProposalsLocked(ctx, refreshAtDelta, reasonTicks)
+	} else {
+		__antithesis_instrumentation__.Notify(118648)
 	}
+	__antithesis_instrumentation__.Notify(118627)
 	return true, nil
 }
 
 func (r *Replica) hasRaftReadyRLocked() bool {
+	__antithesis_instrumentation__.Notify(118649)
 	return r.mu.internalRaftGroup.HasReady()
 }
 
-// slowReplicationThreshold returns the threshold after which in-flight
-// replicated commands should be considered "stuck" and should trip the
-// per-Replica circuit breaker. The boolean indicates whether this
-// mechanism is enabled; if it isn't no action should be taken.
 func (r *Replica) slowReplicationThreshold(ba *roachpb.BatchRequest) (time.Duration, bool) {
-	if knobs := r.store.TestingKnobs(); knobs != nil && knobs.SlowReplicationThresholdOverride != nil {
+	__antithesis_instrumentation__.Notify(118650)
+	if knobs := r.store.TestingKnobs(); knobs != nil && func() bool {
+		__antithesis_instrumentation__.Notify(118652)
+		return knobs.SlowReplicationThresholdOverride != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118653)
 		if dur := knobs.SlowReplicationThresholdOverride(ba); dur > 0 {
+			__antithesis_instrumentation__.Notify(118654)
 			return dur, true
+		} else {
+			__antithesis_instrumentation__.Notify(118655)
 		}
-		// Fall through.
+
+	} else {
+		__antithesis_instrumentation__.Notify(118656)
 	}
+	__antithesis_instrumentation__.Notify(118651)
 	dur := replicaCircuitBreakerSlowReplicationThreshold.Get(&r.store.cfg.Settings.SV)
 	return dur, dur > 0
 }
 
-//go:generate stringer -type refreshRaftReason
 type refreshRaftReason int
 
 const (
 	noReason refreshRaftReason = iota
 	reasonNewLeader
 	reasonNewLeaderOrConfigChange
-	// A snapshot was just applied and so it may have contained commands that we
-	// proposed whose proposal we still consider to be inflight. These commands
-	// will never receive a response through the regular channel.
+
 	reasonSnapshotApplied
 	reasonTicks
 )
 
-// refreshProposalsLocked goes through the pending proposals, notifying
-// proposers whose proposals need to be retried, and resubmitting proposals
-// which were likely dropped (but may still apply at a legal Lease index) -
-// ensuring that the proposer will eventually get a reply on the channel it's
-// waiting on.
-// mu must be held.
-//
-// Note that reproposals don't need to worry about checking the closed timestamp
-// before reproposing, since they're reusing the original LAI.
-//
-// refreshAtDelta only applies for reasonTicks and specifies how old (in ticks)
-// a command must be for it to be inspected; the usual value is the number of
-// ticks of an election timeout (affect only proposals that have had ample time
-// to apply but didn't).
 func (r *Replica) refreshProposalsLocked(
 	ctx context.Context, refreshAtDelta int, reason refreshRaftReason,
 ) {
-	if refreshAtDelta != 0 && reason != reasonTicks {
+	__antithesis_instrumentation__.Notify(118657)
+	if refreshAtDelta != 0 && func() bool {
+		__antithesis_instrumentation__.Notify(118662)
+		return reason != reasonTicks == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118663)
 		log.Fatalf(ctx, "refreshAtDelta specified for reason %s != reasonTicks", reason)
+	} else {
+		__antithesis_instrumentation__.Notify(118664)
 	}
+	__antithesis_instrumentation__.Notify(118658)
 
 	var maxSlowProposalDurationRequest *roachpb.BatchRequest
-	// TODO(tbg): don't track exempt requests for tripping the breaker?
+
 	var maxSlowProposalDuration time.Duration
 	var slowProposalCount int64
 	var reproposals pendingCmdSlice
 	for _, p := range r.mu.proposals {
+		__antithesis_instrumentation__.Notify(118665)
 		slowReplicationThreshold, ok := r.slowReplicationThreshold(p.Request)
-		// NB: ticks can be delayed, in which this detection would kick in too late
-		// as well. This is unlikely to become a concern since the configured
-		// durations here should be very large compared to the refresh interval, and
-		// so delays shouldn't dramatically change the detection latency.
+
 		inflightDuration := r.store.cfg.RaftTickInterval * time.Duration(r.mu.ticks-p.createdAtTicks)
-		if ok && inflightDuration > slowReplicationThreshold {
+		if ok && func() bool {
+			__antithesis_instrumentation__.Notify(118667)
+			return inflightDuration > slowReplicationThreshold == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(118668)
 			if maxSlowProposalDuration < inflightDuration {
+				__antithesis_instrumentation__.Notify(118669)
 				maxSlowProposalDuration = inflightDuration
 				maxSlowProposalDurationRequest = p.Request
 				slowProposalCount++
+			} else {
+				__antithesis_instrumentation__.Notify(118670)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(118671)
 		}
+		__antithesis_instrumentation__.Notify(118666)
 		switch reason {
 		case reasonSnapshotApplied:
-			// If we applied a snapshot, check the MaxLeaseIndexes of all
-			// pending commands to see if any are now prevented from
-			// applying, and if so make them return an ambiguous error. We
-			// can't tell at this point (which should be rare) whether they
-			// were included in the snapshot we received or not.
-			//
-			// NB: lease proposals have MaxLeaseIndex 0, so they are cleaned
-			// up here too.
+			__antithesis_instrumentation__.Notify(118672)
+
 			if p.command.MaxLeaseIndex <= r.mu.state.LeaseAppliedIndex {
+				__antithesis_instrumentation__.Notify(118676)
 				r.cleanupFailedProposalLocked(p)
 				log.Eventf(p.ctx, "retry proposal %x: %s", p.idKey, reason)
 				p.finishApplication(ctx, proposalResult{
@@ -1195,93 +1157,97 @@ func (r *Replica) refreshProposalsLocked(
 						),
 					),
 				})
+			} else {
+				__antithesis_instrumentation__.Notify(118677)
 			}
+			__antithesis_instrumentation__.Notify(118673)
 			continue
 
 		case reasonTicks:
+			__antithesis_instrumentation__.Notify(118674)
 			if p.proposedAtTicks <= r.mu.ticks-refreshAtDelta {
-				// The command was proposed a while ago and may have been dropped. Try it again.
+				__antithesis_instrumentation__.Notify(118678)
+
 				reproposals = append(reproposals, p)
+			} else {
+				__antithesis_instrumentation__.Notify(118679)
 			}
 
 		default:
-			// We have reason to believe that all pending proposals were
-			// dropped on the floor (e.g. because of a leader election), so
-			// repropose everything.
+			__antithesis_instrumentation__.Notify(118675)
+
 			reproposals = append(reproposals, p)
 		}
 	}
+	__antithesis_instrumentation__.Notify(118659)
 
 	r.store.metrics.SlowRaftRequests.Update(slowProposalCount)
 
-	// If the breaker isn't tripped yet but we've detected commands that have
-	// taken too long to replicate, trip the breaker now.
-	//
-	// NB: we still keep reproposing commands on this and subsequent ticks
-	// even though this seems strictly counter-productive, except perhaps
-	// for the probe's proposals. We could consider being more strict here
-	// which could avoid build-up of raft log entries during outages, see
-	// for example:
-	// https://github.com/cockroachdb/cockroach/issues/60612
-	//
-	// NB: the call to Err() here also re-triggers the probe if the breaker is
-	// already tripped and no probe is running, thus ensuring that even if a
-	// request got added in while the probe was about to shut down, there will
-	// be regular attempts at healing the breaker.
-	if maxSlowProposalDuration > 0 && r.breaker.Signal().Err() == nil {
+	if maxSlowProposalDuration > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(118680)
+		return r.breaker.Signal().Err() == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118681)
 		err := errors.Errorf("have been waiting %.2fs for slow proposal %s",
 			maxSlowProposalDuration.Seconds(), maxSlowProposalDurationRequest)
 		log.Warningf(ctx, "%s", err)
-		// NB: this is async because we're holding lots of locks here, and we want
-		// to avoid having to pass all the information about the replica into the
-		// breaker (since the breaker needs access to this information at will to
-		// power the probe anyway). Over time, we anticipate there being multiple
-		// mechanisms which trip the breaker.
-		r.breaker.TripAsync(err)
-	}
 
-	if log.V(1) && len(reproposals) > 0 {
+		r.breaker.TripAsync(err)
+	} else {
+		__antithesis_instrumentation__.Notify(118682)
+	}
+	__antithesis_instrumentation__.Notify(118660)
+
+	if log.V(1) && func() bool {
+		__antithesis_instrumentation__.Notify(118683)
+		return len(reproposals) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118684)
 		log.Infof(ctx,
 			"pending commands: reproposing %d (at %d.%d) %s",
 			len(reproposals), r.mu.state.RaftAppliedIndex,
 			r.mu.state.LeaseAppliedIndex, reason)
+	} else {
+		__antithesis_instrumentation__.Notify(118685)
 	}
+	__antithesis_instrumentation__.Notify(118661)
 
-	// Reproposals are those commands which we weren't able to send back to the
-	// client (since we're not sure that another copy of them could apply at
-	// the "correct" index). For reproposals, it's generally pretty unlikely
-	// that they can make it in the right place. Reproposing in order is
-	// definitely required, however.
 	sort.Sort(reproposals)
 	for _, p := range reproposals {
+		__antithesis_instrumentation__.Notify(118686)
 		log.Eventf(p.ctx, "re-submitting command %x to Raft: %s", p.idKey, reason)
 		if err := r.mu.proposalBuf.ReinsertLocked(ctx, p); err != nil {
+			__antithesis_instrumentation__.Notify(118687)
 			r.cleanupFailedProposalLocked(p)
 			p.finishApplication(ctx, proposalResult{
 				Err: roachpb.NewError(roachpb.NewAmbiguousResultError(err)),
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(118688)
 		}
 	}
 }
 
 func (r *Replica) poisonInflightLatches(err error) {
+	__antithesis_instrumentation__.Notify(118689)
 	r.raftMu.Lock()
 	defer r.raftMu.Unlock()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, p := range r.mu.proposals {
+		__antithesis_instrumentation__.Notify(118690)
 		p.ec.poison()
 		if p.ec.g.Req.PoisonPolicy == poison.Policy_Error {
+			__antithesis_instrumentation__.Notify(118691)
 			aErr := roachpb.NewAmbiguousResultError(err)
-			// NB: this does not release the request's latches. It's important that
-			// the latches stay in place, since the command could still apply.
+
 			p.signalProposalResult(proposalResult{Err: roachpb.NewError(aErr)})
+		} else {
+			__antithesis_instrumentation__.Notify(118692)
 		}
 	}
 }
 
-// maybeCoalesceHeartbeat returns true if the heartbeat was coalesced and added
-// to the appropriate queue.
 func (r *Replica) maybeCoalesceHeartbeat(
 	ctx context.Context,
 	msg raftpb.Message,
@@ -1289,17 +1255,22 @@ func (r *Replica) maybeCoalesceHeartbeat(
 	quiesce bool,
 	lagging laggingReplicaSet,
 ) bool {
+	__antithesis_instrumentation__.Notify(118693)
 	var hbMap map[roachpb.StoreIdent][]kvserverpb.RaftHeartbeat
 	switch msg.Type {
 	case raftpb.MsgHeartbeat:
+		__antithesis_instrumentation__.Notify(118696)
 		r.store.coalescedMu.Lock()
 		hbMap = r.store.coalescedMu.heartbeats
 	case raftpb.MsgHeartbeatResp:
+		__antithesis_instrumentation__.Notify(118697)
 		r.store.coalescedMu.Lock()
 		hbMap = r.store.coalescedMu.heartbeatResponses
 	default:
+		__antithesis_instrumentation__.Notify(118698)
 		return false
 	}
+	__antithesis_instrumentation__.Notify(118694)
 	beat := kvserverpb.RaftHeartbeat{
 		RangeID:                           r.RangeID,
 		ToReplicaID:                       toReplica.ReplicaID,
@@ -1311,8 +1282,12 @@ func (r *Replica) maybeCoalesceHeartbeat(
 		LaggingFollowersOnQuiesceAccurate: quiesce,
 	}
 	if log.V(4) {
+		__antithesis_instrumentation__.Notify(118699)
 		log.Infof(ctx, "coalescing beat: %+v", beat)
+	} else {
+		__antithesis_instrumentation__.Notify(118700)
 	}
+	__antithesis_instrumentation__.Notify(118695)
 	toStore := roachpb.StoreIdent{
 		StoreID: toReplica.StoreID,
 		NodeID:  toReplica.NodeID,
@@ -1323,126 +1298,154 @@ func (r *Replica) maybeCoalesceHeartbeat(
 }
 
 func (r *Replica) sendRaftMessagesRaftMuLocked(ctx context.Context, messages []raftpb.Message) {
+	__antithesis_instrumentation__.Notify(118701)
 	var lastAppResp raftpb.Message
 	for _, message := range messages {
+		__antithesis_instrumentation__.Notify(118703)
 		drop := false
 		switch message.Type {
 		case raftpb.MsgApp:
+			__antithesis_instrumentation__.Notify(118705)
 			if util.RaceEnabled {
-				// Iterate over the entries to assert that all sideloaded commands
-				// are already inlined. replicaRaftStorage.Entries already performs
-				// the sideload inlining for stable entries and raft.unstable always
-				// contain fat entries. Since these are the only two sources that
-				// raft.sendAppend gathers entries from to populate MsgApps, we
-				// should never see thin entries here.
-				//
-				// Also assert that the log term only ever increases (most of the
-				// time it stays constant, as term changes are rare), and that
-				// the index increases by exactly one with each entry.
-				//
-				// This assertion came out of #61990.
-				prevTerm := message.LogTerm // term of entry preceding the append
-				prevIndex := message.Index  // index of entry preceding the append
+				__antithesis_instrumentation__.Notify(118708)
+
+				prevTerm := message.LogTerm
+				prevIndex := message.Index
 				for j := range message.Entries {
+					__antithesis_instrumentation__.Notify(118709)
 					ent := &message.Entries[j]
 					assertSideloadedRaftCommandInlined(ctx, ent)
 
 					if prevIndex+1 != ent.Index {
+						__antithesis_instrumentation__.Notify(118712)
 						log.Fatalf(ctx,
 							"index gap in outgoing MsgApp: idx %d followed by %d",
 							prevIndex, ent.Index,
 						)
+					} else {
+						__antithesis_instrumentation__.Notify(118713)
 					}
+					__antithesis_instrumentation__.Notify(118710)
 					prevIndex = ent.Index
 					if prevTerm > ent.Term {
+						__antithesis_instrumentation__.Notify(118714)
 						log.Fatalf(ctx,
 							"term regression in outgoing MsgApp: idx %d at term=%d "+
 								"appended with logterm=%d",
 							ent.Index, ent.Term, message.LogTerm,
 						)
+					} else {
+						__antithesis_instrumentation__.Notify(118715)
 					}
+					__antithesis_instrumentation__.Notify(118711)
 					prevTerm = ent.Term
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(118716)
 			}
 
 		case raftpb.MsgAppResp:
-			// A successful (non-reject) MsgAppResp contains one piece of
-			// information: the highest log index. Raft currently queues up
-			// one MsgAppResp per incoming MsgApp, and we may process
-			// multiple messages in one handleRaftReady call (because
-			// multiple messages may arrive while we're blocked syncing to
-			// disk). If we get redundant MsgAppResps, drop all but the
-			// last (we've seen that too many MsgAppResps can overflow
-			// message queues on the receiving side).
-			//
-			// Note that this reorders the chosen MsgAppResp relative to
-			// other messages (including any MsgAppResps with the Reject flag),
-			// but raft is fine with this reordering.
-			//
-			// TODO(bdarnell): Consider pushing this optimization into etcd/raft.
-			// Similar optimizations may be possible for other message types,
-			// although MsgAppResp is the only one that has been seen as a
-			// problem in practice.
-			if !message.Reject && message.Index > lastAppResp.Index {
+			__antithesis_instrumentation__.Notify(118706)
+
+			if !message.Reject && func() bool {
+				__antithesis_instrumentation__.Notify(118717)
+				return message.Index > lastAppResp.Index == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(118718)
 				lastAppResp = message
 				drop = true
+			} else {
+				__antithesis_instrumentation__.Notify(118719)
 			}
+		default:
+			__antithesis_instrumentation__.Notify(118707)
 		}
+		__antithesis_instrumentation__.Notify(118704)
 
 		if !drop {
+			__antithesis_instrumentation__.Notify(118720)
 			r.sendRaftMessageRaftMuLocked(ctx, message)
+		} else {
+			__antithesis_instrumentation__.Notify(118721)
 		}
 	}
+	__antithesis_instrumentation__.Notify(118702)
 	if lastAppResp.Index > 0 {
+		__antithesis_instrumentation__.Notify(118722)
 		r.sendRaftMessageRaftMuLocked(ctx, lastAppResp)
+	} else {
+		__antithesis_instrumentation__.Notify(118723)
 	}
 }
 
-// sendRaftMessageRaftMuLocked sends a Raft message.
 func (r *Replica) sendRaftMessageRaftMuLocked(ctx context.Context, msg raftpb.Message) {
+	__antithesis_instrumentation__.Notify(118724)
 	r.mu.RLock()
 	fromReplica, fromErr := r.getReplicaDescriptorByIDRLocked(roachpb.ReplicaID(msg.From), r.raftMu.lastToReplica)
 	toReplica, toErr := r.getReplicaDescriptorByIDRLocked(roachpb.ReplicaID(msg.To), r.raftMu.lastFromReplica)
 	var startKey roachpb.RKey
-	if msg.Type == raftpb.MsgApp && r.mu.internalRaftGroup != nil {
-		// When the follower is potentially an uninitialized replica waiting for
-		// a split trigger, send the replica's StartKey along. See the method
-		// below for more context:
+	if msg.Type == raftpb.MsgApp && func() bool {
+		__antithesis_instrumentation__.Notify(118730)
+		return r.mu.internalRaftGroup != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118731)
+
 		_ = maybeDropMsgApp
-		// NB: this code is allocation free.
+
 		r.mu.internalRaftGroup.WithProgress(func(id uint64, _ raft.ProgressType, pr tracker.Progress) {
-			if id == msg.To && pr.State == tracker.StateProbe {
-				// It is moderately expensive to attach a full key to the message, but note that
-				// a probing follower will only be appended to once per heartbeat interval (i.e.
-				// on the order of seconds). See:
-				//
-				// https://github.com/etcd-io/etcd/blob/7f450bf6967638673dd88fd4e730b01d1303d5ff/raft/progress.go#L41
+			__antithesis_instrumentation__.Notify(118732)
+			if id == msg.To && func() bool {
+				__antithesis_instrumentation__.Notify(118733)
+				return pr.State == tracker.StateProbe == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(118734)
+
 				startKey = r.descRLocked().StartKey
+			} else {
+				__antithesis_instrumentation__.Notify(118735)
 			}
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(118736)
 	}
+	__antithesis_instrumentation__.Notify(118725)
 	r.mu.RUnlock()
 
 	if fromErr != nil {
+		__antithesis_instrumentation__.Notify(118737)
 		log.Warningf(ctx, "failed to look up sender replica %d in r%d while sending %s: %s",
 			msg.From, r.RangeID, msg.Type, fromErr)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(118738)
 	}
+	__antithesis_instrumentation__.Notify(118726)
 	if toErr != nil {
+		__antithesis_instrumentation__.Notify(118739)
 		log.Warningf(ctx, "failed to look up recipient replica %d in r%d while sending %s: %s",
 			msg.To, r.RangeID, msg.Type, toErr)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(118740)
 	}
+	__antithesis_instrumentation__.Notify(118727)
 
-	// Raft-initiated snapshots are handled by the Raft snapshot queue.
 	if msg.Type == raftpb.MsgSnap {
+		__antithesis_instrumentation__.Notify(118741)
 		r.store.raftSnapshotQueue.AddAsync(ctx, r, raftSnapshotPriority)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(118742)
 	}
+	__antithesis_instrumentation__.Notify(118728)
 
 	if r.maybeCoalesceHeartbeat(ctx, msg, toReplica, fromReplica, false, nil) {
+		__antithesis_instrumentation__.Notify(118743)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(118744)
 	}
+	__antithesis_instrumentation__.Notify(118729)
 
 	req := newRaftMessageRequest()
 	*req = kvserverpb.RaftMessageRequest{
@@ -1450,56 +1453,83 @@ func (r *Replica) sendRaftMessageRaftMuLocked(ctx context.Context, msg raftpb.Me
 		ToReplica:     toReplica,
 		FromReplica:   fromReplica,
 		Message:       msg,
-		RangeStartKey: startKey, // usually nil
+		RangeStartKey: startKey,
 	}
 	if !r.sendRaftMessageRequest(ctx, req) {
+		__antithesis_instrumentation__.Notify(118745)
 		if err := r.withRaftGroup(true, func(raftGroup *raft.RawNode) (bool, error) {
+			__antithesis_instrumentation__.Notify(118746)
 			r.mu.droppedMessages++
 			raftGroup.ReportUnreachable(msg.To)
 			return true, nil
-		}); err != nil && !errors.Is(err, errRemoved) {
+		}); err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(118747)
+			return !errors.Is(err, errRemoved) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(118748)
 			log.Fatalf(ctx, "%v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(118749)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(118750)
 	}
 }
 
-// addUnreachableRemoteReplica adds the given remote ReplicaID to be reported
-// as unreachable on the next tick.
 func (r *Replica) addUnreachableRemoteReplica(remoteReplica roachpb.ReplicaID) {
+	__antithesis_instrumentation__.Notify(118751)
 	r.unreachablesMu.Lock()
 	if r.unreachablesMu.remotes == nil {
+		__antithesis_instrumentation__.Notify(118753)
 		r.unreachablesMu.remotes = make(map[roachpb.ReplicaID]struct{})
+	} else {
+		__antithesis_instrumentation__.Notify(118754)
 	}
+	__antithesis_instrumentation__.Notify(118752)
 	r.unreachablesMu.remotes[remoteReplica] = struct{}{}
 	r.unreachablesMu.Unlock()
 }
 
-// sendRaftMessageRequest sends a raft message, returning false if the message
-// was dropped. It is the caller's responsibility to call ReportUnreachable on
-// the Raft group.
 func (r *Replica) sendRaftMessageRequest(
 	ctx context.Context, req *kvserverpb.RaftMessageRequest,
 ) bool {
+	__antithesis_instrumentation__.Notify(118755)
 	if log.V(4) {
+		__antithesis_instrumentation__.Notify(118757)
 		log.Infof(ctx, "sending raft request %+v", req)
+	} else {
+		__antithesis_instrumentation__.Notify(118758)
 	}
+	__antithesis_instrumentation__.Notify(118756)
 	return r.store.cfg.Transport.SendAsync(req, r.connectionClass.get())
 }
 
 func (r *Replica) reportSnapshotStatus(ctx context.Context, to roachpb.ReplicaID, snapErr error) {
+	__antithesis_instrumentation__.Notify(118759)
 	r.raftMu.Lock()
 	defer r.raftMu.Unlock()
 
 	snapStatus := raft.SnapshotFinish
 	if snapErr != nil {
+		__antithesis_instrumentation__.Notify(118761)
 		snapStatus = raft.SnapshotFailure
+	} else {
+		__antithesis_instrumentation__.Notify(118762)
 	}
+	__antithesis_instrumentation__.Notify(118760)
 
 	if err := r.withRaftGroup(true, func(raftGroup *raft.RawNode) (bool, error) {
+		__antithesis_instrumentation__.Notify(118763)
 		raftGroup.ReportSnapshot(uint64(to), snapStatus)
 		return true, nil
-	}); err != nil && !errors.Is(err, errRemoved) {
+	}); err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(118764)
+		return !errors.Is(err, errRemoved) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118765)
 		log.Fatalf(ctx, "%v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(118766)
 	}
 }
 
@@ -1512,6 +1542,7 @@ type snapTruncationInfo struct {
 func (r *Replica) addSnapshotLogTruncationConstraint(
 	ctx context.Context, snapUUID uuid.UUID, index uint64, recipientStore roachpb.StoreID,
 ) {
+	__antithesis_instrumentation__.Notify(118767)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.addSnapshotLogTruncationConstraintLocked(ctx, snapUUID, index, recipientStore)
@@ -1520,18 +1551,24 @@ func (r *Replica) addSnapshotLogTruncationConstraint(
 func (r *Replica) addSnapshotLogTruncationConstraintLocked(
 	ctx context.Context, snapUUID uuid.UUID, index uint64, recipientStore roachpb.StoreID,
 ) {
+	__antithesis_instrumentation__.Notify(118768)
 	if r.mu.snapshotLogTruncationConstraints == nil {
+		__antithesis_instrumentation__.Notify(118771)
 		r.mu.snapshotLogTruncationConstraints = make(map[uuid.UUID]snapTruncationInfo)
+	} else {
+		__antithesis_instrumentation__.Notify(118772)
 	}
+	__antithesis_instrumentation__.Notify(118769)
 	item, ok := r.mu.snapshotLogTruncationConstraints[snapUUID]
 	if ok {
-		// Uh-oh, there's either a programming error (resulting in the same snapshot
-		// fed into this method twice) or a UUID collision. We discard the update
-		// (which is benign) but log it loudly. If the index is the same, it's
-		// likely the former, otherwise the latter.
+		__antithesis_instrumentation__.Notify(118773)
+
 		log.Warningf(ctx, "UUID collision at %s for %+v (index %d)", snapUUID, item, index)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(118774)
 	}
+	__antithesis_instrumentation__.Notify(118770)
 
 	r.mu.snapshotLogTruncationConstraints[snapUUID] = snapTruncationInfo{
 		index:          index,
@@ -1539,33 +1576,32 @@ func (r *Replica) addSnapshotLogTruncationConstraintLocked(
 	}
 }
 
-// completeSnapshotLogTruncationConstraint marks the given snapshot as finished,
-// releasing the lock on raft log truncation after a grace period.
 func (r *Replica) completeSnapshotLogTruncationConstraint(
 	ctx context.Context, snapUUID uuid.UUID, now time.Time,
 ) {
+	__antithesis_instrumentation__.Notify(118775)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	item, ok := r.mu.snapshotLogTruncationConstraints[snapUUID]
 	if !ok {
-		// UUID collision while adding the snapshot in originally. Nothing
-		// else to do.
+		__antithesis_instrumentation__.Notify(118777)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(118778)
 	}
+	__antithesis_instrumentation__.Notify(118776)
 
 	deadline := now.Add(RaftLogQueuePendingSnapshotGracePeriod)
 	item.deadline = deadline
 	r.mu.snapshotLogTruncationConstraints[snapUUID] = item
 }
 
-// getAndGCSnapshotLogTruncationConstraints returns the minimum index of any
-// currently outstanding snapshot being sent from this replica to the specified
-// recipient or 0 if there isn't one. Passing 0 for recipientStore means any
-// recipient.
 func (r *Replica) getAndGCSnapshotLogTruncationConstraints(
 	now time.Time, recipientStore roachpb.StoreID,
 ) (minSnapIndex uint64) {
+	__antithesis_instrumentation__.Notify(118779)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.getAndGCSnapshotLogTruncationConstraintsLocked(now, recipientStore)
@@ -1574,64 +1610,96 @@ func (r *Replica) getAndGCSnapshotLogTruncationConstraints(
 func (r *Replica) getAndGCSnapshotLogTruncationConstraintsLocked(
 	now time.Time, recipientStore roachpb.StoreID,
 ) (minSnapIndex uint64) {
+	__antithesis_instrumentation__.Notify(118780)
 	for snapUUID, item := range r.mu.snapshotLogTruncationConstraints {
-		if item.deadline != (time.Time{}) && item.deadline.Before(now) {
-			// The snapshot has finished and its grace period has passed.
-			// Ignore it when making truncation decisions.
+		__antithesis_instrumentation__.Notify(118783)
+		if item.deadline != (time.Time{}) && func() bool {
+			__antithesis_instrumentation__.Notify(118786)
+			return item.deadline.Before(now) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(118787)
+
 			delete(r.mu.snapshotLogTruncationConstraints, snapUUID)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(118788)
 		}
-		if recipientStore != 0 && item.recipientStore != recipientStore {
+		__antithesis_instrumentation__.Notify(118784)
+		if recipientStore != 0 && func() bool {
+			__antithesis_instrumentation__.Notify(118789)
+			return item.recipientStore != recipientStore == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(118790)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(118791)
 		}
-		if minSnapIndex == 0 || minSnapIndex > item.index {
+		__antithesis_instrumentation__.Notify(118785)
+		if minSnapIndex == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(118792)
+			return minSnapIndex > item.index == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(118793)
 			minSnapIndex = item.index
+		} else {
+			__antithesis_instrumentation__.Notify(118794)
 		}
 	}
+	__antithesis_instrumentation__.Notify(118781)
 	if len(r.mu.snapshotLogTruncationConstraints) == 0 {
-		// Save a little bit of memory.
+		__antithesis_instrumentation__.Notify(118795)
+
 		r.mu.snapshotLogTruncationConstraints = nil
+	} else {
+		__antithesis_instrumentation__.Notify(118796)
 	}
+	__antithesis_instrumentation__.Notify(118782)
 	return minSnapIndex
 }
 
 func isRaftLeader(raftStatus *raft.Status) bool {
-	return raftStatus != nil && raftStatus.SoftState.RaftState == raft.StateLeader
+	__antithesis_instrumentation__.Notify(118797)
+	return raftStatus != nil && func() bool {
+		__antithesis_instrumentation__.Notify(118798)
+		return raftStatus.SoftState.RaftState == raft.StateLeader == true
+	}() == true
 }
 
-// HasRaftLeader returns true if the raft group has a raft leader currently.
 func HasRaftLeader(raftStatus *raft.Status) bool {
-	return raftStatus != nil && raftStatus.SoftState.Lead != 0
+	__antithesis_instrumentation__.Notify(118799)
+	return raftStatus != nil && func() bool {
+		__antithesis_instrumentation__.Notify(118800)
+		return raftStatus.SoftState.Lead != 0 == true
+	}() == true
 }
 
-// pendingCmdSlice sorts by increasing MaxLeaseIndex.
 type pendingCmdSlice []*ProposalData
 
-func (s pendingCmdSlice) Len() int      { return len(s) }
-func (s pendingCmdSlice) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s pendingCmdSlice) Len() int { __antithesis_instrumentation__.Notify(118801); return len(s) }
+func (s pendingCmdSlice) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(118802)
+	s[i], s[j] = s[j], s[i]
+}
 func (s pendingCmdSlice) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(118803)
 	return s[i].command.MaxLeaseIndex < s[j].command.MaxLeaseIndex
 }
 
-// withRaftGroupLocked calls the supplied function with the (lazily
-// initialized) Raft group. The supplied function should return true for the
-// unquiesceAndWakeLeader argument if the replica should be unquiesced (and the
-// leader awoken). See handleRaftReady for an instance of where this value
-// varies.
-//
-// Requires that Replica.mu is held.
-//
-// If this Replica is in the process of being removed this method will return
-// errRemoved.
 func (r *Replica) withRaftGroupLocked(
 	mayCampaignOnWake bool, f func(r *raft.RawNode) (unquiesceAndWakeLeader bool, _ error),
 ) error {
+	__antithesis_instrumentation__.Notify(118804)
 	if r.mu.destroyStatus.Removed() {
-		// Callers know to detect errRemoved as non-fatal.
+		__antithesis_instrumentation__.Notify(118810)
+
 		return errRemoved
+	} else {
+		__antithesis_instrumentation__.Notify(118811)
 	}
+	__antithesis_instrumentation__.Notify(118805)
 
 	if r.mu.internalRaftGroup == nil {
+		__antithesis_instrumentation__.Notify(118812)
 		ctx := r.AnnotateCtx(context.TODO())
 		raftGroup, err := raft.NewRawNode(newRaftConfig(
 			raft.Storage((*replicaRaftStorage)(r)),
@@ -1641,62 +1709,52 @@ func (r *Replica) withRaftGroupLocked(
 			&raftLogger{ctx: ctx},
 		))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(118814)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(118815)
 		}
+		__antithesis_instrumentation__.Notify(118813)
 		r.mu.internalRaftGroup = raftGroup
 
 		if mayCampaignOnWake {
+			__antithesis_instrumentation__.Notify(118816)
 			r.maybeCampaignOnWakeLocked(ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(118817)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(118818)
 	}
+	__antithesis_instrumentation__.Notify(118806)
 
-	// This wrapper function is a hack to add range IDs to stack traces
-	// using the same pattern as Replica.sendWithRangeID.
 	unquiesce, err := func(rangeID roachpb.RangeID, raftGroup *raft.RawNode) (bool, error) {
+		__antithesis_instrumentation__.Notify(118819)
 		return f(raftGroup)
 	}(r.RangeID, r.mu.internalRaftGroup)
+	__antithesis_instrumentation__.Notify(118807)
 	if r.mu.internalRaftGroup.BasicStatus().Lead == 0 {
-		// If we don't know the leader, unquiesce unconditionally. As a
-		// follower, we can't wake up the leader if we don't know who that is,
-		// so we should find out now before someone needs us to unquiesce.
-		//
-		// This situation should occur rarely or never (ever since we got
-		// stricter about validating incoming Quiesce requests) but it's good
-		// defense-in-depth.
-		//
-		// Note that maybeUnquiesceAndWakeLeaderLocked won't manage to wake up the
-		// leader since it's unknown to this replica, and at the time of writing the
-		// heuristics for campaigning are defensive (won't campaign if there is a
-		// live leaseholder). But if we are trying to unquiesce because this
-		// follower was asked to propose something, then this means that a request
-		// is going to have to wait until the leader next contacts us, or, in the
-		// worst case, an election timeout. This is not ideal - if a node holds a
-		// live lease, we should direct the client to it immediately.
+		__antithesis_instrumentation__.Notify(118820)
+
 		unquiesce = true
+	} else {
+		__antithesis_instrumentation__.Notify(118821)
 	}
+	__antithesis_instrumentation__.Notify(118808)
 	if unquiesce {
+		__antithesis_instrumentation__.Notify(118822)
 		r.maybeUnquiesceAndWakeLeaderLocked()
+	} else {
+		__antithesis_instrumentation__.Notify(118823)
 	}
+	__antithesis_instrumentation__.Notify(118809)
 	return err
 }
 
-// withRaftGroup calls the supplied function with the (lazily initialized)
-// Raft group. It acquires and releases the Replica lock, so r.mu must not be
-// held (or acquired by the supplied function).
-//
-// If mayCampaignOnWake is true, the replica may initiate a raft
-// election if it was previously in a dormant state. Most callers
-// should set this to true, because the prevote feature minimizes the
-// disruption from unnecessary elections. The exception is that we
-// should not initiate an election while handling incoming raft
-// messages (which may include MsgVotes from an election in progress,
-// and this election would be disrupted if we started our own).
-//
-// If this Replica is in the process of being removed this method will return
-// errRemoved.
 func (r *Replica) withRaftGroup(
 	mayCampaignOnWake bool, f func(r *raft.RawNode) (unquiesceAndWakeLeader bool, _ error),
 ) error {
+	__antithesis_instrumentation__.Notify(118824)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.withRaftGroupLocked(mayCampaignOnWake, f)
@@ -1710,331 +1768,342 @@ func shouldCampaignOnWake(
 	desc *roachpb.RangeDescriptor,
 	requiresExpiringLease bool,
 ) bool {
-	// When waking up a range, campaign unless we know that another
-	// node holds a valid lease (this is most important after a split,
-	// when all replicas create their raft groups at about the same
-	// time, with a lease pre-assigned to one of them). Note that
-	// thanks to PreVote, unnecessary campaigns are not disruptive so
-	// we should err on the side of campaigining here.
-	if leaseStatus.IsValid() && !leaseStatus.OwnedBy(storeID) {
+	__antithesis_instrumentation__.Notify(118825)
+
+	if leaseStatus.IsValid() && func() bool {
+		__antithesis_instrumentation__.Notify(118832)
+		return !leaseStatus.OwnedBy(storeID) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118833)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(118834)
 	}
-	// If we're already campaigning don't start a new term.
+	__antithesis_instrumentation__.Notify(118826)
+
 	if raftStatus.RaftState != raft.StateFollower {
+		__antithesis_instrumentation__.Notify(118835)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(118836)
 	}
-	// If we dont know who the leader is, then campaign.
+	__antithesis_instrumentation__.Notify(118827)
+
 	if raftStatus.Lead == raft.None {
+		__antithesis_instrumentation__.Notify(118837)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(118838)
 	}
-	// Avoid a circular dependency on liveness and skip the is leader alive check for
-	// expiration based leases.
+	__antithesis_instrumentation__.Notify(118828)
+
 	if requiresExpiringLease {
+		__antithesis_instrumentation__.Notify(118839)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(118840)
 	}
-	// Determine if we think the leader is alive, if we don't have the leader
-	// in the descriptor we assume it is, since it could be an indication that this
-	// replica is behind.
+	__antithesis_instrumentation__.Notify(118829)
+
 	replDesc, ok := desc.GetReplicaDescriptorByID(roachpb.ReplicaID(raftStatus.Lead))
 	if !ok {
+		__antithesis_instrumentation__.Notify(118841)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(118842)
 	}
-	// If we don't know about the leader in our liveness map, then we err on the side
-	// of caution and dont campaign.
+	__antithesis_instrumentation__.Notify(118830)
+
 	livenessEntry, ok := livenessMap[replDesc.NodeID]
 	if !ok {
+		__antithesis_instrumentation__.Notify(118843)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(118844)
 	}
+	__antithesis_instrumentation__.Notify(118831)
 	return !livenessEntry.IsLive
 }
 
-// maybeCampaignOnWakeLocked is called when the range wakes from a
-// dormant state (either the initial "raftGroup == nil" state or after
-// being quiescent) and campaigns for raft leadership if appropriate.
 func (r *Replica) maybeCampaignOnWakeLocked(ctx context.Context) {
-	// Raft panics if a node that is not currently a member of the
-	// group tries to campaign. This method should never be called
-	// otherwise and in fact the Replica should never be in such a
-	// state but better not take any chances. For example, if this
-	// method were to be called on an uninitialized replica (which
-	// has no state and thus an empty raft config), this might cause
-	// problems.
+	__antithesis_instrumentation__.Notify(118845)
+
 	if _, currentMember := r.mu.state.Desc.GetReplicaDescriptorByID(r.replicaID); !currentMember {
+		__antithesis_instrumentation__.Notify(118847)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(118848)
 	}
+	__antithesis_instrumentation__.Notify(118846)
 
 	leaseStatus := r.leaseStatusAtRLocked(ctx, r.store.Clock().NowAsClockTimestamp())
 	raftStatus := r.mu.internalRaftGroup.BasicStatus()
 	livenessMap, _ := r.store.livenessMap.Load().(liveness.IsLiveMap)
 	if shouldCampaignOnWake(leaseStatus, r.store.StoreID(), raftStatus, livenessMap, r.descRLocked(), r.requiresExpiringLeaseRLocked()) {
+		__antithesis_instrumentation__.Notify(118849)
 		r.campaignLocked(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(118850)
 	}
 }
 
 func (r *Replica) campaignLocked(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(118851)
 	log.VEventf(ctx, 3, "campaigning")
 	if err := r.mu.internalRaftGroup.Campaign(); err != nil {
+		__antithesis_instrumentation__.Notify(118853)
 		log.VEventf(ctx, 1, "failed to campaign: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(118854)
 	}
+	__antithesis_instrumentation__.Notify(118852)
 	r.store.enqueueRaftUpdateCheck(r.RangeID)
 }
 
-// a lastUpdateTimesMap is maintained on the Raft leader to keep track of the
-// last communication received from followers, which in turn informs the quota
-// pool and log truncations.
 type lastUpdateTimesMap map[roachpb.ReplicaID]time.Time
 
 func (m lastUpdateTimesMap) update(replicaID roachpb.ReplicaID, now time.Time) {
+	__antithesis_instrumentation__.Notify(118855)
 	if m == nil {
+		__antithesis_instrumentation__.Notify(118857)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(118858)
 	}
+	__antithesis_instrumentation__.Notify(118856)
 	m[replicaID] = now
 }
 
-// updateOnUnquiesce is called when the leader unquiesces. In that case, we
-// don't want live followers to appear as dead before their next message reaches
-// us; to achieve that, we optimistically mark all followers that are in
-// ProgressStateReplicate (or rather, were in that state when the group
-// quiesced) as live as of `now`. We don't want to mark other followers as
-// live as they may be down and could artificially seem alive forever assuming
-// a suitable pattern of quiesce and unquiesce operations (and this in turn
-// can interfere with Raft log truncations).
 func (m lastUpdateTimesMap) updateOnUnquiesce(
 	descs []roachpb.ReplicaDescriptor, prs map[uint64]tracker.Progress, now time.Time,
 ) {
+	__antithesis_instrumentation__.Notify(118859)
 	for _, desc := range descs {
+		__antithesis_instrumentation__.Notify(118860)
 		if prs[uint64(desc.ReplicaID)].State == tracker.StateReplicate {
+			__antithesis_instrumentation__.Notify(118861)
 			m.update(desc.ReplicaID, now)
+		} else {
+			__antithesis_instrumentation__.Notify(118862)
 		}
 	}
 }
 
-// updateOnBecomeLeader is similar to updateOnUnquiesce, but is called when the
-// replica becomes the Raft leader. It updates all followers irrespective of
-// their Raft state, for the Raft state is not yet populated by the time this
-// callback is invoked. Raft leadership is usually stable, so there is no danger
-// of artificially keeping down followers alive, though if it started
-// flip-flopping at a <10s cadence there would be a risk of that happening.
 func (m lastUpdateTimesMap) updateOnBecomeLeader(descs []roachpb.ReplicaDescriptor, now time.Time) {
+	__antithesis_instrumentation__.Notify(118863)
 	for _, desc := range descs {
+		__antithesis_instrumentation__.Notify(118864)
 		m.update(desc.ReplicaID, now)
 	}
 }
 
-// isFollowerActiveSince returns whether the specified follower has made
-// communication with the leader recently (since threshold).
 func (m lastUpdateTimesMap) isFollowerActiveSince(
 	ctx context.Context, replicaID roachpb.ReplicaID, now time.Time, threshold time.Duration,
 ) bool {
+	__antithesis_instrumentation__.Notify(118865)
 	lastUpdateTime, ok := m[replicaID]
 	if !ok {
-		// If the follower has no entry in lastUpdateTimes, it has not been
-		// updated since r became the leader (at which point all then-existing
-		// replicas were updated).
+		__antithesis_instrumentation__.Notify(118867)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(118868)
 	}
+	__antithesis_instrumentation__.Notify(118866)
 	return now.Sub(lastUpdateTime) <= threshold
 }
 
-// maybeAcquireSnapshotMergeLock checks whether the incoming snapshot subsumes
-// any replicas and, if so, locks them for subsumption. See acquireMergeLock
-// for details about the lock itself.
 func (r *Replica) maybeAcquireSnapshotMergeLock(
 	ctx context.Context, inSnap IncomingSnapshot,
 ) (subsumedRepls []*Replica, releaseMergeLock func()) {
-	// Any replicas that overlap with the bounds of the incoming snapshot are ours
-	// to subsume; further, the end of the last overlapping replica will exactly
-	// align with the end of the snapshot. How are we guaranteed this? Each merge
-	// could not have committed unless this store had an up-to-date replica of the
-	// RHS at the time of the merge. Nothing could have removed that RHS replica,
-	// as the replica GC queue cannot GC a replica unless it can prove its
-	// left-hand neighbor has no pending merges to apply. And that RHS replica
-	// could not have been further split or merged, as it never processes another
-	// command after the merge commits.
+	__antithesis_instrumentation__.Notify(118869)
+
 	endKey := r.Desc().EndKey
 	if endKey == nil {
-		// The existing replica is unitialized, in which case we've already
-		// installed a placeholder for snapshot's keyspace. No merge lock needed.
-		return nil, func() {}
+		__antithesis_instrumentation__.Notify(118872)
+
+		return nil, func() { __antithesis_instrumentation__.Notify(118873) }
+	} else {
+		__antithesis_instrumentation__.Notify(118874)
 	}
+	__antithesis_instrumentation__.Notify(118870)
 	for endKey.Less(inSnap.Desc.EndKey) {
+		__antithesis_instrumentation__.Notify(118875)
 		sRepl := r.store.LookupReplica(endKey)
-		if sRepl == nil || !endKey.Equal(sRepl.Desc().StartKey) {
+		if sRepl == nil || func() bool {
+			__antithesis_instrumentation__.Notify(118877)
+			return !endKey.Equal(sRepl.Desc().StartKey) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(118878)
 			log.Fatalf(ctx, "snapshot widens existing replica, but no replica exists for subsumed key %s", endKey)
+		} else {
+			__antithesis_instrumentation__.Notify(118879)
 		}
+		__antithesis_instrumentation__.Notify(118876)
 		sRepl.raftMu.Lock()
 		subsumedRepls = append(subsumedRepls, sRepl)
 		endKey = sRepl.Desc().EndKey
 	}
+	__antithesis_instrumentation__.Notify(118871)
 	return subsumedRepls, func() {
+		__antithesis_instrumentation__.Notify(118880)
 		for _, sr := range subsumedRepls {
+			__antithesis_instrumentation__.Notify(118881)
 			sr.raftMu.Unlock()
 		}
 	}
 }
 
-// maybeAcquireSplitMergeLock examines the given raftCmd (which need
-// not be applied yet) and acquires the split or merge lock if
-// necessary (in addition to other preparation). It returns a function
-// which will release any lock acquired (or nil).
-//
-// After this method returns successfully the RHS of the split or merge
-// is guaranteed to exist in the Store using GetReplica().
 func (r *Replica) maybeAcquireSplitMergeLock(
 	ctx context.Context, raftCmd kvserverpb.RaftCommand,
 ) (func(), error) {
+	__antithesis_instrumentation__.Notify(118882)
 	if split := raftCmd.ReplicatedEvalResult.Split; split != nil {
+		__antithesis_instrumentation__.Notify(118884)
 		return r.acquireSplitLock(ctx, &split.SplitTrigger)
-	} else if merge := raftCmd.ReplicatedEvalResult.Merge; merge != nil {
-		return r.acquireMergeLock(ctx, &merge.MergeTrigger)
+	} else {
+		__antithesis_instrumentation__.Notify(118885)
+		if merge := raftCmd.ReplicatedEvalResult.Merge; merge != nil {
+			__antithesis_instrumentation__.Notify(118886)
+			return r.acquireMergeLock(ctx, &merge.MergeTrigger)
+		} else {
+			__antithesis_instrumentation__.Notify(118887)
+		}
 	}
+	__antithesis_instrumentation__.Notify(118883)
 	return nil, nil
 }
 
 func (r *Replica) acquireSplitLock(
 	ctx context.Context, split *roachpb.SplitTrigger,
 ) (func(), error) {
+	__antithesis_instrumentation__.Notify(118888)
 	rightReplDesc, _ := split.RightDesc.GetReplicaDescriptor(r.StoreID())
 	rightRepl, _, err := r.store.getOrCreateReplica(
-		ctx, split.RightDesc.RangeID, rightReplDesc.ReplicaID, nil, /* creatingReplica */
+		ctx, split.RightDesc.RangeID, rightReplDesc.ReplicaID, nil,
 	)
-	// If getOrCreateReplica returns RaftGroupDeletedError we know that the RHS
-	// has already been removed. This case is handled properly in splitPostApply.
+
 	if errors.HasType(err, (*roachpb.RaftGroupDeletedError)(nil)) {
-		return func() {}, nil
+		__antithesis_instrumentation__.Notify(118892)
+		return func() { __antithesis_instrumentation__.Notify(118893) }, nil
+	} else {
+		__antithesis_instrumentation__.Notify(118894)
 	}
+	__antithesis_instrumentation__.Notify(118889)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(118895)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(118896)
 	}
-	// The right hand side of a split is always uninitialized since
-	// the left hand side blocks snapshots to it, and a snapshot is
-	// required to initialize it (if the split trigger doesn't - and
-	// this code here is part of the split trigger).
+	__antithesis_instrumentation__.Notify(118890)
+
 	if rightRepl.IsInitialized() {
+		__antithesis_instrumentation__.Notify(118897)
 		return nil, errors.Errorf("RHS of split %s / %s already initialized before split application",
 			&split.LeftDesc, &split.RightDesc)
+	} else {
+		__antithesis_instrumentation__.Notify(118898)
 	}
+	__antithesis_instrumentation__.Notify(118891)
 	return rightRepl.raftMu.Unlock, nil
 }
 
 func (r *Replica) acquireMergeLock(
 	ctx context.Context, merge *roachpb.MergeTrigger,
 ) (func(), error) {
-	// The merge lock is the right-hand replica's raftMu. The right-hand replica
-	// is required to exist on this store at the merge implied replica ID.
-	// Otherwise, an incoming snapshot could create the right-hand replica before
-	// the merge trigger has a chance to widen the left-hand replica's end key.
-	// The merge trigger would then fatal the node upon realizing the right-hand
-	// replica already exists. With a right-hand replica in place, any snapshots
-	// for the right-hand range will block on raftMu, waiting for the merge to
-	// complete, after which the replica will realize it has been destroyed and
-	// reject the snapshot.
+	__antithesis_instrumentation__.Notify(118899)
+
 	rightReplDesc, _ := merge.RightDesc.GetReplicaDescriptor(r.StoreID())
 	rightRepl, _, err := r.store.getOrCreateReplica(
-		ctx, merge.RightDesc.RangeID, rightReplDesc.ReplicaID, nil, /* creatingReplica */
+		ctx, merge.RightDesc.RangeID, rightReplDesc.ReplicaID, nil,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(118902)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(118903)
 	}
+	__antithesis_instrumentation__.Notify(118900)
 	rightDesc := rightRepl.Desc()
-	if !rightDesc.StartKey.Equal(merge.RightDesc.StartKey) || !rightDesc.EndKey.Equal(merge.RightDesc.EndKey) {
+	if !rightDesc.StartKey.Equal(merge.RightDesc.StartKey) || func() bool {
+		__antithesis_instrumentation__.Notify(118904)
+		return !rightDesc.EndKey.Equal(merge.RightDesc.EndKey) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118905)
 		return nil, errors.Errorf("RHS of merge %s <- %s not present on store; found %s in place of the RHS",
 			&merge.LeftDesc, &merge.RightDesc, rightDesc)
+	} else {
+		__antithesis_instrumentation__.Notify(118906)
 	}
+	__antithesis_instrumentation__.Notify(118901)
 	return rightRepl.raftMu.Unlock, nil
 }
 
-// handleTruncatedStateBelowRaftPreApply is called before applying a Raft
-// command that updates the truncated state.
-//
-// The truncated state of a replica determines where its Raft log starts (by
-// giving the last index that was already deleted). It's unreplicated -- it can
-// differ between replicas at the same applied index. This divergence occurs
-// primarily occurs through snapshots that contain no log entries; the truncated
-// index in the snapshot is set to equal the applied index it was generated
-// from. The truncation itself then is a purely replicated side effect.
-//
-// Updates to the HardState are sent out by a leaseholder truncating the log
-// based on its local knowledge. For example, the leader might have a log
-// 10..100 and truncates to 50, and will send out a TruncatedState with Index 50
-// to that effect. However, some replicas may not even have log entries that
-// old and must make sure to ignore this update to the truncated state, as it
-// would otherwise clobber their "newer" truncated state. The truncated state
-// provided by the leader then is merely a suggested one -- we could ignore it
-// and still be correct.
-//
-// We also rely on log truncations happening in the apply loop -- this makes
-// sure that a truncation does not remove entries to be applied that we haven't
-// yet. Since a truncation only ever removes committed log indexes, and after
-// choosing the index gets proposed, the truncation command itself will be
-// assigned an index higher than the one it could possibly remove. By the time
-// the truncation itself is handled, the state machine will have applied all
-// entries the truncation could possibly affect.
-//
-// The returned boolean tells the caller whether to apply the truncated state's
-// side effects, which means replacing the in-memory TruncatedState and applying
-// the associated RaftLogDelta. It is usually expected to be true, but may not
-// be for the first truncation after on a replica that recently received a
-// snapshot.
 func handleTruncatedStateBelowRaftPreApply(
 	ctx context.Context,
 	currentTruncatedState, suggestedTruncatedState *roachpb.RaftTruncatedState,
 	loader stateloader.StateLoader,
 	readWriter storage.ReadWriter,
 ) (_apply bool, _ error) {
+	__antithesis_instrumentation__.Notify(118907)
 	if suggestedTruncatedState.Index <= currentTruncatedState.Index {
-		// The suggested truncated state moves us backwards; instruct the
-		// caller to not update the in-memory state.
-		return false, nil
-	}
+		__antithesis_instrumentation__.Notify(118911)
 
-	// Truncate the Raft log from the entry after the previous
-	// truncation index to the new truncation index. This is performed
-	// atomically with the raft command application so that the
-	// TruncatedState index is always consistent with the state of the
-	// Raft log itself.
+		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(118912)
+	}
+	__antithesis_instrumentation__.Notify(118908)
+
 	prefixBuf := &loader.RangeIDPrefixBuf
 	numTruncatedEntries := suggestedTruncatedState.Index - currentTruncatedState.Index
 	if numTruncatedEntries >= raftLogTruncationClearRangeThreshold {
+		__antithesis_instrumentation__.Notify(118913)
 		start := prefixBuf.RaftLogKey(currentTruncatedState.Index + 1).Clone()
-		end := prefixBuf.RaftLogKey(suggestedTruncatedState.Index + 1).Clone() // end is exclusive
+		end := prefixBuf.RaftLogKey(suggestedTruncatedState.Index + 1).Clone()
 		if err := readWriter.ClearRawRange(start, end); err != nil {
+			__antithesis_instrumentation__.Notify(118914)
 			return false, errors.Wrapf(err,
 				"unable to clear truncated Raft entries for %+v between indexes %d-%d",
 				suggestedTruncatedState, currentTruncatedState.Index+1, suggestedTruncatedState.Index+1)
+		} else {
+			__antithesis_instrumentation__.Notify(118915)
 		}
 	} else {
-		// NB: RangeIDPrefixBufs have sufficient capacity (32 bytes) to
-		// avoid allocating when constructing Raft log keys (16 bytes).
+		__antithesis_instrumentation__.Notify(118916)
+
 		for idx := currentTruncatedState.Index + 1; idx <= suggestedTruncatedState.Index; idx++ {
+			__antithesis_instrumentation__.Notify(118917)
 			if err := readWriter.ClearUnversioned(prefixBuf.RaftLogKey(idx)); err != nil {
+				__antithesis_instrumentation__.Notify(118918)
 				return false, errors.Wrapf(err, "unable to clear truncated Raft entries for %+v at index %d",
 					suggestedTruncatedState, idx)
+			} else {
+				__antithesis_instrumentation__.Notify(118919)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(118909)
 
-	// The suggested truncated state moves us forward; apply it and tell
-	// the caller as much.
 	if err := storage.MVCCPutProto(
-		ctx, readWriter, nil /* ms */, prefixBuf.RaftTruncatedStateKey(),
-		hlc.Timestamp{}, nil /* txn */, suggestedTruncatedState,
+		ctx, readWriter, nil, prefixBuf.RaftTruncatedStateKey(),
+		hlc.Timestamp{}, nil, suggestedTruncatedState,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(118920)
 		return false, errors.Wrap(err, "unable to write RaftTruncatedState")
+	} else {
+		__antithesis_instrumentation__.Notify(118921)
 	}
+	__antithesis_instrumentation__.Notify(118910)
 
 	return true, nil
 }
 
-// ComputeRaftLogSize computes the size (in bytes) of the Raft log from the
-// storage engine. This will iterate over the Raft log and sideloaded files, so
-// depending on the size of these it can be mildly to extremely expensive and
-// thus should not be called frequently.
-//
-// The sideloaded storage may be nil, in which case it is treated as empty.
 func ComputeRaftLogSize(
 	ctx context.Context, rangeID roachpb.RangeID, reader storage.Reader, sideloaded SideloadStorage,
 ) (int64, error) {
+	__antithesis_instrumentation__.Notify(118922)
 	prefix := keys.RaftLogPrefix(rangeID)
 	prefixEnd := prefix.PrefixEnd()
 	iter := reader.NewMVCCIterator(storage.MVCCKeyIterKind, storage.IterOptions{
@@ -2042,20 +2111,30 @@ func ComputeRaftLogSize(
 		UpperBound: prefixEnd,
 	})
 	defer iter.Close()
-	ms, err := iter.ComputeStats(prefix, prefixEnd, 0 /* nowNanos */)
+	ms, err := iter.ComputeStats(prefix, prefixEnd, 0)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(118925)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(118926)
 	}
+	__antithesis_instrumentation__.Notify(118923)
 	var totalSideloaded int64
 	if sideloaded != nil {
+		__antithesis_instrumentation__.Notify(118927)
 		var err error
-		// The remaining bytes if one were to truncate [0, 0) gives us the total
-		// number of bytes in sideloaded files.
+
 		_, totalSideloaded, err = sideloaded.BytesIfTruncatedFromTo(ctx, 0, 0)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(118928)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(118929)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(118930)
 	}
+	__antithesis_instrumentation__.Notify(118924)
 	return ms.SysBytes + totalSideloaded, nil
 }
 
@@ -2065,102 +2144,139 @@ func shouldCampaignAfterConfChange(
 	desc *roachpb.RangeDescriptor,
 	raftGroup *raft.RawNode,
 ) bool {
-	// If a config change was carried out, it's possible that the Raft
-	// leader was removed. Verify that, and if so, campaign if we are
-	// the first remaining voter replica. Without this, the range will
-	// be leaderless (and thus unavailable) for a few seconds.
-	//
-	// We can't (or rather shouldn't) campaign on all remaining voters
-	// because that can lead to a stalemate. For example, three voters
-	// may all make it through PreVote and then reject each other.
+	__antithesis_instrumentation__.Notify(118931)
+
 	st := raftGroup.BasicStatus()
 	if st.Lead == 0 {
-		// Leader unknown. This isn't what we expect in steady state, so we
-		// don't do anything.
+		__antithesis_instrumentation__.Notify(118935)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(118936)
 	}
+	__antithesis_instrumentation__.Notify(118932)
 	if !desc.IsInitialized() {
-		// We don't have an initialized, so we can't figure out who is supposed
-		// to campaign. It's possible that it's us and we're waiting for the
-		// initial snapshot, but it's hard to tell. Don't do anything.
+		__antithesis_instrumentation__.Notify(118937)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(118938)
 	}
-	// If the leader is no longer in the descriptor but we are the first voter,
-	// campaign.
+	__antithesis_instrumentation__.Notify(118933)
+
 	_, leaderStillThere := desc.GetReplicaDescriptorByID(roachpb.ReplicaID(st.Lead))
-	if !leaderStillThere && storeID == desc.Replicas().VoterDescriptors()[0].StoreID {
+	if !leaderStillThere && func() bool {
+		__antithesis_instrumentation__.Notify(118939)
+		return storeID == desc.Replicas().VoterDescriptors()[0].StoreID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(118940)
 		log.VEventf(ctx, 3, "leader got removed by conf change")
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(118941)
 	}
+	__antithesis_instrumentation__.Notify(118934)
 	return false
 }
 
 func getNonDeterministicFailureExplanation(err error) string {
+	__antithesis_instrumentation__.Notify(118942)
 	if nd := (*nonDeterministicFailure)(nil); errors.As(err, &nd) {
+		__antithesis_instrumentation__.Notify(118944)
 		return nd.safeExpl
+	} else {
+		__antithesis_instrumentation__.Notify(118945)
 	}
+	__antithesis_instrumentation__.Notify(118943)
 	return "???"
 }
 
-// printRaftTail pretty-prints the tail of the log and returns it as a string,
-// with the same format as `cockroach debug raft-log`. The entries are printed
-// from newest to oldest. maxEntries and maxCharsPerEntry control the size of
-// the output.
-//
-// If an error is returned, it's possible that a string with some entries is
-// still returned.
 func (r *Replica) printRaftTail(
 	ctx context.Context, maxEntries, maxCharsPerEntry int,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(118946)
 	start := keys.RaftLogPrefix(r.RangeID)
 	end := keys.RaftLogPrefix(r.RangeID).PrefixEnd()
 
-	// NB: raft log does not have intents.
 	it := r.Engine().NewEngineIterator(storage.IterOptions{LowerBound: start, UpperBound: end})
 	valid, err := it.SeekEngineKeyLT(storage.EngineKey{Key: end})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(118950)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(118951)
 	}
+	__antithesis_instrumentation__.Notify(118947)
 	if !valid {
+		__antithesis_instrumentation__.Notify(118952)
 		return "", errors.AssertionFailedf("iterator invalid but no error")
+	} else {
+		__antithesis_instrumentation__.Notify(118953)
 	}
+	__antithesis_instrumentation__.Notify(118948)
 
 	var sb strings.Builder
 	for i := 0; i < maxEntries; i++ {
+		__antithesis_instrumentation__.Notify(118954)
 		key, err := it.EngineKey()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(118958)
 			return sb.String(), err
+		} else {
+			__antithesis_instrumentation__.Notify(118959)
 		}
+		__antithesis_instrumentation__.Notify(118955)
 		mvccKey, err := key.ToMVCCKey()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(118960)
 			return sb.String(), err
+		} else {
+			__antithesis_instrumentation__.Notify(118961)
 		}
+		__antithesis_instrumentation__.Notify(118956)
 		kv := storage.MVCCKeyValue{
 			Key:   mvccKey,
 			Value: it.Value(),
 		}
-		sb.WriteString(truncateEntryString(SprintMVCCKeyValue(kv, true /* printKey */), 2000))
+		sb.WriteString(truncateEntryString(SprintMVCCKeyValue(kv, true), 2000))
 		sb.WriteRune('\n')
 
 		valid, err := it.PrevEngineKey()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(118962)
 			return sb.String(), err
+		} else {
+			__antithesis_instrumentation__.Notify(118963)
 		}
+		__antithesis_instrumentation__.Notify(118957)
 		if !valid {
-			// We've finished the log.
+			__antithesis_instrumentation__.Notify(118964)
+
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(118965)
 		}
 	}
+	__antithesis_instrumentation__.Notify(118949)
 	return sb.String(), nil
 }
 
 func truncateEntryString(s string, maxChars int) string {
+	__antithesis_instrumentation__.Notify(118966)
 	res := s
 	if len(s) > maxChars {
+		__antithesis_instrumentation__.Notify(118968)
 		if maxChars > 3 {
+			__antithesis_instrumentation__.Notify(118970)
 			maxChars -= 3
+		} else {
+			__antithesis_instrumentation__.Notify(118971)
 		}
+		__antithesis_instrumentation__.Notify(118969)
 		res = s[0:maxChars] + "..."
+	} else {
+		__antithesis_instrumentation__.Notify(118972)
 	}
+	__antithesis_instrumentation__.Notify(118967)
 	return res
 }

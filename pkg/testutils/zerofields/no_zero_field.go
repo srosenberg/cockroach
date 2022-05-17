@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package zerofields
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -22,37 +14,48 @@ type zeroFieldErr struct {
 }
 
 func (err zeroFieldErr) Error() string {
+	__antithesis_instrumentation__.Notify(647037)
 	return fmt.Sprintf("expected %s field to be non-zero", err.field)
 }
 
-// NoZeroField returns nil if none of the fields of the struct underlying the
-// interface are equal to the zero value, and an error otherwise.
-// It will panic if the struct has unexported fields and for any non-struct.
 func NoZeroField(v interface{}) error {
+	__antithesis_instrumentation__.Notify(647038)
 	ele := reflect.Indirect(reflect.ValueOf(v))
 	eleT := ele.Type()
 	for i := 0; i < ele.NumField(); i++ {
+		__antithesis_instrumentation__.Notify(647040)
 		f := ele.Field(i)
 		n := eleT.Field(i).Name
 		switch f.Kind() {
 		case reflect.Struct:
+			__antithesis_instrumentation__.Notify(647041)
 			if err := NoZeroField(f.Interface()); err != nil {
+				__antithesis_instrumentation__.Notify(647043)
 				var zfe zeroFieldErr
 				_ = errors.As(err, &zfe)
 				zfe.field = fmt.Sprintf("%s.%s", n, zfe.field)
 				return zfe
+			} else {
+				__antithesis_instrumentation__.Notify(647044)
 			}
 		default:
+			__antithesis_instrumentation__.Notify(647042)
 			zero := reflect.Zero(f.Type())
 			if reflect.DeepEqual(f.Interface(), zero.Interface()) {
+				__antithesis_instrumentation__.Notify(647045)
 				switch field := eleT.Field(i).Name; field {
 				case "XXX_NoUnkeyedLiteral", "XXX_DiscardUnknown", "XXX_sizecache":
-					// Ignore these special protobuf fields.
+					__antithesis_instrumentation__.Notify(647046)
+
 				default:
+					__antithesis_instrumentation__.Notify(647047)
 					return zeroFieldErr{field: n}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(647048)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(647039)
 	return nil
 }

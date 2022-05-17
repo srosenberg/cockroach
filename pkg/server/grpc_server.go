@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"strings"
@@ -21,46 +13,45 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 )
 
-// grpcServer is a wrapper on top of a grpc.Server that includes an interceptor
-// and a mode of operation that can instruct the interceptor to refuse certain
-// RPCs.
 type grpcServer struct {
 	*grpc.Server
 	mode serveMode
 }
 
 func newGRPCServer(rpcCtx *rpc.Context) *grpcServer {
+	__antithesis_instrumentation__.Notify(193469)
 	s := &grpcServer{}
 	s.mode.set(modeInitializing)
 	s.Server = rpc.NewServer(rpcCtx, rpc.WithInterceptor(func(path string) error {
+		__antithesis_instrumentation__.Notify(193471)
 		return s.intercept(path)
 	}))
+	__antithesis_instrumentation__.Notify(193470)
 	return s
 }
 
 type serveMode int32
 
-// A list of the server states for bootstrap process.
 const (
-	// modeInitializing is intended for server initialization process.
-	// It allows only bootstrap, heartbeat and gossip methods
-	// to prevent calls to potentially uninitialized services.
 	modeInitializing serveMode = iota
-	// modeOperational is intended for completely initialized server
-	// and thus allows all RPC methods.
+
 	modeOperational
-	// modeDraining is intended for an operational server in the process of
-	// shutting down. The difference is that readiness checks will fail.
+
 	modeDraining
 )
 
 func (s *grpcServer) setMode(mode serveMode) {
+	__antithesis_instrumentation__.Notify(193472)
 	s.mode.set(mode)
 }
 
 func (s *grpcServer) operational() bool {
+	__antithesis_instrumentation__.Notify(193473)
 	sMode := s.mode.get()
-	return sMode == modeOperational || sMode == modeDraining
+	return sMode == modeOperational || func() bool {
+		__antithesis_instrumentation__.Notify(193474)
+		return sMode == modeDraining == true
+	}() == true
 }
 
 var rpcsAllowedWhileBootstrapping = map[string]struct{}{
@@ -70,34 +61,48 @@ var rpcsAllowedWhileBootstrapping = map[string]struct{}{
 	"/cockroach.server.serverpb.Admin/Health":   {},
 }
 
-// intercept implements filtering rules for each server state.
 func (s *grpcServer) intercept(fullName string) error {
+	__antithesis_instrumentation__.Notify(193475)
 	if s.operational() {
+		__antithesis_instrumentation__.Notify(193478)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(193479)
 	}
+	__antithesis_instrumentation__.Notify(193476)
 	if _, allowed := rpcsAllowedWhileBootstrapping[fullName]; !allowed {
+		__antithesis_instrumentation__.Notify(193480)
 		return s.waitingForInitError(fullName)
+	} else {
+		__antithesis_instrumentation__.Notify(193481)
 	}
+	__antithesis_instrumentation__.Notify(193477)
 	return nil
 }
 
 func (s *serveMode) set(mode serveMode) {
+	__antithesis_instrumentation__.Notify(193482)
 	atomic.StoreInt32((*int32)(s), int32(mode))
 }
 
 func (s *serveMode) get() serveMode {
+	__antithesis_instrumentation__.Notify(193483)
 	return serveMode(atomic.LoadInt32((*int32)(s)))
 }
 
-// waitingForInitError creates an error indicating that the server cannot run
-// the specified method until the node has been initialized.
 func (s *grpcServer) waitingForInitError(methodName string) error {
+	__antithesis_instrumentation__.Notify(193484)
 	return grpcstatus.Errorf(codes.Unavailable, "node waiting for init; %s not available", methodName)
 }
 
-// IsWaitingForInit checks whether the provided error is because the node is
-// still waiting for initialization.
 func IsWaitingForInit(err error) bool {
+	__antithesis_instrumentation__.Notify(193485)
 	s, ok := grpcstatus.FromError(errors.UnwrapAll(err))
-	return ok && s.Code() == codes.Unavailable && strings.Contains(err.Error(), "node waiting for init")
+	return ok && func() bool {
+		__antithesis_instrumentation__.Notify(193486)
+		return s.Code() == codes.Unavailable == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(193487)
+		return strings.Contains(err.Error(), "node waiting for init") == true
+	}() == true
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gcjob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,46 +18,61 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// gcIndexes find the indexes that need to be GC'd, GC's them, and then updates
-// the cleans up the table descriptor, zone configs and job payload to indicate
-// the work that it did.
 func gcIndexes(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
 	parentID descpb.ID,
 	progress *jobspb.SchemaChangeGCProgress,
 ) error {
+	__antithesis_instrumentation__.Notify(492464)
 	droppedIndexes := progress.Indexes
 	if log.V(2) {
+		__antithesis_instrumentation__.Notify(492469)
 		log.Infof(ctx, "GC is being considered on table %d for indexes indexes: %+v", parentID, droppedIndexes)
+	} else {
+		__antithesis_instrumentation__.Notify(492470)
 	}
+	__antithesis_instrumentation__.Notify(492465)
 
-	// Before deleting any indexes, ensure that old versions of the table descriptor
-	// are no longer in use. This is necessary in the case of truncate, where we
-	// schedule a GC Job in the transaction that commits the truncation.
 	parentDesc, err := sql.WaitToUpdateLeases(ctx, execCfg.LeaseManager, parentID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(492471)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(492472)
 	}
+	__antithesis_instrumentation__.Notify(492466)
 
 	parentTable, isTable := parentDesc.(catalog.TableDescriptor)
 	if !isTable {
+		__antithesis_instrumentation__.Notify(492473)
 		return errors.AssertionFailedf("expected descriptor %d to be a table, not %T", parentID, parentDesc)
+	} else {
+		__antithesis_instrumentation__.Notify(492474)
 	}
+	__antithesis_instrumentation__.Notify(492467)
 	for _, index := range droppedIndexes {
+		__antithesis_instrumentation__.Notify(492475)
 		if index.Status != jobspb.SchemaChangeGCProgress_DELETING {
+			__antithesis_instrumentation__.Notify(492480)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(492481)
 		}
+		__antithesis_instrumentation__.Notify(492476)
 
 		if err := clearIndex(ctx, execCfg, parentTable, index.IndexID); err != nil {
+			__antithesis_instrumentation__.Notify(492482)
 			return errors.Wrapf(err, "clearing index %d from table %d", index.IndexID, parentTable.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(492483)
 		}
+		__antithesis_instrumentation__.Notify(492477)
 
-		// All the data chunks have been removed. Now also removed the
-		// zone configs for the dropped indexes, if any.
 		removeIndexZoneConfigs := func(
 			ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 		) error {
+			__antithesis_instrumentation__.Notify(492484)
 			freshParentTableDesc, err := descriptors.GetMutableTableByID(
 				ctx, txn, parentID, tree.ObjectLookupFlags{
 					CommonLookupFlags: tree.CommonLookupFlags{
@@ -76,49 +83,68 @@ func gcIndexes(
 					},
 				})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(492486)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492487)
 			}
+			__antithesis_instrumentation__.Notify(492485)
 			return sql.RemoveIndexZoneConfigs(
 				ctx, txn, execCfg, freshParentTableDesc, []uint32{uint32(index.IndexID)},
 			)
 		}
+		__antithesis_instrumentation__.Notify(492478)
 		if err := sql.DescsTxn(ctx, execCfg, removeIndexZoneConfigs); err != nil {
+			__antithesis_instrumentation__.Notify(492488)
 			return errors.Wrapf(err, "removing index %d zone configs", index.IndexID)
+		} else {
+			__antithesis_instrumentation__.Notify(492489)
 		}
+		__antithesis_instrumentation__.Notify(492479)
 
 		if err := completeDroppedIndex(
 			ctx, execCfg, parentTable, index.IndexID, progress,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(492490)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(492491)
 		}
 	}
+	__antithesis_instrumentation__.Notify(492468)
 	return nil
 }
 
-// clearIndexes issues Clear Range requests over all specified indexes.
 func clearIndex(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
 	tableDesc catalog.TableDescriptor,
 	indexID descpb.IndexID,
 ) error {
+	__antithesis_instrumentation__.Notify(492492)
 	log.Infof(ctx, "clearing index %d from table %d", indexID, tableDesc.GetID())
 
 	sp := tableDesc.IndexSpan(execCfg.Codec, indexID)
 	start, err := keys.Addr(sp.Key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(492495)
 		return errors.Wrap(err, "failed to addr index start")
+	} else {
+		__antithesis_instrumentation__.Notify(492496)
 	}
+	__antithesis_instrumentation__.Notify(492493)
 	end, err := keys.Addr(sp.EndKey)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(492497)
 		return errors.Wrap(err, "failed to addr index end")
+	} else {
+		__antithesis_instrumentation__.Notify(492498)
 	}
+	__antithesis_instrumentation__.Notify(492494)
 	rSpan := roachpb.RSpan{Key: start, EndKey: end}
 	return clearSpanData(ctx, execCfg.DB, execCfg.DistSender, rSpan)
 }
 
-// completeDroppedIndexes updates the mutations of the table descriptor to
-// indicate that the index was dropped, as well as the job detail payload.
 func completeDroppedIndex(
 	ctx context.Context,
 	execCfg *sql.ExecutorConfig,
@@ -126,9 +152,14 @@ func completeDroppedIndex(
 	indexID descpb.IndexID,
 	progress *jobspb.SchemaChangeGCProgress,
 ) error {
+	__antithesis_instrumentation__.Notify(492499)
 	if err := updateDescriptorGCMutations(ctx, execCfg, table.GetID(), indexID); err != nil {
+		__antithesis_instrumentation__.Notify(492501)
 		return errors.Wrapf(err, "updating GC mutations")
+	} else {
+		__antithesis_instrumentation__.Notify(492502)
 	}
+	__antithesis_instrumentation__.Notify(492500)
 
 	markIndexGCed(ctx, indexID, progress)
 

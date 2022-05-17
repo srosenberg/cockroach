@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package contentionpb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -28,58 +20,68 @@ const cumulativeContentionTimeStr = "cumulative contention time:"
 const contendingTxnsStr = "contending txns:"
 
 func (ice IndexContentionEvents) String() string {
+	__antithesis_instrumentation__.Notify(459418)
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("tableID=%d indexID=%d\n", ice.TableID, ice.IndexID))
 	b.WriteString(fmt.Sprintf("%s%s %d\n", singleIndentation, contentionEventsStr, ice.NumContentionEvents))
 	b.WriteString(fmt.Sprintf("%s%s %s\n", singleIndentation, cumulativeContentionTimeStr, ice.CumulativeContentionTime))
 	b.WriteString(fmt.Sprintf("%skeys:\n", singleIndentation))
 	for i := range ice.Events {
+		__antithesis_instrumentation__.Notify(459420)
 		b.WriteString(ice.Events[i].String())
 	}
+	__antithesis_instrumentation__.Notify(459419)
 	return b.String()
 }
 
 func (skc SingleKeyContention) String() string {
+	__antithesis_instrumentation__.Notify(459421)
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("%s%s %s\n", doubleIndentation, skc.Key, contendingTxnsStr))
 	for i := range skc.Txns {
+		__antithesis_instrumentation__.Notify(459423)
 		b.WriteString(skc.Txns[i].String())
 	}
+	__antithesis_instrumentation__.Notify(459422)
 	return b.String()
 }
 
 func toString(stx SingleTxnContention, indentation string) string {
+	__antithesis_instrumentation__.Notify(459424)
 	return fmt.Sprintf("%sid=%s count=%d\n", indentation, stx.TxnID, stx.Count)
 }
 
 func (stx SingleTxnContention) String() string {
+	__antithesis_instrumentation__.Notify(459425)
 	return toString(stx, tripleIndentation)
 }
 
 func (skc SingleNonSQLKeyContention) String() string {
+	__antithesis_instrumentation__.Notify(459426)
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("non-SQL key %s %s\n", skc.Key, contendingTxnsStr))
 	b.WriteString(fmt.Sprintf("%s%s %d\n", singleIndentation, contentionEventsStr, skc.NumContentionEvents))
 	b.WriteString(fmt.Sprintf("%s%s %s\n", singleIndentation, cumulativeContentionTimeStr, skc.CumulativeContentionTime))
 	for i := range skc.Txns {
+		__antithesis_instrumentation__.Notify(459428)
 		b.WriteString(toString(skc.Txns[i], doubleIndentation))
 	}
+	__antithesis_instrumentation__.Notify(459427)
 	return b.String()
 }
 
-// Valid returns if the ResolvedTxnID is valid.
 func (r *ResolvedTxnID) Valid() bool {
+	__antithesis_instrumentation__.Notify(459429)
 	return !uuid.Nil.Equal(r.TxnID)
 }
 
-// Valid returns if the ExtendedContentionEvent is valid.
 func (e *ExtendedContentionEvent) Valid() bool {
+	__antithesis_instrumentation__.Notify(459430)
 	return !uuid.Nil.Equal(e.BlockingEvent.TxnMeta.ID)
 }
 
-// Hash returns a hash that's unique to ExtendedContentionEvent using
-// blocking txn's txnID, waiting txn's txnID and the event collection timestamp.
 func (e *ExtendedContentionEvent) Hash() uint64 {
+	__antithesis_instrumentation__.Notify(459431)
 	hash := util.MakeFNV64()
 	hashUUID(e.BlockingEvent.TxnMeta.ID, &hash)
 	hashUUID(e.WaitingTxnID, &hash)
@@ -87,21 +89,26 @@ func (e *ExtendedContentionEvent) Hash() uint64 {
 	return hash.Sum()
 }
 
-// hashUUID adds the hash of the uuid into the fnv.
-// An uuid is a 16 byte array. To hash UUID, we treat it as two uint64 integers,
-// since uint64 is 8-byte. This is why we decode the byte array twice and add
-// the resulting uint64 into the fnv each time.
 func hashUUID(u uuid.UUID, fnv *util.FNV64) {
+	__antithesis_instrumentation__.Notify(459432)
 	b := u.GetBytes()
 
 	b, val, err := encoding.DecodeUint64Descending(b)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(459435)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(459436)
 	}
+	__antithesis_instrumentation__.Notify(459433)
 	fnv.Add(val)
 	_, val, err = encoding.DecodeUint64Descending(b)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(459437)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(459438)
 	}
+	__antithesis_instrumentation__.Notify(459434)
 	fnv.Add(val)
 }

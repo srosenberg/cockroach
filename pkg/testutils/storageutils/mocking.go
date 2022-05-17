@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storageutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -19,18 +11,16 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil/singleflight"
 )
 
-// raftCmdIDAndIndex identifies a batch and a command within it.
 type raftCmdIDAndIndex struct {
 	IDKey kvserverbase.CmdIDKey
 	Index int
 }
 
 func (r raftCmdIDAndIndex) String() string {
+	__antithesis_instrumentation__.Notify(646425)
 	return fmt.Sprintf("%s/%d", r.IDKey, r.Index)
 }
 
-// ReplayProtectionFilterWrapper wraps a CommandFilter and assures protection
-// from Raft replays.
 type ReplayProtectionFilterWrapper struct {
 	syncutil.Mutex
 	inFlight          singleflight.Group
@@ -38,11 +28,10 @@ type ReplayProtectionFilterWrapper struct {
 	filter            kvserverbase.ReplicaCommandFilter
 }
 
-// WrapFilterForReplayProtection wraps a filter into another one that adds Raft
-// replay protection.
 func WrapFilterForReplayProtection(
 	filter kvserverbase.ReplicaCommandFilter,
 ) kvserverbase.ReplicaCommandFilter {
+	__antithesis_instrumentation__.Notify(646426)
 	wrapper := ReplayProtectionFilterWrapper{
 		processedCommands: make(map[raftCmdIDAndIndex]*roachpb.Error),
 		filter:            filter,
@@ -50,35 +39,45 @@ func WrapFilterForReplayProtection(
 	return wrapper.run
 }
 
-// Errors are mutated on the Send path, so we must always return copies.
 func shallowCloneErrorWithTxn(pErr *roachpb.Error) *roachpb.Error {
+	__antithesis_instrumentation__.Notify(646427)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(646429)
 		pErrCopy := *pErr
 		pErrCopy.SetTxn(pErrCopy.GetTxn())
 		return &pErrCopy
+	} else {
+		__antithesis_instrumentation__.Notify(646430)
 	}
+	__antithesis_instrumentation__.Notify(646428)
 
 	return nil
 }
 
-// run executes the wrapped filter.
 func (c *ReplayProtectionFilterWrapper) run(args kvserverbase.FilterArgs) *roachpb.Error {
+	__antithesis_instrumentation__.Notify(646431)
 	if !args.InRaftCmd() {
+		__antithesis_instrumentation__.Notify(646435)
 		return c.filter(args)
+	} else {
+		__antithesis_instrumentation__.Notify(646436)
 	}
+	__antithesis_instrumentation__.Notify(646432)
 
 	mapKey := raftCmdIDAndIndex{args.CmdID, args.Index}
 
 	c.Lock()
 	if pErr, ok := c.processedCommands[mapKey]; ok {
+		__antithesis_instrumentation__.Notify(646437)
 		c.Unlock()
 		return shallowCloneErrorWithTxn(pErr)
+	} else {
+		__antithesis_instrumentation__.Notify(646438)
 	}
+	__antithesis_instrumentation__.Notify(646433)
 
-	// We use the singleflight.Group to coalesce replayed raft commands onto the
-	// same filter call. This allows concurrent access to the filter for
-	// different raft commands.
 	resC, _ := c.inFlight.DoChan(mapKey.String(), func() (interface{}, error) {
+		__antithesis_instrumentation__.Notify(646439)
 		pErr := c.filter(args)
 
 		c.Lock()
@@ -86,6 +85,7 @@ func (c *ReplayProtectionFilterWrapper) run(args kvserverbase.FilterArgs) *roach
 		c.processedCommands[mapKey] = pErr
 		return pErr, nil
 	})
+	__antithesis_instrumentation__.Notify(646434)
 	c.Unlock()
 
 	res := <-resC

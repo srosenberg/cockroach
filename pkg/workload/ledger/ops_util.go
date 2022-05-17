@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ledger
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	gosql "database/sql"
@@ -23,7 +15,6 @@ import (
 	"golang.org/x/sync/syncmap"
 )
 
-// querier is the common interface to execute queries on a DB, Tx, or Conn.
 type querier interface {
 	Exec(query string, args ...interface{}) (gosql.Result, error)
 	Query(query string, args ...interface{}) (*gosql.Rows, error)
@@ -34,10 +25,15 @@ var sqlParamRE = regexp.MustCompile(`\$(\d+)`)
 var replacedSQLParams syncmap.Map
 
 func replaceSQLParams(s string) string {
-	// Memoize the result.
+	__antithesis_instrumentation__.Notify(694648)
+
 	if res, ok := replacedSQLParams.Load(s); ok {
+		__antithesis_instrumentation__.Notify(694650)
 		return res.(string)
+	} else {
+		__antithesis_instrumentation__.Notify(694651)
 	}
+	__antithesis_instrumentation__.Notify(694649)
 
 	res := sqlParamRE.ReplaceAllString(s, "'%[${1}]v'")
 	replacedSQLParams.Store(s, res)
@@ -47,24 +43,38 @@ func replaceSQLParams(s string) string {
 func maybeInlineStmtArgs(
 	config *ledger, query string, args ...interface{},
 ) (string, []interface{}) {
+	__antithesis_instrumentation__.Notify(694652)
 	if !config.inlineArgs {
+		__antithesis_instrumentation__.Notify(694655)
 		return query, args
+	} else {
+		__antithesis_instrumentation__.Notify(694656)
 	}
+	__antithesis_instrumentation__.Notify(694653)
 	queryFmt := replaceSQLParams(query)
 	for i, arg := range args {
+		__antithesis_instrumentation__.Notify(694657)
 		if v, ok := arg.(driver.Valuer); ok {
+			__antithesis_instrumentation__.Notify(694658)
 			val, err := v.Value()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(694660)
 				panic(err)
+			} else {
+				__antithesis_instrumentation__.Notify(694661)
 			}
+			__antithesis_instrumentation__.Notify(694659)
 			args[i] = val
+		} else {
+			__antithesis_instrumentation__.Notify(694662)
 		}
 	}
+	__antithesis_instrumentation__.Notify(694654)
 	return strings.Replace(
 			strings.Replace(
 				fmt.Sprintf(queryFmt, args...),
-				" UTC", "", -1), // remove UTC suffix from timestamps.
-			`'<nil>'`, `NULL`, -1), // fix NULL values.
+				" UTC", "", -1),
+			`'<nil>'`, `NULL`, -1),
 		nil
 }
 
@@ -82,10 +92,15 @@ type customer struct {
 }
 
 func getBalance(q querier, config *ledger, id int, historical bool) (customer, error) {
+	__antithesis_instrumentation__.Notify(694663)
 	aostSpec := ""
 	if historical {
+		__antithesis_instrumentation__.Notify(694667)
 		aostSpec = " AS OF SYSTEM TIME '-10s'"
+	} else {
+		__antithesis_instrumentation__.Notify(694668)
 	}
+	__antithesis_instrumentation__.Notify(694664)
 	stmt, args := maybeInlineStmtArgs(config, `
 		SELECT
 			id,
@@ -105,12 +120,17 @@ func getBalance(q querier, config *ledger, id int, historical bool) (customer, e
 	)
 	rows, err := q.Query(stmt, args...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694669)
 		return customer{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(694670)
 	}
+	__antithesis_instrumentation__.Notify(694665)
 	defer rows.Close()
 
 	var c customer
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(694671)
 		if err := rows.Scan(
 			&c.id,
 			&c.identifier,
@@ -123,13 +143,18 @@ func getBalance(q querier, config *ledger, id int, historical bool) (customer, e
 			&c.creditLimit,
 			&c.sequence,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(694672)
 			return customer{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(694673)
 		}
 	}
+	__antithesis_instrumentation__.Notify(694666)
 	return c, rows.Err()
 }
 
 func updateBalance(q querier, config *ledger, c customer) error {
+	__antithesis_instrumentation__.Notify(694674)
 	stmt, args := maybeInlineStmtArgs(config, `
 		UPDATE customer SET
 			balance         = $1,
@@ -145,6 +170,7 @@ func updateBalance(q querier, config *ledger, c customer) error {
 }
 
 func insertTransaction(q querier, config *ledger, rng *rand.Rand, username string) (string, error) {
+	__antithesis_instrumentation__.Notify(694675)
 	tID := randPaymentID(rng)
 
 	stmt, args := maybeInlineStmtArgs(config, `
@@ -160,6 +186,7 @@ func insertTransaction(q querier, config *ledger, rng *rand.Rand, username strin
 }
 
 func insertEntries(q querier, config *ledger, rng *rand.Rand, cIDs [2]int, tID string) error {
+	__antithesis_instrumentation__.Notify(694676)
 	amount1 := randAmount(rng)
 	sysAmount := 88.433571
 	ts := timeutil.Now()
@@ -178,6 +205,7 @@ func insertEntries(q querier, config *ledger, rng *rand.Rand, cIDs [2]int, tID s
 }
 
 func getSession(q querier, config *ledger, rng *rand.Rand) error {
+	__antithesis_instrumentation__.Notify(694677)
 	stmt, args := maybeInlineStmtArgs(config, `
 		SELECT
 			session_id,
@@ -191,17 +219,24 @@ func getSession(q querier, config *ledger, rng *rand.Rand) error {
 	)
 	rows, err := q.Query(stmt, args...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(694680)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(694681)
 	}
+	__antithesis_instrumentation__.Notify(694678)
 	defer rows.Close()
 
 	for rows.Next() {
-		// No-op.
+		__antithesis_instrumentation__.Notify(694682)
+
 	}
+	__antithesis_instrumentation__.Notify(694679)
 	return rows.Err()
 }
 
 func insertSession(q querier, config *ledger, rng *rand.Rand) error {
+	__antithesis_instrumentation__.Notify(694683)
 	stmt, args := maybeInlineStmtArgs(config, `
 		INSERT INTO session (
 			data, expiry_timestamp, last_update, session_id

@@ -23,6 +23,7 @@ go_library(
         "//pkg/util/log",
         "//pkg/util/randutil",  # keep
         "//pkg/util/stop",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_containerd_containerd//platforms",
         "@com_github_docker_docker//api/types",
@@ -55,5 +56,6 @@ go_test(
         "//pkg/security",
         "//pkg/testutils/skip",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package nstree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
@@ -21,11 +13,13 @@ type byNameMap struct {
 }
 
 func (t byNameMap) upsert(d catalog.NameEntry) (replaced catalog.NameEntry) {
+	__antithesis_instrumentation__.Notify(266965)
 	replaced, _ = upsert(t.t, makeByNameItem(d).get()).(catalog.NameEntry)
 	return replaced
 }
 
 func (t byNameMap) getByName(parentID, parentSchemaID descpb.ID, name string) catalog.NameEntry {
+	__antithesis_instrumentation__.Notify(266966)
 	got, _ := get(t.t, byNameItem{
 		parentID:       parentID,
 		parentSchemaID: parentSchemaID,
@@ -35,15 +29,19 @@ func (t byNameMap) getByName(parentID, parentSchemaID descpb.ID, name string) ca
 }
 
 func (t byNameMap) delete(d catalog.NameKey) {
+	__antithesis_instrumentation__.Notify(266967)
 	delete(t.t, makeByNameItem(d).get())
 }
 
 func (t byNameMap) clear() {
+	__antithesis_instrumentation__.Notify(266968)
 	clear(t.t)
 }
 
 func (t byNameMap) ascend(f EntryIterator) error {
+	__antithesis_instrumentation__.Notify(266969)
 	return ascend(t.t, func(k interface{}) error {
+		__antithesis_instrumentation__.Notify(266970)
 		return f(k.(catalog.NameEntry))
 	})
 }

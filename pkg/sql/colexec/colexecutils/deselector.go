@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colexecutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -19,10 +11,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 )
 
-// deselectorOp consumes the input operator, and if resulting batches have a
-// selection vector, it coalesces them (meaning that tuples will be reordered
-// or omitted according to the selection vector). If the batches come with no
-// selection vector, it is a noop.
 type deselectorOp struct {
 	colexecop.OneInputHelper
 	colexecop.NonExplainable
@@ -34,16 +22,10 @@ type deselectorOp struct {
 
 var _ colexecop.Operator = &deselectorOp{}
 
-// NewDeselectorOp creates a new deselector operator on the given input
-// operator with the given column types.
-//
-// The provided allocator must be derived from an unlimited memory monitor since
-// the deselectorOp cannot spill to disk and a "memory budget exceeded" error
-// might be caught by the higher-level diskSpiller which would result in losing
-// some query results.
 func NewDeselectorOp(
 	unlimitedAllocator *colmem.Allocator, input colexecop.Operator, typs []*types.T,
 ) colexecop.Operator {
+	__antithesis_instrumentation__.Notify(431728)
 	return &deselectorOp{
 		OneInputHelper:     colexecop.MakeOneInputHelper(input),
 		unlimitedAllocator: unlimitedAllocator,
@@ -52,20 +34,28 @@ func NewDeselectorOp(
 }
 
 func (p *deselectorOp) Next() coldata.Batch {
+	__antithesis_instrumentation__.Notify(431729)
 	batch := p.Input.Next()
-	if batch.Selection() == nil || batch.Length() == 0 {
+	if batch.Selection() == nil || func() bool {
+		__antithesis_instrumentation__.Notify(431732)
+		return batch.Length() == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(431733)
 		return batch
+	} else {
+		__antithesis_instrumentation__.Notify(431734)
 	}
-	// deselectorOp should *not* limit the capacities of the returned batches,
-	// so we don't use a memory limit here. It is up to the wrapped operator to
-	// limit the size of batches based on the memory footprint.
+	__antithesis_instrumentation__.Notify(431730)
+
 	const maxBatchMemSize = math.MaxInt64
 	p.output, _ = p.unlimitedAllocator.ResetMaybeReallocate(
 		p.inputTypes, p.output, batch.Length(), maxBatchMemSize,
 	)
 	sel := batch.Selection()
 	p.unlimitedAllocator.PerformOperation(p.output.ColVecs(), func() {
+		__antithesis_instrumentation__.Notify(431735)
 		for i := range p.inputTypes {
+			__antithesis_instrumentation__.Notify(431736)
 			toCol := p.output.ColVec(i)
 			fromCol := batch.ColVec(i)
 			toCol.Copy(
@@ -77,6 +67,7 @@ func (p *deselectorOp) Next() coldata.Batch {
 			)
 		}
 	})
+	__antithesis_instrumentation__.Notify(431731)
 	p.output.SetLength(batch.Length())
 	return p.output
 }

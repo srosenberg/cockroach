@@ -16,6 +16,7 @@ go_library(
         "//pkg/settings/cluster",
         "//pkg/sql/sqlutil",
         "//pkg/util/ioctx",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_errors//oserror",
     ],
@@ -44,6 +45,7 @@ go_test(
         "//pkg/testutils/serverutils",
         "//pkg/util/leaktest",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

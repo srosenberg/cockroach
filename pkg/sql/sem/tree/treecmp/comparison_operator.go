@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package treecmp
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -16,32 +8,33 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ComparisonOperator represents a binary operator which returns a bool.
 type ComparisonOperator struct {
 	Symbol ComparisonOperatorSymbol
-	// IsExplicitOperator is true if OPERATOR(symbol) is used.
+
 	IsExplicitOperator bool
 }
 
-// MakeComparisonOperator creates a ComparisonOperator given a symbol.
 func MakeComparisonOperator(symbol ComparisonOperatorSymbol) ComparisonOperator {
+	__antithesis_instrumentation__.Notify(614580)
 	return ComparisonOperator{Symbol: symbol}
 }
 
 func (o ComparisonOperator) String() string {
+	__antithesis_instrumentation__.Notify(614581)
 	if o.IsExplicitOperator {
+		__antithesis_instrumentation__.Notify(614583)
 		return fmt.Sprintf("OPERATOR(%s)", o.Symbol.String())
+	} else {
+		__antithesis_instrumentation__.Notify(614584)
 	}
+	__antithesis_instrumentation__.Notify(614582)
 	return o.Symbol.String()
 }
 
-// Operator implements tree.Operator.
-func (ComparisonOperator) Operator() {}
+func (ComparisonOperator) Operator() { __antithesis_instrumentation__.Notify(614585) }
 
-// ComparisonOperatorSymbol represents a comparison operator symbol.
 type ComparisonOperatorSymbol int
 
-// ComparisonExpr.Operator
 const (
 	EQ ComparisonOperatorSymbol = iota
 	LT
@@ -70,19 +63,6 @@ const (
 	JSONAllExists
 	Overlaps
 
-	// The following operators will always be used with an associated SubOperator.
-	// If Go had algebraic data types they would be defined in a self-contained
-	// manner like:
-	//
-	// Any(ComparisonOperator)
-	// Some(ComparisonOperator)
-	// ...
-	//
-	// where the internal ComparisonOperator qualifies the behavior of the primary
-	// operator. Instead, a secondary ComparisonOperator is optionally included in
-	// ComparisonExpr for the cases where these operators are the primary op.
-	//
-	// ComparisonOperator.HasSubOperator returns true for ops in this group.
 	Any
 	Some
 	All
@@ -107,7 +87,7 @@ var comparisonOpName = [...]string{
 	NotILike:     "NOT ILIKE",
 	SimilarTo:    "SIMILAR TO",
 	NotSimilarTo: "NOT SIMILAR TO",
-	// TODO(otan): come up with a better name than RegMatch, as it also covers GeoContains.
+
 	RegMatch:          "~",
 	NotRegMatch:       "!~",
 	RegIMatch:         "~*",
@@ -126,28 +106,48 @@ var comparisonOpName = [...]string{
 }
 
 func (i ComparisonOperatorSymbol) String() string {
-	if i < 0 || i > ComparisonOperatorSymbol(len(comparisonOpName)-1) {
+	__antithesis_instrumentation__.Notify(614586)
+	if i < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(614588)
+		return i > ComparisonOperatorSymbol(len(comparisonOpName)-1) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(614589)
 		return fmt.Sprintf("ComparisonOp(%d)", i)
+	} else {
+		__antithesis_instrumentation__.Notify(614590)
 	}
+	__antithesis_instrumentation__.Notify(614587)
 	return comparisonOpName[i]
 }
 
-// HasSubOperator returns if the ComparisonOperator is used with a sub-operator.
 func (i ComparisonOperatorSymbol) HasSubOperator() bool {
+	__antithesis_instrumentation__.Notify(614591)
 	switch i {
 	case Any:
+		__antithesis_instrumentation__.Notify(614593)
 	case Some:
+		__antithesis_instrumentation__.Notify(614594)
 	case All:
+		__antithesis_instrumentation__.Notify(614595)
 	default:
+		__antithesis_instrumentation__.Notify(614596)
 		return false
 	}
+	__antithesis_instrumentation__.Notify(614592)
 	return true
 }
 
-// ComparisonOpName returns the name of op.
 func ComparisonOpName(op ComparisonOperatorSymbol) string {
-	if int(op) >= len(comparisonOpName) || comparisonOpName[op] == "" {
+	__antithesis_instrumentation__.Notify(614597)
+	if int(op) >= len(comparisonOpName) || func() bool {
+		__antithesis_instrumentation__.Notify(614599)
+		return comparisonOpName[op] == "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(614600)
 		panic(errors.AssertionFailedf("missing name for operator %q", op.String()))
+	} else {
+		__antithesis_instrumentation__.Notify(614601)
 	}
+	__antithesis_instrumentation__.Notify(614598)
 	return comparisonOpName[op]
 }

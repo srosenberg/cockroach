@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -33,43 +25,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// GetUserSessionInitInfo determines if the given user exists and
-// also returns a password retrieval function, other authentication-related
-// information, and default session variable settings that are to be applied
-// before a SQL session is created.
-//
-// The caller is responsible for normalizing the username.
-// (CockroachDB has case-insensitive usernames, unlike PostgreSQL.)
-//
-// The function is tolerant of unavailable clusters (or unavailable
-// system database) as follows:
-//
-// - if the user is root, the user is reported to exist immediately
-//   without querying system.users at all. The password retrieval
-//   is delayed until actually needed by the authentication method.
-//   This way, if the client presents a valid TLS certificate
-//   the password is not even needed at all. This is useful for e.g.
-//   `cockroach node status`.
-//
-//   If root is forced to use a password (e.g. logging in onto the UI)
-//   then a user login timeout greater than 5 seconds is also
-//   ignored. This ensures that root has a modicum of comfort
-//   logging into an unavailable cluster.
-//
-//   TODO(knz): this does not yet quite work because even if the pw
-//   auth on the UI succeeds writing to system.web_sessions will still
-//   stall on an unavailable cluster and prevent root from logging in.
-//
-// - if the user is another user than root, then the function fails
-//   after a timeout instead of blocking. The timeout is configurable
-//   via the cluster setting server.user_login.timeout. Note that this
-//   is a single timeout for looking up the password, role options, and
-//   default session variable settings.
-//
-// - there is a cache for the the information from system.users,
-//   system.role_options, and system.database_role_settings. As long as the
-//   lookup succeeded before and there haven't been any CREATE/ALTER/DROP ROLE
-//   commands since, then the cache is used without a KV lookup.
 func GetUserSessionInitInfo(
 	ctx context.Context,
 	execCfg *ExecutorConfig,
@@ -85,52 +40,69 @@ func GetUserSessionInitInfo(
 	pwRetrieveFn func(ctx context.Context) (expired bool, hashedPassword security.PasswordHash, err error),
 	err error,
 ) {
+	__antithesis_instrumentation__.Notify(631454)
 	runFn := getUserInfoRunFn(execCfg, username, "get-user-timeout")
 
 	if username.IsRootUser() {
-		// As explained above, for root we report that the user exists
-		// immediately, and delay retrieving the password until strictly
-		// necessary.
+		__antithesis_instrumentation__.Notify(631457)
+
 		rootFn := func(ctx context.Context) (expired bool, ret security.PasswordHash, err error) {
+			__antithesis_instrumentation__.Notify(631459)
 			err = runFn(ctx, func(ctx context.Context) error {
+				__antithesis_instrumentation__.Notify(631462)
 				authInfo, _, err := retrieveSessionInitInfoWithCache(ctx, execCfg, ie, username, databaseName)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(631464)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(631465)
 				}
+				__antithesis_instrumentation__.Notify(631463)
 				ret = authInfo.HashedPassword
 				return nil
 			})
+			__antithesis_instrumentation__.Notify(631460)
 			if ret == nil {
+				__antithesis_instrumentation__.Notify(631466)
 				ret = security.MissingPasswordHash
+			} else {
+				__antithesis_instrumentation__.Notify(631467)
 			}
-			// NB: Root user password does not expire.
-			return false /* expired */, ret, err
-		}
+			__antithesis_instrumentation__.Notify(631461)
 
-		// Root user cannot have password expiry and must have login.
-		// It also never has default settings applied to it.
+			return false, ret, err
+		}
+		__antithesis_instrumentation__.Notify(631458)
+
 		return true, true, true, true, nil, rootFn, nil
+	} else {
+		__antithesis_instrumentation__.Notify(631468)
 	}
+	__antithesis_instrumentation__.Notify(631455)
 
 	var authInfo sessioninit.AuthInfo
 	var settingsEntries []sessioninit.SettingsCacheEntry
 
 	if err = runFn(ctx, func(ctx context.Context) error {
-		// Other users must reach for system.users no matter what, because
-		// only that contains the truth about whether the user exists.
+		__antithesis_instrumentation__.Notify(631469)
+
 		authInfo, settingsEntries, err = retrieveSessionInitInfoWithCache(
 			ctx, execCfg, ie, username, databaseName,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(631471)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(631472)
 		}
+		__antithesis_instrumentation__.Notify(631470)
 
-		// Find whether the user is an admin.
 		return execCfg.CollectionFactory.Txn(
 			ctx,
 			ie,
 			execCfg.DB,
 			func(ctx context.Context, txn *kv.Txn, descsCol *descs.Collection) error {
+				__antithesis_instrumentation__.Notify(631473)
 				memberships, err := MemberOfWithAdminOption(
 					ctx,
 					execCfg,
@@ -140,16 +112,24 @@ func GetUserSessionInitInfo(
 					username,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(631475)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(631476)
 				}
+				__antithesis_instrumentation__.Notify(631474)
 				_, isSuperuser = memberships[security.AdminRoleName()]
 				return nil
 			},
 		)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(631477)
 		log.Warningf(ctx, "user membership lookup for %q failed: %v", username, err)
 		err = errors.Wrap(errors.Handled(err), "internal error while retrieving user account memberships")
+	} else {
+		__antithesis_instrumentation__.Notify(631478)
 	}
+	__antithesis_instrumentation__.Notify(631456)
 
 	return authInfo.UserExists,
 		authInfo.CanLoginSQL,
@@ -157,20 +137,29 @@ func GetUserSessionInitInfo(
 		isSuperuser,
 		settingsEntries,
 		func(ctx context.Context) (expired bool, ret security.PasswordHash, err error) {
+			__antithesis_instrumentation__.Notify(631479)
 			ret = authInfo.HashedPassword
 			if authInfo.ValidUntil != nil {
-				// NB: we compute the expiration as late as possible,
-				// to ensure that we determine the expiration relative
-				// to the time at which the client presents the password
-				// to the server (and not earlier).
+				__antithesis_instrumentation__.Notify(631482)
+
 				if authInfo.ValidUntil.Time.Sub(timeutil.Now()) < 0 {
+					__antithesis_instrumentation__.Notify(631483)
 					expired = true
 					ret = nil
+				} else {
+					__antithesis_instrumentation__.Notify(631484)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(631485)
 			}
+			__antithesis_instrumentation__.Notify(631480)
 			if ret == nil {
+				__antithesis_instrumentation__.Notify(631486)
 				ret = security.MissingPasswordHash
+			} else {
+				__antithesis_instrumentation__.Notify(631487)
 			}
+			__antithesis_instrumentation__.Notify(631481)
 			return expired, ret, nil
 		},
 		err
@@ -179,21 +168,40 @@ func GetUserSessionInitInfo(
 func getUserInfoRunFn(
 	execCfg *ExecutorConfig, username security.SQLUsername, opName string,
 ) func(context.Context, func(context.Context) error) error {
-	// We may be operating with a timeout.
-	timeout := userLoginTimeout.Get(&execCfg.Settings.SV)
-	// We don't like long timeouts for root.
-	// (4.5 seconds to not exceed the default 5s timeout configured in many clients.)
-	const maxRootTimeout = 4*time.Second + 500*time.Millisecond
-	if username.IsRootUser() && (timeout == 0 || timeout > maxRootTimeout) {
-		timeout = maxRootTimeout
-	}
+	__antithesis_instrumentation__.Notify(631488)
 
-	runFn := func(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
+	timeout := userLoginTimeout.Get(&execCfg.Settings.SV)
+
+	const maxRootTimeout = 4*time.Second + 500*time.Millisecond
+	if username.IsRootUser() && func() bool {
+		__antithesis_instrumentation__.Notify(631492)
+		return (timeout == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(631493)
+			return timeout > maxRootTimeout == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(631494)
+		timeout = maxRootTimeout
+	} else {
+		__antithesis_instrumentation__.Notify(631495)
+	}
+	__antithesis_instrumentation__.Notify(631489)
+
+	runFn := func(ctx context.Context, fn func(ctx context.Context) error) error {
+		__antithesis_instrumentation__.Notify(631496)
+		return fn(ctx)
+	}
+	__antithesis_instrumentation__.Notify(631490)
 	if timeout != 0 {
+		__antithesis_instrumentation__.Notify(631497)
 		runFn = func(ctx context.Context, fn func(ctx context.Context) error) error {
+			__antithesis_instrumentation__.Notify(631498)
 			return contextutil.RunWithTimeout(ctx, opName, timeout, fn)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(631499)
 	}
+	__antithesis_instrumentation__.Notify(631491)
 	return runFn
 }
 
@@ -204,7 +212,9 @@ func retrieveSessionInitInfoWithCache(
 	username security.SQLUsername,
 	databaseName string,
 ) (aInfo sessioninit.AuthInfo, settingsEntries []sessioninit.SettingsCacheEntry, err error) {
+	__antithesis_instrumentation__.Notify(631500)
 	if err = func() (retErr error) {
+		__antithesis_instrumentation__.Notify(631502)
 		aInfo, retErr = execCfg.SessionInitCache.GetAuthInfo(
 			ctx,
 			execCfg.Settings,
@@ -215,12 +225,23 @@ func retrieveSessionInitInfoWithCache(
 			retrieveAuthInfo,
 		)
 		if retErr != nil {
+			__antithesis_instrumentation__.Notify(631505)
 			return retErr
+		} else {
+			__antithesis_instrumentation__.Notify(631506)
 		}
-		// Avoid looking up default settings for root and non-existent users.
-		if username.IsRootUser() || !aInfo.UserExists {
+		__antithesis_instrumentation__.Notify(631503)
+
+		if username.IsRootUser() || func() bool {
+			__antithesis_instrumentation__.Notify(631507)
+			return !aInfo.UserExists == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(631508)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(631509)
 		}
+		__antithesis_instrumentation__.Notify(631504)
 		settingsEntries, retErr = execCfg.SessionInitCache.GetDefaultSettings(
 			ctx,
 			execCfg.Settings,
@@ -233,95 +254,137 @@ func retrieveSessionInitInfoWithCache(
 		)
 		return retErr
 	}(); err != nil {
-		// Failed to retrieve the user account. Report in logs for later investigation.
+		__antithesis_instrumentation__.Notify(631510)
+
 		log.Warningf(ctx, "user lookup for %q failed: %v", username, err)
 		err = errors.Wrap(errors.Handled(err), "internal error while retrieving user account")
+	} else {
+		__antithesis_instrumentation__.Notify(631511)
 	}
+	__antithesis_instrumentation__.Notify(631501)
 	return aInfo, settingsEntries, err
 }
 
 func retrieveAuthInfo(
 	ctx context.Context, ie sqlutil.InternalExecutor, username security.SQLUsername,
 ) (aInfo sessioninit.AuthInfo, retErr error) {
-	// Use fully qualified table name to avoid looking up "".system.users.
-	// We use a nil txn as login is not tied to any transaction state, and
-	// we should always look up the latest data.
+	__antithesis_instrumentation__.Notify(631512)
+
 	const getHashedPassword = `SELECT "hashedPassword" FROM system.public.users ` +
 		`WHERE username=$1`
 	values, err := ie.QueryRowEx(
-		ctx, "get-hashed-pwd", nil, /* txn */
+		ctx, "get-hashed-pwd", nil,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		getHashedPassword, username)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631520)
 		return aInfo, errors.Wrapf(err, "error looking up user %s", username)
+	} else {
+		__antithesis_instrumentation__.Notify(631521)
 	}
+	__antithesis_instrumentation__.Notify(631513)
 	var hashedPassword []byte
 	if values != nil {
+		__antithesis_instrumentation__.Notify(631522)
 		aInfo.UserExists = true
 		if v := values[0]; v != tree.DNull {
+			__antithesis_instrumentation__.Notify(631523)
 			hashedPassword = []byte(*(v.(*tree.DBytes)))
+		} else {
+			__antithesis_instrumentation__.Notify(631524)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(631525)
 	}
+	__antithesis_instrumentation__.Notify(631514)
 	aInfo.HashedPassword = security.LoadPasswordHash(ctx, hashedPassword)
 
 	if !aInfo.UserExists {
+		__antithesis_instrumentation__.Notify(631526)
 		return aInfo, nil
+	} else {
+		__antithesis_instrumentation__.Notify(631527)
 	}
+	__antithesis_instrumentation__.Notify(631515)
 
-	// None of the rest of the role options are relevant for root.
 	if username.IsRootUser() {
+		__antithesis_instrumentation__.Notify(631528)
 		return aInfo, nil
+	} else {
+		__antithesis_instrumentation__.Notify(631529)
 	}
+	__antithesis_instrumentation__.Notify(631516)
 
-	// Use fully qualified table name to avoid looking up "".system.role_options.
 	const getLoginDependencies = `SELECT option, value FROM system.public.role_options ` +
 		`WHERE username=$1 AND option IN ('NOLOGIN', 'VALID UNTIL', 'NOSQLLOGIN')`
 
 	roleOptsIt, err := ie.QueryIteratorEx(
-		ctx, "get-login-dependencies", nil, /* txn */
+		ctx, "get-login-dependencies", nil,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		getLoginDependencies,
 		username,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631530)
 		return aInfo, errors.Wrapf(err, "error looking up user %s", username)
+	} else {
+		__antithesis_instrumentation__.Notify(631531)
 	}
-	// We have to make sure to close the iterator since we might return from
-	// the for loop early (before Next() returns false).
-	defer func() { retErr = errors.CombineErrors(retErr, roleOptsIt.Close()) }()
+	__antithesis_instrumentation__.Notify(631517)
 
-	// To support users created before 20.1, allow all USERS/ROLES to login
-	// if NOLOGIN is not found.
+	defer func() {
+		__antithesis_instrumentation__.Notify(631532)
+		retErr = errors.CombineErrors(retErr, roleOptsIt.Close())
+	}()
+	__antithesis_instrumentation__.Notify(631518)
+
 	aInfo.CanLoginSQL = true
 	aInfo.CanLoginDBConsole = true
 	var ok bool
 	for ok, err = roleOptsIt.Next(ctx); ok; ok, err = roleOptsIt.Next(ctx) {
+		__antithesis_instrumentation__.Notify(631533)
 		row := roleOptsIt.Cur()
 		option := string(tree.MustBeDString(row[0]))
 
 		if option == "NOLOGIN" {
+			__antithesis_instrumentation__.Notify(631536)
 			aInfo.CanLoginSQL = false
 			aInfo.CanLoginDBConsole = false
+		} else {
+			__antithesis_instrumentation__.Notify(631537)
 		}
+		__antithesis_instrumentation__.Notify(631534)
 		if option == "NOSQLLOGIN" {
+			__antithesis_instrumentation__.Notify(631538)
 			aInfo.CanLoginSQL = false
+		} else {
+			__antithesis_instrumentation__.Notify(631539)
 		}
+		__antithesis_instrumentation__.Notify(631535)
 
 		if option == "VALID UNTIL" {
+			__antithesis_instrumentation__.Notify(631540)
 			if tree.DNull.Compare(nil, row[1]) != 0 {
+				__antithesis_instrumentation__.Notify(631541)
 				ts := string(tree.MustBeDString(row[1]))
-				// This is okay because the VALID UNTIL is stored as a string
-				// representation of a TimestampTZ which has the same underlying
-				// representation in the table as a Timestamp (UTC time).
+
 				timeCtx := tree.NewParseTimeContext(timeutil.Now())
 				aInfo.ValidUntil, _, err = tree.ParseDTimestamp(timeCtx, ts, time.Microsecond)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(631542)
 					return aInfo, errors.Wrap(err,
 						"error trying to parse timestamp while retrieving password valid until value")
+				} else {
+					__antithesis_instrumentation__.Notify(631543)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(631544)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(631545)
 		}
 	}
+	__antithesis_instrumentation__.Notify(631519)
 
 	return aInfo, err
 }
@@ -332,23 +395,27 @@ func retrieveDefaultSettings(
 	username security.SQLUsername,
 	databaseID descpb.ID,
 ) (settingsEntries []sessioninit.SettingsCacheEntry, retErr error) {
-	// Add an empty slice for all the keys so that something gets cached and
-	// prevents a lookup for the same key from happening later.
+	__antithesis_instrumentation__.Notify(631546)
+
 	keys := sessioninit.GenerateSettingsCacheKeys(databaseID, username)
 	settingsEntries = make([]sessioninit.SettingsCacheEntry, len(keys))
 	for i, k := range keys {
+		__antithesis_instrumentation__.Notify(631552)
 		settingsEntries[i] = sessioninit.SettingsCacheEntry{
 			SettingsCacheKey: k,
 			Settings:         []string{},
 		}
 	}
+	__antithesis_instrumentation__.Notify(631547)
 
-	// The default settings are not relevant for root.
 	if username.IsRootUser() {
+		__antithesis_instrumentation__.Notify(631553)
 		return settingsEntries, nil
+	} else {
+		__antithesis_instrumentation__.Notify(631554)
 	}
+	__antithesis_instrumentation__.Notify(631548)
 
-	// Use fully qualified table name to avoid looking up "".system.role_options.
 	const getDefaultSettings = `
 SELECT
   database_id, role_name, settings
@@ -360,45 +427,58 @@ WHERE
   OR (database_id = $2 AND role_name = '')
   OR (database_id = 0 AND role_name = '');
 `
-	// We use a nil txn as role settings are not tied to any transaction state,
-	// and we should always look up the latest data.
+
 	defaultSettingsIt, err := ie.QueryIteratorEx(
-		ctx, "get-default-settings", nil, /* txn */
+		ctx, "get-default-settings", nil,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		getDefaultSettings,
 		username,
 		databaseID,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631555)
 		return nil, errors.Wrapf(err, "error looking up user %s", username)
+	} else {
+		__antithesis_instrumentation__.Notify(631556)
 	}
-	// We have to make sure to close the iterator since we might return from
-	// the for loop early (before Next() returns false).
-	defer func() { retErr = errors.CombineErrors(retErr, defaultSettingsIt.Close()) }()
+	__antithesis_instrumentation__.Notify(631549)
+
+	defer func() {
+		__antithesis_instrumentation__.Notify(631557)
+		retErr = errors.CombineErrors(retErr, defaultSettingsIt.Close())
+	}()
+	__antithesis_instrumentation__.Notify(631550)
 
 	var ok bool
 	for ok, err = defaultSettingsIt.Next(ctx); ok; ok, err = defaultSettingsIt.Next(ctx) {
+		__antithesis_instrumentation__.Notify(631558)
 		row := defaultSettingsIt.Cur()
 		fetechedDatabaseID := descpb.ID(tree.MustBeDOid(row[0]).DInt)
 		fetchedUsername := security.MakeSQLUsernameFromPreNormalizedString(string(tree.MustBeDString(row[1])))
 		settingsDatum := tree.MustBeDArray(row[2])
 		fetchedSettings := make([]string, settingsDatum.Len())
 		for i, s := range settingsDatum.Array {
+			__antithesis_instrumentation__.Notify(631560)
 			fetchedSettings[i] = string(tree.MustBeDString(s))
 		}
+		__antithesis_instrumentation__.Notify(631559)
 
 		thisKey := sessioninit.SettingsCacheKey{
 			DatabaseID: fetechedDatabaseID,
 			Username:   fetchedUsername,
 		}
-		// Add the result to the settings list. Note that we don't use a map
-		// because the list is in order of precedence.
+
 		for i, s := range settingsEntries {
+			__antithesis_instrumentation__.Notify(631561)
 			if s.SettingsCacheKey == thisKey {
+				__antithesis_instrumentation__.Notify(631562)
 				settingsEntries[i].Settings = fetchedSettings
+			} else {
+				__antithesis_instrumentation__.Notify(631563)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(631551)
 
 	return settingsEntries, err
 }
@@ -411,39 +491,49 @@ var userLoginTimeout = settings.RegisterDurationSetting(
 	settings.NonNegativeDuration,
 ).WithPublic()
 
-// GetAllRoles returns a "set" (map) of Roles -> true.
 func (p *planner) GetAllRoles(ctx context.Context) (map[security.SQLUsername]bool, error) {
+	__antithesis_instrumentation__.Notify(631564)
 	query := `SELECT username FROM system.users`
 	it, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.QueryIteratorEx(
 		ctx, "read-users", p.txn,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		query)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631568)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(631569)
 	}
+	__antithesis_instrumentation__.Notify(631565)
 
 	users := make(map[security.SQLUsername]bool)
 	var ok bool
 	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+		__antithesis_instrumentation__.Notify(631570)
 		username := tree.MustBeDString(it.Cur()[0])
-		// The usernames in system.users are already normalized.
+
 		users[security.MakeSQLUsernameFromPreNormalizedString(string(username))] = true
 	}
+	__antithesis_instrumentation__.Notify(631566)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631571)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(631572)
 	}
+	__antithesis_instrumentation__.Notify(631567)
 	return users, nil
 }
 
-// RoleExists returns true if the role exists.
 func (p *planner) RoleExists(ctx context.Context, role security.SQLUsername) (bool, error) {
+	__antithesis_instrumentation__.Notify(631573)
 	return RoleExists(ctx, p.ExecCfg(), p.Txn(), role)
 }
 
-// RoleExists returns true if the role exists.
 func RoleExists(
 	ctx context.Context, execCfg *ExecutorConfig, txn *kv.Txn, role security.SQLUsername,
 ) (bool, error) {
+	__antithesis_instrumentation__.Notify(631574)
 	query := `SELECT username FROM system.users WHERE username = $1`
 	row, err := execCfg.InternalExecutor.QueryRowEx(
 		ctx, "read-users", txn,
@@ -451,60 +541,76 @@ func RoleExists(
 		query, role,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631576)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(631577)
 	}
+	__antithesis_instrumentation__.Notify(631575)
 
 	return row != nil, nil
 }
 
 var roleMembersTableName = tree.MakeTableNameWithSchema("system", tree.PublicSchemaName, "role_members")
 
-// BumpRoleMembershipTableVersion increases the table version for the
-// role membership table.
 func (p *planner) BumpRoleMembershipTableVersion(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(631578)
 	_, tableDesc, err := p.ResolveMutableTableDescriptor(ctx, &roleMembersTableName, true, tree.ResolveAnyTableKind)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631580)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(631581)
 	}
+	__antithesis_instrumentation__.Notify(631579)
 
 	return p.writeSchemaChange(
 		ctx, tableDesc, descpb.InvalidMutationID, "updating version for role membership table",
 	)
 }
 
-// bumpUsersTableVersion increases the table version for the
-// users table.
 func (p *planner) bumpUsersTableVersion(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(631582)
 	_, tableDesc, err := p.ResolveMutableTableDescriptor(ctx, sessioninit.UsersTableName, true, tree.ResolveAnyTableKind)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631584)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(631585)
 	}
+	__antithesis_instrumentation__.Notify(631583)
 
 	return p.writeSchemaChange(
 		ctx, tableDesc, descpb.InvalidMutationID, "updating version for users table",
 	)
 }
 
-// bumpRoleOptionsTableVersion increases the table version for the
-// role_options table.
 func (p *planner) bumpRoleOptionsTableVersion(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(631586)
 	_, tableDesc, err := p.ResolveMutableTableDescriptor(ctx, sessioninit.RoleOptionsTableName, true, tree.ResolveAnyTableKind)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631588)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(631589)
 	}
+	__antithesis_instrumentation__.Notify(631587)
 
 	return p.writeSchemaChange(
 		ctx, tableDesc, descpb.InvalidMutationID, "updating version for role options table",
 	)
 }
 
-// bumpDatabaseRoleSettingsTableVersion increases the table version for the
-// database_role_settings table.
 func (p *planner) bumpDatabaseRoleSettingsTableVersion(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(631590)
 	_, tableDesc, err := p.ResolveMutableTableDescriptor(ctx, sessioninit.DatabaseRoleSettingsTableName, true, tree.ResolveAnyTableKind)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631592)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(631593)
 	}
+	__antithesis_instrumentation__.Notify(631591)
 
 	return p.writeSchemaChange(
 		ctx, tableDesc, descpb.InvalidMutationID, "updating version for database_role_settings table",
@@ -512,62 +618,94 @@ func (p *planner) bumpDatabaseRoleSettingsTableVersion(ctx context.Context) erro
 }
 
 func (p *planner) setRole(ctx context.Context, local bool, s security.SQLUsername) error {
+	__antithesis_instrumentation__.Notify(631594)
 	sessionUser := p.SessionData().SessionUser()
 	becomeUser := sessionUser
-	// Check the role exists - if so, populate becomeUser.
+
 	if !s.IsNoneRole() {
+		__antithesis_instrumentation__.Notify(631599)
 		becomeUser = s
 
 		exists, err := p.RoleExists(ctx, becomeUser)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(631601)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(631602)
 		}
+		__antithesis_instrumentation__.Notify(631600)
 		if !exists {
+			__antithesis_instrumentation__.Notify(631603)
 			return pgerror.Newf(
 				pgcode.InvalidParameterValue,
 				"role %s does not exist",
 				becomeUser.Normalized(),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(631604)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(631605)
 	}
+	__antithesis_instrumentation__.Notify(631595)
 
 	if err := p.checkCanBecomeUser(ctx, becomeUser); err != nil {
+		__antithesis_instrumentation__.Notify(631606)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(631607)
 	}
+	__antithesis_instrumentation__.Notify(631596)
 
-	// Buffer the ParamStatusUpdate. We must *always* send this on an update,
-	// so we can't short circuit.
 	updateStr := "off"
 	willBecomeAdmin, err := p.UserHasAdminRole(ctx, becomeUser)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631608)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(631609)
 	}
+	__antithesis_instrumentation__.Notify(631597)
 	if willBecomeAdmin {
+		__antithesis_instrumentation__.Notify(631610)
 		updateStr = "on"
+	} else {
+		__antithesis_instrumentation__.Notify(631611)
 	}
+	__antithesis_instrumentation__.Notify(631598)
 
 	return p.applyOnSessionDataMutators(
 		ctx,
 		local,
 		func(m sessionDataMutator) error {
+			__antithesis_instrumentation__.Notify(631612)
 			m.data.IsSuperuser = willBecomeAdmin
 			m.bufferParamStatusUpdate("is_superuser", updateStr)
 
-			// The "none" user does resets the SessionUserProto in a SET ROLE.
 			if becomeUser.IsNoneRole() {
+				__antithesis_instrumentation__.Notify(631615)
 				if m.data.SessionUserProto.Decode().Normalized() != "" {
+					__antithesis_instrumentation__.Notify(631617)
 					m.data.UserProto = m.data.SessionUserProto
 					m.data.SessionUserProto = ""
+				} else {
+					__antithesis_instrumentation__.Notify(631618)
 				}
+				__antithesis_instrumentation__.Notify(631616)
 				m.data.SearchPath = m.data.SearchPath.WithUserSchemaName(m.data.User().Normalized())
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(631619)
 			}
+			__antithesis_instrumentation__.Notify(631613)
 
-			// Only update session_user when we are transitioning from the current_user
-			// being the session_user.
 			if m.data.SessionUserProto == "" {
+				__antithesis_instrumentation__.Notify(631620)
 				m.data.SessionUserProto = m.data.UserProto
+			} else {
+				__antithesis_instrumentation__.Notify(631621)
 			}
+			__antithesis_instrumentation__.Notify(631614)
 			m.data.UserProto = becomeUser.EncodeProto()
 			m.data.SearchPath = m.data.SearchPath.WithUserSchemaName(m.data.User().Normalized())
 			return nil
@@ -576,63 +714,76 @@ func (p *planner) setRole(ctx context.Context, local bool, s security.SQLUsernam
 
 }
 
-// checkCanBecomeUser returns an error if the SessionUser cannot become the
-// becomeUser.
 func (p *planner) checkCanBecomeUser(ctx context.Context, becomeUser security.SQLUsername) error {
+	__antithesis_instrumentation__.Notify(631622)
 	sessionUser := p.SessionData().SessionUser()
 
-	// Switching to None can always succeed.
 	if becomeUser.IsNoneRole() {
+		__antithesis_instrumentation__.Notify(631630)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(631631)
 	}
-	// Root users are able to become anyone.
+	__antithesis_instrumentation__.Notify(631623)
+
 	if sessionUser.IsRootUser() {
+		__antithesis_instrumentation__.Notify(631632)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(631633)
 	}
-	// You can always become yourself.
+	__antithesis_instrumentation__.Notify(631624)
+
 	if becomeUser.Normalized() == sessionUser.Normalized() {
+		__antithesis_instrumentation__.Notify(631634)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(631635)
 	}
-	// Only root can become root.
-	// This is a CockroachDB specialization of the superuser case, as we don't want
-	// to allow admins to become root in the tenant case, where only system
-	// admins can be the root user.
+	__antithesis_instrumentation__.Notify(631625)
+
 	if becomeUser.IsRootUser() {
+		__antithesis_instrumentation__.Notify(631636)
 		return pgerror.Newf(
 			pgcode.InsufficientPrivilege,
 			"only root can become root",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(631637)
 	}
+	__antithesis_instrumentation__.Notify(631626)
 
 	memberships, err := p.MemberOfWithAdminOption(ctx, sessionUser)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(631638)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(631639)
 	}
-	// Superusers can become anyone except root. In CRDB, admins are superusers.
+	__antithesis_instrumentation__.Notify(631627)
+
 	if _, ok := memberships[security.AdminRoleName()]; ok {
+		__antithesis_instrumentation__.Notify(631640)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(631641)
 	}
-	// Otherwise, check the session user is a member of the user they will become.
+	__antithesis_instrumentation__.Notify(631628)
+
 	if _, ok := memberships[becomeUser]; !ok {
+		__antithesis_instrumentation__.Notify(631642)
 		return pgerror.Newf(
 			pgcode.InsufficientPrivilege,
 			`permission denied to set role "%s"`,
 			becomeUser.Normalized(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(631643)
 	}
+	__antithesis_instrumentation__.Notify(631629)
 	return nil
 }
 
-// MaybeUpgradeStoredPasswordHash attempts to convert a stored hash
-// that was encoded using crdb-bcrypt, to the SCRAM-SHA-256 format.
-//
-// This auto-conversion is a CockroachDB-specific feature, which
-// pushes clusters upgraded from a previous version into using
-// SCRAM-SHA-256.
-//
-// The caller is responsible for ensuring this function is only called
-// after a successful authentication, that is, the provided cleartext
-// password is known to match the previously-encoded prevHash.
 func MaybeUpgradeStoredPasswordHash(
 	ctx context.Context,
 	execCfg *ExecutorConfig,
@@ -640,30 +791,33 @@ func MaybeUpgradeStoredPasswordHash(
 	cleartext string,
 	currentHash security.PasswordHash,
 ) {
-	// This call also checks whether the conversion has been disabled by
-	// configuration.
+	__antithesis_instrumentation__.Notify(631644)
+
 	converted, prevHash, newHash, newMethod, err := security.MaybeUpgradePasswordHash(ctx, &execCfg.Settings.SV, cleartext, currentHash)
 	if err != nil {
-		// We're not returning an error: clients should not be refused a
-		// session just because a password conversion failed.
-		//
-		// Simply explain what happened in logs for troubleshooting.
+		__antithesis_instrumentation__.Notify(631646)
+
 		log.Warningf(ctx, "password hash conversion failed: %+v", err)
 		return
-	} else if !converted {
-		// No conversion happening. Nothing to do.
-		return
-	}
+	} else {
+		__antithesis_instrumentation__.Notify(631647)
+		if !converted {
+			__antithesis_instrumentation__.Notify(631648)
 
-	// The password hash was successfully converted. Store the new hash.
+			return
+		} else {
+			__antithesis_instrumentation__.Notify(631649)
+		}
+	}
+	__antithesis_instrumentation__.Notify(631645)
+
 	if err := updateUserPasswordHash(ctx, execCfg, username, prevHash, newHash); err != nil {
-		// Again, we don't want to fail with an error, because at this
-		// point authentication succeeded.
-		//
-		// Simply explain what happened in logs for troubleshooting.
+		__antithesis_instrumentation__.Notify(631650)
+
 		log.Warningf(ctx, "storing the new password hash after conversion failed: %+v", err)
 	} else {
-		// Inform the security audit log that the hash was upgraded.
+		__antithesis_instrumentation__.Notify(631651)
+
 		log.StructuredEvent(ctx, &eventpb.PasswordHashConverted{
 			RoleName:  username.Normalized(),
 			OldMethod: currentHash.Method().String(),
@@ -678,33 +832,14 @@ func updateUserPasswordHash(
 	username security.SQLUsername,
 	prevHash, newHash []byte,
 ) error {
+	__antithesis_instrumentation__.Notify(631652)
 	runFn := getUserInfoRunFn(execCfg, username, "set-hash-timeout")
 
 	return runFn(ctx, func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(631653)
 		return DescsTxn(ctx, execCfg, func(ctx context.Context, txn *kv.Txn, d *descs.Collection) error {
-			// NB: we cannot use ALTER USER ... WITH PASSWORD here,
-			// because it is not guaranteed to recognize the hash in the
-			// WITH PASSWORD clause.
-			// (The detection could be disabled via cluster setting
-			// server.user_login.store_client_pre_hashed_passwords.enabled)
-			//
-			// So instead we write to system.users and bump the version to
-			// invalidate the cache manually.
-			//
-			// The motivation for the "WHERE hashedPassword = prevHash"
-			// clause and the check for rowsAffected is to protect against
-			// two hazards:
-			//
-			// - a race condition where an ALTER USER WITH PASSWORD is
-			//   executed by an administrator concurrently with a user
-			//   login. Without WHERE, this could mistakenly override the
-			//   new password.
-			//
-			// - multiple concurrent logins by the same user, triggering
-			//   the same password upgrade for all of them. Without WHERE,
-			//   we'd be writing to system.users for all of them and queue
-			//   potentially many schema updates, creating a bottleneck.
-			//
+			__antithesis_instrumentation__.Notify(631654)
+
 			rowsAffected, err := execCfg.InternalExecutor.Exec(
 				ctx,
 				"set-password-hash",
@@ -714,18 +849,29 @@ func updateUserPasswordHash(
 				prevHash,
 				newHash,
 			)
-			if err != nil || rowsAffected == 0 {
-				// Error, or no update took place.
+			if err != nil || func() bool {
+				__antithesis_instrumentation__.Notify(631657)
+				return rowsAffected == 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(631658)
+
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(631659)
 			}
+			__antithesis_instrumentation__.Notify(631655)
 			usersTable, err := d.GetMutableTableByID(
 				ctx, txn, keys.UsersTableID, tree.ObjectLookupFlagsWithRequired(),
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(631660)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(631661)
 			}
-			// WriteDesc will internally bump the version.
-			return d.WriteDesc(ctx, false /* kvTrace */, usersTable, txn)
+			__antithesis_instrumentation__.Notify(631656)
+
+			return d.WriteDesc(ctx, false, usersTable, txn)
 		})
 	})
 }

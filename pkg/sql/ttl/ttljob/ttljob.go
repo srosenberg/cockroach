@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ttljob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -98,7 +90,6 @@ type rowLevelTTLResumer struct {
 	st  *cluster.Settings
 }
 
-// RowLevelTTLAggMetrics are the row-level TTL job agg metrics.
 type RowLevelTTLAggMetrics struct {
 	RangeTotalDuration *aggmetric.AggHistogram
 	SelectDuration     *aggmetric.AggHistogram
@@ -127,10 +118,10 @@ type rowLevelTTLMetrics struct {
 	TotalExpiredRows   *aggmetric.Gauge
 }
 
-// MetricStruct implements the metric.Struct interface.
-func (m *RowLevelTTLAggMetrics) MetricStruct() {}
+func (m *RowLevelTTLAggMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(628589) }
 
 func (m *RowLevelTTLAggMetrics) metricsWithChildren(children ...string) rowLevelTTLMetrics {
+	__antithesis_instrumentation__.Notify(628590)
 	return rowLevelTTLMetrics{
 		RangeTotalDuration: m.RangeTotalDuration.AddChild(children...),
 		SelectDuration:     m.SelectDuration.AddChild(children...),
@@ -146,22 +137,32 @@ func (m *RowLevelTTLAggMetrics) metricsWithChildren(children ...string) rowLevel
 var invalidPrometheusRe = regexp.MustCompile(`[^a-zA-Z0-9_]`)
 
 func (m *RowLevelTTLAggMetrics) loadMetrics(labelMetrics bool, relation string) rowLevelTTLMetrics {
+	__antithesis_instrumentation__.Notify(628591)
 	if !labelMetrics {
+		__antithesis_instrumentation__.Notify(628594)
 		return m.defaultRowLevelMetrics
+	} else {
+		__antithesis_instrumentation__.Notify(628595)
 	}
+	__antithesis_instrumentation__.Notify(628592)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	relation = invalidPrometheusRe.ReplaceAllString(relation, "_")
 	if ret, ok := m.mu.m[relation]; ok {
+		__antithesis_instrumentation__.Notify(628596)
 		return ret
+	} else {
+		__antithesis_instrumentation__.Notify(628597)
 	}
+	__antithesis_instrumentation__.Notify(628593)
 	ret := m.metricsWithChildren(relation)
 	m.mu.m[relation] = ret
 	return ret
 }
 
 func makeRowLevelTTLAggMetrics(histogramWindowInterval time.Duration) metric.Struct {
+	__antithesis_instrumentation__.Notify(628598)
 	sigFigs := 2
 	b := aggmetric.MakeBuilder("relation")
 	ret := &RowLevelTTLAggMetrics{
@@ -251,46 +252,62 @@ func makeRowLevelTTLAggMetrics(histogramWindowInterval time.Duration) metric.Str
 
 var _ jobs.Resumer = (*rowLevelTTLResumer)(nil)
 
-// Resume implements the jobs.Resumer interface.
 func (t rowLevelTTLResumer) Resume(ctx context.Context, execCtx interface{}) error {
+	__antithesis_instrumentation__.Notify(628599)
 	p := execCtx.(sql.JobExecContext)
 	db := p.ExecCfg().DB
 	descsCol := p.ExtendedEvalContext().Descs
 
 	if enabled := jobEnabled.Get(p.ExecCfg().SV()); !enabled {
+		__antithesis_instrumentation__.Notify(628608)
 		return errors.Newf(
 			"ttl jobs are currently disabled by CLUSTER SETTING %s",
 			jobEnabled.Key(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(628609)
 	}
+	__antithesis_instrumentation__.Notify(628600)
 
 	telemetry.Inc(sqltelemetry.RowLevelTTLExecuted)
 
 	var knobs sql.TTLTestingKnobs
 	if ttlKnobs := p.ExecCfg().TTLTestingKnobs; ttlKnobs != nil {
+		__antithesis_instrumentation__.Notify(628610)
 		knobs = *ttlKnobs
+	} else {
+		__antithesis_instrumentation__.Notify(628611)
 	}
+	__antithesis_instrumentation__.Notify(628601)
 
 	details := t.job.Details().(jobspb.RowLevelTTLDetails)
 
 	aostDuration := -time.Second * 30
 	if knobs.AOSTDuration != nil {
+		__antithesis_instrumentation__.Notify(628612)
 		aostDuration = *knobs.AOSTDuration
+	} else {
+		__antithesis_instrumentation__.Notify(628613)
 	}
+	__antithesis_instrumentation__.Notify(628602)
 	aost, err := tree.MakeDTimestampTZ(timeutil.Now().Add(aostDuration), time.Microsecond)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628614)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(628615)
 	}
+	__antithesis_instrumentation__.Notify(628603)
 
 	var initialVersion descpb.DescriptorVersion
 
-	// TODO(#75428): feature flag check, ttl pause check.
 	var ttlSettings catpb.RowLevelTTL
 	var pkColumns []string
 	var pkTypes []*types.T
 	var relationName string
 	var rangeSpan roachpb.Span
 	if err := db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(628616)
 		desc, err := descsCol.GetImmutableTableByID(
 			ctx,
 			txn,
@@ -298,47 +315,76 @@ func (t rowLevelTTLResumer) Resume(ctx context.Context, execCtx interface{}) err
 			tree.ObjectLookupFlagsWithRequired(),
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(628623)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628624)
 		}
+		__antithesis_instrumentation__.Notify(628617)
 		initialVersion = desc.GetVersion()
-		// If the AOST timestamp is before the latest descriptor timestamp, exit
-		// early as the delete will not work.
+
 		if desc.GetModificationTime().GoTime().After(aost.Time) {
+			__antithesis_instrumentation__.Notify(628625)
 			return errors.Newf(
 				"found a recent schema change on the table at %s, aborting",
 				desc.GetModificationTime().GoTime().Format(time.RFC3339),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(628626)
 		}
+		__antithesis_instrumentation__.Notify(628618)
 		pkColumns = desc.GetPrimaryIndex().IndexDesc().KeyColumnNames
 		for _, id := range desc.GetPrimaryIndex().IndexDesc().KeyColumnIDs {
+			__antithesis_instrumentation__.Notify(628627)
 			col, err := desc.FindColumnWithID(id)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(628629)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(628630)
 			}
+			__antithesis_instrumentation__.Notify(628628)
 			pkTypes = append(pkTypes, col.GetType())
 		}
+		__antithesis_instrumentation__.Notify(628619)
 
 		ttl := desc.GetRowLevelTTL()
 		if ttl == nil {
+			__antithesis_instrumentation__.Notify(628631)
 			return errors.Newf("unable to find TTL on table %s", desc.GetName())
+		} else {
+			__antithesis_instrumentation__.Notify(628632)
 		}
+		__antithesis_instrumentation__.Notify(628620)
 
 		if ttl.Pause {
+			__antithesis_instrumentation__.Notify(628633)
 			return errors.Newf("ttl jobs on table %s are currently paused", tree.Name(desc.GetName()))
+		} else {
+			__antithesis_instrumentation__.Notify(628634)
 		}
+		__antithesis_instrumentation__.Notify(628621)
 
 		tn, err := descs.GetTableNameByDesc(ctx, txn, descsCol, desc)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(628635)
 			return errors.Wrapf(err, "error fetching table relation name for TTL")
+		} else {
+			__antithesis_instrumentation__.Notify(628636)
 		}
+		__antithesis_instrumentation__.Notify(628622)
 
 		relationName = tn.FQString()
 		rangeSpan = desc.TableSpan(p.ExecCfg().Codec)
 		ttlSettings = *ttl
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(628637)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(628638)
 	}
+	__antithesis_instrumentation__.Notify(628604)
 
 	var metrics = p.ExecCfg().JobRegistry.MetricsStruct().RowLevelTTL.(*RowLevelTTLAggMetrics).loadMetrics(
 		ttlSettings.LabelMetrics,
@@ -365,8 +411,11 @@ func (t rowLevelTTLResumer) Resume(ctx context.Context, execCtx interface{}) err
 	statsCloseCh := make(chan struct{})
 	ch := make(chan rangeToProcess, rangeConcurrency)
 	for i := 0; i < rangeConcurrency; i++ {
+		__antithesis_instrumentation__.Notify(628639)
 		g.GoCtx(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(628640)
 			for r := range ch {
+				__antithesis_instrumentation__.Notify(628642)
 				start := timeutil.Now()
 				err := runTTLOnRange(
 					ctx,
@@ -387,130 +436,211 @@ func (t rowLevelTTLResumer) Resume(ctx context.Context, execCtx interface{}) err
 				)
 				metrics.RangeTotalDuration.RecordValue(int64(timeutil.Since(start)))
 				if err != nil {
-					// Continue until channel is fully read.
-					// Otherwise, the keys input will be blocked.
+					__antithesis_instrumentation__.Notify(628643)
+
 					for r = range ch {
+						__antithesis_instrumentation__.Notify(628645)
 					}
+					__antithesis_instrumentation__.Notify(628644)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(628646)
 				}
 			}
+			__antithesis_instrumentation__.Notify(628641)
 			return nil
 		})
 	}
+	__antithesis_instrumentation__.Notify(628605)
 
 	if ttlSettings.RowStatsPollInterval != 0 {
+		__antithesis_instrumentation__.Notify(628647)
 		g.GoCtx(func(ctx context.Context) error {
-			// Do once initially to ensure we have some base statistics.
+			__antithesis_instrumentation__.Notify(628648)
+
 			fetchStatistics(ctx, p.ExecCfg(), knobs, relationName, details, metrics, aostDuration)
-			// Wait until poll interval is reached, or early exit when we are done
-			// with the TTL job.
+
 			for {
+				__antithesis_instrumentation__.Notify(628649)
 				select {
 				case <-statsCloseCh:
+					__antithesis_instrumentation__.Notify(628650)
 					return nil
 				case <-time.After(ttlSettings.RowStatsPollInterval):
+					__antithesis_instrumentation__.Notify(628651)
 					fetchStatistics(ctx, p.ExecCfg(), knobs, relationName, details, metrics, aostDuration)
 				}
 			}
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(628652)
 	}
+	__antithesis_instrumentation__.Notify(628606)
 
 	if err := func() (retErr error) {
+		__antithesis_instrumentation__.Notify(628653)
 		defer func() {
+			__antithesis_instrumentation__.Notify(628656)
 			close(ch)
 			close(statsCloseCh)
 			retErr = errors.CombineErrors(retErr, g.Wait())
 		}()
+		__antithesis_instrumentation__.Notify(628654)
 		done := false
 
 		batchSize := rangeBatchSize.Get(p.ExecCfg().SV())
 		for !done {
+			__antithesis_instrumentation__.Notify(628657)
 			var ranges []kv.KeyValue
 
-			// Scan ranges up to rangeBatchSize.
 			if err := db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+				__antithesis_instrumentation__.Notify(628659)
 				metaStart := keys.RangeMetaKey(keys.MustAddr(rangeSpan.Key).Next())
 				metaEnd := keys.RangeMetaKey(keys.MustAddr(rangeSpan.EndKey))
 
 				kvs, err := txn.Scan(ctx, metaStart, metaEnd, batchSize)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(628662)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(628663)
 				}
+				__antithesis_instrumentation__.Notify(628660)
 				if len(kvs) < int(batchSize) {
+					__antithesis_instrumentation__.Notify(628664)
 					done = true
-					if len(kvs) == 0 || !kvs[len(kvs)-1].Key.Equal(metaEnd.AsRawKey()) {
-						// Normally we need to scan one more KV because the ranges are addressed by
-						// the end key.
-						extraKV, err := txn.Scan(ctx, metaEnd, keys.Meta2Prefix.PrefixEnd(), 1 /* one result */)
+					if len(kvs) == 0 || func() bool {
+						__antithesis_instrumentation__.Notify(628665)
+						return !kvs[len(kvs)-1].Key.Equal(metaEnd.AsRawKey()) == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(628666)
+
+						extraKV, err := txn.Scan(ctx, metaEnd, keys.Meta2Prefix.PrefixEnd(), 1)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(628668)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(628669)
 						}
+						__antithesis_instrumentation__.Notify(628667)
 						kvs = append(kvs, extraKV[0])
+					} else {
+						__antithesis_instrumentation__.Notify(628670)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(628671)
 				}
+				__antithesis_instrumentation__.Notify(628661)
 				ranges = kvs
 				return nil
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(628672)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(628673)
 			}
+			__antithesis_instrumentation__.Notify(628658)
 
-			// Send these to each goroutine worker.
 			for _, r := range ranges {
+				__antithesis_instrumentation__.Notify(628674)
 				if err := r.ValueProto(&rangeDesc); err != nil {
+					__antithesis_instrumentation__.Notify(628678)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(628679)
 				}
+				__antithesis_instrumentation__.Notify(628675)
 				rangeSpan.Key = rangeDesc.EndKey.AsRawKey()
 				var nextRange rangeToProcess
 				nextRange.startPK, err = keyToDatums(rangeDesc.StartKey, p.ExecCfg().Codec, pkTypes, &alloc)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(628680)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(628681)
 				}
+				__antithesis_instrumentation__.Notify(628676)
 				nextRange.endPK, err = keyToDatums(rangeDesc.EndKey, p.ExecCfg().Codec, pkTypes, &alloc)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(628682)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(628683)
 				}
+				__antithesis_instrumentation__.Notify(628677)
 				ch <- nextRange
 			}
 		}
+		__antithesis_instrumentation__.Notify(628655)
 		return nil
 	}(); err != nil {
+		__antithesis_instrumentation__.Notify(628684)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(628685)
 	}
+	__antithesis_instrumentation__.Notify(628607)
 	return nil
 }
 
 func getSelectBatchSize(sv *settings.Values, ttl catpb.RowLevelTTL) int {
+	__antithesis_instrumentation__.Notify(628686)
 	if bs := ttl.SelectBatchSize; bs != 0 {
+		__antithesis_instrumentation__.Notify(628688)
 		return int(bs)
+	} else {
+		__antithesis_instrumentation__.Notify(628689)
 	}
+	__antithesis_instrumentation__.Notify(628687)
 	return int(defaultSelectBatchSize.Get(sv))
 }
 
 func getDeleteBatchSize(sv *settings.Values, ttl catpb.RowLevelTTL) int {
+	__antithesis_instrumentation__.Notify(628690)
 	if bs := ttl.DeleteBatchSize; bs != 0 {
+		__antithesis_instrumentation__.Notify(628692)
 		return int(bs)
+	} else {
+		__antithesis_instrumentation__.Notify(628693)
 	}
+	__antithesis_instrumentation__.Notify(628691)
 	return int(defaultDeleteBatchSize.Get(sv))
 }
 
 func getRangeConcurrency(sv *settings.Values, ttl catpb.RowLevelTTL) int {
+	__antithesis_instrumentation__.Notify(628694)
 	if rc := ttl.RangeConcurrency; rc != 0 {
+		__antithesis_instrumentation__.Notify(628696)
 		return int(rc)
+	} else {
+		__antithesis_instrumentation__.Notify(628697)
 	}
+	__antithesis_instrumentation__.Notify(628695)
 	return int(defaultRangeConcurrency.Get(sv))
 }
 
 func getDeleteRateLimit(sv *settings.Values, ttl catpb.RowLevelTTL) int64 {
+	__antithesis_instrumentation__.Notify(628698)
 	val := func() int64 {
+		__antithesis_instrumentation__.Notify(628701)
 		if bs := ttl.DeleteRateLimit; bs != 0 {
+			__antithesis_instrumentation__.Notify(628703)
 			return bs
+		} else {
+			__antithesis_instrumentation__.Notify(628704)
 		}
+		__antithesis_instrumentation__.Notify(628702)
 		return defaultDeleteRateLimit.Get(sv)
 	}()
-	// Put the maximum tokens possible if there is no rate limit.
+	__antithesis_instrumentation__.Notify(628699)
+
 	if val == 0 {
+		__antithesis_instrumentation__.Notify(628705)
 		return math.MaxInt64
+	} else {
+		__antithesis_instrumentation__.Notify(628706)
 	}
+	__antithesis_instrumentation__.Notify(628700)
 	return val
 }
 
@@ -523,11 +653,17 @@ func fetchStatistics(
 	metrics rowLevelTTLMetrics,
 	aostDuration time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(628707)
 	if err := func() error {
+		__antithesis_instrumentation__.Notify(628708)
 		aost, err := tree.MakeDTimestampTZ(timeutil.Now().Add(aostDuration), time.Microsecond)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(628711)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628712)
 		}
+		__antithesis_instrumentation__.Notify(628709)
 		for _, c := range []struct {
 			opName string
 			query  string
@@ -546,9 +682,8 @@ func fetchStatistics(
 				gauge:  metrics.TotalExpiredRows,
 			},
 		} {
-			// User a super low quality of service (lower than TTL low), as we don't
-			// really care if statistics gets left behind and prefer the TTL job to
-			// have priority.
+			__antithesis_instrumentation__.Notify(628713)
+
 			qosLevel := sessiondatapb.SystemLow
 			datums, err := execCfg.InternalExecutor.QueryRowEx(
 				ctx,
@@ -562,16 +697,28 @@ func fetchStatistics(
 				c.args...,
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(628715)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(628716)
 			}
+			__antithesis_instrumentation__.Notify(628714)
 			c.gauge.Update(int64(tree.MustBeDInt(datums[0])))
 		}
+		__antithesis_instrumentation__.Notify(628710)
 		return nil
 	}(); err != nil {
+		__antithesis_instrumentation__.Notify(628717)
 		if onStatisticsError := knobs.OnStatisticsError; onStatisticsError != nil {
+			__antithesis_instrumentation__.Notify(628719)
 			onStatisticsError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(628720)
 		}
+		__antithesis_instrumentation__.Notify(628718)
 		log.Warningf(ctx, "failed to get statistics for table id %d: %s", details.TableID, err)
+	} else {
+		__antithesis_instrumentation__.Notify(628721)
 	}
 }
 
@@ -591,14 +738,12 @@ func runTTLOnRange(
 	deleteRateLimiter *quotapool.RateLimiter,
 	aost tree.DTimestampTZ,
 ) error {
+	__antithesis_instrumentation__.Notify(628722)
 	metrics.NumActiveRanges.Inc(1)
 	defer metrics.NumActiveRanges.Dec(1)
 
 	ie := execCfg.InternalExecutor
 	db := execCfg.DB
-
-	// TODO(#76914): look at using a dist sql flow job, utilize any existing index
-	// on crdb_internal_expiration.
 
 	selectBuilder := makeSelectQueryBuilder(
 		details.TableID,
@@ -619,41 +764,57 @@ func runTTLOnRange(
 	)
 
 	for {
+		__antithesis_instrumentation__.Notify(628724)
 		if f := knobs.OnDeleteLoopStart; f != nil {
+			__antithesis_instrumentation__.Notify(628729)
 			if err := f(); err != nil {
+				__antithesis_instrumentation__.Notify(628730)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(628731)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(628732)
 		}
+		__antithesis_instrumentation__.Notify(628725)
 
-		// Check the job is enabled on every iteration.
 		if enabled := jobEnabled.Get(execCfg.SV()); !enabled {
+			__antithesis_instrumentation__.Notify(628733)
 			return errors.Newf(
 				"ttl jobs are currently disabled by CLUSTER SETTING %s",
 				jobEnabled.Key(),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(628734)
 		}
+		__antithesis_instrumentation__.Notify(628726)
 
-		// Step 1. Fetch some rows we want to delete using a historical
-		// SELECT query.
 		start := timeutil.Now()
 		expiredRowsPKs, err := selectBuilder.run(ctx, ie)
 		metrics.DeleteDuration.RecordValue(int64(timeutil.Since(start)))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(628735)
 			return errors.Wrapf(err, "error selecting rows to delete")
+		} else {
+			__antithesis_instrumentation__.Notify(628736)
 		}
+		__antithesis_instrumentation__.Notify(628727)
 		metrics.RowSelections.Inc(int64(len(expiredRowsPKs)))
 
-		// Step 2. Delete the rows which have expired.
-
 		for startRowIdx := 0; startRowIdx < len(expiredRowsPKs); startRowIdx += deleteBatchSize {
+			__antithesis_instrumentation__.Notify(628737)
 			until := startRowIdx + deleteBatchSize
 			if until > len(expiredRowsPKs) {
+				__antithesis_instrumentation__.Notify(628740)
 				until = len(expiredRowsPKs)
+			} else {
+				__antithesis_instrumentation__.Notify(628741)
 			}
+			__antithesis_instrumentation__.Notify(628738)
 			deleteBatch := expiredRowsPKs[startRowIdx:until]
 			if err := db.TxnWithSteppingEnabled(ctx, sessiondatapb.TTLLow, func(ctx context.Context, txn *kv.Txn) error {
-				// If we detected a schema change here, the delete will not succeed
-				// (the SELECT still will because of the AOST). Early exit here.
+				__antithesis_instrumentation__.Notify(628742)
+
 				desc, err := descriptors.GetImmutableTableByID(
 					ctx,
 					txn,
@@ -661,23 +822,39 @@ func runTTLOnRange(
 					tree.ObjectLookupFlagsWithRequired(),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(628747)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(628748)
 				}
+				__antithesis_instrumentation__.Notify(628743)
 				version := desc.GetVersion()
 				if mockVersion := knobs.MockDescriptorVersionDuringDelete; mockVersion != nil {
+					__antithesis_instrumentation__.Notify(628749)
 					version = *mockVersion
+				} else {
+					__antithesis_instrumentation__.Notify(628750)
 				}
+				__antithesis_instrumentation__.Notify(628744)
 				if version != tableVersion {
+					__antithesis_instrumentation__.Notify(628751)
 					return errors.Newf(
 						"table has had a schema change since the job has started at %s, aborting",
 						desc.GetModificationTime().GoTime().Format(time.RFC3339),
 					)
+				} else {
+					__antithesis_instrumentation__.Notify(628752)
 				}
+				__antithesis_instrumentation__.Notify(628745)
 
 				tokens, err := deleteRateLimiter.Acquire(ctx, int64(len(deleteBatch)))
 				if err != nil {
+					__antithesis_instrumentation__.Notify(628753)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(628754)
 				}
+				__antithesis_instrumentation__.Notify(628746)
 				defer tokens.Consume()
 
 				start := timeutil.Now()
@@ -685,74 +862,104 @@ func runTTLOnRange(
 				metrics.DeleteDuration.RecordValue(int64(timeutil.Since(start)))
 				return err
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(628755)
 				return errors.Wrapf(err, "error during row deletion")
+			} else {
+				__antithesis_instrumentation__.Notify(628756)
 			}
+			__antithesis_instrumentation__.Notify(628739)
 			metrics.RowDeletions.Inc(int64(len(deleteBatch)))
 		}
+		__antithesis_instrumentation__.Notify(628728)
 
-		// Step 3. Early exit if necessary.
-
-		// If we selected less than the select batch size, we have selected every
-		// row and so we end it here.
 		if len(expiredRowsPKs) < selectBatchSize {
+			__antithesis_instrumentation__.Notify(628757)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(628758)
 		}
 	}
+	__antithesis_instrumentation__.Notify(628723)
 	return nil
 }
 
-// keyToDatums translates a RKey on a range for a table to the appropriate datums.
 func keyToDatums(
 	key roachpb.RKey, codec keys.SQLCodec, pkTypes []*types.T, alloc *tree.DatumAlloc,
 ) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(628759)
 	rKey := key.AsRawKey()
 
-	// If any of these errors, that means we reached an "empty" key, which
-	// symbolizes the start or end of a range.
 	if _, _, err := codec.DecodeTablePrefix(rKey); err != nil {
-		return nil, nil //nolint:returnerrcheck
+		__antithesis_instrumentation__.Notify(628766)
+		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(628767)
 	}
+	__antithesis_instrumentation__.Notify(628760)
 	if _, _, _, err := codec.DecodeIndexPrefix(rKey); err != nil {
-		return nil, nil //nolint:returnerrcheck
+		__antithesis_instrumentation__.Notify(628768)
+		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(628769)
 	}
+	__antithesis_instrumentation__.Notify(628761)
 
-	// Decode the datums ourselves, instead of using rowenc.DecodeKeyVals.
-	// We cannot use rowenc.DecodeKeyVals because we may not have the entire PK
-	// as the key for the range (e.g. a PK (a, b) may only be split on (a)).
 	rKey, err := codec.StripTenantPrefix(key.AsRawKey())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628770)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(628771)
 	}
+	__antithesis_instrumentation__.Notify(628762)
 	rKey, _, _, err = rowenc.DecodePartialTableIDIndexID(key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(628772)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(628773)
 	}
+	__antithesis_instrumentation__.Notify(628763)
 	encDatums := make([]rowenc.EncDatum, 0, len(pkTypes))
-	for len(rKey) > 0 && len(encDatums) < len(pkTypes) {
+	for len(rKey) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(628774)
+		return len(encDatums) < len(pkTypes) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(628775)
 		i := len(encDatums)
-		// We currently assume all PRIMARY KEY columns are ascending, and block
-		// creation otherwise.
+
 		enc := descpb.DatumEncoding_ASCENDING_KEY
 		var val rowenc.EncDatum
 		val, rKey, err = rowenc.EncDatumFromBuffer(pkTypes[i], enc, rKey)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(628777)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(628778)
 		}
+		__antithesis_instrumentation__.Notify(628776)
 		encDatums = append(encDatums, val)
 	}
+	__antithesis_instrumentation__.Notify(628764)
 
 	datums := make(tree.Datums, len(encDatums))
 	for i, encDatum := range encDatums {
+		__antithesis_instrumentation__.Notify(628779)
 		if err := encDatum.EnsureDecoded(pkTypes[i], alloc); err != nil {
+			__antithesis_instrumentation__.Notify(628781)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(628782)
 		}
+		__antithesis_instrumentation__.Notify(628780)
 		datums[i] = encDatum.Datum
 	}
+	__antithesis_instrumentation__.Notify(628765)
 	return datums, nil
 }
 
-// OnFailOrCancel implements the jobs.Resumer interface.
 func (t rowLevelTTLResumer) OnFailOrCancel(ctx context.Context, execCtx interface{}) error {
+	__antithesis_instrumentation__.Notify(628783)
 	return nil
 }
 

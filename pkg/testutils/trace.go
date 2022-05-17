@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package testutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"regexp"
@@ -16,28 +8,34 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// MatchInOrder matches interprets the given slice of strings as a slice of
-// regular expressions and checks that they match, in order and without overlap,
-// against the given string. For example, if s=abcdefg and res=ab,cd,fg no error
-// is returned, whereas res=abc,cde would return a descriptive error about
-// failing to match cde.
 func MatchInOrder(s string, res ...string) error {
+	__antithesis_instrumentation__.Notify(647028)
 	sPos := 0
 	for i := range res {
+		__antithesis_instrumentation__.Notify(647030)
 		reStr := "(?ms)" + res[i]
 		re, err := regexp.Compile(reStr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(647033)
 			return errors.Wrapf(err, "regexp %d (%q) does not compile", i, reStr)
+		} else {
+			__antithesis_instrumentation__.Notify(647034)
 		}
+		__antithesis_instrumentation__.Notify(647031)
 		loc := re.FindStringIndex(s[sPos:])
 		if loc == nil {
-			// Not found.
+			__antithesis_instrumentation__.Notify(647035)
+
 			return errors.Errorf(
 				"unable to find regexp %d (%q) in remaining string:\n\n%s\n\nafter having matched:\n\n%s",
 				i, reStr, s[sPos:], s[:sPos],
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(647036)
 		}
+		__antithesis_instrumentation__.Notify(647032)
 		sPos += loc[1]
 	}
+	__antithesis_instrumentation__.Notify(647029)
 	return nil
 }

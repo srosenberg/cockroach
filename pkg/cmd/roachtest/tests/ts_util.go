@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,19 +14,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/httputil"
 )
 
-// tsQueryType represents the type of the time series query to retrieve. In
-// most cases, tests are verifying either the "total" or "rate" metrics, so
-// this enum type simplifies the API of tspb.Query.
 type tsQueryType int
 
 const (
-	// total indicates to query the total of the metric. Specifically,
-	// downsampler will be average, aggregator will be sum, and derivative will
-	// be none.
 	total tsQueryType = iota
-	// rate indicates to query the rate of change of the metric. Specifically,
-	// downsampler will be average, aggregator will be sum, and derivative will
-	// be non-negative derivative.
+
 	rate
 )
 
@@ -46,27 +30,36 @@ type tsQuery struct {
 func mustGetMetrics(
 	t test.Test, adminURL string, start, end time.Time, tsQueries []tsQuery,
 ) tspb.TimeSeriesQueryResponse {
+	__antithesis_instrumentation__.Notify(52108)
 	response, err := getMetrics(adminURL, start, end, tsQueries)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(52110)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(52111)
 	}
+	__antithesis_instrumentation__.Notify(52109)
 	return response
 }
 
 func getMetrics(
 	adminURL string, start, end time.Time, tsQueries []tsQuery,
 ) (tspb.TimeSeriesQueryResponse, error) {
+	__antithesis_instrumentation__.Notify(52112)
 	url := "http://" + adminURL + "/ts/query"
 	queries := make([]tspb.Query, len(tsQueries))
 	for i := 0; i < len(tsQueries); i++ {
+		__antithesis_instrumentation__.Notify(52114)
 		switch tsQueries[i].queryType {
 		case total:
+			__antithesis_instrumentation__.Notify(52115)
 			queries[i] = tspb.Query{
 				Name:             tsQueries[i].name,
 				Downsampler:      tspb.TimeSeriesQueryAggregator_AVG.Enum(),
 				SourceAggregator: tspb.TimeSeriesQueryAggregator_SUM.Enum(),
 			}
 		case rate:
+			__antithesis_instrumentation__.Notify(52116)
 			queries[i] = tspb.Query{
 				Name:             tsQueries[i].name,
 				Downsampler:      tspb.TimeSeriesQueryAggregator_AVG.Enum(),
@@ -74,15 +67,15 @@ func getMetrics(
 				Derivative:       tspb.TimeSeriesQueryDerivative_NON_NEGATIVE_DERIVATIVE.Enum(),
 			}
 		default:
+			__antithesis_instrumentation__.Notify(52117)
 			panic("unexpected")
 		}
 	}
+	__antithesis_instrumentation__.Notify(52113)
 	request := tspb.TimeSeriesQueryRequest{
 		StartNanos: start.UnixNano(),
 		EndNanos:   end.UnixNano(),
-		// Ask for one minute intervals. We can't just ask for the whole hour
-		// because the time series query system does not support downsampling
-		// offsets.
+
 		SampleNanos: (1 * time.Minute).Nanoseconds(),
 		Queries:     queries,
 	}
@@ -100,45 +93,56 @@ func verifyTxnPerSecond(
 	start, end time.Time,
 	txnTarget, maxPercentTimeUnderTarget float64,
 ) {
-	// Query needed information over the timespan of the query.
+	__antithesis_instrumentation__.Notify(52118)
+
 	adminUIAddrs, err := c.ExternalAdminUIAddr(ctx, t.L(), adminNode)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(52122)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(52123)
 	}
+	__antithesis_instrumentation__.Notify(52119)
 	adminURL := adminUIAddrs[0]
 	response := mustGetMetrics(t, adminURL, start, end, []tsQuery{
 		{name: "cr.node.txn.commits", queryType: rate},
 		{name: "cr.node.txn.commits", queryType: total},
 	})
 
-	// Drop the first two minutes of datapoints as a "ramp-up" period.
 	perMinute := response.Results[0].Datapoints[2:]
 	cumulative := response.Results[1].Datapoints[2:]
 
-	// Check average txns per second over the entire test was above the target.
 	totalTxns := cumulative[len(cumulative)-1].Value - cumulative[0].Value
 	avgTxnPerSec := totalTxns / float64(end.Sub(start)/time.Second)
 
 	if avgTxnPerSec < txnTarget {
+		__antithesis_instrumentation__.Notify(52124)
 		t.Fatalf("average txns per second %f was under target %f", avgTxnPerSec, txnTarget)
 	} else {
+		__antithesis_instrumentation__.Notify(52125)
 		t.L().Printf("average txns per second: %f", avgTxnPerSec)
 	}
+	__antithesis_instrumentation__.Notify(52120)
 
-	// Verify that less than the specified limit of each individual one minute
-	// period was underneath the target.
 	minutesBelowTarget := 0.0
 	for _, dp := range perMinute {
+		__antithesis_instrumentation__.Notify(52126)
 		if dp.Value < txnTarget {
+			__antithesis_instrumentation__.Notify(52127)
 			minutesBelowTarget++
+		} else {
+			__antithesis_instrumentation__.Notify(52128)
 		}
 	}
+	__antithesis_instrumentation__.Notify(52121)
 	if perc := minutesBelowTarget / float64(len(perMinute)); perc > maxPercentTimeUnderTarget {
+		__antithesis_instrumentation__.Notify(52129)
 		t.Fatalf(
 			"spent %f%% of time below target of %f txn/s, wanted no more than %f%%",
 			perc*100, txnTarget, maxPercentTimeUnderTarget*100,
 		)
 	} else {
+		__antithesis_instrumentation__.Notify(52130)
 		t.L().Printf("spent %f%% of time below target of %f txn/s", perc*100, txnTarget)
 	}
 }
@@ -151,24 +155,30 @@ func verifyLookupsPerSec(
 	start, end time.Time,
 	rangeLookupsTarget float64,
 ) {
-	// Query needed information over the timespan of the query.
+	__antithesis_instrumentation__.Notify(52131)
+
 	adminUIAddrs, err := c.ExternalAdminUIAddr(ctx, t.L(), adminNode)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(52133)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(52134)
 	}
+	__antithesis_instrumentation__.Notify(52132)
 	adminURL := adminUIAddrs[0]
 	response := mustGetMetrics(t, adminURL, start, end, []tsQuery{
 		{name: "cr.node.distsender.rangelookups", queryType: rate},
 	})
 
-	// Drop the first two minutes of datapoints as a "ramp-up" period.
 	perMinute := response.Results[0].Datapoints[2:]
 
-	// Verify that each individual one minute periods were below the target.
 	for _, dp := range perMinute {
+		__antithesis_instrumentation__.Notify(52135)
 		if dp.Value > rangeLookupsTarget {
+			__antithesis_instrumentation__.Notify(52136)
 			t.Fatalf("Found minute interval with %f lookup/sec above target of %f lookup/sec\n", dp.Value, rangeLookupsTarget)
 		} else {
+			__antithesis_instrumentation__.Notify(52137)
 			t.L().Printf("Found minute interval with %f lookup/sec\n", dp.Value)
 		}
 	}

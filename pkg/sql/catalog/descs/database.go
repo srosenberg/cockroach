@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,74 +15,101 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// GetMutableDatabaseByName returns a mutable database descriptor with
-// properties according to the provided lookup flags. RequireMutable is ignored.
 func (tc *Collection) GetMutableDatabaseByName(
 	ctx context.Context, txn *kv.Txn, name string, flags tree.DatabaseLookupFlags,
 ) (*dbdesc.Mutable, error) {
+	__antithesis_instrumentation__.Notify(264152)
 	flags.RequireMutable = true
 	desc, err := tc.getDatabaseByName(ctx, txn, name, flags)
-	if err != nil || desc == nil {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(264154)
+		return desc == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264155)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264156)
 	}
+	__antithesis_instrumentation__.Notify(264153)
 	return desc.(*dbdesc.Mutable), nil
 }
 
-// GetImmutableDatabaseByName returns an immutable database descriptor with
-// properties according to the provided lookup flags. RequireMutable is ignored.
 func (tc *Collection) GetImmutableDatabaseByName(
 	ctx context.Context, txn *kv.Txn, name string, flags tree.DatabaseLookupFlags,
 ) (catalog.DatabaseDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264157)
 	flags.RequireMutable = false
 	return tc.getDatabaseByName(ctx, txn, name, flags)
 }
 
-// GetDatabaseDesc implements the Accessor interface.
-//
-// TODO(ajwerner): This exists to support the SchemaResolver interface and
-// should be removed or adjusted.
 func (tc *Collection) GetDatabaseDesc(
 	ctx context.Context, txn *kv.Txn, name string, flags tree.DatabaseLookupFlags,
 ) (desc catalog.DatabaseDescriptor, err error) {
+	__antithesis_instrumentation__.Notify(264158)
 	return tc.getDatabaseByName(ctx, txn, name, flags)
 }
 
-// getDatabaseByName returns a database descriptor with properties according to
-// the provided lookup flags.
 func (tc *Collection) getDatabaseByName(
 	ctx context.Context, txn *kv.Txn, name string, flags tree.DatabaseLookupFlags,
 ) (catalog.DatabaseDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264159)
 	const alwaysLookupLeasedPublicSchema = false
 	found, desc, err := tc.getByName(
 		ctx, txn, nil, nil, name, flags.AvoidLeased, flags.RequireMutable, flags.AvoidSynthetic,
 		alwaysLookupLeasedPublicSchema,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264163)
 		return nil, err
-	} else if !found {
-		if flags.Required {
-			return nil, sqlerrors.NewUndefinedDatabaseError(name)
+	} else {
+		__antithesis_instrumentation__.Notify(264164)
+		if !found {
+			__antithesis_instrumentation__.Notify(264165)
+			if flags.Required {
+				__antithesis_instrumentation__.Notify(264167)
+				return nil, sqlerrors.NewUndefinedDatabaseError(name)
+			} else {
+				__antithesis_instrumentation__.Notify(264168)
+			}
+			__antithesis_instrumentation__.Notify(264166)
+			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264169)
 		}
-		return nil, nil
 	}
+	__antithesis_instrumentation__.Notify(264160)
 	db, ok := desc.(catalog.DatabaseDescriptor)
 	if !ok {
+		__antithesis_instrumentation__.Notify(264170)
 		if flags.Required {
+			__antithesis_instrumentation__.Notify(264172)
 			return nil, sqlerrors.NewUndefinedDatabaseError(name)
+		} else {
+			__antithesis_instrumentation__.Notify(264173)
 		}
+		__antithesis_instrumentation__.Notify(264171)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264174)
 	}
-	if dropped, err := filterDescriptorState(db, flags.Required, flags); err != nil || dropped {
+	__antithesis_instrumentation__.Notify(264161)
+	if dropped, err := filterDescriptorState(db, flags.Required, flags); err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(264175)
+		return dropped == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264176)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264177)
 	}
+	__antithesis_instrumentation__.Notify(264162)
 	return db, nil
 }
 
-// GetImmutableDatabaseByID returns an immutable database descriptor with
-// properties according to the provided lookup flags. RequireMutable is ignored.
 func (tc *Collection) GetImmutableDatabaseByID(
 	ctx context.Context, txn *kv.Txn, dbID descpb.ID, flags tree.DatabaseLookupFlags,
 ) (bool, catalog.DatabaseDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264178)
 	flags.RequireMutable = false
 	return tc.getDatabaseByID(ctx, txn, dbID, flags)
 }
@@ -98,19 +117,36 @@ func (tc *Collection) GetImmutableDatabaseByID(
 func (tc *Collection) getDatabaseByID(
 	ctx context.Context, txn *kv.Txn, dbID descpb.ID, flags tree.DatabaseLookupFlags,
 ) (bool, catalog.DatabaseDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264179)
 	descs, err := tc.getDescriptorsByID(ctx, txn, flags, dbID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264182)
 		if errors.Is(err, catalog.ErrDescriptorNotFound) {
+			__antithesis_instrumentation__.Notify(264184)
 			if flags.Required {
+				__antithesis_instrumentation__.Notify(264186)
 				return false, nil, sqlerrors.NewUndefinedDatabaseError(fmt.Sprintf("[%d]", dbID))
+			} else {
+				__antithesis_instrumentation__.Notify(264187)
 			}
+			__antithesis_instrumentation__.Notify(264185)
 			return false, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(264188)
 		}
+		__antithesis_instrumentation__.Notify(264183)
 		return false, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264189)
 	}
+	__antithesis_instrumentation__.Notify(264180)
 	db, ok := descs[0].(catalog.DatabaseDescriptor)
 	if !ok {
+		__antithesis_instrumentation__.Notify(264190)
 		return false, nil, sqlerrors.NewUndefinedDatabaseError(fmt.Sprintf("[%d]", dbID))
+	} else {
+		__antithesis_instrumentation__.Notify(264191)
 	}
+	__antithesis_instrumentation__.Notify(264181)
 	return true, db, nil
 }

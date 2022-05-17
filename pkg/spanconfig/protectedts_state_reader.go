@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfig
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,21 +10,16 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 )
 
-// ProtectedTimestampStateReader provides a target specific view of the
-// protected timestamp records stored in the system table.
 type ProtectedTimestampStateReader struct {
 	schemaObjectProtections map[descpb.ID][]roachpb.ProtectionPolicy
 	tenantProtections       []TenantProtectedTimestamps
 	clusterProtections      []roachpb.ProtectionPolicy
 }
 
-// NewProtectedTimestampStateReader returns an instance of a
-// ProtectedTimestampStateReader that can be used to fetch target specific
-// protected timestamp records given the supplied ptpb.State. The ptpb.State is
-// the transactional state of the `system.protected_ts_records` table.
 func NewProtectedTimestampStateReader(
 	_ context.Context, ptsState ptpb.State,
 ) *ProtectedTimestampStateReader {
+	__antithesis_instrumentation__.Notify(240256)
 	reader := &ProtectedTimestampStateReader{
 		schemaObjectProtections: make(map[descpb.ID][]roachpb.ProtectionPolicy),
 		tenantProtections:       make([]TenantProtectedTimestamps, 0),
@@ -42,86 +29,95 @@ func NewProtectedTimestampStateReader(
 	return reader
 }
 
-// GetProtectionPoliciesForCluster returns all the protected timestamps that
-// apply to the entire cluster's keyspace.
 func (p *ProtectedTimestampStateReader) GetProtectionPoliciesForCluster() []roachpb.ProtectionPolicy {
+	__antithesis_instrumentation__.Notify(240257)
 	return p.clusterProtections
 }
 
-// TenantProtectedTimestamps represents all the protections that apply to a
-// tenant's keyspace.
 type TenantProtectedTimestamps struct {
 	Protections []roachpb.ProtectionPolicy
 	TenantID    roachpb.TenantID
 }
 
-// GetTenantProtections returns the ProtectionPolicies that apply to this tenant.
 func (t *TenantProtectedTimestamps) GetTenantProtections() []roachpb.ProtectionPolicy {
+	__antithesis_instrumentation__.Notify(240258)
 	return t.Protections
 }
 
-// GetTenantID returns the tenant ID of the tenant that the protected timestamp
-// records target.
 func (t *TenantProtectedTimestamps) GetTenantID() roachpb.TenantID {
+	__antithesis_instrumentation__.Notify(240259)
 	return t.TenantID
 }
 
-// GetProtectionPoliciesForTenants returns all the protected timestamps that
-// apply to a particular tenant's keyspace. It returns this for all tenants that
-// have protected timestamp records.
 func (p *ProtectedTimestampStateReader) GetProtectionPoliciesForTenants() []TenantProtectedTimestamps {
+	__antithesis_instrumentation__.Notify(240260)
 	return p.tenantProtections
 }
 
-// GetProtectionsForTenant returns all the protected timestamps that
-// apply to a particular tenant's keyspace.
 func (p *ProtectedTimestampStateReader) GetProtectionsForTenant(
 	tenantID roachpb.TenantID,
 ) []roachpb.ProtectionPolicy {
+	__antithesis_instrumentation__.Notify(240261)
 	protectionsOnTenant := make([]roachpb.ProtectionPolicy, 0)
 	for _, tp := range p.tenantProtections {
+		__antithesis_instrumentation__.Notify(240263)
 		if tp.TenantID.Equal(tenantID) {
+			__antithesis_instrumentation__.Notify(240264)
 			protectionsOnTenant = append(protectionsOnTenant, tp.Protections...)
+		} else {
+			__antithesis_instrumentation__.Notify(240265)
 		}
 	}
+	__antithesis_instrumentation__.Notify(240262)
 	return protectionsOnTenant
 }
 
-// GetProtectionPoliciesForSchemaObject returns all the protected timestamps
-// that apply to the descID's keyspan.
 func (p *ProtectedTimestampStateReader) GetProtectionPoliciesForSchemaObject(
 	descID descpb.ID,
 ) []roachpb.ProtectionPolicy {
+	__antithesis_instrumentation__.Notify(240266)
 	return p.schemaObjectProtections[descID]
 }
 
 func (p *ProtectedTimestampStateReader) loadProtectedTimestampRecords(ptsState ptpb.State) {
+	__antithesis_instrumentation__.Notify(240267)
 	tenantProtections := make(map[roachpb.TenantID][]roachpb.ProtectionPolicy)
 	for _, record := range ptsState.Records {
-		// TODO(adityamaru): We should never see this post 22.1 since all records
-		// will be written with a target.
+		__antithesis_instrumentation__.Notify(240269)
+
 		if record.Target == nil {
+			__antithesis_instrumentation__.Notify(240271)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(240272)
 		}
+		__antithesis_instrumentation__.Notify(240270)
 		protectionPolicy := roachpb.ProtectionPolicy{
 			ProtectedTimestamp:         record.Timestamp,
 			IgnoreIfExcludedFromBackup: record.Target.IgnoreIfExcludedFromBackup,
 		}
 		switch t := record.Target.GetUnion().(type) {
 		case *ptpb.Target_Cluster:
+			__antithesis_instrumentation__.Notify(240273)
 			p.clusterProtections = append(p.clusterProtections, protectionPolicy)
 		case *ptpb.Target_Tenants:
+			__antithesis_instrumentation__.Notify(240274)
 			for _, tenID := range t.Tenants.IDs {
+				__antithesis_instrumentation__.Notify(240276)
 				tenantProtections[tenID] = append(tenantProtections[tenID], protectionPolicy)
 			}
 		case *ptpb.Target_SchemaObjects:
+			__antithesis_instrumentation__.Notify(240275)
 			for _, descID := range t.SchemaObjects.IDs {
+				__antithesis_instrumentation__.Notify(240277)
 				p.schemaObjectProtections[descID] = append(p.schemaObjectProtections[descID], protectionPolicy)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(240268)
 
 	for tenID, tenantProtections := range tenantProtections {
+		__antithesis_instrumentation__.Notify(240278)
 		p.tenantProtections = append(p.tenantProtections,
 			TenantProtectedTimestamps{TenantID: tenID, Protections: tenantProtections})
 	}

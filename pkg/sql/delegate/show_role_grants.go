@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -20,10 +12,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// ShowRoleGrants returns role membership details for the specified roles and grantees.
-// Privileges: SELECT on system.role_members.
-//   Notes: postgres does not have a SHOW GRANTS ON ROLES statement.
 func (d *delegator) delegateShowRoleGrants(n *tree.ShowRoleGrants) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465740)
 	const selectQuery = `
 SELECT role AS role_name,
        member,
@@ -34,37 +24,60 @@ SELECT role AS role_name,
 	query.WriteString(selectQuery)
 
 	if n.Roles != nil {
+		__antithesis_instrumentation__.Notify(465743)
 		var roles []string
 		sqlUsernames, err := n.Roles.ToSQLUsernames(d.evalCtx.SessionData(), security.UsernameValidation)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(465746)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(465747)
 		}
+		__antithesis_instrumentation__.Notify(465744)
 		for _, r := range sqlUsernames {
+			__antithesis_instrumentation__.Notify(465748)
 			roles = append(roles, lexbase.EscapeSQLString(r.Normalized()))
 		}
+		__antithesis_instrumentation__.Notify(465745)
 		fmt.Fprintf(&query, ` WHERE "role" IN (%s)`, strings.Join(roles, ","))
+	} else {
+		__antithesis_instrumentation__.Notify(465749)
 	}
+	__antithesis_instrumentation__.Notify(465741)
 
 	if n.Grantees != nil {
+		__antithesis_instrumentation__.Notify(465750)
 		if n.Roles == nil {
-			// No roles specified: we need a WHERE clause.
+			__antithesis_instrumentation__.Notify(465754)
+
 			query.WriteString(" WHERE ")
 		} else {
-			// We have a WHERE clause for roles.
+			__antithesis_instrumentation__.Notify(465755)
+
 			query.WriteString(" AND ")
 		}
+		__antithesis_instrumentation__.Notify(465751)
 
 		var grantees []string
 		granteeSQLUsernames, err := n.Grantees.ToSQLUsernames(d.evalCtx.SessionData(), security.UsernameValidation)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(465756)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(465757)
 		}
+		__antithesis_instrumentation__.Notify(465752)
 		for _, g := range granteeSQLUsernames {
+			__antithesis_instrumentation__.Notify(465758)
 			grantees = append(grantees, lexbase.EscapeSQLString(g.Normalized()))
 		}
+		__antithesis_instrumentation__.Notify(465753)
 		fmt.Fprintf(&query, ` member IN (%s)`, strings.Join(grantees, ","))
 
+	} else {
+		__antithesis_instrumentation__.Notify(465759)
 	}
+	__antithesis_instrumentation__.Notify(465742)
 
 	return parse(query.String())
 }

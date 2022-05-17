@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,84 +22,116 @@ type refreshMaterializedViewNode struct {
 func (p *planner) RefreshMaterializedView(
 	ctx context.Context, n *tree.RefreshMaterializedView,
 ) (planNode, error) {
+	__antithesis_instrumentation__.Notify(564986)
 	if !p.extendedEvalCtx.TxnIsSingleStmt {
+		__antithesis_instrumentation__.Notify(564994)
 		return nil, pgerror.Newf(pgcode.InvalidTransactionState, "cannot refresh view in a multi-statement transaction")
+	} else {
+		__antithesis_instrumentation__.Notify(564995)
 	}
-	_, desc, err := p.ResolveMutableTableDescriptorEx(ctx, n.Name, true /* required */, tree.ResolveRequireViewDesc)
+	__antithesis_instrumentation__.Notify(564987)
+	_, desc, err := p.ResolveMutableTableDescriptorEx(ctx, n.Name, true, tree.ResolveRequireViewDesc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(564996)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(564997)
 	}
+	__antithesis_instrumentation__.Notify(564988)
 	if !desc.MaterializedView() {
+		__antithesis_instrumentation__.Notify(564998)
 		return nil, pgerror.Newf(pgcode.WrongObjectType, "%q is not a materialized view", desc.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(564999)
 	}
-	// TODO (rohany): Not sure if this is a real restriction, but let's start with
-	//  it to be safe.
+	__antithesis_instrumentation__.Notify(564989)
+
 	for i := range desc.Mutations {
+		__antithesis_instrumentation__.Notify(565000)
 		mut := &desc.Mutations[i]
 		if mut.GetMaterializedViewRefresh() != nil {
+			__antithesis_instrumentation__.Notify(565001)
 			return nil, pgerror.Newf(pgcode.ObjectNotInPrerequisiteState, "view is already being refreshed")
+		} else {
+			__antithesis_instrumentation__.Notify(565002)
 		}
 	}
+	__antithesis_instrumentation__.Notify(564990)
 
-	// Only the owner or an admin (superuser) can refresh the view.
 	hasAdminRole, err := p.HasAdminRole(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(565003)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(565004)
 	}
+	__antithesis_instrumentation__.Notify(564991)
 
 	hasOwnership, err := p.HasOwnership(ctx, desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(565005)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(565006)
 	}
+	__antithesis_instrumentation__.Notify(564992)
 
-	if !(hasOwnership || hasAdminRole) {
+	if !(hasOwnership || func() bool {
+		__antithesis_instrumentation__.Notify(565007)
+		return hasAdminRole == true
+	}() == true) {
+		__antithesis_instrumentation__.Notify(565008)
 		return nil, pgerror.Newf(
 			pgcode.InsufficientPrivilege,
 			"must be owner of materialized view %s",
 			desc.Name,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(565009)
 	}
+	__antithesis_instrumentation__.Notify(564993)
 
 	return &refreshMaterializedViewNode{n: n, desc: desc}, nil
 }
 
 func (n *refreshMaterializedViewNode) startExec(params runParams) error {
-	// We refresh a materialized view by creating a new set of indexes to write
-	// the result of the view query into. The existing set of indexes will remain
-	// present and readable so that reads of the view during the refresh operation
-	// will return consistent data. The schema change process will backfill the
-	// results of the view query into the new set of indexes, and then change the
-	// set of indexes over to the new set of indexes atomically.
+	__antithesis_instrumentation__.Notify(565010)
 
 	telemetry.Inc(n.n.TelemetryCounter())
 
-	// Inform the user that CONCURRENTLY is not needed.
 	if n.n.Concurrently {
+		__antithesis_instrumentation__.Notify(565015)
 		params.p.BufferClientNotice(
 			params.ctx,
 			pgnotice.Newf("CONCURRENTLY is not required as views are refreshed concurrently"),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(565016)
 	}
+	__antithesis_instrumentation__.Notify(565011)
 
-	// Prepare the new set of indexes by cloning all existing indexes on the view.
 	newPrimaryIndex := n.desc.GetPrimaryIndex().IndexDescDeepCopy()
 	newIndexes := make([]descpb.IndexDescriptor, len(n.desc.PublicNonPrimaryIndexes()))
 	for i, idx := range n.desc.PublicNonPrimaryIndexes() {
+		__antithesis_instrumentation__.Notify(565017)
 		newIndexes[i] = idx.IndexDescDeepCopy()
 	}
+	__antithesis_instrumentation__.Notify(565012)
 
-	// Reset and allocate new IDs for the new indexes.
 	getID := func() descpb.IndexID {
+		__antithesis_instrumentation__.Notify(565018)
 		res := n.desc.NextIndexID
 		n.desc.NextIndexID++
 		return res
 	}
+	__antithesis_instrumentation__.Notify(565013)
 	newPrimaryIndex.ID = getID()
 	for i := range newIndexes {
+		__antithesis_instrumentation__.Notify(565019)
 		newIndexes[i].ID = getID()
 	}
+	__antithesis_instrumentation__.Notify(565014)
 
-	// Queue the refresh mutation.
 	n.desc.AddMaterializedViewRefreshMutation(&descpb.MaterializedViewRefresh{
 		NewPrimaryIndex: newPrimaryIndex,
 		NewIndexes:      newIndexes,
@@ -123,7 +147,17 @@ func (n *refreshMaterializedViewNode) startExec(params runParams) error {
 	)
 }
 
-func (n *refreshMaterializedViewNode) Next(params runParams) (bool, error) { return false, nil }
-func (n *refreshMaterializedViewNode) Values() tree.Datums                 { return tree.Datums{} }
-func (n *refreshMaterializedViewNode) Close(ctx context.Context)           {}
-func (n *refreshMaterializedViewNode) ReadingOwnWrites()                   {}
+func (n *refreshMaterializedViewNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(565020)
+	return false, nil
+}
+func (n *refreshMaterializedViewNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(565021)
+	return tree.Datums{}
+}
+func (n *refreshMaterializedViewNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(565022)
+}
+func (n *refreshMaterializedViewNode) ReadingOwnWrites() {
+	__antithesis_instrumentation__.Notify(565023)
+}

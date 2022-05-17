@@ -1,17 +1,9 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package geoprojbase is a minimal dependency package that contains
 // basic metadata and data structures for SRIDs and their CRS
 // transformations.
 package geoprojbase
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -24,34 +16,32 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Proj4Text is the text representation of a PROJ4 transformation.
 type Proj4Text struct {
 	cStr []byte
 }
 
-// MakeProj4Text returns a new Proj4Text with spec based on the given string.
 func MakeProj4Text(str string) Proj4Text {
+	__antithesis_instrumentation__.Notify(64064)
 	return Proj4Text{
 		cStr: []byte(str + "\u0000"),
 	}
 }
 
-// String returns the string representation of the given proj text.
 func (p *Proj4Text) String() string {
+	__antithesis_instrumentation__.Notify(64065)
 	return string(p.cStr[:len(p.cStr)-1])
 }
 
-// Bytes returns the raw bytes for the given proj text.
 func (p *Proj4Text) Bytes() []byte {
+	__antithesis_instrumentation__.Notify(64066)
 	return p.cStr
 }
 
-// Equal returns whether the two Proj4Texts are equal.
 func (p *Proj4Text) Equal(o Proj4Text) bool {
+	__antithesis_instrumentation__.Notify(64067)
 	return bytes.Equal(p.cStr, o.cStr)
 }
 
-// Bounds represents the projected or lat/lng bounds.
 type Bounds struct {
 	MinX float64
 	MaxX float64
@@ -59,65 +49,69 @@ type Bounds struct {
 	MaxY float64
 }
 
-// ProjInfo is a struct containing metadata related to a given SRID.
 type ProjInfo struct {
-	// SRID is the SRID of the projection.
 	SRID geopb.SRID
-	// AuthName is the authority who has provided this projection (e.g. ESRI, EPSG).
+
 	AuthName string
-	// AuthSRID is the SRID the given AuthName interprets the SRID as.
+
 	AuthSRID int
-	// SRText is the WKT representation of the projection.
+
 	SRText string
-	// Proj4Text is the PROJ4 text representation of the projection.
+
 	Proj4Text Proj4Text
-	// Bounds defines the bounds (projected or lat/lng) of the given coordinate system.
+
 	Bounds Bounds
 
-	// Denormalized fields.
-
-	// IsLatLng stores whether the projection is a LatLng based projection (denormalized from above)
 	IsLatLng bool
-	// The spheroid represented by the SRID.
+
 	Spheroid *geographiclib.Spheroid
 }
 
-// ErrProjectionNotFound indicates a project was not found.
 var ErrProjectionNotFound error = errors.Newf("projection not found")
 
-// Projection returns the ProjInfo for the given SRID, as well as an
-// error if the projection does not exist.
 func Projection(srid geopb.SRID) (ProjInfo, error) {
+	__antithesis_instrumentation__.Notify(64068)
 	projections := getProjections()
 	p, exists := projections[srid]
 	if !exists {
+		__antithesis_instrumentation__.Notify(64070)
 		return ProjInfo{}, errors.Mark(
 			pgerror.Newf(pgcode.InvalidParameterValue, "projection for SRID %d does not exist", srid),
 			ErrProjectionNotFound,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(64071)
 	}
+	__antithesis_instrumentation__.Notify(64069)
 	return p, nil
 }
 
-// MustProjection returns the ProjInfo for the given SRID, panicking if the
-// projection does not exist.
 func MustProjection(srid geopb.SRID) ProjInfo {
+	__antithesis_instrumentation__.Notify(64072)
 	ret, err := Projection(srid)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(64074)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(64075)
 	}
+	__antithesis_instrumentation__.Notify(64073)
 	return ret
 }
 
-// AllProjections returns a sorted list of all projections.
 func AllProjections() []ProjInfo {
+	__antithesis_instrumentation__.Notify(64076)
 	projections := getProjections()
 	ret := make([]ProjInfo, 0, len(projections))
 	for _, p := range projections {
+		__antithesis_instrumentation__.Notify(64079)
 		ret = append(ret, p)
 	}
+	__antithesis_instrumentation__.Notify(64077)
 	sort.Slice(ret, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(64080)
 		return ret[i].SRID < ret[j].SRID
 	})
+	__antithesis_instrumentation__.Notify(64078)
 	return ret
 }

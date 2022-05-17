@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -28,37 +20,58 @@ var showEstimatedRowCountClusterSetting = settings.RegisterBoolSetting(
 	true,
 )
 
-// delegateShowTables implements SHOW TABLES which returns all the tables.
-// Privileges: None.
-//   Notes: postgres does not have a SHOW TABLES statement.
-//          mysql only returns tables you have privileges on.
 func (d *delegator) delegateShowTables(n *tree.ShowTables) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465841)
 	flags := cat.Flags{AvoidDescriptorCaches: true}
 	_, name, err := d.catalog.ResolveSchema(d.ctx, flags, &n.ObjectNamePrefix)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465847)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465848)
 	}
-	// If we're resolved a one-part name into <db>.public (which is the behavior
-	// of ResolveSchema, not for any obviously good reason), rework the resolved
-	// name to have an explicit catalog but no explicit schema. This would arise
-	// when doing SHOW TABLES FROM <db>. Without this logic, we would not show the
-	// tables from other schemas than public.
-	if name.ExplicitSchema && name.ExplicitCatalog && name.SchemaName == tree.PublicSchemaName &&
-		n.ExplicitSchema && !n.ExplicitCatalog && n.SchemaName == name.CatalogName {
+	__antithesis_instrumentation__.Notify(465842)
+
+	if name.ExplicitSchema && func() bool {
+		__antithesis_instrumentation__.Notify(465849)
+		return name.ExplicitCatalog == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(465850)
+		return name.SchemaName == tree.PublicSchemaName == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(465851)
+		return n.ExplicitSchema == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(465852)
+		return !n.ExplicitCatalog == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(465853)
+		return n.SchemaName == name.CatalogName == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(465854)
 		name.SchemaName, name.ExplicitSchema = "", false
+	} else {
+		__antithesis_instrumentation__.Notify(465855)
 	}
+	__antithesis_instrumentation__.Notify(465843)
 	var schemaClause string
 	if name.ExplicitSchema {
+		__antithesis_instrumentation__.Notify(465856)
 		schema := lexbase.EscapeSQLString(name.Schema())
 		if name.Schema() == catconstants.PgTempSchemaName {
+			__antithesis_instrumentation__.Notify(465858)
 			schema = lexbase.EscapeSQLString(d.evalCtx.SessionData().SearchPath.GetTemporarySchemaName())
+		} else {
+			__antithesis_instrumentation__.Notify(465859)
 		}
+		__antithesis_instrumentation__.Notify(465857)
 		schemaClause = fmt.Sprintf("AND ns.nspname = %s", schema)
 	} else {
-		// These must be custom defined until the sql <-> sql/delegate cyclic dependency
-		// is resolved. When we have that, we should read the names off "virtualSchemas" instead.
+		__antithesis_instrumentation__.Notify(465860)
+
 		schemaClause = "AND ns.nspname NOT IN ('information_schema', 'pg_catalog', 'crdb_internal', 'pg_extension')"
 	}
+	__antithesis_instrumentation__.Notify(465844)
 
 	const getTablesQuery = `
 SELECT ns.nspname AS schema_name,
@@ -85,21 +98,29 @@ ORDER BY schema_name, table_name
 	var estimatedRowCount string
 	var estimatedRowCountJoin string
 	if showEstimatedRowCountClusterSetting.Get(&d.evalCtx.Settings.SV) {
+		__antithesis_instrumentation__.Notify(465861)
 		estimatedRowCount = "s.estimated_row_count AS estimated_row_count, "
 		estimatedRowCountJoin = fmt.Sprintf(
 			`LEFT JOIN %[1]s.crdb_internal.table_row_statistics AS s on (s.table_id = pc.oid::INT8)`,
 			&name.CatalogName,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(465862)
 	}
+	__antithesis_instrumentation__.Notify(465845)
 	var descJoin string
 	var comment string
 	if n.WithComment {
+		__antithesis_instrumentation__.Notify(465863)
 		descJoin = fmt.Sprintf(
 			`LEFT JOIN %s.pg_catalog.pg_description AS pd ON (pc.oid = pd.objoid AND pd.objsubid = 0)`,
 			&name.CatalogName,
 		)
 		comment = `, COALESCE(pd.description, '') AS comment`
+	} else {
+		__antithesis_instrumentation__.Notify(465864)
 	}
+	__antithesis_instrumentation__.Notify(465846)
 	query := fmt.Sprintf(
 		getTablesQuery,
 		&name.CatalogName,

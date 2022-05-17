@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -23,27 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 )
 
-// CheckSSTConflicts iterates over an SST and a Reader in lockstep and errors
-// out if it finds any conflicts. This includes intents and existing keys with a
-// timestamp at or above the SST key timestamp.
-//
-// If disallowShadowingBelow is non-empty, it also errors for any existing live
-// key at the SST key timestamp, but allows shadowing an existing key if its
-// timestamp is above the given timestamp and the values are equal. See comment
-// on AddSSTableRequest.DisallowShadowingBelow for details.
-//
-// If disallowShadowing is true, it also errors for any existing live key at the
-// SST key timestamp, and ignores entries that exactly match an existing entry
-// (key/value/timestamp), for backwards compatibility. If disallowShadowingBelow
-// is non-empty, disallowShadowing is ignored.
-//
-// The given SST and reader cannot contain intents or inline values (i.e. zero
-// timestamps), nor tombstones (i.e. empty values), but this is only checked for
-// keys that exist in both sides, for performance.
-//
-// The returned MVCC statistics is a delta between the SST-only statistics and
-// their effect when applied, which when added to the SST statistics will adjust
-// them for existing keys and values.
 func CheckSSTConflicts(
 	ctx context.Context,
 	sst []byte,
@@ -53,6 +24,7 @@ func CheckSSTConflicts(
 	disallowShadowingBelow hlc.Timestamp,
 	maxIntents int64,
 ) (enginepb.MVCCStats, error) {
+	__antithesis_instrumentation__.Notify(643689)
 	var statsDiff enginepb.MVCCStats
 	var intents []roachpb.Intent
 
@@ -62,95 +34,147 @@ func CheckSSTConflicts(
 
 	sstIter, err := NewMemSSTIterator(sst, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(643695)
 		return enginepb.MVCCStats{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(643696)
 	}
+	__antithesis_instrumentation__.Notify(643690)
 	defer sstIter.Close()
 	sstIter.SeekGE(start)
 
 	extOK, extErr := extIter.Valid()
 	sstOK, sstErr := sstIter.Valid()
-	for extErr == nil && sstErr == nil && extOK && sstOK {
+	for extErr == nil && func() bool {
+		__antithesis_instrumentation__.Notify(643697)
+		return sstErr == nil == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(643698)
+		return extOK == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(643699)
+		return sstOK == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(643700)
 		if err := ctx.Err(); err != nil {
+			__antithesis_instrumentation__.Notify(643711)
 			return enginepb.MVCCStats{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(643712)
 		}
+		__antithesis_instrumentation__.Notify(643701)
 
 		extKey, extValue := extIter.UnsafeKey(), extIter.UnsafeValue()
 		sstKey, sstValue := sstIter.UnsafeKey(), sstIter.UnsafeValue()
 
-		// Keep seeking the iterators until both keys are equal.
 		if cmp := bytes.Compare(extKey.Key, sstKey.Key); cmp < 0 {
+			__antithesis_instrumentation__.Notify(643713)
 			extIter.SeekGE(MVCCKey{Key: sstKey.Key})
 			extOK, extErr = extIter.Valid()
 			continue
-		} else if cmp > 0 {
-			sstIter.SeekGE(MVCCKey{Key: extKey.Key})
-			sstOK, sstErr = sstIter.Valid()
-			continue
+		} else {
+			__antithesis_instrumentation__.Notify(643714)
+			if cmp > 0 {
+				__antithesis_instrumentation__.Notify(643715)
+				sstIter.SeekGE(MVCCKey{Key: extKey.Key})
+				sstOK, sstErr = sstIter.Valid()
+				continue
+			} else {
+				__antithesis_instrumentation__.Notify(643716)
+			}
 		}
+		__antithesis_instrumentation__.Notify(643702)
 
-		// Make sure both keys are proper committed MVCC keys. Note that this is
-		// only checked when the key exists both in the SST and existing data, it is
-		// not an exhaustive check of the SST.
 		if !sstKey.IsValue() {
+			__antithesis_instrumentation__.Notify(643717)
 			return enginepb.MVCCStats{}, errors.New("SST keys must have timestamps")
+		} else {
+			__antithesis_instrumentation__.Notify(643718)
 		}
+		__antithesis_instrumentation__.Notify(643703)
 		if len(sstValue) == 0 {
+			__antithesis_instrumentation__.Notify(643719)
 			return enginepb.MVCCStats{}, errors.New("SST values cannot be tombstones")
+		} else {
+			__antithesis_instrumentation__.Notify(643720)
 		}
+		__antithesis_instrumentation__.Notify(643704)
 		if !extKey.IsValue() {
+			__antithesis_instrumentation__.Notify(643721)
 			var mvccMeta enginepb.MVCCMetadata
 			if err = extIter.ValueProto(&mvccMeta); err != nil {
+				__antithesis_instrumentation__.Notify(643723)
 				return enginepb.MVCCStats{}, err
-			}
-			if len(mvccMeta.RawBytes) > 0 {
-				return enginepb.MVCCStats{}, errors.New("inline values are unsupported")
-			} else if mvccMeta.Txn == nil {
-				return enginepb.MVCCStats{}, errors.New("found intent without transaction")
 			} else {
-				// If we encounter a write intent, keep looking for additional intents
-				// in order to return a large batch for intent resolution. The caller
-				// will likely resolve the returned intents and retry the call, which
-				// would be quadratic, so this significantly reduces the overall number
-				// of scans.
-				intents = append(intents, roachpb.MakeIntent(mvccMeta.Txn, extIter.Key().Key))
-				if int64(len(intents)) >= maxIntents {
-					return enginepb.MVCCStats{}, &roachpb.WriteIntentError{Intents: intents}
-				}
-				sstIter.NextKey()
-				sstOK, sstErr = sstIter.Valid()
-				if sstOK {
-					extIter.SeekGE(MVCCKey{Key: sstIter.UnsafeKey().Key})
-				}
-				extOK, extErr = extIter.Valid()
-				continue
+				__antithesis_instrumentation__.Notify(643724)
 			}
-		}
+			__antithesis_instrumentation__.Notify(643722)
+			if len(mvccMeta.RawBytes) > 0 {
+				__antithesis_instrumentation__.Notify(643725)
+				return enginepb.MVCCStats{}, errors.New("inline values are unsupported")
+			} else {
+				__antithesis_instrumentation__.Notify(643726)
+				if mvccMeta.Txn == nil {
+					__antithesis_instrumentation__.Notify(643727)
+					return enginepb.MVCCStats{}, errors.New("found intent without transaction")
+				} else {
+					__antithesis_instrumentation__.Notify(643728)
 
-		// Allow certain idempotent writes where key/timestamp/value all match:
-		//
-		// * disallowShadowing: any matching key.
-		// * disallowShadowingBelow: any matching key at or above the given timestamp.
-		allowIdempotent := (!disallowShadowingBelow.IsEmpty() && disallowShadowingBelow.LessEq(extKey.Timestamp)) ||
-			(disallowShadowingBelow.IsEmpty() && disallowShadowing)
-		if allowIdempotent && sstKey.Timestamp.Equal(extKey.Timestamp) &&
-			bytes.Equal(extValue, sstValue) {
-			// This SST entry will effectively be a noop, but its stats have already
-			// been accounted for resulting in double-counting. To address this we
-			// send back a stats diff for these existing KVs so that we can subtract
-			// them later. This enables us to construct accurate MVCCStats and
-			// prevents expensive recomputation in the future.
+					intents = append(intents, roachpb.MakeIntent(mvccMeta.Txn, extIter.Key().Key))
+					if int64(len(intents)) >= maxIntents {
+						__antithesis_instrumentation__.Notify(643731)
+						return enginepb.MVCCStats{}, &roachpb.WriteIntentError{Intents: intents}
+					} else {
+						__antithesis_instrumentation__.Notify(643732)
+					}
+					__antithesis_instrumentation__.Notify(643729)
+					sstIter.NextKey()
+					sstOK, sstErr = sstIter.Valid()
+					if sstOK {
+						__antithesis_instrumentation__.Notify(643733)
+						extIter.SeekGE(MVCCKey{Key: sstIter.UnsafeKey().Key})
+					} else {
+						__antithesis_instrumentation__.Notify(643734)
+					}
+					__antithesis_instrumentation__.Notify(643730)
+					extOK, extErr = extIter.Valid()
+					continue
+				}
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(643735)
+		}
+		__antithesis_instrumentation__.Notify(643705)
+
+		allowIdempotent := (!disallowShadowingBelow.IsEmpty() && func() bool {
+			__antithesis_instrumentation__.Notify(643736)
+			return disallowShadowingBelow.LessEq(extKey.Timestamp) == true
+		}() == true) || func() bool {
+			__antithesis_instrumentation__.Notify(643737)
+			return (disallowShadowingBelow.IsEmpty() && func() bool {
+				__antithesis_instrumentation__.Notify(643738)
+				return disallowShadowing == true
+			}() == true) == true
+		}() == true
+		if allowIdempotent && func() bool {
+			__antithesis_instrumentation__.Notify(643739)
+			return sstKey.Timestamp.Equal(extKey.Timestamp) == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(643740)
+			return bytes.Equal(extValue, sstValue) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(643741)
+
 			metaKeySize := int64(len(sstKey.Key) + 1)
 			metaValSize := int64(0)
 			totalBytes := metaKeySize + metaValSize
 
-			// Update the skipped stats to account for the skipped meta key.
 			statsDiff.LiveBytes -= totalBytes
 			statsDiff.LiveCount--
 			statsDiff.KeyBytes -= metaKeySize
 			statsDiff.ValBytes -= metaValSize
 			statsDiff.KeyCount--
 
-			// Update the stats to account for the skipped versioned key/value.
 			totalBytes = int64(len(sstValue)) + MVCCVersionTimestampSize
 			statsDiff.LiveBytes -= totalBytes
 			statsDiff.KeyBytes -= MVCCVersionTimestampSize
@@ -160,89 +184,141 @@ func CheckSSTConflicts(
 			sstIter.NextKey()
 			sstOK, sstErr = sstIter.Valid()
 			if sstOK {
+				__antithesis_instrumentation__.Notify(643743)
 				extIter.SeekGE(MVCCKey{Key: sstIter.UnsafeKey().Key})
+			} else {
+				__antithesis_instrumentation__.Notify(643744)
 			}
+			__antithesis_instrumentation__.Notify(643742)
 			extOK, extErr = extIter.Valid()
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(643745)
 		}
+		__antithesis_instrumentation__.Notify(643706)
 
-		// If requested, check that we're not shadowing a live key. Note that
-		// we check this before we check the timestamp, and avoid returning
-		// a WriteTooOldError -- that error implies that the client should
-		// retry at a higher timestamp, but we already know that such a retry
-		// would fail (because it will shadow an existing key).
-		if len(extValue) > 0 && (!disallowShadowingBelow.IsEmpty() || disallowShadowing) {
-			allowShadow := !disallowShadowingBelow.IsEmpty() &&
-				disallowShadowingBelow.LessEq(extKey.Timestamp) && bytes.Equal(extValue, sstValue)
+		if len(extValue) > 0 && func() bool {
+			__antithesis_instrumentation__.Notify(643746)
+			return (!disallowShadowingBelow.IsEmpty() || func() bool {
+				__antithesis_instrumentation__.Notify(643747)
+				return disallowShadowing == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(643748)
+			allowShadow := !disallowShadowingBelow.IsEmpty() && func() bool {
+				__antithesis_instrumentation__.Notify(643749)
+				return disallowShadowingBelow.LessEq(extKey.Timestamp) == true
+			}() == true && func() bool {
+				__antithesis_instrumentation__.Notify(643750)
+				return bytes.Equal(extValue, sstValue) == true
+			}() == true
 			if !allowShadow {
+				__antithesis_instrumentation__.Notify(643751)
 				return enginepb.MVCCStats{}, errors.Errorf(
 					"ingested key collides with an existing one: %s", sstKey.Key)
+			} else {
+				__antithesis_instrumentation__.Notify(643752)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(643753)
 		}
+		__antithesis_instrumentation__.Notify(643707)
 
-		// If the existing key has a timestamp at or above the SST key, return a
-		// WriteTooOldError. Normally this could cause a transactional request to be
-		// automatically retried after a read refresh, which we would only want to
-		// do if AddSSTable had SSTTimestampToRequestTimestamp set, but AddSSTable
-		// cannot be used in transactions so we don't need to check.
 		if sstKey.Timestamp.LessEq(extKey.Timestamp) {
+			__antithesis_instrumentation__.Notify(643754)
 			return enginepb.MVCCStats{}, roachpb.NewWriteTooOldError(
 				sstKey.Timestamp, extKey.Timestamp.Next(), sstKey.Key)
+		} else {
+			__antithesis_instrumentation__.Notify(643755)
 		}
+		__antithesis_instrumentation__.Notify(643708)
 
-		// If we are shadowing an existing key, we must update the stats accordingly
-		// to take into account the existing KV pair.
 		statsDiff.KeyCount--
 		statsDiff.KeyBytes -= int64(len(extKey.Key) + 1)
 		if len(extValue) > 0 {
+			__antithesis_instrumentation__.Notify(643756)
 			statsDiff.LiveCount--
 			statsDiff.LiveBytes -= int64(len(extKey.Key) + 1)
 			statsDiff.LiveBytes -= int64(len(extValue)) + MVCCVersionTimestampSize
+		} else {
+			__antithesis_instrumentation__.Notify(643757)
 		}
+		__antithesis_instrumentation__.Notify(643709)
 
 		sstIter.NextKey()
 		sstOK, sstErr = sstIter.Valid()
 		if sstOK {
+			__antithesis_instrumentation__.Notify(643758)
 			extIter.SeekGE(MVCCKey{Key: sstIter.UnsafeKey().Key})
+		} else {
+			__antithesis_instrumentation__.Notify(643759)
 		}
+		__antithesis_instrumentation__.Notify(643710)
 		extOK, extErr = extIter.Valid()
 	}
+	__antithesis_instrumentation__.Notify(643691)
 
 	if extErr != nil {
+		__antithesis_instrumentation__.Notify(643760)
 		return enginepb.MVCCStats{}, extErr
+	} else {
+		__antithesis_instrumentation__.Notify(643761)
 	}
+	__antithesis_instrumentation__.Notify(643692)
 	if sstErr != nil {
+		__antithesis_instrumentation__.Notify(643762)
 		return enginepb.MVCCStats{}, sstErr
+	} else {
+		__antithesis_instrumentation__.Notify(643763)
 	}
+	__antithesis_instrumentation__.Notify(643693)
 	if len(intents) > 0 {
+		__antithesis_instrumentation__.Notify(643764)
 		return enginepb.MVCCStats{}, &roachpb.WriteIntentError{Intents: intents}
+	} else {
+		__antithesis_instrumentation__.Notify(643765)
 	}
+	__antithesis_instrumentation__.Notify(643694)
 
 	return statsDiff, nil
 }
 
-// UpdateSSTTimestamps replaces all MVCC timestamp in the provided SST to the
-// given timestamp. All keys must already have the given "from" timestamp.
 func UpdateSSTTimestamps(
 	ctx context.Context, st *cluster.Settings, sst []byte, from, to hlc.Timestamp, concurrency int,
 ) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(643766)
 	if from.IsEmpty() {
+		__antithesis_instrumentation__.Notify(643773)
 		return nil, errors.Errorf("from timestamp not given")
+	} else {
+		__antithesis_instrumentation__.Notify(643774)
 	}
+	__antithesis_instrumentation__.Notify(643767)
 	if to.IsEmpty() {
+		__antithesis_instrumentation__.Notify(643775)
 		return nil, errors.Errorf("to timestamp not given")
+	} else {
+		__antithesis_instrumentation__.Notify(643776)
 	}
+	__antithesis_instrumentation__.Notify(643768)
 
 	sstOut := &MemFile{}
 	sstOut.Buffer.Grow(len(sst))
 
-	// Fancy optimized Pebble SST rewriter.
 	if concurrency > 0 {
+		__antithesis_instrumentation__.Notify(643777)
 		defaults := DefaultPebbleOptions()
 		opts := defaults.MakeReaderOptions()
-		if fp := defaults.Levels[0].FilterPolicy; fp != nil && len(opts.Filters) == 0 {
+		if fp := defaults.Levels[0].FilterPolicy; fp != nil && func() bool {
+			__antithesis_instrumentation__.Notify(643780)
+			return len(opts.Filters) == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(643781)
 			opts.Filters = map[string]sstable.FilterPolicy{fp.Name(): fp}
+		} else {
+			__antithesis_instrumentation__.Notify(643782)
 		}
+		__antithesis_instrumentation__.Notify(643778)
 		if _, err := sstable.RewriteKeySuffixes(sst,
 			opts,
 			sstOut,
@@ -251,41 +327,72 @@ func UpdateSSTTimestamps(
 			EncodeMVCCTimestampSuffix(to),
 			concurrency,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(643783)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(643784)
 		}
+		__antithesis_instrumentation__.Notify(643779)
 		return sstOut.Bytes(), nil
+	} else {
+		__antithesis_instrumentation__.Notify(643785)
 	}
+	__antithesis_instrumentation__.Notify(643769)
 
-	// Naïve read/write loop.
 	writer := MakeIngestionSSTWriter(ctx, st, sstOut)
 	defer writer.Close()
 
 	iter, err := NewMemSSTIterator(sst, false)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(643786)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(643787)
 	}
+	__antithesis_instrumentation__.Notify(643770)
 	defer iter.Close()
 
 	for iter.SeekGE(MVCCKey{Key: keys.MinKey}); ; iter.Next() {
+		__antithesis_instrumentation__.Notify(643788)
 		if ok, err := iter.Valid(); err != nil {
+			__antithesis_instrumentation__.Notify(643791)
 			return nil, err
-		} else if !ok {
-			break
+		} else {
+			__antithesis_instrumentation__.Notify(643792)
+			if !ok {
+				__antithesis_instrumentation__.Notify(643793)
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(643794)
+			}
 		}
+		__antithesis_instrumentation__.Notify(643789)
 		key := iter.UnsafeKey()
 		if key.Timestamp != from {
+			__antithesis_instrumentation__.Notify(643795)
 			return nil, errors.Errorf("unexpected timestamp %s (expected %s) for key %s",
 				key.Timestamp, from, key.Key)
+		} else {
+			__antithesis_instrumentation__.Notify(643796)
 		}
+		__antithesis_instrumentation__.Notify(643790)
 		err = writer.PutMVCC(MVCCKey{Key: iter.UnsafeKey().Key, Timestamp: to}, iter.UnsafeValue())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(643797)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(643798)
 		}
 	}
+	__antithesis_instrumentation__.Notify(643771)
 
 	if err = writer.Finish(); err != nil {
+		__antithesis_instrumentation__.Notify(643799)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(643800)
 	}
+	__antithesis_instrumentation__.Notify(643772)
 
 	return sstOut.Bytes(), nil
 }

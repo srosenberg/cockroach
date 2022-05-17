@@ -1,18 +1,9 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/errors"
 
-// ConstantEvalVisitor replaces constant TypedExprs with the result of Eval.
 type ConstantEvalVisitor struct {
 	ctx *EvalContext
 	err error
@@ -22,54 +13,80 @@ type ConstantEvalVisitor struct {
 
 var _ Visitor = &ConstantEvalVisitor{}
 
-// MakeConstantEvalVisitor creates a ConstantEvalVisitor instance.
 func MakeConstantEvalVisitor(ctx *EvalContext) ConstantEvalVisitor {
+	__antithesis_instrumentation__.Notify(604620)
 	return ConstantEvalVisitor{ctx: ctx, fastIsConstVisitor: fastIsConstVisitor{ctx: ctx}}
 }
 
-// Err retrieves the error field in the ConstantEvalVisitor.
-func (v *ConstantEvalVisitor) Err() error { return v.err }
+func (v *ConstantEvalVisitor) Err() error {
+	__antithesis_instrumentation__.Notify(604621)
+	return v.err
+}
 
-// VisitPre implements the Visitor interface.
 func (v *ConstantEvalVisitor) VisitPre(expr Expr) (recurse bool, newExpr Expr) {
+	__antithesis_instrumentation__.Notify(604622)
 	if v.err != nil {
+		__antithesis_instrumentation__.Notify(604624)
 		return false, expr
+	} else {
+		__antithesis_instrumentation__.Notify(604625)
 	}
+	__antithesis_instrumentation__.Notify(604623)
 	return true, expr
 }
 
-// VisitPost implements the Visitor interface.
 func (v *ConstantEvalVisitor) VisitPost(expr Expr) Expr {
+	__antithesis_instrumentation__.Notify(604626)
 	if v.err != nil {
+		__antithesis_instrumentation__.Notify(604631)
 		return expr
+	} else {
+		__antithesis_instrumentation__.Notify(604632)
 	}
+	__antithesis_instrumentation__.Notify(604627)
 
 	typedExpr, ok := expr.(TypedExpr)
-	if !ok || !v.isConst(expr) {
+	if !ok || func() bool {
+		__antithesis_instrumentation__.Notify(604633)
+		return !v.isConst(expr) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(604634)
 		return expr
+	} else {
+		__antithesis_instrumentation__.Notify(604635)
 	}
+	__antithesis_instrumentation__.Notify(604628)
 
 	value, err := typedExpr.Eval(v.ctx)
 	if err != nil {
-		// Ignore any errors here (e.g. division by zero), so they can happen
-		// during execution where they are correctly handled. Note that in some
-		// cases we might not even get an error (if this particular expression
-		// does not get evaluated when the query runs, e.g. it's inside a CASE).
+		__antithesis_instrumentation__.Notify(604636)
+
 		return expr
+	} else {
+		__antithesis_instrumentation__.Notify(604637)
 	}
+	__antithesis_instrumentation__.Notify(604629)
 	if value == DNull {
-		// We don't want to return an expression that has a different type; cast
-		// the NULL if necessary.
+		__antithesis_instrumentation__.Notify(604638)
+
 		retypedNull, ok := ReType(DNull, typedExpr.ResolvedType())
 		if !ok {
+			__antithesis_instrumentation__.Notify(604640)
 			v.err = errors.AssertionFailedf("failed to retype NULL to %s", typedExpr.ResolvedType())
 			return expr
+		} else {
+			__antithesis_instrumentation__.Notify(604641)
 		}
+		__antithesis_instrumentation__.Notify(604639)
 		return retypedNull
+	} else {
+		__antithesis_instrumentation__.Notify(604642)
 	}
+	__antithesis_instrumentation__.Notify(604630)
 	return value
 }
 
 func (v *ConstantEvalVisitor) isConst(expr Expr) bool {
+	__antithesis_instrumentation__.Notify(604643)
 	return v.fastIsConstVisitor.run(expr)
 }

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package clierror
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -22,33 +14,22 @@ import (
 	"github.com/lib/pq"
 )
 
-// OutputError prints out an error object on the given writer.
-//
-// It has a somewhat inconvenient set of requirements: it must make
-// the error both palatable to a human user, which mandates some
-// beautification, and still retain a few guarantees for automatic
-// parsers (and a modicum of care for cross-compatibility across
-// versions), including that of keeping the output relatively stable.
-//
-// As a result, future changes should be careful to properly balance
-// changes made in favor of one audience with the needs and
-// requirements of the other audience.
 func OutputError(w io.Writer, err error, showSeverity, verbose bool) {
+	__antithesis_instrumentation__.Notify(28293)
 	f := formattedError{err: err, showSeverity: showSeverity, verbose: verbose}
 	fmt.Fprintln(w, f.Error())
 }
 
-// NewFormattedError wraps the error into another error object that displays
-// the details of the error when the error is formatted.
-// This constructor takes care of avoiding a wrap if the error is
-// already a formattederror.
 func NewFormattedError(err error, showSeverity, verbose bool) error {
-	// We want to flatten the error to reveal the hints, details etc.
-	// However we can't do it twice, so we need to detect first if
-	// some code already added the formattedError{} wrapper.
+	__antithesis_instrumentation__.Notify(28294)
+
 	if f := (*formattedError)(nil); errors.As(err, &f) {
+		__antithesis_instrumentation__.Notify(28296)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(28297)
 	}
+	__antithesis_instrumentation__.Notify(28295)
 	return &formattedError{err: err, showSeverity: showSeverity, verbose: verbose}
 }
 
@@ -58,108 +39,159 @@ type formattedError struct {
 }
 
 func (f *formattedError) Unwrap() error {
+	__antithesis_instrumentation__.Notify(28298)
 	return f.err
 }
 
-// Error implements the error interface.
 func (f *formattedError) Error() string {
-	// If we're applying recursively, ignore what's there and display the original error.
-	// This happens when the shell reports an error for a second time.
+	__antithesis_instrumentation__.Notify(28299)
+
 	var other *formattedError
 	if errors.As(f.err, &other) {
+		__antithesis_instrumentation__.Notify(28308)
 		return other.Error()
+	} else {
+		__antithesis_instrumentation__.Notify(28309)
 	}
+	__antithesis_instrumentation__.Notify(28300)
 	var buf strings.Builder
 
-	// If the severity is missing, we're going to assume it's an error.
 	severity := "ERROR"
 
-	// Extract the fields.
 	var message, hint, detail, location, constraintName string
 	var code pgcode.Code
 	if pqErr := (*pq.Error)(nil); errors.As(f.err, &pqErr) {
+		__antithesis_instrumentation__.Notify(28310)
 		if pqErr.Severity != "" {
+			__antithesis_instrumentation__.Notify(28312)
 			severity = pqErr.Severity
+		} else {
+			__antithesis_instrumentation__.Notify(28313)
 		}
+		__antithesis_instrumentation__.Notify(28311)
 		constraintName = pqErr.Constraint
 		message = pqErr.Message
 		code = pgcode.MakeCode(string(pqErr.Code))
 		hint, detail = pqErr.Hint, pqErr.Detail
 		location = formatLocation(pqErr.File, pqErr.Line, pqErr.Routine)
 	} else {
+		__antithesis_instrumentation__.Notify(28314)
 		message = f.err.Error()
 		code = pgerror.GetPGCode(f.err)
-		// Extract the standard hint and details.
+
 		hint = errors.FlattenHints(f.err)
 		detail = errors.FlattenDetails(f.err)
 		if file, line, fn, ok := errors.GetOneLineSource(f.err); ok {
+			__antithesis_instrumentation__.Notify(28315)
 			location = formatLocation(file, strconv.FormatInt(int64(line), 10), fn)
+		} else {
+			__antithesis_instrumentation__.Notify(28316)
 		}
 	}
+	__antithesis_instrumentation__.Notify(28301)
 
-	// The order of the printing goes from most to less important.
-
-	if f.showSeverity && severity != "" {
+	if f.showSeverity && func() bool {
+		__antithesis_instrumentation__.Notify(28317)
+		return severity != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(28318)
 		fmt.Fprintf(&buf, "%s: ", severity)
+	} else {
+		__antithesis_instrumentation__.Notify(28319)
 	}
+	__antithesis_instrumentation__.Notify(28302)
 	fmt.Fprintln(&buf, message)
 
-	// Avoid printing the code for NOTICE, as the code is always 00000.
-	if severity != "NOTICE" && code.String() != "" {
-		// In contrast to `psql` we print the code even when printing
-		// non-verbosely, because we want to promote users reporting codes
-		// when interacting with support.
-		if code == pgcode.Uncategorized && !f.verbose {
-			// An exception is made for the "uncategorized" code, because we
-			// also don't want users to get the idea they can rely on XXUUU
-			// in their apps. That code is special, as we typically seek to
-			// replace it over time by something more specific.
-			//
-			// So in this case, if not printing verbosely, we don't display
-			// the code.
+	if severity != "NOTICE" && func() bool {
+		__antithesis_instrumentation__.Notify(28320)
+		return code.String() != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(28321)
+
+		if code == pgcode.Uncategorized && func() bool {
+			__antithesis_instrumentation__.Notify(28322)
+			return !f.verbose == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(28323)
+
 		} else {
+			__antithesis_instrumentation__.Notify(28324)
 			fmt.Fprintln(&buf, "SQLSTATE:", code)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(28325)
 	}
+	__antithesis_instrumentation__.Notify(28303)
 
 	if detail != "" {
+		__antithesis_instrumentation__.Notify(28326)
 		fmt.Fprintln(&buf, "DETAIL:", detail)
+	} else {
+		__antithesis_instrumentation__.Notify(28327)
 	}
+	__antithesis_instrumentation__.Notify(28304)
 	if constraintName != "" {
+		__antithesis_instrumentation__.Notify(28328)
 		fmt.Fprintln(&buf, "CONSTRAINT:", constraintName)
+	} else {
+		__antithesis_instrumentation__.Notify(28329)
 	}
+	__antithesis_instrumentation__.Notify(28305)
 	if hint != "" {
+		__antithesis_instrumentation__.Notify(28330)
 		fmt.Fprintln(&buf, "HINT:", hint)
+	} else {
+		__antithesis_instrumentation__.Notify(28331)
 	}
-	if f.verbose && location != "" {
+	__antithesis_instrumentation__.Notify(28306)
+	if f.verbose && func() bool {
+		__antithesis_instrumentation__.Notify(28332)
+		return location != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(28333)
 		fmt.Fprintln(&buf, "LOCATION:", location)
+	} else {
+		__antithesis_instrumentation__.Notify(28334)
 	}
+	__antithesis_instrumentation__.Notify(28307)
 
-	// The code above is easier to read and write by stripping the
-	// extraneous newline at the end, than ensuring it's not there in
-	// the first place.
 	return strings.TrimRight(buf.String(), "\n")
 }
 
-// formatLocation spells out the error's location in a format
-// similar to psql: routine then file:num. The routine part is
-// skipped if empty.
 func formatLocation(file, line, fn string) string {
+	__antithesis_instrumentation__.Notify(28335)
 	var res strings.Builder
 	res.WriteString(fn)
-	if file != "" || line != "" {
+	if file != "" || func() bool {
+		__antithesis_instrumentation__.Notify(28337)
+		return line != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(28338)
 		if fn != "" {
+			__antithesis_instrumentation__.Notify(28341)
 			res.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(28342)
 		}
+		__antithesis_instrumentation__.Notify(28339)
 		if file == "" {
+			__antithesis_instrumentation__.Notify(28343)
 			res.WriteString("<unknown>")
 		} else {
+			__antithesis_instrumentation__.Notify(28344)
 			res.WriteString(file)
 		}
+		__antithesis_instrumentation__.Notify(28340)
 		if line != "" {
+			__antithesis_instrumentation__.Notify(28345)
 			res.WriteByte(':')
 			res.WriteString(line)
+		} else {
+			__antithesis_instrumentation__.Notify(28346)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(28347)
 	}
+	__antithesis_instrumentation__.Notify(28336)
 	return res.String()
 }

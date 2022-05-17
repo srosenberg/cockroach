@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -28,7 +20,6 @@ import (
 )
 
 var (
-	// Do not populate providerOptsContainer here as we need to call InitProivders() first.
 	providerOptsContainer vm.ProviderOptionsContainer
 	pprofOpts             roachprod.PprofOpts
 	numNodes              int
@@ -46,14 +37,9 @@ var (
 	secure                = false
 	extraSSHOptions       = ""
 	nodeEnv               = []string{
-		// NOTE: The defaults are also copied in roachtest's invocation of roachprod
-		// (which overrides the default). On changes, consider updating that one
-		// too.
 
-		// RPC compressions costs around 5% on kv95, so we disable it. It might help
-		// when moving snapshots around, though.
 		"COCKROACH_ENABLE_RPC_COMPRESSION=false",
-		// Get rid of an annoying popup in the UI.
+
 		"COCKROACH_UI_RELEASE_NOTES_SIGNUP_DISMISSED=true",
 	}
 	tag               string
@@ -79,15 +65,18 @@ var (
 	monitorOpts        install.MonitorOpts
 	cachedHostsCluster string
 
-	// hostCluster is used for multi-tenant functionality.
 	hostCluster string
 
 	roachprodLibraryLogger *logger.Logger
 )
 
 func initFlags() {
+	__antithesis_instrumentation__.Notify(42924)
 	rootCmd.PersistentFlags().BoolVarP(&config.Quiet, "quiet", "q",
-		false || !term.IsTerminal(int(os.Stdout.Fd())), "disable fancy progress output")
+		false || func() bool {
+			__antithesis_instrumentation__.Notify(42932)
+			return !term.IsTerminal(int(os.Stdout.Fd())) == true
+		}() == true, "disable fancy progress output")
 	rootCmd.PersistentFlags().IntVarP(&config.MaxConcurrency, "max-concurrency", "", 32,
 		"maximum number of operations to execute on nodes concurrently, set to zero for infinite",
 	)
@@ -119,22 +108,26 @@ func initFlags() {
 			"quotes, gce label name only allows hyphens (-), underscores (_), lowercase characters, numbers and "+
 			"international characters. Examples: usage=cloud-report-2021, namewithspaceinvalue='s o s'")
 
-	// Allow each Provider to inject additional configuration flags
 	for _, providerName := range vm.AllProviderNames() {
+		__antithesis_instrumentation__.Notify(42933)
 		if vm.Providers[providerName].Active() {
+			__antithesis_instrumentation__.Notify(42934)
 			providerOptsContainer[providerName].ConfigureCreateFlags(createCmd.Flags())
 
 			for _, cmd := range []*cobra.Command{
 				destroyCmd, extendCmd, listCmd, syncCmd, gcCmd,
 			} {
+				__antithesis_instrumentation__.Notify(42936)
 				providerOptsContainer[providerName].ConfigureClusterFlags(cmd.Flags(), vm.AcceptMultipleProjects)
 			}
+			__antithesis_instrumentation__.Notify(42935)
 
-			// createCmd only accepts a single GCE project, as opposed to all the other
-			// commands.
 			providerOptsContainer[providerName].ConfigureClusterFlags(createCmd.Flags(), vm.SingleProject)
+		} else {
+			__antithesis_instrumentation__.Notify(42937)
 		}
 	}
+	__antithesis_instrumentation__.Notify(42925)
 
 	destroyCmd.Flags().BoolVarP(&destroyAllMine,
 		"all-mine", "m", false, "Destroy all non-local clusters belonging to the current user")
@@ -241,43 +234,56 @@ func initFlags() {
 		"cluster", "", "print hosts matching cluster")
 
 	for _, cmd := range []*cobra.Command{createCmd, destroyCmd, extendCmd, logsCmd} {
+		__antithesis_instrumentation__.Notify(42938)
 		cmd.Flags().StringVarP(&username, "username", "u", os.Getenv("ROACHPROD_USER"),
 			"Username to run under, detect if blank")
 	}
+	__antithesis_instrumentation__.Notify(42926)
 
 	for _, cmd := range []*cobra.Command{statusCmd, monitorCmd, startCmd,
 		stopCmd, runCmd, wipeCmd, reformatCmd, installCmd, putCmd, getCmd,
 		sqlCmd, pgurlCmd, adminurlCmd, ipCmd,
 	} {
+		__antithesis_instrumentation__.Notify(42939)
 		cmd.Flags().BoolVar(
 			&ssh.InsecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
 	}
+	__antithesis_instrumentation__.Notify(42927)
 
 	for _, cmd := range []*cobra.Command{startCmd, startTenantCmd} {
+		__antithesis_instrumentation__.Notify(42940)
 		cmd.Flags().BoolVar(&startOpts.Sequential,
 			"sequential", startOpts.Sequential, "start nodes sequentially so node IDs match hostnames")
 		cmd.Flags().Int64Var(&startOpts.NumFilesLimit, "num-files-limit", startOpts.NumFilesLimit,
 			"limit the number of files that can be created by the cockroach process")
 	}
+	__antithesis_instrumentation__.Notify(42928)
 
 	for _, cmd := range []*cobra.Command{
 		startCmd, statusCmd, stopCmd, runCmd,
 	} {
+		__antithesis_instrumentation__.Notify(42941)
 		cmd.Flags().StringVar(&tag, "tag", "", "the process tag")
 	}
+	__antithesis_instrumentation__.Notify(42929)
 
 	for _, cmd := range []*cobra.Command{
 		startCmd, putCmd, getCmd,
 	} {
+		__antithesis_instrumentation__.Notify(42942)
 		cmd.Flags().BoolVar(new(bool), "scp", false, "DEPRECATED")
 		_ = cmd.Flags().MarkDeprecated("scp", "always true")
 	}
+	__antithesis_instrumentation__.Notify(42930)
 
 	for _, cmd := range []*cobra.Command{startCmd, sqlCmd} {
+		__antithesis_instrumentation__.Notify(42943)
 		cmd.Flags().StringVarP(&config.Binary,
 			"binary", "b", config.Binary, "the remote cockroach binary to use")
 	}
+	__antithesis_instrumentation__.Notify(42931)
 	for _, cmd := range []*cobra.Command{startCmd, sqlCmd, pgurlCmd, adminurlCmd, runCmd} {
+		__antithesis_instrumentation__.Notify(42944)
 		cmd.Flags().BoolVar(&secure,
 			"secure", false, "use a secure cluster")
 	}

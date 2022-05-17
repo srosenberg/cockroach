@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,14 +10,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// max1RowNode wraps another planNode, returning at most 1 row from the wrapped
-// node. If the wrapped node produces more than 1 row, this planNode returns an
-// error.
-//
-// This node is useful for constructing subqueries. Some ways of using
-// subqueries in SQL, such as using a subquery as an expression, expect that
-// the subquery can return at most 1 row - that expectation must be enforced at
-// runtime.
 type max1RowNode struct {
 	plan planNode
 
@@ -35,42 +19,59 @@ type max1RowNode struct {
 }
 
 func (m *max1RowNode) startExec(runParams) error {
+	__antithesis_instrumentation__.Notify(501751)
 	return nil
 }
 
 func (m *max1RowNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(501752)
 	if m.nexted {
+		__antithesis_instrumentation__.Notify(501756)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(501757)
 	}
+	__antithesis_instrumentation__.Notify(501753)
 	m.nexted = true
 
 	ok, err := m.plan.Next(params)
-	if !ok || err != nil {
+	if !ok || func() bool {
+		__antithesis_instrumentation__.Notify(501758)
+		return err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(501759)
 		return ok, err
+	} else {
+		__antithesis_instrumentation__.Notify(501760)
 	}
+	__antithesis_instrumentation__.Notify(501754)
 	if ok {
-		// We need to eagerly check our parent plan for a new row, to ensure that
-		// we return an error as per the contract of this node if the parent plan
-		// isn't exhausted after a single row.
+		__antithesis_instrumentation__.Notify(501761)
+
 		m.values = make(tree.Datums, len(m.plan.Values()))
 		copy(m.values, m.plan.Values())
 		var secondOk bool
 		secondOk, err = m.plan.Next(params)
 		if secondOk {
-			// TODO(knz): m.errorText could be passed via redact.Safe if there
-			// was a guarantee that it does not contain PII. Or better yet,
-			// the caller would construct an `error` object to return here
-			// instead of a string.
+			__antithesis_instrumentation__.Notify(501762)
+
 			return false, pgerror.Newf(pgcode.CardinalityViolation, "%s", m.errorText)
+		} else {
+			__antithesis_instrumentation__.Notify(501763)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(501764)
 	}
+	__antithesis_instrumentation__.Notify(501755)
 	return ok, err
 }
 
 func (m *max1RowNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(501765)
 	return m.values
 }
 
 func (m *max1RowNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(501766)
 	m.plan.Close(ctx)
 }

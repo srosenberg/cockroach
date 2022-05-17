@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package diagnostics
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,14 +22,10 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-// updatesURL is the URL used to check for new versions. Can be nil if an empty
-// URL is set.
 var updatesURL *url.URL
 
 const defaultUpdatesURL = `https://register.cockroachdb.com/api/clusters/updates`
 
-// reportingURL is the URL used to report diagnostics/telemetry. Can be nil if
-// an empty URL is set.
 var reportingURL *url.URL
 
 const defaultReportingURL = `https://register.cockroachdb.com/api/clusters/report`
@@ -58,18 +46,12 @@ func init() {
 	}
 }
 
-// TestingKnobs groups testing knobs for diagnostics.
 type TestingKnobs struct {
-	// OverrideUpdatesURL if set, overrides the URL used to check for new
-	// versions. It is a pointer to pointer to allow overriding to the nil URL.
 	OverrideUpdatesURL **url.URL
 
-	// OverrideReportingURL if set, overrides the URL used to report diagnostics.
-	// It is a pointer to pointer to allow overriding to the nil URL.
 	OverrideReportingURL **url.URL
 }
 
-// ClusterInfo contains cluster information that will become part of URLs.
 type ClusterInfo struct {
 	StorageClusterID uuid.UUID
 	LogicalClusterID uuid.UUID
@@ -78,9 +60,6 @@ type ClusterInfo struct {
 	IsInternal       bool
 }
 
-// addInfoToURL sets query parameters on the URL used to report diagnostics. If
-// this is a CRDB node, then nodeInfo is filled (and nodeInfo.NodeID is
-// non-zero). Otherwise, this is a SQL-only tenant and sqlInfo is filled.
 func addInfoToURL(
 	url *url.URL,
 	clusterInfo *ClusterInfo,
@@ -88,16 +67,24 @@ func addInfoToURL(
 	nodeID roachpb.NodeID,
 	sqlInfo *diagnosticspb.SQLInstanceInfo,
 ) *url.URL {
+	__antithesis_instrumentation__.Notify(190599)
 	if url == nil {
+		__antithesis_instrumentation__.Notify(190602)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(190603)
 	}
+	__antithesis_instrumentation__.Notify(190600)
 	result := *url
 	q := result.Query()
 
-	// Don't set nodeid if this is a SQL-only instance.
 	if nodeID != 0 {
+		__antithesis_instrumentation__.Notify(190604)
 		q.Set("nodeid", strconv.Itoa(int(nodeID)))
+	} else {
+		__antithesis_instrumentation__.Notify(190605)
 	}
+	__antithesis_instrumentation__.Notify(190601)
 
 	b := env.Build
 	q.Set("sqlid", strconv.Itoa(int(sqlInfo.SQLInstanceID)))
@@ -116,8 +103,8 @@ func addInfoToURL(
 	return &result
 }
 
-// randomly shift `d` to be up to `jitterSeconds` shorter or longer.
 func addJitter(d time.Duration) time.Duration {
+	__antithesis_instrumentation__.Notify(190606)
 	const jitterSeconds = 120
 	j := time.Duration(rand.Intn(jitterSeconds*2)-jitterSeconds) * time.Second
 	return d + j
@@ -125,44 +112,66 @@ func addJitter(d time.Duration) time.Duration {
 
 var populateMutex syncutil.Mutex
 
-// populateHardwareInfo populates OS, CPU, memory, etc. information about the
-// environment in which CRDB is running.
 func populateHardwareInfo(ctx context.Context, e *diagnosticspb.Environment) {
-	// The shirou/gopsutil/host library is not multi-thread safe. As one
-	// example, it lazily initializes a global map the first time the
-	// Virtualization function is called, but takes no lock while doing so.
-	// Work around this limitation by taking our own lock.
+	__antithesis_instrumentation__.Notify(190607)
+
 	populateMutex.Lock()
 	defer populateMutex.Unlock()
 
 	if platform, family, version, err := host.PlatformInformation(); err == nil {
+		__antithesis_instrumentation__.Notify(190613)
 		e.Os.Family = family
 		e.Os.Platform = platform
 		e.Os.Version = version
+	} else {
+		__antithesis_instrumentation__.Notify(190614)
 	}
+	__antithesis_instrumentation__.Notify(190608)
 
-	if virt, role, err := host.Virtualization(); err == nil && role == "guest" {
+	if virt, role, err := host.Virtualization(); err == nil && func() bool {
+		__antithesis_instrumentation__.Notify(190615)
+		return role == "guest" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(190616)
 		e.Hardware.Virtualization = virt
+	} else {
+		__antithesis_instrumentation__.Notify(190617)
 	}
+	__antithesis_instrumentation__.Notify(190609)
 
 	if m, err := mem.VirtualMemory(); err == nil {
+		__antithesis_instrumentation__.Notify(190618)
 		e.Hardware.Mem.Available = m.Available
 		e.Hardware.Mem.Total = m.Total
+	} else {
+		__antithesis_instrumentation__.Notify(190619)
 	}
+	__antithesis_instrumentation__.Notify(190610)
 
 	e.Hardware.Cpu.Numcpu = int32(system.NumCPU())
-	if cpus, err := cpu.InfoWithContext(ctx); err == nil && len(cpus) > 0 {
+	if cpus, err := cpu.InfoWithContext(ctx); err == nil && func() bool {
+		__antithesis_instrumentation__.Notify(190620)
+		return len(cpus) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(190621)
 		e.Hardware.Cpu.Sockets = int32(len(cpus))
 		c := cpus[0]
 		e.Hardware.Cpu.Cores = c.Cores
 		e.Hardware.Cpu.Model = c.ModelName
 		e.Hardware.Cpu.Mhz = float32(c.Mhz)
 		e.Hardware.Cpu.Features = c.Flags
+	} else {
+		__antithesis_instrumentation__.Notify(190622)
 	}
+	__antithesis_instrumentation__.Notify(190611)
 
 	if l, err := load.AvgWithContext(ctx); err == nil {
+		__antithesis_instrumentation__.Notify(190623)
 		e.Hardware.Loadavg15 = float32(l.Load15)
+	} else {
+		__antithesis_instrumentation__.Notify(190624)
 	}
+	__antithesis_instrumentation__.Notify(190612)
 
 	e.Hardware.Provider, e.Hardware.InstanceClass = cloudinfo.GetInstanceClass(ctx)
 	e.Topology.Provider, e.Topology.Region = cloudinfo.GetInstanceRegion(ctx)

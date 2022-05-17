@@ -1,13 +1,3 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // This utility detects new tests added in a given pull request, and runs them
 // under stress in our CI infrastructure.
 //
@@ -18,6 +8,8 @@
 // the approach taken here be quite brute-force with respect to its use of the
 // GitHub API.
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -45,17 +37,11 @@ const (
 	githubAPITokenEnv    = "GITHUB_API_TOKEN"
 	teamcityVCSNumberEnv = "BUILD_VCS_NUMBER"
 	targetEnv            = "TARGET"
-	// The following environment variables are for testing and are
-	// prefixed with GHM_ to help prevent accidentally triggering
-	// test code inside the CI pipeline.
+
 	packageEnv    = "GHM_PACKAGES"
 	forceBazelEnv = "GHM_FORCE_BAZEL"
 )
 
-// https://github.com/golang/go/blob/go1.7.3/src/cmd/go/test.go#L1260:L1262
-//
-// It is a Test (say) if there is a character after Test that is not a lower-case letter.
-// We don't want TesticularCancer.
 const goTestStr = `func (Test[^a-z]\w*)\(.*\*testing\.TB?\) {$`
 
 const bazelStressTarget = "@com_github_cockroachdb_stress//:stress"
@@ -70,24 +56,32 @@ type pkg struct {
 func pkgsFromGithubPRForSHA(
 	ctx context.Context, org string, repo string, sha string,
 ) (map[string]pkg, error) {
+	__antithesis_instrumentation__.Notify(40856)
 	client := ghClient(ctx)
 	currentPull := findPullRequest(ctx, client, org, repo, sha)
 	if currentPull == nil {
+		__antithesis_instrumentation__.Notify(40859)
 		log.Printf("SHA %s not found in open pull requests, skipping stress", sha)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(40860)
 	}
+	__antithesis_instrumentation__.Notify(40857)
 
 	diff, err := getDiff(ctx, client, org, repo, *currentPull.Number)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40861)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(40862)
 	}
+	__antithesis_instrumentation__.Notify(40858)
 
 	return pkgsFromDiff(strings.NewReader(diff))
 }
 
-// pkgsFromDiff parses a git-style diff and returns a mapping from directories
-// to tests added in those directories in the given diff.
 func pkgsFromDiff(r io.Reader) (map[string]pkg, error) {
+	__antithesis_instrumentation__.Notify(40863)
 	const newFilePrefix = "+++ b/"
 	const replacement = "$1"
 
@@ -97,41 +91,72 @@ func pkgsFromDiff(r io.Reader) (map[string]pkg, error) {
 	var curTestName string
 	var inPrefix bool
 	for reader := bufio.NewReader(r); ; {
+		__antithesis_instrumentation__.Notify(40864)
 		line, isPrefix, err := reader.ReadLine()
 		switch {
 		case err == nil:
+			__antithesis_instrumentation__.Notify(40867)
 		case err == io.EOF:
+			__antithesis_instrumentation__.Notify(40868)
 			return pkgs, nil
 		default:
+			__antithesis_instrumentation__.Notify(40869)
 			return nil, err
 		}
-		// Ignore generated files a la embedded.go.
+		__antithesis_instrumentation__.Notify(40865)
+
 		if isPrefix {
+			__antithesis_instrumentation__.Notify(40870)
 			inPrefix = true
 			continue
-		} else if inPrefix {
-			inPrefix = false
-			continue
+		} else {
+			__antithesis_instrumentation__.Notify(40871)
+			if inPrefix {
+				__antithesis_instrumentation__.Notify(40872)
+				inPrefix = false
+				continue
+			} else {
+				__antithesis_instrumentation__.Notify(40873)
+			}
 		}
+		__antithesis_instrumentation__.Notify(40866)
 
 		switch {
 		case bytes.HasPrefix(line, []byte(newFilePrefix)):
+			__antithesis_instrumentation__.Notify(40874)
 			curPkgName = filepath.Dir(string(bytes.TrimPrefix(line, []byte(newFilePrefix))))
 		case newGoTestRE.Match(line):
+			__antithesis_instrumentation__.Notify(40875)
 			curPkg := pkgs[curPkgName]
 			curPkg.tests = append(curPkg.tests, string(newGoTestRE.ReplaceAll(line, []byte(replacement))))
 			pkgs[curPkgName] = curPkg
 		case currentGoTestRE.Match(line):
+			__antithesis_instrumentation__.Notify(40876)
 			curTestName = ""
 			if !bytes.HasPrefix(line, []byte{'-'}) {
+				__antithesis_instrumentation__.Notify(40879)
 				curTestName = string(currentGoTestRE.ReplaceAll(line, []byte(replacement)))
+			} else {
+				__antithesis_instrumentation__.Notify(40880)
 			}
-		case bytes.HasPrefix(line, []byte{'-'}) && bytes.Contains(line, []byte(".Skip")):
-			if curPkgName != "" && len(curTestName) > 0 {
+		case bytes.HasPrefix(line, []byte{'-'}) && func() bool {
+			__antithesis_instrumentation__.Notify(40881)
+			return bytes.Contains(line, []byte(".Skip")) == true
+		}() == true:
+			__antithesis_instrumentation__.Notify(40877)
+			if curPkgName != "" && func() bool {
+				__antithesis_instrumentation__.Notify(40882)
+				return len(curTestName) > 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(40883)
 				curPkg := pkgs[curPkgName]
 				curPkg.tests = append(curPkg.tests, curTestName)
 				pkgs[curPkgName] = curPkg
+			} else {
+				__antithesis_instrumentation__.Notify(40884)
 			}
+		default:
+			__antithesis_instrumentation__.Notify(40878)
 		}
 	}
 }
@@ -139,43 +164,63 @@ func pkgsFromDiff(r io.Reader) (map[string]pkg, error) {
 func findPullRequest(
 	ctx context.Context, client *github.Client, org, repo, sha string,
 ) *github.PullRequest {
+	__antithesis_instrumentation__.Notify(40885)
 	opts := &github.PullRequestListOptions{
 		ListOptions: github.ListOptions{PerPage: 100},
 	}
 	for {
+		__antithesis_instrumentation__.Notify(40886)
 		pulls, resp, err := client.PullRequests.List(ctx, org, repo, opts)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(40890)
 			log.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(40891)
 		}
+		__antithesis_instrumentation__.Notify(40887)
 
 		for _, pull := range pulls {
+			__antithesis_instrumentation__.Notify(40892)
 			if *pull.Head.SHA == sha {
+				__antithesis_instrumentation__.Notify(40893)
 				return pull
+			} else {
+				__antithesis_instrumentation__.Notify(40894)
 			}
 		}
+		__antithesis_instrumentation__.Notify(40888)
 
 		if resp.NextPage == 0 {
+			__antithesis_instrumentation__.Notify(40895)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(40896)
 		}
+		__antithesis_instrumentation__.Notify(40889)
 		opts.Page = resp.NextPage
 	}
 }
 
 func ghClient(ctx context.Context) *github.Client {
+	__antithesis_instrumentation__.Notify(40897)
 	var httpClient *http.Client
 	if token, ok := os.LookupEnv(githubAPITokenEnv); ok {
+		__antithesis_instrumentation__.Notify(40899)
 		httpClient = oauth2.NewClient(ctx, oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: token},
 		))
 	} else {
+		__antithesis_instrumentation__.Notify(40900)
 		log.Printf("GitHub API token environment variable %s is not set", githubAPITokenEnv)
 	}
+	__antithesis_instrumentation__.Notify(40898)
 	return github.NewClient(httpClient)
 }
 
 func getDiff(
 	ctx context.Context, client *github.Client, org, repo string, prNum int,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(40901)
 	diff, _, err := client.PullRequests.GetRaw(
 		ctx,
 		org,
@@ -187,142 +232,208 @@ func getDiff(
 }
 
 func parsePackagesFromEnvironment(input string) (map[string]pkg, error) {
+	__antithesis_instrumentation__.Notify(40902)
 	const expectedFormat = "PACKAGE_NAME=TEST_NAME[,TEST_NAME...][;PACKAGE_NAME=...]"
 	pkgTestStrs := strings.Split(input, ";")
 	pkgs := make(map[string]pkg, len(pkgTestStrs))
 	for _, pts := range pkgTestStrs {
+		__antithesis_instrumentation__.Notify(40904)
 		ptsParts := strings.Split(pts, "=")
 		if len(ptsParts) < 2 {
+			__antithesis_instrumentation__.Notify(40906)
 			return nil, fmt.Errorf("invalid format for package environment variable: %q (expected format: %s)",
 				input, expectedFormat)
+		} else {
+			__antithesis_instrumentation__.Notify(40907)
 		}
+		__antithesis_instrumentation__.Notify(40905)
 		pkgName := ptsParts[0]
 		tests := ptsParts[1]
 		pkgs[pkgName] = pkg{
 			tests: strings.Split(tests, ","),
 		}
 	}
+	__antithesis_instrumentation__.Notify(40903)
 	return pkgs, nil
 }
 
 func main() {
+	__antithesis_instrumentation__.Notify(40908)
 	sha, ok := os.LookupEnv(teamcityVCSNumberEnv)
 	if !ok {
+		__antithesis_instrumentation__.Notify(40916)
 		log.Fatalf("VCS number environment variable %s is not set", teamcityVCSNumberEnv)
+	} else {
+		__antithesis_instrumentation__.Notify(40917)
 	}
+	__antithesis_instrumentation__.Notify(40909)
 
 	target, ok := os.LookupEnv(targetEnv)
 	if !ok {
+		__antithesis_instrumentation__.Notify(40918)
 		log.Fatalf("target variable %s is not set", targetEnv)
+	} else {
+		__antithesis_instrumentation__.Notify(40919)
 	}
-	if target != "stress" && target != "stressrace" {
+	__antithesis_instrumentation__.Notify(40910)
+	if target != "stress" && func() bool {
+		__antithesis_instrumentation__.Notify(40920)
+		return target != "stressrace" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(40921)
 		log.Fatalf("environment variable %s is %s; expected 'stress' or 'stressrace'", targetEnv, target)
+	} else {
+		__antithesis_instrumentation__.Notify(40922)
 	}
+	__antithesis_instrumentation__.Notify(40911)
 
 	forceBazel := false
 	if forceBazelStr, ok := os.LookupEnv(forceBazelEnv); ok {
+		__antithesis_instrumentation__.Notify(40923)
 		forceBazel, _ = strconv.ParseBool(forceBazelStr)
+	} else {
+		__antithesis_instrumentation__.Notify(40924)
 	}
+	__antithesis_instrumentation__.Notify(40912)
 	var bazciPath string
-	if bazel.BuiltWithBazel() || forceBazel {
-		// NB: bazci is expected to be put in `PATH` by the caller.
+	if bazel.BuiltWithBazel() || func() bool {
+		__antithesis_instrumentation__.Notify(40925)
+		return forceBazel == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(40926)
+
 		var err error
 		bazciPath, err = exec.LookPath("bazci")
 		if err != nil {
+			__antithesis_instrumentation__.Notify(40927)
 			log.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(40928)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(40929)
 	}
+	__antithesis_instrumentation__.Notify(40913)
 
 	crdb, err := os.Getwd()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40930)
 		log.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(40931)
 	}
+	__antithesis_instrumentation__.Notify(40914)
 
 	var pkgs map[string]pkg
 	if pkgStr, ok := os.LookupEnv(packageEnv); ok {
+		__antithesis_instrumentation__.Notify(40932)
 		log.Printf("Using packages from environment variable %s", packageEnv)
 		pkgs, err = parsePackagesFromEnvironment(pkgStr)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(40933)
 			log.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(40934)
 		}
 
 	} else {
+		__antithesis_instrumentation__.Notify(40935)
 		ctx := context.Background()
 		const org = "cockroachdb"
 		const repo = "cockroach"
 		pkgs, err = pkgsFromGithubPRForSHA(ctx, org, repo, sha)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(40936)
 			log.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(40937)
 		}
 	}
+	__antithesis_instrumentation__.Notify(40915)
 
 	if len(pkgs) > 0 {
+		__antithesis_instrumentation__.Notify(40938)
 		for name, pkg := range pkgs {
-			// 20 minutes total seems OK, but at least 2 minutes per test.
-			// This should be reduced. See #46941.
+			__antithesis_instrumentation__.Notify(40939)
+
 			duration := (20 * time.Minute) / time.Duration(len(pkgs))
 			minDuration := (2 * time.Minute) * time.Duration(len(pkg.tests))
 			if duration < minDuration {
+				__antithesis_instrumentation__.Notify(40942)
 				duration = minDuration
+			} else {
+				__antithesis_instrumentation__.Notify(40943)
 			}
-			// Use a timeout shorter than the duration so that hanging tests don't
-			// get a free pass.
+			__antithesis_instrumentation__.Notify(40940)
+
 			timeout := (3 * duration) / 4
 
-			// The stress -p flag defaults to the number of CPUs, which is too
-			// aggressive on big machines and can cause tests to fail. Under nightly
-			// stress, we usually use 4 or 2, so run with 8 here to make sure the
-			// test becomes an obvious candidate for skipping under race before it
-			// has to deal with the nightlies.
 			parallelism := 16
 			if target == "stressrace" {
+				__antithesis_instrumentation__.Notify(40944)
 				parallelism = 8
+			} else {
+				__antithesis_instrumentation__.Notify(40945)
 			}
+			__antithesis_instrumentation__.Notify(40941)
 
 			var args []string
-			if bazel.BuiltWithBazel() || forceBazel {
+			if bazel.BuiltWithBazel() || func() bool {
+				__antithesis_instrumentation__.Notify(40946)
+				return forceBazel == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(40947)
 				args = append(args, "test")
-				// NB: We use a pretty dumb technique to list the bazel test
-				// targets: we ask bazel query to enumerate all the tests in this
-				// package. bazel queries can take a second or so to run, so it's
-				// conceivable that the delay introduced by this could be
-				// noticeable. For packages that have two or more test targets, the
-				// test filters should mean that we don't execute more tests than
-				// we need to. This should be refactored to improve performance and
-				// to strip out the unnecessary calls to `bazel`, but that might
-				// better be saved for when we no longer need `make` support and
-				// don't have to worry about accidentally breaking it.
+
 				out, err := exec.Command("bazel", "query", fmt.Sprintf("kind(go_test, //%s:all)", name), "--output=label").Output()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(40953)
 					log.Fatal(err)
+				} else {
+					__antithesis_instrumentation__.Notify(40954)
 				}
+				__antithesis_instrumentation__.Notify(40948)
 				numTargets := 0
 				for _, target := range strings.Split(string(out), "\n") {
+					__antithesis_instrumentation__.Notify(40955)
 					target = strings.TrimSpace(target)
 					if target != "" {
+						__antithesis_instrumentation__.Notify(40956)
 						args = append(args, target)
 						numTargets++
+					} else {
+						__antithesis_instrumentation__.Notify(40957)
 					}
 				}
+				__antithesis_instrumentation__.Notify(40949)
 				if numTargets == 0 {
-					// In this case there's nothing to test, so we can bail out early.
+					__antithesis_instrumentation__.Notify(40958)
+
 					log.Printf("found no targets to test under package %s\n", name)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(40959)
 				}
+				__antithesis_instrumentation__.Notify(40950)
 				args = append(args, "--")
 				if target == "stressrace" {
+					__antithesis_instrumentation__.Notify(40960)
 					args = append(args, "--config=race")
 				} else {
+					__antithesis_instrumentation__.Notify(40961)
 					args = append(args, "--test_sharding_strategy=disabled")
 				}
+				__antithesis_instrumentation__.Notify(40951)
 				var filters []string
 				for _, test := range pkg.tests {
+					__antithesis_instrumentation__.Notify(40962)
 					filters = append(filters, "^"+test+"$")
 				}
+				__antithesis_instrumentation__.Notify(40952)
 				args = append(args, fmt.Sprintf("--test_filter=%s", strings.Join(filters, "|")))
 				args = append(args, "--test_env=COCKROACH_NIGHTLY_STRESS=true")
 				args = append(args, "--test_arg=-test.timeout", fmt.Sprintf("--test_arg=%s", timeout))
-				// Give the entire test 1 more minute than the duration to wrap up.
+
 				args = append(args, fmt.Sprintf("--test_timeout=%d", int((duration+1*time.Minute).Seconds())))
 				args = append(args, "--test_output", "streamed")
 
@@ -332,13 +443,21 @@ func main() {
 				cmd.Stderr = os.Stderr
 				log.Println(cmd.Args)
 				if err := cmd.Run(); err != nil {
+					__antithesis_instrumentation__.Notify(40963)
 					log.Fatal(err)
+				} else {
+					__antithesis_instrumentation__.Notify(40964)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(40965)
 				tests := "-"
 				if len(pkg.tests) > 0 {
+					__antithesis_instrumentation__.Notify(40967)
 					tests = "(" + strings.Join(pkg.tests, "$$|") + "$$)"
+				} else {
+					__antithesis_instrumentation__.Notify(40968)
 				}
+				__antithesis_instrumentation__.Notify(40966)
 
 				args = append(
 					args,
@@ -346,7 +465,7 @@ func main() {
 					fmt.Sprintf("PKG=./%s", name),
 					fmt.Sprintf("TESTS=%s", tests),
 					fmt.Sprintf("TESTTIMEOUT=%s", timeout),
-					"GOTESTFLAGS=-json", // allow TeamCity to parse failures
+					"GOTESTFLAGS=-json",
 					fmt.Sprintf("STRESSFLAGS=-stderr -maxfails 1 -maxtime %s -p %d", duration, parallelism),
 				)
 				cmd := exec.Command("make", args...)
@@ -356,9 +475,14 @@ func main() {
 				cmd.Stderr = os.Stderr
 				log.Println(cmd.Args)
 				if err := cmd.Run(); err != nil {
+					__antithesis_instrumentation__.Notify(40969)
 					log.Fatal(err)
+				} else {
+					__antithesis_instrumentation__.Notify(40970)
 				}
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(40971)
 	}
 }

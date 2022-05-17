@@ -11,6 +11,7 @@ go_library(
         "//pkg/settings",
         "//pkg/util/envutil",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

@@ -15,6 +15,7 @@ go_library(
     deps = [
         "//pkg/ts/tspb",
         "//pkg/util/metric",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_prometheus_client_model//go",
     ],

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rpc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"crypto/tls"
@@ -20,11 +12,9 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-// GetAddJoinDialOptions returns a standard list of DialOptions for use during
-// Add/Join operations.
-// TODO(aaron-crl): Possibly fold this into context.go.
 func GetAddJoinDialOptions(certPool *x509.CertPool) []grpc.DialOption {
-	// Populate the dialOpts.
+	__antithesis_instrumentation__.Notify(183980)
+
 	var dialOpts []grpc.DialOption
 
 	dialOpts = append(dialOpts, grpc.WithDefaultCallOptions(
@@ -43,17 +33,18 @@ func GetAddJoinDialOptions(certPool *x509.CertPool) []grpc.DialOption {
 		grpc.WithInitialWindowSize(initialWindowSize),
 		grpc.WithInitialConnWindowSize(initialConnWindowSize))
 
-	// Create a tls.Config that allows insecure mode if certPool is not set but
-	// requires it if certPool is set.
 	var tlsConf tls.Config
 	if certPool != nil {
+		__antithesis_instrumentation__.Notify(183982)
 		tlsConf = tls.Config{
 			RootCAs: certPool,
 		}
 	} else {
-		// Connect to HTTPS endpoint unverified (effectively HTTP) for CA.
+		__antithesis_instrumentation__.Notify(183983)
+
 		tlsConf = tls.Config{InsecureSkipVerify: true}
 	}
+	__antithesis_instrumentation__.Notify(183981)
 
 	creds := credentials.NewTLS(&tlsConf)
 	dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))

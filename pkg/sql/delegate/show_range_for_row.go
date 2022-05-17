@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"encoding/hex"
@@ -21,17 +13,30 @@ import (
 )
 
 func (d *delegator) delegateShowRangeForRow(n *tree.ShowRangeForRow) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465690)
 	flags := cat.Flags{AvoidDescriptorCaches: true}
 	idx, resName, err := cat.ResolveTableIndex(d.ctx, d.catalog, flags, &n.TableOrIndex)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(465695)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465696)
 	}
+	__antithesis_instrumentation__.Notify(465691)
 	if err := checkPrivilegesForShowRanges(d, idx.Table()); err != nil {
+		__antithesis_instrumentation__.Notify(465697)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(465698)
 	}
+	__antithesis_instrumentation__.Notify(465692)
 	if idx.Table().IsVirtualTable() {
+		__antithesis_instrumentation__.Notify(465699)
 		return nil, errors.New("SHOW RANGE FOR ROW may not be called on a virtual table")
+	} else {
+		__antithesis_instrumentation__.Notify(465700)
 	}
+	__antithesis_instrumentation__.Notify(465693)
 	span := idx.Span()
 	table := idx.Table()
 	idxSpanStart := hex.EncodeToString(span.Key)
@@ -39,21 +44,17 @@ func (d *delegator) delegateShowRangeForRow(n *tree.ShowRangeForRow) (tree.State
 
 	sqltelemetry.IncrementShowCounter(sqltelemetry.RangeForRow)
 
-	// Format the expressions into a string to be passed into the
-	// crdb_internal.encode_key function. We have to be sneaky here and special
-	// case when exprs has length 1 and place a comma after the single tuple
-	// element so that we can deduce the expression actually has a tuple type for
-	// the crdb_internal.encode_key function.
-	// Example: exprs = (1)
-	// Output when used: crdb_internal.encode_key(x, y, (1,))
 	var fmtCtx tree.FmtCtx
 	fmtCtx.WriteString("(")
 	if len(n.Row) == 1 {
+		__antithesis_instrumentation__.Notify(465701)
 		fmtCtx.FormatNode(n.Row[0])
 		fmtCtx.WriteString(",")
 	} else {
+		__antithesis_instrumentation__.Notify(465702)
 		fmtCtx.FormatNode(&n.Row)
 	}
+	__antithesis_instrumentation__.Notify(465694)
 	fmtCtx.WriteString(")")
 	rowString := fmtCtx.String()
 
@@ -70,7 +71,7 @@ FROM %[4]s.crdb_internal.ranges AS r
 WHERE (r.start_key <= crdb_internal.encode_key(%[1]d, %[2]d, %[3]s))
   AND (r.end_key   >  crdb_internal.encode_key(%[1]d, %[2]d, %[3]s)) ORDER BY r.start_key
 	`
-	// note: CatalogName.String() != Catalog()
+
 	return parse(
 		fmt.Sprintf(
 			query,

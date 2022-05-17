@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,11 +22,6 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// scheduledJobRecord is a reflective representation of a row in
-// a system.scheduled_job table.
-// Each field in this struct has a tag specifying the column
-// name in the system.scheduled_job table containing the data for the field.
-// Do not manipulate these fields directly, use methods in the ScheduledJob.
 type scheduledJobRecord struct {
 	ScheduleID      int64                     `col:"schedule_id"`
 	ScheduleLabel   string                    `col:"schedule_name"`
@@ -47,53 +34,40 @@ type scheduledJobRecord struct {
 	ExecutionArgs   jobspb.ExecutionArguments `col:"execution_args"`
 }
 
-// InvalidScheduleID is a constant indicating the schedule ID is not valid.
 const InvalidScheduleID int64 = 0
 
-// ScheduledJob  is a representation of the scheduled job.
-// This struct can marshal/unmarshal changes made to the underlying system.scheduled_job table.
 type ScheduledJob struct {
 	env scheduledjobs.JobSchedulerEnv
 
-	// The "record" for this schedule job.  Do not access this field
-	// directly (except in tests); Use Get/Set methods on ScheduledJob instead.
 	rec scheduledJobRecord
 
-	// The time this scheduled job was supposed to run.
-	// This field is initialized to rec.NextRun when the scheduled job record
-	// is loaded from the table.
 	scheduledTime time.Time
 
-	// Set of changes to this job that need to be persisted.
 	dirty map[string]struct{}
 }
 
-// NewScheduledJob creates and initializes ScheduledJob.
 func NewScheduledJob(env scheduledjobs.JobSchedulerEnv) *ScheduledJob {
+	__antithesis_instrumentation__.Notify(84714)
 	return &ScheduledJob{
 		env:   env,
 		dirty: make(map[string]struct{}),
 	}
 }
 
-// scheduledJobNotFoundError is returned from load when the scheduled job does
-// not exist.
 type scheduledJobNotFoundError struct {
 	scheduleID int64
 }
 
-// Error makes scheduledJobNotFoundError an error.
 func (e *scheduledJobNotFoundError) Error() string {
+	__antithesis_instrumentation__.Notify(84715)
 	return fmt.Sprintf("scheduled job with ID %d does not exist", e.scheduleID)
 }
 
-// HasScheduledJobNotFoundError returns true if the error contains a
-// scheduledJobNotFoundError.
 func HasScheduledJobNotFoundError(err error) bool {
+	__antithesis_instrumentation__.Notify(84716)
 	return errors.HasType(err, (*scheduledJobNotFoundError)(nil))
 }
 
-// LoadScheduledJob loads scheduled job record from the database.
 func LoadScheduledJob(
 	ctx context.Context,
 	env scheduledjobs.JobSchedulerEnv,
@@ -101,281 +75,356 @@ func LoadScheduledJob(
 	ex sqlutil.InternalExecutor,
 	txn *kv.Txn,
 ) (*ScheduledJob, error) {
+	__antithesis_instrumentation__.Notify(84717)
 	row, cols, err := ex.QueryRowExWithCols(ctx, "lookup-schedule", txn,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
 		fmt.Sprintf("SELECT * FROM %s WHERE schedule_id = %d",
 			env.ScheduledJobsTableName(), id))
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84721)
 		return nil, errors.CombineErrors(err, &scheduledJobNotFoundError{scheduleID: id})
+	} else {
+		__antithesis_instrumentation__.Notify(84722)
 	}
+	__antithesis_instrumentation__.Notify(84718)
 	if row == nil {
+		__antithesis_instrumentation__.Notify(84723)
 		return nil, &scheduledJobNotFoundError{scheduleID: id}
+	} else {
+		__antithesis_instrumentation__.Notify(84724)
 	}
+	__antithesis_instrumentation__.Notify(84719)
 
 	j := NewScheduledJob(env)
 	if err := j.InitFromDatums(row, cols); err != nil {
+		__antithesis_instrumentation__.Notify(84725)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84726)
 	}
+	__antithesis_instrumentation__.Notify(84720)
 	return j, nil
 }
 
-// ScheduleID returns schedule ID.
 func (j *ScheduledJob) ScheduleID() int64 {
+	__antithesis_instrumentation__.Notify(84727)
 	return j.rec.ScheduleID
 }
 
-// ScheduleLabel returns schedule label.
 func (j *ScheduledJob) ScheduleLabel() string {
+	__antithesis_instrumentation__.Notify(84728)
 	return j.rec.ScheduleLabel
 }
 
-// SetScheduleLabel updates schedule label.
 func (j *ScheduledJob) SetScheduleLabel(label string) {
+	__antithesis_instrumentation__.Notify(84729)
 	j.rec.ScheduleLabel = label
 	j.markDirty("schedule_name")
 }
 
-// Owner returns schedule owner.
 func (j *ScheduledJob) Owner() security.SQLUsername {
+	__antithesis_instrumentation__.Notify(84730)
 	return j.rec.Owner
 }
 
-// SetOwner updates schedule owner.
 func (j *ScheduledJob) SetOwner(owner security.SQLUsername) {
+	__antithesis_instrumentation__.Notify(84731)
 	j.rec.Owner = owner
 	j.markDirty("owner")
 }
 
-// NextRun returns the next time this schedule supposed to execute.
-// A sentinel value of time.Time{} indicates this schedule is paused.
 func (j *ScheduledJob) NextRun() time.Time {
+	__antithesis_instrumentation__.Notify(84732)
 	return j.rec.NextRun
 }
 
-// ScheduledRunTime returns the time this schedule was supposed to execute.
-// This value reflects the 'next_run' value loaded from the system.scheduled_jobs table,
-// prior to any mutations to the 'next_run' value.
 func (j *ScheduledJob) ScheduledRunTime() time.Time {
+	__antithesis_instrumentation__.Notify(84733)
 	return j.scheduledTime
 }
 
-// IsPaused returns true if this schedule is paused.
 func (j *ScheduledJob) IsPaused() bool {
+	__antithesis_instrumentation__.Notify(84734)
 	return j.rec.NextRun == time.Time{}
 }
 
-// ExecutorType returns executor type for this schedule.
 func (j *ScheduledJob) ExecutorType() string {
+	__antithesis_instrumentation__.Notify(84735)
 	return j.rec.ExecutorType
 }
 
-// ExecutionArgs returns ExecutionArgs set for this schedule.
 func (j *ScheduledJob) ExecutionArgs() *jobspb.ExecutionArguments {
+	__antithesis_instrumentation__.Notify(84736)
 	return &j.rec.ExecutionArgs
 }
 
-// SetSchedule updates periodicity of this schedule, and updates this schedules
-// next run time.
 func (j *ScheduledJob) SetSchedule(scheduleExpr string) error {
+	__antithesis_instrumentation__.Notify(84737)
 	j.rec.ScheduleExpr = scheduleExpr
 	j.markDirty("schedule_expr")
 	return j.ScheduleNextRun()
 }
 
-// HasRecurringSchedule returns true if this schedule job runs periodically.
 func (j *ScheduledJob) HasRecurringSchedule() bool {
+	__antithesis_instrumentation__.Notify(84738)
 	return len(j.rec.ScheduleExpr) > 0
 }
 
-// Frequency returns how often this schedule executes.
 func (j *ScheduledJob) Frequency() (time.Duration, error) {
+	__antithesis_instrumentation__.Notify(84739)
 	if !j.HasRecurringSchedule() {
+		__antithesis_instrumentation__.Notify(84742)
 		return 0, errors.Newf(
 			"schedule %d is not periodic", j.rec.ScheduleID)
+	} else {
+		__antithesis_instrumentation__.Notify(84743)
 	}
+	__antithesis_instrumentation__.Notify(84740)
 	expr, err := cron.ParseStandard(j.rec.ScheduleExpr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84744)
 		return 0, errors.Wrapf(err,
 			"parsing schedule expression: %q; it must be a valid cron expression",
 			j.rec.ScheduleExpr)
+	} else {
+		__antithesis_instrumentation__.Notify(84745)
 	}
+	__antithesis_instrumentation__.Notify(84741)
 
 	next := expr.Next(j.env.Now())
 	nextNext := expr.Next(next)
 	return nextNext.Sub(next), nil
 }
 
-// ScheduleNextRun updates next run based on job schedule.
 func (j *ScheduledJob) ScheduleNextRun() error {
+	__antithesis_instrumentation__.Notify(84746)
 	if !j.HasRecurringSchedule() {
+		__antithesis_instrumentation__.Notify(84749)
 		return errors.Newf(
 			"cannot set next run for schedule %d (empty schedule)", j.rec.ScheduleID)
+	} else {
+		__antithesis_instrumentation__.Notify(84750)
 	}
+	__antithesis_instrumentation__.Notify(84747)
 	expr, err := cron.ParseStandard(j.rec.ScheduleExpr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84751)
 		return errors.Wrapf(err, "parsing schedule expression: %q", j.rec.ScheduleExpr)
+	} else {
+		__antithesis_instrumentation__.Notify(84752)
 	}
+	__antithesis_instrumentation__.Notify(84748)
 	j.SetNextRun(expr.Next(j.env.Now()))
 	return nil
 }
 
-// SetNextRun updates next run time for this schedule.
 func (j *ScheduledJob) SetNextRun(t time.Time) {
+	__antithesis_instrumentation__.Notify(84753)
 	j.rec.NextRun = t
 	j.markDirty("next_run")
 }
 
-// ScheduleDetails returns schedule configuration information.
 func (j *ScheduledJob) ScheduleDetails() *jobspb.ScheduleDetails {
+	__antithesis_instrumentation__.Notify(84754)
 	return &j.rec.ScheduleDetails
 }
 
-// SetScheduleDetails updates schedule configuration.
 func (j *ScheduledJob) SetScheduleDetails(details jobspb.ScheduleDetails) {
+	__antithesis_instrumentation__.Notify(84755)
 	j.rec.ScheduleDetails = details
 	j.markDirty("schedule_details")
 }
 
-// SetScheduleStatus sets schedule status.
 func (j *ScheduledJob) SetScheduleStatus(fmtOrMsg string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(84756)
 	if len(args) == 0 {
+		__antithesis_instrumentation__.Notify(84758)
 		j.rec.ScheduleState.Status = fmtOrMsg
 	} else {
+		__antithesis_instrumentation__.Notify(84759)
 		j.rec.ScheduleState.Status = fmt.Sprintf(fmtOrMsg, args...)
 	}
+	__antithesis_instrumentation__.Notify(84757)
 	j.markDirty("schedule_state")
 }
 
-// ScheduleStatus returns schedule status.
 func (j *ScheduledJob) ScheduleStatus() string {
+	__antithesis_instrumentation__.Notify(84760)
 	return j.rec.ScheduleState.Status
 }
 
-// ClearScheduleStatus clears schedule status.
 func (j *ScheduledJob) ClearScheduleStatus() {
+	__antithesis_instrumentation__.Notify(84761)
 	j.rec.ScheduleState.Status = ""
 	j.markDirty("schedule_state")
 }
 
-// ScheduleExpr returns the schedule expression for this schedule.
 func (j *ScheduledJob) ScheduleExpr() string {
+	__antithesis_instrumentation__.Notify(84762)
 	return j.rec.ScheduleExpr
 }
 
-// Pause pauses this schedule.
-// Use ScheduleNextRun to unpause.
 func (j *ScheduledJob) Pause() {
+	__antithesis_instrumentation__.Notify(84763)
 	j.rec.NextRun = time.Time{}
 	j.markDirty("next_run")
 }
 
-// SetExecutionDetails sets execution specific fields for this schedule.
 func (j *ScheduledJob) SetExecutionDetails(executor string, args jobspb.ExecutionArguments) {
+	__antithesis_instrumentation__.Notify(84764)
 	j.rec.ExecutorType = executor
 	j.rec.ExecutionArgs = args
 	j.markDirty("executor_type", "execution_args")
 }
 
-// ClearDirty clears the dirty map making this object appear as if it was just loaded.
 func (j *ScheduledJob) ClearDirty() {
+	__antithesis_instrumentation__.Notify(84765)
 	j.dirty = make(map[string]struct{})
 }
 
-// InitFromDatums initializes this ScheduledJob object based on datums and column names.
 func (j *ScheduledJob) InitFromDatums(datums []tree.Datum, cols []colinfo.ResultColumn) error {
+	__antithesis_instrumentation__.Notify(84766)
 	if len(datums) != len(cols) {
+		__antithesis_instrumentation__.Notify(84770)
 		return errors.Errorf(
 			"datums length != columns length: %d != %d", len(datums), len(cols))
+	} else {
+		__antithesis_instrumentation__.Notify(84771)
 	}
+	__antithesis_instrumentation__.Notify(84767)
 
 	record := reflect.ValueOf(&j.rec).Elem()
 
 	numInitialized := 0
 	for i, col := range cols {
+		__antithesis_instrumentation__.Notify(84772)
 		native, err := datumToNative(datums[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(84777)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(84778)
 		}
+		__antithesis_instrumentation__.Notify(84773)
 
 		if native == nil {
+			__antithesis_instrumentation__.Notify(84779)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(84780)
 		}
+		__antithesis_instrumentation__.Notify(84774)
 
 		fieldNum, ok := columnNameToField[col.Name]
 		if !ok {
-			// Table contains columns we don't care about (e.g. created)
+			__antithesis_instrumentation__.Notify(84781)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(84782)
 		}
+		__antithesis_instrumentation__.Notify(84775)
 
 		field := record.Field(fieldNum)
 
 		if data, ok := native.([]byte); ok {
-			// []byte == protocol message.
+			__antithesis_instrumentation__.Notify(84783)
+
 			if pb, ok := field.Addr().Interface().(protoutil.Message); ok {
+				__antithesis_instrumentation__.Notify(84784)
 				if err := protoutil.Unmarshal(data, pb); err != nil {
+					__antithesis_instrumentation__.Notify(84785)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(84786)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(84787)
 				return errors.Newf(
 					"field %s with value of type %T is does not appear to be a protocol message",
 					field.String(), field.Addr().Interface())
 			}
 		} else {
-			// We ought to be able to assign native directly to our field.
-			// But, be paranoid and double check.
+			__antithesis_instrumentation__.Notify(84788)
+
 			rv := reflect.ValueOf(native)
 			if !rv.Type().AssignableTo(field.Type()) {
-				// Is this the owner field? This needs special treatment.
+				__antithesis_instrumentation__.Notify(84790)
+
 				ok := false
 				if col.Name == "owner" {
-					// The owner field has type SQLUsername, but the datum is a
-					// simple string.  So we need to convert.
-					//
-					// TODO(someone): We need a more generic mechanism than this
-					// naive go reflect stuff here.
+					__antithesis_instrumentation__.Notify(84792)
+
 					var s string
 					s, ok = native.(string)
 					if ok {
-						// Replace the value by one of the right type.
+						__antithesis_instrumentation__.Notify(84793)
+
 						rv = reflect.ValueOf(security.MakeSQLUsernameFromPreNormalizedString(s))
+					} else {
+						__antithesis_instrumentation__.Notify(84794)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(84795)
 				}
+				__antithesis_instrumentation__.Notify(84791)
 				if !ok {
+					__antithesis_instrumentation__.Notify(84796)
 					return errors.Newf("value of type %T cannot be assigned to %s",
 						native, field.Type().String())
+				} else {
+					__antithesis_instrumentation__.Notify(84797)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(84798)
 			}
+			__antithesis_instrumentation__.Notify(84789)
 			field.Set(rv)
 		}
+		__antithesis_instrumentation__.Notify(84776)
 		numInitialized++
 	}
+	__antithesis_instrumentation__.Notify(84768)
 
 	if numInitialized == 0 {
+		__antithesis_instrumentation__.Notify(84799)
 		return errors.New("did not initialize any schedule field")
+	} else {
+		__antithesis_instrumentation__.Notify(84800)
 	}
+	__antithesis_instrumentation__.Notify(84769)
 
 	j.scheduledTime = j.rec.NextRun
 	return nil
 }
 
-// Create persists this schedule in the system.scheduled_jobs table.
-// Sets j.scheduleID to the ID of the newly created schedule.
-// Only the values initialized in this schedule are written to the specified transaction.
-// If an error is returned, it is callers responsibility to handle it (e.g. rollback transaction).
 func (j *ScheduledJob) Create(ctx context.Context, ex sqlutil.InternalExecutor, txn *kv.Txn) error {
+	__antithesis_instrumentation__.Notify(84801)
 	if j.rec.ScheduleID != 0 {
+		__antithesis_instrumentation__.Notify(84807)
 		return errors.New("cannot specify schedule id when creating new cron job")
+	} else {
+		__antithesis_instrumentation__.Notify(84808)
 	}
+	__antithesis_instrumentation__.Notify(84802)
 
 	if !j.isDirty() {
+		__antithesis_instrumentation__.Notify(84809)
 		return errors.New("no settings specified for scheduled job")
+	} else {
+		__antithesis_instrumentation__.Notify(84810)
 	}
+	__antithesis_instrumentation__.Notify(84803)
 
 	cols, qargs, err := j.marshalChanges()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84811)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84812)
 	}
+	__antithesis_instrumentation__.Notify(84804)
 
 	row, retCols, err := ex.QueryRowExWithCols(ctx, "sched-create", txn,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
@@ -385,34 +434,57 @@ func (j *ScheduledJob) Create(ctx context.Context, ex sqlutil.InternalExecutor, 
 	)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84813)
 		return errors.Wrapf(err, "failed to create new schedule")
+	} else {
+		__antithesis_instrumentation__.Notify(84814)
 	}
+	__antithesis_instrumentation__.Notify(84805)
 	if row == nil {
+		__antithesis_instrumentation__.Notify(84815)
 		return errors.New("failed to create new schedule")
+	} else {
+		__antithesis_instrumentation__.Notify(84816)
 	}
+	__antithesis_instrumentation__.Notify(84806)
 
 	return j.InitFromDatums(row, retCols)
 }
 
-// Update saves changes made to this schedule.
-// If an error is returned, it is callers responsibility to handle it (e.g. rollback transaction).
 func (j *ScheduledJob) Update(ctx context.Context, ex sqlutil.InternalExecutor, txn *kv.Txn) error {
+	__antithesis_instrumentation__.Notify(84817)
 	if !j.isDirty() {
+		__antithesis_instrumentation__.Notify(84824)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(84825)
 	}
+	__antithesis_instrumentation__.Notify(84818)
 
 	if j.rec.ScheduleID == 0 {
+		__antithesis_instrumentation__.Notify(84826)
 		return errors.New("cannot update schedule: missing schedule id")
+	} else {
+		__antithesis_instrumentation__.Notify(84827)
 	}
+	__antithesis_instrumentation__.Notify(84819)
 
 	cols, qargs, err := j.marshalChanges()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84828)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84829)
 	}
+	__antithesis_instrumentation__.Notify(84820)
 
 	if len(qargs) == 0 {
-		return nil // Nothing changed.
+		__antithesis_instrumentation__.Notify(84830)
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(84831)
 	}
+	__antithesis_instrumentation__.Notify(84821)
 
 	n, err := ex.ExecEx(ctx, "sched-update", txn,
 		sessiondata.InternalExecutorOverride{User: security.RootUserName()},
@@ -423,121 +495,163 @@ func (j *ScheduledJob) Update(ctx context.Context, ex sqlutil.InternalExecutor, 
 	)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84832)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84833)
 	}
+	__antithesis_instrumentation__.Notify(84822)
 
 	if n != 1 {
+		__antithesis_instrumentation__.Notify(84834)
 		return fmt.Errorf("expected to update 1 schedule, updated %d instead", n)
+	} else {
+		__antithesis_instrumentation__.Notify(84835)
 	}
+	__antithesis_instrumentation__.Notify(84823)
 
 	return nil
 }
 
-// marshalChanges marshals all changes in the in-memory representation and returns
-// the names of the columns and marshaled values.
-// If no error is returned, the job is not considered to be modified anymore.
-// If the error is returned, this job object should no longer be used.
 func (j *ScheduledJob) marshalChanges() ([]string, []interface{}, error) {
+	__antithesis_instrumentation__.Notify(84836)
 	var cols []string
 	var qargs []interface{}
 
 	for col := range j.dirty {
+		__antithesis_instrumentation__.Notify(84838)
 		var arg tree.Datum
 		var err error
 
 		switch col {
 		case `schedule_name`:
+			__antithesis_instrumentation__.Notify(84841)
 			arg = tree.NewDString(j.rec.ScheduleLabel)
 		case `owner`:
+			__antithesis_instrumentation__.Notify(84842)
 			arg = tree.NewDString(j.rec.Owner.Normalized())
 		case `next_run`:
+			__antithesis_instrumentation__.Notify(84843)
 			if (j.rec.NextRun == time.Time{}) {
+				__antithesis_instrumentation__.Notify(84850)
 				arg = tree.DNull
 			} else {
+				__antithesis_instrumentation__.Notify(84851)
 				arg, err = tree.MakeDTimestampTZ(j.rec.NextRun, time.Microsecond)
 			}
 		case `schedule_state`:
+			__antithesis_instrumentation__.Notify(84844)
 			arg, err = marshalProto(&j.rec.ScheduleState)
 		case `schedule_expr`:
+			__antithesis_instrumentation__.Notify(84845)
 			arg = tree.NewDString(j.rec.ScheduleExpr)
 		case `schedule_details`:
+			__antithesis_instrumentation__.Notify(84846)
 			arg, err = marshalProto(&j.rec.ScheduleDetails)
 		case `executor_type`:
+			__antithesis_instrumentation__.Notify(84847)
 			arg = tree.NewDString(j.rec.ExecutorType)
 		case `execution_args`:
+			__antithesis_instrumentation__.Notify(84848)
 			arg, err = marshalProto(&j.rec.ExecutionArgs)
 		default:
+			__antithesis_instrumentation__.Notify(84849)
 			return nil, nil, errors.Newf("cannot marshal column %q", col)
 		}
+		__antithesis_instrumentation__.Notify(84839)
 
 		if err != nil {
+			__antithesis_instrumentation__.Notify(84852)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(84853)
 		}
+		__antithesis_instrumentation__.Notify(84840)
 		cols = append(cols, col)
 		qargs = append(qargs, arg)
 	}
+	__antithesis_instrumentation__.Notify(84837)
 
 	j.dirty = make(map[string]struct{})
 	return cols, qargs, nil
 }
 
-// markDirty marks specified columns as dirty.
 func (j *ScheduledJob) markDirty(cols ...string) {
+	__antithesis_instrumentation__.Notify(84854)
 	for _, col := range cols {
+		__antithesis_instrumentation__.Notify(84855)
 		j.dirty[col] = struct{}{}
 	}
 }
 
 func (j *ScheduledJob) isDirty() bool {
+	__antithesis_instrumentation__.Notify(84856)
 	return len(j.dirty) > 0
 }
 
-// generates "$1,$2,..." placeholders for the specified 'n' number of arguments.
 func generatePlaceholders(n int) string {
+	__antithesis_instrumentation__.Notify(84857)
 	placeholders := strings.Builder{}
 	for i := 1; i <= n; i++ {
+		__antithesis_instrumentation__.Notify(84859)
 		if i > 1 {
+			__antithesis_instrumentation__.Notify(84861)
 			placeholders.WriteByte(',')
+		} else {
+			__antithesis_instrumentation__.Notify(84862)
 		}
+		__antithesis_instrumentation__.Notify(84860)
 		placeholders.WriteString(fmt.Sprintf("$%d", i))
 	}
+	__antithesis_instrumentation__.Notify(84858)
 	return placeholders.String()
 }
 
-// marshalProto is a helper to serialize protocol message.
 func marshalProto(message protoutil.Message) (tree.Datum, error) {
+	__antithesis_instrumentation__.Notify(84863)
 	data := make([]byte, message.Size())
 	if _, err := message.MarshalTo(data); err != nil {
+		__antithesis_instrumentation__.Notify(84865)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84866)
 	}
+	__antithesis_instrumentation__.Notify(84864)
 	return tree.NewDBytes(tree.DBytes(data)), nil
 }
 
-// datumToNative is a helper to convert tree.Datum into Go native
-// types.  We only care about types stored in the system.scheduled_jobs table.
 func datumToNative(datum tree.Datum) (interface{}, error) {
+	__antithesis_instrumentation__.Notify(84867)
 	datum = tree.UnwrapDatum(nil, datum)
 	if datum == tree.DNull {
+		__antithesis_instrumentation__.Notify(84870)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(84871)
 	}
+	__antithesis_instrumentation__.Notify(84868)
 	switch d := datum.(type) {
 	case *tree.DString:
+		__antithesis_instrumentation__.Notify(84872)
 		return string(*d), nil
 	case *tree.DInt:
+		__antithesis_instrumentation__.Notify(84873)
 		return int64(*d), nil
 	case *tree.DTimestampTZ:
+		__antithesis_instrumentation__.Notify(84874)
 		return d.Time, nil
 	case *tree.DBytes:
+		__antithesis_instrumentation__.Notify(84875)
 		return []byte(*d), nil
 	}
+	__antithesis_instrumentation__.Notify(84869)
 	return nil, errors.Newf("cannot handle type %T", datum)
 }
 
 var columnNameToField = make(map[string]int)
 
 func init() {
-	// Initialize columnNameToField map, mapping system.schedule_job columns
-	// to the appropriate fields int he scheduledJobRecord.
+
 	j := reflect.TypeOf(scheduledJobRecord{})
 
 	for f := 0; f < j.NumField(); f++ {

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -33,17 +25,15 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// IndexBackfillerMergePlanner holds dependencies for the merge step of the
-// index backfiller.
 type IndexBackfillerMergePlanner struct {
 	execCfg   *ExecutorConfig
 	ieFactory sqlutil.SessionBoundInternalExecutorFactory
 }
 
-// NewIndexBackfillerMergePlanner creates a new IndexBackfillerMergePlanner.
 func NewIndexBackfillerMergePlanner(
 	execCfg *ExecutorConfig, ieFactory sqlutil.SessionBoundInternalExecutorFactory,
 ) *IndexBackfillerMergePlanner {
+	__antithesis_instrumentation__.Notify(501782)
 	return &IndexBackfillerMergePlanner{execCfg: execCfg, ieFactory: ieFactory}
 }
 
@@ -55,6 +45,7 @@ func (im *IndexBackfillerMergePlanner) plan(
 	metaFn func(_ context.Context, meta *execinfrapb.ProducerMetadata) error,
 	mergeTimestamp hlc.Timestamp,
 ) (func(context.Context) error, error) {
+	__antithesis_instrumentation__.Notify(501783)
 	var p *PhysicalPlan
 	var evalCtx extendedEvalContext
 	var planCtx *PlanningCtx
@@ -62,65 +53,66 @@ func (im *IndexBackfillerMergePlanner) plan(
 	if err := DescsTxn(ctx, im.execCfg, func(
 		ctx context.Context, txn *kv.Txn, descriptors *descs.Collection,
 	) error {
+		__antithesis_instrumentation__.Notify(501785)
 		evalCtx = createSchemaChangeEvalCtx(ctx, im.execCfg, txn.ReadTimestamp(), descriptors)
-		planCtx = im.execCfg.DistSQLPlanner.NewPlanningCtx(ctx, &evalCtx, nil /* planner */, txn,
+		planCtx = im.execCfg.DistSQLPlanner.NewPlanningCtx(ctx, &evalCtx, nil, txn,
 			DistributionTypeSystemTenantOnly)
 
 		spec, err := initIndexBackfillMergerSpec(*tableDesc.TableDesc(), addedIndexes, temporaryIndexes, mergeTimestamp)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(501787)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(501788)
 		}
+		__antithesis_instrumentation__.Notify(501786)
 		p, err = im.execCfg.DistSQLPlanner.createIndexBackfillerMergePhysicalPlan(ctx, planCtx, spec, todoSpanList)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(501789)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(501790)
 	}
+	__antithesis_instrumentation__.Notify(501784)
 
 	return func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(501791)
 		cbw := MetadataCallbackWriter{rowResultWriter: &errOnlyResultWriter{}, fn: metaFn}
 		recv := MakeDistSQLReceiver(
 			ctx,
 			&cbw,
-			tree.Rows, /* stmtType - doesn't matter here since no result are produced */
+			tree.Rows,
 			im.execCfg.RangeDescriptorCache,
-			nil, /* txn - the flow does not run wholly in a txn */
+			nil,
 			im.execCfg.Clock,
 			evalCtx.Tracing,
 			im.execCfg.ContentionRegistry,
-			nil, /* testingPushCallback */
+			nil,
 		)
 		defer recv.Release()
 		evalCtxCopy := evalCtx
 		im.execCfg.DistSQLPlanner.Run(
 			ctx,
 			planCtx,
-			nil, /* txn - the processors manage their own transactions */
+			nil,
 			p, recv, &evalCtxCopy,
-			nil, /* finishedSetupFn */
+			nil,
 		)()
 		return cbw.Err()
 	}, nil
 }
 
-// MergeProgress tracks the progress for an index backfill merge.
 type MergeProgress struct {
-	// TodoSpans contains the all the spans for all the temporary
-	// indexes that still need to be merged.
 	TodoSpans [][]roachpb.Span
 
-	// MutationIdx contains the indexes of the mutations for the
-	// temporary indexes in the list of mutations.
 	MutationIdx []int
 
-	// AddedIndexes and TemporaryIndexes contain the index IDs for
-	// all newly added indexes and their corresponding temporary
-	// index.
 	AddedIndexes, TemporaryIndexes []descpb.IndexID
 }
 
-// Copy returns a copy of this MergeProcess. Note that roachpb.Span's
-// aren't deep copied.
 func (mp *MergeProgress) Copy() *MergeProgress {
+	__antithesis_instrumentation__.Notify(501792)
 	newp := &MergeProgress{
 		TodoSpans:        make([][]roachpb.Span, len(mp.TodoSpans)),
 		MutationIdx:      make([]int, len(mp.MutationIdx)),
@@ -131,25 +123,26 @@ func (mp *MergeProgress) Copy() *MergeProgress {
 	copy(newp.AddedIndexes, mp.AddedIndexes)
 	copy(newp.TemporaryIndexes, mp.TemporaryIndexes)
 	for i, spanSlice := range mp.TodoSpans {
+		__antithesis_instrumentation__.Notify(501794)
 		newSpanSlice := make([]roachpb.Span, len(spanSlice))
 		copy(newSpanSlice, spanSlice)
 		newp.TodoSpans[i] = newSpanSlice
 	}
+	__antithesis_instrumentation__.Notify(501793)
 	return newp
 }
 
-// FlatSpans returns all of the TodoSpans being tracked by this merger
-// as a flat slice.
 func (mp *MergeProgress) FlatSpans() []roachpb.Span {
+	__antithesis_instrumentation__.Notify(501795)
 	spans := []roachpb.Span{}
 	for _, s := range mp.TodoSpans {
+		__antithesis_instrumentation__.Notify(501797)
 		spans = append(spans, s...)
 	}
+	__antithesis_instrumentation__.Notify(501796)
 	return spans
 }
 
-// IndexMergeTracker abstracts the infrastructure to read and write merge
-// progress to job state.
 type IndexMergeTracker struct {
 	mu struct {
 		syncutil.Mutex
@@ -172,13 +165,13 @@ var _ scexec.BackfillProgressFlusher = (*IndexMergeTracker)(nil)
 
 type rangeCounter func(ctx context.Context, spans []roachpb.Span) (int, error)
 
-// NewIndexMergeTracker creates a new IndexMergeTracker
 func NewIndexMergeTracker(
 	progress *MergeProgress,
 	job *jobs.Job,
 	rangeCounter rangeCounter,
 	scaler *multiStageFractionScaler,
 ) *IndexMergeTracker {
+	__antithesis_instrumentation__.Notify(501798)
 	imt := IndexMergeTracker{
 		rangeCounter:   rangeCounter,
 		fractionScaler: scaler,
@@ -189,90 +182,122 @@ func NewIndexMergeTracker(
 	return &imt
 }
 
-// FlushCheckpoint writes out a checkpoint containing any data which
-// has been previously updated via UpdateMergeProgress.
 func (imt *IndexMergeTracker) FlushCheckpoint(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(501799)
 	imt.jobMu.Lock()
 	defer imt.jobMu.Unlock()
 
 	imt.mu.Lock()
 	if imt.mu.progress.TodoSpans == nil {
+		__antithesis_instrumentation__.Notify(501803)
 		imt.mu.Unlock()
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(501804)
 	}
+	__antithesis_instrumentation__.Notify(501800)
 	progress := imt.mu.progress.Copy()
 	imt.mu.Unlock()
 
 	details, ok := imt.jobMu.job.Details().(jobspb.SchemaChangeDetails)
 	if !ok {
+		__antithesis_instrumentation__.Notify(501805)
 		return errors.Errorf("expected SchemaChangeDetails job type, got %T", imt.jobMu.job.Details())
+	} else {
+		__antithesis_instrumentation__.Notify(501806)
 	}
+	__antithesis_instrumentation__.Notify(501801)
 
 	for idx := range progress.TodoSpans {
+		__antithesis_instrumentation__.Notify(501807)
 		details.ResumeSpanList[progress.MutationIdx[idx]].ResumeSpans = progress.TodoSpans[idx]
 	}
+	__antithesis_instrumentation__.Notify(501802)
 
 	return imt.jobMu.job.SetDetails(ctx, nil, details)
 }
 
-// FlushFractionCompleted writes out the fraction completed based on the number of total
-// ranges completed.
 func (imt *IndexMergeTracker) FlushFractionCompleted(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(501808)
 	imt.mu.Lock()
 	spans := imt.mu.progress.FlatSpans()
 	imt.mu.Unlock()
 
 	rangeCount, err := imt.rangeCounter(ctx, spans)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(501811)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(501812)
 	}
+	__antithesis_instrumentation__.Notify(501809)
 
 	orig := imt.maybeSetOrigNRanges(rangeCount)
-	if orig >= rangeCount && orig != 0 {
+	if orig >= rangeCount && func() bool {
+		__antithesis_instrumentation__.Notify(501813)
+		return orig != 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(501814)
 		fractionRangesFinished := float32(orig-rangeCount) / float32(orig)
 		frac, err := imt.fractionScaler.fractionCompleteFromStageFraction(stageMerge, fractionRangesFinished)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(501816)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(501817)
 		}
+		__antithesis_instrumentation__.Notify(501815)
 
 		imt.jobMu.Lock()
 		defer imt.jobMu.Unlock()
 		if err := imt.jobMu.job.FractionProgressed(ctx, nil,
 			jobs.FractionUpdater(frac)); err != nil {
+			__antithesis_instrumentation__.Notify(501818)
 			return jobs.SimplifyInvalidStatusError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(501819)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(501820)
 	}
+	__antithesis_instrumentation__.Notify(501810)
 	return nil
 }
 
-// maybeSetOrigNRanges sets the initial range count, if it wasn't
-// previously set. The updated value of the range count is returned.
 func (imt *IndexMergeTracker) maybeSetOrigNRanges(count int) int {
+	__antithesis_instrumentation__.Notify(501821)
 	imt.mu.Lock()
 	defer imt.mu.Unlock()
 	if !imt.mu.hasOrigNRanges {
+		__antithesis_instrumentation__.Notify(501823)
 		imt.mu.hasOrigNRanges = true
 		imt.mu.origNRanges = count
+	} else {
+		__antithesis_instrumentation__.Notify(501824)
 	}
+	__antithesis_instrumentation__.Notify(501822)
 	return imt.mu.origNRanges
 }
 
-// UpdateMergeProgress allow the caller to modify the current progress with updateFn.
 func (imt *IndexMergeTracker) UpdateMergeProgress(
 	ctx context.Context, updateFn func(ctx context.Context, progress *MergeProgress),
 ) {
+	__antithesis_instrumentation__.Notify(501825)
 	imt.mu.Lock()
 	defer imt.mu.Unlock()
 	updateFn(ctx, imt.mu.progress)
 }
 
 func newPeriodicProgressFlusher(settings *cluster.Settings) scexec.PeriodicProgressFlusher {
+	__antithesis_instrumentation__.Notify(501826)
 	return scdeps.NewPeriodicProgressFlusher(
 		func() time.Duration {
+			__antithesis_instrumentation__.Notify(501827)
 			return backfill.IndexBackfillCheckpointInterval.Get(&settings.SV)
 		},
 		func() time.Duration {
-			// fractionInterval is copied from the logic in existing backfill code.
+			__antithesis_instrumentation__.Notify(501828)
+
 			const fractionInterval = 10 * time.Second
 			return fractionInterval
 		},

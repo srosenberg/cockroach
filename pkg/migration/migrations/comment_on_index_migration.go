@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package migrations
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,13 +14,13 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 )
 
-// ensureCommentsHaveNonDroppedIndexes cleans up any comments associated with
-// indexes that no longer exist.
 func ensureCommentsHaveNonDroppedIndexes(
 	ctx context.Context, _ clusterversion.ClusterVersion, d migration.TenantDeps, _ *jobs.Job,
 ) error {
+	__antithesis_instrumentation__.Notify(128388)
 	return d.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-		// Delete the rows that don't belong to any indexes.
+		__antithesis_instrumentation__.Notify(128389)
+
 		_, err := d.InternalExecutor.QueryBufferedEx(
 			ctx,
 			"select-comments-with-missing-indexes",
@@ -44,8 +36,12 @@ func ensureCommentsHaveNonDroppedIndexes(
 			keys.IndexCommentType,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(128391)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(128392)
 		}
+		__antithesis_instrumentation__.Notify(128390)
 		return txn.Commit(ctx)
 	})
 }

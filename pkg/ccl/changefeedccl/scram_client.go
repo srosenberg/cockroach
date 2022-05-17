@@ -1,12 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package changefeedccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"crypto/sha256"
@@ -17,19 +11,13 @@ import (
 )
 
 var (
-	// sha256ClientGenerator returns a SCRAMClient for the
-	// SCRAM-SHA-256 SASL mechanism. This can used as a
-	// SCRAMCLientGeneratorFunc when constructing a sarama SASL
-	// configuration.
 	sha256ClientGenerator = func() sarama.SCRAMClient {
+		__antithesis_instrumentation__.Notify(18042)
 		return &scramClient{HashGeneratorFcn: sha256.New}
 	}
 
-	// sha512ClientGenerator returns a SCRAMClient for the
-	// SCRAM-SHA-512 SASL mechanism. This can used as a
-	// SCRAMCLientGeneratorFunc when constructing a sarama SASL
-	// configuration.
 	sha512ClientGenerator = func() sarama.SCRAMClient {
+		__antithesis_instrumentation__.Notify(18043)
 		return &scramClient{HashGeneratorFcn: sha512.New}
 	}
 )
@@ -43,19 +31,26 @@ type scramClient struct {
 var _ sarama.SCRAMClient = &scramClient{}
 
 func (c *scramClient) Begin(userName, password, authzID string) error {
+	__antithesis_instrumentation__.Notify(18044)
 	var err error
 	c.Client, err = c.HashGeneratorFcn.NewClient(userName, password, authzID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(18046)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(18047)
 	}
+	__antithesis_instrumentation__.Notify(18045)
 	c.ClientConversation = c.Client.NewConversation()
 	return nil
 }
 
 func (c *scramClient) Step(challenge string) (string, error) {
+	__antithesis_instrumentation__.Notify(18048)
 	return c.ClientConversation.Step(challenge)
 }
 
 func (c *scramClient) Done() bool {
+	__antithesis_instrumentation__.Notify(18049)
 	return c.ClientConversation.Done()
 }

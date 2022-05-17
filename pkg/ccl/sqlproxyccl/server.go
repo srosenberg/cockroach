@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package sqlproxyccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,9 +20,6 @@ import (
 	"github.com/cockroachdb/logtags"
 )
 
-// Server is a TCP server that proxies SQL connections to a configurable
-// backend. It may also run an HTTP server to expose a health check and
-// prometheus metrics.
 type Server struct {
 	Stopper         *stop.Stopper
 	handler         *proxyHandler
@@ -39,14 +30,17 @@ type Server struct {
 	prometheusExporter metric.PrometheusExporter
 }
 
-// NewServer constructs a new proxy server and provisions metrics and health
-// checks as well.
 func NewServer(ctx context.Context, stopper *stop.Stopper, options ProxyOptions) (*Server, error) {
+	__antithesis_instrumentation__.Notify(22011)
 	proxyMetrics := makeProxyMetrics()
 	handler, err := newProxyHandler(ctx, stopper, &proxyMetrics, options)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(22013)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(22014)
 	}
+	__antithesis_instrumentation__.Notify(22012)
 
 	mux := http.NewServeMux()
 
@@ -63,13 +57,9 @@ func NewServer(ctx context.Context, stopper *stop.Stopper, options ProxyOptions)
 		prometheusExporter: metric.MakePrometheusExporter(),
 	}
 
-	// /_status/{healthz,vars} matches CRDB's healthcheck and metrics
-	// endpoints.
 	mux.HandleFunc("/_status/vars/", s.handleVars)
 	mux.HandleFunc("/_status/healthz/", s.handleHealth)
 
-	// Taken from pprof's `init()` method. See:
-	// https://golang.org/src/net/http/pprof/pprof.go
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
@@ -80,113 +70,132 @@ func NewServer(ctx context.Context, stopper *stop.Stopper, options ProxyOptions)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	// TODO(chrisseto): Ideally, this health check should actually check the
-	// proxy's health in some fashion. How to actually check the health of a
-	// proxy remains to be seen.
-	// It has been noted that an overloaded CRDB server may fail to respond to
-	// a simple HTTP request, such as this one, within a short time frame
-	// (~5 seconds). Therefore, this health check provides a non-zero amount of
-	// value as it indicates if the service is _massively_ overloaded or not.
-	// In Kubernetes, a failed liveness check will result in the container
-	// being terminated and replaced.
-	// Its reasonable to assume that many, if not most, of the connections
-	// being served by this proxy are unusable, if this check can not be
-	// handled.  An operator may adjust this window by changing the timeout on
-	// the check.
+	__antithesis_instrumentation__.Notify(22015)
+
 	w.WriteHeader(http.StatusOK)
-	// Explicitly ignore any errors from writing our body as there's
-	// nothing to be done if the write fails.
+
 	_, _ = w.Write([]byte("OK"))
 }
 
 func (s *Server) handleVars(w http.ResponseWriter, r *http.Request) {
+	__antithesis_instrumentation__.Notify(22016)
 	w.Header().Set(httputil.ContentTypeHeader, httputil.PlaintextContentType)
 	scrape := func(pm *metric.PrometheusExporter) {
-		pm.ScrapeRegistry(s.metricsRegistry, true /* includeChildMetrics*/)
+		__antithesis_instrumentation__.Notify(22018)
+		pm.ScrapeRegistry(s.metricsRegistry, true)
 	}
+	__antithesis_instrumentation__.Notify(22017)
 	if err := s.prometheusExporter.ScrapeAndPrintAsText(w, scrape); err != nil {
+		__antithesis_instrumentation__.Notify(22019)
 		log.Errorf(r.Context(), "%v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	} else {
+		__antithesis_instrumentation__.Notify(22020)
 	}
 }
 
-// ServeHTTP starts the proxy's HTTP server on the given listener.
-// The server provides Prometheus metrics at /_status/vars,
-// a health check endpoint at /_status/healthz, and pprof debug
-// endpoints at /debug/pprof.
 func (s *Server) ServeHTTP(ctx context.Context, ln net.Listener) error {
+	__antithesis_instrumentation__.Notify(22021)
 	srv := http.Server{
 		Handler: s.mux,
 	}
 
 	go func() {
+		__antithesis_instrumentation__.Notify(22024)
 		<-ctx.Done()
 
-		// Wait up to 15 seconds for the HTTP server to shut itself
-		// down. The HTTP service is an auxiliary service for health
-		// checking and metrics, which does not need a completely
-		// graceful shutdown.
 		_ = contextutil.RunWithTimeout(
 			context.Background(),
 			"http server shutdown",
 			15*time.Second,
 			func(shutdownCtx context.Context) error {
-				// Ignore any errors as this routine will only be called
-				// when the server is shutting down.
+				__antithesis_instrumentation__.Notify(22025)
+
 				_ = srv.Shutdown(shutdownCtx)
 
 				return nil
 			},
 		)
 	}()
+	__antithesis_instrumentation__.Notify(22022)
 
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := srv.Serve(ln); err != nil && func() bool {
+		__antithesis_instrumentation__.Notify(22026)
+		return !errors.Is(err, http.ErrServerClosed) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(22027)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(22028)
 	}
+	__antithesis_instrumentation__.Notify(22023)
 
 	return nil
 }
 
-// Serve serves a listener according to the Options given in NewServer().
-// Incoming client connections are taken through the Postgres handshake and
-// relayed to the configured backend server.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	__antithesis_instrumentation__.Notify(22029)
 	err := s.Stopper.RunAsyncTask(ctx, "listen-quiesce", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(22032)
 		<-s.Stopper.ShouldQuiesce()
-		if err := ln.Close(); err != nil && !grpcutil.IsClosedConnection(err) {
+		if err := ln.Close(); err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(22033)
+			return !grpcutil.IsClosedConnection(err) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(22034)
 			log.Fatalf(ctx, "closing proxy listener: %s", err)
+		} else {
+			__antithesis_instrumentation__.Notify(22035)
 		}
 	})
+	__antithesis_instrumentation__.Notify(22030)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(22036)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(22037)
 	}
+	__antithesis_instrumentation__.Notify(22031)
 
 	for {
+		__antithesis_instrumentation__.Notify(22038)
 		origConn, err := ln.Accept()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(22041)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(22042)
 		}
+		__antithesis_instrumentation__.Notify(22039)
 		conn := &proxyConn{
 			Conn: origConn,
 		}
 
 		err = s.Stopper.RunAsyncTask(ctx, "proxy-con-serve", func(ctx context.Context) {
-			defer func() { _ = conn.Close() }()
+			__antithesis_instrumentation__.Notify(22043)
+			defer func() { __antithesis_instrumentation__.Notify(22045); _ = conn.Close() }()
+			__antithesis_instrumentation__.Notify(22044)
 			s.metrics.CurConnCount.Inc(1)
 			defer s.metrics.CurConnCount.Dec(1)
 			remoteAddr := conn.RemoteAddr()
 			ctxWithTag := logtags.AddTag(ctx, "client", log.SafeOperational(remoteAddr))
 			if err := s.handler.handle(ctxWithTag, conn); err != nil {
+				__antithesis_instrumentation__.Notify(22046)
 				log.Infof(ctxWithTag, "connection error: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(22047)
 			}
 		})
+		__antithesis_instrumentation__.Notify(22040)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(22048)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(22049)
 		}
 	}
 }
 
-// proxyConn is a SQL connection into the proxy.
 type proxyConn struct {
 	net.Conn
 
@@ -197,31 +206,44 @@ type proxyConn struct {
 	}
 }
 
-// Done returns a channel that's closed when the connection is closed.
 func (c *proxyConn) done() <-chan struct{} {
+	__antithesis_instrumentation__.Notify(22050)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.mu.closedCh == nil {
+		__antithesis_instrumentation__.Notify(22052)
 		c.mu.closedCh = make(chan struct{})
 		if c.mu.closed {
+			__antithesis_instrumentation__.Notify(22053)
 			close(c.mu.closedCh)
+		} else {
+			__antithesis_instrumentation__.Notify(22054)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(22055)
 	}
+	__antithesis_instrumentation__.Notify(22051)
 	return c.mu.closedCh
 }
 
-// Close closes the connection.
-// Any blocked Read or Write operations will be unblocked and return errors.
-// The connection's Done channel will be closed. This overrides net.Conn.Close.
 func (c *proxyConn) Close() error {
+	__antithesis_instrumentation__.Notify(22056)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.mu.closed {
+		__antithesis_instrumentation__.Notify(22059)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(22060)
 	}
+	__antithesis_instrumentation__.Notify(22057)
 	if c.mu.closedCh != nil {
+		__antithesis_instrumentation__.Notify(22061)
 		close(c.mu.closedCh)
+	} else {
+		__antithesis_instrumentation__.Notify(22062)
 	}
+	__antithesis_instrumentation__.Notify(22058)
 	c.mu.closed = true
 	return c.Conn.Close()
 }

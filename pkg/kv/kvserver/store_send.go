@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,257 +15,304 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Send fetches a range based on the header's replica, assembles method, args &
-// reply into a Raft Cmd struct and executes the command using the fetched
-// range.
-//
-// An incoming request may be transactional or not. If it is not transactional,
-// the timestamp at which it executes may be higher than that optionally
-// specified through the incoming BatchRequest, and it is not guaranteed that
-// all operations are written at the same timestamp. If it is transactional, a
-// timestamp must not be set - it is deduced automatically from the
-// transaction. In particular, the read timestamp will be used for
-// all reads and the write (provisional commit) timestamp will be used for
-// all writes. See the comments on txn.TxnMeta.Timestamp and txn.ReadTimestamp
-// for more details.
-//
-// Should a transactional operation be forced to a higher timestamp (for
-// instance due to the timestamp cache or finding a committed value in the path
-// of one of its writes), the response will have a transaction set which should
-// be used to update the client transaction object.
 func (s *Store) Send(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (br *roachpb.BatchResponse, pErr *roachpb.Error) {
-	// Attach any log tags from the store to the context (which normally
-	// comes from gRPC).
+	__antithesis_instrumentation__.Notify(125843)
+
 	ctx = s.AnnotateCtx(ctx)
 	for _, union := range ba.Requests {
+		__antithesis_instrumentation__.Notify(125853)
 		arg := union.GetInner()
 		header := arg.Header()
 		if err := verifyKeys(header.Key, header.EndKey, roachpb.IsRange(arg)); err != nil {
+			__antithesis_instrumentation__.Notify(125854)
 			return nil, roachpb.NewError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(125855)
 		}
 	}
+	__antithesis_instrumentation__.Notify(125844)
 
 	if res, err := s.maybeThrottleBatch(ctx, ba); err != nil {
+		__antithesis_instrumentation__.Notify(125856)
 		return nil, roachpb.NewError(err)
-	} else if res != nil {
-		defer res.Release()
+	} else {
+		__antithesis_instrumentation__.Notify(125857)
+		if res != nil {
+			__antithesis_instrumentation__.Notify(125858)
+			defer res.Release()
+		} else {
+			__antithesis_instrumentation__.Notify(125859)
+		}
 	}
+	__antithesis_instrumentation__.Notify(125845)
 
 	if ba.BoundedStaleness != nil {
+		__antithesis_instrumentation__.Notify(125860)
 		newBa, pErr := s.executeServerSideBoundedStalenessNegotiation(ctx, ba)
 		if pErr != nil {
+			__antithesis_instrumentation__.Notify(125862)
 			return nil, pErr
+		} else {
+			__antithesis_instrumentation__.Notify(125863)
 		}
+		__antithesis_instrumentation__.Notify(125861)
 		ba = newBa
+	} else {
+		__antithesis_instrumentation__.Notify(125864)
 	}
+	__antithesis_instrumentation__.Notify(125846)
 
 	if err := ba.SetActiveTimestamp(s.Clock()); err != nil {
+		__antithesis_instrumentation__.Notify(125865)
 		return nil, roachpb.NewError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(125866)
 	}
+	__antithesis_instrumentation__.Notify(125847)
 
-	// Update our clock with the incoming request timestamp. This advances the
-	// local node's clock to a high water mark from all nodes with which it has
-	// interacted.
 	if baClockTS, ok := ba.Timestamp.TryToClockTimestamp(); ok {
+		__antithesis_instrumentation__.Notify(125867)
 		if s.cfg.TestingKnobs.DisableMaxOffsetCheck {
+			__antithesis_instrumentation__.Notify(125868)
 			s.cfg.Clock.Update(baClockTS)
 		} else {
-			// If the command appears to come from a node with a bad clock,
-			// reject it instead of updating the local clock and proceeding.
+			__antithesis_instrumentation__.Notify(125869)
+
 			if err := s.cfg.Clock.UpdateAndCheckMaxOffset(ctx, baClockTS); err != nil {
+				__antithesis_instrumentation__.Notify(125870)
 				return nil, roachpb.NewError(err)
+			} else {
+				__antithesis_instrumentation__.Notify(125871)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(125872)
 	}
+	__antithesis_instrumentation__.Notify(125848)
 
 	defer func() {
+		__antithesis_instrumentation__.Notify(125873)
 		if r := recover(); r != nil {
-			// On panic, don't run the defer. It's probably just going to panic
-			// again due to undefined state.
+			__antithesis_instrumentation__.Notify(125876)
+
 			panic(r)
+		} else {
+			__antithesis_instrumentation__.Notify(125877)
 		}
+		__antithesis_instrumentation__.Notify(125874)
 		if ba.Txn != nil {
-			// We're in a Txn, so we can reduce uncertainty restarts by attaching
-			// the above timestamp to the returned response or error. The caller
-			// can use it to shorten its uncertainty interval when it comes back to
-			// this node.
+			__antithesis_instrumentation__.Notify(125878)
+
 			if pErr != nil {
+				__antithesis_instrumentation__.Notify(125879)
 				pErr.OriginNode = s.NodeID()
 				if txn := pErr.GetTxn(); txn == nil {
+					__antithesis_instrumentation__.Notify(125880)
 					pErr.SetTxn(ba.Txn)
+				} else {
+					__antithesis_instrumentation__.Notify(125881)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(125882)
 				if br.Txn == nil {
+					__antithesis_instrumentation__.Notify(125884)
 					br.Txn = ba.Txn
+				} else {
+					__antithesis_instrumentation__.Notify(125885)
 				}
-				// Update our clock with the outgoing response txn timestamp
-				// (if timestamp has been forwarded).
+				__antithesis_instrumentation__.Notify(125883)
+
 				if ba.Timestamp.Less(br.Txn.WriteTimestamp) {
+					__antithesis_instrumentation__.Notify(125886)
 					if clockTS, ok := br.Txn.WriteTimestamp.TryToClockTimestamp(); ok {
+						__antithesis_instrumentation__.Notify(125887)
 						s.cfg.Clock.Update(clockTS)
+					} else {
+						__antithesis_instrumentation__.Notify(125888)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(125889)
 				}
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(125890)
 			if pErr == nil {
-				// Update our clock with the outgoing response timestamp.
-				// (if timestamp has been forwarded).
+				__antithesis_instrumentation__.Notify(125891)
+
 				if ba.Timestamp.Less(br.Timestamp) {
+					__antithesis_instrumentation__.Notify(125892)
 					if clockTS, ok := br.Timestamp.TryToClockTimestamp(); ok {
+						__antithesis_instrumentation__.Notify(125893)
 						s.cfg.Clock.Update(clockTS)
+					} else {
+						__antithesis_instrumentation__.Notify(125894)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(125895)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(125896)
 			}
 		}
+		__antithesis_instrumentation__.Notify(125875)
 
-		// We get the latest timestamp - we know that any
-		// write with a higher timestamp we run into later must
-		// have started after this point in (absolute) time.
 		now := s.cfg.Clock.NowAsClockTimestamp()
 		if pErr != nil {
+			__antithesis_instrumentation__.Notify(125897)
 			pErr.Now = now
 		} else {
+			__antithesis_instrumentation__.Notify(125898)
 			br.Now = now
 		}
 	}()
+	__antithesis_instrumentation__.Notify(125849)
 
 	if ba.Txn != nil {
-		// We make our transaction aware that no other operation that causally
-		// precedes it could have started after `now`. This is important: If we
-		// wind up pushing a value, it will be in our immediate future, and not
-		// updating the top end of our uncertainty timestamp would lead to a
-		// restart (at least in the absence of a prior observed timestamp from
-		// this node, in which case the following is a no-op).
+		__antithesis_instrumentation__.Notify(125899)
+
 		if _, ok := ba.Txn.GetObservedTimestamp(s.NodeID()); !ok {
+			__antithesis_instrumentation__.Notify(125900)
 			txnClone := ba.Txn.Clone()
 			txnClone.UpdateObservedTimestamp(s.NodeID(), s.Clock().NowAsClockTimestamp())
 			ba.Txn = txnClone
+		} else {
+			__antithesis_instrumentation__.Notify(125901)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(125902)
 	}
+	__antithesis_instrumentation__.Notify(125850)
 
 	if log.ExpensiveLogEnabled(ctx, 1) {
+		__antithesis_instrumentation__.Notify(125903)
 		log.Eventf(ctx, "executing %s", ba)
+	} else {
+		__antithesis_instrumentation__.Notify(125904)
 	}
+	__antithesis_instrumentation__.Notify(125851)
 
-	// Tracks suggested ranges to return to the caller. Suggested ranges are aggregated from
-	// two sources.
-	// (1): On a RangeKeyMismatchError that is retriable.
-	// (2): On a successful batch request, where suggested ranges are returned
-	//      by the replica to update the client with. This is appended before returning.
 	var rangeInfos []roachpb.RangeInfo
 
-	// Run a retry loop on retriable RangeKeyMismatchErrors, where the requested RangeID does
-	// not match any Range on this store. A BatchRequest is retriable when the correct Range
-	// for the request exists within this store.
 	for {
-		// Get range and add command to the range for execution.
+		__antithesis_instrumentation__.Notify(125905)
+
 		repl, err := s.GetReplica(ba.RangeID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(125910)
 			return nil, roachpb.NewError(err)
+		} else {
+			__antithesis_instrumentation__.Notify(125911)
 		}
+		__antithesis_instrumentation__.Notify(125906)
 		if !repl.IsInitialized() {
-			// If we have an uninitialized copy of the range, then we are
-			// probably a valid member of the range, we're just in the
-			// process of getting our snapshot. If we returned
-			// RangeNotFoundError, the client would invalidate its cache,
-			// but we can be smarter: the replica that caused our
-			// uninitialized replica to be created is most likely the
-			// leader.
+			__antithesis_instrumentation__.Notify(125912)
+
 			return nil, roachpb.NewError(&roachpb.NotLeaseHolderError{
 				RangeID:     ba.RangeID,
 				LeaseHolder: repl.creatingReplica,
-				// The replica doesn't have a range descriptor yet, so we have to build
-				// a ReplicaDescriptor manually.
+
 				Replica: roachpb.ReplicaDescriptor{
 					NodeID:    repl.store.nodeDesc.NodeID,
 					StoreID:   repl.store.StoreID(),
 					ReplicaID: repl.replicaID,
 				},
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(125913)
 		}
+		__antithesis_instrumentation__.Notify(125907)
 
 		br, pErr = repl.Send(ctx, ba)
 		if pErr == nil {
-			// If any retries occurred, we should include the RangeInfos accumulated
-			// and pass these to the client, to invalidate their cache. This is
-			// otherwise empty. The order is kept in LILO, such that the most recent data
-			// is considered last by the RangeCache.
+			__antithesis_instrumentation__.Notify(125914)
+
 			if len(rangeInfos) > 0 {
+				__antithesis_instrumentation__.Notify(125916)
 				br.RangeInfos = append(rangeInfos, br.RangeInfos...)
+			} else {
+				__antithesis_instrumentation__.Notify(125917)
 			}
+			__antithesis_instrumentation__.Notify(125915)
 
 			return br, nil
+		} else {
+			__antithesis_instrumentation__.Notify(125918)
 		}
+		__antithesis_instrumentation__.Notify(125908)
 
-		// Augment error if necessary and return.
 		switch t := pErr.GetDetail().(type) {
 		case *roachpb.RangeKeyMismatchError:
-			// TODO(andrei): It seems silly that, if the client specified a RangeID that
-			// doesn't match the keys it wanted to access, but this node can serve those
-			// keys anyway, we still return a RangeKeyMismatchError to the client
-			// instead of serving the request. Particularly since we have the mechanism
-			// to communicate correct range information to the client when returning a
-			// successful response (i.e. br.RangeInfos).
+			__antithesis_instrumentation__.Notify(125919)
 
-			// On a RangeKeyMismatchError where the batch didn't even overlap
-			// the start of the mismatched Range, try to suggest a more suitable
-			// Range from this Store.
 			rSpan, err := keys.Range(ba.Requests)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(125928)
 				return nil, roachpb.NewError(err)
+			} else {
+				__antithesis_instrumentation__.Notify(125929)
 			}
+			__antithesis_instrumentation__.Notify(125920)
 
-			// The kvclient thought that a particular range id covers rSpans. It was
-			// wrong; the respective range doesn't cover all of rSpan, or perhaps it
-			// doesn't even overlap it. Clearly the client has a stale range cache.
-			// We'll return info on the range that the request ended up being routed to
-			// and, to the extent that we have the info, the ranges containing the keys
-			// that the client requested, and all the ranges in between.
 			ri, err := t.MismatchedRange()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(125930)
 				return nil, roachpb.NewError(err)
+			} else {
+				__antithesis_instrumentation__.Notify(125931)
 			}
-			skipRID := ri.Desc.RangeID // We already have info on one range, so don't add it again below.
+			__antithesis_instrumentation__.Notify(125921)
+			skipRID := ri.Desc.RangeID
 			startKey := ri.Desc.StartKey
 			if rSpan.Key.Less(startKey) {
+				__antithesis_instrumentation__.Notify(125932)
 				startKey = rSpan.Key
+			} else {
+				__antithesis_instrumentation__.Notify(125933)
 			}
+			__antithesis_instrumentation__.Notify(125922)
 			endKey := ri.Desc.EndKey
 			if endKey.Less(rSpan.EndKey) {
+				__antithesis_instrumentation__.Notify(125934)
 				endKey = rSpan.EndKey
+			} else {
+				__antithesis_instrumentation__.Notify(125935)
 			}
+			__antithesis_instrumentation__.Notify(125923)
 			var ris []roachpb.RangeInfo
 			if err := s.visitReplicasByKey(ctx, startKey, endKey, AscendingKeyOrder, func(ctx context.Context, repl *Replica) error {
-				// Note that we return the lease even if it's expired. The kvclient can use it as it sees fit.
+				__antithesis_instrumentation__.Notify(125936)
+
 				ri := repl.GetRangeInfo(ctx)
 				if ri.Desc.RangeID == skipRID {
+					__antithesis_instrumentation__.Notify(125938)
 					return nil
+				} else {
+					__antithesis_instrumentation__.Notify(125939)
 				}
+				__antithesis_instrumentation__.Notify(125937)
 				ris = append(ris, ri)
 				return nil
 			}); err != nil {
-				// Errors here should not be possible, but if there is one, it is ignored
-				// as attaching RangeInfo is optional.
-				log.Warningf(ctx, "unexpected error visiting replicas: %s", err)
-				ris = nil // just to be safe
-			}
+				__antithesis_instrumentation__.Notify(125940)
 
-			// Update the suggested ranges, if returned from the replica. Note here that newer ranges are
-			// always appended, so that the oldest RangeInfo is processed by the Client's RangeCache first,
-			// which is then invalidated on conflict by newer data (LILO).
+				log.Warningf(ctx, "unexpected error visiting replicas: %s", err)
+				ris = nil
+			} else {
+				__antithesis_instrumentation__.Notify(125941)
+			}
+			__antithesis_instrumentation__.Notify(125924)
+
 			t.AppendRangeInfo(ctx, ris...)
 
 			isRetriableMismatch := false
 			for _, ri := range ris {
-				// Check if the original batch request rSpan exists entirely within any known
-				// ranges stored on this replica, if so update repl and set retriable to true.
+				__antithesis_instrumentation__.Notify(125942)
+
 				if ri.Desc.RSpan().ContainsKeyRange(rSpan.Key, rSpan.EndKey) {
-					// Retry this request: Update BatchRequest to reflect re-routing the request
-					// to ri. ClientRangeInfo is also updated here to avoid the replica providing
-					// duplicate BatchResponse.RangeInfos upon a successful retry for the client
-					// to invalidate their RangeCache with.
+					__antithesis_instrumentation__.Notify(125943)
+
 					ba.RangeID = ri.Desc.RangeID
 					ba.ClientRangeInfo = roachpb.ClientRangeInfo{
 						ClosedTimestampPolicy: ri.ClosedTimestampPolicy,
@@ -284,61 +323,69 @@ func (s *Store) Send(
 					rangeInfos = append(rangeInfos, t.Ranges...)
 					isRetriableMismatch = true
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(125944)
 				}
 			}
+			__antithesis_instrumentation__.Notify(125925)
 
 			if isRetriableMismatch {
+				__antithesis_instrumentation__.Notify(125945)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(125946)
 			}
+			__antithesis_instrumentation__.Notify(125926)
 
-			// The request is not retriable and an error will be returned to the client,
-			// to invalidate their RangeCache and update the request headers. Include all
-			// RangeInfos that have been accumulated so far first, so that stale data is
-			// resolved by later entries; as the header is processes in a last-in-last-out
-			// manner.
 			t.Ranges = append(rangeInfos, t.Ranges...)
 
-			// We have to write `t` back to `pErr` so that it picks up the changes.
 			pErr = roachpb.NewError(t)
 		case *roachpb.RaftGroupDeletedError:
-			// This error needs to be converted appropriately so that clients
-			// will retry.
+			__antithesis_instrumentation__.Notify(125927)
+
 			err := roachpb.NewRangeNotFoundError(repl.RangeID, repl.store.StoreID())
 			pErr = roachpb.NewError(err)
 		}
+		__antithesis_instrumentation__.Notify(125909)
 
-		// Unable to retry, exit the retry loop and return an error.
 		break
 	}
+	__antithesis_instrumentation__.Notify(125852)
 	return nil, pErr
 }
 
-// maybeThrottleBatch inspects the provided batch and determines whether
-// throttling should be applied to avoid overloading the Store. If so, the
-// method blocks and returns a reservation that must be released after the
-// request has completed.
-//
-// Of note is that request throttling is all performed above evaluation and
-// before a request acquires latches on a range. Otherwise, the request could
-// inadvertently block others while being throttled.
 func (s *Store) maybeThrottleBatch(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (limit.Reservation, error) {
+	__antithesis_instrumentation__.Notify(125947)
 	if !ba.IsSingleRequest() {
+		__antithesis_instrumentation__.Notify(125949)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(125950)
 	}
+	__antithesis_instrumentation__.Notify(125948)
 
 	switch t := ba.Requests[0].GetInner().(type) {
 	case *roachpb.AddSSTableRequest:
+		__antithesis_instrumentation__.Notify(125951)
 		limiter := s.limiters.ConcurrentAddSSTableRequests
 		if t.IngestAsWrites {
+			__antithesis_instrumentation__.Notify(125962)
 			limiter = s.limiters.ConcurrentAddSSTableAsWritesRequests
+		} else {
+			__antithesis_instrumentation__.Notify(125963)
 		}
+		__antithesis_instrumentation__.Notify(125952)
 		before := timeutil.Now()
 		res, err := limiter.Begin(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(125964)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(125965)
 		}
+		__antithesis_instrumentation__.Notify(125953)
 
 		beforeEngineDelay := timeutil.Now()
 		s.engine.PreIngestDelay(ctx)
@@ -348,157 +395,187 @@ func (s *Store) maybeThrottleBatch(
 		s.metrics.AddSSTableProposalTotalDelay.Inc(waited.Nanoseconds())
 		s.metrics.AddSSTableProposalEngineDelay.Inc(waitedEngine.Nanoseconds())
 		if waited > time.Second {
+			__antithesis_instrumentation__.Notify(125966)
 			log.Infof(ctx, "SST ingestion was delayed by %v (%v for storage engine back-pressure)",
 				waited, waitedEngine)
+		} else {
+			__antithesis_instrumentation__.Notify(125967)
 		}
+		__antithesis_instrumentation__.Notify(125954)
 		return res, nil
 
 	case *roachpb.ExportRequest:
-		// Limit the number of concurrent Export requests, as these often scan and
-		// entire Range at a time and place significant read load on a Store.
+		__antithesis_instrumentation__.Notify(125955)
+
 		before := timeutil.Now()
 		res, err := s.limiters.ConcurrentExportRequests.Begin(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(125968)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(125969)
 		}
+		__antithesis_instrumentation__.Notify(125956)
 
 		waited := timeutil.Since(before)
 		s.metrics.ExportRequestProposalTotalDelay.Inc(waited.Nanoseconds())
 		if waited > time.Second {
+			__antithesis_instrumentation__.Notify(125970)
 			log.Infof(ctx, "Export request was delayed by %v", waited)
+		} else {
+			__antithesis_instrumentation__.Notify(125971)
 		}
+		__antithesis_instrumentation__.Notify(125957)
 		return res, nil
 
 	case *roachpb.ScanInterleavedIntentsRequest:
+		__antithesis_instrumentation__.Notify(125958)
 		before := timeutil.Now()
 		res, err := s.limiters.ConcurrentScanInterleavedIntents.Begin(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(125972)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(125973)
 		}
+		__antithesis_instrumentation__.Notify(125959)
 
 		waited := timeutil.Since(before)
 		if waited > time.Second {
+			__antithesis_instrumentation__.Notify(125974)
 			log.Infof(ctx, "ScanInterleavedIntents request was delayed by %v", waited)
+		} else {
+			__antithesis_instrumentation__.Notify(125975)
 		}
+		__antithesis_instrumentation__.Notify(125960)
 		return res, nil
 
 	default:
+		__antithesis_instrumentation__.Notify(125961)
 		return nil, nil
 	}
 }
 
-// executeServerSideBoundedStalenessNegotiation performs the server-side
-// negotiation fast-path for bounded staleness read requests. This fast-path
-// allows a bounded staleness read request that lands on a single range to
-// perform its negotiation phase and execution phase in a single RPC.
-//
-// The server-side negotiation fast-path provides two benefits:
-// 1. it avoids two network hops in the common-case where a bounded staleness
-//    read is targeting a single range. This in an important performance
-//    optimization for single-row point lookups.
-// 2. it provides stronger guarantees around minimizing staleness during bounded
-//    staleness reads. Bounded staleness reads that hit the server-side
-//    fast-path use their target replica's most up-to-date resolved timestamp,
-//    so they are as fresh as possible. Bounded staleness reads that miss the
-//    fast-path and perform explicit negotiation (see below) consult a cache, so
-//    they may use an out-of-date, suboptimal resolved timestamp, as long as it
-//    is fresh enough to satisfy the staleness bound of the request.
-//
-// The method should be called for requests that have their MinTimestampBound
-// field set, which indicates that the request wants a dynamic timestamp equal
-// to the resolved timestamp over its key span on the local replica. Setting the
-// request timestamp to the local resolved timestamp ensures that the request
-// will not block on replication or on conflicting transactions when executed.
-// If the method returns successfully, the new request will have its
-// MinTimestampBound field unset and its Timestamp field set to the negotiated
-// timestamp.
-//
-// If the local resolved timestamp is below the request's MinTimestampBound,
-// then a MinTimestampBoundUnsatisfiableError will be returned if the request
-// has its MinTimestampBoundStrict flag set to true. Otherwise, the request's
-// timestamp will be set to the MinTimestampBound and allowed to execute.
-//
-// For more information, see the "Server-side negotiation fast-path" section of
-// docs/RFCS/20210519_bounded_staleness_reads.md.
 func (s *Store) executeServerSideBoundedStalenessNegotiation(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (roachpb.BatchRequest, *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(125976)
 	if ba.BoundedStaleness == nil {
+		__antithesis_instrumentation__.Notify(125987)
 		log.Fatal(ctx, "BoundedStaleness header required for server-side negotiation fast-path")
+	} else {
+		__antithesis_instrumentation__.Notify(125988)
 	}
+	__antithesis_instrumentation__.Notify(125977)
 	cfg := ba.BoundedStaleness
 	if cfg.MinTimestampBound.IsEmpty() {
+		__antithesis_instrumentation__.Notify(125989)
 		return ba, roachpb.NewError(errors.AssertionFailedf(
 			"MinTimestampBound must be set in batch"))
+	} else {
+		__antithesis_instrumentation__.Notify(125990)
 	}
-	if !cfg.MaxTimestampBound.IsEmpty() && cfg.MaxTimestampBound.LessEq(cfg.MinTimestampBound) {
+	__antithesis_instrumentation__.Notify(125978)
+	if !cfg.MaxTimestampBound.IsEmpty() && func() bool {
+		__antithesis_instrumentation__.Notify(125991)
+		return cfg.MaxTimestampBound.LessEq(cfg.MinTimestampBound) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(125992)
 		return ba, roachpb.NewError(errors.AssertionFailedf(
 			"MaxTimestampBound, if set in batch, must be greater than MinTimestampBound"))
+	} else {
+		__antithesis_instrumentation__.Notify(125993)
 	}
+	__antithesis_instrumentation__.Notify(125979)
 	if !ba.Timestamp.IsEmpty() {
+		__antithesis_instrumentation__.Notify(125994)
 		return ba, roachpb.NewError(errors.AssertionFailedf(
 			"MinTimestampBound and Timestamp cannot both be set in batch"))
+	} else {
+		__antithesis_instrumentation__.Notify(125995)
 	}
+	__antithesis_instrumentation__.Notify(125980)
 	if ba.Txn != nil {
+		__antithesis_instrumentation__.Notify(125996)
 		return ba, roachpb.NewError(errors.AssertionFailedf(
 			"MinTimestampBound and Txn cannot both be set in batch"))
+	} else {
+		__antithesis_instrumentation__.Notify(125997)
 	}
+	__antithesis_instrumentation__.Notify(125981)
 
-	// Use one or more QueryResolvedTimestampRequests to compute a resolved
-	// timestamp over the read spans on the local replica.
 	var queryResBa roachpb.BatchRequest
 	queryResBa.RangeID = ba.RangeID
 	queryResBa.Replica = ba.Replica
 	queryResBa.ClientRangeInfo = ba.ClientRangeInfo
 	queryResBa.ReadConsistency = roachpb.INCONSISTENT
 	for _, ru := range ba.Requests {
+		__antithesis_instrumentation__.Notify(125998)
 		span := ru.GetInner().Header().Span()
 		if len(span.EndKey) == 0 {
-			// QueryResolvedTimestamp is a ranged operation.
+			__antithesis_instrumentation__.Notify(126000)
+
 			span.EndKey = span.Key.Next()
+		} else {
+			__antithesis_instrumentation__.Notify(126001)
 		}
+		__antithesis_instrumentation__.Notify(125999)
 		queryResBa.Add(&roachpb.QueryResolvedTimestampRequest{
 			RequestHeader: roachpb.RequestHeaderFromSpan(span),
 		})
 	}
+	__antithesis_instrumentation__.Notify(125982)
 
 	br, pErr := s.Send(ctx, queryResBa)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(126002)
 		return ba, pErr
+	} else {
+		__antithesis_instrumentation__.Notify(126003)
 	}
+	__antithesis_instrumentation__.Notify(125983)
 
-	// Merge the resolved timestamps together and verify that the bounded
-	// staleness read can be satisfied by the local replica, according to
-	// its minimum timestamp bound.
 	var resTS hlc.Timestamp
 	for _, ru := range br.Responses {
+		__antithesis_instrumentation__.Notify(126004)
 		ts := ru.GetQueryResolvedTimestamp().ResolvedTS
 		if resTS.IsEmpty() {
+			__antithesis_instrumentation__.Notify(126005)
 			resTS = ts
 		} else {
+			__antithesis_instrumentation__.Notify(126006)
 			resTS.Backward(ts)
 		}
 	}
+	__antithesis_instrumentation__.Notify(125984)
 	if resTS.Less(cfg.MinTimestampBound) {
-		// The local resolved timestamp was below the request's minimum timestamp
-		// bound. If the minimum timestamp bound should be strictly obeyed, reject
-		// the batch. Otherwise, consider the minimum timestamp bound to be the
-		// request timestamp and let the request proceed. On follower replicas, this
-		// may result in the request being redirected (with a NotLeaseholderError)
-		// to the current leaseholder. On the leaseholder, this may result in the
-		// request blocking on conflicting transactions.
+		__antithesis_instrumentation__.Notify(126007)
+
 		if cfg.MinTimestampBoundStrict {
+			__antithesis_instrumentation__.Notify(126009)
 			return ba, roachpb.NewError(roachpb.NewMinTimestampBoundUnsatisfiableError(
 				cfg.MinTimestampBound, resTS,
 			))
+		} else {
+			__antithesis_instrumentation__.Notify(126010)
 		}
+		__antithesis_instrumentation__.Notify(126008)
 		resTS = cfg.MinTimestampBound
+	} else {
+		__antithesis_instrumentation__.Notify(126011)
 	}
-	if !cfg.MaxTimestampBound.IsEmpty() && cfg.MaxTimestampBound.LessEq(resTS) {
-		// The local resolved timestamp was above the request's maximum timestamp
-		// bound. Drop the request timestamp to the maximum timestamp bound.
+	__antithesis_instrumentation__.Notify(125985)
+	if !cfg.MaxTimestampBound.IsEmpty() && func() bool {
+		__antithesis_instrumentation__.Notify(126012)
+		return cfg.MaxTimestampBound.LessEq(resTS) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(126013)
+
 		resTS = cfg.MaxTimestampBound.Prev()
+	} else {
+		__antithesis_instrumentation__.Notify(126014)
 	}
+	__antithesis_instrumentation__.Notify(125986)
 
 	ba.Timestamp = resTS
 	ba.BoundedStaleness = nil

@@ -29,6 +29,7 @@ go_library(
         "//pkg/sql/sem/tree",
         "//pkg/util/log",
         "//pkg/util/tracing",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

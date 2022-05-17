@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package geogfn
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/geo"
@@ -17,288 +9,348 @@ import (
 	"github.com/golang/geo/s2"
 )
 
-// Covers returns whether geography A covers geography B.
-//
-// This calculation is done on the sphere.
-//
-// Due to minor inaccuracies and lack of certain primitives in S2,
-// precision for Covers will be for up to 1cm.
-//
-// Current limitations (which are also limitations in PostGIS):
-// * POLYGON/LINESTRING only works as "contains" - if any point of the LINESTRING
-//   touches the boundary of the polygon, we will return false but should be true - e.g.
-//     SELECT st_covers(
-//       'multipolygon(((0.0 0.0, 1.0 0.0, 1.0 1.0, 0.0 1.0, 0.0 0.0)), ((1.0 0.0, 2.0 0.0, 2.0 1.0, 1.0 1.0, 1.0 0.0)))',
-//       'linestring(0.0 0.0, 1.0 0.0)'::geography
-//     );
-//
-// * Furthermore, LINESTRINGS that are covered in multiple POLYGONs inside
-//   MULTIPOLYGON but NOT within a single POLYGON in the MULTIPOLYGON
-//   currently return false but should be true, e.g.
-//     SELECT st_covers(
-//       'multipolygon(((0.0 0.0, 1.0 0.0, 1.0 1.0, 0.0 1.0, 0.0 0.0)), ((1.0 0.0, 2.0 0.0, 2.0 1.0, 1.0 1.0, 1.0 0.0)))',
-//       'linestring(0.0 0.0, 2.0 0.0)'::geography
-//     );
 func Covers(a geo.Geography, b geo.Geography) (bool, error) {
+	__antithesis_instrumentation__.Notify(59498)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(59500)
 		return false, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(59501)
 	}
+	__antithesis_instrumentation__.Notify(59499)
 	return covers(a, b)
 }
 
-// covers is the internal calculation for Covers.
 func covers(a geo.Geography, b geo.Geography) (bool, error) {
-	// Rect "contains" is a version of covers.
-	if !a.BoundingRect().Contains(b.BoundingRect()) {
-		return false, nil
-	}
+	__antithesis_instrumentation__.Notify(59502)
 
-	// Ignore EMPTY regions in a.
+	if !a.BoundingRect().Contains(b.BoundingRect()) {
+		__antithesis_instrumentation__.Notify(59508)
+		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(59509)
+	}
+	__antithesis_instrumentation__.Notify(59503)
+
 	aRegions, err := a.AsS2(geo.EmptyBehaviorOmit)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(59510)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(59511)
 	}
-	// If any of b is empty, we cannot cover it. Error and catch to return false.
+	__antithesis_instrumentation__.Notify(59504)
+
 	bRegions, err := b.AsS2(geo.EmptyBehaviorError)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(59512)
 		if geo.IsEmptyGeometryError(err) {
+			__antithesis_instrumentation__.Notify(59514)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(59515)
 		}
+		__antithesis_instrumentation__.Notify(59513)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(59516)
 	}
+	__antithesis_instrumentation__.Notify(59505)
 
-	// We need to check each region in B is covered by at least
-	// one region of A.
 	bRegionsRemaining := make(map[int]struct{}, len(bRegions))
 	for i := range bRegions {
+		__antithesis_instrumentation__.Notify(59517)
 		bRegionsRemaining[i] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(59506)
 	for _, aRegion := range aRegions {
+		__antithesis_instrumentation__.Notify(59518)
 		for bRegionIdx := range bRegionsRemaining {
+			__antithesis_instrumentation__.Notify(59520)
 			regionCovers, err := regionCovers(aRegion, bRegions[bRegionIdx])
 			if err != nil {
+				__antithesis_instrumentation__.Notify(59522)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(59523)
 			}
+			__antithesis_instrumentation__.Notify(59521)
 			if regionCovers {
+				__antithesis_instrumentation__.Notify(59524)
 				delete(bRegionsRemaining, bRegionIdx)
+			} else {
+				__antithesis_instrumentation__.Notify(59525)
 			}
 		}
+		__antithesis_instrumentation__.Notify(59519)
 		if len(bRegionsRemaining) == 0 {
+			__antithesis_instrumentation__.Notify(59526)
 			return true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(59527)
 		}
 	}
+	__antithesis_instrumentation__.Notify(59507)
 	return false, nil
 }
 
-// CoveredBy returns whether geography A is covered by geography B.
-// See Covers for limitations.
 func CoveredBy(a geo.Geography, b geo.Geography) (bool, error) {
+	__antithesis_instrumentation__.Notify(59528)
 	if a.SRID() != b.SRID() {
+		__antithesis_instrumentation__.Notify(59530)
 		return false, geo.NewMismatchingSRIDsError(a.SpatialObject(), b.SpatialObject())
+	} else {
+		__antithesis_instrumentation__.Notify(59531)
 	}
+	__antithesis_instrumentation__.Notify(59529)
 	return covers(b, a)
 }
 
-// regionCovers returns whether aRegion completely covers bRegion.
 func regionCovers(aRegion s2.Region, bRegion s2.Region) (bool, error) {
+	__antithesis_instrumentation__.Notify(59532)
 	switch aRegion := aRegion.(type) {
 	case s2.Point:
+		__antithesis_instrumentation__.Notify(59534)
 		switch bRegion := bRegion.(type) {
 		case s2.Point:
+			__antithesis_instrumentation__.Notify(59537)
 			return aRegion.ContainsPoint(bRegion), nil
 		case *s2.Polyline:
+			__antithesis_instrumentation__.Notify(59538)
 			return false, nil
 		case *s2.Polygon:
+			__antithesis_instrumentation__.Notify(59539)
 			return false, nil
 		default:
+			__antithesis_instrumentation__.Notify(59540)
 			return false, pgerror.Newf(pgcode.InvalidParameterValue, "unknown s2 type of b: %#v", bRegion)
 		}
 	case *s2.Polyline:
+		__antithesis_instrumentation__.Notify(59535)
 		switch bRegion := bRegion.(type) {
 		case s2.Point:
+			__antithesis_instrumentation__.Notify(59541)
 			return polylineCoversPoint(aRegion, bRegion), nil
 		case *s2.Polyline:
+			__antithesis_instrumentation__.Notify(59542)
 			return polylineCoversPolyline(aRegion, bRegion), nil
 		case *s2.Polygon:
+			__antithesis_instrumentation__.Notify(59543)
 			return false, nil
 		default:
+			__antithesis_instrumentation__.Notify(59544)
 			return false, pgerror.Newf(pgcode.InvalidParameterValue, "unknown s2 type of b: %#v", bRegion)
 		}
 	case *s2.Polygon:
+		__antithesis_instrumentation__.Notify(59536)
 		switch bRegion := bRegion.(type) {
 		case s2.Point:
+			__antithesis_instrumentation__.Notify(59545)
 			return polygonCoversPoint(aRegion, bRegion), nil
 		case *s2.Polyline:
+			__antithesis_instrumentation__.Notify(59546)
 			return polygonCoversPolyline(aRegion, bRegion), nil
 		case *s2.Polygon:
+			__antithesis_instrumentation__.Notify(59547)
 			return polygonCoversPolygon(aRegion, bRegion), nil
 		default:
+			__antithesis_instrumentation__.Notify(59548)
 			return false, pgerror.Newf(pgcode.InvalidParameterValue, "unknown s2 type of b: %#v", bRegion)
 		}
 	}
+	__antithesis_instrumentation__.Notify(59533)
 	return false, pgerror.Newf(pgcode.InvalidParameterValue, "unknown s2 type of a: %#v", aRegion)
 }
 
-// polylineCoversPoints returns whether a polyline covers a given point.
 func polylineCoversPoint(a *s2.Polyline, b s2.Point) bool {
+	__antithesis_instrumentation__.Notify(59549)
 	return a.IntersectsCell(s2.CellFromPoint(b))
 }
 
-// polylineCoversPointsWithIdx returns whether a polyline covers a given point.
-// If true, it will also return an index of the start of the edge where there
-// was an intersection.
 func polylineCoversPointWithIdx(a *s2.Polyline, b s2.Point) (bool, int) {
+	__antithesis_instrumentation__.Notify(59550)
 	for edgeIdx, aNumEdges := 0, a.NumEdges(); edgeIdx < aNumEdges; edgeIdx++ {
+		__antithesis_instrumentation__.Notify(59552)
 		if edgeCoversPoint(a.Edge(edgeIdx), b) {
+			__antithesis_instrumentation__.Notify(59553)
 			return true, edgeIdx
+		} else {
+			__antithesis_instrumentation__.Notify(59554)
 		}
 	}
+	__antithesis_instrumentation__.Notify(59551)
 	return false, -1
 }
 
-// polygonCoversPoints returns whether a polygon covers a given point.
 func polygonCoversPoint(a *s2.Polygon, b s2.Point) bool {
+	__antithesis_instrumentation__.Notify(59555)
 	return a.IntersectsCell(s2.CellFromPoint(b))
 }
 
-// edgeCoversPoint determines whether a given edge contains a point.
 func edgeCoversPoint(e s2.Edge, p s2.Point) bool {
+	__antithesis_instrumentation__.Notify(59556)
 	return (&s2.Polyline{e.V0, e.V1}).IntersectsCell(s2.CellFromPoint(p))
 }
 
-// polylineCoversPolyline returns whether polyline a covers polyline b.
 func polylineCoversPolyline(a *s2.Polyline, b *s2.Polyline) bool {
+	__antithesis_instrumentation__.Notify(59557)
 	if polylineCoversPolylineOrdered(a, b) {
+		__antithesis_instrumentation__.Notify(59560)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(59561)
 	}
-	// Check reverse ordering works as well.
+	__antithesis_instrumentation__.Notify(59558)
+
 	reversedB := make([]s2.Point, len(*b))
 	for i, point := range *b {
+		__antithesis_instrumentation__.Notify(59562)
 		reversedB[len(reversedB)-1-i] = point
 	}
+	__antithesis_instrumentation__.Notify(59559)
 	newBAsPolyline := s2.Polyline(reversedB)
 	return polylineCoversPolylineOrdered(a, &newBAsPolyline)
 }
 
-// polylineCoversPolylineOrdered returns whether a polyline covers a polyline
-// in the same ordering.
 func polylineCoversPolylineOrdered(a *s2.Polyline, b *s2.Polyline) bool {
+	__antithesis_instrumentation__.Notify(59563)
 	aCoversStartOfB, aCoverBStart := polylineCoversPointWithIdx(a, (*b)[0])
-	// We must first check that the start of B is contained by A.
+
 	if !aCoversStartOfB {
+		__antithesis_instrumentation__.Notify(59565)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(59566)
 	}
+	__antithesis_instrumentation__.Notify(59564)
 
 	aPoints := *a
 	bPoints := *b
-	// We have found "aIdx" which is the first edge in polyline A
-	// that includes the starting vertex of polyline "B".
-	// Start checking the covering from this edge.
+
 	aIdx := aCoverBStart
 	bIdx := 0
 
 	aEdge := s2.Edge{V0: aPoints[aIdx], V1: aPoints[aIdx+1]}
 	bEdge := s2.Edge{V0: bPoints[bIdx], V1: bPoints[bIdx+1]}
 	for {
+		__antithesis_instrumentation__.Notify(59567)
 		aEdgeCoversBStart := edgeCoversPoint(aEdge, bEdge.V0)
 		aEdgeCoversBEnd := edgeCoversPoint(aEdge, bEdge.V1)
 		bEdgeCoversAEnd := edgeCoversPoint(bEdge, aEdge.V1)
-		if aEdgeCoversBStart && aEdgeCoversBEnd {
-			// If the edge A fully covers edge B, check the next edge.
+		if aEdgeCoversBStart && func() bool {
+			__antithesis_instrumentation__.Notify(59570)
+			return aEdgeCoversBEnd == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(59571)
+
 			bIdx++
-			// We are out of edges in B, and A keeps going or stops at the same point.
-			// This is a covering.
+
 			if bIdx == len(bPoints)-1 {
+				__antithesis_instrumentation__.Notify(59574)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(59575)
 			}
+			__antithesis_instrumentation__.Notify(59572)
 			bEdge = s2.Edge{V0: bPoints[bIdx], V1: bPoints[bIdx+1]}
-			// If A and B end at the same place, we need to move A forward.
+
 			if bEdgeCoversAEnd {
+				__antithesis_instrumentation__.Notify(59576)
 				aIdx++
 				if aIdx == len(aPoints)-1 {
-					// At this point, B extends past A. return false.
+					__antithesis_instrumentation__.Notify(59578)
+
 					return false
+				} else {
+					__antithesis_instrumentation__.Notify(59579)
 				}
+				__antithesis_instrumentation__.Notify(59577)
 				aEdge = s2.Edge{V0: aPoints[aIdx], V1: aPoints[aIdx+1]}
+			} else {
+				__antithesis_instrumentation__.Notify(59580)
 			}
+			__antithesis_instrumentation__.Notify(59573)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(59581)
 		}
+		__antithesis_instrumentation__.Notify(59568)
 
 		if aEdgeCoversBStart {
-			// Edge A doesn't cover the end of B, but it does cover the start.
-			// If B doesn't cover the end of A, we're done.
+			__antithesis_instrumentation__.Notify(59582)
+
 			if !bEdgeCoversAEnd {
+				__antithesis_instrumentation__.Notify(59585)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(59586)
 			}
-			// If the end of edge B covers the end of A, that means that
-			// B is possibly longer than A. If that's the case, truncate B
-			// to be the end of A, and move A forward.
+			__antithesis_instrumentation__.Notify(59583)
+
 			bEdge.V0 = aEdge.V1
 			aIdx++
 			if aIdx == len(aPoints)-1 {
-				// At this point, B extends past A. return false.
+				__antithesis_instrumentation__.Notify(59587)
+
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(59588)
 			}
+			__antithesis_instrumentation__.Notify(59584)
 			aEdge = s2.Edge{V0: aPoints[aIdx], V1: aPoints[aIdx+1]}
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(59589)
 		}
+		__antithesis_instrumentation__.Notify(59569)
 
-		// Otherwise, we're doomed.
-		// Edge A does not contain edge B.
 		return false
 	}
 }
 
-// polygonCoversPolyline returns whether polygon a covers polyline b.
 func polygonCoversPolyline(a *s2.Polygon, b *s2.Polyline) bool {
-	// Check everything of polyline B is in the interior of polygon A.
+	__antithesis_instrumentation__.Notify(59590)
+
 	for _, vertex := range *b {
+		__antithesis_instrumentation__.Notify(59592)
 		if !polygonCoversPoint(a, vertex) {
+			__antithesis_instrumentation__.Notify(59593)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(59594)
 		}
 	}
-	// Even if every point of polyline B is inside polygon A, they
-	// may form an edge which goes outside of polygon A and back in
-	// due to holes and concavities.
-	//
-	// As such, check if there are any intersections - if so,
-	// we do not consider it a covering.
-	//
-	// NOTE: this implementation has a limitation where a vertex of the line could
-	// be on the boundary and still technically be "covered" (using GEOS).
-	//
-	// However, PostGIS seems to consider this as non-covering so we can go
-	// with this for now.
-	// i.e. `
-	//   select st_covers(
-	//    'POLYGON((0.0 0.0, 1.0 0.0, 1.0 1.0, 0.0 1.0, 0.0 0.0))'::geography,
-	//    'LINESTRING(0.0 0.0, 1.0 1.0)'::geography);
-	// ` returns false, but should be true. This requires some more math to resolve.
+	__antithesis_instrumentation__.Notify(59591)
+
 	return !polygonIntersectsPolylineEdge(a, b)
 }
 
-// polygonIntersectsPolylineEdge returns whether polygon a intersects with
-// polyline b by edge. It does not return true if the polyline is completely
-// within the polygon.
 func polygonIntersectsPolylineEdge(a *s2.Polygon, b *s2.Polyline) bool {
-	// Avoid using NumEdges / Edge of the Polygon type as it is not O(1).
+	__antithesis_instrumentation__.Notify(59595)
+
 	for _, loop := range a.Loops() {
+		__antithesis_instrumentation__.Notify(59597)
 		for loopEdgeIdx, loopNumEdges := 0, loop.NumEdges(); loopEdgeIdx < loopNumEdges; loopEdgeIdx++ {
+			__antithesis_instrumentation__.Notify(59598)
 			loopEdge := loop.Edge(loopEdgeIdx)
 			crosser := s2.NewChainEdgeCrosser(loopEdge.V0, loopEdge.V1, (*b)[0])
 			for _, nextVertex := range (*b)[1:] {
+				__antithesis_instrumentation__.Notify(59599)
 				if crosser.ChainCrossingSign(nextVertex) != s2.DoNotCross {
+					__antithesis_instrumentation__.Notify(59600)
 					return true
+				} else {
+					__antithesis_instrumentation__.Notify(59601)
 				}
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(59596)
 	return false
 }
 
-// polygonCoversPolygon returns whether polygon a intersects with polygon b.
 func polygonCoversPolygon(a *s2.Polygon, b *s2.Polygon) bool {
-	// We can rely on Contains here, as if the boundaries of A and B are on top
-	// of each other, it is still considered a containment as well as a covering.
+	__antithesis_instrumentation__.Notify(59602)
+
 	return a.Contains(b)
 }

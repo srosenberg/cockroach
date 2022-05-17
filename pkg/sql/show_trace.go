@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,26 +13,19 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/encoding"
 )
 
-// showTraceNode is a planNode that processes session trace data.
 type showTraceNode struct {
 	columns colinfo.ResultColumns
 	compact bool
 
-	// If set, the trace will also include "KV trace" messages - verbose messages
-	// around the interaction of SQL with KV. Some of the messages are per-row.
 	kvTracingEnabled bool
 
 	run traceRun
 }
 
-// ShowTrace shows the current stored session trace, or the trace of a given
-// query.
-// Privileges: None.
 func (p *planner) ShowTrace(ctx context.Context, n *tree.ShowTraceForSession) (planNode, error) {
+	__antithesis_instrumentation__.Notify(623289)
 	var node planNode = p.makeShowTraceNode(n.Compact, n.TraceType == tree.ShowTraceKV)
 
-	// Ensure the messages are sorted in age order, so that the user
-	// does not get confused.
 	ageColIdx := colinfo.GetTraceAgeColumnIdx(n.Compact)
 	node = &sortNode{
 		plan: node,
@@ -50,80 +35,99 @@ func (p *planner) ShowTrace(ctx context.Context, n *tree.ShowTraceForSession) (p
 	}
 
 	if n.TraceType == tree.ShowTraceReplica {
+		__antithesis_instrumentation__.Notify(623291)
 		node = &showTraceReplicaNode{plan: node}
+	} else {
+		__antithesis_instrumentation__.Notify(623292)
 	}
+	__antithesis_instrumentation__.Notify(623290)
 	return node, nil
 }
 
-// makeShowTraceNode creates a new showTraceNode.
-//
-// Args:
-// kvTracingEnabled: If set, the trace will also include "KV trace" messages -
-//   verbose messages around the interaction of SQL with KV. Some of the
-//   messages are per-row.
 func (p *planner) makeShowTraceNode(compact bool, kvTracingEnabled bool) *showTraceNode {
+	__antithesis_instrumentation__.Notify(623293)
 	n := &showTraceNode{
 		kvTracingEnabled: kvTracingEnabled,
 		compact:          compact,
 	}
 	if compact {
-		// We make a copy here because n.columns can be mutated to rename columns.
+		__antithesis_instrumentation__.Notify(623295)
+
 		n.columns = append(n.columns, colinfo.ShowCompactTraceColumns...)
 	} else {
+		__antithesis_instrumentation__.Notify(623296)
 		n.columns = append(n.columns, colinfo.ShowTraceColumns...)
 	}
+	__antithesis_instrumentation__.Notify(623294)
 	return n
 }
 
-// traceRun contains the run-time state of showTraceNode during local execution.
 type traceRun struct {
 	resultRows []tree.Datums
 	curRow     int
 }
 
 func (n *showTraceNode) startExec(params runParams) error {
-	// Get all the data upfront and process the traces. Subsequent
-	// invocations of Next() will merely return the results.
+	__antithesis_instrumentation__.Notify(623297)
+
 	traceRows, err := params.extendedEvalCtx.Tracing.getSessionTrace()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(623299)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(623300)
 	}
+	__antithesis_instrumentation__.Notify(623298)
 	n.processTraceRows(params.EvalContext(), traceRows)
 	return nil
 }
 
-// Next implements the planNode interface
 func (n *showTraceNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(623301)
 	if n.run.curRow >= len(n.run.resultRows) {
+		__antithesis_instrumentation__.Notify(623303)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(623304)
 	}
+	__antithesis_instrumentation__.Notify(623302)
 	n.run.curRow++
 	return true, nil
 }
 
-// processTraceRows populates n.resultRows.
-// This code must be careful not to overwrite traceRows,
-// because this is a shared slice which will be reused
-// by subsequent SHOW TRACE FOR SESSION statements.
 func (n *showTraceNode) processTraceRows(evalCtx *tree.EvalContext, traceRows []traceRow) {
-	// Filter trace rows based on the message (in the SHOW KV TRACE case)
+	__antithesis_instrumentation__.Notify(623305)
+
 	if n.kvTracingEnabled {
+		__antithesis_instrumentation__.Notify(623308)
 		res := make([]traceRow, 0, len(traceRows))
 		for _, r := range traceRows {
+			__antithesis_instrumentation__.Notify(623310)
 			msg := r[traceMsgCol].(*tree.DString)
 			if kvMsgRegexp.MatchString(string(*msg)) {
+				__antithesis_instrumentation__.Notify(623311)
 				res = append(res, r)
+			} else {
+				__antithesis_instrumentation__.Notify(623312)
 			}
 		}
+		__antithesis_instrumentation__.Notify(623309)
 		traceRows = res
+	} else {
+		__antithesis_instrumentation__.Notify(623313)
 	}
+	__antithesis_instrumentation__.Notify(623306)
 	if len(traceRows) == 0 {
+		__antithesis_instrumentation__.Notify(623314)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(623315)
 	}
+	__antithesis_instrumentation__.Notify(623307)
 
-	// Render the final rows.
 	n.run.resultRows = make([]tree.Datums, len(traceRows))
 	for i, r := range traceRows {
+		__antithesis_instrumentation__.Notify(623316)
 		ts := r[traceTimestampCol].(*tree.DTimestampTZ)
 		loc := r[traceLocCol]
 		tag := r[traceTagCol]
@@ -133,26 +137,33 @@ func (n *showTraceNode) processTraceRows(evalCtx *tree.EvalContext, traceRows []
 		age := r[traceAgeCol]
 
 		if !n.compact {
+			__antithesis_instrumentation__.Notify(623317)
 			n.run.resultRows[i] = tree.Datums{ts, age, msg, tag, loc, op, spanIdx}
 		} else {
+			__antithesis_instrumentation__.Notify(623318)
 			msgStr := msg.(*tree.DString)
 			if locStr := string(*loc.(*tree.DString)); locStr != "" {
+				__antithesis_instrumentation__.Notify(623320)
 				msgStr = tree.NewDString(fmt.Sprintf("%s %s", locStr, string(*msgStr)))
+			} else {
+				__antithesis_instrumentation__.Notify(623321)
 			}
+			__antithesis_instrumentation__.Notify(623319)
 			n.run.resultRows[i] = tree.Datums{age, msgStr, tag, op}
 		}
 	}
 }
 
 func (n *showTraceNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(623322)
 	return n.run.resultRows[n.run.curRow-1]
 }
 
 func (n *showTraceNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(623323)
 	n.run.resultRows = nil
 }
 
-// kvMsgRegexp is the message filter used for SHOW KV TRACE.
 var kvMsgRegexp = regexp.MustCompile(
 	strings.Join([]string{
 		"^fetched: ",

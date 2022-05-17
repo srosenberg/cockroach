@@ -21,6 +21,7 @@ go_library(
         "//pkg/sql/sqlutil",
         "//pkg/util/metric",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_gogo_protobuf//types",
     ],

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package testutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"io/ioutil"
@@ -19,28 +11,35 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/fileutil"
 )
 
-// TempDir creates a directory and a function to clean it up at the end of the
-// test.
 func TempDir(t testing.TB) (string, func()) {
+	__antithesis_instrumentation__.Notify(644069)
 	tmpDir := ""
 	if bazel.BuiltWithBazel() {
-		// Bazel sets up private temp directories for each test.
-		// Normally, this private temp directory will be cleaned up automatically.
-		// However, we do use external tools (such as stress) which re-execute the
-		// same test multiple times.  Bazel, on the other hand, does not know about
-		// this, and only creates this temporary directory once.  So, ensure we create
-		// a unique temporary directory underneath bazel TEST_TMPDIR.
+		__antithesis_instrumentation__.Notify(644073)
+
 		tmpDir = bazel.TestTmpDir()
+	} else {
+		__antithesis_instrumentation__.Notify(644074)
 	}
+	__antithesis_instrumentation__.Notify(644070)
 
 	dir, err := ioutil.TempDir(tmpDir, fileutil.EscapeFilename(t.Name()))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(644075)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(644076)
 	}
+	__antithesis_instrumentation__.Notify(644071)
 	cleanup := func() {
+		__antithesis_instrumentation__.Notify(644077)
 		if err := os.RemoveAll(dir); err != nil {
+			__antithesis_instrumentation__.Notify(644078)
 			t.Error(err)
+		} else {
+			__antithesis_instrumentation__.Notify(644079)
 		}
 	}
+	__antithesis_instrumentation__.Notify(644072)
 	return dir, cleanup
 }

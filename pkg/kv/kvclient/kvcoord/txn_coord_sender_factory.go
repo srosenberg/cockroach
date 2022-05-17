@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvcoord
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -23,7 +15,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
 )
 
-// TxnCoordSenderFactory implements client.TxnSenderFactory.
 type TxnCoordSenderFactory struct {
 	log.AmbientContext
 
@@ -31,7 +22,7 @@ type TxnCoordSenderFactory struct {
 	wrapped                kv.Sender
 	clock                  *hlc.Clock
 	heartbeatInterval      time.Duration
-	linearizable           bool // enables linearizable behavior
+	linearizable           bool
 	stopper                *stop.Stopper
 	metrics                TxnMetrics
 	condensedIntentsEveryN log.EveryN
@@ -41,8 +32,6 @@ type TxnCoordSenderFactory struct {
 
 var _ kv.TxnSenderFactory = &TxnCoordSenderFactory{}
 
-// TxnCoordSenderFactoryConfig holds configuration and auxiliary objects that can be passed
-// to NewTxnCoordSenderFactory.
 type TxnCoordSenderFactoryConfig struct {
 	AmbientCtx log.AmbientContext
 
@@ -50,7 +39,6 @@ type TxnCoordSenderFactoryConfig struct {
 	Clock    *hlc.Clock
 	Stopper  *stop.Stopper
 
-	// -1 to disable transaction heartbeats.
 	HeartbeatInterval time.Duration
 	Linearizable      bool
 	Metrics           TxnMetrics
@@ -58,11 +46,10 @@ type TxnCoordSenderFactoryConfig struct {
 	TestingKnobs ClientTestingKnobs
 }
 
-// NewTxnCoordSenderFactory creates a new TxnCoordSenderFactory. The
-// factory creates new instances of TxnCoordSenders.
 func NewTxnCoordSenderFactory(
 	cfg TxnCoordSenderFactoryConfig, wrapped kv.Sender,
 ) *TxnCoordSenderFactory {
+	__antithesis_instrumentation__.Notify(88396)
 	tcf := &TxnCoordSenderFactory{
 		AmbientContext:         cfg.AmbientCtx,
 		st:                     cfg.Settings,
@@ -76,37 +63,49 @@ func NewTxnCoordSenderFactory(
 		testingKnobs:           cfg.TestingKnobs,
 	}
 	if tcf.st == nil {
+		__antithesis_instrumentation__.Notify(88400)
 		tcf.st = cluster.MakeTestingClusterSettings()
+	} else {
+		__antithesis_instrumentation__.Notify(88401)
 	}
+	__antithesis_instrumentation__.Notify(88397)
 	if tcf.heartbeatInterval == 0 {
+		__antithesis_instrumentation__.Notify(88402)
 		tcf.heartbeatInterval = base.DefaultTxnHeartbeatInterval
+	} else {
+		__antithesis_instrumentation__.Notify(88403)
 	}
+	__antithesis_instrumentation__.Notify(88398)
 	if tcf.metrics == (TxnMetrics{}) {
+		__antithesis_instrumentation__.Notify(88404)
 		tcf.metrics = MakeTxnMetrics(metric.TestSampleInterval)
+	} else {
+		__antithesis_instrumentation__.Notify(88405)
 	}
+	__antithesis_instrumentation__.Notify(88399)
 	return tcf
 }
 
-// RootTransactionalSender is part of the TxnSenderFactory interface.
 func (tcf *TxnCoordSenderFactory) RootTransactionalSender(
 	txn *roachpb.Transaction, pri roachpb.UserPriority,
 ) kv.TxnSender {
+	__antithesis_instrumentation__.Notify(88406)
 	return newRootTxnCoordSender(tcf, txn, pri)
 }
 
-// LeafTransactionalSender is part of the TxnSenderFactory interface.
 func (tcf *TxnCoordSenderFactory) LeafTransactionalSender(
 	tis *roachpb.LeafTxnInputState,
 ) kv.TxnSender {
+	__antithesis_instrumentation__.Notify(88407)
 	return newLeafTxnCoordSender(tcf, tis)
 }
 
-// NonTransactionalSender is part of the TxnSenderFactory interface.
 func (tcf *TxnCoordSenderFactory) NonTransactionalSender() kv.Sender {
+	__antithesis_instrumentation__.Notify(88408)
 	return tcf.wrapped
 }
 
-// Metrics returns the factory's metrics struct.
 func (tcf *TxnCoordSenderFactory) Metrics() TxnMetrics {
+	__antithesis_instrumentation__.Notify(88409)
 	return tcf.metrics
 }

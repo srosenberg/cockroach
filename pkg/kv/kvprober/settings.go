@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvprober
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -17,10 +9,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// kv.prober.bypass_admission_control controls whether kvprober's requests
-// should bypass kv layer's admission control. Setting this value to true
-// ensures that kvprober will not be significantly affected if the cluster is
-// overloaded.
 var bypassAdmissionControl = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"kv.prober.bypass_admission_control.enabled",
@@ -36,8 +24,6 @@ var readEnabled = settings.RegisterBoolSetting(
 	"whether the KV read prober is enabled",
 	false)
 
-// TODO(josh): Another option is for the cluster setting to be a QPS target
-// for the cluster as a whole.
 var readInterval = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"kv.prober.read.interval",
@@ -45,24 +31,33 @@ var readInterval = settings.RegisterDurationSetting(
 		"note that a very slow read can block kvprober from sending additional probes; "+
 		"kv.prober.read.timeout controls the max time kvprober can be blocked",
 	1*time.Minute, func(duration time.Duration) error {
+		__antithesis_instrumentation__.Notify(94036)
 		if duration <= 0 {
+			__antithesis_instrumentation__.Notify(94038)
 			return errors.New("param must be >0")
+		} else {
+			__antithesis_instrumentation__.Notify(94039)
 		}
+		__antithesis_instrumentation__.Notify(94037)
 		return nil
 	})
 
 var readTimeout = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"kv.prober.read.timeout",
-	// Slow enough response times are not different than errors from the
-	// perspective of the user.
+
 	"if this much time elapses without success, a KV read probe will be treated as an error; "+
 		"note that a very slow read can block kvprober from sending additional probes"+
 		"this setting controls the max time kvprober can be blocked",
 	2*time.Second, func(duration time.Duration) error {
+		__antithesis_instrumentation__.Notify(94040)
 		if duration <= 0 {
+			__antithesis_instrumentation__.Notify(94042)
 			return errors.New("param must be >0")
+		} else {
+			__antithesis_instrumentation__.Notify(94043)
 		}
+		__antithesis_instrumentation__.Notify(94041)
 		return nil
 	})
 
@@ -79,24 +74,33 @@ var writeInterval = settings.RegisterDurationSetting(
 		"note that a very slow read can block kvprober from sending additional probes; "+
 		"kv.prober.write.timeout controls the max time kvprober can be blocked",
 	10*time.Second, func(duration time.Duration) error {
+		__antithesis_instrumentation__.Notify(94044)
 		if duration <= 0 {
+			__antithesis_instrumentation__.Notify(94046)
 			return errors.New("param must be >0")
+		} else {
+			__antithesis_instrumentation__.Notify(94047)
 		}
+		__antithesis_instrumentation__.Notify(94045)
 		return nil
 	})
 
 var writeTimeout = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"kv.prober.write.timeout",
-	// Slow enough response times are not different than errors from the
-	// perspective of the user.
+
 	"if this much time elapses without success, a KV write probe will be treated as an error; "+
 		"note that a very slow read can block kvprober from sending additional probes"+
 		"this setting controls the max time kvprober can be blocked",
 	4*time.Second, func(duration time.Duration) error {
+		__antithesis_instrumentation__.Notify(94048)
 		if duration <= 0 {
+			__antithesis_instrumentation__.Notify(94050)
 			return errors.New("param must be >0")
+		} else {
+			__antithesis_instrumentation__.Notify(94051)
 		}
+		__antithesis_instrumentation__.Notify(94049)
 		return nil
 	})
 
@@ -106,9 +110,14 @@ var scanMeta2Timeout = settings.RegisterDurationSetting(
 	"timeout on scanning meta2 via db.Scan with max rows set to "+
 		"kv.prober.planner.num_steps_to_plan_at_once",
 	2*time.Second, func(duration time.Duration) error {
+		__antithesis_instrumentation__.Notify(94052)
 		if duration <= 0 {
+			__antithesis_instrumentation__.Notify(94054)
 			return errors.New("param must be >0")
+		} else {
+			__antithesis_instrumentation__.Notify(94055)
 		}
+		__antithesis_instrumentation__.Notify(94053)
 		return nil
 	})
 
@@ -121,8 +130,13 @@ var numStepsToPlanAtOnce = settings.RegisterIntSetting(
 		"close-to-lexical probing; already made plans are held in memory, so "+
 		"large values are advised against",
 	100, func(i int64) error {
+		__antithesis_instrumentation__.Notify(94056)
 		if i <= 0 {
+			__antithesis_instrumentation__.Notify(94058)
 			return errors.New("param must be >0")
+		} else {
+			__antithesis_instrumentation__.Notify(94059)
 		}
+		__antithesis_instrumentation__.Notify(94057)
 		return nil
 	})

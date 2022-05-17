@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package faker
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -24,45 +16,60 @@ type nameFaker struct {
 	suffixFemale, suffixMale       *weightedEntries
 }
 
-// Name returns a random en_US person name.
 func (f *nameFaker) Name(rng *rand.Rand) string {
+	__antithesis_instrumentation__.Notify(694117)
 	if rng.Intn(2) == 0 {
+		__antithesis_instrumentation__.Notify(694119)
 		return f.formatsFemale.Rand(rng).(func(rng *rand.Rand) string)(rng)
+	} else {
+		__antithesis_instrumentation__.Notify(694120)
 	}
+	__antithesis_instrumentation__.Notify(694118)
 	return f.formatsMale.Rand(rng).(func(rng *rand.Rand) string)(rng)
 }
 
 func newNameFaker() nameFaker {
+	__antithesis_instrumentation__.Notify(694121)
 	f := nameFaker{}
 	f.formatsFemale = makeWeightedEntries(
 		func(rng *rand.Rand) string {
+			__antithesis_instrumentation__.Notify(694124)
 			return fmt.Sprintf(`%s %s`, f.firstNameFemale.Rand(rng), f.lastName.Rand(rng))
 		}, 0.97,
 		func(rng *rand.Rand) string {
+			__antithesis_instrumentation__.Notify(694125)
 			return fmt.Sprintf(`%s %s %s`, f.prefixFemale.Rand(rng), f.firstNameFemale.Rand(rng), f.lastName.Rand(rng))
 		}, 0.015,
 		func(rng *rand.Rand) string {
+			__antithesis_instrumentation__.Notify(694126)
 			return fmt.Sprintf(`%s %s %s`, f.firstNameFemale.Rand(rng), f.lastName.Rand(rng), f.suffixFemale.Rand(rng))
 		}, 0.02,
 		func(rng *rand.Rand) string {
+			__antithesis_instrumentation__.Notify(694127)
 			return fmt.Sprintf(`%s %s %s %s`, f.prefixFemale.Rand(rng), f.firstNameFemale.Rand(rng), f.lastName.Rand(rng), f.suffixFemale.Rand(rng))
 		}, 0.005,
 	)
+	__antithesis_instrumentation__.Notify(694122)
 
 	f.formatsMale = makeWeightedEntries(
 		func(rng *rand.Rand) string {
+			__antithesis_instrumentation__.Notify(694128)
 			return fmt.Sprintf(`%s %s`, f.firstNameMale.Rand(rng), f.lastName.Rand(rng))
 		}, 0.97,
 		func(rng *rand.Rand) string {
+			__antithesis_instrumentation__.Notify(694129)
 			return fmt.Sprintf(`%s %s %s`, f.prefixMale.Rand(rng), f.firstNameMale.Rand(rng), f.lastName.Rand(rng))
 		}, 0.015,
 		func(rng *rand.Rand) string {
+			__antithesis_instrumentation__.Notify(694130)
 			return fmt.Sprintf(`%s %s %s`, f.firstNameMale.Rand(rng), f.lastName.Rand(rng), f.suffixMale.Rand(rng))
 		}, 0.02,
 		func(rng *rand.Rand) string {
+			__antithesis_instrumentation__.Notify(694131)
 			return fmt.Sprintf(`%s %s %s %s`, f.prefixMale.Rand(rng), f.firstNameMale.Rand(rng), f.lastName.Rand(rng), f.suffixMale.Rand(rng))
 		}, 0.005,
 	)
+	__antithesis_instrumentation__.Notify(694123)
 
 	f.firstNameFemale = firstNameFemale()
 	f.firstNameMale = firstNameMale()

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -16,25 +8,33 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// TimeFamilyPrecisionToRoundDuration takes in a type's precision, and returns the
-// duration to use to pass into time.Truncate to truncate to that duration.
-// Panics if the precision is not supported.
 func TimeFamilyPrecisionToRoundDuration(precision int32) time.Duration {
+	__antithesis_instrumentation__.Notify(614551)
 	switch precision {
 	case 0:
+		__antithesis_instrumentation__.Notify(614553)
 		return time.Second
 	case 1:
+		__antithesis_instrumentation__.Notify(614554)
 		return time.Millisecond * 100
 	case 2:
+		__antithesis_instrumentation__.Notify(614555)
 		return time.Millisecond * 10
 	case 3:
+		__antithesis_instrumentation__.Notify(614556)
 		return time.Millisecond
 	case 4:
+		__antithesis_instrumentation__.Notify(614557)
 		return time.Microsecond * 100
 	case 5:
+		__antithesis_instrumentation__.Notify(614558)
 		return time.Microsecond * 10
 	case 6:
+		__antithesis_instrumentation__.Notify(614559)
 		return time.Microsecond
+	default:
+		__antithesis_instrumentation__.Notify(614560)
 	}
+	__antithesis_instrumentation__.Notify(614552)
 	panic(errors.Newf("unsupported precision: %d", precision))
 }

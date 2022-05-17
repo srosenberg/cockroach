@@ -26,6 +26,7 @@ go_library(
         "//pkg/sql/types",
         "//pkg/util/encoding",
         "//pkg/util/errorutil/unimplemented",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_lib_pq//oid",
         "@org_golang_x_text//language",
@@ -47,6 +48,7 @@ go_test(
         "//pkg/sql/types",
         "//pkg/util/leaktest",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//require",
     ],
 )

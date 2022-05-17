@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bufio"
@@ -34,7 +26,6 @@ import (
 func init() {
 	const topStmt = "stmt_block"
 
-	// Global vars.
 	var (
 		filter      string
 		invertMatch bool
@@ -49,7 +40,6 @@ func init() {
 		}
 	}
 
-	// BNF vars.
 	var (
 		addr          string
 		bnfAPITimeout time.Duration
@@ -136,7 +126,6 @@ func init() {
 	cmdBNF.Flags().DurationVar(&bnfAPITimeout, "timeout", time.Second*120, "Timeout in seconds for bnf HTTP Api, "+
 		"only relevant when the web api is used; default 120s.")
 
-	// SVG vars.
 	var (
 		maxWorkers         int
 		railroadJar        string
@@ -184,7 +173,7 @@ func init() {
 			}
 
 			var wg sync.WaitGroup
-			sem := make(chan struct{}, maxWorkers) // max number of concurrent workers
+			sem := make(chan struct{}, maxWorkers)
 			for _, m := range matches {
 				name := strings.TrimSuffix(filepath.Base(m), ".bnf")
 				if filterRE.MatchString(name) == invertMatch {
@@ -240,11 +229,9 @@ func init() {
 							replaceTo := fmt.Sprintf(`<a xlink:href="sql-grammar.html#%s" xlink:title="%s">`, to, to)
 							body = strings.Replace(body, replaceFrom, replaceTo, -1)
 						}
-						// Wrap the output in a <div> so that the Markdown parser
-						// doesn't attempt to parse the inside of the contained
-						// <svg> as Markdown.
+
 						body = fmt.Sprintf(`<div style="overflow-x:auto;">%s</div>`, body)
-						// Remove blank lines and strip spaces.
+
 						body = stripRE.ReplaceAllString(body, "\n") + "\n"
 					}
 					name = strings.Replace(name, "_stmt", "", 1)
@@ -273,12 +260,9 @@ func init() {
 	cmds = append(cmds, diagramCmd)
 }
 
-// stmtSpec is needed for each top-level bnf file to process.
-// See the wiki page for more details about what these controls do.
-// https://github.com/cockroachdb/docs/wiki/SQL-Grammar-Railroad-Diagram-Changes#structure
 type stmtSpec struct {
 	name           string
-	stmt           string // if unspecified, uses name
+	stmt           string
 	inline         []string
 	replace        map[string]string
 	regreplace     map[string]string
@@ -288,16 +272,21 @@ type stmtSpec struct {
 	nosplit        bool
 }
 
-// GetStatement returns the sql statement of a stmtSpec.
 func (s stmtSpec) GetStatement() string {
+	__antithesis_instrumentation__.Notify(39448)
 	if s.stmt == "" {
+		__antithesis_instrumentation__.Notify(39450)
 		return s.name
+	} else {
+		__antithesis_instrumentation__.Notify(39451)
 	}
+	__antithesis_instrumentation__.Notify(39449)
 
 	return s.stmt
 }
 
 func runBNF(addr string, bnfAPITimeout time.Duration) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(39452)
 	return extract.GenerateBNF(addr, bnfAPITimeout)
 }
 
@@ -308,13 +297,22 @@ func runParse(
 	descend, nosplit bool,
 	match, exclude []*regexp.Regexp,
 ) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(39453)
 	g, err := extract.ParseGrammar(r)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(39456)
 		return nil, errors.Wrap(err, "parse grammar")
+	} else {
+		__antithesis_instrumentation__.Notify(39457)
 	}
+	__antithesis_instrumentation__.Notify(39454)
 	if err := g.Inline(inline...); err != nil {
+		__antithesis_instrumentation__.Notify(39458)
 		return nil, errors.Wrap(err, "inline")
+	} else {
+		__antithesis_instrumentation__.Notify(39459)
 	}
+	__antithesis_instrumentation__.Notify(39455)
 	b, err := g.ExtractProduction(topStmt, descend, nosplit, match, exclude)
 	b = bytes.Replace(b, []byte("'IDENT'"), []byte("'identifier'"), -1)
 	b = bytes.Replace(b, []byte("_LA"), []byte(""), -1)
@@ -322,19 +320,31 @@ func runParse(
 }
 
 func runRR(r io.Reader, railroadJar string, railroadAPITimeout time.Duration) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(39460)
 	b, err := ioutil.ReadAll(r)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(39464)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(39465)
 	}
+	__antithesis_instrumentation__.Notify(39461)
 	var html []byte
 	if railroadJar == "" {
+		__antithesis_instrumentation__.Notify(39466)
 		html, err = extract.GenerateRRNet(b, railroadAPITimeout)
 	} else {
+		__antithesis_instrumentation__.Notify(39467)
 		html, err = extract.GenerateRRJar(railroadJar, b)
 	}
+	__antithesis_instrumentation__.Notify(39462)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(39468)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(39469)
 	}
+	__antithesis_instrumentation__.Notify(39463)
 	s, err := extract.XHTMLtoHTML(bytes.NewReader(html))
 	return []byte(s), err
 }
@@ -1153,7 +1163,7 @@ var specs = []stmtSpec{
 			"opt_index_flags":    "( '@' index_name | )",
 			"relation_expr":      "table_name",
 			"func_table":         "func_application",
-			//			"| func_name '(' ( expr_list |  ) ')' ( 'WITH' 'ORDINALITY' |  ) ( ( 'AS' table_alias_name ( '(' ( ( name ) ( ( ',' name ) )* ) ')' |  ) | table_alias_name ( '(' ( ( name ) ( ( ',' name ) )* ) ')' |  ) ) |  )": "",
+
 			"| special_function ( 'WITH' 'ORDINALITY' |  ) ( ( 'AS' table_alias_name ( '(' ( ( name ) ( ( ',' name ) )* ) ')' |  ) | table_alias_name ( '(' ( ( name ) ( ( ',' name ) )* ) ')' |  ) ) |  )": "",
 			"| '(' joined_table ')' ( 'WITH' 'ORDINALITY' |  ) ( 'AS' table_alias_name ( '(' ( ( name ) ( ( ',' name ) )* ) ')' |  ) | table_alias_name ( '(' ( ( name ) ( ( ',' name ) )* ) ')' |  ) )":    "| '(' joined_table ')' ( 'WITH' 'ORDINALITY' |  ) ( ( 'AS' table_alias_name ( '(' ( ( name ) ( ( ',' name ) )* ) ')' |  ) | table_alias_name ( '(' ( ( name ) ( ( ',' name ) )* ) ')' |  ) ) |  )",
 		},
@@ -1202,8 +1212,8 @@ var specs = []stmtSpec{
 		stmt: "show_stmt",
 		exclude: []*regexp.Regexp{
 			regexp.MustCompile("'SHOW' 'ALL' 'CLUSTER'"),
-			regexp.MustCompile("'SHOW' 'IN"),       // INDEX, INDEXES
-			regexp.MustCompile("'SHOW' '[B-HJ-Z]"), // Keep ALL and IDENT.
+			regexp.MustCompile("'SHOW' 'IN"),
+			regexp.MustCompile("'SHOW' '[B-HJ-Z]"),
 		},
 		replace: map[string]string{"identifier": "var_name"},
 	},
@@ -1480,70 +1490,91 @@ var specs = []stmtSpec{
 	},
 }
 
-// getAllStmtSpecs returns a slice of stmtSpecs for all sql.y statements that
-// should have a diagram generated for.
-// getAllStmtSpecs appends to the "specs" slice any sql.y statements that do
-// not have an entry in specs but are not specified to be skipped.
 func getAllStmtSpecs(sqlGrammarFile string, bnfAPITimeout time.Duration) ([]stmtSpec, error) {
+	__antithesis_instrumentation__.Notify(39470)
 	sqlStmts := make(map[string]struct{})
-	// Map all the sql stmts that are defined in specs.
+
 	for _, s := range specs {
+		__antithesis_instrumentation__.Notify(39477)
 		sqlStmts[s.GetStatement()] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(39471)
 
 	file, err := os.Open(sqlGrammarFile)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(39478)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(39479)
 	}
+	__antithesis_instrumentation__.Notify(39472)
 	defer file.Close()
 
 	bnf, err := runBNF(sqlGrammarFile, bnfAPITimeout)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(39480)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(39481)
 	}
+	__antithesis_instrumentation__.Notify(39473)
 
 	br := func() io.Reader {
+		__antithesis_instrumentation__.Notify(39482)
 		return bytes.NewReader(bnf)
 	}
+	__antithesis_instrumentation__.Notify(39474)
 
 	grammar, err := extract.ParseGrammar(br())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(39483)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(39484)
 	}
+	__antithesis_instrumentation__.Notify(39475)
 
 	stmtRegex := regexp.MustCompile(`%type\s*<tree.Statement>\s*(.*)$`)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
+		__antithesis_instrumentation__.Notify(39485)
 		text := scanner.Text()
 		if matches := stmtRegex.FindAllStringSubmatch(text, -1); len(matches) > 0 {
+			__antithesis_instrumentation__.Notify(39486)
 			for _, match := range matches {
-				// The second submatch does not include <tree.Statement>.
-				// We want to get only the stmt names.
+				__antithesis_instrumentation__.Notify(39487)
+
 				stmts := strings.Split(match[1], " ")
 				for _, stmt := range stmts {
-					// If the statement does not appear in grammar, the statement
-					// has no branches that are required to be documented, we can
-					// skip it.
-					if _, ok := grammar[stmt]; !ok {
-						continue
-					}
+					__antithesis_instrumentation__.Notify(39488)
 
-					// If the statement is not defined in specs, create an entry.
+					if _, ok := grammar[stmt]; !ok {
+						__antithesis_instrumentation__.Notify(39490)
+						continue
+					} else {
+						__antithesis_instrumentation__.Notify(39491)
+					}
+					__antithesis_instrumentation__.Notify(39489)
+
 					if _, found := sqlStmts[stmt]; !found {
+						__antithesis_instrumentation__.Notify(39492)
 						specs = append(specs, stmtSpec{
 							name: stmt,
 						})
 						sqlStmts[stmt] = struct{}{}
+					} else {
+						__antithesis_instrumentation__.Notify(39493)
 					}
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(39494)
 		}
 	}
+	__antithesis_instrumentation__.Notify(39476)
 
 	return specs, nil
 }
 
-// regList is a common regex used when removing loops from alter and drop
-// statements.
 const regList = ` \( \( ',' .* \) \)\*`

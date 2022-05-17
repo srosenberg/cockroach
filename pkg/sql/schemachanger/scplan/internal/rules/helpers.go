@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rules
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
@@ -20,15 +12,22 @@ import (
 )
 
 func idInIDs(objects []descpb.ID, id descpb.ID) bool {
+	__antithesis_instrumentation__.Notify(594162)
 	for _, other := range objects {
+		__antithesis_instrumentation__.Notify(594164)
 		if other == id {
+			__antithesis_instrumentation__.Notify(594165)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(594166)
 		}
 	}
+	__antithesis_instrumentation__.Notify(594163)
 	return false
 }
 
 func targetNodeVars(el rel.Var) (element, target, node rel.Var) {
+	__antithesis_instrumentation__.Notify(594167)
 	return el, el + "-target", el + "-node"
 }
 
@@ -50,6 +49,7 @@ func depRule(
 	from, to elementSpec,
 	joinAttrs ...screl.Attr,
 ) depRuleSpec {
+	__antithesis_instrumentation__.Notify(594168)
 	return depRuleSpec{
 		ruleName:     ruleName,
 		edgeKind:     edgeKind,
@@ -66,6 +66,7 @@ type elementSpec struct {
 }
 
 func element(status scpb.Status, types ...interface{}) elementSpec {
+	__antithesis_instrumentation__.Notify(594169)
 	return elementSpec{
 		status: status,
 		types:  types,
@@ -73,24 +74,31 @@ func element(status scpb.Status, types ...interface{}) elementSpec {
 }
 
 func (d depRuleSpec) withFilter(label string, predicate interface{}) depRuleSpec {
+	__antithesis_instrumentation__.Notify(594170)
 	d.filterLabel = label
 	d.filter = predicate
 	return d
 }
 
 func (d depRuleSpec) withJoinFromReferencedDescIDWithToDescID() depRuleSpec {
+	__antithesis_instrumentation__.Notify(594171)
 	d.joinReferencingDescID = true
 	return d
 }
 
 func (d depRuleSpec) register() {
+	__antithesis_instrumentation__.Notify(594172)
 	var (
 		from, fromTarget, fromNode = targetNodeVars("from")
 		to, toTarget, toNode       = targetNodeVars("to")
 	)
 	if from == to {
+		__antithesis_instrumentation__.Notify(594177)
 		panic(errors.AssertionFailedf("elements cannot share same label %q", from))
+	} else {
+		__antithesis_instrumentation__.Notify(594178)
 	}
+	__antithesis_instrumentation__.Notify(594173)
 	c := rel.Clauses{
 		from.Type(d.from.types[0], d.from.types[1:]...),
 		fromTarget.AttrEq(screl.TargetStatus, d.targetStatus),
@@ -104,15 +112,25 @@ func (d depRuleSpec) register() {
 		screl.JoinTargetNode(to, toTarget, toNode),
 	}
 	for _, attr := range d.joinAttrs {
+		__antithesis_instrumentation__.Notify(594179)
 		v := rel.Var(attr.String() + "-join-var")
 		c = append(c, from.AttrEqVar(attr, v), to.AttrEqVar(attr, v))
 	}
+	__antithesis_instrumentation__.Notify(594174)
 	if d.joinReferencingDescID {
+		__antithesis_instrumentation__.Notify(594180)
 		v := rel.Var("joined-from-ref-desc-id-with-to-desc-id-var")
 		c = append(c, from.AttrEqVar(screl.ReferencedDescID, v), to.AttrEqVar(screl.DescID, v))
+	} else {
+		__antithesis_instrumentation__.Notify(594181)
 	}
+	__antithesis_instrumentation__.Notify(594175)
 	if d.filter != nil {
+		__antithesis_instrumentation__.Notify(594182)
 		c = append(c, rel.Filter(d.filterLabel, from, to)(d.filter))
+	} else {
+		__antithesis_instrumentation__.Notify(594183)
 	}
+	__antithesis_instrumentation__.Notify(594176)
 	registerDepRule(d.ruleName, d.edgeKind, fromNode, toNode, screl.MustQuery(c...))
 }

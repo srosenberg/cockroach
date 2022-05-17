@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,65 +15,83 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// prepareSetSchema verifies that a table/type can be set to the desired
-// schema and returns the schema id of the desired schema.
 func (p *planner) prepareSetSchema(
 	ctx context.Context, db catalog.DatabaseDescriptor, desc catalog.MutableDescriptor, schema string,
 ) (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(622022)
 
 	var objectName tree.ObjectName
 	switch t := desc.(type) {
 	case *tabledesc.Mutable:
+		__antithesis_instrumentation__.Notify(622028)
 		objectName = tree.NewUnqualifiedTableName(tree.Name(desc.GetName()))
 	case *typedesc.Mutable:
+		__antithesis_instrumentation__.Notify(622029)
 		objectName = tree.NewUnqualifiedTypeName(desc.GetName())
 	default:
+		__antithesis_instrumentation__.Notify(622030)
 		return 0, pgerror.Newf(
 			pgcode.InvalidParameterValue,
 			"no table or type was found for SET SCHEMA command, found %T", t)
 	}
+	__antithesis_instrumentation__.Notify(622023)
 
-	// Lookup the schema we want to set to.
 	res, err := p.Descriptors().GetMutableSchemaByName(
 		ctx, p.txn, db, schema, tree.SchemaLookupFlags{
 			Required:       true,
 			RequireMutable: true,
 		})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(622031)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(622032)
 	}
+	__antithesis_instrumentation__.Notify(622024)
 
 	switch res.SchemaKind() {
 	case catalog.SchemaTemporary:
+		__antithesis_instrumentation__.Notify(622033)
 		return 0, pgerror.Newf(pgcode.FeatureNotSupported,
 			"cannot move objects into or out of temporary schemas")
 	case catalog.SchemaVirtual:
+		__antithesis_instrumentation__.Notify(622034)
 		return 0, pgerror.Newf(pgcode.FeatureNotSupported,
 			"cannot move objects into or out of virtual schemas")
 	case catalog.SchemaPublic:
-		// We do not need to check for privileges on the public schema.
+		__antithesis_instrumentation__.Notify(622035)
+
 	default:
-		// The user needs CREATE privilege on the target schema to move an object
-		// to the schema.
+		__antithesis_instrumentation__.Notify(622036)
+
 		err = p.CheckPrivilege(ctx, res, privilege.CREATE)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(622037)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(622038)
 		}
 	}
+	__antithesis_instrumentation__.Notify(622025)
 
 	desiredSchemaID := res.GetID()
 
-	// If the schema being changed to is the same as the current schema a no-op
-	// will happen so we don't have to check if there is an object in the schema
-	// with the same name.
 	if desiredSchemaID == desc.GetParentSchemaID() {
+		__antithesis_instrumentation__.Notify(622039)
 		return desiredSchemaID, nil
+	} else {
+		__antithesis_instrumentation__.Notify(622040)
 	}
+	__antithesis_instrumentation__.Notify(622026)
 
 	err = p.Descriptors().Direct().CheckObjectCollision(ctx, p.txn, db.GetID(), desiredSchemaID, objectName)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(622041)
 		return descpb.InvalidID, err
+	} else {
+		__antithesis_instrumentation__.Notify(622042)
 	}
+	__antithesis_instrumentation__.Notify(622027)
 
 	return desiredSchemaID, nil
 }

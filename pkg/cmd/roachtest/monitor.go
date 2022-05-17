@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -37,7 +29,7 @@ type monitorImpl struct {
 	ctx       context.Context
 	cancel    func()
 	g         *errgroup.Group
-	expDeaths int32 // atomically
+	expDeaths int32
 }
 
 func newMonitor(
@@ -51,6 +43,7 @@ func newMonitor(
 	c cluster.Cluster,
 	opts ...option.Option,
 ) *monitorImpl {
+	__antithesis_instrumentation__.Notify(44216)
 	m := &monitorImpl{
 		t:     t,
 		l:     t.L(),
@@ -61,150 +54,182 @@ func newMonitor(
 	return m
 }
 
-// ExpectDeath lets the monitor know that a node is about to be killed, and that
-// this should be ignored.
 func (m *monitorImpl) ExpectDeath() {
+	__antithesis_instrumentation__.Notify(44217)
 	m.ExpectDeaths(1)
 }
 
-// ExpectDeaths lets the monitor know that a specific number of nodes are about
-// to be killed, and that they should be ignored.
 func (m *monitorImpl) ExpectDeaths(count int32) {
+	__antithesis_instrumentation__.Notify(44218)
 	atomic.AddInt32(&m.expDeaths, count)
 }
 
 func (m *monitorImpl) ResetDeaths() {
+	__antithesis_instrumentation__.Notify(44219)
 	atomic.StoreInt32(&m.expDeaths, 0)
 }
 
 var errTestFatal = errors.New("t.Fatal() was called")
 
 func (m *monitorImpl) Go(fn func(context.Context) error) {
+	__antithesis_instrumentation__.Notify(44220)
 	m.g.Go(func() (err error) {
+		__antithesis_instrumentation__.Notify(44221)
 		defer func() {
+			__antithesis_instrumentation__.Notify(44223)
 			r := recover()
 			if r == nil {
+				__antithesis_instrumentation__.Notify(44226)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(44227)
 			}
+			__antithesis_instrumentation__.Notify(44224)
 			rErr, ok := r.(error)
 			if !ok {
+				__antithesis_instrumentation__.Notify(44228)
 				rErr = errors.Errorf("recovered panic: %v", r)
+			} else {
+				__antithesis_instrumentation__.Notify(44229)
 			}
-			// t.{Skip,Fatal} perform a panic(errTestFatal). If we've caught the
-			// errTestFatal sentinel we transform the panic into an error return so
-			// that the wrapped errgroup cancels itself. The "panic" will then be
-			// returned by `m.WaitE()`.
-			//
-			// Note that `t.Fatal` calls `panic(err)`, so this mechanism primarily
-			// enables that use case. But it also offers protection against accidental
-			// panics (NPEs and such) which should not bubble up to the runtime.
+			__antithesis_instrumentation__.Notify(44225)
+
 			err = rErr
 		}()
-		// Automatically clear the worker status message when the goroutine exits.
+		__antithesis_instrumentation__.Notify(44222)
+
 		defer m.t.WorkerStatus()
 		return fn(m.ctx)
 	})
 }
 
 func (m *monitorImpl) WaitE() error {
+	__antithesis_instrumentation__.Notify(44230)
 	if m.t.Failed() {
-		// If the test has failed, don't try to limp along.
+		__antithesis_instrumentation__.Notify(44232)
+
 		return errors.New("already failed")
+	} else {
+		__antithesis_instrumentation__.Notify(44233)
 	}
+	__antithesis_instrumentation__.Notify(44231)
 
 	return errors.Wrap(m.wait(), "monitor failure")
 }
 
 func (m *monitorImpl) Wait() {
+	__antithesis_instrumentation__.Notify(44234)
 	if m.t.Failed() {
-		// If the test has failed, don't try to limp along.
+		__antithesis_instrumentation__.Notify(44236)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(44237)
 	}
+	__antithesis_instrumentation__.Notify(44235)
 	if err := m.WaitE(); err != nil {
-		// Note that we used to avoid fataling again if we had already fatal'ed.
-		// However, this error here might be the one to actually report, see:
-		// https://github.com/cockroachdb/cockroach/issues/44436
+		__antithesis_instrumentation__.Notify(44238)
+
 		m.t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(44239)
 	}
 }
 
 func (m *monitorImpl) wait() error {
-	// It is surprisingly difficult to get the cancellation semantics exactly
-	// right. We need to watch for the "workers" group (m.g) to finish, or for
-	// the monitor command to emit an unexpected node failure, or for the monitor
-	// command itself to exit. We want to capture whichever error happens first
-	// and then cancel the other goroutines. This ordering prevents the usage of
-	// an errgroup.Group for the goroutines below. Consider:
-	//
-	//   g, _ := errgroup.WithContext(m.ctx)
-	//   g.Go(func(context.Context) error {
-	//     defer m.cancel()
-	//     return m.g.Wait()
-	//   })
-	//
-	// Now consider what happens when an error is returned. Before the error
-	// reaches the errgroup, we invoke the cancellation closure which can cause
-	// the other goroutines to wake up and perhaps race and set the errgroup
-	// error first.
-	//
-	// The solution is to implement our own errgroup mechanism here which allows
-	// us to set the error before performing the cancellation.
+	__antithesis_instrumentation__.Notify(44240)
 
 	var errOnce sync.Once
 	var err error
 	setErr := func(e error) {
+		__antithesis_instrumentation__.Notify(44244)
 		if e != nil {
+			__antithesis_instrumentation__.Notify(44245)
 			errOnce.Do(func() {
+				__antithesis_instrumentation__.Notify(44246)
 				err = e
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(44247)
 		}
 	}
+	__antithesis_instrumentation__.Notify(44241)
 
-	// 1. The first goroutine waits for the worker errgroup to exit.
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
+		__antithesis_instrumentation__.Notify(44248)
 		defer func() {
+			__antithesis_instrumentation__.Notify(44250)
 			m.cancel()
 			wg.Done()
 		}()
+		__antithesis_instrumentation__.Notify(44249)
 		setErr(errors.Wrap(m.g.Wait(), "monitor task failed"))
 	}()
+	__antithesis_instrumentation__.Notify(44242)
 
-	// 2. The second goroutine reads from the monitoring channel, watching for any
-	// unexpected death events.
 	wg.Add(1)
 	go func() {
+		__antithesis_instrumentation__.Notify(44251)
 		defer func() {
+			__antithesis_instrumentation__.Notify(44254)
 			m.cancel()
 			wg.Done()
 		}()
+		__antithesis_instrumentation__.Notify(44252)
 
 		messagesChannel, err := roachprod.Monitor(m.ctx, m.l, m.nodes, install.MonitorOpts{})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(44255)
 			setErr(errors.Wrap(err, "monitor command failure"))
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(44256)
 		}
+		__antithesis_instrumentation__.Notify(44253)
 		var monitorErr error
 		for msg := range messagesChannel {
+			__antithesis_instrumentation__.Notify(44257)
 			if msg.Err != nil {
+				__antithesis_instrumentation__.Notify(44260)
 				msg.Msg += "error: " + msg.Err.Error()
+			} else {
+				__antithesis_instrumentation__.Notify(44261)
 			}
+			__antithesis_instrumentation__.Notify(44258)
 			thisError := errors.Newf("%d: %s", msg.Node, msg.Msg)
-			if msg.Err != nil || strings.Contains(msg.Msg, "dead") {
+			if msg.Err != nil || func() bool {
+				__antithesis_instrumentation__.Notify(44262)
+				return strings.Contains(msg.Msg, "dead") == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(44263)
 				monitorErr = errors.CombineErrors(monitorErr, thisError)
+			} else {
+				__antithesis_instrumentation__.Notify(44264)
 			}
+			__antithesis_instrumentation__.Notify(44259)
 			var id int
 			var s string
 			newMsg := thisError.Error()
 			if n, _ := fmt.Sscanf(newMsg, "%d: %s", &id, &s); n == 2 {
-				if strings.Contains(s, "dead") && atomic.AddInt32(&m.expDeaths, -1) < 0 {
+				__antithesis_instrumentation__.Notify(44265)
+				if strings.Contains(s, "dead") && func() bool {
+					__antithesis_instrumentation__.Notify(44266)
+					return atomic.AddInt32(&m.expDeaths, -1) < 0 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(44267)
 					setErr(errors.Wrap(fmt.Errorf("unexpected node event: %s", newMsg), "monitor command failure"))
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(44268)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(44269)
 			}
 		}
 	}()
+	__antithesis_instrumentation__.Notify(44243)
 
 	wg.Wait()
 	return err

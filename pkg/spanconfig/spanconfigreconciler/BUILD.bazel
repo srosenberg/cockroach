@@ -22,6 +22,7 @@ go_library(
         "//pkg/util/log",
         "//pkg/util/retry",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -30,4 +31,5 @@ go_test(
     name = "spanconfigreconciler_test",
     srcs = ["reconciler_test.go"],
     data = glob(["testdata/**"]),
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

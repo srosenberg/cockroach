@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colfetcher
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,73 +13,84 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 )
 
-// cFetcherTableArgs describes the information about the index we're fetching
-// from. Note that only columns that need to be fetched (i.e. requested by the
-// caller) are included in the internal state.
 type cFetcherTableArgs struct {
 	spec descpb.IndexFetchSpec
-	// ColIdxMap is a mapping from ColumnID to the ordinal of the corresponding
-	// column within spec.FetchedColumns.
+
 	ColIdxMap catalog.TableColMap
-	// typs are the types from spec.FetchedColumns.
+
 	typs []*types.T
 }
 
 var cFetcherTableArgsPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(455543)
 		return &cFetcherTableArgs{}
 	},
 }
 
 func (a *cFetcherTableArgs) Release() {
+	__antithesis_instrumentation__.Notify(455544)
 	*a = cFetcherTableArgs{
-		// The types are small objects, so we don't bother deeply resetting this
-		// slice.
+
 		typs: a.typs[:0],
 	}
 	cFetcherTableArgsPool.Put(a)
 }
 
 func (a *cFetcherTableArgs) populateTypes(cols []descpb.IndexFetchSpec_Column) {
+	__antithesis_instrumentation__.Notify(455545)
 	if cap(a.typs) < len(cols) {
+		__antithesis_instrumentation__.Notify(455547)
 		a.typs = make([]*types.T, len(cols))
 	} else {
+		__antithesis_instrumentation__.Notify(455548)
 		a.typs = a.typs[:len(cols)]
 	}
+	__antithesis_instrumentation__.Notify(455546)
 	for i := range cols {
+		__antithesis_instrumentation__.Notify(455549)
 		a.typs[i] = cols[i].Type
 	}
 }
 
-// populateTableArgs fills in cFetcherTableArgs.
 func populateTableArgs(
 	ctx context.Context, flowCtx *execinfra.FlowCtx, fetchSpec *descpb.IndexFetchSpec,
 ) (_ *cFetcherTableArgs, _ error) {
+	__antithesis_instrumentation__.Notify(455550)
 	args := cFetcherTableArgsPool.Get().(*cFetcherTableArgs)
 
 	*args = cFetcherTableArgs{
 		spec: *fetchSpec,
 		typs: args.typs,
 	}
-	// Before we can safely use types from the fetch spec, we need to make sure
-	// they are hydrated. In row execution engine it is done during the processor
-	// initialization, but neither ColBatchScan nor cFetcher are processors, so we
-	// need to do the hydration ourselves.
+
 	resolver := flowCtx.NewTypeResolver(flowCtx.Txn)
 	for i := range args.spec.FetchedColumns {
+		__antithesis_instrumentation__.Notify(455554)
 		if err := typedesc.EnsureTypeIsHydrated(ctx, args.spec.FetchedColumns[i].Type, &resolver); err != nil {
+			__antithesis_instrumentation__.Notify(455555)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(455556)
 		}
 	}
+	__antithesis_instrumentation__.Notify(455551)
 	for i := range args.spec.KeyAndSuffixColumns {
+		__antithesis_instrumentation__.Notify(455557)
 		if err := typedesc.EnsureTypeIsHydrated(ctx, args.spec.KeyAndSuffixColumns[i].Type, &resolver); err != nil {
+			__antithesis_instrumentation__.Notify(455558)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(455559)
 		}
 	}
+	__antithesis_instrumentation__.Notify(455552)
 	args.populateTypes(args.spec.FetchedColumns)
 	for i := range args.spec.FetchedColumns {
+		__antithesis_instrumentation__.Notify(455560)
 		args.ColIdxMap.Set(args.spec.FetchedColumns[i].ColumnID, i)
 	}
+	__antithesis_instrumentation__.Notify(455553)
 
 	return args, nil
 }

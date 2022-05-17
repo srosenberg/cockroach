@@ -1,20 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-//
-//
-//
-// This file contains the definition of a connection's state machine, expressed
-// through the util/fsm library. Also see txn_state.go, which contains the
-// txnState structure used as the ExtendedState mutated by all the Actions.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -27,8 +13,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
-// Constants for the String() representation of the session states. Shared with
-// the CLI code which needs to recognize them.
 const (
 	NoTxnStateStr         = sqlfsm.NoTxnStateStr
 	OpenStateStr          = sqlfsm.OpenStateStr
@@ -37,13 +21,12 @@ const (
 	InternalErrorStateStr = sqlfsm.InternalErrorStateStr
 )
 
-/// States.
-
 type stateNoTxn struct{}
 
 var _ fsm.State = &stateNoTxn{}
 
 func (stateNoTxn) String() string {
+	__antithesis_instrumentation__.Notify(458866)
 	return NoTxnStateStr
 }
 
@@ -54,16 +37,16 @@ type stateOpen struct {
 var _ fsm.State = &stateOpen{}
 
 func (stateOpen) String() string {
+	__antithesis_instrumentation__.Notify(458867)
 	return OpenStateStr
 }
 
-// stateAborted is entered on errors (retriable and non-retriable). A ROLLBACK
-// TO SAVEPOINT can move the transaction back to stateOpen.
 type stateAborted struct{}
 
 var _ fsm.State = &stateAborted{}
 
 func (stateAborted) String() string {
+	__antithesis_instrumentation__.Notify(458868)
 	return AbortedStateStr
 }
 
@@ -72,29 +55,24 @@ type stateCommitWait struct{}
 var _ fsm.State = &stateCommitWait{}
 
 func (stateCommitWait) String() string {
+	__antithesis_instrumentation__.Notify(458869)
 	return CommitWaitStateStr
 }
 
-// stateInternalError is used by the InternalExecutor when running statements in
-// a higher-level transaction. The fsm is in this state after encountering an
-// execution error when running in an external transaction: the "SQL
-// transaction" is finished, however the higher-level transaction is not rolled
-// back.
 type stateInternalError struct{}
 
 var _ fsm.State = &stateInternalError{}
 
 func (stateInternalError) String() string {
+	__antithesis_instrumentation__.Notify(458870)
 	return InternalErrorStateStr
 }
 
-func (stateNoTxn) State()         {}
-func (stateOpen) State()          {}
-func (stateAborted) State()       {}
-func (stateCommitWait) State()    {}
-func (stateInternalError) State() {}
-
-/// Events.
+func (stateNoTxn) State()         { __antithesis_instrumentation__.Notify(458871) }
+func (stateOpen) State()          { __antithesis_instrumentation__.Notify(458872) }
+func (stateAborted) State()       { __antithesis_instrumentation__.Notify(458873) }
+func (stateCommitWait) State()    { __antithesis_instrumentation__.Notify(458874) }
+func (stateInternalError) State() { __antithesis_instrumentation__.Notify(458875) }
 
 type eventTxnStart struct {
 	ImplicitTxn fsm.Bool
@@ -103,18 +81,14 @@ type eventTxnStartPayload struct {
 	tranCtx transitionCtx
 
 	pri roachpb.UserPriority
-	// txnSQLTimestamp is the timestamp that statements executed in the
-	// transaction that is started by this event will report for now(),
-	// current_timestamp(), transaction_timestamp().
+
 	txnSQLTimestamp     time.Time
 	readOnly            tree.ReadWriteMode
 	historicalTimestamp *hlc.Timestamp
-	// qualityOfService denotes the user-level admission queue priority to use for
-	// any new Txn started using this payload.
+
 	qualityOfService sessiondatapb.QoSLevel
 }
 
-// makeEventTxnStartPayload creates an eventTxnStartPayload.
 func makeEventTxnStartPayload(
 	pri roachpb.UserPriority,
 	readOnly tree.ReadWriteMode,
@@ -123,6 +97,7 @@ func makeEventTxnStartPayload(
 	tranCtx transitionCtx,
 	qualityOfService sessiondatapb.QoSLevel,
 ) eventTxnStartPayload {
+	__antithesis_instrumentation__.Notify(458876)
 	return eventTxnStartPayload{
 		pri:                 pri,
 		readOnly:            readOnly,
@@ -138,28 +113,21 @@ type eventTxnUpgradeToExplicit struct{}
 type eventTxnFinishCommitted struct{}
 type eventTxnFinishAborted struct{}
 
-// eventSavepointRollback is generated when we want to move from Aborted to Open
-// through a ROLLBACK TO SAVEPOINT <not cockroach_restart>. Note that it is not
-// generated when such a savepoint is rolled back to from the Open state. In
-// that case no event is necessary.
 type eventSavepointRollback struct{}
 
 type eventNonRetriableErr struct {
 	IsCommit fsm.Bool
 }
 
-// eventNonRetriableErrPayload represents the payload for eventNonRetriableErr.
 type eventNonRetriableErrPayload struct {
-	// err is the error that caused the event.
 	err error
 }
 
-// errorCause implements the payloadWithError interface.
 func (p eventNonRetriableErrPayload) errorCause() error {
+	__antithesis_instrumentation__.Notify(458877)
 	return p.err
 }
 
-// eventNonRetriableErrorPayload implements payloadWithError.
 var _ payloadWithError = eventNonRetriableErrPayload{}
 
 type eventRetriableErr struct {
@@ -167,66 +135,39 @@ type eventRetriableErr struct {
 	IsCommit     fsm.Bool
 }
 
-// eventRetriableErrPayload represents the payload for eventRetriableErr.
 type eventRetriableErrPayload struct {
-	// err is the error that caused the event
 	err error
-	// rewCap must be set if CanAutoRetry is set on the event. It will be passed
-	// back to the connExecutor to perform the rewind.
+
 	rewCap rewindCapability
 }
 
-// errorCause implements the payloadWithError interface.
 func (p eventRetriableErrPayload) errorCause() error {
+	__antithesis_instrumentation__.Notify(458878)
 	return p.err
 }
 
-// eventRetriableErrPayload implements payloadWithError.
 var _ payloadWithError = eventRetriableErrPayload{}
 
-// eventTxnRestart is generated by a rollback to a savepoint placed at the
-// beginning of the transaction (commonly SAVEPOINT cockroach_restart).
 type eventTxnRestart struct{}
 
-// eventTxnReleased is generated after a successful RELEASE SAVEPOINT
-// cockroach_restart. It moves the state to CommitWait. The event is not
-// generated by releasing regular savepoints.
 type eventTxnReleased struct{}
 
-// payloadWithError is a common interface for the payloads that wrap an error.
 type payloadWithError interface {
 	errorCause() error
 }
 
-func (eventTxnStart) Event()             {}
-func (eventTxnFinishCommitted) Event()   {}
-func (eventTxnFinishAborted) Event()     {}
-func (eventSavepointRollback) Event()    {}
-func (eventNonRetriableErr) Event()      {}
-func (eventRetriableErr) Event()         {}
-func (eventTxnRestart) Event()           {}
-func (eventTxnReleased) Event()          {}
-func (eventTxnUpgradeToExplicit) Event() {}
+func (eventTxnStart) Event()             { __antithesis_instrumentation__.Notify(458879) }
+func (eventTxnFinishCommitted) Event()   { __antithesis_instrumentation__.Notify(458880) }
+func (eventTxnFinishAborted) Event()     { __antithesis_instrumentation__.Notify(458881) }
+func (eventSavepointRollback) Event()    { __antithesis_instrumentation__.Notify(458882) }
+func (eventNonRetriableErr) Event()      { __antithesis_instrumentation__.Notify(458883) }
+func (eventRetriableErr) Event()         { __antithesis_instrumentation__.Notify(458884) }
+func (eventTxnRestart) Event()           { __antithesis_instrumentation__.Notify(458885) }
+func (eventTxnReleased) Event()          { __antithesis_instrumentation__.Notify(458886) }
+func (eventTxnUpgradeToExplicit) Event() { __antithesis_instrumentation__.Notify(458887) }
 
-// TxnStateTransitions describe the transitions used by a connExecutor's
-// fsm.Machine. Args.Extended is a txnState, which is muted by the Actions.
-//
-// This state machine accepts the eventNonRetriableErr{IsCommit: fsm.True} in all
-// states. This contract is in place to support the cleanup of connExecutor ->
-// this event can always be sent when the connExecutor is tearing down.
-//
-// NOTE: The Args.Ctx passed to the actions is the connExecutor's context. While
-// we are inside a SQL txn, the txn's ctx should be used for operations (i.e
-// txnState.Ctx, which is a child ctx). This is so because transitions that move
-// in and out of transactions need to have access to both contexts.
-//
-//go:generate ../util/fsm/gen/reports.sh TxnStateTransitions stateNoTxn
 var TxnStateTransitions = fsm.Compile(fsm.Pattern{
-	// NoTxn
-	//
-	// Note that we don't handle any errors in this state. The connExecutor is
-	// supposed to send an eventTxnStart before any other statement that may
-	// generate an error.
+
 	stateNoTxn{}: {
 		eventTxnStart{fsm.Var("implicitTxn")}: {
 			Description: "BEGIN, or before a statement running as an implicit txn",
@@ -234,11 +175,11 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 			Action:      noTxnToOpen,
 		},
 		eventNonRetriableErr{IsCommit: fsm.Any}: {
-			// This event doesn't change state, but it produces a skipBatch advance
-			// code.
+
 			Description: "anything but BEGIN or extended protocol command error",
 			Next:        stateNoTxn{},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458888)
 				ts := args.Extended.(*txnState)
 				ts.setAdvanceInfo(skipBatch, noRewind, txnEvent{eventType: noEvent})
 				return nil
@@ -246,14 +187,13 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 		},
 	},
 
-	/// Open
 	stateOpen{ImplicitTxn: fsm.Any}: {
 		eventTxnFinishCommitted{}: {
 			Description: "COMMIT, or after a statement running as an implicit txn",
 			Next:        stateNoTxn{},
 			Action: func(args fsm.Args) error {
-				// Note that the KV txn has been committed by the statement execution by
-				// this point.
+				__antithesis_instrumentation__.Notify(458889)
+
 				return args.Extended.(*txnState).finishTxn(txnCommit)
 			},
 		},
@@ -261,13 +201,12 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 			Description: "ROLLBACK, or after a statement running as an implicit txn fails",
 			Next:        stateNoTxn{},
 			Action: func(args fsm.Args) error {
-				// Note that the KV txn has been rolled back by the statement execution
-				// by this point.
+				__antithesis_instrumentation__.Notify(458890)
+
 				return args.Extended.(*txnState).finishTxn(txnRollback)
 			},
 		},
-		// Handle the error on COMMIT cases: we move to NoTxn as per Postgres error
-		// semantics.
+
 		eventRetriableErr{CanAutoRetry: fsm.False, IsCommit: fsm.True}: {
 			Description: "Retriable err on COMMIT",
 			Next:        stateNoTxn{},
@@ -279,15 +218,15 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 		},
 	},
 	stateOpen{ImplicitTxn: fsm.Var("implicitTxn")}: {
-		// This is the case where we auto-retry.
+
 		eventRetriableErr{CanAutoRetry: fsm.True, IsCommit: fsm.Any}: {
-			// Rewind and auto-retry - the transaction should stay in the Open state.
+
 			Description: "Retriable err; will auto-retry",
 			Next:        stateOpen{ImplicitTxn: fsm.Var("implicitTxn")},
 			Action:      prepareTxnForRetryWithRewind,
 		},
 	},
-	// Handle the errors in implicit txns. They move us to NoTxn.
+
 	stateOpen{ImplicitTxn: fsm.True}: {
 		eventRetriableErr{CanAutoRetry: fsm.False, IsCommit: fsm.False}: {
 			Next:   stateNoTxn{},
@@ -300,6 +239,7 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 		eventTxnUpgradeToExplicit{}: {
 			Next: stateOpen{ImplicitTxn: fsm.False},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458891)
 				args.Extended.(*txnState).setAdvanceInfo(
 					advanceOne,
 					noRewind,
@@ -309,18 +249,18 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 			},
 		},
 	},
-	// Handle the errors in explicit txns. They move us to Aborted.
+
 	stateOpen{ImplicitTxn: fsm.False}: {
 		eventNonRetriableErr{IsCommit: fsm.False}: {
 			Next: stateAborted{},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458892)
 				ts := args.Extended.(*txnState)
 				ts.setAdvanceInfo(skipBatch, noRewind, txnEvent{eventType: noEvent})
 				return nil
 			},
 		},
-		// ROLLBACK TO SAVEPOINT cockroach. There's not much to do other than generating a
-		// txnRestart output event.
+
 		eventTxnRestart{}: {
 			Description: "ROLLBACK TO SAVEPOINT cockroach_restart",
 			Next:        stateOpen{ImplicitTxn: fsm.False},
@@ -329,6 +269,7 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 		eventRetriableErr{CanAutoRetry: fsm.False, IsCommit: fsm.False}: {
 			Next: stateAborted{},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458893)
 				args.Extended.(*txnState).setAdvanceInfo(
 					skipBatch,
 					noRewind,
@@ -341,6 +282,7 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 			Description: "RELEASE SAVEPOINT cockroach_restart",
 			Next:        stateCommitWait{},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458894)
 				ts := args.Extended.(*txnState)
 				ts.mu.Lock()
 				txnID := ts.mu.txn.ID()
@@ -355,28 +297,25 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 		},
 	},
 
-	/// Aborted
-	//
-	// Note that we don't handle any error events here. Any statement but a
-	// ROLLBACK (TO SAVEPOINT) is expected to not be passed to the state machine.
 	stateAborted{}: {
 		eventTxnFinishAborted{}: {
 			Description: "ROLLBACK",
 			Next:        stateNoTxn{},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458895)
 				ts := args.Extended.(*txnState)
 				ts.txnAbortCount.Inc(1)
-				// Note that the KV txn has been rolled back by now by statement
-				// execution.
+
 				return ts.finishTxn(txnRollback)
 			},
 		},
-		// Any statement.
+
 		eventNonRetriableErr{IsCommit: fsm.False}: {
-			// This event doesn't change state, but it returns a skipBatch code.
+
 			Description: "any other statement",
 			Next:        stateAborted{},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458896)
 				args.Extended.(*txnState).setAdvanceInfo(
 					skipBatch,
 					noRewind,
@@ -385,18 +324,19 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 				return nil
 			},
 		},
-		// ConnExecutor closing.
+
 		eventNonRetriableErr{IsCommit: fsm.True}: {
-			// This event doesn't change state, but it returns a skipBatch code.
+
 			Description: "ConnExecutor closing",
 			Next:        stateAborted{},
 			Action:      cleanupAndFinishOnError,
 		},
-		// ROLLBACK TO SAVEPOINT <not cockroach_restart> success.
+
 		eventSavepointRollback{}: {
 			Description: "ROLLBACK TO SAVEPOINT (not cockroach_restart) success",
 			Next:        stateOpen{ImplicitTxn: fsm.False},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458897)
 				args.Extended.(*txnState).setAdvanceInfo(
 					advanceOne,
 					noRewind,
@@ -405,12 +345,13 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 				return nil
 			},
 		},
-		// ROLLBACK TO SAVEPOINT <not cockroach_restart> failed because the txn needs to restart.
+
 		eventRetriableErr{CanAutoRetry: fsm.Any, IsCommit: fsm.Any}: {
-			// This event doesn't change state, but it returns a skipBatch code.
+
 			Description: "ROLLBACK TO SAVEPOINT (not cockroach_restart) failed because txn needs restart",
 			Next:        stateAborted{},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458898)
 				args.Extended.(*txnState).setAdvanceInfo(
 					skipBatch,
 					noRewind,
@@ -419,7 +360,7 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 				return nil
 			},
 		},
-		// ROLLBACK TO SAVEPOINT cockroach_restart.
+
 		eventTxnRestart{}: {
 			Description: "ROLLBACK TO SAVEPOINT cockroach_restart",
 			Next:        stateOpen{ImplicitTxn: fsm.False},
@@ -427,25 +368,22 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 		},
 	},
 
-	/// Commit Wait
 	stateCommitWait{}: {
 		eventTxnFinishCommitted{}: {
 			Description: "COMMIT",
 			Next:        stateNoTxn{},
 			Action: func(args fsm.Args) error {
-				// A txnCommit event has been previously generated when we entered
-				// stateCommitWait.
+				__antithesis_instrumentation__.Notify(458899)
+
 				return args.Extended.(*txnState).finishTxn(noEvent)
 			},
 		},
 		eventNonRetriableErr{IsCommit: fsm.Any}: {
-			// This event doesn't change state, but it returns a skipBatch code.
-			//
-			// Note that we don't expect any errors from error on COMMIT in this
-			// state.
+
 			Description: "any other statement",
 			Next:        stateCommitWait{},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458900)
 				args.Extended.(*txnState).setAdvanceInfo(
 					skipBatch,
 					noRewind,
@@ -457,9 +395,8 @@ var TxnStateTransitions = fsm.Compile(fsm.Pattern{
 	},
 })
 
-// noTxnToOpen implements the side effects of starting a txn. It also calls
-// setAdvanceInfo().
 func noTxnToOpen(args fsm.Args) error {
+	__antithesis_instrumentation__.Notify(458901)
 	connCtx := args.Ctx
 	ev := args.Event.(eventTxnStart)
 	payload := args.Payload.(eventTxnStartPayload)
@@ -468,11 +405,14 @@ func noTxnToOpen(args fsm.Args) error {
 	txnTyp := explicitTxn
 	advCode := advanceOne
 	if ev.ImplicitTxn.Get() {
+		__antithesis_instrumentation__.Notify(458903)
 		txnTyp = implicitTxn
-		// For an implicit txn, we want the statement that produced the event to be
-		// executed again (this time in state Open).
+
 		advCode = stayInPlace
+	} else {
+		__antithesis_instrumentation__.Notify(458904)
 	}
+	__antithesis_instrumentation__.Notify(458902)
 
 	newTxnID := ts.resetForNewSQLTxn(
 		connCtx,
@@ -481,7 +421,7 @@ func noTxnToOpen(args fsm.Args) error {
 		payload.historicalTimestamp,
 		payload.pri,
 		payload.readOnly,
-		nil, /* txn */
+		nil,
 		payload.tranCtx,
 		payload.qualityOfService,
 	)
@@ -493,16 +433,15 @@ func noTxnToOpen(args fsm.Args) error {
 	return nil
 }
 
-// finishTxn finishes the transaction. It also calls setAdvanceInfo() with the
-// given event.
 func (ts *txnState) finishTxn(ev txnEventType) error {
+	__antithesis_instrumentation__.Notify(458905)
 	finishedTxnID := ts.finishSQLTxn()
 	ts.setAdvanceInfo(advanceOne, noRewind, txnEvent{eventType: ev, txnID: finishedTxnID})
 	return nil
 }
 
-// cleanupAndFinishOnError rolls back the KV txn and finishes the SQL txn.
 func cleanupAndFinishOnError(args fsm.Args) error {
+	__antithesis_instrumentation__.Notify(458906)
 	ts := args.Extended.(*txnState)
 	ts.mu.Lock()
 	ts.mu.txn.CleanupOnError(ts.Ctx, args.Payload.(payloadWithError).errorCause())
@@ -517,6 +456,7 @@ func cleanupAndFinishOnError(args fsm.Args) error {
 }
 
 func prepareTxnForRetry(args fsm.Args) error {
+	__antithesis_instrumentation__.Notify(458907)
 	ts := args.Extended.(*txnState)
 	ts.mu.Lock()
 	ts.mu.txn.PrepareForRetry(ts.Ctx)
@@ -530,11 +470,12 @@ func prepareTxnForRetry(args fsm.Args) error {
 }
 
 func prepareTxnForRetryWithRewind(args fsm.Args) error {
+	__antithesis_instrumentation__.Notify(458908)
 	ts := args.Extended.(*txnState)
 	ts.mu.Lock()
 	ts.mu.txn.PrepareForRetry(ts.Ctx)
 	ts.mu.Unlock()
-	// The caller will call rewCap.rewindAndUnlock().
+
 	ts.setAdvanceInfo(
 		rewind,
 		args.Payload.(eventRetriableErrPayload).rewCap,
@@ -543,17 +484,13 @@ func prepareTxnForRetryWithRewind(args fsm.Args) error {
 	return nil
 }
 
-// BoundTxnStateTransitions is the state machine used by the InternalExecutor
-// when running SQL inside a higher-level txn. It's a very limited state
-// machine: it doesn't allow starting or finishing txns, auto-retries, etc.
 var BoundTxnStateTransitions = fsm.Compile(fsm.Pattern{
 	stateOpen{ImplicitTxn: fsm.False}: {
-		// We accept eventNonRetriableErr with both IsCommit={True, fsm.False}, even
-		// though this state machine does not support COMMIT statements because
-		// connExecutor.close() sends an eventNonRetriableErr{IsCommit: fsm.True} event.
+
 		eventNonRetriableErr{IsCommit: fsm.Any}: {
 			Next: stateInternalError{},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458909)
 				ts := args.Extended.(*txnState)
 				finishedTxnID := ts.finishSQLTxn()
 				ts.setAdvanceInfo(
@@ -567,6 +504,7 @@ var BoundTxnStateTransitions = fsm.Compile(fsm.Pattern{
 		eventRetriableErr{CanAutoRetry: fsm.Any, IsCommit: fsm.False}: {
 			Next: stateInternalError{},
 			Action: func(args fsm.Args) error {
+				__antithesis_instrumentation__.Notify(458910)
 				ts := args.Extended.(*txnState)
 				finishedTxnID := ts.finishSQLTxn()
 				ts.setAdvanceInfo(

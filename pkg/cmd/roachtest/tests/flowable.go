@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,17 +15,21 @@ import (
 
 var flowableReleaseTagRegex = regexp.MustCompile(`^flowable-(?P<major>\d+)\.(?P<minor>\d+)\.(?P<point>\d+)$`)
 
-// This test runs Flowable test suite against a single cockroach node.
-
 func registerFlowable(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(47700)
 	runFlowable := func(
 		ctx context.Context,
 		t test.Test,
 		c cluster.Cluster,
 	) {
+		__antithesis_instrumentation__.Notify(47702)
 		if c.IsLocal() {
+			__antithesis_instrumentation__.Notify(47710)
 			t.Fatal("cannot be run in local mode")
+		} else {
+			__antithesis_instrumentation__.Notify(47711)
 		}
+		__antithesis_instrumentation__.Notify(47703)
 		node := c.Node(1)
 		t.Status("setting up cockroach")
 		c.Put(ctx, t.Cockroach(), "./cockroach", c.All())
@@ -44,15 +40,23 @@ func registerFlowable(r registry.Registry) {
 			ctx, t, "flowable", "flowable-engine", flowableReleaseTagRegex,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(47712)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(47713)
 		}
+		__antithesis_instrumentation__.Notify(47704)
 		t.L().Printf("Latest Flowable release is %s.", latestTag)
 
 		if err := repeatRunE(
 			ctx, t, c, node, "update apt-get", `sudo apt-get -qq update`,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(47714)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(47715)
 		}
+		__antithesis_instrumentation__.Notify(47705)
 
 		if err := repeatRunE(
 			ctx,
@@ -62,14 +66,22 @@ func registerFlowable(r registry.Registry) {
 			"install dependencies",
 			`sudo apt-get -qq install default-jre openjdk-8-jdk-headless gradle maven`,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(47716)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(47717)
 		}
+		__antithesis_instrumentation__.Notify(47706)
 
 		if err := repeatRunE(
 			ctx, t, c, node, "remove old Flowable", `rm -rf /mnt/data1/flowable-engine`,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(47718)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(47719)
 		}
+		__antithesis_instrumentation__.Notify(47707)
 
 		if err := repeatGitCloneE(
 			ctx,
@@ -80,8 +92,12 @@ func registerFlowable(r registry.Registry) {
 			latestTag,
 			node,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(47720)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(47721)
 		}
+		__antithesis_instrumentation__.Notify(47708)
 
 		t.Status("building Flowable")
 		if err := repeatRunE(
@@ -92,21 +108,30 @@ func registerFlowable(r registry.Registry) {
 			"building Flowable",
 			`cd /mnt/data1/flowable-engine/ && mvn clean install -DskipTests`,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(47722)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(47723)
 		}
+		__antithesis_instrumentation__.Notify(47709)
 
 		if err := c.RunE(ctx, node,
 			`cd /mnt/data1/flowable-engine/ && mvn clean test -Dtest=Flowable6Test#testLongServiceTaskLoop -Ddb=crdb`,
 		); err != nil {
+			__antithesis_instrumentation__.Notify(47724)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(47725)
 		}
 	}
+	__antithesis_instrumentation__.Notify(47701)
 
 	r.Add(registry.TestSpec{
 		Name:    "flowable",
 		Owner:   registry.OwnerSQLExperience,
 		Cluster: r.MakeClusterSpec(1),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(47726)
 			runFlowable(ctx, t, c)
 		},
 	})

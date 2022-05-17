@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -57,25 +49,28 @@ destroy the cluster.
 	Version: "details:\n" + build.GetInfo().Long(),
 }
 
-// Provide `cobra.Command` functions with a standard return code handler.
-// Exit codes come from rperrors.Error.ExitCode().
-//
-// If the wrapped error tree of an error does not contain an instance of
-// rperrors.Error, the error will automatically be wrapped with
-// rperrors.Unclassified.
 func wrap(f func(cmd *cobra.Command, args []string) error) func(cmd *cobra.Command, args []string) {
+	__antithesis_instrumentation__.Notify(42945)
 	return func(cmd *cobra.Command, args []string) {
+		__antithesis_instrumentation__.Notify(42946)
 		err := f(cmd, args)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(42947)
 			roachprodError, ok := rperrors.AsError(err)
 			if !ok {
+				__antithesis_instrumentation__.Notify(42949)
 				roachprodError = rperrors.Unclassified{Err: err}
 				err = roachprodError
+			} else {
+				__antithesis_instrumentation__.Notify(42950)
 			}
+			__antithesis_instrumentation__.Notify(42948)
 
 			cmd.Printf("Error: %+v\n", err)
 
 			os.Exit(roachprodError.ExitCode())
+		} else {
+			__antithesis_instrumentation__.Notify(42951)
 		}
 	}
 }
@@ -125,6 +120,7 @@ Local Clusters
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) (retErr error) {
+		__antithesis_instrumentation__.Notify(42952)
 		createVMOpts.ClusterName = args[0]
 		return roachprod.Create(context.Background(), roachprodLibraryLogger, username, numNodes, createVMOpts, providerOptsContainer)
 	}),
@@ -145,6 +141,7 @@ if the user would like to update the keys on the remote hosts.
 
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) (retErr error) {
+		__antithesis_instrumentation__.Notify(42953)
 		return roachprod.SetupSSH(context.Background(), roachprodLibraryLogger, args[0])
 	}),
 }
@@ -166,6 +163,7 @@ directories inside ${HOME}/local directory are removed.
 `,
 	Args: cobra.ArbitraryArgs,
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(42954)
 		return roachprod.Destroy(roachprodLibraryLogger, destroyAllMine, destroyAllLocal, args...)
 	}),
 }
@@ -175,20 +173,31 @@ var cachedHostsCmd = &cobra.Command{
 	Short: "list all clusters (and optionally their host numbers) from local cache",
 	Args:  cobra.NoArgs,
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(42955)
 		roachprod.CachedClusters(roachprodLibraryLogger, func(clusterName string, numVMs int) {
+			__antithesis_instrumentation__.Notify(42957)
 			if strings.HasPrefix(clusterName, "teamcity") {
+				__antithesis_instrumentation__.Notify(42960)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(42961)
 			}
+			__antithesis_instrumentation__.Notify(42958)
 			fmt.Printf("%s", clusterName)
-			// When invoked by bash-completion, cachedHostsCluster is what the user
-			// has currently typed -- if this cluster matches that, expand its hosts.
+
 			if strings.HasPrefix(cachedHostsCluster, clusterName) {
+				__antithesis_instrumentation__.Notify(42962)
 				for i := 1; i <= numVMs; i++ {
+					__antithesis_instrumentation__.Notify(42963)
 					fmt.Printf(" %s:%d", clusterName, i)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(42964)
 			}
+			__antithesis_instrumentation__.Notify(42959)
 			fmt.Printf("\n")
 		})
+		__antithesis_instrumentation__.Notify(42956)
 		return nil
 	}),
 }
@@ -240,81 +249,113 @@ hosts file.
 `,
 	Args: cobra.NoArgs,
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
-		if listJSON && listDetails {
+		__antithesis_instrumentation__.Notify(42965)
+		if listJSON && func() bool {
+			__antithesis_instrumentation__.Notify(42970)
+			return listDetails == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(42971)
 			return errors.New("'json' option cannot be combined with 'details' option")
+		} else {
+			__antithesis_instrumentation__.Notify(42972)
 		}
+		__antithesis_instrumentation__.Notify(42966)
 		filteredCloud, err := roachprod.List(roachprodLibraryLogger, listMine, listPattern)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(42973)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(42974)
 		}
+		__antithesis_instrumentation__.Notify(42967)
 
-		// sort by cluster names for stable output.
 		names := make([]string, len(filteredCloud.Clusters))
 		i := 0
 		for name := range filteredCloud.Clusters {
+			__antithesis_instrumentation__.Notify(42975)
 			names[i] = name
 			i++
 		}
+		__antithesis_instrumentation__.Notify(42968)
 		sort.Strings(names)
 
 		if listJSON {
+			__antithesis_instrumentation__.Notify(42976)
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			if err := enc.Encode(filteredCloud); err != nil {
+				__antithesis_instrumentation__.Notify(42977)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(42978)
 			}
 		} else {
-			// Align columns left and separate with at least two spaces.
+			__antithesis_instrumentation__.Notify(42979)
+
 			tw := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
 			for _, name := range names {
+				__antithesis_instrumentation__.Notify(42982)
 				c := filteredCloud.Clusters[name]
 				if listDetails {
+					__antithesis_instrumentation__.Notify(42983)
 					c.PrintDetails(roachprodLibraryLogger)
 				} else {
+					__antithesis_instrumentation__.Notify(42984)
 					fmt.Fprintf(tw, "%s\t%s\t%d", c.Name, c.Clouds(), len(c.VMs))
 					if !c.IsLocal() {
+						__antithesis_instrumentation__.Notify(42986)
 						fmt.Fprintf(tw, "\t(%s)", c.LifetimeRemaining().Round(time.Second))
 					} else {
+						__antithesis_instrumentation__.Notify(42987)
 						fmt.Fprintf(tw, "\t(-)")
 					}
+					__antithesis_instrumentation__.Notify(42985)
 					fmt.Fprintf(tw, "\n")
 				}
 			}
+			__antithesis_instrumentation__.Notify(42980)
 			if err := tw.Flush(); err != nil {
+				__antithesis_instrumentation__.Notify(42988)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(42989)
 			}
+			__antithesis_instrumentation__.Notify(42981)
 
-			// Optionally print any dangling instances with errors
 			if listDetails {
+				__antithesis_instrumentation__.Notify(42990)
 				collated := filteredCloud.BadInstanceErrors()
 
-				// Sort by Error() value for stable output
 				var errors ui.ErrorsByError
 				for err := range collated {
+					__antithesis_instrumentation__.Notify(42992)
 					errors = append(errors, err)
 				}
+				__antithesis_instrumentation__.Notify(42991)
 				sort.Sort(errors)
 
 				for _, e := range errors {
+					__antithesis_instrumentation__.Notify(42993)
 					fmt.Printf("%s: %s\n", e, collated[e].Names())
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(42994)
 			}
 		}
+		__antithesis_instrumentation__.Notify(42969)
 		return nil
 	}),
 }
 
 var bashCompletion = os.ExpandEnv("$HOME/.roachprod/bash-completion.sh")
 
-// TODO(peter): Do we need this command given that the "list" command syncs as
-// a side-effect. If you don't care about the list output, just "roachprod list
-// &>/dev/null".
 var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "sync ssh keys/config and hosts files",
 	Long:  ``,
 	Args:  cobra.NoArgs,
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(42995)
 		_, err := roachprod.Sync(roachprodLibraryLogger)
 		_ = rootCmd.GenBashCompletionFile(bashCompletion)
 		return err
@@ -331,6 +372,7 @@ hourly by a cronjob so it is not necessary to run manually.
 `,
 	Args: cobra.NoArgs,
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(42996)
 		return roachprod.GC(roachprodLibraryLogger, dryrun)
 	}),
 }
@@ -345,6 +387,7 @@ destroyed:
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(42997)
 		return roachprod.Extend(roachprodLibraryLogger, args[0], extendLifetime)
 	}),
 }
@@ -389,6 +432,7 @@ cluster setting will be set to its value.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(42998)
 		clusterSettingsOpts := []install.ClusterSettingOption{
 			install.TagOption(tag),
 			install.PGUrlCertsDirOption(pgurlCertsDir),
@@ -422,10 +466,18 @@ signals.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(42999)
 		wait := waitFlag
-		if sig == 9 /* SIGKILL */ && !cmd.Flags().Changed("wait") {
+		if sig == 9 && func() bool {
+			__antithesis_instrumentation__.Notify(43001)
+			return !cmd.Flags().Changed("wait") == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(43002)
 			wait = true
+		} else {
+			__antithesis_instrumentation__.Notify(43003)
 		}
+		__antithesis_instrumentation__.Notify(43000)
 		stopOpts := roachprod.StopOpts{Wait: wait, ProcessTag: tag, Sig: sig}
 		return roachprod.Stop(context.Background(), roachprodLibraryLogger, args[0], stopOpts)
 	}),
@@ -461,6 +513,7 @@ environment variables to the cockroach process.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43004)
 		tenantCluster := args[0]
 		clusterSettingsOpts := []install.ClusterSettingOption{
 			install.TagOption(tag),
@@ -485,6 +538,7 @@ default cluster settings. It's intended to be used in conjunction with
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43005)
 		return roachprod.Init(context.Background(), roachprodLibraryLogger, args[0])
 	}),
 }
@@ -505,6 +559,7 @@ The "status" command outputs the binary and PID for the specified nodes:
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43006)
 		return roachprod.Status(context.Background(), roachprodLibraryLogger, args[0], tag)
 	}),
 }
@@ -520,16 +575,20 @@ into a single stream.
 `,
 	Args: cobra.RangeArgs(1, 2),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43007)
 		logsOpts := roachprod.LogsOpts{
 			Dir: logsDir, Filter: logsFilter, ProgramFilter: logsProgramFilter,
 			Interval: logsInterval, From: logsFrom, To: logsTo, Out: cmd.OutOrStdout(),
 		}
 		var dest string
 		if len(args) == 2 {
+			__antithesis_instrumentation__.Notify(43009)
 			dest = args[1]
 		} else {
+			__antithesis_instrumentation__.Notify(43010)
 			dest = args[0] + ".logs"
 		}
+		__antithesis_instrumentation__.Notify(43008)
 		return roachprod.Logs(roachprodLibraryLogger, args[0], dest, username, logsOpts)
 	}),
 }
@@ -553,20 +612,38 @@ of nodes, outputting a line whenever a change is detected:
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43011)
 		messages, err := roachprod.Monitor(context.Background(), roachprodLibraryLogger, args[0], monitorOpts)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(43014)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(43015)
 		}
+		__antithesis_instrumentation__.Notify(43012)
 		for msg := range messages {
+			__antithesis_instrumentation__.Notify(43016)
 			if msg.Err != nil {
+				__antithesis_instrumentation__.Notify(43019)
 				msg.Msg += "error: " + msg.Err.Error()
+			} else {
+				__antithesis_instrumentation__.Notify(43020)
 			}
+			__antithesis_instrumentation__.Notify(43017)
 			thisError := errors.Newf("%d: %s", msg.Node, msg.Msg)
-			if msg.Err != nil || strings.Contains(msg.Msg, "dead") {
+			if msg.Err != nil || func() bool {
+				__antithesis_instrumentation__.Notify(43021)
+				return strings.Contains(msg.Msg, "dead") == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(43022)
 				err = errors.CombineErrors(err, thisError)
+			} else {
+				__antithesis_instrumentation__.Notify(43023)
 			}
+			__antithesis_instrumentation__.Notify(43018)
 			fmt.Println(thisError.Error())
 		}
+		__antithesis_instrumentation__.Notify(43013)
 		return err
 	}),
 }
@@ -582,6 +659,7 @@ nodes.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43024)
 		return roachprod.Wipe(context.Background(), roachprodLibraryLogger, args[0], wipePreserveCerts)
 	}),
 }
@@ -612,6 +690,7 @@ the 'zfs rollback' command:
 
 	Args: cobra.ExactArgs(2),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43025)
 		return roachprod.Reformat(context.Background(), roachprodLibraryLogger, args[0], args[1])
 	}),
 }
@@ -624,6 +703,7 @@ var runCmd = &cobra.Command{
 `,
 	Args: cobra.MinimumNArgs(1),
 	Run: wrap(func(_ *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43026)
 		return roachprod.Run(context.Background(), roachprodLibraryLogger, args[0], extraSSHOptions, tag, secure, os.Stdout, os.Stderr, args[1:])
 	}),
 }
@@ -635,6 +715,7 @@ var resetCmd = &cobra.Command{
 environments and will fall back to a no-op.`,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) (retErr error) {
+		__antithesis_instrumentation__.Notify(43027)
 		return roachprod.Reset(roachprodLibraryLogger, args[0])
 	}),
 }
@@ -648,6 +729,7 @@ var installCmd = &cobra.Command{
 `,
 	Args: cobra.MinimumNArgs(2),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43028)
 		return roachprod.Install(context.Background(), roachprodLibraryLogger, args[0], args[1:])
 	}),
 }
@@ -658,11 +740,16 @@ var downloadCmd = &cobra.Command{
 	Long:  "Downloads 3rd party tools, using a GCS cache if possible.",
 	Args:  cobra.RangeArgs(3, 4),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43029)
 		src, sha := args[1], args[2]
 		var dest string
 		if len(args) == 4 {
+			__antithesis_instrumentation__.Notify(43031)
 			dest = args[3]
+		} else {
+			__antithesis_instrumentation__.Notify(43032)
 		}
+		__antithesis_instrumentation__.Notify(43030)
 		return roachprod.Download(context.Background(), roachprodLibraryLogger, args[0], src, sha, dest)
 	}),
 }
@@ -681,17 +768,28 @@ Currently available application options are:
 `,
 	Args: cobra.RangeArgs(1, 2),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43033)
 		versionArg := ""
 		if len(args) == 2 {
+			__antithesis_instrumentation__.Notify(43037)
 			versionArg = args[1]
+		} else {
+			__antithesis_instrumentation__.Notify(43038)
 		}
+		__antithesis_instrumentation__.Notify(43034)
 		urls, err := roachprod.StageURL(roachprodLibraryLogger, args[0], versionArg, stageOS)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(43039)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(43040)
 		}
+		__antithesis_instrumentation__.Notify(43035)
 		for _, u := range urls {
+			__antithesis_instrumentation__.Notify(43041)
 			fmt.Println(u)
 		}
+		__antithesis_instrumentation__.Notify(43036)
 		return nil
 	}),
 }
@@ -720,10 +818,15 @@ Some examples of usage:
 `,
 	Args: cobra.RangeArgs(2, 3),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43042)
 		versionArg := ""
 		if len(args) == 3 {
+			__antithesis_instrumentation__.Notify(43044)
 			versionArg = args[2]
+		} else {
+			__antithesis_instrumentation__.Notify(43045)
 		}
+		__antithesis_instrumentation__.Notify(43043)
 		return roachprod.Stage(context.Background(), roachprodLibraryLogger, args[0], stageOS, stageDir, args[1], versionArg)
 	}),
 }
@@ -738,6 +841,7 @@ start."
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43046)
 		return roachprod.DistributeCerts(context.Background(), roachprodLibraryLogger, args[0])
 	}),
 }
@@ -749,11 +853,16 @@ var putCmd = &cobra.Command{
 `,
 	Args: cobra.RangeArgs(2, 3),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43047)
 		src := args[1]
 		dest := path.Base(src)
 		if len(args) == 3 {
+			__antithesis_instrumentation__.Notify(43049)
 			dest = args[2]
+		} else {
+			__antithesis_instrumentation__.Notify(43050)
 		}
+		__antithesis_instrumentation__.Notify(43048)
 		return roachprod.Put(context.Background(), roachprodLibraryLogger, args[0], src, dest, useTreeDist)
 	}),
 }
@@ -766,11 +875,16 @@ multiple nodes the destination file name will be prefixed with the node number.
 `,
 	Args: cobra.RangeArgs(2, 3),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43051)
 		src := args[1]
 		dest := path.Base(src)
 		if len(args) == 3 {
+			__antithesis_instrumentation__.Notify(43053)
 			dest = args[2]
+		} else {
+			__antithesis_instrumentation__.Notify(43054)
 		}
+		__antithesis_instrumentation__.Notify(43052)
 		return roachprod.Get(roachprodLibraryLogger, args[0], src, dest)
 	}),
 }
@@ -781,6 +895,7 @@ var sqlCmd = &cobra.Command{
 	Long:  "Run `cockroach sql` on a remote cluster.\n",
 	Args:  cobra.MinimumNArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43055)
 		return roachprod.SQL(context.Background(), roachprodLibraryLogger, args[0], secure, args[1:])
 	}),
 }
@@ -792,10 +907,15 @@ var pgurlCmd = &cobra.Command{
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43056)
 		urls, err := roachprod.PgURL(context.Background(), roachprodLibraryLogger, args[0], pgurlCertsDir, external, secure)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(43058)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(43059)
 		}
+		__antithesis_instrumentation__.Notify(43057)
 		fmt.Println(strings.Join(urls, " "))
 		return nil
 	}),
@@ -820,9 +940,14 @@ Examples:
     roachprod pprof-heap CLUSTERNAME:1
 `,
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43060)
 		if cmd.CalledAs() == "pprof-heap" {
+			__antithesis_instrumentation__.Notify(43062)
 			pprofOpts.Heap = true
+		} else {
+			__antithesis_instrumentation__.Notify(43063)
 		}
+		__antithesis_instrumentation__.Notify(43061)
 		return roachprod.Pprof(roachprodLibraryLogger, args[0], pprofOpts)
 	}),
 }
@@ -835,13 +960,20 @@ var adminurlCmd = &cobra.Command{
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43064)
 		urls, err := roachprod.AdminURL(roachprodLibraryLogger, args[0], adminurlPath, adminurlIPs, adminurlOpen, secure)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(43067)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(43068)
 		}
+		__antithesis_instrumentation__.Notify(43065)
 		for _, url := range urls {
+			__antithesis_instrumentation__.Notify(43069)
 			fmt.Println(url)
 		}
+		__antithesis_instrumentation__.Notify(43066)
 		return nil
 	}),
 }
@@ -853,13 +985,20 @@ var ipCmd = &cobra.Command{
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43070)
 		ips, err := roachprod.IP(context.Background(), roachprodLibraryLogger, args[0], external)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(43073)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(43074)
 		}
+		__antithesis_instrumentation__.Notify(43071)
 		for _, ip := range ips {
+			__antithesis_instrumentation__.Notify(43075)
 			fmt.Println(ip)
 		}
+		__antithesis_instrumentation__.Notify(43072)
 		return nil
 	}),
 }
@@ -868,6 +1007,7 @@ var versionCmd = &cobra.Command{
 	Use:   `version`,
 	Short: `print version information`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43076)
 		fmt.Println(roachprod.Version(roachprodLibraryLogger))
 		return nil
 	},
@@ -877,28 +1017,34 @@ var getProvidersCmd = &cobra.Command{
 	Use:   `get-providers`,
 	Short: `print providers state (active/inactive)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		__antithesis_instrumentation__.Notify(43077)
 		providers := roachprod.InitProviders()
 		for provider, state := range providers {
+			__antithesis_instrumentation__.Notify(43079)
 			fmt.Printf("%s: %s\n", provider, state)
 		}
+		__antithesis_instrumentation__.Notify(43078)
 		return nil
 	},
 }
 
 func main() {
+	__antithesis_instrumentation__.Notify(43080)
 	loggerCfg := logger.Config{Stdout: os.Stdout, Stderr: os.Stderr}
 	var loggerError error
 	roachprodLibraryLogger, loggerError = loggerCfg.NewLogger("")
 	if loggerError != nil {
+		__antithesis_instrumentation__.Notify(43086)
 		fmt.Fprintf(os.Stderr, "unable to configure logger: %s\n", loggerError)
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(43087)
 	}
+	__antithesis_instrumentation__.Notify(43081)
 
 	_ = roachprod.InitProviders()
 	providerOptsContainer = vm.CreateProviderOptionsContainer()
-	// The commands are displayed in the order they are added to rootCmd. Note
-	// that gcCmd and adminurlCmd contain a trailing \n in their Short help in
-	// order to separate the commands into logical groups.
+
 	cobra.EnableCommandSorting = false
 	rootCmd.AddCommand(
 		createCmd,
@@ -938,14 +1084,18 @@ func main() {
 	)
 	setBashCompletionFunction()
 
-	// Add help about specifying nodes
 	for _, cmd := range []*cobra.Command{
 		getCmd, putCmd, runCmd, startCmd, statusCmd, stopCmd,
 		wipeCmd, pgurlCmd, adminurlCmd, sqlCmd, installCmd,
 	} {
+		__antithesis_instrumentation__.Notify(43088)
 		if cmd.Long == "" {
+			__antithesis_instrumentation__.Notify(43090)
 			cmd.Long = cmd.Short
+		} else {
+			__antithesis_instrumentation__.Notify(43091)
 		}
+		__antithesis_instrumentation__.Notify(43089)
 		cmd.Long += fmt.Sprintf(`
 Node specification
 
@@ -965,28 +1115,44 @@ Node specification
     marc-test-9
 `, cmd.Name())
 	}
+	__antithesis_instrumentation__.Notify(43082)
 
 	initFlags()
 
 	var err error
 	config.OSUser, err = user.Current()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(43092)
 		fmt.Fprintf(os.Stderr, "unable to lookup current user: %s\n", err)
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(43093)
 	}
+	__antithesis_instrumentation__.Notify(43083)
 
 	if err := roachprod.InitDirs(); err != nil {
+		__antithesis_instrumentation__.Notify(43094)
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(43095)
 	}
+	__antithesis_instrumentation__.Notify(43084)
 
 	if err := roachprod.LoadClusters(); err != nil {
-		// We don't want to exit as we may be looking at the help message.
+		__antithesis_instrumentation__.Notify(43096)
+
 		fmt.Printf("problem loading clusters: %s\n", err)
+	} else {
+		__antithesis_instrumentation__.Notify(43097)
 	}
+	__antithesis_instrumentation__.Notify(43085)
 
 	if err := rootCmd.Execute(); err != nil {
-		// Cobra has already printed the error message.
+		__antithesis_instrumentation__.Notify(43098)
+
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(43099)
 	}
 }

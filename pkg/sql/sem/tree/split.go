@@ -1,90 +1,85 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// Split represents an `ALTER TABLE/INDEX .. SPLIT AT ..` statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type Split struct {
 	TableOrIndex TableIndexName
-	// Each row contains values for the columns in the PK or index (or a prefix
-	// of the columns).
+
 	Rows *Select
-	// Splits can last a specified amount of time before becoming eligible for
-	// automatic merging.
+
 	ExpireExpr Expr
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Split) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613664)
 	ctx.WriteString("ALTER ")
 	if node.TableOrIndex.Index != "" {
+		__antithesis_instrumentation__.Notify(613666)
 		ctx.WriteString("INDEX ")
 	} else {
+		__antithesis_instrumentation__.Notify(613667)
 		ctx.WriteString("TABLE ")
 	}
+	__antithesis_instrumentation__.Notify(613665)
 	ctx.FormatNode(&node.TableOrIndex)
 	ctx.WriteString(" SPLIT AT ")
 	ctx.FormatNode(node.Rows)
 	if node.ExpireExpr != nil {
+		__antithesis_instrumentation__.Notify(613668)
 		ctx.WriteString(" WITH EXPIRATION ")
 		ctx.FormatNode(node.ExpireExpr)
+	} else {
+		__antithesis_instrumentation__.Notify(613669)
 	}
 }
 
-// Unsplit represents an `ALTER TABLE/INDEX .. UNSPLIT AT ..` statement.
 type Unsplit struct {
 	TableOrIndex TableIndexName
-	// Each row contains values for the columns in the PK or index (or a prefix
-	// of the columns).
+
 	Rows *Select
 	All  bool
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Unsplit) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613670)
 	ctx.WriteString("ALTER ")
 	if node.TableOrIndex.Index != "" {
+		__antithesis_instrumentation__.Notify(613672)
 		ctx.WriteString("INDEX ")
 	} else {
+		__antithesis_instrumentation__.Notify(613673)
 		ctx.WriteString("TABLE ")
 	}
+	__antithesis_instrumentation__.Notify(613671)
 	ctx.FormatNode(&node.TableOrIndex)
 	if node.All {
+		__antithesis_instrumentation__.Notify(613674)
 		ctx.WriteString(" UNSPLIT ALL")
 	} else {
+		__antithesis_instrumentation__.Notify(613675)
 		ctx.WriteString(" UNSPLIT AT ")
 		ctx.FormatNode(node.Rows)
 	}
 }
 
-// Relocate represents an `ALTER TABLE/INDEX .. EXPERIMENTAL_RELOCATE ..`
-// statement.
 type Relocate struct {
-	// TODO(a-robinson): It's not great that this can only work on ranges that
-	// are part of a currently valid table or index.
 	TableOrIndex TableIndexName
-	// Each row contains an array with store ids and values for the columns in the
-	// PK or index (or a prefix of the columns).
-	// See docs/RFCS/sql_split_syntax.md.
+
 	Rows            *Select
 	SubjectReplicas RelocateSubject
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Relocate) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613676)
 	ctx.WriteString("ALTER ")
 	if node.TableOrIndex.Index != "" {
+		__antithesis_instrumentation__.Notify(613678)
 		ctx.WriteString("INDEX ")
 	} else {
+		__antithesis_instrumentation__.Notify(613679)
 		ctx.WriteString("TABLE ")
 	}
+	__antithesis_instrumentation__.Notify(613677)
 	ctx.FormatNode(&node.TableOrIndex)
 	ctx.WriteString(" RELOCATE ")
 	ctx.FormatNode(&node.SubjectReplicas)
@@ -92,31 +87,33 @@ func (node *Relocate) Format(ctx *FmtCtx) {
 	ctx.FormatNode(node.Rows)
 }
 
-// Scatter represents an `ALTER TABLE/INDEX .. SCATTER ..`
-// statement.
 type Scatter struct {
 	TableOrIndex TableIndexName
-	// Optional from and to values for the columns in the PK or index (or a prefix
-	// of the columns).
-	// See docs/RFCS/sql_split_syntax.md.
+
 	From, To Exprs
 }
 
-// Format implements the NodeFormatter interface.
 func (node *Scatter) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(613680)
 	ctx.WriteString("ALTER ")
 	if node.TableOrIndex.Index != "" {
+		__antithesis_instrumentation__.Notify(613682)
 		ctx.WriteString("INDEX ")
 	} else {
+		__antithesis_instrumentation__.Notify(613683)
 		ctx.WriteString("TABLE ")
 	}
+	__antithesis_instrumentation__.Notify(613681)
 	ctx.FormatNode(&node.TableOrIndex)
 	ctx.WriteString(" SCATTER")
 	if node.From != nil {
+		__antithesis_instrumentation__.Notify(613684)
 		ctx.WriteString(" FROM (")
 		ctx.FormatNode(&node.From)
 		ctx.WriteString(") TO (")
 		ctx.FormatNode(&node.To)
 		ctx.WriteString(")")
+	} else {
+		__antithesis_instrumentation__.Notify(613685)
 	}
 }

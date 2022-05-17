@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package statusccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,9 +25,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// serverIdx is the index of the node within a test cluster. A special value
-// `randomServer` can be used to let the test helper to randomly choose to
-// a server from the test cluster.
 type serverIdx int
 
 const randomServer serverIdx = -1
@@ -54,6 +45,7 @@ func newTestTenant(
 	tenantID roachpb.TenantID,
 	knobs base.TestingKnobs,
 ) *testTenant {
+	__antithesis_instrumentation__.Notify(20857)
 	t.Helper()
 
 	tenantParams := tests.CreateTestTenantParams(tenantID)
@@ -78,14 +70,13 @@ func newTestTenant(
 }
 
 func (h *testTenant) cleanup(t *testing.T) {
+	__antithesis_instrumentation__.Notify(20858)
 	require.NoError(t, h.tenantConn.Close())
 }
 
 type tenantTestHelper struct {
 	hostCluster serverutils.TestClusterInterface
 
-	// Creating two separate tenant clusters. This allows unit tests to test
-	// the isolation between different tenants are properly enforced.
 	tenantTestCluster    tenantCluster
 	tenantControlCluster tenantCluster
 }
@@ -93,10 +84,11 @@ type tenantTestHelper struct {
 func newTestTenantHelper(
 	t *testing.T, tenantClusterSize int, knobs base.TestingKnobs,
 ) *tenantTestHelper {
+	__antithesis_instrumentation__.Notify(20859)
 	t.Helper()
 
 	params, _ := tests.CreateTestServerParams()
-	testCluster := serverutils.StartNewTestCluster(t, 1 /* numNodes */, base.TestClusterArgs{
+	testCluster := serverutils.StartNewTestCluster(t, 1, base.TestClusterArgs{
 		ServerArgs: params,
 	})
 	server := testCluster.Server(0)
@@ -110,12 +102,11 @@ func newTestTenantHelper(
 			security.EmbeddedTenantIDs()[0],
 			knobs,
 		),
-		// Spin up a small tenant cluster under a different tenant ID to test
-		// tenant isolation.
+
 		tenantControlCluster: newTenantCluster(
 			t,
 			server,
-			1, /* tenantClusterSize */
+			1,
 			security.EmbeddedTenantIDs()[1],
 			knobs,
 		),
@@ -123,14 +114,17 @@ func newTestTenantHelper(
 }
 
 func (h *tenantTestHelper) testCluster() tenantCluster {
+	__antithesis_instrumentation__.Notify(20860)
 	return h.tenantTestCluster
 }
 
 func (h *tenantTestHelper) controlCluster() tenantCluster {
+	__antithesis_instrumentation__.Notify(20861)
 	return h.tenantControlCluster
 }
 
 func (h *tenantTestHelper) cleanup(ctx context.Context, t *testing.T) {
+	__antithesis_instrumentation__.Notify(20862)
 	t.Helper()
 	h.hostCluster.Stopper().Stop(ctx)
 	h.tenantTestCluster.cleanup(t)
@@ -146,57 +140,71 @@ func newTenantCluster(
 	tenantID uint64,
 	knobs base.TestingKnobs,
 ) tenantCluster {
+	__antithesis_instrumentation__.Notify(20863)
 	t.Helper()
 
 	cluster := make([]*testTenant, tenantClusterSize)
 	existing := false
 	for i := 0; i < tenantClusterSize; i++ {
+		__antithesis_instrumentation__.Notify(20865)
 		cluster[i] =
 			newTestTenant(t, server, existing, roachpb.MakeTenantID(tenantID), knobs)
 		existing = true
 	}
+	__antithesis_instrumentation__.Notify(20864)
 
 	return cluster
 }
 
 func (c tenantCluster) tenantConn(idx serverIdx) *sqlutils.SQLRunner {
+	__antithesis_instrumentation__.Notify(20866)
 	return c.tenant(idx).tenantDB
 }
 
 func (c tenantCluster) tenantHTTPClient(t *testing.T, idx serverIdx, isAdmin bool) *httpClient {
+	__antithesis_instrumentation__.Notify(20867)
 	client, err := c.tenant(idx).tenant.GetAuthenticatedHTTPClient(isAdmin)
 	require.NoError(t, err)
 	return &httpClient{t: t, client: client, baseURL: c[idx].tenant.AdminURL()}
 }
 
 func (c tenantCluster) tenantAdminHTTPClient(t *testing.T, idx serverIdx) *httpClient {
-	return c.tenantHTTPClient(t, idx, true /* isAdmin */)
+	__antithesis_instrumentation__.Notify(20868)
+	return c.tenantHTTPClient(t, idx, true)
 }
 
 func (c tenantCluster) tenantSQLStats(idx serverIdx) *persistedsqlstats.PersistedSQLStats {
+	__antithesis_instrumentation__.Notify(20869)
 	return c.tenant(idx).tenantSQLStats
 }
 
 func (c tenantCluster) tenantStatusSrv(idx serverIdx) serverpb.SQLStatusServer {
+	__antithesis_instrumentation__.Notify(20870)
 	return c.tenant(idx).tenantStatus
 }
 
 func (c tenantCluster) tenantContentionRegistry(idx serverIdx) *contention.Registry {
+	__antithesis_instrumentation__.Notify(20871)
 	return c.tenant(idx).tenantContentionRegistry
 }
 
 func (c tenantCluster) cleanup(t *testing.T) {
+	__antithesis_instrumentation__.Notify(20872)
 	for _, tenant := range c {
+		__antithesis_instrumentation__.Notify(20873)
 		tenant.cleanup(t)
 	}
 }
 
-// tenant selects a tenant node from the tenant cluster. If randomServer
-// is passed in, then a random node is selected.
 func (c tenantCluster) tenant(idx serverIdx) *testTenant {
+	__antithesis_instrumentation__.Notify(20874)
 	if idx == randomServer {
+		__antithesis_instrumentation__.Notify(20876)
 		return c[rand.Intn(len(c))]
+	} else {
+		__antithesis_instrumentation__.Notify(20877)
 	}
+	__antithesis_instrumentation__.Notify(20875)
 
 	return c[idx]
 }
@@ -208,11 +216,13 @@ type httpClient struct {
 }
 
 func (c *httpClient) GetJSON(path string, response protoutil.Message) {
+	__antithesis_instrumentation__.Notify(20878)
 	err := httputil.GetJSON(c.client, c.baseURL+path, response)
 	require.NoError(c.t, err)
 }
 
 func (c *httpClient) PostJSON(path string, request protoutil.Message, response protoutil.Message) {
+	__antithesis_instrumentation__.Notify(20879)
 	err := c.PostJSONChecked(path, request, response)
 	require.NoError(c.t, err)
 }
@@ -220,9 +230,11 @@ func (c *httpClient) PostJSON(path string, request protoutil.Message, response p
 func (c *httpClient) PostJSONChecked(
 	path string, request protoutil.Message, response protoutil.Message,
 ) error {
+	__antithesis_instrumentation__.Notify(20880)
 	return httputil.PostJSON(c.client, c.baseURL+path, request, response)
 }
 
 func (c *httpClient) Close() {
+	__antithesis_instrumentation__.Notify(20881)
 	c.client.CloseIdleConnections()
 }

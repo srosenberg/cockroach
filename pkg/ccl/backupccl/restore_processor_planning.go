@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package backupccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -28,15 +22,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// distRestore plans a 2 stage distSQL flow for a distributed restore. It
-// streams back progress updates over the given progCh. The first stage is a
-// splitAndScatter processor on every node that is running a compatible version.
-// Those processors will then route the spans after they have split and
-// scattered them to the restore data processors - the second stage. The spans
-// should be routed to the node that is the leaseholder of that span. The
-// restore data processor will finally download and insert the data, and this is
-// reported back to the coordinator via the progCh.
-// This method also closes the given progCh.
 func distRestore(
 	ctx context.Context,
 	execCtx sql.JobExecContext,
@@ -49,43 +34,69 @@ func distRestore(
 	restoreTime hlc.Timestamp,
 	progCh chan *execinfrapb.RemoteProducerMetadata_BulkProcessorProgress,
 ) error {
+	__antithesis_instrumentation__.Notify(12414)
 	defer close(progCh)
 	var noTxn *kv.Txn
 
 	dsp := execCtx.DistSQLPlanner()
 	evalCtx := execCtx.ExtendedEvalContext()
 
-	if encryption != nil && encryption.Mode == jobspb.EncryptionMode_KMS {
+	if encryption != nil && func() bool {
+		__antithesis_instrumentation__.Notify(12426)
+		return encryption.Mode == jobspb.EncryptionMode_KMS == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(12427)
 		kms, err := cloud.KMSFromURI(encryption.KMSInfo.Uri, &backupKMSEnv{
 			settings: execCtx.ExecCfg().Settings,
 			conf:     &execCtx.ExecCfg().ExternalIODirConfig,
 		})
 		if err != nil {
+			__antithesis_instrumentation__.Notify(12429)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(12430)
 		}
+		__antithesis_instrumentation__.Notify(12428)
 
 		encryption.Key, err = kms.Decrypt(ctx, encryption.KMSInfo.EncryptedDataKey)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(12431)
 			return errors.Wrap(err,
 				"failed to decrypt data key before starting BackupDataProcessor")
+		} else {
+			__antithesis_instrumentation__.Notify(12432)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(12433)
 	}
-	// Wrap the relevant BackupEncryptionOptions to be used by the Restore
-	// processor.
+	__antithesis_instrumentation__.Notify(12415)
+
 	var fileEncryption *roachpb.FileEncryptionOptions
 	if encryption != nil {
+		__antithesis_instrumentation__.Notify(12434)
 		fileEncryption = &roachpb.FileEncryptionOptions{Key: encryption.Key}
+	} else {
+		__antithesis_instrumentation__.Notify(12435)
 	}
+	__antithesis_instrumentation__.Notify(12416)
 
 	planCtx, sqlInstanceIDs, err := dsp.SetupAllNodesPlanning(ctx, evalCtx, execCtx.ExecCfg())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(12436)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(12437)
 	}
+	__antithesis_instrumentation__.Notify(12417)
 
 	splitAndScatterSpecs, err := makeSplitAndScatterSpecs(sqlInstanceIDs, chunks, tableRekeys, tenantRekeys)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(12438)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(12439)
 	}
+	__antithesis_instrumentation__.Notify(12418)
 
 	restoreDataSpec := execinfrapb.RestoreDataSpec{
 		JobID:        jobID,
@@ -98,14 +109,16 @@ func distRestore(
 	}
 
 	if len(splitAndScatterSpecs) == 0 {
-		// We should return an error here as there are no nodes that are compatible,
-		// but we should have at least found ourselves.
+		__antithesis_instrumentation__.Notify(12440)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(12441)
 	}
+	__antithesis_instrumentation__.Notify(12419)
 
 	p := planCtx.NewPhysicalPlan()
 
-	// Plan SplitAndScatter in a round-robin fashion.
 	splitAndScatterStageID := p.NewStageOnNodes(sqlInstanceIDs)
 	splitAndScatterProcs := make(map[base.SQLInstanceID]physicalplan.ProcessorIdx)
 
@@ -121,10 +134,15 @@ func distRestore(
 		},
 	}
 	for stream, sqlInstanceID := range sqlInstanceIDs {
+		__antithesis_instrumentation__.Notify(12442)
 		startBytes, endBytes, err := routingSpanForSQLInstance(sqlInstanceID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(12444)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(12445)
 		}
+		__antithesis_instrumentation__.Notify(12443)
 
 		span := execinfrapb.OutputRouterSpec_RangeRouterSpec_Span{
 			Start:  startBytes,
@@ -133,20 +151,25 @@ func distRestore(
 		}
 		rangeRouterSpec.Spans = append(rangeRouterSpec.Spans, span)
 	}
-	// The router expects the spans to be sorted.
+	__antithesis_instrumentation__.Notify(12420)
+
 	sort.Slice(rangeRouterSpec.Spans, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(12446)
 		return bytes.Compare(rangeRouterSpec.Spans[i].Start, rangeRouterSpec.Spans[j].Start) == -1
 	})
+	__antithesis_instrumentation__.Notify(12421)
 
 	for _, n := range sqlInstanceIDs {
+		__antithesis_instrumentation__.Notify(12447)
 		spec := splitAndScatterSpecs[n]
 		if spec == nil {
-			// We may have fewer chunks than we have nodes for very small imports. In
-			// this case we only want to plan splitAndScatter nodes on a subset of
-			// nodes. Note that we still want to plan a RestoreData processor on every
-			// node since each entry could be scattered anywhere.
+			__antithesis_instrumentation__.Notify(12449)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(12450)
 		}
+		__antithesis_instrumentation__.Notify(12448)
 		proc := physicalplan.Processor{
 			SQLInstanceID: n,
 			Spec: execinfrapb.ProcessorSpec{
@@ -165,11 +188,12 @@ func distRestore(
 		pIdx := p.AddProcessor(proc)
 		splitAndScatterProcs[n] = pIdx
 	}
+	__antithesis_instrumentation__.Notify(12422)
 
-	// Plan RestoreData.
 	restoreDataStageID := p.NewStageOnNodes(sqlInstanceIDs)
 	restoreDataProcs := make(map[base.SQLInstanceID]physicalplan.ProcessorIdx)
 	for _, sqlInstanceID := range sqlInstanceIDs {
+		__antithesis_instrumentation__.Notify(12451)
 		proc := physicalplan.Processor{
 			SQLInstanceID: sqlInstanceID,
 			Spec: execinfrapb.ProcessorSpec{
@@ -187,13 +211,14 @@ func distRestore(
 		restoreDataProcs[sqlInstanceID] = pIdx
 		p.ResultRouters = append(p.ResultRouters, pIdx)
 	}
+	__antithesis_instrumentation__.Notify(12423)
 
 	for _, srcProc := range splitAndScatterProcs {
+		__antithesis_instrumentation__.Notify(12452)
 		slot := 0
 		for _, destSQLInstanceID := range sqlInstanceIDs {
-			// Streams were added to the range router in the same order that the
-			// nodes appeared in `nodes`. Make sure that the `slot`s here are
-			// ordered the same way.
+			__antithesis_instrumentation__.Notify(12453)
+
 			destProc := restoreDataProcs[destSQLInstanceID]
 			p.Streams = append(p.Streams, physicalplan.Stream{
 				SourceProcessor:  srcProc,
@@ -204,16 +229,23 @@ func distRestore(
 			slot++
 		}
 	}
+	__antithesis_instrumentation__.Notify(12424)
 
 	dsp.FinalizePlan(planCtx, p)
 
 	metaFn := func(_ context.Context, meta *execinfrapb.ProducerMetadata) error {
+		__antithesis_instrumentation__.Notify(12454)
 		if meta.BulkProcessorProgress != nil {
-			// Send the progress up a level to be written to the manifest.
+			__antithesis_instrumentation__.Notify(12456)
+
 			progCh <- meta.BulkProcessorProgress
+		} else {
+			__antithesis_instrumentation__.Notify(12457)
 		}
+		__antithesis_instrumentation__.Notify(12455)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(12425)
 
 	rowResultWriter := sql.NewRowResultWriter(nil)
 
@@ -221,38 +253,38 @@ func distRestore(
 		ctx,
 		sql.NewMetadataCallbackWriter(rowResultWriter, metaFn),
 		tree.Rows,
-		nil,   /* rangeCache */
-		noTxn, /* txn - the flow does not read or write the database */
-		nil,   /* clockUpdater */
+		nil,
+		noTxn,
+		nil,
 		evalCtx.Tracing,
 		evalCtx.ExecCfg.ContentionRegistry,
-		nil, /* testingPushCallback */
+		nil,
 	)
 	defer recv.Release()
 
-	// Copy the evalCtx, as dsp.Run() might change it.
 	evalCtxCopy := *evalCtx
-	dsp.Run(ctx, planCtx, noTxn, p, recv, &evalCtxCopy, nil /* finishedSetupFn */)()
+	dsp.Run(ctx, planCtx, noTxn, p, recv, &evalCtxCopy, nil)()
 	return rowResultWriter.Err()
 }
 
-// makeSplitAndScatterSpecs returns a map from nodeID to the SplitAndScatter
-// spec that should be planned on that node. Given the chunks of ranges to
-// import it round-robin distributes the chunks amongst the given nodes.
 func makeSplitAndScatterSpecs(
 	sqlInstanceIDs []base.SQLInstanceID,
 	chunks [][]execinfrapb.RestoreSpanEntry,
 	tableRekeys []execinfrapb.TableRekey,
 	tenantRekeys []execinfrapb.TenantRekey,
 ) (map[base.SQLInstanceID]*execinfrapb.SplitAndScatterSpec, error) {
+	__antithesis_instrumentation__.Notify(12458)
 	specsBySQLInstanceID := make(map[base.SQLInstanceID]*execinfrapb.SplitAndScatterSpec)
 	for i, chunk := range chunks {
+		__antithesis_instrumentation__.Notify(12460)
 		sqlInstanceID := sqlInstanceIDs[i%len(sqlInstanceIDs)]
 		if spec, ok := specsBySQLInstanceID[sqlInstanceID]; ok {
+			__antithesis_instrumentation__.Notify(12461)
 			spec.Chunks = append(spec.Chunks, execinfrapb.SplitAndScatterSpec_RestoreEntryChunk{
 				Entries: chunk,
 			})
 		} else {
+			__antithesis_instrumentation__.Notify(12462)
 			specsBySQLInstanceID[sqlInstanceID] = &execinfrapb.SplitAndScatterSpec{
 				Chunks: []execinfrapb.SplitAndScatterSpec_RestoreEntryChunk{{
 					Entries: chunk,
@@ -263,5 +295,6 @@ func makeSplitAndScatterSpecs(
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(12459)
 	return specsBySQLInstanceID, nil
 }

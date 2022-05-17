@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvnemesis
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -22,111 +14,149 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// Engine is a simplified version of storage.ReadWriter. It is a multi-version
-// key-value map, meaning that each read or write has an associated timestamp
-// and a read returns the write for the key with the highest timestamp (which is
-// not necessarily the most recently ingested write). Engine is not threadsafe.
 type Engine struct {
 	kvs *pebble.DB
 	b   bufalloc.ByteAllocator
 }
 
-// MakeEngine returns a new Engine.
 func MakeEngine() (*Engine, error) {
+	__antithesis_instrumentation__.Notify(90200)
 	opts := storage.DefaultPebbleOptions()
 	opts.FS = vfs.NewMem()
 	kvs, err := pebble.Open(`kvnemesis`, opts)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(90202)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(90203)
 	}
+	__antithesis_instrumentation__.Notify(90201)
 	return &Engine{kvs: kvs}, nil
 }
 
-// Close closes the Engine, freeing associated resources.
 func (e *Engine) Close() {
+	__antithesis_instrumentation__.Notify(90204)
 	if err := e.kvs.Close(); err != nil {
+		__antithesis_instrumentation__.Notify(90205)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(90206)
 	}
 }
 
-// Get returns the value for this key with the highest timestamp <= ts. If no
-// such value exists, the returned value's RawBytes is nil.
 func (e *Engine) Get(key roachpb.Key, ts hlc.Timestamp) roachpb.Value {
+	__antithesis_instrumentation__.Notify(90207)
 	iter := e.kvs.NewIter(nil)
-	defer func() { _ = iter.Close() }()
+	defer func() { __antithesis_instrumentation__.Notify(90213); _ = iter.Close() }()
+	__antithesis_instrumentation__.Notify(90208)
 	iter.SeekGE(storage.EncodeMVCCKey(storage.MVCCKey{Key: key, Timestamp: ts}))
 	if !iter.Valid() {
+		__antithesis_instrumentation__.Notify(90214)
 		return roachpb.Value{}
+	} else {
+		__antithesis_instrumentation__.Notify(90215)
 	}
-	// This use of iter.Key() is safe because it comes entirely before the
-	// deferred iter.Close.
+	__antithesis_instrumentation__.Notify(90209)
+
 	mvccKey, err := storage.DecodeMVCCKey(iter.Key())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(90216)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(90217)
 	}
+	__antithesis_instrumentation__.Notify(90210)
 	if !mvccKey.Key.Equal(key) {
+		__antithesis_instrumentation__.Notify(90218)
 		return roachpb.Value{}
+	} else {
+		__antithesis_instrumentation__.Notify(90219)
 	}
+	__antithesis_instrumentation__.Notify(90211)
 	if len(iter.Value()) == 0 {
+		__antithesis_instrumentation__.Notify(90220)
 		return roachpb.Value{}
+	} else {
+		__antithesis_instrumentation__.Notify(90221)
 	}
+	__antithesis_instrumentation__.Notify(90212)
 	var valCopy []byte
-	e.b, valCopy = e.b.Copy(iter.Value(), 0 /* extraCap */)
+	e.b, valCopy = e.b.Copy(iter.Value(), 0)
 	return roachpb.Value{RawBytes: valCopy, Timestamp: mvccKey.Timestamp}
 }
 
-// Put inserts a key/value/timestamp tuple. If an exact key/timestamp pair is
-// Put again, it overwrites the previous value.
 func (e *Engine) Put(key storage.MVCCKey, value []byte) {
+	__antithesis_instrumentation__.Notify(90222)
 	if err := e.kvs.Set(storage.EncodeMVCCKey(key), value, nil); err != nil {
+		__antithesis_instrumentation__.Notify(90223)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(90224)
 	}
 }
 
-// Delete writes a tombstone value for a given key/timestamp. This is
-// equivalent to a Put with an empty value.
 func (e *Engine) Delete(key storage.MVCCKey) {
+	__antithesis_instrumentation__.Notify(90225)
 	if err := e.kvs.Set(storage.EncodeMVCCKey(key), nil, nil); err != nil {
+		__antithesis_instrumentation__.Notify(90226)
 		panic(err)
+	} else {
+		__antithesis_instrumentation__.Notify(90227)
 	}
 }
 
-// Iterate calls the given closure with every KV in the Engine, in ascending
-// order.
 func (e *Engine) Iterate(fn func(key storage.MVCCKey, value []byte, err error)) {
+	__antithesis_instrumentation__.Notify(90228)
 	iter := e.kvs.NewIter(nil)
-	defer func() { _ = iter.Close() }()
+	defer func() { __antithesis_instrumentation__.Notify(90230); _ = iter.Close() }()
+	__antithesis_instrumentation__.Notify(90229)
 	for iter.First(); iter.Valid(); iter.Next() {
+		__antithesis_instrumentation__.Notify(90231)
 		if err := iter.Error(); err != nil {
+			__antithesis_instrumentation__.Notify(90234)
 			fn(storage.MVCCKey{}, nil, err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(90235)
 		}
+		__antithesis_instrumentation__.Notify(90232)
 		var keyCopy, valCopy []byte
-		e.b, keyCopy = e.b.Copy(iter.Key(), 0 /* extraCap */)
-		e.b, valCopy = e.b.Copy(iter.Value(), 0 /* extraCap */)
+		e.b, keyCopy = e.b.Copy(iter.Key(), 0)
+		e.b, valCopy = e.b.Copy(iter.Value(), 0)
 		key, err := storage.DecodeMVCCKey(keyCopy)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(90236)
 			fn(storage.MVCCKey{}, nil, err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(90237)
 		}
+		__antithesis_instrumentation__.Notify(90233)
 		fn(key, valCopy, nil)
 	}
 }
 
-// DebugPrint returns the entire contents of this Engine as a string for use in
-// debugging.
 func (e *Engine) DebugPrint(indent string) string {
+	__antithesis_instrumentation__.Notify(90238)
 	var buf strings.Builder
 	e.Iterate(func(key storage.MVCCKey, value []byte, err error) {
+		__antithesis_instrumentation__.Notify(90240)
 		if buf.Len() > 0 {
+			__antithesis_instrumentation__.Notify(90242)
 			buf.WriteString("\n")
+		} else {
+			__antithesis_instrumentation__.Notify(90243)
 		}
+		__antithesis_instrumentation__.Notify(90241)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(90244)
 			fmt.Fprintf(&buf, "(err:%s)", err)
 		} else {
+			__antithesis_instrumentation__.Notify(90245)
 			fmt.Fprintf(&buf, "%s%s %s -> %s",
 				indent, key.Key, key.Timestamp, roachpb.Value{RawBytes: value}.PrettyPrint())
 		}
 	})
+	__antithesis_instrumentation__.Notify(90239)
 	return buf.String()
 }

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package goroutineui
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -21,79 +13,101 @@ import (
 	"github.com/maruel/panicparse/v2/stack"
 )
 
-// stacks is a wrapper for runtime.Stack that attempts to recover the data for all goroutines.
 func stacks() []byte {
-	// We don't know how big the traces are, so grow a few times if they don't fit. Start large, though.
+	__antithesis_instrumentation__.Notify(190209)
+
 	var trace []byte
-	for n := 1 << 20; /* 1mb */ n <= (1 << 29); /* 512mb */ n *= 2 {
+	for n := 1 << 20; n <= (1 << 29); n *= 2 {
+		__antithesis_instrumentation__.Notify(190211)
 		trace = make([]byte, n)
-		nbytes := runtime.Stack(trace, true /* all */)
+		nbytes := runtime.Stack(trace, true)
 		if nbytes < len(trace) {
+			__antithesis_instrumentation__.Notify(190212)
 			return trace[:nbytes]
+		} else {
+			__antithesis_instrumentation__.Notify(190213)
 		}
 	}
+	__antithesis_instrumentation__.Notify(190210)
 	return trace
 }
 
-// A Dump wraps a goroutine dump with functionality to output through panicparse.
 type Dump struct {
 	agg *stack.Aggregated
 	err error
 }
 
-// NewDump grabs a goroutine dump.
 func NewDump() Dump {
+	__antithesis_instrumentation__.Notify(190214)
 	return newDumpFromBytes(stacks(), stack.DefaultOpts())
 }
 
-// newDumpFromBytes is like NewDump, but treats the supplied bytes as a goroutine
-// dump. The function accepts the options to pass to panicparse/stack.ScanSnapshot.
 func newDumpFromBytes(b []byte, opts *stack.Opts) Dump {
+	__antithesis_instrumentation__.Notify(190215)
 	s, _, err := stack.ScanSnapshot(bytes.NewBuffer(b), ioutil.Discard, opts)
 	if err != io.EOF {
+		__antithesis_instrumentation__.Notify(190217)
 		return Dump{err: err}
+	} else {
+		__antithesis_instrumentation__.Notify(190218)
 	}
+	__antithesis_instrumentation__.Notify(190216)
 	return Dump{agg: s.Aggregate(stack.AnyValue)}
 }
 
-// SortCountDesc rearranges the goroutine buckets such that higher multiplicities
-// appear earlier.
 func (d Dump) SortCountDesc() {
+	__antithesis_instrumentation__.Notify(190219)
 	if d.err != nil {
+		__antithesis_instrumentation__.Notify(190221)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(190222)
 	}
+	__antithesis_instrumentation__.Notify(190220)
 	sort.Slice(d.agg.Buckets, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(190223)
 		a, b := d.agg.Buckets[i], d.agg.Buckets[j]
 		return len(a.IDs) > len(b.IDs)
 	})
 }
 
-// SortWaitDesc rearranges the goroutine buckets such that goroutines that have
-// longer wait times appear earlier.
 func (d Dump) SortWaitDesc() {
+	__antithesis_instrumentation__.Notify(190224)
 	if d.err != nil {
+		__antithesis_instrumentation__.Notify(190226)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(190227)
 	}
+	__antithesis_instrumentation__.Notify(190225)
 	sort.Slice(d.agg.Buckets, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(190228)
 		a, b := d.agg.Buckets[i], d.agg.Buckets[j]
 		return a.SleepMax > b.SleepMax
 	})
 }
 
-// HTML writes the rendered output of panicparse into the supplied Writer.
 func (d Dump) HTML(w io.Writer) error {
+	__antithesis_instrumentation__.Notify(190229)
 	if d.err != nil {
+		__antithesis_instrumentation__.Notify(190231)
 		return d.err
+	} else {
+		__antithesis_instrumentation__.Notify(190232)
 	}
-	return d.agg.ToHTML(w, "" /* footer */)
+	__antithesis_instrumentation__.Notify(190230)
+	return d.agg.ToHTML(w, "")
 }
 
-// HTMLString is like HTML, but returns a string. If an error occurs, its string
-// representation is returned.
 func (d Dump) HTMLString() string {
+	__antithesis_instrumentation__.Notify(190233)
 	var w strings.Builder
 	if err := d.HTML(&w); err != nil {
+		__antithesis_instrumentation__.Notify(190235)
 		return err.Error()
+	} else {
+		__antithesis_instrumentation__.Notify(190236)
 	}
+	__antithesis_instrumentation__.Notify(190234)
 	return w.String()
 }

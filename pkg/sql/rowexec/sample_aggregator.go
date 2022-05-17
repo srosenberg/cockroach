@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -37,8 +29,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// A sample aggregator processor aggregates results from multiple sampler
-// processors. See SampleAggregatorSpec for more details.
 type sampleAggregator struct {
 	execinfra.ProcessorBase
 
@@ -47,19 +37,14 @@ type sampleAggregator struct {
 	inTypes []*types.T
 	sr      stats.SampleReservoir
 
-	// memAcc accounts for memory accumulated throughout the life of the
-	// sampleAggregator.
 	memAcc mon.BoundAccount
 
-	// tempMemAcc is used to account for memory that is allocated temporarily
-	// and released before the sampleAggregator is finished.
 	tempMemAcc mon.BoundAccount
 
 	tableID     descpb.ID
 	sampledCols []descpb.ColumnID
 	sketches    []sketchInfo
 
-	// Input column indices for special columns.
 	rankCol      int
 	sketchIdxCol int
 	numRowsCol   int
@@ -69,8 +54,6 @@ type sampleAggregator struct {
 	invColIdxCol int
 	invIdxKeyCol int
 
-	// The sample aggregator tracks sketches and reservoirs for inverted
-	// index keys, mapped by column index.
 	invSr     map[uint32]*stats.SampleReservoir
 	invSketch map[uint32]*sketchInfo
 }
@@ -79,8 +62,6 @@ var _ execinfra.Processor = &sampleAggregator{}
 
 const sampleAggregatorProcName = "sample aggregator"
 
-// SampleAggregatorProgressInterval is the frequency at which the
-// SampleAggregator processor will report progress. It is mutable for testing.
 var SampleAggregatorProgressInterval = 5 * time.Second
 
 func newSampleAggregator(
@@ -91,25 +72,47 @@ func newSampleAggregator(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*sampleAggregator, error) {
+	__antithesis_instrumentation__.Notify(574463)
 	for _, s := range spec.Sketches {
+		__antithesis_instrumentation__.Notify(574468)
 		if len(s.Columns) == 0 {
+			__antithesis_instrumentation__.Notify(574472)
 			return nil, errors.Errorf("no columns")
+		} else {
+			__antithesis_instrumentation__.Notify(574473)
 		}
+		__antithesis_instrumentation__.Notify(574469)
 		if _, ok := supportedSketchTypes[s.SketchType]; !ok {
+			__antithesis_instrumentation__.Notify(574474)
 			return nil, errors.Errorf("unsupported sketch type %s", s.SketchType)
+		} else {
+			__antithesis_instrumentation__.Notify(574475)
 		}
-		if s.GenerateHistogram && s.HistogramMaxBuckets == 0 {
+		__antithesis_instrumentation__.Notify(574470)
+		if s.GenerateHistogram && func() bool {
+			__antithesis_instrumentation__.Notify(574476)
+			return s.HistogramMaxBuckets == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(574477)
 			return nil, errors.Errorf("histogram max buckets not specified")
+		} else {
+			__antithesis_instrumentation__.Notify(574478)
 		}
-		if s.GenerateHistogram && len(s.Columns) != 1 {
+		__antithesis_instrumentation__.Notify(574471)
+		if s.GenerateHistogram && func() bool {
+			__antithesis_instrumentation__.Notify(574479)
+			return len(s.Columns) != 1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(574480)
 			return nil, errors.Errorf("histograms require one column")
+		} else {
+			__antithesis_instrumentation__.Notify(574481)
 		}
 	}
+	__antithesis_instrumentation__.Notify(574464)
 
 	ctx := flowCtx.EvalCtx.Ctx()
-	// Limit the memory use by creating a child monitor with a hard limit.
-	// The processor will disable histogram collection if this limit is not
-	// enough.
+
 	memMonitor := execinfra.NewLimitedMonitor(ctx, flowCtx.EvalCtx.Mon, flowCtx, "sample-aggregator-mem")
 	rankCol := len(input.OutputTypes()) - 8
 	s := &sampleAggregator{
@@ -135,6 +138,7 @@ func newSampleAggregator(
 
 	var sampleCols util.FastIntSet
 	for i := range spec.Sketches {
+		__antithesis_instrumentation__.Notify(574482)
 		s.sketches[i] = sketchInfo{
 			spec:     spec.Sketches[i],
 			sketch:   hyperloglog.New14(),
@@ -142,18 +146,22 @@ func newSampleAggregator(
 			numRows:  0,
 		}
 		if spec.Sketches[i].GenerateHistogram {
+			__antithesis_instrumentation__.Notify(574483)
 			sampleCols.Add(int(spec.Sketches[i].Columns[0]))
+		} else {
+			__antithesis_instrumentation__.Notify(574484)
 		}
 	}
+	__antithesis_instrumentation__.Notify(574465)
 
 	s.sr.Init(
 		int(spec.SampleSize), int(spec.MinSampleSize), input.OutputTypes()[:rankCol], &s.memAcc,
 		sampleCols,
 	)
 	for i := range spec.InvertedSketches {
+		__antithesis_instrumentation__.Notify(574485)
 		var sr stats.SampleReservoir
-		// The datums are converted to their inverted index bytes and
-		// sent as a single DBytes column.
+
 		var srCols util.FastIntSet
 		srCols.Add(0)
 		sr.Init(int(spec.SampleSize), int(spec.MinSampleSize), bytesRowType, &s.memAcc, srCols)
@@ -166,275 +174,433 @@ func newSampleAggregator(
 			numRows:  0,
 		}
 	}
+	__antithesis_instrumentation__.Notify(574466)
 
 	if err := s.Init(
 		nil, post, input.OutputTypes(), flowCtx, processorID, output, memMonitor,
 		execinfra.ProcStateOpts{
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				__antithesis_instrumentation__.Notify(574486)
 				s.close()
 				return nil
 			},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(574487)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(574488)
 	}
+	__antithesis_instrumentation__.Notify(574467)
 	return s, nil
 }
 
 func (s *sampleAggregator) pushTrailingMeta(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(574489)
 	execinfra.SendTraceData(ctx, s.Output)
 }
 
-// Run is part of the Processor interface.
 func (s *sampleAggregator) Run(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(574490)
 	ctx = s.StartInternal(ctx, sampleAggregatorProcName)
 	s.input.Start(ctx)
 
 	earlyExit, err := s.mainLoop(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(574492)
 		execinfra.DrainAndClose(ctx, s.Output, err, s.pushTrailingMeta, s.input)
-	} else if !earlyExit {
-		s.pushTrailingMeta(ctx)
-		s.input.ConsumerClosed()
-		s.Output.ProducerDone()
+	} else {
+		__antithesis_instrumentation__.Notify(574493)
+		if !earlyExit {
+			__antithesis_instrumentation__.Notify(574494)
+			s.pushTrailingMeta(ctx)
+			s.input.ConsumerClosed()
+			s.Output.ProducerDone()
+		} else {
+			__antithesis_instrumentation__.Notify(574495)
+		}
 	}
-	s.MoveToDraining(nil /* err */)
+	__antithesis_instrumentation__.Notify(574491)
+	s.MoveToDraining(nil)
 }
 
 func (s *sampleAggregator) close() {
+	__antithesis_instrumentation__.Notify(574496)
 	if s.InternalClose() {
+		__antithesis_instrumentation__.Notify(574497)
 		s.memAcc.Close(s.Ctx)
 		s.tempMemAcc.Close(s.Ctx)
 		s.MemMonitor.Stop(s.Ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(574498)
 	}
 }
 
 func (s *sampleAggregator) mainLoop(ctx context.Context) (earlyExit bool, err error) {
+	__antithesis_instrumentation__.Notify(574499)
 	var job *jobs.Job
 	jobID := s.spec.JobID
-	// Some tests run this code without a job, so check if the jobID is 0.
+
 	if jobID != 0 {
+		__antithesis_instrumentation__.Notify(574504)
 		job, err = s.FlowCtx.Cfg.JobRegistry.LoadJob(ctx, s.spec.JobID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(574505)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(574506)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(574507)
 	}
+	__antithesis_instrumentation__.Notify(574500)
 
 	lastReportedFractionCompleted := float32(-1)
-	// Report progress (0 to 1).
+
 	progFn := func(fractionCompleted float32) error {
+		__antithesis_instrumentation__.Notify(574508)
 		if jobID == 0 {
+			__antithesis_instrumentation__.Notify(574511)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(574512)
 		}
-		// If it changed by less than 1%, just check for cancellation (which is more
-		// efficient).
-		if fractionCompleted < 1.0 && fractionCompleted < lastReportedFractionCompleted+0.01 {
-			return job.CheckStatus(ctx, nil /* txn */)
+		__antithesis_instrumentation__.Notify(574509)
+
+		if fractionCompleted < 1.0 && func() bool {
+			__antithesis_instrumentation__.Notify(574513)
+			return fractionCompleted < lastReportedFractionCompleted+0.01 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(574514)
+			return job.CheckStatus(ctx, nil)
+		} else {
+			__antithesis_instrumentation__.Notify(574515)
 		}
+		__antithesis_instrumentation__.Notify(574510)
 		lastReportedFractionCompleted = fractionCompleted
-		return job.FractionProgressed(ctx, nil /* txn */, jobs.FractionUpdater(fractionCompleted))
+		return job.FractionProgressed(ctx, nil, jobs.FractionUpdater(fractionCompleted))
 	}
+	__antithesis_instrumentation__.Notify(574501)
 
 	var rowsProcessed uint64
 	progressUpdates := util.Every(SampleAggregatorProgressInterval)
 	var da tree.DatumAlloc
 	for {
+		__antithesis_instrumentation__.Notify(574516)
 		row, meta := s.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(574523)
 			if meta.SamplerProgress != nil {
+				__antithesis_instrumentation__.Notify(574525)
 				rowsProcessed += meta.SamplerProgress.RowsProcessed
 				if progressUpdates.ShouldProcess(timeutil.Now()) {
-					// Periodically report fraction progressed and check that the job has
-					// not been paused or canceled.
+					__antithesis_instrumentation__.Notify(574527)
+
 					var fractionCompleted float32
 					if s.spec.RowsExpected > 0 {
+						__antithesis_instrumentation__.Notify(574529)
 						fractionCompleted = float32(float64(rowsProcessed) / float64(s.spec.RowsExpected))
 						const maxProgress = 0.99
 						if fractionCompleted > maxProgress {
-							// Since the total number of rows expected is just an estimate,
-							// don't report more than 99% completion until the very end.
+							__antithesis_instrumentation__.Notify(574530)
+
 							fractionCompleted = maxProgress
+						} else {
+							__antithesis_instrumentation__.Notify(574531)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(574532)
 					}
+					__antithesis_instrumentation__.Notify(574528)
 
 					if err := progFn(fractionCompleted); err != nil {
+						__antithesis_instrumentation__.Notify(574533)
 						return false, err
+					} else {
+						__antithesis_instrumentation__.Notify(574534)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(574535)
 				}
+				__antithesis_instrumentation__.Notify(574526)
 				if meta.SamplerProgress.HistogramDisabled {
-					// One of the sampler processors probably ran out of memory while
-					// collecting histogram samples. Disable sample collection so we
-					// don't create a biased histogram.
+					__antithesis_instrumentation__.Notify(574536)
+
 					s.sr.Disable()
 					for _, sr := range s.invSr {
+						__antithesis_instrumentation__.Notify(574537)
 						sr.Disable()
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(574538)
 				}
-			} else if !emitHelper(ctx, s.Output, &s.OutputHelper, nil /* row */, meta, s.pushTrailingMeta, s.input) {
-				// No cleanup required; emitHelper() took care of it.
-				return true, nil
-			}
-			continue
-		}
-		if row == nil {
-			break
-		}
+			} else {
+				__antithesis_instrumentation__.Notify(574539)
+				if !emitHelper(ctx, s.Output, &s.OutputHelper, nil, meta, s.pushTrailingMeta, s.input) {
+					__antithesis_instrumentation__.Notify(574540)
 
-		// There are four kinds of rows. They should be identified in this order:
-		//  - an inverted sample has invColIdxCol and rankCol
-		//  - an inverted sketch has invColIdxCol
-		//  - a normal sketch has sketchIdxCol
-		//  - a normal sample has rankCol
+					return true, nil
+				} else {
+					__antithesis_instrumentation__.Notify(574541)
+				}
+			}
+			__antithesis_instrumentation__.Notify(574524)
+			continue
+		} else {
+			__antithesis_instrumentation__.Notify(574542)
+		}
+		__antithesis_instrumentation__.Notify(574517)
+		if row == nil {
+			__antithesis_instrumentation__.Notify(574543)
+			break
+		} else {
+			__antithesis_instrumentation__.Notify(574544)
+		}
+		__antithesis_instrumentation__.Notify(574518)
+
 		if invColIdx, err := row[s.invColIdxCol].GetInt(); err == nil {
+			__antithesis_instrumentation__.Notify(574545)
 			colIdx := uint32(invColIdx)
 			if rank, err := row[s.rankCol].GetInt(); err == nil {
-				// Inverted sample row.
-				// Shrink capacity to match the child samplerProcessor and then retain
-				// the row if it had one of the top (smallest) ranks.
+				__antithesis_instrumentation__.Notify(574549)
+
 				s.maybeDecreaseSamples(ctx, s.invSr[colIdx], row)
 				sampleRow := row[s.invIdxKeyCol : s.invIdxKeyCol+1]
 				if err := s.sampleRow(ctx, s.invSr[colIdx], sampleRow, uint64(rank)); err != nil {
+					__antithesis_instrumentation__.Notify(574551)
 					return false, err
+				} else {
+					__antithesis_instrumentation__.Notify(574552)
 				}
+				__antithesis_instrumentation__.Notify(574550)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(574553)
 			}
-			// Inverted sketch row.
+			__antithesis_instrumentation__.Notify(574546)
+
 			invSketch, ok := s.invSketch[colIdx]
 			if !ok {
+				__antithesis_instrumentation__.Notify(574554)
 				return false, errors.AssertionFailedf("unknown inverted sketch")
+			} else {
+				__antithesis_instrumentation__.Notify(574555)
 			}
+			__antithesis_instrumentation__.Notify(574547)
 			if err := s.processSketchRow(invSketch, row, &da); err != nil {
+				__antithesis_instrumentation__.Notify(574556)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(574557)
 			}
+			__antithesis_instrumentation__.Notify(574548)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(574558)
 		}
+		__antithesis_instrumentation__.Notify(574519)
 		if rank, err := row[s.rankCol].GetInt(); err == nil {
-			// Sample row.
-			// Shrink capacity to match the child samplerProcessor and then retain the
-			// row if it had one of the top (smallest) ranks.
+			__antithesis_instrumentation__.Notify(574559)
+
 			s.maybeDecreaseSamples(ctx, &s.sr, row)
 			if err := s.sampleRow(ctx, &s.sr, row[:s.rankCol], uint64(rank)); err != nil {
+				__antithesis_instrumentation__.Notify(574561)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(574562)
 			}
+			__antithesis_instrumentation__.Notify(574560)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(574563)
 		}
-		// Sketch row.
+		__antithesis_instrumentation__.Notify(574520)
+
 		sketchIdx, err := row[s.sketchIdxCol].GetInt()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(574564)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(574565)
 		}
-		if sketchIdx < 0 || sketchIdx > int64(len(s.sketches)) {
+		__antithesis_instrumentation__.Notify(574521)
+		if sketchIdx < 0 || func() bool {
+			__antithesis_instrumentation__.Notify(574566)
+			return sketchIdx > int64(len(s.sketches)) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(574567)
 			return false, errors.Errorf("invalid sketch index %d", sketchIdx)
+		} else {
+			__antithesis_instrumentation__.Notify(574568)
 		}
+		__antithesis_instrumentation__.Notify(574522)
 		if err := s.processSketchRow(&s.sketches[sketchIdx], row, &da); err != nil {
+			__antithesis_instrumentation__.Notify(574569)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(574570)
 		}
 	}
-	// Report progress one last time so we don't write results if the job was
-	// canceled.
+	__antithesis_instrumentation__.Notify(574502)
+
 	if err = progFn(1.0); err != nil {
+		__antithesis_instrumentation__.Notify(574571)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(574572)
 	}
+	__antithesis_instrumentation__.Notify(574503)
 	return false, s.writeResults(ctx)
 }
 
 func (s *sampleAggregator) processSketchRow(
 	sketch *sketchInfo, row rowenc.EncDatumRow, da *tree.DatumAlloc,
 ) error {
+	__antithesis_instrumentation__.Notify(574573)
 	var tmpSketch hyperloglog.Sketch
 
 	numRows, err := row[s.numRowsCol].GetInt()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(574581)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(574582)
 	}
+	__antithesis_instrumentation__.Notify(574574)
 	sketch.numRows += numRows
 
 	numNulls, err := row[s.numNullsCol].GetInt()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(574583)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(574584)
 	}
+	__antithesis_instrumentation__.Notify(574575)
 	sketch.numNulls += numNulls
 
 	size, err := row[s.sumSizeCol].GetInt()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(574585)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(574586)
 	}
+	__antithesis_instrumentation__.Notify(574576)
 	sketch.size += size
 
-	// Decode the sketch.
 	if err := row[s.sketchCol].EnsureDecoded(s.inTypes[s.sketchCol], da); err != nil {
+		__antithesis_instrumentation__.Notify(574587)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(574588)
 	}
+	__antithesis_instrumentation__.Notify(574577)
 	d := row[s.sketchCol].Datum
 	if d == tree.DNull {
+		__antithesis_instrumentation__.Notify(574589)
 		return errors.AssertionFailedf("NULL sketch data")
+	} else {
+		__antithesis_instrumentation__.Notify(574590)
 	}
+	__antithesis_instrumentation__.Notify(574578)
 	if err := tmpSketch.UnmarshalBinary([]byte(*d.(*tree.DBytes))); err != nil {
+		__antithesis_instrumentation__.Notify(574591)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(574592)
 	}
+	__antithesis_instrumentation__.Notify(574579)
 	if err := sketch.sketch.Merge(&tmpSketch); err != nil {
+		__antithesis_instrumentation__.Notify(574593)
 		return errors.NewAssertionErrorWithWrappedErrf(err, "merging sketch data")
+	} else {
+		__antithesis_instrumentation__.Notify(574594)
 	}
+	__antithesis_instrumentation__.Notify(574580)
 	return nil
 }
 
-// maybeDecreaseSamples shrinks the capacity of the aggregate reservoir to be <=
-// the capacity of the child reservoir. This is done to prevent biasing the
-// sampling in favor of child sampleProcessors with larger reservoirs.
 func (s *sampleAggregator) maybeDecreaseSamples(
 	ctx context.Context, sr *stats.SampleReservoir, row rowenc.EncDatumRow,
 ) {
+	__antithesis_instrumentation__.Notify(574595)
 	if capacity, err := row[s.numRowsCol].GetInt(); err == nil {
+		__antithesis_instrumentation__.Notify(574596)
 		prevCapacity := sr.Cap()
 		if sr.MaybeResize(ctx, int(capacity)) {
+			__antithesis_instrumentation__.Notify(574597)
 			log.Infof(
 				ctx, "histogram samples reduced from %d to %d to match sampler processor",
 				prevCapacity, sr.Cap(),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(574598)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(574599)
 	}
 }
 
 func (s *sampleAggregator) sampleRow(
 	ctx context.Context, sr *stats.SampleReservoir, sampleRow rowenc.EncDatumRow, rank uint64,
 ) error {
+	__antithesis_instrumentation__.Notify(574600)
 	prevCapacity := sr.Cap()
 	if err := sr.SampleRow(ctx, s.EvalCtx, sampleRow, rank); err != nil {
+		__antithesis_instrumentation__.Notify(574602)
 		if code := pgerror.GetPGCode(err); code != pgcode.OutOfMemory {
+			__antithesis_instrumentation__.Notify(574604)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(574605)
 		}
-		// We hit an out of memory error. Clear the sample reservoir and
-		// disable histogram sample collection.
+		__antithesis_instrumentation__.Notify(574603)
+
 		sr.Disable()
 		log.Info(ctx, "disabling histogram collection due to excessive memory utilization")
 		telemetry.Inc(sqltelemetry.StatsHistogramOOMCounter)
-	} else if sr.Cap() != prevCapacity {
-		log.Infof(
-			ctx, "histogram samples reduced from %d to %d due to excessive memory utilization",
-			prevCapacity, sr.Cap(),
-		)
+	} else {
+		__antithesis_instrumentation__.Notify(574606)
+		if sr.Cap() != prevCapacity {
+			__antithesis_instrumentation__.Notify(574607)
+			log.Infof(
+				ctx, "histogram samples reduced from %d to %d due to excessive memory utilization",
+				prevCapacity, sr.Cap(),
+			)
+		} else {
+			__antithesis_instrumentation__.Notify(574608)
+		}
 	}
+	__antithesis_instrumentation__.Notify(574601)
 	return nil
 }
 
-// writeResults inserts the new statistics into system.table_statistics.
 func (s *sampleAggregator) writeResults(ctx context.Context) error {
-	// Turn off tracing so these writes don't affect the results of EXPLAIN
-	// ANALYZE.
-	if span := tracing.SpanFromContext(ctx); span != nil && span.IsVerbose() {
-		// TODO(rytaft): this also hides writes in this function from SQL session
-		// traces.
-		ctx = tracing.ContextWithSpan(ctx, nil)
-	}
+	__antithesis_instrumentation__.Notify(574609)
 
-	// TODO(andrei): This method would benefit from a session interface on the
-	// internal executor instead of doing this weird thing where it uses the
-	// internal executor to execute one statement at a time inside a db.Txn()
-	// closure.
+	if span := tracing.SpanFromContext(ctx); span != nil && func() bool {
+		__antithesis_instrumentation__.Notify(574612)
+		return span.IsVerbose() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(574613)
+
+		ctx = tracing.ContextWithSpan(ctx, nil)
+	} else {
+		__antithesis_instrumentation__.Notify(574614)
+	}
+	__antithesis_instrumentation__.Notify(574610)
+
 	if err := s.FlowCtx.Cfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		__antithesis_instrumentation__.Notify(574615)
 		for _, si := range s.sketches {
+			__antithesis_instrumentation__.Notify(574617)
 			var histogram *stats.HistogramData
-			if si.spec.GenerateHistogram && len(s.sr.Get()) != 0 {
+			if si.spec.GenerateHistogram && func() bool {
+				__antithesis_instrumentation__.Notify(574622)
+				return len(s.sr.Get()) != 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(574623)
 				colIdx := int(si.spec.Columns[0])
 				typ := s.inTypes[colIdx]
 
@@ -445,51 +611,66 @@ func (s *sampleAggregator) writeResults(ctx context.Context) error {
 					colIdx,
 					typ,
 					si.numRows-si.numNulls,
-					s.getDistinctCount(&si, false /* includeNulls */),
+					s.getDistinctCount(&si, false),
 					int(si.spec.HistogramMaxBuckets),
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(574625)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(574626)
 				}
+				__antithesis_instrumentation__.Notify(574624)
 				histogram = &h
-			} else if invSr, ok := s.invSr[si.spec.Columns[0]]; ok && len(invSr.Get()) != 0 {
-				invSketch, ok := s.invSketch[si.spec.Columns[0]]
-				if !ok {
-					return errors.Errorf("no associated inverted sketch")
-				}
-				// GenerateHistogram is false for sketches
-				// with inverted index columns. Instead, the
-				// presence of those histograms is indicated
-				// by the existence of an inverted sketch on
-				// the column.
+			} else {
+				__antithesis_instrumentation__.Notify(574627)
+				if invSr, ok := s.invSr[si.spec.Columns[0]]; ok && func() bool {
+					__antithesis_instrumentation__.Notify(574628)
+					return len(invSr.Get()) != 0 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(574629)
+					invSketch, ok := s.invSketch[si.spec.Columns[0]]
+					if !ok {
+						__antithesis_instrumentation__.Notify(574632)
+						return errors.Errorf("no associated inverted sketch")
+					} else {
+						__antithesis_instrumentation__.Notify(574633)
+					}
+					__antithesis_instrumentation__.Notify(574630)
 
-				invDistinctCount := s.getDistinctCount(invSketch, false /* includeNulls */)
-				// Use 0 for the colIdx here because it refers
-				// to the column index of the samples, which
-				// only has a single bytes column with the
-				// inverted keys.
-				h, err := s.generateHistogram(
-					ctx,
-					s.EvalCtx,
-					invSr,
-					0, /* colIdx */
-					types.Bytes,
-					invSketch.numRows-invSketch.numNulls,
-					invDistinctCount,
-					int(invSketch.spec.HistogramMaxBuckets),
-				)
-				if err != nil {
-					return err
+					invDistinctCount := s.getDistinctCount(invSketch, false)
+
+					h, err := s.generateHistogram(
+						ctx,
+						s.EvalCtx,
+						invSr,
+						0,
+						types.Bytes,
+						invSketch.numRows-invSketch.numNulls,
+						invDistinctCount,
+						int(invSketch.spec.HistogramMaxBuckets),
+					)
+					if err != nil {
+						__antithesis_instrumentation__.Notify(574634)
+						return err
+					} else {
+						__antithesis_instrumentation__.Notify(574635)
+					}
+					__antithesis_instrumentation__.Notify(574631)
+					histogram = &h
+				} else {
+					__antithesis_instrumentation__.Notify(574636)
 				}
-				histogram = &h
 			}
+			__antithesis_instrumentation__.Notify(574618)
 
 			columnIDs := make([]descpb.ColumnID, len(si.spec.Columns))
 			for i, c := range si.spec.Columns {
+				__antithesis_instrumentation__.Notify(574637)
 				columnIDs[i] = s.sampledCols[c]
 			}
+			__antithesis_instrumentation__.Notify(574619)
 
-			// Delete old stats that have been superseded.
 			if err := stats.DeleteOldStatsForColumns(
 				ctx,
 				s.FlowCtx.Cfg.Executor,
@@ -497,10 +678,13 @@ func (s *sampleAggregator) writeResults(ctx context.Context) error {
 				s.tableID,
 				columnIDs,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(574638)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(574639)
 			}
+			__antithesis_instrumentation__.Notify(574620)
 
-			// Insert the new stat.
 			if err := stats.InsertNewStat(
 				ctx,
 				s.FlowCtx.Cfg.Settings,
@@ -510,62 +694,81 @@ func (s *sampleAggregator) writeResults(ctx context.Context) error {
 				si.spec.StatName,
 				columnIDs,
 				si.numRows,
-				s.getDistinctCount(&si, true /* includeNulls */),
+				s.getDistinctCount(&si, true),
 				si.numNulls,
 				s.getAvgSize(&si),
 				histogram); err != nil {
+				__antithesis_instrumentation__.Notify(574640)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(574641)
 			}
+			__antithesis_instrumentation__.Notify(574621)
 
-			// Release any memory temporarily used for this statistic.
 			s.tempMemAcc.Clear(ctx)
 		}
+		__antithesis_instrumentation__.Notify(574616)
 
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(574642)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(574643)
 	}
+	__antithesis_instrumentation__.Notify(574611)
 
 	return nil
 }
 
-// getAvgSize returns the average number of bytes per row in the given
-// sketch.
 func (s *sampleAggregator) getAvgSize(si *sketchInfo) int64 {
+	__antithesis_instrumentation__.Notify(574644)
 	if si.numRows == 0 {
+		__antithesis_instrumentation__.Notify(574646)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(574647)
 	}
+	__antithesis_instrumentation__.Notify(574645)
 	return int64(math.Ceil(float64(si.size) / float64(si.numRows)))
 }
 
-// getDistinctCount returns the number of distinct values in the given sketch,
-// optionally including null values.
 func (s *sampleAggregator) getDistinctCount(si *sketchInfo, includeNulls bool) int64 {
+	__antithesis_instrumentation__.Notify(574648)
 	distinctCount := int64(si.sketch.Estimate())
-	if si.numNulls > 0 && !includeNulls {
-		// Nulls are included in the estimate, so reduce the count by 1 if nulls are
-		// not requested.
-		distinctCount--
-	}
+	if si.numNulls > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(574652)
+		return !includeNulls == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(574653)
 
-	// The maximum number of distinct values is the number of non-null rows plus 1
-	// if there are any nulls. It's possible that distinctCount was calculated to
-	// be greater than this number due to the approximate nature of HyperLogLog.
-	// If this is the case, set it equal to the max.
+		distinctCount--
+	} else {
+		__antithesis_instrumentation__.Notify(574654)
+	}
+	__antithesis_instrumentation__.Notify(574649)
+
 	maxDistinctCount := si.numRows - si.numNulls
-	if si.numNulls > 0 && includeNulls {
+	if si.numNulls > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(574655)
+		return includeNulls == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(574656)
 		maxDistinctCount++
+	} else {
+		__antithesis_instrumentation__.Notify(574657)
 	}
+	__antithesis_instrumentation__.Notify(574650)
 	if distinctCount > maxDistinctCount {
+		__antithesis_instrumentation__.Notify(574658)
 		distinctCount = maxDistinctCount
+	} else {
+		__antithesis_instrumentation__.Notify(574659)
 	}
+	__antithesis_instrumentation__.Notify(574651)
 	return distinctCount
 }
 
-// generateHistogram returns a histogram (on a given column) from a set of
-// samples.
-// numRows is the total number of rows from which values were sampled
-// (excluding rows that have NULL values on the histogram column).
 func (s *sampleAggregator) generateHistogram(
 	ctx context.Context,
 	evalCtx *tree.EvalContext,
@@ -576,25 +779,37 @@ func (s *sampleAggregator) generateHistogram(
 	distinctCount int64,
 	maxBuckets int,
 ) (stats.HistogramData, error) {
+	__antithesis_instrumentation__.Notify(574660)
 	prevCapacity := sr.Cap()
 	values, err := sr.GetNonNullDatums(ctx, &s.tempMemAcc, colIdx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(574663)
 		return stats.HistogramData{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(574664)
 	}
+	__antithesis_instrumentation__.Notify(574661)
 	if sr.Cap() != prevCapacity {
+		__antithesis_instrumentation__.Notify(574665)
 		log.Infof(
 			ctx, "histogram samples reduced from %d to %d due to excessive memory utilization",
 			prevCapacity, sr.Cap(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(574666)
 	}
+	__antithesis_instrumentation__.Notify(574662)
 	h, _, err := stats.EquiDepthHistogram(evalCtx, colType, values, numRows, distinctCount, maxBuckets)
 	return h, err
 }
 
 var _ execinfra.DoesNotUseTxn = &sampleAggregator{}
 
-// DoesNotUseTxn implements the DoesNotUseTxn interface.
 func (s *sampleAggregator) DoesNotUseTxn() bool {
+	__antithesis_instrumentation__.Notify(574667)
 	txnUser, ok := s.input.(execinfra.DoesNotUseTxn)
-	return ok && txnUser.DoesNotUseTxn()
+	return ok && func() bool {
+		__antithesis_instrumentation__.Notify(574668)
+		return txnUser.DoesNotUseTxn() == true
+	}() == true
 }

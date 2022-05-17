@@ -26,6 +26,7 @@ go_library(
         "//pkg/util/log/logcrash",
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -43,6 +44,7 @@ go_test(
         "//pkg/clusterversion",
         "//pkg/server/dumpstore",
         "//pkg/settings/cluster",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",
     ],

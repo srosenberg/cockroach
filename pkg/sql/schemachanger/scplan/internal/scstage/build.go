@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scstage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -24,12 +16,10 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// BuildStages builds the plan's stages for this and all subsequent phases.
-// Note that the scJobIDSupplier function is idempotent, and must return the
-// same value for all calls.
 func BuildStages(
 	init scpb.CurrentState, phase scop.Phase, g *scgraph.Graph, scJobIDSupplier func() jobspb.JobID,
 ) []Stage {
+	__antithesis_instrumentation__.Notify(594485)
 	c := buildContext{
 		rollback:               init.InRollback,
 		g:                      g,
@@ -40,43 +30,60 @@ func BuildStages(
 		startingPhase:          phase,
 	}
 
-	// Try building stages while ignoring revertibility constraints.
-	// This is fine as long as there are no post-commit stages.
 	stages := buildStages(c)
-	if n := len(stages); n > 0 && stages[n-1].Phase > scop.PreCommitPhase {
+	if n := len(stages); n > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(594489)
+		return stages[n-1].Phase > scop.PreCommitPhase == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(594490)
 		c.isRevertibilityIgnored = false
 		stages = buildStages(c)
+	} else {
+		__antithesis_instrumentation__.Notify(594491)
 	}
-	// Decorate stages with position in plan.
+	__antithesis_instrumentation__.Notify(594486)
+
 	if len(stages) > 0 {
+		__antithesis_instrumentation__.Notify(594492)
 		phaseMap := map[scop.Phase][]int{}
 		for i, s := range stages {
+			__antithesis_instrumentation__.Notify(594494)
 			phaseMap[s.Phase] = append(phaseMap[s.Phase], i)
 		}
+		__antithesis_instrumentation__.Notify(594493)
 		for _, indexes := range phaseMap {
+			__antithesis_instrumentation__.Notify(594495)
 			for i, j := range indexes {
+				__antithesis_instrumentation__.Notify(594496)
 				s := &stages[j]
 				s.Ordinal = i + 1
 				s.StagesInPhase = len(indexes)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(594497)
 	}
-	// Add job ops to the stages.
+	__antithesis_instrumentation__.Notify(594487)
+
 	for i := range stages {
+		__antithesis_instrumentation__.Notify(594498)
 		var cur, next *Stage
 		if i+1 < len(stages) {
+			__antithesis_instrumentation__.Notify(594500)
 			next = &stages[i+1]
+		} else {
+			__antithesis_instrumentation__.Notify(594501)
 		}
+		__antithesis_instrumentation__.Notify(594499)
 		cur = &stages[i]
 		jobOps := c.computeExtraJobOps(cur, next)
 		cur.ExtraOps = jobOps
 	}
+	__antithesis_instrumentation__.Notify(594488)
 
 	return stages
 }
 
-// buildContext contains the global constants for building the stages.
-// Only the BuildStages function mutates it, it's read-only everywhere else.
 type buildContext struct {
 	rollback               bool
 	g                      *scgraph.Graph
@@ -88,97 +95,120 @@ type buildContext struct {
 }
 
 func buildStages(bc buildContext) (stages []Stage) {
-	// Initialize the build state for this buildContext.
+	__antithesis_instrumentation__.Notify(594502)
+
 	bs := buildState{
 		incumbent: make([]scpb.Status, len(bc.startingStatuses)),
 		phase:     bc.startingPhase,
 		fulfilled: make(map[*screl.Node]struct{}, bc.g.Order()),
 	}
 	for i, n := range bc.nodes(bc.startingStatuses) {
+		__antithesis_instrumentation__.Notify(594505)
 		bs.incumbent[i] = n.CurrentStatus
 		bs.fulfilled[n] = struct{}{}
 	}
-	// Build stages until reaching the terminal state.
+	__antithesis_instrumentation__.Notify(594503)
+
 	for !bc.isStateTerminal(bs.incumbent) {
-		// Generate a stage builder which can make progress.
+		__antithesis_instrumentation__.Notify(594506)
+
 		sb := bc.makeStageBuilder(bs)
 		for !sb.canMakeProgress() {
-			// When no further progress is possible, move to the next phase and try
-			// again, until progress is possible. We haven't reached the terminal
-			// state yet, so this is guaranteed (barring any horrible bugs).
+			__antithesis_instrumentation__.Notify(594509)
+
 			if bs.phase == scop.PreCommitPhase {
-				// This is a special case.
-				// We need to move to the post-commit phase, but this will require
-				// creating a schema changer job, which in turn will require this
-				// otherwise-empty pre-commit stage.
+				__antithesis_instrumentation__.Notify(594512)
+
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(594513)
 			}
+			__antithesis_instrumentation__.Notify(594510)
 			if bs.phase == scop.LatestPhase {
-				// This should never happen, we should always be able to make forward
-				// progress because we haven't reached the terminal state yet.
+				__antithesis_instrumentation__.Notify(594514)
+
 				panic(errors.AssertionFailedf("unable to make progress"))
+			} else {
+				__antithesis_instrumentation__.Notify(594515)
 			}
+			__antithesis_instrumentation__.Notify(594511)
 			bs.phase++
 			sb = bc.makeStageBuilder(bs)
 		}
-		// Build the stage.
+		__antithesis_instrumentation__.Notify(594507)
+
 		stage := sb.build()
 		stages = append(stages, stage)
-		// Update the build state with this stage's progress.
+
 		for n := range sb.fulfilling {
+			__antithesis_instrumentation__.Notify(594516)
 			bs.fulfilled[n] = struct{}{}
 		}
+		__antithesis_instrumentation__.Notify(594508)
 		bs.incumbent = stage.After
 		switch bs.phase {
 		case scop.StatementPhase, scop.PreCommitPhase:
-			// These phases can only have at most one stage each.
+			__antithesis_instrumentation__.Notify(594517)
+
 			bs.phase++
+		default:
+			__antithesis_instrumentation__.Notify(594518)
 		}
 	}
+	__antithesis_instrumentation__.Notify(594504)
 
 	return stages
 }
 
-// buildState contains the global build state for building the stages.
-// Only the buildStages function mutates it, it's read-only everywhere else.
 type buildState struct {
 	incumbent []scpb.Status
 	phase     scop.Phase
 	fulfilled map[*screl.Node]struct{}
 }
 
-// isStateTerminal returns true iff the state is terminal, according to the
-// graph.
 func (bc buildContext) isStateTerminal(current []scpb.Status) bool {
+	__antithesis_instrumentation__.Notify(594519)
 	for _, n := range bc.nodes(current) {
+		__antithesis_instrumentation__.Notify(594521)
 		if _, found := bc.g.GetOpEdgeFrom(n); found {
+			__antithesis_instrumentation__.Notify(594522)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(594523)
 		}
 	}
+	__antithesis_instrumentation__.Notify(594520)
 	return true
 }
 
-// makeStageBuilder returns a stage builder with an operation type for which
-// progress can be made. Defaults to the mutation type if none make progress.
 func (bc buildContext) makeStageBuilder(bs buildState) (sb stageBuilder) {
+	__antithesis_instrumentation__.Notify(594524)
 	opTypes := []scop.Type{scop.BackfillType, scop.ValidationType, scop.MutationType}
 	switch bs.phase {
 	case scop.StatementPhase, scop.PreCommitPhase:
-		// We don't allow expensive operations pre-commit.
+		__antithesis_instrumentation__.Notify(594527)
+
 		opTypes = []scop.Type{scop.MutationType}
+	default:
+		__antithesis_instrumentation__.Notify(594528)
 	}
+	__antithesis_instrumentation__.Notify(594525)
 	for _, opType := range opTypes {
+		__antithesis_instrumentation__.Notify(594529)
 		sb = bc.makeStageBuilderForType(bs, opType)
 		if sb.canMakeProgress() {
+			__antithesis_instrumentation__.Notify(594530)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(594531)
 		}
 	}
+	__antithesis_instrumentation__.Notify(594526)
 	return sb
 }
 
-// makeStageBuilderForType creates and populates a stage builder for the given
-// op type.
 func (bc buildContext) makeStageBuilderForType(bs buildState, opType scop.Type) stageBuilder {
+	__antithesis_instrumentation__.Notify(594532)
 	numTargets := len(bc.targetState.Targets)
 	sb := stageBuilder{
 		bc:         bc,
@@ -190,36 +220,51 @@ func (bc buildContext) makeStageBuilderForType(bs buildState, opType scop.Type) 
 		visited:    make(map[*screl.Node]uint64, numTargets),
 	}
 	for i, n := range bc.nodes(bs.incumbent) {
+		__antithesis_instrumentation__.Notify(594535)
 		t := sb.makeCurrentTargetState(n)
 		sb.current[i] = t
 		sb.lut[t.n.Target] = &sb.current[i]
 	}
-	// Greedily try to make progress by going down op edges when possible.
+	__antithesis_instrumentation__.Notify(594533)
+
 	for isDone := false; !isDone; {
+		__antithesis_instrumentation__.Notify(594536)
 		isDone = true
 		for i, t := range sb.current {
+			__antithesis_instrumentation__.Notify(594537)
 			if t.e == nil {
+				__antithesis_instrumentation__.Notify(594541)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(594542)
 			}
+			__antithesis_instrumentation__.Notify(594538)
 			if sb.hasUnmetInboundDeps(t.e.To()) {
+				__antithesis_instrumentation__.Notify(594543)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(594544)
 			}
-			// Increment the visit epoch for the next batch of recursive calls to
-			// hasUnmeetableOutboundDeps. See comments in function body for details.
+			__antithesis_instrumentation__.Notify(594539)
+
 			sb.visitEpoch++
 			if sb.hasUnmeetableOutboundDeps(t.e.To()) {
+				__antithesis_instrumentation__.Notify(594545)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(594546)
 			}
+			__antithesis_instrumentation__.Notify(594540)
 			sb.opEdges = append(sb.opEdges, t.e)
 			sb.fulfilling[t.e.To()] = struct{}{}
 			sb.current[i] = sb.nextTargetState(t)
 			isDone = false
 		}
 	}
+	__antithesis_instrumentation__.Notify(594534)
 	return sb
 }
 
-// stageBuilder contains the state for building one stage.
 type stageBuilder struct {
 	bc         buildContext
 	bs         buildState
@@ -227,8 +272,6 @@ type stageBuilder struct {
 	current    []currentTargetState
 	fulfilling map[*screl.Node]struct{}
 	opEdges    []*scgraph.OpEdge
-
-	// Helper data structures used to improve performance.
 
 	lut        map[*scpb.Target]*currentTargetState
 	visited    map[*screl.Node]uint64
@@ -239,16 +282,22 @@ type currentTargetState struct {
 	n *screl.Node
 	e *scgraph.OpEdge
 
-	// hasOpEdgeWithOps is true iff this stage already includes an op edge with
-	// ops for this target.
 	hasOpEdgeWithOps bool
 }
 
 func (sb stageBuilder) makeCurrentTargetState(n *screl.Node) currentTargetState {
+	__antithesis_instrumentation__.Notify(594547)
 	e, found := sb.bc.g.GetOpEdgeFrom(n)
-	if !found || !sb.isOutgoingOpEdgeAllowed(e) {
+	if !found || func() bool {
+		__antithesis_instrumentation__.Notify(594549)
+		return !sb.isOutgoingOpEdgeAllowed(e) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(594550)
 		return currentTargetState{n: n}
+	} else {
+		__antithesis_instrumentation__.Notify(594551)
 	}
+	__antithesis_instrumentation__.Notify(594548)
 	return currentTargetState{
 		n:                n,
 		e:                e,
@@ -256,251 +305,339 @@ func (sb stageBuilder) makeCurrentTargetState(n *screl.Node) currentTargetState 
 	}
 }
 
-// isOutgoingOpEdgeAllowed returns false iff there is something preventing using
-// that op edge in this current stage.
 func (sb stageBuilder) isOutgoingOpEdgeAllowed(e *scgraph.OpEdge) bool {
+	__antithesis_instrumentation__.Notify(594552)
 	if _, isFulfilled := sb.bs.fulfilled[e.To()]; isFulfilled {
+		__antithesis_instrumentation__.Notify(594558)
 		panic(errors.AssertionFailedf(
 			"node %s is unexpectedly already fulfilled in a previous stage",
 			screl.NodeString(e.To())))
+	} else {
+		__antithesis_instrumentation__.Notify(594559)
 	}
+	__antithesis_instrumentation__.Notify(594553)
 	if _, isCandidate := sb.fulfilling[e.To()]; isCandidate {
+		__antithesis_instrumentation__.Notify(594560)
 		panic(errors.AssertionFailedf(
 			"node %s is unexpectedly already scheduled to be fulfilled in the upcoming stage",
 			screl.NodeString(e.To())))
+	} else {
+		__antithesis_instrumentation__.Notify(594561)
 	}
+	__antithesis_instrumentation__.Notify(594554)
 	if e.Type() != sb.opType {
+		__antithesis_instrumentation__.Notify(594562)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(594563)
 	}
+	__antithesis_instrumentation__.Notify(594555)
 	if !e.IsPhaseSatisfied(sb.bs.phase) {
+		__antithesis_instrumentation__.Notify(594564)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(594565)
 	}
-	if !sb.bc.isRevertibilityIgnored && sb.bs.phase == scop.PostCommitPhase && !e.Revertible() {
+	__antithesis_instrumentation__.Notify(594556)
+	if !sb.bc.isRevertibilityIgnored && func() bool {
+		__antithesis_instrumentation__.Notify(594566)
+		return sb.bs.phase == scop.PostCommitPhase == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(594567)
+		return !e.Revertible() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(594568)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(594569)
 	}
+	__antithesis_instrumentation__.Notify(594557)
 	return true
 }
 
-// canMakeProgress returns true if the stage built by this builder will make
-// progress.
 func (sb stageBuilder) canMakeProgress() bool {
+	__antithesis_instrumentation__.Notify(594570)
 	return len(sb.opEdges) > 0
 }
 
 func (sb stageBuilder) nextTargetState(t currentTargetState) currentTargetState {
+	__antithesis_instrumentation__.Notify(594571)
 	next := sb.makeCurrentTargetState(t.e.To())
 	if t.hasOpEdgeWithOps {
+		__antithesis_instrumentation__.Notify(594573)
 		if next.hasOpEdgeWithOps {
-			// Prevent having more than one non-no-op op edge per target in a
-			// stage. This upholds the 2-version invariant.
-			// TODO(postamar): uphold the 2-version invariant using dep rules instead.
+			__antithesis_instrumentation__.Notify(594574)
+
 			next.e = nil
 		} else {
+			__antithesis_instrumentation__.Notify(594575)
 			next.hasOpEdgeWithOps = true
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(594576)
 	}
+	__antithesis_instrumentation__.Notify(594572)
 	return next
 }
 
-// hasUnmeetableOutboundDeps returns true iff the candidate node has inbound
-// dependencies which aren't yet met.
-//
-// In plain english: we can only schedule this node in this stage if all the
-// other nodes which need to be scheduled not after it have already been
-// scheduled.
 func (sb stageBuilder) hasUnmetInboundDeps(n *screl.Node) (ret bool) {
+	__antithesis_instrumentation__.Notify(594577)
 	_ = sb.bc.g.ForEachDepEdgeTo(n, func(de *scgraph.DepEdge) error {
+		__antithesis_instrumentation__.Notify(594579)
 		if sb.isUnmetInboundDep(de) {
+			__antithesis_instrumentation__.Notify(594581)
 			ret = true
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(594582)
 		}
+		__antithesis_instrumentation__.Notify(594580)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(594578)
 	return ret
 }
 
 func (sb *stageBuilder) isUnmetInboundDep(de *scgraph.DepEdge) bool {
+	__antithesis_instrumentation__.Notify(594583)
 	_, fromIsFulfilled := sb.bs.fulfilled[de.From()]
 	_, fromIsCandidate := sb.fulfilling[de.From()]
 	switch de.Kind() {
 	case scgraph.Precedence:
-		// True iff the source node has not been fulfilled in an earlier stage
-		// and also iff it's not (yet?) scheduled to be fulfilled in this stage.
-		return !fromIsFulfilled && !fromIsCandidate
+		__antithesis_instrumentation__.Notify(594585)
+
+		return !fromIsFulfilled && func() bool {
+			__antithesis_instrumentation__.Notify(594589)
+			return !fromIsCandidate == true
+		}() == true
 
 	case scgraph.SameStagePrecedence:
+		__antithesis_instrumentation__.Notify(594586)
 		if fromIsFulfilled {
-			// The dependency requires the source node to be fulfilled in the same
-			// stage as the destination, which is impossible at this point because
-			// it has already been fulfilled in an earlier stage.
-			// This should never happen.
+			__antithesis_instrumentation__.Notify(594590)
+
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(594591)
 		}
-		// True iff the source node has not been fulfilled in an earlier stage and
-		// and also iff it's not (yet?) scheduled to be fulfilled in this stage.
+		__antithesis_instrumentation__.Notify(594587)
+
 		return !fromIsCandidate
 
 	default:
+		__antithesis_instrumentation__.Notify(594588)
 		panic(errors.AssertionFailedf("unknown dep edge kind %q", de.Kind()))
 	}
-	// The dependency constraint is somehow unsatisfiable.
+	__antithesis_instrumentation__.Notify(594584)
+
 	panic(errors.AssertionFailedf("failed to satisfy %s rule %q",
 		de.String(), de.Name()))
 }
 
-// hasUnmeetableOutboundDeps returns true iff the candidate node has outbound
-// dependencies which cannot possibly be met.
-// This is the case when, among all the nodes transitively connected to or from
-// it via same-stage dependency edges, there is at least one which cannot (for
-// whatever reason) be scheduled in this stage.
-// This function recursively visits this set of connected nodes.
-//
-// In plain english: we can only schedule this node in this stage if we are able
-// to also schedule all the other nodes which would be forced to be scheduled in
-// the same stage as this one.
 func (sb stageBuilder) hasUnmeetableOutboundDeps(n *screl.Node) (ret bool) {
-	// This recursive function needs to track which nodes it has already visited
-	// to avoid running around in circles: although this is a DAG that we're
-	// traversing a DAG we're ignoring edge directions here.
-	// We reuse the same map for each set of calls to avoid potentially wasteful
-	// allocations. This requires us to maintain a _visit epoch_ counter to
-	// differentiate between different traversals.
+	__antithesis_instrumentation__.Notify(594592)
+
 	if sb.visited[n] == sb.visitEpoch {
-		// The node has already been visited in this traversal.
-		// Considering that the traversal didn't end during the previous visit,
-		// we can infer that this node doesn't have any unmeetable outbound
-		// dependencies.
+		__antithesis_instrumentation__.Notify(594600)
+
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(594601)
 	}
-	// Mark this node as having been visited in this traversal.
+	__antithesis_instrumentation__.Notify(594593)
+
 	sb.visited[n] = sb.visitEpoch
-	// Do some sanity checks.
+
 	if _, isFulfilled := sb.bs.fulfilled[n]; isFulfilled {
-		// This should never happen.
+		__antithesis_instrumentation__.Notify(594602)
+
 		panic(errors.AssertionFailedf("%s should not yet be fulfilled",
 			screl.NodeString(n)))
+	} else {
+		__antithesis_instrumentation__.Notify(594603)
 	}
+	__antithesis_instrumentation__.Notify(594594)
 	if _, isFulfilling := sb.bs.fulfilled[n]; isFulfilling {
-		// This should never happen.
+		__antithesis_instrumentation__.Notify(594604)
+
 		panic(errors.AssertionFailedf("%s should not yet be scheduled for this stage",
 			screl.NodeString(n)))
+	} else {
+		__antithesis_instrumentation__.Notify(594605)
 	}
-	// Look up the current target state for this node, via the lookup table.
+	__antithesis_instrumentation__.Notify(594595)
+
 	if t := sb.lut[n.Target]; t == nil {
-		// This should never happen.
+		__antithesis_instrumentation__.Notify(594606)
+
 		panic(errors.AssertionFailedf("%s target not found in look-up table",
 			screl.NodeString(n)))
-	} else if t.e == nil || t.e.To() != n {
-		// The visited node is not yet a candidate for scheduling in this stage.
-		// Either we're unable to schedule it due to some unsatisfied constraint or
-		// there are other nodes preceding it in the op-edge path that need to be
-		// scheduled first.
-		return true
+	} else {
+		__antithesis_instrumentation__.Notify(594607)
+		if t.e == nil || func() bool {
+			__antithesis_instrumentation__.Notify(594608)
+			return t.e.To() != n == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(594609)
+
+			return true
+		} else {
+			__antithesis_instrumentation__.Notify(594610)
+		}
 	}
-	// At this point, the visited node might be scheduled in this stage if it,
-	// in turn, also doesn't have any unmet inbound dependencies or any unmeetable
-	// outbound dependencies.
-	// We check the inbound and outbound dep edges for this purpose and
-	// recursively visit the neighboring nodes connected via same-stage dep edges
-	// to make sure this property is verified transitively.
+	__antithesis_instrumentation__.Notify(594596)
+
 	_ = sb.bc.g.ForEachDepEdgeTo(n, func(de *scgraph.DepEdge) error {
+		__antithesis_instrumentation__.Notify(594611)
 		if sb.visited[de.From()] == sb.visitEpoch {
+			__antithesis_instrumentation__.Notify(594615)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(594616)
 		}
+		__antithesis_instrumentation__.Notify(594612)
 		if !sb.isUnmetInboundDep(de) {
+			__antithesis_instrumentation__.Notify(594617)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(594618)
 		}
-		if de.Kind() != scgraph.SameStagePrecedence || sb.hasUnmeetableOutboundDeps(de.From()) {
+		__antithesis_instrumentation__.Notify(594613)
+		if de.Kind() != scgraph.SameStagePrecedence || func() bool {
+			__antithesis_instrumentation__.Notify(594619)
+			return sb.hasUnmeetableOutboundDeps(de.From()) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(594620)
 			ret = true
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(594621)
 		}
+		__antithesis_instrumentation__.Notify(594614)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(594597)
 	if ret {
+		__antithesis_instrumentation__.Notify(594622)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(594623)
 	}
+	__antithesis_instrumentation__.Notify(594598)
 	_ = sb.bc.g.ForEachDepEdgeFrom(n, func(de *scgraph.DepEdge) error {
+		__antithesis_instrumentation__.Notify(594624)
 		if sb.visited[de.To()] == sb.visitEpoch {
+			__antithesis_instrumentation__.Notify(594627)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(594628)
 		}
-		if de.Kind() == scgraph.SameStagePrecedence && sb.hasUnmeetableOutboundDeps(de.To()) {
+		__antithesis_instrumentation__.Notify(594625)
+		if de.Kind() == scgraph.SameStagePrecedence && func() bool {
+			__antithesis_instrumentation__.Notify(594629)
+			return sb.hasUnmeetableOutboundDeps(de.To()) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(594630)
 			ret = true
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(594631)
 		}
+		__antithesis_instrumentation__.Notify(594626)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(594599)
 	return ret
 }
 
 func (sb stageBuilder) build() Stage {
+	__antithesis_instrumentation__.Notify(594632)
 	after := make([]scpb.Status, len(sb.current))
 	for i, t := range sb.current {
+		__antithesis_instrumentation__.Notify(594635)
 		after[i] = t.n.CurrentStatus
 	}
+	__antithesis_instrumentation__.Notify(594633)
 	s := Stage{
 		Before: sb.bs.incumbent,
 		After:  after,
 		Phase:  sb.bs.phase,
 	}
 	for _, e := range sb.opEdges {
+		__antithesis_instrumentation__.Notify(594636)
 		if sb.bc.g.IsNoOp(e) {
+			__antithesis_instrumentation__.Notify(594638)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(594639)
 		}
+		__antithesis_instrumentation__.Notify(594637)
 		s.EdgeOps = append(s.EdgeOps, e.Op()...)
 	}
+	__antithesis_instrumentation__.Notify(594634)
 	return s
 }
 
-// Decorate stage with job-related operations.
-//
-// TODO(ajwerner): Rather than adding this above the opgen layer, it may be
-// better to do it as part of graph generation. We could treat the job as
-// and the job references as elements and track their relationships. The
-// oddity here is that the job gets both added and removed. In practice, this
-// may prove to be a somewhat common pattern in other cases: consider the
-// intermediate index needed when adding and dropping columns as part of the
-// same transaction.
 func (bc buildContext) computeExtraJobOps(s, next *Stage) []scop.Op {
-	revertible := next != nil && next.Phase < scop.PostCommitNonRevertiblePhase
+	__antithesis_instrumentation__.Notify(594640)
+	revertible := next != nil && func() bool {
+		__antithesis_instrumentation__.Notify(594641)
+		return next.Phase < scop.PostCommitNonRevertiblePhase == true
+	}() == true
 	switch s.Phase {
 	case scop.PreCommitPhase:
-		// If this pre-commit stage is non-terminal, this means there will be at
-		// least one post-commit stage, so we need to create a schema changer job
-		// and update references for the affected descriptors.
+		__antithesis_instrumentation__.Notify(594642)
+
 		if next != nil {
+			__antithesis_instrumentation__.Notify(594649)
 			const initialize = true
 			runningStatus := fmt.Sprintf("%s pending", next)
 			return append(bc.setJobStateOnDescriptorOps(initialize, revertible, s.After),
 				bc.createSchemaChangeJobOp(revertible, runningStatus))
+		} else {
+			__antithesis_instrumentation__.Notify(594650)
 		}
+		__antithesis_instrumentation__.Notify(594643)
 		return nil
 	case scop.PostCommitPhase, scop.PostCommitNonRevertiblePhase:
+		__antithesis_instrumentation__.Notify(594644)
 		if s.Type() != scop.MutationType {
+			__antithesis_instrumentation__.Notify(594651)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(594652)
 		}
+		__antithesis_instrumentation__.Notify(594645)
 		var ops []scop.Op
 		if next == nil {
-			// The terminal mutation stage needs to remove references to the schema
-			// changer job in the affected descriptors.
+			__antithesis_instrumentation__.Notify(594653)
+
 			ops = bc.removeJobReferenceOps()
 		} else {
+			__antithesis_instrumentation__.Notify(594654)
 			const initialize = false
 			ops = bc.setJobStateOnDescriptorOps(initialize, revertible, s.After)
 		}
-		// If we just moved to a non-cancelable phase, we need to tell the job
-		// that it cannot be canceled. Ideally we'd do this just once.
+		__antithesis_instrumentation__.Notify(594646)
+
 		runningStatus := "all stages completed"
 		if next != nil {
+			__antithesis_instrumentation__.Notify(594655)
 			runningStatus = fmt.Sprintf("%s pending", next)
+		} else {
+			__antithesis_instrumentation__.Notify(594656)
 		}
+		__antithesis_instrumentation__.Notify(594647)
 		ops = append(ops, bc.updateJobProgressOp(revertible, runningStatus))
 		return ops
 	default:
+		__antithesis_instrumentation__.Notify(594648)
 		return nil
 	}
 }
 
 func (bc buildContext) createSchemaChangeJobOp(revertible bool, runningStatus string) scop.Op {
+	__antithesis_instrumentation__.Notify(594657)
 	return &scop.CreateSchemaChangerJob{
 		JobID:         bc.scJobIDSupplier(),
 		Statements:    bc.targetState.Statements,
@@ -512,6 +649,7 @@ func (bc buildContext) createSchemaChangeJobOp(revertible bool, runningStatus st
 }
 
 func (bc buildContext) updateJobProgressOp(revertible bool, runningStatus string) scop.Op {
+	__antithesis_instrumentation__.Notify(594658)
 	return &scop.UpdateSchemaChangerJob{
 		JobID:           bc.scJobIDSupplier(),
 		IsNonCancelable: !revertible,
@@ -520,53 +658,68 @@ func (bc buildContext) updateJobProgressOp(revertible bool, runningStatus string
 }
 
 func (bc buildContext) removeJobReferenceOps() (ops []scop.Op) {
+	__antithesis_instrumentation__.Notify(594659)
 	jobID := bc.scJobIDSupplier()
 	screl.AllTargetDescIDs(bc.targetState).ForEach(func(descID descpb.ID) {
+		__antithesis_instrumentation__.Notify(594661)
 		ops = append(ops, &scop.RemoveJobStateFromDescriptor{
 			DescriptorID: descID,
 			JobID:        jobID,
 		})
 	})
+	__antithesis_instrumentation__.Notify(594660)
 	return ops
 }
 
 func (bc buildContext) nodes(current []scpb.Status) []*screl.Node {
+	__antithesis_instrumentation__.Notify(594662)
 	nodes := make([]*screl.Node, len(bc.targetState.Targets))
 	for i, status := range current {
+		__antithesis_instrumentation__.Notify(594664)
 		t := &bc.targetState.Targets[i]
 		n, ok := bc.g.GetNode(t, status)
 		if !ok {
+			__antithesis_instrumentation__.Notify(594666)
 			panic(errors.AssertionFailedf("could not find node for element %s, target status %s, current status %s",
 				screl.ElementString(t.Element()), t.TargetStatus, status))
+		} else {
+			__antithesis_instrumentation__.Notify(594667)
 		}
+		__antithesis_instrumentation__.Notify(594665)
 		nodes[i] = n
 	}
+	__antithesis_instrumentation__.Notify(594663)
 	return nodes
 }
 
 func (bc buildContext) setJobStateOnDescriptorOps(
 	initialize, revertible bool, after []scpb.Status,
 ) []scop.Op {
+	__antithesis_instrumentation__.Notify(594668)
 	descIDs, states := makeDescriptorStates(
 		bc.scJobIDSupplier(), bc.rollback, revertible, bc.targetState, after,
 	)
 	ops := make([]scop.Op, 0, descIDs.Len())
 	descIDs.ForEach(func(descID descpb.ID) {
+		__antithesis_instrumentation__.Notify(594670)
 		ops = append(ops, &scop.SetJobStateOnDescriptor{
 			DescriptorID: descID,
 			Initialize:   initialize,
 			State:        *states[descID],
 		})
 	})
+	__antithesis_instrumentation__.Notify(594669)
 	return ops
 }
 
 func makeDescriptorStates(
 	jobID jobspb.JobID, inRollback, revertible bool, ts scpb.TargetState, statuses []scpb.Status,
 ) (catalog.DescriptorIDSet, map[descpb.ID]*scpb.DescriptorState) {
+	__antithesis_instrumentation__.Notify(594671)
 	descIDs := screl.AllTargetDescIDs(ts)
 	states := make(map[descpb.ID]*scpb.DescriptorState, descIDs.Len())
 	descIDs.ForEach(func(id descpb.ID) {
+		__antithesis_instrumentation__.Notify(594675)
 		states[id] = &scpb.DescriptorState{
 			Authorization: ts.Authorization,
 			JobID:         jobID,
@@ -574,21 +727,31 @@ func makeDescriptorStates(
 			Revertible:    revertible,
 		}
 	})
+	__antithesis_instrumentation__.Notify(594672)
 	noteRelevantStatement := func(state *scpb.DescriptorState, stmtRank uint32) {
+		__antithesis_instrumentation__.Notify(594676)
 		for i := range state.RelevantStatements {
+			__antithesis_instrumentation__.Notify(594678)
 			stmt := &state.RelevantStatements[i]
 			if stmt.StatementRank != stmtRank {
+				__antithesis_instrumentation__.Notify(594680)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(594681)
 			}
+			__antithesis_instrumentation__.Notify(594679)
 			return
 		}
+		__antithesis_instrumentation__.Notify(594677)
 		state.RelevantStatements = append(state.RelevantStatements,
 			scpb.DescriptorState_Statement{
 				Statement:     ts.Statements[stmtRank],
 				StatementRank: stmtRank,
 			})
 	}
+	__antithesis_instrumentation__.Notify(594673)
 	for i, t := range ts.Targets {
+		__antithesis_instrumentation__.Notify(594682)
 		descID := screl.GetDescID(t.Element())
 		state := states[descID]
 		stmtID := t.Metadata.StatementID
@@ -597,5 +760,6 @@ func makeDescriptorStates(
 		state.TargetRanks = append(state.TargetRanks, uint32(i))
 		state.CurrentStatuses = append(state.CurrentStatuses, statuses[i])
 	}
+	__antithesis_instrumentation__.Notify(594674)
 	return descIDs, states
 }

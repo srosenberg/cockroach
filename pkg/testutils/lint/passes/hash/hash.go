@@ -1,15 +1,7 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package hash defines an Analyzer that detects correct use of hash.Hash.
 package hash
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"go/ast"
@@ -19,10 +11,8 @@ import (
 	"golang.org/x/tools/go/analysis/passes/inspect"
 )
 
-// Doc documents this pass.
 const Doc = `check for correct use of hash.Hash`
 
-// Analyzer defines this pass.
 var Analyzer = &analysis.Analyzer{
 	Name:     "hash",
 	Doc:      Doc,
@@ -30,117 +20,158 @@ var Analyzer = &analysis.Analyzer{
 	Run:      run,
 }
 
-// hashChecker assures that the hash.Hash interface is not misused. A common
-// mistake is to assume that the Sum function returns the hash of its input,
-// like so:
-//
-//     hashedBytes := sha256.New().Sum(inputBytes)
-//
-// In fact, the parameter to Sum is not the bytes to be hashed, but a slice that
-// will be used as output in case the caller wants to avoid an allocation. In
-// the example above, hashedBytes is not the SHA-256 hash of inputBytes, but
-// the concatenation of inputBytes with the hash of the empty string.
-//
-// Correct uses of the hash.Hash interface are as follows:
-//
-//     h := sha256.New()
-//     h.Write(inputBytes)
-//     hashedBytes := h.Sum(nil)
-//
-//     h := sha256.New()
-//     h.Write(inputBytes)
-//     var hashedBytes [sha256.Size]byte
-//     h.Sum(hashedBytes[:0])
-//
-// To differentiate between correct and incorrect usages, hashChecker applies a
-// simple heuristic: it flags calls to Sum where a) the parameter is non-nil and
-// b) the return value is used.
-//
-// The hash.Hash interface may be remedied in Go 2. See golang/go#21070.
 func run(pass *analysis.Pass) (interface{}, error) {
+	__antithesis_instrumentation__.Notify(644802)
 	selectorIsHash := func(s *ast.SelectorExpr) bool {
+		__antithesis_instrumentation__.Notify(644805)
 		tv, ok := pass.TypesInfo.Types[s.X]
 		if !ok {
+			__antithesis_instrumentation__.Notify(644809)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(644810)
 		}
+		__antithesis_instrumentation__.Notify(644806)
 		named, ok := tv.Type.(*types.Named)
 		if !ok {
+			__antithesis_instrumentation__.Notify(644811)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(644812)
 		}
+		__antithesis_instrumentation__.Notify(644807)
 		if named.Obj().Type().String() != "hash.Hash" {
+			__antithesis_instrumentation__.Notify(644813)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(644814)
 		}
+		__antithesis_instrumentation__.Notify(644808)
 		return true
 	}
+	__antithesis_instrumentation__.Notify(644803)
 
 	stack := make([]ast.Node, 0, 32)
 	forAllFiles(pass.Files, func(n ast.Node) bool {
+		__antithesis_instrumentation__.Notify(644815)
 		if n == nil {
-			stack = stack[:len(stack)-1] // pop
+			__antithesis_instrumentation__.Notify(644825)
+			stack = stack[:len(stack)-1]
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(644826)
 		}
-		stack = append(stack, n) // push
+		__antithesis_instrumentation__.Notify(644816)
+		stack = append(stack, n)
 
-		// Find a call to hash.Hash.Sum.
 		selExpr, ok := n.(*ast.SelectorExpr)
 		if !ok {
+			__antithesis_instrumentation__.Notify(644827)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(644828)
 		}
+		__antithesis_instrumentation__.Notify(644817)
 		if selExpr.Sel.Name != "Sum" {
+			__antithesis_instrumentation__.Notify(644829)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(644830)
 		}
+		__antithesis_instrumentation__.Notify(644818)
 		if !selectorIsHash(selExpr) {
+			__antithesis_instrumentation__.Notify(644831)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(644832)
 		}
+		__antithesis_instrumentation__.Notify(644819)
 		callExpr, ok := stack[len(stack)-2].(*ast.CallExpr)
 		if !ok {
+			__antithesis_instrumentation__.Notify(644833)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(644834)
 		}
+		__antithesis_instrumentation__.Notify(644820)
 		if len(callExpr.Args) != 1 {
+			__antithesis_instrumentation__.Notify(644835)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(644836)
 		}
-		// We have a valid call to hash.Hash.Sum.
+		__antithesis_instrumentation__.Notify(644821)
 
-		// Is the argument nil?
 		var nilArg bool
-		if id, ok := callExpr.Args[0].(*ast.Ident); ok && id.Name == "nil" {
+		if id, ok := callExpr.Args[0].(*ast.Ident); ok && func() bool {
+			__antithesis_instrumentation__.Notify(644837)
+			return id.Name == "nil" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(644838)
 			nilArg = true
+		} else {
+			__antithesis_instrumentation__.Notify(644839)
 		}
+		__antithesis_instrumentation__.Notify(644822)
 
-		// Is the return value unused?
 		var retUnused bool
 	Switch:
 		switch t := stack[len(stack)-3].(type) {
 		case *ast.AssignStmt:
+			__antithesis_instrumentation__.Notify(644840)
 			for i := range t.Rhs {
+				__antithesis_instrumentation__.Notify(644844)
 				if t.Rhs[i] == stack[len(stack)-2] {
-					if id, ok := t.Lhs[i].(*ast.Ident); ok && id.Name == "_" {
-						// Assigning to the blank identifier does not count as using the
-						// return value.
+					__antithesis_instrumentation__.Notify(644845)
+					if id, ok := t.Lhs[i].(*ast.Ident); ok && func() bool {
+						__antithesis_instrumentation__.Notify(644847)
+						return id.Name == "_" == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(644848)
+
 						retUnused = true
+					} else {
+						__antithesis_instrumentation__.Notify(644849)
 					}
+					__antithesis_instrumentation__.Notify(644846)
 					break Switch
+				} else {
+					__antithesis_instrumentation__.Notify(644850)
 				}
 			}
+			__antithesis_instrumentation__.Notify(644841)
 			panic("unreachable")
 		case *ast.ExprStmt:
-			// An expression statement means the return value is unused.
+			__antithesis_instrumentation__.Notify(644842)
+
 			retUnused = true
 		default:
+			__antithesis_instrumentation__.Notify(644843)
 		}
+		__antithesis_instrumentation__.Notify(644823)
 
-		if !nilArg && !retUnused {
+		if !nilArg && func() bool {
+			__antithesis_instrumentation__.Notify(644851)
+			return !retUnused == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(644852)
 			pass.Reportf(callExpr.Pos(), "probable misuse of hash.Hash.Sum: "+
 				"provide parameter or use return value, but not both")
+		} else {
+			__antithesis_instrumentation__.Notify(644853)
 		}
+		__antithesis_instrumentation__.Notify(644824)
 		return true
 	})
+	__antithesis_instrumentation__.Notify(644804)
 
 	return nil, nil
 }
 
 func forAllFiles(files []*ast.File, fn func(node ast.Node) bool) {
+	__antithesis_instrumentation__.Notify(644854)
 	for _, f := range files {
+		__antithesis_instrumentation__.Notify(644855)
 		ast.Inspect(f, fn)
 	}
 }

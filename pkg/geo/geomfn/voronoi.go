@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package geomfn
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/geo"
@@ -16,24 +8,40 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/geo/geos"
 )
 
-// VoronoiDiagram Computes the Voronoi Diagram from the vertices of the supplied geometry.
 func VoronoiDiagram(
 	g geo.Geometry, env *geo.Geometry, tolerance float64, onlyEdges bool,
 ) (geo.Geometry, error) {
+	__antithesis_instrumentation__.Notify(63651)
 	var envEWKB geopb.EWKB
 	if !(env == nil) {
+		__antithesis_instrumentation__.Notify(63655)
 		if g.SRID() != env.SRID() {
+			__antithesis_instrumentation__.Notify(63657)
 			return geo.Geometry{}, geo.NewMismatchingSRIDsError(g.SpatialObject(), env.SpatialObject())
+		} else {
+			__antithesis_instrumentation__.Notify(63658)
 		}
+		__antithesis_instrumentation__.Notify(63656)
 		envEWKB = env.EWKB()
+	} else {
+		__antithesis_instrumentation__.Notify(63659)
 	}
+	__antithesis_instrumentation__.Notify(63652)
 	paths, err := geos.VoronoiDiagram(g.EWKB(), envEWKB, tolerance, onlyEdges)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(63660)
 		return geo.Geometry{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(63661)
 	}
+	__antithesis_instrumentation__.Notify(63653)
 	gm, err := geo.ParseGeometryFromEWKB(paths)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(63662)
 		return geo.Geometry{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(63663)
 	}
+	__antithesis_instrumentation__.Notify(63654)
 	return gm, nil
 }

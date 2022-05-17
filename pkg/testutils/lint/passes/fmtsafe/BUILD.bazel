@@ -11,6 +11,7 @@ go_library(
     deps = [
         "//pkg/testutils/lint/passes/errwrap",
         "//pkg/util/log/logpb",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@org_golang_x_tools//go/analysis",
         "@org_golang_x_tools//go/analysis/passes/inspect",
@@ -31,6 +32,7 @@ go_test(
         "//pkg/build/bazel",
         "//pkg/testutils",
         "//pkg/testutils/skip",
+        "@com_antithesis_instrumentation//wrappers",
         "@org_golang_x_tools//go/analysis/analysistest",
     ],
 )

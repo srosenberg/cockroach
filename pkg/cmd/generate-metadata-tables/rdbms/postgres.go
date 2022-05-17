@@ -1,17 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// postgres.go has the implementations of DBMetadataConnection to
-// connect and retrieve schemas from postgres rdbms.
-
 package rdbms
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,25 +15,19 @@ import (
 
 const getServerVersion = `SELECT current_setting('server_version');`
 
-// Map for unimplemented types.
-// For reference see:
-// https://www.npgsql.org/doc/dev/type-representations.html
 var unimplementedEquivalencies = map[oid.Oid]oid.Oid{
-	// These types only exists in information_schema.
-	// cardinal_number in postgres is an INT4 but we already implemented columns as INT8.
-	oid.Oid(12653): oid.T_int8,        // cardinal_number
-	oid.Oid(12665): oid.T_text,        // yes_or_no
-	oid.Oid(12656): oid.T_text,        // character_data
-	oid.Oid(12658): oid.T_text,        // sql_identifier
-	oid.Oid(12663): oid.T_timestamptz, // time_stamp
 
-	// pg_catalog
-	oid.Oid(2277): oid.T__text, // anyarray
-	oid.Oid(3361): oid.T_bytea, // pg_ndistinct
-	oid.Oid(3402): oid.T_bytea, // pg_dependencies
-	oid.Oid(5017): oid.T_bytea, // pg_mcv_list
+	oid.Oid(12653): oid.T_int8,
+	oid.Oid(12665): oid.T_text,
+	oid.Oid(12656): oid.T_text,
+	oid.Oid(12658): oid.T_text,
+	oid.Oid(12663): oid.T_timestamptz,
 
-	// Other types
+	oid.Oid(2277): oid.T__text,
+	oid.Oid(3361): oid.T_bytea,
+	oid.Oid(3402): oid.T_bytea,
+	oid.Oid(5017): oid.T_bytea,
+
 	oid.T__aclitem:     oid.T__text,
 	oid.T_pg_node_tree: oid.T_text,
 	oid.T_xid:          oid.T_int8,
@@ -64,34 +47,57 @@ type pgMetadataConnection struct {
 }
 
 func postgresConnect(address, user, catalog string) (DBMetadataConnection, error) {
+	__antithesis_instrumentation__.Notify(40384)
 	conf, err := pgx.ParseConfig(fmt.Sprintf("postgresql://%s@%s?sslmode=disable", user, address))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40387)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(40388)
 	}
+	__antithesis_instrumentation__.Notify(40385)
 	conn, err := pgx.ConnectConfig(context.Background(), conf)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40389)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(40390)
 	}
+	__antithesis_instrumentation__.Notify(40386)
 
 	return pgMetadataConnection{conn, catalog}, nil
 }
 
 func (conn pgMetadataConnection) DescribeSchema(ctx context.Context) (*ColumnMetadataList, error) {
+	__antithesis_instrumentation__.Notify(40391)
 	var metadata []*columnMetadata
 	rows, err := conn.Query(ctx, sql.GetPGMetadataSQL, conn.catalog)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40394)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(40395)
 	}
+	__antithesis_instrumentation__.Notify(40392)
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(40396)
 		var table, column, dataTypeName string
 		var dataTypeOid uint32
 		if err := rows.Scan(&table, &column, &dataTypeName, &dataTypeOid); err != nil {
+			__antithesis_instrumentation__.Notify(40399)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(40400)
 		}
+		__antithesis_instrumentation__.Notify(40397)
 		mappedTypeName, mappedTypeOid, err := getMappedType(dataTypeName, dataTypeOid)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(40401)
 			panic(err)
+		} else {
+			__antithesis_instrumentation__.Notify(40402)
 		}
+		__antithesis_instrumentation__.Notify(40398)
 		row := new(columnMetadata)
 		row.tableName = table
 		row.columnName = column
@@ -99,38 +105,51 @@ func (conn pgMetadataConnection) DescribeSchema(ctx context.Context) (*ColumnMet
 		row.dataTypeOid = mappedTypeOid
 		metadata = append(metadata, row)
 	}
+	__antithesis_instrumentation__.Notify(40393)
 	return &ColumnMetadataList{data: metadata, exclusions: postgresExclusions}, nil
 }
 
 func (conn pgMetadataConnection) DatabaseVersion(
 	ctx context.Context,
 ) (pgVersion string, err error) {
+	__antithesis_instrumentation__.Notify(40403)
 	row := conn.QueryRow(ctx, getServerVersion)
 	err = row.Scan(&pgVersion)
 	return pgVersion, err
 }
 
-// getMappedType checks if the postgres type can be implemented as other crdb
-// implemented type.
 func getMappedType(dataTypeName string, dataTypeOid uint32) (string, uint32, error) {
+	__antithesis_instrumentation__.Notify(40404)
 	actualOid := oid.Oid(dataTypeOid)
 	mappedOid, ok := unimplementedEquivalencies[actualOid]
 	if !ok {
-		// No mapped type
+		__antithesis_instrumentation__.Notify(40408)
+
 		return dataTypeName, dataTypeOid, nil
+	} else {
+		__antithesis_instrumentation__.Notify(40409)
 	}
+	__antithesis_instrumentation__.Notify(40405)
 
 	_, ok = types.OidToType[mappedOid]
 	if !ok {
-		// not expected this to happen
+		__antithesis_instrumentation__.Notify(40410)
+
 		return "", 0, fmt.Errorf("type with oid %d is unimplemented", mappedOid)
+	} else {
+		__antithesis_instrumentation__.Notify(40411)
 	}
+	__antithesis_instrumentation__.Notify(40406)
 
 	typeName, ok := oid.TypeName[mappedOid]
 	if !ok {
-		// not expected this to happen
+		__antithesis_instrumentation__.Notify(40412)
+
 		return "", 0, fmt.Errorf("type name for oid %d does not exist in oid.TypeName map", mappedOid)
+	} else {
+		__antithesis_instrumentation__.Notify(40413)
 	}
+	__antithesis_instrumentation__.Notify(40407)
 
 	return typeName, uint32(mappedOid), nil
 }

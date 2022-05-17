@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,23 +26,26 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Grant adds privileges to users.
-// TODO(marc): open questions:
-// - should we have root always allowed and not present in the permissions list?
-// Privileges: GRANT on database/table/view.
-//   Notes: postgres requires the object owner.
-//          mysql requires the "grant option" and the same privileges, and sometimes superuser.
 func (p *planner) Grant(ctx context.Context, n *tree.Grant) (planNode, error) {
+	__antithesis_instrumentation__.Notify(492750)
 	grantOn := getGrantOnObject(n.Targets, sqltelemetry.IncIAMGrantPrivilegesCounter)
 
 	if err := privilege.ValidatePrivileges(n.Privileges, grantOn); err != nil {
+		__antithesis_instrumentation__.Notify(492753)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(492754)
 	}
+	__antithesis_instrumentation__.Notify(492751)
 
 	grantees, err := n.Grantees.ToSQLUsernames(p.SessionData(), security.UsernameValidation)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(492755)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(492756)
 	}
+	__antithesis_instrumentation__.Notify(492752)
 
 	return &changePrivilegesNode{
 		isGrant:         true,
@@ -59,6 +54,7 @@ func (p *planner) Grant(ctx context.Context, n *tree.Grant) (planNode, error) {
 		grantees:        grantees,
 		desiredprivs:    n.Privileges,
 		changePrivilege: func(privDesc *catpb.PrivilegeDescriptor, privileges privilege.List, grantee security.SQLUsername) {
+			__antithesis_instrumentation__.Notify(492757)
 			privDesc.Grant(grantee, privileges, n.WithGrantOption)
 		},
 		grantOn:          grantOn,
@@ -66,23 +62,26 @@ func (p *planner) Grant(ctx context.Context, n *tree.Grant) (planNode, error) {
 	}, nil
 }
 
-// Revoke removes privileges from users.
-// TODO(marc): open questions:
-// - should we have root always allowed and not present in the permissions list?
-// Privileges: GRANT on database/table/view.
-//   Notes: postgres requires the object owner.
-//          mysql requires the "grant option" and the same privileges, and sometimes superuser.
 func (p *planner) Revoke(ctx context.Context, n *tree.Revoke) (planNode, error) {
+	__antithesis_instrumentation__.Notify(492758)
 	grantOn := getGrantOnObject(n.Targets, sqltelemetry.IncIAMRevokePrivilegesCounter)
 
 	if err := privilege.ValidatePrivileges(n.Privileges, grantOn); err != nil {
+		__antithesis_instrumentation__.Notify(492761)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(492762)
 	}
+	__antithesis_instrumentation__.Notify(492759)
 
 	grantees, err := n.Grantees.ToSQLUsernames(p.SessionData(), security.UsernameValidation)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(492763)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(492764)
 	}
+	__antithesis_instrumentation__.Notify(492760)
 	return &changePrivilegesNode{
 		isGrant:         false,
 		withGrantOption: n.GrantOptionFor,
@@ -90,6 +89,7 @@ func (p *planner) Revoke(ctx context.Context, n *tree.Revoke) (planNode, error) 
 		grantees:        grantees,
 		desiredprivs:    n.Privileges,
 		changePrivilege: func(privDesc *catpb.PrivilegeDescriptor, privileges privilege.List, grantee security.SQLUsername) {
+			__antithesis_instrumentation__.Notify(492765)
 			privDesc.Revoke(grantee, privileges, grantOn, n.GrantOptionFor)
 		},
 		grantOn:          grantOn,
@@ -106,130 +106,230 @@ type changePrivilegesNode struct {
 	changePrivilege func(*catpb.PrivilegeDescriptor, privilege.List, security.SQLUsername)
 	grantOn         privilege.ObjectType
 
-	// granteesNameList is used for creating an AST node for alter default
-	// privileges inside changePrivilegesNode's startExec.
-	// This is required for getting the pre-normalized name to construct the AST.
 	granteesNameList tree.RoleSpecList
 }
 
-// ReadingOwnWrites implements the planNodeReadingOwnWrites interface.
-// This is because GRANT/REVOKE performs multiple KV operations on descriptors
-// and expects to see its own writes.
-func (n *changePrivilegesNode) ReadingOwnWrites() {}
+func (n *changePrivilegesNode) ReadingOwnWrites() { __antithesis_instrumentation__.Notify(492766) }
 
 func (n *changePrivilegesNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(492767)
 	ctx := params.ctx
 	p := params.p
 
-	if n.withGrantOption && !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.ValidateGrantOption) {
+	if n.withGrantOption && func() bool {
+		__antithesis_instrumentation__.Notify(492777)
+		return !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.ValidateGrantOption) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(492778)
 		return pgerror.Newf(pgcode.FeatureNotSupported,
 			"version %v must be finalized to use grant options",
 			clusterversion.ByKey(clusterversion.ValidateGrantOption))
+	} else {
+		__antithesis_instrumentation__.Notify(492779)
 	}
+	__antithesis_instrumentation__.Notify(492768)
 
-	if err := p.validateRoles(ctx, n.grantees, true /* isPublicValid */); err != nil {
+	if err := p.validateRoles(ctx, n.grantees, true); err != nil {
+		__antithesis_instrumentation__.Notify(492780)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(492781)
 	}
-	// The public role is not allowed to have grant options.
-	if n.isGrant && n.withGrantOption {
+	__antithesis_instrumentation__.Notify(492769)
+
+	if n.isGrant && func() bool {
+		__antithesis_instrumentation__.Notify(492782)
+		return n.withGrantOption == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(492783)
 		for _, grantee := range n.grantees {
+			__antithesis_instrumentation__.Notify(492784)
 			if grantee.IsPublicRole() {
+				__antithesis_instrumentation__.Notify(492785)
 				return pgerror.Newf(
 					pgcode.InvalidGrantOperation,
 					"grant options cannot be granted to %q role",
 					security.PublicRoleName(),
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(492786)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(492787)
 	}
+	__antithesis_instrumentation__.Notify(492770)
 
 	var err error
 	var descriptors []catalog.Descriptor
-	// DDL statements avoid the cache to avoid leases, and can view non-public descriptors.
-	// TODO(vivek): check if the cache can be used.
+
 	p.runWithOptions(resolveFlags{skipCache: true}, func() {
+		__antithesis_instrumentation__.Notify(492788)
 		descriptors, err = getDescriptorsFromTargetListForPrivilegeChange(ctx, p, n.targets)
 	})
+	__antithesis_instrumentation__.Notify(492771)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(492789)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(492790)
 	}
+	__antithesis_instrumentation__.Notify(492772)
 
 	if len(descriptors) == 0 {
+		__antithesis_instrumentation__.Notify(492791)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(492792)
 	}
+	__antithesis_instrumentation__.Notify(492773)
 
 	var events []eventLogEntry
 
-	// First, update the descriptors. We want to catch all errors before
-	// we update them in KV below.
 	b := p.txn.NewBatch()
 	for _, descriptor := range descriptors {
-		// Disallow privilege changes on system objects. For more context, see #43842.
+		__antithesis_instrumentation__.Notify(492793)
+
 		op := "REVOKE"
 		if n.isGrant {
+			__antithesis_instrumentation__.Notify(492799)
 			op = "GRANT"
+		} else {
+			__antithesis_instrumentation__.Notify(492800)
 		}
+		__antithesis_instrumentation__.Notify(492794)
 		if catalog.IsSystemDescriptor(descriptor) {
+			__antithesis_instrumentation__.Notify(492801)
 			return pgerror.Newf(pgcode.InsufficientPrivilege, "cannot %s on system object", op)
+		} else {
+			__antithesis_instrumentation__.Notify(492802)
 		}
+		__antithesis_instrumentation__.Notify(492795)
 
-		// The check for GRANT is only needed before the v22.1 upgrade is finalized.
-		// Otherwise, we check grant options later in this function.
 		if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.ValidateGrantOption) {
+			__antithesis_instrumentation__.Notify(492803)
 			if err := p.CheckPrivilege(ctx, descriptor, privilege.GRANT); err != nil {
+				__antithesis_instrumentation__.Notify(492804)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492805)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(492806)
 		}
+		__antithesis_instrumentation__.Notify(492796)
 
 		if len(n.desiredprivs) > 0 {
+			__antithesis_instrumentation__.Notify(492807)
 			grantPresent, allPresent := false, false
 			for _, priv := range n.desiredprivs {
-				// Only allow granting/revoking privileges that the requesting
-				// user themselves have on the descriptor.
+				__antithesis_instrumentation__.Notify(492813)
+
 				if err := p.CheckPrivilege(ctx, descriptor, priv); err != nil {
+					__antithesis_instrumentation__.Notify(492815)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(492816)
 				}
-				grantPresent = grantPresent || priv == privilege.GRANT
-				allPresent = allPresent || priv == privilege.ALL
+				__antithesis_instrumentation__.Notify(492814)
+				grantPresent = grantPresent || func() bool {
+					__antithesis_instrumentation__.Notify(492817)
+					return priv == privilege.GRANT == true
+				}() == true
+				allPresent = allPresent || func() bool {
+					__antithesis_instrumentation__.Notify(492818)
+					return priv == privilege.ALL == true
+				}() == true
 			}
+			__antithesis_instrumentation__.Notify(492808)
 			privileges := descriptor.GetPrivileges()
 
 			noticeMessage := ""
 			if p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.ValidateGrantOption) {
+				__antithesis_instrumentation__.Notify(492819)
 				err := p.CheckGrantOptionsForUser(ctx, descriptor, n.desiredprivs, p.User(), n.isGrant)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(492821)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(492822)
 				}
+				__antithesis_instrumentation__.Notify(492820)
 
-				// We only output the message for ALL privilege if it is being granted
-				// without the WITH GRANT OPTION flag if GRANT privilege is involved, we
-				// must always output the message
-				if allPresent && n.isGrant && !n.withGrantOption {
+				if allPresent && func() bool {
+					__antithesis_instrumentation__.Notify(492823)
+					return n.isGrant == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(492824)
+					return !n.withGrantOption == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(492825)
 					noticeMessage = "grant options were automatically applied but this behavior is deprecated"
-				} else if grantPresent {
-					noticeMessage = "the GRANT privilege is deprecated"
-				}
-			}
-
-			for _, grantee := range n.grantees {
-				n.changePrivilege(privileges, n.desiredprivs, grantee)
-
-				// TODO (sql-exp): remove the rest of this loop in 22.2.
-				granteeHasGrantPriv := privileges.CheckPrivilege(grantee, privilege.GRANT)
-
-				if granteeHasGrantPriv && n.isGrant && !n.withGrantOption && len(noticeMessage) == 0 {
-					noticeMessage = "grant options were automatically applied but this behavior is deprecated"
-				}
-				if !n.withGrantOption && (grantPresent || allPresent || (granteeHasGrantPriv && n.isGrant)) {
-					if n.isGrant {
-						privileges.GrantPrivilegeToGrantOptions(grantee, true /*isGrant*/)
+				} else {
+					__antithesis_instrumentation__.Notify(492826)
+					if grantPresent {
+						__antithesis_instrumentation__.Notify(492827)
+						noticeMessage = "the GRANT privilege is deprecated"
 					} else {
-						privileges.GrantPrivilegeToGrantOptions(grantee, false /*isGrant*/)
+						__antithesis_instrumentation__.Notify(492828)
 					}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(492829)
 			}
+			__antithesis_instrumentation__.Notify(492809)
+
+			for _, grantee := range n.grantees {
+				__antithesis_instrumentation__.Notify(492830)
+				n.changePrivilege(privileges, n.desiredprivs, grantee)
+
+				granteeHasGrantPriv := privileges.CheckPrivilege(grantee, privilege.GRANT)
+
+				if granteeHasGrantPriv && func() bool {
+					__antithesis_instrumentation__.Notify(492832)
+					return n.isGrant == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(492833)
+					return !n.withGrantOption == true
+				}() == true && func() bool {
+					__antithesis_instrumentation__.Notify(492834)
+					return len(noticeMessage) == 0 == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(492835)
+					noticeMessage = "grant options were automatically applied but this behavior is deprecated"
+				} else {
+					__antithesis_instrumentation__.Notify(492836)
+				}
+				__antithesis_instrumentation__.Notify(492831)
+				if !n.withGrantOption && func() bool {
+					__antithesis_instrumentation__.Notify(492837)
+					return (grantPresent || func() bool {
+						__antithesis_instrumentation__.Notify(492838)
+						return allPresent == true
+					}() == true || func() bool {
+						__antithesis_instrumentation__.Notify(492839)
+						return (granteeHasGrantPriv && func() bool {
+							__antithesis_instrumentation__.Notify(492840)
+							return n.isGrant == true
+						}() == true) == true
+					}() == true) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(492841)
+					if n.isGrant {
+						__antithesis_instrumentation__.Notify(492842)
+						privileges.GrantPrivilegeToGrantOptions(grantee, true)
+					} else {
+						__antithesis_instrumentation__.Notify(492843)
+						privileges.GrantPrivilegeToGrantOptions(grantee, false)
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(492844)
+				}
+			}
+			__antithesis_instrumentation__.Notify(492810)
 
 			if len(noticeMessage) > 0 {
+				__antithesis_instrumentation__.Notify(492845)
 				params.p.BufferClientNotice(
 					ctx,
 					errors.WithHint(
@@ -237,43 +337,63 @@ func (n *changePrivilegesNode) startExec(params runParams) error {
 						"please use WITH GRANT OPTION",
 					),
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(492846)
 			}
+			__antithesis_instrumentation__.Notify(492811)
 
-			// Ensure superusers have exactly the allowed privilege set.
-			// Postgres does not actually enforce this, instead of checking that
-			// superusers have all the privileges, Postgres allows superusers to
-			// bypass privilege checks.
 			err = catprivilege.ValidateSuperuserPrivileges(*privileges, descriptor, n.grantOn)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(492847)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492848)
 			}
+			__antithesis_instrumentation__.Notify(492812)
 
-			// Validate privilege descriptors directly as the db/table level Validate
-			// may fix up the descriptor.
 			err = catprivilege.Validate(*privileges, descriptor, n.grantOn)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(492849)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492850)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(492851)
 		}
+		__antithesis_instrumentation__.Notify(492797)
 
 		eventDetails := eventpb.CommonSQLPrivilegeEventDetails{}
 		if n.isGrant {
+			__antithesis_instrumentation__.Notify(492852)
 			eventDetails.GrantedPrivileges = n.desiredprivs.SortedNames()
 		} else {
+			__antithesis_instrumentation__.Notify(492853)
 			eventDetails.RevokedPrivileges = n.desiredprivs.SortedNames()
 		}
+		__antithesis_instrumentation__.Notify(492798)
 
 		switch d := descriptor.(type) {
 		case *dbdesc.Mutable:
+			__antithesis_instrumentation__.Notify(492854)
 			if err := p.writeDatabaseChangeToBatch(ctx, d, b); err != nil {
+				__antithesis_instrumentation__.Notify(492864)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492865)
 			}
+			__antithesis_instrumentation__.Notify(492855)
 			if err := p.createNonDropDatabaseChangeJob(ctx, d.ID,
 				fmt.Sprintf("updating privileges for database %d", d.ID)); err != nil {
+				__antithesis_instrumentation__.Notify(492866)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492867)
 			}
+			__antithesis_instrumentation__.Notify(492856)
 			for _, grantee := range n.grantees {
-				privs := eventDetails // copy the granted/revoked privilege list.
+				__antithesis_instrumentation__.Notify(492868)
+				privs := eventDetails
 				privs.Grantee = grantee.Normalized()
 				events = append(events, eventLogEntry{
 					targetID: int32(d.ID),
@@ -284,124 +404,175 @@ func (n *changePrivilegesNode) startExec(params runParams) error {
 			}
 
 		case *tabledesc.Mutable:
-			// TODO (lucy): This should probably have a single consolidated job like
-			// DROP DATABASE.
+			__antithesis_instrumentation__.Notify(492857)
+
 			if err := p.createOrUpdateSchemaChangeJob(
 				ctx, d,
 				fmt.Sprintf("updating privileges for table %d", d.ID),
 				descpb.InvalidMutationID,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(492869)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492870)
 			}
+			__antithesis_instrumentation__.Notify(492858)
 			if !d.Dropped() {
+				__antithesis_instrumentation__.Notify(492871)
 				if err := p.writeSchemaChangeToBatch(ctx, d, b); err != nil {
+					__antithesis_instrumentation__.Notify(492872)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(492873)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(492874)
 			}
+			__antithesis_instrumentation__.Notify(492859)
 			for _, grantee := range n.grantees {
-				privs := eventDetails // copy the granted/revoked privilege list.
+				__antithesis_instrumentation__.Notify(492875)
+				privs := eventDetails
 				privs.Grantee = grantee.Normalized()
 				events = append(events, eventLogEntry{
 					targetID: int32(d.ID),
 					event: &eventpb.ChangeTablePrivilege{
 						CommonSQLPrivilegeEventDetails: privs,
-						TableName:                      d.Name, // FIXME
+						TableName:                      d.Name,
 					}})
 			}
 		case *typedesc.Mutable:
+			__antithesis_instrumentation__.Notify(492860)
 			err := p.writeTypeSchemaChange(ctx, d, fmt.Sprintf("updating privileges for type %d", d.ID))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(492876)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492877)
 			}
+			__antithesis_instrumentation__.Notify(492861)
 			for _, grantee := range n.grantees {
-				privs := eventDetails // copy the granted/revoked privilege list.
+				__antithesis_instrumentation__.Notify(492878)
+				privs := eventDetails
 				privs.Grantee = grantee.Normalized()
 				events = append(events, eventLogEntry{
 					targetID: int32(d.ID),
 					event: &eventpb.ChangeTypePrivilege{
 						CommonSQLPrivilegeEventDetails: privs,
-						TypeName:                       d.Name, // FIXME
+						TypeName:                       d.Name,
 					}})
 			}
 		case *schemadesc.Mutable:
+			__antithesis_instrumentation__.Notify(492862)
 			if err := p.writeSchemaDescChange(
 				ctx,
 				d,
 				fmt.Sprintf("updating privileges for schema %d", d.ID),
 			); err != nil {
+				__antithesis_instrumentation__.Notify(492879)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(492880)
 			}
+			__antithesis_instrumentation__.Notify(492863)
 			for _, grantee := range n.grantees {
-				privs := eventDetails // copy the granted/revoked privilege list.
+				__antithesis_instrumentation__.Notify(492881)
+				privs := eventDetails
 				privs.Grantee = grantee.Normalized()
 				events = append(events, eventLogEntry{
 					targetID: int32(d.ID),
 					event: &eventpb.ChangeSchemaPrivilege{
 						CommonSQLPrivilegeEventDetails: privs,
-						SchemaName:                     d.Name, // FIXME
+						SchemaName:                     d.Name,
 					}})
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(492774)
 
-	// Now update the descriptors transactionally.
 	if err := p.txn.Run(ctx, b); err != nil {
+		__antithesis_instrumentation__.Notify(492882)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(492883)
 	}
+	__antithesis_instrumentation__.Notify(492775)
 
-	// Record the privilege changes in the event log. This is an
-	// auditable log event and is recorded in the same transaction as
-	// the table descriptor update.
 	if err := params.p.logEvents(params.ctx, events...); err != nil {
+		__antithesis_instrumentation__.Notify(492884)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(492885)
 	}
+	__antithesis_instrumentation__.Notify(492776)
 	return nil
 }
 
-func (*changePrivilegesNode) Next(runParams) (bool, error) { return false, nil }
-func (*changePrivilegesNode) Values() tree.Datums          { return tree.Datums{} }
-func (*changePrivilegesNode) Close(context.Context)        {}
+func (*changePrivilegesNode) Next(runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(492886)
+	return false, nil
+}
+func (*changePrivilegesNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(492887)
+	return tree.Datums{}
+}
+func (*changePrivilegesNode) Close(context.Context) { __antithesis_instrumentation__.Notify(492888) }
 
-// getGrantOnObject returns the type of object being granted on based on the TargetList.
-// getGrantOnObject also calls incIAMFunc with the object type name.
 func getGrantOnObject(targets tree.TargetList, incIAMFunc func(on string)) privilege.ObjectType {
+	__antithesis_instrumentation__.Notify(492889)
 	switch {
 	case targets.Databases != nil:
+		__antithesis_instrumentation__.Notify(492890)
 		incIAMFunc(sqltelemetry.OnDatabase)
 		return privilege.Database
 	case targets.AllTablesInSchema:
+		__antithesis_instrumentation__.Notify(492891)
 		incIAMFunc(sqltelemetry.OnAllTablesInSchema)
 		return privilege.Table
 	case targets.Schemas != nil:
+		__antithesis_instrumentation__.Notify(492892)
 		incIAMFunc(sqltelemetry.OnSchema)
 		return privilege.Schema
 	case targets.Types != nil:
+		__antithesis_instrumentation__.Notify(492893)
 		incIAMFunc(sqltelemetry.OnType)
 		return privilege.Type
 	default:
+		__antithesis_instrumentation__.Notify(492894)
 		incIAMFunc(sqltelemetry.OnTable)
 		return privilege.Table
 	}
 }
 
-// validateRoles checks that all the roles are valid users.
-// isPublicValid determines whether or not Public is a valid role.
 func (p *planner) validateRoles(
 	ctx context.Context, roles []security.SQLUsername, isPublicValid bool,
 ) error {
+	__antithesis_instrumentation__.Notify(492895)
 	users, err := p.GetAllRoles(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(492899)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(492900)
 	}
+	__antithesis_instrumentation__.Notify(492896)
 	if isPublicValid {
-		users[security.PublicRoleName()] = true // isRole
+		__antithesis_instrumentation__.Notify(492901)
+		users[security.PublicRoleName()] = true
+	} else {
+		__antithesis_instrumentation__.Notify(492902)
 	}
+	__antithesis_instrumentation__.Notify(492897)
 	for i, grantee := range roles {
+		__antithesis_instrumentation__.Notify(492903)
 		if _, ok := users[grantee]; !ok {
+			__antithesis_instrumentation__.Notify(492904)
 			sqlName := tree.Name(roles[i].Normalized())
 			return errors.Errorf("user or role %s does not exist", &sqlName)
+		} else {
+			__antithesis_instrumentation__.Notify(492905)
 		}
 	}
+	__antithesis_instrumentation__.Notify(492898)
 
 	return nil
 }

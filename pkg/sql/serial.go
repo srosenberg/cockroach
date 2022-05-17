@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -29,26 +21,16 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// uniqueRowIDExpr is used as default expression when
-// SessionNormalizationMode is SerialUsesRowID.
 var uniqueRowIDExpr = &tree.FuncExpr{Func: tree.WrapFunction("unique_rowid")}
 
-// unorderedUniqueRowIDExpr is used when SessionNormalizationMode is
-// SerialUsesUnorderedRowID.
 var unorderedUniqueRowIDExpr = &tree.FuncExpr{Func: tree.WrapFunction("unordered_unique_rowid")}
 
-// realSequenceOpts (nil) is used when SessionNormalizationMode is
-// SerialUsesSQLSequences.
 var realSequenceOpts tree.SequenceOptions
 
-// virtualSequenceOpts is used when SessionNormalizationMode is
-// SerialUsesVirtualSequences.
 var virtualSequenceOpts = tree.SequenceOptions{
 	tree.SequenceOption{Name: tree.SeqOptVirtual},
 }
 
-// cachedSequencesCacheSize is the default cache size used when
-// SessionNormalizationMode is SerialUsesCachedSQLSequences.
 var cachedSequencesCacheSizeSetting = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"sql.defaults.serial_sequences_cache_size",
@@ -58,48 +40,54 @@ var cachedSequencesCacheSizeSetting = settings.RegisterIntSetting(
 	settings.PositiveInt,
 )
 
-// generateSequenceForSerial generates a new sequence
-// which will be used when creating a SERIAL column.
-// This is a helper method for generateSerialInColumnDef.
 func (p *planner) generateSequenceForSerial(
 	ctx context.Context, d *tree.ColumnTableDef, tableName *tree.TableName,
 ) (*tree.TableName, *tree.FuncExpr, catalog.DatabaseDescriptor, catalog.SchemaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(617645)
 	log.VEventf(ctx, 2, "creating sequence for new column %q of %q", d, tableName)
 
-	// We want a sequence; for this we need to generate a new sequence name.
-	// The constraint on the name is that an object of this name must not exist already.
 	seqName := tree.NewTableNameWithSchema(
 		tableName.CatalogName,
 		tableName.SchemaName,
 		tree.Name(tableName.Table()+"_"+string(d.Name)+"_seq"))
 
-	// The first step in the search is to prepare the seqName to fill in
-	// the catalog/schema parent. This is what ResolveTargetObject does.
-	//
-	// Here and below we skip the cache because name resolution using
-	// the cache does not work (well) if the txn retries and the
-	// descriptor was written already in an early txn attempt.
 	un := seqName.ToUnresolvedObjectName()
 	dbDesc, schemaDesc, prefix, err := p.ResolveTargetObject(ctx, un)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(617648)
 		return nil, nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(617649)
 	}
+	__antithesis_instrumentation__.Notify(617646)
 	seqName.ObjectNamePrefix = prefix
 
-	// Now skip over all names that are already taken.
 	nameBase := seqName.ObjectName
 	for i := 0; ; i++ {
+		__antithesis_instrumentation__.Notify(617650)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(617653)
 			seqName.ObjectName = tree.Name(fmt.Sprintf("%s%d", nameBase, i))
+		} else {
+			__antithesis_instrumentation__.Notify(617654)
 		}
-		res, err := p.resolveUncachedTableDescriptor(ctx, seqName, false /*required*/, tree.ResolveAnyTableKind)
+		__antithesis_instrumentation__.Notify(617651)
+		res, err := p.resolveUncachedTableDescriptor(ctx, seqName, false, tree.ResolveAnyTableKind)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(617655)
 			return nil, nil, nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(617656)
 		}
+		__antithesis_instrumentation__.Notify(617652)
 		if res == nil {
+			__antithesis_instrumentation__.Notify(617657)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(617658)
 		}
 	}
+	__antithesis_instrumentation__.Notify(617647)
 
 	defaultExpr := &tree.FuncExpr{
 		Func:  tree.WrapFunction("nextval"),
@@ -109,8 +97,6 @@ func (p *planner) generateSequenceForSerial(
 	return seqName, defaultExpr, dbDesc, schemaDesc, nil
 }
 
-// generateSerialInColumnDef create a sequence for a new column.
-// This is a helper method for processGeneratedAsIdentityColumnDef and processSerialInColumnDef.
 func (p *planner) generateSerialInColumnDef(
 	ctx context.Context,
 	d *tree.ColumnTableDef,
@@ -123,38 +109,38 @@ func (p *planner) generateSerialInColumnDef(
 	tree.SequenceOptions,
 	error,
 ) {
+	__antithesis_instrumentation__.Notify(617659)
 
 	if err := assertValidSerialColumnDef(d, tableName); err != nil {
+		__antithesis_instrumentation__.Notify(617666)
 		return nil, nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(617667)
 	}
+	__antithesis_instrumentation__.Notify(617660)
 
 	newSpec := *d
 
-	// Make the column non-nullable in all cases. PostgreSQL requires
-	// this.
 	newSpec.Nullable.Nullability = tree.NotNull
 
-	// Clear the IsSerial bit now that it's been remapped.
 	newSpec.IsSerial = false
 
 	defType, err := tree.ResolveType(ctx, d.Type, p.semaCtx.GetTypeResolver())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(617668)
 		return nil, nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(617669)
 	}
+	__antithesis_instrumentation__.Notify(617661)
 
-	// Find the integer type that corresponds to the specification.
 	switch serialNormalizationMode {
 	case sessiondatapb.SerialUsesRowID, sessiondatapb.SerialUsesUnorderedRowID, sessiondatapb.SerialUsesVirtualSequences:
-		// If unique_rowid() or unordered_unique_rowid() or virtual sequences are
-		// requested, we have no choice but to use the full-width integer type, no
-		// matter which serial size was requested, otherwise the values will not
-		// fit.
-		//
-		// TODO(bob): Follow up with https://github.com/cockroachdb/cockroach/issues/32534
-		// when the default is inverted to determine if we should also
-		// switch this behavior around.
+		__antithesis_instrumentation__.Notify(617670)
+
 		upgradeType := types.Int
 		if defType.Width() < upgradeType.Width() {
+			__antithesis_instrumentation__.Notify(617674)
 			p.BufferClientNotice(
 				ctx,
 				errors.WithHintf(
@@ -168,49 +154,73 @@ func (p *planner) generateSerialInColumnDef(
 					docs.URL("serial.html"),
 				),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(617675)
 		}
+		__antithesis_instrumentation__.Notify(617671)
 		newSpec.Type = upgradeType
 
 	case sessiondatapb.SerialUsesSQLSequences, sessiondatapb.SerialUsesCachedSQLSequences:
-		// With real sequences we can use the requested type as-is.
+		__antithesis_instrumentation__.Notify(617672)
 
 	default:
+		__antithesis_instrumentation__.Notify(617673)
 		return nil, nil, nil, nil,
 			errors.AssertionFailedf("unknown serial normalization mode: %s", serialNormalizationMode)
 	}
+	__antithesis_instrumentation__.Notify(617662)
 	telemetry.Inc(sqltelemetry.SerialColumnNormalizationCounter(
 		defType.Name(), serialNormalizationMode.String()))
 
 	if serialNormalizationMode == sessiondatapb.SerialUsesRowID {
-		// We're not constructing a sequence for this SERIAL column.
-		// Use the "old school" CockroachDB default.
+		__antithesis_instrumentation__.Notify(617676)
+
 		newSpec.DefaultExpr.Expr = uniqueRowIDExpr
 		return &newSpec, nil, nil, nil, nil
-	} else if serialNormalizationMode == sessiondatapb.SerialUsesUnorderedRowID {
-		newSpec.DefaultExpr.Expr = unorderedUniqueRowIDExpr
-		return &newSpec, nil, nil, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(617677)
+		if serialNormalizationMode == sessiondatapb.SerialUsesUnorderedRowID {
+			__antithesis_instrumentation__.Notify(617678)
+			newSpec.DefaultExpr.Expr = unorderedUniqueRowIDExpr
+			return &newSpec, nil, nil, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(617679)
+		}
 	}
+	__antithesis_instrumentation__.Notify(617663)
 
 	log.VEventf(ctx, 2, "creating sequence for new column %q of %q", d, tableName)
 
 	seqName, defaultExpr, dbDesc, schemaDesc, err := p.generateSequenceForSerial(ctx, d, tableName)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(617680)
 		return nil, nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(617681)
 	}
+	__antithesis_instrumentation__.Notify(617664)
 
 	seqType := ""
 	seqOpts := realSequenceOpts
 	if serialNormalizationMode == sessiondatapb.SerialUsesVirtualSequences {
+		__antithesis_instrumentation__.Notify(617682)
 		seqType = "virtual "
 		seqOpts = virtualSequenceOpts
-	} else if serialNormalizationMode == sessiondatapb.SerialUsesCachedSQLSequences {
-		seqType = "cached "
+	} else {
+		__antithesis_instrumentation__.Notify(617683)
+		if serialNormalizationMode == sessiondatapb.SerialUsesCachedSQLSequences {
+			__antithesis_instrumentation__.Notify(617684)
+			seqType = "cached "
 
-		value := cachedSequencesCacheSizeSetting.Get(&p.ExecCfg().Settings.SV)
-		seqOpts = tree.SequenceOptions{
-			tree.SequenceOption{Name: tree.SeqOptCache, IntVal: &value},
+			value := cachedSequencesCacheSizeSetting.Get(&p.ExecCfg().Settings.SV)
+			seqOpts = tree.SequenceOptions{
+				tree.SequenceOption{Name: tree.SeqOptCache, IntVal: &value},
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(617685)
 		}
 	}
+	__antithesis_instrumentation__.Notify(617665)
 	log.VEventf(ctx, 2, "new column %q of %q will have %s sequence name %q and default %q",
 		d, tableName, seqType, seqName, defaultExpr)
 
@@ -221,10 +231,6 @@ func (p *planner) generateSerialInColumnDef(
 	}, seqName, seqOpts, nil
 }
 
-// processGeneratedAsIdentityColumnDef provide info of a general sequence for a new column.
-// It is invoked when GENERATED BY DEFAULT / ALWAYS AS IDENTITY is specified
-// for a column under CREATE TABLE.
-// This is a helper method for processSerialLikeInColumnDef.
 func (p *planner) processGeneratedAsIdentityColumnDef(
 	ctx context.Context, d *tree.ColumnTableDef, tableName *tree.TableName,
 ) (
@@ -234,24 +240,20 @@ func (p *planner) processGeneratedAsIdentityColumnDef(
 	tree.SequenceOptions,
 	error,
 ) {
-	// To generate a general sequence is the same as generate a serial
-	// with serial_normalization being 'sql_sequence'.
+	__antithesis_instrumentation__.Notify(617686)
+
 	curSerialNormalizationMode := sessiondatapb.SerialUsesSQLSequences
 	newSpecPtr, catalogPrefixPtr, seqName, seqOpts, err := p.generateSerialInColumnDef(ctx, d, tableName, curSerialNormalizationMode)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(617688)
 		return nil, nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(617689)
 	}
+	__antithesis_instrumentation__.Notify(617687)
 	return newSpecPtr, catalogPrefixPtr, seqName, seqOpts, nil
 }
 
-// processSerialInColumnDef provide info of a sequence for a new column.
-// It is invoked when SERIAL is specified
-// for a column under CREATE TABLE.
-// This is a helper method for processSerialLikeInColumnDef.
-//
-// The type of the generated sequence relies on the serial_normalization variable in session Data
-// You can set this session data by "SET serial_normalization = your_mode".
-// Reference: https://www.cockroachlabs.com/docs/stable/set-vars.html.
 func (p *planner) processSerialInColumnDef(
 	ctx context.Context, d *tree.ColumnTableDef, tableName *tree.TableName,
 ) (
@@ -261,20 +263,19 @@ func (p *planner) processSerialInColumnDef(
 	tree.SequenceOptions,
 	error,
 ) {
+	__antithesis_instrumentation__.Notify(617690)
 	serialNormalizationMode := p.SessionData().SerialNormalizationMode
 	newSpecPtr, catalogPrefixPtr, seqName, seqOpts, err := p.generateSerialInColumnDef(ctx, d, tableName, serialNormalizationMode)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(617692)
 		return nil, nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(617693)
 	}
+	__antithesis_instrumentation__.Notify(617691)
 	return newSpecPtr, catalogPrefixPtr, seqName, seqOpts, nil
 }
 
-// processSerialLikeInColumnDef analyzes a column definition and determines
-// whether to use a sequence if the requested type is SERIAL-like.
-// If a sequence must be created, it returns an TableName to use
-// to create the new sequence and the DatabaseDescriptor of the
-// parent database where it should be created.
-// The ColumnTableDef is not mutated in-place; instead a new one is returned.
 func (p *planner) processSerialLikeInColumnDef(
 	ctx context.Context, d *tree.ColumnTableDef, tableName *tree.TableName,
 ) (
@@ -284,6 +285,7 @@ func (p *planner) processSerialLikeInColumnDef(
 	tree.SequenceOptions,
 	error,
 ) {
+	__antithesis_instrumentation__.Notify(617694)
 	var newSpecPtr *tree.ColumnTableDef
 	var catalogPrefixPtr *catalog.ResolvedObjectPrefix
 	var seqName *tree.TableName
@@ -291,81 +293,107 @@ func (p *planner) processSerialLikeInColumnDef(
 	var err error
 
 	if d.IsSerial {
+		__antithesis_instrumentation__.Notify(617696)
 		newSpecPtr, catalogPrefixPtr, seqName, seqOpts, err = p.processSerialInColumnDef(ctx, d, tableName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(617697)
 			return nil, nil, nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(617698)
 		}
 
-	} else if d.GeneratedIdentity.IsGeneratedAsIdentity {
-		newSpecPtr, catalogPrefixPtr, seqName, seqOpts, err = p.processGeneratedAsIdentityColumnDef(ctx, d, tableName)
-		if d.GeneratedIdentity.SeqOptions != nil {
-			seqOpts = d.GeneratedIdentity.SeqOptions
-		}
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
 	} else {
-		return d, nil, nil, nil, nil
+		__antithesis_instrumentation__.Notify(617699)
+		if d.GeneratedIdentity.IsGeneratedAsIdentity {
+			__antithesis_instrumentation__.Notify(617700)
+			newSpecPtr, catalogPrefixPtr, seqName, seqOpts, err = p.processGeneratedAsIdentityColumnDef(ctx, d, tableName)
+			if d.GeneratedIdentity.SeqOptions != nil {
+				__antithesis_instrumentation__.Notify(617702)
+				seqOpts = d.GeneratedIdentity.SeqOptions
+			} else {
+				__antithesis_instrumentation__.Notify(617703)
+			}
+			__antithesis_instrumentation__.Notify(617701)
+			if err != nil {
+				__antithesis_instrumentation__.Notify(617704)
+				return nil, nil, nil, nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(617705)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(617706)
+			return d, nil, nil, nil, nil
+		}
 	}
+	__antithesis_instrumentation__.Notify(617695)
 	return newSpecPtr, catalogPrefixPtr, seqName, seqOpts, nil
 }
 
-// SimplifySerialInColumnDefWithRowID analyzes a column definition and
-// simplifies any use of SERIAL as if SerialNormalizationMode was set
-// to SerialUsesRowID. No sequence needs to be created.
-//
-// This is currently used by bulk I/O import statements which do not
-// (yet?) support customization of the SERIAL behavior.
 func SimplifySerialInColumnDefWithRowID(
 	ctx context.Context, d *tree.ColumnTableDef, tableName *tree.TableName,
 ) error {
+	__antithesis_instrumentation__.Notify(617707)
 	if !d.IsSerial {
-		// Column is not SERIAL: nothing to do.
+		__antithesis_instrumentation__.Notify(617710)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(617711)
 	}
+	__antithesis_instrumentation__.Notify(617708)
 
 	if err := assertValidSerialColumnDef(d, tableName); err != nil {
+		__antithesis_instrumentation__.Notify(617712)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(617713)
 	}
+	__antithesis_instrumentation__.Notify(617709)
 
-	// Make the column non-nullable in all cases. PostgreSQL requires
-	// this.
 	d.Nullable.Nullability = tree.NotNull
 
-	// We're not constructing a sequence for this SERIAL column.
-	// Use the "old school" CockroachDB default.
 	d.Type = types.Int
 	d.DefaultExpr.Expr = uniqueRowIDExpr
 
-	// Clear the IsSerial bit now that it's been remapped.
 	d.IsSerial = false
 
 	return nil
 }
 
 func assertValidSerialColumnDef(d *tree.ColumnTableDef, tableName *tree.TableName) error {
+	__antithesis_instrumentation__.Notify(617714)
 	if d.HasDefaultExpr() {
-		// SERIAL implies a new default expression, we can't have one to
-		// start with. This is the error produced by pg in such case.
+		__antithesis_instrumentation__.Notify(617718)
+
 		return pgerror.Newf(pgcode.Syntax,
 			"multiple default values specified for column %q of table %q",
 			tree.ErrString(&d.Name), tree.ErrString(tableName))
+	} else {
+		__antithesis_instrumentation__.Notify(617719)
 	}
+	__antithesis_instrumentation__.Notify(617715)
 
 	if d.Nullable.Nullability == tree.Null {
-		// SERIAL implies a non-NULL column, we can't accept a nullability
-		// spec. This is the error produced by pg in such case.
+		__antithesis_instrumentation__.Notify(617720)
+
 		return pgerror.Newf(pgcode.Syntax,
 			"conflicting NULL/NOT NULL declarations for column %q of table %q",
 			tree.ErrString(&d.Name), tree.ErrString(tableName))
+	} else {
+		__antithesis_instrumentation__.Notify(617721)
 	}
+	__antithesis_instrumentation__.Notify(617716)
 
 	if d.Computed.Expr != nil {
-		// SERIAL cannot be a computed column.
+		__antithesis_instrumentation__.Notify(617722)
+
 		return pgerror.Newf(pgcode.Syntax,
 			"SERIAL column %q of table %q cannot be computed",
 			tree.ErrString(&d.Name), tree.ErrString(tableName))
+	} else {
+		__antithesis_instrumentation__.Notify(617723)
 	}
+	__antithesis_instrumentation__.Notify(617717)
 
 	return nil
 }

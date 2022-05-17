@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,6 +20,7 @@ import (
 func initColumnBackfillerSpec(
 	desc descpb.TableDescriptor, duration time.Duration, chunkSize int64, readAsOf hlc.Timestamp,
 ) (execinfrapb.BackfillerSpec, error) {
+	__antithesis_instrumentation__.Notify(467601)
 	return execinfrapb.BackfillerSpec{
 		Table:     desc,
 		Duration:  duration,
@@ -44,6 +37,7 @@ func initIndexBackfillerSpec(
 	chunkSize int64,
 	indexesToBackfill []descpb.IndexID,
 ) (execinfrapb.BackfillerSpec, error) {
+	__antithesis_instrumentation__.Notify(467602)
 	return execinfrapb.BackfillerSpec{
 		Table:                 desc,
 		WriteAsOf:             writeAsOf,
@@ -61,6 +55,7 @@ func initIndexBackfillMergerSpec(
 	temporaryIndexes []descpb.IndexID,
 	mergeTimestamp hlc.Timestamp,
 ) (execinfrapb.IndexBackfillMergerSpec, error) {
+	__antithesis_instrumentation__.Notify(467603)
 	return execinfrapb.IndexBackfillMergerSpec{
 		Table:            desc,
 		AddedIndexes:     addedIndexes,
@@ -69,20 +64,23 @@ func initIndexBackfillMergerSpec(
 	}, nil
 }
 
-// createBackfiller generates a plan consisting of index/column backfiller
-// processors, one for each node that has spans that we are reading. The plan is
-// finalized.
 func (dsp *DistSQLPlanner) createBackfillerPhysicalPlan(
 	ctx context.Context, planCtx *PlanningCtx, spec execinfrapb.BackfillerSpec, spans []roachpb.Span,
 ) (*PhysicalPlan, error) {
+	__antithesis_instrumentation__.Notify(467604)
 	spanPartitions, err := dsp.PartitionSpans(ctx, planCtx, spans)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(467607)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(467608)
 	}
+	__antithesis_instrumentation__.Notify(467605)
 
 	p := planCtx.NewPhysicalPlan()
 	p.ResultRouters = make([]physicalplan.ProcessorIdx, len(spanPartitions))
 	for i, sp := range spanPartitions {
+		__antithesis_instrumentation__.Notify(467609)
 		ib := &execinfrapb.BackfillerSpec{}
 		*ib = spec
 		ib.InitialSplits = int32(len(spanPartitions))
@@ -100,65 +98,87 @@ func (dsp *DistSQLPlanner) createBackfillerPhysicalPlan(
 		pIdx := p.AddProcessor(proc)
 		p.ResultRouters[i] = pIdx
 	}
+	__antithesis_instrumentation__.Notify(467606)
 	dsp.FinalizePlan(planCtx, p)
 	return p, nil
 }
 
-// createIndexBackfillerMergePhysicalPlan generates a plan consisting
-// of index merger processors, one for each node that has spans that
-// we are reading. The plan is finalized.
 func (dsp *DistSQLPlanner) createIndexBackfillerMergePhysicalPlan(
 	ctx context.Context,
 	planCtx *PlanningCtx,
 	spec execinfrapb.IndexBackfillMergerSpec,
 	spans [][]roachpb.Span,
 ) (*PhysicalPlan, error) {
+	__antithesis_instrumentation__.Notify(467610)
 
 	var n int
 	for _, sp := range spans {
+		__antithesis_instrumentation__.Notify(467616)
 		for range sp {
+			__antithesis_instrumentation__.Notify(467617)
 			n++
 		}
 	}
+	__antithesis_instrumentation__.Notify(467611)
 	indexSpans := make([]roachpb.Span, 0, n)
 	spanIdxs := make([]spanAndIndex, 0, n)
 	spanIdxTree := interval.NewTree(interval.ExclusiveOverlapper)
 	for i := range spans {
+		__antithesis_instrumentation__.Notify(467618)
 		for j := range spans[i] {
+			__antithesis_instrumentation__.Notify(467619)
 			indexSpans = append(indexSpans, spans[i][j])
 			spanIdxs = append(spanIdxs, spanAndIndex{Span: spans[i][j], idx: i})
-			if err := spanIdxTree.Insert(&spanIdxs[len(spanIdxs)-1], true /* fast */); err != nil {
+			if err := spanIdxTree.Insert(&spanIdxs[len(spanIdxs)-1], true); err != nil {
+				__antithesis_instrumentation__.Notify(467620)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(467621)
 			}
 
 		}
 	}
+	__antithesis_instrumentation__.Notify(467612)
 	spanIdxTree.AdjustRanges()
 	getIndex := func(sp roachpb.Span) (idx int) {
+		__antithesis_instrumentation__.Notify(467622)
 		if !spanIdxTree.DoMatching(func(i interval.Interface) (done bool) {
+			__antithesis_instrumentation__.Notify(467624)
 			idx = i.(*spanAndIndex).idx
 			return true
 		}, sp.AsRange()) {
+			__antithesis_instrumentation__.Notify(467625)
 			panic(errors.AssertionFailedf("no matching index found for span: %s", sp))
+		} else {
+			__antithesis_instrumentation__.Notify(467626)
 		}
+		__antithesis_instrumentation__.Notify(467623)
 		return idx
 	}
+	__antithesis_instrumentation__.Notify(467613)
 
 	spanPartitions, err := dsp.PartitionSpans(ctx, planCtx, indexSpans)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(467627)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(467628)
 	}
+	__antithesis_instrumentation__.Notify(467614)
 
 	p := planCtx.NewPhysicalPlan()
 	p.ResultRouters = make([]physicalplan.ProcessorIdx, len(spanPartitions))
 	for i, sp := range spanPartitions {
+		__antithesis_instrumentation__.Notify(467629)
 		ibm := &execinfrapb.IndexBackfillMergerSpec{}
 		*ibm = spec
 
 		ibm.Spans = sp.Spans
 		for _, sp := range ibm.Spans {
+			__antithesis_instrumentation__.Notify(467631)
 			ibm.SpanIdx = append(ibm.SpanIdx, int32(getIndex(sp)))
 		}
+		__antithesis_instrumentation__.Notify(467630)
 
 		proc := physicalplan.Processor{
 			SQLInstanceID: sp.SQLInstanceID,
@@ -172,6 +192,7 @@ func (dsp *DistSQLPlanner) createIndexBackfillerMergePhysicalPlan(
 		pIdx := p.AddProcessor(proc)
 		p.ResultRouters[i] = pIdx
 	}
+	__antithesis_instrumentation__.Notify(467615)
 	dsp.FinalizePlan(planCtx, p)
 	return p, nil
 }
@@ -183,5 +204,11 @@ type spanAndIndex struct {
 
 var _ interval.Interface = (*spanAndIndex)(nil)
 
-func (si *spanAndIndex) Range() interval.Range { return si.AsRange() }
-func (si *spanAndIndex) ID() uintptr           { return uintptr(unsafe.Pointer(si)) }
+func (si *spanAndIndex) Range() interval.Range {
+	__antithesis_instrumentation__.Notify(467632)
+	return si.AsRange()
+}
+func (si *spanAndIndex) ID() uintptr {
+	__antithesis_instrumentation__.Notify(467633)
+	return uintptr(unsafe.Pointer(si))
+}

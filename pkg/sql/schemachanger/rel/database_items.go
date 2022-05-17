@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rel
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -17,8 +9,6 @@ import (
 	"github.com/google/btree"
 )
 
-// item is implemented by all members of the tree as well as by the valuesItem
-// used at query time.
 type item interface {
 	btree.Item
 	getIndexSpec() *indexSpec
@@ -30,30 +20,47 @@ var _ item = (*containerItem)(nil)
 var _ item = (*valuesItem)(nil)
 
 func compareItems(a, b item) (less bool) {
-	// Compare on the index attributes first.
+	__antithesis_instrumentation__.Notify(578429)
+
 	index := a.getIndexSpec()
 	toCompare := a.compareAttrs().intersection(b.compareAttrs())
 	for _, at := range index.attrs {
+		__antithesis_instrumentation__.Notify(578433)
 		if !toCompare.contains(at) {
+			__antithesis_instrumentation__.Notify(578435)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(578436)
 		}
+		__antithesis_instrumentation__.Notify(578434)
 
 		var eq bool
 		if less, eq = compareOn(
 			at, a.getValues(), b.getValues(),
 		); !eq {
+			__antithesis_instrumentation__.Notify(578437)
 			return less
+		} else {
+			__antithesis_instrumentation__.Notify(578438)
 		}
 	}
-	// If this is A query, respect the bounds.
-	if aValuesItem, ok := a.(*valuesItem); ok {
-		return !aValuesItem.end
-	}
-	if bValuesItem, ok := b.(*valuesItem); ok {
-		return bValuesItem.end
-	}
+	__antithesis_instrumentation__.Notify(578430)
 
-	// Compare the entities across all the attributes.
+	if aValuesItem, ok := a.(*valuesItem); ok {
+		__antithesis_instrumentation__.Notify(578439)
+		return !aValuesItem.end
+	} else {
+		__antithesis_instrumentation__.Notify(578440)
+	}
+	__antithesis_instrumentation__.Notify(578431)
+	if bValuesItem, ok := b.(*valuesItem); ok {
+		__antithesis_instrumentation__.Notify(578441)
+		return bValuesItem.end
+	} else {
+		__antithesis_instrumentation__.Notify(578442)
+	}
+	__antithesis_instrumentation__.Notify(578432)
+
 	less, _ = compareEntities(
 		a.(*containerItem).entity,
 		b.(*containerItem).entity,
@@ -66,20 +73,25 @@ type containerItem struct {
 	*entity
 }
 
-func (c *containerItem) getValues() *valuesMap { return c.asMap() }
+func (c *containerItem) getValues() *valuesMap {
+	__antithesis_instrumentation__.Notify(578443)
+	return c.asMap()
+}
 
-// TODO(ajwerner): We are returning MaxUint64 here to say that we do
-// store nil valuesMap in the index. I don't think there's any value in this
-// so we should go back and stop storing entries for entities which do not
-// have valuesMap for all of the attributes of the index.
-func (c *containerItem) compareAttrs() ordinalSet { return math.MaxUint64 }
-func (c *containerItem) getIndexSpec() *indexSpec { return c.indexSpec }
+func (c *containerItem) compareAttrs() ordinalSet {
+	__antithesis_instrumentation__.Notify(578444)
+	return math.MaxUint64
+}
+func (c *containerItem) getIndexSpec() *indexSpec {
+	__antithesis_instrumentation__.Notify(578445)
+	return c.indexSpec
+}
 
 func (c *containerItem) Less(than btree.Item) bool {
+	__antithesis_instrumentation__.Notify(578446)
 	return compareItems(c, than.(item))
 }
 
-// valuesItem is used to construct query bounds from the tree.
 type valuesItem struct {
 	*indexSpec
 	*valuesMap
@@ -87,18 +99,25 @@ type valuesItem struct {
 	end bool
 }
 
-func (v *valuesItem) getIndexSpec() *indexSpec { return v.indexSpec }
-func (v *valuesItem) compareAttrs() ordinalSet { return v.m }
-func (v *valuesItem) getValues() *valuesMap    { return v.valuesMap }
-
-var valuesItemPool = sync.Pool{
-	New: func() interface{} { return new(valuesItem) },
+func (v *valuesItem) getIndexSpec() *indexSpec {
+	__antithesis_instrumentation__.Notify(578447)
+	return v.indexSpec
+}
+func (v *valuesItem) compareAttrs() ordinalSet {
+	__antithesis_instrumentation__.Notify(578448)
+	return v.m
+}
+func (v *valuesItem) getValues() *valuesMap {
+	__antithesis_instrumentation__.Notify(578449)
+	return v.valuesMap
 }
 
-// getValuesItems uses the valuesItemPool to get the bounding valuesItems for
-// A given where clause and indexSpec. The valuesItems have A well defined
-// lifetime which is bound to A query so we may as well pool them.
+var valuesItemPool = sync.Pool{
+	New: func() interface{} { __antithesis_instrumentation__.Notify(578450); return new(valuesItem) },
+}
+
 func getValuesItems(idx *indexSpec, values *valuesMap, m ordinalSet) (from, to *valuesItem) {
+	__antithesis_instrumentation__.Notify(578451)
 	from = valuesItemPool.Get().(*valuesItem)
 	to = valuesItemPool.Get().(*valuesItem)
 	*from = valuesItem{indexSpec: idx, valuesMap: values, m: m, end: false}
@@ -107,6 +126,7 @@ func getValuesItems(idx *indexSpec, values *valuesMap, m ordinalSet) (from, to *
 }
 
 func putValuesItems(from, to *valuesItem) {
+	__antithesis_instrumentation__.Notify(578452)
 	*from = valuesItem{}
 	*to = valuesItem{}
 	valuesItemPool.Put(from)
@@ -114,5 +134,6 @@ func putValuesItems(from, to *valuesItem) {
 }
 
 func (v *valuesItem) Less(than btree.Item) bool {
+	__antithesis_instrumentation__.Notify(578453)
 	return compareItems(v, than.(item))
 }

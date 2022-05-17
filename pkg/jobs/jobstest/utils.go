@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobstest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -21,47 +13,47 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// EnvTablesType tells JobSchedulerTestEnv whether to use the system tables,
-// or to use test tables. System tables such as system.jobs may be affected
-// by the system in the background, while test tables are completely isolated.
 type EnvTablesType bool
 
-// UseTestTables instructs JobSchedulerTestEnv to use test tables.
 const UseTestTables EnvTablesType = false
 
-// UseSystemTables instructs JobSchedulerTestEnv to use system tables.
 const UseSystemTables EnvTablesType = true
 
-// NewJobSchedulerTestEnv creates JobSchedulerTestEnv and initializes environments
-// current time to initial time.
 func NewJobSchedulerTestEnv(
 	whichTables EnvTablesType, t time.Time, allowedExecutors ...tree.ScheduledJobExecutorType,
 ) *JobSchedulerTestEnv {
+	__antithesis_instrumentation__.Notify(84176)
 	var env *JobSchedulerTestEnv
 	if whichTables == UseTestTables {
+		__antithesis_instrumentation__.Notify(84179)
 		env = &JobSchedulerTestEnv{
 			scheduledJobsTableName: "defaultdb.scheduled_jobs",
 			jobsTableName:          "defaultdb.system_jobs",
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(84180)
 		env = &JobSchedulerTestEnv{
 			scheduledJobsTableName: "system.scheduled_jobs",
 			jobsTableName:          "system.jobs",
 		}
 	}
+	__antithesis_instrumentation__.Notify(84177)
 	env.mu.now = t
 	if len(allowedExecutors) > 0 {
+		__antithesis_instrumentation__.Notify(84181)
 		env.allowedExecutors = make(map[string]struct{}, len(allowedExecutors))
 		for _, e := range allowedExecutors {
+			__antithesis_instrumentation__.Notify(84182)
 			env.allowedExecutors[e.InternalName()] = struct{}{}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(84183)
 	}
+	__antithesis_instrumentation__.Notify(84178)
 
 	return env
 }
 
-// JobSchedulerTestEnv is a job scheduler environment with an added ability to
-// manipulate time.
 type JobSchedulerTestEnv struct {
 	scheduledJobsTableName string
 	jobsTableName          string
@@ -74,32 +66,32 @@ type JobSchedulerTestEnv struct {
 
 var _ scheduledjobs.JobSchedulerEnv = &JobSchedulerTestEnv{}
 
-// ScheduledJobsTableName implements scheduledjobs.JobSchedulerEnv
 func (e *JobSchedulerTestEnv) ScheduledJobsTableName() string {
+	__antithesis_instrumentation__.Notify(84184)
 	return e.scheduledJobsTableName
 }
 
-// SystemJobsTableName implements scheduledjobs.JobSchedulerEnv
 func (e *JobSchedulerTestEnv) SystemJobsTableName() string {
+	__antithesis_instrumentation__.Notify(84185)
 	return e.jobsTableName
 }
 
-// Now implements scheduledjobs.JobSchedulerEnv
 func (e *JobSchedulerTestEnv) Now() time.Time {
+	__antithesis_instrumentation__.Notify(84186)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.mu.now
 }
 
-// AdvanceTime implements JobSchedulerTestEnv
 func (e *JobSchedulerTestEnv) AdvanceTime(d time.Duration) {
+	__antithesis_instrumentation__.Notify(84187)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.mu.now = e.mu.now.Add(d)
 }
 
-// SetTime implements JobSchedulerTestEnv
 func (e *JobSchedulerTestEnv) SetTime(t time.Time) {
+	__antithesis_instrumentation__.Notify(84188)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.mu.now = t
@@ -107,36 +99,48 @@ func (e *JobSchedulerTestEnv) SetTime(t time.Time) {
 
 const timestampTZLayout = "2006-01-02 15:04:05.000000"
 
-// NowExpr implements scheduledjobs.JobSchedulerEnv
 func (e *JobSchedulerTestEnv) NowExpr() string {
+	__antithesis_instrumentation__.Notify(84189)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return fmt.Sprintf("TIMESTAMPTZ '%s'", e.mu.now.Format(timestampTZLayout))
 }
 
-// IsExecutorEnabled implements scheduledjobs.JobSchedulerEnv
 func (e *JobSchedulerTestEnv) IsExecutorEnabled(name string) bool {
+	__antithesis_instrumentation__.Notify(84190)
 	enabled := e.allowedExecutors == nil
 	if !enabled {
+		__antithesis_instrumentation__.Notify(84192)
 		_, enabled = e.allowedExecutors[name]
+	} else {
+		__antithesis_instrumentation__.Notify(84193)
 	}
+	__antithesis_instrumentation__.Notify(84191)
 	return enabled
 }
 
-// GetScheduledJobsTableSchema returns schema for the scheduled jobs table.
 func GetScheduledJobsTableSchema(env scheduledjobs.JobSchedulerEnv) string {
+	__antithesis_instrumentation__.Notify(84194)
 	if env.ScheduledJobsTableName() == "system.jobs" {
+		__antithesis_instrumentation__.Notify(84196)
 		return systemschema.ScheduledJobsTableSchema
+	} else {
+		__antithesis_instrumentation__.Notify(84197)
 	}
+	__antithesis_instrumentation__.Notify(84195)
 	return strings.Replace(systemschema.ScheduledJobsTableSchema,
 		"system.scheduled_jobs", env.ScheduledJobsTableName(), 1)
 }
 
-// GetJobsTableSchema returns schema for the jobs table.
 func GetJobsTableSchema(env scheduledjobs.JobSchedulerEnv) string {
+	__antithesis_instrumentation__.Notify(84198)
 	if env.SystemJobsTableName() == "system.jobs" {
+		__antithesis_instrumentation__.Notify(84200)
 		return systemschema.JobsTableSchema
+	} else {
+		__antithesis_instrumentation__.Notify(84201)
 	}
+	__antithesis_instrumentation__.Notify(84199)
 	return strings.Replace(systemschema.JobsTableSchema,
 		"system.jobs", env.SystemJobsTableName(), 1)
 }

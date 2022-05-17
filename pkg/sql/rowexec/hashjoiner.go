@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -25,36 +17,23 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// hashJoinerState represents the state of the hash join processor.
 type hashJoinerState int
 
 const (
 	hjStateUnknown hashJoinerState = iota
-	// hjBuilding represents the state the hashJoiner is in when it is building
-	// the hash table based on the equality columns of the rows from the right
-	// side.
+
 	hjBuilding
-	// hjReadingLeftSide represents the state the hashJoiner is in when it
-	// reads rows from the left side.
+
 	hjReadingLeftSide
-	// hjProbingRow represents the state the hashJoiner is in when it uses a
-	// row read in hjReadingLeftSide to probe the stored hash map with.
+
 	hjProbingRow
-	// hjEmittingRightUnmatched represents the state the hashJoiner is in when
-	// it is emitting unmatched rows from the right side after having consumed
-	// the left side. This only happens when executing a FULL OUTER, RIGHT
-	// OUTER, and RIGHT ANTI joins.
+
 	hjEmittingRightUnmatched
 )
 
-// hashJoiner performs a hash join. There is no guarantee on the output
-// ordering.
 type hashJoiner struct {
 	joinerBase
 
-	// eqCols contains the indices of the columns that are constrained to be
-	// equal. Specifically column eqCols[0][i] on the left side must match the
-	// column eqCols[1][i] on the right side.
 	eqCols [2][]uint32
 
 	runningState hashJoinerState
@@ -63,30 +42,22 @@ type hashJoiner struct {
 
 	leftSource, rightSource execinfra.RowSource
 
-	// nullEquality indicates that NULL = NULL should be considered true. Used for
-	// INTERSECT and EXCEPT.
 	nullEquality bool
 
 	hashTable *rowcontainer.HashDiskBackedRowContainer
 
-	// probingRowState is state used when hjProbingRow.
 	probingRowState struct {
-		// row is the row being probed with.
 		row rowenc.EncDatumRow
-		// iter is an iterator over the bucket that matches row on the equality
-		// columns.
+
 		iter rowcontainer.RowMarkerIterator
-		// matched represents whether any row that matches row on equality columns
-		// has also passed the ON condition.
+
 		matched bool
 	}
 
-	// emittingRightUnmatchedState is used when hjEmittingRightUnmatched.
 	emittingRightUnmatchedState struct {
 		iter rowcontainer.RowIterator
 	}
 
-	// Context cancellation checker.
 	cancelChecker cancelchecker.CancelChecker
 }
 
@@ -96,7 +67,6 @@ var _ execinfra.OpNode = &hashJoiner{}
 
 const hashJoinerProcName = "hash joiner"
 
-// newHashJoiner creates a new hash join processor.
 func newHashJoiner(
 	flowCtx *execinfra.FlowCtx,
 	processorID int32,
@@ -106,6 +76,7 @@ func newHashJoiner(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*hashJoiner, error) {
+	__antithesis_instrumentation__.Notify(572285)
 	h := &hashJoiner{
 		leftSource:   leftSource,
 		rightSource:  rightSource,
@@ -124,35 +95,42 @@ func newHashJoiner(
 		rightSource.OutputTypes(),
 		spec.Type,
 		spec.OnExpr,
-		false, /* outputContinuationColumn */
+		false,
 		post,
 		output,
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{h.leftSource, h.rightSource},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				__antithesis_instrumentation__.Notify(572288)
 				h.close()
 				return nil
 			},
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(572289)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(572290)
 	}
+	__antithesis_instrumentation__.Notify(572286)
 
 	ctx := h.FlowCtx.EvalCtx.Ctx()
-	// Limit the memory use by creating a child monitor with a hard limit.
-	// The hashJoiner will overflow to disk if this limit is not enough.
+
 	h.MemMonitor = execinfra.NewLimitedMonitor(ctx, flowCtx.EvalCtx.Mon, flowCtx, "hashjoiner-limited")
 	h.diskMonitor = execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, "hashjoiner-disk")
 	h.hashTable = rowcontainer.NewHashDiskBackedRowContainer(
 		h.EvalCtx, h.MemMonitor, h.diskMonitor, h.FlowCtx.Cfg.TempStorage,
 	)
 
-	// If the trace is recording, instrument the hashJoiner to collect stats.
 	if execinfra.ShouldCollectStats(ctx, flowCtx) {
+		__antithesis_instrumentation__.Notify(572291)
 		h.leftSource = newInputStatCollector(h.leftSource)
 		h.rightSource = newInputStatCollector(h.rightSource)
 		h.ExecStatsForTrace = h.execStatsForTrace
+	} else {
+		__antithesis_instrumentation__.Notify(572292)
 	}
+	__antithesis_instrumentation__.Notify(572287)
 
 	return h, h.hashTable.Init(
 		h.Ctx,
@@ -163,8 +141,8 @@ func newHashJoiner(
 	)
 }
 
-// Start is part of the RowSource interface.
 func (h *hashJoiner) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(572293)
 	ctx = h.StartInternal(ctx, hashJoinerProcName)
 	h.leftSource.Start(ctx)
 	h.rightSource.Start(ctx)
@@ -172,80 +150,135 @@ func (h *hashJoiner) Start(ctx context.Context) {
 	h.runningState = hjBuilding
 }
 
-// Next is part of the RowSource interface.
 func (h *hashJoiner) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(572294)
 	for h.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(572296)
 		var row rowenc.EncDatumRow
 		var meta *execinfrapb.ProducerMetadata
 		switch h.runningState {
 		case hjBuilding:
+			__antithesis_instrumentation__.Notify(572300)
 			h.runningState, row, meta = h.build()
 		case hjReadingLeftSide:
+			__antithesis_instrumentation__.Notify(572301)
 			h.runningState, row, meta = h.readLeftSide()
 		case hjProbingRow:
+			__antithesis_instrumentation__.Notify(572302)
 			h.runningState, row, meta = h.probeRow()
 		case hjEmittingRightUnmatched:
+			__antithesis_instrumentation__.Notify(572303)
 			h.runningState, row, meta = h.emitRightUnmatched()
 		default:
+			__antithesis_instrumentation__.Notify(572304)
 			log.Fatalf(h.Ctx, "unsupported state: %d", h.runningState)
 		}
+		__antithesis_instrumentation__.Notify(572297)
 
-		if row == nil && meta == nil {
+		if row == nil && func() bool {
+			__antithesis_instrumentation__.Notify(572305)
+			return meta == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(572306)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(572307)
 		}
+		__antithesis_instrumentation__.Notify(572298)
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(572308)
 			return nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(572309)
 		}
+		__antithesis_instrumentation__.Notify(572299)
 		if outRow := h.ProcessRowHelper(row); outRow != nil {
+			__antithesis_instrumentation__.Notify(572310)
 			return outRow, nil
+		} else {
+			__antithesis_instrumentation__.Notify(572311)
 		}
 	}
+	__antithesis_instrumentation__.Notify(572295)
 	return nil, h.DrainHelper()
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (h *hashJoiner) ConsumerClosed() {
+	__antithesis_instrumentation__.Notify(572312)
 	h.close()
 }
 
 func (h *hashJoiner) build() (hashJoinerState, rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(572313)
 	for {
+		__antithesis_instrumentation__.Notify(572314)
 		row, meta, emitDirectly, err := h.receiveNext(rightSide)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(572317)
 			h.MoveToDraining(err)
 			return hjStateUnknown, nil, h.DrainHelper()
-		} else if meta != nil {
-			if meta.Err != nil {
-				h.MoveToDraining(nil /* err */)
-				return hjStateUnknown, nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(572318)
+			if meta != nil {
+				__antithesis_instrumentation__.Notify(572319)
+				if meta.Err != nil {
+					__antithesis_instrumentation__.Notify(572321)
+					h.MoveToDraining(nil)
+					return hjStateUnknown, nil, meta
+				} else {
+					__antithesis_instrumentation__.Notify(572322)
+				}
+				__antithesis_instrumentation__.Notify(572320)
+				return hjBuilding, nil, meta
+			} else {
+				__antithesis_instrumentation__.Notify(572323)
+				if emitDirectly {
+					__antithesis_instrumentation__.Notify(572324)
+					return hjBuilding, row, nil
+				} else {
+					__antithesis_instrumentation__.Notify(572325)
+				}
 			}
-			return hjBuilding, nil, meta
-		} else if emitDirectly {
-			return hjBuilding, row, nil
 		}
+		__antithesis_instrumentation__.Notify(572315)
 
 		if row == nil {
-			// Right side has been fully consumed, so move on to
-			// hjReadingLeftSide. If the hash table is empty, we might be able
-			// to short-circuit.
-			if h.hashTable.IsEmpty() && h.joinType.IsEmptyOutputWhenRightIsEmpty() {
-				h.MoveToDraining(nil /* err */)
+			__antithesis_instrumentation__.Notify(572326)
+
+			if h.hashTable.IsEmpty() && func() bool {
+				__antithesis_instrumentation__.Notify(572329)
+				return h.joinType.IsEmptyOutputWhenRightIsEmpty() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(572330)
+				h.MoveToDraining(nil)
 				return hjStateUnknown, nil, h.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(572331)
 			}
-			// If hashTable is in-memory, pre-reserve the memory needed to mark.
+			__antithesis_instrumentation__.Notify(572327)
+
 			if err = h.hashTable.ReserveMarkMemoryMaybe(h.Ctx); err != nil {
+				__antithesis_instrumentation__.Notify(572332)
 				h.MoveToDraining(err)
 				return hjStateUnknown, nil, h.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(572333)
 			}
+			__antithesis_instrumentation__.Notify(572328)
 			return hjReadingLeftSide, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(572334)
 		}
+		__antithesis_instrumentation__.Notify(572316)
 
 		err = h.hashTable.AddRow(h.Ctx, row)
-		// Regardless of the underlying row container (disk backed or in-memory
-		// only), we cannot do anything about an error if it occurs.
+
 		if err != nil {
+			__antithesis_instrumentation__.Notify(572335)
 			h.MoveToDraining(err)
 			return hjStateUnknown, nil, h.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(572336)
 		}
 	}
 }
@@ -255,51 +288,82 @@ func (h *hashJoiner) readLeftSide() (
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(572337)
 	row, meta, emitDirectly, err := h.receiveNext(leftSide)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(572341)
 		h.MoveToDraining(err)
 		return hjStateUnknown, nil, h.DrainHelper()
-	} else if meta != nil {
-		if meta.Err != nil {
-			h.MoveToDraining(nil /* err */)
-			return hjStateUnknown, nil, meta
+	} else {
+		__antithesis_instrumentation__.Notify(572342)
+		if meta != nil {
+			__antithesis_instrumentation__.Notify(572343)
+			if meta.Err != nil {
+				__antithesis_instrumentation__.Notify(572345)
+				h.MoveToDraining(nil)
+				return hjStateUnknown, nil, meta
+			} else {
+				__antithesis_instrumentation__.Notify(572346)
+			}
+			__antithesis_instrumentation__.Notify(572344)
+			return hjReadingLeftSide, nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(572347)
+			if emitDirectly {
+				__antithesis_instrumentation__.Notify(572348)
+				return hjReadingLeftSide, row, nil
+			} else {
+				__antithesis_instrumentation__.Notify(572349)
+			}
 		}
-		return hjReadingLeftSide, nil, meta
-	} else if emitDirectly {
-		return hjReadingLeftSide, row, nil
 	}
+	__antithesis_instrumentation__.Notify(572338)
 
 	if row == nil {
-		// The left side has been fully consumed. Move on to
-		// hjEmittingRightUnmatched if unmatched rows on the right side need to
-		// be emitted, otherwise finish.
+		__antithesis_instrumentation__.Notify(572350)
+
 		if shouldEmitUnmatchedRow(rightSide, h.joinType) {
+			__antithesis_instrumentation__.Notify(572352)
 			i := h.hashTable.NewUnmarkedIterator(h.Ctx)
 			i.Rewind()
 			h.emittingRightUnmatchedState.iter = i
 			return hjEmittingRightUnmatched, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(572353)
 		}
-		h.MoveToDraining(nil /* err */)
+		__antithesis_instrumentation__.Notify(572351)
+		h.MoveToDraining(nil)
 		return hjStateUnknown, nil, h.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572354)
 	}
+	__antithesis_instrumentation__.Notify(572339)
 
-	// Probe with this row. Get the iterator over the matching bucket ready for
-	// hjProbingRow.
 	h.probingRowState.row = row
 	h.probingRowState.matched = false
 	if h.probingRowState.iter == nil {
+		__antithesis_instrumentation__.Notify(572355)
 		i, err := h.hashTable.NewBucketIterator(h.Ctx, row, h.eqCols[leftSide])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(572357)
 			h.MoveToDraining(err)
 			return hjStateUnknown, nil, h.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(572358)
 		}
+		__antithesis_instrumentation__.Notify(572356)
 		h.probingRowState.iter = i
 	} else {
+		__antithesis_instrumentation__.Notify(572359)
 		if err := h.probingRowState.iter.Reset(h.Ctx, row); err != nil {
+			__antithesis_instrumentation__.Notify(572360)
 			h.MoveToDraining(err)
 			return hjStateUnknown, nil, h.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(572361)
 		}
 	}
+	__antithesis_instrumentation__.Notify(572340)
 	h.probingRowState.iter.Rewind()
 	return hjProbingRow, nil, nil
 }
@@ -309,108 +373,160 @@ func (h *hashJoiner) probeRow() (
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(572362)
 	i := h.probingRowState.iter
 	if ok, err := i.Valid(); err != nil {
+		__antithesis_instrumentation__.Notify(572371)
 		h.MoveToDraining(err)
 		return hjStateUnknown, nil, h.DrainHelper()
-	} else if !ok {
-		// In this case we have reached the end of the matching bucket. Check
-		// if any rows passed the ON condition. If they did, move back to
-		// hjReadingLeftSide to get the next probe row.
-		if h.probingRowState.matched {
+	} else {
+		__antithesis_instrumentation__.Notify(572372)
+		if !ok {
+			__antithesis_instrumentation__.Notify(572373)
+
+			if h.probingRowState.matched {
+				__antithesis_instrumentation__.Notify(572376)
+				return hjReadingLeftSide, nil, nil
+			} else {
+				__antithesis_instrumentation__.Notify(572377)
+			}
+			__antithesis_instrumentation__.Notify(572374)
+
+			if renderedRow, shouldEmit := h.shouldEmitUnmatched(
+				h.probingRowState.row, leftSide,
+			); shouldEmit {
+				__antithesis_instrumentation__.Notify(572378)
+				return hjReadingLeftSide, renderedRow, nil
+			} else {
+				__antithesis_instrumentation__.Notify(572379)
+			}
+			__antithesis_instrumentation__.Notify(572375)
 			return hjReadingLeftSide, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(572380)
 		}
-		// If not, this probe row is unmatched. Check if it needs to be emitted.
-		if renderedRow, shouldEmit := h.shouldEmitUnmatched(
-			h.probingRowState.row, leftSide,
-		); shouldEmit {
-			return hjReadingLeftSide, renderedRow, nil
-		}
-		return hjReadingLeftSide, nil, nil
 	}
+	__antithesis_instrumentation__.Notify(572363)
 
 	if err := h.cancelChecker.Check(); err != nil {
+		__antithesis_instrumentation__.Notify(572381)
 		h.MoveToDraining(err)
 		return hjStateUnknown, nil, h.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572382)
 	}
+	__antithesis_instrumentation__.Notify(572364)
 
 	leftRow := h.probingRowState.row
 	rightRow, err := i.Row()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(572383)
 		h.MoveToDraining(err)
 		return hjStateUnknown, nil, h.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572384)
 	}
+	__antithesis_instrumentation__.Notify(572365)
 	defer i.Next()
 
 	var renderedRow rowenc.EncDatumRow
 	renderedRow, err = h.render(leftRow, rightRow)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(572385)
 		h.MoveToDraining(err)
 		return hjStateUnknown, nil, h.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572386)
 	}
-	// If the ON condition failed, renderedRow is nil.
+	__antithesis_instrumentation__.Notify(572366)
+
 	if renderedRow == nil {
+		__antithesis_instrumentation__.Notify(572387)
 		return hjProbingRow, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(572388)
 	}
+	__antithesis_instrumentation__.Notify(572367)
 
 	h.probingRowState.matched = true
 	shouldEmit := true
 	if shouldMarkRightSide(h.joinType) {
+		__antithesis_instrumentation__.Notify(572389)
 		if i.IsMarked(h.Ctx) {
+			__antithesis_instrumentation__.Notify(572390)
 			switch h.joinType {
 			case descpb.RightSemiJoin:
-				// The row from the right already had a match and was emitted
-				// previously, so we don't emit it for the second time.
+				__antithesis_instrumentation__.Notify(572391)
+
 				shouldEmit = false
 			case descpb.IntersectAllJoin:
-				// The row from the right has already been used for the
-				// intersection, so we cannot use it again.
+				__antithesis_instrumentation__.Notify(572392)
+
 				shouldEmit = false
 			case descpb.ExceptAllJoin:
-				// The row from the right has already been used for the except
-				// operation, so we cannot use it again. However, we need to
-				// continue probing the same row from the left in order to see
-				// whether we have a corresponding unmarked row from the right.
+				__antithesis_instrumentation__.Notify(572393)
+
 				h.probingRowState.matched = false
+			default:
+				__antithesis_instrumentation__.Notify(572394)
 			}
-		} else if err := i.Mark(h.Ctx); err != nil {
-			h.MoveToDraining(err)
-			return hjStateUnknown, nil, h.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(572395)
+			if err := i.Mark(h.Ctx); err != nil {
+				__antithesis_instrumentation__.Notify(572396)
+				h.MoveToDraining(err)
+				return hjStateUnknown, nil, h.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(572397)
+			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(572398)
 	}
+	__antithesis_instrumentation__.Notify(572368)
 
 	nextState := hjProbingRow
 	switch h.joinType {
 	case descpb.LeftSemiJoin:
-		// We can short-circuit iterating over the remaining matching rows from
-		// the right, so we'll transition to the next row from the left.
+		__antithesis_instrumentation__.Notify(572399)
+
 		nextState = hjReadingLeftSide
 	case descpb.LeftAntiJoin, descpb.RightAntiJoin:
-		// We found a matching row, so we don't emit it in case of an anti join.
+		__antithesis_instrumentation__.Notify(572400)
+
 		shouldEmit = false
 	case descpb.ExceptAllJoin:
-		// We're definitely not emitting the combination of the current left
-		// and right rows right now. If the current right row has already been
-		// used, then h.probingRowState.matched is set to false, and we might
-		// emit the current left row if we're at the end of the bucket on the
-		// next probeRow() call.
+		__antithesis_instrumentation__.Notify(572401)
+
 		shouldEmit = false
 		if h.probingRowState.matched {
-			// We have found a match for the current row on the left, so we'll
-			// transition to the next one.
+			__antithesis_instrumentation__.Notify(572404)
+
 			nextState = hjReadingLeftSide
+		} else {
+			__antithesis_instrumentation__.Notify(572405)
 		}
 	case descpb.IntersectAllJoin:
+		__antithesis_instrumentation__.Notify(572402)
 		if shouldEmit {
-			// We have found a match for the current row on the left, so we'll
-			// transition to the next row from the left.
+			__antithesis_instrumentation__.Notify(572406)
+
 			nextState = hjReadingLeftSide
+		} else {
+			__antithesis_instrumentation__.Notify(572407)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(572403)
 	}
+	__antithesis_instrumentation__.Notify(572369)
 
 	if shouldEmit {
+		__antithesis_instrumentation__.Notify(572408)
 		return nextState, renderedRow, nil
+	} else {
+		__antithesis_instrumentation__.Notify(572409)
 	}
+	__antithesis_instrumentation__.Notify(572370)
 	return nextState, nil, nil
 }
 
@@ -419,157 +535,181 @@ func (h *hashJoiner) emitRightUnmatched() (
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(572410)
 	i := h.emittingRightUnmatchedState.iter
 	if ok, err := i.Valid(); err != nil {
+		__antithesis_instrumentation__.Notify(572414)
 		h.MoveToDraining(err)
 		return hjStateUnknown, nil, h.DrainHelper()
-	} else if !ok {
-		// Done.
-		h.MoveToDraining(nil /* err */)
-		return hjStateUnknown, nil, h.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572415)
+		if !ok {
+			__antithesis_instrumentation__.Notify(572416)
+
+			h.MoveToDraining(nil)
+			return hjStateUnknown, nil, h.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(572417)
+		}
 	}
+	__antithesis_instrumentation__.Notify(572411)
 
 	if err := h.cancelChecker.Check(); err != nil {
+		__antithesis_instrumentation__.Notify(572418)
 		h.MoveToDraining(err)
 		return hjStateUnknown, nil, h.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572419)
 	}
+	__antithesis_instrumentation__.Notify(572412)
 
 	row, err := i.Row()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(572420)
 		h.MoveToDraining(err)
 		return hjStateUnknown, nil, h.DrainHelper()
+	} else {
+		__antithesis_instrumentation__.Notify(572421)
 	}
+	__antithesis_instrumentation__.Notify(572413)
 	defer i.Next()
 
 	return hjEmittingRightUnmatched, h.renderUnmatchedRow(row, rightSide), nil
 }
 
 func (h *hashJoiner) close() {
+	__antithesis_instrumentation__.Notify(572422)
 	if h.InternalClose() {
+		__antithesis_instrumentation__.Notify(572423)
 		h.hashTable.Close(h.Ctx)
 		if h.probingRowState.iter != nil {
+			__antithesis_instrumentation__.Notify(572426)
 			h.probingRowState.iter.Close()
+		} else {
+			__antithesis_instrumentation__.Notify(572427)
 		}
+		__antithesis_instrumentation__.Notify(572424)
 		if h.emittingRightUnmatchedState.iter != nil {
+			__antithesis_instrumentation__.Notify(572428)
 			h.emittingRightUnmatchedState.iter.Close()
+		} else {
+			__antithesis_instrumentation__.Notify(572429)
 		}
+		__antithesis_instrumentation__.Notify(572425)
 		h.MemMonitor.Stop(h.Ctx)
 		if h.diskMonitor != nil {
+			__antithesis_instrumentation__.Notify(572430)
 			h.diskMonitor.Stop(h.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(572431)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(572432)
 	}
 }
 
-// receiveNext reads from the source specified by side and returns the next row
-// or metadata to be processed by the hashJoiner. Unless h.nullEquality is true,
-// rows with NULLs in their equality columns are only returned if the joinType
-// specifies that unmatched rows should be returned for the given side. In this
-// case, a rendered row and true is returned, notifying the caller that the
-// returned row may be emitted directly.
 func (h *hashJoiner) receiveNext(
 	side joinSide,
 ) (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata, bool, error) {
+	__antithesis_instrumentation__.Notify(572433)
 	source := h.leftSource
 	if side == rightSide {
+		__antithesis_instrumentation__.Notify(572435)
 		source = h.rightSource
+	} else {
+		__antithesis_instrumentation__.Notify(572436)
 	}
+	__antithesis_instrumentation__.Notify(572434)
 	for {
+		__antithesis_instrumentation__.Notify(572437)
 		if err := h.cancelChecker.Check(); err != nil {
+			__antithesis_instrumentation__.Notify(572442)
 			return nil, nil, false, err
+		} else {
+			__antithesis_instrumentation__.Notify(572443)
 		}
+		__antithesis_instrumentation__.Notify(572438)
 		row, meta := source.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(572444)
 			return nil, meta, false, nil
-		} else if row == nil {
-			return nil, nil, false, nil
-		}
-		// We make the explicit check for whether or not the row contained a NULL value
-		// on an equality column. The reasoning here is because of the way we expect
-		// NULL equality checks to behave (i.e. NULL != NULL) and the fact that we
-		// use the encoding of any given row as key into our bucket. Thus if we
-		// encountered a NULL row when building the hashmap we have to store in
-		// order to use it for RIGHT OUTER joins but if we encounter another
-		// NULL row when going through the left stream (probing phase), matching
-		// this with the first NULL row would be incorrect.
-		//
-		// If we have have the following:
-		// CREATE TABLE t(x INT); INSERT INTO t(x) VALUES (NULL);
-		//    |  x   |
-		//     ------
-		//    | NULL |
-		//
-		// For the following query:
-		// SELECT * FROM t AS a FULL OUTER JOIN t AS b USING(x);
-		//
-		// We expect:
-		//    |  x   |
-		//     ------
-		//    | NULL |
-		//    | NULL |
-		//
-		// The following examples illustrates the behavior when joining on two
-		// or more columns, and only one of them contains NULL.
-		// If we have have the following:
-		// CREATE TABLE t(x INT, y INT);
-		// INSERT INTO t(x, y) VALUES (44,51), (NULL,52);
-		//    |  x   |  y   |
-		//     ------
-		//    |  44  |  51  |
-		//    | NULL |  52  |
-		//
-		// For the following query:
-		// SELECT * FROM t AS a FULL OUTER JOIN t AS b USING(x, y);
-		//
-		// We expect:
-		//    |  x   |  y   |
-		//     ------
-		//    |  44  |  51  |
-		//    | NULL |  52  |
-		//    | NULL |  52  |
-		hasNull := false
-		for _, c := range h.eqCols[side] {
-			if row[c].IsNull() {
-				hasNull = true
-				break
+		} else {
+			__antithesis_instrumentation__.Notify(572445)
+			if row == nil {
+				__antithesis_instrumentation__.Notify(572446)
+				return nil, nil, false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(572447)
 			}
 		}
-		// row has no NULLs in its equality columns (or we are considering NULLs to
-		// be equal), so it might match a row from the other side.
-		if !hasNull || h.nullEquality {
-			return row, nil, false, nil
+		__antithesis_instrumentation__.Notify(572439)
+
+		hasNull := false
+		for _, c := range h.eqCols[side] {
+			__antithesis_instrumentation__.Notify(572448)
+			if row[c].IsNull() {
+				__antithesis_instrumentation__.Notify(572449)
+				hasNull = true
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(572450)
+			}
 		}
+		__antithesis_instrumentation__.Notify(572440)
+
+		if !hasNull || func() bool {
+			__antithesis_instrumentation__.Notify(572451)
+			return h.nullEquality == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(572452)
+			return row, nil, false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(572453)
+		}
+		__antithesis_instrumentation__.Notify(572441)
 
 		if renderedRow, shouldEmit := h.shouldEmitUnmatched(row, side); shouldEmit {
+			__antithesis_instrumentation__.Notify(572454)
 			return renderedRow, nil, true, nil
+		} else {
+			__antithesis_instrumentation__.Notify(572455)
 		}
 
-		// If this point is reached, row had NULLs in its equality columns but
-		// should not be emitted. Throw it away and get the next row.
 	}
 }
 
-// shouldEmitUnmatched returns whether this row should be emitted if it doesn't
-// match. If this is the case, a rendered row ready for emitting is returned as
-// well.
 func (h *hashJoiner) shouldEmitUnmatched(
 	row rowenc.EncDatumRow, side joinSide,
 ) (rowenc.EncDatumRow, bool) {
+	__antithesis_instrumentation__.Notify(572456)
 	if !shouldEmitUnmatchedRow(side, h.joinType) {
+		__antithesis_instrumentation__.Notify(572458)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(572459)
 	}
+	__antithesis_instrumentation__.Notify(572457)
 	return h.renderUnmatchedRow(row, side), true
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (h *hashJoiner) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(572460)
 	lis, ok := getInputStats(h.leftSource)
 	if !ok {
+		__antithesis_instrumentation__.Notify(572463)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(572464)
 	}
+	__antithesis_instrumentation__.Notify(572461)
 	ris, ok := getInputStats(h.rightSource)
 	if !ok {
+		__antithesis_instrumentation__.Notify(572465)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(572466)
 	}
+	__antithesis_instrumentation__.Notify(572462)
 	return &execinfrapb.ComponentStats{
 		Inputs: []execinfrapb.InputStats{lis, ris},
 		Exec: execinfrapb.ExecStats{
@@ -580,53 +720,69 @@ func (h *hashJoiner) execStatsForTrace() *execinfrapb.ComponentStats {
 	}
 }
 
-// Some types of joins need to mark rows that matched.
 func shouldMarkRightSide(joinType descpb.JoinType) bool {
+	__antithesis_instrumentation__.Notify(572467)
 	switch joinType {
 	case descpb.FullOuterJoin, descpb.RightOuterJoin, descpb.RightAntiJoin:
-		// For right/full outer joins and right anti joins we need to mark the
-		// rows from the right side in order to iterate through the unmatched
-		// rows in hjEmittingRightUnmatched state.
+		__antithesis_instrumentation__.Notify(572468)
+
 		return true
 	case descpb.RightSemiJoin:
-		// For right semi joins we need to mark the rows in order to track
-		// whether we have already emitted an output row corresponding to it.
+		__antithesis_instrumentation__.Notify(572469)
+
 		return true
 	case descpb.IntersectAllJoin, descpb.ExceptAllJoin:
-		// For set-operation joins we need to mark the rows in order to track
-		// whether they have already been used for a set operation (our row
-		// containers don't know how to delete the rows), so we reuse the
-		// marking infrastructure to simulate "deleted" rows.
+		__antithesis_instrumentation__.Notify(572470)
+
 		return true
 	default:
+		__antithesis_instrumentation__.Notify(572471)
 		return false
 	}
 }
 
-// ChildCount is part of the execinfra.OpNode interface.
 func (h *hashJoiner) ChildCount(verbose bool) int {
+	__antithesis_instrumentation__.Notify(572472)
 	if _, ok := h.leftSource.(execinfra.OpNode); ok {
+		__antithesis_instrumentation__.Notify(572474)
 		if _, ok := h.rightSource.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(572475)
 			return 2
+		} else {
+			__antithesis_instrumentation__.Notify(572476)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(572477)
 	}
+	__antithesis_instrumentation__.Notify(572473)
 	return 0
 }
 
-// Child is part of the execinfra.OpNode interface.
 func (h *hashJoiner) Child(nth int, verbose bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(572478)
 	switch nth {
 	case 0:
+		__antithesis_instrumentation__.Notify(572479)
 		if n, ok := h.leftSource.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(572484)
 			return n
+		} else {
+			__antithesis_instrumentation__.Notify(572485)
 		}
+		__antithesis_instrumentation__.Notify(572480)
 		panic("left input to hashJoiner is not an execinfra.OpNode")
 	case 1:
+		__antithesis_instrumentation__.Notify(572481)
 		if n, ok := h.rightSource.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(572486)
 			return n
+		} else {
+			__antithesis_instrumentation__.Notify(572487)
 		}
+		__antithesis_instrumentation__.Notify(572482)
 		panic("right input to hashJoiner is not an execinfra.OpNode")
 	default:
+		__antithesis_instrumentation__.Notify(572483)
 		panic(errors.AssertionFailedf("invalid index %d", nth))
 	}
 }

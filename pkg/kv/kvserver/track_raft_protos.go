@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -24,27 +16,21 @@ import (
 )
 
 func funcName(f interface{}) string {
+	__antithesis_instrumentation__.Notify(126736)
 	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 }
 
-// TrackRaftProtos instruments proto marshaling to track protos which are
-// marshaled downstream of raft. It returns a function that removes the
-// instrumentation and returns the list of downstream-of-raft protos.
 func TrackRaftProtos() func() []reflect.Type {
-	// Grab the name of the function that roots all raft application.
+	__antithesis_instrumentation__.Notify(126737)
+
 	applyRaftEntryFunc := funcName((*apply.Task).ApplyCommittedEntries)
-	// We only need to track protos that could cause replica divergence
-	// by being written to disk downstream of raft.
+
 	allowlist := []string{
-		// Some raft operations trigger gossip, but we don't require
-		// strict consistency there.
+
 		funcName((*gossip.Gossip).AddInfoProto),
-		// Range merges destroy replicas beneath Raft and write replica tombstones,
-		// but tombstones are unreplicated and thus not subject to the strict
-		// consistency requirements.
+
 		funcName((*Replica).setTombstoneKey),
-		// tryReproposeWithNewLeaseIndex is only run on the replica that
-		// proposed the command.
+
 		funcName((*Replica).tryReproposeWithNewLeaseIndex),
 	}
 
@@ -56,61 +42,96 @@ func TrackRaftProtos() func() []reflect.Type {
 	}
 
 	protoutil.Interceptor = func(pb protoutil.Message) {
+		__antithesis_instrumentation__.Notify(126739)
 		t := reflect.TypeOf(pb)
 
-		// Special handling for MVCCMetadata: we expect MVCCMetadata to be
-		// marshaled below raft, but MVCCMetadata.Txn should always be nil in such
-		// cases.
-		if meta, ok := pb.(*enginepb.MVCCMetadata); ok && meta.Txn != nil {
+		if meta, ok := pb.(*enginepb.MVCCMetadata); ok && func() bool {
+			__antithesis_instrumentation__.Notify(126743)
+			return meta.Txn != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(126744)
 			protoutil.Interceptor(meta.Txn)
+		} else {
+			__antithesis_instrumentation__.Notify(126745)
 		}
+		__antithesis_instrumentation__.Notify(126740)
 
 		belowRaftProtos.Lock()
 		_, ok := belowRaftProtos.inner[t]
 		belowRaftProtos.Unlock()
 		if ok {
+			__antithesis_instrumentation__.Notify(126746)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(126747)
 		}
+		__antithesis_instrumentation__.Notify(126741)
 
 		var pcs [256]uintptr
 		if numCallers := runtime.Callers(0, pcs[:]); numCallers == len(pcs) {
+			__antithesis_instrumentation__.Notify(126748)
 			panic(fmt.Sprintf("number of callers %d might have exceeded slice size %d", numCallers, len(pcs)))
+		} else {
+			__antithesis_instrumentation__.Notify(126749)
 		}
+		__antithesis_instrumentation__.Notify(126742)
 		frames := runtime.CallersFrames(pcs[:])
 		for {
+			__antithesis_instrumentation__.Notify(126750)
 			f, more := frames.Next()
 
 			allowlisted := false
 			for _, s := range allowlist {
+				__antithesis_instrumentation__.Notify(126754)
 				if strings.Contains(f.Function, s) {
+					__antithesis_instrumentation__.Notify(126755)
 					allowlisted = true
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(126756)
 				}
 			}
+			__antithesis_instrumentation__.Notify(126751)
 			if allowlisted {
+				__antithesis_instrumentation__.Notify(126757)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(126758)
 			}
+			__antithesis_instrumentation__.Notify(126752)
 
 			if strings.Contains(f.Function, applyRaftEntryFunc) {
+				__antithesis_instrumentation__.Notify(126759)
 				belowRaftProtos.Lock()
 				belowRaftProtos.inner[t] = struct{}{}
 				belowRaftProtos.Unlock()
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(126760)
 			}
+			__antithesis_instrumentation__.Notify(126753)
 			if !more {
+				__antithesis_instrumentation__.Notify(126761)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(126762)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(126738)
 
 	return func() []reflect.Type {
-		protoutil.Interceptor = func(_ protoutil.Message) {}
+		__antithesis_instrumentation__.Notify(126763)
+		protoutil.Interceptor = func(_ protoutil.Message) { __antithesis_instrumentation__.Notify(126766) }
+		__antithesis_instrumentation__.Notify(126764)
 
 		belowRaftProtos.Lock()
 		types := make([]reflect.Type, 0, len(belowRaftProtos.inner))
 		for t := range belowRaftProtos.inner {
+			__antithesis_instrumentation__.Notify(126767)
 			types = append(types, t)
 		}
+		__antithesis_instrumentation__.Notify(126765)
 		belowRaftProtos.Unlock()
 
 		return types

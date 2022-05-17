@@ -1,37 +1,31 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/sql/lexbase"
 
-// CommentOnColumn represents an COMMENT ON COLUMN statement.
 type CommentOnColumn struct {
 	*ColumnItem
 	Comment *string
 }
 
-// Format implements the NodeFormatter interface.
 func (n *CommentOnColumn) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(604420)
 	ctx.WriteString("COMMENT ON COLUMN ")
 	ctx.FormatNode(n.ColumnItem)
 	ctx.WriteString(" IS ")
 	if n.Comment != nil {
-		// TODO(knz): Replace all this with ctx.FormatNode
-		// when COMMENT supports expressions.
+		__antithesis_instrumentation__.Notify(604421)
+
 		if ctx.flags.HasFlags(FmtHideConstants) {
+			__antithesis_instrumentation__.Notify(604422)
 			ctx.WriteString("'_'")
 		} else {
+			__antithesis_instrumentation__.Notify(604423)
 			lexbase.EncodeSQLStringWithFlags(&ctx.Buffer, *n.Comment, ctx.flags.EncodeFlags())
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(604424)
 		ctx.WriteString("NULL")
 	}
 }

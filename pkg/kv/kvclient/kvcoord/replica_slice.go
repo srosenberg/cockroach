@@ -1,14 +1,6 @@
-// Copyright 2015 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvcoord
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,53 +13,31 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/shuffle"
 )
 
-// ReplicaInfo extends the Replica structure with the associated node
-// descriptor.
 type ReplicaInfo struct {
 	roachpb.ReplicaDescriptor
 	NodeDesc *roachpb.NodeDescriptor
 }
 
 func (i ReplicaInfo) locality() []roachpb.Tier {
+	__antithesis_instrumentation__.Notify(87894)
 	return i.NodeDesc.Locality.Tiers
 }
 
 func (i ReplicaInfo) addr() string {
+	__antithesis_instrumentation__.Notify(87895)
 	return i.NodeDesc.Address.String()
 }
 
-// A ReplicaSlice is a slice of ReplicaInfo.
 type ReplicaSlice []ReplicaInfo
 
-// ReplicaSliceFilter controls which kinds of replicas are to be included in
-// the slice for routing BatchRequests to.
 type ReplicaSliceFilter int
 
 const (
-	// OnlyPotentialLeaseholders prescribes that the ReplicaSlice should include
-	// only replicas that are allowed to be leaseholders (i.e. replicas of type
-	// VOTER_FULL).
 	OnlyPotentialLeaseholders ReplicaSliceFilter = iota
-	// AllExtantReplicas prescribes that the ReplicaSlice should include all
-	// replicas that are not LEARNERs, VOTER_OUTGOING, or
-	// VOTER_DEMOTING_{LEARNER/NON_VOTER}.
+
 	AllExtantReplicas
 )
 
-// NewReplicaSlice creates a ReplicaSlice from the replicas listed in the range
-// descriptor and using gossip to lookup node descriptors. Replicas on nodes
-// that are not gossiped are omitted from the result.
-//
-// Generally, learners are not returned. However, if a non-nil leaseholder is
-// passed in, it will be included in the result even if the descriptor has it as
-// a learner (we assert that the leaseholder is part of the descriptor). The
-// idea is that the descriptor might be stale and list the leaseholder as a
-// learner erroneously, and lease info is a strong signal in that direction.
-// Note that the returned ReplicaSlice might still not include the leaseholder
-// if info for the respective node is missing from the NodeDescStore.
-//
-// If there's no info in gossip for any of the nodes in the descriptor, a
-// sendError is returned.
 func NewReplicaSlice(
 	ctx context.Context,
 	nodeDescs NodeDescStore,
@@ -75,172 +45,246 @@ func NewReplicaSlice(
 	leaseholder *roachpb.ReplicaDescriptor,
 	filter ReplicaSliceFilter,
 ) (ReplicaSlice, error) {
+	__antithesis_instrumentation__.Notify(87896)
 	if leaseholder != nil {
+		__antithesis_instrumentation__.Notify(87903)
 		if _, ok := desc.GetReplicaDescriptorByID(leaseholder.ReplicaID); !ok {
+			__antithesis_instrumentation__.Notify(87904)
 			log.Fatalf(ctx, "leaseholder not in descriptor; leaseholder: %s, desc: %s", leaseholder, desc)
+		} else {
+			__antithesis_instrumentation__.Notify(87905)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(87906)
 	}
+	__antithesis_instrumentation__.Notify(87897)
 	canReceiveLease := func(rDesc roachpb.ReplicaDescriptor) bool {
+		__antithesis_instrumentation__.Notify(87907)
 		if err := roachpb.CheckCanReceiveLease(rDesc, desc); err != nil {
+			__antithesis_instrumentation__.Notify(87909)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(87910)
 		}
+		__antithesis_instrumentation__.Notify(87908)
 		return true
 	}
+	__antithesis_instrumentation__.Notify(87898)
 
-	// Learner replicas won't serve reads/writes, so we'll send only to the voters
-	// and non-voting replicas. This is just an optimization to save a network
-	// hop, everything would still work if we had `All` here.
 	var replicas []roachpb.ReplicaDescriptor
 	switch filter {
 	case OnlyPotentialLeaseholders:
+		__antithesis_instrumentation__.Notify(87911)
 		replicas = desc.Replicas().Filter(canReceiveLease).Descriptors()
 	case AllExtantReplicas:
+		__antithesis_instrumentation__.Notify(87912)
 		replicas = desc.Replicas().VoterAndNonVoterDescriptors()
 	default:
+		__antithesis_instrumentation__.Notify(87913)
 		log.Fatalf(ctx, "unknown ReplicaSliceFilter %v", filter)
 	}
-	// If we know a leaseholder, though, let's make sure we include it.
-	if leaseholder != nil && len(replicas) < len(desc.Replicas().Descriptors()) {
+	__antithesis_instrumentation__.Notify(87899)
+
+	if leaseholder != nil && func() bool {
+		__antithesis_instrumentation__.Notify(87914)
+		return len(replicas) < len(desc.Replicas().Descriptors()) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(87915)
 		found := false
 		for _, v := range replicas {
+			__antithesis_instrumentation__.Notify(87917)
 			if v == *leaseholder {
+				__antithesis_instrumentation__.Notify(87918)
 				found = true
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(87919)
 			}
 		}
+		__antithesis_instrumentation__.Notify(87916)
 		if !found {
+			__antithesis_instrumentation__.Notify(87920)
 			log.Eventf(ctx, "the descriptor has the leaseholder as a learner; including it anyway")
 			replicas = append(replicas, *leaseholder)
+		} else {
+			__antithesis_instrumentation__.Notify(87921)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(87922)
 	}
+	__antithesis_instrumentation__.Notify(87900)
 	rs := make(ReplicaSlice, 0, len(replicas))
 	for _, r := range replicas {
+		__antithesis_instrumentation__.Notify(87923)
 		nd, err := nodeDescs.GetNodeDescriptor(r.NodeID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(87925)
 			if log.V(1) {
+				__antithesis_instrumentation__.Notify(87927)
 				log.Infof(ctx, "node %d is not gossiped: %v", r.NodeID, err)
+			} else {
+				__antithesis_instrumentation__.Notify(87928)
 			}
+			__antithesis_instrumentation__.Notify(87926)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(87929)
 		}
+		__antithesis_instrumentation__.Notify(87924)
 		rs = append(rs, ReplicaInfo{
 			ReplicaDescriptor: r,
 			NodeDesc:          nd,
 		})
 	}
+	__antithesis_instrumentation__.Notify(87901)
 	if len(rs) == 0 {
+		__antithesis_instrumentation__.Notify(87930)
 		return nil, newSendError(
 			fmt.Sprintf("no replica node addresses available via gossip for r%d", desc.RangeID))
+	} else {
+		__antithesis_instrumentation__.Notify(87931)
 	}
+	__antithesis_instrumentation__.Notify(87902)
 	return rs, nil
 }
 
-// ReplicaSlice implements shuffle.Interface.
 var _ shuffle.Interface = ReplicaSlice{}
 
-// Len returns the total number of replicas in the slice.
-func (rs ReplicaSlice) Len() int { return len(rs) }
+func (rs ReplicaSlice) Len() int { __antithesis_instrumentation__.Notify(87932); return len(rs) }
 
-// Swap swaps the replicas with indexes i and j.
-func (rs ReplicaSlice) Swap(i, j int) { rs[i], rs[j] = rs[j], rs[i] }
+func (rs ReplicaSlice) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(87933)
+	rs[i], rs[j] = rs[j], rs[i]
+}
 
-// Find returns the index of the specified ReplicaID, or -1 if missing.
 func (rs ReplicaSlice) Find(id roachpb.ReplicaID) int {
+	__antithesis_instrumentation__.Notify(87934)
 	for i := range rs {
+		__antithesis_instrumentation__.Notify(87936)
 		if rs[i].ReplicaID == id {
+			__antithesis_instrumentation__.Notify(87937)
 			return i
+		} else {
+			__antithesis_instrumentation__.Notify(87938)
 		}
 	}
+	__antithesis_instrumentation__.Notify(87935)
 	return -1
 }
 
-// MoveToFront moves the replica at the given index to the front
-// of the slice, keeping the order of the remaining elements stable.
-// The function will panic when invoked with an invalid index.
 func (rs ReplicaSlice) MoveToFront(i int) {
+	__antithesis_instrumentation__.Notify(87939)
 	if i >= len(rs) {
+		__antithesis_instrumentation__.Notify(87941)
 		panic("out of bound index")
+	} else {
+		__antithesis_instrumentation__.Notify(87942)
 	}
+	__antithesis_instrumentation__.Notify(87940)
 	front := rs[i]
-	// Move the first i elements one index to the right
+
 	copy(rs[1:], rs[:i])
 	rs[0] = front
 }
 
-// localityMatch returns the number of consecutive locality tiers
-// which match between a and b.
 func localityMatch(a, b []roachpb.Tier) int {
+	__antithesis_instrumentation__.Notify(87943)
 	if len(a) == 0 {
+		__antithesis_instrumentation__.Notify(87946)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(87947)
 	}
+	__antithesis_instrumentation__.Notify(87944)
 	for i := range a {
-		if i >= len(b) || a[i] != b[i] {
+		__antithesis_instrumentation__.Notify(87948)
+		if i >= len(b) || func() bool {
+			__antithesis_instrumentation__.Notify(87949)
+			return a[i] != b[i] == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(87950)
 			return i
+		} else {
+			__antithesis_instrumentation__.Notify(87951)
 		}
 	}
+	__antithesis_instrumentation__.Notify(87945)
 	return len(a)
 }
 
-// A LatencyFunc returns the latency from this node to a remote
-// address and a bool indicating whether the latency is valid.
 type LatencyFunc func(string) (time.Duration, bool)
 
-// OptimizeReplicaOrder sorts the replicas in the order in which
-// they're to be used for sending RPCs (meaning in the order in which
-// they'll be probed for the lease). Lower latency and "closer"
-// (matching in more attributes) replicas are ordered first. If the
-// current node is a replica, then it'll be the first one.
-//
-// nodeDesc is the descriptor of the current node. It can be nil, in
-// which case information about the current descriptor is not used in
-// optimizing the order.
-//
-// Note that this method is not concerned with any information the
-// node might have about who the lease holder might be. If the
-// leaseholder is known by the caller, the caller will move it to the
-// front if appropriate.
 func (rs ReplicaSlice) OptimizeReplicaOrder(
 	nodeDesc *roachpb.NodeDescriptor, latencyFn LatencyFunc,
 ) {
-	// If we don't know which node we're on, send the RPCs randomly.
+	__antithesis_instrumentation__.Notify(87952)
+
 	if nodeDesc == nil {
+		__antithesis_instrumentation__.Notify(87954)
 		shuffle.Shuffle(rs)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(87955)
 	}
+	__antithesis_instrumentation__.Notify(87953)
 
-	// Sort replicas by latency and then attribute affinity.
 	sort.Slice(rs, func(i, j int) bool {
-		// Replicas on the same node have the same latency.
+		__antithesis_instrumentation__.Notify(87956)
+
 		if rs[i].NodeID == rs[j].NodeID {
-			return false // i == j
+			__antithesis_instrumentation__.Notify(87961)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(87962)
 		}
-		// Replicas on the local node sort first.
+		__antithesis_instrumentation__.Notify(87957)
+
 		if rs[i].NodeID == nodeDesc.NodeID {
-			return true // i < j
+			__antithesis_instrumentation__.Notify(87963)
+			return true
+		} else {
+			__antithesis_instrumentation__.Notify(87964)
 		}
+		__antithesis_instrumentation__.Notify(87958)
 		if rs[j].NodeID == nodeDesc.NodeID {
-			return false // j < i
+			__antithesis_instrumentation__.Notify(87965)
+			return false
+		} else {
+			__antithesis_instrumentation__.Notify(87966)
 		}
+		__antithesis_instrumentation__.Notify(87959)
 
 		if latencyFn != nil {
+			__antithesis_instrumentation__.Notify(87967)
 			latencyI, okI := latencyFn(rs[i].addr())
 			latencyJ, okJ := latencyFn(rs[j].addr())
-			if okI && okJ {
+			if okI && func() bool {
+				__antithesis_instrumentation__.Notify(87968)
+				return okJ == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(87969)
 				return latencyI < latencyJ
+			} else {
+				__antithesis_instrumentation__.Notify(87970)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(87971)
 		}
+		__antithesis_instrumentation__.Notify(87960)
 		attrMatchI := localityMatch(nodeDesc.Locality.Tiers, rs[i].locality())
 		attrMatchJ := localityMatch(nodeDesc.Locality.Tiers, rs[j].locality())
-		// Longer locality matches sort first (the assumption is that
-		// they'll have better latencies).
+
 		return attrMatchI > attrMatchJ
 	})
 }
 
-// Descriptors returns the ReplicaDescriptors inside the ReplicaSlice.
 func (rs ReplicaSlice) Descriptors() []roachpb.ReplicaDescriptor {
+	__antithesis_instrumentation__.Notify(87972)
 	reps := make([]roachpb.ReplicaDescriptor, len(rs))
 	for i := range rs {
+		__antithesis_instrumentation__.Notify(87974)
 		reps[i] = rs[i].ReplicaDescriptor
 	}
+	__antithesis_instrumentation__.Notify(87973)
 	return reps
 }

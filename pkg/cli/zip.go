@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,15 +26,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// zipRequest abstracts a possible server API call to one of the API
-// endpoints.
 type zipRequest struct {
 	fn       func(ctx context.Context) (interface{}, error)
 	pathName string
 }
 
-// Override for the default SELECT * FROM table when dumping one of the tables
-// in `debugZipTablesPerNode` or `debugZipTablesPerCluster`
 var customQuery = map[string]string{
 	"crdb_internal.node_inflight_trace_spans": "WITH spans AS (" +
 		"SELECT * FROM crdb_internal.node_inflight_trace_spans " +
@@ -68,97 +56,138 @@ type debugZipContext struct {
 func (zc *debugZipContext) runZipFn(
 	ctx context.Context, s *zipReporter, fn func(ctx context.Context) error,
 ) error {
+	__antithesis_instrumentation__.Notify(35176)
 	return zc.runZipFnWithTimeout(ctx, s, zc.timeout, fn)
 }
 
 func (zc *debugZipContext) runZipFnWithTimeout(
 	ctx context.Context, s *zipReporter, timeout time.Duration, fn func(ctx context.Context) error,
 ) error {
+	__antithesis_instrumentation__.Notify(35177)
 	err := contextutil.RunWithTimeout(ctx, s.prefix, timeout, fn)
 	s.progress("received response")
 	return err
 }
 
-// runZipRequest runs a zipRequest and stores its JSON result or error
-// message in the output zip.
 func (zc *debugZipContext) runZipRequest(ctx context.Context, zr *zipReporter, r zipRequest) error {
+	__antithesis_instrumentation__.Notify(35178)
 	s := zr.start("requesting data for %s", r.pathName)
 	var data interface{}
 	err := zc.runZipFn(ctx, s, func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(35180)
 		thisData, err := r.fn(ctx)
 		data = thisData
 		return err
 	})
+	__antithesis_instrumentation__.Notify(35179)
 	return zc.z.createJSONOrError(s, r.pathName+".json", data, err)
 }
 
-// forAllNodes runs fn on every node, possibly concurrently.
 func (zc *debugZipContext) forAllNodes(
 	ctx context.Context,
 	ni nodesInfo,
 	fn func(ctx context.Context, nodeDetails serverpb.NodeDetails, nodeStatus *statuspb.NodeStatus) error,
 ) error {
+	__antithesis_instrumentation__.Notify(35181)
 	if ni.nodesListResponse == nil {
-		// Nothing to do, return
+		__antithesis_instrumentation__.Notify(35187)
+
 		return errors.AssertionFailedf("nodes list is empty")
+	} else {
+		__antithesis_instrumentation__.Notify(35188)
 	}
-	if ni.nodesStatusResponse != nil && len(ni.nodesStatusResponse.Nodes) != len(ni.nodesListResponse.Nodes) {
+	__antithesis_instrumentation__.Notify(35182)
+	if ni.nodesStatusResponse != nil && func() bool {
+		__antithesis_instrumentation__.Notify(35189)
+		return len(ni.nodesStatusResponse.Nodes) != len(ni.nodesListResponse.Nodes) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(35190)
 		return errors.AssertionFailedf("mismatching node status response and node list")
+	} else {
+		__antithesis_instrumentation__.Notify(35191)
 	}
+	__antithesis_instrumentation__.Notify(35183)
 	if zipCtx.concurrency == 1 {
-		// Sequential case. Simplify.
+		__antithesis_instrumentation__.Notify(35192)
+
 		for index, nodeDetails := range ni.nodesListResponse.Nodes {
+			__antithesis_instrumentation__.Notify(35194)
 			var nodeStatus *statuspb.NodeStatus
-			// nodeStatusResponse is expected to be nil for SQL only servers.
+
 			if ni.nodesStatusResponse != nil {
+				__antithesis_instrumentation__.Notify(35196)
 				nodeStatus = &ni.nodesStatusResponse.Nodes[index]
+			} else {
+				__antithesis_instrumentation__.Notify(35197)
 			}
+			__antithesis_instrumentation__.Notify(35195)
 			if err := fn(ctx, nodeDetails, nodeStatus); err != nil {
+				__antithesis_instrumentation__.Notify(35198)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(35199)
 			}
 		}
+		__antithesis_instrumentation__.Notify(35193)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(35200)
 	}
+	__antithesis_instrumentation__.Notify(35184)
 
-	// Multiple nodes concurrently.
-
-	// nodeErrs collects the individual error objects.
 	nodeErrs := make(chan error, len(ni.nodesListResponse.Nodes))
-	// The wait group to wait for all concurrent collectors.
+
 	var wg sync.WaitGroup
 	for index, nodeDetails := range ni.nodesListResponse.Nodes {
+		__antithesis_instrumentation__.Notify(35201)
 		wg.Add(1)
 		var nodeStatus *statuspb.NodeStatus
 		if ni.nodesStatusResponse != nil {
+			__antithesis_instrumentation__.Notify(35203)
 			nodeStatus = &ni.nodesStatusResponse.Nodes[index]
+		} else {
+			__antithesis_instrumentation__.Notify(35204)
 		}
+		__antithesis_instrumentation__.Notify(35202)
 		go func(nodeDetails serverpb.NodeDetails, nodeStatus *statuspb.NodeStatus) {
+			__antithesis_instrumentation__.Notify(35205)
 			defer wg.Done()
 			if err := zc.sem.Acquire(ctx, 1); err != nil {
+				__antithesis_instrumentation__.Notify(35207)
 				nodeErrs <- err
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(35208)
 			}
+			__antithesis_instrumentation__.Notify(35206)
 			defer zc.sem.Release(1)
 
 			nodeErrs <- fn(ctx, nodeDetails, nodeStatus)
 		}(nodeDetails, nodeStatus)
 	}
+	__antithesis_instrumentation__.Notify(35185)
 	wg.Wait()
 
-	// The final error.
 	var err error
 	for range ni.nodesListResponse.Nodes {
+		__antithesis_instrumentation__.Notify(35209)
 		err = errors.CombineErrors(err, <-nodeErrs)
 	}
+	__antithesis_instrumentation__.Notify(35186)
 	return err
 }
 
 type nodeLivenesses = map[roachpb.NodeID]livenesspb.NodeLivenessStatus
 
 func runDebugZip(_ *cobra.Command, args []string) (retErr error) {
+	__antithesis_instrumentation__.Notify(35210)
 	if err := zipCtx.files.validate(); err != nil {
+		__antithesis_instrumentation__.Notify(35223)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(35224)
 	}
+	__antithesis_instrumentation__.Notify(35211)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -168,8 +197,12 @@ func runDebugZip(_ *cobra.Command, args []string) (retErr error) {
 	s := zr.start("establishing RPC connection to %s", serverCfg.AdvertiseAddr)
 	conn, _, finish, err := getClientGRPCConn(ctx, serverCfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(35225)
 		return s.fail(err)
+	} else {
+		__antithesis_instrumentation__.Notify(35226)
 	}
+	__antithesis_instrumentation__.Notify(35212)
 	defer finish()
 
 	status := serverpb.NewStatusClient(conn)
@@ -179,60 +212,85 @@ func runDebugZip(_ *cobra.Command, args []string) (retErr error) {
 	s = zr.start("retrieving the node status to get the SQL address")
 	firstNodeDetails, err := status.Details(ctx, &serverpb.DetailsRequest{NodeId: "local"})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(35227)
 		return s.fail(err)
+	} else {
+		__antithesis_instrumentation__.Notify(35228)
 	}
+	__antithesis_instrumentation__.Notify(35213)
 	s.done()
 
 	sqlAddr := firstNodeDetails.SQLAddress
 	if sqlAddr.IsEmpty() {
-		// No SQL address: either a pre-19.2 node, or same address for both
-		// SQL and RPC.
+		__antithesis_instrumentation__.Notify(35229)
+
 		sqlAddr = firstNodeDetails.Address
+	} else {
+		__antithesis_instrumentation__.Notify(35230)
 	}
+	__antithesis_instrumentation__.Notify(35214)
 	s = zr.start("using SQL address: %s", sqlAddr.AddressField)
 
 	cliCtx.clientConnHost, cliCtx.clientConnPort, err = net.SplitHostPort(sqlAddr.AddressField)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(35231)
 		return s.fail(err)
+	} else {
+		__antithesis_instrumentation__.Notify(35232)
 	}
+	__antithesis_instrumentation__.Notify(35215)
 
-	// We're going to use the SQL code, but in non-interactive mode.
-	// Override whatever terminal-driven defaults there may be out there.
 	cliCtx.IsInteractive = false
 	sqlExecCtx.TerminalOutput = false
 	sqlExecCtx.ShowTimes = false
-	// Use a streaming format to avoid accumulating all rows in RAM.
+
 	sqlExecCtx.TableDisplayFormat = clisqlexec.TableDisplayTSV
 
 	sqlConn, err := makeSQLClient("cockroach zip", useSystemDb)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(35233)
 		_ = s.fail(errors.Wrap(err, "unable to open a SQL session. Debug information will be incomplete"))
 	} else {
-		// Note: we're not printing "connection established" because the driver we're using
-		// does late binding.
-		defer func() { retErr = errors.CombineErrors(retErr, sqlConn.Close()) }()
+		__antithesis_instrumentation__.Notify(35234)
+
+		defer func() {
+			__antithesis_instrumentation__.Notify(35236)
+			retErr = errors.CombineErrors(retErr, sqlConn.Close())
+		}()
+		__antithesis_instrumentation__.Notify(35235)
 		s.progress("using SQL connection URL: %s", sqlConn.GetURL())
 		s.done()
 	}
+	__antithesis_instrumentation__.Notify(35216)
 
 	name := args[0]
 	s = zr.start("creating output file %s", name)
 	out, err := os.Create(name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(35237)
 		return s.fail(err)
+	} else {
+		__antithesis_instrumentation__.Notify(35238)
 	}
+	__antithesis_instrumentation__.Notify(35217)
 
 	z := newZipper(out)
 	defer func() {
+		__antithesis_instrumentation__.Notify(35239)
 		cErr := z.close()
 		retErr = errors.CombineErrors(retErr, cErr)
 	}()
+	__antithesis_instrumentation__.Notify(35218)
 	s.done()
 
 	timeout := 10 * time.Second
 	if cliCtx.cmdTimeout != 0 {
+		__antithesis_instrumentation__.Notify(35240)
 		timeout = cliCtx.cmdTimeout
+	} else {
+		__antithesis_instrumentation__.Notify(35241)
 	}
+	__antithesis_instrumentation__.Notify(35219)
 
 	zc := debugZipContext{
 		clusterPrinter:   zr,
@@ -244,89 +302,108 @@ func runDebugZip(_ *cobra.Command, args []string) (retErr error) {
 		sem:              semaphore.New(zipCtx.concurrency),
 	}
 
-	// Fetch the cluster-wide details.
-	// For a SQL only server, the nodeList will be a list of SQL nodes
-	// and livenessByNodeID is null. For a KV server, the nodeList will
-	// be a list of KV nodes along with the corresponding node liveness data.
 	ni, livenessByNodeID, err := zc.collectClusterData(ctx, firstNodeDetails)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(35242)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(35243)
 	}
-	// Collect the CPU profiles, before the other per-node requests
-	// below possibly influences the nodes and thus CPU profiles.
-	if err := zc.collectCPUProfiles(ctx, ni, livenessByNodeID); err != nil {
-		return err
-	}
+	__antithesis_instrumentation__.Notify(35220)
 
-	// Collect the per-node data.
+	if err := zc.collectCPUProfiles(ctx, ni, livenessByNodeID); err != nil {
+		__antithesis_instrumentation__.Notify(35244)
+		return err
+	} else {
+		__antithesis_instrumentation__.Notify(35245)
+	}
+	__antithesis_instrumentation__.Notify(35221)
+
 	if err := zc.forAllNodes(ctx, ni, func(ctx context.Context, nodeDetails serverpb.NodeDetails, nodesStatus *statuspb.NodeStatus) error {
+		__antithesis_instrumentation__.Notify(35246)
 		return zc.collectPerNodeData(ctx, nodeDetails, nodesStatus, livenessByNodeID)
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(35247)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(35248)
 	}
 
-	// Add a little helper script to draw attention to the existence of tags in
-	// the profiles.
 	{
+		__antithesis_instrumentation__.Notify(35249)
 		s := zc.clusterPrinter.start("pprof summary script")
 		if err := z.createRaw(s, debugBase+"/pprof-summary.sh", []byte(`#!/bin/sh
 find . -name cpu.pprof -print0 | xargs -0 go tool pprof -tags
 `)); err != nil {
+			__antithesis_instrumentation__.Notify(35250)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(35251)
 		}
 	}
 
-	// A script to summarize the hottest ranges for a storage server's range reports.
 	{
+		__antithesis_instrumentation__.Notify(35252)
 		s := zc.clusterPrinter.start("hot range summary script")
 		if err := z.createRaw(s, debugBase+"/hot-ranges.sh", []byte(`#!/bin/sh
 find . -path './nodes/*/ranges/*.json' -print0 | xargs -0 grep per_second | sort -rhk3 | head -n 20
 `)); err != nil {
+			__antithesis_instrumentation__.Notify(35253)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(35254)
 		}
 	}
 
-	// A script to summarize the hottest ranges for a tenant's range report.
 	{
+		__antithesis_instrumentation__.Notify(35255)
 		s := zc.clusterPrinter.start("tenant hot range summary script")
 		if err := z.createRaw(s, debugBase+"/hot-ranges-tenant.sh", []byte(`#!/bin/sh
 find . -path './tenant_ranges/*/*.json' -print0 | xargs -0 grep per_second | sort -rhk3 | head -n 20`)); err != nil {
+			__antithesis_instrumentation__.Notify(35256)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(35257)
 		}
 	}
+	__antithesis_instrumentation__.Notify(35222)
 
 	return nil
 }
 
-// maybeAddProfileSuffix adds a file extension if this was not done
-// already on the server. This is necessary as pre-20.2 servers did
-// not use any extension for memory profiles.
-//
-// TODO(knz): Remove this in v21.1.
 func maybeAddProfileSuffix(name string) string {
+	__antithesis_instrumentation__.Notify(35258)
 	switch {
-	case strings.HasPrefix(name, heapprofiler.HeapFileNamePrefix+".") && !strings.HasSuffix(name, heapprofiler.HeapFileNameSuffix):
+	case strings.HasPrefix(name, heapprofiler.HeapFileNamePrefix+".") && func() bool {
+		__antithesis_instrumentation__.Notify(35264)
+		return !strings.HasSuffix(name, heapprofiler.HeapFileNameSuffix) == true
+	}() == true:
+		__antithesis_instrumentation__.Notify(35260)
 		name += heapprofiler.HeapFileNameSuffix
-	case strings.HasPrefix(name, heapprofiler.StatsFileNamePrefix+".") && !strings.HasSuffix(name, heapprofiler.StatsFileNameSuffix):
+	case strings.HasPrefix(name, heapprofiler.StatsFileNamePrefix+".") && func() bool {
+		__antithesis_instrumentation__.Notify(35265)
+		return !strings.HasSuffix(name, heapprofiler.StatsFileNameSuffix) == true
+	}() == true:
+		__antithesis_instrumentation__.Notify(35261)
 		name += heapprofiler.StatsFileNameSuffix
-	case strings.HasPrefix(name, heapprofiler.JemallocFileNamePrefix+".") && !strings.HasSuffix(name, heapprofiler.JemallocFileNameSuffix):
+	case strings.HasPrefix(name, heapprofiler.JemallocFileNamePrefix+".") && func() bool {
+		__antithesis_instrumentation__.Notify(35266)
+		return !strings.HasSuffix(name, heapprofiler.JemallocFileNameSuffix) == true
+	}() == true:
+		__antithesis_instrumentation__.Notify(35262)
 		name += heapprofiler.JemallocFileNameSuffix
+	default:
+		__antithesis_instrumentation__.Notify(35263)
 	}
+	__antithesis_instrumentation__.Notify(35259)
 	return name
 }
 
-// dumpTableDataForZip runs the specified SQL query and stores the
-// result. Errors encountered while running the SQL query are stored
-// in an error file in the zip file, and dumpTableDataForZip() returns
-// nil in that case.
-//
-// An error is returned by this function if it is unable to write to
-// the output file or some other unrecoverable error is encountered.
 func (zc *debugZipContext) dumpTableDataForZip(
 	zr *zipReporter, conn clisqlclient.Conn, base, table, query string,
 ) error {
-	// TODO(knz): This can use context cancellation now that query
-	// cancellation is supported.
+	__antithesis_instrumentation__.Notify(35267)
+
 	fullQuery := fmt.Sprintf(`SET statement_timeout = '%s'; %s`, zc.timeout, query)
 	baseName := base + "/" + sanitizeFilename(table)
 
@@ -334,47 +411,70 @@ func (zc *debugZipContext) dumpTableDataForZip(
 	const maxRetries = 5
 	suffix := ""
 	for numRetries := 1; numRetries <= maxRetries; numRetries++ {
+		__antithesis_instrumentation__.Notify(35269)
 		name := baseName + suffix + ".txt"
 		s.progress("writing output: %s", name)
 		sqlErr := func() error {
+			__antithesis_instrumentation__.Notify(35272)
 			zc.z.Lock()
 			defer zc.z.Unlock()
 
 			w, err := zc.z.createLocked(name, time.Time{})
 			if err != nil {
+				__antithesis_instrumentation__.Notify(35274)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(35275)
 			}
-			// Pump the SQL rows directly into the zip writer, to avoid
-			// in-RAM buffering.
+			__antithesis_instrumentation__.Notify(35273)
+
 			return sqlExecCtx.RunQueryAndFormatResults(
 				context.Background(),
 				conn, w, stderr, clisqlclient.MakeQuery(fullQuery))
 		}()
+		__antithesis_instrumentation__.Notify(35270)
 		if sqlErr != nil {
+			__antithesis_instrumentation__.Notify(35276)
 			if cErr := zc.z.createError(s, name, sqlErr); cErr != nil {
+				__antithesis_instrumentation__.Notify(35280)
 				return cErr
+			} else {
+				__antithesis_instrumentation__.Notify(35281)
 			}
+			__antithesis_instrumentation__.Notify(35277)
 			var pqErr *pq.Error
 			if !errors.As(sqlErr, &pqErr) {
-				// Not a SQL error. Nothing to retry.
+				__antithesis_instrumentation__.Notify(35282)
+
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(35283)
 			}
+			__antithesis_instrumentation__.Notify(35278)
 			if pgcode.MakeCode(string(pqErr.Code)) != pgcode.SerializationFailure {
-				// A non-retry error. We've printed the error, and
-				// there's nothing to retry. Stop here.
+				__antithesis_instrumentation__.Notify(35284)
+
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(35285)
 			}
-			// We've encountered a retry error. Add a suffix then loop.
+			__antithesis_instrumentation__.Notify(35279)
+
 			suffix = fmt.Sprintf(".%d", numRetries)
 			s = zr.start("retrying %s", table)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(35286)
 		}
+		__antithesis_instrumentation__.Notify(35271)
 		s.done()
 		break
 	}
+	__antithesis_instrumentation__.Notify(35268)
 	return nil
 }
 
 func sanitizeFilename(f string) string {
+	__antithesis_instrumentation__.Notify(35287)
 	return strings.TrimPrefix(f, `"".`)
 }

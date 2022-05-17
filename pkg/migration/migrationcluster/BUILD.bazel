@@ -19,6 +19,7 @@ go_library(
         "//pkg/util/ctxgroup",
         "//pkg/util/log",
         "//pkg/util/quotapool",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_redact//:redact",
         "@org_golang_google_grpc//:go_default_library",
@@ -51,6 +52,7 @@ go_test(
         "//pkg/testutils/testcluster",
         "//pkg/util/leaktest",
         "//pkg/util/syncutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@org_golang_google_grpc//:go_default_library",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package screl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
@@ -18,65 +10,81 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// GetDescID retrieves the descriptor ID from the element.
 func GetDescID(e scpb.Element) catid.DescID {
+	__antithesis_instrumentation__.Notify(595027)
 	id, err := Schema.GetAttribute(DescID, e)
 	if err != nil {
-		// Note that this is safe because we have a unit test that ensures that
-		// all elements don't panic on this.
+		__antithesis_instrumentation__.Notify(595029)
+
 		panic(errors.NewAssertionErrorWithWrappedErrf(
 			err, "failed to retrieve descriptor ID for %T", e,
 		))
+	} else {
+		__antithesis_instrumentation__.Notify(595030)
 	}
+	__antithesis_instrumentation__.Notify(595028)
 	return id.(catid.DescID)
 }
 
-// AllTargetDescIDs returns all the descriptor IDs referenced in the
-// target state's elements. This is a superset of the IDs of the descriptors
-// affected by the schema change.
 func AllTargetDescIDs(s scpb.TargetState) (ids catalog.DescriptorIDSet) {
+	__antithesis_instrumentation__.Notify(595031)
 	for i := range s.Targets {
+		__antithesis_instrumentation__.Notify(595033)
 		e := s.Targets[i].Element()
-		// Handle special cases to tighten this superset a bit.
+
 		switch te := e.(type) {
 		case *scpb.Namespace:
-			// Ignore the parent database and schema in the namespace element:
-			// - the parent schema of an object has no back-references to it,
-			// - the parent database has back-references to a schema, but these
-			//   will be captured by the scpb.SchemaParent target.
+			__antithesis_instrumentation__.Notify(595034)
+
 			ids.Add(te.DescriptorID)
 		case *scpb.ObjectParent:
-			// Ignore the parent schema, it won't have back-references.
+			__antithesis_instrumentation__.Notify(595035)
+
 			ids.Add(te.ObjectID)
 		default:
+			__antithesis_instrumentation__.Notify(595036)
 			_ = WalkDescIDs(e, func(id *catid.DescID) error {
+				__antithesis_instrumentation__.Notify(595037)
 				ids.Add(*id)
 				return nil
 			})
 		}
 	}
+	__antithesis_instrumentation__.Notify(595032)
 	return ids
 }
 
-// AllDescIDs returns all the IDs referenced by an element.
 func AllDescIDs(e scpb.Element) (ids catalog.DescriptorIDSet) {
+	__antithesis_instrumentation__.Notify(595038)
 	if e == nil {
+		__antithesis_instrumentation__.Notify(595041)
 		return ids
+	} else {
+		__antithesis_instrumentation__.Notify(595042)
 	}
+	__antithesis_instrumentation__.Notify(595039)
 	_ = WalkDescIDs(e, func(id *catid.DescID) error {
+		__antithesis_instrumentation__.Notify(595043)
 		ids.Add(*id)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(595040)
 	return ids
 }
 
-// ContainsDescID searches the element to see if it contains a descriptor id.
 func ContainsDescID(haystack scpb.Element, needle catid.DescID) (contains bool) {
+	__antithesis_instrumentation__.Notify(595044)
 	_ = WalkDescIDs(haystack, func(id *catid.DescID) error {
+		__antithesis_instrumentation__.Notify(595046)
 		if contains = *id == needle; contains {
+			__antithesis_instrumentation__.Notify(595048)
 			return iterutil.StopIteration()
+		} else {
+			__antithesis_instrumentation__.Notify(595049)
 		}
+		__antithesis_instrumentation__.Notify(595047)
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(595045)
 	return contains
 }

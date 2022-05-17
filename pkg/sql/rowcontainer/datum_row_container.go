@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowcontainer
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,80 +14,37 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// RowContainer is a container for rows of Datums which tracks the
-// approximate amount of memory allocated for row data.
-// Rows must be added using AddRow(); once the work is done
-// the Close() method must be called to release the allocated memory.
-//
-// TODO(knz): this does not currently track the amount of memory used
-// for the outer array of Datums references.
 type RowContainer struct {
-	// We should not copy this structure around; each copy would have a
-	// different memAcc (among other things like aliasing chunks).
 	_ util.NoCopy
 
 	numCols int
 
-	// rowsPerChunk is the number of rows in a chunk; we pack multiple rows in a
-	// single []Datum to reduce the overhead of the slice if we have few
-	// columns. Must be a power of 2 as determination of the chunk given a row
-	// index is performed using shifting.
 	rowsPerChunk      int
 	rowsPerChunkShift uint
 	chunks            [][]tree.Datum
-	firstChunk        [1][]tree.Datum // avoids allocation
+	firstChunk        [1][]tree.Datum
 	numRows           int
 
-	// chunkMemSize is the memory used by a chunk.
 	chunkMemSize int64
-	// fixedColsSize is the sum of widths of fixed-width columns in a
-	// single row.
+
 	fixedColsSize int64
-	// varSizedColumns indicates for which columns the datum size
-	// is variable.
+
 	varSizedColumns []int
 
-	// deletedRows is the number of rows that have been deleted from the front
-	// of the container. When this number reaches rowsPerChunk we delete that chunk
-	// and reset this back to zero.
 	deletedRows int
 
-	// memAcc tracks the current memory consumption of this
-	// RowContainer.
 	memAcc mon.BoundAccount
 }
 
-// NewRowContainer allocates a new row container.
-//
-// The acc argument indicates where to register memory allocations by
-// this row container. Should probably be created by
-// Session.makeBoundAccount() or Session.TxnState.makeBoundAccount().
-//
-// Note that we could, but do not (yet), report the size of the row
-// container itself to the monitor in this constructor. This is
-// because the various planNodes are not (yet) equipped to call
-// Close() upon encountering errors in their constructor (all nodes
-// initializing a RowContainer there) and SetLimitHint() (for sortNode
-// which initializes a RowContainer there). This would be rather
-// error-prone to implement consistently and hellishly difficult to
-// test properly.  The trade-off is that very large table schemas or
-// column selections could cause unchecked and potentially dangerous
-// memory growth.
 func NewRowContainer(acc mon.BoundAccount, ti colinfo.ColTypeInfo) *RowContainer {
+	__antithesis_instrumentation__.Notify(568937)
 	return NewRowContainerWithCapacity(acc, ti, 0)
 }
 
-// NewRowContainerWithCapacity is like NewRowContainer, but it accepts a
-// rowCapacity argument.
-//
-// If provided, rowCapacity indicates how many rows are to be expected.
-// The value is used to configure the size of chunks that are allocated
-// within the container such that if no more than the specific number of
-// rows is added to the container, only a single chunk will be allocated
-// and wasted space will be kept to a minimum.
 func NewRowContainerWithCapacity(
 	acc mon.BoundAccount, ti colinfo.ColTypeInfo, rowCapacity int,
 ) *RowContainer {
+	__antithesis_instrumentation__.Notify(568938)
 	c := &RowContainer{}
 	c.Init(acc, ti, rowCapacity)
 	return c
@@ -103,229 +52,283 @@ func NewRowContainerWithCapacity(
 
 var rowsPerChunkShift = uint(util.ConstantWithMetamorphicTestValue(
 	"row-container-rows-per-chunk-shift",
-	6, /* defaultValue */
-	1, /* metamorphicValue */
+	6,
+	1,
 ))
 
-// Init can be used instead of NewRowContainer if we have a RowContainer that is
-// already part of an on-heap structure.
 func (c *RowContainer) Init(acc mon.BoundAccount, ti colinfo.ColTypeInfo, rowCapacity int) {
+	__antithesis_instrumentation__.Notify(568939)
 	nCols := ti.NumColumns()
 
 	c.numCols = nCols
 	c.memAcc = acc
 
 	if rowCapacity != 0 {
-		// If there is a row capacity provided, we use a single chunk with
-		// sufficient capacity. The following is equivalent to:
-		//
-		//  c.rowsPerChunkShift = ceil(log2(rowCapacity))
-		//
+		__antithesis_instrumentation__.Notify(568942)
+
 		c.rowsPerChunkShift = 64 - uint(bits.LeadingZeros64(uint64(rowCapacity-1)))
-	} else if nCols != 0 {
-		// If the rows have columns, we use 64 rows per chunk.
-		c.rowsPerChunkShift = rowsPerChunkShift
 	} else {
-		// If there are no columns, every row gets mapped to the first chunk,
-		// which ends up being a zero-length slice because each row contains no
-		// columns.
-		c.rowsPerChunkShift = 32
+		__antithesis_instrumentation__.Notify(568943)
+		if nCols != 0 {
+			__antithesis_instrumentation__.Notify(568944)
+
+			c.rowsPerChunkShift = rowsPerChunkShift
+		} else {
+			__antithesis_instrumentation__.Notify(568945)
+
+			c.rowsPerChunkShift = 32
+		}
 	}
+	__antithesis_instrumentation__.Notify(568940)
 	c.rowsPerChunk = 1 << c.rowsPerChunkShift
 
 	for i := 0; i < nCols; i++ {
+		__antithesis_instrumentation__.Notify(568946)
 		sz, variable := tree.DatumTypeSize(ti.Type(i))
 		if variable {
+			__antithesis_instrumentation__.Notify(568947)
 			if c.varSizedColumns == nil {
-				// Only allocate varSizedColumns if necessary.
+				__antithesis_instrumentation__.Notify(568949)
+
 				c.varSizedColumns = make([]int, 0, nCols)
+			} else {
+				__antithesis_instrumentation__.Notify(568950)
 			}
+			__antithesis_instrumentation__.Notify(568948)
 			c.varSizedColumns = append(c.varSizedColumns, i)
 		} else {
+			__antithesis_instrumentation__.Notify(568951)
 			c.fixedColsSize += int64(sz)
 		}
 	}
+	__antithesis_instrumentation__.Notify(568941)
 
 	if nCols > 0 {
-		// Precalculate the memory used for a chunk, specifically by the Datums
-		// in the chunk and the slice pointing at the chunk.
-		// Note that when there are no columns, we simply track the number of
-		// rows added in c.numRows and don't allocate any memory.
+		__antithesis_instrumentation__.Notify(568952)
+
 		c.chunkMemSize = memsize.DatumOverhead * int64(c.rowsPerChunk*c.numCols)
 		c.chunkMemSize += memsize.DatumsOverhead
+	} else {
+		__antithesis_instrumentation__.Notify(568953)
 	}
 }
 
-// Clear resets the container and releases the associated memory. This allows
-// the RowContainer to be reused.
 func (c *RowContainer) Clear(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(568954)
 	c.chunks = nil
 	c.numRows = 0
 	c.deletedRows = 0
 	c.memAcc.Clear(ctx)
 }
 
-// UnsafeReset resets the container without releasing the associated memory. This
-// allows the RowContainer to be reused, but keeps the previously-allocated
-// buffers around for reuse. This is desirable if this RowContainer will be used
-// and reset many times in the course of a computation before eventually being
-// discarded. It's unsafe because it immediately renders all previously
-// allocated rows unsafe - they might be overwritten without notice. This is
-// only safe to use if it's guaranteed that all previous rows retrieved by At
-// have been copied or otherwise not retained.
 func (c *RowContainer) UnsafeReset(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(568955)
 	c.numRows = 0
 	c.deletedRows = 0
 	return c.memAcc.ResizeTo(ctx, int64(len(c.chunks))*c.chunkMemSize)
 }
 
-// Close releases the memory associated with the RowContainer.
 func (c *RowContainer) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(568956)
 	if c == nil {
-		// Allow Close on an uninitialized container.
+		__antithesis_instrumentation__.Notify(568958)
+
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(568959)
 	}
+	__antithesis_instrumentation__.Notify(568957)
 	c.chunks = nil
 	c.varSizedColumns = nil
 	c.memAcc.Close(ctx)
 }
 
 func (c *RowContainer) allocChunks(ctx context.Context, numChunks int) error {
+	__antithesis_instrumentation__.Notify(568960)
 	datumsPerChunk := c.rowsPerChunk * c.numCols
 
 	if err := c.memAcc.Grow(ctx, c.chunkMemSize*int64(numChunks)); err != nil {
+		__antithesis_instrumentation__.Notify(568964)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(568965)
 	}
+	__antithesis_instrumentation__.Notify(568961)
 
 	if c.chunks == nil {
+		__antithesis_instrumentation__.Notify(568966)
 		if numChunks == 1 {
+			__antithesis_instrumentation__.Notify(568967)
 			c.chunks = c.firstChunk[:0:1]
 		} else {
+			__antithesis_instrumentation__.Notify(568968)
 			c.chunks = make([][]tree.Datum, 0, numChunks)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(568969)
 	}
+	__antithesis_instrumentation__.Notify(568962)
 
 	datums := make([]tree.Datum, numChunks*datumsPerChunk)
 	for i, pos := 0, 0; i < numChunks; i++ {
+		__antithesis_instrumentation__.Notify(568970)
 		c.chunks = append(c.chunks, datums[pos:pos+datumsPerChunk])
 		pos += datumsPerChunk
 	}
+	__antithesis_instrumentation__.Notify(568963)
 	return nil
 }
 
-// rowSize computes the size of a single row.
 func (c *RowContainer) rowSize(row tree.Datums) int64 {
+	__antithesis_instrumentation__.Notify(568971)
 	rsz := c.fixedColsSize
 	for _, i := range c.varSizedColumns {
+		__antithesis_instrumentation__.Notify(568973)
 		rsz += int64(row[i].Size())
 	}
+	__antithesis_instrumentation__.Notify(568972)
 	return rsz
 }
 
-// getChunkAndPos returns the chunk index and the position inside the chunk for
-// a given row index.
 func (c *RowContainer) getChunkAndPos(rowIdx int) (chunk int, pos int) {
-	// This is a hot path; use shifting to avoid division.
+	__antithesis_instrumentation__.Notify(568974)
+
 	row := rowIdx + c.deletedRows
 	chunk = row >> c.rowsPerChunkShift
 	return chunk, (row - (chunk << c.rowsPerChunkShift)) * (c.numCols)
 }
 
-// AddRow attempts to insert a new row in the RowContainer. The row slice is not
-// used directly: the Datum values inside the Datums are copied to internal storage.
-// Returns an error if the allocation was denied by the MemoryMonitor.
 func (c *RowContainer) AddRow(ctx context.Context, row tree.Datums) (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(568975)
 	if len(row) != c.numCols {
+		__antithesis_instrumentation__.Notify(568980)
 		panic(errors.AssertionFailedf("invalid row length %d, expected %d", len(row), c.numCols))
+	} else {
+		__antithesis_instrumentation__.Notify(568981)
 	}
+	__antithesis_instrumentation__.Notify(568976)
 	if c.numCols == 0 {
+		__antithesis_instrumentation__.Notify(568982)
 		if c.chunks == nil {
+			__antithesis_instrumentation__.Notify(568984)
 			c.chunks = [][]tree.Datum{{}}
+		} else {
+			__antithesis_instrumentation__.Notify(568985)
 		}
+		__antithesis_instrumentation__.Notify(568983)
 		c.numRows++
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(568986)
 	}
-	// Note that it is important that we perform the memory accounting before
-	// actually adding the row.
+	__antithesis_instrumentation__.Notify(568977)
+
 	if err := c.memAcc.Grow(ctx, c.rowSize(row)); err != nil {
+		__antithesis_instrumentation__.Notify(568987)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(568988)
 	}
+	__antithesis_instrumentation__.Notify(568978)
 	chunk, pos := c.getChunkAndPos(c.numRows)
 	if chunk == len(c.chunks) {
-		// Grow the number of chunks by a fraction.
+		__antithesis_instrumentation__.Notify(568989)
+
 		numChunks := 1 + len(c.chunks)/8
 		if err := c.allocChunks(ctx, numChunks); err != nil {
+			__antithesis_instrumentation__.Notify(568990)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568991)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(568992)
 	}
+	__antithesis_instrumentation__.Notify(568979)
 	copy(c.chunks[chunk][pos:pos+c.numCols], row)
 	c.numRows++
 	return c.chunks[chunk][pos : pos+c.numCols : pos+c.numCols], nil
 }
 
-// Len reports the number of rows currently held in this RowContainer.
 func (c *RowContainer) Len() int {
+	__antithesis_instrumentation__.Notify(568993)
 	return c.numRows
 }
 
-// NumCols reports the number of columns for each row in the container.
 func (c *RowContainer) NumCols() int {
+	__antithesis_instrumentation__.Notify(568994)
 	return c.numCols
 }
 
-// At accesses a row at a specific index. Note that it does *not* copy the row:
-// callers must copy the row if they wish to mutate it.
 func (c *RowContainer) At(i int) tree.Datums {
-	// This is a hot-path: do not add additional checks here.
+	__antithesis_instrumentation__.Notify(568995)
+
 	chunk, pos := c.getChunkAndPos(i)
 	return c.chunks[chunk][pos : pos+c.numCols : pos+c.numCols]
 }
 
-// Swap exchanges two rows. Used for sorting.
 func (c *RowContainer) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(568996)
 	r1 := c.At(i)
 	r2 := c.At(j)
 	for idx := 0; idx < c.numCols; idx++ {
+		__antithesis_instrumentation__.Notify(568997)
 		r1[idx], r2[idx] = r2[idx], r1[idx]
 	}
 }
 
-// PopFirst discards the first row in the RowContainer.
 func (c *RowContainer) PopFirst(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(568998)
 	if c.numRows == 0 {
+		__antithesis_instrumentation__.Notify(569000)
 		panic("no rows added to container, nothing to pop")
+	} else {
+		__antithesis_instrumentation__.Notify(569001)
 	}
+	__antithesis_instrumentation__.Notify(568999)
 	c.numRows--
 	if c.numCols != 0 {
+		__antithesis_instrumentation__.Notify(569002)
 		c.deletedRows++
 		if c.deletedRows == c.rowsPerChunk {
-			// We release the memory for rows in chunks. This includes the
-			// chunk slice (allocated by allocChunks) and the Datums.
+			__antithesis_instrumentation__.Notify(569003)
+
 			size := c.chunkMemSize
 			for i, pos := 0, 0; i < c.rowsPerChunk; i, pos = i+1, pos+c.numCols {
+				__antithesis_instrumentation__.Notify(569005)
 				size += c.rowSize(c.chunks[0][pos : pos+c.numCols])
 			}
-			// Reset the pointer so the slice can be garbage collected.
+			__antithesis_instrumentation__.Notify(569004)
+
 			c.chunks[0] = nil
 			c.deletedRows = 0
 			c.chunks = c.chunks[1:]
 			c.memAcc.Shrink(ctx, size)
+		} else {
+			__antithesis_instrumentation__.Notify(569006)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(569007)
 	}
 }
 
-// Replace substitutes one row for another. This does query the
-// MemoryMonitor to determine whether the new row fits the
-// allowance.
 func (c *RowContainer) Replace(ctx context.Context, i int, newRow tree.Datums) error {
+	__antithesis_instrumentation__.Notify(569008)
 	newSz := c.rowSize(newRow)
 	row := c.At(i)
 	oldSz := c.rowSize(row)
 	if newSz != oldSz {
+		__antithesis_instrumentation__.Notify(569010)
 		if err := c.memAcc.Resize(ctx, oldSz, newSz); err != nil {
+			__antithesis_instrumentation__.Notify(569011)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(569012)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(569013)
 	}
+	__antithesis_instrumentation__.Notify(569009)
 	copy(row, newRow)
 	return nil
 }

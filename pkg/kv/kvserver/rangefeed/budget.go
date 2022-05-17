@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rangefeed
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,45 +18,16 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// useBudgets controls if RangeFeed memory budgets are enabled. Overridable by
-// environment variable.
 var useBudgets = envutil.EnvOrDefaultBool("COCKROACH_USE_RANGEFEED_MEM_BUDGETS", true)
 
-// totalSharedFeedBudgetFraction is maximum percentage of SQL memory pool that
-// could be used by all feed budgets together. Overridable by environment
-// variable.
 var totalSharedFeedBudgetFraction = envutil.EnvOrDefaultFloat64("COCKROACH_RANGEFEED_FEED_MEM_FRACTION",
 	0.5)
 
-// maxFeedFraction is maximum percentage of feed memory pool that could be
-// allocated to a single feed budget. Overridable by environment variable.
-// With 32 GB node and 0.25 sql memory budget (8 GB) each range would get max of
-// 8 * 0.5 * 0.05 = 200 MB budget limit.
-// With 8 GB node and 0.25 sql memory budget (2 GB) each range would get max of
-// 2 * 0.5 * 0.05 = 50 MB budget limit.
-// Note that regardless of calculated value, memory budged can't go below max
-// raft command size since we should be able to send any command through
-// rangefeed. See kvserver.MaxCommandSize for details on raft command size.
 var maxFeedFraction = envutil.EnvOrDefaultFloat64("COCKROACH_RANGEFEED_TOTAL_MEM_FRACTION", 0.05)
 
-// Pre allocated memory limit for system RangeFeeds. Each event should never
-// exceed 64 MB as it would fail to write to raft log. We don't expect system
-// ranges to have such objects, but we'll have a multiple of those just in case.
 var systemRangeFeedBudget = envutil.EnvOrDefaultInt64("COCKROACH_RANGEFEED_SYSTEM_BUDGET",
-	2*64*1024*1024 /* 128MB */)
+	2*64*1024*1024)
 
-// RangefeedBudgetsEnabled is a cluster setting that enables rangefeed memory
-// budgets. This is meant to be an escape hatch to disable budgets if they cause
-// feeds to fail unexpectedly despite nodes have plenty of memory or if bugs in
-// budgeting are discovered and mitigation is required.
-// With budgets disabled, rangefeeds will behave as they did prior to 22.1.
-// Note that disabling this feature will not disable budgets on already running
-// rangefeeds, but will affect feeds that are created after the option was
-// changed. You need to restart all feeds to ensure that the budget is fully
-// disabled.
-// This feature is also globally controlled by useBudgets environment option
-// defined above. If budgets are disabled by environment variable, cluster
-// setting has no effect.
 var RangefeedBudgetsEnabled = settings.RegisterBoolSetting(
 	settings.SystemOnly,
 	"kv.rangefeed.memory_budgets.enabled",
@@ -74,75 +37,61 @@ var RangefeedBudgetsEnabled = settings.RegisterBoolSetting(
 
 var budgetAllocationSyncPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(113463)
 		return new(SharedBudgetAllocation)
 	},
 }
 
 func getPooledBudgetAllocation(ba SharedBudgetAllocation) *SharedBudgetAllocation {
+	__antithesis_instrumentation__.Notify(113464)
 	b := budgetAllocationSyncPool.Get().(*SharedBudgetAllocation)
 	*b = ba
 	return b
 }
 
 func putPooledBudgetAllocation(ba *SharedBudgetAllocation) {
+	__antithesis_instrumentation__.Notify(113465)
 	*ba = SharedBudgetAllocation{}
 	budgetAllocationSyncPool.Put(ba)
 }
 
-// FeedBudget is memory budget for RangeFeed that wraps BoundAccount
-// and provides ability to wait for downstream to release budget and
-// to send individual events that exceed total budget size.
-// FeedBudget doesn't provide any fairness when acquiring as it is only
-// supposed to be used by a single caller.
-// When owning component is destroyed, budget must be closed, in that
-// case all budget allocation is returned immediately and no further
-// allocations are possible.
-// In the typical case processor will get allocations from budget which
-// would be in turn borrowed from underlying account. Once event is
-// processed, allocation would be returned.
-// To use the budget first try to obtain allocation with TryGet and if
-// it fails because budget is exhausted use WaitAndGet and use context with
-// a deadline to stop. It is not safe to just call WaitAndGet because it
-// doesn't check for available budget before waiting.
-// NB: Resource release notifications only work within context of a single
-// feed. If we start contending for memory with other feeds in the same
-// BytesMonitor pool we won't see if memory is released there and will
-// time-out if memory is not allocated.
 type FeedBudget struct {
 	mu struct {
 		syncutil.Mutex
-		// Bound account that provides budget with resource.
+
 		memBudget *mon.BoundAccount
-		// If true, budget was released and no more allocations could take place.
+
 		closed bool
 	}
-	// Maximum amount of memory to use by feed. We use separate limit here to
-	// avoid creating BytesMontior with a limit per feed.
+
 	limit int64
-	// Channel to notify that memory was returned to the budget.
+
 	replenishC chan interface{}
-	// Budget cancellation request.
+
 	stopC chan interface{}
-	// Cluster settings to be able to check RangefeedBudgetsEnabled on the fly.
-	// When budgets are disabled, all new messages should pass through, all
-	// previous allocations should still be returned as memory pool is shared with
-	// SQL.
+
 	settings *settings.Values
 
 	closed sync.Once
 }
 
-// NewFeedBudget creates a FeedBudget to be used with RangeFeed. If nil account
-// is passed, function will return nil which is safe to use with RangeFeed as
-// it effectively disables memory accounting for that feed.
 func NewFeedBudget(budget *mon.BoundAccount, limit int64, settings *settings.Values) *FeedBudget {
+	__antithesis_instrumentation__.Notify(113466)
 	if budget == nil {
+		__antithesis_instrumentation__.Notify(113469)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(113470)
 	}
-	// If limit is not specified, use large enough value.
+	__antithesis_instrumentation__.Notify(113467)
+
 	if limit <= 0 {
+		__antithesis_instrumentation__.Notify(113471)
 		limit = (1 << 63) - 1
+	} else {
+		__antithesis_instrumentation__.Notify(113472)
 	}
+	__antithesis_instrumentation__.Notify(113468)
 	f := &FeedBudget{
 		replenishC: make(chan interface{}, 1),
 		stopC:      make(chan interface{}),
@@ -153,81 +102,111 @@ func NewFeedBudget(budget *mon.BoundAccount, limit int64, settings *settings.Val
 	return f
 }
 
-// TryGet allocates amount from budget. If there's not enough budget available
-// returns error immediately.
-// Returned allocation has its use counter set to 1.
 func (f *FeedBudget) TryGet(ctx context.Context, amount int64) (*SharedBudgetAllocation, error) {
+	__antithesis_instrumentation__.Notify(113473)
 	if !RangefeedBudgetsEnabled.Get(f.settings) {
+		__antithesis_instrumentation__.Notify(113478)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(113479)
 	}
+	__antithesis_instrumentation__.Notify(113474)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.mu.closed {
+		__antithesis_instrumentation__.Notify(113480)
 		log.Info(ctx, "trying to get allocation from already closed budget")
 		return nil, errors.Errorf("budget unexpectedly closed")
+	} else {
+		__antithesis_instrumentation__.Notify(113481)
 	}
+	__antithesis_instrumentation__.Notify(113475)
 	var err error
 	if f.mu.memBudget.Used()+amount > f.limit {
+		__antithesis_instrumentation__.Notify(113482)
 		return nil, errors.Wrap(f.mu.memBudget.Monitor().Resource().NewBudgetExceededError(amount,
 			f.mu.memBudget.Used(),
 			f.limit), "rangefeed budget")
+	} else {
+		__antithesis_instrumentation__.Notify(113483)
 	}
+	__antithesis_instrumentation__.Notify(113476)
 	if err = f.mu.memBudget.Grow(ctx, amount); err != nil {
+		__antithesis_instrumentation__.Notify(113484)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(113485)
 	}
+	__antithesis_instrumentation__.Notify(113477)
 	return getPooledBudgetAllocation(SharedBudgetAllocation{size: amount, refCount: 1, feed: f}), nil
 }
 
-// WaitAndGet waits for replenish channel to return any allocations back to the
-// budget and then tries to get allocation. Waiting stops when context is
-// cancelled. Context should be used to set up a timeout as needed.
 func (f *FeedBudget) WaitAndGet(
 	ctx context.Context, amount int64,
 ) (*SharedBudgetAllocation, error) {
+	__antithesis_instrumentation__.Notify(113486)
 	for {
+		__antithesis_instrumentation__.Notify(113487)
 		select {
 		case <-f.replenishC:
+			__antithesis_instrumentation__.Notify(113488)
 			alloc, err := f.TryGet(ctx, amount)
 			if err == nil {
+				__antithesis_instrumentation__.Notify(113491)
 				return alloc, nil
+			} else {
+				__antithesis_instrumentation__.Notify(113492)
 			}
 		case <-ctx.Done():
-			// Since we share budget with other components, it is also possible that
-			// it was returned and we are not notified by our feed channel, so we try
-			// for the last time.
+			__antithesis_instrumentation__.Notify(113489)
+
 			return f.TryGet(ctx, amount)
 		case <-f.stopC:
-			// We are already stopped, current allocation is already freed so, do
-			// nothing.
+			__antithesis_instrumentation__.Notify(113490)
+
 			return nil, nil
 		}
 	}
 }
 
-// Return returns amount to budget.
 func (f *FeedBudget) returnAllocation(ctx context.Context, amount int64) {
+	__antithesis_instrumentation__.Notify(113493)
 	f.mu.Lock()
 	if f.mu.closed {
+		__antithesis_instrumentation__.Notify(113496)
 		f.mu.Unlock()
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(113497)
 	}
+	__antithesis_instrumentation__.Notify(113494)
 	if amount > 0 {
+		__antithesis_instrumentation__.Notify(113498)
 		f.mu.memBudget.Shrink(ctx, amount)
+	} else {
+		__antithesis_instrumentation__.Notify(113499)
 	}
+	__antithesis_instrumentation__.Notify(113495)
 	f.mu.Unlock()
 	select {
 	case f.replenishC <- struct{}{}:
+		__antithesis_instrumentation__.Notify(113500)
 	default:
+		__antithesis_instrumentation__.Notify(113501)
 	}
 }
 
-// Close frees up all allocated budget and prevents any further allocations.
-// Safe to call on nil budget.
 func (f *FeedBudget) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(113502)
 	if f == nil {
+		__antithesis_instrumentation__.Notify(113504)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(113505)
 	}
+	__antithesis_instrumentation__.Notify(113503)
 	f.closed.Do(func() {
+		__antithesis_instrumentation__.Notify(113506)
 		f.mu.Lock()
 		f.mu.closed = true
 		f.mu.memBudget.Close(ctx)
@@ -236,35 +215,41 @@ func (f *FeedBudget) Close(ctx context.Context) {
 	})
 }
 
-// SharedBudgetAllocation is a token that is passed around with range events
-// to registrations to maintain RangeFeed memory budget across shared queues.
 type SharedBudgetAllocation struct {
 	refCount int32
 	size     int64
 	feed     *FeedBudget
 }
 
-// Use increases usage count for the allocation. It should be called by each
-// new consumer that plans to retain allocation after returning to a caller
-// that passed this allocation.
 func (a *SharedBudgetAllocation) Use() {
+	__antithesis_instrumentation__.Notify(113507)
 	if a != nil {
+		__antithesis_instrumentation__.Notify(113508)
 		if atomic.AddInt32(&a.refCount, 1) == 1 {
+			__antithesis_instrumentation__.Notify(113509)
 			panic("unexpected shared memory allocation usage increase after free")
+		} else {
+			__antithesis_instrumentation__.Notify(113510)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(113511)
 	}
 }
 
-// Release decreases ref count and returns true if budget could be released.
 func (a *SharedBudgetAllocation) Release(ctx context.Context) {
-	if a != nil && atomic.AddInt32(&a.refCount, -1) == 0 {
+	__antithesis_instrumentation__.Notify(113512)
+	if a != nil && func() bool {
+		__antithesis_instrumentation__.Notify(113513)
+		return atomic.AddInt32(&a.refCount, -1) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(113514)
 		a.feed.returnAllocation(ctx, a.size)
 		putPooledBudgetAllocation(a)
+	} else {
+		__antithesis_instrumentation__.Notify(113515)
 	}
 }
 
-// BudgetFactory creates memory budget for rangefeed according to system
-// settings.
 type BudgetFactory struct {
 	limit              int64
 	adjustLimit        func(int64) int64
@@ -276,9 +261,6 @@ type BudgetFactory struct {
 	metrics *FeedBudgetPoolMetrics
 }
 
-// BudgetFactoryConfig is a config for a BudgetFactory. It's main purpose is to
-// decouple derived parameter calculation from the function that creates
-// factories so that it could be tested independently.
 type BudgetFactoryConfig struct {
 	rootMon                 *mon.BytesMonitor
 	provisionalFeedLimit    int64
@@ -289,12 +271,10 @@ type BudgetFactoryConfig struct {
 }
 
 func (b BudgetFactoryConfig) empty() bool {
+	__antithesis_instrumentation__.Notify(113516)
 	return b.rootMon == nil
 }
 
-// CreateBudgetFactoryConfig creates new config using system defaults set by
-// environment variables. If budgets are disabled, factory created from the
-// config will be nil and will disable all feed memory budget accounting.
 func CreateBudgetFactoryConfig(
 	rootMon *mon.BytesMonitor,
 	memoryPoolSize int64,
@@ -302,9 +282,17 @@ func CreateBudgetFactoryConfig(
 	adjustLimit func(int64) int64,
 	settings *settings.Values,
 ) BudgetFactoryConfig {
-	if rootMon == nil || !useBudgets {
+	__antithesis_instrumentation__.Notify(113517)
+	if rootMon == nil || func() bool {
+		__antithesis_instrumentation__.Notify(113519)
+		return !useBudgets == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(113520)
 		return BudgetFactoryConfig{}
+	} else {
+		__antithesis_instrumentation__.Notify(113521)
 	}
+	__antithesis_instrumentation__.Notify(113518)
 	totalRangeReedBudget := int64(float64(memoryPoolSize) * totalSharedFeedBudgetFraction)
 	feedSizeLimit := int64(float64(totalRangeReedBudget) * maxFeedFraction)
 	return BudgetFactoryConfig{
@@ -317,16 +305,19 @@ func CreateBudgetFactoryConfig(
 	}
 }
 
-// NewBudgetFactory creates a factory callback that would create RangeFeed
-// memory budget according to system policy.
 func NewBudgetFactory(ctx context.Context, config BudgetFactoryConfig) *BudgetFactory {
+	__antithesis_instrumentation__.Notify(113522)
 	if config.empty() {
+		__antithesis_instrumentation__.Notify(113524)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(113525)
 	}
+	__antithesis_instrumentation__.Notify(113523)
 	metrics := NewFeedBudgetMetrics(config.histogramWindowInterval)
 	systemRangeMonitor := mon.NewMonitorInheritWithLimit("rangefeed-system-monitor",
 		systemRangeFeedBudget, config.rootMon)
-	systemRangeMonitor.SetMetrics(metrics.SystemBytesCount, nil /* maxHist */)
+	systemRangeMonitor.SetMetrics(metrics.SystemBytesCount, nil)
 	systemRangeMonitor.Start(ctx, config.rootMon,
 		mon.MakeStandaloneBudget(systemRangeFeedBudget))
 
@@ -334,7 +325,7 @@ func NewBudgetFactory(ctx context.Context, config BudgetFactoryConfig) *BudgetFa
 		"rangefeed-monitor",
 		config.totalRangeReedBudget,
 		config.rootMon)
-	rangeFeedPoolMonitor.SetMetrics(metrics.SharedBytesCount, nil /* maxHist */)
+	rangeFeedPoolMonitor.SetMetrics(metrics.SharedBytesCount, nil)
 	rangeFeedPoolMonitor.Start(ctx, config.rootMon, mon.BoundAccount{})
 
 	return &BudgetFactory{
@@ -347,38 +338,50 @@ func NewBudgetFactory(ctx context.Context, config BudgetFactoryConfig) *BudgetFa
 	}
 }
 
-// Stop stops underlying memory monitors used by factory.
-// Safe to call on nil factory.
 func (f *BudgetFactory) Stop(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(113526)
 	if f == nil {
+		__antithesis_instrumentation__.Notify(113528)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(113529)
 	}
+	__antithesis_instrumentation__.Notify(113527)
 	f.systemFeedBytesMon.Stop(ctx)
 	f.feedBytesMon.Stop(ctx)
 }
 
-// CreateBudget creates feed budget using memory pools configured in the
-// factory. It is safe to call on nil factory as it will produce nil budget
-// which in turn disables memory accounting on range feed.
 func (f *BudgetFactory) CreateBudget(key roachpb.RKey) *FeedBudget {
+	__antithesis_instrumentation__.Notify(113530)
 	if f == nil {
+		__antithesis_instrumentation__.Notify(113534)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(113535)
 	}
+	__antithesis_instrumentation__.Notify(113531)
 	rangeLimit := f.adjustLimit(f.limit)
 	if rangeLimit == 0 {
+		__antithesis_instrumentation__.Notify(113536)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(113537)
 	}
-	// We use any table with reserved ID in system tenant as system case.
+	__antithesis_instrumentation__.Notify(113532)
+
 	if key.Less(roachpb.RKey(keys.SystemSQLCodec.TablePrefix(keys.MaxReservedDescID + 1))) {
+		__antithesis_instrumentation__.Notify(113538)
 		acc := f.systemFeedBytesMon.MakeBoundAccount()
 		return NewFeedBudget(&acc, 0, f.settings)
+	} else {
+		__antithesis_instrumentation__.Notify(113539)
 	}
+	__antithesis_instrumentation__.Notify(113533)
 	acc := f.feedBytesMon.MakeBoundAccount()
 	return NewFeedBudget(&acc, rangeLimit, f.settings)
 }
 
-// Metrics exposes Metrics for BudgetFactory so that they could be registered
-// in the metric registry.
 func (f *BudgetFactory) Metrics() *FeedBudgetPoolMetrics {
+	__antithesis_instrumentation__.Notify(113540)
 	return f.metrics
 }

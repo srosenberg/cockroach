@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//pkg/cmd/reduce/reduce",
         "//pkg/cmd/reduce/reduce/reducesql",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -16,4 +17,5 @@ go_binary(
     name = "reduce",
     embed = [":reduce_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package queue
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -45,6 +37,7 @@ var queueMeta = workload.Meta{
 		`beginning of the sequence.`,
 	Version: `1.0.0`,
 	New: func() workload.Generator {
+		__antithesis_instrumentation__.Notify(695544)
 		g := &queue{}
 		g.flags.FlagSet = pflag.NewFlagSet(`queue`, pflag.ContinueOnError)
 		g.connFlags = workload.NewConnFlags(&g.flags)
@@ -53,14 +46,12 @@ var queueMeta = workload.Meta{
 	},
 }
 
-// Meta implements the Generator interface.
-func (*queue) Meta() workload.Meta { return queueMeta }
+func (*queue) Meta() workload.Meta { __antithesis_instrumentation__.Notify(695545); return queueMeta }
 
-// Flags implements the Flagser interface.
-func (w *queue) Flags() workload.Flags { return w.flags }
+func (w *queue) Flags() workload.Flags { __antithesis_instrumentation__.Notify(695546); return w.flags }
 
-// Tables implements the Generator interface.
 func (w *queue) Tables() []workload.Table {
+	__antithesis_instrumentation__.Notify(695547)
 	table := workload.Table{
 		Name:   `queue`,
 		Schema: queueSchema,
@@ -68,47 +59,67 @@ func (w *queue) Tables() []workload.Table {
 	return []workload.Table{table}
 }
 
-// Ops implements the Opser interface.
 func (w *queue) Ops(
 	ctx context.Context, urls []string, reg *histogram.Registry,
 ) (workload.QueryLoad, error) {
+	__antithesis_instrumentation__.Notify(695548)
 	sqlDatabase, err := workload.SanitizeUrls(w, w.connFlags.DBOverride, urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695555)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(695556)
 	}
+	__antithesis_instrumentation__.Notify(695549)
 	db, err := gosql.Open(`cockroach`, strings.Join(urls, ` `))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695557)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(695558)
 	}
+	__antithesis_instrumentation__.Notify(695550)
 	db.SetMaxOpenConns(w.connFlags.Concurrency + 1)
 	db.SetMaxIdleConns(w.connFlags.Concurrency + 1)
 
-	// Generate queue insert statement.
 	var buf bytes.Buffer
 	buf.WriteString(`INSERT INTO queue (ts, id) VALUES`)
 	for i := 0; i < w.batchSize; i++ {
+		__antithesis_instrumentation__.Notify(695559)
 		j := i * 2
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(695561)
 			buf.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(695562)
 		}
+		__antithesis_instrumentation__.Notify(695560)
 		fmt.Fprintf(&buf, ` ($%d, $%d)`, j+1, j+2)
 	}
+	__antithesis_instrumentation__.Notify(695551)
 	insertStmt, err := db.Prepare(buf.String())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695563)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(695564)
 	}
+	__antithesis_instrumentation__.Notify(695552)
 
-	// Generate queue deletion statement. This is intentionally in a naive form
-	// for testing purposes.
 	deleteStmt, err := db.Prepare(`DELETE FROM queue WHERE ts < $1`)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695565)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(695566)
 	}
+	__antithesis_instrumentation__.Notify(695553)
 
 	seqFunc := makeSequenceFunc()
 
 	ql := workload.QueryLoad{SQLDatabase: sqlDatabase}
 	for i := 0; i < w.connFlags.Concurrency; i++ {
+		__antithesis_instrumentation__.Notify(695567)
 		op := queueOp{
 			workerID:   i + 1,
 			config:     w,
@@ -120,12 +131,10 @@ func (w *queue) Ops(
 		}
 		ql.WorkerFns = append(ql.WorkerFns, op.run)
 	}
+	__antithesis_instrumentation__.Notify(695554)
 	return ql, nil
 }
 
-// queueOp represents a single concurrent "worker" generating the workload. Each
-// queueOp worker both inserts into the queue table *and* consumes (deletes)
-// entries from the beginning of the queue.
 type queueOp struct {
 	workerID   int
 	config     *queue
@@ -137,26 +146,31 @@ type queueOp struct {
 }
 
 func (o *queueOp) run(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(695568)
 	count := o.getSeq()
 	start := count * o.config.batchSize
 	end := start + o.config.batchSize
 
-	// Write batch.
 	params := make([]interface{}, 2*o.config.batchSize)
 	for i := 0; i < o.config.batchSize; i++ {
+		__antithesis_instrumentation__.Notify(695571)
 		paramOffset := i * 2
 		params[paramOffset+0] = start + i
 		params[paramOffset+1] = o.workerID
 	}
+	__antithesis_instrumentation__.Notify(695569)
 	startTime := timeutil.Now()
 	_, err := o.insertStmt.Exec(params...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(695572)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(695573)
 	}
+	__antithesis_instrumentation__.Notify(695570)
 	elapsed := timeutil.Since(startTime)
 	o.hists.Get("write").Record(elapsed)
 
-	// Delete batch which was just written.
 	startTime = timeutil.Now()
 	_, err = o.deleteStmt.Exec(end)
 	elapsed = timeutil.Since(startTime)
@@ -165,8 +179,10 @@ func (o *queueOp) run(ctx context.Context) error {
 }
 
 func makeSequenceFunc() func() int {
+	__antithesis_instrumentation__.Notify(695574)
 	i := int64(0)
 	return func() int {
+		__antithesis_instrumentation__.Notify(695575)
 		return int(atomic.AddInt64(&i, 1))
 	}
 }

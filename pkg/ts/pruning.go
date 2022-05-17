@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ts
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,110 +22,109 @@ type timeSeriesResolutionInfo struct {
 	Resolution Resolution
 }
 
-// findTimeSeries searches the supplied engine over the supplied key range,
-// identifying time series which have stored data in the range, along with the
-// resolutions at which time series data is stored. A unique name/resolution
-// pair will only be identified once, even if the range contains keys for that
-// name/resolution pair at multiple timestamps or from multiple sources.
-//
-// An engine snapshot is used, rather than a client, because this function is
-// intended to be called by a storage queue which can inspect the local data for
-// a single range without the need for expensive network calls.
 func (tsdb *DB) findTimeSeries(
 	snapshot storage.Reader, startKey, endKey roachpb.RKey, now hlc.Timestamp,
 ) ([]timeSeriesResolutionInfo, error) {
+	__antithesis_instrumentation__.Notify(648097)
 	var results []timeSeriesResolutionInfo
 
-	// Set start boundary for the search, which is the lesser of the range start
-	// key and the beginning of time series data.
 	start := storage.MakeMVCCMetadataKey(startKey.AsRawKey())
 	next := storage.MakeMVCCMetadataKey(keys.TimeseriesPrefix)
 	if next.Less(start) {
+		__antithesis_instrumentation__.Notify(648101)
 		next = start
+	} else {
+		__antithesis_instrumentation__.Notify(648102)
 	}
+	__antithesis_instrumentation__.Notify(648098)
 
-	// Set end boundary for the search, which is the lesser of the range end key
-	// and the end of time series data.
 	end := storage.MakeMVCCMetadataKey(endKey.AsRawKey())
 	lastTS := storage.MakeMVCCMetadataKey(keys.TimeseriesPrefix.PrefixEnd())
 	if lastTS.Less(end) {
+		__antithesis_instrumentation__.Notify(648103)
 		end = lastTS
+	} else {
+		__antithesis_instrumentation__.Notify(648104)
 	}
+	__antithesis_instrumentation__.Notify(648099)
 
 	thresholds := tsdb.computeThresholds(now.WallTime)
 
-	// NB: timeseries don't have intents.
 	iter := snapshot.NewMVCCIterator(storage.MVCCKeyIterKind, storage.IterOptions{UpperBound: endKey.AsRawKey()})
 	defer iter.Close()
 
 	for iter.SeekGE(next); ; iter.SeekGE(next) {
+		__antithesis_instrumentation__.Notify(648105)
 		if ok, err := iter.Valid(); err != nil {
+			__antithesis_instrumentation__.Notify(648109)
 			return nil, err
-		} else if !ok || !iter.UnsafeKey().Less(end) {
-			break
+		} else {
+			__antithesis_instrumentation__.Notify(648110)
+			if !ok || func() bool {
+				__antithesis_instrumentation__.Notify(648111)
+				return !iter.UnsafeKey().Less(end) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(648112)
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(648113)
+			}
 		}
+		__antithesis_instrumentation__.Notify(648106)
 		foundKey := iter.Key().Key
 
-		// Extract the name and resolution from the discovered key.
 		name, _, res, tsNanos, err := DecodeDataKey(foundKey)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(648114)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(648115)
 		}
-		// Skip this time series if there's nothing to prune. We check the
-		// oldest (first) time series record's timestamp against the
-		// pruning threshold.
-		if threshold, ok := thresholds[res]; !ok || threshold > tsNanos {
+		__antithesis_instrumentation__.Notify(648107)
+
+		if threshold, ok := thresholds[res]; !ok || func() bool {
+			__antithesis_instrumentation__.Notify(648116)
+			return threshold > tsNanos == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(648117)
 			results = append(results, timeSeriesResolutionInfo{
 				Name:       name,
 				Resolution: res,
 			})
+		} else {
+			__antithesis_instrumentation__.Notify(648118)
 		}
+		__antithesis_instrumentation__.Notify(648108)
 
-		// Set 'next' is initialized to the next possible time series key
-		// which could belong to a previously undiscovered time series.
 		next = storage.MakeMVCCMetadataKey(makeDataKeySeriesPrefix(name, res).PrefixEnd())
 	}
+	__antithesis_instrumentation__.Notify(648100)
 
 	return results, nil
 }
 
-// pruneTimeSeries will prune data for the supplied set of time series. Time
-// series series are identified by name and resolution.
-//
-// For each time series supplied, the pruning operation will delete all data
-// older than a constant threshold. The threshold is different depending on the
-// resolution; typically, lower-resolution time series data will be retained for
-// a longer period.
-//
-// If data is stored at a resolution which is not known to the system, it is
-// assumed that the resolution has been deprecated and all data for that time
-// series at that resolution will be deleted.
-//
-// As range deletion of inline data is an idempotent operation, it is safe to
-// run this operation concurrently on multiple nodes at the same time.
 func (tsdb *DB) pruneTimeSeries(
 	ctx context.Context, db *kv.DB, timeSeriesList []timeSeriesResolutionInfo, now hlc.Timestamp,
 ) error {
+	__antithesis_instrumentation__.Notify(648119)
 	thresholds := tsdb.computeThresholds(now.WallTime)
 
 	b := &kv.Batch{}
 	for _, timeSeries := range timeSeriesList {
-		// Time series data for a specific resolution falls in a contiguous key
-		// range, and can be deleted with a DelRange command.
-		// The start key is the prefix unique to this name/resolution pair.
+		__antithesis_instrumentation__.Notify(648121)
+
 		start := makeDataKeySeriesPrefix(timeSeries.Name, timeSeries.Resolution)
 
-		// The end key can be created by generating a time series key with the
-		// threshold timestamp for the resolution. If the resolution is not
-		// supported, the start key's PrefixEnd is used instead (which will clear
-		// the time series entirely).
 		var end roachpb.Key
 		threshold, ok := thresholds[timeSeries.Resolution]
 		if ok {
+			__antithesis_instrumentation__.Notify(648123)
 			end = MakeDataKey(timeSeries.Name, "", timeSeries.Resolution, threshold)
 		} else {
+			__antithesis_instrumentation__.Notify(648124)
 			end = start.PrefixEnd()
 		}
+		__antithesis_instrumentation__.Notify(648122)
 
 		b.AddRawRequest(&roachpb.DeleteRangeRequest{
 			RequestHeader: roachpb.RequestHeader{
@@ -143,6 +134,7 @@ func (tsdb *DB) pruneTimeSeries(
 			Inline: true,
 		})
 	}
+	__antithesis_instrumentation__.Notify(648120)
 
 	return db.Run(ctx, b)
 }

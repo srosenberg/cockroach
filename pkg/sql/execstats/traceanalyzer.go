@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package execstats
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -31,57 +23,57 @@ type flowStats struct {
 	stats []*execinfrapb.ComponentStats
 }
 
-// FlowsMetadata contains metadata extracted from flows that comprise a single
-// physical plan. This information is stored in sql.flowInfo and is analyzed by
-// TraceAnalyzer.
 type FlowsMetadata struct {
-	// flowID is the FlowID of the flows belonging to the physical plan. Note that
-	// the same FlowID is used across multiple flows in the same query.
 	flowID execinfrapb.FlowID
-	// processorStats maps a processor ID to stats associated with this component
-	// extracted from a trace as well as some metadata. Note that it is possible
-	// for the processorStats to have nil stats, which indicates that no stats
-	// were found for the given processor in the trace.
+
 	processorStats map[execinfrapb.ProcessorID]*execinfrapb.ComponentStats
-	// streamStats maps a stream ID to stats associated with this stream
-	// extracted from a trace as well as some metadata. Note that it is possible
-	// for the streamStats to have nil stats, which indicates that no stats were
-	// found for the given stream in the trace.
+
 	streamStats map[execinfrapb.StreamID]*streamStats
-	// flowStats maps a node ID to flow level stats extracted from a trace. Note
-	// that the key is not a FlowID because the same FlowID is used across
-	// nodes.
+
 	flowStats map[base.SQLInstanceID]*flowStats
 }
 
-// NewFlowsMetadata creates a FlowsMetadata for the given physical plan
-// information.
 func NewFlowsMetadata(flows map[base.SQLInstanceID]*execinfrapb.FlowSpec) *FlowsMetadata {
+	__antithesis_instrumentation__.Notify(490822)
 	a := &FlowsMetadata{
 		processorStats: make(map[execinfrapb.ProcessorID]*execinfrapb.ComponentStats),
 		streamStats:    make(map[execinfrapb.StreamID]*streamStats),
 		flowStats:      make(map[base.SQLInstanceID]*flowStats),
 	}
 
-	// Annotate the maps with physical plan information.
 	for sqlInstanceID, flow := range flows {
+		__antithesis_instrumentation__.Notify(490824)
 		if a.flowID.IsUnset() {
+			__antithesis_instrumentation__.Notify(490826)
 			a.flowID = flow.FlowID
-		} else if buildutil.CrdbTestBuild && !a.flowID.Equal(flow.FlowID) {
-			panic(
-				errors.AssertionFailedf(
-					"expected the same FlowID to be used for all flows. UUID of first flow: %v, UUID of flow on node %s: %v",
-					a.flowID, sqlInstanceID, flow.FlowID),
-			)
+		} else {
+			__antithesis_instrumentation__.Notify(490827)
+			if buildutil.CrdbTestBuild && func() bool {
+				__antithesis_instrumentation__.Notify(490828)
+				return !a.flowID.Equal(flow.FlowID) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(490829)
+				panic(
+					errors.AssertionFailedf(
+						"expected the same FlowID to be used for all flows. UUID of first flow: %v, UUID of flow on node %s: %v",
+						a.flowID, sqlInstanceID, flow.FlowID),
+				)
+			} else {
+				__antithesis_instrumentation__.Notify(490830)
+			}
 		}
+		__antithesis_instrumentation__.Notify(490825)
 		a.flowStats[sqlInstanceID] = &flowStats{}
 		for _, proc := range flow.Processors {
+			__antithesis_instrumentation__.Notify(490831)
 			procID := execinfrapb.ProcessorID(proc.ProcessorID)
 			a.processorStats[procID] = &execinfrapb.ComponentStats{}
 			a.processorStats[procID].Component.SQLInstanceID = sqlInstanceID
 
 			for _, output := range proc.Output {
+				__antithesis_instrumentation__.Notify(490832)
 				for _, stream := range output.Streams {
+					__antithesis_instrumentation__.Notify(490833)
 					a.streamStats[stream.StreamID] = &streamStats{
 						originSQLInstanceID:      sqlInstanceID,
 						destinationSQLInstanceID: stream.TargetNodeID,
@@ -90,14 +82,11 @@ func NewFlowsMetadata(flows map[base.SQLInstanceID]*execinfrapb.FlowSpec) *Flows
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(490823)
 
 	return a
 }
 
-// NodeLevelStats returns all the flow level stats that correspond to the given
-// traces and flow metadata.
-// TODO(asubiotto): Flatten this struct, we're currently allocating a map per
-//  stat.
 type NodeLevelStats struct {
 	NetworkBytesSentGroupedByNode map[base.SQLInstanceID]int64
 	MaxMemoryUsageGroupedByNode   map[base.SQLInstanceID]int64
@@ -109,9 +98,6 @@ type NodeLevelStats struct {
 	ContentionTimeGroupedByNode   map[base.SQLInstanceID]time.Duration
 }
 
-// QueryLevelStats returns all the query level stats that correspond to the
-// given traces and flow metadata.
-// NOTE: When adding fields to this struct, be sure to update Accumulate.
 type QueryLevelStats struct {
 	NetworkBytesSent int64
 	MaxMemUsage      int64
@@ -124,15 +110,23 @@ type QueryLevelStats struct {
 	Regions          []string
 }
 
-// Accumulate accumulates other's stats into the receiver.
 func (s *QueryLevelStats) Accumulate(other QueryLevelStats) {
+	__antithesis_instrumentation__.Notify(490834)
 	s.NetworkBytesSent += other.NetworkBytesSent
 	if other.MaxMemUsage > s.MaxMemUsage {
+		__antithesis_instrumentation__.Notify(490837)
 		s.MaxMemUsage = other.MaxMemUsage
+	} else {
+		__antithesis_instrumentation__.Notify(490838)
 	}
+	__antithesis_instrumentation__.Notify(490835)
 	if other.MaxDiskUsage > s.MaxDiskUsage {
+		__antithesis_instrumentation__.Notify(490839)
 		s.MaxDiskUsage = other.MaxDiskUsage
+	} else {
+		__antithesis_instrumentation__.Notify(490840)
 	}
+	__antithesis_instrumentation__.Notify(490836)
 	s.KVBytesRead += other.KVBytesRead
 	s.KVRowsRead += other.KVRowsRead
 	s.KVTime += other.KVTime
@@ -141,69 +135,77 @@ func (s *QueryLevelStats) Accumulate(other QueryLevelStats) {
 	s.Regions = util.CombineUniqueString(s.Regions, other.Regions)
 }
 
-// TraceAnalyzer is a struct that helps calculate top-level statistics from a
-// flow metadata and an accompanying trace of the flows' execution.
 type TraceAnalyzer struct {
 	*FlowsMetadata
 	nodeLevelStats  NodeLevelStats
 	queryLevelStats QueryLevelStats
 }
 
-// NewTraceAnalyzer creates a TraceAnalyzer with the corresponding physical
-// plan. Call AddTrace to calculate meaningful stats.
 func NewTraceAnalyzer(flowsMetadata *FlowsMetadata) *TraceAnalyzer {
+	__antithesis_instrumentation__.Notify(490841)
 	return &TraceAnalyzer{FlowsMetadata: flowsMetadata}
 }
 
-// AddTrace adds the stats from the given trace to the TraceAnalyzer.
-//
-// If makeDeterministic is set, statistics that can vary from run to run are set
-// to fixed values; see ComponentStats.MakeDeterministic.
 func (a *TraceAnalyzer) AddTrace(trace []tracingpb.RecordedSpan, makeDeterministic bool) error {
+	__antithesis_instrumentation__.Notify(490842)
 	m := execinfrapb.ExtractStatsFromSpans(trace, makeDeterministic)
-	// Annotate the maps with stats extracted from the trace.
+
 	for component, componentStats := range m {
+		__antithesis_instrumentation__.Notify(490844)
 		if !component.FlowID.Equal(a.flowID) {
-			// This component belongs to a flow we do not care about. Note that we use
-			// a bytes comparison because the UUID Equals method only returns true iff
-			// the UUIDs are the same object.
+			__antithesis_instrumentation__.Notify(490846)
+
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(490847)
 		}
+		__antithesis_instrumentation__.Notify(490845)
 		switch component.Type {
 		case execinfrapb.ComponentID_PROCESSOR:
+			__antithesis_instrumentation__.Notify(490848)
 			id := component.ID
 			a.processorStats[execinfrapb.ProcessorID(id)] = componentStats
 
 		case execinfrapb.ComponentID_STREAM:
+			__antithesis_instrumentation__.Notify(490849)
 			id := component.ID
 			streamStats := a.streamStats[execinfrapb.StreamID(id)]
 			if streamStats == nil {
+				__antithesis_instrumentation__.Notify(490854)
 				return errors.Errorf("trace has span for stream %d but the stream does not exist in the physical plan", id)
+			} else {
+				__antithesis_instrumentation__.Notify(490855)
 			}
+			__antithesis_instrumentation__.Notify(490850)
 			streamStats.stats = componentStats
 
 		case execinfrapb.ComponentID_FLOW:
+			__antithesis_instrumentation__.Notify(490851)
 			flowStats := a.flowStats[component.SQLInstanceID]
 			if flowStats == nil {
+				__antithesis_instrumentation__.Notify(490856)
 				return errors.Errorf(
 					"trace has span for flow %s on node %s but the flow does not exist in the physical plan",
 					component.FlowID,
 					component.SQLInstanceID,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(490857)
 			}
+			__antithesis_instrumentation__.Notify(490852)
 			flowStats.stats = append(flowStats.stats, componentStats)
+		default:
+			__antithesis_instrumentation__.Notify(490853)
 		}
 	}
+	__antithesis_instrumentation__.Notify(490843)
 
 	return nil
 }
 
-// ProcessStats calculates node level and query level stats for the trace and
-// stores them in TraceAnalyzer. If errors occur while calculating stats,
-// ProcessStats returns the combined errors to the caller but continues
-// calculating other stats.
 func (a *TraceAnalyzer) ProcessStats() error {
-	// Process node level stats.
+	__antithesis_instrumentation__.Notify(490858)
+
 	a.nodeLevelStats = NodeLevelStats{
 		NetworkBytesSentGroupedByNode: make(map[base.SQLInstanceID]int64),
 		MaxMemoryUsageGroupedByNode:   make(map[base.SQLInstanceID]int64),
@@ -216,197 +218,277 @@ func (a *TraceAnalyzer) ProcessStats() error {
 	}
 	var errs error
 
-	// Process processorStats.
 	for _, stats := range a.processorStats {
+		__antithesis_instrumentation__.Notify(490870)
 		if stats == nil {
+			__antithesis_instrumentation__.Notify(490872)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(490873)
 		}
+		__antithesis_instrumentation__.Notify(490871)
 		instanceID := stats.Component.SQLInstanceID
 		a.nodeLevelStats.KVBytesReadGroupedByNode[instanceID] += int64(stats.KV.BytesRead.Value())
 		a.nodeLevelStats.KVRowsReadGroupedByNode[instanceID] += int64(stats.KV.TuplesRead.Value())
 		a.nodeLevelStats.KVTimeGroupedByNode[instanceID] += stats.KV.KVTime.Value()
 		a.nodeLevelStats.ContentionTimeGroupedByNode[instanceID] += stats.KV.ContentionTime.Value()
 	}
+	__antithesis_instrumentation__.Notify(490859)
 
-	// Process streamStats.
 	for _, stats := range a.streamStats {
+		__antithesis_instrumentation__.Notify(490874)
 		if stats.stats == nil {
+			__antithesis_instrumentation__.Notify(490879)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(490880)
 		}
+		__antithesis_instrumentation__.Notify(490875)
 		originInstanceID := stats.originSQLInstanceID
 
-		// Set networkBytesSentGroupedByNode.
 		bytes, err := getNetworkBytesFromComponentStats(stats.stats)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(490881)
 			errs = errors.CombineErrors(errs, errors.Wrap(err, "error calculating network bytes sent"))
 		} else {
+			__antithesis_instrumentation__.Notify(490882)
 			a.nodeLevelStats.NetworkBytesSentGroupedByNode[originInstanceID] += bytes
 		}
+		__antithesis_instrumentation__.Notify(490876)
 
-		// The row execution flow attaches flow stats to a stream stat with the
-		// last outbox, so we need to check stream stats for max memory and disk
-		// usage.
-		// TODO(cathymw): maxMemUsage shouldn't be attached to span stats that
-		// are associated with streams, since it's a flow level stat. However,
-		// due to the row exec engine infrastructure, it is too complicated to
-		// attach this to a flow level span. If the row exec engine gets
-		// removed, getting maxMemUsage from streamStats should be removed as
-		// well.
 		if stats.stats.FlowStats.MaxMemUsage.HasValue() {
+			__antithesis_instrumentation__.Notify(490883)
 			memUsage := int64(stats.stats.FlowStats.MaxMemUsage.Value())
 			if memUsage > a.nodeLevelStats.MaxMemoryUsageGroupedByNode[originInstanceID] {
+				__antithesis_instrumentation__.Notify(490884)
 				a.nodeLevelStats.MaxMemoryUsageGroupedByNode[originInstanceID] = memUsage
+			} else {
+				__antithesis_instrumentation__.Notify(490885)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(490886)
 		}
+		__antithesis_instrumentation__.Notify(490877)
 		if stats.stats.FlowStats.MaxDiskUsage.HasValue() {
+			__antithesis_instrumentation__.Notify(490887)
 			if diskUsage := int64(stats.stats.FlowStats.MaxDiskUsage.Value()); diskUsage > a.nodeLevelStats.MaxDiskUsageGroupedByNode[originInstanceID] {
+				__antithesis_instrumentation__.Notify(490888)
 				a.nodeLevelStats.MaxDiskUsageGroupedByNode[originInstanceID] = diskUsage
+			} else {
+				__antithesis_instrumentation__.Notify(490889)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(490890)
 		}
+		__antithesis_instrumentation__.Notify(490878)
 
 		numMessages, err := getNumNetworkMessagesFromComponentsStats(stats.stats)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(490891)
 			errs = errors.CombineErrors(errs, errors.Wrap(err, "error calculating number of network messages"))
 		} else {
+			__antithesis_instrumentation__.Notify(490892)
 			a.nodeLevelStats.NetworkMessagesGroupedByNode[originInstanceID] += numMessages
 		}
 	}
+	__antithesis_instrumentation__.Notify(490860)
 
-	// Process flowStats.
 	for instanceID, stats := range a.flowStats {
+		__antithesis_instrumentation__.Notify(490893)
 		if stats.stats == nil {
+			__antithesis_instrumentation__.Notify(490895)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(490896)
 		}
+		__antithesis_instrumentation__.Notify(490894)
 
 		for _, v := range stats.stats {
+			__antithesis_instrumentation__.Notify(490897)
 			if v.FlowStats.MaxMemUsage.HasValue() {
+				__antithesis_instrumentation__.Notify(490899)
 				if memUsage := int64(v.FlowStats.MaxMemUsage.Value()); memUsage > a.nodeLevelStats.MaxMemoryUsageGroupedByNode[instanceID] {
+					__antithesis_instrumentation__.Notify(490900)
 					a.nodeLevelStats.MaxMemoryUsageGroupedByNode[instanceID] = memUsage
+				} else {
+					__antithesis_instrumentation__.Notify(490901)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(490902)
 			}
+			__antithesis_instrumentation__.Notify(490898)
 			if v.FlowStats.MaxDiskUsage.HasValue() {
+				__antithesis_instrumentation__.Notify(490903)
 				if diskUsage := int64(v.FlowStats.MaxDiskUsage.Value()); diskUsage > a.nodeLevelStats.MaxDiskUsageGroupedByNode[instanceID] {
+					__antithesis_instrumentation__.Notify(490904)
 					a.nodeLevelStats.MaxDiskUsageGroupedByNode[instanceID] = diskUsage
+				} else {
+					__antithesis_instrumentation__.Notify(490905)
 				}
 
+			} else {
+				__antithesis_instrumentation__.Notify(490906)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(490861)
 
-	// Process query level stats.
 	a.queryLevelStats = QueryLevelStats{}
 
 	for _, bytesSentByNode := range a.nodeLevelStats.NetworkBytesSentGroupedByNode {
+		__antithesis_instrumentation__.Notify(490907)
 		a.queryLevelStats.NetworkBytesSent += bytesSentByNode
 	}
+	__antithesis_instrumentation__.Notify(490862)
 
 	for _, maxMemUsage := range a.nodeLevelStats.MaxMemoryUsageGroupedByNode {
+		__antithesis_instrumentation__.Notify(490908)
 		if maxMemUsage > a.queryLevelStats.MaxMemUsage {
+			__antithesis_instrumentation__.Notify(490909)
 			a.queryLevelStats.MaxMemUsage = maxMemUsage
+		} else {
+			__antithesis_instrumentation__.Notify(490910)
 		}
 	}
+	__antithesis_instrumentation__.Notify(490863)
 
 	for _, maxDiskUsage := range a.nodeLevelStats.MaxDiskUsageGroupedByNode {
+		__antithesis_instrumentation__.Notify(490911)
 		if maxDiskUsage > a.queryLevelStats.MaxDiskUsage {
+			__antithesis_instrumentation__.Notify(490912)
 			a.queryLevelStats.MaxDiskUsage = maxDiskUsage
+		} else {
+			__antithesis_instrumentation__.Notify(490913)
 		}
 	}
+	__antithesis_instrumentation__.Notify(490864)
 
 	for _, kvBytesRead := range a.nodeLevelStats.KVBytesReadGroupedByNode {
+		__antithesis_instrumentation__.Notify(490914)
 		a.queryLevelStats.KVBytesRead += kvBytesRead
 	}
+	__antithesis_instrumentation__.Notify(490865)
 
 	for _, kvRowsRead := range a.nodeLevelStats.KVRowsReadGroupedByNode {
+		__antithesis_instrumentation__.Notify(490915)
 		a.queryLevelStats.KVRowsRead += kvRowsRead
 	}
+	__antithesis_instrumentation__.Notify(490866)
 
 	for _, kvTime := range a.nodeLevelStats.KVTimeGroupedByNode {
+		__antithesis_instrumentation__.Notify(490916)
 		a.queryLevelStats.KVTime += kvTime
 	}
+	__antithesis_instrumentation__.Notify(490867)
 
 	for _, networkMessages := range a.nodeLevelStats.NetworkMessagesGroupedByNode {
+		__antithesis_instrumentation__.Notify(490917)
 		a.queryLevelStats.NetworkMessages += networkMessages
 	}
+	__antithesis_instrumentation__.Notify(490868)
 
 	for _, contentionTime := range a.nodeLevelStats.ContentionTimeGroupedByNode {
+		__antithesis_instrumentation__.Notify(490918)
 		a.queryLevelStats.ContentionTime += contentionTime
 	}
+	__antithesis_instrumentation__.Notify(490869)
 	return errs
 }
 
 func getNetworkBytesFromComponentStats(v *execinfrapb.ComponentStats) (int64, error) {
-	// We expect exactly one of BytesReceived and BytesSent to be set. It may
-	// seem like we are double-counting everything (from both the send and the
-	// receive side) but in practice only one side of each stream presents
-	// statistics (specifically the sending side in the row engine, and the
-	// receiving side in the vectorized engine).
+	__antithesis_instrumentation__.Notify(490919)
+
 	if v.NetRx.BytesReceived.HasValue() {
+		__antithesis_instrumentation__.Notify(490922)
 		if v.NetTx.BytesSent.HasValue() {
+			__antithesis_instrumentation__.Notify(490924)
 			return 0, errors.Errorf("could not get network bytes; both BytesReceived and BytesSent are set")
+		} else {
+			__antithesis_instrumentation__.Notify(490925)
 		}
+		__antithesis_instrumentation__.Notify(490923)
 		return int64(v.NetRx.BytesReceived.Value()), nil
+	} else {
+		__antithesis_instrumentation__.Notify(490926)
 	}
+	__antithesis_instrumentation__.Notify(490920)
 	if v.NetTx.BytesSent.HasValue() {
+		__antithesis_instrumentation__.Notify(490927)
 		return int64(v.NetTx.BytesSent.Value()), nil
+	} else {
+		__antithesis_instrumentation__.Notify(490928)
 	}
-	// If neither BytesReceived or BytesSent is set, this ComponentStat belongs to
-	// a local component, e.g. a local hashrouter output.
+	__antithesis_instrumentation__.Notify(490921)
+
 	return 0, nil
 }
 
 func getNumNetworkMessagesFromComponentsStats(v *execinfrapb.ComponentStats) (int64, error) {
-	// We expect exactly one of MessagesReceived and MessagesSent to be set. It
-	// may seem like we are double-counting everything (from both the send and
-	// the receive side) but in practice only one side of each stream presents
-	// statistics (specifically the sending side in the row engine, and the
-	// receiving side in the vectorized engine).
+	__antithesis_instrumentation__.Notify(490929)
+
 	if v.NetRx.MessagesReceived.HasValue() {
+		__antithesis_instrumentation__.Notify(490932)
 		if v.NetTx.MessagesSent.HasValue() {
+			__antithesis_instrumentation__.Notify(490934)
 			return 0, errors.Errorf("could not get network messages; both MessagesReceived and MessagesSent are set")
+		} else {
+			__antithesis_instrumentation__.Notify(490935)
 		}
+		__antithesis_instrumentation__.Notify(490933)
 		return int64(v.NetRx.MessagesReceived.Value()), nil
+	} else {
+		__antithesis_instrumentation__.Notify(490936)
 	}
+	__antithesis_instrumentation__.Notify(490930)
 	if v.NetTx.MessagesSent.HasValue() {
+		__antithesis_instrumentation__.Notify(490937)
 		return int64(v.NetTx.MessagesSent.Value()), nil
+	} else {
+		__antithesis_instrumentation__.Notify(490938)
 	}
-	// If neither BytesReceived or BytesSent is set, this ComponentStat belongs to
-	// a local component, e.g. a local hashrouter output.
+	__antithesis_instrumentation__.Notify(490931)
+
 	return 0, nil
 }
 
-// GetNodeLevelStats returns the node level stats calculated and stored in the
-// TraceAnalyzer.
 func (a *TraceAnalyzer) GetNodeLevelStats() NodeLevelStats {
+	__antithesis_instrumentation__.Notify(490939)
 	return a.nodeLevelStats
 }
 
-// GetQueryLevelStats returns the query level stats calculated and stored in
-// TraceAnalyzer.
 func (a *TraceAnalyzer) GetQueryLevelStats() QueryLevelStats {
+	__antithesis_instrumentation__.Notify(490940)
 	return a.queryLevelStats
 }
 
-// GetQueryLevelStats returns all the top-level stats in a QueryLevelStats
-// struct. GetQueryLevelStats tries to process as many stats as possible. If
-// errors occur while processing stats, GetQueryLevelStats returns the combined
-// errors to the caller but continues calculating other stats.
 func GetQueryLevelStats(
 	trace []tracingpb.RecordedSpan, deterministicExplainAnalyze bool, flowsMetadata []*FlowsMetadata,
 ) (QueryLevelStats, error) {
+	__antithesis_instrumentation__.Notify(490941)
 	var queryLevelStats QueryLevelStats
 	var errs error
 	for _, metadata := range flowsMetadata {
+		__antithesis_instrumentation__.Notify(490943)
 		analyzer := NewTraceAnalyzer(metadata)
 		if err := analyzer.AddTrace(trace, deterministicExplainAnalyze); err != nil {
+			__antithesis_instrumentation__.Notify(490946)
 			errs = errors.CombineErrors(errs, errors.Wrap(err, "error analyzing trace statistics"))
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(490947)
 		}
+		__antithesis_instrumentation__.Notify(490944)
 
 		if err := analyzer.ProcessStats(); err != nil {
+			__antithesis_instrumentation__.Notify(490948)
 			errs = errors.CombineErrors(errs, err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(490949)
 		}
+		__antithesis_instrumentation__.Notify(490945)
 		queryLevelStats.Accumulate(analyzer.GetQueryLevelStats())
 	}
+	__antithesis_instrumentation__.Notify(490942)
 	return queryLevelStats, errs
 }

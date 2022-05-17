@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/base"
@@ -18,12 +10,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlstats"
 )
 
-// CreateTestServerParams creates a set of params suitable for SQL tests. It
-// enables some EndTxn sanity checking and installs a flexible
-// TestingEvalFilter.
-// TODO(andrei): this function is not used consistently by SQL tests. Figure out
-// if the EndTxn checks are important.
 func CreateTestServerParams() (base.TestServerArgs, *CommandFilters) {
+	__antithesis_instrumentation__.Notify(628377)
 	var cmdFilters CommandFilters
 	cmdFilters.AppendFilter(CheckEndTxnTrigger, true)
 	params := base.TestServerArgs{}
@@ -36,16 +24,16 @@ func CreateTestServerParams() (base.TestServerArgs, *CommandFilters) {
 	return params, &cmdFilters
 }
 
-// CreateTestTenantParams creates a set of params suitable for SQL Tenant Tests.
 func CreateTestTenantParams(tenantID roachpb.TenantID) base.TestTenantArgs {
+	__antithesis_instrumentation__.Notify(628378)
 	return base.TestTenantArgs{
 		TenantID:     tenantID,
 		TestingKnobs: CreateTestingKnobs(),
 	}
 }
 
-// CreateTestingKnobs creates a testing knob in the unit tests.
 func CreateTestingKnobs() base.TestingKnobs {
+	__antithesis_instrumentation__.Notify(628379)
 	return base.TestingKnobs{
 		SQLStatsKnobs: &sqlstats.TestingKnobs{
 			AOSTClause: "AS OF SYSTEM TIME '-1us'",

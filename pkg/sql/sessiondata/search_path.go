@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sessiondata
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -21,13 +13,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 )
 
-// DefaultSearchPath is the search path used by virgin sessions.
 var DefaultSearchPath = MakeSearchPath(
 	[]string{catconstants.UserSchemaName, catconstants.PublicSchemaName},
 )
 
-// SearchPath represents a list of namespaces to search builtins in.
-// The names must be normalized (as per Name.Normalize) already.
 type SearchPath struct {
 	paths                []string
 	containsPgCatalog    bool
@@ -37,31 +26,35 @@ type SearchPath struct {
 	userSchemaName       string
 }
 
-// EmptySearchPath is a SearchPath with no schema names in it.
 var EmptySearchPath = SearchPath{}
 
-// DefaultSearchPathForUser returns the default search path with the user
-// specific schema name set so that it can be expanded during resolution.
 func DefaultSearchPathForUser(username security.SQLUsername) SearchPath {
+	__antithesis_instrumentation__.Notify(617806)
 	return DefaultSearchPath.WithUserSchemaName(username.Normalized())
 }
 
-// MakeSearchPath returns a new immutable SearchPath struct. The paths slice
-// must not be modified after hand-off to MakeSearchPath.
 func MakeSearchPath(paths []string) SearchPath {
+	__antithesis_instrumentation__.Notify(617807)
 	containsPgCatalog := false
 	containsPgExtension := false
 	containsPgTempSchema := false
 	for _, e := range paths {
+		__antithesis_instrumentation__.Notify(617809)
 		switch e {
 		case catconstants.PgCatalogName:
+			__antithesis_instrumentation__.Notify(617810)
 			containsPgCatalog = true
 		case catconstants.PgTempSchemaName:
+			__antithesis_instrumentation__.Notify(617811)
 			containsPgTempSchema = true
 		case catconstants.PgExtensionSchemaName:
+			__antithesis_instrumentation__.Notify(617812)
 			containsPgExtension = true
+		default:
+			__antithesis_instrumentation__.Notify(617813)
 		}
 	}
+	__antithesis_instrumentation__.Notify(617808)
 	return SearchPath{
 		paths:                paths,
 		containsPgCatalog:    containsPgCatalog,
@@ -70,11 +63,8 @@ func MakeSearchPath(paths []string) SearchPath {
 	}
 }
 
-// WithTemporarySchemaName returns a new immutable SearchPath struct with
-// the tempSchemaName supplied and the same paths as before.
-// This should be called every time a session creates a temporary schema
-// for the first time.
 func (s SearchPath) WithTemporarySchemaName(tempSchemaName string) SearchPath {
+	__antithesis_instrumentation__.Notify(617814)
 	return SearchPath{
 		paths:                s.paths,
 		containsPgCatalog:    s.containsPgCatalog,
@@ -85,9 +75,8 @@ func (s SearchPath) WithTemporarySchemaName(tempSchemaName string) SearchPath {
 	}
 }
 
-// WithUserSchemaName returns a new immutable SearchPath struct with the
-// userSchemaName populated and the same values for all other fields as before.
 func (s SearchPath) WithUserSchemaName(userSchemaName string) SearchPath {
+	__antithesis_instrumentation__.Notify(617815)
 	return SearchPath{
 		paths:                s.paths,
 		containsPgCatalog:    s.containsPgCatalog,
@@ -98,44 +87,47 @@ func (s SearchPath) WithUserSchemaName(userSchemaName string) SearchPath {
 	}
 }
 
-// UpdatePaths returns a new immutable SearchPath struct with the paths supplied
-// and the same tempSchemaName and userSchemaName as before.
 func (s SearchPath) UpdatePaths(paths []string) SearchPath {
+	__antithesis_instrumentation__.Notify(617816)
 	return MakeSearchPath(paths).WithTemporarySchemaName(s.tempSchemaName).WithUserSchemaName(s.userSchemaName)
 }
 
-// MaybeResolveTemporarySchema returns the session specific temporary schema
-// for the pg_temp alias (only if a temporary schema exists). It acts as a pass
-// through for all other schema names.
 func (s SearchPath) MaybeResolveTemporarySchema(schemaName string) (string, error) {
-	// Only allow access to the session specific temporary schema.
-	if strings.HasPrefix(schemaName, catconstants.PgTempSchemaName) && schemaName != catconstants.PgTempSchemaName && schemaName != s.tempSchemaName {
+	__antithesis_instrumentation__.Notify(617817)
+
+	if strings.HasPrefix(schemaName, catconstants.PgTempSchemaName) && func() bool {
+		__antithesis_instrumentation__.Notify(617820)
+		return schemaName != catconstants.PgTempSchemaName == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(617821)
+		return schemaName != s.tempSchemaName == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(617822)
 		return schemaName, pgerror.New(pgcode.FeatureNotSupported, "cannot access temporary tables of other sessions")
+	} else {
+		__antithesis_instrumentation__.Notify(617823)
 	}
-	// If the schemaName is pg_temp and the tempSchemaName has been set, pg_temp
-	// is an alias the session specific temp schema.
-	if schemaName == catconstants.PgTempSchemaName && s.tempSchemaName != "" {
+	__antithesis_instrumentation__.Notify(617818)
+
+	if schemaName == catconstants.PgTempSchemaName && func() bool {
+		__antithesis_instrumentation__.Notify(617824)
+		return s.tempSchemaName != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(617825)
 		return s.tempSchemaName, nil
+	} else {
+		__antithesis_instrumentation__.Notify(617826)
 	}
+	__antithesis_instrumentation__.Notify(617819)
 	return schemaName, nil
 }
 
-// Iter returns an iterator through the search path. We must include the
-// implicit pg_catalog and temporary schema at the beginning of the search path,
-// unless they have been explicitly set later by the user.
-// We also include pg_extension in the path, as this normally be used in place
-// of the public schema. This should be read before "public" is read.
-// "The system catalog schema, pg_catalog, is always searched, whether it is
-// mentioned in the path or not. If it is mentioned in the path then it will be
-// searched in the specified order. If pg_catalog is not in the path then it
-// will be searched before searching any of the path items."
-// "Likewise, the current session's temporary-table schema, pg_temp_nnn, is
-// always searched if it exists. It can be explicitly listed in the path by
-// using the alias pg_temp. If it is not listed in the path then it is searched
-// first (even before pg_catalog)."
-// - https://www.postgresql.org/docs/9.1/static/runtime-config-client.html
 func (s SearchPath) Iter() SearchPathIter {
-	implicitPgTempSchema := !s.containsPgTempSchema && s.tempSchemaName != ""
+	__antithesis_instrumentation__.Notify(617827)
+	implicitPgTempSchema := !s.containsPgTempSchema && func() bool {
+		__antithesis_instrumentation__.Notify(617828)
+		return s.tempSchemaName != "" == true
+	}() == true
 	sp := SearchPathIter{
 		paths:                s.paths,
 		implicitPgCatalog:    !s.containsPgCatalog,
@@ -147,9 +139,8 @@ func (s SearchPath) Iter() SearchPathIter {
 	return sp
 }
 
-// IterWithoutImplicitPGSchemas is the same as Iter, but does not include the
-// implicit pg_temp and pg_catalog.
 func (s SearchPath) IterWithoutImplicitPGSchemas() SearchPathIter {
+	__antithesis_instrumentation__.Notify(617829)
 	sp := SearchPathIter{
 		paths:                s.paths,
 		implicitPgCatalog:    false,
@@ -160,81 +151,110 @@ func (s SearchPath) IterWithoutImplicitPGSchemas() SearchPathIter {
 	return sp
 }
 
-// GetPathArray returns the underlying path array of this SearchPath. The
-// resultant slice is not to be modified.
 func (s SearchPath) GetPathArray() []string {
+	__antithesis_instrumentation__.Notify(617830)
 	return s.paths
 }
 
-// Contains returns true iff the SearchPath contains the given string.
 func (s SearchPath) Contains(target string) bool {
+	__antithesis_instrumentation__.Notify(617831)
 	for _, candidate := range s.GetPathArray() {
+		__antithesis_instrumentation__.Notify(617833)
 		if candidate == target {
+			__antithesis_instrumentation__.Notify(617834)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(617835)
 		}
 	}
+	__antithesis_instrumentation__.Notify(617832)
 	return false
 }
 
-// GetTemporarySchemaName returns the temporary schema specific to the current
-// session, or an empty string if the current session has not yet created a
-// temporary schema.
-//
-// Note that even after the current session has created a temporary schema, a
-// schema with that name may not exist in the session's current database.
 func (s SearchPath) GetTemporarySchemaName() string {
+	__antithesis_instrumentation__.Notify(617836)
 	return s.tempSchemaName
 }
 
-// Equals returns true if two SearchPaths are the same.
 func (s SearchPath) Equals(other *SearchPath) bool {
+	__antithesis_instrumentation__.Notify(617837)
 	if s.containsPgCatalog != other.containsPgCatalog {
+		__antithesis_instrumentation__.Notify(617844)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(617845)
 	}
+	__antithesis_instrumentation__.Notify(617838)
 	if s.containsPgExtension != other.containsPgExtension {
+		__antithesis_instrumentation__.Notify(617846)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(617847)
 	}
+	__antithesis_instrumentation__.Notify(617839)
 	if s.containsPgTempSchema != other.containsPgTempSchema {
+		__antithesis_instrumentation__.Notify(617848)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(617849)
 	}
+	__antithesis_instrumentation__.Notify(617840)
 	if len(s.paths) != len(other.paths) {
+		__antithesis_instrumentation__.Notify(617850)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(617851)
 	}
+	__antithesis_instrumentation__.Notify(617841)
 	if s.tempSchemaName != other.tempSchemaName {
+		__antithesis_instrumentation__.Notify(617852)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(617853)
 	}
-	// Fast path: skip the check if it is the same slice.
+	__antithesis_instrumentation__.Notify(617842)
+
 	if &s.paths[0] != &other.paths[0] {
+		__antithesis_instrumentation__.Notify(617854)
 		for i := range s.paths {
+			__antithesis_instrumentation__.Notify(617855)
 			if s.paths[i] != other.paths[i] {
+				__antithesis_instrumentation__.Notify(617856)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(617857)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(617858)
 	}
+	__antithesis_instrumentation__.Notify(617843)
 	return true
 }
 
-// SQLIdentifiers returns quotes for string starting with special characters.
 func (s SearchPath) SQLIdentifiers() string {
+	__antithesis_instrumentation__.Notify(617859)
 	var buf bytes.Buffer
 	for i, path := range s.paths {
+		__antithesis_instrumentation__.Notify(617861)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(617863)
 			buf.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(617864)
 		}
+		__antithesis_instrumentation__.Notify(617862)
 		lexbase.EncodeRestrictedSQLIdent(&buf, path, lexbase.EncNoFlags)
 	}
+	__antithesis_instrumentation__.Notify(617860)
 	return buf.String()
 }
 
 func (s SearchPath) String() string {
+	__antithesis_instrumentation__.Notify(617865)
 	return strings.Join(s.paths, ",")
 }
 
-// SearchPathIter enables iteration over the search paths without triggering an
-// allocation. Use one of the SearchPath.Iter methods to get an instance of the
-// iterator, and then repeatedly call the Next method in order to iterate over
-// each search path. The tempSchemaName in the iterator is only set if the session
-// has created a temporary schema.
 type SearchPathIter struct {
 	paths                []string
 	implicitPgCatalog    bool
@@ -245,48 +265,81 @@ type SearchPathIter struct {
 	i                    int
 }
 
-// Next returns the next search path, or false if there are no remaining paths.
 func (iter *SearchPathIter) Next() (path string, ok bool) {
-	// If the session specific temporary schema has not been created, we can
-	// preempt the name resolution failure by simply skipping the implicit pg_temp.
-	if iter.implicitPgTempSchema && iter.tempSchemaName != "" {
+	__antithesis_instrumentation__.Notify(617866)
+
+	if iter.implicitPgTempSchema && func() bool {
+		__antithesis_instrumentation__.Notify(617870)
+		return iter.tempSchemaName != "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(617871)
 		iter.implicitPgTempSchema = false
 		return iter.tempSchemaName, true
+	} else {
+		__antithesis_instrumentation__.Notify(617872)
 	}
+	__antithesis_instrumentation__.Notify(617867)
 	if iter.implicitPgCatalog {
+		__antithesis_instrumentation__.Notify(617873)
 		iter.implicitPgCatalog = false
 		return catconstants.PgCatalogName, true
+	} else {
+		__antithesis_instrumentation__.Notify(617874)
 	}
+	__antithesis_instrumentation__.Notify(617868)
 
 	if iter.i < len(iter.paths) {
+		__antithesis_instrumentation__.Notify(617875)
 		iter.i++
-		// If pg_temp is explicitly present in the paths, it must be resolved to the
-		// session specific temp schema (if one exists). tempSchemaName is set in the
-		// iterator iff the session has created a temporary schema.
+
 		if iter.paths[iter.i-1] == catconstants.PgTempSchemaName {
-			// If the session specific temporary schema has not been created we can
-			// preempt the resolution failure and iterate to the next entry.
+			__antithesis_instrumentation__.Notify(617879)
+
 			if iter.tempSchemaName == "" {
+				__antithesis_instrumentation__.Notify(617881)
 				return iter.Next()
+			} else {
+				__antithesis_instrumentation__.Notify(617882)
 			}
+			__antithesis_instrumentation__.Notify(617880)
 			return iter.tempSchemaName, true
+		} else {
+			__antithesis_instrumentation__.Notify(617883)
 		}
+		__antithesis_instrumentation__.Notify(617876)
 		if iter.paths[iter.i-1] == catconstants.UserSchemaName {
-			// In case the user schema name is unset, we simply iterate to the next
-			// entry.
+			__antithesis_instrumentation__.Notify(617884)
+
 			if iter.userSchemaName == "" {
+				__antithesis_instrumentation__.Notify(617886)
 				return iter.Next()
+			} else {
+				__antithesis_instrumentation__.Notify(617887)
 			}
+			__antithesis_instrumentation__.Notify(617885)
 			return iter.userSchemaName, true
+		} else {
+			__antithesis_instrumentation__.Notify(617888)
 		}
-		// pg_extension should be read before delving into the schema.
-		if iter.paths[iter.i-1] == catconstants.PublicSchemaName && iter.implicitPgExtension {
+		__antithesis_instrumentation__.Notify(617877)
+
+		if iter.paths[iter.i-1] == catconstants.PublicSchemaName && func() bool {
+			__antithesis_instrumentation__.Notify(617889)
+			return iter.implicitPgExtension == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(617890)
 			iter.implicitPgExtension = false
-			// Go back one so `public` can be found again next.
+
 			iter.i--
 			return catconstants.PgExtensionSchemaName, true
+		} else {
+			__antithesis_instrumentation__.Notify(617891)
 		}
+		__antithesis_instrumentation__.Notify(617878)
 		return iter.paths[iter.i-1], true
+	} else {
+		__antithesis_instrumentation__.Notify(617892)
 	}
+	__antithesis_instrumentation__.Notify(617869)
 	return "", false
 }

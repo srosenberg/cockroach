@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,23 +10,30 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ExecuteStage executes the provided ops. The ops must all be of the same type.
 func ExecuteStage(ctx context.Context, deps Dependencies, ops []scop.Op) error {
-	// It is perfectly valid to have empty stage after optimizations /
-	// transformations.
+	__antithesis_instrumentation__.Notify(581612)
+
 	if len(ops) == 0 {
+		__antithesis_instrumentation__.Notify(581614)
 		log.Infof(ctx, "skipping execution, no operations in this stage")
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(581615)
 	}
+	__antithesis_instrumentation__.Notify(581613)
 	typ := ops[0].Type()
 	switch typ {
 	case scop.MutationType:
+		__antithesis_instrumentation__.Notify(581616)
 		return executeDescriptorMutationOps(ctx, deps, ops)
 	case scop.BackfillType:
+		__antithesis_instrumentation__.Notify(581617)
 		return executeBackfillOps(ctx, deps, ops)
 	case scop.ValidationType:
+		__antithesis_instrumentation__.Notify(581618)
 		return executeValidationOps(ctx, deps, ops)
 	default:
+		__antithesis_instrumentation__.Notify(581619)
 		return errors.AssertionFailedf("unknown ops type %d", typ)
 	}
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpch
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,17 +31,14 @@ const (
 	numLineItemPerSF    = 6001215
 )
 
-// wrongOutputError indicates that incorrect results were returned for one of
-// the TPCH queries.
 type wrongOutputError struct {
 	error
 }
 
-// TPCHWrongOutputErrorPrefix is the string that all errors about the wrong
-// output will be prefixed with.
 const TPCHWrongOutputErrorPrefix = "TPCH wrong output "
 
 func (e wrongOutputError) Error() string {
+	__antithesis_instrumentation__.Notify(698820)
 	return TPCHWrongOutputErrorPrefix + e.error.Error()
 }
 
@@ -77,9 +66,8 @@ func init() {
 	workload.Register(tpchMeta)
 }
 
-// FromScaleFactor returns a tpch generator pre-configured with the specified
-// scale factor.
 func FromScaleFactor(scaleFactor int) workload.Generator {
+	__antithesis_instrumentation__.Notify(698821)
 	return workload.FromFlags(tpchMeta, fmt.Sprintf(`--scale-factor=%d`, scaleFactor))
 }
 
@@ -88,6 +76,7 @@ var tpchMeta = workload.Meta{
 	Description: `TPC-H is a read-only workload of "analytics" queries on large datasets.`,
 	Version:     `1.0.0`,
 	New: func() workload.Generator {
+		__antithesis_instrumentation__.Notify(698822)
 		g := &tpch{}
 		g.flags.FlagSet = pflag.NewFlagSet(`tpch`, pflag.ContinueOnError)
 		g.flags.Meta = map[string]workload.FlagMeta{
@@ -118,42 +107,51 @@ var tpchMeta = workload.Meta{
 	},
 }
 
-// Meta implements the Generator interface.
-func (*tpch) Meta() workload.Meta { return tpchMeta }
+func (*tpch) Meta() workload.Meta { __antithesis_instrumentation__.Notify(698823); return tpchMeta }
 
-// Flags implements the Flagser interface.
-func (w *tpch) Flags() workload.Flags { return w.flags }
+func (w *tpch) Flags() workload.Flags { __antithesis_instrumentation__.Notify(698824); return w.flags }
 
-// Hooks implements the Hookser interface.
 func (w *tpch) Hooks() workload.Hooks {
+	__antithesis_instrumentation__.Notify(698825)
 	return workload.Hooks{
 		Validate: func() error {
+			__antithesis_instrumentation__.Notify(698826)
 			if w.scaleFactor != 1 {
+				__antithesis_instrumentation__.Notify(698829)
 				fmt.Printf("check for expected rows is only supported with " +
 					"scale factor 1, so it was disabled\n")
 				w.enableChecks = false
+			} else {
+				__antithesis_instrumentation__.Notify(698830)
 			}
+			__antithesis_instrumentation__.Notify(698827)
 			for _, queryName := range strings.Split(w.queriesRaw, `,`) {
+				__antithesis_instrumentation__.Notify(698831)
 				queryNum, err := strconv.Atoi(queryName)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(698834)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(698835)
 				}
+				__antithesis_instrumentation__.Notify(698832)
 				if _, ok := QueriesByNumber[queryNum]; !ok {
+					__antithesis_instrumentation__.Notify(698836)
 					return errors.Errorf(`unknown query: %s`, queryName)
+				} else {
+					__antithesis_instrumentation__.Notify(698837)
 				}
+				__antithesis_instrumentation__.Notify(698833)
 				w.selectedQueries = append(w.selectedQueries, queryNum)
 			}
+			__antithesis_instrumentation__.Notify(698828)
 			return nil
 		},
 		PostLoad: func(db *gosql.DB) error {
+			__antithesis_instrumentation__.Notify(698838)
 			if w.fks {
-				// We avoid validating foreign keys because we just generated the data
-				// set and don't want to scan over the entire thing again.
-				// Unfortunately, this means that we leave the foreign keys unvalidated
-				// for the duration of the test, so the SQL optimizer can't use them.
-				//
-				// TODO(lucy-zhang): expose an internal knob to validate fk relations
-				// without performing full validation. See #38833.
+				__antithesis_instrumentation__.Notify(698840)
+
 				fkStmts := []string{
 					`ALTER TABLE nation ADD CONSTRAINT nation_fkey_region FOREIGN KEY (n_regionkey) REFERENCES region (r_regionkey) NOT VALID`,
 					`ALTER TABLE supplier ADD CONSTRAINT supplier_fkey_nation FOREIGN KEY (s_nationkey) REFERENCES nation (n_nationkey) NOT VALID`,
@@ -164,24 +162,28 @@ func (w *tpch) Hooks() workload.Hooks {
 					`ALTER TABLE lineitem ADD CONSTRAINT lineitem_fkey_orders FOREIGN KEY (l_orderkey) REFERENCES orders (o_orderkey) NOT VALID`,
 					`ALTER TABLE lineitem ADD CONSTRAINT lineitem_fkey_part FOREIGN KEY (l_partkey) REFERENCES part (p_partkey) NOT VALID`,
 					`ALTER TABLE lineitem ADD CONSTRAINT lineitem_fkey_supplier FOREIGN KEY (l_suppkey) REFERENCES supplier (s_suppkey) NOT VALID`,
-					// TODO(andyk): This fails with `pq: column "l_partkey" cannot be used
-					// by multiple foreign key constraints`. This limitation would appear
-					// to violate TPCH rules, as all foreign keys must be defined, or none
-					// at all.
-					// `ALTER TABLE lineitem ADD CONSTRAINT lineitem_fkey_partsupp FOREIGN KEY (l_partkey, l_suppkey) REFERENCES partsupp (ps_partkey, ps_suppkey) NOT VALID`,
 				}
 
 				for _, fkStmt := range fkStmts {
+					__antithesis_instrumentation__.Notify(698841)
 					if _, err := db.Exec(fkStmt); err != nil {
-						// If the statement failed because the fk already exists, ignore it.
-						// Return the error for any other reason.
+						__antithesis_instrumentation__.Notify(698842)
+
 						const duplFKErr = "columns cannot be used by multiple foreign key constraints"
 						if !strings.Contains(err.Error(), duplFKErr) {
+							__antithesis_instrumentation__.Notify(698843)
 							return errors.Wrapf(err, "while executing %s", fkStmt)
+						} else {
+							__antithesis_instrumentation__.Notify(698844)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(698845)
 					}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(698846)
 			}
+			__antithesis_instrumentation__.Notify(698839)
 			return nil
 		},
 	}
@@ -190,21 +192,24 @@ func (w *tpch) Hooks() workload.Hooks {
 type generateLocals struct {
 	rng *rand.Rand
 
-	// namePerm is a slice of ordinals into randPartNames.
 	namePerm []int
 
 	orderData *orderSharedRandomData
 }
 
-// Tables implements the Generator interface.
 func (w *tpch) Tables() []workload.Table {
+	__antithesis_instrumentation__.Notify(698847)
 	if w.localsPool == nil {
+		__antithesis_instrumentation__.Notify(698849)
 		w.localsPool = &sync.Pool{
 			New: func() interface{} {
+				__antithesis_instrumentation__.Notify(698850)
 				namePerm := make([]int, len(randPartNames))
 				for i := range namePerm {
+					__antithesis_instrumentation__.Notify(698852)
 					namePerm[i] = i
 				}
+				__antithesis_instrumentation__.Notify(698851)
 				return &generateLocals{
 					rng:      rand.New(rand.NewSource(uint64(timeutil.Now().UnixNano()))),
 					namePerm: namePerm,
@@ -218,9 +223,11 @@ func (w *tpch) Tables() []workload.Table {
 				}
 			},
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(698853)
 	}
+	__antithesis_instrumentation__.Notify(698848)
 
-	// TODO(dan): Make this a flag that points at an official pool.txt?
 	w.textPool = &fakeTextPool{seed: w.seed}
 
 	nation := workload.Table{
@@ -261,7 +268,7 @@ func (w *tpch) Tables() []workload.Table {
 		Name:   `partsupp`,
 		Schema: tpchPartSuppSchema,
 		InitialRows: workload.BatchedTuples{
-			// 1 batch per part, hence numPartPerSF and not numPartSuppPerSF.
+
 			NumBatches: numPart,
 			FillBatch:  w.tpchPartSuppInitialRowBatch,
 		},
@@ -279,7 +286,7 @@ func (w *tpch) Tables() []workload.Table {
 		Name:   `orders`,
 		Schema: tpchOrdersSchema,
 		InitialRows: workload.BatchedTuples{
-			// 1 batch per customer.
+
 			NumBatches: numCustomer,
 			FillBatch:  w.tpchOrdersInitialRowBatch,
 		},
@@ -288,7 +295,7 @@ func (w *tpch) Tables() []workload.Table {
 		Name:   `lineitem`,
 		Schema: tpchLineItemSchema,
 		InitialRows: workload.BatchedTuples{
-			// 1 batch per customer.
+
 			NumBatches: numCustomer,
 			FillBatch:  w.tpchLineItemInitialRowBatch,
 		},
@@ -299,24 +306,33 @@ func (w *tpch) Tables() []workload.Table {
 	}
 }
 
-// Ops implements the Opser interface.
 func (w *tpch) Ops(
 	ctx context.Context, urls []string, reg *histogram.Registry,
 ) (workload.QueryLoad, error) {
+	__antithesis_instrumentation__.Notify(698854)
 	sqlDatabase, err := workload.SanitizeUrls(w, w.connFlags.DBOverride, urls)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698858)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(698859)
 	}
+	__antithesis_instrumentation__.Notify(698855)
 	db, err := gosql.Open(`cockroach`, strings.Join(urls, ` `))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698860)
 		return workload.QueryLoad{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(698861)
 	}
-	// Allow a maximum of concurrency+1 connections to the database.
+	__antithesis_instrumentation__.Notify(698856)
+
 	db.SetMaxOpenConns(w.connFlags.Concurrency + 1)
 	db.SetMaxIdleConns(w.connFlags.Concurrency + 1)
 
 	ql := workload.QueryLoad{SQLDatabase: sqlDatabase}
 	for i := 0; i < w.connFlags.Concurrency; i++ {
+		__antithesis_instrumentation__.Notify(698862)
 		worker := &worker{
 			config: w,
 			hists:  reg.GetHandle(),
@@ -324,6 +340,7 @@ func (w *tpch) Ops(
 		}
 		ql.WorkerFns = append(ql.WorkerFns, worker.run)
 	}
+	__antithesis_instrumentation__.Notify(698857)
 	return ql, nil
 }
 
@@ -335,151 +352,208 @@ type worker struct {
 }
 
 func (w *worker) run(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(698863)
 	queryNum := w.config.selectedQueries[w.ops%len(w.config.selectedQueries)]
 	w.ops++
 
 	var prefix string
 	if !w.config.useClusterVectorizeSetting {
+		__antithesis_instrumentation__.Notify(698874)
 		prefix = fmt.Sprintf("SET vectorize = '%s';", w.config.vectorize)
+	} else {
+		__antithesis_instrumentation__.Notify(698875)
 	}
+	__antithesis_instrumentation__.Notify(698864)
 	query := fmt.Sprintf("%s %s", prefix, QueriesByNumber[queryNum])
 
 	vals := make([]interface{}, maxCols)
 	for i := range vals {
+		__antithesis_instrumentation__.Notify(698876)
 		vals[i] = new(interface{})
 	}
+	__antithesis_instrumentation__.Notify(698865)
 
 	start := timeutil.Now()
 	rows, err := w.db.Query(query)
 	if rows != nil {
+		__antithesis_instrumentation__.Notify(698877)
 		defer rows.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(698878)
 	}
+	__antithesis_instrumentation__.Notify(698866)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(698879)
 		return errors.Wrapf(err, "[q%d]", queryNum)
+	} else {
+		__antithesis_instrumentation__.Notify(698880)
 	}
+	__antithesis_instrumentation__.Notify(698867)
 	var numRows int
-	// NOTE: we should *NOT* return an error from this function right away
-	// because we might get another, more meaningful error from rows.Err() which
-	// can only be accessed after we fully consumed the rows.
+
 	checkExpectedOutput := func() error {
+		__antithesis_instrumentation__.Notify(698881)
 		for rows.Next() {
+			__antithesis_instrumentation__.Notify(698883)
 			if w.config.enableChecks {
+				__antithesis_instrumentation__.Notify(698885)
 				if _, checkOnlyRowCount := numExpectedRowsByQueryNumber[queryNum]; !checkOnlyRowCount {
+					__antithesis_instrumentation__.Notify(698886)
 					if err = rows.Scan(vals[:numColsByQueryNumber[queryNum]]...); err != nil {
+						__antithesis_instrumentation__.Notify(698888)
 						return errors.Wrapf(err, "[q%d]", queryNum)
+					} else {
+						__antithesis_instrumentation__.Notify(698889)
 					}
+					__antithesis_instrumentation__.Notify(698887)
 
 					expectedRow := expectedRowsByQueryNumber[queryNum][numRows]
 					for i, expectedValue := range expectedRow {
+						__antithesis_instrumentation__.Notify(698890)
 						if val := *vals[i].(*interface{}); val != nil {
+							__antithesis_instrumentation__.Notify(698891)
 							var actualValue string
-							// Currently, lib/pq for query 12 in the second and third columns
-							// (which are decimals) returns []byte. In order to compare it
-							// against our expected string value, we have this special case.
+
 							if byteArray, ok := val.([]byte); ok {
+								__antithesis_instrumentation__.Notify(698893)
 								actualValue = string(byteArray)
 							} else {
+								__antithesis_instrumentation__.Notify(698894)
 								actualValue = fmt.Sprint(val)
 							}
+							__antithesis_instrumentation__.Notify(698892)
 							if strings.Compare(expectedValue, actualValue) != 0 {
+								__antithesis_instrumentation__.Notify(698895)
 								var expectedFloat, actualFloat float64
 								var expectedFloatRounded, actualFloatRounded float64
 								expectedFloat, err = strconv.ParseFloat(expectedValue, 64)
 								if err != nil {
+									__antithesis_instrumentation__.Notify(698900)
 									return errors.Errorf("[q%d] failed parsing expected value as float64 with %s\n"+
 										"wrong result in row %d in column %d: got %q, expected %q",
 										queryNum, err, numRows, i, actualValue, expectedValue)
+								} else {
+									__antithesis_instrumentation__.Notify(698901)
 								}
+								__antithesis_instrumentation__.Notify(698896)
 								actualFloat, err = strconv.ParseFloat(actualValue, 64)
 								if err != nil {
+									__antithesis_instrumentation__.Notify(698902)
 									return errors.Errorf("[q%d] failed parsing actual value as float64 with %s\n"+
 										"wrong result in row %d in column %d: got %q, expected %q",
 										queryNum, err, numRows, i, actualValue, expectedValue)
+								} else {
+									__antithesis_instrumentation__.Notify(698903)
 								}
-								// TPC-H spec requires 0.01 precision for DECIMALs, so we will
-								// first round the values to use in the comparison. Note that we
-								// round to a thousandth so that values like 0.601 and 0.609 were
-								// always considered to differ by less than 0.01 (due to the
-								// nature of representation of floats, it is possible that those
-								// two values when rounded to a hundredth would be represented as
-								// something like 0.59999 and 0.610001 which differ by more than
-								// 0.01).
+								__antithesis_instrumentation__.Notify(698897)
+
 								expectedFloatRounded, err = strconv.ParseFloat(fmt.Sprintf("%.3f", expectedFloat), 64)
 								if err != nil {
+									__antithesis_instrumentation__.Notify(698904)
 									return errors.Errorf("[q%d] failed parsing rounded expected value as float64 with %s\n"+
 										"wrong result in row %d in column %d: got %q, expected %q",
 										queryNum, err, numRows, i, actualValue, expectedValue)
+								} else {
+									__antithesis_instrumentation__.Notify(698905)
 								}
+								__antithesis_instrumentation__.Notify(698898)
 								actualFloatRounded, err = strconv.ParseFloat(fmt.Sprintf("%.3f", actualFloat), 64)
 								if err != nil {
+									__antithesis_instrumentation__.Notify(698906)
 									return errors.Errorf("[q%d] failed parsing rounded actual value as float64 with %s\n"+
 										"wrong result in row %d in column %d: got %q, expected %q",
 										queryNum, err, numRows, i, actualValue, expectedValue)
+								} else {
+									__antithesis_instrumentation__.Notify(698907)
 								}
+								__antithesis_instrumentation__.Notify(698899)
 								if math.Abs(expectedFloatRounded-actualFloatRounded) > 0.02 {
-									// We only fail the check if the difference is more than 0.02
-									// although TPC-H spec requires 0.01 precision for DECIMALs. We
-									// are using the expected value that might not be "precisely
-									// correct." It is possible for the following situation to
-									// occur:
-									//   expected < "ideal" < actual
-									//   "ideal" - expected < 0.01 && actual - "ideal" < 0.01
-									// so in the worst case, actual and expected might differ by
-									// 0.02 and still be considered correct.
+									__antithesis_instrumentation__.Notify(698908)
+
 									return errors.Errorf("[q%d] %f and %f differ by more than 0.02\n"+
 										"wrong result in row %d in column %d: got %q, expected %q",
 										queryNum, actualFloatRounded, expectedFloatRounded,
 										numRows, i, actualValue, expectedValue)
+								} else {
+									__antithesis_instrumentation__.Notify(698909)
 								}
+							} else {
+								__antithesis_instrumentation__.Notify(698910)
 							}
+						} else {
+							__antithesis_instrumentation__.Notify(698911)
 						}
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(698912)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(698913)
 			}
+			__antithesis_instrumentation__.Notify(698884)
 			numRows++
 		}
+		__antithesis_instrumentation__.Notify(698882)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(698868)
 
 	expectedOutputError := checkExpectedOutput()
 
-	// In order to definitely get the error below, we need to fully consume the
-	// result set.
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(698914)
 	}
+	__antithesis_instrumentation__.Notify(698869)
 
-	// We first check whether there is any error that came from the server (for
-	// example, an out of memory error). If there is, we return it.
 	if err := rows.Err(); err != nil {
+		__antithesis_instrumentation__.Notify(698915)
 		return errors.Wrapf(err, "[q%d]", queryNum)
+	} else {
+		__antithesis_instrumentation__.Notify(698916)
 	}
-	// Now we check whether there was an error while consuming the rows.
+	__antithesis_instrumentation__.Notify(698870)
+
 	if expectedOutputError != nil {
+		__antithesis_instrumentation__.Notify(698917)
 		return wrongOutputError{error: expectedOutputError}
+	} else {
+		__antithesis_instrumentation__.Notify(698918)
 	}
+	__antithesis_instrumentation__.Notify(698871)
 	if w.config.enableChecks {
+		__antithesis_instrumentation__.Notify(698919)
 		numRowsExpected, checkOnlyRowCount := numExpectedRowsByQueryNumber[queryNum]
-		if checkOnlyRowCount && numRows != numRowsExpected {
+		if checkOnlyRowCount && func() bool {
+			__antithesis_instrumentation__.Notify(698920)
+			return numRows != numRowsExpected == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(698921)
 			return wrongOutputError{
 				error: errors.Errorf(
 					"[q%d] returned wrong number of rows: got %d, expected %d",
 					queryNum, numRows, numRowsExpected,
 				)}
+		} else {
+			__antithesis_instrumentation__.Notify(698922)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(698923)
 	}
+	__antithesis_instrumentation__.Notify(698872)
 	elapsed := timeutil.Since(start)
 	if w.config.verbose {
+		__antithesis_instrumentation__.Notify(698924)
 		w.hists.Get(fmt.Sprintf("%d", queryNum)).Record(elapsed)
-		// Note: if you are changing the output format here, please change the
-		// regex in roachtest/tpchvec.go accordingly.
+
 		log.Infof(ctx, "[q%d] returned %d rows after %4.2f seconds:\n%s",
 			queryNum, numRows, elapsed.Seconds(), query)
 	} else {
-		// Note: if you are changing the output format here, please change the
-		// regex in roachtest/tpchvec.go accordingly.
+		__antithesis_instrumentation__.Notify(698925)
+
 		log.Infof(ctx, "[q%d] returned %d rows after %4.2f seconds",
 			queryNum, numRows, elapsed.Seconds())
 	}
+	__antithesis_instrumentation__.Notify(698873)
 	return nil
 }
 

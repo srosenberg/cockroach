@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package parser
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,42 +13,40 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// RunShowSyntax analyzes the syntax and reports its structure as data
-// for the client. Even an error is reported as data.
-//
-// Since errors won't propagate to the client as an error, but as
-// a result, the usual code path to capture and record errors will not
-// be triggered. Instead, the caller can pass a reportErr closure to
-// capture errors instead. May be nil.
 func RunShowSyntax(
 	ctx context.Context,
 	stmt string,
 	report func(ctx context.Context, field, msg string),
 	reportErr func(ctx context.Context, err error),
 ) {
+	__antithesis_instrumentation__.Notify(552619)
 	if strings.HasSuffix(stmt, "??") {
-		// A statement (or, more likely, a prefix to a statement) followed
-		// by the help token (??).
-		//
-		// In that case, take a shortcut to avoid the complexity of
-		// instantiating a whole parser just to retrieve a help string.
-		// This also has the benefit of supporting retrieving help for
-		// the special non-terminals e.g. "<source> ??".
+		__antithesis_instrumentation__.Notify(552621)
+
 		prefix := strings.ToUpper(strings.TrimSpace(stmt[:len(stmt)-2]))
 		if h, ok := HelpMessages[prefix]; ok {
+			__antithesis_instrumentation__.Notify(552622)
 			msg := HelpMessage{Command: prefix, HelpMessageBody: h}
 			msgs := msg.String()
 			err := errors.WithHint(pgerror.WithCandidateCode(errors.New(specialHelpErrorPrefix), pgcode.Syntax), msgs)
 			doErr(ctx, report, reportErr, err)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(552623)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(552624)
 	}
+	__antithesis_instrumentation__.Notify(552620)
 
 	stmts, err := Parse(stmt)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(552625)
 		doErr(ctx, report, reportErr, err)
 	} else {
+		__antithesis_instrumentation__.Notify(552626)
 		for i := range stmts {
+			__antithesis_instrumentation__.Notify(552627)
 			report(ctx, "sql", tree.AsStringWithFlags(stmts[i].AST, tree.FmtParsable))
 		}
 	}
@@ -68,28 +58,55 @@ func doErr(
 	reportErr func(ctx context.Context, err error),
 	err error,
 ) {
+	__antithesis_instrumentation__.Notify(552628)
 	if reportErr != nil {
+		__antithesis_instrumentation__.Notify(552632)
 		reportErr(ctx, err)
+	} else {
+		__antithesis_instrumentation__.Notify(552633)
 	}
+	__antithesis_instrumentation__.Notify(552629)
 
 	pqErr := pgerror.Flatten(err)
 	report(ctx, "error", pqErr.Message)
 	report(ctx, "code", pqErr.Code)
 	if pqErr.Source != nil {
+		__antithesis_instrumentation__.Notify(552634)
 		if pqErr.Source.File != "" {
+			__antithesis_instrumentation__.Notify(552637)
 			report(ctx, "file", pqErr.Source.File)
+		} else {
+			__antithesis_instrumentation__.Notify(552638)
 		}
+		__antithesis_instrumentation__.Notify(552635)
 		if pqErr.Source.Line > 0 {
+			__antithesis_instrumentation__.Notify(552639)
 			report(ctx, "line", fmt.Sprintf("%d", pqErr.Source.Line))
+		} else {
+			__antithesis_instrumentation__.Notify(552640)
 		}
+		__antithesis_instrumentation__.Notify(552636)
 		if pqErr.Source.Function != "" {
+			__antithesis_instrumentation__.Notify(552641)
 			report(ctx, "function", pqErr.Source.Function)
+		} else {
+			__antithesis_instrumentation__.Notify(552642)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(552643)
 	}
+	__antithesis_instrumentation__.Notify(552630)
 	if pqErr.Detail != "" {
+		__antithesis_instrumentation__.Notify(552644)
 		report(ctx, "detail", pqErr.Detail)
+	} else {
+		__antithesis_instrumentation__.Notify(552645)
 	}
+	__antithesis_instrumentation__.Notify(552631)
 	if pqErr.Hint != "" {
+		__antithesis_instrumentation__.Notify(552646)
 		report(ctx, "hint", pqErr.Hint)
+	} else {
+		__antithesis_instrumentation__.Notify(552647)
 	}
 }

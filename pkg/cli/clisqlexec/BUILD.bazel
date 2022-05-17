@@ -22,6 +22,7 @@ go_library(
         "//pkg/util/encoding/csv",
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_lib_pq//:pq",
         "@com_github_olekukonko_tablewriter//:tablewriter",
@@ -51,5 +52,6 @@ go_test(
         "//pkg/testutils/sqlutils",
         "//pkg/util/leaktest",
         "//pkg/util/log",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

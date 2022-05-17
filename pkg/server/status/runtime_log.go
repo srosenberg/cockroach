@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package status
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,9 +13,6 @@ import (
 	humanize "github.com/dustin/go-humanize"
 )
 
-// statsTemplate formats an event of type eventpb.RuntimeStats into a
-// user-facing string.
-// TODO(knz): It may be beneficial to make this configurable at run-time.
 var statsTemplate = template.Must(template.New("runtime stats").Funcs(template.FuncMap{
 	"iBytes": humanize.IBytes,
 }).Parse(`{{iBytes .MemRSSBytes}} RSS, {{.GoroutineCount}} goroutines (stacks: {{iBytes .MemStackSysBytes}}), ` +
@@ -34,15 +23,18 @@ var statsTemplate = template.Must(template.New("runtime stats").Funcs(template.F
 	`{{iBytes .NetHostRecvBytes}}/{{iBytes .NetHostSendBytes}} (r/w)net`))
 
 func logStats(ctx context.Context, stats *eventpb.RuntimeStats) {
-	// In any case, log the structured event to its native channel (HEALTH).
+	__antithesis_instrumentation__.Notify(235700)
+
 	log.StructuredEvent(ctx, stats)
 
-	// Also, log a formatted version of the structured event on the HEALTH channel,
-	// for use by humans while troubleshooting from log files.
 	var buf strings.Builder
 	if err := statsTemplate.Execute(&buf, stats); err != nil {
+		__antithesis_instrumentation__.Notify(235702)
 		log.Warningf(ctx, "failed to render runtime stats: %v", err)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(235703)
 	}
+	__antithesis_instrumentation__.Notify(235701)
 	log.Health.Infof(ctx, "runtime stats: %s", redact.SafeString(buf.String()))
 }

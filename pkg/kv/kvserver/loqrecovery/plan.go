@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package loqrecovery
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,84 +12,64 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// nextReplicaIDIncrement defines how much forward we want to advance an ID of
-// the designated surviving replica to avoid any potential replicaID conflicts
-// in case we've picked not the most up-to-date replica.
 const nextReplicaIDIncrement = 10
 
-// updatedLocationsMap is tracking which stores we plan to update with a plan.
-// This information is used to present a user with a list of nodes where update
-// must run to apply this plan saving them from running update on _every_ node
-// in the cluster.
 type updatedLocationsMap map[roachpb.NodeID]storeIDSet
 
 func (m updatedLocationsMap) add(node roachpb.NodeID, store roachpb.StoreID) {
+	__antithesis_instrumentation__.Notify(109902)
 	var set storeIDSet
 	var ok bool
 	if set, ok = m[node]; !ok {
+		__antithesis_instrumentation__.Notify(109904)
 		set = make(storeIDSet)
 		m[node] = set
+	} else {
+		__antithesis_instrumentation__.Notify(109905)
 	}
+	__antithesis_instrumentation__.Notify(109903)
 	set[store] = struct{}{}
 }
 
 func (m updatedLocationsMap) asMapOfSlices() map[roachpb.NodeID][]roachpb.StoreID {
+	__antithesis_instrumentation__.Notify(109906)
 	newMap := make(map[roachpb.NodeID][]roachpb.StoreID)
 	for k, v := range m {
+		__antithesis_instrumentation__.Notify(109908)
 		newMap[k] = storeSliceFromSet(v)
 	}
+	__antithesis_instrumentation__.Notify(109907)
 	return newMap
 }
 
-// PlanningReport provides aggregate stats and details of replica updates that
-// is used for user confirmation.
 type PlanningReport struct {
-	// TotalReplicas is the number of replicas that were found on nodes present
-	// in the cluster
 	TotalReplicas int
-	// DiscardedNonSurvivors is the number of replicas from ranges that lost
-	// quorum that
-	// we decided not to use according to selection criteria used by planner.
-	DiscardedNonSurvivors int
-	// TODO(oleg): track total analyzed range count in subsequent version
 
-	// PresentStores is deduced list of stores that we collected replica info
-	// from. This set is filled from analyzed descriptors and may not strictly
-	// match stores on which collection was run if some stores are empty.
+	DiscardedNonSurvivors int
+
 	PresentStores []roachpb.StoreID
-	// MissingStores is a deduced list of stores that were found in replica
-	// descriptors but were not found in range descriptors e.g. collection was not
-	// run on those stores because they are dead or because of human error.
+
 	MissingStores []roachpb.StoreID
 
-	// PlannedUpdates contains detailed update info about each planned update.
-	// This information is presented to user for action confirmation and can
-	// contain details that are not needed for actual plan application.
 	PlannedUpdates []ReplicaUpdateReport
-	// UpdatedNodes contains information about nodes with their stores where plan
-	// needs to be applied. Stores are sorted in ascending order.
+
 	UpdatedNodes map[roachpb.NodeID][]roachpb.StoreID
 
-	// Problems contains any keyspace coverage problems
 	Problems []Problem
 }
 
-// Error returns error if there are problems with the cluster that could make
-// recovery "unsafe". Those errors could be ignored in dire situation and
-// produce cluster that is partially unblocked but can have inconsistencies.
 func (p PlanningReport) Error() error {
+	__antithesis_instrumentation__.Notify(109909)
 	if len(p.Problems) > 0 {
+		__antithesis_instrumentation__.Notify(109911)
 		return &RecoveryError{p.Problems}
+	} else {
+		__antithesis_instrumentation__.Notify(109912)
 	}
+	__antithesis_instrumentation__.Notify(109910)
 	return nil
 }
 
-// ReplicaUpdateReport contains detailed info about changes planned for
-// particular replica that was chosen as a designated survivor for the range.
-// This information is more detailed than update plan and collected for
-// reporting purposes.
-// While information in update plan is meant for loqrecovery components, Report
-// is meant for cli interaction to keep user informed of changes.
 type ReplicaUpdateReport struct {
 	RangeID                    roachpb.RangeID
 	StartKey                   roachpb.RKey
@@ -108,49 +80,53 @@ type ReplicaUpdateReport struct {
 	DiscardedDeadReplicas      roachpb.ReplicaSet
 }
 
-// PlanReplicas analyzes captured replica information to determine which
-// replicas could serve as dedicated survivors in ranges where quorum was
-// lost.
-// Devised plan doesn't guarantee data consistency after the recovery, only
-// the fact that ranges could progress and subsequently perform up-replication.
-// Moreover, if we discover conflicts in the range coverage or range descriptors
-// they would be returned in the report, but that would not prevent us from
-// making an "unsafe" recovery plan.
-// An error is returned in case of unrecoverable error in the collected data
-// that prevents creation of any sane plan or correctable user error.
 func PlanReplicas(
 	ctx context.Context, nodes []loqrecoverypb.NodeReplicaInfo, deadStores []roachpb.StoreID,
 ) (loqrecoverypb.ReplicaUpdatePlan, PlanningReport, error) {
+	__antithesis_instrumentation__.Notify(109913)
 	var report PlanningReport
 	updatedLocations := make(updatedLocationsMap)
 	var replicas []loqrecoverypb.ReplicaInfo
 	for _, node := range nodes {
+		__antithesis_instrumentation__.Notify(109920)
 		replicas = append(replicas, node.Replicas...)
 	}
+	__antithesis_instrumentation__.Notify(109914)
 	availableStoreIDs, missingStores, err := validateReplicaSets(replicas, deadStores)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(109921)
 		return loqrecoverypb.ReplicaUpdatePlan{}, PlanningReport{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(109922)
 	}
+	__antithesis_instrumentation__.Notify(109915)
 	report.PresentStores = storeSliceFromSet(availableStoreIDs)
 	report.MissingStores = storeSliceFromSet(missingStores)
 
 	replicasByRangeID := groupReplicasByRangeID(replicas)
-	// proposedSurvivors contain decisions for all ranges in keyspace. it
-	// contains ranges that lost quorum as well as the ones that didn't.
+
 	var proposedSurvivors []rankedReplicas
 	for _, rangeReplicas := range replicasByRangeID {
+		__antithesis_instrumentation__.Notify(109923)
 		proposedSurvivors = append(proposedSurvivors, rankReplicasBySurvivability(rangeReplicas))
 	}
+	__antithesis_instrumentation__.Notify(109916)
 	problems, err := checkKeyspaceCovering(proposedSurvivors)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(109924)
 		return loqrecoverypb.ReplicaUpdatePlan{}, PlanningReport{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(109925)
 	}
+	__antithesis_instrumentation__.Notify(109917)
 
 	var plan []loqrecoverypb.ReplicaUpdate
 	for _, p := range proposedSurvivors {
+		__antithesis_instrumentation__.Notify(109926)
 		report.TotalReplicas += len(p)
 		u, ok := makeReplicaUpdateIfNeeded(ctx, p, availableStoreIDs)
 		if ok {
+			__antithesis_instrumentation__.Notify(109927)
 			problems = append(problems, checkDescriptor(p)...)
 			plan = append(plan, u)
 			report.DiscardedNonSurvivors += len(p) - 1
@@ -158,217 +134,250 @@ func PlanReplicas(
 			updatedLocations.add(u.NodeID(), u.StoreID())
 			log.Infof(ctx, "replica has lost quorum, recovering: %s -> %s", p.survivor().Desc, u)
 		} else {
+			__antithesis_instrumentation__.Notify(109928)
 			log.Infof(ctx, "range r%d didn't lose quorum", p.rangeID())
 		}
 	}
+	__antithesis_instrumentation__.Notify(109918)
 
 	sort.Slice(problems, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(109929)
 		return problems[i].Span().Key.Compare(problems[j].Span().Key) < 0
 	})
+	__antithesis_instrumentation__.Notify(109919)
 	report.Problems = problems
 	report.UpdatedNodes = updatedLocations.asMapOfSlices()
 	return loqrecoverypb.ReplicaUpdatePlan{Updates: plan}, report, nil
 }
 
-// validateReplicaSets evaluates provided set of replicas and an optional
-// deadStoreIDs request and produces consistency info containing:
-// availableStores  - all storeIDs for which info was collected, i.e.
-//                    (barring operator error) the conclusive list of all
-//                    remaining stores in the cluster.
-// missingStores    - all dead stores (stores that are referenced by replicas,
-//                    but not present in any of descriptors)
-// If inconsistency is found e.g. no info was provided for a store but it is
-// not present in explicit deadStoreIDs list, error is returned.
 func validateReplicaSets(
 	replicas []loqrecoverypb.ReplicaInfo, deadStores []roachpb.StoreID,
 ) (availableStoreIDs, missingStoreIDs storeIDSet, _ error) {
-	// Populate availableStoreIDs with all StoreIDs from which we collected info
-	// and, populate missingStoreIDs with all StoreIDs referenced in replica
-	// descriptors for which no information was collected.
+	__antithesis_instrumentation__.Notify(109930)
+
 	availableStoreIDs = make(storeIDSet)
 	missingStoreIDs = make(storeIDSet)
 	for _, replicaDescriptor := range replicas {
+		__antithesis_instrumentation__.Notify(109937)
 		availableStoreIDs[replicaDescriptor.StoreID] = struct{}{}
 		for _, replicaDesc := range replicaDescriptor.Desc.InternalReplicas {
+			__antithesis_instrumentation__.Notify(109938)
 			missingStoreIDs[replicaDesc.StoreID] = struct{}{}
 		}
 	}
-	// The difference between all referenced StoreIDs (missingStoreIDs) and the
-	// present StoreIDs (presentStoreIDs) should exactly equal the user-provided
-	// list of dead stores (deadStores), and the former must be a superset of the
-	// latter (since each descriptor found on a store references that store).
-	// Verify all of these conditions and error out if one of them does not hold.
+	__antithesis_instrumentation__.Notify(109931)
+
 	for id := range availableStoreIDs {
+		__antithesis_instrumentation__.Notify(109939)
 		delete(missingStoreIDs, id)
 	}
-	// Stores that doesn't have info, but are not in explicit list.
+	__antithesis_instrumentation__.Notify(109932)
+
 	missingButNotDeadStoreIDs := make(storeIDSet)
 	for id := range missingStoreIDs {
+		__antithesis_instrumentation__.Notify(109940)
 		missingButNotDeadStoreIDs[id] = struct{}{}
 	}
-	// Suspicious are available, but requested dead.
+	__antithesis_instrumentation__.Notify(109933)
+
 	suspiciousStoreIDs := make(storeIDSet)
 	for _, id := range deadStores {
+		__antithesis_instrumentation__.Notify(109941)
 		delete(missingButNotDeadStoreIDs, id)
 		if _, ok := availableStoreIDs[id]; ok {
+			__antithesis_instrumentation__.Notify(109942)
 			suspiciousStoreIDs[id] = struct{}{}
+		} else {
+			__antithesis_instrumentation__.Notify(109943)
 		}
 	}
+	__antithesis_instrumentation__.Notify(109934)
 	if len(suspiciousStoreIDs) > 0 {
+		__antithesis_instrumentation__.Notify(109944)
 		return nil, nil, errors.Errorf(
 			"stores %s are listed as dead, but replica info is provided for them",
 			joinStoreIDs(suspiciousStoreIDs))
+	} else {
+		__antithesis_instrumentation__.Notify(109945)
 	}
-	if len(deadStores) > 0 && len(missingButNotDeadStoreIDs) > 0 {
-		// We can't proceed with this if dead nodes were explicitly provided.
+	__antithesis_instrumentation__.Notify(109935)
+	if len(deadStores) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(109946)
+		return len(missingButNotDeadStoreIDs) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(109947)
+
 		return nil, nil, errors.Errorf(
 			"information about stores %s were not provided, nor they are listed as dead",
 			joinStoreIDs(missingButNotDeadStoreIDs))
+	} else {
+		__antithesis_instrumentation__.Notify(109948)
 	}
+	__antithesis_instrumentation__.Notify(109936)
 	return availableStoreIDs, missingStoreIDs, nil
 }
 
 func groupReplicasByRangeID(
 	descriptors []loqrecoverypb.ReplicaInfo,
 ) map[roachpb.RangeID][]loqrecoverypb.ReplicaInfo {
+	__antithesis_instrumentation__.Notify(109949)
 	groupedRanges := make(map[roachpb.RangeID][]loqrecoverypb.ReplicaInfo)
 	for _, descriptor := range descriptors {
+		__antithesis_instrumentation__.Notify(109951)
 		groupedRanges[descriptor.Desc.RangeID] = append(
 			groupedRanges[descriptor.Desc.RangeID], descriptor)
 	}
+	__antithesis_instrumentation__.Notify(109950)
 	return groupedRanges
 }
 
-// rankedReplicas contains replica resolution details e.g. preferred replica as
-// well as extra info to produce a report of the planned action.
 type rankedReplicas []loqrecoverypb.ReplicaInfo
 
 func (p rankedReplicas) startKey() roachpb.RKey {
+	__antithesis_instrumentation__.Notify(109952)
 	return p[0].Desc.StartKey
 }
 
 func (p rankedReplicas) endKey() roachpb.RKey {
+	__antithesis_instrumentation__.Notify(109953)
 	return p[0].Desc.EndKey
 }
 
 func (p rankedReplicas) span() roachpb.Span {
+	__antithesis_instrumentation__.Notify(109954)
 	return roachpb.Span{Key: roachpb.Key(p[0].Desc.StartKey), EndKey: roachpb.Key(p[0].Desc.EndKey)}
 }
 
 func (p rankedReplicas) rangeID() roachpb.RangeID {
+	__antithesis_instrumentation__.Notify(109955)
 	return p[0].Desc.RangeID
 }
 
 func (p rankedReplicas) nodeID() roachpb.NodeID {
+	__antithesis_instrumentation__.Notify(109956)
 	return p[0].NodeID
 }
 
 func (p rankedReplicas) storeID() roachpb.StoreID {
+	__antithesis_instrumentation__.Notify(109957)
 	return p[0].StoreID
 }
 
 func (p rankedReplicas) survivor() *loqrecoverypb.ReplicaInfo {
+	__antithesis_instrumentation__.Notify(109958)
 	return &p[0]
 }
 
-// rankReplicasBySurvivability given a slice of replicas for the range from
-// all live stores, pick one to survive recovery. if progress can be made,
-// still pick one replica so that it could be used to do key covering
-// validation.
-// Note that replicas argument would be sorted in process of picking a
-// survivor
 func rankReplicasBySurvivability(replicas []loqrecoverypb.ReplicaInfo) rankedReplicas {
+	__antithesis_instrumentation__.Notify(109959)
 	isVoter := func(desc loqrecoverypb.ReplicaInfo) int {
+		__antithesis_instrumentation__.Notify(109962)
 		for _, replica := range desc.Desc.InternalReplicas {
+			__antithesis_instrumentation__.Notify(109964)
 			if replica.StoreID == desc.StoreID {
+				__antithesis_instrumentation__.Notify(109965)
 				if replica.IsVoterNewConfig() {
+					__antithesis_instrumentation__.Notify(109967)
 					return 1
+				} else {
+					__antithesis_instrumentation__.Notify(109968)
 				}
+				__antithesis_instrumentation__.Notify(109966)
 				return 0
+			} else {
+				__antithesis_instrumentation__.Notify(109969)
 			}
 		}
-		// This is suspicious, our descriptor is not in replicas. Panic maybe?
+		__antithesis_instrumentation__.Notify(109963)
+
 		return 0
 	}
+	__antithesis_instrumentation__.Notify(109960)
 	sort.Slice(replicas, func(i, j int) bool {
-		// When finding the best suitable replica evaluate 3 conditions in order:
-		//  - replica is a voter
-		//  - replica has the higher range committed index
-		//  - replica has the higher store id
-		//
-		// Note: that an outgoing voter cannot be designated, as the only
-		// replication change it could make is to turn itself into a learner, at
-		// which point the range is completely messed up.
-		//
-		// Note: a better heuristic might be to choose the leaseholder store, not
-		// the largest store, as this avoids the problem of requests still hanging
-		// after running the tool in a rolling-restart fashion (when the lease-
-		// holder is under a valid epoch and was ont chosen as designated
-		// survivor). However, this choice is less deterministic, as leaseholders
-		// are more likely to change than replication configs. The hanging would
-		// independently be fixed by the below issue, so staying with largest store
-		// is likely the right choice. See:
-		//
-		// https://github.com/cockroachdb/cockroach/issues/33007
+		__antithesis_instrumentation__.Notify(109970)
+
 		voterI := isVoter(replicas[i])
 		voterJ := isVoter(replicas[j])
 		if voterI > voterJ {
+			__antithesis_instrumentation__.Notify(109975)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(109976)
 		}
+		__antithesis_instrumentation__.Notify(109971)
 		if voterI < voterJ {
+			__antithesis_instrumentation__.Notify(109977)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(109978)
 		}
+		__antithesis_instrumentation__.Notify(109972)
 		if replicas[i].RaftAppliedIndex > replicas[j].RaftAppliedIndex {
+			__antithesis_instrumentation__.Notify(109979)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(109980)
 		}
+		__antithesis_instrumentation__.Notify(109973)
 		if replicas[i].RaftAppliedIndex < replicas[j].RaftAppliedIndex {
+			__antithesis_instrumentation__.Notify(109981)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(109982)
 		}
+		__antithesis_instrumentation__.Notify(109974)
 		return replicas[i].StoreID > replicas[j].StoreID
 	})
+	__antithesis_instrumentation__.Notify(109961)
 	return replicas
 }
 
-// checkKeyspaceCovering given slice of all survivor ranges, checks that full
-// keyspace is covered.
-// Note that slice would be sorted in process of the check.
 func checkKeyspaceCovering(replicas []rankedReplicas) ([]Problem, error) {
+	__antithesis_instrumentation__.Notify(109983)
 	sort.Slice(replicas, func(i, j int) bool {
-		// We only need to sort replicas in key order to detect
-		// key collisions or gaps, but if we have matching keys
-		// sort becomes unstable which makes it produce different
-		// errors on different runs on the same data. To address
-		// that, we also add RangeID as a sorting criteria as a
-		// second level key to add stability.
+		__antithesis_instrumentation__.Notify(109987)
+
 		if replicas[i].startKey().Less(replicas[j].startKey()) {
+			__antithesis_instrumentation__.Notify(109990)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(109991)
 		}
+		__antithesis_instrumentation__.Notify(109988)
 		if replicas[i].startKey().Equal(replicas[j].startKey()) {
+			__antithesis_instrumentation__.Notify(109992)
 			return replicas[i].rangeID() < replicas[j].rangeID()
+		} else {
+			__antithesis_instrumentation__.Notify(109993)
 		}
+		__antithesis_instrumentation__.Notify(109989)
 		return false
 	})
+	__antithesis_instrumentation__.Notify(109984)
 	var problems []Problem
 	prevDesc := rankedReplicas{{Desc: roachpb.RangeDescriptor{}}}
-	// We validate that first range starts at min key, last range ends at max key
-	// and that for every range start key is equal to end key of previous range.
-	// If any of those conditions fail, we record this as a problem to indicate
-	// there's a gap between ranges or an overlap between two or more ranges.
+
 	for _, rankedDescriptors := range replicas {
-		// We need to take special care of the case where the survivor replica is
-		// outgoing voter. It cannot be designated, as the only replication change
-		// it could make is to turn itself into a learner, at which point the range
-		// is completely messed up. If it is not a stale replica of some sorts,
-		// then that would be a gap in keyspace coverage.
+		__antithesis_instrumentation__.Notify(109994)
+
 		r, err := rankedDescriptors.survivor().Replica()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(109998)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(109999)
 		}
+		__antithesis_instrumentation__.Notify(109995)
 		if !r.IsVoterNewConfig() {
+			__antithesis_instrumentation__.Notify(110000)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(110001)
 		}
+		__antithesis_instrumentation__.Notify(109996)
 		switch {
 		case rankedDescriptors.startKey().Less(prevDesc.endKey()):
+			__antithesis_instrumentation__.Notify(110002)
 			start := keyMax(rankedDescriptors.startKey(), prevDesc.startKey())
 			end := keyMin(rankedDescriptors.endKey(), prevDesc.endKey())
 			problems = append(problems, keyspaceOverlap{
@@ -379,6 +388,7 @@ func checkKeyspaceCovering(replicas []rankedReplicas) ([]Problem, error) {
 				range2Span: rankedDescriptors.span(),
 			})
 		case prevDesc.endKey().Less(rankedDescriptors.startKey()):
+			__antithesis_instrumentation__.Notify(110003)
 			problems = append(problems, keyspaceGap{
 				span: roachpb.Span{
 					Key:    roachpb.Key(prevDesc.endKey()),
@@ -389,16 +399,21 @@ func checkKeyspaceCovering(replicas []rankedReplicas) ([]Problem, error) {
 				range2:     rankedDescriptors.rangeID(),
 				range2Span: rankedDescriptors.span(),
 			})
+		default:
+			__antithesis_instrumentation__.Notify(110004)
 		}
-		// We want to advance previous range details only when new range will
-		// advance upper bound. This is not always the case as theoretically ranges
-		// could be "nested" or range could be an earlier version encompassing LHS
-		// and RHS parts.
+		__antithesis_instrumentation__.Notify(109997)
+
 		if prevDesc.endKey().Less(rankedDescriptors.endKey()) {
+			__antithesis_instrumentation__.Notify(110005)
 			prevDesc = rankedDescriptors
+		} else {
+			__antithesis_instrumentation__.Notify(110006)
 		}
 	}
+	__antithesis_instrumentation__.Notify(109985)
 	if !prevDesc.endKey().Equal(roachpb.RKeyMax) {
+		__antithesis_instrumentation__.Notify(110007)
 		problems = append(problems, keyspaceGap{
 			span:       roachpb.Span{Key: roachpb.Key(prevDesc.endKey()), EndKey: roachpb.KeyMax},
 			range1:     prevDesc.rangeID(),
@@ -406,55 +421,54 @@ func checkKeyspaceCovering(replicas []rankedReplicas) ([]Problem, error) {
 			range2:     roachpb.RangeID(0),
 			range2Span: roachpb.Span{Key: roachpb.KeyMax, EndKey: roachpb.KeyMax},
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(110008)
 	}
+	__antithesis_instrumentation__.Notify(109986)
 
 	return problems, nil
 }
 
-// makeReplicaUpdateIfNeeded if candidate range can't make progress, create an
-// update using preferred replica.
-// Returns a replica update and a flag indicating if update needs to be
-// performed.
-// For replicas that can make progress return empty update and false to exclude
-// range from update plan.
 func makeReplicaUpdateIfNeeded(
 	ctx context.Context, p rankedReplicas, liveStoreIDs storeIDSet,
 ) (loqrecoverypb.ReplicaUpdate, bool) {
+	__antithesis_instrumentation__.Notify(110009)
 	if p.survivor().Desc.Replicas().CanMakeProgress(func(rep roachpb.ReplicaDescriptor) bool {
+		__antithesis_instrumentation__.Notify(110013)
 		_, ok := liveStoreIDs[rep.StoreID]
 		return ok
 	}) {
+		__antithesis_instrumentation__.Notify(110014)
 		return loqrecoverypb.ReplicaUpdate{}, false
+	} else {
+		__antithesis_instrumentation__.Notify(110015)
 	}
+	__antithesis_instrumentation__.Notify(110010)
 
-	// We want to have replicaID which is greater or equal nextReplicaID across
-	// all available replicas. We'll use that as a base to bump it by arbitrary
-	// number to avoid potential conflicts with other replicas applying
-	// uncommitted raft log with descriptor updates.
 	nextReplicaID := p.survivor().Desc.NextReplicaID
 	for _, r := range p[1:] {
+		__antithesis_instrumentation__.Notify(110016)
 		if r.Desc.NextReplicaID > nextReplicaID {
+			__antithesis_instrumentation__.Notify(110017)
 			nextReplicaID = r.Desc.NextReplicaID
+		} else {
+			__antithesis_instrumentation__.Notify(110018)
 		}
 	}
+	__antithesis_instrumentation__.Notify(110011)
 
 	replica, err := p.survivor().Replica()
 	if err != nil {
-		// We don't expect invalid replicas reaching this stage because we will err
-		// out on earlier stages. This is covered by invalid input tests and if we
-		// ended up here that means tests are not run, or code changed sufficiently
-		// and both checks and tests were lost.
+		__antithesis_instrumentation__.Notify(110019)
+
 		log.Fatalf(ctx, "unexpected invalid replica info while making recovery plan, "+
 			"we should never have unvalidated descriptors at planning stage, they must be detected "+
 			"while performing keyspace coverage check: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(110020)
 	}
+	__antithesis_instrumentation__.Notify(110012)
 
-	// The range needs to be recovered and this replica is a designated survivor.
-	// To recover the range rewrite it as having a single replica:
-	// - Rewrite the replicas list.
-	// - Bump the replica ID so that in case there are other surviving nodes that
-	//   were members of the old incarnation of the range, they no longer
-	//   recognize this revived replica (because they are not in sync with it).
 	return loqrecoverypb.ReplicaUpdate{
 		RangeID:      p.rangeID(),
 		StartKey:     loqrecoverypb.RecoveryKey(p.startKey()),
@@ -468,17 +482,14 @@ func makeReplicaUpdateIfNeeded(
 	}, true
 }
 
-// checkDescriptor analyses descriptor and raft log of surviving replica to find
-// if its state is safe to perform recovery from. Currently only unapplied
-// descriptor changes that either remove replica, or change KeySpan (splits or
-// merges) are treated as unsafe.
 func checkDescriptor(rankedDescriptors rankedReplicas) (problems []Problem) {
-	// We now need to analyze if range is unsafe to recover due to pending
-	// changes for the range descriptor in the raft log, but we only want to
-	// do that if range needs to be recovered.
+	__antithesis_instrumentation__.Notify(110021)
+
 	for _, change := range rankedDescriptors.survivor().RaftLogDescriptorChanges {
+		__antithesis_instrumentation__.Notify(110023)
 		switch change.ChangeType {
 		case loqrecoverypb.DescriptorChangeType_Split:
+			__antithesis_instrumentation__.Notify(110024)
 			problems = append(problems, rangeSplit{
 				rangeID:    rankedDescriptors.rangeID(),
 				span:       rankedDescriptors.span(),
@@ -489,6 +500,7 @@ func checkDescriptor(rankedDescriptors rankedReplicas) (problems []Problem) {
 				},
 			})
 		case loqrecoverypb.DescriptorChangeType_Merge:
+			__antithesis_instrumentation__.Notify(110025)
 			problems = append(problems, rangeMerge{
 				rangeID:    rankedDescriptors.rangeID(),
 				span:       rankedDescriptors.span(),
@@ -499,48 +511,51 @@ func checkDescriptor(rankedDescriptors rankedReplicas) (problems []Problem) {
 				},
 			})
 		case loqrecoverypb.DescriptorChangeType_ReplicaChange:
-			// Check if our own replica is being removed as part of descriptor
-			// change.
+			__antithesis_instrumentation__.Notify(110026)
+
 			_, ok := change.Desc.GetReplicaDescriptor(rankedDescriptors.storeID())
 			if !ok {
+				__antithesis_instrumentation__.Notify(110028)
 				problems = append(problems, rangeReplicaRemoval{
 					rangeID: rankedDescriptors.rangeID(),
 					span:    rankedDescriptors.span(),
 				})
+			} else {
+				__antithesis_instrumentation__.Notify(110029)
 			}
+		default:
+			__antithesis_instrumentation__.Notify(110027)
 		}
 	}
+	__antithesis_instrumentation__.Notify(110022)
 	return
 }
 
-// makeReplicaUpdateReport creates a detailed report of changes that needs to
-// be performed on range. It uses decision as well as information about all
-// replicas of range to provide information about what is being discarded and
-// how new replica would be configured.
 func makeReplicaUpdateReport(
 	ctx context.Context, p rankedReplicas, update loqrecoverypb.ReplicaUpdate,
 ) ReplicaUpdateReport {
+	__antithesis_instrumentation__.Notify(110030)
 	oldReplica, err := p.survivor().Replica()
 	if err != nil {
-		// We don't expect invalid replicas reaching this stage because we will err
-		// out on earlier stages. This is covered by invalid input tests and if we
-		// ended up here that means tests are not run, or code changed sufficiently
-		// and both checks and tests were lost.
-		log.Fatalf(ctx, "unexpected invalid replica info while making recovery plan: %s", err)
-	}
+		__antithesis_instrumentation__.Notify(110033)
 
-	// Replicas that belonged to unavailable nodes based on surviving range
-	// descriptor.
+		log.Fatalf(ctx, "unexpected invalid replica info while making recovery plan: %s", err)
+	} else {
+		__antithesis_instrumentation__.Notify(110034)
+	}
+	__antithesis_instrumentation__.Notify(110031)
+
 	discardedDead := p.survivor().Desc.Replicas()
 	discardedDead.RemoveReplica(update.NodeID(), update.StoreID())
-	// Replicas that we collected info about for the range, but decided they are
-	// not preferred choice.
+
 	discardedAvailable := roachpb.ReplicaSet{}
 	for _, replica := range p[1:] {
+		__antithesis_instrumentation__.Notify(110035)
 		discardedDead.RemoveReplica(replica.NodeID, replica.StoreID)
 		r, _ := replica.Desc.GetReplicaDescriptor(replica.StoreID)
 		discardedAvailable.AddReplica(r)
 	}
+	__antithesis_instrumentation__.Notify(110032)
 
 	return ReplicaUpdateReport{
 		RangeID:                    p.rangeID(),

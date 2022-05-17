@@ -1,16 +1,8 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package dbdesc contains the concrete implementations of
 // catalog.DatabaseDescriptor.
 package dbdesc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -34,38 +26,31 @@ var _ catalog.DatabaseDescriptor = (*immutable)(nil)
 var _ catalog.DatabaseDescriptor = (*Mutable)(nil)
 var _ catalog.MutableDescriptor = (*Mutable)(nil)
 
-// immutable wraps a database descriptor and provides methods
-// on it.
 type immutable struct {
 	descpb.DatabaseDescriptor
 
-	// isUncommittedVersion is set to true if this descriptor was created from
-	// a copy of a Mutable with an uncommitted version.
 	isUncommittedVersion bool
 
-	// changed represents whether or not the descriptor was changed
-	// after RunPostDeserializationChanges.
 	changes catalog.PostDeserializationChanges
 }
 
-// Mutable wraps a database descriptor and provides methods
-// on it. It can be mutated and generally has not been committed.
 type Mutable struct {
 	immutable
 	ClusterVersion *immutable
 }
 
-// SafeMessage makes immutable a SafeMessager.
 func (desc *immutable) SafeMessage() string {
+	__antithesis_instrumentation__.Notify(251231)
 	return formatSafeMessage("dbdesc.immutable", desc)
 }
 
-// SafeMessage makes Mutable a SafeMessager.
 func (desc *Mutable) SafeMessage() string {
+	__antithesis_instrumentation__.Notify(251232)
 	return formatSafeMessage("dbdesc.Mutable", desc)
 }
 
 func formatSafeMessage(typeName string, desc catalog.DatabaseDescriptor) string {
+	__antithesis_instrumentation__.Notify(251233)
 	var buf redact.StringBuilder
 	buf.Print(typeName + ": {")
 	catalog.FormatSafeDescriptorProperties(&buf, desc)
@@ -73,66 +58,63 @@ func formatSafeMessage(typeName string, desc catalog.DatabaseDescriptor) string 
 	return buf.String()
 }
 
-// DescriptorType returns the plain type of this descriptor.
 func (desc *immutable) DescriptorType() catalog.DescriptorType {
+	__antithesis_instrumentation__.Notify(251234)
 	return catalog.Database
 }
 
-// DatabaseDesc implements the Descriptor interface.
 func (desc *immutable) DatabaseDesc() *descpb.DatabaseDescriptor {
+	__antithesis_instrumentation__.Notify(251235)
 	return &desc.DatabaseDescriptor
 }
 
-// SetDrainingNames implements the MutableDescriptor interface.
-//
-// Deprecated: Do not use.
 func (desc *Mutable) SetDrainingNames(names []descpb.NameInfo) {
+	__antithesis_instrumentation__.Notify(251236)
 	desc.DrainingNames = names
 }
 
-// GetParentID implements the Descriptor interface.
 func (desc *immutable) GetParentID() descpb.ID {
+	__antithesis_instrumentation__.Notify(251237)
 	return keys.RootNamespaceID
 }
 
-// IsUncommittedVersion implements the Descriptor interface.
 func (desc *immutable) IsUncommittedVersion() bool {
+	__antithesis_instrumentation__.Notify(251238)
 	return desc.isUncommittedVersion
 }
 
-// GetParentSchemaID implements the Descriptor interface.
 func (desc *immutable) GetParentSchemaID() descpb.ID {
+	__antithesis_instrumentation__.Notify(251239)
 	return keys.RootNamespaceID
 }
 
-// GetAuditMode is part of the DescriptorProto interface.
-// This is a stub until per-database auditing is enabled.
 func (desc *immutable) GetAuditMode() descpb.TableDescriptor_AuditMode {
+	__antithesis_instrumentation__.Notify(251240)
 	return descpb.TableDescriptor_DISABLED
 }
 
-// Public implements the Descriptor interface.
 func (desc *immutable) Public() bool {
+	__antithesis_instrumentation__.Notify(251241)
 	return desc.State == descpb.DescriptorState_PUBLIC
 }
 
-// Adding implements the Descriptor interface.
 func (desc *immutable) Adding() bool {
+	__antithesis_instrumentation__.Notify(251242)
 	return false
 }
 
-// Offline implements the Descriptor interface.
 func (desc *immutable) Offline() bool {
+	__antithesis_instrumentation__.Notify(251243)
 	return desc.State == descpb.DescriptorState_OFFLINE
 }
 
-// Dropped implements the Descriptor interface.
 func (desc *immutable) Dropped() bool {
+	__antithesis_instrumentation__.Notify(251244)
 	return desc.State == descpb.DescriptorState_DROP
 }
 
-// DescriptorProto wraps a DatabaseDescriptor in a Descriptor.
 func (desc *immutable) DescriptorProto() *descpb.Descriptor {
+	__antithesis_instrumentation__.Notify(251245)
 	return &descpb.Descriptor{
 		Union: &descpb.Descriptor_Database{
 			Database: &desc.DatabaseDescriptor,
@@ -140,318 +122,436 @@ func (desc *immutable) DescriptorProto() *descpb.Descriptor {
 	}
 }
 
-// ByteSize implements the Descriptor interface.
 func (desc *immutable) ByteSize() int64 {
+	__antithesis_instrumentation__.Notify(251246)
 	return int64(desc.Size())
 }
 
-// NewBuilder implements the catalog.Descriptor interface.
 func (desc *immutable) NewBuilder() catalog.DescriptorBuilder {
+	__antithesis_instrumentation__.Notify(251247)
 	return newBuilder(desc.DatabaseDesc(), desc.isUncommittedVersion, desc.changes)
 }
 
-// NewBuilder implements the catalog.Descriptor interface.
-//
-// It overrides the wrapper's implementation to deal with the fact that
-// mutable has overridden the definition of IsUncommittedVersion.
 func (desc *Mutable) NewBuilder() catalog.DescriptorBuilder {
+	__antithesis_instrumentation__.Notify(251248)
 	return newBuilder(desc.DatabaseDesc(), desc.IsUncommittedVersion(), desc.changes)
 }
 
-// IsMultiRegion implements the DatabaseDescriptor interface.
 func (desc *immutable) IsMultiRegion() bool {
+	__antithesis_instrumentation__.Notify(251249)
 	return desc.RegionConfig != nil
 }
 
-// PrimaryRegionName implements the DatabaseDescriptor interface.
 func (desc *immutable) PrimaryRegionName() (catpb.RegionName, error) {
+	__antithesis_instrumentation__.Notify(251250)
 	if !desc.IsMultiRegion() {
+		__antithesis_instrumentation__.Notify(251252)
 		return "", errors.AssertionFailedf(
 			"can not get the primary region of a non multi-region database")
+	} else {
+		__antithesis_instrumentation__.Notify(251253)
 	}
+	__antithesis_instrumentation__.Notify(251251)
 	return desc.RegionConfig.PrimaryRegion, nil
 }
 
-// MultiRegionEnumID implements the DatabaseDescriptor interface.
 func (desc *immutable) MultiRegionEnumID() (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(251254)
 	if !desc.IsMultiRegion() {
+		__antithesis_instrumentation__.Notify(251256)
 		return descpb.InvalidID, errors.AssertionFailedf(
 			"can not get multi-region enum ID of a non multi-region database")
+	} else {
+		__antithesis_instrumentation__.Notify(251257)
 	}
+	__antithesis_instrumentation__.Notify(251255)
 	return desc.RegionConfig.RegionEnumID, nil
 }
 
-// SetName sets the name on the descriptor.
 func (desc *Mutable) SetName(name string) {
+	__antithesis_instrumentation__.Notify(251258)
 	desc.Name = name
 }
 
-// ForEachSchemaInfo implements the DatabaseDescriptor interface.
 func (desc *immutable) ForEachSchemaInfo(
 	f func(id descpb.ID, name string, isDropped bool) error,
 ) error {
+	__antithesis_instrumentation__.Notify(251259)
 	for name, info := range desc.Schemas {
+		__antithesis_instrumentation__.Notify(251261)
 		if err := f(info.ID, name, info.Dropped); err != nil {
+			__antithesis_instrumentation__.Notify(251262)
 			if iterutil.Done(err) {
+				__antithesis_instrumentation__.Notify(251264)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(251265)
 			}
+			__antithesis_instrumentation__.Notify(251263)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(251266)
 		}
 	}
+	__antithesis_instrumentation__.Notify(251260)
 	return nil
 }
 
-// ForEachNonDroppedSchema implements the DatabaseDescriptor interface.
 func (desc *immutable) ForEachNonDroppedSchema(f func(id descpb.ID, name string) error) error {
+	__antithesis_instrumentation__.Notify(251267)
 	for name, info := range desc.Schemas {
+		__antithesis_instrumentation__.Notify(251269)
 		if info.Dropped {
+			__antithesis_instrumentation__.Notify(251271)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(251272)
 		}
+		__antithesis_instrumentation__.Notify(251270)
 		if err := f(info.ID, name); err != nil {
+			__antithesis_instrumentation__.Notify(251273)
 			if iterutil.Done(err) {
+				__antithesis_instrumentation__.Notify(251275)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(251276)
 			}
+			__antithesis_instrumentation__.Notify(251274)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(251277)
 		}
 	}
+	__antithesis_instrumentation__.Notify(251268)
 	return nil
 }
 
-// GetSchemaID implements the DatabaseDescriptor interface.
 func (desc *immutable) GetSchemaID(name string) descpb.ID {
+	__antithesis_instrumentation__.Notify(251278)
 	info := desc.Schemas[name]
 	if info.Dropped {
+		__antithesis_instrumentation__.Notify(251280)
 		return descpb.InvalidID
+	} else {
+		__antithesis_instrumentation__.Notify(251281)
 	}
+	__antithesis_instrumentation__.Notify(251279)
 	return info.ID
 }
 
-// HasPublicSchemaWithDescriptor returns if the database has a public schema
-// with a descriptor.
-// If descs.Schemas has an explicit entry for "public", then it has a descriptor
-// otherwise it is an implicit public schema.
 func (desc *immutable) HasPublicSchemaWithDescriptor() bool {
-	// The system database does not have a public schema backed by a descriptor.
+	__antithesis_instrumentation__.Notify(251282)
+
 	if desc.ID == keys.SystemDatabaseID {
+		__antithesis_instrumentation__.Notify(251284)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(251285)
 	}
+	__antithesis_instrumentation__.Notify(251283)
 	_, found := desc.Schemas[tree.PublicSchema]
 	return found
 }
 
-// GetNonDroppedSchemaName returns the name in the schema mapping entry for the
-// given ID, if it's not marked as dropped, empty string otherwise.
 func (desc *immutable) GetNonDroppedSchemaName(schemaID descpb.ID) string {
+	__antithesis_instrumentation__.Notify(251286)
 	for name, info := range desc.Schemas {
-		if !info.Dropped && info.ID == schemaID {
+		__antithesis_instrumentation__.Notify(251288)
+		if !info.Dropped && func() bool {
+			__antithesis_instrumentation__.Notify(251289)
+			return info.ID == schemaID == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(251290)
 			return name
+		} else {
+			__antithesis_instrumentation__.Notify(251291)
 		}
 	}
+	__antithesis_instrumentation__.Notify(251287)
 	return ""
 }
 
-// ValidateSelf validates that the database descriptor is well formed.
-// Checks include validate the database name, and verifying that there
-// is at least one read and write user.
 func (desc *immutable) ValidateSelf(vea catalog.ValidationErrorAccumulator) {
-	// Validate local properties of the descriptor.
+	__antithesis_instrumentation__.Notify(251292)
+
 	vea.Report(catalog.ValidateName(desc.GetName(), "descriptor"))
 	if desc.GetID() == descpb.InvalidID {
+		__antithesis_instrumentation__.Notify(251296)
 		vea.Report(fmt.Errorf("invalid database ID %d", desc.GetID()))
+	} else {
+		__antithesis_instrumentation__.Notify(251297)
 	}
+	__antithesis_instrumentation__.Notify(251293)
 
-	// Validate the privilege descriptor.
 	if desc.Privileges == nil {
+		__antithesis_instrumentation__.Notify(251298)
 		vea.Report(errors.AssertionFailedf("privileges not set"))
 	} else {
+		__antithesis_instrumentation__.Notify(251299)
 		vea.Report(catprivilege.Validate(*desc.Privileges, desc, privilege.Database))
 	}
+	__antithesis_instrumentation__.Notify(251294)
 
-	// The DefaultPrivilegeDescriptor may be nil.
 	if desc.GetDefaultPrivileges() != nil {
-		// Validate the default privilege descriptor.
+		__antithesis_instrumentation__.Notify(251300)
+
 		vea.Report(catprivilege.ValidateDefaultPrivileges(*desc.GetDefaultPrivileges()))
+	} else {
+		__antithesis_instrumentation__.Notify(251301)
 	}
+	__antithesis_instrumentation__.Notify(251295)
 
 	if desc.IsMultiRegion() {
+		__antithesis_instrumentation__.Notify(251302)
 		desc.validateMultiRegion(vea)
+	} else {
+		__antithesis_instrumentation__.Notify(251303)
 	}
 }
 
-// validateMultiRegion performs checks specific to multi-region DBs.
 func (desc *immutable) validateMultiRegion(vea catalog.ValidationErrorAccumulator) {
+	__antithesis_instrumentation__.Notify(251304)
 	if desc.RegionConfig.PrimaryRegion == "" {
+		__antithesis_instrumentation__.Notify(251305)
 		vea.Report(errors.AssertionFailedf(
 			"primary region unset on a multi-region db %d", desc.GetID()))
+	} else {
+		__antithesis_instrumentation__.Notify(251306)
 	}
 }
 
-// GetReferencedDescIDs returns the IDs of all descriptors referenced by
-// this descriptor, including itself.
 func (desc *immutable) GetReferencedDescIDs() (catalog.DescriptorIDSet, error) {
+	__antithesis_instrumentation__.Notify(251307)
 	ids := catalog.MakeDescriptorIDSet(desc.GetID())
 	if desc.IsMultiRegion() {
+		__antithesis_instrumentation__.Notify(251310)
 		id, err := desc.MultiRegionEnumID()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(251312)
 			return catalog.DescriptorIDSet{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(251313)
 		}
+		__antithesis_instrumentation__.Notify(251311)
 		ids.Add(id)
+	} else {
+		__antithesis_instrumentation__.Notify(251314)
 	}
+	__antithesis_instrumentation__.Notify(251308)
 	for _, schema := range desc.Schemas {
+		__antithesis_instrumentation__.Notify(251315)
 		ids.Add(schema.ID)
 	}
+	__antithesis_instrumentation__.Notify(251309)
 	return ids, nil
 }
 
-// ValidateCrossReferences implements the catalog.Descriptor interface.
 func (desc *immutable) ValidateCrossReferences(
 	vea catalog.ValidationErrorAccumulator, vdg catalog.ValidationDescGetter,
 ) {
-	// Check multi-region enum type.
+	__antithesis_instrumentation__.Notify(251316)
+
 	if enumID, err := desc.MultiRegionEnumID(); err == nil {
+		__antithesis_instrumentation__.Notify(251317)
 		report := func(err error) {
+			__antithesis_instrumentation__.Notify(251321)
 			vea.Report(errors.Wrap(err, "multi-region enum"))
 		}
+		__antithesis_instrumentation__.Notify(251318)
 		typ, err := vdg.GetTypeDescriptor(enumID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(251322)
 			report(err)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(251323)
 		}
+		__antithesis_instrumentation__.Notify(251319)
 		if typ.Dropped() {
+			__antithesis_instrumentation__.Notify(251324)
 			report(errors.Errorf("type descriptor is dropped"))
+		} else {
+			__antithesis_instrumentation__.Notify(251325)
 		}
+		__antithesis_instrumentation__.Notify(251320)
 		if typ.GetParentID() != desc.GetID() {
+			__antithesis_instrumentation__.Notify(251326)
 			report(errors.Errorf("parentID is actually %d", typ.GetParentID()))
+		} else {
+			__antithesis_instrumentation__.Notify(251327)
 		}
-		// Further validation should be handled by the type descriptor itself.
+
+	} else {
+		__antithesis_instrumentation__.Notify(251328)
 	}
 }
 
-// ValidateTxnCommit implements the catalog.Descriptor interface.
 func (desc *immutable) ValidateTxnCommit(
 	vea catalog.ValidationErrorAccumulator, vdg catalog.ValidationDescGetter,
 ) {
-	// Check schema references.
-	// This could be done in ValidateCrossReferences but it can be quite expensive
-	// so we do it here instead.
+	__antithesis_instrumentation__.Notify(251329)
+
 	for schemaName, schemaInfo := range desc.Schemas {
+		__antithesis_instrumentation__.Notify(251330)
 		if schemaInfo.Dropped {
+			__antithesis_instrumentation__.Notify(251336)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(251337)
 		}
+		__antithesis_instrumentation__.Notify(251331)
 		report := func(err error) {
+			__antithesis_instrumentation__.Notify(251338)
 			vea.Report(errors.Wrapf(err, "schema mapping entry %q (%d)",
 				errors.Safe(schemaName), schemaInfo.ID))
 		}
+		__antithesis_instrumentation__.Notify(251332)
 		schemaDesc, err := vdg.GetSchemaDescriptor(schemaInfo.ID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(251339)
 			report(err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(251340)
 		}
+		__antithesis_instrumentation__.Notify(251333)
 		if schemaDesc.GetName() != schemaName {
+			__antithesis_instrumentation__.Notify(251341)
 			report(errors.Errorf("schema name is actually %q", errors.Safe(schemaDesc.GetName())))
+		} else {
+			__antithesis_instrumentation__.Notify(251342)
 		}
+		__antithesis_instrumentation__.Notify(251334)
 		if schemaDesc.GetParentID() != desc.GetID() {
+			__antithesis_instrumentation__.Notify(251343)
 			report(errors.Errorf("schema parentID is actually %d", schemaDesc.GetParentID()))
+		} else {
+			__antithesis_instrumentation__.Notify(251344)
 		}
+		__antithesis_instrumentation__.Notify(251335)
 		if schemaDesc.Dropped() {
+			__antithesis_instrumentation__.Notify(251345)
 			report(errors.Errorf("back-referenced schema %q (%d) is dropped",
 				schemaDesc.GetName(), schemaDesc.GetID()))
+		} else {
+			__antithesis_instrumentation__.Notify(251346)
 		}
 	}
 }
 
-// MaybeIncrementVersion implements the MutableDescriptor interface.
 func (desc *Mutable) MaybeIncrementVersion() {
-	// Already incremented, no-op.
-	if desc.ClusterVersion == nil || desc.Version == desc.ClusterVersion.Version+1 {
+	__antithesis_instrumentation__.Notify(251347)
+
+	if desc.ClusterVersion == nil || func() bool {
+		__antithesis_instrumentation__.Notify(251349)
+		return desc.Version == desc.ClusterVersion.Version+1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(251350)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(251351)
 	}
+	__antithesis_instrumentation__.Notify(251348)
 	desc.Version++
 	desc.ModificationTime = hlc.Timestamp{}
 }
 
-// OriginalName implements the MutableDescriptor interface.
 func (desc *Mutable) OriginalName() string {
+	__antithesis_instrumentation__.Notify(251352)
 	if desc.ClusterVersion == nil {
+		__antithesis_instrumentation__.Notify(251354)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(251355)
 	}
+	__antithesis_instrumentation__.Notify(251353)
 	return desc.ClusterVersion.Name
 }
 
-// OriginalID implements the MutableDescriptor interface.
 func (desc *Mutable) OriginalID() descpb.ID {
+	__antithesis_instrumentation__.Notify(251356)
 	if desc.ClusterVersion == nil {
+		__antithesis_instrumentation__.Notify(251358)
 		return descpb.InvalidID
+	} else {
+		__antithesis_instrumentation__.Notify(251359)
 	}
+	__antithesis_instrumentation__.Notify(251357)
 	return desc.ClusterVersion.ID
 }
 
-// OriginalVersion implements the MutableDescriptor interface.
 func (desc *Mutable) OriginalVersion() descpb.DescriptorVersion {
+	__antithesis_instrumentation__.Notify(251360)
 	if desc.ClusterVersion == nil {
+		__antithesis_instrumentation__.Notify(251362)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(251363)
 	}
+	__antithesis_instrumentation__.Notify(251361)
 	return desc.ClusterVersion.Version
 }
 
-// ImmutableCopy implements the MutableDescriptor interface.
 func (desc *Mutable) ImmutableCopy() catalog.Descriptor {
+	__antithesis_instrumentation__.Notify(251364)
 	return desc.NewBuilder().BuildImmutable()
 }
 
-// IsNew implements the MutableDescriptor interface.
 func (desc *Mutable) IsNew() bool {
+	__antithesis_instrumentation__.Notify(251365)
 	return desc.ClusterVersion == nil
 }
 
-// IsUncommittedVersion implements the Descriptor interface.
 func (desc *Mutable) IsUncommittedVersion() bool {
-	return desc.IsNew() || desc.GetVersion() != desc.ClusterVersion.GetVersion()
+	__antithesis_instrumentation__.Notify(251366)
+	return desc.IsNew() || func() bool {
+		__antithesis_instrumentation__.Notify(251367)
+		return desc.GetVersion() != desc.ClusterVersion.GetVersion() == true
+	}() == true
 }
 
-// SetPublic implements the MutableDescriptor interface.
 func (desc *Mutable) SetPublic() {
+	__antithesis_instrumentation__.Notify(251368)
 	desc.State = descpb.DescriptorState_PUBLIC
 	desc.OfflineReason = ""
 }
 
-// SetDropped implements the MutableDescriptor interface.
 func (desc *Mutable) SetDropped() {
+	__antithesis_instrumentation__.Notify(251369)
 	desc.State = descpb.DescriptorState_DROP
 	desc.OfflineReason = ""
 }
 
-// SetOffline implements the MutableDescriptor interface.
 func (desc *Mutable) SetOffline(reason string) {
+	__antithesis_instrumentation__.Notify(251370)
 	desc.State = descpb.DescriptorState_OFFLINE
 	desc.OfflineReason = reason
 }
 
-// AddDrainingName adds a draining name to the DatabaseDescriptor's slice of
-// draining names.
-//
-// Deprecated: Do not use.
 func (desc *Mutable) AddDrainingName(name descpb.NameInfo) {
+	__antithesis_instrumentation__.Notify(251371)
 	desc.DrainingNames = append(desc.DrainingNames, name)
 }
 
-// UnsetMultiRegionConfig removes the stored multi-region config from the
-// database descriptor.
 func (desc *Mutable) UnsetMultiRegionConfig() {
+	__antithesis_instrumentation__.Notify(251372)
 	desc.RegionConfig = nil
 }
 
-// SetInitialMultiRegionConfig initializes and sets a RegionConfig on a database
-// descriptor. It returns an error if a RegionConfig already exists.
 func (desc *Mutable) SetInitialMultiRegionConfig(config *multiregion.RegionConfig) error {
-	// We only should be doing this for the initial multi-region configuration.
+	__antithesis_instrumentation__.Notify(251373)
+
 	if desc.RegionConfig != nil {
+		__antithesis_instrumentation__.Notify(251375)
 		return errors.AssertionFailedf(
 			"expected no region config on database %q with ID %d",
 			desc.GetName(),
 			desc.GetID(),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(251376)
 	}
+	__antithesis_instrumentation__.Notify(251374)
 	desc.RegionConfig = &descpb.DatabaseDescriptor_RegionConfig{
 		SurvivalGoal:  config.SurvivalGoal(),
 		PrimaryRegion: config.PrimaryRegion(),
@@ -460,92 +560,105 @@ func (desc *Mutable) SetInitialMultiRegionConfig(config *multiregion.RegionConfi
 	return nil
 }
 
-// SetRegionConfig sets the region configuration of a database descriptor.
 func (desc *Mutable) SetRegionConfig(cfg *descpb.DatabaseDescriptor_RegionConfig) {
+	__antithesis_instrumentation__.Notify(251377)
 	desc.RegionConfig = cfg
 }
 
-// SetPlacement sets the placement on the region config for a database
-// descriptor.
 func (desc *Mutable) SetPlacement(placement descpb.DataPlacement) {
+	__antithesis_instrumentation__.Notify(251378)
 	desc.RegionConfig.Placement = placement
 }
 
-// GetPostDeserializationChanges returns if the MutableDescriptor was changed after running
-// RunPostDeserializationChanges.
 func (desc *immutable) GetPostDeserializationChanges() catalog.PostDeserializationChanges {
+	__antithesis_instrumentation__.Notify(251379)
 	return desc.changes
 }
 
-// HasConcurrentSchemaChanges implements catalog.Descriptor.
 func (desc *immutable) HasConcurrentSchemaChanges() bool {
-	return desc.DeclarativeSchemaChangerState != nil &&
-		desc.DeclarativeSchemaChangerState.JobID != catpb.InvalidJobID
+	__antithesis_instrumentation__.Notify(251380)
+	return desc.DeclarativeSchemaChangerState != nil && func() bool {
+		__antithesis_instrumentation__.Notify(251381)
+		return desc.DeclarativeSchemaChangerState.JobID != catpb.InvalidJobID == true
+	}() == true
 }
 
-// GetDefaultPrivilegeDescriptor returns a DefaultPrivilegeDescriptor.
 func (desc *immutable) GetDefaultPrivilegeDescriptor() catalog.DefaultPrivilegeDescriptor {
+	__antithesis_instrumentation__.Notify(251382)
 	defaultPrivilegeDescriptor := desc.GetDefaultPrivileges()
 	if defaultPrivilegeDescriptor == nil {
+		__antithesis_instrumentation__.Notify(251384)
 		defaultPrivilegeDescriptor = catprivilege.MakeDefaultPrivilegeDescriptor(catpb.DefaultPrivilegeDescriptor_DATABASE)
+	} else {
+		__antithesis_instrumentation__.Notify(251385)
 	}
+	__antithesis_instrumentation__.Notify(251383)
 	return catprivilege.MakeDefaultPrivileges(defaultPrivilegeDescriptor)
 }
 
-// GetMutableDefaultPrivilegeDescriptor returns a catprivilege.Mutable.
 func (desc *Mutable) GetMutableDefaultPrivilegeDescriptor() *catprivilege.Mutable {
+	__antithesis_instrumentation__.Notify(251386)
 	defaultPrivilegeDescriptor := desc.GetDefaultPrivileges()
 	if defaultPrivilegeDescriptor == nil {
+		__antithesis_instrumentation__.Notify(251388)
 		defaultPrivilegeDescriptor = catprivilege.MakeDefaultPrivilegeDescriptor(catpb.DefaultPrivilegeDescriptor_DATABASE)
+	} else {
+		__antithesis_instrumentation__.Notify(251389)
 	}
+	__antithesis_instrumentation__.Notify(251387)
 	return catprivilege.NewMutableDefaultPrivileges(defaultPrivilegeDescriptor)
 }
 
-// SetDefaultPrivilegeDescriptor sets the default privilege descriptor
-// for the database.
 func (desc *Mutable) SetDefaultPrivilegeDescriptor(
 	defaultPrivilegeDescriptor *catpb.DefaultPrivilegeDescriptor,
 ) {
+	__antithesis_instrumentation__.Notify(251390)
 	desc.DefaultPrivileges = defaultPrivilegeDescriptor
 }
 
-// AddSchemaToDatabase adds a schemaName and schemaInfo entry into the
-// database's Schemas map. If the map is nil, then we create a map before
-// adding the entry.
-// If there is an existing entry in the map with schemaName as the key,
-// it will be overridden.
 func (desc *Mutable) AddSchemaToDatabase(
 	schemaName string, schemaInfo descpb.DatabaseDescriptor_SchemaInfo,
 ) {
+	__antithesis_instrumentation__.Notify(251391)
 	if desc.Schemas == nil {
+		__antithesis_instrumentation__.Notify(251393)
 		desc.Schemas = make(map[string]descpb.DatabaseDescriptor_SchemaInfo)
+	} else {
+		__antithesis_instrumentation__.Notify(251394)
 	}
+	__antithesis_instrumentation__.Notify(251392)
 	desc.Schemas[schemaName] = schemaInfo
 }
 
-// GetDeclarativeSchemaChangerState is part of the catalog.MutableDescriptor
-// interface.
 func (desc *immutable) GetDeclarativeSchemaChangerState() *scpb.DescriptorState {
+	__antithesis_instrumentation__.Notify(251395)
 	return desc.DeclarativeSchemaChangerState.Clone()
 }
 
-// SetDeclarativeSchemaChangerState is part of the catalog.MutableDescriptor
-// interface.
 func (desc *Mutable) SetDeclarativeSchemaChangerState(state *scpb.DescriptorState) {
+	__antithesis_instrumentation__.Notify(251396)
 	desc.DeclarativeSchemaChangerState = state
 }
 
-// maybeRemoveDroppedSelfEntryFromSchemas removes an entry in the Schemas map corresponding to the
-// database itself which was added due to a bug in prior versions when dropping any user-defined schema.
-// The bug inserted an entry for the database rather than the schema being dropped. This function fixes the
-// problem by deleting the erroneous entry.
 func maybeRemoveDroppedSelfEntryFromSchemas(dbDesc *descpb.DatabaseDescriptor) bool {
+	__antithesis_instrumentation__.Notify(251397)
 	if dbDesc == nil {
+		__antithesis_instrumentation__.Notify(251400)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(251401)
 	}
-	if sc, ok := dbDesc.Schemas[dbDesc.Name]; ok && sc.ID == dbDesc.ID {
+	__antithesis_instrumentation__.Notify(251398)
+	if sc, ok := dbDesc.Schemas[dbDesc.Name]; ok && func() bool {
+		__antithesis_instrumentation__.Notify(251402)
+		return sc.ID == dbDesc.ID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(251403)
 		delete(dbDesc.Schemas, dbDesc.Name)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(251404)
 	}
+	__antithesis_instrumentation__.Notify(251399)
 	return false
 }

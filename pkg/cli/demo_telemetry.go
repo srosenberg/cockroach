@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -16,20 +8,19 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 )
 
-// demoTelemetry corresponds to different sources of telemetry we are recording from cockroach demo.
 type demoTelemetry int
 
 const (
 	_ demoTelemetry = iota
-	// demo represents when cockroach demo is used at all.
+
 	demo
-	// nodes represents when cockroach demo is started with multiple nodes.
+
 	nodes
-	// demoLocality represents when cockroach demo is started with user defined localities.
+
 	demoLocality
-	// withLoad represents when cockroach demo is used with a background workload
+
 	withLoad
-	// geoPartitionedReplicas is used when cockroach demo is started with the geo-partitioned-replicas topology.
+
 	geoPartitionedReplicas
 )
 
@@ -51,5 +42,6 @@ func init() {
 }
 
 func incrementDemoCounter(d demoTelemetry) {
+	__antithesis_instrumentation__.Notify(31940)
 	telemetry.Inc(demoTelemetryCounters[d])
 }

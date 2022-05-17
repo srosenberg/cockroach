@@ -20,6 +20,8 @@
 // them.
 package main
 
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 import (
 	"log"
 	"os"
@@ -27,16 +29,24 @@ import (
 )
 
 func main() {
+	__antithesis_instrumentation__.Notify(37658)
 	log.SetFlags(0)
 	log.SetPrefix("")
 
 	if _, err := exec.LookPath("bazel"); err != nil {
+		__antithesis_instrumentation__.Notify(37660)
 		log.Printf("ERROR: bazel not found in $PATH")
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(37661)
 	}
+	__antithesis_instrumentation__.Notify(37659)
 
 	if err := rootCmd.Execute(); err != nil {
+		__antithesis_instrumentation__.Notify(37662)
 		log.Printf("ERROR: %v", err)
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(37663)
 	}
 }

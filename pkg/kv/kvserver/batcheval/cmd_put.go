@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,37 +24,42 @@ func declareKeysPut(
 	latchSpans, lockSpans *spanset.SpanSet,
 	maxOffset time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(97143)
 	args := req.(*roachpb.PutRequest)
 	if args.Inline {
+		__antithesis_instrumentation__.Notify(97144)
 		DefaultDeclareKeys(rs, header, req, latchSpans, lockSpans, maxOffset)
 	} else {
+		__antithesis_instrumentation__.Notify(97145)
 		DefaultDeclareIsolatedKeys(rs, header, req, latchSpans, lockSpans, maxOffset)
 	}
 }
 
-// Put sets the value for a specified key.
 func Put(
 	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(97146)
 	args := cArgs.Args.(*roachpb.PutRequest)
 	h := cArgs.Header
 	ms := cArgs.Stats
 
 	var ts hlc.Timestamp
 	if !args.Inline {
+		__antithesis_instrumentation__.Notify(97149)
 		ts = h.Timestamp
+	} else {
+		__antithesis_instrumentation__.Notify(97150)
 	}
+	__antithesis_instrumentation__.Notify(97147)
 	var err error
 	if args.Blind {
+		__antithesis_instrumentation__.Notify(97151)
 		err = storage.MVCCBlindPut(ctx, readWriter, ms, args.Key, ts, args.Value, h.Txn)
 	} else {
+		__antithesis_instrumentation__.Notify(97152)
 		err = storage.MVCCPut(ctx, readWriter, ms, args.Key, ts, args.Value, h.Txn)
 	}
-	// NB: even if MVCC returns an error, it may still have written an intent
-	// into the batch. This allows callers to consume errors like WriteTooOld
-	// without re-evaluating the batch. This behavior isn't particularly
-	// desirable, but while it remains, we need to assume that an intent could
-	// have been written even when an error is returned. This is harmless if the
-	// error is not consumed by the caller because the result will be discarded.
+	__antithesis_instrumentation__.Notify(97148)
+
 	return result.FromAcquiredLocks(h.Txn, args.Key), err
 }

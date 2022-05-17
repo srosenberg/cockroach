@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package jobs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,10 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ScheduledJobExecutor is an interface describing execution of the scheduled job.
 type ScheduledJobExecutor interface {
-	// Executes scheduled job;  Implementation may use provided transaction.
-	// Modifications to the ScheduledJob object will be persisted.
 	ExecuteJob(
 		ctx context.Context,
 		cfg *scheduledjobs.JobExecutionConfig,
@@ -35,9 +24,6 @@ type ScheduledJobExecutor interface {
 		txn *kv.Txn,
 	) error
 
-	// Notifies that the system.job started by the ScheduledJob completed.
-	// Implementation may use provided transaction to perform any additional mutations.
-	// Modifications to the ScheduledJob object will be persisted.
 	NotifyJobTermination(
 		ctx context.Context,
 		jobID jobspb.JobID,
@@ -49,12 +35,8 @@ type ScheduledJobExecutor interface {
 		txn *kv.Txn,
 	) error
 
-	// Metrics returns optional metric.Struct object for this executor.
 	Metrics() metric.Struct
 
-	// GetCreateScheduleStatement returns a `CREATE SCHEDULE` statement that is
-	// functionally equivalent to the statement that led to the creation of
-	// the passed in `schedule`.
 	GetCreateScheduleStatement(
 		ctx context.Context,
 		env scheduledjobs.JobSchedulerEnv,
@@ -65,11 +47,7 @@ type ScheduledJobExecutor interface {
 	) (string, error)
 }
 
-// ScheduledJobController is an interface describing hooks that will execute
-// when controlling a scheduled job.
 type ScheduledJobController interface {
-	// OnDrop runs before the passed in `schedule` is dropped as part of a `DROP
-	// SCHEDULE` query.
 	OnDrop(
 		ctx context.Context,
 		scheduleControllerEnv scheduledjobs.ScheduleControllerEnv,
@@ -80,7 +58,6 @@ type ScheduledJobController interface {
 	) error
 }
 
-// ScheduledJobExecutorFactory is a callback to create a ScheduledJobExecutor.
 type ScheduledJobExecutorFactory = func() (ScheduledJobExecutor, error)
 
 var executorRegistry struct {
@@ -89,92 +66,121 @@ var executorRegistry struct {
 	executors map[string]ScheduledJobExecutor
 }
 
-// RegisterScheduledJobExecutorFactory registers callback for creating ScheduledJobExecutor
-// with the specified name.
 func RegisterScheduledJobExecutorFactory(name string, factory ScheduledJobExecutorFactory) {
+	__antithesis_instrumentation__.Notify(84876)
 	executorRegistry.Lock()
 	defer executorRegistry.Unlock()
 	if executorRegistry.factories == nil {
+		__antithesis_instrumentation__.Notify(84879)
 		executorRegistry.factories = make(map[string]ScheduledJobExecutorFactory)
+	} else {
+		__antithesis_instrumentation__.Notify(84880)
 	}
+	__antithesis_instrumentation__.Notify(84877)
 
 	if _, ok := executorRegistry.factories[name]; ok {
+		__antithesis_instrumentation__.Notify(84881)
 		panic("executor " + name + " already registered")
+	} else {
+		__antithesis_instrumentation__.Notify(84882)
 	}
+	__antithesis_instrumentation__.Notify(84878)
 	executorRegistry.factories[name] = factory
 }
 
-// newScheduledJobExecutor creates new instance of ScheduledJobExecutor.
 func newScheduledJobExecutorLocked(name string) (ScheduledJobExecutor, error) {
+	__antithesis_instrumentation__.Notify(84883)
 	if factory, ok := executorRegistry.factories[name]; ok {
+		__antithesis_instrumentation__.Notify(84885)
 		return factory()
+	} else {
+		__antithesis_instrumentation__.Notify(84886)
 	}
+	__antithesis_instrumentation__.Notify(84884)
 	return nil, errors.Newf("executor %q is not registered", name)
 }
 
-// GetScheduledJobExecutor returns a singleton instance of
-// ScheduledJobExecutor and a flag indicating if that instance was just created.
 func GetScheduledJobExecutor(name string) (ScheduledJobExecutor, error) {
+	__antithesis_instrumentation__.Notify(84887)
 	executorRegistry.Lock()
 	defer executorRegistry.Unlock()
 	return getScheduledJobExecutorLocked(name)
 }
 
 func getScheduledJobExecutorLocked(name string) (ScheduledJobExecutor, error) {
+	__antithesis_instrumentation__.Notify(84888)
 	if executorRegistry.executors == nil {
+		__antithesis_instrumentation__.Notify(84892)
 		executorRegistry.executors = make(map[string]ScheduledJobExecutor)
+	} else {
+		__antithesis_instrumentation__.Notify(84893)
 	}
+	__antithesis_instrumentation__.Notify(84889)
 	if ex, ok := executorRegistry.executors[name]; ok {
+		__antithesis_instrumentation__.Notify(84894)
 		return ex, nil
+	} else {
+		__antithesis_instrumentation__.Notify(84895)
 	}
+	__antithesis_instrumentation__.Notify(84890)
 	ex, err := newScheduledJobExecutorLocked(name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84896)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(84897)
 	}
+	__antithesis_instrumentation__.Notify(84891)
 	executorRegistry.executors[name] = ex
 	return ex, nil
 }
 
-// RegisterExecutorsMetrics registered the metrics updated by each executor.
 func RegisterExecutorsMetrics(registry *metric.Registry) error {
+	__antithesis_instrumentation__.Notify(84898)
 	executorRegistry.Lock()
 	defer executorRegistry.Unlock()
 
 	for executorType := range executorRegistry.factories {
+		__antithesis_instrumentation__.Notify(84900)
 		ex, err := getScheduledJobExecutorLocked(executorType)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(84902)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(84903)
 		}
+		__antithesis_instrumentation__.Notify(84901)
 		if m := ex.Metrics(); m != nil {
+			__antithesis_instrumentation__.Notify(84904)
 			registry.AddMetricStruct(m)
+		} else {
+			__antithesis_instrumentation__.Notify(84905)
 		}
 	}
+	__antithesis_instrumentation__.Notify(84899)
 
 	return nil
 }
 
-// DefaultHandleFailedRun is a default implementation for handling failed run
-// (either system.job failure, or perhaps error processing the schedule itself).
 func DefaultHandleFailedRun(schedule *ScheduledJob, fmtOrMsg string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(84906)
 	switch schedule.ScheduleDetails().OnError {
 	case jobspb.ScheduleDetails_RETRY_SOON:
+		__antithesis_instrumentation__.Notify(84907)
 		schedule.SetScheduleStatus("retrying: "+fmtOrMsg, args...)
-		schedule.SetNextRun(schedule.env.Now().Add(retryFailedJobAfter)) // TODO(yevgeniy): backoff
+		schedule.SetNextRun(schedule.env.Now().Add(retryFailedJobAfter))
 	case jobspb.ScheduleDetails_PAUSE_SCHED:
+		__antithesis_instrumentation__.Notify(84908)
 		schedule.Pause()
 		schedule.SetScheduleStatus("schedule paused: "+fmtOrMsg, args...)
 	case jobspb.ScheduleDetails_RETRY_SCHED:
+		__antithesis_instrumentation__.Notify(84909)
 		schedule.SetScheduleStatus("reschedule: "+fmtOrMsg, args...)
+	default:
+		__antithesis_instrumentation__.Notify(84910)
 	}
 }
 
-// NotifyJobTermination is invoked when the job triggered by specified schedule
-// completes
-//
-// The 'txn' transaction argument is the transaction the job will use to update its
-// state (e.g. status, etc).  If any changes need to be made to the scheduled job record,
-// those changes are applied to the same transaction -- that is, they are applied atomically
-// with the job status changes.
 func NotifyJobTermination(
 	ctx context.Context,
 	env scheduledjobs.JobSchedulerEnv,
@@ -185,25 +191,40 @@ func NotifyJobTermination(
 	ex sqlutil.InternalExecutor,
 	txn *kv.Txn,
 ) error {
+	__antithesis_instrumentation__.Notify(84911)
 	if env == nil {
+		__antithesis_instrumentation__.Notify(84916)
 		env = scheduledjobs.ProdJobSchedulerEnv
+	} else {
+		__antithesis_instrumentation__.Notify(84917)
 	}
+	__antithesis_instrumentation__.Notify(84912)
 
 	schedule, err := LoadScheduledJob(ctx, env, scheduleID, ex, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84918)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84919)
 	}
+	__antithesis_instrumentation__.Notify(84913)
 	executor, err := GetScheduledJobExecutor(schedule.ExecutorType())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84920)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84921)
 	}
+	__antithesis_instrumentation__.Notify(84914)
 
-	// Delegate handling of the job termination to the executor.
 	err = executor.NotifyJobTermination(ctx, jobID, jobStatus, jobDetails, env, schedule, ex, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(84922)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(84923)
 	}
+	__antithesis_instrumentation__.Notify(84915)
 
-	// Update this schedule in case executor made changes to it.
 	return schedule.Update(ctx, ex, txn)
 }

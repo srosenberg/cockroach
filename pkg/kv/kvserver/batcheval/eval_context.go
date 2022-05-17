@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,22 +23,16 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Limiters is the collection of per-store limits used during cmd evaluation.
 type Limiters struct {
 	BulkIOWriteRate                      *rate.Limiter
 	ConcurrentExportRequests             limit.ConcurrentRequestLimiter
 	ConcurrentAddSSTableRequests         limit.ConcurrentRequestLimiter
 	ConcurrentAddSSTableAsWritesRequests limit.ConcurrentRequestLimiter
-	// concurrentRangefeedIters is a semaphore used to limit the number of
-	// rangefeeds in the "catch-up" state across the store. The "catch-up" state
-	// is a temporary state at the beginning of a rangefeed which is expensive
-	// because it uses an engine iterator.
+
 	ConcurrentRangefeedIters         limit.ConcurrentRequestLimiter
 	ConcurrentScanInterleavedIntents limit.ConcurrentRequestLimiter
 }
 
-// EvalContext is the interface through which command evaluation accesses the
-// underlying state.
 type EvalContext interface {
 	fmt.Stringer
 	ClusterSettings() *cluster.Settings
@@ -69,33 +55,14 @@ type EvalContext interface {
 	Desc() *roachpb.RangeDescriptor
 	ContainsKey(key roachpb.Key) bool
 
-	// CanCreateTxnRecord determines whether a transaction record can be created
-	// for the provided transaction information. See Replica.CanCreateTxnRecord
-	// for details about its arguments, return values, and preconditions.
 	CanCreateTxnRecord(
 		ctx context.Context, txnID uuid.UUID, txnKey []byte, txnMinTS hlc.Timestamp,
 	) (ok bool, minCommitTS hlc.Timestamp, reason roachpb.TransactionAbortedReason)
 
-	// GetMVCCStats returns a snapshot of the MVCC stats for the range.
-	// If called from a command that declares a read/write span on the
-	// entire range, the stats will be consistent with the data that is
-	// visible to the batch. Otherwise, it may return inconsistent
-	// results due to concurrent writes.
 	GetMVCCStats() enginepb.MVCCStats
 
-	// GetMaxSplitQPS returns the Replicas maximum queries/s request rate over a
-	// configured retention period.
-	//
-	// NOTE: This should not be used when the load based splitting cluster setting
-	// is disabled.
 	GetMaxSplitQPS() (float64, bool)
 
-	// GetLastSplitQPS returns the Replica's most recent queries/s request rate.
-	//
-	// NOTE: This should not be used when the load based splitting cluster setting
-	// is disabled.
-	//
-	// TODO(nvanbenschoten): remove this method in v22.1.
 	GetLastSplitQPS() float64
 
 	GetGCThreshold() hlc.Timestamp
@@ -104,47 +71,25 @@ type EvalContext interface {
 	GetLease() (roachpb.Lease, roachpb.Lease)
 	GetRangeInfo(context.Context) roachpb.RangeInfo
 
-	// GetCurrentReadSummary returns a new ReadSummary reflecting all reads
-	// served by the range to this point. The method requires a write latch
-	// across all keys in the range (see declareAllKeys), because it will only
-	// return a meaningful summary if the caller has serialized with all other
-	// requests on the range.
 	GetCurrentReadSummary(ctx context.Context) rspb.ReadSummary
 
-	// GetClosedTimestamp returns the current closed timestamp on the range.
-	// It is expected that a caller will have performed some action (either
-	// calling RevokeLease or WatchForMerge) to freeze further progression of
-	// the closed timestamp before calling this method.
 	GetClosedTimestamp(ctx context.Context) hlc.Timestamp
 
 	GetExternalStorage(ctx context.Context, dest roachpb.ExternalStorage) (cloud.ExternalStorage, error)
 	GetExternalStorageFromURI(ctx context.Context, uri string, user security.SQLUsername) (cloud.ExternalStorage,
 		error)
 
-	// RevokeLease stops the replica from using its current lease, if that lease
-	// matches the provided lease sequence. All future calls to leaseStatus on
-	// this node with the current lease will now return a PROSCRIBED status.
 	RevokeLease(context.Context, roachpb.LeaseSequence)
 
-	// WatchForMerge arranges to block all requests until the in-progress merge
-	// completes. Returns an error if no in-progress merge is detected.
 	WatchForMerge(ctx context.Context) error
 
-	// GetResponseMemoryAccount returns a memory account to be used when
-	// generating BatchResponses. Currently only used for MVCC scans, and only
-	// non-nil on those paths (a nil account is safe to use since it functions
-	// as an unlimited account).
 	GetResponseMemoryAccount() *mon.BoundAccount
 
 	GetMaxBytes() int64
 
-	// GetEngineCapacity returns the store's underlying engine capacity; other
-	// StoreCapacity fields not related to engine capacity are not populated.
 	GetEngineCapacity() (roachpb.StoreCapacity, error)
 }
 
-// MockEvalCtx is a dummy implementation of EvalContext for testing purposes.
-// For technical reasons, the interface is implemented by a wrapper .EvalContext().
 type MockEvalCtx struct {
 	ClusterSettings    *cluster.Settings
 	Desc               *roachpb.RangeDescriptor
@@ -163,127 +108,162 @@ type MockEvalCtx struct {
 	MaxBytes           int64
 }
 
-// EvalContext returns the MockEvalCtx as an EvalContext. It will reflect future
-// modifications to the underlying MockEvalContext.
 func (m *MockEvalCtx) EvalContext() EvalContext {
+	__antithesis_instrumentation__.Notify(97581)
 	return &mockEvalCtxImpl{MockEvalCtx: m}
 }
 
 type mockEvalCtxImpl struct {
-	// Hide the fields of MockEvalCtx which have names that conflict with some
-	// of the interface methods.
 	*MockEvalCtx
 }
 
 func (m *mockEvalCtxImpl) String() string {
+	__antithesis_instrumentation__.Notify(97582)
 	return "mock"
 }
 func (m *mockEvalCtxImpl) ClusterSettings() *cluster.Settings {
+	__antithesis_instrumentation__.Notify(97583)
 	return m.MockEvalCtx.ClusterSettings
 }
 func (m *mockEvalCtxImpl) EvalKnobs() kvserverbase.BatchEvalTestingKnobs {
+	__antithesis_instrumentation__.Notify(97584)
 	return kvserverbase.BatchEvalTestingKnobs{}
 }
 func (m *mockEvalCtxImpl) Clock() *hlc.Clock {
+	__antithesis_instrumentation__.Notify(97585)
 	return m.MockEvalCtx.Clock
 }
 func (m *mockEvalCtxImpl) AbortSpan() *abortspan.AbortSpan {
+	__antithesis_instrumentation__.Notify(97586)
 	return m.MockEvalCtx.AbortSpan
 }
 func (m *mockEvalCtxImpl) GetConcurrencyManager() concurrency.Manager {
+	__antithesis_instrumentation__.Notify(97587)
 	panic("unimplemented")
 }
 func (m *mockEvalCtxImpl) NodeID() roachpb.NodeID {
+	__antithesis_instrumentation__.Notify(97588)
 	panic("unimplemented")
 }
 func (m *mockEvalCtxImpl) GetNodeLocality() roachpb.Locality {
+	__antithesis_instrumentation__.Notify(97589)
 	panic("unimplemented")
 }
 func (m *mockEvalCtxImpl) StoreID() roachpb.StoreID {
+	__antithesis_instrumentation__.Notify(97590)
 	return m.MockEvalCtx.StoreID
 }
 func (m *mockEvalCtxImpl) GetRangeID() roachpb.RangeID {
+	__antithesis_instrumentation__.Notify(97591)
 	return m.MockEvalCtx.Desc.RangeID
 }
 func (m *mockEvalCtxImpl) IsFirstRange() bool {
+	__antithesis_instrumentation__.Notify(97592)
 	panic("unimplemented")
 }
 func (m *mockEvalCtxImpl) GetFirstIndex() (uint64, error) {
+	__antithesis_instrumentation__.Notify(97593)
 	return m.FirstIndex, nil
 }
 func (m *mockEvalCtxImpl) GetTerm(uint64) (uint64, error) {
+	__antithesis_instrumentation__.Notify(97594)
 	return m.Term, nil
 }
 func (m *mockEvalCtxImpl) GetLeaseAppliedIndex() uint64 {
+	__antithesis_instrumentation__.Notify(97595)
 	panic("unimplemented")
 }
 func (m *mockEvalCtxImpl) Desc() *roachpb.RangeDescriptor {
+	__antithesis_instrumentation__.Notify(97596)
 	return m.MockEvalCtx.Desc
 }
 func (m *mockEvalCtxImpl) ContainsKey(key roachpb.Key) bool {
+	__antithesis_instrumentation__.Notify(97597)
 	return false
 }
 func (m *mockEvalCtxImpl) GetMVCCStats() enginepb.MVCCStats {
+	__antithesis_instrumentation__.Notify(97598)
 	return m.Stats
 }
 func (m *mockEvalCtxImpl) GetMaxSplitQPS() (float64, bool) {
+	__antithesis_instrumentation__.Notify(97599)
 	return m.QPS, true
 }
 func (m *mockEvalCtxImpl) GetLastSplitQPS() float64 {
+	__antithesis_instrumentation__.Notify(97600)
 	return m.QPS
 }
 func (m *mockEvalCtxImpl) CanCreateTxnRecord(
 	context.Context, uuid.UUID, []byte, hlc.Timestamp,
 ) (bool, hlc.Timestamp, roachpb.TransactionAbortedReason) {
+	__antithesis_instrumentation__.Notify(97601)
 	return m.CanCreateTxn()
 }
 func (m *mockEvalCtxImpl) GetGCThreshold() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(97602)
 	return m.GCThreshold
 }
 func (m *mockEvalCtxImpl) ExcludeDataFromBackup() bool {
+	__antithesis_instrumentation__.Notify(97603)
 	return false
 }
 func (m *mockEvalCtxImpl) GetLastReplicaGCTimestamp(context.Context) (hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(97604)
 	panic("unimplemented")
 }
 func (m *mockEvalCtxImpl) GetLease() (roachpb.Lease, roachpb.Lease) {
+	__antithesis_instrumentation__.Notify(97605)
 	return m.Lease, roachpb.Lease{}
 }
 func (m *mockEvalCtxImpl) GetRangeInfo(ctx context.Context) roachpb.RangeInfo {
+	__antithesis_instrumentation__.Notify(97606)
 	return roachpb.RangeInfo{Desc: *m.Desc(), Lease: m.Lease}
 }
 func (m *mockEvalCtxImpl) GetCurrentReadSummary(ctx context.Context) rspb.ReadSummary {
+	__antithesis_instrumentation__.Notify(97607)
 	return m.CurrentReadSummary
 }
 func (m *mockEvalCtxImpl) GetClosedTimestamp(ctx context.Context) hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(97608)
 	return m.ClosedTimestamp
 }
 func (m *mockEvalCtxImpl) GetExternalStorage(
 	ctx context.Context, dest roachpb.ExternalStorage,
 ) (cloud.ExternalStorage, error) {
+	__antithesis_instrumentation__.Notify(97609)
 	panic("unimplemented")
 }
 func (m *mockEvalCtxImpl) GetExternalStorageFromURI(
 	ctx context.Context, uri string, user security.SQLUsername,
 ) (cloud.ExternalStorage, error) {
+	__antithesis_instrumentation__.Notify(97610)
 	panic("unimplemented")
 }
 func (m *mockEvalCtxImpl) RevokeLease(_ context.Context, seq roachpb.LeaseSequence) {
+	__antithesis_instrumentation__.Notify(97611)
 	m.RevokedLeaseSeq = seq
 }
 func (m *mockEvalCtxImpl) WatchForMerge(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(97612)
 	panic("unimplemented")
 }
 func (m *mockEvalCtxImpl) GetResponseMemoryAccount() *mon.BoundAccount {
-	// No limits.
+	__antithesis_instrumentation__.Notify(97613)
+
 	return nil
 }
 func (m *mockEvalCtxImpl) GetMaxBytes() int64 {
+	__antithesis_instrumentation__.Notify(97614)
 	if m.MaxBytes != 0 {
+		__antithesis_instrumentation__.Notify(97616)
 		return m.MaxBytes
+	} else {
+		__antithesis_instrumentation__.Notify(97617)
 	}
+	__antithesis_instrumentation__.Notify(97615)
 	return math.MaxInt64
 }
 func (m *mockEvalCtxImpl) GetEngineCapacity() (roachpb.StoreCapacity, error) {
+	__antithesis_instrumentation__.Notify(97618)
 	return roachpb.StoreCapacity{Available: 1, Capacity: 1}, nil
 }

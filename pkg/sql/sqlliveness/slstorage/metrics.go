@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package slstorage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
@@ -60,7 +52,6 @@ var (
 	}
 )
 
-// Metrics is a metric.Struct which holds metrics for slstorage.
 type Metrics struct {
 	IsAliveCacheHits     *metric.Counter
 	IsAliveCacheMisses   *metric.Counter
@@ -70,12 +61,12 @@ type Metrics struct {
 	WriteFailures        *metric.Counter
 }
 
-// MetricStruct make Metrics a metric.Struct.
-func (m Metrics) MetricStruct() {}
+func (m Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(624266) }
 
 var _ metric.Struct = (*Metrics)(nil)
 
 func makeMetrics() Metrics {
+	__antithesis_instrumentation__.Notify(624267)
 	return Metrics{
 		IsAliveCacheHits:     metric.NewCounter(metaIsAliveCacheHits),
 		IsAliveCacheMisses:   metric.NewCounter(metaIsAliveCacheMisses),

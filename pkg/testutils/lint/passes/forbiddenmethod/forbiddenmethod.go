@@ -1,16 +1,8 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package forbiddenmethod provides a general-purpose Analyzer
 // factory to vet against calls to a forbidden method.
 package forbiddenmethod
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -24,114 +16,147 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// NB: see the sibling descriptormarshal package for tests.
-
-// Options are used to create an Analyzer that vets against calls
-// to a forbidden method.
 type Options struct {
-	// PassName is the name of the pass. It is also what is used
-	// for `// nolint:<PassName>` comments. By convention, this
-	// is a single lower-case word.
 	PassName string
-	// Doc is a short description of the pass.
+
 	Doc string
-	// Package, Type, and Method specify the disallowed method.
-	// If calls to `(github.com/somewhere/somepkg.Foo).Bar` are
-	// disallowed, this is populated as `github.com/somewhere/somepkg`,
-	// `Foo`, and `Bar`, respectively.
-	//
-	// Note that vendoring is handled transparently. The Package should be
-	// specified via its ultimate import path, i.e. no "vendor" component.
+
 	Package, Type, Method string
-	// Hint is added when the pass emits a warning. The warning already
-	// contains forbidden method, so the hint typically concerns itself
-	// with guiding the user towards satisfying the lint, for instance
-	// by suggesting an alternative method to call instead.
+
 	Hint string
 }
 
-// Analyzer returns an Analyzer that vets against calls to the method
-// described in the provided Options.
 func Analyzer(options Options) *analysis.Analyzer {
+	__antithesis_instrumentation__.Notify(644695)
 	methodRe := regexp.MustCompile(options.Method)
 	return &analysis.Analyzer{
 		Name:     options.PassName,
 		Doc:      options.Doc,
 		Requires: []*analysis.Analyzer{inspect.Analyzer},
 		Run: func(pass *analysis.Pass) (interface{}, error) {
+			__antithesis_instrumentation__.Notify(644696)
 			inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 			inspect.Preorder([]ast.Node{
 				(*ast.CallExpr)(nil),
 			}, func(n ast.Node) {
+				__antithesis_instrumentation__.Notify(644698)
 				call := n.(*ast.CallExpr)
 				sel, ok := call.Fun.(*ast.SelectorExpr)
 				if !ok {
+					__antithesis_instrumentation__.Notify(644706)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(644707)
 				}
+				__antithesis_instrumentation__.Notify(644699)
 				obj, ok := pass.TypesInfo.Uses[sel.Sel]
 				if !ok {
+					__antithesis_instrumentation__.Notify(644708)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(644709)
 				}
+				__antithesis_instrumentation__.Notify(644700)
 				f, ok := obj.(*types.Func)
 				if !ok {
+					__antithesis_instrumentation__.Notify(644710)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(644711)
 				}
+				__antithesis_instrumentation__.Notify(644701)
 
-				// Set this to true to emit a warning for each function call.
-				// This makes it easier to figure out what to set the pkg to when
-				// vendoring is in play. (However, see gprcconnclose for an example
-				// of what the pkg is in that case).
 				const debug = false
 				if debug {
+					__antithesis_instrumentation__.Notify(644712)
 					pkgPath := ""
 					if f.Pkg() != nil {
+						__antithesis_instrumentation__.Notify(644714)
 						pkgPath = f.Pkg().Path()
+					} else {
+						__antithesis_instrumentation__.Notify(644715)
 					}
+					__antithesis_instrumentation__.Notify(644713)
 					pass.Report(analysis.Diagnostic{
 						Pos:     n.Pos(),
 						Message: fmt.Sprintf("method call: pkgpath=%s recvtype=%s method=%s", pkgPath, namedRecvTypeFor(f), f.Name()),
 					})
+				} else {
+					__antithesis_instrumentation__.Notify(644716)
 				}
+				__antithesis_instrumentation__.Notify(644702)
 
-				if f.Pkg() == nil || f.Pkg().Path() != options.Package || !methodRe.MatchString(f.Name()) {
+				if f.Pkg() == nil || func() bool {
+					__antithesis_instrumentation__.Notify(644717)
+					return f.Pkg().Path() != options.Package == true
+				}() == true || func() bool {
+					__antithesis_instrumentation__.Notify(644718)
+					return !methodRe.MatchString(f.Name()) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(644719)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(644720)
 				}
+				__antithesis_instrumentation__.Notify(644703)
 				if !isMethodForNamedType(f, options.Type) {
+					__antithesis_instrumentation__.Notify(644721)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(644722)
 				}
+				__antithesis_instrumentation__.Notify(644704)
 
 				if passesutil.HasNolintComment(pass, sel, options.PassName) {
+					__antithesis_instrumentation__.Notify(644723)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(644724)
 				}
+				__antithesis_instrumentation__.Notify(644705)
 				pass.Report(analysis.Diagnostic{
 					Pos:     n.Pos(),
 					Message: fmt.Sprintf("Illegal call to %s.%s(), %s", options.Type, f.Name(), options.Hint),
 				})
 			})
+			__antithesis_instrumentation__.Notify(644697)
 			return nil, nil
 		},
 	}
 }
 
 func namedRecvTypeFor(f *types.Func) string {
+	__antithesis_instrumentation__.Notify(644725)
 	sig := f.Type().(*types.Signature)
 	recv := sig.Recv()
-	if recv == nil { // not a method
+	if recv == nil {
+		__antithesis_instrumentation__.Notify(644728)
 		return ""
+	} else {
+		__antithesis_instrumentation__.Notify(644729)
 	}
+	__antithesis_instrumentation__.Notify(644726)
 	switch recv := recv.Type().(type) {
 	case *types.Named:
+		__antithesis_instrumentation__.Notify(644730)
 		return recv.Obj().Name()
 	case *types.Pointer:
+		__antithesis_instrumentation__.Notify(644731)
 		named, ok := recv.Elem().(*types.Named)
 		if !ok {
+			__antithesis_instrumentation__.Notify(644733)
 			return ""
+		} else {
+			__antithesis_instrumentation__.Notify(644734)
 		}
+		__antithesis_instrumentation__.Notify(644732)
 		return named.Obj().Name()
 	}
+	__antithesis_instrumentation__.Notify(644727)
 	return ""
 }
 
 func isMethodForNamedType(f *types.Func, name string) bool {
+	__antithesis_instrumentation__.Notify(644735)
 	return namedRecvTypeFor(f) == name
 }

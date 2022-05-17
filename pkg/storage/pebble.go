@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -57,11 +49,8 @@ import (
 
 const maxSyncDurationFatalOnExceededDefault = true
 
-// Default for MaxSyncDuration below.
 var maxSyncDurationDefault = envutil.EnvOrDefaultDuration("COCKROACH_ENGINE_MAX_SYNC_DURATION_DEFAULT", 60*time.Second)
 
-// MaxSyncDuration is the threshold above which an observed engine sync duration
-// triggers either a warning or a fatal error.
 var MaxSyncDuration = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"storage.max_sync_duration",
@@ -70,8 +59,6 @@ var MaxSyncDuration = settings.RegisterDurationSetting(
 	maxSyncDurationDefault,
 )
 
-// MaxSyncDurationFatalOnExceeded governs whether disk stalls longer than
-// MaxSyncDuration fatal the Cockroach process. Defaults to true.
 var MaxSyncDurationFatalOnExceeded = settings.RegisterBoolSetting(
 	settings.TenantWritable,
 	"storage.max_sync_duration.fatal.enabled",
@@ -79,227 +66,281 @@ var MaxSyncDurationFatalOnExceeded = settings.RegisterBoolSetting(
 	maxSyncDurationFatalOnExceededDefault,
 )
 
-// EngineKeyCompare compares cockroach keys, including the version (which
-// could be MVCC timestamps).
 func EngineKeyCompare(a, b []byte) int {
-	// NB: For performance, this routine manually splits the key into the
-	// user-key and version components rather than using DecodeEngineKey. In
-	// most situations, use DecodeEngineKey or GetKeyPartFromEngineKey or
-	// SplitMVCCKey instead of doing this.
+	__antithesis_instrumentation__.Notify(641699)
+
 	aEnd := len(a) - 1
 	bEnd := len(b) - 1
-	if aEnd < 0 || bEnd < 0 {
-		// This should never happen unless there is some sort of corruption of
-		// the keys.
-		return bytes.Compare(a, b)
-	}
+	if aEnd < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(641705)
+		return bEnd < 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641706)
 
-	// Compute the index of the separator between the key and the version. If the
-	// separator is found to be at -1 for both keys, then we are comparing bare
-	// suffixes without a user key part. Pebble requires bare suffixes to be
-	// comparable with the same ordering as if they had a common user key.
+		return bytes.Compare(a, b)
+	} else {
+		__antithesis_instrumentation__.Notify(641707)
+	}
+	__antithesis_instrumentation__.Notify(641700)
+
 	aSep := aEnd - int(a[aEnd])
 	bSep := bEnd - int(b[bEnd])
-	if aSep == -1 && bSep == -1 {
-		aSep, bSep = 0, 0 // comparing bare suffixes
+	if aSep == -1 && func() bool {
+		__antithesis_instrumentation__.Notify(641708)
+		return bSep == -1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641709)
+		aSep, bSep = 0, 0
+	} else {
+		__antithesis_instrumentation__.Notify(641710)
 	}
-	if aSep < 0 || bSep < 0 {
-		// This should never happen unless there is some sort of corruption of
-		// the keys.
+	__antithesis_instrumentation__.Notify(641701)
+	if aSep < 0 || func() bool {
+		__antithesis_instrumentation__.Notify(641711)
+		return bSep < 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641712)
+
 		return bytes.Compare(a, b)
+	} else {
+		__antithesis_instrumentation__.Notify(641713)
 	}
+	__antithesis_instrumentation__.Notify(641702)
 
-	// Compare the "user key" part of the key.
 	if c := bytes.Compare(a[:aSep], b[:bSep]); c != 0 {
+		__antithesis_instrumentation__.Notify(641714)
 		return c
+	} else {
+		__antithesis_instrumentation__.Notify(641715)
 	}
+	__antithesis_instrumentation__.Notify(641703)
 
-	// Compare the version part of the key. Note that when the version is a
-	// timestamp, the timestamp encoding causes byte comparison to be equivalent
-	// to timestamp comparison.
 	aTS := a[aSep:aEnd]
 	bTS := b[bSep:bEnd]
 	if len(aTS) == 0 {
+		__antithesis_instrumentation__.Notify(641716)
 		if len(bTS) == 0 {
+			__antithesis_instrumentation__.Notify(641718)
 			return 0
+		} else {
+			__antithesis_instrumentation__.Notify(641719)
 		}
+		__antithesis_instrumentation__.Notify(641717)
 		return -1
-	} else if len(bTS) == 0 {
-		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(641720)
+		if len(bTS) == 0 {
+			__antithesis_instrumentation__.Notify(641721)
+			return 1
+		} else {
+			__antithesis_instrumentation__.Notify(641722)
+		}
 	}
+	__antithesis_instrumentation__.Notify(641704)
 	return bytes.Compare(bTS, aTS)
 }
 
-// EngineComparer is a pebble.Comparer object that implements MVCC-specific
-// comparator settings for use with Pebble.
 var EngineComparer = &pebble.Comparer{
 	Compare: EngineKeyCompare,
 
 	AbbreviatedKey: func(k []byte) uint64 {
+		__antithesis_instrumentation__.Notify(641723)
 		key, ok := GetKeyPartFromEngineKey(k)
 		if !ok {
+			__antithesis_instrumentation__.Notify(641725)
 			return 0
+		} else {
+			__antithesis_instrumentation__.Notify(641726)
 		}
+		__antithesis_instrumentation__.Notify(641724)
 		return pebble.DefaultComparer.AbbreviatedKey(key)
 	},
 
 	FormatKey: func(k []byte) fmt.Formatter {
+		__antithesis_instrumentation__.Notify(641727)
 		decoded, ok := DecodeEngineKey(k)
 		if !ok {
+			__antithesis_instrumentation__.Notify(641730)
 			return mvccKeyFormatter{err: errors.Errorf("invalid encoded engine key: %x", k)}
+		} else {
+			__antithesis_instrumentation__.Notify(641731)
 		}
+		__antithesis_instrumentation__.Notify(641728)
 		if decoded.IsMVCCKey() {
+			__antithesis_instrumentation__.Notify(641732)
 			mvccKey, err := decoded.ToMVCCKey()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(641734)
 				return mvccKeyFormatter{err: err}
+			} else {
+				__antithesis_instrumentation__.Notify(641735)
 			}
+			__antithesis_instrumentation__.Notify(641733)
 			return mvccKeyFormatter{key: mvccKey}
+		} else {
+			__antithesis_instrumentation__.Notify(641736)
 		}
+		__antithesis_instrumentation__.Notify(641729)
 		return EngineKeyFormatter{key: decoded}
 	},
 
 	Separator: func(dst, a, b []byte) []byte {
+		__antithesis_instrumentation__.Notify(641737)
 		aKey, ok := GetKeyPartFromEngineKey(a)
 		if !ok {
+			__antithesis_instrumentation__.Notify(641742)
 			return append(dst, a...)
+		} else {
+			__antithesis_instrumentation__.Notify(641743)
 		}
+		__antithesis_instrumentation__.Notify(641738)
 		bKey, ok := GetKeyPartFromEngineKey(b)
 		if !ok {
+			__antithesis_instrumentation__.Notify(641744)
 			return append(dst, a...)
+		} else {
+			__antithesis_instrumentation__.Notify(641745)
 		}
-		// If the keys are the same just return a.
+		__antithesis_instrumentation__.Notify(641739)
+
 		if bytes.Equal(aKey, bKey) {
+			__antithesis_instrumentation__.Notify(641746)
 			return append(dst, a...)
+		} else {
+			__antithesis_instrumentation__.Notify(641747)
 		}
+		__antithesis_instrumentation__.Notify(641740)
 		n := len(dst)
-		// Engine key comparison uses bytes.Compare on the roachpb.Key, which is the same semantics as
-		// pebble.DefaultComparer, so reuse the latter's Separator implementation.
+
 		dst = pebble.DefaultComparer.Separator(dst, aKey, bKey)
-		// Did it pick a separator different than aKey -- if it did not we can't do better than a.
+
 		buf := dst[n:]
 		if bytes.Equal(aKey, buf) {
+			__antithesis_instrumentation__.Notify(641748)
 			return append(dst[:n], a...)
+		} else {
+			__antithesis_instrumentation__.Notify(641749)
 		}
-		// The separator is > aKey, so we only need to add the sentinel.
+		__antithesis_instrumentation__.Notify(641741)
+
 		return append(dst, 0)
 	},
 
 	Successor: func(dst, a []byte) []byte {
+		__antithesis_instrumentation__.Notify(641750)
 		aKey, ok := GetKeyPartFromEngineKey(a)
 		if !ok {
+			__antithesis_instrumentation__.Notify(641753)
 			return append(dst, a...)
+		} else {
+			__antithesis_instrumentation__.Notify(641754)
 		}
+		__antithesis_instrumentation__.Notify(641751)
 		n := len(dst)
-		// Engine key comparison uses bytes.Compare on the roachpb.Key, which is the same semantics as
-		// pebble.DefaultComparer, so reuse the latter's Successor implementation.
+
 		dst = pebble.DefaultComparer.Successor(dst, aKey)
-		// Did it pick a successor different than aKey -- if it did not we can't do better than a.
+
 		buf := dst[n:]
 		if bytes.Equal(aKey, buf) {
+			__antithesis_instrumentation__.Notify(641755)
 			return append(dst[:n], a...)
+		} else {
+			__antithesis_instrumentation__.Notify(641756)
 		}
-		// The successor is > aKey, so we only need to add the sentinel.
+		__antithesis_instrumentation__.Notify(641752)
+
 		return append(dst, 0)
 	},
 
 	Split: func(k []byte) int {
+		__antithesis_instrumentation__.Notify(641757)
 		key, ok := GetKeyPartFromEngineKey(k)
 		if !ok {
+			__antithesis_instrumentation__.Notify(641759)
 			return len(k)
+		} else {
+			__antithesis_instrumentation__.Notify(641760)
 		}
-		// Pebble requires that keys generated via a split be comparable with
-		// normal encoded engine keys. Encoded engine keys have a suffix
-		// indicating the number of bytes of version data. Engine keys without a
-		// version have a suffix of 0. We're careful in EncodeKey to make sure
-		// that the user-key always has a trailing 0. If there is no version this
-		// falls out naturally. If there is a version we prepend a 0 to the
-		// encoded version data.
+		__antithesis_instrumentation__.Notify(641758)
+
 		return len(key) + 1
 	},
 
 	Name: "cockroach_comparator",
 }
 
-// MVCCMerger is a pebble.Merger object that implements the merge operator used
-// by Cockroach.
 var MVCCMerger = &pebble.Merger{
 	Name: "cockroach_merge_operator",
 	Merge: func(_, value []byte) (pebble.ValueMerger, error) {
+		__antithesis_instrumentation__.Notify(641761)
 		res := &MVCCValueMerger{}
 		err := res.MergeNewer(value)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(641763)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(641764)
 		}
+		__antithesis_instrumentation__.Notify(641762)
 		return res, nil
 	},
 }
 
-// TODO(sumeer): consider removing pebbleTimeBoundPropCollector for the 22.2
-// release, since 22.1 nodes will be using BlockPropertyCollectors and there
-// shouldn't be significant sstables that do not get rewritten for 6 months
-// (we would have no time bound optimization for such sstables). Since it is
-// possible for users to upgrade to 22.1 and then to 22.2 in quick succession
-// this duration argument is not really valid. To be safe we could wait until
-// 23.1.
-
-// pebbleTimeBoundPropCollector implements a property collector for MVCC
-// Timestamps. Its behavior matches TimeBoundTblPropCollector in
-// table_props.cc.
-//
-// The handling of timestamps in intents is mildly complicated. Consider:
-//
-//   a@<meta>   -> <MVCCMetadata: Timestamp=t2>
-//   a@t2       -> <value>
-//   a@t1       -> <value>
-//
-// The metadata record (a.k.a. the intent) for a key always sorts first. The
-// timestamp field always points to the next record. In this case, the meta
-// record contains t2 and the next record is t2. Because of this duplication of
-// the timestamp both in the intent and in the timestamped record that
-// immediately follows it, we only need to unmarshal the MVCCMetadata if it is
-// the last key in the sstable.
-// The metadata unmarshaling logic discussed in the previous paragraph is
-// flawed (see the comment
-// https://github.com/cockroachdb/cockroach/issues/43799#issuecomment-576830234
-// and its preceding comment), and we've worked around it as indicated in that
-// issue. Due to that workaround, we need not unmarshal the metadata record at
-// all.
 type pebbleTimeBoundPropCollector struct {
 	min, max  []byte
 	lastValue []byte
 }
 
 func (t *pebbleTimeBoundPropCollector) Add(key pebble.InternalKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(641765)
 	engineKey, ok := DecodeEngineKey(key.UserKey)
 	if !ok {
+		__antithesis_instrumentation__.Notify(641768)
 		return errors.Errorf("failed to split engine key")
+	} else {
+		__antithesis_instrumentation__.Notify(641769)
 	}
-	if engineKey.IsMVCCKey() && len(engineKey.Version) > 0 {
+	__antithesis_instrumentation__.Notify(641766)
+	if engineKey.IsMVCCKey() && func() bool {
+		__antithesis_instrumentation__.Notify(641770)
+		return len(engineKey.Version) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641771)
 		t.lastValue = t.lastValue[:0]
 		t.updateBounds(engineKey.Version)
 	} else {
+		__antithesis_instrumentation__.Notify(641772)
 		t.lastValue = append(t.lastValue[:0], value...)
 	}
+	__antithesis_instrumentation__.Notify(641767)
 	return nil
 }
 
 func (t *pebbleTimeBoundPropCollector) Finish(userProps map[string]string) error {
+	__antithesis_instrumentation__.Notify(641773)
 	if len(t.lastValue) > 0 {
-		// The last record in the sstable was an intent. Unmarshal the metadata and
-		// update the bounds with the timestamp it contains.
+		__antithesis_instrumentation__.Notify(641775)
+
 		meta := &enginepb.MVCCMetadata{}
 		if err := protoutil.Unmarshal(t.lastValue, meta); err != nil {
-			// We're unable to parse the MVCCMetadata. Fail open by not setting the
-			// min/max timestamp properties. This mimics the behavior of
-			// TimeBoundTblPropCollector.
-			// TODO(petermattis): Return the error here and in C++, see #43422.
-			return nil //nolint:returnerrcheck
+			__antithesis_instrumentation__.Notify(641777)
+
+			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(641778)
 		}
+		__antithesis_instrumentation__.Notify(641776)
 		if meta.Txn != nil {
+			__antithesis_instrumentation__.Notify(641779)
 			ts := encodeMVCCTimestamp(meta.Timestamp.ToTimestamp())
 			t.updateBounds(ts)
+		} else {
+			__antithesis_instrumentation__.Notify(641780)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(641781)
 	}
+	__antithesis_instrumentation__.Notify(641774)
 
 	userProps["crdb.ts.min"] = string(t.min)
 	userProps["crdb.ts.max"] = string(t.max)
@@ -307,71 +348,83 @@ func (t *pebbleTimeBoundPropCollector) Finish(userProps map[string]string) error
 }
 
 func (t *pebbleTimeBoundPropCollector) updateBounds(ts []byte) {
-	if len(t.min) == 0 || bytes.Compare(ts, t.min) < 0 {
+	__antithesis_instrumentation__.Notify(641782)
+	if len(t.min) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(641784)
+		return bytes.Compare(ts, t.min) < 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641785)
 		t.min = append(t.min[:0], ts...)
+	} else {
+		__antithesis_instrumentation__.Notify(641786)
 	}
-	if len(t.max) == 0 || bytes.Compare(ts, t.max) > 0 {
+	__antithesis_instrumentation__.Notify(641783)
+	if len(t.max) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(641787)
+		return bytes.Compare(ts, t.max) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641788)
 		t.max = append(t.max[:0], ts...)
+	} else {
+		__antithesis_instrumentation__.Notify(641789)
 	}
 }
 
 func (t *pebbleTimeBoundPropCollector) Name() string {
-	// This constant needs to match the one used by the RocksDB version of this
-	// table property collector. DO NOT CHANGE.
+	__antithesis_instrumentation__.Notify(641790)
+
 	return "TimeBoundTblPropCollectorFactory"
 }
 
 func (t *pebbleTimeBoundPropCollector) UpdateKeySuffixes(
 	oldProps map[string]string, oldSuffix []byte, newSuffix []byte,
 ) error {
+	__antithesis_instrumentation__.Notify(641791)
 	t.updateBounds(newSuffix)
 	return nil
 }
 
 var _ sstable.SuffixReplaceableTableCollector = (*pebbleTimeBoundPropCollector)(nil)
 
-// pebbleDeleteRangeCollector is the equivalent table collector as the RocksDB
-// DeleteRangeTblPropCollector. Pebble does not require it because Pebble will
-// prioritize its own compactions of range tombstones.
 type pebbleDeleteRangeCollector struct{}
 
 func (pebbleDeleteRangeCollector) Add(_ pebble.InternalKey, _ []byte) error {
+	__antithesis_instrumentation__.Notify(641792)
 	return nil
 }
 
 func (pebbleDeleteRangeCollector) Finish(_ map[string]string) error {
+	__antithesis_instrumentation__.Notify(641793)
 	return nil
 }
 
 func (pebbleDeleteRangeCollector) Name() string {
-	// This constant needs to match the one used by the RocksDB version of this
-	// table property collector. DO NOT CHANGE.
+	__antithesis_instrumentation__.Notify(641794)
+
 	return "DeleteRangeTblPropCollectorFactory"
 }
 
 func (t *pebbleDeleteRangeCollector) UpdateKeySuffixes(
 	_ map[string]string, _ []byte, _ []byte,
 ) error {
+	__antithesis_instrumentation__.Notify(641795)
 	return nil
 }
 
 var _ sstable.SuffixReplaceableTableCollector = (*pebbleTimeBoundPropCollector)(nil)
 
-// PebbleTablePropertyCollectors is the list of Pebble TablePropertyCollectors.
 var PebbleTablePropertyCollectors = []func() pebble.TablePropertyCollector{
-	func() pebble.TablePropertyCollector { return &pebbleTimeBoundPropCollector{} },
-	func() pebble.TablePropertyCollector { return &pebbleDeleteRangeCollector{} },
+	func() pebble.TablePropertyCollector {
+		__antithesis_instrumentation__.Notify(641796)
+		return &pebbleTimeBoundPropCollector{}
+	},
+	func() pebble.TablePropertyCollector {
+		__antithesis_instrumentation__.Notify(641797)
+		return &pebbleDeleteRangeCollector{}
+	},
 }
 
-// pebbleDataBlockMVCCTimeIntervalCollector provides an implementation of
-// pebble.DataBlockIntervalCollector that is used to construct a
-// pebble.BlockPropertyCollector. This provides per-block filtering, which
-// also gets aggregated to the sstable-level and filters out sstables. It must
-// only be used for MVCCKeyIterKind iterators, since it will ignore
-// blocks/sstables that contain intents (and any other key that is not a real
-// MVCC key).
 type pebbleDataBlockMVCCTimeIntervalCollector struct {
-	// min, max are the encoded timestamps.
 	min, max []byte
 }
 
@@ -379,52 +432,87 @@ var _ sstable.DataBlockIntervalCollector = &pebbleDataBlockMVCCTimeIntervalColle
 var _ sstable.SuffixReplaceableBlockCollector = (*pebbleDataBlockMVCCTimeIntervalCollector)(nil)
 
 func (tc *pebbleDataBlockMVCCTimeIntervalCollector) Add(key pebble.InternalKey, _ []byte) error {
+	__antithesis_instrumentation__.Notify(641798)
 	return tc.add(key.UserKey)
 }
 
-// add collects the given slice in the collector. The slice may be an entire
-// encoded MVCC key, or the bare suffix of an encoded key.
 func (tc *pebbleDataBlockMVCCTimeIntervalCollector) add(b []byte) error {
+	__antithesis_instrumentation__.Notify(641799)
 	if len(b) == 0 {
+		__antithesis_instrumentation__.Notify(641804)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(641805)
 	}
-	// Last byte is the version length + 1 when there is a version,
-	// else it is 0.
+	__antithesis_instrumentation__.Notify(641800)
+
 	versionLen := int(b[len(b)-1])
 	if versionLen == 0 {
-		// This is not an MVCC key that we can collect.
+		__antithesis_instrumentation__.Notify(641806)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(641807)
 	}
-	// prefixPartEnd points to the sentinel byte, unless this is a bare suffix, in
-	// which case the index is -1.
+	__antithesis_instrumentation__.Notify(641801)
+
 	prefixPartEnd := len(b) - 1 - versionLen
-	// Sanity check: the index should be >= -1. Additionally, if the index is >=
-	// 0, it should point to the sentinel byte, as this is a full EngineKey.
-	if prefixPartEnd < -1 || (prefixPartEnd >= 0 && b[prefixPartEnd] != sentinel) {
+
+	if prefixPartEnd < -1 || func() bool {
+		__antithesis_instrumentation__.Notify(641808)
+		return (prefixPartEnd >= 0 && func() bool {
+			__antithesis_instrumentation__.Notify(641809)
+			return b[prefixPartEnd] != sentinel == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641810)
 		return errors.Errorf("invalid key %s", roachpb.Key(b).String())
+	} else {
+		__antithesis_instrumentation__.Notify(641811)
 	}
-	// We don't need the last byte (the version length).
+	__antithesis_instrumentation__.Notify(641802)
+
 	versionLen--
-	// Only collect if this looks like an MVCC timestamp.
-	if versionLen == engineKeyVersionWallTimeLen ||
-		versionLen == engineKeyVersionWallAndLogicalTimeLen ||
-		versionLen == engineKeyVersionWallLogicalAndSyntheticTimeLen {
-		// INVARIANT: -1 <= prefixPartEnd < len(b) - 1.
-		// Version consists of the bytes after the sentinel and before the length.
+
+	if versionLen == engineKeyVersionWallTimeLen || func() bool {
+		__antithesis_instrumentation__.Notify(641812)
+		return versionLen == engineKeyVersionWallAndLogicalTimeLen == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(641813)
+		return versionLen == engineKeyVersionWallLogicalAndSyntheticTimeLen == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641814)
+
 		b = b[prefixPartEnd+1 : len(b)-1]
-		// Lexicographic comparison on the encoded timestamps is equivalent to the
-		// comparison on decoded timestamps, so delay decoding.
-		if len(tc.min) == 0 || bytes.Compare(b, tc.min) < 0 {
+
+		if len(tc.min) == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(641816)
+			return bytes.Compare(b, tc.min) < 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(641817)
 			tc.min = append(tc.min[:0], b...)
+		} else {
+			__antithesis_instrumentation__.Notify(641818)
 		}
-		if len(tc.max) == 0 || bytes.Compare(b, tc.max) > 0 {
+		__antithesis_instrumentation__.Notify(641815)
+		if len(tc.max) == 0 || func() bool {
+			__antithesis_instrumentation__.Notify(641819)
+			return bytes.Compare(b, tc.max) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(641820)
 			tc.max = append(tc.max[:0], b...)
+		} else {
+			__antithesis_instrumentation__.Notify(641821)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(641822)
 	}
+	__antithesis_instrumentation__.Notify(641803)
 	return nil
 }
 
 func decodeWallTime(ts []byte) uint64 {
+	__antithesis_instrumentation__.Notify(641823)
 	return binary.BigEndian.Uint64(ts[0:engineKeyVersionWallTimeLen])
 }
 
@@ -433,138 +521,148 @@ func (tc *pebbleDataBlockMVCCTimeIntervalCollector) FinishDataBlock() (
 	upper uint64,
 	err error,
 ) {
+	__antithesis_instrumentation__.Notify(641824)
 	if len(tc.min) == 0 {
-		// No calls to Add that contained a timestamped key.
+		__antithesis_instrumentation__.Notify(641827)
+
 		return 0, 0, nil
+	} else {
+		__antithesis_instrumentation__.Notify(641828)
 	}
-	// Construct a [lower, upper) walltime that will contain all the
-	// hlc.Timestamps in this block.
+	__antithesis_instrumentation__.Notify(641825)
+
 	lower = decodeWallTime(tc.min)
-	// Remember that we have to reset tc.min and tc.max to get ready for the
-	// next data block, as specified in the DataBlockIntervalCollector interface
-	// help and help too.
+
 	tc.min = tc.min[:0]
-	// The actual value encoded into walltime is an int64, so +1 will not
-	// overflow.
+
 	upper = decodeWallTime(tc.max) + 1
 	tc.max = tc.max[:0]
 	if lower >= upper {
+		__antithesis_instrumentation__.Notify(641829)
 		return 0, 0,
 			errors.Errorf("corrupt timestamps lower %d >= upper %d", lower, upper)
+	} else {
+		__antithesis_instrumentation__.Notify(641830)
 	}
+	__antithesis_instrumentation__.Notify(641826)
 	return lower, upper, nil
 }
 
 func (tc *pebbleDataBlockMVCCTimeIntervalCollector) UpdateKeySuffixes(
 	_ []byte, _, newSuffix []byte,
 ) error {
+	__antithesis_instrumentation__.Notify(641831)
 	return tc.add(newSuffix)
 }
 
 const mvccWallTimeIntervalCollector = "MVCCTimeInterval"
 
-// PebbleBlockPropertyCollectors is the list of functions to construct
-// BlockPropertyCollectors.
 var PebbleBlockPropertyCollectors = []func() pebble.BlockPropertyCollector{
 	func() pebble.BlockPropertyCollector {
+		__antithesis_instrumentation__.Notify(641832)
 		return sstable.NewBlockIntervalCollector(
 			mvccWallTimeIntervalCollector,
-			&pebbleDataBlockMVCCTimeIntervalCollector{}, /* points */
-			nil, /* ranges */
+			&pebbleDataBlockMVCCTimeIntervalCollector{},
+			nil,
 		)
 	},
 }
 
-// DefaultPebbleOptions returns the default pebble options.
 func DefaultPebbleOptions() *pebble.Options {
-	// In RocksDB, the concurrency setting corresponds to both flushes and
-	// compactions. In Pebble, there is always a slot for a flush, and
-	// compactions are counted separately.
+	__antithesis_instrumentation__.Notify(641833)
+
 	maxConcurrentCompactions := rocksdbConcurrency - 1
 	if maxConcurrentCompactions < 1 {
+		__antithesis_instrumentation__.Notify(641840)
 		maxConcurrentCompactions = 1
+	} else {
+		__antithesis_instrumentation__.Notify(641841)
 	}
+	__antithesis_instrumentation__.Notify(641834)
 
 	opts := &pebble.Options{
 		Comparer:                    EngineComparer,
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       1000,
-		LBaseMaxBytes:               64 << 20, // 64 MB
+		LBaseMaxBytes:               64 << 20,
 		Levels:                      make([]pebble.LevelOptions, 7),
 		MaxConcurrentCompactions:    maxConcurrentCompactions,
-		MemTableSize:                64 << 20, // 64 MB
+		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
 		Merger:                      MVCCMerger,
 		TablePropertyCollectors:     PebbleTablePropertyCollectors,
 		BlockPropertyCollectors:     PebbleBlockPropertyCollectors,
 	}
-	// Automatically flush 10s after the first range tombstone is added to a
-	// memtable. This ensures that we can reclaim space even when there's no
-	// activity on the database generating flushes.
+
 	opts.Experimental.DeleteRangeFlushDelay = 10 * time.Second
-	// Enable deletion pacing. This helps prevent disk slowness events on some
-	// SSDs, that kick off an expensive GC if a lot of files are deleted at
-	// once.
-	opts.Experimental.MinDeletionRate = 128 << 20 // 128 MB
-	// Validate min/max keys in each SSTable when performing a compaction. This
-	// serves as a simple protection against corruption or programmer-error in
-	// Pebble.
+
+	opts.Experimental.MinDeletionRate = 128 << 20
+
 	opts.Experimental.KeyValidationFunc = func(userKey []byte) error {
+		__antithesis_instrumentation__.Notify(641842)
 		engineKey, ok := DecodeEngineKey(userKey)
 		if !ok {
+			__antithesis_instrumentation__.Notify(641845)
 			return errors.Newf("key %s could not be decoded as an EngineKey", string(userKey))
+		} else {
+			__antithesis_instrumentation__.Notify(641846)
 		}
+		__antithesis_instrumentation__.Notify(641843)
 		if err := engineKey.Validate(); err != nil {
+			__antithesis_instrumentation__.Notify(641847)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(641848)
 		}
+		__antithesis_instrumentation__.Notify(641844)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(641835)
 
 	for i := 0; i < len(opts.Levels); i++ {
+		__antithesis_instrumentation__.Notify(641849)
 		l := &opts.Levels[i]
-		l.BlockSize = 32 << 10       // 32 KB
-		l.IndexBlockSize = 256 << 10 // 256 KB
+		l.BlockSize = 32 << 10
+		l.IndexBlockSize = 256 << 10
 		l.FilterPolicy = bloom.FilterPolicy(10)
 		l.FilterType = pebble.TableFilter
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(641851)
 			l.TargetFileSize = opts.Levels[i-1].TargetFileSize * 2
+		} else {
+			__antithesis_instrumentation__.Notify(641852)
 		}
+		__antithesis_instrumentation__.Notify(641850)
 		l.EnsureDefaults()
 	}
+	__antithesis_instrumentation__.Notify(641836)
 
-	// Do not create bloom filters for the last level (i.e. the largest level
-	// which contains data in the LSM store). This configuration reduces the size
-	// of the bloom filters by 10x. This is significant given that bloom filters
-	// require 1.25 bytes (10 bits) per key which can translate into gigabytes of
-	// memory given typical key and value sizes. The downside is that bloom
-	// filters will only be usable on the higher levels, but that seems
-	// acceptable. We typically see read amplification of 5-6x on clusters
-	// (i.e. there are 5-6 levels of sstables) which means we'll achieve 80-90%
-	// of the benefit of having bloom filters on every level for only 10% of the
-	// memory cost.
 	opts.Levels[6].FilterPolicy = nil
 
-	// Set disk health check interval to min(5s, maxSyncDurationDefault). This
-	// is mostly to ease testing; the default of 5s is too infrequent to test
-	// conveniently. See the disk-stalled roachtest for an example of how this
-	// is used.
 	diskHealthCheckInterval := 5 * time.Second
 	if diskHealthCheckInterval.Seconds() > maxSyncDurationDefault.Seconds() {
+		__antithesis_instrumentation__.Notify(641853)
 		diskHealthCheckInterval = maxSyncDurationDefault
+	} else {
+		__antithesis_instrumentation__.Notify(641854)
 	}
-	// Instantiate a file system with disk health checking enabled. This FS wraps
-	// vfs.Default, and can be wrapped for encryption-at-rest.
+	__antithesis_instrumentation__.Notify(641837)
+
 	opts.FS = vfs.WithDiskHealthChecks(vfs.Default, diskHealthCheckInterval,
 		func(name string, duration time.Duration) {
+			__antithesis_instrumentation__.Notify(641855)
 			opts.EventListener.DiskSlow(pebble.DiskSlowInfo{
 				Path:     name,
 				Duration: duration,
 			})
 		})
-	// If we encounter ENOSPC, exit with an informative exit code.
+	__antithesis_instrumentation__.Notify(641838)
+
 	opts.FS = vfs.OnDiskFull(opts.FS, func() {
+		__antithesis_instrumentation__.Notify(641856)
 		exit.WithCode(exit.DiskFull())
 	})
+	__antithesis_instrumentation__.Notify(641839)
 	return opts
 }
 
@@ -574,39 +672,33 @@ type pebbleLogger struct {
 }
 
 func (l pebbleLogger) Infof(format string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(641857)
 	log.Storage.InfofDepth(l.ctx, l.depth, format, args...)
 }
 
 func (l pebbleLogger) Fatalf(format string, args ...interface{}) {
+	__antithesis_instrumentation__.Notify(641858)
 	log.Storage.FatalfDepth(l.ctx, l.depth, format, args...)
 }
 
-// PebbleConfig holds all configuration parameters and knobs used in setting up
-// a new Pebble instance.
 type PebbleConfig struct {
-	// StorageConfig contains storage configs for all storage engines.
-	// A non-nil cluster.Settings must be provided in the StorageConfig for a
-	// Pebble instance that will be used to write intents.
 	base.StorageConfig
-	// Pebble specific options.
+
 	Opts *pebble.Options
 }
 
-// EncryptionStatsHandler provides encryption related stats.
 type EncryptionStatsHandler interface {
-	// Returns a serialized enginepbccl.EncryptionStatus.
 	GetEncryptionStatus() ([]byte, error)
-	// Returns a serialized enginepbccl.DataKeysRegistry, scrubbed of key contents.
+
 	GetDataKeysRegistry() ([]byte, error)
-	// Returns the ID of the active data key, or "plain" if none.
+
 	GetActiveDataKeyID() (string, error)
-	// Returns the enum value of the encryption type.
+
 	GetActiveStoreKeyType() int32
-	// Returns the KeyID embedded in the serialized EncryptionSettings.
+
 	GetKeyIDFromSettings(settings []byte) (string, error)
 }
 
-// Pebble is a wrapper around a Pebble database instance.
 type Pebble struct {
 	db *pebble.DB
 
@@ -619,25 +711,20 @@ type Pebble struct {
 	maxSize     int64
 	attrs       roachpb.Attributes
 	properties  roachpb.StoreProperties
-	// settings must be non-nil if this Pebble instance will be used to write
-	// intents.
+
 	settings     *cluster.Settings
 	encryption   *EncryptionEnv
 	fileRegistry *PebbleFileRegistry
 
-	// Stats updated by pebble.EventListener invocations, and returned in
-	// GetMetrics. Updated and retrieved atomically.
 	writeStallCount int64
 	diskSlowCount   int64
 	diskStallCount  int64
 
-	// Relevant options copied over from pebble.Options.
 	fs            vfs.FS
 	unencryptedFS vfs.FS
 	logger        pebble.Logger
 	eventListener *pebble.EventListener
 	mu            struct {
-		// This mutex is the lowest in any lock ordering.
 		syncutil.Mutex
 		flushCompletedCallback func()
 	}
@@ -647,73 +734,84 @@ type Pebble struct {
 	storeIDPebbleLog *base.StoreIDContainer
 }
 
-// EncryptionEnv describes the encryption-at-rest environment, providing
-// access to a filesystem with on-the-fly encryption.
 type EncryptionEnv struct {
-	// Closer closes the encryption-at-rest environment. Once the
-	// environment is closed, the environment's VFS may no longer be
-	// used.
 	Closer io.Closer
-	// FS provides the encrypted virtual filesystem. New files are
-	// transparently encrypted.
+
 	FS vfs.FS
-	// StatsHandler exposes encryption-at-rest state for observability.
+
 	StatsHandler EncryptionStatsHandler
 }
 
 var _ Engine = &Pebble{}
 
-// NewEncryptedEnvFunc creates an encrypted environment and returns the vfs.FS to use for reading
-// and writing data. This should be initialized by calling engineccl.Init() before calling
-// NewPebble(). The optionBytes is a binary serialized baseccl.EncryptionOptions, so that non-CCL
-// code does not depend on CCL code.
 var NewEncryptedEnvFunc func(fs vfs.FS, fr *PebbleFileRegistry, dbDir string, readOnly bool, optionBytes []byte) (*EncryptionEnv, error)
 
-// StoreIDSetter is used to set the store id in the log.
 type StoreIDSetter interface {
-	// SetStoreID can be used to atomically set the store
-	// id as a tag in the pebble logs. Once set, the store id will be visible
-	// in pebble logs in cockroach.
 	SetStoreID(ctx context.Context, storeID int32)
 }
 
-// SetStoreID adds the store id to pebble logs.
 func (p *Pebble) SetStoreID(ctx context.Context, storeID int32) {
+	__antithesis_instrumentation__.Notify(641859)
 	if p == nil {
+		__antithesis_instrumentation__.Notify(641862)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(641863)
 	}
+	__antithesis_instrumentation__.Notify(641860)
 	if p.storeIDPebbleLog == nil {
+		__antithesis_instrumentation__.Notify(641864)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(641865)
 	}
+	__antithesis_instrumentation__.Notify(641861)
 	p.storeIDPebbleLog.Set(ctx, storeID)
 }
 
-// ResolveEncryptedEnvOptions fills in cfg.Opts.FS with an encrypted vfs if this
-// store has encryption-at-rest enabled. Also returns the associated file
-// registry and EncryptionStatsHandler.
 func ResolveEncryptedEnvOptions(cfg *PebbleConfig) (*PebbleFileRegistry, *EncryptionEnv, error) {
+	__antithesis_instrumentation__.Notify(641866)
 	fileRegistry := &PebbleFileRegistry{FS: cfg.Opts.FS, DBDir: cfg.Dir, ReadOnly: cfg.Opts.ReadOnly}
 	if cfg.UseFileRegistry {
+		__antithesis_instrumentation__.Notify(641869)
 		if err := fileRegistry.Load(); err != nil {
+			__antithesis_instrumentation__.Notify(641870)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(641871)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(641872)
 		if err := fileRegistry.CheckNoRegistryFile(); err != nil {
+			__antithesis_instrumentation__.Notify(641874)
 			return nil, nil, fmt.Errorf("encryption was used on this store before, but no encryption flags " +
 				"specified. You need a CCL build and must fully specify the --enterprise-encryption flag")
+		} else {
+			__antithesis_instrumentation__.Notify(641875)
 		}
+		__antithesis_instrumentation__.Notify(641873)
 		fileRegistry = nil
 	}
+	__antithesis_instrumentation__.Notify(641867)
 
 	var env *EncryptionEnv
 	if cfg.IsEncrypted() {
-		// Encryption is enabled.
+		__antithesis_instrumentation__.Notify(641876)
+
 		if !cfg.UseFileRegistry {
+			__antithesis_instrumentation__.Notify(641880)
 			return nil, nil, fmt.Errorf("file registry is needed to support encryption")
+		} else {
+			__antithesis_instrumentation__.Notify(641881)
 		}
+		__antithesis_instrumentation__.Notify(641877)
 		if NewEncryptedEnvFunc == nil {
+			__antithesis_instrumentation__.Notify(641882)
 			return nil, nil, fmt.Errorf("encryption is enabled but no function to create the encrypted env")
+		} else {
+			__antithesis_instrumentation__.Notify(641883)
 		}
+		__antithesis_instrumentation__.Notify(641878)
 		var err error
 		env, err = NewEncryptedEnvFunc(
 			cfg.Opts.FS,
@@ -723,89 +821,121 @@ func ResolveEncryptedEnvOptions(cfg *PebbleConfig) (*PebbleFileRegistry, *Encryp
 			cfg.EncryptionOptions,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(641884)
 			return nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(641885)
 		}
-		// TODO(jackson): Should this just return an EncryptionEnv,
-		// rather than mutating cfg.Opts?
+		__antithesis_instrumentation__.Notify(641879)
+
 		cfg.Opts.FS = env.FS
+	} else {
+		__antithesis_instrumentation__.Notify(641886)
 	}
+	__antithesis_instrumentation__.Notify(641868)
 	return fileRegistry, env, nil
 }
 
-// NewPebble creates a new Pebble instance, at the specified path.
 func NewPebble(ctx context.Context, cfg PebbleConfig) (*Pebble, error) {
-	// pebble.Open also calls EnsureDefaults, but only after doing a clone. Call
-	// EnsureDefaults beforehand so we have a matching cfg here for when we save
-	// cfg.FS and cfg.ReadOnly later on.
+	__antithesis_instrumentation__.Notify(641887)
+
 	if cfg.Opts == nil {
+		__antithesis_instrumentation__.Notify(641897)
 		cfg.Opts = DefaultPebbleOptions()
+	} else {
+		__antithesis_instrumentation__.Notify(641898)
 	}
+	__antithesis_instrumentation__.Notify(641888)
 	cfg.Opts.EnsureDefaults()
 	cfg.Opts.ErrorIfNotExists = cfg.MustExist
 	if settings := cfg.Settings; settings != nil {
+		__antithesis_instrumentation__.Notify(641899)
 		cfg.Opts.WALMinSyncInterval = func() time.Duration {
+			__antithesis_instrumentation__.Notify(641900)
 			return minWALSyncInterval.Get(&settings.SV)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(641901)
 	}
+	__antithesis_instrumentation__.Notify(641889)
 
 	auxDir := cfg.Opts.FS.PathJoin(cfg.Dir, base.AuxiliaryDir)
 	if err := cfg.Opts.FS.MkdirAll(auxDir, 0755); err != nil {
+		__antithesis_instrumentation__.Notify(641902)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(641903)
 	}
+	__antithesis_instrumentation__.Notify(641890)
 	ballastPath := base.EmergencyBallastFile(cfg.Opts.FS.PathJoin, cfg.Dir)
 
-	// For some purposes, we want to always use an unencrypted
-	// filesystem. The call below to ResolveEncryptedEnvOptions will
-	// replace cfg.Opts.FS with a VFS wrapped with encryption-at-rest if
-	// necessary. Before we do that, save a handle on the unencrypted
-	// FS for those that need it. Some call sites need the unencrypted
-	// FS for the purpose of atomic renames.
 	unencryptedFS := cfg.Opts.FS
-	// TODO(jackson): Assert that unencryptedFS provides atomic renames.
 
 	fileRegistry, env, err := ResolveEncryptedEnvOptions(&cfg)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(641904)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(641905)
 	}
+	__antithesis_instrumentation__.Notify(641891)
 
-	// The context dance here is done so that we have a clean context without
-	// timeouts that has a copy of the log tags.
 	logCtx := logtags.WithTags(context.Background(), logtags.FromContext(ctx))
 	logCtx = logtags.AddTag(logCtx, "pebble", nil)
-	// The store id, could not necessarily be determined when this function
-	// is called. Therefore, we use a container for the store id.
+
 	storeIDContainer := &base.StoreIDContainer{}
 	logCtx = logtags.AddTag(logCtx, "s", storeIDContainer)
 
 	if cfg.Opts.Logger == nil {
+		__antithesis_instrumentation__.Notify(641906)
 		cfg.Opts.Logger = pebbleLogger{
 			ctx:   logCtx,
 			depth: 1,
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(641907)
 	}
+	__antithesis_instrumentation__.Notify(641892)
 
-	// Establish the emergency ballast if we can. If there's not sufficient
-	// disk space, the ballast will be reestablished from Capacity when the
-	// store's capacity is queried periodically.
 	if !cfg.Opts.ReadOnly {
+		__antithesis_instrumentation__.Notify(641908)
 		du, err := unencryptedFS.GetDiskUsage(cfg.Dir)
-		// If the FS is an in-memory FS, GetDiskUsage returns
-		// vfs.ErrUnsupported and we skip ballast creation.
-		if err != nil && !errors.Is(err, vfs.ErrUnsupported) {
+
+		if err != nil && func() bool {
+			__antithesis_instrumentation__.Notify(641909)
+			return !errors.Is(err, vfs.ErrUnsupported) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(641910)
 			return nil, errors.Wrap(err, "retrieving disk usage")
-		} else if err == nil {
-			resized, err := maybeEstablishBallast(unencryptedFS, ballastPath, cfg.BallastSize, du)
-			if err != nil {
-				return nil, errors.Wrap(err, "resizing ballast")
-			}
-			if resized {
-				cfg.Opts.Logger.Infof("resized ballast %s to size %s",
-					ballastPath, humanizeutil.IBytes(cfg.BallastSize))
+		} else {
+			__antithesis_instrumentation__.Notify(641911)
+			if err == nil {
+				__antithesis_instrumentation__.Notify(641912)
+				resized, err := maybeEstablishBallast(unencryptedFS, ballastPath, cfg.BallastSize, du)
+				if err != nil {
+					__antithesis_instrumentation__.Notify(641914)
+					return nil, errors.Wrap(err, "resizing ballast")
+				} else {
+					__antithesis_instrumentation__.Notify(641915)
+				}
+				__antithesis_instrumentation__.Notify(641913)
+				if resized {
+					__antithesis_instrumentation__.Notify(641916)
+					cfg.Opts.Logger.Infof("resized ballast %s to size %s",
+						ballastPath, humanizeutil.IBytes(cfg.BallastSize))
+				} else {
+					__antithesis_instrumentation__.Notify(641917)
+				}
+			} else {
+				__antithesis_instrumentation__.Notify(641918)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(641919)
 	}
+	__antithesis_instrumentation__.Notify(641893)
 
-	storeProps := computeStoreProperties(ctx, cfg.Dir, cfg.Opts.ReadOnly, env != nil /* encryptionEnabled */)
+	storeProps := computeStoreProperties(ctx, cfg.Dir, cfg.Opts.ReadOnly, env != nil)
 
 	p := &Pebble{
 		readOnly:         cfg.Opts.ReadOnly,
@@ -827,497 +957,689 @@ func NewPebble(ctx context.Context, cfg PebbleConfig) (*Pebble, error) {
 	cfg.Opts.EventListener = pebble.TeeEventListener(
 		pebble.MakeLoggingEventListener(pebbleLogger{
 			ctx:   logCtx,
-			depth: 2, // skip over the EventListener stack frame
+			depth: 2,
 		}),
 		p.makeMetricEtcEventListener(ctx),
 	)
 	p.eventListener = &cfg.Opts.EventListener
 	p.wrappedIntentWriter = wrapIntentWriter(ctx, p)
 
-	// Read the current store cluster version.
 	storeClusterVersion, err := getMinVersion(unencryptedFS, cfg.Dir)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(641920)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(641921)
 	}
+	__antithesis_instrumentation__.Notify(641894)
 
 	db, err := pebble.Open(cfg.StorageConfig.Dir, cfg.Opts)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(641922)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(641923)
 	}
+	__antithesis_instrumentation__.Notify(641895)
 	p.db = db
 
 	if storeClusterVersion != (roachpb.Version{}) {
-		// The storage engine performs its own internal migrations
-		// through the setting of the store cluster version. When
-		// storage's min version is set, SetMinVersion writes to disk to
-		// commit to the new store cluster version. Then it idempotently
-		// applies any internal storage engine migrations necessitated
-		// or enabled by the new store cluster version. If we crash
-		// after committing the new store cluster version but before
-		// applying the internal migrations, we're left in an in-between
-		// state.
-		//
-		// To account for this, after the engine is open,
-		// unconditionally set the min cluster version again. If any
-		// storage engine state has not been updated, the call to
-		// SetMinVersion will update it.  If all storage engine state is
-		// already updated, SetMinVersion is a noop.
+		__antithesis_instrumentation__.Notify(641924)
+
 		if err := p.SetMinVersion(storeClusterVersion); err != nil {
+			__antithesis_instrumentation__.Notify(641925)
 			p.Close()
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(641926)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(641927)
 	}
+	__antithesis_instrumentation__.Notify(641896)
 
 	return p, nil
 }
 
 func (p *Pebble) makeMetricEtcEventListener(ctx context.Context) pebble.EventListener {
+	__antithesis_instrumentation__.Notify(641928)
 	return pebble.EventListener{
 		WriteStallBegin: func(info pebble.WriteStallBeginInfo) {
+			__antithesis_instrumentation__.Notify(641929)
 			atomic.AddInt64(&p.writeStallCount, 1)
 		},
 		DiskSlow: func(info pebble.DiskSlowInfo) {
+			__antithesis_instrumentation__.Notify(641930)
 			maxSyncDuration := maxSyncDurationDefault
 			fatalOnExceeded := maxSyncDurationFatalOnExceededDefault
 			if p.settings != nil {
+				__antithesis_instrumentation__.Notify(641933)
 				maxSyncDuration = MaxSyncDuration.Get(&p.settings.SV)
 				fatalOnExceeded = MaxSyncDurationFatalOnExceeded.Get(&p.settings.SV)
+			} else {
+				__antithesis_instrumentation__.Notify(641934)
 			}
+			__antithesis_instrumentation__.Notify(641931)
 			if info.Duration.Seconds() >= maxSyncDuration.Seconds() {
+				__antithesis_instrumentation__.Notify(641935)
 				atomic.AddInt64(&p.diskStallCount, 1)
-				// Note that the below log messages go to the main cockroach log, not
-				// the pebble-specific log.
+
 				if fatalOnExceeded {
+					__antithesis_instrumentation__.Notify(641937)
 					log.Fatalf(ctx, "disk stall detected: pebble unable to write to %s in %.2f seconds",
 						info.Path, redact.Safe(info.Duration.Seconds()))
 				} else {
+					__antithesis_instrumentation__.Notify(641938)
 					log.Errorf(ctx, "disk stall detected: pebble unable to write to %s in %.2f seconds",
 						info.Path, redact.Safe(info.Duration.Seconds()))
 				}
+				__antithesis_instrumentation__.Notify(641936)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(641939)
 			}
+			__antithesis_instrumentation__.Notify(641932)
 			atomic.AddInt64(&p.diskSlowCount, 1)
 		},
 		FlushEnd: func(info pebble.FlushInfo) {
+			__antithesis_instrumentation__.Notify(641940)
 			if info.Err != nil {
+				__antithesis_instrumentation__.Notify(641942)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(641943)
 			}
+			__antithesis_instrumentation__.Notify(641941)
 			p.mu.Lock()
 			cb := p.mu.flushCompletedCallback
 			p.mu.Unlock()
 			if cb != nil {
+				__antithesis_instrumentation__.Notify(641944)
 				cb()
+			} else {
+				__antithesis_instrumentation__.Notify(641945)
 			}
 		},
 	}
 }
 
 func (p *Pebble) String() string {
+	__antithesis_instrumentation__.Notify(641946)
 	dir := p.path
 	if dir == "" {
+		__antithesis_instrumentation__.Notify(641949)
 		dir = "<in-mem>"
+	} else {
+		__antithesis_instrumentation__.Notify(641950)
 	}
+	__antithesis_instrumentation__.Notify(641947)
 	attrs := p.attrs.String()
 	if attrs == "" {
+		__antithesis_instrumentation__.Notify(641951)
 		attrs = "<no-attributes>"
+	} else {
+		__antithesis_instrumentation__.Notify(641952)
 	}
+	__antithesis_instrumentation__.Notify(641948)
 	return fmt.Sprintf("%s=%s", attrs, dir)
 }
 
-// Close implements the Engine interface.
 func (p *Pebble) Close() {
+	__antithesis_instrumentation__.Notify(641953)
 	if p.closed {
+		__antithesis_instrumentation__.Notify(641956)
 		p.logger.Infof("closing unopened pebble instance")
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(641957)
 	}
+	__antithesis_instrumentation__.Notify(641954)
 	p.closed = true
 	_ = p.db.Close()
 	if p.fileRegistry != nil {
+		__antithesis_instrumentation__.Notify(641958)
 		_ = p.fileRegistry.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(641959)
 	}
+	__antithesis_instrumentation__.Notify(641955)
 	if p.encryption != nil {
+		__antithesis_instrumentation__.Notify(641960)
 		_ = p.encryption.Closer.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(641961)
 	}
 }
 
-// Closed implements the Engine interface.
 func (p *Pebble) Closed() bool {
+	__antithesis_instrumentation__.Notify(641962)
 	return p.closed
 }
 
-// ExportMVCCToSst is part of the engine.Reader interface.
 func (p *Pebble) ExportMVCCToSst(
 	ctx context.Context, exportOptions ExportOptions, dest io.Writer,
 ) (roachpb.BulkOpSummary, roachpb.Key, hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(641963)
 	r := wrapReader(p)
-	// Doing defer r.Free() does not inline.
+
 	summary, k, err := pebbleExportToSst(ctx, p.settings, r, exportOptions, dest)
 	r.Free()
 	return summary, k.Key, k.Timestamp, err
 }
 
-// MVCCGet implements the Engine interface.
 func (p *Pebble) MVCCGet(key MVCCKey) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(641964)
 	return mvccGetHelper(key, p)
 }
 
 func mvccGetHelper(key MVCCKey, reader wrappableReader) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(641965)
 	if len(key.Key) == 0 {
+		__antithesis_instrumentation__.Notify(641967)
 		return nil, emptyKeyError()
+	} else {
+		__antithesis_instrumentation__.Notify(641968)
 	}
+	__antithesis_instrumentation__.Notify(641966)
 	r := wrapReader(reader)
-	// Doing defer r.Free() does not inline.
+
 	v, err := r.MVCCGet(key)
 	r.Free()
 	return v, err
 }
 
 func (p *Pebble) rawMVCCGet(key []byte) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(641969)
 	ret, closer, err := p.db.Get(key)
 	if closer != nil {
+		__antithesis_instrumentation__.Notify(641972)
 		retCopy := make([]byte, len(ret))
 		copy(retCopy, ret)
 		ret = retCopy
 		closer.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(641973)
 	}
-	if errors.Is(err, pebble.ErrNotFound) || len(ret) == 0 {
+	__antithesis_instrumentation__.Notify(641970)
+	if errors.Is(err, pebble.ErrNotFound) || func() bool {
+		__antithesis_instrumentation__.Notify(641974)
+		return len(ret) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(641975)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(641976)
 	}
+	__antithesis_instrumentation__.Notify(641971)
 	return ret, err
 }
 
-// MVCCGetProto implements the Engine interface.
 func (p *Pebble) MVCCGetProto(
 	key MVCCKey, msg protoutil.Message,
 ) (ok bool, keyBytes, valBytes int64, err error) {
+	__antithesis_instrumentation__.Notify(641977)
 	return pebbleGetProto(p, key, msg)
 }
 
-// MVCCIterate implements the Engine interface.
 func (p *Pebble) MVCCIterate(
 	start, end roachpb.Key, iterKind MVCCIterKind, f func(MVCCKeyValue) error,
 ) error {
+	__antithesis_instrumentation__.Notify(641978)
 	if iterKind == MVCCKeyAndIntentsIterKind {
+		__antithesis_instrumentation__.Notify(641980)
 		r := wrapReader(p)
-		// Doing defer r.Free() does not inline.
+
 		err := iterateOnReader(r, start, end, iterKind, f)
 		r.Free()
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(641981)
 	}
+	__antithesis_instrumentation__.Notify(641979)
 	return iterateOnReader(p, start, end, iterKind, f)
 }
 
-// NewMVCCIterator implements the Engine interface.
 func (p *Pebble) NewMVCCIterator(iterKind MVCCIterKind, opts IterOptions) MVCCIterator {
+	__antithesis_instrumentation__.Notify(641982)
 	if iterKind == MVCCKeyAndIntentsIterKind {
+		__antithesis_instrumentation__.Notify(641986)
 		r := wrapReader(p)
-		// Doing defer r.Free() does not inline.
+
 		iter := r.NewMVCCIterator(iterKind, opts)
 		r.Free()
 		if util.RaceEnabled {
+			__antithesis_instrumentation__.Notify(641988)
 			iter = wrapInUnsafeIter(iter)
+		} else {
+			__antithesis_instrumentation__.Notify(641989)
 		}
+		__antithesis_instrumentation__.Notify(641987)
 		return iter
+	} else {
+		__antithesis_instrumentation__.Notify(641990)
 	}
+	__antithesis_instrumentation__.Notify(641983)
 
 	iter := newPebbleIterator(p.db, nil, opts, StandardDurability)
 	if iter == nil {
+		__antithesis_instrumentation__.Notify(641991)
 		panic("couldn't create a new iterator")
+	} else {
+		__antithesis_instrumentation__.Notify(641992)
 	}
+	__antithesis_instrumentation__.Notify(641984)
 	if util.RaceEnabled {
+		__antithesis_instrumentation__.Notify(641993)
 		return wrapInUnsafeIter(iter)
+	} else {
+		__antithesis_instrumentation__.Notify(641994)
 	}
+	__antithesis_instrumentation__.Notify(641985)
 	return iter
 }
 
-// NewEngineIterator implements the Engine interface.
 func (p *Pebble) NewEngineIterator(opts IterOptions) EngineIterator {
+	__antithesis_instrumentation__.Notify(641995)
 	iter := newPebbleIterator(p.db, nil, opts, StandardDurability)
 	if iter == nil {
+		__antithesis_instrumentation__.Notify(641997)
 		panic("couldn't create a new iterator")
+	} else {
+		__antithesis_instrumentation__.Notify(641998)
 	}
+	__antithesis_instrumentation__.Notify(641996)
 	return iter
 }
 
-// ConsistentIterators implements the Engine interface.
 func (p *Pebble) ConsistentIterators() bool {
+	__antithesis_instrumentation__.Notify(641999)
 	return false
 }
 
-// PinEngineStateForIterators implements the Engine interface.
 func (p *Pebble) PinEngineStateForIterators() error {
+	__antithesis_instrumentation__.Notify(642000)
 	return errors.AssertionFailedf(
 		"PinEngineStateForIterators must not be called when ConsistentIterators returns false")
 }
 
-// ApplyBatchRepr implements the Engine interface.
 func (p *Pebble) ApplyBatchRepr(repr []byte, sync bool) error {
-	// batch.SetRepr takes ownership of the underlying slice, so make a copy.
+	__antithesis_instrumentation__.Notify(642001)
+
 	reprCopy := make([]byte, len(repr))
 	copy(reprCopy, repr)
 
 	batch := p.db.NewBatch()
 	if err := batch.SetRepr(reprCopy); err != nil {
+		__antithesis_instrumentation__.Notify(642004)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(642005)
 	}
+	__antithesis_instrumentation__.Notify(642002)
 
 	opts := pebble.NoSync
 	if sync {
+		__antithesis_instrumentation__.Notify(642006)
 		opts = pebble.Sync
+	} else {
+		__antithesis_instrumentation__.Notify(642007)
 	}
+	__antithesis_instrumentation__.Notify(642003)
 	return batch.Commit(opts)
 }
 
-// ClearMVCC implements the Engine interface.
 func (p *Pebble) ClearMVCC(key MVCCKey) error {
+	__antithesis_instrumentation__.Notify(642008)
 	if key.Timestamp.IsEmpty() {
+		__antithesis_instrumentation__.Notify(642010)
 		panic("ClearMVCC timestamp is empty")
+	} else {
+		__antithesis_instrumentation__.Notify(642011)
 	}
+	__antithesis_instrumentation__.Notify(642009)
 	return p.clear(key)
 }
 
-// ClearUnversioned implements the Engine interface.
 func (p *Pebble) ClearUnversioned(key roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(642012)
 	return p.clear(MVCCKey{Key: key})
 }
 
-// ClearIntent implements the Engine interface.
 func (p *Pebble) ClearIntent(key roachpb.Key, txnDidNotUpdateMeta bool, txnUUID uuid.UUID) error {
+	__antithesis_instrumentation__.Notify(642013)
 	_, err := p.wrappedIntentWriter.ClearIntent(key, txnDidNotUpdateMeta, txnUUID, nil)
 	return err
 }
 
-// ClearEngineKey implements the Engine interface.
 func (p *Pebble) ClearEngineKey(key EngineKey) error {
+	__antithesis_instrumentation__.Notify(642014)
 	if len(key.Key) == 0 {
+		__antithesis_instrumentation__.Notify(642016)
 		return emptyKeyError()
+	} else {
+		__antithesis_instrumentation__.Notify(642017)
 	}
+	__antithesis_instrumentation__.Notify(642015)
 	return p.db.Delete(key.Encode(), pebble.Sync)
 }
 
 func (p *Pebble) clear(key MVCCKey) error {
+	__antithesis_instrumentation__.Notify(642018)
 	if len(key.Key) == 0 {
+		__antithesis_instrumentation__.Notify(642020)
 		return emptyKeyError()
+	} else {
+		__antithesis_instrumentation__.Notify(642021)
 	}
+	__antithesis_instrumentation__.Notify(642019)
 	return p.db.Delete(EncodeMVCCKey(key), pebble.Sync)
 }
 
-// SingleClearEngineKey implements the Engine interface.
 func (p *Pebble) SingleClearEngineKey(key EngineKey) error {
+	__antithesis_instrumentation__.Notify(642022)
 	if len(key.Key) == 0 {
+		__antithesis_instrumentation__.Notify(642024)
 		return emptyKeyError()
+	} else {
+		__antithesis_instrumentation__.Notify(642025)
 	}
+	__antithesis_instrumentation__.Notify(642023)
 	return p.db.SingleDelete(key.Encode(), pebble.Sync)
 }
 
-// ClearRawRange implements the Engine interface.
 func (p *Pebble) ClearRawRange(start, end roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(642026)
 	return p.clearRange(MVCCKey{Key: start}, MVCCKey{Key: end})
 }
 
-// ClearMVCCRangeAndIntents implements the Engine interface.
 func (p *Pebble) ClearMVCCRangeAndIntents(start, end roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(642027)
 	_, err := p.wrappedIntentWriter.ClearMVCCRangeAndIntents(start, end, nil)
 	return err
 
 }
 
-// ClearMVCCRange implements the Engine interface.
 func (p *Pebble) ClearMVCCRange(start, end MVCCKey) error {
+	__antithesis_instrumentation__.Notify(642028)
 	return p.clearRange(start, end)
 }
 
 func (p *Pebble) clearRange(start, end MVCCKey) error {
+	__antithesis_instrumentation__.Notify(642029)
 	bufStart := EncodeMVCCKey(start)
 	bufEnd := EncodeMVCCKey(end)
 	return p.db.DeleteRange(bufStart, bufEnd, pebble.Sync)
 }
 
-// ClearIterRange implements the Engine interface.
 func (p *Pebble) ClearIterRange(iter MVCCIterator, start, end roachpb.Key) error {
-	// Write all the tombstones in one batch.
-	batch := p.NewUnindexedBatch(true /* writeOnly */)
+	__antithesis_instrumentation__.Notify(642030)
+
+	batch := p.NewUnindexedBatch(true)
 	defer batch.Close()
 
 	if err := batch.ClearIterRange(iter, start, end); err != nil {
+		__antithesis_instrumentation__.Notify(642032)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(642033)
 	}
+	__antithesis_instrumentation__.Notify(642031)
 	return batch.Commit(true)
 }
 
-// Merge implements the Engine interface.
 func (p *Pebble) Merge(key MVCCKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(642034)
 	if len(key.Key) == 0 {
+		__antithesis_instrumentation__.Notify(642036)
 		return emptyKeyError()
+	} else {
+		__antithesis_instrumentation__.Notify(642037)
 	}
+	__antithesis_instrumentation__.Notify(642035)
 	return p.db.Merge(EncodeMVCCKey(key), value, pebble.Sync)
 }
 
-// PutMVCC implements the Engine interface.
 func (p *Pebble) PutMVCC(key MVCCKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(642038)
 	if key.Timestamp.IsEmpty() {
+		__antithesis_instrumentation__.Notify(642040)
 		panic("PutMVCC timestamp is empty")
+	} else {
+		__antithesis_instrumentation__.Notify(642041)
 	}
+	__antithesis_instrumentation__.Notify(642039)
 	return p.put(key, value)
 }
 
-// PutUnversioned implements the Engine interface.
 func (p *Pebble) PutUnversioned(key roachpb.Key, value []byte) error {
+	__antithesis_instrumentation__.Notify(642042)
 	return p.put(MVCCKey{Key: key}, value)
 }
 
-// PutIntent implements the Engine interface.
 func (p *Pebble) PutIntent(
 	ctx context.Context, key roachpb.Key, value []byte, txnUUID uuid.UUID,
 ) error {
+	__antithesis_instrumentation__.Notify(642043)
 	_, err := p.wrappedIntentWriter.PutIntent(ctx, key, value, txnUUID, nil)
 	return err
 }
 
-// PutEngineKey implements the Engine interface.
 func (p *Pebble) PutEngineKey(key EngineKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(642044)
 	if len(key.Key) == 0 {
+		__antithesis_instrumentation__.Notify(642046)
 		return emptyKeyError()
+	} else {
+		__antithesis_instrumentation__.Notify(642047)
 	}
+	__antithesis_instrumentation__.Notify(642045)
 	return p.db.Set(key.Encode(), value, pebble.Sync)
 }
 
 func (p *Pebble) put(key MVCCKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(642048)
 	if len(key.Key) == 0 {
+		__antithesis_instrumentation__.Notify(642050)
 		return emptyKeyError()
+	} else {
+		__antithesis_instrumentation__.Notify(642051)
 	}
+	__antithesis_instrumentation__.Notify(642049)
 	return p.db.Set(EncodeMVCCKey(key), value, pebble.Sync)
 }
 
-// LogData implements the Engine interface.
 func (p *Pebble) LogData(data []byte) error {
+	__antithesis_instrumentation__.Notify(642052)
 	return p.db.LogData(data, pebble.Sync)
 }
 
-// LogLogicalOp implements the Engine interface.
 func (p *Pebble) LogLogicalOp(op MVCCLogicalOpType, details MVCCLogicalOpDetails) {
-	// No-op. Logical logging disabled.
+	__antithesis_instrumentation__.Notify(642053)
+
 }
 
-// Attrs implements the Engine interface.
 func (p *Pebble) Attrs() roachpb.Attributes {
+	__antithesis_instrumentation__.Notify(642054)
 	return p.attrs
 }
 
-// Properties implements the Engine interface.
 func (p *Pebble) Properties() roachpb.StoreProperties {
+	__antithesis_instrumentation__.Notify(642055)
 	return p.properties
 }
 
-// Capacity implements the Engine interface.
 func (p *Pebble) Capacity() (roachpb.StoreCapacity, error) {
+	__antithesis_instrumentation__.Notify(642056)
 	dir := p.path
 	if dir != "" {
+		__antithesis_instrumentation__.Notify(642066)
 		var err error
-		// Eval directory if it is a symbolic links.
+
 		if dir, err = filepath.EvalSymlinks(dir); err != nil {
+			__antithesis_instrumentation__.Notify(642067)
 			return roachpb.StoreCapacity{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(642068)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(642069)
 	}
+	__antithesis_instrumentation__.Notify(642057)
 	du, err := p.unencryptedFS.GetDiskUsage(dir)
 	if errors.Is(err, vfs.ErrUnsupported) {
-		// This is an in-memory instance. Pretend we're empty since we
-		// don't know better and only use this for testing. Using any
-		// part of the actual file system here can throw off allocator
-		// rebalancing in a hard-to-trace manner. See #7050.
+		__antithesis_instrumentation__.Notify(642070)
+
 		return roachpb.StoreCapacity{
 			Capacity:  p.maxSize,
 			Available: p.maxSize,
 		}, nil
-	} else if err != nil {
-		return roachpb.StoreCapacity{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(642071)
+		if err != nil {
+			__antithesis_instrumentation__.Notify(642072)
+			return roachpb.StoreCapacity{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(642073)
+		}
 	}
+	__antithesis_instrumentation__.Notify(642058)
 
 	if du.TotalBytes > math.MaxInt64 {
+		__antithesis_instrumentation__.Notify(642074)
 		return roachpb.StoreCapacity{}, fmt.Errorf("unsupported disk size %s, max supported size is %s",
 			humanize.IBytes(du.TotalBytes), humanizeutil.IBytes(math.MaxInt64))
+	} else {
+		__antithesis_instrumentation__.Notify(642075)
 	}
+	__antithesis_instrumentation__.Notify(642059)
 	if du.AvailBytes > math.MaxInt64 {
+		__antithesis_instrumentation__.Notify(642076)
 		return roachpb.StoreCapacity{}, fmt.Errorf("unsupported disk size %s, max supported size is %s",
 			humanize.IBytes(du.AvailBytes), humanizeutil.IBytes(math.MaxInt64))
+	} else {
+		__antithesis_instrumentation__.Notify(642077)
 	}
+	__antithesis_instrumentation__.Notify(642060)
 	fsuTotal := int64(du.TotalBytes)
 	fsuAvail := int64(du.AvailBytes)
 
-	// If the emergency ballast isn't appropriately sized, try to resize it.
-	// This is a no-op if the ballast is already sized or if there's not
-	// enough available capacity to resize it. Capacity is called periodically
-	// by the kvserver, and that drives the automatic resizing of the ballast.
 	if !p.readOnly {
+		__antithesis_instrumentation__.Notify(642078)
 		resized, err := maybeEstablishBallast(p.unencryptedFS, p.ballastPath, p.ballastSize, du)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(642080)
 			return roachpb.StoreCapacity{}, errors.Wrap(err, "resizing ballast")
+		} else {
+			__antithesis_instrumentation__.Notify(642081)
 		}
+		__antithesis_instrumentation__.Notify(642079)
 		if resized {
+			__antithesis_instrumentation__.Notify(642082)
 			p.logger.Infof("resized ballast %s to size %s",
 				p.ballastPath, humanizeutil.IBytes(p.ballastSize))
 			du, err = p.unencryptedFS.GetDiskUsage(dir)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(642083)
 				return roachpb.StoreCapacity{}, err
+			} else {
+				__antithesis_instrumentation__.Notify(642084)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(642085)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(642086)
 	}
+	__antithesis_instrumentation__.Notify(642061)
 
-	// Pebble has detailed accounting of its own disk space usage, and it's
-	// incrementally updated which helps avoid O(# files) work here.
 	m := p.db.Metrics()
 	totalUsedBytes := int64(m.DiskSpaceUsage())
 
-	// We don't have incremental accounting of the disk space usage of files
-	// in the auxiliary directory. Walk the auxiliary directory and all its
-	// subdirectories, adding to the total used bytes.
 	if errOuter := filepath.Walk(p.auxDir, func(path string, info os.FileInfo, err error) error {
+		__antithesis_instrumentation__.Notify(642087)
 		if err != nil {
-			// This can happen if CockroachDB removes files out from under us -
-			// just keep going to get the best estimate we can.
+			__antithesis_instrumentation__.Notify(642091)
+
 			if oserror.IsNotExist(err) {
+				__antithesis_instrumentation__.Notify(642094)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(642095)
 			}
-			// Special-case: if the store-dir is configured using the root of some fs,
-			// e.g. "/mnt/db", we might have special fs-created files like lost+found
-			// that we can't read, so just ignore them rather than crashing.
-			if oserror.IsPermission(err) && filepath.Base(path) == "lost+found" {
+			__antithesis_instrumentation__.Notify(642092)
+
+			if oserror.IsPermission(err) && func() bool {
+				__antithesis_instrumentation__.Notify(642096)
+				return filepath.Base(path) == "lost+found" == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(642097)
 				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(642098)
 			}
+			__antithesis_instrumentation__.Notify(642093)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(642099)
 		}
+		__antithesis_instrumentation__.Notify(642088)
 		if path == p.ballastPath {
-			// Skip the ballast. Counting it as used is likely to confuse
-			// users, and it's more akin to space that is just unavailable
-			// like disk space often restricted to a root user.
+			__antithesis_instrumentation__.Notify(642100)
+
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(642101)
 		}
+		__antithesis_instrumentation__.Notify(642089)
 		if info.Mode().IsRegular() {
+			__antithesis_instrumentation__.Notify(642102)
 			totalUsedBytes += info.Size()
+		} else {
+			__antithesis_instrumentation__.Notify(642103)
 		}
+		__antithesis_instrumentation__.Notify(642090)
 		return nil
 	}); errOuter != nil {
+		__antithesis_instrumentation__.Notify(642104)
 		return roachpb.StoreCapacity{}, errOuter
+	} else {
+		__antithesis_instrumentation__.Notify(642105)
 	}
+	__antithesis_instrumentation__.Notify(642062)
 
-	// If no size limitation have been placed on the store size or if the
-	// limitation is greater than what's available, just return the actual
-	// totals.
-	if p.maxSize == 0 || p.maxSize >= fsuTotal || p.path == "" {
+	if p.maxSize == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(642106)
+		return p.maxSize >= fsuTotal == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(642107)
+		return p.path == "" == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(642108)
 		return roachpb.StoreCapacity{
 			Capacity:  fsuTotal,
 			Available: fsuAvail,
 			Used:      totalUsedBytes,
 		}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(642109)
 	}
+	__antithesis_instrumentation__.Notify(642063)
 
 	available := p.maxSize - totalUsedBytes
 	if available > fsuAvail {
+		__antithesis_instrumentation__.Notify(642110)
 		available = fsuAvail
+	} else {
+		__antithesis_instrumentation__.Notify(642111)
 	}
+	__antithesis_instrumentation__.Notify(642064)
 	if available < 0 {
+		__antithesis_instrumentation__.Notify(642112)
 		available = 0
+	} else {
+		__antithesis_instrumentation__.Notify(642113)
 	}
+	__antithesis_instrumentation__.Notify(642065)
 
 	return roachpb.StoreCapacity{
 		Capacity:  p.maxSize,
@@ -1326,13 +1648,13 @@ func (p *Pebble) Capacity() (roachpb.StoreCapacity, error) {
 	}, nil
 }
 
-// Flush implements the Engine interface.
 func (p *Pebble) Flush() error {
+	__antithesis_instrumentation__.Notify(642114)
 	return p.db.Flush()
 }
 
-// GetMetrics implements the Engine interface.
 func (p *Pebble) GetMetrics() Metrics {
+	__antithesis_instrumentation__.Notify(642115)
 	m := p.db.Metrics()
 	return Metrics{
 		Metrics:         m,
@@ -1342,336 +1664,396 @@ func (p *Pebble) GetMetrics() Metrics {
 	}
 }
 
-// GetEncryptionRegistries implements the Engine interface.
 func (p *Pebble) GetEncryptionRegistries() (*EncryptionRegistries, error) {
+	__antithesis_instrumentation__.Notify(642116)
 	rv := &EncryptionRegistries{}
 	var err error
 	if p.encryption != nil {
+		__antithesis_instrumentation__.Notify(642119)
 		rv.KeyRegistry, err = p.encryption.StatsHandler.GetDataKeysRegistry()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(642120)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(642121)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(642122)
 	}
+	__antithesis_instrumentation__.Notify(642117)
 	if p.fileRegistry != nil {
+		__antithesis_instrumentation__.Notify(642123)
 		rv.FileRegistry, err = protoutil.Marshal(p.fileRegistry.getRegistryCopy())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(642124)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(642125)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(642126)
 	}
+	__antithesis_instrumentation__.Notify(642118)
 	return rv, nil
 }
 
-// GetEnvStats implements the Engine interface.
 func (p *Pebble) GetEnvStats() (*EnvStats, error) {
-	// TODO(sumeer): make the stats complete. There are no bytes stats. The TotalFiles is missing
-	// files that are not in the registry (from before encryption was enabled).
+	__antithesis_instrumentation__.Notify(642127)
+
 	stats := &EnvStats{}
 	if p.encryption == nil {
+		__antithesis_instrumentation__.Notify(642135)
 		return stats, nil
+	} else {
+		__antithesis_instrumentation__.Notify(642136)
 	}
+	__antithesis_instrumentation__.Notify(642128)
 	stats.EncryptionType = p.encryption.StatsHandler.GetActiveStoreKeyType()
 	var err error
 	stats.EncryptionStatus, err = p.encryption.StatsHandler.GetEncryptionStatus()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(642137)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(642138)
 	}
+	__antithesis_instrumentation__.Notify(642129)
 	fr := p.fileRegistry.getRegistryCopy()
 	activeKeyID, err := p.encryption.StatsHandler.GetActiveDataKeyID()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(642139)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(642140)
 	}
+	__antithesis_instrumentation__.Notify(642130)
 
 	m := p.db.Metrics()
-	stats.TotalFiles = 3 /* CURRENT, MANIFEST, OPTIONS */
+	stats.TotalFiles = 3
 	stats.TotalFiles += uint64(m.WAL.Files + m.Table.ZombieCount + m.WAL.ObsoleteFiles + m.Table.ObsoleteCount)
 	stats.TotalBytes = m.WAL.Size + m.Table.ZombieSize + m.Table.ObsoleteSize
 	for _, l := range m.Levels {
+		__antithesis_instrumentation__.Notify(642141)
 		stats.TotalFiles += uint64(l.NumFiles)
 		stats.TotalBytes += uint64(l.Size)
 	}
+	__antithesis_instrumentation__.Notify(642131)
 
 	sstSizes := make(map[pebble.FileNum]uint64)
 	sstInfos, err := p.db.SSTables()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(642142)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(642143)
 	}
+	__antithesis_instrumentation__.Notify(642132)
 	for _, ssts := range sstInfos {
+		__antithesis_instrumentation__.Notify(642144)
 		for _, sst := range ssts {
+			__antithesis_instrumentation__.Notify(642145)
 			sstSizes[sst.FileNum] = sst.Size
 		}
 	}
+	__antithesis_instrumentation__.Notify(642133)
 
 	for filePath, entry := range fr.Files {
+		__antithesis_instrumentation__.Notify(642146)
 		keyID, err := p.encryption.StatsHandler.GetKeyIDFromSettings(entry.EncryptionSettings)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(642152)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(642153)
 		}
+		__antithesis_instrumentation__.Notify(642147)
 		if len(keyID) == 0 {
+			__antithesis_instrumentation__.Notify(642154)
 			keyID = "plain"
+		} else {
+			__antithesis_instrumentation__.Notify(642155)
 		}
+		__antithesis_instrumentation__.Notify(642148)
 		if keyID != activeKeyID {
+			__antithesis_instrumentation__.Notify(642156)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(642157)
 		}
+		__antithesis_instrumentation__.Notify(642149)
 		stats.ActiveKeyFiles++
 
 		filename := p.fs.PathBase(filePath)
 		numStr := strings.TrimSuffix(filename, ".sst")
 		if len(numStr) == len(filename) {
-			continue // not a sstable
+			__antithesis_instrumentation__.Notify(642158)
+			continue
+		} else {
+			__antithesis_instrumentation__.Notify(642159)
 		}
+		__antithesis_instrumentation__.Notify(642150)
 		u, err := strconv.ParseUint(numStr, 10, 64)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(642160)
 			return nil, errors.Wrapf(err, "parsing filename %q", errors.Safe(filename))
+		} else {
+			__antithesis_instrumentation__.Notify(642161)
 		}
+		__antithesis_instrumentation__.Notify(642151)
 		stats.ActiveKeyBytes += sstSizes[pebble.FileNum(u)]
 	}
+	__antithesis_instrumentation__.Notify(642134)
 	return stats, nil
 }
 
-// GetAuxiliaryDir implements the Engine interface.
 func (p *Pebble) GetAuxiliaryDir() string {
+	__antithesis_instrumentation__.Notify(642162)
 	return p.auxDir
 }
 
-// NewBatch implements the Engine interface.
 func (p *Pebble) NewBatch() Batch {
-	return newPebbleBatch(p.db, p.db.NewIndexedBatch(), false /* writeOnly */)
+	__antithesis_instrumentation__.Notify(642163)
+	return newPebbleBatch(p.db, p.db.NewIndexedBatch(), false)
 }
 
-// NewReadOnly implements the Engine interface.
 func (p *Pebble) NewReadOnly(durability DurabilityRequirement) ReadWriter {
+	__antithesis_instrumentation__.Notify(642164)
 	return newPebbleReadOnly(p, durability)
 }
 
-// NewUnindexedBatch implements the Engine interface.
 func (p *Pebble) NewUnindexedBatch(writeOnly bool) Batch {
+	__antithesis_instrumentation__.Notify(642165)
 	return newPebbleBatch(p.db, p.db.NewBatch(), writeOnly)
 }
 
-// NewSnapshot implements the Engine interface.
 func (p *Pebble) NewSnapshot() Reader {
+	__antithesis_instrumentation__.Notify(642166)
 	return &pebbleSnapshot{
 		snapshot: p.db.NewSnapshot(),
 		settings: p.settings,
 	}
 }
 
-// Type implements the Engine interface.
 func (p *Pebble) Type() enginepb.EngineType {
+	__antithesis_instrumentation__.Notify(642167)
 	return enginepb.EngineTypePebble
 }
 
-// IngestExternalFiles implements the Engine interface.
 func (p *Pebble) IngestExternalFiles(ctx context.Context, paths []string) error {
+	__antithesis_instrumentation__.Notify(642168)
 	return p.db.Ingest(paths)
 }
 
-// PreIngestDelay implements the Engine interface.
 func (p *Pebble) PreIngestDelay(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(642169)
 	preIngestDelay(ctx, p, p.settings)
 }
 
-// ApproximateDiskBytes implements the Engine interface.
 func (p *Pebble) ApproximateDiskBytes(from, to roachpb.Key) (uint64, error) {
+	__antithesis_instrumentation__.Notify(642170)
 	count, err := p.db.EstimateDiskUsage(from, to)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(642172)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(642173)
 	}
+	__antithesis_instrumentation__.Notify(642171)
 	return count, nil
 }
 
-// Compact implements the Engine interface.
 func (p *Pebble) Compact() error {
-	return p.db.Compact(nil, EncodeMVCCKey(MVCCKeyMax), true /* parallel */)
+	__antithesis_instrumentation__.Notify(642174)
+	return p.db.Compact(nil, EncodeMVCCKey(MVCCKeyMax), true)
 }
 
-// CompactRange implements the Engine interface.
 func (p *Pebble) CompactRange(start, end roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(642175)
 	bufStart := EncodeMVCCKey(MVCCKey{start, hlc.Timestamp{}})
 	bufEnd := EncodeMVCCKey(MVCCKey{end, hlc.Timestamp{}})
-	return p.db.Compact(bufStart, bufEnd, true /* parallel */)
+	return p.db.Compact(bufStart, bufEnd, true)
 }
 
-// InMem returns true if the receiver is an in-memory engine and false
-// otherwise.
 func (p *Pebble) InMem() bool {
+	__antithesis_instrumentation__.Notify(642176)
 	return p.path == ""
 }
 
-// RegisterFlushCompletedCallback implements the Engine interface.
 func (p *Pebble) RegisterFlushCompletedCallback(cb func()) {
+	__antithesis_instrumentation__.Notify(642177)
 	p.mu.Lock()
 	p.mu.flushCompletedCallback = cb
 	p.mu.Unlock()
 }
 
-// ReadFile implements the Engine interface.
 func (p *Pebble) ReadFile(filename string) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(642178)
 	file, err := p.fs.Open(filename)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(642180)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(642181)
 	}
+	__antithesis_instrumentation__.Notify(642179)
 	defer file.Close()
 
 	return ioutil.ReadAll(file)
 }
 
-// WriteFile writes data to a file in this RocksDB's env.
 func (p *Pebble) WriteFile(filename string, data []byte) error {
+	__antithesis_instrumentation__.Notify(642182)
 	file, err := p.fs.Create(filename)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(642184)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(642185)
 	}
+	__antithesis_instrumentation__.Notify(642183)
 	defer file.Close()
 
 	_, err = io.Copy(file, bytes.NewReader(data))
 	return err
 }
 
-// Remove implements the FS interface.
 func (p *Pebble) Remove(filename string) error {
+	__antithesis_instrumentation__.Notify(642186)
 	return p.fs.Remove(filename)
 }
 
-// RemoveAll implements the Engine interface.
 func (p *Pebble) RemoveAll(dir string) error {
+	__antithesis_instrumentation__.Notify(642187)
 	return p.fs.RemoveAll(dir)
 }
 
-// Link implements the FS interface.
 func (p *Pebble) Link(oldname, newname string) error {
+	__antithesis_instrumentation__.Notify(642188)
 	return p.fs.Link(oldname, newname)
 }
 
 var _ fs.FS = &Pebble{}
 
-// Create implements the FS interface.
 func (p *Pebble) Create(name string) (fs.File, error) {
+	__antithesis_instrumentation__.Notify(642189)
 	return p.fs.Create(name)
 }
 
-// CreateWithSync implements the FS interface.
 func (p *Pebble) CreateWithSync(name string, bytesPerSync int) (fs.File, error) {
+	__antithesis_instrumentation__.Notify(642190)
 	f, err := p.fs.Create(name)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(642192)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(642193)
 	}
+	__antithesis_instrumentation__.Notify(642191)
 	return vfs.NewSyncingFile(f, vfs.SyncingFileOptions{BytesPerSync: bytesPerSync}), nil
 }
 
-// Open implements the FS interface.
 func (p *Pebble) Open(name string) (fs.File, error) {
+	__antithesis_instrumentation__.Notify(642194)
 	return p.fs.Open(name)
 }
 
-// OpenDir implements the FS interface.
 func (p *Pebble) OpenDir(name string) (fs.File, error) {
+	__antithesis_instrumentation__.Notify(642195)
 	return p.fs.OpenDir(name)
 }
 
-// Rename implements the FS interface.
 func (p *Pebble) Rename(oldname, newname string) error {
+	__antithesis_instrumentation__.Notify(642196)
 	return p.fs.Rename(oldname, newname)
 }
 
-// MkdirAll implements the FS interface.
 func (p *Pebble) MkdirAll(name string) error {
+	__antithesis_instrumentation__.Notify(642197)
 	return p.fs.MkdirAll(name, 0755)
 }
 
-// List implements the FS interface.
 func (p *Pebble) List(name string) ([]string, error) {
+	__antithesis_instrumentation__.Notify(642198)
 	dirents, err := p.fs.List(name)
 	sort.Strings(dirents)
 	return dirents, err
 }
 
-// Stat implements the FS interface.
 func (p *Pebble) Stat(name string) (os.FileInfo, error) {
+	__antithesis_instrumentation__.Notify(642199)
 	return p.fs.Stat(name)
 }
 
-// CreateCheckpoint implements the Engine interface.
 func (p *Pebble) CreateCheckpoint(dir string) error {
+	__antithesis_instrumentation__.Notify(642200)
 	return p.db.Checkpoint(dir)
 }
 
-// SetMinVersion implements the Engine interface.
 func (p *Pebble) SetMinVersion(version roachpb.Version) error {
-	// NB: SetMinVersion must be idempotent. It may called multiple
-	// times with the same version.
+	__antithesis_instrumentation__.Notify(642201)
 
-	// Writing the min version file commits this storage engine to the
-	// provided cluster version.
 	if err := writeMinVersionFile(p.unencryptedFS, p.path, version); err != nil {
+		__antithesis_instrumentation__.Notify(642205)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(642206)
 	}
+	__antithesis_instrumentation__.Notify(642202)
 
-	// Pebble has a concept of format major versions, similar to cluster
-	// versions. Backwards incompatible changes to Pebble's on-disk
-	// format are gated behind new format major versions. Bumping the
-	// storage engine's format major version is tied to a CockroachDB
-	// cluster version.
-	//
-	// Format major versions and cluster versions both only ratchet
-	// upwards. Here we map the persisted cluster version to the
-	// corresponding format major version, ratcheting Pebble's format
-	// major version if necessary.
-	//
-	// Note that when introducing a new Pebble format version that relies on _all_
-	// engines in a cluster being at the same, newer format major version, two
-	// cluster versions should be used. The first is used to enable the feature in
-	// Pebble, and should control the version ratchet below. The second is used as
-	// a feature flag. The use of two cluster versions relies on a guarantee
-	// provided by the migration framework (see pkg/migration) that if a node is
-	// at a version X+1, it is guaranteed that all nodes have already ratcheted
-	// their store version to the version X that enabled the feature at the Pebble
-	// level.
 	formatVers := pebble.FormatMostCompatible
-	// Cases are ordered from newer to older versions.
+
 	switch {
 	case !version.Less(clusterversion.ByKey(clusterversion.PebbleFormatSplitUserKeysMarked)):
+		__antithesis_instrumentation__.Notify(642207)
 		if formatVers < pebble.FormatSplitUserKeysMarked {
+			__antithesis_instrumentation__.Notify(642211)
 			formatVers = pebble.FormatSplitUserKeysMarked
+		} else {
+			__antithesis_instrumentation__.Notify(642212)
 		}
 	case !version.Less(clusterversion.ByKey(clusterversion.PebbleFormatBlockPropertyCollector)):
+		__antithesis_instrumentation__.Notify(642208)
 		if formatVers < pebble.FormatBlockPropertyCollector {
+			__antithesis_instrumentation__.Notify(642213)
 			formatVers = pebble.FormatBlockPropertyCollector
+		} else {
+			__antithesis_instrumentation__.Notify(642214)
 		}
 	case !version.Less(clusterversion.ByKey(clusterversion.TODOPreV21_2)):
+		__antithesis_instrumentation__.Notify(642209)
 		if formatVers < pebble.FormatSetWithDelete {
+			__antithesis_instrumentation__.Notify(642215)
 			formatVers = pebble.FormatSetWithDelete
+		} else {
+			__antithesis_instrumentation__.Notify(642216)
 		}
+	default:
+		__antithesis_instrumentation__.Notify(642210)
 	}
+	__antithesis_instrumentation__.Notify(642203)
 	if p.db.FormatMajorVersion() < formatVers {
+		__antithesis_instrumentation__.Notify(642217)
 		if err := p.db.RatchetFormatMajorVersion(formatVers); err != nil {
+			__antithesis_instrumentation__.Notify(642218)
 			return errors.Wrap(err, "ratcheting format major version")
+		} else {
+			__antithesis_instrumentation__.Notify(642219)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(642220)
 	}
+	__antithesis_instrumentation__.Notify(642204)
 	return nil
 }
 
-// MinVersionIsAtLeastTargetVersion implements the Engine interface.
 func (p *Pebble) MinVersionIsAtLeastTargetVersion(target roachpb.Version) (bool, error) {
+	__antithesis_instrumentation__.Notify(642221)
 	return MinVersionIsAtLeastTargetVersion(p.unencryptedFS, p.path, target)
 }
 
 type pebbleReadOnly struct {
 	parent *Pebble
-	// The iterator reuse optimization in pebbleReadOnly is for servicing a
-	// BatchRequest, such that the iterators get reused across different
-	// requests in the batch.
-	// Reuse iterators for {normal,prefix} x {MVCCKey,EngineKey} iteration. We
-	// need separate iterators for EngineKey and MVCCKey iteration since
-	// iterators that make separated locks/intents look as interleaved need to
-	// use both simultaneously.
-	// When the first iterator is initialized, or when
-	// PinEngineStateForIterators is called (whichever happens first), the
-	// underlying *pebble.Iterator is stashed in iter, so that subsequent
-	// iterator initialization can use Iterator.Clone to use the same underlying
-	// engine state. This relies on the fact that all pebbleIterators created
-	// here are marked as reusable, which causes pebbleIterator.Close to not
-	// close iter. iter will be closed when pebbleReadOnly.Close is called.
+
 	prefixIter       pebbleIterator
 	normalIter       pebbleIterator
 	prefixEngineIter pebbleIterator
@@ -1685,10 +2067,9 @@ var _ ReadWriter = &pebbleReadOnly{}
 
 var pebbleReadOnlyPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(642222)
 		return &pebbleReadOnly{
-			// Defensively set reusable=true. One has to be careful about this since
-			// an accidental false value would cause these iterators, that are value
-			// members of pebbleReadOnly, to be put in the pebbleIterPool.
+
 			prefixIter:       pebbleIterator{reusable: true},
 			normalIter:       pebbleIterator{reusable: true},
 			prefixEngineIter: pebbleIterator{reusable: true},
@@ -1697,13 +2078,10 @@ var pebbleReadOnlyPool = sync.Pool{
 	},
 }
 
-// Instantiates a new pebbleReadOnly.
 func newPebbleReadOnly(parent *Pebble, durability DurabilityRequirement) *pebbleReadOnly {
+	__antithesis_instrumentation__.Notify(642223)
 	p := pebbleReadOnlyPool.Get().(*pebbleReadOnly)
-	// When p is a reused pebbleReadOnly from the pool, the iter fields preserve
-	// the original reusable=true that was set above in pebbleReadOnlyPool.New(),
-	// and some buffers that are safe to reuse. Everything else has been reset by
-	// pebbleIterator.destroy().
+
 	*p = pebbleReadOnly{
 		parent:           parent,
 		prefixIter:       p.prefixIter,
@@ -1716,12 +2094,16 @@ func newPebbleReadOnly(parent *Pebble, durability DurabilityRequirement) *pebble
 }
 
 func (p *pebbleReadOnly) Close() {
+	__antithesis_instrumentation__.Notify(642224)
 	if p.closed {
+		__antithesis_instrumentation__.Notify(642226)
 		panic("closing an already-closed pebbleReadOnly")
+	} else {
+		__antithesis_instrumentation__.Notify(642227)
 	}
+	__antithesis_instrumentation__.Notify(642225)
 	p.closed = true
-	// Setting iter to nil is sufficient since it will be closed by one of the
-	// subsequent destroy calls.
+
 	p.iter = nil
 	p.prefixIter.destroy()
 	p.normalIter.destroy()
@@ -1733,33 +2115,44 @@ func (p *pebbleReadOnly) Close() {
 }
 
 func (p *pebbleReadOnly) Closed() bool {
+	__antithesis_instrumentation__.Notify(642228)
 	return p.closed
 }
 
-// ExportMVCCToSst is part of the engine.Reader interface.
 func (p *pebbleReadOnly) ExportMVCCToSst(
 	ctx context.Context, exportOptions ExportOptions, dest io.Writer,
 ) (roachpb.BulkOpSummary, roachpb.Key, hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(642229)
 	r := wrapReader(p)
-	// Doing defer r.Free() does not inline.
+
 	summary, k, err := pebbleExportToSst(ctx, p.parent.settings, r, exportOptions, dest)
 	r.Free()
 	return summary, k.Key, k.Timestamp, err
 }
 
 func (p *pebbleReadOnly) MVCCGet(key MVCCKey) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(642230)
 	return mvccGetHelper(key, p)
 }
 
 func (p *pebbleReadOnly) rawMVCCGet(key []byte) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(642231)
 	if p.closed {
+		__antithesis_instrumentation__.Notify(642236)
 		panic("using a closed pebbleReadOnly")
+	} else {
+		__antithesis_instrumentation__.Notify(642237)
 	}
-	// Cannot delegate to p.parent.rawMVCCGet since we need to use p.durability.
+	__antithesis_instrumentation__.Notify(642232)
+
 	onlyReadGuaranteedDurable := false
 	if p.durability == GuaranteedDurability {
+		__antithesis_instrumentation__.Notify(642238)
 		onlyReadGuaranteedDurable = true
+	} else {
+		__antithesis_instrumentation__.Notify(642239)
 	}
+	__antithesis_instrumentation__.Notify(642233)
 	options := pebble.IterOptions{
 		LowerBound:                key,
 		UpperBound:                roachpb.BytesNext(key),
@@ -1767,230 +2160,338 @@ func (p *pebbleReadOnly) rawMVCCGet(key []byte) ([]byte, error) {
 	}
 	iter := p.parent.db.NewIter(&options)
 	defer func() {
-		// Already handled error.
+		__antithesis_instrumentation__.Notify(642240)
+
 		_ = iter.Close()
 	}()
+	__antithesis_instrumentation__.Notify(642234)
 	valid := iter.SeekGE(key)
 	if !valid {
+		__antithesis_instrumentation__.Notify(642241)
 		return nil, iter.Error()
+	} else {
+		__antithesis_instrumentation__.Notify(642242)
 	}
+	__antithesis_instrumentation__.Notify(642235)
 	return iter.Value(), nil
 }
 
 func (p *pebbleReadOnly) MVCCGetProto(
 	key MVCCKey, msg protoutil.Message,
 ) (ok bool, keyBytes, valBytes int64, err error) {
+	__antithesis_instrumentation__.Notify(642243)
 	return pebbleGetProto(p, key, msg)
 }
 
 func (p *pebbleReadOnly) MVCCIterate(
 	start, end roachpb.Key, iterKind MVCCIterKind, f func(MVCCKeyValue) error,
 ) error {
+	__antithesis_instrumentation__.Notify(642244)
 	if p.closed {
+		__antithesis_instrumentation__.Notify(642247)
 		panic("using a closed pebbleReadOnly")
+	} else {
+		__antithesis_instrumentation__.Notify(642248)
 	}
+	__antithesis_instrumentation__.Notify(642245)
 	if iterKind == MVCCKeyAndIntentsIterKind {
+		__antithesis_instrumentation__.Notify(642249)
 		r := wrapReader(p)
-		// Doing defer r.Free() does not inline.
+
 		err := iterateOnReader(r, start, end, iterKind, f)
 		r.Free()
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(642250)
 	}
+	__antithesis_instrumentation__.Notify(642246)
 	return iterateOnReader(p, start, end, iterKind, f)
 }
 
-// NewMVCCIterator implements the Engine interface.
 func (p *pebbleReadOnly) NewMVCCIterator(iterKind MVCCIterKind, opts IterOptions) MVCCIterator {
+	__antithesis_instrumentation__.Notify(642251)
 	if p.closed {
+		__antithesis_instrumentation__.Notify(642259)
 		panic("using a closed pebbleReadOnly")
+	} else {
+		__antithesis_instrumentation__.Notify(642260)
 	}
+	__antithesis_instrumentation__.Notify(642252)
 
 	if iterKind == MVCCKeyAndIntentsIterKind {
+		__antithesis_instrumentation__.Notify(642261)
 		r := wrapReader(p)
-		// Doing defer r.Free() does not inline.
+
 		iter := r.NewMVCCIterator(iterKind, opts)
 		r.Free()
 		if util.RaceEnabled {
+			__antithesis_instrumentation__.Notify(642263)
 			iter = wrapInUnsafeIter(iter)
+		} else {
+			__antithesis_instrumentation__.Notify(642264)
 		}
+		__antithesis_instrumentation__.Notify(642262)
 		return iter
+	} else {
+		__antithesis_instrumentation__.Notify(642265)
 	}
+	__antithesis_instrumentation__.Notify(642253)
 
 	if !opts.MinTimestampHint.IsEmpty() {
-		// MVCCIterators that specify timestamp bounds cannot be cached.
+		__antithesis_instrumentation__.Notify(642266)
+
 		iter := MVCCIterator(newPebbleIterator(p.parent.db, nil, opts, p.durability))
 		if util.RaceEnabled {
+			__antithesis_instrumentation__.Notify(642268)
 			iter = wrapInUnsafeIter(iter)
+		} else {
+			__antithesis_instrumentation__.Notify(642269)
 		}
+		__antithesis_instrumentation__.Notify(642267)
 		return iter
+	} else {
+		__antithesis_instrumentation__.Notify(642270)
 	}
+	__antithesis_instrumentation__.Notify(642254)
 
 	iter := &p.normalIter
 	if opts.Prefix {
+		__antithesis_instrumentation__.Notify(642271)
 		iter = &p.prefixIter
+	} else {
+		__antithesis_instrumentation__.Notify(642272)
 	}
+	__antithesis_instrumentation__.Notify(642255)
 	if iter.inuse {
+		__antithesis_instrumentation__.Notify(642273)
 		panic("iterator already in use")
+	} else {
+		__antithesis_instrumentation__.Notify(642274)
 	}
-	// Ensures no timestamp hints etc.
+	__antithesis_instrumentation__.Notify(642256)
+
 	checkOptionsForIterReuse(opts)
 
 	if iter.iter != nil {
+		__antithesis_instrumentation__.Notify(642275)
 		iter.setBounds(opts.LowerBound, opts.UpperBound)
 	} else {
+		__antithesis_instrumentation__.Notify(642276)
 		iter.init(p.parent.db, p.iter, opts, p.durability)
 		if p.iter == nil {
-			// For future cloning.
+			__antithesis_instrumentation__.Notify(642278)
+
 			p.iter = iter.iter
+		} else {
+			__antithesis_instrumentation__.Notify(642279)
 		}
+		__antithesis_instrumentation__.Notify(642277)
 		iter.reusable = true
 	}
+	__antithesis_instrumentation__.Notify(642257)
 
 	iter.inuse = true
 	var rv MVCCIterator = iter
 	if util.RaceEnabled {
+		__antithesis_instrumentation__.Notify(642280)
 		rv = wrapInUnsafeIter(rv)
+	} else {
+		__antithesis_instrumentation__.Notify(642281)
 	}
+	__antithesis_instrumentation__.Notify(642258)
 	return rv
 }
 
-// NewEngineIterator implements the Engine interface.
 func (p *pebbleReadOnly) NewEngineIterator(opts IterOptions) EngineIterator {
+	__antithesis_instrumentation__.Notify(642282)
 	if p.closed {
+		__antithesis_instrumentation__.Notify(642287)
 		panic("using a closed pebbleReadOnly")
+	} else {
+		__antithesis_instrumentation__.Notify(642288)
 	}
+	__antithesis_instrumentation__.Notify(642283)
 
 	iter := &p.normalEngineIter
 	if opts.Prefix {
+		__antithesis_instrumentation__.Notify(642289)
 		iter = &p.prefixEngineIter
+	} else {
+		__antithesis_instrumentation__.Notify(642290)
 	}
+	__antithesis_instrumentation__.Notify(642284)
 	if iter.inuse {
+		__antithesis_instrumentation__.Notify(642291)
 		panic("iterator already in use")
+	} else {
+		__antithesis_instrumentation__.Notify(642292)
 	}
-	// Ensures no timestamp hints etc.
+	__antithesis_instrumentation__.Notify(642285)
+
 	checkOptionsForIterReuse(opts)
 
 	if iter.iter != nil {
+		__antithesis_instrumentation__.Notify(642293)
 		iter.setBounds(opts.LowerBound, opts.UpperBound)
 	} else {
+		__antithesis_instrumentation__.Notify(642294)
 		iter.init(p.parent.db, p.iter, opts, p.durability)
 		if p.iter == nil {
-			// For future cloning.
+			__antithesis_instrumentation__.Notify(642296)
+
 			p.iter = iter.iter
+		} else {
+			__antithesis_instrumentation__.Notify(642297)
 		}
+		__antithesis_instrumentation__.Notify(642295)
 		iter.reusable = true
 	}
+	__antithesis_instrumentation__.Notify(642286)
 
 	iter.inuse = true
 	return iter
 }
 
-// checkOptionsForIterReuse checks that the options are appropriate for
-// iterators that are reusable, and panics if not. This includes disallowing
-// any timestamp hints.
 func checkOptionsForIterReuse(opts IterOptions) {
-	if !opts.MinTimestampHint.IsEmpty() || !opts.MaxTimestampHint.IsEmpty() {
+	__antithesis_instrumentation__.Notify(642298)
+	if !opts.MinTimestampHint.IsEmpty() || func() bool {
+		__antithesis_instrumentation__.Notify(642300)
+		return !opts.MaxTimestampHint.IsEmpty() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(642301)
 		panic("iterator with timestamp hints cannot be reused")
+	} else {
+		__antithesis_instrumentation__.Notify(642302)
 	}
-	if !opts.Prefix && len(opts.UpperBound) == 0 && len(opts.LowerBound) == 0 {
+	__antithesis_instrumentation__.Notify(642299)
+	if !opts.Prefix && func() bool {
+		__antithesis_instrumentation__.Notify(642303)
+		return len(opts.UpperBound) == 0 == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(642304)
+		return len(opts.LowerBound) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(642305)
 		panic("iterator must set prefix or upper bound or lower bound")
+	} else {
+		__antithesis_instrumentation__.Notify(642306)
 	}
 }
 
-// ConsistentIterators implements the Engine interface.
 func (p *pebbleReadOnly) ConsistentIterators() bool {
+	__antithesis_instrumentation__.Notify(642307)
 	return true
 }
 
-// PinEngineStateForIterators implements the Engine interface.
 func (p *pebbleReadOnly) PinEngineStateForIterators() error {
+	__antithesis_instrumentation__.Notify(642308)
 	if p.iter == nil {
+		__antithesis_instrumentation__.Notify(642310)
 		o := (*pebble.IterOptions)(nil)
 		if p.durability == GuaranteedDurability {
+			__antithesis_instrumentation__.Notify(642312)
 			o = &pebble.IterOptions{OnlyReadGuaranteedDurable: true}
+		} else {
+			__antithesis_instrumentation__.Notify(642313)
 		}
+		__antithesis_instrumentation__.Notify(642311)
 		p.iter = p.parent.db.NewIter(o)
+	} else {
+		__antithesis_instrumentation__.Notify(642314)
 	}
+	__antithesis_instrumentation__.Notify(642309)
 	return nil
 }
 
-// Writer methods are not implemented for pebbleReadOnly. Ideally, the code
-// could be refactored so that a Reader could be supplied to evaluateBatch
-
-// Writer is the write interface to an engine's data.
 func (p *pebbleReadOnly) ApplyBatchRepr(repr []byte, sync bool) error {
+	__antithesis_instrumentation__.Notify(642315)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) ClearMVCC(key MVCCKey) error {
+	__antithesis_instrumentation__.Notify(642316)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) ClearUnversioned(key roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(642317)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) ClearIntent(
 	key roachpb.Key, txnDidNotUpdateMeta bool, txnUUID uuid.UUID,
 ) error {
+	__antithesis_instrumentation__.Notify(642318)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) ClearEngineKey(key EngineKey) error {
+	__antithesis_instrumentation__.Notify(642319)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) SingleClearEngineKey(key EngineKey) error {
+	__antithesis_instrumentation__.Notify(642320)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) ClearRawRange(start, end roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(642321)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) ClearMVCCRangeAndIntents(start, end roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(642322)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) ClearMVCCRange(start, end MVCCKey) error {
+	__antithesis_instrumentation__.Notify(642323)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) ClearIterRange(iter MVCCIterator, start, end roachpb.Key) error {
+	__antithesis_instrumentation__.Notify(642324)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) Merge(key MVCCKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(642325)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) PutMVCC(key MVCCKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(642326)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) PutUnversioned(key roachpb.Key, value []byte) error {
+	__antithesis_instrumentation__.Notify(642327)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) PutIntent(
 	ctx context.Context, key roachpb.Key, value []byte, txnUUID uuid.UUID,
 ) error {
+	__antithesis_instrumentation__.Notify(642328)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) PutEngineKey(key EngineKey, value []byte) error {
+	__antithesis_instrumentation__.Notify(642329)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) LogData(data []byte) error {
+	__antithesis_instrumentation__.Notify(642330)
 	panic("not implemented")
 }
 
 func (p *pebbleReadOnly) LogLogicalOp(op MVCCLogicalOpType, details MVCCLogicalOpDetails) {
+	__antithesis_instrumentation__.Notify(642331)
 	panic("not implemented")
 }
 
-// pebbleSnapshot represents a snapshot created using Pebble.NewSnapshot().
 type pebbleSnapshot struct {
 	snapshot *pebble.Snapshot
 	settings *cluster.Settings
@@ -1999,132 +2500,169 @@ type pebbleSnapshot struct {
 
 var _ Reader = &pebbleSnapshot{}
 
-// Close implements the Reader interface.
 func (p *pebbleSnapshot) Close() {
+	__antithesis_instrumentation__.Notify(642332)
 	_ = p.snapshot.Close()
 	p.closed = true
 }
 
-// Closed implements the Reader interface.
 func (p *pebbleSnapshot) Closed() bool {
+	__antithesis_instrumentation__.Notify(642333)
 	return p.closed
 }
 
-// ExportMVCCToSst is part of the engine.Reader interface.
 func (p *pebbleSnapshot) ExportMVCCToSst(
 	ctx context.Context, exportOptions ExportOptions, dest io.Writer,
 ) (roachpb.BulkOpSummary, roachpb.Key, hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(642334)
 	r := wrapReader(p)
-	// Doing defer r.Free() does not inline.
+
 	summary, k, err := pebbleExportToSst(ctx, p.settings, r, exportOptions, dest)
 	r.Free()
 	return summary, k.Key, k.Timestamp, err
 }
 
-// Get implements the Reader interface.
 func (p *pebbleSnapshot) MVCCGet(key MVCCKey) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(642335)
 	if len(key.Key) == 0 {
+		__antithesis_instrumentation__.Notify(642337)
 		return nil, emptyKeyError()
+	} else {
+		__antithesis_instrumentation__.Notify(642338)
 	}
+	__antithesis_instrumentation__.Notify(642336)
 	r := wrapReader(p)
-	// Doing defer r.Free() does not inline.
+
 	v, err := r.MVCCGet(key)
 	r.Free()
 	return v, err
 }
 
 func (p *pebbleSnapshot) rawMVCCGet(key []byte) ([]byte, error) {
+	__antithesis_instrumentation__.Notify(642339)
 	ret, closer, err := p.snapshot.Get(key)
 	if closer != nil {
+		__antithesis_instrumentation__.Notify(642342)
 		retCopy := make([]byte, len(ret))
 		copy(retCopy, ret)
 		ret = retCopy
 		closer.Close()
+	} else {
+		__antithesis_instrumentation__.Notify(642343)
 	}
-	if errors.Is(err, pebble.ErrNotFound) || len(ret) == 0 {
+	__antithesis_instrumentation__.Notify(642340)
+	if errors.Is(err, pebble.ErrNotFound) || func() bool {
+		__antithesis_instrumentation__.Notify(642344)
+		return len(ret) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(642345)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(642346)
 	}
+	__antithesis_instrumentation__.Notify(642341)
 	return ret, err
 }
 
-// MVCCGetProto implements the Reader interface.
 func (p *pebbleSnapshot) MVCCGetProto(
 	key MVCCKey, msg protoutil.Message,
 ) (ok bool, keyBytes, valBytes int64, err error) {
+	__antithesis_instrumentation__.Notify(642347)
 	return pebbleGetProto(p, key, msg)
 }
 
-// MVCCIterate implements the Reader interface.
 func (p *pebbleSnapshot) MVCCIterate(
 	start, end roachpb.Key, iterKind MVCCIterKind, f func(MVCCKeyValue) error,
 ) error {
+	__antithesis_instrumentation__.Notify(642348)
 	if iterKind == MVCCKeyAndIntentsIterKind {
+		__antithesis_instrumentation__.Notify(642350)
 		r := wrapReader(p)
-		// Doing defer r.Free() does not inline.
+
 		err := iterateOnReader(r, start, end, iterKind, f)
 		r.Free()
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(642351)
 	}
+	__antithesis_instrumentation__.Notify(642349)
 	return iterateOnReader(p, start, end, iterKind, f)
 }
 
-// NewMVCCIterator implements the Reader interface.
 func (p *pebbleSnapshot) NewMVCCIterator(iterKind MVCCIterKind, opts IterOptions) MVCCIterator {
+	__antithesis_instrumentation__.Notify(642352)
 	if iterKind == MVCCKeyAndIntentsIterKind {
+		__antithesis_instrumentation__.Notify(642355)
 		r := wrapReader(p)
-		// Doing defer r.Free() does not inline.
+
 		iter := r.NewMVCCIterator(iterKind, opts)
 		r.Free()
 		if util.RaceEnabled {
+			__antithesis_instrumentation__.Notify(642357)
 			iter = wrapInUnsafeIter(iter)
+		} else {
+			__antithesis_instrumentation__.Notify(642358)
 		}
+		__antithesis_instrumentation__.Notify(642356)
 		return iter
+	} else {
+		__antithesis_instrumentation__.Notify(642359)
 	}
+	__antithesis_instrumentation__.Notify(642353)
 	iter := MVCCIterator(newPebbleIterator(p.snapshot, nil, opts, StandardDurability))
 	if util.RaceEnabled {
+		__antithesis_instrumentation__.Notify(642360)
 		iter = wrapInUnsafeIter(iter)
+	} else {
+		__antithesis_instrumentation__.Notify(642361)
 	}
+	__antithesis_instrumentation__.Notify(642354)
 	return iter
 }
 
-// NewEngineIterator implements the Reader interface.
 func (p pebbleSnapshot) NewEngineIterator(opts IterOptions) EngineIterator {
+	__antithesis_instrumentation__.Notify(642362)
 	return newPebbleIterator(p.snapshot, nil, opts, StandardDurability)
 }
 
-// ConsistentIterators implements the Reader interface.
 func (p pebbleSnapshot) ConsistentIterators() bool {
+	__antithesis_instrumentation__.Notify(642363)
 	return true
 }
 
-// PinEngineStateForIterators implements the Reader interface.
 func (p *pebbleSnapshot) PinEngineStateForIterators() error {
-	// Snapshot already pins state, so nothing to do.
+	__antithesis_instrumentation__.Notify(642364)
+
 	return nil
 }
 
-// pebbleGetProto uses Reader.MVCCGet, so it not as efficient as a function
-// that can unmarshal without copying bytes. But we don't care about
-// efficiency, since this is used to implement Reader.MVCCGetProto, which is
-// deprecated and only used in tests.
 func pebbleGetProto(
 	reader Reader, key MVCCKey, msg protoutil.Message,
 ) (ok bool, keyBytes, valBytes int64, err error) {
+	__antithesis_instrumentation__.Notify(642365)
 	val, err := reader.MVCCGet(key)
-	if err != nil || val == nil {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(642368)
+		return val == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(642369)
 		return false, 0, 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(642370)
 	}
+	__antithesis_instrumentation__.Notify(642366)
 	keyBytes = int64(key.Len())
 	valBytes = int64(len(val))
 	if msg != nil {
+		__antithesis_instrumentation__.Notify(642371)
 		err = protoutil.Unmarshal(val, msg)
+	} else {
+		__antithesis_instrumentation__.Notify(642372)
 	}
+	__antithesis_instrumentation__.Notify(642367)
 	return true, keyBytes, valBytes, err
 }
 
-// ExceedMaxSizeError is the error returned when an export request
-// fails due the export size exceeding the budget. This can be caused
-// by large KVs that have many revisions.
 type ExceedMaxSizeError struct {
 	reached int64
 	maxSize uint64
@@ -2133,12 +2671,14 @@ type ExceedMaxSizeError struct {
 var _ error = &ExceedMaxSizeError{}
 
 func (e *ExceedMaxSizeError) Error() string {
+	__antithesis_instrumentation__.Notify(642373)
 	return fmt.Sprintf("export size (%d bytes) exceeds max size (%d bytes)", e.reached, e.maxSize)
 }
 
 func pebbleExportToSst(
 	ctx context.Context, cs *cluster.Settings, reader Reader, options ExportOptions, dest io.Writer,
 ) (roachpb.BulkOpSummary, MVCCKey, error) {
+	__antithesis_instrumentation__.Notify(642374)
 	var span *tracing.Span
 	ctx, span = tracing.ChildSpan(ctx, "pebbleExportToSst")
 	defer span.Finish()
@@ -2156,134 +2696,247 @@ func pebbleExportToSst(
 			IntentPolicy:                        MVCCIncrementalIterIntentPolicyAggregate,
 		})
 	defer iter.Close()
-	var curKey roachpb.Key // only used if exportAllRevisions
+	var curKey roachpb.Key
 	var resumeKey roachpb.Key
 	var resumeTS hlc.Timestamp
 	paginated := options.TargetSize > 0
-	trackKeyBoundary := paginated || options.ResourceLimiter != nil
+	trackKeyBoundary := paginated || func() bool {
+		__antithesis_instrumentation__.Notify(642379)
+		return options.ResourceLimiter != nil == true
+	}() == true
 	firstIteration := true
 	for iter.SeekGE(options.StartKey); ; {
+		__antithesis_instrumentation__.Notify(642380)
 		ok, err := iter.Valid()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(642388)
 			return roachpb.BulkOpSummary{}, MVCCKey{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(642389)
 		}
+		__antithesis_instrumentation__.Notify(642381)
 		if !ok {
+			__antithesis_instrumentation__.Notify(642390)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(642391)
 		}
+		__antithesis_instrumentation__.Notify(642382)
 		unsafeKey := iter.UnsafeKey()
 		if unsafeKey.Key.Compare(options.EndKey) >= 0 {
+			__antithesis_instrumentation__.Notify(642392)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(642393)
 		}
+		__antithesis_instrumentation__.Notify(642383)
 
 		if iter.NumCollectedIntents() > 0 {
+			__antithesis_instrumentation__.Notify(642394)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(642395)
 		}
+		__antithesis_instrumentation__.Notify(642384)
 
 		unsafeValue := iter.UnsafeValue()
-		isNewKey := !options.ExportAllRevisions || !unsafeKey.Key.Equal(curKey)
-		if trackKeyBoundary && options.ExportAllRevisions && isNewKey {
+		isNewKey := !options.ExportAllRevisions || func() bool {
+			__antithesis_instrumentation__.Notify(642396)
+			return !unsafeKey.Key.Equal(curKey) == true
+		}() == true
+		if trackKeyBoundary && func() bool {
+			__antithesis_instrumentation__.Notify(642397)
+			return options.ExportAllRevisions == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(642398)
+			return isNewKey == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(642399)
 			curKey = append(curKey[:0], unsafeKey.Key...)
+		} else {
+			__antithesis_instrumentation__.Notify(642400)
 		}
+		__antithesis_instrumentation__.Notify(642385)
 
 		if options.ResourceLimiter != nil {
-			// Don't check resources on first iteration to ensure we can make some progress regardless
-			// of starvation. Otherwise operations could spin indefinitely.
+			__antithesis_instrumentation__.Notify(642401)
+
 			if firstIteration {
+				__antithesis_instrumentation__.Notify(642402)
 				firstIteration = false
 			} else {
-				// In happy day case we want to only stop at key boundaries as it allows callers to use
-				// produced sst's directly. But if we can't find key boundary within reasonable number of
-				// iterations we would split mid key.
-				// To achieve that we use soft and hard thresholds in limiter. Once soft limit is reached
-				// we would start searching for key boundary and return as soon as it is reached. If we
-				// can't find it before hard limit is reached and caller requested mid key stop we would
-				// immediately return.
+				__antithesis_instrumentation__.Notify(642403)
+
 				limit := options.ResourceLimiter.IsExhausted()
-				// We can stop at key once any threshold is reached or force stop at hard limit if midkey
-				// split is allowed.
-				if limit >= ResourceLimitReachedSoft && isNewKey || limit == ResourceLimitReachedHard && options.StopMidKey {
-					// Reached iteration limit, stop with resume span
+
+				if limit >= ResourceLimitReachedSoft && func() bool {
+					__antithesis_instrumentation__.Notify(642404)
+					return isNewKey == true
+				}() == true || func() bool {
+					__antithesis_instrumentation__.Notify(642405)
+					return (limit == ResourceLimitReachedHard && func() bool {
+						__antithesis_instrumentation__.Notify(642406)
+						return options.StopMidKey == true
+					}() == true) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(642407)
+
 					resumeKey = append(make(roachpb.Key, 0, len(unsafeKey.Key)), unsafeKey.Key...)
 					if !isNewKey {
+						__antithesis_instrumentation__.Notify(642409)
 						resumeTS = unsafeKey.Timestamp
+					} else {
+						__antithesis_instrumentation__.Notify(642410)
 					}
+					__antithesis_instrumentation__.Notify(642408)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(642411)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(642412)
 		}
+		__antithesis_instrumentation__.Notify(642386)
 
-		// Skip tombstone (len=0) records when start time is zero (non-incremental)
-		// and we are not exporting all versions.
-		skipTombstones := !options.ExportAllRevisions && options.StartTS.IsEmpty()
-		if len(unsafeValue) > 0 || !skipTombstones {
+		skipTombstones := !options.ExportAllRevisions && func() bool {
+			__antithesis_instrumentation__.Notify(642413)
+			return options.StartTS.IsEmpty() == true
+		}() == true
+		if len(unsafeValue) > 0 || func() bool {
+			__antithesis_instrumentation__.Notify(642414)
+			return !skipTombstones == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(642415)
 			if err := rows.Count(unsafeKey.Key); err != nil {
+				__antithesis_instrumentation__.Notify(642420)
 				return roachpb.BulkOpSummary{}, MVCCKey{}, errors.Wrapf(err, "decoding %s", unsafeKey)
+			} else {
+				__antithesis_instrumentation__.Notify(642421)
 			}
+			__antithesis_instrumentation__.Notify(642416)
 			curSize := rows.BulkOpSummary.DataSize
-			reachedTargetSize := curSize > 0 && uint64(curSize) >= options.TargetSize
+			reachedTargetSize := curSize > 0 && func() bool {
+				__antithesis_instrumentation__.Notify(642422)
+				return uint64(curSize) >= options.TargetSize == true
+			}() == true
 			newSize := curSize + int64(len(unsafeKey.Key)+len(unsafeValue))
-			reachedMaxSize := options.MaxSize > 0 && newSize > int64(options.MaxSize)
-			// When paginating we stop writing in two cases:
-			// - target size is reached and we wrote all versions of a key
-			// - maximum size reached and we are allowed to stop mid key
-			if paginated && (isNewKey && reachedTargetSize || options.StopMidKey && reachedMaxSize) {
-				// Allocate the right size for resumeKey rather than using curKey.
+			reachedMaxSize := options.MaxSize > 0 && func() bool {
+				__antithesis_instrumentation__.Notify(642423)
+				return newSize > int64(options.MaxSize) == true
+			}() == true
+
+			if paginated && func() bool {
+				__antithesis_instrumentation__.Notify(642424)
+				return (isNewKey && func() bool {
+					__antithesis_instrumentation__.Notify(642425)
+					return reachedTargetSize == true
+				}() == true || func() bool {
+					__antithesis_instrumentation__.Notify(642426)
+					return (options.StopMidKey && func() bool {
+						__antithesis_instrumentation__.Notify(642427)
+						return reachedMaxSize == true
+					}() == true) == true
+				}() == true) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(642428)
+
 				resumeKey = append(make(roachpb.Key, 0, len(unsafeKey.Key)), unsafeKey.Key...)
-				if options.StopMidKey && !isNewKey {
+				if options.StopMidKey && func() bool {
+					__antithesis_instrumentation__.Notify(642430)
+					return !isNewKey == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(642431)
 					resumeTS = unsafeKey.Timestamp
+				} else {
+					__antithesis_instrumentation__.Notify(642432)
 				}
+				__antithesis_instrumentation__.Notify(642429)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(642433)
 			}
+			__antithesis_instrumentation__.Notify(642417)
 			if reachedMaxSize {
+				__antithesis_instrumentation__.Notify(642434)
 				return roachpb.BulkOpSummary{}, MVCCKey{}, &ExceedMaxSizeError{reached: newSize, maxSize: options.MaxSize}
+			} else {
+				__antithesis_instrumentation__.Notify(642435)
 			}
+			__antithesis_instrumentation__.Notify(642418)
 			if unsafeKey.Timestamp.IsEmpty() {
-				// This should never be an intent since the incremental iterator returns
-				// an error when encountering intents.
+				__antithesis_instrumentation__.Notify(642436)
+
 				if err := sstWriter.PutUnversioned(unsafeKey.Key, unsafeValue); err != nil {
+					__antithesis_instrumentation__.Notify(642437)
 					return roachpb.BulkOpSummary{}, MVCCKey{}, errors.Wrapf(err, "adding key %s", unsafeKey)
+				} else {
+					__antithesis_instrumentation__.Notify(642438)
 				}
 			} else {
+				__antithesis_instrumentation__.Notify(642439)
 				if err := sstWriter.PutMVCC(unsafeKey, unsafeValue); err != nil {
+					__antithesis_instrumentation__.Notify(642440)
 					return roachpb.BulkOpSummary{}, MVCCKey{}, errors.Wrapf(err, "adding key %s", unsafeKey)
+				} else {
+					__antithesis_instrumentation__.Notify(642441)
 				}
 			}
+			__antithesis_instrumentation__.Notify(642419)
 			rows.BulkOpSummary.DataSize = newSize
+		} else {
+			__antithesis_instrumentation__.Notify(642442)
 		}
+		__antithesis_instrumentation__.Notify(642387)
 
 		if options.ExportAllRevisions {
+			__antithesis_instrumentation__.Notify(642443)
 			iter.Next()
 		} else {
+			__antithesis_instrumentation__.Notify(642444)
 			iter.NextKey()
 		}
 	}
+	__antithesis_instrumentation__.Notify(642375)
 
-	// First check if we encountered an intent while iterating the data.
-	// If we do it means this export can't complete and is aborted. We need to loop over remaining data
-	// to collect all matching intents before returning them in an error to the caller.
 	if iter.NumCollectedIntents() > 0 {
+		__antithesis_instrumentation__.Notify(642445)
 		for uint64(iter.NumCollectedIntents()) < options.MaxIntents {
+			__antithesis_instrumentation__.Notify(642447)
 			iter.NextKey()
-			// If we encounter other errors during intent collection, we return our original write intent failure.
-			// We would find this new error again upon retry.
+
 			ok, _ := iter.Valid()
 			if !ok {
+				__antithesis_instrumentation__.Notify(642448)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(642449)
 			}
 		}
+		__antithesis_instrumentation__.Notify(642446)
 		err := iter.TryGetIntentError()
 		return roachpb.BulkOpSummary{}, MVCCKey{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(642450)
 	}
+	__antithesis_instrumentation__.Notify(642376)
 
 	if rows.BulkOpSummary.DataSize == 0 {
-		// If no records were added to the sstable, skip completing it and return a
-		// nil slice – the export code will discard it anyway (based on 0 DataSize).
+		__antithesis_instrumentation__.Notify(642451)
+
 		return roachpb.BulkOpSummary{}, MVCCKey{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(642452)
 	}
+	__antithesis_instrumentation__.Notify(642377)
 
 	if err := sstWriter.Finish(); err != nil {
+		__antithesis_instrumentation__.Notify(642453)
 		return roachpb.BulkOpSummary{}, MVCCKey{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(642454)
 	}
+	__antithesis_instrumentation__.Notify(642378)
 
 	return rows.BulkOpSummary, MVCCKey{Key: resumeKey, Timestamp: resumeTS}, nil
 }

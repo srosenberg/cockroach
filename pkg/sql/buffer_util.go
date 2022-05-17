@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,9 +16,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 )
 
-// rowContainerHelper is a wrapper around a disk-backed row container that
-// should be used by planNodes (or similar components) whenever they need to
-// buffer data. init or initWithDedup must be called before the first use.
 type rowContainerHelper struct {
 	memMonitor  *mon.BytesMonitor
 	diskMonitor *mon.BytesMonitor
@@ -37,6 +26,7 @@ type rowContainerHelper struct {
 func (c *rowContainerHelper) Init(
 	typs []*types.T, evalContext *extendedEvalContext, opName string,
 ) {
+	__antithesis_instrumentation__.Notify(247142)
 	c.initMonitors(evalContext, opName)
 	distSQLCfg := &evalContext.DistSQLPlanner.distSQLSrv.ServerConfig
 	c.rows = &rowcontainer.DiskBackedRowContainer{}
@@ -47,22 +37,21 @@ func (c *rowContainerHelper) Init(
 	c.scratch = make(rowenc.EncDatumRow, len(typs))
 }
 
-// InitWithDedup is a variant of init that is used if row deduplication
-// functionality is needed (see addRowWithDedup).
 func (c *rowContainerHelper) InitWithDedup(
 	typs []*types.T, evalContext *extendedEvalContext, opName string,
 ) {
+	__antithesis_instrumentation__.Notify(247143)
 	c.initMonitors(evalContext, opName)
 	distSQLCfg := &evalContext.DistSQLPlanner.distSQLSrv.ServerConfig
 	c.rows = &rowcontainer.DiskBackedRowContainer{}
-	// The DiskBackedRowContainer can be configured to deduplicate along the
-	// columns in the ordering (these columns form the "key" if the container has
-	// to spill to disk).
+
 	ordering := make(colinfo.ColumnOrdering, len(typs))
 	for i := range ordering {
+		__antithesis_instrumentation__.Notify(247145)
 		ordering[i].ColIdx = i
 		ordering[i].Direction = encoding.Ascending
 	}
+	__antithesis_instrumentation__.Notify(247144)
 	c.rows.Init(
 		ordering, typs, &evalContext.EvalContext,
 		distSQLCfg.TempStorage, c.memMonitor, c.diskMonitor,
@@ -72,6 +61,7 @@ func (c *rowContainerHelper) InitWithDedup(
 }
 
 func (c *rowContainerHelper) initMonitors(evalContext *extendedEvalContext, opName string) {
+	__antithesis_instrumentation__.Notify(247146)
 	distSQLCfg := &evalContext.DistSQLPlanner.distSQLSrv.ServerConfig
 	c.memMonitor = execinfra.NewLimitedMonitorNoFlowCtx(
 		evalContext.Context, evalContext.Mon, distSQLCfg, evalContext.SessionData(),
@@ -82,55 +72,59 @@ func (c *rowContainerHelper) initMonitors(evalContext *extendedEvalContext, opNa
 	)
 }
 
-// AddRow adds the given row to the container.
 func (c *rowContainerHelper) AddRow(ctx context.Context, row tree.Datums) error {
+	__antithesis_instrumentation__.Notify(247147)
 	for i := range row {
+		__antithesis_instrumentation__.Notify(247149)
 		c.scratch[i].Datum = row[i]
 	}
+	__antithesis_instrumentation__.Notify(247148)
 	return c.rows.AddRow(ctx, c.scratch)
 }
 
-// AddRowWithDedup adds the given row if not already present in the container.
-// To use this method, InitWithDedup must be used first.
 func (c *rowContainerHelper) AddRowWithDedup(
 	ctx context.Context, row tree.Datums,
 ) (added bool, _ error) {
+	__antithesis_instrumentation__.Notify(247150)
 	for i := range row {
+		__antithesis_instrumentation__.Notify(247153)
 		c.scratch[i].Datum = row[i]
 	}
+	__antithesis_instrumentation__.Notify(247151)
 	lenBefore := c.rows.Len()
 	if _, err := c.rows.AddRowWithDeDup(ctx, c.scratch); err != nil {
+		__antithesis_instrumentation__.Notify(247154)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(247155)
 	}
+	__antithesis_instrumentation__.Notify(247152)
 	return c.rows.Len() > lenBefore, nil
 }
 
-// Len returns the number of rows buffered so far.
 func (c *rowContainerHelper) Len() int {
+	__antithesis_instrumentation__.Notify(247156)
 	return c.rows.Len()
 }
 
-// Clear prepares the helper for reuse (it resets the underlying container which
-// will delete all buffered data; also, the container will be using the
-// in-memory variant even if it spilled on the previous usage).
 func (c *rowContainerHelper) Clear(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(247157)
 	return c.rows.UnsafeReset(ctx)
 }
 
-// Close must be called once the helper is no longer needed to clean up any
-// resources.
 func (c *rowContainerHelper) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(247158)
 	if c.rows != nil {
+		__antithesis_instrumentation__.Notify(247159)
 		c.rows.Close(ctx)
 		c.memMonitor.Stop(ctx)
 		c.diskMonitor.Stop(ctx)
 		c.rows = nil
+	} else {
+		__antithesis_instrumentation__.Notify(247160)
 	}
 }
 
-// rowContainerIterator is a wrapper around rowcontainer.RowIterator that takes
-// care of advancing the underlying iterator and converting the rows to
-// tree.Datums.
 type rowContainerIterator struct {
 	iter rowcontainer.RowIterator
 
@@ -139,11 +133,10 @@ type rowContainerIterator struct {
 	da     tree.DatumAlloc
 }
 
-// newRowContainerIterator returns a new rowContainerIterator that must be
-// closed once no longer needed.
 func newRowContainerIterator(
 	ctx context.Context, c rowContainerHelper, typs []*types.T,
 ) *rowContainerIterator {
+	__antithesis_instrumentation__.Notify(247161)
 	i := &rowContainerIterator{
 		iter:   c.rows.NewIterator(ctx),
 		typs:   typs,
@@ -153,26 +146,42 @@ func newRowContainerIterator(
 	return i
 }
 
-// Next returns the next row of the iterator or an error if encountered. It
-// returns nil, nil when the iterator has been exhausted.
 func (i *rowContainerIterator) Next() (tree.Datums, error) {
+	__antithesis_instrumentation__.Notify(247162)
 	defer i.iter.Next()
 	if valid, err := i.iter.Valid(); err != nil {
+		__antithesis_instrumentation__.Notify(247166)
 		return nil, err
-	} else if !valid {
-		// All rows have been exhausted.
-		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(247167)
+		if !valid {
+			__antithesis_instrumentation__.Notify(247168)
+
+			return nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(247169)
+		}
 	}
+	__antithesis_instrumentation__.Notify(247163)
 	row, err := i.iter.Row()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(247170)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(247171)
 	}
+	__antithesis_instrumentation__.Notify(247164)
 	if err = rowenc.EncDatumRowToDatums(i.typs, i.datums, row, &i.da); err != nil {
+		__antithesis_instrumentation__.Notify(247172)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(247173)
 	}
+	__antithesis_instrumentation__.Notify(247165)
 	return i.datums, nil
 }
 
 func (i *rowContainerIterator) Close() {
+	__antithesis_instrumentation__.Notify(247174)
 	i.iter.Close()
 }

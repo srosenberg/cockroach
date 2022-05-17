@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catprivilege
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
@@ -16,10 +8,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
 )
 
-// Validate validates a privilege descriptor.
 func Validate(
 	p catpb.PrivilegeDescriptor, objectNameKey catalog.NameKey, objectType privilege.ObjectType,
 ) error {
+	__antithesis_instrumentation__.Notify(250884)
 	return p.Validate(
 		objectNameKey.GetParentID(),
 		objectType,
@@ -28,10 +20,10 @@ func Validate(
 	)
 }
 
-// ValidateSuperuserPrivileges validates superuser privileges.
 func ValidateSuperuserPrivileges(
 	p catpb.PrivilegeDescriptor, objectNameKey catalog.NameKey, objectType privilege.ObjectType,
 ) error {
+	__antithesis_instrumentation__.Notify(250885)
 	return p.ValidateSuperuserPrivileges(
 		objectNameKey.GetParentID(),
 		objectType,
@@ -40,15 +32,20 @@ func ValidateSuperuserPrivileges(
 	)
 }
 
-// ValidateDefaultPrivileges validates default privileges.
 func ValidateDefaultPrivileges(p catpb.DefaultPrivilegeDescriptor) error {
+	__antithesis_instrumentation__.Notify(250886)
 	return p.Validate()
 }
 
 func allowedSuperuserPrivileges(objectNameKey catalog.NameKey) privilege.List {
+	__antithesis_instrumentation__.Notify(250887)
 	privs := SystemSuperuserPrivileges(objectNameKey)
 	if privs != nil {
+		__antithesis_instrumentation__.Notify(250889)
 		return privs
+	} else {
+		__antithesis_instrumentation__.Notify(250890)
 	}
+	__antithesis_instrumentation__.Notify(250888)
 	return catpb.DefaultSuperuserPrivileges
 }

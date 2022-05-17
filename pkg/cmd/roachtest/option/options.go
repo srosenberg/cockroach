@@ -1,21 +1,12 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package option
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/roachprod"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 )
 
-// StartOpts is a type that combines the start options needed by roachprod and roachtest.
 type StartOpts struct {
 	RoachprodOpts install.StartOpts
 	RoachtestOpts struct {
@@ -24,12 +15,11 @@ type StartOpts struct {
 	}
 }
 
-// DefaultStartOpts returns a StartOpts populated with default values.
 func DefaultStartOpts() StartOpts {
+	__antithesis_instrumentation__.Notify(44330)
 	return StartOpts{RoachprodOpts: roachprod.DefaultStartOpts()}
 }
 
-// StopOpts is a type that combines the stop options needed by roachprod and roachtest.
 type StopOpts struct {
 	RoachprodOpts roachprod.StopOpts
 	RoachtestOpts struct {
@@ -37,7 +27,7 @@ type StopOpts struct {
 	}
 }
 
-// DefaultStopOpts returns a StopOpts populated with default values.
 func DefaultStopOpts() StopOpts {
+	__antithesis_instrumentation__.Notify(44331)
 	return StopOpts{RoachprodOpts: roachprod.DefaultStopOpts()}
 }

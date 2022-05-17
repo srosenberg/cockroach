@@ -33,6 +33,7 @@ go_library(
         "//pkg/util/cloudinfo",
         "//pkg/util/protoutil",
         "//pkg/util/treeprinter",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_lib_pq//:pq",

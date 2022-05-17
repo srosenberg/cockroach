@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,51 +15,32 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// applyJoinNode implements apply join: the execution component of correlated
-// subqueries. Note that only correlated subqueries that the optimizer's
-// tranformations couldn't decorrelate get planned using apply joins.
-// The node reads rows from the left planDataSource, and for each
-// row, re-plans the right side of the join after replacing its outer columns
-// with the corresponding values from the current row on the left. The new right
-// plan is then executed and joined with the left row according to normal join
-// semantics. This node doesn't support right or full outer joins, or set
-// operations.
 type applyJoinNode struct {
 	joinType descpb.JoinType
 
-	// The data source with no outer columns.
 	input planDataSource
 
-	// pred represents the join predicate.
 	pred *joinPredicate
 
-	// columns contains the metadata for the results of this node.
 	columns colinfo.ResultColumns
 
-	// rightTypes is the schema of the rows produced by the right side of the
-	// join, as built in the optimization phase. Later on, every re-planning of
-	// the right side will emit these same columns.
 	rightTypes []*types.T
 
 	planRightSideFn exec.ApplyJoinPlanRightSideFn
 
 	run struct {
-		// emptyRight is a cached, all-NULL slice that's used for left outer joins
-		// in the case of finding no match on the left.
 		emptyRight tree.Datums
-		// leftRow is the current left row being processed.
+
 		leftRow tree.Datums
-		// leftRowFoundAMatch is set to true when a left row found any match at all,
-		// so that left outer joins and antijoins can know to output a row.
+
 		leftRowFoundAMatch bool
-		// rightRows will be populated with the result of the right side of the join
-		// each time it's run.
+
 		rightRows rowContainerHelper
-		// rightRowsIterator, if non-nil, is the iterator into rightRows.
+
 		rightRowsIterator *rowContainerIterator
-		// out is the full result row, populated on each call to Next.
+
 		out tree.Datums
-		// done is true if the left side has been exhausted.
+
 		done bool
 	}
 }
@@ -79,14 +52,21 @@ func newApplyJoinNode(
 	pred *joinPredicate,
 	planRightSideFn exec.ApplyJoinPlanRightSideFn,
 ) (planNode, error) {
+	__antithesis_instrumentation__.Notify(245239)
 	switch joinType {
 	case descpb.RightOuterJoin, descpb.FullOuterJoin:
+		__antithesis_instrumentation__.Notify(245241)
 		return nil, errors.AssertionFailedf("unsupported right outer apply join: %d", redact.Safe(joinType))
 	case descpb.ExceptAllJoin, descpb.IntersectAllJoin:
+		__antithesis_instrumentation__.Notify(245242)
 		return nil, errors.AssertionFailedf("unsupported apply set op: %d", redact.Safe(joinType))
 	case descpb.RightSemiJoin, descpb.RightAntiJoin:
+		__antithesis_instrumentation__.Notify(245243)
 		return nil, errors.AssertionFailedf("unsupported right semi/anti apply join: %d", redact.Safe(joinType))
+	default:
+		__antithesis_instrumentation__.Notify(245244)
 	}
+	__antithesis_instrumentation__.Notify(245240)
 
 	return &applyJoinNode{
 		joinType:        joinType,
@@ -99,161 +79,216 @@ func newApplyJoinNode(
 }
 
 func (a *applyJoinNode) startExec(params runParams) error {
-	// If needed, pre-allocate a right row of NULL tuples for when the
-	// join predicate fails to match.
+	__antithesis_instrumentation__.Notify(245245)
+
 	if a.joinType == descpb.LeftOuterJoin {
+		__antithesis_instrumentation__.Notify(245247)
 		a.run.emptyRight = make(tree.Datums, len(a.rightTypes))
 		for i := range a.run.emptyRight {
+			__antithesis_instrumentation__.Notify(245248)
 			a.run.emptyRight[i] = tree.DNull
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(245249)
 	}
+	__antithesis_instrumentation__.Notify(245246)
 	a.run.out = make(tree.Datums, len(a.columns))
-	a.run.rightRows.Init(a.rightTypes, params.extendedEvalCtx, "apply-join" /* opName */)
+	a.run.rightRows.Init(a.rightTypes, params.extendedEvalCtx, "apply-join")
 	return nil
 }
 
 func (a *applyJoinNode) Next(params runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(245250)
 	if a.run.done {
+		__antithesis_instrumentation__.Notify(245252)
 		return false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(245253)
 	}
+	__antithesis_instrumentation__.Notify(245251)
 
 	for {
+		__antithesis_instrumentation__.Notify(245254)
 		if a.run.rightRowsIterator != nil {
-			// We have right rows set up - check the next one for a match.
+			__antithesis_instrumentation__.Notify(245260)
+
 			for {
-				// Note that if a.rightTypes has zero length, non-nil rrow is
-				// returned the correct number of times.
+				__antithesis_instrumentation__.Notify(245262)
+
 				rrow, err := a.run.rightRowsIterator.Next()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(245268)
 					return false, err
+				} else {
+					__antithesis_instrumentation__.Notify(245269)
 				}
+				__antithesis_instrumentation__.Notify(245263)
 				if rrow == nil {
-					// We have exhausted all rows from the right side.
+					__antithesis_instrumentation__.Notify(245270)
+
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(245271)
 				}
-				// Compute join.
+				__antithesis_instrumentation__.Notify(245264)
+
 				predMatched, err := a.pred.eval(params.EvalContext(), a.run.leftRow, rrow)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(245272)
 					return false, err
+				} else {
+					__antithesis_instrumentation__.Notify(245273)
 				}
+				__antithesis_instrumentation__.Notify(245265)
 				if !predMatched {
-					// Didn't match? Try with the next right-side row.
+					__antithesis_instrumentation__.Notify(245274)
+
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(245275)
 				}
+				__antithesis_instrumentation__.Notify(245266)
 
 				a.run.leftRowFoundAMatch = true
-				if a.joinType == descpb.LeftAntiJoin ||
-					a.joinType == descpb.LeftSemiJoin {
-					// We found a match, but we're doing an anti or semi join,
-					// so we're done with this left row.
+				if a.joinType == descpb.LeftAntiJoin || func() bool {
+					__antithesis_instrumentation__.Notify(245276)
+					return a.joinType == descpb.LeftSemiJoin == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(245277)
+
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(245278)
 				}
-				// We're doing an ordinary join, so prep the row and emit it.
+				__antithesis_instrumentation__.Notify(245267)
+
 				a.pred.prepareRow(a.run.out, a.run.leftRow, rrow)
 				return true, nil
 			}
+			__antithesis_instrumentation__.Notify(245261)
 
-			// We're either out of right side rows or we broke out of the loop
-			// before consuming all right rows because we found a match for an
-			// anti or semi join. Clear the right rows to prepare them for the
-			// next left row.
 			if err := a.clearRightRows(params); err != nil {
+				__antithesis_instrumentation__.Notify(245279)
 				return false, err
+			} else {
+				__antithesis_instrumentation__.Notify(245280)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(245281)
 		}
-		// We're out of right side rows. Reset the match state for next time.
+		__antithesis_instrumentation__.Notify(245255)
+
 		foundAMatch := a.run.leftRowFoundAMatch
 		a.run.leftRowFoundAMatch = false
 
 		if a.run.leftRow != nil {
-			// If we have a left row already, we have to check to see if we need to
-			// emit rows for semi, outer, or anti joins.
+			__antithesis_instrumentation__.Notify(245282)
+
 			if foundAMatch {
+				__antithesis_instrumentation__.Notify(245283)
 				if a.joinType == descpb.LeftSemiJoin {
-					// We found a match, and we're doing an semi-join, so we're done
-					// with this left row after we output it.
+					__antithesis_instrumentation__.Notify(245284)
+
 					a.pred.prepareRow(a.run.out, a.run.leftRow, nil)
 					a.run.leftRow = nil
 					return true, nil
+				} else {
+					__antithesis_instrumentation__.Notify(245285)
 				}
 			} else {
-				// We found no match. Output LEFT OUTER or ANTI match if necessary.
+				__antithesis_instrumentation__.Notify(245286)
+
 				switch a.joinType {
 				case descpb.LeftOuterJoin:
+					__antithesis_instrumentation__.Notify(245287)
 					a.pred.prepareRow(a.run.out, a.run.leftRow, a.run.emptyRight)
 					a.run.leftRow = nil
 					return true, nil
 				case descpb.LeftAntiJoin:
+					__antithesis_instrumentation__.Notify(245288)
 					a.pred.prepareRow(a.run.out, a.run.leftRow, nil)
 					a.run.leftRow = nil
 					return true, nil
+				default:
+					__antithesis_instrumentation__.Notify(245289)
 				}
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(245290)
 		}
+		__antithesis_instrumentation__.Notify(245256)
 
-		// We need a new row on the left.
 		ok, err := a.input.plan.Next(params)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(245291)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(245292)
 		}
+		__antithesis_instrumentation__.Notify(245257)
 		if !ok {
-			// No more rows on the left. Goodbye!
+			__antithesis_instrumentation__.Notify(245293)
+
 			a.run.done = true
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(245294)
 		}
+		__antithesis_instrumentation__.Notify(245258)
 
-		// Extract the values of the outer columns of the other side of the apply
-		// from the latest input row.
 		leftRow := a.input.plan.Values()
 		a.run.leftRow = leftRow
 
-		// At this point, it's time to do the major lift of apply join: re-planning
-		// the right side of the join using the optimizer, with all outer columns
-		// in the right side replaced by the bindings that were defined by the most
-		// recently read left row.
 		p, err := a.planRightSideFn(newExecFactory(params.p), leftRow)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(245295)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(245296)
 		}
+		__antithesis_instrumentation__.Notify(245259)
 		plan := p.(*planComponents)
 
 		if err := a.runRightSidePlan(params, plan); err != nil {
+			__antithesis_instrumentation__.Notify(245297)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(245298)
 		}
 
-		// We've got fresh right rows. Continue along in the loop, which will deal
-		// with joining the right plan's output with our left row.
 	}
 }
 
-// clearRightRows clears rightRows and resets rightRowsIterator. This function
-// must be called before reusing rightRows and rightRowIterator.
 func (a *applyJoinNode) clearRightRows(params runParams) error {
+	__antithesis_instrumentation__.Notify(245299)
 	if err := a.run.rightRows.Clear(params.ctx); err != nil {
+		__antithesis_instrumentation__.Notify(245301)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(245302)
 	}
+	__antithesis_instrumentation__.Notify(245300)
 	a.run.rightRowsIterator.Close()
 	a.run.rightRowsIterator = nil
 	return nil
 }
 
-// runRightSidePlan runs a planTop that's been generated based on the
-// re-optimized right hand side of the apply join, stashing the result in
-// a.run.rightRows, ready for retrieval. An error indicates that something went
-// wrong during execution of the right hand side of the join, and that we should
-// completely give up on the outer join.
 func (a *applyJoinNode) runRightSidePlan(params runParams, plan *planComponents) error {
+	__antithesis_instrumentation__.Notify(245303)
 	rowResultWriter := NewRowResultWriter(&a.run.rightRows)
 	if err := runPlanInsidePlan(params, plan, rowResultWriter); err != nil {
+		__antithesis_instrumentation__.Notify(245305)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(245306)
 	}
+	__antithesis_instrumentation__.Notify(245304)
 	a.run.rightRowsIterator = newRowContainerIterator(params.ctx, a.run.rightRows, a.rightTypes)
 	return nil
 }
 
-// runPlanInsidePlan is used to run a plan and gather the results in the
-// resultWriter, as part of the execution of an "outer" plan.
 func runPlanInsidePlan(params runParams, plan *planComponents, resultWriter rowResultWriter) error {
+	__antithesis_instrumentation__.Notify(245307)
 	recv := MakeDistSQLReceiver(
 		params.ctx, resultWriter, tree.Rows,
 		params.ExecCfg().RangeDescriptorCache,
@@ -261,31 +296,29 @@ func runPlanInsidePlan(params runParams, plan *planComponents, resultWriter rowR
 		params.ExecCfg().Clock,
 		params.p.extendedEvalCtx.Tracing,
 		params.p.ExecCfg().ContentionRegistry,
-		nil, /* testingPushCallback */
+		nil,
 	)
 	defer recv.Release()
 
 	if len(plan.subqueryPlans) != 0 {
-		// We currently don't support cases when both the "inner" and the
-		// "outer" plans have subqueries due to limitations of how we're
-		// propagating the results of the subqueries.
+		__antithesis_instrumentation__.Notify(245310)
+
 		if len(params.p.curPlan.subqueryPlans) != 0 {
+			__antithesis_instrumentation__.Notify(245313)
 			return unimplemented.NewWithIssue(66447, `apply joins with subqueries in the "inner" and "outer" contexts are not supported`)
+		} else {
+			__antithesis_instrumentation__.Notify(245314)
 		}
-		// Right now curPlan.subqueryPlans are the subqueries from the "outer"
-		// plan (and we know there are none given the check above). If parts of
-		// the "inner" plan refer to the subqueries, we know that they must
-		// refer to the "inner" subqueries. To allow for that to happen we have
-		// to manually replace the subqueries on the planner's curPlan and
-		// restore the original state before exiting.
+		__antithesis_instrumentation__.Notify(245311)
+
 		oldSubqueries := params.p.curPlan.subqueryPlans
 		params.p.curPlan.subqueryPlans = plan.subqueryPlans
 		defer func() {
+			__antithesis_instrumentation__.Notify(245315)
 			params.p.curPlan.subqueryPlans = oldSubqueries
 		}()
-		// Create a separate memory account for the results of the subqueries.
-		// Note that we intentionally defer the closure of the account until we
-		// return from this method (after the main query is executed).
+		__antithesis_instrumentation__.Notify(245312)
+
 		subqueryResultMemAcc := params.p.EvalContext().Mon.MakeBoundAccount()
 		defer subqueryResultMemAcc.Close(params.ctx)
 		if !params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.PlanAndRunSubqueries(
@@ -296,11 +329,16 @@ func runPlanInsidePlan(params runParams, plan *planComponents, resultWriter rowR
 			recv,
 			&subqueryResultMemAcc,
 		) {
+			__antithesis_instrumentation__.Notify(245316)
 			return resultWriter.Err()
+		} else {
+			__antithesis_instrumentation__.Notify(245317)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(245318)
 	}
+	__antithesis_instrumentation__.Notify(245308)
 
-	// Make a copy of the EvalContext so it can be safely modified.
 	evalCtx := params.p.ExtendedEvalContextCopy()
 	plannerCopy := *params.p
 	distributePlan := getPlanDistribution(
@@ -308,8 +346,12 @@ func runPlanInsidePlan(params runParams, plan *planComponents, resultWriter rowR
 	)
 	distributeType := DistributionType(DistributionTypeNone)
 	if distributePlan.WillDistribute() {
+		__antithesis_instrumentation__.Notify(245319)
 		distributeType = DistributionTypeSystemTenantOnly
+	} else {
+		__antithesis_instrumentation__.Notify(245320)
 	}
+	__antithesis_instrumentation__.Notify(245309)
 	planCtx := params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.NewPlanningCtx(
 		params.ctx, evalCtx, &plannerCopy, params.p.txn, distributeType)
 	planCtx.planner.curPlan.planComponents = *plan
@@ -323,14 +365,19 @@ func runPlanInsidePlan(params runParams, plan *planComponents, resultWriter rowR
 }
 
 func (a *applyJoinNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(245321)
 	return a.run.out
 }
 
 func (a *applyJoinNode) Close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(245322)
 	a.input.plan.Close(ctx)
 	a.run.rightRows.Close(ctx)
 	if a.run.rightRowsIterator != nil {
+		__antithesis_instrumentation__.Notify(245323)
 		a.run.rightRowsIterator.Close()
 		a.run.rightRowsIterator = nil
+	} else {
+		__antithesis_instrumentation__.Notify(245324)
 	}
 }

@@ -1,75 +1,79 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package catalog
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/util"
 )
 
-// TableColSet efficiently stores an unordered set of column ids.
 type TableColSet struct {
 	set util.FastIntSet
 }
 
-// MakeTableColSet returns a set initialized with the given values.
 func MakeTableColSet(vals ...descpb.ColumnID) TableColSet {
+	__antithesis_instrumentation__.Notify(268467)
 	var res TableColSet
 	for _, v := range vals {
+		__antithesis_instrumentation__.Notify(268469)
 		res.Add(v)
 	}
+	__antithesis_instrumentation__.Notify(268468)
 	return res
 }
 
-// Add adds a column to the set. No-op if the column is already in the set.
-func (s *TableColSet) Add(col descpb.ColumnID) { s.set.Add(int(col)) }
+func (s *TableColSet) Add(col descpb.ColumnID) {
+	__antithesis_instrumentation__.Notify(268470)
+	s.set.Add(int(col))
+}
 
-// Contains returns true if the set contains the column.
-func (s TableColSet) Contains(col descpb.ColumnID) bool { return s.set.Contains(int(col)) }
+func (s TableColSet) Contains(col descpb.ColumnID) bool {
+	__antithesis_instrumentation__.Notify(268471)
+	return s.set.Contains(int(col))
+}
 
-// Empty returns true if the set is empty.
-func (s TableColSet) Empty() bool { return s.set.Empty() }
+func (s TableColSet) Empty() bool {
+	__antithesis_instrumentation__.Notify(268472)
+	return s.set.Empty()
+}
 
-// Len returns the number of the columns in the set.
-func (s TableColSet) Len() int { return s.set.Len() }
+func (s TableColSet) Len() int { __antithesis_instrumentation__.Notify(268473); return s.set.Len() }
 
-// Next returns the first value in the set which is >= startVal. If there is no
-// value, the second return value is false.
 func (s TableColSet) Next(startVal descpb.ColumnID) (descpb.ColumnID, bool) {
+	__antithesis_instrumentation__.Notify(268474)
 	c, ok := s.set.Next(int(startVal))
 	return descpb.ColumnID(c), ok
 }
 
-// ForEach calls a function for each column in the set (in increasing order).
 func (s TableColSet) ForEach(f func(col descpb.ColumnID)) {
-	s.set.ForEach(func(i int) { f(descpb.ColumnID(i)) })
+	__antithesis_instrumentation__.Notify(268475)
+	s.set.ForEach(func(i int) { __antithesis_instrumentation__.Notify(268476); f(descpb.ColumnID(i)) })
 }
 
-// Ordered returns a slice with all the descpb.ColumnIDs in the set, in
-// increasing order.
 func (s TableColSet) Ordered() []descpb.ColumnID {
+	__antithesis_instrumentation__.Notify(268477)
 	if s.Empty() {
+		__antithesis_instrumentation__.Notify(268480)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(268481)
 	}
+	__antithesis_instrumentation__.Notify(268478)
 	result := make([]descpb.ColumnID, 0, s.Len())
 	s.ForEach(func(i descpb.ColumnID) {
+		__antithesis_instrumentation__.Notify(268482)
 		result = append(result, i)
 	})
+	__antithesis_instrumentation__.Notify(268479)
 	return result
 }
 
-// UnionWith adds all the columns from rhs to this set.
-func (s *TableColSet) UnionWith(rhs TableColSet) { s.set.UnionWith(rhs.set) }
+func (s *TableColSet) UnionWith(rhs TableColSet) {
+	__antithesis_instrumentation__.Notify(268483)
+	s.set.UnionWith(rhs.set)
+}
 
-// String returns a list representation of elements. Sequential runs of positive
-// numbers are shown as ranges. For example, for the set {1, 2, 3  5, 6, 10},
-// the output is "(1-3,5,6,10)".
-func (s TableColSet) String() string { return s.set.String() }
+func (s TableColSet) String() string {
+	__antithesis_instrumentation__.Notify(268484)
+	return s.set.String()
+}

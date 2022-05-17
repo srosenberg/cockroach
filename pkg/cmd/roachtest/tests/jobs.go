@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,22 +19,10 @@ import (
 
 type jobStarter func(c cluster.Cluster, t test.Test) (string, error)
 
-// jobSurvivesNodeShutdown is a helper that tests that a given job,
-// running on the specified gatewayNode will still complete successfully
-// if nodeToShutdown is shutdown partway through execution.
-//
-// This helper assumes:
-// - That the job is will take at least 2 seconds to complete.
-// - That the necessary setup is done (e.g. any data that the job relies on is
-// already loaded) so that `query` can be run on its own to kick off the job.
-// - That the statement running the job is a detached statement, and does not
-// block until the job completes.
-//
-// The helper waits for 3x replication on existing ranges before
-// running the provided jobStarter.
 func jobSurvivesNodeShutdown(
 	ctx context.Context, t test.Test, c cluster.Cluster, nodeToShutdown int, startJob jobStarter,
 ) {
+	__antithesis_instrumentation__.Notify(48796)
 	watcherNode := 1 + (nodeToShutdown)%c.Spec().NodeCount
 	target := c.Node(nodeToShutdown)
 	t.L().Printf("test has chosen shutdown target node %d, and watcher node %d",
@@ -52,14 +32,12 @@ func jobSurvivesNodeShutdown(
 
 	m := c.NewMonitor(ctx)
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(48799)
 		defer close(jobIDCh)
 
 		watcherDB := c.Conn(ctx, t.L(), watcherNode)
 		defer watcherDB.Close()
 
-		// Wait for 3x replication to ensure that the cluster
-		// is in a healthy state before we start bringing any
-		// nodes down.
 		t.Status("waiting for cluster to be 3x replicated")
 		err := WaitFor3XReplication(ctx, t, watcherDB)
 		require.NoError(t, err)
@@ -68,8 +46,12 @@ func jobSurvivesNodeShutdown(
 		var jobID string
 		jobID, err = startJob(c, t)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(48801)
 			return errors.Wrap(err, "starting the job")
+		} else {
+			__antithesis_instrumentation__.Notify(48802)
 		}
+		__antithesis_instrumentation__.Notify(48800)
 		t.L().Printf("started running job with ID %s", jobID)
 		jobIDCh <- jobID
 
@@ -77,86 +59,122 @@ func jobSurvivesNodeShutdown(
 		ticker := time.NewTicker(pollInterval)
 		var status string
 		for {
+			__antithesis_instrumentation__.Notify(48803)
 			select {
 			case <-ticker.C:
+				__antithesis_instrumentation__.Notify(48804)
 				err := watcherDB.QueryRowContext(ctx, `SELECT status FROM [SHOW JOBS] WHERE job_id=$1`, jobID).Scan(&status)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(48807)
 					return errors.Wrap(err, "getting the job status")
+				} else {
+					__antithesis_instrumentation__.Notify(48808)
 				}
+				__antithesis_instrumentation__.Notify(48805)
 				jobStatus := jobs.Status(status)
 				switch jobStatus {
 				case jobs.StatusSucceeded:
+					__antithesis_instrumentation__.Notify(48809)
 					t.Status("job completed")
 					return nil
 				case jobs.StatusRunning:
+					__antithesis_instrumentation__.Notify(48810)
 					t.L().Printf("job %s still running, waiting to succeed", jobID)
 				default:
-					// Waiting for job to complete.
+					__antithesis_instrumentation__.Notify(48811)
+
 					return errors.Newf("unexpectedly found job %s in state %s", jobID, status)
 				}
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(48806)
 				return errors.Wrap(ctx.Err(), "context canceled while waiting for job to finish")
 			}
 		}
 	})
+	__antithesis_instrumentation__.Notify(48797)
 
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(48812)
 		jobID, ok := <-jobIDCh
 		if !ok {
+			__antithesis_instrumentation__.Notify(48816)
 			return errors.New("job never created")
+		} else {
+			__antithesis_instrumentation__.Notify(48817)
 		}
+		__antithesis_instrumentation__.Notify(48813)
 
-		// Check once a second to see if the job has started running.
 		watcherDB := c.Conn(ctx, t.L(), watcherNode)
 		defer watcherDB.Close()
 		timeToWait := time.Second
 		timer := timeutil.Timer{}
 		jobRunning := false
 		for {
+			__antithesis_instrumentation__.Notify(48818)
 			var status string
 			err := watcherDB.QueryRowContext(ctx, `SELECT status FROM [SHOW JOBS] WHERE job_id=$1`, jobID).Scan(&status)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(48822)
 				return errors.Wrap(err, "getting the job status")
+			} else {
+				__antithesis_instrumentation__.Notify(48823)
 			}
+			__antithesis_instrumentation__.Notify(48819)
 			switch jobs.Status(status) {
 			case jobs.StatusPending:
+				__antithesis_instrumentation__.Notify(48824)
 			case jobs.StatusRunning:
+				__antithesis_instrumentation__.Notify(48825)
 				jobRunning = true
 			default:
+				__antithesis_instrumentation__.Notify(48826)
 				return errors.Newf("job too fast! job got to state %s before the target node could be shutdown",
 					status)
 			}
+			__antithesis_instrumentation__.Notify(48820)
 			t.L().Printf(`status %s`, status)
 			timer.Reset(timeToWait)
 			select {
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(48827)
 				return errors.Wrapf(ctx.Err(), "stopping test, did not shutdown node")
 			case <-timer.C:
+				__antithesis_instrumentation__.Notify(48828)
 				timer.Read = true
 			}
-			// Break a second after confirming the job is running to ensure the node shutdown
-			// "in the middle" of running the job, right after the job began running.
+			__antithesis_instrumentation__.Notify(48821)
+
 			if jobRunning {
+				__antithesis_instrumentation__.Notify(48829)
 				break
+			} else {
+				__antithesis_instrumentation__.Notify(48830)
 			}
 		}
+		__antithesis_instrumentation__.Notify(48814)
 
 		t.L().Printf(`stopping node %s`, target)
 		if err := c.StopE(ctx, t.L(), option.DefaultStopOpts(), target); err != nil {
+			__antithesis_instrumentation__.Notify(48831)
 			return errors.Wrapf(err, "could not stop node %s", target)
+		} else {
+			__antithesis_instrumentation__.Notify(48832)
 		}
+		__antithesis_instrumentation__.Notify(48815)
 		t.L().Printf("stopped node %s", target)
 
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(48798)
 
 	m.ExpectDeath()
 	m.Wait()
 
-	// NB: the roachtest harness checks that at the end of the test, all nodes
-	// that have data also have a running process.
 	t.Status(fmt.Sprintf("restarting %s (node restart test is done)\n", target))
 	if err := c.StartE(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), target); err != nil {
+		__antithesis_instrumentation__.Notify(48833)
 		t.Fatal(errors.Wrapf(err, "could not restart node %s", target))
+	} else {
+		__antithesis_instrumentation__.Notify(48834)
 	}
 }

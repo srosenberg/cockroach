@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sidetransport
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -35,37 +27,18 @@ import (
 	"google.golang.org/grpc"
 )
 
-// Sender represents the sending-side of the closed timestamps "side-transport".
-// Its role is to periodically advance the closed timestamps of all the ranges
-// with leases on the current node and to communicate these closed timestamps to
-// all other nodes that have replicas for any of these ranges.
-//
-// This side-transport is particularly important for range that are not seeing
-// frequent writes; in the absence of Raft proposals, this is the only way for
-// the closed timestamps to advance.
-//
-// The Sender is notified when leases are acquired or lost by the current node.
-// The sender periodically loops through all the ranges with local leases, tries
-// to advance the closed timestamp of each range according to its policy, and
-// then publishes a message with the update to all other nodes with
-// non-leaseholder replicas. Every node receives the same messages; for
-// efficiency the sender does not keep track of which follower node is
-// interested in which ranges. On the receiver side the closed timestamp updates
-// are processed lazily, so it doesn't particularly matter that each receiver is
-// told about ranges that it doesn't care about.
 type Sender struct {
 	stopper *stop.Stopper
 	st      *cluster.Settings
 	clock   *hlc.Clock
 	nodeID  roachpb.NodeID
-	// connFactory is used to establish new connections.
+
 	connFactory connFactory
 
 	trackedMu struct {
 		syncutil.Mutex
 		streamState
-		// closingFailures buckets the failures to advance the closed timestamps of
-		// ranges for the last publishing cycle.
+
 		closingFailures [MaxReason]int
 	}
 
@@ -74,35 +47,19 @@ type Sender struct {
 		leaseholders map[roachpb.RangeID]leaseholder
 	}
 
-	// buf contains recent messages published to connections. Adding a message
-	// to this buffer signals the connections to send it on their streams.
 	buf *updatesBuf
 
-	// conns contains connections to all nodes with follower replicas of any of
-	// the registered leaseholder. connections are added as nodes get replicas for
-	// ranges with local leases and removed when the respective node no longer has
-	// any replicas with local leases. A conn persists in this map across
-	// underlying network connects and disconnects. As long as it's in the map, it
-	// will continuously try to reconnect.
 	connsMu struct {
 		syncutil.Mutex
 		conns map[roachpb.NodeID]conn
 	}
 }
 
-// streamState encapsulates the state that's tracked by a stream. Both the
-// Sender and the Receiver use this struct and, for a given stream, both ends
-// are supposed to correspond (modulo message delays), in wonderful symmetry.
 type streamState struct {
-	// lastSeqNum is the sequence number of the last message published.
 	lastSeqNum ctpb.SeqNum
-	// lastClosed is the closed timestamp published for each policy in the
-	// last message.
+
 	lastClosed [roachpb.MAX_CLOSED_TIMESTAMP_POLICY]hlc.Timestamp
-	// tracked maintains the information that was communicated to connections in
-	// the last sent message (implicitly or explicitly). A range enters this
-	// structure as soon as it's included in a message, and exits it when it's
-	// removed through Update.Removed.
+
 	tracked map[roachpb.RangeID]trackedRange
 }
 
@@ -110,42 +67,20 @@ type connTestingKnobs struct {
 	beforeSend func(destNodeID roachpb.NodeID, msg *ctpb.Update)
 }
 
-// trackedRange contains the information that the side-transport last published
-// about a particular range.
 type trackedRange struct {
 	lai    ctpb.LAI
 	policy roachpb.RangeClosedTimestampPolicy
 }
 
-// leaseholder represents a leaseholder replicas that has been registered with
-// the sender and can send closed timestamp updates through the side transport.
 type leaseholder struct {
 	Replica
 	leaseSeq roachpb.LeaseSequence
 }
 
-// Replica represents a *Replica object, but with only the capabilities needed
-// by the closed timestamp side transport to accomplish its job.
 type Replica interface {
-	// Accessors.
 	StoreID() roachpb.StoreID
 	GetRangeID() roachpb.RangeID
 
-	// BumpSideTransportClosed advances the range's closed timestamp if it can.
-	// If the closed timestamp is advanced, the function synchronizes with
-	// incoming requests, making sure that future requests are not allowed to
-	// write below the new closed timestamp.
-	//
-	// Returns false is the desired timestamp could not be closed. This can
-	// happen if the lease is no longer valid, if the range has proposals
-	// in-flight, if there are requests evaluating above the desired closed
-	// timestamp, or if the range has already closed a higher timestamp.
-	//
-	// If the closed timestamp was advanced, the function returns a LAI to be
-	// attached to the newly closed timestamp.
-	//
-	// The desired closed timestamp is passed as a map from range policy to
-	// timestamp; this function looks up the entry for this range.
 	BumpSideTransportClosed(
 		ctx context.Context,
 		now hlc.ClockTimestamp,
@@ -153,31 +88,19 @@ type Replica interface {
 	) BumpSideTransportClosedResult
 }
 
-// BumpSideTransportClosedResult represents the retval of BumpSideTransportClosed.
 type BumpSideTransportClosedResult struct {
-	// OK is set if the desired timestamp can be closed. If not set, FailReason is
-	// set.
 	OK         bool
 	FailReason CantCloseReason
 
-	// Desc is set regardless of OK.
 	Desc *roachpb.RangeDescriptor
 
-	// Fields only set when ok.
-
-	// The range's current LAI, to be associated with the closed timestamp.
 	LAI ctpb.LAI
-	// The range's current policy.
+
 	Policy roachpb.RangeClosedTimestampPolicy
 }
 
-// CantCloseReason enumerates the reasons why BunpSideTransportClosed might fail
-// to close a timestamp.
 type CantCloseReason int
 
-//go:generate stringer -type=CantCloseReason
-
-// Reasons for failing to close a timestamp.
 const (
 	ReasonUnknown CantCloseReason = iota
 	ReplicaDestroyed
@@ -189,17 +112,17 @@ const (
 	MaxReason
 )
 
-// NewSender creates a Sender. Run must be called on it afterwards to get it to
-// start publishing closed timestamps.
 func NewSender(
 	stopper *stop.Stopper, st *cluster.Settings, clock *hlc.Clock, dialer *nodedialer.Dialer,
 ) *Sender {
+	__antithesis_instrumentation__.Notify(98700)
 	return newSenderWithConnFactory(stopper, st, clock, newRPCConnFactory(dialer, connTestingKnobs{}))
 }
 
 func newSenderWithConnFactory(
 	stopper *stop.Stopper, st *cluster.Settings, clock *hlc.Clock, connFactory connFactory,
 ) *Sender {
+	__antithesis_instrumentation__.Notify(98701)
 	s := &Sender{
 		stopper:     stopper,
 		st:          st,
@@ -213,93 +136,111 @@ func newSenderWithConnFactory(
 	return s
 }
 
-// Run starts a goroutine that periodically closes new timestamps for all the
-// ranges where the leaseholder is on this node.
-//
-// nodeID is the id of the local node. Used to avoid connecting to ourselves.
-// This is not know at construction time.
 func (s *Sender) Run(ctx context.Context, nodeID roachpb.NodeID) {
+	__antithesis_instrumentation__.Notify(98702)
 	s.nodeID = nodeID
 	confCh := make(chan struct{}, 1)
 	confChanged := func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(98704)
 		select {
 		case confCh <- struct{}{}:
+			__antithesis_instrumentation__.Notify(98705)
 		default:
+			__antithesis_instrumentation__.Notify(98706)
 		}
 	}
+	__antithesis_instrumentation__.Notify(98703)
 	closedts.SideTransportCloseInterval.SetOnChange(&s.st.SV, confChanged)
 
-	_ /* err */ = s.stopper.RunAsyncTask(ctx, "closedts side-transport publisher",
+	_ = s.stopper.RunAsyncTask(ctx, "closedts side-transport publisher",
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(98707)
 			defer func() {
-				// Closing the buffer signals all connections to quit.
+				__antithesis_instrumentation__.Notify(98709)
+
 				s.buf.Close()
 			}()
+			__antithesis_instrumentation__.Notify(98708)
 
 			timer := timeutil.NewTimer()
 			defer timer.Stop()
 			for {
+				__antithesis_instrumentation__.Notify(98710)
 				interval := closedts.SideTransportCloseInterval.Get(&s.st.SV)
 				if interval > 0 {
+					__antithesis_instrumentation__.Notify(98712)
 					timer.Reset(interval)
 				} else {
-					// Disable the side-transport.
+					__antithesis_instrumentation__.Notify(98713)
+
 					timer.Stop()
 					timer = timeutil.NewTimer()
 				}
+				__antithesis_instrumentation__.Notify(98711)
 				select {
 				case <-timer.C:
+					__antithesis_instrumentation__.Notify(98714)
 					timer.Read = true
 					s.publish(ctx)
 				case <-confCh:
-					// Loop around to use the updated timer.
+					__antithesis_instrumentation__.Notify(98715)
+
 					continue
 				case <-s.stopper.ShouldQuiesce():
+					__antithesis_instrumentation__.Notify(98716)
 					return
 				}
 			}
 		})
 }
 
-// RegisterLeaseholder adds a replica to the leaseholders collection. From now
-// on, until the replica is unregistered, the side-transport will try to advance
-// this replica's closed timestamp.
 func (s *Sender) RegisterLeaseholder(
 	ctx context.Context, r Replica, leaseSeq roachpb.LeaseSequence,
 ) {
+	__antithesis_instrumentation__.Notify(98717)
 	s.leaseholdersMu.Lock()
 	defer s.leaseholdersMu.Unlock()
 
 	if lh, ok := s.leaseholdersMu.leaseholders[r.GetRangeID()]; ok {
-		// The leaseholder is already registered. If we're already aware of this
-		// or a newer lease, there's nothing to do.
+		__antithesis_instrumentation__.Notify(98719)
+
 		if lh.leaseSeq >= leaseSeq {
+			__antithesis_instrumentation__.Notify(98720)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(98721)
 		}
-		// Otherwise, update the leaseholder, which may be different object if
-		// the lease moved between replicas for the same range on the same node
-		// but on different stores.
+
+	} else {
+		__antithesis_instrumentation__.Notify(98722)
 	}
+	__antithesis_instrumentation__.Notify(98718)
 	s.leaseholdersMu.leaseholders[r.GetRangeID()] = leaseholder{
 		Replica:  r,
 		leaseSeq: leaseSeq,
 	}
 }
 
-// UnregisterLeaseholder removes a replica from the leaseholders collection, if
-// the replica is currently tracked.
 func (s *Sender) UnregisterLeaseholder(
 	ctx context.Context, storeID roachpb.StoreID, rangeID roachpb.RangeID,
 ) {
+	__antithesis_instrumentation__.Notify(98723)
 	s.leaseholdersMu.Lock()
 	defer s.leaseholdersMu.Unlock()
 
-	if lh, ok := s.leaseholdersMu.leaseholders[rangeID]; ok && lh.StoreID() == storeID {
+	if lh, ok := s.leaseholdersMu.leaseholders[rangeID]; ok && func() bool {
+		__antithesis_instrumentation__.Notify(98724)
+		return lh.StoreID() == storeID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(98725)
 		delete(s.leaseholdersMu.leaseholders, rangeID)
+	} else {
+		__antithesis_instrumentation__.Notify(98726)
 	}
 }
 
 func (s *Sender) publish(ctx context.Context) hlc.ClockTimestamp {
+	__antithesis_instrumentation__.Notify(98727)
 	s.trackedMu.Lock()
 	defer s.trackedMu.Unlock()
 	log.VEventf(ctx, 4, "side-transport generating a new message")
@@ -310,22 +251,18 @@ func (s *Sender) publish(ctx context.Context) hlc.ClockTimestamp {
 		ClosedTimestamps: make([]ctpb.Update_GroupUpdate, len(s.trackedMu.lastClosed)),
 	}
 
-	// Determine the message's sequence number.
 	s.trackedMu.lastSeqNum++
 	msg.SeqNum = s.trackedMu.lastSeqNum
-	// The first message produced is essentially a snapshot, since it has no
-	// previous state to reference.
+
 	msg.Snapshot = msg.SeqNum == 1
 
-	// Fix the closed timestamps that will be communicated to by this message.
-	// These timestamps (one per range policy) will apply to all the ranges
-	// included in message.
 	now := s.clock.NowAsClockTimestamp()
 	maxClockOffset := s.clock.MaxOffset()
 	lagTargetDuration := closedts.TargetDuration.Get(&s.st.SV)
 	leadTargetOverride := closedts.LeadForGlobalReadsOverride.Get(&s.st.SV)
 	sideTransportCloseInterval := closedts.SideTransportCloseInterval.Get(&s.st.SV)
 	for i := range s.trackedMu.lastClosed {
+		__antithesis_instrumentation__.Notify(98732)
 		pol := roachpb.RangeClosedTimestampPolicy(i)
 		target := closedts.TargetForPolicy(
 			now,
@@ -341,336 +278,371 @@ func (s *Sender) publish(ctx context.Context) hlc.ClockTimestamp {
 			ClosedTimestamp: target,
 		}
 	}
+	__antithesis_instrumentation__.Notify(98728)
 
-	// Make a copy of the leaseholders map, in order to release its mutex
-	// quickly. We can't hold this mutex while calling into any replicas (and
-	// locking the replica) because replicas call into the Sender and take
-	// leaseholdersMu through Register/UnregisterLeaseholder.
 	s.leaseholdersMu.Lock()
 	leaseholders := make(map[roachpb.RangeID]leaseholder, len(s.leaseholdersMu.leaseholders))
 	for k, v := range s.leaseholdersMu.leaseholders {
+		__antithesis_instrumentation__.Notify(98733)
 		leaseholders[k] = v
 	}
+	__antithesis_instrumentation__.Notify(98729)
 	s.leaseholdersMu.Unlock()
 
-	// We'll accumulate all the nodes we need to connect to in order to check if
-	// we need to open new connections or close existing ones.
 	nodesWithFollowers := util.MakeFastIntSet()
 
-	// If there's any tracked ranges for which we're not the leaseholder any more,
-	// we need to untrack them and tell the connections about it.
 	for rid := range s.trackedMu.tracked {
+		__antithesis_instrumentation__.Notify(98734)
 		if _, ok := leaseholders[rid]; !ok {
+			__antithesis_instrumentation__.Notify(98735)
 			msg.Removed = append(msg.Removed, rid)
 			delete(s.trackedMu.tracked, rid)
+		} else {
+			__antithesis_instrumentation__.Notify(98736)
 		}
 	}
+	__antithesis_instrumentation__.Notify(98730)
 
-	// Iterate through each leaseholder and determine whether it can be part of
-	// this update or not.
 	for _, lh := range leaseholders {
+		__antithesis_instrumentation__.Notify(98737)
 		lhRangeID := lh.GetRangeID()
 		lastMsg, tracked := s.trackedMu.tracked[lhRangeID]
 
-		// Check whether the desired timestamp can be closed on this range.
 		closeRes := lh.BumpSideTransportClosed(ctx, now, s.trackedMu.lastClosed)
 
-		// Ensure that we're communicating with all of the range's followers. Note
-		// that we're including this range's followers before deciding below if the
-		// current message will include this range; we don't want dynamic conditions
-		// about the activity of this range to dictate the opening and closing of
-		// connections to the other nodes.
 		repls := closeRes.Desc.Replicas().Descriptors()
 		for i := range repls {
+			__antithesis_instrumentation__.Notify(98741)
 			nodesWithFollowers.Add(int(repls[i].NodeID))
 		}
+		__antithesis_instrumentation__.Notify(98738)
 
 		if !closeRes.OK {
+			__antithesis_instrumentation__.Notify(98742)
 			s.trackedMu.closingFailures[closeRes.FailReason]++
-			// We can't close the desired timestamp. If this range was tracked, we
-			// need to un-track it.
+
 			if tracked {
+				__antithesis_instrumentation__.Notify(98744)
 				msg.Removed = append(msg.Removed, lhRangeID)
 				delete(s.trackedMu.tracked, lhRangeID)
+			} else {
+				__antithesis_instrumentation__.Notify(98745)
 			}
+			__antithesis_instrumentation__.Notify(98743)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(98746)
 		}
+		__antithesis_instrumentation__.Notify(98739)
 
-		// Check whether the range needs to be explicitly updated through the
-		// current message, or if its update can be implicit.
 		needExplicit := false
 		if !tracked {
-			// If the range was not included in the last message, we need to include
-			// it now to start "tracking" it in the side-transport.
+			__antithesis_instrumentation__.Notify(98747)
+
 			needExplicit = true
-		} else if lastMsg.lai < closeRes.LAI {
-			// If the range's LAI has changed, we need to explicitly publish the new
-			// LAI.
-			needExplicit = true
-		} else if lastMsg.policy != closeRes.Policy {
-			// If the policy changed, we need to explicitly publish that; the
-			// receiver will updates its bookkeeping to indicate that this range is
-			// updated through implicit updates for the new policy.
-			needExplicit = true
+		} else {
+			__antithesis_instrumentation__.Notify(98748)
+			if lastMsg.lai < closeRes.LAI {
+				__antithesis_instrumentation__.Notify(98749)
+
+				needExplicit = true
+			} else {
+				__antithesis_instrumentation__.Notify(98750)
+				if lastMsg.policy != closeRes.Policy {
+					__antithesis_instrumentation__.Notify(98751)
+
+					needExplicit = true
+				} else {
+					__antithesis_instrumentation__.Notify(98752)
+				}
+			}
 		}
+		__antithesis_instrumentation__.Notify(98740)
 		if needExplicit {
+			__antithesis_instrumentation__.Notify(98753)
 			msg.AddedOrUpdated = append(msg.AddedOrUpdated, ctpb.Update_RangeUpdate{
 				RangeID: lhRangeID,
 				LAI:     closeRes.LAI,
 				Policy:  closeRes.Policy,
 			})
 			s.trackedMu.tracked[lhRangeID] = trackedRange{lai: closeRes.LAI, policy: closeRes.Policy}
+		} else {
+			__antithesis_instrumentation__.Notify(98754)
 		}
 	}
 
-	// Close connections to the nodes that no longer need any info from us
-	// (because they don't have replicas for any of the ranges with leases on this
-	// node).
 	{
+		__antithesis_instrumentation__.Notify(98755)
 		s.connsMu.Lock()
 		for nodeID, c := range s.connsMu.conns {
+			__antithesis_instrumentation__.Notify(98758)
 			if !nodesWithFollowers.Contains(int(nodeID)) {
+				__antithesis_instrumentation__.Notify(98759)
 				delete(s.connsMu.conns, nodeID)
 				c.close()
+			} else {
+				__antithesis_instrumentation__.Notify(98760)
 			}
 		}
+		__antithesis_instrumentation__.Notify(98756)
 
-		// Open connections to any node that needs info from us and is missing a conn.
 		nodesWithFollowers.ForEach(func(nid int) {
+			__antithesis_instrumentation__.Notify(98761)
 			nodeID := roachpb.NodeID(nid)
-			// Note that we don't open a connection to ourselves. The timestamps that
-			// we're closing are written directly to the sideTransportClosedTimestamp
-			// fields of the local replicas in BumpSideTransportClosed.
-			if _, ok := s.connsMu.conns[nodeID]; !ok && nodeID != s.nodeID {
+
+			if _, ok := s.connsMu.conns[nodeID]; !ok && func() bool {
+				__antithesis_instrumentation__.Notify(98762)
+				return nodeID != s.nodeID == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(98763)
 				c := s.connFactory.new(s, nodeID)
 				c.run(ctx, s.stopper)
 				s.connsMu.conns[nodeID] = c
+			} else {
+				__antithesis_instrumentation__.Notify(98764)
 			}
 		})
+		__antithesis_instrumentation__.Notify(98757)
 		s.connsMu.Unlock()
 	}
+	__antithesis_instrumentation__.Notify(98731)
 
-	// Publish the new message to all connections.
 	log.VEventf(ctx, 4, "side-transport publishing message with closed timestamps: %v (%v)", msg.ClosedTimestamps, msg)
 	s.buf.Push(ctx, msg)
 
-	// Return the publication time, for tests.
 	return now
 }
 
-// GetSnapshot generates an update that contains all the sender's state (as
-// opposed to being an incremental delta since a previous message). The returned
-// msg will have the `snapshot` field set, and a sequence number indicating
-// where to resume sending incremental updates.
 func (s *Sender) GetSnapshot() *ctpb.Update {
+	__antithesis_instrumentation__.Notify(98765)
 	s.trackedMu.Lock()
 	defer s.trackedMu.Unlock()
 
 	msg := &ctpb.Update{
 		NodeID: s.nodeID,
-		// Assigning this SeqNum means that the next incremental sent needs to be
-		// lastSeqNum+1. Notice that GetSnapshot synchronizes with the publishing of
-		// of incremental messages.
+
 		SeqNum:           s.trackedMu.lastSeqNum,
 		Snapshot:         true,
 		ClosedTimestamps: make([]ctpb.Update_GroupUpdate, len(s.trackedMu.lastClosed)),
 		AddedOrUpdated:   make([]ctpb.Update_RangeUpdate, 0, len(s.trackedMu.tracked)),
 	}
 	for pol, ts := range s.trackedMu.lastClosed {
+		__antithesis_instrumentation__.Notify(98768)
 		msg.ClosedTimestamps[pol] = ctpb.Update_GroupUpdate{
 			Policy:          roachpb.RangeClosedTimestampPolicy(pol),
 			ClosedTimestamp: ts,
 		}
 	}
+	__antithesis_instrumentation__.Notify(98766)
 	for rid, r := range s.trackedMu.tracked {
+		__antithesis_instrumentation__.Notify(98769)
 		msg.AddedOrUpdated = append(msg.AddedOrUpdated, ctpb.Update_RangeUpdate{
 			RangeID: rid,
 			LAI:     r.lai,
 			Policy:  r.policy,
 		})
 	}
+	__antithesis_instrumentation__.Notify(98767)
 	return msg
 }
 
-// updatesBuf is a circular buffer of Updates. It's created with a given
-// capacity and, once it fills up, new items overwrite the oldest ones. It lets
-// consumers query for the update with a particular sequence number and it lets
-// queries block until the next update is produced.
 type updatesBuf struct {
 	mu struct {
 		syncutil.Mutex
-		// updated is signaled when a new item is inserted.
+
 		updated sync.Cond
-		// data contains pointers to the Updates.
+
 		data []*ctpb.Update
-		// head points to the earliest update in the buffer. If the buffer is empty,
-		// head is 0 and the respective slot is nil.
-		//
-		// tail points to the next slot to be written to. When the buffer is full,
-		// tail == head meaning that the head will be overwritten by the next
-		// insertion.
+
 		head, tail int
-		// closed is set by the producer to signal the consumers to exit.
+
 		closed bool
 	}
 }
 
-// Size the buffer such that a stream sender goroutine can be blocked for a
-// little while and not have to send a snapshot when it resumes.
 const updatesBufSize = 50
 
 func newUpdatesBuf() *updatesBuf {
+	__antithesis_instrumentation__.Notify(98770)
 	buf := &updatesBuf{}
 	buf.mu.updated.L = &buf.mu
 	buf.mu.data = make([]*ctpb.Update, updatesBufSize)
 	return buf
 }
 
-// Push adds a new update to the back of the buffer.
 func (b *updatesBuf) Push(ctx context.Context, update *ctpb.Update) {
+	__antithesis_instrumentation__.Notify(98771)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// If the buffer is not empty, sanity check the seq num.
 	if b.sizeLocked() != 0 {
+		__antithesis_instrumentation__.Notify(98774)
 		lastIdx := b.lastIdxLocked()
 		if prevSeq := b.mu.data[lastIdx].SeqNum; prevSeq != update.SeqNum-1 {
+			__antithesis_instrumentation__.Notify(98775)
 			log.Fatalf(ctx, "bad sequence number; expected %d, got %d", prevSeq+1, update.SeqNum)
+		} else {
+			__antithesis_instrumentation__.Notify(98776)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(98777)
 	}
+	__antithesis_instrumentation__.Notify(98772)
 
 	overwrite := b.fullLocked()
 	b.mu.data[b.mu.tail] = update
 	b.mu.tail = (b.mu.tail + 1) % len(b.mu.data)
-	// If the tail just overwrote the head, move the head.
-	if overwrite {
-		b.mu.head = (b.mu.head + 1) % len(b.mu.data)
-	}
 
-	// Notify everybody who might have been waiting for this message - we expect
-	// all the connections to be blocked waiting.
+	if overwrite {
+		__antithesis_instrumentation__.Notify(98778)
+		b.mu.head = (b.mu.head + 1) % len(b.mu.data)
+	} else {
+		__antithesis_instrumentation__.Notify(98779)
+	}
+	__antithesis_instrumentation__.Notify(98773)
+
 	b.mu.updated.Broadcast()
 }
 
 func (b *updatesBuf) lastIdxLocked() int {
+	__antithesis_instrumentation__.Notify(98780)
 	lastIdx := b.mu.tail - 1
 	if lastIdx < 0 {
+		__antithesis_instrumentation__.Notify(98782)
 		lastIdx += len(b.mu.data)
+	} else {
+		__antithesis_instrumentation__.Notify(98783)
 	}
+	__antithesis_instrumentation__.Notify(98781)
 	return lastIdx
 }
 
-// GetBySeq looks through the buffer and returns the update with the requested
-// sequence number. It's OK to request a seqNum one higher than the highest
-// produced; the call will block until the message is produced.
-//
-// If the requested message is too old and is no longer in the buffer, returns nil.
-//
-// The bool retval is set to false if the producer has closed the buffer. In
-// that case, the consumers should quit.
 func (b *updatesBuf) GetBySeq(ctx context.Context, seqNum ctpb.SeqNum) (*ctpb.Update, bool) {
+	__antithesis_instrumentation__.Notify(98784)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// Loop until the requested seqNum is added to the buffer.
 	for {
+		__antithesis_instrumentation__.Notify(98785)
 		if b.mu.closed {
+			__antithesis_instrumentation__.Notify(98791)
 			return nil, false
+		} else {
+			__antithesis_instrumentation__.Notify(98792)
 		}
+		__antithesis_instrumentation__.Notify(98786)
 
 		var firstSeq, lastSeq ctpb.SeqNum
 		if b.sizeLocked() == 0 {
+			__antithesis_instrumentation__.Notify(98793)
 			firstSeq, lastSeq = 0, 0
 		} else {
+			__antithesis_instrumentation__.Notify(98794)
 			firstSeq, lastSeq = b.mu.data[b.mu.head].SeqNum, b.mu.data[b.lastIdxLocked()].SeqNum
 		}
+		__antithesis_instrumentation__.Notify(98787)
 		if seqNum < firstSeq {
-			// Requesting a message that's not in the buffer any more.
+			__antithesis_instrumentation__.Notify(98795)
+
 			return nil, true
+		} else {
+			__antithesis_instrumentation__.Notify(98796)
 		}
-		// If the requested msg has not been produced yet, block.
+		__antithesis_instrumentation__.Notify(98788)
+
 		if seqNum == lastSeq+1 {
+			__antithesis_instrumentation__.Notify(98797)
 			b.mu.updated.Wait()
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(98798)
 		}
+		__antithesis_instrumentation__.Notify(98789)
 		if seqNum > lastSeq+1 {
+			__antithesis_instrumentation__.Notify(98799)
 			log.Fatalf(ctx, "skipping sequence numbers; requested: %d, last: %d", seqNum, lastSeq)
+		} else {
+			__antithesis_instrumentation__.Notify(98800)
 		}
+		__antithesis_instrumentation__.Notify(98790)
 		idx := (b.mu.head + (int)(seqNum-firstSeq)) % len(b.mu.data)
 		return b.mu.data[idx], true
 	}
 }
 
 func (b *updatesBuf) sizeLocked() int {
+	__antithesis_instrumentation__.Notify(98801)
 	if b.mu.head < b.mu.tail {
+		__antithesis_instrumentation__.Notify(98802)
 		return b.mu.tail - b.mu.head
-	} else if b.mu.head == b.mu.tail {
-		// The buffer is either empty or full.
-		// Since there's no popping from the buffer, it can only be empty if nothing
-		// was ever pushed to it.
-		if b.mu.head == 0 && b.mu.data[0] == nil {
-			return 0
-		}
-		return len(b.mu.data)
 	} else {
-		return len(b.mu.data) + b.mu.tail - b.mu.head
+		__antithesis_instrumentation__.Notify(98803)
+		if b.mu.head == b.mu.tail {
+			__antithesis_instrumentation__.Notify(98804)
+
+			if b.mu.head == 0 && func() bool {
+				__antithesis_instrumentation__.Notify(98806)
+				return b.mu.data[0] == nil == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(98807)
+				return 0
+			} else {
+				__antithesis_instrumentation__.Notify(98808)
+			}
+			__antithesis_instrumentation__.Notify(98805)
+			return len(b.mu.data)
+		} else {
+			__antithesis_instrumentation__.Notify(98809)
+			return len(b.mu.data) + b.mu.tail - b.mu.head
+		}
 	}
 }
 
 func (b *updatesBuf) fullLocked() bool {
+	__antithesis_instrumentation__.Notify(98810)
 	return b.sizeLocked() == len(b.mu.data)
 }
 
-// Close unblocks all the consumers and signals them to exit.
 func (b *updatesBuf) Close() {
+	__antithesis_instrumentation__.Notify(98811)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.mu.closed = true
 	b.mu.updated.Broadcast()
 }
 
-// connFactory is capable of creating new connections to specific nodes.
 type connFactory interface {
 	new(*Sender, roachpb.NodeID) conn
 }
 
-// conn is a side-transport connection to a node. A conn watches an updatesBuf
-// and streams all the messages to the respective node.
 type conn interface {
 	run(context.Context, *stop.Stopper)
 	close()
 	getState() connState
 }
 
-// rpcConnFactory is an implementation of connFactory that establishes
-// connections to other nodes using gRPC.
 type rpcConnFactory struct {
 	dialer       nodeDialer
 	testingKnobs connTestingKnobs
 }
 
 func newRPCConnFactory(dialer nodeDialer, testingKnobs connTestingKnobs) connFactory {
+	__antithesis_instrumentation__.Notify(98812)
 	return &rpcConnFactory{
 		dialer:       dialer,
 		testingKnobs: testingKnobs,
 	}
 }
 
-// new implements the connFactory interface.
 func (f *rpcConnFactory) new(s *Sender, nodeID roachpb.NodeID) conn {
+	__antithesis_instrumentation__.Notify(98813)
 	return newRPCConn(f.dialer, s, nodeID, f.testingKnobs)
 }
 
-// nodeDialer abstracts *nodedialer.Dialer.
 type nodeDialer interface {
 	Dial(ctx context.Context, nodeID roachpb.NodeID, class rpc.ConnectionClass) (_ *grpc.ClientConn, err error)
 }
 
-// rpcConn is an implementation of conn that is implemented using a gRPC stream.
-//
-// The connection will read messages from producer.buf. If the buffer overflows
-// (because this stream is disconnected for long enough), we'll have to send a
-// snapshot before we can resume sending regular messages.
 type rpcConn struct {
 	log.AmbientContext
 	dialer       nodeDialer
@@ -680,10 +652,9 @@ type rpcConn struct {
 
 	stream   ctpb.SideTransport_PushUpdatesClient
 	lastSent ctpb.SeqNum
-	// cancelStreamCtx cleans up the resources (goroutine) associated with stream.
-	// It needs to be called whenever stream is discarded.
+
 	cancelStreamCtx context.CancelFunc
-	closed          int32 // atomic
+	closed          int32
 
 	mu struct {
 		syncutil.Mutex
@@ -694,6 +665,7 @@ type rpcConn struct {
 func newRPCConn(
 	dialer nodeDialer, producer *Sender, nodeID roachpb.NodeID, testingKnobs connTestingKnobs,
 ) conn {
+	__antithesis_instrumentation__.Notify(98814)
 	r := &rpcConn{
 		dialer:       dialer,
 		producer:     producer,
@@ -705,23 +677,20 @@ func newRPCConn(
 	return r
 }
 
-// cleanupStream releases the resources associated with r.stream and marks the conn
-// as needing a new stream.
-//
-// err is the communication error that led to the stream being closed. Can be
-// nil if the stream was closed because we're shutting down.
 func (r *rpcConn) cleanupStream(err error) {
+	__antithesis_instrumentation__.Notify(98815)
 	if r.stream == nil {
+		__antithesis_instrumentation__.Notify(98817)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(98818)
 	}
-	_ /* err */ = r.stream.CloseSend()
+	__antithesis_instrumentation__.Notify(98816)
+	_ = r.stream.CloseSend()
 	r.stream = nil
 	r.cancelStreamCtx()
 	r.cancelStreamCtx = nil
-	// If we've been disconnected, reset the message sequence. If we ever
-	// reconnect, we'll ask the buffer for message 1, which was a snapshot.
-	// Generally, the buffer is not going to have that message any more and so
-	// we'll generate a new snapshot.
+
 	r.lastSent = 0
 
 	r.mu.Lock()
@@ -731,103 +700,140 @@ func (r *rpcConn) cleanupStream(err error) {
 	r.mu.Unlock()
 }
 
-// close makes the connection stop sending messages. The run() goroutine will
-// exit asynchronously. The parent Sender is expected to remove this connection
-// from its list.
 func (r *rpcConn) close() {
+	__antithesis_instrumentation__.Notify(98819)
 	atomic.StoreInt32(&r.closed, 1)
 }
 
 func (r *rpcConn) maybeConnect(ctx context.Context, stopper *stop.Stopper) error {
+	__antithesis_instrumentation__.Notify(98820)
 	if r.stream != nil {
-		// Already connected.
+		__antithesis_instrumentation__.Notify(98824)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(98825)
 	}
+	__antithesis_instrumentation__.Notify(98821)
 
 	conn, err := r.dialer.Dial(ctx, r.nodeID, rpc.SystemClass)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(98826)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(98827)
 	}
+	__antithesis_instrumentation__.Notify(98822)
 	streamCtx, cancel := context.WithCancel(ctx)
 	stream, err := ctpb.NewSideTransportClient(conn).PushUpdates(streamCtx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(98828)
 		cancel()
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(98829)
 	}
+	__antithesis_instrumentation__.Notify(98823)
 	r.recordConnect()
 	r.stream = stream
-	// This will need to be called when we're done with the stream.
+
 	r.cancelStreamCtx = cancel
 	return nil
 }
 
-// run implements the conn interface.
 func (r *rpcConn) run(ctx context.Context, stopper *stop.Stopper) {
-	_ /* err */ = stopper.RunAsyncTask(ctx, fmt.Sprintf("closedts publisher for n%d", r.nodeID),
+	__antithesis_instrumentation__.Notify(98830)
+	_ = stopper.RunAsyncTask(ctx, fmt.Sprintf("closedts publisher for n%d", r.nodeID),
 		func(ctx context.Context) {
-			// This WithCancelOnQuiesce serves to interrupt r.stream.Send() calls. The
-			// cancelation will be inherited by all the gRPC streams.
+			__antithesis_instrumentation__.Notify(98831)
+
 			ctx, cancel := stopper.WithCancelOnQuiesce(r.AnnotateCtx(ctx))
 			defer cancel()
 
-			defer r.cleanupStream(nil /* err */)
+			defer r.cleanupStream(nil)
 			everyN := log.Every(10 * time.Second)
 
-			// On sending errors, we sleep a bit as to not spin on a tripped
-			// circuit-breaker in the Dialer.
 			const sleepOnErr = time.Second
 			for {
+				__antithesis_instrumentation__.Notify(98832)
 				if ctx.Err() != nil {
+					__antithesis_instrumentation__.Notify(98839)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(98840)
 				}
+				__antithesis_instrumentation__.Notify(98833)
 				if err := r.maybeConnect(ctx, stopper); err != nil {
+					__antithesis_instrumentation__.Notify(98841)
 					if everyN.ShouldLog() {
+						__antithesis_instrumentation__.Notify(98843)
 						log.Infof(ctx, "side-transport failed to connect to n%d: %s", r.nodeID, err)
+					} else {
+						__antithesis_instrumentation__.Notify(98844)
 					}
+					__antithesis_instrumentation__.Notify(98842)
 					time.Sleep(sleepOnErr)
 					continue
+				} else {
+					__antithesis_instrumentation__.Notify(98845)
 				}
+				__antithesis_instrumentation__.Notify(98834)
 
 				var msg *ctpb.Update
 				var ok bool
 				msg, ok = r.producer.buf.GetBySeq(ctx, r.lastSent+1)
-				// We can be signaled to stop in two ways: the buffer can be closed (in
-				// which case all connections must exit), or this connection was closed
-				// via close(). In either case, we quit.
+
 				if !ok {
+					__antithesis_instrumentation__.Notify(98846)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(98847)
 				}
+				__antithesis_instrumentation__.Notify(98835)
 				closed := atomic.LoadInt32(&r.closed) > 0
 				if closed {
+					__antithesis_instrumentation__.Notify(98848)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(98849)
 				}
+				__antithesis_instrumentation__.Notify(98836)
 
 				if msg == nil {
-					// The sequence number we've requested is no longer in the buffer. We
-					// need to generate a snapshot in order to re-initialize the stream.
-					// The snapshot will give us the sequence number to use for future
-					// incrementals.
+					__antithesis_instrumentation__.Notify(98850)
+
 					msg = r.producer.GetSnapshot()
+				} else {
+					__antithesis_instrumentation__.Notify(98851)
 				}
+				__antithesis_instrumentation__.Notify(98837)
 				r.lastSent = msg.SeqNum
 
 				if fn := r.testingKnobs.beforeSend; fn != nil {
+					__antithesis_instrumentation__.Notify(98852)
 					fn(r.nodeID, msg)
+				} else {
+					__antithesis_instrumentation__.Notify(98853)
 				}
+				__antithesis_instrumentation__.Notify(98838)
 				if err := r.stream.Send(msg); err != nil {
-					if err != io.EOF && everyN.ShouldLog() {
+					__antithesis_instrumentation__.Notify(98854)
+					if err != io.EOF && func() bool {
+						__antithesis_instrumentation__.Notify(98856)
+						return everyN.ShouldLog() == true
+					}() == true {
+						__antithesis_instrumentation__.Notify(98857)
 						log.Warningf(ctx, "failed to send closed timestamp message %d to n%d: %s",
 							r.lastSent, r.nodeID, err)
+					} else {
+						__antithesis_instrumentation__.Notify(98858)
 					}
-					// Keep track of the fact that we need a new connection.
-					//
-					// TODO(andrei): Instead of simply trying to establish a connection
-					// again when the next message needs to be sent and get rejected by
-					// the circuit breaker if the remote node is still unreachable, we
-					// should have a blocking version of Dial() that we just leave hanging
-					// and get a notification when it succeeds.
+					__antithesis_instrumentation__.Notify(98855)
+
 					r.cleanupStream(err)
 					time.Sleep(sleepOnErr)
+				} else {
+					__antithesis_instrumentation__.Notify(98859)
 				}
 			}
 		})
@@ -841,12 +847,14 @@ type connState struct {
 }
 
 func (r *rpcConn) getState() connState {
+	__antithesis_instrumentation__.Notify(98860)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.mu.state
 }
 
 func (r *rpcConn) recordConnect() {
+	__antithesis_instrumentation__.Notify(98861)
 	r.mu.Lock()
 	r.mu.state.connected = true
 	r.mu.state.connectedTime = timeutil.Now()
@@ -854,28 +862,36 @@ func (r *rpcConn) recordConnect() {
 }
 
 func (s streamState) String() string {
+	__antithesis_instrumentation__.Notify(98862)
 	sb := &strings.Builder{}
 
 	fmt.Fprintf(sb, "ranges tracked: %d\n", len(s.tracked))
 
-	// List the closed timestamps.
 	sb.WriteString("closed timestamps: ")
 	now := timeutil.Now()
 	for policy, closedTS := range s.lastClosed {
+		__antithesis_instrumentation__.Notify(98866)
 		if policy != 0 {
+			__antithesis_instrumentation__.Notify(98869)
 			sb.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(98870)
 		}
+		__antithesis_instrumentation__.Notify(98867)
 		ago := now.Sub(closedTS.GoTime()).Truncate(time.Millisecond)
 		var agoMsg string
 		if ago >= 0 {
+			__antithesis_instrumentation__.Notify(98871)
 			agoMsg = fmt.Sprintf("%s ago", ago)
 		} else {
+			__antithesis_instrumentation__.Notify(98872)
 			agoMsg = fmt.Sprintf("%s in the future", -ago)
 		}
+		__antithesis_instrumentation__.Notify(98868)
 		fmt.Fprintf(sb, "%s:%s (%s)", roachpb.RangeClosedTimestampPolicy(policy), closedTS, agoMsg)
 	}
+	__antithesis_instrumentation__.Notify(98863)
 
-	// List the tracked ranges.
 	sb.WriteString("\nTracked ranges by policy: (<range>:<LAI>)\n")
 	type rangeInfo struct {
 		id roachpb.RangeID
@@ -883,22 +899,37 @@ func (s streamState) String() string {
 	}
 	rangesByPolicy := make(map[roachpb.RangeClosedTimestampPolicy][]rangeInfo)
 	for rid, info := range s.tracked {
+		__antithesis_instrumentation__.Notify(98873)
 		rangesByPolicy[info.policy] = append(rangesByPolicy[info.policy], rangeInfo{id: rid, trackedRange: info})
 	}
+	__antithesis_instrumentation__.Notify(98864)
 	for policy, ranges := range rangesByPolicy {
+		__antithesis_instrumentation__.Notify(98874)
 		fmt.Fprintf(sb, "%s: ", policy)
 		sort.Slice(ranges, func(i, j int) bool {
+			__antithesis_instrumentation__.Notify(98877)
 			return ranges[i].id < ranges[j].id
 		})
+		__antithesis_instrumentation__.Notify(98875)
 		for i, rng := range ranges {
+			__antithesis_instrumentation__.Notify(98878)
 			if i > 0 {
+				__antithesis_instrumentation__.Notify(98880)
 				sb.WriteString(", ")
+			} else {
+				__antithesis_instrumentation__.Notify(98881)
 			}
+			__antithesis_instrumentation__.Notify(98879)
 			fmt.Fprintf(sb, "r%d:%d", rng.id, rng.lai)
 		}
+		__antithesis_instrumentation__.Notify(98876)
 		if len(ranges) != 0 {
+			__antithesis_instrumentation__.Notify(98882)
 			sb.WriteRune('\n')
+		} else {
+			__antithesis_instrumentation__.Notify(98883)
 		}
 	}
+	__antithesis_instrumentation__.Notify(98865)
 	return sb.String()
 }

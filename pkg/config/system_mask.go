@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package config
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"sort"
@@ -16,32 +8,40 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 )
 
-// SystemConfigMask is a mask that can be applied to a set of system config
-// entries to filter out unwanted entries.
 type SystemConfigMask struct {
 	allowed []roachpb.Key
 }
 
-// MakeSystemConfigMask constructs a new SystemConfigMask that passes through
-// only the specified keys when applied.
 func MakeSystemConfigMask(allowed ...roachpb.Key) SystemConfigMask {
+	__antithesis_instrumentation__.Notify(56211)
 	sort.Slice(allowed, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(56213)
 		return allowed[i].Compare(allowed[j]) < 0
 	})
+	__antithesis_instrumentation__.Notify(56212)
 	return SystemConfigMask{allowed: allowed}
 }
 
-// Apply applies the mask to the provided set of system config entries,
-// returning a filtered down set of entries.
 func (m SystemConfigMask) Apply(entries SystemConfigEntries) SystemConfigEntries {
+	__antithesis_instrumentation__.Notify(56214)
 	var res SystemConfigEntries
 	for _, key := range m.allowed {
+		__antithesis_instrumentation__.Notify(56216)
 		i := sort.Search(len(entries.Values), func(i int) bool {
+			__antithesis_instrumentation__.Notify(56218)
 			return entries.Values[i].Key.Compare(key) >= 0
 		})
-		if i < len(entries.Values) && entries.Values[i].Key.Equal(key) {
+		__antithesis_instrumentation__.Notify(56217)
+		if i < len(entries.Values) && func() bool {
+			__antithesis_instrumentation__.Notify(56219)
+			return entries.Values[i].Key.Equal(key) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(56220)
 			res.Values = append(res.Values, entries.Values[i])
+		} else {
+			__antithesis_instrumentation__.Notify(56221)
 		}
 	}
+	__antithesis_instrumentation__.Notify(56215)
 	return res
 }

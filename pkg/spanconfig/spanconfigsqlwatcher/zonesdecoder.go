@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package spanconfigsqlwatcher
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -21,43 +13,46 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// zonesDecoder decodes the zone ID (primary key) of rows from system.zones.
-// It's not safe for concurrent use.
 type zonesDecoder struct {
 	alloc tree.DatumAlloc
 	codec keys.SQLCodec
 }
 
-// newZonesDecoder instantiates a zonesDecoder.
 func newZonesDecoder(codec keys.SQLCodec) *zonesDecoder {
+	__antithesis_instrumentation__.Notify(241460)
 	return &zonesDecoder{
 		codec: codec,
 	}
 }
 
-// DecodePrimaryKey decodes the primary key (zone ID) from the system.zones
-// table.
 func (zd *zonesDecoder) DecodePrimaryKey(key roachpb.Key) (descpb.ID, error) {
-	// Decode the descriptor ID from the key.
+	__antithesis_instrumentation__.Notify(241461)
+
 	tbl := systemschema.ZonesTable
 	types := []*types.T{tbl.PublicColumns()[0].GetType()}
 	startKeyRow := make([]rowenc.EncDatum, 1)
 	_, _, err := rowenc.DecodeIndexKey(
-		zd.codec, types, startKeyRow, nil /* colDirs */, key,
+		zd.codec, types, startKeyRow, nil, key,
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(241464)
 		return descpb.InvalidID, errors.NewAssertionErrorWithWrappedErrf(err, "failed to decode key in system.zones %v", key)
+	} else {
+		__antithesis_instrumentation__.Notify(241465)
 	}
+	__antithesis_instrumentation__.Notify(241462)
 	if err := startKeyRow[0].EnsureDecoded(types[0], &zd.alloc); err != nil {
+		__antithesis_instrumentation__.Notify(241466)
 		return descpb.InvalidID, errors.NewAssertionErrorWithWrappedErrf(err, "failed to decode key in system.zones %v", key)
+	} else {
+		__antithesis_instrumentation__.Notify(241467)
 	}
+	__antithesis_instrumentation__.Notify(241463)
 	descID := descpb.ID(tree.MustBeDInt(startKeyRow[0].Datum))
 	return descID, nil
 }
 
-// TestingZonesDecoderDecodePrimaryKey constructs a zonesDecoder using the given
-// codec and decodes the supplied key using it. This wrapper is exported for
-// testing purposes to ensure the struct remains private.
 func TestingZonesDecoderDecodePrimaryKey(codec keys.SQLCodec, key roachpb.Key) (descpb.ID, error) {
+	__antithesis_instrumentation__.Notify(241468)
 	return newZonesDecoder(codec).DecodePrimaryKey(key)
 }

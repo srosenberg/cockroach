@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colinfo
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -21,177 +13,242 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// ProcessTargetColumns returns the column descriptors identified by the
-// given name list. It also checks that a given column name is only
-// listed once. If no column names are given (special case for INSERT)
-// and ensureColumns is set, the descriptors for all visible columns
-// are returned. If allowMutations is set, even columns undergoing
-// mutations are added.
 func ProcessTargetColumns(
 	tableDesc catalog.TableDescriptor, nameList tree.NameList, ensureColumns, allowMutations bool,
 ) ([]catalog.Column, error) {
+	__antithesis_instrumentation__.Notify(251035)
 	if len(nameList) == 0 {
+		__antithesis_instrumentation__.Notify(251038)
 		if ensureColumns {
-			// VisibleColumns is used here to prevent INSERT INTO <table> VALUES
-			// (...) (as opposed to INSERT INTO <table> (...) VALUES (...)) from
-			// writing hidden columns.
+			__antithesis_instrumentation__.Notify(251040)
+
 			return tableDesc.VisibleColumns(), nil
+		} else {
+			__antithesis_instrumentation__.Notify(251041)
 		}
+		__antithesis_instrumentation__.Notify(251039)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(251042)
 	}
+	__antithesis_instrumentation__.Notify(251036)
 
 	var colIDSet catalog.TableColSet
 	cols := make([]catalog.Column, len(nameList))
 	for i, colName := range nameList {
+		__antithesis_instrumentation__.Notify(251043)
 		col, err := tableDesc.FindColumnWithName(colName)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(251047)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(251048)
 		}
-		if !allowMutations && !col.Public() {
+		__antithesis_instrumentation__.Notify(251044)
+		if !allowMutations && func() bool {
+			__antithesis_instrumentation__.Notify(251049)
+			return !col.Public() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(251050)
 			return nil, NewUndefinedColumnError(string(colName))
+		} else {
+			__antithesis_instrumentation__.Notify(251051)
 		}
+		__antithesis_instrumentation__.Notify(251045)
 
 		if colIDSet.Contains(col.GetID()) {
+			__antithesis_instrumentation__.Notify(251052)
 			return nil, pgerror.Newf(pgcode.Syntax,
 				"multiple assignments to the same column %q", &nameList[i])
+		} else {
+			__antithesis_instrumentation__.Notify(251053)
 		}
+		__antithesis_instrumentation__.Notify(251046)
 		colIDSet.Add(col.GetID())
 		cols[i] = col
 	}
+	__antithesis_instrumentation__.Notify(251037)
 
 	return cols, nil
 }
 
-// sourceNameMatches checks whether a request for table name toFind
-// can be satisfied by the FROM source name srcName.
-//
-// For example:
-// - a request for "kv" is matched by a source named "db1.public.kv"
-// - a request for "public.kv" is not matched by a source named just "kv"
 func sourceNameMatches(srcName *tree.TableName, toFind tree.TableName) bool {
+	__antithesis_instrumentation__.Notify(251054)
 	if srcName.ObjectName != toFind.ObjectName {
+		__antithesis_instrumentation__.Notify(251057)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(251058)
 	}
+	__antithesis_instrumentation__.Notify(251055)
 	if toFind.ExplicitSchema {
-		if !srcName.ExplicitSchema || srcName.SchemaName != toFind.SchemaName {
+		__antithesis_instrumentation__.Notify(251059)
+		if !srcName.ExplicitSchema || func() bool {
+			__antithesis_instrumentation__.Notify(251061)
+			return srcName.SchemaName != toFind.SchemaName == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(251062)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(251063)
 		}
+		__antithesis_instrumentation__.Notify(251060)
 		if toFind.ExplicitCatalog {
-			if !srcName.ExplicitCatalog || srcName.CatalogName != toFind.CatalogName {
+			__antithesis_instrumentation__.Notify(251064)
+			if !srcName.ExplicitCatalog || func() bool {
+				__antithesis_instrumentation__.Notify(251065)
+				return srcName.CatalogName != toFind.CatalogName == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(251066)
 				return false
+			} else {
+				__antithesis_instrumentation__.Notify(251067)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(251068)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(251069)
 	}
+	__antithesis_instrumentation__.Notify(251056)
 	return true
 }
 
-// ColumnResolver is a utility struct to be used when resolving column
-// names to point to one of the data sources and one of the column IDs
-// in that data source.
 type ColumnResolver struct {
 	Source *DataSourceInfo
 
-	// ResolverState is modified in-place by the implementation of the
-	// tree.ColumnItemResolver interface in resolver.go.
 	ResolverState struct {
 		ColIdx int
 	}
 }
 
-// FindSourceMatchingName is part of the tree.ColumnItemResolver interface.
 func (r *ColumnResolver) FindSourceMatchingName(
 	ctx context.Context, tn tree.TableName,
 ) (res NumResolutionResults, prefix *tree.TableName, srcMeta ColumnSourceMeta, err error) {
+	__antithesis_instrumentation__.Notify(251070)
 	if !sourceNameMatches(&r.Source.SourceAlias, tn) {
+		__antithesis_instrumentation__.Notify(251072)
 		return NoResults, nil, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(251073)
 	}
+	__antithesis_instrumentation__.Notify(251071)
 	prefix = &r.Source.SourceAlias
 	return ExactlyOne, prefix, nil, nil
 }
 
-// FindSourceProvidingColumn is part of the tree.ColumnItemResolver interface.
 func (r *ColumnResolver) FindSourceProvidingColumn(
 	ctx context.Context, col tree.Name,
 ) (prefix *tree.TableName, srcMeta ColumnSourceMeta, colHint int, err error) {
+	__antithesis_instrumentation__.Notify(251074)
 	colIdx := tree.NoColumnIdx
 	colName := string(col)
 
 	for idx := range r.Source.SourceColumns {
+		__antithesis_instrumentation__.Notify(251077)
 		colIdx, err = r.findColHelper(colName, colIdx, idx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(251079)
 			return nil, nil, -1, err
+		} else {
+			__antithesis_instrumentation__.Notify(251080)
 		}
+		__antithesis_instrumentation__.Notify(251078)
 		if colIdx != tree.NoColumnIdx {
+			__antithesis_instrumentation__.Notify(251081)
 			prefix = &r.Source.SourceAlias
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(251082)
 		}
 	}
+	__antithesis_instrumentation__.Notify(251075)
 	if colIdx == tree.NoColumnIdx {
+		__antithesis_instrumentation__.Notify(251083)
 		colAlloc := col
 		return nil, nil, -1, NewUndefinedColumnError(tree.ErrString(&colAlloc))
+	} else {
+		__antithesis_instrumentation__.Notify(251084)
 	}
+	__antithesis_instrumentation__.Notify(251076)
 	r.ResolverState.ColIdx = colIdx
 	return prefix, nil, colIdx, nil
 }
 
-// Resolve is part of the tree.ColumnItemResolver interface.
 func (r *ColumnResolver) Resolve(
 	ctx context.Context, prefix *tree.TableName, srcMeta ColumnSourceMeta, colHint int, col tree.Name,
 ) (ColumnResolutionResult, error) {
+	__antithesis_instrumentation__.Notify(251085)
 	if colHint != -1 {
-		// (*ColumnItem).Resolve() is telling us that we found the source
-		// via FindSourceProvidingColumn(). So we can count on
-		// r.ResolverState.ColIdx being set already. There's nothing remaining
-		// to do!
-		return nil, nil
-	}
+		__antithesis_instrumentation__.Notify(251089)
 
-	// If we're here, we just know that some source alias was found that
-	// matches the column prefix, but we haven't found the column
-	// yet. Do this now.
-	// FindSourceMatchingName() was careful to set r.ResolverState.SrcIdx
-	// and r.ResolverState.ColSetIdx for us.
+		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(251090)
+	}
+	__antithesis_instrumentation__.Notify(251086)
+
 	colIdx := tree.NoColumnIdx
 	colName := string(col)
 	for idx := range r.Source.SourceColumns {
+		__antithesis_instrumentation__.Notify(251091)
 		var err error
 		colIdx, err = r.findColHelper(colName, colIdx, idx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(251092)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(251093)
 		}
 	}
+	__antithesis_instrumentation__.Notify(251087)
 
 	if colIdx == tree.NoColumnIdx {
+		__antithesis_instrumentation__.Notify(251094)
 		r.ResolverState.ColIdx = tree.NoColumnIdx
 		return nil, NewUndefinedColumnError(
 			tree.ErrString(tree.NewColumnItem(&r.Source.SourceAlias, tree.Name(colName))))
+	} else {
+		__antithesis_instrumentation__.Notify(251095)
 	}
+	__antithesis_instrumentation__.Notify(251088)
 	r.ResolverState.ColIdx = colIdx
 	return nil, nil
 }
 
-// findColHelper is used by FindSourceProvidingColumn and Resolve above.
-// It checks whether a column name is available in a given data source.
 func (r *ColumnResolver) findColHelper(colName string, colIdx, idx int) (int, error) {
+	__antithesis_instrumentation__.Notify(251096)
 	col := r.Source.SourceColumns[idx]
 	if col.Name == colName {
+		__antithesis_instrumentation__.Notify(251098)
 		if colIdx != tree.NoColumnIdx {
+			__antithesis_instrumentation__.Notify(251100)
 			colString := tree.ErrString(r.Source.NodeFormatter(idx))
 			var msgBuf bytes.Buffer
 			name := tree.ErrString(&r.Source.SourceAlias)
 			if len(name) == 0 {
+				__antithesis_instrumentation__.Notify(251102)
 				name = "<anonymous>"
+			} else {
+				__antithesis_instrumentation__.Notify(251103)
 			}
+			__antithesis_instrumentation__.Notify(251101)
 			fmt.Fprintf(&msgBuf, "%s.%s", name, colString)
 			return tree.NoColumnIdx, pgerror.Newf(pgcode.AmbiguousColumn,
 				"column reference %q is ambiguous (candidates: %s)", colString, msgBuf.String())
+		} else {
+			__antithesis_instrumentation__.Notify(251104)
 		}
+		__antithesis_instrumentation__.Notify(251099)
 		colIdx = idx
+	} else {
+		__antithesis_instrumentation__.Notify(251105)
 	}
+	__antithesis_instrumentation__.Notify(251097)
 	return colIdx, nil
 }
 
-// NewUndefinedColumnError creates an error that represents a missing database column.
 func NewUndefinedColumnError(name string) error {
+	__antithesis_instrumentation__.Notify(251106)
 	return pgerror.Newf(pgcode.UndefinedColumn, "column %q does not exist", name)
 }

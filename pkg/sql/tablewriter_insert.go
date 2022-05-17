@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,7 +12,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// tableInserter handles writing kvs and forming table rows for inserts.
 type tableInserter struct {
 	tableWriterBase
 	ri row.Inserter
@@ -28,10 +19,8 @@ type tableInserter struct {
 
 var _ tableWriter = &tableInserter{}
 
-// desc is part of the tableWriter interface.
-func (*tableInserter) desc() string { return "inserter" }
+func (*tableInserter) desc() string { __antithesis_instrumentation__.Notify(627765); return "inserter" }
 
-// init is part of the tableWriter interface.
 func (ti *tableInserter) init(
 	_ context.Context, txn *kv.Txn, evalCtx *tree.EvalContext, sv *settings.Values,
 ) error {
@@ -39,18 +28,19 @@ func (ti *tableInserter) init(
 	return nil
 }
 
-// row is part of the tableWriter interface.
 func (ti *tableInserter) row(
 	ctx context.Context, values tree.Datums, pm row.PartialIndexUpdateHelper, traceKV bool,
 ) error {
+	__antithesis_instrumentation__.Notify(627766)
 	ti.currentBatchSize++
-	return ti.ri.InsertRow(ctx, ti.b, values, pm, false /* overwrite */, traceKV)
+	return ti.ri.InsertRow(ctx, ti.b, values, pm, false, traceKV)
 }
 
-// tableDesc is part of the tableWriter interface.
 func (ti *tableInserter) tableDesc() catalog.TableDescriptor {
+	__antithesis_instrumentation__.Notify(627767)
 	return ti.ri.Helper.TableDesc
 }
 
-// walkExprs is part of the tableWriter interface.
-func (ti *tableInserter) walkExprs(_ func(desc string, index int, expr tree.TypedExpr)) {}
+func (ti *tableInserter) walkExprs(_ func(desc string, index int, expr tree.TypedExpr)) {
+	__antithesis_instrumentation__.Notify(627768)
+}

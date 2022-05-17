@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package security
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"time"
@@ -23,10 +15,6 @@ const (
 	ocspStrict = 2
 )
 
-// TLSSettings allows for customization of TLS behavior. It's called
-// "settings" instead of "config" to avoid ambiguity with the standard
-// library's tls.Config. It is backed by cluster settings in a running
-// node, but may be configured differently in CLI tools.
 type TLSSettings interface {
 	ocspEnabled() bool
 	ocspStrict() bool
@@ -40,9 +28,6 @@ var ocspMode = settings.RegisterEnumSetting(
 		"and in lax mode all certificates will be accepted.",
 	"off", map[int64]string{ocspOff: "off", ocspLax: "lax", ocspStrict: "strict"}).WithPublic()
 
-// TODO(bdarnell): 3 seconds is the same as base.NetworkTimeout, but
-// we can't use it here due to import cycles. We need a real
-// no-dependencies base package for constants like this.
 var ocspTimeout = settings.RegisterDurationSetting(
 	settings.TenantWritable, "security.ocsp.timeout",
 	"timeout before considering the OCSP server unreachable",
@@ -57,37 +42,40 @@ type clusterTLSSettings struct {
 var _ TLSSettings = clusterTLSSettings{}
 
 func (c clusterTLSSettings) ocspEnabled() bool {
+	__antithesis_instrumentation__.Notify(187331)
 	return ocspMode.Get(&c.settings.SV) != ocspOff
 }
 
 func (c clusterTLSSettings) ocspStrict() bool {
+	__antithesis_instrumentation__.Notify(187332)
 	return ocspMode.Get(&c.settings.SV) == ocspStrict
 }
 
 func (c clusterTLSSettings) ocspTimeout() time.Duration {
+	__antithesis_instrumentation__.Notify(187333)
 	return ocspTimeout.Get(&c.settings.SV)
 }
 
-// ClusterTLSSettings creates a TLSSettings backed by the
-// given cluster settings.
 func ClusterTLSSettings(settings *cluster.Settings) TLSSettings {
+	__antithesis_instrumentation__.Notify(187334)
 	return clusterTLSSettings{settings}
 }
 
-// CommandTLSSettings defines the TLS settings for command-line tools.
-// OCSP is not currently supported in this mode.
 type CommandTLSSettings struct{}
 
 var _ TLSSettings = CommandTLSSettings{}
 
 func (CommandTLSSettings) ocspEnabled() bool {
+	__antithesis_instrumentation__.Notify(187335)
 	return false
 }
 
 func (CommandTLSSettings) ocspStrict() bool {
+	__antithesis_instrumentation__.Notify(187336)
 	return false
 }
 
 func (CommandTLSSettings) ocspTimeout() time.Duration {
+	__antithesis_instrumentation__.Notify(187337)
 	return 0
 }

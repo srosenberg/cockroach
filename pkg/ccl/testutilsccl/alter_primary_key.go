@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package testutilsccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,16 +20,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// AlterPrimaryKeyCorrectZoneConfigIntermediateZoneConfig is an expected
-// intermediate zone configuration in the AlterPrimaryKeyCorrectZoneConfigTestCase.
 type AlterPrimaryKeyCorrectZoneConfigIntermediateZoneConfig struct {
 	ShowConfigStatement string
 	ExpectedTarget      string
 	ExpectedSQL         string
 }
 
-// AlterPrimaryKeyCorrectZoneConfigTestCase is a test case for
-// AlterPrimaryKeyCorrectZoneConfigTest.
 type AlterPrimaryKeyCorrectZoneConfigTestCase struct {
 	Desc                            string
 	SetupQuery                      string
@@ -43,24 +33,29 @@ type AlterPrimaryKeyCorrectZoneConfigTestCase struct {
 	ExpectedIntermediateZoneConfigs []AlterPrimaryKeyCorrectZoneConfigIntermediateZoneConfig
 }
 
-// AlterPrimaryKeyCorrectZoneConfigTest tests that zone configurations
-// are correctly set before the backfill of a PRIMARY KEY.
 func AlterPrimaryKeyCorrectZoneConfigTest(
 	t *testing.T, createDBStatement string, testCases []AlterPrimaryKeyCorrectZoneConfigTestCase,
 ) {
+	__antithesis_instrumentation__.Notify(27134)
 	chunkSize := int64(100)
 	maxValue := 4000
 
 	if util.RaceEnabled {
-		// Race builds are a lot slower, so use a smaller number of rows.
+		__antithesis_instrumentation__.Notify(27136)
+
 		maxValue = 200
 		chunkSize = 5
+	} else {
+		__antithesis_instrumentation__.Notify(27137)
 	}
+	__antithesis_instrumentation__.Notify(27135)
 
 	ctx := context.Background()
 
 	for _, tc := range testCases {
+		__antithesis_instrumentation__.Notify(27138)
 		t.Run(tc.Desc, func(t *testing.T) {
+			__antithesis_instrumentation__.Notify(27139)
 			var db *gosql.DB
 			params, _ := tests.CreateTestServerParams()
 			params.Locality.Tiers = []roachpb.Tier{
@@ -74,9 +69,13 @@ func AlterPrimaryKeyCorrectZoneConfigTest(
 				},
 				DistSQL: &execinfra.TestingKnobs{
 					RunBeforeBackfillChunk: func(sp roachpb.Span) error {
+						__antithesis_instrumentation__.Notify(27142)
 						if runCheck {
+							__antithesis_instrumentation__.Notify(27144)
 							for _, subTC := range tc.ExpectedIntermediateZoneConfigs {
+								__antithesis_instrumentation__.Notify(27146)
 								t.Run(subTC.ShowConfigStatement, func(t *testing.T) {
+									__antithesis_instrumentation__.Notify(27147)
 									var target, sql string
 									require.NoError(
 										t,
@@ -86,14 +85,19 @@ func AlterPrimaryKeyCorrectZoneConfigTest(
 									require.Equal(t, subTC.ExpectedSQL, sql)
 								})
 							}
+							__antithesis_instrumentation__.Notify(27145)
 							runCheck = false
+						} else {
+							__antithesis_instrumentation__.Notify(27148)
 						}
+						__antithesis_instrumentation__.Notify(27143)
 						return nil
 					},
 				},
-				// Decrease the adopt loop interval so that retries happen quickly.
+
 				JobsTestingKnobs: jobs.NewTestingKnobsWithShortIntervals(),
 			}
+			__antithesis_instrumentation__.Notify(27140)
 			s, sqlDB, _ := serverutils.StartServer(t, params)
 			db = sqlDB
 			defer s.Stopper().Stop(ctx)
@@ -103,10 +107,13 @@ func AlterPrimaryKeyCorrectZoneConfigTest(
 USE t;
 %s
 `, createDBStatement, tc.SetupQuery)); err != nil {
+				__antithesis_instrumentation__.Notify(27149)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(27150)
 			}
+			__antithesis_instrumentation__.Notify(27141)
 
-			// Insert some rows so we can interrupt inspect state during backfill.
 			require.NoError(t, sqltestutils.BulkInsertIntoTable(sqlDB, maxValue))
 
 			runCheck = true

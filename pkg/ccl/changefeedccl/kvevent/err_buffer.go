@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package kvevent
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,17 +12,20 @@ type errorWrapperEventBuffer struct {
 	Buffer
 }
 
-// NewErrorWrapperEventBuffer returns kvevent Buffer which treats any errors
-// as retryable.
 func NewErrorWrapperEventBuffer(b Buffer) Buffer {
+	__antithesis_instrumentation__.Notify(17106)
 	return &errorWrapperEventBuffer{b}
 }
 
-// Add implements Writer interface.
 func (e errorWrapperEventBuffer) Add(ctx context.Context, event Event) error {
+	__antithesis_instrumentation__.Notify(17107)
 	if err := e.Buffer.Add(ctx, event); err != nil {
+		__antithesis_instrumentation__.Notify(17109)
 		return changefeedbase.MarkRetryableError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(17110)
 	}
+	__antithesis_instrumentation__.Notify(17108)
 	return nil
 }
 

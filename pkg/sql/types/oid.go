@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package types
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/sql/oidext"
@@ -16,48 +8,32 @@ import (
 	"github.com/lib/pq/oid"
 )
 
-// Convenience list of pre-constructed OID-related types.
 var (
-	// Oid is the type of a Postgres Object ID value.
 	Oid = &T{InternalType: InternalType{
 		Family: OidFamily, Oid: oid.T_oid, Locale: &emptyLocale}}
 
-	// Regclass is the type of a Postgres regclass OID variant (T_regclass).
 	RegClass = &T{InternalType: InternalType{
 		Family: OidFamily, Oid: oid.T_regclass, Locale: &emptyLocale}}
 
-	// RegNamespace is the type of a Postgres regnamespace OID variant
-	// (T_regnamespace).
 	RegNamespace = &T{InternalType: InternalType{
 		Family: OidFamily, Oid: oid.T_regnamespace, Locale: &emptyLocale}}
 
-	// RegProc is the type of a Postgres regproc OID variant (T_regproc).
 	RegProc = &T{InternalType: InternalType{
 		Family: OidFamily, Oid: oid.T_regproc, Locale: &emptyLocale}}
 
-	// RegProcedure is the type of a Postgres regprocedure OID variant
-	// (T_regprocedure).
 	RegProcedure = &T{InternalType: InternalType{
 		Family: OidFamily, Oid: oid.T_regprocedure, Locale: &emptyLocale}}
 
-	// RegRole is the type of a Postgres regrole OID variant (T_regrole).
 	RegRole = &T{InternalType: InternalType{
 		Family: OidFamily, Oid: oid.T_regrole, Locale: &emptyLocale}}
 
-	// RegType is the type of of a Postgres regtype OID variant (T_regtype).
 	RegType = &T{InternalType: InternalType{
 		Family: OidFamily, Oid: oid.T_regtype, Locale: &emptyLocale}}
 
-	// OidVector is a type-alias for an array of Oid values, but with a different
-	// OID (T_oidvector instead of T__oid). It is a special VECTOR type used by
-	// Postgres in system tables. OidVectors are 0-indexed, unlike normal arrays.
 	OidVector = &T{InternalType: InternalType{
 		Family: ArrayFamily, Oid: oid.T_oidvector, ArrayContents: Oid, Locale: &emptyLocale}}
 )
 
-// OidToType maps Postgres object IDs to CockroachDB types.  We export the map
-// instead of a method so that other packages can iterate over the map directly.
-// Note that additional elements for the array Oid types are added in init().
 var OidToType = map[oid.Oid]*T{
 	oid.T_anyelement:   Any,
 	oid.T_bit:          typeBit,
@@ -102,7 +78,6 @@ var OidToType = map[oid.Oid]*T{
 	oidext.T_box2d:     Box2D,
 }
 
-// oidToArrayOid maps scalar type Oids to their corresponding array type Oid.
 var oidToArrayOid = map[oid.Oid]oid.Oid{
 	oid.T_anyelement:   oid.T_anyarray,
 	oid.T_bit:          oid.T__bit,
@@ -145,9 +120,6 @@ var oidToArrayOid = map[oid.Oid]oid.Oid{
 	oidext.T_box2d:     oidext.T__box2d,
 }
 
-// familyToOid maps each type family to a default OID value that is used when
-// another Oid is not present (e.g. when deserializing a type saved by a
-// previous version of CRDB).
 var familyToOid = map[Family]oid.Oid{
 	BoolFamily:           oid.T_bool,
 	IntFamily:            oid.T_int8,
@@ -177,7 +149,6 @@ var familyToOid = map[Family]oid.Oid{
 	Box2DFamily:     oidext.T_box2d,
 }
 
-// ArrayOids is a set of all oids which correspond to an array type.
 var ArrayOids = map[oid.Oid]struct{}{}
 
 func init() {
@@ -187,47 +158,52 @@ func init() {
 	}
 }
 
-// CalcArrayOid returns the OID of the array type having elements of the given
-// type.
 func CalcArrayOid(elemTyp *T) oid.Oid {
+	__antithesis_instrumentation__.Notify(629555)
 	o := elemTyp.Oid()
 	switch elemTyp.Family() {
 	case ArrayFamily:
-		// Postgres nested arrays return the OID of the nested array (i.e. the
-		// OID doesn't change no matter how many levels of nesting there are),
-		// except in the special-case of the vector types.
+		__antithesis_instrumentation__.Notify(629558)
+
 		switch o {
 		case oid.T_int2vector, oid.T_oidvector:
-			// Vector types have their own array OID types.
+			__antithesis_instrumentation__.Notify(629563)
+
 		default:
+			__antithesis_instrumentation__.Notify(629564)
 			return o
 		}
 
 	case UnknownFamily:
-		// Postgres doesn't have an OID for an array of unknown values, since
-		// it's not possible to create that in Postgres. But CRDB does allow that,
-		// so return 0 for that case (since there's no T__unknown). This is what
-		// previous versions of CRDB returned for this case.
+		__antithesis_instrumentation__.Notify(629559)
+
 		return unknownArrayOid
 
 	case EnumFamily:
+		__antithesis_instrumentation__.Notify(629560)
 		return elemTyp.UserDefinedArrayOID()
 
 	case TupleFamily:
+		__antithesis_instrumentation__.Notify(629561)
 		if elemTyp.UserDefined() {
-			// We're currently not creating array types for implicitly-defined
-			// per-table record types. So, we cheat a little, and return, as the OID
-			// for an array of these things, the OID for a generic array of records.
-			return oid.T__record
-		}
-	}
+			__antithesis_instrumentation__.Notify(629565)
 
-	// Map the OID of the array element type to the corresponding array OID.
-	// This should always be possible for all other OIDs (checked in oid.go
-	// init method).
+			return oid.T__record
+		} else {
+			__antithesis_instrumentation__.Notify(629566)
+		}
+	default:
+		__antithesis_instrumentation__.Notify(629562)
+	}
+	__antithesis_instrumentation__.Notify(629556)
+
 	o = oidToArrayOid[o]
 	if o == 0 {
+		__antithesis_instrumentation__.Notify(629567)
 		panic(errors.AssertionFailedf("oid %d couldn't be mapped to array oid", o))
+	} else {
+		__antithesis_instrumentation__.Notify(629568)
 	}
+	__antithesis_instrumentation__.Notify(629557)
 	return o
 }

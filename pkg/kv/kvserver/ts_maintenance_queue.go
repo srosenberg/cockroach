@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,19 +16,11 @@ import (
 )
 
 const (
-	// TimeSeriesMaintenanceInterval is the minimum interval between two
-	// time series maintenance runs on a replica.
-	TimeSeriesMaintenanceInterval = 24 * time.Hour // daily
+	TimeSeriesMaintenanceInterval = 24 * time.Hour
 
-	// TimeSeriesMaintenanceMemoryBudget is the maximum amount of memory that
-	// should be consumed by time series maintenance operations at any one time.
-	TimeSeriesMaintenanceMemoryBudget = int64(8 * 1024 * 1024) // 8MB
+	TimeSeriesMaintenanceMemoryBudget = int64(8 * 1024 * 1024)
 )
 
-// TimeSeriesDataStore is an interface defined in the storage package that can
-// be implemented by the higher-level time series system. This allows the
-// storage queues to run periodic time series maintenance; importantly, this
-// maintenance can then be informed by data from the local store.
 type TimeSeriesDataStore interface {
 	ContainsTimeSeries(roachpb.RKey, roachpb.RKey) bool
 	MaintainTimeSeries(
@@ -51,31 +35,6 @@ type TimeSeriesDataStore interface {
 	) error
 }
 
-// timeSeriesMaintenanceQueue identifies replicas that contain time series
-// data and performs necessary data maintenance on the time series located in
-// the replica. Currently, maintenance involves pruning time series data older
-// than a certain threshold.
-//
-// Logic for time series maintenance is implemented in a higher level time
-// series package; this queue uses the TimeSeriesDataStore interface to call
-// into that logic.
-//
-// Once a replica is selected for processing, data changes are executed against
-// the cluster using a KV client; changes are not restricted to the data in the
-// replica being processed. These tasks could therefore be performed without a
-// replica queue; however, a replica queue has been chosen to initiate this task
-// for a few reasons:
-// * The queue naturally distributes the workload across the cluster in
-// proportion to the number of ranges containing time series data.
-// * Access to the local replica is a convenient way to discover the names of
-// time series stored on the cluster; the names are required in order to
-// effectively prune time series without expensive distributed scans.
-//
-// Data changes executed by this queue are idempotent; it is explicitly safe
-// for multiple nodes to attempt to prune the same time series concurrently.
-// In this situation, each node would compute the same delete range based on
-// the current timestamp; the first will succeed, all others will become
-// a no-op.
 type timeSeriesMaintenanceQueue struct {
 	*baseQueue
 	tsData         TimeSeriesDataStore
@@ -84,11 +43,10 @@ type timeSeriesMaintenanceQueue struct {
 	mem            *mon.BytesMonitor
 }
 
-// newTimeSeriesMaintenanceQueue returns a new instance of
-// timeSeriesMaintenanceQueue.
 func newTimeSeriesMaintenanceQueue(
 	store *Store, db *kv.DB, tsData TimeSeriesDataStore,
 ) *timeSeriesMaintenanceQueue {
+	__antithesis_instrumentation__.Notify(126768)
 	q := &timeSeriesMaintenanceQueue{
 		tsData:         tsData,
 		replicaCountFn: store.ReplicaCount,
@@ -99,8 +57,7 @@ func newTimeSeriesMaintenanceQueue(
 			mon.MemoryResource,
 			nil,
 			nil,
-			// Begin logging messages if we exceed our planned memory usage by
-			// more than triple.
+
 			TimeSeriesMaintenanceMemoryBudget*3,
 			store.cfg.Settings,
 		),
@@ -125,26 +82,43 @@ func newTimeSeriesMaintenanceQueue(
 func (q *timeSeriesMaintenanceQueue) shouldQueue(
 	ctx context.Context, now hlc.ClockTimestamp, repl *Replica, _ spanconfig.StoreReader,
 ) (shouldQ bool, priority float64) {
+	__antithesis_instrumentation__.Notify(126769)
 	if !repl.store.cfg.TestingKnobs.DisableLastProcessedCheck {
+		__antithesis_instrumentation__.Notify(126772)
 		lpTS, err := repl.getQueueLastProcessed(ctx, q.name)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(126774)
 			return false, 0
+		} else {
+			__antithesis_instrumentation__.Notify(126775)
 		}
+		__antithesis_instrumentation__.Notify(126773)
 		shouldQ, priority = shouldQueueAgain(now.ToTimestamp(), lpTS, TimeSeriesMaintenanceInterval)
 		if !shouldQ {
+			__antithesis_instrumentation__.Notify(126776)
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(126777)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(126778)
 	}
+	__antithesis_instrumentation__.Notify(126770)
 	desc := repl.Desc()
 	if q.tsData.ContainsTimeSeries(desc.StartKey, desc.EndKey) {
+		__antithesis_instrumentation__.Notify(126779)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(126780)
 	}
+	__antithesis_instrumentation__.Notify(126771)
 	return false, 0
 }
 
 func (q *timeSeriesMaintenanceQueue) process(
 	ctx context.Context, repl *Replica, _ spanconfig.StoreReader,
 ) (processed bool, err error) {
+	__antithesis_instrumentation__.Notify(126781)
 	desc := repl.Desc()
 	snap := repl.store.Engine().NewSnapshot()
 	now := repl.store.Clock().Now()
@@ -152,29 +126,46 @@ func (q *timeSeriesMaintenanceQueue) process(
 	if err := q.tsData.MaintainTimeSeries(
 		ctx, snap, desc.StartKey, desc.EndKey, q.db, q.mem, TimeSeriesMaintenanceMemoryBudget, now,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(126784)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(126785)
 	}
-	// Update the last processed time for this queue.
+	__antithesis_instrumentation__.Notify(126782)
+
 	if err := repl.setQueueLastProcessed(ctx, q.name, now); err != nil {
+		__antithesis_instrumentation__.Notify(126786)
 		log.VErrEventf(ctx, 2, "failed to update last processed time: %v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(126787)
 	}
+	__antithesis_instrumentation__.Notify(126783)
 	return true, nil
 }
 
 func (q *timeSeriesMaintenanceQueue) timer(duration time.Duration) time.Duration {
-	// An interval between replicas to space consistency checks out over
-	// the check interval.
+	__antithesis_instrumentation__.Notify(126788)
+
 	replicaCount := q.replicaCountFn()
 	if replicaCount == 0 {
+		__antithesis_instrumentation__.Notify(126791)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(126792)
 	}
+	__antithesis_instrumentation__.Notify(126789)
 	replInterval := TimeSeriesMaintenanceInterval / time.Duration(replicaCount)
 	if replInterval < duration {
+		__antithesis_instrumentation__.Notify(126793)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(126794)
 	}
+	__antithesis_instrumentation__.Notify(126790)
 	return replInterval - duration
 }
 
 func (*timeSeriesMaintenanceQueue) purgatoryChan() <-chan time.Time {
+	__antithesis_instrumentation__.Notify(126795)
 	return nil
 }

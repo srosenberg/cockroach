@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -21,7 +13,9 @@ var cmds []*cobra.Command
 var quiet bool
 
 func main() {
+	__antithesis_instrumentation__.Notify(39997)
 	rootCmd := func() *cobra.Command {
+		__antithesis_instrumentation__.Notify(39999)
 		cmd := &cobra.Command{
 			Use:   "docgen",
 			Short: "docgen generates documentation for cockroachdb's SQL functions, grammar, and HTTP endpoints",
@@ -30,8 +24,12 @@ func main() {
 		cmd.AddCommand(cmds...)
 		return cmd
 	}()
+	__antithesis_instrumentation__.Notify(39998)
 	if err := rootCmd.Execute(); err != nil {
+		__antithesis_instrumentation__.Notify(40000)
 		fmt.Println(err)
 		os.Exit(1)
+	} else {
+		__antithesis_instrumentation__.Notify(40001)
 	}
 }

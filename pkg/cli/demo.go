@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cli
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -48,13 +40,11 @@ environment variable "COCKROACH_SKIP_ENABLING_DIAGNOSTIC_REPORTING" to true.
 `,
 	Example: `  cockroach demo`,
 	Args:    cobra.NoArgs,
-	// Note: RunE is set in the init() function below to avoid an
-	// initialization cycle.
 }
 
 func init() {
 	demoCmd.RunE = clierrorplus.MaybeDecorateError(func(cmd *cobra.Command, _ []string) error {
-		return runDemo(cmd, nil /* gen */)
+		return runDemo(cmd, nil)
 	})
 }
 
@@ -76,8 +66,7 @@ func init() {
 		gen := meta.New()
 
 		if meta.Name == defaultGeneratorName {
-			// Save the default for use in the top-level 'demo' command
-			// without argument.
+
 			defaultGenerator = gen
 		}
 
@@ -103,114 +92,196 @@ func init() {
 }
 
 func incrementTelemetryCounters(cmd *cobra.Command) {
+	__antithesis_instrumentation__.Notify(31829)
 	incrementDemoCounter(demo)
 	if flagSetForCmd(cmd).Lookup(cliflags.DemoNodes.Name).Changed {
+		__antithesis_instrumentation__.Notify(31833)
 		incrementDemoCounter(nodes)
+	} else {
+		__antithesis_instrumentation__.Notify(31834)
 	}
+	__antithesis_instrumentation__.Notify(31830)
 	if demoCtx.Localities != nil {
+		__antithesis_instrumentation__.Notify(31835)
 		incrementDemoCounter(demoLocality)
+	} else {
+		__antithesis_instrumentation__.Notify(31836)
 	}
+	__antithesis_instrumentation__.Notify(31831)
 	if demoCtx.RunWorkload {
+		__antithesis_instrumentation__.Notify(31837)
 		incrementDemoCounter(withLoad)
+	} else {
+		__antithesis_instrumentation__.Notify(31838)
 	}
+	__antithesis_instrumentation__.Notify(31832)
 	if demoCtx.GeoPartitionedReplicas {
+		__antithesis_instrumentation__.Notify(31839)
 		incrementDemoCounter(geoPartitionedReplicas)
+	} else {
+		__antithesis_instrumentation__.Notify(31840)
 	}
 }
 
 func checkDemoConfiguration(
 	cmd *cobra.Command, gen workload.Generator,
 ) (workload.Generator, error) {
+	__antithesis_instrumentation__.Notify(31841)
 	f := flagSetForCmd(cmd)
-	if gen == nil && !demoCtx.NoExampleDatabase {
-		// Use a default dataset unless prevented by --no-example-database.
+	if gen == nil && func() bool {
+		__antithesis_instrumentation__.Notify(31847)
+		return !demoCtx.NoExampleDatabase == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(31848)
+
 		gen = defaultGenerator
+	} else {
+		__antithesis_instrumentation__.Notify(31849)
 	}
+	__antithesis_instrumentation__.Notify(31842)
 
-	// Make sure that the user didn't request a workload and an empty database.
-	if demoCtx.RunWorkload && demoCtx.NoExampleDatabase {
+	if demoCtx.RunWorkload && func() bool {
+		__antithesis_instrumentation__.Notify(31850)
+		return demoCtx.NoExampleDatabase == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(31851)
 		return nil, errors.New("cannot run a workload when generation of the example database is disabled")
+	} else {
+		__antithesis_instrumentation__.Notify(31852)
 	}
+	__antithesis_instrumentation__.Notify(31843)
 
-	// Make sure the number of nodes is valid.
 	if demoCtx.NumNodes <= 0 {
+		__antithesis_instrumentation__.Notify(31853)
 		return nil, errors.Newf("--%s has invalid value (expected positive, got %d)", cliflags.DemoNodes.Name, demoCtx.NumNodes)
+	} else {
+		__antithesis_instrumentation__.Notify(31854)
 	}
+	__antithesis_instrumentation__.Notify(31844)
 
-	// If artificial latencies were requested, then the user cannot supply their own localities.
-	if demoCtx.SimulateLatency && demoCtx.Localities != nil {
+	if demoCtx.SimulateLatency && func() bool {
+		__antithesis_instrumentation__.Notify(31855)
+		return demoCtx.Localities != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(31856)
 		return nil, errors.Newf("--%s cannot be used with --%s", cliflags.Global.Name, cliflags.DemoNodeLocality.Name)
+	} else {
+		__antithesis_instrumentation__.Notify(31857)
 	}
+	__antithesis_instrumentation__.Notify(31845)
 
 	demoCtx.DisableTelemetry = cluster.TelemetryOptOut()
-	// disableLicenseAcquisition can also be set by the user as an
-	// input flag, so make sure it include it when considering the final
-	// value of disableLicenseAcquisition.
+
 	demoCtx.DisableLicenseAcquisition =
-		demoCtx.DisableTelemetry || (democluster.GetAndApplyLicense == nil) || demoCtx.DisableLicenseAcquisition
+		demoCtx.DisableTelemetry || func() bool {
+			__antithesis_instrumentation__.Notify(31858)
+			return (democluster.GetAndApplyLicense == nil) == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(31859)
+			return demoCtx.DisableLicenseAcquisition == true
+		}() == true
 
 	if demoCtx.GeoPartitionedReplicas {
+		__antithesis_instrumentation__.Notify(31860)
 		geoFlag := "--" + cliflags.DemoGeoPartitionedReplicas.Name
 		if demoCtx.DisableLicenseAcquisition {
+			__antithesis_instrumentation__.Notify(31867)
 			return nil, errors.Newf("enterprise features are needed for this demo (%s)", geoFlag)
+		} else {
+			__antithesis_instrumentation__.Notify(31868)
 		}
+		__antithesis_instrumentation__.Notify(31861)
 
-		// Make sure that the user didn't request to have a topology and disable the example database.
 		if demoCtx.NoExampleDatabase {
+			__antithesis_instrumentation__.Notify(31869)
 			return nil, errors.New("cannot setup geo-partitioned replicas topology without generating an example database")
+		} else {
+			__antithesis_instrumentation__.Notify(31870)
 		}
+		__antithesis_instrumentation__.Notify(31862)
 
-		// Make sure that the Movr database is selected when automatically partitioning.
-		if gen == nil || gen.Meta().Name != "movr" {
+		if gen == nil || func() bool {
+			__antithesis_instrumentation__.Notify(31871)
+			return gen.Meta().Name != "movr" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(31872)
 			return nil, errors.Newf("%s must be used with the Movr dataset", geoFlag)
+		} else {
+			__antithesis_instrumentation__.Notify(31873)
 		}
+		__antithesis_instrumentation__.Notify(31863)
 
-		// If the geo-partitioned replicas flag was given and the demo localities have changed, throw an error.
 		if demoCtx.Localities != nil {
+			__antithesis_instrumentation__.Notify(31874)
 			return nil, errors.Newf("--demo-locality cannot be used with %s", geoFlag)
+		} else {
+			__antithesis_instrumentation__.Notify(31875)
 		}
+		__antithesis_instrumentation__.Notify(31864)
 
-		// If the geo-partitioned replicas flag was given and the nodes have changed, throw an error.
 		if f.Lookup(cliflags.DemoNodes.Name).Changed {
+			__antithesis_instrumentation__.Notify(31876)
 			if demoCtx.NumNodes != 9 {
+				__antithesis_instrumentation__.Notify(31877)
 				return nil, errors.Newf("--nodes with a value different from 9 cannot be used with %s", geoFlag)
+			} else {
+				__antithesis_instrumentation__.Notify(31878)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(31879)
 			demoCtx.NumNodes = 9
 			cliCtx.PrintlnUnlessEmbedded(
-				// Only explain how the configuration was interpreted if the
-				// user has control over it.
+
 				`#
 # --geo-partitioned replicas operates on a 9 node cluster.
 # The cluster size has been changed from the default to 9 nodes.`)
 		}
+		__antithesis_instrumentation__.Notify(31865)
 
-		// If geo-partition-replicas is requested, make sure the workload has a Partitioning step.
 		configErr := errors.Newf(
 			"workload %s is not configured to have a partitioning step", gen.Meta().Name)
 		hookser, ok := gen.(workload.Hookser)
 		if !ok {
+			__antithesis_instrumentation__.Notify(31880)
 			return nil, configErr
+		} else {
+			__antithesis_instrumentation__.Notify(31881)
 		}
+		__antithesis_instrumentation__.Notify(31866)
 		if hookser.Hooks().Partition == nil {
+			__antithesis_instrumentation__.Notify(31882)
 			return nil, configErr
+		} else {
+			__antithesis_instrumentation__.Notify(31883)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(31884)
 	}
+	__antithesis_instrumentation__.Notify(31846)
 
 	return gen, nil
 }
 
 func runDemo(cmd *cobra.Command, gen workload.Generator) (resErr error) {
+	__antithesis_instrumentation__.Notify(31885)
 	closeFn, err := sqlCtx.Open(os.Stdin)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31897)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31898)
 	}
+	__antithesis_instrumentation__.Notify(31886)
 	defer closeFn()
 
 	if gen, err = checkDemoConfiguration(cmd, gen); err != nil {
+		__antithesis_instrumentation__.Notify(31899)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31900)
 	}
-	// Record some telemetry about what flags are being used.
+	__antithesis_instrumentation__.Notify(31887)
+
 	incrementTelemetryCounters(cmd)
 
 	ctx := context.Background()
@@ -222,32 +293,41 @@ func runDemo(cmd *cobra.Command, gen workload.Generator) (resErr error) {
 		log.Warningf,
 		log.Ops.Shoutf,
 		func(ctx context.Context) (*stop.Stopper, error) {
-			// Override the default server store spec.
-			//
-			// This is needed because the logging setup code peeks into this to
-			// decide how to enable logging.
+			__antithesis_instrumentation__.Notify(31901)
+
 			serverCfg.Stores.Specs = nil
-			return setupAndInitializeLoggingAndProfiling(ctx, cmd, false /* isServerCmd */)
+			return setupAndInitializeLoggingAndProfiling(ctx, cmd, false)
 		},
 		getAdminClient,
 		func(ctx context.Context, ac serverpb.AdminClient) error {
-			return drainAndShutdown(ctx, ac, "local" /* targetNode */)
+			__antithesis_instrumentation__.Notify(31902)
+			return drainAndShutdown(ctx, ac, "local")
 		},
 	)
+	__antithesis_instrumentation__.Notify(31888)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31903)
 		c.Close(ctx)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31904)
 	}
+	__antithesis_instrumentation__.Notify(31889)
 	defer c.Close(ctx)
 
 	initGEOS(ctx)
 
 	if err := c.Start(ctx, runInitialSQL); err != nil {
+		__antithesis_instrumentation__.Notify(31905)
 		return clierrorplus.CheckAndMaybeShout(err)
+	} else {
+		__antithesis_instrumentation__.Notify(31906)
 	}
+	__antithesis_instrumentation__.Notify(31890)
 	sqlCtx.ShellCtx.DemoCluster = c
 
 	if cliCtx.IsInteractive {
+		__antithesis_instrumentation__.Notify(31907)
 		cliCtx.PrintfUnlessEmbedded(`#
 # Welcome to the CockroachDB demo database!
 #
@@ -255,13 +335,18 @@ func runDemo(cmd *cobra.Command, gen workload.Generator) (resErr error) {
 `, demoCtx.NumNodes, util.Pluralize(int64(demoCtx.NumNodes)))
 
 		if demoCtx.Multitenant {
+			__antithesis_instrumentation__.Notify(31910)
 			cliCtx.PrintfUnlessEmbedded(`#
 # You are connected to tenant 1, but can connect to the system tenant with
 # \connect and the SQL url below.
 `)
+		} else {
+			__antithesis_instrumentation__.Notify(31911)
 		}
+		__antithesis_instrumentation__.Notify(31908)
 
 		if demoCtx.SimulateLatency {
+			__antithesis_instrumentation__.Notify(31912)
 			cliCtx.PrintfUnlessEmbedded(
 				`# Communication between nodes will simulate real world latencies.
 #
@@ -269,48 +354,67 @@ func runDemo(cmd *cobra.Command, gen workload.Generator) (resErr error) {
 `,
 				cliflags.Global.Name,
 			)
-		}
-
-		// Only print details about the telemetry configuration if the
-		// user has control over it.
-		if demoCtx.DisableTelemetry {
-			cliCtx.PrintlnUnlessEmbedded("#\n# Telemetry and automatic license acquisition disabled by configuration.")
-		} else if demoCtx.DisableLicenseAcquisition {
-			cliCtx.PrintlnUnlessEmbedded("#\n# Enterprise features disabled by OSS-only build.")
 		} else {
-			cliCtx.PrintlnUnlessEmbedded("#\n# This demo session will attempt to enable enterprise features\n" +
-				"# by acquiring a temporary license from Cockroach Labs in the background.\n" +
-				"# To disable this behavior, set the environment variable\n" +
-				"# COCKROACH_SKIP_ENABLING_DIAGNOSTIC_REPORTING=true.")
+			__antithesis_instrumentation__.Notify(31913)
 		}
-	}
+		__antithesis_instrumentation__.Notify(31909)
 
-	// Start license acquisition in the background.
+		if demoCtx.DisableTelemetry {
+			__antithesis_instrumentation__.Notify(31914)
+			cliCtx.PrintlnUnlessEmbedded("#\n# Telemetry and automatic license acquisition disabled by configuration.")
+		} else {
+			__antithesis_instrumentation__.Notify(31915)
+			if demoCtx.DisableLicenseAcquisition {
+				__antithesis_instrumentation__.Notify(31916)
+				cliCtx.PrintlnUnlessEmbedded("#\n# Enterprise features disabled by OSS-only build.")
+			} else {
+				__antithesis_instrumentation__.Notify(31917)
+				cliCtx.PrintlnUnlessEmbedded("#\n# This demo session will attempt to enable enterprise features\n" +
+					"# by acquiring a temporary license from Cockroach Labs in the background.\n" +
+					"# To disable this behavior, set the environment variable\n" +
+					"# COCKROACH_SKIP_ENABLING_DIAGNOSTIC_REPORTING=true.")
+			}
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(31918)
+	}
+	__antithesis_instrumentation__.Notify(31891)
+
 	licenseDone, err := c.AcquireDemoLicense(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31919)
 		return clierrorplus.CheckAndMaybeShout(err)
+	} else {
+		__antithesis_instrumentation__.Notify(31920)
 	}
+	__antithesis_instrumentation__.Notify(31892)
 
-	// Initialize the workload, if requested.
 	if err := c.SetupWorkload(ctx, licenseDone); err != nil {
+		__antithesis_instrumentation__.Notify(31921)
 		return clierrorplus.CheckAndMaybeShout(err)
+	} else {
+		__antithesis_instrumentation__.Notify(31922)
 	}
+	__antithesis_instrumentation__.Notify(31893)
 
 	if cliCtx.IsInteractive {
+		__antithesis_instrumentation__.Notify(31923)
 		if gen != nil {
+			__antithesis_instrumentation__.Notify(31926)
 			fmt.Printf("#\n# The cluster has been preloaded with the %q dataset\n# (%s).\n",
 				gen.Meta().Name, gen.Meta().Description)
+		} else {
+			__antithesis_instrumentation__.Notify(31927)
 		}
+		__antithesis_instrumentation__.Notify(31924)
 
 		fmt.Println(`#
 # Reminder: your changes to data stored in the demo session will not be saved!`)
 
 		var nodeList strings.Builder
-		c.ListDemoNodes(&nodeList, stderr, true /* justOne */)
+		c.ListDemoNodes(&nodeList, stderr, true)
 		cliCtx.PrintlnUnlessEmbedded(
-			// Only print the server details when the shell is not embedded;
-			// if embedded, the embedding platform owns the network
-			// configuration.
+
 			`#
 # If you wish to access this demo cluster using another tool, you will need
 # the following details:
@@ -320,6 +424,7 @@ func runDemo(cmd *cobra.Command, gen workload.Generator) (resErr error) {
 			strings.ReplaceAll(strings.TrimSuffix(nodeList.String(), "\n"), "\n", "\n#   "))
 
 		if !demoCtx.Insecure {
+			__antithesis_instrumentation__.Notify(31928)
 			adminUser, adminPassword, certsDir := c.GetSQLCredentials()
 
 			fmt.Printf(`#   - Username: %q, password: %q
@@ -330,35 +435,52 @@ func runDemo(cmd *cobra.Command, gen workload.Generator) (resErr error) {
 				adminPassword,
 				certsDir,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(31929)
 		}
+		__antithesis_instrumentation__.Notify(31925)
 
-		// It's ok to do this twice (if workload setup already waited) because
-		// then the error return is guaranteed to be nil.
 		go func() {
+			__antithesis_instrumentation__.Notify(31930)
 			if err := waitForLicense(licenseDone); err != nil {
+				__antithesis_instrumentation__.Notify(31931)
 				_ = clierrorplus.CheckAndMaybeShout(err)
+			} else {
+				__antithesis_instrumentation__.Notify(31932)
 			}
 		}()
 	} else {
-		// If we are not running an interactive shell, we need to wait to ensure
-		// that license acquisition is successful. If license acquisition is
-		// disabled, then a read on this channel will return immediately.
+		__antithesis_instrumentation__.Notify(31933)
+
 		if err := waitForLicense(licenseDone); err != nil {
+			__antithesis_instrumentation__.Notify(31934)
 			return clierrorplus.CheckAndMaybeShout(err)
+		} else {
+			__antithesis_instrumentation__.Notify(31935)
 		}
 	}
+	__antithesis_instrumentation__.Notify(31894)
 
 	conn, err := sqlCtx.MakeConn(c.GetConnURL())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(31936)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(31937)
 	}
-	defer func() { resErr = errors.CombineErrors(resErr, conn.Close()) }()
+	__antithesis_instrumentation__.Notify(31895)
+	defer func() {
+		__antithesis_instrumentation__.Notify(31938)
+		resErr = errors.CombineErrors(resErr, conn.Close())
+	}()
+	__antithesis_instrumentation__.Notify(31896)
 
 	sqlCtx.ShellCtx.ParseURL = makeURLParser(cmd)
 	return sqlCtx.Run(conn)
 }
 
 func waitForLicense(licenseDone <-chan error) error {
+	__antithesis_instrumentation__.Notify(31939)
 	err := <-licenseDone
 	return err
 }

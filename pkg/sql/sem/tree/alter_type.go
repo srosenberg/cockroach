@@ -1,48 +1,37 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
 )
 
-// AlterType represents an ALTER TYPE statement.
 type AlterType struct {
 	Type *UnresolvedObjectName
 	Cmd  AlterTypeCmd
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterType) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603223)
 	ctx.WriteString("ALTER TYPE ")
 	ctx.FormatNode(node.Type)
 	ctx.FormatNode(node.Cmd)
 }
 
-// AlterTypeCmd represents a type modification operation.
 type AlterTypeCmd interface {
 	NodeFormatter
 	alterTypeCmd()
-	// TelemetryCounter returns the telemetry counter to increment
-	// when this command is used.
+
 	TelemetryCounter() telemetry.Counter
 }
 
-func (*AlterTypeAddValue) alterTypeCmd()    {}
-func (*AlterTypeRenameValue) alterTypeCmd() {}
-func (*AlterTypeRename) alterTypeCmd()      {}
-func (*AlterTypeSetSchema) alterTypeCmd()   {}
-func (*AlterTypeOwner) alterTypeCmd()       {}
-func (*AlterTypeDropValue) alterTypeCmd()   {}
+func (*AlterTypeAddValue) alterTypeCmd()    { __antithesis_instrumentation__.Notify(603224) }
+func (*AlterTypeRenameValue) alterTypeCmd() { __antithesis_instrumentation__.Notify(603225) }
+func (*AlterTypeRename) alterTypeCmd()      { __antithesis_instrumentation__.Notify(603226) }
+func (*AlterTypeSetSchema) alterTypeCmd()   { __antithesis_instrumentation__.Notify(603227) }
+func (*AlterTypeOwner) alterTypeCmd()       { __antithesis_instrumentation__.Notify(603228) }
+func (*AlterTypeDropValue) alterTypeCmd()   { __antithesis_instrumentation__.Notify(603229) }
 
 var _ AlterTypeCmd = &AlterTypeAddValue{}
 var _ AlterTypeCmd = &AlterTypeRenameValue{}
@@ -51,121 +40,123 @@ var _ AlterTypeCmd = &AlterTypeSetSchema{}
 var _ AlterTypeCmd = &AlterTypeOwner{}
 var _ AlterTypeCmd = &AlterTypeDropValue{}
 
-// AlterTypeAddValue represents an ALTER TYPE ADD VALUE command.
 type AlterTypeAddValue struct {
 	NewVal      EnumValue
 	IfNotExists bool
 	Placement   *AlterTypeAddValuePlacement
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterTypeAddValue) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603230)
 	ctx.WriteString(" ADD VALUE ")
 	if node.IfNotExists {
+		__antithesis_instrumentation__.Notify(603232)
 		ctx.WriteString("IF NOT EXISTS ")
+	} else {
+		__antithesis_instrumentation__.Notify(603233)
 	}
+	__antithesis_instrumentation__.Notify(603231)
 	ctx.FormatNode(&node.NewVal)
 	if node.Placement != nil {
+		__antithesis_instrumentation__.Notify(603234)
 		if node.Placement.Before {
+			__antithesis_instrumentation__.Notify(603236)
 			ctx.WriteString(" BEFORE ")
 		} else {
+			__antithesis_instrumentation__.Notify(603237)
 			ctx.WriteString(" AFTER ")
 		}
+		__antithesis_instrumentation__.Notify(603235)
 		ctx.FormatNode(&node.Placement.ExistingVal)
+	} else {
+		__antithesis_instrumentation__.Notify(603238)
 	}
 }
 
-// TelemetryCounter implements the AlterTypeCmd interface.
 func (node *AlterTypeAddValue) TelemetryCounter() telemetry.Counter {
+	__antithesis_instrumentation__.Notify(603239)
 	return sqltelemetry.SchemaChangeAlterCounterWithExtra("type", "add_value")
 }
 
-// AlterTypeAddValuePlacement represents the placement clause for an ALTER
-// TYPE ADD VALUE command ([BEFORE | AFTER] value).
 type AlterTypeAddValuePlacement struct {
 	Before      bool
 	ExistingVal EnumValue
 }
 
-// AlterTypeRenameValue represents an ALTER TYPE RENAME VALUE command.
 type AlterTypeRenameValue struct {
 	OldVal EnumValue
 	NewVal EnumValue
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterTypeRenameValue) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603240)
 	ctx.WriteString(" RENAME VALUE ")
 	ctx.FormatNode(&node.OldVal)
 	ctx.WriteString(" TO ")
 	ctx.FormatNode(&node.NewVal)
 }
 
-// TelemetryCounter implements the AlterTypeCmd interface.
 func (node *AlterTypeRenameValue) TelemetryCounter() telemetry.Counter {
+	__antithesis_instrumentation__.Notify(603241)
 	return sqltelemetry.SchemaChangeAlterCounterWithExtra("type", "rename_value")
 }
 
-// AlterTypeDropValue represents an ALTER TYPE DROP VALUE command.
 type AlterTypeDropValue struct {
 	Val EnumValue
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterTypeDropValue) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603242)
 	ctx.WriteString(" DROP VALUE ")
 	ctx.FormatNode(&node.Val)
 }
 
-// TelemetryCounter implements the AlterTypeCmd interface.
 func (node *AlterTypeDropValue) TelemetryCounter() telemetry.Counter {
+	__antithesis_instrumentation__.Notify(603243)
 	return sqltelemetry.SchemaChangeAlterCounterWithExtra("type", "drop_value")
 }
 
-// AlterTypeRename represents an ALTER TYPE RENAME command.
 type AlterTypeRename struct {
 	NewName Name
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterTypeRename) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603244)
 	ctx.WriteString(" RENAME TO ")
 	ctx.FormatNode(&node.NewName)
 }
 
-// TelemetryCounter implements the AlterTypeCmd interface.
 func (node *AlterTypeRename) TelemetryCounter() telemetry.Counter {
+	__antithesis_instrumentation__.Notify(603245)
 	return sqltelemetry.SchemaChangeAlterCounterWithExtra("type", "rename")
 }
 
-// AlterTypeSetSchema represents an ALTER TYPE SET SCHEMA command.
 type AlterTypeSetSchema struct {
 	Schema Name
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterTypeSetSchema) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603246)
 	ctx.WriteString(" SET SCHEMA ")
 	ctx.FormatNode(&node.Schema)
 }
 
-// TelemetryCounter implements the AlterTypeCmd interface.
 func (node *AlterTypeSetSchema) TelemetryCounter() telemetry.Counter {
+	__antithesis_instrumentation__.Notify(603247)
 	return sqltelemetry.SchemaChangeAlterCounterWithExtra("type", "set_schema")
 }
 
-// AlterTypeOwner represents an ALTER TYPE OWNER TO command.
 type AlterTypeOwner struct {
 	Owner RoleSpec
 }
 
-// Format implements the NodeFormatter interface.
 func (node *AlterTypeOwner) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(603248)
 	ctx.WriteString(" OWNER TO ")
 	ctx.FormatNode(&node.Owner)
 }
 
-// TelemetryCounter implements the AlterTypeCmd interface.
 func (node *AlterTypeOwner) TelemetryCounter() telemetry.Counter {
+	__antithesis_instrumentation__.Notify(603249)
 	return sqltelemetry.SchemaChangeAlterCounterWithExtra("type", "owner")
 }

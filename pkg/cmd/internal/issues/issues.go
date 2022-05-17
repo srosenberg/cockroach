@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package issues
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,86 +18,108 @@ import (
 )
 
 const (
-	// CockroachPkgPrefix is the crdb package prefix.
 	CockroachPkgPrefix = "github.com/cockroachdb/cockroach/pkg/"
-	// Based on the following observed API response the maximum here is 1<<16-1.
-	// We shouldn't usually get near that limit but if we do, better to post a
-	// clipped issue.
-	//
-	// 422 Validation Failed [{Resource:Issue Field:body Code:custom Message:body
-	// is too long (maximum is 65536 characters)}]
+
 	githubIssueBodyMaximumLength = 60000
 )
 
 func enforceMaxLength(s string) string {
+	__antithesis_instrumentation__.Notify(41134)
 	if len(s) > githubIssueBodyMaximumLength {
+		__antithesis_instrumentation__.Notify(41136)
 		return s[:githubIssueBodyMaximumLength]
+	} else {
+		__antithesis_instrumentation__.Notify(41137)
 	}
+	__antithesis_instrumentation__.Notify(41135)
 	return s
 }
 
 var (
-	// Set of labels attached to created issues.
 	issueLabels = []string{"O-robot", "C-test-failure"}
-	// Label we expect when checking existing issues. Sometimes users open
-	// issues about flakes and don't assign all the labels. We want to at
-	// least require the test-failure label to avoid pathological situations
-	// in which a test name is so generic that it matches lots of random issues.
-	// Note that we'll only post a comment into an existing label if the labels
-	// match 100%, but we also cross-link issues whose labels differ. But we
-	// require that they all have searchLabel as a baseline.
+
 	searchLabel = issueLabels[1]
 )
 
-// context augments context.Context with a logger.
 type postCtx struct {
 	context.Context
 	strings.Builder
 }
 
 func (ctx *postCtx) Printf(format string, args ...interface{}) {
-	if n := len(format); n > 0 && format[n-1] != '\n' {
+	__antithesis_instrumentation__.Notify(41138)
+	if n := len(format); n > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(41140)
+		return format[n-1] != '\n' == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(41141)
 		format += "\n"
+	} else {
+		__antithesis_instrumentation__.Notify(41142)
 	}
+	__antithesis_instrumentation__.Notify(41139)
 	fmt.Fprintf(&ctx.Builder, format, args...)
 }
 
 func getLatestTag() (string, error) {
+	__antithesis_instrumentation__.Notify(41143)
 	cmd := exec.Command("git", "describe", "--abbrev=0", "--tags", "--match=v[0-9]*")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41145)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(41146)
 	}
+	__antithesis_instrumentation__.Notify(41144)
 	return strings.TrimSpace(string(out)), nil
 }
 
 func (p *poster) getProbableMilestone(ctx *postCtx) *int {
+	__antithesis_instrumentation__.Notify(41147)
 	tag, err := p.getLatestTag()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41152)
 		ctx.Printf("unable to get latest tag to determine milestone: %s", err)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(41153)
 	}
+	__antithesis_instrumentation__.Notify(41148)
 
 	v, err := version.Parse(tag)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41154)
 		ctx.Printf("unable to parse version from tag to determine milestone: %s", err)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(41155)
 	}
+	__antithesis_instrumentation__.Notify(41149)
 	vstring := fmt.Sprintf("%d.%d", v.Major(), v.Minor())
 
 	milestones, _, err := p.listMilestones(ctx, p.Org, p.Repo, &github.MilestoneListOptions{
 		State: "open",
 	})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41156)
 		ctx.Printf("unable to list milestones for %s/%s: %v", p.Org, p.Repo, err)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(41157)
 	}
+	__antithesis_instrumentation__.Notify(41150)
 
 	for _, m := range milestones {
+		__antithesis_instrumentation__.Notify(41158)
 		if m.GetTitle() == vstring {
+			__antithesis_instrumentation__.Notify(41159)
 			return m.Number
+		} else {
+			__antithesis_instrumentation__.Notify(41160)
 		}
 	}
+	__antithesis_instrumentation__.Notify(41151)
 	return nil
 }
 
@@ -127,6 +141,7 @@ type poster struct {
 }
 
 func newPoster(client *github.Client, opts *Options) *poster {
+	__antithesis_instrumentation__.Notify(41161)
 	return &poster{
 		Options:           opts,
 		createIssue:       client.Issues.Create,
@@ -138,9 +153,8 @@ func newPoster(client *github.Client, opts *Options) *poster {
 	}
 }
 
-// Options configures the issue poster.
 type Options struct {
-	Token        string // GitHub API token
+	Token        string
 	Org          string
 	Repo         string
 	SHA          string
@@ -152,12 +166,9 @@ type Options struct {
 	getLatestTag func() (string, error)
 }
 
-// DefaultOptionsFromEnv initializes the Options from the environment variables,
-// falling back to placeholders if the environment is not or only partially
-// populated.
 func DefaultOptionsFromEnv() *Options {
-	// NB: these are hidden here as "proof" that nobody uses them directly
-	// outside of this method.
+	__antithesis_instrumentation__.Notify(41162)
+
 	const (
 		githubOrgEnv           = "GITHUB_ORG"
 		githubRepoEnv          = "GITHUB_REPO"
@@ -174,10 +185,7 @@ func DefaultOptionsFromEnv() *Options {
 		Token: maybeEnv(githubAPITokenEnv, ""),
 		Org:   maybeEnv(githubOrgEnv, "cockroachdb"),
 		Repo:  maybeEnv(githubRepoEnv, "cockroach"),
-		// The default value is the very first commit in the repository.
-		// This was chosen simply because it exists and while surprising,
-		// at least it'll be obvious that something went wrong (as an
-		// issue will be posted pointing at that SHA).
+
 		SHA:          maybeEnv(teamcityVCSNumberEnv, "8548987813ff9e1b8a9878023d3abfc6911c16db"),
 		BuildID:      maybeEnv(teamcityBuildIDEnv, "NOTFOUNDINENV"),
 		ServerURL:    maybeEnv(teamcityServerURLEnv, "https://server-url-not-found-in-env.com"),
@@ -189,61 +197,70 @@ func DefaultOptionsFromEnv() *Options {
 }
 
 func maybeEnv(envKey, defaultValue string) string {
+	__antithesis_instrumentation__.Notify(41163)
 	v := os.Getenv(envKey)
 	if v == "" {
+		__antithesis_instrumentation__.Notify(41165)
 		return defaultValue
+	} else {
+		__antithesis_instrumentation__.Notify(41166)
 	}
+	__antithesis_instrumentation__.Notify(41164)
 	return v
 }
 
-// CanPost returns true if the github API token environment variable is set to
-// a nontrivial value.
 func (o *Options) CanPost() bool {
+	__antithesis_instrumentation__.Notify(41167)
 	return o.Token != ""
 }
 
-// IsReleaseBranch returns true for branches that we want to treat as
-// "release" branches, including master and provisional branches.
 func (o *Options) IsReleaseBranch() bool {
-	return o.Branch == "master" || strings.HasPrefix(o.Branch, "release-") || strings.HasPrefix(o.Branch, "provisional_")
+	__antithesis_instrumentation__.Notify(41168)
+	return o.Branch == "master" || func() bool {
+		__antithesis_instrumentation__.Notify(41169)
+		return strings.HasPrefix(o.Branch, "release-") == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(41170)
+		return strings.HasPrefix(o.Branch, "provisional_") == true
+	}() == true
 }
 
-// TemplateData is the input on which an IssueFormatter operates. It has
-// everything known about the test failure in a predigested form.
 type TemplateData struct {
 	PostRequest
-	// This is foo/bar instead of github.com/cockroachdb/cockroach/pkg/foo/bar.
+
 	PackageNameShort string
-	// GOFLAGS=-foo TAGS=-race etc.
+
 	Parameters []string
-	// The message, garnished with helpers that allow extracting the useful
-	// bots.
+
 	CondensedMessage CondensedMessage
-	// The commit SHA.
+
 	Commit string
-	// Link to the commit on GitHub.
+
 	CommitURL string
-	// The branch.
+
 	Branch string
-	// An URL that goes straight to the artifacts for this test.
-	// Set only if PostRequest.Artifacts was provided.
+
 	ArtifactsURL string
-	// URL is the link to the failing build.
+
 	URL string
-	// Issues that match this one, except they're on other branches.
+
 	RelatedIssues []github.Issue
-	// InternalLog contains information about non-critical issues encountered
-	// while forming the issue.
+
 	InternalLog string
 }
 
 func (p *poster) templateData(
 	ctx context.Context, req PostRequest, relatedIssues []github.Issue,
 ) TemplateData {
+	__antithesis_instrumentation__.Notify(41171)
 	var artifactsURL string
 	if req.Artifacts != "" {
+		__antithesis_instrumentation__.Notify(41173)
 		artifactsURL = p.teamcityArtifactsURL(req.Artifacts).String()
+	} else {
+		__antithesis_instrumentation__.Notify(41174)
 	}
+	__antithesis_instrumentation__.Notify(41172)
 	return TemplateData{
 		PostRequest:      req,
 		Parameters:       p.parameters(),
@@ -259,20 +276,16 @@ func (p *poster) templateData(
 }
 
 func (p *poster) post(origCtx context.Context, formatter IssueFormatter, req PostRequest) error {
+	__antithesis_instrumentation__.Notify(41175)
 	ctx := &postCtx{Context: origCtx}
 	data := p.templateData(
 		ctx,
 		req,
-		nil, // relatedIssues
+		nil,
 	)
 
-	// We just want the title this time around, as we're going to use
-	// it to figure out if an issue already exists.
 	title := formatter.Title(data)
 
-	// We carry out two searches below, one attempting to find an issue that we
-	// adopt (i.e. add a comment to) and one finding "related issues", i.e. those
-	// that would match if it weren't for their branch label.
 	qBase := fmt.Sprintf(
 		`repo:%q user:%q is:issue is:open in:title label:%q sort:created-desc %q`,
 		p.Repo, p.Org, searchLabel, title)
@@ -287,13 +300,14 @@ func (p *poster) post(origCtx context.Context, formatter IssueFormatter, req Pos
 		},
 	})
 	if err != nil {
-		// Tough luck, keep going even if that means we're going to add a duplicate
-		// issue.
-		//
-		// TODO(tbg): surface this error.
+		__antithesis_instrumentation__.Notify(41181)
+
 		_ = err
 		rExisting = &github.IssuesSearchResult{}
+	} else {
+		__antithesis_instrumentation__.Notify(41182)
 	}
+	__antithesis_instrumentation__.Notify(41176)
 
 	rRelated, _, err := p.searchIssues(ctx, qRelated, &github.SearchOptions{
 		ListOptions: github.ListOptions{
@@ -301,36 +315,46 @@ func (p *poster) post(origCtx context.Context, formatter IssueFormatter, req Pos
 		},
 	})
 	if err != nil {
-		// This is no reason to throw the towel, keep going.
-		//
-		// TODO(tbg): surface this error.
+		__antithesis_instrumentation__.Notify(41183)
+
 		_ = err
 		rRelated = &github.IssuesSearchResult{}
+	} else {
+		__antithesis_instrumentation__.Notify(41184)
 	}
+	__antithesis_instrumentation__.Notify(41177)
 
 	var foundIssue *int
 	if len(rExisting.Issues) > 0 {
-		// We found an existing issue to post a comment into.
+		__antithesis_instrumentation__.Notify(41185)
+
 		foundIssue = rExisting.Issues[0].Number
-		// We are not going to create an issue, so don't show
-		// MentionOnCreate to the formatter.Body call below.
+
 		data.MentionOnCreate = nil
+	} else {
+		__antithesis_instrumentation__.Notify(41186)
 	}
+	__antithesis_instrumentation__.Notify(41178)
 
 	data.RelatedIssues = rRelated.Issues
 	data.InternalLog = ctx.Builder.String()
 	r := &Renderer{}
 	if err := formatter.Body(r, data); err != nil {
-		// Failure is not an option.
+		__antithesis_instrumentation__.Notify(41187)
+
 		_ = err
 		fmt.Fprintln(&r.buf, "\nFailed to render body: "+err.Error())
+	} else {
+		__antithesis_instrumentation__.Notify(41188)
 	}
+	__antithesis_instrumentation__.Notify(41179)
 
 	body := enforceMaxLength(r.buf.String())
 
 	createLabels := append(issueLabels, releaseLabel)
 	createLabels = append(createLabels, req.ExtraLabels...)
 	if foundIssue == nil {
+		__antithesis_instrumentation__.Notify(41189)
 		issueRequest := github.IssueRequest{
 			Title:     &title,
 			Body:      github.String(body),
@@ -339,44 +363,61 @@ func (p *poster) post(origCtx context.Context, formatter IssueFormatter, req Pos
 		}
 		issue, _, err := p.createIssue(ctx, p.Org, p.Repo, &issueRequest)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(41191)
 			return errors.Wrapf(err, "failed to create GitHub issue %s",
 				github.Stringify(issueRequest))
+		} else {
+			__antithesis_instrumentation__.Notify(41192)
 		}
+		__antithesis_instrumentation__.Notify(41190)
 
 		if req.ProjectColumnID != 0 {
+			__antithesis_instrumentation__.Notify(41193)
 			_, _, err := p.createProjectCard(ctx, int64(req.ProjectColumnID), &github.ProjectCardOptions{
 				ContentID:   *issue.ID,
 				ContentType: "Issue",
 			})
 			if err != nil {
-				// Tough luck, keep going.
-				//
-				// TODO(tbg): retrieve the project column ID before posting, so that if
-				// it can't be found we can mention that in the issue we'll file anyway.
+				__antithesis_instrumentation__.Notify(41194)
+
 				_ = err
+			} else {
+				__antithesis_instrumentation__.Notify(41195)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(41196)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(41197)
 		comment := github.IssueComment{Body: github.String(body)}
 		if _, _, err := p.createComment(
 			ctx, p.Org, p.Repo, *foundIssue, &comment); err != nil {
+			__antithesis_instrumentation__.Notify(41198)
 			return errors.Wrapf(err, "failed to update issue #%d with %s",
 				*foundIssue, github.Stringify(comment))
+		} else {
+			__antithesis_instrumentation__.Notify(41199)
 		}
 	}
+	__antithesis_instrumentation__.Notify(41180)
 
 	return nil
 }
 
 func (p *poster) teamcityURL(tab, fragment string) *url.URL {
+	__antithesis_instrumentation__.Notify(41200)
 	options := url.Values{}
 	options.Add("buildId", p.BuildID)
 	options.Add("tab", tab)
 
 	u, err := url.Parse(p.ServerURL)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(41202)
 		log.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(41203)
 	}
+	__antithesis_instrumentation__.Notify(41201)
 	u.Scheme = "https"
 	u.Path = "viewLog.html"
 	u.RawQuery = options.Encode()
@@ -385,62 +426,63 @@ func (p *poster) teamcityURL(tab, fragment string) *url.URL {
 }
 
 func (p *poster) teamcityBuildLogURL() *url.URL {
+	__antithesis_instrumentation__.Notify(41204)
 	return p.teamcityURL("buildLog", "")
 }
 
 func (p *poster) teamcityArtifactsURL(artifacts string) *url.URL {
+	__antithesis_instrumentation__.Notify(41205)
 	return p.teamcityURL("artifacts", artifacts)
 }
 
 func (p *poster) parameters() []string {
+	__antithesis_instrumentation__.Notify(41206)
 	var ps []string
 	if p.Tags != "" {
+		__antithesis_instrumentation__.Notify(41209)
 		ps = append(ps, "TAGS="+p.Tags)
+	} else {
+		__antithesis_instrumentation__.Notify(41210)
 	}
+	__antithesis_instrumentation__.Notify(41207)
 	if p.Goflags != "" {
+		__antithesis_instrumentation__.Notify(41211)
 		ps = append(ps, "GOFLAGS="+p.Goflags)
+	} else {
+		__antithesis_instrumentation__.Notify(41212)
 	}
+	__antithesis_instrumentation__.Notify(41208)
 	return ps
 }
 
-// A PostRequest contains the information needed to create an issue about a
-// test failure.
 type PostRequest struct {
-	// The name of the package the test failure relates to.
 	PackageName string
-	// The name of the failing test.
+
 	TestName string
-	// The test output.
+
 	Message string
-	// A path to the test artifacts relative to the artifacts root. If nonempty,
-	// allows the poster formatter to construct a direct URL to this directory.
+
 	Artifacts string
-	// MentionOnCreate is a slice of GitHub handles (@foo, @cockroachdb/some-team, etc)
-	// that should be mentioned in the message when creating a new issue. These are
-	// *not* mentioned when posting to an existing issue.
+
 	MentionOnCreate []string
-	// A help section of the issue, for example with links to documentation or
-	// instructions on how to reproduce the issue.
+
 	HelpCommand func(*Renderer)
-	// Additional labels that will be added to the issue. They will be created
-	// as necessary (as a side effect of creating an issue with them). An
-	// existing issue may be adopted even if it does not have these labels.
+
 	ExtraLabels []string
 
-	// ProjectColumnID is the id of the GitHub project column to add the issue to,
-	// or 0 if none.
 	ProjectColumnID int
 }
 
-// Post either creates a new issue for a failed test, or posts a comment to an
-// existing open issue. GITHUB_API_TOKEN must be set to a valid GitHub token
-// that has permissions to search and create issues and comments or an error
-// will be returned.
 func Post(ctx context.Context, formatter IssueFormatter, req PostRequest) error {
+	__antithesis_instrumentation__.Notify(41213)
 	opts := DefaultOptionsFromEnv()
 	if !opts.CanPost() {
+		__antithesis_instrumentation__.Notify(41215)
 		return errors.Newf("GITHUB_API_TOKEN env variable is not set; cannot post issue")
+	} else {
+		__antithesis_instrumentation__.Notify(41216)
 	}
+	__antithesis_instrumentation__.Notify(41214)
 
 	client := github.NewClient(oauth2.NewClient(ctx, oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: opts.Token},
@@ -448,25 +490,27 @@ func Post(ctx context.Context, formatter IssueFormatter, req PostRequest) error 
 	return newPoster(client, opts).post(ctx, formatter, req)
 }
 
-// ReproductionCommandFromString returns a value for the
-// PostRequest.HelpCommand field that is a command to run. It is
-// formatted as a bash code block.
 func ReproductionCommandFromString(repro string) func(*Renderer) {
+	__antithesis_instrumentation__.Notify(41217)
 	if repro == "" {
-		return func(*Renderer) {}
+		__antithesis_instrumentation__.Notify(41219)
+		return func(*Renderer) { __antithesis_instrumentation__.Notify(41220) }
+	} else {
+		__antithesis_instrumentation__.Notify(41221)
 	}
+	__antithesis_instrumentation__.Notify(41218)
 	return func(r *Renderer) {
+		__antithesis_instrumentation__.Notify(41222)
 		r.Escaped("To reproduce, try:\n")
 		r.CodeBlock("bash", repro)
 	}
 }
 
-// HelpCommandAsLink returns a value for the PostRequest.HelpCommand field
-// that prints a link to documentation to refer to.
 func HelpCommandAsLink(title, href string) func(r *Renderer) {
+	__antithesis_instrumentation__.Notify(41223)
 	return func(r *Renderer) {
-		// Bit of weird formatting here but apparently markdown links don't work inside
-		// of a line that also has a <p> tag. Putting it on its own line makes it work.
+		__antithesis_instrumentation__.Notify(41224)
+
 		r.Escaped("\n\nSee: ")
 		r.A(title, href)
 		r.Escaped("\n\n")

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -32,59 +24,85 @@ func init() {
 }
 
 func runLogFormats(_ *cobra.Command, args []string) {
+	__antithesis_instrumentation__.Notify(39972)
 	if err := runLogFormatsInternal(args); err != nil {
+		__antithesis_instrumentation__.Notify(39973)
 		fmt.Fprintln(os.Stderr, "ERROR:", err)
 		exit.WithCode(exit.UnspecifiedError())
+	} else {
+		__antithesis_instrumentation__.Notify(39974)
 	}
 }
 
 func runLogFormatsInternal(args []string) error {
-	// Compile the template.
+	__antithesis_instrumentation__.Notify(39975)
+
 	tmpl, err := template.New("format docs").Parse(fmtDocTemplate)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(39982)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(39983)
 	}
+	__antithesis_instrumentation__.Notify(39976)
 
 	m := log.GetFormatterDocs()
 
-	// Sort the names.
 	fNames := make([]string, 0, len(m))
 	for k := range m {
+		__antithesis_instrumentation__.Notify(39984)
 		fNames = append(fNames, k)
 	}
+	__antithesis_instrumentation__.Notify(39977)
 	sort.Strings(fNames)
 
-	// Retrieve the metadata into a format that the templating engine can understand.
 	type info struct {
 		Name string
 		Doc  string
 	}
 	var infos []info
 	for _, k := range fNames {
+		__antithesis_instrumentation__.Notify(39985)
 		infos = append(infos, info{Name: k, Doc: m[k]})
 	}
+	__antithesis_instrumentation__.Notify(39978)
 
-	// Render the template.
 	var src bytes.Buffer
 	if err := tmpl.Execute(&src, struct {
 		Formats []info
 	}{infos}); err != nil {
+		__antithesis_instrumentation__.Notify(39986)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(39987)
 	}
+	__antithesis_instrumentation__.Notify(39979)
 
-	// Write the output file.
 	w := os.Stdout
 	if len(args) > 0 {
+		__antithesis_instrumentation__.Notify(39988)
 		f, err := os.OpenFile(args[0], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(39991)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(39992)
 		}
-		defer func() { _ = f.Close() }()
+		__antithesis_instrumentation__.Notify(39989)
+		defer func() { __antithesis_instrumentation__.Notify(39993); _ = f.Close() }()
+		__antithesis_instrumentation__.Notify(39990)
 		w = f
+	} else {
+		__antithesis_instrumentation__.Notify(39994)
 	}
+	__antithesis_instrumentation__.Notify(39980)
 	if _, err := w.Write(src.Bytes()); err != nil {
+		__antithesis_instrumentation__.Notify(39995)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(39996)
 	}
+	__antithesis_instrumentation__.Notify(39981)
 
 	return nil
 }

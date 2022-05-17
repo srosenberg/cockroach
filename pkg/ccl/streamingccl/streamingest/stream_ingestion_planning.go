@@ -1,12 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package streamingest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,43 +28,71 @@ import (
 func streamIngestionJobDescription(
 	p sql.PlanHookState, streamIngestion *tree.StreamIngestion,
 ) (string, error) {
+	__antithesis_instrumentation__.Notify(25350)
 	ann := p.ExtendedEvalContext().Annotations
 	return tree.AsStringWithFQNames(streamIngestion, ann), nil
 }
 
-// maybeAddInlineSecurityCredentials converts a PG URL into sslinline mode by adding ssl key and
-// certificates inline as ssl parameters. sslinline is postgres driver specific feature
-// (https://github.com/lib/pq/blob/8446d16b8935fdf2b5c0fe333538ac395e3e1e4b/ssl.go#L85).
 func maybeAddInlineSecurityCredentials(pgURL url.URL) (url.URL, error) {
+	__antithesis_instrumentation__.Notify(25351)
 	options := pgURL.Query()
 	if options.Get("sslinline") == "true" {
+		__antithesis_instrumentation__.Notify(25356)
 		return pgURL, nil
+	} else {
+		__antithesis_instrumentation__.Notify(25357)
 	}
+	__antithesis_instrumentation__.Notify(25352)
 
 	loadPathContentAsOption := func(optionKey string) error {
+		__antithesis_instrumentation__.Notify(25358)
 		if !options.Has(optionKey) {
+			__antithesis_instrumentation__.Notify(25361)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(25362)
 		}
+		__antithesis_instrumentation__.Notify(25359)
 		content, err := os.ReadFile(options.Get(optionKey))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(25363)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(25364)
 		}
+		__antithesis_instrumentation__.Notify(25360)
 		options.Set(optionKey, string(content))
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(25353)
 
 	if err := loadPathContentAsOption("sslrootcert"); err != nil {
+		__antithesis_instrumentation__.Notify(25365)
 		return url.URL{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(25366)
 	}
-	// Convert client certs inline.
+	__antithesis_instrumentation__.Notify(25354)
+
 	if options.Get("sslmode") == "verify-full" {
+		__antithesis_instrumentation__.Notify(25367)
 		if err := loadPathContentAsOption("sslcert"); err != nil {
+			__antithesis_instrumentation__.Notify(25369)
 			return url.URL{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(25370)
 		}
+		__antithesis_instrumentation__.Notify(25368)
 		if err := loadPathContentAsOption("sslkey"); err != nil {
+			__antithesis_instrumentation__.Notify(25371)
 			return url.URL{}, err
+		} else {
+			__antithesis_instrumentation__.Notify(25372)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(25373)
 	}
+	__antithesis_instrumentation__.Notify(25355)
 	options.Set("sslinline", "true")
 	res := pgURL
 	res.RawQuery = options.Encode()
@@ -80,13 +102,18 @@ func maybeAddInlineSecurityCredentials(pgURL url.URL) (url.URL, error) {
 func ingestionPlanHook(
 	ctx context.Context, stmt tree.Statement, p sql.PlanHookState,
 ) (sql.PlanHookRowFn, colinfo.ResultColumns, []sql.PlanNode, bool, error) {
+	__antithesis_instrumentation__.Notify(25374)
 	ingestionStmt, ok := stmt.(*tree.StreamIngestion)
 	if !ok {
+		__antithesis_instrumentation__.Notify(25379)
 		return nil, nil, nil, false, nil
+	} else {
+		__antithesis_instrumentation__.Notify(25380)
 	}
+	__antithesis_instrumentation__.Notify(25375)
 
-	// Check if the experimental feature is enabled.
 	if !p.SessionData().EnableStreamReplication {
+		__antithesis_instrumentation__.Notify(25381)
 		return nil, nil, nil, false, errors.WithTelemetry(
 			pgerror.WithCandidateCode(
 				errors.WithHint(
@@ -97,14 +124,22 @@ func ingestionPlanHook(
 			),
 			"replication.ingest.disabled",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(25382)
 	}
+	__antithesis_instrumentation__.Notify(25376)
 
 	fromFn, err := p.TypeAsStringArray(ctx, tree.Exprs(ingestionStmt.From), "INGESTION")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(25383)
 		return nil, nil, nil, false, err
+	} else {
+		__antithesis_instrumentation__.Notify(25384)
 	}
+	__antithesis_instrumentation__.Notify(25377)
 
 	fn := func(ctx context.Context, _ []sql.PlanNode, resultsCh chan<- tree.Datums) error {
+		__antithesis_instrumentation__.Notify(25385)
 		ctx, span := tracing.ChildSpan(ctx, stmt.StatementTag())
 		defer span.Finish()
 
@@ -112,57 +147,107 @@ func ingestionPlanHook(
 			p.ExecCfg().Settings, p.ExecCfg().LogicalClusterID(), p.ExecCfg().Organization(),
 			"RESTORE FROM REPLICATION STREAM",
 		); err != nil {
+			__antithesis_instrumentation__.Notify(25396)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(25397)
 		}
+		__antithesis_instrumentation__.Notify(25386)
 
 		from, err := fromFn()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(25398)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(25399)
 		}
+		__antithesis_instrumentation__.Notify(25387)
 
-		// We only support a TENANT target, so error out if that is nil.
 		if !ingestionStmt.Targets.TenantID.IsSet() {
+			__antithesis_instrumentation__.Notify(25400)
 			return errors.Newf("no tenant specified in ingestion query: %s", ingestionStmt.String())
+		} else {
+			__antithesis_instrumentation__.Notify(25401)
 		}
+		__antithesis_instrumentation__.Notify(25388)
 
 		streamAddress := streamingccl.StreamAddress(from[0])
 		url, err := streamAddress.URL()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(25402)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(25403)
 		}
+		__antithesis_instrumentation__.Notify(25389)
 		q := url.Query()
 
-		// Operator should specify a postgres scheme address with cert authentication.
-		if hasPostgresAuthentication := (q.Get("sslmode") == "verify-full") &&
-			q.Has("sslrootcert") && q.Has("sslkey") && q.Has("sslcert"); (url.Scheme == "postgres") && !hasPostgresAuthentication {
+		if hasPostgresAuthentication := (q.Get("sslmode") == "verify-full") && func() bool {
+			__antithesis_instrumentation__.Notify(25404)
+			return q.Has("sslrootcert") == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(25405)
+			return q.Has("sslkey") == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(25406)
+			return q.Has("sslcert") == true
+		}() == true; (url.Scheme == "postgres") && func() bool {
+			__antithesis_instrumentation__.Notify(25407)
+			return !hasPostgresAuthentication == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(25408)
 			return errors.Errorf(
 				"stream replication address should have cert authentication if in postgres scheme: %s", streamAddress)
+		} else {
+			__antithesis_instrumentation__.Notify(25409)
 		}
+		__antithesis_instrumentation__.Notify(25390)
 
-		// Convert this URL into sslinline mode.
 		*url, err = maybeAddInlineSecurityCredentials(*url)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(25410)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(25411)
 		}
+		__antithesis_instrumentation__.Notify(25391)
 		streamAddress = streamingccl.StreamAddress(url.String())
 
-		if ingestionStmt.Targets.Types != nil || ingestionStmt.Targets.Databases != nil ||
-			ingestionStmt.Targets.Tables != nil || ingestionStmt.Targets.Schemas != nil {
+		if ingestionStmt.Targets.Types != nil || func() bool {
+			__antithesis_instrumentation__.Notify(25412)
+			return ingestionStmt.Targets.Databases != nil == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(25413)
+			return ingestionStmt.Targets.Tables != nil == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(25414)
+			return ingestionStmt.Targets.Schemas != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(25415)
 			return errors.Newf("unsupported target in ingestion query, "+
 				"only tenant ingestion is supported: %s", ingestionStmt.String())
+		} else {
+			__antithesis_instrumentation__.Notify(25416)
 		}
-
-		// TODO(adityamaru): Add privileges checks. Probably the same as RESTORE.
+		__antithesis_instrumentation__.Notify(25392)
 
 		prefix := keys.MakeTenantPrefix(ingestionStmt.Targets.TenantID.TenantID)
 		startTime := hlc.Timestamp{WallTime: timeutil.Now().UnixNano()}
 		if ingestionStmt.AsOf.Expr != nil {
+			__antithesis_instrumentation__.Notify(25417)
 			asOf, err := p.EvalAsOfTimestamp(ctx, ingestionStmt.AsOf)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(25419)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(25420)
 			}
+			__antithesis_instrumentation__.Notify(25418)
 			startTime = asOf.Timestamp
+		} else {
+			__antithesis_instrumentation__.Notify(25421)
 		}
+		__antithesis_instrumentation__.Notify(25393)
 
 		streamIngestionDetails := jobspb.StreamIngestionDetails{
 			StreamAddress: string(streamAddress),
@@ -173,8 +258,12 @@ func ingestionPlanHook(
 
 		jobDescription, err := streamIngestionJobDescription(p, ingestionStmt)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(25422)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(25423)
 		}
+		__antithesis_instrumentation__.Notify(25394)
 
 		jr := jobs.Record{
 			Description:   jobDescription,
@@ -188,11 +277,16 @@ func ingestionPlanHook(
 		sj, err := p.ExecCfg().JobRegistry.CreateAdoptableJobWithTxn(ctx, jr,
 			jobID, p.ExtendedEvalContext().Txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(25424)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(25425)
 		}
+		__antithesis_instrumentation__.Notify(25395)
 		resultsCh <- tree.Datums{tree.NewDInt(tree.DInt(sj.ID()))}
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(25378)
 
 	return fn, jobs.DetachedJobExecutionResultHeader, nil, false, nil
 }

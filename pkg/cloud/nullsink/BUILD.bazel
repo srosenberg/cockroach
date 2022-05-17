@@ -12,6 +12,7 @@ go_library(
         "//pkg/server/telemetry",
         "//pkg/settings/cluster",
         "//pkg/util/ioctx",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )
 
@@ -25,6 +26,7 @@ go_test(
         "//pkg/roachpb",
         "//pkg/security",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",
     ],

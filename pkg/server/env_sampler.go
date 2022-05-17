@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -39,8 +31,6 @@ type sampleEnvironmentCfg struct {
 	sessionRegistry      *sql.SessionRegistry
 }
 
-// startSampleEnvironment starts a periodic loop that samples the environment and,
-// when appropriate, creates goroutine and/or heap dumps.
 func startSampleEnvironment(
 	ctx context.Context,
 	settings *cluster.Settings,
@@ -50,6 +40,7 @@ func startSampleEnvironment(
 	runtimeSampler *status.RuntimeStatSampler,
 	sessionRegistry *sql.SessionRegistry,
 ) error {
+	__antithesis_instrumentation__.Notify(193351)
 	cfg := sampleEnvironmentCfg{
 		st:                   settings,
 		stopper:              stopper,
@@ -59,101 +50,127 @@ func startSampleEnvironment(
 		runtime:              runtimeSampler,
 		sessionRegistry:      sessionRegistry,
 	}
-	// Immediately record summaries once on server startup.
 
-	// Initialize a goroutine dumper if we have an output directory
-	// specified.
 	var goroutineDumper *goroutinedumper.GoroutineDumper
 	if cfg.goroutineDumpDirName != "" {
+		__antithesis_instrumentation__.Notify(193354)
 		hasValidDumpDir := true
 		if err := os.MkdirAll(cfg.goroutineDumpDirName, 0755); err != nil {
-			// This is possible when running with only in-memory stores;
-			// in that case the start-up code sets the output directory
-			// to the current directory (.). If running the process
-			// from a directory which is not writable, we won't
-			// be able to create a sub-directory here.
+			__antithesis_instrumentation__.Notify(193356)
+
 			log.Warningf(ctx, "cannot create goroutine dump dir -- goroutine dumps will be disabled: %v", err)
 			hasValidDumpDir = false
+		} else {
+			__antithesis_instrumentation__.Notify(193357)
 		}
+		__antithesis_instrumentation__.Notify(193355)
 		if hasValidDumpDir {
+			__antithesis_instrumentation__.Notify(193358)
 			var err error
 			goroutineDumper, err = goroutinedumper.NewGoroutineDumper(ctx, cfg.goroutineDumpDirName, cfg.st)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(193359)
 				return errors.Wrap(err, "starting goroutine dumper worker")
+			} else {
+				__antithesis_instrumentation__.Notify(193360)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(193361)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(193362)
 	}
+	__antithesis_instrumentation__.Notify(193352)
 
-	// Initialize a heap profiler if we have an output directory
-	// specified.
 	var heapProfiler *heapprofiler.HeapProfiler
 	var nonGoAllocProfiler *heapprofiler.NonGoAllocProfiler
 	var statsProfiler *heapprofiler.StatsProfiler
 	var queryProfiler *heapprofiler.ActiveQueryProfiler
 	if cfg.heapProfileDirName != "" {
+		__antithesis_instrumentation__.Notify(193363)
 		hasValidDumpDir := true
 		if err := os.MkdirAll(cfg.heapProfileDirName, 0755); err != nil {
-			// This is possible when running with only in-memory stores;
-			// in that case the start-up code sets the output directory
-			// to the current directory (.). If wrunning the process
-			// from a directory which is not writable, we won't
-			// be able to create a sub-directory here.
+			__antithesis_instrumentation__.Notify(193365)
+
 			log.Warningf(ctx, "cannot create memory dump dir -- memory profile dumps will be disabled: %v", err)
 			hasValidDumpDir = false
+		} else {
+			__antithesis_instrumentation__.Notify(193366)
 		}
+		__antithesis_instrumentation__.Notify(193364)
 
 		if hasValidDumpDir {
+			__antithesis_instrumentation__.Notify(193367)
 			var err error
 			heapProfiler, err = heapprofiler.NewHeapProfiler(ctx, cfg.heapProfileDirName, cfg.st)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(193371)
 				return errors.Wrap(err, "starting heap profiler worker")
+			} else {
+				__antithesis_instrumentation__.Notify(193372)
 			}
+			__antithesis_instrumentation__.Notify(193368)
 			nonGoAllocProfiler, err = heapprofiler.NewNonGoAllocProfiler(ctx, cfg.heapProfileDirName, cfg.st)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(193373)
 				return errors.Wrap(err, "starting non-go alloc profiler worker")
+			} else {
+				__antithesis_instrumentation__.Notify(193374)
 			}
+			__antithesis_instrumentation__.Notify(193369)
 			statsProfiler, err = heapprofiler.NewStatsProfiler(ctx, cfg.heapProfileDirName, cfg.st)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(193375)
 				return errors.Wrap(err, "starting memory stats collector worker")
+			} else {
+				__antithesis_instrumentation__.Notify(193376)
 			}
+			__antithesis_instrumentation__.Notify(193370)
 			queryProfiler, err = heapprofiler.NewActiveQueryProfiler(ctx, cfg.heapProfileDirName, cfg.st)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(193377)
 				log.Warningf(ctx, "failed to start query profiler worker: %v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(193378)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(193379)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(193380)
 	}
+	__antithesis_instrumentation__.Notify(193353)
 
 	return cfg.stopper.RunAsyncTaskEx(ctx,
 		stop.TaskOpts{TaskName: "mem-logger", SpanOpt: stop.SterileRootSpan},
 		func(ctx context.Context) {
-			var goMemStats atomic.Value // *status.GoMemStats
+			__antithesis_instrumentation__.Notify(193381)
+			var goMemStats atomic.Value
 			goMemStats.Store(&status.GoMemStats{})
-			var collectingMemStats int32 // atomic, 1 when stats call is ongoing
+			var collectingMemStats int32
 
 			timer := timeutil.NewTimer()
 			defer timer.Stop()
 			timer.Reset(cfg.minSampleInterval)
 
 			for {
+				__antithesis_instrumentation__.Notify(193382)
 				select {
 				case <-cfg.stopper.ShouldQuiesce():
+					__antithesis_instrumentation__.Notify(193383)
 					return
 				case <-timer.C:
+					__antithesis_instrumentation__.Notify(193384)
 					timer.Read = true
 					timer.Reset(cfg.minSampleInterval)
 
-					// We read the heap stats on another goroutine and give up after 1s.
-					// This is necessary because as of Go 1.12, runtime.ReadMemStats()
-					// "stops the world" and that requires first waiting for any current GC
-					// run to finish. With a large heap and under extreme conditions, a
-					// single GC run may take longer than the default sampling period of
-					// 10s. Under normal operations and with more recent versions of Go,
-					// this hasn't been observed to be a problem.
 					statsCollected := make(chan struct{})
 					if atomic.CompareAndSwapInt32(&collectingMemStats, 0, 1) {
+						__antithesis_instrumentation__.Notify(193389)
 						if err := cfg.stopper.RunAsyncTaskEx(ctx,
 							stop.TaskOpts{TaskName: "get-mem-stats"},
 							func(ctx context.Context) {
+								__antithesis_instrumentation__.Notify(193390)
 								var ms status.GoMemStats
 								runtime.ReadMemStats(&ms.MemStats)
 								ms.Collected = timeutil.Now()
@@ -163,30 +180,50 @@ func startSampleEnvironment(
 								atomic.StoreInt32(&collectingMemStats, 0)
 								close(statsCollected)
 							}); err != nil {
+							__antithesis_instrumentation__.Notify(193391)
 							close(statsCollected)
+						} else {
+							__antithesis_instrumentation__.Notify(193392)
 						}
+					} else {
+						__antithesis_instrumentation__.Notify(193393)
 					}
+					__antithesis_instrumentation__.Notify(193385)
 
 					select {
 					case <-statsCollected:
-						// Good; we managed to read the Go memory stats quickly enough.
+						__antithesis_instrumentation__.Notify(193394)
+
 					case <-time.After(time.Second):
+						__antithesis_instrumentation__.Notify(193395)
 					}
+					__antithesis_instrumentation__.Notify(193386)
 
 					curStats := goMemStats.Load().(*status.GoMemStats)
 					cgoStats := status.GetCGoMemStats(ctx)
 					cfg.runtime.SampleEnvironment(ctx, curStats, cgoStats)
 
 					if goroutineDumper != nil {
+						__antithesis_instrumentation__.Notify(193396)
 						goroutineDumper.MaybeDump(ctx, cfg.st, cfg.runtime.Goroutines.Value())
+					} else {
+						__antithesis_instrumentation__.Notify(193397)
 					}
+					__antithesis_instrumentation__.Notify(193387)
 					if heapProfiler != nil {
+						__antithesis_instrumentation__.Notify(193398)
 						heapProfiler.MaybeTakeProfile(ctx, cfg.runtime.GoAllocBytes.Value())
 						nonGoAllocProfiler.MaybeTakeProfile(ctx, cfg.runtime.CgoTotalBytes.Value())
 						statsProfiler.MaybeTakeProfile(ctx, cfg.runtime.RSSBytes.Value(), curStats, cgoStats)
+					} else {
+						__antithesis_instrumentation__.Notify(193399)
 					}
+					__antithesis_instrumentation__.Notify(193388)
 					if queryProfiler != nil {
+						__antithesis_instrumentation__.Notify(193400)
 						queryProfiler.MaybeDumpQueries(ctx, cfg.sessionRegistry, cfg.st)
+					} else {
+						__antithesis_instrumentation__.Notify(193401)
 					}
 				}
 			}

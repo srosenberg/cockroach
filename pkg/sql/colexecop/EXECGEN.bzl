@@ -42,6 +42,7 @@ def gen_eg_go_rules(targets):
             # [3]: https://github.com/cockroachdb/cockroach/pull/57027
             cmd = """
               export COCKROACH_INTERNAL_DISABLE_METAMORPHIC_TESTING=true
+	      export LD_LIBRARY_PATH=/home/srosenberg/go/src/antithesis.com/instrumentation/lib/
               ln -s external/cockroach/pkg pkg
               $(location :execgen) -template $(SRCS) \
                   -fmt=false pkg/sql/colexec/$@ > $@

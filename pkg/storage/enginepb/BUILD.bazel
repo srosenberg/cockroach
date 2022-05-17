@@ -46,6 +46,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/util/hlc",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_cockroachdb_redact//:redact",
     ],
@@ -64,6 +65,7 @@ go_test(
         "//pkg/storage",
         "//pkg/util/hlc",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_redact//:redact",
         "@com_github_stretchr_testify//assert",
     ],

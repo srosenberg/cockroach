@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package clisqlclient
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"regexp"
@@ -18,20 +10,16 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// stringToDuration converts a server-side interval value returned by
-// SHOW LAST QUERY STATISTICS. We use a custom parser here to avoid
-// depending on package `tree` or `duration`, which makes the SQL
-// shell executable significantly larger.
-//
-// Note: this parser only supports the 'postgres' encoding for
-// IntervalStyle. This code breaks if the server-side
-// IntervalStyle is set to another value e.g. 'iso_8601'.
-// See: https://github.com/cockroachdb/cockroach/issues/67618
 func stringToDuration(s string) (time.Duration, error) {
+	__antithesis_instrumentation__.Notify(28971)
 	m := intervalRe.FindStringSubmatch(s)
 	if m == nil {
+		__antithesis_instrumentation__.Notify(28973)
 		return 0, errors.Newf("invalid format: %q", s)
+	} else {
+		__antithesis_instrumentation__.Notify(28974)
 	}
+	__antithesis_instrumentation__.Notify(28972)
 	th, e1 := strconv.Atoi(m[1])
 	tm, e2 := strconv.Atoi(m[2])
 	ts, e3 := strconv.Atoi(m[3])
@@ -46,13 +34,4 @@ func stringToDuration(s string) (time.Duration, error) {
 				errors.CombineErrors(e3, e4)))
 }
 
-// intervalRe indicates how to parse the interval value.
-// The format is HHHH:MM:SS[.ffffff]
-//
-// Note: we do not need to support a day prefix, because SHOW LAST
-// QUERY STATISTICS always reports intervals computed from a number
-// of seconds, and these never contain a "days" components.
-//
-// For example, a query that ran for 3 days will have its interval
-// displayed as 72:00:00, not "3 days 00:00:00".
 var intervalRe = regexp.MustCompile(`^(\d{2,}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?$`)

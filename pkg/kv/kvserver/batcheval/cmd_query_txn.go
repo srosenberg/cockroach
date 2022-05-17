@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package batcheval
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,55 +26,65 @@ func declareKeysQueryTransaction(
 	latchSpans, _ *spanset.SpanSet,
 	_ time.Duration,
 ) {
+	__antithesis_instrumentation__.Notify(97227)
 	qr := req.(*roachpb.QueryTxnRequest)
 	latchSpans.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{Key: keys.TransactionKey(qr.Txn.Key, qr.Txn.ID)})
 }
 
-// QueryTxn fetches the current state of a transaction.
-// This method is used to continually update the state of a txn
-// which is blocked waiting to resolve a conflicting intent. It
-// fetches the complete transaction record to determine whether
-// priority or status has changed and also fetches a list of
-// other txns which are waiting on this transaction in order
-// to find dependency cycles.
 func QueryTxn(
 	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
+	__antithesis_instrumentation__.Notify(97228)
 	args := cArgs.Args.(*roachpb.QueryTxnRequest)
 	h := cArgs.Header
 	reply := resp.(*roachpb.QueryTxnResponse)
 
 	if h.Txn != nil {
+		__antithesis_instrumentation__.Notify(97234)
 		return result.Result{}, ErrTransactionUnsupported
+	} else {
+		__antithesis_instrumentation__.Notify(97235)
 	}
+	__antithesis_instrumentation__.Notify(97229)
 	if h.WriteTimestamp().Less(args.Txn.MinTimestamp) {
-		// This condition must hold for the timestamp cache access in
-		// SynthesizeTxnFromMeta to be safe.
+		__antithesis_instrumentation__.Notify(97236)
+
 		return result.Result{}, errors.AssertionFailedf("QueryTxn request timestamp %s less than txn MinTimestamp %s",
 			h.Timestamp, args.Txn.MinTimestamp)
+	} else {
+		__antithesis_instrumentation__.Notify(97237)
 	}
+	__antithesis_instrumentation__.Notify(97230)
 	if !args.Key.Equal(args.Txn.Key) {
+		__antithesis_instrumentation__.Notify(97238)
 		return result.Result{}, errors.AssertionFailedf("QueryTxn request key %s does not match txn key %s",
 			args.Key, args.Txn.Key)
+	} else {
+		__antithesis_instrumentation__.Notify(97239)
 	}
+	__antithesis_instrumentation__.Notify(97231)
 	key := keys.TransactionKey(args.Txn.Key, args.Txn.ID)
 
-	// Fetch transaction record; if missing, attempt to synthesize one.
 	ok, err := storage.MVCCGetProto(
 		ctx, reader, key, hlc.Timestamp{}, &reply.QueriedTxn, storage.MVCCGetOptions{},
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(97240)
 		return result.Result{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(97241)
 	}
+	__antithesis_instrumentation__.Notify(97232)
 	if ok {
+		__antithesis_instrumentation__.Notify(97242)
 		reply.TxnRecordExists = true
 	} else {
-		// The transaction hasn't written a transaction record yet.
-		// Attempt to synthesize it from the provided TxnMeta.
+		__antithesis_instrumentation__.Notify(97243)
+
 		reply.QueriedTxn = SynthesizeTxnFromMeta(ctx, cArgs.EvalCtx, args.Txn)
 	}
+	__antithesis_instrumentation__.Notify(97233)
 
-	// Get the list of txns waiting on this txn.
 	reply.WaitingTxns = cArgs.EvalCtx.GetConcurrencyManager().GetDependents(args.Txn.ID)
 	return result.Result{}, nil
 }

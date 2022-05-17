@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package cluster
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -16,9 +8,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// WithCommandDetails is an error that describes the
-// result of executing a command. In particular, it
-// allows access to Stderr and Stdout.
 type WithCommandDetails struct {
 	Wrapped error
 	Cmd     string
@@ -29,30 +18,43 @@ type WithCommandDetails struct {
 var _ error = (*WithCommandDetails)(nil)
 var _ errors.Formatter = (*WithCommandDetails)(nil)
 
-// Error implements error.
-func (e *WithCommandDetails) Error() string { return e.Wrapped.Error() }
+func (e *WithCommandDetails) Error() string {
+	__antithesis_instrumentation__.Notify(43229)
+	return e.Wrapped.Error()
+}
 
-// Cause implements causer.
-func (e *WithCommandDetails) Cause() error { return e.Wrapped }
-
-// Format implements fmt.Formatter.
-func (e *WithCommandDetails) Format(s fmt.State, verb rune) { errors.FormatError(e, s, verb) }
-
-// FormatError implements errors.Formatter.
-func (e *WithCommandDetails) FormatError(p errors.Printer) error {
-	p.Printf("%s returned", e.Cmd)
-	if p.Detail() {
-		p.Printf("stderr:\n%s\nstdout:\n%s", e.Stderr, e.Stdout)
-	}
+func (e *WithCommandDetails) Cause() error {
+	__antithesis_instrumentation__.Notify(43230)
 	return e.Wrapped
 }
 
-// GetStderr retrieves the stderr output of a command that
-// returned with an error, or the empty string if there was no stderr.
+func (e *WithCommandDetails) Format(s fmt.State, verb rune) {
+	__antithesis_instrumentation__.Notify(43231)
+	errors.FormatError(e, s, verb)
+}
+
+func (e *WithCommandDetails) FormatError(p errors.Printer) error {
+	__antithesis_instrumentation__.Notify(43232)
+	p.Printf("%s returned", e.Cmd)
+	if p.Detail() {
+		__antithesis_instrumentation__.Notify(43234)
+		p.Printf("stderr:\n%s\nstdout:\n%s", e.Stderr, e.Stdout)
+	} else {
+		__antithesis_instrumentation__.Notify(43235)
+	}
+	__antithesis_instrumentation__.Notify(43233)
+	return e.Wrapped
+}
+
 func GetStderr(err error) string {
+	__antithesis_instrumentation__.Notify(43236)
 	var c *WithCommandDetails
 	if errors.As(err, &c) {
+		__antithesis_instrumentation__.Notify(43238)
 		return c.Stderr
+	} else {
+		__antithesis_instrumentation__.Notify(43239)
 	}
+	__antithesis_instrumentation__.Notify(43237)
 	return ""
 }

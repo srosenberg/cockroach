@@ -1,20 +1,10 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tree
 
-// ReturningClause represents the returning clause on a statement.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type ReturningClause interface {
 	NodeFormatter
-	// statementReturnType returns the StatementReturnType of statements that include
-	// the implementors variant of a RETURNING clause.
+
 	statementReturnType() StatementReturnType
 	returningClause()
 }
@@ -23,48 +13,48 @@ var _ ReturningClause = &ReturningExprs{}
 var _ ReturningClause = &ReturningNothing{}
 var _ ReturningClause = &NoReturningClause{}
 
-// ReturningExprs represents RETURNING expressions.
 type ReturningExprs SelectExprs
 
-// Format implements the NodeFormatter interface.
 func (r *ReturningExprs) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(612932)
 	ctx.WriteString("RETURNING ")
 	ctx.FormatNode((*SelectExprs)(r))
 }
 
-// ReturningNothingClause is a shared instance to avoid unnecessary allocations.
 var ReturningNothingClause = &ReturningNothing{}
 
-// ReturningNothing represents RETURNING NOTHING.
 type ReturningNothing struct{}
 
-// Format implements the NodeFormatter interface.
 func (*ReturningNothing) Format(ctx *FmtCtx) {
+	__antithesis_instrumentation__.Notify(612933)
 	ctx.WriteString("RETURNING NOTHING")
 }
 
-// AbsentReturningClause is a ReturningClause variant representing the absence of
-// a RETURNING clause.
 var AbsentReturningClause = &NoReturningClause{}
 
-// NoReturningClause represents the absence of a RETURNING clause.
 type NoReturningClause struct{}
 
-// Format implements the NodeFormatter interface.
-func (*NoReturningClause) Format(_ *FmtCtx) {}
+func (*NoReturningClause) Format(_ *FmtCtx) { __antithesis_instrumentation__.Notify(612934) }
 
-// used by parent statements to determine their own StatementReturnType.
-func (*ReturningExprs) statementReturnType() StatementReturnType    { return Rows }
-func (*ReturningNothing) statementReturnType() StatementReturnType  { return RowsAffected }
-func (*NoReturningClause) statementReturnType() StatementReturnType { return RowsAffected }
+func (*ReturningExprs) statementReturnType() StatementReturnType {
+	__antithesis_instrumentation__.Notify(612935)
+	return Rows
+}
+func (*ReturningNothing) statementReturnType() StatementReturnType {
+	__antithesis_instrumentation__.Notify(612936)
+	return RowsAffected
+}
+func (*NoReturningClause) statementReturnType() StatementReturnType {
+	__antithesis_instrumentation__.Notify(612937)
+	return RowsAffected
+}
 
-func (*ReturningExprs) returningClause()    {}
-func (*ReturningNothing) returningClause()  {}
-func (*NoReturningClause) returningClause() {}
+func (*ReturningExprs) returningClause()    { __antithesis_instrumentation__.Notify(612938) }
+func (*ReturningNothing) returningClause()  { __antithesis_instrumentation__.Notify(612939) }
+func (*NoReturningClause) returningClause() { __antithesis_instrumentation__.Notify(612940) }
 
-// HasReturningClause determines if a ReturningClause is present, given a
-// variant of the ReturningClause interface.
 func HasReturningClause(clause ReturningClause) bool {
+	__antithesis_instrumentation__.Notify(612941)
 	_, ok := clause.(*NoReturningClause)
 	return !ok
 }

@@ -1,73 +1,52 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import "github.com/cockroachdb/cockroach/pkg/settings"
 
-// DummyVars contains a list of dummy vars we do not support that
-// PostgreSQL does, but are required as an easy fix to make certain
-// tooling/ORMs work. These vars should not affect the correctness
-// of results.
 var DummyVars = map[string]sessionVar{
 	"enable_seqscan": makeDummyBooleanSessionVar(
 		"enable_seqscan",
 		func(evalCtx *extendedEvalContext) (string, error) {
+			__antithesis_instrumentation__.Notify(631281)
 			return formatBoolAsPostgresSetting(evalCtx.SessionData().EnableSeqScan), nil
 		},
 		func(m sessionDataMutator, v bool) {
+			__antithesis_instrumentation__.Notify(631282)
 			m.SetEnableSeqScan(v)
 		},
-		func(sv *settings.Values) string { return "on" },
+		func(sv *settings.Values) string { __antithesis_instrumentation__.Notify(631283); return "on" },
 	),
 	"synchronous_commit": makeDummyBooleanSessionVar(
 		"synchronous_commit",
 		func(evalCtx *extendedEvalContext) (string, error) {
+			__antithesis_instrumentation__.Notify(631284)
 			return formatBoolAsPostgresSetting(evalCtx.SessionData().SynchronousCommit), nil
 		},
 		func(m sessionDataMutator, v bool) {
+			__antithesis_instrumentation__.Notify(631285)
 			m.SetSynchronousCommit(v)
 		},
-		func(sv *settings.Values) string { return "on" },
+		func(sv *settings.Values) string { __antithesis_instrumentation__.Notify(631286); return "on" },
 	),
 }
 
-// UnsupportedVars contains the set of PostgreSQL session variables
-// and client parameters that are not supported in CockroachDB.
-// These are used to produce error messages and telemetry.
 var UnsupportedVars = func(ss ...string) map[string]struct{} {
+	__antithesis_instrumentation__.Notify(631287)
 	m := map[string]struct{}{}
 	for _, s := range ss {
+		__antithesis_instrumentation__.Notify(631289)
 		m[s] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(631288)
 	return m
 }(
-	// The following list can be regenerated with:
-	//
-	//    grep ', PGC_\(SUSET\|USERSET\)' src/backend/utils/misc/guc.c | \
-	//        sed -e 's/^[^"]*"/"/g;s/"[^"]*$/",/g' | \
-	//        tr A-Z a-z \
-	//        sort -u
-	//
 
 	"optimize_bounded_sort",
-	// "datestyle",
-	// "intervalstyle",
-	// "timezone",
-	// "application_name",
+
 	"array_nulls",
 	"backend_flush_after",
-	// "bytea_output",
-	// "check_function_bodies",
-	// "client_encoding",
-	// "client_min_messages",
+
 	"commit_delay",
 	"commit_siblings",
 	"constraint_exclusion",
@@ -84,9 +63,7 @@ var UnsupportedVars = func(ss ...string) map[string]struct{} {
 	"default_statistics_target",
 	"default_text_search_config",
 	"default_transaction_deferrable",
-	// "default_transaction_isolation",
-	// "default_transaction_read_only",
-	// "default_with_oids",
+
 	"dynamic_library_path",
 	"effective_cache_size",
 	"enable_bitmapscan",
@@ -98,12 +75,12 @@ var UnsupportedVars = func(ss ...string) map[string]struct{} {
 	"enable_material",
 	"enable_mergejoin",
 	"enable_nestloop",
-	// "enable_seqscan",
+
 	"enable_sort",
 	"enable_tidscan",
-	// "escape_string_warning",
+
 	"exit_on_error",
-	// "extra_float_digits",
+
 	"force_parallel_mode",
 	"from_collapse_limit",
 	"geqo",
@@ -115,16 +92,13 @@ var UnsupportedVars = func(ss ...string) map[string]struct{} {
 	"geqo_threshold",
 	"gin_fuzzy_search_limit",
 	"gin_pending_list_limit",
-	// "idle_in_transaction_session_timeout",
+
 	"ignore_checksum_failure",
 	"join_collapse_limit",
-	// "lc_messages",
-	// "lc_monetary",
-	// "lc_numeric",
-	// "lc_time",
+
 	"lo_compat_privileges",
 	"local_preload_libraries",
-	// "lock_timeout",
+
 	"log_btree_build_stats",
 	"log_duration",
 	"log_error_verbosity",
@@ -148,23 +122,17 @@ var UnsupportedVars = func(ss ...string) map[string]struct{} {
 	"operator_precedence_warning",
 	"parallel_setup_cost",
 	"parallel_tuple_cost",
-	// "password_encryption",
+
 	"quote_all_identifiers",
 	"random_page_cost",
 	"replacement_sort_tuples",
-	// "role",
-	// "row_security",
-	// "search_path",
+
 	"seed",
 	"seq_page_cost",
-	// "session_authorization",
+
 	"session_preload_libraries",
 	"session_replication_role",
-	// "ssl_renegotiation_limit",
-	// "standard_conforming_strings",
-	// "statement_timeout",
-	// "synchronize_seqscans",
-	// "synchronous_commit",
+
 	"tcp_keepalives_count",
 	"tcp_keepalives_idle",
 	"tcp_keepalives_interval",
@@ -185,8 +153,7 @@ var UnsupportedVars = func(ss ...string) map[string]struct{} {
 	"track_functions",
 	"track_io_timing",
 	"transaction_deferrable",
-	// "transaction_isolation",
-	// "transaction_read_only",
+
 	"transform_null_equals",
 	"update_process_title",
 	"vacuum_cost_delay",
@@ -203,6 +170,6 @@ var UnsupportedVars = func(ss ...string) map[string]struct{} {
 	"wal_debug",
 	"work_mem",
 	"xmlbinary",
-	// "xmloption",
+
 	"zero_damaged_pages",
 )

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descpb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -18,9 +10,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// GetDescriptorMetadata extracts metadata out of a raw descpb.Descriptor. Used
-// in cases where basic type-agnostic metadata is needed and unwrapping the
-// descriptor is unnecessary.
 func GetDescriptorMetadata(
 	desc *Descriptor,
 ) (
@@ -31,176 +20,210 @@ func GetDescriptorMetadata(
 	modTime hlc.Timestamp,
 	err error,
 ) {
+	__antithesis_instrumentation__.Notify(251525)
 	switch t := desc.Union.(type) {
 	case *Descriptor_Table:
+		__antithesis_instrumentation__.Notify(251527)
 		id = t.Table.ID
 		version = t.Table.Version
 		name = t.Table.Name
 		state = t.Table.State
 		modTime = t.Table.ModificationTime
 	case *Descriptor_Database:
+		__antithesis_instrumentation__.Notify(251528)
 		id = t.Database.ID
 		version = t.Database.Version
 		name = t.Database.Name
 		state = t.Database.State
 		modTime = t.Database.ModificationTime
 	case *Descriptor_Type:
+		__antithesis_instrumentation__.Notify(251529)
 		id = t.Type.ID
 		version = t.Type.Version
 		name = t.Type.Name
 		state = t.Type.State
 		modTime = t.Type.ModificationTime
 	case *Descriptor_Schema:
+		__antithesis_instrumentation__.Notify(251530)
 		id = t.Schema.ID
 		version = t.Schema.Version
 		name = t.Schema.Name
 		state = t.Schema.State
 		modTime = t.Schema.ModificationTime
 	case nil:
+		__antithesis_instrumentation__.Notify(251531)
 		err = errors.AssertionFailedf("Table/Database/Type/Schema not set in descpb.Descriptor")
 	default:
+		__antithesis_instrumentation__.Notify(251532)
 		err = errors.AssertionFailedf("Unknown descpb.Descriptor type %T", t)
 	}
+	__antithesis_instrumentation__.Notify(251526)
 	return id, version, name, state, modTime, err
 }
 
-// GetDescriptorID returns the ID of the descriptor.
 func GetDescriptorID(desc *Descriptor) ID {
+	__antithesis_instrumentation__.Notify(251533)
 	id, _, _, _, _, err := GetDescriptorMetadata(desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(251535)
 		panic(errors.Wrap(err, "GetDescriptorID"))
+	} else {
+		__antithesis_instrumentation__.Notify(251536)
 	}
+	__antithesis_instrumentation__.Notify(251534)
 	return id
 }
 
-// GetDescriptorName returns the Name of the descriptor.
 func GetDescriptorName(desc *Descriptor) string {
+	__antithesis_instrumentation__.Notify(251537)
 	_, _, name, _, _, err := GetDescriptorMetadata(desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(251539)
 		panic(errors.Wrap(err, "GetDescriptorName"))
+	} else {
+		__antithesis_instrumentation__.Notify(251540)
 	}
+	__antithesis_instrumentation__.Notify(251538)
 	return name
 }
 
-// GetDescriptorVersion returns the Version of the descriptor.
 func GetDescriptorVersion(desc *Descriptor) DescriptorVersion {
+	__antithesis_instrumentation__.Notify(251541)
 	_, version, _, _, _, err := GetDescriptorMetadata(desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(251543)
 		panic(errors.Wrap(err, "GetDescriptorVersion"))
+	} else {
+		__antithesis_instrumentation__.Notify(251544)
 	}
+	__antithesis_instrumentation__.Notify(251542)
 	return version
 }
 
-// GetDescriptorModificationTime returns the ModificationTime of the descriptor.
 func GetDescriptorModificationTime(desc *Descriptor) hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(251545)
 	_, _, _, _, modTime, err := GetDescriptorMetadata(desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(251547)
 		panic(errors.Wrap(err, "GetDescriptorModificationTime"))
+	} else {
+		__antithesis_instrumentation__.Notify(251548)
 	}
+	__antithesis_instrumentation__.Notify(251546)
 	return modTime
 }
 
-// GetDescriptorState returns the DescriptorState of the Descriptor.
 func GetDescriptorState(desc *Descriptor) DescriptorState {
+	__antithesis_instrumentation__.Notify(251549)
 	_, _, _, state, _, err := GetDescriptorMetadata(desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(251551)
 		panic(errors.Wrap(err, "GetDescriptorState"))
+	} else {
+		__antithesis_instrumentation__.Notify(251552)
 	}
+	__antithesis_instrumentation__.Notify(251550)
 	return state
 }
 
-// setDescriptorModificationTime sets the ModificationTime of the descriptor.
 func setDescriptorModificationTime(desc *Descriptor, ts hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(251553)
 	switch t := desc.Union.(type) {
 	case *Descriptor_Table:
+		__antithesis_instrumentation__.Notify(251554)
 		t.Table.ModificationTime = ts
 	case *Descriptor_Database:
+		__antithesis_instrumentation__.Notify(251555)
 		t.Database.ModificationTime = ts
 	case *Descriptor_Type:
+		__antithesis_instrumentation__.Notify(251556)
 		t.Type.ModificationTime = ts
 	case *Descriptor_Schema:
+		__antithesis_instrumentation__.Notify(251557)
 		t.Schema.ModificationTime = ts
 	default:
+		__antithesis_instrumentation__.Notify(251558)
 		panic(errors.AssertionFailedf("setModificationTime: unknown Descriptor type %T", t))
 	}
 }
 
-// MaybeSetDescriptorModificationTimeFromMVCCTimestamp will update
-// ModificationTime and possibly CreateAsOfTime on TableDescriptor with the
-// provided timestamp. If ModificationTime is non-zero it must be the case that
-// it is not after the provided timestamp.
-//
-// When table descriptor versions are incremented they are written with a
-// zero-valued ModificationTime. This is done to avoid the need to observe
-// the commit timestamp for the writing transaction which would prevent
-// pushes. This method is used in the read path to set the modification time
-// based on the MVCC timestamp of row which contained this descriptor. If
-// the ModificationTime is non-zero then we know that either this table
-// descriptor was written by older version of cockroach which included the
-// exact commit timestamp or it was re-written in which case it will include
-// a timestamp which was set by this method.
-//
-// It is vital that users which read table descriptor values from the KV store
-// call this method.
 func MaybeSetDescriptorModificationTimeFromMVCCTimestamp(desc *Descriptor, ts hlc.Timestamp) {
+	__antithesis_instrumentation__.Notify(251559)
 	switch t := desc.Union.(type) {
 	case nil:
-		// Empty descriptors shouldn't be touched.
+		__antithesis_instrumentation__.Notify(251561)
+
 		return
 	case *Descriptor_Table:
-		// CreateAsOfTime is used for CREATE TABLE ... AS ... and was introduced in
-		// v19.1. In general it is not critical to set except for tables in the ADD
-		// state which were created from CTAS so we should not assert on its not
-		// being set. It's not always sensical to set it from the passed MVCC
-		// timestamp. However, starting in 19.2 the CreateAsOfTime and
-		// ModificationTime fields are both unset for the first Version of a
-		// TableDescriptor and the code relies on the value being set based on the
-		// MVCC timestamp.
-		if !ts.IsEmpty() &&
-			t.Table.ModificationTime.IsEmpty() &&
-			t.Table.CreateAsOfTime.IsEmpty() &&
-			t.Table.Version == 1 {
-			t.Table.CreateAsOfTime = ts
-		}
+		__antithesis_instrumentation__.Notify(251562)
 
-		// Ensure that if the table is in the process of being added and relies on
-		// CreateAsOfTime that it is now set.
-		if t.Table.Adding() && t.Table.IsAs() && t.Table.CreateAsOfTime.IsEmpty() {
+		if !ts.IsEmpty() && func() bool {
+			__antithesis_instrumentation__.Notify(251564)
+			return t.Table.ModificationTime.IsEmpty() == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(251565)
+			return t.Table.CreateAsOfTime.IsEmpty() == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(251566)
+			return t.Table.Version == 1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(251567)
+			t.Table.CreateAsOfTime = ts
+		} else {
+			__antithesis_instrumentation__.Notify(251568)
+		}
+		__antithesis_instrumentation__.Notify(251563)
+
+		if t.Table.Adding() && func() bool {
+			__antithesis_instrumentation__.Notify(251569)
+			return t.Table.IsAs() == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(251570)
+			return t.Table.CreateAsOfTime.IsEmpty() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(251571)
 			log.Fatalf(context.TODO(), "table descriptor for %q (%d.%d) is in the "+
 				"ADD state and was created with CREATE TABLE ... AS but does not have a "+
 				"CreateAsOfTime set", t.Table.Name, t.Table.ParentID, t.Table.ID)
+		} else {
+			__antithesis_instrumentation__.Notify(251572)
 		}
 	}
-	// Set the ModificationTime based on the passed ts if we should.
-	// Table descriptors can be updated in place after their version has been
-	// incremented (e.g. to include a schema change lease).
-	// When this happens we permit the ModificationTime to be written explicitly
-	// with the value that lives on the in-memory copy. That value should contain
-	// a timestamp set by this method. Thus if the ModificationTime is set it
-	// must not be after the MVCC timestamp we just read it at.
-	if modTime := GetDescriptorModificationTime(desc); modTime.IsEmpty() && ts.IsEmpty() && GetDescriptorVersion(desc) > 1 {
-		// TODO(ajwerner): reconsider the third condition here.It seems that there
-		// are some cases where system tables lack this timestamp and then when they
-		// are rendered in some other downstream setting we expect the timestamp to
-		// be read. This is a hack we shouldn't need to do.
+	__antithesis_instrumentation__.Notify(251560)
+
+	if modTime := GetDescriptorModificationTime(desc); modTime.IsEmpty() && func() bool {
+		__antithesis_instrumentation__.Notify(251573)
+		return ts.IsEmpty() == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(251574)
+		return GetDescriptorVersion(desc) > 1 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(251575)
+
 		log.Fatalf(context.TODO(), "read table descriptor for %q (%d) without ModificationTime "+
 			"with zero MVCC timestamp; full descriptor:\n%s", GetDescriptorName(desc), GetDescriptorID(desc), desc)
-	} else if modTime.IsEmpty() {
-		setDescriptorModificationTime(desc, ts)
-	} else if !ts.IsEmpty() && ts.Less(modTime) {
-		log.Fatalf(context.TODO(), "read table descriptor %q (%d) which has a ModificationTime "+
-			"after its MVCC timestamp: has %v, expected %v",
-			GetDescriptorName(desc), GetDescriptorID(desc), modTime, ts)
+	} else {
+		__antithesis_instrumentation__.Notify(251576)
+		if modTime.IsEmpty() {
+			__antithesis_instrumentation__.Notify(251577)
+			setDescriptorModificationTime(desc, ts)
+		} else {
+			__antithesis_instrumentation__.Notify(251578)
+			if !ts.IsEmpty() && func() bool {
+				__antithesis_instrumentation__.Notify(251579)
+				return ts.Less(modTime) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(251580)
+				log.Fatalf(context.TODO(), "read table descriptor %q (%d) which has a ModificationTime "+
+					"after its MVCC timestamp: has %v, expected %v",
+					GetDescriptorName(desc), GetDescriptorID(desc), modTime, ts)
+			} else {
+				__antithesis_instrumentation__.Notify(251581)
+			}
+		}
 	}
 }
 
-// FromDescriptorWithMVCCTimestamp is a replacement for
-// Get(Table|Database|Type|Schema)() methods which seeks to ensure that clients
-// which unmarshal Descriptor structs properly set the ModificationTime based on
-// the MVCC timestamp at which the descriptor was read.
-//
-// A linter check ensures that GetTable() et al. are not called elsewhere unless
-// absolutely necessary.
 func FromDescriptorWithMVCCTimestamp(
 	desc *Descriptor, ts hlc.Timestamp,
 ) (
@@ -209,26 +232,29 @@ func FromDescriptorWithMVCCTimestamp(
 	typ *TypeDescriptor,
 	schema *SchemaDescriptor,
 ) {
+	__antithesis_instrumentation__.Notify(251582)
 	if desc == nil {
+		__antithesis_instrumentation__.Notify(251584)
 		return nil, nil, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(251585)
 	}
-	//nolint:descriptormarshal
+	__antithesis_instrumentation__.Notify(251583)
+
 	table = desc.GetTable()
-	//nolint:descriptormarshal
+
 	database = desc.GetDatabase()
-	//nolint:descriptormarshal
+
 	typ = desc.GetType()
-	//nolint:descriptormarshal
+
 	schema = desc.GetSchema()
 	MaybeSetDescriptorModificationTimeFromMVCCTimestamp(desc, ts)
 	return table, database, typ, schema
 }
 
-// FromDescriptor is a convenience function for FromDescriptorWithMVCCTimestamp
-// called with an empty timestamp. As a result this does not modify the
-// descriptor.
 func FromDescriptor(
 	desc *Descriptor,
 ) (*TableDescriptor, *DatabaseDescriptor, *TypeDescriptor, *SchemaDescriptor) {
+	__antithesis_instrumentation__.Notify(251586)
 	return FromDescriptorWithMVCCTimestamp(desc, hlc.Timestamp{})
 }

@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,30 +23,32 @@ import (
 )
 
 func registerMultiTenantUpgrade(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(49420)
 	r.Add(registry.TestSpec{
 		Name:              "multitenant-upgrade",
 		Cluster:           r.MakeClusterSpec(2),
 		Owner:             registry.OwnerKV,
 		NonReleaseBlocker: false,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(49421)
 			runMultiTenantUpgrade(ctx, t, c, *t.BuildVersion())
 		},
 	})
 }
 
-// tenantNode corresponds to a running tenant.
 type tenantNode struct {
 	tenantID          int
 	httpPort, sqlPort int
 	kvAddrs           []string
 	pgURL             string
 
-	binary string // the binary last passed to start()
+	binary string
 	errCh  chan error
 	node   int
 }
 
 func createTenantNode(kvAddrs []string, tenantID, node, httpPort, sqlPort int) *tenantNode {
+	__antithesis_instrumentation__.Notify(49422)
 	tn := &tenantNode{
 		tenantID: tenantID,
 		httpPort: httpPort,
@@ -66,11 +60,15 @@ func createTenantNode(kvAddrs []string, tenantID, node, httpPort, sqlPort int) *
 }
 
 func (tn *tenantNode) stop(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(49423)
 	if tn.errCh == nil {
+		__antithesis_instrumentation__.Notify(49425)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(49426)
 	}
-	// Must use pkill because the context cancellation doesn't wait for the
-	// process to exit.
+	__antithesis_instrumentation__.Notify(49424)
+
 	c.Run(ctx, c.Node(tn.node),
 		fmt.Sprintf("pkill -o -f '^%s mt start.*tenant-id=%d'", tn.binary, tn.tenantID))
 	t.L().Printf("mt cluster exited: %v", <-tn.errCh)
@@ -78,14 +76,17 @@ func (tn *tenantNode) stop(ctx context.Context, t test.Test, c cluster.Cluster) 
 }
 
 func (tn *tenantNode) logDir() string {
+	__antithesis_instrumentation__.Notify(49427)
 	return fmt.Sprintf("logs/mt-%d", tn.tenantID)
 }
 
 func (tn *tenantNode) storeDir() string {
+	__antithesis_instrumentation__.Notify(49428)
 	return fmt.Sprintf("cockroach-data-mt-%d", tn.tenantID)
 }
 
 func (tn *tenantNode) start(ctx context.Context, t test.Test, c cluster.Cluster, binary string) {
+	__antithesis_instrumentation__.Notify(49429)
 	tn.binary = binary
 	extraArgs := []string{"--log-dir=" + tn.logDir(), "--store=" + tn.storeDir()}
 	tn.errCh = startTenantServer(
@@ -102,59 +103,46 @@ func (tn *tenantNode) start(ctx context.Context, t test.Test, c cluster.Cluster,
 	u.Host = internalUrls[0] + ":" + strconv.Itoa(tn.sqlPort)
 	tn.pgURL = u.String()
 
-	// The tenant is usually responsive ~right away, but it
-	// has on occasions taken more than 3s for it to connect
-	// to the KV layer, and it won't open the SQL port until
-	// it has.
 	if err := retry.ForDuration(45*time.Second, func() error {
+		__antithesis_instrumentation__.Notify(49431)
 		select {
 		case <-ctx.Done():
+			__antithesis_instrumentation__.Notify(49434)
 			t.Fatal(ctx.Err())
 		case err := <-tn.errCh:
+			__antithesis_instrumentation__.Notify(49435)
 			t.Fatal(err)
 		default:
+			__antithesis_instrumentation__.Notify(49436)
 		}
+		__antithesis_instrumentation__.Notify(49432)
 
 		db, err := gosql.Open("postgres", tn.pgURL)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(49437)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(49438)
 		}
+		__antithesis_instrumentation__.Notify(49433)
 		defer db.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 		_, err = db.ExecContext(ctx, `SELECT 1`)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(49439)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(49440)
 	}
+	__antithesis_instrumentation__.Notify(49430)
 
 	t.L().Printf("sql server for tenant %d running at %s", tn.tenantID, tn.pgURL)
 }
 
-// runMultiTenantUpgrade exercises upgrading tenants and their host cluster.
-//
-// Sketch of the test:
-//
-//  * Host{Binary: Prev, Cluster: Prev}: Start host cluster.
-//  * Tenant11{Binary: Prev, Cluster: Prev}: Create tenant 11 and verify it works.
-//  * Host{Binary: Cur, Cluster: Prev}: Upgrade host cluster (don't finalize).
-//  * Tenant11{Binary: Prev, Cluster: Prev}: Verify tenant 11 still works.
-//  * Tenant12{Binary: Prev, Cluster: Prev}: Create tenant 12 and verify it works.
-//  * Tenant13{Binary: Cur, Cluster: Prev}: Create tenant 13 and verify it works.
-//  * Tenant11{Binary: Cur, Cluster: Prev}: Upgrade tenant 11 binary and verify it works.
-//  * Tenant11{Binary: Cur, Cluster: Cur}: Run the version upgrade for the tenant 11.
-//     * This is supported but not necessarily desirable. Exercise it just to
-//       show that it doesn't explode. This will verify new guard-rails when
-//       and if they are added.
-//  * Host{Binary: Cur, Cluster: Cur}: Finalize the upgrade on the host.
-//  * Tenant12{Binary: Cur, Cluster: Prev}: Upgrade the tenant 12 binary.
-//  * Tenant12{Binary: Cur, Cluster: Cur}: Run the version upgrade for tenant 12.
-//  * Tenant12{Binary: Cur, Cluster: Cur}: Restart tenant 12 and make sure it still works.
-//  * Tenant13{Binary: Cur, Cluster: Cur}: Run the version upgrade for tenant 13.
-//  * Tenant12{Binary: Cur, Cluster: Cur}: Restart tenant 13 and make sure it still works.
-//  * Tenant14{Binary: Cur, Cluster: Cur}: Create tenant 14 and verify it works.
-//  * Tenant12{Binary: Cur, Cluster: Cur}: Restart tenant 14 and make sure it still works.
 func runMultiTenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster, v version.Version) {
+	__antithesis_instrumentation__.Notify(49441)
 	predecessor, err := PredecessorVersion(v)
 	require.NoError(t, err)
 
@@ -172,9 +160,7 @@ func runMultiTenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster, 
 	const tenant11HTTPPort, tenant11SQLPort = 8011, 20011
 	const tenant11ID = 11
 	runner := sqlutils.MakeSQLRunner(c.Conn(ctx, t.L(), 1))
-	// We'll sometimes have to wait out the backoff of the host cluster
-	// auto-update loop (at the time of writing 30s), plus some migrations may be
-	// genuinely long-running.
+
 	runner.SucceedsSoonDuration = 5 * time.Minute
 	runner.Exec(t, `SELECT crdb_internal.create_tenant($1)`, tenant11ID)
 
@@ -200,12 +186,14 @@ func runMultiTenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster, 
 
 	t.Status("preserving downgrade option on host server")
 	{
+		__antithesis_instrumentation__.Notify(49444)
 		s := runner.QueryStr(t, `SHOW CLUSTER SETTING version`)
 		runner.Exec(
 			t,
 			`SET CLUSTER SETTING cluster.preserve_downgrade_option = $1`, s[0][0],
 		)
 	}
+	__antithesis_instrumentation__.Notify(49442)
 
 	t.Status("upgrading host server")
 	c.Stop(ctx, t.L(), option.DefaultStopOpts(), kvNodes)
@@ -271,15 +259,15 @@ func runMultiTenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster, 
 
 	t.Status("verify tenant 11 server works with the new binary")
 	{
+		__antithesis_instrumentation__.Notify(49445)
 		verifySQL(t, tenant11.pgURL,
 			mkStmt(`SELECT * FROM foo LIMIT 1`).
 				withResults([][]string{{"1", "bar"}}),
 			mkStmt("SHOW CLUSTER SETTING version").
 				withResults([][]string{{initialVersion}}))
 	}
+	__antithesis_instrumentation__.Notify(49443)
 
-	// Note that this is exercising a path we likely want to eliminate in the
-	// future where the tenant is upgraded before the KV nodes.
 	t.Status("migrating the tenant 11 to the current version before kv is finalized")
 
 	verifySQL(t, tenant11.pgURL,
@@ -311,7 +299,6 @@ func runMultiTenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster, 
 		mkStmt("SHOW CLUSTER SETTING version").
 			withResults([][]string{{initialVersion}}))
 
-	// Upgrade the tenant created in the mixed version state to the final version.
 	t.Status("migrating tenant 12 to the current version")
 	verifySQL(t, tenant12.pgURL,
 		mkStmt("SET CLUSTER SETTING version = crdb_internal.node_executable_version()"),
@@ -329,7 +316,6 @@ func runMultiTenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster, 
 		mkStmt("SELECT version = crdb_internal.node_executable_version() FROM [SHOW CLUSTER SETTING version]").
 			withResults([][]string{{"true"}}))
 
-	// Upgrade the tenant created in the mixed version state to the final version.
 	t.Status("migrating tenant 13 to the current version")
 	verifySQL(t, tenant13.pgURL,
 		mkStmt(`SELECT * FROM foo LIMIT 1`).
@@ -392,25 +378,27 @@ func startTenantServer(
 	sqlPort int,
 	extraFlags ...string,
 ) chan error {
+	__antithesis_instrumentation__.Notify(49446)
 
 	args := []string{
-		// TODO(tbg): make this test secure.
-		// "--certs-dir", "certs",
+
 		"--insecure",
 		"--tenant-id=" + strconv.Itoa(tenantID),
 		"--http-addr", ifLocal(c, "127.0.0.1", "0.0.0.0") + ":" + strconv.Itoa(httpPort),
 		"--kv-addrs", strings.Join(kvAddrs, ","),
-		// Don't bind to external interfaces when running locally.
+
 		"--sql-addr", ifLocal(c, "127.0.0.1", "0.0.0.0") + ":" + strconv.Itoa(sqlPort),
 	}
 	args = append(args, extraFlags...)
 	errCh := make(chan error, 1)
 	go func() {
+		__antithesis_instrumentation__.Notify(49448)
 		errCh <- c.RunE(tenantCtx, node,
 			append([]string{binary, "mt", "start-sql"}, args...)...,
 		)
 		close(errCh)
 	}()
+	__antithesis_instrumentation__.Notify(49447)
 	return errCh
 }
 
@@ -421,26 +409,37 @@ type sqlVerificationStmt struct {
 }
 
 func (s sqlVerificationStmt) withResults(res [][]string) sqlVerificationStmt {
+	__antithesis_instrumentation__.Notify(49449)
 	s.optionalResults = res
 	return s
 }
 
 func mkStmt(stmt string, args ...interface{}) sqlVerificationStmt {
+	__antithesis_instrumentation__.Notify(49450)
 	return sqlVerificationStmt{stmt: stmt, args: args}
 }
 
 func verifySQL(t test.Test, url string, stmts ...sqlVerificationStmt) {
+	__antithesis_instrumentation__.Notify(49451)
 	db, err := gosql.Open("postgres", url)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(49454)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(49455)
 	}
-	defer func() { _ = db.Close() }()
+	__antithesis_instrumentation__.Notify(49452)
+	defer func() { __antithesis_instrumentation__.Notify(49456); _ = db.Close() }()
+	__antithesis_instrumentation__.Notify(49453)
 	tdb := sqlutils.MakeSQLRunner(db)
 
 	for _, stmt := range stmts {
+		__antithesis_instrumentation__.Notify(49457)
 		if stmt.optionalResults == nil {
+			__antithesis_instrumentation__.Notify(49458)
 			tdb.Exec(t, stmt.stmt, stmt.args...)
 		} else {
+			__antithesis_instrumentation__.Notify(49459)
 			res := tdb.QueryStr(t, stmt.stmt, stmt.args...)
 			require.Equal(t, stmt.optionalResults, res)
 		}

@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"compress/gzip"
@@ -16,60 +8,68 @@ import (
 	"sync"
 )
 
-// TODO(benesch): Use https://github.com/NYTimes/gziphandler instead.
-// gzipResponseWriter reinvents the wheel and is not as robust.
 type gzipResponseWriter struct {
 	gz gzip.Writer
 	http.ResponseWriter
 }
 
-// Allocation pool for gzipResponseWriters.
 var gzipResponseWriterPool sync.Pool
 
 func newGzipResponseWriter(rw http.ResponseWriter) *gzipResponseWriter {
+	__antithesis_instrumentation__.Notify(193488)
 	var w *gzipResponseWriter
 	if wI := gzipResponseWriterPool.Get(); wI == nil {
+		__antithesis_instrumentation__.Notify(193490)
 		w = new(gzipResponseWriter)
 	} else {
+		__antithesis_instrumentation__.Notify(193491)
 		w = wI.(*gzipResponseWriter)
 	}
+	__antithesis_instrumentation__.Notify(193489)
 	w.Reset(rw)
 	return w
 }
 
 func (w *gzipResponseWriter) Reset(rw http.ResponseWriter) {
+	__antithesis_instrumentation__.Notify(193492)
 	w.gz.Reset(rw)
 	w.ResponseWriter = rw
 }
 
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
-	// The underlying http.ResponseWriter can't sniff gzipped data properly, so we
-	// do our own sniffing on the uncompressed data.
+	__antithesis_instrumentation__.Notify(193493)
+
 	if w.Header().Get("Content-Type") == "" {
+		__antithesis_instrumentation__.Notify(193495)
 		w.Header().Set("Content-Type", http.DetectContentType(b))
+	} else {
+		__antithesis_instrumentation__.Notify(193496)
 	}
+	__antithesis_instrumentation__.Notify(193494)
 	return w.gz.Write(b)
 }
 
-// Flush implements http.Flusher as required by grpc-gateway for clients
-// which access streaming endpoints (as exercised by the acceptance tests
-// at time of writing).
 func (w *gzipResponseWriter) Flush() {
-	// If Flush returns an error, we'll see it on the next call to Write or
-	// Close as well, so we can ignore it here.
+	__antithesis_instrumentation__.Notify(193497)
+
 	if err := w.gz.Flush(); err == nil {
-		// Flush the wrapped ResponseWriter as well, if possible.
+		__antithesis_instrumentation__.Notify(193498)
+
 		if f, ok := w.ResponseWriter.(http.Flusher); ok {
+			__antithesis_instrumentation__.Notify(193499)
 			f.Flush()
+		} else {
+			__antithesis_instrumentation__.Notify(193500)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(193501)
 	}
 }
 
-// Close implements the io.Closer interface. It is not safe to use the
-// writer after calling Close.
 func (w *gzipResponseWriter) Close() error {
+	__antithesis_instrumentation__.Notify(193502)
 	err := w.gz.Close()
-	w.Reset(nil) // release ResponseWriter reference.
+	w.Reset(nil)
 	gzipResponseWriterPool.Put(w)
 	return err
 }

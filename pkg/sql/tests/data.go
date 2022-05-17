@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -22,32 +14,39 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// CheckKeyCount checks that the number of keys in the provided span matches
-// numKeys.
 func CheckKeyCount(t *testing.T, kvDB *kv.DB, span roachpb.Span, numKeys int) {
+	__antithesis_instrumentation__.Notify(628338)
 	t.Helper()
 	if err := CheckKeyCountE(t, kvDB, span, numKeys); err != nil {
+		__antithesis_instrumentation__.Notify(628339)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(628340)
 	}
 }
 
-// CheckKeyCountE returns an error if the the number of keys in the
-// provided span does not match numKeys.
 func CheckKeyCountE(t *testing.T, kvDB *kv.DB, span roachpb.Span, numKeys int) error {
+	__antithesis_instrumentation__.Notify(628341)
 	t.Helper()
 	if kvs, err := kvDB.Scan(context.TODO(), span.Key, span.EndKey, 0); err != nil {
+		__antithesis_instrumentation__.Notify(628343)
 		return err
-	} else if l := numKeys; len(kvs) != l {
-		return errors.Newf("expected %d key value pairs, but got %d", l, len(kvs))
+	} else {
+		__antithesis_instrumentation__.Notify(628344)
+		if l := numKeys; len(kvs) != l {
+			__antithesis_instrumentation__.Notify(628345)
+			return errors.Newf("expected %d key value pairs, but got %d", l, len(kvs))
+		} else {
+			__antithesis_instrumentation__.Notify(628346)
+		}
 	}
+	__antithesis_instrumentation__.Notify(628342)
 	return nil
 }
 
-// CreateKVTable creates a basic table named t.<name> that stores key/value
-// pairs with numRows of arbitrary data.
 func CreateKVTable(sqlDB *gosql.DB, name string, numRows int) error {
-	// Fix the column families so the key counts don't change if the family
-	// heuristics are updated.
+	__antithesis_instrumentation__.Notify(628347)
+
 	schemaStmts := []string{
 		`CREATE DATABASE IF NOT EXISTS t;`,
 		fmt.Sprintf(`CREATE TABLE t.%s (k INT PRIMARY KEY, v INT, FAMILY (k), FAMILY (v));`, name),
@@ -55,22 +54,35 @@ func CreateKVTable(sqlDB *gosql.DB, name string, numRows int) error {
 	}
 
 	for _, stmt := range schemaStmts {
+		__antithesis_instrumentation__.Notify(628351)
 		if _, err := sqlDB.Exec(stmt); err != nil {
+			__antithesis_instrumentation__.Notify(628352)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628353)
 		}
 	}
+	__antithesis_instrumentation__.Notify(628348)
 
-	// Bulk insert.
 	var insert bytes.Buffer
 	if _, err := insert.WriteString(
 		fmt.Sprintf(`INSERT INTO t.%s VALUES (%d, %d)`, name, 0, numRows-1)); err != nil {
+		__antithesis_instrumentation__.Notify(628354)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(628355)
 	}
+	__antithesis_instrumentation__.Notify(628349)
 	for i := 1; i < numRows; i++ {
+		__antithesis_instrumentation__.Notify(628356)
 		if _, err := insert.WriteString(fmt.Sprintf(` ,(%d, %d)`, i, numRows-i)); err != nil {
+			__antithesis_instrumentation__.Notify(628357)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(628358)
 		}
 	}
+	__antithesis_instrumentation__.Notify(628350)
 	_, err := sqlDB.Exec(insert.String())
 	return err
 }

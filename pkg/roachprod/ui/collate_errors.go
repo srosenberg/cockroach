@@ -1,24 +1,18 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package ui
 
-// ErrorsByError compares error objects by their Error() value.
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
+
 type ErrorsByError []error
 
 func (l ErrorsByError) Len() int {
+	__antithesis_instrumentation__.Notify(182539)
 	return len(l)
 }
 func (l ErrorsByError) Less(i, j int) bool {
+	__antithesis_instrumentation__.Notify(182540)
 	return l[i].Error() < l[j].Error()
 }
 func (l ErrorsByError) Swap(i, j int) {
+	__antithesis_instrumentation__.Notify(182541)
 	l[i], l[j] = l[j], l[i]
 }

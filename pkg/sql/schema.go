@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,43 +18,68 @@ import (
 func schemaExists(
 	ctx context.Context, txn *kv.Txn, col *descs.Collection, parentID descpb.ID, schema string,
 ) (bool, descpb.ID, error) {
-	// Check statically known schemas.
+	__antithesis_instrumentation__.Notify(576992)
+
 	if schema == tree.PublicSchema {
+		__antithesis_instrumentation__.Notify(576996)
 		return true, descpb.InvalidID, nil
+	} else {
+		__antithesis_instrumentation__.Notify(576997)
 	}
+	__antithesis_instrumentation__.Notify(576993)
 	for _, s := range virtualSchemas {
+		__antithesis_instrumentation__.Notify(576998)
 		if s.name == schema {
+			__antithesis_instrumentation__.Notify(576999)
 			return true, descpb.InvalidID, nil
+		} else {
+			__antithesis_instrumentation__.Notify(577000)
 		}
 	}
-	// Now lookup in the namespace for other schemas.
+	__antithesis_instrumentation__.Notify(576994)
+
 	schemaID, err := col.Direct().LookupSchemaID(ctx, txn, parentID, schema)
-	if err != nil || schemaID == descpb.InvalidID {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(577001)
+		return schemaID == descpb.InvalidID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(577002)
 		return false, descpb.InvalidID, err
+	} else {
+		__antithesis_instrumentation__.Notify(577003)
 	}
+	__antithesis_instrumentation__.Notify(576995)
 	return true, schemaID, nil
 }
 
 func (p *planner) writeSchemaDesc(ctx context.Context, desc *schemadesc.Mutable) error {
+	__antithesis_instrumentation__.Notify(577004)
 	b := p.txn.NewBatch()
 	if err := p.Descriptors().WriteDescToBatch(
 		ctx, p.extendedEvalCtx.Tracing.KVTracingEnabled(), desc, b,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(577006)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(577007)
 	}
+	__antithesis_instrumentation__.Notify(577005)
 	return p.txn.Run(ctx, b)
 }
 
 func (p *planner) writeSchemaDescChange(
 	ctx context.Context, desc *schemadesc.Mutable, jobDesc string,
 ) error {
+	__antithesis_instrumentation__.Notify(577008)
 	record, recordExists := p.extendedEvalCtx.SchemaChangeJobRecords[desc.ID]
 	if recordExists {
-		// Update it.
+		__antithesis_instrumentation__.Notify(577010)
+
 		record.AppendDescription(jobDesc)
 		log.Infof(ctx, "job %d: updated job's specification for change on schema %d", record.JobID, desc.ID)
 	} else {
-		// Or, create a new job.
+		__antithesis_instrumentation__.Notify(577011)
+
 		jobRecord := jobs.Record{
 			JobID:         p.extendedEvalCtx.ExecCfg.JobRegistry.MakeJobID(),
 			Description:   jobDesc,
@@ -70,8 +87,7 @@ func (p *planner) writeSchemaDescChange(
 			DescriptorIDs: descpb.IDs{desc.ID},
 			Details: jobspb.SchemaChangeDetails{
 				DescID: desc.ID,
-				// The version distinction for database jobs doesn't matter for schema
-				// jobs.
+
 				FormatVersion: jobspb.DatabaseJobFormatVersion,
 			},
 			Progress:      jobspb.SchemaChangeProgress{},
@@ -80,6 +96,7 @@ func (p *planner) writeSchemaDescChange(
 		p.extendedEvalCtx.SchemaChangeJobRecords[desc.ID] = &jobRecord
 		log.Infof(ctx, "queued new schema change job %d for schema %d", jobRecord.JobID, desc.ID)
 	}
+	__antithesis_instrumentation__.Notify(577009)
 
 	return p.writeSchemaDesc(ctx, desc)
 }

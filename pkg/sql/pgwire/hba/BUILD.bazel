@@ -15,6 +15,7 @@ go_library(
         "//pkg/sql/pgwire/pgerror",
         "//pkg/sql/sem/tree",
         "//pkg/util/errorutil/unimplemented",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_olekukonko_tablewriter//:tablewriter",
     ],
@@ -31,6 +32,7 @@ go_test(
     embed = [":hba"],
     deps = [
         "//pkg/testutils",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@com_github_kr_pretty//:pretty",
     ],

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package server
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -113,11 +105,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-// SQLServer encapsulates the part of a CRDB server that is dedicated to SQL
-// processing. All SQL commands are reduced to primitive operations on the
-// lower-level KV layer. Multi-tenant installations of CRDB run zero or more
-// standalone SQLServer instances per tenant (the KV layer is shared across all
-// tenants).
 type SQLServer struct {
 	ambientCtx       log.AmbientContext
 	stopper          *stop.Stopper
@@ -131,19 +118,17 @@ type SQLServer struct {
 	blobService      *blobs.Service
 	tracingService   *service.Service
 	tenantConnect    kvtenant.Connector
-	// sessionRegistry can be queried for info on running SQL sessions. It is
-	// shared between the sql.Server and the statusServer.
+
 	sessionRegistry        *sql.SessionRegistry
 	jobRegistry            *jobs.Registry
 	startupMigrationsMgr   *startupmigrations.Manager
 	statsRefresher         *stats.Refresher
 	temporaryObjectCleaner *sql.TemporaryObjectCleaner
 	internalMemMetrics     sql.MemoryMetrics
-	// sqlMemMetrics are used to track memory usage of sql sessions.
+
 	sqlMemMetrics           sql.MemoryMetrics
 	stmtDiagnosticsRegistry *stmtdiagnostics.Registry
-	// sqlLivenessSessionID will be populated with a non-zero value for non-system
-	// tenants.
+
 	sqlLivenessSessionID           sqlliveness.SessionID
 	sqlLivenessProvider            sqlliveness.Provider
 	sqlInstanceProvider            sqlinstance.Provider
@@ -158,64 +143,39 @@ type SQLServer struct {
 
 	isMeta1Leaseholder func(context.Context, hlc.ClockTimestamp) (bool, error)
 
-	// pgL is the shared RPC/SQL listener, opened when RPC was initialized.
 	pgL net.Listener
-	// connManager is the connection manager to use to set up additional
-	// SQL listeners in AcceptClients().
+
 	connManager netutil.Server
 
-	// isReady is the health status of the node. When true, the node is healthy;
-	// load balancers and connection management tools treat the node as "ready".
-	// When false, the node is unhealthy or "not ready", with load balancers and
-	// connection management tools learning this status from health checks.
-	// This is set to true when the server has started accepting client conns.
 	isReady syncutil.AtomicBool
 }
 
-// sqlServerOptionalKVArgs are the arguments supplied to newSQLServer which are
-// only available if the SQL server runs as part of a KV node.
-//
-// TODO(tbg): give all of these fields a wrapper that can signal whether the
-// respective object is available. When it is not, return
-// UnsupportedWithMultiTenancy.
 type sqlServerOptionalKVArgs struct {
-	// nodesStatusServer gives access to the NodesStatus service.
 	nodesStatusServer serverpb.OptionalNodesStatusServer
-	// Narrowed down version of *NodeLiveness. Used by jobs, DistSQLPlanner, and
-	// migration manager.
+
 	nodeLiveness optionalnodeliveness.Container
-	// Gossip is relied upon by distSQLCfg (execinfra.ServerConfig), the executor
-	// config, the DistSQL planner, the table statistics cache, the statements
-	// diagnostics registry, and the lease manager.
+
 	gossip gossip.OptionalGossip
-	// To register blob and DistSQL servers.
+
 	grpcServer *grpc.Server
-	// For the temporaryObjectCleaner.
+
 	isMeta1Leaseholder func(context.Context, hlc.ClockTimestamp) (bool, error)
-	// DistSQL, lease management, and others want to know the node they're on.
+
 	nodeIDContainer *base.SQLIDContainer
 
-	// Used by backup/restore.
 	externalStorage        cloud.ExternalStorageFactory
 	externalStorageFromURI cloud.ExternalStorageFromURIFactory
 
-	// The admission queue to use for SQLSQLResponseWork.
 	sqlSQLResponseAdmissionQ *admission.WorkQueue
 
-	// Used when creating and deleting tenant records.
 	spanConfigKVAccessor spanconfig.KVAccessor
-	// kvStores is used by crdb_internal builtins to access the stores on this
-	// node.
+
 	kvStoresIterator kvserverbase.StoresIterator
 }
 
-// sqlServerOptionalTenantArgs are the arguments supplied to newSQLServer which
-// are only available if the SQL server runs as part of a standalone SQL node.
 type sqlServerOptionalTenantArgs struct {
 	tenantConnect kvtenant.Connector
 
-	// advertiseAddr stores the SQL address that is advertised to other servers
-	// of the same tenant.
 	advertiseAddr string
 }
 
@@ -228,102 +188,61 @@ type sqlServerArgs struct {
 
 	stopper *stop.Stopper
 
-	// SQL uses the clock to assign timestamps to transactions, among many
-	// other things.
 	clock *hlc.Clock
 
-	// The RuntimeStatSampler provides metrics data to the recorder.
 	runtime *status.RuntimeStatSampler
 
-	// DistSQL uses rpcContext to set up flows. Less centrally, the executor
-	// also uses rpcContext in a number of places to learn whether the server
-	// is running insecure, and to read the cluster name.
 	rpcContext *rpc.Context
 
-	// Used by DistSQLPlanner.
 	nodeDescs kvcoord.NodeDescStore
 
-	// Used by the executor config.
 	systemConfigWatcher *systemconfigwatcher.Cache
 
-	// Used by the span config reconciliation job.
 	spanConfigAccessor spanconfig.KVAccessor
 
-	// Used by DistSQLPlanner to dial KV nodes.
 	nodeDialer *nodedialer.Dialer
 
-	// Used by DistSQLPlanner to dial other pods in a multi-tenant environment.
 	podNodeDialer *nodedialer.Dialer
 
-	// SQL mostly uses the DistSender "wrapped" under a *kv.DB, but SQL also
-	// uses range descriptors and leaseholders, which DistSender maintains,
-	// for debugging and DistSQL planning purposes.
 	distSender *kvcoord.DistSender
 
-	// SQL uses KV, both for non-DistSQL and DistSQL execution.
 	db *kv.DB
 
-	// Various components want to register themselves with metrics.
 	registry *metric.Registry
 
-	// Recorder exposes metrics to the prometheus endpoint.
 	recorder *status.MetricsRecorder
 
-	// Used for SHOW/CANCEL QUERIE(S)/SESSION(S).
 	sessionRegistry *sql.SessionRegistry
 
-	// Used to track the DistSQL flows scheduled on this node but initiated on
-	// behalf of other nodes.
 	flowScheduler *flowinfra.FlowScheduler
 
-	// KV depends on the internal executor, so we pass a pointer to an empty
-	// struct in this configuration, which newSQLServer fills.
-	//
-	// TODO(tbg): make this less hacky.
-	circularInternalExecutor *sql.InternalExecutor // empty initially
+	circularInternalExecutor *sql.InternalExecutor
 
-	// Stores and deletes expired liveness sessions.
 	sqlLivenessProvider sqlliveness.Provider
 
-	// Stores and manages sql instance information.
 	sqlInstanceProvider sqlinstance.Provider
 
-	// The protected timestamps KV subsystem depends on this, so we pass a
-	// pointer to an empty struct in this configuration, which newSQLServer
-	// fills.
 	circularJobRegistry *jobs.Registry
 	jobAdoptionStopFile string
 
-	// The executorConfig uses the provider.
 	protectedtsProvider protectedts.Provider
 
-	// Used to list activity (sessions, queries, contention, DistSQL flows) on
-	// the node/cluster and cancel sessions/queries.
 	sqlStatusServer serverpb.SQLStatusServer
 
-	// Used to watch settings and descriptor changes.
 	rangeFeedFactory *rangefeed.Factory
 
-	// Used to query valid regions on the server.
 	regionsServer serverpb.RegionsServer
 
-	// Used to query status information useful for debugging on the server.
 	tenantStatusServer serverpb.TenantStatusServer
 
-	// Used for multi-tenant cost control (on the storage cluster side).
 	tenantUsageServer multitenant.TenantUsageServer
 
-	// Used for multi-tenant cost control (on the tenant side).
 	costController multitenant.TenantSideCostController
 
-	// monitorAndMetrics contains the return value of newRootSQLMemoryMonitor.
 	monitorAndMetrics monitorAndMetrics
 
-	// settingsStorage is an optional interface to drive storing of settings
-	// data on disk to provide a fresh source of settings upon next startup.
 	settingsStorage settingswatcher.Storage
 
-	// grpc is the RPC service.
 	grpc *grpcServer
 }
 
@@ -338,24 +257,20 @@ type monitorAndMetricsOptions struct {
 	settings                *cluster.Settings
 }
 
-// newRootSQLMemoryMonitor returns a started BytesMonitor and corresponding
-// metrics.
 func newRootSQLMemoryMonitor(opts monitorAndMetricsOptions) monitorAndMetrics {
+	__antithesis_instrumentation__.Notify(195878)
 	rootSQLMetrics := sql.MakeBaseMemMetrics("root", opts.histogramWindowInterval)
-	// We do not set memory monitors or a noteworthy limit because the children of
-	// this monitor will be setting their own noteworthy limits.
+
 	rootSQLMemoryMonitor := mon.NewMonitor(
 		"root",
 		mon.MemoryResource,
 		rootSQLMetrics.CurBytesCount,
 		rootSQLMetrics.MaxBytesHist,
-		-1,            /* increment: use default increment */
-		math.MaxInt64, /* noteworthy */
+		-1,
+		math.MaxInt64,
 		opts.settings,
 	)
-	// Set the limit to the memoryPoolSize. Note that this memory monitor also
-	// serves as a parent for a memory monitor that accounts for memory used in
-	// the KV layer at the same node.
+
 	rootSQLMemoryMonitor.Start(
 		context.Background(), nil, mon.MakeStandaloneBudget(opts.memoryPoolSize))
 	return monitorAndMetrics{
@@ -365,26 +280,41 @@ func newRootSQLMemoryMonitor(opts monitorAndMetricsOptions) monitorAndMetrics {
 }
 
 func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
-	// NB: ValidateAddrs also fills in defaults.
+	__antithesis_instrumentation__.Notify(195879)
+
 	if err := cfg.Config.ValidateAddrs(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(195917)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(195918)
 	}
+	__antithesis_instrumentation__.Notify(195880)
 	execCfg := &sql.ExecutorConfig{}
 	codec := keys.MakeSQLCodec(cfg.SQLConfig.TenantID)
 	if knobs := cfg.TestingKnobs.TenantTestingKnobs; knobs != nil {
+		__antithesis_instrumentation__.Notify(195919)
 		override := knobs.(*sql.TenantTestingKnobs).TenantIDCodecOverride
 		if override != (roachpb.TenantID{}) {
+			__antithesis_instrumentation__.Notify(195920)
 			codec = keys.MakeSQLCodec(override)
+		} else {
+			__antithesis_instrumentation__.Notify(195921)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(195922)
 	}
-	// Create blob service for inter-node file sharing.
+	__antithesis_instrumentation__.Notify(195881)
+
 	blobService, err := blobs.NewBlobService(cfg.Settings.ExternalIODir)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(195923)
 		return nil, errors.Wrap(err, "creating blob service")
+	} else {
+		__antithesis_instrumentation__.Notify(195924)
 	}
+	__antithesis_instrumentation__.Notify(195882)
 	blobspb.RegisterBlobServer(cfg.grpcServer, blobService)
 
-	// Create trace service for inter-node sharing of inflight trace spans.
 	tracingService := service.New(cfg.Tracer)
 	tracingservicepb.RegisterTracingServer(cfg.grpcServer, tracingService)
 
@@ -398,31 +328,48 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	)
 
 	if !codec.ForSystemTenant() {
-		// In a multi-tenant environment, use the sqlInstanceProvider to resolve
-		// SQL pod addresses.
+		__antithesis_instrumentation__.Notify(195925)
+
 		addressResolver := func(nodeID roachpb.NodeID) (net.Addr, error) {
+			__antithesis_instrumentation__.Notify(195927)
 			if cfg.sqlInstanceProvider == nil {
+				__antithesis_instrumentation__.Notify(195930)
 				return nil, errors.Errorf("no sqlInstanceProvider")
+			} else {
+				__antithesis_instrumentation__.Notify(195931)
 			}
+			__antithesis_instrumentation__.Notify(195928)
 			info, err := cfg.sqlInstanceProvider.GetInstance(cfg.rpcContext.MasterCtx, base.SQLInstanceID(nodeID))
 			if err != nil {
+				__antithesis_instrumentation__.Notify(195932)
 				return nil, errors.Errorf("unable to look up descriptor for nsql%d", nodeID)
+			} else {
+				__antithesis_instrumentation__.Notify(195933)
 			}
+			__antithesis_instrumentation__.Notify(195929)
 			return &util.UnresolvedAddr{AddressField: info.InstanceAddr}, nil
 		}
+		__antithesis_instrumentation__.Notify(195926)
 		cfg.podNodeDialer = nodedialer.New(cfg.rpcContext, addressResolver)
 	} else {
+		__antithesis_instrumentation__.Notify(195934)
 		cfg.podNodeDialer = cfg.nodeDialer
 	}
+	__antithesis_instrumentation__.Notify(195883)
 
 	jobRegistry := cfg.circularJobRegistry
 	{
+		__antithesis_instrumentation__.Notify(195935)
 		cfg.registry.AddMetricStruct(cfg.sqlLivenessProvider.Metrics())
 
 		var jobsKnobs *jobs.TestingKnobs
 		if cfg.TestingKnobs.JobsTestingKnobs != nil {
+			__antithesis_instrumentation__.Notify(195937)
 			jobsKnobs = cfg.TestingKnobs.JobsTestingKnobs.(*jobs.TestingKnobs)
+		} else {
+			__antithesis_instrumentation__.Notify(195938)
 		}
+		__antithesis_instrumentation__.Notify(195936)
 
 		td := tracedumper.NewTraceDumper(ctx, cfg.InflightTraceDirName, cfg.Settings)
 		*jobRegistry = *jobs.MakeRegistry(
@@ -438,8 +385,8 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 			cfg.Settings,
 			cfg.HistogramWindowInterval(),
 			func(opName string, user security.SQLUsername) (interface{}, func()) {
-				// This is a hack to get around a Go package dependency cycle. See comment
-				// in sql/jobs/registry.go on planHookMaker.
+				__antithesis_instrumentation__.Notify(195939)
+
 				return sql.MakeJobExecContext(opName, user, &sql.MemoryMetrics{}, execCfg)
 			},
 			cfg.jobAdoptionStopFile,
@@ -447,13 +394,17 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 			jobsKnobs,
 		)
 	}
+	__antithesis_instrumentation__.Notify(195884)
 	cfg.registry.AddMetricStruct(jobRegistry.MetricsStruct())
 
-	// Set up Lease Manager
 	var lmKnobs lease.ManagerTestingKnobs
 	if leaseManagerTestingKnobs := cfg.TestingKnobs.SQLLeaseManager; leaseManagerTestingKnobs != nil {
+		__antithesis_instrumentation__.Notify(195940)
 		lmKnobs = *leaseManagerTestingKnobs.(*lease.ManagerTestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195941)
 	}
+	__antithesis_instrumentation__.Notify(195885)
 
 	leaseMgr := lease.NewLeaseManager(
 		cfg.AmbientCtx,
@@ -472,16 +423,12 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	rootSQLMetrics := cfg.monitorAndMetrics.rootSQLMetrics
 	cfg.registry.AddMetricStruct(rootSQLMetrics)
 
-	// Set up internal memory metrics for use by internal SQL executors.
 	internalMemMetrics := sql.MakeMemMetrics("internal", cfg.HistogramWindowInterval())
 	cfg.registry.AddMetricStruct(internalMemMetrics)
 
 	rootSQLMemoryMonitor := cfg.monitorAndMetrics.rootSQLMemoryMonitor
 
-	// bulkMemoryMonitor is the parent to all child SQL monitors tracking bulk
-	// operations (IMPORT, index backfill). It is itself a child of the
-	// ParentMemoryMonitor.
-	bulkMemoryMonitor := mon.NewMonitorInheritWithLimit("bulk-mon", 0 /* limit */, rootSQLMemoryMonitor)
+	bulkMemoryMonitor := mon.NewMonitorInheritWithLimit("bulk-mon", 0, rootSQLMemoryMonitor)
 	bulkMetrics := bulk.MakeBulkMetrics(cfg.HistogramWindowInterval())
 	cfg.registry.AddMetricStruct(bulkMetrics)
 	bulkMemoryMonitor.SetMetrics(bulkMetrics.CurBytesCount, bulkMetrics.MaxBytesHist)
@@ -491,50 +438,60 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	backupMemoryMonitor := execinfra.NewMonitor(ctx, bulkMemoryMonitor, "backup-mon")
 
 	serverCacheMemoryMonitor := mon.NewMonitorInheritWithLimit(
-		"server-cache-mon", 0 /* limit */, rootSQLMemoryMonitor,
+		"server-cache-mon", 0, rootSQLMemoryMonitor,
 	)
 	serverCacheMemoryMonitor.Start(context.Background(), rootSQLMemoryMonitor, mon.BoundAccount{})
-
-	// Set up the DistSQL temp engine.
 
 	useStoreSpec := cfg.TempStorageConfig.Spec
 	tempEngine, tempFS, err := storage.NewTempEngine(ctx, cfg.TempStorageConfig, useStoreSpec)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(195942)
 		return nil, errors.Wrap(err, "creating temp storage")
+	} else {
+		__antithesis_instrumentation__.Notify(195943)
 	}
+	__antithesis_instrumentation__.Notify(195886)
 	cfg.stopper.AddCloser(tempEngine)
-	// Remove temporary directory linked to tempEngine after closing
-	// tempEngine.
+
 	cfg.stopper.AddCloser(stop.CloserFn(func() {
+		__antithesis_instrumentation__.Notify(195944)
 		useStore := cfg.TempStorageConfig.Spec
 		var err error
 		if useStore.InMemory {
-			// Used store is in-memory so we remove the temp
-			// directory directly since there is no record file.
+			__antithesis_instrumentation__.Notify(195946)
+
 			err = os.RemoveAll(cfg.TempStorageConfig.Path)
 		} else {
-			// If record file exists, we invoke CleanupTempDirs to
-			// also remove the record after the temp directory is
-			// removed.
+			__antithesis_instrumentation__.Notify(195947)
+
 			recordPath := filepath.Join(useStore.Path, TempDirsRecordFilename)
 			err = fs.CleanupTempDirs(recordPath)
 		}
+		__antithesis_instrumentation__.Notify(195945)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(195948)
 			log.Errorf(ctx, "could not remove temporary store directory: %v", err.Error())
+		} else {
+			__antithesis_instrumentation__.Notify(195949)
 		}
 	}))
+	__antithesis_instrumentation__.Notify(195887)
 
 	distSQLMetrics := execinfra.MakeDistSQLMetrics(cfg.HistogramWindowInterval())
 	cfg.registry.AddMetricStruct(distSQLMetrics)
-	rowMetrics := sql.NewRowMetrics(false /* internal */)
+	rowMetrics := sql.NewRowMetrics(false)
 	cfg.registry.AddMetricStruct(rowMetrics)
-	internalRowMetrics := sql.NewRowMetrics(true /* internal */)
+	internalRowMetrics := sql.NewRowMetrics(true)
 	cfg.registry.AddMetricStruct(internalRowMetrics)
 
 	virtualSchemas, err := sql.NewVirtualSchemaHolder(ctx, cfg.Settings)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(195950)
 		return nil, errors.Wrap(err, "creating virtual schema holder")
+	} else {
+		__antithesis_instrumentation__.Notify(195951)
 	}
+	__antithesis_instrumentation__.Notify(195888)
 
 	hydratedTablesCache := hydratedtables.NewCache(cfg.Settings)
 	cfg.registry.AddMetricStruct(hydratedTablesCache.Metrics())
@@ -543,15 +500,19 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 
 	var compactEngineSpanFunc tree.CompactEngineSpanFunc
 	if !codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(195952)
 		compactEngineSpanFunc = func(
 			ctx context.Context, nodeID, storeID int32, startKey, endKey []byte,
 		) error {
+			__antithesis_instrumentation__.Notify(195953)
 			return errorutil.UnsupportedWithMultiTenancy(errorutil.FeatureNotAvailableToNonSystemTenantsIssue)
 		}
 	} else {
+		__antithesis_instrumentation__.Notify(195954)
 		cli := kvserver.NewCompactEngineSpanClient(cfg.nodeDialer)
 		compactEngineSpanFunc = cli.CompactEngineSpan
 	}
+	__antithesis_instrumentation__.Notify(195889)
 
 	spanConfig := struct {
 		manager              *spanconfigmanager.Manager
@@ -561,9 +522,11 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		limiter              spanconfig.Limiter
 	}{}
 	if codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(195955)
 		spanConfig.limiter = spanconfiglimiter.NoopLimiter{}
 		spanConfig.splitter = spanconfigsplitter.NoopSplitter{}
 	} else {
+		__antithesis_instrumentation__.Notify(195956)
 		spanConfigKnobs, _ := cfg.TestingKnobs.SpanConfig.(*spanconfig.TestingKnobs)
 		spanConfig.splitter = spanconfigsplitter.New(codec, spanConfigKnobs)
 		spanConfig.limiter = spanconfiglimiter.New(
@@ -572,6 +535,7 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 			spanConfigKnobs,
 		)
 	}
+	__antithesis_instrumentation__.Notify(195890)
 
 	collectionFactory := descs.NewCollectionFactory(
 		cfg.Settings,
@@ -584,7 +548,6 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 
 	clusterIDForSQL := cfg.rpcContext.LogicalClusterID
 
-	// Set up the DistSQL server.
 	distSQLCfg := execinfra.ServerConfig{
 		AmbientContext:   cfg.AmbientCtx,
 		Settings:         cfg.Settings,
@@ -602,10 +565,7 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		TempStorage:     tempEngine,
 		TempStoragePath: cfg.TempStorageConfig.Path,
 		TempFS:          tempFS,
-		// COCKROACH_VEC_MAX_OPEN_FDS specifies the maximum number of open file
-		// descriptors that the vectorized execution engine may have open at any
-		// one time. This limit is implemented as a weighted semaphore acquired
-		// before opening files.
+
 		VecFDSemaphore:    semaphore.New(envutil.EnvOrDefaultInt("COCKROACH_VEC_MAX_OPEN_FDS", colexec.VecMaxOpenFDsLimit)),
 		ParentDiskMonitor: cfg.TempStorageConfig.Mon,
 		BackfillerMonitor: backfillMemoryMonitor,
@@ -615,8 +575,8 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		BulkAdder: func(
 			ctx context.Context, db *kv.DB, ts hlc.Timestamp, opts kvserverbase.BulkAdderOptions,
 		) (kvserverbase.BulkAdder, error) {
-			// Attach a child memory monitor to enable control over the BulkAdder's
-			// memory usage.
+			__antithesis_instrumentation__.Notify(195957)
+
 			bulkMon := execinfra.NewMonitor(ctx, bulkMemoryMonitor, "bulk-adder-monitor")
 			return bulk.MakeBulkAdder(ctx, db, cfg.distSender.RangeDescriptorCache(), cfg.Settings, ts, opts, bulkMon)
 		},
@@ -640,25 +600,35 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		SQLSQLResponseAdmissionQ: cfg.sqlSQLResponseAdmissionQ,
 		CollectionFactory:        collectionFactory,
 	}
+	__antithesis_instrumentation__.Notify(195891)
 	cfg.TempStorageConfig.Mon.SetMetrics(distSQLMetrics.CurDiskBytesCount, distSQLMetrics.MaxDiskBytesHist)
 	if distSQLTestingKnobs := cfg.TestingKnobs.DistSQL; distSQLTestingKnobs != nil {
+		__antithesis_instrumentation__.Notify(195958)
 		distSQLCfg.TestingKnobs = *distSQLTestingKnobs.(*execinfra.TestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195959)
 	}
+	__antithesis_instrumentation__.Notify(195892)
 	if cfg.TestingKnobs.JobsTestingKnobs != nil {
+		__antithesis_instrumentation__.Notify(195960)
 		distSQLCfg.TestingKnobs.JobsTestingKnobs = cfg.TestingKnobs.JobsTestingKnobs
+	} else {
+		__antithesis_instrumentation__.Notify(195961)
 	}
+	__antithesis_instrumentation__.Notify(195893)
 
 	distSQLServer := distsql.NewServer(ctx, distSQLCfg, cfg.flowScheduler)
 	execinfrapb.RegisterDistSQLServer(cfg.grpcServer, distSQLServer)
 
-	// Set up Executor
-
 	var sqlExecutorTestingKnobs sql.ExecutorTestingKnobs
 	if k := cfg.TestingKnobs.SQLExecutor; k != nil {
+		__antithesis_instrumentation__.Notify(195962)
 		sqlExecutorTestingKnobs = *k.(*sql.ExecutorTestingKnobs)
 	} else {
+		__antithesis_instrumentation__.Notify(195963)
 		sqlExecutorTestingKnobs = sql.ExecutorTestingKnobs{}
 	}
+	__antithesis_instrumentation__.Notify(195894)
 
 	nodeInfo := sql.NodeInfo{
 		AdminURL:         cfg.AdminURL,
@@ -670,30 +640,30 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	var isAvailable func(sqlInstanceID base.SQLInstanceID) bool
 	nodeLiveness, hasNodeLiveness := cfg.nodeLiveness.Optional(47900)
 	if hasNodeLiveness {
-		// TODO(erikgrinaker): We may want to use IsAvailableNotDraining instead, to
-		// avoid scheduling long-running flows (e.g. rangefeeds or backups) on nodes
-		// that are being drained/decommissioned. However, these nodes can still be
-		// leaseholders, and preventing processor scheduling on them can cause a
-		// performance cliff for e.g. table reads that then hit the network.
+		__antithesis_instrumentation__.Notify(195964)
+
 		isAvailable = func(sqlInstanceID base.SQLInstanceID) bool {
+			__antithesis_instrumentation__.Notify(195965)
 			return nodeLiveness.IsAvailable(roachpb.NodeID(sqlInstanceID))
 		}
 	} else {
-		// We're on a SQL tenant, so this is the only node DistSQL will ever
-		// schedule on - always returning true is fine.
+		__antithesis_instrumentation__.Notify(195966)
+
 		isAvailable = func(sqlInstanceID base.SQLInstanceID) bool {
+			__antithesis_instrumentation__.Notify(195967)
 			return true
 		}
 	}
+	__antithesis_instrumentation__.Notify(195895)
 
-	// Setup the trace collector that is used to fetch inflight trace spans from
-	// all nodes in the cluster.
-	// The collector requires nodeliveness to get a list of all the nodes in the
-	// cluster.
 	var traceCollector *collector.TraceCollector
 	if hasNodeLiveness {
+		__antithesis_instrumentation__.Notify(195968)
 		traceCollector = collector.New(cfg.nodeDialer, nodeLiveness, cfg.Tracer)
+	} else {
+		__antithesis_instrumentation__.Notify(195969)
 	}
+	__antithesis_instrumentation__.Notify(195896)
 	contentionMetrics := contention.NewMetrics()
 	cfg.registry.AddMetricStruct(contentionMetrics)
 
@@ -782,20 +752,29 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	}
 
 	if sqlSchemaChangerTestingKnobs := cfg.TestingKnobs.SQLSchemaChanger; sqlSchemaChangerTestingKnobs != nil {
+		__antithesis_instrumentation__.Notify(195970)
 		execCfg.SchemaChangerTestingKnobs = sqlSchemaChangerTestingKnobs.(*sql.SchemaChangerTestingKnobs)
 	} else {
+		__antithesis_instrumentation__.Notify(195971)
 		execCfg.SchemaChangerTestingKnobs = new(sql.SchemaChangerTestingKnobs)
 	}
+	__antithesis_instrumentation__.Notify(195897)
 	if declarativeSchemaChangerTestingKnobs := cfg.TestingKnobs.SQLDeclarativeSchemaChanger; declarativeSchemaChangerTestingKnobs != nil {
+		__antithesis_instrumentation__.Notify(195972)
 		execCfg.DeclarativeSchemaChangerTestingKnobs = declarativeSchemaChangerTestingKnobs.(*scrun.TestingKnobs)
 	} else {
+		__antithesis_instrumentation__.Notify(195973)
 		execCfg.DeclarativeSchemaChangerTestingKnobs = new(scrun.TestingKnobs)
 	}
+	__antithesis_instrumentation__.Notify(195898)
 	if sqlTypeSchemaChangerTestingKnobs := cfg.TestingKnobs.SQLTypeSchemaChanger; sqlTypeSchemaChangerTestingKnobs != nil {
+		__antithesis_instrumentation__.Notify(195974)
 		execCfg.TypeSchemaChangerTestingKnobs = sqlTypeSchemaChangerTestingKnobs.(*sql.TypeSchemaChangerTestingKnobs)
 	} else {
+		__antithesis_instrumentation__.Notify(195975)
 		execCfg.TypeSchemaChangerTestingKnobs = new(sql.TypeSchemaChangerTestingKnobs)
 	}
+	__antithesis_instrumentation__.Notify(195899)
 	execCfg.SchemaChangerMetrics = sql.NewSchemaChangerMetrics()
 	cfg.registry.AddMetricStruct(execCfg.SchemaChangerMetrics)
 
@@ -803,42 +782,84 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	cfg.registry.AddMetricStruct(execCfg.FeatureFlagMetrics)
 
 	if gcJobTestingKnobs := cfg.TestingKnobs.GCJob; gcJobTestingKnobs != nil {
+		__antithesis_instrumentation__.Notify(195976)
 		execCfg.GCJobTestingKnobs = gcJobTestingKnobs.(*sql.GCJobTestingKnobs)
 	} else {
+		__antithesis_instrumentation__.Notify(195977)
 		execCfg.GCJobTestingKnobs = new(sql.GCJobTestingKnobs)
 	}
+	__antithesis_instrumentation__.Notify(195900)
 	if distSQLRunTestingKnobs := cfg.TestingKnobs.DistSQL; distSQLRunTestingKnobs != nil {
+		__antithesis_instrumentation__.Notify(195978)
 		execCfg.DistSQLRunTestingKnobs = distSQLRunTestingKnobs.(*execinfra.TestingKnobs)
 	} else {
+		__antithesis_instrumentation__.Notify(195979)
 		execCfg.DistSQLRunTestingKnobs = new(execinfra.TestingKnobs)
 	}
+	__antithesis_instrumentation__.Notify(195901)
 	if sqlEvalContext := cfg.TestingKnobs.SQLEvalContext; sqlEvalContext != nil {
+		__antithesis_instrumentation__.Notify(195980)
 		execCfg.EvalContextTestingKnobs = *sqlEvalContext.(*tree.EvalContextTestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195981)
 	}
+	__antithesis_instrumentation__.Notify(195902)
 	if pgwireKnobs := cfg.TestingKnobs.PGWireTestingKnobs; pgwireKnobs != nil {
+		__antithesis_instrumentation__.Notify(195982)
 		execCfg.PGWireTestingKnobs = pgwireKnobs.(*sql.PGWireTestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195983)
 	}
+	__antithesis_instrumentation__.Notify(195903)
 	if tenantKnobs := cfg.TestingKnobs.TenantTestingKnobs; tenantKnobs != nil {
+		__antithesis_instrumentation__.Notify(195984)
 		execCfg.TenantTestingKnobs = tenantKnobs.(*sql.TenantTestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195985)
 	}
+	__antithesis_instrumentation__.Notify(195904)
 	if backupRestoreKnobs := cfg.TestingKnobs.BackupRestore; backupRestoreKnobs != nil {
+		__antithesis_instrumentation__.Notify(195986)
 		execCfg.BackupRestoreTestingKnobs = backupRestoreKnobs.(*sql.BackupRestoreTestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195987)
 	}
+	__antithesis_instrumentation__.Notify(195905)
 	if ttlKnobs := cfg.TestingKnobs.TTL; ttlKnobs != nil {
+		__antithesis_instrumentation__.Notify(195988)
 		execCfg.TTLTestingKnobs = ttlKnobs.(*sql.TTLTestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195989)
 	}
+	__antithesis_instrumentation__.Notify(195906)
 	if sqlStatsKnobs := cfg.TestingKnobs.SQLStatsKnobs; sqlStatsKnobs != nil {
+		__antithesis_instrumentation__.Notify(195990)
 		execCfg.SQLStatsTestingKnobs = sqlStatsKnobs.(*sqlstats.TestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195991)
 	}
+	__antithesis_instrumentation__.Notify(195907)
 	if telemetryLoggingKnobs := cfg.TestingKnobs.TelemetryLoggingKnobs; telemetryLoggingKnobs != nil {
+		__antithesis_instrumentation__.Notify(195992)
 		execCfg.TelemetryLoggingTestingKnobs = telemetryLoggingKnobs.(*sql.TelemetryLoggingTestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195993)
 	}
+	__antithesis_instrumentation__.Notify(195908)
 	if spanConfigKnobs := cfg.TestingKnobs.SpanConfig; spanConfigKnobs != nil {
+		__antithesis_instrumentation__.Notify(195994)
 		execCfg.SpanConfigTestingKnobs = spanConfigKnobs.(*spanconfig.TestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195995)
 	}
+	__antithesis_instrumentation__.Notify(195909)
 	if capturedIndexUsageStatsKnobs := cfg.TestingKnobs.CapturedIndexUsageStatsKnobs; capturedIndexUsageStatsKnobs != nil {
+		__antithesis_instrumentation__.Notify(195996)
 		execCfg.CaptureIndexUsageStatsKnobs = capturedIndexUsageStatsKnobs.(*scheduledlogging.CaptureIndexUsageStatsTestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(195997)
 	}
+	__antithesis_instrumentation__.Notify(195910)
 
 	statsRefresher := stats.MakeRefresher(
 		cfg.AmbientCtx,
@@ -849,8 +870,6 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	)
 	execCfg.StatsRefresher = statsRefresher
 
-	// Set up internal memory metrics for use by internal SQL executors.
-	// Don't add them to the registry now because it will be added as part of pgServer metrics.
 	sqlMemMetrics := sql.MakeMemMetrics("sql", cfg.HistogramWindowInterval())
 	pgServer := pgwire.MakeServer(
 		cfg.AmbientCtx,
@@ -865,13 +884,10 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	distSQLServer.ServerConfig.SQLStatsController = pgServer.SQLServer.GetSQLStatsController()
 	distSQLServer.ServerConfig.IndexUsageStatsController = pgServer.SQLServer.GetIndexUsageStatsController()
 
-	// Now that we have a pgwire.Server (which has a sql.Server), we can close a
-	// circular dependency between the rowexec.Server and sql.Server and set
-	// SessionBoundInternalExecutorFactory. The same applies for setting a
-	// SessionBoundInternalExecutor on the job registry.
 	ieFactory := func(
 		ctx context.Context, sessionData *sessiondata.SessionData,
 	) sqlutil.InternalExecutor {
+		__antithesis_instrumentation__.Notify(195998)
 		ie := sql.MakeInternalExecutor(
 			ctx,
 			pgServer.SQLServer,
@@ -881,6 +897,7 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		ie.SetSessionData(sessionData)
 		return &ie
 	}
+	__antithesis_instrumentation__.Notify(195911)
 
 	distSQLServer.ServerConfig.SessionBoundInternalExecutorFactory = ieFactory
 	jobRegistry.SetSessionBoundInternalExecutorFactory(ieFactory)
@@ -905,8 +922,10 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	distSQLServer.ServerConfig.ProtectedTimestampProvider = execCfg.ProtectedTimestampProvider
 
 	for _, m := range pgServer.Metrics() {
+		__antithesis_instrumentation__.Notify(195999)
 		cfg.registry.AddMetricStruct(m)
 	}
+	__antithesis_instrumentation__.Notify(195912)
 	*cfg.circularInternalExecutor = sql.MakeInternalExecutor(
 		ctx, pgServer.SQLServer, internalMemMetrics, cfg.Settings,
 	)
@@ -920,12 +939,12 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	execCfg.StmtDiagnosticsRecorder = stmtDiagnosticsRegistry
 
 	{
-		// We only need to attach a version upgrade hook if we're the system
-		// tenant. Regular tenants are disallowed from changing cluster
-		// versions.
+		__antithesis_instrumentation__.Notify(196000)
+
 		var c migration.Cluster
 		var systemDeps migration.SystemDeps
 		if codec.ForSystemTenant() {
+			__antithesis_instrumentation__.Notify(196002)
 			c = migrationcluster.New(migrationcluster.ClusterConfig{
 				NodeLiveness: nodeLiveness,
 				Dialer:       cfg.nodeDialer,
@@ -938,12 +957,14 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 				Stopper:    cfg.stopper,
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(196003)
 			c = migrationcluster.NewTenantCluster(cfg.db)
 			systemDeps = migration.SystemDeps{
 				Cluster: c,
 				DB:      cfg.db,
 			}
 		}
+		__antithesis_instrumentation__.Notify(196001)
 
 		knobs, _ := cfg.TestingKnobs.MigrationManager.(*migration.TestingKnobs)
 		migrationMgr := migrationmanager.NewManager(
@@ -954,10 +975,14 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		execCfg.VersionUpgradeHook = migrationMgr.Migrate
 		execCfg.MigrationTestingKnobs = knobs
 	}
+	__antithesis_instrumentation__.Notify(195913)
 
-	if !codec.ForSystemTenant() || !cfg.SpanConfigsDisabled {
-		// Instantiate a span config manager. If we're the host tenant we'll
-		// only do it unless COCKROACH_DISABLE_SPAN_CONFIGS is set.
+	if !codec.ForSystemTenant() || func() bool {
+		__antithesis_instrumentation__.Notify(196004)
+		return !cfg.SpanConfigsDisabled == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(196005)
+
 		spanConfigKnobs, _ := cfg.TestingKnobs.SpanConfig.(*spanconfig.TestingKnobs)
 		spanConfig.sqlTranslatorFactory = spanconfigsqltranslator.NewFactory(
 			execCfg.ProtectedTimestampProvider, codec, spanConfigKnobs,
@@ -966,10 +991,10 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 			codec,
 			cfg.Settings,
 			cfg.rangeFeedFactory,
-			1<<20, /* 1 MB bufferMemLimit */
+			1<<20,
 			cfg.stopper,
-			// TODO(irfansharif): What should this no-op cadence be?
-			30*time.Second, /* checkpointNoopsEvery */
+
+			30*time.Second,
 			spanConfigKnobs,
 		)
 		spanConfigReconciler := spanconfigreconciler.New(
@@ -992,7 +1017,10 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		)
 
 		execCfg.SpanConfigReconciler = spanConfigReconciler
+	} else {
+		__antithesis_instrumentation__.Notify(196006)
 	}
+	__antithesis_instrumentation__.Notify(195914)
 	execCfg.SpanConfigKVAccessor = cfg.spanConfigAccessor
 	execCfg.SpanConfigLimiter = spanConfig.limiter
 	execCfg.SpanConfigSplitter = spanConfig.splitter
@@ -1026,21 +1054,27 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	}
 
 	if cfg.TestingKnobs.Server != nil {
+		__antithesis_instrumentation__.Notify(196007)
 		reporter.TestingKnobs = &cfg.TestingKnobs.Server.(*TestingKnobs).DiagnosticsTestingKnobs
+	} else {
+		__antithesis_instrumentation__.Notify(196008)
 	}
+	__antithesis_instrumentation__.Notify(195915)
 
 	var settingsWatcher *settingswatcher.SettingsWatcher
 	if codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(196009)
 		settingsWatcher = settingswatcher.New(
 			cfg.clock, codec, cfg.Settings, cfg.rangeFeedFactory, cfg.stopper, cfg.settingsStorage,
 		)
 	} else {
-		// Create the tenant settings watcher, using the tenant connector as the
-		// overrides monitor.
+		__antithesis_instrumentation__.Notify(196010)
+
 		settingsWatcher = settingswatcher.NewWithOverrides(
 			cfg.clock, codec, cfg.Settings, cfg.rangeFeedFactory, cfg.stopper, cfg.tenantConnect, cfg.settingsStorage,
 		)
 	}
+	__antithesis_instrumentation__.Notify(195916)
 
 	return &SQLServer{
 		ambientCtx:                     cfg.BaseConfig.AmbientCtx,
@@ -1075,63 +1109,92 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 	}, nil
 }
 
-// Checks if tenant exists. This function does a very superficial check to see if the system db
-// has been bootstrapped for the tenant. This is not a complete check and is only sufficient
-// to be used in the dev environment.
 func maybeCheckTenantExists(ctx context.Context, codec keys.SQLCodec, db *kv.DB) error {
+	__antithesis_instrumentation__.Notify(196011)
 	if codec.ForSystemTenant() {
-		// Skip check for system tenant and return early.
+		__antithesis_instrumentation__.Notify(196015)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(196016)
 	}
+	__antithesis_instrumentation__.Notify(196012)
 	key := catalogkeys.MakeDatabaseNameKey(codec, systemschema.SystemDatabaseName)
 	result, err := db.Get(ctx, key)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(196017)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(196018)
 	}
-	if result.Value == nil || result.ValueInt() != keys.SystemDatabaseID {
+	__antithesis_instrumentation__.Notify(196013)
+	if result.Value == nil || func() bool {
+		__antithesis_instrumentation__.Notify(196019)
+		return result.ValueInt() != keys.SystemDatabaseID == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(196020)
 		return errors.New("system DB uninitialized, check if tenant is non existent")
+	} else {
+		__antithesis_instrumentation__.Notify(196021)
 	}
-	// Tenant has been confirmed to be bootstrapped successfully
-	// as the system database, which is a part of the bootstrap data for
-	// a tenant keyspace, exists in the namespace table.
+	__antithesis_instrumentation__.Notify(196014)
+
 	return nil
 }
 
 func (s *SQLServer) startSQLLivenessAndInstanceProviders(ctx context.Context) error {
-	// If necessary, start the tenant proxy first, to ensure all other
-	// components can properly route to KV nodes. The Start method will block
-	// until a connection is established to the cluster and its ID has been
-	// determined.
+	__antithesis_instrumentation__.Notify(196022)
+
 	if s.tenantConnect != nil {
+		__antithesis_instrumentation__.Notify(196025)
 		if err := s.tenantConnect.Start(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(196026)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(196027)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(196028)
 	}
+	__antithesis_instrumentation__.Notify(196023)
 	s.sqlLivenessProvider.Start(ctx)
-	// sqlInstanceProvider must always be started after sqlLivenessProvider
-	// as sqlInstanceProvider relies on the session initialized and maintained by
-	// sqlLivenessProvider.
+
 	if err := s.sqlInstanceProvider.Start(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(196029)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(196030)
 	}
+	__antithesis_instrumentation__.Notify(196024)
 	return nil
 }
 
 func (s *SQLServer) initInstanceID(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(196031)
 	if _, ok := s.sqlIDContainer.OptionalNodeID(); ok {
-		// sqlIDContainer has already been initialized with a node ID,
-		// we don't need to initialize a SQL instance ID in this case
-		// as this is not a SQL pod server.
+		__antithesis_instrumentation__.Notify(196035)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(196036)
 	}
+	__antithesis_instrumentation__.Notify(196032)
 	instanceID, sessionID, err := s.sqlInstanceProvider.Instance(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(196037)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(196038)
 	}
+	__antithesis_instrumentation__.Notify(196033)
 	err = s.sqlIDContainer.SetSQLInstanceID(ctx, instanceID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(196039)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(196040)
 	}
+	__antithesis_instrumentation__.Notify(196034)
 	s.sqlLivenessSessionID = sessionID
 	s.execCfg.DistSQLPlanner.SetSQLInstanceInfo(roachpb.NodeDescriptor{NodeID: roachpb.NodeID(instanceID)})
 	return nil
@@ -1146,21 +1209,30 @@ func (s *SQLServer) preStart(
 	socketFile string,
 	orphanedLeasesTimeThresholdNanos int64,
 ) error {
-	// The sqlliveness and sqlinstance subsystem should be started first to ensure instance ID is
-	// initialized prior to any other systems that need it.
+	__antithesis_instrumentation__.Notify(196041)
+
 	if err := s.startSQLLivenessAndInstanceProviders(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(196054)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(196055)
 	}
-	// Confirm tenant exists prior to initialization. This is a sanity
-	// check for the dev environment to ensure that a tenant has been
-	// successfully created before attempting to initialize a SQL
-	// server for it.
+	__antithesis_instrumentation__.Notify(196042)
+
 	if err := maybeCheckTenantExists(ctx, s.execCfg.Codec, s.execCfg.DB); err != nil {
+		__antithesis_instrumentation__.Notify(196056)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(196057)
 	}
+	__antithesis_instrumentation__.Notify(196043)
 	if err := s.initInstanceID(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(196058)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(196059)
 	}
+	__antithesis_instrumentation__.Notify(196044)
 	s.connManager = connManager
 	s.pgL = pgL
 	s.execCfg.GCJobNotifier.Start(ctx)
@@ -1168,18 +1240,22 @@ func (s *SQLServer) preStart(
 	s.distSQLServer.Start()
 	s.pgServer.Start(ctx, stopper)
 	if err := s.statsRefresher.Start(ctx, stopper, stats.DefaultRefreshInterval); err != nil {
+		__antithesis_instrumentation__.Notify(196060)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(196061)
 	}
+	__antithesis_instrumentation__.Notify(196045)
 	s.stmtDiagnosticsRegistry.Start(ctx, stopper)
 
-	// Before serving SQL requests, we have to make sure the database is
-	// in an acceptable form for this version of the software.
-	// We have to do this after actually starting up the server to be able to
-	// seamlessly use the kv client against other nodes in the cluster.
 	var mmKnobs startupmigrations.MigrationManagerTestingKnobs
 	if migrationManagerTestingKnobs := knobs.StartupMigrationManager; migrationManagerTestingKnobs != nil {
+		__antithesis_instrumentation__.Notify(196062)
 		mmKnobs = *migrationManagerTestingKnobs.(*startupmigrations.MigrationManagerTestingKnobs)
+	} else {
+		__antithesis_instrumentation__.Notify(196063)
 	}
+	__antithesis_instrumentation__.Notify(196046)
 
 	s.leaseMgr.RefreshLeases(ctx, stopper, s.execCfg.DB)
 	s.leaseMgr.PeriodicallyRefreshSomeLeases(ctx)
@@ -1189,13 +1265,7 @@ func (s *SQLServer) preStart(
 	migrationsExecutor.SetSessionData(
 		&sessiondata.SessionData{
 			LocalOnlySessionData: sessiondatapb.LocalOnlySessionData{
-				// Migrations need an executor with query distribution turned off. This is
-				// because the node crashes if migrations fail to execute, and query
-				// distribution introduces more moving parts. Local execution is more
-				// robust; for example, the DistSender has retries if it can't connect to
-				// another node, but DistSQL doesn't. Also see #44101 for why DistSQL is
-				// particularly fragile immediately after a node is started (i.e. the
-				// present situation).
+
 				DistSQLMode: sessiondatapb.DistSQLOff,
 			},
 		})
@@ -1210,63 +1280,75 @@ func (s *SQLServer) preStart(
 		s.execCfg.Settings,
 		s.jobRegistry,
 	)
-	s.startupMigrationsMgr = startupMigrationsMgr // only for testing via TestServer
+	s.startupMigrationsMgr = startupMigrationsMgr
 
 	if err := s.jobRegistry.Start(ctx, stopper); err != nil {
+		__antithesis_instrumentation__.Notify(196064)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(196065)
 	}
+	__antithesis_instrumentation__.Notify(196047)
 
 	if s.spanconfigMgr != nil {
+		__antithesis_instrumentation__.Notify(196066)
 		if err := s.spanconfigMgr.Start(ctx); err != nil {
+			__antithesis_instrumentation__.Notify(196067)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(196068)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(196069)
 	}
+	__antithesis_instrumentation__.Notify(196048)
 
 	var bootstrapVersion roachpb.Version
 	if s.execCfg.Codec.ForSystemTenant() {
+		__antithesis_instrumentation__.Notify(196070)
 		if err := s.execCfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			__antithesis_instrumentation__.Notify(196071)
 			return txn.GetProto(ctx, keys.BootstrapVersionKey, &bootstrapVersion)
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(196072)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(196073)
 		}
 	} else {
-		// We don't currently track the bootstrap version of each secondary tenant.
-		// For this to be meaningful, we'd need to record the binary version of the
-		// SQL gateway that processed the crdb_internal.create_tenant function which
-		// created the tenant, as this is what dictates the MetadataSchema that was
-		// in effect when the secondary tenant was constructed. This binary version
-		// very well may differ from the cluster-wide bootstrap version at which the
-		// system tenant was bootstrapped.
-		//
-		// Since we don't record this version anywhere, we do the next-best thing
-		// and pass a lower-bound on the bootstrap version. We know that no tenants
-		// could have been created before the start of the v20.2 dev cycle, so we
-		// pass Start20_2. bootstrapVersion is only used to avoid performing
-		// superfluous but necessarily idempotent SQL migrations, so at worst, we're
-		// doing more work than strictly necessary during the first time that the
-		// migrations are run.
+		__antithesis_instrumentation__.Notify(196074)
+
 		bootstrapVersion = roachpb.Version{Major: 20, Minor: 1, Internal: 1}
 	}
+	__antithesis_instrumentation__.Notify(196049)
 
 	if err := s.settingsWatcher.Start(ctx); err != nil {
+		__antithesis_instrumentation__.Notify(196075)
 		return errors.Wrap(err, "initializing settings")
+	} else {
+		__antithesis_instrumentation__.Notify(196076)
 	}
+	__antithesis_instrumentation__.Notify(196050)
 	if err := s.systemConfigWatcher.Start(ctx, s.stopper); err != nil {
+		__antithesis_instrumentation__.Notify(196077)
 		return errors.Wrap(err, "initializing settings")
+	} else {
+		__antithesis_instrumentation__.Notify(196078)
 	}
+	__antithesis_instrumentation__.Notify(196051)
 
-	// Run startup migrations (note: these depend on jobs subsystem running).
 	if err := startupMigrationsMgr.EnsureMigrations(ctx, bootstrapVersion); err != nil {
+		__antithesis_instrumentation__.Notify(196079)
 		return errors.Wrap(err, "ensuring SQL migrations")
+	} else {
+		__antithesis_instrumentation__.Notify(196080)
 	}
+	__antithesis_instrumentation__.Notify(196052)
 
 	log.Infof(ctx, "done ensuring all necessary startup migrations have run")
 
-	// Delete all orphaned table leases created by a prior instance of this
-	// node. This also uses SQL.
 	s.leaseMgr.DeleteOrphanedLeases(ctx, orphanedLeasesTimeThresholdNanos)
 
-	// Start scheduled jobs daemon.
 	jobs.StartJobSchedulerDaemon(
 		ctx,
 		stopper,
@@ -1277,8 +1359,8 @@ func (s *SQLServer) preStart(
 			DB:               s.execCfg.DB,
 			TestingKnobs:     knobs.JobsTestingKnobs,
 			PlanHookMaker: func(opName string, txn *kv.Txn, user security.SQLUsername) (interface{}, func()) {
-				// This is a hack to get around a Go package dependency cycle. See comment
-				// in sql/jobs/registry.go on planHookMaker.
+				__antithesis_instrumentation__.Notify(196081)
+
 				return sql.NewInternalPlanner(
 					opName,
 					txn,
@@ -1289,40 +1371,40 @@ func (s *SQLServer) preStart(
 				)
 			},
 			ShouldRunScheduler: func(ctx context.Context, ts hlc.ClockTimestamp) (bool, error) {
+				__antithesis_instrumentation__.Notify(196082)
 				if s.execCfg.Codec.ForSystemTenant() {
+					__antithesis_instrumentation__.Notify(196084)
 					return s.isMeta1Leaseholder(ctx, ts)
+				} else {
+					__antithesis_instrumentation__.Notify(196085)
 				}
+				__antithesis_instrumentation__.Notify(196083)
 				return true, nil
 			},
 		},
 		scheduledjobs.ProdJobSchedulerEnv,
 	)
+	__antithesis_instrumentation__.Notify(196053)
 
 	scheduledlogging.Start(ctx, stopper, s.execCfg.DB, s.execCfg.Settings, s.internalExecutor, s.execCfg.CaptureIndexUsageStatsKnobs)
 	return nil
 }
 
-// SQLInstanceID returns the ephemeral ID assigned to each SQL instance. The ID
-// is guaranteed to be unique across all currently running instances, but may be
-// reused once an instance is stopped.
 func (s *SQLServer) SQLInstanceID() base.SQLInstanceID {
+	__antithesis_instrumentation__.Notify(196086)
 	return s.sqlIDContainer.SQLInstanceID()
 }
 
-// StartDiagnostics starts periodic diagnostics reporting.
-// NOTE: This is not called in preStart so that it's disabled by default for
-// testing.
 func (s *SQLServer) StartDiagnostics(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(196087)
 	s.diagnosticsReporter.PeriodicallyReportDiagnostics(ctx, s.stopper)
 }
 
-// AnnotateCtx annotates the given context with the server tracer and tags.
 func (s *SQLServer) AnnotateCtx(ctx context.Context) context.Context {
+	__antithesis_instrumentation__.Notify(196088)
 	return s.ambientCtx.AnnotateCtx(ctx)
 }
 
-// startServeSQL starts accepting incoming SQL connections over TCP.
-// It also starts listening on the Unix socket, if that was configured.
 func (s *SQLServer) startServeSQL(
 	ctx context.Context,
 	stopper *stop.Stopper,
@@ -1330,8 +1412,8 @@ func (s *SQLServer) startServeSQL(
 	pgL net.Listener,
 	socketFile string,
 ) error {
+	__antithesis_instrumentation__.Notify(196089)
 	log.Ops.Info(ctx, "serving sql connections")
-	// Start servicing SQL connections.
 
 	pgCtx := s.pgServer.AmbientCtx.AnnotateCtx(context.Background())
 	tcpKeepAlive := makeTCPKeepAliveManager()
@@ -1339,68 +1421,96 @@ func (s *SQLServer) startServeSQL(
 	_ = stopper.RunAsyncTaskEx(pgCtx,
 		stop.TaskOpts{TaskName: "pgwire-listener", SpanOpt: stop.SterileRootSpan},
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(196092)
 			err := connManager.ServeWith(ctx, stopper, pgL, func(ctx context.Context, conn net.Conn) {
+				__antithesis_instrumentation__.Notify(196094)
 				connCtx := s.pgServer.AnnotateCtxForIncomingConn(ctx, conn)
 				tcpKeepAlive.configure(connCtx, conn)
 
 				if err := s.pgServer.ServeConn(connCtx, conn, pgwire.SocketTCP); err != nil {
+					__antithesis_instrumentation__.Notify(196095)
 					log.Ops.Errorf(connCtx, "serving SQL client conn: %v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(196096)
 				}
 			})
+			__antithesis_instrumentation__.Notify(196093)
 			netutil.FatalIfUnexpected(err)
 		})
+	__antithesis_instrumentation__.Notify(196090)
 
-	// If a unix socket was requested, start serving there too.
 	if len(socketFile) != 0 {
+		__antithesis_instrumentation__.Notify(196097)
 		log.Ops.Infof(ctx, "starting postgres server at unix:%s", socketFile)
 
-		// Unix socket enabled: postgres protocol only.
 		unixLn, err := net.Listen("unix", socketFile)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(196101)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(196102)
 		}
+		__antithesis_instrumentation__.Notify(196098)
 
 		waitQuiesce := func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(196103)
 			<-stopper.ShouldQuiesce()
-			// NB: we can't do this as a Closer because (*Server).ServeWith is
-			// running in a worker and usually sits on accept() which unblocks
-			// only when the listener closes. In other words, the listener needs
-			// to close when quiescing starts to allow that worker to shut down.
+
 			if err := unixLn.Close(); err != nil {
+				__antithesis_instrumentation__.Notify(196104)
 				log.Ops.Fatalf(ctx, "%v", err)
+			} else {
+				__antithesis_instrumentation__.Notify(196105)
 			}
 		}
+		__antithesis_instrumentation__.Notify(196099)
 		if err := stopper.RunAsyncTaskEx(ctx,
 			stop.TaskOpts{TaskName: "unix-ln-close", SpanOpt: stop.SterileRootSpan},
 			func(ctx context.Context) {
+				__antithesis_instrumentation__.Notify(196106)
 				waitQuiesce(ctx)
 			}); err != nil {
+			__antithesis_instrumentation__.Notify(196107)
 			waitQuiesce(ctx)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(196108)
 		}
+		__antithesis_instrumentation__.Notify(196100)
 
 		if err := stopper.RunAsyncTaskEx(pgCtx,
 			stop.TaskOpts{TaskName: "unix-listener", SpanOpt: stop.SterileRootSpan},
 			func(ctx context.Context) {
+				__antithesis_instrumentation__.Notify(196109)
 				err := connManager.ServeWith(ctx, stopper, unixLn, func(ctx context.Context, conn net.Conn) {
+					__antithesis_instrumentation__.Notify(196111)
 					connCtx := s.pgServer.AnnotateCtxForIncomingConn(ctx, conn)
 					if err := s.pgServer.ServeConn(connCtx, conn, pgwire.SocketUnix); err != nil {
+						__antithesis_instrumentation__.Notify(196112)
 						log.Ops.Errorf(connCtx, "%v", err)
+					} else {
+						__antithesis_instrumentation__.Notify(196113)
 					}
 				})
+				__antithesis_instrumentation__.Notify(196110)
 				netutil.FatalIfUnexpected(err)
 			}); err != nil {
+			__antithesis_instrumentation__.Notify(196114)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(196115)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(196116)
 	}
+	__antithesis_instrumentation__.Notify(196091)
 
 	s.isReady.Set(true)
 
 	return nil
 }
 
-// LogicalClusterID retrieves the logical (tenant-level) cluster ID
-// for this server.
 func (s *SQLServer) LogicalClusterID() uuid.UUID {
+	__antithesis_instrumentation__.Notify(196117)
 	return s.execCfg.LogicalClusterID()
 }

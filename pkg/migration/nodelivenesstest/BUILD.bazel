@@ -8,5 +8,6 @@ go_library(
     deps = [
         "//pkg/kv/kvserver/liveness/livenesspb",
         "//pkg/roachpb",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,8 +14,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 )
 
-// RevokeRoleNode removes entries from the system.role_members table.
-// This is called from REVOKE <ROLE>
 type RevokeRoleNode struct {
 	roles       []security.SQLUsername
 	members     []security.SQLUsername
@@ -36,12 +26,13 @@ type revokeRoleRun struct {
 	rowsAffected int
 }
 
-// RevokeRole represents a GRANT ROLE statement.
 func (p *planner) RevokeRole(ctx context.Context, n *tree.RevokeRole) (planNode, error) {
+	__antithesis_instrumentation__.Notify(567193)
 	return p.RevokeRoleNode(ctx, n)
 }
 
 func (p *planner) RevokeRoleNode(ctx context.Context, n *tree.RevokeRole) (*RevokeRoleNode, error) {
+	__antithesis_instrumentation__.Notify(567194)
 	sqltelemetry.IncIAMRevokeCounter(n.AdminOption)
 
 	ctx, span := tracing.ChildSpan(ctx, n.StatementTag())
@@ -49,59 +40,103 @@ func (p *planner) RevokeRoleNode(ctx context.Context, n *tree.RevokeRole) (*Revo
 
 	hasAdminRole, err := p.HasAdminRole(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(567203)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(567204)
 	}
-	// check permissions on each role.
+	__antithesis_instrumentation__.Notify(567195)
+
 	allRoles, err := p.MemberOfWithAdminOption(ctx, p.User())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(567205)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(567206)
 	}
+	__antithesis_instrumentation__.Notify(567196)
 
 	inputRoles, err := n.Roles.ToSQLUsernames()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(567207)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(567208)
 	}
+	__antithesis_instrumentation__.Notify(567197)
 	inputMembers, err := n.Members.ToSQLUsernames(p.SessionData(), security.UsernameValidation)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(567209)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(567210)
 	}
+	__antithesis_instrumentation__.Notify(567198)
 
 	for _, r := range inputRoles {
-		// If the user is an admin, don't check if the user is allowed to add/drop
-		// roles in the role. However, if the role being modified is the admin role, then
-		// make sure the user is an admin with the admin option.
-		if hasAdminRole && !r.IsAdminRole() {
+		__antithesis_instrumentation__.Notify(567211)
+
+		if hasAdminRole && func() bool {
+			__antithesis_instrumentation__.Notify(567213)
+			return !r.IsAdminRole() == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(567214)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(567215)
 		}
-		if isAdmin, ok := allRoles[r]; !ok || !isAdmin {
+		__antithesis_instrumentation__.Notify(567212)
+		if isAdmin, ok := allRoles[r]; !ok || func() bool {
+			__antithesis_instrumentation__.Notify(567216)
+			return !isAdmin == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(567217)
 			if r.IsAdminRole() {
+				__antithesis_instrumentation__.Notify(567219)
 				return nil, pgerror.Newf(pgcode.InsufficientPrivilege,
 					"%s is not a role admin for role %s", p.User(), r)
+			} else {
+				__antithesis_instrumentation__.Notify(567220)
 			}
+			__antithesis_instrumentation__.Notify(567218)
 			return nil, pgerror.Newf(pgcode.InsufficientPrivilege,
 				"%s is not a superuser or role admin for role %s", p.User(), r)
+		} else {
+			__antithesis_instrumentation__.Notify(567221)
 		}
 	}
+	__antithesis_instrumentation__.Notify(567199)
 
-	// Check that roles exist.
-	// TODO(mberhault): just like GRANT/REVOKE privileges, we fetch the list of all roles.
-	// This is wasteful when we have a LOT of roles compared to the number of roles being operated on.
 	roles, err := p.GetAllRoles(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(567222)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(567223)
 	}
+	__antithesis_instrumentation__.Notify(567200)
 
 	for _, r := range inputRoles {
+		__antithesis_instrumentation__.Notify(567224)
 		if _, ok := roles[r]; !ok {
+			__antithesis_instrumentation__.Notify(567225)
 			return nil, pgerror.Newf(pgcode.UndefinedObject, "role/user %s does not exist", r)
+		} else {
+			__antithesis_instrumentation__.Notify(567226)
 		}
 	}
+	__antithesis_instrumentation__.Notify(567201)
 
 	for _, m := range inputMembers {
+		__antithesis_instrumentation__.Notify(567227)
 		if _, ok := roles[m]; !ok {
+			__antithesis_instrumentation__.Notify(567228)
 			return nil, pgerror.Newf(pgcode.UndefinedObject, "role/user %s does not exist", m)
+		} else {
+			__antithesis_instrumentation__.Notify(567229)
 		}
 	}
+	__antithesis_instrumentation__.Notify(567202)
 
 	return &RevokeRoleNode{
 		roles:       inputRoles,
@@ -111,26 +146,39 @@ func (p *planner) RevokeRoleNode(ctx context.Context, n *tree.RevokeRole) (*Revo
 }
 
 func (n *RevokeRoleNode) startExec(params runParams) error {
+	__antithesis_instrumentation__.Notify(567230)
 	opName := "revoke-role"
 
 	var memberStmt string
 	if n.adminOption {
-		// ADMIN OPTION FOR is specified, we don't remove memberships just remove the admin option.
+		__antithesis_instrumentation__.Notify(567234)
+
 		memberStmt = `UPDATE system.role_members SET "isAdmin" = false WHERE "role" = $1 AND "member" = $2`
 	} else {
-		// Admin option not specified: remove membership if it exists.
+		__antithesis_instrumentation__.Notify(567235)
+
 		memberStmt = `DELETE FROM system.role_members WHERE "role" = $1 AND "member" = $2`
 	}
+	__antithesis_instrumentation__.Notify(567231)
 
 	var rowsAffected int
 	for _, r := range n.roles {
+		__antithesis_instrumentation__.Notify(567236)
 		for _, m := range n.members {
-			if r.IsAdminRole() && m.IsRootUser() {
-				// We use CodeObjectInUseError which is what happens if you tried to delete the current user in pg.
+			__antithesis_instrumentation__.Notify(567237)
+			if r.IsAdminRole() && func() bool {
+				__antithesis_instrumentation__.Notify(567240)
+				return m.IsRootUser() == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(567241)
+
 				return pgerror.Newf(pgcode.ObjectInUse,
 					"role/user %s cannot be removed from role %s or lose the ADMIN OPTION",
 					security.RootUser, security.AdminRole)
+			} else {
+				__antithesis_instrumentation__.Notify(567242)
 			}
+			__antithesis_instrumentation__.Notify(567238)
 			affected, err := params.extendedEvalCtx.ExecCfg.InternalExecutor.ExecEx(
 				params.ctx,
 				opName,
@@ -140,30 +188,44 @@ func (n *RevokeRoleNode) startExec(params runParams) error {
 				r.Normalized(), m.Normalized(),
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(567243)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(567244)
 			}
+			__antithesis_instrumentation__.Notify(567239)
 
 			rowsAffected += affected
 		}
 	}
+	__antithesis_instrumentation__.Notify(567232)
 
-	// We need to bump the table version to trigger a refresh if anything changed.
 	if rowsAffected > 0 {
+		__antithesis_instrumentation__.Notify(567245)
 		if err := params.p.BumpRoleMembershipTableVersion(params.ctx); err != nil {
+			__antithesis_instrumentation__.Notify(567246)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(567247)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(567248)
 	}
+	__antithesis_instrumentation__.Notify(567233)
 
 	n.run.rowsAffected += rowsAffected
 
 	return nil
 }
 
-// Next implements the planNode interface.
-func (*RevokeRoleNode) Next(runParams) (bool, error) { return false, nil }
+func (*RevokeRoleNode) Next(runParams) (bool, error) {
+	__antithesis_instrumentation__.Notify(567249)
+	return false, nil
+}
 
-// Values implements the planNode interface.
-func (*RevokeRoleNode) Values() tree.Datums { return tree.Datums{} }
+func (*RevokeRoleNode) Values() tree.Datums {
+	__antithesis_instrumentation__.Notify(567250)
+	return tree.Datums{}
+}
 
-// Close implements the planNode interface.
-func (*RevokeRoleNode) Close(context.Context) {}
+func (*RevokeRoleNode) Close(context.Context) { __antithesis_instrumentation__.Notify(567251) }

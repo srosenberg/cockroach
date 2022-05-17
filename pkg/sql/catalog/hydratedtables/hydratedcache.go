@@ -1,16 +1,8 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // Package hydratedtables contains logic to cache table descriptors with user
 // defined types hydrated.
 package hydratedtables
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -34,18 +26,6 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
-// TODO(ajwerner): Consider adding a mechanism to remove entries which have not
-// been used in a long time.
-
-// Cache caches table descriptors which have their user-defined types hydrated.
-// The cache's contract is a bit tricky. In order to use a hydrated type, the
-// caller needs to have a lease on the relevant type descriptor. The way that
-// this is made to work is that the user provides a handle to a leased
-// ImmutableCopy and then the cache will call through to type resolver for each
-// of the referenced types which ensures that user always uses properly leased
-// descriptors. While all of the types will need to be resolved, they should
-// already be cached so, in this way, this cache prevents the need to copy
-// and re-construct the tabledesc.immutable in most cases.
 type Cache struct {
 	settings *cluster.Settings
 	g        singleflight.Group
@@ -56,28 +36,27 @@ type Cache struct {
 	}
 }
 
-// Metrics returns the cache's metrics.
 func (c *Cache) Metrics() *Metrics {
+	__antithesis_instrumentation__.Notify(265464)
 	return &c.metrics
 }
 
 var _ metric.Struct = (*Metrics)(nil)
 
-// Metrics exposes cache metrics.
 type Metrics struct {
 	Hits   *metric.Counter
 	Misses *metric.Counter
 }
 
 func makeMetrics() Metrics {
+	__antithesis_instrumentation__.Notify(265465)
 	return Metrics{
 		Hits:   metric.NewCounter(metaHits),
 		Misses: metric.NewCounter(metaMisses),
 	}
 }
 
-// MetricStruct makes Metrics a metric.Struct.
-func (m *Metrics) MetricStruct() {}
+func (m *Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(265466) }
 
 var (
 	metaHits = metric.Metadata{
@@ -96,7 +75,6 @@ var (
 	}
 )
 
-// CacheSize controls the size of the LRU cache.
 var CacheSize = settings.RegisterIntSetting(
 	settings.TenantWritable,
 	"sql.catalog.hydrated_tables.cache_size",
@@ -105,8 +83,8 @@ var CacheSize = settings.RegisterIntSetting(
 	settings.NonNegativeInt,
 )
 
-// NewCache constructs a new Cache.
 func NewCache(settings *cluster.Settings) *Cache {
+	__antithesis_instrumentation__.Notify(265467)
 	c := &Cache{
 		settings: settings,
 		metrics:  makeMetrics(),
@@ -114,12 +92,15 @@ func NewCache(settings *cluster.Settings) *Cache {
 	c.mu.cache = cache.NewOrderedCache(cache.Config{
 		Policy: cache.CacheLRU,
 		ShouldEvict: func(size int, key, value interface{}) bool {
+			__antithesis_instrumentation__.Notify(265469)
 			return size > int(CacheSize.Get(&settings.SV))
 		},
 		OnEvicted: func(key, value interface{}) {
+			__antithesis_instrumentation__.Notify(265470)
 			putCacheKey(key.(*cacheKey))
 		},
 	})
+	__antithesis_instrumentation__.Notify(265468)
 	return c
 }
 
@@ -133,88 +114,87 @@ type cachedType struct {
 	typDesc catalog.TypeDescriptor
 }
 
-// GetHydratedTableDescriptor returns an ImmutableCopy with the types
-// hydrated. It may use a cached copy but all of the relevant type descriptors
-// will be retrieved via the TypeDescriptorResolver. Note that if the table
-// descriptor is modified, nil will be returned. If any of the types used by
-// the table or have uncommitted versions, then nil may be returned. If a nil
-// descriptor is returned, it up to the caller to clone and hydrate the table
-// descriptor on their own. If the table descriptor does not contain any
-// user-defined types, it will be returned unchanged.
 func (c *Cache) GetHydratedTableDescriptor(
 	ctx context.Context, table catalog.TableDescriptor, res catalog.TypeDescriptorResolver,
 ) (hydrated catalog.TableDescriptor, err error) {
+	__antithesis_instrumentation__.Notify(265471)
 
-	// If the table has an uncommitted version, it cannot be cached. Return nil
-	// forcing the caller to hydrate.
 	if table.IsUncommittedVersion() {
+		__antithesis_instrumentation__.Notify(265476)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(265477)
 	}
+	__antithesis_instrumentation__.Notify(265472)
 
-	// If the table has no user defined types, it is already effectively hydrated,
-	// so just return it.
 	if !table.ContainsUserDefinedTypes() {
+		__antithesis_instrumentation__.Notify(265478)
 		return table, nil
+	} else {
+		__antithesis_instrumentation__.Notify(265479)
 	}
+	__antithesis_instrumentation__.Notify(265473)
 
-	// TODO(ajwerner): This cache may thrash a bit right when a version of a type
-	// changes as different callers oscillate evicting the old and new versions of
-	// that type. It should converge rapidly but nevertheless, a finer-granularity
-	// cache which stored descriptors by not just the table version but also by
-	// the set of type-versions could mitigate the problem. The idea would be to
-	// cache all tuples of table and type versions and then check if what we get
-	// from the resolver matches any of them. Only long-running transactions
-	// should still resolve older versions. Furthermore, the cache has a policy to
-	// not evict never versions of types for older ones. The downside is that
-	// long-running transactions may end up re-hydrating for every statement.
-	//
-	// Probably a better solution would be to cache the hydrated descriptor in the
-	// descs.Collection and invalidate that cache whenever an uncommitted
-	// descriptor that is relevant is added. That way any given transaction will
-	// only ever hydrate a table at most once per modification of a descriptor.
-	// and the cache will converge on new versions rapidly.
-	var groupKey string // used as a proxy for cache hit
+	var groupKey string
 	defer func() {
+		__antithesis_instrumentation__.Notify(265480)
 		if hydrated != nil {
-			c.recordMetrics(groupKey == "" /* hitCache */)
+			__antithesis_instrumentation__.Notify(265481)
+			c.recordMetrics(groupKey == "")
+		} else {
+			__antithesis_instrumentation__.Notify(265482)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(265474)
 	key := newCacheKey(table)
 	defer func() {
+		__antithesis_instrumentation__.Notify(265483)
 		if key != nil {
+			__antithesis_instrumentation__.Notify(265484)
 			putCacheKey(key)
+		} else {
+			__antithesis_instrumentation__.Notify(265485)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(265475)
 
-	// A loop is required in cases where concurrent operations enter this method,
-	// concurrently determine that they cannot use the cached value but for
-	// different reasons, then serialize on the singleflight group. The goroutine
-	// which does not win the singleflight race will need to verify that the
-	// newly added value can be used before it can use it.
 	for {
+		__antithesis_instrumentation__.Notify(265486)
 		if cached, ok := c.getFromCache(key); ok {
+			__antithesis_instrumentation__.Notify(265492)
 			canUse, skipCache, err := canUseCachedDescriptor(ctx, cached, res)
-			if err != nil || skipCache {
+			if err != nil || func() bool {
+				__antithesis_instrumentation__.Notify(265494)
+				return skipCache == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(265495)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(265496)
 			}
+			__antithesis_instrumentation__.Notify(265493)
 			if canUse {
+				__antithesis_instrumentation__.Notify(265497)
 				return cached.tableDesc, nil
+			} else {
+				__antithesis_instrumentation__.Notify(265498)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(265499)
 		}
+		__antithesis_instrumentation__.Notify(265487)
 
-		// Now we want to lock this key and populate the descriptors.
-		// Using a singleflight prevent concurrent attempts to update the cache for
-		// a given descriptor version.
 		if groupKey == "" {
+			__antithesis_instrumentation__.Notify(265500)
 			groupKey = fmt.Sprintf("%d@%d", key.ID, key.Version)
+		} else {
+			__antithesis_instrumentation__.Notify(265501)
 		}
+		__antithesis_instrumentation__.Notify(265488)
 
-		// Only the calling goroutine can actually use the result directly.
-		// Furthermore, if an error is encountered, only the calling goroutine
-		// should return it. Other goroutines will have to go back around and
-		// attempt to read from the cache.
 		var called bool
 		res, _, err := c.g.Do(groupKey, func() (interface{}, error) {
+			__antithesis_instrumentation__.Notify(265502)
 			called = true
 			cachedRes := cachedTypeDescriptorResolver{
 				underlying: res,
@@ -222,101 +202,118 @@ func (c *Cache) GetHydratedTableDescriptor(
 			}
 			descBase := protoutil.Clone(table.TableDesc()).(*descpb.TableDescriptor)
 			if err := typedesc.HydrateTypesInTableDescriptor(ctx, descBase, &cachedRes); err != nil {
+				__antithesis_instrumentation__.Notify(265505)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(265506)
 			}
+			__antithesis_instrumentation__.Notify(265503)
 			hydrated := tabledesc.NewBuilder(descBase).BuildImmutableTable()
 
-			// If any of the types resolved as part of hydration are modified, skip
-			// writing this descriptor to the cache.
 			if !cachedRes.haveUncommitted {
+				__antithesis_instrumentation__.Notify(265507)
 				c.addToCache(key, &hydratedTableDescriptor{
 					tableDesc: hydrated,
 					typeDescs: cachedRes.types,
 				})
 
-				// Prevent the key from being put back in the pool as it is now a member
-				// of the cache's data structure. It will be released when the entry is
-				// evicted.
 				key = nil
+			} else {
+				__antithesis_instrumentation__.Notify(265508)
 			}
+			__antithesis_instrumentation__.Notify(265504)
 
 			return hydrated, nil
 		})
+		__antithesis_instrumentation__.Notify(265489)
 
-		// Another goroutine populated the cache or failed to due to having a
-		// modified descriptor, go back around and see if the	new cache entry can be
-		// used, or if another round of re-population is in order.
 		if !called {
+			__antithesis_instrumentation__.Notify(265509)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(265510)
 		}
+		__antithesis_instrumentation__.Notify(265490)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265511)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(265512)
 		}
+		__antithesis_instrumentation__.Notify(265491)
 		return res.(catalog.TableDescriptor), nil
 	}
 }
 
-// canUseCachedDescriptor returns whether the types stored in the cached
-// descriptor are the same types which are resolved through res.
-//
-// The skipCache return value indicates that either one of the types returned
-// from res contain uncommitted versions or that a resolved types descriptor is
-// from an older version than the currently cached value. We don't want to wind
-// up evicting a newer version with an older version.
 func canUseCachedDescriptor(
 	ctx context.Context, cached *hydratedTableDescriptor, res catalog.TypeDescriptorResolver,
 ) (canUse, skipCache bool, _ error) {
+	__antithesis_instrumentation__.Notify(265513)
 	for _, typ := range cached.typeDescs {
+		__antithesis_instrumentation__.Notify(265515)
 		name, typDesc, err := res.GetTypeDescriptor(ctx, typ.typDesc.GetID())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(265517)
 			return false, false, err
+		} else {
+			__antithesis_instrumentation__.Notify(265518)
 		}
-		// Ensure that the type is not an uncommitted version.
-		if isUncommittedVersion := typDesc.IsUncommittedVersion(); isUncommittedVersion ||
-			// Ensure that the type version matches.
-			typ.typDesc.GetVersion() != typDesc.GetVersion() ||
-			// Only match on the name if the retrieved type has a qualified name.
-			// Note that this behavior is important and ensures that when this
-			// function is passed a resolved which looks up qualified names, it always
-			// get a hydrated descriptor with qualified names in its types.
-			// This is important as we share this cache between distsql which does
-			// not resolve type names and the local planner which does. It'd be a real
-			// bummer if mixes of distributed and local flows lead to thrashing of the
-			// cache.
-			(name.ObjectNamePrefix != (tree.ObjectNamePrefix{}) && typ.name != name) {
+		__antithesis_instrumentation__.Notify(265516)
 
-			// TODO(ajwerner): Make the TypeDescriptorResolver return a
-			// ResolvedObjectPrefix instead of a tree.TypeName so that we can
-			// determine whether the mismatched name is too old or too new.
-			skipCache = isUncommittedVersion || typ.typDesc.GetVersion() > typDesc.GetVersion()
+		if isUncommittedVersion := typDesc.IsUncommittedVersion(); isUncommittedVersion || func() bool {
+			__antithesis_instrumentation__.Notify(265519)
+			return typ.typDesc.GetVersion() != typDesc.GetVersion() == true
+		}() == true || func() bool {
+			__antithesis_instrumentation__.Notify(265520)
+			return (name.ObjectNamePrefix != (tree.ObjectNamePrefix{}) && func() bool {
+				__antithesis_instrumentation__.Notify(265521)
+				return typ.name != name == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(265522)
+
+			skipCache = isUncommittedVersion || func() bool {
+				__antithesis_instrumentation__.Notify(265523)
+				return typ.typDesc.GetVersion() > typDesc.GetVersion() == true
+			}() == true
 			return false, skipCache, nil
+		} else {
+			__antithesis_instrumentation__.Notify(265524)
 		}
 	}
+	__antithesis_instrumentation__.Notify(265514)
 	return true, false, nil
 }
 
-// getFromCache locks the cache and retrieves the descriptor with the given key.
 func (c *Cache) getFromCache(key *cacheKey) (*hydratedTableDescriptor, bool) {
+	__antithesis_instrumentation__.Notify(265525)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	got, ok := c.mu.cache.Get(key)
 	if !ok {
+		__antithesis_instrumentation__.Notify(265527)
 		return nil, false
+	} else {
+		__antithesis_instrumentation__.Notify(265528)
 	}
+	__antithesis_instrumentation__.Notify(265526)
 	return got.(*hydratedTableDescriptor), true
 }
 
-// getFromCache locks the cache and stores the descriptor with the given key.
 func (c *Cache) addToCache(key *cacheKey, toCache *hydratedTableDescriptor) {
+	__antithesis_instrumentation__.Notify(265529)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.mu.cache.Add(key, toCache)
 }
 
 func (c *Cache) recordMetrics(hitCache bool) {
+	__antithesis_instrumentation__.Notify(265530)
 	if hitCache {
+		__antithesis_instrumentation__.Notify(265531)
 		c.metrics.Hits.Inc(1)
 	} else {
+		__antithesis_instrumentation__.Notify(265532)
 		c.metrics.Misses.Inc(1)
 	}
 }
@@ -331,39 +328,58 @@ type cachedTypeDescriptorResolver struct {
 func (c *cachedTypeDescriptorResolver) GetTypeDescriptor(
 	ctx context.Context, id descpb.ID,
 ) (tree.TypeName, catalog.TypeDescriptor, error) {
+	__antithesis_instrumentation__.Notify(265533)
 	if typ, exists := c.cache[id]; exists {
+		__antithesis_instrumentation__.Notify(265536)
 		return typ.name, typ.typDesc, nil
+	} else {
+		__antithesis_instrumentation__.Notify(265537)
 	}
+	__antithesis_instrumentation__.Notify(265534)
 	name, typDesc, err := c.underlying.GetTypeDescriptor(ctx, id)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(265538)
 		return tree.TypeName{}, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(265539)
 	}
+	__antithesis_instrumentation__.Notify(265535)
 	typ := &cachedType{
 		name:    name,
 		typDesc: typDesc,
 	}
 	c.cache[id] = typ
 	c.types = append(c.types, typ)
-	c.haveUncommitted = c.haveUncommitted || typDesc.IsUncommittedVersion()
+	c.haveUncommitted = c.haveUncommitted || func() bool {
+		__antithesis_instrumentation__.Notify(265540)
+		return typDesc.IsUncommittedVersion() == true
+	}() == true
 	return name, typDesc, nil
 }
 
 type cacheKey lease.IDVersion
 
 func (c cacheKey) Compare(comparable llrb.Comparable) int {
+	__antithesis_instrumentation__.Notify(265541)
 	o := comparable.(*cacheKey)
 	switch {
 	case c.ID < o.ID:
+		__antithesis_instrumentation__.Notify(265542)
 		return -1
 	case c.ID > o.ID:
+		__antithesis_instrumentation__.Notify(265543)
 		return 1
 	default:
+		__antithesis_instrumentation__.Notify(265544)
 		switch {
 		case c.Version < o.Version:
+			__antithesis_instrumentation__.Notify(265545)
 			return -1
 		case c.Version > o.Version:
+			__antithesis_instrumentation__.Notify(265546)
 			return 1
 		default:
+			__antithesis_instrumentation__.Notify(265547)
 			return 0
 		}
 	}
@@ -372,10 +388,11 @@ func (c cacheKey) Compare(comparable llrb.Comparable) int {
 var _ llrb.Comparable = (*cacheKey)(nil)
 
 var cacheKeySyncPool = sync.Pool{
-	New: func() interface{} { return new(cacheKey) },
+	New: func() interface{} { __antithesis_instrumentation__.Notify(265548); return new(cacheKey) },
 }
 
 func newCacheKey(table catalog.TableDescriptor) *cacheKey {
+	__antithesis_instrumentation__.Notify(265549)
 	k := cacheKeySyncPool.Get().(*cacheKey)
 	*k = cacheKey{
 		ID:      table.GetID(),
@@ -385,6 +402,7 @@ func newCacheKey(table catalog.TableDescriptor) *cacheKey {
 }
 
 func putCacheKey(k *cacheKey) {
+	__antithesis_instrumentation__.Notify(265550)
 	*k = cacheKey{}
 	cacheKeySyncPool.Put(k)
 }

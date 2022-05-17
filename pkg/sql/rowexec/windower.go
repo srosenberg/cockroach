@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rowexec
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,33 +24,21 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// windowerState represents the state of the processor.
 type windowerState int
 
 const (
 	windowerStateUnknown windowerState = iota
-	// windowerAccumulating means that rows are being read from the input
-	// and accumulated in allRowsPartitioned.
+
 	windowerAccumulating
-	// windowerEmittingRows means that all rows have been read and
-	// output rows are being emitted.
+
 	windowerEmittingRows
 )
 
-// memRequiredByWindower indicates the minimum amount of RAM (in bytes) that
-// the windower needs.
 const memRequiredByWindower = 100 * 1024
 
-// windower is the processor that performs computation of window functions
-// that have the same PARTITION BY clause. It passes through all of its input
-// columns and puts the output of a window function windowFn at
-// windowFn.outputColIdx.
 type windower struct {
 	execinfra.ProcessorBase
 
-	// runningState represents the state of the windower. This is in addition to
-	// ProcessorBase.State - the runningState is only relevant when
-	// ProcessorBase.State == StateRunning.
 	runningState windowerState
 	input        execinfra.RowSource
 	inputDone    bool
@@ -101,6 +81,7 @@ func newWindower(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*windower, error) {
+	__antithesis_instrumentation__.Notify(575244)
 	w := &windower{
 		input: input,
 	}
@@ -112,20 +93,26 @@ func newWindower(
 	windowFns := spec.WindowFns
 	w.windowFns = make([]*windowFunc, 0, len(windowFns))
 	w.builtins = make([]tree.WindowFunc, 0, len(windowFns))
-	// windower passes through all of its input columns and appends an output
-	// column for each of window functions it is computing.
+
 	w.outputTypes = make([]*types.T, len(w.inputTypes)+len(windowFns))
 	copy(w.outputTypes, w.inputTypes)
 	for _, windowFn := range windowFns {
-		// Check for out of bounds arguments has been done during planning step.
+		__antithesis_instrumentation__.Notify(575250)
+
 		argTypes := make([]*types.T, len(windowFn.ArgsIdxs))
 		for i, argIdx := range windowFn.ArgsIdxs {
+			__antithesis_instrumentation__.Notify(575253)
 			argTypes[i] = w.inputTypes[argIdx]
 		}
+		__antithesis_instrumentation__.Notify(575251)
 		windowConstructor, outputType, err := execinfra.GetWindowFunctionInfo(windowFn.Func, argTypes...)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(575254)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(575255)
 		}
+		__antithesis_instrumentation__.Notify(575252)
 		w.outputTypes[windowFn.OutputColIdx] = outputType
 
 		w.builtins = append(w.builtins, windowConstructor(evalCtx))
@@ -139,22 +126,31 @@ func newWindower(
 
 		w.windowFns = append(w.windowFns, wf)
 	}
+	__antithesis_instrumentation__.Notify(575245)
 	w.outputRow = make(rowenc.EncDatumRow, len(w.outputTypes))
 
-	// Limit the memory use by creating a child monitor with a hard limit.
-	// windower will overflow to disk if this limit is not enough.
 	limit := execinfra.GetWorkMemLimit(flowCtx)
 	if limit < memRequiredByWindower {
-		if !flowCtx.Cfg.TestingKnobs.ForceDiskSpill && flowCtx.Cfg.TestingKnobs.MemoryLimitBytes == 0 {
+		__antithesis_instrumentation__.Notify(575256)
+		if !flowCtx.Cfg.TestingKnobs.ForceDiskSpill && func() bool {
+			__antithesis_instrumentation__.Notify(575258)
+			return flowCtx.Cfg.TestingKnobs.MemoryLimitBytes == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(575259)
 			return nil, errors.Errorf(
 				"window functions require %d bytes of RAM but only %d are in the budget. "+
 					"Consider increasing sql.distsql.temp_storage.workmem cluster setting or distsql_workmem session variable",
 				memRequiredByWindower, limit)
+		} else {
+			__antithesis_instrumentation__.Notify(575260)
 		}
-		// The limit is set very low by the tests, but the windower requires
-		// some amount of RAM, so we override the limit.
+		__antithesis_instrumentation__.Notify(575257)
+
 		limit = memRequiredByWindower
+	} else {
+		__antithesis_instrumentation__.Notify(575261)
 	}
+	__antithesis_instrumentation__.Notify(575246)
 	limitedMon := mon.NewMonitorInheritWithLimit("windower-limited", limit, evalCtx.Mon)
 	limitedMon.Start(ctx, evalCtx.Mon, mon.BoundAccount{})
 
@@ -169,12 +165,17 @@ func newWindower(
 		limitedMon,
 		execinfra.ProcStateOpts{InputsToDrain: []execinfra.RowSource{w.input},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				__antithesis_instrumentation__.Notify(575262)
 				w.close()
 				return nil
 			}},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(575263)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(575264)
 	}
+	__antithesis_instrumentation__.Notify(575247)
 
 	w.diskMonitor = execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, "windower-disk")
 	w.allRowsPartitioned = rowcontainer.NewHashDiskBackedRowContainer(
@@ -182,241 +183,329 @@ func newWindower(
 	)
 	if err := w.allRowsPartitioned.Init(
 		ctx,
-		false, /* shouldMark */
+		false,
 		w.inputTypes,
 		w.partitionBy,
-		true, /* encodeNull */
+		true,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(575265)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(575266)
 	}
+	__antithesis_instrumentation__.Notify(575248)
 
 	w.acc = w.MemMonitor.MakeBoundAccount()
-	// If we have aggregate builtins that aggregate a single datum, we want
-	// them to reuse the same shared memory account with the windower.
+
 	evalCtx.SingleDatumAggMemAccount = &w.acc
 
 	if execinfra.ShouldCollectStats(ctx, flowCtx) {
+		__antithesis_instrumentation__.Notify(575267)
 		w.input = newInputStatCollector(w.input)
 		w.ExecStatsForTrace = w.execStatsForTrace
+	} else {
+		__antithesis_instrumentation__.Notify(575268)
 	}
+	__antithesis_instrumentation__.Notify(575249)
 
 	return w, nil
 }
 
-// Start is part of the RowSource interface.
 func (w *windower) Start(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(575269)
 	ctx = w.StartInternal(ctx, windowerProcName)
 	w.input.Start(ctx)
 	w.cancelChecker.Reset(ctx)
 	w.runningState = windowerAccumulating
 }
 
-// Next is part of the RowSource interface.
 func (w *windower) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(575270)
 	for w.State == execinfra.StateRunning {
+		__antithesis_instrumentation__.Notify(575272)
 		var row rowenc.EncDatumRow
 		var meta *execinfrapb.ProducerMetadata
 		switch w.runningState {
 		case windowerAccumulating:
+			__antithesis_instrumentation__.Notify(575275)
 			w.runningState, row, meta = w.accumulateRows()
 		case windowerEmittingRows:
+			__antithesis_instrumentation__.Notify(575276)
 			w.runningState, row, meta = w.emitRow()
 		default:
+			__antithesis_instrumentation__.Notify(575277)
 			log.Fatalf(w.Ctx, "unsupported state: %d", w.runningState)
 		}
+		__antithesis_instrumentation__.Notify(575273)
 
-		if row == nil && meta == nil {
+		if row == nil && func() bool {
+			__antithesis_instrumentation__.Notify(575278)
+			return meta == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(575279)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(575280)
 		}
+		__antithesis_instrumentation__.Notify(575274)
 		return row, meta
 	}
+	__antithesis_instrumentation__.Notify(575271)
 	return nil, w.DrainHelper()
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (w *windower) ConsumerClosed() {
-	// The consumer is done, Next() will not be called again.
+	__antithesis_instrumentation__.Notify(575281)
+
 	w.close()
 }
 
 func (w *windower) close() {
+	__antithesis_instrumentation__.Notify(575282)
 	if w.InternalClose() {
+		__antithesis_instrumentation__.Notify(575283)
 		if w.allRowsIterator != nil {
+			__antithesis_instrumentation__.Notify(575287)
 			w.allRowsIterator.Close()
+		} else {
+			__antithesis_instrumentation__.Notify(575288)
 		}
+		__antithesis_instrumentation__.Notify(575284)
 		w.allRowsPartitioned.Close(w.Ctx)
 		if w.partition != nil {
+			__antithesis_instrumentation__.Notify(575289)
 			w.partition.Close(w.Ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(575290)
 		}
+		__antithesis_instrumentation__.Notify(575285)
 		for _, builtin := range w.builtins {
+			__antithesis_instrumentation__.Notify(575291)
 			builtin.Close(w.Ctx, w.EvalCtx)
 		}
+		__antithesis_instrumentation__.Notify(575286)
 		w.acc.Close(w.Ctx)
 		w.MemMonitor.Stop(w.Ctx)
 		w.diskMonitor.Stop(w.Ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(575292)
 	}
 }
 
-// accumulateRows continually reads rows from the input and accumulates them
-// in allRowsPartitioned. If it encounters metadata, the metadata is returned
-// immediately. Subsequent calls of this function will resume row accumulation.
 func (w *windower) accumulateRows() (
 	windowerState,
 	rowenc.EncDatumRow,
 	*execinfrapb.ProducerMetadata,
 ) {
+	__antithesis_instrumentation__.Notify(575293)
 	for {
+		__antithesis_instrumentation__.Notify(575295)
 		row, meta := w.input.Next()
 		if meta != nil {
+			__antithesis_instrumentation__.Notify(575298)
 			if meta.Err != nil {
-				// We want to send the whole meta (below) rather than just the err,
-				// so we pass nil as an argument.
-				w.MoveToDraining(nil /* err */)
+				__antithesis_instrumentation__.Notify(575300)
+
+				w.MoveToDraining(nil)
 				return windowerStateUnknown, nil, meta
+			} else {
+				__antithesis_instrumentation__.Notify(575301)
 			}
+			__antithesis_instrumentation__.Notify(575299)
 			return windowerAccumulating, nil, meta
+		} else {
+			__antithesis_instrumentation__.Notify(575302)
 		}
+		__antithesis_instrumentation__.Notify(575296)
 		if row == nil {
+			__antithesis_instrumentation__.Notify(575303)
 			log.VEvent(w.Ctx, 1, "accumulation complete")
 			w.inputDone = true
-			// We need to sort all the rows based on partitionBy columns so that all
-			// rows belonging to the same hash bucket are contiguous.
+
 			w.allRowsPartitioned.Sort(w.Ctx)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(575304)
 		}
+		__antithesis_instrumentation__.Notify(575297)
 
-		// The underlying row container will decode all datums as necessary, so we
-		// don't need to worry about that.
 		if err := w.allRowsPartitioned.AddRow(w.Ctx, row); err != nil {
+			__antithesis_instrumentation__.Notify(575305)
 			w.MoveToDraining(err)
 			return windowerStateUnknown, nil, w.DrainHelper()
+		} else {
+			__antithesis_instrumentation__.Notify(575306)
 		}
 	}
+	__antithesis_instrumentation__.Notify(575294)
 
 	return windowerEmittingRows, nil, nil
 }
 
-// emitRow emits the next row if output rows have already been populated;
-// if they haven't, it first computes all window functions over all partitions
-// (i.e. populates w.windowValues), and then emits the first row.
-//
-// emitRow() might move to stateDraining. It might also not return a row if the
-// ProcOutputHelper filtered the current row out.
 func (w *windower) emitRow() (windowerState, rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(575307)
 	if w.inputDone {
+		__antithesis_instrumentation__.Notify(575309)
 		for !w.populated {
+			__antithesis_instrumentation__.Notify(575312)
 			if err := w.cancelChecker.Check(); err != nil {
+				__antithesis_instrumentation__.Notify(575315)
 				w.MoveToDraining(err)
 				return windowerStateUnknown, nil, w.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(575316)
 			}
+			__antithesis_instrumentation__.Notify(575313)
 
 			if err := w.computeWindowFunctions(w.Ctx, w.EvalCtx); err != nil {
+				__antithesis_instrumentation__.Notify(575317)
 				w.MoveToDraining(err)
 				return windowerStateUnknown, nil, w.DrainHelper()
+			} else {
+				__antithesis_instrumentation__.Notify(575318)
 			}
+			__antithesis_instrumentation__.Notify(575314)
 			w.populated = true
 		}
+		__antithesis_instrumentation__.Notify(575310)
 
 		if rowOutputted, err := w.populateNextOutputRow(); err != nil {
+			__antithesis_instrumentation__.Notify(575319)
 			w.MoveToDraining(err)
 			return windowerStateUnknown, nil, nil
-		} else if rowOutputted {
-			return windowerEmittingRows, w.ProcessRowHelper(w.outputRow), nil
+		} else {
+			__antithesis_instrumentation__.Notify(575320)
+			if rowOutputted {
+				__antithesis_instrumentation__.Notify(575321)
+				return windowerEmittingRows, w.ProcessRowHelper(w.outputRow), nil
+			} else {
+				__antithesis_instrumentation__.Notify(575322)
+			}
 		}
+		__antithesis_instrumentation__.Notify(575311)
 
-		w.MoveToDraining(nil /* err */)
+		w.MoveToDraining(nil)
 		return windowerStateUnknown, nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(575323)
 	}
+	__antithesis_instrumentation__.Notify(575308)
 
 	w.MoveToDraining(errors.Errorf("unexpected: emitRow() is called on a windower before all input rows are accumulated"))
 	return windowerStateUnknown, nil, w.DrainHelper()
 }
 
-// spillAllRowsToDisk attempts to first spill w.allRowsPartitioned to disk if
-// it's using memory. We choose to not to force w.partition to spill right away
-// since it might be resorted multiple times with different orderings, so it's
-// better to keep it in memory (if it hasn't spilled on its own). If
-// w.allRowsPartitioned is already using disk, we attempt to spill w.partition.
 func (w *windower) spillAllRowsToDisk() error {
+	__antithesis_instrumentation__.Notify(575324)
 	if w.allRowsPartitioned != nil {
+		__antithesis_instrumentation__.Notify(575326)
 		if !w.allRowsPartitioned.UsingDisk() {
+			__antithesis_instrumentation__.Notify(575327)
 			if err := w.allRowsPartitioned.SpillToDisk(w.Ctx); err != nil {
+				__antithesis_instrumentation__.Notify(575328)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(575329)
 			}
 		} else {
-			// w.allRowsPartitioned has already been spilled, so we have to spill
-			// w.partition if possible.
+			__antithesis_instrumentation__.Notify(575330)
+
 			if w.partition != nil {
+				__antithesis_instrumentation__.Notify(575331)
 				if !w.partition.UsingDisk() {
+					__antithesis_instrumentation__.Notify(575332)
 					if err := w.partition.SpillToDisk(w.Ctx); err != nil {
+						__antithesis_instrumentation__.Notify(575333)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(575334)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(575335)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(575336)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(575337)
 	}
+	__antithesis_instrumentation__.Notify(575325)
 	return nil
 }
 
-// growMemAccount attempts to grow acc by usage, and if it encounters OOM
-// error, it forces all rows to spill and attempts to grow acc by usage
-// one more time.
 func (w *windower) growMemAccount(acc *mon.BoundAccount, usage int64) error {
+	__antithesis_instrumentation__.Notify(575338)
 	if err := acc.Grow(w.Ctx, usage); err != nil {
+		__antithesis_instrumentation__.Notify(575340)
 		if sqlerrors.IsOutOfMemoryError(err) {
+			__antithesis_instrumentation__.Notify(575341)
 			if err := w.spillAllRowsToDisk(); err != nil {
+				__antithesis_instrumentation__.Notify(575343)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(575344)
 			}
+			__antithesis_instrumentation__.Notify(575342)
 			if err := acc.Grow(w.Ctx, usage); err != nil {
+				__antithesis_instrumentation__.Notify(575345)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(575346)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(575347)
 			return err
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(575348)
 	}
+	__antithesis_instrumentation__.Notify(575339)
 	return nil
 }
 
-// findOrderOfWindowFnsToProcessIn finds an ordering of window functions such
-// that all window functions that have the same ORDER BY clause are computed
-// one after another. The order is stored in w.orderOfWindowFnsProcessing.
-// This allows for using the same row container without having to resort it
-// multiple times.
 func (w *windower) findOrderOfWindowFnsToProcessIn() {
+	__antithesis_instrumentation__.Notify(575349)
 	w.orderOfWindowFnsProcessing = make([]int, 0, len(w.windowFns))
 	windowFnAdded := make([]bool, len(w.windowFns))
 	for i, windowFn := range w.windowFns {
+		__antithesis_instrumentation__.Notify(575350)
 		if !windowFnAdded[i] {
+			__antithesis_instrumentation__.Notify(575352)
 			w.orderOfWindowFnsProcessing = append(w.orderOfWindowFnsProcessing, i)
 			windowFnAdded[i] = true
+		} else {
+			__antithesis_instrumentation__.Notify(575353)
 		}
+		__antithesis_instrumentation__.Notify(575351)
 		for j := i + 1; j < len(w.windowFns); j++ {
+			__antithesis_instrumentation__.Notify(575354)
 			if windowFnAdded[j] {
-				// j'th windowFn has been already added to orderOfWindowFnsProcessing.
+				__antithesis_instrumentation__.Notify(575356)
+
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(575357)
 			}
+			__antithesis_instrumentation__.Notify(575355)
 			if windowFn.ordering.Equal(w.windowFns[j].ordering) {
+				__antithesis_instrumentation__.Notify(575358)
 				w.orderOfWindowFnsProcessing = append(w.orderOfWindowFnsProcessing, j)
 				windowFnAdded[j] = true
+			} else {
+				__antithesis_instrumentation__.Notify(575359)
 			}
 		}
 	}
 }
 
-// processPartition computes all window functions over the given partition and
-// puts the result of computations in w.windowValues[partitionIdx]. It computes
-// window functions in the order specified in w.orderOfWindowFnsProcessing.
-// The same ReorderableRowContainer for partition is reused with changing the
-// ordering and being resorted as necessary.
-//
-// Note: partition must have the ordering as needed by the first window
-// function to be processed.
 func (w *windower) processPartition(
 	ctx context.Context,
 	evalCtx *tree.EvalContext,
 	partition *rowcontainer.DiskBackedIndexedRowContainer,
 	partitionIdx int,
 ) error {
+	__antithesis_instrumentation__.Notify(575360)
 	peerGrouper := &partitionPeerGrouper{
 		ctx:     ctx,
 		evalCtx: evalCtx,
@@ -424,115 +513,178 @@ func (w *windower) processPartition(
 	}
 	usage := memsize.RowsOverhead + memsize.RowsOverhead + memsize.DatumsOverhead*int64(len(w.windowFns))
 	if err := w.growMemAccount(&w.acc, usage); err != nil {
+		__antithesis_instrumentation__.Notify(575364)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(575365)
 	}
+	__antithesis_instrumentation__.Notify(575361)
 	w.windowValues = append(w.windowValues, make([][]tree.Datum, len(w.windowFns)))
 
-	// Partition has ordering as first window function to be processed needs, but
-	// we need to sort the partition for the ordering to take effect.
 	partition.Sort(ctx)
 
 	var prevWindowFn *windowFunc
 	for _, windowFnIdx := range w.orderOfWindowFnsProcessing {
+		__antithesis_instrumentation__.Notify(575366)
 		windowFn := w.windowFns[windowFnIdx]
 
-		// TODO(yuzefovich): creating a new WindowFrameRun object for each
-		// partition and populating it below for a custom window frame is
-		// suboptimal. Consider extracting this logic into the constructor of
-		// the windower and reusing the same objects between partitions.
 		frameRun := &tree.WindowFrameRun{
 			ArgsIdxs:     windowFn.argsIdxs,
 			FilterColIdx: windowFn.filterColIdx,
 		}
 
 		if windowFn.frame != nil {
+			__antithesis_instrumentation__.Notify(575373)
 			var err error
 			if frameRun.Frame, err = windowFn.frame.ConvertToAST(); err != nil {
+				__antithesis_instrumentation__.Notify(575377)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(575378)
 			}
+			__antithesis_instrumentation__.Notify(575374)
 			startBound, endBound := windowFn.frame.Bounds.Start, windowFn.frame.Bounds.End
-			if startBound.BoundType == execinfrapb.WindowerSpec_Frame_OFFSET_PRECEDING ||
-				startBound.BoundType == execinfrapb.WindowerSpec_Frame_OFFSET_FOLLOWING {
+			if startBound.BoundType == execinfrapb.WindowerSpec_Frame_OFFSET_PRECEDING || func() bool {
+				__antithesis_instrumentation__.Notify(575379)
+				return startBound.BoundType == execinfrapb.WindowerSpec_Frame_OFFSET_FOLLOWING == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(575380)
 				switch windowFn.frame.Mode {
 				case execinfrapb.WindowerSpec_Frame_ROWS:
+					__antithesis_instrumentation__.Notify(575381)
 					frameRun.StartBoundOffset = tree.NewDInt(tree.DInt(int(startBound.IntOffset)))
 				case execinfrapb.WindowerSpec_Frame_RANGE:
+					__antithesis_instrumentation__.Notify(575382)
 					datum, err := execinfra.DecodeDatum(&w.datumAlloc, startBound.OffsetType.Type, startBound.TypedOffset)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(575386)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(575387)
 					}
+					__antithesis_instrumentation__.Notify(575383)
 					frameRun.StartBoundOffset = datum
 				case execinfrapb.WindowerSpec_Frame_GROUPS:
+					__antithesis_instrumentation__.Notify(575384)
 					frameRun.StartBoundOffset = tree.NewDInt(tree.DInt(int(startBound.IntOffset)))
 				default:
+					__antithesis_instrumentation__.Notify(575385)
 					return errors.AssertionFailedf(
 						"unexpected WindowFrameMode: %d", errors.Safe(windowFn.frame.Mode))
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(575388)
 			}
+			__antithesis_instrumentation__.Notify(575375)
 			if endBound != nil {
-				if endBound.BoundType == execinfrapb.WindowerSpec_Frame_OFFSET_PRECEDING ||
-					endBound.BoundType == execinfrapb.WindowerSpec_Frame_OFFSET_FOLLOWING {
+				__antithesis_instrumentation__.Notify(575389)
+				if endBound.BoundType == execinfrapb.WindowerSpec_Frame_OFFSET_PRECEDING || func() bool {
+					__antithesis_instrumentation__.Notify(575390)
+					return endBound.BoundType == execinfrapb.WindowerSpec_Frame_OFFSET_FOLLOWING == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(575391)
 					switch windowFn.frame.Mode {
 					case execinfrapb.WindowerSpec_Frame_ROWS:
+						__antithesis_instrumentation__.Notify(575392)
 						frameRun.EndBoundOffset = tree.NewDInt(tree.DInt(int(endBound.IntOffset)))
 					case execinfrapb.WindowerSpec_Frame_RANGE:
+						__antithesis_instrumentation__.Notify(575393)
 						datum, err := execinfra.DecodeDatum(&w.datumAlloc, endBound.OffsetType.Type, endBound.TypedOffset)
 						if err != nil {
+							__antithesis_instrumentation__.Notify(575397)
 							return err
+						} else {
+							__antithesis_instrumentation__.Notify(575398)
 						}
+						__antithesis_instrumentation__.Notify(575394)
 						frameRun.EndBoundOffset = datum
 					case execinfrapb.WindowerSpec_Frame_GROUPS:
+						__antithesis_instrumentation__.Notify(575395)
 						frameRun.EndBoundOffset = tree.NewDInt(tree.DInt(int(endBound.IntOffset)))
 					default:
+						__antithesis_instrumentation__.Notify(575396)
 						return errors.AssertionFailedf("unexpected WindowFrameMode: %d",
 							errors.Safe(windowFn.frame.Mode))
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(575399)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(575400)
 			}
+			__antithesis_instrumentation__.Notify(575376)
 			if frameRun.RangeModeWithOffsets() {
+				__antithesis_instrumentation__.Notify(575401)
 				ordCol := windowFn.ordering.Columns[0]
 				frameRun.OrdColIdx = int(ordCol.ColIdx)
-				// We need this +1 because encoding.Direction has extra value "_"
-				// as zeroth "entry" which its proto equivalent doesn't have.
+
 				frameRun.OrdDirection = encoding.Direction(ordCol.Direction + 1)
 
 				colTyp := w.inputTypes[ordCol.ColIdx]
-				// Type of offset depends on the ordering column's type.
+
 				offsetTyp := colTyp
 				if types.IsDateTimeType(colTyp) {
-					// For datetime related ordering columns, offset must be an Interval.
+					__antithesis_instrumentation__.Notify(575404)
+
 					offsetTyp = types.Interval
+				} else {
+					__antithesis_instrumentation__.Notify(575405)
 				}
+				__antithesis_instrumentation__.Notify(575402)
 				plusOp, minusOp, found := tree.WindowFrameRangeOps{}.LookupImpl(colTyp, offsetTyp)
 				if !found {
+					__antithesis_instrumentation__.Notify(575406)
 					return pgerror.Newf(pgcode.Windowing,
 						"given logical offset cannot be combined with ordering column")
+				} else {
+					__antithesis_instrumentation__.Notify(575407)
 				}
+				__antithesis_instrumentation__.Notify(575403)
 				frameRun.PlusOp, frameRun.MinusOp = plusOp, minusOp
+			} else {
+				__antithesis_instrumentation__.Notify(575408)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(575409)
 		}
+		__antithesis_instrumentation__.Notify(575367)
 
 		builtin := w.builtins[windowFnIdx]
 		builtin.Reset(ctx)
 
 		usage = memsize.DatumsOverhead + memsize.DatumOverhead*int64(partition.Len())
 		if err := w.growMemAccount(&w.acc, usage); err != nil {
+			__antithesis_instrumentation__.Notify(575410)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(575411)
 		}
+		__antithesis_instrumentation__.Notify(575368)
 		w.windowValues[partitionIdx][windowFnIdx] = make([]tree.Datum, partition.Len())
 
 		if len(windowFn.ordering.Columns) > 0 {
-			// If an ORDER BY clause is provided, we check whether the partition is
-			// already sorted as we need (i.e. prevWindowFn has the same ordering),
-			// and if it is not, we change the ordering to the needed and resort the
-			// container.
-			if prevWindowFn != nil && !windowFn.ordering.Equal(prevWindowFn.ordering) {
+			__antithesis_instrumentation__.Notify(575412)
+
+			if prevWindowFn != nil && func() bool {
+				__antithesis_instrumentation__.Notify(575413)
+				return !windowFn.ordering.Equal(prevWindowFn.ordering) == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(575414)
 				if err := partition.Reorder(ctx, execinfrapb.ConvertToColumnOrdering(windowFn.ordering)); err != nil {
+					__antithesis_instrumentation__.Notify(575416)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(575417)
 				}
+				__antithesis_instrumentation__.Notify(575415)
 				partition.Sort(ctx)
+			} else {
+				__antithesis_instrumentation__.Notify(575418)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(575419)
 		}
+		__antithesis_instrumentation__.Notify(575369)
 		peerGrouper.ordering = windowFn.ordering
 		peerGrouper.partition = partition
 
@@ -540,83 +692,115 @@ func (w *windower) processPartition(
 		frameRun.RowIdx = 0
 
 		if !frameRun.Frame.IsDefaultFrame() {
-			// We have a custom frame not equivalent to default one, so if we have
-			// an aggregate function, we want to reset it for each row. Not resetting
-			// is an optimization since we're not computing the result over the whole
-			// frame but only as a result of the current row and previous results of
-			// aggregation.
+			__antithesis_instrumentation__.Notify(575420)
+
 			builtins.ShouldReset(builtin)
+		} else {
+			__antithesis_instrumentation__.Notify(575421)
 		}
+		__antithesis_instrumentation__.Notify(575370)
 
 		if err := frameRun.PeerHelper.Init(frameRun, peerGrouper); err != nil {
+			__antithesis_instrumentation__.Notify(575422)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(575423)
 		}
+		__antithesis_instrumentation__.Notify(575371)
 		frameRun.CurRowPeerGroupNum = 0
 
 		var prevRes tree.Datum
 		for frameRun.RowIdx < partition.Len() {
-			// Perform calculations on each row in the current peer group.
+			__antithesis_instrumentation__.Notify(575424)
+
 			peerGroupEndIdx := frameRun.PeerHelper.GetFirstPeerIdx(frameRun.CurRowPeerGroupNum) + frameRun.PeerHelper.GetRowCount(frameRun.CurRowPeerGroupNum)
 			for ; frameRun.RowIdx < peerGroupEndIdx; frameRun.RowIdx++ {
+				__antithesis_instrumentation__.Notify(575427)
 				if err := w.cancelChecker.Check(); err != nil {
+					__antithesis_instrumentation__.Notify(575432)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(575433)
 				}
+				__antithesis_instrumentation__.Notify(575428)
 				res, err := builtin.Compute(ctx, evalCtx, frameRun)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(575434)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(575435)
 				}
+				__antithesis_instrumentation__.Notify(575429)
 				row, err := frameRun.Rows.GetRow(ctx, frameRun.RowIdx)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(575436)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(575437)
 				}
-				if prevRes == nil || prevRes != res {
-					// We don't want to double count the same memory, and since the same
-					// memory can only be reused contiguously as res, comparing against
-					// result of the previous row is sufficient.
-					// We have already accounted for the size of a nil datum prior to
-					// allocating the slice for window values, so we need to keep that in
-					// mind.
+				__antithesis_instrumentation__.Notify(575430)
+				if prevRes == nil || func() bool {
+					__antithesis_instrumentation__.Notify(575438)
+					return prevRes != res == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(575439)
+
 					if err := w.growMemAccount(&w.acc, int64(res.Size())-memsize.DatumOverhead); err != nil {
+						__antithesis_instrumentation__.Notify(575440)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(575441)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(575442)
 				}
+				__antithesis_instrumentation__.Notify(575431)
 				w.windowValues[partitionIdx][windowFnIdx][row.GetIdx()] = res
 				prevRes = res
 			}
+			__antithesis_instrumentation__.Notify(575425)
 			if err := frameRun.PeerHelper.Update(frameRun); err != nil {
+				__antithesis_instrumentation__.Notify(575443)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(575444)
 			}
+			__antithesis_instrumentation__.Notify(575426)
 			frameRun.CurRowPeerGroupNum++
 		}
+		__antithesis_instrumentation__.Notify(575372)
 
 		prevWindowFn = windowFn
 	}
+	__antithesis_instrumentation__.Notify(575362)
 
 	if err := w.growMemAccount(&w.acc, memsize.Int); err != nil {
+		__antithesis_instrumentation__.Notify(575445)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(575446)
 	}
+	__antithesis_instrumentation__.Notify(575363)
 	w.partitionSizes = append(w.partitionSizes, w.partition.Len())
 	return nil
 }
 
-// computeWindowFunctions computes all window functions over all partitions.
-// Partitions are processed one at a time with the underlying row container
-// reused (and reordered if needed).
 func (w *windower) computeWindowFunctions(ctx context.Context, evalCtx *tree.EvalContext) error {
+	__antithesis_instrumentation__.Notify(575447)
 	w.findOrderOfWindowFnsToProcessIn()
 
-	// We don't know how many partitions there are, so we'll be accounting for
-	// this memory right before every append to these slices.
 	usage := memsize.IntSliceOverhead + memsize.RowsSliceOverhead
 	if err := w.growMemAccount(&w.acc, usage); err != nil {
+		__antithesis_instrumentation__.Notify(575451)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(575452)
 	}
+	__antithesis_instrumentation__.Notify(575448)
 	w.partitionSizes = make([]int, 0, 8)
 	w.windowValues = make([][][]tree.Datum, 0, 8)
 	bucket := ""
 
-	// w.partition will have ordering as needed by the first window function to
-	// be processed.
 	ordering := execinfrapb.ConvertToColumnOrdering(w.windowFns[w.orderOfWindowFnsProcessing[0]].ordering)
 	w.partition = rowcontainer.NewDiskBackedIndexedRowContainer(
 		ordering,
@@ -628,117 +812,184 @@ func (w *windower) computeWindowFunctions(ctx context.Context, evalCtx *tree.Eva
 	)
 	i, err := w.allRowsPartitioned.NewAllRowsIterator(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(575453)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(575454)
 	}
+	__antithesis_instrumentation__.Notify(575449)
 	defer i.Close()
 
-	// We iterate over all the rows and add them to w.partition one by one. When
-	// a row from a different partition is encountered, we process the partition
-	// and reset w.partition for reusing.
 	for i.Rewind(); ; i.Next() {
+		__antithesis_instrumentation__.Notify(575455)
 		if ok, err := i.Valid(); err != nil {
+			__antithesis_instrumentation__.Notify(575460)
 			return err
-		} else if !ok {
-			break
+		} else {
+			__antithesis_instrumentation__.Notify(575461)
+			if !ok {
+				__antithesis_instrumentation__.Notify(575462)
+				break
+			} else {
+				__antithesis_instrumentation__.Notify(575463)
+			}
 		}
+		__antithesis_instrumentation__.Notify(575456)
 		row, err := i.Row()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(575464)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(575465)
 		}
+		__antithesis_instrumentation__.Notify(575457)
 		if err := w.cancelChecker.Check(); err != nil {
+			__antithesis_instrumentation__.Notify(575466)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(575467)
 		}
+		__antithesis_instrumentation__.Notify(575458)
 		if len(w.partitionBy) > 0 {
-			// We need to hash the row according to partitionBy
-			// to figure out which partition the row belongs to.
+			__antithesis_instrumentation__.Notify(575468)
+
 			w.scratch = w.scratch[:0]
 			for _, col := range w.partitionBy {
+				__antithesis_instrumentation__.Notify(575470)
 				if int(col) >= len(row) {
+					__antithesis_instrumentation__.Notify(575472)
 					return errors.AssertionFailedf(
 						"hash column %d, row with only %d columns", errors.Safe(col), errors.Safe(len(row)))
+				} else {
+					__antithesis_instrumentation__.Notify(575473)
 				}
+				__antithesis_instrumentation__.Notify(575471)
 				var err error
-				// We might allocate tree.Datums when hashing the row, so we'll
-				// ask the fingerprint to account for them. Note that if the
-				// datums are later used by the window functions (and accounted
-				// for accordingly), this can lead to over-accounting which is
-				// acceptable.
+
 				w.scratch, err = row[col].Fingerprint(
 					ctx, w.inputTypes[int(col)], &w.datumAlloc, w.scratch, &w.acc,
 				)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(575474)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(575475)
 				}
 			}
+			__antithesis_instrumentation__.Notify(575469)
 			if string(w.scratch) != bucket {
-				// Current row is from the new bucket, so we "finalize" the previous
-				// bucket (if current row is not the first row among all rows in
-				// allRowsPartitioned). We then process this partition, reset the
-				// container for reuse by the next partition.
+				__antithesis_instrumentation__.Notify(575476)
+
 				if bucket != "" {
+					__antithesis_instrumentation__.Notify(575479)
 					if err := w.processPartition(ctx, evalCtx, w.partition, len(w.partitionSizes)); err != nil {
+						__antithesis_instrumentation__.Notify(575480)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(575481)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(575482)
 				}
+				__antithesis_instrumentation__.Notify(575477)
 				bucket = string(w.scratch)
 				if err := w.partition.UnsafeReset(ctx); err != nil {
+					__antithesis_instrumentation__.Notify(575483)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(575484)
 				}
+				__antithesis_instrumentation__.Notify(575478)
 				if !w.windowFns[w.orderOfWindowFnsProcessing[0]].ordering.Equal(w.windowFns[w.orderOfWindowFnsProcessing[len(w.windowFns)-1]].ordering) {
-					// The container no longer has the ordering as needed by the first
-					// window function to be processed, so we need to change it.
+					__antithesis_instrumentation__.Notify(575485)
+
 					if err = w.partition.Reorder(ctx, ordering); err != nil {
+						__antithesis_instrumentation__.Notify(575486)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(575487)
 					}
+				} else {
+					__antithesis_instrumentation__.Notify(575488)
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(575489)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(575490)
 		}
+		__antithesis_instrumentation__.Notify(575459)
 		if err := w.partition.AddRow(w.Ctx, row); err != nil {
+			__antithesis_instrumentation__.Notify(575491)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(575492)
 		}
 	}
+	__antithesis_instrumentation__.Notify(575450)
 	return w.processPartition(ctx, evalCtx, w.partition, len(w.partitionSizes))
 }
 
-// populateNextOutputRow populates next output row to be returned. All input
-// columns are passed through, and the results of window functions'
-// computations are put in the desired columns (i.e. in outputColIdx of each
-// window function).
 func (w *windower) populateNextOutputRow() (bool, error) {
+	__antithesis_instrumentation__.Notify(575493)
 	if w.partitionIdx < len(w.partitionSizes) {
+		__antithesis_instrumentation__.Notify(575495)
 		if w.allRowsIterator == nil {
+			__antithesis_instrumentation__.Notify(575501)
 			w.allRowsIterator = w.allRowsPartitioned.NewUnmarkedIterator(w.Ctx)
 			w.allRowsIterator.Rewind()
+		} else {
+			__antithesis_instrumentation__.Notify(575502)
 		}
-		// rowIdx is the index of the next row to be emitted from the
-		// partitionIdx'th partition.
+		__antithesis_instrumentation__.Notify(575496)
+
 		rowIdx := w.rowsInBucketEmitted
 		if ok, err := w.allRowsIterator.Valid(); err != nil {
+			__antithesis_instrumentation__.Notify(575503)
 			return false, err
-		} else if !ok {
-			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(575504)
+			if !ok {
+				__antithesis_instrumentation__.Notify(575505)
+				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(575506)
+			}
 		}
+		__antithesis_instrumentation__.Notify(575497)
 		inputRow, err := w.allRowsIterator.Row()
 		w.allRowsIterator.Next()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(575507)
 			return false, err
+		} else {
+			__antithesis_instrumentation__.Notify(575508)
 		}
+		__antithesis_instrumentation__.Notify(575498)
 		copy(w.outputRow, inputRow[:len(w.inputTypes)])
 		for windowFnIdx, windowFn := range w.windowFns {
+			__antithesis_instrumentation__.Notify(575509)
 			windowFnRes := w.windowValues[w.partitionIdx][windowFnIdx][rowIdx]
 			encWindowFnRes := rowenc.DatumToEncDatum(w.outputTypes[windowFn.outputColIdx], windowFnRes)
 			w.outputRow[windowFn.outputColIdx] = encWindowFnRes
 		}
+		__antithesis_instrumentation__.Notify(575499)
 		w.rowsInBucketEmitted++
 		if w.rowsInBucketEmitted == w.partitionSizes[w.partitionIdx] {
-			// We have emitted all rows from the current bucket, so we advance the
-			// iterator.
+			__antithesis_instrumentation__.Notify(575510)
+
 			w.partitionIdx++
 			w.rowsInBucketEmitted = 0
+		} else {
+			__antithesis_instrumentation__.Notify(575511)
 		}
+		__antithesis_instrumentation__.Notify(575500)
 		return true, nil
 
+	} else {
+		__antithesis_instrumentation__.Notify(575512)
 	}
+	__antithesis_instrumentation__.Notify(575494)
 	return false, nil
 }
 
@@ -760,64 +1011,102 @@ type partitionPeerGrouper struct {
 }
 
 func (n *partitionPeerGrouper) InSameGroup(i, j int) (bool, error) {
+	__antithesis_instrumentation__.Notify(575513)
 	if len(n.ordering.Columns) == 0 {
-		// ORDER BY clause is omitted, so all rows are peers.
+		__antithesis_instrumentation__.Notify(575519)
+
 		return true, nil
+	} else {
+		__antithesis_instrumentation__.Notify(575520)
 	}
+	__antithesis_instrumentation__.Notify(575514)
 	if n.err != nil {
+		__antithesis_instrumentation__.Notify(575521)
 		return false, n.err
+	} else {
+		__antithesis_instrumentation__.Notify(575522)
 	}
+	__antithesis_instrumentation__.Notify(575515)
 	indexedRow, err := n.partition.GetRow(n.ctx, i)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(575523)
 		n.err = err
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(575524)
 	}
+	__antithesis_instrumentation__.Notify(575516)
 	row := indexedRow.(rowcontainer.IndexedRow)
-	// We need to copy the row explicitly since n.partition might be reusing
-	// the underlying memory when GetRow() is called.
+
 	copy(n.rowCopy, row.Row)
 	rb, err := n.partition.GetRow(n.ctx, j)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(575525)
 		n.err = err
 		return false, n.err
+	} else {
+		__antithesis_instrumentation__.Notify(575526)
 	}
+	__antithesis_instrumentation__.Notify(575517)
 	for _, o := range n.ordering.Columns {
+		__antithesis_instrumentation__.Notify(575527)
 		da := n.rowCopy[o.ColIdx].Datum
 		db, err := rb.GetDatum(int(o.ColIdx))
 		if err != nil {
+			__antithesis_instrumentation__.Notify(575529)
 			n.err = err
 			return false, n.err
+		} else {
+			__antithesis_instrumentation__.Notify(575530)
 		}
+		__antithesis_instrumentation__.Notify(575528)
 		if c := da.Compare(n.evalCtx, db); c != 0 {
+			__antithesis_instrumentation__.Notify(575531)
 			if o.Direction != execinfrapb.Ordering_Column_ASC {
+				__antithesis_instrumentation__.Notify(575533)
 				return false, nil
+			} else {
+				__antithesis_instrumentation__.Notify(575534)
 			}
+			__antithesis_instrumentation__.Notify(575532)
 			return false, nil
+		} else {
+			__antithesis_instrumentation__.Notify(575535)
 		}
 	}
+	__antithesis_instrumentation__.Notify(575518)
 	return true, nil
 }
 
-// CreateWindowerSpecFunc creates a WindowerSpec_Func based on the function
-// name or returns an error if unknown function name is provided.
 func CreateWindowerSpecFunc(funcStr string) (execinfrapb.WindowerSpec_Func, error) {
+	__antithesis_instrumentation__.Notify(575536)
 	if aggBuiltin, err := execinfrapb.GetAggregateFuncIdx(funcStr); err == nil {
+		__antithesis_instrumentation__.Notify(575537)
 		aggSpec := execinfrapb.AggregatorSpec_Func(aggBuiltin)
 		return execinfrapb.WindowerSpec_Func{AggregateFunc: &aggSpec}, nil
-	} else if winBuiltin, err := execinfrapb.GetWindowFuncIdx(funcStr); err == nil {
-		winSpec := execinfrapb.WindowerSpec_WindowFunc(winBuiltin)
-		return execinfrapb.WindowerSpec_Func{WindowFunc: &winSpec}, nil
 	} else {
-		return execinfrapb.WindowerSpec_Func{}, errors.Errorf("unknown aggregate/window function %s", funcStr)
+		__antithesis_instrumentation__.Notify(575538)
+		if winBuiltin, err := execinfrapb.GetWindowFuncIdx(funcStr); err == nil {
+			__antithesis_instrumentation__.Notify(575539)
+			winSpec := execinfrapb.WindowerSpec_WindowFunc(winBuiltin)
+			return execinfrapb.WindowerSpec_Func{WindowFunc: &winSpec}, nil
+		} else {
+			__antithesis_instrumentation__.Notify(575540)
+			return execinfrapb.WindowerSpec_Func{}, errors.Errorf("unknown aggregate/window function %s", funcStr)
+		}
 	}
 }
 
-// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
 func (w *windower) execStatsForTrace() *execinfrapb.ComponentStats {
+	__antithesis_instrumentation__.Notify(575541)
 	is, ok := getInputStats(w.input)
 	if !ok {
+		__antithesis_instrumentation__.Notify(575543)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(575544)
 	}
+	__antithesis_instrumentation__.Notify(575542)
 	return &execinfrapb.ComponentStats{
 		Inputs: []execinfrapb.InputStats{is},
 		Exec: execinfrapb.ExecStats{
@@ -828,21 +1117,33 @@ func (w *windower) execStatsForTrace() *execinfrapb.ComponentStats {
 	}
 }
 
-// ChildCount is part of the execinfra.OpNode interface.
 func (w *windower) ChildCount(verbose bool) int {
+	__antithesis_instrumentation__.Notify(575545)
 	if _, ok := w.input.(execinfra.OpNode); ok {
+		__antithesis_instrumentation__.Notify(575547)
 		return 1
+	} else {
+		__antithesis_instrumentation__.Notify(575548)
 	}
+	__antithesis_instrumentation__.Notify(575546)
 	return 0
 }
 
-// Child is part of the execinfra.OpNode interface.
 func (w *windower) Child(nth int, verbose bool) execinfra.OpNode {
+	__antithesis_instrumentation__.Notify(575549)
 	if nth == 0 {
+		__antithesis_instrumentation__.Notify(575551)
 		if n, ok := w.input.(execinfra.OpNode); ok {
+			__antithesis_instrumentation__.Notify(575553)
 			return n
+		} else {
+			__antithesis_instrumentation__.Notify(575554)
 		}
+		__antithesis_instrumentation__.Notify(575552)
 		panic("input to windower is not an execinfra.OpNode")
+	} else {
+		__antithesis_instrumentation__.Notify(575555)
 	}
+	__antithesis_instrumentation__.Notify(575550)
 	panic(errors.AssertionFailedf("invalid index %d", nth))
 }

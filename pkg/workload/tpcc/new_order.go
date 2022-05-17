@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tpcc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,37 +19,26 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-// From the TPCC spec, section 2.4:
-//
-// The New-Order business transaction consists of entering a complete order
-// through a single database transaction. It represents a mid-weight, read-write
-// transaction with a high frequency of execution and stringent response time
-// requirements to satisfy on-line users. This transaction is the backbone of
-// the workload. It is designed to place a variable load on the system to
-// reflect on-line database activity as typically found in production
-// environments.
-
 type orderItem struct {
-	olSupplyWID  int    // supplying warehouse id
-	olIID        int    // item id
-	olNumber     int    // item number in order
-	iName        string // item name
-	olQuantity   int    // order quantity
+	olSupplyWID  int
+	olIID        int
+	olNumber     int
+	iName        string
+	olQuantity   int
 	brandGeneric string
-	iPrice       float64 // item price
-	olAmount     float64 // order amount
+	iPrice       float64
+	olAmount     float64
 	olDeliveryD  pq.NullTime
 
-	remoteWarehouse bool // internal use - item from a local or remote warehouse?
+	remoteWarehouse bool
 }
 
 type newOrderData struct {
-	// This data must all be returned by the transaction. See 2.4.3.3.
-	wID         int // home warehouse ID
-	dID         int // district id
-	cID         int // customer id
-	oID         int // order id
-	oOlCnt      int // order line count
+	wID         int
+	dID         int
+	cID         int
+	oID         int
+	oOlCnt      int
 	cLast       string
 	cCredit     string
 	cDiscount   float64
@@ -88,12 +69,12 @@ var _ tpccTx = &newOrder{}
 func createNewOrder(
 	ctx context.Context, config *tpcc, mcp *workload.MultiConnPool,
 ) (tpccTx, error) {
+	__antithesis_instrumentation__.Notify(697852)
 	n := &newOrder{
 		config: config,
 		mcp:    mcp,
 	}
 
-	// Select the district tax rate and next available order number, bumping it.
 	n.updateDistrict = n.sr.Define(`
 		UPDATE district
 		SET d_next_o_id = d_next_o_id + 1
@@ -101,12 +82,10 @@ func createNewOrder(
 		RETURNING d_tax, d_next_o_id`,
 	)
 
-	// Select the warehouse tax rate.
 	n.selectWarehouseTax = n.sr.Define(`
 		SELECT w_tax FROM warehouse WHERE w_id = $1`,
 	)
 
-	// Select the customer's discount, last name and credit.
 	n.selectCustomerInfo = n.sr.Define(`
 		SELECT c_discount, c_last, c_credit
 		FROM customer
@@ -124,13 +103,18 @@ func createNewOrder(
 	)
 
 	if err := n.sr.Init(ctx, "new-order", mcp, config.connFlags); err != nil {
+		__antithesis_instrumentation__.Notify(697854)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(697855)
 	}
+	__antithesis_instrumentation__.Notify(697853)
 
 	return n, nil
 }
 
 func (n *newOrder) run(ctx context.Context, wID int) (interface{}, error) {
+	__antithesis_instrumentation__.Notify(697856)
 	atomic.AddUint64(&n.config.auditor.newOrderTransactions, 1)
 
 	rng := rand.New(rand.NewSource(uint64(timeutil.Now().UnixNano())))
@@ -148,103 +132,127 @@ func (n *newOrder) run(ctx context.Context, wID int) (interface{}, error) {
 	n.config.auditor.Unlock()
 	atomic.AddUint64(&n.config.auditor.totalOrderLines, uint64(d.oOlCnt))
 
-	// itemIDs tracks the item ids in the order so that we can prevent adding
-	// multiple items with the same ID. This would not make sense because each
-	// orderItem already tracks a quantity that can be larger than 1.
 	itemIDs := make(map[int]struct{})
 
-	// 2.4.1.4: A fixed 1% of the New-Order transactions are chosen at random to
-	// simulate user data entry errors and exercise the performance of rolling
-	// back update transactions.
 	rollback := rng.Intn(100) == 0
 
-	// allLocal tracks whether any of the items were from a remote warehouse.
 	allLocal := 1
 	for i := 0; i < d.oOlCnt; i++ {
+		__antithesis_instrumentation__.Notify(697861)
 		item := orderItem{
 			olNumber: i + 1,
-			// 2.4.1.5.3: order has a quantity [1..10]
+
 			olQuantity: rng.Intn(10) + 1,
 		}
-		// 2.4.1.5.1 an order item has a random item number, unless rollback is true
-		// and it's the last item in the items list.
-		if rollback && i == d.oOlCnt-1 {
+
+		if rollback && func() bool {
+			__antithesis_instrumentation__.Notify(697865)
+			return i == d.oOlCnt-1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(697866)
 			item.olIID = -1
 		} else {
-			// Loop until we find a unique item ID.
+			__antithesis_instrumentation__.Notify(697867)
+
 			for {
+				__antithesis_instrumentation__.Notify(697868)
 				item.olIID = n.config.randItemID(rng)
 				if _, ok := itemIDs[item.olIID]; !ok {
+					__antithesis_instrumentation__.Notify(697869)
 					itemIDs[item.olIID] = struct{}{}
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(697870)
 				}
 			}
 		}
-		// 2.4.1.5.2: 1% of the time, an item is supplied from a remote warehouse.
-		// If we're in localWarehouses mode, keep all items local.
+		__antithesis_instrumentation__.Notify(697862)
+
 		if n.config.localWarehouses {
+			__antithesis_instrumentation__.Notify(697871)
 			item.remoteWarehouse = false
 		} else {
+			__antithesis_instrumentation__.Notify(697872)
 			item.remoteWarehouse = rng.Intn(100) == 0
 		}
+		__antithesis_instrumentation__.Notify(697863)
 		item.olSupplyWID = wID
-		if item.remoteWarehouse && n.config.activeWarehouses > 1 {
+		if item.remoteWarehouse && func() bool {
+			__antithesis_instrumentation__.Notify(697873)
+			return n.config.activeWarehouses > 1 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(697874)
 			allLocal = 0
-			// To avoid picking the local warehouse again, randomly choose among n-1
-			// warehouses and swap in the nth if necessary.
+
 			item.olSupplyWID = n.config.wPart.randActive(rng)
 			for item.olSupplyWID == wID {
+				__antithesis_instrumentation__.Notify(697876)
 				item.olSupplyWID = n.config.wPart.randActive(rng)
 			}
+			__antithesis_instrumentation__.Notify(697875)
 			n.config.auditor.Lock()
 			n.config.auditor.orderLineRemoteWarehouseFreq[item.olSupplyWID]++
 			n.config.auditor.Unlock()
 		} else {
+			__antithesis_instrumentation__.Notify(697877)
 			item.olSupplyWID = wID
 		}
+		__antithesis_instrumentation__.Notify(697864)
 		d.items[i] = item
 	}
+	__antithesis_instrumentation__.Notify(697857)
 
-	// Sort the items in the same order that we will require from batch select queries.
 	sort.Slice(d.items, func(i, j int) bool {
+		__antithesis_instrumentation__.Notify(697878)
 		return d.items[i].olIID < d.items[j].olIID
 	})
+	__antithesis_instrumentation__.Notify(697858)
 
 	d.oEntryD = timeutil.Now()
 
 	err := crdbpgx.ExecuteTx(
 		ctx, n.mcp.Get(), n.config.txOpts,
 		func(tx pgx.Tx) error {
-			// Select the district tax rate and next available order number, bumping it.
+			__antithesis_instrumentation__.Notify(697879)
+
 			var dNextOID int
 			if err := n.updateDistrict.QueryRowTx(
 				ctx, tx, d.wID, d.dID,
 			).Scan(&d.dTax, &dNextOID); err != nil {
+				__antithesis_instrumentation__.Notify(697898)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697899)
 			}
+			__antithesis_instrumentation__.Notify(697880)
 			d.oID = dNextOID - 1
 
-			// Select the warehouse tax rate.
 			if err := n.selectWarehouseTax.QueryRowTx(
 				ctx, tx, wID,
 			).Scan(&d.wTax); err != nil {
+				__antithesis_instrumentation__.Notify(697900)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697901)
 			}
+			__antithesis_instrumentation__.Notify(697881)
 
-			// Select the customer's discount, last name and credit.
 			if err := n.selectCustomerInfo.QueryRowTx(
 				ctx, tx, d.wID, d.dID, d.cID,
 			).Scan(&d.cDiscount, &d.cLast, &d.cCredit); err != nil {
+				__antithesis_instrumentation__.Notify(697902)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697903)
 			}
+			__antithesis_instrumentation__.Notify(697882)
 
-			// 2.4.2.2: For each o_ol_cnt item in the order, query the relevant item
-			// row, update the stock row to account for the order, and insert a new
-			// line into the order_line table to reflect the item on the order.
 			itemIDs := make([]string, d.oOlCnt)
 			for i, item := range d.items {
+				__antithesis_instrumentation__.Notify(697904)
 				itemIDs[i] = fmt.Sprint(item.olIID)
 			}
+			__antithesis_instrumentation__.Notify(697883)
 			rows, err := tx.Query(
 				ctx,
 				fmt.Sprintf(`
@@ -256,47 +264,74 @@ func (n *newOrder) run(ctx context.Context, wID int) (interface{}, error) {
 				),
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(697905)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697906)
 			}
+			__antithesis_instrumentation__.Notify(697884)
 			iDatas := make([]string, d.oOlCnt)
 			for i := range d.items {
+				__antithesis_instrumentation__.Notify(697907)
 				item := &d.items[i]
 				iData := &iDatas[i]
 
 				if !rows.Next() {
+					__antithesis_instrumentation__.Notify(697909)
 					if err := rows.Err(); err != nil {
+						__antithesis_instrumentation__.Notify(697912)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(697913)
 					}
+					__antithesis_instrumentation__.Notify(697910)
 					if rollback {
-						// 2.4.2.3: roll back when we're expecting a rollback due to
-						// simulated user error (invalid item id) and we actually
-						// can't find the item. The spec requires us to actually go
-						// to the database for this, even though we know earlier
-						// that the item has an invalid number.
+						__antithesis_instrumentation__.Notify(697914)
+
 						atomic.AddUint64(&n.config.auditor.newOrderRollbacks, 1)
 						return errSimulated
+					} else {
+						__antithesis_instrumentation__.Notify(697915)
 					}
+					__antithesis_instrumentation__.Notify(697911)
 					return errors.New("missing item row")
+				} else {
+					__antithesis_instrumentation__.Notify(697916)
 				}
+				__antithesis_instrumentation__.Notify(697908)
 
 				err = rows.Scan(&item.iPrice, &item.iName, iData)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(697917)
 					rows.Close()
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(697918)
 				}
 			}
+			__antithesis_instrumentation__.Notify(697885)
 			if rows.Next() {
+				__antithesis_instrumentation__.Notify(697919)
 				return errors.New("extra item row")
+			} else {
+				__antithesis_instrumentation__.Notify(697920)
 			}
+			__antithesis_instrumentation__.Notify(697886)
 			if err := rows.Err(); err != nil {
+				__antithesis_instrumentation__.Notify(697921)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697922)
 			}
+			__antithesis_instrumentation__.Notify(697887)
 			rows.Close()
 
 			stockIDs := make([]string, d.oOlCnt)
 			for i, item := range d.items {
+				__antithesis_instrumentation__.Notify(697923)
 				stockIDs[i] = fmt.Sprintf("(%d, %d)", item.olIID, item.olSupplyWID)
 			}
+			__antithesis_instrumentation__.Notify(697888)
 			rows, err = tx.Query(
 				ctx,
 				fmt.Sprintf(`
@@ -308,74 +343,120 @@ func (n *newOrder) run(ctx context.Context, wID int) (interface{}, error) {
 				),
 			)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(697924)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697925)
 			}
+			__antithesis_instrumentation__.Notify(697889)
 			distInfos := make([]string, d.oOlCnt)
 			sQuantityUpdateCases := make([]string, d.oOlCnt)
 			sYtdUpdateCases := make([]string, d.oOlCnt)
 			sOrderCntUpdateCases := make([]string, d.oOlCnt)
 			sRemoteCntUpdateCases := make([]string, d.oOlCnt)
 			for i := range d.items {
+				__antithesis_instrumentation__.Notify(697926)
 				item := &d.items[i]
 
 				if !rows.Next() {
+					__antithesis_instrumentation__.Notify(697932)
 					if err := rows.Err(); err != nil {
+						__antithesis_instrumentation__.Notify(697934)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(697935)
 					}
+					__antithesis_instrumentation__.Notify(697933)
 					return errors.New("missing stock row")
+				} else {
+					__antithesis_instrumentation__.Notify(697936)
 				}
+				__antithesis_instrumentation__.Notify(697927)
 
 				var sQuantity, sYtd, sOrderCnt, sRemoteCnt int
 				var sData string
 				err = rows.Scan(&sQuantity, &sYtd, &sOrderCnt, &sRemoteCnt, &sData, &distInfos[i])
 				if err != nil {
+					__antithesis_instrumentation__.Notify(697937)
 					rows.Close()
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(697938)
 				}
+				__antithesis_instrumentation__.Notify(697928)
 
-				if strings.Contains(sData, originalString) && strings.Contains(iDatas[i], originalString) {
+				if strings.Contains(sData, originalString) && func() bool {
+					__antithesis_instrumentation__.Notify(697939)
+					return strings.Contains(iDatas[i], originalString) == true
+				}() == true {
+					__antithesis_instrumentation__.Notify(697940)
 					item.brandGeneric = "B"
 				} else {
+					__antithesis_instrumentation__.Notify(697941)
 					item.brandGeneric = "G"
 				}
+				__antithesis_instrumentation__.Notify(697929)
 
 				newSQuantity := sQuantity - item.olQuantity
 				if sQuantity < item.olQuantity+10 {
+					__antithesis_instrumentation__.Notify(697942)
 					newSQuantity += 91
+				} else {
+					__antithesis_instrumentation__.Notify(697943)
 				}
+				__antithesis_instrumentation__.Notify(697930)
 
 				newSRemoteCnt := sRemoteCnt
 				if item.remoteWarehouse {
+					__antithesis_instrumentation__.Notify(697944)
 					newSRemoteCnt++
+				} else {
+					__antithesis_instrumentation__.Notify(697945)
 				}
+				__antithesis_instrumentation__.Notify(697931)
 
 				sQuantityUpdateCases[i] = fmt.Sprintf("WHEN %s THEN %d", stockIDs[i], newSQuantity)
 				sYtdUpdateCases[i] = fmt.Sprintf("WHEN %s THEN %d", stockIDs[i], sYtd+item.olQuantity)
 				sOrderCntUpdateCases[i] = fmt.Sprintf("WHEN %s THEN %d", stockIDs[i], sOrderCnt+1)
 				sRemoteCntUpdateCases[i] = fmt.Sprintf("WHEN %s THEN %d", stockIDs[i], newSRemoteCnt)
 			}
+			__antithesis_instrumentation__.Notify(697890)
 			if rows.Next() {
+				__antithesis_instrumentation__.Notify(697946)
 				return errors.New("extra stock row")
+			} else {
+				__antithesis_instrumentation__.Notify(697947)
 			}
+			__antithesis_instrumentation__.Notify(697891)
 			if err := rows.Err(); err != nil {
+				__antithesis_instrumentation__.Notify(697948)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697949)
 			}
+			__antithesis_instrumentation__.Notify(697892)
 			rows.Close()
 
-			// Insert row into the orders and new orders table.
 			if _, err := n.insertOrder.ExecTx(
 				ctx, tx,
 				d.oID, d.dID, d.wID, d.cID, d.oEntryD.Format("2006-01-02 15:04:05"), d.oOlCnt, allLocal,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(697950)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697951)
 			}
+			__antithesis_instrumentation__.Notify(697893)
 			if _, err := n.insertNewOrder.ExecTx(
 				ctx, tx, d.oID, d.dID, d.wID,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(697952)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697953)
 			}
+			__antithesis_instrumentation__.Notify(697894)
 
-			// Update the stock table for each item.
 			if _, err := tx.Exec(
 				ctx,
 				fmt.Sprintf(`
@@ -393,28 +474,33 @@ func (n *newOrder) run(ctx context.Context, wID int) (interface{}, error) {
 					strings.Join(stockIDs, ", "),
 				),
 			); err != nil {
+				__antithesis_instrumentation__.Notify(697954)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697955)
 			}
+			__antithesis_instrumentation__.Notify(697895)
 
-			// Insert a new order line for each item in the order.
 			olValsStrings := make([]string, d.oOlCnt)
 			for i := range d.items {
+				__antithesis_instrumentation__.Notify(697956)
 				item := &d.items[i]
 				item.olAmount = float64(item.olQuantity) * item.iPrice
 				d.totalAmount += item.olAmount
 
 				olValsStrings[i] = fmt.Sprintf("(%d,%d,%d,%d,%d,%d,%d,%f,'%s')",
-					d.oID,            // ol_o_id
-					d.dID,            // ol_d_id
-					d.wID,            // ol_w_id
-					item.olNumber,    // ol_number
-					item.olIID,       // ol_i_id
-					item.olSupplyWID, // ol_supply_w_id
-					item.olQuantity,  // ol_quantity
-					item.olAmount,    // ol_amount
-					distInfos[i],     // ol_dist_info
+					d.oID,
+					d.dID,
+					d.wID,
+					item.olNumber,
+					item.olIID,
+					item.olSupplyWID,
+					item.olQuantity,
+					item.olAmount,
+					distInfos[i],
 				)
 			}
+			__antithesis_instrumentation__.Notify(697896)
 			if _, err := tx.Exec(
 				ctx,
 				fmt.Sprintf(`
@@ -423,16 +509,24 @@ func (n *newOrder) run(ctx context.Context, wID int) (interface{}, error) {
 					strings.Join(olValsStrings, ", "),
 				),
 			); err != nil {
+				__antithesis_instrumentation__.Notify(697957)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(697958)
 			}
+			__antithesis_instrumentation__.Notify(697897)
 
-			// 2.4.2.2: total_amount = sum(OL_AMOUNT) * (1 - C_DISCOUNT) * (1 + W_TAX + D_TAX)
 			d.totalAmount *= (1 - d.cDiscount) * (1 + d.wTax + d.dTax)
 
 			return nil
 		})
+	__antithesis_instrumentation__.Notify(697859)
 	if errors.Is(err, errSimulated) {
+		__antithesis_instrumentation__.Notify(697959)
 		return d, nil
+	} else {
+		__antithesis_instrumentation__.Notify(697960)
 	}
+	__antithesis_instrumentation__.Notify(697860)
 	return d, err
 }

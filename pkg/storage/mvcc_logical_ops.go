@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package storage
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -21,47 +13,28 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
-// MVCCLogicalOpType is an enum with values corresponding to each of the
-// enginepb.MVCCLogicalOp variants.
-//
-// LogLogicalOp takes an MVCCLogicalOpType and a corresponding
-// MVCCLogicalOpDetails instead of an enginepb.MVCCLogicalOp variant for two
-// reasons. First, it serves as a form of abstraction so that callers of the
-// method don't need to construct protos themselves. More importantly, it also
-// avoids allocations in the common case where Writer.LogLogicalOp is a no-op.
-// This makes LogLogicalOp essentially free for cases where logical op logging
-// is disabled.
 type MVCCLogicalOpType int
 
 const (
-	// MVCCWriteValueOpType corresponds to the MVCCWriteValueOp variant.
 	MVCCWriteValueOpType MVCCLogicalOpType = iota
-	// MVCCWriteIntentOpType corresponds to the MVCCWriteIntentOp variant.
+
 	MVCCWriteIntentOpType
-	// MVCCUpdateIntentOpType corresponds to the MVCCUpdateIntentOp variant.
+
 	MVCCUpdateIntentOpType
-	// MVCCCommitIntentOpType corresponds to the MVCCCommitIntentOp variant.
+
 	MVCCCommitIntentOpType
-	// MVCCAbortIntentOpType corresponds to the MVCCAbortIntentOp variant.
+
 	MVCCAbortIntentOpType
 )
 
-// MVCCLogicalOpDetails contains details about the occurrence of an MVCC logical
-// operation.
 type MVCCLogicalOpDetails struct {
 	Txn       enginepb.TxnMeta
 	Key       roachpb.Key
 	Timestamp hlc.Timestamp
 
-	// Safe indicates that the values in this struct will never be invalidated
-	// at a later point. If the details object cannot promise that its values
-	// will never be invalidated, an OpLoggerBatch will make a copy of all
-	// references before adding it to the log. TestMVCCOpLogWriter fails without
-	// this.
 	Safe bool
 }
 
-// OpLoggerBatch records a log of logical MVCC operations.
 type OpLoggerBatch struct {
 	Batch
 
@@ -69,44 +42,62 @@ type OpLoggerBatch struct {
 	opsAlloc bufalloc.ByteAllocator
 }
 
-// NewOpLoggerBatch creates a new batch that logs logical mvcc operations and
-// wraps the provided batch.
 func NewOpLoggerBatch(b Batch) *OpLoggerBatch {
+	__antithesis_instrumentation__.Notify(641609)
 	ol := &OpLoggerBatch{Batch: b}
 	return ol
 }
 
 var _ Batch = &OpLoggerBatch{}
 
-// LogLogicalOp implements the Writer interface.
 func (ol *OpLoggerBatch) LogLogicalOp(op MVCCLogicalOpType, details MVCCLogicalOpDetails) {
+	__antithesis_instrumentation__.Notify(641610)
 	ol.logLogicalOp(op, details)
 	ol.Batch.LogLogicalOp(op, details)
 }
 
 func (ol *OpLoggerBatch) logLogicalOp(op MVCCLogicalOpType, details MVCCLogicalOpDetails) {
+	__antithesis_instrumentation__.Notify(641611)
 	if keys.IsLocal(details.Key) {
-		// Ignore mvcc operations on local keys.
+		__antithesis_instrumentation__.Notify(641613)
+
 		if bytes.HasPrefix(details.Key, keys.LocalRangeLockTablePrefix) {
+			__antithesis_instrumentation__.Notify(641615)
 			panic(fmt.Sprintf("seeing locktable key %s", details.Key.String()))
+		} else {
+			__antithesis_instrumentation__.Notify(641616)
 		}
+		__antithesis_instrumentation__.Notify(641614)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(641617)
 	}
+	__antithesis_instrumentation__.Notify(641612)
 
 	switch op {
 	case MVCCWriteValueOpType:
+		__antithesis_instrumentation__.Notify(641618)
 		if !details.Safe {
+			__antithesis_instrumentation__.Notify(641627)
 			ol.opsAlloc, details.Key = ol.opsAlloc.Copy(details.Key, 0)
+		} else {
+			__antithesis_instrumentation__.Notify(641628)
 		}
+		__antithesis_instrumentation__.Notify(641619)
 
 		ol.recordOp(&enginepb.MVCCWriteValueOp{
 			Key:       details.Key,
 			Timestamp: details.Timestamp,
 		})
 	case MVCCWriteIntentOpType:
+		__antithesis_instrumentation__.Notify(641620)
 		if !details.Safe {
+			__antithesis_instrumentation__.Notify(641629)
 			ol.opsAlloc, details.Txn.Key = ol.opsAlloc.Copy(details.Txn.Key, 0)
+		} else {
+			__antithesis_instrumentation__.Notify(641630)
 		}
+		__antithesis_instrumentation__.Notify(641621)
 
 		ol.recordOp(&enginepb.MVCCWriteIntentOp{
 			TxnID:           details.Txn.ID,
@@ -115,14 +106,20 @@ func (ol *OpLoggerBatch) logLogicalOp(op MVCCLogicalOpType, details MVCCLogicalO
 			Timestamp:       details.Timestamp,
 		})
 	case MVCCUpdateIntentOpType:
+		__antithesis_instrumentation__.Notify(641622)
 		ol.recordOp(&enginepb.MVCCUpdateIntentOp{
 			TxnID:     details.Txn.ID,
 			Timestamp: details.Timestamp,
 		})
 	case MVCCCommitIntentOpType:
+		__antithesis_instrumentation__.Notify(641623)
 		if !details.Safe {
+			__antithesis_instrumentation__.Notify(641631)
 			ol.opsAlloc, details.Key = ol.opsAlloc.Copy(details.Key, 0)
+		} else {
+			__antithesis_instrumentation__.Notify(641632)
 		}
+		__antithesis_instrumentation__.Notify(641624)
 
 		ol.recordOp(&enginepb.MVCCCommitIntentOp{
 			TxnID:     details.Txn.ID,
@@ -130,24 +127,30 @@ func (ol *OpLoggerBatch) logLogicalOp(op MVCCLogicalOpType, details MVCCLogicalO
 			Timestamp: details.Timestamp,
 		})
 	case MVCCAbortIntentOpType:
+		__antithesis_instrumentation__.Notify(641625)
 		ol.recordOp(&enginepb.MVCCAbortIntentOp{
 			TxnID: details.Txn.ID,
 		})
 	default:
+		__antithesis_instrumentation__.Notify(641626)
 		panic(fmt.Sprintf("unexpected op type %v", op))
 	}
 }
 
 func (ol *OpLoggerBatch) recordOp(op interface{}) {
+	__antithesis_instrumentation__.Notify(641633)
 	ol.ops = append(ol.ops, enginepb.MVCCLogicalOp{})
 	ol.ops[len(ol.ops)-1].MustSetValue(op)
 }
 
-// LogicalOps returns the list of all logical MVCC operations that have been
-// recorded by the logger.
 func (ol *OpLoggerBatch) LogicalOps() []enginepb.MVCCLogicalOp {
+	__antithesis_instrumentation__.Notify(641634)
 	if ol == nil {
+		__antithesis_instrumentation__.Notify(641636)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(641637)
 	}
+	__antithesis_instrumentation__.Notify(641635)
 	return ol.ops
 }

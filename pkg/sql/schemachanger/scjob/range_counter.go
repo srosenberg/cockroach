@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package scjob
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,14 +11,13 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scdeps"
 )
 
-// rangeCounter implements scdeps.RangeCounter
 type rangeCounter struct {
 	db  *kv.DB
 	dsp *sql.DistSQLPlanner
 }
 
-// NewRangeCounter constructs a new RangeCounter.
 func NewRangeCounter(db *kv.DB, dsp *sql.DistSQLPlanner) scdeps.RangeCounter {
+	__antithesis_instrumentation__.Notify(582379)
 	return &rangeCounter{
 		db:  db,
 		dsp: dsp,
@@ -38,5 +29,6 @@ var _ scdeps.RangeCounter = (*rangeCounter)(nil)
 func (r rangeCounter) NumRangesInSpanContainedBy(
 	ctx context.Context, span roachpb.Span, containedBy []roachpb.Span,
 ) (total, inContainedBy int, _ error) {
+	__antithesis_instrumentation__.Notify(582380)
 	return sql.NumRangesInSpanContainedBy(ctx, r.db, r.dsp, span, containedBy)
 }

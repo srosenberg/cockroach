@@ -1,17 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// mysql.go has the implementations of DBMetadataConnection to
-// connect and retrieve schemas from mysql rdbms.
-
 package rdbms
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -20,7 +9,6 @@ import (
 	"regexp"
 	"strings"
 
-	// gosql implementation.
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -47,16 +35,22 @@ type mysqlMetadataConnection struct {
 }
 
 func mysqlConnect(address, user, catalog string) (DBMetadataConnection, error) {
+	__antithesis_instrumentation__.Notify(40369)
 	db, err := gosql.Open("mysql", fmt.Sprintf("%s@tcp(%s)/%s", user, address, catalog))
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40371)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(40372)
 	}
+	__antithesis_instrumentation__.Notify(40370)
 	return mysqlMetadataConnection{db, catalog}, nil
 }
 
 func (conn mysqlMetadataConnection) DatabaseVersion(
 	ctx context.Context,
 ) (version string, err error) {
+	__antithesis_instrumentation__.Notify(40373)
 	row := conn.QueryRowContext(ctx, "SELECT version()")
 	err = row.Scan(&version)
 	return version, err
@@ -65,26 +59,38 @@ func (conn mysqlMetadataConnection) DatabaseVersion(
 func (conn mysqlMetadataConnection) DescribeSchema(
 	ctx context.Context,
 ) (*ColumnMetadataList, error) {
+	__antithesis_instrumentation__.Notify(40374)
 	metadata := &ColumnMetadataList{exclusions: mysqlExclusions}
 	rows, err := conn.QueryContext(ctx, mysqlDescribeSchema, conn.catalog)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(40377)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(40378)
 	}
+	__antithesis_instrumentation__.Notify(40375)
 	defer rows.Close()
 
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(40379)
 		row := new(columnMetadata)
 		if err := rows.Scan(&row.tableName, &row.columnName, &row.dataTypeName); err != nil {
+			__antithesis_instrumentation__.Notify(40381)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(40382)
 		}
+		__antithesis_instrumentation__.Notify(40380)
 		row.tableName = strings.ToLower(row.tableName)
 		row.columnName = strings.ToLower(row.columnName)
 		metadata.data = append(metadata.data, row)
 	}
+	__antithesis_instrumentation__.Notify(40376)
 
 	return metadata, nil
 }
 
 func (conn mysqlMetadataConnection) Close(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(40383)
 	return conn.DB.Close()
 }

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package distsqlutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,36 +15,24 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// BufferedRecord represents a row or metadata record that has been buffered
-// inside a RowBuffer.
 type BufferedRecord struct {
 	row  rowenc.EncDatumRow
 	Meta *execinfrapb.ProducerMetadata
 }
 
-// RowBuffer is an implementation of RowReceiver that buffers (accumulates)
-// results in memory, as well as an implementation of RowSource that returns
-// records from a record buffer. Just for tests.
 type RowBuffer struct {
 	Mu struct {
 		syncutil.Mutex
 
-		// producerClosed is used when the RowBuffer is used as a RowReceiver; it is
-		// set to true when the sender calls ProducerDone().
 		producerClosed bool
 
-		// records represent the data that has been buffered. Push appends a row
-		// to the back, Next removes a row from the front.
 		Records []BufferedRecord
 	}
 
-	// Done is used when the RowBuffer is used as a RowSource; it is set to true
-	// when the receiver read all the rows.
 	Done bool
 
 	ConsumerStatus execinfra.ConsumerStatus
 
-	// Schema of the rows in this buffer.
 	types []*types.T
 
 	args RowBufferArgs
@@ -61,173 +41,235 @@ type RowBuffer struct {
 var _ execinfra.RowReceiver = &RowBuffer{}
 var _ execinfra.RowSource = &RowBuffer{}
 
-// RowBufferArgs contains testing-oriented parameters for a RowBuffer.
 type RowBufferArgs struct {
-	// If not set, then the RowBuffer will behave like a RowChannel and not
-	// accumulate rows after it's been put in draining mode. If set, rows will still
-	// be accumulated. Useful for tests that want to observe what rows have been
-	// pushed after draining.
 	AccumulateRowsWhileDraining bool
-	// OnConsumerDone, if specified, is called as the first thing in the
-	// ConsumerDone() method.
+
 	OnConsumerDone func(*RowBuffer)
-	// OnConsumerClose, if specified, is called as the first thing in the
-	// ConsumerClosed() method.
+
 	OnConsumerClosed func(*RowBuffer)
-	// OnNext, if specified, is called as the first thing in the Next() method.
-	// If it returns an empty row and metadata, then RowBuffer.Next() is allowed
-	// to run normally. Otherwise, the values are returned from RowBuffer.Next().
+
 	OnNext func(*RowBuffer) (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata)
-	// OnPush, if specified, is called as the first thing in the Push() method.
+
 	OnPush func(rowenc.EncDatumRow, *execinfrapb.ProducerMetadata)
 }
 
-// NewRowBuffer creates a RowBuffer with the given schema and initial rows.
 func NewRowBuffer(types []*types.T, rows rowenc.EncDatumRows, hooks RowBufferArgs) *RowBuffer {
+	__antithesis_instrumentation__.Notify(644080)
 	if types == nil {
+		__antithesis_instrumentation__.Notify(644083)
 		panic("types required")
+	} else {
+		__antithesis_instrumentation__.Notify(644084)
 	}
+	__antithesis_instrumentation__.Notify(644081)
 	wrappedRows := make([]BufferedRecord, len(rows))
 	for i, row := range rows {
+		__antithesis_instrumentation__.Notify(644085)
 		wrappedRows[i].row = row
 	}
+	__antithesis_instrumentation__.Notify(644082)
 	rb := &RowBuffer{types: types, args: hooks}
 	rb.Mu.Records = wrappedRows
 	return rb
 }
 
-// Push is part of the RowReceiver interface.
 func (rb *RowBuffer) Push(
 	row rowenc.EncDatumRow, meta *execinfrapb.ProducerMetadata,
 ) execinfra.ConsumerStatus {
+	__antithesis_instrumentation__.Notify(644086)
 	if rb.args.OnPush != nil {
+		__antithesis_instrumentation__.Notify(644091)
 		rb.args.OnPush(row, meta)
+	} else {
+		__antithesis_instrumentation__.Notify(644092)
 	}
+	__antithesis_instrumentation__.Notify(644087)
 	rb.Mu.Lock()
 	defer rb.Mu.Unlock()
 	if rb.Mu.producerClosed {
+		__antithesis_instrumentation__.Notify(644093)
 		panic("Push called after ProducerDone")
+	} else {
+		__antithesis_instrumentation__.Notify(644094)
 	}
-	// We mimic the behavior of RowChannel.
+	__antithesis_instrumentation__.Notify(644088)
+
 	storeRow := func() {
+		__antithesis_instrumentation__.Notify(644095)
 		var rowCopy rowenc.EncDatumRow
-		if len(row) == 0 && row != nil {
-			// Special handling for empty rows, to avoid pushing nil.
+		if len(row) == 0 && func() bool {
+			__antithesis_instrumentation__.Notify(644097)
+			return row != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(644098)
+
 			rowCopy = make(rowenc.EncDatumRow, 0)
 		} else {
+			__antithesis_instrumentation__.Notify(644099)
 			rowCopy = append(rowCopy, row...)
 		}
+		__antithesis_instrumentation__.Notify(644096)
 		rb.Mu.Records = append(rb.Mu.Records, BufferedRecord{row: rowCopy, Meta: meta})
 	}
+	__antithesis_instrumentation__.Notify(644089)
 	status := execinfra.ConsumerStatus(atomic.LoadUint32((*uint32)(&rb.ConsumerStatus)))
 	if rb.args.AccumulateRowsWhileDraining {
+		__antithesis_instrumentation__.Notify(644100)
 		storeRow()
 	} else {
+		__antithesis_instrumentation__.Notify(644101)
 		switch status {
 		case execinfra.NeedMoreRows:
+			__antithesis_instrumentation__.Notify(644102)
 			storeRow()
 		case execinfra.DrainRequested:
+			__antithesis_instrumentation__.Notify(644103)
 			if meta != nil {
+				__antithesis_instrumentation__.Notify(644106)
 				storeRow()
+			} else {
+				__antithesis_instrumentation__.Notify(644107)
 			}
 		case execinfra.ConsumerClosed:
+			__antithesis_instrumentation__.Notify(644104)
+		default:
+			__antithesis_instrumentation__.Notify(644105)
 		}
 	}
+	__antithesis_instrumentation__.Notify(644090)
 	return status
 }
 
-// ProducerClosed is a utility function used by tests to check whether the
-// RowBuffer has had ProducerDone() called on it.
 func (rb *RowBuffer) ProducerClosed() bool {
+	__antithesis_instrumentation__.Notify(644108)
 	rb.Mu.Lock()
 	c := rb.Mu.producerClosed
 	rb.Mu.Unlock()
 	return c
 }
 
-// ProducerDone is part of the RowSource interface.
 func (rb *RowBuffer) ProducerDone() {
+	__antithesis_instrumentation__.Notify(644109)
 	rb.Mu.Lock()
 	defer rb.Mu.Unlock()
 	if rb.Mu.producerClosed {
+		__antithesis_instrumentation__.Notify(644111)
 		panic("RowBuffer already closed")
+	} else {
+		__antithesis_instrumentation__.Notify(644112)
 	}
+	__antithesis_instrumentation__.Notify(644110)
 	rb.Mu.producerClosed = true
 }
 
-// OutputTypes is part of the RowSource interface.
 func (rb *RowBuffer) OutputTypes() []*types.T {
+	__antithesis_instrumentation__.Notify(644113)
 	if rb.types == nil {
+		__antithesis_instrumentation__.Notify(644115)
 		panic("not initialized")
+	} else {
+		__antithesis_instrumentation__.Notify(644116)
 	}
+	__antithesis_instrumentation__.Notify(644114)
 	return rb.types
 }
 
-// Start is part of the RowSource interface.
-func (rb *RowBuffer) Start(ctx context.Context) {}
+func (rb *RowBuffer) Start(ctx context.Context) { __antithesis_instrumentation__.Notify(644117) }
 
-// Next is part of the RowSource interface.
-//
-// There's no synchronization here with Push(). The assumption is that these
-// two methods are not called concurrently.
 func (rb *RowBuffer) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	__antithesis_instrumentation__.Notify(644118)
 	if rb.args.OnNext != nil {
+		__antithesis_instrumentation__.Notify(644121)
 		row, meta := rb.args.OnNext(rb)
-		if row != nil || meta != nil {
+		if row != nil || func() bool {
+			__antithesis_instrumentation__.Notify(644122)
+			return meta != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(644123)
 			return row, meta
+		} else {
+			__antithesis_instrumentation__.Notify(644124)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(644125)
 	}
+	__antithesis_instrumentation__.Notify(644119)
 	if len(rb.Mu.Records) == 0 {
+		__antithesis_instrumentation__.Notify(644126)
 		rb.Done = true
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(644127)
 	}
+	__antithesis_instrumentation__.Notify(644120)
 	rec := rb.Mu.Records[0]
 	rb.Mu.Records = rb.Mu.Records[1:]
 	return rec.row, rec.Meta
 }
 
-// ConsumerDone is part of the RowSource interface.
 func (rb *RowBuffer) ConsumerDone() {
+	__antithesis_instrumentation__.Notify(644128)
 	if atomic.CompareAndSwapUint32((*uint32)(&rb.ConsumerStatus),
 		uint32(execinfra.NeedMoreRows), uint32(execinfra.DrainRequested)) {
+		__antithesis_instrumentation__.Notify(644129)
 		if rb.args.OnConsumerDone != nil {
+			__antithesis_instrumentation__.Notify(644130)
 			rb.args.OnConsumerDone(rb)
+		} else {
+			__antithesis_instrumentation__.Notify(644131)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(644132)
 	}
 }
 
-// ConsumerClosed is part of the RowSource interface.
 func (rb *RowBuffer) ConsumerClosed() {
+	__antithesis_instrumentation__.Notify(644133)
 	status := execinfra.ConsumerStatus(atomic.LoadUint32((*uint32)(&rb.ConsumerStatus)))
 	if status == execinfra.ConsumerClosed {
+		__antithesis_instrumentation__.Notify(644135)
 		log.Fatalf(context.Background(), "RowBuffer already closed")
+	} else {
+		__antithesis_instrumentation__.Notify(644136)
 	}
+	__antithesis_instrumentation__.Notify(644134)
 	atomic.StoreUint32((*uint32)(&rb.ConsumerStatus), uint32(execinfra.ConsumerClosed))
 	if rb.args.OnConsumerClosed != nil {
+		__antithesis_instrumentation__.Notify(644137)
 		rb.args.OnConsumerClosed(rb)
+	} else {
+		__antithesis_instrumentation__.Notify(644138)
 	}
 }
 
-// NextNoMeta is a version of Next which fails the test if
-// it encounters any metadata.
 func (rb *RowBuffer) NextNoMeta(tb testing.TB) rowenc.EncDatumRow {
+	__antithesis_instrumentation__.Notify(644139)
 	row, meta := rb.Next()
 	if meta != nil {
+		__antithesis_instrumentation__.Notify(644141)
 		tb.Fatalf("unexpected metadata: %v", meta)
+	} else {
+		__antithesis_instrumentation__.Notify(644142)
 	}
+	__antithesis_instrumentation__.Notify(644140)
 	return row
 }
 
-// GetRowsNoMeta returns the rows in the buffer; it fails the test if it
-// encounters any metadata.
 func (rb *RowBuffer) GetRowsNoMeta(t *testing.T) rowenc.EncDatumRows {
+	__antithesis_instrumentation__.Notify(644143)
 	var res rowenc.EncDatumRows
 	for {
+		__antithesis_instrumentation__.Notify(644145)
 		row := rb.NextNoMeta(t)
 		if row == nil {
+			__antithesis_instrumentation__.Notify(644147)
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(644148)
 		}
+		__antithesis_instrumentation__.Notify(644146)
 		res = append(res, row)
 	}
+	__antithesis_instrumentation__.Notify(644144)
 	return res
 }

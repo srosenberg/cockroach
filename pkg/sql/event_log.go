@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,155 +23,51 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// The logging functions in this file are the different stages of a
-// pipeline that add more and more information to logging events until
-// they are ready to be sent to either external sinks or to a system
-// table.
-//
-// The overall structure of this pipeline is as follows:
-//
-//  regular statement execution
-//  for "special" statements that
-//  have structured logging, e.g. CREATE, DROP etc
-//    |
-//  (produces pair(s) of descID (optional) and eventpb.EventPayload)
-//    |
-//  (pair(s) optionally packaged as an eventLogEntry{})
-//    |
-//    v
-//  logEvent(descID, payload) / logEvents(eventEntries...)
-//    |
-//    |           ,------- query logging in exec_log.go
-//    |          /         optionally via logEventOnlyExternally()
-//    |         /
-//    v        v
-// logEventsWithOptions()
-//    |
-//  (extracts SQL exec details
-//   from execution context - see sqlEventCommonExecPayload)
-//    |
-//    |                ,----------- async CREATE STATS
-//    |               /             goroutine
-//    |              /              on behalf of CREATE STATS stmt
-//    v             v
-// logEventInternalForSQLStatements()
-//    |          (SQL exec details struct
-//    |           and main event struct provided
-//    |           separately as arguments)
-//    |
-//  (writes the exec details
-//   inside the event struct)
-//    |
-//    |                      ,----- job execution, at end
-//    |                      |
-//    |                LogEventForJobs()
-//    |                      |
-//    |                (add job ID,
-//    |                 + fields from job metadata
-//    |                 timestamp initialized at job txn read ts)
-//    |                      |
-//    |    ,-----------------'
-//    |   /
-//    |  /                   ,------- async schema change
-//    |  |                   |        execution, at end
-//    |  |                   v
-//    |  |            logEventInternalForSchemaChanges()
-//    |  |                   |
-//    |  |             (add mutation ID,
-//    |  |              + fields from sc.change metadata
-//    |  |              timestamp initialized to txn read ts)
-//    |  |                   |
-//    |  |     ,-------------'
-//    |  |    /
-//    |  |   /
-//  (TargetID argument = ID of descriptor affected if DDL,
-//   otherwise zero)
-//    |  |   |
-//    |  |   |      ,-------- node-level events outside of SQL
-//    |  |   |     /          (e.g. cluster membership)
-//    |  |   |    /           TargetID = ID of node affected
-//    v  v   v   v
-//  (expectation: per-type event structs
-//   fully populated at this point.
-//   Timestamp field must be set too.)
-//     |
-//     v
-// InsertEventRecord() / insertEventRecords()
-//     |
-//  (finalize field EventType from struct type)
-//     |
-//   (route)
-//     |
-//     +--> system.eventlog if not disabled by setting
-//     |
-//     +--> DEV channel if requested by log.V
-//     |
-//     `--> external sinks (via logging package)
-//
-//
-
-// eventLogEntry represents a SQL-level event to be sent to logging
-// outputs(s).
 type eventLogEntry struct {
-	// targetID is the main object affected by this event.
-	// For DDL statements, this is typically the ID of
-	// the affected descriptor.
 	targetID int32
 
-	// event is the main event payload.
 	event eventpb.EventPayload
 }
 
-// logEvent emits a cluster event in the context of a regular SQL
-// statement.
 func (p *planner) logEvent(
 	ctx context.Context, descID descpb.ID, event eventpb.EventPayload,
 ) error {
+	__antithesis_instrumentation__.Notify(470039)
 	return p.logEventsWithOptions(ctx,
-		2, /* depth: use caller location */
+		2,
 		eventLogOptions{dst: LogEverywhere},
 		eventLogEntry{targetID: int32(descID), event: event})
 }
 
-// logEvents is like logEvent, except that it can write multiple
-// events simultaneously. This is advantageous for SQL statements
-// that produce multiple events, e.g. GRANT, as they will
-// processed using only one write batch (and thus lower latency).
 func (p *planner) logEvents(ctx context.Context, entries ...eventLogEntry) error {
+	__antithesis_instrumentation__.Notify(470040)
 	return p.logEventsWithOptions(ctx,
-		2, /* depth: use caller location */
+		2,
 		eventLogOptions{dst: LogEverywhere},
 		entries...)
 }
 
-// eventLogOptions
 type eventLogOptions struct {
-	// Where to emit the log event to.
 	dst LogEventDestination
 
-	// By default, a copy of each structured event is sent to the DEV
-	// channel (in addition to its default, nominal channel) if the
-	// vmodule filter is set to 2 or higher for the source file where
-	// the event call originates.
-	//
-	// If verboseTraceLevel is non-zero, its value is used as value for
-	// the vmodule filter. See exec_log for an example use.
 	verboseTraceLevel log.Level
 
-	// Additional redaction options, if necessary.
 	rOpts redactionOptions
 }
 
-// redactionOptions contains instructions on how to redact the SQL
-// events.
 type redactionOptions struct {
 	omitSQLNameRedaction bool
 }
 
 func (ro *redactionOptions) toFlags() tree.FmtFlags {
+	__antithesis_instrumentation__.Notify(470041)
 	if ro.omitSQLNameRedaction {
+		__antithesis_instrumentation__.Notify(470043)
 		return tree.FmtOmitNameRedaction
+	} else {
+		__antithesis_instrumentation__.Notify(470044)
 	}
+	__antithesis_instrumentation__.Notify(470042)
 	return tree.FmtSimple
 }
 
@@ -188,6 +76,7 @@ var defaultRedactionOptions = redactionOptions{
 }
 
 func (p *planner) getCommonSQLEventDetails(opt redactionOptions) eventpb.CommonSQLEventDetails {
+	__antithesis_instrumentation__.Notify(470045)
 	redactableStmt := formatStmtKeyAsRedactableString(
 		p.extendedEvalCtx.VirtualSchemas, p.stmt.AST,
 		p.extendedEvalCtx.EvalContext.Annotations, opt.toFlags(),
@@ -199,22 +88,23 @@ func (p *planner) getCommonSQLEventDetails(opt redactionOptions) eventpb.CommonS
 		ApplicationName: p.SessionData().ApplicationName,
 	}
 	if pls := p.extendedEvalCtx.EvalContext.Placeholders.Values; len(pls) > 0 {
+		__antithesis_instrumentation__.Notify(470047)
 		commonSQLEventDetails.PlaceholderValues = make([]string, len(pls))
 		for idx, val := range pls {
+			__antithesis_instrumentation__.Notify(470048)
 			commonSQLEventDetails.PlaceholderValues[idx] = val.String()
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(470049)
 	}
+	__antithesis_instrumentation__.Notify(470046)
 	return commonSQLEventDetails
 }
 
-// logEventsWithOptions is like logEvent() but it gives control to the
-// caller as to where the event is written to.
-//
-// If opts.dst does not include LogToSystemTable, this function is
-// guaranteed to not return an error.
 func (p *planner) logEventsWithOptions(
 	ctx context.Context, depth int, opts eventLogOptions, entries ...eventLogEntry,
 ) error {
+	__antithesis_instrumentation__.Notify(470050)
 	return logEventInternalForSQLStatements(ctx,
 		p.extendedEvalCtx.ExecCfg, p.txn,
 		1+depth,
@@ -223,8 +113,6 @@ func (p *planner) logEventsWithOptions(
 		entries...)
 }
 
-// logEventInternalForSchemaChange emits a cluster event in the
-// context of a schema changer.
 func logEventInternalForSchemaChanges(
 	ctx context.Context,
 	execCfg *ExecutorConfig,
@@ -234,26 +122,26 @@ func logEventInternalForSchemaChanges(
 	mutationID descpb.MutationID,
 	event eventpb.EventPayload,
 ) error {
+	__antithesis_instrumentation__.Notify(470051)
 	event.CommonDetails().Timestamp = txn.ReadTimestamp().WallTime
 	scCommon, ok := event.(eventpb.EventWithCommonSchemaChangePayload)
 	if !ok {
+		__antithesis_instrumentation__.Notify(470053)
 		return errors.AssertionFailedf("unknown event type: %T", event)
+	} else {
+		__antithesis_instrumentation__.Notify(470054)
 	}
+	__antithesis_instrumentation__.Notify(470052)
 	m := scCommon.CommonSchemaChangeDetails()
 	m.InstanceID = int32(sqlInstanceID)
 	m.DescriptorID = uint32(descID)
 	m.MutationID = uint32(mutationID)
 
-	// Delegate the storing of the event to the regular event logic.
-	//
-	// We use depth=1 because the caller of this function typically
-	// wraps the call in a db.Txn() callback, which confuses the vmodule
-	// filtering. Easiest is to pretend the event is sourced here.
 	return insertEventRecords(
 		ctx, execCfg.InternalExecutor,
 		txn,
-		int32(execCfg.NodeID.SQLInstanceID()), /* reporter ID */
-		1,                                     /* depth: use this function as origin */
+		int32(execCfg.NodeID.SQLInstanceID()),
+		1,
 		eventLogOptions{dst: LogEverywhere},
 		eventLogEntry{
 			targetID: int32(descID),
@@ -262,14 +150,6 @@ func logEventInternalForSchemaChanges(
 	)
 }
 
-// logEventInternalForSQLStatements emits a cluster event on behalf of
-// a SQL statement, when the point where the event is emitted does not
-// have access to a (*planner) and the current statement metadata.
-//
-// Note: usage of this interface should be minimized.
-//
-// If writeToEventLog is false, this function guarantees that it
-// returns no error.
 func logEventInternalForSQLStatements(
 	ctx context.Context,
 	execCfg *ExecutorConfig,
@@ -279,34 +159,46 @@ func logEventInternalForSQLStatements(
 	commonSQLEventDetails eventpb.CommonSQLEventDetails,
 	entries ...eventLogEntry,
 ) error {
-	// Inject the common fields into the payload provided by the caller.
+	__antithesis_instrumentation__.Notify(470055)
+
 	injectCommonFields := func(entry eventLogEntry) error {
+		__antithesis_instrumentation__.Notify(470058)
 		event := entry.event
 		event.CommonDetails().Timestamp = txn.ReadTimestamp().WallTime
 		sqlCommon, ok := event.(eventpb.EventWithCommonSQLPayload)
 		if !ok {
+			__antithesis_instrumentation__.Notify(470060)
 			return errors.AssertionFailedf("unknown event type: %T", event)
+		} else {
+			__antithesis_instrumentation__.Notify(470061)
 		}
+		__antithesis_instrumentation__.Notify(470059)
 		m := sqlCommon.CommonSQLDetails()
 		*m = commonSQLEventDetails
 		m.DescriptorID = uint32(entry.targetID)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(470056)
 
 	for i := range entries {
+		__antithesis_instrumentation__.Notify(470062)
 		if err := injectCommonFields(entries[i]); err != nil {
+			__antithesis_instrumentation__.Notify(470063)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(470064)
 		}
 	}
+	__antithesis_instrumentation__.Notify(470057)
 
 	return insertEventRecords(
 		ctx,
 		execCfg.InternalExecutor,
 		txn,
-		int32(execCfg.NodeID.SQLInstanceID()), /* reporter ID */
-		1+depth,                               /* depth */
-		opts,                                  /* eventLogOptions */
-		entries...,                            /* ...eventLogEntry */
+		int32(execCfg.NodeID.SQLInstanceID()),
+		1+depth,
+		opts,
+		entries...,
 	)
 }
 
@@ -318,10 +210,10 @@ type schemaChangerEventLogger struct {
 
 var _ scexec.EventLogger = (*schemaChangerEventLogger)(nil)
 
-// NewSchemaChangerEventLogger returns a scexec.EventLogger implementation.
 func NewSchemaChangerEventLogger(
 	txn *kv.Txn, execCfg *ExecutorConfig, depth int,
 ) scexec.EventLogger {
+	__antithesis_instrumentation__.Notify(470065)
 	return &schemaChangerEventLogger{
 		txn:     txn,
 		execCfg: execCfg,
@@ -329,13 +221,13 @@ func NewSchemaChangerEventLogger(
 	}
 }
 
-// LogEvent implements the scexec.EventLogger interface.
 func (l schemaChangerEventLogger) LogEvent(
 	ctx context.Context,
 	descID descpb.ID,
 	details eventpb.CommonSQLEventDetails,
 	event eventpb.EventPayload,
 ) error {
+	__antithesis_instrumentation__.Notify(470066)
 	entry := eventLogEntry{targetID: int32(descID), event: event}
 	return logEventInternalForSQLStatements(ctx,
 		l.execCfg,
@@ -346,7 +238,6 @@ func (l schemaChangerEventLogger) LogEvent(
 		entry)
 }
 
-// LogEventForJobs emits a cluster event in the context of a job.
 func LogEventForJobs(
 	ctx context.Context,
 	execCfg *ExecutorConfig,
@@ -357,31 +248,33 @@ func LogEventForJobs(
 	user security.SQLUsername,
 	status jobs.Status,
 ) error {
+	__antithesis_instrumentation__.Notify(470067)
 	event.CommonDetails().Timestamp = txn.ReadTimestamp().WallTime
 	jobCommon, ok := event.(eventpb.EventWithCommonJobPayload)
 	if !ok {
+		__antithesis_instrumentation__.Notify(470070)
 		return errors.AssertionFailedf("unknown event type: %T", event)
+	} else {
+		__antithesis_instrumentation__.Notify(470071)
 	}
+	__antithesis_instrumentation__.Notify(470068)
 	m := jobCommon.CommonJobDetails()
 	m.JobID = jobID
 	m.JobType = payload.Type().String()
 	m.User = user.Normalized()
 	m.Status = string(status)
 	for _, id := range payload.DescriptorIDs {
+		__antithesis_instrumentation__.Notify(470072)
 		m.DescriptorIDs = append(m.DescriptorIDs, uint32(id))
 	}
+	__antithesis_instrumentation__.Notify(470069)
 	m.Description = payload.Description
 
-	// Delegate the storing of the event to the regular event logic.
-	//
-	// We use depth=1 because the caller of this function typically
-	// wraps the call in a db.Txn() callback, which confuses the vmodule
-	// filtering. Easiest is to pretend the event is sourced here.
 	return insertEventRecords(
 		ctx, execCfg.InternalExecutor,
 		txn,
-		int32(execCfg.NodeID.SQLInstanceID()), /* reporter ID */
-		1,                                     /* depth: use this function for vmodule filtering */
+		int32(execCfg.NodeID.SQLInstanceID()),
+		1,
 		eventLogOptions{dst: LogEverywhere},
 		eventLogEntry{event: event},
 	)
@@ -394,35 +287,23 @@ var eventLogSystemTableEnabled = settings.RegisterBoolSetting(
 	true,
 ).WithPublic()
 
-// LogEventDestination indicates for InsertEventRecord where the
-// event should be directed to.
 type LogEventDestination int
 
 func (d LogEventDestination) hasFlag(f LogEventDestination) bool {
+	__antithesis_instrumentation__.Notify(470073)
 	return d&f != 0
 }
 
 const (
-	// LogToSystemTable makes InsertEventRecord write one or more
-	// entries to the system eventlog table. (This behavior may be
-	// removed in a later version.)
 	LogToSystemTable LogEventDestination = 1 << iota
-	// LogExternally makes InsertEventRecord write the event(s) to the
-	// external logs.
+
 	LogExternally
-	// LogToDevChannelIfVerbose makes InsertEventRecord copy
-	// the structured event to the DEV logging channel
-	// if the vmodule filter for the log call is set high enough.
+
 	LogToDevChannelIfVerbose
 
-	// LogEverywhere logs to all the possible outputs.
 	LogEverywhere LogEventDestination = LogExternally | LogToSystemTable | LogToDevChannelIfVerbose
 )
 
-// InsertEventRecord inserts a single event into the event log as part
-// of the provided transaction, using the provided internal executor.
-//
-// This converts to a call to insertEventRecords() with just 1 entry.
 func InsertEventRecord(
 	ctx context.Context,
 	ex *InternalExecutor,
@@ -432,25 +313,14 @@ func InsertEventRecord(
 	targetID int32,
 	info eventpb.EventPayload,
 ) error {
-	// We use depth=1 because the caller of this function typically
-	// wraps the call in a db.Txn() callback, which confuses the vmodule
-	// filtering. Easiest is to pretend the event is sourced here.
+	__antithesis_instrumentation__.Notify(470074)
+
 	return insertEventRecords(ctx, ex, txn, reportingID,
-		1, /* depth: use this function */
+		1,
 		eventLogOptions{dst: dst},
 		eventLogEntry{targetID: targetID, event: info})
 }
 
-// insertEventRecords inserts one or more event into the event log as
-// part of the provided txn, using the provided internal executor.
-//
-// The caller is responsible for populating the timestamp field in the
-// event payload and all the other per-payload specific fields. This
-// function only takes care of populating the EventType field based on
-// the run-time type of the event payload.
-//
-// Note: the targetID and reportingID columns are deprecated and
-// should be removed after v21.1 is released.
 func insertEventRecords(
 	ctx context.Context,
 	ex *InternalExecutor,
@@ -460,62 +330,88 @@ func insertEventRecords(
 	opts eventLogOptions,
 	entries ...eventLogEntry,
 ) error {
-	// Finish populating the entries.
+	__antithesis_instrumentation__.Notify(470075)
+
 	for i := range entries {
-		// Ensure the type field is populated.
+		__antithesis_instrumentation__.Notify(470085)
+
 		event := entries[i].event
 		eventType := eventpb.GetEventTypeName(event)
 		event.CommonDetails().EventType = eventType
 
-		// The caller is responsible for the timestamp field.
 		if event.CommonDetails().Timestamp == 0 {
+			__antithesis_instrumentation__.Notify(470086)
 			return errors.AssertionFailedf("programming error: timestamp field in event %d not populated: %T", i, event)
+		} else {
+			__antithesis_instrumentation__.Notify(470087)
 		}
 	}
+	__antithesis_instrumentation__.Notify(470076)
 
 	if opts.dst.hasFlag(LogToDevChannelIfVerbose) {
-		// Emit a copy of the structured to the DEV channel when the
-		// vmodule setting matches.
+		__antithesis_instrumentation__.Notify(470088)
+
 		level := log.Level(2)
 		if opts.verboseTraceLevel != 0 {
-			// Caller has overridden the level at which which log to the
-			// trace.
+			__antithesis_instrumentation__.Notify(470090)
+
 			level = opts.verboseTraceLevel
+		} else {
+			__antithesis_instrumentation__.Notify(470091)
 		}
+		__antithesis_instrumentation__.Notify(470089)
 		if log.VDepth(level, depth) {
-			// The VDepth() call ensures that we are matching the vmodule
-			// setting to where the depth is equal to 1 in the caller stack.
+			__antithesis_instrumentation__.Notify(470092)
+
 			for i := range entries {
+				__antithesis_instrumentation__.Notify(470093)
 				log.InfofDepth(ctx, depth, "SQL event: target %d, payload %+v", entries[i].targetID, entries[i].event)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(470094)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(470095)
 	}
+	__antithesis_instrumentation__.Notify(470077)
 
-	// If we only want to log externally and not write to the events table, early exit.
-	loggingToSystemTable := opts.dst.hasFlag(LogToSystemTable) && eventLogSystemTableEnabled.Get(&ex.s.cfg.Settings.SV)
+	loggingToSystemTable := opts.dst.hasFlag(LogToSystemTable) && func() bool {
+		__antithesis_instrumentation__.Notify(470096)
+		return eventLogSystemTableEnabled.Get(&ex.s.cfg.Settings.SV) == true
+	}() == true
 	if !loggingToSystemTable {
-		// Simply emit the events to their respective channels and call it a day.
+		__antithesis_instrumentation__.Notify(470097)
+
 		if opts.dst.hasFlag(LogExternally) {
+			__antithesis_instrumentation__.Notify(470099)
 			for i := range entries {
+				__antithesis_instrumentation__.Notify(470100)
 				log.StructuredEvent(ctx, entries[i].event)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(470101)
 		}
-		// Not writing to system table: shortcut.
-		return nil
-	}
+		__antithesis_instrumentation__.Notify(470098)
 
-	// When logging to the system table, ensure that the external
-	// logging only sees the event when the transaction commits.
+		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(470102)
+	}
+	__antithesis_instrumentation__.Notify(470078)
+
 	if opts.dst.hasFlag(LogExternally) {
+		__antithesis_instrumentation__.Notify(470103)
 		txn.AddCommitTrigger(func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(470104)
 			for i := range entries {
+				__antithesis_instrumentation__.Notify(470105)
 				log.StructuredEvent(ctx, entries[i].event)
 			}
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(470106)
 	}
-
-	// The function below this point is specialized to write to the
-	// system table.
+	__antithesis_instrumentation__.Notify(470079)
 
 	const colsPerEvent = 5
 	const baseQuery = `
@@ -525,12 +421,12 @@ INSERT INTO system.eventlog (
 VALUES($1, $2, $3, $4, $5)`
 	args := make([]interface{}, 0, len(entries)*colsPerEvent)
 	constructArgs := func(reportingID int32, entry eventLogEntry) error {
+		__antithesis_instrumentation__.Notify(470107)
 		event := entry.event
 		infoBytes := redact.RedactableBytes("{")
-		_, infoBytes = event.AppendJSONFields(false /* printComma */, infoBytes)
+		_, infoBytes = event.AppendJSONFields(false, infoBytes)
 		infoBytes = append(infoBytes, '}')
-		// In the system.eventlog table, we do not use redaction markers.
-		// (compatibility with previous versions of CockroachDB.)
+
 		infoBytes = infoBytes.StripMarkers()
 		eventType := eventpb.GetEventTypeName(event)
 		args = append(
@@ -543,37 +439,56 @@ VALUES($1, $2, $3, $4, $5)`
 		)
 		return nil
 	}
+	__antithesis_instrumentation__.Notify(470080)
 
-	// In the common case where we have just 1 event, we want to skeep
-	// the extra heap allocation and buffer operations of the loop
-	// below. This is an optimization.
 	query := baseQuery
 	if err := constructArgs(reportingID, entries[0]); err != nil {
+		__antithesis_instrumentation__.Notify(470108)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(470109)
 	}
+	__antithesis_instrumentation__.Notify(470081)
 	if len(entries) > 1 {
-		// Extend the query with additional VALUES clauses for all the
-		// events after the first one.
+		__antithesis_instrumentation__.Notify(470110)
+
 		var completeQuery strings.Builder
 		completeQuery.WriteString(baseQuery)
 
 		for _, extraEntry := range entries[1:] {
+			__antithesis_instrumentation__.Notify(470112)
 			placeholderNum := 1 + len(args)
 			if err := constructArgs(reportingID, extraEntry); err != nil {
+				__antithesis_instrumentation__.Notify(470114)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(470115)
 			}
+			__antithesis_instrumentation__.Notify(470113)
 			fmt.Fprintf(&completeQuery, ", ($%d, $%d, $%d, $%d, $%d)",
 				placeholderNum, placeholderNum+1, placeholderNum+2, placeholderNum+3, placeholderNum+4)
 		}
+		__antithesis_instrumentation__.Notify(470111)
 		query = completeQuery.String()
+	} else {
+		__antithesis_instrumentation__.Notify(470116)
 	}
+	__antithesis_instrumentation__.Notify(470082)
 
 	rows, err := ex.Exec(ctx, "log-event", txn, query, args...)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(470117)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(470118)
 	}
+	__antithesis_instrumentation__.Notify(470083)
 	if rows != len(entries) {
+		__antithesis_instrumentation__.Notify(470119)
 		return errors.Errorf("%d rows affected by log insertion; expected %d rows affected.", rows, len(entries))
+	} else {
+		__antithesis_instrumentation__.Notify(470120)
 	}
+	__antithesis_instrumentation__.Notify(470084)
 	return nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package install
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"fmt"
@@ -56,19 +48,22 @@ const splitScript = `
     end tell
 return`
 
-// maybeSplitScreenSSHITerm2 sshs to all of the specified nodes in the
-// SyncedCluster in an iTerm2 split-screen configuration if possible. It
-// returns true in the first position if it went through with the split-screen
-// ssh.
 func maybeSplitScreenSSHITerm2(c *SyncedCluster) (bool, error) {
+	__antithesis_instrumentation__.Notify(181609)
 	osascriptPath, err := exec.LookPath("osascript")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(181612)
 		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(181613)
 	}
+	__antithesis_instrumentation__.Notify(181610)
 	nodeStrings := make([]string, len(c.Nodes))
 	for i, nodeID := range c.Nodes {
+		__antithesis_instrumentation__.Notify(181614)
 		nodeStrings[i] = fmt.Sprint(nodeID)
 	}
+	__antithesis_instrumentation__.Notify(181611)
 	script := fmt.Sprintf(splitScript, len(c.Nodes), strings.Join(nodeStrings, ","), c.Name)
 	allArgs := []string{
 		"osascript",

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package colfetcher
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,17 +22,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// TODO(yuzefovich): reading the data through a pair of ColBatchScan and
-// materializer turns out to be more efficient than through a table reader (at
-// the moment, the exception is the case of reading very small number of rows
-// because we still pre-allocate batches of 1024 size). Once we can control the
-// initial size of pre-allocated batches (probably via a batch allocator), we
-// should get rid off table readers entirely. We will have to be careful about
-// propagating the metadata though.
-
-// ColBatchScan is the exec.Operator implementation of TableReader. It reads a
-// table from kv, presenting it as coldata.Batches via the exec.Operator
-// interface.
 type ColBatchScan struct {
 	colexecop.ZeroInputNode
 	colexecop.InitHelper
@@ -52,23 +33,17 @@ type ColBatchScan struct {
 	limitHint       rowinfra.RowLimit
 	batchBytesLimit rowinfra.BytesLimit
 	parallelize     bool
-	// tracingSpan is created when the stats should be collected for the query
-	// execution, and it will be finished when closing the operator.
+
 	tracingSpan *tracing.Span
 	mu          struct {
 		syncutil.Mutex
-		// rowsRead contains the number of total rows this ColBatchScan has
-		// returned so far.
+
 		rowsRead int64
 	}
-	// ResultTypes is the slice of resulting column types from this operator.
-	// It should be used rather than the slice of column types from the scanned
-	// table because the scan might synthesize additional implicit system columns.
+
 	ResultTypes []*types.T
 }
 
-// ScanOperator combines common interfaces between operators that perform KV
-// scans, such as ColBatchScan and ColIndexJoin.
 type ScanOperator interface {
 	colexecop.KVReader
 	execinfra.Releasable
@@ -77,15 +52,16 @@ type ScanOperator interface {
 
 var _ ScanOperator = &ColBatchScan{}
 
-// Init initializes a ColBatchScan.
 func (s *ColBatchScan) Init(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(455561)
 	if !s.InitHelper.Init(ctx) {
+		__antithesis_instrumentation__.Notify(455563)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(455564)
 	}
-	// If tracing is enabled, we need to start a child span so that the only
-	// contention events present in the recording would be because of this
-	// cFetcher. Note that ProcessorSpan method itself will check whether
-	// tracing is enabled.
+	__antithesis_instrumentation__.Notify(455562)
+
 	s.Ctx, s.tracingSpan = execinfra.ProcessorSpan(s.Ctx, "colbatchscan")
 	limitBatches := !s.parallelize
 	if err := s.cf.StartScan(
@@ -98,82 +74,111 @@ func (s *ColBatchScan) Init(ctx context.Context) {
 		s.limitHint,
 		s.flowCtx.EvalCtx.TestingKnobs.ForceProductionBatchSizes,
 	); err != nil {
+		__antithesis_instrumentation__.Notify(455565)
 		colexecerror.InternalError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(455566)
 	}
 }
 
-// Next is part of the Operator interface.
 func (s *ColBatchScan) Next() coldata.Batch {
+	__antithesis_instrumentation__.Notify(455567)
 	bat, err := s.cf.NextBatch(s.Ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(455570)
 		colexecerror.InternalError(err)
+	} else {
+		__antithesis_instrumentation__.Notify(455571)
 	}
+	__antithesis_instrumentation__.Notify(455568)
 	if bat.Selection() != nil {
+		__antithesis_instrumentation__.Notify(455572)
 		colexecerror.InternalError(errors.AssertionFailedf("unexpectedly a selection vector is set on the batch coming from CFetcher"))
+	} else {
+		__antithesis_instrumentation__.Notify(455573)
 	}
+	__antithesis_instrumentation__.Notify(455569)
 	s.mu.Lock()
 	s.mu.rowsRead += int64(bat.Length())
 	s.mu.Unlock()
 	return bat
 }
 
-// DrainMeta is part of the colexecop.MetadataSource interface.
 func (s *ColBatchScan) DrainMeta() []execinfrapb.ProducerMetadata {
+	__antithesis_instrumentation__.Notify(455574)
 	var trailingMeta []execinfrapb.ProducerMetadata
 	if !s.flowCtx.Local {
+		__antithesis_instrumentation__.Notify(455578)
 		nodeID, ok := s.flowCtx.NodeID.OptionalNodeID()
 		if ok {
+			__antithesis_instrumentation__.Notify(455579)
 			ranges := execinfra.MisplannedRanges(s.Ctx, s.SpansCopy, nodeID, s.flowCtx.Cfg.RangeCache)
 			if ranges != nil {
+				__antithesis_instrumentation__.Notify(455580)
 				trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{Ranges: ranges})
+			} else {
+				__antithesis_instrumentation__.Notify(455581)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(455582)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(455583)
 	}
+	__antithesis_instrumentation__.Notify(455575)
 	if tfs := execinfra.GetLeafTxnFinalState(s.Ctx, s.flowCtx.Txn); tfs != nil {
+		__antithesis_instrumentation__.Notify(455584)
 		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{LeafTxnFinalState: tfs})
+	} else {
+		__antithesis_instrumentation__.Notify(455585)
 	}
+	__antithesis_instrumentation__.Notify(455576)
 	meta := execinfrapb.GetProducerMeta()
 	meta.Metrics = execinfrapb.GetMetricsMeta()
 	meta.Metrics.BytesRead = s.GetBytesRead()
 	meta.Metrics.RowsRead = s.GetRowsRead()
 	trailingMeta = append(trailingMeta, *meta)
 	if trace := execinfra.GetTraceData(s.Ctx); trace != nil {
+		__antithesis_instrumentation__.Notify(455586)
 		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{TraceData: trace})
+	} else {
+		__antithesis_instrumentation__.Notify(455587)
 	}
+	__antithesis_instrumentation__.Notify(455577)
 	return trailingMeta
 }
 
-// GetBytesRead is part of the colexecop.KVReader interface.
 func (s *ColBatchScan) GetBytesRead() int64 {
+	__antithesis_instrumentation__.Notify(455588)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.cf.getBytesRead()
 }
 
-// GetRowsRead is part of the colexecop.KVReader interface.
 func (s *ColBatchScan) GetRowsRead() int64 {
+	__antithesis_instrumentation__.Notify(455589)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.mu.rowsRead
 }
 
-// GetCumulativeContentionTime is part of the colexecop.KVReader interface.
 func (s *ColBatchScan) GetCumulativeContentionTime() time.Duration {
+	__antithesis_instrumentation__.Notify(455590)
 	return execinfra.GetCumulativeContentionTime(s.Ctx)
 }
 
-// GetScanStats is part of the colexecop.KVReader interface.
 func (s *ColBatchScan) GetScanStats() execinfra.ScanStats {
+	__antithesis_instrumentation__.Notify(455591)
 	return execinfra.GetScanStats(s.Ctx)
 }
 
 var colBatchScanPool = sync.Pool{
 	New: func() interface{} {
+		__antithesis_instrumentation__.Notify(455592)
 		return &ColBatchScan{}
 	},
 }
 
-// NewColBatchScan creates a new ColBatchScan operator.
 func NewColBatchScan(
 	ctx context.Context,
 	allocator *colmem.Allocator,
@@ -183,15 +188,27 @@ func NewColBatchScan(
 	post *execinfrapb.PostProcessSpec,
 	estimatedRowCount uint64,
 ) (*ColBatchScan, error) {
-	// NB: we hit this with a zero NodeID (but !ok) with multi-tenancy.
-	if nodeID, ok := flowCtx.NodeID.OptionalNodeID(); nodeID == 0 && ok {
+	__antithesis_instrumentation__.Notify(455593)
+
+	if nodeID, ok := flowCtx.NodeID.OptionalNodeID(); nodeID == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(455601)
+		return ok == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455602)
 		return nil, errors.Errorf("attempting to create a ColBatchScan with uninitialized NodeID")
+	} else {
+		__antithesis_instrumentation__.Notify(455603)
 	}
+	__antithesis_instrumentation__.Notify(455594)
 	limitHint := rowinfra.RowLimit(execinfra.LimitHint(spec.LimitHint, post))
 	tableArgs, err := populateTableArgs(ctx, flowCtx, &spec.FetchSpec)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(455604)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(455605)
 	}
+	__antithesis_instrumentation__.Notify(455595)
 
 	fetcher := cFetcherPool.Get().(*cFetcher)
 	fetcher.cFetcherArgs = cFetcherArgs{
@@ -205,48 +222,76 @@ func NewColBatchScan(
 	}
 
 	if err = fetcher.Init(allocator, kvFetcherMemAcc, tableArgs); err != nil {
+		__antithesis_instrumentation__.Notify(455606)
 		fetcher.Release()
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(455607)
 	}
+	__antithesis_instrumentation__.Notify(455596)
 
 	var bsHeader *roachpb.BoundedStalenessHeader
-	if aost := flowCtx.EvalCtx.AsOfSystemTime; aost != nil && aost.BoundedStaleness {
+	if aost := flowCtx.EvalCtx.AsOfSystemTime; aost != nil && func() bool {
+		__antithesis_instrumentation__.Notify(455608)
+		return aost.BoundedStaleness == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455609)
 		ts := aost.Timestamp
-		// If the descriptor's modification time is after the bounded staleness min bound,
-		// we have to increase the min bound.
-		// Otherwise, we would have table data which would not correspond to the correct
-		// schema.
+
 		if aost.Timestamp.Less(spec.TableDescriptorModificationTime) {
+			__antithesis_instrumentation__.Notify(455611)
 			ts = spec.TableDescriptorModificationTime
+		} else {
+			__antithesis_instrumentation__.Notify(455612)
 		}
+		__antithesis_instrumentation__.Notify(455610)
 		bsHeader = &roachpb.BoundedStalenessHeader{
 			MinTimestampBound:       ts,
 			MinTimestampBoundStrict: aost.NearestOnly,
-			MaxTimestampBound:       flowCtx.EvalCtx.AsOfSystemTime.MaxTimestampBound, // may be empty
+			MaxTimestampBound:       flowCtx.EvalCtx.AsOfSystemTime.MaxTimestampBound,
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(455613)
 	}
+	__antithesis_instrumentation__.Notify(455597)
 
 	s := colBatchScanPool.Get().(*ColBatchScan)
 	s.Spans = spec.Spans
 	if !flowCtx.Local {
-		// Make a copy of the spans so that we could get the misplanned ranges
-		// info.
+		__antithesis_instrumentation__.Notify(455614)
+
 		allocator.AdjustMemoryUsage(s.Spans.MemUsage())
 		s.MakeSpansCopy()
+	} else {
+		__antithesis_instrumentation__.Notify(455615)
 	}
+	__antithesis_instrumentation__.Notify(455598)
 
-	if spec.LimitHint > 0 || spec.BatchBytesLimit > 0 {
-		// Parallelize shouldn't be set when there's a limit hint, but double-check
-		// just in case.
+	if spec.LimitHint > 0 || func() bool {
+		__antithesis_instrumentation__.Notify(455616)
+		return spec.BatchBytesLimit > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(455617)
+
 		spec.Parallelize = false
+	} else {
+		__antithesis_instrumentation__.Notify(455618)
 	}
+	__antithesis_instrumentation__.Notify(455599)
 	var batchBytesLimit rowinfra.BytesLimit
 	if !spec.Parallelize {
+		__antithesis_instrumentation__.Notify(455619)
 		batchBytesLimit = rowinfra.BytesLimit(spec.BatchBytesLimit)
 		if batchBytesLimit == 0 {
+			__antithesis_instrumentation__.Notify(455620)
 			batchBytesLimit = rowinfra.DefaultBatchBytesLimit
+		} else {
+			__antithesis_instrumentation__.Notify(455621)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(455622)
 	}
+	__antithesis_instrumentation__.Notify(455600)
 
 	*s = ColBatchScan{
 		SpansWithCopy:   s.SpansWithCopy,
@@ -261,10 +306,10 @@ func NewColBatchScan(
 	return s, nil
 }
 
-// Release implements the execinfra.Releasable interface.
 func (s *ColBatchScan) Release() {
+	__antithesis_instrumentation__.Notify(455623)
 	s.cf.Release()
-	// Deeply reset the spans so that we don't hold onto the keys of the spans.
+
 	s.SpansWithCopy.Reset()
 	*s = ColBatchScan{
 		SpansWithCopy: s.SpansWithCopy,
@@ -272,16 +317,18 @@ func (s *ColBatchScan) Release() {
 	colBatchScanPool.Put(s)
 }
 
-// Close implements the colexecop.Closer interface.
 func (s *ColBatchScan) Close(context.Context) error {
-	// Note that we're using the context of the ColBatchScan rather than the
-	// argument of Close() because the ColBatchScan derives its own tracing
-	// span.
+	__antithesis_instrumentation__.Notify(455624)
+
 	ctx := s.EnsureCtx()
 	s.cf.Close(ctx)
 	if s.tracingSpan != nil {
+		__antithesis_instrumentation__.Notify(455626)
 		s.tracingSpan.Finish()
 		s.tracingSpan = nil
+	} else {
+		__antithesis_instrumentation__.Notify(455627)
 	}
+	__antithesis_instrumentation__.Notify(455625)
 	return nil
 }

@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package gcp
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -44,6 +36,7 @@ type kmsURIParams struct {
 }
 
 func resolveKMSURIParams(kmsURI url.URL) kmsURIParams {
+	__antithesis_instrumentation__.Notify(36237)
 	params := kmsURIParams{
 		credentials: kmsURI.Query().Get(CredentialsParam),
 		auth:        kmsURI.Query().Get(cloud.AuthParam),
@@ -52,65 +45,82 @@ func resolveKMSURIParams(kmsURI url.URL) kmsURIParams {
 	return params
 }
 
-// MakeGCSKMS is the factory method which returns a configured, ready-to-use
-// GCS KMS object.
 func MakeGCSKMS(uri string, env cloud.KMSEnv) (cloud.KMS, error) {
+	__antithesis_instrumentation__.Notify(36238)
 	if env.KMSConfig().DisableOutbound {
+		__antithesis_instrumentation__.Notify(36243)
 		return nil, errors.New("external IO must be enabled to use GCS KMS")
+	} else {
+		__antithesis_instrumentation__.Notify(36244)
 	}
+	__antithesis_instrumentation__.Notify(36239)
 	kmsURI, err := url.ParseRequestURI(uri)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(36245)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(36246)
 	}
+	__antithesis_instrumentation__.Notify(36240)
 
-	// Extract the URI parameters required to setup the GCS KMS session.
 	kmsURIParams := resolveKMSURIParams(*kmsURI)
 
-	// Client options to authenticate and start a GCS KMS session.
-	// Currently only accepting json of service account.
 	var credentialsOpt []option.ClientOption
 
 	switch kmsURIParams.auth {
 	case "", cloud.AuthParamSpecified:
+		__antithesis_instrumentation__.Notify(36247)
 		if kmsURIParams.credentials == "" {
+			__antithesis_instrumentation__.Notify(36252)
 			return nil, errors.Errorf(
 				"%s is set to '%s', but %s is not set",
 				cloud.AuthParam,
 				cloud.AuthParamSpecified,
 				CredentialsParam,
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(36253)
 		}
+		__antithesis_instrumentation__.Notify(36248)
 
-		// Credentials are passed in base64 encoded, so decode the credentials first.
 		credentialsJSON, err := base64.StdEncoding.DecodeString(kmsURIParams.credentials)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(36254)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(36255)
 		}
+		__antithesis_instrumentation__.Notify(36249)
 
 		credentialsOpt = append(credentialsOpt, option.WithCredentialsJSON(credentialsJSON))
 	case cloud.AuthParamImplicit:
+		__antithesis_instrumentation__.Notify(36250)
 		if env.KMSConfig().DisableImplicitCredentials {
+			__antithesis_instrumentation__.Notify(36256)
 			return nil, errors.New(
 				"implicit credentials disallowed for gcs due to --external-io-implicit-credentials flag")
+		} else {
+			__antithesis_instrumentation__.Notify(36257)
 		}
-		// If implicit credentials used, no client options needed.
+
 	default:
+		__antithesis_instrumentation__.Notify(36251)
 		return nil, errors.Errorf("unsupported value %s for %s", kmsURIParams.auth, cloud.AuthParam)
 	}
+	__antithesis_instrumentation__.Notify(36241)
 
 	ctx := context.Background()
 
 	kmc, err := kms.NewKeyManagementClient(ctx, credentialsOpt...)
 
 	if err != nil {
+		__antithesis_instrumentation__.Notify(36258)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(36259)
 	}
+	__antithesis_instrumentation__.Notify(36242)
 
-	// Remove the key version from the cmk if it's present.
-	// https://cloud.google.com/sdk/gcloud/reference/kms/decrypt
-	// - For symmetric keys, Cloud KMS detects the decryption key version from the ciphertext.
-	//   If you specify a key version as part of a symmetric decryption request,
-	//   an error is logged and decryption fails.
 	cmkID := strings.Split(kmsURI.Path, "/cryptoKeyVersions/")[0]
 
 	return &gcsKMS{
@@ -119,18 +129,20 @@ func MakeGCSKMS(uri string, env cloud.KMSEnv) (cloud.KMS, error) {
 	}, nil
 }
 
-// MasterKeyID implements the KMS interface.
 func (k *gcsKMS) MasterKeyID() (string, error) {
+	__antithesis_instrumentation__.Notify(36260)
 	return k.customerMasterKeyID, nil
 }
 
-// Encrypt implements the KMS interface.
 func (k *gcsKMS) Encrypt(ctx context.Context, data []byte) ([]byte, error) {
-	// Optional but recommended by GCS.
+	__antithesis_instrumentation__.Notify(36261)
+
 	crc32c := func(data []byte) uint32 {
+		__antithesis_instrumentation__.Notify(36266)
 		t := crc32.MakeTable(crc32.Castagnoli)
 		return crc32.Checksum(data, t)
 	}
+	__antithesis_instrumentation__.Notify(36262)
 	plaintextCRC32C := crc32c(data)
 
 	encryptInput := &kmspb.EncryptRequest{
@@ -141,30 +153,40 @@ func (k *gcsKMS) Encrypt(ctx context.Context, data []byte) ([]byte, error) {
 
 	encryptOutput, err := k.kms.Encrypt(ctx, encryptInput)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(36267)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(36268)
 	}
+	__antithesis_instrumentation__.Notify(36263)
 
-	// Optional, but recommended by GCS.
-	// For more details on ensuring E2E in-transit integrity to and from Cloud KMS visit:
-	// https://cloud.google.com/kms/docs/data-integrity-guidelines
-	// TODO(darrylwong): Look into adding some exponential backoff retry behaviour if error is frequent
 	if !encryptOutput.VerifiedPlaintextCrc32C {
+		__antithesis_instrumentation__.Notify(36269)
 		return nil, errors.Errorf("Encrypt: request corrupted in-transit")
+	} else {
+		__antithesis_instrumentation__.Notify(36270)
 	}
+	__antithesis_instrumentation__.Notify(36264)
 	if int64(crc32c(encryptOutput.Ciphertext)) != encryptOutput.CiphertextCrc32C.Value {
+		__antithesis_instrumentation__.Notify(36271)
 		return nil, errors.Errorf("Encrypt: response corrupted in-transit")
+	} else {
+		__antithesis_instrumentation__.Notify(36272)
 	}
+	__antithesis_instrumentation__.Notify(36265)
 
 	return encryptOutput.Ciphertext, nil
 }
 
-// Decrypt implements the KMS interface.
 func (k *gcsKMS) Decrypt(ctx context.Context, data []byte) ([]byte, error) {
-	// Optional but recommended by the documentation
+	__antithesis_instrumentation__.Notify(36273)
+
 	crc32c := func(data []byte) uint32 {
+		__antithesis_instrumentation__.Notify(36277)
 		t := crc32.MakeTable(crc32.Castagnoli)
 		return crc32.Checksum(data, t)
 	}
+	__antithesis_instrumentation__.Notify(36274)
 	ciphertextCRC32C := crc32c(data)
 
 	decryptInput := &kmspb.DecryptRequest{
@@ -175,21 +197,25 @@ func (k *gcsKMS) Decrypt(ctx context.Context, data []byte) ([]byte, error) {
 
 	decryptOutput, err := k.kms.Decrypt(ctx, decryptInput)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(36278)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(36279)
 	}
+	__antithesis_instrumentation__.Notify(36275)
 
-	// Optional, but recommended: perform integrity verification on result.
-	// For more details on ensuring E2E in-transit integrity to and from Cloud KMS visit:
-	// https://cloud.google.com/kms/docs/data-integrity-guidelines
-	// TODO(darrylwong): Look into adding some exponential backoff retry behaviour if error is frequent
 	if int64(crc32c(decryptOutput.Plaintext)) != decryptOutput.PlaintextCrc32C.Value {
+		__antithesis_instrumentation__.Notify(36280)
 		return nil, errors.Errorf("Decrypt: response corrupted in-transit")
+	} else {
+		__antithesis_instrumentation__.Notify(36281)
 	}
+	__antithesis_instrumentation__.Notify(36276)
 
 	return decryptOutput.Plaintext, nil
 }
 
-// Close implements the KMS interface.
 func (k *gcsKMS) Close() error {
+	__antithesis_instrumentation__.Notify(36282)
 	return k.kms.Close()
 }

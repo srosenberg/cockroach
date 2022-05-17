@@ -1,14 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package rpc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,145 +18,188 @@ import (
 var errTLSInfoMissing = authError("TLSInfo is not available in request context")
 
 func authError(msg string) error {
+	__antithesis_instrumentation__.Notify(183984)
 	return status.Error(codes.Unauthenticated, msg)
 }
 
 func authErrorf(format string, a ...interface{}) error {
+	__antithesis_instrumentation__.Notify(183985)
 	return status.Errorf(codes.Unauthenticated, format, a...)
 }
 
-// kvAuth is the standard auth policy used for RPCs sent to an RPC server. It
-// validates that client TLS certificate provided by the incoming connection
-// contains a sufficiently privileged user.
 type kvAuth struct {
 	tenant tenantAuthorizer
 }
 
-// kvAuth implements the auth interface.
-func (a kvAuth) AuthUnary() grpc.UnaryServerInterceptor   { return a.unaryInterceptor }
-func (a kvAuth) AuthStream() grpc.StreamServerInterceptor { return a.streamInterceptor }
+func (a kvAuth) AuthUnary() grpc.UnaryServerInterceptor {
+	__antithesis_instrumentation__.Notify(183986)
+	return a.unaryInterceptor
+}
+func (a kvAuth) AuthStream() grpc.StreamServerInterceptor {
+	__antithesis_instrumentation__.Notify(183987)
+	return a.streamInterceptor
+}
 
 func (a kvAuth) unaryInterceptor(
 	ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
 ) (interface{}, error) {
-	// Allow unauthenticated requests for the inter-node CA public key as part
-	// of the Add/Join protocol. RFC: https://github.com/cockroachdb/cockroach/pull/51991
+	__antithesis_instrumentation__.Notify(183988)
+
 	if info.FullMethod == "/cockroach.server.serverpb.Admin/RequestCA" {
+		__antithesis_instrumentation__.Notify(183993)
 		return handler(ctx, req)
+	} else {
+		__antithesis_instrumentation__.Notify(183994)
 	}
-	// Allow unauthenticated requests for the inter-node CA bundle as part
-	// of the Add/Join protocol. RFC: https://github.com/cockroachdb/cockroach/pull/51991
+	__antithesis_instrumentation__.Notify(183989)
+
 	if info.FullMethod == "/cockroach.server.serverpb.Admin/RequestCertBundle" {
+		__antithesis_instrumentation__.Notify(183995)
 		return handler(ctx, req)
+	} else {
+		__antithesis_instrumentation__.Notify(183996)
 	}
+	__antithesis_instrumentation__.Notify(183990)
 
 	tenID, err := a.authenticate(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183997)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(183998)
 	}
+	__antithesis_instrumentation__.Notify(183991)
 	if tenID != (roachpb.TenantID{}) {
+		__antithesis_instrumentation__.Notify(183999)
 		ctx = contextWithTenant(ctx, tenID)
 		if err := a.tenant.authorize(tenID, info.FullMethod, req); err != nil {
+			__antithesis_instrumentation__.Notify(184000)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(184001)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(184002)
 	}
+	__antithesis_instrumentation__.Notify(183992)
 	return handler(ctx, req)
 }
 
 func (a kvAuth) streamInterceptor(
 	srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler,
 ) error {
+	__antithesis_instrumentation__.Notify(184003)
 	ctx := ss.Context()
 	tenID, err := a.authenticate(ctx)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(184006)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(184007)
 	}
+	__antithesis_instrumentation__.Notify(184004)
 	if tenID != (roachpb.TenantID{}) {
+		__antithesis_instrumentation__.Notify(184008)
 		ctx = contextWithTenant(ctx, tenID)
 		origSS := ss
 		ss = &wrappedServerStream{
 			ServerStream: origSS,
 			ctx:          ctx,
 			recv: func(m interface{}) error {
+				__antithesis_instrumentation__.Notify(184009)
 				if err := origSS.RecvMsg(m); err != nil {
+					__antithesis_instrumentation__.Notify(184011)
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(184012)
 				}
-				// 'm' is now populated and contains the request from the client.
+				__antithesis_instrumentation__.Notify(184010)
+
 				return a.tenant.authorize(tenID, info.FullMethod, m)
 			},
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(184013)
 	}
+	__antithesis_instrumentation__.Notify(184005)
 	return handler(srv, ss)
 }
 
 func (a kvAuth) authenticate(ctx context.Context) (roachpb.TenantID, error) {
+	__antithesis_instrumentation__.Notify(184014)
 	if grpcutil.IsLocalRequestContext(ctx) {
-		// This is an in-process request. Bypass authentication check.
-		//
-		// TODO(tbg): I don't understand when this is hit. Internal requests are routed
-		// directly to a `*Node` and should never pass through this code path.
+		__antithesis_instrumentation__.Notify(184021)
+
 		return roachpb.TenantID{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(184022)
 	}
+	__antithesis_instrumentation__.Notify(184015)
 
 	p, ok := peer.FromContext(ctx)
 	if !ok {
+		__antithesis_instrumentation__.Notify(184023)
 		return roachpb.TenantID{}, errTLSInfoMissing
+	} else {
+		__antithesis_instrumentation__.Notify(184024)
 	}
+	__antithesis_instrumentation__.Notify(184016)
 
 	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
-	if !ok || len(tlsInfo.State.PeerCertificates) == 0 {
+	if !ok || func() bool {
+		__antithesis_instrumentation__.Notify(184025)
+		return len(tlsInfo.State.PeerCertificates) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(184026)
 		return roachpb.TenantID{}, errTLSInfoMissing
+	} else {
+		__antithesis_instrumentation__.Notify(184027)
 	}
+	__antithesis_instrumentation__.Notify(184017)
 
 	certUsers, err := security.GetCertificateUsers(&tlsInfo.State)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(184028)
 		return roachpb.TenantID{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(184029)
 	}
+	__antithesis_instrumentation__.Notify(184018)
 
 	clientCert := tlsInfo.State.PeerCertificates[0]
 	if a.tenant.tenantID == roachpb.SystemTenantID {
-		// This node is a KV node.
-		//
-		// Is this a connection from a SQL tenant server?
+		__antithesis_instrumentation__.Notify(184030)
+
 		if security.IsTenantCertificate(clientCert) {
-			// Incoming connection originating from a tenant SQL server,
-			// into a KV node.
-			// We extract the tenant ID to perform authorization
-			// of the RPC for this particular tenant.
+			__antithesis_instrumentation__.Notify(184031)
+
 			return tenantFromCommonName(clientCert.Subject.CommonName)
+		} else {
+			__antithesis_instrumentation__.Notify(184032)
 		}
 	} else {
-		// This node is a SQL tenant server.
-		//
-		// Is this a connection from another SQL tenant server?
+		__antithesis_instrumentation__.Notify(184033)
+
 		if security.IsTenantCertificate(clientCert) {
-			// Incoming connection originating from a tenant SQL server,
-			// into a KV node. Let through. The other server
-			// is able to use any of this server's RPCs.
+			__antithesis_instrumentation__.Notify(184034)
+
 			return roachpb.TenantID{}, nil
+		} else {
+			__antithesis_instrumentation__.Notify(184035)
 		}
 	}
+	__antithesis_instrumentation__.Notify(184019)
 
-	// Here we handle the following cases:
-	//
-	// - incoming connection from a RPC admin client into either a KV
-	//   node or a SQL server, using a valid root or node client cert.
-	// - incoming connections from another KV node into a KV node, using
-	//   a node client cert.
-	// - calls coming through the gRPC gateway, from an HTTP client. The gRPC
-	//   gateway uses a connection dialed as the node user.
-	//
-	// In both cases, we must check that the client cert is either root
-	// or node.
-
-	// TODO(benesch): the vast majority of RPCs should be limited to just
-	// NodeUser. This is not a security concern, as RootUser has access to
-	// read and write all data, merely good hygiene. For example, there is
-	// no reason to permit the root user to send raw Raft RPCs.
-	if !security.Contains(certUsers, security.NodeUser) &&
-		!security.Contains(certUsers, security.RootUser) {
+	if !security.Contains(certUsers, security.NodeUser) && func() bool {
+		__antithesis_instrumentation__.Notify(184036)
+		return !security.Contains(certUsers, security.RootUser) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(184037)
 		return roachpb.TenantID{}, authErrorf("user %s is not allowed to perform this RPC", certUsers)
+	} else {
+		__antithesis_instrumentation__.Notify(184038)
 	}
+	__antithesis_instrumentation__.Notify(184020)
 
 	return roachpb.TenantID{}, nil
 }

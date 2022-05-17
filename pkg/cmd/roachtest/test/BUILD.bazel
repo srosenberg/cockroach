@@ -8,5 +8,6 @@ go_library(
     deps = [
         "//pkg/roachprod/logger",
         "//pkg/util/version",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

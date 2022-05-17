@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -47,8 +39,6 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
-// TempObjectCleanupInterval is a ClusterSetting controlling how often
-// temporary objects get cleaned up.
 var TempObjectCleanupInterval = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"sql.temp_object_cleaner.cleanup_interval",
@@ -56,8 +46,6 @@ var TempObjectCleanupInterval = settings.RegisterDurationSetting(
 	30*time.Minute,
 ).WithPublic()
 
-// TempObjectWaitInterval is a ClusterSetting controlling how long
-// after a creation a temporary object will be cleaned up.
 var TempObjectWaitInterval = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"sql.temp_object_cleaner.wait_interval",
@@ -96,45 +84,61 @@ var (
 	}
 )
 
-// TemporarySchemaNameForRestorePrefix is the prefix name of the schema we
-// synthesize during a full cluster restore. All temporary objects being
-// restored are remapped to belong to this schema allowing the reconciliation
-// job to gracefully clean up these objects when it runs.
 const TemporarySchemaNameForRestorePrefix string = "pg_temp_0_"
 
 func (p *planner) getOrCreateTemporarySchema(
 	ctx context.Context, db catalog.DatabaseDescriptor,
 ) (catalog.SchemaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(627843)
 	tempSchemaName := p.TemporarySchemaName()
 	sc, err := p.Descriptors().GetMutableSchemaByName(ctx, p.txn, db, tempSchemaName, p.CommonLookupFlags(false))
-	if sc != nil || err != nil {
+	if sc != nil || func() bool {
+		__antithesis_instrumentation__.Notify(627848)
+		return err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(627849)
 		return sc, err
+	} else {
+		__antithesis_instrumentation__.Notify(627850)
 	}
+	__antithesis_instrumentation__.Notify(627844)
 	sKey := catalogkeys.NewNameKeyComponents(db.GetID(), keys.RootNamespaceID, tempSchemaName)
 
-	// The temporary schema has not been created yet.
 	id, err := descidgen.GenerateUniqueDescID(ctx, p.ExecCfg().DB, p.ExecCfg().Codec)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(627851)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(627852)
 	}
+	__antithesis_instrumentation__.Notify(627845)
 	if err := p.CreateSchemaNamespaceEntry(ctx, catalogkeys.EncodeNameKey(p.ExecCfg().Codec, sKey), id); err != nil {
+		__antithesis_instrumentation__.Notify(627853)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(627854)
 	}
+	__antithesis_instrumentation__.Notify(627846)
 	p.sessionDataMutatorIterator.applyOnEachMutator(func(m sessionDataMutator) {
+		__antithesis_instrumentation__.Notify(627855)
 		m.SetTemporarySchemaName(sKey.GetName())
 		m.SetTemporarySchemaIDForDatabase(uint32(db.GetID()), uint32(id))
 	})
+	__antithesis_instrumentation__.Notify(627847)
 	return p.Descriptors().GetImmutableSchemaByID(ctx, p.Txn(), id, p.CommonLookupFlags(true))
 }
 
-// CreateSchemaNamespaceEntry creates an entry for the schema in the
-// system.namespace table.
 func (p *planner) CreateSchemaNamespaceEntry(
 	ctx context.Context, schemaNameKey roachpb.Key, schemaID descpb.ID,
 ) error {
+	__antithesis_instrumentation__.Notify(627856)
 	if p.ExtendedEvalContext().Tracing.KVTracingEnabled() {
+		__antithesis_instrumentation__.Notify(627858)
 		log.VEventf(ctx, 2, "CPut %s -> %d", schemaNameKey, schemaID)
+	} else {
+		__antithesis_instrumentation__.Notify(627859)
 	}
+	__antithesis_instrumentation__.Notify(627857)
 
 	b := &kv.Batch{}
 	b.CPut(schemaNameKey, schemaID, nil)
@@ -142,35 +146,47 @@ func (p *planner) CreateSchemaNamespaceEntry(
 	return p.txn.Run(ctx, b)
 }
 
-// temporarySchemaName returns the session specific temporary schema name given
-// the sessionID. When the session creates a temporary object for the first
-// time, it must create a schema with the name returned by this function.
 func temporarySchemaName(sessionID ClusterWideID) string {
+	__antithesis_instrumentation__.Notify(627860)
 	return fmt.Sprintf("pg_temp_%d_%d", sessionID.Hi, sessionID.Lo)
 }
 
-// temporarySchemaSessionID returns the sessionID of the given temporary schema.
 func temporarySchemaSessionID(scName string) (bool, ClusterWideID, error) {
+	__antithesis_instrumentation__.Notify(627861)
 	if !strings.HasPrefix(scName, "pg_temp_") {
+		__antithesis_instrumentation__.Notify(627866)
 		return false, ClusterWideID{}, nil
+	} else {
+		__antithesis_instrumentation__.Notify(627867)
 	}
+	__antithesis_instrumentation__.Notify(627862)
 	parts := strings.Split(scName, "_")
 	if len(parts) != 4 {
+		__antithesis_instrumentation__.Notify(627868)
 		return false, ClusterWideID{}, errors.Errorf("malformed temp schema name %s", scName)
+	} else {
+		__antithesis_instrumentation__.Notify(627869)
 	}
+	__antithesis_instrumentation__.Notify(627863)
 	hi, err := strconv.ParseUint(parts[2], 10, 64)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(627870)
 		return false, ClusterWideID{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(627871)
 	}
+	__antithesis_instrumentation__.Notify(627864)
 	lo, err := strconv.ParseUint(parts[3], 10, 64)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(627872)
 		return false, ClusterWideID{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(627873)
 	}
+	__antithesis_instrumentation__.Notify(627865)
 	return true, ClusterWideID{uint128.Uint128{Hi: hi, Lo: lo}}, nil
 }
 
-// cleanupSessionTempObjects removes all temporary objects (tables, sequences,
-// views, temporary schema) created by the session.
 func cleanupSessionTempObjects(
 	ctx context.Context,
 	settings *cluster.Settings,
@@ -180,15 +196,21 @@ func cleanupSessionTempObjects(
 	ie sqlutil.InternalExecutor,
 	sessionID ClusterWideID,
 ) error {
+	__antithesis_instrumentation__.Notify(627874)
 	tempSchemaName := temporarySchemaName(sessionID)
 	return cf.Txn(ctx, ie, db, func(ctx context.Context, txn *kv.Txn, descsCol *descs.Collection) error {
-		// We are going to read all database descriptor IDs, then for each database
-		// we will drop all the objects under the temporary schema.
+		__antithesis_instrumentation__.Notify(627875)
+
 		allDbDescs, err := descsCol.GetAllDatabaseDescriptors(ctx, txn)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(627878)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(627879)
 		}
+		__antithesis_instrumentation__.Notify(627876)
 		for _, dbDesc := range allDbDescs {
+			__antithesis_instrumentation__.Notify(627880)
 			if err := cleanupSchemaObjects(
 				ctx,
 				settings,
@@ -199,28 +221,26 @@ func cleanupSessionTempObjects(
 				dbDesc,
 				tempSchemaName,
 			); err != nil {
+				__antithesis_instrumentation__.Notify(627882)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(627883)
 			}
-			// Even if no objects were found under the temporary schema, the schema
-			// itself may still exist (eg. a temporary table was created and then
-			// dropped). So we remove the namespace table entry of the temporary
-			// schema.
+			__antithesis_instrumentation__.Notify(627881)
+
 			key := catalogkeys.MakeSchemaNameKey(codec, dbDesc.GetID(), tempSchemaName)
 			if err := txn.Del(ctx, key); err != nil {
+				__antithesis_instrumentation__.Notify(627884)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(627885)
 			}
 		}
+		__antithesis_instrumentation__.Notify(627877)
 		return nil
 	})
 }
 
-// cleanupSchemaObjects removes all objects that is located within a dbID and schema.
-//
-// TODO(postamar): properly use descsCol
-// We're currently unable to leverage descsCol properly because we run DROP
-// statements in the transaction which cause descsCol's cached state to become
-// invalid. We should either drop all objects programmatically via descsCol's
-// API or avoid it entirely.
 func cleanupSchemaObjects(
 	ctx context.Context,
 	settings *cluster.Settings,
@@ -231,6 +251,7 @@ func cleanupSchemaObjects(
 	dbDesc catalog.DatabaseDescriptor,
 	schemaName string,
 ) error {
+	__antithesis_instrumentation__.Notify(627886)
 	tbNames, tbIDs, err := descsCol.GetObjectNamesAndIDs(
 		ctx,
 		txn,
@@ -239,15 +260,15 @@ func cleanupSchemaObjects(
 		tree.DatabaseListFlags{CommonLookupFlags: tree.CommonLookupFlags{Required: false}},
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(627890)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(627891)
 	}
+	__antithesis_instrumentation__.Notify(627887)
 
-	// We construct the database ID -> temp Schema ID map here so that the
-	// drop statements executed by the internal executor can resolve the temporary
-	// schemaID later.
 	databaseIDToTempSchemaID := make(map[uint32]uint32)
 
-	// TODO(andrei): We might want to accelerate the deletion of this data.
 	var tables descpb.IDs
 	var views descpb.IDs
 	var sequences descpb.IDs
@@ -255,29 +276,47 @@ func cleanupSchemaObjects(
 	tblDescsByID := make(map[descpb.ID]catalog.TableDescriptor, len(tbNames))
 	tblNamesByID := make(map[descpb.ID]tree.TableName, len(tbNames))
 	for i, tbName := range tbNames {
+		__antithesis_instrumentation__.Notify(627892)
 		desc, err := descsCol.Direct().MustGetTableDescByID(ctx, txn, tbIDs[i])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(627894)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(627895)
 		}
+		__antithesis_instrumentation__.Notify(627893)
 
 		tblDescsByID[desc.GetID()] = desc
 		tblNamesByID[desc.GetID()] = tbName
 
 		databaseIDToTempSchemaID[uint32(desc.GetParentID())] = uint32(desc.GetParentSchemaID())
 
-		// If a sequence is owned by a table column, it is dropped when the owner
-		// table/column is dropped. So here we want to only drop sequences not
-		// owned.
-		if desc.IsSequence() &&
-			desc.GetSequenceOpts().SequenceOwner.OwnerColumnID == 0 &&
-			desc.GetSequenceOpts().SequenceOwner.OwnerTableID == 0 {
+		if desc.IsSequence() && func() bool {
+			__antithesis_instrumentation__.Notify(627896)
+			return desc.GetSequenceOpts().SequenceOwner.OwnerColumnID == 0 == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(627897)
+			return desc.GetSequenceOpts().SequenceOwner.OwnerTableID == 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(627898)
 			sequences = append(sequences, desc.GetID())
-		} else if desc.GetViewQuery() != "" {
-			views = append(views, desc.GetID())
-		} else if !desc.IsSequence() {
-			tables = append(tables, desc.GetID())
+		} else {
+			__antithesis_instrumentation__.Notify(627899)
+			if desc.GetViewQuery() != "" {
+				__antithesis_instrumentation__.Notify(627900)
+				views = append(views, desc.GetID())
+			} else {
+				__antithesis_instrumentation__.Notify(627901)
+				if !desc.IsSequence() {
+					__antithesis_instrumentation__.Notify(627902)
+					tables = append(tables, desc.GetID())
+				} else {
+					__antithesis_instrumentation__.Notify(627903)
+				}
+			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(627888)
 
 	searchPath := sessiondata.DefaultSearchPathForUser(security.RootUserName()).WithTemporarySchemaName(schemaName)
 	override := sessiondata.InternalExecutorOverride{
@@ -287,40 +326,49 @@ func cleanupSchemaObjects(
 	}
 
 	for _, toDelete := range []struct {
-		// typeName is the type of table being deleted, e.g. view, table, sequence
 		typeName string
-		// ids represents which ids we wish to remove.
+
 		ids descpb.IDs
-		// preHook is used to perform any operations needed before calling
-		// delete on all the given ids.
+
 		preHook func(descpb.ID) error
 	}{
-		// Drop views before tables to avoid deleting required dependencies.
+
 		{"VIEW", views, nil},
 		{"TABLE", tables, nil},
-		// Drop sequences after tables, because then we reduce the amount of work
-		// that may be needed to drop indices.
+
 		{
 			"SEQUENCE",
 			sequences,
 			func(id descpb.ID) error {
+				__antithesis_instrumentation__.Notify(627904)
 				desc := tblDescsByID[id]
-				// For any dependent tables, we need to drop the sequence dependencies.
-				// This can happen if a permanent table references a temporary table.
+
 				return desc.ForeachDependedOnBy(func(d *descpb.TableDescriptor_Reference) error {
-					// We have already cleaned out anything we are depended on if we've seen
-					// the descriptor already.
+					__antithesis_instrumentation__.Notify(627905)
+
 					if _, ok := tblDescsByID[d.ID]; ok {
+						__antithesis_instrumentation__.Notify(627912)
 						return nil
+					} else {
+						__antithesis_instrumentation__.Notify(627913)
 					}
+					__antithesis_instrumentation__.Notify(627906)
 					dTableDesc, err := descsCol.Direct().MustGetTableDescByID(ctx, txn, d.ID)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(627914)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(627915)
 					}
+					__antithesis_instrumentation__.Notify(627907)
 					db, err := descsCol.Direct().MustGetDatabaseDescByID(ctx, txn, dTableDesc.GetParentID())
 					if err != nil {
+						__antithesis_instrumentation__.Notify(627916)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(627917)
 					}
+					__antithesis_instrumentation__.Notify(627908)
 					schema, err := resolver.ResolveSchemaNameByID(
 						ctx,
 						txn,
@@ -329,14 +377,22 @@ func cleanupSchemaObjects(
 						dTableDesc.GetParentSchemaID(),
 					)
 					if err != nil {
+						__antithesis_instrumentation__.Notify(627918)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(627919)
 					}
+					__antithesis_instrumentation__.Notify(627909)
 					dependentColIDs := util.MakeFastIntSet()
 					for _, colID := range d.ColumnIDs {
+						__antithesis_instrumentation__.Notify(627920)
 						dependentColIDs.Add(int(colID))
 					}
+					__antithesis_instrumentation__.Notify(627910)
 					for _, col := range dTableDesc.PublicColumns() {
+						__antithesis_instrumentation__.Notify(627921)
 						if dependentColIDs.Contains(int(col.GetID())) {
+							__antithesis_instrumentation__.Notify(627922)
 							tbName := tree.MakeTableNameWithSchema(
 								tree.Name(db.GetName()),
 								tree.Name(schema),
@@ -354,58 +410,82 @@ func cleanupSchemaObjects(
 								),
 							)
 							if err != nil {
+								__antithesis_instrumentation__.Notify(627923)
 								return err
+							} else {
+								__antithesis_instrumentation__.Notify(627924)
 							}
+						} else {
+							__antithesis_instrumentation__.Notify(627925)
 						}
 					}
+					__antithesis_instrumentation__.Notify(627911)
 					return nil
 				})
 			},
 		},
 	} {
+		__antithesis_instrumentation__.Notify(627926)
 		if len(toDelete.ids) > 0 {
+			__antithesis_instrumentation__.Notify(627927)
 			if toDelete.preHook != nil {
+				__antithesis_instrumentation__.Notify(627930)
 				for _, id := range toDelete.ids {
+					__antithesis_instrumentation__.Notify(627931)
 					if err := toDelete.preHook(id); err != nil {
+						__antithesis_instrumentation__.Notify(627932)
 						return err
+					} else {
+						__antithesis_instrumentation__.Notify(627933)
 					}
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(627934)
 			}
+			__antithesis_instrumentation__.Notify(627928)
 
 			var query strings.Builder
 			query.WriteString("DROP ")
 			query.WriteString(toDelete.typeName)
 
 			for i, id := range toDelete.ids {
+				__antithesis_instrumentation__.Notify(627935)
 				tbName := tblNamesByID[id]
 				if i != 0 {
+					__antithesis_instrumentation__.Notify(627937)
 					query.WriteString(",")
+				} else {
+					__antithesis_instrumentation__.Notify(627938)
 				}
+				__antithesis_instrumentation__.Notify(627936)
 				query.WriteString(" ")
 				query.WriteString(tbName.FQString())
 			}
+			__antithesis_instrumentation__.Notify(627929)
 			query.WriteString(" CASCADE")
 			_, err = ie.ExecEx(ctx, "delete-temp-"+toDelete.typeName, txn, override, query.String())
 			if err != nil {
+				__antithesis_instrumentation__.Notify(627939)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(627940)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(627941)
 		}
 	}
+	__antithesis_instrumentation__.Notify(627889)
 	return nil
 }
 
-// isMeta1LeaseholderFunc helps us avoid an import into pkg/storage.
 type isMeta1LeaseholderFunc func(context.Context, hlc.ClockTimestamp) (bool, error)
 
-// TemporaryObjectCleaner is a background thread job that periodically
-// cleans up orphaned temporary objects by sessions which did not close
-// down cleanly.
 type TemporaryObjectCleaner struct {
 	settings                         *cluster.Settings
 	db                               *kv.DB
 	codec                            keys.SQLCodec
 	makeSessionBoundInternalExecutor sqlutil.SessionBoundInternalExecutorFactory
-	// statusServer gives access to the SQLStatus service.
+
 	statusServer           serverpb.SQLStatusServer
 	isMeta1LeaseholderFunc isMeta1LeaseholderFunc
 	testingKnobs           ExecutorTestingKnobs
@@ -413,7 +493,6 @@ type TemporaryObjectCleaner struct {
 	collectionFactory      *descs.CollectionFactory
 }
 
-// temporaryObjectCleanerMetrics are the metrics for TemporaryObjectCleaner
 type temporaryObjectCleanerMetrics struct {
 	ActiveCleaners         *metric.Gauge
 	SchemasToDelete        *metric.Counter
@@ -423,11 +502,8 @@ type temporaryObjectCleanerMetrics struct {
 
 var _ metric.Struct = (*temporaryObjectCleanerMetrics)(nil)
 
-// MetricStruct implements the metrics.Struct interface.
-func (m *temporaryObjectCleanerMetrics) MetricStruct() {}
+func (m *temporaryObjectCleanerMetrics) MetricStruct() { __antithesis_instrumentation__.Notify(627942) }
 
-// NewTemporaryObjectCleaner initializes the TemporaryObjectCleaner with the
-// required arguments, but does not start it.
 func NewTemporaryObjectCleaner(
 	settings *cluster.Settings,
 	db *kv.DB,
@@ -439,6 +515,7 @@ func NewTemporaryObjectCleaner(
 	testingKnobs ExecutorTestingKnobs,
 	cf *descs.CollectionFactory,
 ) *TemporaryObjectCleaner {
+	__antithesis_instrumentation__.Notify(627943)
 	metrics := makeTemporaryObjectCleanerMetrics()
 	registry.AddMetricStruct(metrics)
 	return &TemporaryObjectCleaner{
@@ -454,8 +531,8 @@ func NewTemporaryObjectCleaner(
 	}
 }
 
-// makeTemporaryObjectCleanerMetrics makes the metrics for the TemporaryObjectCleaner.
 func makeTemporaryObjectCleanerMetrics() *temporaryObjectCleanerMetrics {
+	__antithesis_instrumentation__.Notify(627944)
 	return &temporaryObjectCleanerMetrics{
 		ActiveCleaners:         metric.NewGauge(temporaryObjectCleanerActiveCleanersMetric),
 		SchemasToDelete:        metric.NewCounter(temporaryObjectCleanerSchemasToDeleteMetric),
@@ -464,13 +541,14 @@ func makeTemporaryObjectCleanerMetrics() *temporaryObjectCleanerMetrics {
 	}
 }
 
-// doTemporaryObjectCleanup performs the actual cleanup.
 func (c *TemporaryObjectCleaner) doTemporaryObjectCleanup(
 	ctx context.Context, closerCh <-chan struct{},
 ) error {
+	__antithesis_instrumentation__.Notify(627945)
 	defer log.Infof(ctx, "completed temporary object cleanup job")
-	// Wrap the retry functionality with the default arguments.
+
 	retryFunc := func(ctx context.Context, do func() error) error {
+		__antithesis_instrumentation__.Notify(627954)
 		return retry.WithMaxAttempts(
 			ctx,
 			retry.Options{
@@ -479,121 +557,173 @@ func (c *TemporaryObjectCleaner) doTemporaryObjectCleanup(
 				Multiplier:     2,
 				Closer:         closerCh,
 			},
-			5, // maxAttempts
+			5,
 			func() error {
+				__antithesis_instrumentation__.Notify(627955)
 				err := do()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(627957)
 					log.Warningf(ctx, "error during schema cleanup, retrying: %v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(627958)
 				}
+				__antithesis_instrumentation__.Notify(627956)
 				return err
 			},
 		)
 	}
+	__antithesis_instrumentation__.Notify(627946)
 
-	// For tenants, we will completely skip this logic since listing
-	// sessions will fan out to all pods in the tenant case. So, there
-	// is no harm in executing this logic without any type of coordination.
 	if c.codec.ForSystemTenant() {
-		// We only want to perform the cleanup if we are holding the meta1 lease.
-		// This ensures only one server can perform the job at a time.
+		__antithesis_instrumentation__.Notify(627959)
+
 		isLeaseHolder, err := c.isMeta1LeaseholderFunc(ctx, c.db.Clock().NowAsClockTimestamp())
 		if err != nil {
+			__antithesis_instrumentation__.Notify(627961)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(627962)
 		}
-		// For the system tenant we will check if the lease is held. For tenants
-		// every single POD will try to execute this clean up logic.
+		__antithesis_instrumentation__.Notify(627960)
+
 		if !isLeaseHolder {
+			__antithesis_instrumentation__.Notify(627963)
 			log.Infof(ctx, "skipping temporary object cleanup run as it is not the leaseholder")
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(627964)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(627965)
 	}
+	__antithesis_instrumentation__.Notify(627947)
 
 	c.metrics.ActiveCleaners.Inc(1)
 	defer c.metrics.ActiveCleaners.Dec(1)
 
 	log.Infof(ctx, "running temporary object cleanup background job")
-	// TODO(sumeer): this is not using NewTxnWithSteppingEnabled and so won't be
-	// classified as FROM_SQL for purposes of admission control. Fix.
+
 	txn := kv.NewTxn(ctx, c.db, 0)
-	// Only see temporary schemas after some delay as safety
-	// mechanism.
+
 	waitTimeForCreation := TempObjectWaitInterval.Get(&c.settings.SV)
-	// Build a set of all databases with temporary objects.
+
 	var allDbDescs []catalog.DatabaseDescriptor
-	descsCol := c.collectionFactory.NewCollection(ctx, nil /* TemporarySchemaProvider */)
+	descsCol := c.collectionFactory.NewCollection(ctx, nil)
 	if err := retryFunc(ctx, func() error {
+		__antithesis_instrumentation__.Notify(627966)
 		var err error
 		allDbDescs, err = descsCol.GetAllDatabaseDescriptors(ctx, txn)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(627967)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(627968)
 	}
+	__antithesis_instrumentation__.Notify(627948)
 
 	sessionIDs := make(map[ClusterWideID]struct{})
 	for _, dbDesc := range allDbDescs {
+		__antithesis_instrumentation__.Notify(627969)
 		var schemaEntries map[descpb.ID]resolver.SchemaEntryForDB
 		if err := retryFunc(ctx, func() error {
+			__antithesis_instrumentation__.Notify(627971)
 			var err error
 			schemaEntries, err = resolver.GetForDatabase(ctx, txn, c.codec, dbDesc)
 			return err
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(627972)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(627973)
 		}
+		__antithesis_instrumentation__.Notify(627970)
 		for _, scEntry := range schemaEntries {
-			// Skip over any temporary objects that are not old enough,
-			// we intentionally use a delay to avoid problems.
+			__antithesis_instrumentation__.Notify(627974)
+
 			if !scEntry.Timestamp.Less(txn.ReadTimestamp().Add(-waitTimeForCreation.Nanoseconds(), 0)) {
+				__antithesis_instrumentation__.Notify(627977)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(627978)
 			}
+			__antithesis_instrumentation__.Notify(627975)
 			isTempSchema, sessionID, err := temporarySchemaSessionID(scEntry.Name)
 			if err != nil {
-				// This should not cause an error.
+				__antithesis_instrumentation__.Notify(627979)
+
 				log.Warningf(ctx, "could not parse %q as temporary schema name", scEntry)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(627980)
 			}
+			__antithesis_instrumentation__.Notify(627976)
 			if isTempSchema {
+				__antithesis_instrumentation__.Notify(627981)
 				sessionIDs[sessionID] = struct{}{}
+			} else {
+				__antithesis_instrumentation__.Notify(627982)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(627949)
 	log.Infof(ctx, "found %d temporary schemas", len(sessionIDs))
 
 	if len(sessionIDs) == 0 {
+		__antithesis_instrumentation__.Notify(627983)
 		log.Infof(ctx, "early exiting temporary schema cleaner as no temporary schemas were found")
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(627984)
 	}
+	__antithesis_instrumentation__.Notify(627950)
 
-	// Get active sessions.
 	var response *serverpb.ListSessionsResponse
 	if err := retryFunc(ctx, func() error {
+		__antithesis_instrumentation__.Notify(627985)
 		var err error
 		response, err = c.statusServer.ListSessions(
 			ctx,
 			&serverpb.ListSessionsRequest{},
 		)
-		if response != nil && len(response.Errors) > 0 &&
-			err == nil {
+		if response != nil && func() bool {
+			__antithesis_instrumentation__.Notify(627987)
+			return len(response.Errors) > 0 == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(627988)
+			return err == nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(627989)
 			return errors.Newf("fan out rpc failed with %s on node %d", response.Errors[0].Message, response.Errors[0].NodeID)
+		} else {
+			__antithesis_instrumentation__.Notify(627990)
 		}
+		__antithesis_instrumentation__.Notify(627986)
 		return err
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(627991)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(627992)
 	}
+	__antithesis_instrumentation__.Notify(627951)
 	activeSessions := make(map[uint128.Uint128]struct{})
 	for _, session := range response.Sessions {
+		__antithesis_instrumentation__.Notify(627993)
 		activeSessions[uint128.FromBytes(session.ID)] = struct{}{}
 	}
+	__antithesis_instrumentation__.Notify(627952)
 
-	// Clean up temporary data for inactive sessions.
 	ie := c.makeSessionBoundInternalExecutor(ctx, &sessiondata.SessionData{})
 	for sessionID := range sessionIDs {
+		__antithesis_instrumentation__.Notify(627994)
 		if _, ok := activeSessions[sessionID.Uint128]; !ok {
+			__antithesis_instrumentation__.Notify(627995)
 			log.Eventf(ctx, "cleaning up temporary object for session %q", sessionID)
 			c.metrics.SchemasToDelete.Inc(1)
 
-			// Reset the session data with the appropriate sessionID such that we can resolve
-			// the given schema correctly.
 			if err := retryFunc(ctx, func() error {
+				__antithesis_instrumentation__.Notify(627996)
 				return cleanupSessionTempObjects(
 					ctx,
 					c.settings,
@@ -604,44 +734,65 @@ func (c *TemporaryObjectCleaner) doTemporaryObjectCleanup(
 					sessionID,
 				)
 			}); err != nil {
-				// Log error but continue trying to delete the rest.
+				__antithesis_instrumentation__.Notify(627997)
+
 				log.Warningf(ctx, "failed to clean temp objects under session %q: %v", sessionID, err)
 				c.metrics.SchemasDeletionError.Inc(1)
 			} else {
+				__antithesis_instrumentation__.Notify(627998)
 				c.metrics.SchemasDeletionSuccess.Inc(1)
 				telemetry.Inc(sqltelemetry.TempObjectCleanerDeletionCounter)
 			}
 		} else {
+			__antithesis_instrumentation__.Notify(627999)
 			log.Eventf(ctx, "not cleaning up %q as session is still active", sessionID)
 		}
 	}
+	__antithesis_instrumentation__.Notify(627953)
 
 	return nil
 }
 
-// Start initializes the background thread which periodically cleans up leftover temporary objects.
 func (c *TemporaryObjectCleaner) Start(ctx context.Context, stopper *stop.Stopper) {
+	__antithesis_instrumentation__.Notify(628000)
 	_ = stopper.RunAsyncTask(ctx, "object-cleaner", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(628001)
 		nextTick := timeutil.Now()
 		for {
+			__antithesis_instrumentation__.Notify(628002)
 			nextTickCh := time.After(nextTick.Sub(timeutil.Now()))
 			if c.testingKnobs.TempObjectsCleanupCh != nil {
+				__antithesis_instrumentation__.Notify(628006)
 				nextTickCh = c.testingKnobs.TempObjectsCleanupCh
+			} else {
+				__antithesis_instrumentation__.Notify(628007)
 			}
+			__antithesis_instrumentation__.Notify(628003)
 
 			select {
 			case <-nextTickCh:
+				__antithesis_instrumentation__.Notify(628008)
 				if err := c.doTemporaryObjectCleanup(ctx, stopper.ShouldQuiesce()); err != nil {
+					__antithesis_instrumentation__.Notify(628011)
 					log.Warningf(ctx, "failed to clean temp objects: %v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(628012)
 				}
 			case <-stopper.ShouldQuiesce():
+				__antithesis_instrumentation__.Notify(628009)
 				return
 			case <-ctx.Done():
+				__antithesis_instrumentation__.Notify(628010)
 				return
 			}
+			__antithesis_instrumentation__.Notify(628004)
 			if c.testingKnobs.OnTempObjectsCleanupDone != nil {
+				__antithesis_instrumentation__.Notify(628013)
 				c.testingKnobs.OnTempObjectsCleanupDone()
+			} else {
+				__antithesis_instrumentation__.Notify(628014)
 			}
+			__antithesis_instrumentation__.Notify(628005)
 			nextTick = nextTick.Add(TempObjectCleanupInterval.Get(&c.settings.SV))
 			log.Infof(ctx, "temporary object cleaner next scheduled to run at %s", nextTick)
 		}

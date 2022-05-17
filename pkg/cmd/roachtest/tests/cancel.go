@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,73 +19,70 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Motivation:
-// Although there are unit tests that test query cancellation, they have been
-// insufficient in detecting problems with canceling long-running, multi-node
-// DistSQL queries. This is because, unlike local queries which only need to
-// cancel the transaction's context, DistSQL queries must cancel flow contexts
-// on each node involved in the query. Typical strategies for local execution
-// testing involve using a builtin like generate_series to create artificially
-// long-running queries, but these approaches don't create multi-node DistSQL
-// queries; the only way to do so is by querying a large dataset split across
-// multiple nodes. Due to the high cost of loading the pre-requisite data, these
-// tests are best suited as nightlies.
-//
-// Once DistSQL queries provide more testing knobs, these tests can likely be
-// replaced with unit tests.
 func registerCancel(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(46015)
 	runCancel := func(ctx context.Context, t test.Test, c cluster.Cluster, tpchQueriesToRun []int, useDistsql bool) {
+		__antithesis_instrumentation__.Notify(46019)
 		c.Put(ctx, t.Cockroach(), "./cockroach", c.All())
 		c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.All())
 
 		m := c.NewMonitor(ctx, c.All())
 		m.Go(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(46021)
 			t.Status("restoring TPCH dataset for Scale Factor 1")
-			if err := loadTPCHDataset(ctx, t, c, 1 /* sf */, c.NewMonitor(ctx), c.All()); err != nil {
+			if err := loadTPCHDataset(ctx, t, c, 1, c.NewMonitor(ctx), c.All()); err != nil {
+				__antithesis_instrumentation__.Notify(46025)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(46026)
 			}
+			__antithesis_instrumentation__.Notify(46022)
 
 			conn := c.Conn(ctx, t.L(), 1)
 			defer conn.Close()
 
 			queryPrefix := "USE tpch; "
 			if !useDistsql {
+				__antithesis_instrumentation__.Notify(46027)
 				queryPrefix += "SET distsql = off; "
+			} else {
+				__antithesis_instrumentation__.Notify(46028)
 			}
+			__antithesis_instrumentation__.Notify(46023)
 
 			t.Status("running queries to cancel")
 			for _, queryNum := range tpchQueriesToRun {
-				// sem is used to indicate that the query-runner goroutine has
-				// been spawned up.
+				__antithesis_instrumentation__.Notify(46029)
+
 				sem := make(chan struct{})
-				// Any error regarding the cancellation (or of its absence) will
-				// be sent on errCh.
+
 				errCh := make(chan error, 1)
 				go func(query string) {
+					__antithesis_instrumentation__.Notify(46031)
 					defer close(errCh)
 					t.L().Printf("executing q%d\n", queryNum)
 					sem <- struct{}{}
 					close(sem)
 					_, err := conn.Exec(queryPrefix + query)
 					if err == nil {
+						__antithesis_instrumentation__.Notify(46032)
 						errCh <- errors.New("query completed before it could be canceled")
 					} else {
+						__antithesis_instrumentation__.Notify(46033)
 						fmt.Printf("query failed with error: %s\n", err)
-						// Note that errors.Is() doesn't work here because
-						// lib/pq wraps the query canceled error.
+
 						if !strings.Contains(err.Error(), cancelchecker.QueryCanceledError.Error()) {
+							__antithesis_instrumentation__.Notify(46034)
 							errCh <- errors.Wrap(err, "unexpected error")
+						} else {
+							__antithesis_instrumentation__.Notify(46035)
 						}
 					}
 				}(tpch.QueriesByNumber[queryNum])
+				__antithesis_instrumentation__.Notify(46030)
 
-				// Wait for the query-runner goroutine to start.
 				<-sem
 
-				// The cancel query races with the execution of the query it's trying to
-				// cancel, which may result in attempting to cancel the query before it
-				// has started.  To be more confident that the query is executing, wait
-				// a bit before attempting to cancel it.
 				time.Sleep(250 * time.Millisecond)
 
 				const cancelQuery = `CANCEL QUERIES
@@ -103,50 +92,67 @@ func registerCancel(r registry.Registry) {
 
 				select {
 				case err, ok := <-errCh:
+					__antithesis_instrumentation__.Notify(46036)
 					if ok {
+						__antithesis_instrumentation__.Notify(46039)
 						t.Fatal(err)
+					} else {
+						__antithesis_instrumentation__.Notify(46040)
 					}
-					// If errCh is closed, then the cancellation was successful.
+					__antithesis_instrumentation__.Notify(46037)
+
 					timeToCancel := timeutil.Since(cancelStartTime)
 					fmt.Printf("canceling q%d took %s\n", queryNum, timeToCancel)
 
 				case <-time.After(5 * time.Second):
+					__antithesis_instrumentation__.Notify(46038)
 					t.Fatal("query took too long to respond to cancellation")
 				}
 			}
+			__antithesis_instrumentation__.Notify(46024)
 
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(46020)
 		m.Wait()
 	}
+	__antithesis_instrumentation__.Notify(46016)
 
 	const numNodes = 3
-	// Choose several longer running TPCH queries (each is taking at least 3s to
-	// complete).
+
 	tpchQueriesToRun := []int{7, 9, 20, 21}
 	var queries string
 	for i, q := range tpchQueriesToRun {
+		__antithesis_instrumentation__.Notify(46041)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(46043)
 			queries += ","
+		} else {
+			__antithesis_instrumentation__.Notify(46044)
 		}
+		__antithesis_instrumentation__.Notify(46042)
 		queries += fmt.Sprintf("%d", q)
 	}
+	__antithesis_instrumentation__.Notify(46017)
 
 	r.Add(registry.TestSpec{
 		Name:    fmt.Sprintf("cancel/tpch/distsql/queries=%s,nodes=%d", queries, numNodes),
 		Owner:   registry.OwnerSQLQueries,
 		Cluster: r.MakeClusterSpec(numNodes),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
-			runCancel(ctx, t, c, tpchQueriesToRun, true /* useDistsql */)
+			__antithesis_instrumentation__.Notify(46045)
+			runCancel(ctx, t, c, tpchQueriesToRun, true)
 		},
 	})
+	__antithesis_instrumentation__.Notify(46018)
 
 	r.Add(registry.TestSpec{
 		Name:    fmt.Sprintf("cancel/tpch/local/queries=%s,nodes=%d", queries, numNodes),
 		Owner:   registry.OwnerSQLQueries,
 		Cluster: r.MakeClusterSpec(numNodes),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
-			runCancel(ctx, t, c, tpchQueriesToRun, false /* useDistsql */)
+			__antithesis_instrumentation__.Notify(46046)
+			runCancel(ctx, t, c, tpchQueriesToRun, false)
 		},
 	})
 }

@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -30,9 +22,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 )
 
-// SpanSetReplicaEvalContext is a testing-only implementation of
-// ReplicaEvalContext which verifies that access to state is registered in the
-// SpanSet if one is given.
 type SpanSetReplicaEvalContext struct {
 	i  batcheval.EvalContext
 	ss spanset.SpanSet
@@ -40,73 +29,73 @@ type SpanSetReplicaEvalContext struct {
 
 var _ batcheval.EvalContext = &SpanSetReplicaEvalContext{}
 
-// AbortSpan returns the abort span.
 func (rec *SpanSetReplicaEvalContext) AbortSpan() *abortspan.AbortSpan {
+	__antithesis_instrumentation__.Notify(117192)
 	return rec.i.AbortSpan()
 }
 
-// EvalKnobs returns the batch evaluation Knobs.
 func (rec *SpanSetReplicaEvalContext) EvalKnobs() kvserverbase.BatchEvalTestingKnobs {
+	__antithesis_instrumentation__.Notify(117193)
 	return rec.i.EvalKnobs()
 }
 
-// StoreID returns the StoreID.
 func (rec *SpanSetReplicaEvalContext) StoreID() roachpb.StoreID {
+	__antithesis_instrumentation__.Notify(117194)
 	return rec.i.StoreID()
 }
 
-// GetRangeID returns the RangeID.
 func (rec *SpanSetReplicaEvalContext) GetRangeID() roachpb.RangeID {
+	__antithesis_instrumentation__.Notify(117195)
 	return rec.i.GetRangeID()
 }
 
-// ClusterSettings returns the cluster settings.
 func (rec *SpanSetReplicaEvalContext) ClusterSettings() *cluster.Settings {
+	__antithesis_instrumentation__.Notify(117196)
 	return rec.i.ClusterSettings()
 }
 
-// Clock returns the Replica's clock.
 func (rec *SpanSetReplicaEvalContext) Clock() *hlc.Clock {
+	__antithesis_instrumentation__.Notify(117197)
 	return rec.i.Clock()
 }
 
-// GetConcurrencyManager returns the concurrency.Manager.
 func (rec *SpanSetReplicaEvalContext) GetConcurrencyManager() concurrency.Manager {
+	__antithesis_instrumentation__.Notify(117198)
 	return rec.i.GetConcurrencyManager()
 }
 
-// NodeID returns the NodeID.
 func (rec *SpanSetReplicaEvalContext) NodeID() roachpb.NodeID {
+	__antithesis_instrumentation__.Notify(117199)
 	return rec.i.NodeID()
 }
 
-// GetNodeLocality returns the node locality.
 func (rec *SpanSetReplicaEvalContext) GetNodeLocality() roachpb.Locality {
+	__antithesis_instrumentation__.Notify(117200)
 	return rec.i.GetNodeLocality()
 }
 
-// GetFirstIndex returns the first index.
 func (rec *SpanSetReplicaEvalContext) GetFirstIndex() (uint64, error) {
+	__antithesis_instrumentation__.Notify(117201)
 	return rec.i.GetFirstIndex()
 }
 
-// GetTerm returns the term for the given index in the Raft log.
 func (rec *SpanSetReplicaEvalContext) GetTerm(i uint64) (uint64, error) {
+	__antithesis_instrumentation__.Notify(117202)
 	return rec.i.GetTerm(i)
 }
 
-// GetLeaseAppliedIndex returns the lease index of the last applied command.
 func (rec *SpanSetReplicaEvalContext) GetLeaseAppliedIndex() uint64 {
+	__antithesis_instrumentation__.Notify(117203)
 	return rec.i.GetLeaseAppliedIndex()
 }
 
-// IsFirstRange returns true iff the replica belongs to the first range.
 func (rec *SpanSetReplicaEvalContext) IsFirstRange() bool {
+	__antithesis_instrumentation__.Notify(117204)
 	return rec.i.IsFirstRange()
 }
 
-// Desc returns the Replica's RangeDescriptor.
 func (rec SpanSetReplicaEvalContext) Desc() *roachpb.RangeDescriptor {
+	__antithesis_instrumentation__.Notify(117205)
 	desc := rec.i.Desc()
 	rec.ss.AssertAllowed(spanset.SpanReadOnly,
 		roachpb.Span{Key: keys.RangeDescriptorKey(desc.StartKey)},
@@ -114,102 +103,92 @@ func (rec SpanSetReplicaEvalContext) Desc() *roachpb.RangeDescriptor {
 	return desc
 }
 
-// ContainsKey returns true if the given key is within the Replica's range.
-//
-// TODO(bdarnell): Replace this method with one on Desc(). See comment
-// on Replica.ContainsKey.
 func (rec SpanSetReplicaEvalContext) ContainsKey(key roachpb.Key) bool {
-	desc := rec.Desc() // already asserts
+	__antithesis_instrumentation__.Notify(117206)
+	desc := rec.Desc()
 	return kvserverbase.ContainsKey(desc, key)
 }
 
-// GetMVCCStats returns the Replica's MVCCStats.
 func (rec SpanSetReplicaEvalContext) GetMVCCStats() enginepb.MVCCStats {
-	// Thanks to commutativity, the spanlatch manager does not have to serialize
-	// on the MVCCStats key. This means that the key is not included in SpanSet
-	// declarations, so there's nothing to assert here.
+	__antithesis_instrumentation__.Notify(117207)
+
 	return rec.i.GetMVCCStats()
 }
 
-// GetMaxSplitQPS returns the Replica's maximum queries/s rate for splitting and
-// merging purposes.
 func (rec SpanSetReplicaEvalContext) GetMaxSplitQPS() (float64, bool) {
+	__antithesis_instrumentation__.Notify(117208)
 	return rec.i.GetMaxSplitQPS()
 }
 
-// GetLastSplitQPS returns the Replica's most recent queries/s rate for
-// splitting and merging purposes.
 func (rec SpanSetReplicaEvalContext) GetLastSplitQPS() float64 {
+	__antithesis_instrumentation__.Notify(117209)
 	return rec.i.GetLastSplitQPS()
 }
 
-// CanCreateTxnRecord determines whether a transaction record can be created
-// for the provided transaction information. See Replica.CanCreateTxnRecord
-// for details about its arguments, return values, and preconditions.
 func (rec SpanSetReplicaEvalContext) CanCreateTxnRecord(
 	ctx context.Context, txnID uuid.UUID, txnKey []byte, txnMinTS hlc.Timestamp,
 ) (bool, hlc.Timestamp, roachpb.TransactionAbortedReason) {
+	__antithesis_instrumentation__.Notify(117210)
 	rec.ss.AssertAllowed(spanset.SpanReadOnly,
 		roachpb.Span{Key: keys.TransactionKey(txnKey, txnID)},
 	)
 	return rec.i.CanCreateTxnRecord(ctx, txnID, txnKey, txnMinTS)
 }
 
-// GetGCThreshold returns the GC threshold of the Range, typically updated when
-// keys are garbage collected. Reads and writes at timestamps <= this time will
-// not be served.
 func (rec SpanSetReplicaEvalContext) GetGCThreshold() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(117211)
 	rec.ss.AssertAllowed(spanset.SpanReadOnly,
 		roachpb.Span{Key: keys.RangeGCThresholdKey(rec.GetRangeID())},
 	)
 	return rec.i.GetGCThreshold()
 }
 
-// ExcludeDataFromBackup returns whether the replica is to be excluded from a
-// backup.
 func (rec SpanSetReplicaEvalContext) ExcludeDataFromBackup() bool {
+	__antithesis_instrumentation__.Notify(117212)
 	return rec.i.ExcludeDataFromBackup()
 }
 
-// String implements Stringer.
 func (rec SpanSetReplicaEvalContext) String() string {
+	__antithesis_instrumentation__.Notify(117213)
 	return rec.i.String()
 }
 
-// GetLastReplicaGCTimestamp returns the last time the Replica was
-// considered for GC.
 func (rec SpanSetReplicaEvalContext) GetLastReplicaGCTimestamp(
 	ctx context.Context,
 ) (hlc.Timestamp, error) {
+	__antithesis_instrumentation__.Notify(117214)
 	if err := rec.ss.CheckAllowed(spanset.SpanReadOnly,
 		roachpb.Span{Key: keys.RangeLastReplicaGCTimestampKey(rec.GetRangeID())},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(117216)
 		return hlc.Timestamp{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(117217)
 	}
+	__antithesis_instrumentation__.Notify(117215)
 	return rec.i.GetLastReplicaGCTimestamp(ctx)
 }
 
-// GetLease returns the Replica's current and next lease (if any).
 func (rec SpanSetReplicaEvalContext) GetLease() (roachpb.Lease, roachpb.Lease) {
+	__antithesis_instrumentation__.Notify(117218)
 	rec.ss.AssertAllowed(spanset.SpanReadOnly,
 		roachpb.Span{Key: keys.RangeLeaseKey(rec.GetRangeID())},
 	)
 	return rec.i.GetLease()
 }
 
-// GetRangeInfo is part of the EvalContext interface.
 func (rec SpanSetReplicaEvalContext) GetRangeInfo(ctx context.Context) roachpb.RangeInfo {
-	// Do the latching checks and ignore the results.
+	__antithesis_instrumentation__.Notify(117219)
+
 	rec.Desc()
 	rec.GetLease()
 
 	return rec.i.GetRangeInfo(ctx)
 }
 
-// GetCurrentReadSummary is part of the EvalContext interface.
 func (rec *SpanSetReplicaEvalContext) GetCurrentReadSummary(ctx context.Context) rspb.ReadSummary {
-	// To capture a read summary over the range, all keys must be latched for
-	// writing to prevent any concurrent reads or writes.
+	__antithesis_instrumentation__.Notify(117220)
+
 	desc := rec.i.Desc()
 	rec.ss.AssertAllowed(spanset.SpanReadWrite, roachpb.Span{
 		Key:    keys.MakeRangeKeyPrefix(desc.StartKey),
@@ -222,48 +201,46 @@ func (rec *SpanSetReplicaEvalContext) GetCurrentReadSummary(ctx context.Context)
 	return rec.i.GetCurrentReadSummary(ctx)
 }
 
-// GetClosedTimestamp is part of the EvalContext interface.
 func (rec *SpanSetReplicaEvalContext) GetClosedTimestamp(ctx context.Context) hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(117221)
 	return rec.i.GetClosedTimestamp(ctx)
 }
 
-// GetExternalStorage returns an ExternalStorage object, based on
-// information parsed from a URI, stored in `dest`.
 func (rec *SpanSetReplicaEvalContext) GetExternalStorage(
 	ctx context.Context, dest roachpb.ExternalStorage,
 ) (cloud.ExternalStorage, error) {
+	__antithesis_instrumentation__.Notify(117222)
 	return rec.i.GetExternalStorage(ctx, dest)
 }
 
-// GetExternalStorageFromURI returns an ExternalStorage object, based on the given URI.
 func (rec *SpanSetReplicaEvalContext) GetExternalStorageFromURI(
 	ctx context.Context, uri string, user security.SQLUsername,
 ) (cloud.ExternalStorage, error) {
+	__antithesis_instrumentation__.Notify(117223)
 	return rec.i.GetExternalStorageFromURI(ctx, uri, user)
 }
 
-// RevokeLease stops the replica from using its current lease.
 func (rec *SpanSetReplicaEvalContext) RevokeLease(ctx context.Context, seq roachpb.LeaseSequence) {
+	__antithesis_instrumentation__.Notify(117224)
 	rec.i.RevokeLease(ctx, seq)
 }
 
-// WatchForMerge arranges to block all requests until the in-progress merge
-// completes.
 func (rec *SpanSetReplicaEvalContext) WatchForMerge(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(117225)
 	return rec.i.WatchForMerge(ctx)
 }
 
-// GetResponseMemoryAccount implements the batcheval.EvalContext interface.
 func (rec *SpanSetReplicaEvalContext) GetResponseMemoryAccount() *mon.BoundAccount {
+	__antithesis_instrumentation__.Notify(117226)
 	return rec.i.GetResponseMemoryAccount()
 }
 
-// GetMaxBytes implements the batcheval.EvalContext interface.
 func (rec *SpanSetReplicaEvalContext) GetMaxBytes() int64 {
+	__antithesis_instrumentation__.Notify(117227)
 	return rec.i.GetMaxBytes()
 }
 
-// GetEngineCapacity implements the batcheval.EvalContext interface.
 func (rec *SpanSetReplicaEvalContext) GetEngineCapacity() (roachpb.StoreCapacity, error) {
+	__antithesis_instrumentation__.Notify(117228)
 	return rec.i.GetEngineCapacity()
 }

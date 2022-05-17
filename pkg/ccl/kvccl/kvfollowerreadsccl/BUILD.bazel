@@ -27,6 +27,7 @@ go_library(
         "//pkg/util/duration",
         "//pkg/util/hlc",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -75,6 +76,7 @@ go_test(
         "//pkg/util/tracing",
         "//pkg/util/tracing/tracingpb",
         "//pkg/util/uuid",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_datadriven//:datadriven",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_stretchr_testify//require",

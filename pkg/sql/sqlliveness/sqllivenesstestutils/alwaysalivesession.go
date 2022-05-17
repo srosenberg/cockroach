@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqllivenesstestutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,22 +11,26 @@ import (
 
 type alwaysAliveSession string
 
-// NewAlwaysAliveSession constructs and returns a session that is forever alive
-// for testing purposes.
 func NewAlwaysAliveSession(name string) sqlliveness.Session {
+	__antithesis_instrumentation__.Notify(624413)
 	return alwaysAliveSession(name)
 }
 
-// ID implements the sqlliveness.Session interface.
 func (f alwaysAliveSession) ID() sqlliveness.SessionID {
+	__antithesis_instrumentation__.Notify(624414)
 	return sqlliveness.SessionID(f)
 }
 
-// Expiration implements the sqlliveness.Session interface.
-func (f alwaysAliveSession) Expiration() hlc.Timestamp { return hlc.MaxTimestamp }
+func (f alwaysAliveSession) Expiration() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(624415)
+	return hlc.MaxTimestamp
+}
 
-// Start implements the sqlliveness.Session interface.
-func (f alwaysAliveSession) Start() hlc.Timestamp { return hlc.MinTimestamp }
+func (f alwaysAliveSession) Start() hlc.Timestamp {
+	__antithesis_instrumentation__.Notify(624416)
+	return hlc.MinTimestamp
+}
 
-// RegisterCallbackForSessionExpiry implements the sqlliveness.Session interface.
-func (f alwaysAliveSession) RegisterCallbackForSessionExpiry(func(context.Context)) {}
+func (f alwaysAliveSession) RegisterCallbackForSessionExpiry(func(context.Context)) {
+	__antithesis_instrumentation__.Notify(624417)
+}

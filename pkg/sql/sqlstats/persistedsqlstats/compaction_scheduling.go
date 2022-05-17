@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package persistedsqlstats
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -28,31 +20,39 @@ import (
 
 const compactionScheduleName = "sql-stats-compaction"
 
-// ErrDuplicatedSchedules indicates that there is already a schedule for sql
-// stats compaction job existing in the system.scheduled_jobs table.
 var ErrDuplicatedSchedules = errors.New("creating multiple sql stats compaction is disallowed")
 
-// CreateSQLStatsCompactionScheduleIfNotYetExist registers SQL Stats compaction job with the
-// scheduled job subsystem so the compaction job can be run periodically. This
-// is done during the cluster startup migration.
 func CreateSQLStatsCompactionScheduleIfNotYetExist(
 	ctx context.Context, ie sqlutil.InternalExecutor, txn *kv.Txn, st *cluster.Settings,
 ) (*jobs.ScheduledJob, error) {
+	__antithesis_instrumentation__.Notify(624645)
 	scheduleExists, err := checkExistingCompactionSchedule(ctx, ie, txn)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(624651)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(624652)
 	}
+	__antithesis_instrumentation__.Notify(624646)
 
 	if scheduleExists {
+		__antithesis_instrumentation__.Notify(624653)
 		return nil, ErrDuplicatedSchedules
+	} else {
+		__antithesis_instrumentation__.Notify(624654)
 	}
+	__antithesis_instrumentation__.Notify(624647)
 
 	compactionSchedule := jobs.NewScheduledJob(scheduledjobs.ProdJobSchedulerEnv)
 
 	schedule := SQLStatsCleanupRecurrence.Get(&st.SV)
 	if err := compactionSchedule.SetSchedule(schedule); err != nil {
+		__antithesis_instrumentation__.Notify(624655)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(624656)
 	}
+	__antithesis_instrumentation__.Notify(624648)
 
 	compactionSchedule.SetScheduleDetails(jobspb.ScheduleDetails{
 		Wait:    jobspb.ScheduleDetails_SKIP,
@@ -64,8 +64,12 @@ func CreateSQLStatsCompactionScheduleIfNotYetExist(
 
 	args, err := pbtypes.MarshalAny(&ScheduledSQLStatsCompactorExecutionArgs{})
 	if err != nil {
+		__antithesis_instrumentation__.Notify(624657)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(624658)
 	}
+	__antithesis_instrumentation__.Notify(624649)
 	compactionSchedule.SetExecutionDetails(
 		tree.ScheduledSQLStatsCompactionExecutor.InternalName(),
 		jobspb.ExecutionArguments{Args: args},
@@ -73,18 +77,20 @@ func CreateSQLStatsCompactionScheduleIfNotYetExist(
 
 	compactionSchedule.SetScheduleStatus(string(jobs.StatusPending))
 	if err = compactionSchedule.Create(ctx, ie, txn); err != nil {
+		__antithesis_instrumentation__.Notify(624659)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(624660)
 	}
+	__antithesis_instrumentation__.Notify(624650)
 
 	return compactionSchedule, nil
 }
 
-// CreateCompactionJob creates a system.jobs record.
-// We do not need to worry about checking if the job already exist;
-// at most 1 job semantics are enforced by scheduled jobs system.
 func CreateCompactionJob(
 	ctx context.Context, createdByInfo *jobs.CreatedByInfo, txn *kv.Txn, jobRegistry *jobs.Registry,
 ) (jobspb.JobID, error) {
+	__antithesis_instrumentation__.Notify(624661)
 	record := jobs.Record{
 		Description: "automatic SQL Stats compaction",
 		Username:    security.NodeUserName(),
@@ -95,14 +101,19 @@ func CreateCompactionJob(
 
 	jobID := jobRegistry.MakeJobID()
 	if _, err := jobRegistry.CreateAdoptableJobWithTxn(ctx, record, jobID, txn); err != nil {
+		__antithesis_instrumentation__.Notify(624663)
 		return jobspb.InvalidJobID, err
+	} else {
+		__antithesis_instrumentation__.Notify(624664)
 	}
+	__antithesis_instrumentation__.Notify(624662)
 	return jobID, nil
 }
 
 func checkExistingCompactionSchedule(
 	ctx context.Context, ie sqlutil.InternalExecutor, txn *kv.Txn,
 ) (exists bool, _ error) {
+	__antithesis_instrumentation__.Notify(624665)
 	query := "SELECT count(*) FROM system.scheduled_jobs WHERE schedule_name = $1"
 
 	row, err := ie.QueryRowEx(ctx, "check-existing-sql-stats-schedule", txn,
@@ -111,17 +122,28 @@ func checkExistingCompactionSchedule(
 	)
 
 	if err != nil {
-		return false /* exists */, err
+		__antithesis_instrumentation__.Notify(624669)
+		return false, err
+	} else {
+		__antithesis_instrumentation__.Notify(624670)
 	}
+	__antithesis_instrumentation__.Notify(624666)
 
 	if row == nil {
-		return false /* exists */, errors.AssertionFailedf("unexpected empty result when querying system.scheduled_job")
+		__antithesis_instrumentation__.Notify(624671)
+		return false, errors.AssertionFailedf("unexpected empty result when querying system.scheduled_job")
+	} else {
+		__antithesis_instrumentation__.Notify(624672)
 	}
+	__antithesis_instrumentation__.Notify(624667)
 
 	if len(row) != 1 {
-		return false /* exists */, errors.AssertionFailedf("unexpectedly received %d columns", len(row))
+		__antithesis_instrumentation__.Notify(624673)
+		return false, errors.AssertionFailedf("unexpectedly received %d columns", len(row))
+	} else {
+		__antithesis_instrumentation__.Notify(624674)
 	}
+	__antithesis_instrumentation__.Notify(624668)
 
-	// Defensively check the count.
-	return tree.MustBeDInt(row[0]) > 0, nil /* err */
+	return tree.MustBeDInt(row[0]) > 0, nil
 }

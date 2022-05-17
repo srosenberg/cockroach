@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sql
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/migration"
@@ -19,58 +11,57 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 )
 
-// FakeJobExecContext is used for mocking the JobExecContext in tests.
 type FakeJobExecContext struct {
 	JobExecContext
 	ExecutorConfig *ExecutorConfig
 }
 
-// ExecCfg implements the JobExecContext interface.
 func (p *FakeJobExecContext) ExecCfg() *ExecutorConfig {
+	__antithesis_instrumentation__.Notify(498798)
 	return p.ExecutorConfig
 }
 
-// SemaCtx implements the JobExecContext interface.
 func (p *FakeJobExecContext) SemaCtx() *tree.SemaContext {
+	__antithesis_instrumentation__.Notify(498799)
 	return nil
 }
 
-// ExtendedEvalContext implements the JobExecContext interface.
 func (p *FakeJobExecContext) ExtendedEvalContext() *extendedEvalContext {
+	__antithesis_instrumentation__.Notify(498800)
 	panic("unimplemented")
 }
 
-// SessionData implements the JobExecContext interface.
 func (p *FakeJobExecContext) SessionData() *sessiondata.SessionData {
+	__antithesis_instrumentation__.Notify(498801)
 	return nil
 }
 
-// SessionDataMutatorIterator implements the JobExecContext interface.
 func (p *FakeJobExecContext) SessionDataMutatorIterator() *sessionDataMutatorIterator {
+	__antithesis_instrumentation__.Notify(498802)
 	panic("unimplemented")
 }
 
-// DistSQLPlanner implements the JobExecContext interface.
 func (p *FakeJobExecContext) DistSQLPlanner() *DistSQLPlanner {
+	__antithesis_instrumentation__.Notify(498803)
 	panic("unimplemented")
 }
 
-// LeaseMgr implements the JobExecContext interface.
 func (p *FakeJobExecContext) LeaseMgr() *lease.Manager {
+	__antithesis_instrumentation__.Notify(498804)
 	panic("unimplemented")
 }
 
-// User implements the JobExecContext interface.
 func (p *FakeJobExecContext) User() security.SQLUsername {
+	__antithesis_instrumentation__.Notify(498805)
 	panic("unimplemented")
 }
 
-// MigrationJobDeps implements the JobExecContext interface.
 func (p *FakeJobExecContext) MigrationJobDeps() migration.JobDeps {
+	__antithesis_instrumentation__.Notify(498806)
 	panic("unimplemented")
 }
 
-// SpanConfigReconciler implements the JobExecContext interface.
 func (p *FakeJobExecContext) SpanConfigReconciler() spanconfig.Reconciler {
+	__antithesis_instrumentation__.Notify(498807)
 	panic("unimplemented")
 }

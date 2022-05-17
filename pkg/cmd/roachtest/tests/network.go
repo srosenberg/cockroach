@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package tests
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -30,65 +22,70 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/util/httputil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
-	_ "github.com/lib/pq" // register postgres driver
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
-// runNetworkSanity is just a sanity check to make sure we're setting up toxiproxy
-// correctly. It injects latency between the nodes and verifies that we're not
-// seeing the latency on the client connection running `SELECT 1` on each node.
 func runNetworkSanity(ctx context.Context, t test.Test, origC cluster.Cluster, nodes int) {
+	__antithesis_instrumentation__.Notify(49460)
 	origC.Put(ctx, t.Cockroach(), "./cockroach", origC.All())
 	c, err := Toxify(ctx, t, origC, origC.All())
 	if err != nil {
+		__antithesis_instrumentation__.Notify(49464)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(49465)
 	}
+	__antithesis_instrumentation__.Notify(49461)
 
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.All())
 
-	db := c.Conn(ctx, t.L(), 1) // unaffected by toxiproxy
+	db := c.Conn(ctx, t.L(), 1)
 	defer db.Close()
 	err = WaitFor3XReplication(ctx, t, db)
 	require.NoError(t, err)
 
-	// NB: we're generous with latency in this test because we're checking that
-	// the upstream connections aren't affected by latency below, but the fixed
-	// cost of starting the binary and processing the query is already close to
-	// 100ms.
 	const latency = 300 * time.Millisecond
 	for i := 1; i <= nodes; i++ {
-		// NB: note that these latencies only apply to connections *to* the node
-		// on which the toxic is active. That is, if n1 has a (down or upstream)
-		// latency toxic of 100ms, then none of its outbound connections are
-		// affected but any connections made to it by other nodes will.
-		// In particular, it's difficult to simulate intricate network partitions
-		// as there's no way to activate toxics only for certain peers.
+		__antithesis_instrumentation__.Notify(49466)
+
 		proxy := c.Proxy(i)
 		if _, err := proxy.AddToxic("", "latency", "downstream", 1, toxiproxy.Attributes{
-			"latency": latency / (2 * time.Millisecond), // ms
+			"latency": latency / (2 * time.Millisecond),
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(49468)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(49469)
 		}
+		__antithesis_instrumentation__.Notify(49467)
 		if _, err := proxy.AddToxic("", "latency", "upstream", 1, toxiproxy.Attributes{
-			"latency": latency / (2 * time.Millisecond), // ms
+			"latency": latency / (2 * time.Millisecond),
 		}); err != nil {
+			__antithesis_instrumentation__.Notify(49470)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(49471)
 		}
 	}
+	__antithesis_instrumentation__.Notify(49462)
 
 	m := c.Cluster.NewMonitor(ctx, c.All())
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(49472)
 		c.Measure(ctx, 1, `SET CLUSTER SETTING trace.debug.enable = true`)
 		c.Measure(ctx, 1, "CREATE DATABASE test")
 		c.Measure(ctx, 1, `CREATE TABLE test.commit (a INT, b INT, v INT, PRIMARY KEY (a, b))`)
 
 		for i := 0; i < 10; i++ {
+			__antithesis_instrumentation__.Notify(49475)
 			duration := c.Measure(ctx, 1, fmt.Sprintf(
 				"BEGIN; INSERT INTO test.commit VALUES (2, %[1]d), (1, %[1]d), (3, %[1]d); COMMIT",
 				i,
 			))
 			t.L().Printf("%s\n", duration)
 		}
+		__antithesis_instrumentation__.Notify(49473)
 
 		c.Measure(ctx, 1, `
 set tracing=on;
@@ -97,52 +94,42 @@ select age, message from [ show trace for session ];
 `)
 
 		for i := 1; i <= origC.Spec().NodeCount; i++ {
+			__antithesis_instrumentation__.Notify(49476)
 			if dur := c.Measure(ctx, i, `SELECT 1`); dur > latency {
+				__antithesis_instrumentation__.Notify(49477)
 				t.Fatalf("node %d unexpectedly affected by latency: select 1 took %.2fs", i, dur.Seconds())
+			} else {
+				__antithesis_instrumentation__.Notify(49478)
 			}
 		}
+		__antithesis_instrumentation__.Notify(49474)
 
 		return nil
 	})
+	__antithesis_instrumentation__.Notify(49463)
 
 	m.Wait()
 }
 
-// runNetworkAuthentication creates a network black hole to the leaseholder
-// of system.users, and then validates that the time required to create
-// new connections to the cluster afterwards remains under a reasonable limit.
 func runNetworkAuthentication(ctx context.Context, t test.Test, c cluster.Cluster) {
+	__antithesis_instrumentation__.Notify(49479)
 	n := c.Spec().NodeCount
 	serverNodes, clientNode := c.Range(1, n-1), c.Node(n)
 
 	c.Put(ctx, t.Cockroach(), "./cockroach", c.All())
 
 	t.L().Printf("starting nodes to initialize TLS certs...")
-	// NB: we need to start two times, because when we use
-	// c.Start() separately on nodes 1 and nodes 2-3,
-	// the logic will find the certs don't exist on node 2 and
-	// 3 will re-recreate a separate set of certs, which
-	// we don't want. Starting all nodes at once ensures
-	// that they use coherent certs.
+
 	settings := install.MakeClusterSettings(install.SecureOption(true))
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), settings, serverNodes)
 	require.NoError(t, c.StopE(ctx, t.L(), option.DefaultStopOpts(), serverNodes))
 
 	t.L().Printf("restarting nodes...")
-	// For troubleshooting the test, the engineer can add the following
-	// environment variables to make the rebalancing faster.
-	// However, they should be removed for the production version
-	// of the test, because they make the cluster recover from a failure
-	// in a way that is unrealistically fast.
-	// "--env=COCKROACH_SCAN_INTERVAL=200ms",
-	// "--env=COCKROACH_SCAN_MAX_IDLE_TIME=20ms",
+
 	startOpts := option.DefaultStartOpts()
 	startOpts.RoachprodOpts.ExtraArgs = append(startOpts.RoachprodOpts.ExtraArgs, "--locality=node=1", "--accept-sql-without-tls")
 	c.Start(ctx, t.L(), startOpts, settings, c.Node(1))
 
-	// See comment above about env vars.
-	// "--env=COCKROACH_SCAN_INTERVAL=200ms",
-	// "--env=COCKROACH_SCAN_MAX_IDLE_TIME=20ms",
 	startOpts = option.DefaultStartOpts()
 	startOpts.RoachprodOpts.ExtraArgs = append(startOpts.RoachprodOpts.ExtraArgs, "--locality=node=other", "--accept-sql-without-tls")
 	c.Start(ctx, t.L(), startOpts, settings, c.Range(2, n-1))
@@ -158,22 +145,31 @@ func runNetworkAuthentication(ctx context.Context, t test.Test, c cluster.Cluste
 	require.NoError(t, os.RemoveAll(localCertsDir))
 	require.NoError(t, c.Get(ctx, t.L(), certsDir, localCertsDir, c.Node(1)))
 	require.NoError(t, filepath.Walk(localCertsDir, func(path string, info os.FileInfo, err error) error {
-		// Don't change permissions for the certs directory.
+		__antithesis_instrumentation__.Notify(49485)
+
 		if path == localCertsDir {
+			__antithesis_instrumentation__.Notify(49488)
 			return nil
+		} else {
+			__antithesis_instrumentation__.Notify(49489)
 		}
+		__antithesis_instrumentation__.Notify(49486)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(49490)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(49491)
 		}
+		__antithesis_instrumentation__.Notify(49487)
 		return os.Chmod(path, os.FileMode(0600))
 	}))
+	__antithesis_instrumentation__.Notify(49480)
 
 	t.L().Printf("connecting to cluster from roachtest...")
 	db, err := c.ConnE(ctx, t.L(), 1)
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Wait for up-replication. This will also print a progress message.
 	err = WaitFor3XReplication(ctx, t, db)
 	require.NoError(t, err)
 
@@ -194,24 +190,32 @@ func runNetworkAuthentication(ctx context.Context, t test.Test, c cluster.Cluste
 		`RANGE default`,
 		`DATABASE system`,
 	} {
+		__antithesis_instrumentation__.Notify(49492)
 		zoneCmd := `ALTER ` + zone + ` CONFIGURE ZONE USING lease_preferences = '[[+node=` + lh + `]]', constraints = '{"+node=` + lh + `": 1}'`
 		t.L().Printf("SQL: %s", zoneCmd)
 		_, err = db.Exec(zoneCmd)
 		require.NoError(t, err)
 	}
+	__antithesis_instrumentation__.Notify(49481)
 
 	t.L().Printf("waiting for leases to move...")
 	{
+		__antithesis_instrumentation__.Notify(49493)
 		tStart := timeutil.Now()
 		for ok := false; !ok; time.Sleep(time.Second) {
+			__antithesis_instrumentation__.Notify(49494)
 			if timeutil.Since(tStart) > 30*time.Second {
+				__antithesis_instrumentation__.Notify(49496)
 				t.L().Printf("still waiting for leases to move")
-				// The leases have not moved yet, so display some progress.
+
 				dumpRangesCmd := fmt.Sprintf(`./cockroach sql --certs-dir %s -e 'TABLE crdb_internal.ranges'`, certsDir)
 				t.L().Printf("SQL: %s", dumpRangesCmd)
 				err := c.RunE(ctx, c.Node(1), dumpRangesCmd)
 				require.NoError(t, err)
+			} else {
+				__antithesis_instrumentation__.Notify(49497)
 			}
+			__antithesis_instrumentation__.Notify(49495)
 
 			const waitLeases = `
 SELECT $1::INT = ALL (
@@ -224,11 +228,10 @@ SELECT $1::INT = ALL (
 			require.NoError(t, db.QueryRow(waitLeases, expectedLeaseholder).Scan(&ok))
 		}
 	}
+	__antithesis_instrumentation__.Notify(49482)
 
 	cancelTestCtx, cancelTest := context.WithCancel(ctx)
 
-	// Channel to expedite the end of the waiting below
-	// in case an error occurs.
 	woopsCh := make(chan struct{}, len(serverNodes)-1)
 
 	m := c.NewMonitor(ctx)
@@ -236,91 +239,103 @@ SELECT $1::INT = ALL (
 	var numConns uint32
 
 	for i := 1; i <= c.Spec().NodeCount-1; i++ {
+		__antithesis_instrumentation__.Notify(49498)
 		if i == expectedLeaseholder {
+			__antithesis_instrumentation__.Notify(49500)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(49501)
 		}
+		__antithesis_instrumentation__.Notify(49499)
 
-		// Ensure that every goroutine below gets a different copy of i.
 		server := i
 
-		// Start a client loop for the server "i".
 		m.Go(func(ctx context.Context) error {
+			__antithesis_instrumentation__.Notify(49502)
 			errCount := 0
 			for attempt := 0; ; attempt++ {
+				__antithesis_instrumentation__.Notify(49503)
 				select {
 				case <-ctx.Done():
-					// The monitor has decided that this goroutine needs to go away, presumably
-					// because another goroutine encountered an error.
+					__antithesis_instrumentation__.Notify(49505)
+
 					t.L().Printf("server %d: stopping connections due to error", server)
 
-					// Expedite the wait below. This is not strictly required for correctness,
-					// and makes the test faster to terminate in case of failure.
 					woopsCh <- struct{}{}
 
-					// Stop this goroutine too.
 					return ctx.Err()
 
 				case <-cancelTestCtx.Done():
-					// The main goroutine below is instructing this client
-					// goroutine to terminate gracefully before the test terminates.
+					__antithesis_instrumentation__.Notify(49506)
+
 					t.L().Printf("server %d: stopping connections due to end of test", server)
 					return nil
 
 				case <-time.After(500 * time.Millisecond):
-					// Wait for .5 second between connection attempts.
-				}
+					__antithesis_instrumentation__.Notify(49507)
 
-				// Construct a connection URL to server i.
+				}
+				__antithesis_instrumentation__.Notify(49504)
+
 				url := fmt.Sprintf("postgres://testuser:password@%s/defaultdb?sslmode=require", serverAddrs[server-1])
 
-				// Attempt a client connection to that server.
 				t.L().Printf("server %d, attempt %d; url: %s\n", server, attempt, url)
 
 				b, err := c.RunWithDetailsSingleNode(ctx, t.L(), clientNode, "time", "-p", "./cockroach", "sql",
 					"--url", url, "--certs-dir", certsDir, "-e", "'SELECT 1'")
 
-				// Report the results of execution.
 				t.L().Printf("server %d, attempt %d, result:\n%s\n", server, attempt, b)
-				// Indicate, to the main goroutine, that we have at least one connection
-				// attempt completed.
+
 				atomic.AddUint32(&numConns, 1)
 
 				if err != nil {
+					__antithesis_instrumentation__.Notify(49508)
 					if errCount == 0 {
-						// We tolerate the first error as acceptable.
+						__antithesis_instrumentation__.Notify(49510)
+
 						t.L().Printf("server %d, attempt %d (1st ERROR, TOLERATE): %v", server, attempt, err)
 						errCount++
 						continue
+					} else {
+						__antithesis_instrumentation__.Notify(49511)
 					}
-					// Any error beyond the first is unacceptable.
+					__antithesis_instrumentation__.Notify(49509)
+
 					t.L().Printf("server %d, attempt %d (2nd ERROR, BAD): %v", server, attempt, err)
 
-					// Expedite the wait below. This is not strictly required for correctness,
-					// and makes the test faster to terminate in case of failure.
 					woopsCh <- struct{}{}
 					return err
+				} else {
+					__antithesis_instrumentation__.Notify(49512)
 				}
 			}
 		})
 	}
+	__antithesis_instrumentation__.Notify(49483)
 
-	// Main test goroutine. Run the body of the test, including the
-	// network partition, into a sub-function. This ensures that the
-	// network partition is resolved by the time the monitor finishes
-	// waiting on the servers.
 	func() {
+		__antithesis_instrumentation__.Notify(49513)
 		t.L().Printf("waiting for clients to start connecting...")
 		testutils.SucceedsSoon(t, func() error {
+			__antithesis_instrumentation__.Notify(49517)
 			select {
 			case <-woopsCh:
+				__antithesis_instrumentation__.Notify(49520)
 				t.Fatal("connection error before network partition")
 			default:
+				__antithesis_instrumentation__.Notify(49521)
 			}
+			__antithesis_instrumentation__.Notify(49518)
 			if atomic.LoadUint32(&numConns) == 0 {
+				__antithesis_instrumentation__.Notify(49522)
 				return errors.New("no connection yet")
+			} else {
+				__antithesis_instrumentation__.Notify(49523)
 			}
+			__antithesis_instrumentation__.Notify(49519)
 			return nil
 		})
+		__antithesis_instrumentation__.Notify(49514)
 
 		t.L().Printf("blocking networking on node 1...")
 		const netConfigCmd = `
@@ -340,9 +355,8 @@ sudo iptables-save
 		t.L().Printf("partitioning using iptables; config cmd:\n%s", netConfigCmd)
 		require.NoError(t, c.RunE(ctx, c.Node(expectedLeaseholder), netConfigCmd))
 
-		// (attempt to) restore iptables when test end, so that cluster
-		// can be investigated afterwards.
 		defer func() {
+			__antithesis_instrumentation__.Notify(49524)
 			const restoreNet = `
 set -e;
 sudo iptables -D INPUT -p tcp --dport 26257 -j DROP;
@@ -352,22 +366,26 @@ sudo iptables-save
 			t.L().Printf("restoring iptables; config cmd:\n%s", restoreNet)
 			require.NoError(t, c.RunE(ctx, c.Node(expectedLeaseholder), restoreNet))
 		}()
+		__antithesis_instrumentation__.Notify(49515)
 
 		t.L().Printf("waiting while clients attempt to connect...")
 		select {
 		case <-time.After(20 * time.Second):
+			__antithesis_instrumentation__.Notify(49525)
 		case <-woopsCh:
+			__antithesis_instrumentation__.Notify(49526)
 		}
+		__antithesis_instrumentation__.Notify(49516)
 
-		// Terminate all the async goroutines.
 		cancelTest()
 	}()
+	__antithesis_instrumentation__.Notify(49484)
 
-	// Test finished.
 	m.Wait()
 }
 
 func runNetworkTPCC(ctx context.Context, t test.Test, origC cluster.Cluster, nodes int) {
+	__antithesis_instrumentation__.Notify(49527)
 	n := origC.Spec().NodeCount
 	serverNodes, workerNode := origC.Range(1, n-1), origC.Node(n)
 	origC.Put(ctx, t.Cockroach(), "./cockroach", origC.All())
@@ -375,8 +393,12 @@ func runNetworkTPCC(ctx context.Context, t test.Test, origC cluster.Cluster, nod
 
 	c, err := Toxify(ctx, t, origC, serverNodes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(49533)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(49534)
 	}
+	__antithesis_instrumentation__.Notify(49528)
 
 	const warehouses = 1
 	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), serverNodes)
@@ -389,15 +411,18 @@ func runNetworkTPCC(ctx context.Context, t test.Test, origC cluster.Cluster, nod
 
 	duration := time.Hour
 	if c.IsLocal() {
-		// NB: this is really just testing the test with this duration, it won't
-		// be able to detect slow goroutine leaks.
-		duration = 5 * time.Minute
-	}
+		__antithesis_instrumentation__.Notify(49535)
 
-	// Run TPCC, but don't give it the first node (or it basically won't do anything).
+		duration = 5 * time.Minute
+	} else {
+		__antithesis_instrumentation__.Notify(49536)
+	}
+	__antithesis_instrumentation__.Notify(49529)
+
 	m := c.NewMonitor(ctx, serverNodes)
 
 	m.Go(func(ctx context.Context) error {
+		__antithesis_instrumentation__.Notify(49537)
 		t.WorkerStatus("running tpcc")
 
 		cmd := fmt.Sprintf(
@@ -407,106 +432,145 @@ func runNetworkTPCC(ctx context.Context, t test.Test, origC cluster.Cluster, nod
 			warehouses, duration, c.Spec().NodeCount-1)
 		return c.RunE(ctx, workerNode, cmd)
 	})
+	__antithesis_instrumentation__.Notify(49530)
 
 	checkGoroutines := func(ctx context.Context) int {
-		// NB: at the time of writing, the goroutine count would quickly
-		// stabilize near 230 when the network is partitioned, and around 270
-		// when it isn't. Experimentally a past "slow" goroutine leak leaked ~3
-		// goroutines every minute (though it would likely be more with the tpcc
-		// workload above), which over the duration of an hour would easily push
-		// us over the threshold.
+		__antithesis_instrumentation__.Notify(49538)
+
 		const thresh = 350
 
 		uiAddrs, err := c.ExternalAdminUIAddr(ctx, t.L(), serverNodes)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(49541)
 			t.Fatal(err)
+		} else {
+			__antithesis_instrumentation__.Notify(49542)
 		}
+		__antithesis_instrumentation__.Notify(49539)
 		var maxSeen int
-		// The goroutine dump may take a while to generate, maybe more
-		// than the 3 second timeout of the default http client.
+
 		httpClient := httputil.NewClientWithTimeout(15 * time.Second)
 		for _, addr := range uiAddrs {
+			__antithesis_instrumentation__.Notify(49543)
 			url := "http://" + addr + "/debug/pprof/goroutine?debug=2"
 			resp, err := httpClient.Get(ctx, url)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(49547)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(49548)
 			}
+			__antithesis_instrumentation__.Notify(49544)
 			content, err := ioutil.ReadAll(resp.Body)
 			resp.Body.Close()
 			if err != nil {
+				__antithesis_instrumentation__.Notify(49549)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(49550)
 			}
+			__antithesis_instrumentation__.Notify(49545)
 			numGoroutines := bytes.Count(content, []byte("goroutine "))
 			if numGoroutines >= thresh {
+				__antithesis_instrumentation__.Notify(49551)
 				t.Fatalf("%s shows %d goroutines (expected <%d)", url, numGoroutines, thresh)
+			} else {
+				__antithesis_instrumentation__.Notify(49552)
 			}
+			__antithesis_instrumentation__.Notify(49546)
 			if maxSeen < numGoroutines {
+				__antithesis_instrumentation__.Notify(49553)
 				maxSeen = numGoroutines
+			} else {
+				__antithesis_instrumentation__.Notify(49554)
 			}
 		}
+		__antithesis_instrumentation__.Notify(49540)
 		return maxSeen
 	}
+	__antithesis_instrumentation__.Notify(49531)
 
 	m.Go(func(ctx context.Context) error {
-		time.Sleep(10 * time.Second) // give tpcc a head start
-		// Give n1 a network partition from the remainder of the cluster. Note that even though it affects
-		// both the "upstream" and "downstream" directions, this is in fact an asymmetric partition since
-		// it only affects connections *to* the node. n1 itself can connect to the cluster just fine.
+		__antithesis_instrumentation__.Notify(49555)
+		time.Sleep(10 * time.Second)
+
 		proxy := c.Proxy(1)
 		t.L().Printf("letting inbound traffic to first node time out")
 		for _, direction := range []string{"upstream", "downstream"} {
+			__antithesis_instrumentation__.Notify(49557)
 			if _, err := proxy.AddToxic("", "timeout", direction, 1, toxiproxy.Attributes{
-				"timeout": 0, // forever
+				"timeout": 0,
 			}); err != nil {
+				__antithesis_instrumentation__.Notify(49558)
 				t.Fatal(err)
+			} else {
+				__antithesis_instrumentation__.Notify(49559)
 			}
 		}
+		__antithesis_instrumentation__.Notify(49556)
 
 		t.WorkerStatus("checking goroutines")
 		done := time.After(duration)
 		var maxSeen int
 		for {
+			__antithesis_instrumentation__.Notify(49560)
 			cur := checkGoroutines(ctx)
 			if maxSeen < cur {
+				__antithesis_instrumentation__.Notify(49562)
 				t.L().Printf("new goroutine peak: %d", cur)
 				maxSeen = cur
+			} else {
+				__antithesis_instrumentation__.Notify(49563)
 			}
+			__antithesis_instrumentation__.Notify(49561)
 
 			select {
 			case <-done:
+				__antithesis_instrumentation__.Notify(49564)
 				t.L().Printf("done checking goroutines, repairing network")
-				// Repair the network. Note that the TPCC workload would never
-				// finish (despite the duration) without this. In particular,
-				// we don't want to m.Wait() before we do this.
+
 				toxics, err := proxy.Toxics()
 				if err != nil {
+					__antithesis_instrumentation__.Notify(49569)
 					t.Fatal(err)
+				} else {
+					__antithesis_instrumentation__.Notify(49570)
 				}
+				__antithesis_instrumentation__.Notify(49565)
 				for _, toxic := range toxics {
+					__antithesis_instrumentation__.Notify(49571)
 					if err := proxy.RemoveToxic(toxic.Name); err != nil {
+						__antithesis_instrumentation__.Notify(49572)
 						t.Fatal(err)
+					} else {
+						__antithesis_instrumentation__.Notify(49573)
 					}
 				}
+				__antithesis_instrumentation__.Notify(49566)
 				t.L().Printf("network is repaired")
 
-				// Verify that goroutine count doesn't spike.
 				for i := 0; i < 20; i++ {
+					__antithesis_instrumentation__.Notify(49574)
 					nowGoroutines := checkGoroutines(ctx)
 					t.L().Printf("currently at most %d goroutines per node", nowGoroutines)
 					time.Sleep(time.Second)
 				}
+				__antithesis_instrumentation__.Notify(49567)
 
 				return nil
 			default:
+				__antithesis_instrumentation__.Notify(49568)
 				time.Sleep(3 * time.Second)
 			}
 		}
 	})
+	__antithesis_instrumentation__.Notify(49532)
 
 	m.Wait()
 }
 
 func registerNetwork(r registry.Registry) {
+	__antithesis_instrumentation__.Notify(49575)
 	const numNodes = 4
 
 	r.Add(registry.TestSpec{
@@ -515,17 +579,21 @@ func registerNetwork(r registry.Registry) {
 		Cluster: r.MakeClusterSpec(numNodes),
 		Skip:    "deleted in 22.2",
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(49578)
 			runNetworkSanity(ctx, t, c, numNodes)
 		},
 	})
+	__antithesis_instrumentation__.Notify(49576)
 	r.Add(registry.TestSpec{
 		Name:    fmt.Sprintf("network/authentication/nodes=%d", numNodes),
 		Owner:   registry.OwnerServer,
 		Cluster: r.MakeClusterSpec(numNodes),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(49579)
 			runNetworkAuthentication(ctx, t, c)
 		},
 	})
+	__antithesis_instrumentation__.Notify(49577)
 	r.Add(registry.TestSpec{
 		Name:    fmt.Sprintf("network/tpcc/nodes=%d", numNodes),
 		Owner:   registry.OwnerKV,
@@ -553,6 +621,7 @@ command to resolve the partition should not be sensitive to the test
 context's Done() channel, because during a tear-down that is closed already)
 `,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			__antithesis_instrumentation__.Notify(49580)
 			runNetworkTPCC(ctx, t, c, numNodes)
 		},
 	})

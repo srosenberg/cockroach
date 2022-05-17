@@ -1,14 +1,8 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 // Package kvfollowerreadsccl implements and injects the functionality needed to
 // expose follower reads to clients.
 package kvfollowerreadsccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -31,9 +25,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 )
 
-// ClosedTimestampPropagationSlack is used by follower_read_timestamp() as a
-// measure of how long closed timestamp updates are supposed to take from the
-// leaseholder to the followers.
 var ClosedTimestampPropagationSlack = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"kv.closed_timestamp.propagation_slack",
@@ -44,91 +35,91 @@ var ClosedTimestampPropagationSlack = settings.RegisterDurationSetting(
 	settings.NonNegativeDuration,
 )
 
-// getFollowerReadLag returns the (negative) offset duration from hlc.Now()
-// which should be used to request a follower read. The same value is used to
-// determine at the kv layer if a query can use a follower read for ranges with
-// the default LAG_BY_CLUSTER_SETTING closed timestamp policy.
 func getFollowerReadLag(st *cluster.Settings) time.Duration {
+	__antithesis_instrumentation__.Notify(19610)
 	targetDuration := closedts.TargetDuration.Get(&st.SV)
 	sideTransportInterval := closedts.SideTransportCloseInterval.Get(&st.SV)
 	slack := ClosedTimestampPropagationSlack.Get(&st.SV)
-	// Zero targetDuration means follower reads are disabled.
+
 	if targetDuration == 0 {
-		// Returning an infinitely large negative value would push safe
-		// request timestamp into the distant past thus disabling follower reads.
+		__antithesis_instrumentation__.Notify(19612)
+
 		return math.MinInt64
+	} else {
+		__antithesis_instrumentation__.Notify(19613)
 	}
+	__antithesis_instrumentation__.Notify(19611)
 	return -targetDuration - sideTransportInterval - slack
 }
 
-// getGlobalReadsLead returns the (positive) offset duration from hlc.Now()
-// which clients can expect followers of a range with the LEAD_FOR_GLOBAL_READS
-// closed timestamp policy to have closed off. This offset is equal to the
-// maximum clock offset, allowing present-time (i.e. those not pushed into the
-// future) transactions to serve reads from followers.
 func getGlobalReadsLead(clock *hlc.Clock) time.Duration {
+	__antithesis_instrumentation__.Notify(19614)
 	return clock.MaxOffset()
 }
 
-// checkEnterpriseEnabled checks whether the enterprise feature for follower
-// reads is enabled, returning a detailed error if not. It is not suitable for
-// use in hot paths since a new error may be instantiated on each call.
 func checkEnterpriseEnabled(logicalClusterID uuid.UUID, st *cluster.Settings) error {
+	__antithesis_instrumentation__.Notify(19615)
 	org := sql.ClusterOrganization.Get(&st.SV)
 	return utilccl.CheckEnterpriseEnabled(st, logicalClusterID, org, "follower reads")
 }
 
-// isEnterpriseEnabled is faster than checkEnterpriseEnabled, and suitable
-// for hot paths.
 func isEnterpriseEnabled(logicalClusterID uuid.UUID, st *cluster.Settings) bool {
+	__antithesis_instrumentation__.Notify(19616)
 	org := sql.ClusterOrganization.Get(&st.SV)
 	return utilccl.IsEnterpriseEnabled(st, logicalClusterID, org, "follower reads")
 }
 
 func checkFollowerReadsEnabled(logicalClusterID uuid.UUID, st *cluster.Settings) bool {
+	__antithesis_instrumentation__.Notify(19617)
 	if !kvserver.FollowerReadsEnabled.Get(&st.SV) {
+		__antithesis_instrumentation__.Notify(19619)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(19620)
 	}
+	__antithesis_instrumentation__.Notify(19618)
 	return isEnterpriseEnabled(logicalClusterID, st)
 }
 
 func evalFollowerReadOffset(
 	logicalClusterID uuid.UUID, st *cluster.Settings,
 ) (time.Duration, error) {
+	__antithesis_instrumentation__.Notify(19621)
 	if err := checkEnterpriseEnabled(logicalClusterID, st); err != nil {
+		__antithesis_instrumentation__.Notify(19623)
 		return 0, err
+	} else {
+		__antithesis_instrumentation__.Notify(19624)
 	}
-	// NOTE: we assume that at least some of the ranges being queried use a
-	// LAG_BY_CLUSTER_SETTING closed timestamp policy. Otherwise, there would
-	// be no reason to use AS OF SYSTEM TIME follower_read_timestamp().
+	__antithesis_instrumentation__.Notify(19622)
+
 	return getFollowerReadLag(st), nil
 }
 
-// closedTimestampLikelySufficient determines if a request with a given required
-// frontier timestamp is likely to be below a follower's closed timestamp and
-// serviceable as a follower read were the request to be sent to a follower
-// replica.
 func closedTimestampLikelySufficient(
 	st *cluster.Settings,
 	clock *hlc.Clock,
 	ctPolicy roachpb.RangeClosedTimestampPolicy,
 	requiredFrontierTS hlc.Timestamp,
 ) bool {
+	__antithesis_instrumentation__.Notify(19625)
 	var offset time.Duration
 	switch ctPolicy {
 	case roachpb.LAG_BY_CLUSTER_SETTING:
+		__antithesis_instrumentation__.Notify(19627)
 		offset = getFollowerReadLag(st)
 	case roachpb.LEAD_FOR_GLOBAL_READS:
+		__antithesis_instrumentation__.Notify(19628)
 		offset = getGlobalReadsLead(clock)
 	default:
+		__antithesis_instrumentation__.Notify(19629)
 		panic("unknown RangeClosedTimestampPolicy")
 	}
+	__antithesis_instrumentation__.Notify(19626)
 	expectedClosedTS := clock.Now().Add(offset.Nanoseconds(), 0)
 	return requiredFrontierTS.LessEq(expectedClosedTS)
 }
 
-// canSendToFollower implements the logic for checking whether a batch request
-// may be sent to a follower.
 func canSendToFollower(
 	logicalClusterID uuid.UUID,
 	st *cluster.Settings,
@@ -136,10 +127,14 @@ func canSendToFollower(
 	ctPolicy roachpb.RangeClosedTimestampPolicy,
 	ba roachpb.BatchRequest,
 ) bool {
-	return kvserver.BatchCanBeEvaluatedOnFollower(ba) &&
-		closedTimestampLikelySufficient(st, clock, ctPolicy, ba.RequiredFrontier()) &&
-		// NOTE: this call can be expensive, so perform it last. See #62447.
-		checkFollowerReadsEnabled(logicalClusterID, st)
+	__antithesis_instrumentation__.Notify(19630)
+	return kvserver.BatchCanBeEvaluatedOnFollower(ba) && func() bool {
+		__antithesis_instrumentation__.Notify(19631)
+		return closedTimestampLikelySufficient(st, clock, ctPolicy, ba.RequiredFrontier()) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(19632)
+		return checkFollowerReadsEnabled(logicalClusterID, st) == true
+	}() == true
 }
 
 type followerReadOracle struct {
@@ -152,6 +147,7 @@ type followerReadOracle struct {
 }
 
 func newFollowerReadOracle(cfg replicaoracle.Config) replicaoracle.Oracle {
+	__antithesis_instrumentation__.Notify(19633)
 	return &followerReadOracle{
 		logicalClusterID: cfg.RPCContext.LogicalClusterID,
 		st:               cfg.Settings,
@@ -169,39 +165,33 @@ func (o *followerReadOracle) ChoosePreferredReplica(
 	ctPolicy roachpb.RangeClosedTimestampPolicy,
 	queryState replicaoracle.QueryState,
 ) (roachpb.ReplicaDescriptor, error) {
+	__antithesis_instrumentation__.Notify(19634)
 	var oracle replicaoracle.Oracle
 	if o.useClosestOracle(txn, ctPolicy) {
+		__antithesis_instrumentation__.Notify(19636)
 		oracle = o.closest
 	} else {
+		__antithesis_instrumentation__.Notify(19637)
 		oracle = o.binPacking
 	}
+	__antithesis_instrumentation__.Notify(19635)
 	return oracle.ChoosePreferredReplica(ctx, txn, desc, leaseholder, ctPolicy, queryState)
 }
 
 func (o *followerReadOracle) useClosestOracle(
 	txn *kv.Txn, ctPolicy roachpb.RangeClosedTimestampPolicy,
 ) bool {
-	// NOTE: this logic is almost identical to canSendToFollower, except that it
-	// operates on a *kv.Txn instead of a roachpb.BatchRequest. As a result, the
-	// function does not check batchCanBeEvaluatedOnFollower. This is because we
-	// assume that if a request is going to be executed in a distributed DistSQL
-	// flow (which is why it is consulting a replicaoracle.Oracle), then all of
-	// the individual BatchRequests that it send will be eligible to be served
-	// on follower replicas as follower reads.
-	//
-	// If we were to get this assumption wrong, the flow might be planned on a
-	// node with a follower replica, but individual BatchRequests would still be
-	// sent to the correct replicas once canSendToFollower is checked for each
-	// BatchRequests in the DistSender. This would hurt performance, but would
-	// not violate correctness.
-	return txn != nil &&
-		closedTimestampLikelySufficient(o.st, o.clock, ctPolicy, txn.RequiredFrontier()) &&
-		// NOTE: this call can be expensive, so perform it last. See #62447.
-		checkFollowerReadsEnabled(o.logicalClusterID.Get(), o.st)
+	__antithesis_instrumentation__.Notify(19638)
+
+	return txn != nil && func() bool {
+		__antithesis_instrumentation__.Notify(19639)
+		return closedTimestampLikelySufficient(o.st, o.clock, ctPolicy, txn.RequiredFrontier()) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(19640)
+		return checkFollowerReadsEnabled(o.logicalClusterID.Get(), o.st) == true
+	}() == true
 }
 
-// followerReadOraclePolicy is a leaseholder choosing policy that detects
-// whether a query can be used with a follower read.
 var followerReadOraclePolicy = replicaoracle.RegisterPolicy(newFollowerReadOracle)
 
 func init() {

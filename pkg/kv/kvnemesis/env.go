@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvnemesis
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,64 +14,72 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Env manipulates the environment (cluster settings, zone configurations) that
-// the Applier operates in.
 type Env struct {
 	sqlDBs []*gosql.DB
 }
 
 func (e *Env) anyNode() *gosql.DB {
-	// NOTE: There is currently no need to round-robin through the sql gateways,
-	// so we always just return the first DB.
+	__antithesis_instrumentation__.Notify(90246)
+
 	return e.sqlDBs[0]
 }
 
-// SetClosedTimestampInterval sets the kv.closed_timestamp.target_duration
-// cluster setting to the provided duration.
 func (e *Env) SetClosedTimestampInterval(ctx context.Context, d time.Duration) error {
+	__antithesis_instrumentation__.Notify(90247)
 	q := fmt.Sprintf(`SET CLUSTER SETTING kv.closed_timestamp.target_duration = '%s'`, d)
 	_, err := e.anyNode().ExecContext(ctx, q)
 	return err
 }
 
-// ResetClosedTimestampInterval resets the kv.closed_timestamp.target_duration
-// cluster setting to its default value.
 func (e *Env) ResetClosedTimestampInterval(ctx context.Context) error {
+	__antithesis_instrumentation__.Notify(90248)
 	const q = `SET CLUSTER SETTING kv.closed_timestamp.target_duration TO DEFAULT`
 	_, err := e.anyNode().ExecContext(ctx, q)
 	return err
 }
 
-// UpdateZoneConfig updates the zone configuration with the provided ID using
-// the provided function. If no such zone exists, a new one is created.
 func (e *Env) UpdateZoneConfig(
 	ctx context.Context, zoneID int, updateZone func(*zonepb.ZoneConfig),
 ) error {
+	__antithesis_instrumentation__.Notify(90249)
 	return crdb.ExecuteTx(ctx, e.anyNode(), nil, func(tx *gosql.Tx) error {
-		// Read existing zone configuration.
+		__antithesis_instrumentation__.Notify(90250)
+
 		var zone zonepb.ZoneConfig
 		var zoneRaw []byte
 		const q1 = `SELECT config FROM system.zones WHERE id = $1`
 		if err := tx.QueryRowContext(ctx, q1, zoneID).Scan(&zoneRaw); err != nil {
+			__antithesis_instrumentation__.Notify(90253)
 			if !errors.Is(err, gosql.ErrNoRows) {
+				__antithesis_instrumentation__.Notify(90255)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(90256)
 			}
-			// Zone does not exist. Create it.
+			__antithesis_instrumentation__.Notify(90254)
+
 			zone = zonepb.DefaultZoneConfig()
 		} else {
+			__antithesis_instrumentation__.Notify(90257)
 			if err := protoutil.Unmarshal(zoneRaw, &zone); err != nil {
+				__antithesis_instrumentation__.Notify(90258)
 				return errors.Wrap(err, "unmarshaling existing zone")
+			} else {
+				__antithesis_instrumentation__.Notify(90259)
 			}
 		}
+		__antithesis_instrumentation__.Notify(90251)
 
-		// Update zone configuration proto.
 		updateZone(&zone)
 		zoneRaw, err := protoutil.Marshal(&zone)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(90260)
 			return errors.Wrap(err, "marshaling new zone")
+		} else {
+			__antithesis_instrumentation__.Notify(90261)
 		}
+		__antithesis_instrumentation__.Notify(90252)
 
-		// Rewrite updated zone configuration.
 		const q2 = `UPSERT INTO system.zones (id, config) VALUES ($1, $2)`
 		_, err = tx.ExecContext(ctx, q2, zoneID, zoneRaw)
 		return err

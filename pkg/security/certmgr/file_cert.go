@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package certmgr
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -19,10 +11,8 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Ensure that FileCert implements Cert.
 var _ Cert = (*FileCert)(nil)
 
-// FileCert represents a single cert loaded from cert/key file pair.
 type FileCert struct {
 	syncutil.Mutex
 	certFile string
@@ -31,62 +21,75 @@ type FileCert struct {
 	cert     *tls.Certificate
 }
 
-// NewFileCert will construct a new file cert but it will not try to load it.
-// A follow up Reload is needed to read, parse and verify the actual cert/key files.
 func NewFileCert(certFile, keyFile string) *FileCert {
+	__antithesis_instrumentation__.Notify(186369)
 	return &FileCert{
 		certFile: certFile,
 		keyFile:  keyFile,
 	}
 }
 
-// Reload the certificate from files.
 func (fc *FileCert) Reload(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(186370)
 	fc.Lock()
 	defer fc.Unlock()
 
-	// There was a previous error that is not yet retrieved.
 	if fc.err != nil {
+		__antithesis_instrumentation__.Notify(186375)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(186376)
 	}
+	__antithesis_instrumentation__.Notify(186371)
 
 	certBytes, err := ioutil.ReadFile(fc.certFile)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186377)
 		fc.err = errors.Wrapf(err, "could not reload cert file %s", fc.certFile)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(186378)
 	}
+	__antithesis_instrumentation__.Notify(186372)
 
 	keyBytes, err := ioutil.ReadFile(fc.keyFile)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186379)
 		fc.err = errors.Wrapf(err, "could not reload cert key file %s", fc.keyFile)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(186380)
 	}
+	__antithesis_instrumentation__.Notify(186373)
 
 	cert, err := tls.X509KeyPair(certBytes, keyBytes)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(186381)
 		fc.err = errors.Wrapf(err, "could not construct cert from cert %s and key %s", fc.certFile, fc.keyFile)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(186382)
 	}
+	__antithesis_instrumentation__.Notify(186374)
 
 	fc.cert = &cert
 }
 
-// Err will return the last error that occurred during reload or nil if the
-// last reload was successful.
 func (fc *FileCert) Err() error {
+	__antithesis_instrumentation__.Notify(186383)
 	fc.Lock()
 	defer fc.Unlock()
 	return fc.err
 }
 
-// ClearErr will clear the last err so the follow up Reload can execute.
 func (fc *FileCert) ClearErr() {
+	__antithesis_instrumentation__.Notify(186384)
 	fc.Lock()
 	defer fc.Unlock()
 	fc.err = nil
 }
 
-// TLSCert returns the tls certificate if the load was successful.
 func (fc *FileCert) TLSCert() *tls.Certificate {
+	__antithesis_instrumentation__.Notify(186385)
 	return fc.cert
 }

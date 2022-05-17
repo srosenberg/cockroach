@@ -1,12 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package backupccl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,140 +17,176 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// The default subdirectory for incremental backups.
 const (
 	DefaultIncrementalsSubdir = "incrementals"
 	incBackupSubdirGlob       = "/[0-9]*/[0-9]*.[0-9][0-9]/"
 
-	// listingDelimDataSlash is used when listing to find backups and groups all the
-	// data sst files in each backup, which start with "data/", into a single result
-	// that can be skipped over quickly.
 	listingDelimDataSlash = "data/"
 
 	URLSeparator = '/'
 )
 
-// backupSubdirRE identifies the portion of a larger path that refers to the full backup subdirectory.
 var backupSubdirRE = regexp.MustCompile(`(.*)/([0-9]{4}/[0-9]{2}/[0-9]{2}-[0-9]{6}.[0-9]{2}/?)$`)
 
-// CollectionAndSubdir breaks up a path into those components, if applicable.
-// "Specific" commands, like BACKUP INTO and RESTORE FROM, don't need this.
-// "Vague" commands, like SHOW BACKUP and debug backup, sometimes do.
 func CollectionAndSubdir(path string, subdir string) (string, string) {
+	__antithesis_instrumentation__.Notify(9686)
 	if subdir != "" {
+		__antithesis_instrumentation__.Notify(9689)
 		return path, subdir
+	} else {
+		__antithesis_instrumentation__.Notify(9690)
 	}
+	__antithesis_instrumentation__.Notify(9687)
 
-	// Split out the backup name from the base directory so we can search the
-	// default "incrementals" subdirectory.
 	matchResult := backupSubdirRE.FindStringSubmatch(path)
 	if matchResult == nil {
+		__antithesis_instrumentation__.Notify(9691)
 		return path, subdir
+	} else {
+		__antithesis_instrumentation__.Notify(9692)
 	}
+	__antithesis_instrumentation__.Notify(9688)
 	return matchResult[1], matchResult[2]
 }
 
-// FindPriorBackups finds "appended" incremental backups by searching
-// for the subdirectories matching the naming pattern (e.g. YYMMDD/HHmmss.ss).
-// If includeManifest is true the returned paths are to the manifests for the
-// prior backup, otherwise it is just to the backup path.
 func FindPriorBackups(
 	ctx context.Context, store cloud.ExternalStorage, includeManifest bool,
 ) ([]string, error) {
+	__antithesis_instrumentation__.Notify(9693)
 	var prev []string
 	if err := store.List(ctx, "", listingDelimDataSlash, func(p string) error {
+		__antithesis_instrumentation__.Notify(9695)
 		if ok, err := path.Match(incBackupSubdirGlob+backupManifestName, p); err != nil {
+			__antithesis_instrumentation__.Notify(9698)
 			return err
-		} else if ok {
-			if !includeManifest {
-				p = strings.TrimSuffix(p, "/"+backupManifestName)
+		} else {
+			__antithesis_instrumentation__.Notify(9699)
+			if ok {
+				__antithesis_instrumentation__.Notify(9700)
+				if !includeManifest {
+					__antithesis_instrumentation__.Notify(9702)
+					p = strings.TrimSuffix(p, "/"+backupManifestName)
+				} else {
+					__antithesis_instrumentation__.Notify(9703)
+				}
+				__antithesis_instrumentation__.Notify(9701)
+				prev = append(prev, p)
+				return nil
+			} else {
+				__antithesis_instrumentation__.Notify(9704)
 			}
-			prev = append(prev, p)
-			return nil
 		}
+		__antithesis_instrumentation__.Notify(9696)
 		if ok, err := path.Match(incBackupSubdirGlob+backupOldManifestName, p); err != nil {
+			__antithesis_instrumentation__.Notify(9705)
 			return err
-		} else if ok {
-			if !includeManifest {
-				p = strings.TrimSuffix(p, "/"+backupOldManifestName)
+		} else {
+			__antithesis_instrumentation__.Notify(9706)
+			if ok {
+				__antithesis_instrumentation__.Notify(9707)
+				if !includeManifest {
+					__antithesis_instrumentation__.Notify(9709)
+					p = strings.TrimSuffix(p, "/"+backupOldManifestName)
+				} else {
+					__antithesis_instrumentation__.Notify(9710)
+				}
+				__antithesis_instrumentation__.Notify(9708)
+				prev = append(prev, p)
+			} else {
+				__antithesis_instrumentation__.Notify(9711)
 			}
-			prev = append(prev, p)
 		}
+		__antithesis_instrumentation__.Notify(9697)
 		return nil
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(9712)
 		return nil, errors.Wrap(err, "reading previous backup layers")
+	} else {
+		__antithesis_instrumentation__.Notify(9713)
 	}
+	__antithesis_instrumentation__.Notify(9694)
 	sort.Strings(prev)
 	return prev, nil
 }
 
 func appendPaths(uris []string, tailDir ...string) ([]string, error) {
+	__antithesis_instrumentation__.Notify(9714)
 	retval := make([]string, len(uris))
 	for i, uri := range uris {
+		__antithesis_instrumentation__.Notify(9716)
 		parsed, err := url.Parse(uri)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(9718)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(9719)
 		}
+		__antithesis_instrumentation__.Notify(9717)
 		joinArgs := append([]string{parsed.Path}, tailDir...)
 		parsed.Path = JoinURLPath(joinArgs...)
 		retval[i] = parsed.String()
 	}
+	__antithesis_instrumentation__.Notify(9715)
 	return retval, nil
 }
 
-// JoinURLPath forces a relative path join by removing any leading slash, then
-// re-prepending it later.
-//
-// Stores are an odd combination of absolute and relative path.
-// They present as absolute paths, since they contain a hostname. URL.Parse
-// thus prepends each URL.Path with a leading slash.
-// But some schemes, e.g. nodelocal, can legally travel _above_ the ostensible
-// root (e.g. nodelocal://0/.../). This is not typically possible in file
-// paths, and the standard path package doesn't like it. Specifically, it will
-// clean up something like nodelocal://0/../ to nodelocal://0. This is normally
-// correct behavior, but is wrong here.
-//
-// In point of fact we block this URLs resolved this way elsewhere. But we
-// still want to make sure to resolve the paths correctly here. We don't want
-// to accidentally correct an unauthorized file path to an authorized one, then
-// write a backup to an unexpected place or print the wrong error message on
-// a restore.
 func JoinURLPath(args ...string) string {
+	__antithesis_instrumentation__.Notify(9720)
 	argsCopy := make([]string, 0)
 	for _, arg := range args {
+		__antithesis_instrumentation__.Notify(9725)
 		if len(arg) == 0 {
+			__antithesis_instrumentation__.Notify(9727)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(9728)
 		}
-		// We only want non-empty tokens.
+		__antithesis_instrumentation__.Notify(9726)
+
 		argsCopy = append(argsCopy, arg)
 	}
+	__antithesis_instrumentation__.Notify(9721)
 	if len(argsCopy) == 0 {
+		__antithesis_instrumentation__.Notify(9729)
 		return path.Join(argsCopy...)
+	} else {
+		__antithesis_instrumentation__.Notify(9730)
 	}
+	__antithesis_instrumentation__.Notify(9722)
 
-	// We have at least 1 arg, and each has at least length 1.
 	isAbs := false
 	if argsCopy[0][0] == URLSeparator {
+		__antithesis_instrumentation__.Notify(9731)
 		isAbs = true
 		argsCopy[0] = argsCopy[0][1:]
+	} else {
+		__antithesis_instrumentation__.Notify(9732)
 	}
+	__antithesis_instrumentation__.Notify(9723)
 	joined := path.Join(argsCopy...)
 	if isAbs {
+		__antithesis_instrumentation__.Notify(9733)
 		joined = string(URLSeparator) + joined
+	} else {
+		__antithesis_instrumentation__.Notify(9734)
 	}
+	__antithesis_instrumentation__.Notify(9724)
 	return joined
 }
 
-// backupsFromLocation is a small helper function to retrieve all prior
-// backups from the specified location.
 func backupsFromLocation(
 	ctx context.Context, user security.SQLUsername, execCfg *sql.ExecutorConfig, loc string,
 ) ([]string, error) {
+	__antithesis_instrumentation__.Notify(9735)
 	mkStore := execCfg.DistSQLSrv.ExternalStorageFromURI
 	store, err := mkStore(ctx, loc, user)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(9737)
 		return nil, errors.Wrapf(err, "failed to open backup storage location")
+	} else {
+		__antithesis_instrumentation__.Notify(9738)
 	}
+	__antithesis_instrumentation__.Notify(9736)
 	defer store.Close()
 	prev, err := FindPriorBackups(ctx, store, false)
 	return prev, err
@@ -170,63 +200,91 @@ func resolveIncrementalsBackupLocation(
 	fullBackupCollections []string,
 	subdir string,
 ) ([]string, error) {
+	__antithesis_instrumentation__.Notify(9739)
 	if len(explicitIncrementalCollections) > 0 {
+		__antithesis_instrumentation__.Notify(9747)
 		incPaths, err := appendPaths(explicitIncrementalCollections, subdir)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(9750)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(9751)
 		}
+		__antithesis_instrumentation__.Notify(9748)
 
-		// Check we can read from this location, though we don't need the backups here.
-		// If we can't read, we want to throw the appropriate error so the caller
-		// knows this isn't a usable incrementals store.
-		// Some callers will abort, e.g. BACKUP. Others will proceed with a
-		// warning, e.g. SHOW and RESTORE.
 		_, err = backupsFromLocation(ctx, user, execCfg, incPaths[0])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(9752)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(9753)
 		}
+		__antithesis_instrumentation__.Notify(9749)
 		return incPaths, nil
+	} else {
+		__antithesis_instrumentation__.Notify(9754)
 	}
+	__antithesis_instrumentation__.Notify(9740)
 
 	resolvedIncrementalsBackupLocationOld, err := appendPaths(fullBackupCollections, subdir)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(9755)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(9756)
 	}
+	__antithesis_instrumentation__.Notify(9741)
 
-	// We can have >1 full backup collection specified, but each will have an
-	// incremental layer iff all of them do. So it suffices to check only the
-	// first.
-	// Check we can read from this location, though we don't need the backups here.
 	prevOld, err := backupsFromLocation(ctx, user, execCfg, resolvedIncrementalsBackupLocationOld[0])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(9757)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(9758)
 	}
+	__antithesis_instrumentation__.Notify(9742)
 
 	resolvedIncrementalsBackupLocation, err := appendPaths(fullBackupCollections, DefaultIncrementalsSubdir, subdir)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(9759)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(9760)
 	}
+	__antithesis_instrumentation__.Notify(9743)
 
 	prev, err := backupsFromLocation(ctx, user, execCfg, resolvedIncrementalsBackupLocation[0])
 	if err != nil {
+		__antithesis_instrumentation__.Notify(9761)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(9762)
 	}
+	__antithesis_instrumentation__.Notify(9744)
 
-	// TODO(bardin): This algorithm divides "destination resolution" and "actual backup lookup" for historical reasons,
-	// but this doesn't quite make sense now that destination resolution depends on backup lookup.
-	// Try to figure out a clearer way to organize this.
-	if len(prevOld) > 0 && len(prev) > 0 {
+	if len(prevOld) > 0 && func() bool {
+		__antithesis_instrumentation__.Notify(9763)
+		return len(prev) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(9764)
 		return nil, errors.New(
 			"Incremental layers found in both old and new default locations. " +
 				"Please choose a location manually with the `incremental_location` parameter.")
+	} else {
+		__antithesis_instrumentation__.Notify(9765)
 	}
+	__antithesis_instrumentation__.Notify(9745)
 
-	// If the cluster isn't fully migrated, or we have backups in the old default
-	// location, continue to use the old location.
-	if len(prevOld) > 0 || !execCfg.Settings.Version.IsActive(ctx, clusterversion.IncrementalBackupSubdir) {
+	if len(prevOld) > 0 || func() bool {
+		__antithesis_instrumentation__.Notify(9766)
+		return !execCfg.Settings.Version.IsActive(ctx, clusterversion.IncrementalBackupSubdir) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(9767)
 		return resolvedIncrementalsBackupLocationOld, nil
+	} else {
+		__antithesis_instrumentation__.Notify(9768)
 	}
+	__antithesis_instrumentation__.Notify(9746)
 
-	// Otherwise, use the new location.
 	return resolvedIncrementalsBackupLocation, nil
 }

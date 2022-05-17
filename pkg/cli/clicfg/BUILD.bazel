@@ -9,4 +9,5 @@ go_library(
     ],
     importpath = "github.com/cockroachdb/cockroach/pkg/cli/clicfg",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

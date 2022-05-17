@@ -1,23 +1,14 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package sqlutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
 	"testing"
 )
 
-// QueryDatabaseID returns the database ID of the specified database using the
-// system.namespace table.
 func QueryDatabaseID(t testing.TB, sqlDB DBHandle, dbName string) uint32 {
+	__antithesis_instrumentation__.Notify(646363)
 	dbIDQuery := `
 		SELECT id FROM system.namespace
 		WHERE name = $1 AND "parentSchemaID" = 0 AND "parentID" = 0
@@ -25,14 +16,17 @@ func QueryDatabaseID(t testing.TB, sqlDB DBHandle, dbName string) uint32 {
 	var dbID uint32
 	result := sqlDB.QueryRowContext(context.Background(), dbIDQuery, dbName)
 	if err := result.Scan(&dbID); err != nil {
+		__antithesis_instrumentation__.Notify(646365)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(646366)
 	}
+	__antithesis_instrumentation__.Notify(646364)
 	return dbID
 }
 
-// QuerySchemaID returns the schema ID of the specified database.schema
-// using the system.namespace table.
 func QuerySchemaID(t testing.TB, sqlDB DBHandle, dbName, schemaName string) uint32 {
+	__antithesis_instrumentation__.Notify(646367)
 	tableIDQuery := `
  SELECT schemas.id FROM system.namespace schemas
    JOIN system.namespace dbs ON dbs.id = schemas."parentID"
@@ -45,16 +39,19 @@ func QuerySchemaID(t testing.TB, sqlDB DBHandle, dbName, schemaName string) uint
 		schemaName,
 	)
 	if err := result.Scan(&schemaID); err != nil {
+		__antithesis_instrumentation__.Notify(646369)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(646370)
 	}
+	__antithesis_instrumentation__.Notify(646368)
 	return schemaID
 }
 
-// QueryTableID returns the table ID of the specified database.table
-// using the system.namespace table.
 func QueryTableID(
 	t testing.TB, sqlDB DBHandle, dbName, schemaName string, tableName string,
 ) uint32 {
+	__antithesis_instrumentation__.Notify(646371)
 	tableIDQuery := `
  SELECT tables.id FROM system.namespace tables
    JOIN system.namespace dbs ON dbs.id = tables."parentID"
@@ -69,7 +66,11 @@ func QueryTableID(
 		tableName,
 	)
 	if err := result.Scan(&tableID); err != nil {
+		__antithesis_instrumentation__.Notify(646373)
 		t.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(646374)
 	}
+	__antithesis_instrumentation__.Notify(646372)
 	return tableID
 }

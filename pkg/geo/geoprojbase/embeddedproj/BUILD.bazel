@@ -5,4 +5,5 @@ go_library(
     srcs = ["embedded_proj.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/geo/geoprojbase/embeddedproj",
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

@@ -22,5 +22,6 @@ go_library(
         "//pkg/ccl/streamingccl/streamproducer",
         "//pkg/ccl/utilccl",
         "//pkg/ccl/workloadccl",
+        "@com_antithesis_instrumentation//wrappers",
     ],
 )

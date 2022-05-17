@@ -1,15 +1,6 @@
-// Copyright 2020 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
-// Package geoproj contains functions that interface with the PROJ library.
 package geoproj
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 // #cgo CXXFLAGS: -std=c++14
 // #cgo CPPFLAGS: -I../../../c-deps/proj/src
@@ -29,21 +20,23 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 )
 
-// maxArrayLen is the maximum safe length for this architecture.
 const maxArrayLen = 1<<31 - 1
 
 func cStatusToUnsafeGoBytes(s C.CR_PROJ_Status) []byte {
+	__antithesis_instrumentation__.Notify(64028)
 	if s.data == nil {
+		__antithesis_instrumentation__.Notify(64030)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(64031)
 	}
-	// Interpret the C pointer as a pointer to a Go array, then slice.
+	__antithesis_instrumentation__.Notify(64029)
+
 	return (*[maxArrayLen]byte)(unsafe.Pointer(s.data))[:s.len:s.len]
 }
 
-// GetProjMetadata returns metadata about the given projection.
-// The return arguments are a bool representing whether it is a latlng, a spheroid
-// object and an error if anything was erroneous was found.
 func GetProjMetadata(b geoprojbase.Proj4Text) (bool, *geographiclib.Spheroid, error) {
+	__antithesis_instrumentation__.Notify(64032)
 	var majorAxis, eccentricitySquared C.double
 	var isLatLng C.int
 	if err := cStatusToUnsafeGoBytes(
@@ -54,18 +47,17 @@ func GetProjMetadata(b geoprojbase.Proj4Text) (bool, *geographiclib.Spheroid, er
 			(*C.double)(unsafe.Pointer(&eccentricitySquared)),
 		),
 	); err != nil {
+		__antithesis_instrumentation__.Notify(64034)
 		return false, nil, pgerror.Newf(pgcode.InvalidParameterValue, "error from PROJ: %s", string(err))
+	} else {
+		__antithesis_instrumentation__.Notify(64035)
 	}
-	// flattening = e^2 / 1 + sqrt(1-e^2).
-	// See: https://en.wikipedia.org/wiki/Eccentricity_(mathematics), derived from
-	// e = sqrt(f(2-f))
+	__antithesis_instrumentation__.Notify(64033)
+
 	flattening := float64(eccentricitySquared) / (1 + math.Sqrt(1-float64(eccentricitySquared)))
 	return isLatLng != 0, geographiclib.NewSpheroid(float64(majorAxis), flattening), nil
 }
 
-// Project projects the given xCoords, yCoords and zCoords from one
-// coordinate system to another using proj4text.
-// Array elements are edited in place.
 func Project(
 	from geoprojbase.Proj4Text,
 	to geoprojbase.Proj4Text,
@@ -73,7 +65,12 @@ func Project(
 	yCoords []float64,
 	zCoords []float64,
 ) error {
-	if len(xCoords) != len(yCoords) || len(xCoords) != len(zCoords) {
+	__antithesis_instrumentation__.Notify(64036)
+	if len(xCoords) != len(yCoords) || func() bool {
+		__antithesis_instrumentation__.Notify(64040)
+		return len(xCoords) != len(zCoords) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(64041)
 		return pgerror.Newf(
 			pgcode.InvalidParameterValue,
 			"len(xCoords) != len(yCoords) != len(zCoords): %d != %d != %d",
@@ -81,10 +78,17 @@ func Project(
 			len(yCoords),
 			len(zCoords),
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(64042)
 	}
+	__antithesis_instrumentation__.Notify(64037)
 	if len(xCoords) == 0 {
+		__antithesis_instrumentation__.Notify(64043)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(64044)
 	}
+	__antithesis_instrumentation__.Notify(64038)
 	if err := cStatusToUnsafeGoBytes(C.CR_PROJ_Transform(
 		(*C.char)(unsafe.Pointer(&from.Bytes()[0])),
 		(*C.char)(unsafe.Pointer(&to.Bytes()[0])),
@@ -93,7 +97,11 @@ func Project(
 		(*C.double)(unsafe.Pointer(&yCoords[0])),
 		(*C.double)(unsafe.Pointer(&zCoords[0])),
 	)); err != nil {
+		__antithesis_instrumentation__.Notify(64045)
 		return pgerror.Newf(pgcode.InvalidParameterValue, "error from PROJ: %s", string(err))
+	} else {
+		__antithesis_instrumentation__.Notify(64046)
 	}
+	__antithesis_instrumentation__.Notify(64039)
 	return nil
 }

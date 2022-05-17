@@ -1,14 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package descs
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,102 +14,138 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// GetMutableTableByName returns a mutable table descriptor with properties
-// according to the provided lookup flags. RequireMutable is ignored.
 func (tc *Collection) GetMutableTableByName(
 	ctx context.Context, txn *kv.Txn, name tree.ObjectName, flags tree.ObjectLookupFlags,
 ) (found bool, _ *tabledesc.Mutable, _ error) {
+	__antithesis_instrumentation__.Notify(264913)
 	flags.RequireMutable = true
 	found, desc, err := tc.getTableByName(ctx, txn, name, flags)
-	if err != nil || !found {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(264915)
+		return !found == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264916)
 		return false, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264917)
 	}
+	__antithesis_instrumentation__.Notify(264914)
 	return true, desc.(*tabledesc.Mutable), nil
 }
 
-// GetImmutableTableByName returns a immutable table descriptor with properties
-// according to the provided lookup flags. RequireMutable is ignored.
 func (tc *Collection) GetImmutableTableByName(
 	ctx context.Context, txn *kv.Txn, name tree.ObjectName, flags tree.ObjectLookupFlags,
 ) (found bool, _ catalog.TableDescriptor, _ error) {
+	__antithesis_instrumentation__.Notify(264918)
 	flags.RequireMutable = false
 	return tc.getTableByName(ctx, txn, name, flags)
 }
 
-// getTableByName returns a table descriptor with properties according to the
-// provided lookup flags.
 func (tc *Collection) getTableByName(
 	ctx context.Context, txn *kv.Txn, name tree.ObjectName, flags tree.ObjectLookupFlags,
 ) (found bool, _ catalog.TableDescriptor, err error) {
+	__antithesis_instrumentation__.Notify(264919)
 	flags.DesiredObjectKind = tree.TableObject
 	_, desc, err := tc.getObjectByName(
 		ctx, txn, name.Catalog(), name.Schema(), name.Object(), flags)
-	if err != nil || desc == nil {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(264921)
+		return desc == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264922)
 		return false, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264923)
 	}
+	__antithesis_instrumentation__.Notify(264920)
 	return true, desc.(catalog.TableDescriptor), nil
 }
 
-// GetLeasedImmutableTableByID returns a leased immutable table descriptor by
-// its ID.
 func (tc *Collection) GetLeasedImmutableTableByID(
 	ctx context.Context, txn *kv.Txn, tableID descpb.ID,
 ) (catalog.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264924)
 	desc, _, err := tc.leased.getByID(ctx, tc.deadlineHolder(txn), tableID)
-	if err != nil || desc == nil {
+	if err != nil || func() bool {
+		__antithesis_instrumentation__.Notify(264928)
+		return desc == nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264929)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264930)
 	}
+	__antithesis_instrumentation__.Notify(264925)
 	table, err := catalog.AsTableDescriptor(desc)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264931)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264932)
 	}
+	__antithesis_instrumentation__.Notify(264926)
 	hydrated, err := tc.hydrateTypesInTableDesc(ctx, txn, table)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264933)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264934)
 	}
+	__antithesis_instrumentation__.Notify(264927)
 	return hydrated, nil
 }
 
-// GetUncommittedMutableTableByID returns an uncommitted mutable table by its
-// ID.
 func (tc *Collection) GetUncommittedMutableTableByID(id descpb.ID) (*tabledesc.Mutable, error) {
-	if imm, status := tc.uncommitted.getImmutableByID(id); imm == nil || status == notValidatedYet {
+	__antithesis_instrumentation__.Notify(264935)
+	if imm, status := tc.uncommitted.getImmutableByID(id); imm == nil || func() bool {
+		__antithesis_instrumentation__.Notify(264939)
+		return status == notValidatedYet == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(264940)
 		return nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264941)
 	}
+	__antithesis_instrumentation__.Notify(264936)
 	mut, err := tc.uncommitted.checkOut(id)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264942)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264943)
 	}
+	__antithesis_instrumentation__.Notify(264937)
 	if table, ok := mut.(*tabledesc.Mutable); ok {
+		__antithesis_instrumentation__.Notify(264944)
 		return table, nil
+	} else {
+		__antithesis_instrumentation__.Notify(264945)
 	}
-	// Check non-table descriptors back in.
+	__antithesis_instrumentation__.Notify(264938)
+
 	return nil, tc.uncommitted.checkIn(mut)
 }
 
-// GetMutableTableByID returns a mutable table descriptor with
-// properties according to the provided lookup flags. RequireMutable is ignored.
-// Required is ignored, and an error is always returned if no descriptor with
-// the ID exists.
 func (tc *Collection) GetMutableTableByID(
 	ctx context.Context, txn *kv.Txn, tableID descpb.ID, flags tree.ObjectLookupFlags,
 ) (*tabledesc.Mutable, error) {
+	__antithesis_instrumentation__.Notify(264946)
 	flags.RequireMutable = true
 	desc, err := tc.getTableByID(ctx, txn, tableID, flags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264948)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264949)
 	}
+	__antithesis_instrumentation__.Notify(264947)
 	return desc.(*tabledesc.Mutable), nil
 }
 
-// GetMutableTableVersionByID is a variant of sqlbase.getTableDescFromID which returns a mutable
-// table descriptor of the table modified in the same transaction.
-// Deprecated in favor of GetMutableTableByID.
-// TODO (lucy): Usages should be replaced with GetMutableTableByID, but this
-// needs a careful look at what flags should be passed in at each call site.
 func (tc *Collection) GetMutableTableVersionByID(
 	ctx context.Context, tableID descpb.ID, txn *kv.Txn,
 ) (*tabledesc.Mutable, error) {
+	__antithesis_instrumentation__.Notify(264950)
 	return tc.GetMutableTableByID(ctx, txn, tableID, tree.ObjectLookupFlags{
 		CommonLookupFlags: tree.CommonLookupFlags{
 			IncludeOffline: true,
@@ -126,40 +154,58 @@ func (tc *Collection) GetMutableTableVersionByID(
 	})
 }
 
-// GetImmutableTableByID returns an immutable table descriptor with
-// properties according to the provided lookup flags. RequireMutable is ignored.
-// Required is ignored, and an error is always returned if no descriptor with
-// the ID exists.
 func (tc *Collection) GetImmutableTableByID(
 	ctx context.Context, txn *kv.Txn, tableID descpb.ID, flags tree.ObjectLookupFlags,
 ) (catalog.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264951)
 	flags.RequireMutable = false
 	desc, err := tc.getTableByID(ctx, txn, tableID, flags)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264953)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264954)
 	}
+	__antithesis_instrumentation__.Notify(264952)
 	return desc, nil
 }
 
 func (tc *Collection) getTableByID(
 	ctx context.Context, txn *kv.Txn, tableID descpb.ID, flags tree.ObjectLookupFlags,
 ) (catalog.TableDescriptor, error) {
+	__antithesis_instrumentation__.Notify(264955)
 	descs, err := tc.getDescriptorsByID(ctx, txn, flags.CommonLookupFlags, tableID)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264959)
 		if errors.Is(err, catalog.ErrDescriptorNotFound) {
+			__antithesis_instrumentation__.Notify(264961)
 			return nil, sqlerrors.NewUndefinedRelationError(
 				&tree.TableRef{TableID: int64(tableID)})
+		} else {
+			__antithesis_instrumentation__.Notify(264962)
 		}
+		__antithesis_instrumentation__.Notify(264960)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264963)
 	}
+	__antithesis_instrumentation__.Notify(264956)
 	table, ok := descs[0].(catalog.TableDescriptor)
 	if !ok {
+		__antithesis_instrumentation__.Notify(264964)
 		return nil, sqlerrors.NewUndefinedRelationError(
 			&tree.TableRef{TableID: int64(tableID)})
+	} else {
+		__antithesis_instrumentation__.Notify(264965)
 	}
+	__antithesis_instrumentation__.Notify(264957)
 	hydrated, err := tc.hydrateTypesInTableDesc(ctx, txn, table)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(264966)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(264967)
 	}
+	__antithesis_instrumentation__.Notify(264958)
 	return hydrated, nil
 }

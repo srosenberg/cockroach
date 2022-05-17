@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -32,33 +24,15 @@ import (
 )
 
 const (
-	// leaseRebalanceThreshold is the minimum ratio of a store's lease surplus
-	// to the mean range/lease count that permits lease-transfers away from that
-	// store.
 	leaseRebalanceThreshold = 0.05
 
-	// baseLoadBasedLeaseRebalanceThreshold is the equivalent of
-	// leaseRebalanceThreshold for load-based lease rebalance decisions (i.e.
-	// "follow-the-workload"). It's the base threshold for decisions that get
-	// adjusted based on the load and latency of the involved ranges/nodes.
 	baseLoadBasedLeaseRebalanceThreshold = 2 * leaseRebalanceThreshold
 
-	// minReplicaWeight sets a floor for how low a replica weight can be. This is
-	// needed because a weight of zero doesn't work in the current lease scoring
-	// algorithm.
 	minReplicaWeight = 0.001
 )
 
-// MinLeaseTransferStatsDuration configures the minimum amount of time a
-// replica must wait for stats about request counts to accumulate before
-// making decisions based on them. The higher this is, the less likely
-// thrashing is (up to a point).
-// Made configurable for the sake of testing.
 var MinLeaseTransferStatsDuration = 30 * time.Second
 
-// enableLoadBasedLeaseRebalancing controls whether lease rebalancing is done
-// via the new heuristic based on request load and latency or via the simpler
-// approach that purely seeks to balance the number of leases per node evenly.
 var enableLoadBasedLeaseRebalancing = settings.RegisterBoolSetting(
 	settings.SystemOnly,
 	"kv.allocator.load_based_lease_rebalancing.enabled",
@@ -66,14 +40,6 @@ var enableLoadBasedLeaseRebalancing = settings.RegisterBoolSetting(
 	true,
 ).WithPublic()
 
-// leaseRebalancingAggressiveness enables users to tweak how aggressive their
-// cluster is at moving leases towards the localities where the most requests
-// are coming from. Settings lower than 1.0 will make the system less
-// aggressive about moving leases toward requests than the default, while
-// settings greater than 1.0 will cause more aggressive placement.
-//
-// Setting this to 0 effectively disables load-based lease rebalancing, and
-// settings less than 0 are disallowed.
 var leaseRebalancingAggressiveness = settings.RegisterFloatSetting(
 	settings.SystemOnly,
 	"kv.allocator.lease_rebalancing_aggressiveness",
@@ -83,11 +49,8 @@ var leaseRebalancingAggressiveness = settings.RegisterFloatSetting(
 	settings.NonNegativeFloat,
 )
 
-// AllocatorAction enumerates the various replication adjustments that may be
-// recommended by the allocator.
 type AllocatorAction int
 
-// These are the possible allocator actions.
 const (
 	_ AllocatorAction = iota
 	AllocatorNoop
@@ -130,50 +93,60 @@ var allocatorActionNames = map[AllocatorAction]string{
 }
 
 func (a AllocatorAction) String() string {
+	__antithesis_instrumentation__.Notify(94115)
 	return allocatorActionNames[a]
 }
 
-// Priority defines the priorities for various repair operations.
-//
-// NB: These priorities only influence the replicateQueue's understanding of
-// which ranges are to be dealt with before others. In other words, these
-// priorities don't influence the relative order of actions taken on a given
-// range. Within a given range, the ordering of the various checks inside
-// `Allocator.computeAction` determines which repair/rebalancing actions are
-// taken before the others.
 func (a AllocatorAction) Priority() float64 {
+	__antithesis_instrumentation__.Notify(94116)
 	switch a {
 	case AllocatorFinalizeAtomicReplicationChange:
+		__antithesis_instrumentation__.Notify(94117)
 		return 12002
 	case AllocatorRemoveLearner:
+		__antithesis_instrumentation__.Notify(94118)
 		return 12001
 	case AllocatorReplaceDeadVoter:
+		__antithesis_instrumentation__.Notify(94119)
 		return 12000
 	case AllocatorAddVoter:
+		__antithesis_instrumentation__.Notify(94120)
 		return 10000
 	case AllocatorReplaceDecommissioningVoter:
+		__antithesis_instrumentation__.Notify(94121)
 		return 5000
 	case AllocatorRemoveDeadVoter:
+		__antithesis_instrumentation__.Notify(94122)
 		return 1000
 	case AllocatorRemoveDecommissioningVoter:
+		__antithesis_instrumentation__.Notify(94123)
 		return 900
 	case AllocatorRemoveVoter:
+		__antithesis_instrumentation__.Notify(94124)
 		return 800
 	case AllocatorReplaceDeadNonVoter:
+		__antithesis_instrumentation__.Notify(94125)
 		return 700
 	case AllocatorAddNonVoter:
+		__antithesis_instrumentation__.Notify(94126)
 		return 600
 	case AllocatorReplaceDecommissioningNonVoter:
+		__antithesis_instrumentation__.Notify(94127)
 		return 500
 	case AllocatorRemoveDeadNonVoter:
+		__antithesis_instrumentation__.Notify(94128)
 		return 400
 	case AllocatorRemoveDecommissioningNonVoter:
+		__antithesis_instrumentation__.Notify(94129)
 		return 300
 	case AllocatorRemoveNonVoter:
+		__antithesis_instrumentation__.Notify(94130)
 		return 200
 	case AllocatorConsiderRebalance, AllocatorRangeUnavailable, AllocatorNoop:
+		__antithesis_instrumentation__.Notify(94131)
 		return 0
 	default:
+		__antithesis_instrumentation__.Notify(94132)
 		panic(fmt.Sprintf("unknown AllocatorAction: %s", a))
 	}
 }
@@ -186,8 +159,6 @@ const (
 	nonVoterTarget
 )
 
-// replicaStatus represents whether a replica is currently alive,
-// dead or decommissioning.
 type replicaStatus int
 
 const (
@@ -197,42 +168,47 @@ const (
 	decommissioning
 )
 
-// AddChangeType returns the roachpb.ReplicaChangeType corresponding to the
-// given targetReplicaType.
-//
-// TODO(aayush): Clean up usages of ADD_{NON_}VOTER. Use
-// targetReplicaType.{Add,Remove}ChangeType methods wherever possible.
 func (t targetReplicaType) AddChangeType() roachpb.ReplicaChangeType {
+	__antithesis_instrumentation__.Notify(94133)
 	switch t {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(94134)
 		return roachpb.ADD_VOTER
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(94135)
 		return roachpb.ADD_NON_VOTER
 	default:
+		__antithesis_instrumentation__.Notify(94136)
 		panic(fmt.Sprintf("unknown targetReplicaType %d", t))
 	}
 }
 
-// RemoveChangeType returns the roachpb.ReplicaChangeType corresponding to the
-// given targetReplicaType.
 func (t targetReplicaType) RemoveChangeType() roachpb.ReplicaChangeType {
+	__antithesis_instrumentation__.Notify(94137)
 	switch t {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(94138)
 		return roachpb.REMOVE_VOTER
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(94139)
 		return roachpb.REMOVE_NON_VOTER
 	default:
+		__antithesis_instrumentation__.Notify(94140)
 		panic(fmt.Sprintf("unknown targetReplicaType %d", t))
 	}
 }
 
 func (t targetReplicaType) String() string {
+	__antithesis_instrumentation__.Notify(94141)
 	switch t {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(94142)
 		return "voter"
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(94143)
 		return "non-voter"
 	default:
+		__antithesis_instrumentation__.Notify(94144)
 		panic(fmt.Sprintf("unknown targetReplicaType %d", t))
 	}
 }
@@ -246,10 +222,6 @@ const (
 	decideWithoutStats
 )
 
-// allocatorError indicates a retryable error condition which sends replicas
-// being processed through the replicate_queue into purgatory so that they
-// can be retried quickly as soon as new stores come online, or additional
-// space frees up.
 type allocatorError struct {
 	constraints           []roachpb.ConstraintsConjunction
 	voterConstraints      []roachpb.ConstraintsConjunction
@@ -260,89 +232,115 @@ type allocatorError struct {
 }
 
 func (ae *allocatorError) Error() string {
+	__antithesis_instrumentation__.Notify(94145)
 	var existingVoterStr string
 	if ae.existingVoterCount == 1 {
+		__antithesis_instrumentation__.Notify(94152)
 		existingVoterStr = "1 already has a voter"
 	} else {
+		__antithesis_instrumentation__.Notify(94153)
 		existingVoterStr = fmt.Sprintf("%d already have a voter", ae.existingVoterCount)
 	}
+	__antithesis_instrumentation__.Notify(94146)
 
 	var existingNonVoterStr string
 	if ae.existingNonVoterCount == 1 {
+		__antithesis_instrumentation__.Notify(94154)
 		existingNonVoterStr = "1 already has a non-voter"
 	} else {
+		__antithesis_instrumentation__.Notify(94155)
 		existingNonVoterStr = fmt.Sprintf("%d already have a non-voter", ae.existingNonVoterCount)
 	}
+	__antithesis_instrumentation__.Notify(94147)
 
 	var baseMsg string
 	if ae.throttledStores != 0 {
+		__antithesis_instrumentation__.Notify(94156)
 		baseMsg = fmt.Sprintf(
 			"0 of %d live stores are able to take a new replica for the range (%d throttled, %s, %s)",
 			ae.aliveStores, ae.throttledStores, existingVoterStr, existingNonVoterStr)
 	} else {
+		__antithesis_instrumentation__.Notify(94157)
 		baseMsg = fmt.Sprintf(
 			"0 of %d live stores are able to take a new replica for the range (%s, %s)",
 			ae.aliveStores, existingVoterStr, existingNonVoterStr)
 	}
+	__antithesis_instrumentation__.Notify(94148)
 
-	if len(ae.constraints) == 0 && len(ae.voterConstraints) == 0 {
+	if len(ae.constraints) == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(94158)
+		return len(ae.voterConstraints) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94159)
 		if ae.throttledStores > 0 {
+			__antithesis_instrumentation__.Notify(94161)
 			return baseMsg
+		} else {
+			__antithesis_instrumentation__.Notify(94162)
 		}
+		__antithesis_instrumentation__.Notify(94160)
 		return baseMsg + "; likely not enough nodes in cluster"
+	} else {
+		__antithesis_instrumentation__.Notify(94163)
 	}
+	__antithesis_instrumentation__.Notify(94149)
 
 	var b strings.Builder
 	b.WriteString(baseMsg)
 	b.WriteString("; replicas must match constraints [")
 	for i := range ae.constraints {
+		__antithesis_instrumentation__.Notify(94164)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(94166)
 			b.WriteByte(' ')
+		} else {
+			__antithesis_instrumentation__.Notify(94167)
 		}
+		__antithesis_instrumentation__.Notify(94165)
 		b.WriteByte('{')
 		b.WriteString(ae.constraints[i].String())
 		b.WriteByte('}')
 	}
+	__antithesis_instrumentation__.Notify(94150)
 	b.WriteString("]")
 
 	b.WriteString("; voting replicas must match voter_constraints [")
 	for i := range ae.voterConstraints {
+		__antithesis_instrumentation__.Notify(94168)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(94170)
 			b.WriteByte(' ')
+		} else {
+			__antithesis_instrumentation__.Notify(94171)
 		}
+		__antithesis_instrumentation__.Notify(94169)
 		b.WriteByte('{')
 		b.WriteString(ae.voterConstraints[i].String())
 		b.WriteByte('}')
 	}
+	__antithesis_instrumentation__.Notify(94151)
 	b.WriteString("]")
 
 	return b.String()
 }
 
-func (*allocatorError) purgatoryErrorMarker() {}
+func (*allocatorError) purgatoryErrorMarker() { __antithesis_instrumentation__.Notify(94172) }
 
 var _ purgatoryError = &allocatorError{}
 
-// allocatorRand pairs a rand.Rand with a mutex.
-// NOTE: Allocator is typically only accessed from a single thread (the
-// replication queue), but this assumption is broken in tests which force
-// replication scans. If those tests can be modified to suspend the normal
-// replication queue during the forced scan, then this rand could be used
-// without a mutex.
 type allocatorRand struct {
 	*syncutil.Mutex
 	*rand.Rand
 }
 
 func makeAllocatorRand(source rand.Source) allocatorRand {
+	__antithesis_instrumentation__.Notify(94173)
 	return allocatorRand{
 		Mutex: &syncutil.Mutex{},
 		Rand:  rand.New(source),
 	}
 }
 
-// RangeUsageInfo contains usage information (sizes and traffic) needed by the
-// allocator to make rebalancing decisions for a given range.
 type RangeUsageInfo struct {
 	LogicalBytes     int64
 	QueriesPerSecond float64
@@ -350,20 +348,28 @@ type RangeUsageInfo struct {
 }
 
 func rangeUsageInfoForRepl(repl *Replica) RangeUsageInfo {
+	__antithesis_instrumentation__.Notify(94174)
 	info := RangeUsageInfo{
 		LogicalBytes: repl.GetMVCCStats().Total(),
 	}
 	if queriesPerSecond, dur := repl.leaseholderStats.avgQPS(); dur >= MinStatsDuration {
+		__antithesis_instrumentation__.Notify(94177)
 		info.QueriesPerSecond = queriesPerSecond
+	} else {
+		__antithesis_instrumentation__.Notify(94178)
 	}
+	__antithesis_instrumentation__.Notify(94175)
 	if writesPerSecond, dur := repl.writeStats.avgQPS(); dur >= MinStatsDuration {
+		__antithesis_instrumentation__.Notify(94179)
 		info.WritesPerSecond = writesPerSecond
+	} else {
+		__antithesis_instrumentation__.Notify(94180)
 	}
+	__antithesis_instrumentation__.Notify(94176)
 	return info
 }
 
 var (
-	// Load-based lease transfers.
 	metaLBLeaseTransferCannotFindBetterCandidate = metric.Metadata{
 		Name: "kv.allocator.load_based_lease_transfers.cannot_find_better_candidate",
 		Help: "The number times the allocator determined that the lease was on the best" +
@@ -406,7 +412,6 @@ var (
 		Unit:        metric.Unit_COUNT,
 	}
 
-	// Load-based replica rebalances.
 	metaLBReplicaRebalancingCannotFindBetterCandidate = metric.Metadata{
 		Name: "kv.allocator.load_based_replica_rebalancing.cannot_find_better_candidate",
 		Help: "The number times the allocator determined that the range was on the best" +
@@ -468,19 +473,15 @@ type loadBasedReplicaRebalanceMetrics struct {
 	ShouldRebalance                          *metric.Counter
 }
 
-// AllocatorMetrics capture metrics about the allocator's decisions.
 type AllocatorMetrics struct {
 	loadBasedLeaseTransferMetrics
 	loadBasedReplicaRebalanceMetrics
 }
 
-// Allocator tries to spread replicas as evenly as possible across the stores
-// in the cluster.
 type Allocator struct {
 	storePool     *StorePool
 	nodeLatencyFn func(addr string) (time.Duration, bool)
-	// TODO(aayush): Let's replace this with a *rand.Rand that has a rand.Source
-	// wrapped inside a mutex, to avoid misuse.
+
 	randGen allocatorRand
 	metrics AllocatorMetrics
 
@@ -488,6 +489,7 @@ type Allocator struct {
 }
 
 func makeAllocatorMetrics() AllocatorMetrics {
+	__antithesis_instrumentation__.Notify(94181)
 	return AllocatorMetrics{
 		loadBasedLeaseTransferMetrics: loadBasedLeaseTransferMetrics{
 			CannotFindBetterCandidate:                metric.NewCounter(metaLBLeaseTransferCannotFindBetterCandidate),
@@ -508,22 +510,26 @@ func makeAllocatorMetrics() AllocatorMetrics {
 	}
 }
 
-// MakeAllocator creates a new allocator using the specified StorePool.
 func MakeAllocator(
 	storePool *StorePool,
 	nodeLatencyFn func(addr string) (time.Duration, bool),
 	knobs *AllocatorTestingKnobs,
 	storeMetrics *StoreMetrics,
 ) Allocator {
+	__antithesis_instrumentation__.Notify(94182)
 	var randSource rand.Source
-	// There are number of test cases that make a test store but don't add
-	// gossip or a store pool. So we can't rely on the existence of the
-	// store pool in those cases.
-	if storePool != nil && storePool.deterministic {
+
+	if storePool != nil && func() bool {
+		__antithesis_instrumentation__.Notify(94185)
+		return storePool.deterministic == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94186)
 		randSource = rand.NewSource(777)
 	} else {
+		__antithesis_instrumentation__.Notify(94187)
 		randSource = rand.NewSource(rand.Int63())
 	}
+	__antithesis_instrumentation__.Notify(94183)
 	allocator := Allocator{
 		storePool:     storePool,
 		nodeLatencyFn: nodeLatencyFn,
@@ -532,132 +538,115 @@ func MakeAllocator(
 		knobs:         knobs,
 	}
 	if storeMetrics != nil {
+		__antithesis_instrumentation__.Notify(94188)
 		storeMetrics.registry.AddMetricStruct(allocator.metrics.loadBasedLeaseTransferMetrics)
 		storeMetrics.registry.AddMetricStruct(allocator.metrics.loadBasedReplicaRebalanceMetrics)
+	} else {
+		__antithesis_instrumentation__.Notify(94189)
 	}
+	__antithesis_instrumentation__.Notify(94184)
 	return allocator
 }
 
-// GetNeededVoters calculates the number of voters a range should have given its
-// zone config and the number of nodes available for up-replication (i.e. not
-// decommissioning).
 func GetNeededVoters(zoneConfigVoterCount int32, clusterNodes int) int {
+	__antithesis_instrumentation__.Notify(94190)
 	numZoneReplicas := int(zoneConfigVoterCount)
 	need := numZoneReplicas
 
-	// Adjust the replication factor for all ranges if there are fewer
-	// nodes than replicas specified in the zone config, so the cluster
-	// can still function.
 	if clusterNodes < need {
+		__antithesis_instrumentation__.Notify(94196)
 		need = clusterNodes
+	} else {
+		__antithesis_instrumentation__.Notify(94197)
 	}
+	__antithesis_instrumentation__.Notify(94191)
 
-	// Ensure that we don't up- or down-replicate to an even number of replicas
-	// unless an even number of replicas was specifically requested by the user
-	// in the zone config.
-	//
-	// Note that in the case of 5 desired replicas and a decommissioning store,
-	// this prefers down-replicating from 5 to 3 rather than sticking with 4
-	// desired stores or blocking the decommissioning from completing.
 	if need == numZoneReplicas {
+		__antithesis_instrumentation__.Notify(94198)
 		return need
+	} else {
+		__antithesis_instrumentation__.Notify(94199)
 	}
+	__antithesis_instrumentation__.Notify(94192)
 	if need%2 == 0 {
+		__antithesis_instrumentation__.Notify(94200)
 		need = need - 1
+	} else {
+		__antithesis_instrumentation__.Notify(94201)
 	}
+	__antithesis_instrumentation__.Notify(94193)
 	if need < 3 {
+		__antithesis_instrumentation__.Notify(94202)
 		need = 3
+	} else {
+		__antithesis_instrumentation__.Notify(94203)
 	}
+	__antithesis_instrumentation__.Notify(94194)
 	if need > numZoneReplicas {
+		__antithesis_instrumentation__.Notify(94204)
 		need = numZoneReplicas
+	} else {
+		__antithesis_instrumentation__.Notify(94205)
 	}
+	__antithesis_instrumentation__.Notify(94195)
 
 	return need
 }
 
-// GetNeededNonVoters calculates the number of non-voters a range should have
-// given the number of voting replicas the range has and the number of nodes
-// available for up-replication.
-//
-// NB: This method assumes that we have exactly as many voters as we need, since
-// this method should only be consulted after voting replicas have been
-// upreplicated / rebalanced off of dead/decommissioning nodes.
 func GetNeededNonVoters(numVoters, zoneConfigNonVoterCount, clusterNodes int) int {
+	__antithesis_instrumentation__.Notify(94206)
 	need := zoneConfigNonVoterCount
 	if clusterNodes-numVoters < need {
-		// We only need non-voting replicas for the nodes that do not have a voting
-		// replica.
+		__antithesis_instrumentation__.Notify(94209)
+
 		need = clusterNodes - numVoters
+	} else {
+		__antithesis_instrumentation__.Notify(94210)
 	}
+	__antithesis_instrumentation__.Notify(94207)
 	if need < 0 {
-		need = 0 // Must be non-negative.
+		__antithesis_instrumentation__.Notify(94211)
+		need = 0
+	} else {
+		__antithesis_instrumentation__.Notify(94212)
 	}
+	__antithesis_instrumentation__.Notify(94208)
 	return need
 }
 
-// ComputeAction determines the exact operation needed to repair the
-// supplied range, as governed by the supplied zone configuration. It
-// returns the required action that should be taken and a priority.
 func (a *Allocator) ComputeAction(
 	ctx context.Context, conf roachpb.SpanConfig, desc *roachpb.RangeDescriptor,
 ) (action AllocatorAction, priority float64) {
+	__antithesis_instrumentation__.Notify(94213)
 	if a.storePool == nil {
-		// Do nothing if storePool is nil for some unittests.
+		__antithesis_instrumentation__.Notify(94217)
+
 		action = AllocatorNoop
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94218)
 	}
+	__antithesis_instrumentation__.Notify(94214)
 
 	if desc.Replicas().InAtomicReplicationChange() {
-		// With a similar reasoning to the learner branch below, if we're in a
-		// joint configuration the top priority is to leave it before we can
-		// even think about doing anything else.
+		__antithesis_instrumentation__.Notify(94219)
+
 		action = AllocatorFinalizeAtomicReplicationChange
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94220)
 	}
+	__antithesis_instrumentation__.Notify(94215)
 
 	if learners := desc.Replicas().LearnerDescriptors(); len(learners) > 0 {
-		// Seeing a learner replica at this point is unexpected because learners are
-		// a short-lived (ish) transient state in a learner+snapshot+voter cycle,
-		// which is always done atomically. Only two places could have added a
-		// learner: the replicate queue or AdminChangeReplicas request.
-		//
-		// The replicate queue only operates on leaseholders, which means that only
-		// one node at a time is operating on a given range except in rare cases
-		// (old leaseholder could start the operation, and a new leaseholder steps
-		// up and also starts an overlapping operation). Combined with the above
-		// atomicity, this means that if the replicate queue sees a learner, either
-		// the node that was adding it crashed somewhere in the
-		// learner+snapshot+voter cycle and we're the new leaseholder or we caught a
-		// race.
-		//
-		// In the first case, we could assume the node that was adding it knew what
-		// it was doing and finish the addition. Or we could leave it and do higher
-		// priority operations first if there are any. However, this comes with code
-		// complexity and concept complexity (computing old vs new quorum sizes
-		// becomes ambiguous, the learner isn't in the quorum but it likely will be
-		// soon, so do you count it?). Instead, we do the simplest thing and remove
-		// it before doing any other operations to the range. We'll revisit this
-		// decision if and when the complexity becomes necessary.
-		//
-		// If we get the race where AdminChangeReplicas is adding a replica and the
-		// queue happens to run during the snapshot, this will remove the learner
-		// and AdminChangeReplicas will notice either during the snapshot transfer
-		// or when it tries to promote the learner to a voter. AdminChangeReplicas
-		// should retry.
-		//
-		// On the other hand if we get the race where a leaseholder starts adding a
-		// replica in the replicate queue and during this loses its lease, it should
-		// probably not retry.
-		//
-		// TODO(dan): Since this goes before anything else, the priority here should
-		// be influenced by whatever operations would happen right after the learner
-		// is removed. In the meantime, we don't want to block something important
-		// from happening (like addDeadReplacementVoterPriority) by queueing this at
-		// a low priority so until this TODO is done, keep
-		// removeLearnerReplicaPriority as the highest priority.
+		__antithesis_instrumentation__.Notify(94221)
+
 		action = AllocatorRemoveLearner
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94222)
 	}
+	__antithesis_instrumentation__.Notify(94216)
 
 	return a.computeAction(ctx, conf, desc.Replicas().VoterDescriptors(),
 		desc.Replicas().NonVoterDescriptors())
@@ -670,212 +659,215 @@ func (a *Allocator) computeAction(
 	voterReplicas []roachpb.ReplicaDescriptor,
 	nonVoterReplicas []roachpb.ReplicaDescriptor,
 ) (action AllocatorAction, adjustedPriority float64) {
-	// NB: The ordering of the checks in this method is intentional. The order in
-	// which these actions are returned by this method determines the relative
-	// priority of the actions taken on a given range. We want this to be
-	// symmetric with regards to the priorities defined at the top of this file
-	// (which influence the replicateQueue's decision of which range it'll pick to
-	// repair/rebalance before the others).
-	//
-	// In broad strokes, we first handle all voting replica-based actions and then
-	// the actions pertaining to non-voting replicas. Within each replica set, we
-	// first handle operations that correspond to repairing/recovering the range.
-	// After that we handle rebalancing related actions, followed by removal
-	// actions.
+	__antithesis_instrumentation__.Notify(94223)
+
 	haveVoters := len(voterReplicas)
 	decommissioningVoters := a.storePool.decommissioningReplicas(voterReplicas)
-	// Node count including dead nodes but excluding
-	// decommissioning/decommissioned nodes.
+
 	clusterNodes := a.storePool.ClusterNodeCount()
 	neededVoters := GetNeededVoters(conf.GetNumVoters(), clusterNodes)
 	desiredQuorum := computeQuorum(neededVoters)
 	quorum := computeQuorum(haveVoters)
 
-	// TODO(aayush): When haveVoters < neededVoters but we don't have quorum to
-	// actually execute the addition of a new replica, we should be returning a
-	// AllocatorRangeUnavailable.
 	if haveVoters < neededVoters {
-		// Range is under-replicated, and should add an additional voter.
-		// Priority is adjusted by the difference between the current voter
-		// count and the quorum of the desired voter count.
+		__antithesis_instrumentation__.Notify(94237)
+
 		action = AllocatorAddVoter
 		adjustedPriority = action.Priority() + float64(desiredQuorum-haveVoters)
 		log.VEventf(ctx, 3, "%s - missing voter need=%d, have=%d, priority=%.2f",
 			action, neededVoters, haveVoters, adjustedPriority)
 		return action, adjustedPriority
+	} else {
+		__antithesis_instrumentation__.Notify(94238)
 	}
+	__antithesis_instrumentation__.Notify(94224)
 
-	// NB: For the purposes of determining whether a range has quorum, we
-	// consider stores marked as "suspect" to be live. This is necessary because
-	// we would otherwise spuriously consider ranges with replicas on suspect
-	// stores to be unavailable, just because their nodes have failed a liveness
-	// heartbeat in the recent past. This means we won't move those replicas
-	// elsewhere (for a regular rebalance or for decommissioning).
 	const includeSuspectAndDrainingStores = true
 	liveVoters, deadVoters := a.storePool.liveAndDeadReplicas(voterReplicas, includeSuspectAndDrainingStores)
 
 	if len(liveVoters) < quorum {
-		// Do not take any replacement/removal action if we do not have a quorum of
-		// live voters. If we're correctly assessing the unavailable state of the
-		// range, we also won't be able to add replicas as we try above, but hope
-		// springs eternal.
+		__antithesis_instrumentation__.Notify(94239)
+
 		action = AllocatorRangeUnavailable
 		log.VEventf(ctx, 1, "unable to take action - live voters %v don't meet quorum of %d",
 			liveVoters, quorum)
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94240)
 	}
+	__antithesis_instrumentation__.Notify(94225)
 
-	if haveVoters == neededVoters && len(deadVoters) > 0 {
-		// Range has dead voter(s). We should up-replicate to add another before
-		// before removing the dead one. This can avoid permanent data loss in cases
-		// where the node is only temporarily dead, but we remove it from the range
-		// and lose a second node before we can up-replicate (#25392).
+	if haveVoters == neededVoters && func() bool {
+		__antithesis_instrumentation__.Notify(94241)
+		return len(deadVoters) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94242)
+
 		action = AllocatorReplaceDeadVoter
 		log.VEventf(ctx, 3, "%s - replacement for %d dead voters priority=%.2f",
 			action, len(deadVoters), action.Priority())
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94243)
 	}
+	__antithesis_instrumentation__.Notify(94226)
 
-	if haveVoters == neededVoters && len(decommissioningVoters) > 0 {
-		// Range has decommissioning voter(s), which should be replaced.
+	if haveVoters == neededVoters && func() bool {
+		__antithesis_instrumentation__.Notify(94244)
+		return len(decommissioningVoters) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94245)
+
 		action = AllocatorReplaceDecommissioningVoter
 		log.VEventf(ctx, 3, "%s - replacement for %d decommissioning voters priority=%.2f",
 			action, len(decommissioningVoters), action.Priority())
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94246)
 	}
+	__antithesis_instrumentation__.Notify(94227)
 
-	// Voting replica removal actions follow.
-	// TODO(aayush): There's an additional case related to dead voters that we
-	// should handle above. If there are one or more dead replicas, have < need,
-	// and there are no available stores to up-replicate to, then we should try to
-	// remove the dead replica(s) to get down to an odd number of replicas.
 	if len(deadVoters) > 0 {
-		// The range has dead replicas, which should be removed immediately.
+		__antithesis_instrumentation__.Notify(94247)
+
 		action = AllocatorRemoveDeadVoter
 		adjustedPriority = action.Priority() + float64(quorum-len(liveVoters))
 		log.VEventf(ctx, 3, "%s - dead=%d, live=%d, quorum=%d, priority=%.2f",
 			action, len(deadVoters), len(liveVoters), quorum, adjustedPriority)
 		return action, adjustedPriority
+	} else {
+		__antithesis_instrumentation__.Notify(94248)
 	}
+	__antithesis_instrumentation__.Notify(94228)
 
 	if len(decommissioningVoters) > 0 {
-		// Range is over-replicated, and has a decommissioning voter which
-		// should be removed.
+		__antithesis_instrumentation__.Notify(94249)
+
 		action = AllocatorRemoveDecommissioningVoter
 		log.VEventf(ctx, 3,
 			"%s - need=%d, have=%d, num_decommissioning=%d, priority=%.2f",
 			action, neededVoters, haveVoters, len(decommissioningVoters), action.Priority())
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94250)
 	}
+	__antithesis_instrumentation__.Notify(94229)
 
 	if haveVoters > neededVoters {
-		// Range is over-replicated, and should remove a voter.
-		// Ranges with an even number of voters get extra priority because
-		// they have a more fragile quorum.
+		__antithesis_instrumentation__.Notify(94251)
+
 		action = AllocatorRemoveVoter
 		adjustedPriority = action.Priority() - float64(haveVoters%2)
 		log.VEventf(ctx, 3, "%s - need=%d, have=%d, priority=%.2f", action, neededVoters,
 			haveVoters, adjustedPriority)
 		return action, adjustedPriority
+	} else {
+		__antithesis_instrumentation__.Notify(94252)
 	}
+	__antithesis_instrumentation__.Notify(94230)
 
-	// Non-voting replica actions follow.
-	//
-	// Non-voting replica addition / replacement.
 	haveNonVoters := len(nonVoterReplicas)
 	neededNonVoters := GetNeededNonVoters(haveVoters, int(conf.GetNumNonVoters()), clusterNodes)
 	if haveNonVoters < neededNonVoters {
+		__antithesis_instrumentation__.Notify(94253)
 		action = AllocatorAddNonVoter
 		log.VEventf(ctx, 3, "%s - missing non-voter need=%d, have=%d, priority=%.2f",
 			action, neededNonVoters, haveNonVoters, action.Priority())
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94254)
 	}
+	__antithesis_instrumentation__.Notify(94231)
 
 	liveNonVoters, deadNonVoters := a.storePool.liveAndDeadReplicas(
 		nonVoterReplicas, includeSuspectAndDrainingStores,
 	)
-	if haveNonVoters == neededNonVoters && len(deadNonVoters) > 0 {
-		// The range has non-voter(s) on a dead node that we should replace.
+	if haveNonVoters == neededNonVoters && func() bool {
+		__antithesis_instrumentation__.Notify(94255)
+		return len(deadNonVoters) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94256)
+
 		action = AllocatorReplaceDeadNonVoter
 		log.VEventf(ctx, 3, "%s - replacement for %d dead non-voters priority=%.2f",
 			action, len(deadNonVoters), action.Priority())
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94257)
 	}
+	__antithesis_instrumentation__.Notify(94232)
 
 	decommissioningNonVoters := a.storePool.decommissioningReplicas(nonVoterReplicas)
-	if haveNonVoters == neededNonVoters && len(decommissioningNonVoters) > 0 {
-		// The range has non-voter(s) on a decommissioning node that we should
-		// replace.
+	if haveNonVoters == neededNonVoters && func() bool {
+		__antithesis_instrumentation__.Notify(94258)
+		return len(decommissioningNonVoters) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94259)
+
 		action = AllocatorReplaceDecommissioningNonVoter
 		log.VEventf(ctx, 3, "%s - replacement for %d decommissioning non-voters priority=%.2f",
 			action, len(decommissioningNonVoters), action.Priority())
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94260)
 	}
+	__antithesis_instrumentation__.Notify(94233)
 
-	// Non-voting replica removal.
 	if len(deadNonVoters) > 0 {
-		// The range is over-replicated _and_ has non-voter(s) on a dead node. We'll
-		// just remove these.
+		__antithesis_instrumentation__.Notify(94261)
+
 		action = AllocatorRemoveDeadNonVoter
 		log.VEventf(ctx, 3, "%s - dead=%d, live=%d, priority=%.2f",
 			action, len(deadNonVoters), len(liveNonVoters), action.Priority())
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94262)
 	}
+	__antithesis_instrumentation__.Notify(94234)
 
 	if len(decommissioningNonVoters) > 0 {
-		// The range is over-replicated _and_ has non-voter(s) on a decommissioning
-		// node. We'll just remove these.
+		__antithesis_instrumentation__.Notify(94263)
+
 		action = AllocatorRemoveDecommissioningNonVoter
 		log.VEventf(ctx, 3,
 			"%s - need=%d, have=%d, num_decommissioning=%d, priority=%.2f",
 			action, neededNonVoters, haveNonVoters, len(decommissioningNonVoters), action.Priority())
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94264)
 	}
+	__antithesis_instrumentation__.Notify(94235)
 
 	if haveNonVoters > neededNonVoters {
-		// The range is simply over-replicated and should remove a non-voter.
+		__antithesis_instrumentation__.Notify(94265)
+
 		action = AllocatorRemoveNonVoter
 		log.VEventf(ctx, 3, "%s - need=%d, have=%d, priority=%.2f", action,
 			neededNonVoters, haveNonVoters, action.Priority())
 		return action, action.Priority()
+	} else {
+		__antithesis_instrumentation__.Notify(94266)
 	}
+	__antithesis_instrumentation__.Notify(94236)
 
-	// Nothing needs to be done, but we may want to rebalance.
 	action = AllocatorConsiderRebalance
 	return action, action.Priority()
 }
 
-// getReplicasForDiversityCalc returns the set of replica descriptors that
-// should be used for computing the diversity scores for a target when
-// allocating/removing/rebalancing a replica of `targetType`.
 func getReplicasForDiversityCalc(
 	targetType targetReplicaType, existingVoters, allExistingReplicas []roachpb.ReplicaDescriptor,
 ) []roachpb.ReplicaDescriptor {
+	__antithesis_instrumentation__.Notify(94267)
 	switch t := targetType; t {
 	case voterTarget:
-		// When computing the "diversity score" for a given store for a voting
-		// replica allocation/rebalance/removal, we consider the localities of only
-		// the stores that contain a voting replica for the range.
-		//
-		// Note that if we were to consider all stores that have any kind of replica
-		// for the range, voting replica allocation would be disincentivized to pick
-		// stores that (partially or fully) share locality hierarchies with stores
-		// that contain a non-voting replica. This is undesirable because this could
-		// inadvertently reduce the fault-tolerance of the range in cases like the
-		// following:
-		//
-		// Consider 3 regions (A, B, C), each with 2 AZs. Suppose that regions A and
-		// B have a voting replica each, whereas region C has a non-voting replica.
-		// In cases like these, we would want region C to be picked over regions A
-		// and B for allocating a new third voting replica since that improves our
-		// fault tolerance to the greatest degree.
-		// In the counterfactual (i.e. if we were to compute diversity scores based
-		// off of all `existingReplicas`), regions A, B, and C would all be equally
-		// likely to get a new voting replica.
+		__antithesis_instrumentation__.Notify(94268)
+
 		return existingVoters
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(94269)
 		return allExistingReplicas
 	default:
+		__antithesis_instrumentation__.Notify(94270)
 		panic(fmt.Sprintf("unsupported targetReplicaType: %v", t))
 	}
 }
@@ -891,6 +883,7 @@ func (a *Allocator) allocateTarget(
 	existingVoters, existingNonVoters []roachpb.ReplicaDescriptor,
 	targetType targetReplicaType,
 ) (roachpb.ReplicationTarget, string, error) {
+	__antithesis_instrumentation__.Notify(94271)
 	candidateStoreList, aliveStoreCount, throttled := a.storePool.getStoreList(storeFilterThrottled)
 
 	target, details := a.allocateTargetFromList(
@@ -900,26 +893,28 @@ func (a *Allocator) allocateTarget(
 		existingVoters,
 		existingNonVoters,
 		a.scorerOptions(),
-		// When allocating a *new* replica, we explicitly disregard nodes with any
-		// existing replicas. This is important for multi-store scenarios as
-		// otherwise, stores on the nodes that have existing replicas are simply
-		// discouraged via the diversity heuristic. We want to entirely avoid
-		// allocating multiple replicas onto different stores of the same node.
-		false, /* allowMultipleReplsPerNode */
+
+		false,
 		targetType,
 	)
 
 	if !roachpb.Empty(target) {
+		__antithesis_instrumentation__.Notify(94274)
 		return target, details, nil
+	} else {
+		__antithesis_instrumentation__.Notify(94275)
 	}
+	__antithesis_instrumentation__.Notify(94272)
 
-	// When there are throttled stores that do match, we shouldn't send
-	// the replica to purgatory.
 	if len(throttled) > 0 {
+		__antithesis_instrumentation__.Notify(94276)
 		return roachpb.ReplicationTarget{}, "", errors.Errorf(
 			"%d matching stores are currently throttled: %v", len(throttled), throttled,
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(94277)
 	}
+	__antithesis_instrumentation__.Notify(94273)
 	return roachpb.ReplicationTarget{}, "", &allocatorError{
 		voterConstraints:      conf.VoterConstraints,
 		constraints:           conf.Constraints,
@@ -930,25 +925,21 @@ func (a *Allocator) allocateTarget(
 	}
 }
 
-// AllocateVoter returns a suitable store for a new allocation of a voting
-// replica with the required attributes. Nodes already accommodating existing
-// voting replicas are ruled out as targets.
 func (a *Allocator) AllocateVoter(
 	ctx context.Context,
 	conf roachpb.SpanConfig,
 	existingVoters, existingNonVoters []roachpb.ReplicaDescriptor,
 ) (roachpb.ReplicationTarget, string, error) {
+	__antithesis_instrumentation__.Notify(94278)
 	return a.allocateTarget(ctx, conf, existingVoters, existingNonVoters, voterTarget)
 }
 
-// AllocateNonVoter returns a suitable store for a new allocation of a
-// non-voting replica with the required attributes. Nodes already accommodating
-// _any_ existing replicas are ruled out as targets.
 func (a *Allocator) AllocateNonVoter(
 	ctx context.Context,
 	conf roachpb.SpanConfig,
 	existingVoters, existingNonVoters []roachpb.ReplicaDescriptor,
 ) (roachpb.ReplicationTarget, string, error) {
+	__antithesis_instrumentation__.Notify(94279)
 	return a.allocateTarget(ctx, conf, existingVoters, existingNonVoters, nonVoterTarget)
 }
 
@@ -961,6 +952,7 @@ func (a *Allocator) allocateTargetFromList(
 	allowMultipleReplsPerNode bool,
 	targetType targetReplicaType,
 ) (roachpb.ReplicationTarget, string) {
+	__antithesis_instrumentation__.Notify(94280)
 	existingReplicas := append(existingVoters, existingNonVoters...)
 	analyzedOverallConstraints := constraint.AnalyzeConstraints(ctx, a.storePool.getStoreDescriptor,
 		existingReplicas, conf.NumReplicas, conf.Constraints)
@@ -970,22 +962,20 @@ func (a *Allocator) allocateTargetFromList(
 	var constraintsChecker constraintsCheckFn
 	switch t := targetType; t {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(94283)
 		constraintsChecker = voterConstraintsCheckerForAllocation(
 			analyzedOverallConstraints,
 			analyzedVoterConstraints,
 		)
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(94284)
 		constraintsChecker = nonVoterConstraintsCheckerForAllocation(analyzedOverallConstraints)
 	default:
+		__antithesis_instrumentation__.Notify(94285)
 		log.Fatalf(ctx, "unsupported targetReplicaType: %v", t)
 	}
+	__antithesis_instrumentation__.Notify(94281)
 
-	// We'll consider the targets that have a non-voter as feasible
-	// relocation/up-replication targets for existing/new voting replicas, since
-	// we always want voter constraint conformance to take precedence over
-	// non-voters. For instance, in cases where we can only satisfy constraints
-	// for either 1 voter or 1 non-voter, we want the voter to be able to displace
-	// the non-voter.
 	existingReplicaSet := getReplicasForDiversityCalc(targetType, existingVoters, existingReplicas)
 	candidates := rankedCandidateListForAllocation(
 		ctx,
@@ -1000,16 +990,24 @@ func (a *Allocator) allocateTargetFromList(
 
 	log.VEventf(ctx, 3, "allocate %s: %s", targetType, candidates)
 	if target := candidates.selectGood(a.randGen); target != nil {
+		__antithesis_instrumentation__.Notify(94286)
 		log.VEventf(ctx, 3, "add target: %s", target)
 		details := decisionDetails{Target: target.compactString()}
 		detailsBytes, err := json.Marshal(details)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(94288)
 			log.Warningf(ctx, "failed to marshal details for choosing allocate target: %+v", err)
+		} else {
+			__antithesis_instrumentation__.Notify(94289)
 		}
+		__antithesis_instrumentation__.Notify(94287)
 		return roachpb.ReplicationTarget{
 			NodeID: target.store.Node.NodeID, StoreID: target.store.StoreID,
 		}, string(detailsBytes)
+	} else {
+		__antithesis_instrumentation__.Notify(94290)
 	}
+	__antithesis_instrumentation__.Notify(94282)
 
 	return roachpb.ReplicationTarget{}, ""
 }
@@ -1026,18 +1024,25 @@ func (a Allocator) simulateRemoveTarget(
 	targetType targetReplicaType,
 	options scorerOptions,
 ) (roachpb.ReplicationTarget, string, error) {
+	__antithesis_instrumentation__.Notify(94291)
 	candidateStores := make([]roachpb.StoreDescriptor, 0, len(candidates))
 	for _, cand := range candidates {
+		__antithesis_instrumentation__.Notify(94293)
 		for _, store := range sl.stores {
+			__antithesis_instrumentation__.Notify(94294)
 			if cand.StoreID == store.StoreID {
+				__antithesis_instrumentation__.Notify(94295)
 				candidateStores = append(candidateStores, store)
+			} else {
+				__antithesis_instrumentation__.Notify(94296)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(94292)
 
-	// Update statistics first
 	switch t := targetType; t {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(94297)
 		a.storePool.updateLocalStoreAfterRebalance(targetStore, rangeUsageInfo, roachpb.ADD_VOTER)
 		defer a.storePool.updateLocalStoreAfterRebalance(
 			targetStore,
@@ -1052,6 +1057,7 @@ func (a Allocator) simulateRemoveTarget(
 			existingVoters, existingNonVoters, voterTarget, options,
 		)
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(94298)
 		a.storePool.updateLocalStoreAfterRebalance(targetStore, rangeUsageInfo, roachpb.ADD_NON_VOTER)
 		defer a.storePool.updateLocalStoreAfterRebalance(
 			targetStore,
@@ -1065,20 +1071,28 @@ func (a Allocator) simulateRemoveTarget(
 			existingVoters, existingNonVoters, nonVoterTarget, options,
 		)
 	default:
+		__antithesis_instrumentation__.Notify(94299)
 		panic(fmt.Sprintf("unknown targetReplicaType: %s", t))
 	}
 }
 
 func (a Allocator) storeListForTargets(candidates []roachpb.ReplicationTarget) StoreList {
+	__antithesis_instrumentation__.Notify(94300)
 	result := make([]roachpb.StoreDescriptor, 0, len(candidates))
 	sl, _, _ := a.storePool.getStoreList(storeFilterNone)
 	for _, cand := range candidates {
+		__antithesis_instrumentation__.Notify(94302)
 		for _, store := range sl.stores {
+			__antithesis_instrumentation__.Notify(94303)
 			if cand.StoreID == store.StoreID {
+				__antithesis_instrumentation__.Notify(94304)
 				result = append(result, store)
+			} else {
+				__antithesis_instrumentation__.Notify(94305)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(94301)
 	return makeStoreList(result)
 }
 
@@ -1091,12 +1105,17 @@ func (a Allocator) removeTarget(
 	targetType targetReplicaType,
 	options scorerOptions,
 ) (roachpb.ReplicationTarget, string, error) {
+	__antithesis_instrumentation__.Notify(94306)
 	if len(candidateStoreList.stores) == 0 {
+		__antithesis_instrumentation__.Notify(94310)
 		return roachpb.ReplicationTarget{}, "", errors.Errorf(
 			"must supply at least one" +
 				" candidate replica to allocator.removeTarget()",
 		)
+	} else {
+		__antithesis_instrumentation__.Notify(94311)
 	}
+	__antithesis_instrumentation__.Notify(94307)
 
 	existingReplicas := append(existingVoters, existingNonVoters...)
 	analyzedOverallConstraints := constraint.AnalyzeConstraints(ctx, a.storePool.getStoreDescriptor,
@@ -1107,18 +1126,20 @@ func (a Allocator) removeTarget(
 	var constraintsChecker constraintsCheckFn
 	switch t := targetType; t {
 	case voterTarget:
-		// Voting replicas have to abide by both the overall `constraints` (which
-		// apply to all replicas) and `voter_constraints` which apply only to voting
-		// replicas.
+		__antithesis_instrumentation__.Notify(94312)
+
 		constraintsChecker = voterConstraintsCheckerForRemoval(
 			analyzedOverallConstraints,
 			analyzedVoterConstraints,
 		)
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(94313)
 		constraintsChecker = nonVoterConstraintsCheckerForRemoval(analyzedOverallConstraints)
 	default:
+		__antithesis_instrumentation__.Notify(94314)
 		log.Fatalf(ctx, "unsupported targetReplicaType: %v", t)
 	}
+	__antithesis_instrumentation__.Notify(94308)
 
 	replicaSetForDiversityCalc := getReplicasForDiversityCalc(targetType, existingVoters, existingReplicas)
 	rankedCandidates := candidateListForRemoval(
@@ -1130,28 +1151,36 @@ func (a Allocator) removeTarget(
 
 	log.VEventf(ctx, 3, "remove %s: %s", targetType, rankedCandidates)
 	if bad := rankedCandidates.selectBad(a.randGen); bad != nil {
+		__antithesis_instrumentation__.Notify(94315)
 		for _, exist := range existingReplicas {
+			__antithesis_instrumentation__.Notify(94316)
 			if exist.StoreID == bad.store.StoreID {
+				__antithesis_instrumentation__.Notify(94317)
 				log.VEventf(ctx, 3, "remove target: %s", bad)
 				details := decisionDetails{Target: bad.compactString()}
 				detailsBytes, err := json.Marshal(details)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(94319)
 					log.Warningf(ctx, "failed to marshal details for choosing remove target: %+v", err)
+				} else {
+					__antithesis_instrumentation__.Notify(94320)
 				}
+				__antithesis_instrumentation__.Notify(94318)
 				return roachpb.ReplicationTarget{
 					StoreID: exist.StoreID, NodeID: exist.NodeID,
 				}, string(detailsBytes), nil
+			} else {
+				__antithesis_instrumentation__.Notify(94321)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(94322)
 	}
+	__antithesis_instrumentation__.Notify(94309)
 
 	return roachpb.ReplicationTarget{}, "", errors.New("could not select an appropriate replica to be removed")
 }
 
-// RemoveVoter returns a suitable replica to remove from the provided replica
-// set. It first attempts to randomly select a target from the set of stores
-// that have greater than the average number of replicas. Failing that, it falls
-// back to selecting a random target from any of the existing voting replicas.
 func (a Allocator) RemoveVoter(
 	ctx context.Context,
 	conf roachpb.SpanConfig,
@@ -1160,11 +1189,14 @@ func (a Allocator) RemoveVoter(
 	existingNonVoters []roachpb.ReplicaDescriptor,
 	options scorerOptions,
 ) (roachpb.ReplicationTarget, string, error) {
-	// Retrieve store descriptors for the provided candidates from the StorePool.
+	__antithesis_instrumentation__.Notify(94323)
+
 	candidateStoreIDs := make(roachpb.StoreIDSlice, len(voterCandidates))
 	for i, exist := range voterCandidates {
+		__antithesis_instrumentation__.Notify(94325)
 		candidateStoreIDs[i] = exist.StoreID
 	}
+	__antithesis_instrumentation__.Notify(94324)
 	candidateStoreList, _, _ := a.storePool.getStoreListFromIDs(candidateStoreIDs, storeFilterNone)
 
 	return a.removeTarget(
@@ -1178,11 +1210,6 @@ func (a Allocator) RemoveVoter(
 	)
 }
 
-// RemoveNonVoter returns a suitable non-voting replica to remove from the
-// provided set. It first attempts to randomly select a target from the set of
-// stores that have greater than the average number of replicas. Failing that,
-// it falls back to selecting a random target from any of the existing
-// non-voting replicas.
 func (a Allocator) RemoveNonVoter(
 	ctx context.Context,
 	conf roachpb.SpanConfig,
@@ -1191,11 +1218,14 @@ func (a Allocator) RemoveNonVoter(
 	existingNonVoters []roachpb.ReplicaDescriptor,
 	options scorerOptions,
 ) (roachpb.ReplicationTarget, string, error) {
-	// Retrieve store descriptors for the provided candidates from the StorePool.
+	__antithesis_instrumentation__.Notify(94326)
+
 	candidateStoreIDs := make(roachpb.StoreIDSlice, len(nonVoterCandidates))
 	for i, exist := range nonVoterCandidates {
+		__antithesis_instrumentation__.Notify(94328)
 		candidateStoreIDs[i] = exist.StoreID
 	}
+	__antithesis_instrumentation__.Notify(94327)
 	candidateStoreList, _, _ := a.storePool.getStoreListFromIDs(candidateStoreIDs, storeFilterNone)
 
 	return a.removeTarget(
@@ -1219,12 +1249,9 @@ func (a Allocator) rebalanceTarget(
 	targetType targetReplicaType,
 	options scorerOptions,
 ) (add, remove roachpb.ReplicationTarget, details string, ok bool) {
+	__antithesis_instrumentation__.Notify(94329)
 	sl, _, _ := a.storePool.getStoreList(filter)
 
-	// If we're considering a rebalance due to an `AdminScatterRequest`, we'd like
-	// to ensure that we're returning a random rebalance target to a new store
-	// that's a reasonable fit for an existing replica. So we might jitter the
-	// existing stats on the stores inside `sl`.
 	sl = options.maybeJitterStoreStats(sl, a.randGen)
 
 	existingReplicas := append(existingVoters, existingNonVoters...)
@@ -1241,6 +1268,7 @@ func (a Allocator) rebalanceTarget(
 
 	switch t := targetType; t {
 	case voterTarget:
+		__antithesis_instrumentation__.Notify(94334)
 		removalConstraintsChecker = voterConstraintsCheckerForRemoval(
 			analyzedOverallConstraints,
 			analyzedVoterConstraints,
@@ -1252,18 +1280,18 @@ func (a Allocator) rebalanceTarget(
 		replicaSetToRebalance = existingVoters
 		otherReplicaSet = existingNonVoters
 	case nonVoterTarget:
+		__antithesis_instrumentation__.Notify(94335)
 		removalConstraintsChecker = nonVoterConstraintsCheckerForRemoval(analyzedOverallConstraints)
 		rebalanceConstraintsChecker = nonVoterConstraintsCheckerForRebalance(analyzedOverallConstraints)
 		replicaSetToRebalance = existingNonVoters
-		// When rebalancing non-voting replicas, we don't consider stores that
-		// already have voting replicas as possible candidates. Voting replicas are
-		// supposed to be rebalanced before non-voting replicas, and they do
-		// consider the non-voters' stores as possible candidates.
+
 		replicasWithExcludedStores = existingVoters
 		otherReplicaSet = existingVoters
 	default:
+		__antithesis_instrumentation__.Notify(94336)
 		log.Fatalf(ctx, "unsupported targetReplicaType: %v", t)
 	}
+	__antithesis_instrumentation__.Notify(94330)
 
 	replicaSetForDiversityCalc := getReplicasForDiversityCalc(targetType, existingVoters, existingReplicas)
 	results := rankedCandidateListForRebalancing(
@@ -1280,45 +1308,60 @@ func (a Allocator) rebalanceTarget(
 	)
 
 	if len(results) == 0 {
+		__antithesis_instrumentation__.Notify(94337)
 		return zero, zero, "", false
+	} else {
+		__antithesis_instrumentation__.Notify(94338)
 	}
-	// Keep looping until we either run out of options or find a target that we're
-	// pretty sure we won't want to remove immediately after adding it. If we
-	// would, we don't want to actually rebalance to that target.
+	__antithesis_instrumentation__.Notify(94331)
+
 	var target, existingCandidate *candidate
 	var removeReplica roachpb.ReplicationTarget
 	for {
+		__antithesis_instrumentation__.Notify(94339)
 		target, existingCandidate = bestRebalanceTarget(a.randGen, results)
 		if target == nil {
+			__antithesis_instrumentation__.Notify(94345)
 			return zero, zero, "", false
+		} else {
+			__antithesis_instrumentation__.Notify(94346)
 		}
+		__antithesis_instrumentation__.Notify(94340)
 
-		// Add a fake new replica to our copy of the replica descriptor so that we can
-		// simulate the removal logic. If we decide not to go with this target, note
-		// that this needs to be removed from desc before we try any other target.
 		newReplica := roachpb.ReplicaDescriptor{
 			NodeID:    target.store.Node.NodeID,
 			StoreID:   target.store.StoreID,
 			ReplicaID: maxReplicaID(existingReplicas) + 1,
 		}
-		// Deep-copy the Replicas slice since we'll mutate it below.
+
 		existingPlusOneNew := append([]roachpb.ReplicaDescriptor(nil), replicaSetToRebalance...)
 		existingPlusOneNew = append(existingPlusOneNew, newReplica)
 		replicaCandidates := existingPlusOneNew
-		// If we can, filter replicas as we would if we were actually removing one.
-		// If we can't (e.g. because we're the leaseholder but not the raft leader),
-		// it's better to simulate the removal with the info that we do have than to
-		// assume that the rebalance is ok (#20241).
-		if targetType == voterTarget && raftStatus != nil && raftStatus.Progress != nil {
+
+		if targetType == voterTarget && func() bool {
+			__antithesis_instrumentation__.Notify(94347)
+			return raftStatus != nil == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(94348)
+			return raftStatus.Progress != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(94349)
 			replicaCandidates = simulateFilterUnremovableReplicas(
 				ctx, raftStatus, replicaCandidates, newReplica.ReplicaID)
+		} else {
+			__antithesis_instrumentation__.Notify(94350)
 		}
+		__antithesis_instrumentation__.Notify(94341)
 		if len(replicaCandidates) == 0 {
-			// No existing replicas are suitable to remove.
+			__antithesis_instrumentation__.Notify(94351)
+
 			log.VEventf(ctx, 2, "not rebalancing %s to s%d because there are no existing "+
 				"replicas that can be removed", targetType, target.store.StoreID)
 			return zero, zero, "", false
+		} else {
+			__antithesis_instrumentation__.Notify(94352)
 		}
+		__antithesis_instrumentation__.Notify(94342)
 
 		var removeDetails string
 		var err error
@@ -1335,29 +1378,40 @@ func (a Allocator) rebalanceTarget(
 			options,
 		)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(94353)
 			log.Warningf(ctx, "simulating removal of %s failed: %+v", targetType, err)
 			return zero, zero, "", false
+		} else {
+			__antithesis_instrumentation__.Notify(94354)
 		}
+		__antithesis_instrumentation__.Notify(94343)
 		if target.store.StoreID != removeReplica.StoreID {
-			// Successfully populated these variables
+			__antithesis_instrumentation__.Notify(94355)
+
 			_, _ = target, removeReplica
 			break
+		} else {
+			__antithesis_instrumentation__.Notify(94356)
 		}
+		__antithesis_instrumentation__.Notify(94344)
 
 		log.VEventf(ctx, 2, "not rebalancing to s%d because we'd immediately remove it: %s",
 			target.store.StoreID, removeDetails)
 	}
+	__antithesis_instrumentation__.Notify(94332)
 
-	// Compile the details entry that will be persisted into system.rangelog for
-	// debugging/auditability purposes.
 	dDetails := decisionDetails{
 		Target:   target.compactString(),
 		Existing: existingCandidate.compactString(),
 	}
 	detailsBytes, err := json.Marshal(dDetails)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(94357)
 		log.Warningf(ctx, "failed to marshal details for choosing rebalance target: %+v", err)
+	} else {
+		__antithesis_instrumentation__.Notify(94358)
 	}
+	__antithesis_instrumentation__.Notify(94333)
 
 	addTarget := roachpb.ReplicationTarget{
 		NodeID:  target.store.Node.NodeID,
@@ -1370,31 +1424,6 @@ func (a Allocator) rebalanceTarget(
 	return addTarget, removeTarget, string(detailsBytes), true
 }
 
-// RebalanceVoter returns a suitable store for a rebalance target with required
-// attributes. Rebalance targets are selected via the same mechanism as
-// AllocateVoter(), except the chosen target must follow some additional
-// criteria. Namely, if chosen, it must further the goal of balancing the
-// cluster.
-//
-// The supplied parameters are the required attributes for the range and
-// information about the range being considered for rebalancing.
-//
-// The existing voting replicas modulo any store with dead replicas are
-// candidates for rebalancing.
-//
-// Simply ignoring a rebalance opportunity in the event that the target chosen
-// by rankedCandidateListForRebalancing() doesn't fit balancing criteria is
-// perfectly fine, as other stores in the cluster will also be doing their
-// probabilistic best to rebalance. This helps prevent a stampeding herd
-// targeting an abnormally under-utilized store.
-//
-// The return values are, in order:
-//
-// 1. The target on which to add a new replica,
-// 2. An existing replica to remove,
-// 3. a JSON string for use in the range log, and
-// 4. a boolean indicationg whether 1-3 were populated (i.e. whether a rebalance
-//    opportunity was found).
 func (a Allocator) RebalanceVoter(
 	ctx context.Context,
 	conf roachpb.SpanConfig,
@@ -1404,6 +1433,7 @@ func (a Allocator) RebalanceVoter(
 	filter storeFilter,
 	options scorerOptions,
 ) (add, remove roachpb.ReplicationTarget, details string, ok bool) {
+	__antithesis_instrumentation__.Notify(94359)
 	return a.rebalanceTarget(
 		ctx,
 		conf,
@@ -1417,18 +1447,6 @@ func (a Allocator) RebalanceVoter(
 	)
 }
 
-// RebalanceNonVoter returns a suitable pair of rebalance candidates for a
-// non-voting replica. This behaves very similarly to `RebalanceVoter` as
-// explained above. The key differences are the following:
-//
-// 1. Non-voting replicas only adhere to the overall `constraints` and not the
-// `voter_constraints`.
-// 2. We do not consider stores that have voters as valid candidates for
-// rebalancing.
-// 3. Diversity score calculation for non-voters is relative to all existing
-// replicas. This is in contrast to how we compute the diversity scores for
-// voting replicas, which are computed relative to just the set of voting
-// replicas.
 func (a Allocator) RebalanceNonVoter(
 	ctx context.Context,
 	conf roachpb.SpanConfig,
@@ -1438,6 +1456,7 @@ func (a Allocator) RebalanceNonVoter(
 	filter storeFilter,
 	options scorerOptions,
 ) (add, remove roachpb.ReplicationTarget, details string, ok bool) {
+	__antithesis_instrumentation__.Notify(94360)
 	return a.rebalanceTarget(
 		ctx,
 		conf,
@@ -1452,6 +1471,7 @@ func (a Allocator) RebalanceNonVoter(
 }
 
 func (a *Allocator) scorerOptions() *rangeCountScorerOptions {
+	__antithesis_instrumentation__.Notify(94361)
 	return &rangeCountScorerOptions{
 		deterministic:           a.storePool.deterministic,
 		rangeRebalanceThreshold: rangeRebalanceThreshold.Get(&a.storePool.st.SV),
@@ -1459,35 +1479,17 @@ func (a *Allocator) scorerOptions() *rangeCountScorerOptions {
 }
 
 func (a *Allocator) scorerOptionsForScatter() *scatterScorerOptions {
+	__antithesis_instrumentation__.Notify(94362)
 	return &scatterScorerOptions{
 		rangeCountScorerOptions: rangeCountScorerOptions{
 			deterministic:           a.storePool.deterministic,
 			rangeRebalanceThreshold: 0,
 		},
-		// We set jitter to be equal to the padding around replica-count rebalancing
-		// because we'd like to make it such that rebalances made due to an
-		// `AdminScatter` are roughly in line (but more random than) the rebalances
-		// made by the replicateQueue during normal course of operations. In other
-		// words, we don't want stores that are too far away from the mean to be
-		// affected by the jitter.
+
 		jitter: rangeRebalanceThreshold.Get(&a.storePool.st.SV),
 	}
 }
 
-// TransferLeaseTarget returns a suitable replica to transfer the range lease
-// to from the provided list. It excludes the current lease holder replica
-// unless asked to do otherwise by the checkTransferLeaseSource parameter.
-//
-// Returns an empty descriptor if no target is found.
-//
-// TODO(aayush, andrei): If a draining leaseholder doesn't see any other voters
-// in its locality, but sees a learner, rather than allowing the lease to be
-// transferred outside of its current locality (likely violating leaseholder
-// preferences, at least temporarily), it would be nice to promote the existing
-// learner to a voter. This could be further extended to cases where we have a
-// dead voter in a given locality along with a live learner. In such cases, we
-// would want to promote the live learner to a voter and demote the dead voter
-// to a learner.
 func (a *Allocator) TransferLeaseTarget(
 	ctx context.Context,
 	conf roachpb.SpanConfig,
@@ -1501,6 +1503,7 @@ func (a *Allocator) TransferLeaseTarget(
 	forceDecisionWithoutStats bool,
 	opts transferLeaseOptions,
 ) roachpb.ReplicaDescriptor {
+	__antithesis_instrumentation__.Notify(94363)
 	allStoresList, _, _ := a.storePool.getStoreList(storeFilterNone)
 	storeDescMap := storeListToMap(allStoresList)
 
@@ -1512,160 +1515,223 @@ func (a *Allocator) TransferLeaseTarget(
 
 	source, ok := a.storePool.getStoreDescriptor(leaseRepl.StoreID())
 	if !ok {
+		__antithesis_instrumentation__.Notify(94370)
 		return roachpb.ReplicaDescriptor{}
+	} else {
+		__antithesis_instrumentation__.Notify(94371)
 	}
+	__antithesis_instrumentation__.Notify(94364)
 
-	// Determine which store(s) is preferred based on user-specified preferences.
-	// If any stores match, only consider those stores as candidates. If only one
-	// store matches, it's where the lease should be (unless the preferred store
-	// is the current one and checkTransferLeaseSource is false).
 	var preferred []roachpb.ReplicaDescriptor
 	checkTransferLeaseSource := opts.checkTransferLeaseSource
 	if checkTransferLeaseSource {
+		__antithesis_instrumentation__.Notify(94372)
 		preferred = a.preferredLeaseholders(conf, existing)
 	} else {
-		// TODO(a-robinson): Should we just always remove the source store from
-		// existing when checkTransferLeaseSource is false? I'd do it now, but
-		// it's too big a change to make right before a major release.
+		__antithesis_instrumentation__.Notify(94373)
+
 		var candidates []roachpb.ReplicaDescriptor
 		for _, repl := range existing {
+			__antithesis_instrumentation__.Notify(94375)
 			if repl.StoreID != leaseRepl.StoreID() {
+				__antithesis_instrumentation__.Notify(94376)
 				candidates = append(candidates, repl)
+			} else {
+				__antithesis_instrumentation__.Notify(94377)
 			}
 		}
+		__antithesis_instrumentation__.Notify(94374)
 		preferred = a.preferredLeaseholders(conf, candidates)
 	}
+	__antithesis_instrumentation__.Notify(94365)
 	if len(preferred) == 1 {
+		__antithesis_instrumentation__.Notify(94378)
 		if preferred[0].StoreID == leaseRepl.StoreID() {
+			__antithesis_instrumentation__.Notify(94381)
 			return roachpb.ReplicaDescriptor{}
+		} else {
+			__antithesis_instrumentation__.Notify(94382)
 		}
-		// Verify that the preferred replica is eligible to receive the lease.
-		preferred, _ = a.storePool.liveAndDeadReplicas(preferred, false /* includeSuspectAndDrainingStores */)
+		__antithesis_instrumentation__.Notify(94379)
+
+		preferred, _ = a.storePool.liveAndDeadReplicas(preferred, false)
 		if len(preferred) == 1 {
+			__antithesis_instrumentation__.Notify(94383)
 			return preferred[0]
+		} else {
+			__antithesis_instrumentation__.Notify(94384)
 		}
+		__antithesis_instrumentation__.Notify(94380)
 		return roachpb.ReplicaDescriptor{}
-	} else if len(preferred) > 1 {
-		// If the current leaseholder is not preferred, set checkTransferLeaseSource
-		// to false to motivate the below logic to transfer the lease.
-		existing = preferred
-		if !storeHasReplica(leaseRepl.StoreID(), roachpb.MakeReplicaSet(preferred).ReplicationTargets()) {
-			checkTransferLeaseSource = false
+	} else {
+		__antithesis_instrumentation__.Notify(94385)
+		if len(preferred) > 1 {
+			__antithesis_instrumentation__.Notify(94386)
+
+			existing = preferred
+			if !storeHasReplica(leaseRepl.StoreID(), roachpb.MakeReplicaSet(preferred).ReplicationTargets()) {
+				__antithesis_instrumentation__.Notify(94387)
+				checkTransferLeaseSource = false
+			} else {
+				__antithesis_instrumentation__.Notify(94388)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(94389)
 		}
 	}
+	__antithesis_instrumentation__.Notify(94366)
 
-	// Only consider live, non-draining, non-suspect replicas.
-	existing, _ = a.storePool.liveAndDeadReplicas(existing, false /* includeSuspectAndDrainingStores */)
+	existing, _ = a.storePool.liveAndDeadReplicas(existing, false)
 
-	if a.knobs == nil || !a.knobs.AllowLeaseTransfersToReplicasNeedingSnapshots {
-		// Only proceed with the lease transfer if we are also the raft leader (we
-		// already know we are the leaseholder at this point), and only consider
-		// replicas that are in `StateReplicate` as potential candidates.
-		//
-		// NB: The RaftStatus() only returns a non-empty and non-nil result on the
-		// Raft leader (since Raft followers do not track the progress of other
-		// replicas, only the leader does).
-		//
-		// NB: On every Raft tick, we try to ensure that leadership is collocated with
-		// leaseholdership (see
-		// Replica.maybeTransferRaftLeadershipToLeaseholderLocked()). This means that
-		// on a range that is not already borked (i.e. can accept writes), periods of
-		// leader/leaseholder misalignment should be ephemeral and rare. We choose to
-		// be pessimistic here and choose to bail on the lease transfer, as opposed to
-		// potentially transferring the lease to a replica that may be waiting for a
-		// snapshot (which will wedge the range until the replica applies that
-		// snapshot).
+	if a.knobs == nil || func() bool {
+		__antithesis_instrumentation__.Notify(94390)
+		return !a.knobs.AllowLeaseTransfersToReplicasNeedingSnapshots == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94391)
+
 		existing = excludeReplicasInNeedOfSnapshots(ctx, leaseRepl.RaftStatus(), existing)
+	} else {
+		__antithesis_instrumentation__.Notify(94392)
 	}
+	__antithesis_instrumentation__.Notify(94367)
 
-	// Short-circuit if there are no valid targets out there.
-	if len(existing) == 0 || (len(existing) == 1 && existing[0].StoreID == leaseRepl.StoreID()) {
+	if len(existing) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(94393)
+		return (len(existing) == 1 && func() bool {
+			__antithesis_instrumentation__.Notify(94394)
+			return existing[0].StoreID == leaseRepl.StoreID() == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94395)
 		log.VEventf(ctx, 2, "no lease transfer target found for r%d", leaseRepl.GetRangeID())
 		return roachpb.ReplicaDescriptor{}
+	} else {
+		__antithesis_instrumentation__.Notify(94396)
 	}
+	__antithesis_instrumentation__.Notify(94368)
 
 	switch g := opts.goal; g {
 	case followTheWorkload:
-		// Try to pick a replica to transfer the lease to while also determining
-		// whether we actually should be transferring the lease. The transfer
-		// decision is only needed if we've been asked to check the source.
+		__antithesis_instrumentation__.Notify(94397)
+
 		transferDec, repl := a.shouldTransferLeaseForAccessLocality(
 			ctx, source, existing, stats, nil, candidateLeasesMean,
 		)
 		if checkTransferLeaseSource {
+			__antithesis_instrumentation__.Notify(94408)
 			switch transferDec {
 			case shouldNotTransfer:
+				__antithesis_instrumentation__.Notify(94409)
 				if !forceDecisionWithoutStats {
+					__antithesis_instrumentation__.Notify(94414)
 					return roachpb.ReplicaDescriptor{}
+				} else {
+					__antithesis_instrumentation__.Notify(94415)
 				}
+				__antithesis_instrumentation__.Notify(94410)
 				fallthrough
 			case decideWithoutStats:
+				__antithesis_instrumentation__.Notify(94411)
 				if !a.shouldTransferLeaseForLeaseCountConvergence(ctx, sl, source, existing) {
+					__antithesis_instrumentation__.Notify(94416)
 					return roachpb.ReplicaDescriptor{}
+				} else {
+					__antithesis_instrumentation__.Notify(94417)
 				}
 			case shouldTransfer:
+				__antithesis_instrumentation__.Notify(94412)
 			default:
+				__antithesis_instrumentation__.Notify(94413)
 				log.Fatalf(ctx, "unexpected transfer decision %d with replica %+v", transferDec, repl)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(94418)
 		}
+		__antithesis_instrumentation__.Notify(94398)
 		if repl != (roachpb.ReplicaDescriptor{}) {
+			__antithesis_instrumentation__.Notify(94419)
 			return repl
+		} else {
+			__antithesis_instrumentation__.Notify(94420)
 		}
+		__antithesis_instrumentation__.Notify(94399)
 		fallthrough
 
 	case leaseCountConvergence:
-		// Fall back to logic that doesn't take request counts and latency into
-		// account if the counts/latency-based logic couldn't pick a best replica.
+		__antithesis_instrumentation__.Notify(94400)
+
 		candidates := make([]roachpb.ReplicaDescriptor, 0, len(existing))
 		var bestOption roachpb.ReplicaDescriptor
 		bestOptionLeaseCount := int32(math.MaxInt32)
 		for _, repl := range existing {
+			__antithesis_instrumentation__.Notify(94421)
 			if leaseRepl.StoreID() == repl.StoreID {
+				__antithesis_instrumentation__.Notify(94424)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(94425)
 			}
+			__antithesis_instrumentation__.Notify(94422)
 			storeDesc, ok := a.storePool.getStoreDescriptor(repl.StoreID)
 			if !ok {
+				__antithesis_instrumentation__.Notify(94426)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(94427)
 			}
-			if !opts.checkCandidateFullness || float64(storeDesc.Capacity.LeaseCount) < candidateLeasesMean-0.5 {
+			__antithesis_instrumentation__.Notify(94423)
+			if !opts.checkCandidateFullness || func() bool {
+				__antithesis_instrumentation__.Notify(94428)
+				return float64(storeDesc.Capacity.LeaseCount) < candidateLeasesMean-0.5 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(94429)
 				candidates = append(candidates, repl)
-			} else if storeDesc.Capacity.LeaseCount < bestOptionLeaseCount {
-				bestOption = repl
-				bestOptionLeaseCount = storeDesc.Capacity.LeaseCount
+			} else {
+				__antithesis_instrumentation__.Notify(94430)
+				if storeDesc.Capacity.LeaseCount < bestOptionLeaseCount {
+					__antithesis_instrumentation__.Notify(94431)
+					bestOption = repl
+					bestOptionLeaseCount = storeDesc.Capacity.LeaseCount
+				} else {
+					__antithesis_instrumentation__.Notify(94432)
+				}
 			}
 		}
+		__antithesis_instrumentation__.Notify(94401)
 		if len(candidates) == 0 {
-			// If we aren't supposed to be considering the current leaseholder (e.g.
-			// because we need to remove this replica for some reason), return
-			// our best option if we otherwise wouldn't want to do anything.
+			__antithesis_instrumentation__.Notify(94433)
+
 			if !checkTransferLeaseSource {
+				__antithesis_instrumentation__.Notify(94435)
 				return bestOption
+			} else {
+				__antithesis_instrumentation__.Notify(94436)
 			}
+			__antithesis_instrumentation__.Notify(94434)
 			return roachpb.ReplicaDescriptor{}
+		} else {
+			__antithesis_instrumentation__.Notify(94437)
 		}
+		__antithesis_instrumentation__.Notify(94402)
 		a.randGen.Lock()
 		defer a.randGen.Unlock()
 		return candidates[a.randGen.Intn(len(candidates))]
 
 	case qpsConvergence:
+		__antithesis_instrumentation__.Notify(94403)
 		leaseReplQPS, _ := stats.avgQPS()
 		candidates := make([]roachpb.StoreID, 0, len(existing)-1)
 		for _, repl := range existing {
+			__antithesis_instrumentation__.Notify(94438)
 			if repl.StoreID != leaseRepl.StoreID() {
+				__antithesis_instrumentation__.Notify(94439)
 				candidates = append(candidates, repl.StoreID)
+			} else {
+				__antithesis_instrumentation__.Notify(94440)
 			}
 		}
+		__antithesis_instrumentation__.Notify(94404)
 
-		// When the goal is to further QPS convergence across stores, we ensure that
-		// any lease transfer decision we make *reduces the delta between the store
-		// serving the highest QPS and the store serving the lowest QPS* among our
-		// list of candidates.
-		//
-		// NB: We're assuming that the lease transfer will move all of the
-		// leaseholder's load to the replica that receives the lease. This will not
-		// be true in all cases (some percentage of the leaseholder's traffic could
-		// be follower read traffic). See
-		// https://github.com/cockroachdb/cockroach/issues/75630.
 		bestStore, noRebalanceReason := bestStoreToMinimizeQPSDelta(
 			leaseReplQPS,
 			qpsRebalanceThreshold.Get(&a.storePool.st.SV),
@@ -1677,10 +1743,12 @@ func (a *Allocator) TransferLeaseTarget(
 
 		switch noRebalanceReason {
 		case noBetterCandidate:
+			__antithesis_instrumentation__.Notify(94441)
 			a.metrics.loadBasedLeaseTransferMetrics.CannotFindBetterCandidate.Inc(1)
 			log.VEventf(ctx, 5, "r%d: could not find a better target for lease", leaseRepl.GetRangeID())
 			return roachpb.ReplicaDescriptor{}
 		case existingNotOverfull:
+			__antithesis_instrumentation__.Notify(94442)
 			a.metrics.loadBasedLeaseTransferMetrics.ExistingNotOverfull.Inc(1)
 			log.VEventf(
 				ctx, 5, "r%d: existing leaseholder s%d is not overfull",
@@ -1688,6 +1756,7 @@ func (a *Allocator) TransferLeaseTarget(
 			)
 			return roachpb.ReplicaDescriptor{}
 		case deltaNotSignificant:
+			__antithesis_instrumentation__.Notify(94443)
 			a.metrics.loadBasedLeaseTransferMetrics.DeltaNotSignificant.Inc(1)
 			log.VEventf(
 				ctx, 5,
@@ -1696,12 +1765,14 @@ func (a *Allocator) TransferLeaseTarget(
 			)
 			return roachpb.ReplicaDescriptor{}
 		case significantlySwitchesRelativeDisposition:
+			__antithesis_instrumentation__.Notify(94444)
 			a.metrics.loadBasedLeaseTransferMetrics.SignificantlySwitchesRelativeDisposition.Inc(1)
 			log.VEventf(ctx, 5,
 				"r%d: lease transfer away from s%d would make it hotter than the coldest follower",
 				leaseRepl.GetRangeID(), leaseRepl.StoreID())
 			return roachpb.ReplicaDescriptor{}
 		case missingStatsForExistingStore:
+			__antithesis_instrumentation__.Notify(94445)
 			a.metrics.loadBasedLeaseTransferMetrics.MissingStatsForExistingStore.Inc(1)
 			log.VEventf(
 				ctx, 5, "r%d: missing stats for leaseholder s%d",
@@ -1709,6 +1780,7 @@ func (a *Allocator) TransferLeaseTarget(
 			)
 			return roachpb.ReplicaDescriptor{}
 		case shouldRebalance:
+			__antithesis_instrumentation__.Notify(94446)
 			a.metrics.loadBasedLeaseTransferMetrics.ShouldTransfer.Inc(1)
 			log.VEventf(
 				ctx,
@@ -1722,64 +1794,89 @@ func (a *Allocator) TransferLeaseTarget(
 				storeDescMap[bestStore].Capacity.QueriesPerSecond,
 			)
 		default:
+			__antithesis_instrumentation__.Notify(94447)
 			log.Fatalf(ctx, "unknown declineReason: %v", noRebalanceReason)
 		}
+		__antithesis_instrumentation__.Notify(94405)
 
 		for _, repl := range existing {
+			__antithesis_instrumentation__.Notify(94448)
 			if repl.StoreID == bestStore {
+				__antithesis_instrumentation__.Notify(94449)
 				return repl
+			} else {
+				__antithesis_instrumentation__.Notify(94450)
 			}
 		}
+		__antithesis_instrumentation__.Notify(94406)
 		panic("unreachable")
 	default:
+		__antithesis_instrumentation__.Notify(94407)
 		log.Fatalf(ctx, "unexpected lease transfer goal %d", g)
 	}
+	__antithesis_instrumentation__.Notify(94369)
 	panic("unreachable")
 }
 
-// getCandidateWithMinQPS returns the StoreID that belongs to the store serving
-// the lowest QPS among all the `candidates` stores.
 func getCandidateWithMinQPS(
 	storeQPSMap map[roachpb.StoreID]float64, candidates []roachpb.StoreID,
 ) (bestCandidate roachpb.StoreID) {
+	__antithesis_instrumentation__.Notify(94451)
 	minCandidateQPS := math.MaxFloat64
 	for _, store := range candidates {
+		__antithesis_instrumentation__.Notify(94453)
 		candidateQPS, ok := storeQPSMap[store]
 		if !ok {
+			__antithesis_instrumentation__.Notify(94455)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(94456)
 		}
+		__antithesis_instrumentation__.Notify(94454)
 		if minCandidateQPS > candidateQPS {
+			__antithesis_instrumentation__.Notify(94457)
 			minCandidateQPS = candidateQPS
 			bestCandidate = store
+		} else {
+			__antithesis_instrumentation__.Notify(94458)
 		}
 	}
+	__antithesis_instrumentation__.Notify(94452)
 	return bestCandidate
 }
 
-// getQPSDelta returns the difference between the store serving the highest QPS
-// and the store serving the lowest QPS, among the set of stores in the
-// `domain`.
 func getQPSDelta(storeQPSMap map[roachpb.StoreID]float64, domain []roachpb.StoreID) float64 {
+	__antithesis_instrumentation__.Notify(94459)
 	maxCandidateQPS := float64(0)
 	minCandidateQPS := math.MaxFloat64
 	for _, cand := range domain {
+		__antithesis_instrumentation__.Notify(94461)
 		candidateQPS, ok := storeQPSMap[cand]
 		if !ok {
+			__antithesis_instrumentation__.Notify(94464)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(94465)
 		}
+		__antithesis_instrumentation__.Notify(94462)
 		if maxCandidateQPS < candidateQPS {
+			__antithesis_instrumentation__.Notify(94466)
 			maxCandidateQPS = candidateQPS
+		} else {
+			__antithesis_instrumentation__.Notify(94467)
 		}
+		__antithesis_instrumentation__.Notify(94463)
 		if minCandidateQPS > candidateQPS {
+			__antithesis_instrumentation__.Notify(94468)
 			minCandidateQPS = candidateQPS
+		} else {
+			__antithesis_instrumentation__.Notify(94469)
 		}
 	}
+	__antithesis_instrumentation__.Notify(94460)
 	return maxCandidateQPS - minCandidateQPS
 }
 
-// ShouldTransferLease returns true if the specified store is overfull in terms
-// of leases with respect to the other stores matching the specified
-// attributes.
 func (a *Allocator) ShouldTransferLease(
 	ctx context.Context,
 	conf roachpb.SpanConfig,
@@ -1787,38 +1884,58 @@ func (a *Allocator) ShouldTransferLease(
 	leaseStoreID roachpb.StoreID,
 	stats *replicaStats,
 ) bool {
+	__antithesis_instrumentation__.Notify(94470)
 	source, ok := a.storePool.getStoreDescriptor(leaseStoreID)
 	if !ok {
+		__antithesis_instrumentation__.Notify(94475)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(94476)
 	}
+	__antithesis_instrumentation__.Notify(94471)
 
-	// Determine which store(s) is preferred based on user-specified preferences.
-	// If any stores match, only consider those stores as options. If only one
-	// store matches, it's where the lease should be.
 	preferred := a.preferredLeaseholders(conf, existing)
 	if len(preferred) == 1 {
+		__antithesis_instrumentation__.Notify(94477)
 		return preferred[0].StoreID != leaseStoreID
-	} else if len(preferred) > 1 {
-		existing = preferred
-		// If the current leaseholder isn't one of the preferred stores, then we
-		// should try to transfer the lease.
-		if !storeHasReplica(leaseStoreID, roachpb.MakeReplicaSet(existing).ReplicationTargets()) {
-			return true
+	} else {
+		__antithesis_instrumentation__.Notify(94478)
+		if len(preferred) > 1 {
+			__antithesis_instrumentation__.Notify(94479)
+			existing = preferred
+
+			if !storeHasReplica(leaseStoreID, roachpb.MakeReplicaSet(existing).ReplicationTargets()) {
+				__antithesis_instrumentation__.Notify(94480)
+				return true
+			} else {
+				__antithesis_instrumentation__.Notify(94481)
+			}
+		} else {
+			__antithesis_instrumentation__.Notify(94482)
 		}
 	}
+	__antithesis_instrumentation__.Notify(94472)
 
 	sl, _, _ := a.storePool.getStoreList(storeFilterSuspect)
 	sl = sl.excludeInvalid(conf.Constraints)
 	sl = sl.excludeInvalid(conf.VoterConstraints)
 	log.VEventf(ctx, 3, "ShouldTransferLease (lease-holder=%d):\n%s", leaseStoreID, sl)
 
-	// Only consider live, non-draining, non-suspect replicas.
-	existing, _ = a.storePool.liveAndDeadReplicas(existing, false /* includeSuspectNodes */)
+	existing, _ = a.storePool.liveAndDeadReplicas(existing, false)
 
-	// Short-circuit if there are no valid targets out there.
-	if len(existing) == 0 || (len(existing) == 1 && existing[0].StoreID == source.StoreID) {
+	if len(existing) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(94483)
+		return (len(existing) == 1 && func() bool {
+			__antithesis_instrumentation__.Notify(94484)
+			return existing[0].StoreID == source.StoreID == true
+		}() == true) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94485)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(94486)
 	}
+	__antithesis_instrumentation__.Notify(94473)
 
 	transferDec, _ := a.shouldTransferLeaseForAccessLocality(
 		ctx,
@@ -1831,14 +1948,19 @@ func (a *Allocator) ShouldTransferLease(
 	var result bool
 	switch transferDec {
 	case shouldNotTransfer:
+		__antithesis_instrumentation__.Notify(94487)
 		result = false
 	case shouldTransfer:
+		__antithesis_instrumentation__.Notify(94488)
 		result = true
 	case decideWithoutStats:
+		__antithesis_instrumentation__.Notify(94489)
 		result = a.shouldTransferLeaseForLeaseCountConvergence(ctx, sl, source, existing)
 	default:
+		__antithesis_instrumentation__.Notify(94490)
 		log.Fatalf(ctx, "unexpected transfer decision %d", transferDec)
 	}
+	__antithesis_instrumentation__.Notify(94474)
 
 	log.VEventf(ctx, 3, "ShouldTransferLease decision (lease-holder=%d): %t", leaseStoreID, result)
 	return result
@@ -1852,18 +1974,27 @@ func (a Allocator) followTheWorkloadPrefersLocal(
 	existing []roachpb.ReplicaDescriptor,
 	stats *replicaStats,
 ) bool {
+	__antithesis_instrumentation__.Notify(94491)
 	adjustments := make(map[roachpb.StoreID]float64)
 	decision, _ := a.shouldTransferLeaseForAccessLocality(ctx, source, existing, stats, adjustments, sl.candidateLeases.mean)
 	if decision == decideWithoutStats {
+		__antithesis_instrumentation__.Notify(94494)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(94495)
 	}
+	__antithesis_instrumentation__.Notify(94492)
 	adjustment := adjustments[candidate]
 	if adjustment > baseLoadBasedLeaseRebalanceThreshold {
+		__antithesis_instrumentation__.Notify(94496)
 		log.VEventf(ctx, 3,
 			"s%d is a better fit than s%d due to follow-the-workload (score: %.2f; threshold: %.2f)",
 			source.StoreID, candidate, adjustment, baseLoadBasedLeaseRebalanceThreshold)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(94497)
 	}
+	__antithesis_instrumentation__.Notify(94493)
 	return false
 }
 
@@ -1875,147 +2006,142 @@ func (a Allocator) shouldTransferLeaseForAccessLocality(
 	rebalanceAdjustments map[roachpb.StoreID]float64,
 	candidateLeasesMean float64,
 ) (transferDecision, roachpb.ReplicaDescriptor) {
-	// Only use load-based rebalancing if it's enabled and we have both
-	// stats and locality information to base our decision on.
-	if stats == nil || !enableLoadBasedLeaseRebalancing.Get(&a.storePool.st.SV) {
+	__antithesis_instrumentation__.Notify(94498)
+
+	if stats == nil || func() bool {
+		__antithesis_instrumentation__.Notify(94506)
+		return !enableLoadBasedLeaseRebalancing.Get(&a.storePool.st.SV) == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94507)
 		return decideWithoutStats, roachpb.ReplicaDescriptor{}
+	} else {
+		__antithesis_instrumentation__.Notify(94508)
 	}
+	__antithesis_instrumentation__.Notify(94499)
 	replicaLocalities := a.storePool.getLocalitiesByNode(existing)
 	for _, locality := range replicaLocalities {
+		__antithesis_instrumentation__.Notify(94509)
 		if len(locality.Tiers) == 0 {
+			__antithesis_instrumentation__.Notify(94510)
 			return decideWithoutStats, roachpb.ReplicaDescriptor{}
+		} else {
+			__antithesis_instrumentation__.Notify(94511)
 		}
 	}
+	__antithesis_instrumentation__.Notify(94500)
 
 	qpsStats, qpsStatsDur := stats.perLocalityDecayingQPS()
 
-	// If we haven't yet accumulated enough data, avoid transferring for now,
-	// unless we've been explicitly asked otherwise. Do not fall back to the
-	// algorithm that doesn't use stats, since it can easily start fighting with
-	// the stats-based algorithm. This provides some amount of safety from lease
-	// thrashing, since leases cannot transfer more frequently than this threshold
-	// (because replica stats get reset upon lease transfer).
 	if qpsStatsDur < MinLeaseTransferStatsDuration {
+		__antithesis_instrumentation__.Notify(94512)
 		return shouldNotTransfer, roachpb.ReplicaDescriptor{}
+	} else {
+		__antithesis_instrumentation__.Notify(94513)
 	}
+	__antithesis_instrumentation__.Notify(94501)
 
-	// On the other hand, if we don't have any stats with associated localities,
-	// then do fall back to the algorithm that doesn't use request stats.
 	delete(qpsStats, "")
 	if len(qpsStats) == 0 {
+		__antithesis_instrumentation__.Notify(94514)
 		return decideWithoutStats, roachpb.ReplicaDescriptor{}
+	} else {
+		__antithesis_instrumentation__.Notify(94515)
 	}
+	__antithesis_instrumentation__.Notify(94502)
 
 	replicaWeights := make(map[roachpb.NodeID]float64)
 	for requestLocalityStr, qps := range qpsStats {
+		__antithesis_instrumentation__.Notify(94516)
 		var requestLocality roachpb.Locality
 		if err := requestLocality.Set(requestLocalityStr); err != nil {
+			__antithesis_instrumentation__.Notify(94518)
 			log.Errorf(ctx, "unable to parse locality string %q: %+v", requestLocalityStr, err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(94519)
 		}
+		__antithesis_instrumentation__.Notify(94517)
 		for nodeID, replicaLocality := range replicaLocalities {
-			// Add weights to each replica based on the number of requests from
-			// that replica's locality and neighboring localities.
+			__antithesis_instrumentation__.Notify(94520)
+
 			replicaWeights[nodeID] += (1 - replicaLocality.DiversityScore(requestLocality)) * qps
 		}
 	}
+	__antithesis_instrumentation__.Notify(94503)
 
 	log.VEventf(ctx, 1,
 		"shouldTransferLease qpsStats: %+v, replicaLocalities: %+v, replicaWeights: %+v",
 		qpsStats, replicaLocalities, replicaWeights)
 	sourceWeight := math.Max(minReplicaWeight, replicaWeights[source.Node.NodeID])
 
-	// TODO(a-robinson): This may not have enough protection against all leases
-	// ending up on a single node in extreme cases. Continue testing against
-	// different situations.
 	var bestRepl roachpb.ReplicaDescriptor
 	bestReplScore := int32(math.MinInt32)
 	for _, repl := range existing {
+		__antithesis_instrumentation__.Notify(94521)
 		if repl.NodeID == source.Node.NodeID {
+			__antithesis_instrumentation__.Notify(94527)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(94528)
 		}
+		__antithesis_instrumentation__.Notify(94522)
 		storeDesc, ok := a.storePool.getStoreDescriptor(repl.StoreID)
 		if !ok {
+			__antithesis_instrumentation__.Notify(94529)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(94530)
 		}
+		__antithesis_instrumentation__.Notify(94523)
 		addr, err := a.storePool.gossip.GetNodeIDAddress(repl.NodeID)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(94531)
 			log.Errorf(ctx, "missing address for n%d: %+v", repl.NodeID, err)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(94532)
 		}
+		__antithesis_instrumentation__.Notify(94524)
 		remoteLatency, ok := a.nodeLatencyFn(addr.String())
 		if !ok {
+			__antithesis_instrumentation__.Notify(94533)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(94534)
 		}
+		__antithesis_instrumentation__.Notify(94525)
 
 		remoteWeight := math.Max(minReplicaWeight, replicaWeights[repl.NodeID])
 		replScore, rebalanceAdjustment := loadBasedLeaseRebalanceScore(
 			ctx, a.storePool.st, remoteWeight, remoteLatency, storeDesc, sourceWeight, source, candidateLeasesMean)
 		if replScore > bestReplScore {
+			__antithesis_instrumentation__.Notify(94535)
 			bestReplScore = replScore
 			bestRepl = repl
+		} else {
+			__antithesis_instrumentation__.Notify(94536)
 		}
+		__antithesis_instrumentation__.Notify(94526)
 		if rebalanceAdjustments != nil {
+			__antithesis_instrumentation__.Notify(94537)
 			rebalanceAdjustments[repl.StoreID] = rebalanceAdjustment
+		} else {
+			__antithesis_instrumentation__.Notify(94538)
 		}
 	}
+	__antithesis_instrumentation__.Notify(94504)
 
 	if bestReplScore > 0 {
+		__antithesis_instrumentation__.Notify(94539)
 		return shouldTransfer, bestRepl
+	} else {
+		__antithesis_instrumentation__.Notify(94540)
 	}
+	__antithesis_instrumentation__.Notify(94505)
 
-	// Return the best replica even in cases where transferring is not advised in
-	// order to support forced lease transfers, such as when removing a replica or
-	// draining all leases before shutdown.
 	return shouldNotTransfer, bestRepl
 }
 
-// loadBasedLeaseRebalanceScore attempts to give a score to how desirable it
-// would be to transfer a range lease from the local store to a remote store.
-// It does so using a formula based on the latency between the stores and
-// a number that we call the "weight" of each replica, which represents how
-// many requests for the range have been coming from localities near the
-// replica.
-//
-// The overarching goal is to move leases towards where requests are coming
-// from when the latency between localities is high, because the leaseholder
-// being near the request gateway makes for lower request latencies.
-// This must be balanced against hurting throughput by putting too many leases
-// one just a few nodes, though, which is why we get progressively more
-// aggressive about moving the leases toward requests when latencies are high.
-//
-// The calculations below were determined via a bunch of manual testing (see
-// #13232 or the leaseholder_locality.md RFC for more details), but the general
-// logic behind each part of the formula is as follows:
-//
-// * LeaseRebalancingAggressiveness: Allow the aggressiveness to be tuned via
-//   a cluster setting.
-// * 0.1: Constant factor to reduce aggressiveness by default
-// * math.Log10(remoteWeight/sourceWeight): Comparison of the remote replica's
-//   weight to the local replica's weight. Taking the log of the ratio instead
-//   of using the ratio directly makes things symmetric -- i.e. r1 comparing
-//   itself to r2 will come to the same conclusion as r2 comparing itself to r1.
-// * math.Log1p(remoteLatencyMillis): This will be 0 if there's no latency,
-//   removing the weight/latency factor from consideration. Otherwise, it grows
-//   the aggressiveness for stores that are farther apart. Note that Log1p grows
-//   faster than Log10 as its argument gets larger, which is intentional to
-//   increase the importance of latency.
-// * overfullScore and underfullScore: rebalanceThreshold helps us get an idea
-//   of the ideal number of leases on each store. We then calculate these to
-//   compare how close each node is to its ideal state and use the differences
-//   from the ideal state on each node to compute a final score.
-//
-// Returns a total score for the replica that takes into account the number of
-// leases already on each store. Also returns the raw "adjustment" value that's
-// purely based on replica weights and latency in order for the caller to
-// determine how large a role the user's workload played in the decision.  The
-// adjustment value is positive if the remote store is preferred for load-based
-// reasons or negative if the local store is preferred. The magnitude depends
-// on the difference in load and the latency between the nodes.
-//
-// TODO(a-robinson): Should this be changed to avoid even thinking about lease
-// counts now that we try to spread leases and replicas based on QPS? As is it
-// may fight back a little bit against store-level QPS-based rebalancing.
 func loadBasedLeaseRebalanceScore(
 	ctx context.Context,
 	st *cluster.Settings,
@@ -2026,12 +2152,11 @@ func loadBasedLeaseRebalanceScore(
 	source roachpb.StoreDescriptor,
 	meanLeases float64,
 ) (int32, float64) {
+	__antithesis_instrumentation__.Notify(94541)
 	remoteLatencyMillis := float64(remoteLatency) / float64(time.Millisecond)
 	rebalanceAdjustment :=
 		leaseRebalancingAggressiveness.Get(&st.SV) * 0.1 * math.Log10(remoteWeight/sourceWeight) * math.Log1p(remoteLatencyMillis)
-	// Start with twice the base rebalance threshold in order to fight more
-	// strongly against thrashing caused by small variances in the distribution
-	// of request weights.
+
 	rebalanceThreshold := baseLoadBasedLeaseRebalanceThreshold - rebalanceAdjustment
 
 	overfullLeaseThreshold := int32(math.Ceil(meanLeases * (1 + rebalanceThreshold)))
@@ -2057,149 +2182,207 @@ func (a Allocator) shouldTransferLeaseForLeaseCountConvergence(
 	source roachpb.StoreDescriptor,
 	existing []roachpb.ReplicaDescriptor,
 ) bool {
-	// TODO(a-robinson): Should we disable this behavior when load-based lease
-	// rebalancing is enabled? In happy cases it's nice to keep this working
-	// to even out the number of leases in addition to the number of replicas,
-	// but it's certainly a blunt instrument that could undo what we want.
+	__antithesis_instrumentation__.Notify(94542)
 
-	// Allow lease transfer if we're above the overfull threshold, which is
-	// mean*(1+leaseRebalanceThreshold).
 	overfullLeaseThreshold := int32(math.Ceil(sl.candidateLeases.mean * (1 + leaseRebalanceThreshold)))
 	minOverfullThreshold := int32(math.Ceil(sl.candidateLeases.mean + 5))
 	if overfullLeaseThreshold < minOverfullThreshold {
+		__antithesis_instrumentation__.Notify(94546)
 		overfullLeaseThreshold = minOverfullThreshold
+	} else {
+		__antithesis_instrumentation__.Notify(94547)
 	}
+	__antithesis_instrumentation__.Notify(94543)
 	if source.Capacity.LeaseCount > overfullLeaseThreshold {
+		__antithesis_instrumentation__.Notify(94548)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(94549)
 	}
+	__antithesis_instrumentation__.Notify(94544)
 
 	if float64(source.Capacity.LeaseCount) > sl.candidateLeases.mean {
+		__antithesis_instrumentation__.Notify(94550)
 		underfullLeaseThreshold := int32(math.Ceil(sl.candidateLeases.mean * (1 - leaseRebalanceThreshold)))
 		minUnderfullThreshold := int32(math.Ceil(sl.candidateLeases.mean - 5))
 		if underfullLeaseThreshold > minUnderfullThreshold {
+			__antithesis_instrumentation__.Notify(94552)
 			underfullLeaseThreshold = minUnderfullThreshold
+		} else {
+			__antithesis_instrumentation__.Notify(94553)
 		}
+		__antithesis_instrumentation__.Notify(94551)
 
 		for _, repl := range existing {
+			__antithesis_instrumentation__.Notify(94554)
 			storeDesc, ok := a.storePool.getStoreDescriptor(repl.StoreID)
 			if !ok {
+				__antithesis_instrumentation__.Notify(94556)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(94557)
 			}
+			__antithesis_instrumentation__.Notify(94555)
 			if storeDesc.Capacity.LeaseCount < underfullLeaseThreshold {
+				__antithesis_instrumentation__.Notify(94558)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(94559)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(94560)
 	}
+	__antithesis_instrumentation__.Notify(94545)
 	return false
 }
 
 func (a Allocator) preferredLeaseholders(
 	conf roachpb.SpanConfig, existing []roachpb.ReplicaDescriptor,
 ) []roachpb.ReplicaDescriptor {
-	// Go one preference at a time. As soon as we've found replicas that match a
-	// preference, we don't need to look at the later preferences, because
-	// they're meant to be ordered by priority.
+	__antithesis_instrumentation__.Notify(94561)
+
 	for _, preference := range conf.LeasePreferences {
+		__antithesis_instrumentation__.Notify(94563)
 		var preferred []roachpb.ReplicaDescriptor
 		for _, repl := range existing {
-			// TODO(a-robinson): Do all these lookups at once, up front? We could
-			// easily be passing a slice of StoreDescriptors around all the Allocator
-			// functions instead of ReplicaDescriptors.
+			__antithesis_instrumentation__.Notify(94565)
+
 			storeDesc, ok := a.storePool.getStoreDescriptor(repl.StoreID)
 			if !ok {
+				__antithesis_instrumentation__.Notify(94567)
 				continue
+			} else {
+				__antithesis_instrumentation__.Notify(94568)
 			}
+			__antithesis_instrumentation__.Notify(94566)
 			if constraint.ConjunctionsCheck(storeDesc, preference.Constraints) {
+				__antithesis_instrumentation__.Notify(94569)
 				preferred = append(preferred, repl)
+			} else {
+				__antithesis_instrumentation__.Notify(94570)
 			}
 		}
+		__antithesis_instrumentation__.Notify(94564)
 		if len(preferred) > 0 {
+			__antithesis_instrumentation__.Notify(94571)
 			return preferred
+		} else {
+			__antithesis_instrumentation__.Notify(94572)
 		}
 	}
+	__antithesis_instrumentation__.Notify(94562)
 	return nil
 }
 
-// computeQuorum computes the quorum value for the given number of nodes.
 func computeQuorum(nodes int) int {
+	__antithesis_instrumentation__.Notify(94573)
 	return (nodes / 2) + 1
 }
 
-// filterBehindReplicas removes any "behind" replicas from the supplied
-// slice. A "behind" replica is one which is not at or past the quorum commit
-// index.
 func filterBehindReplicas(
 	ctx context.Context, raftStatus *raft.Status, replicas []roachpb.ReplicaDescriptor,
 ) []roachpb.ReplicaDescriptor {
-	if raftStatus == nil || len(raftStatus.Progress) == 0 {
-		// raftStatus.Progress is only populated on the Raft leader which means we
-		// won't be able to rebalance a lease away if the lease holder is not the
-		// Raft leader. This is rare enough not to matter.
+	__antithesis_instrumentation__.Notify(94574)
+	if raftStatus == nil || func() bool {
+		__antithesis_instrumentation__.Notify(94577)
+		return len(raftStatus.Progress) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94578)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(94579)
 	}
+	__antithesis_instrumentation__.Notify(94575)
 	candidates := make([]roachpb.ReplicaDescriptor, 0, len(replicas))
 	for _, r := range replicas {
+		__antithesis_instrumentation__.Notify(94580)
 		if !replicaIsBehind(raftStatus, r.ReplicaID) {
+			__antithesis_instrumentation__.Notify(94581)
 			candidates = append(candidates, r)
+		} else {
+			__antithesis_instrumentation__.Notify(94582)
 		}
 	}
+	__antithesis_instrumentation__.Notify(94576)
 	return candidates
 }
 
 func replicaIsBehind(raftStatus *raft.Status, replicaID roachpb.ReplicaID) bool {
-	if raftStatus == nil || len(raftStatus.Progress) == 0 {
+	__antithesis_instrumentation__.Notify(94583)
+	if raftStatus == nil || func() bool {
+		__antithesis_instrumentation__.Notify(94586)
+		return len(raftStatus.Progress) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94587)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(94588)
 	}
-	// NB: We use raftStatus.Commit instead of getQuorumIndex() because the
-	// latter can return a value that is less than the commit index. This is
-	// useful for Raft log truncation which sometimes wishes to keep those
-	// earlier indexes, but not appropriate for determining which nodes are
-	// behind the actual commit index of the range.
+	__antithesis_instrumentation__.Notify(94584)
+
 	if progress, ok := raftStatus.Progress[uint64(replicaID)]; ok {
-		if uint64(replicaID) == raftStatus.Lead ||
-			(progress.State == tracker.StateReplicate &&
-				progress.Match >= raftStatus.Commit) {
+		__antithesis_instrumentation__.Notify(94589)
+		if uint64(replicaID) == raftStatus.Lead || func() bool {
+			__antithesis_instrumentation__.Notify(94590)
+			return (progress.State == tracker.StateReplicate && func() bool {
+				__antithesis_instrumentation__.Notify(94591)
+				return progress.Match >= raftStatus.Commit == true
+			}() == true) == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(94592)
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(94593)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(94594)
 	}
+	__antithesis_instrumentation__.Notify(94585)
 	return true
 }
 
-// replicaMayNeedSnapshot determines whether the replica referred to by
-// `replicaID` may be in need of a raft snapshot. If this function is called
-// with an empty or nil `raftStatus` (as will be the case when its called by a
-// replica that is not the raft leader), we pessimistically assume that
-// `replicaID` may need a snapshot.
 func replicaMayNeedSnapshot(raftStatus *raft.Status, replica roachpb.ReplicaDescriptor) bool {
-	// When adding replicas, we only move them from LEARNER to VOTER_INCOMING after
-	// they applied the snapshot (see initializeRaftLearners and its use in
-	// changeReplicasImpl).
+	__antithesis_instrumentation__.Notify(94595)
+
 	if replica.GetType() == roachpb.VOTER_INCOMING {
+		__antithesis_instrumentation__.Notify(94599)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(94600)
 	}
-	if raftStatus == nil || len(raftStatus.Progress) == 0 {
+	__antithesis_instrumentation__.Notify(94596)
+	if raftStatus == nil || func() bool {
+		__antithesis_instrumentation__.Notify(94601)
+		return len(raftStatus.Progress) == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(94602)
 		return true
+	} else {
+		__antithesis_instrumentation__.Notify(94603)
 	}
+	__antithesis_instrumentation__.Notify(94597)
 	if progress, ok := raftStatus.Progress[uint64(replica.ReplicaID)]; ok {
-		// We can only reasonably assume that the follower replica is not in need of
-		// a snapshot iff it is in `StateReplicate`. However, even this is racey
-		// because we can still possibly have an ill-timed log truncation between
-		// when we make this determination and when we act on it.
+		__antithesis_instrumentation__.Notify(94604)
+
 		return progress.State != tracker.StateReplicate
+	} else {
+		__antithesis_instrumentation__.Notify(94605)
 	}
+	__antithesis_instrumentation__.Notify(94598)
 	return true
 }
 
-// excludeReplicasInNeedOfSnapshots filters out the `replicas` that may be in
-// need of a raft snapshot. VOTER_INCOMING replicas are not filtered out.
-// Other replicas may be filtered out if this function is called with the
-// `raftStatus` of a non-raft leader replica.
 func excludeReplicasInNeedOfSnapshots(
 	ctx context.Context, raftStatus *raft.Status, replicas []roachpb.ReplicaDescriptor,
 ) []roachpb.ReplicaDescriptor {
+	__antithesis_instrumentation__.Notify(94606)
 	filled := 0
 	for _, repl := range replicas {
+		__antithesis_instrumentation__.Notify(94608)
 		if replicaMayNeedSnapshot(raftStatus, repl) {
+			__antithesis_instrumentation__.Notify(94610)
 			log.VEventf(
 				ctx,
 				5,
@@ -2208,23 +2391,24 @@ func excludeReplicasInNeedOfSnapshots(
 				repl.NodeID, repl.StoreID,
 			)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(94611)
 		}
+		__antithesis_instrumentation__.Notify(94609)
 		replicas[filled] = repl
 		filled++
 	}
+	__antithesis_instrumentation__.Notify(94607)
 	return replicas[:filled]
 }
 
-// simulateFilterUnremovableReplicas removes any unremovable replicas from the
-// supplied slice. Unlike filterUnremovableReplicas, brandNewReplicaID is
-// considered up-to-date (and thus can participate in quorum), but is not
-// considered a candidate for removal.
 func simulateFilterUnremovableReplicas(
 	ctx context.Context,
 	raftStatus *raft.Status,
 	replicas []roachpb.ReplicaDescriptor,
 	brandNewReplicaID roachpb.ReplicaID,
 ) []roachpb.ReplicaDescriptor {
+	__antithesis_instrumentation__.Notify(94612)
 	status := *raftStatus
 	status.Progress[uint64(brandNewReplicaID)] = tracker.Progress{
 		State: tracker.StateReplicate,
@@ -2233,73 +2417,100 @@ func simulateFilterUnremovableReplicas(
 	return filterUnremovableReplicas(ctx, &status, replicas, brandNewReplicaID)
 }
 
-// filterUnremovableReplicas removes any unremovable replicas from the supplied
-// slice. An unremovable replica is one which is a necessary part of the
-// quorum that will result from removing 1 replica. We forgive brandNewReplicaID
-// for being behind, since a new range can take a little while to catch up.
-// This is important when we've just added a replica in order to rebalance to
-// it (#17879).
 func filterUnremovableReplicas(
 	ctx context.Context,
 	raftStatus *raft.Status,
 	replicas []roachpb.ReplicaDescriptor,
 	brandNewReplicaID roachpb.ReplicaID,
 ) []roachpb.ReplicaDescriptor {
+	__antithesis_instrumentation__.Notify(94613)
 	upToDateReplicas := filterBehindReplicas(ctx, raftStatus, replicas)
 	oldQuorum := computeQuorum(len(replicas))
 	if len(upToDateReplicas) < oldQuorum {
-		// The number of up-to-date replicas is less than the old quorum. No
-		// replicas can be removed. A below quorum range won't be able to process a
-		// replica removal in any case. The logic here prevents any attempt to even
-		// try the removal.
+		__antithesis_instrumentation__.Notify(94618)
+
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(94619)
 	}
+	__antithesis_instrumentation__.Notify(94614)
 
 	newQuorum := computeQuorum(len(replicas) - 1)
 	if len(upToDateReplicas) > newQuorum {
-		// The number of up-to-date replicas is larger than the new quorum. Any
-		// replica can be removed, though we want to filter out brandNewReplicaID.
+		__antithesis_instrumentation__.Notify(94620)
+
 		if brandNewReplicaID != 0 {
+			__antithesis_instrumentation__.Notify(94622)
 			candidates := make([]roachpb.ReplicaDescriptor, 0, len(replicas)-len(upToDateReplicas))
 			for _, r := range replicas {
+				__antithesis_instrumentation__.Notify(94624)
 				if r.ReplicaID != brandNewReplicaID {
+					__antithesis_instrumentation__.Notify(94625)
 					candidates = append(candidates, r)
+				} else {
+					__antithesis_instrumentation__.Notify(94626)
 				}
 			}
+			__antithesis_instrumentation__.Notify(94623)
 			return candidates
+		} else {
+			__antithesis_instrumentation__.Notify(94627)
 		}
+		__antithesis_instrumentation__.Notify(94621)
 		return replicas
+	} else {
+		__antithesis_instrumentation__.Notify(94628)
 	}
+	__antithesis_instrumentation__.Notify(94615)
 
-	// The number of up-to-date replicas is equal to the new quorum. Only allow
-	// removal of behind replicas (except for brandNewReplicaID which is given a
-	// free pass).
 	candidates := make([]roachpb.ReplicaDescriptor, 0, len(replicas)-len(upToDateReplicas))
 	necessary := func(r roachpb.ReplicaDescriptor) bool {
+		__antithesis_instrumentation__.Notify(94629)
 		if r.ReplicaID == brandNewReplicaID {
+			__antithesis_instrumentation__.Notify(94632)
 			return true
+		} else {
+			__antithesis_instrumentation__.Notify(94633)
 		}
+		__antithesis_instrumentation__.Notify(94630)
 		for _, t := range upToDateReplicas {
+			__antithesis_instrumentation__.Notify(94634)
 			if t == r {
+				__antithesis_instrumentation__.Notify(94635)
 				return true
+			} else {
+				__antithesis_instrumentation__.Notify(94636)
 			}
 		}
+		__antithesis_instrumentation__.Notify(94631)
 		return false
 	}
+	__antithesis_instrumentation__.Notify(94616)
 	for _, r := range replicas {
+		__antithesis_instrumentation__.Notify(94637)
 		if !necessary(r) {
+			__antithesis_instrumentation__.Notify(94638)
 			candidates = append(candidates, r)
+		} else {
+			__antithesis_instrumentation__.Notify(94639)
 		}
 	}
+	__antithesis_instrumentation__.Notify(94617)
 	return candidates
 }
 
 func maxReplicaID(replicas []roachpb.ReplicaDescriptor) roachpb.ReplicaID {
+	__antithesis_instrumentation__.Notify(94640)
 	var max roachpb.ReplicaID
 	for i := range replicas {
+		__antithesis_instrumentation__.Notify(94642)
 		if replicaID := replicas[i].ReplicaID; replicaID > max {
+			__antithesis_instrumentation__.Notify(94643)
 			max = replicaID
+		} else {
+			__antithesis_instrumentation__.Notify(94644)
 		}
 	}
+	__antithesis_instrumentation__.Notify(94641)
 	return max
 }

@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package row
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
@@ -17,8 +9,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/span"
 )
 
-// FKCheckSpan returns a span that can be scanned to ascertain existence of a
-// specific row in a given index.
 func FKCheckSpan(
 	builder *span.Builder,
 	splitter span.Splitter,
@@ -26,9 +16,14 @@ func FKCheckSpan(
 	colMap catalog.TableColMap,
 	numCols int,
 ) (roachpb.Span, error) {
+	__antithesis_instrumentation__.Notify(568020)
 	span, containsNull, err := builder.SpanFromDatumRow(values, numCols, colMap)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(568022)
 		return roachpb.Span{}, err
+	} else {
+		__antithesis_instrumentation__.Notify(568023)
 	}
+	__antithesis_instrumentation__.Notify(568021)
 	return splitter.ExistenceCheckSpan(span, numCols, containsNull), nil
 }

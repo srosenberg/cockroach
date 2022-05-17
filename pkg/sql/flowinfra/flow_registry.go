@@ -1,14 +1,6 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package flowinfra
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -27,18 +19,13 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// errNoInboundStreamConnection is the error propagated through the flow when
-// the timeout to setup the flow is exceeded.
 var errNoInboundStreamConnection = errors.New("no inbound stream connection")
 
-// IsNoInboundStreamConnectionError returns true if err's Cause is an
-// errNoInboundStreamConnection.
 func IsNoInboundStreamConnectionError(err error) bool {
+	__antithesis_instrumentation__.Notify(491620)
 	return errors.Is(err, errNoInboundStreamConnection)
 }
 
-// SettingFlowStreamTimeout is a cluster setting that sets the default flow
-// stream timeout.
 var SettingFlowStreamTimeout = settings.RegisterDurationSetting(
 	settings.TenantWritable,
 	"sql.distsql.flow_stream_timeout",
@@ -47,189 +34,178 @@ var SettingFlowStreamTimeout = settings.RegisterDurationSetting(
 	settings.NonNegativeDuration,
 )
 
-// expectedConnectionTime is the expected time taken by a flow to connect to its
-// consumers.
 const expectedConnectionTime time.Duration = 500 * time.Millisecond
 
-// InboundStreamInfo represents the endpoint where a data stream from another
-// node connects to a flow. The external node initiates this process through a
-// FlowStream RPC, which uses FlowRegistry.ConnectInboundStream() to associate
-// the stream to a receiver to push rows to.
 type InboundStreamInfo struct {
 	mu struct {
 		syncutil.Mutex
 		connected bool
-		// if set, indicates that we waited too long for an inbound connection,
-		// or we don't want this stream to connect anymore due to flow
-		// cancellation.
+
 		canceled bool
-		// finished is set when onFinish has already been called (which signaled
-		// that the stream is done transferring rows to the flow's wait group).
+
 		finished bool
 	}
-	// receiver is the entity that will receive rows from another host, which is
-	// part of a processor (normally an input synchronizer) for row-based
-	// execution and a colrpc.Inbox for vectorized execution.
-	//
-	// During a FlowStream RPC, the stream is handed off to this strategy to
-	// process.
+
 	receiver InboundStreamHandler
-	// onFinish will be called when the corresponding inbound stream is done.
+
 	onFinish func()
 }
 
-// NewInboundStreamInfo returns a new InboundStreamInfo.
 func NewInboundStreamInfo(
 	receiver InboundStreamHandler, waitGroup *sync.WaitGroup,
 ) *InboundStreamInfo {
+	__antithesis_instrumentation__.Notify(491621)
 	return &InboundStreamInfo{
 		receiver: receiver,
-		// Do not hold onto the whole wait group to limit the coupling of the
-		// InboundStreamInfo with the FlowBase.
+
 		onFinish: waitGroup.Done,
 	}
 }
 
-// connect marks s as connected. It is an error if s was already marked either
-// as connected or canceled. It should be called without holding any mutexes.
 func (s *InboundStreamInfo) connect(
 	flowID execinfrapb.FlowID, streamID execinfrapb.StreamID,
 ) error {
+	__antithesis_instrumentation__.Notify(491622)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.mu.connected {
+		__antithesis_instrumentation__.Notify(491625)
 		return errors.Errorf("flow %s: inbound stream %d already connected", flowID, streamID)
+	} else {
+		__antithesis_instrumentation__.Notify(491626)
 	}
+	__antithesis_instrumentation__.Notify(491623)
 	if s.mu.canceled {
+		__antithesis_instrumentation__.Notify(491627)
 		return errors.Errorf("flow %s: inbound stream %d came too late", flowID, streamID)
+	} else {
+		__antithesis_instrumentation__.Notify(491628)
 	}
+	__antithesis_instrumentation__.Notify(491624)
 	s.mu.connected = true
 	return nil
 }
 
-// disconnect marks s as not connected. It should be called without holding any
-// mutexes.
 func (s *InboundStreamInfo) disconnect() {
+	__antithesis_instrumentation__.Notify(491629)
 	s.mu.Lock()
 	s.mu.connected = false
 	s.mu.Unlock()
 }
 
-// finishLocked marks s as finished and calls onFinish. The mutex of s must be
-// held when calling this method.
 func (s *InboundStreamInfo) finishLocked() {
-	if !s.mu.connected && !s.mu.canceled {
+	__antithesis_instrumentation__.Notify(491630)
+	if !s.mu.connected && func() bool {
+		__antithesis_instrumentation__.Notify(491633)
+		return !s.mu.canceled == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(491634)
 		panic("finishing inbound stream that didn't connect or time out")
+	} else {
+		__antithesis_instrumentation__.Notify(491635)
 	}
+	__antithesis_instrumentation__.Notify(491631)
 	if s.mu.finished {
+		__antithesis_instrumentation__.Notify(491636)
 		panic("double finish")
+	} else {
+		__antithesis_instrumentation__.Notify(491637)
 	}
+	__antithesis_instrumentation__.Notify(491632)
 
 	s.mu.finished = true
 	s.onFinish()
 }
 
-// cancelIfNotConnected cancels and finishes s if it's not marked as connected,
-// finished, or canceled, and returns the pending receiver if so.
 func (s *InboundStreamInfo) cancelIfNotConnected() InboundStreamHandler {
+	__antithesis_instrumentation__.Notify(491638)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.mu.connected || s.mu.finished || s.mu.canceled {
+	if s.mu.connected || func() bool {
+		__antithesis_instrumentation__.Notify(491640)
+		return s.mu.finished == true
+	}() == true || func() bool {
+		__antithesis_instrumentation__.Notify(491641)
+		return s.mu.canceled == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(491642)
 		return nil
+	} else {
+		__antithesis_instrumentation__.Notify(491643)
 	}
+	__antithesis_instrumentation__.Notify(491639)
 	s.mu.canceled = true
 	s.finishLocked()
 	return s.receiver
 }
 
-// finish is the same as finishLocked when the mutex of s is not held already.
 func (s *InboundStreamInfo) finish() {
+	__antithesis_instrumentation__.Notify(491644)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.finishLocked()
 }
 
-// flowEntry is a structure associated with a (potential) flow.
-//
-// All fields in flowEntry are protected by the FlowRegistry mutex and, thus,
-// must be accessed while holding the lock.
 type flowEntry struct {
-	// waitCh is set if one or more clients are waiting for the flow; the
-	// channel gets closed when the flow is registered.
 	waitCh chan struct{}
 
-	// refCount is used to allow multiple clients to wait for a flow - if the
-	// flow never shows up, the refCount is used to decide which client cleans
-	// up the entry.
 	refCount int
 
 	flow *FlowBase
 
-	// inboundStreams are streams that receive data from other hosts, through
-	// the FlowStream API. This map is set in Flow.Setup(), so it is safe to
-	// lookup into concurrently later.
-	//
-	// Each InboundStreamInfo has its own mutex, separate from the FlowRegistry
-	// mutex. These two mutexes should **not** be held at the same time.
 	inboundStreams map[execinfrapb.StreamID]*InboundStreamInfo
 
-	// streamTimer is a timer that fires after a timeout and verifies that all
-	// inbound streams have been connected.
 	streamTimer *time.Timer
 }
 
-// FlowRegistry allows clients to look up flows by ID and to wait for flows to
-// be registered. Multiple clients can wait concurrently for the same flow.
 type FlowRegistry struct {
 	syncutil.Mutex
 
-	// All fields in the flowEntry's are protected by the FlowRegistry mutex,
-	// except flow, whose methods can be called freely.
 	flows map[execinfrapb.FlowID]*flowEntry
 
-	// draining specifies whether the FlowRegistry is in drain mode. If it is,
-	// the FlowRegistry will not accept new flows.
 	draining bool
 
-	// flowDone is signaled whenever the size of flows decreases.
 	flowDone *sync.Cond
 
-	// testingRunBeforeDrainSleep is a testing knob executed when a draining
-	// FlowRegistry has no registered flows but must still wait for a minimum time
-	// for any incoming flows to register.
 	testingRunBeforeDrainSleep func()
 }
 
-// NewFlowRegistry creates a new FlowRegistry.
 func NewFlowRegistry() *FlowRegistry {
+	__antithesis_instrumentation__.Notify(491645)
 	fr := &FlowRegistry{flows: make(map[execinfrapb.FlowID]*flowEntry)}
 	fr.flowDone = sync.NewCond(fr)
 	return fr
 }
 
-// getEntryLocked returns the flowEntry associated with the id. If the entry
-// doesn't exist, one is created and inserted into the map.
-// It should only be called while holding the mutex.
 func (fr *FlowRegistry) getEntryLocked(id execinfrapb.FlowID) *flowEntry {
+	__antithesis_instrumentation__.Notify(491646)
 	entry, ok := fr.flows[id]
 	if !ok {
+		__antithesis_instrumentation__.Notify(491648)
 		entry = &flowEntry{}
 		fr.flows[id] = entry
+	} else {
+		__antithesis_instrumentation__.Notify(491649)
 	}
+	__antithesis_instrumentation__.Notify(491647)
 	return entry
 }
 
-// releaseEntryLocked decreases the refCount in the entry for the given id, and
-// cleans up the entry if the refCount reaches 0.
-// It should only be called while holding the mutex.
 func (fr *FlowRegistry) releaseEntryLocked(id execinfrapb.FlowID) {
+	__antithesis_instrumentation__.Notify(491650)
 	entry := fr.flows[id]
 	if entry.refCount > 1 {
+		__antithesis_instrumentation__.Notify(491651)
 		entry.refCount--
 	} else {
+		__antithesis_instrumentation__.Notify(491652)
 		if entry.refCount != 1 {
+			__antithesis_instrumentation__.Notify(491654)
 			panic(errors.AssertionFailedf("invalid refCount: %d", entry.refCount))
+		} else {
+			__antithesis_instrumentation__.Notify(491655)
 		}
+		__antithesis_instrumentation__.Notify(491653)
 		delete(fr.flows, id)
 		fr.flowDone.Signal()
 	}
@@ -240,29 +216,15 @@ type flowRetryableError struct {
 }
 
 func (e *flowRetryableError) Error() string {
+	__antithesis_instrumentation__.Notify(491656)
 	return fmt.Sprintf("flow retryable error: %+v", e.cause)
 }
 
-// IsFlowRetryableError returns true if an error represents a retryable
-// flow error.
 func IsFlowRetryableError(e error) bool {
+	__antithesis_instrumentation__.Notify(491657)
 	return errors.HasType(e, (*flowRetryableError)(nil))
 }
 
-// RegisterFlow makes a flow accessible to ConnectInboundStream. Any concurrent
-// ConnectInboundStream calls that are waiting for this flow are woken up.
-//
-// It is expected that UnregisterFlow will be called at some point to remove the
-// flow from the registry.
-//
-// inboundStreams are all the remote streams that will be connected into this
-// flow. If any of them is not connected within timeout, errors are propagated.
-// The inboundStreams are expected to have been initialized with their
-// WaitGroups (the group should have been incremented). RegisterFlow takes
-// responsibility for finishing the inboundStreams (which will call Done() on
-// that WaitGroup); this responsibility will be forwarded forward by
-// ConnectInboundStream. In case this method returns an error, the
-// inboundStreams are finished here.
 func (fr *FlowRegistry) RegisterFlow(
 	ctx context.Context,
 	id execinfrapb.FlowID,
@@ -270,56 +232,87 @@ func (fr *FlowRegistry) RegisterFlow(
 	inboundStreams map[execinfrapb.StreamID]*InboundStreamInfo,
 	timeout time.Duration,
 ) (retErr error) {
+	__antithesis_instrumentation__.Notify(491658)
 	fr.Lock()
 	defer fr.Unlock()
 	defer func() {
+		__antithesis_instrumentation__.Notify(491665)
 		if retErr != nil {
+			__antithesis_instrumentation__.Notify(491666)
 			for _, stream := range inboundStreams {
+				__antithesis_instrumentation__.Notify(491667)
 				stream.onFinish()
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(491668)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(491659)
 
 	draining := fr.draining
 	if f.Cfg != nil {
-		if knobs, ok := f.Cfg.TestingKnobs.Flowinfra.(*TestingKnobs); ok && knobs != nil && knobs.FlowRegistryDraining != nil {
+		__antithesis_instrumentation__.Notify(491669)
+		if knobs, ok := f.Cfg.TestingKnobs.Flowinfra.(*TestingKnobs); ok && func() bool {
+			__antithesis_instrumentation__.Notify(491670)
+			return knobs != nil == true
+		}() == true && func() bool {
+			__antithesis_instrumentation__.Notify(491671)
+			return knobs.FlowRegistryDraining != nil == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(491672)
 			draining = knobs.FlowRegistryDraining()
+		} else {
+			__antithesis_instrumentation__.Notify(491673)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(491674)
 	}
+	__antithesis_instrumentation__.Notify(491660)
 
 	if draining {
+		__antithesis_instrumentation__.Notify(491675)
 		return &flowRetryableError{cause: errors.Errorf(
 			"could not register flowID %d because the registry is draining",
 			id,
 		)}
+	} else {
+		__antithesis_instrumentation__.Notify(491676)
 	}
+	__antithesis_instrumentation__.Notify(491661)
 	entry := fr.getEntryLocked(id)
 	if entry.flow != nil {
+		__antithesis_instrumentation__.Notify(491677)
 		return errors.Errorf(
 			"flow already registered: flowID: %s.\n"+
 				"Current flow: %+v\nExisting flow: %+v",
 			f.spec.FlowID, f.spec, entry.flow.spec)
+	} else {
+		__antithesis_instrumentation__.Notify(491678)
 	}
-	// Take a reference that will be removed by UnregisterFlow.
+	__antithesis_instrumentation__.Notify(491662)
+
 	entry.refCount++
 	entry.flow = f
 	entry.inboundStreams = inboundStreams
-	// If there are any waiters, wake them up by closing waitCh.
+
 	if entry.waitCh != nil {
+		__antithesis_instrumentation__.Notify(491679)
 		close(entry.waitCh)
+	} else {
+		__antithesis_instrumentation__.Notify(491680)
 	}
+	__antithesis_instrumentation__.Notify(491663)
 
 	if len(inboundStreams) > 0 {
-		// Set up a function to time out inbound streams after a while.
+		__antithesis_instrumentation__.Notify(491681)
+
 		entry.streamTimer = time.AfterFunc(timeout, func() {
-			// We're giving up waiting for these inbound streams. We will push
-			// an error to its consumer; the error will propagate and eventually
-			// drain all the processors.
+			__antithesis_instrumentation__.Notify(491682)
+
 			numTimedOutReceivers := fr.cancelPendingStreams(id, errNoInboundStreamConnection)
 			if numTimedOutReceivers != 0 {
-				// The span in the context might be finished by the time this runs. In
-				// principle, we could ForkSpan() beforehand, but we don't want to
-				// create the extra span every time.
+				__antithesis_instrumentation__.Notify(491683)
+
 				timeoutCtx := tracing.ContextWithSpan(ctx, nil)
 				log.Errorf(
 					timeoutCtx,
@@ -328,219 +321,243 @@ func (fr *FlowRegistry) RegisterFlow(
 					numTimedOutReceivers,
 					timeout,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(491684)
 			}
 		})
+	} else {
+		__antithesis_instrumentation__.Notify(491685)
 	}
+	__antithesis_instrumentation__.Notify(491664)
 	return nil
 }
 
-// cancelPendingStreams cancels all of the streams that haven't been connected
-// yet in this flow, by setting them to finished and ending their wait group.
-// All InboundStreamHandlers of these streams are timed out with the provided
-// error. The number of such timed out receivers is returned.
-//
-// This method should be called without holding the mutex of the FlowRegistry.
 func (fr *FlowRegistry) cancelPendingStreams(
 	id execinfrapb.FlowID, pendingReceiverErr error,
 ) (numTimedOutReceivers int) {
+	__antithesis_instrumentation__.Notify(491686)
 	var inboundStreams map[execinfrapb.StreamID]*InboundStreamInfo
 	fr.Lock()
 	entry := fr.flows[id]
-	if entry != nil && entry.flow != nil {
-		// It is safe to access the inboundStreams map without holding the
-		// FlowRegistry mutex.
+	if entry != nil && func() bool {
+		__antithesis_instrumentation__.Notify(491690)
+		return entry.flow != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(491691)
+
 		inboundStreams = entry.inboundStreams
+	} else {
+		__antithesis_instrumentation__.Notify(491692)
 	}
+	__antithesis_instrumentation__.Notify(491687)
 	fr.Unlock()
 	if inboundStreams == nil {
+		__antithesis_instrumentation__.Notify(491693)
 		return 0
+	} else {
+		__antithesis_instrumentation__.Notify(491694)
 	}
+	__antithesis_instrumentation__.Notify(491688)
 	for _, is := range inboundStreams {
-		// Connected, non-finished inbound streams will get an error returned in
-		// ProcessInboundStream(). Handle non-connected streams here.
+		__antithesis_instrumentation__.Notify(491695)
+
 		pendingReceiver := is.cancelIfNotConnected()
 		if pendingReceiver != nil {
+			__antithesis_instrumentation__.Notify(491696)
 			numTimedOutReceivers++
 			go func(receiver InboundStreamHandler) {
+				__antithesis_instrumentation__.Notify(491697)
 				receiver.Timeout(pendingReceiverErr)
 			}(pendingReceiver)
+		} else {
+			__antithesis_instrumentation__.Notify(491698)
 		}
 	}
+	__antithesis_instrumentation__.Notify(491689)
 	return numTimedOutReceivers
 }
 
-// UnregisterFlow removes a flow from the registry. Any subsequent
-// ConnectInboundStream calls for the flow will fail to find it and time out.
 func (fr *FlowRegistry) UnregisterFlow(id execinfrapb.FlowID) {
+	__antithesis_instrumentation__.Notify(491699)
 	fr.Lock()
 	entry := fr.flows[id]
 	if entry.streamTimer != nil {
+		__antithesis_instrumentation__.Notify(491701)
 		entry.streamTimer.Stop()
 		entry.streamTimer = nil
+	} else {
+		__antithesis_instrumentation__.Notify(491702)
 	}
+	__antithesis_instrumentation__.Notify(491700)
 	fr.releaseEntryLocked(id)
 	fr.Unlock()
 }
 
-// waitForFlow waits until the flow with the given id gets registered - up to
-// the given timeout - and returns the FlowBase. If the timeout elapses, returns
-// nil. It should only be called without holding the mutex.
 func (fr *FlowRegistry) waitForFlow(
 	ctx context.Context, id execinfrapb.FlowID, timeout time.Duration,
 ) *FlowBase {
+	__antithesis_instrumentation__.Notify(491703)
 	fr.Lock()
 	defer fr.Unlock()
 	entry := fr.getEntryLocked(id)
 	if entry.flow != nil {
-		// The flow has just arrived (when the caller temporarily released the
-		// lock to send a handshake message on the gRPC stream).
+		__antithesis_instrumentation__.Notify(491707)
+
 		return entry.flow
+	} else {
+		__antithesis_instrumentation__.Notify(491708)
 	}
+	__antithesis_instrumentation__.Notify(491704)
 
-	// Flow not registered (at least not yet).
-
-	// Set up a channel that gets closed when the flow shows up, or when the
-	// timeout elapses. The channel might have been created already if there are
-	// other waiters for the same id.
 	waitCh := entry.waitCh
 	if waitCh == nil {
+		__antithesis_instrumentation__.Notify(491709)
 		waitCh = make(chan struct{})
 		entry.waitCh = waitCh
+	} else {
+		__antithesis_instrumentation__.Notify(491710)
 	}
+	__antithesis_instrumentation__.Notify(491705)
 	entry.refCount++
 	fr.Unlock()
 
 	select {
 	case <-waitCh:
+		__antithesis_instrumentation__.Notify(491711)
 	case <-time.After(timeout):
+		__antithesis_instrumentation__.Notify(491712)
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(491713)
 	}
+	__antithesis_instrumentation__.Notify(491706)
 
 	fr.Lock()
 	fr.releaseEntryLocked(id)
 	return entry.flow
 }
 
-// Drain waits at most flowDrainWait for currently running flows to finish and
-// at least minFlowDrainWait for any incoming flows to be registered. If there
-// are still flows active after flowDrainWait, Drain waits an extra
-// expectedConnectionTime so that any flows that were registered at the end of
-// the time window have a reasonable amount of time to connect to their
-// consumers, thus unblocking them.
-// The FlowRegistry rejects any new flows once it has finished draining.
-//
-// Note that since local flows are not added to the registry, they are not
-// waited for. However, this is fine since there should be no local flows
-// running when the FlowRegistry drains as the draining logic starts with
-// draining all client connections to a node.
-//
-// The reporter callback, if non-nil, is called on a best effort basis
-// to report work that needed to be done and which may or may not have
-// been done by the time this call returns. See the explanation in
-// pkg/server/drain.go for details.
 func (fr *FlowRegistry) Drain(
 	flowDrainWait time.Duration,
 	minFlowDrainWait time.Duration,
 	reporter func(int, redact.SafeString),
 ) {
+	__antithesis_instrumentation__.Notify(491714)
 	allFlowsDone := make(chan struct{}, 1)
 	start := timeutil.Now()
 	stopWaiting := false
 
 	sleep := func(t time.Duration) {
+		__antithesis_instrumentation__.Notify(491722)
 		if fr.testingRunBeforeDrainSleep != nil {
+			__antithesis_instrumentation__.Notify(491724)
 			fr.testingRunBeforeDrainSleep()
+		} else {
+			__antithesis_instrumentation__.Notify(491725)
 		}
+		__antithesis_instrumentation__.Notify(491723)
 		time.Sleep(t)
 	}
+	__antithesis_instrumentation__.Notify(491715)
 
 	defer func() {
-		// At this stage, we have either hit the flowDrainWait timeout or we have no
-		// flows left. We wait for an expectedConnectionTime longer so that we give
-		// any flows that were registered in the
-		// flowDrainWait - expectedConnectionTime window enough time to establish
-		// connections to their consumers so that the consumers do not block for a
-		// long time waiting for a connection to be established.
+		__antithesis_instrumentation__.Notify(491726)
+
 		fr.Lock()
 		fr.draining = true
 		if len(fr.flows) > 0 {
+			__antithesis_instrumentation__.Notify(491728)
 			fr.Unlock()
 			time.Sleep(expectedConnectionTime)
 			fr.Lock()
+		} else {
+			__antithesis_instrumentation__.Notify(491729)
 		}
+		__antithesis_instrumentation__.Notify(491727)
 		fr.Unlock()
 	}()
+	__antithesis_instrumentation__.Notify(491716)
 
 	fr.Lock()
 	if len(fr.flows) == 0 {
+		__antithesis_instrumentation__.Notify(491730)
 		fr.Unlock()
 		sleep(minFlowDrainWait)
 		fr.Lock()
-		// No flows were registered, return.
+
 		if len(fr.flows) == 0 {
+			__antithesis_instrumentation__.Notify(491731)
 			fr.Unlock()
 			return
+		} else {
+			__antithesis_instrumentation__.Notify(491732)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(491733)
 	}
+	__antithesis_instrumentation__.Notify(491717)
 	if reporter != nil {
-		// Report progress to the Drain RPC.
+		__antithesis_instrumentation__.Notify(491734)
+
 		reporter(len(fr.flows), "distSQL execution flows")
+	} else {
+		__antithesis_instrumentation__.Notify(491735)
 	}
+	__antithesis_instrumentation__.Notify(491718)
 
 	go func() {
+		__antithesis_instrumentation__.Notify(491736)
 		select {
 		case <-time.After(flowDrainWait):
+			__antithesis_instrumentation__.Notify(491737)
 			fr.Lock()
 			stopWaiting = true
 			fr.flowDone.Signal()
 			fr.Unlock()
 		case <-allFlowsDone:
+			__antithesis_instrumentation__.Notify(491738)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(491719)
 
-	for !(stopWaiting || len(fr.flows) == 0) {
+	for !(stopWaiting || func() bool {
+		__antithesis_instrumentation__.Notify(491739)
+		return len(fr.flows) == 0 == true
+	}() == true) {
+		__antithesis_instrumentation__.Notify(491740)
 		fr.flowDone.Wait()
 	}
+	__antithesis_instrumentation__.Notify(491720)
 	fr.Unlock()
 
-	// If we spent less time waiting for all registered flows to finish, wait
-	// for the minimum time for any new incoming flows and wait for these to
-	// finish.
 	waitTime := timeutil.Since(start)
 	if waitTime < minFlowDrainWait {
+		__antithesis_instrumentation__.Notify(491741)
 		sleep(minFlowDrainWait - waitTime)
 		fr.Lock()
-		for !(stopWaiting || len(fr.flows) == 0) {
+		for !(stopWaiting || func() bool {
+			__antithesis_instrumentation__.Notify(491743)
+			return len(fr.flows) == 0 == true
+		}() == true) {
+			__antithesis_instrumentation__.Notify(491744)
 			fr.flowDone.Wait()
 		}
+		__antithesis_instrumentation__.Notify(491742)
 		fr.Unlock()
+	} else {
+		__antithesis_instrumentation__.Notify(491745)
 	}
+	__antithesis_instrumentation__.Notify(491721)
 
 	allFlowsDone <- struct{}{}
 }
 
-// Undrain causes the FlowRegistry to start accepting flows again.
 func (fr *FlowRegistry) Undrain() {
+	__antithesis_instrumentation__.Notify(491746)
 	fr.Lock()
 	fr.draining = false
 	fr.Unlock()
 }
 
-// ConnectInboundStream finds the InboundStreamInfo for the given
-// <flowID,streamID> pair and marks it as connected. It waits up to timeout for
-// the stream to be registered with the registry. It also sends the handshake
-// messages to the producer of the stream.
-//
-// stream is the inbound stream.
-//
-// It returns the Flow that the stream is connecting to, the receiver that the
-// stream must push data to and a cleanup function that must be called to
-// unregister the flow from the registry after all the data has been pushed.
-//
-// The cleanup function will decrement the flow's WaitGroup, so that Flow.Wait()
-// is not blocked on this stream any more.
-// In case an error is returned, the cleanup function is nil, the Flow is not
-// considered connected and is not cleaned up.
 func (fr *FlowRegistry) ConnectInboundStream(
 	ctx context.Context,
 	flowID execinfrapb.FlowID,
@@ -548,14 +565,14 @@ func (fr *FlowRegistry) ConnectInboundStream(
 	stream execinfrapb.DistSQL_FlowStreamServer,
 	timeout time.Duration,
 ) (*FlowBase, InboundStreamHandler, func(), error) {
+	__antithesis_instrumentation__.Notify(491747)
 	fr.Lock()
 	entry := fr.getEntryLocked(flowID)
 	flow := entry.flow
 	fr.Unlock()
 	if flow == nil {
-		// Send the handshake message informing the producer that the consumer has
-		// not been scheduled yet. Another handshake will be sent below once the
-		// consumer has been connected.
+		__antithesis_instrumentation__.Notify(491752)
+
 		deadline := timeutil.Now().Add(timeout)
 		if err := stream.Send(&execinfrapb.ConsumerSignal{
 			Handshake: &execinfrapb.ConsumerHandshake{
@@ -565,34 +582,41 @@ func (fr *FlowRegistry) ConnectInboundStream(
 				MinAcceptedVersion:       execinfra.MinAcceptedVersion,
 			},
 		}); err != nil {
-			// TODO(andrei): We failed to send a message to the producer; we'll return
-			// an error and leave this stream with connected == false so it times out
-			// later. We could call finishInboundStreamLocked() now so that the flow
-			// doesn't wait for the timeout and we could remember the error for the
-			// consumer if the consumer comes later, but I'm not sure what the best
-			// way to do that is. Similarly for the 2nd handshake message below,
-			// except there we already have the consumer and we can push the error.
+			__antithesis_instrumentation__.Notify(491754)
+
 			return nil, nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(491755)
 		}
+		__antithesis_instrumentation__.Notify(491753)
 		flow = fr.waitForFlow(ctx, flowID, timeout)
 		if flow == nil {
+			__antithesis_instrumentation__.Notify(491756)
 			return nil, nil, nil, errors.Errorf("flow %s not found", flowID)
+		} else {
+			__antithesis_instrumentation__.Notify(491757)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(491758)
 	}
+	__antithesis_instrumentation__.Notify(491748)
 
-	// entry.inboundStreams is safe to access without holding the mutex since
-	// the map is not modified after Flow.Setup.
 	s, ok := entry.inboundStreams[streamID]
 	if !ok {
+		__antithesis_instrumentation__.Notify(491759)
 		return nil, nil, nil, errors.Errorf("flow %s: no inbound stream %d", flowID, streamID)
+	} else {
+		__antithesis_instrumentation__.Notify(491760)
 	}
-	// We now mark the stream as connected but, if an error happens later
-	// because the handshake fails, we reset the state; we want the stream to be
-	// considered timed out when the moment comes just as if this connection
-	// attempt never happened.
+	__antithesis_instrumentation__.Notify(491749)
+
 	if err := s.connect(flowID, streamID); err != nil {
+		__antithesis_instrumentation__.Notify(491761)
 		return nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(491762)
 	}
+	__antithesis_instrumentation__.Notify(491750)
 
 	if err := stream.Send(&execinfrapb.ConsumerSignal{
 		Handshake: &execinfrapb.ConsumerHandshake{
@@ -601,9 +625,13 @@ func (fr *FlowRegistry) ConnectInboundStream(
 			MinAcceptedVersion: execinfra.MinAcceptedVersion,
 		},
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(491763)
 		s.disconnect()
 		return nil, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(491764)
 	}
+	__antithesis_instrumentation__.Notify(491751)
 
 	return flow, s.receiver, s.finish, nil
 }

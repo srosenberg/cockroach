@@ -10,6 +10,7 @@ go_library(
         "//pkg/storage/enginepb",
         "//pkg/util/log",
         "//pkg/util/protoutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )
@@ -18,4 +19,5 @@ go_binary(
     name = "enc_utils",
     embed = [":enc_utils_lib"],
     visibility = ["//visibility:public"],
+    deps = ["@com_antithesis_instrumentation//wrappers"],
 )

@@ -1,13 +1,3 @@
-// Copyright 2016 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 // This connects to a postgres server and crafts postgres-protocol message
 // to encode its arguments into postgres' text and binary encodings. The
 // result is printed as JSON "test cases" on standard out. If no arguments
@@ -21,6 +11,8 @@
 //
 // The output of this file generates pkg/sql/pgwire/testdata/encodings.json.
 package main
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -44,6 +36,7 @@ var (
 
 	funcMap = template.FuncMap{
 		"json": func(v interface{}) (string, error) {
+			__antithesis_instrumentation__.Notify(40145)
 			b, err := json.Marshal(v)
 			return string(b), err
 		},
@@ -53,6 +46,7 @@ var (
 )
 
 func main() {
+	__antithesis_instrumentation__.Notify(40146)
 	flag.Parse()
 
 	var data []entry
@@ -61,37 +55,58 @@ func main() {
 	stmts := os.Args[1:]
 
 	if len(stmts) == 0 {
-		// Sort hard coded inputs by key name.
+		__antithesis_instrumentation__.Notify(40149)
+
 		var formats []string
 		for format := range inputs {
+			__antithesis_instrumentation__.Notify(40151)
 			formats = append(formats, format)
 		}
+		__antithesis_instrumentation__.Notify(40150)
 		sort.Strings(formats)
 
 		for _, format := range formats {
+			__antithesis_instrumentation__.Notify(40152)
 			list := inputs[format]
 			for _, input := range list {
+				__antithesis_instrumentation__.Notify(40153)
 				sql := fmt.Sprintf(format, input)
 				stmts = append(stmts, sql)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(40154)
 	}
+	__antithesis_instrumentation__.Notify(40147)
 
 	for _, expr := range stmts {
+		__antithesis_instrumentation__.Notify(40155)
 		sql := fmt.Sprintf("SELECT %s", expr)
 		text, err := pgconnect.Connect(ctx, sql, *postgresAddr, *postgresUser, pgwirebase.FormatText)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(40159)
 			log.Fatalf("text: %s: %v", sql, err)
+		} else {
+			__antithesis_instrumentation__.Notify(40160)
 		}
+		__antithesis_instrumentation__.Notify(40156)
 		binary, err := pgconnect.Connect(ctx, sql, *postgresAddr, *postgresUser, pgwirebase.FormatBinary)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(40161)
 			log.Fatalf("binary: %s: %v", sql, err)
+		} else {
+			__antithesis_instrumentation__.Notify(40162)
 		}
+		__antithesis_instrumentation__.Notify(40157)
 		sql = fmt.Sprintf("SELECT pg_typeof(%s)::int", expr)
 		id, err := pgconnect.Connect(ctx, sql, *postgresAddr, *postgresUser, pgwirebase.FormatText)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(40163)
 			log.Fatalf("oid: %s: %v", sql, err)
+		} else {
+			__antithesis_instrumentation__.Notify(40164)
 		}
+		__antithesis_instrumentation__.Notify(40158)
 		data = append(data, entry{
 			SQL:          expr,
 			Oid:          string(id),
@@ -100,13 +115,13 @@ func main() {
 			Binary:       binary,
 		})
 	}
+	__antithesis_instrumentation__.Notify(40148)
 
-	// This code "manually" produces JSON to avoid the inconvenience where the
-	// json package insists on serializing byte arrays as base64-encoded
-	// strings, and integer arrays with each member on a separate line. We want
-	// integer array-looking output with all members on the same line.
 	if err := tmpl.Execute(os.Stdout, data); err != nil {
+		__antithesis_instrumentation__.Notify(40165)
 		log.Fatal(err)
+	} else {
+		__antithesis_instrumentation__.Notify(40166)
 	}
 }
 
@@ -119,14 +134,21 @@ type entry struct {
 }
 
 func toString(b []byte) string {
+	__antithesis_instrumentation__.Notify(40167)
 	var buf bytes.Buffer
 	buf.WriteString("[")
 	for i, e := range b {
+		__antithesis_instrumentation__.Notify(40169)
 		if i > 0 {
+			__antithesis_instrumentation__.Notify(40171)
 			buf.WriteString(", ")
+		} else {
+			__antithesis_instrumentation__.Notify(40172)
 		}
+		__antithesis_instrumentation__.Notify(40170)
 		fmt.Fprint(&buf, e)
 	}
+	__antithesis_instrumentation__.Notify(40168)
 	buf.WriteString("]")
 	return buf.String()
 }
@@ -212,11 +234,7 @@ var inputs = map[string][]string{
 	},
 
 	"'%s'::float8": {
-		// The Go binary encoding of NaN differs from Postgres by a 1 at the
-		// end. Go also uses Inf instead of Infinity (used by Postgres) for text
-		// float encodings. These deviations are still correct, and it's not worth
-		// special casing them into the code, so they are commented out here.
-		//"NaN",
+
 		"Inf",
 		"-Inf",
 		"-000.000",
@@ -233,11 +251,7 @@ var inputs = map[string][]string{
 	},
 
 	"'%s'::float4": {
-		// The Go binary encoding of NaN differs from Postgres by a 1 at the
-		// end. Go also uses Inf instead of Infinity (used by Postgres) for text
-		// float encodings. These deviations are still correct, and it's not worth
-		// special casing them into the code, so they are commented out here.
-		//"NaN",
+
 		"Inf",
 		"-Inf",
 		"-000.000",
@@ -509,9 +523,9 @@ var inputs = map[string][]string{
 		`'test'`,
 		`'test with spaces'`,
 		`e'\f'`,
-		// byte order mark
+
 		`e'\uFEFF'`,
-		// snowman
+
 		`e'\u2603'`,
 	},
 

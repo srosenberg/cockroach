@@ -34,6 +34,7 @@ go_library(
         "//pkg/util/json",  # keep
         "//pkg/util/log",
         "//pkg/util/uuid",  # keep
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_apd_v3//:apd",  # keep
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_lib_pq//oid",  # keep
@@ -78,13 +79,16 @@ go_test(
         "//pkg/util/log",
         "//pkg/util/mon",
         "//pkg/util/randutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_lib_pq//oid",
         "@com_github_stretchr_testify//require",
     ],
 )
 
 # Export the template because it is used by another target in colexec package.
-exports_files(["distinct_tmpl.go"])
+exports_files(
+    ["distinct_tmpl.go"],
+)
 
 # Map between target name and relevant template.
 targets = [
@@ -100,4 +104,6 @@ eg_go_filegroup(
 )
 
 # Define gen rules for individual eg.go files.
-gen_eg_go_rules(targets)
+gen_eg_go_rules(
+    targets,
+)

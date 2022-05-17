@@ -11,6 +11,7 @@ go_library(
         "//pkg/util/circuit",
         "//pkg/util/grpcutil",
         "//pkg/util/sysutil",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

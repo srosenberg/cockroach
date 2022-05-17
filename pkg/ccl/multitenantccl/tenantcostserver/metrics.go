@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package tenantcostserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"github.com/cockroachdb/cockroach/pkg/multitenant"
@@ -16,14 +10,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-// Metrics is a metric.Struct for reporting tenant resource consumption.
-//
-// All metrics are aggregate metrics, containing child metrics for all tenants
-// that have communicated with this node. The metrics report cumulative usage
-// for the tenant; the current value for a given tenant is the most recent (or,
-// equivalently the largest) value reported across all nodes.  The top-level
-// aggregated value for a metric is not useful (it sums up the consumption for
-// each tenant, as last reported to this node).
 type Metrics struct {
 	TotalRU                *aggmetric.AggGaugeFloat64
 	TotalReadRequests      *aggmetric.AggGauge
@@ -35,17 +21,14 @@ type Metrics struct {
 
 	mu struct {
 		syncutil.Mutex
-		// tenantMetrics stores the tenantMetrics for all tenants that have
-		// sent TokenBucketRequests to this node.
-		// TODO(radu): add garbage collection to remove inactive tenants.
+
 		tenantMetrics map[roachpb.TenantID]tenantMetrics
 	}
 }
 
 var _ metric.Struct = (*Metrics)(nil)
 
-// MetricStruct indicates that Metrics is a metric.Struct
-func (m *Metrics) MetricStruct() {}
+func (m *Metrics) MetricStruct() { __antithesis_instrumentation__.Notify(20219) }
 
 var (
 	metaTotalRU = metric.Metadata{
@@ -106,7 +89,6 @@ func (m *Metrics) init() {
 	m.mu.tenantMetrics = make(map[roachpb.TenantID]tenantMetrics)
 }
 
-// tenantMetrics represent metrics for an individual tenant.
 type tenantMetrics struct {
 	totalRU                *aggmetric.GaugeFloat64
 	totalReadRequests      *aggmetric.Gauge
@@ -116,17 +98,16 @@ type tenantMetrics struct {
 	totalSQLPodsCPUSeconds *aggmetric.GaugeFloat64
 	totalPGWireEgressBytes *aggmetric.Gauge
 
-	// Mutex is used to atomically update metrics together with a corresponding
-	// change to the system table.
 	mutex *syncutil.Mutex
 }
 
-// getTenantMetrics returns the metrics for a tenant.
 func (m *Metrics) getTenantMetrics(tenantID roachpb.TenantID) tenantMetrics {
+	__antithesis_instrumentation__.Notify(20220)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	tm, ok := m.mu.tenantMetrics[tenantID]
 	if !ok {
+		__antithesis_instrumentation__.Notify(20222)
 		tid := tenantID.String()
 		tm = tenantMetrics{
 			totalRU:                m.TotalRU.AddChild(tid),
@@ -139,6 +120,9 @@ func (m *Metrics) getTenantMetrics(tenantID roachpb.TenantID) tenantMetrics {
 			mutex:                  &syncutil.Mutex{},
 		}
 		m.mu.tenantMetrics[tenantID] = tm
+	} else {
+		__antithesis_instrumentation__.Notify(20223)
 	}
+	__antithesis_instrumentation__.Notify(20221)
 	return tm
 }

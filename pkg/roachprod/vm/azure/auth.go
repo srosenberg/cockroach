@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package azure
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"net/http"
@@ -18,46 +10,52 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// getAuthorizer returns an Authorizer, which uses the Azure CLI
-// to log into the portal.
-//
-// It would be possible to implement an OAuth2 flow, avoiding the need
-// to install the Azure CLI.
-//
-// The Authorizer is memoized in the Provider.
 func (p *Provider) getAuthorizer() (ret autorest.Authorizer, err error) {
+	__antithesis_instrumentation__.Notify(183082)
 	p.mu.Lock()
 	ret = p.mu.authorizer
 	p.mu.Unlock()
 	if ret != nil {
+		__antithesis_instrumentation__.Notify(183085)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(183086)
 	}
+	__antithesis_instrumentation__.Notify(183083)
 
-	// Use the azure CLI to bootstrap our authentication.
-	// https://docs.microsoft.com/en-us/go/azure/azure-sdk-go-authorization
 	ret, err = auth.NewAuthorizerFromCLI()
 	if err == nil {
+		__antithesis_instrumentation__.Notify(183087)
 		p.mu.Lock()
 		p.mu.authorizer = ret
 		p.mu.Unlock()
 	} else {
+		__antithesis_instrumentation__.Notify(183088)
 		err = errors.Wrap(err, "could got get Azure auth token")
 	}
+	__antithesis_instrumentation__.Notify(183084)
 	return
 }
 
-// getAuthToken extracts the JWT token from the active Authorizer.
 func (p *Provider) getAuthToken() (string, error) {
+	__antithesis_instrumentation__.Notify(183089)
 	auth, err := p.getAuthorizer()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(183092)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183093)
 	}
+	__antithesis_instrumentation__.Notify(183090)
 
-	// We'll steal the auth Bearer token by creating a fake HTTP request.
 	fake := &http.Request{}
 	if _, err := auth.WithAuthorization()(&stealAuth{}).Prepare(fake); err != nil {
+		__antithesis_instrumentation__.Notify(183094)
 		return "", err
+	} else {
+		__antithesis_instrumentation__.Notify(183095)
 	}
+	__antithesis_instrumentation__.Notify(183091)
 	return fake.Header.Get("Authorization")[7:], nil
 }
 
@@ -66,7 +64,7 @@ type stealAuth struct {
 
 var _ autorest.Preparer = &stealAuth{}
 
-// Prepare implements the autorest.Preparer interface.
 func (*stealAuth) Prepare(r *http.Request) (*http.Request, error) {
+	__antithesis_instrumentation__.Notify(183096)
 	return r, nil
 }

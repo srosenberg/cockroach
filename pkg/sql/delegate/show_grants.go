@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package delegate
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -23,12 +15,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-// delegateShowGrants implements SHOW GRANTS which returns grant details for the
-// specified objects and users.
-// Privileges: None.
-//   Notes: postgres does not have a SHOW GRANTS statement.
-//          mysql only returns the user's privileges.
 func (d *delegator) delegateShowGrants(n *tree.ShowGrants) (tree.Statement, error) {
+	__antithesis_instrumentation__.Notify(465565)
 	var params []string
 
 	const dbPrivQuery = `
@@ -65,12 +53,16 @@ FROM "".information_schema.type_privileges`
 	var cond bytes.Buffer
 	var orderBy string
 
-	if n.Targets != nil && len(n.Targets.Databases) > 0 {
-		// Get grants of database from information_schema.schema_privileges
-		// if the type of target is database.
+	if n.Targets != nil && func() bool {
+		__antithesis_instrumentation__.Notify(465569)
+		return len(n.Targets.Databases) > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(465570)
+
 		dbNames := n.Targets.Databases.ToStrings()
 
 		for _, db := range dbNames {
+			__antithesis_instrumentation__.Notify(465572)
 			name := cat.SchemaName{
 				CatalogName:     tree.Name(db),
 				SchemaName:      tree.Name(tree.PublicSchema),
@@ -79,187 +71,272 @@ FROM "".information_schema.type_privileges`
 			}
 			_, _, err := d.catalog.ResolveSchema(d.ctx, cat.Flags{AvoidDescriptorCaches: true}, &name)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(465574)
 				return nil, err
+			} else {
+				__antithesis_instrumentation__.Notify(465575)
 			}
+			__antithesis_instrumentation__.Notify(465573)
 			params = append(params, lexbase.EscapeSQLString(db))
 		}
+		__antithesis_instrumentation__.Notify(465571)
 
 		fmt.Fprint(&source, dbPrivQuery)
 		orderBy = "1,2,3"
 		if len(params) == 0 {
-			// There are no rows, but we can't simply return emptyNode{} because
-			// the result columns must still be defined.
+			__antithesis_instrumentation__.Notify(465576)
+
 			cond.WriteString(`WHERE false`)
 		} else {
+			__antithesis_instrumentation__.Notify(465577)
 			fmt.Fprintf(&cond, `WHERE database_name IN (%s)`, strings.Join(params, ","))
 		}
-	} else if n.Targets != nil && len(n.Targets.Schemas) > 0 {
-		currDB := d.evalCtx.SessionData().Database
-
-		for _, schema := range n.Targets.Schemas {
-			_, _, err := d.catalog.ResolveSchema(d.ctx, cat.Flags{AvoidDescriptorCaches: true}, &schema)
-			if err != nil {
-				return nil, err
-			}
-			dbName := currDB
-			if schema.ExplicitCatalog {
-				dbName = schema.Catalog()
-			}
-			params = append(params, fmt.Sprintf("(%s,%s)", lexbase.EscapeSQLString(dbName), lexbase.EscapeSQLString(schema.Schema())))
-		}
-
-		fmt.Fprint(&source, schemaPrivQuery)
-		orderBy = "1,2,3,4"
-
-		if len(params) != 0 {
-			fmt.Fprintf(
-				&cond,
-				`WHERE (database_name, schema_name) IN (%s)`,
-				strings.Join(params, ","),
-			)
-		}
-	} else if n.Targets != nil && len(n.Targets.Types) > 0 {
-		for _, typName := range n.Targets.Types {
-			t, err := d.catalog.ResolveType(d.ctx, typName)
-			if err != nil {
-				return nil, err
-			}
-			if t.UserDefined() {
-				params = append(
-					params,
-					fmt.Sprintf(
-						"(%s, %s, %s)",
-						lexbase.EscapeSQLString(t.TypeMeta.Name.Catalog),
-						lexbase.EscapeSQLString(t.TypeMeta.Name.Schema),
-						lexbase.EscapeSQLString(t.TypeMeta.Name.Name),
-					),
-				)
-			} else {
-				params = append(
-					params,
-					fmt.Sprintf(
-						"(%s, 'pg_catalog', %s)",
-						lexbase.EscapeSQLString(t.TypeMeta.Name.Catalog),
-						lexbase.EscapeSQLString(t.TypeMeta.Name.Name),
-					),
-				)
-			}
-		}
-
-		fmt.Fprint(&source, typePrivQuery)
-		orderBy = "1,2,3,4,5"
-		if len(params) == 0 {
-			dbNameClause := "true"
-			// If the current database is set, restrict the command to it.
-			if currDB := d.evalCtx.SessionData().Database; currDB != "" {
-				dbNameClause = fmt.Sprintf("database_name = %s", lexbase.EscapeSQLString(currDB))
-			}
-			cond.WriteString(fmt.Sprintf(`WHERE %s`, dbNameClause))
-		} else {
-			fmt.Fprintf(
-				&cond,
-				`WHERE (database_name, schema_name, type_name) IN (%s)`,
-				strings.Join(params, ","),
-			)
-		}
 	} else {
-		orderBy = "1,2,3,4,5"
+		__antithesis_instrumentation__.Notify(465578)
+		if n.Targets != nil && func() bool {
+			__antithesis_instrumentation__.Notify(465579)
+			return len(n.Targets.Schemas) > 0 == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(465580)
+			currDB := d.evalCtx.SessionData().Database
 
-		if n.Targets != nil {
-			fmt.Fprint(&source, tablePrivQuery)
-			// Get grants of table from information_schema.table_privileges
-			// if the type of target is table.
-			var allTables tree.TableNames
-
-			for _, tableTarget := range n.Targets.Tables {
-				tableGlob, err := tableTarget.NormalizeTablePattern()
+			for _, schema := range n.Targets.Schemas {
+				__antithesis_instrumentation__.Notify(465582)
+				_, _, err := d.catalog.ResolveSchema(d.ctx, cat.Flags{AvoidDescriptorCaches: true}, &schema)
 				if err != nil {
+					__antithesis_instrumentation__.Notify(465585)
 					return nil, err
+				} else {
+					__antithesis_instrumentation__.Notify(465586)
 				}
-				// We avoid the cache so that we can observe the grants taking
-				// a lease, like other SHOW commands.
-				tables, _, err := cat.ExpandDataSourceGlob(
-					d.ctx, d.catalog, cat.Flags{AvoidDescriptorCaches: true}, tableGlob,
+				__antithesis_instrumentation__.Notify(465583)
+				dbName := currDB
+				if schema.ExplicitCatalog {
+					__antithesis_instrumentation__.Notify(465587)
+					dbName = schema.Catalog()
+				} else {
+					__antithesis_instrumentation__.Notify(465588)
+				}
+				__antithesis_instrumentation__.Notify(465584)
+				params = append(params, fmt.Sprintf("(%s,%s)", lexbase.EscapeSQLString(dbName), lexbase.EscapeSQLString(schema.Schema())))
+			}
+			__antithesis_instrumentation__.Notify(465581)
+
+			fmt.Fprint(&source, schemaPrivQuery)
+			orderBy = "1,2,3,4"
+
+			if len(params) != 0 {
+				__antithesis_instrumentation__.Notify(465589)
+				fmt.Fprintf(
+					&cond,
+					`WHERE (database_name, schema_name) IN (%s)`,
+					strings.Join(params, ","),
 				)
-				if err != nil {
-					return nil, err
-				}
-				allTables = append(allTables, tables...)
-			}
-
-			for i := range allTables {
-				params = append(params, fmt.Sprintf("(%s,%s,%s)",
-					lexbase.EscapeSQLString(allTables[i].Catalog()),
-					lexbase.EscapeSQLString(allTables[i].Schema()),
-					lexbase.EscapeSQLString(allTables[i].Table())))
-			}
-
-			if len(params) == 0 {
-				// The glob pattern has expanded to zero matching tables.
-				// There are no rows, but we can't simply return emptyNode{} because
-				// the result columns must still be defined.
-				cond.WriteString(`WHERE false`)
 			} else {
-				fmt.Fprintf(&cond, `WHERE (database_name, schema_name, table_name) IN (%s)`, strings.Join(params, ","))
+				__antithesis_instrumentation__.Notify(465590)
 			}
 		} else {
-			// No target: only look at types, tables and schemas in the current database.
-			source.WriteString(
-				`SELECT database_name, schema_name, table_name AS relation_name, grantee, privilege_type FROM (`,
-			)
-			source.WriteString(tablePrivQuery)
-			source.WriteByte(')')
-			source.WriteString(` UNION ALL ` +
-				`SELECT database_name, schema_name, NULL::STRING AS relation_name, grantee, privilege_type FROM (`)
-			source.WriteString(schemaPrivQuery)
-			source.WriteByte(')')
-			source.WriteString(` UNION ALL ` +
-				`SELECT database_name, NULL::STRING AS schema_name, NULL::STRING AS relation_name, grantee, privilege_type FROM (`)
-			source.WriteString(dbPrivQuery)
-			source.WriteByte(')')
-			source.WriteString(` UNION ALL ` +
-				`SELECT database_name, schema_name, type_name AS relation_name, grantee, privilege_type FROM (`)
-			source.WriteString(typePrivQuery)
-			source.WriteByte(')')
-			// If the current database is set, restrict the command to it.
-			if currDB := d.evalCtx.SessionData().Database; currDB != "" {
-				fmt.Fprintf(&cond, ` WHERE database_name = %s`, lexbase.EscapeSQLString(currDB))
+			__antithesis_instrumentation__.Notify(465591)
+			if n.Targets != nil && func() bool {
+				__antithesis_instrumentation__.Notify(465592)
+				return len(n.Targets.Types) > 0 == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(465593)
+				for _, typName := range n.Targets.Types {
+					__antithesis_instrumentation__.Notify(465595)
+					t, err := d.catalog.ResolveType(d.ctx, typName)
+					if err != nil {
+						__antithesis_instrumentation__.Notify(465597)
+						return nil, err
+					} else {
+						__antithesis_instrumentation__.Notify(465598)
+					}
+					__antithesis_instrumentation__.Notify(465596)
+					if t.UserDefined() {
+						__antithesis_instrumentation__.Notify(465599)
+						params = append(
+							params,
+							fmt.Sprintf(
+								"(%s, %s, %s)",
+								lexbase.EscapeSQLString(t.TypeMeta.Name.Catalog),
+								lexbase.EscapeSQLString(t.TypeMeta.Name.Schema),
+								lexbase.EscapeSQLString(t.TypeMeta.Name.Name),
+							),
+						)
+					} else {
+						__antithesis_instrumentation__.Notify(465600)
+						params = append(
+							params,
+							fmt.Sprintf(
+								"(%s, 'pg_catalog', %s)",
+								lexbase.EscapeSQLString(t.TypeMeta.Name.Catalog),
+								lexbase.EscapeSQLString(t.TypeMeta.Name.Name),
+							),
+						)
+					}
+				}
+				__antithesis_instrumentation__.Notify(465594)
+
+				fmt.Fprint(&source, typePrivQuery)
+				orderBy = "1,2,3,4,5"
+				if len(params) == 0 {
+					__antithesis_instrumentation__.Notify(465601)
+					dbNameClause := "true"
+
+					if currDB := d.evalCtx.SessionData().Database; currDB != "" {
+						__antithesis_instrumentation__.Notify(465603)
+						dbNameClause = fmt.Sprintf("database_name = %s", lexbase.EscapeSQLString(currDB))
+					} else {
+						__antithesis_instrumentation__.Notify(465604)
+					}
+					__antithesis_instrumentation__.Notify(465602)
+					cond.WriteString(fmt.Sprintf(`WHERE %s`, dbNameClause))
+				} else {
+					__antithesis_instrumentation__.Notify(465605)
+					fmt.Fprintf(
+						&cond,
+						`WHERE (database_name, schema_name, type_name) IN (%s)`,
+						strings.Join(params, ","),
+					)
+				}
 			} else {
-				cond.WriteString(`WHERE true`)
+				__antithesis_instrumentation__.Notify(465606)
+				orderBy = "1,2,3,4,5"
+
+				if n.Targets != nil {
+					__antithesis_instrumentation__.Notify(465607)
+					fmt.Fprint(&source, tablePrivQuery)
+
+					var allTables tree.TableNames
+
+					for _, tableTarget := range n.Targets.Tables {
+						__antithesis_instrumentation__.Notify(465610)
+						tableGlob, err := tableTarget.NormalizeTablePattern()
+						if err != nil {
+							__antithesis_instrumentation__.Notify(465613)
+							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(465614)
+						}
+						__antithesis_instrumentation__.Notify(465611)
+
+						tables, _, err := cat.ExpandDataSourceGlob(
+							d.ctx, d.catalog, cat.Flags{AvoidDescriptorCaches: true}, tableGlob,
+						)
+						if err != nil {
+							__antithesis_instrumentation__.Notify(465615)
+							return nil, err
+						} else {
+							__antithesis_instrumentation__.Notify(465616)
+						}
+						__antithesis_instrumentation__.Notify(465612)
+						allTables = append(allTables, tables...)
+					}
+					__antithesis_instrumentation__.Notify(465608)
+
+					for i := range allTables {
+						__antithesis_instrumentation__.Notify(465617)
+						params = append(params, fmt.Sprintf("(%s,%s,%s)",
+							lexbase.EscapeSQLString(allTables[i].Catalog()),
+							lexbase.EscapeSQLString(allTables[i].Schema()),
+							lexbase.EscapeSQLString(allTables[i].Table())))
+					}
+					__antithesis_instrumentation__.Notify(465609)
+
+					if len(params) == 0 {
+						__antithesis_instrumentation__.Notify(465618)
+
+						cond.WriteString(`WHERE false`)
+					} else {
+						__antithesis_instrumentation__.Notify(465619)
+						fmt.Fprintf(&cond, `WHERE (database_name, schema_name, table_name) IN (%s)`, strings.Join(params, ","))
+					}
+				} else {
+					__antithesis_instrumentation__.Notify(465620)
+
+					source.WriteString(
+						`SELECT database_name, schema_name, table_name AS relation_name, grantee, privilege_type FROM (`,
+					)
+					source.WriteString(tablePrivQuery)
+					source.WriteByte(')')
+					source.WriteString(` UNION ALL ` +
+						`SELECT database_name, schema_name, NULL::STRING AS relation_name, grantee, privilege_type FROM (`)
+					source.WriteString(schemaPrivQuery)
+					source.WriteByte(')')
+					source.WriteString(` UNION ALL ` +
+						`SELECT database_name, NULL::STRING AS schema_name, NULL::STRING AS relation_name, grantee, privilege_type FROM (`)
+					source.WriteString(dbPrivQuery)
+					source.WriteByte(')')
+					source.WriteString(` UNION ALL ` +
+						`SELECT database_name, schema_name, type_name AS relation_name, grantee, privilege_type FROM (`)
+					source.WriteString(typePrivQuery)
+					source.WriteByte(')')
+
+					if currDB := d.evalCtx.SessionData().Database; currDB != "" {
+						__antithesis_instrumentation__.Notify(465621)
+						fmt.Fprintf(&cond, ` WHERE database_name = %s`, lexbase.EscapeSQLString(currDB))
+					} else {
+						__antithesis_instrumentation__.Notify(465622)
+						cond.WriteString(`WHERE true`)
+					}
+				}
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(465566)
 
 	if n.Grantees != nil {
+		__antithesis_instrumentation__.Notify(465623)
 		params = params[:0]
 		grantees, err := n.Grantees.ToSQLUsernames(d.evalCtx.SessionData(), security.UsernameValidation)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(465626)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(465627)
 		}
+		__antithesis_instrumentation__.Notify(465624)
 		for _, grantee := range grantees {
+			__antithesis_instrumentation__.Notify(465628)
 			params = append(params, lexbase.EscapeSQLString(grantee.Normalized()))
 		}
+		__antithesis_instrumentation__.Notify(465625)
 		fmt.Fprintf(&cond, ` AND grantee IN (%s)`, strings.Join(params, ","))
+	} else {
+		__antithesis_instrumentation__.Notify(465629)
 	}
+	__antithesis_instrumentation__.Notify(465567)
 	query := fmt.Sprintf(`
 		SELECT * FROM (%s) %s ORDER BY %s
 	`, source.String(), cond.String(), orderBy)
 
-	// Terminate on invalid users.
 	for _, p := range n.Grantees {
+		__antithesis_instrumentation__.Notify(465630)
 
 		user, err := p.ToSQLUsername(d.evalCtx.SessionData(), security.UsernameValidation)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(465633)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(465634)
 		}
+		__antithesis_instrumentation__.Notify(465631)
 		userExists, err := d.catalog.RoleExists(d.ctx, user)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(465635)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(465636)
 		}
+		__antithesis_instrumentation__.Notify(465632)
 		if !userExists {
+			__antithesis_instrumentation__.Notify(465637)
 			return nil, pgerror.Newf(pgcode.UndefinedObject, "role/user %q does not exist", user)
+		} else {
+			__antithesis_instrumentation__.Notify(465638)
 		}
 	}
+	__antithesis_instrumentation__.Notify(465568)
 
 	return parse(query)
 }

@@ -1,14 +1,6 @@
-// Copyright 2018 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package kvcoord
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -24,44 +16,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 )
 
-// abortTxnAsyncTimeout is the context timeout for abortTxnAsyncLocked()
-// rollbacks. If the intent resolver has spare async task capacity, this timeout
-// only needs to be long enough for the EndTxn request to make it through Raft,
-// but if the cleanup task is synchronous (to backpressure clients) then cleanup
-// will be abandoned when the timeout expires. We generally want to clean up if
-// possible, but not at any cost, so we set it high at 1 minute.
 const abortTxnAsyncTimeout = time.Minute
 
-// txnHeartbeater is a txnInterceptor in charge of a transaction's heartbeat
-// loop. Transaction coordinators heartbeat their transaction record
-// periodically to indicate the liveness of their transaction. Other actors like
-// concurrent transactions and GC processes observe a transaction record's last
-// heartbeat time to learn about its disposition and to determine whether it
-// should be considered abandoned. When a transaction is considered abandoned,
-// other actors are free to abort it at will. As such, it is important for a
-// transaction coordinator to heartbeat its transaction record with a
-// periodicity well below the abandonment threshold.
-//
-// Transaction coordinators only need to perform heartbeats for transactions
-// that risk running for longer than the abandonment duration. For transactions
-// that finish well beneath this time, a heartbeat will never be sent and the
-// EndTxn request will create and immediately finalize the transaction. However,
-// for transactions that live long enough that they risk running into issues
-// with other's perceiving them as abandoned, the first HeartbeatTxn request
-// they send will create the transaction record in the PENDING state. Future
-// heartbeats will update the transaction record to indicate progressively
-// larger heartbeat timestamps.
-//
-// NOTE: there are other mechanisms by which concurrent actors could determine
-// the liveness of transactions. One proposal is to have concurrent actors
-// communicate directly with transaction coordinators themselves. This would
-// avoid the need for transaction heartbeats and the PENDING transaction state
-// entirely. Another proposal is to detect abandoned transactions and failed
-// coordinators at an entirely different level - by maintaining a node health
-// plane. This would function under the idea that if the node a transaction's
-// coordinator is running on is alive then that transaction is still in-progress
-// unless it specifies otherwise. These are both approaches we could consider in
-// the future.
 type txnHeartbeater struct {
 	log.AmbientContext
 	stopper      *stop.Stopper
@@ -69,73 +25,25 @@ type txnHeartbeater struct {
 	metrics      *TxnMetrics
 	loopInterval time.Duration
 
-	// wrapped is the next sender in the interceptor stack.
 	wrapped lockedSender
-	// gatekeeper is the sender to which heartbeat requests need to be sent. It is
-	// set to the gatekeeper interceptor, so sending directly to it will bypass
-	// all the other interceptors; heartbeats don't need them and they can only
-	// hurt - we don't want heartbeats to get sequence numbers or to check any
-	// intents. Note that the async rollbacks that this interceptor sometimes
-	// sends got through `wrapped`, not directly through `gatekeeper`.
+
 	gatekeeper lockedSender
 
-	// mu contains state protected by the TxnCoordSender's mutex.
 	mu struct {
 		sync.Locker
 
-		// txn is a reference to the TxnCoordSender's proto.
 		txn *roachpb.Transaction
 
-		// loopStarted indicates whether the heartbeat loop has been launched
-		// for the transaction or not. It remains true once the loop terminates.
 		loopStarted bool
 
-		// loopCancel is a function to cancel the context of the heartbeat loop.
-		// Non-nil if the heartbeat loop is currently running.
 		loopCancel func()
 
-		// finalObservedStatus is the finalized status that the heartbeat loop
-		// observed while heartbeating the transaction's record. As soon as the
-		// heartbeat loop observes a finalized status, it shuts down.
-		//
-		// If the status here is COMMITTED then the transaction definitely
-		// committed. However, if the status here is ABORTED then the
-		// transaction may or may not have been aborted. Instead, it's possible
-		// that the transaction was committed by an EndTxn request and then its
-		// record was garbage collected before the heartbeat request reached the
-		// record. The only way to distinguish this situation from a truly
-		// aborted transaction is to consider whether or not the transaction
-		// coordinator sent an EndTxn request and, if so, consider whether it
-		// succeeded or not.
-		//
-		// Because of this ambiguity, the status is not used to immediately
-		// update txn in case the heartbeat loop raced with an EndTxn request.
-		// Instead, it is used by the transaction coordinator to reject any
-		// future requests sent though it (which indicates that the heartbeat
-		// loop did not race with an EndTxn request).
 		finalObservedStatus roachpb.TransactionStatus
 
-		// ifReqs tracks the number of in-flight requests. This is expected to
-		// be either 0 or 1, but we let the txnLockGatekeeper enforce that.
-		//
-		// This is used to make sure we don't send EndTxn(commit=false) from
-		// abortTxnAsyncLocked() concurrently with another in-flight request.
-		// The TxnCoordSender assumes synchronous operation; in particular,
-		// the txnPipeliner must update its lock spans with pending responses
-		// before attaching the final lock spans to the EndTxn request.
 		ifReqs uint8
 
-		// abortTxnAsyncPending, if true, signals that an abortTxnAsyncLocked()
-		// call is waiting for in-flight requests to complete. Once the last
-		// request returns (setting ifReqs=0), it calls abortTxnAsyncLocked().
 		abortTxnAsyncPending bool
 
-		// abortTxnAsyncResultC is non-nil when an abortTxnAsyncLocked()
-		// rollback is in-flight. If a client rollback arrives concurrently, it
-		// will wait for the result on this channel, collapsing the requests to
-		// prevent concurrent rollbacks. Only EndTxn(commit=false) requests can
-		// arrive during rollback, the TxnCoordSender blocks any others due to
-		// finalObservedStatus.
 		abortTxnAsyncResultC chan abortTxnAsyncResult
 	}
 }
@@ -145,8 +53,6 @@ type abortTxnAsyncResult struct {
 	pErr *roachpb.Error
 }
 
-// init initializes the txnHeartbeater. This method exists instead of a
-// constructor because txnHeartbeaters live in a pool in the TxnCoordSender.
 func (h *txnHeartbeater) init(
 	ac log.AmbientContext,
 	stopper *stop.Stopper,
@@ -167,231 +73,274 @@ func (h *txnHeartbeater) init(
 	h.mu.txn = txn
 }
 
-// SendLocked is part of the txnInterceptor interface.
 func (h *txnHeartbeater) SendLocked(
 	ctx context.Context, ba roachpb.BatchRequest,
 ) (*roachpb.BatchResponse, *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(88607)
 	etArg, hasET := ba.GetArg(roachpb.EndTxn)
 	firstLockingIndex, pErr := firstLockingIndex(&ba)
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(88612)
 		return nil, pErr
+	} else {
+		__antithesis_instrumentation__.Notify(88613)
 	}
+	__antithesis_instrumentation__.Notify(88608)
 	if firstLockingIndex != -1 {
-		// Set txn key based on the key of the first transactional write if not
-		// already set. If it is already set, make sure we keep the anchor key
-		// the same.
+		__antithesis_instrumentation__.Notify(88614)
+
 		if len(h.mu.txn.Key) == 0 {
+			__antithesis_instrumentation__.Notify(88616)
 			anchor := ba.Requests[firstLockingIndex].GetInner().Header().Key
 			h.mu.txn.Key = anchor
-			// Put the anchor also in the ba's copy of the txn, since this batch
-			// was prepared before we had an anchor.
-			ba.Txn.Key = anchor
-		}
 
-		// Start the heartbeat loop if it has not already started.
-		if !h.mu.loopStarted {
-			h.startHeartbeatLoopLocked(ctx)
+			ba.Txn.Key = anchor
+		} else {
+			__antithesis_instrumentation__.Notify(88617)
 		}
+		__antithesis_instrumentation__.Notify(88615)
+
+		if !h.mu.loopStarted {
+			__antithesis_instrumentation__.Notify(88618)
+			h.startHeartbeatLoopLocked(ctx)
+		} else {
+			__antithesis_instrumentation__.Notify(88619)
+		}
+	} else {
+		__antithesis_instrumentation__.Notify(88620)
 	}
+	__antithesis_instrumentation__.Notify(88609)
 
 	if hasET {
+		__antithesis_instrumentation__.Notify(88621)
 		et := etArg.(*roachpb.EndTxnRequest)
 
-		// Preemptively stop the heartbeat loop in case of transaction abort.
-		// In case of transaction commit we don't want to do this because commit
-		// could fail with retryable error and transaction would be restarted
-		// with the next epoch.
 		if !et.Commit {
+			__antithesis_instrumentation__.Notify(88622)
 			h.cancelHeartbeatLoopLocked()
 
-			// If an abortTxnAsyncLocked() rollback is in flight, we'll wait for
-			// its result here to avoid sending a concurrent rollback.
-			// Otherwise, txnLockGatekeeper would error since it does not allow
-			// concurrent requests (to enforce a synchronous client protocol).
 			if resultC := h.mu.abortTxnAsyncResultC; resultC != nil {
-				// We have to unlock the mutex while waiting, to allow the
-				// txnLockGatekeeper to acquire the mutex when receiving the
-				// async abort response. Once we receive our copy of the
-				// response, we re-acquire the lock to return it to the client.
+				__antithesis_instrumentation__.Notify(88623)
+
 				h.mu.Unlock()
 				defer h.mu.Lock()
 				select {
 				case res := <-resultC:
+					__antithesis_instrumentation__.Notify(88624)
 					return res.br, res.pErr
 				case <-ctx.Done():
+					__antithesis_instrumentation__.Notify(88625)
 					return nil, roachpb.NewError(ctx.Err())
 				}
+			} else {
+				__antithesis_instrumentation__.Notify(88626)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(88627)
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(88628)
 	}
+	__antithesis_instrumentation__.Notify(88610)
 
-	// Forward the batch through the wrapped lockedSender, recording the
-	// in-flight request to coordinate with abortTxnAsyncLocked(). Recall that
-	// the mutex is unlocked for the duration of the SendLocked() call.
 	h.mu.ifReqs++
 	br, pErr := h.wrapped.SendLocked(ctx, ba)
 	h.mu.ifReqs--
 
-	// If an abortTxnAsyncLocked() call is waiting for this in-flight
-	// request to complete, call it. At this point, finalObservedStatus has
-	// already been set, so we don't have to worry about additional incoming
-	// requests (except rollbacks) -- the TxnCoordSender will block them.
-	if h.mu.abortTxnAsyncPending && h.mu.ifReqs == 0 {
+	if h.mu.abortTxnAsyncPending && func() bool {
+		__antithesis_instrumentation__.Notify(88629)
+		return h.mu.ifReqs == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(88630)
 		h.abortTxnAsyncLocked(ctx)
 		h.mu.abortTxnAsyncPending = false
+	} else {
+		__antithesis_instrumentation__.Notify(88631)
 	}
+	__antithesis_instrumentation__.Notify(88611)
 
 	return br, pErr
 }
 
-// setWrapped is part of the txnInterceptor interface.
 func (h *txnHeartbeater) setWrapped(wrapped lockedSender) {
+	__antithesis_instrumentation__.Notify(88632)
 	h.wrapped = wrapped
 }
 
-// populateLeafInputState is part of the txnInterceptor interface.
-func (*txnHeartbeater) populateLeafInputState(*roachpb.LeafTxnInputState) {}
+func (*txnHeartbeater) populateLeafInputState(*roachpb.LeafTxnInputState) {
+	__antithesis_instrumentation__.Notify(88633)
+}
 
-// populateLeafFinalState is part of the txnInterceptor interface.
-func (*txnHeartbeater) populateLeafFinalState(*roachpb.LeafTxnFinalState) {}
+func (*txnHeartbeater) populateLeafFinalState(*roachpb.LeafTxnFinalState) {
+	__antithesis_instrumentation__.Notify(88634)
+}
 
-// importLeafFinalState is part of the txnInterceptor interface.
-func (*txnHeartbeater) importLeafFinalState(context.Context, *roachpb.LeafTxnFinalState) {}
+func (*txnHeartbeater) importLeafFinalState(context.Context, *roachpb.LeafTxnFinalState) {
+	__antithesis_instrumentation__.Notify(88635)
+}
 
-// epochBumpedLocked is part of the txnInterceptor interface.
-func (h *txnHeartbeater) epochBumpedLocked() {}
+func (h *txnHeartbeater) epochBumpedLocked() { __antithesis_instrumentation__.Notify(88636) }
 
-// createSavepointLocked is part of the txnInterceptor interface.
-func (*txnHeartbeater) createSavepointLocked(context.Context, *savepoint) {}
+func (*txnHeartbeater) createSavepointLocked(context.Context, *savepoint) {
+	__antithesis_instrumentation__.Notify(88637)
+}
 
-// rollbackToSavepointLocked is part of the txnInterceptor interface.
-func (*txnHeartbeater) rollbackToSavepointLocked(context.Context, savepoint) {}
+func (*txnHeartbeater) rollbackToSavepointLocked(context.Context, savepoint) {
+	__antithesis_instrumentation__.Notify(88638)
+}
 
-// closeLocked is part of the txnInterceptor interface.
 func (h *txnHeartbeater) closeLocked() {
+	__antithesis_instrumentation__.Notify(88639)
 	h.cancelHeartbeatLoopLocked()
 }
 
-// startHeartbeatLoopLocked starts a heartbeat loop in a different goroutine.
 func (h *txnHeartbeater) startHeartbeatLoopLocked(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(88640)
 	if h.loopInterval < 0 {
+		__antithesis_instrumentation__.Notify(88644)
 		log.Infof(ctx, "coordinator heartbeat loop disabled")
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(88645)
 	}
+	__antithesis_instrumentation__.Notify(88641)
 	if h.mu.loopStarted {
+		__antithesis_instrumentation__.Notify(88646)
 		log.Fatal(ctx, "attempting to start a second heartbeat loop")
+	} else {
+		__antithesis_instrumentation__.Notify(88647)
 	}
+	__antithesis_instrumentation__.Notify(88642)
 	log.VEventf(ctx, 2, kvbase.SpawningHeartbeatLoopMsg)
 	h.mu.loopStarted = true
-	// NB: we can't do this in init() because the txn isn't populated yet then
-	// (it's zero).
+
 	h.AmbientContext.AddLogTag("txn-hb", h.mu.txn.Short())
 
-	// Create a new context so that the heartbeat loop doesn't inherit the
-	// caller's cancelation or span.
 	hbCtx, hbCancel := context.WithCancel(h.AnnotateCtx(context.Background()))
 
-	// Delay spawning the loop goroutine until the first loopInterval passes, to
-	// avoid the associated cost for small write transactions. In benchmarks,
-	// this gave a 3% throughput increase for point writes at high concurrency.
 	timer := time.AfterFunc(h.loopInterval, func() {
+		__antithesis_instrumentation__.Notify(88648)
 		const taskName = "kv.TxnCoordSender: heartbeat loop"
 		var span *tracing.Span
 		hbCtx, span = h.AmbientContext.Tracer.StartSpanCtx(hbCtx, taskName)
 		defer span.Finish()
 
-		// Only errors on quiesce, which is safe to ignore.
 		_ = h.stopper.RunTask(hbCtx, taskName, h.heartbeatLoop)
 	})
+	__antithesis_instrumentation__.Notify(88643)
 
 	h.mu.loopCancel = func() {
+		__antithesis_instrumentation__.Notify(88649)
 		timer.Stop()
 		hbCancel()
 	}
 }
 
 func (h *txnHeartbeater) cancelHeartbeatLoopLocked() {
-	// If the heartbeat loop has already started, cancel it.
+	__antithesis_instrumentation__.Notify(88650)
+
 	if h.heartbeatLoopRunningLocked() {
+		__antithesis_instrumentation__.Notify(88651)
 		h.mu.loopCancel()
 		h.mu.loopCancel = nil
+	} else {
+		__antithesis_instrumentation__.Notify(88652)
 	}
 }
 
 func (h *txnHeartbeater) heartbeatLoopRunningLocked() bool {
+	__antithesis_instrumentation__.Notify(88653)
 	return h.mu.loopCancel != nil
 }
 
-// heartbeatLoop periodically sends a HeartbeatTxn request to the transaction
-// record, stopping in the event the transaction is aborted or committed after
-// attempting to resolve the intents.
 func (h *txnHeartbeater) heartbeatLoop(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(88654)
 	defer func() {
+		__antithesis_instrumentation__.Notify(88658)
 		h.mu.Lock()
 		h.cancelHeartbeatLoopLocked()
 		h.mu.Unlock()
 	}()
+	__antithesis_instrumentation__.Notify(88655)
 
 	var tickChan <-chan time.Time
 	{
+		__antithesis_instrumentation__.Notify(88659)
 		ticker := time.NewTicker(h.loopInterval)
 		tickChan = ticker.C
 		defer ticker.Stop()
 	}
+	__antithesis_instrumentation__.Notify(88656)
 
-	// Loop is only spawned after loopInterval, so heartbeat immediately.
 	if !h.heartbeat(ctx) {
+		__antithesis_instrumentation__.Notify(88660)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(88661)
 	}
+	__antithesis_instrumentation__.Notify(88657)
 
-	// Loop with ticker for periodic heartbeats.
 	for {
+		__antithesis_instrumentation__.Notify(88662)
 		select {
 		case <-tickChan:
+			__antithesis_instrumentation__.Notify(88663)
 			if !h.heartbeat(ctx) {
-				// The heartbeat noticed a finalized transaction,
-				// so shut down the heartbeat loop.
+				__antithesis_instrumentation__.Notify(88666)
+
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(88667)
 			}
 		case <-ctx.Done():
-			// Transaction finished normally.
+			__antithesis_instrumentation__.Notify(88664)
+
 			return
 		case <-h.stopper.ShouldQuiesce():
+			__antithesis_instrumentation__.Notify(88665)
 			return
 		}
 	}
 }
 
-// heartbeat sends a HeartbeatTxnRequest to the txn record.
-// Returns true if heartbeating should continue, false if the transaction is no
-// longer Pending and so there's no point in heartbeating further.
 func (h *txnHeartbeater) heartbeat(ctx context.Context) bool {
-	// Like with the TxnCoordSender, the locking here is peculiar. The lock is not
-	// held continuously throughout this method: we acquire the lock here and
-	// then, inside the wrapped.Send() call, the interceptor at the bottom of the
-	// stack will unlock until it receives a response.
+	__antithesis_instrumentation__.Notify(88668)
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	// The heartbeat loop might have raced with the cancelation of the heartbeat.
 	if ctx.Err() != nil {
+		__antithesis_instrumentation__.Notify(88675)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(88676)
 	}
+	__antithesis_instrumentation__.Notify(88669)
 
 	if h.mu.txn.Status != roachpb.PENDING {
+		__antithesis_instrumentation__.Notify(88677)
 		if h.mu.txn.Status == roachpb.COMMITTED {
+			__antithesis_instrumentation__.Notify(88679)
 			log.Fatalf(ctx, "txn committed but heartbeat loop hasn't been signaled to stop: %s", h.mu.txn)
+		} else {
+			__antithesis_instrumentation__.Notify(88680)
 		}
-		// If the transaction is aborted, there's no point in heartbeating. The
-		// client needs to send a rollback.
-		return false
-	}
+		__antithesis_instrumentation__.Notify(88678)
 
-	// Clone the txn in order to put it in the heartbeat request.
+		return false
+	} else {
+		__antithesis_instrumentation__.Notify(88681)
+	}
+	__antithesis_instrumentation__.Notify(88670)
+
 	txn := h.mu.txn.Clone()
 	if txn.Key == nil {
+		__antithesis_instrumentation__.Notify(88682)
 		log.Fatalf(ctx, "attempting to heartbeat txn without anchor key: %v", txn)
+	} else {
+		__antithesis_instrumentation__.Notify(88683)
 	}
+	__antithesis_instrumentation__.Notify(88671)
 	ba := roachpb.BatchRequest{}
 	ba.Txn = txn
 	ba.Add(&roachpb.HeartbeatTxnRequest{
@@ -401,86 +350,87 @@ func (h *txnHeartbeater) heartbeat(ctx context.Context) bool {
 		Now: h.clock.Now(),
 	})
 
-	// Send the heartbeat request directly through the gatekeeper interceptor.
-	// See comment on h.gatekeeper for a discussion of why.
 	log.VEvent(ctx, 2, "heartbeat")
 	br, pErr := h.gatekeeper.SendLocked(ctx, ba)
 
-	// If the txn is no longer pending, ignore the result of the heartbeat
-	// and tear down the heartbeat loop.
 	if h.mu.txn.Status != roachpb.PENDING {
+		__antithesis_instrumentation__.Notify(88684)
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(88685)
 	}
+	__antithesis_instrumentation__.Notify(88672)
 
 	var respTxn *roachpb.Transaction
 	if pErr != nil {
+		__antithesis_instrumentation__.Notify(88686)
 		log.VEventf(ctx, 2, "heartbeat failed for %s: %s", h.mu.txn, pErr)
 
-		// We need to be prepared here to handle the case of a
-		// TransactionAbortedError with no transaction proto in it.
-		//
-		// TODO(nvanbenschoten): Make this the only case where we get back an
-		// Aborted txn.
 		if _, ok := pErr.GetDetail().(*roachpb.TransactionAbortedError); ok {
-			// Note that it's possible that the txn actually committed but its
-			// record got GC'ed. In that case, aborting won't hurt anyone though,
-			// since all intents have already been resolved.
-			// The only thing we must ascertain is that we don't tell the client
-			// about this error - it will get either a definitive result of
-			// its commit or an ambiguous one and we have nothing to offer that
-			// provides more clarity. We do however prevent it from running more
-			// requests in case it isn't aware that the transaction is over.
+			__antithesis_instrumentation__.Notify(88688)
+
 			log.VEventf(ctx, 1, "Heartbeat detected aborted txn, cleaning up for %s", h.mu.txn)
 			h.abortTxnAsyncLocked(ctx)
 			h.mu.finalObservedStatus = roachpb.ABORTED
 			return false
+		} else {
+			__antithesis_instrumentation__.Notify(88689)
 		}
+		__antithesis_instrumentation__.Notify(88687)
 
 		respTxn = pErr.GetTxn()
 	} else {
+		__antithesis_instrumentation__.Notify(88690)
 		respTxn = br.Txn
 	}
+	__antithesis_instrumentation__.Notify(88673)
 
-	// Tear down the heartbeat loop if the response transaction is finalized.
-	if respTxn != nil && respTxn.Status.IsFinalized() {
+	if respTxn != nil && func() bool {
+		__antithesis_instrumentation__.Notify(88691)
+		return respTxn.Status.IsFinalized() == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(88692)
 		switch respTxn.Status {
 		case roachpb.COMMITTED:
-			// Shut down the heartbeat loop without doing anything else.
-			// We must have raced with an EndTxn(commit=true).
+			__antithesis_instrumentation__.Notify(88694)
+
 		case roachpb.ABORTED:
-			// Roll back the transaction record to clean up intents and
-			// then shut down the heartbeat loop.
+			__antithesis_instrumentation__.Notify(88695)
+
 			log.VEventf(ctx, 1, "Heartbeat detected aborted txn, cleaning up for %s", h.mu.txn)
 			h.abortTxnAsyncLocked(ctx)
+		default:
+			__antithesis_instrumentation__.Notify(88696)
 		}
+		__antithesis_instrumentation__.Notify(88693)
 		h.mu.finalObservedStatus = respTxn.Status
 		return false
+	} else {
+		__antithesis_instrumentation__.Notify(88697)
 	}
+	__antithesis_instrumentation__.Notify(88674)
 	return true
 }
 
-// abortTxnAsyncLocked sends an EndTxn(commit=false) asynchronously.
-// The purpose of the async cleanup is to resolve transaction intents as soon
-// as possible when a transaction coordinator observes an ABORTED transaction.
 func (h *txnHeartbeater) abortTxnAsyncLocked(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(88698)
 
-	// If a request is in flight, we must wait for it to complete first such
-	// that txnPipeliner can record its lock spans and attach them to the EndTxn
-	// request we'll send.
 	if h.mu.ifReqs > 0 {
+		__antithesis_instrumentation__.Notify(88700)
 		h.mu.abortTxnAsyncPending = true
 		log.VEventf(ctx, 2, "async abort waiting for in-flight request for txn %s", h.mu.txn)
 		return
+	} else {
+		__antithesis_instrumentation__.Notify(88701)
 	}
+	__antithesis_instrumentation__.Notify(88699)
 
-	// Construct a batch with an EndTxn request.
 	txn := h.mu.txn.Clone()
 	ba := roachpb.BatchRequest{}
 	ba.Header = roachpb.Header{Txn: txn}
 	ba.Add(&roachpb.EndTxnRequest{
 		Commit: false,
-		// Resolved intents should maintain an abort span entry to prevent
-		// concurrent requests from failing to notice the transaction was aborted.
+
 		Poison: true,
 	})
 
@@ -488,82 +438,89 @@ func (h *txnHeartbeater) abortTxnAsyncLocked(ctx context.Context) {
 	log.VEventf(ctx, 2, "async abort for txn: %s", txn)
 	if err := h.stopper.RunAsyncTask(h.AnnotateCtx(context.Background()), taskName,
 		func(ctx context.Context) {
+			__antithesis_instrumentation__.Notify(88702)
 			if err := contextutil.RunWithTimeout(ctx, taskName, abortTxnAsyncTimeout,
 				func(ctx context.Context) error {
+					__antithesis_instrumentation__.Notify(88703)
 					h.mu.Lock()
 					defer h.mu.Unlock()
 
-					// If we find an abortTxnAsyncResultC, that means an async
-					// rollback request is already in flight, so there's no
-					// point in us running another. This can happen because the
-					// TxnCoordSender also calls abortTxnAsyncLocked()
-					// independently of the heartbeat loop.
 					if h.mu.abortTxnAsyncResultC != nil {
+						__antithesis_instrumentation__.Notify(88707)
 						log.VEventf(ctx, 2,
 							"skipping async abort due to concurrent async abort for %s", txn)
 						return nil
+					} else {
+						__antithesis_instrumentation__.Notify(88708)
 					}
+					__antithesis_instrumentation__.Notify(88704)
 
-					// TxnCoordSender allows EndTxn(commit=false) through even
-					// after we set finalObservedStatus, and that request can
-					// race with us for the mutex. Thus, if we find an in-flight
-					// request here, after checking ifReqs=0 before being spawned,
-					// we deduce that it must have been a rollback and there's no
-					// point in sending another rollback.
 					if h.mu.ifReqs > 0 {
+						__antithesis_instrumentation__.Notify(88709)
 						log.VEventf(ctx, 2,
 							"skipping async abort due to client rollback for %s", txn)
 						return nil
+					} else {
+						__antithesis_instrumentation__.Notify(88710)
 					}
+					__antithesis_instrumentation__.Notify(88705)
 
-					// Set up a result channel to signal to an incoming client
-					// rollback that an async rollback is already in progress,
-					// and pass it the result. The buffer allows storing the
-					// result even when no client rollback arrives. Recall that
-					// the SendLocked() call below releases the mutex while
-					// running, allowing concurrent incoming requests.
 					h.mu.abortTxnAsyncResultC = make(chan abortTxnAsyncResult, 1)
 
-					// Send the abort request through the interceptor stack. This is
-					// important because we need the txnPipeliner to append lock spans
-					// to the EndTxn request.
 					br, pErr := h.wrapped.SendLocked(ctx, ba)
 					if pErr != nil {
+						__antithesis_instrumentation__.Notify(88711)
 						log.VErrEventf(ctx, 1, "async abort failed for %s: %s ", txn, pErr)
 						h.metrics.AsyncRollbacksFailed.Inc(1)
+					} else {
+						__antithesis_instrumentation__.Notify(88712)
 					}
+					__antithesis_instrumentation__.Notify(88706)
 
-					// Pass the result to a waiting client rollback, if any, and
-					// remove the channel since we're no longer in flight.
 					h.mu.abortTxnAsyncResultC <- abortTxnAsyncResult{br: br, pErr: pErr}
 					h.mu.abortTxnAsyncResultC = nil
 					return nil
 				},
 			); err != nil {
+				__antithesis_instrumentation__.Notify(88713)
 				log.VEventf(ctx, 1, "async abort failed for %s: %s", txn, err)
+			} else {
+				__antithesis_instrumentation__.Notify(88714)
 			}
 		},
 	); err != nil {
+		__antithesis_instrumentation__.Notify(88715)
 		log.Warningf(ctx, "%v", err)
 		h.metrics.AsyncRollbacksFailed.Inc(1)
+	} else {
+		__antithesis_instrumentation__.Notify(88716)
 	}
 }
 
-// firstLockingIndex returns the index of the first request that acquires locks
-// in the BatchRequest. Returns -1 if the batch has no intention to acquire
-// locks. It also verifies that if an EndTxnRequest is included, then it is the
-// last request in the batch.
 func firstLockingIndex(ba *roachpb.BatchRequest) (int, *roachpb.Error) {
+	__antithesis_instrumentation__.Notify(88717)
 	for i, ru := range ba.Requests {
+		__antithesis_instrumentation__.Notify(88719)
 		args := ru.GetInner()
-		if i < len(ba.Requests)-1 /* if not last*/ {
+		if i < len(ba.Requests)-1 {
+			__antithesis_instrumentation__.Notify(88721)
 			if _, ok := args.(*roachpb.EndTxnRequest); ok {
+				__antithesis_instrumentation__.Notify(88722)
 				return -1, roachpb.NewErrorf("%s sent as non-terminal call", args.Method())
+			} else {
+				__antithesis_instrumentation__.Notify(88723)
 			}
+		} else {
+			__antithesis_instrumentation__.Notify(88724)
 		}
+		__antithesis_instrumentation__.Notify(88720)
 		if roachpb.IsLocking(args) {
+			__antithesis_instrumentation__.Notify(88725)
 			return i, nil
+		} else {
+			__antithesis_instrumentation__.Notify(88726)
 		}
 	}
+	__antithesis_instrumentation__.Notify(88718)
 	return -1, nil
 }

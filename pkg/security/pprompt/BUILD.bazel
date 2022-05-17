@@ -5,5 +5,8 @@ go_library(
     srcs = ["password.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/security/pprompt",
     visibility = ["//visibility:public"],
-    deps = ["@org_golang_x_term//:term"],
+    deps = [
+        "@com_antithesis_instrumentation//wrappers",
+        "@org_golang_x_term//:term",
+    ],
 )

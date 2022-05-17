@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package multiregionccltestutils
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -26,54 +20,56 @@ type multiRegionTestClusterParams struct {
 	useDatabase     string
 }
 
-// MultiRegionTestClusterParamsOption is an option that can be passed to
-// TestingCreateMultiRegionCluster.
 type MultiRegionTestClusterParamsOption func(params *multiRegionTestClusterParams)
 
-// WithBaseDirectory is an option to include a base directory for the
-// created multi-region cluster.
 func WithBaseDirectory(baseDir string) MultiRegionTestClusterParamsOption {
+	__antithesis_instrumentation__.Notify(19927)
 	return func(params *multiRegionTestClusterParams) {
+		__antithesis_instrumentation__.Notify(19928)
 		params.baseDir = baseDir
 	}
 }
 
-// WithReplicationMode is an option to control the replication mode for the
-// created multi-region cluster.
 func WithReplicationMode(
 	replicationMode base.TestClusterReplicationMode,
 ) MultiRegionTestClusterParamsOption {
+	__antithesis_instrumentation__.Notify(19929)
 	return func(params *multiRegionTestClusterParams) {
+		__antithesis_instrumentation__.Notify(19930)
 		params.replicationMode = replicationMode
 	}
 }
 
-// WithUseDatabase is an option to set the UseDatabase server option.
 func WithUseDatabase(db string) MultiRegionTestClusterParamsOption {
+	__antithesis_instrumentation__.Notify(19931)
 	return func(params *multiRegionTestClusterParams) {
+		__antithesis_instrumentation__.Notify(19932)
 		params.useDatabase = db
 	}
 }
 
-// TestingCreateMultiRegionCluster creates a test cluster with numServers number
-// of nodes and the provided testing knobs applied to each of the nodes. Every
-// node is placed in its own locality, named "us-east1", "us-east2", and so on.
 func TestingCreateMultiRegionCluster(
 	t testing.TB, numServers int, knobs base.TestingKnobs, opts ...MultiRegionTestClusterParamsOption,
 ) (*testcluster.TestCluster, *gosql.DB, func()) {
+	__antithesis_instrumentation__.Notify(19933)
 	serverArgs := make(map[int]base.TestServerArgs)
 	regionNames := make([]string, numServers)
 	for i := 0; i < numServers; i++ {
-		// "us-east1", "us-east2"...
+		__antithesis_instrumentation__.Notify(19938)
+
 		regionNames[i] = fmt.Sprintf("us-east%d", i+1)
 	}
+	__antithesis_instrumentation__.Notify(19934)
 
 	params := &multiRegionTestClusterParams{}
 	for _, opt := range opts {
+		__antithesis_instrumentation__.Notify(19939)
 		opt(params)
 	}
+	__antithesis_instrumentation__.Notify(19935)
 
 	for i := 0; i < numServers; i++ {
+		__antithesis_instrumentation__.Notify(19940)
 		serverArgs[i] = base.TestServerArgs{
 			Knobs:         knobs,
 			ExternalIODir: params.baseDir,
@@ -83,6 +79,7 @@ func TestingCreateMultiRegionCluster(
 			},
 		}
 	}
+	__antithesis_instrumentation__.Notify(19936)
 
 	tc := testcluster.StartTestCluster(t, numServers, base.TestClusterArgs{
 		ReplicationMode:   params.replicationMode,
@@ -91,33 +88,43 @@ func TestingCreateMultiRegionCluster(
 
 	ctx := context.Background()
 	cleanup := func() {
+		__antithesis_instrumentation__.Notify(19941)
 		tc.Stopper().Stop(ctx)
 	}
+	__antithesis_instrumentation__.Notify(19937)
 
 	sqlDB := tc.ServerConn(0)
 
 	return tc, sqlDB, cleanup
 }
 
-// TestingEnsureCorrectPartitioning ensures that the table referenced by the
-// supplied FQN has the expected indexes and that all of those indexes have the
-// expected partitions.
 func TestingEnsureCorrectPartitioning(
 	sqlDB *gosql.DB, dbName string, tableName string, expectedIndexes []string,
 ) error {
+	__antithesis_instrumentation__.Notify(19942)
 	rows, err := sqlDB.Query("SELECT region FROM [SHOW REGIONS FROM DATABASE db] ORDER BY region")
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19948)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19949)
 	}
+	__antithesis_instrumentation__.Notify(19943)
 	defer rows.Close()
 	var expectedPartitions []string
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(19950)
 		var regionName string
 		if err := rows.Scan(&regionName); err != nil {
+			__antithesis_instrumentation__.Notify(19952)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(19953)
 		}
+		__antithesis_instrumentation__.Notify(19951)
 		expectedPartitions = append(expectedPartitions, regionName)
 	}
+	__antithesis_instrumentation__.Notify(19944)
 
 	rows, err = sqlDB.Query(
 		fmt.Sprintf(
@@ -127,43 +134,67 @@ func TestingEnsureCorrectPartitioning(
 		),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(19954)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(19955)
 	}
+	__antithesis_instrumentation__.Notify(19945)
 	defer rows.Close()
 
 	indexPartitions := make(map[string][]string)
 	for rows.Next() {
+		__antithesis_instrumentation__.Notify(19956)
 		var indexName string
 		var partitionName string
 		if err := rows.Scan(&indexName, &partitionName); err != nil {
+			__antithesis_instrumentation__.Notify(19958)
 			return err
+		} else {
+			__antithesis_instrumentation__.Notify(19959)
 		}
+		__antithesis_instrumentation__.Notify(19957)
 
 		indexPartitions[indexName] = append(indexPartitions[indexName], partitionName)
 	}
+	__antithesis_instrumentation__.Notify(19946)
 
 	for _, expectedIndex := range expectedIndexes {
+		__antithesis_instrumentation__.Notify(19960)
 		partitions, found := indexPartitions[expectedIndex]
 		if !found {
+			__antithesis_instrumentation__.Notify(19963)
 			return errors.AssertionFailedf("did not find index %s", expectedIndex)
+		} else {
+			__antithesis_instrumentation__.Notify(19964)
 		}
+		__antithesis_instrumentation__.Notify(19961)
 
 		if len(partitions) != len(expectedPartitions) {
+			__antithesis_instrumentation__.Notify(19965)
 			return errors.AssertionFailedf(
 				"unexpected number of partitions; expected %d, found %d",
 				len(partitions),
 				len(expectedPartitions),
 			)
+		} else {
+			__antithesis_instrumentation__.Notify(19966)
 		}
+		__antithesis_instrumentation__.Notify(19962)
 		for i, expectedPartition := range expectedPartitions {
+			__antithesis_instrumentation__.Notify(19967)
 			if expectedPartition != partitions[i] {
+				__antithesis_instrumentation__.Notify(19968)
 				return errors.AssertionFailedf(
 					"unexpected partitions; expected %v, found %v",
 					expectedPartitions,
 					partitions,
 				)
+			} else {
+				__antithesis_instrumentation__.Notify(19969)
 			}
 		}
 	}
+	__antithesis_instrumentation__.Notify(19947)
 	return nil
 }

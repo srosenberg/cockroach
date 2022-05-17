@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package workloadimpl
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -16,21 +8,24 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-// RandStringFast is a non-specialized random string generator with an even
-// distribution of alphabet in the output.
 func RandStringFast(rng rand.Source, buf []byte, alphabet string) {
-	// We could pull these computations out to be done once per alphabet, but at
-	// that point, you likely should consider PrecomputedRand.
+	__antithesis_instrumentation__.Notify(699079)
+
 	alphabetLen := uint64(len(alphabet))
-	// floor(log(math.MaxUint64)/log(alphabetLen))
+
 	lettersCharsPerRand := uint64(math.Log(float64(math.MaxUint64)) / math.Log(float64(alphabetLen)))
 
 	var r, charsLeft uint64
 	for i := 0; i < len(buf); i++ {
+		__antithesis_instrumentation__.Notify(699080)
 		if charsLeft == 0 {
+			__antithesis_instrumentation__.Notify(699082)
 			r = rng.Uint64()
 			charsLeft = lettersCharsPerRand
+		} else {
+			__antithesis_instrumentation__.Notify(699083)
 		}
+		__antithesis_instrumentation__.Notify(699081)
 		buf[i] = alphabet[r%alphabetLen]
 		r = r / alphabetLen
 		charsLeft--

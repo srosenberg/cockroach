@@ -1,14 +1,6 @@
-// Copyright 2022 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package row
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -22,15 +14,15 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
-// CanUseStreamer returns whether the kvstreamer.Streamer API should be used.
 func CanUseStreamer(ctx context.Context, settings *cluster.Settings) bool {
-	// TODO(yuzefovich): remove the version gate in 22.2 cycle.
-	return settings.Version.IsActive(ctx, clusterversion.ScanWholeRows) &&
-		useStreamerEnabled.Get(&settings.SV)
+	__antithesis_instrumentation__.Notify(568333)
+
+	return settings.Version.IsActive(ctx, clusterversion.ScanWholeRows) && func() bool {
+		__antithesis_instrumentation__.Notify(568334)
+		return useStreamerEnabled.Get(&settings.SV) == true
+	}() == true
 }
 
-// useStreamerEnabled determines whether the Streamer API should be used.
-// TODO(yuzefovich): remove this in 22.2.
 var useStreamerEnabled = settings.RegisterBoolSetting(
 	settings.TenantReadOnly,
 	"sql.distsql.use_streamer.enabled",
@@ -40,155 +32,196 @@ var useStreamerEnabled = settings.RegisterBoolSetting(
 	false,
 )
 
-// TxnKVStreamer handles retrieval of key/values.
 type TxnKVStreamer struct {
 	streamer *kvstreamer.Streamer
 	spans    roachpb.Spans
 
-	// getResponseScratch is reused to return the result of Get requests.
 	getResponseScratch [1]roachpb.KeyValue
 
 	results         []kvstreamer.Result
 	lastResultState struct {
 		kvstreamer.Result
-		// numEmitted tracks the number of times this result has been fully
-		// emitted.
+
 		numEmitted int
-		// Used only for ScanResponses.
+
 		remainingBatches [][]byte
 	}
 }
 
 var _ KVBatchFetcher = &TxnKVStreamer{}
 
-// NewTxnKVStreamer creates a new TxnKVStreamer.
 func NewTxnKVStreamer(
 	ctx context.Context,
 	streamer *kvstreamer.Streamer,
 	spans roachpb.Spans,
 	lockStrength descpb.ScanLockingStrength,
 ) (*TxnKVStreamer, error) {
+	__antithesis_instrumentation__.Notify(568335)
 	if log.ExpensiveLogEnabled(ctx, 2) {
+		__antithesis_instrumentation__.Notify(568338)
 		log.VEventf(ctx, 2, "Scan %s", spans)
+	} else {
+		__antithesis_instrumentation__.Notify(568339)
 	}
+	__antithesis_instrumentation__.Notify(568336)
 	keyLocking := getKeyLockingStrength(lockStrength)
-	reqs := spansToRequests(spans, false /* reverse */, keyLocking)
-	if err := streamer.Enqueue(ctx, reqs, nil /* enqueueKeys */); err != nil {
+	reqs := spansToRequests(spans, false, keyLocking)
+	if err := streamer.Enqueue(ctx, reqs, nil); err != nil {
+		__antithesis_instrumentation__.Notify(568340)
 		return nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(568341)
 	}
+	__antithesis_instrumentation__.Notify(568337)
 	return &TxnKVStreamer{
 		streamer: streamer,
 		spans:    spans,
 	}, nil
 }
 
-// proceedWithLastResult processes the result which must be already set on the
-// lastResultState and emits the first part of the response (the only part for
-// GetResponses).
 func (f *TxnKVStreamer) proceedWithLastResult(
 	ctx context.Context,
 ) (skip bool, kvs []roachpb.KeyValue, batchResp []byte, err error) {
+	__antithesis_instrumentation__.Notify(568342)
 	result := f.lastResultState.Result
 	if get := result.GetResp; get != nil {
-		// No need to check get.IntentValue since the Streamer guarantees that
-		// it is nil.
+		__antithesis_instrumentation__.Notify(568346)
+
 		if get.Value == nil {
-			// Nothing found in this particular response, so we skip it.
+			__antithesis_instrumentation__.Notify(568348)
+
 			f.releaseLastResult(ctx)
 			return true, nil, nil, nil
+		} else {
+			__antithesis_instrumentation__.Notify(568349)
 		}
+		__antithesis_instrumentation__.Notify(568347)
 		pos := result.EnqueueKeysSatisfied[f.lastResultState.numEmitted]
 		origSpan := f.spans[pos]
 		f.lastResultState.numEmitted++
 		f.getResponseScratch[0] = roachpb.KeyValue{Key: origSpan.Key, Value: *get.Value}
 		return false, f.getResponseScratch[:], nil, nil
+	} else {
+		__antithesis_instrumentation__.Notify(568350)
 	}
+	__antithesis_instrumentation__.Notify(568343)
 	scan := result.ScanResp
 	if len(scan.BatchResponses) > 0 {
+		__antithesis_instrumentation__.Notify(568351)
 		batchResp, f.lastResultState.remainingBatches = scan.BatchResponses[0], scan.BatchResponses[1:]
+	} else {
+		__antithesis_instrumentation__.Notify(568352)
 	}
+	__antithesis_instrumentation__.Notify(568344)
 	if len(f.lastResultState.remainingBatches) == 0 {
+		__antithesis_instrumentation__.Notify(568353)
 		f.lastResultState.numEmitted++
+	} else {
+		__antithesis_instrumentation__.Notify(568354)
 	}
-	// We're consciously ignoring scan.Rows argument since the Streamer
-	// guarantees to always produce Scan responses using BATCH_RESPONSE format.
-	//
-	// Note that batchResp might be nil when the ScanResponse is empty, and the
-	// caller (the KVFetcher) will skip over it.
+	__antithesis_instrumentation__.Notify(568345)
+
 	return false, nil, batchResp, nil
 }
 
 func (f *TxnKVStreamer) releaseLastResult(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(568355)
 	f.lastResultState.Release(ctx)
 	f.lastResultState.Result = kvstreamer.Result{}
 }
 
-// nextBatch returns the next batch of key/value pairs. If there are none
-// available, a fetch is initiated. When there are no more keys, ok is false.
 func (f *TxnKVStreamer) nextBatch(
 	ctx context.Context,
 ) (ok bool, kvs []roachpb.KeyValue, batchResp []byte, err error) {
-	// Check whether there are more batches in the current ScanResponse.
+	__antithesis_instrumentation__.Notify(568356)
+
 	if len(f.lastResultState.remainingBatches) > 0 {
+		__antithesis_instrumentation__.Notify(568362)
 		batchResp, f.lastResultState.remainingBatches = f.lastResultState.remainingBatches[0], f.lastResultState.remainingBatches[1:]
 		if len(f.lastResultState.remainingBatches) == 0 {
+			__antithesis_instrumentation__.Notify(568364)
 			f.lastResultState.numEmitted++
+		} else {
+			__antithesis_instrumentation__.Notify(568365)
 		}
+		__antithesis_instrumentation__.Notify(568363)
 		return true, nil, batchResp, nil
+	} else {
+		__antithesis_instrumentation__.Notify(568366)
 	}
+	__antithesis_instrumentation__.Notify(568357)
 
-	// Check whether the current result satisfies multiple requests.
 	if f.lastResultState.numEmitted < len(f.lastResultState.EnqueueKeysSatisfied) {
-		// Note that we should never get an error here since we're processing
-		// the same result again.
+		__antithesis_instrumentation__.Notify(568367)
+
 		_, kvs, batchResp, err = f.proceedWithLastResult(ctx)
 		return true, kvs, batchResp, err
+	} else {
+		__antithesis_instrumentation__.Notify(568368)
 	}
+	__antithesis_instrumentation__.Notify(568358)
 
-	// Release the current result.
-	if f.lastResultState.numEmitted == len(f.lastResultState.EnqueueKeysSatisfied) && f.lastResultState.numEmitted > 0 {
+	if f.lastResultState.numEmitted == len(f.lastResultState.EnqueueKeysSatisfied) && func() bool {
+		__antithesis_instrumentation__.Notify(568369)
+		return f.lastResultState.numEmitted > 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(568370)
 		f.releaseLastResult(ctx)
+	} else {
+		__antithesis_instrumentation__.Notify(568371)
 	}
+	__antithesis_instrumentation__.Notify(568359)
 
-	// Process the next result we have already received from the streamer.
 	for len(f.results) > 0 {
-		// Peel off the next result and set it into lastResultState.
+		__antithesis_instrumentation__.Notify(568372)
+
 		f.lastResultState.Result = f.results[0]
 		f.lastResultState.numEmitted = 0
 		f.lastResultState.remainingBatches = nil
-		// Lose the reference to that result and advance the results slice for
-		// the next iteration.
+
 		f.results[0] = kvstreamer.Result{}
 		f.results = f.results[1:]
 		var skip bool
 		skip, kvs, batchResp, err = f.proceedWithLastResult(ctx)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(568375)
 			return false, nil, nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(568376)
 		}
+		__antithesis_instrumentation__.Notify(568373)
 		if skip {
+			__antithesis_instrumentation__.Notify(568377)
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(568378)
 		}
+		__antithesis_instrumentation__.Notify(568374)
 		return true, kvs, batchResp, err
 	}
+	__antithesis_instrumentation__.Notify(568360)
 
-	// Get more results from the streamer. This call will block until some
-	// results are available or we're done.
-	//
-	// The memory accounting for the returned results has already been performed
-	// by the streamer against its own budget, so we don't have to concern
-	// ourselves with the memory accounting here.
 	f.results, err = f.streamer.GetResults(ctx)
-	if len(f.results) == 0 || err != nil {
+	if len(f.results) == 0 || func() bool {
+		__antithesis_instrumentation__.Notify(568379)
+		return err != nil == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(568380)
 		return false, nil, nil, err
+	} else {
+		__antithesis_instrumentation__.Notify(568381)
 	}
+	__antithesis_instrumentation__.Notify(568361)
 	return f.nextBatch(ctx)
 }
 
-// close releases the resources of this TxnKVStreamer.
 func (f *TxnKVStreamer) close(ctx context.Context) {
+	__antithesis_instrumentation__.Notify(568382)
 	f.lastResultState.Release(ctx)
 	for _, r := range f.results {
+		__antithesis_instrumentation__.Notify(568384)
 		r.Release(ctx)
 	}
+	__antithesis_instrumentation__.Notify(568383)
 	*f = TxnKVStreamer{}
 }

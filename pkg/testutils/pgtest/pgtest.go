@@ -1,14 +1,6 @@
-// Copyright 2019 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package pgtest
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"bytes"
@@ -25,153 +17,225 @@ import (
 	"github.com/jackc/pgproto3/v2"
 )
 
-// PGTest can be used to send and receive arbitrary pgwire messages on
-// Postgres-compatible servers.
 type PGTest struct {
 	fe            *pgproto3.Frontend
 	conn          net.Conn
 	isCockroachDB bool
 }
 
-// NewPGTest connects to a Postgres server at addr with username user.
 func NewPGTest(ctx context.Context, addr, user string) (*PGTest, error) {
+	__antithesis_instrumentation__.Notify(645818)
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(645825)
 		return nil, errors.Wrap(err, "dial")
+	} else {
+		__antithesis_instrumentation__.Notify(645826)
 	}
+	__antithesis_instrumentation__.Notify(645819)
 	success := false
 	defer func() {
+		__antithesis_instrumentation__.Notify(645827)
 		if !success {
+			__antithesis_instrumentation__.Notify(645828)
 			conn.Close()
+		} else {
+			__antithesis_instrumentation__.Notify(645829)
 		}
 	}()
+	__antithesis_instrumentation__.Notify(645820)
 	fe := pgproto3.NewFrontend(pgproto3.NewChunkReader(conn), conn)
 	if err := fe.Send(&pgproto3.StartupMessage{
-		ProtocolVersion: 196608, // Version 3.0
+		ProtocolVersion: 196608,
 		Parameters: map[string]string{
 			"user": user,
 		},
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(645830)
 		return nil, errors.Wrap(err, "startup")
+	} else {
+		__antithesis_instrumentation__.Notify(645831)
 	}
+	__antithesis_instrumentation__.Notify(645821)
 	if msg, err := fe.Receive(); err != nil {
+		__antithesis_instrumentation__.Notify(645832)
 		return nil, errors.Wrap(err, "receive")
-	} else if _, ok := msg.(*pgproto3.AuthenticationOk); !ok {
-		return nil, errors.Errorf("unexpected: %#v", msg)
+	} else {
+		__antithesis_instrumentation__.Notify(645833)
+		if _, ok := msg.(*pgproto3.AuthenticationOk); !ok {
+			__antithesis_instrumentation__.Notify(645834)
+			return nil, errors.Errorf("unexpected: %#v", msg)
+		} else {
+			__antithesis_instrumentation__.Notify(645835)
+		}
 	}
+	__antithesis_instrumentation__.Notify(645822)
 	p := &PGTest{
 		fe:   fe,
 		conn: conn,
 	}
-	msgs, err := p.Until(false /* keepErrMsg */, &pgproto3.ReadyForQuery{})
+	msgs, err := p.Until(false, &pgproto3.ReadyForQuery{})
 	foundCrdb := false
 	var backendKeyData *pgproto3.BackendKeyData
 	for _, msg := range msgs {
-		if s, ok := msg.(*pgproto3.ParameterStatus); ok && s.Name == "crdb_version" {
+		__antithesis_instrumentation__.Notify(645836)
+		if s, ok := msg.(*pgproto3.ParameterStatus); ok && func() bool {
+			__antithesis_instrumentation__.Notify(645838)
+			return s.Name == "crdb_version" == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(645839)
 			foundCrdb = true
+		} else {
+			__antithesis_instrumentation__.Notify(645840)
 		}
+		__antithesis_instrumentation__.Notify(645837)
 		if d, ok := msg.(*pgproto3.BackendKeyData); ok {
+			__antithesis_instrumentation__.Notify(645841)
 			backendKeyData = d
+		} else {
+			__antithesis_instrumentation__.Notify(645842)
 		}
 	}
+	__antithesis_instrumentation__.Notify(645823)
 	if backendKeyData == nil {
+		__antithesis_instrumentation__.Notify(645843)
 		return nil, errors.Errorf("did not receive BackendKeyData")
+	} else {
+		__antithesis_instrumentation__.Notify(645844)
 	}
+	__antithesis_instrumentation__.Notify(645824)
 	p.isCockroachDB = foundCrdb
 	success = err == nil
 	return p, err
 }
 
-// Close sends a Terminate message and closes the connection.
 func (p *PGTest) Close() error {
+	__antithesis_instrumentation__.Notify(645845)
 	defer p.conn.Close()
 	return p.fe.Send(&pgproto3.Terminate{})
 }
 
-// SendOneLine sends a single msg to the server represented as a single string
-// in the format `<msg type> <msg body in JSON>`. See testdata for examples.
 func (p *PGTest) SendOneLine(line string) error {
+	__antithesis_instrumentation__.Notify(645846)
 	sp := strings.SplitN(line, " ", 2)
 	msg := toMessage(sp[0])
 	if len(sp) == 2 {
+		__antithesis_instrumentation__.Notify(645848)
 		msgBytes := []byte(sp[1])
 		switch msg := msg.(type) {
 		case *pgproto3.CopyData:
+			__antithesis_instrumentation__.Notify(645849)
 			var data struct {
 				Data       string
 				BinaryData []byte
 			}
 			if err := json.Unmarshal(msgBytes, &data); err != nil {
+				__antithesis_instrumentation__.Notify(645852)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(645853)
 			}
+			__antithesis_instrumentation__.Notify(645850)
 			if data.BinaryData != nil {
+				__antithesis_instrumentation__.Notify(645854)
 				msg.Data = data.BinaryData
 			} else {
+				__antithesis_instrumentation__.Notify(645855)
 				msg.Data = []byte(data.Data)
 			}
 		default:
+			__antithesis_instrumentation__.Notify(645851)
 			if err := json.Unmarshal(msgBytes, msg); err != nil {
+				__antithesis_instrumentation__.Notify(645856)
 				return err
+			} else {
+				__antithesis_instrumentation__.Notify(645857)
 			}
 		}
+	} else {
+		__antithesis_instrumentation__.Notify(645858)
 	}
+	__antithesis_instrumentation__.Notify(645847)
 	return p.Send(msg.(pgproto3.FrontendMessage))
 }
 
-// Send sends msg to the server.
 func (p *PGTest) Send(msg pgproto3.FrontendMessage) error {
+	__antithesis_instrumentation__.Notify(645859)
 	if testing.Verbose() {
+		__antithesis_instrumentation__.Notify(645861)
 		fmt.Printf("SEND %T: %+[1]v\n", msg)
+	} else {
+		__antithesis_instrumentation__.Notify(645862)
 	}
+	__antithesis_instrumentation__.Notify(645860)
 	return p.fe.Send(msg)
 }
 
-// Receive reads messages until messages of the given types have been found
-// in the specified order (with any number of messages in between). It returns
-// matched messages.
 func (p *PGTest) Receive(
 	keepErrMsg bool, typs ...pgproto3.BackendMessage,
 ) ([]pgproto3.BackendMessage, error) {
+	__antithesis_instrumentation__.Notify(645863)
 	var matched []pgproto3.BackendMessage
 	for len(typs) > 0 {
+		__antithesis_instrumentation__.Notify(645865)
 		msgs, err := p.Until(keepErrMsg, typs[0])
 		if err != nil {
+			__antithesis_instrumentation__.Notify(645867)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(645868)
 		}
+		__antithesis_instrumentation__.Notify(645866)
 		matched = append(matched, msgs[len(msgs)-1])
 		typs = typs[1:]
 	}
+	__antithesis_instrumentation__.Notify(645864)
 	return matched, nil
 }
 
-// Until is like Receive except all messages are returned instead of only
-// matched messages.
 func (p *PGTest) Until(
 	keepErrMsg bool, typs ...pgproto3.BackendMessage,
 ) ([]pgproto3.BackendMessage, error) {
+	__antithesis_instrumentation__.Notify(645869)
 	var msgs []pgproto3.BackendMessage
 	for len(typs) > 0 {
+		__antithesis_instrumentation__.Notify(645871)
 		typ := reflect.TypeOf(typs[0])
 
-		// Receive messages and make copies of them.
 		recv, err := p.fe.Receive()
 		if err != nil {
+			__antithesis_instrumentation__.Notify(645879)
 			return nil, errors.Wrap(err, "receive")
+		} else {
+			__antithesis_instrumentation__.Notify(645880)
 		}
+		__antithesis_instrumentation__.Notify(645872)
 		if testing.Verbose() {
+			__antithesis_instrumentation__.Notify(645881)
 			fmt.Printf("RECV %T: %+[1]v\n", recv)
+		} else {
+			__antithesis_instrumentation__.Notify(645882)
 		}
+		__antithesis_instrumentation__.Notify(645873)
 		if errmsg, ok := recv.(*pgproto3.ErrorResponse); ok {
+			__antithesis_instrumentation__.Notify(645883)
 			if typ != typErrorResponse {
+				__antithesis_instrumentation__.Notify(645886)
 				return nil, errors.Errorf("waiting for %T, got %#v", typs[0], errmsg)
+			} else {
+				__antithesis_instrumentation__.Notify(645887)
 			}
+			__antithesis_instrumentation__.Notify(645884)
 			var message string
 			if keepErrMsg {
+				__antithesis_instrumentation__.Notify(645888)
 				message = errmsg.Message
+			} else {
+				__antithesis_instrumentation__.Notify(645889)
 			}
-			// ErrorResponse doesn't encode/decode correctly, so
-			// manually append it here.
+			__antithesis_instrumentation__.Notify(645885)
+
 			msgs = append(msgs, &pgproto3.ErrorResponse{
 				Code:           errmsg.Code,
 				Message:        message,
@@ -179,34 +243,50 @@ func (p *PGTest) Until(
 			})
 			typs = typs[1:]
 			continue
+		} else {
+			__antithesis_instrumentation__.Notify(645890)
 		}
-		// If we saw a ready message but weren't waiting for one, we
-		// might wait forever so bail.
-		if msg, ok := recv.(*pgproto3.ReadyForQuery); ok && typ != typReadyForQuery {
-			return nil, errors.Errorf("waiting for %T, got %#v", typs[0], msg)
-		}
-		if typ == reflect.TypeOf(recv) {
-			typs = typs[1:]
-		}
+		__antithesis_instrumentation__.Notify(645874)
 
-		// recv is a pointer to some union'd interface. The next call
-		// to p.fe.Receive with the same message type will overwrite
-		// the previous message. We thus need to copy recv into some
-		// new variable. In the past we have used the BackendMessage's
-		// Encode/Decode methods, but those are sometimes
-		// broken. Instead, go through gob.
+		if msg, ok := recv.(*pgproto3.ReadyForQuery); ok && func() bool {
+			__antithesis_instrumentation__.Notify(645891)
+			return typ != typReadyForQuery == true
+		}() == true {
+			__antithesis_instrumentation__.Notify(645892)
+			return nil, errors.Errorf("waiting for %T, got %#v", typs[0], msg)
+		} else {
+			__antithesis_instrumentation__.Notify(645893)
+		}
+		__antithesis_instrumentation__.Notify(645875)
+		if typ == reflect.TypeOf(recv) {
+			__antithesis_instrumentation__.Notify(645894)
+			typs = typs[1:]
+		} else {
+			__antithesis_instrumentation__.Notify(645895)
+		}
+		__antithesis_instrumentation__.Notify(645876)
+
 		var buf bytes.Buffer
 		rv := reflect.ValueOf(recv).Elem()
 		x := reflect.New(rv.Type())
 		if err := gob.NewEncoder(&buf).EncodeValue(rv); err != nil {
+			__antithesis_instrumentation__.Notify(645896)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(645897)
 		}
+		__antithesis_instrumentation__.Notify(645877)
 		if err := gob.NewDecoder(&buf).DecodeValue(x); err != nil {
+			__antithesis_instrumentation__.Notify(645898)
 			return nil, err
+		} else {
+			__antithesis_instrumentation__.Notify(645899)
 		}
+		__antithesis_instrumentation__.Notify(645878)
 		msg := x.Interface().(pgproto3.BackendMessage)
 		msgs = append(msgs, msg)
 	}
+	__antithesis_instrumentation__.Notify(645870)
 	return msgs, nil
 }
 

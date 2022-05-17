@@ -1,14 +1,6 @@
-// Copyright 2014 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package idalloc
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -23,56 +15,61 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Incrementer abstracts over the database which holds the key counter.
 type Incrementer func(_ context.Context, _ roachpb.Key, inc int64) (updated int64, _ error)
 
-// DBIncrementer wraps a suitable subset of *kv.DB for use with an allocator.
 func DBIncrementer(
 	db interface {
 		Inc(ctx context.Context, key interface{}, value int64) (kv.KeyValue, error)
 	},
 ) Incrementer {
+	__antithesis_instrumentation__.Notify(101506)
 	return func(ctx context.Context, key roachpb.Key, inc int64) (int64, error) {
+		__antithesis_instrumentation__.Notify(101507)
 		res, err := db.Inc(ctx, key, inc)
 		if err != nil {
+			__antithesis_instrumentation__.Notify(101509)
 			return 0, err
+		} else {
+			__antithesis_instrumentation__.Notify(101510)
 		}
+		__antithesis_instrumentation__.Notify(101508)
 		return res.Value.GetInt()
 	}
 }
 
-// Options are the options passed to NewAllocator.
 type Options struct {
 	AmbientCtx  log.AmbientContext
 	Key         roachpb.Key
 	Incrementer Incrementer
 	BlockSize   int64
 	Stopper     *stop.Stopper
-	Fatalf      func(context.Context, string, ...interface{}) // defaults to log.Fatalf
+	Fatalf      func(context.Context, string, ...interface{})
 }
 
-// An Allocator is used to increment a key in allocation blocks of arbitrary
-// size.
 type Allocator struct {
 	log.AmbientContext
 	opts Options
 
-	ids  chan int64 // Channel of available IDs
+	ids  chan int64
 	once sync.Once
 }
 
-// NewAllocator creates a new ID allocator which increments the specified key in
-// allocation blocks of size blockSize. If the key exists, it's assumed to have
-// an int value (and it needs to be positive since id 0 is a sentinel used
-// internally by the allocator that can't be generated). The first value
-// returned is the existing value + 1, or 1 if the key did not previously exist.
 func NewAllocator(opts Options) (*Allocator, error) {
+	__antithesis_instrumentation__.Notify(101511)
 	if opts.BlockSize == 0 {
+		__antithesis_instrumentation__.Notify(101514)
 		return nil, errors.Errorf("blockSize must be a positive integer: %d", opts.BlockSize)
+	} else {
+		__antithesis_instrumentation__.Notify(101515)
 	}
+	__antithesis_instrumentation__.Notify(101512)
 	if opts.Fatalf == nil {
+		__antithesis_instrumentation__.Notify(101516)
 		opts.Fatalf = log.Fatalf
+	} else {
+		__antithesis_instrumentation__.Notify(101517)
 	}
+	__antithesis_instrumentation__.Notify(101513)
 	opts.AmbientCtx.AddLogTag("idalloc", nil)
 	return &Allocator{
 		AmbientContext: opts.AmbientCtx,
@@ -81,41 +78,60 @@ func NewAllocator(opts Options) (*Allocator, error) {
 	}, nil
 }
 
-// Allocate allocates a new ID from the global KV DB.
 func (ia *Allocator) Allocate(ctx context.Context) (int64, error) {
+	__antithesis_instrumentation__.Notify(101518)
 	ia.once.Do(ia.start)
 
 	select {
 	case id := <-ia.ids:
-		// when the channel is closed, the zero value is returned.
+		__antithesis_instrumentation__.Notify(101519)
+
 		if id == 0 {
+			__antithesis_instrumentation__.Notify(101522)
 			return id, errors.Errorf("could not allocate ID; system is draining")
+		} else {
+			__antithesis_instrumentation__.Notify(101523)
 		}
+		__antithesis_instrumentation__.Notify(101520)
 		return id, nil
 	case <-ctx.Done():
+		__antithesis_instrumentation__.Notify(101521)
 		return 0, ctx.Err()
 	}
 }
 
 func (ia *Allocator) start() {
+	__antithesis_instrumentation__.Notify(101524)
 	ctx := ia.AnnotateCtx(context.Background())
 	if err := ia.opts.Stopper.RunAsyncTask(ctx, "id-alloc", func(ctx context.Context) {
+		__antithesis_instrumentation__.Notify(101525)
 		defer close(ia.ids)
 
-		var prevValue int64 // for assertions
+		var prevValue int64
 		for {
+			__antithesis_instrumentation__.Notify(101526)
 			var newValue int64
 			var err error
 			for r := retry.Start(base.DefaultRetryOptions()); r.Next(); {
+				__antithesis_instrumentation__.Notify(101531)
 				if stopperErr := ia.opts.Stopper.RunTask(ctx, "idalloc: allocating block",
 					func(ctx context.Context) {
+						__antithesis_instrumentation__.Notify(101534)
 						newValue, err = ia.opts.Incrementer(ctx, ia.opts.Key, ia.opts.BlockSize)
 					}); stopperErr != nil {
+					__antithesis_instrumentation__.Notify(101535)
 					return
+				} else {
+					__antithesis_instrumentation__.Notify(101536)
 				}
+				__antithesis_instrumentation__.Notify(101532)
 				if err == nil {
+					__antithesis_instrumentation__.Notify(101537)
 					break
+				} else {
+					__antithesis_instrumentation__.Notify(101538)
 				}
+				__antithesis_instrumentation__.Notify(101533)
 
 				log.Warningf(
 					ctx,
@@ -125,37 +141,58 @@ func (ia *Allocator) start() {
 					err,
 				)
 			}
+			__antithesis_instrumentation__.Notify(101527)
 			if err != nil {
+				__antithesis_instrumentation__.Notify(101539)
 				ia.opts.Fatalf(ctx, "unexpectedly exited id allocation retry loop: %s", err)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(101540)
 			}
-			if prevValue != 0 && newValue < prevValue+ia.opts.BlockSize {
+			__antithesis_instrumentation__.Notify(101528)
+			if prevValue != 0 && func() bool {
+				__antithesis_instrumentation__.Notify(101541)
+				return newValue < prevValue+ia.opts.BlockSize == true
+			}() == true {
+				__antithesis_instrumentation__.Notify(101542)
 				ia.opts.Fatalf(
 					ctx,
 					"counter corrupt: incremented to %d, expected at least %d + %d",
 					newValue, prevValue, ia.opts.BlockSize,
 				)
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(101543)
 			}
+			__antithesis_instrumentation__.Notify(101529)
 
 			end := newValue + 1
 			start := end - ia.opts.BlockSize
 			if start <= 0 {
+				__antithesis_instrumentation__.Notify(101544)
 				ia.opts.Fatalf(ctx, "allocator initialized with negative key")
 				return
+			} else {
+				__antithesis_instrumentation__.Notify(101545)
 			}
+			__antithesis_instrumentation__.Notify(101530)
 			prevValue = newValue
 
-			// Add all new ids to the channel for consumption.
 			for i := start; i < end; i++ {
+				__antithesis_instrumentation__.Notify(101546)
 				select {
 				case ia.ids <- i:
+					__antithesis_instrumentation__.Notify(101547)
 				case <-ia.opts.Stopper.ShouldQuiesce():
+					__antithesis_instrumentation__.Notify(101548)
 					return
 				}
 			}
 		}
 	}); err != nil {
+		__antithesis_instrumentation__.Notify(101549)
 		close(ia.ids)
+	} else {
+		__antithesis_instrumentation__.Notify(101550)
 	}
 }

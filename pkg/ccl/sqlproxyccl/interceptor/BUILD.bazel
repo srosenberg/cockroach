@@ -14,6 +14,7 @@ go_library(
     deps = [
         "//pkg/sql/pgwire/pgwirebase",
         "//pkg/util",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_jackc_pgproto3_v2//:pgproto3",
     ],
@@ -33,6 +34,7 @@ go_test(
     deps = [
         "//pkg/sql/pgwire/pgwirebase",
         "//pkg/util/leaktest",
+        "@com_antithesis_instrumentation//wrappers",
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_jackc_pgproto3_v2//:pgproto3",
         "@com_github_stretchr_testify//require",

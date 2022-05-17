@@ -1,12 +1,6 @@
-// Copyright 2021 The Cockroach Authors.
-//
-// Licensed as a CockroachDB Enterprise file under the Cockroach Community
-// License (the "License"); you may not use this file except in compliance with
-// the License. You may obtain a copy of the License at
-//
-//     https://github.com/cockroachdb/cockroach/blob/master/licenses/CCL.txt
-
 package tenantcostserver
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"context"
@@ -21,8 +15,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// ReconfigureTokenBucket updates a tenant's token bucket settings. It is part
-// of the TenantUsageServer interface; see that for more details.
 func (s *instance) ReconfigureTokenBucket(
 	ctx context.Context,
 	txn *kv.Txn,
@@ -33,14 +25,23 @@ func (s *instance) ReconfigureTokenBucket(
 	asOf time.Time,
 	asOfConsumedRequestUnits float64,
 ) error {
+	__antithesis_instrumentation__.Notify(20199)
 	if err := s.checkTenantID(ctx, txn, tenantID); err != nil {
+		__antithesis_instrumentation__.Notify(20203)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(20204)
 	}
+	__antithesis_instrumentation__.Notify(20200)
 	h := makeSysTableHelper(ctx, s.executor, txn, tenantID)
 	state, err := h.readTenantState()
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20205)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(20206)
 	}
+	__antithesis_instrumentation__.Notify(20201)
 	now := s.timeSource.Now()
 	state.update(now)
 	state.Bucket.Reconfigure(
@@ -48,27 +49,43 @@ func (s *instance) ReconfigureTokenBucket(
 		now, state.Consumption.RU,
 	)
 	if err := h.updateTenantState(state); err != nil {
+		__antithesis_instrumentation__.Notify(20207)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(20208)
 	}
+	__antithesis_instrumentation__.Notify(20202)
 	return nil
 }
 
-// checkTenantID verifies that the tenant exists and is active.
 func (s *instance) checkTenantID(
 	ctx context.Context, txn *kv.Txn, tenantID roachpb.TenantID,
 ) error {
+	__antithesis_instrumentation__.Notify(20209)
 	row, err := s.executor.QueryRowEx(
 		ctx, "check-tenant", txn, sessiondata.NodeUserSessionDataOverride,
 		`SELECT active FROM system.tenants WHERE id = $1`, tenantID.ToUint64(),
 	)
 	if err != nil {
+		__antithesis_instrumentation__.Notify(20213)
 		return err
+	} else {
+		__antithesis_instrumentation__.Notify(20214)
 	}
+	__antithesis_instrumentation__.Notify(20210)
 	if row == nil {
+		__antithesis_instrumentation__.Notify(20215)
 		return pgerror.Newf(pgcode.UndefinedObject, "tenant %q does not exist", tenantID)
+	} else {
+		__antithesis_instrumentation__.Notify(20216)
 	}
+	__antithesis_instrumentation__.Notify(20211)
 	if active := *row[0].(*tree.DBool); !active {
+		__antithesis_instrumentation__.Notify(20217)
 		return errors.Errorf("tenant %q is not active", tenantID)
+	} else {
+		__antithesis_instrumentation__.Notify(20218)
 	}
+	__antithesis_instrumentation__.Notify(20212)
 	return nil
 }

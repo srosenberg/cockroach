@@ -1,14 +1,6 @@
-// Copyright 2017 The Cockroach Authors.
-//
-// Use of this software is governed by the Business Source License
-// included in the file licenses/BSL.txt.
-//
-// As of the Change Date specified in that file, in accordance with
-// the Business Source License, use of this software will be governed
-// by the Apache License, Version 2.0, included in the file
-// licenses/APL.txt.
-
 package roachpb
+
+import __antithesis_instrumentation__ "antithesis.com/instrumentation/wrappers"
 
 import (
 	"math"
@@ -16,11 +8,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util"
 )
 
-// StmtFingerprintID is the type of a Statement's fingerprint ID.
 type StmtFingerprintID uint64
 
-// FingerprintID returns the FingerprintID of the StatementStatisticsKey.
 func (m *StatementStatisticsKey) FingerprintID() StmtFingerprintID {
+	__antithesis_instrumentation__.Notify(154997)
 	return ConstructStatementFingerprintID(
 		m.Query,
 		m.Failed,
@@ -29,73 +20,76 @@ func (m *StatementStatisticsKey) FingerprintID() StmtFingerprintID {
 	)
 }
 
-// ConstructStatementFingerprintID constructs an ID by hashing an anonymized query, its database
-// and failure status, and if it was part of an implicit txn. At the time of writing,
-// these are the axis' we use to bucket queries for stats collection
-// (see stmtKey).
 func ConstructStatementFingerprintID(
 	anonymizedStmt string, failed bool, implicitTxn bool, database string,
 ) StmtFingerprintID {
+	__antithesis_instrumentation__.Notify(154998)
 	fnv := util.MakeFNV64()
 	for _, c := range anonymizedStmt {
+		__antithesis_instrumentation__.Notify(155003)
 		fnv.Add(uint64(c))
 	}
+	__antithesis_instrumentation__.Notify(154999)
 	for _, c := range database {
+		__antithesis_instrumentation__.Notify(155004)
 		fnv.Add(uint64(c))
 	}
+	__antithesis_instrumentation__.Notify(155000)
 	if failed {
+		__antithesis_instrumentation__.Notify(155005)
 		fnv.Add('F')
 	} else {
+		__antithesis_instrumentation__.Notify(155006)
 		fnv.Add('S')
 	}
+	__antithesis_instrumentation__.Notify(155001)
 	if implicitTxn {
+		__antithesis_instrumentation__.Notify(155007)
 		fnv.Add('I')
 	} else {
+		__antithesis_instrumentation__.Notify(155008)
 		fnv.Add('E')
 	}
+	__antithesis_instrumentation__.Notify(155002)
 	return StmtFingerprintID(fnv.Sum())
 }
 
-// TransactionFingerprintID is the hashed string constructed using the
-// individual statement fingerprint IDs that comprise the transaction.
 type TransactionFingerprintID uint64
 
-// InvalidTransactionFingerprintID denotes an invalid transaction fingerprint ID.
 const InvalidTransactionFingerprintID = TransactionFingerprintID(0)
 
-// Size returns the size of the TransactionFingerprintID.
 func (t TransactionFingerprintID) Size() int64 {
+	__antithesis_instrumentation__.Notify(155009)
 	return 8
 }
 
-// GetVariance retrieves the variance of the values.
 func (l *NumericStat) GetVariance(count int64) float64 {
+	__antithesis_instrumentation__.Notify(155010)
 	return l.SquaredDiffs / (float64(count) - 1)
 }
 
-// Record updates the underlying running counts, incorporating the given value.
-// It follows Welford's algorithm (Technometrics, 1962). The running count must
-// be stored as it is required to finalize and retrieve the variance.
 func (l *NumericStat) Record(count int64, val float64) {
+	__antithesis_instrumentation__.Notify(155011)
 	delta := val - l.Mean
 	l.Mean += delta / float64(count)
 	l.SquaredDiffs += delta * (val - l.Mean)
 }
 
-// Add combines b into this derived statistics.
 func (l *NumericStat) Add(b NumericStat, countA, countB int64) {
+	__antithesis_instrumentation__.Notify(155012)
 	*l = AddNumericStats(*l, b, countA, countB)
 }
 
-// AlmostEqual compares two NumericStats between a window of size eps.
 func (l *NumericStat) AlmostEqual(b NumericStat, eps float64) bool {
-	return math.Abs(l.Mean-b.Mean) <= eps &&
-		math.Abs(l.SquaredDiffs-b.SquaredDiffs) <= eps
+	__antithesis_instrumentation__.Notify(155013)
+	return math.Abs(l.Mean-b.Mean) <= eps && func() bool {
+		__antithesis_instrumentation__.Notify(155014)
+		return math.Abs(l.SquaredDiffs-b.SquaredDiffs) <= eps == true
+	}() == true
 }
 
-// AddNumericStats combines derived statistics.
-// Adapted from https://www.johndcook.com/blog/skewness_kurtosis/
 func AddNumericStats(a, b NumericStat, countA, countB int64) NumericStat {
+	__antithesis_instrumentation__.Notify(155015)
 	total := float64(countA + countB)
 	delta := b.Mean - a.Mean
 
@@ -106,33 +100,32 @@ func AddNumericStats(a, b NumericStat, countA, countB int64) NumericStat {
 	}
 }
 
-// GetScrubbedCopy returns a copy of the given SensitiveInfo with its fields redacted
-// or omitted entirely. By default, fields are omitted: if a new field is
-// added to the SensitiveInfo proto, it must be added here to make it to the
-// reg cluster.
 func (si SensitiveInfo) GetScrubbedCopy() SensitiveInfo {
+	__antithesis_instrumentation__.Notify(155016)
 	output := SensitiveInfo{}
-	// TODO(knz): This should really use si.LastErrorRedacted, however
-	// this does not exist yet.
-	// See: https://github.com/cockroachdb/cockroach/issues/53191
+
 	output.LastErr = "<redacted>"
-	// Not copying over MostRecentPlanDescription until we have an algorithm to scrub plan nodes.
+
 	return output
 }
 
-// Add combines other into this TxnStats.
 func (s *TxnStats) Add(other TxnStats) {
+	__antithesis_instrumentation__.Notify(155017)
 	s.TxnTimeSec.Add(other.TxnTimeSec, s.TxnCount, other.TxnCount)
 	s.TxnCount += other.TxnCount
 	s.ImplicitCount += other.ImplicitCount
 	s.CommittedCount += other.CommittedCount
 }
 
-// Add combines other into TransactionStatistics.
 func (t *TransactionStatistics) Add(other *TransactionStatistics) {
+	__antithesis_instrumentation__.Notify(155018)
 	if other.MaxRetries > t.MaxRetries {
+		__antithesis_instrumentation__.Notify(155020)
 		t.MaxRetries = other.MaxRetries
+	} else {
+		__antithesis_instrumentation__.Notify(155021)
 	}
+	__antithesis_instrumentation__.Notify(155019)
 
 	t.CommitLat.Add(other.CommitLat, t.Count, other.Count)
 	t.RetryLat.Add(other.RetryLat, t.Count, other.Count)
@@ -147,12 +140,16 @@ func (t *TransactionStatistics) Add(other *TransactionStatistics) {
 	t.Count += other.Count
 }
 
-// Add combines other into this StatementStatistics.
 func (s *StatementStatistics) Add(other *StatementStatistics) {
+	__antithesis_instrumentation__.Notify(155022)
 	s.FirstAttemptCount += other.FirstAttemptCount
 	if other.MaxRetries > s.MaxRetries {
+		__antithesis_instrumentation__.Notify(155027)
 		s.MaxRetries = other.MaxRetries
+	} else {
+		__antithesis_instrumentation__.Notify(155028)
 	}
+	__antithesis_instrumentation__.Notify(155023)
 	s.SQLType = other.SQLType
 	s.NumRows.Add(other.NumRows, s.Count, other.Count)
 	s.ParseLat.Add(other.ParseLat, s.Count, other.Count)
@@ -169,50 +166,89 @@ func (s *StatementStatistics) Add(other *StatementStatistics) {
 	s.ExecStats.Add(other.ExecStats)
 
 	if other.SensitiveInfo.LastErr != "" {
+		__antithesis_instrumentation__.Notify(155029)
 		s.SensitiveInfo.LastErr = other.SensitiveInfo.LastErr
+	} else {
+		__antithesis_instrumentation__.Notify(155030)
 	}
+	__antithesis_instrumentation__.Notify(155024)
 
 	if s.SensitiveInfo.MostRecentPlanTimestamp.Before(other.SensitiveInfo.MostRecentPlanTimestamp) {
+		__antithesis_instrumentation__.Notify(155031)
 		s.SensitiveInfo = other.SensitiveInfo
+	} else {
+		__antithesis_instrumentation__.Notify(155032)
 	}
+	__antithesis_instrumentation__.Notify(155025)
 
 	if s.LastExecTimestamp.Before(other.LastExecTimestamp) {
+		__antithesis_instrumentation__.Notify(155033)
 		s.LastExecTimestamp = other.LastExecTimestamp
+	} else {
+		__antithesis_instrumentation__.Notify(155034)
 	}
+	__antithesis_instrumentation__.Notify(155026)
 
 	s.Count += other.Count
 }
 
-// AlmostEqual compares two StatementStatistics and their contained NumericStats
-// objects within an window of size eps, ExecStats are ignored.
 func (s *StatementStatistics) AlmostEqual(other *StatementStatistics, eps float64) bool {
-	return s.Count == other.Count &&
-		s.FirstAttemptCount == other.FirstAttemptCount &&
-		s.MaxRetries == other.MaxRetries &&
-		s.NumRows.AlmostEqual(other.NumRows, eps) &&
-		s.ParseLat.AlmostEqual(other.ParseLat, eps) &&
-		s.PlanLat.AlmostEqual(other.PlanLat, eps) &&
-		s.RunLat.AlmostEqual(other.RunLat, eps) &&
-		s.ServiceLat.AlmostEqual(other.ServiceLat, eps) &&
-		s.OverheadLat.AlmostEqual(other.OverheadLat, eps) &&
-		s.SensitiveInfo.Equal(other.SensitiveInfo) &&
-		s.BytesRead.AlmostEqual(other.BytesRead, eps) &&
-		s.RowsRead.AlmostEqual(other.RowsRead, eps) &&
-		s.RowsWritten.AlmostEqual(other.RowsWritten, eps)
-	// s.ExecStats are deliberately ignored since they are subject to sampling
-	// probability and are not fully deterministic (e.g. the number of network
-	// messages depends on the range cache state).
+	__antithesis_instrumentation__.Notify(155035)
+	return s.Count == other.Count && func() bool {
+		__antithesis_instrumentation__.Notify(155036)
+		return s.FirstAttemptCount == other.FirstAttemptCount == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155037)
+		return s.MaxRetries == other.MaxRetries == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155038)
+		return s.NumRows.AlmostEqual(other.NumRows, eps) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155039)
+		return s.ParseLat.AlmostEqual(other.ParseLat, eps) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155040)
+		return s.PlanLat.AlmostEqual(other.PlanLat, eps) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155041)
+		return s.RunLat.AlmostEqual(other.RunLat, eps) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155042)
+		return s.ServiceLat.AlmostEqual(other.ServiceLat, eps) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155043)
+		return s.OverheadLat.AlmostEqual(other.OverheadLat, eps) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155044)
+		return s.SensitiveInfo.Equal(other.SensitiveInfo) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155045)
+		return s.BytesRead.AlmostEqual(other.BytesRead, eps) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155046)
+		return s.RowsRead.AlmostEqual(other.RowsRead, eps) == true
+	}() == true && func() bool {
+		__antithesis_instrumentation__.Notify(155047)
+		return s.RowsWritten.AlmostEqual(other.RowsWritten, eps) == true
+	}() == true
+
 }
 
-// Add combines other into this ExecStats.
 func (s *ExecStats) Add(other ExecStats) {
-	// Execution stats collected using a sampling approach.
+	__antithesis_instrumentation__.Notify(155048)
+
 	execStatCollectionCount := s.Count
-	if execStatCollectionCount == 0 && other.Count == 0 {
-		// If both are zero, artificially set the receiver's count to one to avoid
-		// division by zero in Add.
+	if execStatCollectionCount == 0 && func() bool {
+		__antithesis_instrumentation__.Notify(155050)
+		return other.Count == 0 == true
+	}() == true {
+		__antithesis_instrumentation__.Notify(155051)
+
 		execStatCollectionCount = 1
+	} else {
+		__antithesis_instrumentation__.Notify(155052)
 	}
+	__antithesis_instrumentation__.Notify(155049)
 	s.NetworkBytes.Add(other.NetworkBytes, execStatCollectionCount, other.Count)
 	s.MaxMemUsage.Add(other.MaxMemUsage, execStatCollectionCount, other.Count)
 	s.ContentionTime.Add(other.ContentionTime, execStatCollectionCount, other.Count)
